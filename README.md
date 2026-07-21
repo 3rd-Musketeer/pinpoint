@@ -244,6 +244,15 @@ See the Component Library page for live recipes. Sheet + tabbar structure:
 - **Role-based color** — `--ios-text-2`, `--ios-fill-3`, `--ios-accent`; never raw hex in app markup.
 - **Tracking is CJK-safe** — body tracking `0`; don’t reintroduce negative Latin tracking.
 
+## Branches
+
+| Branch | Role |
+|---|---|
+| **`main`** | Public template (what you clone / pull for releases) |
+| **`dev`** | Ongoing development |
+
+Publish = update `main` from a clean `dev` tip (template-only check), then `git push origin main`.
+
 ## Template vs instance
 
 Clone per project. Your content lives in `previews/<your-page>/` and `components/`; framework

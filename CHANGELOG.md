@@ -11,6 +11,8 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-07-21
 
 ### Changed
+- **Branch model** — public template lives on `main`; ongoing work on `dev`
+  (formerly `main` / `release`). Docs and fixture page ids stay product-neutral.
 - **Component extract gate** — build skill §4.0 documents when a block belongs in
   Component Library vs stays in a screen (reuse / variant wall / widget annotations;
   screen-first while exploring). README points at the same gate.
