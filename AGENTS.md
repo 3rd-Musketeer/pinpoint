@@ -119,7 +119,10 @@ annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation m
 - Overlay is stage-scoped; canvas/sidebar show active page annotations; `goToMark` switches page when needed.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
-Annotations live in `~/.html-annotate/*.json` (**disk SSOT**) as `annotations[]`.
+Annotations live in a per-project dir `~/.html-annotate/<repo-dirname>-<hash>/*.json`
+(**disk SSOT**) as `annotations[]` — read the exact path from the `dataDir` field of
+`GET /health`; clones on one machine never share documents. `HTML_ANNOTATE_DATA_DIR`
+overrides the dir wholesale (e2e uses this).
 `POST /save` requires `baseRevision`; clear uses the same save queue with `annotations: []`
 (there is no `/clear` route). The browser `localStorage` cache is not authoritative. On boot
 the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-realtime.

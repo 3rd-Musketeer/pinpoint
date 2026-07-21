@@ -13,7 +13,16 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotate-hit-test.js'),
   path.join(ROOT, 'lib', 'annotation-slug.js'),
 ];
-const DEFAULT_DATA_DIR = path.join(os.homedir(), '.html-annotate');
+// Per-project data dir. The workbench page key is always /index.html, so a
+// shared ~/.html-annotate would mix annotation documents (and clear/revision
+// state) across clones on the same machine. Same hash style as the client's
+// PAGE key (annotate.js).
+function projectDirName(root) {
+  let h = 0;
+  for (let i = 0; i < root.length; i++) h = (h * 31 + root.charCodeAt(i)) >>> 0;
+  return path.basename(root) + '-' + h.toString(36);
+}
+const DEFAULT_DATA_DIR = path.join(os.homedir(), '.html-annotate', projectDirName(ROOT));
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();
@@ -157,7 +166,8 @@ export function createAnnotateHandler(options = {}) {
     }
 
     if (req.method === 'GET' && urlPath === '/health') {
-      sendJson(res, 200, { ok: true });
+      // dataDir tells agents where this server's annotation documents live.
+      sendJson(res, 200, { ok: true, dataDir });
       return true;
     }
 

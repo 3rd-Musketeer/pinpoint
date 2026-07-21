@@ -1,6 +1,6 @@
 ---
 name: ios-app-preview-annotate
-description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.html-annotate；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
+description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到本项目专属的 ~/.html-annotate/<项目>/ 目录（从 /health 的 dataDir 字段取）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
 ---
 
 # ios-app-preview-annotate
@@ -26,7 +26,7 @@ description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审�
 
 ## Indicators（给 agent 的短定位符）
 
-不是新实体，只是对既有 JSON 字段的查询串。读整份 `~/.html-annotate/*.json` 再过滤（或一次性 `jq`），没有 resolver CLI。
+不是新实体，只是对既有 JSON 字段的查询串。读整份标注 JSON 再过滤（或一次性 `jq`），没有 resolver CLI。
 
 ```
 @page:<pageId>
@@ -47,7 +47,8 @@ description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审�
 **匹配规则**：scope indicator 要求 `annotation.pageId` 严格相等；缺 `pageId` 的旧数据不匹配 `@page` / `@section` / `@frame`（仍可 `@a:id` 命中）。
 
 ```bash
-jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' ~/.html-annotate/*.json
+DIR=$(curl -s http://127.0.0.1:5199/health | jq -r .dataDir)
+jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "$DIR"/*.json
 ```
 
 正文里的 mention 写 `[@a:<id>]`；旧 `[@m:<id>]` 读时兼容、保存时升级。
@@ -60,7 +61,7 @@ curl -s --max-time 1 http://127.0.0.1:5199/health || \
 ```
 
 - 默认端口 **5199**（`PORT` 可覆盖）；先探活再启动。
-- 落盘：**磁盘 SSOT** `~/.html-annotate/<页面名>.json`（含 `revision`）；参考图 `~/.html-annotate/images/`。
+- 落盘：**磁盘 SSOT**，目录按项目隔离——`~/.html-annotate/<repo目录名>-<hash>/<页面名>.json`（含 `revision`），参考图在同目录 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**，不要自己猜 hash；同机多个 clone 各有各的目录，互不可见。`HTML_ANNOTATE_DATA_DIR` 环境变量可整体覆盖（e2e 在用）。
 - 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
 - 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
 - Workbench prefs（当前页 / 缩放 / 侧栏）在 `ios-preview-wb`，viewer 本地状态，**不同步**。
@@ -92,7 +93,8 @@ curl -s --max-time 1 http://127.0.0.1:5199/health || \
 ## 4. Agent 怎么读（用户说「标好了」时）
 
 ```bash
-ls -t ~/.html-annotate/*.json
+DIR=$(curl -s http://127.0.0.1:5199/health | jq -r .dataDir)
+ls -t "$DIR"/*.json
 ```
 
 - `path` = 被标页面（workbench 多为壳 `index.html`）。

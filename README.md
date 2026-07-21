@@ -8,7 +8,7 @@ marks land on disk for your agent to read and act on.
 
 - 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
 - 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts (Claude Code / Codex / Cursor / …)
-- ✏️ **Review loop** — mark up screens in the browser（标注）, agent reads `~/.html-annotate` and revises
+- ✏️ **Review loop** — mark up screens in the browser（标注）, agent reads the marks from disk and revises
 - 🔁 **HMR** — edit a screen or component, the open board refreshes in place
 
 New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minute onboarding with the concept glossary.
@@ -155,7 +155,8 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the
    bottom composer (pills reference targets; `[indicator N]` inlines them), paste reference
    images, draw move-arrows.
-2. Say「标好了，你看一下」— the agent reads `~/.html-annotate/*.json` (disk SSOT, revisioned,
+2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT under a
+   per-project `~/.html-annotate/<dir>/`, path exposed by `GET /health`; revisioned,
    SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
    board hot-reloads.
 3. Review, clear resolved marks, repeat.

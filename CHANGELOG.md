@@ -26,6 +26,12 @@ Template scope only — instance/product content changes live outside this file.
   All copy is fictional. New e2e covers both interactive-frame forms.
 - **`QUICKSTART.html`** — self-contained human onboarding: concept glossary
   (page / section / frame / screen, component, 标注/交互, indicators) + usage.
+- **Per-project annotation dir** — annotation documents default to
+  `~/.html-annotate/<repo-dirname>-<hash>/` (hash of the repo's absolute path),
+  so multiple clones on one machine never share documents — previously every
+  workbench keyed on `/index.html` and collided (mixed marks, shared
+  clear/revision state). `GET /health` now returns `dataDir`;
+  `HTML_ANNOTATE_DATA_DIR` still overrides.
 
 ### Changed
 - **Skills renamed + rewritten** (`skills/ios-app-preview-build`,
