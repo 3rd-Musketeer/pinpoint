@@ -7,7 +7,7 @@ Figma-like multi-page canvas, a live Component Library, and a browser annotation
 marks land on disk for your agent to read and act on.
 
 - 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
-- 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any Claude session the contracts
+- 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts (Claude Code / Codex / Cursor / …)
 - ✏️ **Review loop** — mark up screens in the browser（标注）, agent reads `~/.html-annotate` and revises
 - 🔁 **HMR** — edit a screen or component, the open board refreshes in place
 
@@ -20,7 +20,7 @@ npm install
 npm run dev          # http://127.0.0.1:5199/index.html
 ```
 
-Then tell your agent (Claude Code auto-discovers this repo's skills):
+Then tell your agent:
 
 > 读一下 AGENTS.md，然后在 Example Library 加一屏 XXX
 
@@ -66,7 +66,7 @@ previews/<page>/       Flow pages — board.json + screen HTML (+ optional <scre
 previews/_index.json   Page manifest (id / title / order / default)
 plugins/               Vite plugins: annotate-api, components-board, preview-hmr, template-only
 lib/                   Node-tested shared modules (annotation store, board navigation, …)
-.claude/skills/        Repo skills — auto-discovered by Claude Code in this repo
+skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 starter.html           COPY-ME standalone one-off phone (no workbench needed)
 e2e/                   Playwright workbench tests
 ```
@@ -122,7 +122,7 @@ Row flows with per-screen titles / shells:
 ```
 
 For gestures / animation, add screen scripts (form A inline / form B sidecar) — full contract
-in the [build skill](.claude/skills/ios-app-preview-build/SKILL.md); live examples
+in the [build skill](skills/ios-app-preview-build/SKILL.md); live examples
 `previews/library/recipe.html` (A) and `previews/library/timer.{html,js}` (B).
 
 ### Add a workbench page
@@ -162,7 +162,7 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 
 Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 `@frame:library/timer` · `@a:<id>`. Full schema and routing rules:
-[annotate skill](.claude/skills/ios-app-preview-annotate/SKILL.md).
+[annotate skill](skills/ios-app-preview-annotate/SKILL.md).
 
 Annotations are per-machine (solo human + agent loop) — this is not multiplayer Figma.
 

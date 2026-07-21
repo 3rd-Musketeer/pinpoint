@@ -28,9 +28,10 @@ Template scope only — instance/product content changes live outside this file.
   (page / section / frame / screen, component, 标注/交互, indicators) + usage.
 
 ### Changed
-- **Skills moved into `.claude/skills/`** (`ios-app-preview-build`,
-  `ios-app-preview-annotate`) so Claude Code auto-discovers them in any clone;
-  rewritten paths-relative with trigger-focused descriptions.
+- **Skills renamed + rewritten** (`skills/ios-app-preview-build`,
+  `skills/ios-app-preview-annotate`) — tool-agnostic dir-ref (works with
+  Claude Code / Codex / Cursor), repo-relative paths, trigger-focused
+  descriptions.
 - **`annotate.js` relocated to repo root** — it is the browser runtime client
   (served as `/annotate.js`), not a skill; `plugins/annotate-api.js` and the
   inline test updated.

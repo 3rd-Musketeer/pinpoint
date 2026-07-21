@@ -5,7 +5,7 @@ description: 在本仓库（iOS App Preview workbench）里搭预览内容：加
 
 # ios-app-preview-build
 
-在这个仓库里**搭预览内容**。总入口约定见根目录 [`AGENTS.md`](../../../AGENTS.md)；标注评审走 [`ios-app-preview-annotate`](../ios-app-preview-annotate/SKILL.md)。
+在这个仓库里**搭预览内容**。总入口约定见根目录 [`AGENTS.md`](../../AGENTS.md)；标注评审走 [`ios-app-preview-annotate`](../ios-app-preview-annotate/SKILL.md)。
 
 ## 0. 服务
 
@@ -60,7 +60,7 @@ curl -s http://127.0.0.1:5199/health
 <!-- <div class="ios-tabbar">…</div> -->
 ```
 
-范例：[`previews/library/home.html`](../../../previews/library/home.html)（tab 页 + sheet + tabbar 全套）。
+范例：[`previews/library/home.html`](../../previews/library/home.html)（tab 页 + sheet + tabbar 全套）。
 
 错挂的症状（用来自查）：sheet 关着仍占滚动溢出、滚到底能看见；开着时 panel 贴内容底而非手机底，画面变暗但 sheet 超出视口。
 
@@ -87,7 +87,7 @@ Sidecar 里查 sheet：`root` = `.ios-app`，overlay 不在 `root` 内，用 `ro
 - `id` → `[data-ann-section]` / annotation `section`
 - `title` → `.wb-lib-cap`；screen `title` → `.wb-screen-cap`（**只写文案**，字号来自 board tokens，勿设 font-size）
 
-Canonical：[`previews/library/board.json`](../../../previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
+Canonical：[`previews/library/board.json`](../../previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
 
 ## 3. 加 workbench page
 
@@ -182,7 +182,7 @@ export default function mount(root) {
 
 - `root` = 该屏 `.ios-app` / `.ios-lockscreen`（可用 `data-preview-root="css"` 覆盖）
 - `mount` 返回的 `unmount` 会在换板 / HMR 时调用——有定时器、全局监听时必须返回
-- 样板：[`previews/library/timer.html`](../../../previews/library/timer.html) + [`timer.js`](../../../previews/library/timer.js)（B），[`previews/library/recipe.html`](../../../previews/library/recipe.html)（A）
+- 样板：[`previews/library/timer.html`](../../previews/library/timer.html) + [`timer.js`](../../previews/library/timer.js)（B），[`previews/library/recipe.html`](../../previews/library/recipe.html)（A）
 
 ## 8. 反模式
 

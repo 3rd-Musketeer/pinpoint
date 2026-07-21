@@ -3,8 +3,9 @@
 Read this first when working in this repo.
 Human-oriented docs: [`README.md`](README.md) · onboarding: [`QUICKSTART.html`](QUICKSTART.html) · recent changes: [`CHANGELOG.md`](CHANGELOG.md).
 
-Repo skills live in [`.claude/skills/`](.claude/skills/) and are auto-discovered by Claude Code
-sessions started in this repo. From outside, reference them by path (dir-ref).
+Repo skills live in [`skills/`](skills/) — plain directories referenced by path (dir-ref),
+so they work with any coding agent (Claude Code / Codex / Cursor / …). Open the SKILL.md
+the routing table below points at before touching the matching surface.
 
 ## Start the server
 
@@ -31,7 +32,7 @@ Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
 | `components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page | `ios-kit.css` to “fix” one annotation |
 
-**Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](.claude/skills/ios-app-preview-build/SKILL.md) §1.1.
+**Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.1.
 
 Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Add `.ios-glass--liquid` only for Chromium refraction wow on sparse chrome — not full-page surfaces.
 
@@ -41,8 +42,8 @@ Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen
 
 | Task | Open |
 |---|---|
-| Add page / section / screen / component / interactive frame | [`.claude/skills/ios-app-preview-build/SKILL.md`](.claude/skills/ios-app-preview-build/SKILL.md) |
-| Annotate → read annotations → revise | [`.claude/skills/ios-app-preview-annotate/SKILL.md`](.claude/skills/ios-app-preview-annotate/SKILL.md) |
+| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md) |
+| Annotate → read annotations → revise | [`skills/ios-app-preview-annotate/SKILL.md`](skills/ios-app-preview-annotate/SKILL.md) |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 
 ## Canonical board schema
@@ -81,7 +82,7 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Board hierarchy for agents: **page → canvas → section → frame**; **screen** = iOS content inside a frame (`screenId` = frame id).
 - Annotate modes: **标注** (A) vs **交互** (default). Global indicators are `@page:` /
   `@section:` / `@frame:` / `@a:`; annotation-local targets use persisted `[@t:iN]`
-  tokens displayed as `[indicator N]` — see [annotate skill](.claude/skills/ios-app-preview-annotate/SKILL.md).
+  tokens displayed as `[indicator N]` — see [annotate skill](skills/ios-app-preview-annotate/SKILL.md).
 
 ## Interactive frames (A+B)
 

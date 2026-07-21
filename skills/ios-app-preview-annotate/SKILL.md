@@ -7,7 +7,7 @@ description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审�
 
 标注评审闭环：**用户标 → agent 读 → agent 改 → 用户清空 → 下一轮**。全程离线、零模型依赖；锚定基于 CSS selector，整机 `transform: scale()` / 窗口缩放都不错位。
 
-搭页 / 改 `board.json` 走 [`ios-app-preview-build`](../ios-app-preview-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../../AGENTS.md)。
+搭页 / 改 `board.json` 走 [`ios-app-preview-build`](../ios-app-preview-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
 
 运行时：根目录 `annotate.js`（浏览器客户端）+ Vite `plugins/annotate-api.js`（磁盘 + SSE），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由和 `ios-kit.js` 自动注入。
 
