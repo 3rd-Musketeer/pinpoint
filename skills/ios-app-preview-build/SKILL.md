@@ -104,6 +104,30 @@ Manifest 是 page id / title / order / default 的 SSOT；`board.json` 只写 `s
 
 ## 4. 加 component
 
+Component Library ≈ Figma Components：**可复用 / 可单独评审的原子**，不是「所有 UI 的仓库」。
+默认先写在 screen 里；满足下面任一条件再抽到 `components/`。
+
+### 4.0 何时进 Library / 何时留在 screen
+
+| 进 `components/<id>/` | 留在 `previews/<page>/…` |
+|---|---|
+| **跨屏复用**（同一块会出现在 ≥2 个 screen / page） | 只服务这一屏 / 这一段 flow 的构图与文案 |
+| **要并排看 variants**（形态 A/B、密度、状态），且评审对象是这块本身 | 整页叙事、流程步骤、一次性探索稿 |
+| 预期标注会说「改这个组件 / 这个 widget」，希望打在 Library 或带 `data-ios-from` | 标注对象是整屏布局、文案语气、flow 顺序 |
+| 边界已经稳：有清晰名字、若干稳定 variant | 边界还在变——先在 screen 里长成形，再抽 |
+
+心智：
+
+1. **Screen 是构图**（page → section → frame）；**Component 是原子**（可 include 的一块）。
+2. **先屏后组件**：探索期直接写 HTML；第二次要用、或要单独开 variant 墙时再抽。
+3. **抽了就必须引用**：screen 用 `data-ios-include`，禁止再复制一份 HTML（否则「改组件」类反馈会只改到一处）。
+4. **`system: true` 只给 kit 原语**（button / list / nav…），少而稳；产品组件一律 `system: false`（实例本地的可放 `components/`，模板发布靠 `_index.json` / exclude 隔离）。
+
+正例：`bubble`（多屏消息）、`time-dashboard` / `home-body`（多 flow 复用）、`energy-*`（variant 墙 + 多场景 include）。  
+反例：某 flow 独有的 onboard 文案块、只出现一次的设置页分区——留在 screen。
+
+### 4.1 怎么加
+
 ```
 components/<id>/
   meta.json
@@ -123,8 +147,7 @@ components/<id>/
 }
 ```
 
-- `system: true` = kit 原语，少而稳；产品组件一律 `false`
-- 可选 `components/_index.json` 排序；不在清单里的目录会自动发现、排在后面
+- 可选 `components/_index.json` 排序；不在清单里的目录会自动发现、排在后面（`PREVIEW_TEMPLATE_ONLY=1` 时只认清单）
 - Component Library 页自动合成（`/components/board.json`），无需手动注册
 
 ## 5. 在 screen 里引用组件
@@ -192,3 +215,5 @@ export default function mount(root) {
 - 产品手势 / 屏状态写进 `ios-kit.js`
 - 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 font-size
 - 组件 HTML 复制进 screen（用 `data-ios-include`）
+- 把一次性 flow 构图提前抽进 Library（先屏后组件，见 §4.0）
+- 为「整理文件」而抽组件、却仍在 screen 里留复制体

@@ -10,6 +10,11 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-07-21
 
+### Changed
+- **Component extract gate** — build skill §4.0 documents when a block belongs in
+  Component Library vs stays in a screen (reuse / variant wall / widget annotations;
+  screen-first while exploring). README points at the same gate.
+
 ### Fixed
 - **Annotation marks follow frame scroll** — document capture-phase `scroll`
   updates mark geometry when `.ios-app` / sheet bodies scroll (not only

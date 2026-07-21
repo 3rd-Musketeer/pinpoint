@@ -42,7 +42,7 @@ Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen
 
 | Task | Open |
 |---|---|
-| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md) |
+| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md)（组件何时抽：§4.0） |
 | Annotate → read annotations → revise | [`skills/ios-app-preview-annotate/SKILL.md`](skills/ios-app-preview-annotate/SKILL.md) |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 

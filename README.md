@@ -133,6 +133,11 @@ in the [build skill](skills/ios-app-preview-build/SKILL.md); live examples
 
 ### Add a reusable component
 
+Component Library is for **reusable / variant-review atoms**, not every UI block.
+Default: compose in the screen; extract to `components/` when you reuse across screens,
+need a variant wall, or expect “change this widget” annotations. Full gate:
+[build skill §4.0](skills/ios-app-preview-build/SKILL.md).
+
 ```
 components/bubble/
   meta.json            { id, title, system, layout, variants: [{id, title}] }
@@ -147,6 +152,7 @@ Include it in any screen — edit the source once, every consumer refreshes:
 ```
 
 `system: true` marks kit primitives (Buttons, Lists, …) — keep those few and stable.
+Product components use `system: false`.
 
 ## Annotation review loop
 
