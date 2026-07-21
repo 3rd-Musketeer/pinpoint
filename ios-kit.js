@@ -174,7 +174,7 @@
     });
   }
 
-  /* ---- annotation review loop (topic skills/) -------------------------------
+  /* ---- annotation review loop (annotate.js) ---------------------------------
      On localhost only, pull in /annotate.js from the same unified preview
      server. Silent no-op if the server isn't running, so previews are
      unaffected; never injected when served from a real host, so shared/exported
@@ -212,13 +212,16 @@
   }
   function fillLockWallpaper(root) {
     (root || document).querySelectorAll('.ios-lockscreen').forEach(function (el) {
+      // Wallpaper wordmark: per-screen data-lock-word > global <html data-lock-word> > default.
+      var word = el.getAttribute('data-lock-word')
+        || document.documentElement.getAttribute('data-lock-word') || 'HELLO';
       var w = el.querySelector('.ios-lock-wallpaper');
       if (!w) {
         w = document.createElement('div');
         w.setAttribute('aria-hidden', 'true');
-        w.textContent = 'MORI';
         el.insertBefore(w, el.firstChild);
       }
+      w.textContent = word;
       w.className = lockFontClass();
     });
   }

@@ -633,7 +633,7 @@
   color:#f2f2f7;
   background:#1c1c22;
 }
-/* MORI wordmark — base + font variants (system stacks, zero deps) */
+/* Lock wallpaper wordmark — base + font variants (system stacks, zero deps) */
 .ios-lock-wallpaper {
   position:absolute; z-index:0; inset:0;
   display:flex; align-items:center; justify-content:center;
