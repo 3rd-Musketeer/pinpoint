@@ -447,3 +447,81 @@ test('target pills locate, remove inline refs, and cancel existing edits', async
   await expect(box).toBeHidden();
   await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0].content)).toBe('已保存');
 });
+
+test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.iOSAnnotate.clear());
+  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+
+  // Ensure the settings phone can scroll far enough for a top cell to leave the clip.
+  await page.evaluate(() => {
+    const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');
+    if (!app) return;
+    const pad = document.createElement('div');
+    pad.setAttribute('data-e2e-scroll-pad', '');
+    pad.style.height = '1200px';
+    app.appendChild(pad);
+  });
+
+  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await cell.scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cell, '跟着滚');
+
+  const badge = page.locator('.ann-badge').first();
+  const frame = page.locator('.ann-target').first();
+  await expect(badge).toBeVisible();
+  await expect(frame).toBeVisible();
+
+  const before = await page.evaluate(() => {
+    const target = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-cell');
+    const mark = document.querySelector('.ann-target');
+    const b = document.querySelector('.ann-badge');
+    return {
+      targetTop: target.getBoundingClientRect().top,
+      markTop: mark.getBoundingClientRect().top,
+      badgeTop: parseFloat(b.style.top),
+    };
+  });
+
+  await page.evaluate(() => {
+    const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');
+    app.scrollTop += 120;
+  });
+
+  await expect.poll(() => page.evaluate((prev) => {
+    const target = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-cell');
+    const mark = document.querySelector('.ann-target');
+    if (!target || !mark || getComputedStyle(mark).display === 'none') return Infinity;
+    const targetDelta = target.getBoundingClientRect().top - prev.targetTop;
+    const markDelta = mark.getBoundingClientRect().top - prev.markTop;
+    return Math.abs(markDelta - targetDelta);
+  }, before)).toBeLessThan(3);
+
+  // Scroll until the annotated cell is fully above the phone clip.
+  await page.evaluate(() => {
+    const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');
+    app.scrollTop = app.scrollHeight;
+  });
+
+  await expect.poll(() => page.evaluate(() => {
+    const mark = document.querySelector('.ann-target');
+    const b = document.querySelector('.ann-badge');
+    return getComputedStyle(mark).display === 'none'
+      && getComputedStyle(b).display === 'none';
+  })).toBe(true);
+
+  // Sidebar still lists the mark (scrolled-out ≠ broken).
+  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(1);
+
+  await page.evaluate(() => {
+    const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');
+    app.scrollTop = 0;
+  });
+
+  await expect.poll(() => page.evaluate(() => {
+    const mark = document.querySelector('.ann-target');
+    const b = document.querySelector('.ann-badge');
+    return getComputedStyle(mark).display !== 'none'
+      && getComputedStyle(b).display !== 'none';
+  })).toBe(true);
+});

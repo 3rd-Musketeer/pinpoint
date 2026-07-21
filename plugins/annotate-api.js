@@ -12,6 +12,7 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotation-indicator.js'),
   path.join(ROOT, 'lib', 'annotate-hit-test.js'),
   path.join(ROOT, 'lib', 'annotation-slug.js'),
+  path.join(ROOT, 'lib', 'annotate-clip.js'),
 ];
 // Per-project data dir. The workbench page key is always /index.html, so a
 // shared ~/.html-annotate would mix annotation documents (and clear/revision

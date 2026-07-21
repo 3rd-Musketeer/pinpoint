@@ -315,6 +315,68 @@
     return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
   }
 
+  /** Overflow / screen ancestors that visually clip `el` (viewport rects). */
+  function clipAncestorViewRects(el) {
+    var clips = [];
+    var node = el && el.parentElement;
+    while (node && node.nodeType === 1 && node !== document.documentElement) {
+      var force = node.classList && (
+        node.classList.contains('ios-screen') ||
+        node.classList.contains('wb-comp-stage')
+      );
+      if (force) {
+        clips.push(viewRect(node));
+      } else {
+        var st = getComputedStyle(node);
+        if ((st.overflowX && st.overflowX !== 'visible') ||
+            (st.overflowY && st.overflowY !== 'visible')) {
+          clips.push(viewRect(node));
+        }
+      }
+      node = node.parentElement;
+    }
+    return clips;
+  }
+
+  /** Target's viewport rect intersected with clip ancestors; null if scrolled out. */
+  function visibleViewRectOf(el) {
+    if (!el) return null;
+    var clipped = clipByRects(viewRect(el), clipAncestorViewRects(el));
+    return isVisibleEnough(clipped) ? clipped : null;
+  }
+
+  /** Doc-space rect → clipped viewport rect using `clipEl`'s ancestors. */
+  function visibleViewRectDoc(rectDoc, clipEl) {
+    if (!rectDoc) return null;
+    var clipped = clipByRects(docToView(rectDoc), clipEl ? clipAncestorViewRects(clipEl) : []);
+    return isVisibleEnough(clipped) ? clipped : null;
+  }
+
+  function viewPointInClips(viewP, clipEl) {
+    if (!viewP) return false;
+    var clips = clipEl ? clipAncestorViewRects(clipEl) : [];
+    for (var i = 0; i < clips.length; i++) {
+      var c = clips[i];
+      if (viewP[0] < c[0] || viewP[1] < c[1] ||
+          viewP[0] >= c[0] + c[2] || viewP[1] >= c[1] + c[3]) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  function hidePartNodes(part) {
+    if (!part) return;
+    if (part.frame) part.frame.style.display = 'none';
+    if (part.badge) part.badge.style.display = 'none';
+  }
+
+  function showPartNodes(part) {
+    if (!part) return;
+    if (part.frame) part.frame.style.display = '';
+    if (part.badge) part.badge.style.display = '';
+  }
+
   function placeFixedRect(node, r) {
     node.style.left = r[0] + 'px';
     node.style.top = r[1] + 'px';
@@ -784,9 +846,11 @@
 
   function showGhostForEl(el, extraClass) {
     if (!el) { hideGhost(); return; }
+    var viewR = visibleViewRectOf(el);
+    if (!viewR) { hideGhost(); return; }
     var g = ensureHoverGhost();
     g.className = 'ann-hover-ghost' + (extraClass ? ' ' + extraClass : '');
-    placeOverlayRect(g, viewRect(el));
+    placeOverlayRect(g, viewR);
     g.hidden = false;
   }
 
@@ -797,10 +861,12 @@
     }
   }
 
-  function showGhostForRect(r, extraClass) {
+  function showGhostForRect(r, extraClass, clipEl) {
+    var viewR = visibleViewRectDoc(r, clipEl || null);
+    if (!viewR) { hideGhost(); return; }
     var g = ensureHoverGhost();
     g.className = 'ann-hover-ghost' + (extraClass ? ' ' + extraClass : '');
-    placeOverlayRect(g, docToView(r));
+    placeOverlayRect(g, viewR);
     g.hidden = false;
   }
   function ghostTarget() {
@@ -915,11 +981,18 @@
 
   function placePartGeometry(part, el) {
     if (!part || !el) return;
-    var local = viewToOverlayRect(viewRect(el));
+    var viewR = visibleViewRectOf(el);
+    if (!viewR) {
+      hidePartNodes(part);
+      return;
+    }
+    showPartNodes(part);
+    var local = viewToOverlayRect(viewR);
     placeFixedRect(part.frame, local);
     if (part.badge) {
-      part.badge.style.left = (local[0] + local[2] - 11) + 'px';
-      part.badge.style.top = (local[1] - 11) + 'px';
+      var pos = badgePositionForRect(local);
+      part.badge.style.left = pos.left + 'px';
+      part.badge.style.top = pos.top + 'px';
     }
   }
 
@@ -1712,8 +1785,10 @@
     });
 
     if (anchorRect) {
-      if (m.type === 'region') showGhostForRect(anchorRect);
-      else {
+      if (m.type === 'region') {
+        var regionEl = resolveMarkAnchor(m).el;
+        showGhostForRect(anchorRect, null, regionEl);
+      } else {
         var markEl = resolve(m.selector);
         if (markEl) showGhostForEl(markEl);
       }
@@ -1943,35 +2018,60 @@
     structureDirty = false;
   }
 
+  function clearMarkArrow(entry) {
+    if (entry.arrow && entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
+    entry.arrow = null;
+  }
+
+  function placeMoveArrow(entry, fromLocal, fromClipEl, endDoc) {
+    if (!fromLocal || !endDoc) {
+      clearMarkArrow(entry);
+      return;
+    }
+    var endEl = null;
+    if (entry.m.move && entry.m.move.to_selector) {
+      endEl = resolve(entry.m.move.to_selector);
+    }
+    var endClipEl = endEl || fromClipEl;
+    var endView = docPointToView(endDoc);
+    if (!viewPointInClips(endView, endClipEl)) {
+      clearMarkArrow(entry);
+      return;
+    }
+    var from = [fromLocal[0] + fromLocal[2] / 2, fromLocal[1] + fromLocal[3] / 2];
+    var to = viewToOverlayPoint(endView);
+    placeArrow(entry, from, to);
+  }
+
   function updateMarkGeometry() {
     beginOverlayFrame();
     Object.keys(markNodes).forEach(function (key) {
       var entry = markNodes[key];
       var m = entry.m;
       if (m.type === 'region') {
-        var viewR = markAnchorViewRect(m);
-        if (!viewR) {
+        var anchor = resolveMarkAnchor(m);
+        if (!anchor.live || !anchor.rectDoc) {
           removeMarkNode(entry);
           delete markNodes[key];
           return;
         }
-        var local = viewToOverlayRect(viewR);
+        var viewR = visibleViewRectDoc(anchor.rectDoc, anchor.el);
         var part = entry.parts[0];
+        if (!viewR) {
+          hidePartNodes(part);
+          clearMarkArrow(entry);
+          return;
+        }
+        var local = viewToOverlayRect(viewR);
         if (part) {
+          showPartNodes(part);
           placeFixedRect(part.frame, local);
-          part.badge.style.left = (local[0] + local[2] - 11) + 'px';
-          part.badge.style.top = (local[1] - 11) + 'px';
+          var rPos = badgePositionForRect(local);
+          part.badge.style.left = rPos.left + 'px';
+          part.badge.style.top = rPos.top + 'px';
         }
         if (m.move) {
-          var end = moveEndPoint(m);
-          if (!end) {
-            if (entry.arrow && entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
-            entry.arrow = null;
-            return;
-          }
-          var from = [local[0] + local[2] / 2, local[1] + local[3] / 2];
-          var to = viewToOverlayPoint(docPointToView(end));
-          placeArrow(entry, from, to);
+          placeMoveArrow(entry, local, anchor.el, moveEndPoint(m));
         }
         return;
       }
@@ -1990,16 +2090,12 @@
         placePartGeometry(entry.parts[pi], lives[pi].el);
       }
       if (m.move) {
-        var endPt = moveEndPoint(m);
-        if (!endPt) {
-          if (entry.arrow && entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
-          entry.arrow = null;
+        var firstView = visibleViewRectOf(lives[0].el);
+        if (!firstView) {
+          clearMarkArrow(entry);
           return;
         }
-        var firstLocal = viewToOverlayRect(docToView(lives[0].rectDoc));
-        var fromPt = [firstLocal[0] + firstLocal[2] / 2, firstLocal[1] + firstLocal[3] / 2];
-        var toPt = viewToOverlayPoint(docPointToView(endPt));
-        placeArrow(entry, fromPt, toPt);
+        placeMoveArrow(entry, viewToOverlayRect(firstView), lives[0].el, moveEndPoint(m));
       }
     });
     if (structureDirty) renderAll();
@@ -2033,9 +2129,9 @@
   }
 
   addEventListener('resize', onViewChange);
-  var wbstage = document.getElementById('wbstage');
-  if (wbstage) wbstage.addEventListener('scroll', onViewChange, { passive: true });
-  else addEventListener('scroll', onViewChange, { passive: true });
+  // Nested frame scrollports (.ios-app, sheet body, …) do not bubble; capture
+  // on document so mark geometry tracks phone scroll as well as #wbstage pan.
+  document.addEventListener('scroll', onViewChange, { passive: true, capture: true });
 
   // ESC：关 mention → 取消 composer 草稿 → 取消画箭头 → 退出标注模式（组字中不响应）
   document.addEventListener('keydown', function (e) {
@@ -2098,7 +2194,7 @@
       showGhostForEl(anchor.el, 'ann-flash');
       setTimeout(hideGhost, 1500);
     } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
-      showGhostForRect(anchor.rectDoc, 'ann-flash');
+      showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
       setTimeout(hideGhost, 1500);
     }
     openMark(m.n);

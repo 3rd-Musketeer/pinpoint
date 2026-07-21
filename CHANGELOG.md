@@ -10,6 +10,13 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-07-21
 
+### Fixed
+- **Annotation marks follow frame scroll** — document capture-phase `scroll`
+  updates mark geometry when `.ios-app` / sheet bodies scroll (not only
+  `#wbstage` pan). Mark frames / badges / ghosts / arrows are clipped to
+  `.ios-screen` (and overflow ancestors); fully scrolled-out targets hide on
+  the canvas without becoming “锚点失效”. Helpers in `lib/annotate-clip.js`.
+
 ### Added
 - **Template split** — repo now ships template content only (framework + Example
   Library + system components). Instance-local content layers on top:
