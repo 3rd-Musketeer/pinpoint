@@ -1,26 +1,25 @@
 # iOS App Preview — Agent Guide
 
-Read this first when working in `topics/ios-app-preview-html-template/`.
-Human-oriented detail: [`README.md`](README.md). Recent changes: [`CHANGELOG.md`](CHANGELOG.md).
+Read this first when working in this repo.
+Human-oriented docs: [`README.md`](README.md) · onboarding: [`QUICKSTART.html`](QUICKSTART.html) · recent changes: [`CHANGELOG.md`](CHANGELOG.md).
 
-Skills are **topic dir-ref only** under [`skills/`](skills/). Do **not** install or symlink into `.claude/skills/`.
+Repo skills live in [`.claude/skills/`](.claude/skills/) and are auto-discovered by Claude Code
+sessions started in this repo. From outside, reference them by path (dir-ref).
 
 ## Start the server
 
 ```bash
-cd topics/ios-app-preview-html-template
 npm install          # first time
-npm run dev          # http://127.0.0.1:5199/index.html
+npm run dev          # http://127.0.0.1:5199/index.html (PORT overrides; auto-port on conflict)
 ```
 
-Health: `curl -s http://127.0.0.1:5199/health`. Port **5199** (preview + annotate API).
-
-- In mori-ws: `preview_start ios-preview-kit` (`.claude/launch.json`).
+Health: `curl -s http://127.0.0.1:5199/health` — the same port serves preview + annotate API.
 
 Kit CSS/JS is framework-free. **Workbench** needs Vite + Lucide (`npm install`).
 
 Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
-`npx playwright install chromium`) · `npm run check` (both).
+`npx playwright install chromium`) · `npm run check` (both). E2e runs the server with
+`PREVIEW_TEMPLATE_ONLY=1`, so instance-local pages/components never affect assertions.
 
 ## Edit surfaces
 
@@ -32,7 +31,7 @@ Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
 | `components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page | `ios-kit.css` to “fix” one annotation |
 
-**Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [`skills/preview-build/SKILL.md`](skills/preview-build/SKILL.md) §1.1.
+**Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](.claude/skills/ios-app-preview-build/SKILL.md) §1.1.
 
 Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Add `.ios-glass--liquid` only for Chromium refraction wow on sparse chrome — not full-page surfaces.
 
@@ -42,8 +41,8 @@ Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen
 
 | Task | Open |
 |---|---|
-| Add page / section / screen / component / interactive frame | [`skills/preview-build/SKILL.md`](skills/preview-build/SKILL.md) |
-| Annotate → read annotations → revise | [`skills/annotate/SKILL.md`](skills/annotate/SKILL.md) |
+| Add page / section / screen / component / interactive frame | [`.claude/skills/ios-app-preview-build/SKILL.md`](.claude/skills/ios-app-preview-build/SKILL.md) |
+| Annotate → read annotations → revise | [`.claude/skills/ios-app-preview-annotate/SKILL.md`](.claude/skills/ios-app-preview-annotate/SKILL.md) |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 
 ## Canonical board schema
@@ -73,16 +72,16 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 ```
 
 - Top level is **`sections[]`**, not a flat `{ id, screens }` object.
-- Page id / title / order / default live in **`previews/_index.json`**; legacy board `title` is ignored.
+- Page id / title / order / default live in **`previews/_index.json`**; a gitignored
+  `previews/_index.local.json` (same shape) overrides it for long-lived instances.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
 - Default shell: **app**. Lock: `"shell": "lock"` on section or screen + `.ios-lockscreen`.
-- `section.id` stamps `[data-ann-section]` (and legacy `[data-ann-group]`) → annotation `section`.
+- `section.id` stamps `[data-ann-section]` → annotation `section`.
 - Board hierarchy for agents: **page → canvas → section → frame**; **screen** = iOS content inside a frame (`screenId` = frame id).
-- Annotate modes: **标注** (A) vs **交互** (default). The bottom Target Composer keeps
-  textarea focus while canvas clicks add targets. Global indicators are `@page:` /
+- Annotate modes: **标注** (A) vs **交互** (default). Global indicators are `@page:` /
   `@section:` / `@frame:` / `@a:`; annotation-local targets use persisted `[@t:iN]`
-  tokens displayed as `[indicator N]` — see [`skills/annotate/SKILL.md`](skills/annotate/SKILL.md).
+  tokens displayed as `[indicator N]` — see [annotate skill](.claude/skills/ios-app-preview-annotate/SKILL.md).
 
 ## Interactive frames (A+B)
 
@@ -95,7 +94,7 @@ Workbench mounts screen HTML via `innerHTML`, so bare `<script>` never runs. Cus
 
 - `root` = that screen’s `.ios-app` / `.ios-lockscreen` (override: `data-preview-root="css"`). Sheets live outside `root` — query via `root.closest('.ios-screen')`.
 - `mount` may return an `unmount` function (or `{ unmount }`); board reload / HMR calls it first.
-- Example: `previews/time-insight/tear-calendar.html` + `tear-calendar.js`.
+- Examples: `previews/library/recipe.html` (form A) · `previews/library/timer.html` + `timer.js` (form B).
 - **Do not** add product gestures to `ios-kit.js` or special-case them in `afterMount`.
 
 ## Annotation routing
@@ -111,15 +110,12 @@ Workbench mounts screen HTML via `innerHTML`, so bare `<script>` never runs. Cus
 Element annotations always write `targets: [{ ref, selector, text }]`; stable refs are
 `i1`, `i2`, … and are never renumbered after deletion. Top-level `selector` / `text`
 mirror the first target as compatibility aliases. `[@t:iN]` resolves only within that
-annotation and never enters `mentions[]`; `[@a:id]` keeps its existing cross-annotation meaning.
+annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation meaning.
 
 - Component Library annotations → edit `components/<id>/`.
 - Flow node with `data-ios-from="bubble/outgoing"` → prefer that component source.
 - Flow screen annotations → `previews/<pageId>/<screen>.html` only.
 - Overlay is stage-scoped; canvas/sidebar show active page annotations; `goToMark` switches page when needed.
-- The Target Composer defaults above the HUD. Only its explicit six-dot titlebar handle
-  moves it; a dropped position remains viewport-fixed and is reused for later composers
-  in the same browser session. Do not make the whole composer surface draggable.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
 Annotations live in `~/.html-annotate/*.json` (**disk SSOT**) as `annotations[]`.
@@ -136,11 +132,19 @@ the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-real
 - **Stage pan**: Space+drag or middle-button drag anywhere; left-drag only on empty board chrome (not inside `.ios-stage` / `.wb-comp-stage`) so frame clicks/scrolls work.
 - **Canvas toolbar**: always visible at bottom-right; Section Navigator and the layered
   Canvas → Section → Frame minimap are independent persistent toggles. Open panels dock right
-  and stack vertically in toolbar order; section/screen jumps do not close them. Then come zoom
-  ± / click label → 100% / 回中. Ctrl/meta + wheel zooms. Both navigation modes must resolve
-  geometry and focus policy through `lib/board-navigation.js`; never navigate using the
+  and stack vertically in toolbar order. Ctrl/meta + wheel zooms. Both navigation modes must
+  resolve geometry and focus policy through `lib/board-navigation.js`; never navigate using the
   `.wb-screen` wrapper because row layout makes it `display: contents`.
 - **HMR**: edits under `previews/<page>/**` (html/js/board) or `components/**` refresh the board.
+
+## Template vs instance
+
+The repo ships template content only (Example Library + system components). A long-lived
+instance layers private content on top without touching tracked files:
+
+- `previews/_index.local.json` (gitignored) overrides the page manifest.
+- Component dirs not listed in `components/_index.json` are auto-discovered and appended.
+- `PREVIEW_TEMPLATE_ONLY=1` hides both overrides — used by e2e and release verification.
 
 ## Smoke checklist
 
@@ -157,5 +161,4 @@ the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-real
 - Nesting sheet / backdrop / tabbar inside `.ios-app` (must be fragment-top siblings)
 - Editing loader chrome to satisfy an annotation
 - Product gestures / screen state in `ios-kit.js`
-- Installing this topic’s skills into `.claude/skills/`
 - Setting caption font sizes in screen HTML or ad-hoc CSS

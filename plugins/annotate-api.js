@@ -7,7 +7,7 @@ import { annotationSlug, createAnnotationStore } from '../lib/annotation-store.j
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const SCRIPT = path.join(ROOT, 'skills', 'annotate.js');
+const SCRIPT = path.join(ROOT, 'annotate.js');
 const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotation-indicator.js'),
   path.join(ROOT, 'lib', 'annotate-hit-test.js'),

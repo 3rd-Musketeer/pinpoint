@@ -1,5 +1,6 @@
 /* html-annotate: Figma-style HTML annotate tool (iOS App Preview template).
- * Served as /annotate.js by Vite annotate-api; ios-kit.js injects on localhost.
+ * Browser annotation client. Served as /annotate.js by Vite annotate-api;
+ * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).
  * SSOT = ~/.html-annotate; localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.

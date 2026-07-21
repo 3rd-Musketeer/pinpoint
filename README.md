@@ -1,14 +1,39 @@
-# iOS App Preview — HTML template
+# iOS App Preview
 
-A reusable template for **iOS app previews in plain HTML** — pixel-honest iPhone 16 Pro
-plus an iOS 26/27 (HIG-accurate, CJK-safe) kit.
+**Build pixel-honest iOS interactive prototypes in plain HTML — with your AI agent doing the building, and a Figma-style annotation loop for review.**
 
-- **Kit** (`ios-kit.css` / `ios-kit.js`): framework-free, zero runtime deps.
-- **Workbench** (`index.html` + Vite): needs `npm install` (Vite + Lucide).
+A single self-contained workbench: an HIG-accurate, CJK-safe iOS kit (zero runtime deps), a
+Figma-like multi-page canvas, a live Component Library, and a browser annotation system whose
+marks land on disk for your agent to read and act on.
 
-**Agents:** read [`AGENTS.md`](AGENTS.md) first. Skills (dir-ref only):
-[`skills/preview-build/`](skills/preview-build/SKILL.md) ·
-[`skills/annotate/`](skills/annotate/SKILL.md).
+- 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
+- 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any Claude session the contracts
+- ✏️ **Review loop** — mark up screens in the browser（标注）, agent reads `~/.html-annotate` and revises
+- 🔁 **HMR** — edit a screen or component, the open board refreshes in place
+
+New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minute onboarding with the concept glossary.
+
+## Quickstart
+
+```bash
+npm install
+npm run dev          # http://127.0.0.1:5199/index.html
+```
+
+Then tell your agent (Claude Code auto-discovers this repo's skills):
+
+> 读一下 AGENTS.md，然后在 Example Library 加一屏 XXX
+
+Verify changes:
+
+```bash
+npm test                          # node contract tests
+npx playwright install chromium   # first browser-test run only
+npm run test:e2e                  # workbench e2e (template-only mode)
+npm run check                     # both
+```
+
+Requires Node ≥ 20.
 
 ## Mental model (three layers)
 
@@ -22,37 +47,28 @@ Agent work stays in **screen fragments** (`*.html` + optional sidecar `*.js`) an
 **components**; chrome is not an edit surface. Product gestures use screen scripts
 (A+B), not `ios-kit.js`.
 
-## Files
+Board hierarchy: **page → canvas → section → frame**; a **screen** is the iOS content
+inside a frame. These five words are also the annotation address space (`@page:` /
+`@section:` / `@frame:`), so humans, agents, and the tooling all speak the same names.
+
+## Repository layout
 
 ```
-AGENTS.md              Agent entry — read first
+AGENTS.md              Agent entry — contracts + routing (read first)
+QUICKSTART.html        Human onboarding — concepts + usage, self-contained
 ios-kit.css            Variables + chrome styles + primitive CSS
-ios-kit.js             runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
+ios-kit.js             Kit runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
 index.html             WORKBENCH — Pages (Component Library pinned first) + Theme controls
-workbench.js           board loader, data-ios-include, preview-script mount (A+B), HMR
+workbench.js           Board loader, data-ios-include, preview-script mount (A+B), HMR
+annotate.js            Browser annotation client (served as /annotate.js)
 components/            Component Library sources (meta.json + variant HTML)
 previews/<page>/       Flow pages — board.json + screen HTML (+ optional <screen>.js)
-plugins/               annotate-api, components-board, preview-hmr
-starter.html           COPY-ME standalone one-off phone
-skills/                topic skills (dir-ref) + browser annotation client
-CHANGELOG.md
-```
-
-Serve with Vite:
-
-```bash
-cd topics/ios-app-preview-html-template
-npm install          # first time only (workbench)
-npm run dev          # http://127.0.0.1:5199/index.html
-```
-
-Verify changes:
-
-```bash
-npm test
-npx playwright install chromium  # first browser-test run only
-npm run test:e2e
-npm run check                     # contracts + browser flows
+previews/_index.json   Page manifest (id / title / order / default)
+plugins/               Vite plugins: annotate-api, components-board, preview-hmr, template-only
+lib/                   Node-tested shared modules (annotation store, board navigation, …)
+.claude/skills/        Repo skills — auto-discovered by Claude Code in this repo
+starter.html           COPY-ME standalone one-off phone (no workbench needed)
+e2e/                   Playwright workbench tests
 ```
 
 ## Pages
@@ -60,20 +76,19 @@ npm run check                     # contracts + browser flows
 Workbench **Pages** (top → bottom):
 
 1. **Component Library** (system, always present) — synthesized from `components/*/meta.json`.
-   Variants render on a **light board** (`.wb-comp-stage`), not inside phone chrome. Flow pages
-   still use the loader phone shell.
-2. **Example Library** — `previews/library/board.json` + screens (flows / demos)
-3. **GTD · 核心两屏** — `previews/smart-todo/`
-4. **Time Insight** — `previews/time-insight/`
+   Variants render on a light board (`.wb-comp-stage`), not inside phone chrome.
+2. **Example Library** — `previews/library/`: a complete fictional app（冲煮手账）exercising
+   every mechanism: cards/lists/tab/sheet home, a 3-screen flow with inline-script and
+   sidecar interactive frames, lock screens, a message flow built from component includes,
+   and an AB layout comparison.
 
-Click a page to switch boards. Component Library cannot be renamed.
+Click a page to switch boards. Add your own pages next to `library/` — see recipes below.
 
 ### Add a flow screen
 
 One content fragment + one entry in that page’s `board.json` **`sections[]`**.
 Canonical example: [`previews/library/board.json`](previews/library/board.json).
-Loader wraps the phone shell. For gestures / animation, add A+B screen scripts
-(see **Interactive frames** below) — do not edit `ios-kit.js`.
+The loader wraps the phone shell — fragments never include a bezel.
 
 ```html
 <!-- previews/library/onboard.html — in-screen fragment (no bezel) -->
@@ -87,17 +102,12 @@ Loader wraps the phone shell. For gestures / animation, add A+B screen scripts
 ```json
 {
   "sections": [
-    {
-      "id": "onboard",
-      "title": "Onboarding",
-      "layout": "column",
-      "screens": ["onboard"]
-    }
+    { "id": "onboard", "title": "Onboarding", "layout": "column", "screens": ["onboard"] }
   ]
 }
 ```
 
-Titled / per-screen shell (row flows):
+Row flows with per-screen titles / shells:
 
 ```json
 {
@@ -111,95 +121,54 @@ Titled / per-screen shell (row flows):
 }
 ```
 
-- Default shell: **app**. Lock: `"shell": "lock"` + `.ios-lockscreen` (no `.ios-app`).
-- Side-by-side: `"layout": "row"` + multiple screens (see `ab` / `msg-flow`).
-- Section `title` → `.wb-lib-cap`; screen `title` → `.wb-screen-cap` (sizes from board tokens — write copy only).
+For gestures / animation, add screen scripts (form A inline / form B sidecar) — full contract
+in the [build skill](.claude/skills/ios-app-preview-build/SKILL.md); live examples
+`previews/library/recipe.html` (A) and `previews/library/timer.{html,js}` (B).
 
 ### Add a workbench page
 
-1. Create `previews/<pageId>/board.json` and screen HTML files (optional same-name `.js` for A+B).
-2. Add the page to `previews/_index.json`:
-
-```json
-{
-  "defaultPage": "library",
-  "pages": [
-    { "id": "library", "title": "Example Library" },
-    { "id": "<pageId>", "title": "My Flow" }
-  ]
-}
-```
-
-3. Do not invent a second loader — the manifest generates navigation and `workbench.js` fetches `previews/<pageId>/board.json`.
-
-The manifest owns page id / title / order / default. `pageId` becomes annotate `pageId` / `data-vpage`.
-Board files own only `sections[]`; a legacy top-level `title` is accepted but ignored.
+1. Create `previews/<pageId>/board.json` + screen HTML files.
+2. Add the page to `previews/_index.json` (`pageId` becomes annotate `pageId` / `data-vpage`).
+3. Do not invent a second loader — the manifest generates navigation.
 
 ### Add a reusable component
 
 ```
 components/bubble/
-  meta.json
-  incoming.html
+  meta.json            { id, title, system, layout, variants: [{id, title}] }
+  incoming.html        fragment (single element or a full .ios-app catalog screen)
   outgoing.html
 ```
 
-```json
-{
-  "id": "bubble",
-  "title": "Message Bubble",
-  "system": false,
-  "layout": "row",
-  "variants": [
-    { "id": "incoming", "title": "Incoming" },
-    { "id": "outgoing", "title": "Outgoing" }
-  ]
-}
-```
-
-- `system: true` — kit primitives (Buttons, Lists, …); keep few and stable.
-- Variant files are **fragments** (may be a single bubble, or a full `.ios-app` catalog screen).
-- Library auto-wraps bare fragments in a page shell for phone preview.
-- Optional `components/_index.json` orders sections; system sections always render before product.
-
-### Include a component in a screen (sync)
+Include it in any screen — edit the source once, every consumer refreshes:
 
 ```html
 <div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
 ```
 
-Loader replaces the placeholder with `components/bubble/outgoing.html`. Optional `data-text`
-fills `[data-ios-slot="text"]`. Edit the component source → Component Library **and** any
-open flow that includes it refresh (HMR). Do **not** paste-copy component HTML into screens.
+`system: true` marks kit primitives (Buttons, Lists, …) — keep those few and stable.
 
-## Workbench UX
+## Annotation review loop
 
-- **Sidebar** — collapse: header toggle, stage expand button, splitter click (when collapsed) /
-  double-click (when expanded). Width drag still works. Prefs: `sideCollapsed`, `sideWidth`.
-- **Per-page viewport** — `pageViewports[pageId]` remembers scroll + zoom (zoom single-source).
-- **Canvas toolbar** — always visible at bottom-right. Open Section Navigator for continuous
-  section/screen jumps and/or the colored Canvas → Section → Frame minimap. Both panels persist
-  until their button is clicked again, docking right and stacking vertically in toolbar order;
-  zoom ±, click label → 100%, 回中; ctrl/meta + wheel zooms.
-- **Captions** — `--wb-cap-section` (~7.3% of `--wb-phone-w`), `--wb-cap-screen` (~5.5%); agents write copy only.
-- **Annotations** — stage-scoped overlay; marks filtered by active `pageId`; list delete (×);
-  filter 全部 / 当前示例; `goToMark` switches page when needed. Marks are **disk SSOT**
-  (`~/.html-annotate`, revisioned save queue + SSE); workbench prefs stay browser-local.
-- **HMR** — `previews/<page>/board.json|*.html|*.js` and `components/**` refresh the active board.
+Mark up a preview — Figma-style — and have your agent read marks and revise.
 
-### Interactive frames (A+B)
+1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the
+   bottom composer (pills reference targets; `[indicator N]` inlines them), paste reference
+   images, draw move-arrows.
+2. Say「标好了，你看一下」— the agent reads `~/.html-annotate/*.json` (disk SSOT, revisioned,
+   SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
+   board hot-reloads.
+3. Review, clear resolved marks, repeat.
 
-Screen HTML is mounted with `innerHTML`, so bare `<script>` does not run. Keep product
-gestures with the screen; do **not** add them to `ios-kit.js`.
+Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
+`@frame:library/timer` · `@a:<id>`. Full schema and routing rules:
+[annotate skill](.claude/skills/ios-app-preview-annotate/SKILL.md).
 
-| Form | Use when | Pattern |
-|---|---|---|
-| **A · inline** | Short | `<script data-preview-script>` or module `export default function mount(root)` |
-| **B · sidecar** | Longer | `previews/<page>/<screenId>.js` + `data-preview-mount` on `.ios-app` |
+Annotations are per-machine (solo human + agent loop) — this is not multiplayer Figma.
 
-`mount` may return `unmount`. Example: `previews/time-insight/tear-calendar.{html,js}`.
+## One phone, no workbench
 
-## One phone, minimal skeleton
+Copy [`starter.html`](starter.html), or use the minimal skeleton:
 
 ```html
 <link rel="stylesheet" href="ios-kit.css">
@@ -227,8 +196,7 @@ gestures with the screen; do **not** add them to `ios-kit.js`.
 </div>
 ```
 
-Standalone pages still need the full shell (or copy from `starter.html`). Workbench screens
-do **not** — loader owns chrome.
+Standalone pages need the full shell; workbench screens do **not** — the loader owns chrome.
 
 ## Knobs
 
@@ -256,40 +224,10 @@ Everything inside `.ios-screen` renders at **true iOS points**.
 - **Lock** — `ios-lockscreen` `ios-notification` …
 - **Utils** — `ios-muted` `ios-row` `ios-spacer` `ios-clamp1/2`
 
-See Component Library page for live recipes of system primitives. Sheet structure: [`previews/library/feed.html`](previews/library/feed.html).
-
-## JS data-attribute API (optional)
-
-```html
-<div class="ios-app" data-tab-page="home">
-  <div class="ios-cell tappable" data-sheet-open="detail">…</div>
-</div>
-<div class="ios-sheet-backdrop"></div>
-<div class="ios-sheet" id="detail">
-  <div class="ios-sheet-body">
-    <button type="button" data-sheet-close>Done</button>
-  </div>
-</div>
-<div class="ios-tabbar">
-  <button class="ios-tab on" data-tab="home">…</button>
-</div>
-```
+See the Component Library page for live recipes. Sheet + tabbar structure:
+[`previews/library/home.html`](previews/library/home.html).
 
 **Icons** — emoji for app/content; system chrome SVG (`#c-back`, `#c-chev`, `#c-search`) auto-injected.
-
-## Annotation review loop
-
-Mark up a preview — Figma-style — and have Claude read marks and revise.
-Skill: [`skills/annotate/SKILL.md`](skills/annotate/SKILL.md) (topic dir-ref; not installed into `.claude/skills`).
-
-- Press **A** for 标注 (vs 交互), click/lasso, then keep adding targets while the
-  bottom composer stays focused. Use pills for plain refs or insert `[indicator N]`
-  inline, write content, copy 🔗 indicator, then「标好了，你看一下」.
-- Annotations group by `pageId` + `[data-ann-section]` (board section; legacy `data-ann-group` still works).
-- Indicators: `@page:` / `@section:` / `@frame:` / `@a:` — see annotate skill.
-- On **Component Library**: edit `components/<id>/`.
-- On a **flow** with `data-ios-from="bubble/outgoing"`: prefer editing that component source.
-- Flow screen files stay content-only; never edit loader chrome.
 
 ## Design rules baked in
 
@@ -298,3 +236,20 @@ Skill: [`skills/annotate/SKILL.md`](skills/annotate/SKILL.md) (topic dir-ref; no
 - **Grouped lists are flat** — white-on-gray, no shadow.
 - **Role-based color** — `--ios-text-2`, `--ios-fill-3`, `--ios-accent`; never raw hex in app markup.
 - **Tracking is CJK-safe** — body tracking `0`; don’t reintroduce negative Latin tracking.
+
+## Template vs instance
+
+Clone per project. Your content lives in `previews/<your-page>/` and `components/`; framework
+files stay untouched, so pulling template updates is a clean overwrite of
+`ios-kit.*` / `workbench.js` / `index.html` / `annotate.js` / `plugins/` / `lib/`.
+
+For a long-lived instance, layer private content without touching tracked files:
+gitignored `previews/_index.local.json` overrides the page manifest; component dirs outside
+`components/_index.json` are auto-discovered. `PREVIEW_TEMPLATE_ONLY=1` hides both
+(e2e and release verification run in this mode).
+
+## Credits
+
+The annotation system is a heavily extended fork of
+[xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)
+(section/page routing, disk SSOT + SSE, target composer, indicators).
