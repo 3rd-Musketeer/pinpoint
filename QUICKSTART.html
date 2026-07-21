@@ -1,0 +1,348 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>iOS App Preview · 快速上手</title>
+<style>
+  :root {
+    --bg: #f2f2f7;
+    --surface: #ffffff;
+    --surface-2: #f7f7fa;
+    --text: #111114;
+    --text-2: rgba(60, 60, 67, .62);
+    --text-3: rgba(60, 60, 67, .38);
+    --sep: rgba(60, 60, 67, .16);
+    --accent: #0a7aff;
+    --accent-tint: rgba(10, 122, 255, .1);
+    --human: #248a3d;
+    --human-tint: rgba(52, 199, 89, .13);
+    --code-bg: #1c1c1e;
+    --code-text: #e8e8ed;
+    --chip-warm: rgba(162, 132, 94, .16);
+    --chip-warm-text: #7a6244;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #000000;
+      --surface: #1c1c1e;
+      --surface-2: #26262a;
+      --text: #f5f5f7;
+      --text-2: rgba(235, 235, 245, .62);
+      --text-3: rgba(235, 235, 245, .34);
+      --sep: rgba(235, 235, 245, .14);
+      --accent: #0a84ff;
+      --accent-tint: rgba(10, 132, 255, .16);
+      --human: #30d158;
+      --human-tint: rgba(48, 209, 88, .16);
+      --code-bg: #111113;
+      --code-text: #e8e8ed;
+      --chip-warm: rgba(172, 142, 104, .22);
+      --chip-warm-text: #cfae85;
+    }
+  }
+  :root[data-theme="light"] {
+    --bg: #f2f2f7; --surface: #ffffff; --surface-2: #f7f7fa;
+    --text: #111114; --text-2: rgba(60,60,67,.62); --text-3: rgba(60,60,67,.38);
+    --sep: rgba(60,60,67,.16); --accent: #0a7aff; --accent-tint: rgba(10,122,255,.1);
+    --human: #248a3d; --human-tint: rgba(52,199,89,.13);
+    --code-bg: #1c1c1e; --code-text: #e8e8ed;
+    --chip-warm: rgba(162,132,94,.16); --chip-warm-text: #7a6244;
+  }
+  :root[data-theme="dark"] {
+    --bg: #000000; --surface: #1c1c1e; --surface-2: #26262a;
+    --text: #f5f5f7; --text-2: rgba(235,235,245,.62); --text-3: rgba(235,235,245,.34);
+    --sep: rgba(235,235,245,.14); --accent: #0a84ff; --accent-tint: rgba(10,132,255,.16);
+    --human: #30d158; --human-tint: rgba(48,209,88,.16);
+    --code-bg: #111113; --code-text: #e8e8ed;
+    --chip-warm: rgba(172,142,104,.22); --chip-warm-text: #cfae85;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC",
+      "Helvetica Neue", "Microsoft YaHei", sans-serif;
+    font-size: 17px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 780px; margin: 0 auto; padding: 56px 24px 96px; }
+
+  /* ---- type ramp（借 iOS 的字阶） ---- */
+  h1 { font-size: 40px; font-weight: 800; line-height: 1.15; letter-spacing: .2px; margin: 10px 0 14px; text-wrap: balance; }
+  h2 { font-size: 24px; font-weight: 700; line-height: 1.25; margin: 0 0 6px; text-wrap: balance; }
+  h3 { font-size: 17px; font-weight: 650; margin: 0; }
+  p  { margin: 0; }
+  .eyebrow {
+    font-size: 13px; font-weight: 600; letter-spacing: .12em;
+    color: var(--accent); text-transform: uppercase;
+  }
+  .lede { font-size: 19px; color: var(--text-2); max-width: 40em; }
+  section { margin-top: 64px; }
+  .sec-note { font-size: 15px; color: var(--text-2); margin-top: 4px; max-width: 42em; }
+
+  /* ---- code ---- */
+  pre {
+    background: var(--code-bg); color: var(--code-text);
+    border-radius: 14px; padding: 16px 18px; margin: 20px 0 0;
+    font-family: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 14px; line-height: 1.75; overflow-x: auto;
+  }
+  pre .c { color: rgba(235, 235, 245, .45); }
+  code.inline {
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: .88em; background: var(--accent-tint); color: var(--accent);
+    border-radius: 5px; padding: 1px 5px; white-space: nowrap;
+  }
+  .say {
+    font-style: normal; background: var(--surface-2);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 10px 10px 0;
+    padding: 10px 14px; margin-top: 12px;
+    font-size: 15px; color: var(--text-2);
+  }
+  .say b { color: var(--text); font-weight: 600; }
+
+  /* ---- the loop ---- */
+  .loop { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; margin-top: 24px; }
+  .loop-step {
+    background: var(--surface); border-radius: 16px; padding: 16px 14px 14px;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .loop-step .who {
+    font-size: 12px; font-weight: 700; letter-spacing: .08em;
+    display: inline-flex; align-items: center; gap: 6px;
+  }
+  .loop-step .who::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: currentColor; }
+  .loop-step.you  .who { color: var(--human); }
+  .loop-step.agent .who { color: var(--accent); }
+  .loop-step h3 { font-size: 16px; }
+  .loop-step p { font-size: 13.5px; color: var(--text-2); line-height: 1.5; }
+  .loop-return { text-align: center; color: var(--text-3); font-size: 13px; margin-top: 10px; letter-spacing: .04em; }
+  @media (max-width: 640px) { .loop { grid-template-columns: 1fr 1fr; } }
+
+  /* ---- glossary as grouped lists ---- */
+  .group { margin-top: 28px; }
+  .group-title {
+    font-size: 13px; font-weight: 600; letter-spacing: .06em;
+    color: var(--text-2); text-transform: uppercase;
+    padding: 0 16px 7px;
+  }
+  .list { background: var(--surface); border-radius: 14px; overflow: hidden; }
+  .term { padding: 13px 16px; display: grid; grid-template-columns: 148px 1fr; gap: 14px; }
+  .term + .term { border-top: .5px solid var(--sep); }
+  .term dt { margin: 0; font-weight: 650; font-size: 15.5px; line-height: 1.45; }
+  .term dt small { display: block; font-weight: 500; font-size: 12.5px; color: var(--text-3); letter-spacing: .02em; }
+  .term dd { margin: 0; font-size: 15px; color: var(--text-2); line-height: 1.55; }
+  .term dd b { color: var(--text); font-weight: 600; }
+  .term dd .quote {
+    display: block; margin-top: 6px; font-size: 13.5px; color: var(--accent);
+  }
+  .term dd .quote::before { content: "跟 agent 说 · "; color: var(--text-3); }
+  @media (max-width: 560px) { .term { grid-template-columns: 1fr; gap: 4px; } }
+
+  /* ---- cheat table ---- */
+  .cheat { width: 100%; border-collapse: collapse; background: var(--surface); border-radius: 14px; overflow: hidden; margin-top: 20px; font-size: 15px; }
+  .cheat-wrap { overflow-x: auto; margin-top: 20px; border-radius: 14px; }
+  .cheat-wrap .cheat { margin-top: 0; }
+  .cheat th { text-align: left; font-size: 12.5px; font-weight: 600; letter-spacing: .05em; text-transform: uppercase; color: var(--text-3); padding: 12px 16px 6px; }
+  .cheat td { padding: 10px 16px; border-top: .5px solid var(--sep); }
+  .cheat td:first-child { white-space: nowrap; font-weight: 600; font-size: 14.5px; }
+  .cheat td:last-child { color: var(--text-2); }
+  kbd {
+    font-family: inherit; font-size: 12.5px; font-weight: 600;
+    background: var(--surface-2); border: .5px solid var(--sep);
+    border-bottom-width: 1.5px; border-radius: 6px; padding: 1px 7px;
+  }
+
+  /* ---- steps ---- */
+  .steps { counter-reset: step; margin-top: 20px; display: flex; flex-direction: column; gap: 10px; }
+  .step {
+    background: var(--surface); border-radius: 14px; padding: 14px 16px 14px 54px;
+    position: relative; font-size: 15px; color: var(--text-2);
+  }
+  .step::before {
+    counter-increment: step; content: counter(step);
+    position: absolute; left: 16px; top: 14px;
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent-tint); color: var(--accent);
+    font-weight: 700; font-size: 13px;
+    display: flex; align-items: center; justify-content: center;
+    font-variant-numeric: tabular-nums;
+  }
+  .step b { color: var(--text); font-weight: 600; }
+
+  /* ---- boundaries / footer ---- */
+  .flat { background: var(--surface); border-radius: 14px; padding: 4px 0; margin-top: 20px; }
+  .flat-row { padding: 12px 16px; font-size: 15px; color: var(--text-2); }
+  .flat-row + .flat-row { border-top: .5px solid var(--sep); }
+  .flat-row b { color: var(--text); font-weight: 600; }
+  footer { margin-top: 72px; font-size: 13.5px; color: var(--text-3); line-height: 1.7; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; border-radius: 4px; }
+
+  .chip-demo {
+    display: inline-block; font-size: 12px; font-weight: 600;
+    background: var(--chip-warm); color: var(--chip-warm-text);
+    border-radius: 999px; padding: 2px 10px; vertical-align: 1px;
+  }
+</style>
+</head>
+<body>
+<main>
+
+  <header>
+    <p class="eyebrow">iOS App Preview</p>
+    <h1>用 HTML 冲出像素级的 iOS 原型</h1>
+    <p class="lede">一个跑在浏览器里、agent 会用的「Figma」：你提需求、在画布上标注，agent 负责搭屏和改稿。纯 HTML/CSS，改一行热更新一行。</p>
+    <pre><span class="c"># 起工作台（Node ≥ 20）</span>
+npm install
+npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span></pre>
+    <p class="say">开场白 · <b>「读一下 AGENTS.md，然后在 Example Library 加一屏 ×××」</b>——仓库里带了 agent 的操作手册和 skill，你不需要教它规矩。</p>
+  </header>
+
+  <section id="loop">
+    <h2>核心循环</h2>
+    <p class="sec-note">这套东西的价值不在单张静态图，而在这个转得很快的圈：</p>
+    <div class="loop">
+      <div class="loop-step you">
+        <span class="who">你</span>
+        <h3>提需求</h3>
+        <p>「加一屏结算页」「把这两个方案摆成 AB」</p>
+      </div>
+      <div class="loop-step agent">
+        <span class="who">Agent</span>
+        <h3>搭屏</h3>
+        <p>写屏内 HTML + 挂上 board，画布热更新出真机效果</p>
+      </div>
+      <div class="loop-step you">
+        <span class="who">你</span>
+        <h3>标注</h3>
+        <p>按 <kbd>A</kbd> 进标注模式，点选元素写意见，Figma 手感</p>
+      </div>
+      <div class="loop-step agent">
+        <span class="who">Agent</span>
+        <h3>改稿</h3>
+        <p>「标好了，你看一下」——它从磁盘读标注，逐条改到源文件</p>
+      </div>
+    </div>
+    <p class="loop-return">↻ 清掉已解决的标注，进下一轮</p>
+  </section>
+
+  <section id="concepts">
+    <h2>词汇表</h2>
+    <p class="sec-note">这些词是你和 agent 的共同语言——画布、标注文件、skill 文档里说的都是同一套名字。</p>
+
+    <div class="group">
+      <p class="group-title">画布层级（也是标注的地址体系）</p>
+      <dl class="list">
+        <div class="term">
+          <dt>Page<small>页</small></dt>
+          <dd>侧栏里的一块板，一个探索主题一页。<b>Component Library 永远排第一</b>，是系统自动生成的。<span class="quote">「在 smart-todo 这页加个 section」</span></dd>
+        </div>
+        <div class="term">
+          <dt>Section<small>段</small></dt>
+          <dd>板上的一组屏：一条 flow（row 横排）或一摞方案（column 纵排）。AB 对比就是一个 row section 放两屏。</dd>
+        </div>
+        <div class="term">
+          <dt>Frame<small>框</small></dt>
+          <dd>板上的一台手机（含壳）。手机壳由加载器负责，<b>不是编辑对象</b>。</dd>
+        </div>
+        <div class="term">
+          <dt>Screen<small>屏</small></dt>
+          <dd>frame 里的 iOS 内容，对应一个 HTML 文件（<code class="inline">previews/&lt;page&gt;/&lt;screen&gt;.html</code>）。agent 的主要工作面。<span class="quote">「把 timer 这屏的按钮改成两个」</span></dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="group">
+      <p class="group-title">组件</p>
+      <dl class="list">
+        <div class="term">
+          <dt>Component Library</dt>
+          <dd>自动合成的首页，陈列 <code class="inline">components/</code> 下所有组件的全部 variant——相当于 Figma 的组件面板。</dd>
+        </div>
+        <div class="term">
+          <dt>Component / Variant</dt>
+          <dd>跨屏复用的元素（如消息气泡的 incoming / outgoing 两个 variant）。屏里用 include 引用，<b>改一处、所有引用处一起刷新</b>。<span class="quote">「把气泡抽成组件，两屏都用它」</span></dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="group">
+      <p class="group-title">评审</p>
+      <dl class="list">
+        <div class="term">
+          <dt>交互 / 标注<small>两种画布模式</small></dt>
+          <dd><b>交互</b>（默认）：像真 app 一样点——tab 切换、sheet 弹出、手势都能玩。<b>标注</b>（按 <kbd>A</kbd>）：点选 / 框选元素写评审意见。</dd>
+        </div>
+        <div class="term">
+          <dt>Annotation<small>标注</small></dt>
+          <dd>一条评审意见：正文 + 锚定的元素 + 可选的参考图 / 移动箭头 /「改文案」。落在你机器的磁盘上，agent 直接读。</dd>
+        </div>
+        <div class="term">
+          <dt>Indicator<small>定位符</small></dt>
+          <dd>贴给 agent 的短地址：<code class="inline">@page:library</code>、<code class="inline">@frame:library/timer</code>、<code class="inline">@a:ab12cd</code>（单条）。标注框和 Pages 列表的 🔗 一键复制。<span class="quote">「@section:library/brew-flow 下的标注都处理一下」</span></dd>
+        </div>
+      </dl>
+    </div>
+
+    <div class="group">
+      <p class="group-title">底座（知道存在即可）</p>
+      <dl class="list">
+        <div class="term">
+          <dt>Kit</dt>
+          <dd><code class="inline">ios-kit.css/js</code>：HIG 精确的 iOS 组件与 token（对标 Figma Variables）。它保证原型「长得像真 iOS」——中文排版安全、真 iOS points、light/dark 一键切。</dd>
+        </div>
+        <div class="term">
+          <dt>Shell</dt>
+          <dd>屏的壳形态：默认 app 壳，锁屏用 <code class="inline">lock</code> 壳（时钟 + 通知那种）。</dd>
+        </div>
+        <div class="term">
+          <dt>交互屏<small>A / B 两种形态</small></dt>
+          <dd>屏可以带自己的手势和动画：短逻辑内联在屏文件里（A），长逻辑放同名 sidecar JS（B）。示例：Example Library 的冲煮计时器。<span class="quote">「给这屏加个可以拖的进度环」</span></dd>
+        </div>
+      </dl>
+    </div>
+  </section>
+
+  <section id="usage">
+    <h2>画布怎么开</h2>
+    <div class="cheat-wrap"><table class="cheat">
+      <tr><th>操作</th><th>手势</th></tr>
+      <tr><td>缩放</td><td><kbd>⌘</kbd> + 滚轮，或右下角 ±；点百分比回 100%</td></tr>
+      <tr><td>平移</td><td><kbd>Space</kbd> + 拖拽，或中键拖拽</td></tr>
+      <tr><td>跳转</td><td>右下角 Section Navigator / 分层 minimap，连续跳不关面板</td></tr>
+      <tr><td>切模式</td><td><kbd>A</kbd> 在 交互 ↔ 标注 之间切</td></tr>
+      <tr><td>整机标注</td><td>点屏标题或手机壳；<kbd>⌥</kbd> + 点屏内元素也升级到整框</td></tr>
+      <tr><td>主题 / 字号</td><td>侧栏底部 Light / Dark；设置里有 Dynamic Type 三档</td></tr>
+    </table></div>
+
+    <h2 style="margin-top:48px">评审三步</h2>
+    <div class="steps">
+      <div class="step"><b>标</b>：按 <kbd>A</kbd>，点选或框选元素，在底部输入框写意见。可以连续点选多个目标、贴参考图、画「移动到」箭头、勾「改文案」。</div>
+      <div class="step"><b>喊</b>：跟 agent 说<b>「标好了，你看一下」</b>（要指定范围就贴 indicator）。它按 page → section → frame 分组读盘，逐条改源文件，画布热更新。</div>
+      <div class="step"><b>清</b>：确认改对了，删掉或清空这批标注，进下一轮。已失效的锚点会标「锚点失效」，不会静默丢。</div>
+    </div>
+  </section>
+
+  <section id="boundaries">
+    <h2>两条边界</h2>
+    <div class="flat">
+      <p class="flat-row"><b>标注是单机的。</b>落在你机器的 <code class="inline">~/.html-annotate/</code>，工作单元是「一个人 + 他的 agent」——这不是多人 Figma，结论靠改稿落地传递。</p>
+      <p class="flat-row"><b>手机壳不归你俩管。</b>bezel / 状态栏 / 底部横条由加载器统一画，agent 的约定里也禁止碰它——评审意见提内容和布局就好。</p>
+    </div>
+  </section>
+
+  <footer>
+    <p>更细的东西：<a href="README.md">README</a>（配置 / class 词汇表 / 设计规则）· <a href="AGENTS.md">AGENTS.md</a>（agent 契约，人不用读）。</p>
+    <p>示例 app「冲煮手账 <span class="chip-demo">☕ 全虚构</span>」就是用这套 kit 搭的——逛一遍 Example Library，所有机制都在里面。</p>
+  </footer>
+
+</main>
+</body>
+</html>
