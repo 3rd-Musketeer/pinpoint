@@ -1,0 +1,7 @@
+{
+  "id": "callout",
+  "title": "Callouts",
+  "system": true,
+  "layout": "column",
+  "variants": [{ "id": "catalog", "title": "Tones" }]
+}

@@ -1,0 +1,7 @@
+{
+  "id": "list",
+  "title": "Lists",
+  "system": true,
+  "layout": "column",
+  "variants": [{ "id": "catalog", "title": "Grouped cells" }]
+}

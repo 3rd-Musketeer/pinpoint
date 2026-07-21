@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preview</title>
+<link rel="stylesheet" href="ios-kit.css">
+<style>
+  /* just center one phone in the page; ios-kit.js does the rest */
+  body { margin:0; height:100vh; background:#eceef1; }
+  .ios-stage { width:100%; height:100vh; }
+</style>
+</head>
+<body>
+
+<!-- One iPhone 16 Pro, screen-only. Copy this file, fill the .ios-app, done.
+     Status-bar glyphs + nav chrome SVG are auto-injected by ios-kit.js; use emoji for app icons. -->
+<div class="ios-stage" data-fit data-fit-max="1">
+  <div class="ios-root screen-only" data-device="iphone-16-pro" data-theme="light">
+    <div class="ios-device">
+      <span class="ios-key act"></span><span class="ios-key vup"></span>
+      <span class="ios-key vdn"></span><span class="ios-key pwr"></span>
+      <div class="ios-bezel"><div class="ios-screen">
+        <div class="ios-island"></div>
+        <div class="ios-statusbar"><span class="ios-sb-time"></span><span class="ios-sb-icons"></span></div>
+
+        <!-- ▼▼▼ YOUR SCREEN ▼▼▼ ------------------------------------------------ -->
+        <div class="ios-app">
+          <div class="ios-nav"><h1>标题</h1></div>
+          <div class="ios-page">
+
+            <div class="ios-section"><div class="ios-list">
+              <label class="ios-cell has-icon">
+                <span class="ios-icon-tile ios-emo" style="background:var(--ios-green)">🔔</span>
+                <span class="ios-cell-body"><div class="ios-cell-title">通知</div></span>
+                <span class="ios-switch"><input type="checkbox" checked><span class="ios-switch-track"></span></span>
+              </label>
+              <div class="ios-cell"><span class="ios-cell-body"><div class="ios-cell-title">一行</div></span><span class="ios-cell-value">值</span></div>
+            </div></div>
+
+            <button class="ios-btn filled block lg">主按钮</button>
+
+          </div>
+        </div>
+        <!-- ▲▲▲ YOUR SCREEN ▲▲▲ ------------------------------------------------ -->
+
+        <div class="ios-home"></div>
+      </div></div>
+    </div>
+  </div>
+</div>
+
+<script src="ios-kit.js"></script>
+</body>
+</html>

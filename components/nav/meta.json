@@ -1,0 +1,10 @@
+{
+  "id": "nav",
+  "title": "Navigation",
+  "system": true,
+  "layout": "row",
+  "variants": [
+    { "id": "large", "title": "Large title" },
+    { "id": "compact", "title": "Compact + back" }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "defaultPage": "library",
+  "pages": [
+    {
+      "id": "library",
+      "title": "Example Library"
+    }
+  ]
+}

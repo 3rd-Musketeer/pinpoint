@@ -1,0 +1,42 @@
+{
+  "sections": [
+    {
+      "id": "msg-flow",
+      "title": "锁屏 → 消息 → 回复",
+      "layout": "row",
+      "screens": [
+        { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" },
+        { "id": "msg-thread", "title": "2 · 查看消息" },
+        { "id": "msg-reply", "title": "3 · 回复" }
+      ]
+    },
+    {
+      "id": "lock",
+      "title": "锁屏 · 通知",
+      "layout": "column",
+      "shell": "lock",
+      "screens": ["lock"]
+    },
+    {
+      "id": "settings",
+      "title": "设置 · 分组列表",
+      "layout": "column",
+      "screens": ["settings"]
+    },
+    {
+      "id": "feed",
+      "title": "Today · Feed",
+      "layout": "column",
+      "screens": ["feed"]
+    },
+    {
+      "id": "ab",
+      "title": "AB · 主按钮",
+      "layout": "row",
+      "screens": [
+        { "id": "ab-a", "title": "A · 实心主按钮" },
+        { "id": "ab-b", "title": "B · 弱化主按钮" }
+      ]
+    }
+  ]
+}

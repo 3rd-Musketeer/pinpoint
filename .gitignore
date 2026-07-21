@@ -1,0 +1,8 @@
+node_modules/
+playwright-report/
+test-results/
+.DS_Store
+
+# Instance-local overrides (never shared)
+previews/_index.local.json
+*.local.md

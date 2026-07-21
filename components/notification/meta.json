@@ -1,0 +1,7 @@
+{
+  "id": "notification",
+  "title": "Notification",
+  "system": true,
+  "layout": "column",
+  "variants": [{ "id": "catalog", "title": "Banner" }]
+}

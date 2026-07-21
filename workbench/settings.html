@@ -1,0 +1,46 @@
+<header class="wb-settings-head">
+  <button type="button" class="wb-back" data-wb-back aria-label="返回预览"><span aria-hidden="true">‹</span> 预览</button>
+  <h2 class="wb-settings-title">预览设置</h2>
+</header>
+
+<div class="wb-ctrls">
+  <div class="ctl-row"><span>缩放</span><div class="ctl" id="zoom">
+    <button type="button" data-canvas-zoom="0.75">75%</button><button type="button" data-canvas-zoom="1" class="on">100%</button><button type="button" data-canvas-zoom="1.25">125%</button><button type="button" data-canvas-zoom="1.5">150%</button>
+  </div></div>
+  <div class="ctl-row"><span>Frame</span><div class="ctl" id="frame">
+    <button type="button" data-frame="screen" class="on">Screen</button><button type="button" data-frame="bezel">Bezel</button>
+  </div></div>
+  <div class="ctl-row"><span>Text</span><div class="ctl" id="textsize">
+    <button type="button" data-text-size="small">小</button><button type="button" data-text-size="default" class="on">标准</button><button type="button" data-text-size="large">大</button>
+  </div></div>
+  <div class="wb-font-section">
+    <span>字标字体</span>
+    <div class="wb-font-grid" id="lockfont">
+      <button type="button" class="wb-font-opt on" data-lock-font="helvetica">
+        <span class="wb-font-sample wb-lock-font-helvetica">MORI</span><span class="wb-font-cap">Helvetica Neue</span>
+      </button>
+      <button type="button" class="wb-font-opt" data-lock-font="sf">
+        <span class="wb-font-sample wb-lock-font-sf">MORI</span><span class="wb-font-cap">SF Pro Heavy</span>
+      </button>
+      <button type="button" class="wb-font-opt" data-lock-font="din">
+        <span class="wb-font-sample wb-lock-font-din">MORI</span><span class="wb-font-cap">DIN Alternate</span>
+      </button>
+      <button type="button" class="wb-font-opt" data-lock-font="futura">
+        <span class="wb-font-sample wb-lock-font-futura">MORI</span><span class="wb-font-cap">Futura</span>
+      </button>
+      <button type="button" class="wb-font-opt" data-lock-font="arial">
+        <span class="wb-font-sample wb-lock-font-arial">MORI</span><span class="wb-font-cap">Arial Black</span>
+      </button>
+      <button type="button" class="wb-font-opt" data-lock-font="condensed">
+        <span class="wb-font-sample wb-lock-font-condensed">MORI</span><span class="wb-font-cap">Condensed</span>
+      </button>
+    </div>
+  </div>
+  <div class="ctl-row"><span>时间</span><div class="ctl" id="clockmode">
+    <button type="button" data-clock-mode="system" class="on">系统</button><button type="button" data-clock-mode="fixed">固定</button>
+  </div></div>
+  <div class="ctl-row wb-clock-fixed" id="clockfixed-row" hidden>
+    <span>固定</span>
+    <input type="time" id="clockfixed" class="wb-time-input" value="09:41" step="60">
+  </div>
+</div>

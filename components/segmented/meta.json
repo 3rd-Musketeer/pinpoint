@@ -1,0 +1,7 @@
+{
+  "id": "segmented",
+  "title": "Segmented",
+  "system": true,
+  "layout": "column",
+  "variants": [{ "id": "catalog", "title": "Control" }]
+}

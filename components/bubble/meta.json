@@ -1,0 +1,10 @@
+{
+  "id": "bubble",
+  "title": "Message Bubble",
+  "system": false,
+  "layout": "row",
+  "variants": [
+    { "id": "incoming", "title": "Incoming" },
+    { "id": "outgoing", "title": "Outgoing" }
+  ]
+}

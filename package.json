@@ -1,0 +1,21 @@
+{
+  "name": "ios-app-preview",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "dev": "vite",
+    "test": "node --test",
+    "test:e2e": "playwright test",
+    "check": "npm test && npm run test:e2e"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.61.1",
+    "vite": "^6.3.5"
+  },
+  "dependencies": {
+    "lucide": "^1.23.0"
+  }
+}
