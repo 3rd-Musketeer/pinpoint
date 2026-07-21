@@ -1,0 +1,44 @@
+<div class="ios-app">
+  <div class="ios-navbar">
+    <button class="ios-back ios-nav-lead"><svg><use href="#c-back"/></svg>豆仓</button>
+    <div class="ios-nav-title">冲煮参数</div>
+  </div>
+  <div class="ios-page">
+    <div class="ios-card ios-section">
+      <div class="ios-row" style="justify-content:space-between;align-items:baseline">
+        <span class="ios-headline">耶加雪菲</span>
+        <span class="ios-muted ios-footnote">水洗 · 浅焙</span>
+      </div>
+    </div>
+    <div class="ios-section">
+      <div class="ios-list-header">器具</div>
+      <div class="ios-segmented">
+        <button class="on" data-value="v60">V60</button><button data-value="aero">爱乐压</button><button data-value="press">法压</button>
+      </div>
+    </div>
+    <div class="ios-section">
+      <div class="ios-list-header">参数</div>
+      <div class="ios-list">
+        <div class="ios-cell tappable" data-ratio-cycle>
+          <span class="ios-cell-body"><div class="ios-cell-title">粉水比</div><div class="ios-cell-sub">点一下切换</div></span>
+          <span class="ios-chip blue" data-ratio>1:15</span>
+        </div>
+        <div class="ios-cell"><span class="ios-cell-body"><div class="ios-cell-title">水温</div></span><span class="ios-cell-value">92°C</span></div>
+        <div class="ios-cell"><span class="ios-cell-body"><div class="ios-cell-title">研磨</div></span><span class="ios-cell-value">中细 · 刻度 7.5</span></div>
+      </div>
+    </div>
+    <div class="ios-callout blue ios-section">
+      <div class="ios-callout-h">试试 1:16</div>
+      <div class="ios-callout-b">上周两次记录里，这支豆子在 1:16 时甜感更清楚。</div>
+    </div>
+    <button class="ios-btn filled block lg">开始冲煮</button>
+  </div>
+</div>
+<!-- 交互形态 A：短逻辑随屏内联（root = 本屏 .ios-app） -->
+<script data-preview-script>
+  var ratios = ['1:14', '1:15', '1:16'];
+  var chip = root.querySelector('[data-ratio]');
+  root.querySelector('[data-ratio-cycle]').addEventListener('click', function () {
+    chip.textContent = ratios[(ratios.indexOf(chip.textContent.trim()) + 1) % ratios.length];
+  });
+</script>

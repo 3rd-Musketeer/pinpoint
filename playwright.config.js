@@ -25,6 +25,7 @@ export default defineConfig({
     env: {
       ...process.env,
       HTML_ANNOTATE_DATA_DIR: E2E_DATA_DIR,
+      PREVIEW_TEMPLATE_ONLY: '1',
     },
   },
 });

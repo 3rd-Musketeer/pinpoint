@@ -1,6 +1,24 @@
 {
   "sections": [
     {
+      "id": "home",
+      "title": "首页 · 卡片 / 列表 / Tab / Sheet",
+      "layout": "column",
+      "screens": [
+        { "id": "home", "title": "Today · 点列表行打开 Sheet" }
+      ]
+    },
+    {
+      "id": "brew-flow",
+      "title": "冲一杯 · 三步流程",
+      "layout": "row",
+      "screens": [
+        { "id": "beans", "title": "1 · 选豆" },
+        { "id": "recipe", "title": "2 · 参数（内联脚本）" },
+        { "id": "timer", "title": "3 · 计时（sidecar 交互）" }
+      ]
+    },
+    {
       "id": "msg-flow",
       "title": "锁屏 → 消息 → 回复",
       "layout": "row",
@@ -18,25 +36,19 @@
       "screens": ["lock"]
     },
     {
+      "id": "ab",
+      "title": "AB · 冲煮完成卡两案",
+      "layout": "row",
+      "screens": [
+        { "id": "ab-a", "title": "A · 数据优先" },
+        { "id": "ab-b", "title": "B · 叙事优先" }
+      ]
+    },
+    {
       "id": "settings",
       "title": "设置 · 分组列表",
       "layout": "column",
       "screens": ["settings"]
-    },
-    {
-      "id": "feed",
-      "title": "Today · Feed",
-      "layout": "column",
-      "screens": ["feed"]
-    },
-    {
-      "id": "ab",
-      "title": "AB · 主按钮",
-      "layout": "row",
-      "screens": [
-        { "id": "ab-a", "title": "A · 实心主按钮" },
-        { "id": "ab-b", "title": "B · 弱化主按钮" }
-      ]
     }
   ]
 }

@@ -2,6 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { templateOnly } from './template-only.js';
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const COMPONENTS = path.join(ROOT, 'components');
@@ -46,11 +48,15 @@ function orderedMetas() {
     const m = loadMeta(id);
     if (m) { seen.add(id); metas.push(m); }
   });
-  dirs.sort().forEach((id) => {
-    if (seen.has(id)) return;
-    const m = loadMeta(id);
-    if (m) { seen.add(id); metas.push(m); }
-  });
+  // Auto-discover components missing from _index.json (instance-local dirs);
+  // template-only mode sticks to the tracked list so counts are deterministic.
+  if (!templateOnly()) {
+    dirs.sort().forEach((id) => {
+      if (seen.has(id)) return;
+      const m = loadMeta(id);
+      if (m) { seen.add(id); metas.push(m); }
+    });
+  }
   // system primitives first, then product components (stable within each group by order)
   const sys = metas.filter((m) => m.system);
   const prod = metas.filter((m) => !m.system);

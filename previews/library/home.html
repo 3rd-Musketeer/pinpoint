@@ -1,0 +1,117 @@
+<!-- 首页：卡片 + 分组列表 + tabbar 切页 + sheet 详情（全部走 kit data-attribute API） -->
+<div class="ios-app has-tabbar" data-tab-page="today">
+  <div class="ios-nav"><div class="ios-nav-eyebrow">7月21日 · 星期二</div><h1>冲煮手账</h1></div>
+  <div class="ios-page">
+    <div class="ios-segmented" style="margin-bottom:16px">
+      <button class="on" data-value="day">日</button><button data-value="week">周</button><button data-value="month">月</button>
+    </div>
+    <div class="ios-card ios-section">
+      <div class="ios-card-title">今日第一杯</div>
+      <div class="ios-row" style="justify-content:space-between;align-items:baseline;margin-bottom:2px">
+        <span class="ios-title2" style="font-weight:600">耶加雪菲</span>
+        <span class="ios-chip violet">花香</span>
+      </div>
+      <div class="ios-muted ios-subhead" style="margin-bottom:14px">V60 · 中细研磨 · 粉水比 1:15</div>
+      <div class="ios-row" style="gap:0">
+        <div style="flex:1;text-align:center">
+          <div class="ios-title3">92°C</div>
+          <div class="ios-muted ios-caption" style="margin-top:2px">水温</div>
+        </div>
+        <div style="width:0.5px;background:var(--ios-sep);align-self:stretch"></div>
+        <div style="flex:1;text-align:center">
+          <div class="ios-title3">2′28″</div>
+          <div class="ios-muted ios-caption" style="margin-top:2px">总时长</div>
+        </div>
+        <div style="width:0.5px;background:var(--ios-sep);align-self:stretch"></div>
+        <div style="flex:1;text-align:center">
+          <div class="ios-title3">8.7</div>
+          <div class="ios-muted ios-caption" style="margin-top:2px">风味分</div>
+        </div>
+      </div>
+    </div>
+    <div class="ios-callout green ios-section">
+      <div class="ios-callout-h">本周甜感稳定</div>
+      <div class="ios-callout-b">连续 5 次冲煮评分在 8 分以上。下一杯试试把研磨再调细半格。</div>
+    </div>
+    <div class="ios-section">
+      <div class="ios-list-header">最近冲煮</div>
+      <div class="ios-list">
+        <div class="ios-cell has-emo tappable" data-sheet-open="brew-detail">
+          <span class="ios-cell-emo ios-emo">☕</span>
+          <span class="ios-cell-body"><div class="ios-cell-title">耶加雪菲</div><div class="ios-cell-sub">8:12 · 2′28″ · 1:15</div></span>
+          <span class="ios-chip green">顺滑</span><span class="ios-chev"><svg><use href="#c-chev"/></svg></span>
+        </div>
+        <div class="ios-cell has-emo tappable" data-sheet-open="brew-detail">
+          <span class="ios-cell-emo ios-emo">🌸</span>
+          <span class="ios-cell-body"><div class="ios-cell-title">花魁 5.0</div><div class="ios-cell-sub">昨天 · 2′41″ · 1:15</div></span>
+          <span class="ios-chip amber">偏苦</span><span class="ios-chev"><svg><use href="#c-chev"/></svg></span>
+        </div>
+        <div class="ios-cell has-emo tappable" data-sheet-open="brew-detail">
+          <span class="ios-cell-emo ios-emo">⛰️</span>
+          <span class="ios-cell-body"><div class="ios-cell-title">蓝山一号</div><div class="ios-cell-sub">周日 · 2′35″ · 1:16</div></span>
+          <span class="ios-chip blue">均衡</span><span class="ios-chev"><svg><use href="#c-chev"/></svg></span>
+        </div>
+      </div>
+    </div>
+    <button class="ios-btn filled block lg">记一杯</button>
+  </div>
+</div>
+<div class="ios-app has-tabbar" data-tab-page="trends" hidden>
+  <div class="ios-nav"><h1>趋势</h1></div>
+  <div class="ios-page">
+    <div class="ios-card ios-section">
+      <div class="ios-card-title">本周</div>
+      <div class="ios-title2">12 杯 · 平均 8.4 分</div>
+      <div class="ios-muted ios-subhead" style="margin-top:4px">比上周多 3 杯，评分 +0.3</div>
+      <div class="ios-row" style="gap:6px;align-items:flex-end;height:64px;margin-top:16px">
+        <div style="flex:1;height:46%;border-radius:4px;background:var(--ios-fill-2)"></div>
+        <div style="flex:1;height:60%;border-radius:4px;background:var(--ios-fill-2)"></div>
+        <div style="flex:1;height:38%;border-radius:4px;background:var(--ios-fill-2)"></div>
+        <div style="flex:1;height:72%;border-radius:4px;background:var(--ios-brown)"></div>
+        <div style="flex:1;height:64%;border-radius:4px;background:var(--ios-brown)"></div>
+        <div style="flex:1;height:88%;border-radius:4px;background:var(--ios-brown)"></div>
+        <div style="flex:1;height:100%;border-radius:4px;background:var(--ios-brown)"></div>
+      </div>
+    </div>
+    <div class="ios-list">
+      <div class="ios-cell"><span class="ios-cell-body"><div class="ios-cell-title">最常用器具</div></span><span class="ios-cell-value">V60</span></div>
+      <div class="ios-cell"><span class="ios-cell-body"><div class="ios-cell-title">最高分的一杯</div></span><span class="ios-cell-value">花魁 5.0 · 9.2</span></div>
+    </div>
+  </div>
+</div>
+<div class="ios-app has-tabbar" data-tab-page="me" hidden>
+  <div class="ios-nav"><h1>我的</h1></div>
+  <div class="ios-page">
+    <div class="ios-list ios-section">
+      <div class="ios-cell has-emo"><span class="ios-cell-emo ios-emo">🙂</span><span class="ios-cell-body"><div class="ios-cell-title">山不高</div><div class="ios-cell-sub">记录 128 杯 · 连续 21 天</div></span></div>
+    </div>
+    <div class="ios-list">
+      <div class="ios-cell tappable"><span class="ios-cell-body"><div class="ios-cell-title">我的豆仓</div></span><span class="ios-cell-value">4 支在库</span><span class="ios-chev"><svg><use href="#c-chev"/></svg></span></div>
+      <div class="ios-cell tappable"><span class="ios-cell-body"><div class="ios-cell-title">导出记录</div></span><span class="ios-chev"><svg><use href="#c-chev"/></svg></span></div>
+    </div>
+  </div>
+</div>
+<!-- overlay 一律与 .ios-app 同级（sheet 定位在 .ios-screen 上，塞进滚动层会坏） -->
+<div class="ios-sheet-backdrop"></div>
+<div class="ios-sheet" id="brew-detail">
+  <div class="ios-grabber"></div>
+  <div class="ios-sheet-body">
+    <div class="ios-title2" style="margin:6px 0 3px">耶加雪菲</div>
+    <div class="ios-muted ios-subhead ios-row" style="gap:6px;margin-bottom:14px">8:12 · 2′28″ <span class="ios-chip green">顺滑</span></div>
+    <div class="ios-card ios-section">
+      <div class="ios-card-title">冲煮参数</div>
+      <div class="ios-row" style="justify-content:space-between"><span class="ios-body">粉量 15g · 水量 225g</span><span class="ios-muted ios-subhead">1:15</span></div>
+      <div class="ios-row" style="justify-content:space-between;margin-top:6px"><span class="ios-body">水温 92°C</span><span class="ios-muted ios-subhead">中细研磨</span></div>
+    </div>
+    <div class="ios-card ios-section">
+      <div class="ios-card-title">这杯为什么好</div>
+      <div class="ios-body">焖蒸 30 秒后分两段注水，第二段放缓，甜感比昨天清楚。</div>
+    </div>
+    <button class="ios-btn tinted block lg" data-sheet-close>完成</button>
+  </div>
+</div>
+<div class="ios-tabbar">
+  <button class="ios-tab on" data-tab="today"><span class="ios-emo">☕</span>今日</button>
+  <button class="ios-tab" data-tab="trends"><span class="ios-emo">📈</span>趋势</button>
+  <button class="ios-tab" data-tab="me"><span class="ios-emo">👤</span>我的</button>
+</div>

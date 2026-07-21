@@ -1,5 +1,9 @@
 import { expect, test } from '@playwright/test';
 
+// The e2e server runs with PREVIEW_TEMPLATE_ONLY=1 (playwright.config.js), so
+// every assertion here targets template content only — instance-local pages and
+// components are hidden and counts stay deterministic on any machine.
+
 async function openWorkbench(page) {
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.iOSAnnotate);
@@ -41,16 +45,12 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
-    'GTD · 核心两屏',
-    'Time Insight',
-    'Goal 周报卡',
   ]);
 
   for (const [pageId, screenId] of [
     ['components', 'button/catalog'],
-    ['library', 'msg-lock'],
-    ['smart-todo', 'today'],
-    ['time-insight', 'tear-calendar'],
+    ['library', 'home'],
+    ['library', 'timer'],
   ]) {
     await page.locator(`#wbpages [data-vpage="${pageId}"]`).click();
     await expect(page.locator(`#wb-board-panel [data-screen="${screenId}"]`)).toBeVisible();
@@ -58,19 +58,41 @@ test('manifest navigation survives rapid page switches and persists the winner',
   }
 
   await page.evaluate(() => {
-    window.workbench.setActivePage('time-insight');
-    window.workbench.setActivePage('smart-todo');
+    window.workbench.setActivePage('components');
+    window.workbench.setActivePage('library');
   });
 
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('smart-todo');
-  await expect(page.locator('#wb-board-panel [data-screen="today"]')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('library');
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ios-preview-wb')).activePageId)).toBe('smart-todo');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ios-preview-wb')).activePageId)).toBe('library');
+});
+
+test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
+  await openWorkbench(page);
+
+  // Form A — recipe.html carries an inline data-preview-script that cycles the ratio chip.
+  const ratio = page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio]');
+  await expect(ratio).toHaveText('1:15');
+  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
+  await expect(ratio).toHaveText('1:16');
+
+  // Form B — timer.html marks data-preview-mount, so workbench imports timer.js.
+  const timerRoot = page.locator('#wb-board-panel [data-screen="timer"] [data-preview-mount]');
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
+  const toggle = page.locator('#wb-board-panel [data-screen="timer"] [data-timer-toggle]');
+  await toggle.click();
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
+  await expect(toggle).toHaveText('暂停');
+  await toggle.click();
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'paused');
+  await page.locator('#wb-board-panel [data-screen="timer"] [data-timer-reset]').click();
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
 });
 
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
   await openWorkbench(page);
-  await expect(page.locator('#wb-board-panel [data-screen="msg-lock"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
 
   const toolbar = page.locator('#wbcanvas-hud');
   const minimapTool = page.locator('#wbminimap-wrap');
@@ -83,17 +105,18 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(minimapTool).toBeVisible();
   await expect(minimap).toBeHidden();
   await expect(navigatorToggle).toBeVisible();
-  await expect(navigatorToggle).toContainText('1 / 5');
+  await expect(navigatorToggle).toContainText('1 / 6');
 
   await navigatorToggle.click();
   await expect(navigator).toBeVisible();
-  await expect(navigator.locator('.wb-section-nav-item')).toHaveCount(5);
+  await expect(navigator.locator('.wb-section-nav-item')).toHaveCount(6);
   await expect(navigator.locator('.wb-section-nav-label')).toHaveText([
+    '首页 · 卡片 / 列表 / Tab / Sheet',
+    '冲一杯 · 三步流程',
     '锁屏 → 消息 → 回复',
     '锁屏 · 通知',
+    'AB · 冲煮完成卡两案',
     '设置 · 分组列表',
-    'Today · Feed',
-    'AB · 主按钮',
   ]);
   await expect(minimap).toBeHidden();
 
@@ -107,12 +130,12 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(navigator).toBeVisible();
   await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
   await expect.poll(() => page.locator('.wb-section-nav-item.on').getAttribute('data-nav-group')).toBe('settings');
-  await expect.poll(() => page.locator('#wbstage').evaluate((stage) => stage.scrollTop)).toBeGreaterThan(4000);
+  await expect.poll(() => page.locator('#wbstage').evaluate((stage) => stage.scrollTop)).toBeGreaterThan(3000);
 
-  await navigator.locator('.wb-section-nav-section[data-nav-group="feed"]').click();
+  await navigator.locator('.wb-section-nav-section[data-nav-group="home"]').click();
   await expect(navigator).toBeVisible();
-  await expectFocusedTarget(page, '#lib-feed');
-  await expect.poll(() => page.locator('.wb-section-nav-item.on').getAttribute('data-nav-group')).toBe('feed');
+  await expectFocusedTarget(page, '#lib-home');
+  await expect.poll(() => page.locator('.wb-section-nav-item.on').getAttribute('data-nav-group')).toBe('home');
 
   for (let i = 0; i < 4; i++) await page.locator('#wbzoom-out').click();
   await navigator.locator('[data-nav-screen="msg-reply"]').click();
@@ -122,8 +145,8 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(navigator).toBeVisible();
   await expect(minimap).toBeVisible();
   await expect(minimap).toHaveAttribute('data-minimap-levels', 'canvas section frame');
-  await expect(minimap).toHaveAttribute('data-minimap-section-count', '5');
-  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '8');
+  await expect(minimap).toHaveAttribute('data-minimap-section-count', '6');
+  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '11');
   await expect(minimap.locator('canvas')).toBeVisible();
   await minimap.locator('canvas').click({ position: { x: 104, y: 66 } });
   await expect(minimap).toBeVisible();
@@ -158,25 +181,25 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
   await expect(navigator).toBeVisible();
   await expect(minimap).toBeVisible();
-  await expect(page.locator('.wb-section-nav-item')).toHaveCount(12);
-  await expect(navigatorToggle).toContainText('1 / 12');
-  await expect(minimap).toHaveAttribute('data-minimap-section-count', '12');
-  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '15');
+  await expect(page.locator('.wb-section-nav-item')).toHaveCount(10);
+  await expect(navigatorToggle).toContainText('1 / 10');
+  await expect(minimap).toHaveAttribute('data-minimap-section-count', '10');
+  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '12');
   await expect(toolbar).toBeVisible();
 
   await navigator.locator('[data-nav-screen="nav/large"]').click();
   await expectFocusedTarget(page, '[data-screen="nav/large"] .wb-comp-stage');
 
-  for (const [pageId, screenId] of [
-    ['smart-todo', 'today-evening'],
-    ['time-insight', 'detail-feed'],
+  for (const [pageId, screenId, frameSelector] of [
+    ['library', 'timer', '.ios-stage'],
+    ['components', 'bubble/outgoing', '.wb-comp-stage'],
   ]) {
     await page.locator(`#wbpages [data-vpage="${pageId}"]`).click();
     await expect(page.locator(`#wb-board-panel [data-screen="${screenId}"]`)).toBeVisible();
     const navTarget = navigator.locator(`[data-nav-screen="${screenId}"]`);
     await navTarget.scrollIntoViewIfNeeded();
     await navTarget.click();
-    await expectFocusedTarget(page, `[data-screen="${screenId}"] .ios-stage`);
+    await expectFocusedTarget(page, `[data-screen="${screenId}"] ${frameSelector}`);
     await expect(navigator).toBeVisible();
     await expect(minimap).toBeVisible();
   }
@@ -420,7 +443,7 @@ test('target pills locate, remove inline refs, and cancel existing edits', async
 
   await page.locator('.ann-badge').first().click();
   await textarea.fill('换页也不应保存');
-  await page.evaluate(() => window.workbench.setActivePage('smart-todo'));
+  await page.evaluate(() => window.workbench.setActivePage('components'));
   await expect(box).toBeHidden();
   await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0].content)).toBe('已保存');
 });

@@ -1,0 +1,39 @@
+<!-- 交互形态 B：sidecar 脚本（同名 timer.js，root 由 data-preview-mount 标记） -->
+<div class="ios-app" data-preview-mount data-timer-state="idle">
+  <div class="ios-navbar">
+    <button class="ios-back ios-nav-lead"><svg><use href="#c-back"/></svg>参数</button>
+    <div class="ios-nav-title">计时</div>
+  </div>
+  <div class="ios-page" style="display:flex;flex-direction:column;align-items:center">
+    <div style="position:relative;width:196px;height:196px;margin:18px 0 6px">
+      <svg viewBox="0 0 220 220" style="width:196px;height:196px;display:block">
+        <circle cx="110" cy="110" r="96" fill="none" stroke="var(--ios-fill-2)" stroke-width="12"/>
+        <circle data-ring cx="110" cy="110" r="96" fill="none" stroke="var(--ios-brown)" stroke-width="12"
+                stroke-linecap="round" stroke-dasharray="603.19" stroke-dashoffset="603.19"
+                transform="rotate(-90 110 110)"/>
+      </svg>
+      <div style="position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px">
+        <div class="ios-large" data-time style="font-variant-numeric:tabular-nums">0:00</div>
+        <div class="ios-muted ios-subhead" data-stage-label>准备好了吗</div>
+      </div>
+    </div>
+    <div class="ios-list ios-section" style="align-self:stretch">
+      <div class="ios-cell" data-stage="bloom">
+        <span class="ios-cell-body"><div class="ios-cell-title">焖蒸</div><div class="ios-cell-sub">0:00 – 0:30 · 注水至 30g</div></span>
+        <span class="ios-chip" data-stage-chip>待开始</span>
+      </div>
+      <div class="ios-cell" data-stage="pour1">
+        <span class="ios-cell-body"><div class="ios-cell-title">一段注水</div><div class="ios-cell-sub">0:30 – 1:30 · 注水至 150g</div></span>
+        <span class="ios-chip" data-stage-chip>待开始</span>
+      </div>
+      <div class="ios-cell" data-stage="pour2">
+        <span class="ios-cell-body"><div class="ios-cell-title">二段注水</div><div class="ios-cell-sub">1:30 – 2:30 · 注水至 225g</div></span>
+        <span class="ios-chip" data-stage-chip>待开始</span>
+      </div>
+    </div>
+    <div style="align-self:stretch;display:flex;gap:10px">
+      <button class="ios-btn gray lg" data-timer-reset style="flex:1">重置</button>
+      <button class="ios-btn filled lg" data-timer-toggle style="flex:2">开始</button>
+    </div>
+  </div>
+</div>
