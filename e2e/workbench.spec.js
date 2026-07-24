@@ -68,6 +68,20 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ios-preview-wb')).activePageId)).toBe('library');
 });
 
+test('screen loader rejects a dev-server fallback document instead of nesting the workbench', async ({ page }) => {
+  await page.route('**/previews/library/home.html', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/html',
+    body: '<!doctype html><html><head><title>iOS App Preview</title></head><body><div id="wbroot" class="wb"><aside class="wb-side">Sidebar</aside></div></body></html>',
+  }));
+
+  await openWorkbench(page);
+
+  const frame = page.locator('#wb-board-panel [data-screen="home"]');
+  await expect(frame.locator('.wb-screen-err')).toContainText('full HTML document');
+  await expect(frame.locator('#wbroot, .wb-side')).toHaveCount(0);
+});
+
 test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
   await openWorkbench(page);
 
@@ -88,6 +102,114 @@ test('interactive frames: inline script (form A) and sidecar mount (form B) resp
   await expect(timerRoot).toHaveAttribute('data-timer-state', 'paused');
   await page.locator('#wb-board-panel [data-screen="timer"] [data-timer-reset]').click();
   await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
+});
+
+test('Frame export snapshots current state and renders an isolated padded WebP', async ({ page }) => {
+  await openWorkbench(page);
+  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
+
+  const snapshot = await page.evaluate(() => window.workbench.exportSnapshot({
+    kind: 'frame', sectionId: 'brew-flow', screenId: 'recipe', format: 'webp', scale: 1, background: 'canvas',
+  }));
+  expect(snapshot.html).toContain('1:16');
+  expect(snapshot.html).toContain('ios-stage');
+  expect(snapshot.html).not.toContain('wb-screen-cap');
+  expect(snapshot.html).not.toContain('wb-frame-note');
+  expect(snapshot.html).not.toContain('data-export-ui');
+  expect((snapshot.html.match(/ios-stage/g) || [])).toHaveLength(1);
+
+  const response = await page.request.post('/api/export-image', { data: snapshot });
+  expect(response.ok()).toBeTruthy();
+  expect(response.headers()['content-type']).toBe('image/webp');
+  expect(response.headers()['x-export-width']).toBe('534');
+  expect(response.headers()['x-export-height']).toBe('1006');
+  const body = await response.body();
+  expect(body.subarray(0, 4).toString('ascii')).toBe('RIFF');
+  expect(body.subarray(8, 12).toString('ascii')).toBe('WEBP');
+});
+
+test('Section export preserves layout and includes Frame Notes only by preset', async ({ page }) => {
+  await openWorkbench(page);
+  const clean = await page.evaluate(() => window.workbench.exportSnapshot({
+    kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white',
+  }));
+  expect(clean.html).toContain('wb-lib-cap');
+  expect(clean.html).toContain('wb-screen-cap');
+  expect(clean.html).toContain('wb-export-clean-row');
+  expect(clean.html).not.toContain('wb-frame-note');
+
+  const explained = await page.evaluate(() => window.workbench.exportSnapshot({
+    kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white', includeNotes: true,
+  }));
+  expect(explained.html).toContain('wb-frame-note');
+  expect(explained.html).not.toContain('wb-frame-note-edit');
+  expect(explained.html).not.toContain('wb-frame-note-editor');
+});
+
+test('every Frame exposes a persistent title menu that opens image export', async ({ page }) => {
+  await openWorkbench(page);
+  const frame = page.locator('#wb-board-panel [data-screen="home"]');
+  const trigger = frame.locator('.wb-frame-menu-trigger');
+  await expect(trigger).toBeVisible();
+  expect(Number(await trigger.evaluate((element) => getComputedStyle(element).opacity))).toBeGreaterThan(0.5);
+
+  await trigger.click();
+  const menu = frame.locator('.wb-frame-menu');
+  await expect(menu).toBeVisible();
+  await expect(menu.locator('[data-frame-export]')).toHaveText(/导出图片/);
+  await expect(menu.locator('[data-frame-copy]')).toContainText('复制 @frame');
+  expect(await menu.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const channels = style.backgroundColor.match(/[\d.]+/g) || [];
+    return {
+      alpha: channels.length > 3 ? Number(channels[3]) : 1,
+      backdropFilter: style.backdropFilter,
+    };
+  })).toEqual({ alpha: 1, backdropFilter: 'none' });
+  expect(await menu.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    // Sample the visible right edge: a restored viewport can leave the menu's
+    // left edge beneath the persistent sidebar, which is intentionally above it.
+    const hit = document.elementFromPoint(rect.right - 18, rect.top + 18);
+    return Boolean(hit && hit.closest('.wb-frame-menu') === element);
+  })).toBe(true);
+
+  await menu.locator('[data-frame-export]').click();
+  await expect(page.locator('.wb-export-dialog')).toBeVisible();
+  await expect(page.locator('[data-export-target-label]')).toContainText('library /');
+  await expect(page.locator('[data-export-target-label]')).toContainText('/ home');
+  await page.locator('.wb-export-close').click();
+});
+
+test('Frame Note renders below a frame and inline edits use the shared revision', async ({ page }) => {
+  const initial = '场景：会议刚刚结束。';
+  const revised = '场景：会议刚刚结束。\n交互：点击 Suggested Prompt。';
+  let savedBody = null;
+
+  await page.route('**/previews/library/board.json', async (route) => {
+    const response = await route.fetch();
+    const board = await response.json();
+    const home = board.sections[0].screens[0];
+    home.note = initial;
+    await route.fulfill({ response, json: board });
+  });
+  await page.route('**/api/frame-notes/library/home', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { pageId: 'library', screenId: 'home', note: initial, revision: 'revision-1' } });
+      return;
+    }
+    savedBody = route.request().postDataJSON();
+    await route.fulfill({ json: { pageId: 'library', screenId: 'home', note: revised, revision: 'revision-2' } });
+  });
+
+  await openWorkbench(page);
+  const frame = page.locator('#wb-board-panel [data-screen="home"]');
+  await expect(frame.locator('[data-frame-note-text]')).toHaveText(initial);
+  await frame.locator('[data-frame-note-action="edit"]').click();
+  await frame.locator('[data-frame-note-input]').fill(revised);
+  await frame.locator('[data-frame-note-action="save"]').click();
+  await expect(frame.locator('[data-frame-note-text]')).toHaveText(revised);
+  expect(savedBody).toEqual({ note: revised, baseRevision: 'revision-1' });
 });
 
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
@@ -252,6 +374,81 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
   expect(removedEndpoint.status()).toBe(404);
 
   await context.close();
+});
+
+test('sidebar annotation navigation focuses the owning frame, not the comment anchor', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.iOSAnnotate.clear());
+  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
+  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+
+  const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await target.scrollIntoViewIfNeeded();
+  await saveAnnotation(page, target, '这个 cell 需要更清楚');
+  await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
+
+  await page.locator('#wbann-list .wb-ann-item-main').click();
+  await page.waitForTimeout(350); // prove no earlier section-scroll animation can pull focus away
+  await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
+  await expect(page.locator('#ann-box')).toBeVisible();
+
+  // A small anchor should remain away from viewport center when its full phone is focused.
+  await expect.poll(() => page.evaluate(() => {
+    const stage = document.querySelector('#wbstage').getBoundingClientRect();
+    const cell = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-cell').getBoundingClientRect();
+    return Math.abs((cell.top + cell.height / 2) - (stage.top + stage.height / 2));
+  })).toBeGreaterThan(100);
+
+  await page.evaluate(() => window.iOSAnnotate.clear());
+});
+
+test('annotation reply edits inline and agent reply endpoint updates without replacing the comment', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.iOSAnnotate.clear());
+  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
+  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+
+  const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await saveAnnotation(page, target, '保持原标注正文');
+  await page.locator('#wbann-list [data-ann-reply-action="edit"]').click();
+  const replyInput = page.locator('#wbann-list .wb-ann-reply-input');
+  await replyInput.fill('我补充一个约束');
+  await page.locator('#wbann-list [data-ann-reply-action="save"]').click();
+  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('我补充一个约束');
+  await expect(page.locator('#wbann-list .wb-ann-reply-head')).toContainText('User reply');
+
+  let diskDoc;
+  await expect.poll(async () => {
+    const docs = await (await page.request.get('/annotations')).json();
+    diskDoc = Object.values(docs).find((doc) => doc.annotations?.some((annotation) => annotation.content === '保持原标注正文'));
+    return diskDoc?.annotations?.find((annotation) => annotation.content === '保持原标注正文')?.reply?.content;
+  }).toBe('我补充一个约束');
+
+  const annotation = diskDoc.annotations.find((item) => item.content === '保持原标注正文');
+  const response = await page.request.post('/reply', {
+    data: {
+      page: diskDoc.page,
+      annotationId: annotation.id,
+      baseRevision: diskDoc.revision,
+      reply: { content: '已调整视觉，并保留了原来的交互语义。', author: 'agent' },
+    },
+  });
+  expect(response.status()).toBe(200);
+
+  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('已调整视觉，并保留了原来的交互语义。');
+  await expect(page.locator('#wbann-list .wb-ann-reply-head')).toContainText('Agent reply');
+  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0])).toMatchObject({
+    content: '保持原标注正文',
+    reply: {
+      content: '已调整视觉，并保留了原来的交互语义。',
+      author: 'agent',
+    },
+  });
+
+  await page.reload();
+  await page.waitForFunction(() => window.iOSAnnotate);
+  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('已调整视觉，并保留了原来的交互语义。');
+  await page.evaluate(() => window.iOSAnnotate.clear());
 });
 
 test('bottom composer keeps focus while canvas clicks attach and inline targets', async ({ page }) => {

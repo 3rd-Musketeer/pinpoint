@@ -8,7 +8,8 @@ marks land on disk for your agent to read and act on.
 
 - 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
 - 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts (Claude Code / Codex / Cursor / …)
-- ✏️ **Review loop** — mark up screens in the browser（标注）, agent reads the marks from disk and revises
+- ✏️ **Review loop** — mark up screens in the browser（标注）, agent revises and replies on each mark
+- 🖼️ **Doc-ready export** — export a Frame or Section as isolated 2× WebP / PNG without neighboring canvas UI
 - 🔁 **HMR** — edit a screen or component, the open board refreshes in place
 
 New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minute onboarding with the concept glossary.
@@ -34,6 +35,37 @@ npm run check                     # both
 ```
 
 Requires Node ≥ 20.
+
+## Export Frame / Section images
+
+Use the persistent `…` menu at the right of every Frame title and choose **导出图片…**;
+Sections keep a dimmed image button beside the Section title. The export panel
+defaults to **2× WebP** on the clean Canvas background; choose PNG for lossless or transparent
+output. Frame export contains only the current phone state with 48 CSS px of safe padding — no
+caption, Frame Note, annotation, sidebar, or neighboring Frame. Section export preserves its
+row/column layout, Section title, and Frame titles. Choose **带说明** when the document should also
+contain Frame Notes.
+
+Export snapshots the live DOM before rendering in an isolated Chromium surface, so open sheets,
+Ask User panels, selected controls, form values, internal scroll positions, and canvas output are
+kept. The default filenames are stable and document-friendly:
+
+```text
+library__brew-flow__timer@2x.webp
+library__brew-flow@2x.webp
+```
+
+Agents and scripts use the same renderer (start `npm run dev` first):
+
+```bash
+npm run export -- --page library --section brew-flow --frame timer
+npm run export -- --page library --section brew-flow --with-notes --format png
+```
+
+Output defaults to gitignored `exports/`. Options: `--scale 1|2`,
+`--background canvas|white|transparent`, `--format webp|png`, and `--output <path>`.
+Transparent output requires PNG; very large 2× Sections fail with a clear 1× retry hint instead
+of silently wrapping or clipping the flow.
 
 ## Mental model (three layers)
 
@@ -64,7 +96,7 @@ annotate.js            Browser annotation client (served as /annotate.js)
 components/            Component Library sources (meta.json + variant HTML)
 previews/<page>/       Flow pages — board.json + screen HTML (+ optional <screen>.js)
 previews/_index.json   Page manifest (id / title / order / default)
-plugins/               Vite plugins: annotate-api, components-board, preview-hmr, template-only
+plugins/               Vite plugins: annotate/export APIs, components-board, preview-hmr, template-only
 lib/                   Node-tested shared modules (annotation store, board navigation, …)
 skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 starter.html           COPY-ME standalone one-off phone (no workbench needed)
@@ -116,10 +148,20 @@ Row flows with per-screen titles / shells:
   "layout": "row",
   "screens": [
     { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" },
-    { "id": "msg-thread", "title": "2 · 查看消息" }
+    {
+      "id": "msg-thread",
+      "title": "2 · 查看消息",
+      "note": "场景：用户点开通知。\n交互：进入对应会话。"
+    }
   ]
 }
 ```
+
+`screens[].note` is a durable **Frame Note** shown below the phone. It explains the scene,
+interaction, or capability being tested; both the agent and the user edit the same
+`board.json` SSOT (the Workbench provides an inline editor with revision-safe writes).
+Frame Notes are part of the prototype definition. Review annotations remain separate,
+disposable feedback.
 
 For gestures / animation, add screen scripts (form A inline / form B sidecar) — full contract
 in the [build skill](skills/ios-app-preview-build/SKILL.md); live examples
@@ -149,7 +191,15 @@ Include it in any screen — edit the source once, every consumer refreshes:
 
 ```html
 <div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
+
+<div data-ios-include="status-card/default"
+     data-text="冲煮完成"
+     data-slot-detail="总时长 3:12 · 粉水比 1:16"></div>
 ```
+
+`data-text` fills `[data-ios-slot="text"]`; named `data-slot-<name>` attributes fill matching
+`[data-ios-slot="<name>"]` nodes. Slots vary content/state while the component keeps one visual
+and semantic contract.
 
 `system: true` marks kit primitives (Buttons, Lists, …) — keep those few and stable.
 Product components use `system: false`.
@@ -164,14 +214,16 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT under a
    per-project `~/.html-annotate/<dir>/`, path exposed by `GET /health`; revisioned,
    SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
-   board hot-reloads.
-3. Review, clear resolved marks, repeat.
+   board hot-reloads. It can attach a concise **Agent reply** to explain what changed and why.
+3. Click any sidebar comment to focus its owning frame (the same geometry as frame navigation),
+   review the visual change together with the reply, then clear resolved marks and repeat.
 
 Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 `@frame:library/timer` · `@a:<id>`. Full schema and routing rules:
 [annotate skill](skills/ios-app-preview-annotate/SKILL.md).
 
-Annotations are per-machine (solo human + agent loop) — this is not multiplayer Figma.
+Annotations are per-machine (solo human + agent loop) — replies close that loop, but this is
+not a multiplayer comment system.
 
 ## One phone, no workbench
 

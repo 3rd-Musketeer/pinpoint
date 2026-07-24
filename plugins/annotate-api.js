@@ -196,7 +196,7 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
-    if (req.method !== 'POST' || (urlPath !== '/save' && urlPath !== '/image')) return false;
+    if (req.method !== 'POST' || !['/save', '/reply', '/image'].includes(urlPath)) return false;
 
     let body;
     try {
@@ -223,6 +223,27 @@ export function createAnnotateHandler(options = {}) {
       sendJson(res, 200, {
         saved: store.jsonPathFor(result.doc.page),
         count,
+        revision: result.doc.revision,
+      });
+      return true;
+    }
+
+    if (urlPath === '/reply') {
+      const result = store.setReply({
+        page: body.page,
+        annotationId: body.annotationId,
+        baseRevision: body.baseRevision,
+        reply: body.reply,
+      });
+      if (result.status !== 200) {
+        sendJson(res, result.status, { error: result.error, ...result.doc });
+        return true;
+      }
+      broadcastAnnotations(result.doc);
+      sendJson(res, 200, {
+        saved: store.jsonPathFor(result.doc.page),
+        annotationId: body.annotationId,
+        reply: result.reply || null,
         revision: result.doc.revision,
       });
       return true;

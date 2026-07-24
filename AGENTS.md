@@ -34,17 +34,33 @@ Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
 
 **Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.1.
 
+**Safe area:** custom nav / composer must use `--ios-safe-top` / `--ios-safe-bottom` (Variables in `ios-kit.css`); do not hardcode px or spacer divs — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.2.
+
 Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Add `.ios-glass--liquid` only for Chromium refraction wow on sparse chrome — not full-page surfaces.
 
 Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen` (fractions of `--wb-phone-w`).
+
+Frame Notes are durable prototype context, not review annotations. Put a multiline `note` on a screen entry in `board.json`; it renders below the frame and can also be edited inline in the Workbench. Browser edits write back to that same `board.json` with revision checks.
+
+Image export is Workbench-owned. Use the persistent `…` menu on every Frame title (or the
+always-visible Section image button); default is
+isolated 2× WebP on `#faf8f4`. **干净画面** omits captions/notes for a Frame and notes for a
+Section; **带说明** includes Frame Notes. Agent CLI uses the same Chromium renderer:
+`npm run export -- --page <page> --section <section> [--frame <screen>]`. Do not add screenshot
+logic to individual screen fragments.
 
 ## Skill routing
 
 | Task | Open |
 |---|---|
-| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md)（组件何时抽：§4.0） |
+| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
 | Annotate → read annotations → revise | [`skills/ios-app-preview-annotate/SKILL.md`](skills/ios-app-preview-annotate/SKILL.md) |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
+| Export a Frame / Section image | [`README.md`](README.md#export-frame--section-images) |
+
+Component includes support `data-text` → `[data-ios-slot="text"]` plus named
+`data-slot-<name>` → `[data-ios-slot="<name>"]`. Use named slots when two screens share one
+component/state model but vary copy or progress; do not fork visual variants only to swap text.
 
 ## Canonical board schema
 
@@ -65,7 +81,7 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
       "layout": "row",
       "screens": [
         { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" },
-        { "id": "msg-thread", "title": "2 · 查看消息" }
+        { "id": "msg-thread", "title": "2 · 查看消息", "note": "场景：用户点开通知。\n交互：进入对应会话。" }
       ]
     }
   ]
@@ -76,6 +92,7 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Page id / title / order / default live in **`previews/_index.json`**; a gitignored
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
+- Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
 - Default shell: **app**. Lock: `"shell": "lock"` on section or screen + `.ios-lockscreen`.
 - `section.id` stamps `[data-ann-section]` → annotation `section`.
@@ -106,6 +123,7 @@ Workbench mounts screen HTML via `innerHTML`, so bare `<script>` never runs. Cus
 | `section` | Board section `id` (legacy: `group`) |
 | `screenId` | Frame / screen file id |
 | `content` | Annotation body (legacy: `comment`) |
+| `reply` | Optional lightweight response `{ content, author, updated_at }`; not a thread or resolved state |
 | `path` | Shell page (usually `index.html`) |
 
 Element annotations always write `targets: [{ ref, selector, text }]`; stable refs are
@@ -116,7 +134,9 @@ annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation m
 - Component Library annotations → edit `components/<id>/`.
 - Flow node with `data-ios-from="bubble/outgoing"` → prefer that component source.
 - Flow screen annotations → `previews/<pageId>/<screen>.html` only.
-- Overlay is stage-scoped; canvas/sidebar show active page annotations; `goToMark` switches page when needed.
+- Overlay is stage-scoped; canvas/sidebar show active page annotations. `goToMark` switches page
+  when needed, then focuses the owning frame through `lib/board-navigation.js`; only legacy marks
+  without `screenId` fall back to centering the raw anchor.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
 Annotations live in a per-project dir `~/.html-annotate/<repo-dirname>-<hash>/*.json`
@@ -126,6 +146,9 @@ overrides the dir wholesale (e2e uses this).
 `POST /save` requires `baseRevision`; clear uses the same save queue with `annotations: []`
 (there is no `/clear` route). The browser `localStorage` cache is not authoritative. On boot
 the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-realtime.
+Agent responses use `POST /reply` with `page`, stable `annotationId`, `baseRevision`, and
+`reply: { content, author: "agent" }`; this updates only that annotation and broadcasts the
+same SSE document without replacing the original `content`.
 **Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
 (`ios-preview-wb`) — viewer state, not synced.
 
@@ -158,6 +181,8 @@ instance layers private content on top without touching tracked files:
 4. Read annotations grouped by `pageId` then `section` (and `screenId` when present); edit the routed file; do not clear annotations for the user.
 5. Resolve `content` target tokens against the same annotation's `targets[].ref`; keep
    missing refs visible instead of guessing another target.
+6. After an annotation is actually addressed, attach a short concrete Agent reply; do not use
+   reply as a substitute for the visual/code change or as an implicit resolved state.
 
 ## Anti-patterns
 

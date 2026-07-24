@@ -9,7 +9,13 @@ import {
   hitTestBoardNavigation,
   measureBoardNavigation
 } from './lib/board-navigation.js';
-import { ContractError, validateBoard, validatePageManifest } from './lib/preview-contracts.js';
+import {
+  ContractError,
+  validateBoard,
+  validatePageManifest,
+  validateScreenFragment
+} from './lib/preview-contracts.js';
+import { applyIncludeSlots } from './lib/include-slots.js';
 
 var LIB_ID = 'library';
 var COMPONENTS_ID = 'components';
@@ -33,6 +39,7 @@ var annFilterBox = document.getElementById('wbann-filter');
 var activeGroup = 'lock';
 var sectionOpen = { pages: true, annotations: true };
 var annFilter = 'all';
+var editingReplyN = null;
 var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
 var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
 var LS_KEY = 'ios-preview-wb';
@@ -473,16 +480,18 @@ function wireSections() {
   });
 }
 
-function scrollToGroup(groupId) {
+function scrollToGroup(groupId, options) {
+  options = options || {};
   activeGroup = groupId;
   updateSectionNavigatorActive(groupId);
   var el = document.getElementById('lib-' + groupId);
-  if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  if (el) el.scrollIntoView({ behavior: options.smooth === false ? 'auto' : 'smooth', block: 'start' });
   refit();
   refreshAnnPanel();
 }
 
-function switchPage(id) {
+function switchPage(id, options) {
+  options = options || {};
   showTabs();
   // Annotation API: section id within current board — or a top-level page id
   if (SYSTEM_PAGES[id] || id === LIB_ID || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
@@ -496,7 +505,7 @@ function switchPage(id) {
       refreshAnnPanel();
     });
   }
-  scrollToGroup(id);
+  scrollToGroup(id, options);
   return Promise.resolve();
 }
 
@@ -547,8 +556,198 @@ function markTags(m) {
   return tags.join(' ');
 }
 
+function markReply(m) {
+  var reply = m && m.reply;
+  if (!reply || !reply.content) return null;
+  return {
+    content: String(reply.content),
+    author: reply.author === 'user' ? 'user' : 'agent',
+    updatedAt: reply.updated_at || ''
+  };
+}
+
 function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+function annotationReplyMarkup(row) {
+  if (editingReplyN === row.n) {
+    return '<div class="wb-ann-reply wb-ann-reply--editing" data-ann-reply-editor="' + row.n + '">' +
+      '<label class="wb-ann-reply-label" for="wb-ann-reply-' + row.n + '">Reply</label>' +
+      '<textarea id="wb-ann-reply-' + row.n + '" class="wb-ann-reply-input" rows="3" placeholder="补充处理结果或解释…">' +
+      escHtml(row.reply ? row.reply.content : '') + '</textarea>' +
+      '<div class="wb-ann-reply-actions">' +
+      '<span class="wb-ann-reply-hint">⌘/Ctrl + Enter 保存</span>' +
+      '<button type="button" data-ann-reply-action="cancel" data-ann-n="' + row.n + '">取消</button>' +
+      '<button type="button" class="is-primary" data-ann-reply-action="save" data-ann-n="' + row.n + '">保存</button>' +
+      '</div></div>';
+  }
+  if (!row.reply) {
+    return '<div class="wb-ann-reply wb-ann-reply--empty">' +
+      '<button type="button" data-ann-reply-action="edit" data-ann-n="' + row.n + '">↳ 添加回应</button>' +
+      '</div>';
+  }
+  var author = row.reply.author === 'agent' ? 'Agent reply' : 'User reply';
+  return '<div class="wb-ann-reply"' + (row.reply.updatedAt ? ' title="' + escHtml(row.reply.updatedAt) + '"' : '') + '>' +
+    '<div class="wb-ann-reply-head"><span>' + author + '</span>' +
+    '<button type="button" data-ann-reply-action="edit" data-ann-n="' + row.n + '">编辑</button></div>' +
+    '<div class="wb-ann-reply-content">' + escHtml(row.reply.content) + '</div>' +
+    '</div>';
+}
+
+function frameNoteApiUrl(pageId, screenId) {
+  return '/api/frame-notes/' + encodeURIComponent(pageId) + '/' + encodeURIComponent(screenId);
+}
+
+function frameNoteError(response, data) {
+  var error = new Error((data && data.message) || ('Frame Note 请求失败 · ' + response.status));
+  error.status = response.status;
+  error.data = data || {};
+  return error;
+}
+
+function readFrameNoteResponse(response) {
+  return response.json().catch(function () { return {}; }).then(function (data) {
+    if (!response.ok) throw frameNoteError(response, data);
+    return data;
+  });
+}
+
+function setFrameNoteStatus(noteEl, message, isError) {
+  var status = noteEl.querySelector('[data-frame-note-status]');
+  if (!status) return;
+  status.textContent = message || '';
+  status.classList.toggle('is-error', !!isError);
+}
+
+function setFrameNoteBusy(noteEl, busy) {
+  noteEl.querySelectorAll('button, textarea').forEach(function (control) {
+    control.disabled = !!busy;
+  });
+}
+
+function closeFrameNoteEditor(noteEl) {
+  var view = noteEl.querySelector('[data-frame-note-view]');
+  var editor = noteEl.querySelector('[data-frame-note-editor]');
+  if (view) view.hidden = false;
+  if (editor) editor.hidden = true;
+  noteEl.classList.remove('is-editing');
+  setFrameNoteBusy(noteEl, false);
+  setFrameNoteStatus(noteEl, '', false);
+  refit();
+}
+
+function openFrameNoteEditor(noteEl) {
+  var screen = noteEl.closest('[data-screen]');
+  var screenId = screen && screen.getAttribute('data-screen');
+  if (!screenId || activePageId === COMPONENTS_ID) return;
+  var edit = noteEl.querySelector('[data-frame-note-action="edit"]');
+  if (edit) edit.disabled = true;
+  noteEl.classList.add('is-loading');
+
+  fetch(frameNoteApiUrl(activePageId, screenId))
+    .then(readFrameNoteResponse)
+    .then(function (data) {
+      if (!noteEl.isConnected) return;
+      noteEl.dataset.frameNoteRevision = data.revision;
+      var input = noteEl.querySelector('[data-frame-note-input]');
+      var view = noteEl.querySelector('[data-frame-note-view]');
+      var editor = noteEl.querySelector('[data-frame-note-editor]');
+      if (input) input.value = data.note || '';
+      if (view) view.hidden = true;
+      if (editor) editor.hidden = false;
+      noteEl.classList.add('is-editing');
+      setFrameNoteStatus(noteEl, '⌘/Ctrl + Enter 保存', false);
+      if (input) {
+        input.focus();
+        input.setSelectionRange(0, 0);
+        input.scrollTop = 0;
+      }
+      refit();
+    })
+    .catch(function (error) {
+      if (!noteEl.isConnected) return;
+      if (edit) {
+        edit.textContent = '重试';
+        edit.title = error.message;
+      }
+    })
+    .finally(function () {
+      if (!noteEl.isConnected) return;
+      noteEl.classList.remove('is-loading');
+      if (edit) edit.disabled = false;
+    });
+}
+
+function saveFrameNote(noteEl) {
+  var screen = noteEl.closest('[data-screen]');
+  var screenId = screen && screen.getAttribute('data-screen');
+  var input = noteEl.querySelector('[data-frame-note-input]');
+  var revision = noteEl.dataset.frameNoteRevision;
+  if (!screenId || !input || !revision || activePageId === COMPONENTS_ID) return;
+
+  setFrameNoteBusy(noteEl, true);
+  setFrameNoteStatus(noteEl, '正在保存…', false);
+  fetch(frameNoteApiUrl(activePageId, screenId), {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ note: input.value, baseRevision: revision })
+  })
+    .then(readFrameNoteResponse)
+    .then(function (data) {
+      if (!noteEl.isConnected) return;
+      noteEl.dataset.frameNoteRevision = data.revision;
+      var text = noteEl.querySelector('[data-frame-note-text]');
+      var edit = noteEl.querySelector('[data-frame-note-action="edit"]');
+      if (text) {
+        text.textContent = data.note || '添加这一步的场景、交互或能力说明。';
+        text.classList.toggle('wb-frame-note-placeholder', !data.note);
+      }
+      if (edit) {
+        edit.textContent = data.note ? '编辑' : '＋ Frame Note';
+        edit.title = '';
+      }
+      noteEl.classList.toggle('is-empty', !data.note);
+      closeFrameNoteEditor(noteEl);
+    })
+    .catch(function (error) {
+      if (!noteEl.isConnected) return;
+      var message = error.status === 409
+        ? 'board.json 已被修改；请保留当前文字，取消后重新打开再保存。'
+        : error.message;
+      setFrameNoteBusy(noteEl, false);
+      setFrameNoteStatus(noteEl, message, true);
+    });
+}
+
+function wireFrameNoteEditors(panel) {
+  if (!panel || panel.dataset.frameNotesWired === '1') return;
+  panel.dataset.frameNotesWired = '1';
+  panel.addEventListener('click', function (event) {
+    var action = event.target.closest('[data-frame-note-action]');
+    if (!action || !panel.contains(action)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    var noteEl = action.closest('[data-frame-note]');
+    if (!noteEl) return;
+    var kind = action.getAttribute('data-frame-note-action');
+    if (kind === 'edit') openFrameNoteEditor(noteEl);
+    else if (kind === 'cancel') closeFrameNoteEditor(noteEl);
+    else if (kind === 'save') saveFrameNote(noteEl);
+  });
+  panel.addEventListener('keydown', function (event) {
+    var input = event.target.closest('[data-frame-note-input]');
+    if (!input || !panel.contains(input)) return;
+    var noteEl = input.closest('[data-frame-note]');
+    if (!noteEl) return;
+    if (event.key === 'Escape') {
+      event.preventDefault();
+      closeFrameNoteEditor(noteEl);
+    } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
+      event.preventDefault();
+      saveFrameNote(noteEl);
+    }
+  });
 }
 
 function syncConnStatus() {
@@ -631,11 +830,13 @@ function refreshAnnPanel() {
       text: (m.text || '').slice(0, 40),
       summary: markSummary(m),
       broken: broken,
-      tags: markTags(m)
+      tags: markTags(m),
+      reply: markReply(m)
     };
   });
   var sig = annFilter + '|' + activeGroup + '|' + rows.map(function (r) {
-    return r.key + ':' + r.type + ':' + r.text + ':' + r.summary + ':' + r.broken + ':' + r.tags;
+    var replySig = r.reply ? r.reply.author + ':' + r.reply.content + ':' + r.reply.updatedAt : '';
+    return r.key + ':' + r.type + ':' + r.text + ':' + r.summary + ':' + r.broken + ':' + r.tags + ':' + replySig + ':' + (editingReplyN === r.n);
   }).join('~');
   if (sig === annListSig && annList.querySelector('[data-ann-n]')) {
     // List unchanged; buttons/counts above already reflect current state.
@@ -666,6 +867,7 @@ function refreshAnnPanel() {
     var body = g.items.map(function (r) {
       var rowCls = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       return '<div class="' + rowCls + '" data-ann-n="' + r.n + '">' +
+        '<div class="wb-ann-item-row">' +
         '<button type="button" class="wb-ann-item-main" data-ann-n="' + r.n + '">' +
         '<span class="wb-ann-num">' + r.n + '</span>' +
         '<span class="wb-ann-body">' +
@@ -675,7 +877,7 @@ function refreshAnnPanel() {
         (r.tags ? '<span class="wb-ann-tags">' + r.tags + '</span>' : '') +
         '</span></button>' +
         '<button type="button" class="wb-ann-del" data-ann-del="' + r.n + '" aria-label="删除标注 ' + r.n + '" title="删除">×</button>' +
-        '</div>';
+        '</div>' + annotationReplyMarkup(r) + '</div>';
     }).join('');
     return head + body;
   }).join('');
@@ -706,10 +908,39 @@ function wireAnnotatePanel() {
       e.preventDefault();
       e.stopPropagation();
       var dn = parseInt(del.getAttribute('data-ann-del'), 10);
+      if (editingReplyN === dn) editingReplyN = null;
       if (ann.removeMark) ann.removeMark(dn);
       return;
     }
-    var row = e.target.closest('[data-ann-n]');
+    var replyAction = e.target.closest('[data-ann-reply-action]');
+    if (replyAction) {
+      e.preventDefault();
+      e.stopPropagation();
+      var rn = parseInt(replyAction.getAttribute('data-ann-n'), 10);
+      var action = replyAction.getAttribute('data-ann-reply-action');
+      if (action === 'edit') {
+        editingReplyN = rn;
+        annListSig = '';
+        refreshAnnPanel();
+        requestAnimationFrame(function () {
+          var input = annList.querySelector('[data-ann-reply-editor="' + rn + '"] textarea');
+          if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
+        });
+      } else if (action === 'cancel') {
+        editingReplyN = null;
+        annListSig = '';
+        refreshAnnPanel();
+      } else if (action === 'save') {
+        var editor = annList.querySelector('[data-ann-reply-editor="' + rn + '"]');
+        var input = editor && editor.querySelector('textarea');
+        var mark = (ann.marks || []).find(function (item) { return item.n === rn; });
+        var author = mark && mark.reply && mark.reply.author === 'agent' ? 'agent' : 'user';
+        editingReplyN = null;
+        if (input && typeof ann.setReply === 'function') ann.setReply(rn, input.value, author);
+      }
+      return;
+    }
+    var row = e.target.closest('.wb-ann-item-main[data-ann-n]');
     if (!row) return;
     var n = parseInt(row.getAttribute('data-ann-n'), 10);
     ann.goToMark(n).then(function () {
@@ -730,6 +961,23 @@ function wireAnnotatePanel() {
       refreshAnnPanel();
     });
   }
+
+  annList.addEventListener('keydown', function (e) {
+    var input = e.target.closest('[data-ann-reply-editor] textarea');
+    if (!input) return;
+    var editor = input.closest('[data-ann-reply-editor]');
+    var n = editor && parseInt(editor.getAttribute('data-ann-reply-editor'), 10);
+    if (!n) return;
+    if (e.key === 'Escape') {
+      e.preventDefault();
+      var cancel = editor.querySelector('[data-ann-reply-action="cancel"]');
+      if (cancel) cancel.click();
+    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      var save = editor.querySelector('[data-ann-reply-action="save"]');
+      if (save) save.click();
+    }
+  });
   refreshAnnPanel();
 }
 
@@ -912,6 +1160,7 @@ function afterMount(panel, session) {
         if (device) device.style.setProperty('--ios-scale', '1');
       });
       syncPanelPrefs(panel);
+      wireExportControls(panel);
       var hadViewport = restorePageViewportAfterMount(session.pageId);
       if (window.iOSKit) window.iOSKit.refresh(panel);
       return runPreviewScripts(panel, session.pageId, session).then(function () {
@@ -929,6 +1178,344 @@ function afterMount(panel, session) {
         });
       });
   }, 0);
+}
+
+var EXPORT_TOKEN_NAMES = [
+  '--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap',
+  '--wb-fg', '--wb-muted', '--wb-faint', '--wb-side', '--wb-line', '--wb-hover', '--wb-accent'
+];
+var exportDialog = null;
+var exportTarget = null;
+var openFrameMenu = null;
+var frameMenuListenersWired = false;
+
+function syncExportDomState(source, clone) {
+  var sources = [source].concat(Array.prototype.slice.call(source.querySelectorAll('*')));
+  var clones = [clone].concat(Array.prototype.slice.call(clone.querySelectorAll('*')));
+  sources.forEach(function (node, index) {
+    var copy = clones[index];
+    if (!copy) return;
+    if (node instanceof HTMLInputElement) {
+      copy.value = node.value;
+      copy.setAttribute('value', node.value);
+      if (node.checked) copy.setAttribute('checked', '');
+      else copy.removeAttribute('checked');
+    } else if (node instanceof HTMLTextAreaElement) {
+      copy.value = node.value;
+      copy.textContent = node.value;
+    } else if (node instanceof HTMLSelectElement) {
+      Array.prototype.forEach.call(copy.options, function (option, optionIndex) {
+        option.selected = node.options[optionIndex] && node.options[optionIndex].selected;
+      });
+    } else if (node instanceof HTMLDetailsElement) {
+      copy.open = node.open;
+    } else if (node instanceof HTMLCanvasElement) {
+      try {
+        var image = document.createElement('img');
+        image.src = node.toDataURL('image/png');
+        image.width = node.width;
+        image.height = node.height;
+        image.style.cssText = node.style.cssText;
+        image.className = copy.className;
+        copy.replaceWith(image);
+      } catch (e) { /* a tainted canvas remains blank instead of breaking export */ }
+    }
+    if (node.scrollTop || node.scrollLeft) {
+      copy.setAttribute('data-export-scroll-top', String(node.scrollTop));
+      copy.setAttribute('data-export-scroll-left', String(node.scrollLeft));
+    }
+  });
+}
+
+function cleanExportClone(clone, includeNotes) {
+  clone.querySelectorAll('script,style[data-export-ui],[data-export-ui],.wb-frame-note-edit,.wb-frame-note-editor').forEach(function (node) {
+    node.remove();
+  });
+  if (!includeNotes) {
+    clone.querySelectorAll('[data-frame-note]').forEach(function (node) { node.remove(); });
+  } else {
+    clone.querySelectorAll('[data-frame-note-view]').forEach(function (node) { node.hidden = false; });
+  }
+  clone.removeAttribute('data-export-ui');
+  clone.querySelectorAll('.has-frame-menu').forEach(function (node) { node.classList.remove('has-frame-menu'); });
+  return clone;
+}
+
+function exportTokens() {
+  var library = document.querySelector('#wb-board-panel .wb-library');
+  if (!library) return {};
+  var computed = getComputedStyle(library);
+  var tokens = {};
+  EXPORT_TOKEN_NAMES.forEach(function (name) {
+    var value = computed.getPropertyValue(name).trim();
+    if (value) tokens[name] = value;
+  });
+  return tokens;
+}
+
+function resolveExportTarget(options) {
+  options = options || {};
+  if (options.target instanceof Element) return options.target;
+  var panel = document.getElementById('wb-board-panel');
+  if (!panel) return null;
+  if (options.kind === 'section') {
+    return panel.querySelector('.wb-lib-item[data-ann-section="' + CSS.escape(options.sectionId || '') + '"]');
+  }
+  return panel.querySelector('[data-screen="' + CSS.escape(options.screenId || '') + '"]');
+}
+
+function buildExportSnapshot(options) {
+  options = options || {};
+  var kind = options.kind === 'section' ? 'section' : 'frame';
+  var target = resolveExportTarget(options);
+  if (!target) throw new Error('找不到要导出的 ' + (kind === 'frame' ? 'Frame' : 'Section'));
+  var section = kind === 'section' ? target : target.closest('.wb-lib-item');
+  var screen = kind === 'frame' ? target.closest('[data-screen]') : null;
+  var includeNotes = options.includeNotes === true;
+  var source;
+  source = target;
+  if (!source) throw new Error('目标没有可导出的视觉内容');
+  var clone = source.cloneNode(true);
+  syncExportDomState(source, clone);
+  cleanExportClone(clone, includeNotes);
+  if (kind === 'frame' && !includeNotes) {
+    clone.querySelectorAll('.wb-screen-cap').forEach(function (node) { node.remove(); });
+  }
+  if (kind === 'section' && !includeNotes) {
+    clone.querySelectorAll('.wb-sec-row').forEach(function (node) { node.classList.add('wb-export-clean-row'); });
+  }
+  var format = options.format === 'png' ? 'png' : 'webp';
+  var background = options.background || 'canvas';
+  if (background === 'transparent') format = 'png';
+  return {
+    kind: kind,
+    pageId: activePageId,
+    sectionId: section.getAttribute('data-ann-section') || section.getAttribute('data-ann-group'),
+    screenId: screen ? screen.getAttribute('data-screen') : '',
+    format: format,
+    scale: Number(options.scale) === 1 ? 1 : 2,
+    background: background,
+    includeNotes: includeNotes,
+    tokens: exportTokens(),
+    html: clone.outerHTML
+  };
+}
+
+function exportFileName(request) {
+  var ids = [request.pageId, request.sectionId];
+  if (request.kind === 'frame') ids.push(request.screenId);
+  return ids.join('__').replace(/\//g, '-') + '@' + request.scale + 'x.' + request.format;
+}
+
+function requestExportImage(options) {
+  var request = buildExportSnapshot(options);
+  return fetch('/api/export-image', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  }).then(function (response) {
+    if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) {
+      throw new Error(body.message || ('导出失败 · ' + response.status));
+    });
+    return response.blob().then(function (blob) {
+      return {
+        blob: blob,
+        filename: exportFileName(request),
+        width: Number(response.headers.get('X-Export-Width')) || 0,
+        height: Number(response.headers.get('X-Export-Height')) || 0,
+        request: request
+      };
+    });
+  });
+}
+
+function downloadExportResult(result) {
+  var url = URL.createObjectURL(result.blob);
+  var link = document.createElement('a');
+  link.href = url;
+  link.download = result.filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function ensureExportDialog() {
+  if (exportDialog) return exportDialog;
+  exportDialog = document.createElement('dialog');
+  exportDialog.className = 'wb-export-dialog';
+  exportDialog.setAttribute('data-ann-ui', '');
+  exportDialog.setAttribute('data-export-ui', '');
+  exportDialog.innerHTML = '<form class="wb-export-form" method="dialog">' +
+    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2>导出图片</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
+    '<div class="wb-export-field"><span class="wb-export-label">预设</span><div class="wb-export-options">' +
+      '<label class="wb-export-option"><input type="radio" name="notes" value="clean" checked><span>干净画面</span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="notes" value="notes"><span>带说明</span></label>' +
+    '</div></div>' +
+    '<div class="wb-export-field"><span class="wb-export-label">格式</span><div class="wb-export-options">' +
+      '<label class="wb-export-option"><input type="radio" name="format" value="webp" checked><span>WebP</span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="format" value="png"><span>PNG</span></label>' +
+    '</div></div>' +
+    '<div class="wb-export-field"><span class="wb-export-label">清晰度</span><div class="wb-export-options">' +
+      '<label class="wb-export-option"><input type="radio" name="scale" value="1"><span>1×</span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="scale" value="2" checked><span>2×</span></label>' +
+    '</div></div>' +
+    '<div class="wb-export-field"><span class="wb-export-label">背景</span><div class="wb-export-options">' +
+      '<label class="wb-export-option"><input type="radio" name="background" value="canvas" checked><span>Canvas</span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="background" value="white"><span>白色</span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="background" value="transparent"><span>透明</span></label>' +
+    '</div></div>' +
+    '<div class="wb-export-status" data-export-status>WebP · 2× · 干净背景</div>' +
+    '<div class="wb-export-actions"><button type="button" class="wb-export-action" data-export-copy>复制 PNG</button><button type="button" class="wb-export-action primary" data-export-download>下载图片</button></div>' +
+    '</form>';
+  document.body.appendChild(exportDialog);
+  var form = exportDialog.querySelector('form');
+  function panelOptions(overrides) {
+    var data = new FormData(form);
+    return Object.assign({
+      kind: exportTarget.kind,
+      target: exportTarget.target,
+      includeNotes: data.get('notes') === 'notes',
+      format: data.get('format'),
+      scale: Number(data.get('scale')),
+      background: data.get('background')
+    }, overrides || {});
+  }
+  function status(text, isError) {
+    var el = exportDialog.querySelector('[data-export-status]');
+    el.textContent = text;
+    el.classList.toggle('is-error', !!isError);
+  }
+  function busy(value) {
+    exportDialog.querySelectorAll('.wb-export-action').forEach(function (button) { button.disabled = value; });
+  }
+  form.addEventListener('change', function (event) {
+    if (event.target.name === 'background' && event.target.value === 'transparent') {
+      form.querySelector('[name="format"][value="png"]').checked = true;
+    }
+    if (event.target.name === 'format' && event.target.value === 'webp') {
+      var transparent = form.querySelector('[name="background"][value="transparent"]');
+      if (transparent.checked) form.querySelector('[name="background"][value="canvas"]').checked = true;
+    }
+    var data = new FormData(form);
+    status((data.get('format') || '').toUpperCase() + ' · ' + data.get('scale') + '× · ' + (data.get('notes') === 'notes' ? '带说明' : '干净画面'));
+  });
+  exportDialog.querySelector('[data-export-download]').addEventListener('click', function () {
+    busy(true); status('正在生成高保真图片…');
+    requestExportImage(panelOptions()).then(function (result) {
+      downloadExportResult(result);
+      status(result.width + ' × ' + result.height + ' · ' + (result.blob.size / 1024).toFixed(0) + ' KB · 已下载');
+    }).catch(function (error) { status(error.message, true); }).finally(function () { busy(false); });
+  });
+  exportDialog.querySelector('[data-export-copy]').addEventListener('click', function () {
+    if (!navigator.clipboard || typeof ClipboardItem === 'undefined') { status('当前浏览器不支持复制图片，请使用下载。', true); return; }
+    busy(true); status('正在生成剪贴板 PNG…');
+    requestExportImage(panelOptions({ format: 'png' })).then(function (result) {
+      return navigator.clipboard.write([new ClipboardItem({ 'image/png': result.blob })]).then(function () {
+        status(result.width + ' × ' + result.height + ' · 已复制 PNG');
+      });
+    }).catch(function (error) { status(error.message, true); }).finally(function () { busy(false); });
+  });
+  return exportDialog;
+}
+
+function openExportDialog(kind, target) {
+  var dialog = ensureExportDialog();
+  exportTarget = { kind: kind, target: target };
+  var section = target.closest('.wb-lib-item');
+  var screen = kind === 'frame' ? target.closest('[data-screen]') : null;
+  var label = activePageId + ' / ' + (section.getAttribute('data-ann-section-label') || section.getAttribute('data-ann-section'));
+  if (screen) label += ' / ' + screen.getAttribute('data-screen');
+  dialog.querySelector('[data-export-target-label]').textContent = label;
+  var notesOption = dialog.querySelector('[name="notes"][value="notes"]');
+  notesOption.disabled = kind === 'frame' && !target.querySelector('[data-frame-note]');
+  if (notesOption.disabled) dialog.querySelector('[name="notes"][value="clean"]').checked = true;
+  dialog.showModal();
+}
+
+function closeFrameMenu() {
+  if (!openFrameMenu) return;
+  openFrameMenu.menu.hidden = true;
+  openFrameMenu.trigger.setAttribute('aria-expanded', 'false');
+  openFrameMenu = null;
+}
+
+function copyFrameIndicator(screen, button) {
+  var text = '@frame:' + activePageId + '/' + screen.getAttribute('data-screen');
+  var done = function () {
+    var label = button.querySelector('[data-frame-menu-label]');
+    if (label) label.textContent = '已复制 ' + text;
+    setTimeout(function () { if (label) label.textContent = '复制 @frame'; }, 1200);
+  };
+  if (navigator.clipboard && navigator.clipboard.writeText) {
+    navigator.clipboard.writeText(text).then(done).catch(function () {});
+  }
+}
+
+function wireFrameMenuGlobalListeners() {
+  if (frameMenuListenersWired) return;
+  frameMenuListenersWired = true;
+  document.addEventListener('click', function (event) {
+    if (openFrameMenu && !event.target.closest('.wb-frame-menu-shell')) closeFrameMenu();
+  });
+  document.addEventListener('keydown', function (event) {
+    if (event.key === 'Escape') closeFrameMenu();
+  });
+}
+
+function wireExportControls(panel) {
+  if (!panel) return;
+  closeFrameMenu();
+  wireFrameMenuGlobalListeners();
+  panel.querySelectorAll('.wb-lib-item').forEach(function (section) {
+    if (!section.querySelector(':scope > .wb-export-section-trigger')) {
+      var sectionButton = document.createElement('button');
+      sectionButton.type = 'button';
+      sectionButton.className = 'wb-export-trigger wb-export-section-trigger';
+      sectionButton.setAttribute('data-export-ui', '');
+      sectionButton.setAttribute('aria-label', '导出 Section');
+      sectionButton.title = '导出 Section 图片';
+      sectionButton.innerHTML = '<span data-wb-icon="export-image" data-wb-icon-size="16"></span>';
+      sectionButton.addEventListener('click', function () { openExportDialog('section', section); });
+      section.appendChild(sectionButton);
+    }
+  });
+  panel.querySelectorAll('[data-screen]').forEach(function (screen) {
+    var caption = screen.querySelector(':scope > .wb-screen-cap');
+    if (!caption || caption.querySelector(':scope > .wb-frame-menu-shell')) return;
+    caption.classList.add('has-frame-menu');
+    var shell = document.createElement('span');
+    shell.className = 'wb-frame-menu-shell';
+    shell.setAttribute('data-export-ui', '');
+    shell.setAttribute('data-ann-ui', '');
+    shell.innerHTML = '<button type="button" class="wb-frame-menu-trigger" aria-label="Frame 菜单" aria-haspopup="menu" aria-expanded="false" title="Frame 菜单">⋯</button>' +
+      '<span class="wb-frame-menu" role="menu" hidden>' +
+        '<button type="button" class="wb-frame-menu-item" role="menuitem" data-frame-export><span data-wb-icon="export-image" data-wb-icon-size="15"></span><span>导出图片…</span></button>' +
+        '<button type="button" class="wb-frame-menu-item" role="menuitem" data-frame-copy><span aria-hidden="true" style="width:15px;text-align:center;color:var(--wb-muted)">@</span><span data-frame-menu-label>复制 @frame</span></button>' +
+      '</span>';
+    var trigger = shell.querySelector('.wb-frame-menu-trigger');
+    var menu = shell.querySelector('.wb-frame-menu');
+    trigger.addEventListener('click', function (event) {
+      event.stopPropagation();
+      var shouldOpen = menu.hidden;
+      closeFrameMenu();
+      if (!shouldOpen) return;
+      menu.hidden = false;
+      trigger.setAttribute('aria-expanded', 'true');
+      openFrameMenu = { trigger: trigger, menu: menu };
+    });
+    shell.querySelector('[data-frame-export]').addEventListener('click', function (event) {
+      event.stopPropagation();
+      closeFrameMenu();
+      openExportDialog('frame', screen);
+    });
+    shell.querySelector('[data-frame-copy]').addEventListener('click', function (event) {
+      event.stopPropagation();
+      copyFrameIndicator(screen, event.currentTarget);
+    });
+    caption.appendChild(shell);
+  });
+  if (window.mountWorkbenchIcons) window.mountWorkbenchIcons(panel);
 }
 
 /** Scroll so board content sits near the viewer top-left (not lost in the empty pad). */
@@ -1340,12 +1927,17 @@ function jumpSectionNavigatorToGroup(groupId) {
 }
 
 function jumpSectionNavigatorToScreen(groupId, screenId) {
+  focusWorkbenchFrame(groupId, screenId);
+}
+
+function focusWorkbenchFrame(groupId, screenId, options) {
   var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
-  if (!frame || !stage) return;
+  if (!frame || !stage) return false;
   activeGroup = groupId;
   updateSectionNavigatorActive(groupId);
   if (annFilter === 'tab') refreshAnnPanel();
-  focusStageOnRect(frame);
+  focusStageOnRect(frame, options);
+  return true;
 }
 
 /** True when keyboard shortcuts should yield to text entry. */
@@ -1453,19 +2045,12 @@ function resolveIncludes(html) {
   return Promise.all(refs.map(fetchIncludeHtml)).then(function () {
     return html.replace(re, function (full, tag, pre, q, ref, post) {
       var attrs = (pre || '') + (post || '');
-      var textM = attrs.match(/\bdata-text=(["'])([\s\S]*?)\1/);
-      var text = textM ? textM[2] : null;
       var fetched = includeCache[ref];
       if (!fetched || !fetched.ok) {
         return '<div class="wb-screen-err">include 失败 · ' + escHtml(ref) + '</div>';
       }
       var frag = fetched.html.trim();
-      if (text != null) {
-        frag = frag.replace(
-          /(data-ios-slot=["']text["'][^>]*>)([\s\S]*?)(<\/)/,
-          function (_, a, _old, c) { return a + text + c; }
-        );
-      }
+      frag = applyIncludeSlots(frag, attrs);
       // Mark include root for annotate → component source routing
       if (/^<([a-zA-Z0-9]+)/.test(frag)) {
         frag = frag.replace(/^<([a-zA-Z0-9]+)/, '<$1 data-ios-from="' + ref + '"');
@@ -1501,6 +2086,9 @@ function fetchScreenHtml(pageId, screen) {
       return r.text();
     })
     .then(function (raw) {
+      if (pageId !== COMPONENTS_ID) {
+        raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')');
+      }
       return resolveIncludes(raw).then(function (html) {
         if (pageId === COMPONENTS_ID) html = wrapFragmentForLibrary(html);
         return { ok: true, html: html };
@@ -1578,11 +2166,31 @@ function buildBoardHtml(pageId, board, screenMap) {
       } else {
         inner = screenErrorHtml(pageId, sc.id, fetched ? fetched.err : 'missing');
       }
-      var titled = !!sc.title;
       var screenCls = isCompLib ? 'wb-screen wb-screen--comp' : 'wb-screen';
+      var note = sc.note || '';
+      var noteHtml = '';
+      if (!isCompLib) {
+        noteHtml = '<div class="wb-frame-note' + (note ? '' : ' is-empty') + '" data-frame-note data-ann-ui>' +
+          '<div class="wb-frame-note-view" data-frame-note-view>' +
+            '<div class="wb-frame-note-text' + (note ? '' : ' wb-frame-note-placeholder') + '" data-frame-note-text>' +
+              escHtml(note || '添加这一步的场景、交互或能力说明。') +
+            '</div>' +
+            '<button type="button" class="wb-frame-note-edit" data-frame-note-action="edit">' + (note ? '编辑' : '＋ Frame Note') + '</button>' +
+          '</div>' +
+          '<div class="wb-frame-note-editor" data-frame-note-editor hidden>' +
+            '<textarea class="wb-frame-note-input" data-frame-note-input maxlength="12000" aria-label="Frame Note"></textarea>' +
+            '<div class="wb-frame-note-footer">' +
+              '<span class="wb-frame-note-status" data-frame-note-status></span>' +
+              '<button type="button" class="wb-frame-note-action" data-frame-note-action="cancel">取消</button>' +
+              '<button type="button" class="wb-frame-note-action" data-frame-note-action="save">保存</button>' +
+            '</div>' +
+          '</div>' +
+        '</div>';
+      }
       return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '">' +
-        (titled ? '<div class="wb-screen-cap">' + escHtml(sc.title) + '</div>' : '') +
+        '<div class="wb-screen-cap' + (sc.title ? '' : ' wb-screen-cap--empty') + '">' + escHtml(sc.title || '') + '</div>' +
         inner +
+        noteHtml +
         '</div>';
     }).join('');
     return '<article class="wb-lib-item" id="lib-' + escHtml(sec.id) + '"' +
@@ -1859,6 +2467,7 @@ function initBoard() {
   boardPanel.id = 'wb-board-panel';
   boardPanel.className = 'wb-panel wb-library-panel';
   stage.appendChild(boardPanel);
+  wireFrameNoteEditors(boardPanel);
   return loadPageManifest()
     .then(function () {
       return setActivePage(resolveBootPageId(readPrefs()), { force: true, scrollTop: false, save: false });
@@ -1943,7 +2552,14 @@ wireSections();
 initBoard();
 wireCanvasHud();
 
-window.workbench = { switchPage: switchPage, setActivePage: setActivePage, activePageId: function () { return activePageId; } };
+window.workbench = {
+  switchPage: switchPage,
+  setActivePage: setActivePage,
+  focusFrame: focusWorkbenchFrame,
+  activePageId: function () { return activePageId; },
+  exportSnapshot: buildExportSnapshot,
+  exportImage: requestExportImage
+};
 pollAnnotate();
 
 gearBtn.addEventListener('click', function () {

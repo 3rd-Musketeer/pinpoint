@@ -1,4 +1,4 @@
-import { createElement, Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, ListTree, Map } from 'lucide';
+import { createElement, Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, ListTree, Map, ImageDown } from 'lucide';
 
 var ICONS = {
   pencil: Pencil,
@@ -11,7 +11,8 @@ var ICONS = {
   'panel-left-close': PanelLeftClose,
   'panel-left-open': PanelLeftOpen,
   'section-nav': ListTree,
-  map: Map
+  map: Map,
+  'export-image': ImageDown
 };
 
 // Heroicons v2 solid cog-6-tooth — filled gears stay crisp at toolbar sizes.

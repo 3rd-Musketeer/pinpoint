@@ -7,6 +7,7 @@
   },
   "scripts": {
     "dev": "vite",
+    "export": "node scripts/export-preview.mjs",
     "test": "node --test",
     "test:e2e": "playwright test",
     "check": "npm test && npm run test:e2e"

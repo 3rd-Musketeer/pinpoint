@@ -227,7 +227,7 @@ npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span>
       <div class="loop-step agent">
         <span class="who">Agent</span>
         <h3>改稿</h3>
-        <p>「标好了，你看一下」——它从磁盘读标注，逐条改到源文件</p>
+        <p>「标好了，你看一下」——它逐条改源文件，并在标注下回复改了什么</p>
       </div>
     </div>
     <p class="loop-return">↻ 清除已处理的标注，进入下一轮</p>
@@ -256,6 +256,10 @@ npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span>
           <dt>Screen<small>屏</small></dt>
           <dd>frame 里的 iOS 内容，对应一个 HTML 文件（<code class="inline">previews/&lt;page&gt;/&lt;screen&gt;.html</code>）。agent 的主要工作面。<span class="quote">「把 timer 这屏的按钮改成两个」</span></dd>
         </div>
+        <div class="term">
+          <dt>Frame Note<small>帧说明</small></dt>
+          <dd>frame 下方持久的场景 / 交互说明，属于原型本身；用户和 agent 在 Workbench 里编辑同一个 <code class="inline">board.json</code>。它不是待处理的评审标注。</dd>
+        </div>
       </dl>
     </div>
 
@@ -282,7 +286,7 @@ npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span>
         </div>
         <div class="term">
           <dt>Annotation<small>标注</small></dt>
-          <dd>一条评审意见：正文 + 锚定的元素 + 可选的参考图 / 移动箭头 /「改文案」。落盘在本机，agent 直接读取。</dd>
+          <dd>一条评审意见：正文 + 锚定的元素 + 可选的参考图 / 移动箭头 /「改文案」。落盘在本机，agent 直接读取；改稿后可在它下方留下单条 Reply，解释改了什么。</dd>
         </div>
         <div class="term">
           <dt>Indicator<small>定位符</small></dt>
@@ -316,7 +320,8 @@ npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span>
       <tr><th>操作</th><th>手势</th></tr>
       <tr><td>缩放</td><td><kbd>⌘</kbd> + 滚轮，或右下角 ±；点百分比回 100%</td></tr>
       <tr><td>平移</td><td><kbd>Space</kbd> + 拖拽，或中键拖拽</td></tr>
-      <tr><td>跳转</td><td>右下角 Section Navigator / 分层 minimap；支持连续跳转，面板不自动关闭</td></tr>
+      <tr><td>跳转</td><td>右下角 Section Navigator / 分层 minimap；点击侧栏标注也会按所属 frame 定位，而不是把小锚点放到正中</td></tr>
+      <tr><td>导出图片</td><td>Frame 标题右侧常驻 <b>…</b> 菜单 →「导出图片…」；Section 标题旁有常驻弱显示图片按钮。默认导出隔离的 2× WebP；「带说明」会加入 Frame Note</td></tr>
       <tr><td>切模式</td><td><kbd>A</kbd> 在 交互 ↔ 标注 之间切</td></tr>
       <tr><td>整机标注</td><td>点屏幕标题或机壳；<kbd>⌥</kbd> + 点屏内元素同样选中整框</td></tr>
       <tr><td>主题 / 字号</td><td>侧栏底部 Light / Dark；设置里有 Dynamic Type 三档</td></tr>
@@ -325,15 +330,15 @@ npm run dev        <span class="c"># → http://127.0.0.1:5199/index.html</span>
     <h2 style="margin-top:48px">标注流程</h2>
     <div class="steps">
       <div class="step"><b>标注</b>：按 <kbd>A</kbd>，点选或框选元素，在底部输入框写意见。支持连续添加多个目标、粘贴参考图、画「移动到」箭头、勾「改文案」。</div>
-      <div class="step"><b>交给 agent</b>：说<b>「标好了，你看一下」</b>（需要限定范围就贴 indicator）。agent 按 page → section → frame 分组读盘，逐条修改源文件，画布热更新。</div>
-      <div class="step"><b>清理</b>：确认修改无误后删除或清空这批标注，进入下一轮。锚点失效的标注会标记「锚点失效」，不会静默丢失。</div>
+      <div class="step"><b>交给 agent</b>：说<b>「标好了，你看一下」</b>（需要限定范围就贴 indicator）。agent 按 page → section → frame 分组读盘，逐条修改源文件，并在标注下 Reply 说明改了什么 / 为什么。</div>
+      <div class="step"><b>复核与清理</b>：点击侧栏 comment 回到所属 frame，同时看视觉结果和 Agent reply；确认无误后删除或清空这批标注。锚点失效的标注仍会留在侧栏，不会静默丢失。</div>
     </div>
   </section>
 
   <section id="boundaries">
     <h2>边界</h2>
     <div class="flat">
-      <p class="flat-row"><b>标注是单机的。</b>存储在本机 <code class="inline">~/.html-annotate/&lt;项目目录&gt;/</code>（每个 clone 独立，路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不支持多人协同评论；评审结论通过改稿传递。</p>
+      <p class="flat-row"><b>标注是单机的。</b>存储在本机 <code class="inline">~/.html-annotate/&lt;项目目录&gt;/</code>（每个 clone 独立，路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent；Reply 用来解释本轮改稿，不扩成多人评论 thread。</p>
       <p class="flat-row"><b>机壳不是编辑面。</b>bezel / 状态栏 / 底部横条由加载器统一渲染，agent 的契约中也禁止修改；评审意见针对内容和布局。</p>
     </div>
   </section>

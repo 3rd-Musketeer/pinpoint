@@ -267,10 +267,11 @@
   }
   .wb-ann-group:first-child { padding-top:2px; }
   .wb-ann-item {
-    display:flex; gap:2px; align-items:stretch; width:100%;
+    display:flex; flex-direction:column; width:100%;
     margin-bottom:2px; border-radius:var(--wb-r);
     transition:background var(--wb-dur) var(--wb-ease);
   }
+  .wb-ann-item-row { display:flex; gap:2px; align-items:stretch; width:100%; }
   .wb-ann-item:hover { background:var(--wb-hover); }
   .wb-ann-item--broken { opacity:.72; }
   .wb-ann-item--broken .wb-ann-num {
@@ -306,6 +307,40 @@
   .wb-ann-cap { font-size:10px; color:var(--wb-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
   .wb-ann-text { font-size:12px; line-height:1.4; color:var(--wb-fg); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
   .wb-ann-tags { font-size:10px; color:var(--wb-faint); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-ann-reply {
+    margin:0 8px 8px 34px; padding:7px 9px;
+    border-left:2px solid color-mix(in srgb,var(--wb-accent) 38%,var(--wb-line));
+    border-radius:0 7px 7px 0;
+    background:color-mix(in srgb,var(--wb-accent) 4%,rgba(255,255,255,.6));
+  }
+  .wb-ann-reply--empty { padding:0; border-left-color:var(--wb-line); background:transparent; }
+  .wb-ann-reply--empty button,
+  .wb-ann-reply-head button,
+  .wb-ann-reply-actions button {
+    border:0; background:transparent; color:var(--wb-faint); font:inherit; font-size:10.5px;
+    padding:3px 5px; border-radius:5px; cursor:pointer;
+  }
+  .wb-ann-reply--empty button { padding-left:0; }
+  .wb-ann-reply--empty button:hover,
+  .wb-ann-reply-head button:hover,
+  .wb-ann-reply-actions button:hover { color:var(--wb-fg); background:var(--wb-hover); }
+  .wb-ann-reply-head { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
+  .wb-ann-reply-head span,
+  .wb-ann-reply-label { flex:1; color:var(--wb-accent); font-size:10px; font-weight:650; letter-spacing:.02em; }
+  .wb-ann-reply-content {
+    color:var(--wb-muted); font-size:11.5px; line-height:1.45;
+    white-space:pre-wrap; overflow-wrap:anywhere;
+  }
+  .wb-ann-reply--editing { display:flex; flex-direction:column; gap:6px; }
+  .wb-ann-reply-input {
+    width:100%; min-height:60px; resize:vertical; box-sizing:border-box;
+    border:1px solid var(--wb-line); border-radius:7px; padding:7px 8px;
+    background:var(--wb-side); color:var(--wb-fg); font:inherit; font-size:11.5px; line-height:1.45; outline:none;
+  }
+  .wb-ann-reply-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 12%,transparent); }
+  .wb-ann-reply-actions { display:flex; align-items:center; gap:3px; }
+  .wb-ann-reply-hint { flex:1; color:var(--wb-faint); font-size:9.5px; }
+  .wb-ann-reply-actions button.is-primary { background:var(--wb-accent); color:#fff; }
 
   /* footer chrome */
   .wb-foot {
@@ -545,6 +580,7 @@
     --wb-phone-h: 910px;
     --wb-cap-section: calc(var(--wb-phone-w) * 0.073); /* ~32px @ 438 */
     --wb-cap-screen: calc(var(--wb-phone-w) * 0.055);  /* ~24px @ 438 — step label, not footnote */
+    --wb-cap-note: calc(var(--wb-phone-w) * 0.032);    /* ~14px @ 438 */
     --wb-cap-gap: calc(var(--wb-phone-w) * 0.032);     /* ~14px */
     display:flex; flex-direction:column; gap:56px;
     padding:32px 24px 80px; box-sizing:border-box;
@@ -568,11 +604,11 @@
     flex:none;
   }
   .wb-sec-column { flex-direction:column; align-items:flex-start; gap:24px; flex-wrap:nowrap; }
-  /* Row: captions share one baseline row, phones share the next — avoids tall titles shoving frames down. */
+  /* Row: titles, phones, and durable Frame Notes each share a row. */
   .wb-sec-row {
     display:grid;
     grid-auto-flow:column;
-    grid-template-rows:auto auto;
+    grid-template-rows:auto auto auto;
     column-gap:28px;
     row-gap:var(--wb-cap-gap);
     align-items:start;
@@ -596,6 +632,68 @@
     color:var(--wb-fg);
     opacity:.72;
   }
+  .wb-sec-column .wb-screen-cap--empty { display:none; }
+  .wb-frame-note {
+    position:relative;
+    width:var(--wb-phone-w); box-sizing:border-box;
+    padding:12px 14px;
+    border:1px solid color-mix(in srgb, var(--wb-line) 72%, transparent);
+    border-radius:13px;
+    background:color-mix(in srgb, var(--wb-side) 78%, transparent);
+    color:var(--wb-muted);
+    font-size:var(--wb-cap-note); line-height:1.55;
+  }
+  .wb-frame-note.is-empty {
+    padding:0;
+    border:0;
+    background:transparent;
+  }
+  .wb-frame-note.is-empty.is-editing {
+    padding:12px 14px;
+    border:1px dashed color-mix(in srgb, var(--wb-line) 72%, transparent);
+    background:color-mix(in srgb, var(--wb-side) 78%, transparent);
+  }
+  .wb-frame-note-view { display:flex; align-items:flex-start; gap:10px; }
+  .wb-frame-note.is-empty .wb-frame-note-view { justify-content:flex-end; }
+  .wb-frame-note.is-empty .wb-frame-note-placeholder { display:none; }
+  .wb-frame-note-text {
+    flex:1; min-width:0;
+    color:var(--wb-fg); opacity:.68;
+    white-space:pre-wrap; overflow-wrap:anywhere;
+  }
+  .wb-frame-note-placeholder { color:var(--wb-faint); }
+  .wb-frame-note-edit,
+  .wb-frame-note-action {
+    appearance:none; flex:none;
+    border:0; border-radius:8px;
+    padding:5px 8px;
+    background:transparent; color:var(--wb-faint);
+    font:inherit; font-weight:600; line-height:1.2;
+    cursor:pointer;
+  }
+  .wb-frame-note-edit:hover,
+  .wb-frame-note-action:hover { background:var(--wb-hover); color:var(--wb-fg); }
+  .wb-frame-note.is-empty .wb-frame-note-edit {
+    border:1px dashed var(--wb-line);
+    color:var(--wb-faint);
+  }
+  .wb-frame-note-editor { display:flex; flex-direction:column; gap:9px; }
+  .wb-frame-note-editor[hidden],
+  .wb-frame-note-view[hidden] { display:none; }
+  .wb-frame-note-input {
+    width:100%; min-height:164px; resize:vertical; box-sizing:border-box;
+    border:1px solid var(--wb-line); border-radius:10px;
+    padding:10px 11px;
+    background:var(--wb-side); color:var(--wb-fg);
+    font:inherit; line-height:1.55;
+    outline:none;
+  }
+  .wb-frame-note-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--wb-accent) 14%, transparent); }
+  .wb-frame-note-footer { display:flex; align-items:center; gap:6px; }
+  .wb-frame-note-status { flex:1; min-width:0; color:var(--wb-faint); font-size:.9em; }
+  .wb-frame-note-status.is-error { color:var(--wb-danger,#c0392b); }
+  .wb-frame-note-action[data-frame-note-action="save"] { background:var(--wb-accent); color:#fff; }
+  .wb-frame-note-action:disabled { cursor:default; opacity:.45; }
   /* Component Library: light board, no phone chrome */
   .wb-screen--comp {
     --wb-phone-w: auto;
@@ -626,6 +724,81 @@
     font-size:12px; line-height:1.45; color:var(--wb-muted);
     border:1px dashed var(--wb-line); border-radius:var(--wb-r); background:rgba(255,255,255,.5);
   }
+  /* Export is a Workbench concern: controls never enter the isolated export surface. */
+  .wb-lib-item { position:relative; }
+  .wb-export-trigger {
+    appearance:none; position:absolute; z-index:18;
+    width:32px; height:32px; padding:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    border:1px solid color-mix(in srgb, var(--wb-line) 84%, transparent);
+    border-radius:10px; background:color-mix(in srgb, var(--wb-side) 88%, transparent);
+    color:var(--wb-muted); box-shadow:0 5px 18px rgba(0,0,0,.08);
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    cursor:pointer; opacity:.72; transform:none;
+    transition:opacity var(--wb-dur) var(--wb-ease),transform var(--wb-dur) var(--wb-ease),color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-export-trigger:hover,.wb-export-trigger:focus-visible { color:var(--wb-accent); outline:0; }
+  .wb-export-section-trigger { top:2px; left:calc(var(--wb-phone-w) + 10px); }
+  .wb-export-trigger:focus-visible,
+  .wb-lib-item:hover>.wb-export-section-trigger { opacity:1; transform:none; }
+  .wb-screen-cap.has-frame-menu {
+    position:relative; z-index:30;
+    padding-right:40px; min-height:30px;
+  }
+  .wb-sec-column .wb-screen-cap--empty.has-frame-menu { display:block; }
+  .wb-frame-menu-shell { position:absolute; z-index:42; top:0; right:0; width:30px; height:30px; }
+  .wb-frame-menu-trigger {
+    appearance:none; width:30px; height:30px; padding:0; border:1px solid transparent;
+    border-radius:9px; display:inline-flex; align-items:center; justify-content:center;
+    background:color-mix(in srgb,var(--wb-side) 72%,transparent); color:var(--wb-muted); font:inherit; font-size:18px; font-weight:700;
+    line-height:1; cursor:pointer; opacity:.82; border-color:color-mix(in srgb,var(--wb-line) 72%,transparent);
+  }
+  .wb-frame-menu-trigger:hover,.wb-frame-menu-trigger:focus-visible,.wb-frame-menu-trigger[aria-expanded="true"] {
+    opacity:1; color:var(--wb-fg); background:var(--wb-hover); border-color:var(--wb-line); outline:0;
+  }
+  .wb-frame-menu {
+    position:absolute; z-index:50; top:35px; right:0; width:176px; box-sizing:border-box;
+    padding:5px; border:1px solid color-mix(in srgb,var(--wb-line) 90%,transparent);
+    border-radius:12px; background:var(--wb-side);
+    box-shadow:0 14px 36px rgba(0,0,0,.16);
+  }
+  .wb-frame-menu[hidden] { display:none; }
+  .wb-frame-menu-item {
+    appearance:none; width:100%; min-height:34px; padding:0 9px; border:0; border-radius:8px;
+    display:flex; align-items:center; gap:9px; background:transparent; color:var(--wb-fg);
+    font:inherit; font-size:12px; font-weight:600; text-align:left; cursor:pointer;
+  }
+  .wb-frame-menu-item:hover,.wb-frame-menu-item:focus-visible { background:var(--wb-hover); outline:0; }
+  .wb-frame-menu-item svg { color:var(--wb-muted); }
+  .wb-export-dialog {
+    width:min(440px,calc(100vw - 32px)); padding:0; overflow:hidden;
+    border:1px solid rgba(0,0,0,.1); border-radius:20px;
+    background:var(--wb-side); color:var(--wb-fg);
+    box-shadow:0 28px 80px rgba(0,0,0,.24);
+    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
+  }
+  .wb-export-dialog::backdrop { background:rgba(22,22,24,.3); backdrop-filter:blur(3px); }
+  .wb-export-form { padding:20px; display:flex; flex-direction:column; gap:17px; }
+  .wb-export-head { display:flex; align-items:flex-start; gap:12px; }
+  .wb-export-head-copy { flex:1; min-width:0; }
+  .wb-export-head h2 { margin:0; font-size:18px; line-height:1.25; letter-spacing:-.015em; }
+  .wb-export-target { margin:5px 0 0; color:var(--wb-faint); font-size:12px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-export-close { border:0; background:transparent; color:var(--wb-faint); font-size:22px; line-height:1; padding:0 2px; cursor:pointer; }
+  .wb-export-field { display:flex; flex-direction:column; gap:7px; }
+  .wb-export-label { color:var(--wb-muted); font-size:12px; font-weight:650; }
+  .wb-export-options { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:3px; padding:3px; border-radius:11px; background:var(--wb-hover); }
+  .wb-export-option { position:relative; }
+  .wb-export-option input { position:absolute; opacity:0; pointer-events:none; }
+  .wb-export-option span { display:flex; align-items:center; justify-content:center; min-height:32px; padding:0 9px; border-radius:8px; color:var(--wb-muted); font-size:12px; font-weight:620; cursor:pointer; }
+  .wb-export-option input:checked+span { background:var(--wb-side); color:var(--wb-fg); box-shadow:0 1px 4px rgba(0,0,0,.1); }
+  .wb-export-note-toggle { display:flex; align-items:flex-start; gap:9px; color:var(--wb-muted); font-size:13px; line-height:1.4; }
+  .wb-export-note-toggle input { margin-top:2px; accent-color:var(--wb-accent); }
+  .wb-export-status { min-height:17px; color:var(--wb-faint); font-size:12px; }
+  .wb-export-status.is-error { color:var(--wb-danger,#c0392b); }
+  .wb-export-actions { display:flex; justify-content:flex-end; gap:8px; }
+  .wb-export-action { min-height:38px; padding:0 15px; border:1px solid var(--wb-line); border-radius:11px; background:var(--wb-side); color:var(--wb-fg); font:inherit; font-size:13px; font-weight:650; cursor:pointer; }
+  .wb-export-action.primary { border-color:var(--wb-accent); background:var(--wb-accent); color:#fff; }
+  .wb-export-action:disabled { cursor:wait; opacity:.55; }
 </style>
 </head>
 <body>

@@ -1,6 +1,6 @@
 ---
 name: ios-app-preview-build
-description: 在本仓库（iOS App Preview workbench）里搭预览内容：加 page / section / screen / 组件，改 board.json，做屏内手势动画（内联 data-preview-script 或 sidecar mount 两种形态）。只要任务涉及新增或修改 previews/ 下的屏、components/ 下的组件、页面清单 previews/_index.json，或用户说「加一屏」「加个 flow」「搭个对比」「做个交互」「写 board」，就先读本 skill 再动手——文件结构和挂载规则有几条不直观的硬约束（overlay 同级、fragment 无 bezel、脚本不进 ios-kit.js），跳过本 skill 很容易踩坑。
+description: 在本仓库（iOS App Preview workbench）里搭预览内容：加 page / section / screen / 组件，改 board.json，做屏内手势动画（内联 data-preview-script 或 sidecar mount 两种形态）。只要任务涉及新增或修改 previews/ 下的屏、components/ 下的组件、页面清单 previews/_index.json，或用户说「加一屏」「加个 flow」「搭个对比」「做个交互」「写 board」，就先读本 skill 再动手——文件结构和挂载规则有几条不直观的硬约束（overlay 同级、safe area 接 token、fragment 无 bezel、脚本不进 ios-kit.js），跳过本 skill 很容易踩坑。
 ---
 
 # ios-app-preview-build
@@ -30,7 +30,7 @@ curl -s http://127.0.0.1:5199/health
 
 ```json
 "screens": [
-  { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" }
+    { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" }
 ]
 ```
 
@@ -66,6 +66,22 @@ curl -s http://127.0.0.1:5199/health
 
 Sidecar 里查 sheet：`root` = `.ios-app`，overlay 不在 `root` 内，用 `root.closest('.ios-screen')` 或 `document`。
 
+### 1.2 Chrome / safe area
+
+顶底 inset 是 **Variables**（`ios-kit.css` `.ios-root`），不是随手写的像素：
+
+| Token | 用途 |
+|---|---|
+| `--ios-safe-top` | 内容顶 inset（避 Dynamic Island） |
+| `--ios-safe-bottom` | Home Indicator inset |
+| `--ios-sb-h` | 状态栏高度本身（≠ safe-top） |
+
+- 自定义顶栏对齐 `.ios-navbar`：`padding-top: var(--ios-safe-top)`，`height: calc(var(--ios-safe-top) + 44px)`。
+- 自定义底栏 / composer：padding 含 `var(--ios-safe-bottom)`（与 `.ios-tabbar` / sheet 同理）。
+- 优先复用 `.ios-nav` / `.ios-navbar`；自写 chrome 时**禁止**写死 `54` / `62` / `34`，也**禁止**用空 spacer div 代替 token。
+
+数字以 `ios-kit.css` 为 SSOT；换机型 / 调 chrome 只改 token，screen 不跟改。
+
 ## 2. 加 section
 
 在 `previews/<pageId>/board.json` 的 `sections[]` 追加：
@@ -87,7 +103,43 @@ Sidecar 里查 sheet：`root` = `.ios-app`，overlay 不在 `root` 内，用 `ro
 - `id` → `[data-ann-section]` / annotation `section`
 - `title` → `.wb-lib-cap`；screen `title` → `.wb-screen-cap`（**只写文案**，字号来自 board tokens，勿设 font-size）
 
+### 2.1 Frame Note（帧说明）
+
+Frame Note 是原型自身的持久说明，不是处理后会删除的评审 Annotation。直接写在 screen entry 的 `note`：
+
+```json
+{
+  "id": "msg-thread",
+  "title": "2 · 查看消息",
+  "note": "场景：用户点开通知。\n交互：进入对应会话。\n验证：入口 Context 正确传入。"
+}
+```
+
+- `title` 回答“这是哪一步”；`note` 回答“为什么存在、如何交互、验证什么”。
+- `note` 可多行，显示在 frame 下方；Workbench 内也可行内编辑。
+- 浏览器与 Agent 共同以该页 `board.json` 为 SSOT；浏览器保存带 revision，遇到并发修改不覆盖。
+- 先用一个自由文本字段；可以采用“场景 / 交互 / 验证”写法，不要拆成更多 schema 字段。
+- 评审意见仍走 Annotation，不要写进 `note`。
+
 Canonical：[`previews/library/board.json`](../../previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
+
+### 2.2 导出 Frame / Section 图片
+
+导出属于 Workbench，不在单个 screen 里实现截图逻辑。每个 Frame 标题右侧常驻 `…`
+菜单，选择「导出图片…」；Section 标题旁常驻弱显示图片按钮。两者都不依赖 hover。
+Agent / CLI 使用同一条隔离 Chromium 渲染链路：
+
+```bash
+npm run export -- --page library --section brew-flow --frame timer
+npm run export -- --page library --section brew-flow --with-notes --format png
+```
+
+- 默认：2× WebP、Canvas 背景（`#faf8f4`）、输出到 gitignored `exports/`。
+- Frame「干净画面」只导当前手机状态 + 48 CSS px 安全边距，不带标题、Frame Note、标注、侧栏或相邻 Frame。
+- Section 保持 `row` / `column` 和 Frame 顺序，带 Section / Frame 标题；「带说明」再加入 Frame Notes。
+- 导出先克隆 live DOM，再在只含目标的页面截图，因此打开的 sheet / Ask User、选中态、输入值、内部滚动和 canvas 会被保留。
+- 透明背景只能用 PNG。超大 2× Section 会明确提示改用 1×，不得静默换行、裁切或压扁 flow。
+- 可用参数：`--scale 1|2`、`--background canvas|white|transparent`、`--format webp|png`、`--output <path>`。
 
 ## 3. 加 workbench page
 
@@ -154,9 +206,15 @@ components/<id>/
 
 ```html
 <div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
+
+<div data-ios-include="status-card/default"
+     data-text="冲煮完成"
+     data-slot-detail="总时长 3:12 · 粉水比 1:16"></div>
 ```
 
 - `data-text` → 填 `[data-ios-slot="text"]`
+- 任意 `data-slot-<name>` → 填同一组件里的 `[data-ios-slot="<name>"]`；用来复用同一组件的文案/状态，不要为每组文字复制一个 variant
+- Slot 只替换节点内容，不改属性或样式；结构和视觉仍由 component variant 统一拥有
 - 改组件源 → Library 页和引用它的 flow 一起 HMR
 - **不要**把组件 HTML 复制进 screen——复制体会让后续「改组件」类反馈只改到一处
 
@@ -211,9 +269,11 @@ export default function mount(root) {
 
 - 扁平 `board.json`（缺 `sections[]`）
 - 把 `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` 放进 `.ios-app`（见 §1.1）
+- 手写 safe-area 像素或不接 `--ios-safe-*`（见 §1.2）
 - 改 loader chrome / bezel / `ios-kit.css` 去「对齐」一条标注
 - 产品手势 / 屏状态写进 `ios-kit.js`
 - 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 font-size
+- 把待处理的评审意见写成 Frame Note（Frame Note 是长期设计说明）
 - 组件 HTML 复制进 screen（用 `data-ios-include`）
 - 把一次性 flow 构图提前抽进 Library（先屏后组件，见 §4.0）
 - 为「整理文件」而抽组件、却仍在 screen 里留复制体

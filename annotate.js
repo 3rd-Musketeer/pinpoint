@@ -5,7 +5,7 @@
  * SSOT = ~/.html-annotate; localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
- * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
+ * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId / reply?.
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar). */
 (function () {
@@ -939,6 +939,23 @@
     if (marks.length === before) return false;
     var open = document.getElementById('ann-box');
     if (open) closeComposer();
+    persist();
+    return true;
+  }
+
+  function setReply(ref, content, author) {
+    var m = typeof ref === 'string' ? markById(ref) : markByN(ref);
+    if (!m) return false;
+    var text = String(content || '').trim();
+    if (text) {
+      m.reply = normalizeAnnotationReply({
+        content: text,
+        author: author === 'agent' ? 'agent' : 'user',
+        updated_at: new Date().toISOString()
+      });
+    } else {
+      delete m.reply;
+    }
     persist();
     return true;
   }
@@ -2183,7 +2200,12 @@
   function flashAndOpen(m) {
     var anchor = resolveMarkAnchor(m);
     var stageEl = document.getElementById('wbstage');
-    if (anchor.live && anchor.el && stageEl) {
+    var wb = window.workbench;
+    var frameFocused = !!(
+      wb && m.screenId && typeof wb.focusFrame === 'function' &&
+      wb.focusFrame(annotationSection(m), m.screenId, { smooth: false })
+    );
+    if (!frameFocused && anchor.live && anchor.el && stageEl) {
       var er = anchor.el.getBoundingClientRect();
       var sr = stageEl.getBoundingClientRect();
       stageEl.scrollTop += er.top - sr.top - sr.height / 2 + er.height / 2;
@@ -2209,10 +2231,10 @@
       if (m.pageId && typeof wb.setActivePage === 'function' && m.pageId !== currentWorkbenchPageId()) {
         p = Promise.resolve(wb.setActivePage(m.pageId, { scrollTop: false })).then(function () {
           var sec = annotationSection(m);
-          if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec);
+          if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { smooth: false });
         });
       } else if (annotationSection(m) && typeof wb.switchPage === 'function') {
-        p = wb.switchPage(annotationSection(m));
+        p = wb.switchPage(annotationSection(m), { smooth: false });
       }
     }
     return Promise.resolve(p).then(function () {
@@ -2258,6 +2280,7 @@
     setPaused: setPaused,
     clear: doClear,
     removeMark: removeMark,
+    setReply: setReply,
     setFloatingToolbar: setFloatingToolbar,
     hasActiveDraft: function () { return !!activeComposer; },
     cancelDraft: function () {

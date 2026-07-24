@@ -8,6 +8,39 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-07-22
+
+### Added
+- **Named component include slots** — `data-slot-<name>` now fills matching
+  `[data-ios-slot="<name>"]` nodes while keeping legacy `data-text`. Use named slots when the
+  same component/state model needs different copy or progress labels across screens.
+- **High-fidelity Frame / Section export** — Workbench controls and `npm run export` snapshot
+  the current live DOM into an isolated Chromium surface, then produce document-ready 2× WebP
+  (default) or PNG. Frame exports have owned padding and cannot capture neighbors/sidebar;
+  Section exports preserve flow layout. Clean / with-notes presets, background choices, PNG
+  clipboard copy, stable filenames, and render-size guards are included.
+- **Annotation Reply** — every sidebar annotation has one lightweight, editable response
+  (`reply: { content, author, updated_at }`). Agents can update it through revision-safe
+  `POST /reply`; the original annotation body is preserved and SSE refreshes open viewers.
+- **Frame Notes** — optional `screens[].note` renders below each frame and edits the same
+  `board.json` SSOT through revision-checked local API writes. Notes document durable scene /
+  interaction intent and remain separate from disposable review annotations.
+
+### Changed
+- **Stable Frame actions** — image export no longer depends on a hover-only button over the
+  phone. Every Frame title now has a persistent `…` menu with image export and `@frame` copy;
+  the Section export control is also always discoverable at low emphasis.
+- **Comment navigation is frame-semantic** — clicking a sidebar annotation now reuses the
+  canonical board-navigation geometry to focus its owning frame, then flashes the exact anchor.
+  Legacy annotations without `screenId` retain anchor-centered fallback behavior.
+
+### Fixed
+- **Screen fallback document leak** — `validateScreenFragment` rejects Vite's `200 + index.html`
+  fallback (and other full documents) before mounting, so a temporarily missing screen can no
+  longer nest the Workbench sidebar inside a phone frame.
+
+---
+
 ## 2026-07-21
 
 ### Changed
