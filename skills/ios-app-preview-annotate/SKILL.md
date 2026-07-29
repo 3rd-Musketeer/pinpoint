@@ -80,11 +80,18 @@ curl -s --max-time 1 http://127.0.0.1:5199/health || \
 侧栏 **Pages** + **Annotations**（可折叠）：
 
 - Pages：顶端 **Component Library**；其下 flow 页。每行 🔗 复制 `@page:<id>`。
-- Annotations：**标注 / 交互**切换、暂停、清空、Pin；列表按 section 分组；点一条先切到对应 page，再以所属 **frame** 为中心定位（和略缩图 / Section Navigator 同一套规则），标注锚点只闪烁提示；旧数据缺 `screenId` 才居中锚点。每条下方可查看或编辑 Reply；× 删除单条；过滤 全部 / 当前示例。
+- Annotations：**标注 / 交互**切换、暂停、**评论**、清空、Pin；列表按 section 分组；点一条先切到对应 page，再以所属 **frame** 为中心定位（和略缩图 / Section Navigator 同一套规则），标注锚点只闪烁提示；旧数据缺 `screenId` 才居中锚点。每条下方可查看或编辑 Reply；× 删除单条；过滤 全部 / 当前示例。
 
 画布：
 
 - **A** 切换 标注 ↔ 交互
+- **评论**（在画布渲染评论）：开关，把每条标注的 `content` + `reply` 作为 Word 式气泡渲染在画布 overlay 上、锚点旁。气泡带序号（与 pin 一致），稀疏默认放右侧 margin、密集时左右分流。**不画连线**——靠序号与 pin / 选区对应。只渲染当前视口内锚点对应的气泡，滚动/缩放重排；与 标注/交互 模式独立，只读，点气泡打开该标注。不改磁盘数据。
+  - **inline / sidebar**（评论开启后才出现，点击二态切换）：inline=气泡在 iframe overlay、锚点旁（窄窗口可能压正文）；sidebar=气泡搬到父级 workbench 右侧 gutter（iframe 收窄腾位、文档自己响应式回流，不注入 foreign style、不压不遮）。关评论即撤销。
+- **导出含评论**：HTML 板导出对话框勾选「含评论（标注框 + 序号 + 侧栏气泡）」后，三种格式都带评论。导出画 **live 同款选区框 + 橙色序号角标 + 右侧侧栏评论气泡**（content + reply，按序号排序）：
+  - 长图 → 1184 宽（920+264）PNG，叠加 `.ann-target`/`.ann-frame` + `.ann-badge` + `.ann-bubble`；
+  - HTML 完整 → 内联定位脚本，打开时按锚点重算框 + 气泡位置（适配不同窗口/`@media`）；不加载 annotate 编辑器；
+  - 去除 CSS → 文末 `#comments` 纯文本列表（喂 AI）。
+  导出只读 annotation store，不写盘；失效锚点跳过。
 - **标注**：单击元素在画布底部打开 Target Composer；composer 开着继续单击会向当前草稿加 target，textarea 保持焦点。点屏标题 / bezel 标整机 **frame**；**Alt/⌥+单击**屏内内容升到 frame；拖拽框选 region；Space 拖动画布
 - **交互**：演示产品（可选中文字；中键 / Space 拖画布）
 - Target Composer：默认「仅引用」；「插入到文本」在光标处插 `[indicator N]`。Pill hover 高亮、点击定位、× 移除；文字、粘图、「改文案」「调研」、「移动到」箭头、`@` 引用其他标注都在这里；🔗 复制 indicator

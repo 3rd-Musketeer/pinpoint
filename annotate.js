@@ -19,13 +19,8 @@
     return '';
   })();
   var LS_KEY = 'html-annotate:' + location.pathname;
-  // 页面标识 = 文件名 + 全路径短哈希：不同目录的同名 HTML 也不会互相覆盖
-  var PAGE = (function () {
-    var f = decodeURIComponent(location.pathname.split('/').pop() || 'index.html');
-    var h = 0, p = location.pathname;
-    for (var i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) >>> 0;
-    return f + '~' + h.toString(36);
-  })();
+  // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
+  var PAGE = pageKeyFromPathname(location.pathname);
   var PAGE_KEY = annotationSlug(PAGE);
   var marks = [];      // in-memory annotations: {n, id, type, pageId?, section?, sectionLabel?, screenId?, selector?, content, …}
   var revision = 0;    // disk document revision (SSOT concurrency)
@@ -45,6 +40,10 @@
   var arrowFrom = null;
   var activeComposer = null;
   var composerPlacement = null; // session-local viewport position after handle drag
+  var renderComments = false;  // "在画布渲染评论" toggle: show content bubbles beside anchors
+  // 评论布局：'inline'=气泡在 iframe overlay（窄窗口可能压正文） /
+  //  'sidebar'=气泡在父级 workbench 右侧 gutter（iframe 收窄、文档自己响应式回流，不压不遮）。
+  var bubbleLayout = 'inline';
 
   // Mention: UI shows @n; disk stores [@a:<id>] (legacy [@m:<id>] still read).
   var MENTION_STORE_RE = /\[@(?:a|m):([a-z0-9]+)\]/gi;
@@ -95,6 +94,16 @@
     });
   }
   var commentToDisplay = contentToDisplay; // compat alias for workbench
+
+  /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用），
+   *  reply 原样传。iframe 内 overlay 与父级 gutter 共用，避免一边显示 [@a:id] 一边显示 [object Object]。 */
+  function bubbleMarkView(m) {
+    return {
+      n: m.n,
+      content: contentToDisplay(m.content != null ? m.content : '', m.targets || []),
+      reply: m.reply || null
+    };
+  }
 
   /** Textarea form → disk form ([@a:id]). */
   function contentToStorage(text, targets) {
@@ -186,11 +195,17 @@
   }
 
   // 可选范围（与 board-navigation BOARD_FRAME_SELECTOR 对齐）：
-  //   1) frame chrome（屏标题 / bezel / keys / screen-err）→ 整机 frame
-  //   2) .ios-screen / .wb-comp-stage 内部 → 叶子元素；Alt/⌥ 升到 frame
-  //   3) .wb-lib-item 且不在 frame 内 → section
+  //   1) frame chrome（屏标题 / bezel / keys / screen-err / html stage 根）→ 整机 frame
+  //   2) .ios-screen / .wb-comp-stage / .wb-html-surface 内部 → 叶子元素；Alt/⌥ 升到 frame
+  //   3) 独立 HTML 文档 / HTML 板 iframe（无 #wb-board-panel）→ 整份 body 即 surface
+  //   4) .wb-lib-item 且不在 frame 内 → section
   // 画布空白、侧栏等一律不可选
-  var FRAME_SEL = '.ios-stage, .wb-comp-stage, .wb-screen-err';
+  var FRAME_SEL = '.ios-stage, .wb-comp-stage, .wb-html-stage, .wb-screen-err';
+
+  /** True when this annotate.js instance is the document itself (not the workbench shell). */
+  function isPlainDocument() {
+    return !document.getElementById('wb-board-panel');
+  }
 
   function annScreen(el) {
     return el && el.closest && el.closest('.ios-screen');
@@ -198,6 +213,26 @@
 
   function annComp(el) {
     return el && el.closest && el.closest('.wb-comp-stage');
+  }
+
+  function annHtmlSurface(el) {
+    if (!el || !el.closest) return null;
+    var marked = el.closest('.wb-html-surface');
+    if (marked) return marked;
+    // Plain docs (file://, HTML-board iframe) should not force authors to stamp
+    // wb-html-surface on content — the whole document is the annotatable region.
+    // Workbench board pages keep requiring an explicit surface so sidebar/chrome
+    // stay unselectable.
+    if (isPlainDocument() && document.body && (
+      el === document.body || document.body.contains(el)
+    )) {
+      return document.body;
+    }
+    return null;
+  }
+
+  function annContentSurface(el) {
+    return annScreen(el) || annComp(el) || annHtmlSurface(el);
   }
 
   function annFlow(el) {
@@ -229,8 +264,11 @@
     if (el.closest('.wb-screen-err')) return true;
     var frame = annFrame(el);
     if (!frame) return false;
-    // Comp stage has no phone chrome — only the stage root itself counts as chrome.
-    if (frame.classList && frame.classList.contains('wb-comp-stage')) {
+    // Comp / HTML stages: only the stage root itself counts as chrome.
+    if (frame.classList && (
+      frame.classList.contains('wb-comp-stage') ||
+      frame.classList.contains('wb-html-stage')
+    )) {
       return el === frame;
     }
     // Phone: device/bezel/keys/root/stage, but not anything inside .ios-screen.
@@ -249,11 +287,10 @@
       return resolveFrame(el);
     }
 
-    var inScreen = annScreen(el);
-    var inComp = annComp(el);
-    if (inScreen || inComp) {
+    var surface = annContentSurface(el);
+    if (surface) {
       if (opts.promoteFrame) {
-        return resolveFrame(el) || (inComp || inScreen);
+        return resolveFrame(el) || surface;
       }
       return el;
     }
@@ -322,7 +359,9 @@
     while (node && node.nodeType === 1 && node !== document.documentElement) {
       var force = node.classList && (
         node.classList.contains('ios-screen') ||
-        node.classList.contains('wb-comp-stage')
+        node.classList.contains('wb-comp-stage') ||
+        node.classList.contains('wb-html-surface') ||
+        node.classList.contains('wb-html-stage')
       );
       if (force) {
         clips.push(viewRect(node));
@@ -446,6 +485,11 @@
   /** Annotation belongs to the active workbench page. */
   function markOnActivePage(m) {
     if (!m) return false;
+    // 独立 HTML 文档（没有 workbench 画布）：下面的判据全是「这个标注落在当前
+    // 画布的哪个页/哪个 frame 里」，在这里一条都不成立，结果是所有标注都被判为
+    // 不属于本页 —— 计数恒为 0、侧栏列表恒空，尽管标注确实存在并已落盘。
+    // 这类文档的页面身份由磁盘 page key（按路径分文件）保证，不需要再过滤。
+    if (!document.getElementById('wb-board-panel')) return true;
     var pid = currentWorkbenchPageId();
     if (m.pageId) return !pid || m.pageId === pid;
     var sec = annotationSection(m);
@@ -479,9 +523,26 @@
     return m;
   }
 
-  // display:none / 无 layout 的祖先 → offsetParent 为 null（fixed 除外）
+  /** True when `el` has a rendered box an annotation can anchor to.
+   *  offsetParent is an HTML-box-model concept: SVG / MathML / foreignObject
+   *  nodes leave it undefined, so a visible <text>/<path> read as "no layout"
+   *  under the old probe and falsely showed 锚点失效. Keep offsetParent as the
+   *  fast path (so nothing previously live becomes broken) and fall back to
+   *  geometry for non-HTML namespaces and any element with a rendered rect.
+   *  This is the single "has layout" probe — isHidden and regionContains share
+   *  it so the lasso and the anchor-brokenness check can't drift apart. */
+  function hasLayout(el) {
+    if (!el || el === document.body) return true;
+    if (el.offsetParent) return true;
+    if (getComputedStyle(el).position === 'fixed') return true;
+    if (el.getClientRects && el.getClientRects().length) return true;
+    return false;
+  }
+
+  // display:none / 无 layout → 没有 rendered box（fixed 除外）；SVG 等非 HTML 盒
+  // 模型节点走 getClientRects 兜底，否则可见的 <text> 会被误判隐藏。
   function isHidden(el) {
-    return !!el && el !== document.body && !el.offsetParent && getComputedStyle(el).position !== 'fixed';
+    return !hasLayout(el);
   }
 
   // ---------- multi-anchor element marks ----------
@@ -734,12 +795,14 @@
     '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:rgba(28,28,28,.92);border-radius:22px;padding:7px 12px;box-shadow:0 6px 20px rgba(0,0,0,.3);}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;padding:5px 11px;border-radius:14px;background:rgba(255,255,255,.14);color:#fff;}',
     '#ann-toolbar button.on{background:#f5a623;color:#1a1a1a;font-weight:600;}',
+    '#ann-toolbar button[hidden]{display:none;}',
     '#ann-toolbar button.ok{background:rgba(52,168,83,.35);color:#7ee2a0;}',
     '#ann-count{font-size:11px;color:rgba(255,255,255,.7);}',
     '#ann-status{font-size:10px;color:rgba(255,255,255,.45);}',
     '#ann-status.err{color:#ff9d9d;}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
+    '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
     '#ann-chrome{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:visible;}',
     '.ann-hover-ghost{position:absolute;box-sizing:border-box;border:2px solid #f5a623;border-radius:4px;background:rgba(245,166,35,.07);pointer-events:none;z-index:1;}',
@@ -794,7 +857,8 @@
     '#ann-imgs .im img{width:100%;height:100%;object-fit:cover;display:block;}',
     '#ann-imgs .im .x{position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer;}',
     '@keyframes annFlash{0%,100%{background:rgba(245,166,35,.07);box-shadow:none}15%,85%{background:rgba(245,166,35,.2);box-shadow:0 0 0 4px rgba(245,166,35,.22)}}',
-    '.ann-hover-ghost.ann-flash{animation:annFlash 1.5s ease-out}'
+    '.ann-hover-ghost.ann-flash{animation:annFlash 1.5s ease-out}',
+    bubbleCss()
   ].join('\n');
   document.head.appendChild(style);
 
@@ -802,24 +866,40 @@
   overlay.id = 'ann-overlay'; overlay.setAttribute('data-ann-ui', '');
   var marksLayer = document.createElement('div');
   marksLayer.id = 'ann-marks';
+  var bubblesLayer = document.createElement('div');
+  bubblesLayer.id = 'ann-bubbles';
+  bubblesLayer.setAttribute('data-ann-ui', '');
   var hoverLayer = document.createElement('div');
   hoverLayer.id = 'ann-hover-layer';
   var chromeLayer = document.createElement('div');
   chromeLayer.id = 'ann-chrome';
   overlay.appendChild(marksLayer);
+  overlay.appendChild(bubblesLayer);
   overlay.appendChild(hoverLayer);
   overlay.appendChild(chromeLayer);
+  bubblesLayer.style.display = 'none';
   var stageWrap = document.querySelector('.wb-stage-wrap');
-  (stageWrap || document.body).appendChild(overlay);
+  if (stageWrap) {
+    stageWrap.appendChild(overlay);
+  } else {
+    // 没有 workbench 舞台时（独立 HTML 文档、HTML 板 iframe 里的汇报页），overlay
+    // 只能挂 body。此时 position:absolute + inset:0 的包含块是初始包含块——overlay
+    // 锚在文档原点、尺寸只有一屏、还带 overflow:hidden，于是一往下滚，命中框和
+    // 标注框全被裁掉，表现成「标注模式点了没反应」。贴视口即可，origin 恒为 (0,0)。
+    overlay.setAttribute('data-ann-viewport', '');
+    document.body.appendChild(overlay);
+  }
   var hoverGhost = null;
 
   var toolbar = document.createElement('div');
   toolbar.id = 'ann-toolbar'; toolbar.setAttribute('data-ann-ui', '');
-  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
+  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-comments" title="在画布渲染评论">评论</button><button id="ann-channel" title="评论布局：压字 / 留通道" hidden>压字</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
   toolbar.style.display = 'none';
   document.body.appendChild(toolbar);
 
   var btnToggle = toolbar.querySelector('#ann-toggle');
+  var btnComments = toolbar.querySelector('#ann-comments');
+  var btnChannel = toolbar.querySelector('#ann-channel');
   var btnHide = toolbar.querySelector('#ann-hide');
   var btnClear = toolbar.querySelector('#ann-clear');
   var elCount = toolbar.querySelector('#ann-count');
@@ -879,6 +959,16 @@
     btnToggle.textContent = mode ? '标注' : '交互';
     btnToggle.title = mode ? '标注模式 (A → 交互)' : '交互模式 (A → 标注)';
     btnHide.className = paused ? 'on' : '';
+    btnComments.className = renderComments ? 'on' : '';
+    btnComments.textContent = renderComments ? '评论✓' : '评论';
+    btnComments.title = renderComments ? '在画布渲染评论（点击关闭）' : '在画布渲染评论';
+    if (btnChannel) {
+      btnChannel.hidden = !renderComments;
+      var layoutLabel = bubbleLayout === 'sidebar' ? 'sidebar' : 'inline';
+      btnChannel.className = bubbleLayout === 'sidebar' ? 'on' : '';
+      btnChannel.textContent = layoutLabel;
+      btnChannel.title = '评论布局：' + layoutLabel + '（点击切换 inline ↔ sidebar）';
+    }
     syncModeClass();
   }
 
@@ -902,6 +992,30 @@
   }
   btnToggle.addEventListener('click', toggleMode);
 
+  function setRenderComments(on) {
+    on = !!on;
+    if (renderComments === on) return;
+    renderComments = on;
+    bubblesLayer.style.display = on ? '' : 'none';
+    if (on) renderAll();
+    else { clearBubbles(); }
+    notify();
+  }
+  btnComments.addEventListener('click', function () { setRenderComments(!renderComments); });
+
+  /** 评论布局二态切换：inline(iframe overlay) ↔ sidebar(父级 gutter)。
+   *  sidebar 模式下 iframe 内不画气泡（由父级 workbench 在右侧 gutter 渲染）。 */
+  function setBubbleLayout(layout) {
+    if (layout !== 'inline' && layout !== 'sidebar') layout = 'inline';
+    if (bubbleLayout === layout) return;
+    bubbleLayout = layout;
+    if (renderComments) renderAll();
+    notify();
+  }
+  if (btnChannel) btnChannel.addEventListener('click', function () {
+    setBubbleLayout(bubbleLayout === 'inline' ? 'sidebar' : 'inline');
+  });
+
   // 快捷键 A：切换标注模式（输入框内打字/组字中不触发）
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'a' && e.key !== 'A') return;
@@ -918,6 +1032,7 @@
     paused = on;
     overlay.style.display = paused ? 'none' : '';
     if (paused) { clearHover(); closeComposer(); drag = null; }
+    else { renderAll(); }
     notify();
   }
 
@@ -1004,7 +1119,7 @@
       return;
     }
     showPartNodes(part);
-    var local = viewToOverlayRect(viewR);
+    var local = expandRect(viewToOverlayRect(viewR));
     placeFixedRect(part.frame, local);
     if (part.badge) {
       var pos = badgePositionForRect(local);
@@ -1178,15 +1293,15 @@
     var board = document.getElementById('wb-board-panel') || document.body;
     // Scope candidates to preview surfaces only — avoids walking the whole
     // workbench DOM (sidebar/nav/overlay) which made querySelectorAll('*') hot.
-    var roots = Array.prototype.slice.call(board.querySelectorAll('.ios-screen, .wb-comp-stage'));
+    var roots = Array.prototype.slice.call(board.querySelectorAll('.ios-screen, .wb-comp-stage, .wb-html-surface'));
     if (!roots.length) roots = [board];
     var candidates = [];
     for (var ri = 0; ri < roots.length; ri++) {
       var walker = document.createTreeWalker(roots[ri], NodeFilter.SHOW_ELEMENT, null);
       while (walker.nextNode()) {
         var el = walker.currentNode;
-        if (isUI(el) || !(annScreen(el) || annComp(el))) continue;
-        if (!el.offsetParent && el.tagName !== 'BODY') continue;
+        if (isUI(el) || !annContentSurface(el)) continue;
+        if (!hasLayout(el)) continue;
         var r = docRect(el);
         candidates.push({
           rect: r,
@@ -2079,7 +2194,7 @@
           clearMarkArrow(entry);
           return;
         }
-        var local = viewToOverlayRect(viewR);
+        var local = expandRect(viewToOverlayRect(viewR));
         if (part) {
           showPartNodes(part);
           placeFixedRect(part.frame, local);
@@ -2122,10 +2237,144 @@
     elCount.textContent = shown + ' 条' + (marks.length > shown ? ' · 共 ' + marks.length : '');
   }
 
+  // ---------- 评论气泡（"在画布渲染评论"开关）----------
+  // 与 pin 同一套几何管线（resolveMarkAnchor → docToView → viewToOverlayRect），
+  // 但独立于 标注/交互 模式：开关一开就在画布上把 content + reply 渲染成气泡，
+  // 序号与 pin 对应，半透明细线指向锚点。稀疏默认放右侧，密集时左右分流。
+  var bubbleNodes = Object.create(null);   // n → { m, node, height }
+  var BUBBLE_W = 240;
+  var BUBBLE_GAP = 10;
+  var BUBBLE_MARGIN = 12;
+
+  function clearBubbles() {
+    Object.keys(bubbleNodes).forEach(function (n) {
+      var node = bubbleNodes[n].node;
+      if (node.parentNode) node.parentNode.removeChild(node);
+      delete bubbleNodes[n];
+    });
+  }
+
+  function syncBubbleStructure(pageMarks) {
+    if (!renderComments) { clearBubbles(); return; }
+    var keep = Object.create(null);
+    pageMarks.forEach(function (m) {
+      if (isMarkBroken(m)) return;            // 无锚点 → 无法定位气泡
+      keep[m.n] = true;
+      var entry = bubbleNodes[m.n];
+      if (!entry) {
+        var node = document.createElement('div');
+        node.className = 'ann-bubble';
+        node.setAttribute('data-ann-ui', '');
+        node.setAttribute('data-n', m.n);
+        node.innerHTML = bubbleInnerHtml(bubbleMarkView(m));
+        node.addEventListener('click', function (e) {
+          if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
+        });
+        bubblesLayer.appendChild(node);
+        entry = bubbleNodes[m.n] = { m: m, node: node, height: 0 };
+      } else {
+        entry.m = m;
+        // content/reply may have changed; refresh inner HTML + re-measure
+        entry.node.innerHTML = bubbleInnerHtml(bubbleMarkView(m));
+      }
+      entry.height = entry.node.offsetHeight || 0;
+    });
+    Object.keys(bubbleNodes).forEach(function (n) {
+      if (keep[n]) return;
+      if (bubbleNodes[n].node.parentNode) bubbleNodes[n].node.parentNode.removeChild(bubbleNodes[n].node);
+      delete bubbleNodes[n];
+    });
+  }
+
+  /** Two-column greedy packer: sparse → right; when right crowds, spill left.
+   *  No connector lines — bubble numbers match pin badges for correspondence. */
+  function updateBubbleGeometry() {
+    if (!renderComments) return;
+    beginOverlayFrame();
+    // sidebar 模式：iframe 内不画气泡（由父级 workbench 在右侧 gutter 渲染）。
+    if (bubbleLayout === 'sidebar') {
+      Object.keys(bubbleNodes).forEach(function (n) { bubbleNodes[n].node.hidden = true; });
+      return;
+    }
+    var overlayRect = overlay.getBoundingClientRect();
+    var overlayW = overlayRect.width;
+    var overlayH = overlayRect.height;
+    var bw = BUBBLE_W;
+    // Candidates: marks whose anchor is in the viewport right now. Off-screen
+    // anchors get no bubble (like Word's margin — you only see comments for the
+    // text on screen); this keeps a 48-comment doc from stacking every bubble
+    // into one viewport.
+    var cands = [];
+    Object.keys(bubbleNodes).forEach(function (n) {
+      var entry = bubbleNodes[n];
+      var anchorDoc = markAnchorRect(entry.m);
+      if (!anchorDoc) { entry.node.hidden = true; return; }
+      var anchorView = visibleViewRectDoc(anchorDoc, resolveMarkAnchor(entry.m).el);
+      if (!anchorView) { entry.node.hidden = true; return; }
+      var local = viewToOverlayRect(anchorView);
+      // Skip anchors wholly outside the overlay viewport.
+      if (local[1] + local[3] < 0 || local[1] > overlayH) { entry.node.hidden = true; return; }
+      entry.node.hidden = false;
+      cands.push({ entry: entry, anchor: local });
+    });
+    cands.sort(function (a, b) { return a.anchor[1] - b.anchor[1]; });
+
+    var rightNext = BUBBLE_MARGIN;
+    var leftNext = BUBBLE_MARGIN;
+    var rightW = Math.min(bw, overlayW / 2 - BUBBLE_MARGIN);
+    var leftW = rightW;
+    cands.forEach(function (c) {
+      var desired = Math.max(BUBBLE_MARGIN, c.anchor[1]);
+      var rightTop = Math.max(desired, rightNext);
+      var leftTop = Math.max(desired, leftNext);
+      var side, top, left;
+      if (rightTop <= leftTop) {
+        side = 'right'; top = rightTop;
+        left = overlayW - rightW - BUBBLE_MARGIN;
+        rightNext = top + c.entry.height + BUBBLE_GAP;
+      } else {
+        side = 'left'; top = leftTop;
+        left = BUBBLE_MARGIN;
+        leftNext = top + c.entry.height + BUBBLE_GAP;
+      }
+      c.entry.node.style.left = left + 'px';
+      c.entry.node.style.top = top + 'px';
+      c.entry.node.style.width = (side === 'right' ? rightW : leftW) + 'px';
+    });
+  }
+
+  /** 给父级 workbench 用（gutter 模式）：返回当前视口内可见锚点的 rect（iframe 视口坐标）
+   *  + 文本，供父级映射到自己的坐标系后在右侧 gutter 渲染气泡。rect 原点为 iframe 视口
+   *  左上，与 overlay（position:fixed; inset:0）一致。 */
+  function visibleBubbleAnchors() {
+    if (!renderComments || bubbleLayout !== 'sidebar') return [];
+    beginOverlayFrame();
+    var overlayH = overlay.getBoundingClientRect().height;
+    var out = [];
+    visiblePageMarks().forEach(function (m) {
+      if (isMarkBroken(m)) return;
+      var anchorDoc = markAnchorRect(m);
+      if (!anchorDoc) return;
+      var anchorView = visibleViewRectDoc(anchorDoc, resolveMarkAnchor(m).el);
+      if (!anchorView) return;
+      var local = viewToOverlayRect(anchorView);
+      if (local[1] + local[3] < 0 || local[1] > overlayH) return;
+      out.push({
+        n: m.n,
+        rect: [Math.round(local[0]), Math.round(local[1]), Math.round(local[2]), Math.round(local[3])],
+        content: bubbleMarkView(m).content,
+        reply: m.reply || null
+      });
+    });
+    return out;
+  }
+
   function renderAll() {
     var pageMarks = visiblePageMarks();
     syncMarkStructure(pageMarks);
     updateMarkGeometry();
+    syncBubbleStructure(pageMarks);
+    updateBubbleGeometry();
     updateDraftGeometry();
     updateCountLabel(pageMarks.length);
     syncGhost();
@@ -2139,6 +2388,7 @@
       if (structureDirty) renderAll();
       else {
         updateMarkGeometry();
+        updateBubbleGeometry();
         updateDraftGeometry();
         syncGhost();
       }
@@ -2260,6 +2510,8 @@
       syncError: syncError,
       paused: paused,
       floating: floatingToolbar,
+      renderComments: renderComments,
+      bubbleLayout: bubbleLayout,
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
@@ -2278,6 +2530,9 @@
     setMode: function (on) { if (!!on !== mode) toggleMode(); },
     toggle: toggleMode,
     setPaused: setPaused,
+    setRenderComments: setRenderComments,
+    setBubbleLayout: setBubbleLayout,
+    visibleBubbleAnchors: visibleBubbleAnchors,
     clear: doClear,
     removeMark: removeMark,
     setReply: setReply,

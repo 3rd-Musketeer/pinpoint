@@ -1,8 +1,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import os from 'node:os';
 import { fileURLToPath } from 'node:url';
 
+import { projectDataDir } from '../lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from '../lib/annotation-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -12,18 +12,11 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotation-indicator.js'),
   path.join(ROOT, 'lib', 'annotate-hit-test.js'),
   path.join(ROOT, 'lib', 'annotation-slug.js'),
+  path.join(ROOT, 'lib', 'annotate-page-key.js'),
   path.join(ROOT, 'lib', 'annotate-clip.js'),
+  path.join(ROOT, 'lib', 'annotate-bubble.js'),
 ];
-// Per-project data dir. The workbench page key is always /index.html, so a
-// shared ~/.html-annotate would mix annotation documents (and clear/revision
-// state) across clones on the same machine. Same hash style as the client's
-// PAGE key (annotate.js).
-function projectDirName(root) {
-  let h = 0;
-  for (let i = 0; i < root.length; i++) h = (h * 31 + root.charCodeAt(i)) >>> 0;
-  return path.basename(root) + '-' + h.toString(36);
-}
-const DEFAULT_DATA_DIR = path.join(os.homedir(), '.html-annotate', projectDirName(ROOT));
+const DEFAULT_DATA_DIR = projectDataDir(ROOT);
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();

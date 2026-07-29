@@ -1,4 +1,6 @@
 // Workbench shell — pages, board loader, settings, preview hot-reload (Vite dev).
+import { bubbleInnerHtml } from './lib/annotate-bubble.js';
+import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 import { BoardMountManager } from './lib/board-mount-session.js';
 import {
   centerScrollForPoint,
@@ -18,10 +20,19 @@ import {
 import { applyIncludeSlots } from './lib/include-slots.js';
 
 var LIB_ID = 'library';
+var WEB_LIB_ID = 'web-library';
+var DOC_LIB_ID = 'doc-library';
 var COMPONENTS_ID = 'components';
 var SYSTEM_PAGES = { components: true };
+// ios = 手机原型（fragment + 机身 chrome）
+// web = web app 画板（fragment，无机身）
+// html = 完整独立 HTML 文档（汇报页一类），iframe 承载，见 shell "doc"
+var BOARD_MODES = { ios: true, web: true, html: true };
 var activePageId = LIB_ID;
+var boardMode = 'ios';
+var pageManifest = null;
 var pagesNav = document.getElementById('wbpages');
+var boardModeBox = document.getElementById('wbboard-mode');
 var stage  = document.getElementById('wbstage');
 var sideScroll = document.getElementById('wbside-scroll');
 var footEl = document.getElementById('wbfoot');
@@ -54,10 +65,11 @@ var prefsCache;
 var libraryScrollHandler;
 var includeCache = {};
 var boardPanel;
+var activeBoard = null;      // { pageId, board } — HTML 板的版本切换器要读它
+var activeDocByPage = {};    // pageId → screenId，切页回来记得上次看的版本
 var boardNavigationModel = null;
 var boardLoadGen = 0;
 var mountManager = new BoardMountManager();
-var pageManifest = null;
 
 function readPrefs() {
   if (!prefsCache) {
@@ -183,7 +195,7 @@ var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
     syncZoomHud(z);
-    if (window.iOSAnnotate) window.iOSAnnotate.render();
+    var _a = annotateApi(); if (_a) _a.render();
     scheduleMinimapUpdate();
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();
@@ -250,13 +262,9 @@ function savePageViewport(pageId, patch) {
 
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
-  try {
-    if (prefs.activePageId && document.querySelector('.wb-page[data-vpage="' + prefs.activePageId + '"]')) {
-      return prefs.activePageId;
-    }
-  } catch (e) { /* ignore */ }
-  if (pageManifest && pageManifest.defaultPage) return pageManifest.defaultPage;
-  return document.querySelector('.wb-page[data-vpage="' + LIB_ID + '"]') ? LIB_ID : COMPONENTS_ID;
+  boardMode = normalizeBoardMode(prefs.boardMode);
+  if (pageManifest) renderPageManifest(pageManifest);
+  return resolvePageForMode(boardMode, prefs.activePageId);
 }
 
 /** One-time: seed pageViewports[pageId].canvasZoom from legacy prefs.canvasZoom, then drop the global key. */
@@ -445,7 +453,7 @@ function currentCanvasZoom() {
 
 function refit() {
   if (window.iOSKit) window.iOSKit.fitAll();
-  if (window.iOSAnnotate) window.iOSAnnotate.render();
+  var _a = annotateApi(); if (_a) _a.render();
   refreshBoardNavigationModel();
   scheduleMinimapUpdate();
 }
@@ -533,10 +541,199 @@ function wireLibraryScrollSpy() {
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
 }
 
+/* ---- annotate API resolver -------------------------------------------------
+   HTML 板的文档活在 iframe 里，它自己注入 annotate.js，于是页面上同时存在两个
+   互不相通的标注实例：父窗口（侧栏按钮驱动）和 iframe（文档本体）。侧栏点「标注」
+   只切到了父窗口那个，画不出框 —— 表现成「侧栏和右下角没对齐」。
+   侧栏是唯一控制面，所以取用时按当前板解析到正确的那个实例。 */
+function activeDocWindow() {
+  if (boardMode !== 'html' || !boardPanel) return null;
+  var frame = boardPanel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
+  if (!frame) return null;
+  try {
+    var w = frame.contentWindow;
+    return w && w.iOSAnnotate ? w : null;     // 跨域时读 contentWindow 会抛
+  } catch (e) {
+    return null;
+  }
+}
+
+function annotateApi() {
+  var docWin = activeDocWindow();
+  return (docWin && docWin.iOSAnnotate) || window.iOSAnnotate;
+}
+
+/* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
+ * iframe 收窄腾出 gutter，文档按自己的响应式回流；气泡/连线在父级 overlay 里，
+ * 锚点用 iframe.getBoundingClientRect() 跨 frame 映射。只在 HTML 板生效。
+ * 布局算法 SSOT：lib/annotate-bubble-layout.js packGutter。 */
+var gutterOverlay = null;
+var gutterBubblesEl = null;
+var gutterRaf = 0;
+
+function gutterStageWrap() {
+  return document.querySelector('.wb-stage-wrap');
+}
+function gutterIframeEl() {
+  if (boardMode !== 'html' || !boardPanel) return null;
+  return boardPanel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
+}
+
+function ensureGutterOverlay() {
+  if (gutterOverlay) return;
+  var wrap = gutterStageWrap();
+  if (!wrap) return;
+  gutterOverlay = document.createElement('div');
+  gutterOverlay.id = 'wb-ann-gutter';
+  gutterOverlay.setAttribute('data-ann-ui', '');
+  gutterOverlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6;display:none;';
+  var style = document.createElement('style');
+  style.setAttribute('data-ann-ui', '');
+  style.textContent = ''
+    + '#wb-ann-gutter .ann-bubble{position:absolute;width:' + GUTTER_BUBBLE_W + 'px;background:#fff;'
+    + 'border:1px solid rgba(35,44,66,.14);border-radius:10px;box-shadow:0 4px 14px rgba(35,44,66,.10);'
+    + 'font:13px/1.55 var(--sans,system-ui,sans-serif);color:#232C42;pointer-events:auto;cursor:pointer;}'
+    + '#wb-ann-gutter .ann-bubble:hover{box-shadow:0 6px 18px rgba(35,44,66,.16);}'
+    + '.wb-stage-wrap[data-ann-gutter="on"]{padding-right:' + GUTTER_W + 'px;}'
+    + '.wb-stage-wrap[data-ann-gutter="on"] .wb-stage{overflow:auto;}'
+    + '.wb-stage-wrap[data-ann-gutter="on"] .wb-doc-frame{min-width:920px;}';
+  gutterBubblesEl = document.createElement('div');
+  gutterBubblesEl.style.cssText = 'position:absolute;inset:0;';
+  gutterOverlay.appendChild(style);
+  gutterOverlay.appendChild(gutterBubblesEl);
+  wrap.appendChild(gutterOverlay);
+  // 委派点击：点气泡打开该标注（驱动 iframe 实例）。
+  gutterBubblesEl.addEventListener('click', function (e) {
+    var b = e.target.closest('.ann-bubble');
+    if (!b) return;
+    var n = b.getAttribute('data-n');
+    var a = annotateApi();
+    if (a && typeof a.openMark === 'function') a.openMark(n);
+  });
+}
+
+function gutterActive() {
+  var a = annotateApi();
+  if (!a || typeof a.getState !== 'function') return false;
+  var st = a.getState();
+  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && boardMode === 'html');
+}
+
+function renderGutter() {
+  var a = annotateApi();
+  if (!a || typeof a.visibleBubbleAnchors !== 'function') return;
+  var wrap = gutterStageWrap();
+  var iframeEl = gutterIframeEl();
+  if (!wrap || !iframeEl) return;
+  ensureGutterOverlay();
+  var wrapRect = wrap.getBoundingClientRect();
+  var ifRect = iframeEl.getBoundingClientRect();
+  var dx = ifRect.left - wrapRect.left;
+  var dy = ifRect.top - wrapRect.top;
+  var anchors = a.visibleBubbleAnchors();
+  while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
+
+  // Pass 1: build hidden bubbles + measure heights (packGutter is pure).
+  var mapped = [];
+  var heights = Object.create(null);
+  var nodes = Object.create(null);
+  anchors.forEach(function (an) {
+    var node = document.createElement('div');
+    node.className = 'ann-bubble';
+    node.setAttribute('data-ann-ui', '');
+    node.setAttribute('data-n', an.n);
+    node.innerHTML = bubbleInnerHtml({ n: an.n, content: an.content, reply: an.reply });
+    node.style.visibility = 'hidden';
+    node.style.left = '0';
+    node.style.top = '0';
+    node.style.width = GUTTER_BUBBLE_W + 'px';
+    gutterBubblesEl.appendChild(node);
+    heights[an.n] = node.offsetHeight || 60;
+    nodes[an.n] = node;
+    mapped.push({
+      n: an.n,
+      rect: [dx + an.rect[0], dy + an.rect[1], an.rect[2], an.rect[3]],
+    });
+  });
+
+  // Pass 2: pack + position. bubbleLeft = wrap width - bubble - margin
+  // (live gutter is inside the padded wrap; export uses docW + margin).
+  // No connector lines — bubble numbers match pin badges.
+  var wrapW = wrapRect.width;
+  var bubbleLeft = wrapW - GUTTER_BUBBLE_W - GUTTER_MARGIN;
+  var packed = packGutter(mapped, heights, { bubbleLeft: bubbleLeft, bubbleW: GUTTER_BUBBLE_W });
+  packed.forEach(function (p) {
+    var node = nodes[p.n];
+    if (!node) return;
+    node.style.visibility = '';
+    node.style.left = p.left + 'px';
+    node.style.top = p.top + 'px';
+    node.style.width = p.width + 'px';
+  });
+}
+
+function gutterTick() {
+  gutterRaf = 0;
+  if (!gutterActive()) { stopGutter(); return; }
+  renderGutter();
+  gutterRaf = requestAnimationFrame(gutterTick);
+}
+
+function startGutter() {
+  ensureGutterOverlay();
+  var wrap = gutterStageWrap();
+  if (wrap) wrap.setAttribute('data-ann-gutter', 'on');
+  if (gutterOverlay) gutterOverlay.style.display = '';
+  if (!gutterRaf) gutterRaf = requestAnimationFrame(gutterTick);
+}
+
+function stopGutter() {
+  if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
+  var wrap = gutterStageWrap();
+  if (wrap) wrap.removeAttribute('data-ann-gutter');
+  if (gutterOverlay) gutterOverlay.style.display = 'none';
+  if (gutterBubblesEl) while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
+}
+
+/** 由侧栏更新路径与 board 切换调用：按当前状态启停 gutter。 */
+function syncGutterComments() {
+  if (gutterActive()) startGutter();
+  else stopGutter();
+}
+
+// 每个 iframe 实例只订阅一次，否则每次 loadBoard 都会叠一层监听
+var docAnnotateSeen = typeof WeakSet === 'function' ? new WeakSet() : null;
+function bindDocAnnotate() {
+  var docWin = activeDocWindow();
+  if (!docWin) return false;
+  var ann = docWin.iOSAnnotate;
+  if (docAnnotateSeen && !docAnnotateSeen.has(ann)) {
+    docAnnotateSeen.add(ann);
+    if (typeof ann.onUpdate === 'function') ann.onUpdate(scheduleAnnPanel);
+  }
+  scheduleAnnPanel();
+  return true;
+}
+
+/* iframe 里的 annotate.js 是文档自己异步注入的，board 挂载完时通常还没就绪。
+   轮询到它出现为止（上限 ~4s），出现后订阅一次，侧栏面板即刻反映文档的标注状态。 */
+var docAnnotateWatch = 0;
+function watchDocAnnotate() {
+  if (docAnnotateWatch) { clearInterval(docAnnotateWatch); docAnnotateWatch = 0; }
+  if (boardMode !== 'html') return;
+  var tries = 0;
+  docAnnotateWatch = setInterval(function () {
+    if (bindDocAnnotate() || ++tries > 40) {
+      clearInterval(docAnnotateWatch);
+      docAnnotateWatch = 0;
+    }
+  }, 100);
+}
+
 function markSummary(m) {
   var body = (m && (m.content != null ? m.content : m.comment)) || '';
   if (body) {
-    var ann = window.iOSAnnotate;
+    var ann = annotateApi();
     if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
     if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
     return body;
@@ -753,7 +950,7 @@ function wireFrameNoteEditors(panel) {
 function syncConnStatus() {
   var el = document.getElementById('wbconn');
   if (!el) return;
-  var ann = window.iOSAnnotate;
+  var ann = annotateApi();
   var st = ann && typeof ann.getState === 'function' ? ann.getState() : null;
   var on = !!(st && st.connected);
   var syncErr = !!(st && st.syncError);
@@ -776,7 +973,7 @@ function scheduleAnnPanel() {
 }
 
 function refreshAnnPanel() {
-  var ann = window.iOSAnnotate;
+  var ann = annotateApi();
   if (!ann || typeof ann.getState !== 'function') return;
   syncConnStatus();
   var st = ann.getState();
@@ -791,6 +988,22 @@ function refreshAnnPanel() {
   }
   if (btnPause) btnPause.classList.toggle('on', st.paused);
   if (btnPin) btnPin.classList.toggle('on', st.floating);
+  var btnComments = document.getElementById('wbann-comments');
+  if (btnComments) {
+    btnComments.classList.toggle('on', !!st.renderComments);
+    var cLabel = btnComments.querySelector('.wb-tool-label');
+    if (cLabel) cLabel.textContent = st.renderComments ? '评论✓' : '评论';
+  }
+  var btnChannel = document.getElementById('wbann-channel');
+  if (btnChannel) {
+    btnChannel.hidden = !st.renderComments;
+    var lay = st.bubbleLayout || 'inline';
+    btnChannel.classList.toggle('on', lay === 'sidebar');
+    var chLabel = btnChannel.querySelector('.wb-tool-label');
+    if (chLabel) chLabel.textContent = lay === 'sidebar' ? 'sidebar' : 'inline';
+  }
+  // G=画布外 模式：按当前状态启停父级 gutter 渲染。
+  syncGutterComments();
   if (annStatus) {
     if (!st.count) {
       annStatus.textContent = '';
@@ -884,23 +1097,38 @@ function refreshAnnPanel() {
 }
 
 function wireAnnotatePanel() {
-  var ann = window.iOSAnnotate;
+  var ann = annotateApi();
   if (!ann || wireAnnotatePanel.done || typeof ann.getState !== 'function') return;
   var btnToggle = document.getElementById('wbann-toggle');
   var btnPause = document.getElementById('wbann-pause');
   var btnClear = document.getElementById('wbann-clear');
   var btnPin = document.getElementById('wbann-pin');
+  var btnComments = document.getElementById('wbann-comments');
+  var btnChannel = document.getElementById('wbann-channel');
   if (!btnToggle || !btnPause || !btnClear || !btnPin) return;
   wireAnnotatePanel.done = true;
   ann.onUpdate(scheduleAnnPanel);
   syncConnStatus();
-  btnToggle.addEventListener('click', function () { ann.toggle(); });
+  // 每次点击重新解析：HTML 板下要驱动的是 iframe 里那个实例，不能闭包捕获
+  btnToggle.addEventListener('click', function () { annotateApi().toggle(); });
   btnPause.addEventListener('click', function () {
-    ann.setPaused(!ann.getState().paused);
+    var a = annotateApi();
+    a.setPaused(!a.getState().paused);
   });
-  btnClear.addEventListener('click', function () { ann.clear(); });
+  btnClear.addEventListener('click', function () { annotateApi().clear(); });
   btnPin.addEventListener('click', function () {
-    ann.setFloatingToolbar(!ann.getState().floating);
+    var a = annotateApi();
+    a.setFloatingToolbar(!a.getState().floating);
+  });
+  if (btnComments) btnComments.addEventListener('click', function () {
+    var a = annotateApi();
+    if (typeof a.setRenderComments === 'function') a.setRenderComments(!a.getState().renderComments);
+  });
+  if (btnChannel) btnChannel.addEventListener('click', function () {
+    var a = annotateApi();
+    if (typeof a.setBubbleLayout !== 'function') return;
+    var cur = a.getState().bubbleLayout || 'inline';
+    a.setBubbleLayout(cur === 'inline' ? 'sidebar' : 'inline');
   });
   annList.addEventListener('click', function (e) {
     var del = e.target.closest('[data-ann-del]');
@@ -909,7 +1137,8 @@ function wireAnnotatePanel() {
       e.stopPropagation();
       var dn = parseInt(del.getAttribute('data-ann-del'), 10);
       if (editingReplyN === dn) editingReplyN = null;
-      if (ann.removeMark) ann.removeMark(dn);
+      var aDel = annotateApi();
+      if (aDel.removeMark) aDel.removeMark(dn);
       return;
     }
     var replyAction = e.target.closest('[data-ann-reply-action]');
@@ -933,17 +1162,18 @@ function wireAnnotatePanel() {
       } else if (action === 'save') {
         var editor = annList.querySelector('[data-ann-reply-editor="' + rn + '"]');
         var input = editor && editor.querySelector('textarea');
-        var mark = (ann.marks || []).find(function (item) { return item.n === rn; });
+        var aRep = annotateApi();
+        var mark = (aRep.marks || []).find(function (item) { return item.n === rn; });
         var author = mark && mark.reply && mark.reply.author === 'agent' ? 'agent' : 'user';
         editingReplyN = null;
-        if (input && typeof ann.setReply === 'function') ann.setReply(rn, input.value, author);
+        if (input && typeof aRep.setReply === 'function') aRep.setReply(rn, input.value, author);
       }
       return;
     }
     var row = e.target.closest('.wb-ann-item-main[data-ann-n]');
     if (!row) return;
     var n = parseInt(row.getAttribute('data-ann-n'), 10);
-    ann.goToMark(n).then(function () {
+    annotateApi().goToMark(n).then(function () {
       var item = annList.querySelector('.wb-ann-item[data-ann-n="' + n + '"]');
       if (item) item.scrollIntoView({ block: 'nearest' });
     });
@@ -1169,7 +1399,7 @@ function afterMount(panel, session) {
         // reads/writes (navigator positions, frame-in-view, ann panel) batch.
         requestAnimationFrame(function () {
           if (!session.isUsable(panel)) return;
-          if (window.iOSAnnotate) window.iOSAnnotate.render();
+          var _a = annotateApi(); if (_a) _a.render();
           rebuildSectionNavigator(panel);
           wireLibraryScrollSpy();
           if (!hadViewport) frameBoardInView(panel, { pageId: session.pageId });
@@ -1338,6 +1568,276 @@ function downloadExportResult(result) {
   link.click();
   link.remove();
   setTimeout(function () { URL.revokeObjectURL(url); }, 1000);
+}
+
+function filenameFromContentDisposition(header, fallback) {
+  if (!header) return fallback;
+  var star = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (star) {
+    try { return decodeURIComponent(star[1]); } catch (e) { /* keep fallback */ }
+  }
+  var plain = /filename="([^"]+)"/i.exec(header) || /filename=([^;]+)/i.exec(header);
+  return plain ? plain[1].trim() : fallback;
+}
+
+function activeDocExportTarget() {
+  if (boardMode !== 'html' || !boardPanel || !activeBoard) return null;
+  var screenNode = boardPanel.querySelector('.wb-screen:not([data-doc-hidden])[data-screen]');
+  if (!screenNode) return null;
+  var screenId = screenNode.getAttribute('data-screen');
+  var title = screenId;
+  var src = null;
+  (activeBoard.board.sections || []).forEach(function (sec) {
+    (sec.screens || []).forEach(function (sc) {
+      if (sc.id !== screenId) return;
+      title = sc.title || sc.id;
+      src = sc.src || ('previews/' + activeBoard.pageId + '/' + sc.id + '.html');
+    });
+  });
+  if (!src) {
+    var frame = screenNode.querySelector('.wb-doc-frame');
+    var attr = frame && frame.getAttribute('src');
+    if (attr) src = attr;
+  }
+  if (!src) return null;
+  if (/^https?:\/\//i.test(src)) {
+    try { src = new URL(src, location.href).pathname; } catch (e) { return null; }
+  }
+  src = String(src).replace(/^\/+/, '');
+  if (src.indexOf('previews/') !== 0) return null;
+  return {
+    pageId: activeBoard.pageId,
+    screenId: screenId,
+    title: title,
+    src: src
+  };
+}
+
+var docExportDialog = null;
+var docTokenCache = {};
+var docTokenRequestSeq = 0;
+
+function requestDocTokenEstimate(src, mode, comments) {
+  var key = mode + '\0' + (comments ? '1' : '0') + '\0' + src;
+  if (docTokenCache[key]) return Promise.resolve(docTokenCache[key]);
+  var body = { src: src, mode: mode, comments: !!comments };
+  if (mode === 'image') {
+    body.scale = 2;
+    body.viewportWidth = comments ? 1184 : 920;
+  }
+  return fetch('/api/export-doc-tokens', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  }).then(function (response) {
+    if (!response.ok) {
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        throw new Error(body.message || ('token 估算失败 · ' + response.status));
+      });
+    }
+    return response.json();
+  }).then(function (estimate) {
+    docTokenCache[key] = estimate;
+    return estimate;
+  });
+}
+
+function renderDocTokenEstimate(estimate) {
+  var row = docExportDialog && docExportDialog.querySelector('[data-export-tokens]');
+  if (!row) return;
+  if (!estimate || !estimate.providers) {
+    row.hidden = true;
+    row.innerHTML = '';
+    row.removeAttribute('title');
+    return;
+  }
+  row.hidden = false;
+  var sizeLine = estimate.mode === 'image' && estimate.width && estimate.height
+    ? estimate.width + '×' + estimate.height + 'px\n'
+    : '';
+  row.title = sizeLine + estimate.providers.map(function (p) {
+    return p.label + ' ' + p.tokens.toLocaleString('en-US') + ' · ' + p.detail;
+  }).join('\n');
+  row.innerHTML = estimate.providers.map(function (p) {
+    return '<span class="wb-export-token"><span class="wb-export-token-label">' + escHtml(p.label) +
+      '</span><span class="wb-export-token-n">~' + escHtml(p.display) + '</span></span>';
+  }).join('');
+}
+
+function refreshDocExportTokens() {
+  if (!docExportDialog) return;
+  var form = docExportDialog.querySelector('form');
+  var target = docExportDialog._target;
+  var mode = new FormData(form).get('mode') || 'html-full';
+  var comments = !!(form.querySelector('[name="comments"]') && form.querySelector('[name="comments"]').checked);
+  var tokensEl = docExportDialog.querySelector('[data-export-tokens]');
+  if (!tokensEl) return;
+  if (!target) {
+    renderDocTokenEstimate(null);
+    return;
+  }
+  var seq = ++docTokenRequestSeq;
+  tokensEl.hidden = false;
+  tokensEl.title = '';
+  tokensEl.innerHTML = '<span class="wb-export-token-pending">' +
+    (mode === 'image' ? '测量版面并估算视觉 tokens…' : '估算 tokens…') +
+    '</span>';
+  requestDocTokenEstimate(target.src, mode, comments).then(function (estimate) {
+    if (seq !== docTokenRequestSeq) return;
+    renderDocTokenEstimate(estimate);
+  }).catch(function () {
+    if (seq !== docTokenRequestSeq) return;
+    tokensEl.hidden = false;
+    tokensEl.title = '';
+    tokensEl.innerHTML = '<span class="wb-export-token-pending">token 估算失败</span>';
+  });
+}
+
+function ensureDocExportDialog() {
+  if (docExportDialog) return docExportDialog;
+  docExportDialog = document.createElement('dialog');
+  docExportDialog.className = 'wb-export-dialog';
+  docExportDialog.setAttribute('data-ann-ui', '');
+  docExportDialog.setAttribute('data-export-ui', '');
+  docExportDialog.innerHTML = '<form class="wb-export-form" method="dialog">' +
+    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2>导出文档</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
+    '<div class="wb-export-field"><span class="wb-export-label">格式</span><div class="wb-export-options wb-export-options--stack">' +
+      '<label class="wb-export-option"><input type="radio" name="mode" value="html-full" checked><span><span class="wb-export-option-copy"><strong>HTML 完整</strong><small>源文件，含样式 · 适合本地打开 / 外发</small></span></span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="mode" value="html-no-css"><span><span class="wb-export-option-copy"><strong>去除 CSS 的 HTML</strong><small>结构与正文保留 · 适合喂给 AI</small></span></span></label>' +
+      '<label class="wb-export-option"><input type="radio" name="mode" value="image"><span><span class="wb-export-option-copy"><strong>长图</strong><small>整页 PNG · 920 宽 · 2×</small></span></span></label>' +
+    '</div></div>' +
+    '<div class="wb-export-field"><label class="wb-export-check"><input type="checkbox" name="comments" value="1"><span>含评论（标注框 + 序号 + 侧栏气泡）</span></label></div>' +
+    '<div class="wb-export-status" data-export-status>HTML 完整 · 源文件下载</div>' +
+    '<div class="wb-export-tokens" data-export-tokens hidden></div>' +
+    '<div class="wb-export-actions"><button type="button" class="wb-export-action primary" data-export-download>下载</button></div>' +
+    '</form>';
+  document.body.appendChild(docExportDialog);
+  var form = docExportDialog.querySelector('form');
+  function status(text, isError) {
+    var el = docExportDialog.querySelector('[data-export-status]');
+    el.textContent = text;
+    el.classList.toggle('is-error', !!isError);
+  }
+  function commentsOn() {
+    var el = form.querySelector('[name="comments"]');
+    return !!(el && el.checked);
+  }
+  function modeHint(mode) {
+    var withComments = commentsOn();
+    if (mode === 'html-no-css') {
+      return withComments
+        ? '去除 CSS 的 HTML · 文末追加评论列表 · 适合喂给 AI'
+        : '去除 CSS 的 HTML · 适合喂给 AI';
+    }
+    if (mode === 'image') {
+      return withComments
+        ? '长图 · PNG · 1184×2（920 正文 + 264 侧栏气泡）· 含标注框、序号、评论气泡 · 下方为视觉 token'
+        : '长图 · PNG · 920×2 · 不含评论 · 下方为视觉 token';
+    }
+    return withComments
+      ? 'HTML 完整 · 打开时按锚点重定位标注框 + 评论气泡 · 可本地打开'
+      : 'HTML 完整 · 源文件下载';
+  }
+  form.addEventListener('change', function () {
+    var mode = new FormData(form).get('mode');
+    status(modeHint(mode));
+    refreshDocExportTokens();
+  });
+  docExportDialog.querySelector('[data-export-download]').addEventListener('click', function () {
+    var target = docExportDialog._target;
+    if (!target) { status('当前没有可导出的文档', true); return; }
+    var mode = new FormData(form).get('mode') || 'html-full';
+    var comments = commentsOn();
+    var button = docExportDialog.querySelector('[data-export-download]');
+    button.disabled = true;
+    status(mode === 'image'
+      ? (comments ? '正在生成含评论的长图…' : '正在生成高保真长图…')
+      : (comments ? '正在烘焙评论并准备下载…' : '正在准备下载…'));
+    requestDocExport(Object.assign({}, target, { mode: mode, comments: comments }))
+      .then(function (result) {
+        downloadExportResult(result);
+        var commentNote = result.commentsBaked != null
+          ? ' · ' + result.commentsBaked + ' 条评论'
+            + (result.commentsBroken ? '（跳过 ' + result.commentsBroken + ' 条失效锚点）' : '')
+          : '';
+        if (result.width && result.height) {
+          status(result.width + ' × ' + result.height + ' · ' + (result.blob.size / 1024).toFixed(0) + ' KB · 已下载' + commentNote);
+        } else {
+          status('已下载' + commentNote);
+        }
+      })
+      .catch(function (err) {
+        status(String(err && err.message || err), true);
+      })
+      .then(function () { button.disabled = false; });
+  });
+  return docExportDialog;
+}
+
+function requestDocExport(options) {
+  options = options || {};
+  var comments = !!options.comments;
+  var request = {
+    mode: options.mode || 'html-full',
+    pageId: options.pageId,
+    screenId: options.screenId,
+    src: options.src,
+    comments: comments,
+    format: 'png',
+    scale: 2,
+    viewportWidth: comments ? 1184 : 920
+  };
+  return fetch('/api/export-doc', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(request)
+  }).then(function (response) {
+    if (!response.ok) {
+      return response.json().catch(function () { return {}; }).then(function (body) {
+        throw new Error(body.message || ('导出失败 · ' + response.status));
+      });
+    }
+    var fallback = request.pageId + '__' + request.screenId
+      + (request.mode === 'html-no-css'
+        ? (comments ? '.comments.no-css.html' : '.no-css.html')
+        : request.mode === 'image'
+          ? (comments ? '@2x.comments.png' : '@2x.png')
+          : (comments ? '.comments.html' : '.html'));
+    return response.blob().then(function (blob) {
+      return {
+        blob: blob,
+        filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), fallback),
+        width: Number(response.headers.get('X-Export-Width')) || 0,
+        height: Number(response.headers.get('X-Export-Height')) || 0,
+        commentsBaked: response.headers.has('X-Export-Comments')
+          ? Number(response.headers.get('X-Export-Comments'))
+          : null,
+        commentsBroken: response.headers.has('X-Export-Comments-Broken')
+          ? Number(response.headers.get('X-Export-Comments-Broken'))
+          : null,
+        request: request
+      };
+    });
+  });
+}
+
+function openDocExportDialog() {
+  var target = activeDocExportTarget();
+  if (!target) return;
+  var dialog = ensureDocExportDialog();
+  dialog._target = target;
+  dialog.querySelector('[data-export-target-label]').textContent =
+    target.pageId + ' / ' + target.title;
+  dialog.querySelector('[data-export-status]').textContent = 'HTML 完整 · 源文件下载';
+  dialog.querySelector('[data-export-status]').classList.remove('is-error');
+  var full = dialog.querySelector('[name="mode"][value="html-full"]');
+  if (full) full.checked = true;
+  var comments = dialog.querySelector('[name="comments"]');
+  if (comments) comments.checked = false;
+  dialog.showModal();
+  refreshDocExportTokens();
+  // Prefetch the AI-friendly variant so switching modes feels instant.
+  requestDocTokenEstimate(target.src, 'html-no-css', false).catch(function () {});
 }
 
 function ensureExportDialog() {
@@ -2070,6 +2570,11 @@ function wrapFragmentForLibrary(html) {
     '</div></div>';
 }
 
+function docFrameHtml(url, title) {
+  return '<iframe class="wb-doc-frame" src="' + escHtml(url) + '"' +
+    ' title="' + escHtml(title || url) + '" loading="lazy"></iframe>';
+}
+
 function fetchScreenHtml(pageId, screen) {
   var sc = typeof screen === 'string' ? { id: screen } : screen;
   var url;
@@ -2080,6 +2585,12 @@ function fetchScreenHtml(pageId, screen) {
   } else {
     url = 'previews/' + pageId + '/' + sc.id + '.html';
   }
+  // doc shell 承载的是完整独立文档（有 <!doctype>/<head>/自己的 <style>），
+  // 不能当 fragment 内联——它的 body 规则会失效、style 会漏进 workbench。
+  // 交给 iframe，文档保持原样；标注由文档自己注入的 annotate.js 负责。
+  if ((sc.shell || defaultShellForPage(pageId)) === 'doc') {
+    return Promise.resolve({ ok: true, html: docFrameHtml(url, sc.title || sc.id) });
+  }
   return fetch(url)
     .then(function (r) {
       if (!r.ok) throw r.status;
@@ -2087,7 +2598,9 @@ function fetchScreenHtml(pageId, screen) {
     })
     .then(function (raw) {
       if (pageId !== COMPONENTS_ID) {
-        raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')');
+        raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', {
+          shell: sc.shell || defaultShellForPage(pageId)
+        });
       }
       return resolveIncludes(raw).then(function (html) {
         if (pageId === COMPONENTS_ID) html = wrapFragmentForLibrary(html);
@@ -2140,6 +2653,44 @@ function wrapCompStage(bodyHtml) {
   );
 }
 
+/** Web board: desktop/report artboard without phone chrome. */
+function wrapHtmlShell(bodyHtml) {
+  if (/\bwb-html-stage\b/.test(bodyHtml)) return bodyHtml;
+  return (
+    '<div class="wb-html-stage" data-ann-frame>' +
+      '<div class="wb-html-surface" data-ann-surface data-preview-mount>' +
+        bodyHtml +
+      '</div>' +
+    '</div>'
+  );
+}
+
+/** HTML board: a standalone document artboard (iframe inside). */
+function wrapDocShell(bodyHtml) {
+  if (/\bwb-doc-stage\b/.test(bodyHtml)) return bodyHtml;
+  return (
+    '<div class="wb-doc-stage" data-ann-frame>' +
+      '<div class="wb-doc-surface" data-preview-mount>' +
+        bodyHtml +
+      '</div>' +
+    '</div>'
+  );
+}
+
+function wrapScreenShell(pageId, bodyHtml, shell) {
+  if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
+  if (shell === 'doc' || modeForPage(pageId) === 'html') return wrapDocShell(bodyHtml);
+  if (shell === 'web' || modeForPage(pageId) === 'web') return wrapHtmlShell(bodyHtml);
+  return wrapPhoneShell(bodyHtml, shell);
+}
+
+function screenClassForShell(pageId, shell) {
+  if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
+  if (shell === 'doc' || modeForPage(pageId) === 'html') return 'wb-screen wb-screen--doc';
+  if (shell === 'web' || modeForPage(pageId) === 'web') return 'wb-screen wb-screen--web';
+  return 'wb-screen';
+}
+
 function buildBoardHtml(pageId, board, screenMap) {
   var isCompLib = pageId === COMPONENTS_ID;
   var sections = board.sections || [];
@@ -2162,11 +2713,11 @@ function buildBoardHtml(pageId, board, screenMap) {
       var fetched = screenMap[key];
       var inner;
       if (fetched && fetched.ok) {
-        inner = isCompLib ? wrapCompStage(fetched.html) : wrapPhoneShell(fetched.html, sc.shell);
+        inner = wrapScreenShell(pageId, fetched.html, sc.shell);
       } else {
         inner = screenErrorHtml(pageId, sc.id, fetched ? fetched.err : 'missing');
       }
-      var screenCls = isCompLib ? 'wb-screen wb-screen--comp' : 'wb-screen';
+      var screenCls = screenClassForShell(pageId, sc.shell);
       var note = sc.note || '';
       var noteHtml = '';
       if (!isCompLib) {
@@ -2221,7 +2772,8 @@ function loadBoard(panel, pageId) {
       if (gen !== boardLoadGen) return null;
       board = validateBoard(board, {
         pageId: pageId,
-        allowComponentRefs: pageId === COMPONENTS_ID
+        allowComponentRefs: pageId === COMPONENTS_ID,
+        defaultShell: defaultShellForPage(pageId)
       });
       var entries = [];
       var seen = {};
@@ -2241,6 +2793,9 @@ function loadBoard(panel, pageId) {
         rows.forEach(function (row) { screenMap[row.id] = row.res; });
         var session = mountManager.begin(pageId);
         panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
+        activeBoard = { pageId: pageId, board: board };
+        renderDocVersions();
+        watchDocAnnotate();
         return afterMount(panel, session);
       });
     })
@@ -2320,22 +2875,234 @@ function ensurePageCopyButtons() {
   });
 }
 
+function normalizeBoardMode(mode) {
+  return BOARD_MODES[mode] ? mode : 'ios';
+}
+
+function modeForPage(pageId) {
+  if (pageId === COMPONENTS_ID) return 'ios';
+  if (!pageManifest || !pageManifest.pages) return 'ios';
+  for (var i = 0; i < pageManifest.pages.length; i++) {
+    if (pageManifest.pages[i].id === pageId) return pageManifest.pages[i].mode || 'ios';
+  }
+  return 'ios';
+}
+
+function defaultShellForPage(pageId) {
+  var mode = modeForPage(pageId);
+  if (mode === 'web') return 'web';
+  if (mode === 'html') return 'doc';
+  return 'app';
+}
+
+function pagesForMode(mode) {
+  mode = normalizeBoardMode(mode);
+  if (!pageManifest || !pageManifest.pages) return [];
+  return pageManifest.pages.filter(function (page) {
+    return (page.mode || 'ios') === mode;
+  });
+}
+
+function defaultPageForMode(mode) {
+  mode = normalizeBoardMode(mode);
+  var pages = pagesForMode(mode);
+  if (!pages.length) {
+    if (mode === 'web') return WEB_LIB_ID;
+    if (mode === 'html') return DOC_LIB_ID;
+    return LIB_ID;
+  }
+  if (pageManifest && pageManifest.defaultPage) {
+    for (var i = 0; i < pages.length; i++) {
+      if (pages[i].id === pageManifest.defaultPage) return pages[i].id;
+    }
+  }
+  return pages[0].id;
+}
+
+function readActivePageByMode() {
+  var raw = readPrefs().activePageIdByMode;
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+function rememberActivePageForMode(mode, pageId) {
+  mode = normalizeBoardMode(mode);
+  if (!pageId) return;
+  var map = Object.assign({}, readActivePageByMode());
+  map[mode] = pageId;
+  savePrefs({ activePageIdByMode: map, activePageId: pageId, boardMode: mode });
+}
+
+function resolvePageForMode(mode, preferredId) {
+  mode = normalizeBoardMode(mode);
+  var pages = pagesForMode(mode);
+  var ids = {};
+  pages.forEach(function (page) { ids[page.id] = true; });
+  if (mode === 'ios') ids[COMPONENTS_ID] = true;
+  if (preferredId && ids[preferredId]) return preferredId;
+  var remembered = readActivePageByMode()[mode];
+  if (remembered && ids[remembered]) return remembered;
+  if (mode === 'ios' && ids[LIB_ID]) return LIB_ID;
+  return defaultPageForMode(mode);
+}
+
+/* ---- HTML board: one document, full viewport, sidebar switches versions ----
+   汇报页要在读者真实的窗口尺寸下读，所以不画布化：文档 1:1 铺满 stage，
+   同一页里的多个版本不并排摆，改从侧栏切。 */
+var docVersionsNav = document.getElementById('wbdoc-versions');
+
+function docScreensOfActiveBoard() {
+  if (!activeBoard || modeForPage(activeBoard.pageId) !== 'html') return [];
+  var out = [];
+  (activeBoard.board.sections || []).forEach(function (sec) {
+    (sec.screens || []).forEach(function (sc) {
+      out.push({ id: sc.id, title: sc.title || sc.id, section: sec.title || sec.id });
+    });
+  });
+  return out;
+}
+
+function setActiveDoc(screenId, options) {
+  options = options || {};
+  if (!boardPanel) return;
+  var screens = docScreensOfActiveBoard();
+  if (!screens.length) return;
+  var ids = screens.map(function (sc) { return sc.id; });
+  if (ids.indexOf(screenId) < 0) screenId = ids[0];
+  if (activeBoard) activeDocByPage[activeBoard.pageId] = screenId;
+
+  boardPanel.querySelectorAll('.wb-screen[data-screen]').forEach(function (node) {
+    var on = node.getAttribute('data-screen') === screenId;
+    node.toggleAttribute('data-doc-hidden', !on);
+    // section 容器只在它一个 screen 都不显示时才收起
+    var item = node.closest('.wb-lib-item');
+    if (item) {
+      var anyVisible = !!item.querySelector('.wb-screen[data-screen]:not([data-doc-hidden])');
+      item.toggleAttribute('data-doc-hidden', !anyVisible);
+    }
+  });
+  if (docVersionsNav) {
+    docVersionsNav.querySelectorAll('[data-doc-screen]').forEach(function (btn) {
+      btn.classList.toggle('on', btn.getAttribute('data-doc-screen') === screenId);
+    });
+  }
+  if (options.scrollTop !== false && stage) stage.scrollTop = 0;
+  watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
+}
+
+function renderDocVersions() {
+  if (!docVersionsNav) return;
+  var screens = docScreensOfActiveBoard();
+  docVersionsNav.innerHTML = '';
+  if (boardMode !== 'html' || !screens.length) {
+    docVersionsNav.hidden = true;
+    return;
+  }
+  docVersionsNav.hidden = false;
+  var head = document.createElement('div');
+  head.className = 'wb-doc-ver-head';
+  var headLabel = document.createElement('span');
+  headLabel.textContent = screens.length > 1 ? 'Versions' : 'Document';
+  head.appendChild(headLabel);
+  var exportBtn = document.createElement('button');
+  exportBtn.type = 'button';
+  exportBtn.className = 'wb-doc-export';
+  exportBtn.setAttribute('data-doc-export', '');
+  exportBtn.title = '导出当前文档';
+  exportBtn.textContent = '导出';
+  head.appendChild(exportBtn);
+  docVersionsNav.appendChild(head);
+  var lastSection = null;
+  screens.forEach(function (sc) {
+    if (screens.length > 1 && sc.section && sc.section !== lastSection) {
+      lastSection = sc.section;
+      var cap = document.createElement('div');
+      cap.className = 'wb-doc-ver-sec';
+      cap.textContent = sc.section;
+      docVersionsNav.appendChild(cap);
+    }
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'wb-doc-ver';
+    btn.setAttribute('data-doc-screen', sc.id);
+    btn.textContent = sc.title;
+    docVersionsNav.appendChild(btn);
+  });
+  var remembered = activeBoard ? activeDocByPage[activeBoard.pageId] : null;
+  setActiveDoc(remembered || screens[0].id, { scrollTop: false });
+}
+
+if (docVersionsNav) {
+  docVersionsNav.addEventListener('click', function (e) {
+    if (e.target.closest('[data-doc-export]')) {
+      openDocExportDialog();
+      return;
+    }
+    var btn = e.target.closest('[data-doc-screen]');
+    if (btn) setActiveDoc(btn.getAttribute('data-doc-screen'));
+  });
+}
+
+function syncBoardModeUi(mode) {
+  mode = normalizeBoardMode(mode);
+  if (!boardModeBox) return;
+  boardModeBox.querySelectorAll('[data-board-mode]').forEach(function (btn) {
+    var on = btn.getAttribute('data-board-mode') === mode;
+    btn.classList.toggle('on', on);
+    btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+  });
+  if (wbRoot) wbRoot.setAttribute('data-board-mode', mode);
+}
+
 function renderPageManifest(manifest) {
   if (!pagesNav) return;
-  pagesNav.querySelectorAll('.wb-page-row:not([data-page-system="1"]), .wb-page:not([data-page-system="1"]), .wb-page-error').forEach(function (node) {
+  pageManifest = manifest;
+  pagesNav.querySelectorAll('.wb-page-row, .wb-page, .wb-page-error').forEach(function (node) {
     node.remove();
   });
-  manifest.pages.forEach(function (page) {
+  if (boardMode === 'ios') {
+    var components = document.createElement('button');
+    components.type = 'button';
+    components.className = 'wb-page';
+    components.setAttribute('data-vpage', COMPONENTS_ID);
+    components.setAttribute('data-page-system', '1');
+    components.setAttribute('data-page-default', 'Component Library');
+    components.textContent = 'Component Library';
+    pagesNav.appendChild(components);
+  }
+  pagesForMode(boardMode).forEach(function (page) {
     var button = document.createElement('button');
     button.type = 'button';
     button.className = 'wb-page';
     button.setAttribute('data-vpage', page.id);
     button.setAttribute('data-page-default', page.title);
+    button.setAttribute('data-page-mode', page.mode || 'ios');
     button.textContent = page.title;
     pagesNav.appendChild(button);
   });
   ensurePageCopyButtons();
   applyPageNames(readPrefs().pageNames);
+  syncBoardModeUi(boardMode);
+  syncPagesNav(activePageId);
+}
+
+function setBoardMode(mode, options) {
+  options = options || {};
+  mode = normalizeBoardMode(mode);
+  var prevMode = boardMode;
+  if (prevMode !== mode && mountManager.current && mountManager.current.active && mountManager.current.pageId === activePageId) {
+    snapshotPageViewport(activePageId);
+  }
+  boardMode = mode;
+  syncBoardModeUi(mode);
+  if (mode !== 'html') stopGutter();   // 离开 HTML 板：父级 gutter 不再适用
+  // 画布缩放对文档没有意义——报告必须按读者真实窗口尺寸渲染
+  if (mode === 'html') setCanvasZoom('1', { save: false });
+  if (docVersionsNav && mode !== 'html') { docVersionsNav.hidden = true; docVersionsNav.innerHTML = ''; }
+  if (pageManifest) renderPageManifest(pageManifest);
+  var nextPageId = resolvePageForMode(mode, options.pageId);
+  rememberActivePageForMode(mode, nextPageId);
+  if (options.save !== false) savePrefs({ boardMode: mode });
+  return setActivePage(nextPageId, { force: options.force === true, save: options.save !== false });
 }
 
 function showPageManifestError(error) {
@@ -2371,15 +3138,24 @@ function setActivePage(pageId, options) {
   options = options || {};
   if (!boardPanel) return Promise.resolve();
   var same = activePageId === pageId;
-  if (!same && window.iOSAnnotate && typeof window.iOSAnnotate.cancelDraft === 'function') {
-    window.iOSAnnotate.cancelDraft();
+  var _draftAnn = annotateApi();
+  if (!same && _draftAnn && typeof _draftAnn.cancelDraft === 'function') {
+    _draftAnn.cancelDraft();
   }
   if (!same && mountManager.current && mountManager.current.active && mountManager.current.pageId === activePageId) {
     snapshotPageViewport(activePageId);
   }
   activePageId = pageId;
-  syncPagesNav(pageId);
-  if (options.save !== false) savePrefs({ activePageId: pageId });
+  var nextMode = modeForPage(pageId);
+  if (nextMode !== boardMode) {
+    boardMode = nextMode;
+    if (pageManifest) renderPageManifest(pageManifest);
+  } else {
+    boardMode = nextMode;
+    syncBoardModeUi(boardMode);
+    syncPagesNav(pageId);
+  }
+  if (options.save !== false) rememberActivePageForMode(boardMode, pageId);
   if (same && !options.force) {
     // Re-clicking the active page must not fight per-page viewport memory.
     if (options.scrollTop === true) stage.scrollTo({ top: 0, behavior: 'smooth' });
@@ -2555,11 +3331,25 @@ wireCanvasHud();
 window.workbench = {
   switchPage: switchPage,
   setActivePage: setActivePage,
+  setBoardMode: setBoardMode,
   focusFrame: focusWorkbenchFrame,
   activePageId: function () { return activePageId; },
+  boardMode: function () { return boardMode; },
   exportSnapshot: buildExportSnapshot,
-  exportImage: requestExportImage
+  exportImage: requestExportImage,
+  exportDoc: requestDocExport,
+  activeDocExportTarget: activeDocExportTarget
 };
+
+if (boardModeBox) {
+  boardModeBox.addEventListener('click', function (e) {
+    var btn = e.target.closest('[data-board-mode]');
+    if (!btn || !boardModeBox.contains(btn)) return;
+    var mode = btn.getAttribute('data-board-mode');
+    if (!mode || mode === boardMode) return;
+    setBoardMode(mode);
+  });
+}
 pollAnnotate();
 
 gearBtn.addEventListener('click', function () {
@@ -2607,7 +3397,7 @@ if (splitEl) {
     if (splitRaf) return;
     splitRaf = requestAnimationFrame(function () {
       splitRaf = 0;
-      if (window.iOSAnnotate) window.iOSAnnotate.render();
+      var _a = annotateApi(); if (_a) _a.render();
     });
   }
 
@@ -2705,7 +3495,7 @@ stage.addEventListener('wheel', function (e) {
   var spaceDown = false;
 
   function annotateBlocksPan() {
-    var ann = window.iOSAnnotate;
+    var ann = annotateApi();
     if (!ann || typeof ann.getState !== 'function') return false;
     var st = ann.getState();
     return !!(st.mode && !st.paused);
@@ -2803,7 +3593,7 @@ stage.addEventListener('wheel', function (e) {
     }
 
     // Without Space: only pan on empty board chrome, never steal frame interactions.
-    if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-screen-err, button, a')) return;
+    if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-html-stage, .wb-screen-err, button, a')) return;
     startPan(e);
   });
 
