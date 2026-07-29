@@ -8,6 +8,121 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-07-29
+
+### Fixed
+- **HTML 导出不再误删页面内联脚本** — 剥离 annotate bootstrap 的正则会跨 `</script>` 边界匹配，把 Sankey / 图表等相邻内联脚本一并吃掉（导出 HTML 里大图消失）。改为逐块匹配、仅当脚本体内含 `/annotate.js` 才移除。
+
+### Changed
+- **标注框外扩 4px** — live 选区框 / 导出框相对元素几何统一 `MARK_BOX_PAD_PX=4`（`lib/annotate-clip.js` `expandRect`），避免 2px 描边贴紧字形；hover ghost 仍贴合以便点选精度。
+
+### Added
+- **导出含评论（标注框 + 序号 + 侧栏气泡）** — 文档导出对话框新增「含评论（标注框 + 序号 + 侧栏气泡）」开关。
+  - **长图**：viewport 1184（920 正文 + 264 gutter），烘焙黄色选区框 + 橙色序号角标 + 右侧侧栏评论气泡（content + reply），`fullPage` PNG（`*.@2x.comments.png`）。
+  - **HTML 完整**：内联定位脚本，打开/resize 时按 selector 重算框 + 气泡位置；气泡按标注序号排序堆在正文右侧 gutter（`*.comments.html`）。
+  - **去除 CSS 的 HTML**：文末追加 `#comments` 纯文本列表（适合喂 AI；`*.comments.no-css.html`）。
+  - 导出只读 annotation store，不写盘。失效锚点跳过并在状态栏报数。
+  - 角标用 overlay 局部坐标（避免 body margin 造成整体错位）。
+  - 气泡布局 SSOT：`lib/annotate-bubble-layout.js` `packGutter`；气泡模板：`lib/annotate-bubble.js` `bubbleInnerHtml`。
+  - page-key / data-dir 抽成共享库（`lib/annotate-page-key.js`、`lib/annotate-data-dir.js`），annotate-api 与 export-doc-api 共用同一数据目录。
+- **"在画布渲染评论" view** — a new toggle (sidebar 评论 + floating-toolbar 评论) renders
+  annotation `content` + `reply` as Word-style comment bubbles on the canvas overlay,
+  beside their anchors. Bubbles carry the annotation number (matching the pin badge),
+  pack into the right margin when sparse and split left/right when dense, and connect to
+  the anchor with a thin semi-transparent line. Only annotations whose anchor is in the
+  viewport render, so a 48-comment doc doesn't stack every bubble into one screen; the set
+  re-packs on scroll/resize. The view is independent of 标注/交互 mode and read-only; click a
+  bubble to open that annotation. No schema change — existing `content` + `reply` data is
+  rendered as-is; nothing is written to disk.
+- **评论布局 inline / sidebar 二态切换** — when 评论 is on, a second toggle (sidebar + floating-toolbar)
+  flips how bubbles share the canvas with the document. **inline**: bubbles render in the iframe overlay
+  beside their anchors (may overlap text when the window is too narrow for a margin channel). **sidebar**:
+  bubbles move out of the iframe into a workbench-owned right gutter; the iframe narrows to make room and
+  the document reflows by its own responsive rules (no foreign style injected, no squeeze, no cover).
+  Connectors map anchor coords across the frame boundary. Click toggles inline ↔ sidebar so you can
+  compare; toggling 评论 off reverts everything. (The earlier three-state 留通道 / reserve mode was
+  removed — narrowing the document column fought the doc's own responsive layout.)
+- **侧栏 Annotations 工具按钮改为每行一个** — the row had grown past six buttons; it now stacks vertically
+  (icon + label per row) instead of cramming one wide row.
+
+### Fixed
+- **Plain HTML docs no longer need `wb-html-surface` for annotate hit-testing.** On a
+  standalone document / HTML-board iframe (no `#wb-board-panel`), annotate treats
+  `document.body` as the content surface, so hover ghosts and clicks work after only
+  injecting `/annotate.js`. Explicit `.wb-html-surface` remains for Web-board fragments
+  inlined into the workbench. Region lasso candidate walking now uses the same surface
+  helper (it previously skipped HTML surfaces entirely).
+- **SVG (and other non-HTML-box) elements no longer read as 锚点失效.** `isHidden` used
+  `offsetParent` as the "has layout" probe, but `SVGElement` / MathML / `foreignObject`
+  leave it `undefined`, so a visible `<text>` / `<path>` was falsely treated as hidden —
+  the hover box drew fine yet the composer and sidebar showed "锚点失效 · 目标节点已不在
+  当前稿中". The probe is now a shared `hasLayout()` helper that keeps `offsetParent` as
+  the fast path (so nothing previously live becomes broken) and falls back to
+  `getClientRects()` for non-HTML namespaces. The same helper also drives `regionContains`,
+  so lassoing over an SVG chart now captures its children instead of skipping them.
+
+---
+
+## 2026-07-28
+
+### Added
+- **HTML board document export** — sidebar Versions/Document header has **导出** with three
+  options for the active doc: full HTML source, HTML with `<style>` / stylesheet links stripped
+  (inline styles kept for chart widths), and a full-page long PNG (920 CSS px × 2, annotate.js
+  blocked). Served by `POST /api/export-doc`; canvas Frame export stays disabled on the HTML board.
+- **Estimated tokens on HTML exports** — the dialog shows Gemini / OpenAI / Anthropic counts for
+  `html-full` and `html-no-css` via local `bpe-lite` tokenizers (Gemma 3 SPM, o200k, Claude BPE).
+  Hover the chips for exact integers and tokenizer notes.
+- **Estimated vision tokens on long-image export** — image mode measures the export viewport
+  (920×2) then estimates Gemini 3 `media_resolution=high` (1120), OpenAI `detail=high` 32×32
+  patches (≤2500), and Anthropic high-res 28×28 patches (≤4784). Hover shows pixel size + formula.
+
+## 2026-07-27
+
+### Added
+- **HTML board mode** — the Pages switch is now iOS / Web / HTML. HTML pages (`"mode": "html"`,
+  `shell: "doc"`) host **complete standalone documents** — one-page reports and docs that carry
+  their own `<!doctype>`, `<head>`, and `<style>`. They render in an iframe (`.wb-doc-stage` >
+  `.wb-doc-frame`) instead of being inlined, because inlining drops the
+  document's `body{}` rules and leaks its CSS into the workbench; the loader skips the fragment
+  check for `doc` screens. The board is wider than Web so desktop breakpoints engage.
+- **Example HTML page** — tracked `previews/doc-library/` with a sample report that switches to a
+  side-nav layout at the desktop breakpoint, so the width difference from Web is visible.
+- A screen's `"src"` may point at any URL, so a symlink under `previews/` is enough to review a
+  document that lives outside this repo.
+
+### Fixed
+- **The sidebar annotate controls did nothing on the HTML board.** A doc page lives in an iframe
+  that injects its own `annotate.js`, so the page held two disconnected instances: the sidebar drove
+  the parent's, the document had its own. Workbench annotate calls now resolve to the active doc
+  frame's instance (`annotateApi()`), subscribe to it for panel refreshes, and re-resolve per click;
+  an embedded document also hides its floating toolbar so the sidebar is the single control surface.
+- **Marks on a plain document never counted as "on this page".** `markOnActivePage` only had
+  workbench criteria (`pageId`, `#wb-board-panel` containment), so on a standalone document every
+  mark failed all of them: the count read `0 条` and the sidebar list stayed empty while marks were
+  visibly on screen and saved to disk. Such documents now treat every mark as current-page — page
+  identity already comes from the per-path disk key.
+- **Annotate did nothing below the fold on a plain document.** With no `.wb-stage-wrap` to mount
+  into, the overlay fell back to `document.body` as `position:absolute; inset:0` — anchored at the
+  document origin, one viewport tall, `overflow:hidden`. Scroll down and every hover box and mark
+  was drawn outside that box and clipped, which reads as "annotate mode is broken". The fallback
+  overlay is now pinned to the viewport (`data-ann-viewport` → `position:fixed`). Affects standalone
+  HTML documents and HTML-board pages; the workbench path was never affected.
+
+---
+
+## 2026-07-24
+
+### Added
+- **iOS / Web board modes** — Pages list has an iOS ↔ Web switch; each mode shows its own
+  page list (Component Library stays iOS-only). Manifest pages may set `"mode": "ios"|"web"`
+  (default `ios`). Web boards use `shell: "web"` artboards (`.wb-html-stage` /
+  `.wb-html-surface`) without phone chrome, and annotate hit-testing covers them.
+- **Example Web page** — tracked `previews/web-library/` with a report frame and a two-frame
+  landing section so the Web mode is dogfoodable out of the box.
+
+---
+
 ## 2026-07-22
 
 ### Added

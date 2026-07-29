@@ -17,6 +17,7 @@
     "vite": "^6.3.5"
   },
   "dependencies": {
+    "bpe-lite": "^0.5.2",
     "lucide": "^1.23.0"
   }
 }
