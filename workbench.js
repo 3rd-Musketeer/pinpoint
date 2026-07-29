@@ -595,8 +595,7 @@ function ensureGutterOverlay() {
     + 'font:13px/1.55 var(--sans,system-ui,sans-serif);color:#232C42;pointer-events:auto;cursor:pointer;}'
     + '#wb-ann-gutter .ann-bubble:hover{box-shadow:0 6px 18px rgba(35,44,66,.16);}'
     + '.wb-stage-wrap[data-ann-gutter="on"]{padding-right:' + GUTTER_W + 'px;}'
-    + '.wb-stage-wrap[data-ann-gutter="on"] .wb-stage{overflow:auto;}'
-    + '.wb-stage-wrap[data-ann-gutter="on"] .wb-doc-frame{min-width:920px;}';
+    + '.wb-stage-wrap[data-ann-gutter="on"] .wb-stage{overflow:auto;}';
   gutterBubblesEl = document.createElement('div');
   gutterBubblesEl.style.cssText = 'position:absolute;inset:0;';
   gutterOverlay.appendChild(style);
