@@ -338,11 +338,19 @@ function restorePageViewportAfterMount(pageId) {
   return true;
 }
 
-/** Reserve layout space for transform-scaled board (transform alone does not shrink flow). */
+/** Reserve layout space for transform-scaled board (transform alone does not shrink flow).
+ *  In HTML board mode the zoom-wrap is width:100% + transform:none (a fluid reader
+ *  column, not a fixed canvas), so we must not pin an inline content-measured width —
+ *  that would override the CSS and make the iframe overflow the stage into the gutter. */
 function syncBoardZoomLayout() {
   var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
   var lib = wrap && wrap.querySelector('.wb-library');
   if (!wrap || !lib) return;
+  if (boardMode === 'html') {
+    wrap.style.width = '';
+    wrap.style.height = '';
+    return;
+  }
   var z = currentCanvasZoom();
   var w = lib.offsetWidth;
   var h = lib.offsetHeight;
