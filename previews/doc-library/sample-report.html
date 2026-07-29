@@ -1,0 +1,92 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>Sample Report · HTML board</title>
+<style>
+  :root{ color-scheme: light; --ink:#111; --mute:#6b6b6b; --line:rgba(0,0,0,.1); --accent:#2a78d6 }
+  *{box-sizing:border-box}
+  body{margin:0; background:#f9f9f7; color:var(--ink); line-height:1.6;
+    font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+  .doc{max-width:880px; margin:0 auto; padding:48px 28px 80px}
+  h1{font-size:28px; margin:0 0 6px; letter-spacing:-.01em}
+  .sub{color:var(--mute); margin:0}
+  h2{font-size:18px; margin:44px 0 8px}
+  .cards{display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:24px}
+  .card{background:#fff; border:1px solid var(--line); border-radius:12px; padding:16px}
+  .card .n{font-size:24px; font-weight:700}
+  .card .l{font-size:13px; color:var(--mute); margin-top:2px}
+  table{width:100%; border-collapse:collapse; font-size:14px; margin-top:12px}
+  th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line)}
+  th{font-size:12px; color:var(--mute)}
+  /* 桌面断点：够宽时出侧栏目录。HTML 板画板宽 1280，走得到这一支；
+     Web 板 960 走不到——这正是两个板要分开的原因。 */
+  .toc{display:none}
+  @media (min-width:1240px){
+    body{padding-left:200px}
+    .toc{display:block; position:fixed; left:20px; top:48px; width:160px; font-size:13px}
+    .toc a{display:block; color:var(--mute); text-decoration:none; padding:5px 10px;
+      border-left:2px solid transparent}
+    .toc a:hover{color:var(--ink)}
+  }
+</style>
+</head>
+<body>
+<nav class="toc"><a href="#s1">一、概况</a><a href="#s2">二、明细</a></nav>
+<main class="doc">
+  <h1>Sample Report</h1>
+  <p class="sub">HTML 板的示例文档：完整独立页面，自带 head 与样式，在 iframe 里原样渲染。</p>
+  <div class="cards">
+    <div class="card"><div class="n">1280</div><div class="l">画板宽度 (px)</div></div>
+    <div class="card"><div class="n">iframe</div><div class="l">承载方式</div></div>
+    <div class="card"><div class="n">自注入</div><div class="l">标注接线</div></div>
+  </div>
+  <h2 id="s1">一、概况</h2>
+  <p>Web 板吃 fragment，由 loader 包成画板；HTML 板吃完整文档，不做包装也不做 fragment 校验。
+  想在这里标注，页尾接一段 localhost 才拉的 <code>annotate.js</code> 即可——框架把整份文档当可标注区域，正文不必再打 surface 标记。</p>
+  <h2 id="s2">二、明细</h2>
+  <p style="min-height:900px">这一段刻意留高，用来验证滚动之后标注仍然工作 —— 标注层挂在
+  没有 workbench 舞台的文档上时，如果按文档坐标定位就会在滚动后被裁掉。</p>
+  <table>
+    <thead><tr><th>板</th><th>输入</th><th>承载</th><th>典型用途</th></tr></thead>
+    <tbody>
+      <tr><td>iOS</td><td>fragment</td><td>机身 chrome</td><td>手机原型</td></tr>
+      <tr><td>Web</td><td>fragment</td><td>960 画板</td><td>web app 界面</td></tr>
+      <tr><td>HTML</td><td>完整文档</td><td>1280 iframe</td><td>汇报页、单页文档</td></tr>
+    </tbody>
+  </table>
+  <h2 id="s3">三、图表示例</h2>
+  <p>这一段验证 SVG 元素也能被标注。SVG 节点没有 HTML 盒模型的 <code>offsetParent</code>，
+  旧探针会把可见的 <code>&lt;text&gt;</code> / <code>&lt;path&gt;</code> 误判成隐藏，
+  表现成「框画得出来却报锚点失效」。</p>
+  <svg id="sample-chart" viewBox="0 0 320 120" width="320" height="120" role="img" aria-label="示例图表">
+    <rect x="10" y="10" width="300" height="100" fill="none" stroke="#2a78d6" stroke-width="1"/>
+    <path d="M10 100 L 80 40 L 150 70 L 220 20 L 310 60" fill="none" stroke="#2a78d6" stroke-width="2"/>
+    <text x="80" y="32" font-size="12" fill="#111">峰值</text>
+    <text x="220" y="12" font-size="12" fill="#111">次峰</text>
+  </svg>
+</main>
+<script>
+/* 标注接线：只在 localhost 拉 annotate.js，所以同一份文件 file:// 打开、
+   导出图片、发给别人都不带标注 UI，也不联网。没有 workbench 侧栏时浮动工具条默认
+   隐藏，用公开 API 显式打开。正文不必打 wb-html-surface——框架把整份文档当 surface。 */
+(function () {
+  var h = location.hostname;
+  if (h !== 'localhost' && h !== '127.0.0.1' && h !== '::1') return;
+  if (document.documentElement.getAttribute('data-annotate') === 'off') return;
+  if (window.__htmlAnnotate || document.querySelector('script[data-ios-annotate]')) return;
+  var s = document.createElement('script');
+  s.src = '/annotate.js';
+  s.async = true;
+  s.setAttribute('data-ios-annotate', '');
+  s.addEventListener('load', function () {
+    // 独立打开这份文档时给个浮动工具条；被 workbench 的 HTML 板 iframe 承载时
+    // 控制面是侧栏，再出一个工具条会变成两套互相打架的控件。
+    var embedded = window.top !== window.self;
+    if (window.iOSAnnotate && !embedded) window.iOSAnnotate.setFloatingToolbar(true);
+  });
+  document.body.appendChild(s);
+})();
+</script>
+</body>
+</html>

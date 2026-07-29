@@ -1,0 +1,93 @@
+<style>
+  .web-price {
+    --ink: #12141a;
+    --mute: rgba(18, 20, 26, .62);
+    --line: rgba(18, 20, 26, .1);
+    --accent: #2457f5;
+    min-height: 640px;
+    padding: 48px 40px 56px;
+    background: #f7f8fa;
+    color: var(--ink);
+    font-family: "Avenir Next", "Segoe UI", "PingFang SC", sans-serif;
+  }
+  .web-price-head { text-align: center; margin-bottom: 36px; }
+  .web-price-head h1 {
+    margin: 0 0 10px; font-size: 40px; letter-spacing: -.03em; font-weight: 750;
+  }
+  .web-price-head p {
+    margin: 0 auto; max-width: 40ch; color: var(--mute); font-size: 16px; line-height: 1.5;
+  }
+  .web-price-grid {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; align-items: stretch;
+  }
+  .web-price-card {
+    border: 1px solid var(--line); border-radius: 22px; padding: 22px 20px 20px;
+    background: #fff; display: flex; flex-direction: column; gap: 14px;
+  }
+  .web-price-card.featured {
+    border-color: color-mix(in srgb, var(--accent) 45%, var(--line));
+    box-shadow: 0 16px 40px rgba(36, 87, 245, .12);
+    transform: translateY(-6px);
+  }
+  .web-price-card h2 { margin: 0; font-size: 18px; }
+  .web-price-card .amount {
+    font-size: 34px; font-weight: 750; letter-spacing: -.03em;
+  }
+  .web-price-card .amount small {
+    font-size: 14px; font-weight: 600; color: var(--mute); margin-left: 4px;
+  }
+  .web-price-card ul {
+    margin: 0; padding: 0; list-style: none; display: grid; gap: 8px;
+    color: var(--mute); font-size: 14px; line-height: 1.4; flex: 1;
+  }
+  .web-price-card button {
+    appearance: none; border: 0; border-radius: 999px; cursor: pointer;
+    font: inherit; font-weight: 700; padding: 11px 14px;
+    background: rgba(18, 20, 26, .06); color: var(--ink);
+  }
+  .web-price-card.featured button { background: var(--accent); color: #fff; }
+  .web-price-badge {
+    align-self: flex-start; font-size: 11px; font-weight: 750; letter-spacing: .08em;
+    text-transform: uppercase; color: var(--accent);
+    background: rgba(36, 87, 245, .1); border-radius: 999px; padding: 5px 9px;
+  }
+</style>
+<section class="web-price">
+  <div class="web-price-head">
+    <h1>选一个跟得上你节奏的方案</h1>
+    <p>个人记录免费开始；需要导出、协作和更细的建议时再升级。</p>
+  </div>
+  <div class="web-price-grid">
+    <article class="web-price-card">
+      <h2>Hobby</h2>
+      <div class="amount">¥0<small>/月</small></div>
+      <ul>
+        <li>无限冲煮记录</li>
+        <li>基础风味标签</li>
+        <li>本机导出 PNG</li>
+      </ul>
+      <button type="button">免费使用</button>
+    </article>
+    <article class="web-price-card featured">
+      <span class="web-price-badge">推荐</span>
+      <h2>Studio</h2>
+      <div class="amount">¥28<small>/月</small></div>
+      <ul>
+        <li>下一杯建议</li>
+        <li>干净画面 WebP 导出</li>
+        <li>Frame Notes 与标注归档</li>
+      </ul>
+      <button type="button">开始 Studio</button>
+    </article>
+    <article class="web-price-card">
+      <h2>Lab</h2>
+      <div class="amount">¥88<small>/月</small></div>
+      <ul>
+        <li>团队共享豆仓</li>
+        <li>多成员标注回复</li>
+        <li>优先支持通道</li>
+      </ul>
+      <button type="button">联系我们</button>
+    </article>
+  </div>
+</section>

@@ -1,0 +1,18 @@
+{
+  "sections": [
+    {
+      "id": "report",
+      "title": "汇报页 · 完整单页文档",
+      "layout": "column",
+      "shell": "doc",
+      "screens": [
+        {
+          "id": "sample-report",
+          "title": "Sample Report",
+          "shell": "doc",
+          "note": "场景：一页式汇报文档，自带 <head> 与全部样式。\nHTML 板用 iframe 承载，文档保持原样；标注由文档自己注入 annotate.js。"
+        }
+      ]
+    }
+  ]
+}

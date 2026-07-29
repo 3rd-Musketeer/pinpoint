@@ -147,12 +147,30 @@ npm run export -- --page library --section brew-flow --with-notes --format png
 2. `previews/_index.json` 的 `pages[]` 增加：
 
 ```json
-{ "id": "<pageId>", "title": "My Flow" }
+{ "id": "<pageId>", "title": "My Flow", "mode": "ios" }
 ```
+
+网站 / web app 画板用 `"mode": "web"` + `"shell": "web"`（fragment 可为任意**非**完整文档 HTML；loader 包成 `.wb-html-stage` > `.wb-html-surface`，默认宽 960）。参考 `previews/web-library/`。
+
+**完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS / Web 板不同：
+
+1. **承载方式**：doc 走 iframe，文档原样渲染，loader 不包装也不做 fragment 校验——内联会让它的 `body{}` 规则失效、`<style>` 漏进 workbench。
+2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板、Frame 标题与 Frame Note；同一页里的多个 screen 变成**侧栏的版本列表**，一次只显示一个（每页记住上次看的那个）。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用侧栏 Versions/Document 旁的 **导出**（HTML 完整 / 去 CSS HTML / 长图 PNG）。
+
+screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接就能把仓库外的汇报页挂进来。
+
+要能标注，页尾接一段只在 localhost 拉 `/annotate.js` 并（独立打开时）调
+`iOSAnnotate.setFloatingToolbar(true)` 的脚本即可——同一份文件 `file://` 打开、导出 PNG、
+外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：
+独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。Web 板 fragment 仍由
+loader 包 `.wb-html-surface`，那是画布命中边界，不是作者要记的标记。标注落在文档自己的
+page key 下，从 `dataDir` 读。
+
+侧栏 **iOS / Web / HTML** switch 会隔离三套 Pages 列表；Component Library 只出现在 iOS。
 
 3. 刷新；manifest 自动生成导航，`pageId` 同时是 annotate 的 `pageId`。不要自写第二套 loader。
 
-Manifest 是 page id / title / order / default 的 SSOT；`board.json` 只写 `sections[]`。长期实例可用 gitignored `previews/_index.local.json` 覆盖整份清单（结构相同），模板文件保持干净。
+Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` 只写 `sections[]`。长期实例可用 gitignored `previews/_index.local.json` 覆盖整份清单（结构相同），模板文件保持干净。
 
 ## 4. 加 component
 

@@ -1,0 +1,38 @@
+{
+  "sections": [
+    {
+      "id": "report",
+      "title": "汇报 · 一页摘要",
+      "layout": "column",
+      "shell": "web",
+      "screens": [
+        {
+          "id": "weekly-report",
+          "title": "周报封面",
+          "shell": "web",
+          "note": "场景：团队周会开场页。\n交互：只读展示；标注可圈数字与结论句。"
+        }
+      ]
+    },
+    {
+      "id": "site",
+      "title": "网站 · 关键屏对照",
+      "layout": "row",
+      "shell": "web",
+      "screens": [
+        {
+          "id": "landing-hero",
+          "title": "Landing · Hero",
+          "shell": "web",
+          "note": "场景：产品站首屏。\n交互：主 CTA；次要链接保持低对比。"
+        },
+        {
+          "id": "landing-pricing",
+          "title": "Landing · Pricing",
+          "shell": "web",
+          "note": "场景：价格段。\n交互：三档卡片，中间档为推荐。"
+        }
+      ]
+    }
+  ]
+}

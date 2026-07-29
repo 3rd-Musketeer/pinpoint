@@ -26,13 +26,48 @@ Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
 
 | Do edit | Do not edit |
 |---|---|
-| `previews/<pageId>/*.html` (screen fragment: `.ios-app` + sibling overlays) | Phone chrome / bezel / status bar (loader-owned) |
+| `previews/<pageId>/*.html` (iOS: `.ios-app` + sibling overlays; Web: any non-document fragment) | Phone chrome / bezel / status bar (loader-owned) |
 | `previews/<pageId>/*.js` (screen sidecar `mount(root)`) | Product gestures in `ios-kit.js` |
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
-| `previews/_index.json` when adding a page | `ios-kit.css` to “fix” one annotation |
+| `previews/_index.json` when adding a page (`mode`: `ios` \| `web` \| `html`) | `ios-kit.css` to “fix” one annotation |
 
-**Overlay rule:** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.1.
+**Board modes:** the Pages list has an **iOS / Web / HTML** switch. Lists are isolated; Component Library is iOS-only.
+
+| Board | Input | Artboard | For |
+|---|---|---|---|
+| **iOS** | body fragment | phone chrome | phone prototypes |
+| **Web** | body fragment | `.wb-html-stage` / `.wb-html-surface`, `--wb-web-w: 960px` | web app surfaces — example `previews/web-library/` |
+| **HTML** | **complete standalone document** | full-viewport iframe, **no canvas** | one-page reports and docs — example `previews/doc-library/` |
+
+HTML pages use `shell: "doc"`. The file keeps its own `<!doctype>`, `<head>`, and `<style>`, so it is
+**hosted in an iframe rather than inlined** — inlining would drop its `body{}` rules and leak its CSS
+into the workbench. The loader therefore skips the fragment check for `doc` screens.
+
+**The HTML board is not a canvas.** A report has to be read at the reader's real window size, so the
+document fills the stage 1:1 — no zoom, no pan, no artboard, no Frame titles or Frame Notes, and no
+canvas Frame export (it would not match the real layout). Export the active document from the
+sidebar Versions/Document header (**导出**): HTML 完整、去除 CSS 的 HTML、or a full-page long PNG
+(920×2, annotate blocked). HTML modes show text-token estimates (local `bpe-lite`); image mode
+shows vision-token estimates from export pixel size (Gemini / OpenAI / Anthropic formulas). Multiple screens in a `board.json` become **versions in the sidebar**
+(`#wbdoc-versions`), one shown at a time and remembered per page, instead of frames sitting side by
+side. A screen's `"src"` may point at any URL, so a symlink under `previews/` is enough to review a
+document living outside this repo.
+
+**Annotating a doc page:** the document only needs a tail script that pulls
+`/annotate.js` **when `location.hostname` is localhost**, then calls
+`iOSAnnotate.setFloatingToolbar(true)` when opened standalone (the toolbar hides
+itself when there is no workbench sidebar). Annotate treats the whole document as
+the hit surface — authors do **not** need `wb-html-surface` / `data-ann-surface`
+on content (those markers remain for Web-board fragments inlined into the
+workbench, where sidebar/chrome must stay unselectable).
+
+Marks land under the document's own page key (per-path file under `dataDir`, see `/health`), not the
+workbench's. In the HTML board the sidebar still drives them: workbench annotate calls resolve to the
+active doc frame's instance, so mode, count, and the Annotations list all reflect the document, and
+the embedded document hides its own floating toolbar to keep one control surface.
+
+**Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.1.
 
 **Safe area:** custom nav / composer must use `--ios-safe-top` / `--ios-safe-bottom` (Variables in `ios-kit.css`); do not hardcode px or spacer divs — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.2.
 

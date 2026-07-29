@@ -106,6 +106,24 @@
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }
 
+  /* board mode switch — above pages list */
+  .wb-board-mode {
+    display:flex; gap:2px; margin:0 var(--wb-pad) 8px; padding:3px;
+    border-radius:10px; background:rgba(0,0,0,.04);
+  }
+  .wb-board-mode-btn {
+    flex:1; border:0; border-radius:8px; cursor:pointer;
+    background:transparent; color:var(--wb-muted);
+    font:inherit; font-size:11.5px; font-weight:650; letter-spacing:.02em;
+    padding:6px 8px;
+    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
+  }
+  .wb-board-mode-btn:hover { color:var(--wb-fg); }
+  .wb-board-mode-btn.on {
+    background:#fff; color:var(--wb-fg);
+    box-shadow:0 1px 2px rgba(0,0,0,.06), inset 0 0 0 1px rgba(0,0,0,.04);
+  }
+
   /* page list — inspector rows */
   .wb-pages { padding:2px 0 4px; display:flex; flex-direction:column; gap:1px; }
   .wb-page-row {
@@ -197,12 +215,12 @@
 
   /* annotator toolbar */
   .wb-ann-tools {
-    display:flex; gap:4px; padding:2px 0 8px;
+    display:flex; flex-direction:column; gap:4px; padding:2px 0 8px;
   }
   .wb-ann-tools button {
-    flex:1; min-width:0; border:0; background:rgba(255,255,255,.7); color:var(--wb-muted); font:inherit;
-    font-size:10px; font-weight:500; padding:7px 2px 6px; border-radius:var(--wb-r); cursor:pointer;
-    display:flex; flex-direction:column; align-items:center; gap:4px;
+    flex:none; width:100%; min-width:0; border:0; background:rgba(255,255,255,.7); color:var(--wb-muted); font:inherit;
+    font-size:11px; font-weight:500; padding:7px 10px; border-radius:var(--wb-r); cursor:pointer;
+    display:flex; flex-direction:row; align-items:center; justify-content:center; gap:7px;
     box-shadow:inset 0 0 0 1px var(--wb-line);
     transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
   }
@@ -218,6 +236,7 @@
   .wb-ann-tools .wb-tool-label {
     max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; line-height:1.2;
   }
+  .wb-ann-tools button[hidden] { display:none; }
   .wb-ico {
     width:14px; height:14px; flex:none; display:block; aspect-ratio:1;
   }
@@ -708,6 +727,127 @@
     background:#fff;
     box-shadow:0 1px 0 rgba(0,0,0,.04), 0 8px 28px rgba(0,0,0,.06);
   }
+  /* Web board: desktop / report artboards */
+  .wb-screen--web {
+    --wb-phone-w: var(--wb-web-w, 960px);
+    --wb-phone-h: auto;
+    width:var(--wb-web-w, 960px);
+  }
+  .wb-html-stage {
+    width:var(--wb-web-w, 960px);
+    box-sizing:border-box;
+    border-radius:14px;
+    background:#fff;
+    box-shadow:0 1px 0 rgba(0,0,0,.04), 0 14px 40px rgba(0,0,0,.08);
+    overflow:hidden;
+  }
+  .wb-html-surface {
+    position:relative;
+    width:100%;
+    min-height:540px;
+    overflow:auto;
+    background:#fff;
+    color:#171717;
+    font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Songti SC",serif;
+  }
+  /* HTML board: standalone-document artboard. Wider than Web so report pages
+     that switch layout at a desktop breakpoint (side nav, two-column) show the
+     desktop form; tall so long documents read without an inner scrollbar. */
+  .wb-screen--doc {
+    --wb-phone-w: var(--wb-doc-w, 1280px);
+    --wb-phone-h: auto;
+    width:var(--wb-doc-w, 1280px);
+  }
+  .wb-doc-stage {
+    width:var(--wb-doc-w, 1280px);
+    box-sizing:border-box;
+    border-radius:14px;
+    background:#fff;
+    box-shadow:0 1px 0 rgba(0,0,0,.04), 0 14px 40px rgba(0,0,0,.08);
+    overflow:hidden;
+  }
+  .wb-doc-surface { position:relative; width:100%; background:#fff; }
+  .wb-doc-frame { display:block; width:100%; height:100%; border:0; background:#fff; }
+
+  /* HTML board is NOT a canvas. A report has to be read at the reader's real
+     window size, so the document fills the stage 1:1 — no zoom, no pan, no
+     artboard. Versions switch from the sidebar instead of sitting side by side.
+     The chain stage → panel → zoom-wrap → library → item → sec-body → screen →
+     doc-stage must each carry a definite height, or the iframe's height:100%
+     resolves against auto and collapses. */
+  [data-board-mode="html"] .wb-stage { overflow:hidden; padding:0; }
+  [data-board-mode="html"] .wb-canvas-hud,
+  [data-board-mode="html"] .wb-canvas-dock { display:none; }
+  [data-board-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
+  [data-board-mode="html"] .wb-zoom-wrap {
+    width:100%; height:100%; transform:none !important;
+  }
+  [data-board-mode="html"] .wb-library {
+    display:block; width:100%; height:100%; padding:0; gap:0; transform:none !important;
+  }
+  [data-board-mode="html"] .wb-lib-item {
+    display:flex; flex-direction:column; width:100%; height:100%; margin:0; padding:0; gap:0;
+    border:0; background:transparent; box-shadow:none;
+  }
+  /* section 标题、frame 标题、Frame Note、画布导出入口都属于画布语汇，
+     整页阅读时不要。汇报页出图走侧栏「导出文档」（真实版面长图 / HTML）。 */
+  [data-board-mode="html"] .wb-lib-cap,
+  [data-board-mode="html"] .wb-screen-cap,
+  [data-board-mode="html"] .wb-export-trigger,
+  [data-board-mode="html"] .wb-frame-note { display:none; }
+  [data-board-mode="html"] .wb-sec-body {
+    display:flex; flex:1; min-height:0; width:100%; padding:0; gap:0;
+  }
+  [data-board-mode="html"] .wb-screen--doc {
+    flex:1; min-width:0; min-height:0; width:100%; height:auto; margin:0;
+  }
+  [data-board-mode="html"] .wb-doc-stage {
+    width:100%; height:100%; border-radius:0; box-shadow:none;
+  }
+  [data-board-mode="html"] .wb-doc-surface { height:100%; }
+  /* one document at a time; the sidebar picks which */
+  [data-board-mode="html"] .wb-lib-item[data-doc-hidden],
+  [data-board-mode="html"] .wb-screen[data-doc-hidden] { display:none; }
+
+  /* sidebar version switcher (HTML board only) */
+  .wb-doc-versions { display:flex; flex-direction:column; gap:1px; padding:2px 0 4px; }
+  /* display 会盖掉 [hidden] 的 UA 规则，必须显式还回来，否则切回 iOS/Web 板还留着 */
+  .wb-doc-versions[hidden] { display:none; }
+  .wb-doc-versions .wb-doc-ver-head {
+    display:flex; align-items:center; justify-content:space-between; gap:8px;
+    font-size:10px; font-weight:700; letter-spacing:.06em; text-transform:uppercase;
+    color:var(--wb-faint); padding:8px var(--wb-pad) 4px;
+  }
+  .wb-doc-export {
+    appearance:none; border:1px solid var(--wb-line); border-radius:7px;
+    background:var(--wb-side); color:var(--wb-muted); cursor:pointer;
+    font:inherit; font-size:11px; font-weight:650; letter-spacing:0; text-transform:none;
+    padding:3px 8px; line-height:1.2;
+  }
+  .wb-doc-export:hover, .wb-doc-export:focus-visible {
+    color:var(--wb-accent); border-color:color-mix(in srgb, var(--wb-accent) 40%, var(--wb-line));
+    outline:0;
+  }
+  .wb-export-options.wb-export-options--stack {
+    grid-auto-flow:row; grid-auto-columns:unset; grid-template-columns:1fr;
+  }
+  .wb-export-options.wb-export-options--stack .wb-export-option span {
+    justify-content:flex-start; min-height:40px; padding:8px 12px; gap:8px;
+  }
+  .wb-export-option-copy { display:flex; flex-direction:column; gap:1px; text-align:left; }
+  .wb-export-option-copy strong { font-size:12.5px; font-weight:650; color:inherit; }
+  .wb-export-option-copy small { font-size:11px; font-weight:500; color:var(--wb-faint); }
+  .wb-doc-ver {
+    border:0; background:transparent; text-align:left; cursor:pointer;
+    font:inherit; font-size:12.5px; color:var(--wb-muted);
+    padding:6px var(--wb-pad); border-radius:7px; margin:0 6px;
+    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-doc-ver:hover { background:rgba(0,0,0,.04); color:var(--wb-fg); }
+  .wb-doc-ver.on { background:rgba(0,0,0,.06); color:var(--wb-fg); font-weight:650; }
+  .wb-doc-ver-sec {
+    font-size:10px; color:var(--wb-faint); padding:6px var(--wb-pad) 2px; letter-spacing:.04em;
+  }
   .wb-comp-stage .ios-root {
     display:block; width:100%; min-width:0;
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
@@ -786,6 +926,13 @@
   .wb-export-close { border:0; background:transparent; color:var(--wb-faint); font-size:22px; line-height:1; padding:0 2px; cursor:pointer; }
   .wb-export-field { display:flex; flex-direction:column; gap:7px; }
   .wb-export-label { color:var(--wb-muted); font-size:12px; font-weight:650; }
+  .wb-export-check {
+    display:flex; align-items:flex-start; gap:8px; padding:8px 10px;
+    border-radius:10px; background:var(--wb-hover); cursor:pointer;
+    font-size:12.5px; font-weight:550; color:var(--wb-fg);
+  }
+  .wb-export-check input { margin-top:2px; flex:none; }
+  .wb-export-check span { line-height:1.4; }
   .wb-export-options { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:3px; padding:3px; border-radius:11px; background:var(--wb-hover); }
   .wb-export-option { position:relative; }
   .wb-export-option input { position:absolute; opacity:0; pointer-events:none; }
@@ -795,6 +942,19 @@
   .wb-export-note-toggle input { margin-top:2px; accent-color:var(--wb-accent); }
   .wb-export-status { min-height:17px; color:var(--wb-faint); font-size:12px; }
   .wb-export-status.is-error { color:var(--wb-danger,#c0392b); }
+  .wb-export-tokens {
+    display:flex; flex-wrap:wrap; gap:8px; margin-top:-4px;
+  }
+  .wb-export-tokens[hidden] { display:none; }
+  .wb-export-token {
+    display:inline-flex; align-items:baseline; gap:5px;
+    min-height:26px; padding:3px 9px; border-radius:999px;
+    border:1px solid var(--wb-line); background:var(--wb-hover);
+    color:var(--wb-muted); font-size:11.5px; font-weight:620;
+  }
+  .wb-export-token-label { color:var(--wb-faint); font-weight:600; }
+  .wb-export-token-n { color:var(--wb-fg); font-variant-numeric:tabular-nums; font-weight:700; }
+  .wb-export-token-pending { color:var(--wb-faint); font-size:12px; }
   .wb-export-actions { display:flex; justify-content:flex-end; gap:8px; }
   .wb-export-action { min-height:38px; padding:0 15px; border:1px solid var(--wb-line); border-radius:11px; background:var(--wb-side); color:var(--wb-fg); font:inherit; font-size:13px; font-weight:650; cursor:pointer; }
   .wb-export-action.primary { border-color:var(--wb-accent); background:var(--wb-accent); color:#fff; }
@@ -824,9 +984,13 @@
           </button>
           <div class="wb-section-body">
             <div class="wb-section-body-inner">
-              <nav class="wb-pages" id="wbpages">
-                <button type="button" class="wb-page" data-vpage="components" data-page-system="1" data-page-default="Component Library">Component Library</button>
-              </nav>
+              <div class="wb-board-mode" id="wbboard-mode" role="group" aria-label="Board mode">
+                <button type="button" class="wb-board-mode-btn on" data-board-mode="ios" aria-pressed="true" title="手机原型">iOS</button>
+                <button type="button" class="wb-board-mode-btn" data-board-mode="web" aria-pressed="false" title="web app 画板">Web</button>
+                <button type="button" class="wb-board-mode-btn" data-board-mode="html" aria-pressed="false" title="完整单页 HTML 文档（汇报页一类）">HTML</button>
+              </div>
+              <nav class="wb-pages" id="wbpages"></nav>
+              <nav class="wb-doc-versions" id="wbdoc-versions" aria-label="文档版本" hidden></nav>
             </div>
           </div>
         </section>
@@ -846,6 +1010,14 @@
                 <button type="button" id="wbann-pause" title="暂停">
                   <i data-wb-icon="pause" class="wb-ico"></i>
                   <span class="wb-tool-label">暂停</span>
+                </button>
+                <button type="button" id="wbann-comments" title="在画布渲染评论">
+                  <i data-wb-icon="message" class="wb-ico"></i>
+                  <span class="wb-tool-label">评论</span>
+                </button>
+                <button type="button" id="wbann-channel" title="评论布局：压字 / 留通道" hidden>
+                  <i data-wb-icon="columns" class="wb-ico"></i>
+                  <span class="wb-tool-label">压字</span>
                 </button>
                 <button type="button" id="wbann-clear" title="清空">
                   <i data-wb-icon="trash" class="wb-ico"></i>

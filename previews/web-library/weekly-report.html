@@ -1,0 +1,99 @@
+<style>
+  .web-report {
+    --ink: #171412;
+    --mute: rgba(23, 20, 18, .58);
+    --line: rgba(23, 20, 18, .12);
+    --paper: #f7f1e8;
+    --accent: #0f6a5a;
+    min-height: 640px;
+    padding: 56px 64px 48px;
+    background:
+      radial-gradient(1200px 420px at 8% -10%, rgba(15, 106, 90, .12), transparent 60%),
+      linear-gradient(180deg, #fffdf9 0%, var(--paper) 100%);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, "Songti SC", serif;
+  }
+  .web-report-kicker {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 12px; letter-spacing: .14em; text-transform: uppercase;
+    color: var(--mute); margin-bottom: 28px;
+  }
+  .web-report h1 {
+    margin: 0 0 18px; font-size: 54px; line-height: 1.05; font-weight: 600; letter-spacing: -.02em;
+    max-width: 14ch;
+  }
+  .web-report-lead {
+    margin: 0 0 36px; max-width: 46ch; font-size: 20px; line-height: 1.45; color: var(--mute);
+  }
+  .web-report-grid {
+    display: grid; grid-template-columns: 1.2fr .8fr; gap: 28px; margin-bottom: 34px;
+  }
+  .web-report-card {
+    border: 1px solid var(--line); border-radius: 18px; padding: 22px 22px 20px;
+    background: rgba(255,255,255,.72);
+  }
+  .web-report-card h2 {
+    margin: 0 0 14px; font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 12px; letter-spacing: .12em; text-transform: uppercase; color: var(--mute); font-weight: 700;
+  }
+  .web-report-stat {
+    display: flex; gap: 18px; align-items: baseline; margin-bottom: 10px;
+  }
+  .web-report-stat strong {
+    font-size: 42px; line-height: 1; font-weight: 600; letter-spacing: -.03em;
+  }
+  .web-report-stat span { color: var(--mute); font-size: 15px; }
+  .web-report-list { margin: 0; padding: 0; list-style: none; display: grid; gap: 10px; }
+  .web-report-list li {
+    display: grid; grid-template-columns: 18px 1fr; gap: 10px;
+    font-size: 16px; line-height: 1.4;
+  }
+  .web-report-list li::before {
+    content: ""; width: 8px; height: 8px; margin-top: 7px; border-radius: 50%; background: var(--accent);
+  }
+  .web-report-foot {
+    display: flex; justify-content: space-between; gap: 24px; padding-top: 22px;
+    border-top: 1px solid var(--line);
+    font-family: "Avenir Next", "Segoe UI", sans-serif;
+    font-size: 13px; color: var(--mute);
+  }
+  .web-report-pill {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 8px 12px; border-radius: 999px;
+    background: rgba(15, 106, 90, .1); color: var(--accent);
+    font-weight: 650;
+  }
+</style>
+<article class="web-report">
+  <div class="web-report-kicker">
+    <span>Product Review · Week 29</span>
+    <span>2026.07.13 – 07.19</span>
+  </div>
+  <h1>冲煮手账把复购从好奇变成习惯</h1>
+  <p class="web-report-lead">本周把「记录 → 回看 → 下一杯建议」串成一条闭环。核心指标都朝同一方向走，但分享链路仍是短板。</p>
+  <div class="web-report-grid">
+    <section class="web-report-card">
+      <h2>关键结果</h2>
+      <div class="web-report-stat"><strong>38%</strong><span>周活跃完成至少 3 次冲煮记录</span></div>
+      <div class="web-report-stat"><strong>1.7×</strong><span>建议被采纳后的次日回访</span></div>
+      <ul class="web-report-list">
+        <li>计时页 sidecar 动效让「完成」更可感知</li>
+        <li>AB 完成卡验证：叙事优先版分享意图更高</li>
+        <li>待办：把分享卡片压到两步内完成</li>
+      </ul>
+    </section>
+    <section class="web-report-card">
+      <h2>下一周只做三件事</h2>
+      <ul class="web-report-list">
+        <li>分享导出：干净画面默认 WebP</li>
+        <li>建议卡：只保留一个主行动</li>
+        <li>标注闭环：每周五清一次锚点失效</li>
+      </ul>
+    </section>
+  </div>
+  <div class="web-report-foot">
+    <span class="web-report-pill">Owner · Design Systems</span>
+    <span>素材来自 Example Library 本周 dogfood，非生产数据。</span>
+  </div>
+</article>

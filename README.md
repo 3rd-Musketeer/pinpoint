@@ -316,6 +316,22 @@ gitignored `previews/_index.local.json` overrides the page manifest; component d
 `components/_index.json` are auto-discovered. `PREVIEW_TEMPLATE_ONLY=1` hides both
 (e2e and release verification run in this mode).
 
+Pages may set `"mode"` to `ios` (default), `web`, or `html`; the Workbench Pages list switch keeps
+the three lists separate.
+
+| Board | Input | Artboard | Tracked example |
+|---|---|---|---|
+| **iOS** | body fragment | iPhone chrome | `previews/library/` |
+| **Web** | body fragment | 960px desktop artboard (`shell: "web"`) | `previews/web-library/` |
+| **HTML** | complete standalone document | full-viewport iframe, no canvas (`shell: "doc"`) | `previews/doc-library/` |
+
+HTML boards host one-page reports and docs — files that carry their own `<!doctype>`, `<head>`, and
+`<style>`. They render in an iframe rather than inlined, so the document is untouched; a screen's
+`"src"` may point anywhere, which (with a symlink under `previews/`) lets you review a report that
+lives outside this repo. Sidebar **导出** on the Versions/Document header downloads the active doc
+as full HTML, CSS-stripped HTML (for AI), or a full-page 2× PNG. To annotate one, the document wires
+itself in two places and stays inert outside localhost — see [`AGENTS.md`](AGENTS.md).
+
 ## Credits
 
 The annotation system is a heavily extended fork of
