@@ -424,6 +424,71 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
   await expect(page.locator('#wbann-list')).toContainText('sidebar sync check');
 });
 
+test('HTML board: annotations redraw when an interactive view hides and returns', async ({ page }) => {
+  await openWorkbench(page);
+  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
+  await expect.poll(() => page.evaluate(() => !!(
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+  ))).toBe(true);
+
+  await page.locator('#wbann-toggle').click();
+  await page.evaluate(() => {
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+  });
+
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    const d = w.document;
+    const el = d.querySelector('h1');
+    const r = el.getBoundingClientRect();
+    const at = {
+      bubbles: true,
+      cancelable: true,
+      clientX: Math.round(r.x + 8),
+      clientY: Math.round(r.y + 8),
+      button: 0,
+    };
+    el.dispatchEvent(new w.MouseEvent('mousedown', at));
+    el.dispatchEvent(new w.MouseEvent('mouseup', at));
+    const ta = d.querySelector('textarea');
+    ta.value = 'interactive view redraw';
+    ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+    [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+  });
+
+  const docState = () => page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    return w.iOSAnnotate.getState();
+  });
+  const docTargetCount = () => page.evaluate(() => {
+    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+    return d.querySelectorAll('#ann-marks .ann-target').length;
+  });
+
+  await expect.poll(docTargetCount).toBe(1);
+  await expect.poll(async () => (await docState()).countLive).toBe(1);
+
+  // Product navigation commonly uses hidden/class changes without scroll or
+  // resize. The mark remains persisted but leaves the canvas while its target
+  // is off-view; it must not be mislabeled as a broken selector.
+  await page.evaluate(() => {
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = true;
+  });
+  await expect.poll(docTargetCount).toBe(0);
+  await expect.poll(async () => (await docState()).countHidden).toBe(1);
+  expect((await docState()).countBroken).toBe(0);
+  await expect(page.locator('#wbann-list')).not.toContainText('锚点失效');
+
+  // Returning to the prior product view is enough; no manual scroll, resize,
+  // or iOSAnnotate.render() call should be required.
+  await page.evaluate(() => {
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = false;
+  });
+  await expect.poll(docTargetCount).toBe(1);
+  await expect.poll(async () => (await docState()).countLive).toBe(1);
+});
+
 test('HTML board: annotations on SVG elements are not falsely broken', async ({ page }) => {
   await openWorkbench(page);
   await page.locator('#wbboard-mode [data-board-mode="html"]').click();

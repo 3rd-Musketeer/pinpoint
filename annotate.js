@@ -2020,11 +2020,27 @@
     return resolveMarkAnchor(m).live;
   }
 
-  function isMarkBroken(m) {
-    if (m.type === 'element' && markElementTargets(m).length > 1) {
-      return resolveAllLiveTargets(m).length === 0;
+  /** The selector still resolves, even if its current product view is hidden.
+   *  A hidden tab / route is not a broken annotation: once the view returns,
+   *  the same selector can become live again. */
+  function markHasResolvableTarget(m) {
+    if (!m) return false;
+    if (m.type === 'element') {
+      return markElementTargets(m).some(function (target) {
+        return !!resolve(target.selector);
+      });
     }
-    return !resolveMarkAnchor(m).live;
+    if (m.base && m.base.selector && resolve(m.base.selector)) return true;
+    if (m.contains && m.contains.length) {
+      return m.contains.some(function (item) {
+        return !!(item && item.selector && resolve(item.selector));
+      });
+    }
+    return false;
+  }
+
+  function isMarkBroken(m) {
+    return !markHasResolvableTarget(m);
   }
 
   function markAnchorRect(m) {
@@ -2400,6 +2416,75 @@
   // on document so mark geometry tracks phone scroll as well as #wbstage pan.
   document.addEventListener('scroll', onViewChange, { passive: true, capture: true });
 
+  // Interactive HTML documents change views without navigating or resizing:
+  // tabs toggle `hidden`, dialogs change classes, and async renders replace
+  // children. Treat those product-DOM changes as a structural redraw. Ignore
+  // mutations made by the annotation UI itself or renderAll would observe its
+  // own overlay updates and loop forever.
+  var contentRenderRaf = 0;
+
+  function annotationUiNode(node) {
+    var el = node && (node.nodeType === 1 ? node : node.parentElement);
+    return !!(el && isUI(el));
+  }
+
+  function contentMutation(record) {
+    if (annotationUiNode(record.target)) return false;
+    if (record.type !== 'childList') return true;
+    var changed = Array.prototype.slice.call(record.addedNodes || [])
+      .concat(Array.prototype.slice.call(record.removedNodes || []));
+    return changed.some(function (node) { return !annotationUiNode(node); });
+  }
+
+  function scheduleContentRender() {
+    if (contentRenderRaf) return;
+    contentRenderRaf = requestAnimationFrame(function () {
+      contentRenderRaf = 0;
+      structureDirty = true;
+      renderAll();
+      notify();
+    });
+  }
+
+  if (typeof MutationObserver !== 'undefined' && document.body) {
+    var contentMutationObserver = new MutationObserver(function (records) {
+      if (records.some(contentMutation)) scheduleContentRender();
+    });
+    contentMutationObserver.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: [
+        'hidden',
+        'class',
+        'style',
+        'open',
+        'aria-hidden',
+        'aria-expanded',
+        'aria-selected'
+      ]
+    });
+  }
+
+  // Layout can also move after an image/font finishes, a CSS transition ends,
+  // or a route changes without a useful DOM mutation. These are cheap fallback
+  // signals and share the same rAF coalescing path.
+  if (typeof ResizeObserver !== 'undefined' && document.body) {
+    var contentResizeObserver = new ResizeObserver(scheduleContentRender);
+    contentResizeObserver.observe(document.body);
+  }
+  document.addEventListener('load', function (event) {
+    if (!annotationUiNode(event.target)) scheduleContentRender();
+  }, true);
+  document.addEventListener('transitionend', function (event) {
+    if (!annotationUiNode(event.target)) scheduleContentRender();
+  }, true);
+  document.addEventListener('animationend', function (event) {
+    if (!annotationUiNode(event.target)) scheduleContentRender();
+  }, true);
+  addEventListener('hashchange', scheduleContentRender);
+  addEventListener('popstate', scheduleContentRender);
+
   // ESC：关 mention → 取消 composer 草稿 → 取消画箭头 → 退出标注模式（组字中不响应）
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
@@ -2500,9 +2585,11 @@
     var pageMarks = marks.filter(markOnActivePage);
     var broken = 0;
     var live = 0;
+    var hidden = 0;
     pageMarks.forEach(function (m) {
       if (markHasLiveTarget(m)) live++;
-      else broken++;
+      else if (isMarkBroken(m)) broken++;
+      else hidden++;
     });
     return {
       mode: mode,
@@ -2515,6 +2602,7 @@
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
+      countHidden: hidden,
       countVisible: live,
       countAll: marks.length
     };
