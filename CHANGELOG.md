@@ -32,7 +32,7 @@ Template scope only — instance/product content changes live outside this file.
 
 ### Added
 - **导出含评论（标注框 + 序号 + 侧栏气泡）** — 文档导出对话框新增「含评论（标注框 + 序号 + 侧栏气泡）」开关。
-  - **长图**：viewport 1184（920 正文 + 264 gutter），烘焙黄色选区框 + 橙色序号角标 + 右侧侧栏评论气泡（content + reply），`fullPage` PNG（`*.@2x.comments.png`）。
+  - **长图**：viewport 1184（920 正文 + 264 gutter），烘焙黄色选区框 + 橙色序号角标 + 右侧侧栏评论气泡（content），`fullPage` PNG（`*.@2x.comments.png`）。
   - **HTML 完整**：内联定位脚本，打开/resize 时按 selector 重算框 + 气泡位置；气泡按标注序号排序堆在正文右侧 gutter（`*.comments.html`）。
   - **去除 CSS 的 HTML**：文末追加 `#comments` 纯文本列表（适合喂 AI；`*.comments.no-css.html`）。
   - 导出只读 annotation store，不写盘。失效锚点跳过并在状态栏报数。
@@ -40,14 +40,13 @@ Template scope only — instance/product content changes live outside this file.
   - 气泡布局 SSOT：`lib/annotate-bubble-layout.js` `packGutter`；气泡模板：`lib/annotate-bubble.js` `bubbleInnerHtml`。
   - page-key / data-dir 抽成共享库（`lib/annotate-page-key.js`、`lib/annotate-data-dir.js`），annotate-api 与 export-doc-api 共用同一数据目录。
 - **"在画布渲染评论" view** — a new toggle (sidebar 评论 + floating-toolbar 评论) renders
-  annotation `content` + `reply` as Word-style comment bubbles on the canvas overlay,
+  annotation `content` as Word-style comment bubbles on the canvas overlay,
   beside their anchors. Bubbles carry the annotation number (matching the pin badge),
   pack into the right margin when sparse and split left/right when dense, and connect to
   the anchor with a thin semi-transparent line. Only annotations whose anchor is in the
   viewport render, so a 48-comment doc doesn't stack every bubble into one screen; the set
   re-packs on scroll/resize. The view is independent of 标注/交互 mode and read-only; click a
-  bubble to open that annotation. No schema change — existing `content` + `reply` data is
-  rendered as-is; nothing is written to disk.
+  bubble to open that annotation. Nothing is written to disk.
 - **评论布局 inline / sidebar 二态切换** — when 评论 is on, a second toggle (sidebar + floating-toolbar)
   flips how bubbles share the canvas with the document. **inline**: bubbles render in the iframe overlay
   beside their anchors (may overlap text when the window is too narrow for a margin channel). **sidebar**:
@@ -148,9 +147,6 @@ Template scope only — instance/product content changes live outside this file.
   (default) or PNG. Frame exports have owned padding and cannot capture neighbors/sidebar;
   Section exports preserve flow layout. Clean / with-notes presets, background choices, PNG
   clipboard copy, stable filenames, and render-size guards are included.
-- **Annotation Reply** — every sidebar annotation has one lightweight, editable response
-  (`reply: { content, author, updated_at }`). Agents can update it through revision-safe
-  `POST /reply`; the original annotation body is preserved and SSE refreshes open viewers.
 - **Frame Notes** — optional `screens[].note` renders below each frame and edits the same
   `board.json` SSOT through revision-checked local API writes. Notes document durable scene /
   interaction intent and remain separate from disposable review annotations.

@@ -287,7 +287,7 @@ npm run dev        <span class="c"># → https://ios-app-preview.localhost/index
         </div>
         <div class="term">
           <dt>Annotation<small>标注</small></dt>
-          <dd>一条评审意见：正文 + 锚定的元素 + 可选的参考图 / 移动箭头 /「改文案」。落盘在本机，agent 直接读取；改稿后可在它下方留下单条 Reply，解释改了什么。</dd>
+          <dd>一条评审意见：正文 + 锚定的元素 + 可选的参考图 / 移动箭头 /「改文案」。落盘在本机，agent 直接读取并据此改稿。</dd>
         </div>
         <div class="term">
           <dt>Indicator<small>定位符</small></dt>
@@ -331,15 +331,15 @@ npm run dev        <span class="c"># → https://ios-app-preview.localhost/index
     <h2 style="margin-top:48px">标注流程</h2>
     <div class="steps">
       <div class="step"><b>标注</b>：按 <kbd>A</kbd>，点选或框选元素，在底部输入框写意见。支持连续添加多个目标、粘贴参考图、画「移动到」箭头、勾「改文案」。</div>
-      <div class="step"><b>交给 agent</b>：说<b>「标好了，你看一下」</b>（需要限定范围就贴 indicator）。agent 按 page → section → frame 分组读盘，逐条修改源文件，并在标注下 Reply 说明改了什么 / 为什么。</div>
-      <div class="step"><b>复核与清理</b>：点击侧栏 comment 回到所属 frame，同时看视觉结果和 Agent reply；确认无误后删除或清空这批标注。锚点失效的标注仍会留在侧栏，不会静默丢失。</div>
+      <div class="step"><b>交给 agent</b>：说<b>「标好了，你看一下」</b>（需要限定范围就贴 indicator）。agent 按 page → section → frame 分组读盘，逐条修改源文件，并在对话中说明改了什么 / 为什么。</div>
+      <div class="step"><b>复核与清理</b>：点击侧栏 comment 回到所属 frame，检查视觉结果；确认无误后删除或清空这批标注。锚点失效的标注仍会留在侧栏，不会静默丢失。</div>
     </div>
   </section>
 
   <section id="boundaries">
     <h2>边界</h2>
     <div class="flat">
-      <p class="flat-row"><b>标注是单机的。</b>存储在本机 <code class="inline">~/.html-annotate/&lt;项目目录&gt;/</code>（每个 clone 独立，路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent；Reply 用来解释本轮改稿，不扩成多人评论 thread。</p>
+      <p class="flat-row"><b>标注是单机的。</b>存储在本机 <code class="inline">~/.html-annotate/&lt;项目目录&gt;/</code>（每个 clone 独立，路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不扩成多人评论系统。</p>
       <p class="flat-row"><b>机壳不是编辑面。</b>bezel / 状态栏 / 底部横条由加载器统一渲染，agent 的契约中也禁止修改；评审意见针对内容和布局。</p>
     </div>
   </section>

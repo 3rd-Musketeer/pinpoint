@@ -5,7 +5,7 @@
  * SSOT = ~/.html-annotate; localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
- * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId / reply?.
+ * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar). */
 (function () {
@@ -95,13 +95,12 @@
   }
   var commentToDisplay = contentToDisplay; // compat alias for workbench
 
-  /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用），
-   *  reply 原样传。iframe 内 overlay 与父级 gutter 共用，避免一边显示 [@a:id] 一边显示 [object Object]。 */
+  /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用）。
+   * iframe 内 overlay 与父级 gutter 共用，避免两边显示不一致。 */
   function bubbleMarkView(m) {
     return {
       n: m.n,
-      content: contentToDisplay(m.content != null ? m.content : '', m.targets || []),
-      reply: m.reply || null
+      content: contentToDisplay(m.content != null ? m.content : '', m.targets || [])
     };
   }
 
@@ -1054,23 +1053,6 @@
     if (marks.length === before) return false;
     var open = document.getElementById('ann-box');
     if (open) closeComposer();
-    persist();
-    return true;
-  }
-
-  function setReply(ref, content, author) {
-    var m = typeof ref === 'string' ? markById(ref) : markByN(ref);
-    if (!m) return false;
-    var text = String(content || '').trim();
-    if (text) {
-      m.reply = normalizeAnnotationReply({
-        content: text,
-        author: author === 'agent' ? 'agent' : 'user',
-        updated_at: new Date().toISOString()
-      });
-    } else {
-      delete m.reply;
-    }
     persist();
     return true;
   }
@@ -2255,7 +2237,7 @@
 
   // ---------- 评论气泡（"在画布渲染评论"开关）----------
   // 与 pin 同一套几何管线（resolveMarkAnchor → docToView → viewToOverlayRect），
-  // 但独立于 标注/交互 模式：开关一开就在画布上把 content + reply 渲染成气泡，
+  // 但独立于 标注/交互 模式：开关一开就在画布上把 content 渲染成气泡，
   // 序号与 pin 对应，半透明细线指向锚点。稀疏默认放右侧，密集时左右分流。
   var bubbleNodes = Object.create(null);   // n → { m, node, height }
   var BUBBLE_W = 240;
@@ -2290,7 +2272,7 @@
         entry = bubbleNodes[m.n] = { m: m, node: node, height: 0 };
       } else {
         entry.m = m;
-        // content/reply may have changed; refresh inner HTML + re-measure
+        // content may have changed; refresh inner HTML + re-measure
         entry.node.innerHTML = bubbleInnerHtml(bubbleMarkView(m));
       }
       entry.height = entry.node.offsetHeight || 0;
@@ -2378,8 +2360,7 @@
       out.push({
         n: m.n,
         rect: [Math.round(local[0]), Math.round(local[1]), Math.round(local[2]), Math.round(local[3])],
-        content: bubbleMarkView(m).content,
-        reply: m.reply || null
+        content: bubbleMarkView(m).content
       });
     });
     return out;
@@ -2623,7 +2604,6 @@
     visibleBubbleAnchors: visibleBubbleAnchors,
     clear: doClear,
     removeMark: removeMark,
-    setReply: setReply,
     setFloatingToolbar: setFloatingToolbar,
     hasActiveDraft: function () { return !!activeComposer; },
     cancelDraft: function () {

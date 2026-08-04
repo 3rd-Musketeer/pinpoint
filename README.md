@@ -8,7 +8,7 @@ marks land on disk for your agent to read and act on.
 
 - 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
 - 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts (Claude Code / Codex / Cursor / …)
-- ✏️ **Review loop** — mark up screens in the browser（标注）, agent revises and replies on each mark
+- ✏️ **Review loop** — mark up screens in the browser（标注）, then let the agent revise the source
 - 🖼️ **Doc-ready export** — export a Frame or Section as isolated 2× WebP / PNG without neighboring canvas UI
 - 🔁 **HMR** — edit a screen or component, the open board refreshes in place
 
@@ -219,16 +219,15 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT under a
    per-project `~/.html-annotate/<dir>/`, path exposed by `GET /health`; revisioned,
    SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
-   board hot-reloads. It can attach a concise **Agent reply** to explain what changed and why.
+   board hot-reloads. The agent summarizes what changed and why in the conversation.
 3. Click any sidebar comment to focus its owning frame (the same geometry as frame navigation),
-   review the visual change together with the reply, then clear resolved marks and repeat.
+   review the visual change, then clear resolved marks and repeat.
 
 Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 `@frame:library/timer` · `@a:<id>`. Full schema and routing rules:
 [annotate skill](skills/ios-app-preview-annotate/SKILL.md).
 
-Annotations are per-machine (solo human + agent loop) — replies close that loop, but this is
-not a multiplayer comment system.
+Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
 
 ## One phone, no workbench
 

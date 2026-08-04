@@ -1158,55 +1158,6 @@ test('sidebar annotation navigation focuses the owning frame, not the comment an
   await page.evaluate(() => window.iOSAnnotate.clear());
 });
 
-test('annotation reply edits inline and agent reply endpoint updates without replacing the comment', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
-
-  const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
-  await saveAnnotation(page, target, '保持原标注正文');
-  await page.locator('#wbann-list [data-ann-reply-action="edit"]').click();
-  const replyInput = page.locator('#wbann-list .wb-ann-reply-input');
-  await replyInput.fill('我补充一个约束');
-  await page.locator('#wbann-list [data-ann-reply-action="save"]').click();
-  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('我补充一个约束');
-  await expect(page.locator('#wbann-list .wb-ann-reply-head')).toContainText('User reply');
-
-  let diskDoc;
-  await expect.poll(async () => {
-    const docs = await (await page.request.get('/annotations')).json();
-    diskDoc = Object.values(docs).find((doc) => doc.annotations?.some((annotation) => annotation.content === '保持原标注正文'));
-    return diskDoc?.annotations?.find((annotation) => annotation.content === '保持原标注正文')?.reply?.content;
-  }).toBe('我补充一个约束');
-
-  const annotation = diskDoc.annotations.find((item) => item.content === '保持原标注正文');
-  const response = await page.request.post('/reply', {
-    data: {
-      page: diskDoc.page,
-      annotationId: annotation.id,
-      baseRevision: diskDoc.revision,
-      reply: { content: '已调整视觉，并保留了原来的交互语义。', author: 'agent' },
-    },
-  });
-  expect(response.status()).toBe(200);
-
-  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('已调整视觉，并保留了原来的交互语义。');
-  await expect(page.locator('#wbann-list .wb-ann-reply-head')).toContainText('Agent reply');
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0])).toMatchObject({
-    content: '保持原标注正文',
-    reply: {
-      content: '已调整视觉，并保留了原来的交互语义。',
-      author: 'agent',
-    },
-  });
-
-  await page.reload();
-  await page.waitForFunction(() => window.iOSAnnotate);
-  await expect(page.locator('#wbann-list .wb-ann-reply-content')).toHaveText('已调整视觉，并保留了原来的交互语义。');
-  await page.evaluate(() => window.iOSAnnotate.clear());
-});
-
 test('bottom composer keeps focus while canvas clicks attach and inline targets', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.iOSAnnotate.clear());

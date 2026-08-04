@@ -163,7 +163,6 @@ Workbench mounts screen HTML via `innerHTML`, so bare `<script>` never runs. Cus
 | `section` | Board section `id` (legacy: `group`) |
 | `screenId` | Frame / screen file id |
 | `content` | Annotation body (legacy: `comment`) |
-| `reply` | Optional lightweight response `{ content, author, updated_at }`; not a thread or resolved state |
 | `path` | Shell page (usually `index.html`) |
 
 Element annotations always write `targets: [{ ref, selector, text }]`; stable refs are
@@ -186,9 +185,6 @@ overrides the dir wholesale (e2e uses this).
 `POST /save` requires `baseRevision`; clear uses the same save queue with `annotations: []`
 (there is no `/clear` route). The browser `localStorage` cache is not authoritative. On boot
 the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-realtime.
-Agent responses use `POST /reply` with `page`, stable `annotationId`, `baseRevision`, and
-`reply: { content, author: "agent" }`; this updates only that annotation and broadcasts the
-same SSE document without replacing the original `content`.
 **Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
 (`ios-preview-wb`) — viewer state, not synced.
 
@@ -221,8 +217,8 @@ instance layers private content on top without touching tracked files:
 4. Read annotations grouped by `pageId` then `section` (and `screenId` when present); edit the routed file; do not clear annotations for the user.
 5. Resolve `content` target tokens against the same annotation's `targets[].ref`; keep
    missing refs visible instead of guessing another target.
-6. After an annotation is actually addressed, attach a short concrete Agent reply; do not use
-   reply as a substitute for the visual/code change or as an implicit resolved state.
+6. After addressing annotations, summarize the concrete changes in the agent conversation;
+   leave review and annotation cleanup to the user.
 
 ## Anti-patterns
 

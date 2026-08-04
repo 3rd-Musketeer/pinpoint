@@ -326,41 +326,6 @@
   .wb-ann-cap { font-size:10px; color:var(--wb-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
   .wb-ann-text { font-size:12px; line-height:1.4; color:var(--wb-fg); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
   .wb-ann-tags { font-size:10px; color:var(--wb-faint); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .wb-ann-reply {
-    margin:0 8px 8px 34px; padding:7px 9px;
-    border-left:2px solid color-mix(in srgb,var(--wb-accent) 38%,var(--wb-line));
-    border-radius:0 7px 7px 0;
-    background:color-mix(in srgb,var(--wb-accent) 4%,rgba(255,255,255,.6));
-  }
-  .wb-ann-reply--empty { padding:0; border-left-color:var(--wb-line); background:transparent; }
-  .wb-ann-reply--empty button,
-  .wb-ann-reply-head button,
-  .wb-ann-reply-actions button {
-    border:0; background:transparent; color:var(--wb-faint); font:inherit; font-size:10.5px;
-    padding:3px 5px; border-radius:5px; cursor:pointer;
-  }
-  .wb-ann-reply--empty button { padding-left:0; }
-  .wb-ann-reply--empty button:hover,
-  .wb-ann-reply-head button:hover,
-  .wb-ann-reply-actions button:hover { color:var(--wb-fg); background:var(--wb-hover); }
-  .wb-ann-reply-head { display:flex; align-items:center; gap:6px; margin-bottom:3px; }
-  .wb-ann-reply-head span,
-  .wb-ann-reply-label { flex:1; color:var(--wb-accent); font-size:10px; font-weight:650; letter-spacing:.02em; }
-  .wb-ann-reply-content {
-    color:var(--wb-muted); font-size:11.5px; line-height:1.45;
-    white-space:pre-wrap; overflow-wrap:anywhere;
-  }
-  .wb-ann-reply--editing { display:flex; flex-direction:column; gap:6px; }
-  .wb-ann-reply-input {
-    width:100%; min-height:60px; resize:vertical; box-sizing:border-box;
-    border:1px solid var(--wb-line); border-radius:7px; padding:7px 8px;
-    background:var(--wb-side); color:var(--wb-fg); font:inherit; font-size:11.5px; line-height:1.45; outline:none;
-  }
-  .wb-ann-reply-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 12%,transparent); }
-  .wb-ann-reply-actions { display:flex; align-items:center; gap:3px; }
-  .wb-ann-reply-hint { flex:1; color:var(--wb-faint); font-size:9.5px; }
-  .wb-ann-reply-actions button.is-primary { background:var(--wb-accent); color:#fff; }
-
   /* footer chrome */
   .wb-foot {
     flex:none; display:flex; gap:6px; margin:0; padding:10px var(--wb-pad);

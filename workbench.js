@@ -50,7 +50,6 @@ var annFilterBox = document.getElementById('wbann-filter');
 var activeGroup = 'lock';
 var sectionOpen = { pages: true, annotations: true };
 var annFilter = 'all';
-var editingReplyN = null;
 var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
 var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
 var LS_KEY = 'ios-preview-wb';
@@ -649,7 +648,7 @@ function renderGutter() {
     node.className = 'ann-bubble';
     node.setAttribute('data-ann-ui', '');
     node.setAttribute('data-n', an.n);
-    node.innerHTML = bubbleInnerHtml({ n: an.n, content: an.content, reply: an.reply });
+    node.innerHTML = bubbleInnerHtml({ n: an.n, content: an.content });
     node.style.visibility = 'hidden';
     node.style.left = '0';
     node.style.top = '0';
@@ -760,43 +759,8 @@ function markTags(m) {
   return tags.join(' ');
 }
 
-function markReply(m) {
-  var reply = m && m.reply;
-  if (!reply || !reply.content) return null;
-  return {
-    content: String(reply.content),
-    author: reply.author === 'user' ? 'user' : 'agent',
-    updatedAt: reply.updated_at || ''
-  };
-}
-
 function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-function annotationReplyMarkup(row) {
-  if (editingReplyN === row.n) {
-    return '<div class="wb-ann-reply wb-ann-reply--editing" data-ann-reply-editor="' + row.n + '">' +
-      '<label class="wb-ann-reply-label" for="wb-ann-reply-' + row.n + '">Reply</label>' +
-      '<textarea id="wb-ann-reply-' + row.n + '" class="wb-ann-reply-input" rows="3" placeholder="补充处理结果或解释…">' +
-      escHtml(row.reply ? row.reply.content : '') + '</textarea>' +
-      '<div class="wb-ann-reply-actions">' +
-      '<span class="wb-ann-reply-hint">⌘/Ctrl + Enter 保存</span>' +
-      '<button type="button" data-ann-reply-action="cancel" data-ann-n="' + row.n + '">取消</button>' +
-      '<button type="button" class="is-primary" data-ann-reply-action="save" data-ann-n="' + row.n + '">保存</button>' +
-      '</div></div>';
-  }
-  if (!row.reply) {
-    return '<div class="wb-ann-reply wb-ann-reply--empty">' +
-      '<button type="button" data-ann-reply-action="edit" data-ann-n="' + row.n + '">↳ 添加回应</button>' +
-      '</div>';
-  }
-  var author = row.reply.author === 'agent' ? 'Agent reply' : 'User reply';
-  return '<div class="wb-ann-reply"' + (row.reply.updatedAt ? ' title="' + escHtml(row.reply.updatedAt) + '"' : '') + '>' +
-    '<div class="wb-ann-reply-head"><span>' + author + '</span>' +
-    '<button type="button" data-ann-reply-action="edit" data-ann-n="' + row.n + '">编辑</button></div>' +
-    '<div class="wb-ann-reply-content">' + escHtml(row.reply.content) + '</div>' +
-    '</div>';
 }
 
 function frameNoteApiUrl(pageId, screenId) {
@@ -1050,13 +1014,11 @@ function refreshAnnPanel() {
       text: (m.text || '').slice(0, 40),
       summary: markSummary(m),
       broken: broken,
-      tags: markTags(m),
-      reply: markReply(m)
+      tags: markTags(m)
     };
   });
   var sig = annFilter + '|' + activeGroup + '|' + rows.map(function (r) {
-    var replySig = r.reply ? r.reply.author + ':' + r.reply.content + ':' + r.reply.updatedAt : '';
-    return r.key + ':' + r.type + ':' + r.text + ':' + r.summary + ':' + r.broken + ':' + r.tags + ':' + replySig + ':' + (editingReplyN === r.n);
+    return r.key + ':' + r.type + ':' + r.text + ':' + r.summary + ':' + r.broken + ':' + r.tags;
   }).join('~');
   if (sig === annListSig && annList.querySelector('[data-ann-n]')) {
     // List unchanged; buttons/counts above already reflect current state.
@@ -1097,7 +1059,7 @@ function refreshAnnPanel() {
         (r.tags ? '<span class="wb-ann-tags">' + r.tags + '</span>' : '') +
         '</span></button>' +
         '<button type="button" class="wb-ann-del" data-ann-del="' + r.n + '" aria-label="删除标注 ' + r.n + '" title="删除">×</button>' +
-        '</div>' + annotationReplyMarkup(r) + '</div>';
+        '</div></div>';
     }).join('');
     return head + body;
   }).join('');
@@ -1143,38 +1105,8 @@ function wireAnnotatePanel() {
       e.preventDefault();
       e.stopPropagation();
       var dn = parseInt(del.getAttribute('data-ann-del'), 10);
-      if (editingReplyN === dn) editingReplyN = null;
       var aDel = annotateApi();
       if (aDel.removeMark) aDel.removeMark(dn);
-      return;
-    }
-    var replyAction = e.target.closest('[data-ann-reply-action]');
-    if (replyAction) {
-      e.preventDefault();
-      e.stopPropagation();
-      var rn = parseInt(replyAction.getAttribute('data-ann-n'), 10);
-      var action = replyAction.getAttribute('data-ann-reply-action');
-      if (action === 'edit') {
-        editingReplyN = rn;
-        annListSig = '';
-        refreshAnnPanel();
-        requestAnimationFrame(function () {
-          var input = annList.querySelector('[data-ann-reply-editor="' + rn + '"] textarea');
-          if (input) { input.focus(); input.setSelectionRange(input.value.length, input.value.length); }
-        });
-      } else if (action === 'cancel') {
-        editingReplyN = null;
-        annListSig = '';
-        refreshAnnPanel();
-      } else if (action === 'save') {
-        var editor = annList.querySelector('[data-ann-reply-editor="' + rn + '"]');
-        var input = editor && editor.querySelector('textarea');
-        var aRep = annotateApi();
-        var mark = (aRep.marks || []).find(function (item) { return item.n === rn; });
-        var author = mark && mark.reply && mark.reply.author === 'agent' ? 'agent' : 'user';
-        editingReplyN = null;
-        if (input && typeof aRep.setReply === 'function') aRep.setReply(rn, input.value, author);
-      }
       return;
     }
     var row = e.target.closest('.wb-ann-item-main[data-ann-n]');
@@ -1199,22 +1131,6 @@ function wireAnnotatePanel() {
     });
   }
 
-  annList.addEventListener('keydown', function (e) {
-    var input = e.target.closest('[data-ann-reply-editor] textarea');
-    if (!input) return;
-    var editor = input.closest('[data-ann-reply-editor]');
-    var n = editor && parseInt(editor.getAttribute('data-ann-reply-editor'), 10);
-    if (!n) return;
-    if (e.key === 'Escape') {
-      e.preventDefault();
-      var cancel = editor.querySelector('[data-ann-reply-action="cancel"]');
-      if (cancel) cancel.click();
-    } else if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
-      e.preventDefault();
-      var save = editor.querySelector('[data-ann-reply-action="save"]');
-      if (save) save.click();
-    }
-  });
   refreshAnnPanel();
 }
 
