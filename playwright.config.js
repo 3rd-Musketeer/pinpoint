@@ -19,7 +19,7 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: {
-    command: `npm run dev -- --port ${E2E_PORT}`,
+    command: `npm run dev:app -- --port ${E2E_PORT}`,
     url: `${E2E_BASE_URL}/health`,
     reuseExistingServer: false,
     env: {

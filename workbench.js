@@ -966,7 +966,7 @@ function syncConnStatus() {
   if (label) label.textContent = on ? '已连接' : '未连接';
   el.title = on
     ? (syncErr ? '已连接 · 上次同步失败' : '标注服务已连接')
-    : '标注服务未连接（npm run dev / 端口 5199）';
+    : '标注服务未连接（请运行 npm run dev）';
 }
 
 // Debounce annotate panel refreshes so a burst of notify() calls (persist + SSE

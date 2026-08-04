@@ -10,11 +10,16 @@ the routing table below points at before touching the matching surface.
 ## Start the server
 
 ```bash
+npm install -g portless # once per workstation
 npm install          # first time
-npm run dev          # http://127.0.0.1:5199/index.html (PORT overrides; auto-port on conflict)
+npm run dev          # https://ios-app-preview.localhost/index.html
 ```
 
-Health: `curl -s http://127.0.0.1:5199/health` — the same port serves preview + annotate API.
+Portless owns the normal route and process lifecycle. `npm run dev:direct` is
+the explicit proxy-bypass fallback at `http://127.0.0.1:5199`; do not use a
+persistent Portless alias for this app.
+
+Health: `curl -s https://ios-app-preview.localhost/health` — the same origin serves preview + annotate API.
 
 Kit CSS/JS is framework-free. **Workbench** needs Vite + Lucide (`npm install`).
 

@@ -7,7 +7,12 @@ import { chromium } from '@playwright/test';
 import { exportFilename, validateExportRequest } from '../lib/export-contract.js';
 
 function parseArgs(argv) {
-  const values = { url: 'http://127.0.0.1:5199', format: 'webp', scale: 2, background: 'canvas' };
+  const values = {
+    url: process.env.IOS_PREVIEW_URL || 'https://ios-app-preview.localhost',
+    format: 'webp',
+    scale: 2,
+    background: 'canvas',
+  };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
     if (arg === '--with-notes') values.includeNotes = true;
@@ -28,9 +33,18 @@ if (!args.page || !args.section) {
   usage('Both --page and --section are required. Omit --frame to export the whole Section.');
 } else {
   const baseUrl = String(args.url).replace(/\/$/, '');
+  const hostname = new URL(baseUrl).hostname;
+  const localPreview = hostname === 'localhost'
+    || hostname === '127.0.0.1'
+    || hostname === '::1'
+    || hostname.endsWith('.localhost');
   const browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({
+    viewport: { width: 1600, height: 1100 },
+    ignoreHTTPSErrors: localPreview,
+  });
   try {
-    const page = await browser.newPage({ viewport: { width: 1600, height: 1100 } });
+    const page = await context.newPage();
     // The annotation SSE connection is intentionally long-lived, so networkidle
     // would never settle. DOM readiness + the public Workbench API is the gate.
     await page.goto(`${baseUrl}/index.html`, { waitUntil: 'domcontentloaded' });
@@ -47,21 +61,21 @@ if (!args.page || !args.section) {
       includeNotes: !!args.includeNotes,
     });
     const request = validateExportRequest(snapshot);
-    const response = await fetch(`${baseUrl}/api/export-image`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(request),
+    const response = await context.request.post(`${baseUrl}/api/export-image`, {
+      data: request,
     });
-    if (!response.ok) {
+    if (!response.ok()) {
       const body = await response.text();
-      throw new Error(`Export failed (${response.status}): ${body}`);
+      throw new Error(`Export failed (${response.status()}): ${body}`);
     }
     const filename = exportFilename(request).replace(/\//g, '-');
     const output = path.resolve(args.output || path.join('exports', filename));
     await fs.mkdir(path.dirname(output), { recursive: true });
-    await fs.writeFile(output, Buffer.from(await response.arrayBuffer()));
-    console.log(`${output} · ${response.headers.get('x-export-width')}×${response.headers.get('x-export-height')} · ${response.headers.get('content-type')}`);
+    await fs.writeFile(output, await response.body());
+    const headers = response.headers();
+    console.log(`${output} · ${headers['x-export-width']}×${headers['x-export-height']} · ${headers['content-type']}`);
   } finally {
+    await context.close();
     await browser.close();
   }
 }

@@ -48,7 +48,7 @@ description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审�
 **匹配规则**：scope indicator 要求 `annotation.pageId` 严格相等；缺 `pageId` 的旧数据不匹配 `@page` / `@section` / `@frame`（仍可 `@a:id` 命中）。
 
 ```bash
-DIR=$(curl -s http://127.0.0.1:5199/health | jq -r .dataDir)
+DIR=$(curl -s https://ios-app-preview.localhost/health | jq -r .dataDir)
 jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "$DIR"/*.json
 ```
 
@@ -57,11 +57,11 @@ jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "
 ## 1. 保证服务在跑（每次涉及标注前先做）
 
 ```bash
-curl -s --max-time 1 http://127.0.0.1:5199/health || \
-  (nohup npm run dev >/dev/null 2>&1 & sleep 1 && curl -s http://127.0.0.1:5199/health)
+curl -s --max-time 1 https://ios-app-preview.localhost/health || \
+  (nohup npm run dev >/dev/null 2>&1 & sleep 1 && curl -s https://ios-app-preview.localhost/health)
 ```
 
-- 默认端口 **5199**（`PORT` 可覆盖）；先探活再启动。
+- 正常入口是 Portless 管理的 `https://ios-app-preview.localhost`；先探活再启动。
 - 落盘：**磁盘 SSOT**，目录按项目隔离——`~/.html-annotate/<repo目录名>-<hash>/<页面名>.json`（含 `revision`），参考图在同目录 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**，不要自己猜 hash；同机多个 clone 各有各的目录，互不可见。`HTML_ANNOTATE_DATA_DIR` 环境变量可整体覆盖（e2e 在用）。
 - 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
 - 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
@@ -69,11 +69,11 @@ curl -s --max-time 1 http://127.0.0.1:5199/health || \
 
 ## 2. 注入：模板自动，无需手动
 
-`ios-kit.js` 在 localhost 自动注入 `/annotate.js`（同端口；服务没跑则静默失败；非本机 host 不注入）。
+`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。
 
 - link 了 `ios-kit.js` 的预览零样板即有标注。
 - 关掉：`<html data-annotate="off">`。
-- 裸 HTML：`</body>` 前 `<script src="http://127.0.0.1:5199/annotate.js"></script>`。
+- 裸 HTML：`</body>` 前 `<script src="https://ios-app-preview.localhost/annotate.js"></script>`。
 
 ## 3. 用户怎么用（向用户解释时按这个说）
 
@@ -101,7 +101,7 @@ curl -s --max-time 1 http://127.0.0.1:5199/health || \
 ## 4. Agent 怎么读（用户说「标好了」时）
 
 ```bash
-DIR=$(curl -s http://127.0.0.1:5199/health | jq -r .dataDir)
+DIR=$(curl -s https://ios-app-preview.localhost/health | jq -r .dataDir)
 ls -t "$DIR"/*.json
 ```
 

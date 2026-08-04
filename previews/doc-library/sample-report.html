@@ -67,12 +67,12 @@
   </svg>
 </main>
 <script>
-/* 标注接线：只在 localhost 拉 annotate.js，所以同一份文件 file:// 打开、
+/* 标注接线：只在 loopback / .localhost 拉 annotate.js，所以同一份文件 file:// 打开、
    导出图片、发给别人都不带标注 UI，也不联网。没有 workbench 侧栏时浮动工具条默认
    隐藏，用公开 API 显式打开。正文不必打 wb-html-surface——框架把整份文档当 surface。 */
 (function () {
   var h = location.hostname;
-  if (h !== 'localhost' && h !== '127.0.0.1' && h !== '::1') return;
+  if (h !== 'localhost' && h !== '127.0.0.1' && h !== '::1' && !h.endsWith('.localhost')) return;
   if (document.documentElement.getAttribute('data-annotate') === 'off') return;
   if (window.__htmlAnnotate || document.querySelector('script[data-ios-annotate]')) return;
   var s = document.createElement('script');

@@ -10,8 +10,8 @@ description: 在本仓库（iOS App Preview workbench）里搭预览内容：加
 ## 0. 服务
 
 ```bash
-npm run dev    # http://127.0.0.1:5199/index.html（PORT 可覆盖，占用时自动换口）
-curl -s http://127.0.0.1:5199/health
+npm run dev    # https://ios-app-preview.localhost/index.html
+curl -s https://ios-app-preview.localhost/health
 ```
 
 ## 1. 加 screen（已有 section）
@@ -159,7 +159,7 @@ npm run export -- --page library --section brew-flow --with-notes --format png
 
 screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接就能把仓库外的汇报页挂进来。
 
-要能标注，页尾接一段只在 localhost 拉 `/annotate.js` 并（独立打开时）调
+要能标注，页尾接一段只在 loopback / `.localhost` 拉 `/annotate.js` 并（独立打开时）调
 `iOSAnnotate.setFloatingToolbar(true)` 的脚本即可——同一份文件 `file://` 打开、导出 PNG、
 外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：
 独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。Web 板 fragment 仍由

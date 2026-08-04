@@ -17,9 +17,14 @@ New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minu
 ## Quickstart
 
 ```bash
+npm install -g portless # once per machine
 npm install
-npm run dev          # http://127.0.0.1:5199/index.html
+npm run dev          # https://ios-app-preview.localhost/index.html
 ```
+
+Normal development runs through [Portless](https://github.com/vercel-labs/portless);
+install its CLI globally first. Use `npm run dev:direct` only when debugging the
+proxy boundary; it falls back to `http://127.0.0.1:5199`.
 
 Then tell your agent:
 
@@ -34,7 +39,7 @@ npm run test:e2e                  # workbench e2e (template-only mode)
 npm run check                     # both
 ```
 
-Requires Node ≥ 20.
+Requires Node ≥ 24.
 
 ## Export Frame / Section images
 

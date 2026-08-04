@@ -8,6 +8,20 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-07-30
+
+### Changed
+- **Portless-owned development route** — `npm run dev` now owns
+  `https://ios-app-preview.localhost`; `dev:direct` keeps the fixed-port
+  proxy-bypass path. E2E starts Vite directly so tests do not register a
+  workstation route, and worktree sessions remain isolated.
+- **Portless-safe local annotation and export** — annotation bootstrap accepts
+  reserved `*.localhost` hosts. CLI image export defaults to the stable route
+  and uses its scoped Playwright request context, avoiding Node's separate CA
+  trust behavior while keeping certificate bypass limited to local hosts.
+
+---
+
 ## 2026-07-29
 
 ### Fixed

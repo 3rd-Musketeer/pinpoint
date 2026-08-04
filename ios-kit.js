@@ -175,13 +175,13 @@
   }
 
   /* ---- annotation review loop (annotate.js) ---------------------------------
-     On localhost only, pull in /annotate.js from the same unified preview
+     On loopback and .localhost hosts, pull in /annotate.js from the same unified preview
      server. Silent no-op if the server isn't running, so previews are
      unaffected; never injected when served from a real host, so shared/exported
      copies don't phone home. Opt out with <html data-annotate="off">. --------- */
   function injectAnnotate() {
     var h = location.hostname;
-    if (h && h !== 'localhost' && h !== '127.0.0.1' && h !== '::1') return;   // local only
+    if (h && h !== 'localhost' && h !== '127.0.0.1' && h !== '::1' && !h.endsWith('.localhost')) return;
     if (document.documentElement.getAttribute('data-annotate') === 'off') return;
     if (window.__htmlAnnotate || document.querySelector('script[data-ios-annotate]')) return;
     var s = document.createElement('script');
