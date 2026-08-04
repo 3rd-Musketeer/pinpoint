@@ -886,6 +886,7 @@ test('Frame export snapshots current state and renders an isolated padded WebP',
 
 test('Section export preserves layout and includes Frame Notes only by preset', async ({ page }) => {
   await openWorkbench(page);
+  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toBeVisible();
   const clean = await page.evaluate(() => window.workbench.exportSnapshot({
     kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white',
   }));
