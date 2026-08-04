@@ -10,11 +10,13 @@ the routing table below points at before touching the matching surface.
 ## Start the server
 
 ```bash
-npm install -g portless # once per workstation
+brew install just         # once per workstation
+npm install -g portless   # once per workstation
 npm install          # first time
-npm run dev          # https://ios-app-preview.localhost/index.html
+just dev             # https://ios-app-preview.localhost/index.html
 ```
 
+`Justfile` is the workflow SSOT; `package.json` scripts are implementation primitives.
 Portless owns the normal route and process lifecycle. `npm run dev:direct` is
 the explicit proxy-bypass fallback at `http://127.0.0.1:5199`; do not use a
 persistent Portless alias for this app.
@@ -23,9 +25,26 @@ Health: `curl -s https://ios-app-preview.localhost/health` — the same origin s
 
 Kit CSS/JS is framework-free. **Workbench** needs Vite + Lucide (`npm install`).
 
-Checks: `npm test` (contracts) · `npm run test:e2e` (Chromium; first time
-`npx playwright install chromium`) · `npm run check` (both). E2e runs the server with
+Checks: `just check` (contracts + Chromium e2e; first time
+`npx playwright install chromium`). E2e runs the server with
 `PREVIEW_TEMPLATE_ONLY=1`, so instance-local pages/components never affect assertions.
+
+## Worktree and publishing contract
+
+- This is one Git repository with two long-lived worktrees: daily development on
+  `dev`, public-template release on `main`.
+- Run the persistent `ios-app-preview.localhost` service only from the `dev` worktree.
+  The release worktree is a cold verification and publishing surface.
+- Do not develop, create private instance content, or commit directly on `main`.
+  `main` may only fast-forward to the published `dev` tip.
+- `just ship-dev` is the only canonical dev-push workflow. It requires clean,
+  non-divergent `dev`, runs the full check, pushes `origin/dev`, and verifies the ref.
+- `just publish` is the only canonical main-publish workflow. Run it from the release
+  worktree on `main`; it requires both worktrees clean and local `dev == origin/dev`,
+  uses `git merge --ff-only`, installs from the lockfile, runs template-only verification,
+  pushes `origin/main`, and verifies `origin/main == origin/dev`.
+- Both recipes change remote state. Never work around a failed guard, force-push,
+  or create a merge commit to make a release proceed.
 
 ## Edit surfaces
 

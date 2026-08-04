@@ -17,14 +17,16 @@ New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minu
 ## Quickstart
 
 ```bash
-npm install -g portless # once per machine
+brew install just         # once per machine
+npm install -g portless   # once per machine
 npm install
-npm run dev          # https://ios-app-preview.localhost/index.html
+just dev             # https://ios-app-preview.localhost/index.html
 ```
 
-Normal development runs through [Portless](https://github.com/vercel-labs/portless);
-install its CLI globally first. Use `npm run dev:direct` only when debugging the
-proxy boundary; it falls back to `http://127.0.0.1:5199`.
+[`Justfile`](Justfile) is the workflow entrypoint. Normal development runs through
+[Portless](https://github.com/vercel-labs/portless); install both CLIs once per machine.
+Use `npm run dev:direct` only when debugging the proxy boundary; it falls back to
+`http://127.0.0.1:5199`.
 
 Then tell your agent:
 
@@ -33,13 +35,11 @@ Then tell your agent:
 Verify changes:
 
 ```bash
-npm test                          # node contract tests
 npx playwright install chromium   # first browser-test run only
-npm run test:e2e                  # workbench e2e (template-only mode)
-npm run check                     # both
+just check                        # node contracts + template-only workbench e2e
 ```
 
-Requires Node ≥ 24.
+Requires Node ≥ 24 and [just](https://just.systems/).
 
 ## Export Frame / Section images
 
@@ -92,6 +92,7 @@ inside a frame. These five words are also the annotation address space (`@page:`
 
 ```
 AGENTS.md              Agent entry — contracts + routing (read first)
+Justfile               Canonical dev, check, dev-push, and main-publish workflows
 QUICKSTART.html        Human onboarding — concepts + usage, self-contained
 ios-kit.css            Variables + chrome styles + primitive CSS
 ios-kit.js             Kit runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
@@ -300,14 +301,37 @@ See the Component Library page for live recipes. Sheet + tabbar structure:
 - **Role-based color** — `--ios-text-2`, `--ios-fill-3`, `--ios-accent`; never raw hex in app markup.
 - **Tracking is CJK-safe** — body tracking `0`; don’t reintroduce negative Latin tracking.
 
-## Branches
+## Development and publishing
 
-| Branch | Role |
+This repository uses one Git repository with two long-lived worktrees:
+
+| Branch / worktree role | Responsibility |
 |---|---|
-| **`main`** | Public template (what you clone / pull for releases) |
-| **`dev`** | Ongoing development |
+| **`dev` / daily worktree** | Ongoing development and the only owner of the persistent `ios-app-preview.localhost` route |
+| **`main` / release worktree** | Clean public-template verification and publishing; no feature development or private instance content |
 
-Publish = update `main` from a clean `dev` tip (template-only check), then `git push origin main`.
+`main` only advances by fast-forwarding to a clean, published `dev` tip. The release
+worktree has its own `node_modules`, so publishing installs the exact lockfile before
+running the template-only gate.
+
+Daily development:
+
+```bash
+just dev       # local server; no Git write
+just check     # local verification; no remote write
+just ship-dev  # check and push the clean dev branch to origin/dev
+```
+
+Publishing, from the release worktree on `main`:
+
+```bash
+just publish
+```
+
+`just publish` refuses dirty or divergent worktrees, requires local `dev` to match
+`origin/dev`, fast-forwards `main`, runs `npm ci` plus the template-only checks, pushes
+`origin/main`, and verifies that both remote branches end at the same commit. It never
+force-pushes and never creates a merge commit.
 
 ## Template vs instance
 
