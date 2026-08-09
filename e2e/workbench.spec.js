@@ -76,7 +76,8 @@ test('board mode switch isolates page lists and mounts web artboards', async ({ 
 
   await page.locator('#wbboard-mode [data-board-mode="web"]').click();
   await expect(page.locator('#wbboard-mode [data-board-mode="web"]')).toHaveClass(/on/);
-  await expect(page.locator('#wbpages .wb-page')).toHaveText(['Example Web']);
+  // _index pages first, then registry dir entries appended (dir-entry.spec.js).
+  await expect(page.locator('#wbpages .wb-page')).toHaveText(['Example Web', 'E2E Dir']);
   await expect(page.locator('#wb-board-panel .wb-html-stage')).toHaveCount(3);
   await expect(page.locator('#wb-board-panel [data-screen="weekly-report"] .wb-html-surface')).toContainText('冲煮手账');
   await expect(page.locator('#wb-board-panel .ios-stage')).toHaveCount(0);

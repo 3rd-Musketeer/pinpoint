@@ -121,3 +121,19 @@ test('validateExportDocRequest still rejects non-previews src', () => {
     mode: 'html-full', pageId: 'p', screenId: 's', src: '/index.html', comments: true,
   }), ExportDocContractError);
 });
+
+test('injectCommentsExportHtml strips the /sites/ injector pair (entry marker + client tag)', () => {
+  // A page saved from (or authored with) the /sites/ injection contract must
+  // not leak the live annotate bootstrap into exports.
+  const source = '<!doctype html><html><head><title>t</title></head><body>'
+    + '<p>doc body</p>'
+    + '<script>window.__pinpointEntry=\'e2e-dir\'</script><script src="/annotate.js"></script>'
+    + '</body></html>';
+  const out = injectCommentsExportHtml(source, [
+    { n: 1, selector: 'p', text: 'doc body', content: 'note' },
+  ]);
+  assert.equal(out.includes('__pinpointEntry'), false);
+  assert.equal(/src\s*=\s*["'][^"']*annotate\.js/i.test(out), false);
+  assert.ok(out.includes('<p>doc body</p>'));
+  assert.ok(out.includes('data-export-comments'));
+});

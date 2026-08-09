@@ -1,4 +1,5 @@
 const ID_PATTERN = /^[a-zA-Z0-9_/-]+$/;
+const SITE_SRC_PATTERN = /^sites\/[a-z0-9][a-z0-9-]*\/.+/;
 const MODES = new Set(['html-full', 'html-no-css', 'image']);
 const FORMATS = new Set(['png', 'webp']);
 
@@ -33,7 +34,7 @@ export function stripDocumentCss(html) {
     .replace(/<link\b[^>]*\brel\s*=\s*["']?stylesheet["']?[^>]*>/gi, '');
 }
 
-/** Normalize a workbench doc src to a previews/-relative path (no leading slash). */
+/** Normalize a workbench doc src to a previews/- or sites/-relative path (no leading slash). */
 export function normalizeDocSrc(src) {
   let text = requiredString(src, 'src');
   if (/^https?:\/\//i.test(text)) {
@@ -42,8 +43,8 @@ export function normalizeDocSrc(src) {
     }
   }
   text = text.replace(/^\/+/, '');
-  if (!text.startsWith('previews/')) {
-    throw new ExportDocContractError('src', 'must resolve under previews/');
+  if (!text.startsWith('previews/') && !SITE_SRC_PATTERN.test(text)) {
+    throw new ExportDocContractError('src', 'must resolve under previews/ or sites/<entry-id>/');
   }
   if (text.includes('\0') || text.split('/').includes('..')) {
     throw new ExportDocContractError('src', 'path traversal is not allowed');

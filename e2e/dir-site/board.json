@@ -1,0 +1,13 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "title": "Main",
+      "layout": "column",
+      "screens": [
+        { "id": "cards", "title": "Cards", "shell": "web" },
+        { "id": "doc", "title": "Doc", "shell": "doc" }
+      ]
+    }
+  ]
+}

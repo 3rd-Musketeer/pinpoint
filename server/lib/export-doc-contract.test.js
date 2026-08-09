@@ -56,3 +56,16 @@ test('doc src must stay under previews/ and reject traversal', () => {
     mode: 'html-full', pageId: 'p', screenId: 's', src: '/index.html',
   }), /previews/);
 });
+
+test('doc src also resolves under sites/<entry-id>/ with the same traversal guards', () => {
+  assert.equal(normalizeDocSrc('/sites/e2e-dir/doc.html'), 'sites/e2e-dir/doc.html');
+  assert.equal(normalizeDocSrc('sites/areta-chat-eval/v2.html'), 'sites/areta-chat-eval/v2.html');
+  assert.throws(() => normalizeDocSrc('sites/../secret.html'), ExportDocContractError);
+  assert.throws(() => normalizeDocSrc('sites/e2e-dir/../../etc/passwd'), ExportDocContractError);
+  assert.throws(() => normalizeDocSrc('sites//doc.html'), ExportDocContractError);
+  assert.throws(() => normalizeDocSrc('other/x.html'), ExportDocContractError);
+  const ok = validateExportDocRequest({
+    mode: 'html-full', pageId: 'e2e-dir', screenId: 'doc', src: 'sites/e2e-dir/doc.html',
+  });
+  assert.equal(ok.src, 'sites/e2e-dir/doc.html');
+});

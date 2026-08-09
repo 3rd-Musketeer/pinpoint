@@ -350,10 +350,11 @@ function stripAnnotateBootstrap(html) {
     .replace(/<script\b[^>]*data-ios-annotate[^>]*>[\s\S]*?<\/script>/gi, '')
     // Remove only the inline <script> block that boots annotate.js.
     // Match each <script>…</script> individually (non-greedy stops at first </script>)
-    // and drop it only if its body references /annotate.js — so adjacent inline
-    // scripts (charts, Sankey, etc.) survive.
+    // and drop it if its body references /annotate.js or the /sites/ injector's
+    // __pinpointEntry marker — so adjacent inline scripts (charts, Sankey, etc.)
+    // survive.
     .replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, (block) =>
-      /\/annotate\.js/i.test(block) ? '' : block);
+      /\/annotate\.js|__pinpointEntry/i.test(block) ? '' : block);
 }
 
 /**

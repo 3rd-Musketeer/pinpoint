@@ -7,6 +7,7 @@ import { chromium } from '@playwright/test';
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { pageKeyFromPathname } from '../lib/annotate-page-key.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
+import { loadRegistry } from './lib/registry.js';
 import {
   buildExportBakeScript,
   formatCommentsTextSection,
@@ -54,7 +55,24 @@ function sendJson(res, status, body) {
   res.end(JSON.stringify(body));
 }
 
-function resolveDocFile(src) {
+function resolveDocFile(src, registry) {
+  // Registry dir entries resolve through their registered path (read-only).
+  if (src.startsWith('sites/')) {
+    const id = src.split('/')[1];
+    const entry = registry && registry.resolve(id);
+    if (!entry || entry.kind !== 'dir') {
+      throw new ExportDocContractError('src', `unknown site entry: ${id}`);
+    }
+    const base = path.resolve(entry.path);
+    const abs = path.resolve(base, src.split('/').slice(2).join('/'));
+    if (abs !== base && !abs.startsWith(base + path.sep)) {
+      throw new ExportDocContractError('src', 'path traversal is not allowed');
+    }
+    if (!fs.existsSync(abs) || !fs.statSync(abs).isFile()) {
+      throw new ExportDocContractError('src', `file not found: ${src}`);
+    }
+    return abs;
+  }
   const abs = path.resolve(ROOT, src);
   const previewsRoot = path.resolve(PREVIEWS_ROOT);
   if (abs !== previewsRoot && !abs.startsWith(previewsRoot + path.sep)) {
@@ -64,6 +82,14 @@ function resolveDocFile(src) {
     throw new ExportDocContractError('src', `file not found: ${src}`);
   }
   return abs;
+}
+
+/** Registry entry whose bucket holds annotations for src (default: pinpoint). */
+export function entryIdForSrc(src, registry) {
+  if (!String(src).startsWith('sites/')) return DEFAULT_ENTRY;
+  const id = String(src).split('/')[1];
+  const entry = registry && registry.resolve(id);
+  return entry && entry.kind === 'dir' ? id : DEFAULT_ENTRY;
 }
 
 /** Resolve annotation page key for a previews/-relative src. */
@@ -91,9 +117,12 @@ function createDocImageRenderer(options = {}) {
       colorScheme: 'light',
     });
     const page = await context.newPage();
-    // Keep the live annotate editor out of delivery exports.
+    // Keep the live annotate editor out of delivery exports: /sites/ pages are
+    // served with the client injected, so opt the render request out; the
+    // annotate.js route abort below stays as a second net for previews/ docs.
     await page.route('**/annotate.js', (route) => route.abort());
-    const url = `${origin}/${request.src}`;
+    const suffix = request.src.startsWith('sites/') ? '?annotate=off' : '';
+    const url = `${origin}/${request.src}${suffix}`;
     await page.goto(url, { waitUntil: 'load', timeout: 30000 });
     await page.evaluate(async () => {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
@@ -190,19 +219,29 @@ function createDocImageRenderer(options = {}) {
 
 export default function exportDocApi(options = {}) {
   const renderer = options.renderer || createDocImageRenderer(options);
-  // Exported documents live under previews/, which belongs to the pinpoint entry.
+  // Exported documents live under previews/ (pinpoint bucket) or, for
+  // sites/<entry-id>/ srcs, in that registry entry's bucket.
   const root = options.dataRoot || dataRoot();
-  const store = options.store || createAnnotationStore({ dataDir: bucketDir(root, DEFAULT_ENTRY) });
+  const registry = options.registry || loadRegistry({ root: ROOT });
+  const stores = new Map();
+  stores.set(DEFAULT_ENTRY, options.store || createAnnotationStore({ dataDir: bucketDir(root, DEFAULT_ENTRY) }));
   const tokenCache = new Map();
+
+  function storeFor(entryId) {
+    if (!stores.has(entryId)) {
+      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
+    }
+    return stores.get(entryId);
+  }
 
   function readAnnotationsForSrc(src) {
     const pageKey = annotationPageKeyForSrc(src);
-    const doc = store.readDoc(pageKey);
+    const doc = storeFor(entryIdForSrc(src, registry)).readDoc(pageKey);
     return Array.isArray(doc.annotations) ? doc.annotations : [];
   }
 
   function tokensForHtml(src, mode, comments) {
-    const filePath = resolveDocFile(src);
+    const filePath = resolveDocFile(src, registry);
     const stat = fs.statSync(filePath);
     const key = `${src}\0${mode}\0${comments ? 1 : 0}\0${stat.mtimeMs}\0${stat.size}`;
     if (tokenCache.has(key)) return tokenCache.get(key);
@@ -226,7 +265,7 @@ export default function exportDocApi(options = {}) {
   }
 
   async function tokensForImage(request, origin) {
-    const filePath = resolveDocFile(request.src);
+    const filePath = resolveDocFile(request.src, registry);
     const stat = fs.statSync(filePath);
     const anns = request.comments ? readAnnotationsForSrc(request.src) : [];
     const key = [
@@ -277,7 +316,7 @@ export default function exportDocApi(options = {}) {
         if (urlPath !== '/api/export-doc' || req.method !== 'POST') return next();
         try {
           const request = validateExportDocRequest(JSON.parse(await readBody(req)));
-          const filePath = resolveDocFile(request.src);
+          const filePath = resolveDocFile(request.src, registry);
           const filename = exportDocFilename(request);
           const annotations = request.comments ? readAnnotationsForSrc(request.src) : [];
           const bakeOptions = request.comments ? { annotations } : null;

@@ -150,6 +150,9 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Top level is **`sections[]`**, not a flat `{ id, screens }` object.
 - Page id / title / order / default live in **`previews/_index.json`**; a gitignored
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
+  Registry `dir` entries (except the workbench's own `pinpoint` entry) are appended
+  as pages from `GET /registry`: mode comes from the entry's `board` field (default
+  `web`), and their board/screens load read-only from `/sites/<entry-id>/`.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
@@ -220,6 +223,17 @@ Chrome ≥130 checks content-script-injected scripts against the extension's own
 whitelists `http://localhost:*` / `http://127.0.0.1:*` but not remote https origins. All
 annotate API routes answer cross-origin requests with `Access-Control-Allow-Origin: *`
 (no credentials) and handle `OPTIONS` preflights.
+
+**Annotating dir entries (/sites/):** every registry `dir` entry is served read-only
+under `/sites/<entry-id>/<path…>` (`server/sites-api.js`) — the registry is the
+whitelist, resolved paths must stay inside the entry directory (textual + realpath
+containment, directories fall through to `index.html`), and misses/unknown ids 404.
+HTML GET responses get the annotate client injected before `</body>`
+(`<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`)
+— "登记过才注入": opening the same dir via `file://` or another server stays clean,
+and `?annotate=off` opts a single request out (workbench fragment loader and export
+rendering use it). Doc exports accept `sites/<entry-id>/…` srcs and strip the injected
+bootstrap from exported HTML (`stripAnnotateBootstrap` also drops `__pinpointEntry`).
 
 ## Workbench UX (prefs)
 

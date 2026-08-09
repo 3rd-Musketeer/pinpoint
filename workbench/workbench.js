@@ -1198,9 +1198,9 @@ function resolveSidecarUrl(pageId, screenId, src) {
   if (src) {
     if (/^(https?:|\/|blob:)/.test(src)) return src;
     src = String(src).replace(/^\.\//, '');
-    return '/previews/' + pageId + '/' + src;
+    return pageBaseUrl(pageId) + src;
   }
-  return '/previews/' + pageId + '/' + screenId + '.js';
+  return pageBaseUrl(pageId) + screenId + '.js';
 }
 
 function invokeMountModule(mod, root, label, session) {
@@ -1514,7 +1514,7 @@ function activeDocExportTarget() {
     (sec.screens || []).forEach(function (sc) {
       if (sc.id !== screenId) return;
       title = sc.title || sc.id;
-      src = sc.src || ('previews/' + activeBoard.pageId + '/' + sc.id + '.html');
+      src = sc.src || (pageBaseUrl(activeBoard.pageId) + sc.id + '.html');
     });
   });
   if (!src) {
@@ -1527,7 +1527,7 @@ function activeDocExportTarget() {
     try { src = new URL(src, location.href).pathname; } catch (e) { return null; }
   }
   src = String(src).replace(/^\/+/, '');
-  if (src.indexOf('previews/') !== 0) return null;
+  if (src.indexOf('previews/') !== 0 && src.indexOf('sites/') !== 0) return null;
   return {
     pageId: activeBoard.pageId,
     screenId: screenId,
@@ -2506,7 +2506,7 @@ function fetchScreenHtml(pageId, screen) {
   } else if (pageId === COMPONENTS_ID && String(sc.id).indexOf('/') >= 0) {
     url = 'kits/ios/components/' + sc.id + '.html';
   } else {
-    url = 'previews/' + pageId + '/' + sc.id + '.html';
+    url = pageBaseUrl(pageId) + sc.id + '.html';
   }
   // doc shell 承载的是完整独立文档（有 <!doctype>/<head>/自己的 <style>），
   // 不能当 fragment 内联——它的 body 规则会失效、style 会漏进 workbench。
@@ -2514,7 +2514,12 @@ function fetchScreenHtml(pageId, screen) {
   if ((sc.shell || defaultShellForPage(pageId)) === 'doc') {
     return Promise.resolve({ ok: true, html: docFrameHtml(url, sc.title || sc.id) });
   }
-  return fetch(url)
+  // Site pages are served with the annotate client injected; fragments inlined
+  // into the board must stay clean — the workbench owns annotation here.
+  var fetchUrl = url;
+  var page = pageEntry(pageId);
+  if (page && page.site) fetchUrl += (fetchUrl.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off';
+  return fetch(fetchUrl)
     .then(function (r) {
       if (!r.ok) throw r.status;
       return r.text();
@@ -2679,9 +2684,26 @@ function buildBoardHtml(pageId, board, screenMap) {
   return '<div class="wb-zoom-wrap"><div class="wb-library">' + parts.join('') + '</div></div>';
 }
 
+/** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
+function pageEntry(pageId) {
+  if (!pageManifest || !pageManifest.pages) return null;
+  for (var i = 0; i < pageManifest.pages.length; i++) {
+    if (pageManifest.pages[i].id === pageId) return pageManifest.pages[i];
+  }
+  return null;
+}
+
+/** Board/screen base URL for a page: registry dir entries are served read-only
+    under /sites/<id>/; template pages live in previews/. */
+function pageBaseUrl(pageId) {
+  var page = pageEntry(pageId);
+  if (page && page.site) return '/sites/' + pageId + '/';
+  return '/previews/' + pageId + '/';
+}
+
 function boardUrl(pageId) {
   if (pageId === COMPONENTS_ID) return 'components/board.json';
-  return 'previews/' + pageId + '/board.json';
+  return pageBaseUrl(pageId) + 'board.json';
 }
 
 function loadBoard(panel, pageId) {
@@ -3037,6 +3059,32 @@ function showPageManifestError(error) {
   pagesNav.appendChild(message);
 }
 
+/** Registry dir entries surface as workbench pages, served from /sites/<id>/.
+    The default 'pinpoint' entry is the workbench itself — its pages are the
+    _index pages, so it is not listed again. A dead annotate API must not break
+    the workbench: previews-only then. */
+function registrySitePages() {
+  return fetch('/registry')
+    .then(function (r) {
+      if (!r.ok) throw r.status;
+      return r.json();
+    })
+    .then(function (data) {
+      var entries = (data && data.entries) || [];
+      return entries
+        .filter(function (entry) { return entry && entry.kind === 'dir' && entry.id !== 'pinpoint'; })
+        .map(function (entry) {
+          return {
+            id: entry.id,
+            title: entry.title || entry.id,
+            mode: BOARD_MODES[entry.board] ? entry.board : 'web',
+            site: true
+          };
+        });
+    })
+    .catch(function () { return []; });
+}
+
 function loadPageManifest() {
   // previews/_index.local.json (gitignored) overrides the tracked manifest, so
   // an instance can keep private pages without touching versioned files. Only
@@ -3051,9 +3099,18 @@ function loadPageManifest() {
       });
     })
     .then(function (raw) {
-      pageManifest = validatePageManifest(raw);
-      renderPageManifest(pageManifest);
-      return pageManifest;
+      var manifest = validatePageManifest(raw);
+      return registrySitePages().then(function (sitePages) {
+        var known = {};
+        manifest.pages.forEach(function (page) { known[page.id] = true; });
+        sitePages.forEach(function (page) {
+          if (known[page.id]) return; // a previews page with the same id wins
+          manifest.pages.push(page);
+        });
+        pageManifest = manifest;
+        renderPageManifest(pageManifest);
+        return pageManifest;
+      });
     });
 }
 
