@@ -209,6 +209,18 @@ the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-real
 **Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
 (`ios-preview-wb`) — viewer state, not synced.
 
+**Annotating url entries (browser extension):** `extension/` is an MV3 extension whose
+content script matches local-dev pages, probes `<service>/registry`, and when the page
+origin matches a registry `url` entry injects the annotate client. The ledger entry reaches
+the page's main world through `<html data-pinpoint-entry="...">` (a page CSP blocks
+content-script-injected inline `<script>`; `window.__pinpointEntry` remains the same-origin
+injector contract and wins when both exist). The client script loads from
+`service.directOrigin` reported by `/registry` — the API's plain loopback bind — because
+Chrome ≥130 checks content-script-injected scripts against the extension's own CSP, which
+whitelists `http://localhost:*` / `http://127.0.0.1:*` but not remote https origins. All
+annotate API routes answer cross-origin requests with `Access-Control-Allow-Origin: *`
+(no credentials) and handle `OPTIONS` preflights.
+
 ## Workbench UX (prefs)
 
 - **Sidebar**: collapse via header toggle / stage expand / splitter (click when collapsed, dblclick to collapse). Prefs: `sideCollapsed`, `sideWidth`.

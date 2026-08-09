@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>extension injection fixture</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", sans-serif; margin: 0; padding: 24px; }
+  #target-el { display: block; padding: 24px; font-size: 16px; background: #ecfdf5; border-radius: 8px; }
+</style>
+</head>
+<body>
+<!-- 普通页面：刻意不引 /annotate.js。extension.spec.js 靠浏览器扩展把它注入进来。 -->
+<main><section id="target-el">extension target text</section></main>
+</body>
+</html>

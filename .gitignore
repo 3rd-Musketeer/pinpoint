@@ -7,3 +7,4 @@ exports/
 # Instance-local overrides (never shared)
 previews/_index.local.json
 *.local.md
+.tmp/

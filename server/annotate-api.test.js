@@ -144,6 +144,16 @@ test('/registry returns the registered entries', async (t) => {
   assert.equal(json.path, registry.path);
 });
 
+test('/registry reports the service direct origin for extension injection', async (t) => {
+  const { registry, dataRoot } = withFixture(t);
+  const handler = createAnnotateHandler({ dataRoot, registry, directOrigin: 'http://127.0.0.1:4612' });
+  const { json } = await call(handler, 'GET', '/registry');
+  assert.deepEqual(json.service, { directOrigin: 'http://127.0.0.1:4612' });
+  // 未接线时（handler 单测默认）也要保持响应形状稳定。
+  const bare = await call(withFixture(t).handler, 'GET', '/registry');
+  assert.deepEqual(bare.json.service, { directOrigin: null });
+});
+
 test('SSE broadcasts carry the entry of the saved bucket', async (t) => {
   const { handler } = withFixture(t);
   const sseRes = mockRes();
@@ -160,4 +170,35 @@ test('SSE broadcasts carry the entry of the saved bucket', async (t) => {
   assert.ok(dataLine, 'broadcast chunk received');
   assert.equal(JSON.parse(dataLine.slice('data: '.length)).entry, 'web');
   sseReq.emit('close');
+});
+
+test('OPTIONS preflight allows cross-origin GET/POST with Content-Type', async (t) => {
+  const { handler } = withFixture(t);
+  for (const route of ['/save', '/image', '/annotations/x', '/events', '/registry']) {
+    const { handled, res } = await call(handler, 'OPTIONS', route);
+    assert.equal(handled, true, route);
+    assert.equal(res.statusCode, 204, route);
+    assert.equal(res.headers['Access-Control-Allow-Origin'], '*', route);
+    assert.ok(res.headers['Access-Control-Allow-Methods'].includes('GET'), route);
+    assert.ok(res.headers['Access-Control-Allow-Methods'].includes('POST'), route);
+    assert.ok(res.headers['Access-Control-Allow-Headers'].includes('Content-Type'), route);
+  }
+});
+
+test('every API response carries Access-Control-Allow-Origin *', async (t) => {
+  const { handler } = withFixture(t);
+  const checks = [
+    await call(handler, 'GET', '/health'),
+    await call(handler, 'GET', '/registry'),
+    await call(handler, 'GET', '/annotations/index.html'),
+    await call(handler, 'GET', '/images/missing.png'),
+    await call(handler, 'GET', '/annotate.js'),
+    await call(handler, 'POST', '/save', {
+      page: 'index.html', entry: 'web', baseRevision: 0, annotations: [{ n: 1 }],
+    }),
+    await call(handler, 'POST', '/image', { entry: 'web', data: 'data:image/png;base64,aGk=' }),
+  ];
+  for (const { res } of checks) {
+    assert.equal(res.headers['Access-Control-Allow-Origin'], '*');
+  }
 });

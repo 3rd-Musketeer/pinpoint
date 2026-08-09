@@ -18,8 +18,14 @@
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  // Registry entry this page annotates under; the injector (WP3/WP4) sets the global.
-  var ENTRY = window.__pinpointEntry || 'pinpoint';
+  // Registry entry this page annotates under. Sources, in order: page-world
+  // global (same-origin injectors), then the <html data-pinpoint-entry>
+  // attribute — the browser extension (WP3) sets that one because a page with
+  // a strict CSP blocks content-script-injected inline <script> nodes, while
+  // the DOM stays shared across isolated/main worlds. Default: 'pinpoint'.
+  var ENTRY = window.__pinpointEntry ||
+    (document.documentElement && document.documentElement.getAttribute('data-pinpoint-entry')) ||
+    'pinpoint';
   var LS_KEY = 'html-annotate:' + ENTRY + ':' + location.pathname;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(location.pathname);

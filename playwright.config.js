@@ -1,9 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-import { E2E_DATA_DIR, E2E_REGISTRY } from './e2e/env.js';
-
-const E2E_PORT = Number(process.env.E2E_PORT || 5299);
-const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY } from './e2e/env.js';
 
 export default defineConfig({
   testDir: './e2e',

@@ -47,8 +47,12 @@ function readAnnotateJs() {
   return cachedScript;
 }
 
+// Extension-injected clients call this API cross-origin (e.g. from
+// https://my-todos.localhost to https://pinpoint.localhost). No credentials
+// are involved, so a plain `*` preflight contract covers every route.
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -155,6 +159,14 @@ export function createAnnotateHandler(options = {}) {
   const root = options.dataRoot || dataRoot();
   const registry = options.registry || loadRegistry({ root: ROOT });
   const stores = options.stores || new Map();
+  // Direct loopback origin the annotate API is actually bound to (bypassing
+  // any TLS proxy such as portless). The browser extension injects the
+  // annotate client from this origin because Chromium applies the default
+  // extension CSP to content-script-injected scripts — a policy that
+  // whitelists http://localhost:* / http://127.0.0.1:* but not remote https
+  // origins. String or lazy resolver; null when the server is not listening.
+  const directOrigin = options.directOrigin || (() => null);
+  const resolveDirectOrigin = typeof directOrigin === 'function' ? directOrigin : () => directOrigin;
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
@@ -204,6 +216,7 @@ export function createAnnotateHandler(options = {}) {
         entries: registry.entries,
         errors: registry.errors,
         warnings: registry.warnings,
+        service: { directOrigin: resolveDirectOrigin() },
       });
       return true;
     }
@@ -302,10 +315,18 @@ export function createAnnotateHandler(options = {}) {
 }
 
 export default function annotateApi(options = {}) {
-  const handleAnnotate = createAnnotateHandler(options);
+  let httpServer = null;
+  const directOrigin = options.directOrigin || (() => {
+    const address = httpServer && typeof httpServer.address === 'function' ? httpServer.address() : null;
+    if (!address || typeof address !== 'object') return null; // not listening yet
+    const loopback = ['::', '0.0.0.0', '::1', 'localhost'].includes(address.address) ? '127.0.0.1' : address.address;
+    return `http://${loopback}:${address.port}`;
+  });
+  const handleAnnotate = createAnnotateHandler({ ...options, directOrigin });
   return {
     name: 'annotate-api',
     configureServer(server) {
+      httpServer = server.httpServer;
       server.middlewares.use(async (req, res, next) => {
         const urlPath = (req.url || '').split('?')[0];
         if (await handleAnnotate(req, res, urlPath)) return;
