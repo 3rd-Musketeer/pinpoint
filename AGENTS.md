@@ -197,10 +197,12 @@ annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation m
   without `screenId` fall back to centering the raw anchor.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
-Annotations live in a per-project dir `~/.html-annotate/<repo-dirname>-<hash>/*.json`
-(**disk SSOT**) as `annotations[]` — read the exact path from the `dataDir` field of
-`GET /health`; clones on one machine never share documents. `HTML_ANNOTATE_DATA_DIR`
-overrides the dir wholesale (e2e uses this).
+Annotations live in per-entry buckets `~/.html-annotate/<entry-id>/*.json`
+(**disk SSOT**) as `annotations[]` — entries come from `~/.html-annotate/registry.json`
+(`HTML_ANNOTATE_REGISTRY` overrides); this repo annotates under entry `pinpoint`.
+Read the exact default-bucket path from the `dataDir` field of
+`GET /health`; `HTML_ANNOTATE_DATA_DIR`
+overrides the data root wholesale (e2e uses this).
 `POST /save` requires `baseRevision`; clear uses the same save queue with `annotations: []`
 (there is no `/clear` route). The browser `localStorage` cache is not authoritative. On boot
 the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-realtime.

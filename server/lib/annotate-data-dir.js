@@ -1,19 +1,18 @@
 /**
- * Per-project annotation data directory under ~/.html-annotate.
- * Pure path helpers so annotate-api and export-doc-api share one location.
- * The workbench page key is always /index.html, so a shared ~/.html-annotate
- * would mix documents across clones on the same machine.
+ * Annotation data root and per-entry buckets under ~/.html-annotate.
+ * Registry entries own buckets: <root>/<entry-id>/ holds that entry's
+ * annotation documents and images. HTML_ANNOTATE_DATA_DIR overrides the
+ * root wholesale (e2e points it at a temp dir).
  */
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
 
-export function projectDirName(root) {
-  const r = String(root || '');
-  let h = 0;
-  for (let i = 0; i < r.length; i++) h = (h * 31 + r.charCodeAt(i)) >>> 0;
-  return path.basename(r) + '-' + h.toString(36);
+export const DEFAULT_ENTRY = 'pinpoint';
+
+export function dataRoot(env = process.env) {
+  return env.HTML_ANNOTATE_DATA_DIR || path.join(os.homedir(), '.html-annotate');
 }
 
-export function projectDataDir(root) {
-  return path.join(os.homedir(), '.html-annotate', projectDirName(root));
+export function bucketDir(root, entryId) {
+  return path.join(root, entryId);
 }

@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium } from '@playwright/test';
 
-import { projectDataDir } from './lib/annotate-data-dir.js';
+import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { pageKeyFromPathname } from '../lib/annotate-page-key.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import {
@@ -190,8 +190,9 @@ function createDocImageRenderer(options = {}) {
 
 export default function exportDocApi(options = {}) {
   const renderer = options.renderer || createDocImageRenderer(options);
-  const dataDir = options.dataDir || process.env.HTML_ANNOTATE_DATA_DIR || projectDataDir(ROOT);
-  const store = options.store || createAnnotationStore({ dataDir });
+  // Exported documents live under previews/, which belongs to the pinpoint entry.
+  const root = options.dataRoot || dataRoot();
+  const store = options.store || createAnnotationStore({ dataDir: bucketDir(root, DEFAULT_ENTRY) });
   const tokenCache = new Map();
 
   function readAnnotationsForSrc(src) {

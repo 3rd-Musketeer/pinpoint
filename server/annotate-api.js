@@ -2,8 +2,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { projectDataDir } from './lib/annotate-data-dir.js';
+import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
+import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -16,7 +17,6 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotate-clip.js'),
   path.join(ROOT, 'lib', 'annotate-bubble.js'),
 ];
-const DEFAULT_DATA_DIR = projectDataDir(ROOT);
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();
@@ -109,9 +109,10 @@ function ensureHeartbeat() {
   if (typeof heartbeatTimer.unref === 'function') heartbeatTimer.unref();
 }
 
-function broadcastAnnotations(doc) {
+function broadcastAnnotations(doc, entryId) {
   const annotations = Array.isArray(doc.annotations) ? doc.annotations : [];
   const payload = JSON.stringify({
+    entry: entryId,
     page: doc.page,
     revision: doc.revision,
     annotations,
@@ -142,9 +143,25 @@ function handleSse(req, res) {
   return true;
 }
 
+// Resolve the entry a request targets. A missing entry means the default
+// ('pinpoint', historical behavior); an explicit but unregistered entry is a
+// loud 400 — misconfiguration must not silently land in the wrong bucket.
+export function resolveRequestEntry(registry, raw) {
+  const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
+  return registry.resolve(id) ? { entry: id } : { entry: id, unknown: true };
+}
+
 export function createAnnotateHandler(options = {}) {
-  const dataDir = options.dataDir || process.env.HTML_ANNOTATE_DATA_DIR || DEFAULT_DATA_DIR;
-  const store = options.store || createAnnotationStore({ dataDir });
+  const root = options.dataRoot || dataRoot();
+  const registry = options.registry || loadRegistry({ root: ROOT });
+  const stores = options.stores || new Map();
+
+  function storeFor(entryId) {
+    if (!stores.has(entryId)) {
+      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
+    }
+    return stores.get(entryId);
+  }
 
   return async function handleAnnotate(req, res, urlPath) {
     if (req.method === 'OPTIONS') {
@@ -154,33 +171,76 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
+    // urlPath has the query stripped by the caller; req.url keeps it.
+    const query = new URL(req.url || '/', 'http://annotate.local').searchParams;
+
     if (req.method === 'GET' && urlPath === '/annotate.js') {
       sendBytes(res, 200, readAnnotateJs(), 'application/javascript');
       return true;
     }
 
     if (req.method === 'GET' && urlPath === '/health') {
-      // dataDir tells agents where this server's annotation documents live.
-      sendJson(res, 200, { ok: true, dataDir });
+      // dataDir stays the default bucket path so existing `jq -r .dataDir`
+      // consumers keep working; dataRoot + registry carry the new model.
+      sendJson(res, 200, {
+        ok: true,
+        dataDir: bucketDir(root, DEFAULT_ENTRY),
+        dataRoot: root,
+        registry: {
+          ok: registry.ok,
+          path: registry.path,
+          entries: registry.entries.length,
+          errors: registry.errors,
+          warnings: registry.warnings,
+        },
+      });
+      return true;
+    }
+
+    if (req.method === 'GET' && urlPath === '/registry') {
+      sendJson(res, 200, {
+        ok: registry.ok,
+        path: registry.path,
+        entries: registry.entries,
+        errors: registry.errors,
+        warnings: registry.warnings,
+      });
       return true;
     }
 
     if (req.method === 'GET' && urlPath === '/events') return handleSse(req, res);
 
     if (req.method === 'GET' && urlPath === '/annotations') {
-      sendJson(res, 200, store.listDocs());
+      // Debug aggregate: flatten every bucket into [{entry, page, ...}].
+      const docs = [];
+      for (const entry of registry.entries) {
+        for (const doc of Object.values(storeFor(entry.id).listDocs())) {
+          docs.push({ entry: entry.id, ...doc });
+        }
+      }
+      sendJson(res, 200, docs);
       return true;
     }
 
     if (req.method === 'GET' && urlPath.startsWith('/annotations/')) {
+      const target = resolveRequestEntry(registry, query.get('entry'));
+      if (target.unknown) {
+        sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
+        return true;
+      }
       const page = annotationSlug(decodeURIComponent(urlPath.slice('/annotations/'.length)));
-      sendJson(res, 200, store.readDoc(page));
+      sendJson(res, 200, storeFor(target.entry).readDoc(page));
       return true;
     }
 
     if (req.method === 'GET' && urlPath.startsWith('/images/')) {
+      const target = resolveRequestEntry(registry, query.get('entry'));
+      if (target.unknown) {
+        sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
+        return true;
+      }
       const name = annotationSlug(decodeURIComponent(urlPath.slice('/images/'.length)));
-      const file = store.imagePath(name);
+      const file = storeFor(target.entry).imagePath(name);
       if (fs.existsSync(file) && fs.statSync(file).isFile()) {
         sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
       } else {
@@ -199,6 +259,13 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
+    const target = resolveRequestEntry(registry, body.entry);
+    if (target.unknown) {
+      sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
+      return true;
+    }
+    const store = storeFor(target.entry);
+
     if (urlPath === '/save') {
       const result = store.save({
         page: body.page,
@@ -211,7 +278,7 @@ export function createAnnotateHandler(options = {}) {
         sendJson(res, result.status, { error: result.error, ...result.doc });
         return true;
       }
-      broadcastAnnotations(result.doc);
+      broadcastAnnotations(result.doc, target.entry);
       const count = (result.doc.annotations || []).length;
       sendJson(res, 200, {
         saved: store.jsonPathFor(result.doc.page),

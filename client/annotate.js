@@ -2,7 +2,7 @@
  * Browser annotation client. Served as /annotate.js by Vite annotate-api;
  * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).
- * SSOT = ~/.html-annotate; localStorage is cache; SSE /events syncs browsers.
+ * SSOT = ~/.html-annotate/<entry>/; localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
@@ -18,7 +18,9 @@
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  var LS_KEY = 'html-annotate:' + location.pathname;
+  // Registry entry this page annotates under; the injector (WP3/WP4) sets the global.
+  var ENTRY = window.__pinpointEntry || 'pinpoint';
+  var LS_KEY = 'html-annotate:' + ENTRY + ':' + location.pathname;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(location.pathname);
   var PAGE_KEY = annotationSlug(PAGE);
@@ -644,6 +646,7 @@
     var sentVersion = mutationVersion;
     var body = {
       page: PAGE,
+      entry: ENTRY,
       path: decodeURIComponent(location.pathname),
       updated_at: new Date().toISOString(),
       baseRevision: revision,
@@ -700,7 +703,7 @@
       setServerOnline(false);
       return Promise.resolve(false);
     }
-    return fetch(SERVER + '/annotations/' + encodeURIComponent(PAGE))
+    return fetch(SERVER + '/annotations/' + encodeURIComponent(PAGE) + '?entry=' + encodeURIComponent(ENTRY))
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
@@ -763,7 +766,10 @@
     eventSource.addEventListener('annotations', function (ev) {
       var doc;
       try { doc = JSON.parse(ev.data); } catch (err) { return; }
-      if (!doc || (doc.page !== PAGE && doc.page !== PAGE_KEY)) return;
+      if (!doc) return;
+      // Payloads without entry predate bucketing; they belong to 'pinpoint'.
+      if ((doc.entry || 'pinpoint') !== ENTRY) return;
+      if (doc.page !== PAGE && doc.page !== PAGE_KEY) return;
       var rev = Number(doc.revision);
       if (!Number.isFinite(rev) || rev <= revision) return;
       if (syncing || mutationVersion > syncedMutationVersion) {
@@ -1786,7 +1792,7 @@
       images.forEach(function (im, i) {
         var d = document.createElement('div');
         d.className = 'im'; d.setAttribute('data-ann-ui', '');
-        d.innerHTML = '<img src="' + SERVER + '/images/' + encodeURIComponent(im.file) + '"><span class="x">×</span>';
+        d.innerHTML = '<img src="' + SERVER + '/images/' + encodeURIComponent(im.file) + '?entry=' + encodeURIComponent(ENTRY) + '"><span class="x">×</span>';
         d.querySelector('.x').addEventListener('click', function () { images.splice(i, 1); renderImgs(); });
         imgWrap.appendChild(d);
       });
@@ -1798,7 +1804,7 @@
         setStatus('上传截图…');
         fetch(SERVER + '/image', {
           method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ page: PAGE, data: rd.result })
+          body: JSON.stringify({ page: PAGE, entry: ENTRY, data: rd.result })
         }).then(function (r) { return r.json(); })
           .then(function (j) { images.push({ file: j.file, path: j.path }); renderImgs(); setStatus(''); })
           .catch(function () { setStatus('截图上传失败', true); });
