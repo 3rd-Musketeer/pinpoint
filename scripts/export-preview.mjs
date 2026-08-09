@@ -4,11 +4,11 @@ import path from 'node:path';
 
 import { chromium } from '@playwright/test';
 
-import { exportFilename, validateExportRequest } from '../lib/export-contract.js';
+import { exportFilename, validateExportRequest } from '../server/lib/export-contract.js';
 
 function parseArgs(argv) {
   const values = {
-    url: process.env.IOS_PREVIEW_URL || 'https://ios-app-preview.localhost',
+    url: process.env.PINPOINT_URL || 'https://pinpoint.localhost',
     format: 'webp',
     scale: 2,
     background: 'canvas',

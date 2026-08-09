@@ -7,15 +7,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { targetContentToDisplay } from './annotation-indicator.js';
-import { bubbleCss } from './annotate-bubble.js';
+import { targetContentToDisplay } from '../../lib/annotation-indicator.js';
+import { bubbleCss } from '../../lib/annotate-bubble.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BAKE_LIBS = [
-  'annotate-clip.js',
-  'annotate-bubble.js',
-  'annotate-bubble-layout.js',
+  '../../lib/annotate-clip.js',
+  '../../lib/annotate-bubble.js',
+  '../../workbench/lib/annotate-bubble-layout.js',
 ];
 
 function stripExportKeywords(src) {

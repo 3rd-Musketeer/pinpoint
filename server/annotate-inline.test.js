@@ -14,21 +14,21 @@ import {
   normalizeAnnotation,
   targetContentToDisplay,
   targetContentToStorage,
-} from './annotation-indicator.js';
+} from '../lib/annotation-indicator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const SCRIPT = path.join(ROOT, 'annotate.js');
+const SCRIPT = path.join(ROOT, 'client', 'annotate.js');
 const INLINED_LIBS = [
-  path.join(__dirname, 'annotation-indicator.js'),
-  path.join(__dirname, 'annotate-hit-test.js'),
-  path.join(__dirname, 'annotation-slug.js'),
-  path.join(__dirname, 'annotate-page-key.js'),
-  path.join(__dirname, 'annotate-clip.js'),
-  path.join(__dirname, 'annotate-bubble.js'),
+  path.join(ROOT, 'lib', 'annotation-indicator.js'),
+  path.join(ROOT, 'client', 'lib', 'annotate-hit-test.js'),
+  path.join(ROOT, 'lib', 'annotation-slug.js'),
+  path.join(ROOT, 'lib', 'annotate-page-key.js'),
+  path.join(ROOT, 'lib', 'annotate-clip.js'),
+  path.join(ROOT, 'lib', 'annotate-bubble.js'),
 ];
 
-// Mirror the serve-time inliner in plugins/annotate-api.js: strip ESM `export `
+// Mirror the serve-time inliner in server/annotate-api.js: strip ESM `export `
 // and inline the libs into the annotate IIFE after 'use strict';.
 function buildServedBundle() {
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');

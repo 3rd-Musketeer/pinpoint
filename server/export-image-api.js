@@ -9,7 +9,7 @@ import {
   exportFilename,
   exportMime,
   validateExportRequest,
-} from '../lib/export-contract.js';
+} from './lib/export-contract.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -42,7 +42,7 @@ function sendJson(res, status, body) {
 function workbenchCss() {
   const index = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const styles = [...index.matchAll(/<style(?:\s[^>]*)?>([\s\S]*?)<\/style>/gi)].map((match) => match[1]);
-  return `${fs.readFileSync(path.join(ROOT, 'ios-kit.css'), 'utf8')}\n${styles.join('\n')}`;
+  return `${fs.readFileSync(path.join(ROOT, 'kits', 'ios', 'ios-kit.css'), 'utf8')}\n${styles.join('\n')}`;
 }
 
 function exportCss(request) {

@@ -5,8 +5,8 @@ import {
   annotationsFromDoc,
   normalizeAnnotation,
   normalizeDoc,
-} from './annotation-indicator.js';
-import { annotationSlug } from './annotation-slug.js';
+} from '../../lib/annotation-indicator.js';
+import { annotationSlug } from '../../lib/annotation-slug.js';
 
 export { annotationSlug };
 

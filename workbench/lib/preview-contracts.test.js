@@ -143,7 +143,7 @@ test('component boards accept component slash variant ids', () => {
 });
 
 test('checked-in preview boards satisfy the manifest contract', () => {
-  const root = new URL('../', import.meta.url);
+  const root = new URL('../../', import.meta.url);
   const manifest = validatePageManifest(JSON.parse(fs.readFileSync(new URL('previews/_index.json', root))));
   for (const page of manifest.pages) {
     const board = JSON.parse(fs.readFileSync(new URL(`previews/${page.id}/board.json`, root)));

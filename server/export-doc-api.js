@@ -4,15 +4,15 @@ import { fileURLToPath } from 'node:url';
 
 import { chromium } from '@playwright/test';
 
-import { projectDataDir } from '../lib/annotate-data-dir.js';
+import { projectDataDir } from './lib/annotate-data-dir.js';
 import { pageKeyFromPathname } from '../lib/annotate-page-key.js';
-import { annotationSlug, createAnnotationStore } from '../lib/annotation-store.js';
+import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import {
   buildExportBakeScript,
   formatCommentsTextSection,
   injectCommentsExportHtml,
   prepareExportAnnotations,
-} from '../lib/export-doc-bake.js';
+} from './lib/export-doc-bake.js';
 import {
   ExportDocContractError,
   EXPORT_DOC_W,
@@ -21,9 +21,9 @@ import {
   stripDocumentCss,
   validateExportDocRequest,
   validateExportDocTokenRequest,
-} from '../lib/export-doc-contract.js';
-import { estimateImageTokens } from '../lib/export-doc-image-tokens.js';
-import { estimateDocTokens } from '../lib/export-doc-tokens.js';
+} from './lib/export-doc-contract.js';
+import { estimateImageTokens } from './lib/export-doc-image-tokens.js';
+import { estimateDocTokens } from './lib/export-doc-tokens.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');

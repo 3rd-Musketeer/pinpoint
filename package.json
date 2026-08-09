@@ -1,12 +1,12 @@
 {
-  "name": "ios-app-preview",
+  "name": "pinpoint",
   "private": true,
   "type": "module",
   "engines": {
     "node": ">=24"
   },
   "scripts": {
-    "dev": "portless run --name ios-app-preview npm run dev:app",
+    "dev": "portless run --name pinpoint npm run dev:app",
     "dev:app": "vite",
     "dev:direct": "npm run dev:app",
     "export": "node scripts/export-preview.mjs",

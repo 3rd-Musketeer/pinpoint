@@ -1,4 +1,4 @@
-# iOS App Preview
+# pinpoint
 
 **Build pixel-honest iOS interactive prototypes in plain HTML — with your AI agent doing the building, and a Figma-style annotation loop for review.**
 
@@ -20,7 +20,7 @@ New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minu
 brew install just         # once per machine
 npm install -g portless   # once per machine
 npm install
-just dev             # https://ios-app-preview.localhost/index.html
+just dev             # https://pinpoint.localhost/index.html
 ```
 
 [`Justfile`](Justfile) is the workflow entrypoint. Normal development runs through
@@ -77,8 +77,8 @@ of silently wrapping or clipping the flow.
 | Layer | What | Where |
 |---|---|---|
 | **Variables** | Color / type / spacing / radius tokens + usage rules (≈ Figma Variables) | `ios-kit.css` `--ios-*`, type classes |
-| **Library** | System primitives + product components (≈ Figma Components) | `components/` — auto page **Component Library** |
-| **Chrome** | Device bezel, status bar, home indicator — stable, loader-owned | `wrapPhoneShell` in `workbench.js` |
+| **Library** | System primitives + product components (≈ Figma Components) | `kits/ios/components/` — auto page **Component Library** |
+| **Chrome** | Device bezel, status bar, home indicator — stable, loader-owned | `wrapPhoneShell` in `workbench/workbench.js` |
 
 Agent work stays in **screen fragments** (`*.html` + optional sidecar `*.js`) and
 **components**; chrome is not an edit surface. Product gestures use screen scripts
@@ -94,15 +94,15 @@ inside a frame. These five words are also the annotation address space (`@page:`
 AGENTS.md              Agent entry — contracts + routing (read first)
 Justfile               Canonical dev, check, dev-push, and main-publish workflows
 QUICKSTART.html        Human onboarding — concepts + usage, self-contained
-ios-kit.css            Variables + chrome styles + primitive CSS
-ios-kit.js             Kit runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
+kits/ios/ios-kit.css   Variables + chrome styles + primitive CSS
+kits/ios/ios-kit.js    Kit runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
 index.html             WORKBENCH — Pages (Component Library pinned first) + Theme controls
-workbench.js           Board loader, data-ios-include, preview-script mount (A+B), HMR
-annotate.js            Browser annotation client (served as /annotate.js)
-components/            Component Library sources (meta.json + variant HTML)
+workbench/workbench.js Board loader, data-ios-include, preview-script mount (A+B), HMR
+client/annotate.js     Browser annotation client (served as /annotate.js)
+kits/ios/components/   Component Library sources (meta.json + variant HTML)
 previews/<page>/       Flow pages — board.json + screen HTML (+ optional <screen>.js)
 previews/_index.json   Page manifest (id / title / order / default)
-plugins/               Vite plugins: annotate/export APIs, components-board, preview-hmr, template-only
+server/                Vite plugins: annotate/export APIs, components-board, preview-hmr, template-only
 lib/                   Node-tested shared modules (annotation store, board navigation, …)
 skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 starter.html           COPY-ME standalone one-off phone (no workbench needed)
@@ -113,7 +113,7 @@ e2e/                   Playwright workbench tests
 
 Workbench **Pages** (top → bottom):
 
-1. **Component Library** (system, always present) — synthesized from `components/*/meta.json`.
+1. **Component Library** (system, always present) — synthesized from `kits/ios/components/*/meta.json`.
    Variants render on a light board (`.wb-comp-stage`), not inside phone chrome.
 2. **Example Library** — `previews/library/`: a complete fictional app（冲煮手账）exercising
    every mechanism: cards/lists/tab/sheet home, a 3-screen flow with inline-script and
@@ -170,7 +170,7 @@ Frame Notes are part of the prototype definition. Review annotations remain sepa
 disposable feedback.
 
 For gestures / animation, add screen scripts (form A inline / form B sidecar) — full contract
-in the [build skill](skills/ios-app-preview-build/SKILL.md); live examples
+in the [build skill](skills/pinpoint-build/SKILL.md); live examples
 `previews/library/recipe.html` (A) and `previews/library/timer.{html,js}` (B).
 
 ### Add a workbench page
@@ -182,12 +182,12 @@ in the [build skill](skills/ios-app-preview-build/SKILL.md); live examples
 ### Add a reusable component
 
 Component Library is for **reusable / variant-review atoms**, not every UI block.
-Default: compose in the screen; extract to `components/` when you reuse across screens,
+Default: compose in the screen; extract to `kits/ios/components/` when you reuse across screens,
 need a variant wall, or expect “change this widget” annotations. Full gate:
-[build skill §4.0](skills/ios-app-preview-build/SKILL.md).
+[build skill §4.0](skills/pinpoint-build/SKILL.md).
 
 ```
-components/bubble/
+kits/ios/components/bubble/
   meta.json            { id, title, system, layout, variants: [{id, title}] }
   incoming.html        fragment (single element or a full .ios-app catalog screen)
   outgoing.html
@@ -226,7 +226,7 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 
 Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 `@frame:library/timer` · `@a:<id>`. Full schema and routing rules:
-[annotate skill](skills/ios-app-preview-annotate/SKILL.md).
+[annotate skill](skills/pinpoint-annotate/SKILL.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
 
@@ -235,8 +235,8 @@ Annotations are per-machine (solo human + agent loop), not a multiplayer comment
 Copy [`starter.html`](starter.html), or use the minimal skeleton:
 
 ```html
-<link rel="stylesheet" href="ios-kit.css">
-<script src="ios-kit.js" defer></script>
+<link rel="stylesheet" href="kits/ios/ios-kit.css">
+<script src="kits/ios/ios-kit.js" defer></script>
 
 <div class="ios-stage" data-fit>
   <div class="ios-root screen-only" data-device="iphone-16-pro" data-theme="light">
@@ -307,7 +307,7 @@ This repository uses one Git repository with two long-lived worktrees:
 
 | Branch / worktree role | Responsibility |
 |---|---|
-| **`dev` / daily worktree** | Ongoing development and the only owner of the persistent `ios-app-preview.localhost` route |
+| **`dev` / daily worktree** | Ongoing development and the only owner of the persistent `pinpoint.localhost` route |
 | **`main` / release worktree** | Clean public-template verification and publishing; no feature development or private instance content |
 
 `main` only advances by fast-forwarding to a clean, published `dev` tip. The release
@@ -335,13 +335,13 @@ force-pushes and never creates a merge commit.
 
 ## Template vs instance
 
-Clone per project. Your content lives in `previews/<your-page>/` and `components/`; framework
+Clone per project. Your content lives in `previews/<your-page>/` and `kits/ios/components/`; framework
 files stay untouched, so pulling template updates is a clean overwrite of
-`ios-kit.*` / `workbench.js` / `index.html` / `annotate.js` / `plugins/` / `lib/`.
+`kits/ios/ios-kit.*` / `workbench/` / `index.html` / `client/` / `server/` / `lib/`.
 
 For a long-lived instance, layer private content without touching tracked files:
 gitignored `previews/_index.local.json` overrides the page manifest; component dirs outside
-`components/_index.json` are auto-discovered. `PREVIEW_TEMPLATE_ONLY=1` hides both
+`kits/ios/components/_index.json` are auto-discovered. `PREVIEW_TEMPLATE_ONLY=1` hides both
 (e2e and release verification run in this mode).
 
 Pages may set `"mode"` to `ios` (default), `web`, or `html`; the Workbench Pages list switch keeps

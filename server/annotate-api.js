@@ -2,15 +2,15 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { projectDataDir } from '../lib/annotate-data-dir.js';
-import { annotationSlug, createAnnotationStore } from '../lib/annotation-store.js';
+import { projectDataDir } from './lib/annotate-data-dir.js';
+import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
-const SCRIPT = path.join(ROOT, 'annotate.js');
+const SCRIPT = path.join(ROOT, 'client', 'annotate.js');
 const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotation-indicator.js'),
-  path.join(ROOT, 'lib', 'annotate-hit-test.js'),
+  path.join(ROOT, 'client', 'lib', 'annotate-hit-test.js'),
   path.join(ROOT, 'lib', 'annotation-slug.js'),
   path.join(ROOT, 'lib', 'annotate-page-key.js'),
   path.join(ROOT, 'lib', 'annotate-clip.js'),

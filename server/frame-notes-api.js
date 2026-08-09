@@ -1,7 +1,7 @@
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
-import { createFrameNoteStore, FrameNoteError } from '../lib/frame-note-store.js';
+import { createFrameNoteStore, FrameNoteError } from './lib/frame-note-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');

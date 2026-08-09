@@ -1,17 +1,17 @@
 ---
-name: ios-app-preview-build
-description: 在本仓库（iOS App Preview workbench）里搭预览内容：加 page / section / screen / 组件，改 board.json，做屏内手势动画（内联 data-preview-script 或 sidecar mount 两种形态）。只要任务涉及新增或修改 previews/ 下的屏、components/ 下的组件、页面清单 previews/_index.json，或用户说「加一屏」「加个 flow」「搭个对比」「做个交互」「写 board」，就先读本 skill 再动手——文件结构和挂载规则有几条不直观的硬约束（overlay 同级、safe area 接 token、fragment 无 bezel、脚本不进 ios-kit.js），跳过本 skill 很容易踩坑。
+name: pinpoint-build
+description: 在本仓库（pinpoint workbench）里搭预览内容：加 page / section / screen / 组件，改 board.json，做屏内手势动画（内联 data-preview-script 或 sidecar mount 两种形态）。只要任务涉及新增或修改 previews/ 下的屏、kits/ios/components/ 下的组件、页面清单 previews/_index.json，或用户说「加一屏」「加个 flow」「搭个对比」「做个交互」「写 board」，就先读本 skill 再动手——文件结构和挂载规则有几条不直观的硬约束（overlay 同级、safe area 接 token、fragment 无 bezel、脚本不进 ios-kit.js），跳过本 skill 很容易踩坑。
 ---
 
-# ios-app-preview-build
+# pinpoint-build
 
-在这个仓库里**搭预览内容**。总入口约定见根目录 [`AGENTS.md`](../../AGENTS.md)；标注评审走 [`ios-app-preview-annotate`](../ios-app-preview-annotate/SKILL.md)。
+在这个仓库里**搭预览内容**。总入口约定见根目录 [`AGENTS.md`](../../AGENTS.md)；标注评审走 [`pinpoint-annotate`](../pinpoint-annotate/SKILL.md)。
 
 ## 0. 服务
 
 ```bash
-npm run dev    # https://ios-app-preview.localhost/index.html
-curl -s https://ios-app-preview.localhost/health
+npm run dev    # https://pinpoint.localhost/index.html
+curl -s https://pinpoint.localhost/health
 ```
 
 ## 1. 加 screen（已有 section）
@@ -175,11 +175,11 @@ Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` �
 ## 4. 加 component
 
 Component Library ≈ Figma Components：**可复用 / 可单独评审的原子**，不是「所有 UI 的仓库」。
-默认先写在 screen 里；满足下面任一条件再抽到 `components/`。
+默认先写在 screen 里；满足下面任一条件再抽到 `kits/ios/components/`。
 
 ### 4.0 何时进 Library / 何时留在 screen
 
-| 进 `components/<id>/` | 留在 `previews/<page>/…` |
+| 进 `kits/ios/components/<id>/` | 留在 `previews/<page>/…` |
 |---|---|
 | **跨屏复用**（同一块会出现在 ≥2 个 screen / page） | 只服务这一屏 / 这一段 flow 的构图与文案 |
 | **要并排看 variants**（形态 A/B、密度、状态），且评审对象是这块本身 | 整页叙事、流程步骤、一次性探索稿 |
@@ -191,7 +191,7 @@ Component Library ≈ Figma Components：**可复用 / 可单独评审的原子*
 1. **Screen 是构图**（page → section → frame）；**Component 是原子**（可 include 的一块）。
 2. **先屏后组件**：探索期直接写 HTML；第二次要用、或要单独开 variant 墙时再抽。
 3. **抽了就必须引用**：screen 用 `data-ios-include`，禁止再复制一份 HTML（否则「改组件」类反馈会只改到一处）。
-4. **`system: true` 只给 kit 原语**（button / list / nav…），少而稳；产品组件一律 `system: false`（实例本地的可放 `components/`，模板发布靠 `_index.json` / exclude 隔离）。
+4. **`system: true` 只给 kit 原语**（button / list / nav…），少而稳；产品组件一律 `system: false`（实例本地的可放 `kits/ios/components/`，模板发布靠 `_index.json` / exclude 隔离）。
 
 正例：`bubble`（多屏消息）、`time-dashboard` / `home-body`（多 flow 复用）、`energy-*`（variant 墙 + 多场景 include）。  
 反例：某 flow 独有的 onboard 文案块、只出现一次的设置页分区——留在 screen。
@@ -199,7 +199,7 @@ Component Library ≈ Figma Components：**可复用 / 可单独评审的原子*
 ### 4.1 怎么加
 
 ```
-components/<id>/
+kits/ios/components/<id>/
   meta.json
   <variant>.html
 ```
@@ -217,7 +217,7 @@ components/<id>/
 }
 ```
 
-- 可选 `components/_index.json` 排序；不在清单里的目录会自动发现、排在后面（`PREVIEW_TEMPLATE_ONLY=1` 时只认清单）
+- 可选 `kits/ios/components/_index.json` 排序；不在清单里的目录会自动发现、排在后面（`PREVIEW_TEMPLATE_ONLY=1` 时只认清单）
 - Component Library 页自动合成（`/components/board.json`），无需手动注册
 
 ## 5. 在 screen 里引用组件
@@ -239,7 +239,7 @@ components/<id>/
 ## 6. Caption / HMR
 
 - Caption 字号：`--wb-cap-section` / `--wb-cap-screen`（相对 `--wb-phone-w`）。只写文案。
-- HMR：`previews/<page>/board.json|*.html|*.js`、`components/**` → 当前板自动刷新。
+- HMR：`previews/<page>/board.json|*.html|*.js`、`kits/ios/components/**` → 当前板自动刷新。
 
 ## 7. 可交互屏（A+B）
 

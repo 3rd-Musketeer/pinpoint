@@ -1,5 +1,5 @@
 // Workbench shell — pages, board loader, settings, preview hot-reload (Vite dev).
-import { bubbleInnerHtml } from './lib/annotate-bubble.js';
+import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 import { BoardMountManager } from './lib/board-mount-session.js';
 import {
@@ -2442,7 +2442,7 @@ function fetchIncludeHtml(ref) {
   var parsed = parseIncludeRef(ref);
   if (!parsed) return Promise.resolve({ ok: false, err: 'bad ref' });
   if (includeCache[ref]) return Promise.resolve(includeCache[ref]);
-  return fetch('components/' + parsed.component + '/' + parsed.variant + '.html')
+  return fetch('kits/ios/components/' + parsed.component + '/' + parsed.variant + '.html')
     .then(function (r) {
       if (!r.ok) throw r.status;
       return r.text();
@@ -2504,7 +2504,7 @@ function fetchScreenHtml(pageId, screen) {
   if (sc.src) {
     url = sc.src;
   } else if (pageId === COMPONENTS_ID && String(sc.id).indexOf('/') >= 0) {
-    url = 'components/' + sc.id + '.html';
+    url = 'kits/ios/components/' + sc.id + '.html';
   } else {
     url = 'previews/' + pageId + '/' + sc.id + '.html';
   }
@@ -2620,7 +2620,7 @@ function buildBoardHtml(pageId, board, screenMap) {
   if (!sections.length || (sections.length === 1 && sections[0].id === '_empty')) {
     var emptyTitle = isCompLib ? '暂无组件' : '暂无屏幕';
     var emptyHelp = isCompLib
-      ? '在 components/ 下添加 meta.json + variant HTML，刷新后会出现在此页。'
+      ? '在 kits/ios/components/ 下添加 meta.json + variant HTML，刷新后会出现在此页。'
       : '在这个页面的 board.json sections[] 中添加 screen。';
     return '<div class="wb-zoom-wrap"><div class="wb-library">' +
       '<article class="wb-lib-item" id="lib-_empty" data-ann-section="_empty" data-ann-section-label="' + emptyTitle + '" data-ann-group="_empty" data-ann-group-label="' + emptyTitle + '">' +

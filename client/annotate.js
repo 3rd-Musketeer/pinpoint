@@ -1,4 +1,4 @@
-/* html-annotate: Figma-style HTML annotate tool (iOS App Preview template).
+/* html-annotate: Figma-style HTML annotate tool (pinpoint).
  * Browser annotation client. Served as /annotate.js by Vite annotate-api;
  * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).

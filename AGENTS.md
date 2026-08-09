@@ -1,4 +1,4 @@
-# iOS App Preview — Agent Guide
+# pinpoint — Agent Guide
 
 Read this first when working in this repo.
 Human-oriented docs: [`README.md`](README.md) · onboarding: [`QUICKSTART.html`](QUICKSTART.html) · recent changes: [`CHANGELOG.md`](CHANGELOG.md).
@@ -13,7 +13,7 @@ the routing table below points at before touching the matching surface.
 brew install just         # once per workstation
 npm install -g portless   # once per workstation
 npm install          # first time
-just dev             # https://ios-app-preview.localhost/index.html
+just dev             # https://pinpoint.localhost/index.html
 ```
 
 `Justfile` is the workflow SSOT; `package.json` scripts are implementation primitives.
@@ -21,7 +21,7 @@ Portless owns the normal route and process lifecycle. `npm run dev:direct` is
 the explicit proxy-bypass fallback at `http://127.0.0.1:5199`; do not use a
 persistent Portless alias for this app.
 
-Health: `curl -s https://ios-app-preview.localhost/health` — the same origin serves preview + annotate API.
+Health: `curl -s https://pinpoint.localhost/health` — the same origin serves preview + annotate API.
 
 Kit CSS/JS is framework-free. **Workbench** needs Vite + Lucide (`npm install`).
 
@@ -33,7 +33,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 
 - This is one Git repository with two long-lived worktrees: daily development on
   `dev`, public-template release on `main`.
-- Run the persistent `ios-app-preview.localhost` service only from the `dev` worktree.
+- Run the persistent `pinpoint.localhost` service only from the `dev` worktree.
   The release worktree is a cold verification and publishing surface.
 - Do not develop, create private instance content, or commit directly on `main`.
   `main` may only fast-forward to the published `dev` tip.
@@ -53,7 +53,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `previews/<pageId>/*.html` (iOS: `.ios-app` + sibling overlays; Web: any non-document fragment) | Phone chrome / bezel / status bar (loader-owned) |
 | `previews/<pageId>/*.js` (screen sidecar `mount(root)`) | Product gestures in `ios-kit.js` |
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
-| `components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
+| `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page (`mode`: `ios` \| `web` \| `html`) | `ios-kit.css` to “fix” one annotation |
 
 **Board modes:** the Pages list has an **iOS / Web / HTML** switch. Lists are isolated; Component Library is iOS-only.
@@ -91,9 +91,9 @@ workbench's. In the HTML board the sidebar still drives them: workbench annotate
 active doc frame's instance, so mode, count, and the Annotations list all reflect the document, and
 the embedded document hides its own floating toolbar to keep one control surface.
 
-**Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.1.
+**Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/pinpoint-build/SKILL.md) §1.1.
 
-**Safe area:** custom nav / composer must use `--ios-safe-top` / `--ios-safe-bottom` (Variables in `ios-kit.css`); do not hardcode px or spacer divs — see [build skill](skills/ios-app-preview-build/SKILL.md) §1.2.
+**Safe area:** custom nav / composer must use `--ios-safe-top` / `--ios-safe-bottom` (Variables in `ios-kit.css`); do not hardcode px or spacer divs — see [build skill](skills/pinpoint-build/SKILL.md) §1.2.
 
 Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Add `.ios-glass--liquid` only for Chromium refraction wow on sparse chrome — not full-page surfaces.
 
@@ -112,8 +112,8 @@ logic to individual screen fragments.
 
 | Task | Open |
 |---|---|
-| Add page / section / screen / component / interactive frame | [`skills/ios-app-preview-build/SKILL.md`](skills/ios-app-preview-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
-| Annotate → read annotations → revise | [`skills/ios-app-preview-annotate/SKILL.md`](skills/ios-app-preview-annotate/SKILL.md) |
+| Add page / section / screen / component / interactive frame | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
+| Annotate → read annotations → revise | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 | Export a Frame / Section image | [`README.md`](README.md#export-frame--section-images) |
 
@@ -158,7 +158,7 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Board hierarchy for agents: **page → canvas → section → frame**; **screen** = iOS content inside a frame (`screenId` = frame id).
 - Annotate modes: **标注** (A) vs **交互** (default). Global indicators are `@page:` /
   `@section:` / `@frame:` / `@a:`; annotation-local targets use persisted `[@t:iN]`
-  tokens displayed as `[indicator N]` — see [annotate skill](skills/ios-app-preview-annotate/SKILL.md).
+  tokens displayed as `[indicator N]` — see [annotate skill](skills/pinpoint-annotate/SKILL.md).
 
 ## Interactive frames (A+B)
 
@@ -189,11 +189,11 @@ Element annotations always write `targets: [{ ref, selector, text }]`; stable re
 mirror the first target as compatibility aliases. `[@t:iN]` resolves only within that
 annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation meaning.
 
-- Component Library annotations → edit `components/<id>/`.
+- Component Library annotations → edit `kits/ios/components/<id>/`.
 - Flow node with `data-ios-from="bubble/outgoing"` → prefer that component source.
 - Flow screen annotations → `previews/<pageId>/<screen>.html` only.
 - Overlay is stage-scoped; canvas/sidebar show active page annotations. `goToMark` switches page
-  when needed, then focuses the owning frame through `lib/board-navigation.js`; only legacy marks
+  when needed, then focuses the owning frame through `workbench/lib/board-navigation.js`; only legacy marks
   without `screenId` fall back to centering the raw anchor.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
@@ -215,9 +215,9 @@ the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-real
 - **Canvas toolbar**: always visible at bottom-right; Section Navigator and the layered
   Canvas → Section → Frame minimap are independent persistent toggles. Open panels dock right
   and stack vertically in toolbar order. Ctrl/meta + wheel zooms. Both navigation modes must
-  resolve geometry and focus policy through `lib/board-navigation.js`; never navigate using the
+  resolve geometry and focus policy through `workbench/lib/board-navigation.js`; never navigate using the
   `.wb-screen` wrapper because row layout makes it `display: contents`.
-- **HMR**: edits under `previews/<page>/**` (html/js/board) or `components/**` refresh the board.
+- **HMR**: edits under `previews/<page>/**` (html/js/board) or `kits/ios/components/**` refresh the board.
 
 ## Template vs instance
 
@@ -225,7 +225,7 @@ The repo ships template content only (Example Library + system components). A lo
 instance layers private content on top without touching tracked files:
 
 - `previews/_index.local.json` (gitignored) overrides the page manifest.
-- Component dirs not listed in `components/_index.json` are auto-discovered and appended.
+- Component dirs not listed in `kits/ios/components/_index.json` are auto-discovered and appended.
 - `PREVIEW_TEMPLATE_ONLY=1` hides both overrides — used by e2e and release verification.
 
 ## Smoke checklist

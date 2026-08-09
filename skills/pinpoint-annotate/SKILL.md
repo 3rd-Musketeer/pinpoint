@@ -1,15 +1,15 @@
 ---
-name: ios-app-preview-annotate
-description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到本项目专属的 ~/.html-annotate/<项目>/ 目录（从 /health 的 dataDir 字段取）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
+name: pinpoint-annotate
+description: 本仓库（pinpoint workbench）的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到本项目专属的 ~/.html-annotate/<项目>/ 目录（从 /health 的 dataDir 字段取）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
 ---
 
-# ios-app-preview-annotate
+# pinpoint-annotate
 
 标注评审闭环：**用户标 → agent 读 → agent 改 → 用户复核 / 清空 → 下一轮**。全程离线、零模型依赖；锚定基于 CSS selector，整机 `transform: scale()` / 窗口缩放都不错位。
 
-搭页 / 改 `board.json` 走 [`ios-app-preview-build`](../ios-app-preview-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
+搭页 / 改 `board.json` 走 [`pinpoint-build`](../pinpoint-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
 
-运行时：根目录 `annotate.js`（浏览器客户端）+ Vite `plugins/annotate-api.js`（磁盘 + SSE），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由和 `ios-kit.js` 自动注入。
+运行时：`client/annotate.js`（浏览器客户端）+ Vite `server/annotate-api.js`（磁盘 + SSE），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由和 `ios-kit.js` 自动注入。
 
 ## Domain language
 
@@ -47,7 +47,7 @@ description: 本仓库（iOS App Preview workbench）的 Figma 式标注评审�
 **匹配规则**：scope indicator 要求 `annotation.pageId` 严格相等；缺 `pageId` 的旧数据不匹配 `@page` / `@section` / `@frame`（仍可 `@a:id` 命中）。
 
 ```bash
-DIR=$(curl -s https://ios-app-preview.localhost/health | jq -r .dataDir)
+DIR=$(curl -s https://pinpoint.localhost/health | jq -r .dataDir)
 jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "$DIR"/*.json
 ```
 
@@ -56,11 +56,11 @@ jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "
 ## 1. 保证服务在跑（每次涉及标注前先做）
 
 ```bash
-curl -s --max-time 1 https://ios-app-preview.localhost/health || \
-  (nohup npm run dev >/dev/null 2>&1 & sleep 1 && curl -s https://ios-app-preview.localhost/health)
+curl -s --max-time 1 https://pinpoint.localhost/health || \
+  (nohup npm run dev >/dev/null 2>&1 & sleep 1 && curl -s https://pinpoint.localhost/health)
 ```
 
-- 正常入口是 Portless 管理的 `https://ios-app-preview.localhost`；先探活再启动。
+- 正常入口是 Portless 管理的 `https://pinpoint.localhost`；先探活再启动。
 - 落盘：**磁盘 SSOT**，目录按项目隔离——`~/.html-annotate/<repo目录名>-<hash>/<页面名>.json`（含 `revision`），参考图在同目录 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**，不要自己猜 hash；同机多个 clone 各有各的目录，互不可见。`HTML_ANNOTATE_DATA_DIR` 环境变量可整体覆盖（e2e 在用）。
 - 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
 - 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
@@ -72,7 +72,7 @@ curl -s --max-time 1 https://ios-app-preview.localhost/health || \
 
 - link 了 `ios-kit.js` 的预览零样板即有标注。
 - 关掉：`<html data-annotate="off">`。
-- 裸 HTML：`</body>` 前 `<script src="https://ios-app-preview.localhost/annotate.js"></script>`。
+- 裸 HTML：`</body>` 前 `<script src="https://pinpoint.localhost/annotate.js"></script>`。
 
 ## 3. 用户怎么用（向用户解释时按这个说）
 
@@ -100,7 +100,7 @@ curl -s --max-time 1 https://ios-app-preview.localhost/health || \
 ## 4. Agent 怎么读（用户说「标好了」时）
 
 ```bash
-DIR=$(curl -s https://ios-app-preview.localhost/health | jq -r .dataDir)
+DIR=$(curl -s https://pinpoint.localhost/health | jq -r .dataDir)
 ls -t "$DIR"/*.json
 ```
 
@@ -147,7 +147,7 @@ ls -t "$DIR"/*.json
 
 | 标注落点 | 改 |
 |---|---|
-| Component Library 页 | `components/<id>/` |
+| Component Library 页 | `kits/ios/components/<id>/` |
 | flow 屏且节点带 `data-ios-from="bubble/outgoing"` | 优先改该组件源 |
 | flow screen（静态） | `previews/<pageId>/<screen>.html` 内容层 only |
 | flow screen（手势 / 动画） | 同屏 `data-preview-script` 或同名 sidecar `.js`；**不要**改 `ios-kit.js` |

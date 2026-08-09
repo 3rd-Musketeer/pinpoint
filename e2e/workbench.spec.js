@@ -828,7 +828,7 @@ test('screen loader rejects a dev-server fallback document instead of nesting th
   await page.route('**/previews/library/home.html', (route) => route.fulfill({
     status: 200,
     contentType: 'text/html',
-    body: '<!doctype html><html><head><title>iOS App Preview</title></head><body><div id="wbroot" class="wb"><aside class="wb-side">Sidebar</aside></div></body></html>',
+    body: '<!doctype html><html><head><title>pinpoint</title></head><body><div id="wbroot" class="wb"><aside class="wb-side">Sidebar</aside></div></body></html>',
   }));
 
   await openWorkbench(page);

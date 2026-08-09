@@ -1,5 +1,5 @@
 // PREVIEW_TEMPLATE_ONLY=1 hides instance-local content (previews/_index.local.json,
-// components outside components/_index.json) so checks see the same board set on
+// components outside kits/ios/components/_index.json) so checks see the same board set on
 // every machine — e2e and release verification run against pure template state.
 export function templateOnly() {
   return !!process.env.PREVIEW_TEMPLATE_ONLY;
