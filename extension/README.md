@@ -33,7 +33,7 @@ How it works (`content.js`, top frame only):
 2. Enable **Developer mode** (top-right toggle).
 3. Click **Load unpacked** and select this `extension/` directory.
 4. Keep the pinpoint service running (`just dev` in the pinpoint repo) and
-   browse a registered url entry, e.g. `https://my-todos.localhost`.
+   browse a registered url entry, e.g. `https://your-app.localhost`.
 
 No background worker, no host permissions: content-script fetches run with
 the page's origin and are governed by the annotate API's CORS contract.

@@ -197,8 +197,8 @@
 
   <header>
     <p class="eyebrow">pinpoint</p>
-    <h1>用 HTML 搭像素级 iOS 原型</h1>
-    <p class="lede">一个跑在浏览器里、agent 会用的「Figma」：你提需求、在画布上标注，agent 负责搭屏和改稿。纯 HTML/CSS，改一行热更新一行。</p>
+    <h1>本地视觉反馈服务：高保真原型 + 标注迭代</h1>
+    <p class="lede">agent 帮你交付高保真 UIUX 原型，你在浏览器里看真实效果、用标注把视觉反馈还给 agent，逐轮迭代。三层形态：kits 攒设计规范，workbench 画布对比方案，annotation 连通人和 agent。</p>
     <pre><span class="c"># 起工作台（Node ≥ 24，需全局安装 Portless）</span>
 npm install -g portless <span class="c"># 每台机器一次</span>
 npm install
@@ -237,6 +237,24 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
   <section id="concepts">
     <h2>核心概念</h2>
     <p class="sec-note">这些名词是你和 agent 的共同语言，画布 UI、标注文件、skill 文档里用的是同一套。</p>
+
+    <div class="group">
+      <p class="group-title">产品形态（三层）</p>
+      <dl class="list">
+        <div class="term">
+          <dt>Kits<small>设计规范积累</small></dt>
+          <dd><code class="inline">kits/ios/</code> 是第一个 kit：HIG 精确的 iOS token、原语与组件库。iOS kit 不是产品主语——目录结构为将来的 web / html kit 留好了位置。</dd>
+        </div>
+        <div class="term">
+          <dt>Workbench<small>画布</small></dt>
+          <dd>多方案原型对比查看器，三种 board：iOS（手机壳）、Web（960px 画板）、HTML（整页文档 iframe + 版本侧栏）。纯 HTML/CSS，改一行热更新一行。</dd>
+        </div>
+        <div class="term">
+          <dt>Annotation<small>核心层</small></dt>
+          <dd>人 → agent 的反馈回路：浏览器里按 <kbd>A</kbd> 标注，落盘本机，agent 读盘改稿。只有登记过的页面才会被注入标注——见下方 Registry。</dd>
+        </div>
+      </dl>
+    </div>
 
     <div class="group">
       <p class="group-title">画布层级（也是标注的地址体系）</p>
@@ -293,6 +311,10 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
           <dt>Indicator<small>定位符</small></dt>
           <dd>贴给 agent 的短地址：<code class="inline">@page:library</code>、<code class="inline">@frame:library/timer</code>、<code class="inline">@a:ab12cd</code>（单条）。标注框和 Pages 列表的 🔗 一键复制。<span class="quote">「@section:library/brew-flow 下的标注都处理一下」</span></dd>
         </div>
+        <div class="term">
+          <dt>Registry<small>登记注入</small></dt>
+          <dd>本机 <code class="inline">~/.html-annotate/registry.json</code> 登记评审目标：<code class="inline">dir</code> 类由服务在 <code class="inline">/sites/&lt;id&gt;/</code> 只读 serve 并自动注入标注；<code class="inline">url</code> 类由浏览器扩展按 origin 匹配注入。<b>登记过才注入</b>——file://、自起 server、未登记 origin 一律干净。标注按 entry 分桶落盘 <code class="inline">~/.html-annotate/&lt;entry-id&gt;/</code>。</dd>
+        </div>
       </dl>
     </div>
 
@@ -300,8 +322,8 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
       <p class="group-title">底层机制（了解即可）</p>
       <dl class="list">
         <div class="term">
-          <dt>Kit</dt>
-          <dd><code class="inline">ios-kit.css/js</code>：HIG 精确的 iOS 组件与 token（对标 Figma Variables），保证原型与真实 iOS 视觉一致：中文排版安全、真 iOS points、light/dark 主题。</dd>
+          <dt>iOS Kit<small>css / js</small></dt>
+          <dd><code class="inline">kits/ios/ios-kit.css/js</code>：HIG 精确的 iOS 组件与 token（对标 Figma Variables），保证原型与真实 iOS 视觉一致：中文排版安全、真 iOS points、light/dark 主题。</dd>
         </div>
         <div class="term">
           <dt>Shell</dt>
@@ -339,7 +361,8 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
   <section id="boundaries">
     <h2>边界</h2>
     <div class="flat">
-      <p class="flat-row"><b>标注是单机的。</b>存储在本机 <code class="inline">~/.html-annotate/&lt;项目目录&gt;/</code>（每个 clone 独立，路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不扩成多人评论系统。</p>
+      <p class="flat-row"><b>标注是单机的。</b>按 registry entry 分桶存储在本机 <code class="inline">~/.html-annotate/&lt;entry-id&gt;/</code>（默认桶路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不扩成多人评论系统。</p>
+      <p class="flat-row"><b>登记过才注入。</b>标注只落在 registry 登记过的目标上：dir 类由服务注入、url 类由浏览器扩展注入；file://、自起 server、未登记 origin 打开的是完全干净的字节，导出的 PNG / HTML 也不含注入脚本。</p>
       <p class="flat-row"><b>机壳不是编辑面。</b>bezel / 状态栏 / 底部横条由加载器统一渲染，agent 的契约中也禁止修改；评审意见针对内容和布局。</p>
     </div>
   </section>

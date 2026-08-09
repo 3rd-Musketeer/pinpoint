@@ -1,16 +1,14 @@
 # pinpoint
 
-**Build pixel-honest iOS interactive prototypes in plain HTML — with your AI agent doing the building, and a Figma-style annotation loop for review.**
+**A local visual feedback service for high-fidelity UIUX prototypes — your agent builds and revises them, you review the real thing in a browser and hand feedback back through annotations.**
 
-A single self-contained workbench: an HIG-accurate, CJK-safe iOS kit (zero runtime deps), a
-Figma-like multi-page canvas, a live Component Library, and a browser annotation system whose
-marks land on disk for your agent to read and act on.
+pinpoint runs as one persistent local service (`https://pinpoint.localhost`) with three layers:
 
-- 📱 **Pixel-honest** — iPhone 16 Pro chrome, true iOS points, light/dark, Dynamic Type
-- 🤖 **Agent-native** — [`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts (Claude Code / Codex / Cursor / …)
-- ✏️ **Review loop** — mark up screens in the browser（标注）, then let the agent revise the source
-- 🖼️ **Doc-ready export** — export a Frame or Section as isolated 2× WebP / PNG without neighboring canvas UI
-- 🔁 **HMR** — edit a screen or component, the open board refreshes in place
+- 🧰 **Kits** — accumulated design specs. `kits/ios/` (HIG-accurate, CJK-safe, zero runtime deps) is the first kit, not the product; the layout leaves room for future web/html kits.
+- 🖥️ **Workbench / canvas** — a Figma-like multi-page viewer for comparing prototype variants side by side. Three boards: **iOS** (phone chrome), **Web** (960px artboard), **HTML** (whole-document iframe with a version sidebar).
+- ✏️ **Annotation** — the core layer and the human→agent feedback loop. Marks made in the browser land on disk for the agent to read and act on. One client, injected only into what you registered — see [Registry and injection](#registry-and-injection).
+
+Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts), 🖼️ **doc-ready export** (Frame/Section as isolated 2× WebP/PNG), 🔁 **HMR** (edit a screen or component, the open board refreshes in place).
 
 New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minute onboarding with the concept glossary.
 
@@ -76,15 +74,15 @@ of silently wrapping or clipping the flow.
 
 | Layer | What | Where |
 |---|---|---|
-| **Variables** | Color / type / spacing / radius tokens + usage rules (≈ Figma Variables) | `ios-kit.css` `--ios-*`, type classes |
-| **Library** | System primitives + product components (≈ Figma Components) | `kits/ios/components/` — auto page **Component Library** |
-| **Chrome** | Device bezel, status bar, home indicator — stable, loader-owned | `wrapPhoneShell` in `workbench/workbench.js` |
+| **Kits** | Design-spec accumulation: tokens, primitives, product components (≈ Figma Variables + Components) | `kits/<kit>/` — today `kits/ios/` (`ios-kit.css/js` + `components/`); more kits can sit alongside |
+| **Workbench** | Multi-scheme prototype viewer: pages, canvas, boards, export, HMR | `index.html` + `workbench/` + `previews/` |
+| **Annotation** | Human→agent feedback loop: browser client, disk store, injection contract | `client/annotate.js`, `server/annotate-api.js`, `server/sites-api.js`, `extension/` |
 
 Agent work stays in **screen fragments** (`*.html` + optional sidecar `*.js`) and
-**components**; chrome is not an edit surface. Product gestures use screen scripts
-(A+B), not `ios-kit.js`.
+**components**; chrome (device bezel, status bar, home indicator) is loader-owned and
+not an edit surface. Product gestures use screen scripts (A+B), not `ios-kit.js`.
 
-Board hierarchy: **page → canvas → section → frame**; a **screen** is the iOS content
+Board hierarchy: **page → canvas → section → frame**; a **screen** is the content
 inside a frame. These five words are also the annotation address space (`@page:` /
 `@section:` / `@frame:`), so humans, agents, and the tooling all speak the same names.
 
@@ -94,19 +92,21 @@ inside a frame. These five words are also the annotation address space (`@page:`
 AGENTS.md              Agent entry — contracts + routing (read first)
 Justfile               Canonical dev, check, dev-push, and main-publish workflows
 QUICKSTART.html        Human onboarding — concepts + usage, self-contained
-kits/ios/ios-kit.css   Variables + chrome styles + primitive CSS
-kits/ios/ios-kit.js    Kit runtime — auto-fit, tabs/sheet/segmented, live clock; annotate inject
-index.html             WORKBENCH — Pages (Component Library pinned first) + Theme controls
-workbench/workbench.js Board loader, data-ios-include, preview-script mount (A+B), HMR
-client/annotate.js     Browser annotation client (served as /annotate.js)
+index.html             WORKBENCH shell — Pages (Component Library pinned first) + Theme controls
+workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
+client/annotate.js     The annotation client (served as /annotate.js)
+server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr, template-only
+lib/                   Node-tested shared modules (page key, indicators, bubble layout, …)
+kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
+kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock; localhost annotate inject
 kits/ios/components/   Component Library sources (meta.json + variant HTML)
 previews/<page>/       Flow pages — board.json + screen HTML (+ optional <screen>.js)
-previews/_index.json   Page manifest (id / title / order / default)
-server/                Vite plugins: annotate/export APIs, components-board, preview-hmr, template-only
-lib/                   Node-tested shared modules (annotation store, board navigation, …)
+previews/_index.json   Page manifest (id / title / order / default / mode)
+extension/             MV3 browser extension — injects the client on registered url entries
 skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 starter.html           COPY-ME standalone one-off phone (no workbench needed)
-e2e/                   Playwright workbench tests
+scripts/               CLI entry for export
+e2e/                   Playwright workbench / registry / extension tests
 ```
 
 ## Pages
@@ -119,6 +119,12 @@ Workbench **Pages** (top → bottom):
    every mechanism: cards/lists/tab/sheet home, a 3-screen flow with inline-script and
    sidecar interactive frames, lock screens, a message flow built from component includes,
    and an AB layout comparison.
+3. **Example Web** — `previews/web-library/`: web-board surfaces on the 960px artboard.
+4. **Example HTML** — `previews/doc-library/`: a standalone one-page report on the HTML board.
+
+Beyond the tracked examples, pages come from two more sources: gitignored
+`previews/_index.local.json` (instance-private override of the manifest) and registry
+`dir` entries (external directories surfaced read-only — see below).
 
 Click a page to switch boards. Add your own pages next to `library/` — see recipes below.
 
@@ -179,6 +185,9 @@ in the [build skill](skills/pinpoint-build/SKILL.md); live examples
 2. Add the page to `previews/_index.json` (`pageId` becomes annotate `pageId` / `data-vpage`).
 3. Do not invent a second loader — the manifest generates navigation.
 
+To review a project that lives **outside** this repo, register it as a `dir` entry instead —
+it shows up as a workbench page served from `/sites/<entry-id>/` (read-only), no copying.
+
 ### Add a reusable component
 
 Component Library is for **reusable / variant-review atoms**, not every UI block.
@@ -198,7 +207,7 @@ Include it in any screen — edit the source once, every consumer refreshes:
 ```html
 <div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
 
-<div data-ios-include="status-card/default"
+<div data-ios-include="your-card/default"
      data-text="冲煮完成"
      data-slot-detail="总时长 3:12 · 粉水比 1:16"></div>
 ```
@@ -217,8 +226,8 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the
    bottom composer (pills reference targets; `[indicator N]` inlines them), paste reference
    images, draw move-arrows.
-2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT under a
-   per-project `~/.html-annotate/<dir>/`, path exposed by `GET /health`; revisioned,
+2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT in per-entry
+   buckets under `~/.html-annotate/<entry-id>/`, exposed by `GET /health`; revisioned,
    SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
    board hot-reloads. The agent summarizes what changed and why in the conversation.
 3. Click any sidebar comment to focus its owning frame (the same geometry as frame navigation),
@@ -229,6 +238,59 @@ Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 [annotate skill](skills/pinpoint-annotate/SKILL.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
+
+## Registry and injection
+
+The annotation layer never touches a page you didn't register — **登记过才注入**. The
+registry at `~/.html-annotate/registry.json` (`HTML_ANNOTATE_REGISTRY` overrides) declares
+entries:
+
+```json
+{
+  "version": 1,
+  "entries": [
+    { "id": "pinpoint", "title": "pinpoint workbench", "kind": "dir", "path": "/path/to/pinpoint" },
+    { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/path/to/your-app/dist", "board": "web" },
+    { "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }
+  ]
+}
+```
+
+`GET /registry` returns the effective entries. A missing file means the default
+pinpoint-only registry; malformed JSON or invalid entries fall back / are skipped loudly and
+the failure is visible on `GET /health` (which also reports `dataRoot` and the default-bucket
+`dataDir`). Entry ids match `^[a-z0-9][a-z0-9-]*$`; annotations land in per-entry buckets
+`~/.html-annotate/<entry-id>/` (`HTML_ANNOTATE_DATA_DIR` overrides the root wholesale).
+
+Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`):
+
+- **Workbench's own pages** — `ios-kit.js` self-injects the client on loopback / `.localhost`
+  hosts only (opt out with `<html data-annotate="off">`); the same one-liner works for any
+  standalone kit page. The pull is same-origin, so on any other server it simply 404s into a
+  no-op.
+- **`dir` entries** — the service serves the registered directory read-only under
+  `/sites/<entry-id>/`. The registry is the whitelist: unknown ids, `..` traversal, and
+  symlink escapes all 404; directories fall through to `index.html`. HTML GET responses get
+  `<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
+  injected before `</body>`; `?annotate=off` serves the exact disk bytes (export paths and
+  the workbench's inline fragment loader use it). Registered dirs also appear as workbench
+  pages, with the entry's `board` field selecting the board mode (`ios` / `web` / `html`,
+  default `web`).
+- **`url` entries** — the MV3 browser extension in [`extension/`](extension/) matches
+  `location.origin` against url entries on local-dev pages and injects the same client,
+  stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline or
+  the origin isn't registered, the page stays untouched. Load it once via
+  `chrome://extensions` → **Load unpacked** — details in
+  [`extension/README.md`](extension/README.md).
+
+Everything else — `file://`, a self-started server, an unregistered origin — opens the
+identical bytes with zero annotation surface. Exported artifacts (PNG/HTML) never contain the
+injected client: the export pipeline requests `?annotate=off`, blocks `/annotate.js` in the
+render browser, and strips the bootstrap from exported HTML.
+
+On SPA pages the client follows route changes automatically (Navigation API first,
+`pushState`/`popstate` fallback) and re-buckets annotations under the new pathname's ledger —
+marks never silently land on the previous route's page.
 
 ## One phone, no workbench
 
@@ -262,7 +324,7 @@ Copy [`starter.html`](starter.html), or use the minimal skeleton:
 
 Standalone pages need the full shell; workbench screens do **not** — the loader owns chrome.
 
-## Knobs
+## Knobs (iOS kit)
 
 | Attribute | On | Values |
 |---|---|---|
@@ -276,7 +338,7 @@ Standalone pages need the full shell; workbench screens do **not** — the loade
 
 Everything inside `.ios-screen` renders at **true iOS points**.
 
-## Class vocabulary
+## Class vocabulary (iOS kit)
 
 - **Shell (chrome)** — `ios-stage` `ios-root` `ios-device` `ios-key.*` `ios-bezel` `ios-screen` `ios-island` `ios-statusbar` `ios-home` — loader-owned on boards
 - **Type** — `ios-large` `ios-title1/2/3` `ios-headline` `ios-body` `ios-callout-t` `ios-subhead` `ios-footnote` `ios-caption/2`
@@ -293,7 +355,7 @@ See the Component Library page for live recipes. Sheet + tabbar structure:
 
 **Icons** — emoji for app/content; system chrome SVG (`#c-back`, `#c-chev`, `#c-search`) auto-injected.
 
-## Design rules baked in
+## Design rules baked in (iOS kit)
 
 - **Points, not viewport pixels** — device fixed-size, scaled as a unit.
 - **Glass on the nav layer only** — content cards stay solid.
@@ -341,7 +403,9 @@ files stay untouched, so pulling template updates is a clean overwrite of
 
 For a long-lived instance, layer private content without touching tracked files:
 gitignored `previews/_index.local.json` overrides the page manifest; component dirs outside
-`kits/ios/components/_index.json` are auto-discovered. `PREVIEW_TEMPLATE_ONLY=1` hides both
+`kits/ios/components/_index.json` are auto-discovered; and the machine-local registry
+(`~/.html-annotate/registry.json`) adds external dirs as read-only pages without any repo
+change at all. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
 (e2e and release verification run in this mode).
 
 Pages may set `"mode"` to `ios` (default), `web`, or `html`; the Workbench Pages list switch keeps
@@ -357,8 +421,9 @@ HTML boards host one-page reports and docs — files that carry their own `<!doc
 `<style>`. They render in an iframe rather than inlined, so the document is untouched; a screen's
 `"src"` may point anywhere, which (with a symlink under `previews/`) lets you review a report that
 lives outside this repo. Sidebar **导出** on the Versions/Document header downloads the active doc
-as full HTML, CSS-stripped HTML (for AI), or a full-page 2× PNG. To annotate one, the document wires
-itself in two places and stays inert outside localhost — see [`AGENTS.md`](AGENTS.md).
+as full HTML, CSS-stripped HTML (for AI), or a full-page 2× PNG. Annotating works out of the box on
+the localhost service — the doc's own tail script pulls `/annotate.js` on loopback hosts only, so
+the same file stays inert everywhere else (see [`AGENTS.md`](AGENTS.md)).
 
 ## Credits
 

@@ -3,6 +3,12 @@
 Read this first when working in this repo.
 Human-oriented docs: [`README.md`](README.md) · onboarding: [`QUICKSTART.html`](QUICKSTART.html) · recent changes: [`CHANGELOG.md`](CHANGELOG.md).
 
+pinpoint is a **local visual feedback service**: kits (`kits/ios/`, the first design-spec
+kit) + a workbench canvas (multi-scheme prototype viewer) + the annotation layer
+(human→agent feedback loop, the core). The persistent service runs at
+`https://pinpoint.localhost` and serves the workbench, the annotate API, registered
+external dirs (`/sites/<id>/`), and the client bundle (`/annotate.js`).
+
 Repo skills live in [`skills/`](skills/) — plain directories referenced by path (dir-ref),
 so they work with any coding agent (Claude Code / Codex / Cursor / …). Open the SKILL.md
 the routing table below points at before touching the matching surface.
@@ -21,7 +27,11 @@ Portless owns the normal route and process lifecycle. `npm run dev:direct` is
 the explicit proxy-bypass fallback at `http://127.0.0.1:5199`; do not use a
 persistent Portless alias for this app.
 
-Health: `curl -s https://pinpoint.localhost/health` — the same origin serves preview + annotate API.
+Health: `curl -s https://pinpoint.localhost/health` — the same origin serves workbench,
+annotate API, and `/sites/`. The payload carries `dataDir` (the default `pinpoint` bucket
+path, kept for `jq -r .dataDir` consumers), `dataRoot` (the annotation data root), and a
+`registry` section (`ok` / `path` / `entries` **count** / `errors` / `warnings`) — use
+`GET /registry` when you need the actual entry list.
 
 Kit CSS/JS is framework-free. **Workbench** needs Vite + Lucide (`npm install`).
 
@@ -46,6 +56,26 @@ Checks: `just check` (contracts + Chromium e2e; first time
 - Both recipes change remote state. Never work around a failed guard, force-push,
   or create a merge commit to make a release proceed.
 
+## Repository map
+
+| Path | Role |
+|---|---|
+| `client/annotate.js` | The annotation client, served as `/annotate.js`; libs are inlined at serve time |
+| `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
+| `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js`, `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
+| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs |
+| `workbench/` | Canvas: `workbench.js` (board loader, include/mount, HMR), `settings.html`, `workbench-icons.js` |
+| `workbench/lib/` | Board navigation, mount session, include slots, preview contracts |
+| `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble) — node-tested SSOT |
+| `kits/ios/` | First kit: `ios-kit.css/js` + `components/` (Component Library sources) |
+| `previews/` | Template pages: `_index.json` manifest + `<pageId>/board.json` + screen HTML/JS |
+| `extension/` | MV3 browser extension — injects the client on registered `url` entries |
+| `skills/` | Agent skills (dir-ref): `pinpoint-build`, `pinpoint-annotate` |
+| `e2e/` | Playwright: workbench, annotation buckets, dir-entry sites, extension, SPA ledger |
+
+Editing a file in `lib/` or `client/lib/` changes the served `/annotate.js` (inlined at
+serve time); those modules are pure and node-tested — keep them DOM-free.
+
 ## Edit surfaces
 
 | Do edit | Do not edit |
@@ -55,6 +85,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page (`mode`: `ios` \| `web` \| `html`) | `ios-kit.css` to “fix” one annotation |
+| `~/.html-annotate/registry.json` to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
 
 **Board modes:** the Pages list has an **iOS / Web / HTML** switch. Lists are isolated; Component Library is iOS-only.
 
@@ -86,10 +117,11 @@ the hit surface — authors do **not** need `wb-html-surface` / `data-ann-surfac
 on content (those markers remain for Web-board fragments inlined into the
 workbench, where sidebar/chrome must stay unselectable).
 
-Marks land under the document's own page key (per-path file under `dataDir`, see `/health`), not the
-workbench's. In the HTML board the sidebar still drives them: workbench annotate calls resolve to the
-active doc frame's instance, so mode, count, and the Annotations list all reflect the document, and
-the embedded document hides its own floating toolbar to keep one control surface.
+Marks land under the document's own page key (per-path file in the entry bucket, see
+`/health`), not the workbench's. In the HTML board the sidebar still drives them: workbench
+annotate calls resolve to the active doc frame's instance, so mode, count, and the
+Annotations list all reflect the document, and the embedded document hides its own floating
+toolbar to keep one control surface.
 
 **Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/pinpoint-build/SKILL.md) §1.1.
 
@@ -114,6 +146,7 @@ logic to individual screen fragments.
 |---|---|
 | Add page / section / screen / component / interactive frame | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
 | Annotate → read annotations → revise | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
+| Register / verify a registry dir or url entry | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 | Export a Frame / Section image | [`README.md`](README.md#export-frame--section-images) |
 
@@ -152,13 +185,14 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
   Registry `dir` entries (except the workbench's own `pinpoint` entry) are appended
   as pages from `GET /registry`: mode comes from the entry's `board` field (default
-  `web`), and their board/screens load read-only from `/sites/<entry-id>/`.
+  `web`), and their board/screens load read-only from `/sites/<entry-id>/`. A previews
+  page with the same id wins over a registry page.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
 - Default shell: **app**. Lock: `"shell": "lock"` on section or screen + `.ios-lockscreen`.
 - `section.id` stamps `[data-ann-section]` → annotation `section`.
-- Board hierarchy for agents: **page → canvas → section → frame**; **screen** = iOS content inside a frame (`screenId` = frame id).
+- Board hierarchy for agents: **page → canvas → section → frame**; **screen** = content inside a frame (`screenId` = frame id).
 - Annotate modes: **标注** (A) vs **交互** (default). Global indicators are `@page:` /
   `@section:` / `@frame:` / `@a:`; annotation-local targets use persisted `[@t:iN]`
   tokens displayed as `[indicator N]` — see [annotate skill](skills/pinpoint-annotate/SKILL.md).
@@ -181,6 +215,7 @@ Workbench mounts screen HTML via `innerHTML`, so bare `<script>` never runs. Cus
 
 | Field | Meaning |
 |---|---|
+| `entry` | Registry entry id — the bucket the document lives in (default `pinpoint`) |
 | `pageId` | Workbench page = `data-vpage` (`library`, `components`, or custom) |
 | `section` | Board section `id` (legacy: `group`) |
 | `screenId` | Frame / screen file id |
@@ -195,6 +230,8 @@ annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation m
 - Component Library annotations → edit `kits/ios/components/<id>/`.
 - Flow node with `data-ios-from="bubble/outgoing"` → prefer that component source.
 - Flow screen annotations → `previews/<pageId>/<screen>.html` only.
+- Annotations made under `/sites/<entry-id>/` → edit the file on disk inside the registered
+  directory (the service itself is read-only).
 - Overlay is stage-scoped; canvas/sidebar show active page annotations. `goToMark` switches page
   when needed, then focuses the owning frame through `workbench/lib/board-navigation.js`; only legacy marks
   without `screenId` fall back to centering the raw anchor.
@@ -206,34 +243,75 @@ Annotations live in per-entry buckets `~/.html-annotate/<entry-id>/*.json`
 Read the exact default-bucket path from the `dataDir` field of
 `GET /health`; `HTML_ANNOTATE_DATA_DIR`
 overrides the data root wholesale (e2e uses this).
-`POST /save` requires `baseRevision`; clear uses the same save queue with `annotations: []`
-(there is no `/clear` route). The browser `localStorage` cache is not authoritative. On boot
-the client hydrates from disk; `GET /events` (SSE) keeps open browsers near-realtime.
+`POST /save` requires `baseRevision` (integer ≥ 0; mismatch → `409 revision_conflict` with
+the disk doc); clear uses the same save queue with `annotations: []`
+(there is no `/clear` route). An explicit `entry` that is not registered is a loud
+`400 unknown_entry` — misconfiguration never silently lands in the wrong bucket. The browser
+`localStorage` cache is not authoritative. On boot
+the client hydrates from disk; `GET /events` (SSE, `event: annotations`, payload carries
+`entry` / `page` / `revision`) keeps open browsers near-realtime.
+`GET /annotations` (no page) is a debug aggregate flattening every bucket into
+`[{entry, ...doc}]`; per-page reads take `?entry=<id>`, as does `GET /images/<name>`.
 **Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
 (`ios-preview-wb`) — viewer state, not synced.
 
-**Annotating url entries (browser extension):** `extension/` is an MV3 extension whose
-content script matches local-dev pages, probes `<service>/registry`, and when the page
-origin matches a registry `url` entry injects the annotate client. The ledger entry reaches
-the page's main world through `<html data-pinpoint-entry="...">` (a page CSP blocks
-content-script-injected inline `<script>`; `window.__pinpointEntry` remains the same-origin
-injector contract and wins when both exist). The client script loads from
-`service.directOrigin` reported by `/registry` — the API's plain loopback bind — because
-Chrome ≥130 checks content-script-injected scripts against the extension's own CSP, which
-whitelists `http://localhost:*` / `http://127.0.0.1:*` but not remote https origins. All
-annotate API routes answer cross-origin requests with `Access-Control-Allow-Origin: *`
-(no credentials) and handle `OPTIONS` preflights.
+## Registry and injection contract
 
-**Annotating dir entries (/sites/):** every registry `dir` entry is served read-only
-under `/sites/<entry-id>/<path…>` (`server/sites-api.js`) — the registry is the
-whitelist, resolved paths must stay inside the entry directory (textual + realpath
-containment, directories fall through to `index.html`), and misses/unknown ids 404.
-HTML GET responses get the annotate client injected before `</body>`
-(`<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`)
-— "登记过才注入": opening the same dir via `file://` or another server stays clean,
-and `?annotate=off` opts a single request out (workbench fragment loader and export
-rendering use it). Doc exports accept `sites/<entry-id>/…` srcs and strip the injected
-bootstrap from exported HTML (`stripAnnotateBootstrap` also drops `__pinpointEntry`).
+**登记过才注入** — the annotate client only ever lands on registered targets; everything
+else opens byte-identical pages with zero annotation surface.
+
+**Registry** (`server/lib/registry.js`): `~/.html-annotate/registry.json`,
+`HTML_ANNOTATE_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
+`{id, title?, kind: "dir"|"url", path? | url?, board?}`; id must match
+`^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`web`/`html`)
+only matters for dir entries' workbench page mode. A missing file means the default
+pinpoint-only registry (`{id:"pinpoint", kind:"dir", path:<repo root>}`). Malformed JSON or
+a wrong top-level shape falls back to the default with the error recorded; invalid entries
+are skipped individually; a missing dir path is a warning, not a removal. All of it is
+visible on `GET /health` (registry summary — `entries` there is a **count**) and
+`GET /registry` (full `entries` list plus `service.directOrigin`).
+
+**Delivery paths** (one client, `client/annotate.js` → `/annotate.js`):
+
+1. **Workbench's own pages** — `ios-kit.js` self-injects `/annotate.js` on loopback /
+   `.localhost` hosts only (opt out: `<html data-annotate="off">`). Standalone docs copy the
+   same tail script and call `iOSAnnotate.setFloatingToolbar(true)` when not embedded — see
+   `previews/doc-library/sample-report.html`.
+2. **`dir` entries → `/sites/`** — `server/sites-api.js` serves the registered directory
+   read-only under `/sites/<entry-id>/<path…>` (GET/HEAD only, 405 otherwise). The registry
+   is the whitelist: unknown ids 404; `..` traversal is rejected textually and symlink
+   escapes via realpath containment; directories fall through to `index.html`. HTML GET
+   responses get `<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
+   injected before `</body>` (appended when there is no `</body>`); `?annotate=off` serves
+   the exact disk bytes — the workbench inline fragment loader and export rendering use it.
+   Dir entries also surface as workbench pages (see Canonical board schema).
+3. **`url` entries → browser extension** — `extension/` is an MV3 extension whose content
+   script (top frame only, `localhost` / `*.localhost` / `127.0.0.1` matches) probes
+   `https://pinpoint.localhost/registry` then the page's own origin; first JSON wins. When
+   `location.origin` exactly matches a registry `url` entry it stamps
+   `<html data-pinpoint-entry="...">` (a page CSP blocks content-script-injected inline
+   `<script>`; `window.__pinpointEntry` remains the same-origin injector contract and wins
+   when both exist) and loads `annotate.js` from `service.directOrigin` — the API's plain
+   loopback bind — because Chrome ≥130 checks content-script-injected scripts against the
+   extension's own CSP, which whitelists `http://localhost:*` / `http://127.0.0.1:*` but not
+   remote https origins. No candidate serving a registry → service is down → nothing is
+   injected. All annotate API routes answer cross-origin requests with
+   `Access-Control-Allow-Origin: *` (no credentials) and handle `OPTIONS` preflights.
+
+**Client ledger** (`client/annotate.js`): the bucket entry is
+`window.__pinpointEntry` → `<html data-pinpoint-entry>` → `'pinpoint'`; API calls go to the
+origin the script was loaded from. The page key is
+`decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`
+(`lib/annotate-page-key.js`), so the same filename in different directories gets different
+ledgers. SPA route changes re-key the ledger (entry / page / localStorage key) without a
+reload — Navigation API `navigate` events first, patched `pushState`/`replaceState` +
+`popstate` fallback; hash-only changes do not re-key, and in-flight sync/hydrate responses
+from before a switch are discarded by epoch so marks never land on the previous route.
+
+**Export purity:** doc exports accept `sites/<entry-id>/…` srcs and are guaranteed free of
+the injected client — the pipeline requests `?annotate=off`, aborts `**/annotate.js` in the
+render browser, and `stripAnnotateBootstrap` removes the injected snippet (including the
+`__pinpointEntry` marker) from exported HTML.
 
 ## Workbench UX (prefs)
 
@@ -254,7 +332,9 @@ instance layers private content on top without touching tracked files:
 
 - `previews/_index.local.json` (gitignored) overrides the page manifest.
 - Component dirs not listed in `kits/ios/components/_index.json` are auto-discovered and appended.
-- `PREVIEW_TEMPLATE_ONLY=1` hides both overrides — used by e2e and release verification.
+- `~/.html-annotate/registry.json` (machine-local) registers external dirs/urls as review
+  targets — no repo change at all.
+- `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides — used by e2e and release verification.
 
 ## Smoke checklist
 
@@ -262,9 +342,14 @@ instance layers private content on top without touching tracked files:
 2. Add a new workbench page (`previews/<pageId>/` + one `previews/_index.json` entry).
 3. Interactive screen: sidecar `mount(root)` + `data-preview-mount` (or inline `data-preview-script`); do not edit `ios-kit.js`.
 4. Read annotations grouped by `pageId` then `section` (and `screenId` when present); edit the routed file; do not clear annotations for the user.
-5. Resolve `content` target tokens against the same annotation's `targets[].ref`; keep
+5. Register a `dir` entry in the machine registry; verify `GET /registry` lists it,
+   `/sites/<id>/` serves HTML with `window.__pinpointEntry` injected, `?annotate=off` is
+   byte-identical to disk, and the workbench lists it as a page. For a `url` entry: load
+   `extension/` unpacked, browse the origin with the service up, and confirm the toolbar
+   appears (and stays absent when the service is down).
+6. Resolve `content` target tokens against the same annotation's `targets[].ref`; keep
    missing refs visible instead of guessing another target.
-6. After addressing annotations, summarize the concrete changes in the agent conversation;
+7. After addressing annotations, summarize the concrete changes in the agent conversation;
    leave review and annotation cleanup to the user.
 
 ## Anti-patterns
@@ -274,3 +359,6 @@ instance layers private content on top without touching tracked files:
 - Editing loader chrome to satisfy an annotation
 - Product gestures / screen state in `ios-kit.js`
 - Setting caption font sizes in screen HTML or ad-hoc CSS
+- Hand-injecting `/annotate.js` into unregistered pages — register a `dir`/`url` entry
+  instead; unregistered surfaces stay clean by contract
+- Committing machine-local registry content or instance-private pages into tracked files

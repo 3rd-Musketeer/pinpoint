@@ -164,13 +164,28 @@ screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接�
 外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：
 独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。Web 板 fragment 仍由
 loader 包 `.wb-html-surface`，那是画布命中边界，不是作者要记的标记。标注落在文档自己的
-page key 下，从 `dataDir` 读。
+page key 下（默认 entry `pinpoint` 的桶，路径从 `/health` 的 `dataDir` 读）。
 
 侧栏 **iOS / Web / HTML** switch 会隔离三套 Pages 列表；Component Library 只出现在 iOS。
 
 3. 刷新；manifest 自动生成导航，`pageId` 同时是 annotate 的 `pageId`。不要自写第二套 loader。
 
 Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` 只写 `sections[]`。长期实例可用 gitignored `previews/_index.local.json` 覆盖整份清单（结构相同），模板文件保持干净。
+
+### 3.1 仓库外的项目：registry dir entry
+
+要评审的项目不在本仓库时，不要把文件复制进来——在本机 registry（`~/.html-annotate/registry.json`，`HTML_ANNOTATE_REGISTRY` 可覆盖）登记一个 `dir` entry：
+
+```json
+{ "id": "your-app", "title": "Your App", "kind": "dir", "path": "/abs/path/to/your-app/dist", "board": "web" }
+```
+
+- 服务把该目录**只读** serve 在 `https://pinpoint.localhost/sites/your-app/`：registry 即白名单，未知 id / `..` 穿越 / symlink 逃逸一律 404；目录回落 `index.html`。
+- HTML 响应在 `</body>` 前自动注入 `window.__pinpointEntry='your-app'` + `/annotate.js`；`?annotate=off` 原样输出磁盘字节（导出管线和 workbench 内联加载走它）。
+- 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先）。`board` 字段选 board：`ios` / `web` / `html`，缺省 `web`。
+- 页面结构仍由它自己的 `board.json` + screens 决定（从 `/sites/<id>/board.json` 拉取）——schema 与本仓页面完全相同，编辑对象是登记目录里的磁盘文件，serve 只读不影响改稿。
+- 标注落在 `~/.html-annotate/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
+- 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页。目标项目是 SPA / 自己起服务、想按 origin 评审时改用 `url` entry + 浏览器扩展，见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2。
 
 ## 4. 加 component
 
@@ -193,7 +208,7 @@ Component Library ≈ Figma Components：**可复用 / 可单独评审的原子*
 3. **抽了就必须引用**：screen 用 `data-ios-include`，禁止再复制一份 HTML（否则「改组件」类反馈会只改到一处）。
 4. **`system: true` 只给 kit 原语**（button / list / nav…），少而稳；产品组件一律 `system: false`（实例本地的可放 `kits/ios/components/`，模板发布靠 `_index.json` / exclude 隔离）。
 
-正例：`bubble`（多屏消息）、`time-dashboard` / `home-body`（多 flow 复用）、`energy-*`（variant 墙 + 多场景 include）。  
+正例：`bubble`（消息气泡，多屏 include 复用）；variant 墙类组件——一个 `meta.json` 挂多份 variant HTML 并排评审（参考模板自带组件的 `catalog.html` 形态）。  
 反例：某 flow 独有的 onboard 文案块、只出现一次的设置页分区——留在 screen。
 
 ### 4.1 怎么加
@@ -225,7 +240,7 @@ kits/ios/components/<id>/
 ```html
 <div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
 
-<div data-ios-include="status-card/default"
+<div data-ios-include="your-card/default"
      data-text="冲煮完成"
      data-slot-detail="总时长 3:12 · 粉水比 1:16"></div>
 ```

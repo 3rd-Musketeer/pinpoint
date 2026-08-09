@@ -1,6 +1,6 @@
 ---
 name: pinpoint-annotate
-description: 本仓库（pinpoint workbench）的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.html-annotate/pinpoint/ 桶（从 /health 的 dataDir 字段取）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
+description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.html-annotate/<entry-id>/ 桶（默认 entry 是 pinpoint，路径从 /health 的 dataDir 字段取；entry 清单在本机 registry ~/.html-annotate/registry.json）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，要登记 / 验证一个 dir 或 url 评审目标，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则、注入契约和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
 ---
 
 # pinpoint-annotate
@@ -9,7 +9,7 @@ description: 本仓库（pinpoint workbench）的 Figma 式标注评审闭环：
 
 搭页 / 改 `board.json` 走 [`pinpoint-build`](../pinpoint-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
 
-运行时：`client/annotate.js`（浏览器客户端）+ Vite `server/annotate-api.js`（磁盘 + SSE），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由和 `ios-kit.js` 自动注入。
+运行时：`client/annotate.js`（浏览器客户端）+ Vite `server/annotate-api.js`（磁盘 + SSE）与 `server/sites-api.js`（registry dir 只读 serve），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由、registry 分桶与「登记过才注入」契约（见 §2）。
 
 ## Domain language
 
@@ -61,18 +61,43 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 ```
 
 - 正常入口是 Portless 管理的 `https://pinpoint.localhost`；先探活再启动。
-- 落盘：**磁盘 SSOT**，按 registry entry 分桶——`~/.html-annotate/<entry-id>/<页面名>.json`（本项目 entry 是 `pinpoint`，含 `revision`），参考图在同桶 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**（默认桶路径），不要自己拼；entry 清单来自 `~/.html-annotate/registry.json`。`HTML_ANNOTATE_DATA_DIR` 环境变量覆盖数据根（e2e 在用）。
+- 落盘：**磁盘 SSOT**，按 registry entry 分桶——`~/.html-annotate/<entry-id>/<页面名>.json`（本项目 entry 是 `pinpoint`，含 `revision`），参考图在同桶 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**（默认桶路径），不要自己拼；entry 清单来自 `~/.html-annotate/registry.json`。`HTML_ANNOTATE_DATA_DIR` 环境变量覆盖数据根（e2e 在用）。`/health` 还带 `dataRoot`（数据根）和 `registry` 摘要段——注意其中的 `entries` 是**计数**，完整清单走 `GET /registry`。
 - 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
 - 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
 - Workbench prefs（当前页 / 缩放 / 侧栏）在 `ios-preview-wb`，viewer 本地状态，**不同步**。
 
-## 2. 注入：模板自动，无需手动
+## 2. 注入：登记过才注入
 
-`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。
+同一个 client（`client/annotate.js`，serve 为 `/annotate.js`），三条投递路径。未登记的一切打开方式（`file://`、自起 server、未登记 origin）完全干净——这是契约，不是配置项；导出的 PNG / HTML 也不含注入脚本。
 
-- link 了 `ios-kit.js` 的预览零样板即有标注。
-- 关掉：`<html data-annotate="off">`。
-- 裸 HTML：`</body>` 前 `<script src="https://pinpoint.localhost/annotate.js"></script>`。
+1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `iOSAnnotate.setFloatingToolbar(true)`。
+
+2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记：
+
+   ```json
+   { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/abs/path/to/your-app/dist", "board": "web" }
+   ```
+
+   - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。
+   - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
+   - 该 entry 同时成为 workbench 页面（`board` 选 board 模式，缺省 `web`），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。
+   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `iOSAnnotate.setFloatingToolbar(true)`）。
+   - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
+   - 标注落在 `~/.html-annotate/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
+
+3. **registry `url` entry → 浏览器扩展**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：
+
+   ```json
+   { "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }
+   ```
+
+   - 一次性安装扩展：`chrome://extensions` → Developer mode → **Load unpacked** → 选本仓 `extension/`（机制细节见 [`extension/README.md`](../../extension/README.md)）。
+   - content script 依次探 `https://pinpoint.localhost/registry` 和页面自身 origin；`location.origin` 与某个 url entry **精确匹配**才注入；服务不在线 = 不注入，未登记 = 不注入。
+   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（与 workbench 同一套交互）。
+   - **SPA 行为**：client 只随页面加载跑一次，但路由切换会自动换账本——pathname 一变就重算 page key / localStorage key，后续标注记到新路由名下（Navigation API 优先，降级 patch `pushState`/`replaceState` + `popstate`；仅 hash 变化不换）。在途 sync/hydrate 按世代号作废，不会写进旧账本；切换途中又来导航会合并到最新 pathname。
+   - **验证注入**：devtools 看 `<html data-pinpoint-entry="your-spa">`（扩展经 DOM 属性把 entry 递到主世界）；或按 **A** 点任意元素出标注框；`curl -s https://pinpoint.localhost/health | jq .registry` 确认 entry 计数与 errors。
+
+显式指定未登记的 entry（`?entry=` 或 POST body）会吃 `400 unknown_entry`——配置错了要响，不能静默落进别的桶。
 
 ## 3. 用户怎么用（向用户解释时按这个说）
 
@@ -104,6 +129,7 @@ DIR=$(curl -s https://pinpoint.localhost/health | jq -r .dataDir)
 ls -t "$DIR"/*.json
 ```
 
+- 默认桶是 entry `pinpoint`（本仓 workbench 的标注）。读其他 entry 的桶：`ROOT=$(curl -s https://pinpoint.localhost/health | jq -r .dataRoot)` 后看 `"$ROOT/<entry-id>/"`；或走 API `curl -s "https://pinpoint.localhost/annotations/<page>?entry=<id>"`。跨桶调试清单：`GET /annotations`（无 page，flatten 成 `[{entry, ...doc}]`）。
 - `path` = 被标页面（workbench 多为壳 `index.html`）。
 - 先按 `pageId`，再按 `section`，再用 `screenId` / `selector` 区分同 section 多屏（AB）。
 - 用户贴了 indicator：按 `@page` / `@section` / `@frame` / `@a` 过滤后再改。
@@ -151,6 +177,8 @@ ls -t "$DIR"/*.json
 | flow 屏且节点带 `data-ios-from="bubble/outgoing"` | 优先改该组件源 |
 | flow screen（静态） | `previews/<pageId>/<screen>.html` 内容层 only |
 | flow screen（手势 / 动画） | 同屏 `data-preview-script` 或同名 sidecar `.js`；**不要**改 `ios-kit.js` |
+| `/sites/<entry-id>/` 下的 site 页 | 登记目录里的对应磁盘文件（服务只读 serve，改稿照常改源文件） |
+| `url` entry 的 SPA 页面 | 该 app 自己的源码仓（按 `path` / selector 定位路由与组件） |
 
 ## 5. 反模式
 
@@ -161,3 +189,5 @@ ls -t "$DIR"/*.json
 - 改 `ios-kit.css` / bezel 去「修」一条标注
 - 组件 HTML 复制进 screen（用 `data-ios-include`）
 - 手写 caption font-size（用 board tokens）
+- 手工给未登记页面注入 `/annotate.js`（先登记 dir / url entry；未登记页面保持干净是契约）
+- 把 `/health` 的 `registry.entries` 当 entry 清单用（那是计数；清单走 `GET /registry`）
