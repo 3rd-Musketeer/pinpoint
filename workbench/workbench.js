@@ -2826,11 +2826,8 @@ function normalizeBoardMode(mode) {
 
 function modeForPage(pageId) {
   if (pageId === COMPONENTS_ID) return 'ios';
-  if (!pageManifest || !pageManifest.pages) return 'ios';
-  for (var i = 0; i < pageManifest.pages.length; i++) {
-    if (pageManifest.pages[i].id === pageId) return pageManifest.pages[i].mode || 'ios';
-  }
-  return 'ios';
+  var page = pageEntry(pageId);
+  return (page && page.mode) || 'ios';
 }
 
 function defaultShellForPage(pageId) {

@@ -67,6 +67,11 @@ export function injectAnnotateClient(html, entryId) {
   return `${html}\n${snippet}\n`;
 }
 
+/** Containment check: `p` is `base` itself or lives under it. */
+function within(base, p) {
+  return p === base || p.startsWith(base + path.sep);
+}
+
 /**
  * Resolve `rel` inside `base` to an existing regular file, or null.
  * `..` traversal is rejected textually; symlink escapes are rejected by
@@ -75,7 +80,7 @@ export function injectAnnotateClient(html, entryId) {
 function resolveFileWithin(base, rel) {
   if (rel.includes('\0')) return null;
   const abs = path.resolve(base, rel);
-  if (abs !== base && !abs.startsWith(base + path.sep)) return null;
+  if (!within(base, abs)) return null;
   let realBase;
   try {
     realBase = fs.realpathSync(base);
@@ -88,7 +93,7 @@ function resolveFileWithin(base, rel) {
   } catch {
     return null;
   }
-  if (real !== realBase && !real.startsWith(realBase + path.sep)) return null;
+  if (!within(realBase, real)) return null;
   let stat = fs.statSync(real);
   if (stat.isDirectory()) {
     try {
@@ -96,7 +101,7 @@ function resolveFileWithin(base, rel) {
     } catch {
       return null;
     }
-    if (real !== realBase && !real.startsWith(realBase + path.sep)) return null;
+    if (!within(realBase, real)) return null;
     stat = fs.statSync(real);
   }
   return stat.isFile() ? real : null;

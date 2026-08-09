@@ -98,7 +98,8 @@ export function loadRegistry(options = {}) {
     seen.add(raw.id);
     const entry = normalizeEntry(raw);
     if (entry.kind === 'dir' && !fs.existsSync(entry.path)) {
-      // dir entries are only served in a later work package; keep the entry.
+      // A missing path only breaks that entry's own /sites/ serving (404) —
+      // keep the entry and warn rather than failing the whole registry.
       warnings.push(`entry "${entry.id}" path does not exist: ${entry.path}`);
       log(`[registry] warning: ${warnings[warnings.length - 1]}`);
     }

@@ -175,6 +175,17 @@ export function createAnnotateHandler(options = {}) {
     return stores.get(entryId);
   }
 
+  // Shared entry gate: resolve the request's target entry or answer the loud
+  // 400. Returns the entry id, or null after sending the rejection.
+  function entryOrReject(res, raw) {
+    const target = resolveRequestEntry(registry, raw);
+    if (target.unknown) {
+      sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
+      return null;
+    }
+    return target.entry;
+  }
+
   return async function handleAnnotate(req, res, urlPath) {
     if (req.method === 'OPTIONS') {
       cors(res);
@@ -236,24 +247,18 @@ export function createAnnotateHandler(options = {}) {
     }
 
     if (req.method === 'GET' && urlPath.startsWith('/annotations/')) {
-      const target = resolveRequestEntry(registry, query.get('entry'));
-      if (target.unknown) {
-        sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
-        return true;
-      }
+      const entryId = entryOrReject(res, query.get('entry'));
+      if (!entryId) return true;
       const page = annotationSlug(decodeURIComponent(urlPath.slice('/annotations/'.length)));
-      sendJson(res, 200, storeFor(target.entry).readDoc(page));
+      sendJson(res, 200, storeFor(entryId).readDoc(page));
       return true;
     }
 
     if (req.method === 'GET' && urlPath.startsWith('/images/')) {
-      const target = resolveRequestEntry(registry, query.get('entry'));
-      if (target.unknown) {
-        sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
-        return true;
-      }
+      const entryId = entryOrReject(res, query.get('entry'));
+      if (!entryId) return true;
       const name = annotationSlug(decodeURIComponent(urlPath.slice('/images/'.length)));
-      const file = storeFor(target.entry).imagePath(name);
+      const file = storeFor(entryId).imagePath(name);
       if (fs.existsSync(file) && fs.statSync(file).isFile()) {
         sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
       } else {
@@ -272,12 +277,9 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
-    const target = resolveRequestEntry(registry, body.entry);
-    if (target.unknown) {
-      sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
-      return true;
-    }
-    const store = storeFor(target.entry);
+    const entryId = entryOrReject(res, body.entry);
+    if (!entryId) return true;
+    const store = storeFor(entryId);
 
     if (urlPath === '/save') {
       const result = store.save({
@@ -291,7 +293,7 @@ export function createAnnotateHandler(options = {}) {
         sendJson(res, result.status, { error: result.error, ...result.doc });
         return true;
       }
-      broadcastAnnotations(result.doc, target.entry);
+      broadcastAnnotations(result.doc, entryId);
       const count = (result.doc.annotations || []).length;
       sendJson(res, 200, {
         saved: store.jsonPathFor(result.doc.page),
