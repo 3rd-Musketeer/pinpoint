@@ -1,10 +1,52 @@
 # Changelog
 
-All notable changes to the **iOS App Preview** template. Newest first.
+All notable changes to the **pinpoint** template (formerly **iOS App Preview**). Newest first.
 Loosely follows [Keep a Changelog](https://keepachangelog.com/); dates are `YYYY-MM-DD`.
 Group entries under **Added** / **Changed** / **Fixed** / **Removed**.
 
 Template scope only — instance/product content changes live outside this file.
+
+---
+
+## 2026-08-09
+
+### Changed
+- **Repositioned as pinpoint, a local visual feedback service** — the repo is no
+  longer "an iOS preview template with annotations" but a registry-centered
+  review service with three layers: kits (`kits/ios/` is the first kit),
+  workbench/canvas (iOS / Web / HTML boards), and the annotation loop
+  (human → agent feedback protocol). Repo renamed to `pinpoint`; dev route is
+  `https://pinpoint.localhost`.
+- **Repository layout by product layer** — `client/` (the annotate client),
+  `server/` (vite plugins + server lib), `workbench/` (board UI), `lib/`
+  (dual-consumer contracts only), `kits/ios/` (ios-kit + component library).
+  Root `lib/` no longer mixes three owners' modules.
+- **Annotation data buckets by registry entry id** — marks now land in
+  `~/.html-annotate/<entry-id>/` instead of a per-repo path-hash dir; the
+  default workbench bucket is `pinpoint`. `GET /health` reports `dataRoot` +
+  registry status; `GET /registry` lists entries.
+
+### Added
+- **Registry (`~/.html-annotate/registry.json`)** — declares reviewable content
+  as `{ id, title, kind: "dir"|"url", path|url, board }` entries; missing or
+  malformed file falls back to a synthesized default and surfaces state in
+  `/health`.
+- **`/sites/<entry-id>/` read-only serving with automatic injection** — `dir`
+  entries are served in place (registry is the allowlist; traversal and
+  symlink-escape safe). HTML responses carry the annotate client
+  automatically; `?annotate=off` returns the byte-identical original.
+  Workbench Pages aggregate registry dir entries next to `previews/` pages.
+- **Browser extension (`extension/`, MV3)** — injects the same annotate client
+  into pages whose origin matches a `url` entry (probes
+  `https://pinpoint.localhost` then the page's own origin; stays quiet when no
+  registry answers). All annotate APIs are CORS-enabled for this.
+- **SPA-aware annotation ledgers** — the client switches its annotation ledger
+  on same-document route changes (Navigation API first, `pushState` patch as
+  fallback): drafts settle into the old ledger, in-flight responses are voided
+  by an epoch guard, the overlay re-mounts if the SPA rebuilt its mount point.
+- **Export purity for served content** — doc export of `/sites/` pages appends
+  `annotate=off`, and the HTML bake strips the injected bootstrap, so exported
+  PNG/HTML never contain the injected annotate script.
 
 ---
 
