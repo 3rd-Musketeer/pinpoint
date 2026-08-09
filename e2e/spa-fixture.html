@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<title>SPA ledger fixture</title>
+<style>
+  body { font-family: -apple-system, "PingFang SC", sans-serif; margin: 0; }
+  nav { padding: 12px 16px; display: flex; gap: 8px; border-bottom: 1px solid #ddd; }
+  nav button { font-size: 14px; padding: 6px 14px; }
+  .spa-el { display: block; margin: 24px 16px; padding: 24px; font-size: 16px; background: #eef2ff; border-radius: 8px; }
+</style>
+</head>
+<body>
+<nav>
+  <button id="to-a" type="button">route a</button>
+  <button id="to-b" type="button">route b</button>
+</nav>
+<main id="outlet"><section id="home-el" class="spa-el">home target text</section></main>
+<script src="/annotate.js"></script>
+<script>
+  // 最小 SPA：pushState 改 URL + 换内容，不刷新页面（annotate.js 不重跑）。
+  var routes = {
+    '/e2e-spa/route-a': '<section id="route-a-el" class="spa-el">route a target text</section>',
+    '/e2e-spa/route-b': '<section id="route-b-el" class="spa-el">route b target text</section>'
+  };
+  function go(path) {
+    history.pushState({}, '', path);
+    document.getElementById('outlet').innerHTML = routes[path];
+  }
+  document.getElementById('to-a').addEventListener('click', function () { go('/e2e-spa/route-a'); });
+  document.getElementById('to-b').addEventListener('click', function () { go('/e2e-spa/route-b'); });
+</script>
+</body>
+</html>

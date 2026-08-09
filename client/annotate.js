@@ -24,12 +24,17 @@
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(location.pathname);
   var PAGE_KEY = annotationSlug(PAGE);
+  // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
+  var currentPathname = location.pathname;
   var marks = [];      // in-memory annotations: {n, id, type, pageId?, section?, sectionLabel?, screenId?, selector?, content, …}
   var revision = 0;    // disk document revision (SSOT concurrency)
   var syncing = false;
   var mutationVersion = 0;
   var syncedMutationVersion = 0;
   var deferredRemoteDoc = null;
+  var syncEpoch = 0;          // 账本世代：路由切换即 +1，在途 sync/hydrate 回调凭世代号丢弃
+  var ledgerSwitching = false; // switchLedger 已清账、hydrate 未落地期间为 true
+  var queuedPathname = null;   // 切换途中又来导航：coalesce 到最新 pathname
   var eventSource = null;
   var serverOnline = false;   // SSE OPEN liveness only (not hydrate/POST success)
   var syncError = false;      // last POST/save failed while SSE may still be open
@@ -644,6 +649,7 @@
     if (!SERVER || syncing || mutationVersion <= syncedMutationVersion) return;
     syncing = true;
     var sentVersion = mutationVersion;
+    var sentEpoch = syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
     var body = {
       page: PAGE,
       entry: ENTRY,
@@ -663,6 +669,7 @@
         });
       })
       .then(function (res) {
+        if (sentEpoch !== syncEpoch) return; // 陈旧响应：不得碰 syncing 或新账本状态
         syncing = false;
         if (res.ok) {
           if (res.data && Number.isFinite(Number(res.data.revision))) {
@@ -689,6 +696,7 @@
         setStatus('同步失败', true);
       })
       .catch(function () {
+        if (sentEpoch !== syncEpoch) return; // 同上：切账本后的失败回调一并丢弃
         syncing = false;
         // POST failed — SSE may still be open, so don't flip connected.
         if (!syncError) { syncError = true; notify(); }
@@ -703,12 +711,14 @@
       setServerOnline(false);
       return Promise.resolve(false);
     }
+    var hydrateEpoch = syncEpoch; // 路由切换后本份 hydrate 作废
     return fetch(SERVER + '/annotations/' + encodeURIComponent(PAGE) + '?entry=' + encodeURIComponent(ENTRY))
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
       })
       .then(function (doc) {
+        if (hydrateEpoch !== syncEpoch) return false; // 已切账本，整份响应作废
         var diskMarks = docAnnotations(doc) || [];
         var diskRev = Number(doc && doc.revision);
         if (!Number.isFinite(diskRev)) diskRev = diskMarks.length ? 1 : 0;
@@ -731,6 +741,7 @@
         return true;
       })
       .catch(function () {
+        if (hydrateEpoch !== syncEpoch) return false; // 已切账本，失败回调同样作废
         marks = readLocalMarks();
         revision = 0;
         setServerOnline(false);
@@ -883,17 +894,23 @@
   overlay.appendChild(hoverLayer);
   overlay.appendChild(chromeLayer);
   bubblesLayer.style.display = 'none';
-  var stageWrap = document.querySelector('.wb-stage-wrap');
-  if (stageWrap) {
-    stageWrap.appendChild(overlay);
-  } else {
-    // 没有 workbench 舞台时（独立 HTML 文档、HTML 板 iframe 里的汇报页），overlay
-    // 只能挂 body。此时 position:absolute + inset:0 的包含块是初始包含块——overlay
-    // 锚在文档原点、尺寸只有一屏、还带 overflow:hidden，于是一往下滚，命中框和
-    // 标注框全被裁掉，表现成「标注模式点了没反应」。贴视口即可，origin 恒为 (0,0)。
-    overlay.setAttribute('data-ann-viewport', '');
-    document.body.appendChild(overlay);
+  // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
+  function mountOverlay() {
+    var stageWrap = document.querySelector('.wb-stage-wrap');
+    if (stageWrap) {
+      overlay.removeAttribute('data-ann-viewport');
+      stageWrap.appendChild(overlay);
+    } else {
+      // 没有 workbench 舞台时（独立 HTML 文档、HTML 板 iframe 里的汇报页），overlay
+      // 只能挂 body。此时 position:absolute + inset:0 的包含块是初始包含块——overlay
+      // 锚在文档原点、尺寸只有一屏、还带 overflow:hidden，于是一往下滚，命中框和
+      // 标注框全被裁掉，表现成「标注模式点了没反应」。贴视口即可，origin 恒为 (0,0)。
+      overlay.setAttribute('data-ann-viewport', '');
+      document.body.appendChild(overlay);
+    }
+    _originCache = null; // 挂载点/模式变了 origin 语义也变，缓存作废
   }
+  mountOverlay();
   var hoverGhost = null;
 
   var toolbar = document.createElement('div');
@@ -1450,6 +1467,7 @@
       renderTargets: function () {}
     };
     activeComposer = composer;
+    composer.save = save; // SPA 切账本收尾用：把打开中的草稿存回旧账本
     var composerMaxWidth = parseFloat(getComputedStyle(box).maxWidth) || box.offsetWidth;
 
     function placeFloatingComposer(left, top, remember) {
@@ -2591,7 +2609,9 @@
       countBroken: broken,
       countHidden: hidden,
       countVisible: live,
-      countAll: marks.length
+      countAll: marks.length,
+      epoch: syncEpoch,          // SPA 账本世代（路由切换 +1）
+      routing: ledgerSwitching   // 账本切换未落地（hydrate 在途）
     };
   }
 
@@ -2633,6 +2653,106 @@
   };
 
   syncModeClass();
+
+  // ---------- SPA 路由账本切换 ----------
+  // SPA 用 pushState/replaceState 改 URL 不刷新页面，本脚本只跑过一次；pathname 一变，
+  // 标注必须改记到新 pathname 的账本（PAGE/PAGE_KEY/LS_KEY 重算），否则静默记到旧页面名下。
+  // hash-only 变化不触发：key 公式只含 pathname（已接受的边界）。
+
+  function finishSessionForLedgerSwitch() {
+    // 打开中的草稿：有实质内容先走现有 save() 存回旧账本（save → persist → POST 带
+    // 旧 PAGE，服务端落旧账本）；空草稿丢弃。这一切都必须发生在重算 key 之前。
+    if (activeComposer) {
+      var draft = activeComposer.ta ? activeComposer.ta.value.trim() : '';
+      if (draft && typeof activeComposer.save === 'function') activeComposer.save();
+      else closeComposer({ silentRender: true });
+    }
+    // 参照 setPaused(true) 的打包收掉剩余会话态（closeComposer 已覆盖大部分）。
+    drag = null;
+    if (arrowFrom) { arrowFrom = null; removeTempArrow(); removeTip(); }
+    if (pinned) pinned = null;
+    if (lasso) { lasso.remove(); lasso = null; }
+    hoverEl = null;
+    hoverSuppress = null;
+    hideGhost();
+  }
+
+  function onRouteChange(newPathname) {
+    if (!newPathname || newPathname === currentPathname) return;
+    // 一次 switchLedger 未完成时再变：coalesce 到最新 pathname。
+    if (ledgerSwitching) { queuedPathname = newPathname; return; }
+    switchLedger(newPathname);
+  }
+
+  function switchLedger(newPathname) {
+    ledgerSwitching = true;
+    // 1. 会话态收尾（草稿存回旧账本）
+    finishSessionForLedgerSwitch();
+    // 2. epoch 护栏：在途 sync/hydrate 响应全部作废；deferred 属于旧账本
+    syncEpoch++;
+    deferredRemoteDoc = null;
+    syncing = false; // 旧响应已被 epoch 拦下不会污染；放行新账本立即 persist
+    // 3. 同一帧清掉旧账本渲染——hydrate 是异步的，绝不能让旧 selector 在新 DOM 上短暂命中
+    marks = [];
+    structureDirty = true;
+    renderAll();
+    // 4. 重算账本（闭包 var 重赋值即全局生效）
+    currentPathname = newPathname;
+    PAGE = pageKeyFromPathname(newPathname);
+    PAGE_KEY = annotationSlug(PAGE);
+    LS_KEY = 'html-annotate:' + ENTRY + ':' + newPathname;
+    revision = 0;
+    mutationVersion = 0;
+    syncedMutationVersion = 0;
+    syncError = false;
+    // 5. SPA 路由可能重建挂载点：掉出文档则按原逻辑重挂（data-ann-viewport 两种
+    //    模式的定位差异与 _originCache 失效由 mountOverlay 处理）
+    if (!overlay.isConnected) mountOverlay();
+    if (!toolbar.isConnected) document.body.appendChild(toolbar);
+    // 6. hydrate 新账本
+    hydrateFromDisk().then(function () {
+      structureDirty = true;
+      renderAll();
+      notify();
+      ledgerSwitching = false;
+      if (queuedPathname && queuedPathname !== currentPathname) {
+        var next = queuedPathname;
+        queuedPathname = null;
+        onRouteChange(next);
+      }
+    });
+  }
+
+  // 层 1：路由信号。首选 Navigation API（只关心 same-document 导航，比较新旧
+  // pathname）；没有 window.navigation 时降级为 patch pushState/replaceState
+  // （调原实现后再检查）+ popstate。与已有的 popstate → scheduleContentRender
+  // 监听共存——popstate 现在多一个账本切换语义。
+  if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+    window.navigation.addEventListener('navigate', function (event) {
+      try {
+        var dest = event && event.destination;
+        // 跨文档导航会真刷新、脚本随之重跑，无需切账本
+        if (!dest || dest.sameDocument === false || !dest.url) return;
+        var nextPathname = new URL(dest.url, location.href).pathname;
+        if (nextPathname !== currentPathname) onRouteChange(nextPathname);
+      } catch (e) { /* ignore */ }
+    });
+  } else {
+    ['pushState', 'replaceState'].forEach(function (method) {
+      var orig = history[method];
+      if (typeof orig !== 'function') return;
+      history[method] = function () {
+        var out = orig.apply(this, arguments);
+        try {
+          if (location.pathname !== currentPathname) onRouteChange(location.pathname);
+        } catch (e) { /* ignore */ }
+        return out;
+      };
+    });
+    addEventListener('popstate', function () {
+      if (location.pathname !== currentPathname) onRouteChange(location.pathname);
+    });
+  }
 
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
   hydrateFromDisk().then(function (online) {
