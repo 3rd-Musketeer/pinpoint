@@ -940,13 +940,17 @@ function refreshAnnPanel() {
   syncConnStatus();
   var st = ann.getState();
   var btnToggle = document.getElementById('wbann-toggle');
+  var btnInteract = document.getElementById('wbann-interact');
   var btnPause = document.getElementById('wbann-pause');
   var btnPin = document.getElementById('wbann-pin');
   if (btnToggle) {
     btnToggle.classList.toggle('on', st.mode);
-    var label = btnToggle.querySelector('.wb-tool-label');
-    if (label) label.textContent = st.mode ? '标注' : '交互';
-    btnToggle.title = st.mode ? '标注模式 (A → 交互)' : '交互模式 (A → 标注)';
+    btnToggle.title = st.mode ? '标注模式 (A → 交互)' : '标注模式 (A)';
+    btnToggle.setAttribute('aria-pressed', st.mode ? 'true' : 'false');
+  }
+  if (btnInteract) {
+    btnInteract.classList.toggle('on', !st.mode);
+    btnInteract.setAttribute('aria-pressed', st.mode ? 'false' : 'true');
   }
   if (btnPause) btnPause.classList.toggle('on', st.paused);
   if (btnPin) btnPin.classList.toggle('on', st.floating);
@@ -1061,6 +1065,7 @@ function wireAnnotatePanel() {
   var ann = annotateApi();
   if (!ann || wireAnnotatePanel.done || typeof ann.getState !== 'function') return;
   var btnToggle = document.getElementById('wbann-toggle');
+  var btnInteract = document.getElementById('wbann-interact');
   var btnPause = document.getElementById('wbann-pause');
   var btnClear = document.getElementById('wbann-clear');
   var btnPin = document.getElementById('wbann-pin');
@@ -1072,6 +1077,10 @@ function wireAnnotatePanel() {
   syncConnStatus();
   // 每次点击重新解析：HTML 板下要驱动的是 iframe 里那个实例，不能闭包捕获
   btnToggle.addEventListener('click', function () { annotateApi().toggle(); });
+  if (btnInteract) btnInteract.addEventListener('click', function () {
+    var a = annotateApi();
+    if (a.getState().mode) a.toggle();
+  });
   btnPause.addEventListener('click', function () {
     var a = annotateApi();
     a.setPaused(!a.getState().paused);
@@ -2802,7 +2811,8 @@ function ensurePageCopyButtons() {
     copy.setAttribute('data-copy-page', id);
     copy.setAttribute('aria-label', 'Copy @page:' + id);
     copy.title = 'Copy @page:' + id;
-    copy.textContent = '🔗';
+    copy.innerHTML = '<i data-wb-icon="link" data-wb-icon-size="12" class="wb-ico"></i>';
+    if (window.mountWorkbenchIcons) window.mountWorkbenchIcons(copy);
     copy.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -3044,7 +3054,8 @@ function showPageManifestError(error) {
   var message = document.createElement('p');
   message.className = 'wb-page-error';
   message.style.cssText = 'margin:6px 10px;color:var(--wb-danger,#c0392b);font-size:12px;line-height:1.35';
-  message.textContent = '页面清单错误 · ' + String(error && error.message ? error.message : error);
+  message.textContent = '页面清单读取失败：board.json 缺失或返回的不是 JSON。请检查对应 previews 目录后刷新。';
+  message.title = String(error && error.message ? error.message : error);
   pagesNav.appendChild(message);
 }
 

@@ -811,6 +811,18 @@
   });
 
   // ---------- UI 骨架 ----------
+  // Lucide 风格内联图标（24 viewBox、stroke currentColor）。注入包保持单文件
+  // 自包含，composer/侧栏用的几个图标以 path data 放这里，不引 workbench-icons.js。
+  var ANN_ICONS = {
+    link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
+    image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
+    pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
+    search: '<circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/>',
+    'arrow-up-right': '<path d="M7 7h10v10"/><path d="M7 17 17 7"/>'
+  };
+  function annIcon(name) {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' + ANN_ICONS[name] + '</svg>';
+  }
   var style = document.createElement('style');
   style.textContent = [
     '[data-ann-ui]{font-family:-apple-system,"PingFang SC",sans-serif;box-sizing:border-box;}',
@@ -874,9 +886,10 @@
     '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:720px;max-height:min(62vh,560px);margin:0 auto;overflow:auto;background:rgba(255,255,255,.98);border:1px solid rgba(0,0,0,.09);border-radius:18px;box-shadow:0 16px 44px rgba(0,0,0,.24);padding:12px;pointer-events:auto;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}',
     '#ann-box .head{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-width:0;}',
     '#ann-box .t{flex:1;min-width:0;font-size:11px;color:#8a8a8a;line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
-    '#ann-box .t b{color:#f5a623;font-weight:600;}',
+    '#ann-box .t b{color:#6b6b70;font-weight:600;}',
+    '#ann-box .t .n{color:#b97800;font-weight:650;}',
     '#ann-box .top{flex:none;display:flex;gap:4px;align-items:center;}',
-    '#ann-box .top .x{width:22px;height:22px;padding:0;border-radius:50%;font-size:14px;line-height:22px;text-align:center;color:#888;}',
+    '#ann-box .top .x{width:24px;height:24px;padding:0;border-radius:50%;font-size:14px;line-height:24px;text-align:center;color:#888;}',
     '#ann-box .top .warn{padding:4px 8px;font-size:11px;}',
     '#ann-box textarea{display:block;width:100%;border:0;border-radius:10px;padding:9px 10px;font-size:14px;line-height:1.5;min-height:68px;max-height:180px;resize:vertical;outline:none;font-family:inherit;background:rgba(0,0,0,.025);}',
     '#ann-box .ann-target-bar{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;min-width:0;}',
@@ -888,7 +901,8 @@
     '#ann-box .ann-target-pill:hover,#ann-box .ann-target-pill:focus-visible{border-color:rgba(245,166,35,.75);background:rgba(245,166,35,.17);}',
     '#ann-box .ann-target-pill.broken{border-color:rgba(192,57,43,.28);background:rgba(192,57,43,.07);color:#9b3b32;}',
     '#ann-box .ann-target-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    '#ann-box .ann-target-remove{flex:none;width:17px;height:17px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;background:rgba(0,0,0,.08);color:#777;opacity:0;pointer-events:none;}',
+    '#ann-box .ann-target-remove{position:relative;flex:none;width:17px;height:17px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;background:rgba(0,0,0,.08);color:#777;opacity:0;pointer-events:none;}',
+    '#ann-box .ann-target-remove::after{content:"";position:absolute;inset:-4px;border-radius:50%;}',
     '#ann-box .ann-target-pill:hover .ann-target-remove,#ann-box .ann-target-pill:focus-within .ann-target-remove{opacity:1;pointer-events:auto;}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:10px;}',
@@ -917,6 +931,16 @@
     '#ann-imgs .im .x{position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer;}',
     '@keyframes annFlash{0%,100%{background:rgba(245,166,35,.07);box-shadow:none}15%,85%{background:rgba(245,166,35,.2);box-shadow:0 0 0 4px rgba(245,166,35,.22)}}',
     '.ann-hover-ghost.ann-flash{animation:annFlash 1.5s ease-out}',
+    // a11y 基线：注入的每个控件都要有可见 focus 态；reduced-motion 下关掉全部过渡/动画。
+    '[data-ann-ui] :is(button,a,input,textarea,select,[tabindex]):focus-visible{outline:2px solid rgba(183,120,0,.55);outline-offset:1px;}',
+    '@media (prefers-reduced-motion: reduce){[data-ann-ui],[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{transition:none !important;animation:none !important;}}',
+    // mention 空态不渲染盒子 Chrome —— 带边框阴影的空态看起来像坏掉的输入框。
+    '#ann-mention:has(.ann-men-empty){min-width:0;border:0;box-shadow:none;background:transparent;}',
+    '#ann-mention .ann-men-empty{padding:6px 8px;}',
+    // composer / 侧栏动作钮里的线性图标（lucide 风格内联 SVG，替代 emoji）。
+    '#ann-box button svg{display:inline-block;width:13px;height:13px;vertical-align:-2px;}',
+    '#ann-box .acts button{display:inline-flex;align-items:center;gap:5px;}',
+    '#ann-sidebar .ann-sb-acts button svg{display:block;width:12px;height:12px;margin:auto;}',
     bubbleCss()
   ].join('\n');
   document.head.appendChild(style);
@@ -1300,7 +1324,8 @@
       edit.setAttribute('data-ann-act', 'edit');
       edit.setAttribute('data-ann-n', r.n);
       edit.title = '编辑';
-      edit.textContent = '✎';
+      edit.setAttribute('aria-label', '编辑标注 ' + r.n);
+      edit.innerHTML = annIcon('pencil');
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'ann-sb-del';
@@ -1695,7 +1720,7 @@
       '<div class="head">' +
       '<button type="button" class="ann-drag-handle" aria-label="拖动标注框" title="拖动标注框">' +
       '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="4" cy="3" r="1.25" fill="currentColor"/><circle cx="10" cy="3" r="1.25" fill="currentColor"/><circle cx="4" cy="7" r="1.25" fill="currentColor"/><circle cx="10" cy="7" r="1.25" fill="currentColor"/><circle cx="4" cy="11" r="1.25" fill="currentColor"/><circle cx="10" cy="11" r="1.25" fill="currentColor"/></svg></button>' +
-      '<div class="t">#' + m.n + ' · ' + gtag + label + '</div>' +
+      '<div class="t"><span class="n">#' + m.n + '</span> · ' + gtag + label + '</div>' +
       '<div class="top">' + (isNew ? '' : '<button type="button" id="ann-del" class="warn">删除</button>') +
       '<button type="button" id="ann-cancel" class="x">×</button></div></div>' +
       brokenInfo +
@@ -1709,11 +1734,11 @@
       '<textarea placeholder="写标注…（回车保存，Shift+回车换行；@ 引用其他标注）"></textarea>' +
       '<div id="ann-imgs"></div>' +
       '<div class="acts">' +
-      '<button type="button" id="ann-copy-ind" title="Copy indicator: ' + indPreview.replace(/"/g, '&quot;') + '">🔗</button>' +
-      '<button type="button" id="ann-img">🖼</button>' +
-      '<button type="button" id="ann-change"' + (changeOn ? ' class="dark"' : '') + ' title="提示 agent：把文案改成标注内容">✎ 改文案</button>' +
-      '<button type="button" id="ann-research"' + (res ? ' class="dark"' : '') + '>🔍 调研</button>' +
-      '<button type="button" id="ann-move"' + (broken ? ' disabled title="锚点失效，无法画箭头"' : '') + '>↗ 移动</button>' +
+      '<button type="button" id="ann-copy-ind" aria-label="复制 indicator" title="Copy indicator: ' + indPreview.replace(/"/g, '&quot;') + '">' + annIcon('link') + '</button>' +
+      '<button type="button" id="ann-img" aria-label="添加图片" title="添加图片">' + annIcon('image') + '</button>' +
+      '<button type="button" id="ann-change"' + (changeOn ? ' class="dark"' : '') + ' title="提示 agent：把文案改成标注内容">' + annIcon('pencil') + '<span>改文案</span></button>' +
+      '<button type="button" id="ann-research"' + (res ? ' class="dark"' : '') + '>' + annIcon('search') + '<span>调研</span></button>' +
+      '<button type="button" id="ann-move"' + (broken ? ' disabled title="锚点失效，无法画箭头"' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button>' +
       '<button type="button" id="ann-save" class="dark">保存</button></div>' +
       '<div id="ann-research-opt" class="research-opt" style="display:' + (res ? 'block' : 'none') + '">' +
       '<label><input type="checkbox" id="ann-research-existing"' + (res && res.existing_code ? ' checked' : '') + '>可能已有代码</label></div>';
