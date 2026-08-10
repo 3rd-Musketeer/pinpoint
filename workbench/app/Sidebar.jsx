@@ -207,7 +207,7 @@ function PagesNav() {
       {pages.map(function (p) { return <PageRow key={p.id} page={p} />; })}
       {manifestError ? (
         <p className="wb-page-error" title={manifestError}
-          style={{ margin: '6px 10px', color: 'var(--wb-danger,#c0392b)', fontSize: '12px', lineHeight: 1.35 }}>
+          style={{ margin: '6px 10px', color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
           页面清单读取失败：board.json 缺失或返回的不是 JSON。请检查对应 previews 目录后刷新。
         </p>
       ) : null}

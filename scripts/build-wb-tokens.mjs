@@ -10,6 +10,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { gray, slate } from '@radix-ui/colors';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -20,15 +21,16 @@ export function buildWbTokensCss() {
  * （client/annotate.js），ann-list.css 双端共享行样式经 var(--wb-*, 兜底) 消费。 */
 :root {
   /* ── 色：语义 token 保留原名，值锚 Radix 刻度或产品字面量 ── */
-  --wb-bg:#e8eaed; /* 产品调（slate 3–4 之间） */
-  --wb-side:#f6f6f7; /* 产品调（slate 2–3 之间） */
-  --wb-fg:#1c1c1e; /* iOS label */
-  --wb-muted:#6b6b70; /* 产品调（gray/slate 11 之间） */
-  --wb-faint:#8e8e93; /* iOS systemGray */
+  --wb-bg:${slate.slate4}; /* Radix slate 4（原 #e8eaed，差 ≤1 档锚定） */
+  --wb-side:#f6f6f7; /* 产品调（slate 2–3 正中间，保留原值） */
+  --wb-fg:${slate.slate12}; /* Radix slate 12（原 iOS label #1c1c1e，差 ≤1 档锚定） */
+  --wb-muted:#6b6b70; /* 产品调（gray/slate 11 之间，保留原值） */
+  --wb-faint:${gray.gray9}; /* Radix gray 9（原 iOS systemGray #8e8e93，差 ≤1 档锚定） */
   --wb-line:rgba(0,0,0,.07); /* Radix blackA 粒度太粗（.05/.1/.15），保留产品 alpha */
   --wb-hover:rgba(0,0,0,.04);
   --wb-fill:rgba(0,0,0,.055);
   --wb-accent:#007aff; /* iOS 蓝 —— 产品视觉身份，锁定不漂移 */
+  --wb-danger:#ff3b30; /* iOS systemRed —— danger 唯一源（原 #c0392b/#a33/rgba(192,57,43,*) 三写法归并） */
   --wb-stage-bg:#faf8f4; /* 画布暖纸色，产品调 */
 
   /* ── 圆角阶梯（散装 14 档归并；999px/50% 是功能形状，不进阶梯） ── */
@@ -38,7 +40,6 @@ export function buildWbTokensCss() {
   --wb-r-4:12px;  /* 浮层面板、HUD、输入框（吸收 10/11/13px） */
   --wb-r-board:16px; /* 画布画板（吸收 14px） */
   --wb-r-dialog:20px; /* 模态对话框 —— 差异明显，保留命名 */
-  --wb-r:6px;     /* 历史别名 = --wb-r-2（P4 归并期过渡，用完即删） */
 
   /* ── 字重阶梯（散装 400/500/550/600/620/650/700 归并） ── */
   --wb-w-regular:400;
