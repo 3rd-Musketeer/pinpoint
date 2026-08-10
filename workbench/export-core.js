@@ -308,8 +308,11 @@ function ensureDocExportDialog() {
   docExportDialog.className = 'wb-export-dialog';
   docExportDialog.setAttribute('data-ann-ui', '');
   docExportDialog.setAttribute('data-export-ui', '');
+  // 原生 showModal 已承载模态语义（焦点圈禁 / Esc 取消 / ::backdrop / 关后焦点还原），
+  // 只补可访问名（P3 评估结论：上 Radix Dialog 是纯增负，见 goal 执行进展）。
+  docExportDialog.setAttribute('aria-labelledby', 'wb-export-doc-title');
   docExportDialog.innerHTML = '<form class="wb-export-form" method="dialog">' +
-    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2>导出文档</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
+    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2 id="wb-export-doc-title">导出文档</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
     '<div class="wb-export-field"><span class="wb-export-label">格式</span><div class="wb-export-options wb-export-options--stack">' +
       '<label class="wb-export-option"><input type="radio" name="mode" value="html-full" checked><span><span class="wb-export-option-copy"><strong>HTML 完整</strong><small>源文件，含样式 · 适合本地打开 / 外发</small></span></span></label>' +
       '<label class="wb-export-option"><input type="radio" name="mode" value="html-no-css"><span><span class="wb-export-option-copy"><strong>去除 CSS 的 HTML</strong><small>结构与正文保留 · 适合喂给 AI</small></span></span></label>' +
@@ -455,8 +458,10 @@ function ensureExportDialog() {
   exportDialog.className = 'wb-export-dialog';
   exportDialog.setAttribute('data-ann-ui', '');
   exportDialog.setAttribute('data-export-ui', '');
+  // 同 ensureDocExportDialog：原生 showModal 承载模态行为，这里只补可访问名。
+  exportDialog.setAttribute('aria-labelledby', 'wb-export-img-title');
   exportDialog.innerHTML = '<form class="wb-export-form" method="dialog">' +
-    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2>导出图片</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
+    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2 id="wb-export-img-title">导出图片</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
     '<div class="wb-export-field"><span class="wb-export-label">预设</span><div class="wb-export-options">' +
       '<label class="wb-export-option"><input type="radio" name="notes" value="clean" checked><span>干净画面</span></label>' +
       '<label class="wb-export-option"><input type="radio" name="notes" value="notes"><span>带说明</span></label>' +

@@ -46,7 +46,14 @@ function FrameMenu(props) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content asChild>
         <span className="wb-frame-menu" role="menu" tabIndex={-1}>
-          <DropdownMenu.Item asChild onSelect={function () { props.onExport(); }}>
+          <DropdownMenu.Item asChild onSelect={function () {
+            // 让菜单先走完关闭再开导出对话框：showModal 记住打开前的焦点元素，
+            // Esc 关对话框后的原生还原才落得到 trigger 上。Radix FocusScope 的
+            // 关后焦点还原本身排在 setTimeout(0)（react-focus-scope 卸载清理），
+            // 所以这里嵌套一层 —— 内层必排在它之后，顺序是硬保证不是碰运气；
+            // 即便 Radix 改了时序，最坏也只是退回到焦点落 body 的旧行为。
+            setTimeout(function () { setTimeout(function () { props.onExport(); }, 0); }, 0);
+          }}>
             <button type="button" className="wb-frame-menu-item" role="menuitem" data-frame-export>
               <WbIcon name="export-image" size={15} /><span>导出图片…</span>
             </button>
