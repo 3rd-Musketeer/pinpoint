@@ -2,7 +2,7 @@
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
-import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
+import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport } from './lib/page-viewports.js';
 import {
   centerScrollForPoint,
@@ -14,10 +14,9 @@ import {
   measureBoardNavigation
 } from './lib/board-navigation.js';
 
-// 反向依赖注入：zoom 写入（setCanvasZoom）与跳转后的标注面板刷新都还在
-// workbench.js 的 prefs / 标注簇（后续轮次才拆），board-nav 不得 import
-// workbench.js，由 workbench.js 初始化时经 wireCanvasHud(deps) 注入。
-var canvasZoomWriter = null;    // setCanvasZoom(val, { save })
+// 反向依赖注入：跳转后的标注快照刷新由 main.jsx 在 wireCanvasHud(deps) 注入
+// （ann-bridge 的 scheduleAnnSnap；board-nav 不 import app/ 组件）。
+// HUD 缩放按钮由 CanvasHud 组件直接调 boot-prefs 的 setCanvasZoom，不走这里。
 var sectionJumpListener = null; // active group 跳转后：annFilter === 'tab' 时 scheduleAnnSnap()
 
 var stage = document.getElementById('wbstage');
@@ -61,7 +60,7 @@ function boardContentBounds(panel) {
 }
 
 /** Recenter viewport on the midpoint of all content frames. */
-function recenterBoard() {
+export function recenterBoard() {
   var panel = document.getElementById('wb-board-panel');
   if (!stage || !panel) return;
   var bounds = boardContentBounds(panel);
@@ -77,19 +76,20 @@ function recenterBoard() {
 /** Board load failure: drop stale nav geometry and hide both navigators. */
 export function resetBoardNavOnLoadFailure() {
   boardNavigationModel = null;
+  wbSet({ sectionNavVisible: false, minimapAvailable: false });
   setSectionNavigatorOpen(false);
   setMinimapOpen(false);
-  if (sectionNavWrap) sectionNavWrap.hidden = true;
-  if (minimapWrap) minimapWrap.hidden = true;
 }
 
-var minimapWrap = document.getElementById('wbminimap-wrap');
-var minimapEl = document.getElementById('wbminimap');
-var minimapCanvas = document.getElementById('wbminimap-canvas');
-var minimapToggleBtn = document.getElementById('wbminimap-toggle');
+// HUD/dock DOM 句柄 —— 元素由 React（app/CanvasHud.jsx）渲染，模块加载时还不
+// 存在，一律在 wireCanvasHud（main.jsx 于挂载后调用）里赋值；之前的调用经各
+// 函数的 null 守卫安全空转。
+var minimapWrap;
+var minimapEl;
+var minimapCanvas;
+var minimapToggleBtn;
 var minimapRaf = 0;
 var minimapLayout = null; // { bounds, scale, ox, oy, cw, ch, sections, frames }
-var minimapOpen = false;
 
 var MINIMAP_COLORS = [
   { section: 'rgba(0,122,255,.14)', active: 'rgba(0,122,255,.24)', stroke: 'rgba(0,122,255,.55)', frame: 'rgba(0,82,204,.72)' },
@@ -100,35 +100,25 @@ var MINIMAP_COLORS = [
   { section: 'rgba(255,45,85,.13)', active: 'rgba(255,45,85,.23)', stroke: 'rgba(208,30,65,.54)', frame: 'rgba(176,25,55,.72)' }
 ];
 
-var sectionNavWrap = document.getElementById('wbsection-nav-wrap');
-var sectionNavToggleBtn = document.getElementById('wbsection-nav-toggle');
-var sectionNavEl = document.getElementById('wbsection-nav');
-var sectionNavList = document.getElementById('wbsection-nav-list');
-var sectionNavPosition = document.getElementById('wbsection-nav-position');
-var sectionNavStatus = document.getElementById('wbsection-nav-status');
-var sectionNavOpen = false;
+var sectionNavWrap;
+var sectionNavToggleBtn;
+var sectionNavEl;
+var sectionNavList;
 var sectionNavItems = [];
 
+// open/visible 状态归 store（minimapOpen/minimapAvailable/sectionNavOpen/
+// sectionNavVisible），React 组件订阅派生 hidden/on/aria；本模块只写 store。
 export function setMinimapOpen(on) {
-  minimapOpen = !!on && !!minimapWrap && !minimapWrap.hidden;
-  if (minimapEl) minimapEl.hidden = !minimapOpen;
-  if (minimapToggleBtn) {
-    minimapToggleBtn.classList.toggle('on', minimapOpen);
-    minimapToggleBtn.setAttribute('aria-expanded', minimapOpen ? 'true' : 'false');
-    minimapToggleBtn.setAttribute('aria-label', minimapOpen ? '关闭缩略图导航' : '打开缩略图导航');
-    minimapToggleBtn.title = minimapOpen ? '关闭缩略图导航' : '打开缩略图导航';
-  }
-  if (minimapOpen) {
-    scheduleMinimapUpdate();
-  }
+  var open = !!on && wbGet().minimapAvailable;
+  wbSet({ minimapOpen: open });
+  if (open) scheduleMinimapUpdate();
 }
 
 export function updateMinimapAvailability(panel) {
-  if (!minimapWrap) return null;
   panel = panel || document.getElementById('wb-board-panel');
   var measured = panel ? refreshBoardNavigationModel(panel) : null;
   var available = !!(measured && measured.bounds.width >= 8 && measured.bounds.height >= 8);
-  minimapWrap.hidden = !available;
+  wbSet({ minimapAvailable: available });
   if (!available) {
     minimapLayout = null;
     setMinimapOpen(false);
@@ -137,7 +127,7 @@ export function updateMinimapAvailability(panel) {
 }
 
 export function scheduleMinimapUpdate() {
-  if (minimapRaf || !minimapOpen) return;
+  if (minimapRaf || !wbGet().minimapOpen) return;
   minimapRaf = requestAnimationFrame(function () {
     minimapRaf = 0;
     updateMinimap();
@@ -145,7 +135,7 @@ export function scheduleMinimapUpdate() {
 }
 
 function updateMinimap() {
-  if (!minimapWrap || !minimapEl || !minimapCanvas || !stage || !minimapOpen) return;
+  if (!minimapWrap || !minimapEl || !minimapCanvas || !stage || !wbGet().minimapOpen) return;
   var panel = document.getElementById('wb-board-panel');
   var measured = updateMinimapAvailability(panel);
   var bounds = measured && measured.bounds;
@@ -296,27 +286,14 @@ export function wireMinimap() {
     e.stopPropagation();
     minimapJump(e.clientX, e.clientY);
   });
-  if (minimapToggleBtn) {
-    minimapToggleBtn.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      setMinimapOpen(!minimapOpen);
-    });
-  }
   window.addEventListener('resize', function () {
     updateMinimapAvailability();
     scheduleMinimapUpdate();
   });
 }
 
-function setSectionNavigatorOpen(on) {
-  sectionNavOpen = !!on && !!sectionNavWrap && !sectionNavWrap.hidden;
-  if (sectionNavEl) sectionNavEl.hidden = !sectionNavOpen;
-  if (sectionNavToggleBtn) {
-    sectionNavToggleBtn.classList.toggle('on', sectionNavOpen);
-    sectionNavToggleBtn.setAttribute('aria-expanded', sectionNavOpen ? 'true' : 'false');
-    sectionNavToggleBtn.title = sectionNavOpen ? '关闭 Section Navigator' : '打开 Section Navigator';
-  }
+export function setSectionNavigatorOpen(on) {
+  wbSet({ sectionNavOpen: !!on && wbGet().sectionNavVisible });
   updateSectionNavigatorActive(wbGet().activeGroup);
 }
 
@@ -354,36 +331,32 @@ function sectionNavigatorShouldShow(panel) {
 }
 
 export function updateSectionNavigatorVisibility() {
-  if (!sectionNavWrap) return;
   var panel = document.getElementById('wb-board-panel');
   var visible = sectionNavigatorShouldShow(panel);
-  sectionNavWrap.hidden = !visible;
+  wbSet({ sectionNavVisible: visible });
   if (!visible) setSectionNavigatorOpen(false);
 }
 
 export function updateSectionNavigatorActive(groupId) {
-  if (!sectionNavList || !sectionNavItems.length) return;
+  if (!sectionNavItems.length) return;
   var index = sectionNavItems.findIndex(function (item) { return item.id === groupId; });
   if (index < 0) index = 0;
   var current = sectionNavItems[index];
-  [].slice.call(sectionNavList.querySelectorAll('.wb-section-nav-item')).forEach(function (item) {
-    var on = item.getAttribute('data-nav-group') === current.id;
-    item.classList.toggle('on', on);
-    var button = item.querySelector('.wb-section-nav-section');
-    if (button) {
-      if (on) button.setAttribute('aria-current', 'location');
-      else button.removeAttribute('aria-current');
-    }
-  });
-  var position = String(index + 1) + ' / ' + String(sectionNavItems.length);
-  if (sectionNavPosition) sectionNavPosition.textContent = position;
-  if (sectionNavStatus) sectionNavStatus.textContent = position;
-  if (sectionNavToggleBtn) {
-    sectionNavToggleBtn.setAttribute(
-      'aria-label',
-      (sectionNavOpen ? '关闭' : '打开') + ' Section Navigator，当前 ' + current.title + '，' + position
-    );
+  if (sectionNavList) {
+    [].slice.call(sectionNavList.querySelectorAll('.wb-section-nav-item')).forEach(function (item) {
+      var on = item.getAttribute('data-nav-group') === current.id;
+      item.classList.toggle('on', on);
+      var button = item.querySelector('.wb-section-nav-section');
+      if (button) {
+        if (on) button.setAttribute('aria-current', 'location');
+        else button.removeAttribute('aria-current');
+      }
+    });
   }
+  wbSet({
+    sectionNavPosition: String(index + 1) + ' / ' + String(sectionNavItems.length),
+    sectionNavCurrent: current.title
+  });
 }
 
 export function rebuildSectionNavigator(panel) {
@@ -428,8 +401,8 @@ export function rebuildSectionNavigator(panel) {
   var closest = closestSectionNavigatorGroup() || sectionNavItems[0] && sectionNavItems[0].id;
   if (closest) wbSet({ activeGroup: closest });
   updateSectionNavigatorActive(wbGet().activeGroup);
-  setSectionNavigatorOpen(sectionNavOpen);
-  setMinimapOpen(minimapOpen);
+  setSectionNavigatorOpen(wbGet().sectionNavOpen);
+  setMinimapOpen(wbGet().minimapOpen);
 }
 
 function jumpSectionNavigatorToGroup(groupId) {
@@ -464,12 +437,7 @@ export function isTypingTarget(el) {
 }
 
 export function wireSectionNavigator() {
-  if (!sectionNavWrap || !sectionNavToggleBtn || !sectionNavList) return;
-  sectionNavToggleBtn.addEventListener('click', function (event) {
-    event.preventDefault();
-    event.stopPropagation();
-    setSectionNavigatorOpen(!sectionNavOpen);
-  });
+  if (!sectionNavWrap || !sectionNavList) return;
   sectionNavList.addEventListener('click', function (event) {
     var screenButton = event.target.closest('[data-nav-screen]');
     if (screenButton) {
@@ -483,8 +451,8 @@ export function wireSectionNavigator() {
     if (sectionButton) jumpSectionNavigatorToGroup(sectionButton.getAttribute('data-nav-group'));
   });
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && (sectionNavOpen || minimapOpen)) {
-      var focusTarget = sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
+    if (event.key === 'Escape' && (wbGet().sectionNavOpen || wbGet().minimapOpen)) {
+      var focusTarget = wbGet().sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
       setSectionNavigatorOpen(false);
       setMinimapOpen(false);
       if (focusTarget) focusTarget.focus();
@@ -493,40 +461,26 @@ export function wireSectionNavigator() {
     if (event.key.toLowerCase() !== 'm' || event.metaKey || event.ctrlKey || event.altKey) return;
     if (isTypingTarget(event.target)) return;
     event.preventDefault();
-    setSectionNavigatorOpen(!sectionNavOpen);
+    setSectionNavigatorOpen(!wbGet().sectionNavOpen);
   });
   window.addEventListener('resize', updateSectionNavigatorVisibility);
 }
 
-function formatZoomLabel(z) {
-  var n = Math.round(parseFloat(z) * 100);
-  if (!isFinite(n)) n = 100;
-  return n + '%';
-}
-
-export function syncZoomHud(z) {
-  var label = document.getElementById('wbzoom-label');
-  if (label) label.textContent = formatZoomLabel(z || currentCanvasZoom());
-}
-
-function nudgeCanvasZoom(factor) {
-  var z = clampCanvasZoom(currentCanvasZoom() * factor);
-  canvasZoomWriter(String(z), { save: true });
-}
-
+// React 挂载完成后由 main.jsx 调用一次：HUD/dock DOM 句柄赋值 + 命令式布线
+// （minimap 跳点、section-nav 列表委派、Escape/M 键盘、resize）。缩放与回中
+// 按钮是 CanvasHud 组件的 onClick，不在此列。
 export function wireCanvasHud(deps) {
   deps = deps || {};
-  canvasZoomWriter = deps.setCanvasZoom || null;
   sectionJumpListener = deps.onSectionJump || null;
-  var out = document.getElementById('wbzoom-out');
-  var inn = document.getElementById('wbzoom-in');
-  var label = document.getElementById('wbzoom-label');
-  var home = document.getElementById('wbrecenter');
-  if (out) out.addEventListener('click', function () { nudgeCanvasZoom(1 / 1.1); });
-  if (inn) inn.addEventListener('click', function () { nudgeCanvasZoom(1.1); });
-  if (label) label.addEventListener('click', function () { canvasZoomWriter('1', { save: true }); });
-  if (home) home.addEventListener('click', recenterBoard);
+  minimapWrap = document.getElementById('wbminimap-wrap');
+  minimapEl = document.getElementById('wbminimap');
+  minimapCanvas = document.getElementById('wbminimap-canvas');
+  minimapToggleBtn = document.getElementById('wbminimap-toggle');
+  sectionNavWrap = document.getElementById('wbsection-nav-wrap');
+  sectionNavToggleBtn = document.getElementById('wbsection-nav-toggle');
+  sectionNavEl = document.getElementById('wbsection-nav');
+  sectionNavList = document.getElementById('wbsection-nav-list');
+  wbSet({ canvasZoom: String(currentCanvasZoom()) });
   wireMinimap();
   wireSectionNavigator();
-  syncZoomHud();
 }

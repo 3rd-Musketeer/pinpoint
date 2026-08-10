@@ -17,15 +17,13 @@ import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
   focusWorkbenchFrame,
   isTypingTarget,
-  resetBoardNavOnLoadFailure,
-  wireCanvasHud
+  resetBoardNavOnLoadFailure
 } from './board-nav.js';
 import { buildBoardHtml, clearIncludeCache, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import { wireFrameNoteEditors } from './frame-notes.js';
 import {
   annotateApi,
-  scheduleAnnSnap,
   startAnnBridge,
   watchDocAnnotate
 } from './ann-bridge.js';
@@ -152,10 +150,6 @@ initPreviewMount({
   wireLibraryScrollSpy: wireLibraryScrollSpy
 });
 initBoard();
-wireCanvasHud({
-  setCanvasZoom: setCanvasZoom,
-  onSectionJump: function () { if (wbGet().annFilter === 'tab') scheduleAnnSnap(); }
-});
 
 window.workbench = {
   switchPage: switchPage,

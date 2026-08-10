@@ -950,42 +950,9 @@
       <i data-wb-icon="panel-left-open" data-wb-icon-size="16" class="wb-ico"></i>
     </button>
     <main class="wb-stage" id="wbstage"></main>
-    <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui>
-      <nav class="wb-section-nav" id="wbsection-nav" aria-label="Section Navigator" hidden>
-        <div class="wb-section-nav-head">
-          <span>Section Navigator</span>
-          <span class="wb-section-nav-status" id="wbsection-nav-status">1 / 1</span>
-        </div>
-        <div class="wb-section-nav-list" id="wbsection-nav-list"></div>
-      </nav>
-      <div class="wb-minimap" id="wbminimap" title="Canvas → Section → Frame · 点击定位" role="navigation" aria-label="Canvas、Section 与 Frame 缩略图导航" data-minimap-levels="canvas section frame" hidden>
-        <div class="wb-minimap-head">
-          <span>Canvas map</span>
-          <span class="wb-minimap-levels">Section · Frame</span>
-        </div>
-        <canvas id="wbminimap-canvas" width="416" height="264"></canvas>
-      </div>
-    </div>
-    <div class="wb-canvas-hud" id="wbcanvas-hud" data-ann-ui>
-      <div class="wb-section-nav-wrap" id="wbsection-nav-wrap" hidden>
-        <button type="button" class="wb-hud-btn wb-toolbar-tool-btn wb-section-nav-toggle" id="wbsection-nav-toggle" title="打开 Section Navigator" aria-label="打开 Section Navigator" aria-controls="wbsection-nav" aria-expanded="false">
-          <i data-wb-icon="section-nav" data-wb-icon-size="14" class="wb-ico"></i>
-          <span class="wb-section-nav-position" id="wbsection-nav-position">1 / 1</span>
-        </button>
-      </div>
-      <div class="wb-minimap-wrap" id="wbminimap-wrap">
-        <button type="button" class="wb-hud-btn wb-toolbar-tool-btn wb-minimap-toggle" id="wbminimap-toggle" title="打开缩略图导航" aria-label="打开缩略图导航" aria-controls="wbminimap" aria-expanded="false">
-          <i data-wb-icon="map" data-wb-icon-size="14" class="wb-ico"></i>
-        </button>
-      </div>
-      <span class="wb-toolbar-divider" aria-hidden="true"></span>
-      <div class="wb-hud-group" role="group" aria-label="画布缩放">
-        <button type="button" class="wb-hud-btn" id="wbzoom-out" title="缩小" aria-label="缩小">−</button>
-        <button type="button" class="wb-hud-btn wb-hud-zoom" id="wbzoom-label" title="重置为 100%">100%</button>
-        <button type="button" class="wb-hud-btn" id="wbzoom-in" title="放大" aria-label="放大">+</button>
-      </div>
-      <button type="button" class="wb-hud-btn wb-hud-recenter" id="wbrecenter" title="回到画布内容">回中</button>
-    </div>
+    <!-- React 挂载点：dock（section-nav + minimap）与 HUD 由 app/CanvasHud.jsx 渲染（P1b cut3） -->
+    <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui></div>
+    <div class="wb-canvas-hud" id="wbcanvas-hud" data-ann-ui></div>
   </div>
 </div>
 

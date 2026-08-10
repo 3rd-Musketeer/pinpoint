@@ -11,7 +11,6 @@ import {
   refreshBoardNavigationModel,
   scheduleMinimapUpdate,
   setMinimapOpen,
-  syncZoomHud,
   updateMinimapAvailability,
   updateSectionNavigatorVisibility
 } from './board-nav.js';
@@ -136,7 +135,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.setAttribute('data-canvas-zoom', z);
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
-    syncZoomHud(z);
+    wbSet({ canvasZoom: z });
     var _a = annotateApi(); if (_a) _a.render();
     scheduleMinimapUpdate();
     updateMinimapAvailability();

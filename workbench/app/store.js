@@ -28,6 +28,14 @@ export const useWorkbenchStore = create((set) => ({
   annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）
   // preview chrome
   theme: 'light',
+  // canvas HUD（board-nav 写；CanvasHud 组件读）
+  canvasZoom: '1',
+  minimapOpen: false,
+  minimapAvailable: false,
+  sectionNavOpen: false,
+  sectionNavVisible: false,
+  sectionNavPosition: '1 / 1',
+  sectionNavCurrent: '',
 
   patch: (partial) => set(partial),
 }));
