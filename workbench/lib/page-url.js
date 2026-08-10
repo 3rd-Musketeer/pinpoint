@@ -1,5 +1,9 @@
 /** Page id of the built-in Component Library board. */
 export var COMPONENTS_ID = 'components';
+export var LIB_ID = 'library';
+export var WEB_LIB_ID = 'web-library';
+export var DOC_LIB_ID = 'doc-library';
+export var SYSTEM_PAGES = { components: true };
 
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
 export function pageEntry(manifest, pageId) {
