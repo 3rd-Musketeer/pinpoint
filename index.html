@@ -5,20 +5,14 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pinpoint</title>
 <link rel="stylesheet" href="kits/ios/ios-kit.css">
+<!-- workbench chrome 视觉 token（生成物：scripts/build-wb-tokens.mjs → workbench/wb-tokens.css） -->
+<link rel="stylesheet" href="workbench/wb-tokens.css">
 <!-- Shared annotation-list rows (also inlined into /annotate.js for the client sidebar) -->
 <link rel="stylesheet" href="lib/ann-list.css">
 <style>
   /* ── workbench shell (dev chrome — not iOS). Pages section lists workbench pages;
-     Example Library loads from previews/library/board.json + sibling screen HTML. */
-  :root {
-    --wb-bg:#e8eaed; --wb-side:#f6f6f7; --wb-fg:#1c1c1e;
-    --wb-muted:#6b6b70; --wb-faint:#8e8e93;
-    --wb-line:rgba(0,0,0,.07); --wb-hover:rgba(0,0,0,.04); --wb-fill:rgba(0,0,0,.055);
-    --wb-accent:#007aff; --wb-stage-bg:#faf8f4; --wb-side-w:252px;
-    --wb-pad:14px; --wb-r:6px;
-    --wb-ease:cubic-bezier(.25,0,0,1);
-    --wb-dur:.2s;
-  }
+     Example Library loads from previews/library/board.json + sibling screen HTML.
+     :root 的 --wb-* token 归 workbench/wb-tokens.css（生成物），此处不再定义。 */
   * { box-sizing:border-box; }
   /* Focus catch-all: low-specificity ring so every focusable control keeps a
      visible focus state; component rules below with their own focus treatment
