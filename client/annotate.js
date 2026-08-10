@@ -825,8 +825,10 @@
     '#ann-status.err{color:#ff9d9d;}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
     // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
-    // 6px 圆角 —— 与浮动工具条的深色毛玻璃是两套语言。
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:#f6f6f7;border-left:1px solid rgba(0,0,0,.07);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;}',
+    // 6px 圆角 —— 与浮动工具条的深色毛玻璃是两套语言。--wb-* 自定义属性是
+    // 共享行样式（lib/ann-list.css）的主题入参：这里钉死为 workbench 同款取值，
+    // 宿主页面即便定义了同名变量也渗不进来。
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:#f6f6f7;border-left:1px solid rgba(0,0,0,.07);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c1c1e;--wb-muted:#6b6b70;--wb-faint:#8e8e93;--wb-hover:rgba(0,0,0,.04);--wb-r:6px;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid rgba(0,0,0,.07);}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:600;color:#1c1c1e;}',
@@ -841,22 +843,19 @@
     '#ann-sidebar .ann-sb-modes button.on{background:#fff;color:#1c1c1e;box-shadow:0 1px 2px rgba(0,0,0,.06),inset 0 0 0 1px rgba(0,0,0,.04);}',
     '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
-    '#ann-sidebar .ann-sb-empty{margin:6px 4px;padding:20px 12px 18px;text-align:center;border:1px dashed rgba(0,0,0,.12);border-radius:6px;background:rgba(255,255,255,.45);}',
-    '#ann-sidebar .ann-sb-empty-title{margin:0 0 6px;font-size:12px;font-weight:550;color:#6b6b70;}',
-    '#ann-sidebar .ann-sb-empty-hint{margin:0;font-size:11px;line-height:1.4;color:#8e8e93;}',
-    '#ann-sidebar .ann-sb-item{display:flex;gap:2px;align-items:stretch;width:100%;margin-bottom:2px;border-radius:6px;transition:background .2s cubic-bezier(.25,0,0,1);}',
-    '#ann-sidebar .ann-sb-item:hover{background:rgba(0,0,0,.04);}',
-    '#ann-sidebar .ann-sb-item.broken{opacity:.72;}',
-    '#ann-sidebar .ann-sb-item-main{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;padding:7px 4px 7px 8px;border:none;background:transparent;cursor:pointer;text-align:left;font:inherit;color:inherit;}',
-    '#ann-sidebar .ann-sb-num{flex:none;min-width:18px;height:18px;margin-top:1px;padding:0 5px;border-radius:50%;background:#f5a623;color:#1a1a1a;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
-    '#ann-sidebar .ann-sb-item.broken .ann-sb-num{background:transparent;color:#8e8e93;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);}',
-    '#ann-sidebar .ann-sb-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
-    '#ann-sidebar .ann-sb-cap{font-size:10px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}',
-    '#ann-sidebar .ann-sb-text{font-size:12px;line-height:1.4;color:#1c1c1e;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
-    '#ann-sidebar .ann-sb-item.broken .ann-sb-text{color:#6b6b70;}',
-    '#ann-sidebar .ann-sb-broken-tag{align-self:flex-start;font-size:10px;font-weight:650;letter-spacing:.02em;line-height:1.3;color:#b85c38;}',
+    // 行/失效态/空态的共享视觉 = lib/ann-list.css，serve 时内联为 ANN_LIST_CSS
+    // （workbench 侧栏 link 同一份；行类名统一为 .wb-ann-*）。
+    ANN_LIST_CSS,
+    // 以下为 client 侧结构增量，与 workbench 侧有意不同、不进共享层：行 flex 壳、
+    // min-width 序号徽标、失效徽标描边色、broken-tag 对齐、空态盒边距/边框、操作列。
+    '#ann-sidebar .wb-ann-empty{margin:6px 4px;border:1px dashed rgba(0,0,0,.12);}',
+    '#ann-sidebar .wb-ann-empty-title{margin:0 0 6px;}',
+    '#ann-sidebar .wb-ann-item{display:flex;gap:2px;align-items:stretch;}',
+    '#ann-sidebar .wb-ann-num{min-width:18px;padding:0 5px;}',
+    '#ann-sidebar .wb-ann-item--broken .wb-ann-num{box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);}',
+    '#ann-sidebar .wb-ann-broken-tag{align-self:flex-start;}',
     '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:4px 4px 4px 0;opacity:0;pointer-events:none;}',
-    '#ann-sidebar .ann-sb-item:hover .ann-sb-acts,#ann-sidebar .ann-sb-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
+    '#ann-sidebar .wb-ann-item:hover .ann-sb-acts,#ann-sidebar .wb-ann-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
     '#ann-sidebar .ann-sb-acts button{width:24px;height:24px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:#8e8e93;}',
     '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.06);color:#1c1c1e;}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:#c0392b;background:rgba(192,57,43,.1);}',
@@ -1178,13 +1177,13 @@
   }
 
   function sidebarRowModel() {
+    // 行字段走共享模型（lib/ann-row.js，serve 时内联）；默认 cap 语义即
+    // client 现状：框选显示「框选区域」，无 text 时回退 selector 末段摘录。
     return marksForActivePage().slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
-      var cap;
-      if (m.type === 'region') cap = '框选区域';
-      else if (m.text) cap = m.text.slice(0, 40);
-      else cap = (String(m.selector || '').split('>').pop() || '').trim().slice(0, 60) || '元素';
-      var text = contentToDisplay(annotationContent(m), markElementTargets(m)).trim();
-      return { n: m.n, cap: cap, text: text.slice(0, 80), broken: isMarkBroken(m) };
+      return annRowModel(m, {
+        preview: annRowPreview(contentToDisplay(annotationContent(m), markElementTargets(m))),
+        broken: isMarkBroken(m)
+      });
     });
   }
 
@@ -1224,7 +1223,7 @@
         else if (act.getAttribute('data-ann-act') === 'del') removeMark(an); // 删除即生效，与 composer/工具条清空同款无确认
         return;
       }
-      var row = e.target && e.target.closest ? e.target.closest('.ann-sb-item[data-ann-n]') : null;
+      var row = e.target && e.target.closest ? e.target.closest('.wb-ann-item[data-ann-n]') : null;
       if (!row) return;
       goToMark(parseInt(row.getAttribute('data-ann-n'), 10));
     });
@@ -1243,7 +1242,7 @@
     var rows = sidebarRowModel();
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.text + '|' + r.broken;
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken;
     }).join('~');
     sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
     if (sig === sidebarSig) return;
@@ -1251,12 +1250,12 @@
     sidebarBody.textContent = '';
     if (!rows.length) {
       var empty = document.createElement('div');
-      empty.className = 'ann-sb-empty';
+      empty.className = 'wb-ann-empty';
       var emptyTitle = document.createElement('p');
-      emptyTitle.className = 'ann-sb-empty-title';
+      emptyTitle.className = 'wb-ann-empty-title';
       emptyTitle.textContent = '暂无标注';
       var emptyHint = document.createElement('p');
-      emptyHint.className = 'ann-sb-empty-hint';
+      emptyHint.className = 'wb-ann-empty-hint';
       emptyHint.textContent = '点上方「标注」进入标注模式，再点选页面元素添加标注';
       empty.appendChild(emptyTitle);
       empty.appendChild(emptyHint);
@@ -1265,29 +1264,29 @@
     }
     rows.forEach(function (r) {
       var item = document.createElement('div');
-      item.className = 'ann-sb-item' + (r.broken ? ' broken' : '');
+      item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
       var main = document.createElement('button');
       main.type = 'button';
-      main.className = 'ann-sb-item-main';
+      main.className = 'wb-ann-item-main';
       var num = document.createElement('span');
-      num.className = 'ann-sb-num';
+      num.className = 'wb-ann-num';
       num.textContent = r.n;
       var body = document.createElement('span');
-      body.className = 'ann-sb-main';
+      body.className = 'wb-ann-body';
       var cap = document.createElement('span');
-      cap.className = 'ann-sb-cap';
+      cap.className = 'wb-ann-cap';
       cap.textContent = r.cap;
       body.appendChild(cap);
-      if (r.text) {
+      if (r.preview) {
         var text = document.createElement('span');
-        text.className = 'ann-sb-text';
-        text.textContent = r.text;
+        text.className = 'wb-ann-text';
+        text.textContent = r.preview;
         body.appendChild(text);
       }
       if (r.broken) {
         var tag = document.createElement('span');
-        tag.className = 'ann-sb-broken-tag';
+        tag.className = 'wb-ann-broken-tag';
         tag.textContent = '锚点失效';
         body.appendChild(tag);
       }
@@ -2302,25 +2301,10 @@
 
   /** The selector still resolves, even if its current product view is hidden.
    *  A hidden tab / route is not a broken annotation: once the view returns,
-   *  the same selector can become live again. */
-  function markHasResolvableTarget(m) {
-    if (!m) return false;
-    if (m.type === 'element') {
-      return markElementTargets(m).some(function (target) {
-        return !!resolve(target.selector);
-      });
-    }
-    if (m.base && m.base.selector && resolve(m.base.selector)) return true;
-    if (m.contains && m.contains.length) {
-      return m.contains.some(function (item) {
-        return !!(item && item.selector && resolve(item.selector));
-      });
-    }
-    return false;
-  }
-
+   *  the same selector can become live again. The resolvability walk itself is
+   *  the shared pure predicate from lib/ann-row.js (inlined at serve time). */
   function isMarkBroken(m) {
-    return !markHasResolvableTarget(m);
+    return annMarkBroken(m, function (selector) { return !!resolve(selector); }, markElementTargets(m));
   }
 
   function markAnchorRect(m) {

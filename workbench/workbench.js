@@ -1,5 +1,6 @@
 // Workbench shell — pages, board loader, settings, preview hot-reload (Vite dev).
 import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
+import { annRowModel } from '../lib/ann-row.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 import { BoardMountManager } from './lib/board-mount-session.js';
 import {
@@ -749,16 +750,6 @@ function markSummary(m) {
   return m.selector || '';
 }
 
-function markTags(m) {
-  var tags = [];
-  if (m.changeTo) tags.push('✎');
-  if (m.move) tags.push('↗');
-  if (m.images && m.images.length) tags.push('🖼');
-  if (m.research) tags.push('🔍');
-  if (m.mentions && m.mentions.length) tags.push('@');
-  return tags.join(' ');
-}
-
 function escHtml(s) {
   return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
@@ -1003,22 +994,23 @@ function refreshAnnPanel() {
   }
   // Build a row model + signature; skip the innerHTML rebuild when the list
   // hasn't changed (mode toggle / scroll-spy fire notify without touching marks).
+  // Row fields come from the shared lib/ann-row.js model (cap/preview/broken/
+  // tags); grouping keys stay workbench-local. Cap options pin the workbench
+  // wording: region rows show 「框选」, no selector excerpt fallback.
   var rows = marks.map(function (m) {
     var broken = typeof ann.isMarkBroken === 'function' ? ann.isMarkBroken(m) : false;
-    return {
-      n: m.n,
-      key: (m.section || m.group || '_') + '|' + m.n,
-      group: m.section || m.group || '_',
-      groupLabel: m.sectionLabel || m.groupLabel || '未分组',
-      type: m.type,
-      text: (m.text || '').slice(0, 40),
-      summary: markSummary(m),
-      broken: broken,
-      tags: markTags(m)
-    };
+    var row = annRowModel(m, {
+      cap: { region: '框选', selectorMax: 0 },
+      preview: markSummary(m),
+      broken: broken
+    });
+    row.key = (m.section || m.group || '_') + '|' + m.n;
+    row.group = m.section || m.group || '_';
+    row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
+    return row;
   });
   var sig = annFilter + '|' + activeGroup + '|' + rows.map(function (r) {
-    return r.key + ':' + r.type + ':' + r.text + ':' + r.summary + ':' + r.broken + ':' + r.tags;
+    return r.key + ':' + r.cap + ':' + r.preview + ':' + r.broken + ':' + r.tags;
   }).join('~');
   if (sig === annListSig && annList.querySelector('[data-ann-n]')) {
     // List unchanged; buttons/counts above already reflect current state.
@@ -1053,8 +1045,8 @@ function refreshAnnPanel() {
         '<button type="button" class="wb-ann-item-main" data-ann-n="' + r.n + '">' +
         '<span class="wb-ann-num">' + r.n + '</span>' +
         '<span class="wb-ann-body">' +
-        '<span class="wb-ann-cap">' + escHtml(r.type === 'region' ? '框选' : r.text || '元素') + '</span>' +
-        '<span class="wb-ann-text">' + escHtml(r.summary) + '</span>' +
+        '<span class="wb-ann-cap">' + escHtml(r.cap) + '</span>' +
+        '<span class="wb-ann-text">' + escHtml(r.preview) + '</span>' +
         (r.broken ? '<span class="wb-ann-broken-tag">锚点失效</span>' : '') +
         (r.tags ? '<span class="wb-ann-tags">' + r.tags + '</span>' : '') +
         '</span></button>' +

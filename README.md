@@ -96,7 +96,7 @@ index.html             WORKBENCH shell — Pages (Component Library pinned first
 workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
 client/annotate.js     The annotation client (served as /annotate.js)
 server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr, template-only
-lib/                   Node-tested isomorphic libs inlined into /annotate.js (page key, indicator, slug, clip, bubble)
+lib/                   Node-tested isomorphic libs inlined into /annotate.js (page key, indicator, slug, clip, bubble, ann-row) + ann-list.css (shared list rows)
 kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
 kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock; localhost annotate inject
 kits/ios/components/   Component Library sources (meta.json + variant HTML)

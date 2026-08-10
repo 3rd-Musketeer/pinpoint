@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pinpoint</title>
 <link rel="stylesheet" href="kits/ios/ios-kit.css">
+<!-- Shared annotation-list rows (also inlined into /annotate.js for the client sidebar) -->
+<link rel="stylesheet" href="lib/ann-list.css">
 <style>
   /* ── workbench shell (dev chrome — not iOS). Pages section lists workbench pages;
      Example Library loads from previews/library/board.json + sibling screen HTML. */
@@ -267,47 +269,26 @@
     box-shadow:0 0.5px 1px rgba(0,0,0,.06), 0 0 0 0.5px rgba(0,0,0,.04);
   }
   .wb-ann-list { padding:0 0 2px; }
+  /* 行/失效态/空态的共享视觉在 lib/ann-list.css（注入 client 侧边栏内联同一
+     份）；这里只保留 workbench 侧的结构增量：item-row 壳、28px 删除钮、
+     固定 18px 序号徽标、空态布局与图标。 */
   .wb-ann-empty {
     display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:6px; margin:0; padding:20px 12px 18px;
+    gap:6px; margin:0;
     border:1px dashed color-mix(in srgb,var(--wb-line) 100%,transparent);
-    border-radius:var(--wb-r); background:rgba(255,255,255,.45);
-    text-align:center;
   }
-  .wb-ann-empty-title {
-    margin:0; font-size:12px; font-weight:550; color:var(--wb-muted);
-  }
-  .wb-ann-empty-hint {
-    margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint); max-width:16em;
-  }
+  .wb-ann-empty-title { margin:0; }
+  .wb-ann-empty-hint { max-width:16em; }
   .wb-ann-group {
     font-size:10px; font-weight:650; color:var(--wb-faint); letter-spacing:.04em; text-transform:uppercase;
     padding:10px 2px 4px; line-height:1.2;
   }
   .wb-ann-group:first-child { padding-top:2px; }
-  .wb-ann-item {
-    display:flex; flex-direction:column; width:100%;
-    margin-bottom:2px; border-radius:var(--wb-r);
-    transition:background var(--wb-dur) var(--wb-ease);
-  }
+  .wb-ann-item { display:flex; flex-direction:column; }
   .wb-ann-item-row { display:flex; gap:2px; align-items:stretch; width:100%; }
-  .wb-ann-item:hover { background:var(--wb-hover); }
-  .wb-ann-item--broken { opacity:.72; }
-  .wb-ann-item--broken .wb-ann-num {
-    background:transparent; color:var(--wb-faint);
-    box-shadow:inset 0 0 0 1px var(--wb-line);
-  }
-  .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted); }
-  .wb-ann-broken-tag {
-    display:inline-block; margin-top:1px;
-    font-size:10px; font-weight:650; letter-spacing:.02em;
-    color:#b85c38; line-height:1.3;
-  }
-  .wb-ann-item-main {
-    flex:1; min-width:0; display:flex; gap:8px; align-items:flex-start;
-    text-align:left; border:0; background:transparent; color:inherit; font:inherit;
-    padding:7px 4px 7px 8px; cursor:pointer; border-radius:var(--wb-r);
-  }
+  .wb-ann-item--broken .wb-ann-num { box-shadow:inset 0 0 0 1px var(--wb-line); }
+  .wb-ann-broken-tag { display:inline-block; margin-top:1px; }
+  .wb-ann-item-main { border-radius:var(--wb-r); }
   .wb-ann-del {
     flex:none; align-self:center; width:28px; height:28px; margin-right:4px;
     border:0; border-radius:8px; background:transparent; color:var(--wb-faint);
@@ -317,15 +298,7 @@
   .wb-ann-item:hover .wb-ann-del,
   .wb-ann-del:focus-visible { opacity:1; }
   .wb-ann-del:hover { color:#c0392b; background:rgba(192,57,43,.1); }
-  .wb-ann-num {
-    flex:none; width:18px; height:18px; border-radius:50%; background:#f5a623; color:#1a1a1a;
-    font-size:10px; font-weight:700; display:flex; align-items:center; justify-content:center;
-    margin-top:1px;
-  }
-  .wb-ann-body { flex:1; min-width:0; display:flex; flex-direction:column; gap:2px; }
-  .wb-ann-cap { font-size:10px; color:var(--wb-faint); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; line-height:1.3; }
-  .wb-ann-text { font-size:12px; line-height:1.4; color:var(--wb-fg); display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical; overflow:hidden; word-break:break-word; }
-  .wb-ann-tags { font-size:10px; color:var(--wb-faint); line-height:1.3; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-ann-num { width:18px; }
   /* footer chrome */
   .wb-foot {
     flex:none; display:flex; gap:6px; margin:0; padding:10px var(--wb-pad);

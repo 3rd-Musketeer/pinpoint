@@ -16,6 +16,14 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotate-page-key.js'),
   path.join(ROOT, 'lib', 'annotate-clip.js'),
   path.join(ROOT, 'lib', 'annotate-bubble.js'),
+  path.join(ROOT, 'lib', 'ann-row.js'),
+];
+// Stylesheets injected into the bundle as JS string constants (the client must
+// stay a single self-contained file — no runtime requests). annotate.js
+// references the constant in its <style> block; index.html links the same CSS.
+// Keep the mirror in server/annotate-inline.test.js in sync.
+const INLINED_CSS = [
+  { name: 'ANN_LIST_CSS', path: path.join(ROOT, 'lib', 'ann-list.css') },
 ];
 
 /** @type {Set<import('node:http').ServerResponse>} */
@@ -26,21 +34,24 @@ let cachedScript = null;
 let cachedMtime = 0;
 function readAnnotateJs() {
   const annotateStat = fs.statSync(SCRIPT);
-  const mtimes = INLINED_LIBS.map((p) => fs.statSync(p).mtimeMs);
+  const mtimes = INLINED_LIBS.map((p) => fs.statSync(p).mtimeMs)
+    .concat(INLINED_CSS.map((c) => fs.statSync(c.path).mtimeMs));
   const mtime = Math.max(annotateStat.mtimeMs, ...mtimes);
   if (cachedScript && mtime === cachedMtime) return cachedScript;
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
   // Inline SSOT libs into the IIFE so the browser script and the node-tested
   // libs share one implementation. Strip ESM `export ` keywords; these files
-  // are pure functions + top-level consts.
+  // are pure functions + top-level consts. Stylesheets land as JS string
+  // constants (JSON-quoted), referenced by the client's <style> block.
   const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^export /gm, '')).join('\n');
+  const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
   const marker = "'use strict';";
   const at = annotateSrc.indexOf(marker);
   const out = at < 0
     ? annotateSrc
     : annotateSrc.slice(0, at + marker.length) +
       '\n  /* inlined from lib/ — single source of truth */\n  ' +
-      libSrc +
+      libSrc + '\n' + cssSrc +
       annotateSrc.slice(at + marker.length);
   cachedScript = Buffer.from(out, 'utf8');
   cachedMtime = mtime;

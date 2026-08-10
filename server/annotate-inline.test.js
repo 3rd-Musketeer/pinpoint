@@ -26,17 +26,23 @@ const INLINED_LIBS = [
   path.join(ROOT, 'lib', 'annotate-page-key.js'),
   path.join(ROOT, 'lib', 'annotate-clip.js'),
   path.join(ROOT, 'lib', 'annotate-bubble.js'),
+  path.join(ROOT, 'lib', 'ann-row.js'),
+];
+const INLINED_CSS = [
+  { name: 'ANN_LIST_CSS', path: path.join(ROOT, 'lib', 'ann-list.css') },
 ];
 
 // Mirror the serve-time inliner in server/annotate-api.js: strip ESM `export `
-// and inline the libs into the annotate IIFE after 'use strict';.
+// and inline the libs into the annotate IIFE after 'use strict';. Stylesheets
+// land as JSON-quoted JS string constants.
 function buildServedBundle() {
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
   const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^export /gm, '')).join('\n');
+  const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
   const marker = "'use strict';";
   const at = annotateSrc.indexOf(marker);
   assert.notEqual(at, -1, 'annotate.js IIFE marker not found');
-  return annotateSrc.slice(0, at + marker.length) + '\n' + libSrc + annotateSrc.slice(at + marker.length);
+  return annotateSrc.slice(0, at + marker.length) + '\n' + libSrc + '\n' + cssSrc + annotateSrc.slice(at + marker.length);
 }
 
 test('served /annotate.js inlines the indicator + hit-test + slug libs', () => {
@@ -52,11 +58,25 @@ test('served /annotate.js inlines the indicator + hit-test + slug libs', () => {
   assert.match(bundle, /function bubbleInnerHtml/, 'bubbleInnerHtml inlined');
   assert.match(bundle, /function intersectRects/, 'intersectRects inlined');
   assert.match(bundle, /function clipByRects/, 'clipByRects inlined');
+  assert.match(bundle, /function annRowModel/, 'annRowModel inlined');
+  assert.match(bundle, /function annRowCap/, 'annRowCap inlined');
+  assert.match(bundle, /function annMarkBroken/, 'annMarkBroken inlined');
   assert.doesNotMatch(bundle, /export function formatPageIndicator/);
   assert.doesNotMatch(bundle, /export function pickContained/);
   assert.doesNotMatch(bundle, /export function annotationSlug/);
   assert.doesNotMatch(bundle, /export function pageKeyFromPathname/);
   assert.doesNotMatch(bundle, /export function intersectRects/);
+  assert.doesNotMatch(bundle, /export function annRowModel/);
+});
+
+test('served /annotate.js injects the shared list CSS as a JS string constant', () => {
+  const bundle = buildServedBundle();
+  assert.match(bundle, /var ANN_LIST_CSS = "/, 'ANN_LIST_CSS constant injected');
+  // The constant carries the shared row rules for both consumer scopes, and
+  // the client <style> block references it (single-file client, no request).
+  assert.match(bundle, /#wbann-list \.wb-ann-item/, 'workbench scope in the CSS payload');
+  assert.match(bundle, /#ann-sidebar \.wb-ann-item--broken/, 'client scope in the CSS payload');
+  assert.match(bundle, /ANN_LIST_CSS,/, 'style array consumes ANN_LIST_CSS');
 });
 
 test('served bundle parses as a script', () => {

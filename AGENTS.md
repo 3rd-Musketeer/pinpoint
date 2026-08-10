@@ -66,7 +66,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs |
 | `workbench/` | Canvas: `workbench.js` (board loader, include/mount, HMR), `settings.html`, `workbench-icons.js` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts |
-| `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble) — node-tested SSOT |
+| `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
 | `kits/ios/` | First kit: `ios-kit.css/js` + `components/` (Component Library sources) |
 | `previews/` | Template pages: `_index.json` manifest + `<pageId>/board.json` + screen HTML/JS |
 | `extension/` | MV3 browser extension — injects the client on registered `url` entries |

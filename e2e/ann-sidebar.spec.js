@@ -94,23 +94,23 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(sidebar).toBeVisible();
 
   // 两条标注按 n 列出：序号 + 内容。
-  const items = sidebar.locator('.ann-sb-item');
+  const items = sidebar.locator('.wb-ann-item');
   await expect(items).toHaveCount(2);
-  await expect(items.nth(0).locator('.ann-sb-num')).toHaveText('1');
+  await expect(items.nth(0).locator('.wb-ann-num')).toHaveText('1');
   await expect(items.nth(0)).toContainText('first mark');
-  await expect(items.nth(1).locator('.ann-sb-num')).toHaveText('2');
+  await expect(items.nth(1).locator('.wb-ann-num')).toHaveText('2');
   await expect(items.nth(1)).toContainText('second mark');
 
   // 开合状态是 viewer 偏好：刷新后保持打开。
   await page.reload();
   await page.waitForFunction(() => window.iOSAnnotate);
   await expect(page.locator('#ann-sidebar')).toBeVisible();
-  await expect(page.locator('#ann-sidebar .ann-sb-item')).toHaveCount(2);
+  await expect(page.locator('#ann-sidebar .wb-ann-item')).toHaveCount(2);
 
   // 点第二条 → 页面滚到折叠下方的目标，目标闪烁、评论展开。
   await page.evaluate(() => window.scrollTo(0, 0));
   expect(await inViewport(page, '#doc-target-2')).toBe(false);
-  await page.locator('#ann-sidebar .ann-sb-item[data-ann-n="2"] .ann-sb-item-main').click();
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="2"] .wb-ann-item-main').click();
   await expect.poll(() => inViewport(page, '#doc-target-2')).toBe(true);
   await expect(page.locator('.ann-hover-ghost.ann-flash')).toBeVisible();
   await expect(page.locator('#ann-box')).toBeVisible();
@@ -118,7 +118,7 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
 
   // 回到第一条（composer 占用时不换目标，先关掉）。
   await closeComposer(page);
-  await page.locator('#ann-sidebar .ann-sb-item[data-ann-n="1"] .ann-sb-item-main').click();
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="1"] .wb-ann-item-main').click();
   await expect.poll(() => inViewport(page, '#doc-target')).toBe(true);
   await expect(page.locator('#ann-box')).toBeVisible();
   await expect(page.locator('#ann-box .head .t')).toContainText('#1');
@@ -141,13 +141,13 @@ test('/sites/ page: row shows the broken state after its target leaves the DOM',
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.ann-sb-item')).toHaveCount(1);
+  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar).not.toContainText('锚点失效');
 
   // 目标元素离开 DOM：内容 MutationObserver → notify → 侧边栏重估锚点状态。
   await page.evaluate(() => document.getElementById('doc-target').remove());
-  const row = sidebar.locator('.ann-sb-item[data-ann-n="1"]');
-  await expect(row.locator('.ann-sb-broken-tag')).toHaveText('锚点失效');
+  const row = sidebar.locator('.wb-ann-item[data-ann-n="1"]');
+  await expect(row.locator('.wb-ann-broken-tag')).toHaveText('锚点失效');
 });
 
 test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => {
@@ -171,7 +171,7 @@ test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => 
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.ann-sb-item')).toHaveCount(1);
+  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar).toContainText('route-b ann');
   await expect(sidebar).not.toContainText('route-a ann');
 
@@ -179,7 +179,7 @@ test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => 
   epoch = await page.evaluate(() => window.iOSAnnotate.getState().epoch);
   await page.locator('#to-a').click();
   await waitRouteSettled(page, '/e2e-spa/route-a', epoch);
-  await expect(sidebar.locator('.ann-sb-item')).toHaveCount(1);
+  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar).toContainText('route-a ann');
   await expect(sidebar).not.toContainText('route-b ann');
 });
@@ -224,7 +224,7 @@ test('extension-injected page: sidebar is available', async () => {
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.ann-sb-item')).toHaveCount(1);
+  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar).toContainText('ext ann');
   await expect(sidebar).toContainText('extension target text');
 });
