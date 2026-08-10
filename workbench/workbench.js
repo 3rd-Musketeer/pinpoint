@@ -426,6 +426,8 @@ if (import.meta.hot) {
     } else {
       queryClient.invalidateQueries({ queryKey: ['board', id] });
       queryClient.invalidateQueries({ queryKey: ['screen', id] });
+      // note 存在 board.json 里 —— 页面变更一并失效该页的 frame-note 缓存
+      queryClient.invalidateQueries({ queryKey: ['frame-note', id] });
     }
     if (id === wbGet().activePageId) {
       snapshotPageViewport(wbGet().activePageId);

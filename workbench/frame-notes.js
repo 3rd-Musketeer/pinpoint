@@ -1,6 +1,9 @@
 // Workbench Frame Note 簇 — 每屏说明的读取/编辑/保存与板面板上的事件委托。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
+// P2：GET 迁入 TanStack Query（['frame-note', pageId, screenId]），PUT 成功后
+// setQueryData 回写同一 key；外部改动经 SSE 桥 invalidate（note 存在 board.json 里）。
 import { wbGet } from './app/store.js';
+import { queryClient } from './app/query-client.js';
 import { COMPONENTS_ID } from './lib/page-url.js';
 import { refit } from './boot-prefs.js';
 
@@ -54,8 +57,13 @@ function openFrameNoteEditor(noteEl) {
   if (edit) edit.disabled = true;
   noteEl.classList.add('is-loading');
 
-  fetch(frameNoteApiUrl(wbGet().activePageId, screenId))
-    .then(readFrameNoteResponse)
+  var pageId = wbGet().activePageId;
+  queryClient.fetchQuery({
+    queryKey: ['frame-note', pageId, screenId],
+    queryFn: function () {
+      return fetch(frameNoteApiUrl(pageId, screenId)).then(readFrameNoteResponse);
+    }
+  })
     .then(function (data) {
       if (!noteEl.isConnected) return;
       noteEl.dataset.frameNoteRevision = data.revision;
@@ -93,17 +101,19 @@ function saveFrameNote(noteEl) {
   var screenId = screen && screen.getAttribute('data-screen');
   var input = noteEl.querySelector('[data-frame-note-input]');
   var revision = noteEl.dataset.frameNoteRevision;
-  if (!screenId || !input || !revision || wbGet().activePageId === COMPONENTS_ID) return;
+  var pageId = wbGet().activePageId;
+  if (!screenId || !input || !revision || pageId === COMPONENTS_ID) return;
 
   setFrameNoteBusy(noteEl, true);
   setFrameNoteStatus(noteEl, '正在保存…', false);
-  fetch(frameNoteApiUrl(wbGet().activePageId, screenId), {
+  fetch(frameNoteApiUrl(pageId, screenId), {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ note: input.value, baseRevision: revision })
   })
     .then(readFrameNoteResponse)
     .then(function (data) {
+      queryClient.setQueryData(['frame-note', pageId, screenId], data);
       if (!noteEl.isConnected) return;
       noteEl.dataset.frameNoteRevision = data.revision;
       var text = noteEl.querySelector('[data-frame-note-text]');

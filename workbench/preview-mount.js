@@ -69,7 +69,12 @@ function previewScriptLabel(el) {
   return (screen && screen.getAttribute('data-screen')) || 'preview';
 }
 
-function cacheBust(url, generation) {
+// P2 收尾说明：这里 bust 的是浏览器动态 import() 的模块缓存，不是 fetch 缓存
+// —— 不归 TanStack Query 管。每次挂载（session.generation 递增）都要拿到干净的
+// 模块实例（sidecar 可能有模块级状态），HMR 改文件后也必须重新 import；
+// 不能用 query 的 dataUpdatedAt 当 token —— 缓存回填的重挂载 dataUpdatedAt 不变，
+// 模块级状态会跨挂载泄漏。所以保留 generation 作 token，仅正名。
+function moduleBustUrl(url, generation) {
   var sep = url.indexOf('?') >= 0 ? '&' : '?';
   return url + sep + 'mount=' + generation;
 }
@@ -103,7 +108,7 @@ function invokeMountModule(mod, root, label, session) {
 }
 
 function importPreviewModule(url, root, label, session) {
-  return import(/* @vite-ignore */ cacheBust(url, session.generation))
+  return import(/* @vite-ignore */ moduleBustUrl(url, session.generation))
     .then(function (mod) { return invokeMountModule(mod, root, label, session); })
     .catch(function (err) {
       console.error('[preview-script] ' + label + ' ← ' + url, err);

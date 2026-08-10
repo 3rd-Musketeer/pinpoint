@@ -1,6 +1,9 @@
 // Workbench export cluster — frame/section 图片导出、文档导出对话框、frame ⋯ 菜单。
 // P1 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；escHtml、pageBaseUrl 取自 lib/。
+// P2 说明：三个导出 POST（/api/export-image、/api/export-doc-tokens、/api/export-doc）
+// 是下载流 / 一次性计算，不是可缓存的 server state —— 保持 plain fetch，不走 Query
+// （docTokenCache 只是对话框打开期间的估算回显缓存，同样无失效语义）。
 import { wbGet } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { pageBaseUrl } from './lib/page-url.js';
