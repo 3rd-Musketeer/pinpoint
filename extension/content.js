@@ -61,6 +61,17 @@
     (document.head || document.documentElement).appendChild(client);
   }
 
+  // 工具栏图标入口：background 的 action.onClicked 把点击转成 tab 消息，这里
+  // 经共享 DOM CustomEvent 桥进页面主世界（annotate client 监听
+  // 'pinpoint:command'）。DOM 事件跨隔离世界传递，不碰内联 script，CSP 安全。
+  // 与 registry 探测解耦：服务不在线时 client 没注入，事件无人监听，自然 no-op。
+  chrome.runtime.onMessage.addListener(function (msg) {
+    if (!msg || msg.type !== 'pinpoint:toggle-sidebar') return;
+    document.dispatchEvent(new CustomEvent('pinpoint:command', {
+      detail: { command: 'toggle-sidebar' }
+    }));
+  });
+
   var tried = {};
   var chain = Promise.reject();
   CANDIDATES.forEach(function (origin) {

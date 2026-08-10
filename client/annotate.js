@@ -47,7 +47,7 @@
   var mode = false;    // true = 标注; false = 交互 (default)
   var paused = false;  // hide pins / overlay without leaving Annotate intent
   var floatingToolbar = false;
-  var sidebarOpen = false; // 标注列表侧边栏（#ann-sidebar）；viewer 偏好，持久化到 LS
+  var sidebarOpen = false; // 标注面板（#ann-sidebar）；viewer 偏好，持久化到 LS
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -824,31 +824,41 @@
     '#ann-status{font-size:10px;color:rgba(255,255,255,.45);}',
     '#ann-status.err{color:#ff9d9d;}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:rgba(255,255,255,.97);border-left:1px solid rgba(0,0,0,.09);box-shadow:-8px 0 24px rgba(0,0,0,.14);display:flex;flex-direction:column;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}',
+    // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
+    // 6px 圆角 —— 与浮动工具条的深色毛玻璃是两套语言。
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:#f6f6f7;border-left:1px solid rgba(0,0,0,.07);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;}',
     '#ann-sidebar[hidden]{display:none;}',
-    '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.07);}',
-    '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:600;color:#1a1a1a;}',
-    '#ann-sidebar .ann-sb-count{font-size:11px;color:#8a8a8a;}',
-    '#ann-sidebar .ann-sb-close{flex:none;width:24px;height:24px;padding:0;border:none;border-radius:50%;background:transparent;cursor:pointer;font-size:14px;line-height:24px;text-align:center;color:#888;}',
-    '#ann-sidebar .ann-sb-close:hover{background:rgba(0,0,0,.06);color:#333;}',
-    '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:8px;}',
-    '#ann-sidebar .ann-sb-empty{padding:24px 14px;text-align:center;}',
-    '#ann-sidebar .ann-sb-empty-title{margin:0 0 6px;font-size:13px;color:#555;}',
-    '#ann-sidebar .ann-sb-empty-hint{margin:0;font-size:11px;line-height:1.5;color:#999;}',
-    '#ann-sidebar .ann-sb-item{display:flex;gap:2px;align-items:stretch;width:100%;border-radius:10px;}',
-    '#ann-sidebar .ann-sb-item:hover{background:rgba(245,166,35,.1);}',
+    '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid rgba(0,0,0,.07);}',
+    '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:600;color:#1c1c1e;}',
+    '#ann-sidebar .ann-sb-count{font-size:11px;color:#8e8e93;font-variant-numeric:tabular-nums;}',
+    '#ann-sidebar .ann-sb-close{flex:none;width:26px;height:26px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:26px;text-align:center;color:#8e8e93;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-close:hover{background:rgba(0,0,0,.05);color:#1c1c1e;}',
+    // 「交互 | 标注」segmented：同 workbench 的 .wb-board-mode / .wb-ann-filter .ctl
+    // 语言 —— 灰槽 + 白色凸起选中态；「标注」选中时沿用 workbench 标注开关的橙色强调。
+    '#ann-sidebar .ann-sb-modes{flex:none;display:flex;gap:2px;margin:10px 12px 4px;padding:2px;border-radius:8px;background:rgba(0,0,0,.045);}',
+    '#ann-sidebar .ann-sb-modes button{flex:1;border:0;border-radius:6px;cursor:pointer;background:transparent;color:#6b6b70;font:inherit;font-size:11.5px;font-weight:650;letter-spacing:.02em;padding:6px 8px;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1),box-shadow .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-modes button:hover{color:#1c1c1e;}',
+    '#ann-sidebar .ann-sb-modes button.on{background:#fff;color:#1c1c1e;box-shadow:0 1px 2px rgba(0,0,0,.06),inset 0 0 0 1px rgba(0,0,0,.04);}',
+    '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
+    '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
+    '#ann-sidebar .ann-sb-empty{margin:6px 4px;padding:20px 12px 18px;text-align:center;border:1px dashed rgba(0,0,0,.12);border-radius:6px;background:rgba(255,255,255,.45);}',
+    '#ann-sidebar .ann-sb-empty-title{margin:0 0 6px;font-size:12px;font-weight:550;color:#6b6b70;}',
+    '#ann-sidebar .ann-sb-empty-hint{margin:0;font-size:11px;line-height:1.4;color:#8e8e93;}',
+    '#ann-sidebar .ann-sb-item{display:flex;gap:2px;align-items:stretch;width:100%;margin-bottom:2px;border-radius:6px;transition:background .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-item:hover{background:rgba(0,0,0,.04);}',
     '#ann-sidebar .ann-sb-item.broken{opacity:.72;}',
-    '#ann-sidebar .ann-sb-item-main{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;padding:8px 4px 8px 8px;border:none;background:transparent;cursor:pointer;text-align:left;font:inherit;}',
-    '#ann-sidebar .ann-sb-num{flex:none;min-width:20px;height:20px;padding:0 5px;border-radius:50%;background:#f5a623;color:#1a1a1a;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
-    '#ann-sidebar .ann-sb-item.broken .ann-sb-num{background:rgba(0,0,0,.16);color:#666;}',
+    '#ann-sidebar .ann-sb-item-main{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;padding:7px 4px 7px 8px;border:none;background:transparent;cursor:pointer;text-align:left;font:inherit;color:inherit;}',
+    '#ann-sidebar .ann-sb-num{flex:none;min-width:18px;height:18px;margin-top:1px;padding:0 5px;border-radius:50%;background:#f5a623;color:#1a1a1a;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
+    '#ann-sidebar .ann-sb-item.broken .ann-sb-num{background:transparent;color:#8e8e93;box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);}',
     '#ann-sidebar .ann-sb-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
-    '#ann-sidebar .ann-sb-cap{font-size:10px;color:#a8a49e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}',
-    '#ann-sidebar .ann-sb-text{font-size:12px;line-height:1.4;color:#333;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
-    '#ann-sidebar .ann-sb-broken-tag{align-self:flex-start;font-size:10px;line-height:1.3;padding:1px 6px;border-radius:6px;color:#c0392b;background:rgba(192,57,43,.1);}',
-    '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:6px 6px 6px 0;opacity:0;pointer-events:none;}',
+    '#ann-sidebar .ann-sb-cap{font-size:10px;color:#8e8e93;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}',
+    '#ann-sidebar .ann-sb-text{font-size:12px;line-height:1.4;color:#1c1c1e;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
+    '#ann-sidebar .ann-sb-item.broken .ann-sb-text{color:#6b6b70;}',
+    '#ann-sidebar .ann-sb-broken-tag{align-self:flex-start;font-size:10px;font-weight:650;letter-spacing:.02em;line-height:1.3;color:#b85c38;}',
+    '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:4px 4px 4px 0;opacity:0;pointer-events:none;}',
     '#ann-sidebar .ann-sb-item:hover .ann-sb-acts,#ann-sidebar .ann-sb-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
-    '#ann-sidebar .ann-sb-acts button{width:22px;height:22px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font-size:12px;line-height:22px;text-align:center;color:#999;}',
-    '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.07);color:#333;}',
+    '#ann-sidebar .ann-sb-acts button{width:24px;height:24px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:#8e8e93;}',
+    '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.06);color:#1c1c1e;}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:#c0392b;background:rgba(192,57,43,.1);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
@@ -1092,7 +1102,7 @@
     toggleMode();
   });
 
-  // 快捷键 S：开合标注列表侧边栏（守卫同 A；看列表是只读行为，标注/交互模式都可用）
+  // 快捷键 S：开合标注面板（次要入口，主入口是扩展图标；守卫同 A；看列表是只读行为，标注/交互模式都可用）
   document.addEventListener('keydown', function (e) {
     if (e.key !== 's' && e.key !== 'S') return;
     if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
@@ -1136,14 +1146,19 @@
 
   btnClear.addEventListener('click', doClear);
 
-  // ---------- 标注列表侧边栏（#ann-sidebar）----------
-  // 没有 workbench 的页面（/sites/ 注入、扩展注入、SPA）唯一的标注列表：当前账本
-  // 按 n 列出，点击跳转（goToMark），hover 出编辑/删除。抑制规则与浮动工具条同款
-  // 「单一控制面」：workbench 壳有自己的标注列表；doc iframe 由父级出控制面。
+  // ---------- 标注面板（#ann-sidebar）----------
+  // 没有 workbench 的页面（/sites/ 注入、扩展注入、SPA）的标注控制面：顶部
+  // 「交互 | 标注」segmented 切 mode，下面当前账本按 n 列出，点击跳转
+  // （goToMark），hover 出编辑/删除。主入口 = 浏览器工具栏扩展图标（见下方
+  // pinpoint:command 监听），次要入口 = 工具条「列表」按钮、S 键。抑制规则与
+  // 浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；doc iframe
+  // 由父级出控制面。
   var SIDEBAR_LS_KEY = 'html-annotate:' + ENTRY + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
   var sidebarCount = null;
+  var sidebarSegInteract = null;
+  var sidebarSegAnnotate = null;
   var sidebarSig = '';
 
   function sidebarSuppressed() {
@@ -1178,17 +1193,27 @@
     sidebar = document.createElement('div');
     sidebar.id = 'ann-sidebar'; sidebar.setAttribute('data-ann-ui', '');
     sidebar.hidden = true;
+    // 骨架是静态字符串（无注入面）；所有动态内容仍走 textContent 构建。
     sidebar.innerHTML =
       '<div class="ann-sb-head">' +
       '<span class="ann-sb-title">标注</span>' +
       '<span class="ann-sb-count"></span>' +
       '<button type="button" class="ann-sb-close" title="关闭 (S)">×</button>' +
       '</div>' +
+      '<div class="ann-sb-modes" role="group" aria-label="模式切换">' +
+      '<button type="button" data-ann-mode="interact" aria-pressed="true">交互</button>' +
+      '<button type="button" data-ann-mode="annotate" aria-pressed="false">标注</button>' +
+      '</div>' +
       '<div class="ann-sb-body"></div>';
     document.body.appendChild(sidebar);
     sidebar.querySelector('.ann-sb-close').addEventListener('click', function () { setSidebarOpen(false); });
     sidebarBody = sidebar.querySelector('.ann-sb-body');
     sidebarCount = sidebar.querySelector('.ann-sb-count');
+    sidebarSegInteract = sidebar.querySelector('[data-ann-mode="interact"]');
+    sidebarSegAnnotate = sidebar.querySelector('[data-ann-mode="annotate"]');
+    // segmented 是 setMode 的纯鼠标入口（同 iOSAnnotate.setMode 语义）。
+    sidebarSegInteract.addEventListener('click', function () { if (mode) toggleMode(); });
+    sidebarSegAnnotate.addEventListener('click', function () { if (!mode) toggleMode(); });
     sidebarBody.addEventListener('click', function (e) {
       var act = e.target && e.target.closest ? e.target.closest('[data-ann-act]') : null;
       if (act) {
@@ -1210,6 +1235,11 @@
     if (!sidebar) return;
     if (sidebarSuppressed()) { sidebar.hidden = true; return; }
     if (sidebar.hidden) return;
+    // segmented 每次 notify 都同步（sig 只挡列表重建，不挡模式反映）。
+    sidebarSegInteract.classList.toggle('on', !mode);
+    sidebarSegInteract.setAttribute('aria-pressed', String(!mode));
+    sidebarSegAnnotate.classList.toggle('on', !!mode);
+    sidebarSegAnnotate.setAttribute('aria-pressed', String(!!mode));
     var rows = sidebarRowModel();
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
@@ -1227,7 +1257,7 @@
       emptyTitle.textContent = '暂无标注';
       var emptyHint = document.createElement('p');
       emptyHint.className = 'ann-sb-empty-hint';
-      emptyHint.textContent = '按 A 进入标注模式，点选页面元素添加标注';
+      emptyHint.textContent = '点上方「标注」进入标注模式，再点选页面元素添加标注';
       empty.appendChild(emptyTitle);
       empty.appendChild(emptyHint);
       sidebarBody.appendChild(empty);
@@ -1308,6 +1338,15 @@
   }
 
   function toggleSidebar() { setSidebarOpen(!sidebarOpen); }
+
+  // 浏览器扩展图标入口（主入口）：content script 收到 background 的 tab 消息后
+  // 经共享 DOM CustomEvent 桥进主世界（内联 script 会被 CSP 拦，见 extension/
+  // content.js 头注）。抑制规则不变：workbench 壳/被嵌入页 setSidebarOpen 自会
+  // 让位，图标点击在那些页面上是 no-op。
+  document.addEventListener('pinpoint:command', function (e) {
+    var cmd = e.detail && e.detail.command;
+    if (cmd === 'toggle-sidebar') toggleSidebar();
+  });
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
   updateListeners.push(renderSidebar);

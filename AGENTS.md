@@ -309,10 +309,14 @@ reload — Navigation API `navigate` events first, patched `pushState`/`replaceS
 from before a switch are discarded by epoch so marks never land on the previous route.
 
 **Client chrome:** on non-workbench pages (`/sites/`, extension-injected) the floating
-toolbar hides by default — **A** toggles annotate mode, **S** toggles the built-in
-annotation-list sidebar (`#ann-sidebar`: current-ledger marks sorted by `n`, click to
-jump, hover for edit/delete, broken-anchor tags; open state persists as a localStorage
-viewer preference, default closed). The sidebar is suppressed wherever `window.workbench`
+toolbar hides by default — **A** toggles annotate mode, and the annotation panel
+(`#ann-sidebar`) opens from the **pinpoint toolbar icon** (main entry; MV3
+`action.onClicked` → tab message → content script relays a CSP-safe DOM
+`CustomEvent('pinpoint:command')` to the client), with the toolbar「列表」button and
+**S** as secondary entries. The panel header carries a「交互 | 标注」segmented mode
+switch; below it current-ledger marks sorted by `n`, click to jump, hover for
+edit/delete, broken-anchor tags; open state persists as a localStorage viewer
+preference, default closed. The panel is suppressed wherever `window.workbench`
 exists or the document runs embedded in a frame — same one-control-surface rule as the
 toolbar.
 

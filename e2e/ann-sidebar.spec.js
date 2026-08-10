@@ -7,9 +7,11 @@ import { chromium, expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
 
-// 标注列表侧边栏（#ann-sidebar）：/sites/ 注入页、扩展注入页、SPA 页这些没有
-// workbench 的页面，靠侧边栏看到当前账本的所有标注并点击跳转。入口 = 浮动工具条
-// 的「列表」按钮 + 快捷键 S；workbench 页面不提供侧边栏（单一控制面）。
+// 标注列表面板（#ann-sidebar）：/sites/ 注入页、扩展注入页、SPA 页这些没有
+// workbench 的页面，靠面板看到当前账本的所有标注并点击跳转。入口 = 浏览器工具栏
+// pinpoint 扩展图标（主入口，链路见 extension.spec.js）+ 浮动工具条「列表」按钮
+// + 快捷键 S；面板顶部有「交互 | 标注」segmented。workbench 页面不提供面板
+// （单一控制面）。
 //
 // 扩展用例与 extension.spec.js 共用同一份 persistent-context 驱动（hermetic：
 // abort 真机 origin 候选，强制 fallback 到 e2e webServer）。

@@ -81,7 +81,7 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
    - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。
    - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
    - 该 entry 同时成为 workbench 页面（`board` 选 board 模式，缺省 `web`），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。
-   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `iOSAnnotate.setFloatingToolbar(true)`）。按 **S** 开合内建标注列表侧边栏（`#ann-sidebar`，当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）。
+   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `iOSAnnotate.setFloatingToolbar(true)`）。标注面板（`#ann-sidebar`：顶部「交互 | 标注」segmented，下面当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）的主入口是**浏览器工具栏的 pinpoint 扩展图标**，**S** 键与工具条「列表」按钮是次要入口。
    - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
    - 标注落在 `~/.html-annotate/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
 
@@ -93,7 +93,7 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
    - 一次性安装扩展：`chrome://extensions` → Developer mode → **Load unpacked** → 选本仓 `extension/`（机制细节见 [`extension/README.md`](../../extension/README.md)）。
    - content script 依次探 `https://pinpoint.localhost/registry` 和页面自身 origin；`location.origin` 与某个 url entry **精确匹配**才注入；服务不在线 = 不注入，未登记 = 不注入。
-   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（与 workbench 同一套交互）。按 **S** 开合标注列表侧边栏，换路由后列表自动换成新账本。
+   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（与 workbench 同一套交互）。**点浏览器工具栏的 pinpoint 扩展图标**开合标注面板（顶部「交互 | 标注」segmented 可纯鼠标进标注模式），**S** 键保留；换路由后列表自动换成新账本。
    - **SPA 行为**：client 只随页面加载跑一次，但路由切换会自动换账本——pathname 一变就重算 page key / localStorage key，后续标注记到新路由名下（Navigation API 优先，降级 patch `pushState`/`replaceState` + `popstate`；仅 hash 变化不换）。在途 sync/hydrate 按世代号作废，不会写进旧账本；切换途中又来导航会合并到最新 pathname。
    - **验证注入**：devtools 看 `<html data-pinpoint-entry="your-spa">`（扩展经 DOM 属性把 entry 递到主世界）；或按 **A** 点任意元素出标注框；`curl -s https://pinpoint.localhost/health | jq .registry` 确认 entry 计数与 errors。
 
