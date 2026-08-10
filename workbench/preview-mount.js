@@ -9,11 +9,12 @@ import {
   scheduleMinimapUpdate
 } from './board-nav.js';
 import { restorePageViewportAfterMount, syncPanelPrefs } from './boot-prefs.js';
+import { annotateApi } from './ann-bridge.js';
 
-// 反向依赖注入：annotateApi / wireLibraryScrollSpy / refreshAnnPanel 还留在
-// workbench.js（标注簇，后续轮次才拆），preview-mount 不得 import workbench.js，
+// 反向依赖注入：wireLibraryScrollSpy / refreshAnnPanel 还留在 workbench.js
+// （标注面板簇，后续轮次才拆），preview-mount 不得 import workbench.js，
 // 由它在初始化时经 initPreviewMount(deps) 注入。
-// （boot-prefs 簇的 syncPanelPrefs/restorePageViewportAfterMount 走直接 import。）
+// （boot-prefs / ann-bridge 簇走直接 import。）
 var mountDeps = {};
 
 export function initPreviewMount(deps) {
@@ -203,7 +204,7 @@ export function afterMount(panel, session) {
         // reads/writes (navigator positions, frame-in-view, ann panel) batch.
         requestAnimationFrame(function () {
           if (!session.isUsable(panel)) return;
-          var _a = mountDeps.annotateApi(); if (_a) _a.render();
+          var _a = annotateApi(); if (_a) _a.render();
           rebuildSectionNavigator(panel);
           mountDeps.wireLibraryScrollSpy();
           if (!hadViewport) frameBoardInView(panel, { pageId: session.pageId });

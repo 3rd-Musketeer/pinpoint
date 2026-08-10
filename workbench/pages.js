@@ -28,11 +28,11 @@ import {
   setTextSize,
   snapshotPageViewport
 } from './boot-prefs.js';
+import { annotateApi, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
-// 反向依赖注入：loadBoard / mountManager / stopGutter / annotateApi /
-// refreshAnnPanel / watchDocAnnotate 还留在 workbench.js（后续轮次才拆），
-// pages.js 不得 import workbench.js，由它在初始化时经 initPages(deps) 注入。
-// （boot-prefs 簇的 restorePrefs/refit/setter 等走直接 import。）
+// 反向依赖注入：loadBoard / mountManager / refreshAnnPanel 还留在 workbench.js
+// （后续轮次才拆），pages.js 不得 import workbench.js，由它在初始化时经
+// initPages(deps) 注入。（boot-prefs / ann-bridge 簇走直接 import。）
 var pagesDeps = {};
 
 export function initPages(deps) {
@@ -305,7 +305,7 @@ function setActiveDoc(screenId, options) {
     });
   }
   if (options.scrollTop !== false && stage) stage.scrollTop = 0;
-  pagesDeps.watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
+  watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
 }
 
 export function renderDocVersions() {
@@ -414,7 +414,7 @@ export function setBoardMode(mode, options) {
   }
   wbSet({ boardMode: mode });
   syncBoardModeUi(mode);
-  if (mode !== 'html') pagesDeps.stopGutter();   // 离开 HTML 板：父级 gutter 不再适用
+  if (mode !== 'html') stopGutter();   // 离开 HTML 板：父级 gutter 不再适用
   // 画布缩放对文档没有意义——报告必须按读者真实窗口尺寸渲染
   if (mode === 'html') setCanvasZoom('1', { save: false });
   if (docVersionsNav && mode !== 'html') { docVersionsNav.hidden = true; docVersionsNav.innerHTML = ''; }
@@ -496,7 +496,7 @@ export function setActivePage(pageId, options) {
   var panel = document.getElementById('wb-board-panel');
   if (!panel) return Promise.resolve();
   var same = wbGet().activePageId === pageId;
-  var _draftAnn = pagesDeps.annotateApi();
+  var _draftAnn = annotateApi();
   if (!same && _draftAnn && typeof _draftAnn.cancelDraft === 'function') {
     _draftAnn.cancelDraft();
   }

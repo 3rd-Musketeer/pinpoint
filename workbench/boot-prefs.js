@@ -15,11 +15,12 @@ import {
   updateMinimapAvailability,
   updateSectionNavigatorVisibility
 } from './board-nav.js';
+import { annotateApi } from './ann-bridge.js';
 
-// 反向依赖注入：annotateApi 属标注簇、resolveBootPageId 依赖 pages.js 的
-// renderPageManifest/resolvePageForMode、applyPageNames/applySectionOpen 属 pages.js。
-// pages.js 会直接 import 本模块，本模块不能反向 import（禁循环），
-// 由 workbench.js 初始化时经 initBootPrefs(deps) 注入。
+// 反向依赖注入：resolveBootPageId 依赖 pages.js 的 renderPageManifest/
+// resolvePageForMode，applyPageNames/applySectionOpen 属 pages.js；pages.js 会
+// 直接 import 本模块，本模块不能反向 import（禁循环），由 workbench.js 初始化时
+// 经 initBootPrefs(deps) 注入。（ann-bridge 簇的 annotateApi 走直接 import。）
 var prefsDeps = {};
 
 export function initBootPrefs(deps) {
@@ -137,7 +138,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
     syncZoomHud(z);
-    var _a = prefsDeps.annotateApi(); if (_a) _a.render();
+    var _a = annotateApi(); if (_a) _a.render();
     scheduleMinimapUpdate();
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();
@@ -358,7 +359,7 @@ export function restorePrefs() {
 
 export function refit() {
   if (window.iOSKit) window.iOSKit.fitAll();
-  var _a = prefsDeps.annotateApi(); if (_a) _a.render();
+  var _a = annotateApi(); if (_a) _a.render();
   refreshBoardNavigationModel();
   scheduleMinimapUpdate();
 }
