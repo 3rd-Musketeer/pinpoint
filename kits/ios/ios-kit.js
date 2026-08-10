@@ -183,7 +183,7 @@
     var h = location.hostname;
     if (h && h !== 'localhost' && h !== '127.0.0.1' && h !== '::1' && !h.endsWith('.localhost')) return;
     if (document.documentElement.getAttribute('data-annotate') === 'off') return;
-    if (window.__htmlAnnotate || document.querySelector('script[data-ios-annotate]')) return;
+    if (window.__pinpoint || document.querySelector('script[data-ios-annotate]')) return;
     var s = document.createElement('script');
     s.src = '/annotate.js';
     s.async = true;

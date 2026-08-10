@@ -160,7 +160,7 @@ npm run export -- --page library --section brew-flow --with-notes --format png
 screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接就能把仓库外的汇报页挂进来。
 
 要能标注，页尾接一段只在 loopback / `.localhost` 拉 `/annotate.js` 并（独立打开时）调
-`iOSAnnotate.setFloatingToolbar(true)` 的脚本即可——同一份文件 `file://` 打开、导出 PNG、
+`pinpoint.setFloatingToolbar(true)` 的脚本即可——同一份文件 `file://` 打开、导出 PNG、
 外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：
 独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。Web 板 fragment 仍由
 loader 包 `.wb-html-surface`，那是画布命中边界，不是作者要记的标记。标注落在文档自己的
@@ -174,7 +174,7 @@ Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` �
 
 ### 3.1 仓库外的项目：registry dir entry
 
-要评审的项目不在本仓库时，不要把文件复制进来——在本机 registry（`~/.html-annotate/registry.json`，`HTML_ANNOTATE_REGISTRY` 可覆盖）登记一个 `dir` entry：
+要评审的项目不在本仓库时，不要把文件复制进来——在本机 registry（`~/.pinpoint/registry.json`，`PINPOINT_REGISTRY` 可覆盖）登记一个 `dir` entry：
 
 ```json
 { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/abs/path/to/your-app/dist", "board": "web" }
@@ -184,7 +184,7 @@ Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` �
 - HTML 响应在 `</body>` 前自动注入 `window.__pinpointEntry='your-app'` + `/annotate.js`；`?annotate=off` 原样输出磁盘字节（导出管线和 workbench 内联加载走它）。
 - 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先）。`board` 字段选 board：`ios` / `web` / `html`，缺省 `web`。
 - 页面结构仍由它自己的 `board.json` + screens 决定（从 `/sites/<id>/board.json` 拉取）——schema 与本仓页面完全相同，编辑对象是登记目录里的磁盘文件，serve 只读不影响改稿。
-- 标注落在 `~/.html-annotate/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
+- 标注落在 `~/.pinpoint/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
 - 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页。目标项目是 SPA / 自己起服务、想按 origin 评审时改用 `url` entry + 浏览器扩展，见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2。
 
 ## 4. 加 component

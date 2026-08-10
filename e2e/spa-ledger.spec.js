@@ -33,11 +33,11 @@ test.afterEach(() => {
 
 async function openFixture(page) {
   await page.goto('/e2e/spa-fixture.html');
-  await page.waitForFunction(() => window.iOSAnnotate);
+  await page.waitForFunction(() => window.pinpoint);
 }
 
 async function setAnnotateMode(page, on) {
-  await page.evaluate((v) => window.iOSAnnotate.setMode(v), on);
+  await page.evaluate((v) => window.pinpoint.setMode(v), on);
 }
 
 /** 在标注模式下点选元素、写内容、保存（驱动方式同 workbench.spec.js）。 */
@@ -57,7 +57,7 @@ async function annotate(page, selector, text) {
  */
 async function waitRouteSettled(page, pathname, prevEpoch) {
   await page.waitForFunction(([path, epoch]) => {
-    const st = window.iOSAnnotate && window.iOSAnnotate.getState ? window.iOSAnnotate.getState() : {};
+    const st = window.pinpoint && window.pinpoint.getState ? window.pinpoint.getState() : {};
     if (typeof st.epoch !== 'number') return location.pathname === path;
     return location.pathname === path && st.epoch > epoch && !st.routing;
   }, [pathname, prevEpoch]);
@@ -65,7 +65,7 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
 
 async function currentEpoch(page) {
   return page.evaluate(() => {
-    const st = window.iOSAnnotate.getState();
+    const st = window.pinpoint.getState();
     return typeof st.epoch === 'number' ? st.epoch : -1;
   });
 }
@@ -135,8 +135,8 @@ test('in-flight old-ledger save response cannot pollute the new ledger', async (
 
   expect(Object.keys(bucketDocs())).toHaveLength(2);
   // 新账本的内存状态只有自己那条（旧响应被丢弃，没有 applyRemoteDoc/deferred 污染）。
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.getState().countAll)).toBe(1);
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.map((m) => m.content)))
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countAll)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.map((m) => m.content)))
     .toEqual(['route-a ann']);
 });
 

@@ -1,6 +1,6 @@
 /**
  * Content registry: which entries may be reviewed through the annotate API.
- * Lives at ~/.html-annotate/registry.json (HTML_ANNOTATE_REGISTRY overrides;
+ * Lives at ~/.pinpoint/registry.json (PINPOINT_REGISTRY overrides;
  * e2e points it at a fixture). A missing file means a default pinpoint-only
  * registry. Malformed JSON or invalid entries must never crash the server —
  * log, fall back / skip, and expose the failure on the result (/health reads
@@ -14,7 +14,7 @@ export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 const KINDS = new Set(['dir', 'url']);
 
 export function defaultRegistryPath() {
-  return path.join(os.homedir(), '.html-annotate', 'registry.json');
+  return path.join(os.homedir(), '.pinpoint', 'registry.json');
 }
 
 export function defaultEntries(root) {
@@ -49,10 +49,20 @@ function normalizeEntry(raw) {
   return entry;
 }
 
+/** PINPOINT_REGISTRY wins; the deprecated HTML_ANNOTATE_REGISTRY still applies with a warning. */
+function envRegistryPath(env, log) {
+  if (env.PINPOINT_REGISTRY) return env.PINPOINT_REGISTRY;
+  if (env.HTML_ANNOTATE_REGISTRY) {
+    log('[registry] HTML_ANNOTATE_REGISTRY is deprecated; rename it to PINPOINT_REGISTRY');
+    return env.HTML_ANNOTATE_REGISTRY;
+  }
+  return null;
+}
+
 export function loadRegistry(options = {}) {
   const root = options.root || process.cwd();
-  const registryPath = options.path || process.env.HTML_ANNOTATE_REGISTRY || defaultRegistryPath();
   const log = options.log || ((message) => console.error(message));
+  const registryPath = options.path || envRegistryPath(process.env, log) || defaultRegistryPath();
   const errors = [];
   const warnings = [];
 

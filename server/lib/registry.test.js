@@ -152,20 +152,44 @@ test('resolve returns the entry by id and null for unknown ids', (t) => {
   assert.equal(registry.resolve('missing'), null);
 });
 
-test('HTML_ANNOTATE_REGISTRY overrides the default registry path', (t) => {
+test('PINPOINT_REGISTRY overrides the default registry path', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {
     version: 1,
     entries: [{ id: 'env-entry', title: 'x', kind: 'url', url: 'https://env.localhost' }],
   });
-  const previous = process.env.HTML_ANNOTATE_REGISTRY;
-  process.env.HTML_ANNOTATE_REGISTRY = file;
+  const previous = process.env.PINPOINT_REGISTRY;
+  process.env.PINPOINT_REGISTRY = file;
   t.after(() => {
-    if (previous === undefined) delete process.env.HTML_ANNOTATE_REGISTRY;
-    else process.env.HTML_ANNOTATE_REGISTRY = previous;
+    if (previous === undefined) delete process.env.PINPOINT_REGISTRY;
+    else process.env.PINPOINT_REGISTRY = previous;
   });
 
   const { registry } = quietLoad();
   assert.equal(registry.path, file);
   assert.deepEqual(registry.entries.map((e) => e.id), ['env-entry']);
+});
+
+test('deprecated HTML_ANNOTATE_REGISTRY still applies, with a warning, when PINPOINT_REGISTRY is absent', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    entries: [{ id: 'legacy-entry', title: 'x', kind: 'url', url: 'https://legacy.localhost' }],
+  });
+  const previousNew = process.env.PINPOINT_REGISTRY;
+  const previousOld = process.env.HTML_ANNOTATE_REGISTRY;
+  delete process.env.PINPOINT_REGISTRY;
+  process.env.HTML_ANNOTATE_REGISTRY = file;
+  t.after(() => {
+    if (previousNew === undefined) delete process.env.PINPOINT_REGISTRY;
+    else process.env.PINPOINT_REGISTRY = previousNew;
+    if (previousOld === undefined) delete process.env.HTML_ANNOTATE_REGISTRY;
+    else process.env.HTML_ANNOTATE_REGISTRY = previousOld;
+  });
+
+  const { registry, logs } = quietLoad();
+  assert.equal(registry.path, file);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['legacy-entry']);
+  assert.equal(logs.length, 1, 'deprecation is logged');
+  assert.match(logs[0], /deprecated/);
 });

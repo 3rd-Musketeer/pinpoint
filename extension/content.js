@@ -13,7 +13,7 @@
  *      whenever the page ships a strict CSP — the shared DOM attribute is
  *      the reliable bridge (annotate.js reads it before 'pinpoint' default).
  *      Then inject the annotate client itself. annotate.js guards on
- *      window.__htmlAnnotate, so repeat injection is a no-op.
+ *      window.__pinpoint, so repeat injection is a no-op.
  *
  * Script origin: since Chrome 130, scripts injected by a content script are
  * checked against the extension's own CSP, whose default whitelists only the

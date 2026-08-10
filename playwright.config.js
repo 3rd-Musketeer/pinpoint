@@ -21,8 +21,8 @@ export default defineConfig({
     reuseExistingServer: false,
     env: {
       ...process.env,
-      HTML_ANNOTATE_DATA_DIR: E2E_DATA_DIR,
-      HTML_ANNOTATE_REGISTRY: E2E_REGISTRY,
+      PINPOINT_DATA_DIR: E2E_DATA_DIR,
+      PINPOINT_REGISTRY: E2E_REGISTRY,
       PREVIEW_TEMPLATE_ONLY: '1',
     },
   },

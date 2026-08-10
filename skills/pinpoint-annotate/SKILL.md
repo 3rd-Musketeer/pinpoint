@@ -1,6 +1,6 @@
 ---
 name: pinpoint-annotate
-description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.html-annotate/<entry-id>/ 桶（默认 entry 是 pinpoint，路径从 /health 的 dataDir 字段取；entry 清单在本机 registry ~/.html-annotate/registry.json）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，要登记 / 验证一个 dir 或 url 评审目标，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则、注入契约和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
+description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.pinpoint/<entry-id>/ 桶（默认 entry 是 pinpoint，路径从 /health 的 dataDir 字段取；entry 清单在本机 registry ~/.pinpoint/registry.json）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，要登记 / 验证一个 dir 或 url 评审目标，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则、注入契约和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
 ---
 
 # pinpoint-annotate
@@ -61,16 +61,16 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 ```
 
 - 正常入口是 Portless 管理的 `https://pinpoint.localhost`；先探活再启动。
-- 落盘：**磁盘 SSOT**，按 registry entry 分桶——`~/.html-annotate/<entry-id>/<页面名>.json`（本项目 entry 是 `pinpoint`，含 `revision`），参考图在同桶 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**（默认桶路径），不要自己拼；entry 清单来自 `~/.html-annotate/registry.json`。`HTML_ANNOTATE_DATA_DIR` 环境变量覆盖数据根（e2e 在用）。`/health` 还带 `dataRoot`（数据根）和 `registry` 摘要段——注意其中的 `entries` 是**计数**，完整清单走 `GET /registry`。
+- 落盘：**磁盘 SSOT**，按 registry entry 分桶——`~/.pinpoint/<entry-id>/<页面名>.json`（本项目 entry 是 `pinpoint`，含 `revision`），参考图在同桶 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**（默认桶路径），不要自己拼；entry 清单来自 `~/.pinpoint/registry.json`。`PINPOINT_DATA_DIR` 环境变量覆盖数据根（e2e 在用）。`/health` 还带 `dataRoot`（数据根）和 `registry` 摘要段——注意其中的 `entries` 是**计数**，完整清单走 `GET /registry`。
 - 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
 - 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
-- Workbench prefs（当前页 / 缩放 / 侧栏）在 `ios-preview-wb`，viewer 本地状态，**不同步**。
+- Workbench prefs（当前页 / 缩放 / 侧栏）在 `pinpoint-wb`，viewer 本地状态，**不同步**。
 
 ## 2. 注入：登记过才注入
 
 同一个 client（`client/annotate.js`，serve 为 `/annotate.js`），三条投递路径。未登记的一切打开方式（`file://`、自起 server、未登记 origin）完全干净——这是契约，不是配置项；导出的 PNG / HTML 也不含注入脚本。
 
-1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `iOSAnnotate.setFloatingToolbar(true)`。
+1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `pinpoint.setFloatingToolbar(true)`。
 
 2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记：
 
@@ -81,9 +81,9 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
    - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。
    - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
    - 该 entry 同时成为 workbench 页面（`board` 选 board 模式，缺省 `web`），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。
-   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `iOSAnnotate.setFloatingToolbar(true)`）。标注面板（`#ann-sidebar`：顶部「交互 | 标注」segmented，下面当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）的主入口是**浏览器工具栏的 pinpoint 扩展图标**，**S** 键与工具条「列表」按钮是次要入口。
+   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `pinpoint.setFloatingToolbar(true)`）。标注面板（`#ann-sidebar`：顶部「交互 | 标注」segmented，下面当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）的主入口是**浏览器工具栏的 pinpoint 扩展图标**，**S** 键与工具条「列表」按钮是次要入口。
    - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
-   - 标注落在 `~/.html-annotate/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
+   - 标注落在 `~/.pinpoint/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
 
 3. **registry `url` entry → 浏览器扩展**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：
 

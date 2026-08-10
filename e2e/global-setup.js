@@ -12,7 +12,7 @@ export default function globalSetup() {
   // Registry fixture: the pinpoint dir entry, one url entry naming the e2e
   // webServer origin (extension.spec.js injects through it), and one dir
   // entry backed by the committed e2e/dir-site fixture (dir-entry.spec.js).
-  // E2E never reads the real machine registry (HTML_ANNOTATE_REGISTRY is set
+  // E2E never reads the real machine registry (PINPOINT_REGISTRY is set
   // in playwright.config.js).
   fs.writeFileSync(E2E_REGISTRY, JSON.stringify({
     version: 1,

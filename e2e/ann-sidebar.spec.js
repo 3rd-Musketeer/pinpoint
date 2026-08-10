@@ -73,7 +73,7 @@ function inViewport(page, selector) {
 
 async function waitRouteSettled(page, pathname, prevEpoch) {
   await page.waitForFunction(([path, epoch]) => {
-    const st = window.iOSAnnotate && window.iOSAnnotate.getState ? window.iOSAnnotate.getState() : {};
+    const st = window.pinpoint && window.pinpoint.getState ? window.pinpoint.getState() : {};
     if (typeof st.epoch !== 'number') return location.pathname === path;
     return location.pathname === path && st.epoch > epoch && !st.routing;
   }, [pathname, prevEpoch]);
@@ -81,14 +81,14 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
 
 test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the target', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.iOSAnnotate);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#doc-target', 'first mark');
   await annotate(page, '#doc-target-2', 'second mark');
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
 
   // 工具条入口：/sites/ 注入页工具条默认隐藏，先显式调出再点「列表」。
-  await page.evaluate(() => window.iOSAnnotate.setFloatingToolbar(true));
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
   await page.locator('#ann-list').click();
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
@@ -103,7 +103,7 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
 
   // 开合状态是 viewer 偏好：刷新后保持打开。
   await page.reload();
-  await page.waitForFunction(() => window.iOSAnnotate);
+  await page.waitForFunction(() => window.pinpoint);
   await expect(page.locator('#ann-sidebar')).toBeVisible();
   await expect(page.locator('#ann-sidebar .wb-ann-item')).toHaveCount(2);
 
@@ -133,10 +133,10 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
 
 test('/sites/ page: row shows the broken state after its target leaves the DOM', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.iOSAnnotate);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#doc-target', 'will break');
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
 
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
@@ -152,21 +152,21 @@ test('/sites/ page: row shows the broken state after its target leaves the DOM',
 
 test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => {
   await page.goto('/e2e/spa-fixture.html');
-  await page.waitForFunction(() => window.iOSAnnotate);
+  await page.waitForFunction(() => window.pinpoint);
 
-  let epoch = await page.evaluate(() => window.iOSAnnotate.getState().epoch);
+  let epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
   await page.locator('#to-a').click();
   await waitRouteSettled(page, '/e2e-spa/route-a', epoch);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#route-a-el', 'route-a ann');
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
 
-  epoch = await page.evaluate(() => window.iOSAnnotate.getState().epoch);
+  epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
   await page.locator('#to-b').click();
   await waitRouteSettled(page, '/e2e-spa/route-b', epoch);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#route-b-el', 'route-b ann');
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
 
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
@@ -176,7 +176,7 @@ test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => 
   await expect(sidebar).not.toContainText('route-a ann');
 
   // 账本切换后列表自动换成新账本（侧边栏保持打开）。
-  epoch = await page.evaluate(() => window.iOSAnnotate.getState().epoch);
+  epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
   await page.locator('#to-a').click();
   await waitRouteSettled(page, '/e2e-spa/route-a', epoch);
   await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
@@ -186,23 +186,23 @@ test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => 
 
 test('workbench page: no sidebar entry, the workbench annotation list stays the control surface', async ({ page }) => {
   await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.iOSAnnotate);
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
 
   // S 键与 API 都被抑制，#ann-sidebar 从不创建。
   await page.keyboard.press('s');
   await page.evaluate(() => {
-    if (window.iOSAnnotate.toggleSidebar) window.iOSAnnotate.toggleSidebar();
+    if (window.pinpoint.toggleSidebar) window.pinpoint.toggleSidebar();
   });
   await expect(page.locator('#ann-sidebar')).toHaveCount(0);
-  expect(await page.evaluate(() => window.iOSAnnotate.getState().sidebar)).toBe(false);
+  expect(await page.evaluate(() => window.pinpoint.getState().sidebar)).toBe(false);
 
   // 工具条调出后也没有列表入口（其余按钮仍在）。
-  await page.evaluate(() => window.iOSAnnotate.setFloatingToolbar(true));
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
   await expect(page.locator('#ann-toggle')).toBeVisible();
   await expect(page.locator('#ann-list')).toBeHidden();
 
   // workbench 自己的标注列表正常工作。
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.scrollIntoViewIfNeeded();
   await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=0', 'wb list check');
@@ -215,11 +215,11 @@ test('extension-injected page: sidebar is available', async () => {
   const ctx = await launchWithExtension();
   const page = await ctx.newPage();
   await page.goto(`${E2E_BASE_URL}/e2e/ext-fixture.html`);
-  await page.waitForFunction(() => window.__htmlAnnotate && window.iOSAnnotate);
+  await page.waitForFunction(() => window.__pinpoint && window.pinpoint);
 
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#target-el', 'ext ann');
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
 
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');

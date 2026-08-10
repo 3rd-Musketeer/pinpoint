@@ -53,12 +53,12 @@ test('extension injects annotate client and annotations land in the url entry bu
 
   // 注入生效：annotate.js 的防重入标记在页面主世界；账本归属经共享 DOM 属性
   // 传递（CSP 下内联 <script> 注不进去，见 content.js 头注）。
-  await page.waitForFunction(() => window.__htmlAnnotate && window.iOSAnnotate);
+  await page.waitForFunction(() => window.__pinpoint && window.pinpoint);
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-pinpoint-entry')))
     .toBe('e2e-site');
 
   // 驱动一条标注（同 spa-ledger.spec.js 的方式）。
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator('#target-el').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
@@ -103,7 +103,7 @@ test('toolbar icon chain: background wiring plus message delivery toggles the si
   const ctx = await launchWithExtension();
   const page = await ctx.newPage();
   await page.goto(`${E2E_BASE_URL}/e2e/ext-fixture.html`);
-  await page.waitForFunction(() => window.__htmlAnnotate && window.iOSAnnotate);
+  await page.waitForFunction(() => window.__pinpoint && window.pinpoint);
 
   // Playwright 点不到浏览器工具栏图标，链路分两段覆盖：
   // 1. background.js 的接线——action.onClicked 必须挂着 listener（代码评审覆盖
@@ -127,7 +127,7 @@ test('panel header segmented control switches annotate mode (pure mouse loop)', 
   const ctx = await launchWithExtension();
   const page = await ctx.newPage();
   await page.goto(`${E2E_BASE_URL}/e2e/ext-fixture.html`);
-  await page.waitForFunction(() => window.__htmlAnnotate && window.iOSAnnotate);
+  await page.waitForFunction(() => window.__pinpoint && window.pinpoint);
 
   // 开合命令的 client 侧契约：DOM CustomEvent（content script 桥发的就是它）。
   await page.evaluate(() => {
@@ -144,18 +144,18 @@ test('panel header segmented control switches annotate mode (pure mouse loop)', 
 
   // 点「标注」→ client 进入标注模式，segmented 跟着走。
   await segAnnotate.click();
-  expect(await page.evaluate(() => window.iOSAnnotate.getState().mode)).toBe(true);
+  expect(await page.evaluate(() => window.pinpoint.getState().mode)).toBe(true);
   await expect(segAnnotate).toHaveClass(/on/);
   await expect(segInteract).not.toHaveClass(/on/);
 
   // 外部 API 改 mode（A 键/工具条）时 segmented 同样反映。
-  await page.evaluate(() => window.iOSAnnotate.setMode(false));
+  await page.evaluate(() => window.pinpoint.setMode(false));
   await expect(segInteract).toHaveClass(/on/);
 
   // 点「交互」回到交互模式。
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await segInteract.click();
-  expect(await page.evaluate(() => window.iOSAnnotate.getState().mode)).toBe(false);
+  expect(await page.evaluate(() => window.pinpoint.getState().mode)).toBe(false);
   await expect(segInteract).toHaveClass(/on/);
 });
 
@@ -166,6 +166,6 @@ test('extension stays quiet when no registry is reachable', async () => {
   const page = await ctx.newPage();
   await page.goto(`${E2E_BASE_URL}/e2e/ext-fixture.html`);
   await page.waitForLoadState('networkidle');
-  expect(await page.evaluate(() => Boolean(window.__htmlAnnotate))).toBe(false);
+  expect(await page.evaluate(() => Boolean(window.__pinpoint))).toBe(false);
   expect(await page.evaluate(() => document.documentElement.getAttribute('data-pinpoint-entry'))).toBe(null);
 });

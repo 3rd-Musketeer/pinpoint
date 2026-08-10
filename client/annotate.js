@@ -1,8 +1,8 @@
-/* html-annotate: Figma-style HTML annotate tool (pinpoint).
+/* pinpoint: Figma-style HTML annotate tool.
  * Browser annotation client. Served as /annotate.js by Vite annotate-api;
  * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).
- * SSOT = ~/.html-annotate/<entry>/; localStorage is cache; SSE /events syncs browsers.
+ * SSOT = ~/.pinpoint/<entry>/; localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
@@ -10,8 +10,8 @@
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar). */
 (function () {
   'use strict';
-  if (window.__htmlAnnotate) return;
-  window.__htmlAnnotate = true;
+  if (window.__pinpoint) return;
+  window.__pinpoint = true;
 
   var SERVER = (function () {
     var src = document.currentScript && document.currentScript.src;
@@ -26,7 +26,7 @@
   var ENTRY = window.__pinpointEntry ||
     (document.documentElement && document.documentElement.getAttribute('data-pinpoint-entry')) ||
     'pinpoint';
-  var LS_KEY = 'html-annotate:' + ENTRY + ':' + location.pathname;
+  var LS_KEY = 'pinpoint:' + ENTRY + ':' + location.pathname;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(location.pathname);
   var PAGE_KEY = annotationSlug(PAGE);
@@ -1152,7 +1152,7 @@
   // pinpoint:command 监听），次要入口 = 工具条「列表」按钮、S 键。抑制规则与
   // 浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；doc iframe
   // 由父级出控制面。
-  var SIDEBAR_LS_KEY = 'html-annotate:' + ENTRY + ':sidebar-open';
+  var SIDEBAR_LS_KEY = 'pinpoint:' + ENTRY + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
   var sidebarCount = null;
@@ -1210,7 +1210,7 @@
     sidebarCount = sidebar.querySelector('.ann-sb-count');
     sidebarSegInteract = sidebar.querySelector('[data-ann-mode="interact"]');
     sidebarSegAnnotate = sidebar.querySelector('[data-ann-mode="annotate"]');
-    // segmented 是 setMode 的纯鼠标入口（同 iOSAnnotate.setMode 语义）。
+    // segmented 是 setMode 的纯鼠标入口（同 pinpoint.setMode 语义）。
     sidebarSegInteract.addEventListener('click', function () { if (mode) toggleMode(); });
     sidebarSegAnnotate.addEventListener('click', function () { if (!mode) toggleMode(); });
     sidebarBody.addEventListener('click', function (e) {
@@ -2892,7 +2892,7 @@
   }
 
   // ---------- 对外 API（workbench 切 tab 时可主动调 render；也便于脚本化）----------
-  window.iOSAnnotate = {
+  window.pinpoint = {
     render: renderAll,
     setMode: function (on) { if (!!on !== mode) toggleMode(); },
     toggle: toggleMode,
@@ -2925,6 +2925,10 @@
     get annotations() { return marks.slice(); },
     get pageMarks() { return marksForActivePage(); }
   };
+
+  // Deprecated alias: external doc pages still call iOSAnnotate.* from their
+  // tail scripts (pre-rename); keep it pointing at the live API until they migrate.
+  window.iOSAnnotate = window.pinpoint;
 
   syncModeClass();
 
@@ -2974,7 +2978,7 @@
     currentPathname = newPathname;
     PAGE = pageKeyFromPathname(newPathname);
     PAGE_KEY = annotationSlug(PAGE);
-    LS_KEY = 'html-annotate:' + ENTRY + ':' + newPathname;
+    LS_KEY = 'pinpoint:' + ENTRY + ':' + newPathname;
     revision = 0;
     mutationVersion = 0;
     syncedMutationVersion = 0;

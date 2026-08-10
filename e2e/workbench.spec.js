@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 
 async function openWorkbench(page) {
   await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.iOSAnnotate);
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
 }
 
 async function saveAnnotation(page, target, comment) {
@@ -68,7 +68,7 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('library');
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('ios-preview-wb')).activePageId)).toBe('library');
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).activePageId)).toBe('library');
 });
 
 test('board mode switch isolates page lists and mounts web artboards', async ({ page }) => {
@@ -178,17 +178,17 @@ test('HTML board exports with comments: mark boxes HTML, no-css text, and long P
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
   await page.locator('#wbann-toggle').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().mode
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
   ))).toBe(true);
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(0);
 
   await page.evaluate(() => {
@@ -211,7 +211,7 @@ test('HTML board exports with comments: mark boxes HTML, no-css text, and long P
     clickEl('#s2', '导出评论 #s2');
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
   // Export reads the on-disk store — wait until the save has landed.
   await expect.poll(async () => page.evaluate(async () => {
@@ -321,7 +321,7 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
   // Authors do not stamp wb-html-surface; plain docs treat body as the hit surface.
   await expect.poll(() => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    return !!(w && w.iOSAnnotate);
+    return !!(w && w.pinpoint);
   })).toBe(true);
   expect(await page.evaluate(() => (
     document.querySelector('#wb-board-panel .wb-doc-frame')
@@ -332,7 +332,7 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
   // hovering in the same synchronous block measures a pre-scroll layout.
   await page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    w.iOSAnnotate.setMode(true);
+    w.pinpoint.setMode(true);
     w.document.documentElement.style.scrollBehavior = 'auto';
     w.document.documentElement.scrollTop = 800;
   });
@@ -379,11 +379,11 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
 
   const docState = () => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const st = w.iOSAnnotate.getState();
+    const st = w.pinpoint.getState();
     return { mode: st.mode, count: st.count, toolbar: w.document.getElementById('ann-toolbar').style.display };
   });
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
 
   // Embedded: the sidebar is the control surface, so the document hides its own toolbar.
@@ -399,7 +399,7 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
 
   // Prior tests may have left marks on the shared on-disk doc.
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
   await expect.poll(async () => (await docState()).count).toBe(0);
 
@@ -430,12 +430,12 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
   await page.locator('#wbboard-mode [data-board-mode="html"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
 
   await page.locator('#wbann-toggle').click();
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
 
   await page.evaluate(() => {
@@ -460,7 +460,7 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
 
   const docState = () => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    return w.iOSAnnotate.getState();
+    return w.pinpoint.getState();
   });
   const docTargetCount = () => page.evaluate(() => {
     const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
@@ -482,7 +482,7 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
   await expect(page.locator('#wbann-list')).not.toContainText('锚点失效');
 
   // Returning to the prior product view is enough; no manual scroll, resize,
-  // or iOSAnnotate.render() call should be required.
+  // or pinpoint.render() call should be required.
   await page.evaluate(() => {
     document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = false;
   });
@@ -496,13 +496,13 @@ test('HTML board: annotations on SVG elements are not falsely broken', async ({ 
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
 
   // Sidebar drives the iframe instance.
   await page.locator('#wbann-toggle').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().mode
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
   ))).toBe(true);
 
   // SVG elements have no offsetParent; the old probe falsely read them as hidden
@@ -561,19 +561,19 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
 
   // Seed two annotations on visible elements so bubbles have live anchors.
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
   await page.locator('#wbann-toggle').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().mode
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
   ))).toBe(true);
   // Prior tests in this suite save marks to the same on-disk doc; clear them so
   // the bubble count assertion is exact.
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(0);
   await page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
@@ -595,13 +595,13 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
     clickEl('#s2');
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
   // Toggle "render comments" from the sidebar; bubbles must appear in the doc overlay.
   await page.locator('#wbann-comments').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().renderComments
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().renderComments
   ))).toBe(true);
 
   const out = await page.evaluate(() => {
@@ -638,19 +638,19 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
   // Enter annotate mode so clicks open the composer.
   await page.locator('#wbann-toggle').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().mode
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
   ))).toBe(true);
   // Clean slate, then seed two annotations with live anchors.
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(0);
   await page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
@@ -672,7 +672,7 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
     clickEl('#s2');
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
   // Turn on render comments; the channel button must appear in the sidebar.
@@ -715,17 +715,17 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
   await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
   ))).toBe(true);
   await page.locator('#wbann-toggle').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().mode
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
   ))).toBe(true);
   await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.clear();
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(0);
   await page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
@@ -747,14 +747,14 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
     clickEl('#s2');
   });
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().count
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
   await page.locator('#wbann-comments').click();
   // Cycle inline → sidebar.
   await page.locator('#wbann-channel').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().bubbleLayout
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
   ))).toBe('sidebar');
   await expect(page.locator('#wbann-channel .wb-tool-label')).toHaveText('sidebar');
 
@@ -805,7 +805,7 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   // Cycling back to inline stops the gutter and brings iframe bubbles back.
   await page.locator('#wbann-channel').click();
   await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.iOSAnnotate.getState().bubbleLayout
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
   ))).toBe('inline');
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
   const back = await page.evaluate(() => {
@@ -1112,22 +1112,22 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
     await route.continue();
   });
 
-  await writer.evaluate(() => window.iOSAnnotate.setMode(true));
+  await writer.evaluate(() => window.pinpoint.setMode(true));
   const cells = writer.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await saveAnnotation(writer, cells.nth(0), 'first queued mark');
   await firstSaveStarted;
   await saveAnnotation(writer, cells.nth(1), 'second queued mark');
   releaseFirstSave();
 
-  await expect.poll(() => writer.evaluate(() => window.iOSAnnotate.marks.length)).toBe(2);
-  await expect.poll(() => observer.evaluate(() => window.iOSAnnotate.marks.length)).toBe(2);
+  await expect.poll(() => writer.evaluate(() => window.pinpoint.marks.length)).toBe(2);
+  await expect.poll(() => observer.evaluate(() => window.pinpoint.marks.length)).toBe(2);
 
   await writer.reload();
-  await writer.waitForFunction(() => window.iOSAnnotate);
-  await expect.poll(() => writer.evaluate(() => window.iOSAnnotate.marks.length)).toBe(2);
+  await writer.waitForFunction(() => window.pinpoint);
+  await expect.poll(() => writer.evaluate(() => window.pinpoint.marks.length)).toBe(2);
 
-  await writer.evaluate(() => window.iOSAnnotate.clear());
-  await expect.poll(() => observer.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
+  await writer.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => observer.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   const removedEndpoint = await writer.request.post('/clear', { data: { page: 'index' } });
   expect(removedEndpoint.status()).toBe(404);
 
@@ -1136,9 +1136,9 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
 
 test('sidebar annotation navigation focuses the owning frame, not the comment anchor', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.scrollIntoViewIfNeeded();
@@ -1157,14 +1157,14 @@ test('sidebar annotation navigation focuses the owning frame, not the comment an
     return Math.abs((cell.top + cell.height / 2) - (stage.top + stage.height / 2));
   })).toBeGreaterThan(100);
 
-  await page.evaluate(() => window.iOSAnnotate.clear());
+  await page.evaluate(() => window.pinpoint.clear());
 });
 
 test('bottom composer keeps focus while canvas clicks attach and inline targets', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).click();
@@ -1219,7 +1219,7 @@ test('bottom composer keeps focus while canvas clicks attach and inline targets'
 
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0])).toMatchObject({
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toMatchObject({
     content: '[@t:i3] 把颜色对齐',
     selector: expect.any(String),
     targets: [
@@ -1238,8 +1238,8 @@ test('bottom composer keeps focus while canvas clicks attach and inline targets'
 
 test('composer moves only from its drag handle and stays fixed in the viewport', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).click();
@@ -1277,7 +1277,7 @@ test('composer moves only from its drag handle and stays fixed in the viewport',
 
   await textarea.fill('记住这个位置');
   await box.locator('#ann-save').click();
-  await page.evaluate(() => window.iOSAnnotate.openMark(window.iOSAnnotate.marks[0].n));
+  await page.evaluate(() => window.pinpoint.openMark(window.pinpoint.marks[0].n));
   const reopened = await box.boundingBox();
   expect(reopened.x).toBeCloseTo(moved.x, 0);
   expect(reopened.y).toBeCloseTo(moved.y, 0);
@@ -1299,9 +1299,9 @@ test('composer moves only from its drag handle and stays fixed in the viewport',
 
 test('target pills locate, remove inline refs, and cancel existing edits', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).click();
@@ -1310,7 +1310,7 @@ test('target pills locate, remove inline refs, and cancel existing edits', async
   await box.locator('.ann-target-pill').hover();
   await box.locator('.ann-target-remove').click();
   await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(0);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 
   await cells.nth(0).click();
   await box.locator('#ann-target-mode-inline').click();
@@ -1345,19 +1345,19 @@ test('target pills locate, remove inline refs, and cancel existing edits', async
   await textarea.fill('不应保存');
   await box.locator('#ann-cancel').click();
   await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0].content)).toBe('已保存');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].content)).toBe('已保存');
 
   await page.locator('.ann-badge').first().click();
   await textarea.fill('换页也不应保存');
   await page.evaluate(() => window.workbench.setActivePage('components'));
   await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks[0].content)).toBe('已保存');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].content)).toBe('已保存');
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.iOSAnnotate.clear());
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   // Ensure the settings phone can scroll far enough for a top cell to leave the clip.
   await page.evaluate(() => {
@@ -1417,7 +1417,7 @@ test('frame scroll updates mark geometry and hides marks outside the phone clip'
   })).toBe(true);
 
   // Sidebar still lists the mark (scrolled-out ≠ broken).
-  await expect.poll(() => page.evaluate(() => window.iOSAnnotate.marks.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
 
   await page.evaluate(() => {
     const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');

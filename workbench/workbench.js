@@ -53,7 +53,7 @@ var sectionOpen = { pages: true, annotations: true };
 var annFilter = 'all';
 var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
 var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
-var LS_KEY = 'ios-preview-wb';
+var LS_KEY = 'pinpoint-wb';
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
 var SIDE_W_DEFAULT = 250;
@@ -560,7 +560,7 @@ function activeDocWindow() {
   if (!frame) return null;
   try {
     var w = frame.contentWindow;
-    return w && w.iOSAnnotate ? w : null;     // 跨域时读 contentWindow 会抛
+    return w && w.pinpoint ? w : null;     // 跨域时读 contentWindow 会抛
   } catch (e) {
     return null;
   }
@@ -568,7 +568,7 @@ function activeDocWindow() {
 
 function annotateApi() {
   var docWin = activeDocWindow();
-  return (docWin && docWin.iOSAnnotate) || window.iOSAnnotate;
+  return (docWin && docWin.pinpoint) || window.pinpoint;
 }
 
 /* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
@@ -713,7 +713,7 @@ var docAnnotateSeen = typeof WeakSet === 'function' ? new WeakSet() : null;
 function bindDocAnnotate() {
   var docWin = activeDocWindow();
   if (!docWin) return false;
-  var ann = docWin.iOSAnnotate;
+  var ann = docWin.pinpoint;
   if (docAnnotateSeen && !docAnnotateSeen.has(ann)) {
     docAnnotateSeen.add(ann);
     if (typeof ann.onUpdate === 'function') ann.onUpdate(scheduleAnnPanel);
@@ -1127,7 +1127,7 @@ function wireAnnotatePanel() {
 }
 
 function pollAnnotate() {
-  if (window.iOSAnnotate) wireAnnotatePanel();
+  if (window.pinpoint) wireAnnotatePanel();
   else setTimeout(pollAnnotate, 100);
 }
 

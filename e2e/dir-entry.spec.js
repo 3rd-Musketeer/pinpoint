@@ -29,7 +29,7 @@ test.afterEach(() => {
 
 test('registry dir entry appears as a workbench page and renders from /sites/', async ({ page }) => {
   await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.iOSAnnotate);
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
 
   // The page is board "web" — the nav lists pages of the active board mode.
   await page.locator('#wbboard-mode [data-board-mode="web"]').click();
@@ -49,11 +49,11 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
 
 test('/sites/<id>/ HTML injects the annotate client and saves into the entry bucket', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.iOSAnnotate);
+  await page.waitForFunction(() => window.pinpoint);
   expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-dir');
-  expect(await page.evaluate(() => !!window.__htmlAnnotate)).toBe(true);
+  expect(await page.evaluate(() => !!window.__pinpoint)).toBe(true);
 
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator('#doc-target').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
@@ -69,7 +69,7 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
 test('?annotate=off serves the same page with zero annotation surface', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html?annotate=off');
   await expect(page.locator('#doc-title')).toHaveText('E2E dir-site doc');
-  expect(await page.evaluate(() => !!window.__htmlAnnotate)).toBe(false);
+  expect(await page.evaluate(() => !!window.__pinpoint)).toBe(false);
   expect(await page.evaluate(() => window.__pinpointEntry || null)).toBe(null);
 });
 

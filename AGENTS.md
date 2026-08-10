@@ -85,7 +85,7 @@ serve time); those modules are pure and node-tested — keep them DOM-free.
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page (`mode`: `ios` \| `web` \| `html`) | `ios-kit.css` to “fix” one annotation |
-| `~/.html-annotate/registry.json` to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
+| `~/.pinpoint/registry.json` to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
 
 **Board modes:** the Pages list has an **iOS / Web / HTML** switch. Lists are isolated; Component Library is iOS-only.
 
@@ -111,8 +111,9 @@ document living outside this repo.
 
 **Annotating a doc page:** the document only needs a tail script that pulls
 `/annotate.js` **when `location.hostname` is localhost**, then calls
-`iOSAnnotate.setFloatingToolbar(true)` when opened standalone (the toolbar hides
-itself when there is no workbench sidebar). Annotate treats the whole document as
+`pinpoint.setFloatingToolbar(true)` when opened standalone (the toolbar hides
+itself when there is no workbench sidebar). The page-world API is `window.pinpoint`;
+`window.iOSAnnotate` survives only as a deprecated alias for pre-rename doc pages. Annotate treats the whole document as
 the hit surface — authors do **not** need `wb-html-surface` / `data-ann-surface`
 on content (those markers remain for Web-board fragments inlined into the
 workbench, where sidebar/chrome must stay unselectable).
@@ -237,12 +238,14 @@ annotation and never enters `mentions[]`; `[@a:id]` keeps its cross-annotation m
   without `screenId` fall back to centering the raw anchor.
 - Canvas draws **live anchors only**. If a selector no longer resolves after HTML edits, the annotation stays in the sidebar as **锚点失效** (no ghost frame). Brokenness is computed at render time, not stored.
 
-Annotations live in per-entry buckets `~/.html-annotate/<entry-id>/*.json`
-(**disk SSOT**) as `annotations[]` — entries come from `~/.html-annotate/registry.json`
-(`HTML_ANNOTATE_REGISTRY` overrides); this repo annotates under entry `pinpoint`.
+Annotations live in per-entry buckets `~/.pinpoint/<entry-id>/*.json`
+(**disk SSOT**) as `annotations[]` — entries come from `~/.pinpoint/registry.json`
+(`PINPOINT_REGISTRY` overrides); this repo annotates under entry `pinpoint`.
 Read the exact default-bucket path from the `dataDir` field of
-`GET /health`; `HTML_ANNOTATE_DATA_DIR`
-overrides the data root wholesale (e2e uses this).
+`GET /health`; `PINPOINT_DATA_DIR`
+overrides the data root wholesale (e2e uses this). The pre-rename
+`HTML_ANNOTATE_DATA_DIR` / `HTML_ANNOTATE_REGISTRY` still apply with a deprecation
+warning when the new name is absent.
 `POST /save` requires `baseRevision` (integer ≥ 0; mismatch → `409 revision_conflict` with
 the disk doc); clear uses the same save queue with `annotations: []`
 (there is no `/clear` route). An explicit `entry` that is not registered is a loud
@@ -253,15 +256,15 @@ the client hydrates from disk; `GET /events` (SSE, `event: annotations`, payload
 `GET /annotations` (no page) is a debug aggregate flattening every bucket into
 `[{entry, ...doc}]`; per-page reads take `?entry=<id>`, as does `GET /images/<name>`.
 **Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
-(`ios-preview-wb`) — viewer state, not synced.
+(`pinpoint-wb`) — viewer state, not synced.
 
 ## Registry and injection contract
 
 **登记过才注入** — the annotate client only ever lands on registered targets; everything
 else opens byte-identical pages with zero annotation surface.
 
-**Registry** (`server/lib/registry.js`): `~/.html-annotate/registry.json`,
-`HTML_ANNOTATE_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
+**Registry** (`server/lib/registry.js`): `~/.pinpoint/registry.json`,
+`PINPOINT_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
 `{id, title?, kind: "dir"|"url", path? | url?, board?}`; id must match
 `^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`web`/`html`)
 only matters for dir entries' workbench page mode. A missing file means the default
@@ -275,7 +278,7 @@ visible on `GET /health` (registry summary — `entries` there is a **count**) a
 
 1. **Workbench's own pages** — `ios-kit.js` self-injects `/annotate.js` on loopback /
    `.localhost` hosts only (opt out: `<html data-annotate="off">`). Standalone docs copy the
-   same tail script and call `iOSAnnotate.setFloatingToolbar(true)` when not embedded — see
+   same tail script and call `pinpoint.setFloatingToolbar(true)` when not embedded — see
    `previews/doc-library/sample-report.html`.
 2. **`dir` entries → `/sites/`** — `server/sites-api.js` serves the registered directory
    read-only under `/sites/<entry-id>/<path…>` (GET/HEAD only, 405 otherwise). The registry
@@ -344,7 +347,7 @@ instance layers private content on top without touching tracked files:
 
 - `previews/_index.local.json` (gitignored) overrides the page manifest.
 - Component dirs not listed in `kits/ios/components/_index.json` are auto-discovered and appended.
-- `~/.html-annotate/registry.json` (machine-local) registers external dirs/urls as review
+- `~/.pinpoint/registry.json` (machine-local) registers external dirs/urls as review
   targets — no repo change at all.
 - `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides — used by e2e and release verification.
 

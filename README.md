@@ -227,7 +227,7 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
    bottom composer (pills reference targets; `[indicator N]` inlines them), paste reference
    images, draw move-arrows.
 2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT in per-entry
-   buckets under `~/.html-annotate/<entry-id>/`, exposed by `GET /health`; revisioned,
+   buckets under `~/.pinpoint/<entry-id>/`, exposed by `GET /health`; revisioned,
    SSE-synced) grouped by `pageId → section → screenId`, edits the routed source file, and the
    board hot-reloads. The agent summarizes what changed and why in the conversation.
 3. Click any sidebar comment to focus its owning frame (the same geometry as frame navigation),
@@ -242,7 +242,7 @@ Annotations are per-machine (solo human + agent loop), not a multiplayer comment
 ## Registry and injection
 
 The annotation layer never touches a page you didn't register — **登记过才注入**. The
-registry at `~/.html-annotate/registry.json` (`HTML_ANNOTATE_REGISTRY` overrides) declares
+registry at `~/.pinpoint/registry.json` (`PINPOINT_REGISTRY` overrides) declares
 entries:
 
 ```json
@@ -260,7 +260,7 @@ entries:
 pinpoint-only registry; malformed JSON or invalid entries fall back / are skipped loudly and
 the failure is visible on `GET /health` (which also reports `dataRoot` and the default-bucket
 `dataDir`). Entry ids match `^[a-z0-9][a-z0-9-]*$`; annotations land in per-entry buckets
-`~/.html-annotate/<entry-id>/` (`HTML_ANNOTATE_DATA_DIR` overrides the root wholesale).
+`~/.pinpoint/<entry-id>/` (`PINPOINT_DATA_DIR` overrides the root wholesale).
 
 Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`):
 
@@ -404,7 +404,7 @@ files stay untouched, so pulling template updates is a clean overwrite of
 For a long-lived instance, layer private content without touching tracked files:
 gitignored `previews/_index.local.json` overrides the page manifest; component dirs outside
 `kits/ios/components/_index.json` are auto-discovered; and the machine-local registry
-(`~/.html-annotate/registry.json`) adds external dirs as read-only pages without any repo
+(`~/.pinpoint/registry.json`) adds external dirs as read-only pages without any repo
 change at all. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
 (e2e and release verification run in this mode).
 

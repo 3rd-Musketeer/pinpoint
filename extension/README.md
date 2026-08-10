@@ -2,8 +2,8 @@
 
 Injects the pinpoint annotate client (`/annotate.js`) into any local-dev page
 whose origin matches a `url` entry in the pinpoint registry
-(`~/.html-annotate/registry.json`). Annotations made on the injected page land
-in that entry's bucket under `~/.html-annotate/<entry-id>/`, served by the
+(`~/.pinpoint/registry.json`). Annotations made on the injected page land
+in that entry's bucket under `~/.pinpoint/<entry-id>/`, served by the
 persistent pinpoint service (`https://pinpoint.localhost`).
 
 **Main entry: click the pinpoint toolbar icon** to open/close the annotation

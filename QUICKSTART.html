@@ -313,7 +313,7 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
         </div>
         <div class="term">
           <dt>Registry<small>登记注入</small></dt>
-          <dd>本机 <code class="inline">~/.html-annotate/registry.json</code> 登记评审目标：<code class="inline">dir</code> 类由服务在 <code class="inline">/sites/&lt;id&gt;/</code> 只读 serve 并自动注入标注；<code class="inline">url</code> 类由浏览器扩展按 origin 匹配注入。<b>登记过才注入</b>——file://、自起 server、未登记 origin 一律干净。标注按 entry 分桶落盘 <code class="inline">~/.html-annotate/&lt;entry-id&gt;/</code>。</dd>
+          <dd>本机 <code class="inline">~/.pinpoint/registry.json</code> 登记评审目标：<code class="inline">dir</code> 类由服务在 <code class="inline">/sites/&lt;id&gt;/</code> 只读 serve 并自动注入标注；<code class="inline">url</code> 类由浏览器扩展按 origin 匹配注入。<b>登记过才注入</b>——file://、自起 server、未登记 origin 一律干净。标注按 entry 分桶落盘 <code class="inline">~/.pinpoint/&lt;entry-id&gt;/</code>。</dd>
         </div>
       </dl>
     </div>
@@ -361,7 +361,7 @@ npm run dev        <span class="c"># → https://pinpoint.localhost/index.html</
   <section id="boundaries">
     <h2>边界</h2>
     <div class="flat">
-      <p class="flat-row"><b>标注是单机的。</b>按 registry entry 分桶存储在本机 <code class="inline">~/.html-annotate/&lt;entry-id&gt;/</code>（默认桶路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不扩成多人评论系统。</p>
+      <p class="flat-row"><b>标注是单机的。</b>按 registry entry 分桶存储在本机 <code class="inline">~/.pinpoint/&lt;entry-id&gt;/</code>（默认桶路径见 <code class="inline">/health</code> 的 <code class="inline">dataDir</code>）。工作单元是一个人加他的 agent，不扩成多人评论系统。</p>
       <p class="flat-row"><b>登记过才注入。</b>标注只落在 registry 登记过的目标上：dir 类由服务注入、url 类由浏览器扩展注入；file://、自起 server、未登记 origin 打开的是完全干净的字节，导出的 PNG / HTML 也不含注入脚本。</p>
       <p class="flat-row"><b>机壳不是编辑面。</b>bezel / 状态栏 / 底部横条由加载器统一渲染，agent 的契约中也禁止修改；评审意见针对内容和布局。</p>
     </div>

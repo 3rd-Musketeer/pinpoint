@@ -7,7 +7,7 @@ import test from 'node:test';
 import { createAnnotationStore } from './annotation-store.js';
 
 function withStore(t) {
-  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'ios-preview-store-'));
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-store-'));
   t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
   return {
     dataDir,

@@ -74,7 +74,7 @@
   var h = location.hostname;
   if (h !== 'localhost' && h !== '127.0.0.1' && h !== '::1' && !h.endsWith('.localhost')) return;
   if (document.documentElement.getAttribute('data-annotate') === 'off') return;
-  if (window.__htmlAnnotate || document.querySelector('script[data-ios-annotate]')) return;
+  if (window.__pinpoint || document.querySelector('script[data-ios-annotate]')) return;
   var s = document.createElement('script');
   s.src = '/annotate.js';
   s.async = true;
@@ -83,7 +83,7 @@
     // 独立打开这份文档时给个浮动工具条；被 workbench 的 HTML 板 iframe 承载时
     // 控制面是侧栏，再出一个工具条会变成两套互相打架的控件。
     var embedded = window.top !== window.self;
-    if (window.iOSAnnotate && !embedded) window.iOSAnnotate.setFloatingToolbar(true);
+    if (window.pinpoint && !embedded) window.pinpoint.setFloatingToolbar(true);
   });
   document.body.appendChild(s);
 })();

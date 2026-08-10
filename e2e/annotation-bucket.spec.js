@@ -22,8 +22,8 @@ test.afterEach(() => {
 
 test('saved annotations land in the pinpoint entry bucket', async ({ page }) => {
   await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.iOSAnnotate);
-  await page.evaluate(() => window.iOSAnnotate.setMode(true));
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await page.evaluate(() => window.pinpoint.setMode(true));
 
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.click();
