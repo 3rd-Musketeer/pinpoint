@@ -3,15 +3,7 @@ import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
 import { annRowModel } from '../lib/ann-row.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 import { BoardMountManager } from './lib/board-mount-session.js';
-import {
-  centerScrollForPoint,
-  closestBoardSection,
-  findBoardFrame,
-  findBoardSection,
-  focusScrollForRect,
-  hitTestBoardNavigation,
-  measureBoardNavigation
-} from './lib/board-navigation.js';
+import { closestBoardSection } from './lib/board-navigation.js';
 import {
   ContractError,
   validateBoard,
@@ -30,6 +22,25 @@ import {
   requestExportImage,
   wireExportControls
 } from './export-core.js';
+import { readPrefs, savePrefs, replacePrefs } from './lib/prefs.js';
+import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
+import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
+import {
+  currentBoardNavigationModel,
+  focusWorkbenchFrame,
+  frameBoardInView,
+  isTypingTarget,
+  rebuildSectionNavigator,
+  refreshBoardNavigationModel,
+  resetBoardNavOnLoadFailure,
+  scheduleMinimapUpdate,
+  setMinimapOpen,
+  syncZoomHud,
+  updateMinimapAvailability,
+  updateSectionNavigatorActive,
+  updateSectionNavigatorVisibility,
+  wireCanvasHud
+} from './board-nav.js';
 
 var LIB_ID = 'library';
 var WEB_LIB_ID = 'web-library';
@@ -40,7 +51,7 @@ var SYSTEM_PAGES = { components: true };
 // web = web app 画板（fragment，无机身）
 // html = 完整独立 HTML 文档（汇报页一类），iframe 承载，见 shell "doc"
 var BOARD_MODES = { ios: true, web: true, html: true };
-// activePageId / boardMode / pageManifest / activeBoard 归 app/store.js（wbGet/wbSet 读写）
+// activePageId / boardMode / pageManifest / activeBoard / activeGroup 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
 var pagesNav = document.getElementById('wbpages');
 var boardModeBox = document.getElementById('wbboard-mode');
@@ -58,41 +69,21 @@ var annList = document.getElementById('wbann-list');
 var annStatus = document.getElementById('wbann-status');
 var annCountEl = document.getElementById('wbann-count');
 var annFilterBox = document.getElementById('wbann-filter');
-var activeGroup = 'lock';
 var sectionOpen = { pages: true, annotations: true };
 var annFilter = 'all';
 var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
 var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
-var LS_KEY = 'pinpoint-wb';
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
 var SIDE_W_DEFAULT = 250;
-var ZOOM_MIN = 0.25;
-var ZOOM_MAX = 2.5;
 var sideW = SIDE_W_DEFAULT;
 var sideCollapsed = false;
-var prefsCache;
 var libraryScrollHandler;
 var includeCache = {};
 var boardPanel;
 var activeDocByPage = {};    // pageId → screenId，切页回来记得上次看的版本
-var boardNavigationModel = null;
 var boardLoadGen = 0;
 var mountManager = new BoardMountManager();
-
-function readPrefs() {
-  if (!prefsCache) {
-    try { prefsCache = JSON.parse(localStorage.getItem(LS_KEY) || '{}'); }
-    catch (e) { prefsCache = {}; }
-  }
-  return prefsCache;
-}
-
-function savePrefs(patch) {
-  prefsCache = Object.assign({}, readPrefs(), patch);
-  localStorage.setItem(LS_KEY, JSON.stringify(prefsCache));
-  return prefsCache;
-}
 
 function syncSegOn(box, attr, val, sel) {
   if (!box) return;
@@ -243,30 +234,8 @@ function flushZoomSave() {
 var viewportSaveT;
 var restoringViewport = false;
 
-function clampCanvasZoom(z) {
-  z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, z));
-  return Math.round(z * 100) / 100;
-}
-
 function stageScrollPatch() {
   return { scrollLeft: stage.scrollLeft, scrollTop: stage.scrollTop };
-}
-
-function readPageViewports() {
-  var raw = readPrefs().pageViewports;
-  return raw && typeof raw === 'object' ? raw : {};
-}
-
-function pageViewport(pageId) {
-  var all = readPageViewports();
-  return all[pageId] || null;
-}
-
-function savePageViewport(pageId, patch) {
-  if (!pageId) return;
-  var all = Object.assign({}, readPageViewports());
-  all[pageId] = Object.assign({}, all[pageId] || {}, patch);
-  savePrefs({ pageViewports: all });
 }
 
 function resolveBootPageId(prefs) {
@@ -289,8 +258,7 @@ function migrateLegacyCanvasZoom(pageId) {
   }
   var next = Object.assign({}, prefs, { pageViewports: all });
   delete next.canvasZoom;
-  prefsCache = next;
-  localStorage.setItem(LS_KEY, JSON.stringify(prefsCache));
+  replacePrefs(next);
 }
 
 function zoomForPage(pageId) {
@@ -374,17 +342,6 @@ function boardZoom(val) {
   return String(val);
 }
 
-function formatZoomLabel(z) {
-  var n = Math.round(parseFloat(z) * 100);
-  if (!isFinite(n)) n = 100;
-  return n + '%';
-}
-
-function syncZoomHud(z) {
-  var label = document.getElementById('wbzoom-label');
-  if (label) label.textContent = formatZoomLabel(z || currentCanvasZoom());
-}
-
 function applyLockFont(val) {
   document.documentElement.setAttribute('data-lock-font', val);
   syncSegOn(settingsEl.querySelector('#lockfont'), 'lock-font', val, '.wb-font-opt');
@@ -465,10 +422,6 @@ function restorePrefs() {
   });
 }
 
-function currentCanvasZoom() {
-  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom')) || 1;
-}
-
 function refit() {
   if (window.iOSKit) window.iOSKit.fitAll();
   var _a = annotateApi(); if (_a) _a.render();
@@ -508,7 +461,7 @@ function wireSections() {
 
 function scrollToGroup(groupId, options) {
   options = options || {};
-  activeGroup = groupId;
+  wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
   var el = document.getElementById('lib-' + groupId);
   if (el) el.scrollIntoView({ behavior: options.smooth === false ? 'auto' : 'smooth', block: 'start' });
@@ -524,9 +477,9 @@ function switchPage(id, options) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
       if (first) {
-        activeGroup = first.getAttribute('data-ann-section')
+        wbSet({ activeGroup: first.getAttribute('data-ann-section')
           || first.getAttribute('data-ann-group')
-          || activeGroup;
+          || wbGet().activeGroup });
       }
       refreshAnnPanel();
     });
@@ -549,8 +502,8 @@ function wireLibraryScrollSpy() {
         stage.scrollTop + stage.clientHeight / 2
       );
       var best = closest && closest.id;
-      if (best && best !== activeGroup) {
-        activeGroup = best;
+      if (best && best !== wbGet().activeGroup) {
+        wbSet({ activeGroup: best });
         updateSectionNavigatorActive(best);
         if (annFilter === 'tab') refreshAnnPanel();
       }
@@ -999,7 +952,7 @@ function refreshAnnPanel() {
   if (annFilter === 'tab') {
     marks = marks.filter(function (m) {
       var sec = m.section || m.group;
-      return !sec || sec === activeGroup;
+      return !sec || sec === wbGet().activeGroup;
     });
   }
   // Build a row model + signature; skip the innerHTML rebuild when the list
@@ -1019,7 +972,7 @@ function refreshAnnPanel() {
     row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
     return row;
   });
-  var sig = annFilter + '|' + activeGroup + '|' + rows.map(function (r) {
+  var sig = annFilter + '|' + wbGet().activeGroup + '|' + rows.map(function (r) {
     return r.key + ':' + r.cap + ':' + r.preview + ':' + r.broken + ':' + r.tags;
   }).join('~');
   if (sig === annListSig && annList.querySelector('[data-ann-n]')) {
@@ -1340,490 +1293,6 @@ function afterMount(panel, session) {
   }, 0);
 }
 
-/** Scroll so board content sits near the viewer top-left (not lost in the empty pad). */
-function frameBoardInView(panel, options) {
-  options = options || {};
-  if (!stage || !panel) return;
-  if (!options.force && pageViewport(options.pageId || wbGet().activePageId)) return;
-  var cs = getComputedStyle(panel);
-  var padL = parseFloat(cs.paddingLeft) || 0;
-  var padT = parseFloat(cs.paddingTop) || 0;
-  var inset = 40;
-  var left = Math.max(0, padL - inset);
-  var top = Math.max(0, padT - inset);
-  if (options.smooth) {
-    stage.scrollTo({ left: left, top: top, behavior: 'smooth' });
-  } else {
-    stage.scrollLeft = left;
-    stage.scrollTop = top;
-  }
-}
-
-/** Refresh the single Canvas → Section → Frame geometry source used by both navigators. */
-function refreshBoardNavigationModel(panel) {
-  panel = panel || document.getElementById('wb-board-panel');
-  boardNavigationModel = measureBoardNavigation(stage, panel);
-  return boardNavigationModel;
-}
-
-function currentBoardNavigationModel() {
-  return boardNavigationModel || refreshBoardNavigationModel();
-}
-
-/** Union rect (stage-scroll coords) of all visible board sections. */
-function boardContentBounds(panel) {
-  var measured = panel ? refreshBoardNavigationModel(panel) : currentBoardNavigationModel();
-  return measured && measured.bounds;
-}
-
-/** Recenter viewport on the midpoint of all content frames. */
-function recenterBoard() {
-  var panel = document.getElementById('wb-board-panel');
-  if (!stage || !panel) return;
-  var bounds = boardContentBounds(panel);
-  if (!bounds) {
-    frameBoardInView(panel, { force: true, smooth: true });
-    return;
-  }
-  var left = Math.max(0, bounds.left + bounds.width / 2 - stage.clientWidth / 2);
-  var top = Math.max(0, bounds.top + bounds.height / 2 - stage.clientHeight / 2);
-  stage.scrollTo({ left: left, top: top, behavior: 'smooth' });
-}
-
-var minimapWrap = document.getElementById('wbminimap-wrap');
-var minimapEl = document.getElementById('wbminimap');
-var minimapCanvas = document.getElementById('wbminimap-canvas');
-var minimapToggleBtn = document.getElementById('wbminimap-toggle');
-var minimapRaf = 0;
-var minimapLayout = null; // { bounds, scale, ox, oy, cw, ch, sections, frames }
-var minimapOpen = false;
-
-var MINIMAP_COLORS = [
-  { section: 'rgba(0,122,255,.14)', active: 'rgba(0,122,255,.24)', stroke: 'rgba(0,122,255,.55)', frame: 'rgba(0,82,204,.72)' },
-  { section: 'rgba(52,199,89,.14)', active: 'rgba(52,199,89,.24)', stroke: 'rgba(35,150,67,.55)', frame: 'rgba(30,125,56,.72)' },
-  { section: 'rgba(255,149,0,.15)', active: 'rgba(255,149,0,.25)', stroke: 'rgba(210,112,0,.56)', frame: 'rgba(184,92,0,.74)' },
-  { section: 'rgba(175,82,222,.14)', active: 'rgba(175,82,222,.24)', stroke: 'rgba(134,52,173,.55)', frame: 'rgba(111,43,145,.72)' },
-  { section: 'rgba(90,200,250,.16)', active: 'rgba(90,200,250,.27)', stroke: 'rgba(41,151,203,.58)', frame: 'rgba(31,123,167,.74)' },
-  { section: 'rgba(255,45,85,.13)', active: 'rgba(255,45,85,.23)', stroke: 'rgba(208,30,65,.54)', frame: 'rgba(176,25,55,.72)' }
-];
-
-var sectionNavWrap = document.getElementById('wbsection-nav-wrap');
-var sectionNavToggleBtn = document.getElementById('wbsection-nav-toggle');
-var sectionNavEl = document.getElementById('wbsection-nav');
-var sectionNavList = document.getElementById('wbsection-nav-list');
-var sectionNavPosition = document.getElementById('wbsection-nav-position');
-var sectionNavStatus = document.getElementById('wbsection-nav-status');
-var sectionNavOpen = false;
-var sectionNavItems = [];
-
-function setMinimapOpen(on) {
-  minimapOpen = !!on && !!minimapWrap && !minimapWrap.hidden;
-  if (minimapEl) minimapEl.hidden = !minimapOpen;
-  if (minimapToggleBtn) {
-    minimapToggleBtn.classList.toggle('on', minimapOpen);
-    minimapToggleBtn.setAttribute('aria-expanded', minimapOpen ? 'true' : 'false');
-    minimapToggleBtn.setAttribute('aria-label', minimapOpen ? '关闭缩略图导航' : '打开缩略图导航');
-    minimapToggleBtn.title = minimapOpen ? '关闭缩略图导航' : '打开缩略图导航';
-  }
-  if (minimapOpen) {
-    scheduleMinimapUpdate();
-  }
-}
-
-function updateMinimapAvailability(panel) {
-  if (!minimapWrap) return null;
-  panel = panel || document.getElementById('wb-board-panel');
-  var measured = panel ? refreshBoardNavigationModel(panel) : null;
-  var available = !!(measured && measured.bounds.width >= 8 && measured.bounds.height >= 8);
-  minimapWrap.hidden = !available;
-  if (!available) {
-    minimapLayout = null;
-    setMinimapOpen(false);
-  }
-  return available ? measured : null;
-}
-
-function scheduleMinimapUpdate() {
-  if (minimapRaf || !minimapOpen) return;
-  minimapRaf = requestAnimationFrame(function () {
-    minimapRaf = 0;
-    updateMinimap();
-  });
-}
-
-function updateMinimap() {
-  if (!minimapWrap || !minimapEl || !minimapCanvas || !stage || !minimapOpen) return;
-  var panel = document.getElementById('wb-board-panel');
-  var measured = updateMinimapAvailability(panel);
-  var bounds = measured && measured.bounds;
-  if (!bounds) return;
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var cssW = minimapCanvas.clientWidth;
-  var cssH = minimapCanvas.clientHeight;
-  if (cssW < 8 || cssH < 8) return;
-  var cw = Math.round(cssW * dpr);
-  var ch = Math.round(cssH * dpr);
-  if (minimapCanvas.width !== cw || minimapCanvas.height !== ch) {
-    minimapCanvas.width = cw;
-    minimapCanvas.height = ch;
-  }
-  var pad = 6 * dpr;
-  var scale = Math.min((cw - pad * 2) / bounds.width, (ch - pad * 2) / bounds.height);
-  var ox = (cw - bounds.width * scale) / 2;
-  var oy = (ch - bounds.height * scale) / 2;
-  minimapLayout = {
-    bounds: bounds,
-    scale: scale,
-    ox: ox,
-    oy: oy,
-    cw: cw,
-    ch: ch,
-    dpr: dpr,
-    sections: measured.sections,
-    frames: measured.frames
-  };
-
-  var ctx = minimapCanvas.getContext('2d');
-  ctx.clearRect(0, 0, cw, ch);
-  // Canvas layer
-  ctx.fillStyle = 'rgba(15,23,42,.045)';
-  ctx.fillRect(0, 0, cw, ch);
-
-  // Section layer
-  var sectionRects = measured.sections || [];
-  minimapEl.setAttribute('data-minimap-section-count', String(sectionRects.length));
-  minimapEl.setAttribute('data-minimap-frame-count', String(measured.frames.length));
-  for (var s = 0; s < sectionRects.length; s++) {
-    var section = sectionRects[s];
-    var sectionColor = MINIMAP_COLORS[section.colorIndex % MINIMAP_COLORS.length];
-    var sx = ox + (section.left - bounds.left) * scale;
-    var sy = oy + (section.top - bounds.top) * scale;
-    var sw = Math.max(4 * dpr, section.width * scale);
-    var sh = Math.max(4 * dpr, section.height * scale);
-    var sr = Math.min(5 * dpr, sw / 4, sh / 4);
-    ctx.fillStyle = section.id === activeGroup ? sectionColor.active : sectionColor.section;
-    ctx.strokeStyle = sectionColor.stroke;
-    ctx.lineWidth = section.id === activeGroup ? Math.max(1.5 * dpr, 2) : Math.max(.75 * dpr, 1);
-    roundRect(ctx, sx, sy, sw, sh, sr);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  // Frame layer
-  var frameRects = measured.frames;
-  for (var i = 0; i < frameRects.length; i++) {
-    var frame = frameRects[i];
-    var frameColor = MINIMAP_COLORS[frame.colorIndex % MINIMAP_COLORS.length];
-    var x = ox + (frame.left - bounds.left) * scale;
-    var y = oy + (frame.top - bounds.top) * scale;
-    var w = Math.max(2 * dpr, frame.width * scale);
-    var h = Math.max(2 * dpr, frame.height * scale);
-    var rr = Math.min(4 * dpr, w / 4, h / 4);
-    ctx.fillStyle = frameColor.frame;
-    roundRect(ctx, x, y, w, h, rr);
-    ctx.fill();
-  }
-
-  // Viewport window
-  var vx = ox + (stage.scrollLeft - bounds.left) * scale;
-  var vy = oy + (stage.scrollTop - bounds.top) * scale;
-  var vw = stage.clientWidth * scale;
-  var vh = stage.clientHeight * scale;
-  ctx.strokeStyle = 'rgba(0,122,255,.9)';
-  ctx.lineWidth = Math.max(1.5 * dpr, 2);
-  ctx.fillStyle = 'rgba(0,122,255,.12)';
-  roundRect(ctx, vx, vy, vw, vh, 3 * dpr);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
-}
-
-function stageViewportMetrics() {
-  return {
-    width: stage.clientWidth,
-    height: stage.clientHeight,
-    scrollWidth: stage.scrollWidth,
-    scrollHeight: stage.scrollHeight
-  };
-}
-
-/** Shared focus behavior for both navigators: center fitting targets, leading-align large ones. */
-function focusStageOnRect(rect, options) {
-  if (!stage || !rect) return;
-  options = options || {};
-  var target = focusScrollForRect(rect, stageViewportMetrics(), { inset: options.inset || 24 });
-  stage.scrollTo({
-    left: target.left,
-    top: target.top,
-    behavior: options.smooth === false ? 'auto' : 'smooth'
-  });
-}
-
-function centerStageOnPoint(x, y, options) {
-  if (!stage) return;
-  options = options || {};
-  var target = centerScrollForPoint({ x: x, y: y }, stageViewportMetrics());
-  stage.scrollTo({
-    left: target.left,
-    top: target.top,
-    behavior: options.smooth === false ? 'auto' : 'smooth'
-  });
-}
-
-function minimapJump(clientX, clientY) {
-  if (!minimapLayout || !stage || !minimapCanvas) return;
-  var rect = minimapCanvas.getBoundingClientRect();
-  var mx = ((clientX - rect.left) / rect.width) * minimapLayout.cw;
-  var my = ((clientY - rect.top) / rect.height) * minimapLayout.ch;
-  var b = minimapLayout.bounds;
-  var cx = b.left + (mx - minimapLayout.ox) / minimapLayout.scale;
-  var cy = b.top + (my - minimapLayout.oy) / minimapLayout.scale;
-  var hit = hitTestBoardNavigation(minimapLayout, cx, cy, { framePadding: 48 });
-  if (hit.kind === 'frame' || hit.kind === 'section') {
-    focusStageOnRect(hit.target);
-    return;
-  }
-  centerStageOnPoint(cx, cy);
-}
-
-function wireMinimap() {
-  if (!minimapWrap || !minimapEl || !minimapCanvas) return;
-  minimapEl.addEventListener('click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-    minimapJump(e.clientX, e.clientY);
-  });
-  if (minimapToggleBtn) {
-    minimapToggleBtn.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      setMinimapOpen(!minimapOpen);
-    });
-  }
-  window.addEventListener('resize', function () {
-    updateMinimapAvailability();
-    scheduleMinimapUpdate();
-  });
-}
-
-function setSectionNavigatorOpen(on) {
-  sectionNavOpen = !!on && !!sectionNavWrap && !sectionNavWrap.hidden;
-  if (sectionNavEl) sectionNavEl.hidden = !sectionNavOpen;
-  if (sectionNavToggleBtn) {
-    sectionNavToggleBtn.classList.toggle('on', sectionNavOpen);
-    sectionNavToggleBtn.setAttribute('aria-expanded', sectionNavOpen ? 'true' : 'false');
-    sectionNavToggleBtn.title = sectionNavOpen ? '关闭 Section Navigator' : '打开 Section Navigator';
-  }
-  updateSectionNavigatorActive(activeGroup);
-}
-
-function collectSectionNavigatorItems(model) {
-  if (!model) return [];
-  return model.sections.map(function (section) {
-    return {
-      id: section.id,
-      title: section.title,
-      screens: section.frames.filter(function (frame) { return !!frame.screenId; }).map(function (frame) {
-        return {
-          id: frame.screenId,
-          title: frame.title
-        };
-      })
-    };
-  }).filter(function (item) { return item.id && item.id !== '_empty'; });
-}
-
-function closestSectionNavigatorGroup() {
-  if (!stage) return null;
-  var section = closestBoardSection(
-    currentBoardNavigationModel(),
-    stage.scrollTop + stage.clientHeight / 2
-  );
-  return section && section.id;
-}
-
-function sectionNavigatorShouldShow(panel) {
-  if (!stage || !panel || !sectionNavItems.length) return false;
-  if (sectionNavItems.length > 1) return true;
-  var bounds = boardContentBounds(panel);
-  if (!bounds) return false;
-  return bounds.width > stage.clientWidth + 24 || bounds.height > stage.clientHeight + 24;
-}
-
-function updateSectionNavigatorVisibility() {
-  if (!sectionNavWrap) return;
-  var panel = document.getElementById('wb-board-panel');
-  var visible = sectionNavigatorShouldShow(panel);
-  sectionNavWrap.hidden = !visible;
-  if (!visible) setSectionNavigatorOpen(false);
-}
-
-function updateSectionNavigatorActive(groupId) {
-  if (!sectionNavList || !sectionNavItems.length) return;
-  var index = sectionNavItems.findIndex(function (item) { return item.id === groupId; });
-  if (index < 0) index = 0;
-  var current = sectionNavItems[index];
-  [].slice.call(sectionNavList.querySelectorAll('.wb-section-nav-item')).forEach(function (item) {
-    var on = item.getAttribute('data-nav-group') === current.id;
-    item.classList.toggle('on', on);
-    var button = item.querySelector('.wb-section-nav-section');
-    if (button) {
-      if (on) button.setAttribute('aria-current', 'location');
-      else button.removeAttribute('aria-current');
-    }
-  });
-  var position = String(index + 1) + ' / ' + String(sectionNavItems.length);
-  if (sectionNavPosition) sectionNavPosition.textContent = position;
-  if (sectionNavStatus) sectionNavStatus.textContent = position;
-  if (sectionNavToggleBtn) {
-    sectionNavToggleBtn.setAttribute(
-      'aria-label',
-      (sectionNavOpen ? '关闭' : '打开') + ' Section Navigator，当前 ' + current.title + '，' + position
-    );
-  }
-}
-
-function rebuildSectionNavigator(panel) {
-  if (!sectionNavList || !sectionNavWrap) return;
-  var model = updateMinimapAvailability(panel);
-  sectionNavItems = collectSectionNavigatorItems(model);
-  sectionNavList.innerHTML = '';
-
-  sectionNavItems.forEach(function (entry) {
-    var item = document.createElement('div');
-    item.className = 'wb-section-nav-item';
-    item.setAttribute('data-nav-group', entry.id);
-
-    var sectionButton = document.createElement('button');
-    sectionButton.type = 'button';
-    sectionButton.className = 'wb-section-nav-section';
-    sectionButton.setAttribute('data-nav-group', entry.id);
-    sectionButton.title = entry.title;
-    var label = document.createElement('span');
-    label.className = 'wb-section-nav-label';
-    label.textContent = entry.title;
-    sectionButton.appendChild(label);
-    item.appendChild(sectionButton);
-
-    var screens = document.createElement('div');
-    screens.className = 'wb-section-nav-screens';
-    entry.screens.forEach(function (screen) {
-      var screenButton = document.createElement('button');
-      screenButton.type = 'button';
-      screenButton.className = 'wb-section-nav-screen';
-      screenButton.setAttribute('data-nav-group', entry.id);
-      screenButton.setAttribute('data-nav-screen', screen.id);
-      screenButton.setAttribute('aria-label', '定位到 ' + entry.title + ' · ' + screen.title);
-      screenButton.title = screen.title;
-      screens.appendChild(screenButton);
-    });
-    item.appendChild(screens);
-    sectionNavList.appendChild(item);
-  });
-
-  updateSectionNavigatorVisibility();
-  var closest = closestSectionNavigatorGroup() || sectionNavItems[0] && sectionNavItems[0].id;
-  if (closest) activeGroup = closest;
-  updateSectionNavigatorActive(activeGroup);
-  setSectionNavigatorOpen(sectionNavOpen);
-  setMinimapOpen(minimapOpen);
-}
-
-function jumpSectionNavigatorToGroup(groupId) {
-  var section = findBoardSection(refreshBoardNavigationModel(), groupId);
-  if (!section || !stage) return;
-  activeGroup = groupId;
-  updateSectionNavigatorActive(groupId);
-  if (annFilter === 'tab') refreshAnnPanel();
-  focusStageOnRect(section);
-}
-
-function jumpSectionNavigatorToScreen(groupId, screenId) {
-  focusWorkbenchFrame(groupId, screenId);
-}
-
-function focusWorkbenchFrame(groupId, screenId, options) {
-  var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
-  if (!frame || !stage) return false;
-  activeGroup = groupId;
-  updateSectionNavigatorActive(groupId);
-  if (annFilter === 'tab') refreshAnnPanel();
-  focusStageOnRect(frame, options);
-  return true;
-}
-
-/** True when keyboard shortcuts should yield to text entry. */
-function isTypingTarget(el) {
-  if (!el || !el.closest) return false;
-  if (el.closest('input, textarea, select')) return true;
-  var ce = el.closest('[contenteditable]');
-  return !!(ce && ce.isContentEditable);
-}
-
-function wireSectionNavigator() {
-  if (!sectionNavWrap || !sectionNavToggleBtn || !sectionNavList) return;
-  sectionNavToggleBtn.addEventListener('click', function (event) {
-    event.preventDefault();
-    event.stopPropagation();
-    setSectionNavigatorOpen(!sectionNavOpen);
-  });
-  sectionNavList.addEventListener('click', function (event) {
-    var screenButton = event.target.closest('[data-nav-screen]');
-    if (screenButton) {
-      jumpSectionNavigatorToScreen(
-        screenButton.getAttribute('data-nav-group'),
-        screenButton.getAttribute('data-nav-screen')
-      );
-      return;
-    }
-    var sectionButton = event.target.closest('.wb-section-nav-section[data-nav-group]');
-    if (sectionButton) jumpSectionNavigatorToGroup(sectionButton.getAttribute('data-nav-group'));
-  });
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && (sectionNavOpen || minimapOpen)) {
-      var focusTarget = sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
-      setSectionNavigatorOpen(false);
-      setMinimapOpen(false);
-      if (focusTarget) focusTarget.focus();
-      return;
-    }
-    if (event.key.toLowerCase() !== 'm' || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (isTypingTarget(event.target)) return;
-    event.preventDefault();
-    setSectionNavigatorOpen(!sectionNavOpen);
-  });
-  window.addEventListener('resize', updateSectionNavigatorVisibility);
-}
-
-function nudgeCanvasZoom(factor) {
-  var z = clampCanvasZoom(currentCanvasZoom() * factor);
-  setCanvasZoom(String(z), { save: true });
-}
-
-function wireCanvasHud() {
-  var out = document.getElementById('wbzoom-out');
-  var inn = document.getElementById('wbzoom-in');
-  var label = document.getElementById('wbzoom-label');
-  var home = document.getElementById('wbrecenter');
-  if (out) out.addEventListener('click', function () { nudgeCanvasZoom(1 / 1.1); });
-  if (inn) inn.addEventListener('click', function () { nudgeCanvasZoom(1.1); });
-  if (label) label.addEventListener('click', function () { setCanvasZoom('1', { save: true }); });
-  if (home) home.addEventListener('click', recenterBoard);
-  wireMinimap();
-  wireSectionNavigator();
-  syncZoomHud();
-}
-
 function loadFailHtml(msg) {
   return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';
 }
@@ -2129,11 +1598,7 @@ function loadBoard(panel, pageId) {
     .catch(function (e) {
       if (gen !== boardLoadGen) return null;
       mountManager.cancel();
-      boardNavigationModel = null;
-      setSectionNavigatorOpen(false);
-      setMinimapOpen(false);
-      if (sectionNavWrap) sectionNavWrap.hidden = true;
-      if (minimapWrap) minimapWrap.hidden = true;
+      resetBoardNavOnLoadFailure();
       var label = e instanceof ContractError ? '契约错误' : '加载失败';
       panel.innerHTML = loadFailHtml(
         label + ' · ' + boardUrl(pageId) + ' · ' + String(e && e.message ? e.message : e)
@@ -2694,7 +2159,10 @@ function startPageRename(btn) {
 
 wireSections();
 initBoard();
-wireCanvasHud();
+wireCanvasHud({
+  setCanvasZoom: setCanvasZoom,
+  onSectionJump: function () { if (annFilter === 'tab') refreshAnnPanel(); }
+});
 
 window.workbench = {
   switchPage: switchPage,

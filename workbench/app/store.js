@@ -17,6 +17,7 @@ export const useWorkbenchStore = create((set) => ({
   activePageId: null,
   pageManifest: null,
   activeBoard: null,        // { pageId, board } — HTML 板的版本切换器要读它
+  activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
   // annotation panel
   annFilter: 'all',
   // preview chrome
