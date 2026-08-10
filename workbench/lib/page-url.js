@@ -1,3 +1,6 @@
+/** Page id of the built-in Component Library board. */
+export var COMPONENTS_ID = 'components';
+
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
 export function pageEntry(manifest, pageId) {
   if (!manifest || !manifest.pages) return null;
@@ -13,4 +16,17 @@ export function pageBaseUrl(manifest, pageId) {
   var page = pageEntry(manifest, pageId);
   if (page && page.site) return '/sites/' + pageId + '/';
   return '/previews/' + pageId + '/';
+}
+
+export function modeForPage(manifest, pageId) {
+  if (pageId === COMPONENTS_ID) return 'ios';
+  var page = pageEntry(manifest, pageId);
+  return (page && page.mode) || 'ios';
+}
+
+export function defaultShellForPage(manifest, pageId) {
+  var mode = modeForPage(manifest, pageId);
+  if (mode === 'web') return 'web';
+  if (mode === 'html') return 'doc';
+  return 'app';
 }
