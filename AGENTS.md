@@ -121,7 +121,7 @@ Marks land under the document's own page key (per-path file in the entry bucket,
 `/health`), not the workbench's. In the HTML board the sidebar still drives them: workbench
 annotate calls resolve to the active doc frame's instance, so mode, count, and the
 Annotations list all reflect the document, and the embedded document hides its own floating
-toolbar to keep one control surface.
+toolbar and offers no annotation-list sidebar to keep one control surface.
 
 **Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/pinpoint-build/SKILL.md) §1.1.
 
@@ -307,6 +307,14 @@ ledgers. SPA route changes re-key the ledger (entry / page / localStorage key) w
 reload — Navigation API `navigate` events first, patched `pushState`/`replaceState` +
 `popstate` fallback; hash-only changes do not re-key, and in-flight sync/hydrate responses
 from before a switch are discarded by epoch so marks never land on the previous route.
+
+**Client chrome:** on non-workbench pages (`/sites/`, extension-injected) the floating
+toolbar hides by default — **A** toggles annotate mode, **S** toggles the built-in
+annotation-list sidebar (`#ann-sidebar`: current-ledger marks sorted by `n`, click to
+jump, hover for edit/delete, broken-anchor tags; open state persists as a localStorage
+viewer preference, default closed). The sidebar is suppressed wherever `window.workbench`
+exists or the document runs embedded in a frame — same one-control-surface rule as the
+toolbar.
 
 **Export purity:** doc exports accept `sites/<entry-id>/…` srcs and are guaranteed free of
 the injected client — the pipeline requests `?annotate=off`, aborts `**/annotate.js` in the

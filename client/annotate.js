@@ -47,6 +47,7 @@
   var mode = false;    // true = 标注; false = 交互 (default)
   var paused = false;  // hide pins / overlay without leaving Annotate intent
   var floatingToolbar = false;
+  var sidebarOpen = false; // 标注列表侧边栏（#ann-sidebar）；viewer 偏好，持久化到 LS
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -822,6 +823,33 @@
     '#ann-count{font-size:11px;color:rgba(255,255,255,.7);}',
     '#ann-status{font-size:10px;color:rgba(255,255,255,.45);}',
     '#ann-status.err{color:#ff9d9d;}',
+    'html.ann-sidebar-open #ann-toolbar{right:304px;}',
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:rgba(255,255,255,.97);border-left:1px solid rgba(0,0,0,.09);box-shadow:-8px 0 24px rgba(0,0,0,.14);display:flex;flex-direction:column;backdrop-filter:blur(18px);-webkit-backdrop-filter:blur(18px);}',
+    '#ann-sidebar[hidden]{display:none;}',
+    '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid rgba(0,0,0,.07);}',
+    '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:600;color:#1a1a1a;}',
+    '#ann-sidebar .ann-sb-count{font-size:11px;color:#8a8a8a;}',
+    '#ann-sidebar .ann-sb-close{flex:none;width:24px;height:24px;padding:0;border:none;border-radius:50%;background:transparent;cursor:pointer;font-size:14px;line-height:24px;text-align:center;color:#888;}',
+    '#ann-sidebar .ann-sb-close:hover{background:rgba(0,0,0,.06);color:#333;}',
+    '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:8px;}',
+    '#ann-sidebar .ann-sb-empty{padding:24px 14px;text-align:center;}',
+    '#ann-sidebar .ann-sb-empty-title{margin:0 0 6px;font-size:13px;color:#555;}',
+    '#ann-sidebar .ann-sb-empty-hint{margin:0;font-size:11px;line-height:1.5;color:#999;}',
+    '#ann-sidebar .ann-sb-item{display:flex;gap:2px;align-items:stretch;width:100%;border-radius:10px;}',
+    '#ann-sidebar .ann-sb-item:hover{background:rgba(245,166,35,.1);}',
+    '#ann-sidebar .ann-sb-item.broken{opacity:.72;}',
+    '#ann-sidebar .ann-sb-item-main{flex:1;min-width:0;display:flex;gap:8px;align-items:flex-start;padding:8px 4px 8px 8px;border:none;background:transparent;cursor:pointer;text-align:left;font:inherit;}',
+    '#ann-sidebar .ann-sb-num{flex:none;min-width:20px;height:20px;padding:0 5px;border-radius:50%;background:#f5a623;color:#1a1a1a;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;}',
+    '#ann-sidebar .ann-sb-item.broken .ann-sb-num{background:rgba(0,0,0,.16);color:#666;}',
+    '#ann-sidebar .ann-sb-main{flex:1;min-width:0;display:flex;flex-direction:column;gap:2px;}',
+    '#ann-sidebar .ann-sb-cap{font-size:10px;color:#a8a49e;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;line-height:1.3;}',
+    '#ann-sidebar .ann-sb-text{font-size:12px;line-height:1.4;color:#333;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
+    '#ann-sidebar .ann-sb-broken-tag{align-self:flex-start;font-size:10px;line-height:1.3;padding:1px 6px;border-radius:6px;color:#c0392b;background:rgba(192,57,43,.1);}',
+    '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:6px 6px 6px 0;opacity:0;pointer-events:none;}',
+    '#ann-sidebar .ann-sb-item:hover .ann-sb-acts,#ann-sidebar .ann-sb-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
+    '#ann-sidebar .ann-sb-acts button{width:22px;height:22px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font-size:12px;line-height:22px;text-align:center;color:#999;}',
+    '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.07);color:#333;}',
+    '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:#c0392b;background:rgba(192,57,43,.1);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
@@ -921,13 +949,14 @@
 
   var toolbar = document.createElement('div');
   toolbar.id = 'ann-toolbar'; toolbar.setAttribute('data-ann-ui', '');
-  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-comments" title="在画布渲染评论">评论</button><button id="ann-channel" title="评论布局：压字 / 留通道" hidden>压字</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
+  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-comments" title="在画布渲染评论">评论</button><button id="ann-channel" title="评论布局：压字 / 留通道" hidden>压字</button><button id="ann-list" title="标注列表 (S)">列表</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
   toolbar.style.display = 'none';
   document.body.appendChild(toolbar);
 
   var btnToggle = toolbar.querySelector('#ann-toggle');
   var btnComments = toolbar.querySelector('#ann-comments');
   var btnChannel = toolbar.querySelector('#ann-channel');
+  var btnList = toolbar.querySelector('#ann-list');
   var btnHide = toolbar.querySelector('#ann-hide');
   var btnClear = toolbar.querySelector('#ann-clear');
   var elCount = toolbar.querySelector('#ann-count');
@@ -940,6 +969,8 @@
   function syncModeClass() {
     document.documentElement.classList.toggle('ann-mode-on', mode && !paused);
   }
+
+  var flashUntil = 0; // goToMark 闪烁框的保护窗口（syncGhost 在此期间不收 ghost）
 
   function ensureHoverGhost() {
     if (!hoverGhost) {
@@ -997,10 +1028,17 @@
       btnChannel.textContent = layoutLabel;
       btnChannel.title = '评论布局：' + layoutLabel + '（点击切换 inline ↔ sidebar）';
     }
+    if (btnList) {
+      btnList.className = sidebarOpen ? 'on' : '';
+      btnList.hidden = sidebarSuppressed();
+    }
     syncModeClass();
   }
 
   function syncGhost() {
+    // ann-flash 展示期间（goToMark 跳转）滚动/几何重算不得收掉闪烁框，
+    // 否则跳转一闪即逝；显式 hideGhost（暂停、切账本等）不受影响。
+    if (Date.now() < flashUntil) return;
     var el = ghostTarget();
     if (el) showGhostForEl(el);
     else hideGhost();
@@ -1054,6 +1092,16 @@
     toggleMode();
   });
 
+  // 快捷键 S：开合标注列表侧边栏（守卫同 A；看列表是只读行为，标注/交互模式都可用）
+  document.addEventListener('keydown', function (e) {
+    if (e.key !== 's' && e.key !== 'S') return;
+    if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    e.preventDefault();
+    toggleSidebar();
+  });
+
   function setPaused(on) {
     on = !!on;
     if (paused === on) return;
@@ -1088,10 +1136,192 @@
 
   btnClear.addEventListener('click', doClear);
 
+  // ---------- 标注列表侧边栏（#ann-sidebar）----------
+  // 没有 workbench 的页面（/sites/ 注入、扩展注入、SPA）唯一的标注列表：当前账本
+  // 按 n 列出，点击跳转（goToMark），hover 出编辑/删除。抑制规则与浮动工具条同款
+  // 「单一控制面」：workbench 壳有自己的标注列表；doc iframe 由父级出控制面。
+  var SIDEBAR_LS_KEY = 'html-annotate:' + ENTRY + ':sidebar-open';
+  var sidebar = null;
+  var sidebarBody = null;
+  var sidebarCount = null;
+  var sidebarSig = '';
+
+  function sidebarSuppressed() {
+    if (window.workbench) return true;                       // workbench 壳：列表在左栏
+    if (window.top !== window.self) return true;             // 被嵌入（workbench doc iframe 等）
+    return false;
+  }
+
+  /** composer 停靠右缘：侧边栏打开时让出 sidebar 宽度，保持 composer 不被压。 */
+  function composerDockedRight() {
+    var dock = document.getElementById('wbcanvas-dock');
+    var dockOpen = !!(dock && Array.prototype.some.call(dock.children, function (child) {
+      return !child.hidden && child.getClientRects().length > 0;
+    }));
+    if (dockOpen && overlay.clientWidth > 520) return '270px';
+    return sidebarOpen ? '304px' : '24px';
+  }
+
+  function sidebarRowModel() {
+    return marksForActivePage().slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
+      var cap;
+      if (m.type === 'region') cap = '框选区域';
+      else if (m.text) cap = m.text.slice(0, 40);
+      else cap = (String(m.selector || '').split('>').pop() || '').trim().slice(0, 60) || '元素';
+      var text = contentToDisplay(annotationContent(m), markElementTargets(m)).trim();
+      return { n: m.n, cap: cap, text: text.slice(0, 80), broken: isMarkBroken(m) };
+    });
+  }
+
+  function ensureSidebar() {
+    if (sidebar) return sidebar;
+    sidebar = document.createElement('div');
+    sidebar.id = 'ann-sidebar'; sidebar.setAttribute('data-ann-ui', '');
+    sidebar.hidden = true;
+    sidebar.innerHTML =
+      '<div class="ann-sb-head">' +
+      '<span class="ann-sb-title">标注</span>' +
+      '<span class="ann-sb-count"></span>' +
+      '<button type="button" class="ann-sb-close" title="关闭 (S)">×</button>' +
+      '</div>' +
+      '<div class="ann-sb-body"></div>';
+    document.body.appendChild(sidebar);
+    sidebar.querySelector('.ann-sb-close').addEventListener('click', function () { setSidebarOpen(false); });
+    sidebarBody = sidebar.querySelector('.ann-sb-body');
+    sidebarCount = sidebar.querySelector('.ann-sb-count');
+    sidebarBody.addEventListener('click', function (e) {
+      var act = e.target && e.target.closest ? e.target.closest('[data-ann-act]') : null;
+      if (act) {
+        e.preventDefault();
+        e.stopPropagation();
+        var an = parseInt(act.getAttribute('data-ann-n'), 10);
+        if (act.getAttribute('data-ann-act') === 'edit') openMark(an);
+        else if (act.getAttribute('data-ann-act') === 'del') removeMark(an); // 删除即生效，与 composer/工具条清空同款无确认
+        return;
+      }
+      var row = e.target && e.target.closest ? e.target.closest('.ann-sb-item[data-ann-n]') : null;
+      if (!row) return;
+      goToMark(parseInt(row.getAttribute('data-ann-n'), 10));
+    });
+    return sidebar;
+  }
+
+  function renderSidebar() {
+    if (!sidebar) return;
+    if (sidebarSuppressed()) { sidebar.hidden = true; return; }
+    if (sidebar.hidden) return;
+    var rows = sidebarRowModel();
+    // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
+    var sig = rows.map(function (r) {
+      return r.n + '|' + r.cap + '|' + r.text + '|' + r.broken;
+    }).join('~');
+    sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
+    if (sig === sidebarSig) return;
+    sidebarSig = sig;
+    sidebarBody.textContent = '';
+    if (!rows.length) {
+      var empty = document.createElement('div');
+      empty.className = 'ann-sb-empty';
+      var emptyTitle = document.createElement('p');
+      emptyTitle.className = 'ann-sb-empty-title';
+      emptyTitle.textContent = '暂无标注';
+      var emptyHint = document.createElement('p');
+      emptyHint.className = 'ann-sb-empty-hint';
+      emptyHint.textContent = '按 A 进入标注模式，点选页面元素添加标注';
+      empty.appendChild(emptyTitle);
+      empty.appendChild(emptyHint);
+      sidebarBody.appendChild(empty);
+      return;
+    }
+    rows.forEach(function (r) {
+      var item = document.createElement('div');
+      item.className = 'ann-sb-item' + (r.broken ? ' broken' : '');
+      item.setAttribute('data-ann-n', r.n);
+      var main = document.createElement('button');
+      main.type = 'button';
+      main.className = 'ann-sb-item-main';
+      var num = document.createElement('span');
+      num.className = 'ann-sb-num';
+      num.textContent = r.n;
+      var body = document.createElement('span');
+      body.className = 'ann-sb-main';
+      var cap = document.createElement('span');
+      cap.className = 'ann-sb-cap';
+      cap.textContent = r.cap;
+      body.appendChild(cap);
+      if (r.text) {
+        var text = document.createElement('span');
+        text.className = 'ann-sb-text';
+        text.textContent = r.text;
+        body.appendChild(text);
+      }
+      if (r.broken) {
+        var tag = document.createElement('span');
+        tag.className = 'ann-sb-broken-tag';
+        tag.textContent = '锚点失效';
+        body.appendChild(tag);
+      }
+      main.appendChild(num);
+      main.appendChild(body);
+      var acts = document.createElement('span');
+      acts.className = 'ann-sb-acts';
+      var edit = document.createElement('button');
+      edit.type = 'button';
+      edit.className = 'ann-sb-edit';
+      edit.setAttribute('data-ann-act', 'edit');
+      edit.setAttribute('data-ann-n', r.n);
+      edit.title = '编辑';
+      edit.textContent = '✎';
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'ann-sb-del';
+      del.setAttribute('data-ann-act', 'del');
+      del.setAttribute('data-ann-n', r.n);
+      del.title = '删除';
+      del.textContent = '×';
+      acts.appendChild(edit);
+      acts.appendChild(del);
+      item.appendChild(main);
+      item.appendChild(acts);
+      sidebarBody.appendChild(item);
+    });
+  }
+
+  function setSidebarOpen(on) {
+    on = !!on;
+    if (on && sidebarSuppressed()) return; // 让位控制面；不动 viewer 偏好
+    if (sidebarOpen === on) return;
+    sidebarOpen = on;
+    try { localStorage.setItem(SIDEBAR_LS_KEY, on ? '1' : ''); } catch (e) { /* quota */ }
+    document.documentElement.classList.toggle('ann-sidebar-open', on);
+    if (on) {
+      ensureSidebar();
+      sidebar.hidden = false;
+      renderSidebar();
+    } else if (sidebar) {
+      sidebar.hidden = true;
+    }
+    // 开着的 composer 保持停靠右缘（未被用户拖走时）
+    var openBox = document.getElementById('ann-box');
+    if (openBox && !composerPlacement) openBox.style.right = composerDockedRight();
+    notify();
+  }
+
+  function toggleSidebar() { setSidebarOpen(!sidebarOpen); }
+
+  if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
+  updateListeners.push(renderSidebar);
+  (function () {
+    var want = false;
+    try { want = localStorage.getItem(SIDEBAR_LS_KEY) === '1'; } catch (e) { /* */ }
+    if (want) setSidebarOpen(true);
+  })();
+
   // ---------- 悬停高亮（挂在 stage-wrap overlay，不盖侧栏）----------
   function clearHover() {
     hoverEl = null;
-    if (!pinned) hideGhost();
+    // ann-flash 展示窗口内不动 ghost：跳转后的鼠标经过不得掐灭闪烁反馈。
+    if (!pinned && Date.now() >= flashUntil) hideGhost();
   }
   var hoverSuppress = null; // 拖拽松手后 2s 内、鼠标没走远时不再出 hover 框
   document.addEventListener('mousemove', function (e) {
@@ -1495,14 +1725,10 @@
 
     function syncComposerLayout() {
       if (activeComposer !== composer) return;
-      var dock = document.getElementById('wbcanvas-dock');
-      var dockOpen = !!(dock && Array.prototype.some.call(dock.children, function (child) {
-        return !child.hidden && child.getClientRects().length > 0;
-      }));
       if (composerPlacement) {
         placeFloatingComposer(composerPlacement.left, composerPlacement.top, true);
       } else {
-        box.style.right = dockOpen && overlay.clientWidth > 520 ? '270px' : '24px';
+        box.style.right = composerDockedRight();
         if (stageEl) stageEl.style.scrollPaddingBottom = (box.offsetHeight + 96) + 'px';
       }
     }
@@ -1929,12 +2155,15 @@
     });
 
     if (anchorRect) {
+      // goToMark 闪烁窗口内：保留 ann-flash，不让常驻高亮同步覆盖掉闪烁动画；
+      // 闪烁到期由 endFlash 收编为常驻高亮。
+      var flashCls = Date.now() < flashUntil ? 'ann-flash' : null;
       if (m.type === 'region') {
         var regionEl = resolveMarkAnchor(m).el;
-        showGhostForRect(anchorRect, null, regionEl);
+        showGhostForRect(anchorRect, flashCls, regionEl);
       } else {
         var markEl = resolve(m.selector);
-        if (markEl) showGhostForEl(markEl);
+        if (markEl) showGhostForEl(markEl, flashCls);
       }
     }
   }
@@ -2543,6 +2772,14 @@
     if (!rect) setStatus('锚点失效', true);
   }
 
+  // ann-flash 到期：composer 开着时收编为其常驻高亮（原位去 class，几何不变），否则隐藏。
+  function endFlash() {
+    flashUntil = 0;
+    if (!hoverGhost || hoverGhost.hidden) return;
+    if (activeComposer) hoverGhost.classList.remove('ann-flash');
+    else hideGhost();
+  }
+
   function flashAndOpen(m) {
     var anchor = resolveMarkAnchor(m);
     var stageEl = document.getElementById('wbstage');
@@ -2556,14 +2793,19 @@
       var sr = stageEl.getBoundingClientRect();
       stageEl.scrollTop += er.top - sr.top - sr.height / 2 + er.height / 2;
       stageEl.scrollLeft += er.left - sr.left - sr.width / 2 + er.width / 2;
+    } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
+      // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
+      anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
     renderAll();
     if (anchor.live && anchor.el) {
+      flashUntil = Date.now() + 1500;
       showGhostForEl(anchor.el, 'ann-flash');
-      setTimeout(hideGhost, 1500);
+      setTimeout(endFlash, 1500);
     } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
+      flashUntil = Date.now() + 1500;
       showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
-      setTimeout(hideGhost, 1500);
+      setTimeout(endFlash, 1500);
     }
     openMark(m.n);
   }
@@ -2608,6 +2850,7 @@
       syncError: syncError,
       paused: paused,
       floating: floatingToolbar,
+      sidebar: sidebarOpen,
       renderComments: renderComments,
       bubbleLayout: bubbleLayout,
       count: pageMarks.length,
@@ -2637,6 +2880,8 @@
     clear: doClear,
     removeMark: removeMark,
     setFloatingToolbar: setFloatingToolbar,
+    setSidebar: setSidebarOpen,
+    toggleSidebar: toggleSidebar,
     hasActiveDraft: function () { return !!activeComposer; },
     cancelDraft: function () {
       if (!activeComposer) return false;
@@ -2715,6 +2960,7 @@
     //    模式的定位差异与 _originCache 失效由 mountOverlay 处理）
     if (!overlay.isConnected) mountOverlay();
     if (!toolbar.isConnected) document.body.appendChild(toolbar);
+    if (sidebar && !sidebar.isConnected) document.body.appendChild(sidebar);
     // 6. hydrate 新账本
     hydrateFromDisk().then(function () {
       structureDirty = true;
