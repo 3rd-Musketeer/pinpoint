@@ -20,6 +20,7 @@ export const useWorkbenchStore = create((set) => ({
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
   // annotation panel
   annFilter: 'all',
+  annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）
   // preview chrome
   theme: 'light',
 

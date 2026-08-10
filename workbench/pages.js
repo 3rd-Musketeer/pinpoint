@@ -28,11 +28,11 @@ import {
   setTextSize,
   snapshotPageViewport
 } from './boot-prefs.js';
-import { annotateApi, stopGutter, watchDocAnnotate } from './ann-bridge.js';
+import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
-// 反向依赖注入：loadBoard / mountManager / refreshAnnPanel 还留在 workbench.js
-// （后续轮次才拆），pages.js 不得 import workbench.js，由它在初始化时经
-// initPages(deps) 注入。（boot-prefs / ann-bridge 簇走直接 import。）
+// 反向依赖注入：loadBoard / mountManager 还留在 workbench.js（P2 才拆），
+// pages.js 不得 import workbench.js，由它在初始化时经 initPages(deps) 注入。
+// （boot-prefs / ann-bridge 簇走直接 import；标注面板刷新 = scheduleAnnSnap。）
 var pagesDeps = {};
 
 export function initPages(deps) {
@@ -52,12 +52,14 @@ var activeDocByPage = {};    // pageId → screenId，切页回来记得上次�
 
 export function setSectionOpen(name, open, options) {
   options = options || {};
-  wbGet().sectionOpen[name] = !!open;
+  var sectionOpen = Object.assign({}, wbGet().sectionOpen);
+  sectionOpen[name] = !!open;
+  wbSet({ sectionOpen: sectionOpen });
   var sec = document.querySelector('[data-section="' + name + '"]');
   if (sec) {
-    sec.classList.toggle('open', wbGet().sectionOpen[name]);
+    sec.classList.toggle('open', sectionOpen[name]);
     var head = sec.querySelector('.wb-section-head');
-    if (head) head.setAttribute('aria-expanded', String(wbGet().sectionOpen[name]));
+    if (head) head.setAttribute('aria-expanded', String(sectionOpen[name]));
   }
   if (options.save !== false) savePrefs({ sectionOpen: wbGet().sectionOpen });
 }
@@ -87,7 +89,7 @@ export function scrollToGroup(groupId, options) {
   var el = document.getElementById('lib-' + groupId);
   if (el) el.scrollIntoView({ behavior: options.smooth === false ? 'auto' : 'smooth', block: 'start' });
   refit();
-  pagesDeps.refreshAnnPanel();
+  scheduleAnnSnap();
 }
 
 export function switchPage(id, options) {
@@ -102,7 +104,7 @@ export function switchPage(id, options) {
           || first.getAttribute('data-ann-group')
           || wbGet().activeGroup });
       }
-      pagesDeps.refreshAnnPanel();
+      scheduleAnnSnap();
     });
   }
   scrollToGroup(id, options);
@@ -126,7 +128,7 @@ export function wireLibraryScrollSpy() {
       if (best && best !== wbGet().activeGroup) {
         wbSet({ activeGroup: best });
         updateSectionNavigatorActive(best);
-        if (wbGet().annFilter === 'tab') pagesDeps.refreshAnnPanel();
+        if (wbGet().annFilter === 'tab') scheduleAnnSnap();
       }
     });
   };

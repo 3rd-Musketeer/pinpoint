@@ -977,47 +977,8 @@
             <span class="wb-section-count" id="wbann-count"></span>
           </button>
           <div class="wb-section-body">
-            <div class="wb-section-body-inner">
-              <div class="wb-ann-tools" id="wbann-tools">
-                <div class="wb-ann-mode" id="wbann-mode" role="group" aria-label="交互 / 标注模式">
-                  <button type="button" id="wbann-interact" class="on" data-ann-mode="interact" title="交互模式">交互</button>
-                  <button type="button" id="wbann-toggle" data-ann-mode="annotate" title="标注模式 (A)"><span class="wb-tool-label">标注</span></button>
-                </div>
-                <div class="wb-ann-quick">
-                  <button type="button" id="wbann-pause" title="暂停">
-                    <i data-wb-icon="pause" class="wb-ico"></i>
-                    <span class="wb-tool-label">暂停</span>
-                  </button>
-                  <button type="button" id="wbann-comments" title="在画布渲染评论">
-                    <i data-wb-icon="message" class="wb-ico"></i>
-                    <span class="wb-tool-label">评论</span>
-                  </button>
-                  <button type="button" id="wbann-channel" title="评论布局：压字 / 留通道" hidden>
-                    <i data-wb-icon="columns" class="wb-ico"></i>
-                    <span class="wb-tool-label">压字</span>
-                  </button>
-                  <button type="button" id="wbann-pin" title="Pin 悬浮条">
-                    <i data-wb-icon="pin" class="wb-ico"></i>
-                    <span class="wb-tool-label">Pin</span>
-                  </button>
-                </div>
-                <button type="button" id="wbann-clear" class="wb-ann-clear" title="清空当前页全部标注">清空标注</button>
-              </div>
-              <span class="wb-ann-status" id="wbann-status"></span>
-              <div class="wb-ann-filter">
-                <div class="ctl" id="wbann-filter" role="group" aria-label="标注筛选">
-                  <button type="button" data-ann-filter="all" class="on">全部</button>
-                  <button type="button" data-ann-filter="tab">当前示例</button>
-                </div>
-              </div>
-              <div class="wb-ann-list" id="wbann-list">
-                <div class="wb-ann-empty">
-                  <i data-wb-icon="empty-ann" data-wb-icon-size="22" class="wb-ann-empty-ico"></i>
-                  <p class="wb-ann-empty-title">暂无标注</p>
-                  <p class="wb-ann-empty-hint">切换到「标注」后，在画布上点选或框选元素</p>
-                </div>
-              </div>
-            </div>
+            <!-- React 挂载点：标注工具/状态/筛选/列表由 app/AnnPanel.jsx 渲染（P1b） -->
+            <div class="wb-section-body-inner" id="wbann-root"></div>
           </div>
         </section>
       </div>

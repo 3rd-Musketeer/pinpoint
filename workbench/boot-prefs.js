@@ -33,7 +33,6 @@ var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var sideToggleBtn = document.getElementById('wbside-toggle');
 var themeBox = document.getElementById('wbtheme');
 var settingsEl = document.getElementById('wbsettings');
-var annFilterBox = document.getElementById('wbann-filter');
 
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
@@ -327,11 +326,7 @@ export function applyBootPrefs(prefs, options) {
     if (prefs.sectionOpen) {
       wbSet({ sectionOpen: Object.assign({ pages: true, annotations: true }, prefs.sectionOpen) });
     }
-    if (annFilterBox) {
-      annFilterBox.querySelectorAll('button').forEach(function (b) {
-        b.classList.toggle('on', b.getAttribute('data-ann-filter') === wbGet().annFilter);
-      });
-    }
+    // annFilter 的按钮态由 AnnPanel 订阅 store 派生，这里不再手工同步 DOM
     prefsDeps.applyPageNames(prefs.pageNames);
     prefsDeps.applySectionOpen();
   }

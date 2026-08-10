@@ -1,17 +1,11 @@
 // Workbench 标注桥簇 — annotate API 解析（父窗口 vs iframe 实例）、gutter 评论
-// 气泡（HTML 板 sidebar 布局）、文档标注绑定、连接状态指示。
-// P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
-import { wbGet } from './app/store.js';
+// 气泡（HTML 板 sidebar 布局）、文档标注绑定、连接状态指示、标注状态快照。
+// P1a 从 workbench.js 平移；P1b 起标注面板 React 化（app/AnnPanel.jsx），
+// 面板要读的状态由本模块汇成 annSnap 写进 store，不再有面板侧 DI。
+import { wbGet, wbSet } from './app/store.js';
+import { annRowModel } from '../lib/ann-row.js';
 import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
-
-// 反向依赖注入：scheduleAnnPanel 属标注面板簇（P1b 直接 React 化，不经历中间形态，
-// 留在 workbench.js），ann-bridge 不得 import workbench.js，由它初始化时注入。
-var bridgeDeps = {};
-
-export function initAnnBridge(deps) {
-  bridgeDeps = deps || {};
-}
 
 /* ---- annotate API resolver -------------------------------------------------
    HTML 板的文档活在 iframe 里，它自己注入 annotate.js，于是页面上同时存在两个
@@ -34,6 +28,84 @@ function activeDocWindow() {
 export function annotateApi() {
   var docWin = activeDocWindow();
   return (docWin && docWin.pinpoint) || window.pinpoint;
+}
+
+/* ---- 标注状态快照（annSnap）------------------------------------------------
+   React 标注面板（app/AnnPanel.jsx）只读 store 里的 annSnap：annotate 实例
+   状态 + pageMarks 行模型在这里汇成一份纯数据，onUpdate 突发经 rAF 合并。
+   行字段走共享 lib/ann-row.js（cap/preview/broken/tags）；grouping 键是
+   workbench 本地语义。cap 选项钉住 workbench 措辞：region 行显示「框选」，
+   不做 selector 摘录回退。 */
+function markSummary(m) {
+  var body = (m && (m.content != null ? m.content : m.comment)) || '';
+  if (body) {
+    var ann = annotateApi();
+    if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
+    if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
+    return body;
+  }
+  if (m.type === 'region') return '框选区域';
+  if (m.text) return m.text.slice(0, 60);
+  return m.selector || '';
+}
+
+var ANN_SNAP_OFF = { available: false, rows: [] };
+
+export function syncAnnSnap() {
+  var ann = annotateApi();
+  if (!ann || typeof ann.getState !== 'function') {
+    wbSet({ annSnap: ANN_SNAP_OFF });
+    return;
+  }
+  syncConnStatus();
+  var st = ann.getState();
+  var rows = (ann.pageMarks || []).slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
+    var row = annRowModel(m, {
+      cap: { region: '框选', selectorMax: 0 },
+      preview: markSummary(m),
+      broken: typeof ann.isMarkBroken === 'function' ? ann.isMarkBroken(m) : false
+    });
+    row.key = (m.section || m.group || '_') + '|' + m.n;
+    row.group = m.section || m.group || '_';
+    row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
+    return row;
+  });
+  wbSet({
+    annSnap: {
+      available: true,
+      mode: !!st.mode,
+      paused: !!st.paused,
+      floating: !!st.floating,
+      renderComments: !!st.renderComments,
+      bubbleLayout: st.bubbleLayout || 'inline',
+      connected: !!st.connected,
+      syncError: !!st.syncError,
+      count: st.count || 0,
+      countLive: st.countLive || 0,
+      countBroken: st.countBroken || 0,
+      rows: rows
+    }
+  });
+  // G=画布外 模式：按当前状态启停父级 gutter 渲染。
+  syncGutterComments();
+}
+
+// onUpdate 突发（persist + SSE + scroll-spy）合并成一帧一次快照。
+var annSnapRaf = 0;
+export function scheduleAnnSnap() {
+  if (annSnapRaf) return;
+  annSnapRaf = requestAnimationFrame(function () {
+    annSnapRaf = 0;
+    syncAnnSnap();
+  });
+}
+
+/* 父窗口的 annotate.js 异步加载；轮询到它出现后订阅一次并产出首份快照。
+   iframe 实例的绑定见 watchDocAnnotate / bindDocAnnotate。 */
+export function startAnnBridge() {
+  if (!window.pinpoint) { setTimeout(startAnnBridge, 100); return; }
+  if (typeof window.pinpoint.onUpdate === 'function') window.pinpoint.onUpdate(scheduleAnnSnap);
+  scheduleAnnSnap();
 }
 
 /* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
@@ -182,9 +254,9 @@ function bindDocAnnotate() {
   var ann = docWin.pinpoint;
   if (docAnnotateSeen && !docAnnotateSeen.has(ann)) {
     docAnnotateSeen.add(ann);
-    if (typeof ann.onUpdate === 'function') ann.onUpdate(bridgeDeps.scheduleAnnPanel);
+    if (typeof ann.onUpdate === 'function') ann.onUpdate(scheduleAnnSnap);
   }
-  bridgeDeps.scheduleAnnPanel();
+  scheduleAnnSnap();
   return true;
 }
 

@@ -1,15 +1,8 @@
-import { createElement } from 'react';
+// React chrome 入口（goal-20260810-workbench-react-rebuild P1b）— chrome 组件
+// 逐块出壳、挂载到 index.html 的静态挂载点；DOM id 契约不变（e2e 选择器即契约）。
+// 舞台（#wbstage 及其内容）永远不走 React，由命令式模块持有。
+import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
+import { AnnPanel } from './AnnPanel.jsx';
 
-/**
- * P0 smoke mount (goal-20260810-workbench-react-rebuild): proves the JSX →
- * vite → React runtime pipeline inside the real page while all chrome is
- * still imperative. P1 replaces this hidden root with the actual React
- * chrome tree (sidebar / HUD / footer / dialogs) and deletes the marker.
- */
-const host = document.createElement('div');
-host.id = 'wb-react-root';
-host.hidden = true;
-document.body.appendChild(host);
-
-createRoot(host).render(createElement('span', { 'data-react-smoke': 'p0' }));
+createRoot(document.getElementById('wbann-root')).render(h(AnnPanel));

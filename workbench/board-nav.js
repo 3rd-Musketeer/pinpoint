@@ -18,7 +18,7 @@ import {
 // workbench.js 的 prefs / 标注簇（后续轮次才拆），board-nav 不得 import
 // workbench.js，由 workbench.js 初始化时经 wireCanvasHud(deps) 注入。
 var canvasZoomWriter = null;    // setCanvasZoom(val, { save })
-var sectionJumpListener = null; // active group 跳转后：annFilter === 'tab' 时 refreshAnnPanel()
+var sectionJumpListener = null; // active group 跳转后：annFilter === 'tab' 时 scheduleAnnSnap()
 
 var stage = document.getElementById('wbstage');
 

@@ -1,12 +1,10 @@
 // Workbench shell — pages, board loader, settings, preview hot-reload (Vite dev).
-import { annRowModel } from '../lib/ann-row.js';
 import { BoardMountManager } from './lib/board-mount-session.js';
 import {
   ContractError,
   validateBoard
 } from './lib/preview-contracts.js';
 import { wbGet, wbSet } from './app/store.js';
-import { escHtml } from './lib/esc-html.js';
 import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl } from './lib/page-url.js';
 import {
   activeDocExportTarget,
@@ -27,9 +25,8 @@ import { afterMount, initPreviewMount } from './preview-mount.js';
 import { wireFrameNoteEditors } from './frame-notes.js';
 import {
   annotateApi,
-  initAnnBridge,
-  syncConnStatus,
-  syncGutterComments,
+  scheduleAnnSnap,
+  startAnnBridge,
   watchDocAnnotate
 } from './ann-bridge.js';
 import {
@@ -48,7 +45,6 @@ import {
   applyPageNames,
   applySectionOpen,
   ensurePageCopyButtons,
-  getLibraryScrollHandler,
   initPages,
   loadPageManifest,
   loadSettings,
@@ -58,7 +54,6 @@ import {
   resolvePageForMode,
   setActivePage,
   setBoardMode,
-  setSectionOpen,
   showPageManifestError,
   showSettings,
   showTabs,
@@ -81,12 +76,6 @@ var splitEl = document.getElementById('wbsplit');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var sideToggleBtn = document.getElementById('wbside-toggle');
 var sideExpandBtn = document.getElementById('wbside-expand');
-var annList = document.getElementById('wbann-list');
-var annStatus = document.getElementById('wbann-status');
-var annCountEl = document.getElementById('wbann-count');
-var annFilterBox = document.getElementById('wbann-filter');
-var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
-var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
 var boardPanel;
 var boardLoadGen = 0;
 var mountManager = new BoardMountManager();
@@ -97,236 +86,6 @@ function resolveBootPageId(prefs) {
   var manifest = wbGet().pageManifest;
   if (manifest) renderPageManifest(manifest);
   return resolvePageForMode(wbGet().boardMode, prefs.activePageId);
-}
-
-function markSummary(m) {
-  var body = (m && (m.content != null ? m.content : m.comment)) || '';
-  if (body) {
-    var ann = annotateApi();
-    if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
-    if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
-    return body;
-  }
-  if (m.type === 'region') return '框选区域';
-  if (m.text) return m.text.slice(0, 60);
-  return m.selector || '';
-}
-
-// Debounce annotate panel refreshes so a burst of notify() calls (persist + SSE
-// + scroll-spy) coalesces into one rAF rebuild.
-function scheduleAnnPanel() {
-  if (annPanelRaf) return;
-  annPanelRaf = requestAnimationFrame(function () {
-    annPanelRaf = 0;
-    refreshAnnPanel();
-  });
-}
-
-function refreshAnnPanel() {
-  var ann = annotateApi();
-  if (!ann || typeof ann.getState !== 'function') return;
-  syncConnStatus();
-  var st = ann.getState();
-  var btnToggle = document.getElementById('wbann-toggle');
-  var btnInteract = document.getElementById('wbann-interact');
-  var btnPause = document.getElementById('wbann-pause');
-  var btnPin = document.getElementById('wbann-pin');
-  if (btnToggle) {
-    btnToggle.classList.toggle('on', st.mode);
-    btnToggle.title = st.mode ? '标注模式 (A → 交互)' : '标注模式 (A)';
-    btnToggle.setAttribute('aria-pressed', st.mode ? 'true' : 'false');
-  }
-  if (btnInteract) {
-    btnInteract.classList.toggle('on', !st.mode);
-    btnInteract.setAttribute('aria-pressed', st.mode ? 'false' : 'true');
-  }
-  if (btnPause) btnPause.classList.toggle('on', st.paused);
-  if (btnPin) btnPin.classList.toggle('on', st.floating);
-  var btnComments = document.getElementById('wbann-comments');
-  if (btnComments) {
-    btnComments.classList.toggle('on', !!st.renderComments);
-    var cLabel = btnComments.querySelector('.wb-tool-label');
-    if (cLabel) cLabel.textContent = st.renderComments ? '评论✓' : '评论';
-  }
-  var btnChannel = document.getElementById('wbann-channel');
-  if (btnChannel) {
-    btnChannel.hidden = !st.renderComments;
-    var lay = st.bubbleLayout || 'inline';
-    btnChannel.classList.toggle('on', lay === 'sidebar');
-    var chLabel = btnChannel.querySelector('.wb-tool-label');
-    if (chLabel) chLabel.textContent = lay === 'sidebar' ? 'sidebar' : 'inline';
-  }
-  // G=画布外 模式：按当前状态启停父级 gutter 渲染。
-  syncGutterComments();
-  if (annStatus) {
-    if (!st.count) {
-      annStatus.textContent = '';
-    } else {
-      var parts = [];
-      parts.push(st.countLive + ' 条可见');
-      if (st.countBroken) parts.push(st.countBroken + ' 锚点失效');
-      parts.push('共 ' + st.count + ' 条');
-      annStatus.textContent = parts.join(' · ');
-    }
-  }
-  if (!annList) return;
-  var allMarks = (ann.pageMarks || []).slice().sort(function (a, b) { return a.n - b.n; });
-  if (allMarks.length && !wbGet().sectionOpen.annotations) {
-    setSectionOpen('annotations', true, { save: false });
-  }
-  if (annCountEl) {
-    annCountEl.textContent = allMarks.length ? '(' + allMarks.length + ')' : '';
-  }
-  var marks = allMarks;
-  if (wbGet().annFilter === 'tab') {
-    marks = marks.filter(function (m) {
-      var sec = m.section || m.group;
-      return !sec || sec === wbGet().activeGroup;
-    });
-  }
-  // Build a row model + signature; skip the innerHTML rebuild when the list
-  // hasn't changed (mode toggle / scroll-spy fire notify without touching marks).
-  // Row fields come from the shared lib/ann-row.js model (cap/preview/broken/
-  // tags); grouping keys stay workbench-local. Cap options pin the workbench
-  // wording: region rows show 「框选」, no selector excerpt fallback.
-  var rows = marks.map(function (m) {
-    var broken = typeof ann.isMarkBroken === 'function' ? ann.isMarkBroken(m) : false;
-    var row = annRowModel(m, {
-      cap: { region: '框选', selectorMax: 0 },
-      preview: markSummary(m),
-      broken: broken
-    });
-    row.key = (m.section || m.group || '_') + '|' + m.n;
-    row.group = m.section || m.group || '_';
-    row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
-    return row;
-  });
-  var sig = wbGet().annFilter + '|' + wbGet().activeGroup + '|' + rows.map(function (r) {
-    return r.key + ':' + r.cap + ':' + r.preview + ':' + r.broken + ':' + r.tags;
-  }).join('~');
-  if (sig === annListSig && annList.querySelector('[data-ann-n]')) {
-    // List unchanged; buttons/counts above already reflect current state.
-    return;
-  }
-  annListSig = sig;
-  if (!rows.length) {
-    annList.innerHTML =
-      '<div class="wb-ann-empty">' +
-      '<i data-wb-icon="empty-ann" data-wb-icon-size="22" class="wb-ann-empty-ico"></i>' +
-      '<p class="wb-ann-empty-title">暂无标注</p>' +
-      '<p class="wb-ann-empty-hint">切换到「标注」后，在画布上点选或框选元素</p>' +
-      '</div>';
-    if (window.mountWorkbenchIcons) window.mountWorkbenchIcons(annList);
-    return;
-  }
-  var groups = [];
-  var groupMap = {};
-  rows.forEach(function (r) {
-    if (!groupMap[r.group]) {
-      groupMap[r.group] = { label: r.groupLabel, items: [] };
-      groups.push(groupMap[r.group]);
-    }
-    groupMap[r.group].items.push(r);
-  });
-  annList.innerHTML = groups.map(function (g) {
-    var head = g.label !== '未分组' ? '<div class="wb-ann-group">' + escHtml(g.label) + '</div>' : '';
-    var body = g.items.map(function (r) {
-      var rowCls = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
-      return '<div class="' + rowCls + '" data-ann-n="' + r.n + '">' +
-        '<div class="wb-ann-item-row">' +
-        '<button type="button" class="wb-ann-item-main" data-ann-n="' + r.n + '">' +
-        '<span class="wb-ann-num">' + r.n + '</span>' +
-        '<span class="wb-ann-body">' +
-        '<span class="wb-ann-cap">' + escHtml(r.cap) + '</span>' +
-        '<span class="wb-ann-text">' + escHtml(r.preview) + '</span>' +
-        (r.broken ? '<span class="wb-ann-broken-tag">锚点失效</span>' : '') +
-        (r.tags ? '<span class="wb-ann-tags">' + r.tags + '</span>' : '') +
-        '</span></button>' +
-        '<button type="button" class="wb-ann-del" data-ann-del="' + r.n + '" aria-label="删除标注 ' + r.n + '" title="删除">×</button>' +
-        '</div></div>';
-    }).join('');
-    return head + body;
-  }).join('');
-}
-
-function wireAnnotatePanel() {
-  var ann = annotateApi();
-  if (!ann || wireAnnotatePanel.done || typeof ann.getState !== 'function') return;
-  var btnToggle = document.getElementById('wbann-toggle');
-  var btnInteract = document.getElementById('wbann-interact');
-  var btnPause = document.getElementById('wbann-pause');
-  var btnClear = document.getElementById('wbann-clear');
-  var btnPin = document.getElementById('wbann-pin');
-  var btnComments = document.getElementById('wbann-comments');
-  var btnChannel = document.getElementById('wbann-channel');
-  if (!btnToggle || !btnPause || !btnClear || !btnPin) return;
-  wireAnnotatePanel.done = true;
-  ann.onUpdate(scheduleAnnPanel);
-  syncConnStatus();
-  // 每次点击重新解析：HTML 板下要驱动的是 iframe 里那个实例，不能闭包捕获
-  btnToggle.addEventListener('click', function () { annotateApi().toggle(); });
-  if (btnInteract) btnInteract.addEventListener('click', function () {
-    var a = annotateApi();
-    if (a.getState().mode) a.toggle();
-  });
-  btnPause.addEventListener('click', function () {
-    var a = annotateApi();
-    a.setPaused(!a.getState().paused);
-  });
-  btnClear.addEventListener('click', function () { annotateApi().clear(); });
-  btnPin.addEventListener('click', function () {
-    var a = annotateApi();
-    a.setFloatingToolbar(!a.getState().floating);
-  });
-  if (btnComments) btnComments.addEventListener('click', function () {
-    var a = annotateApi();
-    if (typeof a.setRenderComments === 'function') a.setRenderComments(!a.getState().renderComments);
-  });
-  if (btnChannel) btnChannel.addEventListener('click', function () {
-    var a = annotateApi();
-    if (typeof a.setBubbleLayout !== 'function') return;
-    var cur = a.getState().bubbleLayout || 'inline';
-    a.setBubbleLayout(cur === 'inline' ? 'sidebar' : 'inline');
-  });
-  annList.addEventListener('click', function (e) {
-    var del = e.target.closest('[data-ann-del]');
-    if (del) {
-      e.preventDefault();
-      e.stopPropagation();
-      var dn = parseInt(del.getAttribute('data-ann-del'), 10);
-      var aDel = annotateApi();
-      if (aDel.removeMark) aDel.removeMark(dn);
-      return;
-    }
-    var row = e.target.closest('.wb-ann-item-main[data-ann-n]');
-    if (!row) return;
-    var n = parseInt(row.getAttribute('data-ann-n'), 10);
-    annotateApi().goToMark(n).then(function () {
-      var item = annList.querySelector('.wb-ann-item[data-ann-n="' + n + '"]');
-      if (item) item.scrollIntoView({ block: 'nearest' });
-    });
-  });
-  if (annFilterBox) {
-    annFilterBox.addEventListener('click', function (e) {
-      var b = e.target.closest('button[data-ann-filter]');
-      if (!b) return;
-      wbSet({ annFilter: b.getAttribute('data-ann-filter') });
-      annFilterBox.querySelectorAll('button').forEach(function (x) {
-        x.classList.toggle('on', x === b);
-      });
-      savePrefs({ annFilter: wbGet().annFilter });
-      var spy = getLibraryScrollHandler();
-      if (wbGet().annFilter === 'tab' && spy) spy();
-      refreshAnnPanel();
-    });
-  }
-
-  refreshAnnPanel();
-}
-
-function pollAnnotate() {
-  if (window.pinpoint) wireAnnotatePanel();
-  else setTimeout(pollAnnotate, 100);
 }
 
 function boardUrl(pageId) {
@@ -400,9 +159,6 @@ function initBoard() {
     });
 }
 
-initAnnBridge({
-  scheduleAnnPanel: scheduleAnnPanel
-});
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
   applyPageNames: applyPageNames,
@@ -410,18 +166,16 @@ initBootPrefs({
 });
 initPages({
   loadBoard: loadBoard,
-  mountManager: mountManager,
-  refreshAnnPanel: refreshAnnPanel
+  mountManager: mountManager
 });
 initPreviewMount({
-  wireLibraryScrollSpy: wireLibraryScrollSpy,
-  refreshAnnPanel: refreshAnnPanel
+  wireLibraryScrollSpy: wireLibraryScrollSpy
 });
 wireSections();
 initBoard();
 wireCanvasHud({
   setCanvasZoom: setCanvasZoom,
-  onSectionJump: function () { if (wbGet().annFilter === 'tab') refreshAnnPanel(); }
+  onSectionJump: function () { if (wbGet().annFilter === 'tab') scheduleAnnSnap(); }
 });
 
 window.workbench = {
@@ -446,7 +200,7 @@ if (boardModeBox) {
     setBoardMode(mode);
   });
 }
-pollAnnotate();
+startAnnBridge();
 
 gearBtn.addEventListener('click', function () {
   loadSettings().then(showSettings);
