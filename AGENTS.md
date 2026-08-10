@@ -65,7 +65,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js`, `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
 | `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs |
 | `workbench/` | Canvas: `workbench.js` (board loader, include/mount, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js` |
-| `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (head/Pages/Annotations/footer) + `CanvasHud.jsx` (dock/HUD) + `AnnPanel.jsx` + `SettingsView.jsx`; `store.js` (zustand) is the single home of shared chrome state |
+| `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (head/Pages/Annotations/footer) + `CanvasHud.jsx` (dock/HUD) + `AnnPanel.jsx` + `SettingsView.jsx`; `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`) |
 | `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
 | `kits/ios/` | First kit: `ios-kit.css/js` + `components/` (Component Library sources) |
