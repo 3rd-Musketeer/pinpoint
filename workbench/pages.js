@@ -18,10 +18,21 @@ import { validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
 import { openDocExportDialog } from './export-core.js';
 import { loadFailHtml } from './screen-load.js';
+import {
+  applyClock,
+  applyLockFont,
+  refit,
+  restorePrefs,
+  setCanvasZoom,
+  setFrame,
+  setTextSize,
+  snapshotPageViewport
+} from './boot-prefs.js';
 
-// 反向依赖注入：loadBoard / mountManager / 视口与 gutter / prefs 应用器 /
-// 标注面板刷新等都还留在 workbench.js（后续轮次才拆），pages.js 不得 import
-// workbench.js，由它在初始化时经 initPages(deps) 注入。
+// 反向依赖注入：loadBoard / mountManager / stopGutter / annotateApi /
+// refreshAnnPanel / watchDocAnnotate 还留在 workbench.js（后续轮次才拆），
+// pages.js 不得 import workbench.js，由它在初始化时经 initPages(deps) 注入。
+// （boot-prefs 簇的 restorePrefs/refit/setter 等走直接 import。）
 var pagesDeps = {};
 
 export function initPages(deps) {
@@ -75,7 +86,7 @@ export function scrollToGroup(groupId, options) {
   updateSectionNavigatorActive(groupId);
   var el = document.getElementById('lib-' + groupId);
   if (el) el.scrollIntoView({ behavior: options.smooth === false ? 'auto' : 'smooth', block: 'start' });
-  pagesDeps.refit();
+  refit();
   pagesDeps.refreshAnnPanel();
 }
 
@@ -399,13 +410,13 @@ export function setBoardMode(mode, options) {
   mode = normalizeBoardMode(mode);
   var prevMode = wbGet().boardMode;
   if (prevMode !== mode && pagesDeps.mountManager.current && pagesDeps.mountManager.current.active && pagesDeps.mountManager.current.pageId === wbGet().activePageId) {
-    pagesDeps.snapshotPageViewport(wbGet().activePageId);
+    snapshotPageViewport(wbGet().activePageId);
   }
   wbSet({ boardMode: mode });
   syncBoardModeUi(mode);
   if (mode !== 'html') pagesDeps.stopGutter();   // 离开 HTML 板：父级 gutter 不再适用
   // 画布缩放对文档没有意义——报告必须按读者真实窗口尺寸渲染
-  if (mode === 'html') pagesDeps.setCanvasZoom('1', { save: false });
+  if (mode === 'html') setCanvasZoom('1', { save: false });
   if (docVersionsNav && mode !== 'html') { docVersionsNav.hidden = true; docVersionsNav.innerHTML = ''; }
   var manifest = wbGet().pageManifest;
   if (manifest) renderPageManifest(manifest);
@@ -490,7 +501,7 @@ export function setActivePage(pageId, options) {
     _draftAnn.cancelDraft();
   }
   if (!same && pagesDeps.mountManager.current && pagesDeps.mountManager.current.active && pagesDeps.mountManager.current.pageId === wbGet().activePageId) {
-    pagesDeps.snapshotPageViewport(wbGet().activePageId);
+    snapshotPageViewport(wbGet().activePageId);
   }
   wbSet({ activePageId: pageId });
   var nextMode = modeForPage(wbGet().pageManifest, pageId);
@@ -546,16 +557,16 @@ export function wirePref(root, id, attr, setter) {
 }
 
 function wireSettings() {
-  wirePref(settingsEl, 'textsize', 'text-size', pagesDeps.setTextSize);
-  wirePref(settingsEl, 'frame', 'frame', pagesDeps.setFrame);
-  wirePref(settingsEl, 'zoom', 'canvas-zoom', pagesDeps.setCanvasZoom);
+  wirePref(settingsEl, 'textsize', 'text-size', setTextSize);
+  wirePref(settingsEl, 'frame', 'frame', setFrame);
+  wirePref(settingsEl, 'zoom', 'canvas-zoom', setCanvasZoom);
   wireCtl(settingsEl, 'lockfont', 'lock-font', function (val) {
-    pagesDeps.applyLockFont(val);
+    applyLockFont(val);
     savePrefs({ lockFont: val });
   });
   wireCtl(settingsEl, 'clockmode', 'clock-mode', function (mode) {
     var fixed = iosTimeFromInput(settingsEl.querySelector('#clockfixed').value);
-    pagesDeps.applyClock(mode, fixed);
+    applyClock(mode, fixed);
     savePrefs({ clockMode: mode, clockFixed: fixed });
   });
 
@@ -564,7 +575,7 @@ function wireSettings() {
     clockfixed.setAttribute('data-wired', '1');
     clockfixed.addEventListener('change', function () {
       var fixed = iosTimeFromInput(clockfixed.value);
-      pagesDeps.applyClock('fixed', fixed);
+      applyClock('fixed', fixed);
       savePrefs({ clockMode: 'fixed', clockFixed: fixed });
     });
   }
@@ -578,7 +589,7 @@ export function loadSettings() {
     .then(function (html) {
       settingsEl.innerHTML = html;
       wireSettings();
-      pagesDeps.restorePrefs();
+      restorePrefs();
     })
     .catch(function (e) {
       settingsEl.innerHTML = loadFailHtml('加载设置失败 · ' + e);

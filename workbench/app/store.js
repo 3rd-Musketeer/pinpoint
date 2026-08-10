@@ -10,7 +10,7 @@ import { create } from 'zustand';
 export const useWorkbenchStore = create((set) => ({
   // sidebar shell
   sideCollapsed: false,
-  sideWidth: 252,
+  sideWidth: 250,
   sectionOpen: { pages: true, annotations: true },
   // board + pages
   boardMode: 'ios',

@@ -8,11 +8,12 @@ import {
   rebuildSectionNavigator,
   scheduleMinimapUpdate
 } from './board-nav.js';
+import { restorePageViewportAfterMount, syncPanelPrefs } from './boot-prefs.js';
 
-// 反向依赖注入：syncPanelPrefs / restorePageViewportAfterMount / annotateApi /
-// wireLibraryScrollSpy / refreshAnnPanel 还留在 workbench.js（prefs / viewport /
-// 标注簇，后续轮次才拆），preview-mount 不得 import workbench.js，由它在初始化时
-// 经 initPreviewMount(deps) 注入。
+// 反向依赖注入：annotateApi / wireLibraryScrollSpy / refreshAnnPanel 还留在
+// workbench.js（标注簇，后续轮次才拆），preview-mount 不得 import workbench.js，
+// 由它在初始化时经 initPreviewMount(deps) 注入。
+// （boot-prefs 簇的 syncPanelPrefs/restorePageViewportAfterMount 走直接 import。）
 var mountDeps = {};
 
 export function initPreviewMount(deps) {
@@ -192,9 +193,9 @@ export function afterMount(panel, session) {
         var device = s.querySelector('.ios-device');
         if (device) device.style.setProperty('--ios-scale', '1');
       });
-      mountDeps.syncPanelPrefs(panel);
+      syncPanelPrefs(panel);
       wireExportControls(panel);
-      var hadViewport = mountDeps.restorePageViewportAfterMount(session.pageId);
+      var hadViewport = restorePageViewportAfterMount(session.pageId);
       if (window.iOSKit) window.iOSKit.refresh(panel);
       return runPreviewScripts(panel, session.pageId, session).then(function () {
         if (!session.isUsable(panel)) return;

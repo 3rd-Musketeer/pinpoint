@@ -10,30 +10,35 @@ import {
 import { wbGet, wbSet } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl } from './lib/page-url.js';
-import { inputFromIosTime } from './lib/ios-time.js';
 import {
   activeDocExportTarget,
   buildExportSnapshot,
   requestDocExport,
   requestExportImage
 } from './export-core.js';
-import { readPrefs, savePrefs, replacePrefs } from './lib/prefs.js';
-import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
+import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
   focusWorkbenchFrame,
   isTypingTarget,
-  refreshBoardNavigationModel,
   resetBoardNavOnLoadFailure,
-  scheduleMinimapUpdate,
-  setMinimapOpen,
-  syncZoomHud,
-  updateMinimapAvailability,
-  updateSectionNavigatorVisibility,
   wireCanvasHud
 } from './board-nav.js';
 import { buildBoardHtml, clearIncludeCache, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
+import { wireFrameNoteEditors } from './frame-notes.js';
+import {
+  applyBootPrefs,
+  applySideWidth,
+  initBootPrefs,
+  refit,
+  scheduleViewportScrollSave,
+  setCanvasZoom,
+  setSideCollapsed,
+  setTheme,
+  snapshotPageViewport,
+  toggleSideCollapsed
+} from './boot-prefs.js';
 import {
   applyPageNames,
   applySectionOpen,
@@ -58,7 +63,7 @@ import {
   wireSections
 } from './pages.js';
 
-// activePageId / boardMode / pageManifest / activeBoard / activeGroup / sectionOpen / annFilter 归 app/store.js（wbGet/wbSet 读写）
+// activePageId / boardMode / pageManifest / activeBoard / activeGroup / sectionOpen / annFilter / sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
 var boardModeBox = document.getElementById('wbboard-mode');
 var stage  = document.getElementById('wbstage');
@@ -77,154 +82,9 @@ var annCountEl = document.getElementById('wbann-count');
 var annFilterBox = document.getElementById('wbann-filter');
 var annListSig = '';          // last rendered list signature (skip rebuilds when unchanged)
 var annPanelRaf = 0;          // rAF debounce token for refreshAnnPanel
-var SIDE_W_MIN = 200;
-var SIDE_W_MAX = 480;
-var SIDE_W_DEFAULT = 250;
-var sideW = SIDE_W_DEFAULT;
-var sideCollapsed = false;
 var boardPanel;
 var boardLoadGen = 0;
 var mountManager = new BoardMountManager();
-
-function syncSegOn(box, attr, val, sel) {
-  if (!box) return;
-  box.querySelectorAll(sel || 'button').forEach(function (b) {
-    b.classList.toggle('on', b.getAttribute('data-' + attr) === val);
-  });
-}
-
-function applySideWidth(px) {
-  sideW = Math.round(Math.max(SIDE_W_MIN, Math.min(SIDE_W_MAX, px)));
-  document.documentElement.style.setProperty('--wb-side-w', sideW + 'px');
-  if (splitEl) splitEl.setAttribute('aria-valuenow', String(sideW));
-  return sideW;
-}
-
-function setSideCollapsed(on, options) {
-  options = options || {};
-  sideCollapsed = !!on;
-  if (wbRoot) wbRoot.classList.toggle('wb-side-collapsed', sideCollapsed);
-  if (sideToggleBtn) {
-    sideToggleBtn.setAttribute('aria-expanded', sideCollapsed ? 'false' : 'true');
-    sideToggleBtn.setAttribute('aria-label', sideCollapsed ? '展开侧栏' : '收起侧栏');
-    sideToggleBtn.title = sideCollapsed ? '展开侧栏' : '收起侧栏';
-  }
-  if (splitEl) {
-    splitEl.setAttribute(
-      'aria-label',
-      sideCollapsed ? '展开侧栏（点击）或拖动调整宽度' : '调整侧栏宽度（拖动）· 双击收起'
-    );
-    splitEl.title = sideCollapsed ? '点击展开侧栏 · 拖动可调宽' : '拖动调整宽度 · 双击收起/展开';
-  }
-  if (options.save) savePrefs({ sideCollapsed: sideCollapsed });
-  if (options.refit !== false) {
-    requestAnimationFrame(function () { refit(); });
-  }
-}
-
-function toggleSideCollapsed(options) {
-  setSideCollapsed(!sideCollapsed, options || { save: true });
-}
-
-function applyIosRoots(p, root) {
-  var scope = root || document;
-  scope.querySelectorAll('.ios-root').forEach(function (r) {
-    r.setAttribute('data-theme', p.theme || 'light');
-    r.setAttribute('data-text-size', p.textSize || 'default');
-    r.classList.toggle('screen-only', (p.frame || 'screen') === 'screen');
-  });
-}
-
-function applyIosRootValue(attribute, value, root) {
-  (root || document).querySelectorAll('.ios-root').forEach(function (iosRoot) {
-    if (attribute === 'frame') iosRoot.classList.toggle('screen-only', value === 'screen');
-    else iosRoot.setAttribute(attribute, value);
-  });
-}
-
-function makePref(storeKey, opts) {
-  return function set(val, options) {
-    options = options || {};
-    opts.apply(val);
-    var box = typeof opts.ui === 'function' ? opts.ui() : opts.ui;
-    if (box && opts.attr) syncSegOn(box, opts.attr, val, opts.btnSel);
-    if (options.save) {
-      savePrefs({ [storeKey]: val });
-      if (opts.refit) refit();
-    }
-  };
-}
-
-var setTheme = makePref('theme', {
-  apply: function (val) { applyIosRootValue('data-theme', val); },
-  ui: function () { return themeBox; },
-  attr: 'theme',
-  refit: true
-});
-
-var setTextSize = makePref('textSize', {
-  apply: function (val) { applyIosRootValue('data-text-size', val); },
-  ui: function () { return settingsEl.querySelector('#textsize'); },
-  attr: 'text-size',
-  refit: true
-});
-
-var setFrame = makePref('frame', {
-  apply: function (val) { applyIosRootValue('frame', val); },
-  ui: function () { return settingsEl.querySelector('#frame'); },
-  attr: 'frame',
-  refit: true
-});
-
-var setCanvasZoom = makePref('canvasZoom', {
-  apply: function (val) {
-    var z = boardZoom(val);
-    document.documentElement.setAttribute('data-canvas-zoom', z);
-    document.documentElement.style.setProperty('--wb-board-zoom', z);
-    syncBoardZoomLayout();
-    syncZoomHud(z);
-    var _a = annotateApi(); if (_a) _a.render();
-    scheduleMinimapUpdate();
-    updateMinimapAvailability();
-    updateSectionNavigatorVisibility();
-  },
-  ui: function () { return settingsEl.querySelector('#zoom'); },
-  attr: 'canvas-zoom'
-  // Zoom persists only via pageViewports (wrapper); makePref must not write global canvasZoom.
-});
-
-var _setCanvasZoom = setCanvasZoom;
-var zoomSaveT;
-var pendingZoomSave = null;
-setCanvasZoom = function (val, options) {
-  options = options || {};
-  // Visual update always; persist is debounced so wheel/pinch does not thrash localStorage.
-  // Never pass save:true into makePref — global canvasZoom key is retired.
-  _setCanvasZoom(val, { save: false });
-  if (options.save) scheduleZoomSave(val);
-};
-
-function scheduleZoomSave(val) {
-  pendingZoomSave = boardZoom(val);
-  clearTimeout(zoomSaveT);
-  zoomSaveT = setTimeout(flushZoomSave, 200);
-}
-
-function flushZoomSave() {
-  clearTimeout(zoomSaveT);
-  zoomSaveT = null;
-  var z = pendingZoomSave;
-  pendingZoomSave = null;
-  if (z == null) return;
-  savePageViewport(wbGet().activePageId, { canvasZoom: z });
-}
-
-var viewportSaveT;
-var restoringViewport = false;
-
-function stageScrollPatch() {
-  return { scrollLeft: stage.scrollLeft, scrollTop: stage.scrollTop };
-}
 
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
@@ -232,189 +92,6 @@ function resolveBootPageId(prefs) {
   var manifest = wbGet().pageManifest;
   if (manifest) renderPageManifest(manifest);
   return resolvePageForMode(wbGet().boardMode, prefs.activePageId);
-}
-
-/** One-time: seed pageViewports[pageId].canvasZoom from legacy prefs.canvasZoom, then drop the global key. */
-function migrateLegacyCanvasZoom(pageId) {
-  var prefs = readPrefs();
-  if (!Object.prototype.hasOwnProperty.call(prefs, 'canvasZoom')) return;
-  var legacy = boardZoom(prefs.canvasZoom);
-  var all = Object.assign({}, readPageViewports());
-  var cur = all[pageId] || {};
-  if (cur.canvasZoom == null) {
-    all[pageId] = Object.assign({}, cur, { canvasZoom: legacy });
-  }
-  var next = Object.assign({}, prefs, { pageViewports: all });
-  delete next.canvasZoom;
-  replacePrefs(next);
-}
-
-function zoomForPage(pageId) {
-  var vp = pageViewport(pageId);
-  return boardZoom((vp && vp.canvasZoom) || '1');
-}
-
-function snapshotPageViewport(pageId) {
-  if (!pageId || !stage) return;
-  clearTimeout(viewportSaveT);
-  viewportSaveT = null;
-  flushZoomSave();
-  savePageViewport(pageId, Object.assign(stageScrollPatch(), {
-    canvasZoom: String(currentCanvasZoom())
-  }));
-}
-
-function scheduleViewportScrollSave() {
-  if (restoringViewport || !stage) return;
-  scheduleMinimapUpdate();
-  clearTimeout(viewportSaveT);
-  viewportSaveT = setTimeout(function () {
-    if (restoringViewport) return;
-    savePageViewport(wbGet().activePageId, stageScrollPatch());
-  }, 300);
-}
-
-function restorePageViewport(pageId, options) {
-  options = options || {};
-  if (!stage) return false;
-  var vp = pageViewport(pageId);
-  if (!vp) return false;
-  restoringViewport = true;
-  if (vp.canvasZoom != null && options.zoom !== false) {
-    _setCanvasZoom(boardZoom(vp.canvasZoom), { save: false });
-  }
-  if (options.scroll !== false) {
-    var left = vp.scrollLeft != null ? vp.scrollLeft : 0;
-    var top = vp.scrollTop != null ? vp.scrollTop : 0;
-    stage.scrollLeft = left;
-    stage.scrollTop = top;
-  }
-  requestAnimationFrame(function () {
-    restoringViewport = false;
-  });
-  return true;
-}
-
-/** Zoom first, then layout, then scroll — scroll coords depend on zoomed board size. */
-function restorePageViewportAfterMount(pageId) {
-  if (!pageViewport(pageId)) return false;
-  restorePageViewport(pageId, { scroll: false });
-  syncBoardZoomLayout();
-  restorePageViewport(pageId, { zoom: false });
-  return true;
-}
-
-/** Reserve layout space for transform-scaled board (transform alone does not shrink flow).
- *  In HTML board mode the zoom-wrap is width:100% + transform:none (a fluid reader
- *  column, not a fixed canvas), so we must not pin an inline content-measured width —
- *  that would override the CSS and make the iframe overflow the stage into the gutter. */
-function syncBoardZoomLayout() {
-  var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
-  var lib = wrap && wrap.querySelector('.wb-library');
-  if (!wrap || !lib) return;
-  if (wbGet().boardMode === 'html') {
-    wrap.style.width = '';
-    wrap.style.height = '';
-    return;
-  }
-  var z = currentCanvasZoom();
-  var w = lib.offsetWidth;
-  var h = lib.offsetHeight;
-  wrap.style.width = Math.ceil(w * z) + 'px';
-  wrap.style.height = Math.ceil(h * z) + 'px';
-}
-
-/** Board is a fixed canvas; viewer resize must not reflow phones. Prefer numeric zoom. */
-function boardZoom(val) {
-  if (!val || val === 'fit') return '1';
-  return String(val);
-}
-
-function applyLockFont(val) {
-  document.documentElement.setAttribute('data-lock-font', val);
-  syncSegOn(settingsEl.querySelector('#lockfont'), 'lock-font', val, '.wb-font-opt');
-  if (window.iOSKit) window.iOSKit.refresh();
-}
-
-function applyClock(mode, fixedIos) {
-  document.documentElement.setAttribute('data-clock-mode', mode);
-  var row = settingsEl.querySelector('#clockfixed-row');
-  var input = settingsEl.querySelector('#clockfixed');
-  if (mode === 'fixed') {
-    var t = fixedIos || '9:41';
-    document.documentElement.setAttribute('data-clock-fixed', t);
-    if (input) input.value = inputFromIosTime(t);
-    if (row) row.hidden = false;
-  } else {
-    document.documentElement.removeAttribute('data-clock-fixed');
-    if (row) row.hidden = true;
-  }
-  syncSegOn(settingsEl.querySelector('#clockmode'), 'clock-mode', mode);
-  if (window.iOSKit) window.iOSKit.tick();
-}
-
-function syncPanelPrefs(panel) {
-  applyIosRoots(readPrefs(), panel);
-}
-
-function applyBootPrefs(prefs, options) {
-  options = options || {};
-  prefs = prefs || readPrefs();
-  var pageId = options.pageId || resolveBootPageId(prefs);
-  migrateLegacyCanvasZoom(pageId);
-
-  if (options.side !== false) {
-    applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);
-    setSideCollapsed(!!prefs.sideCollapsed, { save: false, refit: false });
-  }
-  setMinimapOpen(false);
-
-  applyIosRoots(prefs);
-  syncSegOn(themeBox, 'theme', prefs.theme || 'light');
-  applyLockFont(prefs.lockFont || 'helvetica');
-  applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
-  setCanvasZoom(zoomForPage(pageId), { save: false });
-
-  if (options.shell !== false) {
-    wbSet({ annFilter: prefs.annFilter || 'all' });
-    if (prefs.sectionOpen) {
-      wbSet({ sectionOpen: Object.assign({ pages: true, annotations: true }, prefs.sectionOpen) });
-    }
-    if (annFilterBox) {
-      annFilterBox.querySelectorAll('button').forEach(function (b) {
-        b.classList.toggle('on', b.getAttribute('data-ann-filter') === wbGet().annFilter);
-      });
-    }
-    applyPageNames(prefs.pageNames);
-    applySectionOpen();
-  }
-
-  if (options.syncSettingsUi) {
-    syncSegOn(themeBox, 'theme', prefs.theme || 'light');
-    syncSegOn(settingsEl.querySelector('#textsize'), 'text-size', prefs.textSize || 'default');
-    syncSegOn(settingsEl.querySelector('#frame'), 'frame', prefs.frame || 'screen');
-    syncSegOn(settingsEl.querySelector('#zoom'), 'canvas-zoom', zoomForPage(wbGet().activePageId));
-  }
-
-  if (options.refit) refit();
-  return pageId;
-}
-
-function restorePrefs() {
-  applyBootPrefs(readPrefs(), {
-    pageId: wbGet().activePageId,
-    side: false,
-    shell: false,
-    syncSettingsUi: true,
-    refit: true
-  });
-}
-
-function refit() {
-  if (window.iOSKit) window.iOSKit.fitAll();
-  var _a = annotateApi(); if (_a) _a.render();
-  refreshBoardNavigationModel();
-  scheduleMinimapUpdate();
 }
 
 /* ---- annotate API resolver -------------------------------------------------
@@ -616,161 +293,6 @@ function markSummary(m) {
   if (m.type === 'region') return '框选区域';
   if (m.text) return m.text.slice(0, 60);
   return m.selector || '';
-}
-
-function frameNoteApiUrl(pageId, screenId) {
-  return '/api/frame-notes/' + encodeURIComponent(pageId) + '/' + encodeURIComponent(screenId);
-}
-
-function frameNoteError(response, data) {
-  var error = new Error((data && data.message) || ('Frame Note 请求失败 · ' + response.status));
-  error.status = response.status;
-  error.data = data || {};
-  return error;
-}
-
-function readFrameNoteResponse(response) {
-  return response.json().catch(function () { return {}; }).then(function (data) {
-    if (!response.ok) throw frameNoteError(response, data);
-    return data;
-  });
-}
-
-function setFrameNoteStatus(noteEl, message, isError) {
-  var status = noteEl.querySelector('[data-frame-note-status]');
-  if (!status) return;
-  status.textContent = message || '';
-  status.classList.toggle('is-error', !!isError);
-}
-
-function setFrameNoteBusy(noteEl, busy) {
-  noteEl.querySelectorAll('button, textarea').forEach(function (control) {
-    control.disabled = !!busy;
-  });
-}
-
-function closeFrameNoteEditor(noteEl) {
-  var view = noteEl.querySelector('[data-frame-note-view]');
-  var editor = noteEl.querySelector('[data-frame-note-editor]');
-  if (view) view.hidden = false;
-  if (editor) editor.hidden = true;
-  noteEl.classList.remove('is-editing');
-  setFrameNoteBusy(noteEl, false);
-  setFrameNoteStatus(noteEl, '', false);
-  refit();
-}
-
-function openFrameNoteEditor(noteEl) {
-  var screen = noteEl.closest('[data-screen]');
-  var screenId = screen && screen.getAttribute('data-screen');
-  if (!screenId || wbGet().activePageId === COMPONENTS_ID) return;
-  var edit = noteEl.querySelector('[data-frame-note-action="edit"]');
-  if (edit) edit.disabled = true;
-  noteEl.classList.add('is-loading');
-
-  fetch(frameNoteApiUrl(wbGet().activePageId, screenId))
-    .then(readFrameNoteResponse)
-    .then(function (data) {
-      if (!noteEl.isConnected) return;
-      noteEl.dataset.frameNoteRevision = data.revision;
-      var input = noteEl.querySelector('[data-frame-note-input]');
-      var view = noteEl.querySelector('[data-frame-note-view]');
-      var editor = noteEl.querySelector('[data-frame-note-editor]');
-      if (input) input.value = data.note || '';
-      if (view) view.hidden = true;
-      if (editor) editor.hidden = false;
-      noteEl.classList.add('is-editing');
-      setFrameNoteStatus(noteEl, '⌘/Ctrl + Enter 保存', false);
-      if (input) {
-        input.focus();
-        input.setSelectionRange(0, 0);
-        input.scrollTop = 0;
-      }
-      refit();
-    })
-    .catch(function (error) {
-      if (!noteEl.isConnected) return;
-      if (edit) {
-        edit.textContent = '重试';
-        edit.title = error.message;
-      }
-    })
-    .finally(function () {
-      if (!noteEl.isConnected) return;
-      noteEl.classList.remove('is-loading');
-      if (edit) edit.disabled = false;
-    });
-}
-
-function saveFrameNote(noteEl) {
-  var screen = noteEl.closest('[data-screen]');
-  var screenId = screen && screen.getAttribute('data-screen');
-  var input = noteEl.querySelector('[data-frame-note-input]');
-  var revision = noteEl.dataset.frameNoteRevision;
-  if (!screenId || !input || !revision || wbGet().activePageId === COMPONENTS_ID) return;
-
-  setFrameNoteBusy(noteEl, true);
-  setFrameNoteStatus(noteEl, '正在保存…', false);
-  fetch(frameNoteApiUrl(wbGet().activePageId, screenId), {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ note: input.value, baseRevision: revision })
-  })
-    .then(readFrameNoteResponse)
-    .then(function (data) {
-      if (!noteEl.isConnected) return;
-      noteEl.dataset.frameNoteRevision = data.revision;
-      var text = noteEl.querySelector('[data-frame-note-text]');
-      var edit = noteEl.querySelector('[data-frame-note-action="edit"]');
-      if (text) {
-        text.textContent = data.note || '添加这一步的场景、交互或能力说明。';
-        text.classList.toggle('wb-frame-note-placeholder', !data.note);
-      }
-      if (edit) {
-        edit.textContent = data.note ? '编辑' : '＋ Frame Note';
-        edit.title = '';
-      }
-      noteEl.classList.toggle('is-empty', !data.note);
-      closeFrameNoteEditor(noteEl);
-    })
-    .catch(function (error) {
-      if (!noteEl.isConnected) return;
-      var message = error.status === 409
-        ? 'board.json 已被修改；请保留当前文字，取消后重新打开再保存。'
-        : error.message;
-      setFrameNoteBusy(noteEl, false);
-      setFrameNoteStatus(noteEl, message, true);
-    });
-}
-
-function wireFrameNoteEditors(panel) {
-  if (!panel || panel.dataset.frameNotesWired === '1') return;
-  panel.dataset.frameNotesWired = '1';
-  panel.addEventListener('click', function (event) {
-    var action = event.target.closest('[data-frame-note-action]');
-    if (!action || !panel.contains(action)) return;
-    event.preventDefault();
-    event.stopPropagation();
-    var noteEl = action.closest('[data-frame-note]');
-    if (!noteEl) return;
-    var kind = action.getAttribute('data-frame-note-action');
-    if (kind === 'edit') openFrameNoteEditor(noteEl);
-    else if (kind === 'cancel') closeFrameNoteEditor(noteEl);
-    else if (kind === 'save') saveFrameNote(noteEl);
-  });
-  panel.addEventListener('keydown', function (event) {
-    var input = event.target.closest('[data-frame-note-input]');
-    if (!input || !panel.contains(input)) return;
-    var noteEl = input.closest('[data-frame-note]');
-    if (!noteEl) return;
-    if (event.key === 'Escape') {
-      event.preventDefault();
-      closeFrameNoteEditor(noteEl);
-    } else if (event.key === 'Enter' && (event.metaKey || event.ctrlKey)) {
-      event.preventDefault();
-      saveFrameNote(noteEl);
-    }
-  });
 }
 
 function syncConnStatus() {
@@ -1076,25 +598,21 @@ function initBoard() {
     });
 }
 
+initBootPrefs({
+  annotateApi: annotateApi,
+  resolveBootPageId: resolveBootPageId,
+  applyPageNames: applyPageNames,
+  applySectionOpen: applySectionOpen
+});
 initPages({
   loadBoard: loadBoard,
-  snapshotPageViewport: snapshotPageViewport,
   annotateApi: annotateApi,
   mountManager: mountManager,
   stopGutter: stopGutter,
-  setCanvasZoom: setCanvasZoom,
-  setTextSize: setTextSize,
-  setFrame: setFrame,
-  applyLockFont: applyLockFont,
-  applyClock: applyClock,
-  restorePrefs: restorePrefs,
   refreshAnnPanel: refreshAnnPanel,
-  refit: refit,
   watchDocAnnotate: watchDocAnnotate
 });
 initPreviewMount({
-  syncPanelPrefs: syncPanelPrefs,
-  restorePageViewportAfterMount: restorePageViewportAfterMount,
   annotateApi: annotateApi,
   wireLibraryScrollSpy: wireLibraryScrollSpy,
   refreshAnnPanel: refreshAnnPanel
@@ -1154,7 +672,7 @@ if (splitEl) {
     document.body.classList.remove('wb-resizing');
     splitEl.classList.remove('on');
     if (dragMoved) {
-      savePrefs({ sideWidth: sideW, sideCollapsed: false });
+      savePrefs({ sideWidth: wbGet().sideWidth, sideCollapsed: false });
       suppressSplitClick = true;
       setTimeout(function () { suppressSplitClick = false; }, 0);
     }
@@ -1169,7 +687,7 @@ if (splitEl) {
     if (!dragMoved && Math.abs(dx) < 3) return;
     if (!dragMoved) {
       dragMoved = true;
-      if (sideCollapsed) setSideCollapsed(false, { save: false, refit: false });
+      if (wbGet().sideCollapsed) setSideCollapsed(false, { save: false, refit: false });
     }
     applySideWidth(startW + dx);
     if (splitRaf) return;
@@ -1185,7 +703,7 @@ if (splitEl) {
     dragging = true;
     dragMoved = false;
     startX = e.clientX;
-    startW = sideCollapsed ? 0 : sideW;
+    startW = wbGet().sideCollapsed ? 0 : wbGet().sideWidth;
     document.body.classList.add('wb-resizing');
     splitEl.classList.add('on');
     document.addEventListener('mousemove', onMove);
@@ -1194,7 +712,7 @@ if (splitEl) {
 
   splitEl.addEventListener('click', function (e) {
     if (suppressSplitClick || dragMoved) return;
-    if (sideCollapsed) {
+    if (wbGet().sideCollapsed) {
       e.preventDefault();
       setSideCollapsed(false, { save: true });
     }
@@ -1203,7 +721,7 @@ if (splitEl) {
   splitEl.addEventListener('dblclick', function (e) {
     e.preventDefault();
     // Expanded: double-click collapses. Collapsed: single click already expands.
-    if (!sideCollapsed) setSideCollapsed(true, { save: true });
+    if (!wbGet().sideCollapsed) setSideCollapsed(true, { save: true });
   });
 
   splitEl.addEventListener('keydown', function (e) {
@@ -1215,16 +733,16 @@ if (splitEl) {
     var step = e.shiftKey ? 40 : 16;
     if (e.key === 'ArrowLeft') {
       e.preventDefault();
-      if (sideCollapsed) return;
-      applySideWidth(sideW - step);
+      if (wbGet().sideCollapsed) return;
+      applySideWidth(wbGet().sideWidth - step);
     } else if (e.key === 'ArrowRight') {
       e.preventDefault();
-      if (sideCollapsed) {
+      if (wbGet().sideCollapsed) {
         setSideCollapsed(false, { save: false, refit: false });
       }
-      applySideWidth(sideW + step);
+      applySideWidth(wbGet().sideWidth + step);
     } else return;
-    savePrefs({ sideWidth: sideW, sideCollapsed: false });
+    savePrefs({ sideWidth: wbGet().sideWidth, sideCollapsed: false });
     refit();
   });
 }
