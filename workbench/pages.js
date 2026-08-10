@@ -1,10 +1,8 @@
-// Workbench 页面/manifest/设置簇 — 页面集合与模式、manifest 加载、页面切换、
-// doc 版本切换、侧栏壳、设置视图。P1a 从 workbench.js 平移
-// （goal-20260810-workbench-react-rebuild）：零行为变化。
+// Workbench 页面/manifest 簇 — 页面集合与模式、manifest 加载、页面切换、
+// doc 版本切换、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
-import { iosTimeFromInput } from './lib/ios-time.js';
 import {
   COMPONENTS_ID,
   DOC_LIB_ID,
@@ -16,17 +14,7 @@ import {
 import { closestBoardSection } from './lib/board-navigation.js';
 import { validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
-import { loadFailHtml } from './screen-load.js';
-import {
-  applyClock,
-  applyLockFont,
-  refit,
-  restorePrefs,
-  setCanvasZoom,
-  setFrame,
-  setTextSize,
-  snapshotPageViewport
-} from './boot-prefs.js';
+import { refit, setCanvasZoom, snapshotPageViewport } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
 // 反向依赖注入：loadBoard / mountManager 还留在 workbench.js（P2 才拆），
@@ -342,67 +330,6 @@ export function showTabs() {
 
 export function showSettings() {
   wbSet({ settingsOpen: true });
-}
-
-function wireCtl(root, id, attr, onPick) {
-  var box = (root || document).querySelector('#' + id);
-  if (!box || box.getAttribute('data-wired')) return;
-  box.setAttribute('data-wired', '1');
-  box.addEventListener('click', function (e) {
-    var b = e.target.closest('button');
-    if (!b) return;
-    onPick(b.getAttribute('data-' + attr), b, box);
-  });
-}
-
-export function wirePref(root, id, attr, setter) {
-  wireCtl(root, id, attr, function (val) { setter(val, { save: true }); });
-}
-
-function wireSettings() {
-  var settingsEl = document.getElementById('wbsettings');
-  if (!settingsEl) return;
-  wirePref(settingsEl, 'textsize', 'text-size', setTextSize);
-  wirePref(settingsEl, 'frame', 'frame', setFrame);
-  wirePref(settingsEl, 'zoom', 'canvas-zoom', setCanvasZoom);
-  wireCtl(settingsEl, 'lockfont', 'lock-font', function (val) {
-    applyLockFont(val);
-    savePrefs({ lockFont: val });
-  });
-  wireCtl(settingsEl, 'clockmode', 'clock-mode', function (mode) {
-    var fixed = iosTimeFromInput(settingsEl.querySelector('#clockfixed').value);
-    applyClock(mode, fixed);
-    savePrefs({ clockMode: mode, clockFixed: fixed });
-  });
-
-  var clockfixed = settingsEl.querySelector('#clockfixed');
-  if (clockfixed && !clockfixed.getAttribute('data-wired')) {
-    clockfixed.setAttribute('data-wired', '1');
-    clockfixed.addEventListener('change', function () {
-      var fixed = iosTimeFromInput(clockfixed.value);
-      applyClock('fixed', fixed);
-      savePrefs({ clockMode: 'fixed', clockFixed: fixed });
-    });
-  }
-}
-
-var settingsReady;
-export function loadSettings() {
-  if (settingsReady) return settingsReady;
-  settingsReady = fetch('workbench/settings.html')
-    .then(function (r) { if (!r.ok) throw r.status; return r.text(); })
-    .then(function (html) {
-      var settingsEl = document.getElementById('wbsettings');
-      if (!settingsEl) return;
-      settingsEl.innerHTML = html;
-      wireSettings();
-      restorePrefs();
-    })
-    .catch(function (e) {
-      var settingsEl = document.getElementById('wbsettings');
-      if (settingsEl) settingsEl.innerHTML = loadFailHtml('加载设置失败 · ' + e);
-    });
-  return settingsReady;
 }
 
 // 页面显示名归 store（Sidebar 的 PageRow 订阅派生；system 页不参与改名）

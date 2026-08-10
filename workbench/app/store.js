@@ -28,6 +28,12 @@ export const useWorkbenchStore = create((set) => ({
   annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）
   // preview chrome
   theme: 'light',
+  // 设置视图（boot-prefs 的 setter/apply* 写；SettingsView 组件读）
+  frame: 'screen',
+  textSize: 'default',
+  lockFont: 'helvetica',
+  clockMode: 'system',
+  clockFixed: '9:41',
   // canvas HUD（board-nav 写；CanvasHud 组件读）
   canvasZoom: '1',
   minimapOpen: false,

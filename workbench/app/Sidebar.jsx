@@ -8,7 +8,6 @@ import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import {
   docScreensOfActiveBoard,
-  loadSettings,
   pagesForMode,
   setActiveDoc,
   setActivePage,
@@ -22,6 +21,7 @@ import { openDocExportDialog } from '../export-core.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { AnnPanel } from './AnnPanel.jsx';
+import { SettingsView } from './SettingsView.jsx';
 import { WbIcon } from './WbIcon.jsx';
 
 function SideHead() {
@@ -279,7 +279,7 @@ function SideFoot() {
       </div>
       <button type="button" className={'wb-gear' + (settingsOpen ? ' on' : '')} id="wbgear"
         aria-label="预览设置" title="设置"
-        onClick={function () { loadSettings().then(showSettings); }}>
+        onClick={function () { showSettings(); }}>
         <WbIcon name="settings" size={15} className="wb-gear-ico" />
       </button>
     </div>
@@ -296,9 +296,9 @@ export function Sidebar() {
           <Section name="pages" title="Pages"><PagesSection /></Section>
           <Section name="annotations" title="Annotations" count={<AnnCount />}><AnnPanel /></Section>
         </div>
-        {/* 设置内容由 loadSettings 取回 settings.html 后 innerHTML 填充（cut4 才出壳），
-            本 div 永远不传 children —— React 不会碰它的 DOM 子节点。 */}
-        <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}></div>
+        <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
+          <SettingsView />
+        </div>
         <SideFoot />
       </div>
     </Fragment>

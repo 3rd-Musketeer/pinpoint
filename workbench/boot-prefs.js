@@ -30,23 +30,9 @@ var stage = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 
-// 设置视图壳由 React 渲染、内容靠 loadSettings 异步填充（cut4 才出壳），
-// 模块加载时未必存在 —— 设置相关查询一律走这个惰性入口。
-function settingsQuery(sel) {
-  var el = document.getElementById('wbsettings');
-  return el ? el.querySelector(sel) : null;
-}
-
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
 var SIDE_W_DEFAULT = 250;
-
-function syncSegOn(box, attr, val, sel) {
-  if (!box) return;
-  box.querySelectorAll(sel || 'button').forEach(function (b) {
-    b.classList.toggle('on', b.getAttribute('data-' + attr) === val);
-  });
-}
 
 export function applySideWidth(px) {
   var w = Math.round(Math.max(SIDE_W_MIN, Math.min(SIDE_W_MAX, px)));
@@ -94,12 +80,12 @@ function applyIosRootValue(attribute, value, root) {
   });
 }
 
+// 控件态由 SettingsView 订阅 store 派生（setter 的 apply 负责 wbSet），
+// makePref 只剩 apply + 持久化 + 可选 refit。
 function makePref(storeKey, opts) {
   return function set(val, options) {
     options = options || {};
     opts.apply(val);
-    var box = typeof opts.ui === 'function' ? opts.ui() : opts.ui;
-    if (box && opts.attr) syncSegOn(box, opts.attr, val, opts.btnSel);
     if (options.save) {
       savePrefs({ [storeKey]: val });
       if (opts.refit) refit();
@@ -116,16 +102,18 @@ export var setTheme = makePref('theme', {
 });
 
 export var setTextSize = makePref('textSize', {
-  apply: function (val) { applyIosRootValue('data-text-size', val); },
-  ui: function () { return settingsQuery('#textsize'); },
-  attr: 'text-size',
+  apply: function (val) {
+    wbSet({ textSize: val });
+    applyIosRootValue('data-text-size', val);
+  },
   refit: true
 });
 
 export var setFrame = makePref('frame', {
-  apply: function (val) { applyIosRootValue('frame', val); },
-  ui: function () { return settingsQuery('#frame'); },
-  attr: 'frame',
+  apply: function (val) {
+    wbSet({ frame: val });
+    applyIosRootValue('frame', val);
+  },
   refit: true
 });
 
@@ -140,9 +128,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     scheduleMinimapUpdate();
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();
-  },
-  ui: function () { return settingsQuery('#zoom'); },
-  attr: 'canvas-zoom'
+  }
   // Zoom persists only via pageViewports (wrapper); makePref must not write global canvasZoom.
 });
 
@@ -276,25 +262,21 @@ function boardZoom(val) {
 }
 
 export function applyLockFont(val) {
+  wbSet({ lockFont: val });
   document.documentElement.setAttribute('data-lock-font', val);
-  syncSegOn(settingsQuery('#lockfont'), 'lock-font', val, '.wb-font-opt');
   if (window.iOSKit) window.iOSKit.refresh();
 }
 
 export function applyClock(mode, fixedIos) {
+  wbSet({ clockMode: mode });
   document.documentElement.setAttribute('data-clock-mode', mode);
-  var row = settingsQuery('#clockfixed-row');
-  var input = settingsQuery('#clockfixed');
   if (mode === 'fixed') {
     var t = fixedIos || '9:41';
+    wbSet({ clockFixed: t });
     document.documentElement.setAttribute('data-clock-fixed', t);
-    if (input) input.value = inputFromIosTime(t);
-    if (row) row.hidden = false;
   } else {
     document.documentElement.removeAttribute('data-clock-fixed');
-    if (row) row.hidden = true;
   }
-  syncSegOn(settingsQuery('#clockmode'), 'clock-mode', mode);
   if (window.iOSKit) window.iOSKit.tick();
 }
 
@@ -315,7 +297,11 @@ export function applyBootPrefs(prefs, options) {
   setMinimapOpen(false);
 
   applyIosRoots(prefs);
-  wbSet({ theme: prefs.theme || 'light' });
+  wbSet({
+    theme: prefs.theme || 'light',
+    textSize: prefs.textSize || 'default',
+    frame: prefs.frame || 'screen'
+  });
   applyLockFont(prefs.lockFont || 'helvetica');
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
   setCanvasZoom(zoomForPage(pageId), { save: false });
@@ -329,24 +315,8 @@ export function applyBootPrefs(prefs, options) {
     prefsDeps.applyPageNames(prefs.pageNames);
   }
 
-  if (options.syncSettingsUi) {
-    syncSegOn(settingsQuery('#textsize'), 'text-size', prefs.textSize || 'default');
-    syncSegOn(settingsQuery('#frame'), 'frame', prefs.frame || 'screen');
-    syncSegOn(settingsQuery('#zoom'), 'canvas-zoom', zoomForPage(wbGet().activePageId));
-  }
-
   if (options.refit) refit();
   return pageId;
-}
-
-export function restorePrefs() {
-  applyBootPrefs(readPrefs(), {
-    pageId: wbGet().activePageId,
-    side: false,
-    shell: false,
-    syncSettingsUi: true,
-    refit: true
-  });
 }
 
 export function refit() {

@@ -47,7 +47,6 @@ import {
   setActivePage,
   setBoardMode,
   showPageManifestError,
-  showTabs,
   switchPage,
   syncDocVersions,
   wireLibraryScrollSpy
@@ -165,12 +164,6 @@ window.workbench = {
 };
 
 startAnnBridge();
-
-// 设置视图内容仍由 loadSettings 异步填充（cut4 出壳）；返回按钮在那份异步
-// 内容里，走文档级委托。
-document.addEventListener('click', function (e) {
-  if (e.target.closest('[data-wb-back]')) showTabs();
-});
 
 if (splitEl) {
   var dragging = false;
