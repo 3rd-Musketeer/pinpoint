@@ -1,13 +1,11 @@
 import { create } from 'zustand';
 
 /**
- * Workbench chrome UI state (P0 skeleton).
+ * Workbench 共享状态的唯一住处（goal-20260810-workbench-react-rebuild）。
  *
- * Ownership rule (goal-20260810-workbench-react-rebuild): this store holds
- * *chrome* state only — sidebar/footer/HUD/settings UI. Stage state (mounted
- * screens, iframes, minimap geometry, annotation marks) stays in the
- * imperative layer and bridges in through explicit calls. P1 wires components
- * to these fields; until then nothing subscribes.
+ * P1 拆分期的过渡形态：chrome UI 态与舞台态都先平铺在这里，命令式模块经
+ * wbGet()/wbSet() 读写；React 组件经 hook 订阅。纪律：模块只碰自己消费的
+ * 字段；字段随簇提取真实消费拉入，不预先铺全量。
  */
 export const useWorkbenchStore = create((set) => ({
   // sidebar shell
@@ -17,6 +15,8 @@ export const useWorkbenchStore = create((set) => ({
   // board + pages
   boardMode: 'ios',
   activePageId: null,
+  pageManifest: null,
+  activeBoard: null,        // { pageId, board } — HTML 板的版本切换器要读它
   // annotation panel
   annFilter: 'all',
   // preview chrome
@@ -24,3 +24,7 @@ export const useWorkbenchStore = create((set) => ({
 
   patch: (partial) => set(partial),
 }));
+
+// 命令式层的读写入口（React 组件请用 hook 订阅，不要用这两个）。
+export const wbGet = useWorkbenchStore.getState;
+export const wbSet = useWorkbenchStore.setState;
