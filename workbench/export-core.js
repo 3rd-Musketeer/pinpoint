@@ -4,9 +4,20 @@
 // P2 说明：三个导出 POST（/api/export-image、/api/export-doc-tokens、/api/export-doc）
 // 是下载流 / 一次性计算，不是可缓存的 server state —— 保持 plain fetch，不走 Query
 // （docTokenCache 只是对话框打开期间的估算回显缓存，同样无失效语义）。
+// P3 说明：frame ⋯ 菜单的行为（trigger aria / Esc / 点外关闭 / roving focus）由
+// Radix DropdownMenu 承载 —— 本模块只创建 shell 元素，React 岛（app/frame-menu.jsx）
+// 经 initExportCore(deps) 注入的 mountFrameMenu/sweepFrameMenus 挂载与回收。
 import { wbGet } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { pageBaseUrl } from './lib/page-url.js';
+
+// 反向依赖注入：React 岛挂载器属 app/ 簇，本模块不得 import app/ 组件，
+// 由 app/main.jsx 在初始化时经 initExportCore(deps) 注入。
+var exportDeps = {};
+
+export function initExportCore(deps) {
+  exportDeps = deps || {};
+}
 
 var EXPORT_TOKEN_NAMES = [
   '--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap',
@@ -14,8 +25,6 @@ var EXPORT_TOKEN_NAMES = [
 ];
 var exportDialog = null;
 var exportTarget = null;
-var openFrameMenu = null;
-var frameMenuListenersWired = false;
 
 function syncExportDomState(source, clone) {
   var sources = [source].concat(Array.prototype.slice.call(source.querySelectorAll('*')));
@@ -533,40 +542,10 @@ function openExportDialog(kind, target) {
   dialog.showModal();
 }
 
-function closeFrameMenu() {
-  if (!openFrameMenu) return;
-  openFrameMenu.menu.hidden = true;
-  openFrameMenu.trigger.setAttribute('aria-expanded', 'false');
-  openFrameMenu = null;
-}
-
-function copyFrameIndicator(screen, button) {
-  var text = '@frame:' + wbGet().activePageId + '/' + screen.getAttribute('data-screen');
-  var done = function () {
-    var label = button.querySelector('[data-frame-menu-label]');
-    if (label) label.textContent = '已复制 ' + text;
-    setTimeout(function () { if (label) label.textContent = '复制 @frame'; }, 1200);
-  };
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(function () {});
-  }
-}
-
-function wireFrameMenuGlobalListeners() {
-  if (frameMenuListenersWired) return;
-  frameMenuListenersWired = true;
-  document.addEventListener('click', function (event) {
-    if (openFrameMenu && !event.target.closest('.wb-frame-menu-shell')) closeFrameMenu();
-  });
-  document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape') closeFrameMenu();
-  });
-}
-
 export function wireExportControls(panel) {
   if (!panel) return;
-  closeFrameMenu();
-  wireFrameMenuGlobalListeners();
+  // 板面重建后旧 shell 已游离 —— 先卸载它们的 React root（菜单本体见 app/frame-menu.jsx）。
+  exportDeps.sweepFrameMenus();
   panel.querySelectorAll('.wb-lib-item').forEach(function (section) {
     if (!section.querySelector(':scope > .wb-export-section-trigger')) {
       var sectionButton = document.createElement('button');
@@ -588,32 +567,11 @@ export function wireExportControls(panel) {
     shell.className = 'wb-frame-menu-shell';
     shell.setAttribute('data-export-ui', '');
     shell.setAttribute('data-ann-ui', '');
-    shell.innerHTML = '<button type="button" class="wb-frame-menu-trigger" aria-label="Frame 菜单" aria-haspopup="menu" aria-expanded="false" title="Frame 菜单">⋯</button>' +
-      '<span class="wb-frame-menu" role="menu" hidden>' +
-        '<button type="button" class="wb-frame-menu-item" role="menuitem" data-frame-export><span data-wb-icon="export-image" data-wb-icon-size="15"></span><span>导出图片…</span></button>' +
-        '<button type="button" class="wb-frame-menu-item" role="menuitem" data-frame-copy><span aria-hidden="true" style="width:15px;text-align:center;color:var(--wb-muted)">@</span><span data-frame-menu-label>复制 @frame</span></button>' +
-      '</span>';
-    var trigger = shell.querySelector('.wb-frame-menu-trigger');
-    var menu = shell.querySelector('.wb-frame-menu');
-    trigger.addEventListener('click', function (event) {
-      event.stopPropagation();
-      var shouldOpen = menu.hidden;
-      closeFrameMenu();
-      if (!shouldOpen) return;
-      menu.hidden = false;
-      trigger.setAttribute('aria-expanded', 'true');
-      openFrameMenu = { trigger: trigger, menu: menu };
-    });
-    shell.querySelector('[data-frame-export]').addEventListener('click', function (event) {
-      event.stopPropagation();
-      closeFrameMenu();
-      openExportDialog('frame', screen);
-    });
-    shell.querySelector('[data-frame-copy]').addEventListener('click', function (event) {
-      event.stopPropagation();
-      copyFrameIndicator(screen, event.currentTarget);
-    });
     caption.appendChild(shell);
+    exportDeps.mountFrameMenu(shell, {
+      screenId: screen.getAttribute('data-screen'),
+      onExport: function () { openExportDialog('frame', screen); }
+    });
   });
   if (window.mountWorkbenchIcons) window.mountWorkbenchIcons(panel);
 }

@@ -876,6 +876,10 @@
     box-shadow:0 14px 36px rgba(0,0,0,.16);
   }
   .wb-frame-menu[hidden] { display:none; }
+  /* Radix DropdownMenu 的 popper 包装层置惰（P3）：菜单几何由 .wb-frame-menu 的
+     绝对定位拥有 —— .wb-library 是 transform:scale 空间，JS 量测定位在缩放 ≠1
+     时必错位；!important 压过 Radix 写在内联 style 里的 position/transform。 */
+  [data-radix-popper-content-wrapper] { position:static !important; transform:none !important; min-width:0 !important; }
   .wb-frame-menu-item {
     appearance:none; width:100%; min-height:34px; padding:0 9px; border:0; border-radius:8px;
     display:flex; align-items:center; gap:9px; background:transparent; color:var(--wb-fg);

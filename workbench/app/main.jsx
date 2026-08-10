@@ -7,8 +7,13 @@ import { flushSync } from 'react-dom';
 import { wbGet } from './store.js';
 import { wireCanvasHud } from '../board-nav.js';
 import { scheduleAnnSnap } from '../ann-bridge.js';
+import { initExportCore } from '../export-core.js';
 import { Sidebar } from './Sidebar.jsx';
 import { CanvasDock, CanvasHud } from './CanvasHud.jsx';
+import { mountFrameMenu, sweepFrameMenus } from './frame-menu.jsx';
+
+// frame ⋯ 菜单的 React 岛挂载器注入命令式层（P3；app → 命令式 是唯一允许的方向）。
+initExportCore({ mountFrameMenu: mountFrameMenu, sweepFrameMenus: sweepFrameMenus });
 
 createRoot(document.getElementById('wbside')).render(h(Sidebar));
 
