@@ -1,4 +1,5 @@
 import { defineConfig } from 'vite';
+import react from '@vitejs/plugin-react';
 import annotateApi from './server/annotate-api.js';
 import sitesApi from './server/sites-api.js';
 import frameNotesApi from './server/frame-notes-api.js';
@@ -9,7 +10,7 @@ import componentsBoard from './server/components-board.js';
 import templateOnlyPlugin from './server/template-only.js';
 
 export default defineConfig({
-  plugins: [templateOnlyPlugin(), annotateApi(), sitesApi(), frameNotesApi(), exportImageApi(), exportDocApi(), componentsBoard(), previewHmr()],
+  plugins: [react(), templateOnlyPlugin(), annotateApi(), sitesApi(), frameNotesApi(), exportImageApi(), exportDocApi(), componentsBoard(), previewHmr()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

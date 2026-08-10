@@ -16,10 +16,14 @@
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
+    "@vitejs/plugin-react": "^4.7.0",
     "vite": "^6.3.5"
   },
   "dependencies": {
     "bpe-lite": "^0.5.2",
-    "lucide": "^1.23.0"
+    "lucide": "^1.23.0",
+    "react": "^19.2.8",
+    "react-dom": "^19.2.8",
+    "zustand": "^5.0.14"
   }
 }
