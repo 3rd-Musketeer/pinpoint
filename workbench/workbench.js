@@ -37,44 +37,28 @@ import {
   scheduleViewportScrollSave,
   setCanvasZoom,
   setSideCollapsed,
-  setTheme,
   snapshotPageViewport,
   toggleSideCollapsed
 } from './boot-prefs.js';
 import {
   applyPageNames,
-  applySectionOpen,
-  ensurePageCopyButtons,
   initPages,
   loadPageManifest,
-  loadSettings,
   normalizeBoardMode,
-  renderDocVersions,
-  renderPageManifest,
   resolvePageForMode,
   setActivePage,
   setBoardMode,
   showPageManifestError,
-  showSettings,
   showTabs,
   switchPage,
-  wireLibraryScrollSpy,
-  wirePref,
-  wireSections
+  syncDocVersions,
+  wireLibraryScrollSpy
 } from './pages.js';
 
 // activePageId / boardMode / pageManifest / activeBoard / activeGroup / sectionOpen / annFilter / sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
-var boardModeBox = document.getElementById('wbboard-mode');
 var stage  = document.getElementById('wbstage');
-var sideScroll = document.getElementById('wbside-scroll');
-var footEl = document.getElementById('wbfoot');
-var settingsEl = document.getElementById('wbsettings');
-var gearBtn = document.getElementById('wbgear');
-var themeBox = document.getElementById('wbtheme');
 var splitEl = document.getElementById('wbsplit');
-var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
-var sideToggleBtn = document.getElementById('wbside-toggle');
 var sideExpandBtn = document.getElementById('wbside-expand');
 var boardPanel;
 var boardLoadGen = 0;
@@ -83,8 +67,6 @@ var mountManager = new BoardMountManager();
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
   wbSet({ boardMode: normalizeBoardMode(prefs.boardMode) });
-  var manifest = wbGet().pageManifest;
-  if (manifest) renderPageManifest(manifest);
   return resolvePageForMode(wbGet().boardMode, prefs.activePageId);
 }
 
@@ -126,7 +108,7 @@ function loadBoard(panel, pageId) {
         var session = mountManager.begin(pageId);
         panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
         wbSet({ activeBoard: { pageId: pageId, board: board } });
-        renderDocVersions();
+        syncDocVersions();
         watchDocAnnotate();
         return afterMount(panel, session);
       });
@@ -154,15 +136,13 @@ function initBoard() {
     })
     .catch(function (error) {
       showPageManifestError(error);
-      ensurePageCopyButtons();
       return setActivePage(COMPONENTS_ID, { force: true, scrollTop: false, save: false });
     });
 }
 
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
-  applyPageNames: applyPageNames,
-  applySectionOpen: applySectionOpen
+  applyPageNames: applyPageNames
 });
 initPages({
   loadBoard: loadBoard,
@@ -171,7 +151,6 @@ initPages({
 initPreviewMount({
   wireLibraryScrollSpy: wireLibraryScrollSpy
 });
-wireSections();
 initBoard();
 wireCanvasHud({
   setCanvasZoom: setCanvasZoom,
@@ -191,24 +170,11 @@ window.workbench = {
   activeDocExportTarget: activeDocExportTarget
 };
 
-if (boardModeBox) {
-  boardModeBox.addEventListener('click', function (e) {
-    var btn = e.target.closest('[data-board-mode]');
-    if (!btn || !boardModeBox.contains(btn)) return;
-    var mode = btn.getAttribute('data-board-mode');
-    if (!mode || mode === wbGet().boardMode) return;
-    setBoardMode(mode);
-  });
-}
 startAnnBridge();
 
-gearBtn.addEventListener('click', function () {
-  loadSettings().then(showSettings);
-});
-
-wirePref(document, 'wbtheme', 'theme', setTheme);
-
-settingsEl.addEventListener('click', function (e) {
+// 设置视图内容仍由 loadSettings 异步填充（cut4 出壳）；返回按钮在那份异步
+// 内容里，走文档级委托。
+document.addEventListener('click', function (e) {
   if (e.target.closest('[data-wb-back]')) showTabs();
 });
 
@@ -301,11 +267,6 @@ if (splitEl) {
   });
 }
 
-if (sideToggleBtn) {
-  sideToggleBtn.addEventListener('click', function () {
-    toggleSideCollapsed({ save: true });
-  });
-}
 if (sideExpandBtn) {
   sideExpandBtn.addEventListener('click', function () {
     setSideCollapsed(false, { save: true });

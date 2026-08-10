@@ -940,66 +940,8 @@
 <body>
 
 <div class="wb" id="wbroot">
-  <aside class="wb-side" id="wbside" data-ann-ui>
-    <div class="wb-head">
-      <div class="wb-conn" id="wbconn" data-state="offline" title="标注服务未连接">
-        <span class="wb-conn-dot" aria-hidden="true"></span>
-        <span class="wb-conn-label">未连接</span>
-      </div>
-      <button type="button" class="wb-side-toggle" id="wbside-toggle" aria-label="收起侧栏" title="收起侧栏">
-        <i data-wb-icon="panel-left-close" data-wb-icon-size="16" class="wb-ico"></i>
-      </button>
-    </div>
-
-    <div class="wb-side-body">
-      <div class="wb-side-scroll" id="wbside-scroll">
-        <section class="wb-section open" data-section="pages">
-          <button type="button" class="wb-section-head" aria-expanded="true">
-            <span class="wb-section-chevron" aria-hidden="true"></span>
-            <span class="wb-section-title">Pages</span>
-          </button>
-          <div class="wb-section-body">
-            <div class="wb-section-body-inner">
-              <div class="wb-board-mode" id="wbboard-mode" role="group" aria-label="Board mode">
-                <button type="button" class="wb-board-mode-btn on" data-board-mode="ios" aria-pressed="true" title="手机原型">iOS</button>
-                <button type="button" class="wb-board-mode-btn" data-board-mode="web" aria-pressed="false" title="web app 画板">Web</button>
-                <button type="button" class="wb-board-mode-btn" data-board-mode="html" aria-pressed="false" title="完整单页 HTML 文档（汇报页一类）">HTML</button>
-              </div>
-              <nav class="wb-pages" id="wbpages"></nav>
-              <nav class="wb-doc-versions" id="wbdoc-versions" aria-label="文档版本" hidden></nav>
-            </div>
-          </div>
-        </section>
-        <section class="wb-section open" data-section="annotations">
-          <button type="button" class="wb-section-head" aria-expanded="true">
-            <span class="wb-section-chevron" aria-hidden="true"></span>
-            <span class="wb-section-title">Annotations</span>
-            <span class="wb-section-count" id="wbann-count"></span>
-          </button>
-          <div class="wb-section-body">
-            <!-- React 挂载点：标注工具/状态/筛选/列表由 app/AnnPanel.jsx 渲染（P1b） -->
-            <div class="wb-section-body-inner" id="wbann-root"></div>
-          </div>
-        </section>
-      </div>
-      <div class="wb-settings-view" id="wbsettings" hidden></div>
-      <div class="wb-foot" id="wbfoot">
-        <div class="ctl" id="wbtheme" role="group" aria-label="屏幕主题">
-          <button type="button" data-theme="light" class="on" title="Light">
-            <i data-wb-icon="sun" data-wb-icon-size="12" class="wb-ico"></i>
-            Light
-          </button>
-          <button type="button" data-theme="dark" title="Dark">
-            <i data-wb-icon="moon" data-wb-icon-size="12" class="wb-ico"></i>
-            Dark
-          </button>
-        </div>
-        <button type="button" class="wb-gear" id="wbgear" aria-label="预览设置" title="设置">
-          <i data-wb-icon="settings" data-wb-icon-size="15" class="wb-gear-ico"></i>
-        </button>
-      </div>
-    </div>
-  </aside>
+  <!-- React 挂载点：侧栏整树由 workbench/app/Sidebar.jsx 渲染（P1b cut2） -->
+  <aside class="wb-side" id="wbside" data-ann-ui></aside>
 
   <button type="button" class="wb-splitter" id="wbsplit" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" aria-valuemin="200" aria-valuemax="480" aria-valuenow="250" title="拖动调整宽度 · 双击收起/展开"></button>
 

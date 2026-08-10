@@ -17,10 +17,10 @@ import {
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
 
-// 反向依赖注入：resolveBootPageId 依赖 pages.js 的 renderPageManifest/
-// resolvePageForMode，applyPageNames/applySectionOpen 属 pages.js；pages.js 会
-// 直接 import 本模块，本模块不能反向 import（禁循环），由 workbench.js 初始化时
-// 经 initBootPrefs(deps) 注入。（ann-bridge 簇的 annotateApi 走直接 import。）
+// 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolvePageForMode，
+// applyPageNames 属 pages.js；pages.js 会直接 import 本模块，本模块不能反向
+// import（禁循环），由 workbench.js 初始化时经 initBootPrefs(deps) 注入。
+// （ann-bridge 簇的 annotateApi 走直接 import。）
 var prefsDeps = {};
 
 export function initBootPrefs(deps) {
@@ -30,9 +30,13 @@ export function initBootPrefs(deps) {
 var stage = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
-var sideToggleBtn = document.getElementById('wbside-toggle');
-var themeBox = document.getElementById('wbtheme');
-var settingsEl = document.getElementById('wbsettings');
+
+// 设置视图壳由 React 渲染、内容靠 loadSettings 异步填充（cut4 才出壳），
+// 模块加载时未必存在 —— 设置相关查询一律走这个惰性入口。
+function settingsQuery(sel) {
+  var el = document.getElementById('wbsettings');
+  return el ? el.querySelector(sel) : null;
+}
 
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
@@ -58,11 +62,6 @@ export function setSideCollapsed(on, options) {
   var collapsed = !!on;
   wbSet({ sideCollapsed: collapsed });
   if (wbRoot) wbRoot.classList.toggle('wb-side-collapsed', collapsed);
-  if (sideToggleBtn) {
-    sideToggleBtn.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-    sideToggleBtn.setAttribute('aria-label', collapsed ? '展开侧栏' : '收起侧栏');
-    sideToggleBtn.title = collapsed ? '展开侧栏' : '收起侧栏';
-  }
   if (splitEl) {
     splitEl.setAttribute(
       'aria-label',
@@ -110,22 +109,23 @@ function makePref(storeKey, opts) {
 }
 
 export var setTheme = makePref('theme', {
-  apply: function (val) { applyIosRootValue('data-theme', val); },
-  ui: function () { return themeBox; },
-  attr: 'theme',
+  apply: function (val) {
+    wbSet({ theme: val });
+    applyIosRootValue('data-theme', val);
+  },
   refit: true
 });
 
 export var setTextSize = makePref('textSize', {
   apply: function (val) { applyIosRootValue('data-text-size', val); },
-  ui: function () { return settingsEl.querySelector('#textsize'); },
+  ui: function () { return settingsQuery('#textsize'); },
   attr: 'text-size',
   refit: true
 });
 
 export var setFrame = makePref('frame', {
   apply: function (val) { applyIosRootValue('frame', val); },
-  ui: function () { return settingsEl.querySelector('#frame'); },
+  ui: function () { return settingsQuery('#frame'); },
   attr: 'frame',
   refit: true
 });
@@ -142,7 +142,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();
   },
-  ui: function () { return settingsEl.querySelector('#zoom'); },
+  ui: function () { return settingsQuery('#zoom'); },
   attr: 'canvas-zoom'
   // Zoom persists only via pageViewports (wrapper); makePref must not write global canvasZoom.
 });
@@ -278,14 +278,14 @@ function boardZoom(val) {
 
 export function applyLockFont(val) {
   document.documentElement.setAttribute('data-lock-font', val);
-  syncSegOn(settingsEl.querySelector('#lockfont'), 'lock-font', val, '.wb-font-opt');
+  syncSegOn(settingsQuery('#lockfont'), 'lock-font', val, '.wb-font-opt');
   if (window.iOSKit) window.iOSKit.refresh();
 }
 
 export function applyClock(mode, fixedIos) {
   document.documentElement.setAttribute('data-clock-mode', mode);
-  var row = settingsEl.querySelector('#clockfixed-row');
-  var input = settingsEl.querySelector('#clockfixed');
+  var row = settingsQuery('#clockfixed-row');
+  var input = settingsQuery('#clockfixed');
   if (mode === 'fixed') {
     var t = fixedIos || '9:41';
     document.documentElement.setAttribute('data-clock-fixed', t);
@@ -295,7 +295,7 @@ export function applyClock(mode, fixedIos) {
     document.documentElement.removeAttribute('data-clock-fixed');
     if (row) row.hidden = true;
   }
-  syncSegOn(settingsEl.querySelector('#clockmode'), 'clock-mode', mode);
+  syncSegOn(settingsQuery('#clockmode'), 'clock-mode', mode);
   if (window.iOSKit) window.iOSKit.tick();
 }
 
@@ -316,7 +316,7 @@ export function applyBootPrefs(prefs, options) {
   setMinimapOpen(false);
 
   applyIosRoots(prefs);
-  syncSegOn(themeBox, 'theme', prefs.theme || 'light');
+  wbSet({ theme: prefs.theme || 'light' });
   applyLockFont(prefs.lockFont || 'helvetica');
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
   setCanvasZoom(zoomForPage(pageId), { save: false });
@@ -328,14 +328,12 @@ export function applyBootPrefs(prefs, options) {
     }
     // annFilter 的按钮态由 AnnPanel 订阅 store 派生，这里不再手工同步 DOM
     prefsDeps.applyPageNames(prefs.pageNames);
-    prefsDeps.applySectionOpen();
   }
 
   if (options.syncSettingsUi) {
-    syncSegOn(themeBox, 'theme', prefs.theme || 'light');
-    syncSegOn(settingsEl.querySelector('#textsize'), 'text-size', prefs.textSize || 'default');
-    syncSegOn(settingsEl.querySelector('#frame'), 'frame', prefs.frame || 'screen');
-    syncSegOn(settingsEl.querySelector('#zoom'), 'canvas-zoom', zoomForPage(wbGet().activePageId));
+    syncSegOn(settingsQuery('#textsize'), 'text-size', prefs.textSize || 'default');
+    syncSegOn(settingsQuery('#frame'), 'frame', prefs.frame || 'screen');
+    syncSegOn(settingsQuery('#zoom'), 'canvas-zoom', zoomForPage(wbGet().activePageId));
   }
 
   if (options.refit) refit();

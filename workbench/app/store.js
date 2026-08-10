@@ -16,8 +16,13 @@ export const useWorkbenchStore = create((set) => ({
   boardMode: 'ios',
   activePageId: null,
   pageManifest: null,
+  pageManifestError: null,   // manifest 拉取失败信息（侧栏错误行）
+  pageNames: {},             // prefs.pageNames — 页面重命名（侧栏显示名）
   activeBoard: null,        // { pageId, board } — HTML 板的版本切换器要读它
+  activeDocId: null,        // HTML 板当前文档版本 screenId（setActiveDoc 写）
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
+  // settings view
+  settingsOpen: false,
   // annotation panel
   annFilter: 'all',
   annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）

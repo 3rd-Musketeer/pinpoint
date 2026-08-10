@@ -57,7 +57,6 @@ export function syncAnnSnap() {
     wbSet({ annSnap: ANN_SNAP_OFF });
     return;
   }
-  syncConnStatus();
   var st = ann.getState();
   var rows = (ann.pageMarks || []).slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
     var row = annRowModel(m, {
@@ -275,17 +274,5 @@ export function watchDocAnnotate() {
   }, 100);
 }
 
-export function syncConnStatus() {
-  var el = document.getElementById('wbconn');
-  if (!el) return;
-  var ann = annotateApi();
-  var st = ann && typeof ann.getState === 'function' ? ann.getState() : null;
-  var on = !!(st && st.connected);
-  var syncErr = !!(st && st.syncError);
-  var label = el.querySelector('.wb-conn-label');
-  el.setAttribute('data-state', on ? 'online' : 'offline');
-  if (label) label.textContent = on ? '已连接' : '未连接';
-  el.title = on
-    ? (syncErr ? '已连接 · 上次同步失败' : '标注服务已连接')
-    : '标注服务未连接（请运行 npm run dev）';
-}
+/* 连接状态指示（#wbconn）由 Sidebar 的 SideHead 从 annSnap.connected/syncError
+   派生 —— 本模块不再有 DOM 写出点。 */

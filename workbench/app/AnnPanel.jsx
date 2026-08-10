@@ -5,8 +5,7 @@
 // lib/ann-row.js 建好，这里只做筛选/分组/渲染。手动 signature diff 与
 // innerHTML 拼装随本组件删除 —— diff 交给 React 协调，转义交给 JSX。
 // DOM id / class / 文案与原实现逐一对应（e2e 选择器即契约）。
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
-import { createPortal } from 'react-dom';
+import { Fragment, useEffect, useMemo, useRef } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { getLibraryScrollHandler, setSectionOpen } from '../pages.js';
@@ -43,8 +42,6 @@ export function AnnPanel() {
   // tab 过滤才消费 activeGroup；all 模式下 scroll-spy 的 activeGroup 变化不必重渲染
   var activeGroup = useWorkbenchStore(function (s) { return s.annFilter === 'tab' ? s.activeGroup : null; });
   var listRef = useRef(null);
-  // 段头计数仍在静态标记里（section head 本轮不出壳），用 portal 写回
-  var [countHost] = useState(function () { return document.getElementById('wbann-count'); });
 
   var rows = snap.rows;
 
@@ -130,7 +127,6 @@ export function AnnPanel() {
 
   return (
     <Fragment>
-      {countHost ? createPortal(rows.length ? '(' + rows.length + ')' : '', countHost) : null}
       <div className="wb-ann-tools" id="wbann-tools">
         <div className="wb-ann-mode" id="wbann-mode" role="group" aria-label="交互 / 标注模式">
           <button type="button" id="wbann-interact" className={mode ? '' : 'on'}
