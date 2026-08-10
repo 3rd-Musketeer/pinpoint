@@ -6,7 +6,7 @@ import {
 } from './lib/preview-contracts.js';
 import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl } from './lib/page-url.js';
+import { COMPONENTS_ID, LIB_ID, defaultShellForPage, modeForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import {
   activeDocExportTarget,
   buildExportSnapshot,
@@ -52,6 +52,7 @@ import {
   syncDocVersions,
   wireLibraryScrollSpy
 } from './pages.js';
+import { startDeepLinkSync } from './url-sync.js';
 
 // activePageId / boardMode / pageManifest / activeBoard / activeGroup / sectionOpen / annFilter / sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
@@ -63,7 +64,15 @@ var mountManager = new BoardMountManager();
 
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
-  wbSet({ boardMode: normalizeBoardMode(prefs.boardMode) });
+  // URL 深链（P3）优先于 prefs：?page= 直达页面（boardMode 取页面自己的 mode，
+  // 与 ?mode= 冲突时以页面为准，URL 随后被 url-sync 重写为真实值）；只给 ?mode=
+  // 在该模式内按 prefs/记忆/默认解析；参数缺失或 pageId 不存在才回 prefs。
+  var link = parseDeepLink(location.search);
+  if (link.pageId && (link.pageId === COMPONENTS_ID || pageEntry(wbGet().pageManifest, link.pageId))) {
+    wbSet({ boardMode: modeForPage(wbGet().pageManifest, link.pageId) });
+    return link.pageId;
+  }
+  wbSet({ boardMode: link.mode || normalizeBoardMode(prefs.boardMode) });
   return resolvePageForMode(wbGet().boardMode, prefs.activePageId);
 }
 
@@ -138,7 +147,10 @@ function initBoard() {
     .catch(function (error) {
       showPageManifestError(error);
       return setActivePage(COMPONENTS_ID, { force: true, scrollTop: false, save: false });
-    });
+    })
+    // 深链写入必须在 boot 页解析完成后才启动 —— 订阅活着时任何 wbSet 都会
+    // 触发 replaceState，提前启动会在 resolveBootPageId 读之前覆盖掉深链参数。
+    .then(function () { startDeepLinkSync(); });
 }
 
 initBootPrefs({

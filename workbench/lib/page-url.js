@@ -34,3 +34,29 @@ export function defaultShellForPage(manifest, pageId) {
   if (mode === 'html') return 'doc';
   return 'app';
 }
+
+/* ---- URL 深链（goal-20260810-workbench-react-rebuild P3）----
+   workbench 的 ?page=&mode= 解析与生成，纯函数；效果侧在 url-sync.js（写）
+   与 workbench.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。 */
+
+var DEEP_LINK_MODES = { ios: true, web: true, html: true };
+
+/** 解析 location.search 的深链参数；没给或非法的字段为 null（调用方回落 prefs）。 */
+export function parseDeepLink(search) {
+  var params = new URLSearchParams(search || '');
+  var pageId = params.get('page');
+  var mode = params.get('mode');
+  return {
+    pageId: pageId || null,
+    mode: DEEP_LINK_MODES[mode] ? mode : null
+  };
+}
+
+/** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode 非法时省略。 */
+export function deepLinkQuery(pageId, mode) {
+  if (!pageId) return '';
+  var params = new URLSearchParams();
+  params.set('page', pageId);
+  if (DEEP_LINK_MODES[mode]) params.set('mode', mode);
+  return params.toString();
+}
