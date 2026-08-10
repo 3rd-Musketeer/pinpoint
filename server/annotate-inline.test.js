@@ -79,6 +79,29 @@ test('served /annotate.js injects the shared list CSS as a JS string constant', 
   assert.match(bundle, /ANN_LIST_CSS,/, 'style array consumes ANN_LIST_CSS');
 });
 
+// 双端同步守卫（P4）：共享 CSS 消费的每个 var(--wb-*) 都必须在 #ann-sidebar
+// 上有钉值（fallback 只兜第三方场景）；workbench 侧的值由 wb-tokens.css 定义。
+// 三向漂移（token 源 / 共享 CSS / client 钉值）在这里变红。
+test('client #ann-sidebar pins cover every --wb-* the shared CSS consumes', () => {
+  const bundle = buildServedBundle();
+  const css = fs.readFileSync(path.join(ROOT, 'lib', 'ann-list.css'), 'utf8');
+  const consumed = new Set([...css.matchAll(/var\((--wb-[a-z0-9-]+)/gi)].map((m) => m[1]));
+  assert.ok(consumed.size > 0, 'shared CSS consumes --wb-* tokens');
+  const pinsRule = bundle.match(/#ann-sidebar\{[^}]*\}/);
+  assert.ok(pinsRule, '#ann-sidebar pins rule present in served bundle');
+  for (const name of consumed) {
+    assert.ok(
+      pinsRule[0].includes(name + ':'),
+      `#ann-sidebar pins ${name} (consumed by lib/ann-list.css)`,
+    );
+  }
+  // workbench 侧 token 源同步定义同一组（双端同一个 --wb-* 宇宙）
+  const tokens = fs.readFileSync(path.join(ROOT, 'workbench', 'wb-tokens.css'), 'utf8');
+  for (const name of consumed) {
+    assert.ok(tokens.includes(name + ':'), `wb-tokens.css defines ${name}`);
+  }
+});
+
 test('served bundle parses as a script', () => {
   const bundle = buildServedBundle();
   // new Function only parses; it does not run, so undefined browser globals

@@ -837,22 +837,22 @@
     '#ann-status.err{color:#ff9d9d;}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
     // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
-    // 6px 圆角 —— 与浮动工具条的深色毛玻璃是两套语言。--wb-* 自定义属性是
-    // 共享行样式（lib/ann-list.css）的主题入参：这里钉死为 workbench 同款取值，
-    // 宿主页面即便定义了同名变量也渗不进来。
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:#f6f6f7;border-left:1px solid rgba(0,0,0,.07);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c1c1e;--wb-muted:#6b6b70;--wb-faint:#8e8e93;--wb-hover:rgba(0,0,0,.04);--wb-r:6px;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    // 阶梯圆角 —— 与浮动工具条的深色毛玻璃是两套语言。--wb-* 自定义属性是
+    // 共享行样式（lib/ann-list.css）的主题入参：这里钉死为 workbench 同款取值
+    // （命名与值跟随 workbench/wb-tokens.css），宿主页面即便定义了同名变量也渗不进来。
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:#f6f6f7;border-left:1px solid rgba(0,0,0,.07);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#ff3b30;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid rgba(0,0,0,.07);}',
-    '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:600;color:#1c1c1e;}',
-    '#ann-sidebar .ann-sb-count{font-size:11px;color:#8e8e93;font-variant-numeric:tabular-nums;}',
-    '#ann-sidebar .ann-sb-close{flex:none;width:26px;height:26px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:26px;text-align:center;color:#8e8e93;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1);}',
-    '#ann-sidebar .ann-sb-close:hover{background:rgba(0,0,0,.05);color:#1c1c1e;}',
+    '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
+    '#ann-sidebar .ann-sb-count{font-size:11px;color:var(--wb-faint);font-variant-numeric:tabular-nums;}',
+    '#ann-sidebar .ann-sb-close{flex:none;width:26px;height:26px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:26px;text-align:center;color:var(--wb-faint);transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-close:hover{background:rgba(0,0,0,.05);color:var(--wb-fg);}',
     // 「交互 | 标注」segmented：同 workbench 的 .wb-board-mode / .wb-ann-filter .ctl
     // 语言 —— 灰槽 + 白色凸起选中态；「标注」选中时沿用 workbench 标注开关的橙色强调。
-    '#ann-sidebar .ann-sb-modes{flex:none;display:flex;gap:2px;margin:10px 12px 4px;padding:2px;border-radius:8px;background:rgba(0,0,0,.045);}',
-    '#ann-sidebar .ann-sb-modes button{flex:1;border:0;border-radius:6px;cursor:pointer;background:transparent;color:#6b6b70;font:inherit;font-size:11.5px;font-weight:650;letter-spacing:.02em;padding:6px 8px;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1),box-shadow .2s cubic-bezier(.25,0,0,1);}',
-    '#ann-sidebar .ann-sb-modes button:hover{color:#1c1c1e;}',
-    '#ann-sidebar .ann-sb-modes button.on{background:#fff;color:#1c1c1e;box-shadow:0 1px 2px rgba(0,0,0,.06),inset 0 0 0 1px rgba(0,0,0,.04);}',
+    '#ann-sidebar .ann-sb-modes{flex:none;display:flex;gap:2px;margin:10px 12px 4px;padding:2px;border-radius:var(--wb-r-3);background:rgba(0,0,0,.045);}',
+    '#ann-sidebar .ann-sb-modes button{flex:1;border:0;border-radius:var(--wb-r-2);cursor:pointer;background:transparent;color:var(--wb-muted);font:inherit;font-size:11.5px;font-weight:var(--wb-w-semibold);letter-spacing:.02em;padding:6px 8px;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1),box-shadow .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-modes button:hover{color:var(--wb-fg);}',
+    '#ann-sidebar .ann-sb-modes button.on{background:#fff;color:var(--wb-fg);box-shadow:var(--wb-sh-1);}',
     '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
     // 行/失效态/空态的共享视觉 = lib/ann-list.css，serve 时内联为 ANN_LIST_CSS
@@ -868,9 +868,9 @@
     '#ann-sidebar .wb-ann-broken-tag{align-self:flex-start;}',
     '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:4px 4px 4px 0;opacity:0;pointer-events:none;}',
     '#ann-sidebar .wb-ann-item:hover .ann-sb-acts,#ann-sidebar .wb-ann-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
-    '#ann-sidebar .ann-sb-acts button{width:24px;height:24px;padding:0;border:none;border-radius:6px;background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:#8e8e93;}',
-    '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.06);color:#1c1c1e;}',
-    '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:#c0392b;background:rgba(192,57,43,.1);}',
+    '#ann-sidebar .ann-sb-acts button{width:24px;height:24px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:var(--wb-faint);}',
+    '#ann-sidebar .ann-sb-acts button:hover{background:rgba(0,0,0,.06);color:var(--wb-fg);}',
+    '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',

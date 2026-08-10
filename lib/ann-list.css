@@ -7,10 +7,12 @@
  * Row data comes from lib/ann-row.js; keep classes in sync with both
  * consumers' renderers.
  *
- * var(--wb-*, fallback): index.html defines the workbench theme custom
- * properties on :root; the client pins the same values on #ann-sidebar, so
- * both sidebars compute identically and host-page custom properties cannot
- * leak into the injected UI.
+ * var(--wb-*, fallback): the workbench theme custom properties are generated
+ * into workbench/wb-tokens.css (scripts/build-wb-tokens.mjs); the client pins
+ * the same values on #ann-sidebar, so both sidebars compute identically and
+ * host-page custom properties cannot leak into the injected UI. Fallbacks
+ * mirror the current token values; server/annotate-inline.test.js asserts the
+ * client pins cover every --wb-* this file consumes.
  *
  * Deliberately NOT here (per-side local rules): the row's flex shell and
  * action slot (workbench: .wb-ann-item-row wrapper + one 28px delete button;
@@ -22,7 +24,7 @@
 
 #wbann-list .wb-ann-item,
 #ann-sidebar .wb-ann-item {
-  width:100%; margin-bottom:2px; border-radius:var(--wb-r, 6px);
+  width:100%; margin-bottom:2px; border-radius:var(--wb-r-2, 6px);
   transition:background var(--wb-dur, .2s) var(--wb-ease, cubic-bezier(.25,0,0,1));
 }
 #wbann-list .wb-ann-item:hover,
@@ -39,12 +41,12 @@
 #wbann-list .wb-ann-num,
 #ann-sidebar .wb-ann-num {
   flex:none; height:18px; margin-top:1px; border-radius:50%;
-  background:#f5a623; color:#1a1a1a; font-size:10px; font-weight:700;
+  background:#f5a623; color:#1a1a1a; font-size:10px; font-weight:var(--wb-w-bold, 700);
   display:flex; align-items:center; justify-content:center;
 }
 #wbann-list .wb-ann-item--broken .wb-ann-num,
 #ann-sidebar .wb-ann-item--broken .wb-ann-num {
-  background:transparent; color:var(--wb-faint, #8e8e93);
+  background:transparent; color:var(--wb-faint, #8d8d8d);
 }
 #wbann-list .wb-ann-body,
 #ann-sidebar .wb-ann-body {
@@ -52,12 +54,12 @@
 }
 #wbann-list .wb-ann-cap,
 #ann-sidebar .wb-ann-cap {
-  font-size:10px; color:var(--wb-faint, #8e8e93); line-height:1.3;
+  font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 #wbann-list .wb-ann-text,
 #ann-sidebar .wb-ann-text {
-  font-size:12px; line-height:1.4; color:var(--wb-fg, #1c1c1e);
+  font-size:12px; line-height:1.4; color:var(--wb-fg, #1c2024);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }
@@ -65,24 +67,24 @@
 #ann-sidebar .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted, #6b6b70); }
 #wbann-list .wb-ann-broken-tag,
 #ann-sidebar .wb-ann-broken-tag {
-  font-size:10px; font-weight:650; letter-spacing:.02em; line-height:1.3; color:#b85c38;
+  font-size:10px; font-weight:var(--wb-w-semibold, 600); letter-spacing:.02em; line-height:1.3; color:#b85c38;
 }
 #wbann-list .wb-ann-tags,
 #ann-sidebar .wb-ann-tags {
-  font-size:10px; color:var(--wb-faint, #8e8e93); line-height:1.3;
+  font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
 #wbann-list .wb-ann-empty,
 #ann-sidebar .wb-ann-empty {
-  padding:20px 12px 18px; border-radius:var(--wb-r, 6px);
+  padding:20px 12px 18px; border-radius:var(--wb-r-2, 6px);
   background:rgba(255,255,255,.45); text-align:center;
 }
 #wbann-list .wb-ann-empty-title,
 #ann-sidebar .wb-ann-empty-title {
-  font-size:12px; font-weight:550; color:var(--wb-muted, #6b6b70);
+  font-size:12px; font-weight:var(--wb-w-medium, 500); color:var(--wb-muted, #6b6b70);
 }
 #wbann-list .wb-ann-empty-hint,
 #ann-sidebar .wb-ann-empty-hint {
-  margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint, #8e8e93);
+  margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint, #8d8d8d);
 }
