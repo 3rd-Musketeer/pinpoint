@@ -2,6 +2,7 @@
 // doc 版本切换、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
+import { queryClient } from './app/query-client.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import {
   COMPONENTS_ID,
@@ -17,7 +18,7 @@ import { currentBoardNavigationModel, updateSectionNavigatorActive } from './boa
 import { refit, setCanvasZoom, snapshotPageViewport } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
-// 反向依赖注入：loadBoard / mountManager 还留在 workbench.js（P2 才拆），
+// 反向依赖注入：loadBoard / mountManager 留在 workbench.js（壳持有装载编排），
 // pages.js 不得 import workbench.js，由它在初始化时经 initPages(deps) 注入。
 // （boot-prefs / ann-bridge 簇走直接 import；标注面板刷新 = scheduleAnnSnap。）
 var pagesDeps = {};
@@ -245,40 +246,49 @@ export function showPageManifestError(error) {
     _index pages, so it is not listed again. A dead annotate API must not break
     the workbench: previews-only then. */
 function registrySitePages() {
-  return fetch('/registry')
-    .then(function (r) {
-      if (!r.ok) throw r.status;
-      return r.json();
-    })
-    .then(function (data) {
-      var entries = (data && data.entries) || [];
-      return entries
-        .filter(function (entry) { return entry && entry.kind === 'dir' && entry.id !== 'pinpoint'; })
-        .map(function (entry) {
-          return {
-            id: entry.id,
-            title: entry.title || entry.id,
-            mode: BOARD_MODES[entry.board] ? entry.board : 'web',
-            site: true
-          };
+  return queryClient.fetchQuery({
+    queryKey: ['registry-sites'],
+    queryFn: function () {
+      return fetch('/registry')
+        .then(function (r) {
+          if (!r.ok) throw r.status;
+          return r.json();
+        })
+        .then(function (data) {
+          var entries = (data && data.entries) || [];
+          return entries
+            .filter(function (entry) { return entry && entry.kind === 'dir' && entry.id !== 'pinpoint'; })
+            .map(function (entry) {
+              return {
+                id: entry.id,
+                title: entry.title || entry.id,
+                mode: BOARD_MODES[entry.board] ? entry.board : 'web',
+                site: true
+              };
+            });
         });
-    })
-    .catch(function () { return []; });
+    }
+  }).catch(function () { return []; });
 }
 
 export function loadPageManifest() {
   // previews/_index.local.json (gitignored) overrides the tracked manifest, so
   // an instance can keep private pages without touching versioned files. Only
   // a missing local file falls back — a broken one must surface as an error.
-  return fetch('previews/_index.local.json')
-    .then(function (response) {
-      if (response.ok) return response.json();
-      if (response.status !== 404) throw new Error(String(response.status));
-      return fetch('previews/_index.json').then(function (tracked) {
-        if (!tracked.ok) throw new Error(String(tracked.status));
-        return tracked.json();
-      });
-    })
+  return queryClient.fetchQuery({
+    queryKey: ['page-manifest'],
+    queryFn: function () {
+      return fetch('previews/_index.local.json')
+        .then(function (response) {
+          if (response.ok) return response.json();
+          if (response.status !== 404) throw new Error(String(response.status));
+          return fetch('previews/_index.json').then(function (tracked) {
+            if (!tracked.ok) throw new Error(String(tracked.status));
+            return tracked.json();
+          });
+        });
+    }
+  })
     .then(function (raw) {
       var manifest = validatePageManifest(raw);
       return registrySitePages().then(function (sitePages) {

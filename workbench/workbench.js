@@ -5,6 +5,7 @@ import {
   validateBoard
 } from './lib/preview-contracts.js';
 import { wbGet, wbSet } from './app/store.js';
+import { queryClient } from './app/query-client.js';
 import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl } from './lib/page-url.js';
 import {
   activeDocExportTarget,
@@ -19,7 +20,7 @@ import {
   isTypingTarget,
   resetBoardNavOnLoadFailure
 } from './board-nav.js';
-import { buildBoardHtml, clearIncludeCache, fetchScreenHtml, loadFailHtml } from './screen-load.js';
+import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import { wireFrameNoteEditors } from './frame-notes.js';
 import {
@@ -58,7 +59,6 @@ var stage  = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var sideExpandBtn = document.getElementById('wbside-expand');
 var boardPanel;
-var boardLoadGen = 0;
 var mountManager = new BoardMountManager();
 
 function resolveBootPageId(prefs) {
@@ -72,53 +72,57 @@ function boardUrl(pageId) {
   return pageBaseUrl(wbGet().pageManifest, pageId) + 'board.json';
 }
 
-function loadBoard(panel, pageId) {
-  var gen = ++boardLoadGen;
-  return fetch(boardUrl(pageId))
-    .then(function (r) {
-      if (!r.ok) throw r.status;
-      return r.json();
-    })
-    .then(function (board) {
-      if (gen !== boardLoadGen) return null;
-      board = validateBoard(board, {
-        pageId: pageId,
-        allowComponentRefs: pageId === COMPONENTS_ID,
-        defaultShell: defaultShellForPage(wbGet().pageManifest, pageId)
-      });
-      var entries = [];
-      var seen = {};
-      (board.sections || []).forEach(function (sec) {
-        (sec.screens || []).forEach(function (entry) {
-          var sc = entry;
-          if (!seen[sc.id]) { seen[sc.id] = true; entries.push(sc); }
+// P2：board/screen 拉取由 TanStack Query 持有（app/query-client.js）。
+// 过期保护不再是 generation 计数 —— 同页并发由 fetchQuery 按 key 天然去重，
+// 跨页过期在 await 后检查 activePageId；mount 会话生命周期由 mountManager 自理。
+async function loadBoard(panel, pageId) {
+  try {
+    var rawBoard = await queryClient.fetchQuery({
+      queryKey: ['board', pageId],
+      queryFn: function () {
+        return fetch(boardUrl(pageId)).then(function (r) {
+          if (!r.ok) throw r.status;
+          return r.json();
         });
-      });
-      return Promise.all(entries.map(function (sc) {
-        return fetchScreenHtml(pageId, sc).then(function (res) {
-          return { id: sc.id, res: res };
-        });
-      })).then(function (rows) {
-        if (gen !== boardLoadGen) return null;
-        var screenMap = {};
-        rows.forEach(function (row) { screenMap[row.id] = row.res; });
-        var session = mountManager.begin(pageId);
-        panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
-        wbSet({ activeBoard: { pageId: pageId, board: board } });
-        syncDocVersions();
-        watchDocAnnotate();
-        return afterMount(panel, session);
-      });
-    })
-    .catch(function (e) {
-      if (gen !== boardLoadGen) return null;
-      mountManager.cancel();
-      resetBoardNavOnLoadFailure();
-      var label = e instanceof ContractError ? '契约错误' : '加载失败';
-      panel.innerHTML = loadFailHtml(
-        label + ' · ' + boardUrl(pageId) + ' · ' + String(e && e.message ? e.message : e)
-      );
+      }
     });
+    if (wbGet().activePageId !== pageId) return null;
+    var board = validateBoard(rawBoard, {
+      pageId: pageId,
+      allowComponentRefs: pageId === COMPONENTS_ID,
+      defaultShell: defaultShellForPage(wbGet().pageManifest, pageId)
+    });
+    var entries = [];
+    var seen = {};
+    (board.sections || []).forEach(function (sec) {
+      (sec.screens || []).forEach(function (entry) {
+        var sc = entry;
+        if (!seen[sc.id]) { seen[sc.id] = true; entries.push(sc); }
+      });
+    });
+    var rows = await Promise.all(entries.map(function (sc) {
+      return fetchScreenHtml(pageId, sc).then(function (res) {
+        return { id: sc.id, res: res };
+      });
+    }));
+    if (wbGet().activePageId !== pageId) return null;
+    var screenMap = {};
+    rows.forEach(function (row) { screenMap[row.id] = row.res; });
+    var session = mountManager.begin(pageId);
+    panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
+    wbSet({ activeBoard: { pageId: pageId, board: board } });
+    syncDocVersions();
+    watchDocAnnotate();
+    return afterMount(panel, session);
+  } catch (e) {
+    if (wbGet().activePageId !== pageId) return null;
+    mountManager.cancel();
+    resetBoardNavOnLoadFailure();
+    var label = e instanceof ContractError ? '契约错误' : '加载失败';
+    panel.innerHTML = loadFailHtml(
+      label + ' · ' + boardUrl(pageId) + ' · ' + String(e && e.message ? e.message : e)
+    );
+  }
 }
 
 function initBoard() {
@@ -412,10 +416,17 @@ if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
     var id = (data && data.id) || wbGet().activePageId;
-    // Includes reference shared component files; only a component change can
-    // stale them. A page-screen-only change keeps the include cache warm.
-    var componentChange = id === COMPONENTS_ID || (data && data.alsoActive);
-    if (componentChange) clearIncludeCache();
+    // SSE 是唯一失效源：页面变更失效自己的 board/screen；组件变更失效组件页
+    // board/screen 与全部 include（screen 缓存的是未展开的原始片段，include
+    // 失效后重装载重新展开即拿到新内容）。页面变更不动 include 缓存。
+    if (id === COMPONENTS_ID || (data && data.alsoActive)) {
+      queryClient.invalidateQueries({ queryKey: ['board', COMPONENTS_ID] });
+      queryClient.invalidateQueries({ queryKey: ['screen', COMPONENTS_ID] });
+      queryClient.invalidateQueries({ queryKey: ['include'] });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['board', id] });
+      queryClient.invalidateQueries({ queryKey: ['screen', id] });
+    }
     if (id === wbGet().activePageId) {
       snapshotPageViewport(wbGet().activePageId);
       loadBoard(boardPanel, wbGet().activePageId);

@@ -1,6 +1,9 @@
 // Workbench 屏幕装配簇 — 屏幕 HTML 拉取、include 展开、壳装配、整板 HTML。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
+// P2：screen/include 拉取迁入 TanStack Query（app/query-client.js），手工
+// includeCache/clearIncludeCache 机械删除 —— 失效只由 SSE 桥的 invalidateQueries 驱动。
 import { wbGet } from './app/store.js';
+import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
 import { applyIncludeSlots } from './lib/include-slots.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
@@ -11,13 +14,6 @@ import {
   pageBaseUrl,
   pageEntry
 } from './lib/page-url.js';
-
-var includeCache = {};
-
-/** HMR 入口：组件变更时由 workbench.js 的热更处理清空 include 缓存。 */
-export function clearIncludeCache() {
-  includeCache = {};
-}
 
 export function loadFailHtml(msg) {
   return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';
@@ -35,19 +31,21 @@ function parseIncludeRef(ref) {
 function fetchIncludeHtml(ref) {
   var parsed = parseIncludeRef(ref);
   if (!parsed) return Promise.resolve({ ok: false, err: 'bad ref' });
-  if (includeCache[ref]) return Promise.resolve(includeCache[ref]);
-  return fetch('kits/ios/components/' + parsed.component + '/' + parsed.variant + '.html')
-    .then(function (r) {
-      if (!r.ok) throw r.status;
-      return r.text();
-    })
-    .then(function (html) {
-      includeCache[ref] = { ok: true, html: html };
-      return includeCache[ref];
-    })
-    .catch(function (e) {
-      return { ok: false, err: e };
-    });
+  // 失败不走缓存（fetchQuery reject，query 不留 data）——下次装载自然重试；
+  // 组件修复经 SSE invalidate 后同样重拉。
+  return queryClient.fetchQuery({
+    queryKey: ['include', parsed.component, parsed.variant],
+    queryFn: function () {
+      return fetch('kits/ios/components/' + parsed.component + '/' + parsed.variant + '.html')
+        .then(function (r) {
+          if (!r.ok) throw r.status;
+          return r.text();
+        })
+        .then(function (html) { return { ok: true, html: html }; });
+    }
+  }).catch(function (e) {
+    return { ok: false, err: e };
+  });
 }
 
 /** Expand <div data-ios-include="comp/variant" data-text="…"> placeholders. */
@@ -59,10 +57,14 @@ function resolveIncludes(html) {
     if (refs.indexOf(m[4]) < 0) refs.push(m[4]);
   }
   if (!refs.length) return Promise.resolve(html);
-  return Promise.all(refs.map(fetchIncludeHtml)).then(function () {
+  return Promise.all(refs.map(function (ref) {
+    return fetchIncludeHtml(ref).then(function (res) { return { ref: ref, res: res }; });
+  })).then(function (rows) {
+    var byRef = {};
+    rows.forEach(function (row) { byRef[row.ref] = row.res; });
     return html.replace(re, function (full, tag, pre, q, ref, post) {
       var attrs = (pre || '') + (post || '');
-      var fetched = includeCache[ref];
+      var fetched = byRef[ref];
       if (!fetched || !fetched.ok) {
         return '<div class="wb-screen-err">include 失败 · ' + escHtml(ref) + '</div>';
       }
@@ -113,11 +115,17 @@ export function fetchScreenHtml(pageId, screen) {
   var fetchUrl = url;
   var page = pageEntry(wbGet().pageManifest, pageId);
   if (page && page.site) fetchUrl += (fetchUrl.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off';
-  return fetch(fetchUrl)
-    .then(function (r) {
-      if (!r.ok) throw r.status;
-      return r.text();
-    })
+  // Query 缓存的是未展开 include 的原始片段 —— 组件变更只需 invalidate ['include']，
+  // 重装载时重新展开即拿到新内容；校验与 include 展开留在缓存外逐次执行。
+  return queryClient.fetchQuery({
+    queryKey: ['screen', pageId, sc.id],
+    queryFn: function () {
+      return fetch(fetchUrl).then(function (r) {
+        if (!r.ok) throw r.status;
+        return r.text();
+      });
+    }
+  })
     .then(function (raw) {
       if (pageId !== COMPONENTS_ID) {
         raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', {
