@@ -18,8 +18,8 @@ import { currentBoardNavigationModel, updateSectionNavigatorActive } from './boa
 import { refit, setCanvasZoom, snapshotPageViewport } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
-// 反向依赖注入：loadBoard / mountManager 留在 workbench.js（壳持有装载编排），
-// pages.js 不得 import workbench.js，由它在初始化时经 initPages(deps) 注入。
+// 反向依赖注入：loadBoard / mountManager 留在 stage.js（舞台入口持有装载编排），
+// pages.js 不得 import stage.js，由它在初始化时经 initPages(deps) 注入。
 // （boot-prefs / ann-bridge 簇走直接 import；标注面板刷新 = scheduleAnnSnap。）
 var pagesDeps = {};
 
@@ -94,7 +94,7 @@ export function wireLibraryScrollSpy() {
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
 }
 
-/** 标注簇（还在 workbench.js）切到 tab 过滤时要重跑一次当前 spy handler。 */
+/** 标注面板（app/AnnPanel.jsx）切到 tab 过滤时要重跑一次当前 spy handler。 */
 export function getLibraryScrollHandler() {
   return libraryScrollHandler;
 }

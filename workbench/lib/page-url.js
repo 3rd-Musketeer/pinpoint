@@ -37,7 +37,7 @@ export function defaultShellForPage(manifest, pageId) {
 
 /* ---- URL 深链（goal-20260810-workbench-react-rebuild P3）----
    workbench 的 ?page=&mode= 解析与生成，纯函数；效果侧在 url-sync.js（写）
-   与 workbench.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。 */
+   与 stage.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。 */
 
 var DEEP_LINK_MODES = { ios: true, web: true, html: true };
 

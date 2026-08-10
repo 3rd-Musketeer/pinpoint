@@ -18,7 +18,7 @@ import { annotateApi } from './ann-bridge.js';
 
 // 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolvePageForMode，
 // applyPageNames 属 pages.js；pages.js 会直接 import 本模块，本模块不能反向
-// import（禁循环），由 workbench.js 初始化时经 initBootPrefs(deps) 注入。
+// import（禁循环），由 stage.js 初始化时经 initBootPrefs(deps) 注入。
 // （ann-bridge 簇的 annotateApi 走直接 import。）
 var prefsDeps = {};
 

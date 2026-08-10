@@ -1,4 +1,7 @@
-// Workbench shell — pages, board loader, settings, preview hot-reload (Vite dev).
+// Workbench stage entry（P4 由 workbench.js 正名）— 舞台侧命令式入口与装配：
+// board 加载编排（loadBoard/initBoard + 各簇 DI 布线）、window.workbench API、
+// 舞台交互（splitter / space·中键 pan / ctrl+wheel zoom）、preview HMR（SSE →
+// Query 失效 → 重载）、boot 偏好应用。React chrome 入口在 app/main.jsx。
 import { BoardMountManager } from './lib/board-mount-session.js';
 import {
   ContractError,
