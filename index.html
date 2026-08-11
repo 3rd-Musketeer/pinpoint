@@ -15,8 +15,9 @@
      :root 的 --wb-* token 归 workbench/wb-tokens.css（生成物），此处不再定义。 */
   * { box-sizing:border-box; }
   /* Focus catch-all: low-specificity ring so every focusable control keeps a
-     visible focus state; component rules below with their own focus treatment
-     (e.g. .wb-page-rename) override it by source order. */
+     visible focus state. chrome 组件的 focus outline 统一走本规则 —— app/ui
+     复制件已剥离 shadcn ring（outline:none 在 layer(utilities)，本规则未分层
+     恒优先，V0 起的设计）。 */
   :where(button, a, input, select, textarea, [tabindex]):focus-visible {
     outline:2px solid color-mix(in srgb, var(--wb-accent) 55%, transparent);
     outline-offset:1px;
@@ -60,39 +61,8 @@
   body.wb-resizing { cursor:col-resize; user-select:none; }
   body.wb-resizing iframe { pointer-events:none; }
 
-  .wb-head {
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    padding:10px var(--wb-pad) 8px; border-bottom:1px solid var(--wb-line);
-  }
-  .wb-conn {
-    display:inline-flex; align-items:center; gap:6px; min-width:0;
-    font-size:11px; font-weight:var(--wb-w-medium); color:var(--wb-muted); line-height:1;
-    user-select:none;
-  }
-  .wb-conn-dot {
-    width:7px; height:7px; border-radius:50%; flex:none;
-    background:#c7c7cc;
-    box-shadow:0 0 0 2px rgba(199,199,204,.25);
-  }
-  .wb-conn[data-state="online"] { color:#1b7a3d; }
-  .wb-conn[data-state="online"] .wb-conn-dot {
-    background:#34c759;
-    box-shadow:0 0 0 2px rgba(52,199,89,.22);
-  }
-  .wb-conn[data-state="offline"] { color:var(--wb-danger); }
-  .wb-conn[data-state="offline"] .wb-conn-dot {
-    background:var(--wb-danger);
-    box-shadow:0 0 0 2px color-mix(in srgb, var(--wb-danger) 18%, transparent);
-  }
-  .wb-conn-label { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .wb-side-toggle {
-    flex:none; width:28px; height:28px; border:0; border-radius:var(--wb-r-2);
-    background:transparent; color:var(--wb-faint); cursor:pointer;
-    display:inline-flex; align-items:center; justify-content:center;
-    transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease);
-  }
-  .wb-side-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
-  .wb-side-toggle .wb-ico { width:16px; height:16px; display:block; }
+  /* .wb-head/.wb-conn/#wbside-toggle 的视觉已收编进 app/Sidebar.jsx（V2，
+     shadcn 复制件 + Tailwind 类）—— 此处不再保留旧规则。 */
 
   .wb-side-expand {
     display:none; position:absolute; left:10px; top:12px; z-index:8;
@@ -109,266 +79,37 @@
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }
 
-  /* board mode switch — above pages list */
-  .wb-board-mode {
-    display:flex; gap:2px; margin:0 var(--wb-pad) 8px; padding:3px;
-    border-radius:var(--wb-r-4); background:rgba(0,0,0,.04);
-  }
-  .wb-board-mode-btn {
-    flex:1; border:0; border-radius:var(--wb-r-3); cursor:pointer;
-    background:transparent; color:var(--wb-muted);
-    font:inherit; font-size:11.5px; font-weight:var(--wb-w-semibold); letter-spacing:.02em;
-    padding:6px 8px;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .wb-board-mode-btn:hover { color:var(--wb-fg); }
-  .wb-board-mode-btn.on {
-    background:#fff; color:var(--wb-fg);
-    box-shadow:var(--wb-sh-1);
-  }
-
-  /* page list — inspector rows */
-  .wb-pages { padding:2px 0 4px; display:flex; flex-direction:column; gap:1px; }
-  .wb-page-row {
-    display:flex; align-items:stretch; gap:2px; min-width:0;
-  }
-  .wb-page {
-    flex:1; min-width:0; text-align:left; border:0; background:none; color:var(--wb-muted); font:inherit;
-    font-size:12.5px; font-weight:var(--wb-w-medium); padding:7px 8px; border-radius:var(--wb-r-2); cursor:pointer;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-page-row:hover .wb-page,
-  .wb-page:hover { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-page-row:has(.wb-page.on) .wb-page,
-  .wb-page.on {
-    background:rgba(0,0,0,.06); color:var(--wb-fg); font-weight:var(--wb-w-semibold);
-    box-shadow:inset 2px 0 0 var(--wb-accent);
-  }
-  .wb-page-copy {
-    flex:none; width:28px; border:0; background:none; color:var(--wb-muted); cursor:pointer;
-    border-radius:var(--wb-r-2); font-size:12px; line-height:1; padding:0;
-    display:inline-flex; align-items:center; justify-content:center;
-    opacity:0; transition:opacity var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-page-row:hover .wb-page-copy,
-  .wb-page-row:focus-within .wb-page-copy,
-  .wb-page-copy:focus-visible { opacity:1; }
-  .wb-page-copy:hover,
-  .wb-page-copy.ok { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-page-copy.ok { color:#1b7a3d; }
-  .wb-page.renaming { padding:0; background:rgba(0,0,0,.04); box-shadow:inset 2px 0 0 var(--wb-accent); }
-  .wb-page-rename {
-    display:block; width:100%; box-sizing:border-box; border:0; outline:none;
-    background:transparent; color:var(--wb-fg); font:inherit; font-size:12.5px; font-weight:var(--wb-w-semibold);
-    padding:7px 8px; border-radius:var(--wb-r-2);
-    box-shadow:inset 0 0 0 1.5px color-mix(in srgb,var(--wb-accent) 55%,transparent);
-  }
+  /* board mode 分段 / 页面列表（.wb-board-mode/.wb-pages/.wb-page*）的视觉
+     已收编进 app/Sidebar.jsx（V2）—— 旧规则删除。 */
 
   .wb-side-body { flex:1; min-height:0; display:flex; flex-direction:column; }
-  .wb-side-scroll { flex:1; min-height:0; overflow-y:auto; }
   .wb-side-scroll[hidden], .wb-settings-view[hidden], .wb-foot[hidden] { display:none; }
   .wb-settings-view { flex:1; min-height:0; overflow-y:auto; }
 
-  /* collapsible sections — animated open/close */
-  .wb-section { border-bottom:1px solid var(--wb-line); }
-  .wb-section:last-child { border-bottom:0; }
-  .wb-section-head {
-    display:flex; align-items:center; gap:7px; width:100%; border:0; background:none; color:var(--wb-faint);
-    font:inherit; font-size:10.5px; font-weight:var(--wb-w-semibold); letter-spacing:.04em; text-transform:uppercase;
-    padding:11px var(--wb-pad) 9px; cursor:pointer; text-align:left;
-    transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section-head:hover { color:var(--wb-muted); background:var(--wb-hover); }
-  .wb-section-chevron {
-    flex:none; width:6px; height:6px; border-right:1.4px solid currentColor; border-bottom:1.4px solid currentColor;
-    transform:rotate(45deg); margin-top:-2px; opacity:.75;
-    transition:transform var(--wb-dur) var(--wb-ease), margin-top var(--wb-dur) var(--wb-ease), opacity var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section.open .wb-section-chevron { transform:rotate(-135deg); margin-top:1px; }
-  .wb-section-title { flex:1; min-width:0; }
-  .wb-section-count {
-    font-size:10px; font-weight:var(--wb-w-semibold); color:var(--wb-faint); font-variant-numeric:tabular-nums;
-    letter-spacing:0; text-transform:none;
-    transition:opacity var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section-body {
-    display:grid; grid-template-rows:0fr;
-    transition:grid-template-rows var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section.open .wb-section-body { grid-template-rows:1fr; }
-  .wb-section-body-inner {
-    overflow:hidden; min-height:0;
-    padding:0 var(--wb-pad) 12px;
-    opacity:0; transform:translateY(-2px);
-    pointer-events:none;
-    transition:opacity .16s var(--wb-ease), transform .16s var(--wb-ease);
-  }
-  .wb-section.open .wb-section-body-inner {
-    opacity:1; transform:none; pointer-events:auto;
-    transition-delay:.04s;
-  }
-
+  /* 折叠段（.wb-section*）与滚动区（.wb-side-scroll → app/ui/scroll-area.jsx）
+     的视觉已收编进 app/Sidebar.jsx（V2）—— 旧规则删除。reduced-motion 名单
+     改指侧栏整树（#wbside *）—— chrome 过渡全部即时化。 */
   @media (prefers-reduced-motion: reduce) {
-    .wb-side, .wb-section-body, .wb-section-body-inner, .wb-section-chevron,
-    .wb-page, .wb-ann-tools button, .wb-ann-item, #wbgear, #wbtheme.ctl button,
-    .wb-ann-filter .ctl button, .wb-section-head, .wb-side-toggle, .wb-side-expand,
-    #wbsettings button, #wbsettings input,
-    [contenteditable] {
+    .wb-side, .wb-side-expand, #wbside, #wbside *, [contenteditable] {
       transition:none !important;
     }
   }
 
-  /* annotator tools — mode segmented (mirrors the injected sidebar's
-     交互|标注 control) + compact quick-action grid + quiet destructive row */
-  .wb-ann-tools {
-    display:flex; flex-direction:column; gap:8px; padding:2px 0 10px;
-  }
-  .wb-ann-mode {
-    display:flex; gap:2px; padding:2px;
-    border-radius:var(--wb-r-3); background:rgba(0,0,0,.045);
-  }
-  .wb-ann-mode button {
-    flex:1; border:0; border-radius:var(--wb-r-2); cursor:pointer;
-    background:transparent; color:var(--wb-muted);
-    font:inherit; font-size:11.5px; font-weight:var(--wb-w-semibold); letter-spacing:.02em;
-    padding:6px 8px;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .wb-ann-mode button:hover { color:var(--wb-fg); }
-  .wb-ann-mode button.on {
-    background:#fff; color:var(--wb-fg);
-    box-shadow:var(--wb-sh-1);
-  }
-  .wb-ann-mode button.on[data-ann-mode="annotate"] {
-    background:color-mix(in srgb,#f5a623 16%,#fff); color:#8a5a00;
-    box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);
-  }
-  .wb-ann-quick {
-    display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:4px;
-  }
-  .wb-ann-quick button {
-    min-width:0; min-height:44px; border:0; border-radius:var(--wb-r-2); cursor:pointer;
-    background:rgba(255,255,255,.7); color:var(--wb-muted);
-    font:inherit; font-size:10px; font-weight:var(--wb-w-medium); line-height:1.1;
-    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:4px;
-    box-shadow:var(--wb-sh-line);
-    transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .wb-ann-quick button:hover { color:var(--wb-fg); background:#fff; }
-  .wb-ann-quick button.on {
-    color:var(--wb-fg); background:#fff;
-    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--wb-accent) 42%,var(--wb-line));
-  }
-  .wb-ann-quick button[hidden] { display:none; }
-  .wb-ann-quick .wb-tool-label {
-    max-width:100%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap;
-  }
-  .wb-ann-clear {
-    align-self:center; border:0; background:transparent; color:var(--wb-faint);
-    font:inherit; font-size:11px; font-weight:var(--wb-w-medium); padding:3px 10px;
-    border-radius:var(--wb-r-2); cursor:pointer;
-    transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease);
-  }
-  .wb-ann-clear:hover { color:var(--wb-danger); background:color-mix(in srgb, var(--wb-danger) 7%, transparent); }
+  /* 标注工具区（#wbann-tools 模式分段/快捷钮组/#wbann-clear/#wbann-status/
+     #wbann-filter）与列表 workbench 侧增量（item-row 壳/删除钮/序号宽/空态布局/
+     组头）的视觉已收编进 app/AnnPanel.jsx（V2，shadcn 复制件 + Tailwind 类；
+     #wbann-mode「标注」on 态琥珀面与 client .ann-sb-modes 同值保留）。行/失效态/
+     空态的共享视觉仍在 lib/ann-list.css（双端同步机制，本刀不动）。
+     .wb-ico 保留：静态标记（#wbside-expand）经 workbench-icons.js 命令式挂载的
+     图标仍消费它；React 侧 WbIcon 出壳显式传 size class。 */
   .wb-ico {
     width:14px; height:14px; flex:none; display:block; aspect-ratio:1;
   }
-  .wb-ann-empty-ico {
-    width:22px; height:22px; color:var(--wb-faint); opacity:.75; flex:none; display:block;
-  }
-  .wb-ann-status {
-    display:block; margin:0 0 6px; font-size:10.5px; color:var(--wb-faint); line-height:1.35;
-  }
-  .wb-ann-status:empty { display:none; }
-  .wb-ann-filter { padding:0 0 8px; }
-  .wb-ann-filter .ctl {
-    width:100%;
-    background:rgba(0,0,0,.04);
-    border:0;
-    padding:2px;
-    border-radius:var(--wb-r-2);
-  }
-  .wb-ann-filter .ctl button {
-    font-size:11px; padding:6px 8px; border-radius:var(--wb-r-1);
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .wb-ann-filter .ctl button.on {
-    background:#fff; color:var(--wb-fg); font-weight:var(--wb-w-semibold);
-    box-shadow:var(--wb-sh-1);
-  }
-  .wb-ann-list { padding:0 0 2px; }
-  /* 行/失效态/空态的共享视觉在 lib/ann-list.css（注入 client 侧边栏内联同一
-     份）；这里只保留 workbench 侧的结构增量：item-row 壳、28px 删除钮、
-     固定 18px 序号徽标、空态布局与图标。 */
-  .wb-ann-empty {
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:6px; margin:0;
-    border:1px dashed color-mix(in srgb,var(--wb-line) 100%,transparent);
-  }
-  .wb-ann-empty-title { margin:0; }
-  .wb-ann-empty-hint { max-width:16em; }
-  .wb-ann-group {
-    font-size:10px; font-weight:var(--wb-w-semibold); color:var(--wb-faint); letter-spacing:.04em; text-transform:uppercase;
-    padding:10px 2px 4px; line-height:1.2;
-  }
-  .wb-ann-group:first-child { padding-top:2px; }
-  .wb-ann-item { display:flex; flex-direction:column; }
-  .wb-ann-item-row { display:flex; gap:2px; align-items:stretch; width:100%; }
-  .wb-ann-item--broken .wb-ann-num { box-shadow:var(--wb-sh-line); }
-  .wb-ann-broken-tag { display:inline-block; margin-top:1px; }
-  .wb-ann-item-main { border-radius:var(--wb-r-2); }
-  .wb-ann-del {
-    flex:none; align-self:center; width:28px; height:28px; margin-right:4px;
-    border:0; border-radius:var(--wb-r-3); background:transparent; color:var(--wb-faint);
-    font-size:16px; line-height:1; cursor:pointer; opacity:0;
-    transition:opacity var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease);
-  }
-  .wb-ann-item:hover .wb-ann-del,
-  .wb-ann-del:focus-visible { opacity:1; }
-  .wb-ann-del:hover { color:var(--wb-danger); background:color-mix(in srgb, var(--wb-danger) 10%, transparent); }
-  .wb-ann-num { width:18px; }
-  /* footer chrome */
-  .wb-foot {
-    flex:none; display:flex; gap:6px; margin:0; padding:10px var(--wb-pad);
-    border-top:1px solid var(--wb-line); align-items:center;
-    background:color-mix(in srgb,var(--wb-side) 88%,#fff);
-  }
-  #wbtheme.ctl {
-    flex:1; min-width:0; gap:2px; padding:2px;
-    background:rgba(0,0,0,.045); border-radius:var(--wb-r-2);
-  }
-  #wbtheme.ctl button {
-    flex:1; font-size:11px; font-weight:var(--wb-w-medium); padding:6px 6px; border-radius:var(--wb-r-1);
-    color:var(--wb-muted); display:inline-flex; align-items:center; justify-content:center; gap:4px;
-    transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  #wbtheme.ctl button:hover { color:var(--wb-fg); }
-  #wbtheme.ctl button.on {
-    background:#fff; color:var(--wb-fg); font-weight:var(--wb-w-semibold);
-    box-shadow:var(--wb-sh-1);
-  }
-  #wbtheme .wb-ico { width:12px; height:12px; opacity:.75; transition:opacity var(--wb-dur) var(--wb-ease); }
-  #wbtheme button.on .wb-ico { opacity:1; }
-
-  /* #wbgear 的视觉已收编进 app/ui/button.jsx（tool variant，V0）——
-     此处不再保留 .wb-gear 规则。 */
-
-  /* 设置视图皮肤已收编进 app/SettingsView.jsx（V1，shadcn 复制件 + Tailwind 类）——
-     .wb-settings-head/.wb-back/.wb-ctrls/.ctl-row/.wb-time-input/.wb-font-* 旧规则删除。
-     下面这组 .ctl 通用规则仍服务 footer #wbtheme 与 .wb-ann-filter（V2/V3 收编时删）。 */
-  .ctl {
-    display:inline-flex; gap:2px; background:var(--wb-fill); border-radius:var(--wb-r-2); padding:2px; flex:1;
-  }
-  .ctl button {
-    flex:1; border:0; background:none; color:var(--wb-muted); font:inherit;
-    font-size:11.5px; font-weight:var(--wb-w-medium); padding:6px 6px; border-radius:var(--wb-r-1); cursor:pointer; white-space:nowrap;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .ctl button:hover { color:var(--wb-fg); }
-  .ctl button.on {
-    background:#fff; color:var(--wb-fg); font-weight:var(--wb-w-semibold);
-    box-shadow:var(--wb-sh-1);
-  }
+  /* footer chrome（.wb-foot/#wbtheme）的视觉已收编进 app/Sidebar.jsx（V2：
+     #wbtheme 走共享 Seg，app/Seg.jsx）—— 旧规则删除。 .ctl 通用组的两个消费者
+     （#wbtheme/.wb-ann-filter）本刀收编完毕，.ctl 规则一并删除。
+     #wbgear 收编在 app/ui/button.jsx（tool variant，V0）；设置视图皮肤收编在
+     app/SettingsView.jsx（V1）—— 各处旧规则均已删除。 */
 
   .wb-stage-wrap {
     flex:1; min-width:0; position:relative; display:flex; min-height:0;
@@ -729,24 +470,9 @@
   [data-board-mode="html"] .wb-lib-item[data-doc-hidden],
   [data-board-mode="html"] .wb-screen[data-doc-hidden] { display:none; }
 
-  /* sidebar version switcher (HTML board only) */
-  .wb-doc-versions { display:flex; flex-direction:column; gap:1px; padding:2px 0 4px; }
-  /* display 会盖掉 [hidden] 的 UA 规则，必须显式还回来，否则切回 iOS/Web 板还留着 */
-  .wb-doc-versions[hidden] { display:none; }
-  .wb-doc-versions .wb-doc-ver-head {
-    display:flex; align-items:center; justify-content:space-between; gap:8px;
-    font-size:10px; font-weight:var(--wb-w-bold); letter-spacing:.06em; text-transform:uppercase;
-    color:var(--wb-faint); padding:8px var(--wb-pad) 4px;
-  }
-  .wb-doc-export {
-    appearance:none; border:1px solid var(--wb-line); border-radius:var(--wb-r-2);
-    background:var(--wb-side); color:var(--wb-muted); cursor:pointer;
-    font:inherit; font-size:11px; font-weight:var(--wb-w-semibold); letter-spacing:0; text-transform:none;
-    padding:3px 8px; line-height:1.2;
-  }
-  .wb-doc-export:hover, .wb-doc-export:focus-visible {
-    color:var(--wb-accent); border-color:color-mix(in srgb, var(--wb-accent) 40%, var(--wb-line));
-  }
+  /* sidebar version switcher（#wbdoc-versions、.wb-doc-ver 系、导出钮）的视觉
+     已收编进 app/Sidebar.jsx（V2）—— 旧规则删除（[hidden] 与 display 类的冲突
+     由组件侧按 show 显式切 hidden 类处理）。 */
   .wb-export-options.wb-export-options--stack {
     grid-auto-flow:row; grid-auto-columns:unset; grid-template-columns:1fr;
   }
@@ -756,17 +482,6 @@
   .wb-export-option-copy { display:flex; flex-direction:column; gap:1px; text-align:left; }
   .wb-export-option-copy strong { font-size:12.5px; font-weight:var(--wb-w-semibold); color:inherit; }
   .wb-export-option-copy small { font-size:11px; font-weight:var(--wb-w-medium); color:var(--wb-faint); }
-  .wb-doc-ver {
-    border:0; background:transparent; text-align:left; cursor:pointer;
-    font:inherit; font-size:12.5px; color:var(--wb-muted);
-    padding:6px var(--wb-pad); border-radius:var(--wb-r-2); margin:0 6px;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-doc-ver:hover { background:rgba(0,0,0,.04); color:var(--wb-fg); }
-  .wb-doc-ver.on { background:rgba(0,0,0,.06); color:var(--wb-fg); font-weight:var(--wb-w-semibold); }
-  .wb-doc-ver-sec {
-    font-size:10px; color:var(--wb-faint); padding:6px var(--wb-pad) 2px; letter-spacing:.04em;
-  }
   .wb-comp-stage .ios-root {
     display:block; width:100%; min-width:0;
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;

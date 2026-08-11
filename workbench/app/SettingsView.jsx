@@ -13,12 +13,13 @@
 //  - 分段：容器 --wb-fill 面 + 内衬 2px；on 态白面（--card）+ --wb-sh-1 克制凸起；
 //  - hover 浅面走 --wb-hover 档（桥 --accent），focus 沿用全局 accent catch-all；
 //  - 过渡 150ms；accent #007aff 只出现在字标选中态（真正的强调）。
+// 分段配方（SEG/SEG_ITEM/Seg）V2 起归 app/Seg.jsx 共享（侧栏/footer 分段同用）。
 import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet } from './store.js';
 import { cn } from './lib/utils.js';
+import { Seg } from './Seg.jsx';
 import { Button } from './ui/button.jsx';
 import { Input } from './ui/input.jsx';
-import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.jsx';
 import { applyClock, applyLockFont, setCanvasZoom, setFrame, setTextSize } from '../boot-prefs.js';
 import { inputFromIosTime, iosTimeFromInput } from '../lib/ios-time.js';
 import { savePrefs } from '../lib/prefs.js';
@@ -40,40 +41,6 @@ var CLOCK_MODES = [['system', '系统'], ['fixed', '固定']];
 // 行布局与行标签（辅助 12px / muted）
 var ROW = 'flex items-center gap-2';
 var ROW_LABEL = 'w-10 flex-none text-xs font-medium text-muted-foreground';
-
-// 分段控件：容器 --wb-fill 面 + 2px 内衬（rounded-md 在 vendored Root 上）。
-// min-w-0 必须：Root 在 flex 行里 min-width:auto 会按内容宽撑出侧栏（4 项 zoom 组实测溢出）。
-var SEG = 'flex-1 min-w-0 bg-muted p-0.5';
-// 分段项：24px（容器总高落 28px 档）+ 13px；off = muted 字 + hover 浅面/前景字；
-// on = 白面 + --wb-sh-1 + semibold。hover:data-[state=on] 显式锁白面 ——
-// hover: 与 data-: 同优先级，不赌生成顺序（on 项 hover 时必须保持白面）。
-// px-1：4 项组在 176px 可用宽里每项 ~41px，px-2 会切字（"150%" 实测被裁）。
-var SEG_ITEM =
-  'h-6 min-w-0 flex-1 rounded-sm px-1 text-[13px] font-medium text-muted-foreground ' +
-  'transition-[color,background-color,box-shadow] duration-150 ' +
-  'hover:bg-accent hover:text-accent-foreground ' +
-  'data-[state=on]:bg-card data-[state=on]:text-card-foreground data-[state=on]:font-semibold ' +
-  'data-[state=on]:shadow-[var(--wb-sh-1)] hover:data-[state=on]:bg-card';
-
-// 分段控件（缩放/Frame/Text/时间共用）。Radix ToggleGroup single 受控：value 来自
-// store，点击 off 项触发 onValueChange；点已选中项 Radix 报 ''，忽略（旧行为是
-// 幂等重放同值，状态等价）。dataAttr = 该项的 data-* 契约名（逐组不同）。
-function Seg(props) {
-  return (
-    <ToggleGroup type="single" spacing={0.5} value={props.value} id={props.id}
-      className={SEG}
-      onValueChange={function (v) { if (v) props.onPick(v); }}>
-      {props.options.map(function (o) {
-        var itemProps = { [props.dataAttr]: o[0] };
-        return (
-          <ToggleGroupItem key={o[0]} value={o[0]} className={SEG_ITEM} {...itemProps}>
-            {o[1]}
-          </ToggleGroupItem>
-        );
-      })}
-    </ToggleGroup>
-  );
-}
 
 export function SettingsView() {
   var zoom = useWorkbenchStore(function (s) { return s.canvasZoom; });
