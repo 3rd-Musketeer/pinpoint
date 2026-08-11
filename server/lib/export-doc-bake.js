@@ -41,7 +41,7 @@ export function exportMarkCss() {
     '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;',
     'background:#f5a623;color:#1a1a1a;font-size:12px;font-weight:700;',
     'display:flex;align-items:center;justify-content:center;',
-    'box-shadow:0 2px 6px rgba(0,0,0,.3);pointer-events:none;z-index:3;}',
+    'box-shadow:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);pointer-events:none;z-index:3;}',
     bubbleCss(),
   ].join('');
 }
