@@ -60,7 +60,7 @@ function FrameMenu(props) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content asChild>
         <span role="menu" tabIndex={-1}
-          className="wb-frame-menu absolute right-0 top-[35px] z-50 box-border w-[204px] rounded-xl border border-border bg-card p-[5px] shadow-[var(--wb-sh-3)]">
+          className="wb-frame-menu absolute right-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
           <DropdownMenu.Item asChild onSelect={function () {
             // 让菜单先走完关闭再开导出对话框：showModal 记住打开前的焦点元素，
             // Esc 关对话框后的原生还原才落得到 trigger 上。Radix FocusScope 的

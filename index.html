@@ -70,7 +70,7 @@
     display:none; position:absolute; left:10px; top:12px; z-index:8;
     width:32px; height:32px; border:0; border-radius:var(--wb-r-3); cursor:pointer;
     background:var(--wb-surface); color:var(--wb-muted);
-    box-shadow:var(--wb-sh-2), var(--wb-sh-line);
+    box-shadow:var(--wb-sh-2);
     align-items:center; justify-content:center;
     transition:color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease);
   }
@@ -130,15 +130,16 @@
 
   /* HUD 容器（#wbcanvas-hud）与 dock 容器（#wbcanvas-dock）是静态标记（React
      只渲染进容器）—— 容器浮层皮肤手写在此、值全 token（V3）：白面
-     --wb-surface + 发丝 --wb-sh-line + 克制阴影 --wb-sh-2 + 圆角 --wb-r-4，
-     替代旧半透明灰面 + backdrop blur。容器内控件（开关钮/缩放组/回中）与 dock
-     面板（#wbsection-nav/#wbminimap）的皮肤收编在 app/CanvasHud.jsx（Tailwind 类）。 */
+     --wb-surface + 克制阴影 --wb-sh-2 + 圆角 --wb-r-4（2026-08-11 起扁平化，
+     不再叠发丝描边），替代旧半透明灰面 + backdrop blur。容器内控件（开关钮/
+     缩放组/回中）与 dock 面板（#wbsection-nav/#wbminimap）的皮肤收编在
+     app/CanvasHud.jsx（Tailwind 类）。 */
   .wb-canvas-hud {
     position:absolute; right:14px; bottom:14px; z-index:7;
     display:flex; align-items:center; gap:6px;
     padding:4px; border-radius:var(--wb-r-4);
     background:var(--wb-surface);
-    box-shadow:var(--wb-sh-2), var(--wb-sh-line);
+    box-shadow:var(--wb-sh-2);
     font-size:12px; color:var(--wb-fg);
   }
   .wb-canvas-dock {
@@ -261,7 +262,7 @@
     position:relative;
     width:var(--wb-phone-w); box-sizing:border-box;
     padding:12px 14px;
-    border:1px solid color-mix(in srgb, var(--wb-line) 72%, transparent);
+    border:0;
     border-radius:var(--wb-r-4);
     background:color-mix(in srgb, var(--wb-side) 78%, transparent);
     color:var(--wb-muted);
@@ -452,7 +453,7 @@
     display:inline-flex; align-items:center; justify-content:center;
     border:0; border-radius:var(--wb-r-3);
     background:var(--wb-surface); color:var(--wb-muted);
-    box-shadow:var(--wb-sh-2), var(--wb-sh-line);
+    box-shadow:var(--wb-sh-2);
     cursor:pointer; opacity:.72; transform:none;
     transition:opacity var(--wb-dur) var(--wb-ease),transform var(--wb-dur) var(--wb-ease),color var(--wb-dur) var(--wb-ease);
   }
@@ -474,12 +475,13 @@
   [data-radix-popper-content-wrapper] { position:static !important; transform:none !important; min-width:0 !important; }
   /* export dialog（导出图片/导出文档两型共用 .wb-export-*）：原生 dialog，标记在
      export-core.js 的 HTML 字符串里（不进 Tailwind 扫描源）—— 手写 CSS 全 token
-     化（V3）：模态档 --wb-r-dialog + --wb-sh-4 + --wb-side 面（popover 语义）+
-     发丝边；选项组收编槽式分段语言（--wb-fill 槽 + r-2 容器 2px 内衬，选中项白面
-     + --wb-sh-1，SEG 同族）；按钮收编 28px 档（原 38px）；字栈统一 --wb-font。 */
+     化（V3）：模态档 --wb-r-dialog + --wb-sh-4 + --wb-side 面（popover 语义）；
+     2026-08-11 扁平化去掉发丝边。选项组收编槽式分段语言（--wb-fill 槽 + r-2 容器
+     2px 内衬，选中项白面 + --wb-sh-1，SEG 同族）；按钮收编 28px 档（原 38px）；
+     字栈统一 --wb-font。 */
   .wb-export-dialog {
     width:min(440px,calc(100vw - 32px)); padding:0; overflow:hidden;
-    border:1px solid var(--wb-line); border-radius:var(--wb-r-dialog);
+    border:0; border-radius:var(--wb-r-dialog);
     background:var(--wb-side); color:var(--wb-fg);
     box-shadow:var(--wb-sh-4);
     font-family:var(--wb-font);

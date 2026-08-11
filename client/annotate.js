@@ -829,11 +829,11 @@
     // [data-ann-ui] 基规则 —— 工具条/composer/气泡/mention/侧栏消费同一套 token（命名与值
     // 跟随 workbench/wb-tokens.css）；钉在注入 UI 根上，宿主页面的同名变量渗不进来。
     // #ann-sidebar 规则上的钉值保留原样：共享行样式入参 + 三向守卫锚点（与本规则同值）。
-    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#007aff;--wb-danger:#ff3b30;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-sh-line:inset 0 0 0 1px var(--wb-line);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#007aff;--wb-danger:#ff3b30;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{box-sizing:border-box;}',
     // 悬浮工具条：V4 起从深色毛玻璃收编浮层白面语言（白面 + 发丝描边 + sh-2 + r-4），
     // 按钮 28px 档 ghost（hover 浅面）；武装/on 态琥珀面与侧栏分段、workbench 标注开关同值。
-    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);padding:7px 12px;box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1)),var(--wb-sh-line,inset 0 0 0 1px rgba(0,0,0,.07));}',
+    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);padding:7px 12px;box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1));}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;font-weight:var(--wb-w-medium,500);height:28px;padding:0 10px;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-muted,#6b6b70);transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),box-shadow var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
     '#ann-toolbar button.on{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
@@ -847,9 +847,9 @@
     // 阶梯圆角 —— 与浮动工具条同一套浮层语言（V4 起工具条/composer 也收编进来）。
     // 本规则上的 --wb-* 钉值是共享行样式（lib/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);border-left:1px solid var(--wb-line,rgba(0,0,0,.07));box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#ff3b30;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#ff3b30;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
-    '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;border-bottom:1px solid var(--wb-line,rgba(0,0,0,.07));}',
+    '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-count{font-size:11px;color:var(--wb-faint);font-variant-numeric:tabular-nums;}',
     '#ann-sidebar .ann-sb-close{flex:none;width:26px;height:26px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:14px;line-height:26px;text-align:center;color:var(--wb-faint);transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1);}',
@@ -893,7 +893,7 @@
     // 悬停提示：反色气泡，与 vendored tooltip（bg-foreground/text-background）同语言。
     '#ann-tip{position:absolute;z-index:2;max-width:min(280px,calc(100% - 24px));background:var(--wb-fg,#1c2024);color:var(--wb-surface,#fff);font-size:12px;line-height:1.4;padding:7px 12px;border-radius:var(--wb-r-2,6px);pointer-events:none;word-break:break-word;}',
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
-    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:720px;max-height:min(62vh,560px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16)),var(--wb-sh-line,inset 0 0 0 1px rgba(0,0,0,.07));padding:12px;pointer-events:auto;}',
+    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:720px;max-height:min(62vh,560px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));padding:12px;pointer-events:auto;}',
     '#ann-box .head{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-width:0;}',
     '#ann-box .t{flex:1;min-width:0;font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
     '#ann-box .t b{color:var(--wb-muted,#6b6b70);font-weight:var(--wb-w-semibold,600);}',
@@ -909,7 +909,7 @@
     '#ann-box .ann-target-modes button:hover{background:transparent;color:var(--wb-fg,#1c2024);}',
     '#ann-box .ann-target-modes button.on{background:var(--wb-surface,#fff);color:var(--wb-fg,#1c2024);box-shadow:var(--wb-sh-1,0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04));font-weight:var(--wb-w-semibold,600);}',
     '#ann-box .ann-target-pills{display:flex;flex:1;min-width:0;gap:5px;flex-wrap:wrap;align-items:center;}',
-    '#ann-box .ann-target-pill{display:flex;align-items:center;gap:5px;max-width:230px;min-height:25px;padding:4px 6px 4px 8px;border:1px solid rgba(245,166,35,.32);border-radius:999px;background:rgba(245,166,35,.09);color:#8a5a00;font-size:11px;line-height:1.2;cursor:pointer;outline:none;}',
+    '#ann-box .ann-target-pill{display:flex;align-items:center;gap:5px;max-width:230px;min-height:25px;padding:4px 6px 4px 8px;border:0;border-radius:999px;background:rgba(245,166,35,.13);color:#8a5a00;font-size:11px;line-height:1.2;cursor:pointer;outline:none;}',
     '#ann-box .ann-target-pill:hover,#ann-box .ann-target-pill:focus-visible{border-color:rgba(245,166,35,.75);background:rgba(245,166,35,.17);}',
     '#ann-box .ann-target-pill.broken{border-color:color-mix(in srgb,var(--wb-danger,#ff3b30) 28%,transparent);background:color-mix(in srgb,var(--wb-danger,#ff3b30) 7%,transparent);color:var(--wb-danger,#ff3b30);}',
     '#ann-box .ann-target-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
@@ -934,7 +934,7 @@
     '#ann-box .hint{font-size:10px;color:var(--wb-faint,#8d8d8d);margin-top:6px;}',
     '#ann-box .research-opt{margin-top:8px;font-size:12px;color:var(--wb-muted,#6b6b70);line-height:1.4;}',
     '#ann-box .research-opt label{cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0;}',
-    '#ann-mention{position:absolute;z-index:6;min-width:200px;max-width:min(280px,calc(100% - 24px));max-height:180px;overflow:auto;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16)),var(--wb-sh-line,inset 0 0 0 1px rgba(0,0,0,.07));border:0;padding:4px;pointer-events:auto;}',
+    '#ann-mention{position:absolute;z-index:6;min-width:200px;max-width:min(280px,calc(100% - 24px));max-height:180px;overflow:auto;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));border:0;padding:4px;pointer-events:auto;}',
     '#ann-mention .ann-men-item{display:flex;gap:8px;align-items:flex-start;width:100%;border:0;background:transparent;text-align:left;font:inherit;padding:7px 8px;border-radius:var(--wb-r-3,8px);cursor:pointer;color:var(--wb-fg,#1c2024);}',
     '#ann-mention .ann-men-item.on,#ann-mention .ann-men-item:hover{background:var(--wb-hover,rgba(0,0,0,.04));}',
     '#ann-mention .ann-men-n{flex:none;font-size:11px;font-weight:var(--wb-w-bold,700);color:#f5a623;min-width:1.5em;}',
@@ -942,7 +942,7 @@
     '#ann-mention .ann-men-empty{padding:10px 8px;font-size:12px;color:var(--wb-faint,#8d8d8d);}',
     '#ann-imgs{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px;}',
     '#ann-imgs:empty{display:none;margin:0;}',
-    '#ann-imgs .im{position:relative;width:56px;height:56px;border-radius:var(--wb-r-3,8px);overflow:hidden;border:1px solid var(--wb-line,rgba(0,0,0,.07));}',
+    '#ann-imgs .im{position:relative;width:56px;height:56px;border-radius:var(--wb-r-3,8px);overflow:hidden;border:0;}',
     '#ann-imgs .im img{width:100%;height:100%;object-fit:cover;display:block;}',
     '#ann-imgs .im .x{position:absolute;top:1px;right:1px;width:16px;height:16px;border-radius:50%;background:rgba(0,0,0,.55);color:#fff;font-size:11px;line-height:16px;text-align:center;cursor:pointer;}',
     '@keyframes annFlash{0%,100%{background:rgba(245,166,35,.07);box-shadow:none}15%,85%{background:rgba(245,166,35,.2);box-shadow:0 0 0 4px rgba(245,166,35,.22)}}',

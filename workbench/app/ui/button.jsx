@@ -7,8 +7,8 @@
 //    约定是 index.html 全局 catch-all 的 accent color-mix outline，未分层、恒优先；
 //  - 密度按 dev-tool 锚收紧：控件高 28px（h-7/size-7）档，圆角走 --wb-r-* 阶梯；
 //  - 色值一律经桥类名（bg-primary/text-muted-foreground…），无第二处字面量源。
-// tool variant：workbench 工具钮（footer gear / HUD 钮）—— 透明底 + 发丝描边
-// （--wb-sh-line）+ hover 白面，data-state=on 时 accent 面（与旧 .wb-gear.on 同值）。
+// tool variant：workbench 工具钮（footer gear / HUD 钮 / 标注快捷钮）—— 扁平
+// 无描边（owner 2026-08-11 方向：去 hairline 卡片化），hover 浅面，on = accent 浅面。
 import { cva } from 'class-variance-authority';
 import { Slot } from '@radix-ui/react-slot';
 
@@ -26,7 +26,7 @@ const buttonVariants = cva(
         ghost: 'hover:bg-accent hover:text-accent-foreground',
         link: 'text-primary underline-offset-4 hover:underline',
         tool:
-          'bg-transparent text-muted-foreground shadow-[var(--wb-sh-line)] transition-[color,background-color,box-shadow] duration-(--wb-dur) ease-(--wb-ease) hover:bg-[color-mix(in_srgb,var(--wb-surface)_80%,transparent)] hover:text-foreground data-[state=on]:bg-[color-mix(in_srgb,var(--wb-accent)_8%,var(--wb-surface))] data-[state=on]:text-primary data-[state=on]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,var(--wb-accent)_30%,transparent)]',
+          'bg-transparent text-muted-foreground transition-[color,background-color] duration-(--wb-dur) ease-(--wb-ease) hover:bg-accent hover:text-accent-foreground data-[state=on]:bg-[color-mix(in_srgb,var(--wb-accent)_10%,transparent)] data-[state=on]:text-primary',
       },
       size: {
         default: 'h-7 px-3 py-1 has-[>svg]:px-2.5',

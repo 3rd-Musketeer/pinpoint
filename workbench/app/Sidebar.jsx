@@ -54,7 +54,7 @@ function SideHead() {
   var on = !!(snap && snap.available && snap.connected);
   var syncErr = !!(snap && snap.available && snap.syncError);
   return (
-    <div className="wb-head flex items-center justify-between gap-2 border-b border-border px-[var(--wb-pad)] pb-2 pt-2.5">
+    <div className="wb-head flex items-center justify-between gap-2 px-[var(--wb-pad)] pb-2 pt-2.5">
       <div id="wbconn" data-state={on ? 'online' : 'offline'}
         className="wb-conn group inline-flex min-w-0 select-none items-center gap-1.5 text-[11px] font-medium leading-none text-muted-foreground data-[state=offline]:text-destructive data-[state=online]:text-[#1b7a3d]"
         title={on ? (syncErr ? '已连接 · 上次同步失败' : '标注服务已连接') : '标注服务未连接（请运行 npm run dev）'}>
@@ -75,7 +75,7 @@ function SideHead() {
 function Section(props) {
   var open = useWorkbenchStore(function (s) { return s.sectionOpen[props.name] !== false; });
   return (
-    <section className={'wb-section border-b border-border last:border-b-0' + (open ? ' open' : '')} data-section={props.name}>
+    <section className={'wb-section' + (open ? ' open' : '')} data-section={props.name}>
       <button type="button" aria-expanded={open ? 'true' : 'false'}
         className="wb-section-head flex w-full cursor-pointer items-center gap-[7px] border-0 bg-transparent px-[var(--wb-pad)] pb-[9px] pt-[11px] text-left font-sans text-[10.5px] font-semibold uppercase tracking-[0.04em] text-[color:var(--wb-faint)] transition-[color,background-color] duration-150 hover:bg-accent hover:text-muted-foreground"
         onClick={function () { setSectionOpen(props.name, !open); }}>
@@ -197,9 +197,9 @@ function PageRow(props) {
         data-state={active ? 'on' : undefined}
         className={cn(
           'wb-page flex-1 min-w-0 cursor-pointer truncate rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans text-[12.5px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
-          active && 'on shadow-[inset_2px_0_0_var(--wb-accent)]',
+          active && 'on',
           active && ROW_ON,
-          renaming && 'renaming bg-accent px-0 py-0 shadow-[inset_2px_0_0_var(--wb-accent)] hover:bg-accent group-hover:bg-accent'
+          renaming && 'renaming bg-accent px-0 py-0 hover:bg-accent group-hover:bg-accent'
         )}
         onClick={function () {
           if (renaming) return;
@@ -301,8 +301,8 @@ function DocVersions() {
         <Fragment>
           <div className="wb-doc-ver-head flex items-center justify-between gap-2 px-[var(--wb-pad)] pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[color:var(--wb-faint)]">
             <span>{screens.length > 1 ? 'Versions' : 'Document'}</span>
-            <Button type="button" variant="outline" data-doc-export="" title="导出当前文档"
-              className="wb-doc-export h-auto min-h-0 rounded-md bg-[var(--wb-side)] px-2 py-[3px] text-[11px] font-semibold leading-[1.2] text-muted-foreground shadow-none transition-[color,border-color] duration-150 hover:border-[color-mix(in_srgb,var(--wb-accent)_40%,var(--wb-line))] hover:bg-[var(--wb-side)] hover:text-primary"
+            <Button type="button" variant="ghost" data-doc-export="" title="导出当前文档"
+              className="wb-doc-export h-auto min-h-0 rounded-md bg-[var(--wb-side)] px-2 py-[3px] text-[11px] font-semibold leading-[1.2] text-muted-foreground shadow-none transition-[color,background-color] duration-150 hover:bg-accent hover:text-primary"
               onClick={function () { openDocExportDialog(); }}>导出</Button>
           </div>
           {items}
@@ -338,7 +338,7 @@ function SideFoot() {
   var theme = useWorkbenchStore(function (s) { return s.theme; });
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   return (
-    <div className="wb-foot flex items-center gap-1.5 border-t border-border bg-[color-mix(in_srgb,var(--wb-side)_88%,#fff)] px-[var(--wb-pad)] py-2.5" id="wbfoot" hidden={settingsOpen}>
+    <div className="wb-foot flex items-center gap-1.5 px-[var(--wb-pad)] py-2.5" id="wbfoot" hidden={settingsOpen}>
       <Seg id="wbtheme" role="group" aria-label="屏幕主题"
         value={theme} dataAttr="data-theme"
         options={[

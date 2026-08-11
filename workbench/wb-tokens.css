@@ -38,7 +38,6 @@
   --wb-sh-2:0 1px 2px rgba(0,0,0,.06), 0 8px 24px rgba(0,0,0,.1);   /* 浮动 chrome（HUD） */
   --wb-sh-3:0 1px 2px rgba(0,0,0,.06), 0 14px 38px rgba(0,0,0,.16); /* 浮层面板（菜单/导航） */
   --wb-sh-4:0 28px 80px rgba(0,0,0,.24); /* 模态 */
-  --wb-sh-line:inset 0 0 0 1px var(--wb-line); /* 发丝描边（与阶梯叠加或单用） */
   --wb-sh-board:0 1px 0 rgba(0,0,0,.04), 0 14px 40px rgba(0,0,0,.08); /* 画布画板纸面 */
 
   /* ── 字体栈（V1 新增：chrome 文字控件经 Tailwind --font-sans 消费） ── */

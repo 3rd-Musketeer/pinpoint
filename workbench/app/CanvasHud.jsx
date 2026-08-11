@@ -6,7 +6,7 @@
 // DOM id / class / 文案与原静态标记逐一对应（e2e 选择器即契约）。
 // V3 换皮（goal-20260811-workbench-visual-rebuild）：皮肤收编 Tailwind 类 + token，
 // index.html 旧规则删除。配方：
-//  - 浮层语言 = 白面（bg-card = --wb-surface）+ 发丝描边（--wb-sh-line）+ 克制阴影
+//  - 浮层语言 = 白面（bg-card = --wb-surface）+ 克制阴影（无发丝描边，2026-08-11 扁平化）
 //    （dock 面板 --wb-sh-3；HUD 容器是静态标记，同款语言留在 index.html 手写 CSS，
 //    值全 token）+ 圆角 --wb-r-4（rounded-xl）；
 //  - section-nav/minimap 开关钮 = Button tool variant（V0 footer gear 同族），
@@ -28,7 +28,7 @@ import { WbIcon } from './WbIcon.jsx';
 // dock 两面板共用浮层皮肤（--wb-canvas-nav-w 定义在 index.html 的 .wb-canvas-dock 上）
 var DOCK_PANEL =
   'relative box-border w-[var(--wb-canvas-nav-w)] rounded-xl bg-card ' +
-  'shadow-[var(--wb-sh-3),var(--wb-sh-line)]';
+  'shadow-[var(--wb-sh-3)]';
 // 缩放组槽内项（SEG_ITEM 同族，去掉单选态）：24px 项 + 容器 2px 内衬 = 28px 档
 var HUD_ITEM =
   'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-sm border-0 ' +

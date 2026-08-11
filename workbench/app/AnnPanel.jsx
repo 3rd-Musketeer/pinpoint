@@ -37,13 +37,12 @@ var QUICK_BTN =
   'h-11 min-w-0 flex-col gap-1 rounded-md px-0 text-[10px] font-medium leading-[1.1]';
 
 // 「标注」on 态琥珀面（标注特性色，client 侧栏同规则同值；hover 复合类锁面）。
-// 注意：tailwind-merge 把 shadow-[var(--wb-sh-1)] 归类为 shadow-color、琥珀
-// inset 写法归类为 shadow，两者不相杀、同优先级时 --wb-sh-1 恒赢 —— 故基类
-// 先显式摘掉 on 态 shadow（字符串替换），琥珀环是唯一 on 阴影（与旧规则同值）。
+// 扁平方向（2026-08-11 owner）：on 态只留琥珀面+字色，不挂描边环。
+// 注意：tailwind-merge 把 shadow-[var(--wb-sh-1)] 归类为 shadow-color —— 基类先显式
+// 摘掉 on 态 shadow（字符串替换），防止它压掉 on 面。
 var SEG_ITEM_ANNOTATE = SEG_ITEM.replace(' data-[state=on]:shadow-[var(--wb-sh-1)]', '');
 var ANN_ANNOTATE_ON =
   'data-[state=on]:bg-[color-mix(in_srgb,#f5a623_16%,var(--wb-surface))] data-[state=on]:text-[#8a5a00] ' +
-  'data-[state=on]:shadow-[inset_0_0_0_1px_color-mix(in_srgb,#f5a623_35%,transparent)] ' +
   'hover:data-[state=on]:bg-[color-mix(in_srgb,#f5a623_16%,var(--wb-surface))]';
 
 function AnnRow(props) {
@@ -53,7 +52,7 @@ function AnnRow(props) {
       <div className="wb-ann-item-row flex w-full items-stretch gap-0.5">
         <button type="button" className="wb-ann-item-main rounded-md" data-ann-n={r.n}
           onClick={function () { props.onGoTo(r.n); }}>
-          <span className={cn('wb-ann-num w-[18px]', r.broken && 'shadow-[var(--wb-sh-line)]')}>{r.n}</span>
+          <span className={cn('wb-ann-num w-[18px]', r.broken && 'opacity-50')}>{r.n}</span>
           <span className="wb-ann-body">
             <span className="wb-ann-cap">{r.cap}</span>
             <span className="wb-ann-text">{r.preview}</span>
@@ -223,7 +222,7 @@ export function AnnPanel() {
             </Fragment>
           );
         }) : (
-          <div className="wb-ann-empty m-0 flex flex-col items-center justify-center gap-1.5 border border-dashed border-border">
+          <div className="wb-ann-empty m-0 flex flex-col items-center justify-center gap-1.5">
             <WbIcon name="empty-ann" size={22} className="wb-ann-empty-ico block size-[22px] text-[color:var(--wb-faint)] opacity-75" />
             <p className="wb-ann-empty-title m-0">暂无标注</p>
             <p className="wb-ann-empty-hint max-w-[16em]">切换到「标注」后，在画布上点选或框选元素</p>

@@ -52,7 +52,7 @@ export function SettingsView() {
 
   return (
     <Fragment>
-      <header className="relative flex min-h-11 items-center border-b border-border px-[var(--wb-pad)]">
+      <header className="relative flex min-h-11 items-center px-[var(--wb-pad)]">
         <Button type="button" variant="ghost" size="sm" data-wb-back aria-label="返回预览"
           className="-ml-2 gap-1 px-2 text-[13px] font-medium text-muted-foreground"
           onClick={function () { showTabs(); }}>
@@ -79,10 +79,10 @@ export function SettingsView() {
               return (
                 <button key={f[0]} type="button" data-lock-font={f[0]}
                   className={cn(
-                    'flex cursor-pointer flex-col items-center rounded-md border p-2 font-sans text-foreground transition-[background-color,border-color] duration-150',
+                    'flex cursor-pointer flex-col items-center rounded-md p-2 font-sans text-foreground transition-[background-color] duration-150',
                     on
-                      ? 'border-[color-mix(in_srgb,var(--wb-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--wb-accent)_7%,var(--wb-surface))]'
-                      : 'border-border bg-card hover:bg-accent'
+                      ? 'bg-[color-mix(in_srgb,var(--wb-accent)_8%,transparent)]'
+                      : 'hover:bg-accent'
                   )}
                   onClick={function () {
                     applyLockFont(f[0]);
