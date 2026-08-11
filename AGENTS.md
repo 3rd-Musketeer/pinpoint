@@ -313,16 +313,25 @@ reload — Navigation API `navigate` events first, patched `pushState`/`replaceS
 from before a switch are discarded by epoch so marks never land on the previous route.
 
 **Client chrome:** on non-workbench pages (`/sites/`, extension-injected) the floating
-toolbar hides by default — **A** toggles annotate mode, and the annotation panel
-(`#ann-sidebar`) opens from the **pinpoint toolbar icon** (main entry; MV3
-`action.onClicked` → tab message → content script relays a CSP-safe DOM
-`CustomEvent('pinpoint:command')` to the client), with the toolbar「列表」button and
-**S** as secondary entries. The panel header carries a「交互 | 标注」segmented mode
-switch; below it current-ledger marks sorted by `n`, click to jump, hover for
-edit/delete, broken-anchor tags; open state persists as a localStorage viewer
-preference, default closed. The panel is suppressed wherever `window.workbench`
-exists or the document runs embedded in a frame — same one-control-surface rule as the
-toolbar.
+toolbar hides by default — **A** toggles annotate mode. The main entry is the
+**pinpoint toolbar icon**, which opens the annotation **side panel** (Chrome Side
+Panel, native split-screen — the page keeps its own viewport; owner 2026-08-11: the
+in-page `#ann-sidebar` overlay covered the page's right 280px). The panel is an
+extension shell (`extension/sidepanel.html/js`) iframing the service-hosted
+`panel.html`: the shell asks the tab's content script for `pinpoint:page-info`
+(self-healing stale tabs by re-injecting the idempotency-guarded content script via
+`chrome.scripting`), maps dead ends to local hints (service down / unsupported page /
+stale page client → ⌘R / not registered / workbench shell), and ferries panel
+commands (`jump`/`edit`/`del`/`mode`) through the content script's CSP-safe DOM
+`CustomEvent('pinpoint:command')` bridge to the client. The panel page reads the
+ledger over the annotate API and live-updates over SSE; all writes stay in the page
+client (panel is never a second writer). The in-page `#ann-sidebar` remains for
+extension-less surfaces (`/sites/` direct, **S** key, toolbar「列表」button): header
+carries the「交互 | 标注」segmented switch, current-ledger marks sorted by `n`,
+click to jump, hover edit/delete, broken-anchor tags; open state persists as a
+localStorage viewer preference, default closed; suppressed wherever
+`window.workbench` exists or the document runs embedded in a frame — same
+one-control-surface rule as the toolbar.
 
 **Export purity:** doc exports accept `sites/<entry-id>/…` srcs and are guaranteed free of
 the injected client — the pipeline requests `?annotate=off`, aborts `**/annotate.js` in the

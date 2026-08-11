@@ -279,7 +279,9 @@ Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`
 - **`url` entries** — the MV3 browser extension in [`extension/`](extension/) matches
   `location.origin` against url entries on local-dev pages and injects the same client,
   stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline or
-  the origin isn't registered, the page stays untouched. Load it once via
+  the origin isn't registered, the page stays untouched. The toolbar icon opens the
+  annotation **side panel** (Chrome Side Panel; shell + service-hosted `panel.html`) —
+  no in-page overlay. Load it once via
   `chrome://extensions` → **Load unpacked** — details in
   [`extension/README.md`](extension/README.md).
 

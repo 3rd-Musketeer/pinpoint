@@ -1,8 +1,20 @@
 {
   "manifest_version": 3,
   "name": "pinpoint",
-  "version": "0.2.0",
-  "description": "Inject the pinpoint annotate client into pages that match a url registry entry.",
+  "version": "0.3.0",
+  "description": "Inject the pinpoint annotate client into pages that match a url registry entry; the toolbar icon opens the annotation side panel.",
+  "permissions": ["scripting", "sidePanel"],
+  "host_permissions": [
+    "https://*.localhost/*",
+    "http://*.localhost/*",
+    "https://localhost/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*",
+    "https://127.0.0.1/*"
+  ],
+  "side_panel": {
+    "default_path": "sidepanel.html"
+  },
   "action": {
     "default_title": "pinpoint 标注",
     "default_icon": {

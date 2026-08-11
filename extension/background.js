@@ -1,19 +1,17 @@
 /* pinpoint extension background service worker (MV3).
  *
- * 主入口：点击浏览器工具栏的 pinpoint 图标 → 开合当前标签页的标注面板
- * （#ann-sidebar）。面板由页面主世界的 annotate client 渲染；SW 只把点击转成
- * 一条 tab 消息，content script 再经共享 DOM CustomEvent 桥进主世界（内联
- * script 会被严格 CSP 拦掉，见 content.js 头注）。
- *
- * 当前 tab 没有 content script（非 localhost 匹配页、chrome:// 等）时
- * sendMessage 会 reject —— 安静 no-op，不报错、不开新页。
+ * 主入口：点击工具栏 pinpoint 图标 → 打开 Chrome 原生侧边栏（side panel）。
+ * 原生分屏不占页面视口（页面按更窄视口正常 reflow）——这是 0.3.0 起取代
+ * 页面内 #ann-sidebar 浮层的面板形态（owner 2026-08-11：浮层恒压页面右侧
+ * 280px，与高保真评审冲突）。面板本体是 sidepanel.html/js 壳 + iframe 指向
+ * pinpoint 服务的 /panel 页；页面内 #ann-sidebar 仍保留给无扩展场景
+ * （/sites/ 直开、S 键、工具条「列表」按钮）。
  */
 chrome.action.onClicked.addListener(function (tab) {
   if (!tab || typeof tab.id !== 'number') return;
-  try {
-    var sent = chrome.tabs.sendMessage(tab.id, { type: 'pinpoint:toggle-sidebar' });
-    if (sent && typeof sent.catch === 'function') {
-      sent.catch(function () { /* no receiver on this tab — quiet no-op */ });
-    }
-  } catch (e) { /* no receiver on this tab — quiet no-op */ }
+  if (!chrome.sidePanel || typeof chrome.sidePanel.open !== 'function') return;
+  var opened = chrome.sidePanel.open({ tabId: tab.id });
+  if (opened && typeof opened.catch === 'function') {
+    opened.catch(function () { /* 打不开的页面（chrome:// 等）安静略过 */ });
+  }
 });

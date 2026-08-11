@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>pinpoint 标注面板</title>
+<!-- Chrome Side Panel 内容页（extension 侧栏 iframe 承载）：独立于 workbench
+     壳（index.html），不加载 stage/ios-kit/annotate client —— 面板是纯数据
+     视图（annotate API + SSE），页面动作经扩展壳桥转发。 -->
+<link rel="stylesheet" href="workbench/wb-tokens.css">
+<!-- 行样式与 workbench 列表/注入端侧栏共享（单一事实源） -->
+<link rel="stylesheet" href="lib/ann-list.css">
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--wb-surface, #fff); }
+  body {
+    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    color: var(--wb-fg, #1c2024);
+  }
+  /* focus 约定与 index.html 全局 catch-all 同式 */
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--wb-accent, #007aff) 55%, transparent); outline-offset: 1px; }
+</style>
+</head>
+<body>
+<div id="panel-root"></div>
+<script type="module" src="/workbench/app/panel-main.jsx"></script>
+</body>
+</html>

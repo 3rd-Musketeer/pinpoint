@@ -12,6 +12,16 @@
   'use strict';
   if (window.__pinpoint) return;
   window.__pinpoint = true;
+  // 启动就绪标记：扩展 content script 的自愈路径据此判断主世界 client 已装好
+  // pinpoint:command 监听（见 extension/content.js）。IIFE 同步执行到底，标记
+  // 打在最前面即可——任何后续的 DOM 事件派发都排在本脚本求值之后。
+  // 抑制标记同理：workbench 壳/被嵌入页的标注控制面在壳上，content script 的
+  // 点击反馈据此区分「壳页」与「client 过旧」（sidebarSuppressed 是函数声明，
+  // 提升到 IIFE 顶部，此时可调）。
+  if (document.documentElement) {
+    document.documentElement.setAttribute('data-pinpoint-client', '1');
+    if (sidebarSuppressed()) document.documentElement.setAttribute('data-pinpoint-sidebar', 'suppressed');
+  }
 
   var SERVER = (function () {
     var src = document.currentScript && document.currentScript.src;
@@ -26,6 +36,9 @@
   var ENTRY = window.__pinpointEntry ||
     (document.documentElement && document.documentElement.getAttribute('data-pinpoint-entry')) ||
     'pinpoint';
+  // 打回 DOM：/sites/ 等服务端注入路径走的是 window.__pinpointEntry（主世界
+  // 全局，隔离世界读不到），扩展 content script 的 page-info 依赖 DOM 属性。
+  if (document.documentElement) document.documentElement.setAttribute('data-pinpoint-entry', ENTRY);
   var LS_KEY = 'pinpoint:' + ENTRY + ':' + location.pathname;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(location.pathname);
@@ -1103,6 +1116,8 @@
 
   function toggleMode() {
     mode = !mode;
+    // 模式标记：扩展 content script 的 page-info 应答把它捎给侧边栏面板。
+    document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
     if (!mode) { clearHover(); closeComposer(); }
     notify();
   }
@@ -1380,14 +1395,23 @@
 
   function toggleSidebar() { setSidebarOpen(!sidebarOpen); }
 
-  // 浏览器扩展图标入口（主入口）：content script 收到 background 的 tab 消息后
-  // 经共享 DOM CustomEvent 桥进主世界（内联 script 会被 CSP 拦，见 extension/
-  // content.js 头注）。抑制规则不变：workbench 壳/被嵌入页 setSidebarOpen 自会
-  // 让位，图标点击在那些页面上是 no-op。
+  // 扩展命令通道（content script 经共享 DOM CustomEvent 桥进主世界，内联
+  // script 会被 CSP 拦，见 extension/content.js 头注）：
+  //   toggle-sidebar —— 页面内 #ann-sidebar 开合（S 键/「列表」按钮之外的桥入口）
+  //   jump/edit/del  —— Chrome Side Panel 面板远程驱动（跳转/编辑/删除）
+  //   mode {on}      —— 面板的「交互 | 标注」分段开关
+  // 抑制规则不变：workbench 壳/被嵌入页 setSidebarOpen 自会让位。
   document.addEventListener('pinpoint:command', function (e) {
-    var cmd = e.detail && e.detail.command;
+    var d = e.detail || {};
+    var cmd = d.command;
     if (cmd === 'toggle-sidebar') toggleSidebar();
+    else if (cmd === 'jump') goToMark(d.n);
+    else if (cmd === 'edit') openMark(d.n);
+    else if (cmd === 'del') removeMark(d.n);
+    else if (cmd === 'mode') { if (!!d.on !== !!mode) toggleMode(); }
   });
+  // 初始模式标记（后续变化由 toggleMode 里更新）。
+  document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
   updateListeners.push(renderSidebar);
