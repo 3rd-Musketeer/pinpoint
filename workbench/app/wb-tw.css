@@ -1,0 +1,45 @@
+/* Tailwind v4 入口（goal-20260811-workbench-visual-rebuild V0）。
+ * 分层 import：theme + utilities，刻意不引 preflight —— 全局 reset 会打坏
+ * kits/ios 与舞台内容（.ios-stage）的既有样式，utilities 只服务 workbench chrome。
+ * source(none) 关自动扫描，@source 把候选扫描限定在 workbench/app/** ——
+ * 内容侧（previews/kits/e2e fixtures）的类名不生成 utilities，零污染。
+ * utilities 进 layer(utilities)：未分层的既有 chrome CSS 一律优先，
+ * 换皮的组件删除旧规则后由本层接管（V1-V3 逐组件进行）。 */
+@import "tailwindcss/theme.css" layer(theme);
+@import "tailwindcss/utilities.css" layer(utilities) source(none);
+@source "./";
+
+/* tooltip 等浮层的进入/退出动画（animate-in/fade-in-0/zoom-in-95…） */
+@import "tw-animate-css";
+
+/* shadcn 语义变量 → --wb-* 的桥消费侧：bg-primary / text-muted-foreground /
+ * border-border / rounded-md 这类类名在这里解析到 wb-tokens.css 的桥变量。
+ * inline = 直接把 var(--xxx) 织进 utility，桥变量本身只在 wb-tokens.css 定义
+ * （生成物：scripts/build-wb-tokens.mjs —— token 桥是唯一映射点）。 */
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  /* 圆角阶梯直挂 --wb-r-*（不走 shadcn 的 calc(--radius±) 链） */
+  --radius-sm: var(--wb-r-1);
+  --radius-md: var(--wb-r-2);
+  --radius-lg: var(--wb-r-3);
+  --radius-xl: var(--wb-r-4);
+}

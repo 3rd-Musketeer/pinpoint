@@ -5,6 +5,7 @@ import { createElement as h } from 'react';
 import { createRoot } from 'react-dom/client';
 import { flushSync } from 'react-dom';
 import { wbGet } from './store.js';
+import './wb-tw.css';
 import { wireCanvasHud } from '../board-nav.js';
 import { scheduleAnnSnap } from '../ann-bridge.js';
 import { initExportCore } from '../export-core.js';

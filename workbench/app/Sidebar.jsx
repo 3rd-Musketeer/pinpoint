@@ -23,6 +23,7 @@ import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { AnnPanel } from './AnnPanel.jsx';
 import { SettingsView } from './SettingsView.jsx';
 import { WbIcon } from './WbIcon.jsx';
+import { Button } from './ui/button.jsx';
 
 function SideHead() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
@@ -277,11 +278,12 @@ function SideFoot() {
           <WbIcon name="moon" size={12} />{' '}Dark
         </button>
       </div>
-      <button type="button" className={'wb-gear' + (settingsOpen ? ' on' : '')} id="wbgear"
+      <Button type="button" variant="tool" size="icon" id="wbgear"
         aria-label="预览设置" title="设置"
+        data-state={settingsOpen ? 'on' : undefined}
         onClick={function () { showSettings(); }}>
-        <WbIcon name="settings" size={15} className="wb-gear-ico" />
-      </button>
+        <WbIcon name="settings" size={15} className="size-[15px]" />
+      </Button>
     </div>
   );
 }
