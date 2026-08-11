@@ -42,4 +42,10 @@
   --radius-md: var(--wb-r-2);
   --radius-lg: var(--wb-r-3);
   --radius-xl: var(--wb-r-4);
+
+  /* 字体栈与字重（V1）：font-sans 改指产品栈（原是 Tailwind 默认族，与 body 不同源）；
+   * font-medium/semibold 挂 --wb-w-* 阶梯，字重不造新档。 */
+  --font-sans: var(--wb-font);
+  --font-weight-medium: var(--wb-w-medium);
+  --font-weight-semibold: var(--wb-w-semibold);
 }

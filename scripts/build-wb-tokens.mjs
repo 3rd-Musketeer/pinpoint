@@ -58,6 +58,9 @@ export function buildWbTokensCss() {
   --wb-sh-line:inset 0 0 0 1px var(--wb-line); /* 发丝描边（与阶梯叠加或单用） */
   --wb-sh-board:0 1px 0 rgba(0,0,0,.04), 0 14px 40px rgba(0,0,0,.08); /* 画布画板纸面 */
 
+  /* ── 字体栈（V1 新增：chrome 文字控件经 Tailwind --font-sans 消费） ── */
+  --wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif; /* 产品字体栈，与 index.html body 一致（body 也改指本 token） */
+
   /* ── 结构 / 动效 ── */
   --wb-side-w:252px;
   --wb-pad:14px;

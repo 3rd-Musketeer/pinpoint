@@ -2,9 +2,23 @@
 // workbench/settings.html + pages.js wireSettings 的 React 形态。控件态全部订阅
 // store（boot-prefs 的 setter / apply* 在改 .ios-root 与 documentElement 属性的
 // 同时写 store）；持久化仍在各动作的调用点（与原 wirePref/wireCtl 一一对应）。
-// DOM id / class / 文案与原 settings.html 逐一对应。
+// DOM id / data-* / 文案与原 settings.html 逐一对应，hidden 逻辑不变。
+//
+// V1 换皮（goal-20260811-workbench-visual-rebuild）：控件收编 shadcn 复制件 +
+// Tailwind 类，Linear/Geist 系 dev-tool 配方（本视图是里程碑的审美基准刀，
+// V2/V3 照此推广）：
+//  - 密度 28px 档：分段项 h-6 + 容器 2px 内衬 = 28px；time input / 返回钮 h-7；
+//  - 字阶：正文 13px、辅助（行标签/区块标）12px、标题 13px semibold；字重走阶梯；
+//  - 形状：圆角 --wb-r-2（rounded-md）为主，分段项 --wb-r-1（rounded-sm，与内衬同心）；
+//  - 分段：容器 --wb-fill 面 + 内衬 2px；on 态白面（--card）+ --wb-sh-1 克制凸起；
+//  - hover 浅面走 --wb-hover 档（桥 --accent），focus 沿用全局 accent catch-all；
+//  - 过渡 150ms；accent #007aff 只出现在字标选中态（真正的强调）。
 import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet } from './store.js';
+import { cn } from './lib/utils.js';
+import { Button } from './ui/button.jsx';
+import { Input } from './ui/input.jsx';
+import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.jsx';
 import { applyClock, applyLockFont, setCanvasZoom, setFrame, setTextSize } from '../boot-prefs.js';
 import { inputFromIosTime, iosTimeFromInput } from '../lib/ios-time.js';
 import { savePrefs } from '../lib/prefs.js';
@@ -23,6 +37,44 @@ var LOCK_FONTS = [
 ];
 var CLOCK_MODES = [['system', '系统'], ['fixed', '固定']];
 
+// 行布局与行标签（辅助 12px / muted）
+var ROW = 'flex items-center gap-2';
+var ROW_LABEL = 'w-10 flex-none text-xs font-medium text-muted-foreground';
+
+// 分段控件：容器 --wb-fill 面 + 2px 内衬（rounded-md 在 vendored Root 上）。
+// min-w-0 必须：Root 在 flex 行里 min-width:auto 会按内容宽撑出侧栏（4 项 zoom 组实测溢出）。
+var SEG = 'flex-1 min-w-0 bg-muted p-0.5';
+// 分段项：24px（容器总高落 28px 档）+ 13px；off = muted 字 + hover 浅面/前景字；
+// on = 白面 + --wb-sh-1 + semibold。hover:data-[state=on] 显式锁白面 ——
+// hover: 与 data-: 同优先级，不赌生成顺序（on 项 hover 时必须保持白面）。
+// px-1：4 项组在 176px 可用宽里每项 ~41px，px-2 会切字（"150%" 实测被裁）。
+var SEG_ITEM =
+  'h-6 min-w-0 flex-1 rounded-sm px-1 text-[13px] font-medium text-muted-foreground ' +
+  'transition-[color,background-color,box-shadow] duration-150 ' +
+  'hover:bg-accent hover:text-accent-foreground ' +
+  'data-[state=on]:bg-card data-[state=on]:text-card-foreground data-[state=on]:font-semibold ' +
+  'data-[state=on]:shadow-[var(--wb-sh-1)] hover:data-[state=on]:bg-card';
+
+// 分段控件（缩放/Frame/Text/时间共用）。Radix ToggleGroup single 受控：value 来自
+// store，点击 off 项触发 onValueChange；点已选中项 Radix 报 ''，忽略（旧行为是
+// 幂等重放同值，状态等价）。dataAttr = 该项的 data-* 契约名（逐组不同）。
+function Seg(props) {
+  return (
+    <ToggleGroup type="single" spacing={0.5} value={props.value} id={props.id}
+      className={SEG}
+      onValueChange={function (v) { if (v) props.onPick(v); }}>
+      {props.options.map(function (o) {
+        var itemProps = { [props.dataAttr]: o[0] };
+        return (
+          <ToggleGroupItem key={o[0]} value={o[0]} className={SEG_ITEM} {...itemProps}>
+            {o[1]}
+          </ToggleGroupItem>
+        );
+      })}
+    </ToggleGroup>
+  );
+}
+
 export function SettingsView() {
   var zoom = useWorkbenchStore(function (s) { return s.canvasZoom; });
   var frame = useWorkbenchStore(function (s) { return s.frame; });
@@ -33,84 +85,64 @@ export function SettingsView() {
 
   return (
     <Fragment>
-      <header className="wb-settings-head">
-        <button type="button" className="wb-back" data-wb-back aria-label="返回预览"
+      <header className="relative flex min-h-11 items-center border-b border-border px-[var(--wb-pad)]">
+        <Button type="button" variant="ghost" size="sm" data-wb-back aria-label="返回预览"
+          className="-ml-2 gap-1 px-2 text-[13px] font-medium text-muted-foreground"
           onClick={function () { showTabs(); }}>
           <span aria-hidden="true">‹</span> 预览
-        </button>
-        <h2 className="wb-settings-title">预览设置</h2>
+        </Button>
+        <h2 className="pointer-events-none absolute left-1/2 m-0 -translate-x-1/2 whitespace-nowrap text-[13px] font-semibold tracking-[-0.01em]">预览设置</h2>
       </header>
 
-      <div className="wb-ctrls">
-        <div className="ctl-row"><span>缩放</span><div className="ctl" id="zoom">
-          {ZOOMS.map(function (z) {
-            return (
-              <button key={z[0]} type="button" className={zoom === z[0] ? 'on' : ''}
-                data-canvas-zoom={z[0]}
-                onClick={function () { setCanvasZoom(z[0], { save: true }); }}>
-                {z[1]}
-              </button>
-            );
-          })}
-        </div></div>
-        <div className="ctl-row"><span>Frame</span><div className="ctl" id="frame">
-          {FRAMES.map(function (f) {
-            return (
-              <button key={f[0]} type="button" className={frame === f[0] ? 'on' : ''}
-                data-frame={f[0]}
-                onClick={function () { setFrame(f[0], { save: true }); }}>
-                {f[1]}
-              </button>
-            );
-          })}
-        </div></div>
-        <div className="ctl-row"><span>Text</span><div className="ctl" id="textsize">
-          {TEXT_SIZES.map(function (t) {
-            return (
-              <button key={t[0]} type="button" className={textSize === t[0] ? 'on' : ''}
-                data-text-size={t[0]}
-                onClick={function () { setTextSize(t[0], { save: true }); }}>
-                {t[1]}
-              </button>
-            );
-          })}
-        </div></div>
-        <div className="wb-font-section">
-          <span>字标字体</span>
-          <div className="wb-font-grid" id="lockfont">
+      <div className="flex flex-col gap-3 px-[var(--wb-pad)] pb-4 pt-3">
+        <div className={ROW}><span className={ROW_LABEL}>缩放</span>
+          <Seg id="zoom" value={zoom} dataAttr="data-canvas-zoom" options={ZOOMS}
+            onPick={function (v) { setCanvasZoom(v, { save: true }); }} /></div>
+        <div className={ROW}><span className={ROW_LABEL}>Frame</span>
+          <Seg id="frame" value={frame} dataAttr="data-frame" options={FRAMES}
+            onPick={function (v) { setFrame(v, { save: true }); }} /></div>
+        <div className={ROW}><span className={ROW_LABEL}>Text</span>
+          <Seg id="textsize" value={textSize} dataAttr="data-text-size" options={TEXT_SIZES}
+            onPick={function (v) { setTextSize(v, { save: true }); }} /></div>
+        <div>
+          <span className="mb-2 block text-xs font-medium text-muted-foreground">字标字体</span>
+          <div className="grid grid-cols-2 gap-2" id="lockfont">
             {LOCK_FONTS.map(function (f) {
+              var on = lockFont === f[0];
               return (
-                <button key={f[0]} type="button"
-                  className={'wb-font-opt' + (lockFont === f[0] ? ' on' : '')}
-                  data-lock-font={f[0]}
+                <button key={f[0]} type="button" data-lock-font={f[0]}
+                  className={cn(
+                    'flex cursor-pointer flex-col items-center rounded-md border p-2 font-sans text-foreground transition-[background-color,border-color] duration-150',
+                    on
+                      ? 'border-[color-mix(in_srgb,var(--wb-accent)_45%,transparent)] bg-[color-mix(in_srgb,var(--wb-accent)_7%,var(--wb-surface))]'
+                      : 'border-border bg-card hover:bg-accent'
+                  )}
                   onClick={function () {
                     applyLockFont(f[0]);
                     savePrefs({ lockFont: f[0] });
                   }}>
-                  <span className={'wb-font-sample wb-lock-font-' + f[0]}>HELLO</span>
-                  <span className="wb-font-cap">{f[1]}</span>
+                  {/* HELLO 样本保持现状样（产品内容）。字号必须带 !：.wb-lock-font-*
+                      是 ios-kit.css 的未分层规则（锁屏时钟字号 46-58px），分层
+                      utilities 压不过它（旧 .wb-font-sample 靠未分层源码序赢）。
+                      字重/字距不重置 —— 各字体示范样张的笔重本身就是内容。 */}
+                  <span className={'wb-lock-font-' + f[0] + ' mb-1 block text-[21px]! leading-[1.1]'}>HELLO</span>
+                  <span className="block text-[10px] font-semibold [color:var(--wb-faint)]">{f[1]}</span>
                 </button>
               );
             })}
           </div>
         </div>
-        <div className="ctl-row"><span>时间</span><div className="ctl" id="clockmode">
-          {CLOCK_MODES.map(function (c) {
-            return (
-              <button key={c[0]} type="button" className={clockMode === c[0] ? 'on' : ''}
-                data-clock-mode={c[0]}
-                onClick={function () {
-                  applyClock(c[0], wbGet().clockFixed);
-                  savePrefs({ clockMode: c[0], clockFixed: wbGet().clockFixed });
-                }}>
-                {c[1]}
-              </button>
-            );
-          })}
-        </div></div>
-        <div className="ctl-row wb-clock-fixed" id="clockfixed-row" hidden={clockMode !== 'fixed'}>
-          <span>固定</span>
-          <input type="time" id="clockfixed" className="wb-time-input" step="60"
+        <div className={ROW}><span className={ROW_LABEL}>时间</span>
+          <Seg id="clockmode" value={clockMode} dataAttr="data-clock-mode" options={CLOCK_MODES}
+            onPick={function (v) {
+              applyClock(v, wbGet().clockFixed);
+              savePrefs({ clockMode: v, clockFixed: wbGet().clockFixed });
+            }} /></div>
+        <div className={cn(ROW, clockMode !== 'fixed' && 'hidden')} id="clockfixed-row"
+          hidden={clockMode !== 'fixed'}>
+          <span className={ROW_LABEL}>固定</span>
+          <Input type="time" id="clockfixed" step="60"
+            className="h-7 flex-1 bg-card text-[13px] font-medium tabular-nums shadow-none"
             value={inputFromIosTime(clockFixed)}
             onChange={function (e) {
               var fixed = iosTimeFromInput(e.target.value);

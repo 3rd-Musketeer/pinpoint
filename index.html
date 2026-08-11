@@ -16,14 +16,14 @@
   * { box-sizing:border-box; }
   /* Focus catch-all: low-specificity ring so every focusable control keeps a
      visible focus state; component rules below with their own focus treatment
-     (e.g. .wb-page-rename, .wb-time-input) override it by source order. */
+     (e.g. .wb-page-rename) override it by source order. */
   :where(button, a, input, select, textarea, [tabindex]):focus-visible {
     outline:2px solid color-mix(in srgb, var(--wb-accent) 55%, transparent);
     outline-offset:1px;
   }
   body {
     margin:0; height:100vh; overflow:hidden; background:var(--wb-bg); color:var(--wb-fg);
-    font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;
+    font-family:var(--wb-font);
   }
   .wb { display:flex; height:100vh; }
 
@@ -212,6 +212,7 @@
     .wb-side, .wb-section-body, .wb-section-body-inner, .wb-section-chevron,
     .wb-page, .wb-ann-tools button, .wb-ann-item, #wbgear, #wbtheme.ctl button,
     .wb-ann-filter .ctl button, .wb-section-head, .wb-side-toggle, .wb-side-expand,
+    #wbsettings button, #wbsettings input,
     [contenteditable] {
       transition:none !important;
     }
@@ -352,25 +353,9 @@
   /* #wbgear 的视觉已收编进 app/ui/button.jsx（tool variant，V0）——
      此处不再保留 .wb-gear 规则。 */
 
-  .wb-settings-head {
-    position:relative; display:flex; align-items:center; min-height:44px;
-    padding:0 var(--wb-pad); border-bottom:1px solid var(--wb-line);
-  }
-  .wb-back {
-    position:relative; z-index:1; border:0; background:none; color:var(--wb-accent);
-    font:inherit; font-size:14px; font-weight:var(--wb-w-regular); padding:0; cursor:pointer;
-    display:inline-flex; align-items:center; gap:2px; line-height:1;
-  }
-  .wb-settings-title {
-    position:absolute; left:50%; transform:translateX(-50%);
-    margin:0; font-size:14px; font-weight:var(--wb-w-semibold); letter-spacing:-.01em;
-    pointer-events:none; white-space:nowrap;
-  }
-
-  /* settings page controls */
-  .wb-ctrls { padding:14px var(--wb-pad) 18px; display:flex; flex-direction:column; gap:10px; }
-  .ctl-row { display:flex; align-items:center; gap:10px; }
-  .ctl-row > span { font-size:11px; font-weight:var(--wb-w-semibold); color:var(--wb-muted); width:42px; flex:none; }
+  /* 设置视图皮肤已收编进 app/SettingsView.jsx（V1，shadcn 复制件 + Tailwind 类）——
+     .wb-settings-head/.wb-back/.wb-ctrls/.ctl-row/.wb-time-input/.wb-font-* 旧规则删除。
+     下面这组 .ctl 通用规则仍服务 footer #wbtheme 与 .wb-ann-filter（V2/V3 收编时删）。 */
   .ctl {
     display:inline-flex; gap:2px; background:var(--wb-fill); border-radius:var(--wb-r-2); padding:2px; flex:1;
   }
@@ -384,26 +369,6 @@
     background:#fff; color:var(--wb-fg); font-weight:var(--wb-w-semibold);
     box-shadow:var(--wb-sh-1);
   }
-  .wb-time-input {
-    flex:1; border:0; background:rgba(255,255,255,.75); color:inherit;
-    font:inherit; font-size:13px; font-weight:var(--wb-w-semibold); padding:7px 10px; border-radius:var(--wb-r-2);
-    font-variant-numeric:tabular-nums; box-shadow:var(--wb-sh-line);
-  }
-  .wb-time-input:focus { outline:2px solid color-mix(in srgb,var(--wb-accent) 35%,transparent); }
-  .wb-clock-fixed[hidden] { display:none; }
-
-  .wb-font-section { padding: 2px 0 4px; }
-  .wb-font-section > span { display:block; font-size:11px; font-weight:var(--wb-w-semibold); color:var(--wb-muted); margin-bottom:8px; }
-  .wb-font-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
-  .wb-font-opt {
-    border:1px solid var(--wb-line); border-radius:var(--wb-r-2); background:rgba(255,255,255,.55);
-    padding:10px 8px 8px; cursor:pointer; color:inherit; font:inherit; text-align:center;
-    transition:background var(--wb-dur) var(--wb-ease), border-color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-font-opt:hover { background:#fff; }
-  .wb-font-opt.on { border-color:color-mix(in srgb,var(--wb-accent) 45%,transparent); background:color-mix(in srgb,var(--wb-accent) 7%,#fff); }
-  .wb-font-sample { display:block; font-size:21px; line-height:1.1; margin-bottom:6px; }
-  .wb-font-cap { display:block; font-size:10px; font-weight:var(--wb-w-semibold); color:var(--wb-faint); letter-spacing:0; text-indent:0; }
 
   .wb-stage-wrap {
     flex:1; min-width:0; position:relative; display:flex; min-height:0;
