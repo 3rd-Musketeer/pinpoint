@@ -123,23 +123,25 @@ Frame Note 是原型自身的持久说明，不是处理后会删除的评审 An
 
 Canonical：[`previews/library/board.json`](../../previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
 
-### 2.2 导出 Frame / Section 图片
+### 2.2 导出 Frame 图片
 
-导出属于 Workbench，不在单个 screen 里实现截图逻辑。每个 Frame 标题右侧常驻 `…`
-菜单，选择「导出图片…」；Section 标题旁常驻弱显示图片按钮。两者都不依赖 hover。
+导出属于 Workbench，不在单个 screen 里实现截图逻辑。唯一入口 = 画布 HUD 的「导出」
+钮 → picker 对话框（当前页 proto tree 任意多选，section 行整选；实时预览；背景三档
+画布 / 白底 / 透明）。输出固定 PNG 2×：单张直出 PNG，多张服务端打包 zip。
+图注（引用号 + 屏名 + 尺寸）与 Frame Note 是图纸内容，导出永随（decisions 2026-08-15d）。
 Agent / CLI 使用同一条隔离 Chromium 渲染链路：
 
 ```bash
 npm run export -- --page library --section brew-flow --frame timer
-npm run export -- --page library --section brew-flow --with-notes --format png
+npm run export -- --page library --section brew-flow
 ```
 
-- 默认：2× WebP、Canvas 背景（`#faf8f4`）、输出到 gitignored `exports/`。
-- Frame「干净画面」只导当前手机状态 + 48 CSS px 安全边距，不带标题、Frame Note、标注、侧栏或相邻 Frame。
-- Section 保持 `row` / `column` 和 Frame 顺序，带 Section / Frame 标题；「带说明」再加入 Frame Notes。
+- 默认：PNG、2×、Canvas 背景（`#faf8f4`）、输出到 gitignored `exports/`。
+- Frame 导出 = 图注 + 当前手机状态 + 尺寸行（+ Frame Note），48 CSS px 安全边距，不带标注、侧栏或相邻 Frame。
+- Section 保持 `row` / `column` 和 Frame 顺序，带 Section / Frame 标题与 Frame Notes。
 - 导出先克隆 live DOM，再在只含目标的页面截图，因此打开的 sheet / Ask User、选中态、输入值、内部滚动和 canvas 会被保留。
 - 透明背景只能用 PNG。超大 2× Section 会明确提示改用 1×，不得静默换行、裁切或压扁 flow。
-- 可用参数：`--scale 1|2`、`--background canvas|white|transparent`、`--format webp|png`、`--output <path>`。
+- 可用参数：`--scale 1|2`、`--background canvas|white|transparent`、`--format png|webp`、`--output <path>`。`--with-notes` 已退役（notes 永随），传了也只是空占位。
 
 ## 3. 加 workbench page
 

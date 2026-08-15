@@ -8,6 +8,125 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-08-15
+
+### Changed
+- **Image export consolidated into one picker** (decisions 2026-08-15d) — the canvas
+  HUD「导出」button is now the single entry: a two-column dialog
+  (`workbench/app/ExportPicker.jsx`) with the current page's proto tree on the left
+  (section rows select all their frames; frames check freely; A1 refs + dim subscripts)
+  and a live preview on the right (as many frames as selected, reusing
+  `/api/export-image` at scale 1 with a 300 ms debounce and stale-response dropping).
+  Output is fixed **PNG 2×**; the only surviving option is the background three-state
+  (canvas / white / transparent). One selected frame downloads a PNG directly; several
+  are packed server-side into a store-only zip (`POST /api/export-zip`, zero-dependency
+  writer in `server/lib/zip-store.js`). Captions (ref + title + dim) and Frame Notes are
+  drawing content and now always ride along — `cleanExportClone`'s caption/note stripping
+  and the server's `wb-export-clean-row` override are removed.
+- **Sidebar split: left = page context, right = annotation workbench**
+  (decisions 2026-08-14) — the annotation area leaves the left sidebar and
+  becomes its own 308px right panel (`#wbann-side`): head (count pin +
+  collapse) → meta (status + two-stage「清空标注」, armed red for 3s) → card
+  list grouped by frame (eyebrow = ref + screen name) → footer (single mode
+  button「标注中/交互」+ 画布批注 dropdown: 隐藏批注 / 叠在页面 / 右侧通道).
+  Both panels collapse to canvas-edge rail buttons (`.wb-rail-l` /
+  `.wb-rail-r`, the right one carries the annotation count). Panel faces are
+  white and pane seams derive from the accent via color-mix.
+- **Sheet captions** (decisions 2026-08-15 A1 scheme) — frame captions are now
+  two lines (mono accent ref like `A1` + screen title) above the frame, with a
+  centered mono dim line (`402 × 874`, the iPhone 16 Pro logical resolution)
+  below it; section headers carry their letter. Refs are derived purely from
+  board order (`workbench/lib/board-refs.js`), never persisted; machine
+  references stay `@frame:id`. Row-layout boards now grid four shared rows
+  (caption / phone / dim / Frame Note).
+- **Canvas background three-state** (grid / dots / plain) lives in the settings
+  view (`--wb-stage-*` on `.wb-stage-wrap[data-grid]`); accent family rebased
+  to steel blue `#5b7fa6`.
+- **Annotation card skin** (workbench right panel only): white card + accent
+  tint border + radius 8; broken anchor = whole-card red border/face, grayed
+  text, red number pin, no tag. Shared `lib/ann-list.css` (client sidebar,
+  extension panel) is unchanged; the workbench skin layers in `index.html`
+  under `#wbann-side` (higher specificity beats the client's runtime-injected
+  copy of the shared sheet).
+
+### Added
+- **Left-panel outline** (decisions 2026-08-15c) — current page's section →
+  frame tree with extension-line geometry (14px rail, per-row spine, └ corner
+  on the last row), mono refs, per-frame annotation count badges (red when a
+  broken anchor is inside). Clicking a row focuses the frame and flashes an
+  accent ring on the device; selection state syncs both ways with annotation
+  cards (card click highlights its outline row).
+- **Icons** — `panel-right-close` / `panel-right-open` / `chevron-up` in
+  `wb-icons.js`.
+
+### Removed
+- **Old image-export surface** (decisions 2026-08-15d): the per-frame ⋯ menu「导出图片…」
+  entry and per-section image buttons, the old export dialog's presets (干净画面 / 带说明),
+  WebP and 1× options, the transparent→PNG format coupling, and the「复制 PNG」clipboard
+  action. The frame menu itself stays (复制 @frame). The export CLI's `--with-notes` flag is
+  a no-op (notes are always in); its default format is now PNG.
+- Annotation quick buttons retired per decisions 2026-08-14: 暂停, Pin, the
+  channel toggle (merged into the 画布批注 dropdown), the 全部/当前 filter
+  (`annFilter` mechanism gone), and the persistent settings gear in the footer
+  (settings view now opens from the left-panel header gear). The footer's
+  Light/Dark segment stays — it themes the preview content (`ios-root
+  data-theme`), not the chrome.
+
+---
+
+## 2026-08-13
+
+### Changed
+- **Design language anchored at token level** — chrome accent iOS blue `#007aff`
+  → **Steel Blue `#1769aa`** (separates chrome from iOS-kit content, which keeps
+  `#007aff`); danger `#ff3b30` → `#b84230`; scattered ok/online greens
+  (`#1b7a3d`/`#34c759`/`#e8f8ef`) consolidated into `--wb-ok` / `--wb-ok-soft`;
+  structural seams (`--wb-seam`) return to the sidebar head/footer, the
+  Annotations section boundary, the settings header, and the extension panel
+  header (callback of the V5 de-lining — a seam is not a card border).
+- **Canvas dot grid** — the stage wrap now paints the warm-paper canvas with a
+  24px warm-gray dot pattern (`--wb-stage-dot`), screen-fixed (pan/zoom do not
+  move it, no moiré); `#wbstage` itself is transparent. Exports are untouched
+  and stay clean `#faf8f4`.
+
+### Added
+- **Tokens** — `--wb-seam`, `--wb-ok`, `--wb-ok-soft`, `--wb-stage-dot`, and
+  `--wb-font-mono` (annotation row caps/tags now render metadata in mono,
+  shared across all three annotation list surfaces).
+
+### Fixed
+- **Extension side panel styling** — `#panel-list` was missing from the shared
+  `lib/ann-list.css` scopes, so panel rows/empty states never received the
+  shared row language (amber number badges, hover, meta sizes).
+
+---
+
+## 2026-08-11
+
+### Changed
+- **Annotation panel moved into the Chrome Side Panel (extension 0.3.0)** — the
+  toolbar icon now opens a native browser side panel (split-screen; the page
+  keeps its own viewport and reflows) instead of toggling the in-page
+  `#ann-sidebar` overlay, which covered the page's right edge. The panel is a
+  thin extension shell (`extension/sidepanel.html/js`) iframing a
+  service-hosted `panel.html` that reuses the shared row model/styles and the
+  annotate API + SSE; actions (`jump`/`edit`/`del`/`mode`) bridge through the
+  content script to the page client, which remains the only writer. The
+  in-page sidebar stays for extension-less surfaces (`/sites/` direct, **S**
+  key, floating toolbar「列表」).
+- **Every icon click gets a visible outcome** — the shell maps dead ends to
+  explicit hints (service down / unsupported page / bridge dead / stale page
+  client → ⌘R / not registered / workbench shell) and self-heals stale tabs by
+  re-injecting the idempotency-guarded content script.
+
+### Added
+- **Client bridge markers** — the annotate client stamps
+  `data-pinpoint-client` / `-entry` / `-sidebar="suppressed"` / `-mode` on
+  `<html>` at boot, and its `pinpoint:command` DOM-event channel now also
+  handles `jump` / `edit` / `del` / `mode` for the side panel.
+
+---
+
 ## 2026-08-09
 
 ### Changed

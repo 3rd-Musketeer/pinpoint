@@ -2,6 +2,7 @@
 
 Read this first when working in this repo.
 Human-oriented docs: [`README.md`](README.md) · onboarding: [`QUICKSTART.html`](QUICKSTART.html) · recent changes: [`CHANGELOG.md`](CHANGELOG.md).
+Design canon: [`DESIGN.md`](DESIGN.md) — read before writing or changing any UI; decision provenance lives in [`decisions.md`](decisions.md).
 
 pinpoint is a **local visual feedback service**: kits (`kits/ios/`, the first design-spec
 kit) + a workbench canvas (multi-scheme prototype viewer) + the annotation layer
@@ -62,11 +63,11 @@ Checks: `just check` (contracts + Chromium e2e; first time
 |---|---|
 | `client/annotate.js` | The annotation client, served as `/annotate.js`; libs are inlined at serve time |
 | `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
-| `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js`, `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
-| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs |
+| `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
+| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
 | `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=` deep-link write side; read side is `resolveBootPageId` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
-| `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (head/Pages/Annotations/footer) + `CanvasHud.jsx` (dock/HUD) + `AnnPanel.jsx` + `SettingsView.jsx`; `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
-| `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`) |
+| `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/outline/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
+| `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
 | `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
 | `kits/ios/` | First kit: `ios-kit.css/js` + `components/` (Component Library sources) |
 | `previews/` | Template pages: `_index.json` manifest + `<pageId>/board.json` + screen HTML/JS |
@@ -131,14 +132,19 @@ toolbar and offers no annotation-list sidebar to keep one control surface.
 
 Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Add `.ios-glass--liquid` only for Chromium refraction wow on sparse chrome — not full-page surfaces.
 
-Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen` (fractions of `--wb-phone-w`).
+Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen` / `--wb-cap-ref` (fractions of `--wb-phone-w`). Reference numbers (A1 scheme) and the dim line are derived by `screen-load.js` — never hardcode them in screens.
 
 Frame Notes are durable prototype context, not review annotations. Put a multiline `note` on a screen entry in `board.json`; it renders below the frame and can also be edited inline in the Workbench. Browser edits write back to that same `board.json` with revision checks.
 
-Image export is Workbench-owned. Use the persistent `…` menu on every Frame title (or the
-always-visible Section image button); default is
-isolated 2× WebP on `#faf8f4`. **干净画面** omits captions/notes for a Frame and notes for a
-Section; **带说明** includes Frame Notes. Agent CLI uses the same Chromium renderer:
+Image export is Workbench-owned (decisions 2026-08-15d). Single entry: the HUD「导出」button
+opens the export picker (`workbench/app/ExportPicker.jsx`, native dialog) — a proto tree of the
+current page (section rows select-all, frames arbitrary multi-select, A1 refs), live preview
+(`/api/export-image` at scale 1 + debounce), and a background three-state (canvas / white /
+transparent). Output is fixed **PNG 2×**; captions (ref + title + dim) and Frame Notes always
+ride along — the old「干净画面 / 带说明」presets, WebP/1× options, per-frame/per-section
+triggers, and the「复制 PNG」clipboard action are retired. One selected frame downloads a PNG
+directly; several are zipped server-side (`POST /api/export-zip`, store-only writer
+`server/lib/zip-store.js`). Agent CLI uses the same Chromium renderer:
 `npm run export -- --page <page> --section <section> [--frame <screen>]`. Do not add screenshot
 logic to individual screen fragments.
 
@@ -150,7 +156,7 @@ logic to individual screen fragments.
 | Annotate → read annotations → revise | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | Register / verify a registry dir or url entry | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
-| Export a Frame / Section image | [`README.md`](README.md#export-frame--section-images) |
+| Export Frame images via the picker | [`README.md`](README.md#export-frame-images) |
 
 Component includes support `data-text` → `[data-ios-slot="text"]` plus named
 `data-slot-<name>` → `[data-ios-slot="<name>"]`. Use named slots when two screens share one
@@ -340,7 +346,7 @@ render browser, and `stripAnnotateBootstrap` removes the injected snippet (inclu
 
 ## Workbench UX (prefs)
 
-- **Sidebar**: collapse via header toggle / stage expand / splitter (click when collapsed, dblclick to collapse). Prefs: `sideCollapsed`, `sideWidth`.
+- **Sidebars**: left panel collapses via header toggle / stage-left rail (`#wbside-expand`) / splitter (click when collapsed, dblclick to collapse); right annotation panel collapses via its head toggle / stage-right rail (`#wbann-expand`, carries the count pin). Prefs: `sideCollapsed`, `sideWidth`, `annPanelCollapsed`.
 - **Viewport**: per-page `pageViewports[pageId]` stores scroll + zoom (zoom single-source; no top-level `canvasZoom`).
 - **Stage pan**: Space+drag or middle-button drag anywhere; left-drag only on empty board chrome (not inside `.ios-stage` / `.wb-comp-stage`) so frame clicks/scrolls work.
 - **Canvas toolbar**: always visible at bottom-right; Section Navigator and the layered

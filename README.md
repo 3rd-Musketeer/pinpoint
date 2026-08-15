@@ -8,7 +8,9 @@ pinpoint runs as one persistent local service (`https://pinpoint.localhost`) wit
 - 🖥️ **Workbench / canvas** — a Figma-like multi-page viewer for comparing prototype variants side by side. Three boards: **iOS** (phone chrome), **Web** (960px artboard), **HTML** (whole-document iframe with a version sidebar).
 - ✏️ **Annotation** — the core layer and the human→agent feedback loop. Marks made in the browser land on disk for the agent to read and act on. One client, injected only into what you registered — see [Registry and injection](#registry-and-injection).
 
-Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts), 🖼️ **doc-ready export** (Frame/Section as isolated 2× WebP/PNG), 🔁 **HMR** (edit a screen or component, the open board refreshes in place).
+Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the contracts), 🖼️ **doc-ready export** (Frame picker → isolated 2× PNG / zip), 🔁 **HMR** (edit a screen or component, the open board refreshes in place).
+
+设计：[`DESIGN.md`](DESIGN.md) 是设计语言正典——写 / 改任何 UI 前先读；裁决来路见 [`decisions.md`](decisions.md)。
 
 New here? Open **[`QUICKSTART.html`](QUICKSTART.html)** in a browser — 10-minute onboarding with the concept glossary.
 
@@ -39,34 +41,34 @@ just check                        # node contracts + template-only workbench e2e
 
 Requires Node ≥ 24 and [just](https://just.systems/).
 
-## Export Frame / Section images
+## Export Frame images
 
-Use the persistent `…` menu at the right of every Frame title and choose **导出图片…**;
-Sections keep a dimmed image button beside the Section title. The export panel
-defaults to **2× WebP** on the clean Canvas background; choose PNG for lossless or transparent
-output. Frame export contains only the current phone state with 48 CSS px of safe padding — no
-caption, Frame Note, annotation, sidebar, or neighboring Frame. Section export preserves its
-row/column layout, Section title, and Frame titles. Choose **带说明** when the document should also
-contain Frame Notes.
+Open the export picker from the canvas HUD's **导出** button — the single entry point
+(decisions 2026-08-15d). The picker shows the current page's proto tree (section rows select
+all their frames, frames check freely), a live preview of the selected frames, and the only
+option that changes the delivered pixels: background (**画布** paper grid / **白底** /
+**透明**). Output is fixed **PNG 2×**. Captions (A1 ref + screen title + dim line) and Frame
+Notes are drawing content and always ride along. One selected frame downloads a PNG directly;
+several frames are packed into a zip on the server (`POST /api/export-zip`, store-only).
 
 Export snapshots the live DOM before rendering in an isolated Chromium surface, so open sheets,
 Ask User panels, selected controls, form values, internal scroll positions, and canvas output are
 kept. The default filenames are stable and document-friendly:
 
 ```text
-library__brew-flow__timer@2x.webp
-library__brew-flow@2x.webp
+library__brew-flow__timer@2x.png
+library__frames@2x.zip
 ```
 
 Agents and scripts use the same renderer (start `npm run dev` first):
 
 ```bash
 npm run export -- --page library --section brew-flow --frame timer
-npm run export -- --page library --section brew-flow --with-notes --format png
+npm run export -- --page library --section brew-flow
 ```
 
 Output defaults to gitignored `exports/`. Options: `--scale 1|2`,
-`--background canvas|white|transparent`, `--format webp|png`, and `--output <path>`.
+`--background canvas|white|transparent`, `--format png|webp`, and `--output <path>`.
 Transparent output requires PNG; very large 2× Sections fail with a clear 1× retry hint instead
 of silently wrapping or clipping the flow.
 
