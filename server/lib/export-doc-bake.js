@@ -396,3 +396,79 @@ export function injectBakedCommentsHtml(sourceHtml, overlayHtml) {
   }
   return html;
 }
+
+/* ---------- 阶段 5：doc 导出把 mention 的嵌入 frame 烤成静态图 ----------
+ * 挂载点形态：<div data-pinpoint-frame="<pageId>/<screenId>"></div>（活文档里由
+ * annotate client 水合为 iframe；导出/外发场景没有水合 —— annotate.js 被摘除，
+ * 这里把挂载点换成 /api/export-image 渲的 2× PNG dataURL）。
+ * 三种模式：html-full = 静态字符串换 <img>；html-no-css = 换文本引用（token
+ * 友好，不塞 base64）；长图 = 渲染浏览器里运行时换图（buildMentionSwapScript）。 */
+
+const MENTION_MOUNT_RE = /<div\b(?=[^>]*\bdata-pinpoint-frame\s*=\s*(["'])([^"']+)\1)[^>]*>\s*<\/div>/gi;
+
+/** 解析文档源文件里的 mention 挂载点。value = "<pageId>/<screenId>"（screenId 可含 /）。 */
+export function parseMentionMounts(html) {
+  const out = [];
+  const re = new RegExp(MENTION_MOUNT_RE.source, 'gi');
+  let m;
+  while ((m = re.exec(String(html || '')))) {
+    const value = String(m[2] || '').trim();
+    const slash = value.indexOf('/');
+    if (slash <= 0 || slash === value.length - 1) continue;
+    out.push({ value, pageId: value.slice(0, slash), screenId: value.slice(slash + 1), match: m[0] });
+  }
+  return out;
+}
+
+/** 静态替换挂载点。resolver(mount) → 替换 HTML 字符串；返回 null 保留原样。 */
+export function replaceMentionMounts(html, resolver) {
+  let replaced = 0;
+  const out = String(html || '').replace(new RegExp(MENTION_MOUNT_RE.source, 'gi'), (full, q, value) => {
+    const v = String(value || '').trim();
+    const slash = v.indexOf('/');
+    if (slash <= 0 || slash === v.length - 1) return full;
+    const next = resolver({ value: v, pageId: v.slice(0, slash), screenId: v.slice(slash + 1), match: full });
+    if (typeof next !== 'string') return full;
+    replaced++;
+    return next;
+  });
+  return { html: out, replaced };
+}
+
+/** 烤好的 frame 图 → <img>（html-full 用；自包含 dataURL，外发不依赖服务在线）。 */
+export function mentionImgHtml(mount, img) {
+  const alt = `@frame:${mount.value}${img.title ? ` · ${img.title}` : ''}`;
+  return `<img src="${img.dataUrl}" width="${Math.round(img.width)}" height="${Math.round(img.height)}"`
+    + ` alt="${escapeHtml(alt)}" data-pinpoint-frame-baked="${escapeHtml(mount.value)}"`
+    + ` style="max-width:100%;height:auto">`;
+}
+
+/** html-no-css 的挂载点替代物：文本引用（模式定位是喂 AI，不塞 base64 大图）。 */
+export function mentionTextMarker(mount, title) {
+  const label = title ? `${title}（${mount.value}）` : mount.value;
+  return `<p data-pinpoint-frame-ref="${escapeHtml(mount.value)}">[嵌入 Frame：${escapeHtml(label)} —— 静态图见 HTML 完整 / 长图导出]</p>`;
+}
+
+/**
+ * 长图（image 模式）运行时换图脚本：在渲染浏览器里把挂载点换成 <img>。
+ * annotate.js 在导出渲染中被 abort，挂载点此时还是空 div。
+ */
+export function buildMentionSwapScript(entries) {
+  const payload = JSON.stringify(entries).replace(/<\//g, '<\\/');
+  return `(function () {
+  var entries = ${payload};
+  entries.forEach(function (en) {
+    document.querySelectorAll('[data-pinpoint-frame]').forEach(function (mount) {
+      if (mount.getAttribute('data-pinpoint-frame') !== en.value) return;
+      var img = document.createElement('img');
+      img.src = en.dataUrl;
+      img.width = en.width;
+      img.height = en.height;
+      img.setAttribute('alt', en.alt || ('@frame:' + en.value));
+      img.setAttribute('data-pinpoint-frame-baked', en.value);
+      img.style.cssText = 'display:block;max-width:100%;height:auto';
+      mount.replaceWith(img);
+    });
+  });
+})();`;
+}

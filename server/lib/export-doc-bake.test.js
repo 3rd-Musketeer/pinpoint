@@ -137,3 +137,54 @@ test('injectCommentsExportHtml strips the /sites/ injector pair (entry marker + 
   assert.ok(out.includes('<p>doc body</p>'));
   assert.ok(out.includes('data-export-comments'));
 });
+
+/* ---- 阶段 5：mention 挂载点烤图 ---- */
+
+import {
+  buildMentionSwapScript,
+  mentionImgHtml,
+  mentionTextMarker,
+  parseMentionMounts,
+  replaceMentionMounts,
+} from './export-doc-bake.js';
+
+test('parseMentionMounts finds mounts and splits pageId/screenId (screenId may contain /)', () => {
+  const html = '<p>a</p><div data-pinpoint-frame="library/recipe"></div>'
+    + '<div class="x" data-pinpoint-frame="components/bubble/outgoing" id="m2"></div>'
+    + '<div data-pinpoint-frame="bad"></div>';
+  const mounts = parseMentionMounts(html);
+  assert.equal(mounts.length, 2);
+  assert.deepEqual(mounts.map((m) => m.value), ['library/recipe', 'components/bubble/outgoing']);
+  assert.equal(mounts[1].pageId, 'components');
+  assert.equal(mounts[1].screenId, 'bubble/outgoing');
+});
+
+test('replaceMentionMounts swaps mounts via resolver and keeps unresolved ones', () => {
+  const html = '<div data-pinpoint-frame="library/recipe"></div><div data-pinpoint-frame="ghost/none"></div>';
+  const out = replaceMentionMounts(html, (mount) => mount.pageId === 'library' ? '<img src="x" alt="r">' : null);
+  assert.equal(out.replaced, 1);
+  assert.ok(out.html.includes('<img src="x"'));
+  assert.ok(out.html.includes('data-pinpoint-frame="ghost/none"'));
+});
+
+test('mentionImgHtml embeds a self-contained 2x image with identity attrs', () => {
+  const html = mentionImgHtml({ value: 'library/timer' }, { dataUrl: 'data:image/png;base64,AAA', width: 876, height: 1916, title: '计时' });
+  assert.ok(html.includes('src="data:image/png;base64,AAA"'));
+  assert.ok(html.includes('width="876"'));
+  assert.ok(html.includes('data-pinpoint-frame-baked="library/timer"'));
+  assert.ok(html.includes('@frame:library/timer · 计时'));
+});
+
+test('mentionTextMarker is a compact text reference (no base64 in AI-feed mode)', () => {
+  const html = mentionTextMarker({ value: 'library/timer' }, '计时');
+  assert.ok(html.includes('data-pinpoint-frame-ref="library/timer"'));
+  assert.ok(html.includes('计时（library/timer）'));
+  assert.ok(!/base64/.test(html));
+});
+
+test('buildMentionSwapScript replaces mounts at runtime, escaping script terminators', () => {
+  const script = buildMentionSwapScript([{ value: 'library/recipe', dataUrl: 'data:image/png;base64,BBB', width: 876, height: 2000, alt: '@frame:library/recipe </script>' }]);
+  assert.ok(script.includes('data-pinpoint-frame'));
+  assert.ok(script.includes('data:image/png;base64,BBB'));
+  assert.ok(!/<\/script>/.test(script.replace('<\\/script>', '')));
+});

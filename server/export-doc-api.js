@@ -8,11 +8,18 @@ import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { pageKeyFromPathname } from '../lib/annotate-page-key.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import { loadRegistry } from './lib/registry.js';
+import { createExportRenderer } from './export-image-api.js';
+import { frameExportSnapshot, resolveFrameTarget } from './lib/frame-doc.js';
 import {
   buildExportBakeScript,
+  buildMentionSwapScript,
   formatCommentsTextSection,
   injectCommentsExportHtml,
+  mentionImgHtml,
+  mentionTextMarker,
+  parseMentionMounts,
   prepareExportAnnotations,
+  replaceMentionMounts,
 } from './lib/export-doc-bake.js';
 import {
   ExportDocContractError,
@@ -128,6 +135,7 @@ function createDocImageRenderer(options = {}) {
 
   async function openDocPage(request, origin, bakeOptions) {
     const comments = !!(request.comments && bakeOptions && bakeOptions.annotations);
+    const mentions = bakeOptions && Array.isArray(bakeOptions.mentions) ? bakeOptions.mentions : [];
     const viewportWidth = request.viewportWidth || EXPORT_DOC_W;
     const browser = await getBrowser();
     const context = await browser.newContext({
@@ -139,6 +147,7 @@ function createDocImageRenderer(options = {}) {
     // Keep the live annotate editor out of delivery exports: /sites/ pages are
     // served with the client injected, so opt the render request out; the
     // annotate.js route abort below stays as a second net for previews/ docs.
+    // 标注客户端不在 → mention 挂载点不水合（保持空 div），由下面的换图脚本烤入。
     await page.route('**/annotate.js', (route) => route.abort());
     const suffix = request.src.startsWith('sites/') ? '?annotate=off' : '';
     const url = `${origin}/${request.src}${suffix}`;
@@ -147,6 +156,20 @@ function createDocImageRenderer(options = {}) {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;
       await new Promise((resolve) => setTimeout(resolve, 400));
     });
+
+    // 阶段 5：mention 的嵌入 frame 烤成静态图（2× PNG dataURL，导出即静态）。
+    if (mentions.length) {
+      await page.addScriptTag({ content: buildMentionSwapScript(mentions) });
+      await page.evaluate(async () => {
+        await Promise.all([...document.images].map((image) => image.complete
+          ? Promise.resolve()
+          : new Promise((resolve) => {
+            image.addEventListener('load', resolve, { once: true });
+            image.addEventListener('error', resolve, { once: true });
+          })));
+        await new Promise((resolve) => setTimeout(resolve, 150));
+      });
+    }
 
     let bakeResult = null;
     if (comments) {
@@ -238,6 +261,9 @@ function createDocImageRenderer(options = {}) {
 
 export default function exportDocApi(options = {}) {
   const renderer = options.renderer || createDocImageRenderer(options);
+  // 阶段 5：mention 烤图复用 /api/export-image 的渲染器（同一套机壳快照管线），
+  // 不起新管线；fragment 屏的快照负载由 server/lib/frame-doc.js 组装。
+  const frameRenderer = options.frameRenderer || createExportRenderer(options);
   // Exported documents live under previews/ (pinpoint bucket) or, for
   // sites/<entry-id>/ srcs, in that registry entry's bucket.
   const root = options.dataRoot || dataRoot();
@@ -257,6 +283,73 @@ export default function exportDocApi(options = {}) {
     const pageKey = annotationPageKeyForSrc(src);
     const doc = storeFor(entryIdForSrc(src, registry)).readDoc(pageKey);
     return Array.isArray(doc.annotations) ? doc.annotations : [];
+  }
+
+  // mention 挂载点 → 烤图（每个唯一 frame 值渲一次）。解析/渲染失败的挂载点
+  // 不进 map（导出不断流，原样留空 div）。
+  async function bakeMentionMap(html, origin, viewportWidth) {
+    const mounts = parseMentionMounts(html);
+    const values = [...new Set(mounts.map((m) => m.value))];
+    const map = new Map();
+    for (const value of values) {
+      const slash = value.indexOf('/');
+      const pageId = value.slice(0, slash);
+      const screenId = value.slice(slash + 1);
+      try {
+        const target = resolveFrameTarget(pageId, screenId, { registry });
+        if (target.kind === 'doc') {
+          // doc 屏烤图复用文档长图渲染：/api/frame 302 到该屏自己的 URL。
+          const result = await renderer.render({
+            src: `api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(screenId)}&annotate=off`,
+            mode: 'image',
+            format: 'png',
+            scale: 2,
+            viewportWidth,
+            comments: false,
+          }, origin, null);
+          map.set(value, {
+            dataUrl: `data:image/png;base64,${result.buffer.toString('base64')}`,
+            width: result.pixelWidth / 2,
+            height: result.pixelHeight / 2,
+            title: target.title,
+          });
+        } else {
+          const snapshot = await frameExportSnapshot(target);
+          const result = await frameRenderer.render(snapshot, origin);
+          map.set(value, {
+            dataUrl: `data:image/png;base64,${result.buffer.toString('base64')}`,
+            width: result.pixelWidth / 2,
+            height: result.pixelHeight / 2,
+            title: target.title,
+          });
+        }
+      } catch {
+        // unknown page/screen 或渲染失败：挂载点原样保留（活文档里本也是未水合态）。
+      }
+    }
+    return map;
+  }
+
+  function mentionSwapEntries(map) {
+    return [...map.entries()].map(([value, img]) => ({
+      value,
+      dataUrl: img.dataUrl,
+      width: Math.round(img.width),
+      height: Math.round(img.height),
+      alt: `@frame:${value}${img.title ? ` · ${img.title}` : ''}`,
+    }));
+  }
+
+  /** html-no-css 的挂载点 → 文本引用（顺带解析标题，失败用裸值）。 */
+  function replaceMentionsWithTextMarkers(html) {
+    return replaceMentionMounts(html, (mount) => {
+      let title = '';
+      try {
+        const target = resolveFrameTarget(mount.pageId, mount.screenId, { registry });
+        title = target.title || '';
+      } catch { /* 未解析也出引用，标题缺省 */ }
+      return mentionTextMarker(mount, title);
+    });
   }
 
   function tokensForHtml(src, mode, comments) {
@@ -292,13 +385,17 @@ export default function exportDocApi(options = {}) {
       stat.mtimeMs, stat.size, anns.length,
     ].join('\0');
     if (tokenCache.has(key)) return tokenCache.get(key);
+    const mentionMap = await bakeMentionMap(fs.readFileSync(filePath, 'utf8'), origin, request.viewportWidth || EXPORT_DOC_W);
     const size = await renderer.measure({
       src: request.src,
       scale: request.scale,
       viewportWidth: request.viewportWidth,
       format: 'png',
       comments: !!request.comments,
-    }, origin, request.comments ? { annotations: anns } : null);
+    }, origin, {
+      annotations: request.comments ? anns : undefined,
+      mentions: mentionSwapEntries(mentionMap),
+    });
     const estimate = estimateImageTokens(size.pixelWidth, size.pixelHeight);
     tokenCache.set(key, estimate);
     if (tokenCache.size > 32) {
@@ -338,10 +435,11 @@ export default function exportDocApi(options = {}) {
           const filePath = resolveDocFile(request.src, registry);
           const filename = exportDocFilename(request);
           const annotations = request.comments ? readAnnotationsForSrc(request.src) : [];
-          const bakeOptions = request.comments ? { annotations } : null;
 
           if (request.mode === 'html-no-css') {
             let html = stripDocumentCss(fs.readFileSync(filePath, 'utf8'));
+            // mention 挂载点 → 文本引用（本模式定位是喂 AI：不渲图、不塞 base64）
+            html = replaceMentionsWithTextMarkers(html).html;
             if (request.comments) html += '\n' + formatCommentsTextSection(annotations);
             const buffer = Buffer.from(html, 'utf8');
             res.statusCode = 200;
@@ -357,12 +455,26 @@ export default function exportDocApi(options = {}) {
 
           if (request.mode === 'html-full') {
             let html = fs.readFileSync(filePath, 'utf8');
+            // mention 挂载点 → 烤图 <img>（自包含 dataURL，外发不依赖服务在线）
+            let framesBaked = 0;
+            if (parseMentionMounts(html).length) {
+              const protocol = req.headers['x-forwarded-proto'] || 'http';
+              const origin = `${protocol}://${req.headers.host || '127.0.0.1:5199'}`;
+              const baked = await bakeMentionMap(html, origin, EXPORT_DOC_W);
+              const replaced = replaceMentionMounts(html, (mount) => {
+                const img = baked.get(mount.value);
+                return img ? mentionImgHtml(mount, img) : null;
+              });
+              html = replaced.html;
+              framesBaked = replaced.replaced;
+            }
             if (request.comments) {
               // Place marks in the viewer's browser so @media / centering match.
               // (Static absolute coords from a 920 Playwright bake drift on wide windows.)
               html = injectCommentsExportHtml(html, annotations);
               res.setHeader('X-Export-Comments', String(prepareExportAnnotations(annotations).length));
             }
+            if (framesBaked) res.setHeader('X-Export-Frames', String(framesBaked));
             const buffer = Buffer.from(html, 'utf8');
             res.statusCode = 200;
             res.setHeader('Content-Type', exportDocMime(request));
@@ -379,7 +491,18 @@ export default function exportDocApi(options = {}) {
             ...request,
             viewportWidth: request.viewportWidth || EXPORT_DOC_W,
           };
-          const result = await renderer.render(imageRequest, origin, bakeOptions);
+          const mentionMap = await bakeMentionMap(fs.readFileSync(filePath, 'utf8'), origin, imageRequest.viewportWidth);
+          const result = await renderer.render(imageRequest, origin, {
+            annotations: request.comments ? annotations : undefined,
+            mentions: mentionSwapEntries(mentionMap),
+          });
+          res.statusCode = 200;
+          res.setHeader('Content-Type', exportDocMime(request));
+          res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+          res.setHeader('Content-Length', String(result.buffer.length));
+          res.setHeader('X-Export-Width', String(result.pixelWidth));
+          res.setHeader('X-Export-Height', String(result.pixelHeight));
+          if (mentionMap.size) res.setHeader('X-Export-Frames', String(mentionMap.size));
           res.statusCode = 200;
           res.setHeader('Content-Type', exportDocMime(request));
           res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -399,7 +522,10 @@ export default function exportDocApi(options = {}) {
           });
         }
       });
-      server.httpServer?.once('close', () => { renderer.close().catch(() => {}); });
+      server.httpServer?.once('close', () => {
+        renderer.close().catch(() => {});
+        frameRenderer.close().catch(() => {});
+      });
     },
   };
 }

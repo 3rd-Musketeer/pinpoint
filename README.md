@@ -240,6 +240,44 @@ Short locators for chat: `@page:library` · `@section:library/brew-flow` ·
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
 
+## Mention live frames in documents
+
+A doc page (HTML shell) can **mention a canvas frame** in its body copy — the mount hydrates
+into the *live* frame (the same fragment as on the canvas, interactive, scripts running):
+
+```html
+<div data-pinpoint-frame="library/timer"></div>
+```
+
+- The value is the existing `@frame:` identity: `<pageId>/<screenId>`
+  (Component Library variants spell it `components/<comp>/<variant>`). Unknown refs keep the
+  empty mount and get `data-pinpoint-frame-error="bad-ref"`.
+- Hydration is done by the doc's own annotate client: each mount becomes an iframe to
+  `GET /api/frame?page=<id>&screen=<id>`, which serves a self-contained document (fragment +
+  phone chrome + ios-kit + preview-script runtime; doc-shell screens 302 to their own URL —
+  same ledger by pathname). Style isolation comes free with the iframe; the iframe auto-sizes
+  to content height.
+- **Annotations pass through both ways.** Marks made inside an embedded frame land in the
+  canvas ledger (same bucket file as the workbench board, row stamped `pageId` + `screenId` +
+  `section`), and both surfaces render them in realtime over SSE. Anchors bind to *the frame*:
+  the stored selector carries the stage segment, and each view normalizes it to a
+  frame-internal path at resolve time (pageId + screenId + `:scope` chain) — so a frame moved
+  or reordered on the canvas self-heals instead of going 锚点失效, and pre-existing marks keep
+  working unchanged (no schema migration).
+- **Mode routing matches the canvas**: the sidebar's 标注/交互 toggle reaches the doc's annotate
+  instance and cascades into every embedded frame — 标注 mode clicks inside a frame annotate,
+  交互 mode runs the prototype (frame JS keeps running in both modes).
+- Doc-body annotations (marking the document's own text) stay in the document's own bucket —
+  two namespaces, no interference: 文档的归文档，frame 的归 frame（画布板的桶）.
+- **Export bakes frames statically.** Doc export (导出 → HTML 完整 / 去除 CSS / 长图 PNG)
+  replaces each mount with a 2× PNG rendered by the existing `/api/export-image` pipeline
+  (doc-shell screens bake through the doc long-image renderer; HTML 去除 CSS swaps in a text
+  reference `[嵌入 Frame：…]` instead of an image). Baked exports are inert — no annotate
+  client, no live frames.
+
+A local demo page lives at `previews/mention-demo/` (instance-local, gitignored) — mention
+Example Library frames there to see the loop end to end.
+
 ## Registry and injection
 
 The annotation layer never touches a page you didn't register — **登记过才注入**. The

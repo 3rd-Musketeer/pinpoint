@@ -166,7 +166,16 @@ screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接�
 loader 包 `.wb-html-surface`，那是画布命中边界，不是作者要记的标记。标注落在文档自己的
 page key 下（默认 entry `pinpoint` 的桶，路径从 `/health` 的 `dataDir` 读）。
 
-侧栏 **iOS / Web / HTML** switch 会隔离三套 Pages 列表；Component Library 只出现在 iOS。
+**doc 正文可以 mention 画布上的 frame**（阶段 5）：写一个空挂载点
+`<div data-pinpoint-frame="<pageId>/<screenId>"></div>`（值就是 `@frame:` 指示器里的身份；
+组件库写法 `components/<comp>/<variant>`），annotate client 会把它水合成活 frame
+（iframe → `/api/frame`，同一份 fragment + 机壳 + 可交互脚本）。挂载点保持空、别放子
+节点（有子节点会被当作导出烤图产物而跳过水合）；样式隔离天然（iframe），高度自适应内容。
+文档里对嵌入 frame 的标注与画布同桶同账本、两处实时渲染——所以评审稿可以直接引用活原型
+而不是截图。doc 导出时挂载点烤成 2× 静态 PNG（`html-no-css` 换成文本引用），产物不联网、
+不可交互。示例：`previews/mention-demo/`（实例本地页，模板不带）。
+
+Pages 是单一混排列表（模板页 + registry 条目；2026-08-16 阶段 2 起 iOS/Web/HTML Seg 已退役），Component Library 作为系统行居首。
 
 3. 刷新；manifest 自动生成导航，`pageId` 同时是 annotate 的 `pageId`。不要自写第二套 loader。
 

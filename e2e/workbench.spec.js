@@ -72,6 +72,7 @@ test('manifest navigation survives rapid page switches and persists the winner',
 
   // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
   // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
+  // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
@@ -80,6 +81,7 @@ test('manifest navigation survives rapid page switches and persists the winner',
     'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
+    'E2E Mention Doc',
   ]);
 
   for (const [pageId, screenId] of [
@@ -108,6 +110,7 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
 
   // 模式 Seg 退役；本地页 + registry 条目混排（顺序 = 系统行 → _index → registry）。
   // 阶段 4：url 条目（E2E Site / E2E Proxy App）恒 doc 壳同列。
+  // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
@@ -117,6 +120,7 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
     'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
+    'E2E Mention Doc',
   ]);
 
   // 行内壳标记：机壳页 smartphone / 文档页 file-text（12px 淡色，.wb-page-ico）。

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>E2E Mention Doc</title>
+<style>
+  body { margin:0; padding:32px; font-family:system-ui, sans-serif; color:#1d1d1f; }
+  main { max-width:560px; margin:0 auto; }
+  h1 { font-size:22px; }
+  p { line-height:1.7; }
+  .pinpoint-mention { margin:24px 0; }
+</style>
+</head>
+<body>
+<main>
+  <h1>冲煮手账 · 评审稿</h1>
+  <p id="intro">这段正文用于验证文档自身的标注（文档桶）与嵌入 frame 的标注（画布桶）互不干扰。</p>
+
+  <p>参数屏（内联脚本）：</p>
+  <div class="pinpoint-mention" data-pinpoint-frame="library/recipe"></div>
+
+  <p>计时屏（sidecar 交互）：</p>
+  <div class="pinpoint-mention" data-pinpoint-frame="library/timer"></div>
+
+  <p id="outro">结尾：导出时上面的活 frame 应该被烤成静态图。</p>
+</main>
+</body>
+</html>

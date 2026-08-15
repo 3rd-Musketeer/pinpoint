@@ -6,6 +6,7 @@ import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
 import annotateApi from './server/annotate-api.js';
 import sitesApi from './server/sites-api.js';
+import frameApi from './server/frame-api.js';
 import frameNotesApi from './server/frame-notes-api.js';
 import exportImageApi from './server/export-image-api.js';
 import exportDocApi from './server/export-doc-api.js';
@@ -22,7 +23,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const registryStore = createRegistryStore({ root: ROOT });
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameNotesApi(), exportImageApi(), exportDocApi({ registry: registryStore }), componentsBoard(), previewHmr()],
+  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi(), exportImageApi(), exportDocApi({ registry: registryStore }), componentsBoard(), previewHmr()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

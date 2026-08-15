@@ -7,7 +7,10 @@
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
- * Overlay mounts inside .wb-stage-wrap (not over the sidebar). */
+ * Overlay mounts inside .wb-stage-wrap (not over the sidebar).
+ * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
+ * frame 内标注与画布同账本（注入 __pinpointFrame/__pinpointLedger），锚点按
+ * frame 内路径归一（lib/frame-anchor.js），模式开关向 frame iframe 级联。 */
 (function () {
   'use strict';
   if (window.__pinpoint) return;
@@ -39,12 +42,32 @@
   // 打回 DOM：/sites/ 等服务端注入路径走的是 window.__pinpointEntry（主世界
   // 全局，隔离世界读不到），扩展 content script 的 page-info 依赖 DOM 属性。
   if (document.documentElement) document.documentElement.setAttribute('data-pinpoint-entry', ENTRY);
-  var LS_KEY = 'pinpoint:' + ENTRY + ':' + location.pathname;
+  // ---------- 阶段 5：/api/frame 嵌入帧身份 ----------
+  // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel} 与
+  // __pinpointLedger（顶层 workbench 的 pathname）：本实例读写画布同一份账本，
+  // 行带 pageId + screenId，锚点按 frame 内路径归一（lib/frame-anchor.js，内联）。
+  // 文档正文标注仍走文档自己的账本 —— 两个命名空间共存不打架。
+  var FRAME = (function () {
+    var f = window.__pinpointFrame;
+    if (!f || typeof f !== 'object' || !f.pageId || !f.screenId) return null;
+    return {
+      pageId: String(f.pageId),
+      screenId: String(f.screenId),
+      section: f.section ? String(f.section) : '',
+      sectionLabel: f.sectionLabel ? String(f.sectionLabel) : ''
+    };
+  })();
+  var LEDGER_PATHNAME =
+    (typeof window.__pinpointLedger === 'string' && window.__pinpointLedger.charAt(0) === '/')
+      ? window.__pinpointLedger
+      : location.pathname;
+  var LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
   // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
-  var PAGE = pageKeyFromPathname(location.pathname);
+  var PAGE = pageKeyFromPathname(LEDGER_PATHNAME);
   var PAGE_KEY = annotationSlug(PAGE);
   // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
-  var currentPathname = location.pathname;
+  // （frame 嵌入页不导航，账本恒定 —— 路由监听在 FRAME 模式下不安装。）
+  var currentPathname = LEDGER_PATHNAME;
   var marks = [];      // in-memory annotations: {n, id, type, pageId?, section?, sectionLabel?, screenId?, selector?, content, …}
   var revision = 0;    // disk document revision (SSOT concurrency)
   var syncing = false;
@@ -215,7 +238,7 @@
   }
 
   function stampPage(m) {
-    var pid = currentWorkbenchPageId();
+    var pid = currentWorkbenchPageId() || (FRAME ? FRAME.pageId : '');
     if (pid) m.pageId = pid;
     return m;
   }
@@ -507,6 +530,37 @@
     try { return document.querySelector(sel); } catch (e) { return null; }
   }
 
+  // ---------- frame 内锚点归一（阶段 5 透传）----------
+  // frameInternalSelector / FRAME_STAGE_SELECTOR 由 lib/frame-anchor.js 内联提供。
+  // 行带 screenId 且 selector 含 stage 段 → 只在该 frame 的 stage 根里解析：
+  // 画布（.wb-screen[data-screen] 下的 stage）与 /api/frame 嵌入页（文档唯一
+  // stage）两端同构互解；frame 换序/跨 section 移动后锚点自愈。派生不出 frame
+  // 内路径的 selector（id 短路等）维持全局解析 —— 存量语义逐字节不变。
+  function scopedStageRoot(screenId) {
+    if (FRAME) return document.querySelector(FRAME_STAGE_SELECTOR);
+    if (!screenId) return null;
+    var panel = document.getElementById('wb-board-panel');
+    if (!panel) return null;
+    var screens = panel.querySelectorAll('.wb-screen[data-screen]');
+    for (var i = 0; i < screens.length; i++) {
+      if (screens[i].getAttribute('data-screen') === screenId) {
+        return screens[i].querySelector(FRAME_STAGE_SELECTOR);
+      }
+    }
+    return null;
+  }
+
+  function resolveMarkSelector(selector, screenId) {
+    if (!selector) return null;
+    var rel = frameInternalSelector(selector);
+    if (rel && (FRAME || screenId)) {
+      // 可派生的 frame 锚点以 frame 内解析为准：miss = 诚实失效，绝不回退去
+      // 全局撞上别的 frame 的同路径元素。
+      return queryFrameScope(scopedStageRoot(FRAME ? FRAME.screenId : screenId), rel);
+    }
+    return resolve(selector);
+  }
+
   function sectionSelector(sectionId) {
     var id = String(sectionId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
     return '#wb-board-panel [data-ann-section="' + id + '"], #wb-board-panel [data-ann-group="' + id + '"]';
@@ -515,6 +569,9 @@
   /** Annotation belongs to the active workbench page. */
   function markOnActivePage(m) {
     if (!m) return false;
+    // /api/frame 嵌入帧：本实例只承载「某一个 frame」的标注 —— 同账本里其它
+    // page/screen 的行既不渲染也不计数（行的读写仍整账本报文，绝不丢行）。
+    if (FRAME) return m.pageId === FRAME.pageId && m.screenId === FRAME.screenId;
     // 独立 HTML 文档（没有 workbench 画布）：下面的判据全是「这个标注落在当前
     // 画布的哪个页/哪个 frame 里」，在这里一条都不成立，结果是所有标注都被判为
     // 不属于本页 —— 计数恒为 0、侧栏列表恒空，尽管标注确实存在并已落盘。
@@ -549,6 +606,15 @@
     }
     var sid = screenIdOf(el);
     if (sid) m.screenId = sid;
+    // /api/frame 嵌入帧：DOM 近亲查不到（或结构漂移）时用注入身份兜底，
+    // 保证行恒带画布侧的 pageId/section/screenId 三件套。
+    if (FRAME) {
+      if (!m.screenId) m.screenId = FRAME.screenId;
+      if (!annotationSection(m) && FRAME.section) {
+        m.section = FRAME.section;
+        m.sectionLabel = FRAME.sectionLabel || FRAME.section;
+      }
+    }
     m.indicatorKind = classifyTarget(el);
     return m;
   }
@@ -584,7 +650,7 @@
   function resolveAllLiveTargets(m) {
     var out = [];
     markElementTargets(m).forEach(function (t) {
-      var el = resolve(t.selector);
+      var el = resolveMarkSelector(t.selector, m.screenId || '');
       if (el && !isHidden(el)) {
         out.push({ el: el, ref: t.ref, selector: t.selector, text: t.text, rectDoc: docRect(el) });
       }
@@ -677,7 +743,7 @@
     var body = {
       page: PAGE,
       entry: ENTRY,
-      path: decodeURIComponent(location.pathname),
+      path: decodeURIComponent(LEDGER_PATHNAME),
       updated_at: new Date().toISOString(),
       baseRevision: revision,
       annotations: marks.slice()
@@ -1123,9 +1189,23 @@
     // 模式标记：扩展 content script 的 page-info 应答把它捎给侧边栏面板。
     document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
     if (!mode) { clearHover(); closeComposer(); }
+    propagateModeToFrames();
     notify();
   }
   btnToggle.addEventListener('click', toggleMode);
+
+  // 文档里的标注/交互开关对嵌入 frame 同样生效（阶段 5）：doc 实例切换时把
+  // 模式推进每个 mention 水合出的 frame iframe（同源直调；frame 内 annotate
+  // 实例各自独立）。frame 实例启动时也会反向领养父级当前模式（见 boot）。
+  function propagateModeToFrames() {
+    var frames = document.querySelectorAll('iframe[data-pinpoint-frame-iframe]');
+    for (var i = 0; i < frames.length; i++) {
+      try {
+        var w = frames[i].contentWindow;
+        if (w && w.pinpoint && typeof w.pinpoint.setMode === 'function') w.pinpoint.setMode(mode);
+      } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
+    }
+  }
 
   function setRenderComments(on) {
     on = !!on;
@@ -2333,11 +2413,12 @@
       return { live: true, el: lives[0].el, rectDoc: lives[0].rectDoc };
     }
     var el = null;
+    var mSid = m.screenId || '';
     if (m.base && m.base.selector) {
-      el = resolve(m.base.selector);
+      el = resolveMarkSelector(m.base.selector, mSid);
     } else if (m.contains && m.contains.length) {
       for (var i = 0; i < m.contains.length; i++) {
-        el = resolve(m.contains[i].selector);
+        el = resolveMarkSelector(m.contains[i].selector, mSid);
         if (el) break;
       }
     }
@@ -2347,14 +2428,18 @@
       var now = docRect(el);
       var br = m.base.rect;
       var rr = m.rect || br;
+      // 双向透传把 region 带到另一份文档（画布 zoom ≠ 嵌入页 1:1）：平移之外按
+      // 锚元素的尺寸比缩放，比例 1 时与旧行为逐值相同。
+      var sx = br[2] > 0 ? now[2] / br[2] : 1;
+      var sy = br[3] > 0 ? now[3] / br[3] : 1;
       return {
         live: true,
         el: el,
         rectDoc: [
-          rr[0] + now[0] - br[0],
-          rr[1] + now[1] - br[1],
-          rr[2],
-          rr[3]
+          Math.round(now[0] + (rr[0] - br[0]) * sx),
+          Math.round(now[1] + (rr[1] - br[1]) * sy),
+          Math.round(rr[2] * sx),
+          Math.round(rr[3] * sy)
         ]
       };
     }
@@ -2374,7 +2459,8 @@
    *  the same selector can become live again. The resolvability walk itself is
    *  the shared pure predicate from lib/ann-row.js (inlined at serve time). */
   function isMarkBroken(m) {
-    return annMarkBroken(m, function (selector) { return !!resolve(selector); }, markElementTargets(m));
+    var sid = (m && m.screenId) || '';
+    return annMarkBroken(m, function (selector) { return !!resolveMarkSelector(selector, sid); }, markElementTargets(m));
   }
 
   function markAnchorRect(m) {
@@ -2386,7 +2472,7 @@
     var mv = m.move;
     if (!mv) return null;
     if (mv.to_selector) {
-      var el = resolve(mv.to_selector);
+      var el = resolveMarkSelector(mv.to_selector, m.screenId || '');
       if (el && !isHidden(el)) {
         var r = docRect(el);
         var rel = mv.to_rel || [0.5, 0.5];
@@ -2983,6 +3069,7 @@
     },
     openMark: openMark,
     goToMark: goToMark,
+    hydrateFrames: hydrateMentionFrames,
     getState: getState,
     markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
@@ -3076,31 +3163,128 @@
   // pathname）；没有 window.navigation 时降级为 patch pushState/replaceState
   // （调原实现后再检查）+ popstate。与已有的 popstate → scheduleContentRender
   // 监听共存——popstate 现在多一个账本切换语义。
-  if (window.navigation && typeof window.navigation.addEventListener === 'function') {
-    window.navigation.addEventListener('navigate', function (event) {
-      try {
-        var dest = event && event.destination;
-        // 跨文档导航会真刷新、脚本随之重跑，无需切账本
-        if (!dest || dest.sameDocument === false || !dest.url) return;
-        var nextPathname = new URL(dest.url, location.href).pathname;
-        if (nextPathname !== currentPathname) onRouteChange(nextPathname);
-      } catch (e) { /* ignore */ }
-    });
-  } else {
-    ['pushState', 'replaceState'].forEach(function (method) {
-      var orig = history[method];
-      if (typeof orig !== 'function') return;
-      history[method] = function () {
-        var out = orig.apply(this, arguments);
+  // /api/frame 嵌入帧不导航（账本恒定 = 注入的 __pinpointLedger），不装路由监听。
+  if (!FRAME) {
+    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
+      window.navigation.addEventListener('navigate', function (event) {
         try {
-          if (location.pathname !== currentPathname) onRouteChange(location.pathname);
+          var dest = event && event.destination;
+          // 跨文档导航会真刷新、脚本随之重跑，无需切账本
+          if (!dest || dest.sameDocument === false || !dest.url) return;
+          var nextPathname = new URL(dest.url, location.href).pathname;
+          if (nextPathname !== currentPathname) onRouteChange(nextPathname);
         } catch (e) { /* ignore */ }
-        return out;
-      };
+      });
+    } else {
+      ['pushState', 'replaceState'].forEach(function (method) {
+        var orig = history[method];
+        if (typeof orig !== 'function') return;
+        history[method] = function () {
+          var out = orig.apply(this, arguments);
+          try {
+            if (location.pathname !== currentPathname) onRouteChange(location.pathname);
+          } catch (e) { /* ignore */ }
+          return out;
+        };
+      });
+      addEventListener('popstate', function () {
+        if (location.pathname !== currentPathname) onRouteChange(location.pathname);
+      });
+    }
+  }
+
+  // ---------- 阶段 5：doc mention 活 frame 水合 ----------
+  // doc 页正文里的 <div data-pinpoint-frame="<pageId>/<screenId>"></div> 挂载点
+  // 水合为活 frame（iframe → /api/frame 渲染端点；frame 内是完整自包含文档：
+  // fragment + 机壳 + ios-kit + annotate 注入 —— 样式隔离白得，标注实例独立）。
+  // 已含子节点的挂载点跳过：那是导出烤图（<img>）或已水合的重复扫描。
+  var MENTION_VALUE_RE = /^([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)$/;
+
+  function embedLedgerPathname() {
+    // frame 标注必须与画布同账本：顶层是 workbench 时用顶层的真实 pathname
+    // （/ 与 /index.html 两个拼法历史上都开着各自的账本）；否则回落规范入口。
+    try {
+      var top = window.top;
+      if (top && top !== window && top.document && top.document.getElementById('wb-board-panel')) {
+        var p = top.location.pathname;
+        if (typeof p === 'string' && p.charAt(0) === '/') return p;
+      }
+    } catch (e) { /* 跨域顶层：按 standalone 处理 */ }
+    return '/index.html';
+  }
+
+  function autosizeMentionFrame(iframe) {
+    function measure() {
+      try {
+        var doc = iframe.contentDocument;
+        if (!doc || !doc.documentElement) return;
+        var h = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
+        if (h > 0) iframe.style.height = Math.ceil(h) + 'px';
+      } catch (e) { /* 同源防御 */ }
+    }
+    iframe.addEventListener('load', function () {
+      measure();
+      setTimeout(measure, 300);   // 字体/侧car 脚本落定
+      setTimeout(measure, 1200);
     });
-    addEventListener('popstate', function () {
-      if (location.pathname !== currentPathname) onRouteChange(location.pathname);
-    });
+  }
+
+  function hydrateMentionFrames(root) {
+    if (FRAME) return; // frame 嵌入页自身不再向下水合（mention 是 doc 特性）
+    var scope = root && root.querySelectorAll ? root : document;
+    var mounts = scope.querySelectorAll('[data-pinpoint-frame]');
+    if (!mounts.length) return;
+    var ledger = embedLedgerPathname();
+    for (var i = 0; i < mounts.length; i++) {
+      (function (mount) {
+        if (mount.getAttribute('data-pinpoint-hydrated') === '1') return;
+        if (mount.firstElementChild) return;
+        var m = String(mount.getAttribute('data-pinpoint-frame') || '').trim().match(MENTION_VALUE_RE);
+        if (!m) {
+          mount.setAttribute('data-pinpoint-frame-error', 'bad-ref');
+          return;
+        }
+        var iframe = document.createElement('iframe');
+        iframe.setAttribute('data-pinpoint-frame-iframe', '');
+        iframe.setAttribute('title', '@frame:' + m[1] + '/' + m[2]);
+        iframe.setAttribute('scrolling', 'no');
+        iframe.src = '/api/frame?page=' + encodeURIComponent(m[1]) +
+          '&screen=' + encodeURIComponent(m[2]) +
+          '&ledger=' + encodeURIComponent(ledger);
+        iframe.style.cssText = 'width:100%;border:0;display:block;background:transparent;overflow:hidden';
+        autosizeMentionFrame(iframe);
+        mount.appendChild(iframe);
+        mount.setAttribute('data-pinpoint-hydrated', '1');
+      })(mounts[i]);
+    }
+  }
+
+  function bootMentionHydration() {
+    if (document.readyState === 'loading') {
+      document.addEventListener('DOMContentLoaded', function () { hydrateMentionFrames(document); });
+    } else {
+      hydrateMentionFrames(document);
+    }
+  }
+
+  // /api/frame 嵌入帧启动时领养父级（doc 页）当前模式；父级异步注入尚未就绪时
+  // 有界重试（父级之后的切换由 propagateModeToFrames 推进来）。
+  function adoptParentMode() {
+    if (!FRAME) return;
+    var tries = 0;
+    var timer = setInterval(function () {
+      tries++;
+      var done = false;
+      try {
+        var p = window.parent;
+        if (p && p !== window && p.pinpoint && typeof p.pinpoint.getState === 'function') {
+          var st = p.pinpoint.getState();
+          if (st && !!st.mode !== mode) toggleMode();
+          done = true;
+        }
+      } catch (e) { done = true; /* 跨域父级：放弃领养，保持交互 */ }
+      if (done || tries > 40) clearInterval(timer);
+    }, 100);
   }
 
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
@@ -3115,5 +3299,7 @@
     } else {
       setServerOnline(false);
     }
+    bootMentionHydration();
+    adoptParentMode();
   });
 })();

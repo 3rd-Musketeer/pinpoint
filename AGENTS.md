@@ -62,10 +62,11 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | Path | Role |
 |---|---|
 | `client/annotate.js` | The annotation client, served as `/annotate.js`; libs are inlined at serve time |
+| `client/frame-boot.js` | Preview-script runtime for `/api/frame` embed pages (form A/B contract; inlined into the served frame HTML) |
 | `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
 | `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url>`); pure logic + tests in `bin/pinpoint-cli.js` |
-| `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
-| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
+| `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-api.js` (`/api/frame` mention embeds), `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
+| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `frame-doc.js` (阶段 5: mention target resolution + frame page assembly + export snapshot), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
 | `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=` deep-link write side; read side is `resolveBootPageId` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
 | `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/outline/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
@@ -129,6 +130,25 @@ Marks land under the document's own page key (per-path file in the entry bucket,
 annotate calls resolve to the active doc frame's instance, so mode, count, and the
 Annotations list all reflect the document, and the embedded document hides its own floating
 toolbar and offers no annotation-list sidebar to keep one control surface.
+
+**Mentioning live frames in a doc** (阶段 5): a doc body can embed a canvas frame with
+`<div data-pinpoint-frame="<pageId>/<screenId>"></div>`. The doc's annotate client hydrates
+each empty mount into an iframe at `GET /api/frame?page=<id>&screen=<id>` — a self-contained
+document assembled by `server/lib/frame-doc.js` (fragment + shared phone chrome from
+`lib/frame-shell.js` + ios-kit + `client/frame-boot.js` preview-script runtime + annotate
+injection). Doc-shell screens 302 to the screen's own URL instead (same pathname = same
+ledger). The frame iframe's annotate instance is stamped with `__pinpointFrame`
+(pageId/screenId/section) and `__pinpointLedger` (the embedding workbench's pathname, passed
+by the hydrator via query param, default `/index.html`): its marks read/write **the canvas
+board's ledger**, so annotations on the same frame stay one store across doc and canvas,
+SSE-synced both ways. Anchor selectors stay plain cssPath strings; resolution normalizes any
+selector containing a stage segment (`.ios-stage` / `.wb-comp-stage` / `.wb-html-stage`) to a
+frame-internal `:scope` chain via `lib/frame-anchor.js` — binding follows the frame across
+board reorders, and old rows need no migration. The sidebar's 标注/交互 toggle cascades from
+the doc instance into every embedded frame iframe (`iframe[data-pinpoint-frame-iframe]`).
+Doc-body marks keep using the document's own ledger — the namespaces never mix. Doc exports
+bake mounts into static 2× PNGs through the existing export renderers (text references in
+`html-no-css`); see `server/lib/export-doc-bake.js` (`parseMentionMounts` family).
 
 **Overlay rule (iOS):** `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` are siblings of `.ios-app`, not children. Nesting them inside `.ios-app` breaks scroll / sheet positioning — see [build skill](skills/pinpoint-build/SKILL.md) §1.1.
 

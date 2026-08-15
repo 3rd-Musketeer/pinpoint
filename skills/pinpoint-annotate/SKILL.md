@@ -174,7 +174,14 @@ ls -t "$DIR"/*.json
 
 **Target indicators**：UI 显示 `[indicator N]`；磁盘存 `[@t:iN]`，只解析到本条的 `targets[].ref`，不进 `mentions[]`、不跨 annotation。缺失 ref 保留原样并如实呈现，不要猜测或自动重绑。
 
-**锚点失效**：agent 改稿后 selector 可能解析失败。画布不画幽灵框；侧栏列出该条并标「锚点失效」，`content` + `text` 仍可读。失效是渲染时计算，不写进 JSON——结构恢复后框自动回来。
+**锚点失效**：agent 改稿后 selector 可能解析失败。画布不画幽灵框；侧栏列出该条并标「锚点失效」，`content` + `text` 仍可读。失效是渲染时计算，不写进 JSON——结构恢复后框自动回来。frame 在画布上换序/跨 section 移动不再算失效：带 stage 段（`.ios-stage` 等）的 selector 在解析时归一到 `pageId + screenId + frame 内路径`（`lib/frame-anchor.js`），跟随 frame 自愈（2026-08-16 阶段 5 起）。
+
+**文档 mention 的 frame 标注（双向透传，阶段 5）**：doc 页正文可写
+`<div data-pinpoint-frame="<pageId>/<screenId>"></div>` 把画布的 frame 嵌成活 DOM。
+在文档里对嵌入 frame 做的标注**不写文档自己的账本**，而是落在该 frame 所属画布板的
+workbench 账本（行带 `pageId`/`section`/`screenId`，与画布上标的同桶同步）；所以读某个
+frame 的标注时不用管它是画布上还是文档里标的——同一批行。文档正文自己的标注仍归文档
+自己的 page key（两个命名空间共存）。导出的文档里 frame 是静态图，不携带可交互标注。
 
 ### 改哪里（路由表）
 

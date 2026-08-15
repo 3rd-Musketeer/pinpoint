@@ -11,6 +11,29 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-16
 
 ### Added
+- **Doc pages mention live frames, with two-way annotation passthrough** (roadmap 阶段 5) —
+  a doc page (HTML shell) can write `<div data-pinpoint-frame="<pageId>/<screenId>"></div>`
+  in its body; the doc's annotate client hydrates each empty mount into an iframe at
+  `GET /api/frame` (`server/frame-api.js` + `server/lib/frame-doc.js`) serving a
+  self-contained document: the same fragment wrapped in the shared phone chrome
+  (`lib/frame-shell.js`, now shared with `workbench/screen-load.js`), ios-kit CSS/JS, the
+  preview-script runtime (`client/frame-boot.js`, inlined), and annotate injection stamped
+  with `__pinpointFrame` identity + `__pinpointLedger` (the embedding workbench's pathname).
+  Doc-shell screens 302 to their own URL (same pathname = same ledger). Marks made inside an
+  embedded frame read/write the **canvas board's ledger** (row carries pageId/section/
+  screenId), render on both surfaces, and sync over the existing SSE channel — annotations
+  bind to the frame, not the view. Anchor selectors stay plain cssPath strings; resolution
+  normalizes stage-containing selectors to frame-internal `:scope` chains
+  (`lib/frame-anchor.js`, inlined into `/annotate.js`), so frames moved/reordered on the
+  canvas self-heal and existing marks need no migration. The sidebar's 标注/交互 toggle
+  cascades from the doc instance into every embedded frame iframe; doc-body annotations stay
+  in the document's own bucket (two namespaces, no interference). Doc export bakes mounts
+  into static 2× PNGs through the existing `/api/export-image` renderer (doc screens through
+  the doc long-image renderer; `html-no-css` swaps in text references) — export output stays
+  inert. `lib/frame-shell.js` extraction keeps one shell-wrapping SSOT across canvas,
+  `/api/frame`, and export bake. New e2e fixture `e2e/mention-site/` (registry entry
+  `e2e-mention`) + `e2e/mention.spec.js` cover the full chain; live proof: local demo page
+  `previews/mention-demo/` (gitignored instance content).
 - **Live proxy embed for `url` entries** (roadmap 阶段 4, live 代理画中画) — a
   registered `url` entry (e.g. my-todos → `https://my-todos.localhost`) now opens as a
   workbench page (always the doc shell) whose iframe renders the **live app through a

@@ -20,6 +20,12 @@ import {
   pageEntry
 } from './lib/page-url.js';
 import { boardRefs } from './lib/board-refs.js';
+import {
+  expandIncludeRefs,
+  wrapCompStage,
+  wrapFragmentForLibrary,
+  wrapPhoneShell
+} from '../lib/frame-shell.js';
 
 export function loadFailHtml(msg) {
   return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';
@@ -29,70 +35,29 @@ function screenErrorHtml(pageId, screenId, err) {
   return loadFailHtml('加载 ' + pageId + '/' + screenId + ' 失败 · ' + err);
 }
 
-function parseIncludeRef(ref) {
-  var m = String(ref || '').trim().match(/^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/);
-  return m ? { component: m[1], variant: m[2] } : null;
-}
-
 function fetchIncludeHtml(ref) {
-  var parsed = parseIncludeRef(ref);
-  if (!parsed) return Promise.resolve({ ok: false, err: 'bad ref' });
   // 失败不走缓存（fetchQuery reject，query 不留 data）——下次装载自然重试；
   // 组件修复经 SSE invalidate 后同样重拉。
+  var parsed = ref.split('/');
   return queryClient.fetchQuery({
-    queryKey: ['include', parsed.component, parsed.variant],
+    queryKey: ['include', parsed[0], parsed[1]],
     queryFn: function () {
-      return fetch('kits/ios/components/' + parsed.component + '/' + parsed.variant + '.html')
+      return fetch('kits/ios/components/' + ref + '.html')
         .then(function (r) {
           if (!r.ok) throw r.status;
           return r.text();
-        })
-        .then(function (html) { return { ok: true, html: html }; });
+        });
     }
-  }).catch(function (e) {
-    return { ok: false, err: e };
   });
 }
 
 /** Expand <div data-ios-include="comp/variant" data-text="…"> placeholders. */
 function resolveIncludes(html) {
-  var re = /<([a-zA-Z0-9]+)([^>]*?)\bdata-ios-include=(["'])([^"']+)\3([^>]*)>(?:\s*<\/\1>)?/gi;
-  var refs = [];
-  var m;
-  while ((m = re.exec(html))) {
-    if (refs.indexOf(m[4]) < 0) refs.push(m[4]);
-  }
-  if (!refs.length) return Promise.resolve(html);
-  return Promise.all(refs.map(function (ref) {
-    return fetchIncludeHtml(ref).then(function (res) { return { ref: ref, res: res }; });
-  })).then(function (rows) {
-    var byRef = {};
-    rows.forEach(function (row) { byRef[row.ref] = row.res; });
-    return html.replace(re, function (full, tag, pre, q, ref, post) {
-      var attrs = (pre || '') + (post || '');
-      var fetched = byRef[ref];
-      if (!fetched || !fetched.ok) {
-        return '<div class="wb-screen-err">include 失败 · ' + escHtml(ref) + '</div>';
-      }
-      var frag = fetched.html.trim();
-      frag = applyIncludeSlots(frag, attrs);
-      // Mark include root for annotate → component source routing
-      if (/^<([a-zA-Z0-9]+)/.test(frag)) {
-        frag = frag.replace(/^<([a-zA-Z0-9]+)/, '<$1 data-ios-from="' + ref + '"');
-      }
-      return frag;
-    });
-  });
-}
-
-function wrapFragmentForLibrary(html) {
-  var t = (html || '').trim();
-  if (!t) return '<div class="ios-app"><div class="ios-page"></div></div>';
-  if (/\bios-app\b/.test(t) || /\bios-lockscreen\b/.test(t)) return t;
-  return '<div class="ios-app" style="display:flex;flex-direction:column">' +
-    '<div class="ios-page" style="flex:1;display:flex;flex-direction:column;gap:10px;justify-content:center">' +
-    t +
-    '</div></div>';
+  // 展开算法收编到 lib/frame-shell.js（与 /api/frame 嵌入页、导出烤图共享同一份
+  // 机壳不变量）；这里只注入 client 侧 fetch loader 与 slot 应用。
+  return expandIncludeRefs(html, function (parsed) {
+    return fetchIncludeHtml(parsed.component + '/' + parsed.variant).catch(function () { return null; });
+  }, applyIncludeSlots);
 }
 
 function docFrameHtml(url, title) {
@@ -144,49 +109,6 @@ export function fetchScreenHtml(pageId, screen) {
       });
     })
     .catch(function (e) { return { ok: false, err: e }; });
-}
-
-/** True if the fragment already includes phone chrome (legacy full-shell files). */
-function looksPhoneWrapped(html) {
-  return /\bios-stage\b/.test(html) || /\bios-device\b/.test(html);
-}
-
-/**
- * Wrap screen body in shared phone chrome.
- * Agent writes only in-screen content; loader owns stage/device/bezel/statusbar/home.
- * shell: "app" (default) | "lock"
- */
-function wrapPhoneShell(bodyHtml, shell) {
-  if (looksPhoneWrapped(bodyHtml)) return bodyHtml;
-  var screenClass = shell === 'lock' ? 'ios-screen ios-lock' : 'ios-screen';
-  return (
-    '<div class="ios-stage">' +
-      '<div class="ios-root screen-only" data-device="iphone-16-pro" data-theme="light">' +
-        '<div class="ios-device">' +
-          '<span class="ios-key act"></span><span class="ios-key vup"></span>' +
-          '<span class="ios-key vdn"></span><span class="ios-key pwr"></span>' +
-          '<div class="ios-bezel"><div class="' + screenClass + '">' +
-            '<div class="ios-island"></div>' +
-            '<div class="ios-statusbar"><span class="ios-sb-time"></span><span class="ios-sb-icons"></span></div>' +
-            bodyHtml +
-            '<div class="ios-home"></div>' +
-          '</div></div>' +
-        '</div>' +
-      '</div>' +
-    '</div>'
-  );
-}
-
-/** Component Library: light board, no phone chrome. Still uses .ios-root for tokens/theme. */
-function wrapCompStage(bodyHtml) {
-  if (looksPhoneWrapped(bodyHtml)) return bodyHtml;
-  return (
-    '<div class="wb-comp-stage">' +
-      '<div class="ios-root" data-theme="light">' +
-        bodyHtml +
-      '</div>' +
-    '</div>'
-  );
 }
 
 /** HTML board: a standalone document artboard (iframe inside). */
