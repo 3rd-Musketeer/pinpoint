@@ -40,15 +40,18 @@
   .wb.wb-side-collapsed .wb-side {
     width:0; opacity:0; pointer-events:none; border:0;
   }
-  /* 右栏 = 标注工作台（decisions 2026-08-14 左右分工）：308px 固定宽，
-     可整栏折叠（wb-ann-collapsed，boot-prefs setAnnPanelCollapsed），
-     画布右缘浮钮 .wb-rail-r 复开。 */
+  /* 右栏 = 标注工作台（decisions 2026-08-14 左右分工；2026-08-16 V2 宽度适配）：
+     宽吃 --wb-ann-w（260–440 拖拽、默认 308，右 splitter #wbannsplit，
+     boot-prefs applyAnnWidth），过 280 断点进紧凑态（#wbann-side.compact，
+     规则见下方卡片皮肤块尾）；可整栏折叠（wb-ann-collapsed，
+     boot-prefs setAnnPanelCollapsed），画布右缘浮钮 .wb-rail-r 复开。 */
   .wb-ann-side {
-    width:308px; flex:none; background:var(--wb-surface);
+    width:var(--wb-ann-w, 308px); flex:none; background:var(--wb-surface);
     border-left:1px solid color-mix(in srgb, var(--wb-accent) 16%, transparent);
     display:flex; flex-direction:column; min-width:0; overflow:hidden;
     transition: width var(--wb-dur) var(--wb-ease), opacity var(--wb-dur) var(--wb-ease);
   }
+  body.wb-resizing .wb-ann-side { transition:none; }
   .wb.wb-ann-collapsed .wb-ann-side {
     width:0; opacity:0; pointer-events:none; border:0;
   }
@@ -60,16 +63,27 @@
     content:''; position:absolute; top:0; bottom:0; left:50%; transform:translateX(-50%);
     width:1px; background:color-mix(in srgb, var(--wb-accent) 16%, transparent); transition:width .12s var(--wb-ease), background .12s var(--wb-ease);
   }
-  .wb-splitter:hover::after, .wb-splitter.on::after, body.wb-resizing .wb-splitter::after {
+  /* 两条 splitter（#wbsplit 左栏 / #wbannsplit 右栏）：高亮只跟活动条
+     （.on 在拖拽 mousedown 起就打上），折叠加宽条按侧各自作用域。 */
+  .wb-splitter:hover::after, .wb-splitter.on::after {
     width:3px; background:color-mix(in srgb,var(--wb-accent) 40%,var(--wb-line));
   }
-  .wb.wb-side-collapsed .wb-splitter {
+  .wb.wb-side-collapsed #wbsplit {
     width:14px; margin:0; cursor:pointer;
   }
-  .wb.wb-side-collapsed .wb-splitter::after {
+  .wb.wb-side-collapsed #wbsplit::after {
     width:2px; background:color-mix(in srgb,var(--wb-accent) 35%,var(--wb-line));
   }
-  .wb.wb-side-collapsed .wb-splitter:hover::after {
+  .wb.wb-side-collapsed #wbsplit:hover::after {
+    width:3px; background:var(--wb-accent);
+  }
+  .wb.wb-ann-collapsed #wbannsplit {
+    width:14px; margin:0; cursor:pointer;
+  }
+  .wb.wb-ann-collapsed #wbannsplit::after {
+    width:2px; background:color-mix(in srgb,var(--wb-accent) 35%,var(--wb-line));
+  }
+  .wb.wb-ann-collapsed #wbannsplit:hover::after {
     width:3px; background:var(--wb-accent);
   }
   body.wb-resizing { cursor:col-resize; user-select:none; }
@@ -238,6 +252,19 @@
   #wbann-side #wbann-list .wb-ann-item--broken .wb-ann-cap { color:var(--wb-faint); }
   /* 删除钮：hover 浮现，绝对定位右上（mock .adel；不占行内流） */
   #wbann-side #wbann-list .wb-ann-del { position:absolute; right:6px; top:6px; }
+  /* 紧凑断点（2026-08-16 V2，mock .wmock .sb-r.compact）：右栏宽 < 280 时
+     boot-prefs applyAnnWidth 给 #wbann-side 打 compact —— 卡片行收单行
+     （垂直居中、藏 cap 元素路径、评论文本从 2 行 clamp 变单行 truncate），
+     底栏「画布批注」dropdown 收成 图标+值（藏 .wb-ann-bubble-lbl 文案）。
+     只叠在 workbench 右栏：共享行样式 lib/ann-list.css 与 client 侧栏 /
+     扩展 panel 消费端不动。 */
+  #wbann-side.compact #wbann-list .wb-ann-item-main { align-items:center; padding:7px 9px; }
+  #wbann-side.compact #wbann-list .wb-ann-num { margin-top:0; }
+  #wbann-side.compact #wbann-list .wb-ann-cap { display:none; }
+  #wbann-side.compact #wbann-list .wb-ann-text { -webkit-line-clamp:1; }
+  #wbann-side.compact #wbann-bubble { justify-content:center; gap:5px; }
+  #wbann-side.compact #wbann-bubble .wb-ann-bubble-lbl { display:none; }
+  #wbann-side.compact #wbann-bubble .wb-ann-bubble-v { margin-left:0; }
   .wb-ico {
     width:14px; height:14px; flex:none; display:block; aspect-ratio:1;
   }
@@ -799,7 +826,9 @@
     <div id="wbexport-picker" data-ann-ui></div>
   </div>
 
-  <!-- React 挂载点：右栏标注工作台由 workbench/app/AnnPanel.jsx 渲染（2026-08-15 左右分工） -->
+  <!-- React 挂载点：右栏标注工作台由 workbench/app/AnnPanel.jsx 渲染（2026-08-15 左右分工）；
+       前置 splitter #wbannsplit = 右栏宽度拖拽（2026-08-16 V2，镜像 #wbsplit） -->
+  <button type="button" class="wb-splitter" id="wbannsplit" role="separator" aria-orientation="vertical" aria-label="调整标注面板宽度" aria-valuemin="260" aria-valuemax="440" aria-valuenow="308" title="拖动调整宽度 · 双击复位默认宽度"></button>
   <aside class="wb-ann-side" id="wbann-side" data-ann-ui></aside>
 </div>
 

@@ -246,7 +246,8 @@ export function AnnPanel() {
             <button type="button" id="wbann-bubble" title="画布批注显示方式"
               className="wb-ann-bubble-btn flex w-full cursor-pointer items-center gap-[7px] rounded-md border-0 bg-transparent px-2 py-[6px] text-left font-sans text-[11.5px] font-medium text-[color:color-mix(in_srgb,var(--wb-accent)_65%,#54687f)] transition-[color,background-color] duration-150 hover:bg-[color-mix(in_srgb,var(--wb-accent)_5%,var(--wb-surface))]">
               <WbIcon name="message" size={13} className="size-[13px] flex-none" />
-              画布批注
+              {/* 文案单独成 span：紧凑态（#wbann-side.compact，宽 <280）藏掉留 图标+值 */}
+              <span className="wb-ann-bubble-lbl">画布批注</span>
               <span className="wb-ann-bubble-v ml-auto text-[11px] font-semibold text-[var(--wb-accent)]" id="wbann-bubble-v">{bubbleLabel}</span>
               <WbIcon name="chevron-up" size={10} className="size-2.5 flex-none opacity-60" />
             </button>

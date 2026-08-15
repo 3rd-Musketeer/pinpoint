@@ -26,6 +26,25 @@ async function pickBubbleMode(page, mode) {
   await page.locator('#wbann-bubble-' + mode).click();
 }
 
+// 右栏宽度适配（2026-08-16 V2）：#wbannsplit 在 stage 与右栏之间，左拖 = 变宽。
+async function annPanelWidth(page) {
+  return page.locator('#wbann-side').evaluate((el) => Math.round(el.getBoundingClientRect().width));
+}
+
+async function dragAnnSplitter(page, dx) {
+  const box = await page.locator('#wbannsplit').boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + dx, cy, { steps: 12 });
+  await page.mouse.up();
+}
+
+async function readWbPrefs(page) {
+  return page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')));
+}
+
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');
@@ -1538,4 +1557,110 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await expect(page.locator('#wbann-clear')).toHaveText('清空标注');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
+test('right splitter drags the annotation panel within 260–440, with keyboard steps', async ({ page }) => {
+  await openWorkbench(page);
+  const panel = page.locator('#wbann-side');
+  const split = page.locator('#wbannsplit');
+  await expect(panel).toBeVisible();
+  expect(await annPanelWidth(page)).toBe(308);
+  await expect(split).toHaveAttribute('aria-valuemin', '260');
+  await expect(split).toHaveAttribute('aria-valuemax', '440');
+  await expect(split).toHaveAttribute('aria-valuenow', '308');
+
+  // 左拖 = 变宽（右栏锚右缘）：308 + 200 = 508 → clamp 440
+  await dragAnnSplitter(page, -200);
+  expect(await annPanelWidth(page)).toBe(440);
+  await expect(split).toHaveAttribute('aria-valuenow', '440');
+
+  // 右拖 400：440 - 400 = 40 → clamp 260，落盘偏好同步
+  await dragAnnSplitter(page, 400);
+  expect(await annPanelWidth(page)).toBe(260);
+  await expect(split).toHaveAttribute('aria-valuenow', '260');
+  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
+
+  // 键盘：ArrowLeft = 变宽 16，Shift+ArrowLeft = 40；ArrowRight = 收窄
+  await split.focus();
+  await page.keyboard.press('ArrowLeft');
+  await expect.poll(() => annPanelWidth(page)).toBe(276);
+  await page.keyboard.press('Shift+ArrowLeft');
+  await expect.poll(() => annPanelWidth(page)).toBe(316);
+  await page.keyboard.press('ArrowRight');
+  await expect.poll(() => annPanelWidth(page)).toBe(300);
+  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(300);
+});
+
+test('annotation panel crosses the 280 compact breakpoint both ways', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'compact breakpoint mark');
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
+
+  const panel = page.locator('#wbann-side');
+  const cap = page.locator('#wbann-list .wb-ann-cap');
+  const bubbleLabel = page.locator('#wbann-bubble .wb-ann-bubble-lbl');
+  const textLineClamp = () => page.evaluate(
+    () => getComputedStyle(document.querySelector('#wbann-list .wb-ann-text')).webkitLineClamp
+  );
+  await expect(panel).not.toHaveClass(/compact/);
+  await expect(cap).toBeVisible();
+  await expect(bubbleLabel).toBeVisible();
+  await expect.poll(textLineClamp).toBe('2');
+
+  // 308 → 右拖 40 = 268 < 280：藏 cap、文本单行 truncate、dropdown 藏「画布批注」文案
+  await dragAnnSplitter(page, 40);
+  expect(await annPanelWidth(page)).toBe(268);
+  await expect(panel).toHaveClass(/compact/);
+  await expect(cap).toBeHidden();
+  await expect(bubbleLabel).toBeHidden();
+  await expect(page.locator('#wbann-bubble-v')).toBeVisible();
+  await expect.poll(textLineClamp).toBe('1');
+
+  // 拖回 ≥280 自动恢复
+  await dragAnnSplitter(page, -80);
+  expect(await annPanelWidth(page)).toBe(348);
+  await expect(panel).not.toHaveClass(/compact/);
+  await expect(cap).toBeVisible();
+  await expect(bubbleLabel).toBeVisible();
+  await expect.poll(textLineClamp).toBe('2');
+
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
+test('double-clicking the right splitter resets the panel to the 308 default', async ({ page }) => {
+  await openWorkbench(page);
+  await dragAnnSplitter(page, -120);
+  expect(await annPanelWidth(page)).toBe(428);
+  await page.locator('#wbannsplit').dblclick();
+  await expect.poll(() => annPanelWidth(page)).toBe(308);
+  await expect(page.locator('#wbannsplit')).toHaveAttribute('aria-valuenow', '308');
+  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(308);
+});
+
+test('annotation panel width preference survives a reload', async ({ page }) => {
+  await openWorkbench(page);
+  await dragAnnSplitter(page, -72);
+  expect(await annPanelWidth(page)).toBe(380);
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await expect.poll(() => annPanelWidth(page)).toBe(380);
+  await expect(page.locator('#wbannsplit')).toHaveAttribute('aria-valuenow', '380');
+});
+
+test('dragging the right splitter while collapsed expands the panel and follows the pointer', async ({ page }) => {
+  await openWorkbench(page);
+  await page.locator('#wbann-side-toggle').click();
+  await expect(page.locator('#wbann-side')).toBeHidden();
+
+  // 折叠 = 宽 0；左拖 50 → 取消折叠，从 0 跟手 → clamp 260
+  await dragAnnSplitter(page, -50);
+  await expect(page.locator('#wbann-side')).toBeVisible();
+  expect(await annPanelWidth(page)).toBe(260);
+  await expect.poll(async () => (await readWbPrefs(page)).annPanelCollapsed).toBe(false);
+  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
 });

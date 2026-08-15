@@ -28,6 +28,8 @@ export function initBootPrefs(deps) {
 
 var stage = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
+var annSplitEl = document.getElementById('wbannsplit');
+var annSideEl = document.getElementById('wbann-side');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 
 var SIDE_W_MIN = 200;
@@ -39,6 +41,24 @@ export function applySideWidth(px) {
   wbSet({ sideWidth: w });
   document.documentElement.style.setProperty('--wb-side-w', w + 'px');
   if (splitEl) splitEl.setAttribute('aria-valuenow', String(w));
+  return w;
+}
+
+/* 右栏（标注工作台）宽度（2026-08-16 V2 宽度适配，mock .wmock[data-v=v2]）：
+   机制镜像左栏 applySideWidth —— clamp + CSS var + splitter aria-valuenow；
+   另过 280 紧凑断点时给栏面打 compact 类（藏 cap / 文本单行 / 底栏 dropdown
+   收文案，样式在 index.html #wbann-side.compact），拖回 ≥280 自动恢复。 */
+export var ANN_W_MIN = 260;
+export var ANN_W_MAX = 440;
+export var ANN_W_DEFAULT = 308;
+var ANN_W_COMPACT = 280;
+
+export function applyAnnWidth(px) {
+  var w = Math.round(Math.max(ANN_W_MIN, Math.min(ANN_W_MAX, px)));
+  wbSet({ annPanelWidth: w });
+  document.documentElement.style.setProperty('--wb-ann-w', w + 'px');
+  if (annSplitEl) annSplitEl.setAttribute('aria-valuenow', String(w));
+  if (annSideEl) annSideEl.classList.toggle('compact', w < ANN_W_COMPACT);
   return w;
 }
 
@@ -71,6 +91,13 @@ export function setAnnPanelCollapsed(on, options) {
   var collapsed = !!on;
   wbSet({ annPanelCollapsed: collapsed });
   if (wbRoot) wbRoot.classList.toggle('wb-ann-collapsed', collapsed);
+  if (annSplitEl) {
+    annSplitEl.setAttribute(
+      'aria-label',
+      collapsed ? '展开标注面板（点击）或拖动调整宽度' : '调整标注面板宽度（拖动）· 双击复位默认宽度'
+    );
+    annSplitEl.title = collapsed ? '点击展开标注面板 · 拖动可调宽' : '拖动调整宽度 · 双击复位默认宽度';
+  }
   if (options.save) savePrefs({ annPanelCollapsed: collapsed });
   if (options.refit !== false) {
     requestAnimationFrame(function () { refit(); });
@@ -318,6 +345,7 @@ export function applyBootPrefs(prefs, options) {
 
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);
+    applyAnnWidth(prefs.annPanelWidth || ANN_W_DEFAULT);
     setSideCollapsed(!!prefs.sideCollapsed, { save: false, refit: false });
     setAnnPanelCollapsed(!!prefs.annPanelCollapsed, { save: false, refit: false });
   }

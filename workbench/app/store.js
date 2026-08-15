@@ -12,6 +12,7 @@ export const useWorkbenchStore = create((set) => ({
   sideCollapsed: false,
   sideWidth: 250,
   annPanelCollapsed: false,  // 右栏（标注工作台）整栏折叠，decisions 2026-08-14
+  annPanelWidth: 308,        // 右栏宽度（2026-08-16 V2：260–440 拖拽，boot-prefs applyAnnWidth 写）
   // board + pages
   boardMode: 'ios',
   activePageId: null,

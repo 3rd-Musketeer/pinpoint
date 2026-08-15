@@ -346,7 +346,7 @@ render browser, and `stripAnnotateBootstrap` removes the injected snippet (inclu
 
 ## Workbench UX (prefs)
 
-- **Sidebars**: left panel collapses via header toggle / stage-left rail (`#wbside-expand`) / splitter (click when collapsed, dblclick to collapse); right annotation panel collapses via its head toggle / stage-right rail (`#wbann-expand`, carries the count pin). Prefs: `sideCollapsed`, `sideWidth`, `annPanelCollapsed`.
+- **Sidebars**: left panel collapses via header toggle / stage-left rail (`#wbside-expand`) / splitter (click when collapsed, dblclick to collapse); right annotation panel collapses via its head toggle / stage-right rail (`#wbann-expand`, carries the count pin) and resizes via its own splitter (`#wbannsplit`, 260–440, default 308, dblclick resets; below 280 the panel flips to compact rows — hidden cap, single-line text, icon-only footer dropdown). Prefs: `sideCollapsed`, `sideWidth`, `annPanelCollapsed`, `annPanelWidth`.
 - **Viewport**: per-page `pageViewports[pageId]` stores scroll + zoom (zoom single-source; no top-level `canvasZoom`).
 - **Stage pan**: Space+drag or middle-button drag anywhere; left-drag only on empty board chrome (not inside `.ios-stage` / `.wb-comp-stage`) so frame clicks/scrolls work.
 - **Canvas toolbar**: always visible at bottom-right; Section Navigator and the layered

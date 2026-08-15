@@ -11,11 +11,13 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-16b | 五阶段 ROADMAP（Web 退役 / Pages 统一 / CLI / 代理 / 文档 mention） | 方向拍定，ROADMAP.md 落盘为阶段地图；Web 连壳退役；文档 mention = 活 DOM + 标注透传，不做冻结 | — | 现行（阶段 2–5 实现中） |
+| 2026-08-16 | 侧栏宽度策略 | V2：右栏 260–440 拖拽 + 280 紧凑断点 + 双击复位 + 持久化；rail 档 / 自动让位不做 | — | 现行（已落地） |
 | 2026-08-15d | 导出 picker 收敛 | 任意多选（单张直出 PNG / 多张 zip）；PNG 2× 固定；预览两栏（选中几帧预览几帧）；图纸内容永随；批注烘焙缓期进 backlog | — | 现行（批注档缓期） |
 | 2026-08-15c | 左栏加大纲 + 层次形态 | 大纲（section → frame 树 + 计数徽标 + 点击定位）；层次 = 延伸线结构（V2） | 修订 08-15b（左栏内容） | 现行 |
 | 2026-08-15b | REV 机制要不要做 | 缓期进 backlog（痛点未证实），设计储备留体验板 | 08-15c（左栏内容修订） | 现行 |
 | 2026-08-15 | 图纸版式 / REV 协议 / 文档权威 | A1 引用法；装饰检验；DESIGN.md 正典化进 git；REV 协议 | 08-15b（REV 及其展示面缓期） | 部分缓期（图注 / 装饰检验 / 文档权威现行） |
-| 2026-08-14 | 侧栏形态 + 设计语言 V2 | 左右分工（左上下文 / 右标注工作台）；钢灰蓝 #5b7fa6 + S3 圆角 + 双线网格 | — | 现行（实现中） |
+| 2026-08-14 | 侧栏形态 + 设计语言 V2 | 左右分工（左上下文 / 右标注工作台）；钢灰蓝 #5b7fa6 + S3 圆角 + 双线网格 | — | 现行 |
 | 2026-08-13 | 设计语言 token 锚定 | Steel Blue accent + 画布点阵 + 语义色收编 + 结构缝回调 | 08-14（accent 值、网格人格）、08-15（纹理入口进设置） | 部分被取代（语义色 / 结构缝 / mono 档仍现行） |
 | 2026-08-11b | 扩展标注面板形态 | Chrome Side Panel + 点击必达 + 陈旧自愈 | — | 现行 |
 | 2026-08-11 | 审美锚 | 扁平 / Linear 风 / 单 light 主题 | 08-13（accent 值与功能色微调） | 部分被取代（准则本体仍现行） |
@@ -28,6 +30,23 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-16b · 五阶段 ROADMAP：Web 退役 + Pages 统一 + CLI / 代理 / 文档 mention 方向
+
+**Decided**（owner 2026-08-16 讨论定稿；`ROADMAP.md` 落盘为阶段地图，goal 驱动执行）:
+
+- **Web 模式连壳退役**：它从不是模式，只是「无机壳的画板」；存量内容在 doc 壳下都有更好的家（variants 板 → 整页 doc；服务器目录/页面 → doc iframe 1:1）。模式 Seg 退役，Pages 统一为单一列表 + 行内壳标记；壳仍是页/帧属性。真边界不是 iOS / Web / HTML，而是**画布（迭代态）/ 文档（表达态）**两形态。桌面 web 原型需求真出现时按 web-kit 哲学重建。
+- **CLI 注册入口心智**：想让一个页面进 pinpoint 就用 CLI；静态的 pinpoint 直接 host（/sites/ 管道），活的登记 URL 待代理映射。N 个项目小服务器 → 一台总线 + 一张登记表；能标注不是附带福利，是「用 pinpoint host」的全部意义。
+- **live 代理画中画**走同源代理（含 WS 转发），取代 backlog 的「跨域 iframe + postMessage 桥」路线——同源使桥不必要。
+- **文档模式 mention 活 frame**：doc 引用画布 frame → 水合活 DOM（可交互，同一份 fragment）；**标注双向透传**——标注绑定对象（frame + 内部锚点）不绑定视图，同一份存储、两处渲染、实时同步；文档导出时 frame 烤静态图；不做冻结/REV。
+- **阶段切分原则**（owner 原话）：每刀按独立价值切，不按实现便利。五阶段与切开理由见 `ROADMAP.md`。
+
+## 2026-08-16 · 侧栏宽度策略（V2 拍定并落地）
+
+**Decided**（owner 体验板 V1/V2/V3 可拖 mock 对比后拍板）: 右栏（标注工作台）补 splitter 拖拽，clamp 260–440、默认 308；宽度 <280 进紧凑态（卡片藏 cap、文本单行 truncate、底栏批注 dropdown 收 图标+值），拖回自动恢复；双击 splitter 复位 308；`annPanelWidth` 偏好持久化。左栏维持现状（200–480 + 折叠）。rail 档（56px 图标列）与窗口过窄自动让位：**不做**。
+**Why**: 两栏夹画布挤小中间屏。内容分析结论——左栏 200 是「大纲可读」下限（屏名不足 5 字失去意义），右栏 260 是卡片舒适下限；窄态诉求由紧凑断点 / 折叠接，不由更窄宽度接。V1（min 卡死）做不到「想窄但保留列表」；V3 rail 对树形内容只剩字母、定位语义弱，且左栏窄诉求已被折叠 + 浮钮覆盖。
+**契约**: 体验板 `previews/sidebar-variants/sidebar.html`「侧栏宽度：分析 + 方案」V2 mock（px 读数 chip 是演示道具，真实实现只有 aria-valuenow）。
+**落地**: `boot-prefs.js`（ANN_W_* + applyAnnWidth + compact 类开关）、`stage.js`（#wbannsplit 拖拽/键盘/双击复位，镜像 #wbsplit，左拖 = 变宽）、`index.html`（--wb-ann-w + 紧凑样式 scope `#wbann-side.compact`；共享行 `lib/ann-list.css` 不动）、`AnnPanel.jsx`（dropdown 文案包 `.wb-ann-bubble-lbl`）。e2e 55 → 60，unit 173 持平；活体 16 断言 PASS。
 
 ## 2026-08-15d · 导出 picker 收敛：任意多选 + 预览 + 选项减重
 

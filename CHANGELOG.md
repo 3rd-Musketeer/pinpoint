@@ -8,6 +8,22 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-08-16
+
+### Added
+- **Right annotation panel width adaptation (V2)** — mock
+  `previews/sidebar-variants/sidebar.html` `.wmock[data-v="v2"]`. A second
+  splitter `#wbannsplit` between the stage and `#wbann-side` drags the panel
+  260–440px (default 308; the panel is anchored at the right edge, so dragging
+  left widens). Below 280px the panel flips to compact mode: cards hide the
+  cap (element path) row and clamp the comment text to one truncated line, and
+  the footer「画布批注」dropdown collapses to icon + value; dragging back
+  ≥280 restores. Double-click resets to 308 (not collapse — that is the one
+  asymmetry with the left splitter). The width persists as the new
+  `annPanelWidth` pref; keyboard (Arrow ±16, Shift 40) and `aria-valuenow`
+  mirror the left splitter, and dragging while collapsed expands the panel and
+  follows the pointer.
+
 ## 2026-08-15
 
 ### Changed
