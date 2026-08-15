@@ -111,7 +111,7 @@ export function Panel() {
 
   return (
     <div className="flex h-full flex-col" id="panel-view">
-      <div className="flex items-baseline gap-2 px-3 pb-2 pt-3" id="panel-head">
+      <div className="flex items-baseline gap-2 border-b border-[color:var(--wb-seam)] px-3 pb-2 pt-3" id="panel-head">
         <span className="text-[13px] font-semibold">标注</span>
         <span className="text-[11px] text-[color:var(--wb-faint)]" id="panel-count">
           {doc && !doc.error ? rows.length + ' 条 · ' + pageName : pageName}

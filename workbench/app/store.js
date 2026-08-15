@@ -11,20 +11,23 @@ export const useWorkbenchStore = create((set) => ({
   // sidebar shell
   sideCollapsed: false,
   sideWidth: 250,
-  sectionOpen: { pages: true, annotations: true },
+  annPanelCollapsed: false,  // 右栏（标注工作台）整栏折叠，decisions 2026-08-14
   // board + pages
   boardMode: 'ios',
   activePageId: null,
   pageManifest: null,
   pageManifestError: null,   // manifest 拉取失败信息（侧栏错误行）
   pageNames: {},             // prefs.pageNames — 页面重命名（侧栏显示名）
-  activeBoard: null,        // { pageId, board } — HTML 板的版本切换器要读它
+  activeBoard: null,        // { pageId, board } — HTML 板的版本切换器与左栏大纲都读它
   activeDocId: null,        // HTML 板当前文档版本 screenId（setActiveDoc 写）
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
+  // 大纲行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
+  // focusFrameKey = sectionId + '\0' + screenId；focusAnnN = 最近点开的标注序号
+  focusFrameKey: null,
+  focusAnnN: null,
   // settings view
   settingsOpen: false,
   // annotation panel
-  annFilter: 'all',
   annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）
   // preview chrome
   theme: 'light',
@@ -36,6 +39,10 @@ export const useWorkbenchStore = create((set) => ({
   clockFixed: '9:41',
   // canvas HUD（board-nav 写；CanvasHud 组件读）
   canvasZoom: '1',
+  // 导出 picker 对话框开关（decisions 2026-08-15d 单入口；CanvasHud 写，ExportPicker 读）
+  exportPickerOpen: false,
+  // 画布背景三态（grid 双线网格 / dots 圆点纸 / plain 空白；boot-prefs setStageBg 写）
+  stageBg: 'grid',
   minimapOpen: false,
   minimapAvailable: false,
   sectionNavOpen: false,

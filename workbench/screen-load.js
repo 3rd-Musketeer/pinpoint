@@ -2,6 +2,11 @@
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // P2：screen/include 拉取迁入 TanStack Query（app/query-client.js），手工
 // includeCache/clearIncludeCache 机械删除 —— 失效只由 SSE 桥的 invalidateQueries 驱动。
+// 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
+// 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
+// 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
+// 纯派生自 board 顺序（lib/board-refs.js），不落盘。doc/html 板不套图注（画外语
+// 汇，index.html [data-board-mode="html"] 规则维持隐藏）。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
@@ -14,6 +19,7 @@ import {
   pageBaseUrl,
   pageEntry
 } from './lib/page-url.js';
+import { boardRefs } from './lib/board-refs.js';
 
 export function loadFailHtml(msg) {
   return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';
@@ -214,6 +220,24 @@ function wrapScreenShell(pageId, bodyHtml, shell) {
   return wrapPhoneShell(bodyHtml, shell);
 }
 
+// iPhone 16 Pro 逻辑分辨率（图注尺寸行）——钉值与 kits/ios/ios-kit.css 的
+// --ios-screen-w/--ios-screen-h 同源（唯一 device preset）；读法见 mock 的 .fig .dim。
+var IOS_DEVICE_DIM = '402 × 874';
+
+/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/web/doc 画板是流体尺寸，不出尺寸行。 */
+function isPhoneFrame(pageId, shell) {
+  if (pageId === COMPONENTS_ID) return false;
+  var mode = modeForPage(wbGet().pageManifest, pageId);
+  if (shell === 'doc' || mode === 'html') return false;
+  if (shell === 'web' || mode === 'web') return false;
+  return true;
+}
+
+/** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
+export function frameDimLabel(pageId, shell) {
+  return isPhoneFrame(pageId, shell) ? IOS_DEVICE_DIM : '';
+}
+
 function screenClassForShell(pageId, shell) {
   if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
   if (shell === 'doc' || modeForPage(wbGet().pageManifest, pageId) === 'html') return 'wb-screen wb-screen--doc';
@@ -235,9 +259,13 @@ export function buildBoardHtml(pageId, board, screenMap) {
       '<p class="wb-muted" style="color:var(--wb-muted);font-size:13px;max-width:420px">' + emptyHelp + '</p>' +
       '</article></div></div>';
   }
+  var refs = boardRefs(board);
   var parts = sections.map(function (sec) {
     var layout = sec.layout === 'row' ? 'row' : 'column';
     var screens = sec.screens || [];
+    // 图注引用号（decisions 2026-08-15）：纯派生自 board 顺序，不落盘；
+    // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
+    var secLetter = refs.bySection[sec.id] || '';
     var body = screens.map(function (sc) {
       var key = sc.id;
       var fetched = screenMap[key];
@@ -248,6 +276,14 @@ export function buildBoardHtml(pageId, board, screenMap) {
         inner = screenErrorHtml(pageId, sc.id, fetched ? fetched.err : 'missing');
       }
       var screenCls = screenClassForShell(pageId, sc.shell);
+      var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
+      var capHtml = '<div class="wb-screen-cap">' +
+        (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
+        '<span class="wb-cap-title">' + escHtml(sc.title || '') + '</span>' +
+        '</div>';
+      var dimHtml = isPhoneFrame(pageId, sc.shell)
+        ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
+        : '';
       var note = sc.note || '';
       var noteHtml = '';
       if (!isCompLib) {
@@ -269,8 +305,9 @@ export function buildBoardHtml(pageId, board, screenMap) {
         '</div>';
       }
       return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '">' +
-        '<div class="wb-screen-cap' + (sc.title ? '' : ' wb-screen-cap--empty') + '">' + escHtml(sc.title || '') + '</div>' +
+        capHtml +
         inner +
+        dimHtml +
         noteHtml +
         '</div>';
     }).join('');
@@ -279,7 +316,10 @@ export function buildBoardHtml(pageId, board, screenMap) {
       ' data-ann-section-label="' + escHtml(sec.title || sec.id) + '"' +
       ' data-ann-group="' + escHtml(sec.id) + '"' +
       ' data-ann-group-label="' + escHtml(sec.title || sec.id) + '">' +
-      '<h2 class="wb-lib-cap">' + escHtml(sec.title || sec.id) + '</h2>' +
+      '<h2 class="wb-lib-cap">' +
+        (secLetter ? '<span class="wb-cap-ref wb-cap-ref--section">' + escHtml(secLetter) + '</span>' : '') +
+        escHtml(sec.title || sec.id) +
+      '</h2>' +
       '<div class="wb-sec-body wb-sec-' + layout + '">' + body + '</div>' +
       '</article>';
   });

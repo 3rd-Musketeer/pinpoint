@@ -477,10 +477,11 @@
   function excerpt(el) {
     // section container: use section title, avoid stuffing the whole screen into text
     if (el && el.classList && el.classList.contains('wb-lib-item')) {
+      // 图注带 mono 引用号（2026-08-15）：label 属性与标题同值且不含引用号，优先读它
       var cap = el.querySelector('.wb-lib-cap');
-      var label = (cap && (cap.innerText || cap.textContent)) ||
-        el.getAttribute('data-ann-section-label') ||
+      var label = el.getAttribute('data-ann-section-label') ||
         el.getAttribute('data-ann-group-label') ||
+        (cap && (cap.innerText || cap.textContent)) ||
         el.getAttribute('data-ann-section') ||
         el.getAttribute('data-ann-group') || '';
       return String(label).replace(/\s+/g, ' ').trim().slice(0, 120);
@@ -489,7 +490,10 @@
     if (isFrameNode(el)) {
       var screen = el.closest && el.closest('.wb-screen[data-screen]');
       var scap = screen && screen.querySelector('.wb-screen-cap');
-      var flabel = (scap && (scap.innerText || scap.textContent)) ||
+      // 图注两行结构（2026-08-15）：屏名在 .wb-cap-title，mono 引用号不进标注文案
+      var scapTitle = scap && scap.querySelector('.wb-cap-title');
+      var flabel = (scapTitle && (scapTitle.innerText || scapTitle.textContent)) ||
+        (scap && (scap.innerText || scap.textContent)) ||
         (screen && screen.getAttribute('data-screen')) ||
         (el.classList && el.classList.contains('wb-screen-err') ? 'Error' : '') ||
         'Frame';
@@ -842,7 +846,7 @@
     // [data-ann-ui] 基规则 —— 工具条/composer/气泡/mention/侧栏消费同一套 token（命名与值
     // 跟随 workbench/wb-tokens.css）；钉在注入 UI 根上，宿主页面的同名变量渗不进来。
     // #ann-sidebar 规则上的钉值保留原样：共享行样式入参 + 三向守卫锚点（与本规则同值）。
-    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#007aff;--wb-danger:#ff3b30;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{box-sizing:border-box;}',
     // 悬浮工具条：V4 起从深色毛玻璃收编浮层白面语言（白面 + 发丝描边 + sh-2 + r-4），
     // 按钮 28px 档 ghost（hover 浅面）；武装/on 态琥珀面与侧栏分段、workbench 标注开关同值。
@@ -851,16 +855,16 @@
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
     '#ann-toolbar button.on{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     '#ann-toolbar button[hidden]{display:none;}',
-    '#ann-toolbar button.ok{background:#e8f8ef;color:#1b7a3d;}',
+    '#ann-toolbar button.ok{background:var(--wb-ok-soft,#edf8f1);color:var(--wb-ok,#1d7144);}',
     '#ann-count{font-size:11px;color:var(--wb-muted,#6b6b70);}',
     '#ann-status{font-size:10px;color:var(--wb-faint,#8d8d8d);}',
-    '#ann-status.err{color:var(--wb-danger,#ff3b30);}',
+    '#ann-status.err{color:var(--wb-danger,#b84230);}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
     // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
     // 阶梯圆角 —— 与浮动工具条同一套浮层语言（V4 起工具条/composer 也收编进来）。
     // 本规则上的 --wb-* 钉值是共享行样式（lib/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#ff3b30;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
@@ -924,7 +928,7 @@
     '#ann-box .ann-target-pills{display:flex;flex:1;min-width:0;gap:5px;flex-wrap:wrap;align-items:center;}',
     '#ann-box .ann-target-pill{display:flex;align-items:center;gap:5px;max-width:230px;min-height:25px;padding:4px 6px 4px 8px;border:0;border-radius:999px;background:rgba(245,166,35,.13);color:#8a5a00;font-size:11px;line-height:1.2;cursor:pointer;outline:none;}',
     '#ann-box .ann-target-pill:hover,#ann-box .ann-target-pill:focus-visible{border-color:rgba(245,166,35,.75);background:rgba(245,166,35,.17);}',
-    '#ann-box .ann-target-pill.broken{border-color:color-mix(in srgb,var(--wb-danger,#ff3b30) 28%,transparent);background:color-mix(in srgb,var(--wb-danger,#ff3b30) 7%,transparent);color:var(--wb-danger,#ff3b30);}',
+    '#ann-box .ann-target-pill.broken{border-color:color-mix(in srgb,var(--wb-danger,#b84230) 28%,transparent);background:color-mix(in srgb,var(--wb-danger,#b84230) 7%,transparent);color:var(--wb-danger,#b84230);}',
     '#ann-box .ann-target-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
     '#ann-box .ann-target-remove{position:relative;flex:none;width:17px;height:17px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;background:var(--wb-fill,rgba(0,0,0,.055));color:var(--wb-muted,#6b6b70);opacity:0;pointer-events:none;}',
     '#ann-box .ann-target-remove::after{content:"";position:absolute;inset:-4px;border-radius:50%;}',
@@ -937,13 +941,13 @@
     '#ann-box .ann-drag-handle:hover{background:var(--wb-fill,rgba(0,0,0,.055));color:var(--wb-muted,#6b6b70);}',
     '#ann-box .ann-drag-handle[data-dragging="true"]{cursor:grabbing;background:rgba(245,166,35,.12);color:#8a5a00;}',
     '#ann-box .ann-drag-handle svg{display:block;width:14px;height:14px;pointer-events:none;}',
-    '#ann-box button.dark{background:var(--wb-accent,#007aff);color:var(--wb-surface,#fff);font-weight:var(--wb-w-semibold,600);}',
-    '#ann-box button.dark:hover{background:color-mix(in srgb,var(--wb-accent,#007aff) 90%,transparent);}',
-    '#ann-box button.warn{color:var(--wb-danger,#ff3b30);background:transparent;}',
-    '#ann-box button.warn:hover{background:color-mix(in srgb,var(--wb-danger,#ff3b30) 10%,transparent);color:var(--wb-danger,#ff3b30);}',
+    '#ann-box button.dark{background:var(--wb-accent,#5b7fa6);color:var(--wb-surface,#fff);font-weight:var(--wb-w-semibold,600);}',
+    '#ann-box button.dark:hover{background:color-mix(in srgb,var(--wb-accent,#5b7fa6) 90%,transparent);}',
+    '#ann-box button.warn{color:var(--wb-danger,#b84230);background:transparent;}',
+    '#ann-box button.warn:hover{background:color-mix(in srgb,var(--wb-danger,#b84230) 10%,transparent);color:var(--wb-danger,#b84230);}',
     '#ann-box button:disabled{opacity:.4;cursor:not-allowed;}',
     '#ann-box button:disabled:hover{background:var(--wb-hover,rgba(0,0,0,.04));}',
-    '#ann-box #ann-copy-ind.ok{background:#e8f8ef;color:#1b7a3d;}',
+    '#ann-box #ann-copy-ind.ok{background:var(--wb-ok-soft,#edf8f1);color:var(--wb-ok,#1d7144);}',
     '#ann-box .hint{font-size:10px;color:var(--wb-faint,#8d8d8d);margin-top:6px;}',
     '#ann-box .research-opt{margin-top:8px;font-size:12px;color:var(--wb-muted,#6b6b70);line-height:1.4;}',
     '#ann-box .research-opt label{cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0;}',
@@ -962,7 +966,7 @@
     '.ann-hover-ghost.ann-flash{animation:annFlash 1.5s ease-out}',
     // a11y 基线：注入的每个控件都要有可见 focus 态；reduced-motion 下关掉全部过渡/动画。
     // focus 环与 workbench 全局 catch-all 同式（accent color-mix，V4 起双端一致）。
-    '[data-ann-ui] :is(button,a,input,textarea,select,[tabindex]):focus-visible{outline:2px solid color-mix(in srgb,var(--wb-accent,#007aff) 55%,transparent);outline-offset:1px;}',
+    '[data-ann-ui] :is(button,a,input,textarea,select,[tabindex]):focus-visible{outline:2px solid color-mix(in srgb,var(--wb-accent,#5b7fa6) 55%,transparent);outline-offset:1px;}',
     '@media (prefers-reduced-motion: reduce){[data-ann-ui],[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{transition:none !important;animation:none !important;}}',
     // mention 空态不渲染盒子 Chrome —— 带边框阴影的空态看起来像坏掉的输入框。
     '#ann-mention:has(.ann-men-empty){min-width:0;border:0;box-shadow:none;background:transparent;}',
@@ -1752,7 +1756,7 @@
     if (flowSelf) label = '';
     var moveInfo = m.move ? '<div class="t" style="-webkit-line-clamp:1;margin-bottom:8px">↗ 已画移动箭头 → ' + ((m.move.to_text || '').slice(0, 30) || '空白处') + '</div>' : '';
     var brokenInfo = broken
-      ? '<div class="t" style="color:var(--wb-danger,#ff3b30);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
+      ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
       : '';
     var res = m.research || null;
     var changeOn = !!m.changeTo;

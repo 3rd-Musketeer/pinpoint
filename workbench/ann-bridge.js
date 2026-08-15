@@ -67,6 +67,9 @@ export function syncAnnSnap() {
     row.key = (m.section || m.group || '_') + '|' + m.n;
     row.group = m.section || m.group || '_';
     row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
+    // screenId 供左栏大纲计数徽标与右栏按 frame 分组消费（2026-08-15 侧栏重构）；
+    // 引用号/屏名不落行模型 —— 渲染侧从 activeBoard 纯派生（lib/board-refs.js）。
+    row.screenId = m.screenId || '';
     return row;
   });
   wbSet({

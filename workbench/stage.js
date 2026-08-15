@@ -57,11 +57,11 @@ import {
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
 
-// activePageId / boardMode / pageManifest / activeBoard / activeGroup / sectionOpen / annFilter / sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
+// activePageId / boardMode / pageManifest / activeBoard / activeGroup / focusFrameKey /
+// sideWidth / sideCollapsed / annPanelCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
 var stage  = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
-var sideExpandBtn = document.getElementById('wbside-expand');
 var boardPanel;
 var mountManager = new BoardMountManager();
 
@@ -273,11 +273,8 @@ if (splitEl) {
   });
 }
 
-if (sideExpandBtn) {
-  sideExpandBtn.addEventListener('click', function () {
-    setSideCollapsed(false, { save: true });
-  });
-}
+/* 折叠浮钮已 React 化（app/CanvasHud.jsx StageRails → #wbrails，2026-08-15），
+   此处的命令式句柄随之退役。 */
 
 stage.addEventListener('wheel', function (e) {
   if (!e.ctrlKey && !e.metaKey) return;

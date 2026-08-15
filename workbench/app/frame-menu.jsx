@@ -18,14 +18,15 @@
 // 创建，本模块登记 roots；sweepFrameMenus() 卸载 shell 已游离（板面重建）的 root，
 // 防止 DismissableLayer 的 document 监听泄漏。命令式层经 initExportCore(deps)
 // 拿到这两个函数（app → 命令式 的 import 方向不变，本文件不 import export-core）。
+// 2026-08-15d 收敛：菜单里的「导出图片…」入口已随旧导出对话框退役（图片导出
+// 唯一入口 = HUD「导出」→ ExportPicker.jsx），菜单本体保留（复制 @frame 等）。
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { wbGet } from './store.js';
 import { Button } from './ui/button.jsx';
-import { WbIcon } from './WbIcon.jsx';
 
-// 菜单项皮肤（两项同款）：12px semibold 行，hover/focus 走 --wb-hover 浅面
+// 菜单项皮肤：12px semibold 行，hover/focus 走 --wb-hover 浅面
 var MENU_ITEM =
   'flex min-h-[34px] w-full cursor-pointer items-center gap-[9px] rounded-lg border-0 ' +
   'bg-transparent px-[9px] text-left font-sans text-[12px] font-semibold text-foreground ' +
@@ -61,18 +62,6 @@ function FrameMenu(props) {
       <DropdownMenu.Content asChild>
         <span role="menu" tabIndex={-1}
           className="wb-frame-menu absolute right-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
-          <DropdownMenu.Item asChild onSelect={function () {
-            // 让菜单先走完关闭再开导出对话框：showModal 记住打开前的焦点元素，
-            // Esc 关对话框后的原生还原才落得到 trigger 上。Radix FocusScope 的
-            // 关后焦点还原本身排在 setTimeout(0)（react-focus-scope 卸载清理），
-            // 所以这里嵌套一层 —— 内层必排在它之后，顺序是硬保证不是碰运气；
-            // 即便 Radix 改了时序，最坏也只是退回到焦点落 body 的旧行为。
-            setTimeout(function () { setTimeout(function () { props.onExport(); }, 0); }, 0);
-          }}>
-            <button type="button" className={'wb-frame-menu-item ' + MENU_ITEM} role="menuitem" data-frame-export>
-              <WbIcon name="export-image" size={15} className="size-[15px]" /><span>导出图片…</span>
-            </button>
-          </DropdownMenu.Item>
           <DropdownMenu.Item asChild onSelect={function (event) { event.preventDefault(); copyFrameRef(); }}>
             <button type="button" className={'wb-frame-menu-item ' + MENU_ITEM} role="menuitem" data-frame-copy>
               <span aria-hidden="true" className="w-[15px] text-center text-muted-foreground">@</span>
@@ -87,7 +76,7 @@ function FrameMenu(props) {
 
 export function mountFrameMenu(shell, options) {
   var root = createRoot(shell);
-  root.render(<FrameMenu screenId={options.screenId} onExport={options.onExport} />);
+  root.render(<FrameMenu screenId={options.screenId} />);
   mounted.push({ shell: shell, root: root });
 }
 

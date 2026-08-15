@@ -32,15 +32,6 @@ var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var libraryScrollHandler;
 var activeDocByPage = {};    // pageId → screenId，切页回来记得上次看的版本
 
-// 段开合：class/aria 由 Sidebar 的 Section 组件从 store 派生，这里只写状态 + 持久化
-export function setSectionOpen(name, open, options) {
-  options = options || {};
-  var sectionOpen = Object.assign({}, wbGet().sectionOpen);
-  sectionOpen[name] = !!open;
-  wbSet({ sectionOpen: sectionOpen });
-  if (options.save !== false) savePrefs({ sectionOpen: wbGet().sectionOpen });
-}
-
 export function scrollToGroup(groupId, options) {
   options = options || {};
   wbSet({ activeGroup: groupId });
@@ -87,16 +78,10 @@ export function wireLibraryScrollSpy() {
       if (best && best !== wbGet().activeGroup) {
         wbSet({ activeGroup: best });
         updateSectionNavigatorActive(best);
-        if (wbGet().annFilter === 'tab') scheduleAnnSnap();
       }
     });
   };
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
-}
-
-/** 标注面板（app/AnnPanel.jsx）切到 tab 过滤时要重跑一次当前 spy handler。 */
-export function getLibraryScrollHandler() {
-  return libraryScrollHandler;
 }
 
 // ios = 手机原型（fragment + 机身 chrome）
@@ -316,7 +301,7 @@ export function setActivePage(pageId, options) {
   if (!same && pagesDeps.mountManager.current && pagesDeps.mountManager.current.active && pagesDeps.mountManager.current.pageId === wbGet().activePageId) {
     snapshotPageViewport(wbGet().activePageId);
   }
-  wbSet({ activePageId: pageId });
+  wbSet({ activePageId: pageId, focusFrameKey: null, focusAnnN: null });
   var nextMode = modeForPage(wbGet().pageManifest, pageId);
   wbSet({ boardMode: nextMode });
   syncBoardModeUi(nextMode);

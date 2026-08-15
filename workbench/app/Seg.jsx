@@ -1,6 +1,6 @@
 // 分段控件共享配方（goal-20260811-workbench-visual-rebuild）— V1 私有在
-// SettingsView.jsx，V2 侧栏/footer 分段（#wbboard-mode/#wbann-mode/#wbann-filter/
-// #wbtheme）是第二处使用，提上 app/ 共享（app/ui/ 只放 shadcn 复制件，本模块是
+// SettingsView.jsx，V2 侧栏/footer 分段（#wbboard-mode / #wbtheme / 设置视图各组）
+// 是第二处使用，提上 app/ 共享（app/ui/ 只放 shadcn 复制件，本模块是
 // 产品配方层）：
 //  - 密度 28px 档：分段项 h-6 + 容器 2px 内衬 = 28px；
 //  - 容器 --wb-fill 面（bg-muted）+ rounded-md；项 rounded-sm 与内衬同心；
@@ -14,8 +14,8 @@
 // options = [[value, label, itemExtras?]]：label 可以是 React 节点（图标+文字）；
 // itemExtras 透传 ToggleGroupItem（id / title / className / onClick …）。
 // 选中项补 'on' class（e2e 的 toHaveClass(/on/) 契约）。dataAttr = 该项组的
-// data-* 契约名（逐组不同）。需要「点同一项再切回」语义的组（#wbann-mode）不走
-// Seg.onPick，改用 itemExtras.onClick 保持旧语义（见 AnnPanel）。
+// data-* 契约名（逐组不同）。（2026-08-15：标注区双分段 #wbann-mode/#wbann-filter
+// 随右栏重构退役 —— 模式改单钮 #wbann-toggle，筛选删除，decisions 08-14。）
 import { cn } from './lib/utils.js';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.jsx';
 

@@ -10,6 +10,7 @@ import {
   exportMime,
   validateExportRequest,
 } from './lib/export-contract.js';
+import { zipStore } from './lib/zip-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -57,7 +58,6 @@ function exportCss(request) {
     #wb-export-content{display:block!important;width:max-content!important;min-width:0!important}
     #wb-export-content>.wb-screen{display:flex!important}
     #wb-export-content>.wb-lib-item{position:relative!important}
-    #wb-export-root .wb-sec-row.wb-export-clean-row{grid-template-rows:auto auto!important}
     #wb-export-root,#wb-export-root *{animation:none!important;transition:none!important;caret-color:transparent!important}
     #wb-export-root [data-export-ui],#wb-export-root .wb-frame-note-edit,#wb-export-root .wb-frame-note-editor{display:none!important}
     #wb-export-root .wb-frame-note-view[hidden]{display:flex!important}
@@ -136,6 +136,61 @@ export function createExportRenderer(options = {}) {
   return { render, close };
 }
 
+function requestOrigin(req) {
+  const protocol = req.headers['x-forwarded-proto'] || 'http';
+  return `${protocol}://${req.headers.host || '127.0.0.1:5199'}`;
+}
+
+function sendExportError(res, error) {
+  const status = error instanceof ExportContractError || error instanceof SyntaxError ? 400 : 500;
+  sendJson(res, status, { error: status === 400 ? 'invalid_export' : 'export_failed', message: String(error && error.message || error) });
+}
+
+async function handleExportImage(req, res, renderer) {
+  const request = validateExportRequest(JSON.parse(await readBody(req)));
+  const result = await renderer.render(request, requestOrigin(req));
+  res.statusCode = 200;
+  res.setHeader('Content-Type', exportMime(request.format));
+  res.setHeader('Content-Disposition', `attachment; filename="${exportFilename(request)}"`);
+  res.setHeader('Content-Length', String(result.buffer.length));
+  res.setHeader('X-Export-Width', String(result.pixelWidth));
+  res.setHeader('X-Export-Height', String(result.pixelHeight));
+  res.end(result.buffer);
+}
+
+// 多张打包（decisions 2026-08-15d）：收 snapshot 数组逐张渲染，store-only zip 回传。
+// 逐张串行渲染 —— 共享同一个 headless browser，避免一次性开 N 个 context。
+async function handleExportZip(req, res, renderer) {
+  const raw = JSON.parse(await readBody(req, 64 * 1024 * 1024));
+  const list = raw && Array.isArray(raw.entries) ? raw.entries : null;
+  if (!list || list.length < 2) throw new ExportContractError('entries', 'expected at least 2 snapshots');
+  if (list.length > 60) throw new ExportContractError('entries', `too many snapshots (${list.length})`);
+  const requests = list.map((entry) => validateExportRequest(entry));
+  const origin = requestOrigin(req);
+  const files = [];
+  const usedNames = new Set();
+  for (const request of requests) {
+    const result = await renderer.render(request, origin);
+    const base = exportFilename(request);
+    let name = base;
+    let suffix = 2;
+    while (usedNames.has(name)) {
+      name = base.replace(/(\.[a-z0-9]+)$/i, `-${suffix}$1`);
+      suffix += 1;
+    }
+    usedNames.add(name);
+    files.push({ name, data: result.buffer });
+  }
+  const zip = zipStore(files);
+  const zipName = `${requests[0].pageId}__frames@${requests[0].scale}x.zip`.replace(/\//g, '-');
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/zip');
+  res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
+  res.setHeader('Content-Length', String(zip.length));
+  res.setHeader('X-Export-Entries', String(files.length));
+  res.end(zip);
+}
+
 export default function exportImageApi(options = {}) {
   const renderer = options.renderer || createExportRenderer(options);
   return {
@@ -143,22 +198,13 @@ export default function exportImageApi(options = {}) {
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
         const urlPath = (req.url || '').split('?')[0];
-        if (urlPath !== '/api/export-image' || req.method !== 'POST') return next();
+        if (req.method !== 'POST') return next();
         try {
-          const request = validateExportRequest(JSON.parse(await readBody(req)));
-          const protocol = req.headers['x-forwarded-proto'] || 'http';
-          const origin = `${protocol}://${req.headers.host || '127.0.0.1:5199'}`;
-          const result = await renderer.render(request, origin);
-          res.statusCode = 200;
-          res.setHeader('Content-Type', exportMime(request.format));
-          res.setHeader('Content-Disposition', `attachment; filename="${exportFilename(request)}"`);
-          res.setHeader('Content-Length', String(result.buffer.length));
-          res.setHeader('X-Export-Width', String(result.pixelWidth));
-          res.setHeader('X-Export-Height', String(result.pixelHeight));
-          res.end(result.buffer);
+          if (urlPath === '/api/export-image') return await handleExportImage(req, res, renderer);
+          if (urlPath === '/api/export-zip') return await handleExportZip(req, res, renderer);
+          return next();
         } catch (error) {
-          const status = error instanceof ExportContractError || error instanceof SyntaxError ? 400 : 500;
-          sendJson(res, status, { error: status === 400 ? 'invalid_export' : 'export_failed', message: String(error && error.message || error) });
+          sendExportError(res, error);
         }
       });
       server.httpServer?.once('close', () => { renderer.close().catch(() => {}); });

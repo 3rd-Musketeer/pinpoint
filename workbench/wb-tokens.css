@@ -12,11 +12,15 @@
   --wb-muted:#6b6b70; /* 产品调（gray/slate 11 之间，保留原值） */
   --wb-faint:#8d8d8d; /* Radix gray 9（原 iOS systemGray #8e8e93，差 ≤1 档锚定） */
   --wb-line:rgba(0,0,0,.07); /* Radix blackA 粒度太粗（.05/.1/.15），保留产品 alpha */
+  --wb-seam:rgba(0,0,0,.09); /* 结构缝：pane 分界（侧栏 head/footer/段界），≠ 已退役的卡片描边（V5 去线后 2026-08-13 回调，比 --wb-line 强半档） */
   --wb-hover:rgba(0,0,0,.04);
   --wb-fill:rgba(0,0,0,.055);
-  --wb-accent:#007aff; /* iOS 蓝 —— 产品视觉身份，锁定不漂移 */
-  --wb-danger:#ff3b30; /* iOS systemRed —— danger 唯一源（原 #c0392b/#a33/rgba(192,57,43,*) 三写法归并） */
+  --wb-accent:#5b7fa6; /* 钢灰蓝 —— 2026-08-14 owner 决策（V2 评审板），取代 08-13 Steel Blue #1769aa（过深）；chrome 与 iOS kit 内容 #007aff 分色 */
+  --wb-danger:#b84230; /* eval 族降饱和红 —— danger 唯一源（2026-08-13 语义色收编，原 iOS systemRed #ff3b30） */
+  --wb-ok:#1d7144; /* eval 族绿 —— ok/online/已保存唯一源（原 #1b7a3d/#34c759 散字面量收编） */
+  --wb-ok-soft:#edf8f1; /* ok 浅底（eval green-soft 字面量） */
   --wb-stage-bg:#faf8f4; /* 画布暖纸色，产品调 */
+  --wb-stage-dot:rgba(94,79,56,.20); /* 画布「圆点纸」档点阵（背景三态之一；2026-08-13 评审板 C 点阵收编，屏空间固定，落在 .wb-stage-wrap[data-grid=dots]） */
   --wb-surface:#fff; /* chrome 纯白面（选中态/卡面/强调面上的文字）—— shadcn 桥需要时归并的起点 */
 
   /* ── 圆角阶梯（散装 14 档归并；999px/50% 是功能形状，不进阶梯） ── */
@@ -42,6 +46,7 @@
 
   /* ── 字体栈（V1 新增：chrome 文字控件经 Tailwind --font-sans 消费） ── */
   --wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif; /* 产品字体栈，与 index.html body 一致（body 也改指本 token） */
+  --wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace; /* 元数据档（指示器/标签等排障信息）；补 PingFang 兜底防汉字换字 */
 
   /* ── 结构 / 动效 ── */
   --wb-side-w:252px;
@@ -61,7 +66,7 @@
   --card-foreground:var(--wb-fg);
   --popover:var(--wb-side);          /* 浮层面（frame menu / export dialog 现取 --wb-side） */
   --popover-foreground:var(--wb-fg);
-  --primary:var(--wb-accent);        /* #007aff 锁定 */
+  --primary:var(--wb-accent);        /* 钢灰蓝（2026-08-14） */
   --primary-foreground:var(--wb-surface);
   --secondary:var(--wb-fill);        /* 次级面 = 浅填充 */
   --secondary-foreground:var(--wb-fg);

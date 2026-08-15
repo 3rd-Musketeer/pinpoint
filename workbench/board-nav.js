@@ -14,10 +14,9 @@ import {
   measureBoardNavigation
 } from './lib/board-navigation.js';
 
-// 反向依赖注入：跳转后的标注快照刷新由 main.jsx 在 wireCanvasHud(deps) 注入
-// （ann-bridge 的 scheduleAnnSnap；board-nav 不 import app/ 组件）。
-// HUD 缩放按钮由 CanvasHud 组件直接调 boot-prefs 的 setCanvasZoom，不走这里。
-var sectionJumpListener = null; // active group 跳转后：annFilter === 'tab' 时 scheduleAnnSnap()
+// 反向依赖注入已随 annFilter 退役（2026-08-15 侧栏重构）：跳转后不再需要
+// 面板侧刷新回调。HUD 缩放按钮由 CanvasHud 组件直接调 boot-prefs 的
+// setCanvasZoom，不走这里。
 
 var stage = document.getElementById('wbstage');
 
@@ -410,7 +409,6 @@ function jumpSectionNavigatorToGroup(groupId) {
   if (!section || !stage) return;
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
-  if (sectionJumpListener) sectionJumpListener();
   focusStageOnRect(section);
 }
 
@@ -423,8 +421,21 @@ export function focusWorkbenchFrame(groupId, screenId, options) {
   if (!frame || !stage) return false;
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
-  if (sectionJumpListener) sectionJumpListener();
   focusStageOnRect(frame, options);
+  return true;
+}
+
+/* 大纲行点击的 focus 环反馈（decisions 2026-08-15c）：在 frame 机身上闪一圈
+   accent 环（~1.1s CSS 动画），与标注卡 goToMark 的锚点 ann-flash 分工 ——
+   卡定位闪锚点，大纲定位闪整机。 */
+export function flashBoardFrame(groupId, screenId) {
+  var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
+  var node = frame && frame.node;
+  if (!node || !node.classList) return false;
+  node.classList.remove('wb-frame-flash');
+  void node.offsetWidth; // 重启动画（同 mock 的 ind pulse 复位手法）
+  node.classList.add('wb-frame-flash');
+  setTimeout(function () { node.classList.remove('wb-frame-flash'); }, 1200);
   return true;
 }
 
@@ -469,9 +480,7 @@ export function wireSectionNavigator() {
 // React 挂载完成后由 main.jsx 调用一次：HUD/dock DOM 句柄赋值 + 命令式布线
 // （minimap 跳点、section-nav 列表委派、Escape/M 键盘、resize）。缩放与回中
 // 按钮是 CanvasHud 组件的 onClick，不在此列。
-export function wireCanvasHud(deps) {
-  deps = deps || {};
-  sectionJumpListener = deps.onSectionJump || null;
+export function wireCanvasHud() {
   minimapWrap = document.getElementById('wbminimap-wrap');
   minimapEl = document.getElementById('wbminimap');
   minimapCanvas = document.getElementById('wbminimap-canvas');

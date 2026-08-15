@@ -19,6 +19,13 @@ async function saveAnnotation(page, target, comment) {
   await box.locator('#ann-save').click();
 }
 
+// 画布批注三态 dropdown（2026-08-15 右栏底栏，取代旧 评论/通道 双钮）：
+// off = 隐藏批注，inline = 叠在页面，chan = 右侧通道。
+async function pickBubbleMode(page, mode) {
+  await page.locator('#wbann-bubble').click();
+  await page.locator('#wbann-bubble-' + mode).click();
+}
+
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');
@@ -395,7 +402,8 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
   await page.locator('#wbann-toggle').click();
   await expect.poll(async () => (await docState()).mode).toBe(true);
   await expect(page.locator('#wbann-toggle')).toHaveClass(/on/);
-  await expect(page.locator('#wbann-toggle .wb-tool-label')).toHaveText('标注');
+  // 模式单钮（2026-08-15）：标注中 = 实心 accent on 态
+  await expect(page.locator('#wbann-toggle .wb-tool-label')).toHaveText('标注中');
 
   // Prior tests may have left marks on the shared on-disk doc.
   await page.evaluate(() => {
@@ -599,7 +607,8 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
   ))).toBe(2);
 
   // Toggle "render comments" from the sidebar; bubbles must appear in the doc overlay.
-  await page.locator('#wbann-comments').click();
+  // （2026-08-15：旧 #wbann-comments 钮并入「画布批注」dropdown，选「叠在页面」= on）
+  await pickBubbleMode(page, 'inline');
   await expect.poll(() => page.evaluate(() => (
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().renderComments
   ))).toBe(true);
@@ -620,15 +629,16 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
   expect(out.hasContent).toBe(true);
   // Live comment view has no connector lines — numbers match pin badges.
   expect(out.connectorCount).toBe(0);
-  // Sidebar button reflects the on state.
-  await expect(page.locator('#wbann-comments')).toHaveClass(/on/);
+  // Sidebar dropdown reflects the on state.
+  await expect(page.locator('#wbann-bubble-v')).toHaveText('叠在页面');
 
   // Toggling off hides the bubbles.
-  await page.locator('#wbann-comments').click();
+  await pickBubbleMode(page, 'off');
   await expect.poll(() => page.evaluate(() => {
     const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
     return d.querySelectorAll('#ann-bubbles .ann-bubble').length;
   })).toBe(0);
+  await expect(page.locator('#wbann-bubble-v')).toHaveText('隐藏批注');
 });
 
 test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', async ({ page }) => {
@@ -675,13 +685,23 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
-  // Turn on render comments; the channel button must appear in the sidebar.
-  await page.locator('#wbann-comments').click();
-  await expect(page.locator('#wbann-channel')).toBeVisible();
-  await expect(page.locator('#wbann-channel .wb-tool-label')).toHaveText('inline');
+  // Turn on render comments; the bubble dropdown must read 叠在页面 (inline).
+  // （2026-08-15：#wbann-channel 钮并入 dropdown，inline/sidebar 切换走选项）
+  await pickBubbleMode(page, 'inline');
+  await expect(page.locator('#wbann-bubble-v')).toHaveText('叠在页面');
 
   // Force a narrow viewport so the natural margins can't hold a 240px bubble.
   await page.setViewportSize({ width: 1024, height: 800 });
+
+  // 右栏上线后（2026-08-15）iframe 只剩 ~465px 宽，文档回流变高：落点 #s2 时
+  // h1 已滚出视口，其气泡按「离屏即隐藏」规矩不渲染。回到文档顶部让两个锚点
+  // 都在视口内再数气泡。
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    w.document.documentElement.style.scrollBehavior = 'auto';
+    w.document.documentElement.scrollTop = 0;
+  });
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
 
   // inline: bubbles render in the iframe overlay (may overlap text in a narrow window).
   const outInline = await page.evaluate(() => {
@@ -701,7 +721,7 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
   expect(outInline.gutterWrap).toBe(null);
 
   // Toggling 评论 off clears the iframe bubbles.
-  await page.locator('#wbann-comments').click();
+  await pickBubbleMode(page, 'off');
   await expect.poll(() => page.evaluate(() => {
     const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
     return [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden).length;
@@ -750,13 +770,21 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
-  await page.locator('#wbann-comments').click();
-  // Cycle inline → sidebar.
-  await page.locator('#wbann-channel').click();
+  await pickBubbleMode(page, 'inline');
+  // Cycle inline → sidebar（dropdown 选「右侧通道」，client 侧布局名仍叫 sidebar）。
+  await pickBubbleMode(page, 'chan');
   await expect.poll(() => page.evaluate(() => (
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
   ))).toBe('sidebar');
-  await expect(page.locator('#wbann-channel .wb-tool-label')).toHaveText('sidebar');
+  await expect(page.locator('#wbann-bubble-v')).toHaveText('右侧通道');
+
+  // 同 inline 用例：右栏收窄 iframe 后文档回流，先把文档滚回顶部让两个锚点
+  // 都在视口内（离屏锚点的气泡按规矩不渲染）。
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    w.document.documentElement.style.scrollBehavior = 'auto';
+    w.document.documentElement.scrollTop = 0;
+  });
 
   // Give the parent rAF loop a couple frames to render.
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
@@ -803,7 +831,7 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   expect(out.overlap).toBe(0);
 
   // Cycling back to inline stops the gutter and brings iframe bubbles back.
-  await page.locator('#wbann-channel').click();
+  await pickBubbleMode(page, 'inline');
   await expect.poll(() => page.evaluate(() => (
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
   ))).toBe('inline');
@@ -861,50 +889,67 @@ test('interactive frames: inline script (form A) and sidecar mount (form B) resp
   await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
 });
 
-test('Frame export snapshots current state and renders an isolated padded WebP', async ({ page }) => {
+test('Frame export snapshots current state and renders an isolated padded PNG', async ({ page }) => {
   await openWorkbench(page);
   await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
 
   const snapshot = await page.evaluate(() => window.workbench.exportSnapshot({
-    kind: 'frame', sectionId: 'brew-flow', screenId: 'recipe', format: 'webp', scale: 1, background: 'canvas',
+    kind: 'frame', sectionId: 'brew-flow', screenId: 'recipe', format: 'png', scale: 2, background: 'canvas',
   }));
+  expect(snapshot.format).toBe('png');
   expect(snapshot.html).toContain('1:16');
   expect(snapshot.html).toContain('ios-stage');
-  expect(snapshot.html).not.toContain('wb-screen-cap');
-  expect(snapshot.html).not.toContain('wb-frame-note');
-  expect(snapshot.html).not.toContain('data-export-ui');
   expect((snapshot.html.match(/ios-stage/g) || [])).toHaveLength(1);
+  expect(snapshot.html).not.toContain('data-export-ui');
+  expect(snapshot.html).not.toContain('wb-frame-note-edit');
+  // 图纸内容永随（decisions 2026-08-15d）：图注（引用号 B2 + 屏名）与尺寸行随导出；
+  // 空 Frame Note（占位文案）不是图纸内容，不进快照。
+  expect(snapshot.html).toContain('wb-cap-ref');
+  expect(snapshot.html).toContain('B2');
+  expect(snapshot.html).toContain('wb-screen-dim');
+  expect(snapshot.html).not.toContain('data-frame-note');
 
   const response = await page.request.post('/api/export-image', { data: snapshot });
   expect(response.ok()).toBeTruthy();
-  expect(response.headers()['content-type']).toBe('image/webp');
-  expect(response.headers()['x-export-width']).toBe('534');
-  expect(response.headers()['x-export-height']).toBe('1006');
+  expect(response.headers()['content-type']).toBe('image/png');
+  expect(response.headers()['x-export-width']).toBe('1068');
+  expect(response.headers()['x-export-height']).toBe('2226');
   const body = await response.body();
-  expect(body.subarray(0, 4).toString('ascii')).toBe('RIFF');
-  expect(body.subarray(8, 12).toString('ascii')).toBe('WEBP');
+  expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 });
 
-test('Section export preserves layout and includes Frame Notes only by preset', async ({ page }) => {
+test('Section export always carries captions and Frame Notes (图纸内容永随)', async ({ page }) => {
+  const note = '场景：用户点开通知。\n交互：进入对应会话。';
+  await page.route('**/previews/library/board.json', async (route) => {
+    const response = await route.fetch();
+    const board = await response.json();
+    board.sections[1].screens[2].note = note; // brew-flow / timer
+    await route.fulfill({ response, json: board });
+  });
   await openWorkbench(page);
   await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toBeVisible();
-  const clean = await page.evaluate(() => window.workbench.exportSnapshot({
-    kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white',
-  }));
-  expect(clean.html).toContain('wb-lib-cap');
-  expect(clean.html).toContain('wb-screen-cap');
-  expect(clean.html).toContain('wb-export-clean-row');
-  expect(clean.html).not.toContain('wb-frame-note');
 
   const explained = await page.evaluate(() => window.workbench.exportSnapshot({
-    kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white', includeNotes: true,
+    kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white',
   }));
-  expect(explained.html).toContain('wb-frame-note');
+  expect(explained.html).toContain('wb-lib-cap');
+  expect(explained.html).toContain('wb-screen-cap');
+  expect(explained.html).toContain('wb-screen-dim');
+  expect(explained.html).toContain('data-frame-note');
+  expect(explained.html).toContain('场景：用户点开通知。');
   expect(explained.html).not.toContain('wb-frame-note-edit');
   expect(explained.html).not.toContain('wb-frame-note-editor');
+  // 干净画面语义已拆除（decisions 2026-08-15d）：不再有 clean-row 覆写
+  expect(explained.html).not.toContain('wb-export-clean-row');
+
+  // 空 note（占位）不进导出
+  const plain = await page.evaluate(() => window.workbench.exportSnapshot({
+    kind: 'section', sectionId: 'home', format: 'png', scale: 1, background: 'white',
+  }));
+  expect(plain.html).not.toContain('data-frame-note');
 });
 
-test('every Frame exposes a persistent title menu that opens image export', async ({ page }) => {
+test('every Frame exposes a persistent title menu (export entry retired to the HUD picker)', async ({ page }) => {
   await openWorkbench(page);
   const frame = page.locator('#wb-board-panel [data-screen="home"]');
   const trigger = frame.locator('.wb-frame-menu-trigger');
@@ -914,7 +959,10 @@ test('every Frame exposes a persistent title menu that opens image export', asyn
   await trigger.click();
   const menu = frame.locator('.wb-frame-menu');
   await expect(menu).toBeVisible();
-  await expect(menu.locator('[data-frame-export]')).toHaveText(/导出图片/);
+  // decisions 2026-08-15d：菜单里的导出入口删除（唯一入口 = HUD「导出」→ picker），
+  // 剩余项（复制 @frame）保留。旧用例的 elementFromPoint hit-test 是已知 flake，随重写收编。
+  await expect(menu.locator('[data-frame-export]')).toHaveCount(0);
+  await expect(menu.locator('[role="menuitem"]')).toHaveCount(1);
   await expect(menu.locator('[data-frame-copy]')).toContainText('复制 @frame');
   expect(await menu.evaluate((element) => {
     const style = getComputedStyle(element);
@@ -924,19 +972,6 @@ test('every Frame exposes a persistent title menu that opens image export', asyn
       backdropFilter: style.backdropFilter,
     };
   })).toEqual({ alpha: 1, backdropFilter: 'none' });
-  expect(await menu.evaluate((element) => {
-    const rect = element.getBoundingClientRect();
-    // Sample the visible right edge: a restored viewport can leave the menu's
-    // left edge beneath the persistent sidebar, which is intentionally above it.
-    const hit = document.elementFromPoint(rect.right - 18, rect.top + 18);
-    return Boolean(hit && hit.closest('.wb-frame-menu') === element);
-  })).toBe(true);
-
-  await menu.locator('[data-frame-export]').click();
-  await expect(page.locator('.wb-export-dialog')).toBeVisible();
-  await expect(page.locator('[data-export-target-label]')).toContainText('library /');
-  await expect(page.locator('[data-export-target-label]')).toContainText('/ home');
-  await page.locator('.wb-export-close').click();
 });
 
 test('Frame Note renders below a frame and inline edits use the shared revision', async ({ page }) => {
@@ -1238,6 +1273,10 @@ test('bottom composer keeps focus while canvas clicks attach and inline targets'
 
 test('composer moves only from its drag handle and stays fixed in the viewport', async ({ page }) => {
   await openWorkbench(page);
+  // 双栏布局（2026-08-15）在默认 1280 宽下舞台只剩 ~715px，composer（max 720）
+  // 几乎顶满，水平拖拽无可移动空间。拉宽视口让水平位移成立（后续窄视口钳位
+  // 断言不受影响）。
+  await page.setViewportSize({ width: 1600, height: 900 });
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
 
@@ -1430,4 +1469,73 @@ test('frame scroll updates mark geometry and hides marks outside the phone clip'
     return getComputedStyle(mark).display !== 'none'
       && getComputedStyle(b).display !== 'none';
   })).toBe(true);
+});
+
+test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧栏重构)', async ({ page }) => {
+  await openWorkbench(page);
+
+  // 画布图注：section 字母 + frame 引用号两行，尺寸下置（402 × 874 = iPhone 16 Pro 逻辑分辨率）
+  const recipe = page.locator('#wb-board-panel [data-screen="recipe"]');
+  await expect(recipe.locator('.wb-screen-cap .wb-cap-ref')).toHaveText('B2');
+  await expect(recipe.locator('.wb-screen-cap .wb-cap-title')).toHaveText('2 · 参数（内联脚本）');
+  await expect(recipe.locator('.wb-screen-dim')).toHaveText('402 × 874');
+  await expect(page.locator('#lib-brew-flow .wb-lib-cap .wb-cap-ref')).toHaveText('B');
+
+  // 大纲：section → frame 树，引用号纯派生自 board 顺序
+  const outline = page.locator('#wboutline');
+  await expect(outline.locator('.ol')).toHaveCount(6);
+  await expect(outline.locator('.ol-sec .ol-L')).toHaveText(['A', 'B', 'C', 'D', 'E', 'F']);
+  await expect(outline.locator('[data-ol-frame="recipe"] .no')).toHaveText('B2');
+  await expect(outline.locator('[data-ol-frame="msg-reply"] .no')).toHaveText('C3');
+
+  // 点击大纲行 = 定位 frame + 机身 flash 环 + 行选中（flash 类同步打上，先断它再断滚动到位）
+  await outline.locator('[data-ol-frame="msg-reply"]').click();
+  await expect(page.locator('[data-screen="msg-reply"] .ios-stage')).toHaveClass(/wb-frame-flash/);
+  await expectFocusedTarget(page, '[data-screen="msg-reply"] .ios-stage');
+  await expect(outline.locator('[data-ol-frame="msg-reply"]')).toHaveClass(/on/);
+
+  // 干净起点（共享落盘文档，前面的用例可能留标注）
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await expect(page.locator('#wbann-toggle .wb-tool-label')).toHaveText('标注中');
+
+  // 在 settings（F1）上落一条标注 → 大纲徽标计数 + 右栏按 frame 分组（eyebrow = 引用号 + 屏名）
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'outline sync mark');
+  await expect(outline.locator('[data-ol-frame="settings"] .ol-n')).toHaveText('1');
+  await expect(page.locator('#wbann-count')).toHaveText('1');
+  await expect(page.locator('#wbann-status')).toHaveText('共 1 条');
+  await expect(page.locator('#wbann-list .wb-ann-group')).toHaveText(['F1 settings']);
+  await expect(page.locator('#wbann-list .wb-ann-cap')).toHaveText(/^F1 \/ /);
+
+  // 标注卡 → 定位 + 焦点双向同步：卡 on、大纲行 on、画布聚焦到 owning frame
+  await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
+  await page.locator('#wbann-list .wb-ann-item-main').click();
+  await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
+  await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
+
+  // 右栏整栏折叠 → 画布右缘浮钮（带计数）；左栏折叠 → 左缘浮钮；双双复开
+  await page.locator('#wbann-side-toggle').click();
+  await expect(page.locator('#wbann-side')).toBeHidden();
+  await expect(page.locator('#wbann-expand')).toBeVisible();
+  await expect(page.locator('#wbann-expand-n')).toHaveText('1');
+  await page.locator('#wbside-toggle').click();
+  await expect(page.locator('#wbside')).toBeHidden();
+  await expect(page.locator('#wbside-expand')).toBeVisible();
+  await page.locator('#wbside-expand').click();
+  await expect(page.locator('#wbside')).toBeVisible();
+  await page.locator('#wbann-expand').click();
+  await expect(page.locator('#wbann-side')).toBeVisible();
+
+  // 清空 = 两段确认：首击 armed（确认清空），再击才执行
+  await page.locator('#wbann-clear').click();
+  await expect(page.locator('#wbann-clear')).toHaveText('确认清空');
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
+  await page.locator('#wbann-clear').click();
+  await expect(page.locator('#wbann-clear')).toHaveText('清空标注');
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });

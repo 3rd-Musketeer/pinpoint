@@ -64,6 +64,23 @@ export function toggleSideCollapsed(options) {
   setSideCollapsed(!wbGet().sideCollapsed, options || { save: true });
 }
 
+/* 右栏（标注工作台）整栏折叠（decisions 2026-08-14）：机制镜像左栏 ——
+   root 类 wb-ann-collapsed 控宽度与画布右缘浮钮（#wbann-expand），偏好持久化同例。 */
+export function setAnnPanelCollapsed(on, options) {
+  options = options || {};
+  var collapsed = !!on;
+  wbSet({ annPanelCollapsed: collapsed });
+  if (wbRoot) wbRoot.classList.toggle('wb-ann-collapsed', collapsed);
+  if (options.save) savePrefs({ annPanelCollapsed: collapsed });
+  if (options.refit !== false) {
+    requestAnimationFrame(function () { refit(); });
+  }
+}
+
+export function toggleAnnPanelCollapsed(options) {
+  setAnnPanelCollapsed(!wbGet().annPanelCollapsed, options || { save: true });
+}
+
 function applyIosRoots(p, root) {
   var scope = root || document;
   scope.querySelectorAll('.ios-root').forEach(function (r) {
@@ -115,6 +132,15 @@ export var setFrame = makePref('frame', {
     applyIosRootValue('frame', val);
   },
   refit: true
+});
+
+// 画布背景三态（grid/dots/plain）—— 属性钉在 .wb-stage-wrap（纹理层），store 供 SettingsView 订阅
+export var setStageBg = makePref('stageBg', {
+  apply: function (val) {
+    wbSet({ stageBg: val });
+    var wrap = document.querySelector('.wb-stage-wrap');
+    if (wrap) wrap.setAttribute('data-grid', val);
+  }
 });
 
 export var setCanvasZoom = makePref('canvasZoom', {
@@ -293,6 +319,7 @@ export function applyBootPrefs(prefs, options) {
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);
     setSideCollapsed(!!prefs.sideCollapsed, { save: false, refit: false });
+    setAnnPanelCollapsed(!!prefs.annPanelCollapsed, { save: false, refit: false });
   }
   setMinimapOpen(false);
 
@@ -304,14 +331,11 @@ export function applyBootPrefs(prefs, options) {
   });
   applyLockFont(prefs.lockFont || 'helvetica');
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
+  setStageBg(prefs.stageBg || 'grid');
   setCanvasZoom(zoomForPage(pageId), { save: false });
 
   if (options.shell !== false) {
-    wbSet({ annFilter: prefs.annFilter || 'all' });
-    if (prefs.sectionOpen) {
-      wbSet({ sectionOpen: Object.assign({ pages: true, annotations: true }, prefs.sectionOpen) });
-    }
-    // annFilter 的按钮态由 AnnPanel 订阅 store 派生，这里不再手工同步 DOM
+    // 设置视图之外已无持久化壳层偏好（2026-08-15 侧栏重构：段开合 / 标注筛选退役）
     prefsDeps.applyPageNames(prefs.pageNames);
   }
 

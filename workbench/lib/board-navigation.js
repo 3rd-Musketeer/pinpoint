@@ -58,12 +58,14 @@ export function measureBoardNavigation(stage, panel) {
       const screenNode = frameNode.closest('.wb-screen[data-screen]');
       const screenId = screenNode?.getAttribute('data-screen') || '';
       const caption = screenNode?.querySelector('.wb-screen-cap');
+      // 图注两行结构（2026-08-15）：屏名在 .wb-cap-title，引用号不进导航标题。
+      const captionTitle = caption?.querySelector('.wb-cap-title')?.textContent?.trim();
       const frame = {
         kind: 'frame',
         id: screenId,
         screenId,
         sectionId: id,
-        title: caption?.textContent?.trim() || screenId || 'Screen',
+        title: captionTitle || caption?.textContent?.trim() || screenId || 'Screen',
         colorIndex: section.colorIndex,
         node: frameNode,
         screenNode,

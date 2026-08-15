@@ -1,12 +1,17 @@
-// Workbench export cluster — frame/section 图片导出、文档导出对话框、frame ⋯ 菜单。
+// Workbench export cluster — 导出 picker 的快照构建与请求（图片/zip）、文档导出
+// 对话框、frame ⋯ 菜单 shell。
 // P1 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；escHtml、pageBaseUrl 取自 lib/。
-// P2 说明：三个导出 POST（/api/export-image、/api/export-doc-tokens、/api/export-doc）
-// 是下载流 / 一次性计算，不是可缓存的 server state —— 保持 plain fetch，不走 Query
-// （docTokenCache 只是对话框打开期间的估算回显缓存，同样无失效语义）。
+// P2 说明：导出 POST（/api/export-image、/api/export-zip、/api/export-doc-tokens、
+// /api/export-doc）是下载流 / 一次性计算，不是可缓存的 server state —— 保持 plain
+// fetch，不走 Query（docTokenCache 只是对话框打开期间的估算回显缓存，同样无失效语义）。
 // P3 说明：frame ⋯ 菜单的行为（trigger aria / Esc / 点外关闭 / roving focus）由
 // Radix DropdownMenu 承载 —— 本模块只创建 shell 元素，React 岛（app/frame-menu.jsx）
 // 经 initExportCore(deps) 注入的 mountFrameMenu/sweepFrameMenus 挂载与回收。
+// 2026-08-15d 收敛：图片导出的唯一入口 = HUD「导出」→ app/ExportPicker.jsx
+// （React 岛，单向 import 本模块的快照/请求函数）；旧 per-frame/per-section
+// 触发器、旧导出对话框（预设/格式/清晰度 radio + 复制 PNG）已退役，图纸内容
+// （图注/尺寸/frame note）永随导出。
 import { wbGet } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { pageBaseUrl } from './lib/page-url.js';
@@ -20,11 +25,9 @@ export function initExportCore(deps) {
 }
 
 var EXPORT_TOKEN_NAMES = [
-  '--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap',
+  '--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap', '--wb-cap-ref',
   '--wb-fg', '--wb-muted', '--wb-faint', '--wb-side', '--wb-line', '--wb-hover', '--wb-accent'
 ];
-var exportDialog = null;
-var exportTarget = null;
 
 function syncExportDomState(source, clone) {
   var sources = [source].concat(Array.prototype.slice.call(source.querySelectorAll('*')));
@@ -64,15 +67,15 @@ function syncExportDomState(source, clone) {
   });
 }
 
-function cleanExportClone(clone, includeNotes) {
+// 图纸内容永随（decisions 2026-08-15d）：图注（引用号 + 屏名）、尺寸行、frame note
+// 一律随导出，不再有「干净画面」摘图注语义；editor 控件与 export UI 仍然摘除。
+// 空 note（占位文案）不是图纸内容，摘掉。
+function cleanExportClone(clone) {
   clone.querySelectorAll('script,style[data-export-ui],[data-export-ui],.wb-frame-note-edit,.wb-frame-note-editor').forEach(function (node) {
     node.remove();
   });
-  if (!includeNotes) {
-    clone.querySelectorAll('[data-frame-note]').forEach(function (node) { node.remove(); });
-  } else {
-    clone.querySelectorAll('[data-frame-note-view]').forEach(function (node) { node.hidden = false; });
-  }
+  clone.querySelectorAll('.wb-frame-note.is-empty').forEach(function (node) { node.remove(); });
+  clone.querySelectorAll('[data-frame-note-view]').forEach(function (node) { node.hidden = false; });
   clone.removeAttribute('data-export-ui');
   clone.querySelectorAll('.has-frame-menu').forEach(function (node) { node.classList.remove('has-frame-menu'); });
   return clone;
@@ -108,31 +111,20 @@ export function buildExportSnapshot(options) {
   if (!target) throw new Error('找不到要导出的 ' + (kind === 'frame' ? 'Frame' : 'Section'));
   var section = kind === 'section' ? target : target.closest('.wb-lib-item');
   var screen = kind === 'frame' ? target.closest('[data-screen]') : null;
-  var includeNotes = options.includeNotes === true;
   var source;
   source = target;
   if (!source) throw new Error('目标没有可导出的视觉内容');
   var clone = source.cloneNode(true);
   syncExportDomState(source, clone);
-  cleanExportClone(clone, includeNotes);
-  if (kind === 'frame' && !includeNotes) {
-    clone.querySelectorAll('.wb-screen-cap').forEach(function (node) { node.remove(); });
-  }
-  if (kind === 'section' && !includeNotes) {
-    clone.querySelectorAll('.wb-sec-row').forEach(function (node) { node.classList.add('wb-export-clean-row'); });
-  }
-  var format = options.format === 'png' ? 'png' : 'webp';
-  var background = options.background || 'canvas';
-  if (background === 'transparent') format = 'png';
+  cleanExportClone(clone);
   return {
     kind: kind,
     pageId: wbGet().activePageId,
     sectionId: section.getAttribute('data-ann-section') || section.getAttribute('data-ann-group'),
     screenId: screen ? screen.getAttribute('data-screen') : '',
-    format: format,
+    format: options.format === 'webp' ? 'webp' : 'png',
     scale: Number(options.scale) === 1 ? 1 : 2,
-    background: background,
-    includeNotes: includeNotes,
+    background: options.background || 'canvas',
     tokens: exportTokens(),
     html: clone.outerHTML
   };
@@ -144,8 +136,7 @@ function exportFileName(request) {
   return ids.join('__').replace(/\//g, '-') + '@' + request.scale + 'x.' + request.format;
 }
 
-export function requestExportImage(options) {
-  var request = buildExportSnapshot(options);
+function postExportSnapshot(request) {
   return fetch('/api/export-image', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -166,7 +157,38 @@ export function requestExportImage(options) {
   });
 }
 
-function downloadExportResult(result) {
+export function requestExportImage(options) {
+  return postExportSnapshot(buildExportSnapshot(options));
+}
+
+// 预览档（picker 右栏）：调用方已持有 buildExportSnapshot 产物（scale 1），
+// 跳过重复快照直接 POST。picker 用它按帧取回低清 PNG 做并排预览。
+export function requestExportPreview(request) {
+  return postExportSnapshot(request);
+}
+
+// 多张打包（decisions 2026-08-15d）：snapshot 数组 → /api/export-zip → zip 流。
+export function requestExportZip(requests) {
+  return fetch('/api/export-zip', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ entries: requests })
+  }).then(function (response) {
+    if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) {
+      throw new Error(body.message || ('打包失败 · ' + response.status));
+    });
+    var fallback = (requests[0] && requests[0].pageId || 'export') + '__frames@2x.zip';
+    return response.blob().then(function (blob) {
+      return {
+        blob: blob,
+        filename: filenameFromContentDisposition(response.headers.get('Content-Disposition'), fallback),
+        entries: Number(response.headers.get('X-Export-Entries')) || requests.length
+      };
+    });
+  });
+}
+
+export function downloadExportResult(result) {
   var url = URL.createObjectURL(result.blob);
   var link = document.createElement('a');
   link.href = url;
@@ -452,118 +474,13 @@ export function openDocExportDialog() {
   requestDocTokenEstimate(target.src, 'html-no-css', false).catch(function () {});
 }
 
-function ensureExportDialog() {
-  if (exportDialog) return exportDialog;
-  exportDialog = document.createElement('dialog');
-  exportDialog.className = 'wb-export-dialog';
-  exportDialog.setAttribute('data-ann-ui', '');
-  exportDialog.setAttribute('data-export-ui', '');
-  // 同 ensureDocExportDialog：原生 showModal 承载模态行为，这里只补可访问名。
-  exportDialog.setAttribute('aria-labelledby', 'wb-export-img-title');
-  exportDialog.innerHTML = '<form class="wb-export-form" method="dialog">' +
-    '<div class="wb-export-head"><div class="wb-export-head-copy"><h2 id="wb-export-img-title">导出图片</h2><p class="wb-export-target" data-export-target-label></p></div><button class="wb-export-close" value="cancel" aria-label="关闭">×</button></div>' +
-    '<div class="wb-export-field"><span class="wb-export-label">预设</span><div class="wb-export-options">' +
-      '<label class="wb-export-option"><input type="radio" name="notes" value="clean" checked><span>干净画面</span></label>' +
-      '<label class="wb-export-option"><input type="radio" name="notes" value="notes"><span>带说明</span></label>' +
-    '</div></div>' +
-    '<div class="wb-export-field"><span class="wb-export-label">格式</span><div class="wb-export-options">' +
-      '<label class="wb-export-option"><input type="radio" name="format" value="webp" checked><span>WebP</span></label>' +
-      '<label class="wb-export-option"><input type="radio" name="format" value="png"><span>PNG</span></label>' +
-    '</div></div>' +
-    '<div class="wb-export-field"><span class="wb-export-label">清晰度</span><div class="wb-export-options">' +
-      '<label class="wb-export-option"><input type="radio" name="scale" value="1"><span>1×</span></label>' +
-      '<label class="wb-export-option"><input type="radio" name="scale" value="2" checked><span>2×</span></label>' +
-    '</div></div>' +
-    '<div class="wb-export-field"><span class="wb-export-label">背景</span><div class="wb-export-options">' +
-      '<label class="wb-export-option"><input type="radio" name="background" value="canvas" checked><span>Canvas</span></label>' +
-      '<label class="wb-export-option"><input type="radio" name="background" value="white"><span>白色</span></label>' +
-      '<label class="wb-export-option"><input type="radio" name="background" value="transparent"><span>透明</span></label>' +
-    '</div></div>' +
-    '<div class="wb-export-status" data-export-status>WebP · 2× · 干净背景</div>' +
-    '<div class="wb-export-actions"><button type="button" class="wb-export-action" data-export-copy>复制 PNG</button><button type="button" class="wb-export-action primary" data-export-download>下载图片</button></div>' +
-    '</form>';
-  document.body.appendChild(exportDialog);
-  var form = exportDialog.querySelector('form');
-  function panelOptions(overrides) {
-    var data = new FormData(form);
-    return Object.assign({
-      kind: exportTarget.kind,
-      target: exportTarget.target,
-      includeNotes: data.get('notes') === 'notes',
-      format: data.get('format'),
-      scale: Number(data.get('scale')),
-      background: data.get('background')
-    }, overrides || {});
-  }
-  function status(text, isError) {
-    var el = exportDialog.querySelector('[data-export-status]');
-    el.textContent = text;
-    el.classList.toggle('is-error', !!isError);
-  }
-  function busy(value) {
-    exportDialog.querySelectorAll('.wb-export-action').forEach(function (button) { button.disabled = value; });
-  }
-  form.addEventListener('change', function (event) {
-    if (event.target.name === 'background' && event.target.value === 'transparent') {
-      form.querySelector('[name="format"][value="png"]').checked = true;
-    }
-    if (event.target.name === 'format' && event.target.value === 'webp') {
-      var transparent = form.querySelector('[name="background"][value="transparent"]');
-      if (transparent.checked) form.querySelector('[name="background"][value="canvas"]').checked = true;
-    }
-    var data = new FormData(form);
-    status((data.get('format') || '').toUpperCase() + ' · ' + data.get('scale') + '× · ' + (data.get('notes') === 'notes' ? '带说明' : '干净画面'));
-  });
-  exportDialog.querySelector('[data-export-download]').addEventListener('click', function () {
-    busy(true); status('正在生成高保真图片…');
-    requestExportImage(panelOptions()).then(function (result) {
-      downloadExportResult(result);
-      status(result.width + ' × ' + result.height + ' · ' + (result.blob.size / 1024).toFixed(0) + ' KB · 已下载');
-    }).catch(function (error) { status(error.message, true); }).finally(function () { busy(false); });
-  });
-  exportDialog.querySelector('[data-export-copy]').addEventListener('click', function () {
-    if (!navigator.clipboard || typeof ClipboardItem === 'undefined') { status('当前浏览器不支持复制图片，请使用下载。', true); return; }
-    busy(true); status('正在生成剪贴板 PNG…');
-    requestExportImage(panelOptions({ format: 'png' })).then(function (result) {
-      return navigator.clipboard.write([new ClipboardItem({ 'image/png': result.blob })]).then(function () {
-        status(result.width + ' × ' + result.height + ' · 已复制 PNG');
-      });
-    }).catch(function (error) { status(error.message, true); }).finally(function () { busy(false); });
-  });
-  return exportDialog;
-}
-
-function openExportDialog(kind, target) {
-  var dialog = ensureExportDialog();
-  exportTarget = { kind: kind, target: target };
-  var section = target.closest('.wb-lib-item');
-  var screen = kind === 'frame' ? target.closest('[data-screen]') : null;
-  var label = wbGet().activePageId + ' / ' + (section.getAttribute('data-ann-section-label') || section.getAttribute('data-ann-section'));
-  if (screen) label += ' / ' + screen.getAttribute('data-screen');
-  dialog.querySelector('[data-export-target-label]').textContent = label;
-  var notesOption = dialog.querySelector('[name="notes"][value="notes"]');
-  notesOption.disabled = kind === 'frame' && !target.querySelector('[data-frame-note]');
-  if (notesOption.disabled) dialog.querySelector('[name="notes"][value="clean"]').checked = true;
-  dialog.showModal();
-}
-
+// 板面重建后为每个 frame 图注挂上 ⋯ 菜单 shell（React 岛本体见 app/frame-menu.jsx）。
+// 2026-08-15d 收敛：per-section 导出浮钮与菜单里的导出入口已随旧对话框退役 ——
+// 图片导出唯一入口 = HUD「导出」→ app/ExportPicker.jsx；这里只剩菜单 shell 挂载。
 export function wireExportControls(panel) {
   if (!panel) return;
-  // 板面重建后旧 shell 已游离 —— 先卸载它们的 React root（菜单本体见 app/frame-menu.jsx）。
+  // 板面重建后旧 shell 已游离 —— 先卸载它们的 React root。
   exportDeps.sweepFrameMenus();
-  panel.querySelectorAll('.wb-lib-item').forEach(function (section) {
-    if (!section.querySelector(':scope > .wb-export-section-trigger')) {
-      var sectionButton = document.createElement('button');
-      sectionButton.type = 'button';
-      sectionButton.className = 'wb-export-trigger wb-export-section-trigger';
-      sectionButton.setAttribute('data-export-ui', '');
-      sectionButton.setAttribute('aria-label', '导出 Section');
-      sectionButton.title = '导出 Section 图片';
-      sectionButton.innerHTML = '<span data-wb-icon="export-image" data-wb-icon-size="16"></span>';
-      sectionButton.addEventListener('click', function () { openExportDialog('section', section); });
-      section.appendChild(sectionButton);
-    }
-  });
   panel.querySelectorAll('[data-screen]').forEach(function (screen) {
     var caption = screen.querySelector(':scope > .wb-screen-cap');
     if (!caption || caption.querySelector(':scope > .wb-frame-menu-shell')) return;
@@ -574,9 +491,7 @@ export function wireExportControls(panel) {
     shell.setAttribute('data-ann-ui', '');
     caption.appendChild(shell);
     exportDeps.mountFrameMenu(shell, {
-      screenId: screen.getAttribute('data-screen'),
-      onExport: function () { openExportDialog('frame', screen); }
+      screenId: screen.getAttribute('data-screen')
     });
   });
-  if (window.mountWorkbenchIcons) window.mountWorkbenchIcons(panel);
 }

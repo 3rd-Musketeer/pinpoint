@@ -1,7 +1,7 @@
 // Workbench 图标数据 — lucide iconNode 表 + hero gear path。纯数据、DOM-free：
 // 命令式挂载器（workbench-icons.js，服务静态标记）与 React 组件
 // （app/WbIcon.jsx，服务出壳 chrome）共用这一份，两个渲染路径不得各自抄表。
-import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, ListTree, Map, ImageDown, MessageSquare, Columns, Link } from 'lucide';
+import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ListTree, Map, ImageDown, MessageSquare, Columns, Link } from 'lucide';
 
 export var ICONS = {
   pencil: Pencil,
@@ -13,6 +13,9 @@ export var ICONS = {
   'empty-ann': SquareDashedMousePointer,
   'panel-left-close': PanelLeftClose,
   'panel-left-open': PanelLeftOpen,
+  'panel-right-close': PanelRightClose,
+  'panel-right-open': PanelRightOpen,
+  'chevron-up': ChevronUp,
   'section-nav': ListTree,
   map: Map,
   'export-image': ImageDown,

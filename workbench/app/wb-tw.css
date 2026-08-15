@@ -46,6 +46,7 @@
   /* 字体栈与字重（V1）：font-sans 改指产品栈（原是 Tailwind 默认族，与 body 不同源）；
    * font-medium/semibold 挂 --wb-w-* 阶梯，字重不造新档。 */
   --font-sans: var(--wb-font);
+  --font-mono: var(--wb-font-mono); /* 元数据档（2026-08-13） */
   --font-weight-medium: var(--wb-w-medium);
   --font-weight-semibold: var(--wb-w-semibold);
 }

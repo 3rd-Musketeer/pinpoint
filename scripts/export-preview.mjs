@@ -9,13 +9,14 @@ import { exportFilename, validateExportRequest } from '../server/lib/export-cont
 function parseArgs(argv) {
   const values = {
     url: process.env.PINPOINT_URL || 'https://pinpoint.localhost',
-    format: 'webp',
+    format: 'png',
     scale: 2,
     background: 'canvas',
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    if (arg === '--with-notes') values.includeNotes = true;
+    // --with-notes 退役（图纸内容永随，decisions 2026-08-15d）：继续吞下不报错的占位。
+    if (arg === '--with-notes') continue;
     else if (arg.startsWith('--')) values[arg.slice(2)] = argv[++index];
   }
   values.scale = Number(values.scale);
@@ -24,7 +25,7 @@ function parseArgs(argv) {
 
 function usage(message) {
   if (message) console.error(message);
-  console.error('Usage: npm run export -- --page <pageId> --section <sectionId> [--frame <screenId>] [--format webp|png] [--scale 1|2] [--background canvas|white|transparent] [--with-notes] [--output path]');
+  console.error('Usage: npm run export -- --page <pageId> --section <sectionId> [--frame <screenId>] [--format png|webp] [--scale 1|2] [--background canvas|white|transparent] [--output path]');
   process.exitCode = 1;
 }
 
@@ -58,7 +59,6 @@ if (!args.page || !args.section) {
       format: args.format,
       scale: args.scale,
       background: args.background,
-      includeNotes: !!args.includeNotes,
     });
     const request = validateExportRequest(snapshot);
     const response = await context.request.post(`${baseUrl}/api/export-image`, {

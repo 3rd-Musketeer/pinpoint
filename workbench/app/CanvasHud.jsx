@@ -17,9 +17,9 @@
 //  - #wbsection-nav-list 的行（.wb-section-nav-item 系）是 board-nav 命令式构建的
 //    不受管内容：保留手写 CSS（index.html，全 token 化），不进 Tailwind。
 import { Fragment } from 'react';
-import { useWorkbenchStore, wbGet } from './store.js';
+import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen } from '../board-nav.js';
-import { setCanvasZoom } from '../boot-prefs.js';
+import { setAnnPanelCollapsed, setCanvasZoom, setSideCollapsed } from '../boot-prefs.js';
 import { clampCanvasZoom, currentCanvasZoom, formatZoomLabel } from '../lib/canvas-zoom.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -37,6 +37,34 @@ var HUD_ITEM =
 
 function nudgeZoom(factor) {
   setCanvasZoom(String(clampCanvasZoom(currentCanvasZoom() * factor)), { save: true });
+}
+
+/* 画布两缘浮钮（decisions 2026-08-14；几何/皮肤 = index.html 的 .wb-rail 系）：
+   左栏折叠 → 左缘「Pages」，右栏折叠 → 右缘「标注」+ 计数钉。位置避让：
+   HUD 在右下、dock 在其上，浮钮垂直居中不占它们的带。 */
+export function StageRails() {
+  var sideCollapsed = useWorkbenchStore(function (s) { return s.sideCollapsed; });
+  var annCollapsed = useWorkbenchStore(function (s) { return s.annPanelCollapsed; });
+  var count = useWorkbenchStore(function (s) { return (s.annSnap && s.annSnap.count) || 0; });
+  return (
+    <Fragment>
+      <button type="button" id="wbside-expand" aria-label="展开侧栏" title="展开侧栏"
+        hidden={!sideCollapsed}
+        className={cn('wb-rail wb-rail-l', sideCollapsed ? 'inline-flex' : 'hidden')}
+        onClick={function () { setSideCollapsed(false, { save: true }); }}>
+        <WbIcon name="panel-left-open" size={13} className="size-[13px]" />
+        Pages
+      </button>
+      <button type="button" id="wbann-expand" aria-label="展开标注面板" title="展开标注面板"
+        hidden={!annCollapsed}
+        className={cn('wb-rail wb-rail-r', annCollapsed ? 'inline-flex' : 'hidden')}
+        onClick={function () { setAnnPanelCollapsed(false, { save: true }); }}>
+        <WbIcon name="panel-right-open" size={13} className="size-[13px]" />
+        标注
+        {count ? <span className="wb-rail-n" id="wbann-expand-n">{count}</span> : null}
+      </button>
+    </Fragment>
+  );
 }
 
 export function CanvasDock() {
@@ -127,6 +155,18 @@ export function CanvasHud() {
       <Button type="button" variant="tool" id="wbrecenter" title="回到画布内容"
         className="wb-hud-btn wb-hud-recenter h-7 px-2.5 text-[12px] font-semibold"
         onClick={function () { recenterBoard(); }}>回中</Button>
+      {/* 导出单入口（decisions 2026-08-15d）：开 picker 对话框，本体在 ExportPicker.jsx */}
+      <span className="wb-toolbar-divider h-5 w-px flex-none bg-border" aria-hidden="true"></span>
+      <Button type="button" variant="tool" id="wbexport-open" title="导出图片"
+        className="wb-hud-btn wb-hud-export h-7 gap-[5px] px-2 text-[12px] font-semibold"
+        onClick={function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          wbSet({ exportPickerOpen: true });
+        }}>
+        <WbIcon name="export-image" size={14} className="size-3.5" />
+        导出
+      </Button>
     </Fragment>
   );
 }

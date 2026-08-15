@@ -13,11 +13,11 @@
   * { box-sizing: border-box; }
   html, body { margin: 0; height: 100%; background: var(--wb-surface, #fff); }
   body {
-    font: 13px/1.5 -apple-system, BlinkMacSystemFont, "Helvetica Neue", sans-serif;
+    font: 13px/1.5 var(--wb-font, -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang SC", system-ui, sans-serif);
     color: var(--wb-fg, #1c2024);
   }
   /* focus 约定与 index.html 全局 catch-all 同式 */
-  :focus-visible { outline: 2px solid color-mix(in srgb, var(--wb-accent, #007aff) 55%, transparent); outline-offset: 1px; }
+  :focus-visible { outline: 2px solid color-mix(in srgb, var(--wb-accent, #5b7fa6) 55%, transparent); outline-offset: 1px; }
 </style>
 </head>
 <body>
