@@ -10,6 +10,41 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-16
 
+### Added
+- **Registration CLI: `pinpoint add`** (roadmap 阶段 3) — `bin/pinpoint.mjs`
+  (zero-dependency, hand-parsed args; pure logic + tests in `bin/pinpoint-cli.js`,
+  exposed as `pinpoint` via the package `bin` field after `npm link`). One command
+  registers any review target without hand-editing the registry: an existing local
+  directory becomes a `dir` entry, a single `.html`/`.htm` file becomes the new
+  **`file`** kind, and an `http(s)://` URL becomes a `url` entry. The id derives
+  from the basename (slugified; `-2`/`-3` on conflict; an explicit `--id` that
+  collides errors out instead of overwriting), `title` defaults to the basename,
+  `--board` defaults to `html`. Writes go through the new
+  `server/lib/registry-store.js` — strict validation (unique id, legal kind,
+  existing dir/file path, http(s) url), atomic tmp+rename, 2-space JSON — and the
+  first add on a machine seeds the default `pinpoint` entry so the workbench's own
+  bucket never disappears. When the service answers `/health` the CLI calls the new
+  **`POST /registry/reload`**, which swaps the shared in-memory registry
+  (`createRegistryStore`, now the single live view for the annotate / sites /
+  doc-export plugins via `vite.config.js`) — serving, injection, and bucket routing
+  pick up new entries without a restart, and open workbenches refresh Pages off the
+  HMR `registry:update` event. `file` entries serve under `/sites/<id>/` and
+  `/sites/<id>/<basename>` with the same injection / `?annotate=off` / 404-guard
+  contract as dirs.
+- **Synthesized doc boards** (`server/lib/synth-board.js`) —「registered」now always
+  means「opens readable and annotatable in Pages」. When a registered `dir`/`file`
+  entry has no `board.json` of its own, `/sites/<id>/board.json` serves a synthesized
+  doc board: a single screen for a `file` entry (src = the registered file), one screen
+  per top-level `*.html` (sorted, one sidebar version each) for a `dir` entry. A disk
+  `board.json` always wins; `ios`-board dirs (phone canvas needs hand-written sections)
+  and dirs without any top-level HTML get no synthesis and 404 as before. Synthesized
+  screen srcs are percent-encoded so the iframe URL, `location.pathname`, and the export
+  pipeline's annotation page-key hash agree byte-for-byte; doc export resolves `file`
+  entry srcs to the registered file. `file` entries now surface as workbench pages
+  (always doc shell — a single standalone document only has reader semantics, so the
+  CLI rejects `--board ios` on a single file and no longer stores `board` there);
+  `url` entries stay out of Pages until the proxy stage.
+
 ### Removed
 - **Web board retired; Pages is one list** (roadmap 阶段 2). The iOS / Web / HTML
   mode Seg (`#wbboard-mode`) is gone: Pages shows every page — template pages

@@ -56,15 +56,34 @@ function sendJson(res, status, body) {
 }
 
 function resolveDocFile(src, registry) {
-  // Registry dir entries resolve through their registered path (read-only).
+  // Registry dir/file entries resolve through their registered path (read-only).
   if (src.startsWith('sites/')) {
     const id = src.split('/')[1];
     const entry = registry && registry.resolve(id);
-    if (!entry || entry.kind !== 'dir') {
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) {
       throw new ExportDocContractError('src', `unknown site entry: ${id}`);
     }
+    // Synthesized boards percent-encode the filename in src, so the browser
+    // pathname and the annotation page-key hash agree; decode once here to get
+    // back to the on-disk name.
+    let rest;
+    try {
+      rest = decodeURIComponent(src.split('/').slice(2).join('/'));
+    } catch {
+      throw new ExportDocContractError('src', `file not found: ${src}`);
+    }
+    if (entry.kind === 'file') {
+      // A file entry whitelists exactly one file — the registered path itself.
+      if (rest !== path.basename(entry.path)) {
+        throw new ExportDocContractError('src', `file not found: ${src}`);
+      }
+      if (!fs.existsSync(entry.path) || !fs.statSync(entry.path).isFile()) {
+        throw new ExportDocContractError('src', `file not found: ${src}`);
+      }
+      return path.resolve(entry.path);
+    }
     const base = path.resolve(entry.path);
-    const abs = path.resolve(base, src.split('/').slice(2).join('/'));
+    const abs = path.resolve(base, rest);
     if (abs !== base && !abs.startsWith(base + path.sep)) {
       throw new ExportDocContractError('src', 'path traversal is not allowed');
     }
@@ -89,7 +108,7 @@ export function entryIdForSrc(src, registry) {
   if (!String(src).startsWith('sites/')) return DEFAULT_ENTRY;
   const id = String(src).split('/')[1];
   const entry = registry && registry.resolve(id);
-  return entry && entry.kind === 'dir' ? id : DEFAULT_ENTRY;
+  return entry && (entry.kind === 'dir' || entry.kind === 'file') ? id : DEFAULT_ENTRY;
 }
 
 /** Resolve annotation page key for a previews/-relative src. */

@@ -251,11 +251,38 @@ entries:
   "version": 1,
   "entries": [
     { "id": "pinpoint", "title": "pinpoint workbench", "kind": "dir", "path": "/path/to/pinpoint" },
-    { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/path/to/your-app/dist", "board": "web" },
+    { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/path/to/your-app/dist", "board": "html" },
+    { "id": "one-pager", "title": "One Pager", "kind": "file", "path": "/path/to/report.html" },
     { "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }
   ]
 }
 ```
+
+The supported way to add entries is the CLI — `npm link` once puts `pinpoint`
+on your PATH; otherwise run `node bin/pinpoint.mjs` from this repo:
+
+```bash
+pinpoint add /path/to/your-app/dist      # existing dir → kind "dir", hosted at /sites/<id>/
+pinpoint add ./report.html               # single .html/.htm file → kind "file"
+pinpoint add https://your-app.localhost  # http(s) URL → kind "url" (extension injects)
+pinpoint add ./dist --title "Your App" --board ios --id your-app
+```
+
+The CLI derives the id from the basename (slugified; `-2` / `-3` appended on
+conflict — an explicit `--id` that collides errors out instead of overwriting),
+defaults `title` to the basename and `--board` to `html` (`--board` only matters
+for `dir` entries — `file` entries always open in the doc reader, so `--board ios`
+on a single file is rejected), and writes the
+registry atomically (`--registry` / `PINPOINT_REGISTRY` override the file, so
+scripts and tests never have to touch the real one). When the service is
+reachable it then calls `POST /registry/reload` and the entry takes effect
+without a restart — serving, injection, bucket routing, and the Pages list of
+any open workbench all pick it up; otherwise the entry activates on the next start.
+
+Registered `dir`/`file` entries appear as workbench pages; the board comes from
+`/sites/<id>/board.json` — a disk file when present, otherwise a synthesized doc
+board (a `file` entry's single screen; a `dir` entry's top-level `*.html`, one
+screen each), so「registered」always means「opens readable and annotatable」.
 
 `GET /registry` returns the effective entries. A missing file means the default
 pinpoint-only registry; malformed JSON or invalid entries fall back / are skipped loudly and
@@ -276,7 +303,16 @@ Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`
   injected before `</body>`; `?annotate=off` serves the exact disk bytes (export paths and
   the workbench's inline fragment loader use it). Registered dirs also appear as workbench
   pages, with the entry's `board` field selecting the page shell (`ios` / `html`,
-  default `html`).
+  default `html`). **`file` entries** get the same treatment for exactly one registered
+  file: `/sites/<entry-id>/` and `/sites/<entry-id>/<basename>` both serve it, everything
+  else (including sibling files in the same directory) 404s, and they appear as workbench
+  pages too (always the doc shell — a single standalone document only has reader
+  semantics). Entries without their own `board.json` stay readable: `/sites/<id>/board.json`
+  then serves a **synthesized doc board** — one screen for a `file` entry, one screen per
+  top-level `*.html` (sorted, one sidebar version each) for a `dir` entry — while a disk
+  `board.json` always wins. No synthesis happens for `ios`-board dirs (a phone-canvas board
+  needs hand-written sections) or dirs without any top-level HTML (404, matching the
+  whitelist-nothing-to-read semantics).
 - **`url` entries** — the MV3 browser extension in [`extension/`](extension/) matches
   `location.origin` against url entries on local-dev pages and injects the same client,
   stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline or

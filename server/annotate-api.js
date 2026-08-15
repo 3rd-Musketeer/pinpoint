@@ -178,6 +178,9 @@ export function createAnnotateHandler(options = {}) {
   // origins. String or lazy resolver; null when the server is not listening.
   const directOrigin = options.directOrigin || (() => null);
   const resolveDirectOrigin = typeof directOrigin === 'function' ? directOrigin : () => directOrigin;
+  // After a successful POST /registry/reload — the vite plugin wires this to
+  // an HMR `registry:update` event so open workbenches refresh their Pages.
+  const onRegistryReload = options.onRegistryReload || (() => {});
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
@@ -278,7 +281,29 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
-    if (req.method !== 'POST' || !['/save', '/image'].includes(urlPath)) return false;
+    if (req.method !== 'POST' || !['/save', '/image', '/registry/reload'].includes(urlPath)) return false;
+
+    // Re-read the registry file and swap the shared in-memory snapshot, so a
+    // `pinpoint add` takes effect for serving / injection / bucket routing
+    // without a server restart. Only a live registry-store is reloadable; a
+    // static snapshot (tests) answers 409.
+    if (urlPath === '/registry/reload') {
+      if (typeof registry.reload !== 'function') {
+        sendJson(res, 409, { error: 'registry_not_reloadable' });
+        return true;
+      }
+      const next = registry.reload();
+      const summary = {
+        ok: next.ok,
+        path: next.path,
+        entries: next.entries.length,
+        errors: next.errors,
+        warnings: next.warnings,
+      };
+      onRegistryReload(summary);
+      sendJson(res, 200, summary);
+      return true;
+    }
 
     let body;
     try {
@@ -329,17 +354,24 @@ export function createAnnotateHandler(options = {}) {
 
 export default function annotateApi(options = {}) {
   let httpServer = null;
+  let viteServer = null;
   const directOrigin = options.directOrigin || (() => {
     const address = httpServer && typeof httpServer.address === 'function' ? httpServer.address() : null;
     if (!address || typeof address !== 'object') return null; // not listening yet
     const loopback = ['::', '0.0.0.0', '::1', 'localhost'].includes(address.address) ? '127.0.0.1' : address.address;
     return `http://${loopback}:${address.port}`;
   });
-  const handleAnnotate = createAnnotateHandler({ ...options, directOrigin });
+  const onRegistryReload = options.onRegistryReload || ((summary) => {
+    // Tell open workbenches the registry changed; stage.js invalidates its
+    // registry-sites query and re-pulls the page manifest off this event.
+    if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: summary });
+  });
+  const handleAnnotate = createAnnotateHandler({ ...options, directOrigin, onRegistryReload });
   return {
     name: 'annotate-api',
     configureServer(server) {
       httpServer = server.httpServer;
+      viteServer = server;
       server.middlewares.use(async (req, res, next) => {
         const urlPath = (req.url || '').split('?')[0];
         if (await handleAnnotate(req, res, urlPath)) return;

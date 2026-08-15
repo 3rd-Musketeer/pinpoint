@@ -72,24 +72,24 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
 1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `pinpoint.setFloatingToolbar(true)`。
 
-2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记：
+2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记用 CLI（手编 JSON 已不是推荐路径）：
 
-   ```json
-   { "id": "your-app", "title": "Your App", "kind": "dir", "path": "/abs/path/to/your-app/dist", "board": "web" }
+   ```bash
+   pinpoint add /abs/path/to/your-app/dist            # 目录 → dir
+   pinpoint add /abs/path/to/report.html              # 单个 .html → file
+   pinpoint add https://your-app.localhost            # URL → url
    ```
 
-   - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。
+   原子写 `~/.pinpoint/registry.json`，服务在跑时自动 `POST /registry/reload` 即时生效；`--registry` / `PINPOINT_REGISTRY` 可指向别的 registry 文件。
+
+   - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。`file` entry 只有 `/sites/<id>/` 与 `/sites/<id>/<文件名>` 两个拼法能出内容，同目录其它文件够不着。
    - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
-   - 该 entry 同时成为 workbench 页面（`board` 选 board 模式，缺省 `web`），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。
+   - `dir` / `file` entry 同时成为 workbench 页面（`dir` 的 `board` 选壳：`ios` / `html`，缺省 `html`；`file` 恒 doc 壳），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。条目自己没有 `board.json` 时服务合成 doc 阅读板：`file` 一屏，`dir` 顶层每个 `*.html` 一屏（侧栏版本列表），所以登记了就能打开读；磁盘 `board.json` 永远优先。
    - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `pinpoint.setFloatingToolbar(true)`）。标注面板（`#ann-sidebar`：顶部「交互 | 标注」segmented，下面当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）的主入口是**浏览器工具栏的 pinpoint 扩展图标**，**S** 键与工具条「列表」按钮是次要入口。
    - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
    - 标注落在 `~/.pinpoint/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
 
-3. **registry `url` entry → 浏览器扩展**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：
-
-   ```json
-   { "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }
-   ```
+3. **registry `url` entry → 浏览器扩展**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：`pinpoint add https://your-app.localhost`（等价的手编 JSON：`{ "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }`）。
 
    - 一次性安装扩展：`chrome://extensions` → Developer mode → **Load unpacked** → 选本仓 `extension/`（机制细节见 [`extension/README.md`](../../extension/README.md)）。
    - content script 依次探 `https://pinpoint.localhost/registry` 和页面自身 origin；`location.origin` 与某个 url entry **精确匹配**才注入；服务不在线 = 不注入，未登记 = 不注入。

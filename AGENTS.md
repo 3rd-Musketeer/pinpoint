@@ -63,8 +63,9 @@ Checks: `just check` (contracts + Chromium e2e; first time
 |---|---|
 | `client/annotate.js` | The annotation client, served as `/annotate.js`; libs are inlined at serve time |
 | `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
+| `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url>`); pure logic + tests in `bin/pinpoint-cli.js` |
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
-| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js`, `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
+| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
 | `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=` deep-link write side; read side is `resolveBootPageId` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
 | `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/outline/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
@@ -87,9 +88,9 @@ serve time); those modules are pure and node-tested — keep them DOM-free.
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
 | `previews/_index.json` when adding a page (`mode`: `ios` \| `html`) | `ios-kit.css` to “fix” one annotation |
-| `~/.pinpoint/registry.json` to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
+| `~/.pinpoint/registry.json` via `pinpoint add` (or careful hand edits) to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
 
-**Page shells:** Pages is a single list — template pages plus registry `dir`
+**Page shells:** Pages is a single list — template pages plus registry `dir`/`file`
 entries — with a per-row shell marker (smartphone = `ios`, document = `html`);
 Component Library stays as a system row. The shell is a page/frame property
 derived by `modeForPage`, not a workbench mode switch (the iOS / Web / HTML Seg
@@ -194,10 +195,11 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Top level is **`sections[]`**, not a flat `{ id, screens }` object.
 - Page id / title / order / default live in **`previews/_index.json`**; a gitignored
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
-  Registry `dir` entries (except the workbench's own `pinpoint` entry) are appended
-  as pages from `GET /registry`: mode comes from the entry's `board` field (default
-  `html`; a legacy `web` value normalizes to `html`), and their board/screens load
-  read-only from `/sites/<entry-id>/`. A previews page with the same id wins over a
+  Registry `dir`/`file` entries (except the workbench's own `pinpoint` entry) are appended
+  as pages from `GET /registry`: a dir entry's mode comes from its `board` field (default
+  `html`; a legacy `web` value normalizes to `html`), file entries are always `html`;
+  their board/screens load read-only from `/sites/<entry-id>/` (synthesized doc board when
+  no disk `board.json` exists). A previews page with the same id wins over a
   registry page.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
@@ -276,14 +278,27 @@ else opens byte-identical pages with zero annotation surface.
 
 **Registry** (`server/lib/registry.js`): `~/.pinpoint/registry.json`,
 `PINPOINT_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
-`{id, title?, kind: "dir"|"url", path? | url?, board?}`; id must match
+`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?}`; id must match
 `^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`html`)
-only matters for dir entries' workbench page shell (default/legacy `web` → `html`). A missing file means the default
+only matters for dir entries' workbench page shell (default/legacy `web` → `html`;
+`file` entries always open in the doc reader and carry no board). A missing file means the default
 pinpoint-only registry (`{id:"pinpoint", kind:"dir", path:<repo root>}`). Malformed JSON or
 a wrong top-level shape falls back to the default with the error recorded; invalid entries
-are skipped individually; a missing dir path is a warning, not a removal. All of it is
+are skipped individually; a missing dir/file path is a warning, not a removal. All of it is
 visible on `GET /health` (registry summary — `entries` there is a **count**) and
 `GET /registry` (full `entries` list plus `service.directOrigin`).
+
+**Writes go through the CLI** (`bin/pinpoint.mjs`; `npm link` once for PATH):
+`pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx]`
+atomically appends to the registry file (`--registry` overrides the path for
+scripts/tests). The write side lives in `server/lib/registry-store.js` — strict
+validation (unique id, legal kind, existing dir/file path, http(s) url), tmp+rename,
+2-space JSON. The store is also the server's live registry view: one instance is
+shared by the annotate/sites/export plugins (`vite.config.js`), and
+`POST /registry/reload` swaps the snapshot in place — the CLI calls it after a
+successful add when the service answers `/health`, so new entries serve, inject,
+and route buckets without a restart (open workbenches learn it via the HMR
+`registry:update` event; a static snapshot answers `409 registry_not_reloadable`).
 
 **Delivery paths** (one client, `client/annotate.js` → `/annotate.js`):
 
@@ -299,6 +314,16 @@ visible on `GET /health` (registry summary — `entries` there is a **count**) a
    injected before `</body>` (appended when there is no `</body>`); `?annotate=off` serves
    the exact disk bytes — the workbench inline fragment loader and export rendering use it.
    Dir entries also surface as workbench pages (see Canonical board schema).
+   **`file` entries** share the same injection/annotate=off pipeline for exactly the one
+   registered file: `/sites/<entry-id>/` and `/sites/<entry-id>/<basename>` both serve it,
+   and any other spelling (traversal, sibling names) 404s. File entries surface as
+   workbench pages too (always doc shell). Entries without their own `board.json` stay
+   readable: `/sites/<id>/board.json` serves a synthesized doc board
+   (`server/lib/synth-board.js`) — one screen for a file entry, one screen per top-level
+   `*.html` (sorted) for a dir entry; a disk `board.json` always wins, and `ios`-board
+   dirs / dirs without any top-level HTML get no synthesis (404). Screen `src`s in
+   synthesized boards are percent-encoded so iframe URL, `location.pathname`, and the
+   export pipeline's annotation page-key hash agree byte-for-byte.
 3. **`url` entries → browser extension** — `extension/` is an MV3 extension whose content
    script (top frame only, `localhost` / `*.localhost` / `127.0.0.1` matches) probes
    `https://pinpoint.localhost/registry` then the page's own origin; first JSON wins. When
@@ -377,7 +402,7 @@ instance layers private content on top without touching tracked files:
 2. Add a new workbench page (`previews/<pageId>/` + one `previews/_index.json` entry).
 3. Interactive screen: sidecar `mount(root)` + `data-preview-mount` (or inline `data-preview-script`); do not edit `ios-kit.js`.
 4. Read annotations grouped by `pageId` then `section` (and `screenId` when present); edit the routed file; do not clear annotations for the user.
-5. Register a `dir` entry in the machine registry; verify `GET /registry` lists it,
+5. Register a `dir` entry with `pinpoint add <dir>`; verify `GET /registry` lists it,
    `/sites/<id>/` serves HTML with `window.__pinpointEntry` injected, `?annotate=off` is
    byte-identical to disk, and the workbench lists it as a page. For a `url` entry: load
    `extension/` unpacked, browse the origin with the service up, and confirm the toolbar
@@ -394,6 +419,6 @@ instance layers private content on top without touching tracked files:
 - Editing loader chrome to satisfy an annotation
 - Product gestures / screen state in `ios-kit.js`
 - Setting caption font sizes in screen HTML or ad-hoc CSS
-- Hand-injecting `/annotate.js` into unregistered pages — register a `dir`/`url` entry
+- Hand-injecting `/annotate.js` into unregistered pages — `pinpoint add` a `dir`/`file`/`url` entry
   instead; unregistered surfaces stay clean by contract
 - Committing machine-local registry content or instance-private pages into tracked files

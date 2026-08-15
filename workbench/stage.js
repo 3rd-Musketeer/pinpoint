@@ -548,6 +548,12 @@ if (import.meta.hot) {
       loadBoard(boardPanel, wbGet().activePageId);
     }
   });
+  // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
+  // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages。
+  import.meta.hot.on('registry:update', function () {
+    queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+    loadPageManifest();
+  });
 }
 
 (function init() {

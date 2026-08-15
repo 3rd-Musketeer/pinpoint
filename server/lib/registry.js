@@ -11,7 +11,7 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
-const KINDS = new Set(['dir', 'url']);
+const KINDS = new Set(['dir', 'file', 'url']);
 
 export function defaultRegistryPath() {
   return path.join(os.homedir(), '.pinpoint', 'registry.json');
@@ -27,9 +27,9 @@ function validateEntry(raw, seen) {
     return `entry id must match ${ENTRY_ID_PATTERN}: ${JSON.stringify(raw.id)}`;
   }
   if (seen.has(raw.id)) return `duplicate entry id "${raw.id}"`;
-  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir" or "url"`;
-  if (raw.kind === 'dir' && typeof raw.path !== 'string') {
-    return `entry "${raw.id}" kind "dir" requires a path`;
+  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", or "url"`;
+  if ((raw.kind === 'dir' || raw.kind === 'file') && typeof raw.path !== 'string') {
+    return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
   }
   if (raw.kind === 'url' && typeof raw.url !== 'string') {
     return `entry "${raw.id}" kind "url" requires a url`;
@@ -43,7 +43,7 @@ function normalizeEntry(raw) {
     title: typeof raw.title === 'string' ? raw.title : raw.id,
     kind: raw.kind,
   };
-  if (raw.kind === 'dir') entry.path = raw.path;
+  if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
   else entry.url = raw.url;
   if (typeof raw.board === 'string') entry.board = raw.board;
   return entry;
@@ -107,7 +107,7 @@ export function loadRegistry(options = {}) {
     }
     seen.add(raw.id);
     const entry = normalizeEntry(raw);
-    if (entry.kind === 'dir' && !fs.existsSync(entry.path)) {
+    if ((entry.kind === 'dir' || entry.kind === 'file') && !fs.existsSync(entry.path)) {
       // A missing path only breaks that entry's own /sites/ serving (404) —
       // keep the entry and warn rather than failing the whole registry.
       warnings.push(`entry "${entry.id}" path does not exist: ${entry.path}`);

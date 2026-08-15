@@ -1,19 +1,27 @@
 /**
- * /sites/<entry-id>/ — read-only static serving of registry `dir` entries.
+ * /sites/<entry-id>/ — read-only static serving of registry `dir` entries,
+ * plus single-file serving of registry `file` entries.
  *
- * The registry is the whitelist: only registered dir entries are served, and
- * every resolved path (textual and real, i.e. symlink-safe) must stay inside
- * the entry directory. HTML responses (GET, without ?annotate=off) get the
- * annotate client injected — "登记过才注入": opening the same directory via
- * file:// or a self-started server serves the identical bytes with zero
- * annotation surface. ?annotate=off opts a single request out (export paths
- * and the workbench's inline fragment loader use it).
+ * The registry is the whitelist: only registered entries are served. For a
+ * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
+ * stay inside the entry directory; for a `file` entry only the registered
+ * file itself is served — under both `/sites/<id>/` and
+ * `/sites/<id>/<basename>`, everything else 404s, so sibling files in the
+ * same directory stay unreachable. Entries without their own board.json get a
+ * synthesized doc board at `/sites/<id>/board.json` (see lib/synth-board.js),
+ * so every registered site page opens readable in the workbench. HTML
+ * responses (GET, without
+ * ?annotate=off) get the annotate client injected — "登记过才注入": opening
+ * the same content via file:// or a self-started server serves the identical
+ * bytes with zero annotation surface. ?annotate=off opts a single request out
+ * (export paths and the workbench's inline fragment loader use it).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { loadRegistry } from './lib/registry.js';
+import { synthesizeBoard } from './lib/synth-board.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -107,6 +115,25 @@ function resolveFileWithin(base, rel) {
   return stat.isFile() ? real : null;
 }
 
+/**
+ * Resolve a registered single file (`file` entry) for the request path, or
+ * null. Exactly two spellings reach the file: `/sites/<id>/` (empty rel) and
+ * `/sites/<id>/<basename>`. The equality check is the whole guard — any
+ * traversal or sibling name simply never matches. A symlinked registered
+ * path is fine: the registry whitelists this exact file.
+ */
+function resolveRegisteredFile(entry, rel) {
+  if (rel.includes('\0')) return null;
+  if (rel !== '' && rel !== path.basename(entry.path)) return null;
+  let real;
+  try {
+    real = fs.realpathSync(entry.path);
+  } catch {
+    return null; // registered file missing — 404, registry warning already logged it
+  }
+  return fs.statSync(real).isFile() ? real : null;
+}
+
 export function createSitesHandler(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
 
@@ -137,12 +164,34 @@ export function createSitesHandler(options = {}) {
     }
 
     const entry = id && registry.resolve(id);
-    if (!entry || entry.kind !== 'dir') {
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) {
       sendJson(res, 404, { error: 'not found' });
       return true;
     }
 
-    const file = resolveFileWithin(path.resolve(entry.path), rel || 'index.html');
+    const file = entry.kind === 'file'
+      ? resolveRegisteredFile(entry, rel)
+      : resolveFileWithin(path.resolve(entry.path), rel || 'index.html');
+
+    // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
+    // 一版本）——磁盘文件永远优先，合成只在 resolve 落空后发生。合成的是
+    // JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
+    if (!file && rel === 'board.json') {
+      const board = synthesizeBoard(entry);
+      if (board) {
+        const body = Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8');
+        res.statusCode = 200;
+        res.setHeader('Content-Type', 'application/json; charset=utf-8');
+        res.setHeader('Content-Length', String(body.length));
+        if (req.method === 'HEAD') {
+          res.end();
+          return true;
+        }
+        res.end(body);
+        return true;
+      }
+    }
+
     if (!file) {
       sendJson(res, 404, { error: 'not found' });
       return true;

@@ -1,15 +1,19 @@
 import { execFile } from 'node:child_process';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { writeRegistryFixture } from './registry-fixture.js';
 
 // Registry `dir` entries are served read-only under /sites/<id>/ with the
 // annotate client injected, and aggregate into the workbench as pages.
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-dir');
 const execFileP = promisify(execFile);
 
@@ -151,4 +155,88 @@ test('doc export of a /sites/ page carries no annotate bootstrap', async ({ page
   expect(baked).not.toContain('__pinpointEntry');
   expect(baked).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*annotate\.js/i);
   expect(baked).toContain('data-export-comments');
+});
+
+// 阶段 3：CLI 登记入口的端到端闭环 —— 真实跑 bin/pinpoint.mjs 写 registry
+// （--registry 指向 e2e fixture，PINPOINT_ORIGIN 指向 e2e server，由 CLI 自己
+// 探活并触发 POST /registry/reload），新 dir 条目不重开服务即出现在 Pages。
+test('pinpoint add (CLI) registers a dir that appears in Pages after reload', async ({ page }) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-e2e-cli-'));
+  const site = path.join(tmp, 'clisite');
+  fs.mkdirSync(site);
+  fs.writeFileSync(path.join(site, 'index.html'), '<!doctype html><html><body><h1 id="cli-title">E2E CLI-added site</h1></body></html>');
+  fs.writeFileSync(path.join(site, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'column', screens: [{ id: 'index', title: 'Index' }] }],
+  }));
+  try {
+    await execFileP('node', [
+      path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', site,
+      '--id', 'e2e-cli-add', '--title', 'E2E CLI Add', '--registry', E2E_REGISTRY,
+    ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
+
+    await page.goto('/index.html');
+    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    const navBtn = page.locator('.wb-page[data-vpage="e2e-cli-add"]');
+    await expect(navBtn).toBeVisible();
+    await navBtn.click();
+
+    // dir 条目默认 doc 壳：单屏 index → iframe 从 /sites/e2e-cli-add/ 渲染。
+    const frame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
+    await expect(frame).toHaveAttribute('src', /\/sites\/e2e-cli-add\/index\.html$/);
+    await expect(
+      page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#cli-title')
+    ).toHaveText('E2E CLI-added site');
+  } finally {
+    // 恢复共享 registry fixture 并让服务忘掉该条目，不能影响后续 spec。
+    writeRegistryFixture();
+    fs.rmSync(tmp, { recursive: true, force: true });
+    await page.request.post('/registry/reload');
+  }
+});
+
+// 阶段 3 收尾：单文件 entry 没有 board.json —— 服务合成单屏 doc 板，
+// Pages 出现、打开即读、导出走 file 条目的 src 映射。
+test('pinpoint add (CLI) of a single HTML file opens as a synthesized doc page', async ({ page }) => {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-e2e-cli-file-'));
+  const file = path.join(tmp, 'Weekly Report.html');
+  fs.writeFileSync(file, '<!doctype html><html><body><h1 id="report-title">E2E CLI single file</h1></body></html>');
+  try {
+    await execFileP('node', [
+      path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', file,
+      '--id', 'e2e-cli-file', '--registry', E2E_REGISTRY,
+    ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
+
+    await page.goto('/index.html');
+    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    const navBtn = page.locator('.wb-page[data-vpage="e2e-cli-file"]');
+    await expect(navBtn).toBeVisible();
+    await navBtn.click();
+
+    // 合成板：单屏 index，src = sites/<id>/<percent-encoded 文件名>（契约规范形，
+    // 无前导斜杠；iframe 从 /index.html 相对解析到 /sites/…）。
+    const frame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
+    await expect(frame).toHaveAttribute('src', /^sites\/e2e-cli-file\/Weekly%20Report\.html$/);
+    await expect(
+      page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#report-title')
+    ).toHaveText('E2E CLI single file');
+
+    // 导出闭环：file 条目的 src 映射到注册文件本身，且不含注入客户端。
+    const res = await page.request.post('/api/export-doc', {
+      data: {
+        mode: 'html-full',
+        pageId: 'e2e-cli-file',
+        screenId: 'index',
+        src: 'sites/e2e-cli-file/Weekly%20Report.html',
+        comments: false,
+      },
+    });
+    expect(res.status()).toBe(200);
+    const body = await res.text();
+    expect(body).toContain('E2E CLI single file');
+    expect(body).not.toContain('__pinpointEntry');
+  } finally {
+    writeRegistryFixture();
+    fs.rmSync(tmp, { recursive: true, force: true });
+    await page.request.post('/registry/reload');
+  }
 });

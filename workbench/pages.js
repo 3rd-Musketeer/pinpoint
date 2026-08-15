@@ -193,10 +193,11 @@ export function showPageManifestError(error) {
   wbSet({ pageManifestError: String(error && error.message ? error.message : error) });
 }
 
-/** Registry dir entries surface as workbench pages, served from /sites/<id>/.
+/** Registry dir/file entries surface as workbench pages, served from /sites/<id>/.
     The default 'pinpoint' entry is the workbench itself — its pages are the
     _index pages, so it is not listed again. A dead annotate API must not break
-    the workbench: previews-only then. */
+    the workbench: previews-only then. Entries without their own board.json are
+    still readable: the service synthesizes a doc board (lib/synth-board.js). */
 function registrySitePages() {
   return queryClient.fetchQuery({
     queryKey: ['registry-sites'],
@@ -209,14 +210,17 @@ function registrySitePages() {
         .then(function (data) {
           var entries = (data && data.entries) || [];
           return entries
-            .filter(function (entry) { return entry && entry.kind === 'dir' && entry.id !== 'pinpoint'; })
+            .filter(function (entry) {
+              return entry && (entry.kind === 'dir' || entry.kind === 'file') && entry.id !== 'pinpoint';
+            })
             .map(function (entry) {
               return {
                 id: entry.id,
                 title: entry.title || entry.id,
                 // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
                 // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
-                mode: entry.board === 'ios' ? 'ios' : 'html',
+                // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
+                mode: entry.kind === 'file' ? 'html' : (entry.board === 'ios' ? 'ios' : 'html'),
                 site: true
               };
             });

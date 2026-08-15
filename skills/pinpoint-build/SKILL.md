@@ -174,18 +174,21 @@ Manifest 是 page id / title / order / default / mode 的 SSOT；`board.json` �
 
 ### 3.1 仓库外的项目：registry dir entry
 
-要评审的项目不在本仓库时，不要把文件复制进来——在本机 registry（`~/.pinpoint/registry.json`，`PINPOINT_REGISTRY` 可覆盖）登记一个 `dir` entry：
+要评审的项目不在本仓库时，不要把文件复制进来——用 CLI 在本机 registry 登记一个 `dir` entry：
 
-```json
-{ "id": "your-app", "title": "Your App", "kind": "dir", "path": "/abs/path/to/your-app/dist", "board": "web" }
+```bash
+pinpoint add /abs/path/to/your-app/dist --title "Your App" --board ios
+# 没 `npm link` 过就用 node bin/pinpoint.mjs add ...
 ```
+
+CLI 会从目录名派生 id（slug 化，冲突自动追加 `-2`/`-3`；`--id` 显式指定且冲突时报错而不是覆盖），原子写入 `~/.pinpoint/registry.json`（`--registry` / `PINPOINT_REGISTRY` 覆盖文件位置），并在服务可达时自动 `POST /registry/reload`——**不用重启服务**；服务没跑则下次启动生效。单个 `.html` 文件同理（kind `file`，只 serve 该文件，恒 doc 壳，`--board ios` 会被拒）；SPA / 自己起服务的应用登记 URL（kind `url`），见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2。
 
 - 服务把该目录**只读** serve 在 `https://pinpoint.localhost/sites/your-app/`：registry 即白名单，未知 id / `..` 穿越 / symlink 逃逸一律 404；目录回落 `index.html`。
 - HTML 响应在 `</body>` 前自动注入 `window.__pinpointEntry='your-app'` + `/annotate.js`；`?annotate=off` 原样输出磁盘字节（导出管线和 workbench 内联加载走它）。
-- 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先）。`board` 字段选 board：`ios` / `web` / `html`，缺省 `web`。
-- 页面结构仍由它自己的 `board.json` + screens 决定（从 `/sites/<id>/board.json` 拉取）——schema 与本仓页面完全相同，编辑对象是登记目录里的磁盘文件，serve 只读不影响改稿。
+- 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先）。`board` 字段选壳：`ios` / `html`，缺省 `html`（残留 `web` 归一到 `html`）。
+- 页面结构仍由它自己的 `board.json` + screens 决定（从 `/sites/<id>/board.json` 拉取）——schema 与本仓页面完全相同，编辑对象是登记目录里的磁盘文件，serve 只读不影响改稿。**没有 `board.json` 也能打开**：服务合成 doc 阅读板，目录顶层每个 `*.html` 一屏（侧栏切版本）；磁盘 `board.json` 一旦补上立即优先。要机壳画布（`board:"ios"`）则必须手写 `board.json`。
 - 标注落在 `~/.pinpoint/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
-- 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页。目标项目是 SPA / 自己起服务、想按 origin 评审时改用 `url` entry + 浏览器扩展，见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2。
+- 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页（CLI 触发的 reload 会让打开的 workbench 自动刷新 Pages）。
 
 ## 4. 加 component
 

@@ -118,6 +118,28 @@ test('kind validation: dir requires path, url requires url, unknown kinds are sk
   assert.deepEqual(registry.entries.map((e) => e.id), ['good-dir', 'good-url']);
 });
 
+test('kind "file": requires a path, keeps it, and warns instead of dropping when missing', (t) => {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'report.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
+  const file = writeRegistry(dir, {
+    version: 1,
+    entries: [
+      { id: 'file-no-path', title: 'x', kind: 'file' },
+      { id: 'good-file', title: 'x', kind: 'file', path: page, board: 'ios' },
+      { id: 'ghost-file', title: 'x', kind: 'file', path: path.join(dir, 'gone.html') },
+    ],
+  });
+  const { registry } = quietLoad({ path: file });
+  assert.equal(registry.ok, false, 'file without a path is an invalid entry');
+  assert.equal(registry.errors.length, 1);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['good-file', 'ghost-file']);
+  assert.equal(registry.resolve('good-file').path, page);
+  assert.equal(registry.resolve('good-file').board, 'ios');
+  assert.equal(registry.warnings.length, 1, 'missing file path warns but stays registered');
+  assert.match(registry.warnings[0], /does not exist/);
+});
+
 test('a dir entry with a missing path is kept but warned about', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {
