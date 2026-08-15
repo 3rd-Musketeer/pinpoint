@@ -29,13 +29,15 @@ test('screen fragment contract accepts app and legacy phone fragments', () => {
   );
 });
 
-test('web shell accepts arbitrary non-document HTML fragments', () => {
-  assert.equal(
-    validateScreenFragment('<article class="report"><h1>Weekly</h1></article>', 'screen(web/report)', { shell: 'web' }),
-    '<article class="report"><h1>Weekly</h1></article>',
-  );
+test('screen fragment contract applies the ios wrapper check to every inlined shell', () => {
+  // web 壳退役（2026-08-16 阶段 2）后不再有裸 fragment 旁路：内联进画板的
+  // fragment 都要带 ios 包装；完整文档走 doc shell（iframe，不进本校验）。
   assert.throws(
     () => validateScreenFragment('<article class="report"></article>'),
+    (error) => error instanceof ContractError && error.message.includes('ios-app'),
+  );
+  assert.throws(
+    () => validateScreenFragment('<article class="report"><h1>Weekly</h1></article>', 'screen(legacy/report)', { shell: 'web' }),
     (error) => error instanceof ContractError && error.message.includes('ios-app'),
   );
 });
@@ -45,29 +47,32 @@ test('page manifest owns ordered titles, modes, and a listed default page', () =
     defaultPage: 'library',
     pages: [
       { id: 'library', title: 'Example Library' },
-      { id: 'web-library', title: 'Example Web', mode: 'web' },
+      { id: 'doc-library', title: 'Example HTML', mode: 'html' },
       { id: 'other-page', title: 'Time Insight', mode: 'ios' },
     ],
   });
 
-  assert.deepEqual(manifest.pages.map((page) => page.id), ['library', 'web-library', 'other-page']);
-  assert.deepEqual(manifest.pages.map((page) => page.mode), ['ios', 'web', 'ios']);
+  assert.deepEqual(manifest.pages.map((page) => page.id), ['library', 'doc-library', 'other-page']);
+  assert.deepEqual(manifest.pages.map((page) => page.mode), ['ios', 'html', 'ios']);
   assert.equal(manifest.defaultPage, 'library');
 });
 
-test('page manifest accepts the html board mode and rejects unknown ones', () => {
+test('page manifest normalizes the retired web mode and rejects unknown ones', () => {
   const manifest = validatePageManifest({
     defaultPage: 'doc-library',
-    pages: [{ id: 'doc-library', title: 'Example HTML', mode: 'html' }],
+    pages: [
+      { id: 'doc-library', title: 'Example HTML', mode: 'html' },
+      { id: 'legacy-web', title: 'Legacy Web', mode: 'web' },
+    ],
   });
-  assert.deepEqual(manifest.pages.map((page) => page.mode), ['html']);
+  assert.deepEqual(manifest.pages.map((page) => page.mode), ['html', 'html']);
 
   assert.throws(
     () => validatePageManifest({
       defaultPage: 'x',
       pages: [{ id: 'x', title: 'X', mode: 'print' }],
     }),
-    /pages\[0\].mode.*expected "ios", "web", or "html"/,
+    /pages\[0\].mode.*expected "ios" or "html"/,
   );
 });
 
@@ -149,12 +154,12 @@ test('checked-in preview boards satisfy the manifest contract', () => {
     const board = JSON.parse(fs.readFileSync(new URL(`previews/${page.id}/board.json`, root)));
     validateBoard(board, {
       pageId: page.id,
-      defaultShell: page.mode === 'web' ? 'web' : 'app',
+      defaultShell: page.mode === 'html' ? 'doc' : 'app',
     });
   }
 });
 
-test('board accepts web shell screens', () => {
+test('board normalizes legacy web shell screens to doc (2026-08-16 阶段 2)', () => {
   const board = validateBoard({
     sections: [{
       id: 'site',
@@ -163,6 +168,7 @@ test('board accepts web shell screens', () => {
       shell: 'web',
       screens: [{ id: 'hero', title: 'Hero', shell: 'web' }],
     }],
-  }, { pageId: 'web-library', defaultShell: 'web' });
-  assert.equal(board.sections[0].screens[0].shell, 'web');
+  }, { pageId: 'legacy-web', defaultShell: 'web' });
+  assert.equal(board.sections[0].shell, 'doc');
+  assert.equal(board.sections[0].screens[0].shell, 'doc');
 });

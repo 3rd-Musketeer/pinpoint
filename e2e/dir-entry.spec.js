@@ -31,20 +31,42 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 
-  // The page is board "web" — the nav lists pages of the active board mode.
-  await page.locator('#wbboard-mode [data-board-mode="web"]').click();
+  // Pages 单一列表（2026-08-16 阶段 2）：dir 条目与模板页同列，无模式 Seg。
+  await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   const navBtn = page.locator('.wb-page[data-vpage="e2e-dir"]');
   await expect(navBtn).toBeVisible();
   await navBtn.click();
 
-  // Web-shell fragment: fetched from /sites/ with annotate=off and inlined clean.
-  const cards = page.locator('#wb-board-panel [data-screen="cards"]');
-  await expect(cards).toContainText('fragment served from /sites/');
-  await expect(cards.locator('script')).toHaveCount(0);
+  // dir 条目默认 doc 壳：每屏一个 iframe 文档（保留文档自己注入的 annotate
+  // 客户端），侧栏切版本；board.json 里残留的 shell:"web" 归一到 doc。
+  const versions = page.locator('#wbdoc-versions [data-doc-screen]');
+  await expect(versions).toHaveCount(2);
+  const cardsFrame = page.locator('#wb-board-panel [data-screen="cards"] iframe.wb-doc-frame');
+  await expect(cardsFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/cards\.html$/);
+  await expect(
+    page.frameLocator('#wb-board-panel [data-screen="cards"] iframe.wb-doc-frame').locator('h1')
+  ).toHaveText('E2E dir-site cards');
 
-  // Doc-shell screen: iframe keeps the injected client so the doc annotates itself.
+  // 版本切换：第二屏（doc.html）成为当前文档。
+  await page.locator('#wbdoc-versions [data-doc-screen="doc"]').click();
   const docFrame = page.locator('#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame');
   await expect(docFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/doc\.html$/);
+  await expect(
+    page.frameLocator('#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame').locator('#doc-title')
+  ).toHaveText('E2E dir-site doc');
+});
+
+test('registry dir entry with board "ios" inlines fragments fetched with annotate=off', async ({ page }) => {
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+
+  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
+  // Fragment inlined into phone chrome: fetched from /sites/ with annotate=off,
+  // so the injected client never enters the board.
+  const cards = page.locator('#wb-board-panel [data-screen="cards"]');
+  await expect(cards).toContainText('ios fragment served from /sites/');
+  await expect(cards.locator('script')).toHaveCount(0);
+  await expect(cards.locator('.ios-stage')).toHaveCount(1);
 });
 
 test('/sites/<id>/ HTML injects the annotate client and saves into the entry bucket', async ({ page }) => {

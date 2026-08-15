@@ -10,6 +10,34 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-16
 
+### Removed
+- **Web board retired; Pages is one list** (roadmap 阶段 2). The iOS / Web / HTML
+  mode Seg (`#wbboard-mode`) is gone: Pages shows every page — template pages
+  and registry `dir` entries — in a single list, each row carrying a shell
+  marker (smartphone = phone shell, file-text = doc); Component Library stays
+  as a system row for every page. The shell is a page/frame property derived
+  by `modeForPage`, not a workbench mode: `store.boardMode` is removed in favor
+  of the derived `activeBoardMode()` view, `setBoardMode` /
+  `syncBoardModeUi` / per-mode page memory (`activePageIdByMode`, `boardMode`
+  prefs — dropped once at boot) are retired, and their side effects moved into
+  `setActivePage` (opening an `html` page locks the canvas zoom at 1; leaving
+  one stops the comment gutter). The reader-form CSS hook is renamed
+  `[data-board-mode="html"]` → `[data-page-mode="html"]`.
+- **The bare-artboard web shell** — `wrapHtmlShell` (`.wb-html-stage` /
+  `.wb-html-surface`, `--wb-web-w` 960px artboard), the `previews/web-library/`
+  example page, and the `WEB_LIB_ID` constant. Stale `web` data lands safely
+  on the doc reader: page `mode: "web"` and `shell: "web"` normalize to
+  `html` / `doc` at the contract boundary, `?mode=web` deep links parse as
+  `html`, and registry `dir` entries now default to the doc shell (explicit
+  `board: "ios"` keeps phone chrome).
+
+### Fixed
+- **E2E registry fixture timing** — the fixture is now written from
+  `playwright.config.js` module scope (`e2e/registry-fixture.js`), because the
+  webServer reads `PINPOINT_REGISTRY` once at boot and boots before
+  `globalSetup`; a clean checkout previously started with the default
+  pinpoint-only registry.
+
 ### Added
 - **Right annotation panel width adaptation (V2)** — mock
   `previews/sidebar-variants/sidebar.html` `.wmock[data-v="v2"]`. A second

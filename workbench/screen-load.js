@@ -189,18 +189,6 @@ function wrapCompStage(bodyHtml) {
   );
 }
 
-/** Web board: desktop/report artboard without phone chrome. */
-function wrapHtmlShell(bodyHtml) {
-  if (/\bwb-html-stage\b/.test(bodyHtml)) return bodyHtml;
-  return (
-    '<div class="wb-html-stage" data-ann-frame>' +
-      '<div class="wb-html-surface" data-ann-surface data-preview-mount>' +
-        bodyHtml +
-      '</div>' +
-    '</div>'
-  );
-}
-
 /** HTML board: a standalone document artboard (iframe inside). */
 function wrapDocShell(bodyHtml) {
   if (/\bwb-doc-stage\b/.test(bodyHtml)) return bodyHtml;
@@ -216,7 +204,6 @@ function wrapDocShell(bodyHtml) {
 function wrapScreenShell(pageId, bodyHtml, shell) {
   if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
   if (shell === 'doc' || modeForPage(wbGet().pageManifest, pageId) === 'html') return wrapDocShell(bodyHtml);
-  if (shell === 'web' || modeForPage(wbGet().pageManifest, pageId) === 'web') return wrapHtmlShell(bodyHtml);
   return wrapPhoneShell(bodyHtml, shell);
 }
 
@@ -224,12 +211,11 @@ function wrapScreenShell(pageId, bodyHtml, shell) {
 // --ios-screen-w/--ios-screen-h 同源（唯一 device preset）；读法见 mock 的 .fig .dim。
 var IOS_DEVICE_DIM = '402 × 874';
 
-/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/web/doc 画板是流体尺寸，不出尺寸行。 */
+/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行。 */
 function isPhoneFrame(pageId, shell) {
   if (pageId === COMPONENTS_ID) return false;
   var mode = modeForPage(wbGet().pageManifest, pageId);
   if (shell === 'doc' || mode === 'html') return false;
-  if (shell === 'web' || mode === 'web') return false;
   return true;
 }
 
@@ -241,7 +227,6 @@ export function frameDimLabel(pageId, shell) {
 function screenClassForShell(pageId, shell) {
   if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
   if (shell === 'doc' || modeForPage(wbGet().pageManifest, pageId) === 'html') return 'wb-screen wb-screen--doc';
-  if (shell === 'web' || modeForPage(wbGet().pageManifest, pageId) === 'web') return 'wb-screen wb-screen--web';
   return 'wb-screen';
 }
 

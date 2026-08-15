@@ -116,7 +116,7 @@
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }
 
-  /* board mode 分段 / 页面列表（.wb-board-mode/.wb-pages/.wb-page*）的视觉
+  /* 页面列表（.wb-pages/.wb-page*）的视觉
      已收编进 app/Sidebar.jsx（V2）—— 旧规则删除。 */
 
   .wb-side-body { flex:1; min-height:0; display:flex; flex-direction:column; }
@@ -532,30 +532,7 @@
     background:#fff;
     box-shadow:var(--wb-sh-board);
   }
-  /* Web board: desktop / report artboards */
-  .wb-screen--web {
-    --wb-phone-w: var(--wb-web-w, 960px);
-    --wb-phone-h: auto;
-    width:var(--wb-web-w, 960px);
-  }
-  .wb-html-stage {
-    width:var(--wb-web-w, 960px);
-    box-sizing:border-box;
-    border-radius:var(--wb-r-board);
-    background:#fff;
-    box-shadow:var(--wb-sh-board);
-    overflow:hidden;
-  }
-  .wb-html-surface {
-    position:relative;
-    width:100%;
-    min-height:540px;
-    overflow:auto;
-    background:#fff;
-    color:#171717;
-    font-family:"Iowan Old Style","Palatino Linotype",Palatino,"Songti SC",serif;
-  }
-  /* HTML board: standalone-document artboard. Wider than Web so report pages
+  /* HTML board: standalone-document artboard. Wide enough that report pages
      that switch layout at a desktop breakpoint (side nav, two-column) show the
      desktop form; tall so long documents read without an inner scrollbar. */
   .wb-screen--doc {
@@ -580,38 +557,38 @@
      The chain stage → panel → zoom-wrap → library → item → sec-body → screen →
      doc-stage must each carry a definite height, or the iframe's height:100%
      resolves against auto and collapses. */
-  [data-board-mode="html"] .wb-stage { overflow:hidden; padding:0; }
-  [data-board-mode="html"] .wb-canvas-hud,
-  [data-board-mode="html"] .wb-canvas-dock { display:none; }
-  [data-board-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
-  [data-board-mode="html"] .wb-zoom-wrap {
+  [data-page-mode="html"] .wb-stage { overflow:hidden; padding:0; }
+  [data-page-mode="html"] .wb-canvas-hud,
+  [data-page-mode="html"] .wb-canvas-dock { display:none; }
+  [data-page-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
+  [data-page-mode="html"] .wb-zoom-wrap {
     width:100%; height:100%; transform:none !important;
   }
-  [data-board-mode="html"] .wb-library {
+  [data-page-mode="html"] .wb-library {
     display:block; width:100%; height:100%; padding:0; gap:0; transform:none !important;
   }
-  [data-board-mode="html"] .wb-lib-item {
+  [data-page-mode="html"] .wb-lib-item {
     display:flex; flex-direction:column; width:100%; height:100%; margin:0; padding:0; gap:0;
     border:0; background:transparent; box-shadow:none;
   }
   /* section 标题、frame 标题、Frame Note 都属于画布语汇，整页阅读时不要。
      汇报页出图走侧栏「导出文档」（真实版面长图 / HTML）。 */
-  [data-board-mode="html"] .wb-lib-cap,
-  [data-board-mode="html"] .wb-screen-cap,
-  [data-board-mode="html"] .wb-frame-note { display:none; }
-  [data-board-mode="html"] .wb-sec-body {
+  [data-page-mode="html"] .wb-lib-cap,
+  [data-page-mode="html"] .wb-screen-cap,
+  [data-page-mode="html"] .wb-frame-note { display:none; }
+  [data-page-mode="html"] .wb-sec-body {
     display:flex; flex:1; min-height:0; width:100%; padding:0; gap:0;
   }
-  [data-board-mode="html"] .wb-screen--doc {
+  [data-page-mode="html"] .wb-screen--doc {
     flex:1; min-width:0; min-height:0; width:100%; height:auto; margin:0;
   }
-  [data-board-mode="html"] .wb-doc-stage {
+  [data-page-mode="html"] .wb-doc-stage {
     width:100%; height:100%; border-radius:0; box-shadow:none;
   }
-  [data-board-mode="html"] .wb-doc-surface { height:100%; }
+  [data-page-mode="html"] .wb-doc-surface { height:100%; }
   /* one document at a time; the sidebar picks which */
-  [data-board-mode="html"] .wb-lib-item[data-doc-hidden],
-  [data-board-mode="html"] .wb-screen[data-doc-hidden] { display:none; }
+  [data-page-mode="html"] .wb-lib-item[data-doc-hidden],
+  [data-page-mode="html"] .wb-screen[data-doc-hidden] { display:none; }
 
   /* sidebar version switcher（#wbdoc-versions、.wb-doc-ver 系、导出钮）的视觉
      已收编进 app/Sidebar.jsx（V2）—— 旧规则删除（[hidden] 与 display 类的冲突

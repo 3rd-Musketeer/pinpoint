@@ -1,5 +1,7 @@
 import { create } from 'zustand';
 
+import { modeForPage } from '../lib/page-url.js';
+
 /**
  * Workbench 共享状态的唯一住处（goal-20260810-workbench-react-rebuild）。
  *
@@ -14,7 +16,6 @@ export const useWorkbenchStore = create((set) => ({
   annPanelCollapsed: false,  // 右栏（标注工作台）整栏折叠，decisions 2026-08-14
   annPanelWidth: 308,        // 右栏宽度（2026-08-16 V2：260–440 拖拽，boot-prefs applyAnnWidth 写）
   // board + pages
-  boardMode: 'ios',
   activePageId: null,
   pageManifest: null,
   pageManifestError: null,   // manifest 拉取失败信息（侧栏错误行）
@@ -57,3 +58,11 @@ export const useWorkbenchStore = create((set) => ({
 // 命令式层的读写入口（React 组件请用 hook 订阅，不要用这两个）。
 export const wbGet = useWorkbenchStore.getState;
 export const wbSet = useWorkbenchStore.setState;
+
+/* 页面形态（ios 机壳 / html 文档）不是独立状态 —— 2026-08-16 阶段 2 起它是
+   activePageId 的派生只读视图（modeForPage）。命令式消费点一律走本函数；
+   React 组件订阅 activePageId + pageManifest 后用 modeForPage 自行派生。 */
+export function activeBoardMode() {
+  var s = useWorkbenchStore.getState();
+  return modeForPage(s.pageManifest, s.activePageId);
+}

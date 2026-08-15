@@ -1,7 +1,6 @@
 /** Page id of the built-in Component Library board. */
 export var COMPONENTS_ID = 'components';
 export var LIB_ID = 'library';
-export var WEB_LIB_ID = 'web-library';
 export var DOC_LIB_ID = 'doc-library';
 export var SYSTEM_PAGES = { components: true };
 
@@ -30,22 +29,23 @@ export function modeForPage(manifest, pageId) {
 
 export function defaultShellForPage(manifest, pageId) {
   var mode = modeForPage(manifest, pageId);
-  if (mode === 'web') return 'web';
   if (mode === 'html') return 'doc';
   return 'app';
 }
 
 /* ---- URL 深链（goal-20260810-workbench-react-rebuild P3）----
    workbench 的 ?page=&mode= 解析与生成，纯函数；效果侧在 url-sync.js（写）
-   与 stage.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。 */
+   与 stage.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。
+   2026-08-16 阶段 2：web 模式退役 —— 残留 ?mode=web 深链归一到 html（doc 阅读器）。 */
 
-var DEEP_LINK_MODES = { ios: true, web: true, html: true };
+var DEEP_LINK_MODES = { ios: true, html: true };
 
 /** 解析 location.search 的深链参数；没给或非法的字段为 null（调用方回落 prefs）。 */
 export function parseDeepLink(search) {
   var params = new URLSearchParams(search || '');
   var pageId = params.get('page');
   var mode = params.get('mode');
+  if (mode === 'web') mode = 'html';
   return {
     pageId: pageId || null,
     mode: DEEP_LINK_MODES[mode] ? mode : null

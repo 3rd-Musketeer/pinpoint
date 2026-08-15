@@ -121,8 +121,7 @@ Workbench **Pages** (top → bottom):
    every mechanism: cards/lists/tab/sheet home, a 3-screen flow with inline-script and
    sidecar interactive frames, lock screens, a message flow built from component includes,
    and an AB layout comparison.
-3. **Example Web** — `previews/web-library/`: web-board surfaces on the 960px artboard.
-4. **Example HTML** — `previews/doc-library/`: a standalone one-page report on the HTML board.
+3. **Example HTML** — `previews/doc-library/`: a standalone one-page report on the HTML board.
 
 Beyond the tracked examples, pages come from two more sources: gitignored
 `previews/_index.local.json` (instance-private override of the manifest) and registry
@@ -276,8 +275,8 @@ Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`
   `<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
   injected before `</body>`; `?annotate=off` serves the exact disk bytes (export paths and
   the workbench's inline fragment loader use it). Registered dirs also appear as workbench
-  pages, with the entry's `board` field selecting the board mode (`ios` / `web` / `html`,
-  default `web`).
+  pages, with the entry's `board` field selecting the page shell (`ios` / `html`,
+  default `html`).
 - **`url` entries** — the MV3 browser extension in [`extension/`](extension/) matches
   `location.origin` against url entries on local-dev pages and injects the same client,
   stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline or
@@ -412,13 +411,12 @@ gitignored `previews/_index.local.json` overrides the page manifest; component d
 change at all. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
 (e2e and release verification run in this mode).
 
-Pages may set `"mode"` to `ios` (default), `web`, or `html`; the Workbench Pages list switch keeps
-the three lists separate.
+Pages may set `"mode"` to `ios` (default) or `html`; the Workbench Pages list is one
+mixed list with a per-row shell marker (canvas page vs document).
 
-| Board | Input | Artboard | Tracked example |
+| Shell | Input | Artboard | Tracked example |
 |---|---|---|---|
 | **iOS** | body fragment | iPhone chrome | `previews/library/` |
-| **Web** | body fragment | 960px desktop artboard (`shell: "web"`) | `previews/web-library/` |
 | **HTML** | complete standalone document | full-viewport iframe, no canvas (`shell: "doc"`) | `previews/doc-library/` |
 
 HTML boards host one-page reports and docs — files that carry their own `<!doctype>`, `<head>`, and

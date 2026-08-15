@@ -25,7 +25,6 @@ export function validateScreenFragment(raw, path = 'screen', options = {}) {
     );
   }
   const shell = options.shell || 'app';
-  if (shell === 'web') return html;
   if (!/\b(?:ios-app|ios-lockscreen|ios-stage|ios-device)\b/.test(html)) {
     throw new ContractError(path, 'expected an ios-app, ios-lockscreen, or legacy phone wrapper');
   }
@@ -60,12 +59,14 @@ function screenIdentifier(value, path, allowComponentRefs) {
   return id;
 }
 
-const PAGE_MODES = ['ios', 'web', 'html'];
+const PAGE_MODES = ['ios', 'html'];
 
 function validatePageMode(value, path) {
   const mode = value == null || value === '' ? 'ios' : value;
+  // 2026-08-16 阶段 2：web 模式/壳退役 —— 存量数据里的 'web' 安全落 doc 阅读器。
+  if (mode === 'web') return 'html';
   if (!PAGE_MODES.includes(mode)) {
-    throw new ContractError(path, 'expected "ios", "web", or "html"');
+    throw new ContractError(path, 'expected "ios" or "html"');
   }
   return mode;
 }
@@ -97,9 +98,11 @@ export function validatePageManifest(raw) {
 function validateShell(value, path, fallback = 'app') {
   const shell = value || fallback;
   // "doc" = a complete standalone HTML document rendered in an iframe (HTML board).
-  // The other shells take body fragments the loader wraps.
-  if (shell !== 'app' && shell !== 'lock' && shell !== 'web' && shell !== 'doc') {
-    throw new ContractError(path, 'expected "app", "lock", "web", or "doc"');
+  // "app"/"lock" take body fragments the loader wraps in phone chrome.
+  // Legacy "web" (2026-08-16 退役) 归一到 "doc" —— 裸画板壳已连壳删除。
+  if (shell === 'web') return 'doc';
+  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc') {
+    throw new ContractError(path, 'expected "app", "lock", or "doc"');
   }
   return shell;
 }

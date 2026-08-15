@@ -152,9 +152,7 @@ npm run export -- --page library --section brew-flow
 { "id": "<pageId>", "title": "My Flow", "mode": "ios" }
 ```
 
-网站 / web app 画板用 `"mode": "web"` + `"shell": "web"`（fragment 可为任意**非**完整文档 HTML；loader 包成 `.wb-html-stage` > `.wb-html-surface`，默认宽 960）。参考 `previews/web-library/`。
-
-**完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS / Web 板不同：
+**完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS 板不同：
 
 1. **承载方式**：doc 走 iframe，文档原样渲染，loader 不包装也不做 fragment 校验——内联会让它的 `body{}` 规则失效、`<style>` 漏进 workbench。
 2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板、Frame 标题与 Frame Note；同一页里的多个 screen 变成**侧栏的版本列表**，一次只显示一个（每页记住上次看的那个）。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用侧栏 Versions/Document 旁的 **导出**（HTML 完整 / 去 CSS HTML / 长图 PNG）。

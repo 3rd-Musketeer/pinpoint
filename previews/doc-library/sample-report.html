@@ -19,8 +19,7 @@
   table{width:100%; border-collapse:collapse; font-size:14px; margin-top:12px}
   th,td{text-align:left; padding:8px 10px; border-bottom:1px solid var(--line)}
   th{font-size:12px; color:var(--mute)}
-  /* 桌面断点：够宽时出侧栏目录。HTML 板画板宽 1280，走得到这一支；
-     Web 板 960 走不到——这正是两个板要分开的原因。 */
+  /* 桌面断点：够宽时出侧栏目录。文档 1:1 铺满 stage，读者窗口够宽就走得到这一支。 */
   .toc{display:none}
   @media (min-width:1240px){
     body{padding-left:200px}
@@ -42,7 +41,7 @@
     <div class="card"><div class="n">自注入</div><div class="l">标注接线</div></div>
   </div>
   <h2 id="s1">一、概况</h2>
-  <p>Web 板吃 fragment，由 loader 包成画板；HTML 板吃完整文档，不做包装也不做 fragment 校验。
+  <p>iOS 板吃 fragment，由 loader 包进手机机身；HTML 板吃完整文档，不做包装也不做 fragment 校验。
   想在这里标注，页尾接一段 localhost 才拉的 <code>annotate.js</code> 即可——框架把整份文档当可标注区域，正文不必再打 surface 标记。</p>
   <h2 id="s2">二、明细</h2>
   <p style="min-height:900px">这一段刻意留高，用来验证滚动之后标注仍然工作 —— 标注层挂在

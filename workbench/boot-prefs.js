@@ -2,7 +2,7 @@
 // 应用到 DOM/store 的编排层：侧栏宽度/折叠、ios 根属性、canvas zoom、每页视口的
 // 保存与恢复、启动偏好应用。P1a 从 workbench.js 平移
 // （goal-20260810-workbench-react-rebuild）：零行为变化。
-import { wbGet, wbSet } from './app/store.js';
+import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs, replacePrefs } from './lib/prefs.js';
 import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
@@ -16,7 +16,7 @@ import {
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
 
-// 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolvePageForMode，
+// 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolveActivePage，
 // applyPageNames 属 pages.js；pages.js 会直接 import 本模块，本模块不能反向
 // import（禁循环），由 stage.js 初始化时经 initBootPrefs(deps) 注入。
 // （ann-bridge 簇的 annotateApi 走直接 import。）
@@ -233,6 +233,19 @@ function migrateLegacyCanvasZoom(pageId) {
   replacePrefs(next);
 }
 
+/** One-time: drop the retired mode prefs (2026-08-16 阶段 2)—— 壳形态由 activePageId
+    派生，activePageIdByMode / boardMode 两个 key 读弃。 */
+function migrateLegacyBoardModePrefs() {
+  var prefs = readPrefs();
+  var stale = Object.prototype.hasOwnProperty.call(prefs, 'activePageIdByMode')
+    || Object.prototype.hasOwnProperty.call(prefs, 'boardMode');
+  if (!stale) return;
+  var next = Object.assign({}, prefs);
+  delete next.activePageIdByMode;
+  delete next.boardMode;
+  replacePrefs(next);
+}
+
 function zoomForPage(pageId) {
   var vp = pageViewport(pageId);
   return boardZoom((vp && vp.canvasZoom) || '1');
@@ -289,14 +302,14 @@ export function restorePageViewportAfterMount(pageId) {
 }
 
 /** Reserve layout space for transform-scaled board (transform alone does not shrink flow).
- *  In HTML board mode the zoom-wrap is width:100% + transform:none (a fluid reader
+ *  On HTML pages the zoom-wrap is width:100% + transform:none (a fluid reader
  *  column, not a fixed canvas), so we must not pin an inline content-measured width —
  *  that would override the CSS and make the iframe overflow the stage into the gutter. */
 function syncBoardZoomLayout() {
   var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
   var lib = wrap && wrap.querySelector('.wb-library');
   if (!wrap || !lib) return;
-  if (wbGet().boardMode === 'html') {
+  if (activeBoardMode() === 'html') {
     wrap.style.width = '';
     wrap.style.height = '';
     return;
@@ -342,6 +355,7 @@ export function applyBootPrefs(prefs, options) {
   prefs = prefs || readPrefs();
   var pageId = options.pageId || prefsDeps.resolveBootPageId(prefs);
   migrateLegacyCanvasZoom(pageId);
+  migrateLegacyBoardModePrefs();
 
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);

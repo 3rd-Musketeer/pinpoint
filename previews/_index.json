@@ -7,11 +7,6 @@
       "mode": "ios"
     },
     {
-      "id": "web-library",
-      "title": "Example Web",
-      "mode": "web"
-    },
-    {
       "id": "doc-library",
       "title": "Example HTML",
       "mode": "html"

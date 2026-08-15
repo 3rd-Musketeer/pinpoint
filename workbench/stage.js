@@ -7,9 +7,9 @@ import {
   ContractError,
   validateBoard
 } from './lib/preview-contracts.js';
-import { wbGet, wbSet } from './app/store.js';
+import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { COMPONENTS_ID, LIB_ID, defaultShellForPage, modeForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
+import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import {
   activeDocExportTarget,
   buildExportSnapshot,
@@ -50,10 +50,8 @@ import {
   applyPageNames,
   initPages,
   loadPageManifest,
-  normalizeBoardMode,
-  resolvePageForMode,
+  resolveActivePage,
   setActivePage,
-  setBoardMode,
   showPageManifestError,
   switchPage,
   syncDocVersions,
@@ -61,7 +59,7 @@ import {
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
 
-// activePageId / boardMode / pageManifest / activeBoard / activeGroup / focusFrameKey /
+// activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed / annPanelCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
 var stage  = document.getElementById('wbstage');
@@ -71,16 +69,14 @@ var mountManager = new BoardMountManager();
 
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
-  // URL 深链（P3）优先于 prefs：?page= 直达页面（boardMode 取页面自己的 mode，
-  // 与 ?mode= 冲突时以页面为准，URL 随后被 url-sync 重写为真实值）；只给 ?mode=
-  // 在该模式内按 prefs/记忆/默认解析；参数缺失或 pageId 不存在才回 prefs。
+  // URL 深链（P3）优先于 prefs：?page= 直达页面（壳形态取页面自己的 mode，
+  // 与 ?mode= 冲突时以页面为准，URL 随后被 url-sync 重写为真实值）；只给
+  // ?mode= 或 pageId 不存在时回 prefs.activePageId，再回该形态第一页/默认页。
   var link = parseDeepLink(location.search);
   if (link.pageId && (link.pageId === COMPONENTS_ID || pageEntry(wbGet().pageManifest, link.pageId))) {
-    wbSet({ boardMode: modeForPage(wbGet().pageManifest, link.pageId) });
     return link.pageId;
   }
-  wbSet({ boardMode: link.mode || normalizeBoardMode(prefs.boardMode) });
-  return resolvePageForMode(wbGet().boardMode, prefs.activePageId);
+  return resolveActivePage(prefs.activePageId, link.mode);
 }
 
 function boardUrl(pageId) {
@@ -176,10 +172,10 @@ initBoard();
 window.workbench = {
   switchPage: switchPage,
   setActivePage: setActivePage,
-  setBoardMode: setBoardMode,
   focusFrame: focusWorkbenchFrame,
   activePageId: function () { return wbGet().activePageId; },
-  boardMode: function () { return wbGet().boardMode; },
+  // 只读派生视图（2026-08-16 阶段 2：setBoardMode 随模式 Seg 退役，形态由页派生）
+  boardMode: function () { return activeBoardMode(); },
   exportSnapshot: buildExportSnapshot,
   exportImage: requestExportImage,
   exportDoc: requestDocExport,
@@ -507,7 +503,7 @@ stage.addEventListener('wheel', function (e) {
     }
 
     // Without Space: only pan on empty board chrome, never steal frame interactions.
-    if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-html-stage, .wb-screen-err, button, a')) return;
+    if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-screen-err, button, a')) return;
     startPan(e);
   });
 

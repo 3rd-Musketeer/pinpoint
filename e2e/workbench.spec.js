@@ -70,10 +70,13 @@ async function expectFocusedTarget(page, selector) {
 test('manifest navigation survives rapid page switches and persists the winner', async ({ page }) => {
   await openWorkbench(page);
 
-  await expect(page.locator('#wbboard-mode [data-board-mode="ios"]')).toHaveClass(/on/);
+  // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry dir 条目同列。
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
+    'Example HTML',
+    'E2E Dir',
+    'E2E Dir iOS',
   ]);
 
   for (const [pageId, screenId] of [
@@ -97,32 +100,40 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).activePageId)).toBe('library');
 });
 
-test('board mode switch isolates page lists and mounts web artboards', async ({ page }) => {
+test('Pages is one mixed list with per-page shell markers and no mode Seg', async ({ page }) => {
   await openWorkbench(page);
 
-  await page.locator('#wbboard-mode [data-board-mode="web"]').click();
-  await expect(page.locator('#wbboard-mode [data-board-mode="web"]')).toHaveClass(/on/);
-  // _index pages first, then registry dir entries appended (dir-entry.spec.js).
-  await expect(page.locator('#wbpages .wb-page')).toHaveText(['Example Web', 'E2E Dir']);
-  await expect(page.locator('#wb-board-panel .wb-html-stage')).toHaveCount(3);
-  await expect(page.locator('#wb-board-panel [data-screen="weekly-report"] .wb-html-surface')).toContainText('冲煮手账');
-  await expect(page.locator('#wb-board-panel .ios-stage')).toHaveCount(0);
-
-  await page.locator('#wbboard-mode [data-board-mode="ios"]').click();
+  // 模式 Seg 退役；本地页 + registry dir 条目混排（顺序 = 系统行 → _index → registry）。
+  await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
+    'Example HTML',
+    'E2E Dir',
+    'E2E Dir iOS',
   ]);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('library');
+
+  // 行内壳标记：机壳页 smartphone / 文档页 file-text（12px 淡色，.wb-page-ico）。
+  await expect(page.locator('#wbpages [data-vpage="components"] .wb-page-ico')).toHaveCount(1);
+  await expect(page.locator('#wbpages [data-vpage="library"][data-page-mode="ios"] .wb-page-ico')).toHaveCount(1);
+  await expect(page.locator('#wbpages [data-vpage="doc-library"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
+  await expect(page.locator('#wbpages [data-vpage="e2e-dir"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
+  await expect(page.locator('#wbpages [data-vpage="e2e-dir-ios"][data-page-mode="ios"] .wb-page-ico')).toHaveCount(1);
+
+  // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
+  await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
+  await expect(page.locator('#wbcanvas-hud')).toBeHidden();
+  await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
+  await expect(page.locator('#wbcanvas-hud')).toBeVisible();
 });
 
 test('HTML board fills the viewport, drops canvas chrome, and switches versions from the sidebar', async ({ page }) => {
   await openWorkbench(page);
 
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
-  await expect(page.locator('#wbboard-mode [data-board-mode="html"]')).toHaveClass(/on/);
-  await expect(page.locator('#wbpages .wb-page')).toHaveText(['Example HTML']);
+  // 壳形态是页的属性：点文档页，stage 即阅读器。
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
 
   // Document is hosted in an iframe, not inlined: its own <head>/<style> stay inside.
   const frame = page.locator('#wb-board-panel .wb-doc-stage .wb-doc-frame');
@@ -144,7 +155,7 @@ test('HTML board fills the viewport, drops canvas chrome, and switches versions 
   await expect(versions).toHaveCount(1);
   await expect(versions.first()).toHaveClass(/on/);
 
-  await page.locator('#wbboard-mode [data-board-mode="ios"]').click();
+  await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(0);
   await expect(page.locator('#wbdoc-versions')).toBeHidden();
 });
@@ -152,7 +163,7 @@ test('HTML board fills the viewport, drops canvas chrome, and switches versions 
 test('HTML board sidebar exports full HTML, no-css HTML, and long PNG', async ({ page }) => {
   test.setTimeout(60_000);
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.locator('#wbdoc-versions [data-doc-export]')).toBeVisible();
 
   await page.locator('#wbdoc-versions [data-doc-export]').click();
@@ -199,7 +210,7 @@ test('HTML board sidebar exports full HTML, no-css HTML, and long PNG', async ({
 test('HTML board exports with comments: mark boxes HTML, no-css text, and long PNG', async ({ page }) => {
   test.setTimeout(90_000);
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
@@ -339,7 +350,7 @@ test('HTML board exports with comments: mark boxes HTML, no-css text, and long P
 
 test('doc annotate layer stays pinned to the viewport after the document scrolls', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
 
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
@@ -400,7 +411,7 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
 
 test('HTML board: sidebar drives the document annotate instance and lists its marks', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
   const docState = () => page.evaluate(() => {
@@ -454,7 +465,7 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
 
 test('HTML board: annotations redraw when an interactive view hides and returns', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
   await expect.poll(() => page.evaluate(() => !!(
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
@@ -519,7 +530,7 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
 
 test('HTML board: annotations on SVG elements are not falsely broken', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
   await expect.poll(() => page.evaluate(() => !!(
@@ -582,7 +593,7 @@ test('HTML board: annotations on SVG elements are not falsely broken', async ({ 
 
 test('HTML board: "render comments" toggle draws content bubbles on the canvas', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
@@ -662,7 +673,7 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
 
 test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 
@@ -749,7 +760,7 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
 
 test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside the iframe, no squeeze', async ({ page }) => {
   await openWorkbench(page);
-  await page.locator('#wbboard-mode [data-board-mode="html"]').click();
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
 

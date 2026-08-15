@@ -1,6 +1,11 @@
 import { defineConfig } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY } from './e2e/env.js';
+import { writeRegistryFixture } from './e2e/registry-fixture.js';
+
+// The webServer reads PINPOINT_REGISTRY once at boot — and boots before
+// globalSetup — so the fixture must be on disk before the server starts.
+writeRegistryFixture();
 
 export default defineConfig({
   testDir: './e2e',

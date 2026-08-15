@@ -2,7 +2,7 @@
 // 气泡（HTML 板 sidebar 布局）、文档标注绑定、连接状态指示、标注状态快照。
 // P1a 从 workbench.js 平移；P1b 起标注面板 React 化（app/AnnPanel.jsx），
 // 面板要读的状态由本模块汇成 annSnap 写进 store，不再有面板侧 DI。
-import { wbGet, wbSet } from './app/store.js';
+import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { annRowModel } from '../lib/ann-row.js';
 import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
@@ -14,7 +14,7 @@ import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/anno
    侧栏是唯一控制面，所以取用时按当前板解析到正确的那个实例。 */
 function activeDocWindow() {
   var panel = document.getElementById('wb-board-panel');
-  if (wbGet().boardMode !== 'html' || !panel) return null;
+  if (activeBoardMode() !== 'html' || !panel) return null;
   var frame = panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
   if (!frame) return null;
   try {
@@ -123,7 +123,7 @@ function gutterStageWrap() {
 }
 function gutterIframeEl() {
   var panel = document.getElementById('wb-board-panel');
-  if (wbGet().boardMode !== 'html' || !panel) return null;
+  if (activeBoardMode() !== 'html' || !panel) return null;
   return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
 }
 
@@ -163,7 +163,7 @@ function gutterActive() {
   var a = annotateApi();
   if (!a || typeof a.getState !== 'function') return false;
   var st = a.getState();
-  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && wbGet().boardMode === 'html');
+  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && activeBoardMode() === 'html');
 }
 
 function renderGutter() {
@@ -267,7 +267,7 @@ function bindDocAnnotate() {
 var docAnnotateWatch = 0;
 export function watchDocAnnotate() {
   if (docAnnotateWatch) { clearInterval(docAnnotateWatch); docAnnotateWatch = 0; }
-  if (wbGet().boardMode !== 'html') return;
+  if (activeBoardMode() !== 'html') return;
   var tries = 0;
   docAnnotateWatch = setInterval(function () {
     if (bindDocAnnotate() || ++tries > 40) {

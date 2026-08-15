@@ -1,5 +1,5 @@
 // 侧栏整树（P1b cut2，goal-20260810-workbench-react-rebuild）— head（连接状态 +
-// 折叠钮）、Pages 段（board mode / 页面列表 / 文档版本）、设置视图壳、footer。
+// 折叠钮）、Pages 段（单一页面列表 + 行内壳标记 / 文档版本）、设置视图壳、footer。
 // 原 index.html 静态标记 + pages.js/boot-prefs.js 手工 DOM 同步的 React 形态；
 // DOM id / class / 文案与原实现逐一对应（e2e 选择器即契约）。状态全部来自
 // app/store.js；交互回调仍调 pages.js / boot-prefs.js 的命令式动作（页面装载、
@@ -17,21 +17,24 @@
 //    末行 └ 角）是正式组件结构，CSS 在 index.html（.wb-outline 系，全 token）。
 //  - 段头改静态（mock 无折叠 affordance），sectionOpen 机制随 Annotations 段退役。
 //  - footer 的 Light/Dark 分段是预览内容主题（ios-root data-theme），原地保留。
+//
+// 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
+// Pages 变单一列表（本地页 + registry dir 条目同列），行内壳标记区分机壳/文档；
+// 壳形态由 modeForPage(activePageId) 派生，不再是独立状态。
 import { Fragment, useEffect, useRef, useState } from 'react';
-import { useWorkbenchStore, wbGet, wbSet } from './store.js';
+import { useWorkbenchStore, wbSet } from './store.js';
 import {
   docScreensOfActiveBoard,
-  pagesForMode,
+  manifestPages,
   setActiveDoc,
   setActivePage,
-  setBoardMode,
   showSettings,
   showTabs
 } from '../pages.js';
 import { setTheme, toggleSideCollapsed } from '../boot-prefs.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import { openDocExportDialog } from '../export-core.js';
-import { COMPONENTS_ID } from '../lib/page-url.js';
+import { COMPONENTS_ID, modeForPage } from '../lib/page-url.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
@@ -88,22 +91,6 @@ function SideHead() {
   );
 }
 
-var BOARD_MODES = [
-  ['ios', 'iOS', { title: '手机原型' }],
-  ['web', 'Web', { title: 'web app 画板' }],
-  ['html', 'HTML', { title: '完整单页 HTML 文档（汇报页一类）' }]
-];
-
-function BoardModeSwitch() {
-  var boardMode = useWorkbenchStore(function (s) { return s.boardMode; });
-  return (
-    <Seg id="wbboard-mode" role="group" aria-label="Board mode"
-      className="wb-board-mode mx-[var(--wb-pad)] mb-2 w-auto"
-      value={boardMode} dataAttr="data-board-mode" options={BOARD_MODES}
-      onPick={function (v) { if (v !== wbGet().boardMode) setBoardMode(v); }} />
-  );
-}
-
 function copyPageId(id, done) {
   var text = '@page:' + String(id || '').trim();
   if (!id) return;
@@ -132,6 +119,10 @@ function PageRow(props) {
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
+  // 行内壳标记（2026-08-16 阶段 2）：机壳页 smartphone / 文档页 file-text，
+  // 淡色 12px，不抢行的视觉重心；Component Library 系统行带机壳标。
+  var pageMode = system ? 'ios' : (page.mode || 'ios');
+  var shellIcon = pageMode === 'html' ? 'file-text' : 'smartphone';
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -169,10 +160,10 @@ function PageRow(props) {
     <div className="wb-page-row group flex min-w-0 items-stretch gap-0.5" data-page-system={system ? '1' : undefined}>
       <button type="button"
         data-vpage={page.id} data-page-system={system ? '1' : undefined}
-        data-page-default={page.title} data-page-mode={system ? undefined : (page.mode || 'ios')}
+        data-page-default={page.title} data-page-mode={system ? undefined : pageMode}
         data-state={active ? 'on' : undefined}
         className={cn(
-          'wb-page flex-1 min-w-0 cursor-pointer truncate rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans text-[12.5px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
+          'wb-page flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans text-[12.5px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
           active && 'on',
           active && ROW_ON,
           renaming && 'renaming bg-accent px-0 py-0 hover:bg-accent group-hover:bg-accent'
@@ -193,7 +184,12 @@ function PageRow(props) {
             className="wb-page-rename h-auto rounded-md border-0 bg-transparent px-2 py-[7px] text-[12.5px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
             defaultValue={title} onKeyDown={onRenameKey}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
-        ) : title}
+        ) : (
+          <Fragment>
+            <WbIcon name={shellIcon} size={12} className="wb-page-ico size-3 flex-none opacity-70" />
+            <span className="min-w-0 flex-1 truncate">{title}</span>
+          </Fragment>
+        )}
       </button>
       <Button type="button" variant="ghost"
         className={cn(
@@ -219,15 +215,12 @@ function PageRow(props) {
 }
 
 function PagesNav() {
-  var boardMode = useWorkbenchStore(function (s) { return s.boardMode; });
-  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 pagesForMode
+  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 manifestPages
   var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
-  var pages = pagesForMode(boardMode);
+  var pages = manifestPages();
   return (
     <nav className="wb-pages flex flex-col gap-px pb-1 pt-0.5" id="wbpages">
-      {boardMode === 'ios' ? (
-        <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} />
-      ) : null}
+      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library', mode: 'ios' }} />
       {pages.map(function (p) { return <PageRow key={p.id} page={p} />; })}
       {manifestError ? (
         <p className="wb-page-error" title={manifestError}
@@ -240,11 +233,11 @@ function PagesNav() {
 }
 
 function DocVersions() {
-  var boardMode = useWorkbenchStore(function (s) { return s.boardMode; });
+  var mode = useWorkbenchStore(function (s) { return modeForPage(s.pageManifest, s.activePageId); });
   useWorkbenchStore(function (s) { return s.activeBoard; }); // 订阅触发重渲染；取值走 docScreensOfActiveBoard
   var activeDocId = useWorkbenchStore(function (s) { return s.activeDocId; });
   var screens = docScreensOfActiveBoard();
-  var show = boardMode === 'html' && screens.length > 0;
+  var show = mode === 'html' && screens.length > 0;
   var items = [];
   var lastSection = null;
   screens.forEach(function (sc) {
@@ -293,13 +286,13 @@ function DocVersions() {
    点击复用 board-nav 的 frame 定位（与标注卡 goToMark 同一导航源），机身闪
    focus 环。选中态（store.focusFrameKey）由大纲点击与标注卡点击双向写入。 */
 function Outline() {
-  var boardMode = useWorkbenchStore(function (s) { return s.boardMode; });
+  var mode = useWorkbenchStore(function (s) { return modeForPage(s.pageManifest, s.activePageId); });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var active = useWorkbenchStore(function (s) { return s.activeBoard; });
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
-  // HTML 板不是画布（文档版本切换在 Pages 段）；板未装载 / 空板不出大纲。
-  if (boardMode === 'html' || !active || active.pageId !== activePageId) return null;
+  // 文档页不是画布（文档版本切换在 Pages 段）；板未装载 / 空板不出大纲。
+  if (mode === 'html' || !active || active.pageId !== activePageId) return null;
   var refs = boardRefs(active.board);
   if (!refs.outline.length) return null;
 
@@ -394,7 +387,6 @@ export function Sidebar() {
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
           <section className="wb-section" data-section="pages">
             <div className={SECTION_HEAD}>Pages</div>
-            <BoardModeSwitch />
             <PagesNav />
             <DocVersions />
           </section>

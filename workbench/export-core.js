@@ -12,7 +12,7 @@
 // （React 岛，单向 import 本模块的快照/请求函数）；旧 per-frame/per-section
 // 触发器、旧导出对话框（预设/格式/清晰度 radio + 复制 PNG）已退役，图纸内容
 // （图注/尺寸/frame note）永随导出。
-import { wbGet } from './app/store.js';
+import { wbGet, activeBoardMode } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { pageBaseUrl } from './lib/page-url.js';
 
@@ -212,7 +212,7 @@ function filenameFromContentDisposition(header, fallback) {
 export function activeDocExportTarget() {
   var panel = document.getElementById('wb-board-panel');
   var active = wbGet().activeBoard;
-  if (wbGet().boardMode !== 'html' || !panel || !active) return null;
+  if (activeBoardMode() !== 'html' || !panel || !active) return null;
   var screenNode = panel.querySelector('.wb-screen:not([data-doc-hidden])[data-screen]');
   if (!screenNode) return null;
   var screenId = screenNode.getAttribute('data-screen');

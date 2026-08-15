@@ -86,15 +86,18 @@ serve time); those modules are pure and node-tested — keep them DOM-free.
 | `previews/<pageId>/*.js` (screen sidecar `mount(root)`) | Product gestures in `ios-kit.js` |
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
-| `previews/_index.json` when adding a page (`mode`: `ios` \| `web` \| `html`) | `ios-kit.css` to “fix” one annotation |
+| `previews/_index.json` when adding a page (`mode`: `ios` \| `html`) | `ios-kit.css` to “fix” one annotation |
 | `~/.pinpoint/registry.json` to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
 
-**Board modes:** the Pages list has an **iOS / Web / HTML** switch. Lists are isolated; Component Library is iOS-only.
+**Page shells:** Pages is a single list — template pages plus registry `dir`
+entries — with a per-row shell marker (smartphone = `ios`, document = `html`);
+Component Library stays as a system row. The shell is a page/frame property
+derived by `modeForPage`, not a workbench mode switch (the iOS / Web / HTML Seg
+was retired 2026-08-16; the bare-artboard Web shell is deleted).
 
-| Board | Input | Artboard | For |
+| Shell | Input | Artboard | For |
 |---|---|---|---|
 | **iOS** | body fragment | phone chrome | phone prototypes |
-| **Web** | body fragment | `.wb-html-stage` / `.wb-html-surface`, `--wb-web-w: 960px` | web app surfaces — example `previews/web-library/` |
 | **HTML** | **complete standalone document** | full-viewport iframe, **no canvas** | one-page reports and docs — example `previews/doc-library/` |
 
 HTML pages use `shell: "doc"`. The file keeps its own `<!doctype>`, `<head>`, and `<style>`, so it is
@@ -117,8 +120,8 @@ document living outside this repo.
 itself when there is no workbench sidebar). The page-world API is `window.pinpoint`;
 `window.iOSAnnotate` survives only as a deprecated alias for pre-rename doc pages. Annotate treats the whole document as
 the hit surface — authors do **not** need `wb-html-surface` / `data-ann-surface`
-on content (those markers remain for Web-board fragments inlined into the
-workbench, where sidebar/chrome must stay unselectable).
+on content (those markers only survive in the annotate client for legacy
+content; no current board emits them).
 
 Marks land under the document's own page key (per-path file in the entry bucket, see
 `/health`), not the workbench's. In the HTML board the sidebar still drives them: workbench
@@ -193,8 +196,9 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
   Registry `dir` entries (except the workbench's own `pinpoint` entry) are appended
   as pages from `GET /registry`: mode comes from the entry's `board` field (default
-  `web`), and their board/screens load read-only from `/sites/<entry-id>/`. A previews
-  page with the same id wins over a registry page.
+  `html`; a legacy `web` value normalizes to `html`), and their board/screens load
+  read-only from `/sites/<entry-id>/`. A previews page with the same id wins over a
+  registry page.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
@@ -273,8 +277,8 @@ else opens byte-identical pages with zero annotation surface.
 **Registry** (`server/lib/registry.js`): `~/.pinpoint/registry.json`,
 `PINPOINT_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
 `{id, title?, kind: "dir"|"url", path? | url?, board?}`; id must match
-`^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`web`/`html`)
-only matters for dir entries' workbench page mode. A missing file means the default
+`^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`html`)
+only matters for dir entries' workbench page shell (default/legacy `web` → `html`). A missing file means the default
 pinpoint-only registry (`{id:"pinpoint", kind:"dir", path:<repo root>}`). Malformed JSON or
 a wrong top-level shape falls back to the default with the error recorded; invalid entries
 are skipped individually; a missing dir path is a warning, not a removal. All of it is
