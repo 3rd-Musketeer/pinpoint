@@ -70,11 +70,14 @@ async function expectFocusedTarget(page, selector) {
 test('manifest navigation survives rapid page switches and persists the winner', async ({ page }) => {
   await openWorkbench(page);
 
-  // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry dir 条目同列。
+  // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
+  // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
     'Example HTML',
+    'E2E Site',
+    'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
   ]);
@@ -103,12 +106,15 @@ test('manifest navigation survives rapid page switches and persists the winner',
 test('Pages is one mixed list with per-page shell markers and no mode Seg', async ({ page }) => {
   await openWorkbench(page);
 
-  // 模式 Seg 退役；本地页 + registry dir 条目混排（顺序 = 系统行 → _index → registry）。
+  // 模式 Seg 退役；本地页 + registry 条目混排（顺序 = 系统行 → _index → registry）。
+  // 阶段 4：url 条目（E2E Site / E2E Proxy App）恒 doc 壳同列。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page')).toHaveText([
     'Component Library',
     'Example Library',
     'Example HTML',
+    'E2E Site',
+    'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
   ]);
@@ -118,6 +124,7 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
   await expect(page.locator('#wbpages [data-vpage="library"][data-page-mode="ios"] .wb-page-ico')).toHaveCount(1);
   await expect(page.locator('#wbpages [data-vpage="doc-library"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
   await expect(page.locator('#wbpages [data-vpage="e2e-dir"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
+  await expect(page.locator('#wbpages [data-vpage="e2e-proxy"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
   await expect(page.locator('#wbpages [data-vpage="e2e-dir-ios"][data-page-mode="ios"] .wb-page-ico')).toHaveCount(1);
 
   // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。

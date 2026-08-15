@@ -181,7 +181,7 @@ pinpoint add /abs/path/to/your-app/dist --title "Your App" --board ios
 # 没 `npm link` 过就用 node bin/pinpoint.mjs add ...
 ```
 
-CLI 会从目录名派生 id（slug 化，冲突自动追加 `-2`/`-3`；`--id` 显式指定且冲突时报错而不是覆盖），原子写入 `~/.pinpoint/registry.json`（`--registry` / `PINPOINT_REGISTRY` 覆盖文件位置），并在服务可达时自动 `POST /registry/reload`——**不用重启服务**；服务没跑则下次启动生效。单个 `.html` 文件同理（kind `file`，只 serve 该文件，恒 doc 壳，`--board ios` 会被拒）；SPA / 自己起服务的应用登记 URL（kind `url`），见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2。
+CLI 会从目录名派生 id（slug 化，冲突自动追加 `-2`/`-3`；`--id` 显式指定且冲突时报错而不是覆盖），原子写入 `~/.pinpoint/registry.json`（`--registry` / `PINPOINT_REGISTRY` 覆盖文件位置），并在服务可达时自动 `POST /registry/reload`——**不用重启服务**；服务没跑则下次启动生效。单个 `.html` 文件同理（kind `file`，只 serve 该文件，恒 doc 壳，`--board ios` 会被拒）；SPA / 自己起服务的应用登记 URL（kind `url`）——阶段 4 起它经同源代理以 doc 壳嵌进 workbench Pages（活应用 iframe 阅读器，标注照常；机制与盲区见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2），不经浏览器扩展也能标。
 
 - 服务把该目录**只读** serve 在 `https://pinpoint.localhost/sites/your-app/`：registry 即白名单，未知 id / `..` 穿越 / symlink 逃逸一律 404；目录回落 `index.html`。
 - HTML 响应在 `</body>` 前自动注入 `window.__pinpointEntry='your-app'` + `/annotate.js`；`?annotate=off` 原样输出磁盘字节（导出管线和 workbench 内联加载走它）。

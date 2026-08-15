@@ -2,12 +2,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { E2E_BASE_URL, E2E_REGISTRY } from './env.js';
+import { E2E_BASE_URL, E2E_REGISTRY, E2E_UPSTREAM_ORIGIN } from './env.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // Registry fixture: the pinpoint dir entry, one url entry naming the e2e
-// webServer origin (extension.spec.js injects through it), and two dir
+// webServer origin (extension.spec.js injects through it), one url entry
+// naming the proxy upstream fixture (e2e/proxy-upstream.js — url-entry.spec.js
+// drives it through /sites/e2e-proxy/), and two dir
 // entries backed by committed fixtures (dir-entry.spec.js):
 //  - e2e-dir: no `board` field — dir entries default to the doc shell
 //    (2026-08-16 阶段 2; its board.json keeps a legacy shell:"web" screen
@@ -27,6 +29,7 @@ export function writeRegistryFixture() {
     entries: [
       { id: 'pinpoint', title: 'pinpoint workbench', kind: 'dir', path: ROOT },
       { id: 'e2e-site', title: 'E2E Site', kind: 'url', url: E2E_BASE_URL },
+      { id: 'e2e-proxy', title: 'E2E Proxy App', kind: 'url', url: E2E_UPSTREAM_ORIGIN },
       { id: 'e2e-dir', title: 'E2E Dir', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site') },
       { id: 'e2e-dir-ios', title: 'E2E Dir iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios' },
     ],

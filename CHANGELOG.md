@@ -11,6 +11,52 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-16
 
 ### Added
+- **Live proxy embed for `url` entries** (roadmap 阶段 4, live 代理画中画) — a
+  registered `url` entry (e.g. my-todos → `https://my-todos.localhost`) now opens as a
+  workbench page (always the doc shell) whose iframe renders the **live app through a
+  same-origin path-prefix proxy** at `/sites/<id>/` (`server/lib/site-proxy.js`, wired
+  into `server/sites-api.js` next to the existing dir/file static serving). The sidebar
+  drives annotation through the existing ann-bridge — no browser extension needed — and
+  marks land in the same per-entry bucket the extension path writes to. The target app
+  stays zero-touch (decisions 08-07): all adaptation happens on the wire. HTTP
+  forwarding passes method/headers/body through (dir/file stay GET/HEAD-only) and
+  rewrites responses: `Set-Cookie` rebased (Domain stripped, Path prefixed or added
+  under the prefix), 3xx `Location` and request `Referer` mapped between prefix and
+  target origin, CSP / CSP-Report-Only / X-Frame-Options / COOP / COEP stripped
+  wholesale (iframe + inline bootstrap require it; the registry whitelist is the
+  security boundary; upstream TLS verification is off for privately-trusted local CAs).
+  HTML responses get root-absolute `src`/`href`/`action`/`poster`/`formaction`/
+  `srcset`/`imagesrcset`/`xlink:href` plus `<object data>`, `<meta refresh>`, `<style>`
+  bodies and `style="…"` rewritten onto the prefix; CSS responses get `url(/…)` and
+  `@import` rewritten. What static rewriting cannot reach — `fetch('/api/…')`, XHR,
+  `EventSource`, `WebSocket`, `sendBeacon` inside JS bundles — is covered by an inline
+  **rebase bootstrap** injected as the first `<head>` script (`lib/proxy-rebase.js`,
+  isomorphic and node-tested, inlined like `/annotate.js`): it monkey-patches those five
+  APIs and exempts the annotate client's own endpoints by name (`/annotate.js`, `/save`,
+  `/image`, `/annotations[…]`, `/images/…`, `/events`, `/sites/…`). The bootstrap also
+  **virtualizes the URL** (`history.replaceState` to the unprefixed app path, before
+  any page script runs): SPA routers read `location.pathname` — a native getter no
+  patch can intercept — and would otherwise fall through to their catch-all (my-todos
+  renders「Not Found」under the prefix). The annotate ledger therefore keys on the app
+  path (`/`, `/global`, …), converging byte-for-byte with the extension-injected
+  ledger on the app's own origin. WS upgrades under the
+  prefix forward to the target origin via a vite httpServer 'upgrade' listener (generic
+  fallback; SSE rides plain HTTP forwarding). A url entry's `/sites/<id>/board.json` is
+  always the synthesized single-screen doc board (`src = sites/<id>/`), shadowing any
+  upstream file of that name. `?annotate=off` on a proxied page drops only the annotate
+  client — the bootstrap and URL rewrites stay because they are proxy mechanics, not
+  annotation surface. The extension path (annotate the app on its own origin) is
+  unchanged and coexists. Known blind spots (documented in README/AGENTS): DOM-assigned
+  URLs (`img.src = '/x.png'`), unquoted attributes, protocol-relative URLs, target
+  routes colliding with the exempt pinpoint endpoint names, localStorage/indexedDB
+  shared with the workbench origin, and virtualization hazards (`location.reload()`
+  reloads the virtual URL; hard navigations like `location.href = '/x'` leave the
+  proxy).
+- **Injection-contract SSOT** — `annotateSnippet` / `injectAnnotateClient` moved to
+  `server/lib/annotate-snippet.js` (re-exported from `sites-api.js`) so the static and
+  proxy injectors share one shape that export's `stripAnnotateBootstrap` recognizes.
+
+### Added
 - **Registration CLI: `pinpoint add`** (roadmap 阶段 3) — `bin/pinpoint.mjs`
   (zero-dependency, hand-parsed args; pure logic + tests in `bin/pinpoint-cli.js`,
   exposed as `pinpoint` via the package `bin` field after `npm link`). One command

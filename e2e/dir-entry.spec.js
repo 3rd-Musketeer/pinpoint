@@ -109,10 +109,10 @@ test('path traversal and unknown entries are rejected', async ({ page }) => {
   ]) {
     expect(await rawStatus(E2E_BASE_URL + p), p).toBe(404);
   }
-  // Semantic rejections go through the normal client.
+  // Semantic rejections go through the normal client.（e2e-site 是 url 条目，
+  // 阶段 4 起 /sites/e2e-site/ 走代理而不再是 404 —— 代理行为见 url-entry.spec.js。）
   for (const url of [
     '/sites/ghost/doc.html',
-    '/sites/e2e-site/doc.html',
     '/sites/e2e-dir/missing.html',
   ]) {
     const res = await page.request.get(url);

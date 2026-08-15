@@ -1,27 +1,40 @@
 /**
- * /sites/<entry-id>/ — read-only static serving of registry `dir` entries,
- * plus single-file serving of registry `file` entries.
+ * /sites/<entry-id>/ — one URL space for every registry entry:
+ *
+ * - `dir` entries: read-only static serving of the registered directory.
+ * - `file` entries: exactly the one registered file, under both
+ *   `/sites/<id>/` and `/sites/<id>/<basename>`; everything else 404s, so
+ *   sibling files in the same directory stay unreachable.
+ * - `url` entries (阶段 4): same-origin path-prefix proxy to the registered
+ *   origin (server/lib/site-proxy.js) — HTML/CSS rewritten onto the prefix,
+ *   rebase bootstrap + annotate client injected into HTML, WS upgrades
+ *   forwarded (createSiteUpgradeHandler). All methods pass through (the app
+ *   behind the proxy has its own API); dir/file stay GET/HEAD-only.
  *
  * The registry is the whitelist: only registered entries are served. For a
  * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
- * stay inside the entry directory; for a `file` entry only the registered
- * file itself is served — under both `/sites/<id>/` and
- * `/sites/<id>/<basename>`, everything else 404s, so sibling files in the
- * same directory stay unreachable. Entries without their own board.json get a
- * synthesized doc board at `/sites/<id>/board.json` (see lib/synth-board.js),
- * so every registered site page opens readable in the workbench. HTML
- * responses (GET, without
+ * stay inside the entry directory. Entries without their own board.json get a
+ * synthesized doc board at `/sites/<id>/board.json` (see lib/synth-board.js —
+ * for url entries the synthesized board always wins, shadowing any upstream
+ * board.json), so every registered site page opens readable in the workbench.
+ * HTML responses (GET, without
  * ?annotate=off) get the annotate client injected — "登记过才注入": opening
  * the same content via file:// or a self-started server serves the identical
  * bytes with zero annotation surface. ?annotate=off opts a single request out
- * (export paths and the workbench's inline fragment loader use it).
+ * (export paths and the workbench's inline fragment loader use it; on url
+ * entries it drops only the annotate client — the rebase bootstrap stays,
+ * see lib/site-proxy.js).
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { loadRegistry } from './lib/registry.js';
+import { createSiteUpgradeHandler, proxySiteRequest } from './lib/site-proxy.js';
 import { synthesizeBoard } from './lib/synth-board.js';
+
+export { annotateSnippet, injectAnnotateClient };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
@@ -62,17 +75,6 @@ function sendJson(res, code, body) {
   res.statusCode = code;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(body));
-}
-
-/** The injection contract: one inline entry marker + the client bundle tag. */
-export function annotateSnippet(entryId) {
-  return `<script>window.__pinpointEntry='${entryId}'</script><script src="/annotate.js"></script>`;
-}
-
-export function injectAnnotateClient(html, entryId) {
-  const snippet = annotateSnippet(entryId);
-  if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${snippet}\n</body>`);
-  return `${html}\n${snippet}\n`;
 }
 
 /** Containment check: `p` is `base` itself or lives under it. */
@@ -137,16 +139,27 @@ function resolveRegisteredFile(entry, rel) {
 export function createSitesHandler(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
 
-  return async function handleSites(req, res, urlPath) {
-    if (!urlPath.startsWith('/sites/')) return false;
-
-    if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.statusCode = 405;
-      res.setHeader('Allow', 'GET, HEAD');
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'method_not_allowed' }));
+  // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
+  // 一版本；url 单屏代理页）——磁盘文件永远优先（dir 分支只在 resolve 落空后
+  // 走到），url 条目无磁盘概念、合成板直接遮蔽上游自己的 board.json。合成的
+  // 是 JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
+  function sendSynthesizedBoard(req, res, entry) {
+    const board = synthesizeBoard(entry);
+    if (!board) return false;
+    const body = Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8');
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'application/json; charset=utf-8');
+    res.setHeader('Content-Length', String(body.length));
+    if (req.method === 'HEAD') {
+      res.end();
       return true;
     }
+    res.end(body);
+    return true;
+  }
+
+  return async function handleSites(req, res, urlPath) {
+    if (!urlPath.startsWith('/sites/')) return false;
 
     const rest = urlPath.slice('/sites/'.length);
     const slash = rest.indexOf('/');
@@ -164,8 +177,31 @@ export function createSitesHandler(options = {}) {
     }
 
     const entry = id && registry.resolve(id);
-    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) {
+    if (!entry) {
       sendJson(res, 404, { error: 'not found' });
+      return true;
+    }
+
+    // kind "url"（阶段 4）：同源路径前缀代理，方法/头/body 全透传。
+    if (entry.kind === 'url') {
+      if (rel === 'board.json' && (req.method === 'GET' || req.method === 'HEAD')
+        && sendSynthesizedBoard(req, res, entry)) {
+        return true;
+      }
+      proxySiteRequest(req, res, entry);
+      return true;
+    }
+
+    if (entry.kind !== 'dir' && entry.kind !== 'file') {
+      sendJson(res, 404, { error: 'not found' });
+      return true;
+    }
+
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.statusCode = 405;
+      res.setHeader('Allow', 'GET, HEAD');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'method_not_allowed' }));
       return true;
     }
 
@@ -173,23 +209,8 @@ export function createSitesHandler(options = {}) {
       ? resolveRegisteredFile(entry, rel)
       : resolveFileWithin(path.resolve(entry.path), rel || 'index.html');
 
-    // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
-    // 一版本）——磁盘文件永远优先，合成只在 resolve 落空后发生。合成的是
-    // JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
-    if (!file && rel === 'board.json') {
-      const board = synthesizeBoard(entry);
-      if (board) {
-        const body = Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8');
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json; charset=utf-8');
-        res.setHeader('Content-Length', String(body.length));
-        if (req.method === 'HEAD') {
-          res.end();
-          return true;
-        }
-        res.end(body);
-        return true;
-      }
+    if (!file && rel === 'board.json' && sendSynthesizedBoard(req, res, entry)) {
+      return true;
     }
 
     if (!file) {
@@ -216,7 +237,9 @@ export function createSitesHandler(options = {}) {
 }
 
 export default function sitesApi(options = {}) {
-  const handleSites = createSitesHandler(options);
+  const registry = options.registry || loadRegistry({ root: ROOT });
+  const handleSites = createSitesHandler({ ...options, registry });
+  const handleUpgrade = createSiteUpgradeHandler({ registry });
   return {
     name: 'sites-api',
     configureServer(server) {
@@ -225,6 +248,10 @@ export default function sitesApi(options = {}) {
         if (await handleSites(req, res, urlPath)) return;
         next();
       });
+      // WS 兜底：/sites/<id>/ 的 upgrade 转发到 url 条目的目标 origin（路径
+      // 去前缀回写）。非 /sites/ 路径与 dir/file 条目不碰 socket —— vite HMR
+      // 等其它 upgrade listener 照常工作。
+      if (server.httpServer) server.httpServer.on('upgrade', handleUpgrade);
     },
   };
 }

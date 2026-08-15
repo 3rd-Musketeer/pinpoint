@@ -89,12 +89,19 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
    - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
    - 标注落在 `~/.pinpoint/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
 
-3. **registry `url` entry → 浏览器扩展**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：`pinpoint add https://your-app.localhost`（等价的手编 JSON：`{ "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }`）。
+3. **registry `url` entry → 同源代理内嵌（阶段 4 起，免扩展）+ 浏览器扩展并存**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：`pinpoint add https://your-app.localhost`（等价的手编 JSON：`{ "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }`）。两条路径共用同一个 `~/.pinpoint/<id>/` 标注桶，标注天然汇合。
 
+   **代理内嵌（默认路径）**：服务把目标 origin 代理到 `/sites/<id>/`（`server/lib/site-proxy.js`），workbench Pages 出现该条目（恒 doc 壳、文档标），打开即以 iframe 阅读器内嵌活应用——assets、API、SSE/WS 都经代理到达目标。
+   - 机制：HTML 里根绝对路径 `src`/`href`/`action`/`srcset` 等被重写到 `/sites/<id>/` 前缀；CSS 里 `url(/…)` 同理；JS 里的 `fetch('/api/…')` / XHR / `EventSource` / `WebSocket` / `sendBeacon` 由注入在 `<head>` 最前的重基 bootstrap（monkey-patch，豁免 pinpoint 自己的 `/save`、`/annotations`、`/images/`、`/image`、`/events`、`/annotate.js`、`/sites/`）兜底；bootstrap 还会**虚拟化 URL**（`history.replaceState` 回应用自身的路径）——SPA 路由直读 `location.pathname`（原生 getter 无法 patch），不虚拟化会掉进路由兜底（my-todos 会渲染「Not Found」）。响应侧重写 3xx `Location` 与 `Set-Cookie`（去 Domain、Path 加前缀），整头剥掉 CSP / X-Frame-Options / COOP / COEP。`/sites/<id>/board.json` 恒为本地合成的单屏 doc 板（遮蔽上游同名文件）。
+   - `?annotate=off` 只关标注注入，重基 bootstrap 保留（它是代理机制的一部分）。
+   - 已知盲区：JS 给 DOM 属性赋 URL（`img.src='/x.png'`）、无引号属性、`//` 协议相对 URL、目标自身路由与豁免清单撞名（如目标自己用 `/save`）、与 workbench 同源共享 localStorage/indexedDB；虚拟化的代价：应用里 `location.reload()` 会重载虚拟路径（iframe 刷新即离开代理），硬导航（`location.href='/x'`）跳出代理（路由拦截的 SPA 链接不受影响）。
+   - **验证**：`curl -s https://pinpoint.localhost/sites/your-spa/ | grep __pinpointEntry` 有注入片段；workbench 打开该页，侧栏「标注」模式可点选元素，标注落 `~/.pinpoint/your-spa/`。
+
+   **浏览器扩展（自有 origin 路径）**：要在应用自己的 origin 上标注（如真机/能力测试）时用它。
    - 一次性安装扩展：`chrome://extensions` → Developer mode → **Load unpacked** → 选本仓 `extension/`（机制细节见 [`extension/README.md`](../../extension/README.md)）。
    - content script 依次探 `https://pinpoint.localhost/registry` 和页面自身 origin；`location.origin` 与某个 url entry **精确匹配**才注入；服务不在线 = 不注入，未登记 = 不注入。
    - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（与 workbench 同一套交互）。**点浏览器工具栏的 pinpoint 扩展图标**开合标注面板（顶部「交互 | 标注」segmented 可纯鼠标进标注模式），**S** 键保留；换路由后列表自动换成新账本。
-   - **SPA 行为**：client 只随页面加载跑一次，但路由切换会自动换账本——pathname 一变就重算 page key / localStorage key，后续标注记到新路由名下（Navigation API 优先，降级 patch `pushState`/`replaceState` + `popstate`；仅 hash 变化不换）。在途 sync/hydrate 按世代号作废，不会写进旧账本；切换途中又来导航会合并到最新 pathname。
+   - **SPA 行为**：client 只随页面加载跑一次，但路由切换会自动换账本——pathname 一变就重算 page key / localStorage key，后续标注记到新路由名下（Navigation API 优先，降级 patch `pushState`/`replaceState` + `popstate`；仅 hash 变化不换）。在途 sync/hydrate 按世代号作废，不会写进旧账本；切换途中又来导航会合并到最新 pathname。代理内嵌路径同理：bootstrap 把 iframe URL 虚拟化成应用路径（`/sites/<id>/` → `/`），账本 key 与扩展在目标 origin 上注入出的逐字节一致——两条路径的标注在同一页名下汇合。
    - **验证注入**：devtools 看 `<html data-pinpoint-entry="your-spa">`（扩展经 DOM 属性把 entry 递到主世界）；或按 **A** 点任意元素出标注框；`curl -s https://pinpoint.localhost/health | jq .registry` 确认 entry 计数与 errors。
 
 显式指定未登记的 entry（`?entry=` 或 POST body）会吃 `400 unknown_entry`——配置错了要响，不能静默落进别的桶。

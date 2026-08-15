@@ -44,7 +44,9 @@ function withFixture(t) {
     version: 1,
     entries: [
       { id: 'site', title: 'Site', kind: 'dir', path: site, board: 'web' },
-      { id: 'web', title: 'Web', kind: 'url', url: 'https://web.localhost' },
+      // url 条目（阶段 4）：/sites/web/ 走同源代理。指一个必拒连的端口，
+      // 代理分支应快速回落 502 bad_gateway。
+      { id: 'web', title: 'Web', kind: 'url', url: 'http://127.0.0.1:1' },
       { id: 'single', title: 'Single', kind: 'file', path: single },
       { id: 'ghost-file', title: 'Ghost', kind: 'file', path: path.join(dir, 'deleted.html') },
       { id: 'bare', title: 'Bare', kind: 'dir', path: bare },
@@ -61,6 +63,8 @@ function mockReq(method, url) {
   const req = new EventEmitter();
   req.method = method;
   req.url = url;
+  req.headers = {};
+  req.pipe = () => {}; // url 条目的代理分支把请求体 pipe 给上游
   return req;
 }
 
@@ -69,7 +73,11 @@ function mockRes() {
     headers: {},
     statusCode: 0,
     chunks: [],
+    headersSent: false,
+    writableEnded: false,
     setHeader(key, value) { this.headers[key] = value; },
+    on() { return this; },      // 代理分支挂 close 监听
+    destroy() {},
     writeHead(code, headers) { this.statusCode = code; Object.assign(this.headers, headers || {}); },
     write(chunk) { this.chunks.push(Buffer.from(chunk)); },
     end(data) { if (data !== undefined) this.chunks.push(Buffer.from(data)); },
@@ -159,9 +167,25 @@ test('path traversal is rejected: textual, encoded, and symlink escape', async (
 test('unknown entry ids and missing files 404', async (t) => {
   const { handler } = withFixture(t);
   assert.equal((await call(handler, 'GET', '/sites/ghost/index.html')).res.statusCode, 404);
-  // url entries are not served under /sites/.
-  assert.equal((await call(handler, 'GET', '/sites/web/index.html')).res.statusCode, 404);
   assert.equal((await call(handler, 'GET', '/sites/site/missing.html')).res.statusCode, 404);
+});
+
+test('url entries proxy under /sites/ (阶段 4): an unreachable upstream answers 502, never 404', async (t) => {
+  const { handler } = withFixture(t);
+  for (const url of ['/sites/web/', '/sites/web/index.html']) {
+    const { res } = await call(handler, 'GET', url);
+    // 代理是 fire-and-forget：handler 返回后上游 ECONNREFUSED 才异步回来。
+    for (let i = 0; i < 100 && res.statusCode === 0; i++) {
+      await new Promise((resolve) => setTimeout(resolve, 10));
+    }
+    assert.equal(res.statusCode, 502, url);
+    assert.match(res.text, /bad_gateway/, url);
+  }
+  // 合成板不经代理：url 条目的 board.json 永远由本地合成（遮蔽上游同名文件）。
+  const { res } = await call(handler, 'GET', '/sites/web/board.json');
+  assert.equal(res.statusCode, 200);
+  const board = JSON.parse(res.text);
+  assert.equal(board.sections[0].screens[0].src, 'sites/web/');
 });
 
 test('only GET/HEAD are served; everything else is 405', async (t) => {

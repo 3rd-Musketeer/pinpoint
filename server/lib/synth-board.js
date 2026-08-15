@@ -14,6 +14,10 @@
  *   board:"ios" 的目录不合成（机壳画布需要手写 board.json 定义 sections），
  *   目录缺失或顶层无 .html 时也不合成（回落 404 = 「没有可阅读内容」语义，
  *   与 registry 白名单的 404 惯例一致）。
+ * - `url` entries (阶段 4) → a single-screen doc board whose one screen is
+ *   the proxied root `sites/<id>/` — the live app embeds through the proxy,
+ *   no disk involved. The synthesized board always answers
+ *   `/sites/<id>/board.json`, shadowing any upstream file of that name.
  *
  * Screen srcs are percent-encoded (`sites/<id>/<encodeURIComponent(name)>`) so
  * the iframe URL, the browser's location.pathname, and the export pipeline's
@@ -79,10 +83,19 @@ export function synthesizeDirBoard(entry, listDir) {
   })));
 }
 
+/** url 条目合成单屏 doc 板：唯一一屏即代理根 `sites/<id>/`。 */
+export function synthesizeUrlBoard(entry) {
+  if (!entry || entry.kind !== 'url') return null;
+  return docShellBoard(entry, [
+    { id: 'index', title: entry.title || entry.id, src: `sites/${entry.id}/` },
+  ]);
+}
+
 /** Dispatch by kind; null = 不合成（调用方回落 404）。 */
 export function synthesizeBoard(entry, listDir) {
   if (!entry) return null;
   if (entry.kind === 'file') return synthesizeFileBoard(entry);
   if (entry.kind === 'dir') return synthesizeDirBoard(entry, listDir);
+  if (entry.kind === 'url') return synthesizeUrlBoard(entry);
   return null;
 }

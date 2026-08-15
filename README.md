@@ -97,14 +97,14 @@ QUICKSTART.html        Human onboarding — concepts + usage, self-contained
 index.html             WORKBENCH shell — Pages (Component Library pinned first) + Theme controls
 workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
 client/annotate.js     The annotation client (served as /annotate.js)
-server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr, template-only
-lib/                   Node-tested isomorphic libs inlined into /annotate.js (page key, indicator, slug, clip, bubble, ann-row) + ann-list.css (shared list rows)
+server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr, template-only; lib/site-proxy.js = same-origin proxy for url entries (lib/annotate-snippet.js = injection SSOT)
+lib/                   Node-tested isomorphic libs inlined into /annotate.js (page key, indicator, slug, clip, bubble, ann-row) + proxy-rebase.js (runtime URL rebase for proxied pages) + ann-list.css (shared list rows)
 kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
 kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock; localhost annotate inject
 kits/ios/components/   Component Library sources (meta.json + variant HTML)
 previews/<page>/       Flow pages — board.json + screen HTML (+ optional <screen>.js)
 previews/_index.json   Page manifest (id / title / order / default / mode)
-extension/             MV3 browser extension — injects the client on registered url entries
+extension/             MV3 browser extension — injects the client on registered url entries (the own-origin path; the /sites/ proxy embed is the extension-free one)
 skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 starter.html           COPY-ME standalone one-off phone (no workbench needed)
 scripts/               CLI entry for export
@@ -264,7 +264,7 @@ on your PATH; otherwise run `node bin/pinpoint.mjs` from this repo:
 ```bash
 pinpoint add /path/to/your-app/dist      # existing dir → kind "dir", hosted at /sites/<id>/
 pinpoint add ./report.html               # single .html/.htm file → kind "file"
-pinpoint add https://your-app.localhost  # http(s) URL → kind "url" (extension injects)
+pinpoint add https://your-app.localhost  # http(s) URL → kind "url" (proxy-embedded; extension also works)
 pinpoint add ./dist --title "Your App" --board ios --id your-app
 ```
 
@@ -279,10 +279,11 @@ reachable it then calls `POST /registry/reload` and the entry takes effect
 without a restart — serving, injection, bucket routing, and the Pages list of
 any open workbench all pick it up; otherwise the entry activates on the next start.
 
-Registered `dir`/`file` entries appear as workbench pages; the board comes from
+Registered `dir`/`file`/`url` entries appear as workbench pages; the board comes from
 `/sites/<id>/board.json` — a disk file when present, otherwise a synthesized doc
 board (a `file` entry's single screen; a `dir` entry's top-level `*.html`, one
-screen each), so「registered」always means「opens readable and annotatable」.
+screen each; a `url` entry's single proxied screen), so「registered」always
+means「opens readable and annotatable」.
 
 `GET /registry` returns the effective entries. A missing file means the default
 pinpoint-only registry; malformed JSON or invalid entries fall back / are skipped loudly and
@@ -290,7 +291,9 @@ the failure is visible on `GET /health` (which also reports `dataRoot` and the d
 `dataDir`). Entry ids match `^[a-z0-9][a-z0-9-]*$`; annotations land in per-entry buckets
 `~/.pinpoint/<entry-id>/` (`PINPOINT_DATA_DIR` overrides the root wholesale).
 
-Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`):
+One client (`client/annotate.js`, served as `/annotate.js`), delivered three ways —
+workbench self-injection, `/sites/` static serving, and url entries, which have **two**
+coexisting paths (both annotate into the same per-entry bucket):
 
 - **Workbench's own pages** — `ios-kit.js` self-injects the client on loopback / `.localhost`
   hosts only (opt out with `<html data-annotate="off">`); the same one-liner works for any
@@ -313,14 +316,50 @@ Three delivery paths, one client (`client/annotate.js`, served as `/annotate.js`
   `board.json` always wins. No synthesis happens for `ios`-board dirs (a phone-canvas board
   needs hand-written sections) or dirs without any top-level HTML (404, matching the
   whitelist-nothing-to-read semantics).
-- **`url` entries** — the MV3 browser extension in [`extension/`](extension/) matches
-  `location.origin` against url entries on local-dev pages and injects the same client,
-  stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline or
-  the origin isn't registered, the page stays untouched. The toolbar icon opens the
-  annotation **side panel** (Chrome Side Panel; shell + service-hosted `panel.html`) —
-  no in-page overlay. Load it once via
-  `chrome://extensions` → **Load unpacked** — details in
-  [`extension/README.md`](extension/README.md).
+- **`url` entries** — two coexisting paths into the same entry bucket:
+  - **Same-origin proxy embed** (阶段 4, no extension needed) — the service proxies the
+    registered origin under `/sites/<entry-id>/` (`server/lib/site-proxy.js`), so the live
+    app renders inside the workbench's doc-shell iframe same-origin, with the annotate
+    client injected by the proxy layer and the sidebar driving it directly. Method/headers/
+    body pass through; responses get `Set-Cookie` rebased (Domain stripped, Path
+    prefixed), 3xx `Location` rewritten back under the prefix, and CSP/X-Frame-Options/
+    COOP/COEP stripped (the page must enter an iframe and run the inline bootstrap). HTML
+    responses get root-absolute `src`/`href`/`action`/`srcset`/… rewritten onto the
+    prefix; CSS gets `url(/…)` rewritten. What HTML rewriting cannot reach —
+    `fetch('/api/…')`, XHR, `EventSource`, `WebSocket`, `sendBeacon` inside JS — is
+    covered by an inline **rebase bootstrap** injected as the first `<head>` script,
+    monkey-patching those APIs (`lib/proxy-rebase.js`); the annotate client's own
+    endpoints (`/save`, `/annotations…`, `/images/…`, `/image`, `/events`,
+    `/annotate.js`, `/sites/…`) are exempt by name. The bootstrap also **virtualizes
+    the URL** (`history.replaceState` back to the unprefixed app path before any page
+    script runs), because SPA routers read `location.pathname` — a native getter no
+    patch can intercept — and would fall through to their catch-all under the prefix.
+    Side effect (intended): the annotate ledger keys on the app path (`/`, `/global`,
+    …), converging byte-for-byte with the extension-injected ledger on the app's own
+    origin. WebSocket upgrades under the prefix
+    are forwarded to the target as a generic fallback (vite `httpServer` 'upgrade').
+    `?annotate=off` drops only the annotate client — the bootstrap and URL rewrites stay,
+    because they are proxy mechanics, not annotation surface. The url entry's
+    `board.json` is always synthesized locally (single doc screen, `src = sites/<id>/`),
+    shadowing any upstream file of that name. Known blind spots: DOM-assigned URLs
+    (`img.src = '/x.png'` — no patch intercepts property assignment), unquoted HTML
+    attributes, protocol-relative (`//…`) URLs, target app routes colliding with the
+    exempt pinpoint API names above (they would hit pinpoint instead),
+    `localStorage`/`indexedDB` shared with the workbench origin (same-origin embedding
+    means same storage partition), and virtualization hazards: `location.reload()` in
+    the app reloads the virtual URL (an embedded iframe refresh then loads the
+    unprefixed path on the pinpoint origin), and hard navigations
+    (`location.href = '/x'`) leave the proxy — router-intercepted SPA links are fine.
+  - **Browser extension** — the MV3 extension in [`extension/`](extension/) still matches
+    `location.origin` against url entries on local-dev pages and injects the same client,
+    stamping the entry id via `<html data-pinpoint-entry="…">`. When the service is offline
+    or the origin isn't registered, the page stays untouched. The toolbar icon opens the
+    annotation **side panel** (Chrome Side Panel; shell + service-hosted `panel.html`) —
+    no in-page overlay. Load it once via
+    `chrome://extensions` → **Load unpacked** — details in
+    [`extension/README.md`](extension/README.md). Use this path when you want to annotate
+    the app on its own origin (e.g. device/browser capability testing) instead of embedded
+    in the workbench.
 
 Everything else — `file://`, a self-started server, an unregistered origin — opens the
 identical bytes with zero annotation surface. Exported artifacts (PNG/HTML) never contain the

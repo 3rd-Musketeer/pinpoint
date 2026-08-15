@@ -65,14 +65,14 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
 | `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url>`); pure logic + tests in `bin/pinpoint-cli.js` |
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
-| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
+| `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
 | `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=` deep-link write side; read side is `resolveBootPageId` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
 | `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/outline/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
-| `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
+| `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `proxy-rebase.js` is inlined into the proxy bootstrap instead; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
 | `kits/ios/` | First kit: `ios-kit.css/js` + `components/` (Component Library sources) |
 | `previews/` | Template pages: `_index.json` manifest + `<pageId>/board.json` + screen HTML/JS |
-| `extension/` | MV3 browser extension — injects the client on registered `url` entries |
+| `extension/` | MV3 browser extension — injects the client on registered `url` entries on their own origin (the workbench-embedded path is the `/sites/` proxy) |
 | `skills/` | Agent skills (dir-ref): `pinpoint-build`, `pinpoint-annotate` |
 | `e2e/` | Playwright: workbench, annotation buckets, dir-entry sites, extension, SPA ledger |
 
@@ -195,11 +195,13 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Top level is **`sections[]`**, not a flat `{ id, screens }` object.
 - Page id / title / order / default live in **`previews/_index.json`**; a gitignored
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
-  Registry `dir`/`file` entries (except the workbench's own `pinpoint` entry) are appended
+  Registry `dir`/`file`/`url` entries (except the workbench's own `pinpoint` entry) are appended
   as pages from `GET /registry`: a dir entry's mode comes from its `board` field (default
-  `html`; a legacy `web` value normalizes to `html`), file entries are always `html`;
+  `html`; a legacy `web` value normalizes to `html`), file entries are always `html`,
+  url entries are always `html` (the live app embeds through the proxy);
   their board/screens load read-only from `/sites/<entry-id>/` (synthesized doc board when
-  no disk `board.json` exists). A previews page with the same id wins over a
+  no disk `board.json` exists; url entries always get the synthesized single-screen
+  board). A previews page with the same id wins over a
   registry page.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
 - Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
@@ -324,18 +326,60 @@ and route buckets without a restart (open workbenches learn it via the HMR
    dirs / dirs without any top-level HTML get no synthesis (404). Screen `src`s in
    synthesized boards are percent-encoded so iframe URL, `location.pathname`, and the
    export pipeline's annotation page-key hash agree byte-for-byte.
-3. **`url` entries → browser extension** — `extension/` is an MV3 extension whose content
-   script (top frame only, `localhost` / `*.localhost` / `127.0.0.1` matches) probes
-   `https://pinpoint.localhost/registry` then the page's own origin; first JSON wins. When
-   `location.origin` exactly matches a registry `url` entry it stamps
-   `<html data-pinpoint-entry="...">` (a page CSP blocks content-script-injected inline
-   `<script>`; `window.__pinpointEntry` remains the same-origin injector contract and wins
-   when both exist) and loads `annotate.js` from `service.directOrigin` — the API's plain
-   loopback bind — because Chrome ≥130 checks content-script-injected scripts against the
-   extension's own CSP, which whitelists `http://localhost:*` / `http://127.0.0.1:*` but not
-   remote https origins. No candidate serving a registry → service is down → nothing is
-   injected. All annotate API routes answer cross-origin requests with
-   `Access-Control-Allow-Origin: *` (no credentials) and handle `OPTIONS` preflights.
+3. **`url` entries — two coexisting paths into the same bucket** (阶段 4 起):
+   - **同源代理内嵌 → `/sites/`** (extension-free): `server/lib/site-proxy.js` proxies the
+     registered origin under `/sites/<entry-id>/` — all methods/headers/bodies pass
+     through (dir/file stay GET/HEAD-only), so the live app renders inside the
+     workbench's doc-shell iframe same-origin and the sidebar drives its annotate
+     instance via the existing ann-bridge. Response surgery: `Set-Cookie` rebased
+     (Domain stripped, Path prefixed/added under the prefix), 3xx `Location` (and
+     request `Referer`) rewritten between prefix and target origin, and
+     CSP / CSP-Report-Only / X-Frame-Options / COOP / COEP stripped wholesale — the
+     page must enter an iframe and run the inline bootstrap, and the registry
+     whitelist is the security boundary (upstream TLS verification is off:
+     localhost dev origins use privately-trusted CAs). HTML responses get
+     root-absolute `src`/`href`/`action`/`poster`/`formaction`/`srcset`/
+     `imagesrcset`/`xlink:href`, `<object data>`, `<meta refresh>`, `<style>` bodies
+     and `style="…"` attributes rewritten onto the prefix; CSS responses get
+     `url(/…)` and `@import "/…"` rewritten. What HTML rewriting cannot reach —
+     `fetch('/api/…')`, XHR, `EventSource`, `WebSocket`, `sendBeacon` inside JS — is
+     covered by an inline **rebase bootstrap** injected as the first `<head>` script
+     (`proxyBootstrapSnippet`, inlining `lib/proxy-rebase.js`): it monkey-patches
+     those five APIs to rebase root-absolute (and self-/target-origin absolute) URLs
+     onto the prefix, exempting the annotate client's own endpoints by name
+     (`REBASE_EXEMPT_*`: `/annotate.js`, `/save`, `/image`, `/annotations[…]`,
+     `/images/…`, `/events`, `/sites/…`). The bootstrap also **virtualizes the URL**
+     (`history.replaceState` to the unprefixed app path, `virtualAppPath`, before any
+     page script runs) because SPA routers read `location.pathname` — a native getter
+     no patch can intercept — and would fall through to their catch-all under the
+     prefix; the annotate ledger therefore keys on the app path (`/`, `/global`, …),
+     converging byte-for-byte with the extension-injected ledger on the app's own
+     origin. WS upgrades under the prefix are forwarded
+     to the target origin on vite's httpServer 'upgrade' (generic fallback; SSE goes
+     through plain HTTP forwarding). url entries surface as workbench pages (always
+     doc shell): `/sites/<id>/board.json` is always the synthesized single-screen
+     board (`src = sites/<id>/`), shadowing any upstream file of that name.
+     `?annotate=off` drops only the annotate client — the bootstrap and URL rewrites
+     stay, because they are proxy mechanics (without them the app renders but every
+     runtime API call points at the wrong origin). Known blind spots: DOM-assigned
+     URLs (`img.src = '/x.png'`), unquoted attributes, protocol-relative URLs, target
+     routes named like the exempt pinpoint endpoints, storage (localStorage /
+     indexedDB) shared with the workbench origin, and virtualization hazards —
+     `location.reload()` reloads the virtual URL (embedded iframe refresh loads the
+     unprefixed path), hard navigations (`location.href = '/x'`) leave the proxy.
+   - **Browser extension (own-origin path)** — `extension/` is an MV3 extension whose
+     content script (top frame only, `localhost` / `*.localhost` / `127.0.0.1` matches)
+     probes `https://pinpoint.localhost/registry` then the page's own origin; first JSON
+     wins. When
+     `location.origin` exactly matches a registry `url` entry it stamps
+     `<html data-pinpoint-entry="...">` (a page CSP blocks content-script-injected inline
+     `<script>`; `window.__pinpointEntry` remains the same-origin injector contract and wins
+     when both exist) and loads `annotate.js` from `service.directOrigin` — the API's plain
+     loopback bind — because Chrome ≥130 checks content-script-injected scripts against the
+     extension's own CSP, which whitelists `http://localhost:*` / `http://127.0.0.1:*` but not
+     remote https origins. No candidate serving a registry → service is down → nothing is
+     injected. All annotate API routes answer cross-origin requests with
+     `Access-Control-Allow-Origin: *` (no credentials) and handle `OPTIONS` preflights.
 
 **Client ledger** (`client/annotate.js`): the bucket entry is
 `window.__pinpointEntry` → `<html data-pinpoint-entry>` → `'pinpoint'`; API calls go to the
@@ -404,9 +448,12 @@ instance layers private content on top without touching tracked files:
 4. Read annotations grouped by `pageId` then `section` (and `screenId` when present); edit the routed file; do not clear annotations for the user.
 5. Register a `dir` entry with `pinpoint add <dir>`; verify `GET /registry` lists it,
    `/sites/<id>/` serves HTML with `window.__pinpointEntry` injected, `?annotate=off` is
-   byte-identical to disk, and the workbench lists it as a page. For a `url` entry: load
-   `extension/` unpacked, browse the origin with the service up, and confirm the toolbar
-   appears (and stays absent when the service is down).
+   byte-identical to disk, and the workbench lists it as a page. For a `url` entry:
+   `pinpoint add <https-url>`, then open the workbench page — the doc iframe renders the
+   live app through `/sites/<id>/` (absolute-path assets and `/api` calls succeed), the
+   sidebar drives annotate mode, and marks land in the entry's bucket; `?annotate=off`
+   keeps the rebase bootstrap but drops the annotate client. The extension path (annotate
+   on the app's own origin) still works in parallel — same bucket.
 6. Resolve `content` target tokens against the same annotation's `targets[].ref`; keep
    missing refs visible instead of guessing another target.
 7. After addressing annotations, summarize the concrete changes in the agent conversation;
