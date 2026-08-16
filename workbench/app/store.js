@@ -1,5 +1,6 @@
 import { create } from 'zustand';
 
+import { boardEntries, entryForm, resolveEntry } from '../lib/board-entries.js';
 import { modeForPage } from '../lib/page-url.js';
 
 /**
@@ -20,8 +21,9 @@ export const useWorkbenchStore = create((set) => ({
   pageManifest: null,
   pageManifestError: null,   // manifest 拉取失败信息（侧栏错误行）
   pageNames: {},             // prefs.pageNames — 页面重命名（侧栏显示名）
-  activeBoard: null,        // { pageId, board } — HTML 板的版本切换器与左栏大纲都读它
-  activeDocId: null,        // HTML 板当前文档版本 screenId（setActiveDoc 写）
+  activeBoard: null,        // { pageId, board } — 条目列表、左栏大纲、导出树都读它
+  activeEntryId: null,      // 当前选中条目 id（2026-08-16f 阶段 6；画布 = lib/board-entries.js
+                            // CANVAS_ENTRY_ID，文档 = doc 屏 screenId；setActiveEntry 写）
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
   // 大纲行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
   // focusFrameKey = sectionId + '\0' + screenId；focusAnnN = 最近点开的标注序号
@@ -59,10 +61,22 @@ export const useWorkbenchStore = create((set) => ({
 export const wbGet = useWorkbenchStore.getState;
 export const wbSet = useWorkbenchStore.setState;
 
-/* 页面形态（ios 机壳 / html 文档）不是独立状态 —— 2026-08-16 阶段 2 起它是
-   activePageId 的派生只读视图（modeForPage）。命令式消费点一律走本函数；
-   React 组件订阅 activePageId + pageManifest 后用 modeForPage 自行派生。 */
+/* stage 形态（ios 画布 / html 文档阅读器）不是独立状态 —— 2026-08-16f 阶段 6 起它是
+   选中条目的派生只读视图（lib/board-entries.js；条目 = 画布条目 + 每个 doc 屏一个
+   文档条目）。命令式消费点一律走下面两个函数；React 组件订阅 activeBoard +
+   activeEntryId 后用同一组纯函数自行派生。
+   板未装载 / 换页途中（activeBoard 还停在上一页）退回页级 modeForPage —— 与
+   2026-08-16 阶段 2 的页级派生同义，只作过渡兜底。 */
+export function activeEntry() {
+  var s = useWorkbenchStore.getState();
+  var active = s.activeBoard;
+  if (!active || active.pageId !== s.activePageId) return null;
+  return resolveEntry(boardEntries(active.board), s.activeEntryId);
+}
+
 export function activeBoardMode() {
+  var entry = activeEntry();
+  if (entry) return entryForm(entry);
   var s = useWorkbenchStore.getState();
   return modeForPage(s.pageManifest, s.activePageId);
 }

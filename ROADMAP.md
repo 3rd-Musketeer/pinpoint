@@ -84,13 +84,17 @@
   草稿条目（screen 级 `role: product | draft`）；registry url 条目 = 网页产物。
 - 标注、导出、mention 全链路按条目复用，无新机制。
 
-### 阶段 6：混合板 schema + stage 页内形态切换（地基）
+### 阶段 6：混合板 schema + stage 页内形态切换（地基）—— **2026-08-16 已落地**
 
 - 价值：一个 Page 同时装画布和文档在对象模型上成立；后面 UI 只消费模型。
 - 内容：screen 级 `role` 字段 + 混合壳生效（app/lock 屏摆画布、doc 屏成
   阅读器条目）；page 级 mode 删除；stage 形态由选中条目派生；深链 / prefs /
   URL sync 收到条目级。
 - 切开理由：不动 UI 先立模型，风险集中在数据契约，UI 阶段不含逻辑发明。
+- 落地备注：条目派生收进 `workbench/lib/board-entries.js`（画布条目 id =
+  `@canvas`，文档条目 = doc 屏 screenId）；prefs `activeEntryIdByPage` + 深链
+  `?entry=`；DocVersions 临时适应为条目列表（画布行 + doc 行，样式文案不动，
+  阶段 7 重做）；page 级 mode 仅剩 pill / 缺省壳 / mode 提示三个临时用途。
 
 ### 阶段 7：左栏第二层合一（Page 去类型，产物 / 草稿分组）
 

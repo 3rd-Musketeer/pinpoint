@@ -525,7 +525,14 @@ change at all. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
 (e2e and release verification run in this mode).
 
 Pages may set `"mode"` to `ios` (default) or `html`; the Workbench Pages list is one
-mixed list with a per-row shell marker (canvas page vs document).
+mixed list with a per-row shell marker (canvas page vs document). Since 2026-08-16f
+(ROADMAP 阶段 6) the page mode no longer drives the stage: a page is a thread container,
+and its `board.json` holds **entries** — the `app`/`lock` screens form one **canvas**
+entry, every `shell: "doc"` screen is a separate **document entry** (`role: "product"`
+default, `"draft"` for 草稿). The stage form (canvas vs reader) follows the selected
+entry (`#wbdoc-versions` in the sidebar; `?page=<id>&entry=<screenId>` deep links; the
+choice is remembered per page). `"mode"` now only seeds the board's default shell and
+the temporary row pill.
 
 | Shell | Input | Artboard | Tracked example |
 |---|---|---|---|
@@ -535,7 +542,7 @@ mixed list with a per-row shell marker (canvas page vs document).
 HTML boards host one-page reports and docs — files that carry their own `<!doctype>`, `<head>`, and
 `<style>`. They render in an iframe rather than inlined, so the document is untouched; a screen's
 `"src"` may point anywhere, which (with a symlink under `previews/`) lets you review a report that
-lives outside this repo. Sidebar **导出** on the Versions/Document header downloads the active doc
+lives outside this repo. Sidebar **导出** on the entry-list header downloads the active doc
 as full HTML, CSS-stripped HTML (for AI), or a full-page 2× PNG. Annotating works out of the box on
 the localhost service — the doc's own tail script pulls `/annotate.js` on loopback hosts only, so
 the same file stays inert everywhere else (see [`AGENTS.md`](AGENTS.md)).

@@ -47,14 +47,16 @@ import {
   toggleSideCollapsed
 } from './boot-prefs.js';
 import {
+  applyPageFormFallback,
   applyPageNames,
   initPages,
   loadPageManifest,
   resolveActivePage,
+  setActiveEntry,
   setActivePage,
   showPageManifestError,
   switchPage,
-  syncDocVersions,
+  syncEntries,
   wireLibraryScrollSpy
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
@@ -69,9 +71,9 @@ var mountManager = new BoardMountManager();
 
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
-  // URL 深链（P3）优先于 prefs：?page= 直达页面（壳形态取页面自己的 mode，
-  // 与 ?mode= 冲突时以页面为准，URL 随后被 url-sync 重写为真实值）；只给
-  // ?mode= 或 pageId 不存在时回 prefs.activePageId，再回该形态第一页/默认页。
+  // URL 深链（P3）优先于 prefs：?page= 直达页面（stage 形态取页内选中条目，
+  // ?entry= 在 initBoard 里于板装载后应用；只给 ?mode= 或 pageId 不存在时回
+  // prefs.activePageId，再回该形态第一页/默认页，URL 随后被 url-sync 重写为真实值）。
   var link = parseDeepLink(location.search);
   if (link.pageId && (link.pageId === COMPONENTS_ID || pageEntry(wbGet().pageManifest, link.pageId))) {
     return link.pageId;
@@ -123,13 +125,15 @@ async function loadBoard(panel, pageId) {
     var session = mountManager.begin(pageId);
     panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
     wbSet({ activeBoard: { pageId: pageId, board: board } });
-    syncDocVersions();
+    syncEntries();
     watchDocAnnotate();
     return afterMount(panel, session);
   } catch (e) {
     if (wbGet().activePageId !== pageId) return null;
     mountManager.cancel();
     resetBoardNavOnLoadFailure();
+    // 装载失败没有板就没有条目可解析 —— stage 形态退回页级兜底（阶段 2 同义）。
+    applyPageFormFallback(pageId);
     var label = e instanceof ContractError ? '契约错误' : '加载失败';
     panel.innerHTML = loadFailHtml(
       label + ' · ' + boardUrl(pageId) + ' · ' + String(e && e.message ? e.message : e)
@@ -146,6 +150,12 @@ function initBoard() {
   return loadPageManifest()
     .then(function () {
       return setActivePage(resolveBootPageId(readPrefs()), { force: true, scrollTop: false, save: false });
+    })
+    // 条目级深链（2026-08-16f 阶段 6）：?entry= 在板装载后应用 —— 未知条目 id
+    // 由 setActiveEntry 的选中解析落默认条目，随后 url-sync 把 URL 重写为真实值。
+    .then(function () {
+      var link = parseDeepLink(location.search);
+      if (link.entry) setActiveEntry(link.entry, { save: false });
     })
     .catch(function (error) {
       showPageManifestError(error);
@@ -172,9 +182,11 @@ initBoard();
 window.workbench = {
   switchPage: switchPage,
   setActivePage: setActivePage,
+  setActiveEntry: setActiveEntry,
   focusFrame: focusWorkbenchFrame,
   activePageId: function () { return wbGet().activePageId; },
-  // 只读派生视图（2026-08-16 阶段 2：setBoardMode 随模式 Seg 退役，形态由页派生）
+  activeEntryId: function () { return wbGet().activeEntryId; },
+  // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）
   boardMode: function () { return activeBoardMode(); },
   exportSnapshot: buildExportSnapshot,
   exportImage: requestExportImage,

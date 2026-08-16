@@ -88,6 +88,7 @@ test('manifest navigation survives rapid page switches and persists the winner',
   // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
   // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
   // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
+  // 阶段 6：e2e-mixed 固件（混合板：画布 + 两个文档条目）追加在尾。
   // 行 = 壳标 pill（iOS/Doc 文字，2026-08-16b）+ 标题，两通道分别断言。
   await expect(page.locator('#wbpages .wb-page .wb-page-t')).toHaveText([
     'Component Library',
@@ -98,9 +99,10 @@ test('manifest navigation survives rapid page switches and persists the winner',
     'E2E Dir',
     'E2E Dir iOS',
     'E2E Mention Doc',
+    'E2E Mixed',
   ]);
   await expect(page.locator('#wbpages .wb-page .wb-page-kind-t')).toHaveText([
-    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc',
+    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc', 'iOS',
   ]);
 
   for (const [pageId, screenId] of [
@@ -130,6 +132,7 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
   // 模式 Seg 退役；本地页 + registry 条目混排（顺序 = 系统行 → _index → registry）。
   // 阶段 4：url 条目（E2E Site / E2E Proxy App）恒 doc 壳同列。
   // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
+  // 阶段 6：e2e-mixed 固件（混合板）追加在尾。
   // 行 = 壳标 pill + 标题（2026-08-16b），两通道分别断言。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page .wb-page-t')).toHaveText([
@@ -141,9 +144,10 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
     'E2E Dir',
     'E2E Dir iOS',
     'E2E Mention Doc',
+    'E2E Mixed',
   ]);
   await expect(page.locator('#wbpages .wb-page .wb-page-kind-t')).toHaveText([
-    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc',
+    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc', 'iOS',
   ]);
 
   // 行内壳标 pill（2026-08-16b）：等宽 40px 图标+文字；图标保 .wb-page-ico 契约。

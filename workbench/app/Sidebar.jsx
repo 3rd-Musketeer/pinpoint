@@ -19,16 +19,19 @@
 //  - footer 的 Light/Dark 分段是预览内容主题（ios-root data-theme），原地保留。
 //
 // 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
-// Pages 变单一列表（本地页 + registry dir 条目同列），行内壳标记区分机壳/文档；
-// 壳形态由 modeForPage(activePageId) 派生，不再是独立状态。
+// Pages 变单一列表（本地页 + registry dir 条目同列），行内壳标记区分机壳/文档。
 // 2026-08-16b 壳标升级：裸图标 → 等宽 pill（图标 + iOS/Doc 文字，accent 淡底）；
 // 左栏过 230 紧凑断点（boot-prefs applySideWidth 打 #wbside.compact）收纯图标块。
+// 2026-08-16f 阶段 6（产物与草稿模型）：stage 形态由选中条目派生（store
+// activeEntryId，lib/board-entries.js）。DocVersions 改为临时条目列表 —— 板里有
+// doc 屏条目即显示（不再要求整页 html 模式），有画布条目时顶部多一行「画布」用于
+// 切回；文案与样式不动，左栏第二层（产物/草稿分组、pill 撤除）阶段 7 重做。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
-  docScreensOfActiveBoard,
+  entriesOfActiveBoard,
   manifestPages,
-  setActiveDoc,
+  setActiveEntry,
   setActivePage,
   showSettings,
   showTabs
@@ -36,7 +39,8 @@ import {
 import { setTheme, toggleSideCollapsed } from '../boot-prefs.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import { openDocExportDialog } from '../export-core.js';
-import { COMPONENTS_ID, modeForPage } from '../lib/page-url.js';
+import { CANVAS_ENTRY_ID, canvasBoard, resolveEntry } from '../lib/board-entries.js';
+import { COMPONENTS_ID } from '../lib/page-url.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
@@ -242,16 +246,36 @@ function PagesNav() {
   );
 }
 
+/* 条目列表（2026-08-16f 阶段 6 临时形态，阶段 7 重做左栏第二层）：板里有 doc 屏
+   条目即显示（不再要求整页 html 模式）；有画布条目时顶部多一行「画布」用于切回。
+   行 = 既有 .wb-doc-ver 行语言，文案/样式不动；doc 行 data-doc-screen 契约不变，
+   画布行用 data-entry-canvas。草稿条目（role=draft）在此不打标 —— 分组与类型
+   tag 是阶段 7 的事。 */
 function DocVersions() {
-  var mode = useWorkbenchStore(function (s) { return modeForPage(s.pageManifest, s.activePageId); });
-  useWorkbenchStore(function (s) { return s.activeBoard; }); // 订阅触发重渲染；取值走 docScreensOfActiveBoard
-  var activeDocId = useWorkbenchStore(function (s) { return s.activeDocId; });
-  var screens = docScreensOfActiveBoard();
-  var show = mode === 'html' && screens.length > 0;
+  useWorkbenchStore(function (s) { return s.activeBoard; }); // 订阅触发重渲染；取值走 entriesOfActiveBoard
+  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
+  var entries = entriesOfActiveBoard();
+  var docEntries = entries.filter(function (e) { return e.kind === 'doc'; });
+  var hasCanvas = entries.some(function (e) { return e.kind === 'canvas'; });
+  var current = resolveEntry(entries, activeEntryId);
+  var show = docEntries.length > 0;
   var items = [];
+  if (hasCanvas) {
+    items.push(
+      <button key={CANVAS_ENTRY_ID} type="button" data-entry-canvas=""
+        data-state={current && current.kind === 'canvas' ? 'on' : undefined}
+        className={cn(
+          'wb-doc-ver mx-1.5 cursor-pointer rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground',
+          current && current.kind === 'canvas' && 'on ' + ROW_ON
+        )}
+        onClick={function () { setActiveEntry(CANVAS_ENTRY_ID); }}>
+        画布
+      </button>
+    );
+  }
   var lastSection = null;
-  screens.forEach(function (sc) {
-    if (screens.length > 1 && sc.section && sc.section !== lastSection) {
+  docEntries.forEach(function (sc) {
+    if (docEntries.length > 1 && sc.section && sc.section !== lastSection) {
       lastSection = sc.section;
       items.push(
         <div key={'sec-' + sc.section}
@@ -260,14 +284,14 @@ function DocVersions() {
         </div>
       );
     }
-    var on = activeDocId === sc.id;
+    var on = !!current && current.id === sc.id;
     items.push(
       <button key={sc.id} type="button" data-doc-screen={sc.id} data-state={on ? 'on' : undefined}
         className={cn(
           'wb-doc-ver mx-1.5 cursor-pointer rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground',
           on && 'on ' + ROW_ON
         )}
-        onClick={function () { setActiveDoc(sc.id); }}>
+        onClick={function () { setActiveEntry(sc.id); }}>
         {sc.title}
       </button>
     );
@@ -279,7 +303,7 @@ function DocVersions() {
       {show ? (
         <Fragment>
           <div className="wb-doc-ver-head flex items-center justify-between gap-2 px-[var(--wb-pad)] pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[color:var(--wb-faint)]">
-            <span>{screens.length > 1 ? 'Versions' : 'Document'}</span>
+            <span>{entries.length > 1 ? 'Versions' : 'Document'}</span>
             <Button type="button" variant="ghost" data-doc-export="" title="导出当前文档"
               className="wb-doc-export h-auto min-h-0 rounded-md bg-[var(--wb-side)] px-2 py-[3px] text-[11px] font-semibold leading-[1.2] text-muted-foreground shadow-none transition-[color,background-color] duration-150 hover:bg-accent hover:text-primary"
               onClick={function () { openDocExportDialog(); }}>导出</Button>
@@ -291,19 +315,24 @@ function DocVersions() {
   );
 }
 
-/* 大纲（decisions 2026-08-15c）：当前页 section → frame 树，行 = mono 引用号 +
-   屏名 + 计数徽标（红 = 含失效锚点）。延伸线几何（.ol-*）在 index.html；
+/* 大纲（decisions 2026-08-15c）：当前页画布条目的 section → frame 树，行 = mono
+   引用号 + 屏名 + 计数徽标（红 = 含失效锚点）。延伸线几何（.ol-*）在 index.html；
    点击复用 board-nav 的 frame 定位（与标注卡 goToMark 同一导航源），机身闪
-   focus 环。选中态（store.focusFrameKey）由大纲点击与标注卡点击双向写入。 */
+   focus 环。选中态（store.focusFrameKey）由大纲点击与标注卡点击双向写入。
+   2026-08-16f 阶段 6：大纲是画布语汇 —— 只在画布条目选中时显示，且树只覆盖
+   画布屏（canvasBoard 滤掉 doc 屏，引用号与图注/导出树同源）。 */
 function Outline() {
-  var mode = useWorkbenchStore(function (s) { return modeForPage(s.pageManifest, s.activePageId); });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var active = useWorkbenchStore(function (s) { return s.activeBoard; });
+  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
-  // 文档页不是画布（文档版本切换在 Pages 段）；板未装载 / 空板不出大纲。
-  if (mode === 'html' || !active || active.pageId !== activePageId) return null;
-  var refs = boardRefs(active.board);
+  // 板未装载 / 换页途中不出大纲；无画布条目（纯 doc 板）或当前选中文档条目时也不出。
+  if (!active || active.pageId !== activePageId) return null;
+  var entries = entriesOfActiveBoard();
+  var current = resolveEntry(entries, activeEntryId);
+  if (!current || current.kind !== 'canvas') return null;
+  var refs = boardRefs(canvasBoard(active.board));
   if (!refs.outline.length) return null;
 
   // 徽标计数：annSnap 行带 section/screenId（ann-bridge 增量），按帧归并

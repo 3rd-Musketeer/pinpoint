@@ -1,11 +1,21 @@
 // Workbench 页面/manifest 簇 — 页面集合、manifest 加载、页面切换、
-// doc 版本切换、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
+// 条目切换（stage 页内形态）、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
-// 2026-08-16 阶段 2：模式 Seg 退役 —— 壳（ios 机壳 / html 文档）是页的属性，
-// 由 modeForPage 派生，Pages 变单一列表，不再有「按模式切页集」的概念。
-import { wbGet, wbSet, activeBoardMode } from './app/store.js';
+// 2026-08-16 阶段 2：模式 Seg 退役 —— Pages 变单一列表，不再有「按模式切页集」的概念。
+// 2026-08-16f 阶段 6（产物与草稿模型）：stage 形态不再由 page.mode 派生 —— 一个 Page
+// 一份 board.json，条目 = （有 app/lock 屏则有一个画布条目）+ 每个 doc 屏一个文档
+// 条目（lib/board-entries.js）；选中条目（store.activeEntryId）派生 stage 形态
+// （画布 / 文档阅读器）、屏显隐、缩放与视口存档。条目记忆持久化在
+// prefs.activeEntryIdByPage（reload 后保持；activeDocId 从未落过 prefs，无迁移面）。
+import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { savePrefs } from './lib/prefs.js';
+import { readPrefs, savePrefs } from './lib/prefs.js';
+import {
+  boardEntries,
+  defaultEntryId,
+  entryForm,
+  resolveEntry
+} from './lib/board-entries.js';
 import {
   COMPONENTS_ID,
   LIB_ID,
@@ -15,7 +25,13 @@ import {
 import { closestBoardSection } from './lib/board-navigation.js';
 import { validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
-import { refit, setCanvasZoom, snapshotPageViewport } from './boot-prefs.js';
+import {
+  refit,
+  restorePageViewportAfterMount,
+  setCanvasZoom,
+  snapshotPageViewport,
+  zoomForPage
+} from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 
 // 反向依赖注入：loadBoard / mountManager 留在 stage.js（舞台入口持有装载编排），
@@ -30,7 +46,6 @@ export function initPages(deps) {
 var stage = document.getElementById('wbstage');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var libraryScrollHandler;
-var activeDocByPage = {};    // pageId → screenId，切页回来记得上次看的版本
 
 export function scrollToGroup(groupId, options) {
   options = options || {};
@@ -84,16 +99,11 @@ export function wireLibraryScrollSpy() {
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
 }
 
-// 壳形态（页/帧的属性，modeForPage 派生）：
-// ios = 手机原型（fragment + 机身 chrome）
-// html = 完整独立 HTML 文档（汇报页一类），iframe 承载，见 shell "doc"
-// （2026-08-16 阶段 2：web「无机壳画板」连壳退役，残留 'web' 一律归一到 html。）
-var BOARD_MODES = { ios: true, html: true };
-
-export function normalizeBoardMode(mode) {
-  if (mode === 'web') return 'html';
-  return BOARD_MODES[mode] ? mode : 'ios';
-}
+// stage 形态（条目的属性，lib/board-entries.js entryForm 派生）：
+// ios = 画布（手机原型 fragment + 机身 chrome）
+// html = 文档阅读器（完整独立 HTML 文档，iframe 承载，见 shell "doc"）
+// （2026-08-16 阶段 2：web「无机壳画板」连壳退役，残留 'web' 一律归一到 html；
+// 2026-08-16f 阶段 6：形态从页级 mode 下沉到选中条目。）
 
 /** Pages 单一列表（2026-08-16 阶段 2）：不再按模式过滤，返回全部页。 */
 export function manifestPages() {
@@ -137,56 +147,112 @@ export function resolveActivePage(preferredId, modeHint) {
   return defaultPageId();
 }
 
-/* ---- HTML board: one document, full viewport, sidebar switches versions ----
-   汇报页要在读者真实的窗口尺寸下读，所以不画布化：文档 1:1 铺满 stage，
-   同一页里的多个版本不并排摆，改从侧栏切。侧栏导航本身由 Sidebar 的
-   DocVersions 组件渲染（读 activeBoard/activeDocId），这里只保留切换动作。 */
-export function docScreensOfActiveBoard() {
-  var active = wbGet().activeBoard;
-  if (!active || modeForPage(wbGet().pageManifest, active.pageId) !== 'html') return [];
-  var out = [];
-  (active.board.sections || []).forEach(function (sec) {
-    (sec.screens || []).forEach(function (sc) {
-      out.push({ id: sc.id, title: sc.title || sc.id, section: sec.title || sec.id });
-    });
-  });
-  return out;
+/* ---- 条目（2026-08-16f 阶段 6）：一个 board 的可选单元 --------------------
+   条目 = （有 app/lock 屏则有一个画布条目）+ 每个 doc 屏一个文档条目
+   （lib/board-entries.js）。stage 形态（画布 / 文档阅读器）、屏显隐、缩放与
+   视口存档全部从选中条目派生；侧栏的条目列表由 Sidebar 的 DocVersions 组件
+   渲染（读 activeBoard/activeEntryId；临时形态，阶段 7 重做第二层），这里只
+   保留切换动作与装载后的条目解析。 */
+
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。Sidebar 消费。 */
+export function entriesOfActiveBoard() {
+  var s = wbGet();
+  var active = s.activeBoard;
+  if (!active || active.pageId !== s.activePageId) return [];
+  return boardEntries(active.board);
 }
 
-export function setActiveDoc(screenId, options) {
-  options = options || {};
-  var panel = document.getElementById('wb-board-panel');
-  if (!panel) return;
-  var screens = docScreensOfActiveBoard();
-  if (!screens.length) return;
-  var ids = screens.map(function (sc) { return sc.id; });
-  if (ids.indexOf(screenId) < 0) screenId = ids[0];
-  var active = wbGet().activeBoard;
-  if (active) activeDocByPage[active.pageId] = screenId;
-  wbSet({ activeDocId: screenId });
+function entryPrefs() {
+  var raw = readPrefs().activeEntryIdByPage;
+  return raw && typeof raw === 'object' ? raw : {};
+}
 
+function entryPrefFor(pageId) {
+  return entryPrefs()[pageId] || null;
+}
+
+function saveEntryPref(pageId, entryId) {
+  var all = Object.assign({}, entryPrefs());
+  all[pageId] = entryId;
+  savePrefs({ activeEntryIdByPage: all });
+}
+
+/* stage 形态应用到 DOM/缩放：data-page-mode 是 stage 阅读器态的 CSS 钩
+   （index.html）；文档形态锁死缩放（报告必须按读者真实窗口尺寸渲染），
+   回画布形态停掉父级 gutter。形态值域沿用 ios/html（html = 文档阅读器）。 */
+function applyStageForm(form) {
+  if (wbRoot) wbRoot.setAttribute('data-page-mode', form);
+  if (form === 'html') setCanvasZoom('1', { save: false });
+  else stopGutter();
+}
+
+/** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */
+export function applyPageFormFallback(pageId) {
+  applyStageForm(modeForPage(wbGet().pageManifest, pageId) === 'html' ? 'html' : 'ios');
+}
+
+/* 屏显隐 = 条目选择唯一驱动：画布条目 → doc 屏全部收起；文档条目 → 只留该屏。
+   data-doc-hidden 的 display:none 规则是全局的（index.html），section 容器在它
+   一个 screen 都不显示时收起。 */
+function applyEntryVisibility(panel, board, entry) {
+  var shellById = {};
+  (board.sections || []).forEach(function (sec) {
+    (sec.screens || []).forEach(function (sc) { shellById[sc.id] = sc.shell; });
+  });
   panel.querySelectorAll('.wb-screen[data-screen]').forEach(function (node) {
-    var on = node.getAttribute('data-screen') === screenId;
+    var screenId = node.getAttribute('data-screen');
+    var on = entry.kind === 'canvas'
+      ? shellById[screenId] !== 'doc'
+      : screenId === entry.id;
     node.toggleAttribute('data-doc-hidden', !on);
-    // section 容器只在它一个 screen 都不显示时才收起
     var item = node.closest('.wb-lib-item');
     if (item) {
       var anyVisible = !!item.querySelector('.wb-screen[data-screen]:not([data-doc-hidden])');
       item.toggleAttribute('data-doc-hidden', !anyVisible);
     }
   });
-  if (options.scrollTop !== false && stage) stage.scrollTop = 0;
-  watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
 }
 
-/* board 装载/页面切换后调用：导航渲染由 DocVersions 组件从 store 派生，
-   这里只负责把当前文档版本定下来（记住每页上次看的版本）。 */
-export function syncDocVersions() {
-  var screens = docScreensOfActiveBoard();
-  if (activeBoardMode() !== 'html' || !screens.length) return;
+export function setActiveEntry(entryId, options) {
+  options = options || {};
+  var panel = document.getElementById('wb-board-panel');
   var active = wbGet().activeBoard;
-  var remembered = active ? activeDocByPage[active.pageId] : null;
-  setActiveDoc(remembered || screens[0].id, { scrollTop: false });
+  if (!panel || !active || active.pageId !== wbGet().activePageId) return;
+  var entries = boardEntries(active.board);
+  if (!entries.length) return;
+  var entry = resolveEntry(entries, entryId);
+  var prev = resolveEntry(entries, wbGet().activeEntryId);
+  // 离开画布条目前存档视口（文档形态期间不写存档，见 boot-prefs 的守卫）。
+  if (prev && entry && prev.id !== entry.id && prev.kind === 'canvas') {
+    snapshotPageViewport(active.pageId);
+  }
+  wbSet({ activeEntryId: entry.id });
+  if (options.save !== false) saveEntryPref(active.pageId, entry.id);
+  applyStageForm(entryForm(entry));
+  applyEntryVisibility(panel, active.board, entry);
+  if (entry.kind === 'doc') {
+    if (options.scrollTop !== false && stage) stage.scrollTop = 0;
+    watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
+  } else if (!restorePageViewportAfterMount(active.pageId)) {
+    // 无存档视口的画布条目：回首访默认缩放（zoomForPage 兜底 0.5）。
+    setCanvasZoom(zoomForPage(active.pageId), { save: false });
+  }
+  scheduleAnnSnap();
+}
+
+/* board 装载/页面切换后调用：导航渲染由 DocVersions 组件从 store 派生，这里负责
+   把当前条目定下来 —— prefs.activeEntryIdByPage 记忆优先，非法/缺失落默认条目
+   （画布优先）。 */
+export function syncEntries() {
+  var active = wbGet().activeBoard;
+  if (!active || active.pageId !== wbGet().activePageId) return;
+  var entries = boardEntries(active.board);
+  if (!entries.length) {
+    wbSet({ activeEntryId: null });
+    applyPageFormFallback(active.pageId);
+    return;
+  }
+  setActiveEntry(entryPrefFor(active.pageId) || defaultEntryId(entries), { scrollTop: false, save: false });
 }
 
 export function showPageManifestError(error) {
@@ -278,19 +344,14 @@ export function setActivePage(pageId, options) {
     snapshotPageViewport(wbGet().activePageId);
   }
   wbSet({ activePageId: pageId, focusFrameKey: null, focusAnnN: null });
-  // 壳形态是目标页的派生属性（原 setBoardMode 的模式副作用随 Seg 退役收编到这里）：
-  // data-page-mode 是 stage 阅读器态的 CSS 钩（index.html）；文档页锁死缩放
-  // （报告必须按读者真实窗口尺寸渲染），离开文档页停掉父级 gutter。
-  var nextMode = modeForPage(wbGet().pageManifest, pageId);
-  if (wbRoot) wbRoot.setAttribute('data-page-mode', nextMode);
-  if (nextMode === 'html') setCanvasZoom('1', { save: false });
-  else stopGutter();
   if (options.save !== false) rememberActivePage(pageId);
   if (same && !options.force) {
     // Re-clicking the active page must not fight per-page viewport memory.
     if (options.scrollTop === true) stage.scrollTo({ top: 0, behavior: 'smooth' });
     return Promise.resolve();
   }
+  // stage 形态随选中条目在装载后应用（loadBoard → syncEntries，2026-08-16f 阶段 6）——
+  // 条目要 board 先到位才能解析，换页途中保留旧形态，避免裸闪。
   // Includes resolve to shared component files (page-independent); keep the
   // cache across page switches — only a component change busts it (see HMR).
   return pagesDeps.loadBoard(panel, pageId).then(function () {

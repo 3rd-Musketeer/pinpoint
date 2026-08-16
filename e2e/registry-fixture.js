@@ -34,6 +34,9 @@ export function writeRegistryFixture() {
       { id: 'e2e-dir-ios', title: 'E2E Dir iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios' },
       // 阶段 5：mention 文档固件（doc 壳，正文里 mention library 的两个活 frame）。
       { id: 'e2e-mention', title: 'E2E Mention Doc', kind: 'dir', path: path.join(ROOT, 'e2e', 'mention-site') },
+      // 阶段 6：混合板固件（board:'ios' 页级缺省壳；board.json 里 2 个 app 屏 +
+      // 1 个 product doc 屏 + 1 个 draft doc 屏）—— 画布条目 + 两个文档条目。
+      { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(ROOT, 'e2e', 'mixed-site'), board: 'ios' },
     ],
   }, null, 2));
 }

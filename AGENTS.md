@@ -67,7 +67,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url>`); pure logic + tests in `bin/pinpoint-cli.js` |
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-api.js` (`/api/frame` mention embeds), `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
 | `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `frame-doc.js` (阶段 5: mention target resolution + frame page assembly + export snapshot), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
-| `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=` deep-link write side; read side is `resolveBootPageId` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
+| `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=&entry=` deep-link write side; read side is `resolveBootPageId` + `initBoard` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
 | `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/outline/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
 | `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `proxy-rebase.js` is inlined into the proxy bootstrap instead; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
@@ -93,25 +93,33 @@ serve time); those modules are pure and node-tested — keep them DOM-free.
 
 **Page shells:** Pages is a single list — template pages plus registry `dir`/`file`
 entries — with a per-row shell marker (smartphone = `ios`, document = `html`);
-Component Library stays as a system row. The shell is a page/frame property
-derived by `modeForPage`, not a workbench mode switch (the iOS / Web / HTML Seg
-was retired 2026-08-16; the bare-artboard Web shell is deleted).
+Component Library stays as a system row. Since 2026-08-16f (ROADMAP 阶段 6) a page is
+a **thread container with no type of its own**: one page = one `board.json`, and the
+board's selectable units are **entries** (`workbench/lib/board-entries.js`) — the
+`app`/`lock` screens form one **canvas** entry, and each `shell: "doc"` screen is its
+own **document entry** (`role: "product"` default, `"draft"` = 草稿). The stage form
+(canvas artboard vs doc reader) derives from the **selected entry**
+(`store.activeEntryId`), not from the page; the manifest `mode` now only seeds the
+board's default shell and the temporary row pill (阶段 7 retires it). Entry choice
+persists in `prefs.activeEntryIdByPage` and deep-links as `?page=<id>&entry=<screenId>`
+(the canvas entry's id is `@canvas`, omitted from URLs because it is the default).
 
 | Shell | Input | Artboard | For |
 |---|---|---|---|
 | **iOS** | body fragment | phone chrome | phone prototypes |
 | **HTML** | **complete standalone document** | full-viewport iframe, **no canvas** | one-page reports and docs — example `previews/doc-library/` |
 
-HTML pages use `shell: "doc"`. The file keeps its own `<!doctype>`, `<head>`, and `<style>`, so it is
+HTML screens use `shell: "doc"`. The file keeps its own `<!doctype>`, `<head>`, and `<style>`, so it is
 **hosted in an iframe rather than inlined** — inlining would drop its `body{}` rules and leak its CSS
 into the workbench. The loader therefore skips the fragment check for `doc` screens.
 
-**The HTML board is not a canvas.** A report has to be read at the reader's real window size, so the
+**A doc entry is not a canvas.** A report has to be read at the reader's real window size, so the
 document fills the stage 1:1 — no zoom, no pan, no artboard, no Frame titles or Frame Notes, and no
 canvas Frame export (it would not match the real layout). Export the active document from the
-sidebar Versions/Document header (**导出**): HTML 完整、去除 CSS 的 HTML、or a full-page long PNG
+sidebar entry-list header (**导出**): HTML 完整、去除 CSS 的 HTML、or a full-page long PNG
 (920×2, annotate blocked). HTML modes show text-token estimates (local `bpe-lite`); image mode
-shows vision-token estimates from export pixel size (Gemini / OpenAI / Anthropic formulas). Multiple screens in a `board.json` become **versions in the sidebar**
+shows vision-token estimates from export pixel size (Gemini / OpenAI / Anthropic formulas).
+Multiple doc screens in one `board.json` are **flat entries in the sidebar**
 (`#wbdoc-versions`), one shown at a time and remembered per page, instead of frames sitting side by
 side. A screen's `"src"` may point at any URL, so a symlink under `previews/` is enough to review a
 document living outside this repo.
@@ -228,7 +236,14 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
 - Default shell: **app**. Lock: `"shell": "lock"` on section or screen + `.ios-lockscreen`.
 - `section.id` stamps `[data-ann-section]` → annotation `section`.
-- Board hierarchy for agents: **page → canvas → section → frame**; **screen** = content inside a frame (`screenId` = frame id).
+- Screen `role` (`"product"` default | `"draft"`, 2026-08-16f) marks a doc screen as a
+  草稿 (in-process scratch HTML) vs a 产物 entry; it drives entry derivation only and
+  never changes loading or shell semantics.
+- Board hierarchy for agents: **page → entries → canvas → section → frame**;
+  **screen** = content inside a frame (`screenId` = frame id). Entries derive from the
+  board (`workbench/lib/board-entries.js`): app/lock screens → one canvas entry
+  (id `@canvas`); each doc screen → one document entry (id = `screenId`). The A1
+  citation scheme, outline, and export tree cover the canvas entry's screens only.
 - Annotate modes: **标注** (A) vs **交互** (default). Global indicators are `@page:` /
   `@section:` / `@frame:` / `@a:`; annotation-local targets use persisted `[@t:iN]`
   tokens displayed as `[indicator N]` — see [annotate skill](skills/pinpoint-annotate/SKILL.md).
@@ -290,8 +305,10 @@ the client hydrates from disk; `GET /events` (SSE, `event: annotations`, payload
 `entry` / `page` / `revision`) keeps open browsers near-realtime.
 `GET /annotations` (no page) is a debug aggregate flattening every bucket into
 `[{entry, ...doc}]`; per-page reads take `?entry=<id>`, as does `GET /images/<name>`.
-**Workbench prefs** (active page, zoom, sidebar, theme) stay in browser `localStorage`
-(`pinpoint-wb`) — viewer state, not synced.
+**Workbench prefs** (active page, per-page active entry, zoom, sidebar, theme) stay in browser `localStorage`
+(`pinpoint-wb`) — viewer state, not synced. Per-page entry selection lives in
+`pageViewports`-sibling key `activeEntryIdByPage` (2026-08-16f 阶段 6); viewport archives
+stay keyed by `pageId` and only apply to the canvas entry (doc entries render 1:1).
 
 ## Registry and injection contract
 
@@ -302,8 +319,9 @@ else opens byte-identical pages with zero annotation surface.
 `PINPOINT_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
 `{id, title?, kind: "dir"|"file"|"url", path? | url?, board?}`; id must match
 `^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`html`)
-only matters for dir entries' workbench page shell (default/legacy `web` → `html`;
-`file` entries always open in the doc reader and carry no board). A missing file means the default
+only seeds a dir entry's board default shell and the temporary Pages row pill
+(default/legacy `web` → `html`; `file` entries always open in the doc reader and
+carry no board). A missing file means the default
 pinpoint-only registry (`{id:"pinpoint", kind:"dir", path:<repo root>}`). Malformed JSON or
 a wrong top-level shape falls back to the default with the error recorded; invalid entries
 are skipped individually; a missing dir/file path is a warning, not a removal. All of it is

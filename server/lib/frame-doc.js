@@ -64,7 +64,7 @@ function previewManifestPages() {
   return pages;
 }
 
-/** 壳归一：legacy "web" 值与 html 模式同落 doc（与 normalizeBoardMode 同义）。 */
+/** 壳归一：legacy "web" 值与 html 模式同落 doc（与 preview-contracts validateShell 的归一同义）。 */
 function normalizeShell(shell, mode) {
   const s = shell || (mode === 'html' ? 'doc' : 'app');
   return s === 'web' ? 'doc' : s;

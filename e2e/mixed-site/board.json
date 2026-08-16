@@ -1,0 +1,23 @@
+{
+  "sections": [
+    {
+      "id": "proto",
+      "title": "原型",
+      "layout": "row",
+      "screens": [
+        { "id": "home", "title": "首页" },
+        { "id": "detail", "title": "详情" }
+      ]
+    },
+    {
+      "id": "writeup",
+      "title": "文稿",
+      "layout": "column",
+      "shell": "doc",
+      "screens": [
+        { "id": "spec", "title": "设计说明" },
+        { "id": "draft-variants", "title": "气泡三手感", "role": "draft" }
+      ]
+    }
+  ]
+}

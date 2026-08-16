@@ -557,12 +557,13 @@
   .wb-doc-surface { position:relative; width:100%; background:#fff; }
   .wb-doc-frame { display:block; width:100%; height:100%; border:0; background:#fff; }
 
-  /* HTML board is NOT a canvas. A report has to be read at the reader's real
-     window size, so the document fills the stage 1:1 — no zoom, no pan, no
-     artboard. Versions switch from the sidebar instead of sitting side by side.
-     The chain stage → panel → zoom-wrap → library → item → sec-body → screen →
-     doc-stage must each carry a definite height, or the iframe's height:100%
-     resolves against auto and collapses. */
+  /* 文档条目形态（data-page-mode="html"，2026-08-16f 阶段 6 起由选中条目派生，
+     不再是页级属性）：a document is NOT a canvas. A report has to be read at the
+     reader's real window size, so the document fills the stage 1:1 — no zoom, no
+     pan, no artboard. Entries switch from the sidebar instead of sitting side by
+     side. The chain stage → panel → zoom-wrap → library → item → sec-body →
+     screen → doc-stage must each carry a definite height, or the iframe's
+     height:100% resolves against auto and collapses. */
   [data-page-mode="html"] .wb-stage { overflow:hidden; padding:0; }
   [data-page-mode="html"] .wb-canvas-hud,
   [data-page-mode="html"] .wb-canvas-dock { display:none; }
@@ -592,9 +593,11 @@
     width:100%; height:100%; border-radius:0; box-shadow:none;
   }
   [data-page-mode="html"] .wb-doc-surface { height:100%; }
-  /* one document at a time; the sidebar picks which */
-  [data-page-mode="html"] .wb-lib-item[data-doc-hidden],
-  [data-page-mode="html"] .wb-screen[data-doc-hidden] { display:none; }
+  /* 条目显隐（2026-08-16f 阶段 6，pages.js applyEntryVisibility 唯一驱动）：非选中
+     条目的屏与空 section 容器一律收起 —— 全局规则（不再 scope 到 html 形态）：
+     混合板里画布条目态也要藏住 doc 屏。one entry at a time; the sidebar picks which. */
+  .wb-lib-item[data-doc-hidden],
+  .wb-screen[data-doc-hidden] { display:none; }
 
   /* sidebar version switcher（#wbdoc-versions、.wb-doc-ver 系、导出钮）的视觉
      已收编进 app/Sidebar.jsx（V2）—— 旧规则删除（[hidden] 与 display 类的冲突

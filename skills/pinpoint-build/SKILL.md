@@ -155,7 +155,9 @@ npm run export -- --page library --section brew-flow
 **完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS 板不同：
 
 1. **承载方式**：doc 走 iframe，文档原样渲染，loader 不包装也不做 fragment 校验——内联会让它的 `body{}` 规则失效、`<style>` 漏进 workbench。
-2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板、Frame 标题与 Frame Note；同一页里的多个 screen 变成**侧栏的版本列表**，一次只显示一个（每页记住上次看的那个）。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用侧栏 Versions/Document 旁的 **导出**（HTML 完整 / 去 CSS HTML / 长图 PNG）。
+2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板、Frame 标题与 Frame Note。2026-08-16f 阶段 6 起，doc 屏是**条目**：一屏一个文档条目（`role` 缺省 `product`，`"draft"` 标草稿），侧栏条目列表一次选中一个、stage 形态跟选中条目走（画布 / 阅读器页内切换），选择按页记住（`activeEntryIdByPage`），深链 `?page=<id>&entry=<screenId>` 直达。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用侧栏条目列表头上的 **导出**（HTML 完整 / 去 CSS HTML / 长图 PNG）。
+
+**混合板**（阶段 6）：同一份 `board.json` 可以同时有 app/lock 屏和 doc 屏——app/lock 屏合成一个「画布」条目（只它们上画布），每个 doc 屏各是一个文档/草稿条目。页级 `"mode"` 只剩两个用途：给 `board.json` 校验提供缺省壳、以及 Pages 行壳标 pill（阶段 7 撤）；stage 形态不再看它。
 
 screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接就能把仓库外的汇报页挂进来。
 

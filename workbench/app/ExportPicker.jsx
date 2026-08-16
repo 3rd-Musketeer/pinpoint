@@ -17,6 +17,7 @@ import {
   requestExportZip
 } from '../export-core.js';
 import { boardRefs } from '../lib/board-refs.js';
+import { canvasBoard } from '../lib/board-entries.js';
 import { frameDimLabel } from '../screen-load.js';
 import { cn } from './lib/utils.js';
 
@@ -31,10 +32,12 @@ function frameKey(sectionId, screenId) {
   return sectionId + '\0' + screenId;
 }
 
-/** activeBoard → tree 模型（section 字母 / frame 引用号 / 尺寸行，全部纯派生）。 */
+/** activeBoard → tree 模型（section 字母 / frame 引用号 / 尺寸行，全部纯派生）。
+    2026-08-16f 阶段 6：picker 只覆盖画布 frame —— doc 屏（文档/草稿条目）走
+    侧栏「导出」的文档导出，不进图片导出树。 */
 function buildTree(activeBoard) {
   if (!activeBoard || !activeBoard.board) return [];
-  var board = activeBoard.board;
+  var board = canvasBoard(activeBoard.board);
   var refs = boardRefs(board);
   return (board.sections || [])
     .filter(function (sec) { return sec && sec.id !== '_empty'; })

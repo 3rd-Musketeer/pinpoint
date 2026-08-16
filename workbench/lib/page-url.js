@@ -21,6 +21,10 @@ export function pageBaseUrl(manifest, pageId) {
   return '/previews/' + pageId + '/';
 }
 
+/* page.mode（manifest 的 ios/html）在 2026-08-16f 阶段 6 起不再是 stage 形态的
+   来源 —— 形态由选中条目派生（lib/board-entries.js entryForm）。剩下的合法用途：
+   1) Pages 行壳标 pill（临时形态，阶段 7 撤）；2) defaultShellForPage 给
+   validateBoard 的缺省壳；3) 深链 ?mode= 提示的页面回落（resolveActivePage）。 */
 export function modeForPage(manifest, pageId) {
   if (pageId === COMPONENTS_ID) return 'ios';
   var page = pageEntry(manifest, pageId);
@@ -34,9 +38,13 @@ export function defaultShellForPage(manifest, pageId) {
 }
 
 /* ---- URL 深链（goal-20260810-workbench-react-rebuild P3）----
-   workbench 的 ?page=&mode= 解析与生成，纯函数；效果侧在 url-sync.js（写）
+   workbench 的 ?page=&mode=&entry= 解析与生成，纯函数；效果侧在 url-sync.js（写）
    与 stage.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。
-   2026-08-16 阶段 2：web 模式退役 —— 残留 ?mode=web 深链归一到 html（doc 阅读器）。 */
+   2026-08-16 阶段 2：web 模式退役 —— 残留 ?mode=web 深链归一到 html（doc 阅读器）。
+   2026-08-16f 阶段 6：深链收到条目级 —— ?entry= 直达板内条目（画布条目 id 见
+   lib/board-entries.js CANVAS_ENTRY_ID，文档条目 id = doc 屏 screenId）；
+   entry 只在 page 有效时生效，未知条目 id 由选中解析落默认条目（URL 随后被
+   url-sync 重写为真实值）。 */
 
 var DEEP_LINK_MODES = { ios: true, html: true };
 
@@ -46,17 +54,20 @@ export function parseDeepLink(search) {
   var pageId = params.get('page');
   var mode = params.get('mode');
   if (mode === 'web') mode = 'html';
+  var entry = params.get('entry');
   return {
     pageId: pageId || null,
-    mode: DEEP_LINK_MODES[mode] ? mode : null
+    mode: DEEP_LINK_MODES[mode] ? mode : null,
+    entry: entry || null
   };
 }
 
-/** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode 非法时省略。 */
-export function deepLinkQuery(pageId, mode) {
+/** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode / entryId 非法或为空时省略。 */
+export function deepLinkQuery(pageId, mode, entryId) {
   if (!pageId) return '';
   var params = new URLSearchParams();
   params.set('page', pageId);
   if (DEEP_LINK_MODES[mode]) params.set('mode', mode);
+  if (entryId) params.set('entry', entryId);
   return params.toString();
 }

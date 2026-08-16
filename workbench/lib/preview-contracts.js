@@ -107,10 +107,23 @@ function validateShell(value, path, fallback = 'app') {
   return shell;
 }
 
+// 2026-08-16f（ROADMAP 阶段 6）：screen 级 role —— "product"（默认）= 产物，
+// "draft" = 草稿（恒为整页 HTML 的 doc 屏）。role 是条目的属性，只标在 screen 上；
+// 它不改变装载/壳语义，只驱动条目派生（lib/board-entries.js）。
+const SCREEN_ROLES = ['product', 'draft'];
+
+function validateRole(value, path) {
+  const role = value == null || value === '' ? 'product' : value;
+  if (!SCREEN_ROLES.includes(role)) {
+    throw new ContractError(path, 'expected "product" or "draft"');
+  }
+  return role;
+}
+
 function normalizeScreen(entry, path, sectionShell, options) {
   const allowComponentRefs = !!options.allowComponentRefs;
   if (typeof entry === 'string') {
-    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', note: '', shell: sectionShell, src: '' };
+    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', note: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
   return {
@@ -118,6 +131,7 @@ function normalizeScreen(entry, path, sectionShell, options) {
     title: screen.title == null ? '' : nonEmptyString(screen.title, `${path}.title`),
     note: screen.note == null ? '' : nonEmptyString(screen.note, `${path}.note`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
+    role: validateRole(screen.role, `${path}.role`),
     src: screen.src == null ? '' : nonEmptyString(screen.src, `${path}.src`),
   };
 }

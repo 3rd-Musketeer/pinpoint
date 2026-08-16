@@ -1,17 +1,20 @@
 // Workbench 标注桥簇 — annotate API 解析（父窗口 vs iframe 实例）、gutter 评论
-// 气泡（HTML 板 sidebar 布局）、文档标注绑定、连接状态指示、标注状态快照。
+// 气泡（文档条目形态 sidebar 布局）、文档标注绑定、连接状态指示、标注状态快照。
 // P1a 从 workbench.js 平移；P1b 起标注面板 React 化（app/AnnPanel.jsx），
 // 面板要读的状态由本模块汇成 annSnap 写进 store，不再有面板侧 DI。
+// 2026-08-16f 阶段 6：「文档形态」判定从页级 mode 改为选中条目派生
+// （store.activeBoardMode()）—— 混合板里选中 doc 屏条目时同一套 iframe 绑定
+// 与 gutter 逻辑照常生效。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { annRowModel } from '../lib/ann-row.js';
 import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
 /* ---- annotate API resolver -------------------------------------------------
-   HTML 板的文档活在 iframe 里，它自己注入 annotate.js，于是页面上同时存在两个
+   文档条目的文档活在 iframe 里，它自己注入 annotate.js，于是页面上同时存在两个
    互不相通的标注实例：父窗口（侧栏按钮驱动）和 iframe（文档本体）。侧栏点「标注」
    只切到了父窗口那个，画不出框 —— 表现成「侧栏和右下角没对齐」。
-   侧栏是唯一控制面，所以取用时按当前板解析到正确的那个实例。 */
+   侧栏是唯一控制面，所以取用时按当前选中条目解析到正确的那个实例。 */
 function activeDocWindow() {
   var panel = document.getElementById('wb-board-panel');
   if (activeBoardMode() !== 'html' || !panel) return null;
@@ -112,7 +115,7 @@ export function startAnnBridge() {
 
 /* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
  * iframe 收窄腾出 gutter，文档按自己的响应式回流；气泡/连线在父级 overlay 里，
- * 锚点用 iframe.getBoundingClientRect() 跨 frame 映射。只在 HTML 板生效。
+ * 锚点用 iframe.getBoundingClientRect() 跨 frame 映射。只在文档条目形态生效。
  * 布局算法 SSOT：lib/annotate-bubble-layout.js packGutter。 */
 var gutterOverlay = null;
 var gutterBubblesEl = null;

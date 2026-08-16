@@ -5,17 +5,21 @@
 // 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
 // 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
 // 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
-// 纯派生自 board 顺序（lib/board-refs.js），不落盘。doc/html 板不套图注（画外语
-// 汇，index.html [data-board-mode="html"] 规则维持隐藏）。
+// 纯派生自画布视图（lib/board-refs.js over lib/board-entries.js canvasBoard），
+// 不落盘。doc 屏不上画布、不套图注（阅读器态由 index.html [data-page-mode="html"]
+// 规则隐藏图注语汇）。
+// 2026-08-16f 阶段 6（产物与草稿模型）：壳分派只看 screen.shell（validateBoard
+// 已按页 defaultShell 归一完毕），不再回查 page.mode —— 同一板里 app/lock 屏摆
+// 画布、doc 屏成阅读器条目（选中后由 pages.js setActiveEntry 切 stage 形态与显隐）。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
 import { applyIncludeSlots } from './lib/include-slots.js';
+import { canvasBoard } from './lib/board-entries.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
 import {
   COMPONENTS_ID,
   defaultShellForPage,
-  modeForPage,
   pageBaseUrl,
   pageEntry
 } from './lib/page-url.js';
@@ -125,7 +129,7 @@ function wrapDocShell(bodyHtml) {
 
 function wrapScreenShell(pageId, bodyHtml, shell) {
   if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
-  if (shell === 'doc' || modeForPage(wbGet().pageManifest, pageId) === 'html') return wrapDocShell(bodyHtml);
+  if (shell === 'doc') return wrapDocShell(bodyHtml);
   return wrapPhoneShell(bodyHtml, shell);
 }
 
@@ -136,9 +140,7 @@ var IOS_DEVICE_DIM = '402 × 874';
 /** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行。 */
 function isPhoneFrame(pageId, shell) {
   if (pageId === COMPONENTS_ID) return false;
-  var mode = modeForPage(wbGet().pageManifest, pageId);
-  if (shell === 'doc' || mode === 'html') return false;
-  return true;
+  return shell !== 'doc';
 }
 
 /** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
@@ -148,7 +150,7 @@ export function frameDimLabel(pageId, shell) {
 
 function screenClassForShell(pageId, shell) {
   if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
-  if (shell === 'doc' || modeForPage(wbGet().pageManifest, pageId) === 'html') return 'wb-screen wb-screen--doc';
+  if (shell === 'doc') return 'wb-screen wb-screen--doc';
   return 'wb-screen';
 }
 
@@ -166,7 +168,10 @@ export function buildBoardHtml(pageId, board, screenMap) {
       '<p class="wb-muted" style="color:var(--wb-muted);font-size:13px;max-width:420px">' + emptyHelp + '</p>' +
       '</article></div></div>';
   }
-  var refs = boardRefs(board);
+  // 图注引用号（decisions 2026-08-15）：纯派生自画布视图（doc 屏不进引用体系，
+  // 混合板的 A1 编号与大纲/导出树同源），不落盘；
+  // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
+  var refs = boardRefs(canvasBoard(board));
   var parts = sections.map(function (sec) {
     var layout = sec.layout === 'row' ? 'row' : 'column';
     var screens = sec.screens || [];

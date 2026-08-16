@@ -121,7 +121,7 @@ test('board normalizes valid screen entries and rejects duplicate screen ids', (
     }],
   }, { pageId: 'library' });
 
-  assert.deepEqual(board.sections[0].screens[0], { id: 'home', title: '', note: '', shell: 'app', src: '' });
+  assert.deepEqual(board.sections[0].screens[0], { id: 'home', title: '', note: '', shell: 'app', role: 'product', src: '' });
   assert.equal(board.sections[0].screens[1].note, 'Explain this frame.');
   assert.throws(
     () => validateBoard({
@@ -171,4 +171,41 @@ test('board normalizes legacy web shell screens to doc (2026-08-16 阶段 2)', (
   }, { pageId: 'legacy-web', defaultShell: 'web' });
   assert.equal(board.sections[0].shell, 'doc');
   assert.equal(board.sections[0].screens[0].shell, 'doc');
+});
+
+test('screen role: 默认 product、收 draft、非法值报错（2026-08-16f 阶段 6）', () => {
+  const board = validateBoard({
+    sections: [{
+      id: 'writeup',
+      title: '文稿',
+      layout: 'column',
+      shell: 'doc',
+      screens: [
+        { id: 'delivered', title: '终版' },
+        { id: 'polish', title: '打磨稿', role: 'draft' },
+      ],
+    }],
+  }, { pageId: 'weekly', defaultShell: 'doc' });
+  assert.equal(board.sections[0].screens[0].role, 'product');
+  assert.equal(board.sections[0].screens[1].role, 'draft');
+
+  // 字符串速记屏同样补默认 role
+  const quick = validateBoard({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ['home'] }],
+  }, { pageId: 'library' });
+  assert.equal(quick.sections[0].screens[0].role, 'product');
+
+  assert.throws(
+    () => validateBoard({
+      sections: [{
+        id: 'main',
+        title: 'Main',
+        layout: 'row',
+        screens: [{ id: 'home', role: 'final' }],
+      }],
+    }, { pageId: 'library' }),
+    (error) => error instanceof ContractError
+      && error.message.includes('sections[0].screens[0].role')
+      && error.message.includes('expected "product" or "draft"'),
+  );
 });

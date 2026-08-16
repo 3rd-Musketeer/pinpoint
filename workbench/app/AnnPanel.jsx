@@ -19,6 +19,7 @@ import { useWorkbenchStore, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleAnnPanelCollapsed } from '../boot-prefs.js';
 import { boardRefs } from '../lib/board-refs.js';
+import { canvasBoard } from '../lib/board-entries.js';
 import { WbIcon } from './WbIcon.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -70,12 +71,13 @@ export function AnnPanel() {
 
   var rows = snap.rows;
 
-  // 引用号 / 屏名 / 组序全部从 board 顺序纯派生（lib/board-refs.js）；板切换
+  // 引用号 / 屏名 / 组序全部从画布视图纯派生（lib/board-refs.js over
+  // board-entries.js canvasBoard，2026-08-16f 阶段 6：doc 屏不进引用体系）；板切换
   // 途中 activeBoard 可能还停在上一页 —— 不匹配就退回行自带的分组标签。
   var boardMeta = useMemo(function () {
     var out = { frames: {}, sections: {} };
     if (!active || active.pageId !== activePageId) return out;
-    var refs = boardRefs(active.board);
+    var refs = boardRefs(canvasBoard(active.board));
     refs.outline.forEach(function (sec, si) {
       out.sections[sec.id] = { letter: sec.letter, order: si };
       sec.frames.forEach(function (f, fi) {

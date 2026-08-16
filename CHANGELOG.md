@@ -10,6 +10,44 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-16
 
+### Added
+- **Board entries: one page holds a canvas and documents at once** (roadmap 阶段 6,
+  产物与草稿模型, decisions 08-16f) — the board schema gains a screen-level `role`
+  field (`product` default | `draft`; validated in `workbench/lib/preview-contracts.js`),
+  and a mixed-shell board is now live: `app`/`lock` screens sit on the canvas while each
+  `shell: "doc"` screen becomes its own selectable **entry** (documents / 草稿).
+  Entry derivation lives in the new pure lib `workbench/lib/board-entries.js`
+  (`boardEntries` / `resolveEntry` / `entryForm` / `canvasBoard`): the canvas entry's id
+  is `@canvas` (outside the screen-id contract, so it can never collide), document
+  entries key by screen id. Entry selection is remembered per page
+  (`prefs.activeEntryIdByPage`, surviving reloads) and deep links carry it as
+  `?page=<id>&entry=<screenId>` (default entry omitted; unknown ids fall back to the
+  default entry and the URL is rewritten to the truth). The sidebar's DocVersions block
+  becomes an interim entry list — shown whenever the board has doc entries, with a
+  「画布」 row on top when a canvas entry exists (copy and styling untouched; roadmap
+  阶段 7 rebuilds the whole second layer). New e2e fixture `e2e/mixed-site/` (registry
+  entry `e2e-mixed`: two app screens + one product doc + one draft doc) and
+  `e2e/mixed-board.spec.js` cover canvas-only mounting, entry switching, deep links,
+  and reload persistence.
+
+### Changed
+- **Stage form derives from the selected entry, not the page** (roadmap 阶段 6) —
+  `store.activeBoardMode()` / `data-page-mode` now follow `activeEntryId` (canvas entry
+  → canvas artboard; doc entry → the existing doc-reader pipeline), and page-level
+  `mode` shrinks to three temporary uses: the Pages row pill (阶段 7 retires it), the
+  board's default shell at validation, and the `?mode=` deep-link fallback hint.
+  `setActiveDoc` / `docScreensOfActiveBoard` / `syncDocVersions` are replaced by
+  `setActiveEntry` / `entriesOfActiveBoard` / `syncEntries` (`workbench/pages.js`);
+  screen shell dispatch (`wrapScreenShell`, `frameDimLabel`, screen classes) reads the
+  validated per-screen shell only. Viewport archives stay keyed by `pageId` and apply
+  to the canvas entry only — doc entries render 1:1 and never overwrite the canvas
+  viewport (guards in `boot-prefs.js`). The A1 citation scheme, outline, export-picker
+  tree, and annotation grouping all read the canvas view of the board
+  (`canvasBoard`), so doc screens never consume frame numbers. The `data-doc-hidden`
+  hiding rule is now global (not scoped to the html form) so doc screens stay off the
+  canvas in mixed boards. Annotation ledgers, doc export, mention frames, and the
+  Component Library system page behave exactly as before.
+
 ### Changed
 - **First visit to a canvas page lands focused on the first frame, and the default
   canvas zoom is now 50%** (TODO.md 今日小修, owner 2026-08-16 拍板) — switching to a

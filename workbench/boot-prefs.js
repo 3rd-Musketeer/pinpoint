@@ -255,13 +255,19 @@ function migrateLegacyBoardModePrefs() {
 // 不舒适，默认 50%；存档视口（pageViewports）始终优先于默认值。
 var DEFAULT_CANVAS_ZOOM = '0.5';
 
-function zoomForPage(pageId) {
+// 视口存档仍按 pageId 键（2026-08-16f 阶段 6：条目级后刻意不变 key —— 存量存档
+// 不丢；doc 条目形态 1:1 铺满 stage，没有可存档的视口，写读两侧都用
+// activeBoardMode() 守卫跳过）。
+export function zoomForPage(pageId) {
   var vp = pageViewport(pageId);
   return boardZoom((vp && vp.canvasZoom) || DEFAULT_CANVAS_ZOOM);
 }
 
 export function snapshotPageViewport(pageId) {
   if (!pageId || !stage) return;
+  // 文档条目形态不存档（zoom 恒 1、stage 不滚动）—— 否则会拿 doc 形态的
+  // scroll 0 / zoom 1 覆盖掉画布条目刚存下的视口。
+  if (activeBoardMode() === 'html') return;
   clearTimeout(viewportSaveT);
   viewportSaveT = null;
   flushZoomSave();
@@ -273,6 +279,7 @@ export function snapshotPageViewport(pageId) {
 export function scheduleViewportScrollSave() {
   if (restoringViewport || !stage) return;
   scheduleMinimapUpdate();
+  if (activeBoardMode() === 'html') return;   // 文档条目形态无画布视口可存
   clearTimeout(viewportSaveT);
   viewportSaveT = setTimeout(function () {
     if (restoringViewport) return;
@@ -301,8 +308,10 @@ function restorePageViewport(pageId, options) {
   return true;
 }
 
-/** Zoom first, then layout, then scroll — scroll coords depend on zoomed board size. */
+/** Zoom first, then layout, then scroll — scroll coords depend on zoomed board size.
+    文档条目形态跳过（2026-08-16f 阶段 6）：阅读器 1:1 铺满 stage，无视口可恢复。 */
 export function restorePageViewportAfterMount(pageId) {
+  if (activeBoardMode() === 'html') return false;
   if (!pageViewport(pageId)) return false;
   restorePageViewport(pageId, { scroll: false });
   syncBoardZoomLayout();
