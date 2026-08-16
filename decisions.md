@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-16f | 第二轮对象模型：Page = 线程容器，产物 + 草稿 | Page 去类型化（pill 撤到产物条目）；页内容 = 产物（画布/文档/网页，可多个）+ 草稿（整页 HTML）；草稿与产物无机制耦合；DocVersions 层级退役（多屏 doc 拆扁平条目）；url 条目 = 网页产物；画布裸帧明确不做；词汇：禁用自造词「册」 | 修订 08-16b 五阶段地图（Pages 壳标语义） | 现行（方向拍定，实现见 ROADMAP 阶段 6–8） |
 | 2026-08-16e | 文档 mention 活 frame + 标注透传 | `<div data-pinpoint-frame>` + /api/frame 水合；透传不改存储 schema（同机壳逐字节同构 → frame 内路径纯派生）；导出烤静态图 | — | 现行（已落地） |
 | 2026-08-16d | live 代理画中画路线 | 同源路径前缀代理 + 运行时绝对路径重基；SPA 路由虚拟化；url 条目进 Pages（doc 壳）；跨域 postMessage 桥路线废弃 | 取代 backlog「url 内嵌 postMessage 桥」 | 现行（已落地） |
 | 2026-08-16c | CLI 注册入口形态 | `pinpoint add`（dir/file/url）+ registry-store SSOT + `/registry/reload`；file/无板 dir 合成 doc 板进 Pages；url 条目待阶段 4 | — | 现行（已落地） |
@@ -33,6 +34,32 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-16f · 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级
+
+**Decided**（owner 当日逐轮拍板，对齐基准页 = 本地实例 `previews/hierarchy-demo/`）：
+
+- **Page = 一件正在做的事（线程容器），自身无类型**。类型壳标（iOS/Doc pill，同
+  日早些时候才上 Page 行）从 Page 行撤除，同一视觉语言挪到产物条目。「MCP 设置页」
+  这个线程既不是画布也不是文档，它只是那件事；一个 Page 装了画布加网页之后，顶层
+  壳标必然撒谎。
+- **页内容分两组**：产物（交付物，类型 = 画布 / 文档 / 网页，可一到多个）与草稿
+  （过程产物，恒为整页 HTML）。**草稿与产物无机制耦合**：选中 variant 后回灌是
+  agent 改代码的动作，pinpoint 不提供系统功能。
+- **DocVersions 层级退役**：多屏 doc 板拆成扁平条目。周报板 sections 是实证——
+  delivered 两屏（W29/W30 终版）即产物、polish 六屏即草稿，既有分组与新语义近乎
+  逐字对应。「Document 层级有没有用」的最终答案：版本切换的真实需求由分组语义
+  接管，层级本身删除。
+- **url 注册条目收编为类型「网页」的产物**，与画布、文档平级。
+- **「画布裸帧」方案明确不做**（不是缓期）：web 组件 variant 对比在草稿页内部
+  完成，不引入无壳 frame 新概念。
+- **mention 定位澄清**：服务正式文稿嵌入活原型（阶段 5 已交付），不是草稿对比的
+  依赖。
+- **词汇约定**：容器就叫 Page，禁用自造词「册」（owner 明确指出）。
+
+**证据**：库内 10 个 doc 页实测——仅周报板（2 sections / 8 屏）与
+eval-queue-variants（2 屏）用到多版本切换，其余 8 个单屏页的 DocVersions 行是
+死行（唯载「导出」钮）。
 
 ## 2026-08-16e · 文档模式 mention 活 frame + 标注双向透传（阶段 5/5 落地）
 

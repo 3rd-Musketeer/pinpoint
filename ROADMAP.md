@@ -60,6 +60,54 @@
   frame 烤成静态图；不做冻结/REV。mention 语法、样式隔离、模式路由由执行
   agent 决定，产品语义以本段为准。
 
+## 今日小修（2026-08-16 立，**当日已落地**；TODO.md 按约删除）
+
+- ~~切页落点~~：首访切页直接聚焦第一个 section 的第一个 frame（board-nav
+  `focusFirstBoardFrame`）；回访仍恢复 pageViewports 存档视口。
+- ~~画布默认缩放~~：`zoomForPage` 兜底 100% → 50%；存档缩放优先于默认值。
+
+## 第二轮收敛：产物与草稿（2026-08-16 晚定稿，decisions 08-16f）
+
+产品心智增量：**Page = 一件正在做的事，自身无类型**；页内容 = 产物（画布 /
+文档 / 网页，类型标在条目上，可一到多个）+ 草稿（过程派生的整页 HTML）；
+草稿与产物无机制耦合——回灌是 agent 的代码动作，pinpoint 不提供系统功能。
+对齐基准页：本地实例 `previews/hierarchy-demo/`（产物与草稿 层级图解）。
+
+### 预期形态（验收时对照）
+
+- Pages：平铺，一行一件事，无类型标记；线程数量稳定，草稿不再占行。
+- 左栏第二层「内容」：产物组（画布条目带 frame 树大纲；文档、网页为独立
+  条目，各带类型 tag）+ 草稿组（整页 HTML 条目）；单条目分组坍缩不显示目录。
+- stage：形态跟选中条目走——画布 / 阅读器 / 代理网页，页内切换。
+- 退役面：DocVersions、page 级 mode、Page 行壳标 pill 全部删除。
+- 数据面：一个 Page 一份 board.json——app/lock 屏摆画布，doc 屏即文档 /
+  草稿条目（screen 级 `role: product | draft`）；registry url 条目 = 网页产物。
+- 标注、导出、mention 全链路按条目复用，无新机制。
+
+### 阶段 6：混合板 schema + stage 页内形态切换（地基）
+
+- 价值：一个 Page 同时装画布和文档在对象模型上成立；后面 UI 只消费模型。
+- 内容：screen 级 `role` 字段 + 混合壳生效（app/lock 屏摆画布、doc 屏成
+  阅读器条目）；page 级 mode 删除；stage 形态由选中条目派生；深链 / prefs /
+  URL sync 收到条目级。
+- 切开理由：不动 UI 先立模型，风险集中在数据契约，UI 阶段不含逻辑发明。
+
+### 阶段 7：左栏第二层合一（Page 去类型，产物 / 草稿分组）
+
+- 价值：模型变成看得见的形态；DocVersions 与大纲两机制收敛为一个。
+- 内容：「内容」区组件（产物组 + 草稿组，画布条目的 frame 树收编现大纲）；
+  类型 tag 上条目（画布 / 文档 / 网页）；DocVersions 退役、doc 导出挪条目行；
+  单条目组坍缩。
+- 切开理由：纯 UI 收敛，依赖阶段 6 的模型稳定。
+
+### 阶段 8：存量迁移 + CLI 归属
+
+- 价值：owner 自己的库变成新模型——周报板 delivered / polish 搬进产物 /
+  草稿，my-todos 成为网页产物，新草稿可直接注册到既有 Page。
+- 内容：local boards 补 `role`（agent 代拟、owner 策展过目）；
+  `pinpoint add` 加归属参数（`--page` / `--draft`）；registry url 条目收编。
+- 切开理由：数据搬家不改机制；机制稳定后才值得搬。
+
 ## 缓期（`.gdd/backlog.md`，owner-local）
 
 REV 版本机制（启动信号：异步多轮验收成常态，或文档外发使版本对齐变真痛点）、
