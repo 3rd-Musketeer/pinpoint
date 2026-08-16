@@ -14,13 +14,15 @@ import {
   boardEntries,
   defaultEntryId,
   entryForm,
-  resolveEntry
+  resolveEntry,
+  withEntryWeb
 } from './lib/board-entries.js';
 import {
   COMPONENTS_ID,
   LIB_ID,
   SYSTEM_PAGES,
-  modeForPage
+  modeForPage,
+  pageEntry
 } from './lib/page-url.js';
 import { closestBoardSection } from './lib/board-navigation.js';
 import { validatePageManifest } from './lib/preview-contracts.js';
@@ -150,16 +152,19 @@ export function resolveActivePage(preferredId, modeHint) {
 /* ---- 条目（2026-08-16f 阶段 6）：一个 board 的可选单元 --------------------
    条目 = （有 app/lock 屏则有一个画布条目）+ 每个 doc 屏一个文档条目
    （lib/board-entries.js）。stage 形态（画布 / 文档阅读器）、屏显隐、缩放与
-   视口存档全部从选中条目派生；侧栏的条目列表由 Sidebar 的 DocVersions 组件
-   渲染（读 activeBoard/activeEntryId；临时形态，阶段 7 重做第二层），这里只
+   视口存档全部从选中条目派生；侧栏的「内容」区由 Sidebar 的 Contents 组件渲染
+   （读 activeBoard/activeEntryId；阶段 7 的产物/草稿分组 + frame 树），这里只
    保留切换动作与装载后的条目解析。 */
 
-/** 当前页的条目数组（板未装载 / 换页途中 → []）。Sidebar 消费。 */
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。Sidebar 消费。
+    阶段 7：registry 条目的 kind 经 manifest page（registrySitePages 透传
+    page.kind）在这里落到条目上 —— url 页的 doc 条目带 web 标记（「网页」tag）。 */
 export function entriesOfActiveBoard() {
   var s = wbGet();
   var active = s.activeBoard;
   if (!active || active.pageId !== s.activePageId) return [];
-  return boardEntries(active.board);
+  var page = pageEntry(s.pageManifest, active.pageId);
+  return withEntryWeb(boardEntries(active.board), page && page.kind);
 }
 
 function entryPrefs() {
@@ -240,9 +245,9 @@ export function setActiveEntry(entryId, options) {
   scheduleAnnSnap();
 }
 
-/* board 装载/页面切换后调用：导航渲染由 DocVersions 组件从 store 派生，这里负责
-   把当前条目定下来 —— prefs.activeEntryIdByPage 记忆优先，非法/缺失落默认条目
-   （画布优先）。 */
+/* board 装载/页面切换后调用：条目行渲染由 Sidebar 的 Contents 组件从 store 派生，
+   这里负责把当前条目定下来 —— prefs.activeEntryIdByPage 记忆优先，非法/缺失落默认
+   条目（画布优先）。 */
 export function syncEntries() {
   var active = wbGet().activeBoard;
   if (!active || active.pageId !== wbGet().activePageId) return;
@@ -290,6 +295,9 @@ function registrySitePages() {
                 // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
                 // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
                 mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
+                // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
+                // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）。
+                kind: entry.kind,
                 site: true
               };
             });

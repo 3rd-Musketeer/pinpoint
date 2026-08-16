@@ -141,7 +141,7 @@ export function AnnPanel() {
   function onGoTo(n) {
     var a = annotateApi();
     if (!a || typeof a.goToMark !== 'function') return;
-    // 与大纲行的焦点双向同步（decisions 08-15c）：定位走 client goToMark
+    // 与 frame 树行的焦点双向同步（decisions 08-15c）：定位走 client goToMark
     // （页面切换 + frame 聚焦 + 锚点 flash 都在那条既有链路里），这里只回写选中态
     var row = rows.find(function (r) { return r.n === n; });
     a.goToMark(n).then(function () {

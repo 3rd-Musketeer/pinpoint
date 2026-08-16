@@ -3,12 +3,16 @@ import assert from 'node:assert/strict';
 
 import {
   CANVAS_ENTRY_ID,
+  ENTRY_TAG_LABELS,
   boardEntries,
   canvasBoard,
+  contentsModel,
   defaultEntryId,
   entryById,
   entryForm,
+  entryTag,
   resolveEntry,
+  withEntryWeb,
 } from './board-entries.js';
 
 function mixedBoard() {
@@ -107,4 +111,76 @@ test('canvasBoard: 摘掉 doc 屏、丢掉空 section，画布屏顺序不动', 
   assert.deepEqual(canvasBoard({
     sections: [{ id: 'd', title: 'D', layout: 'column', screens: [{ id: 'v', shell: 'doc' }] }],
   }).sections, []);
+});
+
+
+/* ---- 阶段 7：类型 tag 与「内容」区坍缩 ---------------------------------- */
+
+test('entryTag：画布 / 文档 / 网页；草稿不打标（tag 由产物条目独占）', () => {
+  const entries = boardEntries(mixedBoard());
+  assert.equal(entryTag(entries[0]), 'canvas');
+  assert.equal(entryTag(entries[1]), 'doc');
+  assert.equal(entryTag(withEntryWeb(entries, 'url')[1]), 'web');
+  assert.equal(entryTag(null), null);
+  assert.equal(ENTRY_TAG_LABELS.canvas, '画布');
+  assert.equal(ENTRY_TAG_LABELS.doc, '文档');
+  assert.equal(ENTRY_TAG_LABELS.web, '网页');
+});
+
+test('withEntryWeb：page.kind === "url" 时产物 doc 条目打 web 标记，其余原样', () => {
+  const entries = boardEntries(mixedBoard());
+  const marked = withEntryWeb(entries, 'url');
+  assert.equal(marked[0].web, undefined);   // 画布条目不打标
+  assert.equal(marked[1].web, true);        // 产物 doc 打标
+  assert.equal(marked[2].web, undefined);   // 草稿不打标（网页是产物类型）
+  assert.equal(marked[1].kind, 'doc');      // 行为键不动
+  // 非 url 页原样返回（同一数组引用，零拷贝）
+  assert.equal(withEntryWeb(entries, 'dir'), entries);
+  assert.equal(withEntryWeb(entries, undefined), entries);
+  assert.deepEqual(withEntryWeb([], 'url'), []);
+  assert.equal(withEntryWeb(null, 'url'), null);
+});
+
+test('contentsModel：纯画布页坍缩条目行（无「画布」行），树保留', () => {
+  const canvasOnly = boardEntries({
+    sections: [{ id: 'a', title: 'A', layout: 'row', screens: [{ id: 'home', shell: 'app' }] }],
+  });
+  const model = contentsModel(canvasOnly);
+  assert.equal(model.hidden, false);
+  assert.equal(model.tree, true);
+  assert.deepEqual(model.productRows, []);       // 条目行坍缩
+  assert.deepEqual(model.drafts, []);
+  assert.equal(model.canvas.id, CANVAS_ENTRY_ID);
+});
+
+test('contentsModel：纯单 doc 屏页整区隐藏；单网页条目页仍出行', () => {
+  const singleDoc = boardEntries({
+    sections: [{ id: 'd', title: 'D', layout: 'column', screens: [{ id: 'v1', shell: 'doc' }] }],
+  });
+  assert.equal(contentsModel(singleDoc).hidden, true);
+  // 同一形态但来自 url 条目（web 标记）：tag 不能坍缩掉 → 区仍出
+  const web = contentsModel(withEntryWeb(singleDoc, 'url'));
+  assert.equal(web.hidden, false);
+  assert.equal(web.tree, false);
+  assert.deepEqual(web.productRows.map((e) => e.id), ['v1']);
+  assert.equal(entryTag(web.productRows[0]), 'web');
+});
+
+test('contentsModel：混合页产物 / 草稿分组全出；多文档页出产物行', () => {
+  const mixed = contentsModel(boardEntries(mixedBoard()));
+  assert.equal(mixed.hidden, false);
+  assert.equal(mixed.tree, true);
+  assert.deepEqual(mixed.productRows.map((e) => e.id), [CANVAS_ENTRY_ID, 'spec']);
+  assert.deepEqual(mixed.drafts.map((e) => e.id), ['draft-variants']);
+
+  const multiDoc = contentsModel(boardEntries({
+    sections: [{ id: 'd', title: 'D', layout: 'column', screens: [{ id: 'v1', shell: 'doc' }, { id: 'v2', shell: 'doc', role: 'draft' }] }],
+  }));
+  assert.equal(multiDoc.hidden, false);
+  assert.equal(multiDoc.tree, false);            // 无画布 → 无树
+  assert.deepEqual(multiDoc.productRows.map((e) => e.id), ['v1']);
+  assert.deepEqual(multiDoc.drafts.map((e) => e.id), ['v2']);
+
+  assert.equal(contentsModel([]).hidden, true);  // 空板
+  assert.equal(contentsModel(null).hidden, true);
 });

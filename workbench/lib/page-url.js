@@ -22,9 +22,9 @@ export function pageBaseUrl(manifest, pageId) {
 }
 
 /* page.mode（manifest 的 ios/html）在 2026-08-16f 阶段 6 起不再是 stage 形态的
-   来源 —— 形态由选中条目派生（lib/board-entries.js entryForm）。剩下的合法用途：
-   1) Pages 行壳标 pill（临时形态，阶段 7 撤）；2) defaultShellForPage 给
-   validateBoard 的缺省壳；3) 深链 ?mode= 提示的页面回落（resolveActivePage）。 */
+   来源 —— 形态由选中条目派生（lib/board-entries.js entryForm）。阶段 7 撤掉
+   Pages 行壳标 pill 后只剩两个用途：1) defaultShellForPage 给 validateBoard
+   的缺省壳；2) 深链 ?mode= 提示的页面回落（resolveActivePage）。 */
 export function modeForPage(manifest, pageId) {
   if (pageId === COMPONENTS_ID) return 'ios';
   var page = pageEntry(manifest, pageId);

@@ -26,11 +26,16 @@ test('url entry appears as a workbench page and renders live through the proxy',
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 
-  // Pages 单一列表：url 条目与 dir/file/模板页同列，恒 doc 壳（文档标）。
+  // Pages 单一列表：url 条目与 dir/file/模板页同列。阶段 7（Page 去类型化）：
+  // 行不再有壳标/类型属性；类型信息下移到「内容」区产物条目的 tag —— url 条目
+  // 的单屏合成板是「网页」产物（单网页条目页不坍缩，tag 照常显示）。
   const navBtn = page.locator('.wb-page[data-vpage="e2e-proxy"]');
   await expect(navBtn).toBeVisible();
-  await expect(navBtn).toHaveAttribute('data-page-mode', 'html');
   await navBtn.click();
+
+  const webRow = page.locator('#wbcontents [data-entry="index"]');
+  await expect(webRow).toBeVisible();
+  await expect(webRow.locator('.wb-entry-tag')).toHaveText('网页');
 
   // 合成单屏 doc 板：iframe 直指代理根 sites/e2e-proxy/（相对形，从 /index.html 解析）。
   const frame = page.locator(FRAME);

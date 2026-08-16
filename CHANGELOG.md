@@ -11,6 +11,27 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-16
 
 ### Added
+- **Contents section in the left sidebar: 产物 / 草稿 groups with entry-level type
+  tags** (roadmap 阶段 7, decisions 08-16f, alignment base `previews/hierarchy-demo/`) —
+  the sidebar's second layer is now the 「内容」区 (`#wbcontents`): a 产物 group (canvas
+  entry + one row per document/web entry, each carrying a mono type tag —
+  画布 / 文档 / 网页 — in the retired Page pill's flat accent-wash language) and a
+  草稿 group (role=draft entries, plain title rows — a draft is always a full-page
+  HTML, so it carries no tag). The canvas entry's frame tree (the old outline —
+  click-to-focus, flash ring, count badges, broken-anchor red) is absorbed into the
+  section, hanging under the canvas row when the canvas entry is selected; it is no
+  longer a standalone section. Collapse rules (`contentsModel` in
+  `workbench/lib/board-entries.js`): a canvas-only page shows no entry rows (the tree
+  hangs directly under the section head — the old outline experience); a pure
+  single-doc page hides the whole section (the majority case — the sidebar goes
+  quiet); a single **web** entry page still shows its row (the tag is the only
+  remaining home of type information after Page de-typing); mixed and multi-doc
+  pages show all rows. Registry `url` entries pass their `kind` through the page
+  manifest into entries (`withEntryWeb`), so live proxied apps read 网页 instead of
+  文档. Doc export moves to a hover icon button on each document/draft entry row
+  (`openDocExportDialog(screenId)` exports any entry without switching the
+  selection — the canvas-selected silent no-op is gone); `activeDocExportTarget()`
+  keeps its visible-entry semantics as the `window.workbench` API.
 - **Board entries: one page holds a canvas and documents at once** (roadmap 阶段 6,
   产物与草稿模型, decisions 08-16f) — the board schema gains a screen-level `role`
   field (`product` default | `draft`; validated in `workbench/lib/preview-contracts.js`),
@@ -29,6 +50,18 @@ Template scope only — instance/product content changes live outside this file.
   entry `e2e-mixed`: two app screens + one product doc + one draft doc) and
   `e2e/mixed-board.spec.js` cover canvas-only mounting, entry switching, deep links,
   and reload persistence.
+
+### Removed
+- **Page-row type pill and DocVersions** (roadmap 阶段 7) — Pages rows are untyped
+  titles only (`.wb-page-kind` / `.wb-page-ico` / per-row `data-page-mode` deleted;
+  the stage-level `#wbroot[data-page-mode]` form hook stays), and the interim
+  DocVersions entry list (`#wbdoc-versions`, `.wb-doc-ver*`, `data-doc-screen` /
+  `data-entry-canvas` / `data-doc-export` contracts) is replaced by the 「内容」区.
+  The left-sidebar compact breakpoint (<230, `#wbside.compact`) now hides entry
+  type tags instead of shrinking a page pill. Consequence to note: a pure
+  single-doc page shows no sidebar export button anymore (its 内容区 collapses
+  away) — the doc export pipeline and `window.workbench.exportDoc` are unchanged;
+  whether such pages need a lean export affordance is a stage-8 question.
 
 ### Changed
 - **Stage form derives from the selected entry, not the page** (roadmap 阶段 6) —

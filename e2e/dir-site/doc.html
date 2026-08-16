@@ -3,8 +3,11 @@
 <head>
 <meta charset="utf-8">
 <title>E2E dir-site doc</title>
+<!-- body 用 padding 而非 margin（2026-08-16f 阶段 7）：评论烘焙的侧栏气泡通道
+     （body padding-right 264）遇 body 外边距会把整页撑出视口宽，长图 PNG 宽度
+     随内容漂移；margin:0 + padding 保持导出宽度恒等于视口 × scale。 -->
 <style>
-  body { font: 14px/1.6 system-ui, sans-serif; margin: 40px; color: #222; }
+  body { font: 14px/1.6 system-ui, sans-serif; margin: 0; padding: 40px; color: #222; }
   #doc-target { padding: 12px; border: 1px solid #ccc; border-radius: 6px; max-width: 420px; }
 </style>
 </head>

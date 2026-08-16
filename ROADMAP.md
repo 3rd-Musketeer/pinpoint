@@ -96,13 +96,22 @@
   `?entry=`；DocVersions 临时适应为条目列表（画布行 + doc 行，样式文案不动，
   阶段 7 重做）；page 级 mode 仅剩 pill / 缺省壳 / mode 提示三个临时用途。
 
-### 阶段 7：左栏第二层合一（Page 去类型，产物 / 草稿分组）
+### 阶段 7：左栏第二层合一（Page 去类型，产物 / 草稿分组）—— **2026-08-16 已落地**
 
 - 价值：模型变成看得见的形态；DocVersions 与大纲两机制收敛为一个。
 - 内容：「内容」区组件（产物组 + 草稿组，画布条目的 frame 树收编现大纲）；
   类型 tag 上条目（画布 / 文档 / 网页）；DocVersions 退役、doc 导出挪条目行；
   单条目组坍缩。
 - 切开理由：纯 UI 收敛，依赖阶段 6 的模型稳定。
+- 落地备注：「内容」区 = Sidebar `Contents`（`#wbcontents`，`data-group="product"|
+  "draft"`，条目行 `data-entry=<id>`，tag `.wb-entry-tag` 带 `data-tag=canvas|doc|
+  web`）；坍缩规则收进 `contentsModel` 纯函数（纯画布页出行坍缩留树、纯单 doc
+  页整区隐、单网页条目页保行留 tag）；doc 导出 = 条目行 hover 钮 →
+  `openDocExportDialog(screenId)`（任意条目可导，不切换选中）；registry `kind`
+  经 manifest page 透传条目（`withEntryWeb`）出「网页」tag；Page 行 pill /
+  `data-page-mode` / `.wb-page-kind` 系与 `#wbdoc-versions` 契约全部删除，左栏
+  紧凑断点改藏条目 tag。已知让渡：纯单 doc 页侧栏不再有任何导出 UI（管线与
+  `window.workbench.exportDoc` 不变）——是否需要轻量入口留阶段 8 定夺。
 
 ### 阶段 8：存量迁移 + CLI 归属
 

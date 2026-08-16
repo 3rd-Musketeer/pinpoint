@@ -209,28 +209,21 @@ function filenameFromContentDisposition(header, fallback) {
   return plain ? plain[1].trim() : fallback;
 }
 
-export function activeDocExportTarget() {
-  var panel = document.getElementById('wb-board-panel');
+/** 按 screenId 解析当前板里某个 doc 屏的导出目标（阶段 7：条目行的导出钮可以对
+    任意文档/草稿条目开对话框，不要求它是当前选中条目；画布条目选中态同样可导出）。
+    只接受 doc 壳屏；src 归一化（绝对 URL → pathname、去前导斜杠）后必须是
+    previews/ 或 sites/ 下的可读路径，否则诚实 null。 */
+export function docExportTargetFor(screenId) {
   var active = wbGet().activeBoard;
-  if (activeBoardMode() !== 'html' || !panel || !active) return null;
-  var screenNode = panel.querySelector('.wb-screen:not([data-doc-hidden])[data-screen]');
-  if (!screenNode) return null;
-  var screenId = screenNode.getAttribute('data-screen');
-  var title = screenId;
-  var src = null;
+  if (!active || active.pageId !== wbGet().activePageId || !screenId) return null;
+  var found = null;
   (active.board.sections || []).forEach(function (sec) {
     (sec.screens || []).forEach(function (sc) {
-      if (sc.id !== screenId) return;
-      title = sc.title || sc.id;
-      src = sc.src || (pageBaseUrl(wbGet().pageManifest, active.pageId) + sc.id + '.html');
+      if (sc.id === screenId && (sc.shell || 'app') === 'doc') found = sc;
     });
   });
-  if (!src) {
-    var frame = screenNode.querySelector('.wb-doc-frame');
-    var attr = frame && frame.getAttribute('src');
-    if (attr) src = attr;
-  }
-  if (!src) return null;
+  if (!found) return null;
+  var src = found.src || (pageBaseUrl(wbGet().pageManifest, active.pageId) + found.id + '.html');
   if (/^https?:\/\//i.test(src)) {
     try { src = new URL(src, location.href).pathname; } catch (e) { return null; }
   }
@@ -238,10 +231,20 @@ export function activeDocExportTarget() {
   if (src.indexOf('previews/') !== 0 && src.indexOf('sites/') !== 0) return null;
   return {
     pageId: active.pageId,
-    screenId: screenId,
-    title: title,
+    screenId: found.id,
+    title: found.title || found.id,
     src: src
   };
+}
+
+/** 当前可见 doc 屏（选中条目）的导出目标 —— window.workbench 的只读 API 面。 */
+export function activeDocExportTarget() {
+  var panel = document.getElementById('wb-board-panel');
+  var active = wbGet().activeBoard;
+  if (activeBoardMode() !== 'html' || !panel || !active) return null;
+  var screenNode = panel.querySelector('.wb-screen:not([data-doc-hidden])[data-screen]');
+  if (!screenNode) return null;
+  return docExportTargetFor(screenNode.getAttribute('data-screen'));
 }
 
 var docExportDialog = null;
@@ -455,8 +458,10 @@ export function requestDocExport(options) {
   });
 }
 
-export function openDocExportDialog() {
-  var target = activeDocExportTarget();
+/** 打开文档导出对话框。阶段 7 起接受可选 screenId：条目行的 hover 导出钮导
+    该行的文档/草稿条目（不切换选中）；缺省回落当前选中的 doc 条目（无则不开）。 */
+export function openDocExportDialog(screenId) {
+  var target = screenId ? docExportTargetFor(screenId) : activeDocExportTarget();
   if (!target) return;
   var dialog = ensureDocExportDialog();
   dialog._target = target;

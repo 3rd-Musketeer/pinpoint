@@ -42,17 +42,19 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   await navBtn.click();
 
   // dir 条目默认 doc 壳：每屏一个 iframe 文档（保留文档自己注入的 annotate
-  // 客户端），侧栏切版本；board.json 里残留的 shell:"web" 归一到 doc。
-  const versions = page.locator('#wbdoc-versions [data-doc-screen]');
-  await expect(versions).toHaveCount(2);
+  // 客户端），侧栏「内容」区出产物条目行；board.json 里残留的 shell:"web" 归一到 doc。
+  const entries = page.locator('#wbcontents [data-group="product"] [data-entry]');
+  await expect(entries).toHaveCount(2);
+  await expect(entries.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
+  await expect(entries.locator('.wb-entry-tag')).toHaveText(['文档', '文档']);
   const cardsFrame = page.locator('#wb-board-panel [data-screen="cards"] iframe.wb-doc-frame');
   await expect(cardsFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/cards\.html$/);
   await expect(
     page.frameLocator('#wb-board-panel [data-screen="cards"] iframe.wb-doc-frame').locator('h1')
   ).toHaveText('E2E dir-site cards');
 
-  // 版本切换：第二屏（doc.html）成为当前文档。
-  await page.locator('#wbdoc-versions [data-doc-screen="doc"]').click();
+  // 条目切换：第二屏（doc.html）成为当前文档。
+  await page.locator('#wbcontents [data-entry="doc"]').click();
   const docFrame = page.locator('#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame');
   await expect(docFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/doc\.html$/);
   await expect(

@@ -1,9 +1,9 @@
 // 侧栏整树（P1b cut2，goal-20260810-workbench-react-rebuild）— head（连接状态 +
-// 折叠钮）、Pages 段（单一页面列表 + 行内壳标记 / 文档版本）、设置视图壳、footer。
-// 原 index.html 静态标记 + pages.js/boot-prefs.js 手工 DOM 同步的 React 形态；
-// DOM id / class / 文案与原实现逐一对应（e2e 选择器即契约）。状态全部来自
-// app/store.js；交互回调仍调 pages.js / boot-prefs.js 的命令式动作（页面装载、
-// 文档切换、偏好保存的命令式副作用留在那些模块，本文件只做渲染与转发）。
+// 折叠钮）、Pages 段（单一页面列表）、「内容」区（产物/草稿条目 + frame 树）、
+// 设置视图壳、footer。原 index.html 静态标记 + pages.js/boot-prefs.js 手工 DOM
+// 同步的 React 形态；DOM id / class / 文案与原实现逐一对应（e2e 选择器即契约）。
+// 状态全部来自 app/store.js；交互回调仍调 pages.js / boot-prefs.js 的命令式动作
+// （页面装载、条目切换、偏好保存的命令式副作用留在那些模块，本文件只做渲染与转发）。
 //
 // V2 换皮（goal-20260811-workbench-visual-rebuild）：侧栏 chrome 全量收编 shadcn
 // 复制件 + Tailwind 类，配方照 V1 基准（SettingsView / app/Seg.jsx 头注释）。
@@ -11,21 +11,25 @@
 // 2026-08-15 侧栏重构（decisions 08-14 左右分工 + 08-15c 大纲延伸线）：
 //  - 左栏 = 页面上下文：head（连接状态 + 齿轮进设置视图 + 收起）→ Pages → 大纲；
 //    标注区迁出为独立右栏（app/AnnPanel.jsx，挂 #wbann-side）。
-//  - 大纲 = 当前页 section → frame 树（引用号 + 屏名 + 计数徽标，红 = 含失效锚点）；
-//    点击 = board-nav 定位 frame + 机身 flash 环，与标注卡焦点双向同步
-//    （store.focusFrameKey / focusAnnN）。延伸线几何（rail 槽 / spine 逐行拼接 /
-//    末行 └ 角）是正式组件结构，CSS 在 index.html（.wb-outline 系，全 token）。
 //  - 段头改静态（mock 无折叠 affordance），sectionOpen 机制随 Annotations 段退役。
 //  - footer 的 Light/Dark 分段是预览内容主题（ios-root data-theme），原地保留。
 //
 // 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
-// Pages 变单一列表（本地页 + registry dir 条目同列），行内壳标记区分机壳/文档。
-// 2026-08-16b 壳标升级：裸图标 → 等宽 pill（图标 + iOS/Doc 文字，accent 淡底）；
-// 左栏过 230 紧凑断点（boot-prefs applySideWidth 打 #wbside.compact）收纯图标块。
-// 2026-08-16f 阶段 6（产物与草稿模型）：stage 形态由选中条目派生（store
-// activeEntryId，lib/board-entries.js）。DocVersions 改为临时条目列表 —— 板里有
-// doc 屏条目即显示（不再要求整页 html 模式），有画布条目时顶部多一行「画布」用于
-// 切回；文案与样式不动，左栏第二层（产物/草稿分组、pill 撤除）阶段 7 重做。
+// Pages 变单一列表（本地页 + registry dir 条目同列）。
+// 2026-08-16f 阶段 7（产物与草稿模型，decisions 08-16f，ROADMAP 阶段 7）：
+//  - Page 去类型化：Page 行只剩标题 + hover copy 钮（壳标 pill / data-page-mode
+//    随本阶段删除）；类型信息下移到产物条目的 tag（画布 / 文档 / 网页）。
+//  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档/网页条目，各带
+//    mono 类型 tag）+ 草稿组（role=draft 条目，纯标题行，无 tag——草稿恒为整页
+//    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目，doc 导出挪到条目行的
+//    hover icon 钮（复用 PageRow copy 钮模式，点击 = export-core
+//    openDocExportDialog(screenId)）。
+//  - 画布条目的 frame 树收编旧大纲组件（不再是独立 section）：选中画布条目时树
+//    挂在画布条目行下；纯画布页不出条目行、树直接挂区头下。树的交互（点击定位
+//    frame + 机身 flash 环、计数徽标、失效红、与标注卡焦点双向同步）全部保留，
+//    延伸线几何 CSS 仍在 index.html（.wb-outline 系）。
+//  - 坍缩规则（lib/board-entries.js contentsModel）：纯单 doc 屏页整区不出现；
+//    单网页条目页仍出行（tag 是类型信息的唯一落点）；混合页条目行全出。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
@@ -39,7 +43,14 @@ import {
 import { setTheme, toggleSideCollapsed } from '../boot-prefs.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import { openDocExportDialog } from '../export-core.js';
-import { CANVAS_ENTRY_ID, canvasBoard, resolveEntry } from '../lib/board-entries.js';
+import {
+  CANVAS_ENTRY_ID,
+  ENTRY_TAG_LABELS,
+  canvasBoard,
+  contentsModel,
+  entryTag,
+  resolveEntry
+} from '../lib/board-entries.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
@@ -51,18 +62,33 @@ import { Button } from './ui/button.jsx';
 import { Input } from './ui/input.jsx';
 import { ScrollArea } from './ui/scroll-area.jsx';
 
-// 页面行（Pages 段）与文档版本行共用同一套行语言；页面行多 accent 边条与
+// 页面行（Pages 段）与内容区条目行共用同一套行语言；页面行多 accent 边条与
 // 行容器 group-hover 联动（行 hover 即行态，不只按钮本身）。
 var ROW_ON =
   'bg-secondary font-semibold text-foreground ' +
   'hover:bg-secondary hover:text-foreground group-hover:bg-secondary group-hover:text-foreground';
 
-// 段头（Pages / 大纲）：静态 eyebrow，mono 小字 + 宽字距（mock .sec 的收编；
+// 段头（Pages / 内容）：静态 eyebrow，mono 小字 + 宽字距（mock .sec 的收编；
 // 2026-08-15 起不再是折叠钮）。
 var SECTION_HEAD =
   'wb-section-head px-[var(--wb-pad)] pb-[7px] pt-[13px] font-[var(--wb-font-mono)] ' +
   'text-[9.5px] font-semibold uppercase tracking-[0.12em] ' +
   'text-[color:color-mix(in_srgb,var(--wb-accent)_45%,var(--wb-faint))]';
+
+// 「内容」区组头（产物 / 草稿）：比段头低一档的 mono eyebrow
+// （对齐基准 previews/hierarchy-demo 的 .t-sub）。
+var GROUP_HEAD =
+  'wb-entry-group-head px-[var(--wb-pad)] pb-[3px] pt-[9px] font-[var(--wb-font-mono)] ' +
+  'text-[9px] font-semibold tracking-[0.1em] text-[color:var(--wb-faint)]';
+
+// 产物条目的类型 tag（阶段 7，Page 壳标 pill 的下移）：mono 9px 小字 + accent
+// 淡底扁平块，无描边；左栏 < 230 紧凑断点整 tag 隐藏（#wbside.compact 规则在
+// index.html）。data-tag = canvas/doc/web 是 e2e 契约。
+var ENTRY_TAG =
+  'wb-entry-tag inline-flex h-[15px] flex-none items-center justify-center rounded ' +
+  'bg-[color:color-mix(in_srgb,var(--wb-accent)_9%,transparent)] px-[5px] ' +
+  'font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] ' +
+  'text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]';
 
 function SideHead() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
@@ -125,12 +151,8 @@ function PageRow(props) {
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
-  // 行内壳标 pill（2026-08-16b）：等宽 40px，图标 + iOS/Doc 文字，accent 淡底
-  // 扁平无描边；左栏 < 230 紧凑断点收 20px 纯图标块（#wbside.compact，index.html）。
-  // Component Library 系统行恒 iOS。.wb-page-ico 类名是 e2e 契约，保留在图标上。
-  var pageMode = system ? 'ios' : (page.mode || 'ios');
-  var shellIcon = pageMode === 'html' ? 'file-text' : 'smartphone';
-  var shellKind = pageMode === 'html' ? 'doc' : 'ios';
+  // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题 + hover copy 钮；壳标 pill
+  // 与 data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -168,7 +190,7 @@ function PageRow(props) {
     <div className="wb-page-row group flex min-w-0 items-stretch gap-0.5" data-page-system={system ? '1' : undefined}>
       <button type="button"
         data-vpage={page.id} data-page-system={system ? '1' : undefined}
-        data-page-default={page.title} data-page-mode={system ? undefined : pageMode}
+        data-page-default={page.title}
         data-state={active ? 'on' : undefined}
         className={cn(
           'wb-page flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans text-[12.5px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
@@ -193,16 +215,7 @@ function PageRow(props) {
             defaultValue={title} onKeyDown={onRenameKey}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
-          <Fragment>
-            <span
-              className="wb-page-kind inline-flex h-[17px] w-[40px] flex-none items-center justify-center gap-[3px] rounded bg-[color:color-mix(in_srgb,var(--wb-accent)_9%,transparent)] font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]"
-              data-kind={shellKind}
-              title={shellKind === 'doc' ? '文档页' : 'iOS 机壳页'}>
-              <WbIcon name={shellIcon} size={11} className="wb-page-ico size-[11px] flex-none" />
-              <span className="wb-page-kind-t">{shellKind === 'doc' ? 'Doc' : 'iOS'}</span>
-            </span>
-            <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
-          </Fragment>
+          <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
         )}
       </button>
       <Button type="button" variant="ghost"
@@ -234,7 +247,7 @@ function PagesNav() {
   var pages = manifestPages();
   return (
     <nav className="wb-pages flex flex-col gap-px pb-1 pt-0.5" id="wbpages">
-      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library', mode: 'ios' }} />
+      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} />
       {pages.map(function (p) { return <PageRow key={p.id} page={p} />; })}
       {manifestError ? (
         <p className="wb-page-error" title={manifestError}
@@ -246,94 +259,16 @@ function PagesNav() {
   );
 }
 
-/* 条目列表（2026-08-16f 阶段 6 临时形态，阶段 7 重做左栏第二层）：板里有 doc 屏
-   条目即显示（不再要求整页 html 模式）；有画布条目时顶部多一行「画布」用于切回。
-   行 = 既有 .wb-doc-ver 行语言，文案/样式不动；doc 行 data-doc-screen 契约不变，
-   画布行用 data-entry-canvas。草稿条目（role=draft）在此不打标 —— 分组与类型
-   tag 是阶段 7 的事。 */
-function DocVersions() {
-  useWorkbenchStore(function (s) { return s.activeBoard; }); // 订阅触发重渲染；取值走 entriesOfActiveBoard
-  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
-  var entries = entriesOfActiveBoard();
-  var docEntries = entries.filter(function (e) { return e.kind === 'doc'; });
-  var hasCanvas = entries.some(function (e) { return e.kind === 'canvas'; });
-  var current = resolveEntry(entries, activeEntryId);
-  var show = docEntries.length > 0;
-  var items = [];
-  if (hasCanvas) {
-    items.push(
-      <button key={CANVAS_ENTRY_ID} type="button" data-entry-canvas=""
-        data-state={current && current.kind === 'canvas' ? 'on' : undefined}
-        className={cn(
-          'wb-doc-ver mx-1.5 cursor-pointer rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground',
-          current && current.kind === 'canvas' && 'on ' + ROW_ON
-        )}
-        onClick={function () { setActiveEntry(CANVAS_ENTRY_ID); }}>
-        画布
-      </button>
-    );
-  }
-  var lastSection = null;
-  docEntries.forEach(function (sc) {
-    if (docEntries.length > 1 && sc.section && sc.section !== lastSection) {
-      lastSection = sc.section;
-      items.push(
-        <div key={'sec-' + sc.section}
-          className="wb-doc-ver-sec px-[var(--wb-pad)] pb-0.5 pt-1.5 text-[10px] tracking-[0.04em] text-[color:var(--wb-faint)]">
-          {sc.section}
-        </div>
-      );
-    }
-    var on = !!current && current.id === sc.id;
-    items.push(
-      <button key={sc.id} type="button" data-doc-screen={sc.id} data-state={on ? 'on' : undefined}
-        className={cn(
-          'wb-doc-ver mx-1.5 cursor-pointer rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground',
-          on && 'on ' + ROW_ON
-        )}
-        onClick={function () { setActiveEntry(sc.id); }}>
-        {sc.title}
-      </button>
-    );
-  });
-  return (
-    // display 类会盖掉 [hidden] 的 UA 规则，show=false 时显式 hidden 类还回来
-    <nav id="wbdoc-versions" aria-label="文档版本" hidden={!show}
-      className={cn('wb-doc-versions flex-col gap-px pb-1 pt-0.5', show ? 'flex' : 'hidden')}>
-      {show ? (
-        <Fragment>
-          <div className="wb-doc-ver-head flex items-center justify-between gap-2 px-[var(--wb-pad)] pb-1 pt-2 text-[10px] font-bold uppercase tracking-[0.06em] text-[color:var(--wb-faint)]">
-            <span>{entries.length > 1 ? 'Versions' : 'Document'}</span>
-            <Button type="button" variant="ghost" data-doc-export="" title="导出当前文档"
-              className="wb-doc-export h-auto min-h-0 rounded-md bg-[var(--wb-side)] px-2 py-[3px] text-[11px] font-semibold leading-[1.2] text-muted-foreground shadow-none transition-[color,background-color] duration-150 hover:bg-accent hover:text-primary"
-              onClick={function () { openDocExportDialog(); }}>导出</Button>
-          </div>
-          {items}
-        </Fragment>
-      ) : null}
-    </nav>
-  );
-}
-
-/* 大纲（decisions 2026-08-15c）：当前页画布条目的 section → frame 树，行 = mono
-   引用号 + 屏名 + 计数徽标（红 = 含失效锚点）。延伸线几何（.ol-*）在 index.html；
-   点击复用 board-nav 的 frame 定位（与标注卡 goToMark 同一导航源），机身闪
-   focus 环。选中态（store.focusFrameKey）由大纲点击与标注卡点击双向写入。
-   2026-08-16f 阶段 6：大纲是画布语汇 —— 只在画布条目选中时显示，且树只覆盖
-   画布屏（canvasBoard 滤掉 doc 屏，引用号与图注/导出树同源）。 */
-function Outline() {
-  var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  var active = useWorkbenchStore(function (s) { return s.activeBoard; });
-  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
+/* frame 树（decisions 2026-08-15c 大纲的收编，2026-08-16f 阶段 7）：当前页画布条目
+   的 section → frame 树，行 = mono 引用号 + 屏名 + 计数徽标（红 = 含失效锚点）。
+   延伸线几何（.ol-*）在 index.html；点击复用 board-nav 的 frame 定位（与标注卡
+   goToMark 同一导航源），机身闪 focus 环。选中态（store.focusFrameKey）由树点击
+   与标注卡点击双向写入。树是画布语汇：只覆盖画布屏（canvasBoard 滤掉 doc 屏，
+   引用号与图注/导出树同源）。 */
+function FrameTree(props) {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
-  // 板未装载 / 换页途中不出大纲；无画布条目（纯 doc 板）或当前选中文档条目时也不出。
-  if (!active || active.pageId !== activePageId) return null;
-  var entries = entriesOfActiveBoard();
-  var current = resolveEntry(entries, activeEntryId);
-  if (!current || current.kind !== 'canvas') return null;
-  var refs = boardRefs(canvasBoard(active.board));
-  if (!refs.outline.length) return null;
+  var refs = props.refs;
 
   // 徽标计数：annSnap 行带 section/screenId（ann-bridge 增量），按帧归并
   var counts = {};
@@ -352,36 +287,147 @@ function Outline() {
   }
 
   return (
-    <section className="wb-section" data-section="outline">
-      <div className={SECTION_HEAD}>大纲</div>
-      <nav className="wb-outline mx-[var(--wb-pad)]" id="wboutline" aria-label="大纲">
-        {refs.outline.map(function (sec) {
-          return (
-            <div className="ol" key={sec.id} data-ol-section={sec.id}>
-              <div className="ol-sec">
-                <span className="ol-L">{sec.letter}</span>
-                <span className="ol-sec-t min-w-0 flex-1 truncate">{sec.title}</span>
-              </div>
-              {sec.frames.map(function (f) {
-                var k = sec.id + '\0' + f.id;
-                var n = counts[k] || 0;
-                var on = focusKey === k;
-                return (
-                  <button key={f.id} type="button"
-                    className={cn('ol-row', on && 'on')}
-                    data-ol-frame={f.id} data-state={on ? 'on' : undefined}
-                    title={f.ref + ' ' + f.title}
-                    onClick={function () { onPick(sec.id, f.id); }}>
-                    <span className="spine" aria-hidden="true"></span>
-                    <span className="no">{f.ref}</span>
-                    <span className="nm">{f.title}</span>
-                    {n ? <span className={cn('ol-n', warns[k] && 'warn')}>{n}</span> : null}
-                  </button>
-                );
-              })}
+    <nav className="wb-outline mx-[var(--wb-pad)]" id="wboutline" aria-label="大纲">
+      {refs.outline.map(function (sec) {
+        return (
+          <div className="ol" key={sec.id} data-ol-section={sec.id}>
+            <div className="ol-sec">
+              <span className="ol-L">{sec.letter}</span>
+              <span className="ol-sec-t min-w-0 flex-1 truncate">{sec.title}</span>
             </div>
-          );
-        })}
+            {sec.frames.map(function (f) {
+              var k = sec.id + '\0' + f.id;
+              var n = counts[k] || 0;
+              var on = focusKey === k;
+              return (
+                <button key={f.id} type="button"
+                  className={cn('ol-row', on && 'on')}
+                  data-ol-frame={f.id} data-state={on ? 'on' : undefined}
+                  title={f.ref + ' ' + f.title}
+                  onClick={function () { onPick(sec.id, f.id); }}>
+                  <span className="spine" aria-hidden="true"></span>
+                  <span className="no">{f.ref}</span>
+                  <span className="nm">{f.title}</span>
+                  {n ? <span className={cn('ol-n', warns[k] && 'warn')}>{n}</span> : null}
+                </button>
+              );
+            })}
+          </div>
+        );
+      })}
+    </nav>
+  );
+}
+
+/* 条目行（2026-08-16f 阶段 7）：产物行 = 标题 + 类型 tag（data-tag），草稿行 =
+   纯标题（草稿恒为整页 HTML，无 tag）。doc 条目行带 hover 浮现的导出 icon 钮
+   （复用 PageRow copy 钮模式），点击 = 该行的文档导出对话框（export-core
+   openDocExportDialog(screenId)，不切换选中条目）。 */
+function EntryRow(props) {
+  var entry = props.entry;
+  var on = !!props.on;
+  // 草稿行不打类型 tag（草稿恒为整页 HTML，无类型维度）
+  var tagKey = entry.role === 'draft' ? null : entryTag(entry);
+  return (
+    <div className="wb-entry-row group flex min-w-0 items-stretch gap-0.5">
+      <button type="button"
+        data-entry={entry.id} data-state={on ? 'on' : undefined}
+        className={cn(
+          'wb-entry flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
+          on && 'on ' + ROW_ON
+        )}
+        onClick={function () { setActiveEntry(entry.id); }}>
+        <span className="wb-entry-t min-w-0 flex-1 truncate">{entry.title}</span>
+        {tagKey ? (
+          <span className={ENTRY_TAG} data-tag={tagKey}>{ENTRY_TAG_LABELS[tagKey]}</span>
+        ) : null}
+      </button>
+      {entry.kind === 'doc' ? (
+        <Button type="button" variant="ghost"
+          className="wb-entry-export h-auto w-7 flex-none self-stretch rounded-md px-0 py-0 text-muted-foreground opacity-0 transition-[opacity,color,background-color] duration-150 group-hover:opacity-100 focus-visible:opacity-100"
+          data-entry-export={entry.id}
+          aria-label="导出文档" title="导出文档"
+          onClick={function (e) {
+            e.preventDefault();
+            e.stopPropagation();
+            openDocExportDialog(entry.id);
+          }}>
+          <WbIcon name="export-image" size={12} className="size-3" />
+        </Button>
+      ) : (
+        // 画布条目没有行内动作，但保留尾部槽位 —— 所有产物行的 tag 对齐成一条
+        // 纵列（doc 行的 hover 导出钮占同一槽），且不被侧栏右缘裁切。
+        <span className="w-7 flex-none self-stretch" aria-hidden="true"></span>
+      )}
+    </div>
+  );
+}
+
+/* 「内容」区（2026-08-16f 阶段 7，decisions 08-16f / ROADMAP 阶段 7，对齐基准
+   previews/hierarchy-demo）：左栏第二层，回答「这件事里我在看哪一份」。
+   产物组（画布条目 + 文档/网页条目，各带类型 tag）+ 草稿组（role=draft 条目）；
+   画布条目选中时其 frame 树（旧大纲）挂在画布行下。坍缩规则由
+   lib/board-entries.js contentsModel 纯函数给出（单条目不显示目录）：
+   - 纯画布页：无条目行，frame 树直接挂区头下（旧大纲体验）；
+   - 纯单 doc 屏页：整区不出现；
+   - 混合页 / 多文档页 / 单网页条目页：组头 + 条目行全出。 */
+function Contents() {
+  var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
+  var active = useWorkbenchStore(function (s) { return s.activeBoard; });
+  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
+  // 板未装载 / 换页途中不出内容区
+  if (!active || active.pageId !== activePageId) return null;
+  var entries = entriesOfActiveBoard();
+  var model = contentsModel(entries);
+  // frame 树 = 画布语汇，只覆盖画布屏（canvasBoard 滤掉 doc 屏，引用号与
+  // 图注/导出树同源）；展开时机 = 画布条目选中（阅读器态下定位无意义）。
+  var refs = model.tree ? boardRefs(canvasBoard(active.board)) : null;
+  var hasTree = !!(refs && refs.outline.length);
+  var current = resolveEntry(entries, activeEntryId);
+  var treeOpen = hasTree && !!current && current.kind === 'canvas';
+  // 空板 / 坍缩（contentsModel）/ 纯画布但树为空 → 整区不出现
+  if (model.hidden || (!model.productRows.length && !model.drafts.length && !hasTree)) return null;
+
+  var productRows = model.productRows.map(function (entry) {
+    var rows = [
+      <EntryRow key={entry.id} entry={entry} on={!!current && current.id === entry.id} />
+    ];
+    // 画布条目展开（选中）时 frame 树挂在其行下（收编旧大纲；不再是独立 section）
+    if (entry.id === CANVAS_ENTRY_ID && treeOpen) {
+      rows.push(
+        <div key="canvas-tree" className="wb-entry-tree ms-[7px]">
+          <FrameTree refs={refs} />
+        </div>
+      );
+    }
+    return rows;
+  });
+
+  return (
+    <section className="wb-section" data-section="contents">
+      <div className={SECTION_HEAD}>内容</div>
+      <nav className="wb-contents flex flex-col gap-px pb-1 pt-0.5" id="wbcontents" aria-label="内容">
+        {model.productRows.length ? (
+          <div className="wb-entry-group flex flex-col gap-px" data-group="product">
+            <div className={GROUP_HEAD}>产物</div>
+            {productRows}
+          </div>
+        ) : null}
+        {!model.productRows.length && treeOpen ? (
+          // 纯画布页：条目行坍缩，frame 树直接挂区头下
+          <FrameTree refs={refs} />
+        ) : null}
+        {model.drafts.length ? (
+          <div className="wb-entry-group flex flex-col gap-px" data-group="draft">
+            <div className={GROUP_HEAD}>草稿</div>
+            {model.drafts.map(function (entry) {
+              return (
+                <EntryRow key={entry.id} entry={entry}
+                  on={!!current && current.id === entry.id} />
+              );
+            })}
+          </div>
+        ) : null}
       </nav>
     </section>
   );
@@ -427,9 +473,8 @@ export function Sidebar() {
           <section className="wb-section" data-section="pages">
             <div className={SECTION_HEAD}>Pages</div>
             <PagesNav />
-            <DocVersions />
           </section>
-          <Outline />
+          <Contents />
         </ScrollArea>
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />

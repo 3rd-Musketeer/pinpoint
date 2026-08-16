@@ -21,11 +21,11 @@ export const useWorkbenchStore = create((set) => ({
   pageManifest: null,
   pageManifestError: null,   // manifest 拉取失败信息（侧栏错误行）
   pageNames: {},             // prefs.pageNames — 页面重命名（侧栏显示名）
-  activeBoard: null,        // { pageId, board } — 条目列表、左栏大纲、导出树都读它
+  activeBoard: null,        // { pageId, board } — 条目列表、「内容」区 frame 树、导出树都读它
   activeEntryId: null,      // 当前选中条目 id（2026-08-16f 阶段 6；画布 = lib/board-entries.js
                             // CANVAS_ENTRY_ID，文档 = doc 屏 screenId；setActiveEntry 写）
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
-  // 大纲行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
+  // frame 树行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
   // focusFrameKey = sectionId + '\0' + screenId；focusAnnN = 最近点开的标注序号
   focusFrameKey: null,
   focusAnnN: null,

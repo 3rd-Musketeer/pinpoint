@@ -439,9 +439,9 @@ export function focusFirstBoardFrame() {
   return false;
 }
 
-/* 大纲行点击的 focus 环反馈（decisions 2026-08-15c）：在 frame 机身上闪一圈
-   accent 环（~1.1s CSS 动画），与标注卡 goToMark 的锚点 ann-flash 分工 ——
-   卡定位闪锚点，大纲定位闪整机。 */
+/* 「内容」区 frame 树行点击的 focus 环反馈（decisions 2026-08-15c）：在 frame 机身上
+   闪一圈 accent 环（~1.1s CSS 动画），与标注卡 goToMark 的锚点 ann-flash 分工 ——
+   卡定位闪锚点，树定位闪整机。 */
 export function flashBoardFrame(groupId, screenId) {
   var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
   var node = frame && frame.node;

@@ -3,6 +3,8 @@ import { expect, test } from '@playwright/test';
 // 阶段 6（2026-08-16f 产物与草稿模型）：混合板 = 一个 Page 的 board.json 里同时有
 // app/lock 屏（画布条目）与 doc 屏（文档/草稿条目）。stage 形态由选中条目派生：
 // 画布条目 → 画布（只摆 app/lock 屏）；文档条目 → 既有 doc 阅读器管线。
+// 阶段 7：左栏第二层 = 「内容」区（#wbcontents）—— 产物组（画布条目带 frame 树；
+// 文档条目带类型 tag）+ 草稿组（纯标题行）；doc 导出挪到条目行的 hover icon 钮。
 // 固件 = e2e/mixed-site（registry dir 条目 e2e-mixed，board:'ios' 页级缺省壳）：
 // 原型 section（home/detail 两个 app 屏）+ 文稿 section（spec 产物文档 +
 // draft-variants 草稿文档，role:"draft"）。
@@ -22,7 +24,7 @@ function stageForm(page) {
   return page.locator('#wbroot').evaluate((el) => el.getAttribute('data-page-mode'));
 }
 
-test('混合板：画布条目只摆 app 屏，临时条目列表出「画布」+ 两个文档行', async ({ page }) => {
+test('混合板：画布条目只摆 app 屏，「内容」区出产物/草稿分组与类型 tag', async ({ page }) => {
   await openMixed(page);
 
   // 画布上只有 app/lock 屏；doc 屏在场但被条目显隐收起，绝不进画布。
@@ -32,23 +34,28 @@ test('混合板：画布条目只摆 app 屏，临时条目列表出「画布」
   await expect(page.locator('#wb-board-panel .wb-doc-frame:visible')).toHaveCount(0);
   expect(await stageForm(page)).toBe('ios');
 
-  // 临时条目列表（阶段 7 重做第二层）：「画布」行 + 文稿 section 分组 + 两个 doc 行。
-  const canvasRow = page.locator('#wbdoc-versions [data-entry-canvas]');
-  await expect(canvasRow).toHaveCount(1);
-  await expect(canvasRow).toHaveText('画布');
-  await expect(canvasRow).toHaveAttribute('data-state', 'on');
-  await expect(page.locator('#wbdoc-versions .wb-doc-ver-sec')).toHaveText(['文稿']);
-  await expect(page.locator('#wbdoc-versions [data-doc-screen]')).toHaveText(['设计说明', '气泡三手感']);
+  // 「内容」区（阶段 7 正式形态）：产物组 = 画布行（tag 画布）+ 设计说明行（tag 文档），
+  // 草稿组 = 气泡三手感行（纯标题，无 tag）。
+  await expect(page.locator('#wbcontents .wb-entry-group-head')).toHaveText(['产物', '草稿']);
+  const productRows = page.locator('#wbcontents [data-group="product"] [data-entry]');
+  await expect(productRows.locator('.wb-entry-t')).toHaveText(['画布', '设计说明']);
+  await expect(productRows.locator('.wb-entry-tag')).toHaveText(['画布', '文档']);
+  await expect(page.locator('#wbcontents [data-entry="@canvas"]')).toHaveAttribute('data-state', 'on');
+  const draftRows = page.locator('#wbcontents [data-group="draft"] [data-entry="draft-variants"]');
+  await expect(draftRows).toHaveCount(1);
+  await expect(draftRows.locator('.wb-entry-t')).toHaveText('气泡三手感');
+  await expect(draftRows.locator('.wb-entry-tag')).toHaveCount(0);
 
-  // 大纲是画布语汇：只覆盖画布屏，doc 屏不进树（行文本 = 引用号 + 屏名，断言屏名）。
+  // frame 树收编在画布条目行下：只覆盖画布屏，doc 屏不进树（行文本 = 引用号 + 屏名）。
+  await expect(page.locator('#wbcontents .wb-entry-row:has([data-entry="@canvas"]) + .wb-entry-tree #wboutline')).toHaveCount(1);
   await expect(page.locator('#wboutline [data-ol-frame] .nm')).toHaveText(['首页', '详情']);
 });
 
-test('混合板：点文档行 stage 变阅读器，点「画布」回画布', async ({ page }) => {
+test('混合板：点文档行 stage 变阅读器，点「画布」行回画布', async ({ page }) => {
   await openMixed(page);
 
-  // 选中产物文档条目 → 阅读器：doc iframe 1:1 铺满，画布 chrome 退场。
-  await page.locator('#wbdoc-versions [data-doc-screen="spec"]').click();
+  // 选中产物文档条目 → 阅读器：doc iframe 1:1 铺满，画布 chrome 退场，树收起。
+  await page.locator('#wbcontents [data-entry="spec"]').click();
   expect(await stageForm(page)).toBe('html');
   const specFrame = page.locator('#wb-board-panel [data-screen="spec"] .wb-doc-frame');
   await expect(specFrame).toBeVisible();
@@ -56,19 +63,19 @@ test('混合板：点文档行 stage 变阅读器，点「画布」回画布', a
     .toHaveText('E2E mixed spec');
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeHidden();
   await expect(page.locator('#wbcanvas-hud')).toBeHidden();
-  await expect(page.locator('#wboutline')).toBeHidden();
-  await expect(page.locator('#wbdoc-versions [data-doc-screen="spec"]')).toHaveAttribute('data-state', 'on');
+  await expect(page.locator('#wboutline')).toHaveCount(0);
+  await expect(page.locator('#wbcontents [data-entry="spec"]')).toHaveAttribute('data-state', 'on');
 
   // 选中草稿条目 → 同一阅读器管线，换文档。
-  await page.locator('#wbdoc-versions [data-doc-screen="draft-variants"]').click();
+  await page.locator('#wbcontents [data-entry="draft-variants"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="spec"]')).toBeHidden();
   await expect(page.frameLocator('#wb-board-panel [data-screen="draft-variants"] .wb-doc-frame').locator('#draft-title'))
     .toHaveText('E2E mixed draft');
   // 非默认条目镜像进 URL（深链可直接复制）。
   await expect.poll(() => page.url()).toContain('entry=draft-variants');
 
-  // 点「画布」回画布：两帧回来、阅读器退场、URL 收掉 entry（默认条目不写）。
-  await page.locator('#wbdoc-versions [data-entry-canvas]').click();
+  // 点「画布」行回画布：两帧回来、树回来、阅读器退场、URL 收掉 entry（默认条目不写）。
+  await page.locator('#wbcontents [data-entry="@canvas"]').click();
   expect(await stageForm(page)).toBe('ios');
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wb-board-panel [data-screen="detail"] .ios-stage')).toBeVisible();
@@ -76,6 +83,29 @@ test('混合板：点文档行 stage 变阅读器，点「画布」回画布', a
   await expect(page.locator('#wbcanvas-hud')).toBeVisible();
   await expect(page.locator('#wboutline')).toBeVisible();
   await expect.poll(() => page.url()).not.toContain('entry=');
+});
+
+test('混合板：条目行 hover 导出钮对任意 doc 条目开对话框（画布选中态同样可用）', async ({ page }) => {
+  await openMixed(page);
+  const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
+
+  // 画布条目选中态（stage = ios）：旧形态里导出钮静默无反应；现在产物文档行的
+  // hover 导出钮直接对该条目开对话框，不切换选中。
+  await page.locator('#wbcontents [data-entry="spec"]').hover();
+  await page.locator('#wbcontents [data-entry-export="spec"]').click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-mixed / 设计说明');
+  expect(await stageForm(page)).toBe('ios');
+  await expect(page.locator('#wbcontents [data-entry="@canvas"]')).toHaveAttribute('data-state', 'on');
+  await dialog.locator('.wb-export-close').click();
+  await expect(dialog).toBeHidden();
+
+  // 草稿条目同样可导（草稿恒为整页 HTML，走同一 doc 导出管线）。
+  await page.locator('#wbcontents [data-entry="draft-variants"]').hover();
+  await page.locator('#wbcontents [data-entry-export="draft-variants"]').click();
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-mixed / 气泡三手感');
+  await dialog.locator('.wb-export-close').click();
 });
 
 test('混合板：?entry= 深链直达文档条目，非法 entry 落默认画布', async ({ page }) => {
@@ -96,7 +126,7 @@ test('混合板：?entry= 深链直达文档条目，非法 entry 落默认画�
 
 test('混合板：条目选择跨 reload 保持（prefs.activeEntryIdByPage）', async ({ page }) => {
   await openMixed(page);
-  await page.locator('#wbdoc-versions [data-doc-screen="draft-variants"]').click();
+  await page.locator('#wbcontents [data-entry="draft-variants"]').click();
   await expect(page.frameLocator('#wb-board-panel [data-screen="draft-variants"] .wb-doc-frame').locator('#draft-title'))
     .toHaveText('E2E mixed draft');
   await expect.poll(() => page.evaluate(
@@ -109,10 +139,10 @@ test('混合板：条目选择跨 reload 保持（prefs.activeEntryIdByPage）',
   expect(await stageForm(page)).toBe('html');
   await expect(page.frameLocator('#wb-board-panel [data-screen="draft-variants"] .wb-doc-frame').locator('#draft-title'))
     .toHaveText('E2E mixed draft');
-  await expect(page.locator('#wbdoc-versions [data-doc-screen="draft-variants"]')).toHaveAttribute('data-state', 'on');
+  await expect(page.locator('#wbcontents [data-entry="draft-variants"]')).toHaveAttribute('data-state', 'on');
 
   // 切回画布条目后 reload：回到画布。
-  await page.locator('#wbdoc-versions [data-entry-canvas]').click();
+  await page.locator('#wbcontents [data-entry="@canvas"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
