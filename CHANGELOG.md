@@ -10,7 +10,26 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-16
 
+### Changed
+- **First visit to a canvas page lands focused on the first frame, and the default
+  canvas zoom is now 50%** (TODO.md 今日小修, owner 2026-08-16 拍板) — switching to a
+  page with no saved viewport used to scroll to the board's top-left origin
+  (`frameBoardInView` pad-minus-inset semantics), which often showed empty canvas;
+  now `focusFirstBoardFrame` centers the first section's first frame instantly
+  (`board-nav.js`, called from `preview-mount.afterMount` only when
+  `restorePageViewportAfterMount` finds nothing). Saved per-page viewports still win
+  on return visits. The zoom fallback in `zoomForPage` moves from `1` to `0.5`
+  (owner 体感: 100% makes iOS UI read oversized); pages with saved zooms keep them,
+  and the HUD label button still resets to 100% on demand.
+
 ### Added
+- **Pages rows carry an equal-width shell pill** (壳标 pill, owner 2026-08-16 拍板) —
+  the bare 12px shell icon becomes a 40px flat pill (icon + `iOS` / `Doc` mono label,
+  accent wash, no hairline) ahead of the page title, so canvas vs document pages read at
+  a glance. When the left sidebar is dragged below the new **230px compact breakpoint**
+  (`boot-prefs.applySideWidth` toggles `#wbside.compact`, mirroring the annotation
+  panel's 280 breakpoint), the pill collapses to an equal-width 20px icon-only block and
+  restores on the way back; the width preference persists as before.
 - **Doc pages mention live frames, with two-way annotation passthrough** (roadmap 阶段 5) —
   a doc page (HTML shell) can write `<div data-pinpoint-frame="<pageId>/<screenId>"></div>`
   in its body; the doc's annotate client hydrates each empty mount into an iframe at

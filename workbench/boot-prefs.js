@@ -28,6 +28,7 @@ export function initBootPrefs(deps) {
 
 var stage = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
+var sideEl = document.getElementById('wbside');
 var annSplitEl = document.getElementById('wbannsplit');
 var annSideEl = document.getElementById('wbann-side');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
@@ -35,12 +36,16 @@ var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
 var SIDE_W_DEFAULT = 250;
+// 左栏紧凑断点（2026-08-16b）：宽 < 230 时 Pages 壳标 pill 藏文字收纯图标块
+// （样式在 index.html #wbside.compact），拖回 ≥230 自动恢复。镜像右栏 ANN_W_COMPACT。
+var SIDE_W_COMPACT = 230;
 
 export function applySideWidth(px) {
   var w = Math.round(Math.max(SIDE_W_MIN, Math.min(SIDE_W_MAX, px)));
   wbSet({ sideWidth: w });
   document.documentElement.style.setProperty('--wb-side-w', w + 'px');
   if (splitEl) splitEl.setAttribute('aria-valuenow', String(w));
+  if (sideEl) sideEl.classList.toggle('compact', w < SIDE_W_COMPACT);
   return w;
 }
 
@@ -246,9 +251,13 @@ function migrateLegacyBoardModePrefs() {
   replacePrefs(next);
 }
 
+// 首访默认缩放（2026-08-16 TODO 小修，owner 体感拍板）：100% 下 iOS UI 显大
+// 不舒适，默认 50%；存档视口（pageViewports）始终优先于默认值。
+var DEFAULT_CANVAS_ZOOM = '0.5';
+
 function zoomForPage(pageId) {
   var vp = pageViewport(pageId);
-  return boardZoom((vp && vp.canvasZoom) || '1');
+  return boardZoom((vp && vp.canvasZoom) || DEFAULT_CANVAS_ZOOM);
 }
 
 export function snapshotPageViewport(pageId) {

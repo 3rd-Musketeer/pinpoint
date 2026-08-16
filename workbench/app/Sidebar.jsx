@@ -21,6 +21,8 @@
 // 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
 // Pages 变单一列表（本地页 + registry dir 条目同列），行内壳标记区分机壳/文档；
 // 壳形态由 modeForPage(activePageId) 派生，不再是独立状态。
+// 2026-08-16b 壳标升级：裸图标 → 等宽 pill（图标 + iOS/Doc 文字，accent 淡底）；
+// 左栏过 230 紧凑断点（boot-prefs applySideWidth 打 #wbside.compact）收纯图标块。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
@@ -119,10 +121,12 @@ function PageRow(props) {
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
-  // 行内壳标记（2026-08-16 阶段 2）：机壳页 smartphone / 文档页 file-text，
-  // 淡色 12px，不抢行的视觉重心；Component Library 系统行带机壳标。
+  // 行内壳标 pill（2026-08-16b）：等宽 40px，图标 + iOS/Doc 文字，accent 淡底
+  // 扁平无描边；左栏 < 230 紧凑断点收 20px 纯图标块（#wbside.compact，index.html）。
+  // Component Library 系统行恒 iOS。.wb-page-ico 类名是 e2e 契约，保留在图标上。
   var pageMode = system ? 'ios' : (page.mode || 'ios');
   var shellIcon = pageMode === 'html' ? 'file-text' : 'smartphone';
+  var shellKind = pageMode === 'html' ? 'doc' : 'ios';
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -186,8 +190,14 @@ function PageRow(props) {
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
           <Fragment>
-            <WbIcon name={shellIcon} size={12} className="wb-page-ico size-3 flex-none opacity-70" />
-            <span className="min-w-0 flex-1 truncate">{title}</span>
+            <span
+              className="wb-page-kind inline-flex h-[17px] w-[40px] flex-none items-center justify-center gap-[3px] rounded bg-[color:color-mix(in_srgb,var(--wb-accent)_9%,transparent)] font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]"
+              data-kind={shellKind}
+              title={shellKind === 'doc' ? '文档页' : 'iOS 机壳页'}>
+              <WbIcon name={shellIcon} size={11} className="wb-page-ico size-[11px] flex-none" />
+              <span className="wb-page-kind-t">{shellKind === 'doc' ? 'Doc' : 'iOS'}</span>
+            </span>
+            <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
           </Fragment>
         )}
       </button>

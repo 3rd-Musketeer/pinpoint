@@ -39,8 +39,8 @@ export const useWorkbenchStore = create((set) => ({
   lockFont: 'helvetica',
   clockMode: 'system',
   clockFixed: '9:41',
-  // canvas HUD（board-nav 写；CanvasHud 组件读）
-  canvasZoom: '1',
+  // canvas HUD（board-nav 写；CanvasHud 组件读；初始值 = 首访默认缩放 0.5）
+  canvasZoom: '0.5',
   // 导出 picker 对话框开关（decisions 2026-08-15d 单入口；CanvasHud 写，ExportPicker 读）
   exportPickerOpen: false,
   // 画布背景三态（grid 双线网格 / dots 圆点纸 / plain 空白；boot-prefs setStageBg 写）

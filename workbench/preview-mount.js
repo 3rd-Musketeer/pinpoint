@@ -4,6 +4,7 @@ import { wbGet } from './app/store.js';
 import { COMPONENTS_ID, pageBaseUrl } from './lib/page-url.js';
 import { wireExportControls } from './export-core.js';
 import {
+  focusFirstBoardFrame,
   frameBoardInView,
   rebuildSectionNavigator,
   scheduleMinimapUpdate
@@ -211,7 +212,7 @@ export function afterMount(panel, session) {
           var _a = annotateApi(); if (_a) _a.render();
           rebuildSectionNavigator(panel);
           mountDeps.wireLibraryScrollSpy();
-          if (!hadViewport) frameBoardInView(panel, { pageId: session.pageId });
+          if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
           scheduleAnnSnap();
           scheduleMinimapUpdate();
         });

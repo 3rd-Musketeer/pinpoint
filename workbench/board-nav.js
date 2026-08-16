@@ -425,6 +425,20 @@ export function focusWorkbenchFrame(groupId, screenId, options) {
   return true;
 }
 
+/* 首访落点（2026-08-16 TODO 小修，owner 拍板）：无存档视口时聚焦第一个有 frame
+   的 section 的第一帧（instant 居中），取代旧的「滚到板原点」（frameBoardInView
+   的 pad-inset 语义—— origin 左上角常常没有内容）。回访仍由 pageViewports
+   恢复：preview-mount afterMount 仅在 restore 返回 false 时调本函数。 */
+export function focusFirstBoardFrame() {
+  var model = refreshBoardNavigationModel();
+  var secs = (model && model.sections) || [];
+  for (var i = 0; i < secs.length; i++) {
+    var frames = secs[i].frames || [];
+    if (frames.length) return focusWorkbenchFrame(secs[i].id, frames[0].screenId, { smooth: false });
+  }
+  return false;
+}
+
 /* 大纲行点击的 focus 环反馈（decisions 2026-08-15c）：在 frame 机身上闪一圈
    accent 环（~1.1s CSS 动画），与标注卡 goToMark 的锚点 ann-flash 分工 ——
    卡定位闪锚点，大纲定位闪整机。 */

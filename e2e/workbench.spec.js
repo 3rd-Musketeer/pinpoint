@@ -41,6 +41,21 @@ async function dragAnnSplitter(page, dx) {
   await page.mouse.up();
 }
 
+// 左栏宽度（2026-08-16b 壳标 pill 紧凑断点）：#wbsplit 在左栏右缘，右拖 = 变宽。
+async function sideWidth(page) {
+  return page.locator('#wbside').evaluate((el) => Math.round(el.getBoundingClientRect().width));
+}
+
+async function dragSideSplitter(page, dx) {
+  const box = await page.locator('#wbsplit').boundingBox();
+  const cx = box.x + box.width / 2;
+  const cy = box.y + box.height / 2;
+  await page.mouse.move(cx, cy);
+  await page.mouse.down();
+  await page.mouse.move(cx + dx, cy, { steps: 12 });
+  await page.mouse.up();
+}
+
 async function readWbPrefs(page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')));
 }
@@ -73,7 +88,8 @@ test('manifest navigation survives rapid page switches and persists the winner',
   // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
   // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
   // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
-  await expect(page.locator('#wbpages .wb-page')).toHaveText([
+  // 行 = 壳标 pill（iOS/Doc 文字，2026-08-16b）+ 标题，两通道分别断言。
+  await expect(page.locator('#wbpages .wb-page .wb-page-t')).toHaveText([
     'Component Library',
     'Example Library',
     'Example HTML',
@@ -82,6 +98,9 @@ test('manifest navigation survives rapid page switches and persists the winner',
     'E2E Dir',
     'E2E Dir iOS',
     'E2E Mention Doc',
+  ]);
+  await expect(page.locator('#wbpages .wb-page .wb-page-kind-t')).toHaveText([
+    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc',
   ]);
 
   for (const [pageId, screenId] of [
@@ -111,8 +130,9 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
   // 模式 Seg 退役；本地页 + registry 条目混排（顺序 = 系统行 → _index → registry）。
   // 阶段 4：url 条目（E2E Site / E2E Proxy App）恒 doc 壳同列。
   // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
+  // 行 = 壳标 pill + 标题（2026-08-16b），两通道分别断言。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
-  await expect(page.locator('#wbpages .wb-page')).toHaveText([
+  await expect(page.locator('#wbpages .wb-page .wb-page-t')).toHaveText([
     'Component Library',
     'Example Library',
     'Example HTML',
@@ -122,8 +142,11 @@ test('Pages is one mixed list with per-page shell markers and no mode Seg', asyn
     'E2E Dir iOS',
     'E2E Mention Doc',
   ]);
+  await expect(page.locator('#wbpages .wb-page .wb-page-kind-t')).toHaveText([
+    'iOS', 'iOS', 'Doc', 'Doc', 'Doc', 'Doc', 'iOS', 'Doc',
+  ]);
 
-  // 行内壳标记：机壳页 smartphone / 文档页 file-text（12px 淡色，.wb-page-ico）。
+  // 行内壳标 pill（2026-08-16b）：等宽 40px 图标+文字；图标保 .wb-page-ico 契约。
   await expect(page.locator('#wbpages [data-vpage="components"] .wb-page-ico')).toHaveCount(1);
   await expect(page.locator('#wbpages [data-vpage="library"][data-page-mode="ios"] .wb-page-ico')).toHaveCount(1);
   await expect(page.locator('#wbpages [data-vpage="doc-library"][data-page-mode="html"] .wb-page-ico')).toHaveCount(1);
@@ -1049,6 +1072,9 @@ test('Frame Note renders below a frame and inline edits use the shared revision'
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
   await openWorkbench(page);
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  // 钉住 100% 缩放：本用例的 scrollTop 阈值断言依赖 zoom=1 的几何
+  // （2026-08-16 起首访默认缩放 50%，HUD label 单击 = 重置为 100%）。
+  await page.locator('#wbzoom-label').click();
 
   const toolbar = page.locator('#wbcanvas-hud');
   const minimapTool = page.locator('#wbminimap-wrap');
@@ -1685,4 +1711,60 @@ test('dragging the right splitter while collapsed expands the panel and follows 
   expect(await annPanelWidth(page)).toBe(260);
   await expect.poll(async () => (await readWbPrefs(page)).annPanelCollapsed).toBe(false);
   await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
+});
+
+test('first visit lands focused on the first frame at the 50% default zoom', async ({ page }) => {
+  // 2026-08-16 TODO 小修（owner 拍板）：首访（无 pageViewports 存档）切页/首屏
+  // 直接聚焦第一个 section 的第一个 frame；默认缩放 50%；回访仍恢复存档视口。
+  await openWorkbench(page);
+  await expect(page.locator('#wbzoom-label')).toHaveText('50%');
+  // 第一个 section = home，第一帧 = home 屏：首访即居中，不再停在板原点
+  await expectFocusedTarget(page, '[data-screen="home"] .ios-stage');
+  await expect.poll(() => page.evaluate(
+    () => getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom').trim()
+  )).toBe('0.5');
+
+  // 回访语义不变：手动挪走再切回，恢复的是存档位置而不是首访聚焦
+  await page.locator('#wbzoom-label').click(); // 100%（存档 zoom=1）
+  await page.locator('#wbpages [data-vpage="components"]').click();
+  await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
+  await page.locator('#wbpages [data-vpage="library"]').click();
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  await expect(page.locator('#wbzoom-label')).toHaveText('100%');
+});
+
+test('left sidebar kind pill collapses to icon-only below 230 and restores', async ({ page }) => {
+  await openWorkbench(page);
+  const side = page.locator('#wbside');
+  const kindText = page.locator('#wbpages [data-vpage="library"] .wb-page-kind-t');
+
+  // 默认 250：pill = 图标 + 文字，等宽 40px
+  expect(await sideWidth(page)).toBe(250);
+  await expect(side).not.toHaveClass(/compact/);
+  await expect(kindText).toBeVisible();
+  const fullWidths = await page.locator('#wbpages .wb-page-kind').evaluateAll(
+    (els) => els.map((el) => Math.round(el.getBoundingClientRect().width)));
+  expect(new Set(fullWidths).size).toBe(1);
+  expect(fullWidths[0]).toBe(40);
+
+  // 左拖 120：250 - 120 = 130 → clamp 200 < 230，pill 收 20px 纯图标块
+  await dragSideSplitter(page, -120);
+  expect(await sideWidth(page)).toBe(200);
+  await expect(side).toHaveClass(/compact/);
+  await expect(kindText).toBeHidden();
+  const compactWidths = await page.locator('#wbpages .wb-page-kind').evaluateAll(
+    (els) => els.map((el) => Math.round(el.getBoundingClientRect().width)));
+  expect(new Set(compactWidths).size).toBe(1);
+  expect(compactWidths[0]).toBe(20);
+
+  // 拖回 300 ≥ 230 自动恢复；reload 后偏好保持
+  await dragSideSplitter(page, 100);
+  expect(await sideWidth(page)).toBe(300);
+  await expect(side).not.toHaveClass(/compact/);
+  await expect(kindText).toBeVisible();
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await expect.poll(async () => (await readWbPrefs(page)).sideWidth).toBe(300);
+  await expect(side).not.toHaveClass(/compact/);
+  await expect(page.locator('#wbpages [data-vpage="library"] .wb-page-kind-t')).toBeVisible();
 });
