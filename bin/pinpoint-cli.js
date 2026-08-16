@@ -12,7 +12,7 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN } from '../server/lib/registry.js';
+import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../server/lib/registry.js';
 import { addRegistryEntry, listRegistryIds } from '../server/lib/registry-store.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
@@ -23,6 +23,9 @@ export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const BOARDS = new Set(['ios', 'html']);
+// 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page']);
+const BOOLEAN_FLAGS = new Set(['draft']);
 
 export class CliError extends Error {}
 
@@ -38,6 +41,9 @@ export const USAGE = `用法：
   --title X        显示名（默认：目录名 / 文件名 / hostname）
   --board X        workbench 壳：ios | html（默认 html；仅 dir 条目生效，file 恒 doc）
   --id xxx         显式 id（默认由名称 slug 派生，冲突自动追加 -2/-3；显式 id 冲突报错）
+  --page xxx       归属到既有 Page（本地 manifest 页或另一 registry 条目）：不再自成
+                   Pages 行，作为目标页「内容」区的 doc 条目出现（仅 dir/file；url 恒独立页）
+  --draft          搭配 --page：条目落目标页的草稿组（缺省落产物组）
   --registry 路径  覆盖 registry 文件位置
                   （默认 ~/.pinpoint/registry.json；亦可用 PINPOINT_REGISTRY 环境变量）
   -h, --help       显示本说明
@@ -59,22 +65,22 @@ export function parseArgs(argv) {
   const positional = [];
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
-    let name;
-    let value;
-    const inline = arg.startsWith('--') && arg.includes('=') ? arg.indexOf('=') : -1;
-    if (inline > 0) {
-      name = arg.slice(2, inline);
-      value = arg.slice(inline + 1);
-    } else if (arg.startsWith('--')) {
-      name = arg.slice(2);
-      value = args[++i];
-    } else {
+    if (!arg.startsWith('--')) {
       positional.push(arg);
       continue;
     }
-    if (!['title', 'board', 'id', 'registry'].includes(name)) {
+    const inline = arg.includes('=') ? arg.indexOf('=') : -1;
+    const name = inline > 0 ? arg.slice(2, inline) : arg.slice(2);
+    if (BOOLEAN_FLAGS.has(name)) {
+      // 布尔开关：不吃下一个 token，也不许 --draft=xxx 带值。
+      if (inline > 0) throw new CliError(`选项 --${name} 是开关，不带值`);
+      flags[name] = true;
+      continue;
+    }
+    if (!VALUE_FLAGS.has(name)) {
       throw new CliError(`未知选项：--${name}`);
     }
+    const value = inline > 0 ? arg.slice(inline + 1) : args[++i];
     if (value === undefined || value === '' || value.startsWith('--')) {
       throw new CliError(`选项 --${name} 缺少值`);
     }
@@ -105,11 +111,33 @@ function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);
 }
 
+/** 本地 manifest 页 id 列表（_index.local.json 优先，缺失回落 tracked _index.json；
+    与 workbench loadPageManifest 同源）。文件损坏时返回 []——页面归属校验随之
+    只认 registry 条目，报错比静默写坏 registry 好。 */
+export function localManifestPageIds(root = REPO_ROOT) {
+  for (const name of ['_index.local.json', '_index.json']) {
+    const file = path.join(root, 'previews', name);
+    if (!fs.existsSync(file)) continue;
+    try {
+      const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+      if (doc && Array.isArray(doc.pages)) {
+        return doc.pages.map((page) => page && page.id).filter((id) => typeof id === 'string');
+      }
+      return []; // 存在的 manifest 损坏 = 诚实空列表（workbench 同样会报错）
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
 /**
  * 由目标构造 registry 条目（纯函数 + fs 探测；不写盘）。
- * takenIds：现有条目 id 列表（供派生 id 避让与显式 id 查重）。
+ * takenIds：现有条目 id 列表（供派生 id 避让与显式 id 查重，同时是可归属的
+ * registry 页面名单）；pageIds：本地 manifest 页 id 名单（缺省读仓库
+ * previews/_index[.local].json，测试可注入）。
  */
-export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenIds = [] } = {}) {
+export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenIds = [], pageIds } = {}) {
   let kind;
   let absPath;
   let url;
@@ -177,10 +205,32 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenIds =
   }
   if (kind === 'dir') board = flags.board || 'html';
 
+  // 阶段 8（产物与草稿模型）：--page 把条目归属到既有 Page —— 不再自成 Pages
+  // 行，作为目标页「内容」区的 doc 条目出现；--draft 落草稿组（缺省产物组）。
+  if (flags.draft && !flags.page) {
+    throw new CliError('--draft 需要搭配 --page（草稿归属某个 Page 的草稿组）');
+  }
+  let page;
+  if (flags.page !== undefined) {
+    if (kind === 'url') {
+      throw new CliError('url 条目恒为独立页（经代理内嵌的网页产物），--page 只适用于目录 / 文件');
+    }
+    if (!PAGE_ID_PATTERN.test(flags.page)) {
+      throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
+    }
+    const resolvable = new Set([...(pageIds || localManifestPageIds()), ...takenIds]);
+    if (!resolvable.has(flags.page)) {
+      throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
+    }
+    page = flags.page;
+  }
+
   const entry = { id, title: flags.title || baseName, kind };
   if (kind === 'url') entry.url = url;
   else entry.path = absPath;
   if (board) entry.board = board;
+  if (page) entry.page = page;
+  if (flags.draft) entry.role = 'draft';
   return entry;
 }
 
@@ -276,6 +326,9 @@ export async function runAdd(argv, io = {}) {
   }
   const targetDesc = entry.kind === 'url' ? entry.url : entry.path;
   out(`已登记 ${entry.id}（${entry.kind}）：${targetDesc}`);
+  if (entry.page) {
+    out(`归属 Page「${entry.page}」的「内容」区${entry.role === 'draft' ? '草稿组' : '产物组'}；不新增 Pages 行。`);
+  }
   out(`registry：${plan.registryPath}`);
 
   // 即时生效：服务可达就让它重读 registry；不可达不视为失败（下次启动生效）。

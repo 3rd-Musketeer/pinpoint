@@ -11,6 +11,24 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-16
 
 ### Added
+- **CLI page attachment: `pinpoint add <path> --page <pageId> [--draft]`** (roadmap
+  阶段 8, decisions 08-16f) — a registry `dir`/`file` entry can now attach to an
+  existing Page instead of becoming one: it carries optional `page` (target page id)
+  and `role` (`product` default | `draft`) fields and appears as a doc entry in that
+  page's 「内容」 section (draft group with `--draft`). The CLI validates the target
+  before writing (a local manifest page or another registry entry id; unresolvable
+  targets are a loud error, never a silently broken registry), and rejects
+  `--page` for `url` entries (they are always standalone web-product pages) and
+  `--draft` without `--page`. Registry validation matches: `registry.js` passes
+  `page`/`role` through (skipping invalid shapes and the url+page combination),
+  `registry-store.js` strict-writes them and now rejects unknown entry keys outright.
+  On the workbench side, attached entries merge into the target board as synthesized
+  doc screens at load time (`withAttachedScreens` in `workbench/lib/board-entries.js`,
+  `src` = `sites/<id>/…` byte-identical to the synth-board canonical form), so the
+  reader, entry visibility, per-entry annotation buckets, and the row-level export
+  dialog all reuse the existing doc pipeline unchanged; `registry:update` now also
+  remounts the active board so `add`/removal reflects immediately. Deleting the
+  attached entry or its target page simply makes the row disappear — no dead rows.
 - **Contents section in the left sidebar: 产物 / 草稿 groups with entry-level type
   tags** (roadmap 阶段 7, decisions 08-16f, alignment base `previews/hierarchy-demo/`) —
   the sidebar's second layer is now the 「内容」区 (`#wbcontents`): a 产物 group (canvas

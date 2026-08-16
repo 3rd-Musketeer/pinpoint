@@ -304,6 +304,10 @@ pinpoint add /path/to/your-app/dist      # existing dir → kind "dir", hosted a
 pinpoint add ./report.html               # single .html/.htm file → kind "file"
 pinpoint add https://your-app.localhost  # http(s) URL → kind "url" (proxy-embedded; extension also works)
 pinpoint add ./dist --title "Your App" --board ios --id your-app
+pinpoint add ./draft.html --page weekly-review --draft
+                                         # attach to an existing page's 内容 section
+                                         # (draft group with --draft, product group without)
+                                         # instead of adding a Pages row
 ```
 
 The CLI derives the id from the basename (slugified; `-2` / `-3` appended on
@@ -316,6 +320,14 @@ scripts and tests never have to touch the real one). When the service is
 reachable it then calls `POST /registry/reload` and the entry takes effect
 without a restart — serving, injection, bucket routing, and the Pages list of
 any open workbench all pick it up; otherwise the entry activates on the next start.
+
+With `--page <pageId>` (2026-08-16f 阶段 8) the entry carries a `page` field and is
+**attached to an existing page** instead of becoming one: it shows up as a doc entry
+in that page's 「内容」 section (draft group with `--draft`, product group otherwise).
+The target must resolve — a local manifest page or another registry entry id; the CLI
+checks before writing and errors loudly otherwise. `url` entries are always
+standalone pages, so `--page` is rejected for them. Deleting the registry entry (or
+its target page) simply makes the row disappear — no dead rows, no sidebar errors.
 
 Registered `dir`/`file`/`url` entries appear as workbench pages; the board comes from
 `/sites/<id>/board.json` — a disk file when present, otherwise a synthesized doc

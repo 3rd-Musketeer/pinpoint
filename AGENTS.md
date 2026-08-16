@@ -64,7 +64,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `client/annotate.js` | The annotation client, served as `/annotate.js`; libs are inlined at serve time |
 | `client/frame-boot.js` | Preview-script runtime for `/api/frame` embed pages (form A/B contract; inlined into the served frame HTML) |
 | `client/lib/` | Client-only libs (hit test) inlined into `/annotate.js` |
-| `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url>`); pure logic + tests in `bin/pinpoint-cli.js` |
+| `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url> [--page id] [--draft]`); pure logic + tests in `bin/pinpoint-cli.js` |
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-api.js` (`/api/frame` mention embeds), `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
 | `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `frame-doc.js` (阶段 5: mention target resolution + frame page assembly + export snapshot), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
 | `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=&entry=` deep-link write side; read side is `resolveBootPageId` + `initBoard` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
@@ -230,7 +230,13 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 - Page id / title / order / default live in **`previews/_index.json`**; a gitignored
   `previews/_index.local.json` (same shape) overrides it for long-lived instances.
   Registry `dir`/`file`/`url` entries (except the workbench's own `pinpoint` entry) are appended
-  as pages from `GET /registry`: a dir entry's mode comes from its `board` field (default
+  as pages from `GET /registry` — unless the entry carries a `page` attachment field
+  (阶段 8), in which case it never becomes a row and instead merges into the target
+  page's board as a synthesized doc screen at load time (`withAttachedScreens` in
+  `workbench/lib/board-entries.js`: `src` = `sites/<id>/…`, the synth-board canonical
+  form; the「登记」section holds them; collisions suffix `-2`/`-3`). A dangling
+  attachment (deleted target page or deleted source entry) simply never merges —
+  the row disappears without errors. Other registry pages: a dir entry's mode comes from its `board` field (default
   `html`; a legacy `web` value normalizes to `html`), file entries are always `html`,
   url entries are always `html` (the live app embeds through the proxy);
   their board/screens load read-only from `/sites/<entry-id>/` (synthesized doc board when
@@ -324,10 +330,14 @@ else opens byte-identical pages with zero annotation surface.
 
 **Registry** (`server/lib/registry.js`): `~/.pinpoint/registry.json`,
 `PINPOINT_REGISTRY` overrides. Shape `{"version":1,"entries":[...]}`; entry
-`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?}`; id must match
+`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?}`; id must match
 `^[a-z0-9][a-z0-9-]*$` and be unique; `title` defaults to id; `board` (`ios`/`html`)
 only seeds a dir entry's board default shell (default/legacy `web` → `html`;
-`file` entries always open in the doc reader and carry no board). The entry `kind`
+`file` entries always open in the doc reader and carry no board). `page` +
+`role` ("product" default | "draft") are the 阶段 8 attachment fields: an entry
+with `page` does **not** become its own Pages row — it attaches to that page's
+「内容」区 as a doc entry (draft group when `role:"draft"`); `url` entries are
+always standalone pages, so `page` is invalid for them (skipped loudly). The entry `kind`
 also passes through to the workbench page manifest and onto board entries, so a
 `url` entry's document entry carries the 「网页」 type tag in the 「内容」区
 (2026-08-16f 阶段 7). A missing file means the default
@@ -338,16 +348,21 @@ visible on `GET /health` (registry summary — `entries` there is a **count**) a
 `GET /registry` (full `entries` list plus `service.directOrigin`).
 
 **Writes go through the CLI** (`bin/pinpoint.mjs`; `npm link` once for PATH):
-`pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx]`
+`pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]`
 atomically appends to the registry file (`--registry` overrides the path for
-scripts/tests). The write side lives in `server/lib/registry-store.js` — strict
-validation (unique id, legal kind, existing dir/file path, http(s) url), tmp+rename,
+scripts/tests). `--page` attaches the entry to an existing page instead of
+adding a Pages row; the target must resolve (a local manifest page or another
+registry entry id — checked before writing) and is rejected for `url` targets;
+`--draft` requires `--page` and lands the entry in the draft group. The write side lives in `server/lib/registry-store.js` — strict
+validation (unique id, legal kind, existing dir/file path, http(s) url, legal
+page/role, and unknown entry keys rejected), tmp+rename,
 2-space JSON. The store is also the server's live registry view: one instance is
 shared by the annotate/sites/export plugins (`vite.config.js`), and
 `POST /registry/reload` swaps the snapshot in place — the CLI calls it after a
 successful add when the service answers `/health`, so new entries serve, inject,
 and route buckets without a restart (open workbenches learn it via the HMR
-`registry:update` event; a static snapshot answers `409 registry_not_reloadable`).
+`registry:update` event — which also remounts the active board so attached
+entries appear/disappear immediately; a static snapshot answers `409 registry_not_reloadable`).
 
 **Delivery paths** (one client, `client/annotate.js` → `/annotate.js`):
 

@@ -77,11 +77,34 @@ test('addRegistryEntry: strict validation rejects and leaves the file untouched'
     [{ id: 'proto', kind: 'url', url: 'ftp://x.localhost' }, /http/],
     [{ id: 'badurl', kind: 'url', url: '://nope' }, /不合法/],
     [{ id: 'bb', kind: 'dir', path: site, board: 42 }, /board/],
+    // 阶段 8：page/role 字段校验 + 未知字段响亮拒绝
+    [{ id: 'p1', kind: 'dir', path: site, page: 42 }, /page 必须匹配/],
+    [{ id: 'p2', kind: 'dir', path: site, page: 'bad page!' }, /page 必须匹配/],
+    [{ id: 'p3', kind: 'url', url: 'https://x.localhost', page: 'library' }, /url 条目.*不能归属页面/],
+    [{ id: 'r1', kind: 'dir', path: site, role: 'wip' }, /role 必须是 product \/ draft/],
+    [{ id: 'u1', kind: 'dir', path: site, stage: 'x' }, /未知字段：stage/],
   ];
   for (const [raw, pattern] of cases) {
     assert.throws(() => addRegistryEntry(file, raw), pattern, JSON.stringify(raw));
   }
   assert.equal(fs.readFileSync(file, 'utf8'), before, 'failed adds never touch the file');
+});
+
+test('addRegistryEntry: page/role 合法组合落盘并原样透传', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const page = path.join(dir, 'draft.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
+  const entry = addRegistryEntry(file, { id: 'draft', kind: 'file', path: page, page: 'library', role: 'draft' });
+  assert.deepEqual(entry, { id: 'draft', kind: 'file', title: 'draft', path: page, page: 'library', role: 'draft' });
+  // 缺省不带 page/role 的条目字段面不变（不写死数据）
+  const plain = addRegistryEntry(file, { id: 'plain', kind: 'file', path: page });
+  assert.deepEqual(plain, { id: 'plain', kind: 'file', title: 'plain', path: page });
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.equal(doc.entries[0].page, 'library');
+  assert.equal(doc.entries[0].role, 'draft');
+  assert.equal('page' in doc.entries[1], false);
+  assert.equal('role' in doc.entries[1], false);
 });
 
 test('addRegistryEntry: a malformed existing file is an error, never clobbered', (t) => {

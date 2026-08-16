@@ -113,13 +113,21 @@
   紧凑断点改藏条目 tag。已知让渡：纯单 doc 页侧栏不再有任何导出 UI（管线与
   `window.workbench.exportDoc` 不变）——是否需要轻量入口留阶段 8 定夺。
 
-### 阶段 8：存量迁移 + CLI 归属
+### 阶段 8：存量迁移 + CLI 归属 —— **2026-08-16 已落地**
 
 - 价值：owner 自己的库变成新模型——周报板 delivered / polish 搬进产物 /
   草稿，my-todos 成为网页产物，新草稿可直接注册到既有 Page。
 - 内容：local boards 补 `role`（agent 代拟、owner 策展过目）；
   `pinpoint add` 加归属参数（`--page` / `--draft`）；registry url 条目收编。
 - 切开理由：数据搬家不改机制；机制稳定后才值得搬。
+- 落地备注：registry entry 新增可选字段 `page` / `role`（registry.js 宽容透传、
+  registry-store 严格校验 + 未知字段拒写）；CLI `--page` 写入前校验目标可解析
+  （本地 manifest 页或另一 registry 条目），url+`--page` 互斥、`--draft` 必须
+  搭配 `--page`；attach 条目在板装载时经 `withAttachedScreens` 合并成目标页
+  「登记」section 的合成 doc 屏（src = `sites/<id>/…` 规范形），阅读器 / 标注
+  分桶 / 条目行导出全复用 doc 管线，registry:update 增重摆当前板；悬空 = 条目
+  消失不留死行。存量迁移：weekly-review 的 polish 六屏标 draft、delivered 两屏
+  保持 product（owner-local excluded 内容，不进 commit）。
 
 ## 缓期（`.gdd/backlog.md`，owner-local）
 

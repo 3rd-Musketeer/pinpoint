@@ -270,7 +270,10 @@ export function showPageManifestError(error) {
     the workbench: previews-only then. Entries without their own board.json are
     still readable: the service synthesizes a doc board (lib/synth-board.js).
     阶段 4：url 条目也进 Pages（恒 doc 壳）—— 经同源代理嵌进阅读器，
-    与扩展注入并存（两条路径共用同一个 entry 标注桶）。 */
+    与扩展注入并存（两条路径共用同一个 entry 标注桶）。
+    阶段 8：带 page 字段的条目（pinpoint add --page）不进 Pages —— 它归属
+    既有 Page 的「内容」区，这里分流入 attached 列表（stage.js loadBoard 经
+    withAttachedScreens 合并成目标页的合成 doc 屏）。返回 { pages, attached }。 */
 function registrySitePages() {
   return queryClient.fetchQuery({
     queryKey: ['registry-sites'],
@@ -282,28 +285,29 @@ function registrySitePages() {
         })
         .then(function (data) {
           var entries = (data && data.entries) || [];
-          return entries
-            .filter(function (entry) {
-              return entry && (entry.kind === 'dir' || entry.kind === 'file' || entry.kind === 'url') && entry.id !== 'pinpoint';
-            })
-            .map(function (entry) {
-              return {
-                id: entry.id,
-                title: entry.title || entry.id,
-                // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
-                // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
-                // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
-                // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
-                mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
-                // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
-                // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）。
-                kind: entry.kind,
-                site: true
-              };
+          var attached = [];
+          var pages = [];
+          entries.forEach(function (entry) {
+            if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
+            if (entry.page) { attached.push(entry); return; }
+            pages.push({
+              id: entry.id,
+              title: entry.title || entry.id,
+              // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
+              // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
+              // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
+              // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
+              mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
+              // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
+              // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）。
+              kind: entry.kind,
+              site: true
             });
+          });
+          return { pages: pages, attached: attached };
         });
     }
-  }).catch(function () { return []; });
+  }).catch(function () { return { pages: [], attached: [] }; });
 }
 
 export function loadPageManifest() {
@@ -329,10 +333,14 @@ export function loadPageManifest() {
       return registrySitePages().then(function (sitePages) {
         var known = {};
         manifest.pages.forEach(function (page) { known[page.id] = true; });
-        sitePages.forEach(function (page) {
+        sitePages.pages.forEach(function (page) {
           if (known[page.id]) return; // a previews page with the same id wins
           manifest.pages.push(page);
         });
+        // 阶段 8：attach 条目（registry 带 page 字段）随 manifest 走——
+        // stage.js loadBoard 经 withAttachedScreens 把归属本页的条目合并成
+        // 合成 doc 屏；目标页不存在时条目自然悬空（不合并、不出行、不报错）。
+        manifest.attached = sitePages.attached;
         wbSet({ pageManifest: manifest });
         return manifest;
       });

@@ -20,9 +20,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry } from './registry.js';
+import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from './registry.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url']);
+const WRITE_ROLES = new Set(['product', 'draft']);
+// 写入白名单（2026-08-16f 阶段 8 起含 page/role）：未知字段响亮拒绝，
+// 不静默丢数据（写坏 registry 比报错难查得多）。
+const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role']);
 
 /** Atomic JSON write: tmp sibling + rename, 2-space layout, trailing newline. */
 export function writeRegistryFile(registryPath, doc) {
@@ -35,6 +39,9 @@ export function writeRegistryFile(registryPath, doc) {
 /** Strict validation of one entry about to be written. Returns an error message or null. */
 export function validateNewEntry(raw, existingIds) {
   if (!raw || typeof raw !== 'object') return '条目必须是对象';
+  for (const key of Object.keys(raw)) {
+    if (!WRITE_KEYS.has(key)) return `条目 "${raw.id}" 带未知字段：${key}`;
+  }
   if (typeof raw.id !== 'string' || !ENTRY_ID_PATTERN.test(raw.id)) {
     return `条目 id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${JSON.stringify(raw.id)}`;
   }
@@ -68,6 +75,18 @@ export function validateNewEntry(raw, existingIds) {
   if (raw.board !== undefined && typeof raw.board !== 'string') {
     return `条目 "${raw.id}" 的 board 必须是字符串`;
   }
+  // 阶段 8：page 归属（作为目标 Page 的 doc 条目进「内容」区，不再自成 Pages
+  // 行）。url 条目恒为独立页（网页产物），与 page 互斥；目标页可解析性
+  // （本地 manifest 页或另一 registry 条目）由 CLI 在写入前校验。
+  if (raw.page !== undefined) {
+    if (typeof raw.page !== 'string' || !PAGE_ID_PATTERN.test(raw.page)) {
+      return `条目 "${raw.id}" 的 page 必须匹配 ${PAGE_ID_PATTERN}`;
+    }
+    if (raw.kind === 'url') return `条目 "${raw.id}" 是 url 条目，不能归属页面（url 恒为独立页）`;
+  }
+  if (raw.role !== undefined && !WRITE_ROLES.has(raw.role)) {
+    return `条目 "${raw.id}" 的 role 必须是 product / draft`;
+  }
   return null;
 }
 
@@ -77,6 +96,8 @@ function normalizeNewEntry(raw) {
   if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
   else entry.url = raw.url;
   if (typeof raw.board === 'string') entry.board = raw.board;
+  if (typeof raw.page === 'string') entry.page = raw.page;
+  if (typeof raw.role === 'string') entry.role = raw.role;
   return entry;
 }
 

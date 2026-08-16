@@ -174,6 +174,29 @@ test('resolve returns the entry by id and null for unknown ids', (t) => {
   assert.equal(registry.resolve('missing'), null);
 });
 
+test('阶段 8：page/role 透传；非法 page/role 与 url+page 组合跳过并报告', (t) => {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'draft.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
+  const file = writeRegistry(dir, {
+    version: 1,
+    entries: [
+      { id: 'attached', kind: 'file', path: page, page: 'library', role: 'draft' },
+      { id: 'bad-page', kind: 'file', path: page, page: 42 },
+      { id: 'bad-role', kind: 'dir', path: dir, role: 'wip' },
+      { id: 'url-attached', kind: 'url', url: 'https://x.localhost', page: 'library' },
+    ],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, false);
+  assert.equal(registry.errors.length, 3);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['attached']);
+  assert.equal(registry.resolve('attached').page, 'library');
+  assert.equal(registry.resolve('attached').role, 'draft');
+  assert.match(registry.errors[2], /url.*cannot attach/);
+});
+
 test('PINPOINT_REGISTRY overrides the default registry path', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {

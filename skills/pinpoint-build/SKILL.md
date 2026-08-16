@@ -194,9 +194,11 @@ pinpoint add /abs/path/to/your-app/dist --title "Your App" --board ios
 
 CLI 会从目录名派生 id（slug 化，冲突自动追加 `-2`/`-3`；`--id` 显式指定且冲突时报错而不是覆盖），原子写入 `~/.pinpoint/registry.json`（`--registry` / `PINPOINT_REGISTRY` 覆盖文件位置），并在服务可达时自动 `POST /registry/reload`——**不用重启服务**；服务没跑则下次启动生效。单个 `.html` 文件同理（kind `file`，只 serve 该文件，恒 doc 壳，`--board ios` 会被拒）；SPA / 自己起服务的应用登记 URL（kind `url`）——阶段 4 起它经同源代理以 doc 壳嵌进 workbench Pages（活应用 iframe 阅读器，标注照常；机制与盲区见 [pinpoint-annotate](../pinpoint-annotate/SKILL.md) §2），不经浏览器扩展也能标。
 
+**归属既有 Page（2026-08-16f 阶段 8）**：`pinpoint add ./draft.html --page <pageId> [--draft]` 让条目**不自成 Pages 行**——它作为目标页「内容」区的 doc 条目出现（`--draft` 落草稿组，缺省落产物组；role 缺省 product）。`<pageId>` 必须可解析（本地 manifest 页或另一 registry 条目 id，CLI 直接校验，不可解析响亮报错）；url 条目恒为独立页，`--page` 与之互斥。典型场景：在别的项目写完一页草稿 HTML，直接登记进既有线程页当草稿。阅读器 / 标注（落条目自己的桶）/ 导出（条目行 hover 钮）全部复用 doc 管线；从 registry 删掉该条目即从侧栏消失，不留死行。
+
 - 服务把该目录**只读** serve 在 `https://pinpoint.localhost/sites/your-app/`：registry 即白名单，未知 id / `..` 穿越 / symlink 逃逸一律 404；目录回落 `index.html`。
 - HTML 响应在 `</body>` 前自动注入 `window.__pinpointEntry='your-app'` + `/annotate.js`；`?annotate=off` 原样输出磁盘字节（导出管线和 workbench 内联加载走它）。
-- 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先）。`board` 字段选壳：`ios` / `html`，缺省 `html`（残留 `web` 归一到 `html`）。
+- 该 entry 自动成为 workbench 页面（跳过 workbench 自己的 `pinpoint` entry；`previews/` 里同 id 的页面优先；**带 `page` 归属字段的条目例外**——它不进 Pages，而是并入目标页的「内容」区，见上）。`board` 字段选壳：`ios` / `html`，缺省 `html`（残留 `web` 归一到 `html`）。
 - 页面结构仍由它自己的 `board.json` + screens 决定（从 `/sites/<id>/board.json` 拉取）——schema 与本仓页面完全相同，编辑对象是登记目录里的磁盘文件，serve 只读不影响改稿。**没有 `board.json` 也能打开**：服务合成 doc 阅读板，目录顶层每个 `*.html` 一屏（侧栏切版本）；磁盘 `board.json` 一旦补上立即优先。要机壳画布（`board:"ios"`）则必须手写 `board.json`。
 - 标注落在 `~/.pinpoint/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
 - 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页（CLI 触发的 reload 会让打开的 workbench 自动刷新 Pages）。

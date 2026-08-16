@@ -11,7 +11,13 @@ import os from 'node:os';
 import path from 'node:path';
 
 export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+// 归属目标 Page id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts
+// ID_PATTERN）与 registry 条目 id 都落在该模式内。
+export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 const KINDS = new Set(['dir', 'file', 'url']);
+// 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
+// （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
+const ROLES = new Set(['product', 'draft']);
 
 export function defaultRegistryPath() {
   return path.join(os.homedir(), '.pinpoint', 'registry.json');
@@ -34,6 +40,17 @@ function validateEntry(raw, seen) {
   if (raw.kind === 'url' && typeof raw.url !== 'string') {
     return `entry "${raw.id}" kind "url" requires a url`;
   }
+  // 阶段 8：page 归属（attach 到既有 Page 的「内容」区，不再自成 Pages 行）。
+  // url 条目恒为独立页（代理内嵌的网页产物），与 page 互斥。
+  if (raw.page !== undefined) {
+    if (typeof raw.page !== 'string' || !PAGE_ID_PATTERN.test(raw.page)) {
+      return `entry "${raw.id}" page must match ${PAGE_ID_PATTERN}`;
+    }
+    if (raw.kind === 'url') return `entry "${raw.id}" kind "url" cannot attach to a page`;
+  }
+  if (raw.role !== undefined && !ROLES.has(raw.role)) {
+    return `entry "${raw.id}" role must be "product" or "draft"`;
+  }
   return null;
 }
 
@@ -46,6 +63,8 @@ function normalizeEntry(raw) {
   if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
   else entry.url = raw.url;
   if (typeof raw.board === 'string') entry.board = raw.board;
+  if (typeof raw.page === 'string') entry.page = raw.page;
+  if (typeof raw.role === 'string') entry.role = raw.role;
   return entry;
 }
 

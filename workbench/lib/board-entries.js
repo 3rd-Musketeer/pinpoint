@@ -10,6 +10,11 @@
 // （画布 / 文档 / 网页 —— 网页 = registry url 条目，kind 经 manifest page.kind
 // 透传，withEntryWeb 打 entry.web 显示标记）；contentsModel 给出侧栏「内容」区的
 // 产物/草稿分组与坍缩规则。Page 行不再带任何类型信息。
+// 2026-08-16f 阶段 8（CLI 归属）：registry 条目带 page 字段 = attach 到既有
+// Page——不再自成 Pages 行，withAttachedScreens 在板装载时把它合并成目标页的
+// 合成 doc 屏（src 指向 /sites/<id>/…，与 synth-board 的规范形逐字节一致），
+// 条目派生 / 显隐 / 导出 / 标注分桶全部复用既有 doc 屏管线。目标页被删或 attach
+// 源被删 = 合并不发生、条目随之消失，不留死行。
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
 /* 画布条目 id 用 '@canvas'：screen id 契约是 /^[a-zA-Z0-9_-]+$/（preview-contracts
@@ -28,14 +33,18 @@ export function boardEntries(board) {
   ((board && board.sections) || []).forEach(function (sec) {
     (sec.screens || []).forEach(function (sc) {
       if (screenShellOf(sc) === 'doc') {
-        docEntries.push({
+        var entry = {
           id: sc.id,
           kind: 'doc',
           role: sc.role === 'draft' ? 'draft' : 'product',
           title: sc.title || sc.id,
           section: sec.title || sec.id,
           sectionId: sec.id
-        });
+        };
+        // 阶段 8：registry attach 进来的合成 doc 屏（withAttachedScreens 打标）——
+        // 它不是本页自己的内容，withEntryWeb 不给它打「网页」tag。
+        if (sc.attached) entry.attached = true;
+        docEntries.push(entry);
       } else {
         hasCanvas = true;
       }
@@ -86,11 +95,12 @@ export var ENTRY_TAG_LABELS = { canvas: '画布', doc: '文档', web: '网页' }
 
 /** 网页产物标记：registry url 条目的 kind 经 pages.js 透传到 manifest page.kind，
     这里再落到条目 —— url 页的每个 doc 条目都是活网页产物（tag「网页」）。
-    只加显示标记（entry.web），行为派生（kind / form / 屏显隐）一律不变。 */
+    只加显示标记（entry.web），行为派生（kind / form / 屏显隐）一律不变。
+    阶段 8：attach 进来的条目（entry.attached）不是 url 页自己的内容，不打标。 */
 export function withEntryWeb(entries, pageKind) {
   if (pageKind !== 'url' || !entries || !entries.length) return entries;
   return entries.map(function (e) {
-    return e.kind === 'doc' && e.role === 'product' ? Object.assign({}, e, { web: true }) : e;
+    return e.kind === 'doc' && e.role === 'product' && !e.attached ? Object.assign({}, e, { web: true }) : e;
   });
 }
 
@@ -135,4 +145,68 @@ export function canvasBoard(board) {
     return sec.id === '_empty' || sec.screens.length > 0;
   });
   return { sections: sections };
+}
+
+/* ---- 阶段 8：registry attach 条目合并 --------------------------------------
+   registry 条目带 page 字段（pinpoint add --page）= 归属到既有 Page：不自成
+   Pages 行，而是在板装载时合并成目标页末尾的合成 doc 屏（「登记」section），
+   条目派生 / 阅读器 / 导出 / 标注分桶全部复用 doc 屏既有管线。src 规范形与
+   server/lib/synth-board.js 逐字节一致（file → sites/<id>/<percent-encode 文件名>，
+   dir → sites/<id>/），iframe URL 与标注 page key 因此不错位。 */
+
+export var ATTACHED_SECTION_ID = '_attached';
+
+/** attach 条目 → doc 屏 src（契约规范形，无前导斜杠）；不可合成的 kind 返回 null。 */
+export function attachedEntrySrc(entry) {
+  if (!entry) return null;
+  if (entry.kind === 'file') {
+    var basename = String(entry.path || '').split('/').pop();
+    return basename ? 'sites/' + entry.id + '/' + encodeURIComponent(basename) : null;
+  }
+  if (entry.kind === 'dir') return 'sites/' + entry.id + '/';
+  return null; // url 条目恒为独立页（registry 校验已拦 page 组合），这里诚实跳过
+}
+
+/** 板 + attach 条目列表 → 合并后的板（无归属本页的条目时原样返回）。
+    屏 id = registry 条目 id，与板内既有屏撞名时追加 -2/-3；section id 同理。 */
+export function withAttachedScreens(board, attached, pageId) {
+  var list = (attached || []).filter(function (entry) {
+    return entry && entry.page === pageId;
+  });
+  if (!list.length) return board;
+  var takenScreens = {};
+  var takenSections = {};
+  ((board && board.sections) || []).forEach(function (sec) {
+    takenSections[sec.id] = true;
+    (sec.screens || []).forEach(function (sc) { takenScreens[sc.id] = true; });
+  });
+  var screens = [];
+  list.forEach(function (entry) {
+    var src = attachedEntrySrc(entry);
+    if (!src) return;
+    var id = entry.id;
+    for (var n = 2; takenScreens[id]; n++) id = entry.id + '-' + n;
+    takenScreens[id] = true;
+    screens.push({
+      id: id,
+      title: entry.title || entry.id,
+      note: '',
+      shell: 'doc',
+      role: entry.role === 'draft' ? 'draft' : 'product',
+      src: src,
+      attached: true
+    });
+  });
+  if (!screens.length) return board;
+  var sectionId = ATTACHED_SECTION_ID;
+  for (var m = 2; takenSections[sectionId]; m++) sectionId = ATTACHED_SECTION_ID + '-' + m;
+  return Object.assign({}, board, {
+    sections: (board.sections || []).concat([{
+      id: sectionId,
+      title: '登记',
+      layout: 'column',
+      shell: 'doc',
+      screens: screens
+    }])
+  });
 }

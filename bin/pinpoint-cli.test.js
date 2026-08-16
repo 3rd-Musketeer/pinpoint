@@ -9,6 +9,7 @@ import {
   buildEntry,
   CliError,
   deriveId,
+  localManifestPageIds,
   parseArgs,
   planAdd,
   requestJson,
@@ -55,6 +56,22 @@ test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs(['add', '/a', '--title']), /缺少值/);
   assert.throws(() => parseArgs(['add', '/a', '--title', '--id', 'x']), /缺少值/);
   assert.throws(() => parseArgs(['add', '/a', '--id=']), /缺少值/);
+});
+
+test('parseArgs: 阶段 8 的 --page（值选项）与 --draft（布尔开关）', () => {
+  assert.deepEqual(parseArgs(['add', '/tmp/x', '--page', 'weekly-review', '--draft']), {
+    command: 'add',
+    target: '/tmp/x',
+    flags: { page: 'weekly-review', draft: true },
+  });
+  assert.deepEqual(parseArgs(['add', '/tmp/x', '--page=library']).flags, { page: 'library' });
+  // 布尔开关不吃下一个 token（positional 仍是目标），也不许带 =值
+  assert.deepEqual(parseArgs(['add', '--draft', '/tmp/x']), {
+    command: 'add', target: '/tmp/x', flags: { draft: true },
+  });
+  assert.throws(() => parseArgs(['add', '/x', '--draft=yes']), /开关，不带值/);
+  assert.throws(() => parseArgs(['add', '/x', '--page']), /缺少值/);
+  assert.throws(() => parseArgs(['add', '/x', '--page', '--draft']), /缺少值/);
 });
 
 test('parseArgs: -h/--help short-circuits', () => {
@@ -136,6 +153,52 @@ test('buildEntry: a name that cannot slugify needs an explicit --id', (t) => {
   const site = makeSite(dir, '看板');
   assert.throws(() => buildEntry(site, {}, { cwd: dir }), /--id 显式指定/);
   assert.equal(buildEntry(site, { id: 'kanban' }, { cwd: dir }).id, 'kanban');
+});
+
+/* ---- 阶段 8：--page / --draft ---- */
+
+test('buildEntry: --page 归属既有页（本地 manifest 页或另一 registry 条目），--draft 落 role', (t) => {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'Variant.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>v</body></html>');
+  // 本地 manifest 页
+  assert.deepEqual(
+    buildEntry(page, { page: 'weekly-review', draft: true }, { cwd: dir, pageIds: ['weekly-review'] }),
+    { id: 'variant', title: 'Variant.html', kind: 'file', path: page, page: 'weekly-review', role: 'draft' },
+  );
+  // 另一 registry 条目（经 takenIds）；不带 --draft 不落 role 字段
+  const product = buildEntry(page, { page: 'e2e-dir' }, { cwd: dir, takenIds: ['e2e-dir'] });
+  assert.equal(product.page, 'e2e-dir');
+  assert.equal('role' in product, false);
+});
+
+test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir);
+  const page = path.join(dir, 'v.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>v</body></html>');
+  // url 条目恒为独立页
+  assert.throws(
+    () => buildEntry('https://x.localhost', { page: 'library' }, { cwd: dir, pageIds: ['library'] }),
+    /url 条目恒为独立页/,
+  );
+  // --draft 必须搭配 --page
+  assert.throws(() => buildEntry(page, { draft: true }, { cwd: dir }), /--draft 需要搭配 --page/);
+  // 不可解析的目标页响亮拒绝（不静默写坏 registry）
+  assert.throws(
+    () => buildEntry(page, { page: 'ghost-page' }, { cwd: dir, pageIds: ['library'], takenIds: ['e2e-dir'] }),
+    /目标页不可解析：ghost-page/,
+  );
+  // 非法 page id 形状
+  assert.throws(() => buildEntry(page, { page: 'bad page!' }, { cwd: dir }), /--page 必须匹配/);
+  // dir 条目同样可归属
+  assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
+});
+
+test('localManifestPageIds: 读真实仓库 manifest（tracked 模板页恒在）', () => {
+  const ids = localManifestPageIds();
+  assert.ok(Array.isArray(ids));
+  assert.ok(ids.includes('library'), 'tracked 模板页 library 必在');
 });
 
 /* ---- resolveRegistryPath / planAdd ---- */
@@ -247,6 +310,29 @@ test('runAdd: store-level write failure exits 1', async (t) => {
   assert.equal(code, 1);
   assert.ok(rec.err.some((line) => /登记失败/.test(line)));
   assert.equal(fs.readFileSync(file, 'utf8'), '{ broken');
+});
+
+test('runAdd: --page --draft 写入归属字段并提示分组', async (t) => {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'Draft.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
+  const rec = recorder();
+  const file = path.join(dir, 'registry.json');
+  const requestFn = () => Promise.reject(new Error('down'));
+  // 目标页 = tracked 模板页 library（CLI 读真实仓库 manifest 解析）
+  const code = await runAdd(['add', page, '--page', 'library', '--draft', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
+  assert.equal(code, 0);
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const entry = doc.entries.find((e) => e.id === 'draft');
+  assert.equal(entry.page, 'library');
+  assert.equal(entry.role, 'draft');
+  assert.ok(rec.out.some((line) => /归属 Page「library」.*草稿组/.test(line)));
+  // 不可解析页整单失败，registry 不动
+  const before = fs.readFileSync(file, 'utf8');
+  const bad = await runAdd(['add', page, '--page', 'nope', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
+  assert.equal(bad, 1);
+  assert.ok(rec.err.some((line) => /目标页不可解析/.test(line)));
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
 });
 
 test('requestJson: real HTTP round-trip against a loopback server, timeout on a hung one', async (t) => {

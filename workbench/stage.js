@@ -24,6 +24,7 @@ import {
   resetBoardNavOnLoadFailure
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
+import { withAttachedScreens } from './lib/board-entries.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import { wireFrameNoteEditors } from './frame-notes.js';
 import {
@@ -106,6 +107,9 @@ async function loadBoard(panel, pageId) {
       allowComponentRefs: pageId === COMPONENTS_ID,
       defaultShell: defaultShellForPage(wbGet().pageManifest, pageId)
     });
+    // 阶段 8：registry attach 条目（pinpoint add --page）合并成合成 doc 屏，
+    // 下游（条目派生 / 屏显隐 / 导出 / 标注分桶）全部复用 doc 屏既有管线。
+    board = withAttachedScreens(board, wbGet().pageManifest && wbGet().pageManifest.attached, pageId);
     var entries = [];
     var seen = {};
     (board.sections || []).forEach(function (sec) {
@@ -562,9 +566,16 @@ if (import.meta.hot) {
   });
   // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
   // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages。
+  // 阶段 8：attach 条目在板装载时合并进目标页 —— manifest 重拉后重摆当前板，
+  // add/remove --page 条目即时反映到「内容」区（目标页不是当前页时，下次切页
+  // 自然合并，无需全量重载）。
   import.meta.hot.on('registry:update', function () {
     queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
-    loadPageManifest();
+    loadPageManifest().then(function () {
+      if (!boardPanel || !wbGet().activePageId) return;
+      snapshotPageViewport(wbGet().activePageId);
+      loadBoard(boardPanel, wbGet().activePageId);
+    });
   });
 }
 
