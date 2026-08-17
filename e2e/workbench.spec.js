@@ -75,7 +75,7 @@ async function withinContainerViolations(page, childSel, containerSel) {
     document.querySelectorAll(c).forEach((el) => {
       const r = el.getBoundingClientRect();
       if (r.left < pr.left - 0.5 || r.right > pr.right + 0.5) {
-        const label = el.getAttribute('data-copy-page') || el.getAttribute('data-vpage') ||
+        const label = el.getAttribute('data-vpage') ||
           el.getAttribute('data-entry') || el.tagName;
         out.push(label + ' right=' + Math.round(r.right) + ' container right=' + Math.round(pr.right));
       }
@@ -218,12 +218,11 @@ test('doc entry rows export full HTML, no-css HTML, and long PNG (2026-08-16f �
   test.setTimeout(60_000);
   await openWorkbench(page);
   // 多文档页（e2e-dir，cards + doc 两个产物条目）：「内容」区出产物组条目行，
-  // doc 导出入口 = 条目行 hover 浮现的 icon 钮（旧 #wbdoc-versions 头部钮已退役）。
+  // doc 导出入口 = 条目行右键菜单（2026-08-17 hover icon 钮退役）。
   await page.locator('#wbpages [data-vpage="e2e-dir"]').click();
-  const exportBtn = page.locator('#wbcontents [data-entry-export="doc"]');
   await expect(page.locator('#wbcontents [data-entry="doc"]')).toBeVisible();
-  await page.locator('#wbcontents [data-entry="doc"]').hover();
-  await exportBtn.click();
+  await page.locator('#wbcontents [data-entry="doc"]').click({ button: 'right' });
+  await page.locator('[data-entry-export="doc"]').click();
   const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[name="comments"]')).toBeVisible();
@@ -262,6 +261,65 @@ test('doc entry rows export full HTML, no-css HTML, and long PNG (2026-08-16f �
   expect(png.suggestedFilename()).toBe('e2e-dir__doc@2x.png');
   const pngBuf = await fs.readFile(await png.path());
   expect(pngBuf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
+});
+
+test('sidebar rows expose locator copy / rename / export via right-click menu (2026-08-17)', async ({ page, context }) => {
+  // 行级动作全部在右键菜单（行尾 hover 钮已退役）：Pages 行 = 复制 @page +
+  // 重命名（系统页无重命名）；产物 doc 条目 = 复制 @frame + 导出；画布条目 =
+  // 复制 @page；frame 树行 = 复制 @frame。复制项点击后菜单保持打开并显示
+  // 「已复制 <全文>」（行上无可见元素，菜单是复制反馈的唯一落点）。
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
+  await openWorkbench(page);
+  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
+  const readClip = () => page.evaluate(() => navigator.clipboard.readText());
+
+  // Page 行：复制 @page；同一开着的菜单里再点重命名 → 行内输入框出现
+  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click({ button: 'right' });
+  const pageCopy = page.locator('[data-copy-page="e2e-mixed"]');
+  await expect(pageCopy).toBeVisible();
+  // 几何断言：菜单必须真的渲染在视口内（DOM 存在 ≠ 肉眼可见 —— 全局 popper
+  // 置惰规则曾把菜单压到 body 末尾、视口之外，DOM 断言全绿；2026-08-17 实测）。
+  const vp = page.viewportSize();
+  const menuBox = await page.locator('[role="menu"]').boundingBox();
+  expect(menuBox.x).toBeGreaterThanOrEqual(0);
+  expect(menuBox.y).toBeGreaterThanOrEqual(0);
+  expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(vp.width);
+  expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(vp.height);
+  await pageCopy.click();
+  await expect(pageCopy).toContainText('已复制 @page:e2e-mixed');
+  await expect.poll(readClip).toBe('@page:e2e-mixed');
+  await page.locator('[data-rename-page="e2e-mixed"]').click();
+  await expect(page.locator('.wb-page-rename')).toBeVisible();
+  await page.keyboard.press('Escape');
+
+  // 系统页（Component Library，id = components）：复制项在、重命名项不在
+  await page.locator('#wbpages [data-vpage="components"]').click({ button: 'right' });
+  await expect(page.locator('[data-copy-page="components"]')).toBeVisible();
+  await expect(page.locator('[data-rename-page]')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  // 产物 doc 条目：复制 @frame 后菜单仍开着，同菜单点「导出…」开对话框
+  await page.locator('#wbcontents [data-entry="spec"]').click({ button: 'right' });
+  await page.locator('[data-copy-frame="e2e-mixed/spec"]').click();
+  await expect.poll(readClip).toBe('@frame:e2e-mixed/spec');
+  await page.locator('[data-entry-export="spec"]').click();
+  const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-mixed / 设计说明');
+  await dialog.locator('.wb-export-close').click();
+
+  // 画布条目：复制 @page（画布 = 页面默认视图，@frame 语法不覆盖它）
+  await page.locator('#wbcontents [data-entry="@canvas"]').click({ button: 'right' });
+  await page.locator('[data-copy-page="e2e-mixed"]').click();
+  await expect.poll(readClip).toBe('@page:e2e-mixed');
+  await page.keyboard.press('Escape');
+
+  // frame 树行：复制 @frame
+  await page.locator('#wboutline [data-ol-frame="home"]').click({ button: 'right' });
+  await page.locator('[data-copy-frame="e2e-mixed/home"]').click();
+  await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
+  await page.keyboard.press('Escape');
 });
 
 test('doc entry exports with comments: mark boxes HTML, no-css text, and long PNG (2026-08-16f 阶段 7)', async ({ page }) => {
@@ -331,9 +389,9 @@ test('doc entry exports with comments: mark boxes HTML, no-css text, and long PN
       return Array.isArray(doc.annotations) ? doc.annotations.length : 0;
     }, DOC_FRAME)).toBe(2);
 
-    // 条目行 hover 导出钮开对话框（DocVersions 头部「导出」已随阶段 7 退役）
-    await page.locator('#wbcontents [data-entry="doc"]').hover();
-    await page.locator('#wbcontents [data-entry-export="doc"]').click();
+    // 条目行右键菜单开导出对话框（2026-08-17 hover icon 钮退役）
+    await page.locator('#wbcontents [data-entry="doc"]').click({ button: 'right' });
+    await page.locator('[data-entry-export="doc"]').click();
     const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-dir / Doc');
@@ -1830,18 +1888,18 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 
   // 左栏：混合板页（产物条目带 tag），默认 250 与紧凑 200 两档——
-  // Page 行、行尾 copy 钮、内容区条目行全部在栏内
+  // Page 行、内容区条目行全部在栏内（2026-08-17 行尾钮随右键菜单退役）
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   expect(await sideWidth(page)).toBe(250);
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
-  expect(await withinContainerViolations(page, '.wb-page-copy', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 
   await dragSideSplitter(page, -120);
   expect(await sideWidth(page)).toBe(200);
   await expect(page.locator('#wbside')).toHaveClass(/compact/);
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
-  expect(await withinContainerViolations(page, '.wb-page-copy', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 });

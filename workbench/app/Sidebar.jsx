@@ -30,6 +30,11 @@
 //    延伸线几何 CSS 仍在 index.html（.wb-outline 系）。
 //  - 坍缩规则（lib/board-entries.js contentsModel）：纯单 doc 屏页整区不出现；
 //    单网页条目页仍出行（tag 是类型信息的唯一落点）；混合页条目行全出。
+// 2026-08-17 行级动作收编右键菜单（owner 决定）：Pages 行 / 条目行 / frame
+// 树行的 locator 复制、doc 导出、页面重命名统一进 app/row-menu.jsx 的右键
+// 菜单；行尾 hover 钮（copy / 导出 icon）退役，行宽全部还给标题，窄栏也不再
+// 有行尾元素被裁切的面。菜单项 data 契约：data-copy-page / data-copy-frame /
+// data-entry-export / data-rename-page（e2e 选择器）。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
@@ -57,6 +62,7 @@ import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
 import { Seg } from './Seg.jsx';
 import { WbIcon } from './WbIcon.jsx';
+import { RowMenu } from './row-menu.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 import { Input } from './ui/input.jsx';
@@ -123,36 +129,18 @@ function SideHead() {
   );
 }
 
-function copyPageId(id, done) {
-  var text = '@page:' + String(id || '').trim();
-  if (!id) return;
-  if (navigator.clipboard && navigator.clipboard.writeText) {
-    navigator.clipboard.writeText(text).then(done).catch(function () { /* ignore */ });
-    return;
-  }
-  var ta = document.createElement('textarea');
-  ta.value = text;
-  ta.style.cssText = 'position:fixed;left:-9999px;top:0';
-  document.body.appendChild(ta);
-  ta.select();
-  try {
-    if (document.execCommand('copy')) done();
-  } catch (e) { /* ignore */ }
-  ta.remove();
-}
-
 function PageRow(props) {
   var page = props.page;
   var system = !!props.system;
   var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
   var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
   var [renaming, setRenaming] = useState(false);
-  var [copied, setCopied] = useState(false);
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
-  // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题 + hover copy 钮；壳标 pill
-  // 与 data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
+  // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题；壳标 pill 与
+  // data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
+  // 2026-08-17：行尾 hover copy 钮退役，复制 / 重命名进右键菜单（row-menu）。
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -186,7 +174,20 @@ function PageRow(props) {
     }
   }
 
+  var menuItems = [
+    { kind: 'copy', label: '复制 @page', text: '@page:' + page.id,
+      attr: { 'data-copy-page': page.id } }
+  ];
+  if (!system) {
+    menuItems.push({
+      kind: 'action', label: '重命名', icon: 'pencil',
+      onSelect: function () { doneRef.current = false; setRenaming(true); },
+      attr: { 'data-rename-page': page.id }
+    });
+  }
+
   return (
+    <RowMenu items={menuItems}>
     <div className="wb-page-row group flex min-w-0 items-stretch gap-0.5" data-page-system={system ? '1' : undefined}>
       <button type="button"
         data-vpage={page.id} data-page-system={system ? '1' : undefined}
@@ -218,26 +219,8 @@ function PageRow(props) {
           <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
         )}
       </button>
-      <Button type="button" variant="ghost"
-        className={cn(
-          'wb-page-copy h-auto w-7 flex-none self-stretch rounded-md px-0 py-0 text-muted-foreground',
-          'opacity-0 transition-[opacity,color,background-color] duration-150 group-hover:opacity-100 focus-visible:opacity-100',
-          copied && 'ok bg-accent text-[color:var(--wb-ok)] hover:text-[color:var(--wb-ok)]'
-        )}
-        data-copy-page={page.id}
-        aria-label={'Copy @page:' + page.id}
-        title={copied ? 'Copied @page:' + page.id : 'Copy @page:' + page.id}
-        onClick={function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          copyPageId(page.id, function () {
-            setCopied(true);
-            setTimeout(function () { setCopied(false); }, 1200);
-          });
-        }}>
-        <WbIcon name="link" size={12} className="size-3" />
-      </Button>
     </div>
+    </RowMenu>
   );
 }
 
@@ -300,7 +283,11 @@ function FrameTree(props) {
               var n = counts[k] || 0;
               var on = focusKey === k;
               return (
-                <button key={f.id} type="button"
+                <RowMenu key={f.id} items={[
+                  { kind: 'copy', label: '复制 @frame', text: '@frame:' + props.pageId + '/' + f.id,
+                    attr: { 'data-copy-frame': props.pageId + '/' + f.id } }
+                ]}>
+                <button type="button"
                   className={cn('ol-row', on && 'on')}
                   data-ol-frame={f.id} data-state={on ? 'on' : undefined}
                   title={f.ref + ' ' + f.title}
@@ -310,6 +297,7 @@ function FrameTree(props) {
                   <span className="nm">{f.title}</span>
                   {n ? <span className={cn('ol-n', warns[k] && 'warn')}>{n}</span> : null}
                 </button>
+                </RowMenu>
               );
             })}
           </div>
@@ -320,15 +308,29 @@ function FrameTree(props) {
 }
 
 /* 条目行（2026-08-16f 阶段 7）：产物行 = 标题 + 类型 tag（data-tag），草稿行 =
-   纯标题（草稿恒为整页 HTML，无 tag）。doc 条目行带 hover 浮现的导出 icon 钮
-   （复用 PageRow copy 钮模式），点击 = 该行的文档导出对话框（export-core
-   openDocExportDialog(screenId)，不切换选中条目）。 */
+   纯标题（草稿恒为整页 HTML，无 tag）。2026-08-17 起行级动作进右键菜单
+   （hover icon 钮退役）：doc 条目 = 复制 @frame + 导出（export-core
+   openDocExportDialog(screenId)，不切换选中条目）；画布条目 = 复制 @page
+   （画布即页面的默认视图，@frame 语法不覆盖它）。 */
 function EntryRow(props) {
   var entry = props.entry;
   var on = !!props.on;
   // 草稿行不打类型 tag（草稿恒为整页 HTML，无类型维度）
   var tagKey = entry.role === 'draft' ? null : entryTag(entry);
+  var menuItems = entry.kind === 'doc'
+    ? [
+        { kind: 'copy', label: '复制 @frame', text: '@frame:' + props.pageId + '/' + entry.id,
+          attr: { 'data-copy-frame': props.pageId + '/' + entry.id } },
+        { kind: 'action', label: '导出…', icon: 'export-image',
+          onSelect: function () { openDocExportDialog(entry.id); },
+          attr: { 'data-entry-export': entry.id } }
+      ]
+    : [
+        { kind: 'copy', label: '复制 @page', text: '@page:' + props.pageId,
+          attr: { 'data-copy-page': props.pageId } }
+      ];
   return (
+    <RowMenu items={menuItems}>
     <div className="wb-entry-row group flex min-w-0 items-stretch gap-0.5">
       <button type="button"
         data-entry={entry.id} data-state={on ? 'on' : undefined}
@@ -342,24 +344,8 @@ function EntryRow(props) {
           <span className={ENTRY_TAG} data-tag={tagKey}>{ENTRY_TAG_LABELS[tagKey]}</span>
         ) : null}
       </button>
-      {entry.kind === 'doc' ? (
-        <Button type="button" variant="ghost"
-          className="wb-entry-export h-auto w-7 flex-none self-stretch rounded-md px-0 py-0 text-muted-foreground opacity-0 transition-[opacity,color,background-color] duration-150 group-hover:opacity-100 focus-visible:opacity-100"
-          data-entry-export={entry.id}
-          aria-label="导出文档" title="导出文档"
-          onClick={function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            openDocExportDialog(entry.id);
-          }}>
-          <WbIcon name="export-image" size={12} className="size-3" />
-        </Button>
-      ) : (
-        // 画布条目没有行内动作，但保留尾部槽位 —— 所有产物行的 tag 对齐成一条
-        // 纵列（doc 行的 hover 导出钮占同一槽），且不被侧栏右缘裁切。
-        <span className="w-7 flex-none self-stretch" aria-hidden="true"></span>
-      )}
     </div>
+    </RowMenu>
   );
 }
 
@@ -390,13 +376,14 @@ function Contents() {
 
   var productRows = model.productRows.map(function (entry) {
     var rows = [
-      <EntryRow key={entry.id} entry={entry} on={!!current && current.id === entry.id} />
+      <EntryRow key={entry.id} entry={entry} pageId={activePageId}
+        on={!!current && current.id === entry.id} />
     ];
     // 画布条目展开（选中）时 frame 树挂在其行下（收编旧大纲；不再是独立 section）
     if (entry.id === CANVAS_ENTRY_ID && treeOpen) {
       rows.push(
         <div key="canvas-tree" className="wb-entry-tree ms-[7px]">
-          <FrameTree refs={refs} />
+          <FrameTree refs={refs} pageId={activePageId} />
         </div>
       );
     }
@@ -415,14 +402,14 @@ function Contents() {
         ) : null}
         {!model.productRows.length && treeOpen ? (
           // 纯画布页：条目行坍缩，frame 树直接挂区头下
-          <FrameTree refs={refs} />
+          <FrameTree refs={refs} pageId={activePageId} />
         ) : null}
         {model.drafts.length ? (
           <div className="wb-entry-group flex flex-col gap-px" data-group="draft">
             <div className={GROUP_HEAD}>草稿</div>
             {model.drafts.map(function (entry) {
               return (
-                <EntryRow key={entry.id} entry={entry}
+                <EntryRow key={entry.id} entry={entry} pageId={activePageId}
                   on={!!current && current.id === entry.id} />
               );
             })}

@@ -85,14 +85,14 @@ test('混合板：点文档行 stage 变阅读器，点「画布」行回画布'
   await expect.poll(() => page.url()).not.toContain('entry=');
 });
 
-test('混合板：条目行 hover 导出钮对任意 doc 条目开对话框（画布选中态同样可用）', async ({ page }) => {
+test('混合板：条目行右键菜单对任意 doc 条目开导出对话框（画布选中态同样可用）', async ({ page }) => {
   await openMixed(page);
   const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
 
-  // 画布条目选中态（stage = ios）：旧形态里导出钮静默无反应；现在产物文档行的
-  // hover 导出钮直接对该条目开对话框，不切换选中。
-  await page.locator('#wbcontents [data-entry="spec"]').hover();
-  await page.locator('#wbcontents [data-entry-export="spec"]').click();
+  // 画布条目选中态（stage = ios）：旧形态里导出钮静默无反应；产物文档行的
+  // 右键菜单「导出…」直接对该条目开对话框，不切换选中（2026-08-17 hover 钮退役）。
+  await page.locator('#wbcontents [data-entry="spec"]').click({ button: 'right' });
+  await page.locator('[data-entry-export="spec"]').click();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-mixed / 设计说明');
   expect(await stageForm(page)).toBe('ios');
@@ -101,8 +101,8 @@ test('混合板：条目行 hover 导出钮对任意 doc 条目开对话框（�
   await expect(dialog).toBeHidden();
 
   // 草稿条目同样可导（草稿恒为整页 HTML，走同一 doc 导出管线）。
-  await page.locator('#wbcontents [data-entry="draft-variants"]').hover();
-  await page.locator('#wbcontents [data-entry-export="draft-variants"]').click();
+  await page.locator('#wbcontents [data-entry="draft-variants"]').click({ button: 'right' });
+  await page.locator('[data-entry-export="draft-variants"]').click();
   await expect(dialog).toBeVisible();
   await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-mixed / 气泡三手感');
   await dialog.locator('.wb-export-close').click();

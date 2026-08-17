@@ -195,6 +195,7 @@ logic to individual screen fragments.
 | Register / verify a registry dir or url entry | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 | Export Frame images via the picker | [`README.md`](README.md#export-frame-images) |
+| 故障排查（怪现象先查案例库再动手） | [`debugging.md`](debugging.md) |
 
 ## Vendored 组件已知内部契约
 
@@ -213,7 +214,15 @@ logic to individual screen fragments.
   不靠点击）。
 - **DropdownMenu（`app/frame-menu.jsx`）**：Radix Popper 会包一层定位 wrapper，
   组件只管行为，皮肤/几何在 `index.html` CSS 里中和（"Popper wrapper
-  neutralized there"，见仓库地图 frame-menu 条目）。
+  neutralized there"，见仓库地图 frame-menu 条目）。置惰规则 2026-08-17 起
+  收敛为 `[data-radix-popper-content-wrapper]:has(> .wb-frame-menu)` —— 全局
+  写法会把同样走 Popper 定位的右键菜单（`app/row-menu.jsx`，侧栏行的
+  locator 复制 / 导出 / 重命名）和 Tooltip 一并压成 static，菜单渲染在视口
+  之外：DOM 断言全绿但肉眼不可见。新增 Popper 系组件时先确认这条规则的
+  作用域；防回归 = e2e 右键用例的视口几何断言。
+
+本表记组件的**静态契约**；完整故障案例（现象 → 误判 → 根因 → 识别特征）
+归 [`debugging.md`](debugging.md)，排查怪现象先翻那里。
 
 Component includes support `data-text` → `[data-ios-slot="text"]` plus named
 `data-slot-<name>` → `[data-ios-slot="<name>"]`. Use named slots when two screens share one

@@ -12,8 +12,8 @@
 // V3 换皮（goal-20260811-workbench-visual-rebuild）：皮肤收编 Tailwind 类 + token，
 // index.html 的 .wb-frame-menu*/trigger 旧规则删除（class 名保留作 e2e 契约钩子）。
 // trigger = Button tool variant 族（白面发丝浮钮，data-state=open 给 hover 同档
-// 活跃态）；面板 = 浮层白面 + 发丝边 + --wb-sh-3 + r-4；项 = 34px 行 + r-3 +
-// hover/focus-visible --wb-hover 浅面，图标 muted。
+// 活跃态）；面板 = 浮层白面 + 发丝边 + --wb-sh-3 + r-4；项皮肤 2026-08-17 起
+// 与侧栏行右键菜单共用（app/row-menu.jsx 的 ROW_MENU_ITEM）。
 // 每个 frame 的 shell 一个 React root：shell 由命令式层（export-core）随板面重建
 // 创建，本模块登记 roots；sweepFrameMenus() 卸载 shell 已游离（板面重建）的 root，
 // 防止 DismissableLayer 的 document 监听泄漏。命令式层经 initExportCore(deps)
@@ -25,13 +25,7 @@ import { createRoot } from 'react-dom/client';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { wbGet } from './store.js';
 import { Button } from './ui/button.jsx';
-
-// 菜单项皮肤：12px semibold 行，hover/focus 走 --wb-hover 浅面
-var MENU_ITEM =
-  'flex min-h-[34px] w-full cursor-pointer items-center gap-[9px] rounded-lg border-0 ' +
-  'bg-transparent px-[9px] text-left font-sans text-[12px] font-semibold text-foreground ' +
-  'transition-colors duration-150 hover:bg-accent focus-visible:bg-accent ' +
-  '[&_svg]:text-muted-foreground';
+import { ROW_MENU_ITEM } from './row-menu.jsx';
 
 var mounted = []; // { shell, root }
 
@@ -63,7 +57,7 @@ function FrameMenu(props) {
         <span role="menu" tabIndex={-1}
           className="wb-frame-menu absolute right-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
           <DropdownMenu.Item asChild onSelect={function (event) { event.preventDefault(); copyFrameRef(); }}>
-            <button type="button" className={'wb-frame-menu-item ' + MENU_ITEM} role="menuitem" data-frame-copy>
+            <button type="button" className={'wb-frame-menu-item ' + ROW_MENU_ITEM} role="menuitem" data-frame-copy>
               <span aria-hidden="true" className="w-[15px] text-center text-muted-foreground">@</span>
               <span data-frame-menu-label className="min-w-0 truncate">{copiedText ? '已复制 ' + copiedText : '复制 @frame'}</span>
             </button>

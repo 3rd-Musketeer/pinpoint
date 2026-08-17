@@ -644,8 +644,12 @@
      Tailwind 类）—— 此处只留 shell 几何与 popper 置惰规则。 */
   /* Radix DropdownMenu 的 popper 包装层置惰（P3）：菜单几何由 .wb-frame-menu 的
      绝对定位拥有 —— .wb-library 是 transform:scale 空间，JS 量测定位在缩放 ≠1
-     时必错位；!important 压过 Radix 写在内联 style 里的 position/transform。 */
-  [data-radix-popper-content-wrapper] { position:static !important; transform:none !important; min-width:0 !important; }
+     时必错位；!important 压过 Radix 写在内联 style 里的 position/transform。
+     2026-08-17 收敛到 :has(> .wb-frame-menu)：这条规则曾经是全局的，会把同样
+     走 popper 定位的右键菜单（app/row-menu.jsx）/ Tooltip 一并压成 static ——
+     菜单渲染在 body 末尾、视口之外，DOM 断言全绿但肉眼不可见（实测踩过）。
+     置惰只服务画布缩放空间里的 frame 菜单，别放回全局。 */
+  [data-radix-popper-content-wrapper]:has(> .wb-frame-menu) { position:static !important; transform:none !important; min-width:0 !important; }
   /* export dialog（导出图片/导出文档两型共用 .wb-export-*）：原生 dialog，标记在
      export-core.js 的 HTML 字符串里（不进 Tailwind 扫描源）—— 手写 CSS 全 token
      化（V3）：模态档 --wb-r-dialog + --wb-sh-4 + --wb-side 面（popover 语义）；

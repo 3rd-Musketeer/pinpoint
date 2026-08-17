@@ -100,9 +100,9 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     expect(ledger.annotations.map((a) => a.content)).toContain('attached draft mark');
     await expect(page.locator('#wbann-list')).toContainText('attached draft mark');
 
-    // 导出：草稿条目行 hover 钮开对话框（目标标签 = 目标页 / 条目标题）。
-    await draftRow.hover();
-    await page.locator('#wbcontents [data-entry-export="' + ATTACHED_ID + '"]').click();
+    // 导出：草稿条目行右键菜单开对话框（目标标签 = 目标页 / 条目标题）。
+    await draftRow.click({ button: 'right' });
+    await page.locator('[data-entry-export="' + ATTACHED_ID + '"]').click();
     const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
     await expect(dialog).toBeVisible();
     await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-dir / E2E 归属草稿');

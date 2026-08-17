@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-17b | 行级动作放哪 + 右键菜单不可见 + hardcase 知识收集 | 行级动作统一进右键菜单（纯右键无 hover 档）；Popper 置惰收敛 `:has(> .wb-frame-menu)`；`debugging.md` 排查案例库成文（首批 6 条） | — | 现行 |
 | 2026-08-17 | 复制按钮被裁出栏外 + vendored 组件摩擦是否系统性 | 是系统性：布局断言一律比 bounding box 不靠点击（`withinContainerViolations`）；vendored 组件已知内部契约成文（AGENTS.md 小节 + 组件头注）；登记处长到 5+ 条再评估契约测试 | — | 现行 |
 | 2026-08-16g | 文档模式 grilling 三问 + 下一轮 arc 暂缓 | 「canvas 即文档」显式否决（维持 doc 条目 + mention embed）；屏前自用优先，embed 导出烤图已在线不新建；doc 正文 pin 标注允许（重申 08-16e）；text-range 选词高亮缓期；下一轮深化 arc 等真实任务激活 | 重申 08-16b / 08-16e | 现行（arc 缓期） |
 | 2026-08-16f | 第二轮对象模型：Page = 线程容器，产物 + 草稿 | Page 去类型化（pill 撤到产物条目）；页内容 = 产物（画布/文档/网页，可多个）+ 草稿（整页 HTML）；草稿与产物无机制耦合；DocVersions 层级退役（多屏 doc 拆扁平条目）；url 条目 = 网页产物；画布裸帧明确不做；词汇：禁用自造词「册」 | 修订 08-16b 五阶段地图（Pages 壳标语义） | 现行（方向拍定，实现见 ROADMAP 阶段 6–8） |
@@ -36,6 +37,16 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-17b · 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文
+
+**Decided**（owner 2026-08-17 提案确认，浏览器实测验收后批准提交）：
+
+- **行级动作统一进右键菜单**（`workbench/app/row-menu.jsx`，Radix ContextMenu），行尾 hover 钮全退役，行宽全部还给标题。动作按行类型分发：Pages 行 = 复制 `@page:` + 重命名（系统页 Component Library 无重命名）；doc/草稿条目 = 复制 `@frame:` + 导出…；画布条目 = 复制 `@page:`（画布即页面默认视图，`@frame` 语法不覆盖它）；frame 树行 = 复制 `@frame:`。**纯右键、不留 hover ⋯ 折中档**——owner 判词「不占 list 位置」；工具用户 = owner 自己 + agent，发现性成本一次性。复制项点击后菜单保持打开、标签换「已复制 <全文>」（行上无可见元素，菜单是复制反馈的唯一落点）。菜单项皮肤与 frame-menu 共用一份常量，不再各抄。
+- **Popper 置惰规则收敛到 `:has(> .wb-frame-menu)`**：08-10 为 frame 菜单写的全局置惰（`.wb-library` 是 scale 空间，JS 量测定位必错位）把新右键菜单一并压成 static——菜单渲染在 body 末尾、视口之外，DOM 断言在四种环境全绿但肉眼不可见，owner 报「完全不弹出」。排查经诊断页（裸 DOM / Radix / 错误三区）定位：Radix 在 owner 浏览器正常，问题只出工作台主程序；截图 + 菜单祖先链 bounding box 读出 rect 在视口外。防回归 = e2e 右键用例的视口几何断言（菜单 bounding box 必须在视口内）。
+- **`debugging.md` 排查案例库成文**（owner 问「有没有地方收集这种 hardcase」后批准）：条目格式 = 现象（检索入口）/ 误判路径 / 根因 / 修复 / 识别特征 / 防回归。分工——decisions.md 记「为什么这么决定」，AGENTS.md vendored 小节记组件静态契约，debugging.md 记故障完整链路；新案例追加在顶部。首批 6 条（Popper 置惰、ScrollArea 裁切、frame-menu dismiss 连锁、两条 e2e flake、dev-server fallback 嵌套、扩展 ⌘R）。
+
+**Why**: locator 复制是 owner 与 agent 协作的高频动作，但行尾钮常驻占 28px 且是窄栏溢出问题的发生面；右键菜单一次解决两者。Popper 误伤是「规则作用域比意图大」的跨组件隐性耦合（08-10 的规则被 08-17 才存在的组件继承），同类问题第二次出现（首次 = ScrollArea），故案例库成文、把「现象 → 识别特征」的模式匹配沉淀下来。
 
 ## 2026-08-17 · 布局断言比几何不靠点击 + vendored 组件内部契约成文
 

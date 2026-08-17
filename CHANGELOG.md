@@ -10,7 +10,36 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-17
 
+### Added
+- **Sidebar row context menus** (owner 2026-08-17 决定, decisions 08-17b) — all
+  row-level actions moved into a unified right-click menu (new
+  `workbench/app/row-menu.jsx`, Radix ContextMenu; skin shared with
+  `frame-menu.jsx` via a single `ROW_MENU_ITEM`). Pages rows offer 复制 @page
+  plus 重命名 (the system Component Library row is copy-only), doc/draft entries
+  offer 复制 @frame plus 导出…, the canvas entry offers 复制 @page, and
+  frame-tree rows offer 复制 @frame. The trailing hover buttons are retired:
+  rows give the full width back to titles, and narrow sidebars no longer clip
+  trailing controls. Copy items keep the menu open and swap the label to
+  已复制 <full text> — with no visible element left on the row, the menu is the
+  only feedback surface.
+- **`debugging.md` 排查案例库** — a hardcase ledger (现象 → 误判路径 → 根因 →
+  识别特征 → 防回归) for failure-pattern matching during future debug sessions;
+  seeded with six cases (Popper neutralization, ScrollArea clipping, frame-menu
+  dismiss chaining, two e2e flakes, dev-server fallback nesting, extension
+  ⌘R). Routed from `AGENTS.md`'s skill table and the vendored-contracts section.
+
 ### Fixed
+- **Right-click menu rendered outside the viewport** (global Popper
+  neutralization misfire) — `index.html`'s
+  `[data-radix-popper-content-wrapper] { position:static !important }` rule,
+  written for the canvas frame menu (the `.wb-library` scale space breaks JS
+  measurement), also neutralized the new sidebar context menu: it opened in the
+  DOM but laid out at the end of `<body>`, below the viewport, and swallowed
+  the browser's default menu via `preventDefault` — "nothing happens at all".
+  DOM-presence assertions passed everywhere (four environments), which is the
+  same click-vs-geometry blind spot as the ScrollArea case. The rule is now
+  scoped to `:has(> .wb-frame-menu)`, and the right-click e2e case carries a
+  viewport geometry assertion so invisible-but-mounted menus fail loudly.
 - **Page-row copy button clipped out of the sidebar** (Radix ScrollArea internal
   contract) — the ScrollArea viewport wraps its children in an inline
   `display:table; min-width:100%` div, so sidebar rows laid out at their natural
