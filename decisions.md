@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-17g | Pages 列表变长后怎么找回正在做的页（时间显示 + 排序）；「最近更新」含不含标注 | `/registry` 附内容 mtime（dir 递归 walk，跳 dot/node_modules；url 无）；PageRow 行尾相对时间（紧凑断点隐藏）；段头排序钮循环 默认 → 最近更新 → 名称（prefs.pageSort）；「最近更新」= 仅内容改动，标注活动是另一个排序档（backlog） | — | 现行 |
 | 2026-08-17f | areta-chat-eval 失效条目怎么处理 + owner-local kit 组件归属 | 条目重指 `repos/dev/areta-eval/legacy/eval-platform-preview`（该目录自述「pinpoint 只负责挂载、标注和导出」，v2 标注账本重新对上）；组件归属 = 维持 kit 集中（time-dashboard 跨 topic 共享证伪 page-local 模型），成文边界：通用进 kit、单页专用内联、fork/多机才启动 page-local 解析 | 关闭 backlog 两条 | 现行 |
 | 2026-08-17e | 注入契约不统一（previews 手工接线 vs registry 自动注入）+ previews 是否继续存放实例 | 契约统一：serve 即注入覆盖 previews 完整文档；registry 补全（note 写回 / dir HMR / 桥重绑）；实例全部迁出 previews/（owning topic playground + registry 登记），previews/ 收敛纯模板 | 落实 08-16g「serve 即注入即标」到 previews 路径；backlog「实例搬迁」「registry note 写回」「registry HMR」三条关闭 | 现行 |
 | 2026-08-17d | title 杂乱（说明文字挤进 title）怎么治 + note 放哪 | title 规矩成文（单行短名词短语，禁手写编号 / 禁「·」拼接，契约拦换行 + caption 两行截断）；section note 新字段落地；画布点选模型（cap 选 frame / 大标题选 section / 空白清选中）；note 收编右栏 detail 面板、不再上画布不进导出（注入随导出重构另立） | 修订 08-15d（note 导出永随语义） | 现行 |
@@ -41,6 +42,17 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-17g · Pages 时间显示 + 排序；「最近更新」= 仅内容改动
+
+**Decided**（owner 2026-08-17 提出「给 page 加上时间显示 & 排序方法」，方案讨论后确认；「最近更新包含标注更新吗」一问 owner 裁决「内容更新」）：
+
+- **时间来源 = 文件系统 mtime，server 实时算**（`server/lib/content-mtime.js`）：`GET /registry` 给 dir/file 条目附 `mtime`（ms epoch）——file = 文件自身；dir = 递归 walk 取最大（文件与目录都计入，目录 mtime 捕获删除类变化；跳 dot 名与 node_modules，不跟随 symlink，visit 上限 5000）。url 条目与缺失路径无此字段。否决两个候选：registry 加 addedAt 字段（内容编辑不会更新它，字段会撒谎）；客户端 last-visited（跨机不一致，「打开过」≠「有更新」——若真实需求浮出，那是第三个排序档的事）。
+- **「最近更新」语义 = 仅内容改动，标注活动不参与**（owner 裁决）。机制理由：迭代主循环「标注 → agent 改 HTML」里内容 mtime 必然跳动，纯标注是唯一漏网活动；且从 bucket slug（filename + 路径 hash，无时间戳）反推 entry 的映射复杂度与收益不成比例。「最近活跃（含标注）」档的做法已存 backlog（`/save` 时维护 entry → lastActivityAt 索引），等真实体感启动。
+- **排序 = Pages 段头右侧排序钮，三档循环**：默认（书写顺序，Component Library 系统行恒置顶）→ 最近更新（mtime 倒序，无 mtime 按原相对顺序沉底）→ 名称（标题 localeCompare 'zh'）；选择持久化 `prefs.pageSort`。默认档保持现状，不擅自改变肌肉记忆。纯函数在 `workbench/lib/page-sort.js`（sortPages / formatRelativeTime / nextPageSort）。
+- **时间显示 = PageRow 行尾 mono 小字相对时间**（`刚刚` / `Nm` / `Nh` / `Nd` / `MM-DD` / 跨年 `YYYY-MM-DD`；每分钟重算），完整时间进 hover title；无 mtime 的页（url 条目 / 本地示例页）不出该元素；紧凑断点（<230px）与条目 tag 同规则整枚隐藏。本地两个示例页 v1 不补 mtime（示例资产，不参与日常找页）。
+
+**Why**: 列表已长到 22 条且继续增长，「找回正在做的页」是日常痛点；mtime 实时算永远是对的、零 bookkeeping，是唯一不会撒谎的时间源。一档排序只回答一个问题，语义混叠（更新 vs 活跃）从源头避免。
 
 ## 2026-08-17f · areta-chat-eval 条目重指 + 组件归属边界成文
 

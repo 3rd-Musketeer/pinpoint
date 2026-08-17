@@ -35,6 +35,10 @@
 // 菜单；行尾 hover 钮（copy / 导出 icon）退役，行宽全部还给标题，窄栏也不再
 // 有行尾元素被裁切的面。菜单项 data 契约：data-copy-page / data-copy-frame /
 // data-entry-export / data-rename-page（e2e 选择器）。
+// 2026-08-17g（Pages 时间与排序）：PageRow 行尾出内容 mtime 的相对时间
+// （lib/page-sort.js formatRelativeTime；无 mtime 的页不出）；Pages 段头右侧
+// 排序钮循环 default → 最近更新 → 名称（lib/page-sort.js sortPages，持久化
+// prefs.pageSort）。语义 = 内容文件改动，标注活动不参与。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
@@ -58,6 +62,13 @@ import {
 } from '../lib/board-entries.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
 import { boardRefs } from '../lib/board-refs.js';
+import {
+  PAGE_SORT_LABELS,
+  formatRelativeTime,
+  nextPageSort,
+  normalizePageSort,
+  sortPages
+} from '../lib/page-sort.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
 import { Seg } from './Seg.jsx';
@@ -218,20 +229,37 @@ function PageRow(props) {
         ) : (
           <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
         )}
+        {/* 2026-08-17g：内容 mtime 的行内相对时间（mono 小字，视觉语言同
+            条目 tag 但无底色；完整时间进 hover title）。无 mtime 的页
+            （url 条目 / 本地示例页）不出此元素；紧凑断点整枚隐藏
+            （index.html #wbside.compact 规则）。 */}
+        {!renaming && page.mtime ? (
+          <span className="wb-page-time flex-none font-[var(--wb-font-mono)] text-[9px] leading-none text-[color:var(--wb-faint)]"
+            data-page-time={page.id}
+            title={new Date(page.mtime).toLocaleString('zh-CN', { hour12: false })}>
+            {formatRelativeTime(page.mtime, props.now || Date.now())}
+          </span>
+        ) : null}
       </button>
     </div>
     </RowMenu>
   );
 }
 
-function PagesNav() {
+function PagesNav(props) {
   useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 manifestPages
   var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
-  var pages = manifestPages();
+  // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
+  var [now, setNow] = useState(function () { return Date.now(); });
+  useEffect(function () {
+    var timer = setInterval(function () { setNow(Date.now()); }, 60000);
+    return function () { clearInterval(timer); };
+  }, []);
+  var pages = sortPages(manifestPages(), props.sort);
   return (
     <nav className="wb-pages flex flex-col gap-px pb-1 pt-0.5" id="wbpages">
-      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} />
-      {pages.map(function (p) { return <PageRow key={p.id} page={p} />; })}
+      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} now={now} />
+      {pages.map(function (p) { return <PageRow key={p.id} page={p} now={now} />; })}
       {manifestError ? (
         <p className="wb-page-error" title={manifestError}
           style={{ margin: '6px 10px', color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
@@ -239,6 +267,35 @@ function PagesNav() {
         </p>
       ) : null}
     </nav>
+  );
+}
+
+/* Pages 段（2026-08-17g）：段头右侧挂排序切换钮 —— default → 最近更新 →
+   名称循环，选择持久化在 prefs.pageSort。data-page-sort 是 e2e 契约。 */
+function PagesSection() {
+  var [sort, setSort] = useState(function () {
+    return normalizePageSort(readPrefs().pageSort);
+  });
+  function cycleSort() {
+    var next = nextPageSort(sort);
+    savePrefs({ pageSort: next });
+    setSort(next);
+  }
+  return (
+    <section className="wb-section" data-section="pages">
+      <div className="flex items-center justify-between">
+        <div className={SECTION_HEAD}>Pages</div>
+        <Button type="button" variant="tool" size="icon"
+          className="wb-page-sort me-[var(--wb-pad)] mt-[9px] size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
+          data-page-sort={sort}
+          aria-label={'Pages 排序：' + PAGE_SORT_LABELS[sort]}
+          title={'排序：' + PAGE_SORT_LABELS[sort] + '（点击切换）'}
+          onClick={cycleSort}>
+          <WbIcon name="sort" size={11} className="size-[11px]" />
+        </Button>
+      </div>
+      <PagesNav sort={sort} />
+    </section>
   );
 }
 
@@ -470,10 +527,7 @@ export function Sidebar() {
       <SideHead />
       <div className="wb-side-body">
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
-          <section className="wb-section" data-section="pages">
-            <div className={SECTION_HEAD}>Pages</div>
-            <PagesNav />
-          </section>
+          <PagesSection />
           <Contents />
         </ScrollArea>
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>

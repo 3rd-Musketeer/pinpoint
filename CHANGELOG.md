@@ -11,6 +11,15 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-17
 
 ### Added
+- **Page timestamps + sort control** (owner 2026-08-17 决定, decisions 08-17g) —
+  `GET /registry` now carries a content `mtime` per dir/file entry
+  (`server/lib/content-mtime.js`: recursive walk, dot names and `node_modules`
+  skipped, symlinks not followed, visit-capped; url entries have none). Page
+  rows show a relative timestamp (`刚刚` / `5m` / `3h` / `2d` / `08-15`, full
+  time on hover, hidden at the compact breakpoint), and a sort button in the
+  Pages section header cycles default → 最近更新 → 名称 (persisted in
+  `prefs.pageSort`). The「最近更新」semantics is content edits only —
+  annotation activity is a separate, deferred sort dimension (see backlog).
 - **Unified annotation injection: serve means injected** (owner 2026-08-17 决定,
   decisions 08-17e) — a new `server/preview-inject.js` middleware injects the
   annotate client into every full HTML document served from `previews/`

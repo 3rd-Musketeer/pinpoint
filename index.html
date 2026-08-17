@@ -272,8 +272,9 @@
   /* 左栏紧凑断点（2026-08-16b 立，2026-08-16f 阶段 7 改指条目 tag）：左栏宽 < 230
      时 boot-prefs applySideWidth 给 #wbside 打 compact —— 产物条目的类型 tag
      （.wb-entry-tag，基础形态在 app/Sidebar.jsx Tailwind 类）整枚隐藏，只留标题；
-     拖回 ≥230 自动恢复。 */
+     拖回 ≥230 自动恢复。2026-08-17g：Page 行的相对时间（.wb-page-time）同规则。 */
   #wbside.compact .wb-entry-tag { display:none; }
+  #wbside.compact .wb-page-time { display:none; }
   /* ScrollArea viewport 内层包装（Radix 内联 display:table;min-width:100%）按
      内容自然宽排版 —— Page 行不随栏宽收缩，行尾 copy 钮被 #wbside 的
      overflow-x:hidden 裁出栏外（2026-08-17 实况：自然宽 274 > 栏宽 250）。

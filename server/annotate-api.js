@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
+import { contentMtimeMs } from './lib/content-mtime.js';
 import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -236,10 +237,16 @@ export function createAnnotateHandler(options = {}) {
     }
 
     if (req.method === 'GET' && urlPath === '/registry') {
+      // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；url 条目与缺失
+      // 路径无此字段）—— workbench Pages 的「最近更新」排序与行内时间显示
+      // 的唯一来源。语义 = 内容文件改动，与标注活动无关。
       sendJson(res, 200, {
         ok: registry.ok,
         path: registry.path,
-        entries: registry.entries,
+        entries: registry.entries.map((entry) => {
+          const mtime = contentMtimeMs(entry);
+          return mtime ? { ...entry, mtime } : entry;
+        }),
         errors: registry.errors,
         warnings: registry.warnings,
         service: { directOrigin: resolveDirectOrigin() },
