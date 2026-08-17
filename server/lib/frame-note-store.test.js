@@ -117,3 +117,34 @@ test('section note store reads and writes sections[].note (2026-08-17)', (t) => 
   const after = JSON.parse(fs.readFileSync(path.join(root, 'previews', 'demo', 'board.json'), 'utf8'));
   assert.equal('note' in after.sections[0], false);
 });
+
+test('registry dir 条目的 board.json 同权读写（2026-08-17e 实例搬迁地基）', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'frame-note-store-'));
+  const external = fs.mkdtempSync(path.join(os.tmpdir(), 'frame-note-external-'));
+  t.after(() => {
+    fs.rmSync(root, { recursive: true, force: true });
+    fs.rmSync(external, { recursive: true, force: true });
+  });
+  fs.writeFileSync(path.join(external, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ['home'] }],
+  }, null, 2));
+  const registry = { resolve: (id) => (id === 'ext-page' ? { id, kind: 'dir', path: external } : null) };
+  const store = createFrameNoteStore({ root, registry });
+
+  const before = store.get('ext-page', 'home');
+  assert.equal(before.note, '');
+  const saved = store.update({
+    pageId: 'ext-page',
+    screenId: 'home',
+    note: '写在仓外的 note。',
+    baseRevision: before.revision,
+  });
+  assert.equal(saved.note, '写在仓外的 note。');
+  const board = JSON.parse(fs.readFileSync(path.join(external, 'board.json'), 'utf8'));
+  assert.equal(board.sections[0].screens[0].note, '写在仓外的 note。');
+
+  assert.throws(
+    () => store.get('unknown-page', 'home'),
+    (error) => error instanceof FrameNoteError && error.code === 'page_not_found',
+  );
+});

@@ -123,11 +123,11 @@ Workbench **Pages** (top → bottom):
    and an AB layout comparison.
 3. **Example HTML** — `previews/doc-library/`: a standalone one-page report on the HTML board.
 
-Beyond the tracked examples, pages come from two more sources: gitignored
-`previews/_index.local.json` (instance-private override of the manifest) and registry
-`dir` entries (external directories surfaced read-only — see below).
+Beyond the tracked examples, pages come from the registry: any directory (or single
+HTML file, or live URL) registered via `pinpoint add` — the owning topic's
+`playground/` is the convention for instance pages (see below).
 
-Click a page to switch boards. Add your own pages next to `library/` — see recipes below.
+Click a page to switch boards. Add your own pages anywhere on disk and register them — see recipes below.
 
 ### Add a flow screen
 
@@ -277,12 +277,16 @@ into the *live* frame (the same fragment as on the canvas, interactive, scripts 
   reference `[嵌入 Frame：…]` instead of an image). Baked exports are inert — no annotate
   client, no live frames.
 
-A local demo page lives at `previews/mention-demo/` (instance-local, gitignored) — mention
-Example Library frames there to see the loop end to end.
+A local demo page lives at `playground/mention-demo/` (instance-local, registered via
+registry) — mention Example Library frames there to see the loop end to end.
 
 ## Registry and injection
 
-The annotation layer never touches a page you didn't register — **登记过才注入**. The
+The annotation layer never touches a page you didn't register — **登记过才注入**. On
+top of that, since 2026-08-17e the serving layer injects the annotate client into every
+full HTML document it serves (`/sites/` entries and `previews/` template docs alike);
+pages no longer wire any bootstrap themselves, and `?annotate=off` opts a single
+request out (the export pipeline uses it). The
 registry at `~/.pinpoint/registry.json` (`PINPOINT_REGISTRY` overrides) declares
 entries:
 
@@ -527,15 +531,17 @@ force-pushes and never creates a merge commit.
 
 ## Template vs instance
 
-Clone per project. Your content lives in `previews/<your-page>/` and `kits/ios/components/`; framework
-files stay untouched, so pulling template updates is a clean overwrite of
+Clone per project. `previews/` holds **template content only** (2026-08-17e): the tracked
+examples (`library/`, `doc-library/`). Your own pages live wherever you want — the
+owning topic's `playground/` is the convention — and come in through the machine-local
+registry (`~/.pinpoint/registry.json`, `pinpoint add <dir> --board ios|html`), with
+notes, hot reload, and annotation injection fully supported. Framework files stay
+untouched, so pulling template updates is a clean overwrite of
 `kits/ios/ios-kit.*` / `workbench/` / `index.html` / `client/` / `server/` / `lib/`.
 
-For a long-lived instance, layer private content without touching tracked files:
-gitignored `previews/_index.local.json` overrides the page manifest; component dirs outside
-`kits/ios/components/_index.json` are auto-discovered; and the machine-local registry
-(`~/.pinpoint/registry.json`) adds external dirs as read-only pages without any repo
-change at all. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
+Component dirs outside `kits/ios/components/_index.json` are auto-discovered; the legacy
+gitignored `previews/_index.local.json` manifest override still works when present but is
+retired in practice. `PREVIEW_TEMPLATE_ONLY=1` hides the in-repo overrides
 (e2e and release verification run in this mode).
 
 Pages may set `"mode"` to `ios` (default) or `html`; the Workbench Pages list is one

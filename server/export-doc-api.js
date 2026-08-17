@@ -144,13 +144,12 @@ function createDocImageRenderer(options = {}) {
       colorScheme: 'light',
     });
     const page = await context.newPage();
-    // Keep the live annotate editor out of delivery exports: /sites/ pages are
-    // served with the client injected, so opt the render request out; the
-    // annotate.js route abort below stays as a second net for previews/ docs.
+    // Keep the live annotate editor out of delivery exports: previews/ 与 /sites/
+    // 都是 serve 即注入（2026-08-17 契约统一），渲染请求一律 ?annotate=off 豁免；
+    // annotate.js route abort 留作第二道网。
     // 标注客户端不在 → mention 挂载点不水合（保持空 div），由下面的换图脚本烤入。
     await page.route('**/annotate.js', (route) => route.abort());
-    const suffix = request.src.startsWith('sites/') ? '?annotate=off' : '';
-    const url = `${origin}/${request.src}${suffix}`;
+    const url = `${origin}/${request.src}?annotate=off`;
     await page.goto(url, { waitUntil: 'load', timeout: 30000 });
     await page.evaluate(async () => {
       if (document.fonts && document.fonts.ready) await document.fonts.ready;

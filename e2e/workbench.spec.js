@@ -1028,6 +1028,50 @@ test('screen loader rejects a dev-server fallback document instead of nesting th
   await expect(frame.locator('#wbroot, .wb-side')).toHaveCount(0);
 });
 
+test('previews 完整文档 serve 即注入 annotate 客户端，fragment 不注入（2026-08-17e 契约统一）', async ({ page }) => {
+  // 完整文档：注入（手工注入段已从模板退役，注入只能来自服务端中间件）
+  const doc = await page.request.get('/previews/doc-library/sample-report.html');
+  expect(doc.ok()).toBeTruthy();
+  const docHtml = await doc.text();
+  expect(docHtml).toContain('<script src="/annotate.js"></script>');
+  expect(docHtml).not.toContain('__pinpointEntry'); // 账本 ENTRY 保持缺省 pinpoint
+  // ?annotate=off：导出管线的豁免口
+  const off = await page.request.get('/previews/doc-library/sample-report.html?annotate=off');
+  expect(await off.text()).not.toContain('/annotate.js');
+  // fragment（画布内联原料）不注入
+  const fragment = await page.request.get('/previews/library/home.html');
+  expect(await fragment.text()).not.toContain('/annotate.js');
+});
+
+test('doc iframe 重载后标注桥自动重绑（2026-08-17e）', async ({ page }) => {
+  await page.goto('/index.html?page=doc-library');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  const frame = page.locator('.wb-doc-frame');
+  await expect(frame).toBeVisible();
+  await page.waitForFunction(() => {
+    const f = document.querySelector('.wb-doc-frame');
+    return f && f.contentWindow && f.contentWindow.pinpoint;
+  });
+
+  // 强制 iframe 重载（等价 HMR 后的文档刷新），客户端换成新实例
+  await page.evaluate(() => {
+    const f = document.querySelector('.wb-doc-frame');
+    f.src = f.src;
+  });
+  await page.waitForFunction(() => {
+    const f = document.querySelector('.wb-doc-frame');
+    return f && f.contentWindow && f.contentWindow.pinpoint;
+  });
+
+  // 桥持续轮询并重绑：侧栏模式切换驱动的是新客户端
+  await page.locator('#wbann-toggle').click();
+  await page.waitForFunction(() => {
+    const f = document.querySelector('.wb-doc-frame');
+    return f && f.contentWindow && f.contentWindow.pinpoint
+      && f.contentWindow.pinpoint.getState().mode === true;
+  });
+});
+
 test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
   await openWorkbench(page);
 

@@ -171,28 +171,25 @@ npm run export -- --page library --section brew-flow
 
 ## 3. 加 workbench page
 
-1. 建 `previews/<pageId>/board.json` + 若干 `*.html`（交互屏可加同名 `*.js`）
-2. `previews/_index.json` 的 `pages[]` 增加：
+**页面放哪都行**——2026-08-17e 起实例页面不再住 `previews/`（那里只放进 git 的模板：library / doc-library）。在你自己的 topic（推荐 `topics/<topic>/playground/<pageId>/`）建 `board.json` + 若干 `*.html`（交互屏可加同名 `*.js`），然后登记：
 
-```json
-{ "id": "<pageId>", "title": "My Flow", "mode": "ios" }
+```bash
+pinpoint add <目录> --id <pageId> --title "My Flow" --board ios   # 画布页
+pinpoint add <目录> --id <pageId> --title "My Doc"                # 文档页（默认 html）
 ```
 
-**完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS 板不同：
+登记后页面立即出现在 Pages（服务在线时 CLI 自动触发 reload）；note 读写、热刷新、标注注入对 registry 页面全部同权。`previews/` 新增页面只限于要分发给所有使用者的模板内容（进 `previews/_index.json` + git）。
+
+**完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"shell": "doc"`（registry 登记时 `--board html`，也是默认值），参考 `previews/doc-library/`。两点与 iOS 板不同：
 
 1. **承载方式**：doc 走 iframe，文档原样渲染，loader 不包装也不做 fragment 校验——内联会让它的 `body{}` 规则失效、`<style>` 漏进 workbench。
 2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板与 Frame 标题。2026-08-16f 阶段 6 起，doc 屏是**条目**：一屏一个文档条目（`role` 缺省 `product`，`"draft"` 标草稿），侧栏「内容」区一次选中一个、stage 形态跟选中条目走（画布 / 阅读器页内切换），选择按页记住（`activeEntryIdByPage`），深链 `?page=<id>&entry=<screenId>` 直达。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用「内容」区文档/草稿条目行上 hover 浮现的 **导出** 钮（HTML 完整 / 去 CSS HTML / 长图 PNG）。注意坍缩：纯单 doc 屏页的「内容」区整区不出（也就没有导出钮），多条目页才有条目行。
 
 **混合板**（阶段 6，阶段 7 出「内容」区形态）：同一份 `board.json` 可以同时有 app/lock 屏和 doc 屏——app/lock 屏合成一个「画布」条目（只它们上画布，选中时条目行下挂 frame 树），每个 doc 屏各是一个文档/草稿条目；「内容」区分产物组（画布/文档/网页条目 + 类型 tag）与草稿组（纯标题行）。页级 `"mode"` 只剩两个用途：给 `board.json` 校验提供缺省壳、以及深链 `?mode=` 提示；stage 形态不再看它。
 
-screen 可用 `"src"` 指向任意 URL，配合 `previews/` 下的符号链接就能把仓库外的汇报页挂进来。
+screen 可用 `"src"` 指向任意 URL。仓库外的内容不要再用符号链接挂进 `previews/`——`/sites/` 服务拒绝逃出条目目录的 symlink（防泄漏契约），正确做法是 `pinpoint add` 直接登记源目录。
 
-要能标注，页尾接一段只在 loopback / `.localhost` 拉 `/annotate.js` 并（独立打开时）调
-`pinpoint.setFloatingToolbar(true)` 的脚本即可——同一份文件 `file://` 打开、导出 PNG、
-外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：
-独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。Web 板 fragment 仍由
-loader 包 `.wb-html-surface`，那是画布命中边界，不是作者要记的标记。标注落在文档自己的
-page key 下（默认 entry `pinpoint` 的桶，路径从 `/health` 的 `dataDir` 读）。
+**标注零接线**：serve 即注入（2026-08-17e 契约统一）——服务端对 `/sites/` 与 `previews/` 的完整文档一律自动注入 `/annotate.js`，页面不需要自己抄注入脚本；`?annotate=off` 单请求豁免（导出管线走这里）。文件本身保持干净：`file://` 打开、导出 PNG、外发副本都不带标注 UI、不联网。**正文不必打 `wb-html-surface` / `data-ann-surface`**：独立文档 / HTML 板 iframe 里，annotate 把整份 body 当可标注区域。标注落在文档自己的 page key 下（previews 页 = 默认 entry `pinpoint` 的桶，registry 页 = 条目 id 的桶，路径从 `/health` 的 `dataDir` 读）。
 
 **doc 正文可以 mention 画布上的 frame**（阶段 5）：写一个空挂载点
 `<div data-pinpoint-frame="<pageId>/<screenId>"></div>`（值就是 `@frame:` 指示器里的身份；

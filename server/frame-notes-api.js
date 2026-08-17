@@ -26,7 +26,7 @@ function readBody(req) {
 }
 
 export function createFrameNotesHandler(options = {}) {
-  const store = options.store || createFrameNoteStore({ root: options.root || ROOT });
+  const store = options.store || createFrameNoteStore({ root: options.root || ROOT, registry: options.registry });
 
   return async function handleFrameNotes(req, res, urlPath) {
     if (req.method !== 'GET' && req.method !== 'PUT') return false;

@@ -258,9 +258,12 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
 ```
 
 - Top level is **`sections[]`**, not a flat `{ id, screens }` object.
-- Page id / title / order / default live in **`previews/_index.json`**; a gitignored
-  `previews/_index.local.json` (same shape) overrides it for long-lived instances.
-  Registry `dir`/`file`/`url` entries (except the workbench's own `pinpoint` entry) are appended
+- `previews/` is **template-only** (2026-08-17e): it holds the git-tracked example
+  pages, and its page id / title / order / default live in **`previews/_index.json`**.
+  Instance pages no longer live here — they live in their owning topic's
+  `playground/` (or anywhere on disk) and come in through the registry. The
+  legacy `previews/_index.local.json` override still works when present but is
+  retired in practice. Registry `dir`/`file`/`url` entries (except the workbench's own `pinpoint` entry) are appended
   as pages from `GET /registry` — unless the entry carries a `page` attachment field
   (阶段 8), in which case it never becomes a row and instead merges into the target
   page's board as a synthesized doc screen at load time (`withAttachedScreens` in
@@ -270,7 +273,7 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
   the row disappears without errors. Other registry pages: a dir entry's mode comes from its `board` field (default
   `html`; a legacy `web` value normalizes to `html`), file entries are always `html`,
   url entries are always `html` (the live app embeds through the proxy);
-  their board/screens load read-only from `/sites/<entry-id>/` (synthesized doc board when
+  their board/screens load from `/sites/<entry-id>/` (synthesized doc board when
   no disk `board.json` exists; url entries always get the synthesized single-screen
   board). A previews page with the same id wins over a
   registry page.

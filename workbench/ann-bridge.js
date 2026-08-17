@@ -267,18 +267,30 @@ function bindDocAnnotate() {
 }
 
 /* iframe 里的 annotate.js 是文档自己异步注入的，board 挂载完时通常还没就绪。
-   轮询到它出现为止（上限 ~4s），出现后订阅一次，侧栏面板即刻反映文档的标注状态。 */
+   持续轮询（html 形态期间恒在）：出现后订阅一次，侧栏面板即刻反映文档的标注
+   状态；iframe 重载（HMR / 手动 src 刷新）后客户端是新实例，ann !== bound
+   触发重绑——旧实现绑一次就停，重载后订阅挂在死实例上，面板不再更新
+   （2026-08-17 debugging 案例）。 */
 var docAnnotateWatch = 0;
+var docAnnotateBound = null;
 export function watchDocAnnotate() {
   if (docAnnotateWatch) { clearInterval(docAnnotateWatch); docAnnotateWatch = 0; }
+  docAnnotateBound = null;
   if (activeBoardMode() !== 'html') return;
-  var tries = 0;
   docAnnotateWatch = setInterval(function () {
-    if (bindDocAnnotate() || ++tries > 40) {
+    if (activeBoardMode() !== 'html') {
       clearInterval(docAnnotateWatch);
       docAnnotateWatch = 0;
+      docAnnotateBound = null;
+      return;
     }
-  }, 100);
+    var docWin = activeDocWindow();
+    var ann = docWin && docWin.pinpoint;
+    if (ann && ann !== docAnnotateBound) {
+      bindDocAnnotate();
+      docAnnotateBound = ann;
+    }
+  }, 250);
 }
 
 /* 连接状态指示（#wbconn）由 Sidebar 的 SideHead 从 annSnap.connected/syncError

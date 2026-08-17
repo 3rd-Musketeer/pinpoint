@@ -19,6 +19,64 @@
 
 ---
 
+## 2026-08-17 页面清单整体加载失败（SPA fallback 喂 HTML 冒充 200）
+
+现象：dev server 上 Pages 只剩 Component Library 一行，侧栏错误行
+「页面清单读取失败：board.json 缺失或返回的不是 JSON」。
+
+误判路径：先怀疑 registry 条目路径写错（当日刚做实例搬迁）——/health
+与 /registry 都正常，22 条全在；再怀疑 manifest 合并逻辑被新代码改坏。
+
+根因：`loadPageManifest` 先拉 `_index.local.json`，按「404 = 缺失 → 回落
+_index.json」设计。但 vite dev 的 SPA fallback 把不存在路径喂成 index.html
+（200 + text/html），`response.json()` 抛异常，整条清单加载失败。该回落
+路径从未在 dev 生效过——此前被 _index.local.json 恒存在掩盖；e2e 则靠
+template-only 插件对这条路恒 404 才正常。实例搬迁删除该文件后首次暴露。
+
+修复：pages.js 判定改「200 且 content-type 含 json 才解析，否则按缺失回落」
+（200 但 JSON 格式坏仍抛错——「broken 要暴露」语义不变）。
+
+识别特征：dev 上「缺文件 → 拿到 200 HTML」是 vite SPA fallback 的固有行为，
+任何「fetch 可能不存在的文件并按状态码分支」的代码都不能只信 status，
+要同时看 content-type。
+
+防回归：live 验证（删除 _index.local.json 后 Pages 全量恢复）；e2e 走
+template-only 404 路径覆盖不到本例，判定逻辑本身无单测（pages.js 命令式
+层，提取成本高于收益，留案例）。
+
+---
+
+## 2026-08-17 新建 doc 页「无法标注」（漏接 annotate.js 注入段）
+
+现象：新建的 variants 方案板（doc 页）在 workbench 里打开后，切到标注模式
+点选页面任何元素都没有反应——不出标注框。
+
+误判路径：先怀疑选中模型改造（同日落地）与标注模式互斥，或 iframe 承载
+阻断事件。实则该页是 owner-local 新文件，从未接过标注。
+
+根因：doc 页的标注不在 workbench 侧注入，而是**文档自己在页尾接一段
+loopback 才拉 `/annotate.js` 的脚本**（SKILL.md「要能标注」节）。新页面
+照抄视觉 mock 时漏了这段接线，页面里根本没有标注客户端。
+
+修复：variants.html 页尾补标准注入段（`data-ios-annotate`）。
+
+识别特征：某 doc 页标注完全无反应时，先查页面源码有没有
+`script[data-ios-annotate]` / iframe 里 `window.pinpoint` 是否存在——比
+怀疑模式互斥、事件拦截都快。canvas 页（fragment 内联）不适用本条：
+那边标注由 workbench 统一持有，页面不需要自己接。
+
+防回归：2026-08-17e 机制修复——serve 即注入（`server/preview-inject.js`），
+完整文档不再需要手工接线；e2e 覆盖 previews 完整文档注入 / fragment 不注入
+（workbench.spec「serve 即注入」用例）。本条保留作为「症状 → 第一检查点」
+的模式参考。
+
+另记同日的次生现象：live 验证时用 `iframe.src = iframe.src` 强刷文档后，
+侧栏面板不再反映新标注——`watchDocAnnotate` 的 onUpdate 订阅还挂在被
+销毁的旧客户端上（bridge 只在板装载/条目切换时绑定）。整页刷新即恢复，
+非产品 bug，但排查时容易误判为「标注没存上」。
+
+---
+
 ## 2026-08-17 右键菜单「完全不弹出」（Popper 全局置惰误伤）
 
 现象：侧栏行右键后什么都不出现——自研菜单没有，浏览器默认菜单也没有。

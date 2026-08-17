@@ -11,6 +11,21 @@ Template scope only — instance/product content changes live outside this file.
 ## 2026-08-17
 
 ### Added
+- **Unified annotation injection: serve means injected** (owner 2026-08-17 决定,
+  decisions 08-17e) — a new `server/preview-inject.js` middleware injects the
+  annotate client into every full HTML document served from `previews/`
+  (`?annotate=off` opts out; fragments pass through untouched), aligning
+  `previews/` with the existing `/sites/` contract. The hand-copied bootstrap
+  IIFE is retired (the template doc page now dogfoods the server path);
+  existing manual snippets are harmless (client-side `__pinpoint` guard). The
+  injected tag carries no entry marker, so ledger keys stay byte-identical.
+- **Registry parity for instance pages** (decisions 08-17e) — notes read/write
+  through `/api/frame-notes` and `/api/section-notes` now resolve registry dir
+  entries (same board.json revision semantics, living in the owning topic),
+  external entry dirs are watched for hot reload (`server.watcher.add` +
+  longest-prefix file→entry mapping; the repo's own default entry is excluded),
+  and the doc annotation bridge re-subscribes when the iframe client is
+  replaced (reloads no longer sever the right panel from new annotations).
 - **Canvas click selection + right-hand detail panel** (owner 2026-08-17 决定,
   decisions 08-17d) — clicking a frame caption selects the frame, clicking a
   section's big title selects the section, clicking empty board clears the
@@ -33,6 +48,13 @@ Template scope only — instance/product content changes live outside this file.
   template board now follows the rule itself (16 titles rewritten).
 
 ### Changed
+- **Instance pages moved out of `previews/`** (owner-local, decisions 08-17e) —
+  17 pages relocated to their owning topics' `playground/` and registered with
+  their original page ids; `previews/` is template-only now, the retired
+  `_index.local.json` override is gone, and `loadPageManifest` treats a
+  non-JSON 200 (the dev server's SPA fallback) as "missing" so the tracked
+  manifest loads cleanly. `previews/eval-reports` was dropped (dead symlink;
+  the registry already carries its replacement).
 - **Notes leave the canvas** (decisions 08-17d) — frame notes are no longer
   rendered below frames; the on-canvas inline editor (`frame-notes.js`) is
   deleted, the row grid goes from four shared rows back to three, and exports no

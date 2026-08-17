@@ -61,15 +61,23 @@ function noteOf(entry) {
 
 export function createFrameNoteStore(options = {}) {
   const root = path.resolve(options.root || process.cwd());
+  const registry = options.registry || null;
   const previewsRoot = path.join(root, 'previews');
 
   function boardFile(pageId) {
     validateId(pageId, 'pageId');
-    const file = path.join(previewsRoot, pageId, 'board.json');
-    if (!fs.existsSync(file) || !fs.statSync(file).isFile()) {
-      throw new FrameNoteError('page_not_found', `preview page "${pageId}" was not found`, 404);
+    const local = path.join(previewsRoot, pageId, 'board.json');
+    if (fs.existsSync(local) && fs.statSync(local).isFile()) return local;
+    // 2026-08-17e：registry dir 条目的 board.json 同权读写（实例搬迁后页面
+    // 住在 owning topic 的 playground，note SSOT 跟着页面走）。
+    const entry = registry && typeof registry.resolve === 'function'
+      ? registry.resolve(pageId)
+      : null;
+    if (entry && entry.kind === 'dir' && typeof entry.path === 'string') {
+      const file = path.join(entry.path, 'board.json');
+      if (fs.existsSync(file) && fs.statSync(file).isFile()) return file;
     }
-    return file;
+    throw new FrameNoteError('page_not_found', `preview page "${pageId}" was not found`, 404);
   }
 
   function readBoard(pageId) {

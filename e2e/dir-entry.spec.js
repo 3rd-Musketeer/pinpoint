@@ -31,6 +31,39 @@ test.afterEach(() => {
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
+test('registry dir 条目的 note 经 API 写回本目录 board.json（2026-08-17e）', async ({ page }) => {
+  const boardFile = path.join(ROOT, 'e2e', 'dir-site-ios', 'board.json');
+  const original = fs.readFileSync(boardFile, 'utf8');
+  try {
+    const get = await page.request.get('/api/frame-notes/e2e-dir-ios/cards');
+    expect(get.ok()).toBeTruthy();
+    const current = await get.json();
+    expect(current.note).toBe('');
+
+    const put = await page.request.put('/api/frame-notes/e2e-dir-ios/cards', {
+      data: { note: '仓外条目也能写 note。', baseRevision: current.revision },
+    });
+    expect(put.ok()).toBeTruthy();
+    const saved = await put.json();
+    expect(saved.note).toBe('仓外条目也能写 note。');
+    expect(JSON.parse(fs.readFileSync(boardFile, 'utf8')).sections[0].screens[0].note).toBe('仓外条目也能写 note。');
+
+    // 旧 revision 冲突保护在仓外路径上同样生效
+    const stale = await page.request.put('/api/frame-notes/e2e-dir-ios/cards', {
+      data: { note: 'stale', baseRevision: current.revision },
+    });
+    expect(stale.status()).toBe(409);
+
+    // section note 同权
+    const putSection = await page.request.put('/api/section-notes/e2e-dir-ios/main', {
+      data: { note: '组说明。', baseRevision: saved.revision },
+    });
+    expect(putSection.ok()).toBeTruthy();
+  } finally {
+    fs.writeFileSync(boardFile, original);
+  }
+});
+
 test('registry dir entry appears as a workbench page and renders from /sites/', async ({ page }) => {
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
