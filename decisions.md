@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-17c | 画布缩放基准重定标（旧 50% 成为新 100%） | 视觉 = zoom × 0.5 烘进基准（transform + wrap 量测共用 `BASE_CANVAS_SCALE`）；zoom 轴 0.5–5 视觉跨度不变；存量视口一次性 ×2 迁移（`zoomAxis:2`） | — | 现行 |
 | 2026-08-17b | 行级动作放哪 + 右键菜单不可见 + hardcase 知识收集 | 行级动作统一进右键菜单（纯右键无 hover 档）；Popper 置惰收敛 `:has(> .wb-frame-menu)`；`debugging.md` 排查案例库成文（首批 6 条） | — | 现行 |
 | 2026-08-17 | 复制按钮被裁出栏外 + vendored 组件摩擦是否系统性 | 是系统性：布局断言一律比 bounding box 不靠点击（`withinContainerViolations`）；vendored 组件已知内部契约成文（AGENTS.md 小节 + 组件头注）；登记处长到 5+ 条再评估契约测试 | — | 现行 |
 | 2026-08-16g | 文档模式 grilling 三问 + 下一轮 arc 暂缓 | 「canvas 即文档」显式否决（维持 doc 条目 + mention embed）；屏前自用优先，embed 导出烤图已在线不新建；doc 正文 pin 标注允许（重申 08-16e）；text-range 选词高亮缓期；下一轮深化 arc 等真实任务激活 | 重申 08-16b / 08-16e | 现行（arc 缓期） |
@@ -37,6 +38,18 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-17c · 画布缩放基准重定标（旧 50% 成为新 100%）
+
+**Decided**（owner 2026-08-17 提出「原来的 50% 应该是现在的 100%，我要调整的是默认视窗大小」后确认方向）：
+
+- **视觉 = zoom × 0.5 烘进渲染基准**，不再由 zoom 值本身承担：`index.html` 的 `.wb-library` transform 改 `scale(calc(var(--wb-board-zoom, 1) * 0.5))`，`syncBoardZoomLayout` 的 wrap 量测共用同一常量 `BASE_CANVAS_SCALE`（lib/canvas-zoom.js）——全库只有这两个消费点，其余（minimap / 聚焦 / 标注几何）都靠 `getBoundingClientRect` 量测，自动一致。HUD 100% = owner 舒适默认（旧轴 50% 的视觉）；「重置为 100%」手势语义自然变成「回到默认大小」。
+- **zoom 轴范围 0.5–5**（× 0.5 后视觉跨度仍是 0.25–2.5，与旧轴相同）；设置视图 75/100/125/150 预设不变。
+- **存量视口一次性迁移**：pageViewports 的 canvasZoom 全部 ×2（clamp 到新轴范围）保持每页视觉不变，`zoomAxis:2` 标记防重跑（仿 migrateLegacyCanvasZoom 先例；`data-fit` 自动适配与画布无关，preview-mount 挂板时剥除，不受影响）。
+
+**Why**: 08-16 把默认缩放降到 50% 治好了「太大」，但留下了数字语义偏心——舒适区在 50%、100% 反而过大，缩放轴的「中点」不是「默认」。owner 要的是基准本身变小：100% 看起来就是舒服的大小，放大才去 200%。本刀把 0.5 从「默认值」下沉为「基准常量」，zoom 轴回到以默认为中心。
+
+**注**: e2e 顺得一条经验——等 200ms 防抖落盘的 expect.poll 回调必须容错返回 undefined，链式取值抛 TypeError 时部分 Playwright 版本不重试（记录在 debugging.md 的 flake 条目语义内）。
 
 ## 2026-08-17b · 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文
 

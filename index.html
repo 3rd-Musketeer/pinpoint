@@ -403,7 +403,10 @@
     padding:32px 24px 80px; box-sizing:border-box;
     width:max-content; min-width:0;
     align-items:flex-start;
-    transform: scale(var(--wb-board-zoom, 0.5));
+    /* 2026-08-17 基准重定标（decisions 08-17c）：视觉 = zoom × 0.5（0.5 烘在
+       基准），zoom 轴 1（HUD 100%）= 舒适默认；--wb-board-zoom 存 zoom 轴值，
+       另一个消费点 = boot-prefs syncBoardZoomLayout。 */
+    transform: scale(calc(var(--wb-board-zoom, 1) * 0.5));
     transform-origin: 0 0;
   }
   .wb-lib-item {

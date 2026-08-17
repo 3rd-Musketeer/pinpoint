@@ -5,7 +5,7 @@
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs, replacePrefs } from './lib/prefs.js';
 import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
-import { currentCanvasZoom } from './lib/canvas-zoom.js';
+import { BASE_CANVAS_SCALE, clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
 import {
   refreshBoardNavigationModel,
@@ -251,9 +251,28 @@ function migrateLegacyBoardModePrefs() {
   replacePrefs(next);
 }
 
-// 首访默认缩放（2026-08-16 TODO 小修，owner 体感拍板）：100% 下 iOS UI 显大
-// 不舒适，默认 50%；存档视口（pageViewports）始终优先于默认值。
-var DEFAULT_CANVAS_ZOOM = '0.5';
+/** One-time（2026-08-17 基准重定标，decisions 08-17c）：pageViewports 里的
+    canvasZoom 是旧轴值（视觉 = zoom），新轴视觉 = zoom × 0.5 —— 全部 ×2
+    （clamp 到新轴范围）保持视觉不变，打 zoomAxis:2 标记防重跑。 */
+function migrateZoomAxis2() {
+  var prefs = readPrefs();
+  if (prefs.zoomAxis === 2) return;
+  var all = Object.assign({}, readPageViewports());
+  Object.keys(all).forEach(function (pageId) {
+    var vp = all[pageId];
+    if (!vp || vp.canvasZoom == null) return;
+    var n = parseFloat(vp.canvasZoom) * 2;
+    if (!isFinite(n)) return;
+    all[pageId] = Object.assign({}, vp, { canvasZoom: String(clampCanvasZoom(n)) });
+  });
+  var next = Object.assign({}, prefs, { pageViewports: all, zoomAxis: 2 });
+  replacePrefs(next);
+}
+
+// 首访默认缩放 = 100%（zoom 轴 1）。2026-08-17 基准重定标（decisions 08-17c）：
+// 视觉 = zoom × 0.5（0.5 烘在 index.html 的 .wb-library transform），HUD 100%
+// 即 owner 舒适默认（旧轴 50% 的视觉）；存档视口（pageViewports）始终优先。
+var DEFAULT_CANVAS_ZOOM = '1';
 
 // 视口存档仍按 pageId 键（2026-08-16f 阶段 6：条目级后刻意不变 key —— 存量存档
 // 不丢；doc 条目形态 1:1 铺满 stage，没有可存档的视口，写读两侧都用
@@ -332,7 +351,9 @@ function syncBoardZoomLayout() {
     wrap.style.height = '';
     return;
   }
-  var z = currentCanvasZoom();
+  // 有效视觉缩放 = zoom 轴值 × BASE（2026-08-17 基准重定标，与 index.html 的
+  // .wb-library transform 同公式）；lib.offsetWidth 是 transform 前的布局尺寸。
+  var z = currentCanvasZoom() * BASE_CANVAS_SCALE;
   var w = lib.offsetWidth;
   var h = lib.offsetHeight;
   wrap.style.width = Math.ceil(w * z) + 'px';
@@ -374,6 +395,7 @@ export function applyBootPrefs(prefs, options) {
   var pageId = options.pageId || prefsDeps.resolveBootPageId(prefs);
   migrateLegacyCanvasZoom(pageId);
   migrateLegacyBoardModePrefs();
+  migrateZoomAxis2();
 
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);

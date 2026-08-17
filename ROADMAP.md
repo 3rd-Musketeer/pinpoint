@@ -65,6 +65,7 @@
 - ~~切页落点~~：首访切页直接聚焦第一个 section 的第一个 frame（board-nav
   `focusFirstBoardFrame`）；回访仍恢复 pageViewports 存档视口。
 - ~~画布默认缩放~~：`zoomForPage` 兜底 100% → 50%；存档缩放优先于默认值。
+  （2026-08-17 被 08-17c 取代：0.5 烘进渲染基准，兜底回 100% = 同一视觉。）
 
 ## 第二轮收敛：产物与草稿（2026-08-16 晚定稿，decisions 08-16f）
 

@@ -10,6 +10,20 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-17
 
+### Changed
+- **Canvas zoom axis re-baselined: HUD 100% = comfortable default** (owner
+  2026-08-17 决定, decisions 08-17c) — the 0.5 visual factor moves out of the
+  zoom value and into the rendering base: `.wb-library` now scales by
+  `calc(var(--wb-board-zoom) * 0.5)` and `syncBoardZoomLayout` sizes the zoom
+  wrap with the same `BASE_CANVAS_SCALE` constant. What used to read 50% now
+  reads 100%, the zoom-axis range becomes 0.5–5 (same 0.25–2.5× visual span as
+  before), and the HUD label's 重置为 100% genuinely means default size. Legacy
+  saved viewports migrate once at boot (every `canvasZoom` ×2, `zoomAxis:2`
+  marker) so every page keeps its previous visual size. New e2e: first-visit at
+  the 100% default + migration-doubles-once; poll callbacks that wait on the
+  200ms debounced viewport save now return `undefined` instead of throwing
+  (some Playwright versions don't retry non-assertion exceptions).
+
 ### Added
 - **Sidebar row context menus** (owner 2026-08-17 决定, decisions 08-17b) — all
   row-level actions moved into a unified right-click menu (new

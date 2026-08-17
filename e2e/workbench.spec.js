@@ -1810,24 +1810,57 @@ test('dragging the right splitter while collapsed expands the panel and follows 
   await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
 });
 
-test('first visit lands focused on the first frame at the 50% default zoom', async ({ page }) => {
-  // 2026-08-16 TODO 小修（owner 拍板）：首访（无 pageViewports 存档）切页/首屏
-  // 直接聚焦第一个 section 的第一个 frame；默认缩放 50%；回访仍恢复存档视口。
+test('first visit lands focused on the first frame at the 100% default zoom (2026-08-17 基准重定标)', async ({ page }) => {
+  // 2026-08-17 基准重定标（owner 决定）：视觉 = zoom × 0.5（0.5 烘进基准），
+  // zoom 轴 100% = 舒适默认（= 旧轴 50% 的视觉）。首访（无 pageViewports 存档）
+  // 切页/首屏直接聚焦第一个 section 的第一个 frame；回访仍恢复存档视口。
   await openWorkbench(page);
-  await expect(page.locator('#wbzoom-label')).toHaveText('50%');
+  await expect(page.locator('#wbzoom-label')).toHaveText('100%');
   // 第一个 section = home，第一帧 = home 屏：首访即居中，不再停在板原点
   await expectFocusedTarget(page, '[data-screen="home"] .ios-stage');
   await expect.poll(() => page.evaluate(
     () => getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom').trim()
-  )).toBe('0.5');
+  )).toBe('1');
 
-  // 回访语义不变：手动挪走再切回，恢复的是存档位置而不是首访聚焦
-  await page.locator('#wbzoom-label').click(); // 100%（存档 zoom=1）
+  // 回访语义不变：手动调走再切回，恢复的是存档位置而不是首访聚焦
+  await page.locator('#wbzoom-in').click(); // 110%（存档 zoom=1.1）
+  await expect(page.locator('#wbzoom-label')).toHaveText('110%');
+  // zoom 落盘是 200ms 防抖：poll 回调必须容错返回 undefined 等收敛，直接链式
+  // 取值会在存档未落时抛 TypeError（部分 Playwright 版本不重试非断言异常）
+  await expect.poll(async () => {
+    const p = await readWbPrefs(page);
+    return p.pageViewports && p.pageViewports.library && p.pageViewports.library.canvasZoom;
+  }).toBe('1.1');
   await page.locator('#wbpages [data-vpage="components"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  await expect(page.locator('#wbzoom-label')).toHaveText('110%');
+});
+
+test('zoom axis migration doubles legacy saved viewports once (2026-08-17 基准重定标)', async ({ page }) => {
+  // 旧轴存档（视觉 = zoom）：canvasZoom '0.5' 是当时的舒适默认。迁移应 ×2 成
+  // 新轴 '1'（视觉不变 = HUD 100%），打 zoomAxis:2 标记防重跑。
+  await page.addInitScript(() => {
+    localStorage.setItem('pinpoint-wb', JSON.stringify({
+      pageViewports: { library: { canvasZoom: '0.5', scrollLeft: 0, scrollTop: 0 } }
+    }));
+  });
+  await openWorkbench(page);
   await expect(page.locator('#wbzoom-label')).toHaveText('100%');
+  await expect.poll(async () => (await readWbPrefs(page)).zoomAxis).toBe(2);
+  await expect.poll(async () => {
+    const p = await readWbPrefs(page);
+    return p.pageViewports && p.pageViewports.library && p.pageViewports.library.canvasZoom;
+  }).toBe('1');
+  // reload 不再翻倍
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await expect(page.locator('#wbzoom-label')).toHaveText('100%');
+  await expect.poll(async () => {
+    const p = await readWbPrefs(page);
+    return p.pageViewports && p.pageViewports.library && p.pageViewports.library.canvasZoom;
+  }).toBe('1');
 });
 
 test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶段 7)', async ({ page }) => {
