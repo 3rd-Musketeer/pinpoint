@@ -88,6 +88,14 @@ serve time); those modules are pure and node-tested — keep them DOM-free.
 | `previews/<pageId>/*.js` (screen sidecar `mount(root)`) | Product gestures in `ios-kit.js` |
 | `previews/<pageId>/board.json` | Hand-set `font-size` on `.wb-lib-cap` / `.wb-screen-cap` |
 | `kits/ios/components/<id>/` (`meta.json` + variants) | Paste-copy component HTML into screens |
+
+**组件归属边界（2026-08-17f）**：组件 = 跨页共享资产，kit 是它的天然住所——通用/可复用
+组件进 `kits/ios/components/`（模板 tracked 或 owner-local exclude），单页专用片段
+内联进页面 HTML、不进 kit。page-local 组件解析不实现；启动信号 = 出现组件 fork
+（两个页面要同名组件的不同版本）或多机/协作需求。实例搬迁（08-17e）后 owner-local
+组件（areta-* / time-* / energy-* / wr-progress / home-body）仍住 kit 即本规则的
+应用——存量使用矩阵里 `time-dashboard` 跨 topic 共享（jita + smart-todo），证明
+page-local 归属模型不成立。
 | `previews/_index.json` when adding a page (`mode`: `ios` \| `html`) | `ios-kit.css` to “fix” one annotation |
 | `~/.pinpoint/registry.json` via `pinpoint add` (or careful hand edits) to register external review targets (machine-local, never tracked) | tracked files to smuggle instance content in |
 

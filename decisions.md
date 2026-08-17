@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-17f | areta-chat-eval 失效条目怎么处理 + owner-local kit 组件归属 | 条目重指 `repos/dev/areta-eval/legacy/eval-platform-preview`（该目录自述「pinpoint 只负责挂载、标注和导出」，v2 标注账本重新对上）；组件归属 = 维持 kit 集中（time-dashboard 跨 topic 共享证伪 page-local 模型），成文边界：通用进 kit、单页专用内联、fork/多机才启动 page-local 解析 | 关闭 backlog 两条 | 现行 |
 | 2026-08-17e | 注入契约不统一（previews 手工接线 vs registry 自动注入）+ previews 是否继续存放实例 | 契约统一：serve 即注入覆盖 previews 完整文档；registry 补全（note 写回 / dir HMR / 桥重绑）；实例全部迁出 previews/（owning topic playground + registry 登记），previews/ 收敛纯模板 | 落实 08-16g「serve 即注入即标」到 previews 路径；backlog「实例搬迁」「registry note 写回」「registry HMR」三条关闭 | 现行 |
 | 2026-08-17d | title 杂乱（说明文字挤进 title）怎么治 + note 放哪 | title 规矩成文（单行短名词短语，禁手写编号 / 禁「·」拼接，契约拦换行 + caption 两行截断）；section note 新字段落地；画布点选模型（cap 选 frame / 大标题选 section / 空白清选中）；note 收编右栏 detail 面板、不再上画布不进导出（注入随导出重构另立） | 修订 08-15d（note 导出永随语义） | 现行 |
 | 2026-08-17c | 画布缩放基准重定标（旧 50% 成为新 100%） | 视觉 = zoom × 0.5 烘进基准（transform + wrap 量测共用 `BASE_CANVAS_SCALE`）；zoom 轴 0.5–5 视觉跨度不变；存量视口一次性 ×2 迁移（`zoomAxis:2`） | — | 现行 |
@@ -40,6 +41,15 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-17f · areta-chat-eval 条目重指 + 组件归属边界成文
+
+**Decided**（owner 2026-08-17 要求分析两个 backlog 遗留项后采纳推荐）：
+
+- **areta-chat-eval 重指路径** → `repos/dev/areta-eval/legacy/eval-platform-preview`。依据：该目录 README 自述 status = reference 且「pinpoint 只负责挂载、标注和导出」——它本就是为被 pinpoint 挂载保留的设计参考；标注桶 `~/.pinpoint/areta-chat-eval/`（含 v2.html 账本）按 entry id + 页内路径寻址，id 不动即无损。启动期 warning 消除，「Eval 平台」页恢复（5 个文档条目在线）。
+- **组件归属 = 维持 kit 集中，边界成文**（AGENTS.md 组件行下）：组件 = 跨页共享资产，通用/可复用进 `kits/ios/components/`（tracked 或 owner-local exclude），单页专用片段内联进页面；page-local 组件解析不实现。依据 = 存量使用矩阵：16 个 exclude 组件中 15 个单 topic 使用，但 `time-dashboard` 跨 topic（jita + smart-todo）——page-local 归属模型被一个真实反例证伪。**启动信号**（届时重估 page-local 覆盖解析）：组件 fork（两页面要同名组件不同版本）或多机/协作场景。
+
+**Why**: 两个遗留项的共同判据都是「等真实信号，不提前建机制」——条目重指是存量资产的正确接线而非新建；组件归属在证伪 page-local 模型后，集中管理就是当前最优，机制缺口（fork 冲突）出现前不投资。
 
 ## 2026-08-17e · 注入契约统一 + registry 补全 + 实例迁出 previews/
 
