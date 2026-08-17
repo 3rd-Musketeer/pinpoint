@@ -45,6 +45,17 @@ function nonEmptyString(value, path) {
   return value.trim();
 }
 
+// 2026-08-17 title 规矩（decisions 当日）：title = 单行短名词短语 —— 编号由系统
+// 派生（board-refs A/B1），说明文字（图例/意图/结论）进 note，不进 title。
+// 契约层硬拦换行；长度不钉死，画布 caption 两行截断兜底。
+function titleString(value, path) {
+  const title = nonEmptyString(value, path);
+  if (/[\r\n]/.test(title)) {
+    throw new ContractError(path, 'expected a single-line title; move long-form text into note');
+  }
+  return title;
+}
+
 function identifier(value, path, pattern = ID_PATTERN) {
   const id = nonEmptyString(value, path);
   if (!pattern.test(id)) throw new ContractError(path, `invalid id "${id}"`);
@@ -84,7 +95,7 @@ export function validatePageManifest(raw) {
     seen.add(id);
     return {
       id,
-      title: nonEmptyString(page.title, `pages[${index}].title`),
+      title: titleString(page.title, `pages[${index}].title`),
       mode: validatePageMode(page.mode, `pages[${index}].mode`),
     };
   });
@@ -128,7 +139,7 @@ function normalizeScreen(entry, path, sectionShell, options) {
   const screen = objectAt(entry, path);
   return {
     id: screenIdentifier(screen.id, `${path}.id`, allowComponentRefs),
-    title: screen.title == null ? '' : nonEmptyString(screen.title, `${path}.title`),
+    title: screen.title == null ? '' : titleString(screen.title, `${path}.title`),
     note: screen.note == null ? '' : nonEmptyString(screen.note, `${path}.note`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
     role: validateRole(screen.role, `${path}.role`),
@@ -168,7 +179,10 @@ export function validateBoard(raw, options = {}) {
     });
     return {
       id,
-      title: section.title == null ? id : nonEmptyString(section.title, `${path}.title`),
+      title: section.title == null ? id : titleString(section.title, `${path}.title`),
+      // 2026-08-17：section 级 note —— 整组共用说明（图例/对比结论）的正当归宿，
+      // 不再挤进 section title。编辑入口 = 右栏 detail 面板（选中 section）。
+      note: section.note == null ? '' : nonEmptyString(section.note, `${path}.note`),
       layout,
       shell,
       screens,

@@ -453,6 +453,39 @@ export function flashBoardFrame(groupId, screenId) {
   return true;
 }
 
+/* 2026-08-17 选中模型（detail 面板）：frame/section 各有一个持久选中态（.wb-sel），
+   与 focus 环 flash 分工 —— flash 是定位反馈，.wb-sel 是「右栏正在展示谁」。
+   选中源 = store.focusFrameKey / focusSectionId（互斥）；这里拥有画布侧的
+   class 同步，stage.js 在 store 订阅里调 syncBoardSelection。 */
+export function selectBoardFrame(sectionId, screenId) {
+  wbSet({ focusFrameKey: sectionId + '\0' + screenId, focusSectionId: null, focusAnnN: null });
+}
+
+export function selectBoardSection(sectionId) {
+  wbSet({ focusSectionId: sectionId, focusFrameKey: null, focusAnnN: null });
+}
+
+export function clearBoardSelection() {
+  wbSet({ focusFrameKey: null, focusSectionId: null, focusAnnN: null });
+}
+
+export function syncBoardSelection() {
+  var panel = document.getElementById('wb-board-panel');
+  if (!panel) return;
+  panel.querySelectorAll('.wb-sel').forEach(function (node) { node.classList.remove('wb-sel'); });
+  var s = wbGet();
+  if (s.focusFrameKey) {
+    var parts = s.focusFrameKey.split('\0');
+    var frame = panel.querySelector(
+      '.wb-lib-item[data-ann-section="' + CSS.escape(parts[0]) + '"] [data-screen="' + CSS.escape(parts[1]) + '"]'
+    );
+    if (frame) frame.classList.add('wb-sel');
+  } else if (s.focusSectionId) {
+    var item = panel.querySelector('.wb-lib-item[data-ann-section="' + CSS.escape(s.focusSectionId) + '"]');
+    if (item) item.classList.add('wb-sel');
+  }
+}
+
 /** True when keyboard shortcuts should yield to text entry. */
 export function isTypingTarget(el) {
   if (!el || !el.closest) return false;

@@ -30,7 +30,7 @@ curl -s https://pinpoint.localhost/health
 
 ```json
 "screens": [
-    { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" }
+    { "id": "msg-lock", "title": "锁屏通知", "shell": "lock" }
 ]
 ```
 
@@ -92,8 +92,8 @@ Sidecar 里查 sheet：`root` = `.ios-app`，overlay 不在 `root` 内，用 `ro
   "title": "结算流程",
   "layout": "row",
   "screens": [
-    { "id": "cart", "title": "1 · 购物车" },
-    { "id": "pay", "title": "2 · 支付" }
+    { "id": "cart", "title": "购物车" },
+    { "id": "pay", "title": "支付" }
   ]
 }
 ```
@@ -103,32 +103,58 @@ Sidecar 里查 sheet：`root` = `.ios-app`，overlay 不在 `root` 内，用 `ro
 - `id` → `[data-ann-section]` / annotation `section`
 - `title` → `.wb-lib-cap`；screen `title` → `.wb-screen-cap`（**只写文案**，字号来自 board tokens，勿设 font-size）
 
-### 2.1 Frame Note（帧说明）
+### 2.1 title 规矩（2026-08-17）
 
-Frame Note 是原型自身的持久说明，不是处理后会删除的评审 Annotation。直接写在 screen entry 的 `note`：
+title 是单行短名词短语，只回答“这是什么”。引用编号由系统按 board 顺序自动派生
+（section = A/B/C，frame = A1/B2，显示在 title 左侧），**不要在 title 里手写编号**，
+否则画面上编号会出现两次。
+
+- 单行：契约层硬拦换行（`validateBoard` 报错），说明文字一律进 `note`。
+- 短：名词短语，不用「·」拼接多段信息，不写图例、设计意图、对比结论。
+- 正例：`锁屏通知`、`同日型基线 vs 当日 sankey`、`阴性对照（这种天不推）`。
+- 反例：`★ SPIKE · B 形态 · 同日型基线 vs 当日 sankey — 直通带 = 照常的部分；彩色斜带 = 挤占……`
+  （这是把整组图例塞进了 section title；正确做法是 title = `同日型基线 vs 当日 sankey`，
+  图例迁进 section 的 `note`。）
+
+### 2.2 Note（帧/组说明）
+
+note 是原型自身的持久说明，不是处理后会删除的评审 Annotation。两级挂载：
 
 ```json
 {
-  "id": "msg-thread",
-  "title": "2 · 查看消息",
-  "note": "场景：用户点开通知。\n交互：进入对应会话。\n验证：入口 Context 正确传入。"
+  "id": "msg-flow",
+  "title": "锁屏 → 消息 → 回复",
+  "note": "整组图例：直通带 = 照常的部分；斜带 = 被挤占。",
+  "screens": [
+    {
+      "id": "msg-thread",
+      "title": "查看消息",
+      "note": "场景：用户点开通知。\n交互：进入对应会话。\n验证：入口 Context 正确传入。"
+    }
+  ]
 }
 ```
 
-- `title` 回答“这是哪一步”；`note` 回答“为什么存在、如何交互、验证什么”。
-- `note` 可多行，显示在 frame 下方；Workbench 内也可行内编辑。
+- section `note` 承载整组共用的说明（图例、对比结论、数据来源）；screen `note`
+  回答“为什么存在、如何交互、验证什么”。属于整组的内容不要逐帧重复。
+- `note` 可多行（上限 12000 字符），**不渲染在画布上**——选中 frame / section 后
+  在 Workbench 右栏 detail 面板阅读与编辑（点图注选 frame，点 section 大标题选 section）。
+- HTTP API：`GET/PUT /api/frame-notes/<pageId>/<screenId>` 与
+  `GET/PUT /api/section-notes/<pageId>/<sectionId>`，PUT 带 `baseRevision` 防并发覆盖。
 - 浏览器与 Agent 共同以该页 `board.json` 为 SSOT；浏览器保存带 revision，遇到并发修改不覆盖。
 - 先用一个自由文本字段；可以采用“场景 / 交互 / 验证”写法，不要拆成更多 schema 字段。
 - 评审意见仍走 Annotation，不要写进 `note`。
+- 导出图片当前不含 note（note 注入导出图随导出系统重构另立）。
 
 Canonical：[`previews/library/board.json`](../../previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
 
-### 2.2 导出 Frame 图片
+### 2.3 导出 Frame 图片
 
 导出属于 Workbench，不在单个 screen 里实现截图逻辑。唯一入口 = 画布 HUD 的「导出」
 钮 → picker 对话框（当前页 proto tree 任意多选，section 行整选；实时预览；背景三档
 画布 / 白底 / 透明）。输出固定 PNG 2×：单张直出 PNG，多张服务端打包 zip。
-图注（引用号 + 屏名 + 尺寸）与 Frame Note 是图纸内容，导出永随（decisions 2026-08-15d）。
+图注（引用号 + 屏名 + 尺寸）是图纸内容，导出永随（decisions 2026-08-15d）；
+note 自 2026-08-17 起收编右栏 detail 面板、不上画布，导出图不含 note（注入另立）。
 Agent / CLI 使用同一条隔离 Chromium 渲染链路：
 
 ```bash
@@ -137,11 +163,11 @@ npm run export -- --page library --section brew-flow
 ```
 
 - 默认：PNG、2×、Canvas 背景（`#faf8f4`）、输出到 gitignored `exports/`。
-- Frame 导出 = 图注 + 当前手机状态 + 尺寸行（+ Frame Note），48 CSS px 安全边距，不带标注、侧栏或相邻 Frame。
-- Section 保持 `row` / `column` 和 Frame 顺序，带 Section / Frame 标题与 Frame Notes。
+- Frame 导出 = 图注 + 当前手机状态 + 尺寸行，48 CSS px 安全边距，不带标注、侧栏或相邻 Frame。
+- Section 保持 `row` / `column` 和 Frame 顺序，带 Section / Frame 标题。
 - 导出先克隆 live DOM，再在只含目标的页面截图，因此打开的 sheet / Ask User、选中态、输入值、内部滚动和 canvas 会被保留。
 - 透明背景只能用 PNG。超大 2× Section 会明确提示改用 1×，不得静默换行、裁切或压扁 flow。
-- 可用参数：`--scale 1|2`、`--background canvas|white|transparent`、`--format png|webp`、`--output <path>`。`--with-notes` 已退役（notes 永随），传了也只是空占位。
+- 可用参数：`--scale 1|2`、`--background canvas|white|transparent`、`--format png|webp`、`--output <path>`。`--with-notes` 已退役，传了也只是空占位。
 
 ## 3. 加 workbench page
 
@@ -155,7 +181,7 @@ npm run export -- --page library --section brew-flow
 **完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"mode": "html"` + `"shell": "doc"`，参考 `previews/doc-library/`。两点与 iOS 板不同：
 
 1. **承载方式**：doc 走 iframe，文档原样渲染，loader 不包装也不做 fragment 校验——内联会让它的 `body{}` 规则失效、`<style>` 漏进 workbench。
-2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板、Frame 标题与 Frame Note。2026-08-16f 阶段 6 起，doc 屏是**条目**：一屏一个文档条目（`role` 缺省 `product`，`"draft"` 标草稿），侧栏「内容」区一次选中一个、stage 形态跟选中条目走（画布 / 阅读器页内切换），选择按页记住（`activeEntryIdByPage`），深链 `?page=<id>&entry=<screenId>` 直达。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用「内容」区文档/草稿条目行上 hover 浮现的 **导出** 钮（HTML 完整 / 去 CSS HTML / 长图 PNG）。注意坍缩：纯单 doc 屏页的「内容」区整区不出（也就没有导出钮），多条目页才有条目行。
+2. **不画布化**：汇报页必须在读者真实的窗口尺寸下读，所以文档 1:1 铺满 stage，没有缩放、平移、画板与 Frame 标题。2026-08-16f 阶段 6 起，doc 屏是**条目**：一屏一个文档条目（`role` 缺省 `product`，`"draft"` 标草稿），侧栏「内容」区一次选中一个、stage 形态跟选中条目走（画布 / 阅读器页内切换），选择按页记住（`activeEntryIdByPage`），深链 `?page=<id>&entry=<screenId>` 直达。画布的 Frame 导出在这里也隐掉了——它出的图不等于真实版面；出图用「内容」区文档/草稿条目行上 hover 浮现的 **导出** 钮（HTML 完整 / 去 CSS HTML / 长图 PNG）。注意坍缩：纯单 doc 屏页的「内容」区整区不出（也就没有导出钮），多条目页才有条目行。
 
 **混合板**（阶段 6，阶段 7 出「内容」区形态）：同一份 `board.json` 可以同时有 app/lock 屏和 doc 屏——app/lock 屏合成一个「画布」条目（只它们上画布，选中时条目行下挂 frame 树），每个 doc 屏各是一个文档/草稿条目；「内容」区分产物组（画布/文档/网页条目 + 类型 tag）与草稿组（纯标题行）。页级 `"mode"` 只剩两个用途：给 `board.json` 校验提供缺省壳、以及深链 `?mode=` 提示；stage 形态不再看它。
 
@@ -322,7 +348,8 @@ export default function mount(root) {
 - 改 loader chrome / bezel / `ios-kit.css` 去「对齐」一条标注
 - 产品手势 / 屏状态写进 `ios-kit.js`
 - 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 font-size
-- 把待处理的评审意见写成 Frame Note（Frame Note 是长期设计说明）
+- title 里手写编号 / 用「·」拼接多段信息 / 塞图例与意图（title = 单行短名词短语，说明进 note，见 §2.1）
+- 把待处理的评审意见写成 note（note 是长期设计说明）
 - 组件 HTML 复制进 screen（用 `data-ios-include`）
 - 把一次性 flow 构图提前抽进 Library（先屏后组件，见 §4.0）
 - 为「整理文件」而抽组件、却仍在 screen 里留复制体

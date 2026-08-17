@@ -55,7 +55,14 @@
 - picker 两栏：左 proto tree（section 整选 / frame 任意勾选），右实时预览（选中几帧并排几帧，随背景刷新；复用 `/api/export-image` 低清档 + debounce，不起新管线）。
 - 批量规则：任意多选；单张直出 PNG，多张 `/api/export-zip` 打包（store-only zip，`server/lib/zip-store.js`）。
 - 固定项：PNG、2×。选项只留对应真实投放面的：背景三档（画布 / 白底 / 透明）。批注烘焙（序号钉 + 评论随图）缓期进 backlog——场景未证实；doc 导出「含评论」管线在线保留。
-- 图纸内容（图注 = 引用号 + 屏名 + 尺寸、frame note）导出永随，不再有「干净画面」摘图注语义。
+- 图纸内容（图注 = 引用号 + 屏名 + 尺寸）导出永随，不再有「干净画面」摘图注语义。note 自 2026-08-17 起不上画布、不进导出（注入导出图随导出系统重构另立，backlog）。
+
+## 选中模型与 note（2026-08-17）
+
+- 画布点选：点 frame 图注（cap/dim 行）选 frame，点 section 大标题选 section，点板空白清选中；frame 内部点击永远留给原型交互，标注模式下选择让位给标注客户端。选中态 = 持久 accent 环（frame）/ 标题转 accent（section），与定位反馈的 flash 环分工。
+- 右栏 = detail 面板（上段，选中才展开）+ 标注工作台。detail 展示选中对象的引用号 / 标题 / note；note 编辑走 revision 链路（GET 拉 revision → PUT 带 baseRevision，409 保留草稿）。
+- note 两级挂载：`sections[].note` 承载整组共用说明（图例 / 对比结论），`screens[].note` 承载单帧说明；都不再渲染上画布。
+- title 规矩：单行短名词短语；编号系统派生（A/B1）禁手写；禁「·」拼接；图例 / 意图 / 结论进 note。契约层硬拦换行，画布 caption 两行截断兜底。
 
 ## 组件惯用式
 

@@ -34,10 +34,10 @@ test('resolveFrameTarget: previews fragment screen → fragment target with canv
   assert.equal(target.baseUrl, '/previews/library/');
   assert.equal(target.shell, 'app');
   assert.equal(target.section, 'brew-flow');
-  assert.equal(target.sectionLabel, '冲一杯 · 三步流程');
+  assert.equal(target.sectionLabel, '冲一杯');
   assert.equal(target.ref, 'B2'); // brew-flow 是第 2 个 section，recipe 是第 2 屏
   assert.ok(target.fragmentPath.endsWith(path.join('previews', 'library', 'recipe.html')));
-  assert.equal(target.title, '2 · 参数（内联脚本）');
+  assert.equal(target.title, '参数（内联脚本）');
 });
 
 test('resolveFrameTarget: doc-shell screen → redirect target with the screen URL', () => {

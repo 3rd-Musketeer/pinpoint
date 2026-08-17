@@ -189,38 +189,20 @@ export function buildBoardHtml(pageId, board, screenMap) {
       }
       var screenCls = screenClassForShell(pageId, sc.shell);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
+      // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
       var capHtml = '<div class="wb-screen-cap">' +
         (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
-        '<span class="wb-cap-title">' + escHtml(sc.title || '') + '</span>' +
+        '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
         '</div>';
       var dimHtml = isPhoneFrame(pageId, sc.shell)
         ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
         : '';
-      var note = sc.note || '';
-      var noteHtml = '';
-      if (!isCompLib) {
-        noteHtml = '<div class="wb-frame-note' + (note ? '' : ' is-empty') + '" data-frame-note data-ann-ui>' +
-          '<div class="wb-frame-note-view" data-frame-note-view>' +
-            '<div class="wb-frame-note-text' + (note ? '' : ' wb-frame-note-placeholder') + '" data-frame-note-text>' +
-              escHtml(note || '添加这一步的场景、交互或能力说明。') +
-            '</div>' +
-            '<button type="button" class="wb-frame-note-edit" data-frame-note-action="edit">' + (note ? '编辑' : '＋ Frame Note') + '</button>' +
-          '</div>' +
-          '<div class="wb-frame-note-editor" data-frame-note-editor hidden>' +
-            '<textarea class="wb-frame-note-input" data-frame-note-input maxlength="12000" aria-label="Frame Note"></textarea>' +
-            '<div class="wb-frame-note-footer">' +
-              '<span class="wb-frame-note-status" data-frame-note-status></span>' +
-              '<button type="button" class="wb-frame-note-action" data-frame-note-action="cancel">取消</button>' +
-              '<button type="button" class="wb-frame-note-action" data-frame-note-action="save">保存</button>' +
-            '</div>' +
-          '</div>' +
-        '</div>';
-      }
+      // 2026-08-17：Frame Note 不再渲染上画布 —— note 的读/写收编到右栏
+      // detail 面板（选中模型），画布只留图注 + 机身 + 尺寸行。
       return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '">' +
         capHtml +
         inner +
         dimHtml +
-        noteHtml +
         '</div>';
     }).join('');
     return '<article class="wb-lib-item" id="lib-' + escHtml(sec.id) + '"' +
@@ -228,7 +210,7 @@ export function buildBoardHtml(pageId, board, screenMap) {
       ' data-ann-section-label="' + escHtml(sec.title || sec.id) + '"' +
       ' data-ann-group="' + escHtml(sec.id) + '"' +
       ' data-ann-group-label="' + escHtml(sec.title || sec.id) + '">' +
-      '<h2 class="wb-lib-cap">' +
+      '<h2 class="wb-lib-cap" title="' + escHtml(sec.title || sec.id) + '">' +
         (secLetter ? '<span class="wb-cap-ref wb-cap-ref--section">' + escHtml(secLetter) + '</span>' : '') +
         escHtml(sec.title || sec.id) +
       '</h2>' +

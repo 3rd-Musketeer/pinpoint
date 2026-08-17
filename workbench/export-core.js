@@ -67,15 +67,14 @@ function syncExportDomState(source, clone) {
   });
 }
 
-// 图纸内容永随（decisions 2026-08-15d）：图注（引用号 + 屏名）、尺寸行、frame note
-// 一律随导出，不再有「干净画面」摘图注语义；editor 控件与 export UI 仍然摘除。
-// 空 note（占位文案）不是图纸内容，摘掉。
+// 图纸内容永随（decisions 2026-08-15d）：图注（引用号 + 屏名）、尺寸行一律随
+// 导出，不再有「干净画面」摘图注语义；export UI 仍然摘除。
+// 2026-08-17：Frame Note 收编右栏 detail 面板后不再上画布，导出图因此不含
+// note —— note 注入导出图随导出系统重构另立（backlog）。
 function cleanExportClone(clone) {
-  clone.querySelectorAll('script,style[data-export-ui],[data-export-ui],.wb-frame-note-edit,.wb-frame-note-editor').forEach(function (node) {
+  clone.querySelectorAll('script,style[data-export-ui],[data-export-ui]').forEach(function (node) {
     node.remove();
   });
-  clone.querySelectorAll('.wb-frame-note.is-empty').forEach(function (node) { node.remove(); });
-  clone.querySelectorAll('[data-frame-note-view]').forEach(function (node) { node.hidden = false; });
   clone.removeAttribute('data-export-ui');
   clone.querySelectorAll('.has-frame-menu').forEach(function (node) { node.classList.remove('has-frame-menu'); });
   return clone;

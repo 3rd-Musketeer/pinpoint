@@ -209,3 +209,47 @@ test('screen role: 默认 product、收 draft、非法值报错（2026-08-16f �
       && error.message.includes('expected "product" or "draft"'),
   );
 });
+
+test('section note survives board validation (2026-08-17 section note)', () => {
+  const board = validateBoard({
+    sections: [{
+      id: 'flow',
+      title: 'Flow',
+      note: '图例：直通带 = 照常；斜带 = 挤占。',
+      layout: 'row',
+      screens: ['home'],
+    }],
+  }, { pageId: 'library' });
+  assert.equal(board.sections[0].note, '图例：直通带 = 照常；斜带 = 挤占。');
+
+  const bare = validateBoard({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ['home'] }],
+  }, { pageId: 'library' });
+  assert.equal(bare.sections[0].note, '');
+});
+
+test('title 规矩：换行一律拒绝，说明文字进 note（2026-08-17）', () => {
+  assert.throws(
+    () => validateBoard({
+      sections: [{ id: 'main', title: '第一行\n第二行', layout: 'row', screens: ['home'] }],
+    }, { pageId: 'library' }),
+    (error) => error instanceof ContractError
+      && error.message.includes('sections[0].title')
+      && error.message.includes('single-line'),
+  );
+  assert.throws(
+    () => validateBoard({
+      sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: '甲\n乙' }] }],
+    }, { pageId: 'library' }),
+    (error) => error instanceof ContractError
+      && error.message.includes('sections[0].screens[0].title')
+      && error.message.includes('single-line'),
+  );
+  assert.throws(
+    () => validatePageManifest({
+      defaultPage: 'x',
+      pages: [{ id: 'x', title: '甲\n乙' }],
+    }),
+    (error) => error instanceof ContractError && error.message.includes('pages[0].title'),
+  );
+});

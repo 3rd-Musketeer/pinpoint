@@ -75,3 +75,45 @@ test('frame note store rejects unsafe ids and missing frames', (t) => {
   assert.throws(() => store.get('../demo', 'start'), (error) => error.code === 'invalid_id');
   assert.throws(() => store.get('demo', 'missing'), (error) => error.code === 'frame_not_found');
 });
+
+test('section note store reads and writes sections[].note (2026-08-17)', (t) => {
+  const { root, store } = fixture();
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+
+  const before = store.getSection('demo', 'flow');
+  assert.equal(before.note, '');
+  const saved = store.updateSection({
+    pageId: 'demo',
+    sectionId: 'flow',
+    note: '图例：直通带 = 照常。',
+    baseRevision: before.revision,
+  });
+  assert.equal(saved.note, '图例：直通带 = 照常。');
+  assert.equal(store.getSection('demo', 'flow').note, saved.note);
+
+  const board = JSON.parse(fs.readFileSync(path.join(root, 'previews', 'demo', 'board.json'), 'utf8'));
+  assert.equal(board.sections[0].note, saved.note);
+
+  // frame note 与 section note 共享同一份 board.json revision
+  assert.throws(
+    () => store.updateSection({
+      pageId: 'demo',
+      sectionId: 'flow',
+      note: 'Stale',
+      baseRevision: before.revision,
+    }),
+    (error) => error instanceof FrameNoteError && error.code === 'revision_conflict',
+  );
+  assert.throws(() => store.getSection('demo', 'missing'), (error) => error.code === 'section_not_found');
+
+  // 清空 = 删除字段
+  const cleared = store.updateSection({
+    pageId: 'demo',
+    sectionId: 'flow',
+    note: '',
+    baseRevision: saved.revision,
+  });
+  assert.equal(cleared.note, '');
+  const after = JSON.parse(fs.readFileSync(path.join(root, 'previews', 'demo', 'board.json'), 'utf8'));
+  assert.equal('note' in after.sections[0], false);
+});

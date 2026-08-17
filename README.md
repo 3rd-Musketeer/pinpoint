@@ -160,21 +160,23 @@ Row flows with per-screen titles / shells:
   "title": "锁屏 → 消息 → 回复",
   "layout": "row",
   "screens": [
-    { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" },
+    { "id": "msg-lock", "title": "锁屏通知", "shell": "lock" },
     {
       "id": "msg-thread",
-      "title": "2 · 查看消息",
+      "title": "查看消息",
       "note": "场景：用户点开通知。\n交互：进入对应会话。"
     }
   ]
 }
 ```
 
-`screens[].note` is a durable **Frame Note** shown below the phone. It explains the scene,
+`screens[].note` / `sections[].note` is a durable **note**. It explains the scene,
 interaction, or capability being tested; both the agent and the user edit the same
-`board.json` SSOT (the Workbench provides an inline editor with revision-safe writes).
-Frame Notes are part of the prototype definition. Review annotations remain separate,
-disposable feedback.
+`board.json` SSOT (select the frame/section on the canvas, then read/edit in the
+right-hand detail panel — revision-safe writes). Notes are part of the prototype
+definition and are not rendered on the canvas itself. Review annotations remain
+separate, disposable feedback. Titles stay single-line short noun phrases — no
+hand-written numbers (refs are system-derived), no legends in titles.
 
 For gestures / animation, add screen scripts (form A inline / form B sidecar) — full contract
 in the [build skill](skills/pinpoint-build/SKILL.md); live examples

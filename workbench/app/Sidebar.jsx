@@ -251,6 +251,7 @@ function PagesNav() {
 function FrameTree(props) {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
+  var focusSection = useWorkbenchStore(function (s) { return s.focusSectionId; });
   var refs = props.refs;
 
   // 徽标计数：annSnap 行带 section/screenId（ann-bridge 增量），按帧归并
@@ -264,9 +265,17 @@ function FrameTree(props) {
   });
 
   function onPick(sectionId, screenId) {
-    wbSet({ focusFrameKey: sectionId + '\0' + screenId, focusAnnN: null });
+    wbSet({ focusFrameKey: sectionId + '\0' + screenId, focusSectionId: null, focusAnnN: null });
     focusWorkbenchFrame(sectionId, screenId);
     flashBoardFrame(sectionId, screenId);
+  }
+
+  // section 行点击 = 选中 section（detail 面板展示 section note）+ 定位到
+  // 该组第一帧（与 frame 行同一套定位原语）
+  function onPickSection(sec) {
+    wbSet({ focusSectionId: sec.id, focusFrameKey: null, focusAnnN: null });
+    var first = sec.frames && sec.frames[0];
+    if (first) focusWorkbenchFrame(sec.id, first.id);
   }
 
   return (
@@ -274,10 +283,14 @@ function FrameTree(props) {
       {refs.outline.map(function (sec) {
         return (
           <div className="ol" key={sec.id} data-ol-section={sec.id}>
-            <div className="ol-sec">
+            <button type="button"
+              className={cn('ol-sec', focusSection === sec.id && 'on')}
+              data-state={focusSection === sec.id ? 'on' : undefined}
+              title={sec.letter + ' ' + sec.title}
+              onClick={function () { onPickSection(sec); }}>
               <span className="ol-L">{sec.letter}</span>
               <span className="ol-sec-t min-w-0 flex-1 truncate">{sec.title}</span>
-            </div>
+            </button>
             {sec.frames.map(function (f) {
               var k = sec.id + '\0' + f.id;
               var n = counts[k] || 0;

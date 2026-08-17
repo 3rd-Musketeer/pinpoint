@@ -6,6 +6,9 @@ import { createFrameNoteStore, FrameNoteError } from './lib/frame-note-store.js'
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..');
 const ROUTE = /^\/api\/frame-notes\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/;
+// 2026-08-17：section 级 note 与 frame note 同构（GET/PUT + baseRevision），
+// 独立路由 /api/section-notes/<pageId>/<sectionId>。
+const ROUTE_SECTION = /^\/api\/section-notes\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -26,14 +29,18 @@ export function createFrameNotesHandler(options = {}) {
   const store = options.store || createFrameNoteStore({ root: options.root || ROOT });
 
   return async function handleFrameNotes(req, res, urlPath) {
-    const match = urlPath.match(ROUTE);
-    if (!match || (req.method !== 'GET' && req.method !== 'PUT')) return false;
-    const pageId = match[1];
-    const screenId = match[2];
+    if (req.method !== 'GET' && req.method !== 'PUT') return false;
+    const frameMatch = urlPath.match(ROUTE);
+    const sectionMatch = !frameMatch && urlPath.match(ROUTE_SECTION);
+    if (!frameMatch && !sectionMatch) return false;
+    const pageId = (frameMatch || sectionMatch)[1];
+    const targetId = (frameMatch || sectionMatch)[2];
 
     try {
       if (req.method === 'GET') {
-        sendJson(res, 200, store.get(pageId, screenId));
+        sendJson(res, 200, frameMatch
+          ? store.get(pageId, targetId)
+          : store.getSection(pageId, targetId));
         return true;
       }
 
@@ -44,12 +51,10 @@ export function createFrameNotesHandler(options = {}) {
         sendJson(res, 400, { error: 'bad_json' });
         return true;
       }
-      sendJson(res, 200, store.update({
-        pageId,
-        screenId,
-        note: body.note,
-        baseRevision: body.baseRevision,
-      }));
+      const input = { pageId, note: body.note, baseRevision: body.baseRevision };
+      sendJson(res, 200, frameMatch
+        ? store.update({ ...input, screenId: targetId })
+        : store.updateSection({ ...input, sectionId: targetId }));
       return true;
     } catch (error) {
       if (error instanceof FrameNoteError) {

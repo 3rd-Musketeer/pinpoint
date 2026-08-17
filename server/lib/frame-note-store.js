@@ -48,6 +48,17 @@ function findFrame(board, screenId) {
   return null;
 }
 
+// 2026-08-17：note 寻址扩到 section —— 整组共用说明（图例/对比结论）挂在
+// sections[].note 上，与 screen note 同一份 board.json、同一个 revision。
+function findSection(board, sectionId) {
+  const section = (board.sections || []).find((entry) => entry && entry.id === sectionId);
+  return section ? { section } : null;
+}
+
+function noteOf(entry) {
+  return entry && typeof entry === 'object' && typeof entry.note === 'string' ? entry.note : '';
+}
+
 export function createFrameNoteStore(options = {}) {
   const root = path.resolve(options.root || process.cwd());
   const previewsRoot = path.join(root, 'previews');
@@ -80,10 +91,29 @@ export function createFrameNoteStore(options = {}) {
     if (!frame) {
       throw new FrameNoteError('frame_not_found', `frame "${screenId}" was not found`, 404);
     }
-    const note = typeof frame.entry === 'object' && typeof frame.entry.note === 'string'
-      ? frame.entry.note
-      : '';
-    return { pageId, screenId, note, revision: state.revision };
+    return { pageId, screenId, note: noteOf(frame.entry), revision: state.revision };
+  }
+
+  function getSection(pageId, sectionId) {
+    validateId(sectionId, 'sectionId');
+    const state = readBoard(pageId);
+    const found = findSection(state.board, sectionId);
+    if (!found) {
+      throw new FrameNoteError('section_not_found', `section "${sectionId}" was not found`, 404);
+    }
+    return { pageId, sectionId, note: noteOf(found.section), revision: state.revision };
+  }
+
+  function writeBoard(state) {
+    const nextSource = `${JSON.stringify(state.board, null, 2)}\n`;
+    const tempFile = `${state.file}.frame-note-${process.pid}.tmp`;
+    try {
+      fs.writeFileSync(tempFile, nextSource, 'utf8');
+      fs.renameSync(tempFile, state.file);
+    } finally {
+      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
+    }
+    return revisionFor(nextSource);
   }
 
   function update(input) {
@@ -100,11 +130,8 @@ export function createFrameNoteStore(options = {}) {
       throw new FrameNoteError('frame_not_found', `frame "${screenId}" was not found`, 404);
     }
     if (input.baseRevision !== state.revision) {
-      const currentNote = typeof frame.entry === 'object' && typeof frame.entry.note === 'string'
-        ? frame.entry.note
-        : '';
       throw new FrameNoteError('revision_conflict', 'board.json changed while this note was being edited', 409, {
-        note: currentNote,
+        note: noteOf(frame.entry),
         revision: state.revision,
       });
     }
@@ -117,18 +144,35 @@ export function createFrameNoteStore(options = {}) {
     if (note) entry.note = note;
     else delete entry.note;
 
-    const nextSource = `${JSON.stringify(state.board, null, 2)}\n`;
-    const tempFile = `${state.file}.frame-note-${process.pid}.tmp`;
-    try {
-      fs.writeFileSync(tempFile, nextSource, 'utf8');
-      fs.renameSync(tempFile, state.file);
-    } finally {
-      if (fs.existsSync(tempFile)) fs.unlinkSync(tempFile);
-    }
-
-    return { pageId, screenId, note, revision: revisionFor(nextSource) };
+    return { pageId, screenId, note, revision: writeBoard(state) };
   }
 
-  return { get, update };
+  function updateSection(input) {
+    const pageId = validateId(input.pageId, 'pageId');
+    const sectionId = validateId(input.sectionId, 'sectionId');
+    const note = normalizeNote(input.note);
+    if (typeof input.baseRevision !== 'string' || !input.baseRevision) {
+      throw new FrameNoteError('missing_revision', 'baseRevision is required', 400);
+    }
+
+    const state = readBoard(pageId);
+    const found = findSection(state.board, sectionId);
+    if (!found) {
+      throw new FrameNoteError('section_not_found', `section "${sectionId}" was not found`, 404);
+    }
+    if (input.baseRevision !== state.revision) {
+      throw new FrameNoteError('revision_conflict', 'board.json changed while this note was being edited', 409, {
+        note: noteOf(found.section),
+        revision: state.revision,
+      });
+    }
+
+    if (note) found.section.note = note;
+    else delete found.section.note;
+
+    return { pageId, sectionId, note, revision: writeBoard(state) };
+  }
+
+  return { get, getSection, update, updateSection };
 }
 

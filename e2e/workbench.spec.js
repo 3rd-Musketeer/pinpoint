@@ -1062,13 +1062,12 @@ test('Frame export snapshots current state and renders an isolated padded PNG', 
   expect(snapshot.html).toContain('ios-stage');
   expect((snapshot.html.match(/ios-stage/g) || [])).toHaveLength(1);
   expect(snapshot.html).not.toContain('data-export-ui');
-  expect(snapshot.html).not.toContain('wb-frame-note-edit');
   // 图纸内容永随（decisions 2026-08-15d）：图注（引用号 B2 + 屏名）与尺寸行随导出；
-  // 空 Frame Note（占位文案）不是图纸内容，不进快照。
+  // note 已收编右栏 detail 面板（2026-08-17），不再上画布、不进导出。
   expect(snapshot.html).toContain('wb-cap-ref');
   expect(snapshot.html).toContain('B2');
   expect(snapshot.html).toContain('wb-screen-dim');
-  expect(snapshot.html).not.toContain('data-frame-note');
+  expect(snapshot.html).not.toContain('wb-detail');
 
   const response = await page.request.post('/api/export-image', { data: snapshot });
   expect(response.ok()).toBeTruthy();
@@ -1079,14 +1078,7 @@ test('Frame export snapshots current state and renders an isolated padded PNG', 
   expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 });
 
-test('Section export always carries captions and Frame Notes (图纸内容永随)', async ({ page }) => {
-  const note = '场景：用户点开通知。\n交互：进入对应会话。';
-  await page.route('**/previews/library/board.json', async (route) => {
-    const response = await route.fetch();
-    const board = await response.json();
-    board.sections[1].screens[2].note = note; // brew-flow / timer
-    await route.fulfill({ response, json: board });
-  });
+test('Section export always carries captions (图纸内容永随；note 已收编右栏)', async ({ page }) => {
   await openWorkbench(page);
   await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toBeVisible();
 
@@ -1096,18 +1088,8 @@ test('Section export always carries captions and Frame Notes (图纸内容永随
   expect(explained.html).toContain('wb-lib-cap');
   expect(explained.html).toContain('wb-screen-cap');
   expect(explained.html).toContain('wb-screen-dim');
-  expect(explained.html).toContain('data-frame-note');
-  expect(explained.html).toContain('场景：用户点开通知。');
-  expect(explained.html).not.toContain('wb-frame-note-edit');
-  expect(explained.html).not.toContain('wb-frame-note-editor');
   // 干净画面语义已拆除（decisions 2026-08-15d）：不再有 clean-row 覆写
   expect(explained.html).not.toContain('wb-export-clean-row');
-
-  // 空 note（占位）不进导出
-  const plain = await page.evaluate(() => window.workbench.exportSnapshot({
-    kind: 'section', sectionId: 'home', format: 'png', scale: 1, background: 'white',
-  }));
-  expect(plain.html).not.toContain('data-frame-note');
 });
 
 test('every Frame exposes a persistent title menu (export entry retired to the HUD picker)', async ({ page }) => {
@@ -1135,7 +1117,7 @@ test('every Frame exposes a persistent title menu (export entry retired to the H
   })).toEqual({ alpha: 1, backdropFilter: 'none' });
 });
 
-test('Frame Note renders below a frame and inline edits use the shared revision', async ({ page }) => {
+test('Detail 面板：选中 frame 展示 note，编辑保存走共享 revision（2026-08-17 选中模型）', async ({ page }) => {
   const initial = '场景：会议刚刚结束。';
   const revised = '场景：会议刚刚结束。\n交互：点击 Suggested Prompt。';
   let savedBody = null;
@@ -1143,8 +1125,7 @@ test('Frame Note renders below a frame and inline edits use the shared revision'
   await page.route('**/previews/library/board.json', async (route) => {
     const response = await route.fetch();
     const board = await response.json();
-    const home = board.sections[0].screens[0];
-    home.note = initial;
+    board.sections[0].screens[0].note = initial; // home / home
     await route.fulfill({ response, json: board });
   });
   await page.route('**/api/frame-notes/library/home', async (route) => {
@@ -1157,13 +1138,82 @@ test('Frame Note renders below a frame and inline edits use the shared revision'
   });
 
   await openWorkbench(page);
-  const frame = page.locator('#wb-board-panel [data-screen="home"]');
-  await expect(frame.locator('[data-frame-note-text]')).toHaveText(initial);
-  await frame.locator('[data-frame-note-action="edit"]').click();
-  await frame.locator('[data-frame-note-input]').fill(revised);
-  await frame.locator('[data-frame-note-action="save"]').click();
-  await expect(frame.locator('[data-frame-note-text]')).toHaveText(revised);
+  // note 不再渲染上画布
+  await expect(page.locator('#wb-board-panel [data-frame-note]')).toHaveCount(0);
+  // 未选中时 detail 面板不渲染
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
+
+  // 点图注选中 frame → detail 面板展示 note
+  await page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap').click();
+  const detail = page.locator('#wbdetail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
+  await expect(detail.locator('[data-detail-note-text]')).toHaveText(initial);
+  // 画布选中态 class 同步
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
+
+  await detail.locator('[data-detail-note-edit]').click();
+  await detail.locator('[data-detail-note-input]').fill(revised);
+  await detail.locator('[data-detail-note-save]').click();
+  await expect(detail.locator('[data-detail-note-text]')).toHaveText(revised);
   expect(savedBody).toEqual({ note: revised, baseRevision: 'revision-1' });
+});
+
+test('Detail 面板：section note 走 /api/section-notes（2026-08-17 section note 落地）', async ({ page }) => {
+  const initial = '整组图例：直通带 = 照常。';
+  const revised = '整组图例：直通带 = 照常；斜带 = 挤占。';
+  let savedBody = null;
+
+  await page.route('**/previews/library/board.json', async (route) => {
+    const response = await route.fetch();
+    const board = await response.json();
+    board.sections[1].note = initial; // brew-flow
+    await route.fulfill({ response, json: board });
+  });
+  await page.route('**/api/section-notes/library/brew-flow', async (route) => {
+    if (route.request().method() === 'GET') {
+      await route.fulfill({ json: { pageId: 'library', sectionId: 'brew-flow', note: initial, revision: 'revision-1' } });
+      return;
+    }
+    savedBody = route.request().postDataJSON();
+    await route.fulfill({ json: { pageId: 'library', sectionId: 'brew-flow', note: revised, revision: 'revision-2' } });
+  });
+
+  await openWorkbench(page);
+  // 点 section 大标题 → section detail
+  await page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"] > .wb-lib-cap').click();
+  const detail = page.locator('#wbdetail');
+  await expect(detail).toBeVisible();
+  await expect(detail).toHaveAttribute('data-detail-kind', 'section');
+  await expect(detail.locator('[data-detail-note-text]')).toHaveText(initial);
+  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toHaveClass(/wb-sel/);
+
+  await detail.locator('[data-detail-note-edit]').click();
+  await detail.locator('[data-detail-note-input]').fill(revised);
+  await detail.locator('[data-detail-note-save]').click();
+  await expect(detail.locator('[data-detail-note-text]')).toHaveText(revised);
+  expect(savedBody).toEqual({ note: revised, baseRevision: 'revision-1' });
+});
+
+test('画布点选模型：原型内部不动选中、板空白清选中（2026-08-17 选中模型）', async ({ page }) => {
+  await openWorkbench(page);
+  const detail = page.locator('#wbdetail');
+  await expect(detail).toHaveCount(0);
+
+  // frame 树行点击（既有链路）同样驱动 detail 面板
+  await page.locator('#wboutline [data-ol-frame="recipe"]').click();
+  await expect(detail).toBeVisible();
+  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
+  await expect(detail.locator('[data-detail-title]')).toHaveText('参数（内联脚本）');
+
+  // 原型内部点击 = 原型交互，选中不变
+  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
+  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
+
+  // 板空白（面板留白）= 清选中
+  await page.locator('#wb-board-panel').click({ position: { x: 10, y: 10 } });
+  await expect(detail).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel .wb-sel')).toHaveCount(0);
 });
 
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
@@ -1190,12 +1240,12 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(navigator).toBeVisible();
   await expect(navigator.locator('.wb-section-nav-item')).toHaveCount(6);
   await expect(navigator.locator('.wb-section-nav-label')).toHaveText([
-    '首页 · 卡片 / 列表 / Tab / Sheet',
-    '冲一杯 · 三步流程',
+    '首页',
+    '冲一杯',
     '锁屏 → 消息 → 回复',
-    '锁屏 · 通知',
-    'AB · 冲煮完成卡两案',
-    '设置 · 分组列表',
+    '锁屏通知',
+    '冲煮完成卡两案',
+    '设置',
   ]);
   await expect(minimap).toBeHidden();
 
@@ -1641,7 +1691,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   // 画布图注：section 字母 + frame 引用号两行，尺寸下置（402 × 874 = iPhone 16 Pro 逻辑分辨率）
   const recipe = page.locator('#wb-board-panel [data-screen="recipe"]');
   await expect(recipe.locator('.wb-screen-cap .wb-cap-ref')).toHaveText('B2');
-  await expect(recipe.locator('.wb-screen-cap .wb-cap-title')).toHaveText('2 · 参数（内联脚本）');
+  await expect(recipe.locator('.wb-screen-cap .wb-cap-title')).toHaveText('参数（内联脚本）');
   await expect(recipe.locator('.wb-screen-dim')).toHaveText('402 × 874');
   await expect(page.locator('#lib-brew-flow .wb-lib-cap .wb-cap-ref')).toHaveText('B');
 

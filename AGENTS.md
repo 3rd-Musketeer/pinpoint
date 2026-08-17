@@ -67,7 +67,7 @@ Checks: `just check` (contracts + Chromium e2e; first time
 | `bin/pinpoint.mjs` | Registration CLI (`pinpoint add <dir|file.html|url> [--page id] [--draft]`); pure logic + tests in `bin/pinpoint-cli.js` |
 | `server/` | Vite plugins: `annotate-api.js`, `sites-api.js`, `frame-api.js` (`/api/frame` mention embeds), `frame-notes-api.js`, `export-image-api.js` (`/api/export-image` + `/api/export-zip`), `export-doc-api.js`, `components-board.js`, `preview-hmr.js`, `template-only.js` |
 | `server/lib/` | Server stores/contracts: `annotation-store.js`, `registry.js` (lenient load), `registry-store.js` (live shared view + strict atomic writes), `synth-board.js` (synthesized doc boards for entries without board.json), `site-proxy.js` (阶段 4: same-origin path-prefix proxy for `url` entries + rebase bootstrap injection + WS forwarding), `frame-doc.js` (阶段 5: mention target resolution + frame page assembly + export snapshot), `annotate-snippet.js` (injection-contract SSOT), `annotate-data-dir.js`, export bake/contract libs, `zip-store.js` (store-only zip writer) |
-| `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core` / `frame-notes`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=&entry=` deep-link write side; read side is `resolveBootPageId` + `initBoard` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
+| `workbench/` | Canvas: `stage.js` (P4 正名自 workbench.js: board loader, mount orchestration + DI wiring, `window.workbench` API, splitter/pan/zoom stage input, canvas click selection, HMR), cluster modules (`pages` / `board-nav` / `boot-prefs` / `screen-load` / `preview-mount` / `ann-bridge` / `export-core`), `workbench-icons.js`, `url-sync.js` (P3: `?page=&mode=&entry=` deep-link write side; read side is `resolveBootPageId` + `initBoard` in `stage.js`), `wb-tokens.css` (P4: generated `--wb-*` visual tokens — edit `scripts/build-wb-tokens.mjs`, never the output) |
 | `workbench/app/` | React chrome (P1b): `main.jsx` entry mounts `Sidebar.jsx` (left panel: head/Pages/「内容」区（产物+草稿条目、画布 frame 树）/footer, settings view shell), `AnnPanel.jsx` (right panel = annotation workbench, `#wbann-side`), `CanvasHud.jsx` (dock/HUD + `StageRails` collapse rails in `#wbrails`) + `SettingsView.jsx`; `ExportPicker.jsx` (08-15d: the single image-export entry, proto tree + preview dialog in `#wbexport-picker`); `frame-menu.jsx` (P3) is the Radix DropdownMenu island mounted per frame menu shell (behavior only; skin/geometry stay in `index.html` CSS, Popper wrapper neutralized there); `store.js` (zustand) is the single home of shared chrome state; `query-client.js` (TanStack Query, P2) is the single home of server state — SSE (`preview:update`) is the only invalidation source; visual-rebuild V0: `wb-tw.css` is the Tailwind v4 entry (no preflight, sources scoped to `app/**`, `@theme inline` consumes the shadcn bridge vars from `wb-tokens.css`), `ui/` holds the vendored shadcn/ui copies (source-owned, edit freely), `lib/utils.js` has `cn()` |
 | `workbench/lib/` | Board navigation, mount session, include slots, preview contracts, icon data (`wb-icons.js`), sheet reference numbers (`board-refs.js` — A1 citation scheme derived from board order) |
 | `lib/` | Isomorphic libs inlined into `/annotate.js` (page key, indicator, slug, clip, bubble, ann-row) — node-tested SSOT; `proxy-rebase.js` is inlined into the proxy bootstrap instead; `ann-list.css` is the shared list-row stylesheet (linked by `index.html`, injected as a JS string into `/annotate.js`) |
@@ -119,7 +119,7 @@ HTML screens use `shell: "doc"`. The file keeps its own `<!doctype>`, `<head>`, 
 into the workbench. The loader therefore skips the fragment check for `doc` screens.
 
 **A doc entry is not a canvas.** A report has to be read at the reader's real window size, so the
-document fills the stage 1:1 — no zoom, no pan, no artboard, no Frame titles or Frame Notes, and no
+document fills the stage 1:1 — no zoom, no pan, no artboard, no Frame titles, and no
 canvas Frame export (it would not match the real layout). Export a document from its 「内容」区
 entry row (hover icon button; HTML 完整、去除 CSS 的 HTML、or a full-page long PNG
 (920×2, annotate blocked)) — the dialog targets that entry directly, even while the canvas
@@ -172,15 +172,17 @@ Glass chrome: use `.ios-glass` / `.ios-glass-pill` (tokens in `ios-kit.css`). Ad
 
 Captions: write copy only. Sizes come from `--wb-cap-section` / `--wb-cap-screen` / `--wb-cap-ref` (fractions of `--wb-phone-w`). Reference numbers (A1 scheme) and the dim line are derived by `screen-load.js` — never hardcode them in screens.
 
-Frame Notes are durable prototype context, not review annotations. Put a multiline `note` on a screen entry in `board.json`; it renders below the frame and can also be edited inline in the Workbench. Browser edits write back to that same `board.json` with revision checks.
+Notes are durable prototype context, not review annotations. Put a multiline `note` on a screen or section entry in `board.json`; it is not rendered on the canvas — select the frame/section and read or edit it in the right-hand detail panel. Browser edits write back to that same `board.json` with revision checks. See the title rule in the canonical schema section.
 
 Image export is Workbench-owned (decisions 2026-08-15d). Single entry: the HUD「导出」button
 opens the export picker (`workbench/app/ExportPicker.jsx`, native dialog) — a proto tree of the
 current page (section rows select-all, frames arbitrary multi-select, A1 refs), live preview
 (`/api/export-image` at scale 1 + debounce), and a background three-state (canvas / white /
-transparent). Output is fixed **PNG 2×**; captions (ref + title + dim) and Frame Notes always
+transparent). Output is fixed **PNG 2×**; captions (ref + title + dim) always
 ride along — the old「干净画面 / 带说明」presets, WebP/1× options, per-frame/per-section
-triggers, and the「复制 PNG」clipboard action are retired. One selected frame downloads a PNG
+triggers, and the「复制 PNG」clipboard action are retired. Notes moved to the detail
+panel (2026-08-17) and are not part of exports; re-injecting them rides with the
+planned export rework. One selected frame downloads a PNG
 directly; several are zipped server-side (`POST /api/export-zip`, store-only writer
 `server/lib/zip-store.js`). Agent CLI uses the same Chromium renderer:
 `npm run export -- --page <page> --section <section> [--frame <screen>]`. Do not add screenshot
@@ -244,10 +246,11 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
     {
       "id": "msg-flow",
       "title": "锁屏 → 消息 → 回复",
+      "note": "整组图例：直通带 = 照常的部分；斜带 = 被挤占。",
       "layout": "row",
       "screens": [
-        { "id": "msg-lock", "title": "1 · 锁屏通知", "shell": "lock" },
-        { "id": "msg-thread", "title": "2 · 查看消息", "note": "场景：用户点开通知。\n交互：进入对应会话。" }
+        { "id": "msg-lock", "title": "锁屏通知", "shell": "lock" },
+        { "id": "msg-thread", "title": "查看消息", "note": "场景：用户点开通知。\n交互：进入对应会话。" }
       ]
     }
   ]
@@ -272,7 +275,17 @@ Live reference: [`previews/library/board.json`](previews/library/board.json).
   board). A previews page with the same id wins over a
   registry page.
 - Screen file = `previews/<pageId>/<screenId>.html` (fragment: `.ios-app` + sibling overlays; no bezel).
-- Frame Note = optional `screens[].note` in `board.json`; durable design context shown below the frame. It is distinct from disposable review annotations.
+- Title rule (2026-08-17): titles are **single-line short noun phrases** — no hand-written
+  numbers (refs A/B1 are system-derived), no「·」stitching, no legends or rationale
+  (those go to `note`). `validateBoard` hard-rejects newlines in any title; the canvas
+  caption clamps to two lines as a last resort (full text via hover).
+- Note = optional `screens[].note` / `sections[].note` in `board.json`; durable design
+  context (legends, intent, interaction, what to verify). Section notes carry group-wide
+  explanations. Notes are **not rendered on the canvas** — select a frame (click its
+  caption) or a section (click its big title) and read/edit in the right-hand detail
+  panel. APIs: `GET/PUT /api/frame-notes/<pageId>/<screenId>` and
+  `GET/PUT /api/section-notes/<pageId>/<sectionId>` (PUT requires `baseRevision`).
+  Distinct from disposable review annotations; currently excluded from image exports.
 - Interactive screens: same-file `data-preview-script` and/or sidecar `previews/<pageId>/<screenId>.js` (`data-preview-mount`). See **Interactive frames** below.
 - Default shell: **app**. Lock: `"shell": "lock"` on section or screen + `.ios-lockscreen`.
 - `section.id` stamps `[data-ann-section]` → annotation `section`.

@@ -133,10 +133,13 @@
   .wb-outline .ol { --rail:14px; }
   .wb-outline .ol + .ol { margin-top:5px; }
   .wb-outline .ol-sec {
-    position:relative; display:flex; align-items:center; gap:6px;
+    position:relative; display:flex; align-items:center; gap:6px; width:100%;
     padding:2px 8px 4px 6px;
-    font-size:10.5px; font-weight:var(--wb-w-semibold); color:var(--wb-fg);
+    border:0; border-radius:6px; background:transparent; cursor:pointer; text-align:left;
+    font:inherit; font-size:10.5px; font-weight:var(--wb-w-semibold); color:var(--wb-fg);
   }
+  .wb-outline .ol-sec:hover { background:var(--wb-hover); }
+  .wb-outline .ol-sec.on { color:var(--wb-accent); }
   .wb-outline .ol-L {
     width:var(--rail); flex:none; text-align:center;
     font-family:var(--wb-font-mono); font-size:9.5px; font-weight:var(--wb-w-bold);
@@ -424,11 +427,12 @@
     flex:none;
   }
   .wb-sec-column { flex-direction:column; align-items:flex-start; gap:24px; flex-wrap:nowrap; }
-  /* Row: titles, phones, dims, and durable Frame Notes each share a row. */
+  /* Row: titles, phones, and dims each share a row（2026-08-17：Frame Note 收编
+     右栏 detail 面板，画布网格从四行收为三行）。 */
   .wb-sec-row {
     display:grid;
     grid-auto-flow:column;
-    grid-template-rows:auto auto auto auto;
+    grid-template-rows:auto auto auto;
     column-gap:28px;
     row-gap:var(--wb-cap-gap);
     align-items:start;
@@ -464,6 +468,12 @@
     color:var(--wb-fg);
   }
   .wb-cap-title:empty { display:none; }
+  /* 2026-08-17 caption 截断兜底：title 规矩（单行短词）靠文档+契约拦新增，
+     存量/超长由两行 clamp 兜住，全文经 title 属性悬停可读。 */
+  .wb-cap-title, .wb-lib-cap {
+    display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
+    overflow:hidden;
+  }
   .wb-lib-cap .wb-cap-ref--section { margin-bottom:calc(var(--wb-cap-gap) * 0.2); }
   .wb-screen-dim {
     flex:none; width:var(--wb-phone-w); box-sizing:border-box;
@@ -471,67 +481,46 @@
     font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-medium);
     line-height:1.2; letter-spacing:.04em; color:var(--wb-faint);
   }
-  .wb-frame-note {
-    position:relative;
-    width:var(--wb-phone-w); box-sizing:border-box;
-    padding:12px 14px;
-    border:0;
-    border-radius:var(--wb-r-4);
-    background:color-mix(in srgb, var(--wb-side) 78%, transparent);
-    color:var(--wb-muted);
-    font-size:var(--wb-cap-note); line-height:1.55;
+  /* 2026-08-17 选中模型（detail 面板）：frame 选中 = 机身 accent 环；
+     section 选中 = 大标题转 accent。与 wb-frame-flash（定位反馈，1.1s 动画）
+     分工 —— .wb-sel 是持久选中态，由 board-nav syncBoardSelection 同步。 */
+  .wb-screen.wb-sel .ios-stage,
+  .wb-screen.wb-sel .wb-comp-stage,
+  .wb-screen.wb-sel .wb-doc-stage {
+    box-shadow:0 0 0 2px var(--wb-accent), 0 0 0 6px color-mix(in srgb, var(--wb-accent) 14%, transparent);
   }
-  .wb-frame-note.is-empty {
-    padding:0;
-    border:0;
-    background:transparent;
-  }
-  .wb-frame-note.is-empty.is-editing {
-    padding:12px 14px;
-    border:1px dashed color-mix(in srgb, var(--wb-line) 72%, transparent);
-    background:color-mix(in srgb, var(--wb-side) 78%, transparent);
-  }
-  .wb-frame-note-view { display:flex; align-items:flex-start; gap:10px; }
-  .wb-frame-note.is-empty .wb-frame-note-view { justify-content:flex-end; }
-  .wb-frame-note.is-empty .wb-frame-note-placeholder { display:none; }
-  .wb-frame-note-text {
+  .wb-lib-item.wb-sel > .wb-lib-cap { color:var(--wb-accent); }
+  /* Detail 面板（右栏上段，app/DetailPanel.jsx）：note 视图/编辑器皮肤。
+     行内按钮与状态行沿用被收编的画布 Frame Note 视觉语言。 */
+  .wb-detail-note-text {
     flex:1; min-width:0;
     color:var(--wb-fg); opacity:.68;
+    font-size:var(--wb-cap-note); line-height:1.55;
     white-space:pre-wrap; overflow-wrap:anywhere;
   }
-  .wb-frame-note-placeholder { color:var(--wb-faint); }
-  .wb-frame-note-edit,
-  .wb-frame-note-action {
+  .wb-detail-note-placeholder { color:var(--wb-faint); opacity:1; }
+  .wb-note-action {
     appearance:none; flex:none;
     border:0; border-radius:var(--wb-r-3);
     padding:5px 8px;
     background:transparent; color:var(--wb-faint);
-    font:inherit; font-weight:var(--wb-w-semibold); line-height:1.2;
+    font:inherit; font-size:11px; font-weight:var(--wb-w-semibold); line-height:1.2;
     cursor:pointer;
   }
-  .wb-frame-note-edit:hover,
-  .wb-frame-note-action:hover { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-frame-note.is-empty .wb-frame-note-edit {
-    border:1px dashed var(--wb-line);
-    color:var(--wb-faint);
-  }
-  .wb-frame-note-editor { display:flex; flex-direction:column; gap:9px; }
-  .wb-frame-note-editor[hidden],
-  .wb-frame-note-view[hidden] { display:none; }
-  .wb-frame-note-input {
-    width:100%; min-height:164px; resize:vertical; box-sizing:border-box;
+  .wb-note-action:hover { background:var(--wb-hover); color:var(--wb-fg); }
+  .wb-note-action--save { background:var(--wb-accent); color:#fff; }
+  .wb-note-action:disabled { cursor:default; opacity:.45; }
+  .wb-note-input {
+    width:100%; min-height:120px; resize:vertical; box-sizing:border-box;
     border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
     padding:10px 11px;
     background:var(--wb-side); color:var(--wb-fg);
-    font:inherit; line-height:1.55;
+    font:inherit; font-size:var(--wb-cap-note); line-height:1.55;
     outline:none;
   }
-  .wb-frame-note-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--wb-accent) 14%, transparent); }
-  .wb-frame-note-footer { display:flex; align-items:center; gap:6px; }
-  .wb-frame-note-status { flex:1; min-width:0; color:var(--wb-faint); font-size:.9em; }
-  .wb-frame-note-status.is-error { color:var(--wb-danger); }
-  .wb-frame-note-action[data-frame-note-action="save"] { background:var(--wb-accent); color:#fff; }
-  .wb-frame-note-action:disabled { cursor:default; opacity:.45; }
+  .wb-note-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--wb-accent) 14%, transparent); }
+  .wb-note-status { flex:1; min-width:0; color:var(--wb-faint); font-size:10.5px; }
+  .wb-note-status.is-error { color:var(--wb-danger); }
   /* Component Library: light board, no phone chrome */
   .wb-screen--comp {
     --wb-phone-w: auto;
@@ -586,11 +575,10 @@
     display:flex; flex-direction:column; width:100%; height:100%; margin:0; padding:0; gap:0;
     border:0; background:transparent; box-shadow:none;
   }
-  /* section 标题、frame 标题、Frame Note 都属于画布语汇，整页阅读时不要。
+  /* section 标题、frame 标题都属于画布语汇，整页阅读时不要。
      汇报页出图走侧栏「导出文档」（真实版面长图 / HTML）。 */
   [data-page-mode="html"] .wb-lib-cap,
-  [data-page-mode="html"] .wb-screen-cap,
-  [data-page-mode="html"] .wb-frame-note { display:none; }
+  [data-page-mode="html"] .wb-screen-cap { display:none; }
   [data-page-mode="html"] .wb-sec-body {
     display:flex; flex:1; min-height:0; width:100%; padding:0; gap:0;
   }

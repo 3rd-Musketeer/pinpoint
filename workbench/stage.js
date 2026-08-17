@@ -7,7 +7,7 @@ import {
   ContractError,
   validateBoard
 } from './lib/preview-contracts.js';
-import { wbGet, wbSet, activeBoardMode } from './app/store.js';
+import { wbGet, wbSet, activeBoardMode, useWorkbenchStore } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import {
@@ -19,14 +19,17 @@ import {
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
+  clearBoardSelection,
   focusWorkbenchFrame,
   isTypingTarget,
-  resetBoardNavOnLoadFailure
+  resetBoardNavOnLoadFailure,
+  selectBoardFrame,
+  selectBoardSection,
+  syncBoardSelection
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { withAttachedScreens } from './lib/board-entries.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
-import { wireFrameNoteEditors } from './frame-notes.js';
 import {
   annotateApi,
   startAnnBridge,
@@ -150,7 +153,6 @@ function initBoard() {
   boardPanel.id = 'wb-board-panel';
   boardPanel.className = 'wb-panel wb-library-panel';
   stage.appendChild(boardPanel);
-  wireFrameNoteEditors(boardPanel);
   return loadPageManifest()
     .then(function () {
       return setActivePage(resolveBootPageId(readPrefs()), { force: true, scrollTop: false, save: false });
@@ -534,6 +536,40 @@ stage.addEventListener('wheel', function (e) {
     e.stopPropagation();
     suppressClick = false;
   }, true);
+
+  /* 2026-08-17 选中模型（detail 面板）：画布点选 frame/section → 右栏展示其
+     detail/note。规则：图注（cap/dim 行）= 选 frame；section 大标题 = 选 section；
+     frame 内部 = 原型交互，不动选中；板空白 = 清选中。标注模式下让位给标注
+     客户端（同 mousedown 的 annotateBlocksPan 豁免）；pan 后的残留 click 已被
+     上面 capture 相位的 suppressClick 吃掉，到这里的都是真实点击。 */
+  stage.addEventListener('click', function (e) {
+    if (e.button !== 0) return;
+    if (annotateBlocksPan()) return;
+    if (e.target.closest('[data-ann-ui]')) return;
+    var cap = e.target.closest('.wb-screen-cap, .wb-screen-dim');
+    if (cap) {
+      var screenEl = cap.closest('[data-screen]');
+      var sectionEl = cap.closest('.wb-lib-item');
+      if (screenEl && sectionEl) {
+        selectBoardFrame(sectionEl.getAttribute('data-ann-section'), screenEl.getAttribute('data-screen'));
+      }
+      return;
+    }
+    var secCap = e.target.closest('.wb-lib-cap');
+    if (secCap) {
+      var item = secCap.closest('.wb-lib-item');
+      var sectionId = item && item.getAttribute('data-ann-section');
+      if (sectionId && sectionId !== '_empty') selectBoardSection(sectionId);
+      return;
+    }
+    if (e.target.closest('.wb-screen')) return;
+    // 板空白（面板留白 / 组间隙）= 清选中
+    clearBoardSelection();
+  });
+
+  // store 选中态 → 画布 .wb-sel 高亮同步（板重载 innerHTML 替换后 activeBoard
+  // 写入同样触发本订阅，class 自动重挂）。
+  useWorkbenchStore.subscribe(function () { syncBoardSelection(); });
 })();
 
 if (import.meta.hot) {
@@ -550,8 +586,9 @@ if (import.meta.hot) {
     } else {
       queryClient.invalidateQueries({ queryKey: ['board', id] });
       queryClient.invalidateQueries({ queryKey: ['screen', id] });
-      // note 存在 board.json 里 —— 页面变更一并失效该页的 frame-note 缓存
+      // note 存在 board.json 里 —— 页面变更一并失效该页的 note 缓存
       queryClient.invalidateQueries({ queryKey: ['frame-note', id] });
+      queryClient.invalidateQueries({ queryKey: ['section-note', id] });
     }
     if (id === wbGet().activePageId) {
       snapshotPageViewport(wbGet().activePageId);

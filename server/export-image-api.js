@@ -59,8 +59,7 @@ function exportCss(request) {
     #wb-export-content>.wb-screen{display:flex!important}
     #wb-export-content>.wb-lib-item{position:relative!important}
     #wb-export-root,#wb-export-root *{animation:none!important;transition:none!important;caret-color:transparent!important}
-    #wb-export-root [data-export-ui],#wb-export-root .wb-frame-note-edit,#wb-export-root .wb-frame-note-editor{display:none!important}
-    #wb-export-root .wb-frame-note-view[hidden]{display:flex!important}
+    #wb-export-root [data-export-ui]{display:none!important}
   `;
 }
 

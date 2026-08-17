@@ -147,7 +147,8 @@ export function AnnPanel() {
     a.goToMark(n).then(function () {
       wbSet({
         focusAnnN: n,
-        focusFrameKey: row && row.screenId ? row.group + '\0' + row.screenId : null
+        focusFrameKey: row && row.screenId ? row.group + '\0' + row.screenId : null,
+        focusSectionId: null
       });
       var item = listRef.current && listRef.current.querySelector('.wb-ann-item[data-ann-n="' + n + '"]');
       if (item) item.scrollIntoView({ block: 'nearest' });

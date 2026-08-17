@@ -10,7 +10,35 @@ Template scope only — instance/product content changes live outside this file.
 
 ## 2026-08-17
 
+### Added
+- **Canvas click selection + right-hand detail panel** (owner 2026-08-17 决定,
+  decisions 08-17d) — clicking a frame caption selects the frame, clicking a
+  section's big title selects the section, clicking empty board clears the
+  selection; prototype-internal clicks and annotate mode are untouched. The new
+  `DetailPanel` (top section of the right panel, above the annotation workbench)
+  shows the selected object's ref / title / note and edits notes through the
+  revision-safe API. Selection state lives in the store (`focusFrameKey` + new
+  mutually-exclusive `focusSectionId`), with a persistent `.wb-sel` accent ring
+  on the canvas synced from store subscriptions; sidebar frame-tree and
+  annotation-card clicks drive the same panel for free.
+- **Section notes** — `sections[].note` passes schema validation, served by the
+  new `GET/PUT /api/section-notes/<pageId>/<sectionId>` route (same board.json
+  SSOT and revision as frame notes). Group-wide explanations (legends, verdicts)
+  finally have a home that is not the section title.
+- **Title rule, written down** (SKILL.md §2.1 + AGENTS.md + README) — titles are
+  single-line short noun phrases: no hand-written numbers (refs are
+  system-derived), no「·」stitching, no legends or rationale. Three layers of
+  defense: documented do/don't examples, `validateBoard` hard-rejecting newlines,
+  and a two-line clamp on canvas captions (full text on hover). The library
+  template board now follows the rule itself (16 titles rewritten).
+
 ### Changed
+- **Notes leave the canvas** (decisions 08-17d) — frame notes are no longer
+  rendered below frames; the on-canvas inline editor (`frame-notes.js`) is
+  deleted, the row grid goes from four shared rows back to three, and exports no
+  longer carry notes (re-injecting them from data rides with the planned export
+  rework — see backlog). Reading and writing notes happens exclusively in the
+  detail panel.
 - **Canvas zoom axis re-baselined: HUD 100% = comfortable default** (owner
   2026-08-17 决定, decisions 08-17c) — the 0.5 visual factor moves out of the
   zoom value and into the rendering base: `.wb-library` now scales by
