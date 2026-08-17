@@ -8,6 +8,26 @@ Template scope only — instance/product content changes live outside this file.
 
 ---
 
+## 2026-08-17
+
+### Fixed
+- **Page-row copy button clipped out of the sidebar** (Radix ScrollArea internal
+  contract) — the ScrollArea viewport wraps its children in an inline
+  `display:table; min-width:100%` div, so sidebar rows laid out at their natural
+  content width instead of tracking the sidebar width: the longest page row
+  measured 274px against a 250px panel, and `#wbside`'s `overflow-x:hidden`
+  clipped the trailing copy button out of view at every width (dragging the
+  splitter never changed row layout). Fixed by forcing the wrapper back to
+  block layout (`index.html`: `#wbside [data-slot="scroll-area-viewport"] > div
+  { display:block !important; }`). Regression guard is geometric, not
+  click-based — Playwright clicks ignore ancestor clipping, so "clickable"
+  never proved "visible": new e2e helper `withinContainerViolations` asserts
+  bounding boxes against the panel edge for page rows, copy buttons, contents
+  entries, and annotation cards at default and compact widths on both
+  sidebars. Known vendored-component internal contracts are now documented in
+  `AGENTS.md` (ScrollArea table wrapper + the earlier DropdownMenu Popper
+  wrapper) and in `workbench/app/ui/scroll-area.jsx`'s header.
+
 ## 2026-08-16
 
 ### Added

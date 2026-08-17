@@ -63,6 +63,27 @@ async function readWbPrefs(page) {
   return page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')));
 }
 
+// 几何断言（2026-08-17）：所有匹配元素都必须落在容器的横向可视盒内。
+// Playwright 点击不检查祖先 overflow 裁剪，「能点到」证明不了「人能看到」——
+// 布局断言必须比 bounding box。返回违规描述列表，空数组 = 通过。
+async function withinContainerViolations(page, childSel, containerSel) {
+  return page.evaluate(([c, p]) => {
+    const parent = document.querySelector(p);
+    if (!parent) return ['missing container ' + p];
+    const pr = parent.getBoundingClientRect();
+    const out = [];
+    document.querySelectorAll(c).forEach((el) => {
+      const r = el.getBoundingClientRect();
+      if (r.left < pr.left - 0.5 || r.right > pr.right + 0.5) {
+        const label = el.getAttribute('data-copy-page') || el.getAttribute('data-vpage') ||
+          el.getAttribute('data-entry') || el.tagName;
+        out.push(label + ' right=' + Math.round(r.right) + ' container right=' + Math.round(pr.right));
+      }
+    });
+    return out;
+  }, [childSel, containerSel]);
+}
+
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');
@@ -1784,4 +1805,43 @@ test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶
   await expect.poll(async () => (await readWbPrefs(page)).sideWidth).toBe(300);
   await expect(side).not.toHaveClass(/compact/);
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
+});
+
+test('sidebar rows stay within their panel at default and compact widths (2026-08-17 ScrollArea 内层修复)', async ({ page }) => {
+  // Radix ScrollArea viewport 内层是内联 display:table，内容按自然宽排版、不随
+  // 栏宽收缩，行尾 copy 钮被 #wbside 的 overflow-x:hidden 裁出栏外（实况：自然
+  // 宽 274 > 栏宽 250）。index.html 已强制回 block；本用例用几何断言防回归——
+  // 点击不查祖先裁剪（首轮排查「点得到但人看不到」的教训），必须比 bounding box。
+  await openWorkbench(page);
+
+  // 右栏：播种一条标注，默认 308 与紧凑 260 两档，标注行都在面板内
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'geometry guard mark');
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
+  expect(await annPanelWidth(page)).toBe(308);
+  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-side')).toEqual([]);
+  await dragAnnSplitter(page, 48);
+  expect(await annPanelWidth(page)).toBe(260);
+  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-side')).toEqual([]);
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+
+  // 左栏：混合板页（产物条目带 tag），默认 250 与紧凑 200 两档——
+  // Page 行、行尾 copy 钮、内容区条目行全部在栏内
+  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
+  expect(await sideWidth(page)).toBe(250);
+  expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '.wb-page-copy', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
+
+  await dragSideSplitter(page, -120);
+  expect(await sideWidth(page)).toBe(200);
+  await expect(page.locator('#wbside')).toHaveClass(/compact/);
+  expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '.wb-page-copy', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 });

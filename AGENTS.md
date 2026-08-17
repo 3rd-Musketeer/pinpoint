@@ -196,6 +196,25 @@ logic to individual screen fragments.
 | Tokens / class vocabulary / knobs | [`README.md`](README.md) |
 | Export Frame images via the picker | [`README.md`](README.md#export-frame-images) |
 
+## Vendored 组件已知内部契约
+
+`workbench/app/ui/` 的 shadcn 副本「source-owned, edit freely」只说对了一半：
+包装层是我们的，Radix Primitive 的**内部 DOM 契约**还是上游的，读代码看不
+见，只有 computed style 看得见。改这些组件或它们周边的布局前，先查这张
+表（每条都带来源实例，新增条目带日期与来路）：
+
+- **ScrollArea（`ui/scroll-area.jsx`）**：Viewport 给 children 包一层内联
+  `display:table;min-width:100%`，内容按自然宽排版、不随容器收缩。2026-08-17
+  实况：左栏 Page 行自然宽 274 > 栏宽 250，行尾 copy 钮被 `overflow-x:hidden`
+  裁出栏外、对人不可见不可点，而 e2e「点击 + 读剪贴板」全绿（Playwright 点击
+  不检查祖先裁剪）。修复 = `index.html` 的
+  `#wbside [data-slot="scroll-area-viewport"] > div { display:block !important; }`；
+  防回归 = e2e `withinContainerViolations` 几何断言（布局断言比 bounding box，
+  不靠点击）。
+- **DropdownMenu（`app/frame-menu.jsx`）**：Radix Popper 会包一层定位 wrapper，
+  组件只管行为，皮肤/几何在 `index.html` CSS 里中和（"Popper wrapper
+  neutralized there"，见仓库地图 frame-menu 条目）。
+
 Component includes support `data-text` → `[data-ios-slot="text"]` plus named
 `data-slot-<name>` → `[data-ios-slot="<name>"]`. Use named slots when two screens share one
 component/state model but vary copy or progress; do not fork visual variants only to swap text.

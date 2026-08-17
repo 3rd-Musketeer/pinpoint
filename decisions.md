@@ -11,6 +11,7 @@
 
 | 日期 | 当时问题 | 裁决 | successor | 状态 |
 | --- | --- | --- | --- | --- |
+| 2026-08-17 | 复制按钮被裁出栏外 + vendored 组件摩擦是否系统性 | 是系统性：布局断言一律比 bounding box 不靠点击（`withinContainerViolations`）；vendored 组件已知内部契约成文（AGENTS.md 小节 + 组件头注）；登记处长到 5+ 条再评估契约测试 | — | 现行 |
 | 2026-08-16g | 文档模式 grilling 三问 + 下一轮 arc 暂缓 | 「canvas 即文档」显式否决（维持 doc 条目 + mention embed）；屏前自用优先，embed 导出烤图已在线不新建；doc 正文 pin 标注允许（重申 08-16e）；text-range 选词高亮缓期；下一轮深化 arc 等真实任务激活 | 重申 08-16b / 08-16e | 现行（arc 缓期） |
 | 2026-08-16f | 第二轮对象模型：Page = 线程容器，产物 + 草稿 | Page 去类型化（pill 撤到产物条目）；页内容 = 产物（画布/文档/网页，可多个）+ 草稿（整页 HTML）；草稿与产物无机制耦合；DocVersions 层级退役（多屏 doc 拆扁平条目）；url 条目 = 网页产物；画布裸帧明确不做；词汇：禁用自造词「册」 | 修订 08-16b 五阶段地图（Pages 壳标语义） | 现行（方向拍定，实现见 ROADMAP 阶段 6–8） |
 | 2026-08-16e | 文档 mention 活 frame + 标注透传 | `<div data-pinpoint-frame>` + /api/frame 水合；透传不改存储 schema（同机壳逐字节同构 → frame 内路径纯派生）；导出烤静态图 | — | 现行（已落地） |
@@ -35,6 +36,15 @@
 | 2026-07-20 | topic / source / delivery 语义 | fixtures 分 topic；人 = source | — | 现行（产品 SSOT 已归档 cold-topic） |
 
 ---
+
+## 2026-08-17 · 布局断言比几何不靠点击 + vendored 组件内部契约成文
+
+**Decided**（owner 2026-08-17 提问「这是不是一个潜在要修复的架构/系统性问题」后批准三件修复）：
+
+- **布局/自适应断言一律比 bounding box，不靠点击**。Playwright 点击不检查祖先 `overflow` 裁剪，「能点到」证明不了「人能看到」——本次的实证：复制按钮被裁出栏外，e2e 与 agent 首轮排查的「点击 + 读剪贴板」断言却都通过，测试和排查犯了同一个错。e2e 辅助 = `withinContainerViolations`（workbench.spec.js），左右栏默认宽 + 紧凑宽各一档已生效；以后写 UI 布局用例照此断言。
+- **vendored 组件已知内部契约成文**：`AGENTS.md`「Vendored 组件已知内部契约」小节 + 各 `ui/` 组件头注。「source-owned, edit freely」只覆盖包装层；Radix Primitive 的内部 DOM 契约是上游的，只有 computed style 可见。新增条目带日期与来路；登记处长到 5+ 条再评估更结构化对策（契约测试）。
+
+**Why**: ScrollArea `display:table` 内层把 Page 行按自然宽 274px 排版（栏宽 250），行尾 copy 钮被 `overflow-x:hidden` 裁出——同类摩擦第二次出现（首次 = frame-menu Popper wrapper 需中和），证明「行为归组件、几何归 CSS」的收编分工默认了组件内部无害，这个默认不成立。
 
 ## 2026-08-16g · 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务）
 
