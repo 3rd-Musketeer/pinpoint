@@ -82,6 +82,14 @@ test('HUD export produces one offline interactive HTML with outline and spatial 
   await expect(offline.locator('.share-frame-viewport')).toHaveCount(1);
   await offline.getByRole('button', { name: 'Try it' }).click();
   await expect(offline.locator('[data-result]')).toHaveText('Done');
+
+  // Workbench 自身锁 body 滚动；分享壳必须显式解除，才能用鼠标滚轮纵向浏览 Section。
+  await offline.setViewportSize({ width: 1280, height: 400 });
+  await offline.mouse.move(1000, 350);
+  await offline.mouse.wheel(0, 700);
+  await expect.poll(() => offline.evaluate(() => window.scrollY)).toBeGreaterThan(0);
+  await offline.mouse.wheel(0, -700);
+  await expect.poll(() => offline.evaluate(() => window.scrollY)).toBe(0);
 });
 
 test('interactive HTML requires per-resource approval for an exact HTTPS snapshot', async ({ page }) => {

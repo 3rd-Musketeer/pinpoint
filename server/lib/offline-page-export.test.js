@@ -124,5 +124,6 @@ test('buildOfflineShareHtml keeps section rows, outline targets, and no Pinpoint
   assert.match(html, /class="share-frame-row"/);
   assert.match(html, /data-frame-count="2"/);
   assert.match(html, /transform:scale\(\.5\)/);
+  assert.match(html, /html,body\{[^}]*overflow:visible/);
   assert.doesNotMatch(html, /annotate\.js|pinpoint\.localhost|\/sites\//);
 });

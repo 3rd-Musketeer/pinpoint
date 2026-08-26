@@ -70,8 +70,20 @@ for (const target of targets) {
       throw new Error(`${target.name}: shared-center tab interaction did not update`);
     }
   }
+  await page.setViewportSize({ width: 1440, height: 500 });
+  await page.mouse.move(1200, 450);
+  await page.mouse.wheel(0, 800);
+  await page.waitForTimeout(50);
+  if (await page.evaluate(() => window.scrollY) <= 0) {
+    throw new Error(`${target.name}: mouse wheel did not scroll the shared page vertically`);
+  }
+  await page.mouse.wheel(0, -10000);
+  await page.waitForTimeout(50);
+  if (await page.evaluate(() => window.scrollY) !== 0) {
+    throw new Error(`${target.name}: mouse wheel did not return the shared page to the top`);
+  }
   if (escapedNetwork.length) throw new Error(`${target.name}: network escaped: ${escapedNetwork.join(', ')}`);
   if (errors.length) throw new Error(`${target.name}: browser errors: ${errors.join(' | ')}`);
-  console.log(JSON.stringify({ browser: target.name, viewport: 'desktop-1440x900', sections: sectionCount, frames: frameCount, screenshots: frameCount, networkRequests: 0, errors: 0 }));
+  console.log(JSON.stringify({ browser: target.name, viewport: 'desktop-1440x900', sections: sectionCount, frames: frameCount, screenshots: frameCount, verticalWheel: true, networkRequests: 0, errors: 0 }));
   await browser.close();
 }
