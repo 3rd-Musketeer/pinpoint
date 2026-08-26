@@ -10,6 +10,7 @@ import frameApi from './server/frame-api.js';
 import frameNotesApi from './server/frame-notes-api.js';
 import exportImageApi from './server/export-image-api.js';
 import exportDocApi from './server/export-doc-api.js';
+import exportPageHtmlApi from './server/export-page-html-api.js';
 import previewHmr from './server/preview-hmr.js';
 import previewInject from './server/preview-inject.js';
 import componentsBoard from './server/components-board.js';
@@ -32,7 +33,7 @@ registryStore.reload = () => {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr],
+  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

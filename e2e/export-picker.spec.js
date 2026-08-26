@@ -45,11 +45,82 @@ const SECTION_IDS = ['home', 'brew-flow', 'msg-flow', 'lock', 'ab', 'settings'];
 async function openPicker(page) {
   await page.locator('#wbexport-open').click();
   await expect(picker(page)).toBeVisible();
+  await picker(page).getByRole('button', { name: /Frame 图片/ }).click();
 }
 
 async function toggleSectionOff(page, sectionId) {
   await picker(page).locator(`.wb-pk-sec[data-section="${sectionId}"]`).click();
 }
+
+test('HUD export produces one offline interactive HTML with outline and spatial structure', async ({ page, context }, testInfo) => {
+  await openWorkbench(page);
+  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-dir-ios');
+
+  await page.locator('#wbexport-open').click();
+  const dialog = picker(page);
+  await expect(dialog.getByRole('button', { name: /可交互 HTML/ })).toBeVisible();
+  await expect(dialog.getByRole('button', { name: /Frame 图片/ })).toBeVisible();
+  await dialog.getByRole('button', { name: /可交互 HTML/ }).click();
+  await expect(dialog.locator('.wb-offline-summary')).toContainText('1 个 Section · 1 个 Frame');
+
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '检查并下载' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('e2e-dir-ios__interactive.html');
+  const file = testInfo.outputPath('e2e-dir-ios__interactive.html');
+  await download.saveAs(file);
+  const body = await fs.readFile(file, 'utf8');
+  expect(body).not.toMatch(/(?:src|href)=["']\/(?:sites|kits|workbench|api)\//);
+
+  const offline = await context.newPage();
+  await offline.goto('file://' + file.replaceAll('\\', '/'));
+  await expect(offline.locator('.share-outline-section > a:not(.share-outline-frame)')).toHaveCount(1);
+  await expect(offline.locator('.share-outline-frame')).toHaveCount(1);
+  await expect(offline.locator('.share-section')).toHaveCount(1);
+  await expect(offline.locator('.share-frame-viewport')).toHaveCount(1);
+  await offline.getByRole('button', { name: 'Try it' }).click();
+  await expect(offline.locator('[data-result]')).toHaveText('Done');
+});
+
+test('interactive HTML requires per-resource approval for an exact HTTPS snapshot', async ({ page }) => {
+  await openWorkbench(page);
+  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
+  const digest = 'a'.repeat(64);
+  let downloadBody = null;
+  await page.route('**/api/export-page-html/scan', async (route) => route.fulfill({
+    contentType: 'application/json',
+    body: JSON.stringify({
+      pageId: 'e2e-dir-ios', sectionCount: 1, frameCount: 1,
+      remoteResources: [{ url: 'https://assets.example/icon.svg', origin: 'https://assets.example', mime: 'image/svg+xml', size: 321, sha256: digest }],
+    }),
+  }));
+  await page.route('**/api/export-page-html', async (route) => {
+    downloadBody = route.request().postDataJSON();
+    await route.fulfill({
+      contentType: 'text/html',
+      headers: { 'Content-Disposition': 'attachment; filename="e2e-dir-ios__interactive.html"' },
+      body: '<!doctype html><title>approved</title>',
+    });
+  });
+
+  await page.locator('#wbexport-open').click();
+  const dialog = picker(page);
+  await dialog.getByRole('button', { name: /可交互 HTML/ }).click();
+  await dialog.getByRole('button', { name: '检查并下载' }).click();
+  await expect(dialog.locator('.wb-offline-resource')).toContainText('https://assets.example · image/svg+xml · 321 B');
+  await expect(dialog.getByRole('button', { name: '确认并下载' })).toBeDisabled();
+  await dialog.locator('.wb-offline-resource input').check();
+  const [download] = await Promise.all([
+    page.waitForEvent('download'),
+    dialog.getByRole('button', { name: '确认并下载' }).click(),
+  ]);
+  expect(download.suggestedFilename()).toBe('e2e-dir-ios__interactive.html');
+  expect(downloadBody.approvals).toEqual([{
+    url: 'https://assets.example/icon.svg', origin: 'https://assets.example', mime: 'image/svg+xml', size: 321, sha256: digest,
+  }]);
+});
 
 test('HUD export button opens the picker with the full page tree preselected', async ({ page }) => {
   const previews = await stubPreviewRequests(page);

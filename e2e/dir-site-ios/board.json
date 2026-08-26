@@ -3,7 +3,7 @@
     {
       "id": "main",
       "title": "Main",
-      "layout": "column",
+      "layout": "row",
       "screens": [
         { "id": "cards", "title": "Cards" }
       ]

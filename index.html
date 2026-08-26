@@ -669,6 +669,38 @@
     transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
   }
   .wb-export-close:hover { background:var(--wb-hover); color:var(--wb-fg); }
+  .wb-export-back {
+    border:0; background:transparent; color:var(--wb-muted); cursor:pointer; flex:none;
+    width:28px; height:28px; padding:0; border-radius:var(--wb-r-2);
+    display:inline-flex; align-items:center; justify-content:center; font:inherit; font-size:22px;
+  }
+  .wb-export-back:hover { background:var(--wb-hover); color:var(--wb-fg); }
+  .wb-export-kinds { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .wb-export-kinds button {
+    min-height:112px; padding:16px; border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
+    background:var(--wb-surface); color:var(--wb-fg); text-align:left; cursor:pointer;
+    display:flex; flex-direction:column; justify-content:center; gap:7px; font:inherit;
+  }
+  .wb-export-kinds button:hover { background:var(--wb-hover); border-color:color-mix(in srgb, var(--wb-accent) 45%, var(--wb-line)); }
+  .wb-export-kinds strong { font-size:14px; }
+  .wb-export-kinds span { color:var(--wb-muted); font-size:12px; line-height:1.45; }
+  .wb-offline-summary {
+    padding:14px; border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
+    background:var(--wb-surface); display:flex; flex-direction:column; gap:6px;
+  }
+  .wb-offline-summary strong { font-size:13px; }
+  .wb-offline-summary span { color:var(--wb-muted); font-size:12px; line-height:1.45; }
+  .wb-offline-resources { max-height:260px; overflow:auto; display:flex; flex-direction:column; gap:6px; }
+  .wb-offline-resource {
+    display:flex; align-items:flex-start; gap:9px; padding:10px;
+    border:1px solid var(--wb-line); border-radius:var(--wb-r-2); background:var(--wb-surface);
+  }
+  .wb-offline-resource input { margin-top:2px; accent-color:var(--wb-accent); }
+  .wb-offline-resource-copy { min-width:0; display:flex; flex:1; flex-direction:column; gap:3px; }
+  .wb-offline-resource-copy strong { font-size:11.5px; }
+  .wb-offline-resource-copy span, .wb-offline-resource-copy code {
+    color:var(--wb-faint); font:10px/1.35 var(--wb-font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
+  }
   .wb-export-field { display:flex; flex-direction:column; gap:7px; }
   .wb-export-label { color:var(--wb-muted); font-size:12px; font-weight:var(--wb-w-semibold); }
   .wb-export-check {

@@ -13,6 +13,8 @@ import {
   buildExportSnapshot,
   downloadExportResult,
   requestExportImage,
+  requestOfflinePageExport,
+  requestOfflinePageScan,
   requestExportPreview,
   requestExportZip
 } from '../export-core.js';
@@ -82,7 +84,7 @@ function snapshotFor(frame, background, scale) {
   });
 }
 
-function PickerBody(props) {
+function ImagePickerBody(props) {
   var tree = props.tree;
   var [selected, setSelected] = useState(function () {
     var all = {};
@@ -294,6 +296,136 @@ function PickerBody(props) {
         <button type="button" className="wb-export-action primary wb-pk-go"
           disabled={!count || busy} onClick={onGo}>
           {count > 1 ? '打包下载 zip' : '下载 PNG'}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function byteLabel(bytes) {
+  if (bytes < 1024) return bytes + ' B';
+  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+  return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+}
+
+function OfflineHtmlPickerBody(props) {
+  var [phase, setPhase] = useState('idle');
+  var [scan, setScan] = useState(null);
+  var [approved, setApproved] = useState({});
+  var [notice, setNotice] = useState('导出当前 Page 的固定快照；接收者双击即可离线查看。');
+  var resources = scan && scan.remoteResources || [];
+  var allApproved = resources.every(function (resource) { return approved[resource.url]; });
+
+  function fail(error) {
+    setPhase('error');
+    setNotice(String(error && error.message || error));
+  }
+
+  function download(approvals) {
+    setPhase('exporting');
+    setNotice('正在冻结资源并生成单文件…');
+    requestOfflinePageExport(props.pageId, approvals).then(function (result) {
+      downloadExportResult(result);
+      setPhase('done');
+      setNotice('已下载 ' + result.filename + '（' + byteLabel(result.blob.size) + '）');
+    }).catch(fail);
+  }
+
+  function inspect() {
+    setPhase('scanning');
+    setScan(null);
+    setApproved({});
+    setNotice('正在检查 Page 与全部依赖…');
+    requestOfflinePageScan(props.pageId).then(function (result) {
+      setScan(result);
+      if (!result.remoteResources.length) download([]);
+      else {
+        setPhase('approval');
+        setNotice('发现 ' + result.remoteResources.length + ' 个 HTTPS 静态资源；逐项确认后才能下载。');
+      }
+    }).catch(fail);
+  }
+
+  return (
+    <div className="wb-export-form">
+      <div className="wb-export-head">
+        <button type="button" className="wb-export-back" aria-label="返回导出格式"
+          onClick={props.onBack}>‹</button>
+        <div className="wb-export-head-copy">
+          <h2 id="wb-export-picker-title">可交互 HTML</h2>
+          <p className="wb-export-target">{props.pageId}</p>
+        </div>
+        <button type="button" className="wb-export-close" aria-label="关闭"
+          onClick={function () { wbSet({ exportPickerOpen: false }); }}>×</button>
+      </div>
+      <div className="wb-offline-summary">
+        <strong>{props.tree.length} 个 Section · {props.frameCount} 个 Frame</strong>
+        <span>纵向浏览 Section；每个 Section 内横向浏览 Frame；左侧 Outline 导航。</span>
+        <span>保留 Frame 内交互与当前固定比例；不包含标注，也无法撤回。</span>
+      </div>
+      {resources.length ? (
+        <div className="wb-offline-resources" aria-label="待批准的 HTTPS 静态资源">
+          {resources.map(function (resource) {
+            return (
+              <label className="wb-offline-resource" key={resource.url}>
+                <input type="checkbox" checked={!!approved[resource.url]}
+                  onChange={function (event) {
+                    var checked = event.target.checked;
+                    setApproved(function (prev) {
+                      return Object.assign({}, prev, { [resource.url]: checked });
+                    });
+                  }} />
+                <span className="wb-offline-resource-copy">
+                  <strong>{resource.origin} · {resource.mime} · {byteLabel(resource.size)}</strong>
+                  <span title={resource.url}>{resource.url}</span>
+                  <code title={resource.sha256}>sha256 {resource.sha256.slice(0, 16)}…</code>
+                </span>
+              </label>
+            );
+          })}
+        </div>
+      ) : null}
+      <div className="wb-pk-ft">
+        <span className={cn('wb-pk-st', phase === 'error' && 'is-error')} aria-live="polite">{notice}</span>
+        {phase === 'approval' ? (
+          <button type="button" className="wb-export-action primary wb-pk-go"
+            disabled={!allApproved} onClick={function () { download(resources); }}>确认并下载</button>
+        ) : (
+          <button type="button" className="wb-export-action primary wb-pk-go"
+            disabled={phase === 'scanning' || phase === 'exporting'} onClick={inspect}>
+            {phase === 'done' || phase === 'error' ? '重新检查并下载' : '检查并下载'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function PickerBody(props) {
+  var [mode, setMode] = useState('');
+  if (mode === 'image') return <ImagePickerBody {...props} />;
+  if (mode === 'html') {
+    var frameCount = props.tree.reduce(function (count, section) { return count + section.frames.length; }, 0);
+    return <OfflineHtmlPickerBody {...props} frameCount={frameCount} onBack={function () { setMode(''); }} />;
+  }
+  return (
+    <div className="wb-export-form">
+      <div className="wb-export-head">
+        <div className="wb-export-head-copy">
+          <h2 id="wb-export-picker-title">导出</h2>
+          <p className="wb-export-target">{props.pageId}</p>
+        </div>
+        <button type="button" className="wb-export-close" aria-label="关闭"
+          onClick={function () { wbSet({ exportPickerOpen: false }); }}>×</button>
+      </div>
+      <div className="wb-export-kinds">
+        <button type="button" onClick={function () { setMode('html'); }}>
+          <strong>可交互 HTML</strong>
+          <span>整个 Page · 单文件 · 可离线打开</span>
+        </button>
+        <button type="button" onClick={function () { setMode('image'); }}>
+          <strong>Frame 图片</strong>
+          <span>选择 Frame · PNG 或 zip</span>
         </button>
       </div>
     </div>

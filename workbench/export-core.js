@@ -187,6 +187,43 @@ export function requestExportZip(requests) {
   });
 }
 
+function postOfflinePageExport(pathname, pageId, approvals) {
+  return fetch(pathname, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ pageId: pageId, approvals: approvals })
+  }).then(function (response) {
+    if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) {
+      throw new Error(body.message || ('HTML 导出失败 · ' + response.status));
+    });
+    return response;
+  });
+}
+
+// 先扫描再导出：HTTPS 静态资源只有在作者看到 URL / 类型 / 大小 / 摘要并逐项
+// 确认后，才把同一批精确字节冻结进离线文件。没有远端资源时可直接下载。
+export function requestOfflinePageScan(pageId) {
+  return postOfflinePageExport('/api/export-page-html/scan', pageId).then(function (response) {
+    return response.json();
+  });
+}
+
+export function requestOfflinePageExport(pageId, approvals) {
+  return postOfflinePageExport('/api/export-page-html', pageId, approvals || []).then(function (response) {
+    return response.blob().then(function (blob) {
+      return {
+        blob: blob,
+        filename: filenameFromContentDisposition(
+          response.headers.get('Content-Disposition'),
+          pageId + '__interactive.html'
+        ),
+        sections: Number(response.headers.get('X-Export-Sections')) || 0,
+        frames: Number(response.headers.get('X-Export-Frames')) || 0
+      };
+    });
+  });
+}
+
 export function downloadExportResult(result) {
   var url = URL.createObjectURL(result.blob);
   var link = document.createElement('a');
