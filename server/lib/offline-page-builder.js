@@ -111,6 +111,7 @@ export async function buildOfflinePage(options = {}) {
         entryRoot: resolved.root,
         entryId: pageId,
         pinpointRoot: ROOT,
+        registry,
         approvals: options.approvals,
         fetchRemote,
       });

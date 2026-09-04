@@ -57,3 +57,35 @@ test('buildOfflinePage fetches a shared remote resource once per export', async 
   assert.equal(fetchCount, 1);
   assert.equal(result.remoteResources.length, 1);
 });
+
+test('buildOfflinePage freezes static dependencies from another registered page', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-page-'));
+  const sharedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-shared-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(sharedRoot, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'board.json'), JSON.stringify({
+    sections: [{ id: 'flow', title: 'Flow', layout: 'row', screens: [{ id: 'one' }] }],
+  }));
+  fs.writeFileSync(path.join(root, 'one.html'), [
+    '<style>@import url("/sites/shared-style/theme.css");</style>',
+    '<div class="ios-app"><img src="/sites/shared-style/icon.svg" alt=""></div>',
+  ].join('\n'));
+  fs.writeFileSync(path.join(sharedRoot, 'theme.css'), '.shared{color:#123456}');
+  fs.writeFileSync(path.join(sharedRoot, 'icon.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  const pageEntry = { id: 'page', title: 'Page', kind: 'dir', path: root, board: 'ios' };
+  const sharedEntry = { id: 'shared-style', title: 'Shared Style', kind: 'dir', path: sharedRoot, board: 'ios' };
+  const registry = {
+    resolve(id) {
+      if (id === pageEntry.id) return pageEntry;
+      if (id === sharedEntry.id) return sharedEntry;
+      return null;
+    },
+  };
+
+  const result = await buildOfflinePage({ pageId: pageEntry.id, registry, approvals: [] });
+
+  assert.match(result.html, /\.shared\{color:#123456\}/);
+  assert.match(result.html, /src="data:image\/svg\+xml;base64,/);
+  assert.doesNotMatch(result.html, /\/sites\/shared-style\//);
+  assert.deepEqual(result.remoteResources, []);
+});

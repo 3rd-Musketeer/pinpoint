@@ -42,6 +42,87 @@ test('bundleHtmlAssets inlines local CSS, images, and preview modules', async (t
   assert.deepEqual(bundled.remoteResources, []);
 });
 
+test('bundleHtmlAssets automatically inlines static assets from another registered page', async (t) => {
+  const root = fixtureDir(t);
+  const sharedRoot = fixtureDir(t);
+  fs.writeFileSync(path.join(root, 'screen.html'), '<div></div>');
+  fs.writeFileSync(path.join(sharedRoot, 'theme.css'), '.hero{background:url("./dot.svg")}');
+  fs.writeFileSync(path.join(sharedRoot, 'dot.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  const registry = {
+    resolve(id) {
+      return id === 'shared-assets'
+        ? { id, kind: 'dir', path: sharedRoot }
+        : null;
+    },
+  };
+
+  const bundled = await bundleHtmlAssets([
+    '<style>@import url("/sites/shared-assets/theme.css");</style>',
+    '<img src="/sites/shared-assets/dot.svg" alt="">',
+  ].join('\n'), {
+    baseFile: path.join(root, 'screen.html'),
+    entryRoot: root,
+    entryId: 'demo',
+    pinpointRoot: root,
+    registry,
+  });
+
+  assert.match(bundled.html, /\.hero\{background:url\("data:image\/svg\+xml;base64,/);
+  assert.match(bundled.html, /<img src="data:image\/svg\+xml;base64,/);
+  assert.doesNotMatch(bundled.html, /\/sites\/shared-assets\//);
+  assert.deepEqual(bundled.remoteResources, []);
+});
+
+test('bundleHtmlAssets still blocks resources owned by a registered online page', async (t) => {
+  const root = fixtureDir(t);
+  fs.writeFileSync(path.join(root, 'screen.html'), '<div></div>');
+  const registry = {
+    resolve(id) {
+      return id === 'live-app'
+        ? { id, kind: 'url', url: 'https://app.example' }
+        : null;
+    },
+  };
+
+  await assert.rejects(
+    bundleHtmlAssets('<img src="/sites/live-app/icon.svg" alt="">', {
+      baseFile: path.join(root, 'screen.html'),
+      entryRoot: root,
+      entryId: 'demo',
+      pinpointRoot: root,
+      registry,
+    }),
+    (error) => error instanceof OfflinePageExportError && error.code === 'runtime_network',
+  );
+});
+
+test('bundleHtmlAssets rejects a foreign-page symlink that escapes its registered directory', async (t) => {
+  const root = fixtureDir(t);
+  const sharedRoot = fixtureDir(t);
+  const outsideRoot = fixtureDir(t);
+  fs.writeFileSync(path.join(root, 'screen.html'), '<div></div>');
+  fs.writeFileSync(path.join(outsideRoot, 'secret.svg'), '<svg xmlns="http://www.w3.org/2000/svg"></svg>');
+  fs.symlinkSync(path.join(outsideRoot, 'secret.svg'), path.join(sharedRoot, 'shortcut.svg'));
+  const registry = {
+    resolve(id) {
+      return id === 'shared-assets'
+        ? { id, kind: 'dir', path: sharedRoot }
+        : null;
+    },
+  };
+
+  await assert.rejects(
+    bundleHtmlAssets('<img src="/sites/shared-assets/shortcut.svg" alt="">', {
+      baseFile: path.join(root, 'screen.html'),
+      entryRoot: root,
+      entryId: 'demo',
+      pinpointRoot: root,
+      registry,
+    }),
+    (error) => error instanceof OfflinePageExportError && error.code === 'asset_escape',
+  );
+});
+
 test('bundleHtmlAssets reports exact HTTPS bytes and requires matching approval', async (t) => {
   const root = fixtureDir(t);
   const url = 'https://assets.example/prototype.svg';

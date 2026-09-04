@@ -113,39 +113,85 @@ function approvalMap(approvals) {
 function assetContext(options) {
   const entryRoot = path.resolve(options.entryRoot);
   const pinpointRoot = path.resolve(options.pinpointRoot);
+  const registry = options.registry;
   const approvals = approvalMap(options.approvals);
   const remote = new Map();
   const cache = new Map();
+  const ownerRoots = new Map();
   const fetchRemote = options.fetchRemote || globalThis.fetch;
 
   function localRef(ref, baseFile) {
     const raw = splitSuffix(ref);
     let file;
-    if (raw.resource.startsWith(`/sites/${options.entryId}/`)) {
+    let ownerRoot;
+    if (raw.resource.startsWith('/sites/')) {
+      const match = raw.resource.match(/^\/sites\/([^/]+)\/(.*)$/);
+      if (!match) throw new OfflinePageExportError('bad_asset_url', `invalid asset URL: ${ref}`, { ref });
+      const ownerId = match[1];
       let rest;
-      try { rest = decodeURIComponent(raw.resource.slice(`/sites/${options.entryId}/`.length)); }
+      try { rest = decodeURIComponent(match[2]); }
       catch { throw new OfflinePageExportError('bad_asset_url', `invalid asset URL: ${ref}`); }
-      file = path.resolve(entryRoot, rest);
-      if (!inside(entryRoot, file)) {
+
+      if (ownerId === options.entryId) {
+        ownerRoot = entryRoot;
+        file = path.resolve(ownerRoot, rest);
+      } else {
+        const owner = registry && typeof registry.resolve === 'function' ? registry.resolve(ownerId) : null;
+        if (!owner) {
+          throw new OfflinePageExportError(
+            'asset_owner_missing',
+            `找不到资源所属的页面：${ownerId}`,
+            { ref, ownerId },
+          );
+        }
+        if (owner.kind === 'dir') {
+          ownerRoot = path.resolve(owner.path);
+          file = path.resolve(ownerRoot, rest);
+        } else if (owner.kind === 'file') {
+          ownerRoot = path.dirname(path.resolve(owner.path));
+          file = path.resolve(ownerRoot, rest);
+          if (file !== path.resolve(owner.path)) {
+            throw new OfflinePageExportError(
+              'asset_missing',
+              `页面 ${ownerId} 没有这个资源：${ref}`,
+              { ref, ownerId },
+            );
+          }
+        } else {
+          throw new OfflinePageExportError(
+            'runtime_network',
+            `资源来自在线网页，当前无法保存为离线文件：${ref}`,
+            { ref, ownerId },
+          );
+        }
+      }
+      if (!inside(ownerRoot, file)) {
         throw new OfflinePageExportError('asset_escape', `asset escapes registered entry: ${ref}`, { ref });
       }
-    } else if (raw.resource.startsWith('/sites/')) {
-      throw new OfflinePageExportError('foreign_entry', `asset belongs to another registry entry: ${ref}`, { ref });
+      ownerRoots.set(file, ownerRoot);
     } else if (raw.resource.startsWith('/kits/') || raw.resource.startsWith('/workbench/')) {
       file = path.resolve(pinpointRoot, raw.resource.slice(1));
       if (!inside(pinpointRoot, file)) {
         throw new OfflinePageExportError('asset_escape', `asset escapes Pinpoint root: ${ref}`, { ref });
       }
+      ownerRoots.set(file, pinpointRoot);
     } else if (raw.resource.startsWith('/')) {
       throw new OfflinePageExportError('unknown_absolute_asset', `unsupported absolute asset URL: ${ref}`, { ref });
     } else {
       file = path.resolve(path.dirname(baseFile), raw.resource);
-      const ownerRoot = inside(entryRoot, baseFile) ? entryRoot : pinpointRoot;
+      const resolvedBase = path.resolve(baseFile);
+      ownerRoot = ownerRoots.get(resolvedBase)
+        || (inside(entryRoot, resolvedBase) ? entryRoot : null)
+        || (inside(pinpointRoot, resolvedBase) ? pinpointRoot : null);
+      if (!ownerRoot) {
+        throw new OfflinePageExportError('asset_escape', `cannot resolve asset owner: ${ref}`, { ref, baseFile });
+      }
       if (!inside(ownerRoot, file)) {
         throw new OfflinePageExportError('asset_escape', `asset escapes owner directory: ${ref}`, { ref });
       }
+      ownerRoots.set(file, ownerRoot);
     }
-    return { kind: 'local', file, suffix: raw.suffix, identity: file };
+    return { kind: 'local', file, ownerRoot, suffix: raw.suffix, identity: file };
   }
 
   function resolveRef(ref, baseFile) {
@@ -175,6 +221,17 @@ function assetContext(options) {
     if (resolved.kind === 'local') {
       if (!fs.existsSync(resolved.file) || !fs.statSync(resolved.file).isFile()) {
         throw new OfflinePageExportError('asset_missing', `asset not found: ${ref}`, { ref, file: resolved.file });
+      }
+      let realFile;
+      let realOwnerRoot;
+      try {
+        realFile = fs.realpathSync(resolved.file);
+        realOwnerRoot = fs.realpathSync(resolved.ownerRoot);
+      } catch {
+        throw new OfflinePageExportError('asset_missing', `asset not found: ${ref}`, { ref, file: resolved.file });
+      }
+      if (!inside(realOwnerRoot, realFile)) {
+        throw new OfflinePageExportError('asset_escape', `asset escapes owner directory: ${ref}`, { ref });
       }
       const bytes = fs.readFileSync(resolved.file);
       if (bytes.length > MAX_RESOURCE_BYTES) {
