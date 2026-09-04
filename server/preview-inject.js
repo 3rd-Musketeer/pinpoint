@@ -3,7 +3,7 @@
  * previews/ 与 /sites/ 对齐同一条「serve 即注入」契约——任何含 <!doctype 的
  * previews/**.html 响应都带 annotate 客户端，页面不再需要自己抄注入 IIFE
  * （历史故障：weekly-review 三草稿 / detail-panel-variants 等缺段静默无法标注，
- * 案例见 debugging.md）。
+ * 案例见 docs/debugging.md）。
  * 只拦完整文档：fragment（无 <!doctype）一律放行给 vite 静态服务，画布内联
  * 保持干净；?annotate=off 单请求豁免（导出管线）；已带手工注入段的页面跳过
  * （客户端 __pinpoint 防双载是第二道网）。

@@ -171,7 +171,7 @@ npm run export -- --page library --section brew-flow
 
 ## 3. 加 workbench page
 
-**页面放哪都行**——2026-08-17e 起实例页面不再住 `previews/`（那里只放进 git 的模板：library / doc-library）。在你自己的 topic（推荐 `topics/<topic>/playground/<pageId>/`）建 `board.json` + 若干 `*.html`（交互屏可加同名 `*.js`），然后登记：
+**页面放哪都行**——2026-08-17e 起实例页面不再住 `previews/`（那里只放进 git 的模板：library / doc-library）。在你自己的 topic（推荐 `topics/<topic>/prototypes/<pageId>/`）建 `board.json` + 若干 `*.html`（交互屏可加同名 `*.js`），然后登记：
 
 ```bash
 pinpoint add <目录> --id <pageId> --title "My Flow" --board ios   # 画布页

@@ -2,7 +2,7 @@
 
 收录本仓非显而易见、排查成本高的故障案例。价值不在记录修复（git log 里有），
 而在**故障现象的模式匹配**：下次见到相似症状，先翻这里的「识别特征」。
-决策结论归 `decisions.md`，组件静态契约归 `AGENTS.md` vendored 小节，本文件
+决策结论归 `docs/adr/`，组件静态契约归 `AGENTS.md` 的坑与约定一节，本文件
 只记「现象 → 误判 → 根因 → 识别特征」的完整链路。新案例追加在顶部（新的在前）。
 
 条目格式：
@@ -16,6 +16,48 @@
 识别特征：下次见到什么信号应直接想到本条
 防回归：哪条测试/规则挡着（没有就写「无」，并考虑补）
 ```
+
+---
+
+## 2026-09-04 仓库目录被搬走后服务变 502（长命 vite 抱着旧绝对路径重启）
+
+现象：`https://pinpoint.localhost` 返回 portless 的 502
+「The target app is not responding」。portless 侧一切正常：`~/.portless/routes.json`
+里 pinpoint.localhost → 4939、pid 28792 仍在，proxy daemon 也活着。
+
+误判路径：先按 backlog 那条「服务进程死亡」（见下「关联」）猜进程没了——但
+`portless run`、`npm run dev:app`、`vite` 三层进程全在。再猜 portless 路由表
+写坏或端口被别人占。真正的入口是 `lsof -nP -p <vite pid> | grep LISTEN`：
+它监听 `[::1]:5173`，既不是 portless 分配的 4939，也不是 `vite.config.js` 里的
+`5199`/`127.0.0.1`。而 `ps -E` 显示环境里 `PORT=4939` 明明在。
+
+根因：进程在 2026-08-31 从 `topics/pinpoint/` 启动，仓库目录在 2026-09-04 11:12
+被搬到 `repos/github.com/3rd-Musketeer/pinpoint/`。macOS 的 rename 不影响运行中
+进程（cwd 跟着 inode 走），但 vite 内部持有的是**启动时解析出的绝对路径字符串**；
+它在这次搬迁时自我重启并按旧路径重新解析 root，那个路径此刻已是空壳——
+`vite.config.js` 不在，于是**整份配置静默落回默认值**：端口 5173、host localhost
+（解析成 `::1`）、全部 server 插件（annotate / sites / registry / preview-inject）
+一个都没装。portless 仍往 4939 转发，那里没人监听，就是 502。旁证：旧路径下
+`.vite/deps/_metadata.json` 的 mtime 恰是 11:12，且 `lockfileHash=e3b0c442…`
+（空串的 sha）、`optimized:{}`——vite 在一个既无 `package.json` 也无
+`package-lock.json` 的目录里做了依赖预构建，等于自证 root 已经指空。
+
+修复：本次是运行态故障，不改代码。杀掉 28792 整棵进程树（proxy daemon 832 不动），
+在新路径的 dev worktree 里重跑 `just dev`；portless 重新分配端口（4453）并更新
+routes.json。顺手删掉旧路径残留的 `.vite` 缓存空目录。
+
+识别特征：**「portless 路由在、进程也在，却 502」= 先 `lsof` 看进程到底在听哪个
+端口，别先怀疑进程死了。** 监听端口等于框架默认值（vite 5173 / `::1`）而不是配置值，
+就说明配置根本没被加载；此时查进程的 cwd 与它自报的 root 是否指向同一个真实目录。
+更一般的信号：**任何长命 dev server 跨越了一次仓库目录搬迁，就必须重启**——
+它可能表面还活着，其实已经在一个空路径上跑裸默认配置。同类线索还有 `/health`
+返回空、`/` 返回 404（插件没装）、`.vite` 缓存出现在不该出现的目录。
+
+防回归：无。这是进程生命周期问题，测试挡不住。关联 backlog「CLI 服务生命周期
+管理 + 开机自启」（2026-08-17 owner 提出，动机是当日的服务进程死亡 → 404 事故）：
+本条是同一 milestone 的另一种故障形态——那次是进程没了、这次是进程还在但已失效，
+所以未来的 `pinpoint status` 不能只判断「进程活着 / 路由在」，要实际打 `/health`
+并核对进程 root 与当前仓库路径一致。
 
 ---
 

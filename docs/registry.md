@@ -1,0 +1,141 @@
+# registry 与注入契约
+
+**登记过才注入。** annotate client 只落在登记过的目标上，其余一切打开的是逐字节相同、
+零标注面的页面。本文是这条契约的完整形状：登记表长什么样、怎么写、client 有哪几条投递路径。
+词的定义见 [`CONTEXT.md`](../CONTEXT.md)；登记与验证的操作步骤见
+[`skills/pinpoint-annotate/SKILL.md`](../skills/pinpoint-annotate/SKILL.md) §2。
+
+## 登记表
+
+`server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
+形状 `{"version":1,"entries":[...]}`，条目
+`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?}`。
+
+- `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
+- `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
+  file 条目永远在阅读器里打开，不带板。
+- `page` + `role`（`"product"` 默认 | `"draft"`）是挂靠字段：带 `page` 的条目**不**自己成为一行 Pages，
+  而是并进目标页的「内容」区（`role:"draft"` 时进草稿组）。url 条目永远是独立页，
+  所以对它写 `page` 是非法的（会被显著跳过）。
+- 条目的 `kind` 一路透传到 workbench 的 page manifest 和 board 条目上，所以 url 条目的
+  document 条目在「内容」区带「网页」类型 tag。
+- 文件缺失时用默认的只含 pinpoint 一条的登记表（`{id:"pinpoint", kind:"dir", path:<仓库根>}`）。
+  JSON 坏了或顶层形状不对就回落到默认并记下 error；单条非法只跳过那一条；
+  dir / file 路径不存在是 warning，不是删除。
+- 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
+  `GET /registry`（完整 `entries` 列表 + `service.directOrigin`）。
+- `GET /registry` 还给 dir / file 条目附 `mtime`（内容 mtime，dir 递归取最大），
+  给 Pages 的「最近更新」排序用（ADR 0029）。
+
+## 写入走 CLI
+
+`bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
+
+```bash
+pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+```
+
+原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
+而不是新增一行 Pages——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
+对 url 目标会被拒绝；`--draft` 必须搭配 `--page`，把条目放进草稿组。
+
+写侧在 `server/lib/registry-store.js`：严格校验（id 唯一、kind 合法、dir/file 路径存在、
+url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
+这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
+（在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
+服务 `/health` 有响应时会自己调它，所以新条目不重启就能 serve、注入、分桶；
+已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
+挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
+
+CLI 目前只有 `add`，没有改路径的操作——改路径要手编 JSON 再 `POST /registry/reload`
+（撞 id 时 `add` 会静默追加 `-2`，那会让既有标注孤儿化，见 `BACKLOG.md`）。
+
+## 三条投递路径
+
+client 只有一份：`client/annotate.js`，serve 成 `/annotate.js`。
+
+### 1 · workbench 自己的页面
+
+`ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 `/annotate.js`（退出方式：`<html data-annotate="off">`）。
+独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`——
+见 `previews/doc-library/sample-report.html`。
+
+自 ADR 0027 起还有一层：`server/preview-inject.js` 给任何含 `<!doctype` 的 `previews/**.html`
+响应自动注入 client（`?annotate=off` 豁免，片段没有 doctype 天然放行）。previews 的注入
+**不带 entry 标记**，账本 ENTRY 保持缺省 `'pinpoint'`，与手工注入段时代逐字节一致。
+
+### 2 · dir 与 file 条目 → `/sites/`
+
+`server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
+其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
+目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
+`<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
+（没有 `</body>` 就追加在末尾）；`?annotate=off` 给出磁盘上的原始字节——
+workbench 的内联片段加载器与导出渲染走的就是它。
+
+**file 条目**共用同一条注入 / annotate=off 管线，但只对那一个登记文件：
+`/sites/<entry-id>/` 和 `/sites/<entry-id>/<basename>` 都服务它，其它任何拼法
+（穿越、同目录的兄弟文件）一律 404。file 条目也出现在 Pages 里，永远是 doc 壳。
+
+没有自带 `board.json` 的条目照样可读：`/sites/<id>/board.json` 服务一份合成的 doc 板
+（`server/lib/synth-board.js`）——file 条目一屏，dir 条目按顶层 `*.html` 排序各一屏。
+磁盘上的 `board.json` 永远优先。`ios` 板的 dir、以及没有任何顶层 HTML 的 dir 不合成（404）。
+合成板里屏的 `src` 做 percent-encode，好让 iframe URL、`location.pathname`、
+导出管线算标注 page key 的那个 hash 三者逐字节一致。
+
+### 3 · url 条目 → 两条并存的路径，落进同一个桶
+
+**同源代理内嵌（不需要扩展）** — `server/lib/site-proxy.js` 把登记的 origin 代理在
+`/sites/<entry-id>/` 下。所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
+于是活的应用在 workbench 的 doc 壳 iframe 里同源渲染，侧栏经既有的 ann-bridge 直接驱动它的
+annotate 实例。
+
+响应手术：`Set-Cookie` 重基（去掉 Domain，Path 加/补前缀）、3xx 的 `Location`（以及请求的
+`Referer`）在前缀与目标 origin 之间改写、CSP / CSP-Report-Only / X-Frame-Options / COOP / COEP
+整体剥离——页面必须能进 iframe 并跑内联 bootstrap，安全边界由登记表白名单承担
+（上游 TLS 校验关闭：localhost 开发 origin 用的是私有信任的 CA）。HTML 响应里根绝对的
+`src` / `href` / `action` / `poster` / `formaction` / `srcset` / `imagesrcset` / `xlink:href`、
+`<object data>`、`<meta refresh>`、`<style>` 正文和 `style="…"` 属性都改写到前缀上；
+CSS 响应改写 `url(/…)` 与 `@import "/…"`。
+
+HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventSource`、`WebSocket`、`sendBeacon`——
+由一段**重基 bootstrap** 兜底：作为 `<head>` 的第一个脚本注入（`proxyBootstrapSnippet`，内联
+`lib/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
+重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`、`/save`、
+`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
+
+bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
+（`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——
+不虚拟化就会掉进它们的 catch-all。副作用是好的：标注账本因此落在应用路径（`/`、`/global`、…），
+与扩展在应用自己 origin 上注入出的账本逐字节同 key。前缀下的 WS upgrade 在 vite 的
+httpServer `'upgrade'` 上转发到目标 origin（通用兜底；SSE 走普通 HTTP 转发）。
+
+url 条目出现在 Pages 里（永远 doc 壳）：`/sites/<id>/board.json` 永远是合成的单屏板
+（`src = sites/<id>/`），盖住上游任何同名文件。`?annotate=off` 只去掉 annotate client，
+bootstrap 与 URL 改写留着——它们是代理机制的一部分，没有它们页面能渲染但所有运行时调用都打错 origin。
+
+已知盲区：DOM 里赋值的 URL（`img.src = '/x.png'`，属性赋值没有补丁拦得住）、不带引号的属性、
+协议相对（`//…`）URL、目标路由与豁免名单撞名、与 workbench 共享的 storage（localStorage /
+indexedDB，同源内嵌即同一 storage 分区），以及虚拟化的两个坑——`location.reload()` 重载的是虚拟
+URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`location.href = '/x'`）会跳出代理
+（被 router 拦截的 SPA 链接没问题）。
+
+**浏览器扩展（应用自己 origin 那条路）** — `extension/` 是一个 MV3 扩展，content script
+（只在顶层 frame，匹配 `localhost` / `*.localhost` / `127.0.0.1`）先探 `https://pinpoint.localhost/registry`、
+再探页面自己的 origin，谁先返回 JSON 用谁。当 `location.origin` 与某个 registry url 条目**精确相等**时，
+它打上 `<html data-pinpoint-entry="...">`（页面的 CSP 会挡掉 content script 注入的内联 `<script>`；
+`window.__pinpointEntry` 仍是同源注入方的契约，两者都在时它赢），并从 `service.directOrigin`
+——也就是 API 的普通 loopback 绑定——加载 `annotate.js`。这一步绕的是 Chrome ≥130：
+它拿扩展自己的 CSP 校验 content script 注入的脚本，而那份 CSP 只放行
+`http://localhost:*` / `http://127.0.0.1:*`，不放行远端 https origin。
+没有任何候选返回登记表 = 服务没起 = 什么都不注入。
+所有 annotate API 路由对跨源请求答 `Access-Control-Allow-Origin: *`（不带凭证）并处理 `OPTIONS` 预检。
+
+一次性安装：`chrome://extensions` → Load unpacked → 选本仓 `extension/`，细节见
+[`extension/README.md`](../extension/README.md)。
+
+## 导出的纯净性
+
+文档导出接受 `sites/<entry-id>/…` 形式的 src，并保证不含注入的 client：管线请求 `?annotate=off`、
+在渲染浏览器里 abort 掉 `**/annotate.js`、并用 `stripAnnotateBootstrap` 从导出的 HTML 里
+删掉注入片段（连 `__pinpointEntry` 标记一起）。
