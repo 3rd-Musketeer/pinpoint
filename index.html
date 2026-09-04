@@ -4,15 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pinpoint</title>
-<link rel="stylesheet" href="kits/ios/ios-kit.css">
-<!-- workbench chrome 视觉 token（生成物：scripts/build-wb-tokens.mjs → workbench/wb-tokens.css） -->
-<link rel="stylesheet" href="workbench/wb-tokens.css">
+<link rel="stylesheet" href="/kits/ios/ios-kit.css">
+<!-- workbench chrome 视觉 token（生成物：scripts/build-wb-tokens.mjs → src/workbench/wb-tokens.css） -->
+<link rel="stylesheet" href="/src/workbench/wb-tokens.css">
 <!-- Shared annotation-list rows (also inlined into /annotate.js for the client sidebar) -->
-<link rel="stylesheet" href="lib/ann-list.css">
+<link rel="stylesheet" href="/src/shared/ann-list.css">
 <style>
   /* ── workbench shell (dev chrome — not iOS). Pages section lists workbench pages;
-     Example Library loads from previews/library/board.json + sibling screen HTML.
-     :root 的 --wb-* token 归 workbench/wb-tokens.css（生成物），此处不再定义。 */
+     Example Library loads from content/previews/library/board.json + sibling screen HTML.
+     :root 的 --wb-* token 归 src/workbench/wb-tokens.css（生成物），此处不再定义。 */
   * { box-sizing:border-box; }
   /* Focus catch-all: low-specificity ring so every focusable control keeps a
      visible focus state. chrome 组件的 focus outline 统一走本规则 —— app/ui
@@ -128,7 +128,7 @@
      14px rail 槽位，section 字母与竖向导线同轴；每行一个 spine 绝对定位贯穿整行
      （含 padding，相邻行线段首尾相接）；段头自带字母下缘接续线；末行收 └ 角；
      选中染整行、线压染色之上（spine 是行的子元素，天然染在行面之上）。
-     皮肤值全 token，几何与 previews/sidebar-variants/sidebar.html 的 .ol-* 一致。 */
+     皮肤值全 token，几何与 prototypes/sidebar-variants/sidebar.html 的 .ol-* 一致。 */
   .wb-outline { padding:2px 0 6px; }
   .wb-outline .ol { --rail:14px; }
   .wb-outline .ol + .ol { margin-top:5px; }
@@ -748,7 +748,7 @@
   .wb-export-action.primary:hover { background:color-mix(in srgb, var(--wb-accent) 90%, var(--wb-surface)); }
   .wb-export-action:disabled { cursor:wait; opacity:.55; }
 
-  /* 导出 picker（decisions 2026-08-15d，mock = previews/sidebar-variants 的 .pk-*）：
+  /* 导出 picker（decisions 2026-08-15d，mock = prototypes/sidebar-variants 的 .pk-*）：
      两栏（左 proto tree / 右 预览 + 背景三档），PNG 2× 固定。组件是
      app/ExportPicker.jsx（Tailwind 扫描源内），但这套格子纹理 / 棋盘格 / 自定义
      checkbox 是 token 化手写皮肤 —— 与 .wb-export-* 同区同居。 */
@@ -829,7 +829,7 @@
 <body>
 
 <div class="wb" id="wbroot">
-  <!-- React 挂载点：侧栏整树由 workbench/app/Sidebar.jsx 渲染（P1b cut2） -->
+  <!-- React 挂载点：侧栏整树由 src/workbench/app/Sidebar.jsx 渲染（P1b cut2） -->
   <aside class="wb-side" id="wbside" data-ann-ui></aside>
 
   <button type="button" class="wb-splitter" id="wbsplit" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" aria-valuemin="200" aria-valuemax="480" aria-valuenow="250" title="拖动调整宽度 · 双击收起/展开"></button>
@@ -845,15 +845,15 @@
     <div id="wbexport-picker" data-ann-ui></div>
   </div>
 
-  <!-- React 挂载点：右栏标注工作台由 workbench/app/AnnPanel.jsx 渲染（2026-08-15 左右分工）；
+  <!-- React 挂载点：右栏标注工作台由 src/workbench/app/AnnPanel.jsx 渲染（2026-08-15 左右分工）；
        前置 splitter #wbannsplit = 右栏宽度拖拽（2026-08-16 V2，镜像 #wbsplit） -->
   <button type="button" class="wb-splitter" id="wbannsplit" role="separator" aria-orientation="vertical" aria-label="调整标注面板宽度" aria-valuemin="260" aria-valuemax="440" aria-valuenow="308" title="拖动调整宽度 · 双击复位默认宽度"></button>
   <aside class="wb-ann-side" id="wbann-side" data-ann-ui></aside>
 </div>
 
-<script src="kits/ios/ios-kit.js"></script>
-<script type="module" src="/workbench/workbench-icons.js"></script>
-<script type="module" src="/workbench/stage.js"></script>
-<script type="module" src="/workbench/app/main.jsx"></script>
+<script src="/kits/ios/ios-kit.js"></script>
+<script type="module" src="/src/workbench/workbench-icons.js"></script>
+<script type="module" src="/src/workbench/stage.js"></script>
+<script type="module" src="/src/workbench/app/main.jsx"></script>
 </body>
 </html>

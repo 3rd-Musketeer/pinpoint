@@ -5,8 +5,8 @@ import { fileURLToPath } from 'node:url';
 import { templateOnly } from './template-only.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const COMPONENTS = path.join(ROOT, 'kits', 'ios', 'components');
+const ROOT = path.resolve(__dirname, '..', '..');
+const COMPONENTS = path.join(ROOT, 'content', 'kits', 'ios', 'components');
 
 function readJson(file) {
   return JSON.parse(fs.readFileSync(file, 'utf8'));

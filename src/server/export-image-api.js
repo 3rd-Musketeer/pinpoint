@@ -14,12 +14,12 @@ import { readWorkbenchInlineStyles } from './lib/frame-doc.js';
 import { zipStore } from './lib/zip-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', '..');
 const MAX_RENDER_EDGE = 16384;
 
 // index.html 内联样式由 frame-doc 统一读取（/api/frame 嵌入页共用同一 SSOT）。
 function workbenchCss() {
-  return `${fs.readFileSync(path.join(ROOT, 'kits', 'ios', 'ios-kit.css'), 'utf8')}\n${readWorkbenchInlineStyles()}`;
+  return `${fs.readFileSync(path.join(ROOT, 'content', 'kits', 'ios', 'ios-kit.css'), 'utf8')}\n${readWorkbenchInlineStyles()}`;
 }
 
 function readBody(req, maxBytes = 13 * 1024 * 1024) {

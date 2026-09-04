@@ -12,8 +12,8 @@ import https from 'node:https';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../server/lib/registry.js';
-import { addRegistryEntry, listRegistryIds } from '../server/lib/registry-store.js';
+import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../src/server/lib/registry.js';
+import { addRegistryEntry, listRegistryIds } from '../src/server/lib/registry-store.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 
@@ -116,7 +116,7 @@ function isHttpUrl(target) {
     只认 registry 条目，报错比静默写坏 registry 好。 */
 export function localManifestPageIds(root = REPO_ROOT) {
   for (const name of ['_index.local.json', '_index.json']) {
-    const file = path.join(root, 'previews', name);
+    const file = path.join(root, 'content', 'previews', name);
     if (!fs.existsSync(file)) continue;
     try {
       const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -135,7 +135,7 @@ export function localManifestPageIds(root = REPO_ROOT) {
  * 由目标构造 registry 条目（纯函数 + fs 探测；不写盘）。
  * takenIds：现有条目 id 列表（供派生 id 避让与显式 id 查重，同时是可归属的
  * registry 页面名单）；pageIds：本地 manifest 页 id 名单（缺省读仓库
- * previews/_index[.local].json，测试可注入）。
+ * content/previews/_index[.local].json，测试可注入）。
  */
 export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenIds = [], pageIds } = {}) {
   let kind;

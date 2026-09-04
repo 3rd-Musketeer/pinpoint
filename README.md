@@ -5,7 +5,7 @@ them, you review the real thing in a browser and hand feedback back through anno
 
 pinpoint runs as one persistent local service (`https://pinpoint.localhost`) with three layers:
 
-- 🧰 **Kits** — accumulated design specs. `kits/ios/` (HIG-accurate, CJK-safe, zero runtime deps) is
+- 🧰 **Kits** — accumulated design specs. `content/kits/ios/` (HIG-accurate, CJK-safe, zero runtime deps) is
   the first kit, not the product; the layout leaves room for future web/html kits.
 - 🖥️ **Workbench / canvas** — a Figma-like multi-page viewer for comparing prototype variants side
   by side. A page holds two forms: **canvas** (phone artboards, the iterating form) and **doc**
@@ -63,28 +63,35 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 ## Repository layout
 
 ```
-AGENTS.md              Agent entry — 开工读序 + 坑与约定 + 技能路由
-CONTEXT.md             Vocabulary — one definition per word, with where it lives in code
-docs/                  Rules and runbooks: board-schema, registry, annotation, design; adr/ = decisions
-index.html             WORKBENCH shell — Pages (Component Library pinned first) + Theme controls
-workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
-client/annotate.js     The annotation client (served as /annotate.js)
-server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr,
-                       preview-inject, template-only; lib/site-proxy.js = same-origin proxy for url
-                       entries; lib/annotate-snippet.js = injection SSOT
-lib/                   Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
-                       slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
-kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
-kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock; localhost inject
-kits/ios/components/   Component Library sources (meta.json + variant HTML)
-previews/<page>/       Template pages only — board.json + screen HTML (+ optional <screen>.js)
-previews/_index.json   Page manifest (id / title / order / default / mode)
-bin/pinpoint.mjs       Registration CLI (`pinpoint add`); pure logic + tests in bin/pinpoint-cli.js
-extension/             MV3 browser extension — injects the client on registered url entries
-skills/                Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
-starter.html           COPY-ME standalone one-off phone (no workbench needed)
-scripts/               CLI entry for export + the wb-token generator
-e2e/                   Playwright workbench / registry / extension tests
+AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
+CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
+docs/                        Rules and runbooks: board-schema, registry, annotation, design; adr/ = decisions
+index.html                   WORKBENCH shell — Pages (Component Library pinned first) + Theme controls
+
+src/                         pinpoint itself — the disk layout moves, the served URLs never do
+  src/workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
+  src/client/annotate.js     The annotation client (served as /annotate.js)
+  src/server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr,
+                             preview-inject, template-only, content-routes (URL → disk mapping);
+                             lib/site-proxy.js = same-origin proxy for url entries;
+                             lib/annotate-snippet.js = injection SSOT
+  src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
+                             slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
+  src/pages/                 panel.html (extension side panel) + starter.html — served as /panel.html,
+                             /starter.html
+
+content/                     what the service serves
+  content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
+  content/kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock
+  content/kits/ios/components/   Component Library sources (meta.json + variant HTML) — URL /kits/…
+  content/previews/<page>/       Template pages only — board.json + screen HTML (+ optional <screen>.js)
+  content/previews/_index.json   Page manifest (id / title / order / default / mode) — URL /previews/…
+
+bin/pinpoint.mjs             Registration CLI (`pinpoint add`); pure logic + tests in bin/pinpoint-cli.js
+extension/                   MV3 browser extension — injects the client on registered url entries
+skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
+scripts/                     CLI entry for export + the wb-token generator
+e2e/                         Playwright workbench / registry / extension tests
 ```
 
 Your own pages do **not** live in this repo. Register any directory, single HTML file, or live URL
@@ -148,11 +155,11 @@ for AI, or a full-page 2× PNG).
 
 ## One phone, no workbench
 
-Copy [`starter.html`](starter.html), or use the minimal skeleton:
+Copy [`src/pages/starter.html`](src/pages/starter.html), or use the minimal skeleton:
 
 ```html
-<link rel="stylesheet" href="kits/ios/ios-kit.css">
-<script src="kits/ios/ios-kit.js" defer></script>
+<link rel="stylesheet" href="/kits/ios/ios-kit.css">
+<script src="/kits/ios/ios-kit.js" defer></script>
 
 <div class="ios-stage" data-fit>
   <div class="ios-root screen-only" data-device="iphone-16-pro" data-theme="light">
@@ -208,7 +215,7 @@ Everything inside `.ios-screen` renders at **true iOS points**.
 - **Utils** — `ios-muted` `ios-row` `ios-spacer` `ios-clamp1/2`
 
 See the Component Library page for live recipes. Sheet + tabbar structure:
-[`previews/library/home.html`](previews/library/home.html).
+[`content/previews/library/home.html`](content/previews/library/home.html).
 
 **Icons** — emoji for app/content; system chrome SVG (`#c-back`, `#c-chev`, `#c-search`) auto-injected.
 
@@ -243,9 +250,9 @@ own `node_modules`, so publishing installs the exact lockfile before running the
 `just publish` refuses dirty or divergent worktrees, never force-pushes, and never creates a merge
 commit. The full contract is in [`AGENTS.md`](AGENTS.md).
 
-Clone per project. `previews/` holds **template content only**: the tracked examples (`library/`,
+Clone per project. `content/previews/` holds **template content only**: the tracked examples (`library/`,
 `doc-library/`). Framework files stay untouched, so pulling template updates is a clean overwrite of
-`kits/ios/ios-kit.*` / `workbench/` / `index.html` / `client/` / `server/` / `lib/`.
+`content/kits/ios/ios-kit.*` / `src/` / `index.html`.
 
 ## Credits
 

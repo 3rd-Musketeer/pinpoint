@@ -12,10 +12,10 @@
 // （broken 恒 false），失效标记看页面内列表；模式分段只反映加载时的初始值
 // （页面里按 A 切换不会回传）。
 import { useEffect, useMemo, useState } from 'react';
-import { pageKeyFromPathname } from '../../lib/annotate-page-key.js';
-import { annotationSlug } from '../../lib/annotation-slug.js';
-import { targetContentToDisplay } from '../../lib/annotation-indicator.js';
-import { annRowModel, annRowPreview } from '../../lib/ann-row.js';
+import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
+import { annotationSlug } from '../../shared/annotation-slug.js';
+import { targetContentToDisplay } from '../../shared/annotation-indicator.js';
+import { annRowModel, annRowPreview } from '../../shared/ann-row.js';
 import { cn } from './lib/utils.js';
 import { ToggleGroup, ToggleGroupItem } from './ui/toggle-group.jsx';
 import { SEG, SEG_ITEM } from './Seg.jsx';

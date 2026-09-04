@@ -1,6 +1,6 @@
 # pinpoint — Agent Guide
 
-pinpoint 是一个本地视觉反馈服务：kit（`kits/ios/`，第一份设计规范）+ workbench 画布
+pinpoint 是一个本地视觉反馈服务：kit（`content/kits/ios/`，第一份设计规范）+ workbench 画布
 （多方案原型对比）+ 标注层（人 → agent 的反馈回路，也是这个项目的核心）。
 常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务 workbench、annotate API、
 登记进来的仓外目录（`/sites/<id>/`）和 client bundle（`/annotate.js`）。
@@ -86,10 +86,17 @@ review 和清理标注留给用户，不要替用户清空标注。
 **glass chrome** —— 用 `.ios-glass` / `.ios-glass-pill`（token 在 `ios-kit.css`）。
 `.ios-glass--liquid` 只加在稀疏的 chrome 上做 Chromium 折射效果，不要铺满整页。
 
-**改 `lib/` 或 `client/lib/` 就是改 `/annotate.js`** —— 那些模块在 serve 时被内联进 client，
+**URL 是契约，磁盘位置不是** —— 2026-09-04 起代码住 `src/`（client / server / workbench /
+shared / pages），被服务的内容住 `content/`（kits / previews），但服务的 URL 一个没变：
+`/kits/…` `/previews/…` `/panel.html` `/starter.html` `/lib/ann-list.css` 照旧。映射在
+`src/server/content-routes.js`（改写 `req.url` 的磁盘投影，注册在插件链末尾，所以按原 URL
+匹配的中间件看到的仍是原 URL）。搬动 `content/` 或 `src/pages/` 下的东西，先想清楚哪个 URL
+会跟着变——仓外的页面按 URL 引 kit，它们不在这个仓里、改不到。
+
+**改 `src/shared/` 或 `src/client/lib/` 就是改 `/annotate.js`** —— 那些模块在 serve 时被内联进 client，
 是纯函数、有 node 测试，保持它们不碰 DOM。
 
-**vendored 组件有看不见的内部契约** —— `workbench/app/ui/` 里的 shadcn 副本
+**vendored 组件有看不见的内部契约** —— `src/workbench/app/ui/` 里的 shadcn 副本
 「source-owned, edit freely」只说对了一半：包装层是我们的，Radix Primitive 的内部 DOM 契约还是上游的，
 读代码看不见，只有 computed style 看得见。改这些组件或它们周边的布局前先看这两条
 （新增条目带日期与来路）：
@@ -112,17 +119,17 @@ review 和清理标注留给用户，不要替用户清空标注。
 [`docs/debugging.md`](docs/debugging.md)。
 
 **模板与实例的边界** —— 进 git 的只有模板：框架代码、Example Library、system 组件，
-`previews/` 里只放这些。owner 在这台机器上的东西靠 `.git/info/exclude` 挡在 git 之外，
+`content/previews/` 里只放这些。owner 在这台机器上的东西靠 `.git/info/exclude` 挡在 git 之外，
 清单是：`prototypes/`（设计探索页，经 registry 登记进 Pages）、`tasks/`、`BACKLOG.md`、`TODO.md`、
-`.archive/`，以及一批 owner-local 的 kit 组件目录（`kits/ios/components/` 下 areta-* / time-* /
+`.archive/`，以及一批 owner-local 的 kit 组件目录（`content/kits/ios/components/` 下 areta-* / time-* /
 energy-* / home-body / wr-progress 那些——Component Library 与存量页面靠 include 依赖它们）。
 exclude 不进共享的 `.gitignore`，模板使用者看不到这些目录名。往 tracked 文件里夹带实例内容
 （页面、组件、机器本地的 registry 内容）是这个仓最容易犯也最难回收的错。
-不在 `kits/ios/components/_index.json` 里的组件目录会被自动发现并追加；
+不在 `content/kits/ios/components/_index.json` 里的组件目录会被自动发现并追加；
 `PREVIEW_TEMPLATE_ONLY=1` 把仓内的覆盖全藏起来（e2e 与发布校验跑这个模式）。
 
 **组件归属**（ADR 0028）—— 组件 = 跨页共享资产，kit 是它的天然住所：通用 / 可复用的进
-`kits/ios/components/`（tracked 或 owner-local exclude），单页专用的片段内联进页面 HTML、不进 kit。
+`content/kits/ios/components/`（tracked 或 owner-local exclude），单页专用的片段内联进页面 HTML、不进 kit。
 page-local 组件解析不实现，启动信号是组件 fork（两个页面要同名组件的不同版本）或多机 / 协作需求。
 存量证据：16 个 exclude 组件里 15 个只在单个 topic 用，但 `time-dashboard` 跨 topic 共享——
 page-local 归属模型被这一个真实反例证伪。

@@ -21,13 +21,13 @@
 
 ## 读到标注去改哪里
 
-- Component Library 的标注 → 改 `kits/ios/components/<id>/`。
+- Component Library 的标注 → 改 `content/kits/ios/components/<id>/`。
 - 流程节点带 `data-ios-from="bubble/outgoing"` → 优先改那个组件的源文件。
-- 流程屏的标注 → 只改 `previews/<pageId>/<screen>.html`。
+- 流程屏的标注 → 只改 `content/previews/<pageId>/<screen>.html`。
 - `/sites/<entry-id>/` 下做的标注 → 改登记目录里磁盘上的那个文件（服务本身是只读的）。
 
 overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`goToMark` 需要时先切页，
-再经 `workbench/lib/board-navigation.js` 聚焦到所属 frame；只有没有 `screenId` 的遗留标注
+再经 `src/workbench/lib/board-navigation.js` 聚焦到所属 frame；只有没有 `screenId` 的遗留标注
 才回落到把裸锚点居中。
 
 画布只画**活的锚点**。HTML 改过之后选择器解析不到了，标注仍留在侧栏，标成**锚点失效**
@@ -50,7 +50,7 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 `GET /annotations`（不带 page）是调试用的聚合，把每个桶摊平成 `[{entry, ...doc}]`；
 按页读要带 `?entry=<id>`，`GET /images/<name>` 也是。
 
-页面 key 的公式在 `lib/annotate-page-key.js`：
+页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录
 各有各的账本。SPA 换路由时账本（entry / page / localStorage key）不重载就重新定位——
 优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
@@ -92,14 +92,14 @@ head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n
   （不在 `.ios-stage` / `.wb-comp-stage` 里），这样 frame 的点击和滚动才正常。
 - **画布工具条**：常驻右下角；Section Navigator 与分层的 Canvas → Section → Frame 小地图是两个
   独立的持久开关。打开的面板停靠右侧，按工具条顺序竖着堆。Ctrl/meta + 滚轮缩放。
-  两种导航模式都必须经 `workbench/lib/board-navigation.js` 解析几何与聚焦策略；
+  两种导航模式都必须经 `src/workbench/lib/board-navigation.js` 解析几何与聚焦策略；
   永远不要用 `.wb-screen` 包装元素导航——row 布局会让它 `display: contents`。
-- **HMR**：`previews/<page>/**`（html / js / board）或 `kits/ios/components/**` 的改动会刷新板。
+- **HMR**：`content/previews/<page>/**`（html / js / board）或 `content/kits/ios/components/**` 的改动会刷新板。
 
 ## 图片导出
 
 图片导出归 workbench（ADR 0015）。单一入口：HUD 的「导出」钮打开导出 picker
-（`workbench/app/ExportPicker.jsx`，原生 dialog）——当前页的 proto 树（section 行整选，
+（`src/workbench/app/ExportPicker.jsx`，原生 dialog）——当前页的 proto 树（section 行整选，
 frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` 走 scale 1 + debounce）、
 背景三态（画布 / 白底 / 透明）。输出固定 **PNG 2×**；图注（引用号 + 标题 + dim 行）永远随图走。
 旧的「干净画面 / 带说明」预设、WebP 与 1× 选项、per-frame / per-section 触发器、
@@ -107,6 +107,6 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
 重新注入随导出系统重构（见 `BACKLOG.md`）。
 
 选中一个 frame 直接下载 PNG，多个则服务端打包（`POST /api/export-zip`，store-only 写入器
-`server/lib/zip-store.js`）。agent 的 CLI 用同一个 Chromium 渲染器：
+`src/server/lib/zip-store.js`）。agent 的 CLI 用同一个 Chromium 渲染器：
 `npm run export -- --page <page> --section <section> [--frame <screen>]`。
 不要把截图逻辑加进单个屏的片段里。

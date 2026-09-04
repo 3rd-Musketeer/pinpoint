@@ -5,7 +5,7 @@ import test from 'node:test';
 
 import previewHmr from './preview-hmr.js';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EXT = path.join(ROOT, '..', 'external-site');
 
 function fakeServer() {

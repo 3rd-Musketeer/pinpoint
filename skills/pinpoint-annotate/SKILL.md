@@ -9,7 +9,7 @@ description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标
 
 搭页 / 改 `board.json` 走 [`pinpoint-build`](../pinpoint-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
 
-运行时：`client/annotate.js`（浏览器客户端）+ Vite `server/annotate-api.js`（磁盘 + SSE）与 `server/sites-api.js`（registry dir 只读 serve），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由、registry 分桶与「登记过才注入」契约（见 §2）。
+运行时：`src/client/annotate.js`（浏览器客户端）+ Vite `src/server/annotate-api.js`（磁盘 + SSE）与 `src/server/sites-api.js`（registry dir 只读 serve），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由、registry 分桶与「登记过才注入」契约（见 §2）。
 
 ## Domain language
 
@@ -21,7 +21,7 @@ description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标
 | **content** | 标注正文（旧字段 `comment`）。 |
 | **page** | Workbench 侧栏页（`pageId` / `data-vpage`）。 |
 | **canvas → section → frame** | 画布层级。 |
-| **screen** | frame 里的 iOS 内容（`previews/<page>/<screenId>.html`）。 |
+| **screen** | frame 里的 iOS 内容（`content/previews/<page>/<screenId>.html`）。 |
 | **frame** | 板上的手机/组件壳 ≈ screen + chrome；frame id = `screenId`。 |
 
 ## Indicators（给 agent 的短定位符）
@@ -68,9 +68,9 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
 ## 2. 注入：登记过才注入
 
-同一个 client（`client/annotate.js`，serve 为 `/annotate.js`），三条投递路径。未登记的一切打开方式（`file://`、自起 server、未登记 origin）完全干净——这是契约，不是配置项；导出的 PNG / HTML 也不含注入脚本。
+同一个 client（`src/client/annotate.js`，serve 为 `/annotate.js`），三条投递路径。未登记的一切打开方式（`file://`、自起 server、未登记 origin）完全干净——这是契约，不是配置项；导出的 PNG / HTML 也不含注入脚本。
 
-1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `pinpoint.setFloatingToolbar(true)`。
+1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `content/previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `pinpoint.setFloatingToolbar(true)`。
 
 2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记用 CLI（手编 JSON 已不是推荐路径）：
 
@@ -91,7 +91,7 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
 3. **registry `url` entry → 同源代理内嵌（阶段 4 起，免扩展）+ 浏览器扩展并存**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：`pinpoint add https://your-app.localhost`（等价的手编 JSON：`{ "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }`）。两条路径共用同一个 `~/.pinpoint/<id>/` 标注桶，标注天然汇合。
 
-   **代理内嵌（默认路径）**：服务把目标 origin 代理到 `/sites/<id>/`（`server/lib/site-proxy.js`），workbench Pages 出现该条目（恒 doc 壳、文档标），打开即以 iframe 阅读器内嵌活应用——assets、API、SSE/WS 都经代理到达目标。
+   **代理内嵌（默认路径）**：服务把目标 origin 代理到 `/sites/<id>/`（`src/server/lib/site-proxy.js`），workbench Pages 出现该条目（恒 doc 壳、文档标），打开即以 iframe 阅读器内嵌活应用——assets、API、SSE/WS 都经代理到达目标。
    - 机制：HTML 里根绝对路径 `src`/`href`/`action`/`srcset` 等被重写到 `/sites/<id>/` 前缀；CSS 里 `url(/…)` 同理；JS 里的 `fetch('/api/…')` / XHR / `EventSource` / `WebSocket` / `sendBeacon` 由注入在 `<head>` 最前的重基 bootstrap（monkey-patch，豁免 pinpoint 自己的 `/save`、`/annotations`、`/images/`、`/image`、`/events`、`/annotate.js`、`/sites/`）兜底；bootstrap 还会**虚拟化 URL**（`history.replaceState` 回应用自身的路径）——SPA 路由直读 `location.pathname`（原生 getter 无法 patch），不虚拟化会掉进路由兜底（my-todos 会渲染「Not Found」）。响应侧重写 3xx `Location` 与 `Set-Cookie`（去 Domain、Path 加前缀），整头剥掉 CSP / X-Frame-Options / COOP / COEP。`/sites/<id>/board.json` 恒为本地合成的单屏 doc 板（遮蔽上游同名文件）。
    - `?annotate=off` 只关标注注入，重基 bootstrap 保留（它是代理机制的一部分）。
    - 已知盲区：JS 给 DOM 属性赋 URL（`img.src='/x.png'`）、无引号属性、`//` 协议相对 URL、目标自身路由与豁免清单撞名（如目标自己用 `/save`）、与 workbench 同源共享 localStorage/indexedDB；虚拟化的代价：应用里 `location.reload()` 会重载虚拟路径（iframe 刷新即离开代理），硬导航（`location.href='/x'`）跳出代理（路由拦截的 SPA 链接不受影响）。
@@ -174,7 +174,7 @@ ls -t "$DIR"/*.json
 
 **Target indicators**：UI 显示 `[indicator N]`；磁盘存 `[@t:iN]`，只解析到本条的 `targets[].ref`，不进 `mentions[]`、不跨 annotation。缺失 ref 保留原样并如实呈现，不要猜测或自动重绑。
 
-**锚点失效**：agent 改稿后 selector 可能解析失败。画布不画幽灵框；侧栏列出该条并标「锚点失效」，`content` + `text` 仍可读。失效是渲染时计算，不写进 JSON——结构恢复后框自动回来。frame 在画布上换序/跨 section 移动不再算失效：带 stage 段（`.ios-stage` 等）的 selector 在解析时归一到 `pageId + screenId + frame 内路径`（`lib/frame-anchor.js`），跟随 frame 自愈（2026-08-16 阶段 5 起）。
+**锚点失效**：agent 改稿后 selector 可能解析失败。画布不画幽灵框；侧栏列出该条并标「锚点失效」，`content` + `text` 仍可读。失效是渲染时计算，不写进 JSON——结构恢复后框自动回来。frame 在画布上换序/跨 section 移动不再算失效：带 stage 段（`.ios-stage` 等）的 selector 在解析时归一到 `pageId + screenId + frame 内路径`（`src/shared/frame-anchor.js`），跟随 frame 自愈（2026-08-16 阶段 5 起）。
 
 **文档 mention 的 frame 标注（双向透传，阶段 5）**：doc 页正文可写
 `<div data-pinpoint-frame="<pageId>/<screenId>"></div>` 把画布的 frame 嵌成活 DOM。
@@ -187,9 +187,9 @@ frame 的标注时不用管它是画布上还是文档里标的——同一批�
 
 | 标注落点 | 改 |
 |---|---|
-| Component Library 页 | `kits/ios/components/<id>/` |
+| Component Library 页 | `content/kits/ios/components/<id>/` |
 | flow 屏且节点带 `data-ios-from="bubble/outgoing"` | 优先改该组件源 |
-| flow screen（静态） | `previews/<pageId>/<screen>.html` 内容层 only |
+| flow screen（静态） | `content/previews/<pageId>/<screen>.html` 内容层 only |
 | flow screen（手势 / 动画） | 同屏 `data-preview-script` 或同名 sidecar `.js`；**不要**改 `ios-kit.js` |
 | `/sites/<entry-id>/` 下的 site 页 | 登记目录里的对应磁盘文件（服务只读 serve，改稿照常改源文件） |
 | `url` entry 的 SPA 页面 | 该 app 自己的源码仓（按 `path` / selector 定位路由与组件） |

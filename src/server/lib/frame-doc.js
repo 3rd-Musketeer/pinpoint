@@ -20,7 +20,7 @@ import {
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell,
-} from '../../lib/frame-shell.js';
+} from '../../shared/frame-shell.js';
 import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
@@ -28,9 +28,10 @@ import { synthesizeBoard } from './synth-board.js';
 import { templateOnly } from '../template-only.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..', '..');
-const PREVIEWS_ROOT = path.join(ROOT, 'previews');
-const COMPONENTS_ROOT = path.join(ROOT, 'kits', 'ios', 'components');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
+const CONTENT_ROOT = path.join(ROOT, 'content');
+const PREVIEWS_ROOT = path.join(CONTENT_ROOT, 'previews');
+const COMPONENTS_ROOT = path.join(CONTENT_ROOT, 'kits', 'ios', 'components');
 
 export class FrameDocError extends Error {
   constructor(code, message) {
@@ -179,7 +180,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     if (src.startsWith('sites/')) {
       fragmentPath = siteSrcToAbsPath(src, registry);
     } else if (src) {
-      const abs = path.resolve(ROOT, src);
+      const abs = path.resolve(CONTENT_ROOT, src);
       if (abs !== PREVIEWS_ROOT && !abs.startsWith(PREVIEWS_ROOT + path.sep)) {
         throw new FrameDocError('bad_request', 'screen src must resolve under previews/');
       }
@@ -309,7 +310,7 @@ export function readWorkbenchInlineStyles() {
 let frameBootCache = null;
 function frameBootSource() {
   if (frameBootCache) return frameBootCache;
-  const src = fs.readFileSync(path.join(ROOT, 'client', 'frame-boot.js'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'src', 'client', 'frame-boot.js'), 'utf8');
   if (/<\/script/i.test(src)) throw new FrameDocError('bad_request', 'frame-boot.js must not contain </script>');
   frameBootCache = src;
   return src;
@@ -319,7 +320,7 @@ function frameBootSource() {
 // wb-tokens.css :root 的色档。与 workbench/export-core.js EXPORT_TOKEN_NAMES 同名单。
 const FRAME_TOKEN_SOURCES = [
   { file: path.join(ROOT, 'index.html'), names: ['--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap', '--wb-cap-ref'] },
-  { file: path.join(ROOT, 'workbench', 'wb-tokens.css'), names: ['--wb-fg', '--wb-muted', '--wb-faint', '--wb-side', '--wb-line', '--wb-hover', '--wb-accent'] },
+  { file: path.join(ROOT, 'src', 'workbench', 'wb-tokens.css'), names: ['--wb-fg', '--wb-muted', '--wb-faint', '--wb-side', '--wb-line', '--wb-hover', '--wb-accent'] },
 ];
 
 /** 抽各 token 在文件里的首个定义值（index.html 里 .wb-library 块先于 doc 覆写块）。 */

@@ -57,7 +57,7 @@ import zlib from 'node:zlib';
 import { injectAnnotateClient } from './annotate-snippet.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const REBASE_LIB_PATH = path.join(__dirname, '..', '..', 'lib', 'proxy-rebase.js');
+const REBASE_LIB_PATH = path.join(__dirname, '..', '..', 'shared', 'proxy-rebase.js');
 
 /* ------------------------------------------------------------------ */
 /* Pure rewriters (node-tested)                                        */
@@ -187,7 +187,7 @@ export function rewriteProxySetCookie(cookie, prefix) {
 /* Rebase bootstrap injection                                          */
 /* ------------------------------------------------------------------ */
 
-/** lib/proxy-rebase.js source with ESM exports stripped (annotate.js 同款内联). */
+/** src/shared/proxy-rebase.js source with ESM exports stripped (annotate.js 同款内联). */
 export function rebaseLibSource() {
   // 逐次读取、不缓存：lib 改动下次响应即生效，省一套 mtime 账。
   return fs.readFileSync(REBASE_LIB_PATH, 'utf8').replace(/^export /gm, '');

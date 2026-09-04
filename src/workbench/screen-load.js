@@ -29,7 +29,7 @@ import {
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell
-} from '../lib/frame-shell.js';
+} from '../shared/frame-shell.js';
 
 export function loadFailHtml(msg) {
   return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';

@@ -170,7 +170,11 @@ function assetContext(options) {
       }
       ownerRoots.set(file, ownerRoot);
     } else if (raw.resource.startsWith('/kits/') || raw.resource.startsWith('/workbench/')) {
-      file = path.resolve(pinpointRoot, raw.resource.slice(1));
+      // URL 是契约，磁盘位置不是：/kits/ 住 content/，/workbench/ 住 src/。
+      const rel = raw.resource.startsWith('/kits/')
+        ? path.join('content', raw.resource.slice(1))
+        : path.join('src', raw.resource.slice(1));
+      file = path.resolve(pinpointRoot, rel);
       if (!inside(pinpointRoot, file)) {
         throw new OfflinePageExportError('asset_escape', `asset escapes Pinpoint root: ${ref}`, { ref });
       }

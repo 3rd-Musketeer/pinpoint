@@ -4,7 +4,7 @@ import path from 'node:path';
 
 import { chromium } from '@playwright/test';
 
-import { exportFilename, validateExportRequest } from '../server/lib/export-contract.js';
+import { exportFilename, validateExportRequest } from '../src/server/lib/export-contract.js';
 
 function parseArgs(argv) {
   const values = {

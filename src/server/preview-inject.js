@@ -15,11 +15,11 @@ import { fileURLToPath } from 'node:url';
 import { injectAnnotateClientTag } from './lib/annotate-snippet.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const CONTENT_ROOT = path.resolve(__dirname, '..', '..', 'content');
 const ROUTE = /^\/previews\/(.+\.html)$/;
 
 export function createPreviewInjectHandler(options = {}) {
-  const root = options.root || ROOT;
+  const root = options.root || CONTENT_ROOT;
   const previewsRoot = path.join(root, 'previews');
 
   return function handlePreviewInject(req, res, urlPath, query) {

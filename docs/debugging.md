@@ -107,7 +107,7 @@ loopback 才拉 `/annotate.js` 的脚本**（SKILL.md「要能标注」节）。
 怀疑模式互斥、事件拦截都快。canvas 页（fragment 内联）不适用本条：
 那边标注由 workbench 统一持有，页面不需要自己接。
 
-防回归：2026-08-17e 机制修复——serve 即注入（`server/preview-inject.js`），
+防回归：2026-08-17e 机制修复——serve 即注入（`src/server/preview-inject.js`），
 完整文档不再需要手工接线；e2e 覆盖 previews 完整文档注入 / fragment 不注入
 （workbench.spec「serve 即注入」用例）。本条保留作为「症状 → 第一检查点」
 的模式参考。
@@ -192,7 +192,7 @@ trigger，焦点移动触发 B 的 focus-outside dismiss，B 被关。
 识别特征：「我在管理浮层生命周期，越管越乱」→ 先查 Radix 是否已内建该行为；
 不要给库的行为再写一层编排。
 
-防回归：无（行为契约记在 `workbench/app/frame-menu.jsx` 头注）。
+防回归：无（行为契约记在 `src/workbench/app/frame-menu.jsx` 头注）。
 
 ---
 

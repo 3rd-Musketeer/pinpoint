@@ -7,7 +7,7 @@
 
 ## 登记表
 
-`server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
+`src/server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
 形状 `{"version":1,"entries":[...]}`，条目
 `{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?}`。
 
@@ -39,7 +39,7 @@ pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xx
 而不是新增一行 Pages——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
 对 url 目标会被拒绝；`--draft` 必须搭配 `--page`，把条目放进草稿组。
 
-写侧在 `server/lib/registry-store.js`：严格校验（id 唯一、kind 合法、dir/file 路径存在、
+写侧在 `src/server/lib/registry-store.js`：严格校验（id 唯一、kind 合法、dir/file 路径存在、
 url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
 （在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
@@ -52,21 +52,21 @@ CLI 目前只有 `add`，没有改路径的操作——改路径要手编 JSON �
 
 ## 三条投递路径
 
-client 只有一份：`client/annotate.js`，serve 成 `/annotate.js`。
+client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
 
 ### 1 · workbench 自己的页面
 
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 `/annotate.js`（退出方式：`<html data-annotate="off">`）。
 独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`——
-见 `previews/doc-library/sample-report.html`。
+见 `content/previews/doc-library/sample-report.html`。
 
-自 ADR 0027 起还有一层：`server/preview-inject.js` 给任何含 `<!doctype` 的 `previews/**.html`
+自 ADR 0027 起还有一层：`src/server/preview-inject.js` 给任何含 `<!doctype` 的 `content/previews/**.html`
 响应自动注入 client（`?annotate=off` 豁免，片段没有 doctype 天然放行）。previews 的注入
 **不带 entry 标记**，账本 ENTRY 保持缺省 `'pinpoint'`，与手工注入段时代逐字节一致。
 
 ### 2 · dir 与 file 条目 → `/sites/`
 
-`server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
+`src/server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
 其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
 目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
 `<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
@@ -78,14 +78,14 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 （穿越、同目录的兄弟文件）一律 404。file 条目也出现在 Pages 里，永远是 doc 壳。
 
 没有自带 `board.json` 的条目照样可读：`/sites/<id>/board.json` 服务一份合成的 doc 板
-（`server/lib/synth-board.js`）——file 条目一屏，dir 条目按顶层 `*.html` 排序各一屏。
+（`src/server/lib/synth-board.js`）——file 条目一屏，dir 条目按顶层 `*.html` 排序各一屏。
 磁盘上的 `board.json` 永远优先。`ios` 板的 dir、以及没有任何顶层 HTML 的 dir 不合成（404）。
 合成板里屏的 `src` 做 percent-encode，好让 iframe URL、`location.pathname`、
 导出管线算标注 page key 的那个 hash 三者逐字节一致。
 
 ### 3 · url 条目 → 两条并存的路径，落进同一个桶
 
-**同源代理内嵌（不需要扩展）** — `server/lib/site-proxy.js` 把登记的 origin 代理在
+**同源代理内嵌（不需要扩展）** — `src/server/lib/site-proxy.js` 把登记的 origin 代理在
 `/sites/<entry-id>/` 下。所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
 于是活的应用在 workbench 的 doc 壳 iframe 里同源渲染，侧栏经既有的 ann-bridge 直接驱动它的
 annotate 实例。
@@ -100,7 +100,7 @@ CSS 响应改写 `url(/…)` 与 `@import "/…"`。
 
 HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventSource`、`WebSocket`、`sendBeacon`——
 由一段**重基 bootstrap** 兜底：作为 `<head>` 的第一个脚本注入（`proxyBootstrapSnippet`，内联
-`lib/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
+`src/shared/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
 重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`、`/save`、
 `/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
 

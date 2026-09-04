@@ -105,7 +105,7 @@ export function buildWbTokensCss() {
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 if (isMain) {
-  const target = path.join(ROOT, 'workbench', 'wb-tokens.css');
+  const target = path.join(ROOT, 'src', 'workbench', 'wb-tokens.css');
   writeFileSync(target, buildWbTokensCss());
   console.log('written', path.relative(ROOT, target));
 }

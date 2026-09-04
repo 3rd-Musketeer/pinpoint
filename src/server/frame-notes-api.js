@@ -4,7 +4,7 @@ import path from 'node:path';
 import { createFrameNoteStore, FrameNoteError } from './lib/frame-note-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const CONTENT_ROOT = path.resolve(__dirname, '..', '..', 'content');
 const ROUTE = /^\/api\/frame-notes\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)$/;
 // 2026-08-17：section 级 note 与 frame note 同构（GET/PUT + baseRevision），
 // 独立路由 /api/section-notes/<pageId>/<sectionId>。
@@ -26,7 +26,7 @@ function readBody(req) {
 }
 
 export function createFrameNotesHandler(options = {}) {
-  const store = options.store || createFrameNoteStore({ root: options.root || ROOT, registry: options.registry });
+  const store = options.store || createFrameNoteStore({ root: options.root || CONTENT_ROOT, registry: options.registry });
 
   return async function handleFrameNotes(req, res, urlPath) {
     if (req.method !== 'GET' && req.method !== 'PUT') return false;

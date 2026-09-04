@@ -4,18 +4,19 @@ import { fileURLToPath } from 'node:url';
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import tailwindcss from '@tailwindcss/vite';
-import annotateApi from './server/annotate-api.js';
-import sitesApi from './server/sites-api.js';
-import frameApi from './server/frame-api.js';
-import frameNotesApi from './server/frame-notes-api.js';
-import exportImageApi from './server/export-image-api.js';
-import exportDocApi from './server/export-doc-api.js';
-import exportPageHtmlApi from './server/export-page-html-api.js';
-import previewHmr from './server/preview-hmr.js';
-import previewInject from './server/preview-inject.js';
-import componentsBoard from './server/components-board.js';
-import templateOnlyPlugin from './server/template-only.js';
-import { createRegistryStore } from './server/lib/registry-store.js';
+import annotateApi from './src/server/annotate-api.js';
+import sitesApi from './src/server/sites-api.js';
+import frameApi from './src/server/frame-api.js';
+import frameNotesApi from './src/server/frame-notes-api.js';
+import exportImageApi from './src/server/export-image-api.js';
+import exportDocApi from './src/server/export-doc-api.js';
+import exportPageHtmlApi from './src/server/export-page-html-api.js';
+import previewHmr from './src/server/preview-hmr.js';
+import previewInject from './src/server/preview-inject.js';
+import componentsBoard from './src/server/components-board.js';
+import templateOnlyPlugin from './src/server/template-only.js';
+import contentRoutes from './src/server/content-routes.js';
+import { createRegistryStore } from './src/server/lib/registry-store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -33,7 +34,7 @@ registryStore.reload = () => {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr],
+  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

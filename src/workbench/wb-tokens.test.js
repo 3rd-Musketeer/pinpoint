@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { buildWbTokensCss } from '../scripts/build-wb-tokens.mjs';
+import { buildWbTokensCss } from '../../scripts/build-wb-tokens.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

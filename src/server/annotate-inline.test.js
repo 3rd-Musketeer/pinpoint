@@ -14,26 +14,27 @@ import {
   normalizeAnnotation,
   targetContentToDisplay,
   targetContentToStorage,
-} from '../lib/annotation-indicator.js';
+} from '../shared/annotation-indicator.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const SCRIPT = path.join(ROOT, 'client', 'annotate.js');
+const SRC = path.resolve(__dirname, '..');
+const ROOT = path.resolve(SRC, '..');
+const SCRIPT = path.join(SRC, 'client', 'annotate.js');
 const INLINED_LIBS = [
-  path.join(ROOT, 'lib', 'annotation-indicator.js'),
-  path.join(ROOT, 'client', 'lib', 'annotate-hit-test.js'),
-  path.join(ROOT, 'lib', 'annotation-slug.js'),
-  path.join(ROOT, 'lib', 'annotate-page-key.js'),
-  path.join(ROOT, 'lib', 'annotate-clip.js'),
-  path.join(ROOT, 'lib', 'annotate-bubble.js'),
-  path.join(ROOT, 'lib', 'ann-row.js'),
-  path.join(ROOT, 'lib', 'frame-anchor.js'),
+  path.join(SRC, 'shared', 'annotation-indicator.js'),
+  path.join(SRC, 'client', 'lib', 'annotate-hit-test.js'),
+  path.join(SRC, 'shared', 'annotation-slug.js'),
+  path.join(SRC, 'shared', 'annotate-page-key.js'),
+  path.join(SRC, 'shared', 'annotate-clip.js'),
+  path.join(SRC, 'shared', 'annotate-bubble.js'),
+  path.join(SRC, 'shared', 'ann-row.js'),
+  path.join(SRC, 'shared', 'frame-anchor.js'),
 ];
 const INLINED_CSS = [
-  { name: 'ANN_LIST_CSS', path: path.join(ROOT, 'lib', 'ann-list.css') },
+  { name: 'ANN_LIST_CSS', path: path.join(SRC, 'shared', 'ann-list.css') },
 ];
 
-// Mirror the serve-time inliner in server/annotate-api.js: strip ESM `export `
+// Mirror the serve-time inliner in src/server/annotate-api.js: strip ESM `export `
 // and inline the libs into the annotate IIFE after 'use strict';. Stylesheets
 // land as JSON-quoted JS string constants.
 function buildServedBundle() {
@@ -87,7 +88,7 @@ test('served /annotate.js injects the shared list CSS as a JS string constant', 
 // 三向漂移（token 源 / 共享 CSS / client 钉值）在这里变红。
 test('client #ann-sidebar pins cover every --wb-* the shared CSS consumes', () => {
   const bundle = buildServedBundle();
-  const css = fs.readFileSync(path.join(ROOT, 'lib', 'ann-list.css'), 'utf8');
+  const css = fs.readFileSync(path.join(SRC, 'shared', 'ann-list.css'), 'utf8');
   const consumed = new Set([...css.matchAll(/var\((--wb-[a-z0-9-]+)/gi)].map((m) => m[1]));
   assert.ok(consumed.size > 0, 'shared CSS consumes --wb-* tokens');
   const pinsRule = bundle.match(/#ann-sidebar\{[^}]*\}/);
@@ -99,7 +100,7 @@ test('client #ann-sidebar pins cover every --wb-* the shared CSS consumes', () =
     );
   }
   // workbench 侧 token 源同步定义同一组（双端同一个 --wb-* 宇宙）
-  const tokens = fs.readFileSync(path.join(ROOT, 'workbench', 'wb-tokens.css'), 'utf8');
+  const tokens = fs.readFileSync(path.join(SRC, 'workbench', 'wb-tokens.css'), 'utf8');
   for (const name of consumed) {
     assert.ok(tokens.includes(name + ':'), `wb-tokens.css defines ${name}`);
   }

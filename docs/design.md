@@ -2,7 +2,7 @@
 
 当前有效的设计语言只写在这里；被取代就改本文，不留尸骸。
 
-分工：本文 = **现在是什么样**（正典）。为什么这么变、什么时候定的 → [docs/adr/](adr/)（索引与格式见 [adr/README.md](adr/README.md)）。某个 token 值的理由 → `scripts/build-wb-tokens.mjs` / `workbench/wb-tokens.css` 注释。UI 文案（写什么字）→ workspace 的 topics/text-quality/ui-text.md，本文引用不复制。
+分工：本文 = **现在是什么样**（正典）。为什么这么变、什么时候定的 → [docs/adr/](adr/)（索引与格式见 [adr/README.md](adr/README.md)）。某个 token 值的理由 → `scripts/build-wb-tokens.mjs` / `src/workbench/wb-tokens.css` 注释。UI 文案（写什么字）→ workspace 的 topics/text-quality/ui-text.md，本文引用不复制。
 
 ## 原则
 
@@ -53,7 +53,7 @@
 
 - 单入口：HUD「导出」→ picker 对话框；per-frame / per-section 触发器与 ⋯ 菜单里的导出入口已删除（菜单本体保留剩余项）。
 - picker 两栏：左 proto tree（section 整选 / frame 任意勾选），右实时预览（选中几帧并排几帧，随背景刷新；复用 `/api/export-image` 低清档 + debounce，不起新管线）。
-- 批量规则：任意多选；单张直出 PNG，多张 `/api/export-zip` 打包（store-only zip，`server/lib/zip-store.js`）。
+- 批量规则：任意多选；单张直出 PNG，多张 `/api/export-zip` 打包（store-only zip，`src/server/lib/zip-store.js`）。
 - 固定项：PNG、2×。选项只留对应真实投放面的：背景三档（画布 / 白底 / 透明）。批注烘焙（序号钉 + 评论随图）缓期进 backlog——场景未证实；doc 导出「含评论」管线在线保留。
 - 图纸内容（图注 = 引用号 + 屏名 + 尺寸）导出永随，不再有「干净画面」摘图注语义。note 自 2026-08-17 起不上画布、不进导出（注入导出图随导出系统重构另立，backlog）。
 

@@ -37,7 +37,7 @@ import { synthesizeBoard } from './lib/synth-board.js';
 export { annotateSnippet, injectAnnotateClient };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
+const ROOT = path.resolve(__dirname, '..', '..');
 
 const MIME = {
   '.html': 'text/html',

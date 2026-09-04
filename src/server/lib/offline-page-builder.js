@@ -18,7 +18,7 @@ import {
 } from './offline-page-export.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 function readText(relative) {
@@ -145,10 +145,10 @@ export async function buildOfflinePage(options = {}) {
       pageId,
       title,
       sections,
-      workbenchCss: readText('workbench/wb-tokens.css') + '\n' + readWorkbenchInlineStyles(),
-      iosCss: readText('kits/ios/ios-kit.css'),
-      iosKitJs: readText('kits/ios/ios-kit.js'),
-      frameBootJs: readText('client/frame-boot.js'),
+      workbenchCss: readText('src/workbench/wb-tokens.css') + '\n' + readWorkbenchInlineStyles(),
+      iosCss: readText('content/kits/ios/ios-kit.css'),
+      iosKitJs: readText('content/kits/ios/ios-kit.js'),
+      frameBootJs: readText('src/client/frame-boot.js'),
     }),
   };
 }

@@ -15,7 +15,7 @@ import {
 } from './frame-doc.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 
 // 与 e2e/registry-fixture.js 对齐的极简 registry 视图（提交固件 e2e/dir-site*）。
 const registry = {

@@ -6,8 +6,8 @@
 // （store.activeBoardMode()）—— 混合板里选中 doc 屏条目时同一套 iframe 绑定
 // 与 gutter 逻辑照常生效。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
-import { annRowModel } from '../lib/ann-row.js';
-import { bubbleInnerHtml } from '../lib/annotate-bubble.js';
+import { annRowModel } from '../shared/ann-row.js';
+import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
 /* ---- annotate API resolver -------------------------------------------------

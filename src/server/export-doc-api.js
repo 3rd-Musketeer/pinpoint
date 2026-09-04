@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { chromium } from '@playwright/test';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
-import { pageKeyFromPathname } from '../lib/annotate-page-key.js';
+import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import { loadRegistry } from './lib/registry.js';
 import { createExportRenderer } from './export-image-api.js';
@@ -34,8 +34,9 @@ import { estimateImageTokens } from './lib/export-doc-image-tokens.js';
 import { estimateDocTokens } from './lib/export-doc-tokens.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const PREVIEWS_ROOT = path.join(ROOT, 'previews');
+const ROOT = path.resolve(__dirname, '..', '..');
+const CONTENT_ROOT = path.join(ROOT, 'content');
+const PREVIEWS_ROOT = path.join(CONTENT_ROOT, 'previews');
 const MAX_RENDER_EDGE = 16384;
 
 function readBody(req, maxBytes = 64 * 1024) {
@@ -99,7 +100,7 @@ function resolveDocFile(src, registry) {
     }
     return abs;
   }
-  const abs = path.resolve(ROOT, src);
+  const abs = path.resolve(CONTENT_ROOT, src);
   const previewsRoot = path.resolve(PREVIEWS_ROOT);
   if (abs !== previewsRoot && !abs.startsWith(previewsRoot + path.sep)) {
     throw new ExportDocContractError('src', 'must resolve under previews/');

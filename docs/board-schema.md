@@ -4,7 +4,7 @@
 词的定义见 [`CONTEXT.md`](../CONTEXT.md)；加页 / 加屏 / 加组件的做法见
 [`skills/pinpoint-build/SKILL.md`](../skills/pinpoint-build/SKILL.md)。
 
-活的参照：[`previews/library/board.json`](../previews/library/board.json)。
+活的参照：[`content/previews/library/board.json`](../content/previews/library/board.json)。
 
 ```json
 {
@@ -32,7 +32,7 @@
 ## 字段
 
 - 顶层是 **`sections[]`**，不是扁平的 `{ id, screens }`。
-- 屏文件 = `previews/<pageId>/<screenId>.html`，内容是片段（`.ios-app` + 同级 overlay），不含机壳。
+- 屏文件 = `content/previews/<pageId>/<screenId>.html`，内容是片段（`.ios-app` + 同级 overlay），不含机壳。
 - 默认壳是 **app**。锁屏壳：section 或 screen 上写 `"shell": "lock"` + `.ios-lockscreen`。
   HTML 文档壳写 `"shell": "doc"`。
 - `section.id` 会写进 DOM 的 `[data-ann-section]`，成为标注的 `section` 字段。
@@ -52,7 +52,7 @@
 
 层级：**page → entries → canvas → section → frame**；screen 是 frame 里的内容（`screenId` = frame id）。
 
-条目派生在 `workbench/lib/board-entries.js`：app / lock 屏合成一个 canvas 条目（id `@canvas`），
+条目派生在 `src/workbench/lib/board-entries.js`：app / lock 屏合成一个 canvas 条目（id `@canvas`），
 每个 doc 屏各成一个 document 条目（id = screenId）。A1 引用体系、左栏「内容」区的 frame 树、
 导出树，三者都只覆盖 canvas 条目下的屏。
 
@@ -71,7 +71,7 @@
 | 壳 | 输入 | 画板 | 用于 |
 |---|---|---|---|
 | **iOS** | body 片段 | 手机机壳 | 手机原型 |
-| **HTML** | **完整独立文档** | 整视口 iframe，**无画布** | 一页式报告与文稿，例 `previews/doc-library/` |
+| **HTML** | **完整独立文档** | 整视口 iframe，**无画布** | 一页式报告与文稿，例 `content/previews/doc-library/` |
 
 HTML 屏用 `shell: "doc"`。文件保留自己的 `<!doctype>`、`<head>`、`<style>`，所以它**装在 iframe 里
 而不是内联**——内联会丢掉它的 `body{}` 规则、并把它的 CSS 漏进 workbench。加载器因此对 doc 屏
@@ -84,7 +84,7 @@ HTML 屏用 `shell: "doc"`。文件保留自己的 `<!doctype>`、`<head>`、`<s
 图片档按导出像素给视觉 token 估算（Gemini / OpenAI / Anthropic 三套公式）。
 一份 `board.json` 里的多个 doc 屏在「内容」区里是**平铺的条目**（产物 / 草稿两组），
 一次显示一个、按页记住选了哪个，不是并排摆着。屏的 `"src"` 可以指向任意 URL，
-所以 `previews/` 下一个 symlink 就够评审一份住在仓外的文档。
+所以 `content/previews/` 下一个 symlink 就够评审一份住在仓外的文档。
 
 ## 交互 frame（A+B 两式）
 
@@ -94,47 +94,47 @@ kit 只提供 tabs / sheet / segmented / clock。
 | 式 | 何时用 | 怎么写 |
 |---|---|---|
 | **A · 内联** | 逻辑短 | `<script data-preview-script>`（经典式：`root` 在作用域里）或 `<script type="module" data-preview-script>export default function mount(root){…}</script>` |
-| **B · sidecar** | 逻辑长 | `previews/<page>/<screenId>.js` 导出 `default function mount(root)`；root 标 `data-preview-mount`，或写 `<script type="module" data-preview-script src="./screenId.js">` |
+| **B · sidecar** | 逻辑长 | `content/previews/<page>/<screenId>.js` 导出 `default function mount(root)`；root 标 `data-preview-mount`，或写 `<script type="module" data-preview-script src="./screenId.js">` |
 
 - `root` = 那个屏的 `.ios-app` / `.ios-lockscreen`（可用 `data-preview-root="css"` 覆盖）。
   sheet 住在 `root` 之外——用 `root.closest('.ios-screen')` 取。
 - `mount` 可以返回一个 `unmount` 函数（或 `{ unmount }`）；重载板与 HMR 会先调它。
-- 例子：`previews/library/recipe.html`（A 式）、`previews/library/timer.html` + `timer.js`（B 式）。
+- 例子：`content/previews/library/recipe.html`（A 式）、`content/previews/library/timer.html` + `timer.js`（B 式）。
 - **不要**把产品手势加进 `ios-kit.js`，也不要在 `afterMount` 里给它开特例。
 
 ## 在文档里 mention 活 frame
 
 doc 正文可以嵌一个画布 frame：`<div data-pinpoint-frame="<pageId>/<screenId>"></div>`。
 doc 的 annotate client 把每个空挂载点水合成一个指向 `GET /api/frame?page=<id>&screen=<id>` 的 iframe——
-那是 `server/lib/frame-doc.js` 组装出的自包含文档（片段 + `lib/frame-shell.js` 的共享机壳 + ios-kit +
-`client/frame-boot.js` 运行时 + annotate 注入）。被 mention 的 doc 壳屏改为 302 到屏自身的 URL
+那是 `src/server/lib/frame-doc.js` 组装出的自包含文档（片段 + `src/shared/frame-shell.js` 的共享机壳 + ios-kit +
+`src/client/frame-boot.js` 运行时 + annotate 注入）。被 mention 的 doc 壳屏改为 302 到屏自身的 URL
 （同 pathname = 同账本）。
 
 frame iframe 里的 annotate 实例带两个标记：`__pinpointFrame`（pageId / screenId / section）与
 `__pinpointLedger`（嵌入方 workbench 的 pathname，由水合器经 query 参数传入，默认 `/index.html`）。
 它的标注读写的是**画布板的账本**，所以同一个 frame 上的标注在文档和画布是同一份，经 SSE 双向同步。
 锚点选择器仍是普通 cssPath 字符串；解析时把任何含 stage 段（`.ios-stage` / `.wb-comp-stage` /
-`.wb-html-stage`）的选择器归一成 frame 内的 `:scope` 链（`lib/frame-anchor.js`）——
+`.wb-html-stage`）的选择器归一成 frame 内的 `:scope` 链（`src/shared/frame-anchor.js`）——
 所以 frame 在板上换位置锚点会自愈，存量行不需要迁移。
 侧栏的标注 / 交互开关从 doc 实例级联进每个嵌入的 frame iframe（`iframe[data-pinpoint-frame-iframe]`）。
 doc 正文自己的标注仍用文档自己的账本，两个命名空间不混。
-文档导出时把挂载点烤成静态 2× PNG（`server/lib/export-doc-bake.js` 的 `parseMentionMounts` 一族；
+文档导出时把挂载点烤成静态 2× PNG（`src/server/lib/export-doc-bake.js` 的 `parseMentionMounts` 一族；
 html-no-css 档换成文本引用）。
 
 ## 编辑面
 
 | 可以改 | 不要改 |
 |---|---|
-| `previews/<pageId>/*.html`（iOS：`.ios-app` + 同级 overlay；HTML：任何非文档片段） | 手机机壳 / bezel / 状态栏（归加载器） |
-| `previews/<pageId>/*.js`（屏的 sidecar `mount(root)`） | `ios-kit.js` 里的产品手势 |
-| `previews/<pageId>/board.json` | 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 `font-size` |
-| `kits/ios/components/<id>/`（`meta.json` + variants） | 把组件 HTML 粘贴复制进屏里 |
-| 加页时改 `previews/_index.json`（`mode`：`ios` \| `html`） | 为了「修好一条标注」去动 `ios-kit.css` |
+| `content/previews/<pageId>/*.html`（iOS：`.ios-app` + 同级 overlay；HTML：任何非文档片段） | 手机机壳 / bezel / 状态栏（归加载器） |
+| `content/previews/<pageId>/*.js`（屏的 sidecar `mount(root)`） | `ios-kit.js` 里的产品手势 |
+| `content/previews/<pageId>/board.json` | 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 `font-size` |
+| `content/kits/ios/components/<id>/`（`meta.json` + variants） | 把组件 HTML 粘贴复制进屏里 |
+| 加页时改 `content/previews/_index.json`（`mode`：`ios` \| `html`） | 为了「修好一条标注」去动 `ios-kit.css` |
 | 经 `pinpoint add`（或小心手改）改 `~/.pinpoint/registry.json` 登记仓外评审目标 | 往 tracked 文件里夹带实例内容 |
 
-`previews/` 是**纯模板**（ADR 0027）：只放进 git 的示例页，页 id / 标题 / 顺序 / 默认页在
-`previews/_index.json`。实例页不住这里——它们住各自 owning topic 的 `prototypes/`（或磁盘任何地方），
-经 registry 进来。遗留的 `previews/_index.local.json` 覆盖机制还能用，但实际已退役。
+`content/previews/` 是**纯模板**（ADR 0027）：只放进 git 的示例页，页 id / 标题 / 顺序 / 默认页在
+`content/previews/_index.json`。实例页不住这里——它们住各自 owning topic 的 `prototypes/`（或磁盘任何地方），
+经 registry 进来。遗留的 `content/previews/_index.local.json` 覆盖机制还能用，但实际已退役。
 
 组件包含支持 `data-text` → `[data-ios-slot="text"]`，以及具名的 `data-slot-<name>` →
 `[data-ios-slot="<name>"]`。两个屏共用一个组件和状态模型、只是文案或进度不同时用具名槽；

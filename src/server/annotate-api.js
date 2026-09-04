@@ -8,24 +8,25 @@ import { contentMtimeMs } from './lib/content-mtime.js';
 import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..');
-const SCRIPT = path.join(ROOT, 'client', 'annotate.js');
+const SRC = path.resolve(__dirname, '..');
+const ROOT = path.resolve(SRC, '..');
+const SCRIPT = path.join(SRC, 'client', 'annotate.js');
 const INLINED_LIBS = [
-  path.join(ROOT, 'lib', 'annotation-indicator.js'),
-  path.join(ROOT, 'client', 'lib', 'annotate-hit-test.js'),
-  path.join(ROOT, 'lib', 'annotation-slug.js'),
-  path.join(ROOT, 'lib', 'annotate-page-key.js'),
-  path.join(ROOT, 'lib', 'annotate-clip.js'),
-  path.join(ROOT, 'lib', 'annotate-bubble.js'),
-  path.join(ROOT, 'lib', 'ann-row.js'),
-  path.join(ROOT, 'lib', 'frame-anchor.js'),
+  path.join(SRC, 'shared', 'annotation-indicator.js'),
+  path.join(SRC, 'client', 'lib', 'annotate-hit-test.js'),
+  path.join(SRC, 'shared', 'annotation-slug.js'),
+  path.join(SRC, 'shared', 'annotate-page-key.js'),
+  path.join(SRC, 'shared', 'annotate-clip.js'),
+  path.join(SRC, 'shared', 'annotate-bubble.js'),
+  path.join(SRC, 'shared', 'ann-row.js'),
+  path.join(SRC, 'shared', 'frame-anchor.js'),
 ];
 // Stylesheets injected into the bundle as JS string constants (the client must
 // stay a single self-contained file — no runtime requests). annotate.js
 // references the constant in its <style> block; index.html links the same CSS.
-// Keep the mirror in server/annotate-inline.test.js in sync.
+// Keep the mirror in src/server/annotate-inline.test.js in sync.
 const INLINED_CSS = [
-  { name: 'ANN_LIST_CSS', path: path.join(ROOT, 'lib', 'ann-list.css') },
+  { name: 'ANN_LIST_CSS', path: path.join(SRC, 'shared', 'ann-list.css') },
 ];
 
 /** @type {Set<import('node:http').ServerResponse>} */

@@ -7,14 +7,14 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { targetContentToDisplay } from '../../lib/annotation-indicator.js';
-import { bubbleCss } from '../../lib/annotate-bubble.js';
+import { targetContentToDisplay } from '../../shared/annotation-indicator.js';
+import { bubbleCss } from '../../shared/annotate-bubble.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 const BAKE_LIBS = [
-  '../../lib/annotate-clip.js',
-  '../../lib/annotate-bubble.js',
+  '../../shared/annotate-clip.js',
+  '../../shared/annotate-bubble.js',
   '../../workbench/lib/annotate-bubble-layout.js',
 ];
 
