@@ -96,7 +96,7 @@ test('client #ann-sidebar pins cover every --wb-* the shared CSS consumes', () =
   for (const name of consumed) {
     assert.ok(
       pinsRule[0].includes(name + ':'),
-      `#ann-sidebar pins ${name} (consumed by lib/ann-list.css)`,
+      `#ann-sidebar pins ${name} (consumed by src/shared/ann-list.css)`,
     );
   }
   // workbench 侧 token 源同步定义同一组（双端同一个 --wb-* 宇宙）

@@ -10,9 +10,9 @@
 // 全部/当前筛选（annFilter 机制同删）、设置常驻格（进左栏齿轮）。
 // 锚点失效 = 整卡红描边 + 红浅面 + 文本退灰 + 序号钉转红，不用 tag（08-14）。
 // 状态源：app/store.js 的 annSnap（ann-bridge 汇总的纯数据快照）；行模型仍走
-// 共享 lib/ann-row.js；引用号/屏名从 activeBoard 纯派生（lib/board-refs.js）。
+// 共享 src/shared/ann-row.js；引用号/屏名从 activeBoard 纯派生（src/workbench/lib/board-refs.js）。
 // 卡片皮肤（白卡 + accent 淡描边 + r-3）叠在 index.html 的 #wbann-list 规则 —
-// 共享行视觉留在 lib/ann-list.css（client 侧栏 / 扩展 panel 消费端不动）。
+// 共享行视觉留在 src/shared/ann-list.css（client 侧栏 / 扩展 panel 消费端不动）。
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useWorkbenchStore, wbSet } from './store.js';

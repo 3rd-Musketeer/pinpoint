@@ -38,7 +38,7 @@ toolbar icon click
 ```
 
 Why a service-hosted panel page instead of an extension-rendered one: the
-panel reuses the row model/styles (`lib/ann-row.js`, `lib/ann-list.css`) and
+panel reuses the row model/styles (`src/shared/ann-row.js`, `src/shared/ann-list.css`) and
 the annotate API/SSE directly — no duplicated UI inside the extension, one
 SSOT. The extension shell only resolves *which* tab/entry/ledger to show and
 ferries commands.

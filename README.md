@@ -29,6 +29,7 @@ or component, the open board refreshes in place).
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查案例库 | [`docs/debugging.md`](docs/debugging.md) |
+| 五阶段收敛计划当时怎么切的（历史） | [`docs/2026-08-16-roadmap.md`](docs/2026-08-16-roadmap.md) |
 | 加页 / 加屏 / 加组件的做法 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 标注 → 读标注 → 修改的做法 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 变更历史 | `git log`（本仓不维护 changelog） |

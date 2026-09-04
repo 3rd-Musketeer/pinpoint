@@ -22,9 +22,9 @@
  *    reach `fetch('/api/...')` inside JS bundles, so an inline bootstrap is
  *    injected as the FIRST <head> script (before any page script) that
  *    monkey-patches fetch / XMLHttpRequest / EventSource / WebSocket /
- *    sendBeacon through lib/proxy-rebase.js (inlined, like /annotate.js).
+ *    sendBeacon through src/shared/proxy-rebase.js (inlined, like /annotate.js).
  *    The pinpoint annotate client's own API calls stay exempt via an explicit
- *    endpoint list — see REBASE_EXEMPT_* in lib/proxy-rebase.js. The bootstrap
+ *    endpoint list — see REBASE_EXEMPT_* in src/shared/proxy-rebase.js. The bootstrap
  *    also virtualizes the URL (history.replaceState to the unprefixed app
  *    path, virtualAppPath) because SPA routers read location.pathname — a
  *    native getter no patch can intercept — and would hit their catch-all

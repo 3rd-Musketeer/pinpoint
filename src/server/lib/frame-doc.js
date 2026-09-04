@@ -5,7 +5,7 @@
  * registry dir·file·url 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
  *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
- *   lib/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
+ *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
  * - doc 壳屏（完整文档 / 合成板 / url 条目）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
  *

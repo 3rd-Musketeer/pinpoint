@@ -1,6 +1,6 @@
 # 0019 · live 代理画中画：同源路径前缀代理 + 运行时重基（阶段 4/5 落地）
 
-Status: 现行（已落地） · Date: 2026-08-16 · Scope: `server/lib/site-proxy.js`、`lib/proxy-rebase.js`
+Status: 现行（已落地） · Date: 2026-08-16 · Scope: `src/server/lib/site-proxy.js`、`src/shared/proxy-rebase.js`
 
 **Decided**:
 

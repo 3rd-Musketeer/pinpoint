@@ -10,7 +10,7 @@
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar).
  * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
  * frame 内标注与画布同账本（注入 __pinpointFrame/__pinpointLedger），锚点按
- * frame 内路径归一（lib/frame-anchor.js），模式开关向 frame iframe 级联。 */
+ * frame 内路径归一（src/shared/frame-anchor.js），模式开关向 frame iframe 级联。 */
 (function () {
   'use strict';
   if (window.__pinpoint) return;
@@ -45,7 +45,7 @@
   // ---------- 阶段 5：/api/frame 嵌入帧身份 ----------
   // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel} 与
   // __pinpointLedger（顶层 workbench 的 pathname）：本实例读写画布同一份账本，
-  // 行带 pageId + screenId，锚点按 frame 内路径归一（lib/frame-anchor.js，内联）。
+  // 行带 pageId + screenId，锚点按 frame 内路径归一（src/shared/frame-anchor.js，内联）。
   // 文档正文标注仍走文档自己的账本 —— 两个命名空间共存不打架。
   var FRAME = (function () {
     var f = window.__pinpointFrame;
@@ -62,7 +62,7 @@
       ? window.__pinpointLedger
       : location.pathname;
   var LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
-  // 页面标识 = 文件名 + 全路径短哈希（SSOT: lib/annotate-page-key.js，内联）
+  // 页面标识 = 文件名 + 全路径短哈希（SSOT: src/shared/annotate-page-key.js，内联）
   var PAGE = pageKeyFromPathname(LEDGER_PATHNAME);
   var PAGE_KEY = annotationSlug(PAGE);
   // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
@@ -531,7 +531,7 @@
   }
 
   // ---------- frame 内锚点归一（阶段 5 透传）----------
-  // frameInternalSelector / FRAME_STAGE_SELECTOR 由 lib/frame-anchor.js 内联提供。
+  // frameInternalSelector / FRAME_STAGE_SELECTOR 由 src/shared/frame-anchor.js 内联提供。
   // 行带 screenId 且 selector 含 stage 段 → 只在该 frame 的 stage 根里解析：
   // 画布（.wb-screen[data-screen] 下的 stage）与 /api/frame 嵌入页（文档唯一
   // stage）两端同构互解；frame 换序/跨 section 移动后锚点自愈。派生不出 frame
@@ -928,7 +928,7 @@
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
     // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
     // 阶梯圆角 —— 与浮动工具条同一套浮层语言（V4 起工具条/composer 也收编进来）。
-    // 本规则上的 --wb-* 钉值是共享行样式（lib/ann-list.css）的主题入参 + 三向守卫锚点，
+    // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
     '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
@@ -945,7 +945,7 @@
     '#ann-sidebar .ann-sb-modes button.on{background:var(--wb-surface,#fff);color:var(--wb-fg);box-shadow:var(--wb-sh-1);}',
     '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
-    // 行/失效态/空态的共享视觉 = lib/ann-list.css，serve 时内联为 ANN_LIST_CSS
+    // 行/失效态/空态的共享视觉 = src/shared/ann-list.css，serve 时内联为 ANN_LIST_CSS
     // （workbench 侧栏 link 同一份；行类名统一为 .wb-ann-*）。
     ANN_LIST_CSS,
     // 以下为 client 侧结构增量，与 workbench 侧有意不同、不进共享层：行 flex 壳、
@@ -1317,7 +1317,7 @@
   }
 
   function sidebarRowModel() {
-    // 行字段走共享模型（lib/ann-row.js，serve 时内联）；默认 cap 语义即
+    // 行字段走共享模型（src/shared/ann-row.js，serve 时内联）；默认 cap 语义即
     // client 现状：框选显示「框选区域」，无 text 时回退 selector 末段摘录。
     return marksForActivePage().slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
       return annRowModel(m, {
@@ -2457,7 +2457,7 @@
   /** The selector still resolves, even if its current product view is hidden.
    *  A hidden tab / route is not a broken annotation: once the view returns,
    *  the same selector can become live again. The resolvability walk itself is
-   *  the shared pure predicate from lib/ann-row.js (inlined at serve time). */
+   *  the shared pure predicate from src/shared/ann-row.js (inlined at serve time). */
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
     return annMarkBroken(m, function (selector) { return !!resolveMarkSelector(selector, sid); }, markElementTargets(m));

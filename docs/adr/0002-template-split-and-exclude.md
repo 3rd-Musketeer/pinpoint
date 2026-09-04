@@ -1,6 +1,6 @@
 # 0002 · Template split + release workflow
 
-Status: 部分被修订（实例内容排除仍现行） · Date: 2026-07-21 · Scope: `.git/info/exclude`、`previews/`
+Status: 部分被修订（实例内容排除仍现行） · Date: 2026-07-21 · Scope: `.git/info/exclude`、`content/previews/`
 
 Superseded-by: ADR 0012（ADR 与设计正典放出 exclude 清单，教义随模板走）
 

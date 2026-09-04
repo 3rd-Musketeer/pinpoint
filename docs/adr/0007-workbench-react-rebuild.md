@@ -1,6 +1,6 @@
 # 0007 · workbench 技术栈重构（react-rebuild milestone 收官）
 
-Status: 现行 · Date: 2026-08-10 · Scope: `workbench/`
+Status: 现行 · Date: 2026-08-10 · Scope: `src/workbench/`
 
 **Shipped**: goal `.gdd/goals/goal-20260810-workbench-react-rebuild.md`（本地 exclude）status=done；commit 链 `0acfdb2..c7c3760`（16 个，dev 未 push，发布等下一轮视觉组件库决策后一并走）。
 **Decided**:

@@ -1,6 +1,6 @@
 # 0008 · 设计语言锚：扁平 / Linear 风 / light theme（owner 审美准则）
 
-Status: 部分被取代（准则本体仍现行） · Date: 2026-08-11 · Scope: `workbench/`、`client/annotate.js`、`docs/design.md`
+Status: 部分被取代（准则本体仍现行） · Date: 2026-08-11 · Scope: `src/workbench/`、`src/client/annotate.js`、`docs/design.md`
 
 Superseded-by: ADR 0010（accent 值与功能色微调）
 

@@ -1,6 +1,6 @@
 # 0012 · 图纸版式：铭牌 + REV 协议 + A1 引用法 + 装饰检验；DESIGN.md 正典化
 
-Status: 部分缓期（图注 / 装饰检验 / 文档权威现行） · Date: 2026-08-15 · Scope: `workbench/lib/board-refs.js`、`docs/design.md`
+Status: 部分缓期（图注 / 装饰检验 / 文档权威现行） · Date: 2026-08-15 · Scope: `src/workbench/lib/board-refs.js`、`docs/design.md`
 
 Superseded-by: ADR 0013（REV 及其展示面缓期）
 

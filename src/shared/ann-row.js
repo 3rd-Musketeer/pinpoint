@@ -2,15 +2,15 @@
  * Shared annotation-list row model — one annotation mark → one list row.
  *
  * Consumers: the workbench sidebar (#wbann-list, rendered by
- * workbench/app/AnnPanel.jsx) and the injected client sidebar (#ann-sidebar
- * in client/annotate.js). Grouping
+ * src/workbench/app/AnnPanel.jsx) and the injected client sidebar (#ann-sidebar
+ * in src/client/annotate.js). Grouping
  * and navigation stay per-consumer (board jump vs goToMark); what must not
  * drift is how one mark becomes one row: the cap excerpt, the content preview,
  * the broken flag, and the tag glyphs.
  *
  * Pure and DOM-free like every lib/ module: node-tested directly, imported by
  * the workbench as an ES module, and inlined into the served /annotate.js (see
- * INLINED_LIBS in server/annotate-api.js).
+ * INLINED_LIBS in src/server/annotate-api.js).
  */
 
 /** Last `>`-separated selector segment, trimmed and truncated — the "which

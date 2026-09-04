@@ -1,6 +1,6 @@
 # 0028 · areta-chat-eval 条目重指 + 组件归属边界成文
 
-Status: 现行 · Date: 2026-08-17 · Scope: `kits/ios/components/`、`~/.pinpoint/registry.json`
+Status: 现行 · Date: 2026-08-17 · Scope: `content/kits/ios/components/`、`~/.pinpoint/registry.json`
 
 **Decided**（owner 2026-08-17 要求分析两个 backlog 遗留项后采纳推荐）：
 

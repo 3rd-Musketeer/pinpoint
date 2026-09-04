@@ -1,6 +1,6 @@
 # 0024 · 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文
 
-Status: 现行 · Date: 2026-08-17 · Scope: `workbench/app/row-menu.jsx`、`index.html`、`docs/debugging.md`
+Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/app/row-menu.jsx`、`index.html`、`docs/debugging.md`
 
 **Decided**（owner 2026-08-17 提案确认，浏览器实测验收后批准提交）：
 

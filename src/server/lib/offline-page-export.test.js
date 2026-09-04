@@ -42,6 +42,25 @@ test('bundleHtmlAssets inlines local CSS, images, and preview modules', async (t
   assert.deepEqual(bundled.remoteResources, []);
 });
 
+test('bundleHtmlAssets inlines kit assets served from /kits/', async (t) => {
+  const root = fixtureDir(t);
+  const pinpointRoot = fixtureDir(t);
+  fs.mkdirSync(path.join(pinpointRoot, 'content', 'kits', 'ios'), { recursive: true });
+  fs.writeFileSync(path.join(pinpointRoot, 'content', 'kits', 'ios', 'ios-kit.css'), '.ios-app{color:red}');
+  fs.writeFileSync(path.join(root, 'screen.html'), '<div></div>');
+
+  const bundled = await bundleHtmlAssets('<link rel="stylesheet" href="/kits/ios/ios-kit.css">', {
+    baseFile: path.join(root, 'screen.html'),
+    entryRoot: root,
+    entryId: 'demo',
+    pinpointRoot,
+  });
+
+  assert.match(bundled.html, /<style>\.ios-app\{color:red\}<\/style>/);
+  assert.doesNotMatch(bundled.html, /\/kits\/ios\//);
+  assert.deepEqual(bundled.remoteResources, []);
+});
+
 test('bundleHtmlAssets automatically inlines static assets from another registered page', async (t) => {
   const root = fixtureDir(t);
   const sharedRoot = fixtureDir(t);

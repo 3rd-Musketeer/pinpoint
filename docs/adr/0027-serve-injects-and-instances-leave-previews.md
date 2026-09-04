@@ -1,6 +1,6 @@
 # 0027 · 注入契约统一 + registry 补全 + 实例迁出 previews/
 
-Status: 现行 · Date: 2026-08-17 · Scope: `server/preview-inject.js`、`server/lib/registry-store.js`、`previews/`
+Status: 现行 · Date: 2026-08-17 · Scope: `src/server/preview-inject.js`、`src/server/lib/registry-store.js`、`content/previews/`
 
 Relates-to: ADR 0022（把「serve 即注入即标」落实到 previews 路径）
 

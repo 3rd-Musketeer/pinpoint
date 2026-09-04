@@ -1,6 +1,6 @@
 # 0010 · 设计语言 token 级锚定：Steel Blue accent + 画布点阵 + 结构缝回调
 
-Status: 部分被取代（语义色 / 结构缝 / mono 档仍现行） · Date: 2026-08-13 · Scope: `scripts/build-wb-tokens.mjs`、`workbench/wb-tokens.css`、`lib/ann-list.css`
+Status: 部分被取代（语义色 / 结构缝 / mono 档仍现行） · Date: 2026-08-13 · Scope: `scripts/build-wb-tokens.mjs`、`src/workbench/wb-tokens.css`、`src/shared/ann-list.css`
 
 Superseded-by: ADR 0011（accent 值、网格人格）、ADR 0012（纹理入口进设置）
 

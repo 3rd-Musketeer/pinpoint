@@ -174,11 +174,12 @@ function assetContext(options) {
       const rel = raw.resource.startsWith('/kits/')
         ? path.join('content', raw.resource.slice(1))
         : path.join('src', raw.resource.slice(1));
+      ownerRoot = pinpointRoot;
       file = path.resolve(pinpointRoot, rel);
-      if (!inside(pinpointRoot, file)) {
+      if (!inside(ownerRoot, file)) {
         throw new OfflinePageExportError('asset_escape', `asset escapes Pinpoint root: ${ref}`, { ref });
       }
-      ownerRoots.set(file, pinpointRoot);
+      ownerRoots.set(file, ownerRoot);
     } else if (raw.resource.startsWith('/')) {
       throw new OfflinePageExportError('unknown_absolute_asset', `unsupported absolute asset URL: ${ref}`, { ref });
     } else {

@@ -1,6 +1,6 @@
 # 0025 · 画布缩放基准重定标（旧 50% 成为新 100%）
 
-Status: 现行 · Date: 2026-08-17 · Scope: `lib/canvas-zoom.js`、`index.html`
+Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/lib/canvas-zoom.js`、`index.html`
 
 **Decided**（owner 2026-08-17 提出「原来的 50% 应该是现在的 100%，我要调整的是默认视窗大小」后确认方向）：
 

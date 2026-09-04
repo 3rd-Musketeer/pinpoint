@@ -20,8 +20,8 @@ function esc(s) {
  *  白面 + 克制阴影 sh-2 + r-4 圆角 + --wb-font 字栈（2026-08-11 扁平化摘掉发
  *  丝边）；序号 chip 从蓝色 palette 改琥珀（与 .ann-badge / ann-list.css 的
  *  .wb-ann-num 同族）。
- *  var(--wb-*, fallback)：live 侧钉值在 [data-ann-ui] 基规则（client/annotate.js），
- *  export bake 无钉值走兜底 —— 兜底值与 workbench/wb-tokens.css 同值。 */
+ *  var(--wb-*, fallback)：live 侧钉值在 [data-ann-ui] 基规则（src/client/annotate.js），
+ *  export bake 无钉值走兜底 —— 兜底值与 src/workbench/wb-tokens.css 同值。 */
 export function bubbleCss() {
   return [
     '.ann-bubble{position:absolute;width:240px;background:var(--wb-surface,#fff);',

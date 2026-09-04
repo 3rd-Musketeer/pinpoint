@@ -1,6 +1,6 @@
 # 0006 · pinpoint 服务化 milestone 收尾（closeout）
 
-Status: 现行 · Date: 2026-08-10 · Scope: `server/`、`client/`、`extension/`
+Status: 现行 · Date: 2026-08-10 · Scope: `src/server/`、`src/client/`、`extension/`
 
 **Shipped**: WP0-WP9 共 12 个 commit（`8172f74..8f7dddf`）已 push 至 `origin/dev`（GitHub: 3rd-Musketeer/pinpoint）。公开模板 main **未**发布（owner 选择 A：只 ship-dev；`just publish` 留待明示）。
 **Verified**: `npm test` 156/156、e2e 43/43（含 SPA 账本、扩展注入、/sites/、侧边栏全部用例）；真机回路（my-todos 注入/分桶/跳转）以自动化浏览器走完；owner 完成过一次真实 pickup 标注。

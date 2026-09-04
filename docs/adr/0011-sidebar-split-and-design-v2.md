@@ -1,6 +1,6 @@
 # 0011 · 侧栏左右分工 + 设计语言 V2（钢灰蓝 × S3 圆角）
 
-Status: 现行 · Date: 2026-08-14 · Scope: `workbench/app/`、`index.html`
+Status: 现行 · Date: 2026-08-14 · Scope: `src/workbench/app/`、`index.html`
 
 **Decided**（owner 在评审板 `previews/sidebar-variants` 上逐轮拍板，含 11 条标注反馈全部落地）:
 - **侧栏 = 左右分工**：左栏 = 页面上下文（Pages + 设置视图），右栏 = 标注工作台（可整栏折叠，画布两缘浮钮复开，右钮带计数）。

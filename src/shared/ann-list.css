@@ -2,18 +2,18 @@
  * annotation list consumers:
  *   - workbench sidebar (#wbann-list in index.html, links this file)
  *   - injected client sidebar (#ann-sidebar; this file is inlined into the
- *     served /annotate.js by server/annotate-api.js so the client stays a
+ *     served /annotate.js by src/server/annotate-api.js so the client stays a
  *     single self-contained bundle)
  *   - extension side panel (#panel-list in panel.html, links this file;
  *     scope added 2026-08-13 — the panel shipped without it at first)
- * Row data comes from lib/ann-row.js; keep classes in sync with all
+ * Row data comes from src/shared/ann-row.js; keep classes in sync with all
  * consumers' renderers.
  *
  * var(--wb-*, fallback): the workbench theme custom properties are generated
- * into workbench/wb-tokens.css (scripts/build-wb-tokens.mjs); the client pins
+ * into src/workbench/wb-tokens.css (scripts/build-wb-tokens.mjs); the client pins
  * the same values on #ann-sidebar, so both sidebars compute identically and
  * host-page custom properties cannot leak into the injected UI. Fallbacks
- * mirror the current token values; server/annotate-inline.test.js asserts the
+ * mirror the current token values; src/server/annotate-inline.test.js asserts the
  * client pins cover every --wb-* this file consumes.
  *
  * Deliberately NOT here (per-side local rules): the row's flex shell and

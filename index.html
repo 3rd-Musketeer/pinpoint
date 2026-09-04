@@ -213,7 +213,7 @@
 
   /* 右栏标注工作台（2026-08-15 侧栏重构，decisions 08-14）：head/meta/底栏
      （模式单钮 #wbann-toggle + 画布批注 dropdown #wbann-bubble）视觉收编在
-     app/AnnPanel.jsx（Tailwind 类）。卡片皮肤叠在此处而不进 lib/ann-list.css ——
+     app/AnnPanel.jsx（Tailwind 类）。卡片皮肤叠在此处而不进 src/shared/ann-list.css ——
      共享行结构（item/body/cap/text/del）与 client 侧栏、扩展 panel 的双端同步
      不动，这里只叠 workbench 右栏的白卡语言（mock .sb-r .arow）。client 会把
      ann-list.css 再内联注入一份（运行期 <style>，源码序在本块之后）——同权重
@@ -260,7 +260,7 @@
      boot-prefs applyAnnWidth 给 #wbann-side 打 compact —— 卡片行收单行
      （垂直居中、藏 cap 元素路径、评论文本从 2 行 clamp 变单行 truncate），
      底栏「画布批注」dropdown 收成 图标+值（藏 .wb-ann-bubble-lbl 文案）。
-     只叠在 workbench 右栏：共享行样式 lib/ann-list.css 与 client 侧栏 /
+     只叠在 workbench 右栏：共享行样式 src/shared/ann-list.css 与 client 侧栏 /
      扩展 panel 消费端不动。 */
   #wbann-side.compact #wbann-list .wb-ann-item-main { align-items:center; padding:7px 9px; }
   #wbann-side.compact #wbann-list .wb-ann-num { margin-top:0; }

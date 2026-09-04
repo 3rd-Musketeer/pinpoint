@@ -1,6 +1,6 @@
 # 0014 · 左栏大纲 + 延伸线结构
 
-Status: 现行 · Date: 2026-08-15 · Scope: `workbench/app/Sidebar.jsx`
+Status: 现行 · Date: 2026-08-15 · Scope: `src/workbench/app/Sidebar.jsx`
 
 Supersedes: ADR 0013（左栏内容）
 

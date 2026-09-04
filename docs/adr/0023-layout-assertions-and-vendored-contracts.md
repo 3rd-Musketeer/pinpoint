@@ -1,6 +1,6 @@
 # 0023 · 布局断言比几何不靠点击 + vendored 组件内部契约成文
 
-Status: 现行 · Date: 2026-08-17 · Scope: `e2e/workbench.spec.js`、`workbench/app/ui/`
+Status: 现行 · Date: 2026-08-17 · Scope: `e2e/workbench.spec.js`、`src/workbench/app/ui/`
 
 **Decided**（owner 2026-08-17 提问「这是不是一个潜在要修复的架构/系统性问题」后批准三件修复）：
 

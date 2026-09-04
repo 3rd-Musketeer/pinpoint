@@ -4,7 +4,7 @@
  * fragment 屏 → 完整自包含 HTML（机壳 + ios-kit + frame-boot + annotate 注入，
  * 注入带 __pinpointFrame/__pinpointLedger —— frame 内标注与画布同账本）；
  * doc 壳屏 → 302 到该屏自己的 URL（同 pathname = 同账本，透传自然成立）。
- * 组装逻辑在 server/lib/frame-doc.js（机壳与画布共享 lib/frame-shell.js）。
+ * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, framePageHtml, resolveFrameTarget } from './lib/frame-doc.js';
 

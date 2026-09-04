@@ -1,6 +1,6 @@
 # 0015 · 导出 picker 收敛：任意多选 + 预览 + 选项减重
 
-Status: 现行（批注档缓期） · Date: 2026-08-15 · Scope: `workbench/app/ExportPicker.jsx`、`server/export-image-api.js`、`server/lib/zip-store.js`
+Status: 现行（批注档缓期） · Date: 2026-08-15 · Scope: `src/workbench/app/ExportPicker.jsx`、`src/server/export-image-api.js`、`src/server/lib/zip-store.js`
 
 **Decided**（owner 在体验板 picker 上拍板）:
 - 批量规则 = 任意多选（勾选任意帧组合，section 行整选）+ 智能打包：单张直接下载 PNG，多张才 zip。

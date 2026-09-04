@@ -1,6 +1,6 @@
 # 0009 · 扩展标注面板 = Chrome Side Panel（原生分屏）；点击必达 + 陈旧自愈
 
-Status: 现行 · Date: 2026-08-11 · Scope: `extension/`、`panel.html`、`workbench/app/Panel.jsx`
+Status: 现行 · Date: 2026-08-11 · Scope: `extension/`、`src/pages/panel.html`、`src/workbench/app/Panel.jsx`
 
 **Decided**（owner 拍板，扩展 0.3.0 落地，dev `5a1ed12`）:
 - 图标点击打开 **Chrome Side Panel**（`chrome.sidePanel.open`），标注列表/模式切换/跳转/编辑/删除搬进浏览器原生侧栏。页面内 `#ann-sidebar` 浮层不再是扩展场景的主控制面，保留给无扩展场景（`/sites/` 直开、S 键、工具条「列表」）。

@@ -13,7 +13,7 @@ Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一�
 
 **board（板）**
 一个页的内容定义，就是那份 `board.json`：顶层是 `sections[]`，不是扁平的 `{id, screens}`。
-契约在 `src/workbench/lib/board-contract.js`，schema 见 `docs/board-schema.md`。
+契约在 `src/workbench/lib/preview-contracts.js`，schema 见 `docs/board-schema.md`。
 要避开：拿 board 指画布那块区域——那叫 canvas。
 
 **section（区）**

@@ -1,6 +1,6 @@
 # 0029 · Pages 时间显示 + 排序；「最近更新」= 仅内容改动
 
-Status: 现行 · Date: 2026-08-17 · Scope: `server/lib/content-mtime.js`、`workbench/lib/page-sort.js`
+Status: 现行 · Date: 2026-08-17 · Scope: `src/server/lib/content-mtime.js`、`src/workbench/lib/page-sort.js`
 
 **Decided**（owner 2026-08-17 提出「给 page 加上时间显示 & 排序方法」，方案讨论后确认；「最近更新包含标注更新吗」一问 owner 裁决「内容更新」）：
 

@@ -1,6 +1,6 @@
 # 0026 · title 规矩 + section note + 选中模型（note 收编右栏 detail 面板）
 
-Status: 现行 · Date: 2026-08-17 · Scope: `workbench/app/DetailPanel.jsx`、`server/lib/frame-note-store.js`、`workbench/lib/board-contract.js`
+Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/app/DetailPanel.jsx`、`src/server/lib/frame-note-store.js`、`src/workbench/lib/preview-contracts.js`
 
 Supersedes: ADR 0015（note 导出永随语义）
 

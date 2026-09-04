@@ -1,7 +1,7 @@
 /**
  * Frame-scoped anchor normalization (阶段 5 文档 mention 活 frame + 标注双向透传).
  *
- * 锚点事实（client/annotate.js cssPath）：标注 selector 是「所在文档的绝对 CSS
+ * 锚点事实（src/client/annotate.js cssPath）：标注 selector 是「所在文档的绝对 CSS
  * 路径」，`tag.cls:nth-of-type(n)` 段链向上走到 body，遇 id 短路。画布上它穿过
  * `#lib-<section> > .wb-sec-body > .wb-screen[data-screen] > .ios-stage > …`，
  * 因此 section 重排不断、frame 换序/跨 section 移动会断（nth-of-type 漂移）。

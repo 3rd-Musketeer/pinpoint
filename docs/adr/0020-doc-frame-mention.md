@@ -1,6 +1,6 @@
 # 0020 · 文档模式 mention 活 frame + 标注双向透传（阶段 5/5 落地）
 
-Status: 现行（已落地） · Date: 2026-08-16 · Scope: `server/lib/frame-doc.js`、`lib/frame-anchor.js`、`client/frame-boot.js`
+Status: 现行（已落地） · Date: 2026-08-16 · Scope: `src/server/lib/frame-doc.js`、`src/shared/frame-anchor.js`、`src/client/frame-boot.js`
 
 **Decided**:
 
