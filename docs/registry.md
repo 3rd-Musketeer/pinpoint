@@ -32,12 +32,29 @@
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
 
 ```bash
-pinpoint add <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+pinpoint add  <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+pinpoint move <id> <dir|file.html|http(s)-url>
 ```
 
-原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
+`add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
 而不是新增一行 Pages——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
 对 url 目标会被拒绝；`--draft` 必须搭配 `--page`，把条目放进草稿组。
+
+**`--page` 是「挂到既有页 `<id>`」，不是「指定本条目的 id」。** 本条目自己的 id 用 `--id`。
+反例：`pinpoint add ./v2 --id weekly-review-v2` 是让这个条目自己叫 weekly-review-v2；
+`pinpoint add ./v2 --page weekly-review` 是把它塞进 weekly-review 那一页的「内容」区、
+自己不成一行 Pages。
+
+`move` 原地改一个既有条目的落点（dir / file / url 三种目标，校验方式与 `add` 一致：路径必须存在、
+单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按 id 寻址
+（`~/.pinpoint/<id>/`），所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
+（改成 file / url 时丢掉，那两种壳是定死的）；挂在某页上的条目不能改指 url（url 恒为独立页），
+会被响亮拒绝。未知 id、目标不存在都整单失败，registry 一个字节不动。
+
+**撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
+CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
+`--id <其他 id>`」并退非零。历史行为是静默追加 `-2`，那会开一个空桶、让既有标注孤儿化
+（2026-09-01 实迁踩到）。
 
 写侧在 `src/server/lib/registry-store.js`：严格校验（id 唯一、kind 合法、dir/file 路径存在、
 url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
@@ -47,8 +64,11 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
 挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
 
-CLI 目前只有 `add`，没有改路径的操作——改路径要手编 JSON 再 `POST /registry/reload`
-（撞 id 时 `add` 会静默追加 `-2`，那会让既有标注孤儿化，见 `BACKLOG.md`）。
+`add` 与 `move` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
+重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
+
+服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的
+「起服务与验收」。
 
 ## 三条投递路径
 

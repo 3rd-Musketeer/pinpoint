@@ -1,66 +1,100 @@
 /**
- * pinpoint CLI — 登记评审入口（bin/pinpoint.mjs 的纯函数层，node --test 直接测这里）。
+ * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
- * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`。
- * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用
- * 登记 URL（代理映射是后续阶段，本轮只登记，浏览器扩展按 origin 注入）。
+ * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
+ * 已登记条目换路径用 `pinpoint move`（保留 id，标注桶按 id 寻址，不会孤儿化）。
+ * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
  * 文件留在原地，CLI 只登记路径/URL。
+ *
+ * 服务侧：`status` / `start` / `stop` / `restart` 管的是这个 app 的 portless 注册
+ * （`portless run --name pinpoint npm run dev:app`）与它那棵进程树。portless 的
+ * proxy daemon（443，多 app 共享）不归 pinpoint 管，本文件一个字都不碰它。
+ *
+ * 进程原语（发信号、spawn、sleep）由 bin/pinpoint.mjs 注入 io，本文件只做判定，
+ * 所以两种真实故障形态（进程死了 / 进程活着但配置错）都能拿构造输入单测。
  */
 import fs from 'node:fs';
 import http from 'node:http';
 import https from 'node:https';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../src/server/lib/registry.js';
-import { addRegistryEntry, listRegistryIds } from '../src/server/lib/registry-store.js';
+import { addRegistryEntry, listRegistryEntries, updateRegistryEntry } from '../src/server/lib/registry-store.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
+/** 服务在 portless 里的注册名 / 主机名（`portless run --name pinpoint`）。 */
+export const PORTLESS_HOSTNAME = 'pinpoint.localhost';
 
 // CLI 住在仓库里，仓库根就是 pinpoint workbench 自己的 dir entry 路径——
 // 首次 add（registry 文件还不存在）时用它播种默认 pinpoint 条目，与
 // loadRegistry 的 missing-file 语义一致，workbench 自己的标注桶不会丢。
+// status 也拿它跟服务自报的 root 比对（2026-09-04 事故：进程还在，抱着搬迁前的
+// 旧绝对路径跑裸默认配置）。
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
 const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page']);
 const BOOLEAN_FLAGS = new Set(['draft']);
+// 每个命令接受的选项与位置参数个数。
+const COMMANDS = {
+  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
+  move: { positional: 2, flags: new Set(['registry']) },
+  status: { positional: 0, flags: new Set() },
+  start: { positional: 0, flags: new Set() },
+  stop: { positional: 0, flags: new Set() },
+  restart: { positional: 0, flags: new Set() },
+};
 
 export class CliError extends Error {}
 
 export const USAGE = `用法：
-  pinpoint add <目录|文件.html|http(s)://URL> [选项]
+  pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
+  pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
+  pinpoint status                                      服务体检（路由 / 进程 / 健康 / root / registry）
+  pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
-把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
+add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
   目录             → kind "dir"，服务只读 host 在 /sites/<id>/ 并注入标注
   单个 .html 文件  → kind "file"，仅 serve 该文件（/sites/<id>/ 与 /sites/<id>/<文件名>）
-  http(s)://URL    → kind "url"，浏览器扩展按 origin 注入
+  http(s)://URL    → kind "url"，同源代理内嵌 + 浏览器扩展按 origin 注入
 
-选项：
+选项（add）：
   --title X        显示名（默认：目录名 / 文件名 / hostname）
   --board X        workbench 壳：ios | html（默认 html；仅 dir 条目生效，file 恒 doc）
-  --id xxx         显式 id（默认由名称 slug 派生，冲突自动追加 -2/-3；显式 id 冲突报错）
-  --page xxx       归属到既有 Page（本地 manifest 页或另一 registry 条目）：不再自成
-                   Pages 行，作为目标页「内容」区的 doc 条目出现（仅 dir/file；url 恒独立页）
+  --id xxx         本条目自己的 id（默认由名称 slug 派生；撞既有 id 一律报错，不静默改名）
+  --page xxx       挂到既有页 <id>，不是指定本条目的 id：本条目不再自成 Pages 行，
+                   而是并进 <id> 那一页的「内容」区（仅 dir/file；url 恒独立页）。
+                   反例：要让本条目自己叫 weekly-review-v2，用 --id weekly-review-v2；
+                   写成 --page weekly-review 是把它塞进 weekly-review 那一页。
   --draft          搭配 --page：条目落目标页的草稿组（缺省落产物组）
   --registry 路径  覆盖 registry 文件位置
                   （默认 ~/.pinpoint/registry.json；亦可用 PINPOINT_REGISTRY 环境变量）
+
+选项（move）：
+  --registry 路径  同上。move 只改 kind/path/url，id 与 title 原样保留——
+                   标注桶按 id 寻址（~/.pinpoint/<id>/），换路径不动既有标注。
+
   -h, --help       显示本说明
 
 环境变量：
   PINPOINT_REGISTRY   同 --registry（--registry 优先）
-  PINPOINT_ORIGIN     服务地址（默认 ${DEFAULT_ORIGIN}）；登记后 CLI 会
-                      GET /health 探活，可达则 POST /registry/reload 即时生效`;
+  PINPOINT_ORIGIN     服务地址（默认 ${DEFAULT_ORIGIN}）；写入后 CLI 会
+                      GET /health 探活，可达则 POST /registry/reload 即时生效
+  PORTLESS_ROUTES     portless 路由表位置（默认 ~/.portless/routes.json），status 读它`;
 
-/** 参数解析（纯函数）。返回 { command, target, flags }；非法输入抛 CliError。 */
+/** 参数解析（纯函数）。add 返回 { command, target, flags }，move 返回 { command, id, target, flags }，
+    服务命令返回 { command, flags }；非法输入抛 CliError。 */
 export function parseArgs(argv) {
   const args = [...argv];
   if (args.includes('-h') || args.includes('--help')) return { help: true };
   const command = args.shift();
-  if (command !== 'add') {
-    throw new CliError(command ? `未知命令：${command}` : '缺少命令（目前只有 add）');
-  }
+  if (!command) throw new CliError('缺少命令（add / move / status / start / stop / restart）');
+  const spec = COMMANDS[command];
+  if (!spec) throw new CliError(`未知命令：${command}`);
   const flags = {};
   const positional = [];
   for (let i = 0; i < args.length; i++) {
@@ -74,22 +108,38 @@ export function parseArgs(argv) {
     if (BOOLEAN_FLAGS.has(name)) {
       // 布尔开关：不吃下一个 token，也不许 --draft=xxx 带值。
       if (inline > 0) throw new CliError(`选项 --${name} 是开关，不带值`);
+      if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 ${command}`);
       flags[name] = true;
       continue;
     }
     if (!VALUE_FLAGS.has(name)) {
       throw new CliError(`未知选项：--${name}`);
     }
+    if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 ${command}`);
     const value = inline > 0 ? arg.slice(inline + 1) : args[++i];
     if (value === undefined || value === '' || value.startsWith('--')) {
       throw new CliError(`选项 --${name} 缺少值`);
     }
     flags[name] = value;
   }
-  if (positional.length !== 1) {
-    throw new CliError(positional.length === 0 ? 'add 需要一个目标（目录 / 文件 / URL）' : `add 只接受一个目标，收到 ${positional.length} 个`);
+  if (positional.length !== spec.positional) {
+    throw new CliError(positionalProblem(command, spec.positional, positional.length));
   }
-  return { command, target: positional[0], flags };
+  if (command === 'add') return { command, target: positional[0], flags };
+  if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
+  return { command, flags };
+}
+
+function positionalProblem(command, want, got) {
+  if (command === 'add') {
+    return got === 0 ? 'add 需要一个目标（目录 / 文件 / URL）' : `add 只接受一个目标，收到 ${got} 个`;
+  }
+  if (command === 'move') {
+    return got < 2
+      ? 'move 需要两个参数：<id> <新目录|新文件|新URL>'
+      : `move 只接受两个参数，收到 ${got} 个`;
+  }
+  return `${command} 不接受位置参数，收到 ${got} 个`;
 }
 
 /** basename → registry id 基材：小写、非字母数字折叠成 -、去首尾 -。 */
@@ -97,18 +147,122 @@ export function slugify(name) {
   return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
 }
 
-/** 派生 id：被占用时追加 -2 / -3 …（仅用于自动派生；显式 --id 冲突是报错）。 */
-export function deriveId(base, takenIds) {
-  const taken = new Set(takenIds);
-  if (!taken.has(base)) return base;
-  for (let n = 2; ; n++) {
-    const candidate = `${base}-${n}`;
-    if (!taken.has(candidate)) return candidate;
-  }
-}
-
 function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);
+}
+
+/** 一个目标（目录 / .html 文件 / http(s) URL）解析成 registry 的 kind + 落点。
+    add 与 move 共用同一套校验：路径必须真的存在，单文件必须是 html。 */
+export function resolveTarget(target, cwd = process.cwd()) {
+  if (isHttpUrl(target)) {
+    let parsed;
+    try {
+      parsed = new URL(target);
+    } catch {
+      throw new CliError(`URL 不合法：${target}`);
+    }
+    return { kind: 'url', url: target, baseName: parsed.hostname, idSeed: parsed.hostname };
+  }
+  const absPath = path.resolve(cwd, target);
+  let stat;
+  try {
+    stat = fs.statSync(absPath);
+  } catch {
+    throw new CliError(`路径不存在：${absPath}`);
+  }
+  if (stat.isDirectory()) {
+    const baseName = path.basename(absPath);
+    return { kind: 'dir', absPath, baseName, idSeed: baseName };
+  }
+  if (stat.isFile()) {
+    const ext = path.extname(absPath).toLowerCase();
+    if (ext !== '.html' && ext !== '.htm') {
+      throw new CliError(`单个文件只支持 .html/.htm（要登记整个目录请传目录路径）：${absPath}`);
+    }
+    // id 不带扩展名（保留原大小写截取）：report.html → report
+    return { kind: 'file', absPath, baseName: path.basename(absPath), idSeed: path.basename(absPath, path.extname(absPath)) };
+  }
+  throw new CliError(`不支持的路径类型（既不是目录也不是文件）：${absPath}`);
+}
+
+/** 条目的登记落点，用于报错与打印。 */
+export function entryTargetDesc(entry) {
+  return entry && (entry.kind === 'url' ? entry.url : entry.path);
+}
+
+function idTakenError(id, existing) {
+  const where = existing ? `，指向 ${entryTargetDesc(existing)}` : '';
+  return new CliError(
+    `id 已存在：${id}${where}；更新路径用 \`pinpoint move ${id} <新路径>\`，要新条目请显式 \`--id <其他 id>\``,
+  );
+}
+
+/**
+ * 由目标构造 registry 条目（纯函数 + fs 探测；不写盘）。
+ * takenEntries：现有条目（供 id 查重与「已存在，指向哪」的提示，同时是可归属的
+ * registry 页面名单）；takenIds 是它的 id 投影，测试可只给 id；
+ * pageIds：本地 manifest 页 id 名单（缺省读仓库 content/previews/_index[.local].json）。
+ */
+export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntries = [], takenIds, pageIds } = {}) {
+  const existingIds = takenIds || takenEntries.map((entry) => entry && entry.id);
+  const findExisting = (id) => takenEntries.find((entry) => entry && entry.id === id) || null;
+  const resolved = resolveTarget(target, cwd);
+  const { kind } = resolved;
+
+  let id;
+  if (flags.id) {
+    if (!ENTRY_ID_PATTERN.test(flags.id)) {
+      throw new CliError(`--id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${flags.id}`);
+    }
+    if (existingIds.includes(flags.id)) throw idTakenError(flags.id, findExisting(flags.id));
+    id = flags.id;
+  } else {
+    const slug = slugify(resolved.idSeed);
+    if (!slug) throw new CliError(`无法从 "${resolved.idSeed}" 派生 id，请用 --id 显式指定`);
+    // 撞 id 一律报错。历史行为是静默追加 -2，而标注账本按 id 寻址——
+    // 那等于给同一份内容开了个空桶，既有标注就此孤儿化（2026-09-01 实迁踩到）。
+    if (existingIds.includes(slug)) throw idTakenError(slug, findExisting(slug));
+    id = slug;
+  }
+
+  let board;
+  if (flags.board !== undefined && !BOARDS.has(flags.board)) {
+    throw new CliError(`--board 只支持 ios 或 html：${flags.board}`);
+  }
+  // file 条目恒 doc 壳（Pages 端强制），--board ios 对单文件是矛盾输入，响亮拒绝；
+  // file 条目也不落 board 字段（恒 doc，写了是死数据）。
+  if (kind === 'file' && flags.board === 'ios') {
+    throw new CliError('单个 HTML 文件恒以 doc 阅读器打开；--board ios 只对目录有意义');
+  }
+  if (kind === 'dir') board = flags.board || 'html';
+
+  // 阶段 8（产物与草稿模型）：--page 把条目挂到既有页 —— 不再自成 Pages
+  // 行，作为目标页「内容」区的 doc 条目出现；--draft 落草稿组（缺省产物组）。
+  if (flags.draft && !flags.page) {
+    throw new CliError('--draft 需要搭配 --page（草稿归属某个 Page 的草稿组）');
+  }
+  let page;
+  if (flags.page !== undefined) {
+    if (kind === 'url') {
+      throw new CliError('url 条目恒为独立页（经代理内嵌的网页产物），--page 只适用于目录 / 文件');
+    }
+    if (!PAGE_ID_PATTERN.test(flags.page)) {
+      throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
+    }
+    const resolvable = new Set([...(pageIds || localManifestPageIds()), ...existingIds]);
+    if (!resolvable.has(flags.page)) {
+      throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
+    }
+    page = flags.page;
+  }
+
+  const entry = { id, title: flags.title || resolved.baseName, kind };
+  if (kind === 'url') entry.url = resolved.url;
+  else entry.path = resolved.absPath;
+  if (board) entry.board = board;
+  if (page) entry.page = page;
+  if (flags.draft) entry.role = 'draft';
+  return entry;
 }
 
 /** 本地 manifest 页 id 列表（_index.local.json 优先，缺失回落 tracked _index.json；
@@ -132,106 +286,30 @@ export function localManifestPageIds(root = REPO_ROOT) {
 }
 
 /**
- * 由目标构造 registry 条目（纯函数 + fs 探测；不写盘）。
- * takenIds：现有条目 id 列表（供派生 id 避让与显式 id 查重，同时是可归属的
- * registry 页面名单）；pageIds：本地 manifest 页 id 名单（缺省读仓库
- * content/previews/_index[.local].json，测试可注入）。
+ * move 的新条目（纯函数 + fs 探测；不写盘）：只换 kind 与落点，id / title /
+ * page / role 原样带走——标注桶按 id 寻址，换路径不该动标注归属。
  */
-export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenIds = [], pageIds } = {}) {
-  let kind;
-  let absPath;
-  let url;
-  let baseName; // title 默认值
-  let idSeed;   // id 派生基材
-  if (isHttpUrl(target)) {
-    let parsed;
-    try {
-      parsed = new URL(target);
-    } catch {
-      throw new CliError(`URL 不合法：${target}`);
-    }
-    kind = 'url';
-    url = target;
-    baseName = parsed.hostname;
-    idSeed = parsed.hostname;
+export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}) {
+  const before = entries.find((entry) => entry && entry.id === id);
+  if (!before) {
+    const known = entries.map((entry) => entry && entry.id).filter(Boolean).join('、');
+    throw new CliError(`条目不存在：${id}${known ? `（现有：${known}）` : ''}`);
+  }
+  const resolved = resolveTarget(target, cwd);
+  const after = { ...before, kind: resolved.kind };
+  if (resolved.kind === 'url') {
+    after.url = resolved.url;
+    delete after.path;
   } else {
-    absPath = path.resolve(cwd, target);
-    let stat;
-    try {
-      stat = fs.statSync(absPath);
-    } catch {
-      throw new CliError(`路径不存在：${absPath}`);
-    }
-    if (stat.isDirectory()) {
-      kind = 'dir';
-      baseName = path.basename(absPath);
-      idSeed = baseName;
-    } else if (stat.isFile()) {
-      const ext = path.extname(absPath).toLowerCase();
-      if (ext !== '.html' && ext !== '.htm') {
-        throw new CliError(`单个文件只支持 .html/.htm（要登记整个目录请传目录路径）：${absPath}`);
-      }
-      kind = 'file';
-      baseName = path.basename(absPath);
-      idSeed = path.basename(absPath, path.extname(absPath)); // id 不带扩展名（保留原大小写截取）：report.html → report
-    } else {
-      throw new CliError(`不支持的路径类型（既不是目录也不是文件）：${absPath}`);
-    }
+    after.path = resolved.absPath;
+    delete after.url;
   }
-
-  let id;
-  if (flags.id) {
-    if (!ENTRY_ID_PATTERN.test(flags.id)) {
-      throw new CliError(`--id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${flags.id}`);
-    }
-    if (takenIds.includes(flags.id)) {
-      throw new CliError(`条目 id 已存在：${flags.id}（不会覆盖；换个 --id 或先手动移出旧条目）`);
-    }
-    id = flags.id;
-  } else {
-    const slug = slugify(idSeed);
-    if (!slug) throw new CliError(`无法从 "${idSeed}" 派生 id，请用 --id 显式指定`);
-    id = deriveId(slug, takenIds);
+  // board 只对 dir 条目有意义（file 恒 doc 阅读器，url 恒合成单屏板）。
+  if (resolved.kind !== 'dir') delete after.board;
+  if (resolved.kind === 'url' && after.page) {
+    throw new CliError(`条目 ${id} 挂在页面「${after.page}」上，不能改指 url（url 条目恒为独立页）；先改归属再 move`);
   }
-
-  let board;
-  if (flags.board !== undefined && !BOARDS.has(flags.board)) {
-    throw new CliError(`--board 只支持 ios 或 html：${flags.board}`);
-  }
-  // file 条目恒 doc 壳（Pages 端强制），--board ios 对单文件是矛盾输入，响亮拒绝；
-  // file 条目也不落 board 字段（恒 doc，写了是死数据）。
-  if (kind === 'file' && flags.board === 'ios') {
-    throw new CliError('单个 HTML 文件恒以 doc 阅读器打开；--board ios 只对目录有意义');
-  }
-  if (kind === 'dir') board = flags.board || 'html';
-
-  // 阶段 8（产物与草稿模型）：--page 把条目归属到既有 Page —— 不再自成 Pages
-  // 行，作为目标页「内容」区的 doc 条目出现；--draft 落草稿组（缺省产物组）。
-  if (flags.draft && !flags.page) {
-    throw new CliError('--draft 需要搭配 --page（草稿归属某个 Page 的草稿组）');
-  }
-  let page;
-  if (flags.page !== undefined) {
-    if (kind === 'url') {
-      throw new CliError('url 条目恒为独立页（经代理内嵌的网页产物），--page 只适用于目录 / 文件');
-    }
-    if (!PAGE_ID_PATTERN.test(flags.page)) {
-      throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
-    }
-    const resolvable = new Set([...(pageIds || localManifestPageIds()), ...takenIds]);
-    if (!resolvable.has(flags.page)) {
-      throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
-    }
-    page = flags.page;
-  }
-
-  const entry = { id, title: flags.title || baseName, kind };
-  if (kind === 'url') entry.url = url;
-  else entry.path = absPath;
-  if (board) entry.board = board;
-  if (page) entry.page = page;
-  if (flags.draft) entry.role = 'draft';
-  return entry;
+  return { before, after };
 }
 
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
@@ -240,17 +318,27 @@ export function resolveRegistryPath(flags = {}, env = process.env, cwd = process
   return explicit ? path.resolve(cwd, explicit) : defaultRegistryPath();
 }
 
+/** 现有条目（文件不存在时 = 写入将播种的默认条目，派生与查重必须同样避让）。 */
+function existingEntriesFor(registryPath) {
+  return fs.existsSync(registryPath) ? listRegistryEntries(registryPath) : defaultEntries(REPO_ROOT);
+}
+
 /** parse + 查重 + 构造，返回一次 add 的全部输入（不写盘、不联网）。 */
 export function planAdd(argv, { cwd = process.cwd(), env = process.env } = {}) {
   const parsed = parseArgs(argv);
   if (parsed.help) return parsed;
   const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
-  // 文件还不存在时，写入会播种默认 pinpoint 条目——派生 id 必须同样避让。
-  const takenIds = fs.existsSync(registryPath)
-    ? listRegistryIds(registryPath)
-    : defaultEntries(REPO_ROOT).map((entry) => entry.id);
-  const entry = buildEntry(parsed.target, parsed.flags, { cwd, takenIds });
+  const entry = buildEntry(parsed.target, parsed.flags, { cwd, takenEntries: existingEntriesFor(registryPath) });
   return { ...parsed, registryPath, entry };
+}
+
+/** parse + 定位既有条目 + 构造新落点，返回一次 move 的全部输入（不写盘、不联网）。 */
+export function planMove(argv, { cwd = process.cwd(), env = process.env } = {}) {
+  const parsed = parseArgs(argv);
+  if (parsed.help) return parsed;
+  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+  const { before, after } = buildMove(parsed.id, parsed.target, { cwd, entries: existingEntriesFor(registryPath) });
+  return { ...parsed, registryPath, before, after };
 }
 
 /**
@@ -291,30 +379,60 @@ export function requestJson(urlString, { method = 'GET', timeoutMs = 1500 } = {}
   });
 }
 
+/** 写盘成功后的即时生效：服务可达就让它重读 registry；不可达不视为失败。 */
+async function reloadService({ env, requestFn, registryPath, out, err }) {
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  try {
+    const health = await requestFn(`${origin}/health`);
+    if (health.status !== 200) throw new Error(`health ${health.status}`);
+  } catch {
+    err('pinpoint 服务未在跑；条目已登记，下次启动生效。');
+    return false;
+  }
+  try {
+    const res = await requestFn(`${origin}/registry/reload`, { method: 'POST' });
+    if (res.status !== 200 || !res.json) throw new Error(`reload ${res.status}`);
+    const summary = res.json;
+    if (summary.path && summary.path !== registryPath) {
+      err(`注意：服务在用的 registry 是 ${summary.path}，与本次写入的不是同一个文件；该条目要等服务重启或换用同一 registry 才生效。`);
+      return false;
+    }
+    out(`服务已重载（registry 共 ${summary.entries} 条）。`);
+    return true;
+  } catch (error) {
+    err(`服务可达但 reload 失败（${error.message}）；条目已登记，重启服务后生效。`);
+    return false;
+  }
+}
+
+function ioOf(io) {
+  return {
+    cwd: io.cwd || process.cwd(),
+    env: io.env || process.env,
+    out: io.out || ((line) => console.log(line)),
+    err: io.err || ((line) => console.error(line)),
+    requestFn: io.requestFn || requestJson,
+  };
+}
+
 /**
  * 执行一次 add：写 registry → 探活服务 → 可达则 reload。返回进程退出码。
  * io: { cwd, env, out, err, requestFn } — 测试注入 out/err/requestFn 断言行为。
  */
 export async function runAdd(argv, io = {}) {
-  const cwd = io.cwd || process.cwd();
-  const env = io.env || process.env;
-  const out = io.out || ((line) => console.log(line));
-  const err = io.err || ((line) => console.error(line));
-  const requestFn = io.requestFn || requestJson;
+  const { cwd, env, out, err, requestFn } = ioOf(io);
 
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed; // 用法问题：已打错误 + usage
+  if (parsed.help) return 0;
   let plan;
   try {
     plan = planAdd(argv, { cwd, env });
   } catch (error) {
-    // CliError = 用法问题（带 usage）；其余（如 registry 文件已损坏）同样是
-    // 用户可读的错误，只是不属于用法。
+    // 参数形状没问题，是目标本身不成立（路径不存在、id 撞车、目标页不可解析…）
+    // 或 registry 文件已损坏。这些不该再刷一屏 usage，答案在错误行里。
     err(`${error instanceof CliError ? '错误' : '登记失败'}：${error.message}`);
-    if (error instanceof CliError) err(USAGE);
     return 1;
-  }
-  if (plan.help) {
-    out(USAGE);
-    return 0;
   }
 
   let entry;
@@ -324,33 +442,375 @@ export async function runAdd(argv, io = {}) {
     err(`登记失败：${error.message}`);
     return 1;
   }
-  const targetDesc = entry.kind === 'url' ? entry.url : entry.path;
-  out(`已登记 ${entry.id}（${entry.kind}）：${targetDesc}`);
+  out(`已登记 ${entry.id}（${entry.kind}）：${entryTargetDesc(entry)}`);
   if (entry.page) {
     out(`归属 Page「${entry.page}」的「内容」区${entry.role === 'draft' ? '草稿组' : '产物组'}；不新增 Pages 行。`);
   }
   out(`registry：${plan.registryPath}`);
+  await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
 
-  // 即时生效：服务可达就让它重读 registry；不可达不视为失败（下次启动生效）。
-  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+/**
+ * 执行一次 move：原子改写既有条目的落点 → 探活服务 → 可达则 reload。
+ * id 与 title 不变，所以 ~/.pinpoint/<id>/ 里的既有标注继续对得上。
+ */
+export async function runMove(argv, io = {}) {
+  const { cwd, env, out, err, requestFn } = ioOf(io);
+
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  let plan;
   try {
-    const health = await requestFn(`${origin}/health`);
-    if (health.status !== 200) throw new Error(`health ${health.status}`);
+    plan = planMove(argv, { cwd, env });
+  } catch (error) {
+    err(`${error instanceof CliError ? '错误' : '重指失败'}：${error.message}`);
+    return 1;
+  }
+
+  let entry;
+  try {
+    entry = updateRegistryEntry(plan.registryPath, plan.after);
+  } catch (error) {
+    err(`重指失败：${error.message}`);
+    return 1;
+  }
+  out(`已重指 ${entry.id}（${plan.before.kind} → ${entry.kind}）`);
+  out(`  旧：${entryTargetDesc(plan.before)}`);
+  out(`  新：${entryTargetDesc(entry)}`);
+  out(`标注桶 ~/.pinpoint/${entry.id}/ 不变（id 保留）。`);
+  out(`registry：${plan.registryPath}`);
+  await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
+
+/* ============================ 服务生命周期 ============================ */
+
+/** portless 路由表位置（PORTLESS_ROUTES 覆盖，给测试与非默认安装用）。 */
+export function portlessRoutesPath(env = process.env) {
+  return env.PORTLESS_ROUTES || path.join(os.homedir(), '.portless', 'routes.json');
+}
+
+/** routes.json 文本 → 规范化的 [{hostname, port, pid}]；坏文件当空表（status 另有一行说路由没有）。 */
+export function parseRoutes(text) {
+  let doc;
+  try {
+    doc = JSON.parse(text);
   } catch {
-    err('pinpoint 服务未在跑；条目已登记，下次启动生效。');
+    return [];
+  }
+  if (!Array.isArray(doc)) return [];
+  return doc
+    .filter((row) => row && typeof row.hostname === 'string' && Number.isFinite(Number(row.port)))
+    .map((row) => ({ hostname: row.hostname, port: Number(row.port), pid: Number(row.pid) || 0 }));
+}
+
+export function pickRoute(routes, hostname = PORTLESS_HOSTNAME) {
+  return routes.find((route) => route.hostname === hostname) || null;
+}
+
+function readRoutes(routesPath) {
+  try {
+    return parseRoutes(fs.readFileSync(routesPath, 'utf8'));
+  } catch {
+    return [];
+  }
+}
+
+/** 服务日志目录（PINPOINT_DATA_DIR 跟着走，与标注数据同一个根）。 */
+export function serviceLogPath(env = process.env) {
+  return path.join(dataRoot(env), 'logs', 'service.log');
+}
+
+const CJK = /[ᄀ-ᅟ⺀-〾ぁ-㏿㐀-䶿一-鿿ꀀ-꓏가-힣豈-﫿︰-﹯＀-｠￠-￦]/;
+
+/** 终端显示宽度（全角算 2），给状态表对齐用。 */
+export function displayWidth(text) {
+  let width = 0;
+  for (const ch of String(text)) width += CJK.test(ch) ? 2 : 1;
+  return width;
+}
+
+function padWide(text, width) {
+  return String(text) + ' '.repeat(Math.max(0, width - displayWidth(text)));
+}
+
+const STATE_LABEL = { ok: '正常', bad: '失败', warn: '注意', skip: '—' };
+
+/**
+ * 由采集到的事实判定服务状态（纯函数）。输入：
+ *   repoRoot   CLI 所在仓库根
+ *   routesPath portless 路由表路径（报错时打印）
+ *   route      { hostname, port, pid } | null
+ *   pidAlive   route.pid 是否还活着
+ *   direct     { ok, status?, json?, error? } —— http://127.0.0.1:<port>/health（直连 vite）
+ *   proxied    同上 —— https://pinpoint.localhost/health（穿 portless 代理）
+ * 两条健康检查都做：2026-09-04 的故障恰恰是「vite 活着但听错端口、代理 502」，
+ * 只查一条分不出「进程没了」和「进程在但配置错」。
+ */
+export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, direct = null, proxied = null }) {
+  const rows = [];
+  const health = (direct && direct.ok && direct.json) || (proxied && proxied.ok && proxied.json) || null;
+  const serviceRoot = health && typeof health.root === 'string' ? health.root : null;
+
+  rows.push(route
+    ? { label: '路由', state: 'ok', detail: `${route.hostname} → 127.0.0.1:${route.port}` }
+    : { label: '路由', state: 'bad', detail: `${routesPath} 里没有 ${PORTLESS_HOSTNAME}：服务没起过或已注销` });
+
+  if (!route) rows.push({ label: '进程', state: 'skip', detail: '没有路由，无 pid 可查' });
+  else if (!route.pid) rows.push({ label: '进程', state: 'bad', detail: 'routes.json 没记 pid' });
+  else rows.push({ label: '进程', state: pidAlive ? 'ok' : 'bad', detail: `pid ${route.pid} ${pidAlive ? '在' : '已不在（进程死了）'}` });
+
+  rows.push(probeRow('直连 /health', direct));
+  rows.push(probeRow('代理 /health', proxied));
+
+  if (!health) {
+    rows.push({ label: '服务 root', state: 'skip', detail: '/health 不通，问不到' });
+    rows.push({ label: 'registry', state: 'skip', detail: '/health 不通，问不到' });
+  } else {
+    if (!serviceRoot) {
+      rows.push({ label: '服务 root', state: 'warn', detail: '/health 没有 root 字段（服务比本 CLI 旧，重启后可比对）' });
+    } else if (serviceRoot === repoRoot) {
+      rows.push({ label: '服务 root', state: 'ok', detail: serviceRoot });
+    } else {
+      rows.push({ label: '服务 root', state: 'bad', detail: `服务在 ${serviceRoot}；本 CLI 在 ${repoRoot}` });
+    }
+    const registry = health.registry || {};
+    const errors = Array.isArray(registry.errors) ? registry.errors : [];
+    const warnings = Array.isArray(registry.warnings) ? registry.warnings : [];
+    const detail = `${registry.entries ?? 0} 条，${errors.length} error，${warnings.length} warning — ${registry.path || '路径未知'}`;
+    rows.push({ label: 'registry', state: errors.length ? 'bad' : (warnings.length ? 'warn' : 'ok'), detail });
+    for (const line of [...errors, ...warnings]) rows.push({ label: '', state: 'note', detail: line });
+  }
+
+  const bad = rows.filter((row) => row.state === 'bad');
+  const ok = bad.length === 0;
+  return {
+    ok,
+    rows,
+    pid: route ? route.pid : 0,
+    port: route ? route.port : 0,
+    pidAlive: Boolean(route && route.pid && pidAlive),
+    serviceRoot,
+    diagnosis: diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, repoRoot }),
+  };
+}
+
+function probeRow(label, probe) {
+  if (!probe) return { label, state: 'skip', detail: '没有路由端口，没打' };
+  if (probe.ok) return { label, state: 'ok', detail: `${probe.url} 200` };
+  const why = probe.error ? probe.error : `HTTP ${probe.status}`;
+  return { label, state: 'bad', detail: `${probe.url} ${why}` };
+}
+
+function diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, repoRoot }) {
+  if (ok) {
+    return rows.some((row) => row.state === 'warn')
+      ? '服务在跑，但有告警（见上）。'
+      : '服务正常。';
+  }
+  if (!route) return '服务没在跑：portless 里没有这个 app 的路由。跑 `pinpoint start`。';
+  if (!route.pid || !pidAlive) return '路由还在、进程没了（2026-08-17 形态：页面 404）。跑 `pinpoint restart`。';
+  if (direct && !direct.ok) {
+    return '进程活着但直连 /health 不通（2026-09-04 形态：vite 抱着旧绝对路径跑裸默认配置，端口/插件全落回默认）。跑 `pinpoint restart`。';
+  }
+  if (proxied && !proxied.ok) {
+    return 'vite 在听自己的端口，但穿代理打不通：portless proxy daemon 或路由端口不对（proxy daemon 不归 pinpoint 管，自己看 `portless proxy`）。';
+  }
+  if (serviceRoot && serviceRoot !== repoRoot) {
+    return `服务跑的是另一个目录（${serviceRoot}），不是本 CLI 所在的仓库（${repoRoot}）。要让服务改跑这里，在这里 \`pinpoint restart\`。`;
+  }
+  return 'registry 有 error，服务在按回落表跑（见上）。';
+}
+
+/** 状态表（一屏）。 */
+export function formatStatus(report) {
+  const labelWidth = Math.max(...report.rows.map((row) => displayWidth(row.label)), 10);
+  const lines = report.rows.map((row) => (row.state === 'note'
+    ? `  ${' '.repeat(labelWidth)}      · ${row.detail}`
+    : `  ${padWide(row.label, labelWidth)}  ${padWide(STATE_LABEL[row.state], 4)}  ${row.detail}`));
+  lines.push(`  → ${report.diagnosis}`);
+  return lines;
+}
+
+/** start 的判定：健康就拒绝；进程还在但不健康也拒绝（同名 portless 注册会打架，走 restart）。 */
+export function decideStart(report) {
+  if (report.ok) return { action: 'refuse', reason: '服务已经在跑且健康；要重来用 `pinpoint restart`。' };
+  if (report.pidAlive) {
+    return { action: 'refuse', reason: `服务进程还在（pid ${report.pid}）但不健康；先 \`pinpoint stop\`，或直接 \`pinpoint restart\`。` };
+  }
+  return { action: 'start' };
+}
+
+/** stop 的判定：没有活进程就是幂等的 no-op。 */
+export function decideStop(report) {
+  if (!report.pid) return { action: 'none', reason: '没有在跑的 pinpoint 服务（portless 路由里没有 pid）。' };
+  if (!report.pidAlive) return { action: 'none', reason: `路由记的 pid ${report.pid} 已不在；没有要停的进程。` };
+  return { action: 'kill', pid: report.pid };
+}
+
+/** 采集一次现状（读 routes.json + 两条 /health），交给 classifyStatus 判定。 */
+export async function collectStatus(io = {}) {
+  const { env, requestFn } = ioOf(io);
+  const pidAliveFn = io.pidAlive || (() => false);
+  const routesPath = portlessRoutesPath(env);
+  const route = pickRoute(readRoutes(routesPath));
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  const direct = route ? await probe(`http://127.0.0.1:${route.port}/health`, requestFn) : null;
+  const proxied = await probe(`${origin}/health`, requestFn);
+  return classifyStatus({
+    repoRoot: REPO_ROOT,
+    routesPath,
+    route,
+    pidAlive: route && route.pid ? Boolean(pidAliveFn(route.pid)) : false,
+    direct,
+    proxied,
+  });
+}
+
+async function probe(url, requestFn) {
+  try {
+    const res = await requestFn(url, { timeoutMs: 2000 });
+    return { url, ok: res.status === 200 && Boolean(res.json), status: res.status, json: res.json };
+  } catch (error) {
+    return { url, ok: false, error: error.message };
+  }
+}
+
+export async function runStatus(argv, io = {}) {
+  const { out } = ioOf(io);
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const report = await collectStatus(io);
+  out('pinpoint status');
+  for (const line of formatStatus(report)) out(line);
+  return report.ok ? 0 : 1;
+}
+
+function guardParse(argv, io) {
+  const { out, err } = ioOf(io);
+  try {
+    const parsed = parseArgs(argv);
+    if (parsed.help) {
+      out(USAGE);
+      return { help: true };
+    }
+    return parsed;
+  } catch (error) {
+    err(`错误：${error.message}`);
+    err(USAGE);
+    return 1;
+  }
+}
+
+export async function runStop(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  return stopService(io);
+}
+
+/** SIGTERM → 有界等待退出 → 复核路由/进程。返回退出码。 */
+async function stopService(io) {
+  const { env, out, err } = ioOf(io);
+  const pidAlive = io.pidAlive || (() => false);
+  const killPid = io.killPid;
+  const sleep = io.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const report = await collectStatus(io);
+  const decision = decideStop(report);
+  if (decision.action === 'none') {
+    out(decision.reason);
     return 0;
   }
+  if (!killPid) throw new Error('runStop 需要 io.killPid');
+  out(`停 pid ${decision.pid}（SIGTERM）…`);
   try {
-    const res = await requestFn(`${origin}/registry/reload`, { method: 'POST' });
-    if (res.status !== 200 || !res.json) throw new Error(`reload ${res.status}`);
-    const summary = res.json;
-    if (summary.path && summary.path !== plan.registryPath) {
-      err(`注意：服务在用的 registry 是 ${summary.path}，与本次写入的不是同一个文件；该条目要等服务重启或换用同一 registry 才生效。`);
-    } else {
-      out(`服务已重载（registry 共 ${summary.entries} 条）。`);
-    }
+    killPid(decision.pid, 'SIGTERM');
   } catch (error) {
-    err(`服务可达但 reload 失败（${error.message}）；条目已登记，重启服务后生效。`);
+    err(`发信号失败：${error.message}`);
+    return 1;
   }
+  const deadline = 8000;
+  for (let waited = 0; waited < deadline; waited += 250) {
+    await sleep(250);
+    if (!pidAlive(decision.pid)) break;
+  }
+  // 复核：路由消失（portless 注销）或 pid 已死，两者任一即算停住。
+  const route = pickRoute(readRoutes(portlessRoutesPath(env)));
+  const gone = !route || route.pid !== decision.pid || !pidAlive(decision.pid);
+  if (!gone) {
+    err(`pid ${decision.pid} 在 ${deadline / 1000}s 内没退出；手动查 \`ps -p ${decision.pid}\` 再决定要不要 SIGKILL。`);
+    return 1;
+  }
+  out('已停。');
   return 0;
+}
+
+export async function runStart(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  return startService(io);
+}
+
+/** spawn → 轮询健康（~20s）→ 打状态表。返回退出码。 */
+async function startService(io) {
+  const { env, out, err } = ioOf(io);
+  const sleep = io.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const before = await collectStatus(io);
+  const decision = decideStart(before);
+  if (decision.action === 'refuse') {
+    err(decision.reason);
+    for (const line of formatStatus(before)) err(line);
+    return 1;
+  }
+  if (!io.spawnService) throw new Error('runStart 需要 io.spawnService');
+  const logFile = serviceLogPath(env);
+  fs.mkdirSync(path.dirname(logFile), { recursive: true });
+  const child = io.spawnService({ cwd: REPO_ROOT, logFile });
+  out(`已在 ${REPO_ROOT} 启动 \`npm run dev\`（pid ${child && child.pid}），日志：${logFile}`);
+  let report = before;
+  for (let waited = 0; waited < 20000; waited += 1000) {
+    await sleep(1000);
+    report = await collectStatus(io);
+    if (report.ok) break;
+  }
+  out('pinpoint status');
+  for (const line of formatStatus(report)) out(line);
+  if (!report.ok) err(`20s 内没起来；看日志：tail -n 40 ${logFile}`);
+  return report.ok ? 0 : 1;
+}
+
+export async function runRestart(argv, io = {}) {
+  const { out } = ioOf(io);
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const stopped = await stopService(io);
+  if (stopped !== 0) return stopped;
+  out('');
+  return startService(io);
+}
+
+/** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
+export async function run(argv, io = {}) {
+  const { out, err } = ioOf(io);
+  if (argv.includes('-h') || argv.includes('--help') || argv.length === 0) {
+    out(USAGE);
+    return 0;
+  }
+  switch (argv[0]) {
+    case 'add': return runAdd(argv, io);
+    case 'move': return runMove(argv, io);
+    case 'status': return runStatus(argv, io);
+    case 'start': return runStart(argv, io);
+    case 'stop': return runStop(argv, io);
+    case 'restart': return runRestart(argv, io);
+    default:
+      err(`错误：未知命令：${argv[0]}`);
+      err(USAGE);
+      return 1;
+  }
 }

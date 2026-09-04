@@ -33,11 +33,28 @@ kit 的 CSS/JS 不依赖框架；**workbench** 需要 Vite + Lucide（`npm insta
 
 `just check` 跑 e2e 时带 `PREVIEW_TEMPLATE_ONLY=1`，所以实例本地的页面和组件不会影响断言。
 
-健康检查：`curl -s https://pinpoint.localhost/health`。payload 里有 `dataDir`（默认 `pinpoint`
-桶的路径，留给 `jq -r .dataDir` 的消费者）、`dataRoot`（标注数据根）和一个 `registry` 段
-（`ok` / `path` / `entries` **数量** / `errors` / `warnings`）——要真的条目列表用 `GET /registry`。
+**站点打不开，第一件事是 `pinpoint status`**——不要先猜、也不要先 `ps`：
 
-**服务跨过一次仓库目录搬迁就必须重启**：长命 vite 抱着启动时解析出的绝对路径，
+```bash
+pinpoint status     # 路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry；全绿才退 0
+pinpoint start      # 已经健康就拒绝；否则在 CLI 所在仓库起 `npm run dev`，日志进 ~/.pinpoint/logs/
+pinpoint stop       # SIGTERM portless 记的那个 pid，有界等待并复核
+pinpoint restart    # 停 + 起
+```
+
+status 一次答两种真实故障：**进程没了**（路由还在、页面 404，2026-08-17）和**进程还在但已失效**
+（vite 抱着搬迁前的绝对路径跑裸默认配置、代理 502，2026-09-04）。所以它两条健康检查都打——
+直连 `http://127.0.0.1:<portless 端口>/health` 与穿代理的 `https://pinpoint.localhost/health`——
+并把服务自报的 `root` 和当前 CLI 所在仓库比对：不一致说明服务跑的是另一个目录（另一个 worktree、
+或搬迁前的旧路径）。这些命令只管 pinpoint 自己的 app 注册与进程树；portless 的 proxy daemon
+（443，多 app 共享）不归它管。
+
+健康检查也可以自己打：`curl -s https://pinpoint.localhost/health`。payload 里有 `root`（服务跑的
+仓库根）、`dataDir`（默认 `pinpoint` 桶的路径，留给 `jq -r .dataDir` 的消费者）、`dataRoot`
+（标注数据根）和一个 `registry` 段（`ok` / `path` / `entries` **数量** / `errors` / `warnings`）
+——要真的条目列表用 `GET /registry`。
+
+**服务跨过一次仓库目录搬迁就必须重启**（`pinpoint restart`）：长命 vite 抱着启动时解析出的绝对路径，
 目录一搬它会静默落回全部默认配置，表面还活着。案例见 [`docs/debugging.md`](docs/debugging.md)。
 
 改完之后自己走一遍：加一屏 → 板热重载；读标注按 `pageId → section → screenId` 分组、
@@ -64,9 +81,9 @@ review 和清理标注留给用户，不要替用户清空标注。
 |---|---|
 | 加页 / section / 屏 / 组件 / 交互 frame | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
 | 标注 → 读标注 → 修改 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
-| 登记 / 验证一个 registry dir 或 url 条目 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
+| 登记 / 重指 / 验证一个 registry dir 或 url 条目 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、CLI、三条注入路径、代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、CLI（add / move）、三条注入路径、代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注字段、账本与桶、控制面、workbench 偏好、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样 | [`docs/adr/`](docs/adr/) |

@@ -135,6 +135,16 @@ test('/health keeps dataDir as the default bucket and exposes registry state', a
   });
 });
 
+test('/health reports the repo the service runs out of (pinpoint status 拿它比对)', async (t) => {
+  const { dataRoot, registry, dir } = withFixture(t);
+  // 缺省 = 代码自己所在的仓库根
+  const bare = await call(createAnnotateHandler({ dataRoot, registry }), 'GET', '/health');
+  assert.equal(bare.json.root, path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..'));
+  // vite.config 显式传自己的 root
+  const wired = await call(createAnnotateHandler({ dataRoot, registry, root: dir }), 'GET', '/health');
+  assert.equal(wired.json.root, dir);
+});
+
 test('/registry returns the registered entries', async (t) => {
   const { registry, handler } = withFixture(t);
   const { res, json } = await call(handler, 'GET', '/registry');

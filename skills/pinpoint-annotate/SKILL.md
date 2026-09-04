@@ -82,6 +82,10 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
    原子写 `~/.pinpoint/registry.json`，服务在跑时自动 `POST /registry/reload` 即时生效；`--registry` / `PINPOINT_REGISTRY` 可指向别的 registry 文件。
 
+   源目录搬了位置就 `pinpoint move <id> <新路径>`：id 与 title 原样保留，标注桶 `~/.pinpoint/<id>/` 跟着继续用。撞 id 时 `add` 会报错并指向 `move`（不再静默追加 `-2` 开空桶）。注意 `--page` 的意思是「挂到既有页 `<id>`」，不是「指定本条目的 id」——本条目的 id 用 `--id`。
+
+   服务本身起不来时先 `pinpoint status`（路由 / 进程 / 直连与代理两条 `/health` / 服务 root / registry），起停用 `pinpoint start｜stop｜restart`。
+
    - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。`file` entry 只有 `/sites/<id>/` 与 `/sites/<id>/<文件名>` 两个拼法能出内容，同目录其它文件够不着。
    - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
    - `dir` / `file` entry 同时成为 workbench 页面（`dir` 的 `board` 选壳：`ios` / `html`，缺省 `html`；`file` 恒 doc 壳），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。条目自己没有 `board.json` 时服务合成 doc 阅读板：`file` 一屏，`dir` 顶层每个 `*.html` 一屏（2026-08-16f 阶段 6 起每屏是侧栏的一个文档条目），所以登记了就能打开读；磁盘 `board.json` 永远优先。

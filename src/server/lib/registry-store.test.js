@@ -7,7 +7,9 @@ import test from 'node:test';
 import {
   addRegistryEntry,
   createRegistryStore,
+  listRegistryEntries,
   listRegistryIds,
+  updateRegistryEntry,
   validateNewEntry,
   writeRegistryFile,
 } from './registry-store.js';
@@ -130,6 +132,47 @@ test('listRegistryIds: missing file is empty, malformed throws', (t) => {
   const file = path.join(dir, 'registry.json');
   fs.writeFileSync(file, '{ nope');
   assert.throws(() => listRegistryIds(file), /JSON/);
+});
+
+test('listRegistryEntries: whole entries, missing file is empty, malformed throws', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  assert.deepEqual(listRegistryEntries(file), []);
+  const site = makeSite(dir);
+  writeRegistryFile(file, { version: 1, entries: [{ id: 'a', kind: 'dir', path: site }, null] });
+  assert.deepEqual(listRegistryEntries(file), [{ id: 'a', kind: 'dir', path: site }], 'null 条目不进结果');
+  fs.writeFileSync(file, '{ nope');
+  assert.throws(() => listRegistryEntries(file), /JSON/);
+});
+
+test('updateRegistryEntry: 原地替换，位置与其它条目不动', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const before = makeSite(dir, 'before');
+  const after = makeSite(dir, 'after');
+  writeRegistryFile(file, { version: 1, entries: [
+    { id: 'a', kind: 'dir', path: before },
+    { id: 'b', title: 'B', kind: 'dir', path: before, board: 'ios' },
+    { id: 'c', kind: 'url', url: 'https://c.localhost' },
+  ] });
+  const written = updateRegistryEntry(file, { id: 'b', title: 'B', kind: 'dir', path: after, board: 'ios' });
+  assert.deepEqual(written, { id: 'b', kind: 'dir', title: 'B', path: after, board: 'ios' });
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(doc.entries.map((e) => e.id), ['a', 'b', 'c']);
+  assert.equal(doc.entries[0].path, before, '别的条目不动');
+  assert.equal(doc.version, 1);
+});
+
+test('updateRegistryEntry: 未知 id / 非法新形状都拒写，文件不动', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const site = makeSite(dir);
+  writeRegistryFile(file, { version: 1, entries: [{ id: 'a', kind: 'dir', path: site }] });
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.throws(() => updateRegistryEntry(file, { id: 'ghost', kind: 'dir', path: site }), /条目不存在：ghost/);
+  assert.throws(() => updateRegistryEntry(file, { id: 'a', kind: 'dir', path: path.join(dir, 'gone') }), /路径不存在/);
+  assert.throws(() => updateRegistryEntry(file, { id: 'a', kind: 'dir', path: site, nope: 1 }), /未知字段/);
+  assert.equal(fs.readFileSync(file, 'utf8'), raw);
 });
 
 test('validateNewEntry accepts a well-formed entry (null = no problem)', (t) => {

@@ -121,6 +121,36 @@ export function listRegistryIds(registryPath) {
 }
 
 /**
+ * Existing entries as written on disk (CLI): id collision messages name the
+ * path the id already points at, and `pinpoint move` needs the whole entry to
+ * carry title / page / role across a re-point. Throws on a malformed file.
+ */
+export function listRegistryEntries(registryPath) {
+  return readRegistryDoc(registryPath).entries.filter((entry) => entry && typeof entry === 'object');
+}
+
+/**
+ * Replace one existing entry in place (the `pinpoint move` path): same strict
+ * validation as a write, same atomic rewrite, same position in the list — the
+ * id is the annotation bucket address (~/.pinpoint/<id>/), so re-pointing a
+ * path must never renumber it. Throws when the id is unknown or the new shape
+ * is invalid; the on-disk file is untouched in that case.
+ */
+export function updateRegistryEntry(registryPath, raw) {
+  const doc = readRegistryDoc(registryPath);
+  const index = doc.entries.findIndex((entry) => entry && entry.id === (raw && raw.id));
+  if (index < 0) throw new Error(`条目不存在：${raw && raw.id}`);
+  const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
+  const problem = validateNewEntry(raw, otherIds);
+  if (problem) throw new Error(problem);
+  const entry = normalizeNewEntry(raw);
+  const entries = [...doc.entries];
+  entries[index] = entry;
+  writeRegistryFile(registryPath, { ...doc, entries });
+  return entry;
+}
+
+/**
  * Append one entry to the registry file: strict-validate, then atomically
  * rewrite preserving the existing top-level shape (version et al). Throws on
  * any problem; the on-disk file is left untouched in that case. Returns the

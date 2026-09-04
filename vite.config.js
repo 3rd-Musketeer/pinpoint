@@ -34,7 +34,7 @@ registryStore.reload = () => {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
+  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), frameNotesApi({ registry: registryStore }), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

@@ -171,6 +171,10 @@ export function resolveRequestEntry(registry, raw) {
 
 export function createAnnotateHandler(options = {}) {
   const root = options.dataRoot || dataRoot();
+  // The repo this service serves from (vite.config passes its own root).
+  // Reported on /health so the CLI can catch a service running out of a stale
+  // or foreign directory. Not to be confused with `root` above = data root.
+  const serviceRoot = options.root || ROOT;
   const registry = options.registry || loadRegistry({ root: ROOT });
   const stores = options.stores || new Map();
   // Direct loopback origin the annotate API is actually bound to (bypassing
@@ -224,6 +228,12 @@ export function createAnnotateHandler(options = {}) {
       // consumers keep working; dataRoot + registry carry the new model.
       sendJson(res, 200, {
         ok: true,
+        // root = the repository this service is actually running out of.
+        // `pinpoint status` compares it with the CLI's own repo root: a long
+        // lived vite that survived a directory move keeps the absolute paths
+        // it resolved at boot, so "process alive, wrong root" is a real and
+        // otherwise invisible failure mode (docs/debugging.md, 2026-09-04).
+        root: serviceRoot,
         dataDir: bucketDir(root, DEFAULT_ENTRY),
         dataRoot: root,
         registry: {
