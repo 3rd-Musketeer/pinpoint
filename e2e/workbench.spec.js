@@ -1054,6 +1054,62 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
 });
 
+test('?page= 指向不存在的页 → 显式面板，地址栏留着坏 id（2026-09-04 深链失效）', async ({ page }) => {
+  await page.goto('/index.html?page=does-not-exist');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+
+  const panel = page.locator('#wb-board-panel .wb-screen-err');
+  await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
+  await expect(panel.locator('.wb-screen-err-src')).toHaveText('?page=does-not-exist');
+  await expect(panel.locator('.wb-screen-err-why')).toContainText('does-not-exist');
+  // 地址栏不被规范化：坏的是哪个 id 必须一直看得见
+  expect(page.url()).toContain('page=does-not-exist');
+  // 左栏照常渲染，别的页都还能点
+  await expect(page.locator('#wbpages [data-vpage="library"]')).toBeVisible();
+  // 肉眼可见：面板要落在舞台视口里（板面有 3200px 画布留白，不特判就跑到视口外三千像素）
+  expect(await page.evaluate(() => {
+    const a = document.querySelector('#wb-board-panel .wb-screen-err').getBoundingClientRect();
+    const b = document.getElementById('wbstage').getBoundingClientRect();
+    return a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+  })).toBe(true);
+
+  await panel.locator('[data-err-home]').click();
+  await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('components');
+  await expect.poll(() => page.url()).toContain('page=components');
+});
+
+test('深链失效面板的「重试」：页面清单里出现了那个 id 就直接打开它', async ({ page }) => {
+  let hidden = true;
+  await page.route('**/previews/_index.json', async (route) => {
+    if (!hidden) {
+      await route.fallback();
+      return;
+    }
+    // doc-library 暂时不在清单里 —— 等价于「这个 id 还没登记」
+    await route.fulfill({
+      status: 200,
+      contentType: 'application/json',
+      body: JSON.stringify({ defaultPage: 'library', pages: [{ id: 'library', title: 'Example Library', mode: 'ios' }] }),
+    });
+  });
+
+  await page.goto('/index.html?page=doc-library');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  const panel = page.locator('#wb-board-panel .wb-screen-err');
+  await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
+  expect(page.url()).toContain('page=doc-library');
+
+  hidden = false;
+  await panel.locator('[data-err-retry]').click();
+  await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('doc-library');
+  await expect(page.locator('#wb-board-panel .wb-doc-frame').first()).toBeVisible();
+  // 落到真实页后地址栏恢复同步
+  await expect.poll(() => page.url()).toContain('page=doc-library');
+});
+
 test('screen loader rejects a dev-server fallback document instead of nesting the workbench', async ({ page }) => {
   await page.route('**/previews/library/home.html', (route) => route.fulfill({
     status: 200,

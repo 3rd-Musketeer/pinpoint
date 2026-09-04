@@ -32,8 +32,9 @@
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
 
 ```bash
-pinpoint add  <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
-pinpoint move <id> <dir|file.html|http(s)-url>
+pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+pinpoint move   <id> <dir|file.html|http(s)-url>
+pinpoint rename <旧 id> <新 id>
 ```
 
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
@@ -51,12 +52,31 @@ pinpoint move <id> <dir|file.html|http(s)-url>
 （改成 file / url 时丢掉，那两种壳是定死的）；挂在某页上的条目不能改指 url（url 恒为独立页），
 会被响亮拒绝。未知 id、目标不存在都整单失败，registry 一个字节不动。
 
+`rename` 换的是 id 本身。id 同时是三个地方的地址——登记表里的条目 id、标注桶
+`~/.pinpoint/<id>/`、以及页面资源的 URL 前缀 `/sites/<id>/`——手改其中一个另外两个就错位，
+所以 `rename` 一次改齐，并且**四件事都能做才动手**（预检不过时 registry 一个字节不动）：
+
+1. **登记表**：条目换 id，位置、kind、落点、title 全部保留；其它条目的 `page` 字段指着旧 id 的
+   跟着改（挂靠指向一个不存在的页，那个条目会静默从 workbench 里消失）。新 id 已存在就整单失败。
+2. **标注桶**：`~/.pinpoint/<旧 id>/` 改名成 `~/.pinpoint/<新 id>/`。旧桶不存在就跳过；
+   新桶已存在是硬冲突（两个桶不会自动合并），响亮拒绝。
+3. **资源前缀**（只有 dir 条目有）：条目目录下所有 `*.html` / `*.css` / `*.js` 里的
+   `/sites/<旧 id>/` 换成 `/sites/<新 id>/`，跳过 `node_modules` 与逃出条目目录的 symlink，
+   打印改了几个文件、分别是哪些。file / url 条目没有目录可扫，这一步跳过。
+   相对路径不用改——`src/workbench/lib/sidecar-css.js` 装配 fragment 时按 `pageBaseUrl` 重写。
+4. **重载**：与 `add` / `move` 同一条即时生效路径。
+
+**把两个条目并成一个 = `rename` + `move`**：先把要保留的那个条目 `rename` 成目标 id，
+再把另一个条目的内容 `move` 到同一个落点（或直接从登记表里删掉那一条）。
+`rename` 自己不做合并——目标 id 已被占用时它一律拒绝，不会去动别人的标注桶。
+
 **撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
 CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
 `--id <其他 id>`」并退非零。历史行为是静默追加 `-2`，那会开一个空桶、让既有标注孤儿化
 （2026-09-01 实迁踩到）。
 
-写侧在 `src/server/lib/registry-store.js`：严格校验（id 唯一、kind 合法、dir/file 路径存在、
+写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
+`renameRegistryEntry` 共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
 url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
 （在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
@@ -64,7 +84,7 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
 挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
 
-`add` 与 `move` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
+`add`、`move` 与 `rename` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
 
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的

@@ -56,6 +56,7 @@ import {
   initPages,
   loadPageManifest,
   resolveActivePage,
+  retryPageManifest,
   setActiveEntry,
   setActivePage,
   showPageManifestError,
@@ -73,16 +74,42 @@ var splitEl = document.getElementById('wbsplit');
 var boardPanel;
 var mountManager = new BoardMountManager();
 
+/** `?page=` 指向的 id 有没有对应对象：内置的 Component Library，或清单里的一页。 */
+function deepLinkPageExists(pageId) {
+  return pageId === COMPONENTS_ID || !!pageEntry(wbGet().pageManifest, pageId);
+}
+
 function resolveBootPageId(prefs) {
   prefs = prefs || readPrefs();
   // URL 深链（P3）优先于 prefs：?page= 直达页面（stage 形态取页内选中条目，
-  // ?entry= 在 initBoard 里于板装载后应用；只给 ?mode= 或 pageId 不存在时回
-  // prefs.activePageId，再回该形态第一页/默认页，URL 随后被 url-sync 重写为真实值）。
+  // ?entry= 在 initBoard 里于板装载后应用；只给 ?mode= 时回 prefs.activePageId，
+  // 再回该形态第一页/默认页，URL 随后被 url-sync 重写为真实值）。
+  // 2026-09-04：?page= 指向不存在的页不再静默回落 —— initBoard 查 deepLinkPageExists
+  // 并停在「页面不存在」面板（showMissingPage），本函数只在没有 ?page= 时被用到。
+  // ?entry= 仍是静默回落（板内条目由 setActiveEntry 解析成默认条目）。
   var link = parseDeepLink(location.search);
-  if (link.pageId && (link.pageId === COMPONENTS_ID || pageEntry(wbGet().pageManifest, link.pageId))) {
-    return link.pageId;
-  }
+  if (link.pageId && deepLinkPageExists(link.pageId)) return link.pageId;
   return resolveActivePage(prefs.activePageId, link.mode);
+}
+
+/**
+ * 深链失效面板（2026-09-04，BACKLOG「空态与错误面板」）：`?page=<id>` 指向的 id
+ * 既不在 registry 也不在本地页面清单里时停在这里，而不是静默回落到默认页 ——
+ * 静默回落会让「链接坏了」看起来像「链接对但内容变了」。地址栏原样保留
+ * （store.missingPageId 让 url-sync 让开），坏的 id 一直在用户眼前。
+ * 左栏照常渲染：清单已经到位，别的页都还能点。
+ */
+function showMissingPage(pageId) {
+  mountManager.cancel();
+  resetBoardNavOnLoadFailure();
+  wbSet({ missingPageId: pageId, activePageId: pageId, activeBoard: null, activeEntryId: null });
+  applyPageFormFallback(pageId);
+  boardPanel.innerHTML = loadFailHtml({
+    title: '页面不存在',
+    source: '?page=' + pageId,
+    reason: 'registry 与本地页面清单里都没有 ' + pageId + '。',
+    retry: { kind: 'page', pageId: pageId }
+  });
 }
 
 function boardUrl(pageId) {
@@ -157,11 +184,18 @@ function initBoard() {
   stage.appendChild(boardPanel);
   return loadPageManifest()
     .then(function () {
+      // 深链失效（2026-09-04）：?page= 指向不存在的页 = 显式面板，不静默回落。
+      var boot = parseDeepLink(location.search);
+      if (boot.pageId && !deepLinkPageExists(boot.pageId)) {
+        showMissingPage(boot.pageId);
+        return null;
+      }
       return setActivePage(resolveBootPageId(readPrefs()), { force: true, scrollTop: false, save: false });
     })
     // 条目级深链（2026-08-16f 阶段 6）：?entry= 在板装载后应用 —— 未知条目 id
     // 由 setActiveEntry 的选中解析落默认条目，随后 url-sync 把 URL 重写为真实值。
     .then(function () {
+      if (wbGet().missingPageId) return;
       var link = parseDeepLink(location.search);
       if (link.entry) setActiveEntry(link.entry, { save: false });
     })
@@ -543,7 +577,9 @@ stage.addEventListener('wheel', function (e) {
      HTML，板每次装载整替换 innerHTML —— 所以监听挂 stage 做事件委托。capture
      相位先于 pan / 选中判定；面板的动作容器另带 data-ann-ui，标注模式也让开。
      「回到 Pages」= 换到 Component Library（内置页，恒可装载）+ 展开左栏；
-     「重试」= 失效对应的 board / screen 查询后重装当前页。 */
+     「重试」= 失效对应的 board / screen 查询后重装当前页。深链失效面板
+     （retry kind = page，2026-09-04）另走一条：重拉页面清单再解析一次那个 id，
+     出现了就直接打开它，还是没有就把面板留在原地。 */
   stage.addEventListener('click', function (e) {
     var btn = e.target.closest && e.target.closest('[data-err-home], [data-err-retry]');
     if (!btn) return;
@@ -558,6 +594,13 @@ stage.addEventListener('wheel', function (e) {
       return;
     }
     var pageId = btn.getAttribute('data-err-page') || wbGet().activePageId;
+    if (btn.getAttribute('data-err-retry') === 'page') {
+      retryPageManifest().then(function () {
+        if (deepLinkPageExists(pageId)) setActivePage(pageId, { force: true });
+        else showMissingPage(pageId);
+      });
+      return;
+    }
     if (btn.getAttribute('data-err-retry') === 'screen') {
       queryClient.invalidateQueries({ queryKey: ['screen', pageId, btn.getAttribute('data-err-screen')] });
     } else {

@@ -5,6 +5,9 @@
 // popstate 处理），每次切换后地址栏即可直接复制当深链用。entry 是默认条目（画布
 // 条目 / 单条目板）时省略 —— 深链打开即默认选中，保持 URL 干净。
 // 读取侧（boot 时 URL 优先于 prefs）在 stage.js resolveBootPageId + initBoard。
+// 一个例外（2026-09-04）：`?page=` 指向不存在的页时不写地址栏 —— 舞台停在
+// 「页面不存在」面板，地址栏必须保留用户手里那个坏 id，否则他看不出是哪个 id 错了。
+// 判据是 store.missingPageId；setActivePage 换到真实页就清空它，同步随即恢复。
 // 启动时机是契约：必须由 initBoard 在 boot 页/条目解析完成后调用 —— 订阅活着期间
 // 任何 wbSet（annSnap 等）都会触发写入，boot 前启动会把深链参数在解析前覆盖掉。
 import { useWorkbenchStore } from './app/store.js';
@@ -14,6 +17,7 @@ import { deepLinkQuery, modeForPage } from './lib/page-url.js';
 export function startDeepLinkSync() {
   var last = null;
   function sync(state) {
+    if (state.missingPageId) return;
     var entryParam = null;
     if (state.activeBoard && state.activeBoard.pageId === state.activePageId) {
       var entries = boardEntries(state.activeBoard.board);

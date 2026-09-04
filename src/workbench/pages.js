@@ -376,7 +376,9 @@ export function setActivePage(pageId, options) {
   if (!same && pagesDeps.mountManager.current && pagesDeps.mountManager.current.active && pagesDeps.mountManager.current.pageId === wbGet().activePageId) {
     snapshotPageViewport(wbGet().activePageId);
   }
-  wbSet({ activePageId: pageId, focusFrameKey: null, focusAnnN: null });
+  // missingPageId 在这里清空：换到任何一个真实页就离开了「页面不存在」状态，
+  // url-sync 随之恢复写地址栏（stage.js showMissingPage 有理由）。
+  wbSet({ activePageId: pageId, missingPageId: null, focusFrameKey: null, focusAnnN: null });
   if (options.save !== false) rememberActivePage(pageId);
   if (same && !options.force) {
     // Re-clicking the active page must not fight per-page viewport memory.

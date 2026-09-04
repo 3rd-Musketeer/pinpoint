@@ -24,7 +24,7 @@ or component, the open board refreshes in place).
 | 这些词是什么意思（page / board / entry / frame / 桶 / 账本） | [`CONTEXT.md`](CONTEXT.md) |
 | agent 开工读什么、验收命令、坑与约定 | [`AGENTS.md`](AGENTS.md) |
 | `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、`pinpoint add` / `move`、三条注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、`pinpoint add` / `move` / `rename`、三条注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注字段、账本与桶、控制面、workbench 偏好、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
@@ -102,7 +102,9 @@ e2e/                         Playwright workbench / registry / extension tests
 Your own pages do **not** live in this repo. Register any directory, single HTML file, or live URL
 with `pinpoint add`, and it shows up as a workbench page served from `/sites/<entry-id>/` — the files
 stay where they are. Moved the source? `pinpoint move <id> <new path>` re-points the entry and keeps
-the id, so the annotations in `~/.pinpoint/<id>/` stay attached. See
+the id, so the annotations in `~/.pinpoint/<id>/` stay attached. Renaming the entry itself is
+`pinpoint rename <old id> <new id>` — it moves the registry entry, the annotation bucket, and the
+`/sites/<id>/` prefix written into the entry's own files in one shot. See
 [`docs/registry.md`](docs/registry.md).
 
 ## Annotation review loop

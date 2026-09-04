@@ -84,6 +84,8 @@ curl -s --max-time 1 https://pinpoint.localhost/health || \
 
    源目录搬了位置就 `pinpoint move <id> <新路径>`：id 与 title 原样保留，标注桶 `~/.pinpoint/<id>/` 跟着继续用。撞 id 时 `add` 会报错并指向 `move`（不再静默追加 `-2` 开空桶）。注意 `--page` 的意思是「挂到既有页 `<id>`」，不是「指定本条目的 id」——本条目的 id 用 `--id`。
 
+   要换的是 id 本身就 `pinpoint rename <旧 id> <新 id>`：id 同时是登记表条目、标注桶 `~/.pinpoint/<id>/` 和资源 URL 前缀 `/sites/<id>/` 三处的地址，rename 一次改齐（登记表 + 挂在旧 id 上的条目的 `page` 字段 → 标注桶改名 → dir 条目目录下 `*.html`/`*.css`/`*.js` 里的 `/sites/<旧 id>/` 前缀 → 服务重载），四件都能做才动手。把两个条目并成一个 = `rename` + `move`。字段与预检规则见 [`docs/registry.md`](../../docs/registry.md)。
+
    服务本身起不来时先 `pinpoint status`（路由 / 进程 / 直连与代理两条 `/health` / 服务 root / registry），起停用 `pinpoint start｜stop｜restart`。
 
    - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。`file` entry 只有 `/sites/<id>/` 与 `/sites/<id>/<文件名>` 两个拼法能出内容，同目录其它文件够不着。

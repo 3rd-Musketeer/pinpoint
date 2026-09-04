@@ -2,7 +2,8 @@
  * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
- * 已登记条目换路径用 `pinpoint move`（保留 id，标注桶按 id 寻址，不会孤儿化）。
+ * 已登记条目换路径用 `pinpoint move`（保留 id，标注桶按 id 寻址，不会孤儿化）；
+ * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）。
  * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
  * 文件留在原地，CLI 只登记路径/URL。
  *
@@ -22,7 +23,7 @@ import { fileURLToPath } from 'node:url';
 
 import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../src/server/lib/registry.js';
-import { addRegistryEntry, listRegistryEntries, updateRegistryEntry } from '../src/server/lib/registry-store.js';
+import { addRegistryEntry, listRegistryEntries, renameRegistryEntry, updateRegistryEntry } from '../src/server/lib/registry-store.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 /** 服务在 portless 里的注册名 / 主机名（`portless run --name pinpoint`）。 */
@@ -43,6 +44,7 @@ const BOOLEAN_FLAGS = new Set(['draft']);
 const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
   move: { positional: 2, flags: new Set(['registry']) },
+  rename: { positional: 2, flags: new Set(['registry']) },
   status: { positional: 0, flags: new Set() },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
@@ -54,6 +56,7 @@ export class CliError extends Error {}
 export const USAGE = `用法：
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
+  pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
   pinpoint status                                      服务体检（路由 / 进程 / 健康 / root / registry）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
@@ -78,6 +81,15 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
   --registry 路径  同上。move 只改 kind/path/url，id 与 title 原样保留——
                    标注桶按 id 寻址（~/.pinpoint/<id>/），换路径不动既有标注。
 
+选项（rename）：
+  --registry 路径  同上。rename 一次做四件事，四件都能做才动手：
+                   ① 登记表里换 id（含挂在旧 id 上的条目的 page 字段）
+                   ② 标注桶 ~/.pinpoint/<旧 id>/ 改名成 <新 id>/（标注不孤儿化）
+                   ③ dir 条目目录下 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀
+                   ④ 服务重载
+                   把两个条目合并成一个 = rename + move（先把其中一个改成目标 id
+                   之外的名字，再 move 到同一个落点）。
+
   -h, --help       显示本说明
 
 环境变量：
@@ -92,7 +104,7 @@ export function parseArgs(argv) {
   const args = [...argv];
   if (args.includes('-h') || args.includes('--help')) return { help: true };
   const command = args.shift();
-  if (!command) throw new CliError('缺少命令（add / move / status / start / stop / restart）');
+  if (!command) throw new CliError('缺少命令（add / move / rename / status / start / stop / restart）');
   const spec = COMMANDS[command];
   if (!spec) throw new CliError(`未知命令：${command}`);
   const flags = {};
@@ -127,6 +139,7 @@ export function parseArgs(argv) {
   }
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
+  if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
   return { command, flags };
 }
 
@@ -138,6 +151,11 @@ function positionalProblem(command, want, got) {
     return got < 2
       ? 'move 需要两个参数：<id> <新目录|新文件|新URL>'
       : `move 只接受两个参数，收到 ${got} 个`;
+  }
+  if (command === 'rename') {
+    return got < 2
+      ? 'rename 需要两个参数：<旧 id> <新 id>'
+      : `rename 只接受两个参数，收到 ${got} 个`;
   }
   return `${command} 不接受位置参数，收到 ${got} 个`;
 }
@@ -312,6 +330,138 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   return { before, after };
 }
 
+/* ---------------------------- rename（改 id） ----------------------------
+   id 是三个地方的地址：登记表的条目 id、标注桶 ~/.pinpoint/<id>/、以及页面资源
+   的 URL 前缀 /sites/<id>/。手改其中一个，另外两个就此错位——2026-09-03 实迁
+   （mcp-confirm + artifact-v2 合并成 chat-cards）踩到的正是第三个：机壳和内联
+   HTML 还在，JS 注入的卡整段消失，看起来像设计坏了。rename 把三处一次改齐。 */
+
+/** 会被扫的扩展名：HTML 是主场，CSS/JS sidecar 里也会写死 /sites/<id>/ 前缀。 */
+const SITE_PREFIX_EXTS = new Set(['.html', '.htm', '.css', '.js']);
+
+/** `/sites/<旧 id>/` → `/sites/<新 id>/`：精确前缀的纯字符串替换，不碰别的。 */
+export function rewriteSitePrefix(text, oldId, newId) {
+  const from = `/sites/${oldId}/`;
+  if (!text.includes(from)) return { text, changed: false };
+  return { text: text.split(from).join(`/sites/${newId}/`), changed: true };
+}
+
+/**
+ * 条目目录下所有 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀。
+ * 跳过 node_modules 与逃出条目目录的 symlink（那些文件不归这个条目管），
+ * 按 realpath 记账避免 symlink 成环。返回被改写的文件相对路径列表。
+ * dryRun 只统计不落盘（预检用）。
+ */
+export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false } = {}) {
+  const root = fs.realpathSync(dirPath);
+  const changed = [];
+  const seen = new Set();
+  const walk = (dir) => {
+    if (seen.has(dir)) return;
+    seen.add(dir);
+    let items;
+    try {
+      items = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const item of items) {
+      if (item.name === 'node_modules') continue;
+      const full = path.join(dir, item.name);
+      let real;
+      try {
+        real = fs.realpathSync(full);
+      } catch {
+        continue; // 断链的 symlink
+      }
+      if (real !== full && real !== root && !real.startsWith(root + path.sep)) continue;
+      let stat;
+      try {
+        stat = fs.statSync(full);
+      } catch {
+        continue;
+      }
+      if (stat.isDirectory()) {
+        walk(real);
+        continue;
+      }
+      if (!stat.isFile() || !SITE_PREFIX_EXTS.has(path.extname(item.name).toLowerCase())) continue;
+      let text;
+      try {
+        text = fs.readFileSync(full, 'utf8');
+      } catch {
+        continue;
+      }
+      const next = rewriteSitePrefix(text, oldId, newId);
+      if (!next.changed) continue;
+      if (!dryRun) fs.writeFileSync(full, next.text);
+      changed.push(path.relative(root, full));
+    }
+  };
+  walk(root);
+  return changed;
+}
+
+/**
+ * rename 的新条目（纯函数）：只换 id，kind / 落点 / title / 归属原样带走；
+ * 挂在旧 id 上的条目（page 字段）跟着改，否则它们会指向一个不存在的页。
+ * 返回 { before, after, attached }（attached = 要改 page 字段的条目 id）。
+ */
+export function buildRename(oldId, newId, { entries = [] } = {}) {
+  const before = entries.find((entry) => entry && entry.id === oldId);
+  if (!before) {
+    const known = entries.map((entry) => entry && entry.id).filter(Boolean).join('、');
+    throw new CliError(`条目不存在：${oldId}${known ? `（现有：${known}）` : ''}`);
+  }
+  if (!ENTRY_ID_PATTERN.test(newId)) {
+    throw new CliError(`新 id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${newId}`);
+  }
+  if (newId === oldId) throw new CliError(`新旧 id 相同：${oldId}`);
+  const clash = entries.find((entry) => entry && entry.id === newId);
+  if (clash) {
+    throw new CliError(
+      `id 已存在：${newId}，指向 ${entryTargetDesc(clash)}；把两个条目并成一个 = 先 rename 再 \`pinpoint move\``,
+    );
+  }
+  const after = { ...before, id: newId };
+  const attached = entries
+    .filter((entry) => entry && entry.id !== oldId && entry.page === oldId)
+    .map((entry) => entry.id);
+  return { before, after, attached };
+}
+
+/** parse + 构造 + 四件事的预检（不写盘、不联网）：任何一件做不了就整单不动手。 */
+export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}) {
+  const parsed = parseArgs(argv);
+  if (parsed.help) return parsed;
+  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+  const { before, after, attached } = buildRename(parsed.id, parsed.newId, {
+    entries: existingEntriesFor(registryPath),
+  });
+
+  // ② 标注桶：旧桶在就改名，新桶已存在是硬冲突（两份标注不能合）。
+  const root = dataRoot(env);
+  const bucketFrom = path.join(root, before.id);
+  const bucketTo = path.join(root, after.id);
+  const bucketExists = fs.existsSync(bucketFrom);
+  if (bucketExists && fs.existsSync(bucketTo)) {
+    throw new CliError(`标注桶已存在：${bucketTo}；先处理掉它再改 id（两个桶不会自动合并）`);
+  }
+
+  // ③ 资源前缀：只有 dir 条目有目录可扫；目录不在就先 move 到真实路径。
+  let rewriteDir = null;
+  let rewritePreview = [];
+  if (before.kind === 'dir') {
+    if (!fs.existsSync(before.path)) {
+      throw new CliError(`条目 ${before.id} 的目录不存在：${before.path}；先 \`pinpoint move ${before.id} <真实路径>\` 再改 id`);
+    }
+    rewriteDir = before.path;
+    rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
+  }
+
+  return { ...parsed, registryPath, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview };
+}
+
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
 export function resolveRegistryPath(flags = {}, env = process.env, cwd = process.cwd()) {
   const explicit = flags.registry || env.PINPOINT_REGISTRY;
@@ -481,6 +631,68 @@ export async function runMove(argv, io = {}) {
   out(`  新：${entryTargetDesc(entry)}`);
   out(`标注桶 ~/.pinpoint/${entry.id}/ 不变（id 保留）。`);
   out(`registry：${plan.registryPath}`);
+  await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
+
+/**
+ * 执行一次 rename：预检四件事都能做 → 换 id → 改标注桶名 → 重写 /sites/ 前缀 →
+ * 探活服务并 reload。id 是登记表、标注桶、资源 URL 三处的同一个地址，所以这三处
+ * 必须一起改（2026-09-03 实迁：只改了登记表，页面资源整段 404 却看不出来）。
+ */
+export async function runRename(argv, io = {}) {
+  const { cwd, env, out, err, requestFn } = ioOf(io);
+
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  let plan;
+  try {
+    plan = planRename(argv, { cwd, env });
+  } catch (error) {
+    err(`${error instanceof CliError ? '错误' : '改 id 失败'}：${error.message}`);
+    return 1;
+  }
+
+  // ① 登记表
+  let renamed;
+  try {
+    renamed = renameRegistryEntry(plan.registryPath, plan.before.id, plan.after.id);
+  } catch (error) {
+    err(`改 id 失败：${error.message}`);
+    return 1;
+  }
+  out(`已改 id：${plan.before.id} → ${renamed.entry.id}（${renamed.entry.kind}）：${entryTargetDesc(renamed.entry)}`);
+  out(renamed.attached.length
+    ? `  登记表：条目已改名；挂在它上面的 ${renamed.attached.length} 条也跟着改（${renamed.attached.join('、')}）`
+    : '  登记表：条目已改名');
+
+  // ② 标注桶
+  if (plan.bucketExists) {
+    try {
+      fs.renameSync(plan.bucketFrom, plan.bucketTo);
+      out(`  标注桶：${plan.bucketFrom} → ${plan.bucketTo}`);
+    } catch (error) {
+      err(`  标注桶改名失败（登记表已改，标注还在旧桶）：${error.message}`);
+      return 1;
+    }
+  } else {
+    out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+  }
+
+  // ③ 资源前缀
+  if (plan.rewriteDir) {
+    const changed = rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id);
+    out(changed.length
+      ? `  资源前缀：${changed.length} 个文件里的 /sites/${plan.before.id}/ 已换成 /sites/${plan.after.id}/`
+      : `  资源前缀：没有文件写着 /sites/${plan.before.id}/`);
+    for (const file of changed) out(`    ${file}`);
+  } else {
+    out(`  资源前缀：${plan.before.kind} 条目没有目录可扫，跳过`);
+  }
+
+  out(`registry：${plan.registryPath}`);
+  // ④ 重载
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;
 }
@@ -804,6 +1016,7 @@ export async function run(argv, io = {}) {
   switch (argv[0]) {
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
+    case 'rename': return runRename(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);

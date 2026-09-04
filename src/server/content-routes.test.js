@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { rewriteContentUrl } from './content-routes.js';
+import { resolveContentFile, rewriteContentUrl } from './content-routes.js';
 
 test('rewriteContentUrl maps the served URL prefixes onto their disk location', () => {
   assert.equal(rewriteContentUrl('/kits/ios/ios-kit.css'), '/content/kits/ios/ios-kit.css');
@@ -46,4 +46,51 @@ test('rewriteContentUrl leaves percent encoding in the mapped remainder intact',
     rewriteContentUrl('/previews/my%20page/screen.html'),
     '/content/previews/my%20page/screen.html',
   );
+});
+
+/* ---- 缺文件答真 404（2026-09-04；旧行为是掉进 vite 的 SPA fallback 拿 200 HTML） ---- */
+
+function fakeDisk(entries) {
+  return (diskPath) => entries[diskPath] || null;
+}
+
+test('resolveContentFile passes through anything the prefixes do not map', () => {
+  const exists = fakeDisk({});
+  assert.deepEqual(resolveContentFile('/annotate.js', exists), { action: 'pass', url: '/annotate.js' });
+  assert.deepEqual(resolveContentFile('/sites/demo/x.css', exists), { action: 'pass', url: '/sites/demo/x.css' });
+  // 归一后逃出前缀的穿越同样不归本插件管（rewriteContentUrl 已原样透传）
+  assert.deepEqual(resolveContentFile('/previews/%2e%2e/%2e%2e/package.json', exists),
+    { action: 'pass', url: '/previews/%2e%2e/%2e%2e/package.json' });
+});
+
+test('resolveContentFile serves an existing file and keeps the query string', () => {
+  const exists = fakeDisk({ '/content/kits/ios/ios-kit.css': 'file', '/src/pages/panel.html': 'file' });
+  assert.deepEqual(resolveContentFile('/kits/ios/ios-kit.css', exists),
+    { action: 'serve', url: '/content/kits/ios/ios-kit.css' });
+  assert.deepEqual(resolveContentFile('/kits/ios/ios-kit.css?t=42', exists),
+    { action: 'serve', url: '/content/kits/ios/ios-kit.css?t=42' });
+  assert.deepEqual(resolveContentFile('/panel.html?entry=demo', exists),
+    { action: 'serve', url: '/src/pages/panel.html?entry=demo' });
+});
+
+test('resolveContentFile answers 404 for a missing file, naming the requested URL', () => {
+  const exists = fakeDisk({ '/content/previews/library': 'dir' });
+  assert.deepEqual(resolveContentFile('/previews/library/missing.json', exists),
+    { action: 'notFound', url: '/previews/library/missing.json' });
+  assert.deepEqual(resolveContentFile('/kits/nope.css', exists),
+    { action: 'notFound', url: '/kits/nope.css' });
+  assert.deepEqual(resolveContentFile('/lib/gone.css?t=1', exists),
+    { action: 'notFound', url: '/lib/gone.css?t=1' });
+});
+
+test('resolveContentFile serves a directory only when it holds an index.html', () => {
+  const withIndex = fakeDisk({
+    '/content/previews/library': 'dir',
+    '/content/previews/library/index.html': 'file',
+  });
+  assert.deepEqual(resolveContentFile('/previews/library/', withIndex),
+    { action: 'serve', url: '/content/previews/library/' });
+  const bare = fakeDisk({ '/content/previews/library': 'dir' });
+  assert.deepEqual(resolveContentFile('/previews/library/', bare),
+    { action: 'notFound', url: '/previews/library/' });
 });

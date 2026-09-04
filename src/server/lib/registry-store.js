@@ -151,6 +151,35 @@ export function updateRegistryEntry(registryPath, raw) {
 }
 
 /**
+ * Rename one entry's id in place (the `pinpoint rename` path): the entry keeps
+ * its position, kind, path and title, and every other entry whose `page`
+ * attaches to the old id follows along — an attach pointing at a vanished page
+ * would silently drop that entry out of the workbench. Same strict validation
+ * and same atomic rewrite as a write. Throws when the old id is unknown or the
+ * new id is taken/invalid; the on-disk file is untouched in that case.
+ * Returns { entry, attached } — attached = ids whose `page` field was rewritten.
+ */
+export function renameRegistryEntry(registryPath, oldId, newId) {
+  const doc = readRegistryDoc(registryPath);
+  const index = doc.entries.findIndex((entry) => entry && entry.id === oldId);
+  if (index < 0) throw new Error(`条目不存在：${oldId}`);
+  const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
+  const problem = validateNewEntry({ ...doc.entries[index], id: newId }, otherIds);
+  if (problem) throw new Error(problem);
+  const attached = [];
+  const entries = doc.entries.map((entry, i) => {
+    if (i === index) return normalizeNewEntry({ ...entry, id: newId });
+    if (entry && entry.page === oldId) {
+      attached.push(entry.id);
+      return { ...entry, page: newId };
+    }
+    return entry;
+  });
+  writeRegistryFile(registryPath, { ...doc, entries });
+  return { entry: entries[index], attached };
+}
+
+/**
  * Append one entry to the registry file: strict-validate, then atomically
  * rewrite preserving the existing top-level shape (version et al). Throws on
  * any problem; the on-disk file is left untouched in that case. Returns the

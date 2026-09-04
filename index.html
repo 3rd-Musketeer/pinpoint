@@ -623,6 +623,13 @@
      出处与原因走 mono（机器精度信息：url、id、状态码），动作是 ghost 钮
      —— 面板不是主行动面，不给实心。.wb-asset-err 是同一族的窄版：
      frame 内资源没进来时的行内提示（/sites/ 404 不再静默）。 */
+  /* 板整体失败时面板是 #wb-board-panel 的唯一孩子 —— 那层有 3200px 画布留白，
+     面板会落在视口外三千像素处（DOM 在、肉眼不在）。这种时候画布留白没有意义：
+     去掉它，把面板摆在舞台中间。 */
+  #wb-board-panel:has(> .wb-screen-err) {
+    padding:0; min-height:100%;
+    display:flex; align-items:center; justify-content:center;
+  }
   .wb-screen-err,
   .wb-asset-err {
     margin:24px auto; padding:16px 18px; max-width:420px; text-align:center;

@@ -86,6 +86,12 @@ template-only 插件对这条路恒 404 才正常。实例搬迁删除该文件�
 template-only 404 路径覆盖不到本例，判定逻辑本身无单测（pages.js 命令式
 层，提取成本高于收益，留案例）。
 
+根因已修（2026-09-04）：`src/server/content-routes.js` 投影完先看磁盘——
+`/previews/**` 与 `/kits/**` 下不存在的文件直接答 404 + text/plain，不再
+next() 给 SPA fallback（纯判定 `resolveContentFile` 有单测）。`pages.js`
+的「200 且 JSON 才解析」判定保留：它防的是同一类现象的其它来源（代理、
+错误页），不是只防 vite。
+
 ---
 
 ## 2026-08-17 新建 doc 页「无法标注」（漏接 annotate.js 注入段）

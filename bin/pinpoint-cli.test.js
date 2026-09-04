@@ -8,6 +8,7 @@ import test from 'node:test';
 import {
   buildEntry,
   buildMove,
+  buildRename,
   classifyStatus,
   CliError,
   collectStatus,
@@ -22,10 +23,13 @@ import {
   planAdd,
   portlessRoutesPath,
   requestJson,
+  rewriteSitePrefix,
+  rewriteSitePrefixUnder,
   resolveRegistryPath,
   run,
   runAdd,
   runMove,
+  runRename,
   runStatus,
   runStop,
   serviceLogPath,
@@ -508,6 +512,155 @@ test('runMove: 未知 id 与不存在的目标退非零，registry 不动', asyn
   // 参数形状不对才刷 usage
   const usage = recorder();
   assert.equal(await runMove(['move', 'app'], { ...usage.io, cwd: dir, env: {}, requestFn }), 1);
+  assert.ok(usage.err.some((line) => /^用法：/.test(line)));
+});
+
+/* ---- rename ---- */
+
+test('rewriteSitePrefix: 只换精确的 /sites/<id>/ 前缀', () => {
+  assert.deepEqual(rewriteSitePrefix('<link href="/sites/old/a.css">', 'old', 'new'),
+    { text: '<link href="/sites/new/a.css">', changed: true });
+  assert.deepEqual(
+    rewriteSitePrefix('@import url("/sites/old/m.css"); src="/sites/old/x.js"', 'old', 'new').text,
+    '@import url("/sites/new/m.css"); src="/sites/new/x.js"');
+  // 不是这个 id、不是这一层前缀、相对路径，一律不动
+  for (const text of ['/sites/older/a.css', '/sites/old', 'sites/old/a.css', './old/a.css']) {
+    assert.deepEqual(rewriteSitePrefix(text, 'old', 'new'), { text, changed: false }, text);
+  }
+});
+
+test('rewriteSitePrefixUnder: 只碰 html/css/js，跳过 node_modules 与逃逸 symlink', (t) => {
+  const dir = withTempDir(t);
+  const site = path.join(dir, 'site');
+  fs.mkdirSync(path.join(site, 'sub'), { recursive: true });
+  fs.mkdirSync(path.join(site, 'node_modules'), { recursive: true });
+  fs.writeFileSync(path.join(site, 'a.html'), '<script src="/sites/old/x.js"></script>');
+  fs.writeFileSync(path.join(site, 'sub', 'b.css'), '@import url("/sites/old/m.css");');
+  fs.writeFileSync(path.join(site, 'sub', 'c.js'), 'fetch("/sites/old/d.json")');
+  fs.writeFileSync(path.join(site, 'notes.md'), '/sites/old/x.js');       // 扩展名不在名单
+  fs.writeFileSync(path.join(site, 'clean.html'), '<p>no prefix</p>');    // 不含前缀
+  fs.writeFileSync(path.join(site, 'node_modules', 'dep.js'), '"/sites/old/x.js"');
+  const outside = path.join(dir, 'outside.html');
+  fs.writeFileSync(outside, '"/sites/old/x.js"');
+  fs.symlinkSync(outside, path.join(site, 'link.html'));
+
+  const preview = rewriteSitePrefixUnder(site, 'old', 'new', { dryRun: true });
+  assert.deepEqual(preview.sort(), ['a.html', 'sub/b.css', 'sub/c.js']);
+  assert.equal(fs.readFileSync(path.join(site, 'a.html'), 'utf8'), '<script src="/sites/old/x.js"></script>', 'dryRun 不落盘');
+
+  const changed = rewriteSitePrefixUnder(site, 'old', 'new');
+  assert.deepEqual(changed.sort(), ['a.html', 'sub/b.css', 'sub/c.js']);
+  assert.equal(fs.readFileSync(path.join(site, 'a.html'), 'utf8'), '<script src="/sites/new/x.js"></script>');
+  assert.equal(fs.readFileSync(path.join(site, 'sub', 'b.css'), 'utf8'), '@import url("/sites/new/m.css");');
+  assert.equal(fs.readFileSync(path.join(site, 'notes.md'), 'utf8'), '/sites/old/x.js');
+  assert.equal(fs.readFileSync(path.join(site, 'node_modules', 'dep.js'), 'utf8'), '"/sites/old/x.js"');
+  assert.equal(fs.readFileSync(outside, 'utf8'), '"/sites/old/x.js"', '逃出条目目录的 symlink 不归它管');
+});
+
+test('buildRename: 只换 id，落点与归属原样；挂在旧 id 上的条目跟着改', (t) => {
+  const entries = [
+    { id: 'old', title: '我的应用', kind: 'dir', path: '/x', board: 'ios' },
+    { id: 'note', kind: 'file', path: '/n.html', page: 'old', role: 'draft' },
+    { id: 'other', kind: 'file', path: '/o.html', page: 'library' },
+  ];
+  const { before, after, attached } = buildRename('old', 'fresh', { entries });
+  assert.equal(before.id, 'old');
+  assert.deepEqual(after, { id: 'fresh', title: '我的应用', kind: 'dir', path: '/x', board: 'ios' });
+  assert.deepEqual(attached, ['note']);
+});
+
+test('buildRename: 未知 id / 非法新 id / 同名 / 撞 id 都响亮拒绝', () => {
+  const entries = [{ id: 'old', kind: 'dir', path: '/x' }, { id: 'taken', kind: 'dir', path: '/t' }];
+  assert.throws(() => buildRename('ghost', 'fresh', { entries }), /条目不存在：ghost（现有：old、taken）/);
+  assert.throws(() => buildRename('old', 'Not Ok', { entries }), /新 id 必须匹配/);
+  assert.throws(() => buildRename('old', 'old', { entries }), /新旧 id 相同/);
+  assert.throws(() => buildRename('old', 'taken', { entries }), /id 已存在：taken，指向 \/t；把两个条目并成一个 = 先 rename 再/);
+});
+
+test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服务', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  fs.writeFileSync(path.join(site, 'card.html'), '<link rel="stylesheet" href="/sites/old/card.css">');
+  fs.writeFileSync(path.join(site, 'card.css'), '@import url("/sites/old/base.css");');
+  const dataRoot = path.join(dir, 'data');
+  fs.mkdirSync(path.join(dataRoot, 'old'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'old', 'page.json'), '{"annotations":[]}');
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'old', title: '我的应用', kind: 'dir', path: site, board: 'ios' },
+    { id: 'note', kind: 'file', path: path.join(site, 'index.html'), page: 'old' },
+  ]);
+  const rec = recorder();
+  const calls = [];
+  const requestFn = (url, options = {}) => {
+    calls.push(`${options.method || 'GET'} ${url}`);
+    if (url.endsWith('/health')) return Promise.resolve({ status: 200, json: { ok: true } });
+    return Promise.resolve({ status: 200, json: { ok: true, path: file, entries: 3 } });
+  };
+  const env = { PINPOINT_DATA_DIR: dataRoot };
+  const code = await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn });
+  assert.equal(code, 0);
+
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(doc.entries.map((e) => e.id), ['pinpoint', 'fresh', 'note'], '位置不变');
+  assert.deepEqual(doc.entries[1], { id: 'fresh', kind: 'dir', title: '我的应用', path: site, board: 'ios' });
+  assert.equal(doc.entries[2].page, 'fresh', '挂靠条目跟着改');
+
+  assert.ok(!fs.existsSync(path.join(dataRoot, 'old')), '旧桶已改名');
+  assert.equal(fs.readFileSync(path.join(dataRoot, 'fresh', 'page.json'), 'utf8'), '{"annotations":[]}');
+
+  assert.equal(fs.readFileSync(path.join(site, 'card.html'), 'utf8'), '<link rel="stylesheet" href="/sites/fresh/card.css">');
+  assert.equal(fs.readFileSync(path.join(site, 'card.css'), 'utf8'), '@import url("/sites/fresh/base.css");');
+
+  assert.deepEqual(calls, ['GET https://pinpoint.localhost/health', 'POST https://pinpoint.localhost/registry/reload']);
+  assert.ok(rec.out.some((line) => /已改 id：old → fresh/.test(line)));
+  assert.ok(rec.out.some((line) => /2 个文件里的 \/sites\/old\/ 已换成 \/sites\/fresh\//.test(line)));
+  assert.ok(rec.out.some((line) => /服务已重载/.test(line)));
+});
+
+test('runRename: 没有标注桶 / file 与 url 条目跳过资源前缀', async (t) => {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'r.html');
+  fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
+  const file = registryWith(dir, [{ id: 'doc', title: 'Doc', kind: 'file', path: page }]);
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  assert.equal(await runRename(['rename', 'doc', 'report', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[0],
+    { id: 'report', kind: 'file', title: 'Doc', path: page });
+  assert.ok(rec.out.some((line) => /标注桶：.*不存在，没有标注要搬/.test(line)));
+  assert.ok(rec.out.some((line) => /file 条目没有目录可扫，跳过/.test(line)));
+  assert.ok(rec.err.some((line) => /服务未在跑/.test(line)));
+});
+
+test('runRename: 预检不过就一个字节都不动（新桶已存在 / 目录不存在 / 撞 id）', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  const dataRoot = path.join(dir, 'data');
+  fs.mkdirSync(path.join(dataRoot, 'old'), { recursive: true });
+  fs.mkdirSync(path.join(dataRoot, 'fresh'), { recursive: true });
+  const file = registryWith(dir, [
+    { id: 'old', kind: 'dir', path: site },
+    { id: 'gone', kind: 'dir', path: path.join(dir, 'vanished') },
+    { id: 'taken', kind: 'dir', path: site },
+  ]);
+  const before = fs.readFileSync(file, 'utf8');
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: dataRoot };
+  const rec = recorder();
+  assert.equal(await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.equal(await runRename(['rename', 'gone', 'other', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.equal(await runRename(['rename', 'old', 'taken', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.ok(rec.err.some((line) => /标注桶已存在/.test(line)));
+  assert.ok(rec.err.some((line) => /目录不存在.*先 `pinpoint move gone/.test(line)));
+  assert.ok(rec.err.some((line) => /id 已存在：taken/.test(line)));
+  assert.ok(!rec.err.some((line) => /^用法：/.test(line)));
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+
+  // 参数形状不对才刷 usage
+  const usage = recorder();
+  assert.equal(await runRename(['rename', 'old'], { ...usage.io, cwd: dir, env, requestFn }), 1);
   assert.ok(usage.err.some((line) => /^用法：/.test(line)));
 });
 
