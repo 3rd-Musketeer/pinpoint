@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0030](0030-layout-src-content-and-url-contract.md) | 2026-09-04 | 目录重排：src/ 与 content/ 两轴，服务 URL 是契约 | 现行 | — |
 | [0029](0029-pages-mtime-and-sort.md) | 2026-08-17 | Pages 时间显示 + 排序；「最近更新」= 仅内容改动 | 现行 | — |
 | [0028](0028-areta-chat-eval-repoint-and-component-ownership.md) | 2026-08-17 | areta-chat-eval 条目重指 + 组件归属边界成文 | 现行 | — |
 | [0027](0027-serve-injects-and-instances-leave-previews.md) | 2026-08-17 | 注入契约统一 + registry 补全 + 实例迁出 previews/ | 现行 | — |

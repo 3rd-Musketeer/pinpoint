@@ -110,6 +110,13 @@ shared / pages），被服务的内容住 `content/`（kits / previews），但�
 匹配的中间件看到的仍是原 URL）。搬动 `content/` 或 `src/pages/` 下的东西，先想清楚哪个 URL
 会跟着变——仓外的页面按 URL 引 kit，它们不在这个仓里、改不到。
 
+**`pinpoint stop` 只 SIGTERM portless run 的 pid** —— portless 会带走 vite 子进程（2026-09-04
+实测无孤儿），不要再手杀 vite。站点打不开先 `pinpoint status`。
+
+**Playwright 的 `toBeVisible` / `click` 不查视口** —— 元素被画布 padding 推到 3000px 外也全绿
+（2026-09-04 错误面板，与 08-17 ScrollArea 同形）。要断言「人看得见」，用 boundingBox 和 stage
+几何比，不靠可见性断言。
+
 **改 `src/shared/` 或 `src/client/lib/` 就是改 `/annotate.js`** —— 那些模块在 serve 时被内联进 client，
 是纯函数、有 node 测试，保持它们不碰 DOM。
 
