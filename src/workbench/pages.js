@@ -264,6 +264,16 @@ export function showPageManifestError(error) {
   wbSet({ pageManifestError: String(error && error.message ? error.message : error) });
 }
 
+/** 页面清单读取失败后的「重试」（2026-09-04，BACKLOG「空态与错误面板」）：
+    失效清单与 registry 两条查询后重拉。与板失败面板的「重试」同一个语义 ——
+    错误面板永远带一条回到可用状态的路，不要求用户刷新整页。 */
+export function retryPageManifest() {
+  wbSet({ pageManifestError: null });
+  queryClient.invalidateQueries({ queryKey: ['page-manifest'] });
+  queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+  return loadPageManifest().catch(function (error) { showPageManifestError(error); });
+}
+
 /** Registry entries surface as workbench pages, served from /sites/<id>/.
     The default 'pinpoint' entry is the workbench itself — its pages are the
     _index pages, so it is not listed again. A dead annotate API must not break

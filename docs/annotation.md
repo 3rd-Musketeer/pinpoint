@@ -71,6 +71,12 @@ API 调用打的是脚本被加载的那个 origin。
 CSP 安全的 DOM `CustomEvent('pinpoint:command')` 桥转给 client。面板页经 annotate API 读账本、
 经 SSE 实时更新；所有写入都留在页面 client 里（面板永远不是第二个写入方）。
 
+工具条与侧面板各带一个**「打开 workbench」**入口（2026-09-04）：`/sites/` 页面与扩展注入页
+都在 workbench 之外，之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
+`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；面板的同名链接（`#panel-workbench`）
+走面板自己的 origin（面板页由服务托管）。两处都在 workbench 壳页与被嵌入的 frame 里隐藏——
+那里已经在 workbench 里，同「只留一个控制面」的规矩。
+
 页面内的 `#ann-sidebar` 留给没有扩展的场合（`/sites/` 直开、**S** 键、工具条的「列表」钮）：
 head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
@@ -95,6 +101,26 @@ head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n
   两种导航模式都必须经 `src/workbench/lib/board-navigation.js` 解析几何与聚焦策略；
   永远不要用 `.wb-screen` 包装元素导航——row 布局会让它 `display: contents`。
 - **HMR**：`content/previews/<page>/**`（html / js / board）或 `content/kits/ios/components/**` 的改动会刷新板。
+
+## 装载失败与 sidecar 资源
+
+板装载失败（`board.json` 404 / 契约错误）与单屏装载失败走同一个面板（`.wb-screen-err`）：
+三行说明（标题 / 出处 / 原因）+ 固定两个动作「回到 Pages」「重试」。动作只写 data 契约
+（`data-err-home` / `data-err-retry` + `data-err-page` / `data-err-screen`），点击由挂在 stage 上的
+委托监听执行——板每次装载整替换 `innerHTML`，监听不能挂面板自己身上。「回到 Pages」落到
+Component Library 并展开左栏；「重试」失效对应的 `board` / `screen` 查询后原地重装。
+左栏「页面清单读取失败」同样带一个「重试」（`pages.js` 的 `retryPageManifest`）。
+
+fragment 里的 **CSS 资源 url 与 JS sidecar 同规则**（2026-09-04）：`<style>` 块里的 `@import` 与
+`<link rel=stylesheet>` 的相对 url，在装配时被 `src/workbench/lib/sidecar-css.js` 改写成
+`pageBaseUrl` 前缀的绝对路径，和 `resolveSidecarUrl` 处理 `./x.js` 是同一条规则；已经是
+`/sites/…` 或 http(s) 的原样保留。不改写就只有 CSS 走样——`@import` 按 workbench 文档
+（`index.html`）解析，`./x.css` 会打到站点根。组件页不改写（它的片段来自 `kits/`）。
+
+资源没进来时在那个 frame 上出一条 `.wb-asset-err`，把打不开的 url 写出来，不留静默空卡：
+CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探一次存在性；JS 侧报的是作者
+显式写了 `src` 的 sidecar，约定式的 `<screenId>.js`（`data-preview-mount` 隐式探的那条）
+允许缺席、不报。
 
 ## 图片导出
 

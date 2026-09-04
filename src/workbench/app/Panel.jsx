@@ -116,6 +116,11 @@ export function Panel() {
         <span className="text-[11px] text-[color:var(--wb-faint)]" id="panel-count">
           {doc && !doc.error ? rows.length + ' 条 · ' + pageName : pageName}
         </span>
+        {/* 回 workbench 的路（2026-09-04，BACKLOG「空态与错误面板」）：面板由服务
+            托管，自己的 origin 就是服务 origin。扩展侧栏是独立窗口，只能开新标签页。 */}
+        <a className="wb-panel-workbench ms-auto flex-none rounded-md px-1.5 py-0.5 text-[11px] text-[color:var(--wb-faint)] hover:bg-[color:var(--wb-hover)] hover:text-[color:var(--wb-fg)]"
+          id="panel-workbench" href="/index.html" target="_blank" rel="noreferrer"
+          title="在新标签页打开 workbench">打开 workbench</a>
       </div>
       <div className="px-3 pb-2">
         <ToggleGroup type="single" spacing={0.5} value={mode ? 'annotate' : 'interact'}

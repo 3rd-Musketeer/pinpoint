@@ -44,6 +44,7 @@ import { useWorkbenchStore, wbSet } from './store.js';
 import {
   entriesOfActiveBoard,
   manifestPages,
+  retryPageManifest,
   setActiveEntry,
   setActivePage,
   showSettings,
@@ -261,10 +262,16 @@ function PagesNav(props) {
       <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} now={now} />
       {pages.map(function (p) { return <PageRow key={p.id} page={p} now={now} />; })}
       {manifestError ? (
-        <p className="wb-page-error" title={manifestError}
-          style={{ margin: '6px 10px', color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
-          页面清单读取失败：board.json 缺失或返回的不是 JSON。请检查对应 previews 目录后刷新。
-        </p>
+        <div className="wb-page-error" style={{ margin: '6px 10px' }}>
+          <p title={manifestError}
+            style={{ margin: 0, color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
+            页面清单读取失败：board.json 缺失或返回的不是 JSON。检查对应 previews 目录后重试。
+          </p>
+          {/* 与板失败面板同一条规矩（2026-09-04）：错误状态自带回到可用状态的动作 */}
+          <button type="button" className="wb-screen-err-act" data-page-manifest-retry
+            style={{ marginTop: '8px' }}
+            onClick={function () { retryPageManifest(); }}>重试</button>
+        </div>
       ) : null}
     </nav>
   );

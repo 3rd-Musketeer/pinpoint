@@ -79,6 +79,22 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
   }, [pathname, prevEpoch]);
 }
 
+test('/sites/ page: the floating toolbar carries a way back to the workbench', async ({ page }) => {
+  // /sites/ 与扩展注入的页面都在 workbench 之外（BACKLOG「空态与错误面板」）：
+  // 工具条上要有一条走回去的路，不靠用户记住 workbench 的 URL。
+  await page.goto('/sites/e2e-dir/doc.html');
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
+
+  const entry = page.locator('#ann-workbench');
+  await expect(entry).toBeVisible();
+  await expect(entry).toHaveText('打开 workbench');
+
+  const [opened] = await Promise.all([page.waitForEvent('popup'), entry.click()]);
+  expect(new URL(opened.url()).pathname).toBe('/index.html');
+  await opened.close();
+});
+
 test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the target', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);

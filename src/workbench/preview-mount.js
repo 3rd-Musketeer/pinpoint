@@ -11,6 +11,7 @@ import {
 } from './board-nav.js';
 import { restorePageViewportAfterMount, syncPanelPrefs } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
+import { cssImportUrls } from './lib/sidecar-css.js';
 
 // 反向依赖注入：wireLibraryScrollSpy 属 pages.js 簇，沿用 initPreviewMount(deps)
 // 注入（历史上由 workbench.js 持有，DI 通道保留）。标注面板刷新不再是 DI ——
@@ -80,6 +81,63 @@ function moduleBustUrl(url, generation) {
   return url + sep + 'mount=' + generation;
 }
 
+/* frame 内资源没进来时的行内提示（2026-09-04，BACKLOG「改 registry id 后
+   /sites/<旧 id>/ 资源静默 404」候选 ③）。旧行为：CSS 的 @import 404 无任何反馈，
+   JS sidecar 404 只进 console —— 机壳和内联 HTML 还在，脚本注入的卡 / modal 整段
+   消失，看起来像设计坏了。现在在那个 frame 上挂一条 .wb-asset-err 条，把打不开的
+   url 逐条写出来。带 data-ann-ui：不是原型内容，标注与选中判定让开它。 */
+function noteAssetFailure(el, url) {
+  var host = el && el.closest ? el.closest('.wb-screen') : null;
+  if (!host || !url) return;
+  var box = host.querySelector('.wb-asset-err');
+  if (!box) {
+    box = document.createElement('div');
+    box.className = 'wb-asset-err';
+    box.setAttribute('data-ann-ui', '');
+    var title = document.createElement('p');
+    title.className = 'wb-asset-err-title';
+    title.textContent = '资源打不开';
+    box.appendChild(title);
+    host.appendChild(box);
+  }
+  var listed = box.querySelectorAll('[data-asset-url]');
+  for (var i = 0; i < listed.length; i++) {
+    if (listed[i].getAttribute('data-asset-url') === url) return;
+  }
+  var line = document.createElement('p');
+  line.className = 'wb-asset-err-src';
+  line.setAttribute('data-asset-url', url);
+  line.textContent = url;
+  box.appendChild(line);
+}
+
+/* CSS 侧没有 onerror 可听（@import 失败是静默的），所以装载后按同源绝对路径
+   探一次存在性。只探 '/' 开头的 url —— 相对路径已被 lib/sidecar-css.js 改写成
+   pageBaseUrl 前缀，跨域资源不归我们判。 */
+function probeFragmentStyles(panel, session) {
+  if (!panel) return;
+  panel.querySelectorAll('.wb-screen').forEach(function (screen) {
+    var urls = [];
+    screen.querySelectorAll('style').forEach(function (node) {
+      cssImportUrls(node.textContent).forEach(function (url) { urls.push(url); });
+    });
+    screen.querySelectorAll('link[rel~="stylesheet"]').forEach(function (node) {
+      urls.push(node.getAttribute('href') || '');
+    });
+    var seen = {};
+    urls.forEach(function (url) {
+      if (!url || url.charAt(0) !== '/' || seen[url]) return;
+      seen[url] = true;
+      fetch(url).then(function (res) {
+        if (res.ok || !session.isUsable(screen)) return;
+        noteAssetFailure(screen, url);
+      }, function () {
+        if (session.isUsable(screen)) noteAssetFailure(screen, url);
+      });
+    });
+  });
+}
+
 function resolveSidecarUrl(pageId, screenId, src) {
   // dynamic import() rejects bare specifiers — sidecar URLs must start with '/'
   if (src) {
@@ -108,9 +166,21 @@ function invokeMountModule(mod, root, label, session) {
   }
 }
 
-function importPreviewModule(url, root, label, session) {
+function importPreviewModule(url, root, label, session, declared) {
+  // 两段 catch 分工：前一段是 sidecar 本身没进来（404 / 求值失败），后一段是
+  // mount 自己抛的产品逻辑错误 —— 后者只进 console。
+  // declared = 作者在片段里显式写了 src：那条 url 打不开是真故障，在 frame 上
+  // 显式报。约定式 sidecar（<screenId>.js，data-preview-mount 隐式探的那条）
+  // 本来就允许不存在 —— 每个 doc 屏都会探一次，报出来全是噪音。
   return import(/* @vite-ignore */ moduleBustUrl(url, session.generation))
-    .then(function (mod) { return invokeMountModule(mod, root, label, session); })
+    .catch(function (err) {
+      console.error('[preview-script] ' + label + ' ← ' + url, err);
+      if (declared) noteAssetFailure(root, url);
+      return null;
+    })
+    .then(function (mod) {
+      if (mod) return invokeMountModule(mod, root, label, session);
+    })
     .catch(function (err) {
       console.error('[preview-script] ' + label + ' ← ' + url, err);
     });
@@ -129,7 +199,7 @@ function runOnePreviewScript(el, pageId, session) {
   if (srcAttr) {
     var screen = el.closest('[data-screen]');
     var screenId = (screen && screen.getAttribute('data-screen')) || label;
-    return importPreviewModule(resolveSidecarUrl(pageId, screenId, srcAttr), root, label, session);
+    return importPreviewModule(resolveSidecarUrl(pageId, screenId, srcAttr), root, label, session, true);
   }
 
   if (!body) return Promise.resolve();
@@ -173,7 +243,7 @@ function runSidecarMounts(scope, pageId, session) {
       var screenId = screen && screen.getAttribute('data-screen');
       if (!screenId) return;
       var url = resolveSidecarUrl(pageId, screenId, null);
-      jobs.push(importPreviewModule(url, root, screenId, session));
+      jobs.push(importPreviewModule(url, root, screenId, session, false));
     })(roots[i]);
   }
   return Promise.all(jobs);
@@ -203,6 +273,7 @@ export function afterMount(panel, session) {
       wireExportControls(panel);
       var hadViewport = restorePageViewportAfterMount(session.pageId);
       if (window.iOSKit) window.iOSKit.refresh(panel);
+      probeFragmentStyles(panel, session);
       return runPreviewScripts(panel, session.pageId, session).then(function () {
         if (!session.isUsable(panel)) return;
         // Coalesce the post-script DOM batch into one frame so layout

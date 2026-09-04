@@ -488,15 +488,13 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
   // The document wires annotate itself (localhost only) — no workbench stage inside the iframe.
-  // Authors do not stamp wb-html-surface; plain docs treat body as the hit surface.
+  // Plain docs carry no board chrome to keep unselectable — the whole body is the
+  // hit surface. (The wb-html-surface opt-in went away with the web shell; the
+  // client's dead branches for it were removed on 2026-09-04, see BACKLOG.)
   await expect.poll(() => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
     return !!(w && w.pinpoint);
   })).toBe(true);
-  expect(await page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame')
-      .contentDocument.querySelectorAll('.wb-html-surface').length
-  ))).toBe(0);
 
   // Scroll first and let the scroll settle, the way a reader actually does it —
   // hovering in the same synchronous block measures a pre-scroll layout.
@@ -510,36 +508,40 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.scrollY
   ))).toBe(800);
 
-  const out = await page.evaluate(() => {
+  // 一次 elementFromPoint + mousemove 采样是几何量测，全量负载下 ghost 可能还没
+  // 落位（BACKLOG「frame 菜单 hit-test 的套件内 flake」同类：裸 expect 无 poll）。
+  // 整个采样连同判据放进 expect.poll —— 失败即重采，不是重跑一遍断言。
+  // With no workbench stage the overlay must be pinned to the viewport. Left as
+  // position:absolute it anchors at the document origin, is only one screen tall,
+  // and clips everything below the fold — which reads as "annotate does nothing".
+  const sampleGhost = () => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
     const d = w.document;
     const ov = d.getElementById('ann-overlay');
     const el = d.elementFromPoint(300, 300);
+    if (!el || !ov) return { ready: false };
     el.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 300, clientY: 300 }));
     const ghost = d.querySelector('#ann-hover-layer > *');
     const g = ghost && ghost.getBoundingClientRect();
     const t = el.getBoundingClientRect();
     return {
-      scrollY: w.scrollY,
+      ready: true,
+      scrolled: w.scrollY > 0,
       overlayPosition: w.getComputedStyle(ov).position,
       overlayY: Math.round(ov.getBoundingClientRect().y),
-      targetY: Math.round(t.y),
-      ghostY: g ? Math.round(g.y) : null,
-      ghostBottom: g ? Math.round(g.bottom) : null,
-      ghostW: g ? Math.round(g.width) : 0,
-      winH: w.innerHeight,
+      tracksTarget: !!g && Math.abs(Math.round(g.y) - Math.round(t.y)) <= 2,
+      ghostVisible: !!g && Math.round(g.width) > 0 &&
+        Math.round(g.bottom) > 0 && Math.round(g.y) < w.innerHeight,
     };
   });
-  expect(out.scrollY).toBeGreaterThan(0);
-  // With no workbench stage the overlay must be pinned to the viewport. Left as
-  // position:absolute it anchors at the document origin, is only one screen tall,
-  // and clips everything below the fold — which reads as "annotate does nothing".
-  expect(out.overlayPosition).toBe('fixed');
-  expect(out.overlayY).toBe(0);
-  expect(out.ghostW).toBeGreaterThan(0);
-  expect(Math.abs(out.ghostY - out.targetY)).toBeLessThanOrEqual(2);   // tracks the element
-  expect(out.ghostBottom).toBeGreaterThan(0);                          // and intersects the viewport
-  expect(out.ghostY).toBeLessThan(out.winH);
+  await expect.poll(sampleGhost, { timeout: 15000 }).toEqual({
+    ready: true,
+    scrolled: true,
+    overlayPosition: 'fixed',
+    overlayY: 0,
+    tracksTarget: true,
+    ghostVisible: true,
+  });
 });
 
 test('HTML board: sidebar drives the document annotate instance and lists its marks', async ({ page }) => {
@@ -1016,6 +1018,42 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   expect(back.iframeBubbles).toBe(2);
 });
 
+test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
+  let broken = true;
+  await page.route('**/previews/library/board.json', async (route) => {
+    if (!broken) {
+      await route.fallback();
+      return;
+    }
+    await route.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' });
+  });
+
+  await openWorkbench(page);
+  const panel = page.locator('#wb-board-panel .wb-screen-err');
+  await expect(panel).toBeVisible();
+  // 说明保留出处与原因，动作固定两个
+  await expect(panel.locator('.wb-screen-err-src')).toContainText('/previews/library/board.json');
+  await expect(panel.locator('[data-err-home]')).toHaveText('回到 Pages');
+  await expect(panel.locator('[data-err-retry]')).toHaveText('重试');
+
+  // 「回到 Pages」= 落到一个能打开的页 + 左栏展开（折叠着也要看得见 Pages）
+  await page.locator('#wbside-toggle').click();
+  await expect(page.locator('#wbside')).toBeHidden();
+  await panel.locator('[data-err-home]').click();
+  await expect(page.locator('#wbside')).toBeVisible();
+  await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('components');
+
+  // 回到坏页 → 面板重现；修好后「重试」原地把板拉回来，不用刷新整页
+  await page.locator('#wbpages [data-vpage="library"]').click();
+  await expect(panel).toBeVisible();
+  broken = false;
+  await panel.locator('[data-err-retry]').click();
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+});
+
 test('screen loader rejects a dev-server fallback document instead of nesting the workbench', async ({ page }) => {
   await page.route('**/previews/library/home.html', (route) => route.fulfill({
     status: 200,
@@ -1327,26 +1365,27 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(minimap).toBeVisible();
   await expect(navigator).toBeVisible();
 
-  const dockLayout = await page.evaluate(() => {
+  // 停靠几何：面板刚开、小地图刚重绘，全量负载下这一帧可能还没落定
+  // （BACKLOG「workbench.spec.js:1045 全量 flake」）。判据整体进 expect.poll，
+  // 采样与断言同一帧，失败即重采。
+  await expect.poll(() => page.evaluate(() => {
     const navigatorRect = document.querySelector('#wbsection-nav').getBoundingClientRect();
     const minimapRect = document.querySelector('#wbminimap').getBoundingClientRect();
     const toolbarRect = document.querySelector('#wbcanvas-hud').getBoundingClientRect();
+    const close = (a, b, tolerance) => Math.abs(a - b) < tolerance;
     return {
-      navigatorBottom: navigatorRect.bottom,
-      navigatorRight: navigatorRect.right,
-      navigatorWidth: navigatorRect.width,
-      minimapTop: minimapRect.top,
-      minimapRight: minimapRect.right,
-      minimapWidth: minimapRect.width,
-      toolbarRight: toolbarRect.right,
+      stacked: navigatorRect.bottom <= minimapRect.top,
+      rightAligned: close(navigatorRect.right, minimapRect.right, 0.5) &&
+        close(minimapRect.right, toolbarRect.right, 0.5),
+      sameWidth: close(navigatorRect.width, minimapRect.width, 0.05),
       toolOrder: [...document.querySelectorAll('#wbcanvas-hud .wb-toolbar-tool-btn')].map((button) => button.id),
     };
+  }), { timeout: 15000 }).toEqual({
+    stacked: true,
+    rightAligned: true,
+    sameWidth: true,
+    toolOrder: ['wbsection-nav-toggle', 'wbminimap-toggle'],
   });
-  expect(dockLayout.navigatorBottom).toBeLessThanOrEqual(dockLayout.minimapTop);
-  expect(dockLayout.navigatorRight).toBeCloseTo(dockLayout.minimapRight, 0);
-  expect(dockLayout.navigatorWidth).toBeCloseTo(dockLayout.minimapWidth, 1);
-  expect(dockLayout.minimapRight).toBeCloseTo(dockLayout.toolbarRight, 0);
-  expect(dockLayout.toolOrder).toEqual(['wbsection-nav-toggle', 'wbminimap-toggle']);
 
   await page.locator('#wbzoom-label').click();
   await expect(navigator).toBeVisible();
@@ -1688,10 +1727,18 @@ test('frame scroll updates mark geometry and hides marks outside the phone clip'
     };
   });
 
-  await page.evaluate(() => {
+  const scrolledTo = await page.evaluate(() => {
     const app = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app');
     app.scrollTop += 120;
+    return app.scrollTop;
   });
+
+  // 滚动落定先于几何断言（BACKLOG「:1716 全量 flake」）：mark 的重算挂在滚动
+  // 事件上，滚动本身还在途时量到的是旧几何。先 poll 滚动位置生效，再 poll 几何，
+  // 并把几何窗口放宽 —— 全量负载下 5s 默认窗口不够。
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelector('#wb-board-panel [data-screen="settings"] .ios-app').scrollTop
+  ))).toBe(scrolledTo);
 
   await expect.poll(() => page.evaluate((prev) => {
     const target = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-cell');
@@ -1700,7 +1747,7 @@ test('frame scroll updates mark geometry and hides marks outside the phone clip'
     const targetDelta = target.getBoundingClientRect().top - prev.targetTop;
     const markDelta = mark.getBoundingClientRect().top - prev.markTop;
     return Math.abs(markDelta - targetDelta);
-  }, before)).toBeLessThan(3);
+  }, before), { timeout: 15000 }).toBeLessThan(3);
 
   // Scroll until the annotated cell is fully above the phone clip.
   await page.evaluate(() => {

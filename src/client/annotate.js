@@ -244,12 +244,12 @@
   }
 
   // 可选范围（与 board-navigation BOARD_FRAME_SELECTOR 对齐）：
-  //   1) frame chrome（屏标题 / bezel / keys / screen-err / html stage 根）→ 整机 frame
-  //   2) .ios-screen / .wb-comp-stage / .wb-html-surface 内部 → 叶子元素；Alt/⌥ 升到 frame
+  //   1) frame chrome（屏标题 / bezel / keys / screen-err 面板）→ 整机 frame
+  //   2) .ios-screen / .wb-comp-stage 内部 → 叶子元素；Alt/⌥ 升到 frame
   //   3) 独立 HTML 文档 / HTML 板 iframe（无 #wb-board-panel）→ 整份 body 即 surface
   //   4) .wb-lib-item 且不在 frame 内 → section
   // 画布空白、侧栏等一律不可选
-  var FRAME_SEL = '.ios-stage, .wb-comp-stage, .wb-html-stage, .wb-screen-err';
+  var FRAME_SEL = '.ios-stage, .wb-comp-stage, .wb-screen-err';
 
   /** True when this annotate.js instance is the document itself (not the workbench shell). */
   function isPlainDocument() {
@@ -264,24 +264,19 @@
     return el && el.closest && el.closest('.wb-comp-stage');
   }
 
-  function annHtmlSurface(el) {
-    if (!el || !el.closest) return null;
-    var marked = el.closest('.wb-html-surface');
-    if (marked) return marked;
-    // Plain docs (file://, HTML-board iframe) should not force authors to stamp
-    // wb-html-surface on content — the whole document is the annotatable region.
-    // Workbench board pages keep requiring an explicit surface so sidebar/chrome
-    // stay unselectable.
-    if (isPlainDocument() && document.body && (
-      el === document.body || document.body.contains(el)
-    )) {
-      return document.body;
-    }
+  // Plain docs (file://, HTML-board iframe) annotate their whole body — there is
+  // no board chrome to keep unselectable. Workbench board pages have no such
+  // surface: there the selectable regions are .ios-screen / .wb-comp-stage.
+  // （2026-09-04：web 壳退役后的 .wb-html-surface 命中分支已删，见 BACKLOG。）
+  function annDocumentSurface(el) {
+    if (!el) return null;
+    if (!isPlainDocument() || !document.body) return null;
+    if (el === document.body || document.body.contains(el)) return document.body;
     return null;
   }
 
   function annContentSurface(el) {
-    return annScreen(el) || annComp(el) || annHtmlSurface(el);
+    return annScreen(el) || annComp(el) || annDocumentSurface(el);
   }
 
   function annFlow(el) {
@@ -313,11 +308,8 @@
     if (el.closest('.wb-screen-err')) return true;
     var frame = annFrame(el);
     if (!frame) return false;
-    // Comp / HTML stages: only the stage root itself counts as chrome.
-    if (frame.classList && (
-      frame.classList.contains('wb-comp-stage') ||
-      frame.classList.contains('wb-html-stage')
-    )) {
+    // Comp stage: only the stage root itself counts as chrome.
+    if (frame.classList && frame.classList.contains('wb-comp-stage')) {
       return el === frame;
     }
     // Phone: device/bezel/keys/root/stage, but not anything inside .ios-screen.
@@ -408,9 +400,7 @@
     while (node && node.nodeType === 1 && node !== document.documentElement) {
       var force = node.classList && (
         node.classList.contains('ios-screen') ||
-        node.classList.contains('wb-comp-stage') ||
-        node.classList.contains('wb-html-surface') ||
-        node.classList.contains('wb-html-stage')
+        node.classList.contains('wb-comp-stage')
       );
       if (force) {
         clips.push(viewRect(node));
@@ -1082,7 +1072,7 @@
 
   var toolbar = document.createElement('div');
   toolbar.id = 'ann-toolbar'; toolbar.setAttribute('data-ann-ui', '');
-  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-comments" title="在画布渲染评论">评论</button><button id="ann-channel" title="评论布局：压字 / 留通道" hidden>压字</button><button id="ann-list" title="标注列表 (S)">列表</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
+  toolbar.innerHTML = '<button id="ann-toggle">标注</button><button id="ann-comments" title="在画布渲染评论">评论</button><button id="ann-channel" title="评论布局：压字 / 留通道" hidden>压字</button><button id="ann-list" title="标注列表 (S)">列表</button><button id="ann-workbench" title="在新标签页打开 workbench">打开 workbench</button><button id="ann-clear">清空标记</button><span id="ann-count">0 条</span><span id="ann-status"></span><button id="ann-hide">暂停</button>';
   toolbar.style.display = 'none';
   document.body.appendChild(toolbar);
 
@@ -1090,6 +1080,10 @@
   var btnComments = toolbar.querySelector('#ann-comments');
   var btnChannel = toolbar.querySelector('#ann-channel');
   var btnList = toolbar.querySelector('#ann-list');
+  // 回 workbench 的路（2026-09-04，BACKLOG「空态与错误面板」）：/sites/ 页面与
+  // 扩展注入页都是从 workbench 之外进来的，之前只能靠记住 URL 走回去。
+  // 服务 origin 取自脚本自己的 src（SERVER），拿不到时回落当前 origin。
+  var btnWorkbench = toolbar.querySelector('#ann-workbench');
   var btnHide = toolbar.querySelector('#ann-hide');
   var btnClear = toolbar.querySelector('#ann-clear');
   var elCount = toolbar.querySelector('#ann-count');
@@ -1165,6 +1159,8 @@
       btnList.className = sidebarOpen ? 'on' : '';
       btnList.hidden = sidebarSuppressed();
     }
+    // workbench 壳页 / 被嵌入的 frame 上不出这个钮 —— 那里已经在 workbench 里
+    if (btnWorkbench) btnWorkbench.hidden = sidebarSuppressed();
     syncModeClass();
   }
 
@@ -1498,6 +1494,9 @@
   document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
+  if (btnWorkbench) btnWorkbench.addEventListener('click', function () {
+    window.open((SERVER || location.origin) + '/index.html', '_blank', 'noopener');
+  });
   updateListeners.push(renderSidebar);
   (function () {
     var want = false;
@@ -1722,7 +1721,7 @@
     var board = document.getElementById('wb-board-panel') || document.body;
     // Scope candidates to preview surfaces only — avoids walking the whole
     // workbench DOM (sidebar/nav/overlay) which made querySelectorAll('*') hot.
-    var roots = Array.prototype.slice.call(board.querySelectorAll('.ios-screen, .wb-comp-stage, .wb-html-surface'));
+    var roots = Array.prototype.slice.call(board.querySelectorAll('.ios-screen, .wb-comp-stage'));
     if (!roots.length) roots = [board];
     var candidates = [];
     for (var ri = 0; ri < roots.length; ri++) {

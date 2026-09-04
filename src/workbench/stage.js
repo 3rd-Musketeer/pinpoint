@@ -141,10 +141,12 @@ async function loadBoard(panel, pageId) {
     resetBoardNavOnLoadFailure();
     // 装载失败没有板就没有条目可解析 —— stage 形态退回页级兜底（阶段 2 同义）。
     applyPageFormFallback(pageId);
-    var label = e instanceof ContractError ? '契约错误' : '加载失败';
-    panel.innerHTML = loadFailHtml(
-      label + ' · ' + boardUrl(pageId) + ' · ' + String(e && e.message ? e.message : e)
-    );
+    panel.innerHTML = loadFailHtml({
+      title: e instanceof ContractError ? '契约错误' : '加载失败',
+      source: boardUrl(pageId),
+      reason: String(e && e.message ? e.message : e),
+      retry: { kind: 'board', pageId: pageId }
+    });
   }
 }
 
@@ -535,6 +537,33 @@ stage.addEventListener('wheel', function (e) {
     e.preventDefault();
     e.stopPropagation();
     suppressClick = false;
+  }, true);
+
+  /* 失败面板的两个动作（2026-09-04，BACKLOG「空态与错误面板」）。面板是板内
+     HTML，板每次装载整替换 innerHTML —— 所以监听挂 stage 做事件委托。capture
+     相位先于 pan / 选中判定；面板的动作容器另带 data-ann-ui，标注模式也让开。
+     「回到 Pages」= 换到 Component Library（内置页，恒可装载）+ 展开左栏；
+     「重试」= 失效对应的 board / screen 查询后重装当前页。 */
+  stage.addEventListener('click', function (e) {
+    var btn = e.target.closest && e.target.closest('[data-err-home], [data-err-retry]');
+    if (!btn) return;
+    e.preventDefault();
+    e.stopPropagation();
+    if (btn.hasAttribute('data-err-home')) {
+      if (wbGet().sideCollapsed) setSideCollapsed(false, { save: true });
+      var home = wbGet().activePageId === COMPONENTS_ID
+        ? resolveActivePage(null)
+        : COMPONENTS_ID;
+      setActivePage(home, { force: true });
+      return;
+    }
+    var pageId = btn.getAttribute('data-err-page') || wbGet().activePageId;
+    if (btn.getAttribute('data-err-retry') === 'screen') {
+      queryClient.invalidateQueries({ queryKey: ['screen', pageId, btn.getAttribute('data-err-screen')] });
+    } else {
+      queryClient.invalidateQueries({ queryKey: ['board', pageId] });
+    }
+    if (boardPanel) loadBoard(boardPanel, pageId);
   }, true);
 
   /* 2026-08-17 选中模型（detail 面板）：画布点选 frame/section → 右栏展示其

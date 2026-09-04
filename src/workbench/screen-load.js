@@ -24,6 +24,7 @@ import {
   pageEntry
 } from './lib/page-url.js';
 import { boardRefs } from './lib/board-refs.js';
+import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
 import {
   expandIncludeRefs,
   wrapCompStage,
@@ -31,12 +32,37 @@ import {
   wrapPhoneShell
 } from '../shared/frame-shell.js';
 
-export function loadFailHtml(msg) {
-  return '<div class="wb-screen-err">' + escHtml(msg) + '</div>';
+/**
+ * 装载失败面板（2026-09-04，BACKLOG「空态与错误面板」）：说明三行（标题 / 出处 /
+ * 原因）+ 固定两个动作「回到 Pages」「重试」。动作只写 data 契约，点击由
+ * stage.js 挂在 stage 上的委托监听执行 —— 板每次装载整替换 innerHTML，
+ * 监听不能挂在面板自己身上。动作容器带 data-ann-ui：标注客户端与舞台
+ * pan / 选中判定一并让开它。
+ * info = { title, source?, reason?, retry: { kind: 'board'|'screen', pageId, screenId? } }
+ */
+export function loadFailHtml(info) {
+  var retry = (info && info.retry) || {};
+  var attrs = ' data-err-retry="' + escHtml(retry.kind || 'board') + '"';
+  if (retry.pageId) attrs += ' data-err-page="' + escHtml(retry.pageId) + '"';
+  if (retry.screenId) attrs += ' data-err-screen="' + escHtml(retry.screenId) + '"';
+  return '<div class="wb-screen-err" data-err-panel>' +
+    '<p class="wb-screen-err-title">' + escHtml((info && info.title) || '加载失败') + '</p>' +
+    (info && info.source ? '<p class="wb-screen-err-src">' + escHtml(info.source) + '</p>' : '') +
+    (info && info.reason ? '<p class="wb-screen-err-why">' + escHtml(info.reason) + '</p>' : '') +
+    '<div class="wb-screen-err-acts" data-ann-ui>' +
+      '<button type="button" class="wb-screen-err-act" data-err-home>回到 Pages</button>' +
+      '<button type="button" class="wb-screen-err-act"' + attrs + '>重试</button>' +
+    '</div>' +
+    '</div>';
 }
 
 function screenErrorHtml(pageId, screenId, err) {
-  return loadFailHtml('加载 ' + pageId + '/' + screenId + ' 失败 · ' + err);
+  return loadFailHtml({
+    title: '加载失败',
+    source: pageId + '/' + screenId,
+    reason: String(err),
+    retry: { kind: 'screen', pageId: pageId, screenId: screenId }
+  });
 }
 
 function fetchIncludeHtml(ref) {
@@ -108,8 +134,15 @@ export function fetchScreenHtml(pageId, screen) {
         });
       }
       return resolveIncludes(raw).then(function (html) {
-        if (pageId === COMPONENTS_ID) html = wrapFragmentForLibrary(html);
-        return { ok: true, html: html };
+        if (pageId === COMPONENTS_ID) return { ok: true, html: wrapFragmentForLibrary(html) };
+        // fragment 里的 CSS 资源与 JS sidecar 同规则重定位到 pageBaseUrl
+        // （lib/sidecar-css.js 有理由与测试）：@import 本来按 index.html 解析，
+        // 相对路径会打到站点根，作者写 ./x.css 必 404。组件页不改写 —— 它的
+        // 片段来自 kits/，pageBaseUrl 对它没有意义（JS sidecar 同样不覆盖）。
+        return {
+          ok: true,
+          html: rewriteFragmentAssetUrls(html, pageBaseUrl(wbGet().pageManifest, pageId))
+        };
       });
     })
     .catch(function (e) { return { ok: false, err: e }; });
