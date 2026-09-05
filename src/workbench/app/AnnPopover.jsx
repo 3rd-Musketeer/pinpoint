@@ -195,8 +195,13 @@ export function AnnPopover() {
                 <WbIcon name="ellipsis" size={14} className="size-3.5" />
               </Button>
             </DropdownMenu.Trigger>
-            <DropdownMenu.Content asChild align="end" sideOffset={4}>
-              <div className="wb-ann-more-menu z-50 min-w-[148px] rounded-lg bg-card p-1 shadow-[var(--wb-sh-3)]">
+            {/* Portal 到 body 是必须的：这块卡是 .wb-glass（backdrop-filter 给
+                position:fixed 的后代造了包含块）+ overflow:hidden，菜单留在卡里
+                会被卡的下沿裁掉 —— 卡越短裁得越多，最后一项「清空标注」首当其冲
+                （DOM 断言全绿、人点不到，与 2026-08-17 ScrollArea 同形）。 */}
+            <DropdownMenu.Portal>
+            <DropdownMenu.Content asChild align="end" sideOffset={4} collisionPadding={12}>
+              <div className="wb-ann-more-menu z-[60] min-w-[148px] rounded-lg bg-card p-1 shadow-[var(--wb-sh-3)]">
                 {/* 画布批注三态：文案单独一行 + 当前值，右侧通道只对文档形态有意义 */}
                 <div className="px-2 pb-1 pt-1.5 font-[var(--wb-font-mono)] text-[9px] font-semibold uppercase tracking-[0.1em] text-[color:var(--wb-faint)]"
                   id="wbann-bubble" data-bubble-mode={bubbleMode}>
@@ -232,6 +237,7 @@ export function AnnPopover() {
                 </DropdownMenu.Item>
               </div>
             </DropdownMenu.Content>
+            </DropdownMenu.Portal>
           </DropdownMenu.Root>
         ) : null}
       </div>

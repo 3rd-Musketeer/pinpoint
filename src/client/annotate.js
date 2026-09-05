@@ -977,7 +977,9 @@
     /* 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子被点亮 / 有卡在显示时，
        整个 overlay 升到列表（#wbdock，z-index 7）之上；平时留在它下面，列表照常
        盖住画布。底部横条（z-index 10）永远在最上层，不受这条影响。 */
-    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show){z-index:9;}',
+    // 点亮的钉子 / 显示中的卡 / 定位闪烁的高亮框都要压过右下的浮层槽（#wbdock
+    // z-index 7）—— owner 批注 2：「这个 panel 比 annotation 的高亮框还更靠上」。
+    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:9;}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
     '#ann-lasso{position:absolute;border:2px dashed #f5a623;background:rgba(245,166,35,.1);border-radius:var(--wb-r-1,4px);pointer-events:none;}',
@@ -1320,14 +1322,48 @@
     return false;
   }
 
-  /** composer 停靠右缘：侧边栏打开时让出 sidebar 宽度，保持 composer 不被压。 */
-  function composerDockedRight() {
-    var dock = document.getElementById('wbcanvas-dock');
-    var dockOpen = !!(dock && Array.prototype.some.call(dock.children, function (child) {
-      return !child.hidden && child.getClientRects().length > 0;
-    }));
-    if (dockOpen && overlay.clientWidth > 520) return '270px';
-    return sidebarOpen ? '304px' : '24px';
+  /** composer 的左右让位（2026-09-04 外壳重设计前只让右边）：workbench 的 chrome
+      从三栏布局变成压在满铺画布上的浮层，composer 又是绝对定位居中的一条 ——
+      不减掉浮层占位它就会钻到左栏玻璃面板或右下浮层槽底下（点得到但人看不见）。
+      两侧都按实际 bounding box 量：左 = 左栏面板右缘，右 = 注入端侧栏通道 /
+      画布 dock（section-nav + minimap）/ 右下浮层槽（弹出列表 · detail 卡）里
+      最靠左的那块。折叠、拖宽、列表开合都自动跟上，不吃 token 常量。 */
+  function composerDockInsets() {
+    var pad = 24;
+    var gap = 12;
+    var or = overlay.getBoundingClientRect();
+    function shownRect(el) {
+      if (!el || el.hidden) return null;
+      var r = el.getBoundingClientRect();
+      return r.width > 1 && r.height > 1 ? r : null;
+    }
+    // 浮层容器本身不吃事件也没有尺寸（inset:0 的透明层），量它露出来的孩子。
+    function leftmostChild(root) {
+      if (!root) return null;
+      var best = null;
+      Array.prototype.forEach.call(root.children, function (child) {
+        var r = shownRect(child);
+        if (r && (!best || r.left < best.left)) best = r;
+      });
+      return best;
+    }
+    var left = pad;
+    var side = shownRect(document.getElementById('wbside'));
+    if (side) left = Math.max(pad, side.right - or.left + gap);
+    var right = sidebarOpen ? 304 : pad;
+    [leftmostChild(document.getElementById('wbcanvas-dock')),
+      leftmostChild(document.getElementById('wbdock'))].forEach(function (r) {
+      if (r) right = Math.max(right, or.right - r.left + gap);
+    });
+    // 窄到放不下一条能用的 composer 时，让位全部作废 —— 挤成一条缝比压住更糟。
+    if (or.width - left - right < 320) return { left: pad + 'px', right: pad + 'px' };
+    return { left: left + 'px', right: right + 'px' };
+  }
+
+  function applyComposerDock(box) {
+    var insets = composerDockInsets();
+    box.style.left = insets.left;
+    box.style.right = insets.right;
   }
 
   function sidebarRowModel() {
@@ -1485,9 +1521,9 @@
     } else if (sidebar) {
       sidebar.hidden = true;
     }
-    // 开着的 composer 保持停靠右缘（未被用户拖走时）
+    // 开着的 composer 保持让位（未被用户拖走时）
     var openBox = document.getElementById('ann-box');
-    if (openBox && !composerPlacement) openBox.style.right = composerDockedRight();
+    if (openBox && !composerPlacement) applyComposerDock(openBox);
     notify();
   }
 
@@ -1933,7 +1969,7 @@
       if (composerPlacement) {
         placeFloatingComposer(composerPlacement.left, composerPlacement.top, true);
       } else {
-        box.style.right = composerDockedRight();
+        applyComposerDock(box);
         if (stageEl) stageEl.style.scrollPaddingBottom = (box.offsetHeight + 96) + 'px';
       }
     }
@@ -2096,10 +2132,23 @@
       composer.resizeObserver.observe(box);
       composer.resizeObserver.observe(overlay);
     }
-    var canvasDock = document.getElementById('wbcanvas-dock');
-    if (canvasDock && typeof MutationObserver !== 'undefined') {
+    // 让位的三个来源都要盯：画布 dock 的开合、右下浮层槽的换住客、左栏的
+    // 折叠与拖宽（宽度变化 ResizeObserver 才看得见，属性观察看不见）。
+    if (typeof MutationObserver !== 'undefined') {
       composer.dockObserver = new MutationObserver(syncComposerLayout);
-      composer.dockObserver.observe(canvasDock, { subtree: true, attributes: true, attributeFilter: ['hidden', 'class', 'style'] });
+      ['wbcanvas-dock', 'wbdock'].forEach(function (id) {
+        var node = document.getElementById(id);
+        if (node) {
+          composer.dockObserver.observe(node, {
+            childList: true, subtree: true, attributes: true,
+            attributeFilter: ['hidden', 'class', 'style']
+          });
+        }
+      });
+    }
+    if (composer.resizeObserver) {
+      var sideEl = document.getElementById('wbside');
+      if (sideEl) composer.resizeObserver.observe(sideEl);
     }
     syncComposerLayout();
     ta.focus();
