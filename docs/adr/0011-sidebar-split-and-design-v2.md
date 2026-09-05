@@ -1,6 +1,8 @@
 # 0011 · 侧栏左右分工 + 设计语言 V2（钢灰蓝 × S3 圆角）
 
-Status: 现行 · Date: 2026-08-14 · Scope: `src/workbench/app/`、`index.html`
+Status: 部分被取代（accent / 圆角 / 网格人格 / 设置视图仍现行） · Date: 2026-08-14 · Scope: `src/workbench/app/`、`index.html`
+
+Superseded-by: ADR 0031（右栏结构与模式单钮；左右分工原则由“浮动面板 + 底部横条 + 按需列表”取代）
 
 **Decided**（owner 在评审板 `previews/sidebar-variants` 上逐轮拍板，含 11 条标注反馈全部落地）:
 - **侧栏 = 左右分工**：左栏 = 页面上下文（Pages + 设置视图），右栏 = 标注工作台（可整栏折叠，画布两缘浮钮复开，右钮带计数）。
