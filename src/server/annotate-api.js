@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import { contentMtimeMs } from './lib/content-mtime.js';
+import { localManifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -66,7 +67,7 @@ function readAnnotateJs() {
 // are involved, so a plain `*` preflight contract covers every route.
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -196,6 +197,93 @@ export function createAnnotateHandler(options = {}) {
     return stores.get(entryId);
   }
 
+  // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
+  // 登记表整份还回去，调用方不必再打一次 GET）。
+  function registryPayload() {
+    return {
+      ok: registry.ok,
+      path: registry.path,
+      // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；url 条目与缺失
+      // 路径无此字段）—— workbench Pages 的「最近更新」排序与行内时间显示
+      // 的唯一来源。语义 = 内容文件改动，与标注活动无关。
+      entries: registry.entries.map((entry) => {
+        const mtime = contentMtimeMs(entry);
+        return mtime ? { ...entry, mtime } : entry;
+      }),
+      // 分组层（2026-09-04）：folders = owner 建的一层夹；pageFolders /
+      // pageOrder 只装「不是 registry 条目」的 manifest 页（条目自己的归属
+      // 与手动次序写在条目的 folder / order 字段上）。
+      folders: registry.folders || [],
+      pageFolders: registry.pageFolders || {},
+      pageOrder: registry.pageOrder || {},
+      errors: registry.errors,
+      warnings: registry.warnings,
+      service: { directOrigin: resolveDirectOrigin() },
+    };
+  }
+
+  // /health 与 reload 应答里的 registry 摘要：这里的 entries / folders /
+  // pageFolders 都是**数量**（完整清单走 GET /registry）。
+  function registrySummary(snapshot) {
+    return {
+      ok: snapshot.ok,
+      path: snapshot.path,
+      entries: snapshot.entries.length,
+      folders: (snapshot.folders || []).length,
+      pageFolders: Object.keys(snapshot.pageFolders || {}).length,
+      errors: snapshot.errors,
+      warnings: snapshot.warnings,
+    };
+  }
+
+  // 文件夹写接口认识的 id：registry 条目 + 本地 manifest 页（Component
+  // Library 等模板页不在登记表里，但一样能拖进夹）。
+  function knownPageIds() {
+    return localManifestPageIds(serviceRoot);
+  }
+
+  /**
+   * PUT /registry/folders · /registry/entries/:id/folder · /registry/order。
+   * 三条都是「校验 → 一次原子写 → reload → 广播 registry:update → 还回完整
+   * /registry 载荷」。任何未知 id / 未知文件夹都是 400，登记表一个字节不动。
+   */
+  async function handleRegistryWrite(req, res, urlPath) {
+    if (typeof registry.setFolders !== 'function') {
+      sendJson(res, 409, { error: 'registry_not_writable' });
+      return true;
+    }
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      sendJson(res, 400, { error: 'bad_json' });
+      return true;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'bad_request', message: '请求体必须是对象' });
+      return true;
+    }
+    const attach = urlPath.match(/^\/registry\/entries\/([^/]+)\/folder$/);
+    try {
+      if (urlPath === '/registry/folders') {
+        registry.setFolders(body.folders);
+      } else if (urlPath === '/registry/order') {
+        registry.setOrder(body.ids, { pageIds: knownPageIds() });
+      } else if (attach) {
+        const id = decodeURIComponent(attach[1]);
+        registry.setEntryFolder(id, { folder: body.folder ?? null, order: body.order }, { pageIds: knownPageIds() });
+      } else {
+        return false;
+      }
+    } catch (error) {
+      sendJson(res, 400, { error: 'bad_request', message: error.message });
+      return true;
+    }
+    onRegistryReload(registrySummary(registry));
+    sendJson(res, 200, registryPayload());
+    return true;
+  }
+
   // Shared entry gate: resolve the request's target entry or answer the loud
   // 400. Returns the entry id, or null after sending the rejection.
   function entryOrReject(res, raw) {
@@ -236,33 +324,20 @@ export function createAnnotateHandler(options = {}) {
         root: serviceRoot,
         dataDir: bucketDir(root, DEFAULT_ENTRY),
         dataRoot: root,
-        registry: {
-          ok: registry.ok,
-          path: registry.path,
-          entries: registry.entries.length,
-          errors: registry.errors,
-          warnings: registry.warnings,
-        },
+        registry: registrySummary(registry),
       });
       return true;
     }
 
     if (req.method === 'GET' && urlPath === '/registry') {
-      // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；url 条目与缺失
-      // 路径无此字段）—— workbench Pages 的「最近更新」排序与行内时间显示
-      // 的唯一来源。语义 = 内容文件改动，与标注活动无关。
-      sendJson(res, 200, {
-        ok: registry.ok,
-        path: registry.path,
-        entries: registry.entries.map((entry) => {
-          const mtime = contentMtimeMs(entry);
-          return mtime ? { ...entry, mtime } : entry;
-        }),
-        errors: registry.errors,
-        warnings: registry.warnings,
-        service: { directOrigin: resolveDirectOrigin() },
-      });
+      sendJson(res, 200, registryPayload());
       return true;
+    }
+
+    // 分组层的写接口（workbench 的文件夹操作；CLI 仍是文件直写 + reload）。
+    if (req.method === 'PUT' && urlPath.startsWith('/registry/')) {
+      if (await handleRegistryWrite(req, res, urlPath)) return true;
+      return false;
     }
 
     if (req.method === 'GET' && urlPath === '/events') return handleSse(req, res);
@@ -312,13 +387,7 @@ export function createAnnotateHandler(options = {}) {
         return true;
       }
       const next = registry.reload();
-      const summary = {
-        ok: next.ok,
-        path: next.path,
-        entries: next.entries.length,
-        errors: next.errors,
-        warnings: next.warnings,
-      };
+      const summary = registrySummary(next);
       onRegistryReload(summary);
       sendJson(res, 200, summary);
       return true;
