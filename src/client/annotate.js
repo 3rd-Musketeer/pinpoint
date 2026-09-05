@@ -153,6 +153,9 @@
   function bubbleMarkView(m) {
     return {
       n: m.n,
+      // 眉标 = 这条标注指着什么，与侧栏行的 cap 同一份口径（annRowCap）——
+      // 2026-09-04 评审板 H1 起卡片头不再是琥珀序号 chip + 「评论」。
+      cap: annRowCap(m),
       content: contentToDisplay(m.content != null ? m.content : '', m.targets || [])
     };
   }
@@ -907,9 +910,14 @@
     // #ann-sidebar 规则上的钉值保留原样：共享行样式入参 + 三向守卫锚点（与本规则同值）。
     '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{box-sizing:border-box;}',
-    // 悬浮工具条：V4 起从深色毛玻璃收编浮层白面语言（白面 + 发丝描边 + sh-2 + r-4），
-    // 按钮 28px 档 ghost（hover 浅面）；武装/on 态琥珀面与侧栏分段、workbench 标注开关同值。
-    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);padding:7px 12px;box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1));}',
+    /* 悬浮工具条与标注面板：2026-09-04 外壳重设计（ADR 0031）「注入端 #ann-sidebar
+       换同一档玻璃，两端材质一致」。F2 磨砂的配方在这里是字面量，不是 token ——
+       client 是注进任意页面的单文件，读不到 workbench 的 --wb-*（同一个理由让
+       [data-ann-ui] 上钉了一整套 --wb-* 值），所以玻璃这四个数也钉在规则里：
+       白 88% + blur 20 saturate 1.2 + 圆角 14 + sh-3 + 0.5px 上缘内高光。
+       改这四个数要连 src/workbench/wb-tokens.css 的 --wb-glass / --wb-glass-blur /
+       --wb-r-glass / --wb-sh-3 一起改，双端材质不许分家。 */
+    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;padding:7px 12px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;font-weight:var(--wb-w-medium,500);height:28px;padding:0 10px;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-muted,#6b6b70);transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),box-shadow var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
     '#ann-toolbar button.on{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
@@ -919,11 +927,12 @@
     '#ann-status{font-size:10px;color:var(--wb-faint,#8d8d8d);}',
     '#ann-status.err{color:var(--wb-danger,#b84230);}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
-    // 面板视觉向 workbench 侧边栏看齐：实色浅灰底、发丝分割线、灰阶 hover、
-    // 阶梯圆角 —— 与浮动工具条同一套浮层语言（V4 起工具条/composer 也收编进来）。
+    // 标注面板：与工具条同一档 F2 磨砂（配方与注意事项见上一条注释）。它从贴边
+    // 满高的实色鎏改成浮在页面上的玻璃板 —— 四缘留 12px，圆角 14，overflow:hidden
+    // 让滚动区不冒出圆角。宽度 280 不变，工具条让位的 304 = 12 + 280 + 12。
     // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
-    '#ann-sidebar{position:fixed;top:0;right:0;bottom:0;width:280px;z-index:2147483645;background:var(--wb-side,#f6f6f7);box-shadow:-8px 0 24px rgba(0,0,0,.08);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;overflow:hidden;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
@@ -2794,7 +2803,7 @@
   // 但独立于 标注/交互 模式：开关一开就在画布上把 content 渲染成气泡，
   // 序号与 pin 对应，半透明细线指向锚点。稀疏默认放右侧，密集时左右分流。
   var bubbleNodes = Object.create(null);   // n → { m, node, height }
-  var BUBBLE_W = 240;
+  var BUBBLE_W = 186;   // 2026-09-04 评审板 H1 的评论卡宽度
   var BUBBLE_MARGIN = 12;
 
   function clearBubbles() {
@@ -2896,10 +2905,12 @@
       if (!anchorView) return;
       var local = viewToOverlayRect(anchorView);
       if (local[1] + local[3] < 0 || local[1] > overlayH) return;
+      var view = bubbleMarkView(m);
       out.push({
         n: m.n,
         rect: [Math.round(local[0]), Math.round(local[1]), Math.round(local[2]), Math.round(local[3])],
-        content: bubbleMarkView(m).content
+        cap: view.cap,
+        content: view.content
       });
     });
     return out;
