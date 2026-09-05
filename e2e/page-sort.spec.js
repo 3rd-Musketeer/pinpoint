@@ -4,6 +4,8 @@ import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
+import { seedTemplatePagesVisible } from './workbench-helpers.js';
+
 // 2026-08-17g：Pages 时间显示与排序切换。四个 dir 固件的 mtime 在 beforeAll
 // 压成受控值（git 不追踪 mtime，utimes 不污染工作区；workers=1 串行，无并发
 // 竞争），「最近更新」档的顺序因此是确定的。
@@ -24,21 +26,6 @@ function pressMtimes() {
     for (const name of fs.readdirSync(dir)) fs.utimesSync(path.join(dir, name), date, date);
     fs.utimesSync(dir, date, date);
   }
-}
-
-// 模板页（Component Library / Example Library / Example HTML）2026-09-04 起默认
-// 不显示（ADR 0032，开关在预览设置）。本文件的断言就落在那三页上，所以进
-// workbench 之前先把开关打开——init script 在页面脚本之前跑，合并写进同一份
-// prefs，不动其它偏好。
-async function seedTemplatePagesVisible(page) {
-  await page.addInitScript(() => {
-    try {
-      const key = 'pinpoint-wb';
-      const prefs = JSON.parse(localStorage.getItem(key) || '{}');
-      prefs.showTemplatePages = true;
-      localStorage.setItem(key, JSON.stringify(prefs));
-    } catch { /* 读不到 localStorage 时让断言自己失败，不在这里吞 */ }
-  });
 }
 
 async function openWorkbench(page) {

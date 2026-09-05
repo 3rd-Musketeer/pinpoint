@@ -917,7 +917,8 @@
        白 88% + blur 20 saturate 1.2 + 圆角 14 + sh-3 + 0.5px 上缘内高光。
        改这四个数要连 src/workbench/wb-tokens.css 的 --wb-glass / --wb-glass-blur /
        --wb-r-glass / --wb-sh-3 一起改，双端材质不许分家。 */
-    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;padding:7px 12px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
+    '#ann-sidebar,#ann-toolbar{background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
+    '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;padding:7px 12px;}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;font-weight:var(--wb-w-medium,500);height:28px;padding:0 10px;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-muted,#6b6b70);transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),box-shadow var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
     '#ann-toolbar button.on{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
@@ -927,12 +928,12 @@
     '#ann-status{font-size:10px;color:var(--wb-faint,#8d8d8d);}',
     '#ann-status.err{color:var(--wb-danger,#b84230);}',
     'html.ann-sidebar-open #ann-toolbar{right:304px;}',
-    // 标注面板：与工具条同一档 F2 磨砂（配方与注意事项见上一条注释）。它从贴边
-    // 满高的实色鎏改成浮在页面上的玻璃板 —— 四缘留 12px，圆角 14，overflow:hidden
-    // 让滚动区不冒出圆角。宽度 280 不变，工具条让位的 304 = 12 + 280 + 12。
+    // 标注面板：材质走上面与工具条共用的玻璃规则。它从贴边满高的实色面改成浮在
+    // 页面上的玻璃板 —— 四缘留 12px，overflow:hidden 让滚动区不冒出圆角。
+    // 宽度 280 不变，工具条让位的 304 = 12 + 280 + 12。
     // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
-    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;overflow:hidden;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
@@ -983,11 +984,9 @@
        视口外」那条既有规矩，两个语义不许合并。 */
     '#ann-bubbles .ann-bubble{opacity:0;pointer-events:none;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease;}',
     '#ann-bubbles .ann-bubble.ann-bubble--show{opacity:1;pointer-events:auto;transform:none;}',
-    /* 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子被点亮 / 有卡在显示时，
-       整个 overlay 升到列表（#wbdock，z-index 7）之上；平时留在它下面，列表照常
-       盖住画布。底部横条（z-index 10）永远在最上层，不受这条影响。 */
-    // 点亮的钉子 / 显示中的卡 / 定位闪烁的高亮框都要压过右下的浮层槽（#wbdock
-    // z-index 7）—— owner 批注 2：「这个 panel 比 annotation 的高亮框还更靠上」。
+    /* owner 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子点亮 / 有卡在显示 /
+       定位闪烁时，整个 overlay 升到列表（#wbdock，z-index 7）之上；平时留在它下面，
+       列表照常盖住画布。底部横条（z-index 10）永远在最上层，不受这条影响。 */
     '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:9;}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
@@ -2143,8 +2142,14 @@
     }
     // 让位的三个来源都要盯：画布 dock 的开合、右下浮层槽的换住客、左栏的
     // 折叠与拖宽（宽度变化 ResizeObserver 才看得见，属性观察看不见）。
+    // 浮层槽里 React 每次提交（hover 态、行高亮）都会触发观察；一帧内合并成一次量测。
+    var dockSyncRaf = 0;
+    function syncComposerLayoutSoon() {
+      if (dockSyncRaf) return;
+      dockSyncRaf = requestAnimationFrame(function () { dockSyncRaf = 0; syncComposerLayout(); });
+    }
     if (typeof MutationObserver !== 'undefined') {
-      composer.dockObserver = new MutationObserver(syncComposerLayout);
+      composer.dockObserver = new MutationObserver(syncComposerLayoutSoon);
       ['wbcanvas-dock', 'wbdock'].forEach(function (id) {
         var node = document.getElementById(id);
         if (node) {
@@ -2877,7 +2882,9 @@
       /* 2026-09-04 评审板 H1：一次只出一张卡（hover 的那一枚钉子），所以不再
          两列打包 —— 卡就摆在钉子右边；右边放不下就翻到左边。钉子在锚点框的
          右上角（badgePositionForRect，22px），卡与它留 13px 气口。 */
-      var h = entry.node.offsetHeight || entry.height || 0;
+      // 高度用 renderBubbles 量好的缓存值：每帧对每张卡读 offsetHeight 会在上一张
+      // 刚写完 left/top 后强制一次布局，滚动时 M 张卡就是 M 次布局。
+      var h = entry.height || 0;
       var left = local[0] + local[2] + 13;
       if (left + bw > overlayW - BUBBLE_MARGIN) left = local[0] - bw - 13;
       left = Math.max(BUBBLE_MARGIN, Math.min(left, overlayW - bw - BUBBLE_MARGIN));

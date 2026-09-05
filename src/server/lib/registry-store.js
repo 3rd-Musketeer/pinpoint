@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from './registry.js';
+import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, normalizeFolder, PAGE_ID_PATTERN } from './registry.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url']);
 const WRITE_ROLES = new Set(['product', 'draft']);
@@ -152,14 +152,22 @@ export function updateRegistryEntry(registryPath, raw) {
   const doc = readRegistryDoc(registryPath);
   const index = doc.entries.findIndex((entry) => entry && entry.id === (raw && raw.id));
   if (index < 0) throw new Error(`条目不存在：${raw && raw.id}`);
-  const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
+  const entries = replaceEntry(doc.entries, index, raw);
+  writeRegistryFile(registryPath, { ...doc, entries });
+  return entries[index];
+}
+
+/**
+ * entries 里换掉第 index 条：对其余 id 做严格校验、归一，返回新数组。
+ * move / 进夹 / 排序都走这一条——同一个条目改任何字段，校验口径只有一个。
+ */
+function replaceEntry(entries, index, raw) {
+  const otherIds = new Set(entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
   const problem = validateNewEntry(raw, otherIds);
   if (problem) throw new Error(problem);
-  const entry = normalizeNewEntry(raw);
-  const entries = [...doc.entries];
-  entries[index] = entry;
-  writeRegistryFile(registryPath, { ...doc, entries });
-  return entry;
+  const next = [...entries];
+  next[index] = normalizeNewEntry(raw);
+  return next;
 }
 
 /**
@@ -222,11 +230,6 @@ export function addRegistryEntry(registryPath, raw, options = {}) {
    落到同一份文件（docs/registry.md「写入走 CLI 或 workbench 的文件夹操作」）。
    删夹永远不删页：指着它的条目丢掉 folder 字段变成散页。 */
 
-/** 现有文件夹（写侧原样读，不做宽容归一）。文件损坏时抛。 */
-export function listRegistryFolders(registryPath) {
-  return foldersOf(readRegistryDoc(registryPath));
-}
-
 /**
  * 分组层的现状，一次读出来（CLI 的预检读侧：`pinpoint folder list` 要数每个夹
  * 里有几个页，写子命令要在动手前知道有哪些夹）。folders 原样，两张 page 映射
@@ -275,13 +278,6 @@ export function validateFolderList(raw) {
     }
   }
   return null;
-}
-
-function normalizeFolder(raw) {
-  const folder = { id: raw.id, name: typeof raw.name === 'string' && raw.name ? raw.name : raw.id };
-  if (raw.collapsed === true) folder.collapsed = true;
-  if (Number.isFinite(raw.order)) folder.order = raw.order;
-  return folder;
 }
 
 /** 空的 folders / pageFolders / pageOrder 不留在文件里（登记表保持能一眼读完）。 */
@@ -347,8 +343,7 @@ function classifyPageId(doc, id, pageIds) {
  * order 可选，同一次写入里带上（手动排序只在 workbench 排序档「默认」时生效）。
  * 返回 { id, kind, folder, order }。
  */
-export function setEntryFolder(registryPath, id, { folder = null, order } = {}, { pageIds = [] } = {}) {
-  const target = folder === undefined ? null : folder;
+export function setEntryFolder(registryPath, id, { folder: target = null, order } = {}, { pageIds = [] } = {}) {
   if (target !== null && (typeof target !== 'string' || !FOLDER_ID_PATTERN.test(target))) {
     throw new Error(`folder 必须是文件夹 id 或 null：${JSON.stringify(target)}`);
   }
@@ -367,12 +362,7 @@ export function setEntryFolder(registryPath, id, { folder = null, order } = {}, 
     if (target === null) delete raw.folder;
     else raw.folder = target;
     if (order !== undefined) raw.order = order;
-    const otherIds = new Set(doc.entries.filter((_, i) => i !== where.index).map((entry) => entry && entry.id));
-    const problem = validateNewEntry(raw, otherIds);
-    if (problem) throw new Error(problem);
-    const entries = [...doc.entries];
-    entries[where.index] = normalizeNewEntry(raw);
-    out = { ...doc, entries };
+    out = { ...doc, entries: replaceEntry(doc.entries, where.index, raw) };
   } else {
     const pageFolders = pageMapOf(doc, 'pageFolders');
     if (target === null) delete pageFolders[id];
@@ -403,15 +393,11 @@ export function assignRegistryOrder(registryPath, ids, { pageIds = [] } = {}) {
   const doc = readRegistryDoc(registryPath);
   const placed = ids.map((id, index) => ({ id, index, where: classifyPageId(doc, id, pageIds) }));
 
-  const entries = [...doc.entries];
+  let entries = doc.entries;
   const pageOrder = pageMapOf(doc, 'pageOrder');
   for (const item of placed) {
     if (item.where.kind === 'entry') {
-      const raw = { ...entries[item.where.index], order: item.index };
-      const otherIds = new Set(entries.filter((_, i) => i !== item.where.index).map((entry) => entry && entry.id));
-      const problem = validateNewEntry(raw, otherIds);
-      if (problem) throw new Error(problem);
-      entries[item.where.index] = normalizeNewEntry(raw);
+      entries = replaceEntry(entries, item.where.index, { ...entries[item.where.index], order: item.index });
     } else {
       pageOrder[item.id] = item.index;
     }

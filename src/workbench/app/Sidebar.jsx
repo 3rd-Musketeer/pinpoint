@@ -47,13 +47,13 @@
 //  - 「页面」段 = 文件夹在前、散页在后（lib/page-groups.js 的纯函数给模型，
 //    ADR 0032）；夹可折叠、可改名、可删（删夹不删页）；页靠拖放入夹，夹内在
 //    「默认」档可拖排序。三条写接口在 lib/folder-api.js。
-//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首不放图标，
-//    标题从行的左内边距起（类型小标 2026-09-05 撤，类型只在横条的类型标上出现）；
-//    只有文件夹行带 chevron + 夹图标，那是结构不是类型；行尾 11 mono。
+//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首一个类型图标
+//    （画布 / 文档 / 网页，映射在 lib/page-groups.js），文件夹行带 chevron + 夹图标；
+//    行尾 11 mono。
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
-import { Fragment, useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
   entriesOfActiveBoard,
@@ -86,10 +86,11 @@ import {
   filterPages,
   groupPages,
   nextFolderId,
-  recentRows,
-  visiblePages,
   PAGE_KIND_ICONS,
-  pageKindKey
+  pageDisplayTitle,
+  pageKindKey,
+  recentRows,
+  visiblePages
 } from '../lib/page-groups.js';
 import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
 import { readPrefs, readRecentPages, savePrefs } from '../lib/prefs.js';
@@ -205,15 +206,10 @@ function PageRow(props) {
   var [renaming, setRenaming] = useState(false);
   var inputRef = useRef(null);
   var doneRef = useRef(false);
-  var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
+  var title = pageDisplayTitle(page, customName === undefined ? null : { [page.id]: customName });
   var dnd = props.dnd;
-  // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题；壳标 pill 与
-  // data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
   // 2026-08-17：行尾 hover copy 钮退役，复制 / 重命名进右键菜单（row-menu）。
-  // 2026-09-04：行尾 11 mono 元数据。同日切片 ② 曾在行首放一个 14px 类型槽
-  // （url 出地球、file 出文档、其余留空），2026-09-05 owner 否掉：「有的 item 有
-  // icon，有的没有，icon 是什么意思呢」。页面行行首没有任何图标，标题一律从行的
-  // 左内边距起；类型只在横条的类型标（画布 / 网页 / 文档）上出现。
+  // 2026-09-04：行尾 11 mono 元数据。行首类型图标的来历见 lib/page-groups.js。
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -428,7 +424,7 @@ function RecentRow(props) {
   var page = props.page;
   var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
   var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
-  var title = page.system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
+  var title = pageDisplayTitle(page, customName === undefined ? null : { [page.id]: customName });
   return (
     <button type="button" data-recent-page={page.id}
       data-state={active ? 'on' : undefined}
@@ -729,12 +725,18 @@ function useFolderActions(folders, model, sort) {
     return promise.catch(fail);
   }
 
-  function foldersPayload() {
+  function resolvedCollapsed(folder, local) {
+    var v = local[folder.id];
+    return v === undefined ? !!folder.collapsed : v;
+  }
+
+  /** 整表写入的载荷；local 是折叠态的本地覆盖（缺省用当前的）。 */
+  function foldersPayload(local) {
+    local = local || collapsedLocal;
     return folders.map(function (folder) {
       var out = { id: folder.id };
       if (folder.name && folder.name !== folder.id) out.name = folder.name;
-      var collapsed = collapsedLocal[folder.id] === undefined ? !!folder.collapsed : collapsedLocal[folder.id];
-      if (collapsed) out.collapsed = true;
+      if (resolvedCollapsed(folder, local)) out.collapsed = true;
       return out;
     });
   }
@@ -752,25 +754,23 @@ function useFolderActions(folders, model, sort) {
     looseDrop: looseDrop,
     error: error,
 
-    isCollapsed: function (folder) {
-      var local = collapsedLocal[folder.id];
-      return local === undefined ? !!folder.collapsed : local;
-    },
+    isCollapsed: function (folder) { return resolvedCollapsed(folder, collapsedLocal); },
 
     toggleFolder: function (id) {
-      var current = collapsedLocal[id];
-      var folder = folders.filter(function (f) { return f.id === id; })[0];
-      var next = current === undefined ? !(folder && folder.collapsed) : !current;
+      var folder = folders.find(function (f) { return f.id === id; });
+      if (!folder) return;
       var merged = Object.assign({}, collapsedLocal);
-      merged[id] = next;
+      merged[id] = !resolvedCollapsed(folder, collapsedLocal);
       setCollapsedLocal(merged);
-      run(putFolders(folders.map(function (f) {
-        var out = { id: f.id };
-        if (f.name && f.name !== f.id) out.name = f.name;
-        var collapsed = f.id === id ? next : (merged[f.id] === undefined ? !!f.collapsed : merged[f.id]);
-        if (collapsed) out.collapsed = true;
-        return out;
-      })));
+      // 写完（成功登记表已更新、失败则回到登记表的值）本地覆盖都该退场，
+      // 否则一次被拒的写会让这个夹永远与登记表不一致。
+      run(putFolders(foldersPayload(merged))).then(function () {
+        setCollapsedLocal(function (prev) {
+          var next = Object.assign({}, prev);
+          delete next[id];
+          return next;
+        });
+      });
     },
 
     createFolderWith: function (pageId) {
@@ -843,7 +843,11 @@ function useFolderActions(folders, model, sort) {
       e.dataTransfer.dropEffect = 'move';
       if (folderId && drag.folder === folderId && sort === 'default') {
         var box = e.currentTarget.getBoundingClientRect();
-        setDropPage({ id: pageId, before: e.clientY < box.top + box.height / 2 });
+        var before = e.clientY < box.top + box.height / 2;
+        // dragover 连续触发；落点没变就别换对象，整栏免得跟着每次指针移动重渲染。
+        setDropPage(function (prev) {
+          return prev && prev.id === pageId && prev.before === before ? prev : { id: pageId, before: before };
+        });
         setDropFolderId(null);
       } else if (folderId) {
         setDropFolderId(folderId);
@@ -909,7 +913,6 @@ export function Sidebar() {
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
-  useWorkbenchStore(function (s) { return s.pageManifest; }); // 分组模型跟着清单重算
   var [query, setQuery] = useState('');
   var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
   // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
@@ -918,24 +921,32 @@ export function Sidebar() {
     var timer = setInterval(function () { setNow(Date.now()); }, 60000);
     return function () { clearInterval(timer); };
   }, []);
-  // 模板页开关住 store（设置视图写，这里读），初值来自 prefs。
-  useEffect(function () { wbSet({ showTemplatePages: !!readPrefs().showTemplatePages }); }, []);
+  var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 
-  var grouping = pageGrouping();
-  var pages = filterPages(
-    visiblePages(sidebarPages(), { showTemplates: showTemplates, keepId: activePageId }),
-    query
-  );
-  var model = groupPages({
-    pages: pages,
-    folders: grouping.folders,
-    pageFolders: grouping.pageFolders,
-    pageOrder: grouping.pageOrder,
-    sort: sort
-  });
-  var dnd = useFolderActions(grouping.folders, model, sort);
+  // 分组模型只在清单 / 开关 / 当前页 / 搜索 / 排序变了才重算 —— 拖放中的落点态
+  // 与每分钟的时间 tick 都会让整栏重渲染，别让它们顺带重排一遍。
+  var derived = useMemo(function () {
+    var grouping = pageGrouping();
+    var pages = filterPages(
+      visiblePages(sidebarPages(), { showTemplates: showTemplates, keepId: activePageId }),
+      query
+    );
+    return {
+      grouping: grouping,
+      pages: pages,
+      model: groupPages({
+        pages: pages,
+        folders: grouping.folders,
+        pageFolders: grouping.pageFolders,
+        pageOrder: grouping.pageOrder,
+        sort: sort
+      })
+    };
+  }, [manifest, showTemplates, activePageId, query, sort]);
+  var model = derived.model;
+  var dnd = useFolderActions(derived.grouping.folders, model, sort);
   // 「最近」与「页面」吃同一份过滤结果 —— 搜索是跨段的一条规则，不是每段一套。
-  var recent = recentRows(readRecentPages(), pages);
+  var recent = recentRows(readRecentPages(), derived.pages);
 
   return (
     <Fragment>

@@ -192,8 +192,7 @@ export function useDetailTarget() {
 
 export function DetailPanel(props) {
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  var derived = useDetailTarget();
-  var target = props && props.target ? props.target : derived;
+  var target = props.target;
 
   if (!target) return null;
 

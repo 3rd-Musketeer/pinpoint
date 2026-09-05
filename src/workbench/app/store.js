@@ -54,16 +54,12 @@ export const useWorkbenchStore = create((set) => ({
   theme: 'light',
   // 设置视图（boot-prefs 的 setter/apply* 写；SettingsView 组件读）
   frame: 'screen',
-  textSize: 'default',
-  lockFont: 'helvetica',
   clockMode: 'system',
   clockFixed: '9:41',
   // 画布工具（board-nav 写；CanvasHud 组件读；初始值 = 首访默认缩放 0.5）
   canvasZoom: '0.5',
   // 导出 picker 对话框开关（decisions 2026-08-15d 单入口；CanvasHud 写，ExportPicker 读）
   exportPickerOpen: false,
-  // 画布背景三态（grid 双线网格 / dots 圆点纸 / plain 空白；boot-prefs setStageBg 写）
-  stageBg: 'grid',
   minimapOpen: false,
   minimapAvailable: false,
   sectionNavOpen: false,

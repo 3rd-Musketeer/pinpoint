@@ -9,7 +9,6 @@ import {
   assignRegistryOrder,
   createRegistryStore,
   listRegistryEntries,
-  listRegistryFolders,
   listRegistryIds,
   setEntryFolder,
   updateRegistryEntry,
@@ -312,12 +311,6 @@ test('writeRegistryFolders: 清空 folders 后文件里连 key 都不留；非�
   const doc = readDoc(file);
   assert.equal('folders' in doc, false);
   assert.deepEqual(doc.entries.map((e) => e.id), ['alpha', 'beta']);
-});
-
-test('listRegistryFolders: 现有文件夹，缺省是空表', (t) => {
-  const { file, dir } = withFolders(t);
-  assert.deepEqual(listRegistryFolders(file).map((f) => f.id), ['shipped', 'wip']);
-  assert.deepEqual(listRegistryFolders(path.join(dir, 'missing.json')), []);
 });
 
 test('setEntryFolder: registry 条目进夹 / 出夹，order 同一次写入带上', (t) => {

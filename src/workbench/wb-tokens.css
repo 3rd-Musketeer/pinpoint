@@ -22,7 +22,6 @@
   --wb-stage-bg:#f5f6f8; /* 画布冷中性纸（2026-09-04 外壳重设计裁决 2，取代暖纸 #faf8f4；Radix slate 2–3 之间，产品调） */
   --wb-grid-1:color-mix(in srgb, var(--wb-accent) 9%, transparent);  /* 120px 主网格线（2026-09-04 比旧值淡一档：13% → 9%） */
   --wb-grid-2:color-mix(in srgb, var(--wb-accent) 4%, transparent);  /* 24px 发丝网格线（6% → 4%） */
-  --wb-stage-dot:rgba(94,79,56,.20); /* 画布「圆点纸」档点阵（背景三态之一；2026-08-13 评审板 C 点阵收编，屏空间固定，落在 .wb-stage-wrap[data-grid=dots]） */
   --wb-surface:#fff; /* chrome 纯白面（选中态/卡面/强调面上的文字）—— shadcn 桥需要时归并的起点 */
   --wb-glass:rgba(255,255,255,.88); /* 浮动面板材质（2026-09-04 评审板 F2 磨砂：白 88%）—— 左栏 / 底部横条 / 弹出列表同一配方 */
   --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */

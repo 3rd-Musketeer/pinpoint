@@ -73,7 +73,7 @@ function applyIosRoots(p, root) {
   var scope = root || document;
   scope.querySelectorAll('.ios-root').forEach(function (r) {
     r.setAttribute('data-theme', p.theme || 'light');
-    r.setAttribute('data-text-size', p.textSize || 'default');
+    r.setAttribute('data-text-size', 'default');
     r.classList.toggle('screen-only', (p.frame || 'screen') === 'screen');
   });
 }
@@ -106,29 +106,12 @@ export var setTheme = makePref('theme', {
   refit: true
 });
 
-export var setTextSize = makePref('textSize', {
-  apply: function (val) {
-    wbSet({ textSize: val });
-    applyIosRootValue('data-text-size', val);
-  },
-  refit: true
-});
-
 export var setFrame = makePref('frame', {
   apply: function (val) {
     wbSet({ frame: val });
     applyIosRootValue('frame', val);
   },
   refit: true
-});
-
-// 画布背景三态（grid/dots/plain）—— 属性钉在 .wb-stage-wrap（纹理层），store 供 SettingsView 订阅
-export var setStageBg = makePref('stageBg', {
-  apply: function (val) {
-    wbSet({ stageBg: val });
-    var wrap = document.querySelector('.wb-stage-wrap');
-    if (wrap) wrap.setAttribute('data-grid', val);
-  }
 });
 
 export var setCanvasZoom = makePref('canvasZoom', {
@@ -322,12 +305,6 @@ function boardZoom(val) {
   return String(val);
 }
 
-export function applyLockFont(val) {
-  wbSet({ lockFont: val });
-  document.documentElement.setAttribute('data-lock-font', val);
-  if (window.iOSKit) window.iOSKit.refresh();
-}
-
 export function applyClock(mode, fixedIos) {
   wbSet({ clockMode: mode });
   document.documentElement.setAttribute('data-clock-mode', mode);
@@ -359,20 +336,16 @@ export function applyBootPrefs(prefs, options) {
   }
   setMinimapOpen(false);
 
-  // 2026-09-05 设置精简：字号、画布纹理、锁屏字体不再有控件，启动时一律回默认，
-  // 旧 prefs 里存过的值不再生效（否则一个看不见的开关会永远卡在旧档）。
-  prefs.textSize = 'default';
-  prefs.stageBg = 'grid';
-  prefs.lockFont = 'helvetica';
+  // 2026-09-05 设置精简：字号 / 画布纹理 / 锁屏字体不再是设置，值钉在标记里
+  // （.ios-root data-text-size、<html data-lock-font>、.wb-stage-wrap 的网格）。
   applyIosRoots(prefs);
   wbSet({
     theme: prefs.theme || 'light',
-    textSize: 'default',
-    frame: prefs.frame || 'screen'
+    frame: prefs.frame || 'screen',
+    // 模板页开关（ADR 0032）：设置视图写，左栏读，初值与其它偏好同一处进 store。
+    showTemplatePages: !!prefs.showTemplatePages
   });
-  applyLockFont('helvetica');
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
-  setStageBg('grid');
   setCanvasZoom(zoomForPage(pageId), { save: false });
 
   if (options.shell !== false) {

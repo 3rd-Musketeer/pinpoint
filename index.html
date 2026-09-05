@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-lock-font="helvetica">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -138,9 +138,11 @@
 
   .wb-section-head {
     font:var(--wb-w-semibold) 11px/1 var(--wb-font-mono);
-    letter-spacing:.08em; text-transform:uppercase; color:var(--wb-muted);
+    letter-spacing:.08em; color:var(--wb-muted);
     padding:12px 8px 6px;
   }
+  /* 设置视图的段头（iOS 预览 / 界面）同一档字，行内边距由视图自己的 --wb-pad 给。 */
+  .wb-settings-view .wb-section-head { margin-top:4px; padding:12px 0 6px; letter-spacing:0; }
   .wb-section[data-section="recent"] .wb-section-head { padding-top:6px; }
   .wb-section-head-row { display:flex; align-items:center; justify-content:space-between; padding-right:8px; }
   .wb-section-head-row .wb-page-sort { margin-top:6px; }
@@ -157,8 +159,7 @@
   .wb-row:hover { background:var(--wb-hover); }
   .wb-row.on, .wb-row.on:hover { background:var(--wb-sel); font-weight:var(--wb-w-semibold); }
   .wb-row-glyph { width:14px; height:14px; flex:none; color:var(--wb-faint); }
-  /* 只剩「新建文件夹」一行用：把 folder-plus 图标对到文件夹行的夹图标那一列。
-     页面行行首没有槽（2026-09-05 类型小标撤，标题一律从 8px 内边距起）。 */
+  /* 只剩「新建文件夹」一行用：把 folder-plus 图标对到文件夹行的夹图标那一列。 */
   .wb-row-slot { width:14px; flex:none; }
   /* 页面行与最近行行首 = 类型图标（2026-09-05 下午 owner 定的映射：画布 / 文档 / 网页
      每行都有），14 + gap 7 = 21，标题离面板边 35px，与评审板 C1 / F2 一致。
@@ -361,28 +362,18 @@
      #wbgear 收编在 app/ui/button.jsx（tool variant，V0）；设置视图皮肤收编在
      app/SettingsView.jsx（V1）—— 各处旧规则均已删除。 */
 
-  /* 画布背景三态（2026-08-15 V2 图纸人格，decisions 08-14/08-15）：钉在不滚动的 wrap 上
+  /* 画布背景（2026-08-15 V2 图纸人格）：24/120 双线网格钉在不滚动的 wrap 上
      （屏空间固定 —— pan/zoom 不带动、无 moiré），#wbstage 透明透出。
-     grid = 24/120 双线网格（默认）；dots = 圆点纸（08-13 评审板 C 点阵收编为一档）；
-     plain = 空白浅面。data-grid 由 boot-prefs setStageBg 写。 */
+     2026-09-05 起只有这一档：圆点纸 / 空白两档与「画布」设置一起退役。 */
   .wb-stage-wrap {
     position:absolute; inset:0; display:flex; min-height:0;
     background-color:var(--wb-stage-bg);
-  }
-  .wb-stage-wrap[data-grid="grid"] {
     background-image:
       linear-gradient(var(--wb-grid-1) 1px, transparent 1px),
       linear-gradient(90deg, var(--wb-grid-1) 1px, transparent 1px),
       linear-gradient(var(--wb-grid-2) 1px, transparent 1px),
       linear-gradient(90deg, var(--wb-grid-2) 1px, transparent 1px);
     background-size:120px 120px, 120px 120px, 24px 24px, 24px 24px;
-  }
-  .wb-stage-wrap[data-grid="dots"] {
-    background-image:radial-gradient(circle, var(--wb-stage-dot) 1.3px, transparent 1.8px);
-    background-size:24px 24px;
-  }
-  .wb-stage-wrap[data-grid="plain"] {
-    background-color:color-mix(in srgb, var(--wb-accent) 2%, #fff);
   }
   /* main stage — canvas has intrinsic size; #wbstage is only a scrollport */
   .wb-stage {
@@ -1059,7 +1050,7 @@
 <body>
 
 <div class="wb" id="wbroot">
-  <div class="wb-stage-wrap" data-grid="grid">
+  <div class="wb-stage-wrap">
     <main class="wb-stage" id="wbstage"></main>
     <!-- React 挂载点：dock（section-nav + minimap）由 app/CanvasHud.jsx 渲染 -->
     <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui></div>

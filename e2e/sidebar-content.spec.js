@@ -1,5 +1,7 @@
 import { expect, test } from '@playwright/test';
 
+import { seedTemplatePagesVisible } from './workbench-helpers.js';
+
 // 左栏内容（2026-09-04 切片 ②，评审板 C1 + ADR 0031/0032）：搜索、「最近」段、
 // 文件夹（建 / 改名 / 折叠 / 拖放入夹出夹 / 夹内重排 / 删夹不删页）、模板页开关、
 // 搬进预览设置的「预览主题」。
@@ -14,19 +16,6 @@ async function openWorkbench(page) {
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
-}
-
-// 模板页默认不显示；断言那三页时先把预览设置里的开关打开（init script 在页面
-// 脚本之前跑，合并写进同一份 prefs）。
-async function seedTemplatePagesVisible(page) {
-  await page.addInitScript(() => {
-    try {
-      const key = 'pinpoint-wb';
-      const prefs = JSON.parse(localStorage.getItem(key) || '{}');
-      prefs.showTemplatePages = true;
-      localStorage.setItem(key, JSON.stringify(prefs));
-    } catch { /* 读不到 localStorage 时让断言自己失败，不在这里吞 */ }
-  });
 }
 
 async function resetFolders(request) {

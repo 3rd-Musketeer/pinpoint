@@ -15,14 +15,12 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN } from '../../shared/registry-ids.js';
 
-export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
+export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN };
 // 归属目标 Page id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts
 // ID_PATTERN）与 registry 条目 id 都落在该模式内。
 export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-// 文件夹 id 与条目 id 同一套模式（2026-09-04 裁决 5a）：一层分组，不嵌套，
-// 两个命名空间各自独立——`folder` 字段只引用 folders[] 里的 id。
-export const FOLDER_ID_PATTERN = ENTRY_ID_PATTERN;
 const KINDS = new Set(['dir', 'file', 'url']);
 // 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
 // （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
@@ -91,7 +89,7 @@ function validateFolder(raw, seen) {
   return null;
 }
 
-function normalizeFolder(raw) {
+export function normalizeFolder(raw) {
   // name 自由文本，缺省等于 id（与条目的 title 同一条惯例）。
   const folder = { id: raw.id, name: typeof raw.name === 'string' && raw.name ? raw.name : raw.id };
   if (raw.collapsed === true) folder.collapsed = true;

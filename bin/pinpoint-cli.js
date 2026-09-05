@@ -30,6 +30,7 @@ import {
   FOLDER_ID_PATTERN,
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
+import { slugify } from '../src/shared/registry-ids.js';
 import {
   addRegistryEntry,
   listRegistryEntries,
@@ -220,10 +221,7 @@ function positionalProblem(command, want, got) {
   return `${command} 不接受位置参数，收到 ${got} 个`;
 }
 
-/** basename → registry id 基材：小写、非字母数字折叠成 -、去首尾 -。 */
-export function slugify(name) {
-  return String(name).toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
-}
+export { slugify };
 
 function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);

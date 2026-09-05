@@ -10,6 +10,7 @@
 // 是「默认」时生效**——另外两档按时间和名字排，手动顺序在那里没有落脚的位置；
 // 散页区永远不吃 order（一个页拖出夹之后它残留的 order 不该影响散页的书写顺序）。
 import { sortPages } from './page-sort.js';
+import { FOLDER_ID_PATTERN, slugify } from '../../shared/registry-ids.js';
 
 // 模板页 = content/previews/_index.json 的三个 manifest 页（ADR 0032）。
 // 按 id 点名，不按「来自 manifest」推断：实例自己的 _index.local.json 里的页
@@ -109,11 +110,8 @@ export function groupPages(input) {
 export function nextFolderId(existingIds, name) {
   var taken = {};
   (existingIds || []).forEach(function (id) { taken[id] = true; });
-  var slug = String(name == null ? '' : name)
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, '-')
-    .replace(/^-+|-+$/g, '');
-  if (/^[a-z0-9][a-z0-9-]*$/.test(slug) && !taken[slug]) return slug;
+  var slug = slugify(name);
+  if (FOLDER_ID_PATTERN.test(slug) && !taken[slug]) return slug;
   for (var n = 1; ; n++) {
     var candidate = 'folder-' + n;
     if (!taken[candidate]) return candidate;
@@ -149,12 +147,19 @@ export function recentRows(list, pages) {
    → smartphone；文档 = 单份 HTML 或 board html → file-text；网页 = url 条目 → globe。
    每一行都有，不再有空槽——09-05 上午撤掉图标就是因为只给了 url / file 两种，
    目录条目没有，看起来「有的有有的没有」。混合页按默认打开的那个条目算，这里
-   用 manifest page 的 mode；Component Library 内建页没有 mode，它是画布。 */
+   用 manifest page 的 mode；Component Library 内建页的 mode 钉在 pages.js COMPONENTS_PAGE。 */
 export var PAGE_KIND_ICONS = { canvas: 'smartphone', doc: 'file-text', web: 'globe' };
 
 export function pageKindKey(page) {
   if (!page) return 'doc';
   if (page.kind === 'url') return 'web';
-  if (page.mode === 'ios' || page.id === 'components') return 'canvas';
-  return 'doc';
+  return page.mode === 'ios' ? 'canvas' : 'doc';
+}
+
+/** 页的显示名：重命名优先（prefs.pageNames），内建页（system）不参与重命名。 */
+export function pageDisplayTitle(page, names) {
+  if (!page) return '';
+  var custom = names && names[page.id];
+  if (!page.system && typeof custom === 'string' && custom.trim()) return custom.trim();
+  return page.title || page.id;
 }

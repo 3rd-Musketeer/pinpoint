@@ -41,8 +41,8 @@ var THEMES = [
 // 行布局与行标签（辅助 12px / muted）。标签列 56px：「预览主题」四个汉字要这一档。
 var ROW = 'flex items-center gap-2';
 var ROW_LABEL = 'w-14 flex-none text-xs font-medium text-muted-foreground';
-// 段头：与左栏「最近」「页面」同一档（11 mono semibold muted），见 index.html .wb-section-head
-var SECTION_HEAD = 'wb-section-head mt-1 px-0! normal-case! tracking-normal! font-[var(--wb-font-mono)] text-[11px] font-semibold text-muted-foreground';
+// 段头：与左栏「最近」「页面」同一档，见 index.html .wb-section-head（设置视图的内边距也在那里）
+var SECTION_HEAD = 'wb-section-head';
 
 export function SettingsView() {
   var frame = useWorkbenchStore(function (s) { return s.frame; });

@@ -17,11 +17,10 @@ import { Fragment, useEffect } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
-import { entriesOfActiveBoard, manifestPages, setActiveViewport } from '../pages.js';
+import { entriesOfActiveBoard, setActiveViewport, sidebarPages } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
-import { PAGE_KIND_ICONS } from '../lib/page-groups.js';
-import { VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
-import { COMPONENTS_ID } from '../lib/page-url.js';
+import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
+import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { CanvasHud } from './CanvasHud.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -37,16 +36,6 @@ var SEG_ITEM =
 var SEG_ON_PLAIN = 'bg-card font-semibold text-foreground shadow-[var(--wb-sh-1)]';
 var SEG_ON_ACCENT = 'on bg-[var(--wb-accent)] font-semibold text-white shadow-[var(--wb-sh-1)] hover:text-white';
 
-/** 当前页的显示名：重命名优先，Component Library 是内置页不参与重命名。 */
-function pageTitle(pageId, pages, names) {
-  if (!pageId) return '';
-  if (pageId === COMPONENTS_ID) return 'Component Library';
-  var custom = names && names[pageId];
-  var page = pages.find(function (p) { return p.id === pageId; });
-  var fallback = (page && page.title) || pageId;
-  return typeof custom === 'string' && custom.trim() ? custom.trim() : fallback;
-}
-
 export function Strip() {
   var sideCollapsed = useWorkbenchStore(function (s) { return s.sideCollapsed; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
@@ -55,7 +44,7 @@ export function Strip() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var listOpen = useWorkbenchStore(function (s) { return s.annListOpen; });
   var viewport = useWorkbenchStore(function (s) { return s.viewport; });
-  useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，取值走 manifestPages
+  useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，取值走 sidebarPages
   useWorkbenchStore(function (s) { return s.activeBoard; });    // 同上：类型标跟着板走
 
   // 横条宽度回写（弹出列表与 dock 的对齐锚）：内容变宽（页名长、类型标出现）
@@ -76,7 +65,7 @@ export function Strip() {
     return function () { ro.disconnect(); };
   }, []);
 
-  var title = pageTitle(activePageId, manifestPages(), pageNames);
+  var title = pageDisplayTitle(sidebarPages().find(function (p) { return p.id === activePageId; }), pageNames);
   var entry = resolveEntry(entriesOfActiveBoard(), activeEntryId);
   var kindKey = entry ? entryTag(entry) : null;
   var hasViewport = entryHasViewport(entry);
@@ -121,7 +110,7 @@ export function Strip() {
               return (
                 <button type="button" key={key} data-viewport={key}
                   aria-pressed={on ? 'true' : 'false'}
-                  title={key === 'phone' ? '按手机屏看这份文档（402 × 874）' : '按窗口尺寸 1:1 铺满'}
+                  title={key === 'phone' ? '按手机屏看这份文档（' + PHONE_SCREEN_W + ' × ' + PHONE_SCREEN_H + '）' : '按窗口尺寸 1:1 铺满'}
                   className={cn(SEG_ITEM, on && SEG_ON_PLAIN)}
                   onClick={function () { setActiveViewport(key); }}>{VIEWPORT_LABELS[key]}</button>
               );

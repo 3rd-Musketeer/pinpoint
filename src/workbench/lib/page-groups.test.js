@@ -103,7 +103,7 @@ test('pageKindKey：画布 / 文档 / 网页三分，每种都有图标', () => 
   assert.equal(pageKindKey({ id: 'x', kind: 'dir', mode: 'html' }), 'doc');
   assert.equal(pageKindKey({ id: 'x', kind: 'file', mode: 'html' }), 'doc');
   assert.equal(pageKindKey({ id: 'x', kind: 'url', mode: 'html' }), 'web');
-  assert.equal(pageKindKey({ id: 'components', title: 'Component Library', system: true }), 'canvas');
+  assert.equal(pageKindKey({ id: 'components', title: 'Component Library', system: true, mode: 'ios' }), 'canvas');
   assert.equal(pageKindKey({ id: 'library', mode: 'ios' }), 'canvas');
   assert.equal(pageKindKey({ id: 'doc-library', mode: 'html' }), 'doc');
   for (const k of ['canvas', 'doc', 'web']) assert.ok(PAGE_KIND_ICONS[k]);

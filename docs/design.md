@@ -83,7 +83,7 @@
 - **iOS 预览**：预览主题（Light / Dark，切被预览页面 `.ios-root` 的 `data-theme`）、机壳（无 / 有，值仍是 screen / bezel）、时间（系统 / 固定，固定时带时间输入）。三个只对 iOS kit 的内容有效，网页和文档页上没作用。
 - **界面**：显示模板页（ADR 0032 的开关）。以后改 pinpoint 自己的设置都进这一段。
 
-删掉的：缩放（横条已有 − / +）、画布纹理三态（固定网格）、Text 字号三档（固定标准）、字标字体六选一（只服务一个锁屏原型，默认 Helvetica 不再暴露）。它们的 prefs 键启动时一律回默认，`boot-prefs.js` 里有注释。“Frame”改叫“机壳”：词典里 frame 是帧。
+删掉的：缩放（横条已有 − / +）、画布纹理三态（固定网格）、Text 字号三档（固定标准）、字标字体六选一（只服务一个锁屏原型，默认 Helvetica 不再暴露）。它们的 store 字段、setter 与 CSS 变体已一并删除，值钉在标记里（`.ios-root` 的 `data-text-size`、`<html data-lock-font>`、`.wb-stage-wrap` 的网格）；旧 prefs 里存过的键不再被读。“Frame”改叫“机壳”：词典里 frame 是帧。
 
 ## 画布（图纸人格）
 

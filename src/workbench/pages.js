@@ -20,7 +20,6 @@ import {
 } from './lib/board-entries.js';
 import {
   VIEWPORT_PHONE,
-  entryHasViewport,
   normalizeViewport,
   phoneScaleFor,
   viewportForPage,
@@ -129,8 +128,9 @@ export function manifestPages() {
 
 /* Component Library 是内建页，不在任何 manifest 里 —— 左栏要把它和 manifest 页
    一起分组（模板页三条之一），所以列表在这里合，不在组件里手拼。system:true
-   的页不参与改名、也不能拖进夹（服务端的「认识的 id」名单里没有它）。 */
-export var COMPONENTS_PAGE = { id: COMPONENTS_ID, title: 'Component Library', system: true };
+   的页不参与改名、也不能拖进夹（服务端的「认识的 id」名单里没有它）。
+   mode:'ios' = 它是画布（组件排在画布上），左栏的类型图标据此出 smartphone。 */
+export var COMPONENTS_PAGE = { id: COMPONENTS_ID, title: 'Component Library', system: true, mode: 'ios' };
 
 export function sidebarPages() {
   return [COMPONENTS_PAGE].concat(manifestPages());
@@ -314,11 +314,6 @@ export function syncPhoneDocScale() {
   phoneScaleRo.observe(shell);
 }
 
-/** 横条要不要出视口控件：只在文档条目选中时（画布条目没有第二种看法）。 */
-export function activeEntryHasViewport() {
-  return entryHasViewport(resolveEntry(entriesOfActiveBoard(), wbGet().activeEntryId));
-}
-
 /** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */
 export function applyPageFormFallback(pageId) {
   applyStageForm(modeForPage(wbGet().pageManifest, pageId) === 'html' ? 'html' : 'ios');
@@ -466,7 +461,7 @@ function registryToPages(data) {
       mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
       // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
       // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
-      // 也是横条类型标（画布 / 网页 / 文档）的来源；页面行不再画类型小标（2026-09-05）。
+      // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。
       kind: entry.kind,
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
       // url 条目无此字段 → null，排序沉底、行内不显示时间）。

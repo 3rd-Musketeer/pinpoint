@@ -336,8 +336,7 @@ export function createAnnotateHandler(options = {}) {
 
     // 分组层的写接口（workbench 的文件夹操作；CLI 仍是文件直写 + reload）。
     if (req.method === 'PUT' && urlPath.startsWith('/registry/')) {
-      if (await handleRegistryWrite(req, res, urlPath)) return true;
-      return false;
+      return handleRegistryWrite(req, res, urlPath);
     }
 
     if (req.method === 'GET' && urlPath === '/events') return handleSse(req, res);

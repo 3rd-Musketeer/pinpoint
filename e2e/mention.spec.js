@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
+import { seedTemplatePagesVisible } from './workbench-helpers.js';
+
 import { E2E_DATA_DIR } from './env.js';
 
 // 阶段 5：doc 页正文 mention 画布 frame（data-pinpoint-frame）→ 水合为活 DOM；
@@ -23,21 +25,6 @@ test.afterEach(() => {
   fs.rmSync(CANVAS_BUCKET, { recursive: true, force: true });
   fs.rmSync(DOC_BUCKET, { recursive: true, force: true });
 });
-
-// 模板页（Component Library / Example Library / Example HTML）2026-09-04 起默认
-// 不显示（ADR 0032，开关在预览设置）。本文件的断言就落在那三页上，所以进
-// workbench 之前先把开关打开——init script 在页面脚本之前跑，合并写进同一份
-// prefs，不动其它偏好。
-async function seedTemplatePagesVisible(page) {
-  await page.addInitScript(() => {
-    try {
-      const key = 'pinpoint-wb';
-      const prefs = JSON.parse(localStorage.getItem(key) || '{}');
-      prefs.showTemplatePages = true;
-      localStorage.setItem(key, JSON.stringify(prefs));
-    } catch { /* 读不到 localStorage 时让断言自己失败，不在这里吞 */ }
-  });
-}
 
 async function openWorkbench(page) {
   await seedTemplatePagesVisible(page);

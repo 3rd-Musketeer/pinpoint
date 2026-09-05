@@ -133,9 +133,6 @@ var gutterRaf = 0;
 function gutterStageWrap() {
   return document.querySelector('.wb-stage-wrap');
 }
-function gutterIframeEl() {
-  return activeDocFrameEl();
-}
 
 function ensureGutterOverlay() {
   if (gutterOverlay) return;
@@ -180,7 +177,7 @@ function renderGutter() {
   var a = annotateApi();
   if (!a || typeof a.visibleBubbleAnchors !== 'function') return;
   var wrap = gutterStageWrap();
-  var iframeEl = gutterIframeEl();
+  var iframeEl = activeDocFrameEl();
   if (!wrap || !iframeEl) return;
   ensureGutterOverlay();
   var wrapRect = wrap.getBoundingClientRect();

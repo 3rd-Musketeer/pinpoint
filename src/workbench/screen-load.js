@@ -31,6 +31,7 @@ import {
 } from './lib/page-url.js';
 import { boardRefs } from './lib/board-refs.js';
 import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
+import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
 import {
   expandIncludeRefs,
   wrapCompStage,
@@ -192,9 +193,9 @@ function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
   return wrapPhoneShell(bodyHtml, shell);
 }
 
-// iPhone 16 Pro 逻辑分辨率（图注尺寸行）——钉值与 kits/ios/ios-kit.css 的
-// --ios-screen-w/--ios-screen-h 同源（唯一 device preset）；读法见 mock 的 .fig .dim。
-var IOS_DEVICE_DIM = '402 × 874';
+// iPhone 16 Pro 逻辑分辨率（图注尺寸行）——与 lib/viewport.js 的手机视口、
+// kits/ios/ios-kit.css 的 --ios-screen-w/--ios-screen-h 同一个 device preset。
+var IOS_DEVICE_DIM = PHONE_SCREEN_W + ' × ' + PHONE_SCREEN_H;
 
 /** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行
     （手机视口里的 doc 屏也不出：它不在画布上，图注 / 尺寸行都是画布语汇）。 */
