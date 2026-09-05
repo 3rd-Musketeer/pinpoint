@@ -88,8 +88,16 @@
      行尾元数据，用 utility 拼会把「一行长什么样」拆成十几处。 */
   #wbside .wb-head {
     flex:none; display:flex; align-items:center; gap:6px;
-    padding:11px 12px 7px;
+    padding:11px 12px 7px; height:31px; box-sizing:border-box;
   }
+  /* 齿轮缩进头行：13px 线性图标、无底、淡色，hover 转正色 —— 评审板 F2 的头只有
+     名字和一颗点，齿轮不能把头行撑高（28px 的工具钮会把 31 撑成 46）。 */
+  #wbside #wbgear {
+    width:18px; height:18px; padding:0; border:0; background:transparent;
+    color:var(--wb-faint); border-radius:var(--wb-r-1);
+  }
+  #wbside #wbgear:hover, #wbside #wbgear[data-state="on"] { color:var(--wb-fg); background:var(--wb-hover); }
+  #wbside #wbgear svg { width:13px; height:13px; }
   .wb-wordmark {
     font:var(--wb-w-semibold) 13px/1 var(--wb-font); letter-spacing:-.01em;
     color:var(--wb-fg); user-select:none;
@@ -152,6 +160,10 @@
   /* 只剩「新建文件夹」一行用：把 folder-plus 图标对到文件夹行的夹图标那一列。
      页面行行首没有槽（2026-09-05 类型小标撤，标题一律从 8px 内边距起）。 */
   .wb-row-slot { width:14px; flex:none; }
+  /* 页面行与最近行的左内边距 = 8 + 21：类型小标撤了（2026-09-05），但评审板 C1 / F2
+     的行是按「行首有一格」排的，标题离面板边 35px；撤掉图标不撤这口气，否则整栏
+     贴边发紧。文件夹行自己带 chevron + 夹图标，不加。 */
+  .wb-row.wb-page, .wb-row.wb-recent { padding-left:29px; }
   .wb-row-chv { width:12px; height:12px; flex:none; color:var(--wb-faint); }
   .wb-row-t { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
   .wb-row-m {
@@ -159,7 +171,7 @@
     color:var(--wb-faint); font-variant-numeric:tabular-nums;
   }
   /* 夹内的页：标题对到文件夹行的夹名那一列（8 + chevron 12 + 7 + 夹图标 14 + 7）。 */
-  .wb-row.ind { padding-left:48px; }
+  .wb-row.wb-page.ind { padding-left:45px; }
   /* 落点（C1）：入夹 = 整行一圈 accent 内描边；夹内重排 = 目标行上/下沿一条线。 */
   .wb-row.drop { box-shadow:inset 0 0 0 1px var(--wb-accent); }
   .wb-row[data-drop-hint]::after {
@@ -185,6 +197,12 @@
 
   .wb-side-body { flex:1; min-height:0; display:flex; flex-direction:column; }
   .wb-side-scroll[hidden], .wb-settings-view[hidden] { display:none; }
+  /* 列表底部 22px 渐隐（评审板 .pbody 的 mask）：告诉眼睛「下面还有」，
+     最后一行不被面板下沿硬切。 */
+  .wb-side-scroll {
+    -webkit-mask-image:linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+    mask-image:linear-gradient(to bottom, #000 calc(100% - 22px), transparent 100%);
+  }
   .wb-settings-view { flex:1; min-height:0; overflow-y:auto; }
 
   /* frame 树延伸线（decisions 2026-08-15c 原大纲，2026-08-16f 阶段 7 收编进「内容」

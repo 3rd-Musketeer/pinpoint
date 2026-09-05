@@ -32,21 +32,25 @@ export function sortPages(pages, sort) {
   return list;
 }
 
-// 相对时间：<1m「刚刚」→ <60m「Nm」→ <24h「Nh」→ <7d「Nd」→ 同年「MM-DD」
-// → 跨年「YYYY-MM-DD」。行内只有 mono 小字一格的宽度，不出完整句子。
+// 相对时间（2026-09-05 对齐评审板 C1 的写法）：<1m「刚刚」→ <60m「N 分钟前」
+// → <24h「N 小时前」→ 昨天「昨天」→ <7d「周X」→ 同年「M-D」→ 跨年「YYYY-M-D」。
+// 行尾只有一格 mono 小字的宽度，最长是「23 小时前」。
+var WEEKDAYS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'];
+
 export function formatRelativeTime(mtimeMs, nowMs) {
   var diff = Math.max(0, nowMs - mtimeMs);
   var minutes = Math.floor(diff / 60000);
   if (minutes < 1) return '刚刚';
-  if (minutes < 60) return minutes + 'm';
+  if (minutes < 60) return minutes + ' 分钟前';
   var hours = Math.floor(minutes / 60);
-  if (hours < 24) return hours + 'h';
-  var days = Math.floor(hours / 24);
-  if (days < 7) return days + 'd';
+  if (hours < 24) return hours + ' 小时前';
   var date = new Date(mtimeMs);
   var now = new Date(nowMs);
-  var mm = String(date.getMonth() + 1).padStart(2, '0');
-  var dd = String(date.getDate()).padStart(2, '0');
-  if (date.getFullYear() === now.getFullYear()) return mm + '-' + dd;
-  return date.getFullYear() + '-' + mm + '-' + dd;
+  var dayStart = function (d) { return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
+  var dayDiff = Math.round((dayStart(now) - dayStart(date)) / 86400000);
+  if (dayDiff <= 1) return '昨天';
+  if (dayDiff < 7) return WEEKDAYS[date.getDay()];
+  var md = (date.getMonth() + 1) + '-' + date.getDate();
+  if (date.getFullYear() === now.getFullYear()) return md;
+  return date.getFullYear() + '-' + md;
 }

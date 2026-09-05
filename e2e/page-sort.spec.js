@@ -64,9 +64,9 @@ test.beforeAll(pressMtimes);
 test('Pages 行内时间显示：dir 条目出相对时间，url 条目不出', async ({ page }) => {
   await openWorkbench(page);
 
-  // mtime = now 的固件渲染「刚刚」；2026-01-01 的固件渲染「01-01」（同年超 7 天）。
+  // mtime = now 的固件渲染「刚刚」；2026-01-01 的固件渲染「1-1」（同年超 7 天，M-D 不补零）。
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"] .wb-page-time')).toHaveText('刚刚');
-  await expect(page.locator('#wbpages [data-vpage="e2e-dir"] .wb-page-time')).toHaveText('01-01');
+  await expect(page.locator('#wbpages [data-vpage="e2e-dir"] .wb-page-time')).toHaveText('1-1');
   // url 条目与本地示例页无 mtime，不出时间元素。
   await expect(page.locator('#wbpages [data-vpage="e2e-site"] .wb-page-time')).toHaveCount(0);
   await expect(page.locator('#wbpages [data-vpage="library"] .wb-page-time')).toHaveCount(0);

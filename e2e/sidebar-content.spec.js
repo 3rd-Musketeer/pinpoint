@@ -234,14 +234,15 @@ test('页面行没有类型图标：url 页与 dir 页的标题从同一处起�
   // 页面行 / 最近行不含任何 svg，也没有占位槽。
   await expect(page.locator('#wbpages .wb-page svg, #wbpages .wb-page .wb-row-slot, #wbside .wb-recent svg'))
     .toHaveCount(0);
-  // 几何（AGENTS「坑与约定」：布局断言比 bounding box）：标题左缘 = 行左缘 + 8px
-  // 内边距，url 页（e2e-site）与 dir 页（e2e-dir / e2e-mixed）一样。
+  // 几何（AGENTS「坑与约定」：布局断言比 bounding box）：标题左缘 = 行左缘 + 29px
+  // （8 内边距 + 评审板行首那一格 21 的留白），url 页（e2e-site）与 dir 页
+  // （e2e-dir / e2e-mixed）一样。
   const offsets = await page.evaluate(() => Object.fromEntries(['e2e-site', 'e2e-dir', 'e2e-mixed'].map((id) => {
     const row = document.querySelector(`#wbpages [data-vpage="${id}"]`);
     const title = row.querySelector('.wb-row-t');
     return [id, Math.round(title.getBoundingClientRect().left - row.getBoundingClientRect().left)];
   })));
-  expect(offsets).toEqual({ 'e2e-site': 8, 'e2e-dir': 8, 'e2e-mixed': 8 });
+  expect(offsets).toEqual({ 'e2e-site': 29, 'e2e-dir': 29, 'e2e-mixed': 29 });
   // 类型仍看得见，只是搬到了横条：选中 url 页 → 类型标「网页」。
   await page.locator('#wbpages [data-vpage="e2e-site"]').click();
   await expect(page.locator('#wbstrip-kind')).toHaveText('网页');

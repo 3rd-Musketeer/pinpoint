@@ -52,15 +52,15 @@ test('nextPageSort 循环三档；normalizePageSort 拦非法值', () => {
 });
 
 test('formatRelativeTime 档位', () => {
-  const now = Date.parse('2026-08-17T12:00:00Z');
+  // 本地时间构造，避免跨日界；2026-08-17 是周一
+  const now = new Date(2026, 7, 17, 12, 0, 0).getTime();
   assert.equal(formatRelativeTime(now - 20 * 1000, now), '刚刚');
-  assert.equal(formatRelativeTime(now - 5 * 60000, now), '5m');
-  assert.equal(formatRelativeTime(now - 3 * 3600000, now), '3h');
-  assert.equal(formatRelativeTime(now - 2 * 86400000, now), '2d');
-  // 同年超 7 天 → MM-DD（本地时区渲染，用本地时间构造避免跨日界）
-  const local = new Date(2026, 7, 17, 12, 0, 0);
-  assert.equal(formatRelativeTime(new Date(2026, 7, 10, 12, 0, 0).getTime(), local.getTime()), '08-10');
-  assert.equal(formatRelativeTime(new Date(2025, 11, 25, 12, 0, 0).getTime(), local.getTime()), '2025-12-25');
+  assert.equal(formatRelativeTime(now - 5 * 60000, now), '5 分钟前');
+  assert.equal(formatRelativeTime(now - 3 * 3600000, now), '3 小时前');
+  assert.equal(formatRelativeTime(new Date(2026, 7, 16, 9, 0, 0).getTime(), now), '昨天');
+  assert.equal(formatRelativeTime(new Date(2026, 7, 14, 12, 0, 0).getTime(), now), '周五');
+  assert.equal(formatRelativeTime(new Date(2026, 7, 10, 12, 0, 0).getTime(), now), '8-10');
+  assert.equal(formatRelativeTime(new Date(2025, 11, 25, 12, 0, 0).getTime(), now), '2025-12-25');
   // 未来时间（时钟漂移）按「刚刚」处理，不出负数
   assert.equal(formatRelativeTime(now + 60000, now), '刚刚');
 });
