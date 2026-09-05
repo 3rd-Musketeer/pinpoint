@@ -49,6 +49,7 @@ import {
 import {
   applyPageFormFallback,
   applyPageNames,
+  applyPageViewport,
   initPages,
   loadPageManifest,
   resolveActivePage,
@@ -153,7 +154,10 @@ async function loadBoard(panel, pageId) {
     var screenMap = {};
     rows.forEach(function (row) { screenMap[row.id] = row.res; });
     var session = mountManager.begin(pageId);
-    panel.innerHTML = buildBoardHtml(pageId, board, screenMap);
+    // 视口（2026-09-05）：页的偏好在构建 HTML 之前灌进 store —— screen-load 按它
+    // 决定 doc 屏套阅读器壳还是手机机壳，activeBoardMode() 随后按它派生形态。
+    var viewport = applyPageViewport(pageId);
+    panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
     wbSet({ activeBoard: { pageId: pageId, board: board } });
     syncEntries();
     watchDocAnnotate();

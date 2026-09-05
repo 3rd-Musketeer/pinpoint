@@ -6,7 +6,7 @@
 // 2026-08-16f 阶段 6：「文档形态」判定从页级 mode 改为选中条目派生
 // （store.activeBoardMode()）—— 混合板里选中 doc 屏条目时同一套 iframe 绑定
 // 与 gutter 逻辑照常生效。
-import { wbGet, wbSet, activeBoardMode } from './app/store.js';
+import { wbGet, wbSet } from './app/store.js';
 import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
@@ -16,10 +16,17 @@ import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/anno
    互不相通的标注实例：父窗口（侧栏按钮驱动）和 iframe（文档本体）。侧栏点「标注」
    只切到了父窗口那个，画不出框 —— 表现成「侧栏和右下角没对齐」。
    侧栏是唯一控制面，所以取用时按当前选中条目解析到正确的那个实例。 */
-function activeDocWindow() {
+/* 画布上此刻可见的那个文档 iframe（2026-09-05 起不看形态看可见性）：窗口视口下它
+   1:1 铺满舞台，手机视口下它装在机壳里摆在画布上，两种情况标注实例都是它自己的；
+   画布条目态 doc 屏全部 data-doc-hidden，这里得 null → 回落父窗口实例。 */
+function activeDocFrameEl() {
   var panel = document.getElementById('wb-board-panel');
-  if (activeBoardMode() !== 'html' || !panel) return null;
-  var frame = panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
+  if (!panel) return null;
+  return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
+}
+
+function activeDocWindow() {
+  var frame = activeDocFrameEl();
   if (!frame) return null;
   try {
     var w = frame.contentWindow;
@@ -127,9 +134,7 @@ function gutterStageWrap() {
   return document.querySelector('.wb-stage-wrap');
 }
 function gutterIframeEl() {
-  var panel = document.getElementById('wb-board-panel');
-  if (activeBoardMode() !== 'html' || !panel) return null;
-  return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
+  return activeDocFrameEl();
 }
 
 function ensureGutterOverlay() {
@@ -168,7 +173,7 @@ function gutterActive() {
   var a = annotateApi();
   if (!a || typeof a.getState !== 'function') return false;
   var st = a.getState();
-  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && activeBoardMode() === 'html');
+  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && activeDocFrameEl());
 }
 
 function renderGutter() {
@@ -182,6 +187,9 @@ function renderGutter() {
   var ifRect = iframeEl.getBoundingClientRect();
   var dx = ifRect.left - wrapRect.left;
   var dy = ifRect.top - wrapRect.top;
+  // 手机视口（2026-09-05）：iframe 随画布 transform 缩放，锚点 rect 是 iframe 自己的
+  // CSS px，映射到父级前按「显示宽 / 布局宽」缩一次；窗口视口下这个比是 1。
+  var k = iframeEl.offsetWidth ? ifRect.width / iframeEl.offsetWidth : 1;
   var anchors = a.visibleBubbleAnchors();
   while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
 
@@ -204,7 +212,7 @@ function renderGutter() {
     nodes[an.n] = node;
     mapped.push({
       n: an.n,
-      rect: [dx + an.rect[0], dy + an.rect[1], an.rect[2], an.rect[3]],
+      rect: [dx + an.rect[0] * k, dy + an.rect[1] * k, an.rect[2] * k, an.rect[3] * k],
     });
   });
 
@@ -277,9 +285,11 @@ var docAnnotateBound = null;
 export function watchDocAnnotate() {
   if (docAnnotateWatch) { clearInterval(docAnnotateWatch); docAnnotateWatch = 0; }
   docAnnotateBound = null;
-  if (activeBoardMode() !== 'html') return;
+  // 2026-09-05：判据从「html 形态」改成「画布上有可见的文档 iframe」—— 手机视口
+  // 下形态是 ios，文档照样活在 iframe 里，绑定与快照一样要跟着它。
+  if (!activeDocFrameEl()) return;
   docAnnotateWatch = setInterval(function () {
-    if (activeBoardMode() !== 'html') {
+    if (!activeDocFrameEl()) {
       clearInterval(docAnnotateWatch);
       docAnnotateWatch = 0;
       docAnnotateBound = null;
