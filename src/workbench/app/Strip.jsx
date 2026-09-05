@@ -4,8 +4,8 @@
 //   → 怎么看这份文档（窗口｜手机 两段，#wbviewport，只在文档条目选中时出现；
 //     2026-09-05 视口，lib/viewport.js）
 //   → 在哪一帧（‹ 1 / 6 › + map）→ 画布怎么看（缩放 · 回中 · 导出）——这两段是
-//     <CanvasHud/>，DOM id / 布线契约与右下 HUD 时期逐一相同；窗口视口的文档形态
-//     整段收起（index.html），手机视口下文档就在画布上、这段照常
+//     <CanvasHud/>，DOM id / 布线契约与右下 HUD 时期逐一相同；文档形态（两种视口
+//     都是）整段收起（index.html），中段只剩视口两段
 //   → 在干什么（交互｜标注 两段 + 计数）。
 // 两处退役在这里合流：画布两缘的展开浮钮（StageRails）与右栏常驻标注工作台——
 // 展开左栏的唯一入口是这里的 #wbside-toggle（id 沿用，e2e 选择器即契约），
@@ -106,8 +106,8 @@ export function Strip() {
           id="wbstrip-kind" data-kind={kindKey}>{ENTRY_TAG_LABELS[kindKey]}</span>
       ) : null}
 
-      {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 装进
-          402 × 874 的机壳摆上画布。页的偏好，切换重装当前板（pages.js setActiveViewport）。 */}
+      {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 缩成一块
+          402 × 874 的手机屏居中摆着。页的偏好，切换重装当前板（pages.js setActiveViewport）。 */}
       {hasViewport ? (
         <Fragment>
           <span className="wb-strip-div" aria-hidden="true"></span>
@@ -118,7 +118,7 @@ export function Strip() {
               return (
                 <button type="button" key={key} data-viewport={key}
                   aria-pressed={on ? 'true' : 'false'}
-                  title={key === 'phone' ? '在手机 frame 里看这份文档（402 × 874）' : '按窗口尺寸 1:1 铺满'}
+                  title={key === 'phone' ? '按手机屏看这份文档（402 × 874）' : '按窗口尺寸 1:1 铺满'}
                   className={cn(SEG_ITEM, on && SEG_ON_PLAIN)}
                   onClick={function () { setActiveViewport(key); }}>{VIEWPORT_LABELS[key]}</button>
               );
