@@ -618,11 +618,16 @@
      frame 内资源没进来时的行内提示（/sites/ 404 不再静默）。 */
   /* 板整体失败时面板是 #wb-board-panel 的唯一孩子 —— 那层有 3200px 画布留白，
      面板会落在视口外三千像素处（DOM 在、肉眼不在）。这种时候画布留白没有意义：
-     去掉它，把面板摆在舞台中间。 */
+     去掉它，把面板摆在舞台中间。
+     「舞台中间」在 2026-09-04 之后是**可用区**中间：左栏与横条压在满铺画布上，
+     所以留一条它们宽的 padding，面板才落在人看得见的那块正中。 */
   #wb-board-panel:has(> .wb-screen-err) {
-    padding:0; min-height:100%;
+    min-height:100%;
+    padding:0 0 calc(var(--wb-chrome-gap) * 2 + var(--wb-strip-h))
+              calc(var(--wb-chrome-gap) * 2 + var(--wb-side-w));
     display:flex; align-items:center; justify-content:center;
   }
+  .wb.wb-side-collapsed #wb-board-panel:has(> .wb-screen-err) { padding-left:0; }
   /* 2026-09-04 外壳重设计：虚线框退役 —— 失败面板是一块实底浮层（--wb-surface
      + sh-3 + radius 14），不是一块占位虚线。标题 14/600。 */
   .wb-screen-err,

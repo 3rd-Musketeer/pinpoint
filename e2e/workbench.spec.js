@@ -1140,11 +1140,14 @@ test('?page= 指向不存在的页 → 显式面板，地址栏留着坏 id（20
   expect(page.url()).toContain('page=does-not-exist');
   // 左栏照常渲染，别的页都还能点
   await expect(page.locator('#wbpages [data-vpage="library"]')).toBeVisible();
-  // 肉眼可见：面板要落在舞台视口里（板面有 3200px 画布留白，不特判就跑到视口外三千像素）
+  // 肉眼可见：面板要落在**可用区**里（板面有 3200px 画布留白，不特判就跑到视口外
+  // 三千像素；2026-09-04 起还要让开压在画布上的左栏与横条）
   expect(await page.evaluate(() => {
     const a = document.querySelector('#wb-board-panel .wb-screen-err').getBoundingClientRect();
     const b = document.getElementById('wbstage').getBoundingClientRect();
-    return a.left >= b.left - 1 && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= b.bottom + 1;
+    const side = document.getElementById('wbside').getBoundingClientRect();
+    const strip = document.getElementById('wbstrip').getBoundingClientRect();
+    return a.left >= side.right && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= strip.top;
   })).toBe(true);
 
   await panel.locator('[data-err-home]').click();
