@@ -95,7 +95,7 @@ head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n
   偏好键：`sideCollapsed`、`sideWidth`、`annPanelCollapsed`、`annPanelWidth`。
 - **视口存档**：每页的 `pageViewports[pageId]` 存滚动位置与缩放（缩放单一来源，没有顶层 `canvasZoom`）。
 - **文档的视口（窗口｜手机）**：`viewportByPage[pageId]`，只记 `phone`、回窗口删 key（`lib/viewport.js`）；
-  手机视口下文档条目按画布形态走，上面那条存档因此对它同样生效。
+  两种视口都是文档形态，上面那条存档对它们都不生效（手机屏的缩放系数按窗口尺寸现算，不存）。
 - **舞台平移**：Space+拖或中键拖，任意位置都行；左键拖只在板的空白 chrome 上生效
   （不在 `.ios-stage` / `.wb-comp-stage` 里），这样 frame 的点击和滚动才正常。
 - **画布工具条**：常驻右下角；Section Navigator 与分层的 Canvas → Section → Frame 小地图是两个
