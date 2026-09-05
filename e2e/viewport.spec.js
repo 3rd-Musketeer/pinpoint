@@ -8,16 +8,23 @@ import { E2E_DATA_DIR } from './env.js';
 // 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 —— 窗口｜手机。owner 裁决：
 // 「doc 本身就是要展示的终态，而 prototype app 有多屏，所以 doc 可以只展示 html 本身，
 // 而 app 需要 section + frames」；要在手机上看的页面「应该给 html / url 加一个切换
-// 不同 viewport 的功能」。
-//   · 窗口 = 今天的文档形态：iframe 1:1 铺满舞台，横条中段只剩视口两段；
-//   · 手机 = 同一份文档装进一个 402 × 874 的手机 frame 摆上画布，机壳跟设置走，
-//     缩放 / 回中 / 导出（画布工具）回来，帧导航 1 / 1；
+// 不同 viewport 的功能」；用过第一版（文档摆上画布）之后：「html doc 的手机视图就
+// 不需要画布了，直接就是一个自适应大小（大约 viewport 高度 90%）的手机 screen，
+// 不需要状态栏和灵动岛；在画布上容易乱跑」。
+//   · 窗口 = 文档形态：iframe 1:1 铺满舞台，横条中段只剩视口两段；
+//   · 手机 = 同一个形态的第二种布局：iframe 的 CSS 视口恒为 402 × 874，整块屏缩到
+//     可用区（舞台减掉横条那一带）高度的九成、居中；没有网格 / 缩放 / 图注 / 帧导航 /
+//     导出，也没有状态栏 / 岛 / home 条；机壳跟设置走；
 //   · 偏好按页记在 prefs.viewportByPage，跨 reload 保持；
 //   · 标注锚点是元素选择器，窗口里标的在手机里照样在，反过来也一样。
 // 固件 = e2e-dir（dir 条目，doc 壳，cards / doc 两屏）与 e2e-proxy（url 条目）。
 
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-dir');
 const DOC_FRAME = '#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame';
+const PHONE_SHELL = '#wb-board-panel [data-screen="doc"] .wb-phone-doc';
+// 横条那一带 = gap × 2 + strip-h（wb-tokens.css：12 × 2 + 38）
+const STRIP_BAND = 62;
+const FILL = 0.9;
 
 async function openWorkbench(page) {
   await page.goto('/index.html');
@@ -39,14 +46,26 @@ function rootViewport(page) {
   return page.locator('#wbroot').evaluate((el) => el.getAttribute('data-viewport'));
 }
 
-/** iframe 的布局尺寸（transform 之前的 CSS px）—— 手机视口的真实视口就是它。 */
-function frameLayoutSize(page, selector) {
+/** 元素的布局尺寸（transform 之前的 CSS px）—— 手机视口里 iframe 的真实视口就是它。 */
+function layoutSize(page, selector) {
   return page.locator(selector).evaluate((el) => [el.offsetWidth, el.offsetHeight]);
 }
 
 async function setViewport(page, key) {
   await page.locator(`#wbviewport [data-viewport="${key}"]`).click();
   await expect(page.locator(`#wbviewport [data-viewport="${key}"]`)).toHaveAttribute('aria-pressed', 'true');
+}
+
+/** 手机屏的几何断言（ADR 0023：比 bounding box）：整块屏高 = 可用高 × 0.9（±1px），
+    横向在整个舞台宽度里居中（左栏浮着，不让位），纵向在可用区里居中。 */
+async function expectPhoneFit(page, shellSelector) {
+  const stage = await page.locator('#wbstage').boundingBox();
+  const shell = await page.locator(shellSelector).boundingBox();
+  const usableH = stage.height - STRIP_BAND;
+  expect(Math.abs(shell.height - usableH * FILL)).toBeLessThan(1);
+  expect(Math.abs((shell.x + shell.width / 2) - (stage.x + stage.width / 2))).toBeLessThan(1);
+  expect(Math.abs((shell.y + shell.height / 2) - (stage.y + usableH / 2))).toBeLessThan(1);
+  return shell;
 }
 
 /** 在 iframe 里的标注客户端上点选元素、写内容、保存（同 ann-sidebar.spec 的 annotate）。 */
@@ -93,69 +112,74 @@ test('文档条目：横条出「窗口｜手机」两段，默认窗口 = 1:1 �
   await expect(page.locator('#wbviewport')).toHaveCount(0);
 });
 
-test('切到手机：同一份文档装进 402 × 874 的机壳摆上画布，画布工具回来，切回即还原', async ({ page }) => {
+test('切到手机：一块 402 × 874 的手机屏缩到可用高九成、居中，没有画布也没有系统 chrome，切回即还原', async ({ page }) => {
   await openDirDoc(page);
   await setViewport(page, 'phone');
 
-  // 形态 = 画布：ios + data-viewport=phone；文档 iframe 还是那一个 src。
-  expect(await stageForm(page)).toBe('ios');
+  // 还是文档形态（html），只是 data-viewport=phone；iframe 还是那一个 src。
+  expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('phone');
   const screen = page.locator('#wb-board-panel [data-screen="doc"]');
   await expect(screen).toHaveClass(/wb-screen--phone-doc/);
-  await expect(screen.locator('.ios-stage .ios-device .ios-bezel .ios-screen iframe.wb-doc-frame')).toHaveCount(1);
+  await expect(screen.locator('.wb-phone-doc .ios-root .ios-device .ios-bezel .ios-screen > iframe.wb-doc-frame')).toHaveCount(1);
   await expect(page.locator(DOC_FRAME)).toHaveAttribute('src', /\/sites\/e2e-dir\/doc\.html$/);
   await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
-  expect(await frameLayoutSize(page, DOC_FRAME)).toEqual([402, 874]);
-  // 屏幕 chrome 与 iOS frame 同一份：岛 / 状态栏 / home 条；默认「机壳 无」= screen-only。
-  await expect(screen.locator('.ios-island')).toHaveCount(1);
-  await expect(screen.locator('.ios-statusbar')).toHaveCount(1);
-  await expect(screen.locator('.ios-home')).toHaveCount(1);
+  // iframe 的 CSS 视口恒为 402 × 874（页面按真实手机排版），渲染尺寸是它 × k。
+  expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  const shell = await expectPhoneFit(page, PHONE_SHELL);
+  const frame = await page.locator(DOC_FRAME).boundingBox();
+  expect(Math.abs(frame.height - shell.height)).toBeLessThan(1);  // 机壳 无：屏就是整块
+  expect(Math.abs(frame.width / 402 - frame.height / 874)).toBeLessThan(0.01);  // 等比
+  expect(frame.height).toBeLessThan(874);  // 720 高的测试视口装不下 1:1，必然缩过
+
+  // 没有系统 chrome：状态栏 / 岛 / home 条一个都没有；默认「机壳 无」= screen-only。
+  await expect(screen.locator('.ios-island, .ios-statusbar, .ios-home')).toHaveCount(0);
   await expect(screen.locator('.ios-root')).toHaveClass(/screen-only/);
-  expect(await frameLayoutSize(page, '#wb-board-panel [data-screen="doc"] .ios-device')).toEqual([402, 874]);
-  // 图注 = 页面标题（screen 的 title），尺寸行 402 × 874。
-  await expect(screen.locator('.wb-cap-title')).toHaveText('Doc');
-  await expect(screen.locator('.wb-screen-dim')).toHaveText('402 × 874');
-  // 另一份文档（cards）仍被条目显隐收起：画布上只有一个 frame。
+  // 没有画布：网格纹理关掉、zoom-wrap 不 transform、图注 / 尺寸行 / .ios-stage 都没有。
+  expect(await page.locator('.wb-stage-wrap').evaluate((el) => getComputedStyle(el).backgroundImage)).toBe('none');
+  expect(await page.locator('#wb-board-panel .wb-zoom-wrap').evaluate((el) => getComputedStyle(el).transform)).toBe('none');
+  await expect(page.locator('#wb-board-panel .ios-stage')).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel .wb-screen-dim')).toHaveCount(0);
+  await expect(screen.locator('.wb-screen-cap')).toBeHidden();
+  await expect(page.locator('#wb-board-panel .wb-lib-cap')).toBeHidden();
+  // 另一份文档（cards）仍被条目显隐收起：舞台上只有一块屏。
   await expect(page.locator('#wb-board-panel [data-screen="cards"]')).toBeHidden();
   await expect(page.locator('#wb-board-panel .wb-doc-frame:visible')).toHaveCount(1);
 
-  // 横条中段：视口控件 + 画布工具（缩放 / 回中 / 导出）；帧导航读数 1 / 1。
+  // 横条中段：只有视口两段；缩放 / 回中 / 导出 / 帧导航 / dock 都是画布工具，收起。
   await expect(page.locator('#wbviewport')).toBeVisible();
-  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
-  await expect(page.locator('#wbzoom-label')).toBeVisible();
-  await expect(page.locator('#wbrecenter')).toBeVisible();
-  await expect(page.locator('#wbexport-open')).toBeVisible();
-  await expect(page.locator('#wbsection-nav-position')).toHaveText('1 / 1');
+  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
+  await expect(page.locator('#wbzoom-label')).toBeHidden();
+  await expect(page.locator('#wbrecenter')).toBeHidden();
+  await expect(page.locator('#wbexport-open')).toBeHidden();
+  await expect(page.locator('#wbsection-nav-position')).toBeHidden();
   await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
 
-  // 画布工具是真的：缩放改了画布 zoom；frame 落在可见区（不在 chrome 底下）。
-  await page.locator('#wbzoom-in').click();
-  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-canvas-zoom'))).not.toBe('1');
-  await page.locator('#wbrecenter').click();
-  const stageBox = await page.locator('#wbstage').boundingBox();
-  await expect.poll(async () => {
-    const box = await page.locator('#wb-board-panel [data-screen="doc"] .ios-stage').boundingBox();
-    return box && box.x >= stageBox.x && box.y >= stageBox.y
-      && box.x + box.width <= stageBox.x + stageBox.width + 1;
-  }).toBe(true);
+  // 窗口尺寸变了 k 跟着重算：舞台变矮，屏跟着缩，仍然是可用高的九成、仍居中。
+  await page.setViewportSize({ width: 1000, height: 560 });
+  await expect.poll(async () => (await page.locator(PHONE_SHELL).boundingBox()).height).toBeLessThan(shell.height);
+  await expectPhoneFit(page, PHONE_SHELL);
+  expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  await page.setViewportSize({ width: 1280, height: 720 });
+  await expect.poll(async () => Math.round((await page.locator(PHONE_SHELL).boundingBox()).height)).toBe(Math.round(shell.height));
 
-  // 切回窗口：1:1 铺满，机壳退场，画布工具收起。
+  // 切回窗口：1:1 铺满，手机屏退场。
   await setViewport(page, 'window');
   expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wb-board-panel .wb-screen--phone-doc')).toHaveCount(0);
-  await expect(page.locator('#wb-board-panel [data-screen="doc"] .ios-stage')).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel .wb-phone-doc')).toHaveCount(0);
   await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
   const stage = await page.locator('#wbstage').boundingBox();
-  const frame = await page.locator(DOC_FRAME).boundingBox();
-  expect(Math.abs(frame.width - stage.width)).toBeLessThan(1);
-  expect(Math.abs(frame.height - stage.height)).toBeLessThan(1);
+  const back = await page.locator(DOC_FRAME).boundingBox();
+  expect(Math.abs(back.width - stage.width)).toBeLessThan(1);
+  expect(Math.abs(back.height - stage.height)).toBeLessThan(1);
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   // 选中条目跟着回来（不是掉回默认的 cards）。
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('doc');
 });
 
-test('机壳「有」时手机视口带 iPhone 机身：设置作用在文档 frame 上', async ({ page }) => {
+test('机壳「有」时手机屏带 iPhone 机身（仍无状态栏 / 岛 / home 条），整块机身装进可用高九成', async ({ page }) => {
   await openDirDoc(page);
   await setViewport(page, 'phone');
   await page.evaluate(() => {
@@ -167,9 +191,23 @@ test('机壳「有」时手机视口带 iPhone 机身：设置作用在文档 fr
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   const screen = page.locator('#wb-board-panel [data-screen="doc"]');
   await expect(screen.locator('.ios-root')).not.toHaveClass(/screen-only/);
-  // 机身 = 屏幕 + 2 × (bezel 15 + frame 3)，与 iOS frame 同一份 ios-kit 取值。
-  expect(await frameLayoutSize(page, '#wb-board-panel [data-screen="doc"] .ios-device')).toEqual([438, 910]);
-  expect(await frameLayoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  // 机身 = 屏幕 + 2 × (bezel 15 + frame 3)，与 iOS frame 同一份 ios-kit 取值；iframe 不变。
+  expect(await layoutSize(page, '#wb-board-panel [data-screen="doc"] .ios-device')).toEqual([438, 910]);
+  expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  await expect(screen.locator('.ios-island, .ios-statusbar, .ios-home')).toHaveCount(0);
+  // 装进九成的是整块机身，屏在机身里等比缩。
+  const shell = await expectPhoneFit(page, PHONE_SHELL);
+  const frame = await page.locator(DOC_FRAME).boundingBox();
+  expect(Math.abs(frame.height / 874 - shell.height / 910)).toBeLessThan(0.01);
+  expect(frame.x).toBeGreaterThan(shell.x);
+  expect(frame.x + frame.width).toBeLessThan(shell.x + shell.width);
+
+  // 设置里切回「无」：屏当场重算（ResizeObserver 盯着屏的布局尺寸），不用重载。
+  await page.evaluate(() => {
+    document.querySelectorAll('#wb-board-panel .ios-root').forEach((r) => r.classList.add('screen-only'));
+  });
+  await expect.poll(async () => Math.round((await page.locator(DOC_FRAME).boundingBox()).height))
+    .toBe(Math.round(shell.height));
 });
 
 test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的页不受影响', async ({ page }) => {
@@ -181,10 +219,11 @@ test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的
 
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
-  expect(await stageForm(page)).toBe('ios');
+  expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('phone');
   await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
-  expect(await frameLayoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  expect(await layoutSize(page, DOC_FRAME)).toEqual([402, 874]);
+  await expectPhoneFit(page, PHONE_SHELL);
   // 条目记忆也带回来：还是 doc，不是默认的 cards。
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('doc');
 
@@ -192,7 +231,7 @@ test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的
   await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
   await expect(page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#title'))
     .toHaveText('E2E proxy upstream');
-  expect(await stageForm(page)).toBe('html');
+  expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wbviewport [data-viewport="window"]')).toHaveAttribute('aria-pressed', 'true');
 
   // 回窗口 = 删 key（默认值不积灰）。
@@ -204,7 +243,7 @@ test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的
   )).toEqual({});
 });
 
-test('url 条目在手机视口里照走同源代理：src 不变，活应用在机壳里跑', async ({ page }) => {
+test('url 条目在手机视口里照走同源代理：src 不变，活应用在手机屏里跑', async ({ page }) => {
   await openWorkbench(page);
   await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
   const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
@@ -213,14 +252,15 @@ test('url 条目在手机视口里照走同源代理：src 不变，活应用在
   await expect(page.locator(FRAME)).toHaveAttribute('src', /^sites\/e2e-proxy\/$/);
   await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
   await expect(page.frameLocator(FRAME).locator('#api-result')).toHaveText('api-via-proxy');
-  expect(await frameLayoutSize(page, FRAME)).toEqual([402, 874]);
+  expect(await layoutSize(page, FRAME)).toEqual([402, 874]);
+  await expectPhoneFit(page, '#wb-board-panel [data-screen="index"] .wb-phone-doc');
   await expect(page.locator('#wbstrip-kind')).toHaveText('网页');
   // 本用例把 e2e-proxy 记成手机，收尾还原，别影响 url-entry.spec 的断言。
   await setViewport(page, 'window');
   fs.rmSync(path.join(E2E_DATA_DIR, 'e2e-proxy'), { recursive: true, force: true });
 });
 
-test('标注跨视口：窗口里标的在手机里照样在，手机里标的回窗口也在（锚点 = 元素选择器）', async ({ page }) => {
+test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素上，手机里标的回窗口也在', async ({ page }) => {
   await openDirDoc(page);
   // 文档 1:1 铺满，左栏浮在它上面（design.md 外壳布局）：#doc-target 在页面左上角，
   // 被面板压住的正文靠收起面板来点。
@@ -240,14 +280,21 @@ test('标注跨视口：窗口里标的在手机里照样在，手机里标的�
   await expect(page.locator('#wbann-count')).toHaveText('1');
   const phoneDoc = page.frameLocator(DOC_FRAME);
   await expect(phoneDoc.locator('.ann-badge')).toHaveCount(1);
-  // 钉子落在 frame 里、锚点元素旁（iframe 视口坐标：钉在锚点框右上角附近）。
+  // 钉子落在缩过的屏里、锚点元素旁：钉子与锚点的 box 都在 iframe 自己的坐标系里
+  // （Playwright 给的是页面坐标，已经含 scale k），钉子必须落在 iframe 的显示矩形内、
+  // 与锚点同一高度带，且锚点的显示宽 = 布局宽 × k（k = 显示宽 / 402）。
+  const frameBox = await page.locator(DOC_FRAME).boundingBox();
+  const k = frameBox.width / 402;
+  expect(k).toBeLessThan(1);
   const badge = await phoneDoc.locator('.ann-badge').first().boundingBox();
   const target = await phoneDoc.locator('#doc-target').boundingBox();
+  const targetLayoutW = await phoneDoc.locator('#doc-target').evaluate((el) => el.offsetWidth);
+  expect(Math.abs(target.width - targetLayoutW * k)).toBeLessThan(1.5);
   expect(badge).not.toBeNull();
-  expect(Math.abs(badge.y - target.y)).toBeLessThan(target.height + 40);
-  const frameBox = await page.locator(DOC_FRAME).boundingBox();
+  expect(Math.abs(badge.y - target.y)).toBeLessThan(target.height + 40 * k);
   expect(badge.x).toBeGreaterThanOrEqual(frameBox.x - 1);
   expect(badge.x + badge.width).toBeLessThanOrEqual(frameBox.x + frameBox.width + 1);
+  expect(badge.y).toBeGreaterThanOrEqual(frameBox.y - 1);
 
   // 手机视口里再标一条（第二个目标），保存到同一个桶。
   await page.locator('#wbann-toggle').click();
@@ -264,42 +311,4 @@ test('标注跨视口：窗口里标的在手机里照样在，手机里标的�
   await expect(page.frameLocator(DOC_FRAME).locator('.ann-badge')).toHaveText(['1', '2']);
   // 账本落在 e2e-dir 桶（与 /sites/ 直开同一个）。
   expect(fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json')).length).toBe(1);
-});
-
-test('手机视口的文档 frame 进导出树，按画布 frame 管线出 PNG', async ({ page }) => {
-  await openDirDoc(page);
-  await setViewport(page, 'phone');
-  // 低清预览档 mock 成 1×1，下载档（scale 2）打真渲染端。
-  const TINY_PNG = Buffer.from(
-    'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
-    'base64',
-  );
-  const requests = [];
-  await page.route('**/api/export-image', async (route) => {
-    const body = route.request().postDataJSON();
-    requests.push(body);
-    if (body.scale !== 1) return route.fallback();
-    await route.fulfill({
-      contentType: 'image/png',
-      headers: { 'X-Export-Width': '1', 'X-Export-Height': '1' },
-      body: TINY_PNG,
-    });
-  });
-  await page.locator('#wbexport-open').click();
-  const picker = page.locator('dialog.wb-export-picker');
-  await expect(picker).toBeVisible();
-  await picker.getByRole('button', { name: /Frame 图片/ }).click();
-  await expect(picker.locator('.wb-pk-fr')).toHaveCount(1);
-  await expect(picker.locator('.wb-pk-fr')).toContainText('Doc');
-  await expect(picker.locator('.wb-pk-fr')).toContainText('402 × 874');
-  // 快照里的 iframe 不带标注面（?annotate=off），与画布 frame 一样干净。
-  await expect.poll(() => requests.length).toBeGreaterThan(0);
-  expect(requests[0].html).toMatch(/iframe[^>]*wb-doc-frame[^>]*src="[^"]*\/sites\/e2e-dir\/doc\.html\?annotate=off"/);
-  const [download] = await Promise.all([
-    page.waitForEvent('download'),
-    picker.getByRole('button', { name: /下载 PNG/ }).click(),
-  ]);
-  expect(download.suggestedFilename()).toMatch(/\.png$/);
-  const file = await download.path();
-  expect(fs.statSync(file).size).toBeGreaterThan(200);
 });
