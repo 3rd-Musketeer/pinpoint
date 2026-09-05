@@ -150,7 +150,7 @@ function SideHead() {
       </span>
       <span className="wb-head-sp"></span>
       <Button type="button" variant="tool" size="icon" id="wbgear"
-        aria-label="预览设置" title="设置"
+        aria-label="设置" title="设置"
         data-state={settingsOpen ? 'on' : undefined}
         onClick={function () { showSettings(); }}>
         <WbIcon name="settings" size={15} className="size-[15px]" />

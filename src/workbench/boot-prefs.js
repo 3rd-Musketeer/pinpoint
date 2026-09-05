@@ -359,15 +359,20 @@ export function applyBootPrefs(prefs, options) {
   }
   setMinimapOpen(false);
 
+  // 2026-09-05 设置精简：字号、画布纹理、锁屏字体不再有控件，启动时一律回默认，
+  // 旧 prefs 里存过的值不再生效（否则一个看不见的开关会永远卡在旧档）。
+  prefs.textSize = 'default';
+  prefs.stageBg = 'grid';
+  prefs.lockFont = 'helvetica';
   applyIosRoots(prefs);
   wbSet({
     theme: prefs.theme || 'light',
-    textSize: prefs.textSize || 'default',
+    textSize: 'default',
     frame: prefs.frame || 'screen'
   });
-  applyLockFont(prefs.lockFont || 'helvetica');
+  applyLockFont('helvetica');
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
-  setStageBg(prefs.stageBg || 'grid');
+  setStageBg('grid');
   setCanvasZoom(zoomForPage(pageId), { save: false });
 
   if (options.shell !== false) {
