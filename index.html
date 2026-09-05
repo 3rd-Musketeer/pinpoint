@@ -82,18 +82,98 @@
   body.wb-resizing { cursor:col-resize; user-select:none; }
   body.wb-resizing iframe { pointer-events:none; }
 
-  /* .wb-head/.wb-conn/#wbside-toggle 的视觉已收编进 app/Sidebar.jsx（V2，
-     shadcn 复制件 + Tailwind 类）—— 此处不再保留旧规则。 */
+  /* ── 左栏内容（2026-09-04 切片 ②，评审板 C1；结构在 app/Sidebar.jsx）──
+     head → 搜索框 → 段（最近 / 页面 / 内容）→ 行。行的几何与皮肤集中在这里，
+     不散进 Tailwind 类：一行同时要装类型槽、缩进、选中/hover/落点三态和
+     行尾元数据，用 utility 拼会把「一行长什么样」拆成十几处。 */
+  #wbside .wb-head {
+    flex:none; display:flex; align-items:center; gap:6px;
+    padding:11px 12px 7px;
+  }
+  .wb-wordmark {
+    font:var(--wb-w-semibold) 13px/1 var(--wb-font); letter-spacing:-.01em;
+    color:var(--wb-fg); user-select:none;
+  }
+  /* 连接状态只剩一颗点（原来那句「已连接」占掉了头部第一眼）：绿 = 通，
+     红 = 断，整句话留在 title 里。 */
+  .wb-conn { display:inline-flex; align-items:center; flex:none; }
+  .wb-conn-dot {
+    width:6px; height:6px; border-radius:50%; display:block;
+    background:var(--wb-ok); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-ok) 20%,transparent);
+  }
+  .wb-conn[data-state="offline"] .wb-conn-dot {
+    background:var(--wb-danger); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-danger) 18%,transparent);
+  }
+  .wb-head-sp { flex:1; }
+
+  .wb-search {
+    flex:none; display:flex; align-items:center; gap:6px;
+    margin:0 10px 4px; padding:0 8px; height:28px;
+    border-radius:var(--wb-r-3); background:var(--wb-fill);
+  }
+  .wb-search .wb-search-ic { width:13px; height:13px; flex:none; color:var(--wb-faint); }
+  .wb-search input {
+    flex:1; min-width:0; border:0; background:transparent; outline:none; padding:0;
+    font:var(--wb-t-body) var(--wb-font); color:var(--wb-fg);
+  }
+  .wb-search input::placeholder { color:var(--wb-faint); }
+  .wb-search-kbd { flex:none; font:var(--wb-w-medium) 10.5px/1 var(--wb-font-mono); color:var(--wb-faint); }
+
+  .wb-section-head {
+    font:var(--wb-w-semibold) 11px/1 var(--wb-font-mono);
+    letter-spacing:.08em; text-transform:uppercase; color:var(--wb-muted);
+    padding:12px 8px 6px;
+  }
+  .wb-section[data-section="recent"] .wb-section-head { padding-top:6px; }
+  .wb-section-head-row { display:flex; align-items:center; justify-content:space-between; padding-right:8px; }
+  .wb-section-head-row .wb-page-sort { margin-top:6px; }
+  .wb-side-nav { padding:0 6px 2px; display:block; }
+
+  /* 行：一套语言给页面行 / 文件夹行 / 最近行 / 「新建文件夹」共用。 */
+  .wb-row {
+    display:flex; align-items:center; gap:7px; width:100%;
+    height:27px; padding:0 8px; border:0; background:transparent;
+    border-radius:var(--wb-r-2); text-align:left; cursor:pointer; position:relative;
+    font:var(--wb-t-row) var(--wb-font); color:var(--wb-fg);
+    transition:background-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-row:hover { background:var(--wb-hover); }
+  .wb-row.on, .wb-row.on:hover { background:var(--wb-sel); font-weight:var(--wb-w-semibold); }
+  .wb-row-glyph { width:14px; height:14px; flex:none; color:var(--wb-faint); }
+  .wb-row-slot { width:14px; flex:none; }
+  .wb-row-chv { width:12px; height:12px; flex:none; color:var(--wb-faint); }
+  .wb-row-t { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .wb-row-m {
+    flex:none; font:var(--wb-w-regular) 11px/1 var(--wb-font-mono);
+    color:var(--wb-faint); font-variant-numeric:tabular-nums;
+  }
+  /* 夹内的页：缩进一档，类型槽仍在（标题跨夹内夹外对得齐）。 */
+  .wb-row.ind { padding-left:32px; }
+  /* 落点（C1）：入夹 = 整行一圈 accent 内描边；夹内重排 = 目标行上/下沿一条线。 */
+  .wb-row.drop { box-shadow:inset 0 0 0 1px var(--wb-accent); }
+  .wb-row[data-drop-hint]::after {
+    content:''; position:absolute; left:8px; right:8px; height:2px;
+    border-radius:2px; background:var(--wb-accent); pointer-events:none;
+  }
+  .wb-row[data-drop-hint="before"]::after { top:-1px; }
+  .wb-row[data-drop-hint="after"]::after { bottom:-1px; }
+  .wb-row.renaming { padding-right:2px; }
+  .wb-new-folder { color:var(--wb-muted); }
+  .wb-loose[data-drop-hint="into"] {
+    border-radius:var(--wb-r-2);
+    box-shadow:inset 0 0 0 1px color-mix(in srgb,var(--wb-accent) 45%,transparent);
+  }
+  .wb-loose:empty { min-height:8px; }
+  .wb-folder-error {
+    margin:4px 8px 0; font:var(--wb-t-body) var(--wb-font); color:var(--wb-danger);
+  }
 
   [contenteditable] { cursor:text; border-radius:var(--wb-r-1); transition:background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease); }
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }
 
-  /* 页面列表（.wb-pages/.wb-page*）的视觉
-     已收编进 app/Sidebar.jsx（V2）—— 旧规则删除。 */
-
   .wb-side-body { flex:1; min-height:0; display:flex; flex-direction:column; }
-  .wb-side-scroll[hidden], .wb-settings-view[hidden], .wb-foot[hidden] { display:none; }
+  .wb-side-scroll[hidden], .wb-settings-view[hidden] { display:none; }
   .wb-settings-view { flex:1; min-height:0; overflow-y:auto; }
 
   /* frame 树延伸线（decisions 2026-08-15c 原大纲，2026-08-16f 阶段 7 收编进「内容」

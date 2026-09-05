@@ -14,13 +14,18 @@
 //  - hover 浅面走 --wb-hover 档（桥 --accent），focus 沿用全局 accent catch-all；
 //  - 过渡 150ms；accent 只出现在字标选中态（真正的强调）。
 // 分段配方（SEG/SEG_ITEM/Seg）V2 起归 app/Seg.jsx 共享（侧栏/footer 分段同用）。
+//
+// 2026-09-04 切片 ②（ADR 0031/0032）：左栏 footer 的 Light/Dark 搬进来，叫
+// 「预览主题」—— 它切的是被预览页面的主题，不是界面主题，放在预览设置里名字
+// 才说得清；另加「显示模板页」开关（三个 manifest 模板页默认藏起来）。
 import { Fragment } from 'react';
-import { useWorkbenchStore, wbGet } from './store.js';
+import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { cn } from './lib/utils.js';
 import { Seg } from './Seg.jsx';
+import { WbIcon } from './WbIcon.jsx';
 import { Button } from './ui/button.jsx';
 import { Input } from './ui/input.jsx';
-import { applyClock, applyLockFont, setCanvasZoom, setFrame, setStageBg, setTextSize } from '../boot-prefs.js';
+import { applyClock, applyLockFont, setCanvasZoom, setFrame, setStageBg, setTextSize, setTheme } from '../boot-prefs.js';
 import { inputFromIosTime, iosTimeFromInput } from '../lib/ios-time.js';
 import { savePrefs } from '../lib/prefs.js';
 import { showTabs } from '../pages.js';
@@ -39,9 +44,17 @@ var LOCK_FONTS = [
 var CLOCK_MODES = [['system', '系统'], ['fixed', '固定']];
 var STAGE_BGS = [['grid', '网格'], ['dots', '圆点纸'], ['plain', '空白']];
 
-// 行布局与行标签（辅助 12px / muted）
+// 预览主题分段项：图标常态淡一档（原左栏 footer #wbtheme .wb-ico 的收编）
+var THEME_ITEM = 'gap-1 [&_svg]:opacity-75 data-[state=on]:[&_svg]:opacity-100';
+var THEMES = [
+  ['light', 'sun', 'Light'],
+  ['dark', 'moon', 'Dark']
+];
+
+// 行布局与行标签（辅助 12px / muted）。标签列 56px：2026-09-04 进来的
+// 「预览主题」是四个汉字，40px 那一档装不下，整列跟着放宽一档。
 var ROW = 'flex items-center gap-2';
-var ROW_LABEL = 'w-10 flex-none text-xs font-medium text-muted-foreground';
+var ROW_LABEL = 'w-14 flex-none text-xs font-medium text-muted-foreground';
 
 export function SettingsView() {
   var zoom = useWorkbenchStore(function (s) { return s.canvasZoom; });
@@ -51,6 +64,8 @@ export function SettingsView() {
   var clockMode = useWorkbenchStore(function (s) { return s.clockMode; });
   var clockFixed = useWorkbenchStore(function (s) { return s.clockFixed; });
   var stageBg = useWorkbenchStore(function (s) { return s.stageBg; });
+  var theme = useWorkbenchStore(function (s) { return s.theme; });
+  var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
 
   return (
     <Fragment>
@@ -67,6 +82,20 @@ export function SettingsView() {
         <div className={ROW}><span className={ROW_LABEL}>缩放</span>
           <Seg id="zoom" value={zoom} dataAttr="data-canvas-zoom" options={ZOOMS}
             onPick={function (v) { setCanvasZoom(v, { save: true }); }} /></div>
+        {/* 预览主题（2026-09-04，原左栏 footer 的 Light/Dark 分段原样搬来）：
+            切的是 .ios-root 的 data-theme，不是 workbench chrome 的主题。 */}
+        <div className={ROW}><span className={ROW_LABEL}>预览主题</span>
+          <Seg id="wbtheme" role="group" aria-label="预览主题"
+            value={theme} dataAttr="data-theme"
+            options={THEMES.map(function (t) {
+              return [t[0], (
+                <Fragment>
+                  <WbIcon name={t[1]} size={12} className="size-3" />
+                  {t[2]}
+                </Fragment>
+              ), { title: t[2], className: THEME_ITEM }];
+            })}
+            onPick={function (v) { setTheme(v, { save: true }); }} /></div>
         <div className={ROW}><span className={ROW_LABEL}>画布</span>
           <Seg id="stagebg" value={stageBg} dataAttr="data-stage-bg" options={STAGE_BGS}
             onPick={function (v) { setStageBg(v, { save: true }); }} /></div>
@@ -120,6 +149,19 @@ export function SettingsView() {
               var fixed = iosTimeFromInput(e.target.value);
               applyClock('fixed', fixed);
               savePrefs({ clockMode: 'fixed', clockFixed: fixed });
+            }} />
+        </div>
+        {/* 模板页开关（ADR 0032）：Component Library / Example Library /
+            Example HTML 是模板资产，不是 owner 每天要找的页 —— 默认藏起来。 */}
+        <div className={ROW}>
+          <span className="flex-1 text-xs font-medium text-muted-foreground">显示模板页</span>
+          <Seg id="showtemplates" role="group" aria-label="显示模板页"
+            value={showTemplates ? 'on' : 'off'} dataAttr="data-show-templates"
+            options={[['off', '隐藏'], ['on', '显示']]}
+            onPick={function (v) {
+              var on = v === 'on';
+              wbSet({ showTemplatePages: on });
+              savePrefs({ showTemplatePages: on });
             }} />
         </div>
       </div>

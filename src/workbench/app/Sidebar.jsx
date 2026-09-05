@@ -13,13 +13,12 @@
 //    标注区迁出为独立右栏；2026-09-04 右栏取消常驻，改为横条计数钮弹出的
 //    列表（app/AnnPopover.jsx）。
 //  - 段头改静态（mock 无折叠 affordance），sectionOpen 机制随 Annotations 段退役。
-//  - footer 的 Light/Dark 分段是预览内容主题（ios-root data-theme），原地保留。
 //
 // 2026-08-16 阶段 2（Web 退役 + Pages 统一）：模式 Seg（iOS/Web/HTML）退役，
 // Pages 变单一列表（本地页 + registry dir 条目同列）。
 // 2026-08-16f 阶段 7（产物与草稿模型，decisions 08-16f，ROADMAP 阶段 7）：
 //  - Page 去类型化：Page 行只剩标题 + hover copy 钮（壳标 pill / data-page-mode
-//    随本阶段删除）；类型信息下移到产物条目的 tag（画布 / 文档 / 网页）。
+//    随本阶段删除）；类型信息下移到产物条目的 tag。
 //  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档/网页条目，各带
 //    mono 类型 tag）+ 草稿组（role=draft 条目，纯标题行，无 tag——草稿恒为整页
 //    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目，doc 导出挪到条目行的
@@ -40,18 +39,31 @@
 // （lib/page-sort.js formatRelativeTime；无 mtime 的页不出）；Pages 段头右侧
 // 排序钮循环 default → 最近更新 → 名称（lib/page-sort.js sortPages，持久化
 // prefs.pageSort）。语义 = 内容文件改动，标注活动不参与。
+//
+// 2026-09-04 切片 ②（外壳重设计的左栏内容，评审板 C1 + ADR 0031/0032）：
+//  - head 第一眼是产品名与搜索，不是「已连接」：wordmark + 连接小点（状态只剩
+//    颜色与 tooltip）+ 齿轮，下面一格搜索框（⌘K 聚焦，打字即筛，Esc 清空）。
+//  - 「最近」段（本地记录五条）在「页面」段之上，行尾是打开时刻的相对时间。
+//  - 「页面」段 = 文件夹在前、散页在后（lib/page-groups.js 的纯函数给模型，
+//    ADR 0032）；夹可折叠、可改名、可删（删夹不删页）；页靠拖放入夹，夹内在
+//    「默认」档可拖排序。三条写接口在 lib/folder-api.js。
+//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：类型小标（url = 地球，
+//    file = 文档）占行首 14px 槽，没有类型的页留空槽让标题对齐；行尾 11 mono。
+//  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
+//    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
+//  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
 import { Fragment, useEffect, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
   entriesOfActiveBoard,
-  manifestPages,
+  pageGrouping,
   retryPageManifest,
   setActiveEntry,
   setActivePage,
   showSettings,
-  showTabs
+  showTabs,
+  sidebarPages
 } from '../pages.js';
-import { setTheme } from '../boot-prefs.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import { openDocExportDialog } from '../export-core.js';
 import {
@@ -62,18 +74,23 @@ import {
   entryTag,
   resolveEntry
 } from '../lib/board-entries.js';
-import { COMPONENTS_ID } from '../lib/page-url.js';
 import { boardRefs } from '../lib/board-refs.js';
 import {
   PAGE_SORT_LABELS,
   formatRelativeTime,
   nextPageSort,
-  normalizePageSort,
-  sortPages
+  normalizePageSort
 } from '../lib/page-sort.js';
-import { readPrefs, savePrefs } from '../lib/prefs.js';
+import {
+  filterPages,
+  groupPages,
+  nextFolderId,
+  recentRows,
+  visiblePages
+} from '../lib/page-groups.js';
+import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
+import { readPrefs, readRecentPages, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
-import { Seg } from './Seg.jsx';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
 import { cn } from './lib/utils.js';
@@ -92,13 +109,6 @@ var ROW_ON =
 // 行的常态排印：13/500 正色（旧值 12.5 muted —— 裁决把列表行提到正色一档）
 var ROW_TEXT = 'text-[13px] font-medium text-foreground';
 
-// 段头（Pages / 内容）：静态 eyebrow，mono 小字 + 宽字距（mock .sec 的收编；
-// 2026-08-15 起不再是折叠钮）。
-var SECTION_HEAD =
-  'wb-section-head px-[var(--wb-pad)] pb-[7px] pt-[13px] font-[var(--wb-font-mono)] ' +
-  'text-[9.5px] font-semibold uppercase tracking-[0.12em] ' +
-  'text-[color:color-mix(in_srgb,var(--wb-accent)_45%,var(--wb-faint))]';
-
 // 「内容」区组头（产物 / 草稿）：比段头低一档的 mono eyebrow
 // （对齐基准 previews/hierarchy-demo 的 .t-sub）。
 var GROUP_HEAD =
@@ -114,45 +124,98 @@ var ENTRY_TAG =
   'font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] ' +
   'text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]';
 
+// 段头（最近 / 页面 / 内容）：11 mono semibold 淡色 eyebrow（C1）。几何与色在
+// index.html 的 .wb-section-head 里，这里只挂类名。
+var SECTION_HEAD = 'wb-section-head';
+
+// 拖放载荷的 MIME：只认自家的，外面拖进来的文件不会被当成一次入夹。
+var DND_TYPE = 'application/x-pinpoint-page';
+
 /* head（2026-09-04 外壳重设计）：收起钮搬去底部横条（#wbside-toggle 在
-   app/Strip.jsx，收起去哪、从哪展开是同一个点，G1b）。这里只剩连接状态与齿轮。 */
+   app/Strip.jsx，收起去哪、从哪展开是同一个点，G1b）。切片 ② 起第一眼是
+   产品名 —— 连接状态收成一颗小点（原来的整句话进 title），齿轮留在右端。 */
 function SideHead() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var on = !!(snap && snap.available && snap.connected);
   var syncErr = !!(snap && snap.available && snap.syncError);
   return (
-    <div className="wb-head flex items-center justify-between gap-2 border-b border-[color:var(--wb-seam)] px-[var(--wb-pad)] pb-2 pt-2.5">
-      <div id="wbconn" data-state={on ? 'online' : 'offline'}
-        className="wb-conn group inline-flex min-w-0 select-none items-center gap-1.5 text-[11px] font-medium leading-none text-muted-foreground data-[state=offline]:text-destructive data-[state=online]:text-[color:var(--wb-ok)]"
+    <div className="wb-head">
+      <span className="wb-wordmark">pinpoint</span>
+      <span id="wbconn" data-state={on ? 'online' : 'offline'} className="wb-conn"
         title={on ? (syncErr ? '已连接 · 上次同步失败' : '标注服务已连接') : '标注服务未连接（请运行 npm run dev）'}>
-        <span className="wb-conn-dot size-[7px] flex-none rounded-full bg-[#c7c7cc] shadow-[0_0_0_2px_rgba(199,199,204,.25)] group-data-[state=online]:bg-[var(--wb-ok)] group-data-[state=online]:shadow-[0_0_0_2px_color-mix(in_srgb,var(--wb-ok)_22%,transparent)] group-data-[state=offline]:bg-destructive group-data-[state=offline]:shadow-[0_0_0_2px_color-mix(in_srgb,var(--wb-danger)_18%,transparent)]" aria-hidden="true"></span>
-        <span className="wb-conn-label truncate">{on ? '已连接' : '未连接'}</span>
-      </div>
-      <div className="flex flex-none items-center gap-1">
-        <Button type="button" variant="tool" size="icon" id="wbgear"
-          aria-label="预览设置" title="设置"
-          data-state={settingsOpen ? 'on' : undefined}
-          onClick={function () { showSettings(); }}>
-          <WbIcon name="settings" size={15} className="size-[15px]" />
-        </Button>
-      </div>
+        <span className="wb-conn-dot" aria-hidden="true"></span>
+        <span className="sr-only">{on ? '标注服务已连接' : '标注服务未连接'}</span>
+      </span>
+      <span className="wb-head-sp"></span>
+      <Button type="button" variant="tool" size="icon" id="wbgear"
+        aria-label="预览设置" title="设置"
+        data-state={settingsOpen ? 'on' : undefined}
+        onClick={function () { showSettings(); }}>
+        <WbIcon name="settings" size={15} className="size-[15px]" />
+      </Button>
     </div>
   );
 }
 
+/* 搜索框（C1）：打字即筛，跨「最近」与「页面」两段按标题或 id 过滤。
+   ⌘K / Ctrl+K 聚焦（全局监听，画布上也管用），Esc 清空并交还焦点。 */
+function SearchField(props) {
+  var inputRef = useRef(null);
+  useEffect(function () {
+    function onKey(e) {
+      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
+        e.preventDefault();
+        if (inputRef.current) {
+          inputRef.current.focus();
+          inputRef.current.select();
+        }
+      }
+    }
+    window.addEventListener('keydown', onKey);
+    return function () { window.removeEventListener('keydown', onKey); };
+  }, []);
+  return (
+    <div className="wb-search" id="wbsearch">
+      <WbIcon name="search" size={13} className="wb-search-ic" />
+      <input ref={inputRef} type="text" id="wbsearch-input" aria-label="搜索页面"
+        placeholder="搜索页面" autoComplete="off" spellCheck="false"
+        value={props.value}
+        onChange={function (e) { props.onChange(e.target.value); }}
+        onKeyDown={function (e) {
+          if (e.key !== 'Escape') return;
+          e.preventDefault();
+          e.stopPropagation();
+          props.onChange('');
+          e.target.blur();
+        }} />
+      <span className="wb-search-kbd" aria-hidden="true">⌘K</span>
+    </div>
+  );
+}
+
+/* 行首 14px 槽：url 条目出地球、file 条目出文档，其余（dir 条目 / 模板页）留空槽
+   —— 槽宽恒定，标题才对得齐（2026-09-04 切片 ② 第 10 条）。 */
+function KindGlyph(props) {
+  if (props.kind === 'url') return <WbIcon name="globe" size={14} className="wb-row-glyph" />;
+  if (props.kind === 'file') return <WbIcon name="file-text" size={14} className="wb-row-glyph" />;
+  return <span className="wb-row-slot" aria-hidden="true"></span>;
+}
+
 function PageRow(props) {
   var page = props.page;
-  var system = !!props.system;
+  var system = !!page.system;
   var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
   var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
   var [renaming, setRenaming] = useState(false);
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
+  var dnd = props.dnd;
   // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题；壳标 pill 与
   // data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
   // 2026-08-17：行尾 hover copy 钮退役，复制 / 重命名进右键菜单（row-menu）。
+  // 2026-09-04：行首回来一个 14px 类型槽（url / file 才画图标），行尾 11 mono。
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -196,22 +259,46 @@ function PageRow(props) {
       onSelect: function () { doneRef.current = false; setRenaming(true); },
       attr: { 'data-rename-page': page.id }
     });
+    // 入夹 / 出夹的键盘可达路径（拖放之外的第二条）：菜单里逐个夹列出来。
+    menuItems.push({
+      kind: 'action', label: '新建文件夹并放入', icon: 'folder-plus',
+      onSelect: function () { dnd.createFolderWith(page.id); },
+      attr: { 'data-new-folder-with': page.id }
+    });
+    dnd.folders.forEach(function (folder) {
+      if (folder.id === props.folderId) return;
+      menuItems.push({
+        kind: 'action', label: '移到「' + folder.name + '」', icon: 'folder',
+        onSelect: function () { dnd.movePage(page.id, folder.id); },
+        attr: { 'data-move-to-folder': folder.id }
+      });
+    });
+    if (props.folderId) {
+      menuItems.push({
+        kind: 'action', label: '移出文件夹', icon: 'folder',
+        onSelect: function () { dnd.movePage(page.id, null); },
+        attr: { 'data-move-out': page.id }
+      });
+    }
   }
+
+  var dropHint = dnd.dropHintFor(page.id);
 
   return (
     <RowMenu items={menuItems}>
-    <div className="wb-page-row group flex min-w-0 items-stretch gap-0.5" data-page-system={system ? '1' : undefined}>
+    <div className="wb-page-row group" data-page-system={system ? '1' : undefined}>
       <button type="button"
         data-vpage={page.id} data-page-system={system ? '1' : undefined}
         data-page-default={page.title}
         data-state={active ? 'on' : undefined}
-        className={cn(
-          'wb-page flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans transition-[color,background-color,box-shadow] duration-150 hover:bg-accent group-hover:bg-accent',
-          ROW_TEXT,
-          active && 'on',
-          active && ROW_ON,
-          renaming && 'renaming bg-accent px-0 py-0 hover:bg-accent group-hover:bg-accent'
-        )}
+        data-drop-hint={dropHint || undefined}
+        draggable={!system && !renaming}
+        onDragStart={function (e) { dnd.onDragStart(e, page.id, props.folderId || null); }}
+        onDragEnd={function () { dnd.onDragEnd(); }}
+        onDragOver={function (e) { dnd.onPageDragOver(e, page.id, props.folderId || null); }}
+        onDragLeave={function () { dnd.onDragLeave(); }}
+        onDrop={function (e) { dnd.onPageDrop(e, page.id, props.folderId || null); }}
+        className={cn('wb-row wb-page', props.indent && 'ind', active && 'on', renaming && 'renaming')}
         onClick={function () {
           if (renaming) return;
           showTabs();
@@ -223,20 +310,22 @@ function PageRow(props) {
           doneRef.current = false;
           setRenaming(true);
         }}>
+        <KindGlyph kind={page.kind} />
         {renaming ? (
           <Input ref={inputRef} type="text" aria-label="重命名页面"
-            className="wb-page-rename h-auto rounded-md border-0 bg-transparent px-2 py-[7px] text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
+            className="wb-page-rename h-auto flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
             defaultValue={title} onKeyDown={onRenameKey}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
-          <span className="wb-page-t min-w-0 flex-1 truncate">{title}</span>
+          <span className="wb-page-t wb-row-t">{title}</span>
         )}
         {/* 2026-08-17g：内容 mtime 的行内相对时间（mono 小字，视觉语言同
             条目 tag 但无底色；完整时间进 hover title）。无 mtime 的页
-            （url 条目 / 本地示例页）不出此元素；紧凑断点整枚隐藏
+            （url 条目 / 本地示例页）不出此元素——行尾那一格就留空，标题
+            不许借位（2026-09-04 切片 ② 第 10 条）；紧凑断点整枚隐藏
             （index.html #wbside.compact 规则）。 */}
         {!renaming && page.mtime ? (
-          <span className="wb-page-time flex-none font-[var(--wb-font-mono)] text-[9px] leading-none text-[color:var(--wb-faint)]"
+          <span className="wb-page-time wb-row-m"
             data-page-time={page.id}
             title={new Date(page.mtime).toLocaleString('zh-CN', { hour12: false })}>
             {formatRelativeTime(page.mtime, props.now || Date.now())}
@@ -248,61 +337,178 @@ function PageRow(props) {
   );
 }
 
-function PagesNav(props) {
-  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 manifestPages
-  var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
-  // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
-  var [now, setNow] = useState(function () { return Date.now(); });
+/* 文件夹行（ADR 0032）：chevron + 夹图标 + 名称，整行是折叠钮，也是入夹的落点。
+   右键 = 重命名（行内编辑，与页面行同一套）/ 删除文件夹（删夹不删页）。 */
+function FolderRow(props) {
+  var folder = props.folder;
+  var dnd = props.dnd;
+  var renaming = dnd.renamingFolderId === folder.id;
+  var inputRef = useRef(null);
+  var doneRef = useRef(false);
+
   useEffect(function () {
-    var timer = setInterval(function () { setNow(Date.now()); }, 60000);
-    return function () { clearInterval(timer); };
-  }, []);
-  var pages = sortPages(manifestPages(), props.sort);
+    if (renaming && inputRef.current) {
+      doneRef.current = false;
+      inputRef.current.focus();
+      inputRef.current.select();
+    }
+  }, [renaming]);
+
+  function finishRename(commit, value) {
+    if (doneRef.current) return;
+    doneRef.current = true;
+    var next = String(value == null ? '' : value).trim();
+    dnd.finishFolderRename(folder.id, commit && next ? next : null);
+  }
+
   return (
-    <nav className="wb-pages flex flex-col gap-px pb-1 pt-0.5" id="wbpages">
-      <PageRow system page={{ id: COMPONENTS_ID, title: 'Component Library' }} now={now} />
-      {pages.map(function (p) { return <PageRow key={p.id} page={p} now={now} />; })}
-      {manifestError ? (
-        <div className="wb-page-error" style={{ margin: '6px 10px' }}>
-          <p title={manifestError}
-            style={{ margin: 0, color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
-            页面清单读取失败：board.json 缺失或返回的不是 JSON。检查对应 previews 目录后重试。
-          </p>
-          {/* 与板失败面板同一条规矩（2026-09-04）：错误状态自带回到可用状态的动作 */}
-          <button type="button" className="wb-screen-err-act" data-page-manifest-retry
-            style={{ marginTop: '8px' }}
-            onClick={function () { retryPageManifest(); }}>重试</button>
-        </div>
-      ) : null}
-    </nav>
+    <RowMenu items={[
+      { kind: 'action', label: '重命名', icon: 'pencil',
+        onSelect: function () { dnd.startFolderRename(folder.id); },
+        attr: { 'data-rename-folder': folder.id } },
+      { kind: 'action', label: '删除文件夹', icon: 'trash',
+        onSelect: function () { dnd.removeFolder(folder.id); },
+        attr: { 'data-remove-folder': folder.id } },
+      { kind: 'action', label: '新建文件夹', icon: 'folder-plus',
+        onSelect: function () { dnd.createFolderWith(null); },
+        attr: { 'data-new-folder': '1' } }
+    ]}>
+    <div className="wb-folder-row group">
+      <button type="button"
+        className={cn('wb-row wb-folder', dnd.dropFolderId === folder.id && 'drop')}
+        data-folder={folder.id}
+        data-state={props.collapsed ? 'collapsed' : 'open'}
+        aria-expanded={!props.collapsed}
+        onDragOver={function (e) { dnd.onFolderDragOver(e, folder.id); }}
+        onDragLeave={function () { dnd.onDragLeave(); }}
+        onDrop={function (e) { dnd.onFolderDrop(e, folder.id); }}
+        onClick={function () { if (!renaming) dnd.toggleFolder(folder.id); }}>
+        <WbIcon name={props.collapsed ? 'chevron-right' : 'chevron-down'} size={12} className="wb-row-chv" />
+        <WbIcon name="folder" size={14} className="wb-row-glyph" />
+        {renaming ? (
+          <Input ref={inputRef} type="text" aria-label="重命名文件夹"
+            className="wb-folder-rename h-auto flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
+            defaultValue={folder.name}
+            onClick={function (e) { e.stopPropagation(); }}
+            onKeyDown={function (e) {
+              if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); finishRename(true, e.target.value); }
+              else if (e.key === 'Escape') { e.preventDefault(); finishRename(false, e.target.value); }
+            }}
+            onBlur={function (e) { finishRename(true, e.target.value); }} />
+        ) : (
+          <span className="wb-row-t wb-folder-t">{folder.name}</span>
+        )}
+      </button>
+    </div>
+    </RowMenu>
   );
 }
 
-/* Pages 段（2026-08-17g）：段头右侧挂排序切换钮 —— default → 最近更新 →
-   名称循环，选择持久化在 prefs.pageSort。data-page-sort 是 e2e 契约。 */
-function PagesSection() {
-  var [sort, setSort] = useState(function () {
-    return normalizePageSort(readPrefs().pageSort);
-  });
-  function cycleSort() {
-    var next = nextPageSort(sort);
-    savePrefs({ pageSort: next });
-    setSort(next);
-  }
+/* 「最近」段（2026-09-04 裁决 5c）：本地记录的最近打开五条，行尾是打开时刻的
+   相对时间（不是内容 mtime —— 这一段回答「我刚才在看什么」）。空则整段不出。 */
+function RecentSection(props) {
+  var rows = props.rows;
+  if (!rows.length) return null;
+  return (
+    <section className="wb-section" data-section="recent">
+      <div className={SECTION_HEAD}>最近</div>
+      <nav className="wb-side-nav" id="wbrecent" aria-label="最近打开">
+        {rows.map(function (row) {
+          return (
+            <RecentRow key={row.page.id} page={row.page} at={row.at} now={props.now} />
+          );
+        })}
+      </nav>
+    </section>
+  );
+}
+
+function RecentRow(props) {
+  var page = props.page;
+  var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
+  var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
+  var title = page.system || typeof customName !== 'string' || !customName.trim() ? page.title : customName.trim();
+  return (
+    <button type="button" data-recent-page={page.id}
+      data-state={active ? 'on' : undefined}
+      className={cn('wb-row wb-recent', active && 'on')}
+      onClick={function () { showTabs(); setActivePage(page.id); }}>
+      <KindGlyph kind={page.kind} />
+      <span className="wb-row-t">{title}</span>
+      <span className="wb-row-m">{formatRelativeTime(props.at, props.now)}</span>
+    </button>
+  );
+}
+
+/* Pages 段（2026-08-17g 排序钮 + 2026-09-04 分组层）：
+   段头右侧仍是排序切换钮（default → 最近更新 → 名称，持久化 prefs.pageSort，
+   data-page-sort 是 e2e 契约）；段身 = 文件夹在前、散页在后，最后一行「新建
+   文件夹」。散页区整块是「拖出来」的落点。 */
+function PagesSection(props) {
+  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 sidebarPages
+  var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
+  var dnd = props.dnd;
+  var model = props.model;
+
   return (
     <section className="wb-section" data-section="pages">
-      <div className="flex items-center justify-between">
-        <div className={SECTION_HEAD}>Pages</div>
+      <div className="wb-section-head-row">
+        <div className={SECTION_HEAD}>页面</div>
         <Button type="button" variant="tool" size="icon"
-          className="wb-page-sort me-[var(--wb-pad)] mt-[9px] size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
-          data-page-sort={sort}
-          aria-label={'Pages 排序：' + PAGE_SORT_LABELS[sort]}
-          title={'排序：' + PAGE_SORT_LABELS[sort] + '（点击切换）'}
-          onClick={cycleSort}>
+          className="wb-page-sort size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
+          data-page-sort={props.sort}
+          aria-label={'Pages 排序：' + PAGE_SORT_LABELS[props.sort]}
+          title={'排序：' + PAGE_SORT_LABELS[props.sort] + '（点击切换）'}
+          onClick={props.onCycleSort}>
           <WbIcon name="sort" size={11} className="size-[11px]" />
         </Button>
       </div>
-      <PagesNav sort={sort} />
+      <nav className="wb-side-nav wb-pages" id="wbpages">
+        {model.folders.map(function (folder) {
+          var collapsed = dnd.isCollapsed(folder);
+          return (
+            <Fragment key={folder.id}>
+              <FolderRow folder={folder} collapsed={collapsed} dnd={dnd} />
+              {collapsed ? null : folder.pages.map(function (page) {
+                return (
+                  <PageRow key={page.id} page={page} indent folderId={folder.id}
+                    dnd={dnd} now={props.now} />
+                );
+              })}
+            </Fragment>
+          );
+        })}
+        <div className="wb-loose"
+          onDragOver={function (e) { dnd.onLooseDragOver(e); }}
+          onDragLeave={function () { dnd.onDragLeave(); }}
+          onDrop={function (e) { dnd.onLooseDrop(e); }}
+          data-drop-hint={dnd.looseDrop ? 'into' : undefined}>
+          {model.loose.map(function (page) {
+            return <PageRow key={page.id} page={page} dnd={dnd} now={props.now} />;
+          })}
+        </div>
+        <button type="button" className="wb-row wb-new-folder" data-new-folder="1"
+          onClick={function () { dnd.createFolderWith(null); }}>
+          <span className="wb-row-slot" aria-hidden="true"></span>
+          <WbIcon name="folder-plus" size={14} className="wb-row-glyph" />
+          <span className="wb-row-t">新建文件夹</span>
+        </button>
+        {dnd.error ? (
+          <p className="wb-folder-error" role="alert">{dnd.error}</p>
+        ) : null}
+        {manifestError ? (
+          <div className="wb-page-error" style={{ margin: '6px 10px' }}>
+            <p title={manifestError}
+              style={{ margin: 0, color: 'var(--wb-danger)', fontSize: '12px', lineHeight: 1.35 }}>
+              页面清单读取失败：board.json 缺失或返回的不是 JSON。检查对应 previews 目录后重试。
+            </p>
+            {/* 与板失败面板同一条规矩（2026-09-04）：错误状态自带回到可用状态的动作 */}
+            <button type="button" className="wb-screen-err-act" data-page-manifest-retry
+              style={{ marginTop: '8px' }}
+              onClick={function () { retryPageManifest(); }}>重试</button>
+          </div>
+        ) : null}
+      </nav>
     </section>
   );
 }
@@ -499,50 +705,250 @@ function Contents() {
   );
 }
 
-function themeLabel(icon, text) {
-  return (
-    <Fragment>
-      <WbIcon name={icon} size={12} className="size-3" />
-      {text}
-    </Fragment>
-  );
-}
+/* 分组层的交互状态与三条写接口的调用点（ADR 0032）。折叠是本地先动、后台再写
+   （折叠一个夹不该等一次网络往返）；其余动作一律「写成功了才变」——登记表是
+   事实源，乐观更新会让一次被拒的写看起来成功了。 */
+function useFolderActions(folders, model, sort) {
+  var [collapsedLocal, setCollapsedLocal] = useState({});
+  var [renamingFolderId, setRenamingFolderId] = useState(null);
+  var [dragging, setDragging] = useState(null);
+  var [dropFolderId, setDropFolderId] = useState(null);
+  var [dropPage, setDropPage] = useState(null);
+  var [looseDrop, setLooseDrop] = useState(false);
+  var [error, setError] = useState(null);
 
-// footer 主题分段项：图标常态淡一档（旧 #wbtheme .wb-ico opacity .75→on 1 的收编）
-var THEME_ITEM = 'gap-1 [&_svg]:opacity-75 data-[state=on]:[&_svg]:opacity-100';
+  function fail(e) {
+    setError(String(e && e.message ? e.message : e));
+  }
+  function run(promise) {
+    setError(null);
+    return promise.catch(fail);
+  }
 
-function SideFoot() {
-  var theme = useWorkbenchStore(function (s) { return s.theme; });
-  var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
-  // footer 只剩预览内容主题分段（ios-root data-theme，不是 chrome 主题）；
-  // 设置入口挪进左栏 head 齿轮（2026-08-15 mock）。
-  return (
-    <div className="wb-foot flex items-center gap-1.5 border-t border-[color:var(--wb-seam)] px-[var(--wb-pad)] py-2.5" id="wbfoot" hidden={settingsOpen}>
-      <Seg id="wbtheme" role="group" aria-label="屏幕主题"
-        value={theme} dataAttr="data-theme"
-        options={[
-          ['light', themeLabel('sun', 'Light'), { title: 'Light', className: THEME_ITEM }],
-          ['dark', themeLabel('moon', 'Dark'), { title: 'Dark', className: THEME_ITEM }]
-        ]}
-        onPick={function (v) { setTheme(v, { save: true }); }} />
-    </div>
-  );
+  function foldersPayload() {
+    return folders.map(function (folder) {
+      var out = { id: folder.id };
+      if (folder.name && folder.name !== folder.id) out.name = folder.name;
+      var collapsed = collapsedLocal[folder.id] === undefined ? !!folder.collapsed : collapsedLocal[folder.id];
+      if (collapsed) out.collapsed = true;
+      return out;
+    });
+  }
+
+  function clearDrop() {
+    setDropFolderId(null);
+    setDropPage(null);
+    setLooseDrop(false);
+  }
+
+  var actions = {
+    folders: model.folders,
+    renamingFolderId: renamingFolderId,
+    dropFolderId: dropFolderId,
+    looseDrop: looseDrop,
+    error: error,
+
+    isCollapsed: function (folder) {
+      var local = collapsedLocal[folder.id];
+      return local === undefined ? !!folder.collapsed : local;
+    },
+
+    toggleFolder: function (id) {
+      var current = collapsedLocal[id];
+      var folder = folders.filter(function (f) { return f.id === id; })[0];
+      var next = current === undefined ? !(folder && folder.collapsed) : !current;
+      var merged = Object.assign({}, collapsedLocal);
+      merged[id] = next;
+      setCollapsedLocal(merged);
+      run(putFolders(folders.map(function (f) {
+        var out = { id: f.id };
+        if (f.name && f.name !== f.id) out.name = f.name;
+        var collapsed = f.id === id ? next : (merged[f.id] === undefined ? !!f.collapsed : merged[f.id]);
+        if (collapsed) out.collapsed = true;
+        return out;
+      })));
+    },
+
+    createFolderWith: function (pageId) {
+      var name = '新建文件夹';
+      var id = nextFolderId(folders.map(function (f) { return f.id; }), name);
+      run(putFolders(foldersPayload().concat([{ id: id, name: name }])).then(function () {
+        setRenamingFolderId(id);
+        if (pageId) return putPageFolder(pageId, id);
+        return null;
+      }));
+    },
+
+    startFolderRename: function (id) { setRenamingFolderId(id); },
+
+    finishFolderRename: function (id, name) {
+      setRenamingFolderId(null);
+      if (!name) return;
+      run(putFolders(foldersPayload().map(function (f) {
+        return f.id === id ? Object.assign({}, f, { name: name }) : f;
+      })));
+    },
+
+    removeFolder: function (id) {
+      // 删夹不删页：里面的页退回散页区，服务端在同一次原子写里释放。
+      run(putFolders(foldersPayload().filter(function (f) { return f.id !== id; })));
+    },
+
+    movePage: function (pageId, folderId) {
+      run(putPageFolder(pageId, folderId));
+    },
+
+    /* ---- 拖放 ---- */
+    onDragStart: function (e, pageId, folderId) {
+      setDragging({ id: pageId, folder: folderId });
+      if (!e.dataTransfer) return;
+      e.dataTransfer.effectAllowed = 'move';
+      e.dataTransfer.setData(DND_TYPE, pageId);
+      e.dataTransfer.setData('text/plain', pageId);
+    },
+    onDragEnd: function () { setDragging(null); clearDrop(); },
+    onDragLeave: function () { clearDrop(); },
+
+    onFolderDragOver: function (e, folderId) {
+      if (!dragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      setDropFolderId(folderId);
+      setDropPage(null);
+      setLooseDrop(false);
+    },
+    onFolderDrop: function (e, folderId) {
+      if (!dragging) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var id = dragging.id;
+      clearDrop();
+      setDragging(null);
+      if (dragging.folder === folderId) return;
+      actions.movePage(id, folderId);
+    },
+
+    /* 夹内的页行既是入夹落点，也是「默认」档下的重排落点：同夹同档 = 排序，
+       否则 = 入夹（拖到别人夹里的某一行上，意思显然是进那个夹）。 */
+    onPageDragOver: function (e, pageId, folderId) {
+      if (!dragging || dragging.id === pageId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      e.dataTransfer.dropEffect = 'move';
+      if (folderId && dragging.folder === folderId && sort === 'default') {
+        var box = e.currentTarget.getBoundingClientRect();
+        setDropPage({ id: pageId, before: e.clientY < box.top + box.height / 2 });
+        setDropFolderId(null);
+      } else if (folderId) {
+        setDropFolderId(folderId);
+        setDropPage(null);
+      } else {
+        setDropPage(null);
+        setDropFolderId(null);
+        setLooseDrop(true);
+      }
+    },
+    onPageDrop: function (e, pageId, folderId) {
+      if (!dragging || dragging.id === pageId) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var drag = dragging;
+      var hint = dropPage;
+      clearDrop();
+      setDragging(null);
+      if (folderId && drag.folder === folderId && sort === 'default') {
+        var group = model.folders.filter(function (f) { return f.id === folderId; })[0];
+        if (!group) return;
+        var ids = group.pages.map(function (p) { return p.id; }).filter(function (id) { return id !== drag.id; });
+        var at = ids.indexOf(pageId);
+        if (at < 0) return;
+        ids.splice(hint && hint.before ? at : at + 1, 0, drag.id);
+        actions.reorderPages(ids);
+        return;
+      }
+      if (folderId) {
+        if (drag.folder !== folderId) actions.movePage(drag.id, folderId);
+        return;
+      }
+      if (drag.folder) actions.movePage(drag.id, null);
+    },
+    reorderPages: function (ids) { run(putPageOrder(ids)); },
+
+    onLooseDragOver: function (e) {
+      if (!dragging || !dragging.folder) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'move';
+      setLooseDrop(true);
+      setDropFolderId(null);
+    },
+    onLooseDrop: function (e) {
+      if (!dragging) return;
+      e.preventDefault();
+      var drag = dragging;
+      clearDrop();
+      setDragging(null);
+      if (drag.folder) actions.movePage(drag.id, null);
+    },
+
+    dropHintFor: function (pageId) {
+      if (!dropPage || dropPage.id !== pageId) return null;
+      return dropPage.before ? 'before' : 'after';
+    }
+  };
+  return actions;
 }
 
 export function Sidebar() {
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
+  var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
+  var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
+  useWorkbenchStore(function (s) { return s.pageManifest; }); // 分组模型跟着清单重算
+  var [query, setQuery] = useState('');
+  var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
+  // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
+  var [now, setNow] = useState(function () { return Date.now(); });
+  useEffect(function () {
+    var timer = setInterval(function () { setNow(Date.now()); }, 60000);
+    return function () { clearInterval(timer); };
+  }, []);
+  // 模板页开关住 store（设置视图写，这里读），初值来自 prefs。
+  useEffect(function () { wbSet({ showTemplatePages: !!readPrefs().showTemplatePages }); }, []);
+
+  var grouping = pageGrouping();
+  var pages = filterPages(
+    visiblePages(sidebarPages(), { showTemplates: showTemplates, keepId: activePageId }),
+    query
+  );
+  var model = groupPages({
+    pages: pages,
+    folders: grouping.folders,
+    pageFolders: grouping.pageFolders,
+    pageOrder: grouping.pageOrder,
+    sort: sort
+  });
+  var dnd = useFolderActions(grouping.folders, model, sort);
+  // 「最近」与「页面」吃同一份过滤结果 —— 搜索是跨段的一条规则，不是每段一套。
+  var recent = recentRows(readRecentPages(), pages);
+
   return (
     <Fragment>
       <SideHead />
+      {settingsOpen ? null : <SearchField value={query} onChange={setQuery} />}
       <div className="wb-side-body">
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
-          <PagesSection />
+          <RecentSection rows={recent} now={now} />
+          <PagesSection model={model} dnd={dnd} sort={sort} now={now}
+            onCycleSort={function () {
+              var next = nextPageSort(sort);
+              savePrefs({ pageSort: next });
+              setSort(next);
+            }} />
           <Contents />
         </ScrollArea>
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />
         </div>
-        <SideFoot />
       </div>
     </Fragment>
   );
