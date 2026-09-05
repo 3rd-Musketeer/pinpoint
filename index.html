@@ -117,9 +117,11 @@
     font:var(--wb-t-body) var(--wb-font); color:var(--wb-fg);
   }
   .wb-search input::placeholder { color:var(--wb-faint); }
-  /* focus 环画在整格上，不画在格子里的输入框上 —— 全局 catch-all 落到 input
-     自己身上会在药丸里再套一个方框（框中框）。 */
-  .wb-search input:focus-visible { outline:none; }
+  /* focus 环画在整格上，不画在格子里的输入框上 —— catch-all 落到 input 自己身上
+     会在药丸里再套一个方框（框中框）。要压的是两条同款规则：本文件顶部那条
+     `:where(…)`，以及 client 运行期注入的 `[data-ann-ui] :is(…)`（同为 0-2-1，
+     源码序在后，所以这里必须靠 #wbside 升到 1-2-1 才盖得住）。 */
+  #wbside .wb-search input:focus-visible { outline:none; }
   .wb-search:focus-within {
     outline:2px solid color-mix(in srgb, var(--wb-accent) 55%, transparent);
     outline-offset:1px;
