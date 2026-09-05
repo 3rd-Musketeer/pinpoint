@@ -1290,7 +1290,8 @@ test('Frame export snapshots current state and renders an isolated padded PNG', 
   expect(response.ok()).toBeTruthy();
   expect(response.headers()['content-type']).toBe('image/png');
   expect(response.headers()['x-export-width']).toBe('1068');
-  expect(response.headers()['x-export-height']).toBe('2226');
+  // 2226 → 2182：2026-09-04 E1 把引用号与屏名并成一行，图注少一行 22px（×2 = 44）。
+  expect(response.headers()['x-export-height']).toBe('2182');
   const body = await response.body();
   expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 });
@@ -1309,12 +1310,17 @@ test('Section export always carries captions (图纸内容永随；note 已收�
   expect(explained.html).not.toContain('wb-export-clean-row');
 });
 
-test('every Frame exposes a persistent title menu (export entry retired to the HUD picker)', async ({ page }) => {
+test('every Frame exposes a title menu (export entry retired to the HUD picker)', async ({ page }) => {
   await openWorkbench(page);
   const frame = page.locator('#wb-board-panel [data-screen="home"]');
   const trigger = frame.locator('.wb-frame-menu-trigger');
-  await expect(trigger).toBeVisible();
-  expect(Number(await trigger.evaluate((element) => getComputedStyle(element).opacity))).toBeGreaterThan(0.5);
+  // 2026-09-04 E1：「···」常态收起（尺寸行同理），hover 这一帧才现 —— 它仍在
+  // DOM 与 tab 序里（opacity，不是 display/visibility），覆盖见下面那条几何用例。
+  await expect(trigger).toBeAttached();
+  await frame.locator('.wb-screen-cap').hover();
+  await expect.poll(() => page.evaluate(
+    () => Number(getComputedStyle(document.querySelector('[data-screen="home"] .wb-frame-menu-shell')).opacity)
+  )).toBeGreaterThan(0.5);
 
   await trigger.click();
   const menu = frame.locator('.wb-frame-menu');
@@ -2216,6 +2222,115 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H 
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
+// 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
+// 字号断言比的是画布坐标里的 CSS px：画布基准 scale 0.5，所以区头 26 = 观感 13、
+// 屏名 24 = 12、引用号 21 = 10.5。
+test('画布标签三档字，「···」跟在屏名后面而不是钉在行尾（2026-09-04 E1）', async ({ page }) => {
+  await openWorkbench(page);
+  const frame = page.locator('#wb-board-panel [data-screen="home"]');
+  const cap = frame.locator('.wb-screen-cap');
+
+  const type = await page.evaluate(() => {
+    const probe = document.createElement('span');
+    document.body.appendChild(probe);
+    const resolve = (token) => {
+      probe.style.color = `var(${token})`;
+      return getComputedStyle(probe).color;
+    };
+    const tokens = { fg: resolve('--wb-fg'), muted: resolve('--wb-muted'), accent: resolve('--wb-accent') };
+    probe.remove();
+    const read = (selector) => {
+      const style = getComputedStyle(document.querySelector(selector));
+      return {
+        size: Math.round(parseFloat(style.fontSize)),
+        weight: style.fontWeight,
+        color: style.color,
+        mono: /mono|Menlo|Consolas|ui-monospace/i.test(style.fontFamily),
+      };
+    };
+    return {
+      tokens,
+      section: read('#lib-home .wb-lib-cap'),
+      sectionRef: read('#lib-home .wb-lib-cap .wb-cap-ref--section'),
+      name: read('[data-screen="home"] .wb-cap-title'),
+      ref: read('[data-screen="home"] .wb-cap-ref'),
+    };
+  });
+  expect(type.section).toMatchObject({ size: 26, weight: '600', color: type.tokens.fg });
+  expect(type.name).toMatchObject({ size: 24, weight: '500', color: type.tokens.muted });
+  expect(type.ref).toMatchObject({ size: 21, color: type.tokens.accent, mono: true });
+  expect(type.sectionRef).toMatchObject({ size: 21, color: type.tokens.accent, mono: true });
+  // 区头的 A 和区名同一行（引用号是行内元素，不再自己占一行）
+  expect(await page.evaluate(() => {
+    const head = document.querySelector('#lib-home .wb-lib-cap');
+    const ref = head.querySelector('.wb-cap-ref--section').getBoundingClientRect();
+    return Math.abs(ref.top - head.getBoundingClientRect().top) < ref.height;
+  })).toBe(true);
+
+  // 「···」是 caption 那条 flex 的末位：紧跟屏名，右边还剩大半行 —— 它曾经钉在
+  // 438px 宽标签行的最右角（padding-right:40px + right:0），离标题老远。
+  await cap.hover();
+  const geo = await page.evaluate(() => {
+    const capNode = document.querySelector('[data-screen="home"] .wb-screen-cap');
+    const r = (node) => node.getBoundingClientRect();
+    return {
+      cap: r(capNode),
+      title: r(capNode.querySelector('.wb-cap-title')),
+      shell: r(capNode.querySelector('.wb-frame-menu-shell')),
+    };
+  });
+  expect(geo.shell.left).toBeGreaterThanOrEqual(geo.title.right - 1);
+  expect(geo.shell.right).toBeLessThanOrEqual(geo.cap.right);
+  // 「贴着标签」的判据：到标题的距离远小于到行尾的距离
+  expect(geo.shell.left - geo.title.right).toBeLessThan(geo.cap.right - geo.shell.right);
+
+  // 常态收起、hover 才现；键盘照样够得着（focus 也点亮，且它一直在 tab 序里）
+  const shellOpacity = () => page.evaluate(
+    () => getComputedStyle(document.querySelector('[data-screen="home"] .wb-frame-menu-shell')).opacity
+  );
+  await page.locator('#wbstrip-title').hover();
+  await expect.poll(shellOpacity).toBe('0');
+  await frame.locator('.wb-frame-menu-trigger').focus();
+  await expect.poll(shellOpacity).toBe('1');
+  expect(await page.evaluate(
+    () => document.activeElement === document.querySelector('[data-screen="home"] .wb-frame-menu-trigger')
+  )).toBe(true);
+});
+
+test('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2026-09-04 E1）', async ({ page }) => {
+  await openWorkbench(page);
+  const opacity = (screenId) => page.evaluate(
+    (id) => getComputedStyle(document.querySelector(`[data-screen="${id}"] .wb-screen-dim`)).opacity,
+    screenId,
+  );
+  const homeCap = page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap');
+
+  // 常态：一行都不出（「尺寸行常驻太吵」）
+  await page.locator('#wbstrip-title').hover();
+  await expect.poll(() => opacity('home')).toBe('0');
+  await expect.poll(() => opacity('beans')).toBe('0');
+
+  // 行高留着：opacity 不是 display —— hover 前后 frame 的高度一模一样
+  const heightOf = () => page.evaluate(
+    () => document.querySelector('[data-screen="home"] .wb-screen-dim').getBoundingClientRect().height
+  );
+  const idleHeight = await heightOf();
+  expect(idleHeight).toBeGreaterThan(0);
+
+  // hover 只点亮这一帧
+  await homeCap.hover();
+  await expect.poll(() => opacity('home')).toBe('1');
+  await expect.poll(() => opacity('beans')).toBe('0');
+  expect(await heightOf()).toBeCloseTo(idleHeight, 1);
+
+  // 选中：鼠标移开也留着（选中是持久态，hover 不是）
+  await homeCap.click();
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
+  await page.locator('#wbstrip-title').hover();
+  await expect.poll(() => opacity('home')).toBe('1');
+  await expect.poll(() => opacity('beans')).toBe('0');
 });
 
 test('first visit lands focused on the first frame at the 100% default zoom (2026-08-17 基准重定标)', async ({ page }) => {
