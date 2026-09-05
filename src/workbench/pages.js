@@ -9,7 +9,8 @@
 // prefs.activeEntryIdByPage（reload 后保持；activeDocId 从未落过 prefs，无迁移面）。
 import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { readPrefs, savePrefs } from './lib/prefs.js';
+import { readPrefs, readRecentPages, savePrefs, saveRecentPages } from './lib/prefs.js';
+import { pushRecent } from './lib/page-groups.js';
 import {
   boardEntries,
   defaultEntryId,
@@ -114,6 +115,22 @@ export function manifestPages() {
   return manifest.pages;
 }
 
+/* Component Library 是内建页，不在任何 manifest 里 —— 左栏要把它和 manifest 页
+   一起分组（模板页三条之一），所以列表在这里合，不在组件里手拼。system:true
+   的页不参与改名、也不能拖进夹（服务端的「认识的 id」名单里没有它）。 */
+export var COMPONENTS_PAGE = { id: COMPONENTS_ID, title: 'Component Library', system: true };
+
+export function sidebarPages() {
+  return [COMPONENTS_PAGE].concat(manifestPages());
+}
+
+/** 登记表的分组层（folders / pageFolders / pageOrder）——左栏分组的唯一来源。 */
+export function pageGrouping() {
+  var manifest = wbGet().pageManifest;
+  var grouping = manifest && manifest.grouping;
+  return grouping || { folders: [], pageFolders: {}, pageOrder: {} };
+}
+
 function defaultPageId() {
   var pages = manifestPages();
   if (!pages.length) return LIB_ID;
@@ -129,6 +146,8 @@ function defaultPageId() {
 function rememberActivePage(pageId) {
   if (!pageId) return;
   savePrefs({ activePageId: pageId });
+  // 「最近」段（2026-09-04 裁决 5c）：打开即记，本地五条，与登记表无关。
+  saveRecentPages(pushRecent(readRecentPages(), pageId, Date.now()));
 }
 
 /** 解析目标页：偏好页存在即用；否则深链 mode 提示（web 已被 parseDeepLink 归一
@@ -260,6 +279,15 @@ export function syncEntries() {
   setActiveEntry(entryPrefFor(active.pageId) || defaultEntryId(entries), { scrollTop: false, save: false });
 }
 
+/** 分组层写完之后的当场生效（lib/folder-api.js 三条 PUT 的收尾）：应答就是重载
+    后的完整 /registry 载荷，直接灌回 registry-sites 缓存再重建 manifest，左栏
+    当场重排。HMR 的 registry:update 随后照样会到，那一路顺带重摆当前板。 */
+export function refreshRegistry(payload) {
+  if (payload) queryClient.setQueryData(['registry-sites'], registryToPages(payload));
+  else queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+  return loadPageManifest();
+}
+
 export function showPageManifestError(error) {
   wbSet({ pageManifestError: String(error && error.message ? error.message : error) });
 }
@@ -293,34 +321,49 @@ function registrySitePages() {
           if (!r.ok) throw r.status;
           return r.json();
         })
-        .then(function (data) {
-          var entries = (data && data.entries) || [];
-          var attached = [];
-          var pages = [];
-          entries.forEach(function (entry) {
-            if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
-            if (entry.page) { attached.push(entry); return; }
-            pages.push({
-              id: entry.id,
-              title: entry.title || entry.id,
-              // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
-              // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
-              // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
-              // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
-              mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
-              // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
-              // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）。
-              kind: entry.kind,
-              // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
-              // url 条目无此字段 → null，排序沉底、行内不显示时间）。
-              mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
-              site: true
-            });
-          });
-          return { pages: pages, attached: attached };
-        });
+        .then(registryToPages);
     }
-  }).catch(function () { return { pages: [], attached: [] }; });
+  }).catch(function () {
+    return { pages: [], attached: [], grouping: { folders: [], pageFolders: {}, pageOrder: {} } };
+  });
+}
+
+/** GET /registry（也是三条 PUT 的应答）→ Pages 消费的形状。纯变换，无副作用。 */
+function registryToPages(data) {
+  var entries = (data && data.entries) || [];
+  var attached = [];
+  var pages = [];
+  // 2026-09-04 分组层（ADR 0032）：条目自己的 folder / order 跟着页走，顶层三段
+  // 整份透传 —— 模板页没有条目可以写字段，归属只能记在 pageFolders / pageOrder。
+  var grouping = {
+    folders: (data && data.folders) || [],
+    pageFolders: (data && data.pageFolders) || {},
+    pageOrder: (data && data.pageOrder) || {}
+  };
+  entries.forEach(function (entry) {
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
+    if (entry.page) { attached.push(entry); return; }
+    pages.push({
+      id: entry.id,
+      title: entry.title || entry.id,
+      // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
+      // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
+      // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
+      // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
+      mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
+      // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
+      // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
+      // 2026-09-04 起也是页面行类型小标（globe / doc）的来源。
+      kind: entry.kind,
+      // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
+      // url 条目无此字段 → null，排序沉底、行内不显示时间）。
+      mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
+      folder: typeof entry.folder === 'string' ? entry.folder : null,
+      order: Number.isFinite(entry.order) ? entry.order : null,
+      site: true
+    });
+  });
+  return { pages: pages, attached: attached, grouping: grouping };
 }
 
 export function loadPageManifest() {
@@ -358,6 +401,7 @@ export function loadPageManifest() {
         // stage.js loadBoard 经 withAttachedScreens 把归属本页的条目合并成
         // 合成 doc 屏；目标页不存在时条目自然悬空（不合并、不出行、不报错）。
         manifest.attached = sitePages.attached;
+        manifest.grouping = sitePages.grouping;
         wbSet({ pageManifest: manifest });
         return manifest;
       });

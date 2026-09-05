@@ -25,6 +25,10 @@ export const useWorkbenchStore = create((set) => ({
                              // 舞台停在「页面不存在」面板、地址栏不被 url-sync 规范化，
                              // 用户看得见坏的是哪个 id。setActivePage 一切换就清空。
   pageNames: {},             // prefs.pageNames — 页面重命名（侧栏显示名）
+  // 模板页（Component Library / Example Library / Example HTML）显不显示。
+  // ADR 0032：默认藏起来，开关在预览设置；落 prefs.showTemplatePages，
+  // 初值由 Sidebar 挂载时从 prefs 灌进来（设置视图写、左栏读，两边同一个源）。
+  showTemplatePages: false,
   activeBoard: null,        // { pageId, board } — 条目列表、「内容」区 frame 树、导出树都读它
   activeEntryId: null,      // 当前选中条目 id（2026-08-16f 阶段 6；画布 = lib/board-entries.js
                             // CANVAS_ENTRY_ID，文档 = doc 屏 screenId；setActiveEntry 写）

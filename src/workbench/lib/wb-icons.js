@@ -1,7 +1,7 @@
 // Workbench 图标数据 — lucide iconNode 表 + hero gear path。纯数据、DOM-free：
 // 命令式挂载器（workbench-icons.js，服务静态标记）与 React 组件
 // （app/WbIcon.jsx，服务出壳 chrome）共用这一份，两个渲染路径不得各自抄表。
-import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown } from 'lucide';
+import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, Folder, FolderPlus, Globe } from 'lucide';
 
 export var ICONS = {
   pencil: Pencil,
@@ -16,6 +16,7 @@ export var ICONS = {
   'panel-right-close': PanelRightClose,
   'panel-right-open': PanelRightOpen,
   'chevron-up': ChevronUp,
+  'chevron-down': ChevronDown,
   // 横条中段的帧导航 ‹ ›（2026-09-04 评审板 G1）与弹出列表头的溢出「···」
   'chevron-left': ChevronLeft,
   'chevron-right': ChevronRight,
@@ -30,7 +31,13 @@ export var ICONS = {
   smartphone: Smartphone,
   'file-text': FileText,
   // Pages 段头排序切换（2026-08-17g）：default → 最近更新 → 名称循环
-  sort: ArrowUpDown
+  sort: ArrowUpDown,
+  // 左栏内容（2026-09-04 切片 ②，评审板 C1）：搜索框、文件夹行的夹图标与
+  // 「新建文件夹」、页面行的类型小标（url = 地球，file = 文档，见 file-text）。
+  search: Search,
+  folder: Folder,
+  'folder-plus': FolderPlus,
+  globe: Globe
 };
 
 // Heroicons v2 solid cog-6-tooth — filled gears stay crisp at toolbar sizes.
