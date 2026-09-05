@@ -310,13 +310,17 @@
     display:flex; flex-direction:column; overflow:hidden;
     border-radius:var(--wb-r-glass);
   }
+  /* 画布 dock（section-nav + minimap）：2026-09-04 起停靠画布右下角、横条正上方。
+     开关钮虽然搬进了横条中段，面板本体仍留在角上——横条中段正上方是底部
+     composer（#ann-box，居中 720 宽）的地盘，两者会压在一起。右下角同时避开
+     右下浮层槽（#wbdock 贴横条右端，x 落在横条内），两块卡不打架。 */
   .wb-canvas-dock {
     --wb-canvas-nav-w:232px;
     position:absolute; z-index:8;
-    left:calc(50% - var(--wb-strip-w) / 2);
+    right:var(--wb-chrome-gap);
     bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
     max-height:calc(100% - var(--wb-strip-h) - 60px);
-    display:flex; flex-direction:column; align-items:flex-start; gap:8px;
+    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
     pointer-events:none;
   }
   .wb-canvas-dock > * { pointer-events:auto; }
@@ -539,7 +543,16 @@
      side. The chain stage → panel → zoom-wrap → library → item → sec-body →
      screen → doc-stage must each carry a definite height, or the iframe's
      height:100% resolves against auto and collapses. */
-  [data-page-mode="html"] .wb-stage { overflow:hidden; padding:0; }
+  /* 阅读器让开浮起的 chrome（2026-09-04）：画布可以 pan，被压住的东西挪得开；
+     文档不行 —— 满铺到视口边缘就意味着正文左边一栏永远藏在玻璃面板底下。
+     所以只有 html 形态把 stage 收成一根让开左栏与横条的文档栏，文档与 stage
+     仍是 1:1。左栏折叠时收回满铺，只留下沿给横条。 */
+  [data-page-mode="html"] .wb-stage {
+    overflow:hidden; padding:0;
+    margin-left:calc(var(--wb-chrome-gap) * 2 + var(--wb-side-w));
+    margin-bottom:calc(var(--wb-chrome-gap) * 2 + var(--wb-strip-h));
+  }
+  .wb.wb-side-collapsed[data-page-mode="html"] .wb-stage { margin-left:0; }
   /* 文档形态没有画布可缩放：横条中段（帧导航 + 缩放 + 回中 + 导出）与 dock
      一起收起，横条本体留着 —— 页名、类型标、模式两段与计数在阅读器里照样要用。 */
   [data-page-mode="html"] #wbcanvas-tools,

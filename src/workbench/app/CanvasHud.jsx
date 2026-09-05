@@ -2,7 +2,7 @@
 // 2026-09-04 外壳重设计：右下 HUD 退役，这一段控件搬进底部横条中段
 // （app/Strip.jsx 渲染 <CanvasHud/>，DOM id / class / 文案与布线契约一个没动，
 // wireCanvasHud 照旧在挂载后取句柄）。dock（section-nav + minimap）仍渲染进
-// #wbcanvas-dock 静态容器，停靠点改到横条左端正上方。
+// #wbcanvas-dock 静态容器，仍贴画布右下角，只是抬到横条正上方。
 // open/visible/zoom 状态全部订阅
 // store（board-nav 命令式写入）；minimap 的 canvas 2D 绘制、section-nav 列表的
 // innerHTML、几何测量仍归 board-nav 持有 —— #wbsection-nav-list 的 children 与

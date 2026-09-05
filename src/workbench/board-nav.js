@@ -29,8 +29,11 @@ export function frameBoardInView(panel, options) {
   var padL = parseFloat(cs.paddingLeft) || 0;
   var padT = parseFloat(cs.paddingTop) || 0;
   var inset = 40;
-  var left = Math.max(0, padL - inset);
-  var top = Math.max(0, padT - inset);
+  // 浮起的 chrome 也要减掉（2026-09-04）：少滚这么多 = 内容往右下让开左栏与
+  // 横条，板的第一屏不会开在玻璃面板底下。
+  var insets = chromeInsets();
+  var left = Math.max(0, padL - inset - insets.left);
+  var top = Math.max(0, padT - inset - insets.top);
   if (options.smooth) {
     stage.scrollTo({ left: left, top: top, behavior: 'smooth' });
   } else {
