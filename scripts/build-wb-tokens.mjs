@@ -38,9 +38,14 @@ export function buildWbTokensCss() {
   --wb-danger:#b84230; /* eval 族降饱和红 —— danger 唯一源（2026-08-13 语义色收编，原 iOS systemRed #ff3b30） */
   --wb-ok:#1d7144; /* eval 族绿 —— ok/online/已保存唯一源（原 #1b7a3d/#34c759 散字面量收编） */
   --wb-ok-soft:#edf8f1; /* ok 浅底（eval green-soft 字面量） */
-  --wb-stage-bg:#faf8f4; /* 画布暖纸色，产品调 */
+  --wb-stage-bg:#f5f6f8; /* 画布冷中性纸（2026-09-04 外壳重设计裁决 2，取代暖纸 #faf8f4；Radix slate 2–3 之间，产品调） */
+  --wb-grid-1:color-mix(in srgb, var(--wb-accent) 9%, transparent);  /* 120px 主网格线（2026-09-04 比旧值淡一档：13% → 9%） */
+  --wb-grid-2:color-mix(in srgb, var(--wb-accent) 4%, transparent);  /* 24px 发丝网格线（6% → 4%） */
   --wb-stage-dot:rgba(94,79,56,.20); /* 画布「圆点纸」档点阵（背景三态之一；2026-08-13 评审板 C 点阵收编，屏空间固定，落在 .wb-stage-wrap[data-grid=dots]） */
   --wb-surface:#fff; /* chrome 纯白面（选中态/卡面/强调面上的文字）—— shadcn 桥需要时归并的起点 */
+  --wb-glass:rgba(255,255,255,.88); /* 浮动面板材质（2026-09-04 评审板 F2 磨砂：白 88%）—— 左栏 / 底部横条 / 弹出列表同一配方 */
+  --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */
+  --wb-sel:color-mix(in srgb, var(--wb-accent) 10%, transparent); /* 列表选中行底（2026-09-04 字阶裁决：选中 accent 10%，hover 走 --wb-hover 4%） */
 
   /* ── 圆角阶梯（散装 14 档归并；999px/50% 是功能形状，不进阶梯） ── */
   --wb-r-1:4px;   /* 槽内小按钮、内联编辑底、迷你屏幕钮（吸收 2px —— 3px 宽条上渲染恒等） */
@@ -67,9 +72,24 @@ export function buildWbTokensCss() {
   --wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif; /* 产品字体栈，与 index.html body 一致（body 也改指本 token） */
   --wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace; /* 元数据档（指示器/标签等排障信息）；补 PingFang 兜底防汉字换字 */
 
+  /* ── 字阶（2026-09-04 外壳重设计裁决）：写法 = font:var(--wb-t-*) var(--wb-font)
+     （元数据档配 var(--wb-font-mono)）。四档各有语义，不要另起字号。 ── */
+  --wb-t-title:600 15px/1.2;   /* 面板标题（左栏 head、弹出列表头） */
+  --wb-t-row:500 13px/1.2;     /* 列表行 —— 正色（var(--wb-fg)），不是 muted */
+  --wb-t-body:400 12.5px/1.45; /* 正文（标注正文、说明） */
+  --wb-t-meta:500 11px/1.2;    /* 元数据 —— mono + 淡色（var(--wb-faint)） */
+
   /* ── 结构 / 动效 ── */
   --wb-side-w:252px;
   --wb-pad:14px;
+  /* 浮动外壳几何（2026-09-04 G1）：面板与横条距视口 --wb-chrome-gap，横条高
+     --wb-strip-h，左栏下沿停在横条上方同一间距处（bottom = gap*2 + strip-h）。
+     --wb-strip-w 由 app/Strip.jsx 量测后写在 :root 上（横条居中自适应，
+     弹出列表与 dock 靠它对齐横条两端）。 */
+  --wb-chrome-gap:12px;
+  --wb-strip-h:38px;
+  --wb-strip-w:0px;
+  --wb-r-glass:14px; /* 浮动玻璃面板圆角（F2 配方；圆角阶梯之外的一档，只给这一族） */
   --wb-ease:cubic-bezier(.25,0,0,1);
   --wb-dur:.2s;
 }

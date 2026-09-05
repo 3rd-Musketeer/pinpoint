@@ -29,6 +29,11 @@ board 里的一组屏，有 `id` / `title` / `layout` / 可选 `note`。`section
 人对 agent 说「改 A2」，机器仍走 `@frame:<pageId>/<screenId>`。
 要避开：拿 frame 指 iframe——mention 水合出来的那个 iframe 是实现手段，不是这个词。
 
+**folder（文件夹）**
+Pages 列表里 owner 手动建的一层分组，页靠拖放入夹；只有一层，不嵌套。
+住在 `~/.pinpoint/registry.json` 顶层 `folders[]` 与条目的 `folder` 字段（2026-09-04 定，实现中）。
+要避开：「project」「group」当文件夹用；「归档」——那只是 owner 自己建的一个夹，不是功能。
+
 **entry（条目）· 这个词有两个意思，别混**
 - **board entry**：`src/workbench/lib/board-entries.js` 从 board 派生出来的可选中单位。
   app / lock 屏合成**一个** canvas entry（id 恒为 `@canvas`），每个 `shell: "doc"` 的屏各成一个
