@@ -688,13 +688,35 @@
   }
   .wb-doc-surface { position:relative; width:100%; background:#fff; }
   .wb-doc-frame { display:block; width:100%; height:100%; border:0; background:#fff; }
-  /* 手机视口（2026-09-05，lib/viewport.js；owner：「应该给 html / url 加一个切换不同
-     viewport 的功能」）：doc 屏套的是 app 屏同一份机壳（screen-load wrapDocPhoneShell），
-     iframe 当屏幕内容铺满 .ios-screen（402 × 874 真实 iframe 尺寸，媒体查询与排版
-     就是手机的），岛 / 状态栏 / home 条照 iOS frame 压在上面。屏宽走 .wb-screen 的
-     默认 --wb-phone-w，不带 --doc 的 1280 覆盖；其余（图注、尺寸行、选中环、hover
-     环、导航测量）都是 .ios-stage 既有规则，不另写。 */
-  .wb-screen--phone-doc .wb-doc-frame { position:absolute; inset:0; z-index:1; }
+  /* 手机视口（2026-09-05，lib/viewport.js；owner 用过第一版后的裁决：「html doc 的手机
+     视图就不需要画布了，直接就是一个自适应大小（大约 viewport 高度 90%）的手机 screen，
+     不需要状态栏和灵动岛；在画布上容易乱跑」）：文档形态的第二种布局，不是画布。
+     doc 屏套 kit 的机壳骨架（screen-load wrapDocPhoneShell，不带岛 / 状态栏 / home 条），
+     iframe 402 × 874 是真实布局尺寸，媒体查询与排版就是手机的；整块屏 .wb-phone-doc
+     用 transform 按 --wb-phone-k 缩到可用区高度的九成（k 与屏的布局尺寸由 pages.js
+     syncPhoneDocScale 写在 .wb-screen 上），外盒 .wb-screen--phone-doc 取缩放后的尺寸，
+     靠 .wb-sec-body 的 flex 居中 —— 横向在整个视口宽度里居中（左栏浮着，不让位，与
+     窗口视口同一条规则），纵向在减掉横条那一带的可用区里居中。网格 / 缩放 / 平移 /
+     图注 / 帧导航 / 导出都是画布工具，这里一样没有（[data-page-mode="html"] 规则已收）。 */
+  .wb-screen--phone-doc .wb-doc-frame {
+    width:var(--ios-screen-w, 402px); height:var(--ios-screen-h, 874px);
+  }
+  .wb-phone-doc {
+    width:max-content;
+    transform:scale(var(--wb-phone-k, 1)); transform-origin:0 0;
+  }
+  /* 机壳 无 = 裸圆角屏（圆角 = kit 的屏角）+ 板影，不是 kit 给 app 屏的那套多层影 */
+  .wb-phone-doc .ios-root.screen-only .ios-device { box-shadow:var(--wb-sh-board); }
+  [data-page-mode="html"][data-viewport="phone"] .wb-stage-wrap { background-image:none; }
+  [data-page-mode="html"][data-viewport="phone"] .wb-sec-body {
+    align-items:center; justify-content:center;
+    padding-bottom:calc(var(--wb-chrome-gap) * 2 + var(--wb-strip-h));
+  }
+  [data-page-mode="html"][data-viewport="phone"] .wb-screen--phone-doc {
+    flex:none; margin:0; gap:0;
+    width:calc(var(--wb-phone-shell-w, 402px) * var(--wb-phone-k, 1));
+    height:calc(var(--wb-phone-shell-h, 874px) * var(--wb-phone-k, 1));
+  }
 
   /* 文档条目形态（data-page-mode="html"，2026-08-16f 阶段 6 起由选中条目派生，
      不再是页级属性）：a document is NOT a canvas. A report has to be read at the

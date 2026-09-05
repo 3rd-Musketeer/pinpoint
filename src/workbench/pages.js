@@ -14,13 +14,15 @@ import { pushRecent } from './lib/page-groups.js';
 import {
   boardEntries,
   defaultEntryId,
+  entryForm,
   resolveEntry,
   withEntryWeb
 } from './lib/board-entries.js';
 import {
+  VIEWPORT_PHONE,
   entryHasViewport,
   normalizeViewport,
-  stageFormFor,
+  phoneScaleFor,
   viewportForPage,
   withViewportPref
 } from './lib/viewport.js';
@@ -111,9 +113,10 @@ export function wireLibraryScrollSpy() {
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
 }
 
-// stage 形态（条目 + 视口派生，lib/viewport.js stageFormFor）：
-// ios = 画布（手机原型 fragment + 机身 chrome；2026-09-05 起手机视口下的文档条目也在这里）
-// html = 文档阅读器（完整独立 HTML 文档，iframe 承载，见 shell "doc"）
+// stage 形态（选中条目派生，lib/board-entries.js entryForm）：
+// ios = 画布（手机原型 fragment + 机身 chrome）
+// html = 文档（完整独立 HTML 文档，iframe 承载，见 shell "doc"；两种视口——窗口 1:1
+//        铺满、手机缩成一块居中的屏——都是这个形态，data-viewport 再分）
 // （2026-08-16 阶段 2：web「无机壳画板」连壳退役，残留 'web' 一律归一到 html；
 // 2026-08-16f 阶段 6：形态从页级 mode 下沉到选中条目。）
 
@@ -213,8 +216,8 @@ function saveEntryPref(pageId, entryId) {
 /* stage 形态应用到 DOM/缩放：data-page-mode 是 stage 阅读器态的 CSS 钩
    （index.html）；文档形态锁死缩放（报告必须按读者真实窗口尺寸渲染），
    回画布形态停掉父级 gutter。形态值域沿用 ios/html（html = 文档阅读器）。
-   data-viewport（2026-09-05）跟着写：CSS 与 e2e 借它分辨「画布上摆的是手机里的
-   文档」和普通画布 —— 形态本身仍只有 ios / html 两个值。 */
+   data-viewport（2026-09-05）跟着写：CSS 与 e2e 借它分辨文档形态的两种视口
+   （窗口铺满 / 手机屏居中）—— 形态本身仍只有 ios / html 两个值。 */
 function applyStageForm(form) {
   if (wbRoot) {
     wbRoot.setAttribute('data-page-mode', form);
@@ -225,10 +228,11 @@ function applyStageForm(form) {
 }
 
 /* ---- 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 ----------------
-   窗口 = 文档 1:1 铺满舞台（今天的文档形态）；手机 = 同一份文档装进一个 402 × 874
-   的手机 frame 摆上画布（机壳跟设置走，缩放 / 回中 / 导出都是画布工具）。
+   窗口 = 文档 1:1 铺满舞台；手机 = 同一份文档装进一块 402 × 874 的手机屏，整块屏
+   缩到可用区高度的九成、在舞台里居中（不上画布：没有网格 / 缩放 / 平移 / 图注，
+   owner 用过第一版后的裁决「在画布上容易乱跑」）。两种都是文档形态。
    页的偏好（prefs.viewportByPage），不进 registry、不进 URL。切换 = 重装当前板
-   （screen-load 按视口决定 doc 屏套阅读器壳还是手机机壳），选中条目由
+   （screen-load 按视口决定 doc 屏套阅读器壳还是手机屏），选中条目由
    prefs.activeEntryIdByPage 记忆带回来。 */
 
 /** 当前页的视口偏好（板装载前就要知道，所以按 pageId 读，不看 store）。 */
@@ -244,8 +248,8 @@ export function applyPageViewport(pageId) {
   return viewport;
 }
 
-/** 横条两段控件的动作：记偏好 → 重装当前板。离开画布形态前先存档视口
-    （snapshotPageViewport 自带「文档形态不存档」守卫，所以必须在 wbSet 之前调）。 */
+/** 横条两段控件的动作：记偏好 → 重装当前板（两种视口都是文档形态，没有画布
+    视口要存档）。 */
 export function setActiveViewport(viewport) {
   viewport = normalizeViewport(viewport);
   var s = wbGet();
@@ -253,10 +257,61 @@ export function setActiveViewport(viewport) {
   var panel = document.getElementById('wb-board-panel');
   if (!pageId || !panel) return Promise.resolve();
   if (viewport === s.viewport) return Promise.resolve();
-  snapshotPageViewport(pageId);
   savePrefs(withViewportPref(readPrefs(), pageId, viewport));
   wbSet({ viewport: viewport });
   return pagesDeps.loadBoard(panel, pageId);
+}
+
+/* 手机屏的缩放（2026-09-05）：iframe 的布局尺寸恒为 402 × 874（页面按真实手机排版），
+   整块屏（.wb-phone-doc，机壳 有 = 438 × 910）用 transform: scale(k) 缩到可用区高度
+   的九成 —— k 由 lib/viewport.js phoneScaleFor 纯算，这里只量尺寸、写 CSS 变量：
+   .wb-screen--phone-doc 拿 --wb-phone-k 与屏的布局尺寸算自己的盒子（居中靠 flex），
+   .wb-phone-doc 拿同一个 k 做 transform（index.html）。可用区 = 舞台减掉底部横条那
+   一带；左栏浮在画布上，不减（与窗口视口同一条规则）。
+   重算时机 = 舞台尺寸变（窗口 resize、gutter 开关改 padding）与屏的布局尺寸变
+   （设置里切机壳 无 / 有），一个 ResizeObserver 同时盯这两个盒子；换板 / 换条目时
+   setActiveEntry 在屏显隐定下来之后重挂（要盯的是此刻可见的那块屏，混合板上有
+   几个 doc 屏就有几块）。ann-bridge 的 gutter 按「显示宽 / 布局宽」缩锚点，天然跟着。 */
+var phoneScaleRo = null;
+
+function phoneShellEl() {
+  var panel = document.getElementById('wb-board-panel');
+  return panel ? panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-phone-doc') : null;
+}
+
+function stripBandPx() {
+  var css = getComputedStyle(document.documentElement);
+  var gap = parseFloat(css.getPropertyValue('--wb-chrome-gap')) || 0;
+  var strip = parseFloat(css.getPropertyValue('--wb-strip-h')) || 0;
+  return gap * 2 + strip;
+}
+
+function writePhoneScale(shell) {
+  var screen = shell.closest('.wb-screen');
+  if (!screen || !stage) return;
+  var w = shell.offsetWidth;
+  var h = shell.offsetHeight;
+  var k = phoneScaleFor(
+    { width: stage.clientWidth, height: stage.clientHeight, stripBand: stripBandPx() },
+    { width: w, height: h }
+  );
+  screen.style.setProperty('--wb-phone-k', String(k));
+  screen.style.setProperty('--wb-phone-shell-w', w + 'px');
+  screen.style.setProperty('--wb-phone-shell-h', h + 'px');
+}
+
+export function syncPhoneDocScale() {
+  if (phoneScaleRo) { phoneScaleRo.disconnect(); phoneScaleRo = null; }
+  var shell = wbGet().viewport === VIEWPORT_PHONE ? phoneShellEl() : null;
+  if (!shell || !stage) return;
+  writePhoneScale(shell);
+  if (typeof ResizeObserver !== 'function') return;
+  phoneScaleRo = new ResizeObserver(function () {
+    if (!shell.isConnected) { syncPhoneDocScale(); return; }
+    writePhoneScale(shell);
+  });
+  phoneScaleRo.observe(stage);
+  phoneScaleRo.observe(shell);
 }
 
 /** 横条要不要出视口控件：只在文档条目选中时（画布条目没有第二种看法）。 */
@@ -267,6 +322,7 @@ export function activeEntryHasViewport() {
 /** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */
 export function applyPageFormFallback(pageId) {
   applyStageForm(modeForPage(wbGet().pageManifest, pageId) === 'html' ? 'html' : 'ios');
+  syncPhoneDocScale();
 }
 
 /* 屏显隐 = 条目选择唯一驱动：画布条目 → doc 屏全部收起；文档条目 → 只留该屏。
@@ -300,17 +356,16 @@ export function setActiveEntry(entryId, options) {
   if (!entries.length) return;
   var entry = resolveEntry(entries, entryId);
   var prev = resolveEntry(entries, wbGet().activeEntryId);
-  var viewport = wbGet().viewport;
   // 离开画布形态前存档视口（文档形态期间不写存档，见 boot-prefs 的守卫）。
-  // 形态由条目 + 视口派生（2026-09-05）：手机视口下的文档条目也是画布形态。
-  if (prev && entry && prev.id !== entry.id && stageFormFor(prev, viewport) !== 'html') {
+  if (prev && entry && prev.id !== entry.id && entryForm(prev) !== 'html') {
     snapshotPageViewport(active.pageId);
   }
   wbSet({ activeEntryId: entry.id });
   if (options.save !== false) saveEntryPref(active.pageId, entry.id);
-  var form = stageFormFor(entry, viewport);
+  var form = entryForm(entry);
   applyStageForm(form);
   applyEntryVisibility(panel, active.board, entry);
+  syncPhoneDocScale();
   if (form === 'html') {
     if (options.scrollTop !== false && stage) stage.scrollTop = 0;
   } else if (!restorePageViewportAfterMount(active.pageId)) {

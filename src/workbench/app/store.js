@@ -1,8 +1,7 @@
 import { create } from 'zustand';
 
-import { boardEntries, resolveEntry } from '../lib/board-entries.js';
+import { boardEntries, entryForm, resolveEntry } from '../lib/board-entries.js';
 import { modeForPage } from '../lib/page-url.js';
-import { stageFormFor } from '../lib/viewport.js';
 
 /**
  * Workbench 共享状态的唯一住处（goal-20260810-workbench-react-rebuild）。
@@ -34,9 +33,10 @@ export const useWorkbenchStore = create((set) => ({
   activeEntryId: null,      // 当前选中条目 id（2026-08-16f 阶段 6；画布 = lib/board-entries.js
                             // CANVAS_ENTRY_ID，文档 = doc 屏 screenId；setActiveEntry 写）
   viewport: 'window',       // 当前页的视口（2026-09-05，lib/viewport.js）：window = 文档 1:1
-                            // 铺满 / phone = 文档装进手机 frame 上画布。页的偏好
-                            // （prefs.viewportByPage），stage.js loadBoard 换页时灌入、
-                            // pages.js setActiveViewport 切换时写；只对文档条目有意义。
+                            // 铺满 / phone = 同一份文档缩成一块居中的手机屏。两种都是文档
+                            // 形态，不改 activeBoardMode()。页的偏好（prefs.viewportByPage），
+                            // stage.js loadBoard 换页时灌入、pages.js setActiveViewport 切换
+                            // 时写；只对文档条目有意义。
   activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
   // frame 树行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
   // focusFrameKey = sectionId + '\0' + screenId；focusAnnN = 最近点开的标注序号
@@ -93,9 +93,7 @@ export function activeEntry() {
 
 export function activeBoardMode() {
   var entry = activeEntry();
+  if (entry) return entryForm(entry);
   var s = useWorkbenchStore.getState();
-  // 2026-09-05 视口：文档条目在手机视口下就是画布（lib/viewport.js stageFormFor），
-  // 所有「html 形态才…」的守卫（缩放锁、视口存档、gutter）因此自动按画布走。
-  if (entry) return stageFormFor(entry, s.viewport);
   return modeForPage(s.pageManifest, s.activePageId);
 }

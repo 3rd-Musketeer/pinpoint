@@ -2,14 +2,16 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import {
+  PHONE_FILL,
+  PHONE_SCREEN_H,
+  PHONE_SCREEN_W,
   VIEWPORT_LABELS,
   VIEWPORT_PHONE,
   VIEWPORT_WINDOW,
   entryHasViewport,
-  exportBoardFor,
   normalizeViewport,
+  phoneScaleFor,
   readViewportPrefs,
-  stageFormFor,
   viewportForPage,
   withViewportPref,
 } from './viewport.js';
@@ -17,21 +19,6 @@ import {
 var canvasEntry = { id: '@canvas', kind: 'canvas', role: 'product', title: '画布' };
 var docEntry = { id: 'spec', kind: 'doc', role: 'product', title: '设计说明' };
 var draftEntry = { id: 'draft-variants', kind: 'doc', role: 'draft', title: '草稿' };
-
-function mixedBoard() {
-  return {
-    sections: [
-      { id: 'proto', title: '原型', layout: 'row', screens: [
-        { id: 'home', title: '首页', shell: 'app' },
-        { id: 'detail', title: '详情', shell: 'lock' },
-      ] },
-      { id: 'docs', title: '文稿', layout: 'column', screens: [
-        { id: 'spec', title: '设计说明', shell: 'doc' },
-        { id: 'draft-variants', title: '草稿', shell: 'doc', role: 'draft' },
-      ] },
-    ],
-  };
-}
 
 test('normalizeViewport：只认 phone，其余一律窗口', () => {
   assert.equal(normalizeViewport('phone'), VIEWPORT_PHONE);
@@ -71,31 +58,33 @@ test('entryHasViewport：只有文档条目（含草稿）有视口，画布 / �
   assert.equal(entryHasViewport(null), false);
 });
 
-test('stageFormFor：文档条目 + 手机 = 画布；文档 + 窗口 = 阅读器；画布条目不看视口', () => {
-  assert.equal(stageFormFor(docEntry, 'window'), 'html');
-  assert.equal(stageFormFor(docEntry, undefined), 'html');
-  assert.equal(stageFormFor(docEntry, 'phone'), 'ios');
-  assert.equal(stageFormFor(draftEntry, 'phone'), 'ios');
-  assert.equal(stageFormFor(canvasEntry, 'phone'), 'ios');
-  assert.equal(stageFormFor(canvasEntry, 'window'), 'ios');
-  assert.equal(stageFormFor(null, 'phone'), 'ios');
+test('phoneScaleFor：屏高 = 可用高（舞台高 − 横条带）的九成，上限 1', () => {
+  assert.equal(PHONE_SCREEN_W, 402);
+  assert.equal(PHONE_SCREEN_H, 874);
+  assert.equal(PHONE_FILL, 0.9);
+  // 1600 × 1000，横条带 62：可用高 938 → 屏高 844.2 → k = 844.2 / 874
+  var k = phoneScaleFor({ width: 1600, height: 1000, stripBand: 62 }, { width: 402, height: 874 });
+  assert.equal(k, Math.round(0.9 * 938 / 874 * 10000) / 10000);
+  assert.ok(Math.abs(k * 874 - 0.9 * 938) < 0.1);
+  // 机壳 有：整块屏 438 × 910 才是要装进九成的那块
+  var kb = phoneScaleFor({ width: 1600, height: 1000, stripBand: 62 }, { width: 438, height: 910 });
+  assert.ok(kb < k);
+  assert.ok(Math.abs(kb * 910 - 0.9 * 938) < 0.1);
+  // 舞台足够高：永不放大到 1 以上
+  assert.equal(phoneScaleFor({ width: 1600, height: 3000, stripBand: 62 }, { width: 402, height: 874 }), 1);
+  // 窄舞台：宽也不许超过舞台宽的九成
+  var kw = phoneScaleFor({ width: 300, height: 3000, stripBand: 62 }, { width: 402, height: 874 });
+  assert.ok(Math.abs(kw * 402 - 0.9 * 300) < 0.1);
 });
 
-test('exportBoardFor：手机视口只列当前文档那一帧，其余形态照 canvasBoard', () => {
-  var board = mixedBoard();
-  var phone = exportBoardFor(board, docEntry, 'phone');
-  assert.deepEqual(phone.sections.map((s) => s.id), ['docs']);
-  assert.deepEqual(phone.sections[0].screens.map((s) => s.id), ['spec']);
-  assert.equal(phone.sections[0].title, '文稿');
-
-  var win = exportBoardFor(board, docEntry, 'window');
-  assert.deepEqual(win.sections.map((s) => s.id), ['proto']);
-  assert.deepEqual(win.sections[0].screens.map((s) => s.id), ['home', 'detail']);
-
-  var canvas = exportBoardFor(board, canvasEntry, 'phone');
-  assert.deepEqual(canvas.sections.map((s) => s.id), ['proto']);
-
-  // 条目不在板上（换页途中）→ 空树，不抛
-  assert.deepEqual(exportBoardFor(board, { id: 'nope', kind: 'doc' }, 'phone'), { sections: [] });
-  assert.deepEqual(exportBoardFor(null, docEntry, 'phone'), { sections: [] });
+test('phoneScaleFor：缺 shell 按裸屏 402 × 874 算；量不出舞台时回 1', () => {
+  var k = phoneScaleFor({ width: 1280, height: 720, stripBand: 62 });
+  assert.ok(Math.abs(k * 874 - 0.9 * 658) < 0.1);
+  assert.equal(phoneScaleFor({ width: 1280, height: 720, stripBand: 62 }, { width: 0, height: 0 }), k);
+  assert.equal(phoneScaleFor({ width: 0, height: 0 }), 1);
+  assert.equal(phoneScaleFor(null), 1);
+  assert.equal(phoneScaleFor({ width: 1280, height: 50, stripBand: 62 }), 1);
+  assert.equal(phoneScaleFor({ width: NaN, height: 700 }), 1);
+  // stripBand 缺省 = 0
+  assert.ok(phoneScaleFor({ width: 1280, height: 720 }) > phoneScaleFor({ width: 1280, height: 720, stripBand: 62 }));
 });

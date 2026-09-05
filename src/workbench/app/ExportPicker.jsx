@@ -19,8 +19,7 @@ import {
   requestExportZip
 } from '../export-core.js';
 import { boardRefs } from '../lib/board-refs.js';
-import { boardEntries, resolveEntry } from '../lib/board-entries.js';
-import { exportBoardFor } from '../lib/viewport.js';
+import { canvasBoard } from '../lib/board-entries.js';
 import { frameDimLabel } from '../screen-load.js';
 import { cn } from './lib/utils.js';
 
@@ -37,14 +36,10 @@ function frameKey(sectionId, screenId) {
 
 /** activeBoard → tree 模型（section 字母 / frame 引用号 / 尺寸行，全部纯派生）。
     2026-08-16f 阶段 6：picker 只覆盖画布 frame —— doc 屏（文档/草稿条目）走
-    侧栏「导出」的文档导出，不进图片导出树。
-    2026-09-05 视口：手机视口下画布上摆的是当前那份文档的手机 frame，树就列它
-    这一帧（lib/viewport.js exportBoardFor）；引用号仍按画布视图派生，文档 frame
-    没有引用号，尺寸行 402 × 874。 */
-function buildTree(activeBoard, activeEntryId, viewport) {
+    侧栏「导出」的文档导出，不进图片导出树。 */
+function buildTree(activeBoard) {
   if (!activeBoard || !activeBoard.board) return [];
-  var entry = resolveEntry(boardEntries(activeBoard.board), activeEntryId);
-  var board = exportBoardFor(activeBoard.board, entry, viewport);
+  var board = canvasBoard(activeBoard.board);
   var refs = boardRefs(board);
   return (board.sections || [])
     .filter(function (sec) { return sec && sec.id !== '_empty'; })
@@ -60,7 +55,7 @@ function buildTree(activeBoard, activeEntryId, viewport) {
             screenId: sc.id,
             title: sc.title || sc.id,
             ref: refs.byFrame[frameKey(sec.id, sc.id)] || '',
-            dim: frameDimLabel(activeBoard.pageId, sc.shell, viewport)
+            dim: frameDimLabel(activeBoard.pageId, sc.shell)
           };
         })
       };
@@ -440,10 +435,8 @@ function PickerBody(props) {
 export function ExportPicker() {
   var open = useWorkbenchStore(function (s) { return s.exportPickerOpen; });
   var activeBoard = useWorkbenchStore(function (s) { return s.activeBoard; });
-  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
-  var viewport = useWorkbenchStore(function (s) { return s.viewport; });
   var dialogRef = useRef(null);
-  var tree = useMemo(function () { return buildTree(activeBoard, activeEntryId, viewport); }, [activeBoard, activeEntryId, viewport]);
+  var tree = useMemo(function () { return buildTree(activeBoard); }, [activeBoard]);
 
   useEffect(function () {
     var dialog = dialogRef.current;

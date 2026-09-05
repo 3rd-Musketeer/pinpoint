@@ -155,7 +155,7 @@ async function loadBoard(panel, pageId) {
     rows.forEach(function (row) { screenMap[row.id] = row.res; });
     var session = mountManager.begin(pageId);
     // 视口（2026-09-05）：页的偏好在构建 HTML 之前灌进 store —— screen-load 按它
-    // 决定 doc 屏套阅读器壳还是手机机壳，activeBoardMode() 随后按它派生形态。
+    // 决定 doc 屏套阅读器壳还是手机屏；形态不变（两种视口都是文档形态）。
     var viewport = applyPageViewport(pageId);
     panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
     wbSet({ activeBoard: { pageId: pageId, board: board } });

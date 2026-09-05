@@ -16,8 +16,8 @@ import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/anno
    互不相通的标注实例：父窗口（侧栏按钮驱动）和 iframe（文档本体）。侧栏点「标注」
    只切到了父窗口那个，画不出框 —— 表现成「侧栏和右下角没对齐」。
    侧栏是唯一控制面，所以取用时按当前选中条目解析到正确的那个实例。 */
-/* 画布上此刻可见的那个文档 iframe（2026-09-05 起不看形态看可见性）：窗口视口下它
-   1:1 铺满舞台，手机视口下它装在机壳里摆在画布上，两种情况标注实例都是它自己的；
+/* 舞台上此刻可见的那个文档 iframe（2026-09-05 起不看形态看可见性）：窗口视口下它
+   1:1 铺满舞台，手机视口下它装在缩过的手机屏里，两种情况标注实例都是它自己的；
    画布条目态 doc 屏全部 data-doc-hidden，这里得 null → 回落父窗口实例。 */
 function activeDocFrameEl() {
   var panel = document.getElementById('wb-board-panel');
@@ -187,8 +187,9 @@ function renderGutter() {
   var ifRect = iframeEl.getBoundingClientRect();
   var dx = ifRect.left - wrapRect.left;
   var dy = ifRect.top - wrapRect.top;
-  // 手机视口（2026-09-05）：iframe 随画布 transform 缩放，锚点 rect 是 iframe 自己的
-  // CSS px，映射到父级前按「显示宽 / 布局宽」缩一次；窗口视口下这个比是 1。
+  // 手机视口（2026-09-05）：iframe 随 .wb-phone-doc 的 transform: scale(k) 缩放
+  // （pages.js syncPhoneDocScale），锚点 rect 是 iframe 自己的 CSS px，映射到父级前
+  // 按「显示宽 / 布局宽」缩一次 —— 这个比就是 k；窗口视口下是 1。
   var k = iframeEl.offsetWidth ? ifRect.width / iframeEl.offsetWidth : 1;
   var anchors = a.visibleBubbleAnchors();
   while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);

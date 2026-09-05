@@ -12,8 +12,11 @@
 // 已按页 defaultShell 归一完毕），不再回查 page.mode —— 同一板里 app/lock 屏摆
 // 画布、doc 屏成阅读器条目（选中后由 pages.js setActiveEntry 切 stage 形态与显隐）。
 // 2026-09-05 视口（lib/viewport.js）：buildBoardHtml 多收 options.viewport —— 手机视口
-// 下 doc 屏不套阅读器壳，改套与 app 屏同一份手机机壳（wrapPhoneShell），iframe 当
-// 屏幕内容，402 × 874 是真实 iframe 尺寸，媒体查询与排版就是手机的。
+// 下 doc 屏不套阅读器壳，套一块不带状态栏 / 岛 / home 条的手机屏（wrapDocPhoneShell），
+// iframe 402 × 874 是真实布局尺寸，媒体查询与排版就是手机的；整块屏由 pages.js
+// syncPhoneDocScale 按舞台高缩放、居中，不上画布（owner：「html doc 的手机视图就
+// 不需要画布了，直接就是一个自适应大小（大约 viewport 高度 90%）的手机 screen，
+// 不需要状态栏和灵动岛；在画布上容易乱跑」）。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
@@ -163,11 +166,24 @@ function wrapDocShell(bodyHtml) {
   );
 }
 
-/** 手机视口里的文档（2026-09-05）：doc 屏的 iframe 装进 app 屏同一份机壳 —— 机壳 /
-    岛 / 状态栏 / home 条与 iOS frame 一模一样，机壳 无 / 有 由 syncPanelPrefs 统一
-    切 .screen-only；iframe 本身 402 × 874（.wb-screen--phone-doc 规则，index.html）。 */
+/** 手机视口里的文档（2026-09-05）：doc 屏的 iframe 装进 kit 的机壳骨架（.ios-root →
+    .ios-device → .ios-bezel → .ios-screen），但不带岛 / 状态栏 / home 条 —— 文档不是
+    app，没有系统 chrome 可模仿。机壳 无 / 有 仍由 syncPanelPrefs 统一切 .screen-only
+    （无 = 裸圆角屏 + --wb-sh-board 板影，有 = 钛框 + 黑边框）；iframe 本身 402 × 874，
+    整块屏的缩放与居中是 .wb-phone-doc 的事（index.html 规则 + pages.js syncPhoneDocScale）。
+    data-ann-frame 与阅读器壳同款：标注客户端把它当 frame 容器。 */
 function wrapDocPhoneShell(bodyHtml) {
-  return wrapPhoneShell(bodyHtml, 'app');
+  return (
+    '<div class="wb-phone-doc" data-ann-frame>' +
+      '<div class="ios-root screen-only" data-device="iphone-16-pro" data-theme="light">' +
+        '<div class="ios-device">' +
+          '<span class="ios-key act"></span><span class="ios-key vup"></span>' +
+          '<span class="ios-key vdn"></span><span class="ios-key pwr"></span>' +
+          '<div class="ios-bezel"><div class="ios-screen">' + bodyHtml + '</div></div>' +
+        '</div>' +
+      '</div>' +
+    '</div>'
+  );
 }
 
 function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
@@ -180,16 +196,15 @@ function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
 // --ios-screen-w/--ios-screen-h 同源（唯一 device preset）；读法见 mock 的 .fig .dim。
 var IOS_DEVICE_DIM = '402 × 874';
 
-/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行。
-    手机视口（2026-09-05）里的 doc 屏就是手机机身 frame，同样出尺寸行。 */
-function isPhoneFrame(pageId, shell, viewport) {
-  if (pageId === COMPONENTS_ID) return false;
-  return shell !== 'doc' || viewport === 'phone';
+/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行
+    （手机视口里的 doc 屏也不出：它不在画布上，图注 / 尺寸行都是画布语汇）。 */
+function isPhoneFrame(pageId, shell) {
+  return pageId !== COMPONENTS_ID && shell !== 'doc';
 }
 
 /** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
-export function frameDimLabel(pageId, shell, viewport) {
-  return isPhoneFrame(pageId, shell, viewport) ? IOS_DEVICE_DIM : '';
+export function frameDimLabel(pageId, shell) {
+  return isPhoneFrame(pageId, shell) ? IOS_DEVICE_DIM : '';
 }
 
 function screenClassForShell(pageId, shell, viewport) {
@@ -239,7 +254,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
         (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
         '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
         '</div>';
-      var dimHtml = isPhoneFrame(pageId, sc.shell, viewport)
+      var dimHtml = isPhoneFrame(pageId, sc.shell)
         ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
         : '';
       // 2026-08-17：Frame Note 不再渲染上画布 —— note 的读/写收编到右栏
