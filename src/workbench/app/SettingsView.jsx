@@ -42,7 +42,7 @@ var THEMES = [
 var ROW = 'flex items-center gap-2';
 var ROW_LABEL = 'w-14 flex-none text-xs font-medium text-muted-foreground';
 // 段头：与左栏「最近」「页面」同一档（11 mono semibold muted），见 index.html .wb-section-head
-var SECTION_HEAD = 'wb-section-head mt-1 font-[var(--wb-font-mono)] text-[11px] font-semibold text-muted-foreground';
+var SECTION_HEAD = 'wb-section-head mt-1 px-0! normal-case! tracking-normal! font-[var(--wb-font-mono)] text-[11px] font-semibold text-muted-foreground';
 
 export function SettingsView() {
   var frame = useWorkbenchStore(function (s) { return s.frame; });
