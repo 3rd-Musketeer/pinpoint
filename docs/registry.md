@@ -8,8 +8,9 @@
 ## 登记表
 
 `src/server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
-形状 `{"version":1,"entries":[...]}`，条目
-`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?}`。
+形状 `{"version":1,"entries":[...]}`（2026-09-04 起还有可选的 `folders` / `pageFolders` /
+`pageOrder` 三段，见下面「分组层」），条目
+`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?, folder?, order?}`。
 
 - `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
 - `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
@@ -27,7 +28,58 @@
 - `GET /registry` 还给 dir / file 条目附 `mtime`（内容 mtime，dir 递归取最大），
   给 Pages 的「最近更新」排序用（ADR 0029）。
 
-## 写入走 CLI
+## 分组层（文件夹）
+
+2026-09-04 裁决 5a：**owner 自己建夹、把页拖进去，一层，不嵌套。** 同一份登记表多三段顶层字段：
+
+```json
+{
+  "version": 1,
+  "entries": [{ "id": "weekly-review", "kind": "dir", "path": "…", "folder": "design", "order": 0 }],
+  "folders": [{ "id": "design", "name": "设计稿", "collapsed": true }],
+  "pageFolders": { "library": "design" },
+  "pageOrder": { "library": 1 }
+}
+```
+
+- `folders[]` 是那一层夹：`{id, name?, collapsed?, order?}`。折叠只留 `true`，`name` 是自由文本、
+  缺省等于 id。夹 id 与条目 id 是同一套模式（`^[a-z0-9][a-z0-9-]*$`），但**两个命名空间各自独立**——
+  条目的 `folder` 只引用 `folders[]` 里的 id，夹 id 撞上某个条目 id 不是冲突。
+  数组顺序就是左栏顺序（拖动重排 = 整表按新顺序写回）。
+- 条目的 `folder` / `order`：归属哪个夹、手动次序（`order` 只在 workbench 的排序档是「默认」时生效）。
+- `pageFolders{}` / `pageOrder{}` 装的是**不在登记表里的** manifest 页（Component Library 等来自
+  `content/previews/_index[.local].json`）——它们没有条目可以写字段，归属与次序只能记在顶层。
+  键撞上某个 registry 条目 id 时那条映射是死数据（条目自己的字段才算数），读侧 warn 掉。
+- **分组从不决定一个页存不存在。** 指着不存在的夹是 warning + 那个条目变散页（丢一行 Pages 比丢一层
+  分组难查得多），坏 `order` 同样只 warn 掉；夹自己 id 重复或不合模式才是 error，且只毙那一条，
+  另一个夹与所有页照旧。顶层形状不对（`folders` 不是数组、`pageFolders` 不是对象）是 error，条目照常读。
+- **删夹永远不删页**：指着它的条目丢掉 `folder` 字段变成散页，`pageFolders` 里的映射一并去掉。
+- `GET /registry` 的载荷带 `folders` / `pageFolders` / `pageOrder` 三段；`/health` 的 registry 摘要里
+  `folders` / `pageFolders` 是**数量**（与那里的 `entries` 是数量同一条惯例，完整清单永远走 `GET /registry`）。
+
+### workbench 的三条写接口
+
+左栏的拖放不绕 CLI。三条 PUT 与 `POST /registry/reload` 是同一条即时生效路径——一次原子写 →
+reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbench 立刻重排左栏）——
+应答直接就是重载后的完整 `/registry` 载荷，调用方不用再打一次 GET：
+
+| 端点 | body | 做什么 |
+| --- | --- | --- |
+| `PUT /registry/folders` | `{folders:[…]}` | 整表替换：新建 / 改名 / 删除 / 折叠 / 重排共用这一条 |
+| `PUT /registry/entries/:id/folder` | `{folder: id｜null, order?}` | 一个页进夹 / 出夹（`null` = 拖成散页） |
+| `PUT /registry/order` | `{ids:[…]}` | 按给定顺序写 `order` 0、1、2… |
+
+`:id` 是 registry 条目就改条目自己的字段，是本地 manifest 页就落 `pageFolders` / `pageOrder`。
+「id 认不认识」的名单 = registry 条目 + `content/previews/_index[.local].json` 里的模板页
+（服务自报的 root 下读，与 CLI 的 `--page` 共用 `src/server/lib/page-manifest.js`）。
+未知 id、未知文件夹、坏 `order`、重复或带未知字段的 folders 一律
+`400 {error:"bad_request", message:"<一句人话>"}`，且登记表一个字节不动；
+静态快照（测试里的 `loadRegistry` 结果）答 `409 registry_not_writable`，与 reload 的 409 同款。
+
+## 写入走 CLI；文件夹操作也可以来自 workbench
+
+**条目**的写入（登记、重指、改 id）只有 CLI 一个入口。**文件夹**有两个：CLI 的 `pinpoint folder`
+和 workbench 左栏的拖放（走上面那三条 PUT）——写的是同一份登记表、同一条原子写，谁先谁后都行。
 
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
 
@@ -35,6 +87,7 @@
 pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
+pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <id> | move <页 id> <夹 id|none>
 ```
 
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
@@ -75,8 +128,24 @@ CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id
 `--id <其他 id>`」并退非零。历史行为是静默追加 `-2`，那会开一个空桶、让既有标注孤儿化
 （2026-09-01 实迁踩到）。
 
+`folder` 管的是上面那层分组，五个子命令：
+
+- `folder list` 只读，打一张表：夹 id / 名称 / 页数 / 是否折叠。页数 = 指着这个夹的 registry 条目
+  加上 `pageFolders` 里指着它的 manifest 页。登记表还不存在时它打一张空表，不算失败。
+- `folder add <名称> [--id xxx]` 建夹。id 缺省由名称 slug 派生（`Design Drafts` → `design-drafts`）；
+  中文名派生不出 slug，必须显式 `--id`。撞既有夹 id 一律报错并指路 `folder rename`。
+- `folder rename <id> <新名称>` 只改显示名，id 不变——条目的 `folder` 引用因此不用跟着改。
+- `folder rm <id>` 删夹，并打印夹里的哪几个页变成了散页。**没有任何页会被删。**
+- `folder move <页 id> <夹 id｜none>` 一个页进夹 / 出夹。页 id 可以是 registry 条目 id，
+  也可以是本地 manifest 页 id（后者落 `pageFolders`）；`none` = 移出来变散页。
+
+`list` 之外的四个子命令要求登记表**已经存在**：整表写回不带默认的 pinpoint 条目，
+给一份不存在的登记表播种会写出一份没有 workbench 自己那条的表。先 `pinpoint add` 登记点什么，
+再建夹。未知的页、未知的夹、撞车的夹 id 都在写之前拒绝，registry 一个字节不动。
+
 写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
-`renameRegistryEntry` 共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
+`renameRegistryEntry` / `writeRegistryFolders` / `setEntryFolder` / `assignRegistryOrder`
+共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
 url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
 （在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
@@ -84,7 +153,7 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
 挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
 
-`add`、`move` 与 `rename` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
+`add`、`move`、`rename` 与 `folder` 的写子命令写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
 
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的
