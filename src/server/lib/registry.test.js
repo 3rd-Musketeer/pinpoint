@@ -197,6 +197,129 @@ test('阶段 8：page/role 透传；非法 page/role 与 url+page 组合跳过�
   assert.match(registry.errors[2], /url.*cannot attach/);
 });
 
+/* ---- 分组层：folders / folder / order / pageFolders / pageOrder（2026-09-04） ---- */
+
+test('文件夹：folders 归一（name 缺省等于 id、collapsed 只留 true）与条目归属透传', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: [
+      { id: 'shipped', name: '已上线', collapsed: true, order: 1 },
+      { id: 'wip' },
+    ],
+    pageFolders: { 'component-library': 'wip' },
+    pageOrder: { 'component-library': 2 },
+    entries: [
+      { id: 'alpha', kind: 'dir', path: dir, folder: 'shipped', order: 0 },
+      { id: 'loose', kind: 'url', url: 'https://x.localhost' },
+    ],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, true);
+  assert.deepEqual(registry.folders, [
+    { id: 'shipped', name: '已上线', collapsed: true, order: 1 },
+    { id: 'wip', name: 'wip' },
+  ]);
+  assert.equal(registry.resolve('alpha').folder, 'shipped');
+  assert.equal(registry.resolve('alpha').order, 0);
+  assert.equal(registry.resolve('loose').folder, undefined);
+  assert.deepEqual(registry.pageFolders, { 'component-library': 'wip' });
+  assert.deepEqual(registry.pageOrder, { 'component-library': 2 });
+});
+
+test('文件夹：缺省是空分组（没有 folders 字段的老登记表照常读）', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, { version: 1, entries: [{ id: 'a', kind: 'dir', path: dir }] });
+  const { registry } = quietLoad({ path: file });
+  assert.deepEqual(registry.folders, []);
+  assert.deepEqual(registry.pageFolders, {});
+  assert.deepEqual(registry.pageOrder, {});
+});
+
+test('文件夹：id 重复只毙那一个夹，另一个夹与所有页都不受影响', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: [
+      { id: 'dup', name: '第一个' },
+      { id: 'dup', name: '第二个' },
+      { id: 'Bad Id', name: 'x' },
+      { id: 'fine', name: 'ok' },
+    ],
+    entries: [{ id: 'a', kind: 'dir', path: dir, folder: 'dup' }],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, false);
+  assert.equal(registry.errors.length, 2);
+  assert.match(registry.errors[0], /duplicate folder id/);
+  assert.match(registry.errors[1], /folder id must match/);
+  assert.deepEqual(registry.folders.map((f) => f.id), ['dup', 'fine']);
+  assert.deepEqual(registry.folders[0].name, '第一个', '同 id 的第二个夹被跳过，第一个留着');
+  assert.equal(registry.resolve('a').folder, 'dup', '页照旧挂在还在的那个夹上');
+});
+
+test('文件夹：条目指着不存在的夹 = warning + 散页，条目本身不会被丢掉', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: [{ id: 'real', name: 'Real' }],
+    entries: [
+      { id: 'ghost-folder', kind: 'dir', path: dir, folder: 'gone' },
+      { id: 'bad-order', kind: 'dir', path: dir, order: 'first' },
+    ],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, true, '归属坏了不是 error —— 页还在，只是散着');
+  assert.equal(registry.warnings.length, 2);
+  assert.match(registry.warnings[0], /folder does not exist.*loose/);
+  assert.match(registry.warnings[1], /order must be a number/);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['ghost-folder', 'bad-order']);
+  assert.equal(registry.resolve('ghost-folder').folder, undefined);
+  assert.equal(registry.resolve('bad-order').order, undefined);
+});
+
+test('文件夹：pageFolders 的坏键、坏值与撞 registry 条目 id 的死映射都只 warn', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: [{ id: 'real', name: 'Real' }],
+    pageFolders: {
+      'component-library': 'real',
+      'example-library': 'gone',
+      'bad id': 'real',
+      alpha: 'real',
+    },
+    pageOrder: { 'component-library': 'first', 'example-library': 3 },
+    entries: [{ id: 'alpha', kind: 'dir', path: dir }],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, true);
+  assert.deepEqual(registry.pageFolders, { 'component-library': 'real' });
+  assert.deepEqual(registry.pageOrder, { 'example-library': 3 });
+  assert.equal(registry.warnings.length, 4);
+  assert.ok(registry.warnings.some((w) => /is a registry entry/.test(w)), '条目自己的 folder 字段才算数');
+});
+
+test('文件夹：folders / pageFolders 顶层形状不对是 error，条目照常读', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: { shipped: '已上线' },
+    pageFolders: [],
+    entries: [{ id: 'a', kind: 'dir', path: dir }],
+  });
+  const { registry } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, false);
+  assert.deepEqual(registry.errors, ['registry folders must be an array', 'registry pageFolders must be an object']);
+  assert.deepEqual(registry.folders, []);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['a'], '分组坏了不影响条目');
+});
+
 test('PINPOINT_REGISTRY overrides the default registry path', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {

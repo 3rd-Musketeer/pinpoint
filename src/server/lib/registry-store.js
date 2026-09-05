@@ -20,13 +20,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from './registry.js';
+import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from './registry.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url']);
 const WRITE_ROLES = new Set(['product', 'draft']);
-// 写入白名单（2026-08-16f 阶段 8 起含 page/role）：未知字段响亮拒绝，
-// 不静默丢数据（写坏 registry 比报错难查得多）。
-const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role']);
+// 写入白名单（2026-08-16f 阶段 8 起含 page/role，2026-09-04 起含 folder/order）：
+// 未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
+const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role', 'folder', 'order']);
+// folders[] 一条记录的写入白名单。
+const FOLDER_KEYS = new Set(['id', 'name', 'collapsed', 'order']);
 
 /** Atomic JSON write: tmp sibling + rename, 2-space layout, trailing newline. */
 export function writeRegistryFile(registryPath, doc) {
@@ -87,6 +89,14 @@ export function validateNewEntry(raw, existingIds) {
   if (raw.role !== undefined && !WRITE_ROLES.has(raw.role)) {
     return `条目 "${raw.id}" 的 role 必须是 product / draft`;
   }
+  // 2026-09-04 分组层：folder 引用 folders[] 里的一个 id（存不存在由文件夹写接口
+  // 校验，这里只管形状），order 只在 workbench 排序档为「默认」时生效。
+  if (raw.folder !== undefined && (typeof raw.folder !== 'string' || !FOLDER_ID_PATTERN.test(raw.folder))) {
+    return `条目 "${raw.id}" 的 folder 必须匹配 ${FOLDER_ID_PATTERN}`;
+  }
+  if (raw.order !== undefined && !Number.isFinite(raw.order)) {
+    return `条目 "${raw.id}" 的 order 必须是数字`;
+  }
   return null;
 }
 
@@ -98,6 +108,8 @@ function normalizeNewEntry(raw) {
   if (typeof raw.board === 'string') entry.board = raw.board;
   if (typeof raw.page === 'string') entry.page = raw.page;
   if (typeof raw.role === 'string') entry.role = raw.role;
+  if (typeof raw.folder === 'string') entry.folder = raw.folder;
+  if (Number.isFinite(raw.order)) entry.order = raw.order;
   return entry;
 }
 
@@ -204,6 +216,210 @@ export function addRegistryEntry(registryPath, raw, options = {}) {
   return entry;
 }
 
+/* ============================ 分组层（文件夹） ============================
+   2026-09-04 裁决 5a：owner 自己建夹、把页拖进去，一层不嵌套。写侧与条目写
+   共用同一条原子写，但入口不止 CLI —— workbench 的拖放经服务端的三个写接口
+   落到同一份文件（docs/registry.md「写入走 CLI 或 workbench 的文件夹操作」）。
+   删夹永远不删页：指着它的条目丢掉 folder 字段变成散页。 */
+
+/** 现有文件夹（写侧原样读，不做宽容归一）。文件损坏时抛。 */
+export function listRegistryFolders(registryPath) {
+  return foldersOf(readRegistryDoc(registryPath));
+}
+
+/**
+ * 分组层的现状，一次读出来（CLI 的预检读侧：`pinpoint folder list` 要数每个夹
+ * 里有几个页，写子命令要在动手前知道有哪些夹）。folders 原样，两张 page 映射
+ * 是浅拷贝。文件损坏时抛——预检阶段就报错，比写坏登记表好。
+ */
+export function listRegistryGrouping(registryPath) {
+  const doc = readRegistryDoc(registryPath);
+  return {
+    folders: foldersOf(doc),
+    pageFolders: pageMapOf(doc, 'pageFolders'),
+    pageOrder: pageMapOf(doc, 'pageOrder'),
+  };
+}
+
+function foldersOf(doc) {
+  return Array.isArray(doc.folders) ? doc.folders.filter((folder) => folder && typeof folder === 'object') : [];
+}
+
+function pageMapOf(doc, key) {
+  const raw = doc[key];
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? { ...raw } : {};
+}
+
+/** 整份 folders[] 的严格校验（写入前）。返回错误说明或 null。 */
+export function validateFolderList(raw) {
+  if (!Array.isArray(raw)) return 'folders 必须是数组';
+  const seen = new Set();
+  for (const folder of raw) {
+    if (!folder || typeof folder !== 'object' || Array.isArray(folder)) return '文件夹必须是对象';
+    for (const key of Object.keys(folder)) {
+      if (!FOLDER_KEYS.has(key)) return `文件夹 "${folder.id}" 带未知字段：${key}`;
+    }
+    if (typeof folder.id !== 'string' || !FOLDER_ID_PATTERN.test(folder.id)) {
+      return `文件夹 id 必须匹配 ${FOLDER_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${JSON.stringify(folder.id)}`;
+    }
+    if (seen.has(folder.id)) return `文件夹 id 重复：${folder.id}`;
+    seen.add(folder.id);
+    if (folder.name !== undefined && typeof folder.name !== 'string') {
+      return `文件夹 "${folder.id}" 的 name 必须是字符串`;
+    }
+    if (folder.collapsed !== undefined && typeof folder.collapsed !== 'boolean') {
+      return `文件夹 "${folder.id}" 的 collapsed 必须是 true / false`;
+    }
+    if (folder.order !== undefined && !Number.isFinite(folder.order)) {
+      return `文件夹 "${folder.id}" 的 order 必须是数字`;
+    }
+  }
+  return null;
+}
+
+function normalizeFolder(raw) {
+  const folder = { id: raw.id, name: typeof raw.name === 'string' && raw.name ? raw.name : raw.id };
+  if (raw.collapsed === true) folder.collapsed = true;
+  if (Number.isFinite(raw.order)) folder.order = raw.order;
+  return folder;
+}
+
+/** 空的 folders / pageFolders / pageOrder 不留在文件里（登记表保持能一眼读完）。 */
+function putGrouping(doc, key, value) {
+  const next = { ...doc };
+  const empty = Array.isArray(value) ? value.length === 0 : Object.keys(value).length === 0;
+  if (empty) delete next[key];
+  else next[key] = value;
+  return next;
+}
+
+/**
+ * 顶层 folders[] 整表替换（新建 / 改名 / 删除 / 折叠 / 重排都走这一条）。
+ * 删掉的夹不带走任何页：指着它的条目丢掉 folder 字段、pageFolders 里的映射
+ * 一并去掉，页照样在 Pages 里，只是变成散页。
+ * 返回 { folders, releasedEntries, releasedPages }。
+ */
+export function writeRegistryFolders(registryPath, folders) {
+  const problem = validateFolderList(folders);
+  if (problem) throw new Error(problem);
+  const doc = readRegistryDoc(registryPath);
+  const next = folders.map(normalizeFolder);
+  const ids = new Set(next.map((folder) => folder.id));
+
+  const releasedEntries = [];
+  const entries = doc.entries.map((entry) => {
+    if (!entry || typeof entry !== 'object' || typeof entry.folder !== 'string') return entry;
+    if (ids.has(entry.folder)) return entry;
+    releasedEntries.push(entry.id);
+    const { folder, ...rest } = entry;
+    return rest;
+  });
+
+  const pageFolders = pageMapOf(doc, 'pageFolders');
+  const releasedPages = [];
+  for (const [pageId, folderId] of Object.entries(pageFolders)) {
+    if (ids.has(folderId)) continue;
+    releasedPages.push(pageId);
+    delete pageFolders[pageId];
+  }
+
+  let out = { ...doc, entries };
+  out = putGrouping(out, 'folders', next);
+  out = putGrouping(out, 'pageFolders', pageFolders);
+  writeRegistryFile(registryPath, out);
+  return { folders: next, releasedEntries, releasedPages };
+}
+
+/** id 是 registry 条目、还是本地 manifest 页（Component Library 等）——两条写路径不同。 */
+function classifyPageId(doc, id, pageIds) {
+  if (typeof id !== 'string' || !PAGE_ID_PATTERN.test(id)) {
+    throw new Error(`id 不合法（必须匹配 ${PAGE_ID_PATTERN}）：${JSON.stringify(id)}`);
+  }
+  const index = doc.entries.findIndex((entry) => entry && entry.id === id);
+  if (index >= 0) return { kind: 'entry', index };
+  if (pageIds.includes(id)) return { kind: 'page' };
+  throw new Error(`未知 id：${id}（既不是 registry 条目，也不是本地 manifest 页）`);
+}
+
+/**
+ * 一个页的归属（拖进夹 / 拖出来）。id 可以是 registry 条目 id，也可以是
+ * manifest 页 id —— 后者落顶层 pageFolders。folder 传 null 就是拖成散页。
+ * order 可选，同一次写入里带上（手动排序只在 workbench 排序档「默认」时生效）。
+ * 返回 { id, kind, folder, order }。
+ */
+export function setEntryFolder(registryPath, id, { folder = null, order } = {}, { pageIds = [] } = {}) {
+  const target = folder === undefined ? null : folder;
+  if (target !== null && (typeof target !== 'string' || !FOLDER_ID_PATTERN.test(target))) {
+    throw new Error(`folder 必须是文件夹 id 或 null：${JSON.stringify(target)}`);
+  }
+  if (order !== undefined && !Number.isFinite(order)) throw new Error(`order 必须是数字：${JSON.stringify(order)}`);
+
+  const doc = readRegistryDoc(registryPath);
+  if (target !== null && !foldersOf(doc).some((entry) => entry.id === target)) {
+    throw new Error(`文件夹不存在：${target}`);
+  }
+  const where = classifyPageId(doc, id, pageIds);
+
+  let out;
+  if (where.kind === 'entry') {
+    const before = doc.entries[where.index];
+    const raw = { ...before };
+    if (target === null) delete raw.folder;
+    else raw.folder = target;
+    if (order !== undefined) raw.order = order;
+    const otherIds = new Set(doc.entries.filter((_, i) => i !== where.index).map((entry) => entry && entry.id));
+    const problem = validateNewEntry(raw, otherIds);
+    if (problem) throw new Error(problem);
+    const entries = [...doc.entries];
+    entries[where.index] = normalizeNewEntry(raw);
+    out = { ...doc, entries };
+  } else {
+    const pageFolders = pageMapOf(doc, 'pageFolders');
+    if (target === null) delete pageFolders[id];
+    else pageFolders[id] = target;
+    out = putGrouping(doc, 'pageFolders', pageFolders);
+    if (order !== undefined) {
+      const pageOrder = pageMapOf(doc, 'pageOrder');
+      pageOrder[id] = order;
+      out = putGrouping(out, 'pageOrder', pageOrder);
+    }
+  }
+  writeRegistryFile(registryPath, out);
+  return { id, kind: where.kind, folder: target, order };
+}
+
+/**
+ * 一串 id 按给定顺序写 order（0、1、2…）：条目写自己的 order 字段，
+ * manifest 页写顶层 pageOrder。一次原子写，部分 id 不认整单失败。
+ * 返回 [{id, kind, order}]。
+ */
+export function assignRegistryOrder(registryPath, ids, { pageIds = [] } = {}) {
+  if (!Array.isArray(ids)) throw new Error('ids 必须是数组');
+  const seen = new Set();
+  for (const id of ids) {
+    if (seen.has(id)) throw new Error(`ids 里有重复项：${id}`);
+    seen.add(id);
+  }
+  const doc = readRegistryDoc(registryPath);
+  const placed = ids.map((id, index) => ({ id, index, where: classifyPageId(doc, id, pageIds) }));
+
+  const entries = [...doc.entries];
+  const pageOrder = pageMapOf(doc, 'pageOrder');
+  for (const item of placed) {
+    if (item.where.kind === 'entry') {
+      const raw = { ...entries[item.where.index], order: item.index };
+      const otherIds = new Set(entries.filter((_, i) => i !== item.where.index).map((entry) => entry && entry.id));
+      const problem = validateNewEntry(raw, otherIds);
+      if (problem) throw new Error(problem);
+      entries[item.where.index] = normalizeNewEntry(raw);
+    } else {
+      pageOrder[item.id] = item.index;
+    }
+  }
+  writeRegistryFile(registryPath, putGrouping({ ...doc, entries }, 'pageOrder', pageOrder));
+  return placed.map((item) => ({ id: item.id, kind: item.where.kind, order: item.index }));
+}
+
 /**
  * Live registry view shared by the server plugins. Quacks like a loadRegistry
  * snapshot (ok / path / entries / errors / warnings / resolve) but every
@@ -222,6 +438,9 @@ export function createRegistryStore(options = {}) {
     get ok() { return snapshot.ok; },
     get path() { return snapshot.path; },
     get entries() { return snapshot.entries; },
+    get folders() { return snapshot.folders; },
+    get pageFolders() { return snapshot.pageFolders; },
+    get pageOrder() { return snapshot.pageOrder; },
     get errors() { return snapshot.errors; },
     get warnings() { return snapshot.warnings; },
     resolve(id) { return snapshot.resolve(id); },
@@ -233,6 +452,23 @@ export function createRegistryStore(options = {}) {
       const entry = addRegistryEntry(snapshot.path, raw, { seedEntries: defaultEntries(root) });
       store.reload();
       return entry;
+    },
+    // 分组层的三个写入口（workbench 拖放经服务端打到这里）：每个都是
+    // 一次原子写 + 一次 reload，所以写完立刻对所有插件生效。
+    setFolders(folders) {
+      const result = writeRegistryFolders(snapshot.path, folders);
+      store.reload();
+      return result;
+    },
+    setEntryFolder(id, patch, options) {
+      const result = setEntryFolder(snapshot.path, id, patch, options);
+      store.reload();
+      return result;
+    },
+    setOrder(ids, options) {
+      const result = assignRegistryOrder(snapshot.path, ids, options);
+      store.reload();
+      return result;
     },
   };
   return store;

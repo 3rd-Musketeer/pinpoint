@@ -83,7 +83,7 @@ review 和清理标注留给用户，不要替用户清空标注。
 | 标注 → 读标注 → 修改 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 登记 / 重指 / 验证一个 registry dir 或 url 条目 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、CLI（add / move / rename）、三条注入路径、代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状与分组层、CLI（add / move / rename / folder）、三条注入路径、代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注字段、账本与桶、控制面、workbench 偏好、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样 | [`docs/adr/`](docs/adr/) |

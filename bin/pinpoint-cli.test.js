@@ -8,6 +8,10 @@ import test from 'node:test';
 import {
   buildEntry,
   buildMove,
+  buildFolderAdd,
+  buildFolderMove,
+  buildFolderRemove,
+  buildFolderRename,
   buildRename,
   classifyStatus,
   CliError,
@@ -15,12 +19,15 @@ import {
   decideStart,
   decideStop,
   displayWidth,
+  folderRows,
+  formatFolderList,
   formatStatus,
   localManifestPageIds,
   parseArgs,
   parseRoutes,
   pickRoute,
   planAdd,
+  planFolder,
   portlessRoutesPath,
   requestJson,
   rewriteSitePrefix,
@@ -28,6 +35,7 @@ import {
   resolveRegistryPath,
   run,
   runAdd,
+  runFolder,
   runMove,
   runRename,
   runStatus,
@@ -661,6 +669,230 @@ test('runRename: 预检不过就一个字节都不动（新桶已存在 / 目录
   // 参数形状不对才刷 usage
   const usage = recorder();
   assert.equal(await runRename(['rename', 'old'], { ...usage.io, cwd: dir, env, requestFn }), 1);
+  assert.ok(usage.err.some((line) => /^用法：/.test(line)));
+});
+
+/* ---- folder（分组层） ---- */
+
+/** 一份可写的登记表：一个 dir 条目 + 给定的分组段。 */
+function seedRegistry(dir, { entries, ...rest } = {}) {
+  const site = makeSite(dir, 'site');
+  const file = path.join(dir, 'registry.json');
+  fs.writeFileSync(file, JSON.stringify({
+    version: 1,
+    entries: entries || [{ id: 'site', title: 'site', kind: 'dir', path: site }],
+    ...rest,
+  }));
+  return file;
+}
+
+const readDoc = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+/** 服务不可达（folder 的写入照常落盘，只是不 reload）。 */
+const serverDown = () => Promise.reject(new Error('connect ECONNREFUSED'));
+
+test('parseArgs: folder 的子命令层', () => {
+  assert.deepEqual(parseArgs(['folder', 'list']), { command: 'folder', sub: 'list', args: [], flags: {} });
+  assert.deepEqual(parseArgs(['folder', 'add', '设计稿', '--id', 'design']), {
+    command: 'folder', sub: 'add', args: ['设计稿'], flags: { id: 'design' },
+  });
+  assert.deepEqual(parseArgs(['folder', 'move', 'site', 'none', '--registry=/tmp/r.json']), {
+    command: 'folder', sub: 'move', args: ['site', 'none'], flags: { registry: '/tmp/r.json' },
+  });
+  assert.throws(() => parseArgs(['folder']), /folder 需要一个子命令/);
+  assert.throws(() => parseArgs(['folder', 'nuke', 'x']), /未知子命令：folder nuke/);
+  assert.throws(() => parseArgs(['folder', 'list', 'extra']), /folder list 需要 0 个参数/);
+  assert.throws(() => parseArgs(['folder', 'rename', 'x']), /folder rename 需要 2 个参数/);
+  assert.throws(() => parseArgs(['folder', 'list', '--id', 'x']), /--id 不适用于 folder list/);
+  assert.throws(() => parseArgs(['folder', 'add', 'x', '--draft']), /不适用于 folder/);
+});
+
+test('buildFolderAdd: id 由名称派生，撞 id 与派生不出都响亮拒绝', () => {
+  assert.deepEqual(buildFolderAdd('Design Drafts', {}, { folders: [] }), {
+    folder: { id: 'design-drafts', name: 'Design Drafts' },
+    folders: [{ id: 'design-drafts', name: 'Design Drafts' }],
+  });
+  // 显式 --id：中文名派生不出 slug，只能这么建
+  assert.deepEqual(buildFolderAdd('归档', { id: 'archive' }, { folders: [] }).folder, { id: 'archive', name: '归档' });
+  assert.throws(() => buildFolderAdd('归档', {}, { folders: [] }), /无法从「归档」派生 id/);
+  assert.throws(() => buildFolderAdd('  ', {}, { folders: [] }), /文件夹名不能为空/);
+  assert.throws(() => buildFolderAdd('x', { id: 'Bad Id' }, { folders: [] }), /--id 必须匹配/);
+  assert.throws(
+    () => buildFolderAdd('Design', {}, { folders: [{ id: 'design', name: '设计' }] }),
+    /文件夹 id 已存在：design（名称「设计」）.*folder rename design/,
+  );
+  // 既有的夹原样带走，新夹追加在末尾（文件顺序 = 左栏顺序）
+  const grown = buildFolderAdd('Two', {}, { folders: [{ id: 'one', name: 'One', collapsed: true }] });
+  assert.deepEqual(grown.folders.map((f) => f.id), ['one', 'two']);
+  assert.equal(grown.folders[0].collapsed, true);
+});
+
+test('buildFolderRename: 只换显示名，id 与其余字段不动', () => {
+  const folders = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B', collapsed: true }];
+  const out = buildFolderRename('b', ' 归档 ', { folders });
+  assert.deepEqual(out.after, { id: 'b', name: '归档', collapsed: true });
+  assert.deepEqual(out.folders.map((f) => f.name), ['A', '归档']);
+  assert.throws(() => buildFolderRename('zz', 'X', { folders }), /文件夹不存在：zz（现有：a、b）/);
+  assert.throws(() => buildFolderRename('a', '   ', { folders }), /文件夹名不能为空/);
+  assert.throws(() => buildFolderRename('a', 'X', { folders: [] }), /一个夹都还没有/);
+});
+
+test('buildFolderRemove: 从 folders[] 去掉一条（页的释放归写侧）', () => {
+  const folders = [{ id: 'a', name: 'A' }, { id: 'b', name: 'B' }];
+  const out = buildFolderRemove('a', { folders });
+  assert.deepEqual(out.removed, { id: 'a', name: 'A' });
+  assert.deepEqual(out.folders, [{ id: 'b', name: 'B' }]);
+  assert.throws(() => buildFolderRemove('zz', { folders }), /文件夹不存在：zz/);
+});
+
+test('buildFolderMove: 未知的页 / 未知的夹都在写之前拒绝，none = 散页', () => {
+  const ctx = { folders: [{ id: 'design', name: 'D' }], entryIds: ['site'], pageIds: ['library'] };
+  assert.deepEqual(buildFolderMove('site', 'design', ctx), { id: 'site', kind: 'entry', folder: 'design' });
+  assert.deepEqual(buildFolderMove('library', 'design', ctx), { id: 'library', kind: 'page', folder: 'design' });
+  assert.deepEqual(buildFolderMove('site', 'none', ctx), { id: 'site', kind: 'entry', folder: null });
+  assert.throws(() => buildFolderMove('ghost', 'design', ctx), /未知的页：ghost/);
+  assert.throws(() => buildFolderMove('site', 'ghost', ctx), /文件夹不存在：ghost（现有：design）/);
+  assert.throws(() => buildFolderMove('site', 'Bad Folder', ctx), /文件夹 id 不合法/);
+  assert.throws(() => buildFolderMove('bad id', 'design', ctx), /页 id 不合法/);
+});
+
+test('folderRows / formatFolderList: 条目与 manifest 页一起数，全角对齐', () => {
+  const rows = folderRows({
+    folders: [{ id: 'design', name: '设计稿' }, { id: 'archive', collapsed: true }],
+    entries: [{ id: 'site', folder: 'design' }, { id: 'other' }],
+    pageFolders: { library: 'design', gallery: 'ghost' },
+  });
+  assert.deepEqual(rows, [
+    { id: 'design', name: '设计稿', count: 2, collapsed: false },
+    { id: 'archive', name: 'archive', count: 0, collapsed: true }, // name 缺省等于 id
+  ]);
+  const lines = formatFolderList(rows);
+  assert.equal(lines[0].trim().split(/ {2,}/).join('|'), 'id|名称|页数|折叠');
+  assert.deepEqual(lines.slice(1).map((line) => line.trim().split(/ {2,}/)), [
+    ['design', '设计稿', '2', '—'],
+    ['archive', 'archive', '0', '是'],
+  ]);
+  // 全角名（设计稿 = 6 列）与 ASCII 名（archive = 7 列）占同一列宽：最后一栏在同一列起头
+  const lastColumnAt = (line) => displayWidth(line.replace(/(是|—)$/, ''));
+  assert.equal(lastColumnAt(lines[1]), lastColumnAt(lines[2]));
+  assert.match(formatFolderList([])[0], /还没有文件夹/);
+});
+
+test('planFolder: list 容忍不存在的登记表，写子命令不给它播种', (t) => {
+  const dir = withTempDir(t);
+  const missing = path.join(dir, 'nope.json');
+  assert.deepEqual(planFolder(['folder', 'list', '--registry', missing], { cwd: dir, env: {} }).rows, []);
+  assert.throws(
+    () => planFolder(['folder', 'add', 'X', '--registry', missing], { cwd: dir, env: {} }),
+    /registry 文件还不存在.*先 `pinpoint add/,
+  );
+  assert.equal(fs.existsSync(missing), false);
+});
+
+test('runFolder list: 打表退 0，不写盘、不打服务', async (t) => {
+  const dir = withTempDir(t);
+  const file = seedRegistry(dir, { folders: [{ id: 'design', name: '设计稿' }], pageFolders: { library: 'design' } });
+  const before = fs.readFileSync(file, 'utf8');
+  const rec = recorder();
+  const calls = [];
+  const code = await runFolder(['folder', 'list', '--registry', file], {
+    ...rec.io, cwd: dir, env: {}, requestFn: (url) => { calls.push(url); return serverDown(); },
+  });
+  assert.equal(code, 0);
+  assert.deepEqual(calls, [], 'list 是只读命令，不探活也不 reload');
+  assert.ok(rec.out.some((line) => /design {2,}设计稿 {2,}1 /.test(line)), '条目 site 还没进夹，夹里只有 library');
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+});
+
+test('runFolder add / rename / rm: 一次原子写 + 一次 reload；删夹不删页', async (t) => {
+  const dir = withTempDir(t);
+  const file = seedRegistry(dir);
+  const env = { PINPOINT_ORIGIN: 'https://pinpoint.localhost' };
+  const calls = [];
+  const requestFn = (url, options = {}) => {
+    calls.push(`${options.method || 'GET'} ${url}`);
+    return Promise.resolve(url.endsWith('/health')
+      ? { status: 200, json: { ok: true } }
+      : { status: 200, json: { ok: true, path: file, entries: 1, errors: [], warnings: [] } });
+  };
+
+  const add = recorder();
+  assert.equal(await runFolder(['folder', 'add', 'Design', '--registry', file], { ...add.io, cwd: dir, env, requestFn }), 0);
+  assert.deepEqual(readDoc(file).folders, [{ id: 'design', name: 'Design' }]);
+  assert.deepEqual(calls, ['GET https://pinpoint.localhost/health', 'POST https://pinpoint.localhost/registry/reload']);
+  assert.ok(add.out.some((line) => /已建文件夹 design（Design）/.test(line)));
+
+  // 页进夹，再改夹名——id 不变，条目的 folder 引用不用跟着改
+  const move = recorder();
+  assert.equal(await runFolder(['folder', 'move', 'site', 'design', '--registry', file], { ...move.io, cwd: dir, env, requestFn }), 0);
+  assert.equal(readDoc(file).entries[0].folder, 'design');
+
+  const rename = recorder();
+  assert.equal(await runFolder(['folder', 'rename', 'design', '设计稿', '--registry', file], { ...rename.io, cwd: dir, env, requestFn }), 0);
+  assert.deepEqual(readDoc(file).folders, [{ id: 'design', name: '设计稿' }]);
+  assert.equal(readDoc(file).entries[0].folder, 'design');
+  assert.ok(rename.out.some((line) => /已改名文件夹 design：Design → 设计稿/.test(line)));
+
+  // 删夹：条目还在，只是丢掉 folder 字段变散页
+  const rm = recorder();
+  assert.equal(await runFolder(['folder', 'rm', 'design', '--registry', file], { ...rm.io, cwd: dir, env, requestFn }), 0);
+  const doc = readDoc(file);
+  assert.equal(doc.folders, undefined, '空的 folders 不留在文件里');
+  assert.deepEqual(doc.entries.map((e) => e.id), ['site'], '删夹不删页');
+  assert.equal(doc.entries[0].folder, undefined);
+  assert.ok(rm.out.some((line) => /1 个页没有被删，变成散页：site/.test(line)));
+});
+
+test('runFolder move: registry 条目落条目字段，manifest 页落 pageFolders，none 拖出来', async (t) => {
+  const dir = withTempDir(t);
+  const file = seedRegistry(dir, { folders: [{ id: 'design', name: 'Design' }] });
+  const io = { cwd: dir, env: {}, requestFn: serverDown };
+
+  const entry = recorder();
+  assert.equal(await runFolder(['folder', 'move', 'site', 'design', '--registry', file], { ...entry.io, ...io }), 0);
+  assert.equal(readDoc(file).entries[0].folder, 'design');
+  assert.equal(readDoc(file).pageFolders, undefined);
+  assert.ok(entry.out.some((line) => /已把 site 放进文件夹 design（registry 条目）/.test(line)));
+
+  // library = 仓库里 tracked 的模板页，不在登记表里，一样能进夹
+  const page = recorder();
+  assert.equal(await runFolder(['folder', 'move', 'library', 'design', '--registry', file], { ...page.io, ...io }), 0);
+  assert.deepEqual(readDoc(file).pageFolders, { library: 'design' });
+  assert.ok(page.out.some((line) => /pageFolders/.test(line)));
+
+  const loose = recorder();
+  assert.equal(await runFolder(['folder', 'move', 'site', 'none', '--registry', file], { ...loose.io, ...io }), 0);
+  assert.equal(readDoc(file).entries[0].folder, undefined);
+  assert.ok(loose.out.some((line) => /已把 site 移出文件夹，现在是散页/.test(line)));
+});
+
+test('runFolder: 预检不过就一个字节都不动（未知夹 / 未知页 / 撞 id / 坏文件）', async (t) => {
+  const dir = withTempDir(t);
+  const file = seedRegistry(dir, { folders: [{ id: 'design', name: 'Design' }] });
+  const before = fs.readFileSync(file, 'utf8');
+  const io = { cwd: dir, env: {}, requestFn: serverDown };
+  const rec = recorder();
+
+  assert.equal(await runFolder(['folder', 'move', 'site', 'ghost', '--registry', file], { ...rec.io, ...io }), 1);
+  assert.equal(await runFolder(['folder', 'move', 'ghost', 'design', '--registry', file], { ...rec.io, ...io }), 1);
+  assert.equal(await runFolder(['folder', 'add', 'Design', '--registry', file], { ...rec.io, ...io }), 1);
+  assert.equal(await runFolder(['folder', 'rm', 'ghost', '--registry', file], { ...rec.io, ...io }), 1);
+  assert.ok(rec.err.some((line) => /文件夹不存在：ghost/.test(line)));
+  assert.ok(rec.err.some((line) => /未知的页：ghost/.test(line)));
+  assert.ok(rec.err.some((line) => /文件夹 id 已存在：design/.test(line)));
+  assert.ok(!rec.err.some((line) => /^用法：/.test(line)), '目标不成立不刷 usage，答案在错误行里');
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+
+  // 登记表本身坏了：读侧就抛，同样一个字节不动
+  const broken = path.join(dir, 'broken.json');
+  fs.writeFileSync(broken, '{ broken');
+  const bad = recorder();
+  assert.equal(await runFolder(['folder', 'list', '--registry', broken], { ...bad.io, ...io }), 1);
+  assert.ok(bad.err.some((line) => /不是合法 JSON/.test(line)));
+  assert.equal(fs.readFileSync(broken, 'utf8'), '{ broken');
+
+  // 参数形状不对才刷 usage
+  const usage = recorder();
+  assert.equal(await runFolder(['folder', 'rm'], { ...usage.io, ...io }), 1);
   assert.ok(usage.err.some((line) => /^用法：/.test(line)));
 });
 

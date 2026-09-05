@@ -130,8 +130,9 @@ test('/health keeps dataDir as the default bucket and exposes registry state', a
   assert.equal(json.ok, true);
   assert.equal(json.dataDir, path.join(dataRoot, 'pinpoint'));
   assert.equal(json.dataRoot, dataRoot);
+  // entries / folders / pageFolders 都是数量（完整清单走 GET /registry）。
   assert.deepEqual(json.registry, {
-    ok: true, path: registry.path, entries: 2, errors: [], warnings: [],
+    ok: true, path: registry.path, entries: 2, folders: 0, pageFolders: 0, errors: [], warnings: [],
   });
 });
 
