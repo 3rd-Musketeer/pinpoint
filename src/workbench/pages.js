@@ -14,10 +14,16 @@ import { pushRecent } from './lib/page-groups.js';
 import {
   boardEntries,
   defaultEntryId,
-  entryForm,
   resolveEntry,
   withEntryWeb
 } from './lib/board-entries.js';
+import {
+  entryHasViewport,
+  normalizeViewport,
+  stageFormFor,
+  viewportForPage,
+  withViewportPref
+} from './lib/viewport.js';
 import {
   COMPONENTS_ID,
   LIB_ID,
@@ -105,8 +111,8 @@ export function wireLibraryScrollSpy() {
   stage.addEventListener('scroll', libraryScrollHandler, { passive: true });
 }
 
-// stage 形态（条目的属性，lib/board-entries.js entryForm 派生）：
-// ios = 画布（手机原型 fragment + 机身 chrome）
+// stage 形态（条目 + 视口派生，lib/viewport.js stageFormFor）：
+// ios = 画布（手机原型 fragment + 机身 chrome；2026-09-05 起手机视口下的文档条目也在这里）
 // html = 文档阅读器（完整独立 HTML 文档，iframe 承载，见 shell "doc"）
 // （2026-08-16 阶段 2：web「无机壳画板」连壳退役，残留 'web' 一律归一到 html；
 // 2026-08-16f 阶段 6：形态从页级 mode 下沉到选中条目。）
@@ -206,11 +212,56 @@ function saveEntryPref(pageId, entryId) {
 
 /* stage 形态应用到 DOM/缩放：data-page-mode 是 stage 阅读器态的 CSS 钩
    （index.html）；文档形态锁死缩放（报告必须按读者真实窗口尺寸渲染），
-   回画布形态停掉父级 gutter。形态值域沿用 ios/html（html = 文档阅读器）。 */
+   回画布形态停掉父级 gutter。形态值域沿用 ios/html（html = 文档阅读器）。
+   data-viewport（2026-09-05）跟着写：CSS 与 e2e 借它分辨「画布上摆的是手机里的
+   文档」和普通画布 —— 形态本身仍只有 ios / html 两个值。 */
 function applyStageForm(form) {
-  if (wbRoot) wbRoot.setAttribute('data-page-mode', form);
+  if (wbRoot) {
+    wbRoot.setAttribute('data-page-mode', form);
+    wbRoot.setAttribute('data-viewport', wbGet().viewport || 'window');
+  }
   if (form === 'html') setCanvasZoom('1', { save: false });
   else stopGutter();
+}
+
+/* ---- 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 ----------------
+   窗口 = 文档 1:1 铺满舞台（今天的文档形态）；手机 = 同一份文档装进一个 402 × 874
+   的手机 frame 摆上画布（机壳跟设置走，缩放 / 回中 / 导出都是画布工具）。
+   页的偏好（prefs.viewportByPage），不进 registry、不进 URL。切换 = 重装当前板
+   （screen-load 按视口决定 doc 屏套阅读器壳还是手机机壳），选中条目由
+   prefs.activeEntryIdByPage 记忆带回来。 */
+
+/** 当前页的视口偏好（板装载前就要知道，所以按 pageId 读，不看 store）。 */
+export function viewportOfPage(pageId) {
+  return viewportForPage(readPrefs(), pageId);
+}
+
+/** 板装载入口（stage.js loadBoard）在构建 HTML 之前调：把页的视口灌进 store，
+    activeBoardMode() / Strip / applyStageForm 随后读到的就是这一页的值。 */
+export function applyPageViewport(pageId) {
+  var viewport = viewportOfPage(pageId);
+  wbSet({ viewport: viewport });
+  return viewport;
+}
+
+/** 横条两段控件的动作：记偏好 → 重装当前板。离开画布形态前先存档视口
+    （snapshotPageViewport 自带「文档形态不存档」守卫，所以必须在 wbSet 之前调）。 */
+export function setActiveViewport(viewport) {
+  viewport = normalizeViewport(viewport);
+  var s = wbGet();
+  var pageId = s.activePageId;
+  var panel = document.getElementById('wb-board-panel');
+  if (!pageId || !panel) return Promise.resolve();
+  if (viewport === s.viewport) return Promise.resolve();
+  snapshotPageViewport(pageId);
+  savePrefs(withViewportPref(readPrefs(), pageId, viewport));
+  wbSet({ viewport: viewport });
+  return pagesDeps.loadBoard(panel, pageId);
+}
+
+/** 横条要不要出视口控件：只在文档条目选中时（画布条目没有第二种看法）。 */
+export function activeEntryHasViewport() {
+  return entryHasViewport(resolveEntry(entriesOfActiveBoard(), wbGet().activeEntryId));
 }
 
 /** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */
@@ -249,21 +300,25 @@ export function setActiveEntry(entryId, options) {
   if (!entries.length) return;
   var entry = resolveEntry(entries, entryId);
   var prev = resolveEntry(entries, wbGet().activeEntryId);
-  // 离开画布条目前存档视口（文档形态期间不写存档，见 boot-prefs 的守卫）。
-  if (prev && entry && prev.id !== entry.id && prev.kind === 'canvas') {
+  var viewport = wbGet().viewport;
+  // 离开画布形态前存档视口（文档形态期间不写存档，见 boot-prefs 的守卫）。
+  // 形态由条目 + 视口派生（2026-09-05）：手机视口下的文档条目也是画布形态。
+  if (prev && entry && prev.id !== entry.id && stageFormFor(prev, viewport) !== 'html') {
     snapshotPageViewport(active.pageId);
   }
   wbSet({ activeEntryId: entry.id });
   if (options.save !== false) saveEntryPref(active.pageId, entry.id);
-  applyStageForm(entryForm(entry));
+  var form = stageFormFor(entry, viewport);
+  applyStageForm(form);
   applyEntryVisibility(panel, active.board, entry);
-  if (entry.kind === 'doc') {
+  if (form === 'html') {
     if (options.scrollTop !== false && stage) stage.scrollTop = 0;
-    watchDocAnnotate();   // 换了 iframe，重新绑定并刷新侧栏
   } else if (!restorePageViewportAfterMount(active.pageId)) {
-    // 无存档视口的画布条目：回首访默认缩放（zoomForPage 兜底 0.5）。
+    // 无存档视口的画布形态：回首访默认缩放（zoomForPage 兜底 0.5）。
     setCanvasZoom(zoomForPage(active.pageId), { save: false });
   }
+  // 文档条目的标注实例活在 iframe 里，两种视口都要重新绑定并刷新侧栏。
+  if (entry.kind === 'doc') watchDocAnnotate();
   scheduleAnnSnap();
 }
 

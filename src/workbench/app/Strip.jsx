@@ -1,8 +1,11 @@
 // 底部横条（2026-09-04 外壳重设计，评审板 G1）—— 收纳的唯一去处，挂 #wbstrip。
 // 顶部什么都不放；屏幕上只剩画布、左栏玻璃面板和这一条。从左到右一条读下来：
 //   在哪一页（Pages 开关 + 页名 + 类型标）
+//   → 怎么看这份文档（窗口｜手机 两段，#wbviewport，只在文档条目选中时出现；
+//     2026-09-05 视口，lib/viewport.js）
 //   → 在哪一帧（‹ 1 / 6 › + map）→ 画布怎么看（缩放 · 回中 · 导出）——这两段是
-//     <CanvasHud/>，DOM id / 布线契约与右下 HUD 时期逐一相同
+//     <CanvasHud/>，DOM id / 布线契约与右下 HUD 时期逐一相同；窗口视口的文档形态
+//     整段收起（index.html），手机视口下文档就在画布上、这段照常
 //   → 在干什么（交互｜标注 两段 + 计数）。
 // 两处退役在这里合流：画布两缘的展开浮钮（StageRails）与右栏常驻标注工作台——
 // 展开左栏的唯一入口是这里的 #wbside-toggle（id 沿用，e2e 选择器即契约），
@@ -14,8 +17,9 @@ import { Fragment, useEffect } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
-import { entriesOfActiveBoard, manifestPages } from '../pages.js';
+import { entriesOfActiveBoard, manifestPages, setActiveViewport } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
+import { VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
 import { CanvasHud } from './CanvasHud.jsx';
 import { cn } from './lib/utils.js';
@@ -49,6 +53,7 @@ export function Strip() {
   var pageNames = useWorkbenchStore(function (s) { return s.pageNames; });
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var listOpen = useWorkbenchStore(function (s) { return s.annListOpen; });
+  var viewport = useWorkbenchStore(function (s) { return s.viewport; });
   useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，取值走 manifestPages
   useWorkbenchStore(function (s) { return s.activeBoard; });    // 同上：类型标跟着板走
 
@@ -73,6 +78,7 @@ export function Strip() {
   var title = pageTitle(activePageId, manifestPages(), pageNames);
   var entry = resolveEntry(entriesOfActiveBoard(), activeEntryId);
   var kindKey = entry ? entryTag(entry) : null;
+  var hasViewport = entryHasViewport(entry);
   var mode = !!(snap && snap.available && snap.mode);
   var count = (snap && snap.count) || 0;
 
@@ -98,6 +104,27 @@ export function Strip() {
       {kindKey ? (
         <span className="wb-strip-kind rounded-full bg-[var(--wb-fill)] px-[7px] py-1 font-[var(--wb-font-mono)] text-[10.5px] font-medium leading-none tracking-[0.04em] text-muted-foreground"
           id="wbstrip-kind" data-kind={kindKey}>{ENTRY_TAG_LABELS[kindKey]}</span>
+      ) : null}
+
+      {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 装进
+          402 × 874 的机壳摆上画布。页的偏好，切换重装当前板（pages.js setActiveViewport）。 */}
+      {hasViewport ? (
+        <Fragment>
+          <span className="wb-strip-div" aria-hidden="true"></span>
+          <div className="wb-strip-viewport flex items-center gap-0.5 rounded-lg bg-muted p-0.5"
+            id="wbviewport" role="group" aria-label="视口" data-viewport={viewport}>
+            {['window', 'phone'].map(function (key) {
+              var on = viewport === key;
+              return (
+                <button type="button" key={key} data-viewport={key}
+                  aria-pressed={on ? 'true' : 'false'}
+                  title={key === 'phone' ? '在手机 frame 里看这份文档（402 × 874）' : '按窗口尺寸 1:1 铺满'}
+                  className={cn(SEG_ITEM, on && SEG_ON_PLAIN)}
+                  onClick={function () { setActiveViewport(key); }}>{VIEWPORT_LABELS[key]}</button>
+              );
+            })}
+          </div>
+        </Fragment>
       ) : null}
 
       {/* 中段（帧导航 + 画布工具），含它自己的前置分隔线 */}

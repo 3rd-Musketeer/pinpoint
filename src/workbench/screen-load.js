@@ -11,6 +11,9 @@
 // 2026-08-16f 阶段 6（产物与草稿模型）：壳分派只看 screen.shell（validateBoard
 // 已按页 defaultShell 归一完毕），不再回查 page.mode —— 同一板里 app/lock 屏摆
 // 画布、doc 屏成阅读器条目（选中后由 pages.js setActiveEntry 切 stage 形态与显隐）。
+// 2026-09-05 视口（lib/viewport.js）：buildBoardHtml 多收 options.viewport —— 手机视口
+// 下 doc 屏不套阅读器壳，改套与 app 屏同一份手机机壳（wrapPhoneShell），iframe 当
+// 屏幕内容，402 × 874 是真实 iframe 尺寸，媒体查询与排版就是手机的。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
@@ -160,9 +163,16 @@ function wrapDocShell(bodyHtml) {
   );
 }
 
-function wrapScreenShell(pageId, bodyHtml, shell) {
+/** 手机视口里的文档（2026-09-05）：doc 屏的 iframe 装进 app 屏同一份机壳 —— 机壳 /
+    岛 / 状态栏 / home 条与 iOS frame 一模一样，机壳 无 / 有 由 syncPanelPrefs 统一
+    切 .screen-only；iframe 本身 402 × 874（.wb-screen--phone-doc 规则，index.html）。 */
+function wrapDocPhoneShell(bodyHtml) {
+  return wrapPhoneShell(bodyHtml, 'app');
+}
+
+function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
   if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
-  if (shell === 'doc') return wrapDocShell(bodyHtml);
+  if (shell === 'doc') return viewport === 'phone' ? wrapDocPhoneShell(bodyHtml) : wrapDocShell(bodyHtml);
   return wrapPhoneShell(bodyHtml, shell);
 }
 
@@ -170,24 +180,26 @@ function wrapScreenShell(pageId, bodyHtml, shell) {
 // --ios-screen-w/--ios-screen-h 同源（唯一 device preset）；读法见 mock 的 .fig .dim。
 var IOS_DEVICE_DIM = '402 × 874';
 
-/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行。 */
-function isPhoneFrame(pageId, shell) {
+/** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行。
+    手机视口（2026-09-05）里的 doc 屏就是手机机身 frame，同样出尺寸行。 */
+function isPhoneFrame(pageId, shell, viewport) {
   if (pageId === COMPONENTS_ID) return false;
-  return shell !== 'doc';
+  return shell !== 'doc' || viewport === 'phone';
 }
 
 /** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
-export function frameDimLabel(pageId, shell) {
-  return isPhoneFrame(pageId, shell) ? IOS_DEVICE_DIM : '';
+export function frameDimLabel(pageId, shell, viewport) {
+  return isPhoneFrame(pageId, shell, viewport) ? IOS_DEVICE_DIM : '';
 }
 
-function screenClassForShell(pageId, shell) {
+function screenClassForShell(pageId, shell, viewport) {
   if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
-  if (shell === 'doc') return 'wb-screen wb-screen--doc';
+  if (shell === 'doc') return viewport === 'phone' ? 'wb-screen wb-screen--phone-doc' : 'wb-screen wb-screen--doc';
   return 'wb-screen';
 }
 
-export function buildBoardHtml(pageId, board, screenMap) {
+export function buildBoardHtml(pageId, board, screenMap, options) {
+  var viewport = (options && options.viewport) || 'window';
   var isCompLib = pageId === COMPONENTS_ID;
   var sections = board.sections || [];
   if (!sections.length || (sections.length === 1 && sections[0].id === '_empty')) {
@@ -216,18 +228,18 @@ export function buildBoardHtml(pageId, board, screenMap) {
       var fetched = screenMap[key];
       var inner;
       if (fetched && fetched.ok) {
-        inner = wrapScreenShell(pageId, fetched.html, sc.shell);
+        inner = wrapScreenShell(pageId, fetched.html, sc.shell, viewport);
       } else {
         inner = screenErrorHtml(pageId, sc.id, fetched ? fetched.err : 'missing');
       }
-      var screenCls = screenClassForShell(pageId, sc.shell);
+      var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
       var capHtml = '<div class="wb-screen-cap">' +
         (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
         '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
         '</div>';
-      var dimHtml = isPhoneFrame(pageId, sc.shell)
+      var dimHtml = isPhoneFrame(pageId, sc.shell, viewport)
         ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
         : '';
       // 2026-08-17：Frame Note 不再渲染上画布 —— note 的读/写收编到右栏

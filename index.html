@@ -688,6 +688,13 @@
   }
   .wb-doc-surface { position:relative; width:100%; background:#fff; }
   .wb-doc-frame { display:block; width:100%; height:100%; border:0; background:#fff; }
+  /* 手机视口（2026-09-05，lib/viewport.js；owner：「应该给 html / url 加一个切换不同
+     viewport 的功能」）：doc 屏套的是 app 屏同一份机壳（screen-load wrapDocPhoneShell），
+     iframe 当屏幕内容铺满 .ios-screen（402 × 874 真实 iframe 尺寸，媒体查询与排版
+     就是手机的），岛 / 状态栏 / home 条照 iOS frame 压在上面。屏宽走 .wb-screen 的
+     默认 --wb-phone-w，不带 --doc 的 1280 覆盖；其余（图注、尺寸行、选中环、hover
+     环、导航测量）都是 .ios-stage 既有规则，不另写。 */
+  .wb-screen--phone-doc .wb-doc-frame { position:absolute; inset:0; z-index:1; }
 
   /* 文档条目形态（data-page-mode="html"，2026-08-16f 阶段 6 起由选中条目派生，
      不再是页级属性）：a document is NOT a canvas. A report has to be read at the

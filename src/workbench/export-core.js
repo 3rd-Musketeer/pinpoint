@@ -77,6 +77,15 @@ function cleanExportClone(clone) {
   });
   clone.removeAttribute('data-export-ui');
   clone.querySelectorAll('.has-frame-menu').forEach(function (node) { node.classList.remove('has-frame-menu'); });
+  // 手机视口的文档 frame（2026-09-05）：快照里的 iframe 在渲染端按 <base> 重新加载，
+  // 与画布 frame 一样不带标注面 —— 单请求豁免 ?annotate=off（/sites/ 与 previews/
+  // 的注入中间件都认它，url 条目经代理时上游收到多一个它不认识的 query 参数）。
+  clone.querySelectorAll('iframe.wb-doc-frame').forEach(function (frame) {
+    var src = frame.getAttribute('src') || '';
+    if (!src || /(?:\?|&)annotate=off(?:&|$)/.test(src)) return;
+    frame.setAttribute('src', src + (src.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off');
+    frame.removeAttribute('loading');
+  });
   return clone;
 }
 

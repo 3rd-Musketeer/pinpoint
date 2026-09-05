@@ -49,6 +49,14 @@ canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达�
 铺满舞台，没有缩放、没有画板、没有 frame 标题。同一个页可以两种都有，切哪个由选中的 board entry 决定。
 要避开：「web 模式」——那个壳 2026-08-16 已连壳退役（ADR 0017），只在历史文档里出现。
 
+**viewport（视口）**
+文档条目怎么被看：窗口 = 整份 HTML 在 iframe 里 1:1 铺满舞台；手机 = 同一份 HTML 装进一个
+402 × 874 的手机 frame 摆上画布，机壳跟设置走。页的偏好，住 `prefs.viewportByPage`
+（`src/workbench/lib/viewport.js`，横条 `#wbviewport` 切换），不进 registry。
+只对文档条目有意义；手机视口下 stage 形态就是 canvas（`stageFormFor`）。
+要避开：拿 viewport 指 `pageViewports`——那是每页画布的滚动位置与缩放存档，不是这个词；
+也别拿它指浏览器窗口本身——「窗口」只是这两种看法之一的名字。
+
 **产物与草稿**
 左栏「内容」区的两组。产物 = 交付物（画布 / 文档 / 网页，条目上带类型 tag）；
 草稿 = 过程里派生出来的整页 HTML（screen 上 `role: "draft"`）。两者没有机制耦合——
