@@ -194,7 +194,7 @@ function renderGutter() {
     node.className = 'ann-bubble';
     node.setAttribute('data-ann-ui', '');
     node.setAttribute('data-n', an.n);
-    node.innerHTML = bubbleInnerHtml({ n: an.n, content: an.content });
+    node.innerHTML = bubbleInnerHtml({ n: an.n, cap: an.cap, content: an.content });
     node.style.visibility = 'hidden';
     node.style.left = '0';
     node.style.top = '0';

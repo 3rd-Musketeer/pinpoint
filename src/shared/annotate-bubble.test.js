@@ -6,8 +6,19 @@ test('bubbleCss returns a non-empty CSS string with the bubble + export badge ru
   const css = bubbleCss();
   assert.ok(css.includes('.ann-bubble{'));
   assert.ok(css.includes('.ann-export-badge'));
-  assert.ok(css.includes('.ann-bubble-num'));
+  assert.ok(css.includes('.ann-bubble-cap'));
   assert.equal(css.includes('.ann-connector'), false);
+});
+
+// 2026-09-04 评审板 H1 的卡片皮肤：186 宽、11px 正文、mono 眉标。琥珀序号 chip
+// 与灰底卡头一起退役 —— 琥珀只留给「正在圈选」那一族（hover ghost / target / lasso）。
+test('bubbleCss carries the H1 card skin and no amber chip', () => {
+  const css = bubbleCss();
+  assert.ok(css.includes('width:186px'));
+  assert.ok(css.includes('font:11px/1.45'));
+  assert.equal(css.includes('.ann-bubble-head'), false);
+  assert.equal(css.includes('.ann-bubble-num'), false);
+  assert.equal(css.includes('#f5a623'), false, 'no amber in the card skin');
 });
 
 test('bubbleInnerHtml renders number and content with escaping', () => {
@@ -15,8 +26,17 @@ test('bubbleInnerHtml renders number and content with escaping', () => {
     n: 14,
     content: '这里用了 <b>强调</b>',
   });
-  assert.ok(html.includes('class="ann-bubble-num">14<'));
+  assert.ok(html.includes('class="ann-bubble-n">14<'));
   assert.ok(html.includes('&lt;b&gt;强调&lt;/b&gt;'));
+  assert.equal(html.includes('评论'), false, 'no 「评论」 author label');
+});
+
+test('bubbleInnerHtml puts the cap in a mono eyebrow, and skips it when absent', () => {
+  const withCap = bubbleInnerHtml({ n: 2, cap: '框选区域', content: 'x' });
+  assert.ok(withCap.includes('class="ann-bubble-ref">框选区域<'));
+  const withoutCap = bubbleInnerHtml({ n: 2, content: 'x' });
+  assert.equal(withoutCap.includes('ann-bubble-ref'), false);
+  assert.ok(withoutCap.includes('class="ann-bubble-n">2<'));
 });
 
 test('bubbleInnerHtml shows an empty placeholder for no content', () => {

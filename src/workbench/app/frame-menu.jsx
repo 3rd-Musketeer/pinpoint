@@ -9,6 +9,10 @@
 // - popper 包装层被 CSS 置惰（见 index.html 的 [data-radix-popper-content-wrapper]
 //   规则）—— .wb-library 是 transform:scale 空间，JS 量测定位在缩放 ≠1 时必错位，
 //   菜单位置继续由 .wb-frame-menu 的绝对定位拥有（几何类随皮肤进 Tailwind，值不变）。
+//   2026-09-04 E1 起 trigger 贴着标签文字（shell 是 caption 那条 flex 的末位、
+//   position:static），面板的绝对定位因此落在 .wb-screen-cap 上：left-0 让它按
+//   caption 左缘对齐、宽度稳稳在 frame 里；原来的 right-0 是跟着最右角的按钮走的，
+//   按钮往左挪之后会把 204px 面板甩到 frame 左边界外。
 // V3 换皮（goal-20260811-workbench-visual-rebuild）：皮肤收编 Tailwind 类 + token，
 // index.html 的 .wb-frame-menu*/trigger 旧规则删除（class 名保留作 e2e 契约钩子）。
 // trigger = Button tool variant 族（白面发丝浮钮，data-state=open 给 hover 同档
@@ -55,7 +59,7 @@ function FrameMenu(props) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content asChild>
         <span role="menu" tabIndex={-1}
-          className="wb-frame-menu absolute right-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
+          className="wb-frame-menu absolute left-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
           <DropdownMenu.Item asChild onSelect={function (event) { event.preventDefault(); copyFrameRef(); }}>
             <button type="button" className={'wb-frame-menu-item ' + ROW_MENU_ITEM} role="menuitem" data-frame-copy>
               <span aria-hidden="true" className="w-[15px] text-center text-muted-foreground">@</span>

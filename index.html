@@ -267,7 +267,11 @@
     .wb-side, #wbside, #wbside *, [contenteditable],
     #wbstrip, #wbstrip *, #wbdock, #wbdock *,
     #wbcanvas-dock, #wbcanvas-dock *,
-    .wb-frame-menu-shell *, .wb-export-dialog, .wb-export-dialog * {
+    .wb-frame-menu-shell, .wb-frame-menu-shell *, .wb-export-dialog, .wb-export-dialog *,
+    .wb-library .wb-screen-dim,
+    .wb-library .wb-screen .ios-stage,
+    .wb-library .wb-screen .wb-comp-stage,
+    .wb-library .wb-screen .wb-doc-stage {
       transition:none !important;
     }
     .wb-frame-flash { animation:none !important; }
@@ -466,13 +470,16 @@
     /* Board tokens: captions scale with phone frame so agents only write copy. */
     --wb-phone-w: 438px;
     --wb-phone-h: 910px;
-    --wb-cap-section: calc(var(--wb-phone-w) * 0.073); /* ~32px @ 438 */
-    --wb-cap-screen: calc(var(--wb-phone-w) * 0.055);  /* ~24px @ 438 — step label, not footnote */
+    /* 2026-09-04 外壳重设计（E1）：三档字对着 100% 缩放下的观感定，画布基准是
+       scale 0.5，所以这里的值 = 观感值 × 2。区头 13/600 正色、屏名 12/500 淡、
+       引用号 10.5 mono accent —— 三层各自一档，不再是同一个灰。 */
+    --wb-cap-section: calc(var(--wb-phone-w) * 0.0594); /* ~26px @ 438 = 13px @ 100% */
+    --wb-cap-screen: calc(var(--wb-phone-w) * 0.055);  /* ~24px @ 438 = 12px @ 100% */
     --wb-cap-note: calc(var(--wb-phone-w) * 0.032);    /* ~14px @ 438 */
     --wb-cap-gap: calc(var(--wb-phone-w) * 0.032);     /* ~14px */
     /* 图纸图注（2026-08-15 引用法）：mono 引用号（A1 / section 字母）与 frame 下方
        尺寸行共用一档，随机身宽度缩放 —— agent 只写文案，字号永远走这里。 */
-    --wb-cap-ref: calc(var(--wb-phone-w) * 0.04);      /* ~17.5px @ 438 */
+    --wb-cap-ref: calc(var(--wb-phone-w) * 0.048);     /* ~21px @ 438 = 10.5px @ 100% */
     display:flex; flex-direction:column; gap:56px;
     padding:32px 24px 80px; box-sizing:border-box;
     width:max-content; min-width:0;
@@ -520,23 +527,24 @@
     flex:none;
   }
   .wb-screen .ios-stage { flex:none; min-height:0; width:var(--wb-phone-w); height:var(--wb-phone-h); }
-  /* 图注（2026-08-15 图纸版式）：frame 上方两行 = mono 引用号（accent）+ 屏名；
-     尺寸在 frame 下方居中 mono 小字。wb-screen-cap--empty 退役 —— 引用号恒在，
-     无题 frame 也保持可寻址（原「无标题藏整行」语义被引用体系取代）。 */
+  /* 图注（2026-08-15 图纸版式 → 2026-09-04 E1 层级）：引用号与屏名同一行
+     （mono accent + 12/500 淡），「···」跟在屏名后面；尺寸在 frame 下方居中
+     mono 小字，只在这一帧 hover / 选中时出。wb-screen-cap--empty 退役 ——
+     引用号恒在，无题 frame 也保持可寻址。 */
   .wb-screen-cap {
     flex:none; width:var(--wb-phone-w); box-sizing:border-box;
+    display:flex; align-items:baseline; gap:calc(var(--wb-cap-gap) * 0.5);
     text-align:left;
   }
   .wb-cap-ref {
-    display:block;
+    flex:none;
     font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-bold);
     line-height:1.2; letter-spacing:.09em; color:var(--wb-accent);
-    margin-bottom:calc(var(--wb-cap-gap) * 0.4);
   }
   .wb-cap-title {
-    display:block;
-    font-size:var(--wb-cap-screen); font-weight:var(--wb-w-semibold); line-height:1.3; letter-spacing:-.015em;
-    color:var(--wb-fg);
+    min-width:0;
+    font-size:var(--wb-cap-screen); font-weight:var(--wb-w-medium); line-height:1.3; letter-spacing:-.015em;
+    color:var(--wb-muted);
   }
   .wb-cap-title:empty { display:none; }
   /* 2026-08-17 caption 截断兜底：title 规矩（单行短词）靠文档+契约拦新增，
@@ -545,13 +553,28 @@
     display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2;
     overflow:hidden;
   }
-  .wb-lib-cap .wb-cap-ref--section { margin-bottom:calc(var(--wb-cap-gap) * 0.2); }
+  /* section 大标题是 -webkit-box（两行 clamp），装不下 flex —— 引用号改行内元素
+     就够了：A 和区名同一行，clamp 照旧管住整块。 */
+  .wb-lib-cap .wb-cap-ref--section {
+    display:inline; margin-right:calc(var(--wb-cap-gap) * 0.5);
+  }
   .wb-screen-dim {
     flex:none; width:var(--wb-phone-w); box-sizing:border-box;
     text-align:center;
     font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-medium);
     line-height:1.2; letter-spacing:.04em; color:var(--wb-faint);
   }
+  /* 尺寸行只在这一帧 hover 或选中时出（2026-09-04 E1：「尺寸行常驻太吵」）。
+     用 opacity 不用 display —— 行高留着，出没不推版面；范围限定 .wb-library，
+     导出快照与 /api/frame 页共用同一份内联样式，那两处没有画布 hover 语境，
+     尺寸行照常显示。 */
+  .wb-library .wb-screen-dim {
+    opacity:0;
+    transition:opacity var(--wb-dur) var(--wb-ease);
+  }
+  .wb-library .wb-screen:hover > .wb-screen-dim,
+  .wb-library .wb-screen.wb-sel > .wb-screen-dim,
+  .wb-library .wb-screen:focus-within > .wb-screen-dim { opacity:1; }
   /* 2026-08-17 选中模型（detail 面板）：frame 选中 = 机身 accent 环；
      section 选中 = 大标题转 accent。与 wb-frame-flash（定位反馈，1.1s 动画）
      分工 —— .wb-sel 是持久选中态，由 board-nav syncBoardSelection 同步。 */
@@ -560,6 +583,27 @@
   .wb-screen.wb-sel .wb-doc-stage {
     box-shadow:0 0 0 2px var(--wb-accent), 0 0 0 6px color-mix(in srgb, var(--wb-accent) 14%, transparent);
   }
+  /* hover 环（2026-09-04 切片 ③ 第 15 条核查的结论）：选中本来就有环，hover 什么
+     都没有 —— 鼠标在哪一帧上全靠猜。补一档 2px accent 30% 的淡环，选中态压过它。
+     用 outline 不用 box-shadow：doc / 组件机身自带 --wb-sh-board，box-shadow 会
+     把那层板影一起顶掉（选中态那条规则就是这么做的，本条不再扩大这个代价）。
+     常态是 2px 透明环、只淡入淡出 outline-color —— 直接在 :hover 上写整条 outline
+     会让过渡从 currentColor（正文色）起步，扫过时先闪一下深灰。
+     和标注的琥珀框天然分色：环是 accent、在机身外缘；标注目标框是琥珀、在元素上。 */
+  .wb-library .wb-screen .ios-stage,
+  .wb-library .wb-screen .wb-comp-stage,
+  .wb-library .wb-screen .wb-doc-stage {
+    outline:2px solid transparent; outline-offset:0;
+    transition:outline-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-library .wb-screen:hover .ios-stage,
+  .wb-library .wb-screen:hover .wb-comp-stage,
+  .wb-library .wb-screen:hover .wb-doc-stage {
+    outline-color:color-mix(in srgb, var(--wb-accent) 30%, transparent);
+  }
+  .wb-library .wb-screen.wb-sel:hover .ios-stage,
+  .wb-library .wb-screen.wb-sel:hover .wb-comp-stage,
+  .wb-library .wb-screen.wb-sel:hover .wb-doc-stage { outline-color:transparent; }
   .wb-lib-item.wb-sel > .wb-lib-cap { color:var(--wb-accent); }
   /* Detail 面板（右栏上段，app/DetailPanel.jsx）：note 视图/编辑器皮肤。
      行内按钮与状态行沿用被收编的画布 Frame Note 视觉语言。 */
@@ -755,11 +799,21 @@
   .wb-asset-err { margin:8px auto 0; max-width:100%; }
   /* Export is a Workbench concern: controls never enter the isolated export surface. */
   .wb-lib-item { position:relative; }
-  .wb-screen-cap.has-frame-menu {
-    position:relative; z-index:30;
-    padding-right:40px; min-height:30px;
+  /* 「···」贴着标签文字（2026-09-04 E1：不再钉在整行最右边、离得老远）：
+     shell 是 caption 这条 flex 的最后一个 item，跟在屏名后面。常态不出，
+     这一帧 hover / 键盘焦点进到 caption / 菜单开着时才现 —— 用 opacity 留位，
+     出没不推版面，按钮始终在 tab 序里（visibility/display 会把它踢出去）。
+     shell 保持 position:static —— 菜单面板的绝对定位因此落在 caption 上（左对齐、
+     宽度进得去），而不是跟着这颗按钮在行里滑来滑去。 */
+  .wb-screen-cap.has-frame-menu { position:relative; z-index:30; min-height:30px; }
+  .wb-frame-menu-shell {
+    flex:none; align-self:center;
+    width:30px; height:30px;
+    opacity:0; transition:opacity var(--wb-dur) var(--wb-ease);
   }
-  .wb-frame-menu-shell { position:absolute; z-index:42; top:0; right:0; width:30px; height:30px; }
+  .wb-screen:hover > .wb-screen-cap > .wb-frame-menu-shell,
+  .wb-screen-cap:focus-within > .wb-frame-menu-shell,
+  .wb-screen-cap:has(.wb-frame-menu-trigger[data-state="open"]) > .wb-frame-menu-shell { opacity:1; }
   /* frame ⋯ 菜单的 trigger/面板/项皮肤已收编进 app/frame-menu.jsx（V3，
      Tailwind 类）—— 此处只留 shell 几何与 popper 置惰规则。 */
   /* Radix DropdownMenu 的 popper 包装层置惰（P3）：菜单几何由 .wb-frame-menu 的
