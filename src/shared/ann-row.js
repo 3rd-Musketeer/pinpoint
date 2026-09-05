@@ -2,7 +2,7 @@
  * Shared annotation-list row model — one annotation mark → one list row.
  *
  * Consumers: the workbench sidebar (#wbann-list, rendered by
- * src/workbench/app/AnnPanel.jsx) and the injected client sidebar (#ann-sidebar
+ * src/workbench/app/AnnPopover.jsx) and the injected client sidebar (#ann-sidebar
  * in src/client/annotate.js). Grouping
  * and navigation stay per-consumer (board jump vs goToMark); what must not
  * drift is how one mark becomes one row: the cap excerpt, the content preview,

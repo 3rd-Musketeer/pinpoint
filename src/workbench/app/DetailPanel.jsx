@@ -1,5 +1,6 @@
-// Detail 面板（2026-08-17 选中模型）— 右栏上段，挂在 #wbann-side 同一 root、
-// 标注工作台之上（app/main.jsx）。选中源 = store.focusFrameKey / focusSectionId
+// Detail 面板（2026-08-17 选中模型）— 2026-09-04 外壳重设计起住在右下按需浮层槽
+// （app/Dock.jsx，与「这页的标注」列表同一块 280 玻璃卡、二选一显示），不再是
+// 右栏上段。选中源 = store.focusFrameKey / focusSectionId
 // （互斥；画布点选 / frame 树 / 标注卡都写这两个字段）。展示选中 frame/section
 // 的引用号、标题与 note；note 编辑走 note-api（GET 拉 revision → PUT 带
 // baseRevision，409 保留草稿），保存后 SSE 失效 board 自动回填。
@@ -138,13 +139,14 @@ function NoteCard(props) {
   );
 }
 
-export function DetailPanel() {
+/** 选中对象（frame / section）的派生视图 —— Dock 用它决定这个槽给谁。 */
+export function useDetailTarget() {
   var focusFrameKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
   var focusSectionId = useWorkbenchStore(function (s) { return s.focusSectionId; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var active = useWorkbenchStore(function (s) { return s.activeBoard; });
 
-  // 引用号/标题/note 全部从画布视图纯派生（与 AnnPanel 的 boardMeta 同写法）；
+  // 引用号/标题/note 全部从画布视图纯派生（与 AnnPopover 的 boardMeta 同写法）；
   // 板切换途中 activeBoard 可能还停在上一页 —— 不匹配就不展示。
   var target = useMemo(function () {
     if (!active || active.pageId !== activePageId) return null;
@@ -185,10 +187,18 @@ export function DetailPanel() {
     return null;
   }, [active, activePageId, focusFrameKey, focusSectionId]);
 
+  return target;
+}
+
+export function DetailPanel(props) {
+  var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
+  var derived = useDetailTarget();
+  var target = props && props.target ? props.target : derived;
+
   if (!target) return null;
 
   return (
-    <div className="wb-detail flex flex-none flex-col gap-1.5 border-b border-[color:color-mix(in_srgb,var(--wb-accent)_16%,transparent)] px-[var(--wb-pad)] py-2.5" id="wbdetail" data-detail-kind={target.kind}>
+    <div className="wb-detail flex min-h-0 flex-col gap-1.5 overflow-y-auto px-[11px] py-2.5" id="wbdetail" data-detail-kind={target.kind}>
       <div className="flex items-center gap-2">
         <span className="wb-detail-ref inline-flex min-w-[18px] flex-none items-center justify-center rounded-[5px] bg-[color-mix(in_srgb,var(--wb-accent)_12%,var(--wb-surface))] px-1 font-[var(--wb-font-mono)] text-[10px] font-bold leading-[18px] tabular-nums text-[var(--wb-accent)]">
           {target.ref || '—'}

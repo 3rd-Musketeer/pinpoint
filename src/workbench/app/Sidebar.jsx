@@ -10,7 +10,8 @@
 //
 // 2026-08-15 侧栏重构（decisions 08-14 左右分工 + 08-15c 大纲延伸线）：
 //  - 左栏 = 页面上下文：head（连接状态 + 齿轮进设置视图 + 收起）→ Pages → 大纲；
-//    标注区迁出为独立右栏（app/AnnPanel.jsx，挂 #wbann-side）。
+//    标注区迁出为独立右栏；2026-09-04 右栏取消常驻，改为横条计数钮弹出的
+//    列表（app/AnnPopover.jsx）。
 //  - 段头改静态（mock 无折叠 affordance），sectionOpen 机制随 Annotations 段退役。
 //  - footer 的 Light/Dark 分段是预览内容主题（ios-root data-theme），原地保留。
 //
@@ -50,7 +51,7 @@ import {
   showSettings,
   showTabs
 } from '../pages.js';
-import { setTheme, toggleSideCollapsed } from '../boot-prefs.js';
+import { setTheme } from '../boot-prefs.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import { openDocExportDialog } from '../export-core.js';
 import {
@@ -82,9 +83,14 @@ import { ScrollArea } from './ui/scroll-area.jsx';
 
 // 页面行（Pages 段）与内容区条目行共用同一套行语言；页面行多 accent 边条与
 // 行容器 group-hover 联动（行 hover 即行态，不只按钮本身）。
+// 行的选中态（2026-09-04 字阶裁决）：accent 10% 底 + 600 字重，正色不退灰。
+// hover 是 --wb-hover 4%（shadcn 桥的 accent 就指它，基础类里的 hover:bg-accent
+// 已经是这一档）。
 var ROW_ON =
-  'bg-secondary font-semibold text-foreground ' +
-  'hover:bg-secondary hover:text-foreground group-hover:bg-secondary group-hover:text-foreground';
+  'bg-[var(--wb-sel)] font-semibold text-foreground ' +
+  'hover:bg-[var(--wb-sel)] hover:text-foreground group-hover:bg-[var(--wb-sel)] group-hover:text-foreground';
+// 行的常态排印：13/500 正色（旧值 12.5 muted —— 裁决把列表行提到正色一档）
+var ROW_TEXT = 'text-[13px] font-medium text-foreground';
 
 // 段头（Pages / 内容）：静态 eyebrow，mono 小字 + 宽字距（mock .sec 的收编；
 // 2026-08-15 起不再是折叠钮）。
@@ -108,14 +114,15 @@ var ENTRY_TAG =
   'font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] ' +
   'text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]';
 
+/* head（2026-09-04 外壳重设计）：收起钮搬去底部横条（#wbside-toggle 在
+   app/Strip.jsx，收起去哪、从哪展开是同一个点，G1b）。这里只剩连接状态与齿轮。 */
 function SideHead() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
-  var collapsed = useWorkbenchStore(function (s) { return s.sideCollapsed; });
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var on = !!(snap && snap.available && snap.connected);
   var syncErr = !!(snap && snap.available && snap.syncError);
   return (
-    <div className="wb-head flex items-center justify-between gap-2 border-b border-[color:color-mix(in_srgb,var(--wb-accent)_16%,transparent)] px-[var(--wb-pad)] pb-2 pt-2.5">
+    <div className="wb-head flex items-center justify-between gap-2 border-b border-[color:var(--wb-seam)] px-[var(--wb-pad)] pb-2 pt-2.5">
       <div id="wbconn" data-state={on ? 'online' : 'offline'}
         className="wb-conn group inline-flex min-w-0 select-none items-center gap-1.5 text-[11px] font-medium leading-none text-muted-foreground data-[state=offline]:text-destructive data-[state=online]:text-[color:var(--wb-ok)]"
         title={on ? (syncErr ? '已连接 · 上次同步失败' : '标注服务已连接') : '标注服务未连接（请运行 npm run dev）'}>
@@ -128,13 +135,6 @@ function SideHead() {
           data-state={settingsOpen ? 'on' : undefined}
           onClick={function () { showSettings(); }}>
           <WbIcon name="settings" size={15} className="size-[15px]" />
-        </Button>
-        <Button type="button" variant="tool" size="icon" id="wbside-toggle"
-          className="wb-side-toggle flex-none"
-          aria-label={collapsed ? '展开侧栏' : '收起侧栏'} title={collapsed ? '展开侧栏' : '收起侧栏'}
-          aria-expanded={collapsed ? 'false' : 'true'}
-          onClick={function () { toggleSideCollapsed({ save: true }); }}>
-          <WbIcon name="panel-left-close" size={16} className="size-4" />
         </Button>
       </div>
     </div>
@@ -206,7 +206,8 @@ function PageRow(props) {
         data-page-default={page.title}
         data-state={active ? 'on' : undefined}
         className={cn(
-          'wb-page flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans text-[12.5px] font-medium text-muted-foreground transition-[color,background-color,box-shadow] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
+          'wb-page flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-2 py-[7px] text-left font-sans transition-[color,background-color,box-shadow] duration-150 hover:bg-accent group-hover:bg-accent',
+          ROW_TEXT,
           active && 'on',
           active && ROW_ON,
           renaming && 'renaming bg-accent px-0 py-0 hover:bg-accent group-hover:bg-accent'
@@ -224,7 +225,7 @@ function PageRow(props) {
         }}>
         {renaming ? (
           <Input ref={inputRef} type="text" aria-label="重命名页面"
-            className="wb-page-rename h-auto rounded-md border-0 bg-transparent px-2 py-[7px] text-[12.5px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
+            className="wb-page-rename h-auto rounded-md border-0 bg-transparent px-2 py-[7px] text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
             defaultValue={title} onKeyDown={onRenameKey}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
@@ -412,7 +413,8 @@ function EntryRow(props) {
       <button type="button"
         data-entry={entry.id} data-state={on ? 'on' : undefined}
         className={cn(
-          'wb-entry flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans text-[12.5px] text-muted-foreground transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground group-hover:bg-accent group-hover:text-accent-foreground',
+          'wb-entry flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans transition-[color,background-color] duration-150 hover:bg-accent group-hover:bg-accent',
+          ROW_TEXT,
           on && 'on ' + ROW_ON
         )}
         onClick={function () { setActiveEntry(entry.id); }}>
@@ -515,7 +517,7 @@ function SideFoot() {
   // footer 只剩预览内容主题分段（ios-root data-theme，不是 chrome 主题）；
   // 设置入口挪进左栏 head 齿轮（2026-08-15 mock）。
   return (
-    <div className="wb-foot flex items-center gap-1.5 px-[var(--wb-pad)] py-2.5" id="wbfoot" hidden={settingsOpen}>
+    <div className="wb-foot flex items-center gap-1.5 border-t border-[color:var(--wb-seam)] px-[var(--wb-pad)] py-2.5" id="wbfoot" hidden={settingsOpen}>
       <Seg id="wbtheme" role="group" aria-label="屏幕主题"
         value={theme} dataAttr="data-theme"
         options={[

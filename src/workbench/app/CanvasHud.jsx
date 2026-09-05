@@ -1,5 +1,9 @@
-// 画布 HUD + dock（P1b cut3，goal-20260810-workbench-react-rebuild）— 渲染进
-// #wbcanvas-dock / #wbcanvas-hud 两个静态容器。open/visible/zoom 状态全部订阅
+// 画布工具 + dock（P1b cut3，goal-20260810-workbench-react-rebuild）—
+// 2026-09-04 外壳重设计：右下 HUD 退役，这一段控件搬进底部横条中段
+// （app/Strip.jsx 渲染 <CanvasHud/>，DOM id / class / 文案与布线契约一个没动，
+// wireCanvasHud 照旧在挂载后取句柄）。dock（section-nav + minimap）仍渲染进
+// #wbcanvas-dock 静态容器，停靠点改到横条左端正上方。
+// open/visible/zoom 状态全部订阅
 // store（board-nav 命令式写入）；minimap 的 canvas 2D 绘制、section-nav 列表的
 // innerHTML、几何测量仍归 board-nav 持有 —— #wbsection-nav-list 的 children 与
 // #wbminimap-canvas 的宽高是不受管区域：JSX 永不声明它们，React 也就从不动它们。
@@ -18,8 +22,8 @@
 //    不受管内容：保留手写 CSS（index.html，全 token 化），不进 Tailwind。
 import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
-import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen } from '../board-nav.js';
-import { setAnnPanelCollapsed, setCanvasZoom, setSideCollapsed } from '../boot-prefs.js';
+import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
+import { setCanvasZoom } from '../boot-prefs.js';
 import { clampCanvasZoom, currentCanvasZoom, formatZoomLabel } from '../lib/canvas-zoom.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -37,34 +41,6 @@ var HUD_ITEM =
 
 function nudgeZoom(factor) {
   setCanvasZoom(String(clampCanvasZoom(currentCanvasZoom() * factor)), { save: true });
-}
-
-/* 画布两缘浮钮（decisions 2026-08-14；几何/皮肤 = index.html 的 .wb-rail 系）：
-   左栏折叠 → 左缘「Pages」，右栏折叠 → 右缘「标注」+ 计数钉。位置避让：
-   HUD 在右下、dock 在其上，浮钮垂直居中不占它们的带。 */
-export function StageRails() {
-  var sideCollapsed = useWorkbenchStore(function (s) { return s.sideCollapsed; });
-  var annCollapsed = useWorkbenchStore(function (s) { return s.annPanelCollapsed; });
-  var count = useWorkbenchStore(function (s) { return (s.annSnap && s.annSnap.count) || 0; });
-  return (
-    <Fragment>
-      <button type="button" id="wbside-expand" aria-label="展开侧栏" title="展开侧栏"
-        hidden={!sideCollapsed}
-        className={cn('wb-rail wb-rail-l', sideCollapsed ? 'inline-flex' : 'hidden')}
-        onClick={function () { setSideCollapsed(false, { save: true }); }}>
-        <WbIcon name="panel-left-open" size={13} className="size-[13px]" />
-        Pages
-      </button>
-      <button type="button" id="wbann-expand" aria-label="展开标注面板" title="展开标注面板"
-        hidden={!annCollapsed}
-        className={cn('wb-rail wb-rail-r', annCollapsed ? 'inline-flex' : 'hidden')}
-        onClick={function () { setAnnPanelCollapsed(false, { save: true }); }}>
-        <WbIcon name="panel-right-open" size={13} className="size-[13px]" />
-        标注
-        {count ? <span className="wb-rail-n" id="wbann-expand-n">{count}</span> : null}
-      </button>
-    </Fragment>
-  );
 }
 
 export function CanvasDock() {
@@ -109,64 +85,80 @@ export function CanvasHud() {
     + (current ? '，当前 ' + current + '，' + position : '');
   return (
     <Fragment>
-      {/* display 类会盖掉 [hidden] 的 UA 规则，visible=false 时显式 hidden 类还回来（V2 同例） */}
-      <div id="wbsection-nav-wrap" hidden={!sectionNavVisible}
-        className={cn('wb-section-nav-wrap relative items-center', sectionNavVisible ? 'flex' : 'hidden')}>
-        <Button type="button" variant="tool" id="wbsection-nav-toggle"
-          data-state={sectionNavOpen ? 'on' : undefined}
-          className={cn('wb-hud-btn wb-toolbar-tool-btn wb-section-nav-toggle h-7 min-w-[54px] gap-[5px] px-2 text-[13px] font-semibold', sectionNavOpen && 'on')}
-          title={sectionNavOpen ? '关闭 Section Navigator' : '打开 Section Navigator'}
-          aria-label={navLabel} aria-expanded={sectionNavOpen ? 'true' : 'false'} aria-controls="wbsection-nav"
+      <span className="wb-strip-div" id="wbcanvas-tools-div" aria-hidden="true"></span>
+      {/* 横条中段（2026-09-04 评审板 G1）：‹ 1 / 6 › + map → 缩放 → 回中 → 导出。
+          文档形态整段收起（index.html 的 [data-page-mode="html"] 规则）—— 阅读器
+          没有画布可缩放，但横条本体（页名 / 模式 / 计数）留着。 */}
+      <div id="wbcanvas-tools" className="wb-canvas-tools flex items-center gap-1.5">
+        {/* display 类会盖掉 [hidden] 的 UA 规则，visible=false 时显式 hidden 类还回来（V2 同例） */}
+        <div id="wbsection-nav-wrap" hidden={!sectionNavVisible}
+          className={cn('wb-section-nav-wrap relative items-center gap-0.5', sectionNavVisible ? 'flex' : 'hidden')}>
+          <Button type="button" variant="tool" size="icon" id="wbnav-prev"
+            className="wb-hud-btn wb-nav-step"
+            title="上一个 Section" aria-label="上一个 Section"
+            onClick={function () { stepSectionNavigator(-1); }}>
+            <WbIcon name="chevron-left" size={14} className="size-3.5" />
+          </Button>
+          <Button type="button" variant="tool" id="wbsection-nav-toggle"
+            data-state={sectionNavOpen ? 'on' : undefined}
+            className={cn('wb-hud-btn wb-toolbar-tool-btn wb-section-nav-toggle h-7 min-w-[46px] px-1.5 text-[12px] font-semibold', sectionNavOpen && 'on')}
+            title={sectionNavOpen ? '关闭 Section Navigator' : '打开 Section Navigator'}
+            aria-label={navLabel} aria-expanded={sectionNavOpen ? 'true' : 'false'} aria-controls="wbsection-nav"
+            onClick={function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              setSectionNavigatorOpen(!wbGet().sectionNavOpen);
+            }}>
+            <span className="wb-section-nav-position font-[var(--wb-font-mono)] tabular-nums whitespace-nowrap" id="wbsection-nav-position">{position}</span>
+          </Button>
+          <Button type="button" variant="tool" size="icon" id="wbnav-next"
+            className="wb-hud-btn wb-nav-step"
+            title="下一个 Section" aria-label="下一个 Section"
+            onClick={function () { stepSectionNavigator(1); }}>
+            <WbIcon name="chevron-right" size={14} className="size-3.5" />
+          </Button>
+        </div>
+        <div id="wbminimap-wrap" hidden={!minimapAvailable}
+          className={cn('wb-minimap-wrap relative items-center', minimapAvailable ? 'flex' : 'hidden')}>
+          <Button type="button" variant="tool" size="icon" id="wbminimap-toggle"
+            data-state={minimapOpen ? 'on' : undefined}
+            className={cn('wb-hud-btn wb-toolbar-tool-btn wb-minimap-toggle', minimapOpen && 'on')}
+            title={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
+            aria-label={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
+            aria-expanded={minimapOpen ? 'true' : 'false'} aria-controls="wbminimap"
+            onClick={function (e) {
+              e.preventDefault();
+              e.stopPropagation();
+              setMinimapOpen(!wbGet().minimapOpen);
+            }}>
+            <WbIcon name="map" size={14} className="size-3.5" />
+          </Button>
+        </div>
+        <span className="wb-strip-div" aria-hidden="true"></span>
+        <div className="wb-hud-group flex items-center gap-px rounded-md bg-muted p-0.5" role="group" aria-label="画布缩放">
+          <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-out" title="缩小" aria-label="缩小"
+            onClick={function () { nudgeZoom(1 / 1.1); }}>−</button>
+          <button type="button" id="wbzoom-label" title="重置为 100%"
+            className={cn('wb-hud-btn wb-hud-zoom', HUD_ITEM, 'min-w-[52px] px-1 text-[12px] tabular-nums tracking-[-0.01em] text-foreground')}
+            onClick={function () { setCanvasZoom('1', { save: true }); }}>{formatZoomLabel(zoom)}</button>
+          <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-in" title="放大" aria-label="放大"
+            onClick={function () { nudgeZoom(1.1); }}>+</button>
+        </div>
+        <Button type="button" variant="tool" id="wbrecenter" title="回到画布内容"
+          className="wb-hud-btn wb-hud-recenter h-7 px-2.5 text-[12px] font-semibold"
+          onClick={function () { recenterBoard(); }}>回中</Button>
+        {/* 导出单入口（decisions 2026-08-15d）：开 picker 对话框，本体在 ExportPicker.jsx */}
+        <Button type="button" variant="tool" id="wbexport-open" title="导出图片"
+          className="wb-hud-btn wb-hud-export h-7 gap-[5px] px-2 text-[12px] font-semibold"
           onClick={function (e) {
             e.preventDefault();
             e.stopPropagation();
-            setSectionNavigatorOpen(!wbGet().sectionNavOpen);
+            wbSet({ exportPickerOpen: true });
           }}>
-          <WbIcon name="section-nav" size={14} className="size-3.5" />
-          <span className="wb-section-nav-position tabular-nums whitespace-nowrap" id="wbsection-nav-position">{position}</span>
+          <WbIcon name="export-image" size={14} className="size-3.5" />
+          导出
         </Button>
       </div>
-      <div id="wbminimap-wrap" hidden={!minimapAvailable}
-        className={cn('wb-minimap-wrap relative items-center', minimapAvailable ? 'flex' : 'hidden')}>
-        <Button type="button" variant="tool" size="icon" id="wbminimap-toggle"
-          data-state={minimapOpen ? 'on' : undefined}
-          className={cn('wb-hud-btn wb-toolbar-tool-btn wb-minimap-toggle', minimapOpen && 'on')}
-          title={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
-          aria-label={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
-          aria-expanded={minimapOpen ? 'true' : 'false'} aria-controls="wbminimap"
-          onClick={function (e) {
-            e.preventDefault();
-            e.stopPropagation();
-            setMinimapOpen(!wbGet().minimapOpen);
-          }}>
-          <WbIcon name="map" size={14} className="size-3.5" />
-        </Button>
-      </div>
-      <span className="wb-toolbar-divider h-5 w-px flex-none bg-border" aria-hidden="true"></span>
-      <div className="wb-hud-group flex items-center gap-px rounded-md bg-muted p-0.5" role="group" aria-label="画布缩放">
-        <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-out" title="缩小" aria-label="缩小"
-          onClick={function () { nudgeZoom(1 / 1.1); }}>−</button>
-        <button type="button" id="wbzoom-label" title="重置为 100%"
-          className={cn('wb-hud-btn wb-hud-zoom', HUD_ITEM, 'min-w-[52px] px-1 text-[12px] tabular-nums tracking-[-0.01em] text-foreground')}
-          onClick={function () { setCanvasZoom('1', { save: true }); }}>{formatZoomLabel(zoom)}</button>
-        <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-in" title="放大" aria-label="放大"
-          onClick={function () { nudgeZoom(1.1); }}>+</button>
-      </div>
-      <Button type="button" variant="tool" id="wbrecenter" title="回到画布内容"
-        className="wb-hud-btn wb-hud-recenter h-7 px-2.5 text-[12px] font-semibold"
-        onClick={function () { recenterBoard(); }}>回中</Button>
-      {/* 导出单入口（decisions 2026-08-15d）：开 picker 对话框，本体在 ExportPicker.jsx */}
-      <span className="wb-toolbar-divider h-5 w-px flex-none bg-border" aria-hidden="true"></span>
-      <Button type="button" variant="tool" id="wbexport-open" title="导出图片"
-        className="wb-hud-btn wb-hud-export h-7 gap-[5px] px-2 text-[12px] font-semibold"
-        onClick={function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          wbSet({ exportPickerOpen: true });
-        }}>
-        <WbIcon name="export-image" size={14} className="size-3.5" />
-        导出
-      </Button>
     </Fragment>
   );
 }

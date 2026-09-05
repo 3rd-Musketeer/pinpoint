@@ -67,9 +67,11 @@ export function recenterBoard() {
     frameBoardInView(panel, { force: true, smooth: true });
     return;
   }
-  var left = Math.max(0, bounds.left + bounds.width / 2 - stage.clientWidth / 2);
-  var top = Math.max(0, bounds.top + bounds.height / 2 - stage.clientHeight / 2);
-  stage.scrollTo({ left: left, top: top, behavior: 'smooth' });
+  var target = centerScrollForPoint(
+    { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 },
+    stageViewportMetrics()
+  );
+  stage.scrollTo({ left: target.left, top: target.top, behavior: 'smooth' });
 }
 
 /** Board load failure: drop stale nav geometry and hide both navigators. */
@@ -230,12 +232,35 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
+/* chrome 占位（2026-09-04 外壳重设计）：画布满铺整个视口，左栏玻璃面板与底部
+   横条压在它上面 —— 「人看得见的画布」= stage 视口减掉这两块。定位 / 回中 /
+   首访聚焦全部经 stageViewportMetrics 拿到 insets，选中的 frame 因此永远不会
+   落在 chrome 底下。量的是实际 bounding box（不是 token 常量）：面板折叠、
+   拖宽、横条随内容变宽都自动跟上。 */
+export function chromeInsets() {
+  var out = { left: 0, right: 0, top: 0, bottom: 0 };
+  if (!stage) return out;
+  var stageRect = stage.getBoundingClientRect();
+  var side = document.getElementById('wbside');
+  if (side && !wbGet().sideCollapsed) {
+    var sr = side.getBoundingClientRect();
+    if (sr.width > 1) out.left = Math.max(0, sr.right - stageRect.left + 12);
+  }
+  var strip = document.getElementById('wbstrip');
+  if (strip) {
+    var tr = strip.getBoundingClientRect();
+    if (tr.height > 1) out.bottom = Math.max(0, stageRect.bottom - tr.top + 12);
+  }
+  return out;
+}
+
 function stageViewportMetrics() {
   return {
     width: stage.clientWidth,
     height: stage.clientHeight,
     scrollWidth: stage.scrollWidth,
-    scrollHeight: stage.scrollHeight
+    scrollHeight: stage.scrollHeight,
+    insets: chromeInsets()
   };
 }
 
@@ -314,9 +339,10 @@ function collectSectionNavigatorItems(model) {
 
 function closestSectionNavigatorGroup() {
   if (!stage) return null;
+  var insets = chromeInsets();
   var section = closestBoardSection(
     currentBoardNavigationModel(),
-    stage.scrollTop + stage.clientHeight / 2
+    stage.scrollTop + insets.top + (stage.clientHeight - insets.top - insets.bottom) / 2
   );
   return section && section.id;
 }
@@ -402,6 +428,18 @@ export function rebuildSectionNavigator(panel) {
   updateSectionNavigatorActive(wbGet().activeGroup);
   setSectionNavigatorOpen(wbGet().sectionNavOpen);
   setMinimapOpen(wbGet().minimapOpen);
+}
+
+/* 横条中段的 ‹ 1 / 6 ›（2026-09-04 评审板 G1）：单位与 Section Navigator 的
+   读数同源 —— 位置文字就是它，箭头只是把「跳到上/下一个 section」摆到手边。 */
+export function stepSectionNavigator(delta) {
+  if (!sectionNavItems.length) return false;
+  var index = sectionNavItems.findIndex(function (item) { return item.id === wbGet().activeGroup; });
+  if (index < 0) index = 0;
+  var next = index + delta;
+  if (next < 0 || next >= sectionNavItems.length) return false;
+  jumpSectionNavigatorToGroup(sectionNavItems[next].id);
+  return true;
 }
 
 function jumpSectionNavigatorToGroup(groupId) {

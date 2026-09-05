@@ -90,7 +90,10 @@
   var arrowFrom = null;
   var activeComposer = null;
   var composerPlacement = null; // session-local viewport position after handle drag
-  var renderComments = false;  // "在画布渲染评论" toggle: show content bubbles beside anchors
+  // 2026-09-04 评审板 H1 起默认开：评论卡是画布上的主体表达（钉子常显、卡在
+  // hover 钉子时出），不再是一个要先去开的开关。「隐藏批注」这一档仍在，
+  // 只是不再是默认。
+  var renderComments = true;  // "在画布渲染评论" toggle: show content bubbles beside anchors
   // 评论布局：'inline'=气泡在 iframe overlay（窄窗口可能压正文） /
   //  'sidebar'=气泡在父级 workbench 右侧 gutter（iframe 收窄、文档自己响应式回流，不压不遮）。
   var bubbleLayout = 'inline';
@@ -959,7 +962,22 @@
     // 锚点框/套索/序号徽章：琥珀是标注功能色（双端同值），只把圆角/阴影收进 token 阶梯。
     '.ann-hover-ghost{position:absolute;box-sizing:border-box;border:2px solid #f5a623;border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.07);pointer-events:none;z-index:1;}',
     '.ann-hover-ghost[hidden]{display:none;}',
-    '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;background:#f5a623;color:#1a1a1a;font-size:12px;font-weight:var(--wb-w-bold,700);display:flex;align-items:center;justify-content:center;box-shadow:var(--wb-sh-1,0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04));pointer-events:auto;cursor:pointer;z-index:3;}',
+    /* 序号钉（2026-09-04 评审板 H 批注 1：「不够明显，需要跟下面的画面有高对比」）：
+       22px accent 实心圆 + 白字 + 2px 白描边 + 投影 —— 白环把钉子从任何底色里
+       切出来（深色屏、彩色卡片、白纸都成立），所以它可以常显不打折。
+       琥珀仍是「正在圈选」的功能色（hover ghost / target / lasso 不变），
+       accent 只给已经落下的这一枚。 */
+    '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:11px;font-weight:var(--wb-w-semibold,600);font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);pointer-events:auto;cursor:pointer;z-index:3;transition:box-shadow .12s ease;}',
+    '.ann-badge.ann-badge--on{box-shadow:0 0 0 2px #fff,0 0 0 5px color-mix(in srgb,var(--wb-accent,#5b7fa6) 32%,transparent),0 1px 3px rgba(0,0,0,.35);}',
+    /* 评论卡只在 hover 钉子（或该条被定位）时出（批注 1 的后半句「hover 时显示，
+       不然有点挡视野」）。这里只切可见性，不动 [hidden] —— [hidden] 归「锚点在
+       视口外」那条既有规矩，两个语义不许合并。 */
+    '#ann-bubbles .ann-bubble{opacity:0;pointer-events:none;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease;}',
+    '#ann-bubbles .ann-bubble.ann-bubble--show{opacity:1;pointer-events:auto;transform:none;}',
+    /* 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子被点亮 / 有卡在显示时，
+       整个 overlay 升到列表（#wbdock，z-index 7）之上；平时留在它下面，列表照常
+       盖住画布。底部横条（z-index 10）永远在最上层，不受这条影响。 */
+    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show){z-index:9;}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
     '#ann-lasso{position:absolute;border:2px dashed #f5a623;background:rgba(245,166,35,.1);border-radius:var(--wb-r-1,4px);pointer-events:none;}',
@@ -1050,7 +1068,7 @@
   overlay.appendChild(bubblesLayer);
   overlay.appendChild(hoverLayer);
   overlay.appendChild(chromeLayer);
-  bubblesLayer.style.display = 'none';
+  bubblesLayer.style.display = renderComments ? '' : 'none';
   // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
   function mountOverlay() {
     var stageWrap = document.querySelector('.wb-stage-wrap');
@@ -2519,6 +2537,54 @@
     if (entry.arrow && entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
   }
 
+  /* 评论卡的显示源（2026-09-04 评审板 H）：hover 钉子（120ms 延迟，扫过不闪）
+     或该条刚被定位。离开钉子给 90ms 宽限，指针可以移到卡上继续读。 */
+  var bubbleShowN = null;
+  var bubbleFocusN = null;
+  var bubbleEnterT = 0;
+  var bubbleLeaveT = 0;
+
+  function syncBubbleVisibility() {
+    var on = bubbleShowN != null ? bubbleShowN : bubbleFocusN;
+    Object.keys(bubbleNodes).forEach(function (n) {
+      bubbleNodes[n].node.classList.toggle('ann-bubble--show', String(on) === String(n));
+    });
+    Object.keys(markNodes).forEach(function (n) {
+      (markNodes[n].parts || []).forEach(function (part) {
+        if (part.badge) part.badge.classList.toggle('ann-badge--on', String(on) === String(n));
+      });
+    });
+  }
+
+  function showBubbleFor(n, delay) {
+    clearTimeout(bubbleLeaveT);
+    clearTimeout(bubbleEnterT);
+    bubbleEnterT = setTimeout(function () {
+      bubbleShowN = n;
+      syncBubbleVisibility();
+    }, delay || 0);
+  }
+
+  function hideBubbleSoon() {
+    clearTimeout(bubbleEnterT);
+    clearTimeout(bubbleLeaveT);
+    bubbleLeaveT = setTimeout(function () {
+      bubbleShowN = null;
+      syncBubbleVisibility();
+    }, 90);
+  }
+
+  /** 定位反馈：那一条的钉子点亮、卡跟着出，3s 后交还给 hover。 */
+  function focusBubble(n) {
+    bubbleFocusN = n;
+    syncBubbleVisibility();
+    setTimeout(function () {
+      if (bubbleFocusN !== n) return;
+      bubbleFocusN = null;
+      syncBubbleVisibility();
+    }, 3000);
+  }
+
   function wireMarkBadge(badge, n) {
     badge.addEventListener('click', function (e) {
       e.stopPropagation();
@@ -2528,6 +2594,8 @@
       }
       openMark(n);
     });
+    badge.addEventListener('mouseenter', function () { showBubbleFor(n, 120); });
+    badge.addEventListener('mouseleave', hideBubbleSoon);
   }
 
   function placeArrow(entry, from, to) {
@@ -2678,7 +2746,6 @@
   // 序号与 pin 对应，半透明细线指向锚点。稀疏默认放右侧，密集时左右分流。
   var bubbleNodes = Object.create(null);   // n → { m, node, height }
   var BUBBLE_W = 240;
-  var BUBBLE_GAP = 10;
   var BUBBLE_MARGIN = 12;
 
   function clearBubbles() {
@@ -2705,6 +2772,9 @@
         node.addEventListener('click', function (e) {
           if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
         });
+        // 指针从钉子挪到卡上 = 继续读，不收
+        node.addEventListener('mouseenter', function () { showBubbleFor(m.n, 0); });
+        node.addEventListener('mouseleave', hideBubbleSoon);
         bubblesLayer.appendChild(node);
         entry = bubbleNodes[m.n] = { m: m, node: node, height: 0 };
       } else {
@@ -2734,12 +2804,9 @@
     var overlayRect = overlay.getBoundingClientRect();
     var overlayW = overlayRect.width;
     var overlayH = overlayRect.height;
-    var bw = BUBBLE_W;
-    // Candidates: marks whose anchor is in the viewport right now. Off-screen
-    // anchors get no bubble (like Word's margin — you only see comments for the
-    // text on screen); this keeps a 48-comment doc from stacking every bubble
-    // into one viewport.
-    var cands = [];
+    var bw = Math.min(BUBBLE_W, Math.max(160, overlayW - BUBBLE_MARGIN * 2));
+    // 候选 = 锚点此刻在视口里的那些。锚点在视口外的不给卡（跟 Word 的页边批注
+    // 同一条规矩：只看得见屏幕上这段文字的评论）。
     Object.keys(bubbleNodes).forEach(function (n) {
       var entry = bubbleNodes[n];
       var anchorDoc = markAnchorRect(entry.m);
@@ -2747,35 +2814,21 @@
       var anchorView = visibleViewRectDoc(anchorDoc, resolveMarkAnchor(entry.m).el);
       if (!anchorView) { entry.node.hidden = true; return; }
       var local = viewToOverlayRect(anchorView);
-      // Skip anchors wholly outside the overlay viewport.
       if (local[1] + local[3] < 0 || local[1] > overlayH) { entry.node.hidden = true; return; }
       entry.node.hidden = false;
-      cands.push({ entry: entry, anchor: local });
+      /* 2026-09-04 评审板 H1：一次只出一张卡（hover 的那一枚钉子），所以不再
+         两列打包 —— 卡就摆在钉子右边；右边放不下就翻到左边。钉子在锚点框的
+         右上角（badgePositionForRect，22px），卡与它留 13px 气口。 */
+      var h = entry.node.offsetHeight || entry.height || 0;
+      var left = local[0] + local[2] + 13;
+      if (left + bw > overlayW - BUBBLE_MARGIN) left = local[0] - bw - 13;
+      left = Math.max(BUBBLE_MARGIN, Math.min(left, overlayW - bw - BUBBLE_MARGIN));
+      var top = Math.max(BUBBLE_MARGIN, Math.min(local[1] - 6, overlayH - h - BUBBLE_MARGIN));
+      entry.node.style.left = Math.round(left) + 'px';
+      entry.node.style.top = Math.round(top) + 'px';
+      entry.node.style.width = Math.round(bw) + 'px';
     });
-    cands.sort(function (a, b) { return a.anchor[1] - b.anchor[1]; });
-
-    var rightNext = BUBBLE_MARGIN;
-    var leftNext = BUBBLE_MARGIN;
-    var rightW = Math.min(bw, overlayW / 2 - BUBBLE_MARGIN);
-    var leftW = rightW;
-    cands.forEach(function (c) {
-      var desired = Math.max(BUBBLE_MARGIN, c.anchor[1]);
-      var rightTop = Math.max(desired, rightNext);
-      var leftTop = Math.max(desired, leftNext);
-      var side, top, left;
-      if (rightTop <= leftTop) {
-        side = 'right'; top = rightTop;
-        left = overlayW - rightW - BUBBLE_MARGIN;
-        rightNext = top + c.entry.height + BUBBLE_GAP;
-      } else {
-        side = 'left'; top = leftTop;
-        left = BUBBLE_MARGIN;
-        leftNext = top + c.entry.height + BUBBLE_GAP;
-      }
-      c.entry.node.style.left = left + 'px';
-      c.entry.node.style.top = top + 'px';
-      c.entry.node.style.width = (side === 'right' ? rightW : leftW) + 'px';
-    });
+    syncBubbleVisibility();
   }
 
   /** 给父级 workbench 用（gutter 模式）：返回当前视口内可见锚点的 rect（iframe 视口坐标）
@@ -2976,6 +3029,7 @@
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
     renderAll();
+    focusBubble(m.n);
     if (anchor.live && anchor.el) {
       flashUntil = Date.now() + 1500;
       showGhostForEl(anchor.el, 'ann-flash');

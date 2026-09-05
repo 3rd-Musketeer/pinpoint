@@ -147,21 +147,43 @@ function focusAxis(start, size, viewportSize, inset) {
   return start - inset;
 }
 
+/* 2026-09-04 外壳重设计：画布满铺整个视口，chrome（左栏玻璃面板 + 底部横条）
+   压在它上面 —— stage.clientWidth/Height 不再等于「人看得见的那块」。定位与
+   回中一律在**可用区**里算：可用区 = 视口减掉 viewport.insets 四边占位，
+   算完再把结果换回 scroll 坐标（减去起始边的占位）。insets 缺省全 0，
+   注入端（无 chrome）与既有单测因此行为不变。 */
+function usableViewport(viewport) {
+  const insets = viewport.insets || {};
+  const left = insets.left || 0;
+  const right = insets.right || 0;
+  const top = insets.top || 0;
+  const bottom = insets.bottom || 0;
+  return {
+    left,
+    top,
+    // 至少留 1px，避免 chrome 比视口还宽时算出负数尺寸
+    width: Math.max(1, viewport.width - left - right),
+    height: Math.max(1, viewport.height - top - bottom),
+  };
+}
+
 /** Center targets that fit; top/left-align oversized targets so their beginning stays visible. */
 export function focusScrollForRect(rect, viewport, options = {}) {
   const inset = options.inset ?? 24;
   const maxLeft = Math.max(0, viewport.scrollWidth - viewport.width);
   const maxTop = Math.max(0, viewport.scrollHeight - viewport.height);
+  const usable = usableViewport(viewport);
   return {
-    left: clamp(focusAxis(rect.left, rect.width, viewport.width, inset), 0, maxLeft),
-    top: clamp(focusAxis(rect.top, rect.height, viewport.height, inset), 0, maxTop),
+    left: clamp(focusAxis(rect.left, rect.width, usable.width, inset) - usable.left, 0, maxLeft),
+    top: clamp(focusAxis(rect.top, rect.height, usable.height, inset) - usable.top, 0, maxTop),
   };
 }
 
 export function centerScrollForPoint(point, viewport) {
+  const usable = usableViewport(viewport);
   return {
-    left: clamp(point.x - viewport.width / 2, 0, Math.max(0, viewport.scrollWidth - viewport.width)),
-    top: clamp(point.y - viewport.height / 2, 0, Math.max(0, viewport.scrollHeight - viewport.height)),
+    left: clamp(point.x - usable.width / 2 - usable.left, 0, Math.max(0, viewport.scrollWidth - viewport.width)),
+    top: clamp(point.y - usable.height / 2 - usable.top, 0, Math.max(0, viewport.scrollHeight - viewport.height)),
   };
 }
 

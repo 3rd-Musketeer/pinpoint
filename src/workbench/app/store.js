@@ -14,8 +14,9 @@ export const useWorkbenchStore = create((set) => ({
   // sidebar shell
   sideCollapsed: false,
   sideWidth: 250,
-  annPanelCollapsed: false,  // 右栏（标注工作台）整栏折叠，decisions 2026-08-14
-  annPanelWidth: 308,        // 右栏宽度（2026-08-16 V2：260–440 拖拽，boot-prefs applyAnnWidth 写）
+  // 标注列表的开合（2026-09-04 评审板 H2）：右栏取消常驻，列表由横条右端的
+  // 计数钮按需弹出。开着时 detail 面板让位（两者共用同一个右下浮层槽）。
+  annListOpen: false,
   // board + pages
   activePageId: null,
   pageManifest: null,
@@ -39,7 +40,7 @@ export const useWorkbenchStore = create((set) => ({
   // settings view
   settingsOpen: false,
   // annotation panel
-  annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPanel 唯一状态源）
+  annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPopover 唯一状态源）
   // preview chrome
   theme: 'light',
   // 设置视图（boot-prefs 的 setter/apply* 写；SettingsView 组件读）
@@ -48,7 +49,7 @@ export const useWorkbenchStore = create((set) => ({
   lockFont: 'helvetica',
   clockMode: 'system',
   clockFixed: '9:41',
-  // canvas HUD（board-nav 写；CanvasHud 组件读；初始值 = 首访默认缩放 0.5）
+  // 画布工具（board-nav 写；CanvasHud 组件读；初始值 = 首访默认缩放 0.5）
   canvasZoom: '0.5',
   // 导出 picker 对话框开关（decisions 2026-08-15d 单入口；CanvasHud 写，ExportPicker 读）
   exportPickerOpen: false,

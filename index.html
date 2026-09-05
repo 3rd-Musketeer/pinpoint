@@ -26,92 +26,65 @@
     margin:0; height:100vh; overflow:hidden; background:var(--wb-bg); color:var(--wb-fg);
     font-family:var(--wb-font);
   }
-  .wb { display:flex; height:100vh; }
+  /* 外壳（2026-09-04 重设计，评审板 F2 + G1）：画布满铺整个视口，chrome 全是
+     压在它上面的浮层 —— 左栏玻璃面板、底部横条、按需弹出的列表 / detail。
+     .wb 只当定位容器，不再是 flex 三栏。 */
+  .wb { position:relative; height:100vh; overflow:hidden; }
 
-  /* sidepanel（左栏 = 页面上下文）——2026-08-15 起栏面 = chrome 白面（--wb-surface），
-     pane 缝收 accent 16% 派生色（mock .bp .sb/.hd 语言；DESIGN 色彩：发丝/浅面由
-     accent color-mix 派生）。 */
+  /* 左栏 = 浮动玻璃面板（2026-09-04 重设计：F2 磨砂 + G1b 几何）。
+     位置：四缘距视口 --wb-chrome-gap；下沿停在底部横条上方同一间距
+     （bottom = gap × 2 + strip-h），横条整条永远在最上层，页名与帧导航不被压。
+     材质：--wb-glass + --wb-glass-blur + 0.5px 上缘内高光 + sh-3，圆角
+     --wb-r-glass —— 三处浮层（本面板 / 横条 / 弹出列表）共用 .wb-glass 一份配方。
+     宽度仍吃 --wb-side-w（200–480 拖拽 + prefs 持久化，ADR 0016 左栏那一半保留）。 */
+  .wb-glass {
+    background:var(--wb-glass);
+    -webkit-backdrop-filter:var(--wb-glass-blur);
+    backdrop-filter:var(--wb-glass-blur);
+    box-shadow:inset 0 .5px 0 rgba(255,255,255,.6), var(--wb-sh-3);
+  }
   .wb-side {
-    width:var(--wb-side-w); flex:none; background:var(--wb-surface);
+    position:absolute; z-index:6;
+    left:var(--wb-chrome-gap); top:var(--wb-chrome-gap);
+    bottom:calc(var(--wb-strip-h) + var(--wb-chrome-gap) * 2);
+    width:var(--wb-side-w);
     display:flex; flex-direction:column; min-width:0; overflow:hidden;
+    border-radius:var(--wb-r-glass);
     transition: width var(--wb-dur) var(--wb-ease), opacity var(--wb-dur) var(--wb-ease);
   }
   body.wb-resizing .wb-side { transition:none; }
   .wb.wb-side-collapsed .wb-side {
-    width:0; opacity:0; pointer-events:none; border:0;
+    width:0; opacity:0; pointer-events:none;
   }
-  /* 右栏 = 标注工作台（decisions 2026-08-14 左右分工；2026-08-16 V2 宽度适配）：
-     宽吃 --wb-ann-w（260–440 拖拽、默认 308，右 splitter #wbannsplit，
-     boot-prefs applyAnnWidth），过 280 断点进紧凑态（#wbann-side.compact，
-     规则见下方卡片皮肤块尾）；可整栏折叠（wb-ann-collapsed，
-     boot-prefs setAnnPanelCollapsed），画布右缘浮钮 .wb-rail-r 复开。 */
-  .wb-ann-side {
-    width:var(--wb-ann-w, 308px); flex:none; background:var(--wb-surface);
-    border-left:1px solid color-mix(in srgb, var(--wb-accent) 16%, transparent);
-    display:flex; flex-direction:column; min-width:0; overflow:hidden;
-    transition: width var(--wb-dur) var(--wb-ease), opacity var(--wb-dur) var(--wb-ease);
-  }
-  body.wb-resizing .wb-ann-side { transition:none; }
-  .wb.wb-ann-collapsed .wb-ann-side {
-    width:0; opacity:0; pointer-events:none; border:0;
-  }
+  /* splitter（ADR 0016 宽度拖拽）随面板浮起：钉在面板右缘、与面板等高。
+     常态不画线 —— 画布上不该有一条无来由的竖线；hover / 拖拽中才现出握把。
+     折叠态贴左缘变成一条「点开」条（单击展开，拖动跟手）。 */
   .wb-splitter {
-    flex:none; width:5px; margin:0 -2px; position:relative; z-index:2; cursor:col-resize; touch-action:none;
+    position:absolute; z-index:7;
+    left:calc(var(--wb-chrome-gap) + var(--wb-side-w) - 2px);
+    top:var(--wb-chrome-gap);
+    bottom:calc(var(--wb-strip-h) + var(--wb-chrome-gap) * 2);
+    width:5px; cursor:col-resize; touch-action:none;
     background:transparent; border:0; padding:0;
   }
   .wb-splitter::after {
-    content:''; position:absolute; top:0; bottom:0; left:50%; transform:translateX(-50%);
-    width:1px; background:color-mix(in srgb, var(--wb-accent) 16%, transparent); transition:width .12s var(--wb-ease), background .12s var(--wb-ease);
+    content:''; position:absolute; top:12px; bottom:12px; left:50%; transform:translateX(-50%);
+    width:3px; border-radius:999px; background:transparent;
+    transition:background .12s var(--wb-ease);
   }
-  /* 两条 splitter（#wbsplit 左栏 / #wbannsplit 右栏）：高亮只跟活动条
-     （.on 在拖拽 mousedown 起就打上），折叠加宽条按侧各自作用域。 */
   .wb-splitter:hover::after, .wb-splitter.on::after {
-    width:3px; background:color-mix(in srgb,var(--wb-accent) 40%,var(--wb-line));
+    background:color-mix(in srgb,var(--wb-accent) 40%,transparent);
   }
   .wb.wb-side-collapsed #wbsplit {
-    width:14px; margin:0; cursor:pointer;
+    left:2px; width:12px; cursor:pointer;
   }
-  .wb.wb-side-collapsed #wbsplit::after {
-    width:2px; background:color-mix(in srgb,var(--wb-accent) 35%,var(--wb-line));
-  }
-  .wb.wb-side-collapsed #wbsplit:hover::after {
-    width:3px; background:var(--wb-accent);
-  }
-  .wb.wb-ann-collapsed #wbannsplit {
-    width:14px; margin:0; cursor:pointer;
-  }
-  .wb.wb-ann-collapsed #wbannsplit::after {
-    width:2px; background:color-mix(in srgb,var(--wb-accent) 35%,var(--wb-line));
-  }
-  .wb.wb-ann-collapsed #wbannsplit:hover::after {
-    width:3px; background:var(--wb-accent);
-  }
+  .wb.wb-side-collapsed #wbsplit:hover::after { background:var(--wb-accent); }
   body.wb-resizing { cursor:col-resize; user-select:none; }
   body.wb-resizing iframe { pointer-events:none; }
 
   /* .wb-head/.wb-conn/#wbside-toggle 的视觉已收编进 app/Sidebar.jsx（V2，
      shadcn 复制件 + Tailwind 类）—— 此处不再保留旧规则。 */
 
-  /* 折叠态画布两缘浮钮（decisions 2026-08-14；几何与皮肤照 mock .rail-l/.rail-r）：
-     左右栏各自折叠后从画布对应缘复开，右钮带标注计数钉。2026-08-15 起由 React
-     （app/CanvasHud.jsx StageRails）渲染进 #wbrails，display 显隐归组件侧。 */
-  #wbrails { display:contents; }
-  .wb-rail {
-    position:absolute; top:50%; transform:translateY(-50%); z-index:5;
-    align-items:center; gap:6px;
-    padding:7px 11px; border:1px solid color-mix(in srgb, var(--wb-accent) 22%, transparent);
-    border-radius:var(--wb-r-3); background:var(--wb-surface);
-    color:var(--wb-accent); font-family:var(--wb-font-mono); font-size:10px; font-weight:var(--wb-w-medium);
-    cursor:pointer; box-shadow:var(--wb-sh-2);
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-rail:hover { background:color-mix(in srgb, var(--wb-accent) 6%, var(--wb-surface)); }
-  .wb-rail-l { left:10px; }
-  .wb-rail-r { right:10px; }
-  .wb-rail .wb-rail-n {
-    border-radius:5px; padding:1px 5px 0; background:var(--wb-accent); color:#fff;
-    font-weight:var(--wb-w-semibold); line-height:1.5;
-  }
   [contenteditable] { cursor:text; border-radius:var(--wb-r-1); transition:background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease); }
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }
@@ -202,73 +175,59 @@
      改指侧栏整树（#wbside *）—— chrome 过渡全部即时化。V3 扩 HUD/dock/
      frame 菜单/导出入口/导出对话框（skin 收编后过渡全部走 token duration）。 */
   @media (prefers-reduced-motion: reduce) {
-    .wb-side, .wb-rail, #wbside, #wbside *, [contenteditable],
-    #wbann-side, #wbann-side *,
-    #wbcanvas-hud, #wbcanvas-hud *, #wbcanvas-dock, #wbcanvas-dock *,
+    .wb-side, #wbside, #wbside *, [contenteditable],
+    #wbstrip, #wbstrip *, #wbdock, #wbdock *,
+    #wbcanvas-dock, #wbcanvas-dock *,
     .wb-frame-menu-shell *, .wb-export-dialog, .wb-export-dialog * {
       transition:none !important;
     }
     .wb-frame-flash { animation:none !important; }
   }
 
-  /* 右栏标注工作台（2026-08-15 侧栏重构，decisions 08-14）：head/meta/底栏
-     （模式单钮 #wbann-toggle + 画布批注 dropdown #wbann-bubble）视觉收编在
-     app/AnnPanel.jsx（Tailwind 类）。卡片皮肤叠在此处而不进 src/shared/ann-list.css ——
-     共享行结构（item/body/cap/text/del）与 client 侧栏、扩展 panel 的双端同步
-     不动，这里只叠 workbench 右栏的白卡语言（mock .sb-r .arow）。client 会把
-     ann-list.css 再内联注入一份（运行期 <style>，源码序在本块之后）——同权重
-     会被它盖掉，所以本块选择器全部加 #wbann-side 前缀升权（实测踩过）。 */
-  #wbann-side #wbann-list .wb-ann-item {
-    background:var(--wb-surface);
-    border:1px solid color-mix(in srgb, var(--wb-accent) 16%, transparent);
-    border-radius:var(--wb-r-3);
-    box-shadow:0 1px 2px color-mix(in srgb, var(--wb-accent) 5%, transparent);
-    margin-bottom:6px;
-    position:relative;
+  /* 标注弹出列表（2026-09-04 评审板 H2，取代常驻右栏）：点横条右端的计数钮
+     开合，锚在横条右端正上方，宽 280、最高 60vh。行结构照 H2：序号钉 → 引用号
+     10.5 mono → 正文一行截断，hover 出「定位」。共享行结构（item/body/cap/text）
+     仍来自 src/shared/ann-list.css，本块只叠 workbench 的弹出列表皮肤 ——
+     client 运行期会再内联一份 ann-list.css（源码序在本块之后），同权重会盖掉，
+     所以选择器一律加 #wbann-pop 前缀升权（旧右栏踩过这条）。 */
+  #wbann-pop #wbann-list .wb-ann-item {
+    background:transparent; border:0; border-radius:var(--wb-r-3);
+    margin:0; position:relative;
   }
-  #wbann-side #wbann-list .wb-ann-item:hover {
-    background:var(--wb-surface);
-    border-color:color-mix(in srgb, var(--wb-accent) 38%, transparent);
+  #wbann-pop #wbann-list .wb-ann-item:hover { background:var(--wb-hover); }
+  #wbann-pop #wbann-list .wb-ann-item--on {
+    background:var(--wb-sel);
   }
-  #wbann-side #wbann-list .wb-ann-item--on {
-    border-color:var(--wb-accent);
-    background:color-mix(in srgb, var(--wb-accent) 5%, var(--wb-surface));
+  #wbann-pop #wbann-list .wb-ann-item-main { padding:7px 8px; align-items:center; }
+  #wbann-pop #wbann-list .wb-ann-num {
+    width:18px; height:18px; min-width:18px; padding:0; margin-top:0;
+    display:inline-flex; align-items:center; justify-content:center;
+    border-radius:50%; background:var(--wb-accent); color:#fff;
+    font-family:var(--wb-font-mono); font-size:10px; font-weight:var(--wb-w-semibold);
   }
-  #wbann-side #wbann-list .wb-ann-item-main { padding:8px 9px; }
-  #wbann-side #wbann-list .wb-ann-num {
-    border-radius:5px;
-    background:color-mix(in srgb, var(--wb-accent) 12%, var(--wb-surface)); color:var(--wb-accent);
+  #wbann-pop #wbann-list .wb-ann-cap {
+    font-family:var(--wb-font-mono); font-size:10.5px; line-height:1.4; color:var(--wb-muted);
   }
-  /* 锚点失效 = 整卡状态：红描边 + 红浅面 + 文本退灰 + 序号钉转红（无 tag，08-14） */
-  #wbann-side #wbann-list .wb-ann-item--broken,
-  #wbann-side #wbann-list .wb-ann-item--broken.wb-ann-item--on {
-    border-color:color-mix(in srgb, var(--wb-danger) 42%, transparent);
-    background:color-mix(in srgb, var(--wb-danger) 4%, var(--wb-surface));
-    opacity:1;
+  #wbann-pop #wbann-list .wb-ann-text {
+    -webkit-line-clamp:1; font-size:12px; line-height:1.4; color:var(--wb-fg);
   }
-  #wbann-side #wbann-list .wb-ann-item--broken:hover {
-    border-color:color-mix(in srgb, var(--wb-danger) 60%, transparent);
+  /* 锚点失效 = 序号钉转红 + 文本退灰（弹出列表没有卡片边框可染，08-14 的整卡红
+     语义在这里落到钉与文本上） */
+  #wbann-pop #wbann-list .wb-ann-item--broken .wb-ann-num {
+    background:var(--wb-danger); color:#fff;
   }
-  #wbann-side #wbann-list .wb-ann-item--broken .wb-ann-num {
-    background:color-mix(in srgb, var(--wb-danger) 10%, var(--wb-surface)); color:var(--wb-danger);
+  #wbann-pop #wbann-list .wb-ann-item--broken .wb-ann-text,
+  #wbann-pop #wbann-list .wb-ann-item--broken .wb-ann-cap { color:var(--wb-faint); }
+  /* 行尾「定位」= ghost 钮，hover / focus 才现出（H2） */
+  #wbann-pop .wb-ann-go {
+    flex:none; align-self:center; height:22px; padding:0 9px; margin-right:2px;
+    border:0; border-radius:var(--wb-r-2); background:var(--wb-fill);
+    font:var(--wb-w-medium) 11px/22px var(--wb-font); color:var(--wb-muted);
+    cursor:pointer; visibility:hidden;
   }
-  #wbann-side #wbann-list .wb-ann-item--broken .wb-ann-text,
-  #wbann-side #wbann-list .wb-ann-item--broken .wb-ann-cap { color:var(--wb-faint); }
-  /* 删除钮：hover 浮现，绝对定位右上（mock .adel；不占行内流） */
-  #wbann-side #wbann-list .wb-ann-del { position:absolute; right:6px; top:6px; }
-  /* 紧凑断点（2026-08-16 V2，mock .wmock .sb-r.compact）：右栏宽 < 280 时
-     boot-prefs applyAnnWidth 给 #wbann-side 打 compact —— 卡片行收单行
-     （垂直居中、藏 cap 元素路径、评论文本从 2 行 clamp 变单行 truncate），
-     底栏「画布批注」dropdown 收成 图标+值（藏 .wb-ann-bubble-lbl 文案）。
-     只叠在 workbench 右栏：共享行样式 src/shared/ann-list.css 与 client 侧栏 /
-     扩展 panel 消费端不动。 */
-  #wbann-side.compact #wbann-list .wb-ann-item-main { align-items:center; padding:7px 9px; }
-  #wbann-side.compact #wbann-list .wb-ann-num { margin-top:0; }
-  #wbann-side.compact #wbann-list .wb-ann-cap { display:none; }
-  #wbann-side.compact #wbann-list .wb-ann-text { -webkit-line-clamp:1; }
-  #wbann-side.compact #wbann-bubble { justify-content:center; gap:5px; }
-  #wbann-side.compact #wbann-bubble .wb-ann-bubble-lbl { display:none; }
-  #wbann-side.compact #wbann-bubble .wb-ann-bubble-v { margin-left:0; }
+  #wbann-pop .wb-ann-item:hover .wb-ann-go,
+  #wbann-pop .wb-ann-item:focus-within .wb-ann-go { visibility:visible; }
+  #wbann-pop .wb-ann-go:hover { background:var(--wb-hover); color:var(--wb-fg); }
   /* 左栏紧凑断点（2026-08-16b 立，2026-08-16f 阶段 7 改指条目 tag）：左栏宽 < 230
      时 boot-prefs applySideWidth 给 #wbside 打 compact —— 产物条目的类型 tag
      （.wb-entry-tag，基础形态在 app/Sidebar.jsx Tailwind 类）整枚隐藏，只留标题；
@@ -294,7 +253,7 @@
      grid = 24/120 双线网格（默认）；dots = 圆点纸（08-13 评审板 C 点阵收编为一档）；
      plain = 空白浅面。data-grid 由 boot-prefs setStageBg 写。 */
   .wb-stage-wrap {
-    flex:1; min-width:0; position:relative; display:flex; min-height:0;
+    position:absolute; inset:0; display:flex; min-height:0;
     background-color:var(--wb-stage-bg);
   }
   .wb-stage-wrap[data-grid="grid"] {
@@ -321,25 +280,43 @@
   .wb-stage.wb-panning, body.wb-panning .wb-stage, body.wb-panning .wb-stage * { cursor:grabbing !important; }
   body.wb-panning { user-select:none; }
 
-  /* HUD 容器（#wbcanvas-hud）与 dock 容器（#wbcanvas-dock）是静态标记（React
-     只渲染进容器）—— 容器浮层皮肤手写在此、值全 token（V3）：白面
-     --wb-surface + 克制阴影 --wb-sh-2 + 圆角 --wb-r-4（2026-08-11 起扁平化，
-     不再叠发丝描边），替代旧半透明灰面 + backdrop blur。容器内控件（开关钮/
-     缩放组/回中）与 dock 面板（#wbsection-nav/#wbminimap）的皮肤收编在
-     app/CanvasHud.jsx（Tailwind 类）。 */
-  .wb-canvas-hud {
-    position:absolute; right:14px; bottom:14px; z-index:7;
-    display:flex; align-items:center; gap:6px;
-    padding:4px; border-radius:var(--wb-r-4);
-    background:var(--wb-surface);
-    box-shadow:var(--wb-sh-2);
+  /* 底部横条（2026-09-04 评审板 G1）：一条居中浮起的胶囊，从左到右读下来 =
+     在哪一页（面板开关 + 页名 + 类型标）→ 在哪一帧（‹ 1/6 › + map）→ 画布怎么看
+     （缩放 回中 导出）→ 在干什么（交互｜标注 + 计数）。四段用分隔线隔开。
+     内部控件皮肤收编在 app/Strip.jsx / app/CanvasHud.jsx（Tailwind 类），
+     这里只留容器几何与材质。--wb-strip-w 由 Strip.jsx 量测回写在 :root 上，
+     dock 与弹出列表靠它对齐横条两端。 */
+  .wb-strip {
+    position:absolute; z-index:10;
+    left:50%; transform:translateX(-50%);
+    bottom:var(--wb-chrome-gap);
+    height:var(--wb-strip-h); max-width:calc(100% - var(--wb-chrome-gap) * 2);
+    display:flex; align-items:center; gap:7px; padding:0 8px;
+    border-radius:999px;
     font-size:12px; color:var(--wb-fg);
+  }
+  .wb-strip > * { flex:none; white-space:nowrap; }
+  .wb-strip-div { width:1px; height:17px; flex:none; background:var(--wb-seam); }
+  /* 按需浮层的停靠槽（弹出的标注列表 / detail 面板）：横条右端正上方。
+     容器本身不吃事件，只有里面的卡片吃。 */
+  #wbdock {
+    position:absolute; z-index:7; inset:0; pointer-events:none;
+  }
+  .wb-dock-card {
+    position:absolute; pointer-events:auto;
+    right:calc(50% - var(--wb-strip-w) / 2);
+    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
+    width:280px; max-height:60vh;
+    display:flex; flex-direction:column; overflow:hidden;
+    border-radius:var(--wb-r-glass);
   }
   .wb-canvas-dock {
     --wb-canvas-nav-w:232px;
-    position:absolute; right:14px; bottom:58px; z-index:7;
-    max-height:calc(100% - 72px);
-    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
+    position:absolute; z-index:8;
+    left:calc(50% - var(--wb-strip-w) / 2);
+    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
+    max-height:calc(100% - var(--wb-strip-h) - 60px);
+    display:flex; flex-direction:column; align-items:flex-start; gap:8px;
     pointer-events:none;
   }
   .wb-canvas-dock > * { pointer-events:auto; }
@@ -563,7 +540,10 @@
      screen → doc-stage must each carry a definite height, or the iframe's
      height:100% resolves against auto and collapses. */
   [data-page-mode="html"] .wb-stage { overflow:hidden; padding:0; }
-  [data-page-mode="html"] .wb-canvas-hud,
+  /* 文档形态没有画布可缩放：横条中段（帧导航 + 缩放 + 回中 + 导出）与 dock
+     一起收起，横条本体留着 —— 页名、类型标、模式两段与计数在阅读器里照样要用。 */
+  [data-page-mode="html"] #wbcanvas-tools,
+  [data-page-mode="html"] #wbcanvas-tools-div,
   [data-page-mode="html"] .wb-canvas-dock { display:none; }
   [data-page-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
   [data-page-mode="html"] .wb-zoom-wrap {
@@ -630,16 +610,18 @@
     padding:0; min-height:100%;
     display:flex; align-items:center; justify-content:center;
   }
+  /* 2026-09-04 外壳重设计：虚线框退役 —— 失败面板是一块实底浮层（--wb-surface
+     + sh-3 + radius 14），不是一块占位虚线。标题 14/600。 */
   .wb-screen-err,
   .wb-asset-err {
     margin:24px auto; padding:16px 18px; max-width:420px; text-align:center;
     font-size:12px; line-height:1.45; color:var(--wb-muted);
-    border:1px dashed var(--wb-line); border-radius:var(--wb-r-2);
-    background:color-mix(in srgb, var(--wb-surface) 50%, transparent);
+    border:0; border-radius:var(--wb-r-glass);
+    background:var(--wb-surface); box-shadow:var(--wb-sh-3);
   }
   .wb-screen-err p, .wb-asset-err p { margin:0; }
   .wb-screen-err-title, .wb-asset-err-title {
-    font-size:12.5px; font-weight:var(--wb-w-semibold); color:var(--wb-fg);
+    font-size:14px; font-weight:var(--wb-w-semibold); line-height:1.3; color:var(--wb-fg);
   }
   .wb-screen-err-src, .wb-screen-err-why, .wb-asset-err-src {
     margin-top:4px !important;
@@ -868,26 +850,24 @@
 <body>
 
 <div class="wb" id="wbroot">
-  <!-- React 挂载点：侧栏整树由 src/workbench/app/Sidebar.jsx 渲染（P1b cut2） -->
-  <aside class="wb-side" id="wbside" data-ann-ui></aside>
-
-  <button type="button" class="wb-splitter" id="wbsplit" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" aria-valuemin="200" aria-valuemax="480" aria-valuenow="250" title="拖动调整宽度 · 双击收起/展开"></button>
-
   <div class="wb-stage-wrap" data-grid="grid">
     <main class="wb-stage" id="wbstage"></main>
-    <!-- React 挂载点：dock（section-nav + minimap）与 HUD 由 app/CanvasHud.jsx 渲染（P1b cut3） -->
+    <!-- React 挂载点：dock（section-nav + minimap）由 app/CanvasHud.jsx 渲染 -->
     <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui></div>
-    <div class="wb-canvas-hud" id="wbcanvas-hud" data-ann-ui></div>
-    <!-- React 挂载点：左右栏折叠后的画布缘浮钮（app/CanvasHud.jsx StageRails，2026-08-15） -->
-    <div id="wbrails" data-ann-ui></div>
+    <!-- React 挂载点：按需浮层槽（标注弹出列表 / detail 面板，app/Dock.jsx） -->
+    <div id="wbdock" data-ann-ui></div>
     <!-- React 挂载点：导出 picker 对话框（app/ExportPicker.jsx，decisions 2026-08-15d） -->
     <div id="wbexport-picker" data-ann-ui></div>
   </div>
 
-  <!-- React 挂载点：右栏标注工作台由 src/workbench/app/AnnPanel.jsx 渲染（2026-08-15 左右分工）；
-       前置 splitter #wbannsplit = 右栏宽度拖拽（2026-08-16 V2，镜像 #wbsplit） -->
-  <button type="button" class="wb-splitter" id="wbannsplit" role="separator" aria-orientation="vertical" aria-label="调整标注面板宽度" aria-valuemin="260" aria-valuemax="440" aria-valuenow="308" title="拖动调整宽度 · 双击复位默认宽度"></button>
-  <aside class="wb-ann-side" id="wbann-side" data-ann-ui></aside>
+  <!-- React 挂载点：侧栏整树由 src/workbench/app/Sidebar.jsx 渲染（P1b cut2） -->
+  <aside class="wb-side wb-glass" id="wbside" data-ann-ui></aside>
+
+  <button type="button" class="wb-splitter" id="wbsplit" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" aria-valuemin="200" aria-valuemax="480" aria-valuenow="250" title="拖动调整宽度 · 双击收起/展开"></button>
+
+  <!-- React 挂载点：底部横条（app/Strip.jsx，2026-09-04 评审板 G1）——
+       画布工具那一段仍是 app/CanvasHud.jsx，wireCanvasHud 的句柄契约不变 -->
+  <div class="wb-strip wb-glass" id="wbstrip" data-ann-ui></div>
 </div>
 
 <script src="/kits/ios/ios-kit.js"></script>

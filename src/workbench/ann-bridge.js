@@ -1,6 +1,7 @@
 // Workbench 标注桥簇 — annotate API 解析（父窗口 vs iframe 实例）、gutter 评论
 // 气泡（文档条目形态 sidebar 布局）、文档标注绑定、连接状态指示、标注状态快照。
-// P1a 从 workbench.js 平移；P1b 起标注面板 React 化（app/AnnPanel.jsx），
+// P1a 从 workbench.js 平移；P1b 起标注面板 React 化（2026-09-04 起 = 弹出列表
+// app/AnnPopover.jsx），
 // 面板要读的状态由本模块汇成 annSnap 写进 store，不再有面板侧 DI。
 // 2026-08-16f 阶段 6：「文档形态」判定从页级 mode 改为选中条目派生
 // （store.activeBoardMode()）—— 混合板里选中 doc 屏条目时同一套 iframe 绑定
@@ -34,7 +35,7 @@ export function annotateApi() {
 }
 
 /* ---- 标注状态快照（annSnap）------------------------------------------------
-   React 标注面板（app/AnnPanel.jsx）只读 store 里的 annSnap：annotate 实例
+   React 标注列表（app/AnnPopover.jsx）只读 store 里的 annSnap：annotate 实例
    状态 + pageMarks 行模型在这里汇成一份纯数据，onUpdate 突发经 rAF 合并。
    行字段走共享 src/shared/ann-row.js（cap/preview/broken/tags）；grouping 键是
    workbench 本地语义。cap 选项钉住 workbench 措辞：region 行显示「框选」，

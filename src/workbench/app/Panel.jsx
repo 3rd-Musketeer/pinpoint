@@ -8,7 +8,7 @@
 //     → 页面主世界 client（pinpoint:command 桥）。postMessage 用 '*'：
 //     面板不知道扩展源，校验归壳；删除/编辑的真正写入仍在页面 client 里
 //     （removeMark → persist → SSE 广播回来），面板不是第二写者。
-// 与 workbench AnnPanel 的已知差别：锚点失效判定需要页面 DOM，面板侧不算
+// 与 workbench 标注列表的已知差别：锚点失效判定需要页面 DOM，面板侧不算
 // （broken 恒 false），失效标记看页面内列表；模式分段只反映加载时的初始值
 // （页面里按 A 切换不会回传）。
 import { useEffect, useMemo, useState } from 'react';
@@ -24,7 +24,7 @@ import { WbIcon } from './WbIcon.jsx';
 // 与 client/annotate.js 的 MENTION_STORE_RE 同式（磁盘 [@a:id]/[@m:id] → 显示 @n）。
 var MENTION_STORE_RE = /\[@(?:a|m):([a-z0-9]+)\]/gi;
 
-// 「标注」on 态琥珀面 —— 与 AnnPanel 的 ANN_ANNOTATE_ON 同值（标注特性色，
+// 「标注」on 态琥珀面 —— 与 workbench 模式两段的 on 态同族（标注特性色，
 // 双端信号一致）。复制而非抽取：两处调用点，抽共享件不值当。
 var SEG_ITEM_ANNOTATE = SEG_ITEM.replace(' data-[state=on]:shadow-[var(--wb-sh-1)]', '');
 var ANN_ANNOTATE_ON =

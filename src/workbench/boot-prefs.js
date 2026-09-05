@@ -1,5 +1,5 @@
 // Workbench 启动偏好与视口簇 — 把 prefs（lib/prefs.js、lib/page-viewports.js 纯函数）
-// 应用到 DOM/store 的编排层：侧栏宽度/折叠、ios 根属性、canvas zoom、每页视口的
+// 应用到 DOM/store 的编排层：左栏宽度/折叠、ios 根属性、canvas zoom、每页视口的
 // 保存与恢复、启动偏好应用。P1a 从 workbench.js 平移
 // （goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
@@ -29,15 +29,13 @@ export function initBootPrefs(deps) {
 var stage = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var sideEl = document.getElementById('wbside');
-var annSplitEl = document.getElementById('wbannsplit');
-var annSideEl = document.getElementById('wbann-side');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 
 var SIDE_W_MIN = 200;
 var SIDE_W_MAX = 480;
 var SIDE_W_DEFAULT = 250;
 // 左栏紧凑断点（2026-08-16b）：宽 < 230 时 Pages 壳标 pill 藏文字收纯图标块
-// （样式在 index.html #wbside.compact），拖回 ≥230 自动恢复。镜像右栏 ANN_W_COMPACT。
+// （样式在 index.html #wbside.compact），拖回 ≥230 自动恢复。
 var SIDE_W_COMPACT = 230;
 
 export function applySideWidth(px) {
@@ -46,24 +44,6 @@ export function applySideWidth(px) {
   document.documentElement.style.setProperty('--wb-side-w', w + 'px');
   if (splitEl) splitEl.setAttribute('aria-valuenow', String(w));
   if (sideEl) sideEl.classList.toggle('compact', w < SIDE_W_COMPACT);
-  return w;
-}
-
-/* 右栏（标注工作台）宽度（2026-08-16 V2 宽度适配，mock .wmock[data-v=v2]）：
-   机制镜像左栏 applySideWidth —— clamp + CSS var + splitter aria-valuenow；
-   另过 280 紧凑断点时给栏面打 compact 类（藏 cap / 文本单行 / 底栏 dropdown
-   收文案，样式在 index.html #wbann-side.compact），拖回 ≥280 自动恢复。 */
-export var ANN_W_MIN = 260;
-export var ANN_W_MAX = 440;
-export var ANN_W_DEFAULT = 308;
-var ANN_W_COMPACT = 280;
-
-export function applyAnnWidth(px) {
-  var w = Math.round(Math.max(ANN_W_MIN, Math.min(ANN_W_MAX, px)));
-  wbSet({ annPanelWidth: w });
-  document.documentElement.style.setProperty('--wb-ann-w', w + 'px');
-  if (annSplitEl) annSplitEl.setAttribute('aria-valuenow', String(w));
-  if (annSideEl) annSideEl.classList.toggle('compact', w < ANN_W_COMPACT);
   return w;
 }
 
@@ -87,30 +67,6 @@ export function setSideCollapsed(on, options) {
 
 export function toggleSideCollapsed(options) {
   setSideCollapsed(!wbGet().sideCollapsed, options || { save: true });
-}
-
-/* 右栏（标注工作台）整栏折叠（decisions 2026-08-14）：机制镜像左栏 ——
-   root 类 wb-ann-collapsed 控宽度与画布右缘浮钮（#wbann-expand），偏好持久化同例。 */
-export function setAnnPanelCollapsed(on, options) {
-  options = options || {};
-  var collapsed = !!on;
-  wbSet({ annPanelCollapsed: collapsed });
-  if (wbRoot) wbRoot.classList.toggle('wb-ann-collapsed', collapsed);
-  if (annSplitEl) {
-    annSplitEl.setAttribute(
-      'aria-label',
-      collapsed ? '展开标注面板（点击）或拖动调整宽度' : '调整标注面板宽度（拖动）· 双击复位默认宽度'
-    );
-    annSplitEl.title = collapsed ? '点击展开标注面板 · 拖动可调宽' : '拖动调整宽度 · 双击复位默认宽度';
-  }
-  if (options.save) savePrefs({ annPanelCollapsed: collapsed });
-  if (options.refit !== false) {
-    requestAnimationFrame(function () { refit(); });
-  }
-}
-
-export function toggleAnnPanelCollapsed(options) {
-  setAnnPanelCollapsed(!wbGet().annPanelCollapsed, options || { save: true });
 }
 
 function applyIosRoots(p, root) {
@@ -399,9 +355,7 @@ export function applyBootPrefs(prefs, options) {
 
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);
-    applyAnnWidth(prefs.annPanelWidth || ANN_W_DEFAULT);
     setSideCollapsed(!!prefs.sideCollapsed, { save: false, refit: false });
-    setAnnPanelCollapsed(!!prefs.annPanelCollapsed, { save: false, refit: false });
   }
   setMinimapOpen(false);
 

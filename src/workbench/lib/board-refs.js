@@ -1,7 +1,7 @@
 // 图纸引用号（decisions 2026-08-15 A1 引用法）：section 在 board.json 里的顺序 →
 // 字母 A/B/C…，section 内 screen 顺序 → 数字 1/2/3…。纯派生，不落盘；人对 agent
 // 说 A2，机器引用仍走 @frame:id。消费端：画布图注（screen-load.js）、左栏大纲
-// （app/Sidebar.jsx）、右栏标注分组徽标（ann-bridge.js → app/AnnPanel.jsx）。
+// （app/Sidebar.jsx）、标注列表的行引用号（ann-bridge.js → app/AnnPopover.jsx）。
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
 /** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */

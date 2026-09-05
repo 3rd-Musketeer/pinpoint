@@ -36,18 +36,14 @@ import {
   watchDocAnnotate
 } from './ann-bridge.js';
 import {
-  ANN_W_DEFAULT,
-  applyAnnWidth,
   applyBootPrefs,
   applySideWidth,
   initBootPrefs,
   refit,
   scheduleViewportScrollSave,
-  setAnnPanelCollapsed,
   setCanvasZoom,
   setSideCollapsed,
   snapshotPageViewport,
-  toggleAnnPanelCollapsed,
   toggleSideCollapsed
 } from './boot-prefs.js';
 import {
@@ -67,7 +63,7 @@ import {
 import { startDeepLinkSync } from './url-sync.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
-// sideWidth / sideCollapsed / annPanelCollapsed 归 app/store.js（wbGet/wbSet 读写）
+// sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
 wbSet({ activePageId: LIB_ID });
 var stage  = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
@@ -326,105 +322,6 @@ if (splitEl) {
     refit();
   });
 }
-
-/* 右栏（标注工作台）splitter（2026-08-16 V2 宽度适配，mock .wmock[data-v=v2]）：
-   机制镜像 #wbsplit，两点差异 —— 右栏锚右缘（splitter 左拖 = 变宽，dx 取反）；
-   双击复位默认宽 308 而不是折叠。折叠态下拖 splitter 取消折叠并跟手。 */
-var annSplitEl = document.getElementById('wbannsplit');
-if (annSplitEl) {
-  var annDragging = false;
-  var annStartX = 0;
-  var annStartW = 0;
-  var annSplitRaf = 0;
-  var annDragMoved = false;
-  var suppressAnnSplitClick = false;
-
-  function endAnnDrag() {
-    if (!annDragging) return;
-    annDragging = false;
-    document.body.classList.remove('wb-resizing');
-    annSplitEl.classList.remove('on');
-    if (annDragMoved) {
-      savePrefs({ annPanelWidth: wbGet().annPanelWidth, annPanelCollapsed: false });
-      suppressAnnSplitClick = true;
-      setTimeout(function () { suppressAnnSplitClick = false; }, 0);
-    }
-    refit();
-    document.removeEventListener('mousemove', onAnnMove);
-    document.removeEventListener('mouseup', endAnnDrag);
-  }
-
-  function onAnnMove(e) {
-    if (!annDragging) return;
-    var dx = e.clientX - annStartX;
-    if (!annDragMoved && Math.abs(dx) < 3) return;
-    if (!annDragMoved) {
-      annDragMoved = true;
-      if (wbGet().annPanelCollapsed) setAnnPanelCollapsed(false, { save: false, refit: false });
-    }
-    applyAnnWidth(annStartW - dx);
-    if (annSplitRaf) return;
-    annSplitRaf = requestAnimationFrame(function () {
-      annSplitRaf = 0;
-      var _a = annotateApi(); if (_a) _a.render();
-    });
-  }
-
-  annSplitEl.addEventListener('mousedown', function (e) {
-    if (e.button !== 0) return;
-    e.preventDefault();
-    annDragging = true;
-    annDragMoved = false;
-    annStartX = e.clientX;
-    annStartW = wbGet().annPanelCollapsed ? 0 : wbGet().annPanelWidth;
-    document.body.classList.add('wb-resizing');
-    annSplitEl.classList.add('on');
-    document.addEventListener('mousemove', onAnnMove);
-    document.addEventListener('mouseup', endAnnDrag);
-  });
-
-  annSplitEl.addEventListener('click', function (e) {
-    if (suppressAnnSplitClick || annDragMoved) return;
-    if (wbGet().annPanelCollapsed) {
-      e.preventDefault();
-      setAnnPanelCollapsed(false, { save: true });
-    }
-  });
-
-  annSplitEl.addEventListener('dblclick', function (e) {
-    e.preventDefault();
-    if (wbGet().annPanelCollapsed) setAnnPanelCollapsed(false, { save: false, refit: false });
-    applyAnnWidth(ANN_W_DEFAULT);
-    savePrefs({ annPanelWidth: ANN_W_DEFAULT, annPanelCollapsed: false });
-    refit();
-  });
-
-  annSplitEl.addEventListener('keydown', function (e) {
-    if (e.key === 'Enter' || e.key === ' ') {
-      e.preventDefault();
-      toggleAnnPanelCollapsed({ save: true });
-      return;
-    }
-    var step = e.shiftKey ? 40 : 16;
-    // 右栏锚右缘：ArrowLeft = 左缘外推 = 变宽；ArrowRight = 变窄。
-    if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      if (wbGet().annPanelCollapsed) {
-        setAnnPanelCollapsed(false, { save: false, refit: false });
-      }
-      applyAnnWidth(wbGet().annPanelWidth + step);
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      if (wbGet().annPanelCollapsed) return;
-      applyAnnWidth(wbGet().annPanelWidth - step);
-    } else return;
-    savePrefs({ annPanelWidth: wbGet().annPanelWidth, annPanelCollapsed: false });
-    refit();
-  });
-}
-
-/* 折叠浮钮已 React 化（app/CanvasHud.jsx StageRails → #wbrails，2026-08-15），
-   此处的命令式句柄随之退役。 */
 
 stage.addEventListener('wheel', function (e) {
   if (!e.ctrlKey && !e.metaKey) return;
