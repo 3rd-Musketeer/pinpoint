@@ -70,7 +70,7 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: board-schema, registry, annotation, design; adr/ = decisions
-index.html                   WORKBENCH shell — Pages (Component Library pinned first) + Theme controls
+index.html                   WORKBENCH shell — full-bleed canvas + floating glass panel + bottom strip
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
   src/workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
@@ -118,8 +118,9 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
    under `~/.pinpoint/<entry-id>/`, exposed by `GET /health`; revisioned, SSE-synced) grouped by
    `pageId → section → screenId`, edits the routed source file, and the board hot-reloads.
    The agent summarizes what changed and why in the conversation.
-3. Click any sidebar comment to focus its owning frame, review the visual change, then clear
-   resolved marks and repeat.
+3. Hover a pin on the canvas to read its comment card, or open “这页的标注” from the count
+   button at the right end of the bottom strip and click 定位 to focus the owning frame. Review the
+   visual change, then clear resolved marks and repeat.
 
 Short locators for chat: `@page:library` · `@section:library/brew-flow` · `@frame:library/timer` ·
 `@a:<id>`. Full schema and routing: [`docs/annotation.md`](docs/annotation.md).
@@ -131,7 +132,7 @@ annotation surface, and exported artifacts never contain the injected client.
 
 ## Export Frame images
 
-Open the export picker from the canvas HUD's **导出** button — the single entry point (ADR 0015).
+Open the export picker from the bottom strip's **导出** button — the single entry point (ADR 0015).
 The picker shows the current page's proto tree (section rows select all their frames, frames check
 freely), a live preview of the selected frames, and the only option that changes the delivered
 pixels: background (**画布** paper grid / **白底** / **透明**). Output is fixed **PNG 2×**. Captions
