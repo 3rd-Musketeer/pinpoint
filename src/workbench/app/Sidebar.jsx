@@ -711,7 +711,9 @@ function Contents() {
 function useFolderActions(folders, model, sort) {
   var [collapsedLocal, setCollapsedLocal] = useState({});
   var [renamingFolderId, setRenamingFolderId] = useState(null);
-  var [dragging, setDragging] = useState(null);
+  // 拖动中的页存在 ref 里，不存 state：dragstart 与第一个 dragover 之间可能还没
+  // 有过一次渲染，读 state 会读到 null，那一下拖放就被当成「没在拖」丢掉。
+  var draggingRef = useRef(null);
   var [dropFolderId, setDropFolderId] = useState(null);
   var [dropPage, setDropPage] = useState(null);
   var [looseDrop, setLooseDrop] = useState(false);
@@ -800,17 +802,17 @@ function useFolderActions(folders, model, sort) {
 
     /* ---- 拖放 ---- */
     onDragStart: function (e, pageId, folderId) {
-      setDragging({ id: pageId, folder: folderId });
+      draggingRef.current = { id: pageId, folder: folderId };
       if (!e.dataTransfer) return;
       e.dataTransfer.effectAllowed = 'move';
       e.dataTransfer.setData(DND_TYPE, pageId);
       e.dataTransfer.setData('text/plain', pageId);
     },
-    onDragEnd: function () { setDragging(null); clearDrop(); },
+    onDragEnd: function () { draggingRef.current = null; clearDrop(); },
     onDragLeave: function () { clearDrop(); },
 
     onFolderDragOver: function (e, folderId) {
-      if (!dragging) return;
+      if (!draggingRef.current) return;
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
@@ -819,24 +821,25 @@ function useFolderActions(folders, model, sort) {
       setLooseDrop(false);
     },
     onFolderDrop: function (e, folderId) {
-      if (!dragging) return;
+      var drag = draggingRef.current;
+      if (!drag) return;
       e.preventDefault();
       e.stopPropagation();
-      var id = dragging.id;
+      draggingRef.current = null;
       clearDrop();
-      setDragging(null);
-      if (dragging.folder === folderId) return;
-      actions.movePage(id, folderId);
+      if (drag.folder === folderId) return;
+      actions.movePage(drag.id, folderId);
     },
 
     /* 夹内的页行既是入夹落点，也是「默认」档下的重排落点：同夹同档 = 排序，
        否则 = 入夹（拖到别人夹里的某一行上，意思显然是进那个夹）。 */
     onPageDragOver: function (e, pageId, folderId) {
-      if (!dragging || dragging.id === pageId) return;
+      var drag = draggingRef.current;
+      if (!drag || drag.id === pageId) return;
       e.preventDefault();
       e.stopPropagation();
       e.dataTransfer.dropEffect = 'move';
-      if (folderId && dragging.folder === folderId && sort === 'default') {
+      if (folderId && drag.folder === folderId && sort === 'default') {
         var box = e.currentTarget.getBoundingClientRect();
         setDropPage({ id: pageId, before: e.clientY < box.top + box.height / 2 });
         setDropFolderId(null);
@@ -850,13 +853,13 @@ function useFolderActions(folders, model, sort) {
       }
     },
     onPageDrop: function (e, pageId, folderId) {
-      if (!dragging || dragging.id === pageId) return;
+      var drag = draggingRef.current;
+      if (!drag || drag.id === pageId) return;
       e.preventDefault();
       e.stopPropagation();
-      var drag = dragging;
       var hint = dropPage;
+      draggingRef.current = null;
       clearDrop();
-      setDragging(null);
       if (folderId && drag.folder === folderId && sort === 'default') {
         var group = model.folders.filter(function (f) { return f.id === folderId; })[0];
         if (!group) return;
@@ -876,18 +879,19 @@ function useFolderActions(folders, model, sort) {
     reorderPages: function (ids) { run(putPageOrder(ids)); },
 
     onLooseDragOver: function (e) {
-      if (!dragging || !dragging.folder) return;
+      var drag = draggingRef.current;
+      if (!drag || !drag.folder) return;
       e.preventDefault();
       e.dataTransfer.dropEffect = 'move';
       setLooseDrop(true);
       setDropFolderId(null);
     },
     onLooseDrop: function (e) {
-      if (!dragging) return;
+      var drag = draggingRef.current;
+      if (!drag) return;
       e.preventDefault();
-      var drag = dragging;
+      draggingRef.current = null;
       clearDrop();
-      setDragging(null);
       if (drag.folder) actions.movePage(drag.id, null);
     },
 

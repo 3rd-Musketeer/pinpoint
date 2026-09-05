@@ -26,7 +26,23 @@ function pressMtimes() {
   }
 }
 
+// 模板页（Component Library / Example Library / Example HTML）2026-09-04 起默认
+// 不显示（ADR 0032，开关在预览设置）。本文件的断言就落在那三页上，所以进
+// workbench 之前先把开关打开——init script 在页面脚本之前跑，合并写进同一份
+// prefs，不动其它偏好。
+async function seedTemplatePagesVisible(page) {
+  await page.addInitScript(() => {
+    try {
+      const key = 'pinpoint-wb';
+      const prefs = JSON.parse(localStorage.getItem(key) || '{}');
+      prefs.showTemplatePages = true;
+      localStorage.setItem(key, JSON.stringify(prefs));
+    } catch { /* 读不到 localStorage 时让断言自己失败，不在这里吞 */ }
+  });
+}
+
 async function openWorkbench(page) {
+  await seedTemplatePagesVisible(page);
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
@@ -64,12 +80,13 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   expect(await pageOrder(page)).toEqual(DEFAULT_ORDER);
 
   // 最近更新：mtime 倒序；无 mtime 的页（本地示例 + url 条目）按原相对顺序沉底。
+  // 2026-09-04 起 Component Library 也走同一趟排序（切片 ② 把它并进了分组模型，
+  // 不再是钉在表头的系统行）—— 它没有 mtime，所以跟着其它无 mtime 的页沉底。
   await sortBtn.click();
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
-    'components',
     'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
   ]);
 
   // 名称：zh locale 排序（此处全 Latin 标题，E2E* 先于 Example*）。
@@ -96,8 +113,7 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator('.wb-page-sort')).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
-    'components',
     'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
   ]);
 });
