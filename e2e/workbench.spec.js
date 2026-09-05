@@ -22,29 +22,43 @@ async function saveAnnotation(page, target, comment) {
   await box.locator('#ann-save').click();
 }
 
-// 画布批注三态 dropdown（2026-08-15 右栏底栏，取代旧 评论/通道 双钮）：
-// off = 隐藏批注，inline = 叠在页面，chan = 右侧通道。
+// 「这页的标注」弹出列表（2026-09-04 评审板 H2，取代常驻右栏）：横条右端的计数
+// 钮开合。断言列表内容前先开，断完再关 —— 列表不常驻是这一刀的产品语义。
+async function openAnnList(page) {
+  if (await page.locator('#wbann-count').getAttribute('aria-expanded') === 'true') return;
+  await page.locator('#wbann-count').click();
+  await expect(page.locator('#wbann-pop')).toBeVisible();
+}
+
+async function closeAnnList(page) {
+  if (await page.locator('#wbann-count').getAttribute('aria-expanded') !== 'true') return;
+  await page.locator('#wbann-count').click();
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+}
+
+// 画布批注三态（2026-09-04 起收在弹出列表的「···」溢出里；旧址是右栏底栏的
+// dropdown）：off = 隐藏批注，inline = 叠在页面，chan = 右侧通道。选中一项
+// Radix 自己关菜单，列表留着。
 async function pickBubbleMode(page, mode) {
-  await page.locator('#wbann-bubble').click();
+  await openAnnList(page);
+  await page.locator('#wbann-more').click();
   await page.locator('#wbann-bubble-' + mode).click();
+  await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
 }
 
-// 右栏宽度适配（2026-08-16 V2）：#wbannsplit 在 stage 与右栏之间，左拖 = 变宽。
-async function annPanelWidth(page) {
-  return page.locator('#wbann-side').evaluate((el) => Math.round(el.getBoundingClientRect().width));
+// 当前的画布批注档位只在「···」菜单里显示（右栏常驻 dropdown 退役后没有别处
+// 读得到它）—— 开菜单断言，再点触发钮关掉。这里不按 Esc：标注模式下 client 的
+// Esc 链最后一档是「退出标注模式」，关个菜单会把模式一起关掉。
+async function expectBubbleMode(page, label) {
+  await openAnnList(page);
+  await page.locator('#wbann-more').click();
+  await expect(page.locator('#wbann-bubble-v')).toHaveText(label);
+  await page.locator('#wbann-more').click();
+  await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
+  await expect(page.locator('#wbann-pop')).toBeVisible();
 }
 
-async function dragAnnSplitter(page, dx) {
-  const box = await page.locator('#wbannsplit').boundingBox();
-  const cx = box.x + box.width / 2;
-  const cy = box.y + box.height / 2;
-  await page.mouse.move(cx, cy);
-  await page.mouse.down();
-  await page.mouse.move(cx + dx, cy, { steps: 12 });
-  await page.mouse.up();
-}
-
-// 左栏宽度（2026-08-16b 壳标 pill 紧凑断点）：#wbsplit 在左栏右缘，右拖 = 变宽。
+// 左栏宽度（2026-08-16b 壳标 pill 紧凑断点）：#wbsplit 钉在浮动面板右缘，右拖 = 变宽。
 async function sideWidth(page) {
   return page.locator('#wbside').evaluate((el) => Math.round(el.getBoundingClientRect().width));
 }
@@ -84,6 +98,51 @@ async function withinContainerViolations(page, childSel, containerSel) {
   }, [childSel, containerSel]);
 }
 
+/* 定位断言（2026-09-04 外壳重设计）：画布满铺整个视口，左栏玻璃面板与底部横条
+   压在它上面 —— 「居中」是在**可用区**里居中，不是在 stage 视口里。可用区由两块
+   chrome 的实际 bounding box 算出来（与 board-nav 的 chromeInsets 同一口径），
+   所以这条断言同时守住「选中的 frame 不会藏在 chrome 底下」。 */
+async function chromeInsets(page) {
+  return page.evaluate(() => {
+    const stage = document.querySelector('#wbstage');
+    const stageRect = stage.getBoundingClientRect();
+    const side = document.querySelector('#wbside');
+    const strip = document.querySelector('#wbstrip');
+    const sideRect = side ? side.getBoundingClientRect() : null;
+    const stripRect = strip ? strip.getBoundingClientRect() : null;
+    return {
+      left: sideRect && sideRect.width > 1 ? Math.max(0, sideRect.right - stageRect.left + 12) : 0,
+      right: 0,
+      top: 0,
+      bottom: stripRect && stripRect.height > 1 ? Math.max(0, stageRect.bottom - stripRect.top + 12) : 0,
+    };
+  });
+}
+
+/* 列表开着时「定位」的到位判据（2026-09-04 H2 owner 批注 2）：目标不再居中 ——
+   nudgeAwayFromPopover 把它推出列表遮挡区，居中断言与这条要求互斥。所以断的是
+   「人看得见」：目标与列表矩形不相交、留在左栏右边、且还在横条上方的可见区里。
+   全程比 bounding box（AGENTS 坑与约定：可见性断言不查视口）。 */
+async function expectLocatedTarget(page, selector) {
+  await expect.poll(() => page.evaluate((targetSelector) => {
+    var target = document.querySelector(targetSelector);
+    var pop = document.querySelector('#wbann-pop');
+    var strip = document.querySelector('#wbstrip');
+    if (!target || !pop || !strip) return null;
+    var t = target.getBoundingClientRect();
+    var p = pop.getBoundingClientRect();
+    var st = strip.getBoundingClientRect();
+    var side = document.querySelector('#wbside');
+    var sr = side ? side.getBoundingClientRect() : null;
+    var leftEdge = sr && sr.width > 1 ? sr.right : 0;
+    return {
+      clearOfList: !(t.right > p.left && t.left < p.right && t.bottom > p.top && t.top < p.bottom),
+      rightOfPanel: t.left >= leftEdge - 1,
+      onScreen: t.right > 0 && t.left < window.innerWidth && t.bottom > 0 && t.top < st.top
+    };
+  }, selector)).toEqual({ clearOfList: true, rightOfPanel: true, onScreen: true });
+}
+
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');
@@ -92,12 +151,22 @@ async function expectFocusedTarget(page, selector) {
     const stageRect = stage.getBoundingClientRect();
     const targetRect = target.getBoundingClientRect();
     if (targetRect.width < 1 || targetRect.height < 1) return Infinity;
+    const side = document.querySelector('#wbside');
+    const strip = document.querySelector('#wbstrip');
+    const sideRect = side ? side.getBoundingClientRect() : null;
+    const stripRect = strip ? strip.getBoundingClientRect() : null;
+    const insetLeft = sideRect && sideRect.width > 1
+      ? Math.max(0, sideRect.right - stageRect.left + 12) : 0;
+    const insetBottom = stripRect && stripRect.height > 1
+      ? Math.max(0, stageRect.bottom - stripRect.top + 12) : 0;
+    const usableW = Math.max(1, stage.clientWidth - insetLeft);
+    const usableH = Math.max(1, stage.clientHeight - insetBottom);
     const inset = 24;
-    const expectedLeft = targetRect.width + inset * 2 <= stage.clientWidth
-      ? (stage.clientWidth - targetRect.width) / 2
-      : inset;
-    const expectedTop = targetRect.height + inset * 2 <= stage.clientHeight
-      ? (stage.clientHeight - targetRect.height) / 2
+    const expectedLeft = insetLeft + (targetRect.width + inset * 2 <= usableW
+      ? (usableW - targetRect.width) / 2
+      : inset);
+    const expectedTop = targetRect.height + inset * 2 <= usableH
+      ? (usableH - targetRect.height) / 2
       : inset;
     return Math.max(
       Math.abs(targetRect.left - stageRect.left - expectedLeft),
@@ -178,10 +247,10 @@ test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page })
   // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
-  await expect(page.locator('#wbcanvas-hud')).toBeHidden();
+  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
-  await expect(page.locator('#wbcanvas-hud')).toBeVisible();
+  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
 });
 
 test('HTML board fills the viewport, drops canvas chrome, and collapses the contents section (2026-08-16f 阶段 7)', async ({ page }) => {
@@ -197,7 +266,7 @@ test('HTML board fills the viewport, drops canvas chrome, and collapses the cont
 
   // Not a canvas: no zoom/pan HUD, and the doc matches the stage 1:1 so a report
   // renders at the reader's real window size.
-  await expect(page.locator('#wbcanvas-hud')).toBeHidden();
+  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   const [frameBox, stageBox] = await Promise.all([
     frame.boundingBox(),
     page.locator('#wbstage').boundingBox(),
@@ -567,8 +636,9 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
   await page.locator('#wbann-toggle').click();
   await expect.poll(async () => (await docState()).mode).toBe(true);
   await expect(page.locator('#wbann-toggle')).toHaveClass(/on/);
-  // 模式单钮（2026-08-15）：标注中 = 实心 accent on 态
-  await expect(page.locator('#wbann-toggle .wb-tool-label')).toHaveText('标注中');
+  // 模式两段（2026-09-04 裁决 7，取代 ADR 0011 单钮）：选中 = 实心 accent + aria-pressed
+  await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('#wbann-interact')).toHaveAttribute('aria-pressed', 'false');
 
   // Prior tests may have left marks on the shared on-disk doc.
   await page.evaluate(() => {
@@ -594,8 +664,10 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
   });
 
   await expect.poll(async () => (await docState()).count).toBe(1);
+  await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('sidebar sync check');
+  await closeAnnList(page);
 });
 
 test('HTML board: annotations redraw when an interactive view hides and returns', async ({ page }) => {
@@ -652,7 +724,9 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
   await expect.poll(docTargetCount).toBe(0);
   await expect.poll(async () => (await docState()).countHidden).toBe(1);
   expect((await docState()).countBroken).toBe(0);
+  await openAnnList(page);
   await expect(page.locator('#wbann-list')).not.toContainText('锚点失效');
+  await closeAnnList(page);
 
   // Returning to the prior product view is enough; no manual scroll, resize,
   // or pinpoint.render() call should be required.
@@ -794,8 +868,8 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
   expect(out.hasContent).toBe(true);
   // Live comment view has no connector lines — numbers match pin badges.
   expect(out.connectorCount).toBe(0);
-  // Sidebar dropdown reflects the on state.
-  await expect(page.locator('#wbann-bubble-v')).toHaveText('叠在页面');
+  // 「···」里的当前档位跟着走。
+  await expectBubbleMode(page, '叠在页面');
 
   // Toggling off hides the bubbles.
   await pickBubbleMode(page, 'off');
@@ -803,7 +877,7 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
     const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
     return d.querySelectorAll('#ann-bubbles .ann-bubble').length;
   })).toBe(0);
-  await expect(page.locator('#wbann-bubble-v')).toHaveText('隐藏批注');
+  await expectBubbleMode(page, '隐藏批注');
 });
 
 test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', async ({ page }) => {
@@ -853,7 +927,7 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
   // Turn on render comments; the bubble dropdown must read 叠在页面 (inline).
   // （2026-08-15：#wbann-channel 钮并入 dropdown，inline/sidebar 切换走选项）
   await pickBubbleMode(page, 'inline');
-  await expect(page.locator('#wbann-bubble-v')).toHaveText('叠在页面');
+  await expectBubbleMode(page, '叠在页面');
 
   // Force a narrow viewport so the natural margins can't hold a 240px bubble.
   await page.setViewportSize({ width: 1024, height: 800 });
@@ -941,7 +1015,7 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   await expect.poll(() => page.evaluate(() => (
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
   ))).toBe('sidebar');
-  await expect(page.locator('#wbann-bubble-v')).toHaveText('右侧通道');
+  await expectBubbleMode(page, '右侧通道');
 
   // 同 inline 用例：右栏收窄 iframe 后文档回流，先把文档滚回顶部让两个锚点
   // 都在视口内（离屏锚点的气泡按规矩不渲染）。
@@ -1363,7 +1437,7 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   // （2026-08-16 起首访默认缩放 50%，HUD label 单击 = 重置为 100%）。
   await page.locator('#wbzoom-label').click();
 
-  const toolbar = page.locator('#wbcanvas-hud');
+  const toolbar = page.locator('#wbcanvas-tools');
   const minimapTool = page.locator('#wbminimap-wrap');
   const minimapToggle = page.locator('#wbminimap-toggle');
   const minimap = page.locator('#wbminimap');
@@ -1427,18 +1501,21 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect.poll(() => page.evaluate(() => {
     const navigatorRect = document.querySelector('#wbsection-nav').getBoundingClientRect();
     const minimapRect = document.querySelector('#wbminimap').getBoundingClientRect();
-    const toolbarRect = document.querySelector('#wbcanvas-hud').getBoundingClientRect();
+    const stripRect = document.querySelector('#wbstrip').getBoundingClientRect();
     const close = (a, b, tolerance) => Math.abs(a - b) < tolerance;
     return {
       stacked: navigatorRect.bottom <= minimapRect.top,
+      // 2026-09-04：dock 仍贴画布右下角，但改为浮在底部横条正上方
       rightAligned: close(navigatorRect.right, minimapRect.right, 0.5) &&
-        close(minimapRect.right, toolbarRect.right, 0.5),
+        close(minimapRect.right, window.innerWidth - 12, 0.5),
+      aboveStrip: minimapRect.bottom <= stripRect.top,
       sameWidth: close(navigatorRect.width, minimapRect.width, 0.05),
-      toolOrder: [...document.querySelectorAll('#wbcanvas-hud .wb-toolbar-tool-btn')].map((button) => button.id),
+      toolOrder: [...document.querySelectorAll('#wbcanvas-tools .wb-toolbar-tool-btn')].map((button) => button.id),
     };
   }), { timeout: 15000 }).toEqual({
     stacked: true,
     rightAligned: true,
+    aboveStrip: true,
     sameWidth: true,
     toolOrder: ['wbsection-nav-toggle', 'wbminimap-toggle'],
   });
@@ -1535,9 +1612,11 @@ test('sidebar annotation navigation focuses the owning frame, not the comment an
   await saveAnnotation(page, target, '这个 cell 需要更清楚');
   await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
 
+  await openAnnList(page);
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await page.waitForTimeout(350); // prove no earlier section-scroll animation can pull focus away
-  await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
+  // 列表开着时的到位判据（居中会与「让开列表」互斥，见 expectLocatedTarget）
+  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
   await expect(page.locator('#ann-box')).toBeVisible();
 
   // A small anchor should remain away from viewport center when its full phone is focused.
@@ -1569,11 +1648,11 @@ test('bottom composer keeps focus while canvas clicks attach and inline targets'
   const composerLayout = await page.evaluate(() => {
     const wrap = document.querySelector('.wb-stage-wrap').getBoundingClientRect();
     const composer = document.querySelector('#ann-box').getBoundingClientRect();
-    const hud = document.querySelector('#wbcanvas-hud').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
     const stage = document.querySelector('#wbstage');
     return {
       insideBottom: composer.bottom <= wrap.bottom,
-      aboveHud: composer.bottom <= hud.top,
+      aboveHud: composer.bottom <= strip.top,
       scrollPaddingBottom: parseFloat(getComputedStyle(stage).scrollPaddingBottom),
       composerHeight: composer.height,
     };
@@ -1676,7 +1755,9 @@ test('composer moves only from its drag handle and stays fixed in the viewport',
   expect(reopened.x).toBeCloseTo(moved.x, 0);
   expect(reopened.y).toBeCloseTo(moved.y, 0);
 
-  await page.setViewportSize({ width: 820, height: 700 });
+  // 2026-09-04 起画布满铺，composer 不再被两侧栏挤窄 —— 要让「窄视口钳位 →
+  // 拉宽回弹」成立，窄档必须窄过 composer 的 720 上限。
+  await page.setViewportSize({ width: 560, height: 700 });
   await expect.poll(() => page.evaluate(() => {
     const wrap = document.querySelector('.wb-stage-wrap').getBoundingClientRect();
     const composer = document.querySelector('#ann-box').getBoundingClientRect();
@@ -1861,152 +1942,277 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await expect(page.locator('#wbann-toggle .wb-tool-label')).toHaveText('标注中');
+  await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
 
   // 在 settings（F1）上落一条标注 → 大纲徽标计数 + 右栏按 frame 分组（eyebrow = 引用号 + 屏名）
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'outline sync mark');
   await expect(outline.locator('[data-ol-frame="settings"] .ol-n')).toHaveText('1');
+  // 计数钉在横条右端（H2 的入口）；列表不常驻，点它才开
   await expect(page.locator('#wbann-count')).toHaveText('1');
-  await expect(page.locator('#wbann-status')).toHaveText('共 1 条');
-  await expect(page.locator('#wbann-list .wb-ann-group')).toHaveText(['F1 settings']);
-  await expect(page.locator('#wbann-list .wb-ann-cap')).toHaveText(/^F1 \/ /);
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await openAnnList(page);
+  await expect(page.locator('#wbann-status')).toHaveText('1');
+  await expect(page.locator('#wbann-status')).toHaveAttribute('title', '共 1 条');
+  // 行 cap = 引用号 + 屏名（H2「A1 Today」的形；分组 eyebrow 随右栏退役）
+  await expect(page.locator('#wbann-list .wb-ann-cap')).toHaveText(['F1 settings']);
 
-  // 标注卡 → 定位 + 焦点双向同步：卡 on、大纲行 on、画布聚焦到 owning frame
+  // 标注行 → 定位 + 焦点双向同步：行 on、大纲行 on、画布聚焦到 owning frame
   await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
   await page.locator('#wbann-list .wb-ann-item-main').click();
-  await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
+  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
+  // 行尾「定位」是同一个动作的第二个入口（hover 才现，几何上在行内）
+  const goBtn = page.locator('#wbann-list [data-ann-go="1"]');
+  await page.locator('#wbann-list .wb-ann-item').hover();
+  await expect(goBtn).toBeVisible();
+  await goBtn.click();
+  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
 
-  // 右栏整栏折叠 → 画布右缘浮钮（带计数）；左栏折叠 → 左缘浮钮；双双复开
-  await page.locator('#wbann-side-toggle').click();
-  await expect(page.locator('#wbann-side')).toBeHidden();
-  await expect(page.locator('#wbann-expand')).toBeVisible();
-  await expect(page.locator('#wbann-expand-n')).toHaveText('1');
+  // Esc 关列表；再点计数钮开回来
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await openAnnList(page);
+
+  // 左栏折叠 / 复开：唯一入口是横条左端的 Pages 开关（画布两缘浮钮已退役）
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeHidden();
-  await expect(page.locator('#wbside-expand')).toBeVisible();
-  await page.locator('#wbside-expand').click();
+  await expect(page.locator('#wbstrip')).toBeVisible();
+  await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeVisible();
-  await page.locator('#wbann-expand').click();
-  await expect(page.locator('#wbann-side')).toBeVisible();
 
-  // 清空 = 两段确认：首击 armed（确认清空），再击才执行
+  // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行
+  await page.locator('#wbann-more').click();
   await page.locator('#wbann-clear').click();
   await expect(page.locator('#wbann-clear')).toHaveText('确认清空');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await page.locator('#wbann-clear').click();
-  await expect(page.locator('#wbann-clear')).toHaveText('清空标注');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.keyboard.press('Escape');
 });
 
-test('right splitter drags the annotation panel within 260–440, with keyboard steps', async ({ page }) => {
+test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互不压盖（2026-09-04 G1 + G1b）', async ({ page }) => {
   await openWorkbench(page);
-  const panel = page.locator('#wbann-side');
-  const split = page.locator('#wbannsplit');
-  await expect(panel).toBeVisible();
-  expect(await annPanelWidth(page)).toBe(308);
-  await expect(split).toHaveAttribute('aria-valuemin', '260');
-  await expect(split).toHaveAttribute('aria-valuemax', '440');
-  await expect(split).toHaveAttribute('aria-valuenow', '308');
+  // Playwright 的 toBeVisible / click 不查视口（AGENTS「坑与约定」），所以这条
+  // 用例全程比 bounding box。
+  const rects = () => page.evaluate(() => {
+    const g = (sel) => {
+      const el = document.querySelector(sel);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      return { left: r.left, top: r.top, right: r.right, bottom: r.bottom, width: r.width, height: r.height };
+    };
+    return { side: g('#wbside'), strip: g('#wbstrip'), pop: g('#wbann-pop'),
+      vw: window.innerWidth, vh: window.innerHeight };
+  });
 
-  // 左拖 = 变宽（右栏锚右缘）：308 + 200 = 508 → clamp 440
-  await dragAnnSplitter(page, -200);
-  expect(await annPanelWidth(page)).toBe(440);
-  await expect(split).toHaveAttribute('aria-valuenow', '440');
+  const a = await rects();
+  // 面板：四缘距视口 12px，下沿停在横条上方 12px（G1b）
+  expect(Math.round(a.side.left)).toBe(12);
+  expect(Math.round(a.side.top)).toBe(12);
+  expect(Math.round(a.strip.bottom)).toBe(a.vh - 12);
+  expect(Math.round(a.side.bottom)).toBe(Math.round(a.strip.top) - 12);
+  // 横条居中且整条在视口内
+  expect(Math.abs((a.strip.left + a.strip.right) / 2 - a.vw / 2)).toBeLessThan(2);
+  expect(a.strip.left).toBeGreaterThan(0);
+  expect(a.strip.right).toBeLessThan(a.vw);
+  // 面板与横条不重叠（横条永远整条可见）
+  expect(a.side.bottom).toBeLessThanOrEqual(a.strip.top);
 
-  // 右拖 400：440 - 400 = 40 → clamp 260，落盘偏好同步
-  await dragAnnSplitter(page, 400);
-  expect(await annPanelWidth(page)).toBe(260);
-  await expect(split).toHaveAttribute('aria-valuenow', '260');
-  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
+  // 弹出列表贴横条右端、落在横条上方，整块在视口内
+  await openAnnList(page);
+  const b = await rects();
+  expect(Math.abs(b.pop.right - b.strip.right)).toBeLessThan(2);
+  expect(b.pop.bottom).toBeLessThanOrEqual(b.strip.top);
+  expect(Math.round(b.pop.width)).toBe(280);
+  expect(b.pop.top).toBeGreaterThan(0);
+  await closeAnnList(page);
 
-  // 键盘：ArrowLeft = 变宽 16，Shift+ArrowLeft = 40；ArrowRight = 收窄
+  // 收起左栏：面板退场，横条与它的 Pages 开关照旧在视口内
+  await page.locator('#wbside-toggle').click();
+  // 面板收起是 width 过渡（--wb-dur），点完立刻量还在半路上 —— poll 到位。
+  await expect.poll(async () => Math.round((await rects()).side.width)).toBe(0);
+  const c = await rects();
+  expect(Math.round(c.strip.bottom)).toBe(c.vh - 12);
+  expect(c.strip.left).toBeGreaterThan(0);
+  await page.locator('#wbside-toggle').click();
+  await expect(page.locator('#wbside')).toBeVisible();
+
+  // 阅读器形态：文档不是画布，挪不开 —— stage 让开左栏与横条，文档整幅可见。
+  await page.locator('#wbpages [data-vpage="doc-library"]').click();
+  await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
+  await expect.poll(() => page.evaluate(() => {
+    const stage = document.querySelector('#wbstage').getBoundingClientRect();
+    const side = document.querySelector('#wbside').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    return { clearOfSide: Math.round(stage.left - side.right), clearOfStrip: Math.round(stage.bottom - strip.top) };
+  })).toEqual({ clearOfSide: 12, clearOfStrip: -12 });
+});
+
+test('左栏 splitter 拖宽 / 折叠偏好在浮动面板上照旧（ADR 0016 左栏那一半）', async ({ page }) => {
+  await openWorkbench(page);
+  const split = page.locator('#wbsplit');
+  expect(await sideWidth(page)).toBe(250);
+  await expect(split).toHaveAttribute('aria-valuemin', '200');
+  await expect(split).toHaveAttribute('aria-valuemax', '480');
+  await expect(split).toHaveAttribute('aria-valuenow', '250');
+
+  // splitter 钉在面板右缘：拖它 = 改面板宽度
+  await dragSideSplitter(page, 90);
+  expect(await sideWidth(page)).toBe(340);
+  await expect(split).toHaveAttribute('aria-valuenow', '340');
+  await expect.poll(async () => (await readWbPrefs(page)).sideWidth).toBe(340);
+
+  // 键盘步进：ArrowLeft 收窄 16，Shift 一步 40
   await split.focus();
   await page.keyboard.press('ArrowLeft');
-  await expect.poll(() => annPanelWidth(page)).toBe(276);
-  await page.keyboard.press('Shift+ArrowLeft');
-  await expect.poll(() => annPanelWidth(page)).toBe(316);
-  await page.keyboard.press('ArrowRight');
-  await expect.poll(() => annPanelWidth(page)).toBe(300);
-  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(300);
+  await expect.poll(() => sideWidth(page)).toBe(324);
+  await page.keyboard.press('Shift+ArrowRight');
+  await expect.poll(() => sideWidth(page)).toBe(364);
+
+  // 双击折叠、单击复开，偏好落盘
+  await split.dblclick();
+  await expect(page.locator('#wbside')).toBeHidden();
+  await expect.poll(async () => (await readWbPrefs(page)).sideCollapsed).toBe(true);
+  await split.click();
+  await expect(page.locator('#wbside')).toBeVisible();
+  await expect.poll(() => sideWidth(page)).toBe(364);
+
+  // reload 后宽度保持，splitter 仍贴在面板右缘
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await expect.poll(() => sideWidth(page)).toBe(364);
+  expect(await page.evaluate(() => {
+    const side = document.querySelector('#wbside').getBoundingClientRect();
+    const bar = document.querySelector('#wbsplit').getBoundingClientRect();
+    return Math.abs((bar.left + bar.right) / 2 - side.right) < 4;
+  })).toBe(true);
+  await dragSideSplitter(page, -114);
+  expect(await sideWidth(page)).toBe(250);
 });
 
-test('annotation panel crosses the 280 compact breakpoint both ways', async ({ page }) => {
+/* 右栏（标注工作台）随 2026-09-04 外壳重设计整栏退役 —— 宽度拖拽 / 双击复位 /
+   宽度偏好 / 280 紧凑断点 / 折叠浮钮五条用例随功能一起删除（ADR 0016 右栏那一半
+   作废）。它承过的三件事在新外壳里各有归宿，都已另有用例覆盖：
+     · 栏宽偏好 → 左栏 splitter 用例（见上「ADR 0016 左栏那一半」）；
+     · 折叠 / 复开 → 横条左端的 Pages 开关（上一条主用例 + 几何用例）；
+     · 标注列表的可读性 → 弹出列表的几何与行内容用例（下方 wb-ann-item 几何断言）。 */
+
+test('弹出列表：定位不被自己盖住、行几何在卡内（2026-09-04 H2 owner 批注 2）', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'compact breakpoint mark');
+  await saveAnnotation(page, cells.nth(0), 'popover geometry mark');
+  await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
 
-  const panel = page.locator('#wbann-side');
-  const cap = page.locator('#wbann-list .wb-ann-cap');
-  const bubbleLabel = page.locator('#wbann-bubble .wb-ann-bubble-lbl');
-  const textLineClamp = () => page.evaluate(
-    () => getComputedStyle(document.querySelector('#wbann-list .wb-ann-text')).webkitLineClamp
-  );
-  await expect(panel).not.toHaveClass(/compact/);
-  await expect(cap).toBeVisible();
-  await expect(bubbleLabel).toBeVisible();
-  await expect.poll(textLineClamp).toBe('2');
+  // 行整行落在卡内（点得到 ≠ 人看得见 —— 比 bounding box）
+  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
 
-  // 308 → 右拖 40 = 268 < 280：藏 cap、文本单行 truncate、dropdown 藏「画布批注」文案
-  await dragAnnSplitter(page, 40);
-  expect(await annPanelWidth(page)).toBe(268);
-  await expect(panel).toHaveClass(/compact/);
-  await expect(cap).toBeHidden();
-  await expect(bubbleLabel).toBeHidden();
-  await expect(page.locator('#wbann-bubble-v')).toBeVisible();
-  await expect.poll(textLineClamp).toBe('1');
+  // 「定位」之后：被定位的 frame 不落在列表矩形里（owner 批注 2 的第二条）——
+  // nudgeAwayFromPopover 把画布横向推开。层级那一半（批注 2 的第一条）在下一条
+  // 用例里断（点亮源用 hover，比定位的 3s 窗口稳）。
+  await page.locator('#wbann-list .wb-ann-item-main').click();
+  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
 
-  // 拖回 ≥280 自动恢复
-  await dragAnnSplitter(page, -80);
-  expect(await annPanelWidth(page)).toBe(348);
-  await expect(panel).not.toHaveClass(/compact/);
-  await expect(cap).toBeVisible();
-  await expect(bubbleLabel).toBeVisible();
-  await expect.poll(textLineClamp).toBe('2');
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await closeAnnList(page);
+});
+
+test('右下浮层槽一个位置两个住客：detail 与列表二选一、列表优先、Esc 关（2026-09-04）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'dock slot mark');
+
+  // 选中一个 frame → detail 进槽（ADR 0026 的面板，右栏退役后住这里）。
+  // 图注要在交互模式下才点得到 —— 标注模式的 overlay 吃掉画布上的点击。
+  await page.locator('#wbann-interact').click();
+  await page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap').click();
+  await expect(page.locator('#wbdetail')).toBeVisible();
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  const slot = await page.evaluate(() => {
+    const card = document.querySelector('#wbdetail').closest('.wb-dock-card').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    return { rightAligned: Math.abs(card.right - strip.right) < 2, aboveStrip: card.bottom <= strip.top, width: Math.round(card.width) };
+  });
+  expect(slot).toEqual({ rightAligned: true, aboveStrip: true, width: 280 });
+
+  // 列表优先：点计数钮，detail 让位（两者永不同时出现）
+  await openAnnList(page);
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
+  await expect(page.locator('#wbann-pop')).toBeVisible();
+
+  // Esc 先关列表 —— 选中还在，所以 detail 回到槽里
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await expect(page.locator('#wbdetail')).toBeVisible();
+
+  // 再一次 Esc 清选中 → 槽空
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel [data-screen="home"]')).not.toHaveClass(/wb-sel/);
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
-test('double-clicking the right splitter resets the panel to the 308 default', async ({ page }) => {
+test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async ({ page }) => {
   await openWorkbench(page);
-  await dragAnnSplitter(page, -120);
-  expect(await annPanelWidth(page)).toBe(428);
-  await page.locator('#wbannsplit').dblclick();
-  await expect.poll(() => annPanelWidth(page)).toBe(308);
-  await expect(page.locator('#wbannsplit')).toHaveAttribute('aria-valuenow', '308');
-  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(308);
-});
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'pin contrast mark');
+  const badge = page.locator('#ann-marks .ann-badge').first();
+  await expect(badge).toHaveCount(1);
 
-test('annotation panel width preference survives a reload', async ({ page }) => {
-  await openWorkbench(page);
-  await dragAnnSplitter(page, -72);
-  expect(await annPanelWidth(page)).toBe(380);
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect.poll(() => annPanelWidth(page)).toBe(380);
-  await expect(page.locator('#wbannsplit')).toHaveAttribute('aria-valuenow', '380');
-});
+  // 钉子：22px accent 实心圆 + 白字 + 白描边（高对比，常显不打折）
+  const pin = await badge.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { w: cs.width, h: cs.height, radius: cs.borderRadius, color: cs.color, shadow: cs.boxShadow };
+  });
+  expect(pin.w).toBe('22px');
+  expect(pin.h).toBe('22px');
+  expect(pin.color).toBe('rgb(255, 255, 255)');
+  expect(pin.shadow).toContain('rgb(255, 255, 255)');   // 2px 白描边
 
-test('dragging the right splitter while collapsed expands the panel and follows the pointer', async ({ page }) => {
-  await openWorkbench(page);
-  await page.locator('#wbann-side-toggle').click();
-  await expect(page.locator('#wbann-side')).toBeHidden();
+  // 交互模式下钉子照样在（常显）
+  await page.locator('#wbann-interact').click();
+  await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
+  await page.locator('#wbann-toggle').click();
 
-  // 折叠 = 宽 0；左拖 50 → 取消折叠，从 0 跟手 → clamp 260
-  await dragAnnSplitter(page, -50);
-  await expect(page.locator('#wbann-side')).toBeVisible();
-  expect(await annPanelWidth(page)).toBe(260);
-  await expect.poll(async () => (await readWbPrefs(page)).annPanelCollapsed).toBe(false);
-  await expect.poll(async () => (await readWbPrefs(page)).annPanelWidth).toBe(260);
+  // 评论卡：默认不显示，hover 钉子 120ms 后出现在钉子右侧，移开收起
+  const bubble = page.locator('#ann-bubbles .ann-bubble').first();
+  await expect(bubble).toHaveCount(1);
+  await expect(bubble).not.toHaveClass(/ann-bubble--show/);
+  await badge.hover();
+  await expect(bubble).toHaveClass(/ann-bubble--show/);
+  // 卡显示时整个 #ann-overlay 升到右下浮层槽（#wbdock）之上 —— owner 批注 2 的
+  // 第一条：列表不许压住被点亮的气泡。
+  expect(await page.evaluate(() => {
+    const overlay = document.querySelector('#ann-overlay');
+    const dock = document.getElementById('wbdock');
+    return parseInt(getComputedStyle(overlay).zIndex, 10) > parseInt(getComputedStyle(dock).zIndex, 10);
+  })).toBe(true);
+  expect(await page.evaluate(() => {
+    const b = document.querySelector('#ann-bubbles .ann-bubble').getBoundingClientRect();
+    const p = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+    return b.left >= p.left;                              // 卡在钉子右侧（够宽时不翻面）
+  })).toBe(true);
+  await page.locator('#wbstrip-title').hover();
+  await expect(bubble).not.toHaveClass(/ann-bubble--show/);
+
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
 test('first visit lands focused on the first frame at the 100% default zoom (2026-08-17 基准重定标)', async ({ page }) => {
@@ -2104,20 +2310,19 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   // 点击不查祖先裁剪（首轮排查「点得到但人看不到」的教训），必须比 bounding box。
   await openWorkbench(page);
 
-  // 右栏：播种一条标注，默认 308 与紧凑 260 两档，标注行都在面板内
+  // 弹出列表（原右栏那一半）：播种一条标注，列表行整行在 280 卡内
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'geometry guard mark');
+  await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
-  expect(await annPanelWidth(page)).toBe(308);
-  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-side')).toEqual([]);
-  await dragAnnSplitter(page, 48);
-  expect(await annPanelWidth(page)).toBe(260);
-  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-side')).toEqual([]);
+  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
+  await closeAnnList(page);
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.locator('#wbann-interact').click();
 
   // 左栏：混合板页（产物条目带 tag），默认 250 与紧凑 200 两档——
   // Page 行、内容区条目行全部在栏内（2026-08-17 行尾钮随右键菜单退役）

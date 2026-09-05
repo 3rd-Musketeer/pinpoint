@@ -222,6 +222,10 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.scrollIntoViewIfNeeded();
   await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=0', 'wb list check');
+  // 2026-09-04：workbench 的列表不常驻，点横条右端的计数钮才弹出。上面为断言
+  // 「没有列表入口」临时调出的浮动工具条钉在同一条底边上，先收掉再点。
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(false));
+  await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('wb list check');
   await expect(page.locator('#ann-sidebar')).toHaveCount(0);

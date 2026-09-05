@@ -98,7 +98,9 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     // page key 里的文件名仍是 percent-encode 规范形（synth-board 同例）。
     expect(ledger.path).toBe('/sites/e2e-cli-draft/Button Draft.html');
     expect(ledger.annotations.map((a) => a.content)).toContain('attached draft mark');
+    await page.locator('#wbann-count').click();
     await expect(page.locator('#wbann-list')).toContainText('attached draft mark');
+    await page.locator('#wbann-count').click();
 
     // 导出：草稿条目行右键菜单开对话框（目标标签 = 目标页 / 条目标题）。
     await draftRow.click({ button: 'right' });

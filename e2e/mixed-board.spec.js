@@ -62,7 +62,9 @@ test('混合板：点文档行 stage 变阅读器，点「画布」行回画布'
   await expect(page.frameLocator('#wb-board-panel [data-screen="spec"] .wb-doc-frame').locator('#spec-title'))
     .toHaveText('E2E mixed spec');
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeHidden();
-  await expect(page.locator('#wbcanvas-hud')).toBeHidden();
+  // 文档形态：横条中段（画布工具）收起，横条本体留着（2026-09-04 外壳重设计）
+  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
+  await expect(page.locator('#wbstrip')).toBeVisible();
   await expect(page.locator('#wboutline')).toHaveCount(0);
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toHaveAttribute('data-state', 'on');
 
@@ -80,7 +82,7 @@ test('混合板：点文档行 stage 变阅读器，点「画布」行回画布'
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wb-board-panel [data-screen="detail"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-doc-frame:visible')).toHaveCount(0);
-  await expect(page.locator('#wbcanvas-hud')).toBeVisible();
+  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
   await expect(page.locator('#wboutline')).toBeVisible();
   await expect.poll(() => page.url()).not.toContain('entry=');
 });

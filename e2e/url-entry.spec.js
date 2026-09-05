@@ -125,7 +125,8 @@ test('proxied page annotates into the entry bucket, driven by the sidebar', asyn
   expect(doc.path).toBe('/');
   expect(doc.annotations.map((a) => a.content)).toContain('url entry mark');
 
-  // 侧栏列表能看到这条标注。
+  // 弹出的标注列表能看到这条标注（2026-09-04：右栏取消常驻，点横条计数钮弹出）。
+  await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('url entry mark');
 });

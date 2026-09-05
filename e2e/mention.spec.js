@@ -106,7 +106,9 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   //    #ann-marks 里，不嵌在 frame 元素内 —— 这里按 overlay 计数 + 侧栏文本双断言）
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
+  await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list')).toContainText('文档里标：粉水比控件');
+  await page.locator('#wbann-count').click();
 
   // 7) 画布上再标一条（同 frame 另一元素）
   await page.locator('#wbann-toggle').click(); // 画布页 = 顶层实例，需单独开
