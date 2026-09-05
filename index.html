@@ -117,6 +117,13 @@
     font:var(--wb-t-body) var(--wb-font); color:var(--wb-fg);
   }
   .wb-search input::placeholder { color:var(--wb-faint); }
+  /* focus 环画在整格上，不画在格子里的输入框上 —— 全局 catch-all 落到 input
+     自己身上会在药丸里再套一个方框（框中框）。 */
+  .wb-search input:focus-visible { outline:none; }
+  .wb-search:focus-within {
+    outline:2px solid color-mix(in srgb, var(--wb-accent) 55%, transparent);
+    outline-offset:1px;
+  }
   .wb-search-kbd { flex:none; font:var(--wb-w-medium) 10.5px/1 var(--wb-font-mono); color:var(--wb-faint); }
 
   .wb-section-head {

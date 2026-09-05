@@ -63,8 +63,11 @@ export function scrollToGroup(groupId, options) {
 export function switchPage(id, options) {
   options = options || {};
   showTabs();
-  // Annotation API: section id within current board — or a top-level page id
-  if (SYSTEM_PAGES[id] || id === LIB_ID || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
+  // Annotation API: section id within current board — or a top-level page id.
+  // 认页面靠清单，不靠左栏有没有画出那一行 —— 2026-09-04 起模板页默认不显示，
+  // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。
+  if (SYSTEM_PAGES[id] || id === LIB_ID || pageEntry(wbGet().pageManifest, id)
+      || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
       if (first) {
