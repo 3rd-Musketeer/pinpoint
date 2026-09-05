@@ -2333,6 +2333,64 @@ test('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2
   await expect.poll(() => opacity('beans')).toBe('0');
 });
 
+// 切片 ③ 第 15 条的核查结论：选中本来就有 2px accent 实环 + 6px 淡晕，够看；
+// hover 什么都没有，鼠标在哪一帧全靠猜 —— 所以补的是 hover 那一档（2px accent
+// 30%），选中态照旧压过它。两者与标注的琥珀目标框天然分色：环是 accent、在机身
+// 外缘，标注框是琥珀、在元素上。
+test('画布 frame：hover 出淡 accent 环，选中压过它，都不与标注琥珀撞色（2026-09-04）', async ({ page }) => {
+  await openWorkbench(page);
+  const frame = page.locator('#wb-board-panel [data-screen="home"]');
+  const stage = frame.locator('.ios-stage');
+  // 环色不写字面 rgb：color-mix 的序列化形式不稳（同一个值在 rgba(...) 与
+  // color(srgb ...) 之间飘），拿一个同样写法的探针元素比，比的是「就是 accent
+  // 30%」而不是某一版 Chromium 的字符串。
+  const ring = () => stage.evaluate((node) => {
+    const probe = document.createElement('span');
+    probe.style.outlineColor = 'color-mix(in srgb, var(--wb-accent) 30%, transparent)';
+    document.body.appendChild(probe);
+    const accent30 = getComputedStyle(probe).outlineColor;
+    probe.remove();
+    const style = getComputedStyle(node);
+    return {
+      width: style.outlineWidth,
+      hovered: style.outlineColor === accent30,
+      clear: /(^rgba\(0, 0, 0, 0\)$)|(\/ 0\))/.test(style.outlineColor),
+      shadow: style.boxShadow,
+    };
+  });
+
+  // 常态：环在，但是透明的（淡入淡出的是 outline-color，见 index.html 注释）
+  await page.locator('#wbstrip-title').hover();
+  await expect.poll(async () => (await ring()).clear).toBe(true);
+  expect((await ring()).width).toBe('2px');
+
+  // hover：2px accent 30%。过渡是 --wb-dur，断言要等它落定 —— 中途取到的是插值色。
+  await stage.hover();
+  await expect.poll(async () => (await ring()).hovered).toBe(true);
+  expect((await ring()).width).toBe('2px');
+  expect((await ring()).shadow).not.toContain('rgb(91, 127, 166)'); // 还不是选中
+
+  // 选中：实心 accent 环接管，hover 的淡环让位（不叠两层）
+  await frame.locator('.wb-screen-cap').click();
+  await expect(frame).toHaveClass(/wb-sel/);
+  await expect.poll(async () => (await ring()).clear).toBe(true);
+  expect((await ring()).shadow).toContain('rgb(91, 127, 166)');
+
+  // 标注模式下环照旧在，且与琥珀目标框分色（accent 环 ≠ 琥珀框）
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await frame.locator('.ios-cell').first().click();
+  const box = page.locator('#ann-box');
+  await expect(box).toBeVisible();
+  const target = await page.locator('.ann-target').first().evaluate(
+    (node) => getComputedStyle(node).borderColor
+  );
+  expect(target).toContain('245, 166, 35');            // 琥珀
+  expect((await ring()).shadow).toContain('rgb(91, 127, 166)'); // 机身仍是 accent
+  await box.locator('#ann-cancel').click();
+  await page.evaluate(() => window.pinpoint.setMode(false));
+});
+
 test('first visit lands focused on the first frame at the 100% default zoom (2026-08-17 基准重定标)', async ({ page }) => {
   // 2026-08-17 基准重定标（owner 决定）：视觉 = zoom × 0.5（0.5 烘进基准），
   // zoom 轴 100% = 舒适默认（= 旧轴 50% 的视觉）。首访（无 pageViewports 存档）

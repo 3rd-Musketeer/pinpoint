@@ -179,7 +179,10 @@
     #wbstrip, #wbstrip *, #wbdock, #wbdock *,
     #wbcanvas-dock, #wbcanvas-dock *,
     .wb-frame-menu-shell, .wb-frame-menu-shell *, .wb-export-dialog, .wb-export-dialog *,
-    .wb-library .wb-screen-dim {
+    .wb-library .wb-screen-dim,
+    .wb-library .wb-screen .ios-stage,
+    .wb-library .wb-screen .wb-comp-stage,
+    .wb-library .wb-screen .wb-doc-stage {
       transition:none !important;
     }
     .wb-frame-flash { animation:none !important; }
@@ -491,6 +494,27 @@
   .wb-screen.wb-sel .wb-doc-stage {
     box-shadow:0 0 0 2px var(--wb-accent), 0 0 0 6px color-mix(in srgb, var(--wb-accent) 14%, transparent);
   }
+  /* hover 环（2026-09-04 切片 ③ 第 15 条核查的结论）：选中本来就有环，hover 什么
+     都没有 —— 鼠标在哪一帧上全靠猜。补一档 2px accent 30% 的淡环，选中态压过它。
+     用 outline 不用 box-shadow：doc / 组件机身自带 --wb-sh-board，box-shadow 会
+     把那层板影一起顶掉（选中态那条规则就是这么做的，本条不再扩大这个代价）。
+     常态是 2px 透明环、只淡入淡出 outline-color —— 直接在 :hover 上写整条 outline
+     会让过渡从 currentColor（正文色）起步，扫过时先闪一下深灰。
+     和标注的琥珀框天然分色：环是 accent、在机身外缘；标注目标框是琥珀、在元素上。 */
+  .wb-library .wb-screen .ios-stage,
+  .wb-library .wb-screen .wb-comp-stage,
+  .wb-library .wb-screen .wb-doc-stage {
+    outline:2px solid transparent; outline-offset:0;
+    transition:outline-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-library .wb-screen:hover .ios-stage,
+  .wb-library .wb-screen:hover .wb-comp-stage,
+  .wb-library .wb-screen:hover .wb-doc-stage {
+    outline-color:color-mix(in srgb, var(--wb-accent) 30%, transparent);
+  }
+  .wb-library .wb-screen.wb-sel:hover .ios-stage,
+  .wb-library .wb-screen.wb-sel:hover .wb-comp-stage,
+  .wb-library .wb-screen.wb-sel:hover .wb-doc-stage { outline-color:transparent; }
   .wb-lib-item.wb-sel > .wb-lib-cap { color:var(--wb-accent); }
   /* Detail 面板（右栏上段，app/DetailPanel.jsx）：note 视图/编辑器皮肤。
      行内按钮与状态行沿用被收编的画布 Frame Note 视觉语言。 */
