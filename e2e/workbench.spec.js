@@ -2067,15 +2067,42 @@ test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互�
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeVisible();
 
-  // 阅读器形态：文档不是画布，挪不开 —— stage 让开左栏与横条，文档整幅可见。
+  // 阅读器形态（owner 2026-09-05 裁决，取代 09-04 的「stage 让开左栏与横条」）：
+  // 文档 1:1 铺满整个视口，玻璃面板与横条压在文档上，和画布页一模一样 ——
+  // 文档底下不露画布。判据：doc iframe 矩形 = 视口；面板与横条的矩形都落在
+  // 它里面；面板中心 elementFromPoint 命中的是面板自己（浮在文档之上）。
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
-  await expect.poll(() => page.evaluate(() => {
-    const stage = document.querySelector('#wbstage').getBoundingClientRect();
-    const side = document.querySelector('#wbside').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    return { clearOfSide: Math.round(stage.left - side.right), clearOfStrip: Math.round(stage.bottom - strip.top) };
-  })).toEqual({ clearOfSide: 12, clearOfStrip: -12 });
+  const docGeom = () => page.evaluate(() => {
+    const r = (sel) => {
+      const b = document.querySelector(sel).getBoundingClientRect();
+      return { left: Math.round(b.left), top: Math.round(b.top), right: Math.round(b.right), bottom: Math.round(b.bottom) };
+    };
+    const doc = r('#wb-board-panel .wb-doc-frame');
+    const side = r('#wbside');
+    const strip = r('#wbstrip');
+    const inside = (a) => a.left >= doc.left && a.top >= doc.top && a.right <= doc.right && a.bottom <= doc.bottom;
+    const sideEl = document.querySelector('#wbside');
+    const hit = side.right > side.left
+      ? document.elementFromPoint((side.left + side.right) / 2, (side.top + side.bottom) / 2)
+      : null;
+    return {
+      doc, sideWidth: side.right - side.left, vw: window.innerWidth, vh: window.innerHeight,
+      sideInside: inside(side), stripInside: inside(strip),
+      panelAboveDoc: !!hit && sideEl.contains(hit),
+    };
+  });
+  await expect.poll(docGeom).toMatchObject({ sideInside: true, stripInside: true, panelAboveDoc: true });
+  const d = await docGeom();
+  expect(d.doc).toEqual({ left: 0, top: 0, right: d.vw, bottom: d.vh });
+  expect(d.sideWidth).toBeGreaterThan(0);
+
+  // 收起面板：文档矩形不变（本来就满铺，没有东西要收回来），横条仍在文档上。
+  await page.locator('#wbside-toggle').click();
+  await expect.poll(async () => (await docGeom()).sideWidth).toBe(0);
+  const e = await docGeom();
+  expect(e.doc).toEqual({ left: 0, top: 0, right: e.vw, bottom: e.vh });
+  expect(e.stripInside).toBe(true);
 });
 
 test('左栏 splitter 拖宽 / 折叠偏好在浮动面板上照旧（ADR 0016 左栏那一半）', async ({ page }) => {

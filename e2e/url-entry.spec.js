@@ -63,7 +63,11 @@ test('url entry appears as a workbench page and renders live through the proxy',
     (el) => el.ownerDocument.defaultView.getComputedStyle(el).backgroundImage,
   )).toContain('/sites/e2e-proxy/assets/bg.png');
 
-  // 交互活着：按钮点击走页面自己的 JS。
+  // 交互活着：按钮点击走页面自己的 JS。文档 1:1 满铺、左栏浮在文档上
+  // （owner 2026-09-05 裁决），fixture 的按钮在左上角正好压在面板底下 ——
+  // 被压住的正文靠收起面板来看，这里也照这条规则先收起再点。
+  await page.locator('#wbside-toggle').click();
+  await expect.poll(() => page.locator('#wbside').evaluate((el) => Math.round(el.getBoundingClientRect().width))).toBe(0);
   await doc.locator('#btn').click();
   await expect(doc.locator('#btn')).toHaveText('clicked');
 
