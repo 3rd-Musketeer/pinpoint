@@ -22,8 +22,23 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
-import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../src/server/lib/registry.js';
-import { addRegistryEntry, listRegistryEntries, renameRegistryEntry, updateRegistryEntry } from '../src/server/lib/registry-store.js';
+import { localManifestPageIds as manifestPageIds } from '../src/server/lib/page-manifest.js';
+import {
+  defaultEntries,
+  defaultRegistryPath,
+  ENTRY_ID_PATTERN,
+  FOLDER_ID_PATTERN,
+  PAGE_ID_PATTERN,
+} from '../src/server/lib/registry.js';
+import {
+  addRegistryEntry,
+  listRegistryEntries,
+  listRegistryGrouping,
+  renameRegistryEntry,
+  setEntryFolder,
+  updateRegistryEntry,
+  writeRegistryFolders,
+} from '../src/server/lib/registry-store.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 /** 服务在 portless 里的注册名 / 主机名（`portless run --name pinpoint`）。 */
@@ -40,16 +55,30 @@ const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
 const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page']);
 const BOOLEAN_FLAGS = new Set(['draft']);
-// 每个命令接受的选项与位置参数个数。
+// 每个命令接受的选项与位置参数个数。folder 的位置参数个数按子命令定（见
+// FOLDER_SUBCOMMANDS），所以它的 positional 是 null = 由子命令自己校验。
 const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
+  folder: { positional: null, flags: new Set(['registry', 'id']) },
   status: { positional: 0, flags: new Set() },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
   restart: { positional: 0, flags: new Set() },
 };
+
+// `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
+// workbench 的拖放走服务端写接口，CLI 是同一份登记表的另一个入口。
+const FOLDER_SUBCOMMANDS = {
+  list: { positional: 0, flags: new Set(['registry']) },
+  add: { positional: 1, flags: new Set(['registry', 'id']) },
+  rename: { positional: 2, flags: new Set(['registry']) },
+  rm: { positional: 1, flags: new Set(['registry']) },
+  move: { positional: 2, flags: new Set(['registry']) },
+};
+/** `pinpoint folder move <id> none` = 拖出文件夹（散页）。 */
+const NO_FOLDER = 'none';
 
 export class CliError extends Error {}
 
@@ -57,6 +86,7 @@ export const USAGE = `用法：
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
+  pinpoint folder <list|add|rename|rm|move> …          左栏的一层分组（详见下面 folder 一节）
   pinpoint status                                      服务体检（路由 / 进程 / 健康 / root / registry）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
@@ -90,6 +120,18 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
                    把两个条目合并成一个 = rename + move（先把其中一个改成目标 id
                    之外的名字，再 move 到同一个落点）。
 
+folder —— 左栏的一层分组（不嵌套；workbench 里拖放写的是同一份登记表，CLI 是另一个入口）：
+  pinpoint folder list                      列出文件夹：id / 名称 / 页数 / 是否折叠
+  pinpoint folder add <名称> [--id xxx]     建一个夹（id 默认由名称 slug 派生；中文名派生不出，用 --id）
+  pinpoint folder rename <id> <新名称>      只改显示名，id 不变（条目的归属引用不用动）
+  pinpoint folder rm <id>                   删夹。**夹里的页不会被删**：它们丢掉归属变成散页
+  pinpoint folder move <页 id> <夹 id>      把一个页放进夹；夹 id 写 ${NO_FOLDER} = 移出来变散页
+                                            页 id 可以是 registry 条目 id，也可以是本地 manifest 页 id
+
+选项（folder）：
+  --registry 路径  同上（list 之外的子命令要求登记表已经存在）
+  --id xxx         只用于 folder add：显式指定新夹的 id
+
   -h, --help       显示本说明
 
 环境变量：
@@ -104,7 +146,7 @@ export function parseArgs(argv) {
   const args = [...argv];
   if (args.includes('-h') || args.includes('--help')) return { help: true };
   const command = args.shift();
-  if (!command) throw new CliError('缺少命令（add / move / rename / status / start / stop / restart）');
+  if (!command) throw new CliError('缺少命令（add / move / rename / folder / status / start / stop / restart）');
   const spec = COMMANDS[command];
   if (!spec) throw new CliError(`未知命令：${command}`);
   const flags = {};
@@ -134,6 +176,7 @@ export function parseArgs(argv) {
     }
     flags[name] = value;
   }
+  if (command === 'folder') return parseFolderArgs(positional, flags);
   if (positional.length !== spec.positional) {
     throw new CliError(positionalProblem(command, spec.positional, positional.length));
   }
@@ -141,6 +184,23 @@ export function parseArgs(argv) {
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
   return { command, flags };
+}
+
+/** folder 的子命令层：第一个位置参数是子命令，其余按子命令的固定个数校验。 */
+function parseFolderArgs(positional, flags) {
+  const [sub, ...args] = positional;
+  if (!sub) {
+    throw new CliError(`folder 需要一个子命令（${Object.keys(FOLDER_SUBCOMMANDS).join(' / ')}）`);
+  }
+  const spec = FOLDER_SUBCOMMANDS[sub];
+  if (!spec) throw new CliError(`未知子命令：folder ${sub}（可用：${Object.keys(FOLDER_SUBCOMMANDS).join(' / ')}）`);
+  for (const name of Object.keys(flags)) {
+    if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 folder ${sub}`);
+  }
+  if (args.length !== spec.positional) {
+    throw new CliError(`folder ${sub} 需要 ${spec.positional} 个参数，收到 ${args.length} 个`);
+  }
+  return { command: 'folder', sub, args, flags };
 }
 
 function positionalProblem(command, want, got) {
@@ -283,24 +343,10 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
   return entry;
 }
 
-/** 本地 manifest 页 id 列表（_index.local.json 优先，缺失回落 tracked _index.json；
-    与 workbench loadPageManifest 同源）。文件损坏时返回 []——页面归属校验随之
-    只认 registry 条目，报错比静默写坏 registry 好。 */
+/** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端的
+    文件夹写接口用的是同一份）。缺省读本 CLI 所在仓库。 */
 export function localManifestPageIds(root = REPO_ROOT) {
-  for (const name of ['_index.local.json', '_index.json']) {
-    const file = path.join(root, 'content', 'previews', name);
-    if (!fs.existsSync(file)) continue;
-    try {
-      const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
-      if (doc && Array.isArray(doc.pages)) {
-        return doc.pages.map((page) => page && page.id).filter((id) => typeof id === 'string');
-      }
-      return []; // 存在的 manifest 损坏 = 诚实空列表（workbench 同样会报错）
-    } catch {
-      return [];
-    }
-  }
-  return [];
+  return manifestPageIds(root);
 }
 
 /**
@@ -536,7 +582,7 @@ async function reloadService({ env, requestFn, registryPath, out, err }) {
     const health = await requestFn(`${origin}/health`);
     if (health.status !== 200) throw new Error(`health ${health.status}`);
   } catch {
-    err('pinpoint 服务未在跑；条目已登记，下次启动生效。');
+    err('pinpoint 服务未在跑；已写入 registry，下次启动生效。');
     return false;
   }
   try {
@@ -544,7 +590,7 @@ async function reloadService({ env, requestFn, registryPath, out, err }) {
     if (res.status !== 200 || !res.json) throw new Error(`reload ${res.status}`);
     const summary = res.json;
     if (summary.path && summary.path !== registryPath) {
-      err(`注意：服务在用的 registry 是 ${summary.path}，与本次写入的不是同一个文件；该条目要等服务重启或换用同一 registry 才生效。`);
+      err(`注意：服务在用的 registry 是 ${summary.path}，与本次写入的不是同一个文件；本次写入要等服务重启或换用同一 registry 才生效。`);
       return false;
     }
     out(`服务已重载（registry 共 ${summary.entries} 条）。`);
@@ -693,6 +739,217 @@ export async function runRename(argv, io = {}) {
 
   out(`registry：${plan.registryPath}`);
   // ④ 重载
+  await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
+
+/* ============================== folder（分组） ==============================
+   2026-09-04 裁决 5a：owner 自己建夹、把页拖进去，一层不嵌套。拖放在 workbench
+   里做（走服务端的三个 PUT），CLI 是同一份登记表的另一个入口——建夹 / 改名 /
+   删夹 / 归属，都是「全部校验 → 一次原子写 → 重载服务」，与 rename 同一套姿态。
+   删夹永远不删页：夹里的页丢掉归属变成散页。 */
+
+/** 文件夹的显示名（缺省等于 id，与读侧 normalizeFolder 同一条规则）。 */
+function folderName(folder) {
+  return folder && typeof folder.name === 'string' && folder.name ? folder.name : folder && folder.id;
+}
+
+function knownFolderList(folders) {
+  const ids = folders.map((folder) => folder && folder.id).filter(Boolean);
+  return ids.length ? `（现有：${ids.join('、')}）` : '（一个夹都还没有）';
+}
+
+/** 新建一个夹（纯函数）：返回 { folder, folders }（folders = 要整表写回的新列表）。 */
+export function buildFolderAdd(name, flags = {}, { folders = [] } = {}) {
+  const label = String(name == null ? '' : name).trim();
+  if (!label) throw new CliError('文件夹名不能为空');
+  let id;
+  if (flags.id) {
+    if (!FOLDER_ID_PATTERN.test(flags.id)) {
+      throw new CliError(`--id 必须匹配 ${FOLDER_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${flags.id}`);
+    }
+    id = flags.id;
+  } else {
+    const slug = slugify(label);
+    // 中文名 slug 化后是空串——不猜，让 owner 显式给 id（与 add 同一条规矩）。
+    if (!slug) throw new CliError(`无法从「${label}」派生 id，请用 --id 显式指定`);
+    id = slug;
+  }
+  const clash = folders.find((folder) => folder && folder.id === id);
+  if (clash) {
+    throw new CliError(
+      `文件夹 id 已存在：${id}（名称「${folderName(clash)}」）；改名用 \`pinpoint folder rename ${id} <新名称>\`，要另一个夹请显式 \`--id <其他 id>\``,
+    );
+  }
+  const folder = { id, name: label };
+  return { folder, folders: [...folders, folder] };
+}
+
+/** 改一个夹的显示名（纯函数）：id 不变，条目的 folder 引用因此不用动。 */
+export function buildFolderRename(id, name, { folders = [] } = {}) {
+  const before = folders.find((folder) => folder && folder.id === id);
+  if (!before) throw new CliError(`文件夹不存在：${id}${knownFolderList(folders)}`);
+  const label = String(name == null ? '' : name).trim();
+  if (!label) throw new CliError('文件夹名不能为空');
+  const after = { ...before, name: label };
+  return { before, after, folders: folders.map((folder) => (folder && folder.id === id ? after : folder)) };
+}
+
+/** 删一个夹（纯函数）：只从 folders[] 里去掉它；夹里的页由写侧释放成散页。 */
+export function buildFolderRemove(id, { folders = [] } = {}) {
+  const removed = folders.find((folder) => folder && folder.id === id);
+  if (!removed) throw new CliError(`文件夹不存在：${id}${knownFolderList(folders)}`);
+  return { removed, folders: folders.filter((folder) => folder && folder.id !== id) };
+}
+
+/**
+ * 一个页进夹 / 出夹（纯函数）：id 必须是 registry 条目或本地 manifest 页，
+ * 目标夹必须已经存在（`none` = 拖出来变散页）。校验全在这里，写侧只落盘。
+ */
+export function buildFolderMove(id, folderArg, { folders = [], entryIds = [], pageIds = [] } = {}) {
+  if (typeof id !== 'string' || !PAGE_ID_PATTERN.test(id)) {
+    throw new CliError(`页 id 不合法（必须匹配 ${PAGE_ID_PATTERN}）：${JSON.stringify(id)}`);
+  }
+  if (!entryIds.includes(id) && !pageIds.includes(id)) {
+    throw new CliError(`未知的页：${id}（既不是 registry 条目，也不是本地 manifest 页）`);
+  }
+  const kind = entryIds.includes(id) ? 'entry' : 'page';
+  if (folderArg === NO_FOLDER) return { id, kind, folder: null };
+  if (typeof folderArg !== 'string' || !FOLDER_ID_PATTERN.test(folderArg)) {
+    throw new CliError(`文件夹 id 不合法（要么匹配 ${FOLDER_ID_PATTERN}，要么是 ${NO_FOLDER} = 移出文件夹）：${JSON.stringify(folderArg)}`);
+  }
+  if (!folders.some((folder) => folder && folder.id === folderArg)) {
+    throw new CliError(
+      `文件夹不存在：${folderArg}${knownFolderList(folders)}；先 \`pinpoint folder add <名称> --id ${folderArg}\``,
+    );
+  }
+  return { id, kind, folder: folderArg };
+}
+
+/**
+ * `folder list` 的行（纯函数）：夹的顺序就是文件里的顺序（workbench 拖动重排
+ * 时整表写回，文件顺序即左栏顺序）。count = 指着这个夹的 registry 条目数
+ * + pageFolders 里指着它的 manifest 页数。
+ */
+export function folderRows({ folders = [], entries = [], pageFolders = {} } = {}) {
+  return folders.map((folder) => {
+    const fromEntries = entries.filter((entry) => entry && entry.folder === folder.id).length;
+    const fromPages = Object.values(pageFolders).filter((value) => value === folder.id).length;
+    return {
+      id: folder.id,
+      name: folderName(folder),
+      count: fromEntries + fromPages,
+      collapsed: folder.collapsed === true,
+    };
+  });
+}
+
+const FOLDER_TABLE_HEAD = { id: 'id', name: '名称', count: '页数', collapsed: '折叠' };
+
+/** 文件夹表（一屏）。全角按两列算，与状态表同一套对齐。 */
+export function formatFolderList(rows) {
+  if (!rows.length) return ['（还没有文件夹；`pinpoint folder add <名称>` 建一个）'];
+  const cells = [FOLDER_TABLE_HEAD, ...rows].map((row) => ({
+    id: String(row.id),
+    name: String(row.name),
+    count: String(row.count),
+    collapsed: row.collapsed === true ? '是' : (row.collapsed === false ? '—' : String(row.collapsed)),
+  }));
+  const width = (key) => Math.max(...cells.map((row) => displayWidth(row[key])));
+  return cells.map((row) =>
+    `  ${padWide(row.id, width('id'))}  ${padWide(row.name, width('name'))}  ${padWide(row.count, width('count'))}  ${row.collapsed}`);
+}
+
+/** 分组层的现状 + 条目（预检读侧）。 */
+function groupingStateFor(registryPath) {
+  const grouping = listRegistryGrouping(registryPath);
+  return { ...grouping, entries: listRegistryEntries(registryPath) };
+}
+
+/** parse + 读现状 + 构造，返回一次 folder 子命令的全部输入（不写盘、不联网）。 */
+export function planFolder(argv, { cwd = process.cwd(), env = process.env, pageIds } = {}) {
+  const parsed = parseArgs(argv);
+  if (parsed.help) return parsed;
+  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+  const exists = fs.existsSync(registryPath);
+  if (parsed.sub === 'list') {
+    const state = exists ? groupingStateFor(registryPath) : { folders: [], entries: [], pageFolders: {} };
+    return { ...parsed, registryPath, rows: folderRows(state) };
+  }
+  // 写子命令不给不存在的登记表播种：整表写回不带 pinpoint 默认条目，会写出一份
+  // 没有 workbench 自己那条的登记表。先 `pinpoint add` 才有页可分组。
+  if (!exists) {
+    throw new CliError(`registry 文件还不存在：${registryPath}；先 \`pinpoint add …\` 登记一个条目，再建文件夹（夹是给页分组的）`);
+  }
+  const state = groupingStateFor(registryPath);
+  if (parsed.sub === 'add') {
+    return { ...parsed, registryPath, ...buildFolderAdd(parsed.args[0], parsed.flags, state) };
+  }
+  if (parsed.sub === 'rename') {
+    return { ...parsed, registryPath, ...buildFolderRename(parsed.args[0], parsed.args[1], state) };
+  }
+  if (parsed.sub === 'rm') {
+    return { ...parsed, registryPath, ...buildFolderRemove(parsed.args[0], state) };
+  }
+  const known = pageIds || localManifestPageIds();
+  const move = buildFolderMove(parsed.args[0], parsed.args[1], {
+    folders: state.folders,
+    entryIds: state.entries.map((entry) => entry && entry.id),
+    pageIds: known,
+  });
+  return { ...parsed, registryPath, move, pageIds: known };
+}
+
+/**
+ * 执行一次 folder 子命令：list 只读；其余都是一次原子写 → 探活 → 可达则 reload
+ * （与 add / move / rename 同一条即时生效路径，打开着的 workbench 立刻重排左栏）。
+ */
+export async function runFolder(argv, io = {}) {
+  const { cwd, env, out, err, requestFn } = ioOf(io);
+
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  let plan;
+  try {
+    plan = planFolder(argv, { cwd, env });
+  } catch (error) {
+    err(`${error instanceof CliError ? '错误' : '文件夹操作失败'}：${error.message}`);
+    return 1;
+  }
+
+  if (plan.sub === 'list') {
+    out(`registry：${plan.registryPath}`);
+    for (const line of formatFolderList(plan.rows)) out(line);
+    return 0;
+  }
+
+  try {
+    if (plan.sub === 'add') {
+      writeRegistryFolders(plan.registryPath, plan.folders);
+      out(`已建文件夹 ${plan.folder.id}（${plan.folder.name}）；把页放进来用 \`pinpoint folder move <页 id> ${plan.folder.id}\``);
+    } else if (plan.sub === 'rename') {
+      writeRegistryFolders(plan.registryPath, plan.folders);
+      out(`已改名文件夹 ${plan.after.id}：${folderName(plan.before)} → ${plan.after.name}`);
+    } else if (plan.sub === 'rm') {
+      const result = writeRegistryFolders(plan.registryPath, plan.folders);
+      const released = [...result.releasedEntries, ...result.releasedPages];
+      out(`已删文件夹 ${plan.removed.id}（${folderName(plan.removed)}）`);
+      out(released.length
+        ? `  夹里的 ${released.length} 个页没有被删，变成散页：${released.join('、')}`
+        : '  夹是空的，没有页要释放');
+    } else {
+      const result = setEntryFolder(plan.registryPath, plan.move.id, { folder: plan.move.folder }, { pageIds: plan.pageIds });
+      const where = result.kind === 'entry' ? 'registry 条目' : '本地 manifest 页（归属记在 pageFolders）';
+      out(plan.move.folder
+        ? `已把 ${result.id} 放进文件夹 ${plan.move.folder}（${where}）`
+        : `已把 ${result.id} 移出文件夹，现在是散页（${where}）`);
+    }
+  } catch (error) {
+    err(`文件夹操作失败：${error.message}`);
+    return 1;
+  }
+  out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;
 }
@@ -1017,6 +1274,7 @@ export async function run(argv, io = {}) {
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
+    case 'folder': return runFolder(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);

@@ -227,6 +227,20 @@ export function listRegistryFolders(registryPath) {
   return foldersOf(readRegistryDoc(registryPath));
 }
 
+/**
+ * 分组层的现状，一次读出来（CLI 的预检读侧：`pinpoint folder list` 要数每个夹
+ * 里有几个页，写子命令要在动手前知道有哪些夹）。folders 原样，两张 page 映射
+ * 是浅拷贝。文件损坏时抛——预检阶段就报错，比写坏登记表好。
+ */
+export function listRegistryGrouping(registryPath) {
+  const doc = readRegistryDoc(registryPath);
+  return {
+    folders: foldersOf(doc),
+    pageFolders: pageMapOf(doc, 'pageFolders'),
+    pageOrder: pageMapOf(doc, 'pageOrder'),
+  };
+}
+
 function foldersOf(doc) {
   return Array.isArray(doc.folders) ? doc.folders.filter((folder) => folder && typeof folder === 'object') : [];
 }
