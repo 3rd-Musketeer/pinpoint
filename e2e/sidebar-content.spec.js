@@ -225,3 +225,24 @@ test('夹内拖排序只在「默认」档写 order；右键菜单是拖放之�
   await page.locator('[data-move-out="e2e-mention"]').click();
   await expect(page.locator('#wbpages .wb-loose [data-vpage="e2e-mention"]')).toHaveCount(1);
 });
+
+// 页面行行首不放类型图标（owner 2026-09-05：「有的 item 有 icon，有的没有，
+// icon 是什么意思呢」）。类型只在横条的类型标上出现；文件夹行的 chevron + 夹图标
+// 是结构不是类型，不在这条里。
+test('页面行没有类型图标：url 页与 dir 页的标题从同一处起，类型只在横条类型标上（2026-09-05）', async ({ page }) => {
+  await openWorkbench(page);
+  // 页面行 / 最近行不含任何 svg，也没有占位槽。
+  await expect(page.locator('#wbpages .wb-page svg, #wbpages .wb-page .wb-row-slot, #wbside .wb-recent svg'))
+    .toHaveCount(0);
+  // 几何（AGENTS「坑与约定」：布局断言比 bounding box）：标题左缘 = 行左缘 + 8px
+  // 内边距，url 页（e2e-site）与 dir 页（e2e-dir / e2e-mixed）一样。
+  const offsets = await page.evaluate(() => Object.fromEntries(['e2e-site', 'e2e-dir', 'e2e-mixed'].map((id) => {
+    const row = document.querySelector(`#wbpages [data-vpage="${id}"]`);
+    const title = row.querySelector('.wb-row-t');
+    return [id, Math.round(title.getBoundingClientRect().left - row.getBoundingClientRect().left)];
+  })));
+  expect(offsets).toEqual({ 'e2e-site': 8, 'e2e-dir': 8, 'e2e-mixed': 8 });
+  // 类型仍看得见，只是搬到了横条：选中 url 页 → 类型标「网页」。
+  await page.locator('#wbpages [data-vpage="e2e-site"]').click();
+  await expect(page.locator('#wbstrip-kind')).toHaveText('网页');
+});

@@ -1,7 +1,7 @@
 // Workbench 图标数据 — lucide iconNode 表 + hero gear path。纯数据、DOM-free：
 // 命令式挂载器（workbench-icons.js，服务静态标记）与 React 组件
 // （app/WbIcon.jsx，服务出壳 chrome）共用这一份，两个渲染路径不得各自抄表。
-import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, Folder, FolderPlus, Globe } from 'lucide';
+import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, Folder, FolderPlus } from 'lucide';
 
 export var ICONS = {
   pencil: Pencil,
@@ -33,11 +33,10 @@ export var ICONS = {
   // Pages 段头排序切换（2026-08-17g）：default → 最近更新 → 名称循环
   sort: ArrowUpDown,
   // 左栏内容（2026-09-04 切片 ②，评审板 C1）：搜索框、文件夹行的夹图标与
-  // 「新建文件夹」、页面行的类型小标（url = 地球，file = 文档，见 file-text）。
+  // 「新建文件夹」。页面行的类型小标（globe / file-text）2026-09-05 撤，globe 随之下架。
   search: Search,
   folder: Folder,
-  'folder-plus': FolderPlus,
-  globe: Globe
+  'folder-plus': FolderPlus
 };
 
 // Heroicons v2 solid cog-6-tooth — filled gears stay crisp at toolbar sizes.

@@ -356,7 +356,7 @@ function registryToPages(data) {
       mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
       // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
       // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
-      // 2026-09-04 起也是页面行类型小标（globe / doc）的来源。
+      // 也是横条类型标（画布 / 网页 / 文档）的来源；页面行不再画类型小标（2026-09-05）。
       kind: entry.kind,
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
       // url 条目无此字段 → null，排序沉底、行内不显示时间）。

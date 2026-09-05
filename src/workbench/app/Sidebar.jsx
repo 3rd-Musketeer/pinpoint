@@ -47,8 +47,9 @@
 //  - 「页面」段 = 文件夹在前、散页在后（lib/page-groups.js 的纯函数给模型，
 //    ADR 0032）；夹可折叠、可改名、可删（删夹不删页）；页靠拖放入夹，夹内在
 //    「默认」档可拖排序。三条写接口在 lib/folder-api.js。
-//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：类型小标（url = 地球，
-//    file = 文档）占行首 14px 槽，没有类型的页留空槽让标题对齐；行尾 11 mono。
+//  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首不放图标，
+//    标题从行的左内边距起（类型小标 2026-09-05 撤，类型只在横条的类型标上出现）；
+//    只有文件夹行带 chevron + 夹图标，那是结构不是类型；行尾 11 mono。
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
@@ -194,14 +195,6 @@ function SearchField(props) {
   );
 }
 
-/* 行首 14px 槽：url 条目出地球、file 条目出文档，其余（dir 条目 / 模板页）留空槽
-   —— 槽宽恒定，标题才对得齐（2026-09-04 切片 ② 第 10 条）。 */
-function KindGlyph(props) {
-  if (props.kind === 'url') return <WbIcon name="globe" size={14} className="wb-row-glyph" />;
-  if (props.kind === 'file') return <WbIcon name="file-text" size={14} className="wb-row-glyph" />;
-  return <span className="wb-row-slot" aria-hidden="true"></span>;
-}
-
 function PageRow(props) {
   var page = props.page;
   var system = !!page.system;
@@ -215,7 +208,10 @@ function PageRow(props) {
   // 2026-08-16f 阶段 7：Page 去类型化 —— 行只剩标题；壳标 pill 与
   // data-page-mode 已撤，类型信息下移到「内容」区产物条目的 tag。
   // 2026-08-17：行尾 hover copy 钮退役，复制 / 重命名进右键菜单（row-menu）。
-  // 2026-09-04：行首回来一个 14px 类型槽（url / file 才画图标），行尾 11 mono。
+  // 2026-09-04：行尾 11 mono 元数据。同日切片 ② 曾在行首放一个 14px 类型槽
+  // （url 出地球、file 出文档、其余留空），2026-09-05 owner 否掉：「有的 item 有
+  // icon，有的没有，icon 是什么意思呢」。页面行行首没有任何图标，标题一律从行的
+  // 左内边距起；类型只在横条的类型标（画布 / 网页 / 文档）上出现。
 
   useEffect(function () {
     if (renaming && inputRef.current) {
@@ -310,7 +306,6 @@ function PageRow(props) {
           doneRef.current = false;
           setRenaming(true);
         }}>
-        <KindGlyph kind={page.kind} />
         {renaming ? (
           <Input ref={inputRef} type="text" aria-label="重命名页面"
             className="wb-page-rename h-auto flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
@@ -433,7 +428,6 @@ function RecentRow(props) {
       data-state={active ? 'on' : undefined}
       className={cn('wb-row wb-recent', active && 'on')}
       onClick={function () { showTabs(); setActivePage(page.id); }}>
-      <KindGlyph kind={page.kind} />
       <span className="wb-row-t">{title}</span>
       <span className="wb-row-m">{formatRelativeTime(props.at, props.now)}</span>
     </button>

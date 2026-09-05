@@ -84,7 +84,7 @@
 
   /* ── 左栏内容（2026-09-04 切片 ②，评审板 C1；结构在 app/Sidebar.jsx）──
      head → 搜索框 → 段（最近 / 页面 / 内容）→ 行。行的几何与皮肤集中在这里，
-     不散进 Tailwind 类：一行同时要装类型槽、缩进、选中/hover/落点三态和
+     不散进 Tailwind 类：一行同时要装结构图标、缩进、选中/hover/落点三态和
      行尾元数据，用 utility 拼会把「一行长什么样」拆成十几处。 */
   #wbside .wb-head {
     flex:none; display:flex; align-items:center; gap:6px;
@@ -149,6 +149,8 @@
   .wb-row:hover { background:var(--wb-hover); }
   .wb-row.on, .wb-row.on:hover { background:var(--wb-sel); font-weight:var(--wb-w-semibold); }
   .wb-row-glyph { width:14px; height:14px; flex:none; color:var(--wb-faint); }
+  /* 只剩「新建文件夹」一行用：把 folder-plus 图标对到文件夹行的夹图标那一列。
+     页面行行首没有槽（2026-09-05 类型小标撤，标题一律从 8px 内边距起）。 */
   .wb-row-slot { width:14px; flex:none; }
   .wb-row-chv { width:12px; height:12px; flex:none; color:var(--wb-faint); }
   .wb-row-t { flex:1; min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
@@ -156,8 +158,8 @@
     flex:none; font:var(--wb-w-regular) 11px/1 var(--wb-font-mono);
     color:var(--wb-faint); font-variant-numeric:tabular-nums;
   }
-  /* 夹内的页：缩进一档，类型槽仍在（标题跨夹内夹外对得齐）。 */
-  .wb-row.ind { padding-left:32px; }
+  /* 夹内的页：标题对到文件夹行的夹名那一列（8 + chevron 12 + 7 + 夹图标 14 + 7）。 */
+  .wb-row.ind { padding-left:48px; }
   /* 落点（C1）：入夹 = 整行一圈 accent 内描边；夹内重排 = 目标行上/下沿一条线。 */
   .wb-row.drop { box-shadow:inset 0 0 0 1px var(--wb-accent); }
   .wb-row[data-drop-hint]::after {
