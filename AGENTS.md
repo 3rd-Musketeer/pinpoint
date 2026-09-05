@@ -33,6 +33,16 @@ kit 的 CSS/JS 不依赖框架；**workbench** 需要 Vite + Lucide（`npm insta
 
 `just check` 跑 e2e 时带 `PREVIEW_TEMPLATE_ONLY=1`，所以实例本地的页面和组件不会影响断言。
 
+**两轮 e2e 可以同时跑，靠 `E2E_PORT` 分家**（`E2E_PORT=5399 npx playwright test`）。
+一个端口一套固件：webServer 端口、代理上游端口（`E2E_PORT + 10`）、标注数据根与 registry
+（`$TMPDIR/pinpoint-playwright-<port>/`）、以及仓内的 `test-results-<port>/` 与
+`playwright-report-<port>/` 全从这一个数推导（`e2e/env.js`，单测 `e2e/env.test.js`）。
+默认端口 5299 那一轮的路径和以前一样，不带后缀。别用 `mkdtempSync`：`e2e/env.js` 会被
+playwright 的 runner、worker、globalSetup 各加载一次，随机名字几份对不上；端口是这几个进程
+唯一共享的输入。产物目录也必须分家——共用 `test-results/` 时两边同时写同一个 trace zip，
+报出来的是「file data stream has unexpected number of bytes」，读起来完全不像并发冲突。
+所以在别人也在跑 e2e 的机器上，跑一个自己的端口，不要占默认端口。
+
 **站点打不开，第一件事是 `pinpoint status`**——不要先猜、也不要先 `ps`：
 
 ```bash
