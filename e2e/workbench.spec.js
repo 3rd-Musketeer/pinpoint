@@ -256,8 +256,9 @@ test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page })
     'E2E Mixed',
   ]);
 
-  // 去类型反回归：Page 行不再携带任何类型信息（pill / data-page-mode 均为零）。
-  await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(0);
+  // 类型信息只以图标出现，不再有 pill / data-page-mode。
+  // 2026-09-05：每行一个类型图标（画布 / 文档 / 网页），数量 = 行数。
+  await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(await page.locator('#wbpages .wb-page').count());
   await expect(page.locator('#wbpages .wb-page[data-page-mode]')).toHaveCount(0);
 
   // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。

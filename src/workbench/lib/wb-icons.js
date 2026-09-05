@@ -1,7 +1,7 @@
 // Workbench 图标数据 — lucide iconNode 表 + hero gear path。纯数据、DOM-free：
 // 命令式挂载器（workbench-icons.js，服务静态标记）与 React 组件
 // （app/WbIcon.jsx，服务出壳 chrome）共用这一份，两个渲染路径不得各自抄表。
-import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, Folder, FolderPlus } from 'lucide';
+import { Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, Folder, FolderPlus, Globe } from 'lucide';
 
 export var ICONS = {
   pencil: Pencil,
@@ -27,13 +27,14 @@ export var ICONS = {
   message: MessageSquare,
   columns: Columns,
   link: Link,
-  // 行内壳标记（2026-08-16 阶段 2 Pages 统一）：smartphone = ios 机壳页，file-text = html 文档页
+  // 页面行类型图标（2026-09-05 owner 定的映射，lib/page-groups.js PAGE_KIND_ICONS）：
+  // smartphone = 画布，file-text = 文档，globe = 网页；横条类型标用同一套。
   smartphone: Smartphone,
   'file-text': FileText,
+  globe: Globe,
   // Pages 段头排序切换（2026-08-17g）：default → 最近更新 → 名称循环
   sort: ArrowUpDown,
-  // 左栏内容（2026-09-04 切片 ②，评审板 C1）：搜索框、文件夹行的夹图标与
-  // 「新建文件夹」。页面行的类型小标（globe / file-text）2026-09-05 撤，globe 随之下架。
+  // 左栏内容（2026-09-04 切片 ②，评审板 C1）：搜索框、文件夹行的夹图标与「新建文件夹」。
   search: Search,
   folder: Folder,
   'folder-plus': FolderPlus

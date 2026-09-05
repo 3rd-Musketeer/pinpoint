@@ -4,13 +4,13 @@
 // <i> 节点 replaceWith 成 svg，使 vnode 指向游离节点）。
 import { ICONS, HERO_GEAR_SOLID } from '../lib/wb-icons.js';
 
-export function WbIcon({ name, size, className }) {
+export function WbIcon({ name, size, className, ...rest }) {
   size = size || 14;
   className = className || 'wb-ico';
   if (name === 'settings') {
     return (
       <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
-        viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className}>
+        viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" className={className} {...rest}>
         <path fillRule="evenodd" clipRule="evenodd" d={HERO_GEAR_SOLID} />
       </svg>
     );
@@ -20,7 +20,7 @@ export function WbIcon({ name, size, className }) {
   return (
     <svg xmlns="http://www.w3.org/2000/svg" width={size} height={size}
       viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.75}
-      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className}>
+      strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" className={className} {...rest}>
       {icon.map(function (node, i) {
         var Tag = node[0];
         return <Tag key={i} {...node[1]} />;

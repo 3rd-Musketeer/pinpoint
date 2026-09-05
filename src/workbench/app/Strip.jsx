@@ -19,6 +19,7 @@ import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
 import { entriesOfActiveBoard, manifestPages, setActiveViewport } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
+import { PAGE_KIND_ICONS } from '../lib/page-groups.js';
 import { VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
 import { CanvasHud } from './CanvasHud.jsx';
@@ -102,8 +103,10 @@ export function Strip() {
       <span className="wb-strip-title max-w-[220px] truncate text-[13px] font-semibold tracking-[-0.01em]"
         id="wbstrip-title" title={title}>{title}</span>
       {kindKey ? (
-        <span className="wb-strip-kind rounded-full bg-[var(--wb-fill)] px-[7px] py-1 font-[var(--wb-font-mono)] text-[10.5px] font-medium leading-none tracking-[0.04em] text-muted-foreground"
-          id="wbstrip-kind" data-kind={kindKey}>{ENTRY_TAG_LABELS[kindKey]}</span>
+        <span className="wb-strip-kind inline-flex items-center gap-1 rounded-full bg-[var(--wb-fill)] px-[7px] py-1 font-[var(--wb-font-mono)] text-[10.5px] font-medium leading-none tracking-[0.04em] text-muted-foreground"
+          id="wbstrip-kind" data-kind={kindKey}>
+          <WbIcon name={PAGE_KIND_ICONS[kindKey]} size={11} className="size-[11px]" aria-hidden="true" />
+          {ENTRY_TAG_LABELS[kindKey]}</span>
       ) : null}
 
       {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 缩成一块

@@ -10,7 +10,9 @@ import {
   orderOfPage,
   pushRecent,
   recentRows,
-  visiblePages
+  visiblePages,
+  PAGE_KIND_ICONS,
+  pageKindKey
 } from './page-groups.js';
 
 var PAGES = [
@@ -94,4 +96,15 @@ test('最近：最新在前、去重、封顶五条；只渲染还存在的页',
 
   var rows = recentRows(list, [{ id: 'b', title: 'B' }, { id: 'e', title: 'E' }]);
   assert.deepEqual(rows.map((r) => [r.page.id, r.at]), [['b', 200], ['e', 104]]);
+});
+
+test('pageKindKey：画布 / 文档 / 网页三分，每种都有图标', () => {
+  assert.equal(pageKindKey({ id: 'x', kind: 'dir', mode: 'ios' }), 'canvas');
+  assert.equal(pageKindKey({ id: 'x', kind: 'dir', mode: 'html' }), 'doc');
+  assert.equal(pageKindKey({ id: 'x', kind: 'file', mode: 'html' }), 'doc');
+  assert.equal(pageKindKey({ id: 'x', kind: 'url', mode: 'html' }), 'web');
+  assert.equal(pageKindKey({ id: 'components', title: 'Component Library', system: true }), 'canvas');
+  assert.equal(pageKindKey({ id: 'library', mode: 'ios' }), 'canvas');
+  assert.equal(pageKindKey({ id: 'doc-library', mode: 'html' }), 'doc');
+  for (const k of ['canvas', 'doc', 'web']) assert.ok(PAGE_KIND_ICONS[k]);
 });

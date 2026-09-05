@@ -143,3 +143,18 @@ export function recentRows(list, pages) {
   });
   return out.slice(0, RECENT_MAX);
 }
+
+/* 页面类型 → 图标（owner 2026-09-05 定的映射，与横条类型标同一套词，见
+   board-entries.js ENTRY_TAG_LABELS）：画布 = 目录条目 board ios（多屏排在画布上）
+   → smartphone；文档 = 单份 HTML 或 board html → file-text；网页 = url 条目 → globe。
+   每一行都有，不再有空槽——09-05 上午撤掉图标就是因为只给了 url / file 两种，
+   目录条目没有，看起来「有的有有的没有」。混合页按默认打开的那个条目算，这里
+   用 manifest page 的 mode；Component Library 内建页没有 mode，它是画布。 */
+export var PAGE_KIND_ICONS = { canvas: 'smartphone', doc: 'file-text', web: 'globe' };
+
+export function pageKindKey(page) {
+  if (!page) return 'doc';
+  if (page.kind === 'url') return 'web';
+  if (page.mode === 'ios' || page.id === 'components') return 'canvas';
+  return 'doc';
+}

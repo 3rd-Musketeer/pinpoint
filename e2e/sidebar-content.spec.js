@@ -226,24 +226,28 @@ test('夹内拖排序只在「默认」档写 order；右键菜单是拖放之�
   await expect(page.locator('#wbpages .wb-loose [data-vpage="e2e-mention"]')).toHaveCount(1);
 });
 
-// 页面行行首不放类型图标（owner 2026-09-05：「有的 item 有 icon，有的没有，
-// icon 是什么意思呢」）。类型只在横条的类型标上出现；文件夹行的 chevron + 夹图标
-// 是结构不是类型，不在这条里。
-test('页面行没有类型图标：url 页与 dir 页的标题从同一处起，类型只在横条类型标上（2026-09-05）', async ({ page }) => {
+// 页面行行首的类型图标（owner 2026-09-05 下午定的映射：画布 smartphone / 文档
+// file-text / 网页 globe，每一行都有——上午撤掉是因为只给了两种、目录条目没有）。
+// 横条的类型标用同一个图标，两处一致。
+test('页面行的类型图标：每行一个，url / dir / 模板页三种各对各，横条类型标同图标（2026-09-05）', async ({ page }) => {
   await openWorkbench(page);
-  // 页面行 / 最近行不含任何 svg，也没有占位槽。
-  await expect(page.locator('#wbpages .wb-page svg, #wbpages .wb-page .wb-row-slot, #wbside .wb-recent svg'))
-    .toHaveCount(0);
-  // 几何（AGENTS「坑与约定」：布局断言比 bounding box）：标题左缘 = 行左缘 + 29px
-  // （8 内边距 + 评审板行首那一格 21 的留白），url 页（e2e-site）与 dir 页
-  // （e2e-dir / e2e-mixed）一样。
+  const kinds = await page.evaluate(() => Object.fromEntries(['e2e-site', 'e2e-dir', 'e2e-mixed', 'e2e-dir-ios'].map((id) => {
+    const row = document.querySelector(`#wbpages [data-vpage="${id}"]`);
+    const g = row.querySelectorAll('.wb-page-kind');
+    return [id, g.length === 1 ? g[0].getAttribute('data-kind') : g.length];
+  })));
+  expect(kinds).toEqual({ 'e2e-site': 'web', 'e2e-dir': 'doc', 'e2e-mixed': 'canvas', 'e2e-dir-ios': 'canvas' });
+  // 几何（AGENTS「坑与约定」：布局断言比 bounding box）：标题左缘 = 行左缘 + 8 内边距
+  // + 图标 14 + 间距 7 = 29，三种类型一样。
   const offsets = await page.evaluate(() => Object.fromEntries(['e2e-site', 'e2e-dir', 'e2e-mixed'].map((id) => {
     const row = document.querySelector(`#wbpages [data-vpage="${id}"]`);
     const title = row.querySelector('.wb-row-t');
     return [id, Math.round(title.getBoundingClientRect().left - row.getBoundingClientRect().left)];
   })));
   expect(offsets).toEqual({ 'e2e-site': 29, 'e2e-dir': 29, 'e2e-mixed': 29 });
-  // 类型仍看得见，只是搬到了横条：选中 url 页 → 类型标「网页」。
+  // 横条类型标：选中 url 页 → 「网页」+ globe（同一份映射）。
   await page.locator('#wbpages [data-vpage="e2e-site"]').click();
   await expect(page.locator('#wbstrip-kind')).toHaveText('网页');
+  await expect(page.locator('#wbstrip-kind svg')).toHaveCount(1);
 });
+

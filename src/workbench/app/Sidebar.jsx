@@ -87,7 +87,9 @@ import {
   groupPages,
   nextFolderId,
   recentRows,
-  visiblePages
+  visiblePages,
+  PAGE_KIND_ICONS,
+  pageKindKey
 } from '../lib/page-groups.js';
 import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
 import { readPrefs, readRecentPages, savePrefs } from '../lib/prefs.js';
@@ -312,7 +314,11 @@ function PageRow(props) {
             defaultValue={title} onKeyDown={onRenameKey}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
-          <span className="wb-page-t wb-row-t">{title}</span>
+          <Fragment>
+            <WbIcon name={PAGE_KIND_ICONS[pageKindKey(page)]} size={14}
+              className="wb-row-glyph wb-page-kind" data-kind={pageKindKey(page)} aria-hidden="true" />
+            <span className="wb-page-t wb-row-t">{title}</span>
+          </Fragment>
         )}
         {/* 2026-08-17g：内容 mtime 的行内相对时间（mono 小字，视觉语言同
             条目 tag 但无底色；完整时间进 hover title）。无 mtime 的页
@@ -428,6 +434,8 @@ function RecentRow(props) {
       data-state={active ? 'on' : undefined}
       className={cn('wb-row wb-recent', active && 'on')}
       onClick={function () { showTabs(); setActivePage(page.id); }}>
+      <WbIcon name={PAGE_KIND_ICONS[pageKindKey(page)]} size={14}
+        className="wb-row-glyph wb-page-kind" data-kind={pageKindKey(page)} aria-hidden="true" />
       <span className="wb-row-t">{title}</span>
       <span className="wb-row-m">{formatRelativeTime(props.at, props.now)}</span>
     </button>
