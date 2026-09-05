@@ -2,7 +2,7 @@
 
 Status: 部分被取代（准则本体仍现行） · Date: 2026-08-11 · Scope: `src/workbench/`、`src/client/annotate.js`、`docs/design.md`
 
-Superseded-by: ADR 0010（accent 值与功能色微调）
+Superseded-by: ADR 0010（accent 值与功能色微调）、ADR 0031（反模式清单里的“毛玻璃”一条，其余准则不动）
 
 **Decided**（owner 钦定，本 repo 一切 UI 工作的验收尺）: chrome 与注入端一律扁平 Linear 系 light 风。具体表现形式：
 - **色彩**：中性灰阶低饱和；分层靠明度差不靠边框；唯一强调色 accent #007aff（主行动/选中态），功能色 danger/琥珀（标注武装）/绿（成功回显）各一枚；无渐变、无彩色图标。
