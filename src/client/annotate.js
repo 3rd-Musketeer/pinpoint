@@ -3542,38 +3542,50 @@
     else hideGhost();
   }
 
-  function flashAndOpen(m) {
+  var markNavigation = 0;
+
+  function flashAndOpen(m, navigation) {
     var anchor = resolveMarkAnchor(m);
     var stageEl = document.getElementById('wbstage');
     var wb = window.workbench;
     var frameFocused = !!(
       wb && m.screenId && typeof wb.focusFrame === 'function' &&
-      wb.focusFrame(annotationSection(m), m.screenId, { smooth: false })
+      wb.focusFrame(annotationSection(m), m.screenId)
     );
     if (!frameFocused && anchor.live && anchor.el && stageEl) {
       var er = anchor.el.getBoundingClientRect();
       var sr = stageEl.getBoundingClientRect();
-      stageEl.scrollTop += er.top - sr.top - sr.height / 2 + er.height / 2;
-      stageEl.scrollLeft += er.left - sr.left - sr.width / 2 + er.width / 2;
+      var target = {
+        top: stageEl.scrollTop + er.top - sr.top - sr.height / 2 + er.height / 2,
+        left: stageEl.scrollLeft + er.left - sr.left - sr.width / 2 + er.width / 2
+      };
+      if (wb && wb.scrollTo) wb.scrollTo(target);
+      else stageEl.scrollTo(target);
     } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
       // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
     }
-    renderAll();
-    focusBubble(m.n);
-    if (anchor.live && anchor.el) {
-      flashUntil = Date.now() + 1500;
-      showGhostForEl(anchor.el, 'ann-flash');
-      setTimeout(endFlash, 1500);
-    } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
-      flashUntil = Date.now() + 1500;
-      showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
-      setTimeout(endFlash, 1500);
-    }
-    openMark(m.n);
+    var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
+    return settled.then(function (completed) {
+      if (!completed || navigation !== markNavigation) return false;
+      renderAll();
+      focusBubble(m.n);
+      if (anchor.live && anchor.el) {
+        flashUntil = Date.now() + 1500;
+        showGhostForEl(anchor.el, 'ann-flash');
+        setTimeout(endFlash, 1500);
+      } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
+        flashUntil = Date.now() + 1500;
+        showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
+        setTimeout(endFlash, 1500);
+      }
+      openMark(m.n);
+      return true;
+    });
   }
 
   function goToMark(n) {
+    var navigation = ++markNavigation;
     var m = marks.find(function (k) { return k.n === n; });
     if (!m) return Promise.resolve();
     var p = Promise.resolve();
@@ -3582,16 +3594,19 @@
       if (m.pageId && typeof wb.setActivePage === 'function' && m.pageId !== currentWorkbenchPageId()) {
         p = Promise.resolve(wb.setActivePage(m.pageId, { scrollTop: false })).then(function () {
           var sec = annotationSection(m);
-          if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { smooth: false });
+          if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { scroll: false });
         });
       } else if (annotationSection(m) && typeof wb.switchPage === 'function') {
-        p = wb.switchPage(annotationSection(m), { smooth: false });
+        p = wb.switchPage(annotationSection(m), { scroll: false });
       }
     }
     return Promise.resolve(p).then(function () {
       return new Promise(function (resolve) {
         requestAnimationFrame(function () {
-          requestAnimationFrame(function () { flashAndOpen(m); resolve(); });
+          requestAnimationFrame(function () {
+            if (navigation !== markNavigation) { resolve(false); return; }
+            resolve(flashAndOpen(m, navigation));
+          });
         });
       });
     });

@@ -1,3 +1,4 @@
+import { scrollStageTo } from '../scroll-motion.js';
 // 「这页的标注」弹出列表（2026-09-04 评审板 H2）—— 取代 2026-08-15 起的常驻右栏
 // 标注工作台（app/AnnPanel.jsx，本刀删除）。owner 的话是判据：「大部分时候只需要
 // 看画布上的标注气泡」「只有当我要浏览『这页还剩什么』时才需要打开列表」——
@@ -54,7 +55,7 @@ function nudgeAwayFromPopover() {
   var overlapY = r.bottom - popRect.top;
   if (overlapX <= 0 || overlapY <= 0) return;   // 不在列表那一块里，不用动
   // 目标比可用区还宽时推到底就够了（clamp 交给 scrollLeft 自身的边界）。
-  stage.scrollTo({ left: stage.scrollLeft + overlapX, top: stage.scrollTop, behavior: 'smooth' });
+  scrollStageTo(stage, { left: stage.scrollLeft + overlapX });
 }
 
 function AnnRow(props) {
@@ -156,7 +157,8 @@ export function AnnPopover() {
     // 与 frame 树行的焦点双向同步（decisions 08-15c）：定位走 client goToMark，
     // 这里只回写选中态，再补一次「别被列表挡住」的让位。
     var row = rows.find(function (r) { return r.n === n; });
-    a.goToMark(n).then(function () {
+    a.goToMark(n).then(function (completed) {
+      if (completed === false) return;
       wbSet({
         focusAnnN: n,
         focusFrameKey: row && row.screenId ? row.group + '\0' + row.screenId : null,

@@ -474,7 +474,10 @@
   /* Scale via transform (not CSS zoom): zoom breaks elementFromPoint vs getBoundingClientRect. */
   .wb-zoom-wrap {
     position: relative;
-    overflow: hidden;
+    /* Clip the unscaled layout overflow without creating another scroll container.
+       Annotation navigation uses scrollIntoView; hidden lets it scroll this wrapper
+       and permanently clip earlier sections even when the outer stage scrolls back. */
+    overflow: clip;
     width: max-content;
     height: auto;
   }

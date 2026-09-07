@@ -1,3 +1,4 @@
+import { scrollStageTo, cancelStageScroll } from './scroll-motion.js';
 // Workbench 页面/manifest 簇 — 页面集合、manifest 加载、页面切换、
 // 条目切换（stage 页内形态）、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
@@ -62,7 +63,9 @@ export function scrollToGroup(groupId, options) {
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
   var el = document.getElementById('lib-' + groupId);
-  if (el) el.scrollIntoView({ behavior: options.smooth === false ? 'auto' : 'smooth', block: 'start' });
+  if (el && options.scroll !== false) {
+    scrollStageTo(stage, { top: stage.scrollTop + el.getBoundingClientRect().top - stage.getBoundingClientRect().top }, options);
+  }
   refit();
   scheduleAnnSnap();
 }
@@ -343,6 +346,7 @@ function applyEntryVisibility(panel, board, entry) {
 }
 
 export function setActiveEntry(entryId, options) {
+  cancelStageScroll();
   options = options || {};
   var panel = document.getElementById('wb-board-panel');
   var active = wbGet().activeBoard;
@@ -521,6 +525,7 @@ export function setActivePage(pageId, options) {
   var panel = document.getElementById('wb-board-panel');
   if (!panel) return Promise.resolve();
   var same = wbGet().activePageId === pageId;
+  if (!same || options.force) cancelStageScroll();
   var _draftAnn = annotateApi();
   if (!same && _draftAnn && typeof _draftAnn.cancelDraft === 'function') {
     _draftAnn.cancelDraft();
@@ -534,7 +539,7 @@ export function setActivePage(pageId, options) {
   if (options.save !== false) rememberActivePage(pageId);
   if (same && !options.force) {
     // Re-clicking the active page must not fight per-page viewport memory.
-    if (options.scrollTop === true) stage.scrollTo({ top: 0, behavior: 'smooth' });
+    if (options.scrollTop === true) scrollStageTo(stage, { top: 0 });
     return Promise.resolve();
   }
   // stage 形态随选中条目在装载后应用（loadBoard → syncEntries，2026-08-16f 阶段 6）——

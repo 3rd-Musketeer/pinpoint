@@ -1,3 +1,4 @@
+import { whenStageScrollSettled, scrollStageTo } from './scroll-motion.js';
 // Workbench stage entry（P4 由 workbench.js 正名）— 舞台侧命令式入口与装配：
 // board 加载编排（loadBoard/initBoard + 各簇 DI 布线）、window.workbench API、
 // 舞台交互（splitter / space·中键 pan / ctrl+wheel zoom）、preview HMR（SSE →
@@ -226,6 +227,8 @@ window.workbench = {
   setActivePage: setActivePage,
   setActiveEntry: setActiveEntry,
   focusFrame: focusWorkbenchFrame,
+  whenScrollSettled: whenStageScrollSettled,
+  scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
   // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）

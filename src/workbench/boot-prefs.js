@@ -1,3 +1,4 @@
+import { cancelStageScroll } from './scroll-motion.js';
 // Workbench 启动偏好与视口簇 — 把 prefs（lib/prefs.js、lib/page-viewports.js 纯函数）
 // 应用到 DOM/store 的编排层：左栏宽度/折叠、ios 根属性、canvas zoom、每页视口的
 // 保存与恢复、启动偏好应用。P1a 从 workbench.js 平移
@@ -134,6 +135,7 @@ var _setCanvasZoom = setCanvasZoom;
 var zoomSaveT;
 var pendingZoomSave = null;
 setCanvasZoom = function (val, options) {
+  cancelStageScroll();
   options = options || {};
   // Visual update always; persist is debounced so wheel/pinch does not thrash localStorage.
   // Never pass save:true into makePref — global canvasZoom key is retired.
