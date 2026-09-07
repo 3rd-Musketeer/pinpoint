@@ -47,10 +47,9 @@ export function annotateApi() {
    行字段走共享 src/shared/ann-row.js（cap/preview/broken/tags）；grouping 键是
    workbench 本地语义。cap 选项钉住 workbench 措辞：region 行显示「框选」，
    不做 selector 摘录回退。 */
-function markSummary(m) {
+function markSummary(m, ann) {
   var body = (m && (m.content != null ? m.content : m.comment)) || '';
   if (body) {
-    var ann = annotateApi();
     if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
     if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
     return body;
@@ -61,19 +60,35 @@ function markSummary(m) {
 }
 
 var ANN_SNAP_OFF = { available: false, rows: [] };
+var annRowCache = new Map();
+var annRowOwner = null;
 
 export function syncAnnSnap() {
   var ann = annotateApi();
   if (!ann || typeof ann.getState !== 'function') {
+    annRowCache.clear(); annRowOwner = null;
     wbSet({ annSnap: ANN_SNAP_OFF });
     return;
   }
   var st = ann.getState();
+  if (annRowOwner !== ann) { annRowOwner = ann; annRowCache.clear(); }
+  var referenceVersion;
+  var previousRows = annRowCache;
+  annRowCache = new Map();
   var rows = (ann.pageMarks || []).slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
+    var broken = typeof ann.isMarkBroken === 'function' ? ann.isMarkBroken(m) : false;
+    var signature = JSON.stringify(m) + '|' + broken;
+    var rowReferenceVersion = null;
+    if ((m.mentions && m.mentions.length) || /\[@a:/.test(m.content || m.comment || '')) {
+      if (referenceVersion === undefined) referenceVersion = JSON.stringify((ann.marks || []).map(function (m) { return [m.id, m.n]; }));
+      rowReferenceVersion = referenceVersion;
+    }
+    var cached = previousRows.get(m.n);
+    if (cached && cached.signature === signature && cached.referenceVersion === rowReferenceVersion) { annRowCache.set(m.n, cached); return cached.row; }
     var row = annRowModel(m, {
       cap: { region: '框选', selectorMax: 0 },
-      preview: markSummary(m),
-      broken: typeof ann.isMarkBroken === 'function' ? ann.isMarkBroken(m) : false
+      preview: markSummary(m, ann),
+      broken: broken
     });
     row.key = (m.section || m.group || '_') + '|' + m.n;
     row.group = m.section || m.group || '_';
@@ -82,6 +97,7 @@ export function syncAnnSnap() {
     // （2026-08-15 侧栏重构；阶段 7 大纲收编为 frame 树）；
     // 引用号/屏名不落行模型 —— 渲染侧从 activeBoard 纯派生（lib/board-refs.js）。
     row.screenId = m.screenId || '';
+    annRowCache.set(m.n, { signature: signature, referenceVersion: rowReferenceVersion, row: row });
     return row;
   });
   wbSet({

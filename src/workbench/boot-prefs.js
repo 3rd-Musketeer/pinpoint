@@ -121,7 +121,8 @@ export var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
     wbSet({ canvasZoom: z });
-    var _a = annotateApi(); if (_a) _a.render();
+    var _a = annotateApi();
+    if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
     scheduleMinimapUpdate();
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();
@@ -292,7 +293,9 @@ function syncBoardZoomLayout() {
   }
   // 有效视觉缩放 = zoom 轴值 × BASE（2026-08-17 基准重定标，与 index.html 的
   // .wb-library transform 同公式）；lib.offsetWidth 是 transform 前的布局尺寸。
-  var z = currentCanvasZoom() * BASE_CANVAS_SCALE;
+  var zoom = currentCanvasZoom();
+  lib.style.setProperty('--wb-board-zoom', zoom);
+  var z = zoom * BASE_CANVAS_SCALE;
   var w = lib.offsetWidth;
   var h = lib.offsetHeight;
   wrap.style.width = Math.ceil(w * z) + 'px';

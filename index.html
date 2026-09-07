@@ -380,7 +380,8 @@
     flex:1; min-width:0; display:block; padding:0; background:transparent; overflow:auto;
     cursor:default;
   }
-  .wb-stage.wb-space-pan { cursor:grab; }
+  .wb-stage.wb-space-pan { cursor:grab !important; }
+  .wb-stage.wb-space-pan iframe, body.wb-panning .wb-stage iframe { pointer-events:none; }
   .wb-stage.wb-panning, body.wb-panning .wb-stage, body.wb-panning .wb-stage * { cursor:grabbing !important; }
   body.wb-panning { user-select:none; }
 
@@ -477,6 +478,8 @@
     width: max-content;
     height: auto;
   }
+  /* Zoom is local to the canvas, never inherited by every prototype/annotation node. */
+  @property --wb-board-zoom { syntax: "<number>"; inherits: false; initial-value: 1; }
   .wb-library {
     /* Board tokens: captions scale with phone frame so agents only write copy. */
     --wb-phone-w: 438px;

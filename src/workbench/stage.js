@@ -358,6 +358,22 @@ stage.addEventListener('wheel', function (e) {
   var pan = null;
   var suppressClick = false;
   var spaceDown = false;
+  var moveRaf = 0;
+  var nextScroll = null;
+
+  function flushPanMove() {
+    if (moveRaf) cancelAnimationFrame(moveRaf);
+    moveRaf = 0;
+    if (!nextScroll) return;
+    stage.scrollLeft = nextScroll.left;
+    stage.scrollTop = nextScroll.top;
+    nextScroll = null;
+  }
+
+  function setNavigationActive(on) {
+    var ann = annotateApi();
+    if (ann && ann.setNavigationActive) ann.setNavigationActive(on);
+  }
 
   function annotateBlocksPan() {
     var ann = annotateApi();
@@ -371,14 +387,17 @@ stage.addEventListener('wheel', function (e) {
     stage.classList.toggle('wb-space-pan', spaceDown && !(pan && pan.moved));
   }
 
-  function endPan() {
+  function endPan(e) {
     if (!pan) return;
+    flushPanMove();
     var moved = pan.moved;
     pan = null;
     stage.classList.remove('wb-panning');
     document.body.classList.remove('wb-panning');
-    document.removeEventListener('mousemove', onPanMove);
-    document.removeEventListener('mouseup', endPan);
+    window.removeEventListener('mousemove', onPanMove, true);
+    window.removeEventListener('mouseup', endPan, true);
+    setNavigationActive(false);
+    if (e && e.type === 'mouseup') { e.preventDefault(); e.stopPropagation(); }
     syncSpaceCursor();
     if (moved) {
       suppressClick = true;
@@ -398,8 +417,9 @@ stage.addEventListener('wheel', function (e) {
       syncSpaceCursor();
     }
     e.preventDefault();
-    stage.scrollLeft = pan.sl - dx;
-    stage.scrollTop = pan.st - dy;
+    e.stopPropagation();
+    nextScroll = { left: pan.sl - dx, top: pan.st - dy };
+    if (!moveRaf) moveRaf = requestAnimationFrame(flushPanMove);
   }
 
   function startPan(e) {
@@ -410,9 +430,10 @@ stage.addEventListener('wheel', function (e) {
       st: stage.scrollTop,
       moved: false
     };
+    setNavigationActive(true);
     syncSpaceCursor();
-    document.addEventListener('mousemove', onPanMove);
-    document.addEventListener('mouseup', endPan);
+    window.addEventListener('mousemove', onPanMove, true);
+    window.addEventListener('mouseup', endPan, true);
   }
 
   document.addEventListener('keydown', function (e) {
@@ -434,17 +455,25 @@ stage.addEventListener('wheel', function (e) {
   }, true);
 
   window.addEventListener('blur', function () {
+    endPan();
     spaceDown = false;
     syncSpaceCursor();
   });
 
-  stage.addEventListener('mousedown', function (e) {
-    if (annotateBlocksPan()) return;
-    if (e.target.closest('[data-ann-ui]') || isTypingTarget(e.target)) return;
+  // Window capture runs before the annotation client's document capture listener.
+  // Explicit navigation owns the complete gesture, without changing annotation mode.
+  window.addEventListener('mousedown', function (e) {
+    var explicit = e.button === 1 || (e.button === 0 && spaceDown);
+    var overBadge = explicit && e.target.closest('.ann-badge');
+    if (!stage.contains(e.target) && !overBadge) return;
+    if (activeBoardMode() === 'html' || isTypingTarget(e.target)) return;
+    if (e.target.closest('[data-ann-ui]') && !overBadge) return;
+    if (!explicit && annotateBlocksPan()) return;
 
     // Middle button always pans.
     if (e.button === 1) {
       e.preventDefault();
+      e.stopPropagation();
       startPan(e);
       return;
     }
@@ -453,6 +482,7 @@ stage.addEventListener('wheel', function (e) {
     // Space+drag pans anywhere (including inside frames).
     if (spaceDown) {
       e.preventDefault();
+      e.stopPropagation();
       startPan(e);
       return;
     }
@@ -460,14 +490,14 @@ stage.addEventListener('wheel', function (e) {
     // Without Space: only pan on empty board chrome, never steal frame interactions.
     if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-screen-err, button, a')) return;
     startPan(e);
-  });
+  }, true);
 
   // Avoid browser autoscroll / middle-click paste while middle-panning.
   stage.addEventListener('auxclick', function (e) {
     if (e.button === 1) e.preventDefault();
   });
 
-  stage.addEventListener('click', function (e) {
+  window.addEventListener('click', function (e) {
     if (!suppressClick) return;
     e.preventDefault();
     e.stopPropagation();

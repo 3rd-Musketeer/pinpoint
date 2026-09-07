@@ -390,20 +390,62 @@
   }
 
   function docRect(el) {
-    var r = el.getBoundingClientRect();
-    return [Math.round(r.left + scrollX), Math.round(r.top + scrollY), Math.round(r.width), Math.round(r.height)];
+    var r = viewRect(el);
+    return [r[0] + scrollX, r[1] + scrollY, r[2], r[3]];
+  }
+
+  // A measurement batch reads layout once per element before painting any marks.
+  var geometryCache = null;
+  var canvasView = null;
+  var measuringCanvas = false;
+  var navigationActive = false;
+  var selectorCache = new Map();
+  var frameRoots = null;
+  var markFacts = new WeakMap();
+  function clearAnchorCache() {
+    selectorCache.clear(); frameRoots = null; markFacts = new WeakMap();
+  }
+  function markFact(m) {
+    var fact = markFacts.get(m);
+    if (!fact) { fact = {}; markFacts.set(m, fact); }
+    return fact;
+  }
+
+  function geometryBatch(fn) {
+    if (geometryCache) return fn();
+    geometryCache = { rects: new WeakMap(), styles: new WeakMap(), clips: new WeakMap() };
+    try { return fn(); } finally { geometryCache = null; }
+  }
+
+  function geometryStyle(el) {
+    if (!geometryCache) return getComputedStyle(el);
+    if (!geometryCache.styles.has(el)) geometryCache.styles.set(el, getComputedStyle(el));
+    return geometryCache.styles.get(el);
+  }
+
+  function setNavigationActive(on) {
+    navigationActive = !!on;
+    if (navigationActive) { clearHover(); hideGhost(); }
+    else onViewChange();
   }
 
   function viewRect(el) {
+    if (geometryCache && geometryCache.rects.has(el)) return geometryCache.rects.get(el);
     var r = el.getBoundingClientRect();
-    return [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+    var rect = measuringCanvas ? [r.left, r.top, r.width, r.height] : [Math.round(r.left), Math.round(r.top), Math.round(r.width), Math.round(r.height)];
+    if (geometryCache) geometryCache.rects.set(el, rect);
+    return rect;
   }
 
   /** Overflow / screen ancestors that visually clip `el` (viewport rects). */
   function clipAncestorViewRects(el) {
+    if (geometryCache && geometryCache.clips.has(el)) return geometryCache.clips.get(el);
     var clips = [];
     var node = el && el.parentElement;
     while (node && node.nodeType === 1 && node !== document.documentElement) {
+      // The fixed overlay clips the viewport. Cached canvas geometry must retain
+      // off-screen portions so translating it back into view never needs a remeasure.
+      if (measuringCanvas && canvasView && node === canvasView.stage) break;
       var force = node.classList && (
         node.classList.contains('ios-screen') ||
         node.classList.contains('wb-comp-stage')
@@ -411,7 +453,7 @@
       if (force) {
         clips.push(viewRect(node));
       } else {
-        var st = getComputedStyle(node);
+        var st = geometryStyle(node);
         if ((st.overflowX && st.overflowX !== 'visible') ||
             (st.overflowY && st.overflowY !== 'visible')) {
           clips.push(viewRect(node));
@@ -419,6 +461,7 @@
       }
       node = node.parentElement;
     }
+    if (geometryCache) geometryCache.clips.set(el, clips);
     return clips;
   }
 
@@ -523,7 +566,14 @@
   }
 
   function resolve(sel) {
-    try { return document.querySelector(sel); } catch (e) { return null; }
+    if (selectorCache.has(sel)) {
+      var cached = selectorCache.get(sel);
+      if (!cached || cached.isConnected) return cached;
+    }
+    var el = null;
+    try { el = document.querySelector(sel); } catch (e) { /* Invalid selector is an unresolved anchor. */ }
+    selectorCache.set(sel, el);
+    return el;
   }
 
   // ---------- frame 内锚点归一（阶段 5 透传）----------
@@ -537,22 +587,23 @@
     if (!screenId) return null;
     var panel = document.getElementById('wb-board-panel');
     if (!panel) return null;
-    var screens = panel.querySelectorAll('.wb-screen[data-screen]');
-    for (var i = 0; i < screens.length; i++) {
-      if (screens[i].getAttribute('data-screen') === screenId) {
-        return screens[i].querySelector(FRAME_STAGE_SELECTOR);
-      }
+    if (!frameRoots) {
+      frameRoots = new Map();
+      panel.querySelectorAll('.wb-screen[data-screen]').forEach(function (screen) {
+        frameRoots.set(screen.getAttribute('data-screen'), screen.querySelector(FRAME_STAGE_SELECTOR));
+      });
     }
-    return null;
+    return frameRoots.get(screenId) || null;
   }
 
   function resolveMarkSelector(selector, screenId) {
     if (!selector) return null;
     var rel = frameInternalSelector(selector);
     if (rel && (FRAME || screenId)) {
-      // 可派生的 frame 锚点以 frame 内解析为准：miss = 诚实失效，绝不回退去
-      // 全局撞上别的 frame 的同路径元素。
-      return queryFrameScope(scopedStageRoot(FRAME ? FRAME.screenId : screenId), rel);
+      var sid = FRAME ? FRAME.screenId : screenId;
+      var key = sid + '\n' + selector;
+      if (!selectorCache.has(key)) selectorCache.set(key, queryFrameScope(scopedStageRoot(sid), rel));
+      return selectorCache.get(key);
     }
     return resolve(selector);
   }
@@ -643,7 +694,15 @@
     return normalizeTargetRefs(m.targets, m.selector, m.text);
   }
 
+  var liveTargetBatch = null;
+  function withLiveTargets(fn) {
+    if (liveTargetBatch) return fn();
+    liveTargetBatch = new Map();
+    try { return fn(); } finally { liveTargetBatch = null; }
+  }
+
   function resolveAllLiveTargets(m) {
+    if (liveTargetBatch && liveTargetBatch.has(m)) return liveTargetBatch.get(m);
     var out = [];
     markElementTargets(m).forEach(function (t) {
       var el = resolveMarkSelector(t.selector, m.screenId || '');
@@ -651,6 +710,7 @@
         out.push({ el: el, ref: t.ref, selector: t.selector, text: t.text, rectDoc: docRect(el) });
       }
     });
+    if (liveTargetBatch) liveTargetBatch.set(m, out);
     return out;
   }
 
@@ -694,7 +754,7 @@
     syncedMutationVersion = mutationVersion;
     writeLocalCache();
     structureDirty = true;
-    renderAll();
+    renderLedgerChange();
     notify();
     if (statusMsg) {
       setStatus(statusMsg);
@@ -707,7 +767,7 @@
     writeLocalCache();
     requestSync();
     structureDirty = true;
-    renderAll();
+    renderLedgerChange();
     notify();
   }
 
@@ -968,6 +1028,8 @@
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
+    '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
+    '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
     '#ann-chrome{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:visible;}',
     // 锚点框/套索/序号徽章：琥珀是标注功能色（双端同值），只把圆角/阴影收进 token 阶梯。
     '.ann-hover-ghost{position:absolute;box-sizing:border-box;border:2px solid #f5a623;border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.07);pointer-events:none;z-index:1;}',
@@ -1193,6 +1255,7 @@
   }
 
   function syncGhost() {
+    if (navigationActive) { hideGhost(); return; }
     // ann-flash 展示期间（goToMark 跳转）滚动/几何重算不得收掉闪烁框，
     // 否则跳转一闪即逝；显式 hideGhost（暂停、切账本等）不受影响。
     if (Date.now() < flashUntil) return;
@@ -1289,7 +1352,7 @@
 
   function doClear() {
     marks = marks.filter(function (k) { return !markOnActivePage(k); });
-    closeComposer();
+    closeComposer({ silentRender: true });
     persist();
     btnClear.className = 'ok'; btnClear.textContent = '已清空 ✓';
     setTimeout(function () { btnClear.className = ''; btnClear.textContent = '清空标记'; }, 2000);
@@ -1302,7 +1365,7 @@
     marks = marks.filter(function (k) { return k.n !== n; });
     if (marks.length === before) return false;
     var open = document.getElementById('ann-box');
-    if (open) closeComposer();
+    if (open) closeComposer({ silentRender: true });
     persist();
     return true;
   }
@@ -1577,7 +1640,7 @@
     var openComposer = document.getElementById('ann-box');
     var targetPill = e.target && e.target.closest ? e.target.closest('.ann-target-pill') : null;
     if (openComposer && targetPill) return;
-    if (!mode || paused || drag || arrowFrom || openComposer) { clearHover(); return; }
+    if (!mode || paused || navigationActive || drag || arrowFrom || openComposer) { clearHover(); return; }
     if (hoverSuppress) {
       if (Date.now() < hoverSuppress.until && Math.hypot(e.pageX - hoverSuppress.x, e.pageY - hoverSuppress.y) < 120) {
         clearHover(); return;
@@ -1638,7 +1701,7 @@
       var frame = document.createElement('div');
       frame.className = 'ann-target ann-draft-target';
       frame.setAttribute('data-ann-ui', '');
-      marksLayer.appendChild(frame);
+      hoverLayer.appendChild(frame);
       var part = { frame: frame, selector: target.selector };
       draftNodes.push(part);
       placePartGeometry(part, el);
@@ -2380,7 +2443,7 @@
       if (!m.content && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
       var idx = marks.findIndex(function (k) { return k.n === m.n; });
       if (idx < 0) marks.push(m); else marks[idx] = m;
-      closeComposer(); persist();
+      closeComposer({ silentRender: true }); persist();
     }
     ta.addEventListener('input', function () {
       syncMentionFromCaret();
@@ -2438,17 +2501,22 @@
 
   // ---------- 移动箭头 ----------
   var tempArrow = null;
+  function updateArrowGeometry(svg, from, to) {
+    var x = Math.min(from[0], to[0]) - 12, y = Math.min(from[1], to[1]) - 12;
+    placeFixedRect(svg, [x, y, Math.abs(from[0] - to[0]) + 24, Math.abs(from[1] - to[1]) + 24]);
+    svg.lastElementChild.setAttribute('d', 'M ' + (from[0] - x) + ' ' + (from[1] - y) +
+      ' L ' + (to[0] - x) + ' ' + (to[1] - y));
+  }
+
   function svgArrow(from, to, id) {
-    var minX = Math.min(from[0], to[0]) - 12, minY = Math.min(from[1], to[1]) - 12;
-    var w = Math.abs(from[0] - to[0]) + 24, h = Math.abs(from[1] - to[1]) + 24;
     var svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     svg.setAttribute('data-ann-ui', '');
     if (id) svg.dataset.arrow = id;
-    svg.style.cssText = 'position:absolute;pointer-events:none;z-index:2;left:' + minX + 'px;top:' + minY + 'px;width:' + w + 'px;height:' + h + 'px;';
+    svg.style.cssText = 'position:absolute;pointer-events:none;z-index:2;';
     var mk = 'annArrowHead' + (id || 'tmp');
-    var x1 = from[0] - minX, y1 = from[1] - minY, x2 = to[0] - minX, y2 = to[1] - minY;
     svg.innerHTML = '<defs><marker id="' + mk + '" markerWidth="8" markerHeight="8" refX="6" refY="3" orient="auto"><path d="M0,0 L6,3 L0,6 z" fill="#f5a623"/></marker></defs>' +
-      '<path d="M ' + x1 + ' ' + y1 + ' L ' + x2 + ' ' + y2 + '" stroke="#f5a623" stroke-width="2.5" fill="none" marker-end="url(#' + mk + ')"/>';
+      '<path stroke="#f5a623" stroke-width="2.5" fill="none" marker-end="url(#' + mk + ')"/>';
+    updateArrowGeometry(svg, from, to);
     return svg;
   }
 
@@ -2528,6 +2596,13 @@
 
   function markHasLiveTarget(m) {
     if (!m) return false;
+    var fact = markFact(m);
+    if (fact.live != null) return fact.live;
+    fact.live = computeMarkLive(m);
+    return fact.live;
+  }
+
+  function computeMarkLive(m) {
     if (m.type === 'element' && markElementTargets(m).length) {
       return resolveAllLiveTargets(m).length > 0;
     }
@@ -2540,7 +2615,9 @@
    *  the shared pure predicate from src/shared/ann-row.js (inlined at serve time). */
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
-    return annMarkBroken(m, function (selector) { return !!resolveMarkSelector(selector, sid); }, markElementTargets(m));
+    var fact = markFact(m);
+    if (fact.broken == null) fact.broken = annMarkBroken(m, function (selector) { return !!resolveMarkSelector(selector, sid); }, markElementTargets(m));
+    return fact.broken;
   }
 
   function markAnchorRect(m) {
@@ -2617,6 +2694,7 @@
         if (part.badge) part.badge.classList.toggle('ann-badge--on', String(on) === String(n));
       });
     });
+    if (canvasView) updateCanvasBubble();
   }
 
   function showBubbleFor(n, delay) {
@@ -2662,18 +2740,28 @@
   }
 
   function placeArrow(entry, from, to) {
-    if (entry.arrow && entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
-    entry.arrow = svgArrow(from, to, entry.m.n);
-    marksLayer.appendChild(entry.arrow);
+    if (!entry.arrow) {
+      entry.arrow = svgArrow(from, to, entry.m.n);
+      (entry.group ? entry.group.node : marksLayer).appendChild(entry.arrow);
+      return;
+    }
+    updateArrowGeometry(entry.arrow, from, to);
   }
 
-  function syncMarkStructure(pageMarks) {
+  function syncMarkStructure(pageMarks, affected) {
+    if (!affected) resetCanvasView();
+    var targets = geometryBatch(function () {
+      return pageMarks.map(function (m) { return m.type === 'region' ? null : resolveAllLiveTargets(m); });
+    });
     var keep = Object.create(null);
-    pageMarks.forEach(function (m) {
+    if (affected) Object.keys(markNodes).forEach(function (key) {
+      if (!affected.has(markNodes[key].m)) keep[key] = true;
+    });
+    pageMarks.forEach(function (m, index) {
       keep[m.n] = true;
       var entry = markNodes[m.n];
       var frameClass = m.type === 'region' ? 'ann-frame' : 'ann-target';
-      var wantParts = m.type === 'region' ? 1 : resolveAllLiveTargets(m).length;
+      var wantParts = m.type === 'region' ? 1 : targets[index].length;
 
       if (!entry) {
         entry = { m: m, parts: [], arrow: null };
@@ -2701,7 +2789,9 @@
         if (part.frame.className !== frameClass) part.frame.className = frameClass;
         if (part.badge.textContent !== String(m.n)) part.badge.textContent = m.n;
       });
-      entry.liveTargets = m.type === 'region' ? null : resolveAllLiveTargets(m);
+      entry.signature = markGeometryKey(m);
+      entry.liveTargets = targets[index];
+      entry.model = null;
 
       if (!m.move && entry.arrow) {
         if (entry.arrow.parentNode) entry.arrow.parentNode.removeChild(entry.arrow);
@@ -2721,82 +2811,236 @@
     entry.arrow = null;
   }
 
-  function placeMoveArrow(entry, fromLocal, fromClipEl, endDoc) {
-    if (!fromLocal || !endDoc) {
-      clearMarkArrow(entry);
-      return;
-    }
-    var endEl = null;
-    if (entry.m.move && entry.m.move.to_selector) {
-      endEl = resolve(entry.m.move.to_selector);
-    }
-    var endClipEl = endEl || fromClipEl;
-    var endView = docPointToView(endDoc);
-    if (!viewPointInClips(endView, endClipEl)) {
-      clearMarkArrow(entry);
-      return;
-    }
-    var from = [fromLocal[0] + fromLocal[2] / 2, fromLocal[1] + fromLocal[3] / 2];
-    var to = viewToOverlayPoint(endView);
-    placeArrow(entry, from, to);
+  function resetCanvasView() {
+    if (!canvasView) return;
+    canvasView.groups.forEach(function (group) {
+      while (group.node.firstChild) marksLayer.appendChild(group.node.firstChild);
+      group.node.remove();
+      group.entries.forEach(function (entry) { entry.group = null; });
+    });
+    marksLayer.style.transform = '';
+    canvasView = null;
   }
 
-  function updateMarkGeometry() {
-    beginOverlayFrame();
+  function canvasStage() {
+    var stage = document.getElementById('wbstage');
+    return stage && window.workbench && window.workbench.boardMode() !== 'html' ? stage : null;
+  }
+
+  function canvasPose(stage) {
+    var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
+    var r = wrap ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
+    var o = overlayOrigin();
+    return { x: r.left - o[0] + stage.scrollLeft, y: r.top - o[1] + stage.scrollTop,
+      zoom: Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1 };
+  }
+
+  function entryRoots(entry) {
+    var roots = new Set();
+    function add(el) { var root = el && el.closest('.wb-screen, .wb-lib-item'); if (root) roots.add(root); }
+    if (entry.m.type === 'element') markElementTargets(entry.m).forEach(function (t) {
+      add(resolveMarkSelector(t.selector, entry.m.screenId || ''));
+    });
+    else if (entry.m.base) add(resolveMarkSelector(entry.m.base.selector, entry.m.screenId || ''));
+    else (entry.m.contains || []).forEach(function (t) { add(resolveMarkSelector(t.selector, entry.m.screenId || '')); });
+    if (entry.m.move && entry.m.move.to_selector) add(resolveMarkSelector(entry.m.move.to_selector, entry.m.screenId || ''));
+    return roots;
+  }
+
+  function prepareCanvasView(stage, rebuild) {
+    if (canvasView && !rebuild) return;
+    var groups = new Map();
+    if (canvasView) canvasView.groups.forEach(function (g) { g.entries = []; groups.set(g.root, g); });
+    else canvasView = { stage: stage, groups: [], width: 0, height: 0, pose: canvasPose(stage) };
     Object.keys(markNodes).forEach(function (key) {
       var entry = markNodes[key];
-      var m = entry.m;
-      if (m.type === 'region') {
-        var anchor = resolveMarkAnchor(m);
-        if (!anchor.live || !anchor.rectDoc) {
-          removeMarkNode(entry);
-          delete markNodes[key];
-          return;
-        }
-        var viewR = visibleViewRectDoc(anchor.rectDoc, anchor.el);
-        var part = entry.parts[0];
-        if (!viewR) {
-          hidePartNodes(part);
-          clearMarkArrow(entry);
-          return;
-        }
-        var local = expandRect(viewToOverlayRect(viewR));
-        if (part) {
-          showPartNodes(part);
-          placeFixedRect(part.frame, local);
-          var rPos = badgePositionForRect(local);
-          part.badge.style.left = rPos.left + 'px';
-          part.badge.style.top = rPos.top + 'px';
-        }
-        if (m.move) {
-          placeMoveArrow(entry, local, anchor.el, moveEndPoint(m));
-        }
-        return;
+      if (!entry.model) entry.roots = entryRoots(entry);
+      var root = entry.roots.values().next().value || null;
+      var group = groups.get(root);
+      if (!group) {
+        var node = document.createElement('div');
+        node.className = 'ann-mark-group'; marksLayer.appendChild(node);
+        group = { node: node, root: root, entries: [], bounds: null, visible: true };
+        groups.set(root, group);
       }
-
-      var lives = entry.liveTargets || resolveAllLiveTargets(m);
-      if (!lives.length) {
-        removeMarkNode(entry);
-        delete markNodes[key];
-        return;
-      }
-      if (entry.parts.length !== lives.length) {
-        structureDirty = true;
-        return;
-      }
-      for (var pi = 0; pi < lives.length; pi++) {
-        placePartGeometry(entry.parts[pi], lives[pi].el);
-      }
-      if (m.move) {
-        var firstView = visibleViewRectOf(lives[0].el);
-        if (!firstView) {
-          clearMarkArrow(entry);
-          return;
-        }
-        placeMoveArrow(entry, viewToOverlayRect(firstView), lives[0].el, moveEndPoint(m));
-      }
+      entry.group = group; group.entries.push(entry);
+      entry.parts.forEach(function (part) {
+        if (part.frame.parentNode !== group.node) group.node.appendChild(part.frame);
+        if (part.badge.parentNode !== group.node) group.node.appendChild(part.badge);
+      });
+      if (entry.arrow && entry.arrow.parentNode !== group.node) group.node.appendChild(entry.arrow);
     });
-    if (structureDirty) renderAll();
+    syncFrameResizeObservers(stage);
+    canvasView.groups = Array.from(groups.values()).filter(function (g) {
+      if (g.entries.length) return true;
+      g.node.remove(); return false;
+    });
+  }
+
+  function cacheMarkGeometry(geometry) {
+    var pose = canvasView.pose;
+    function point(p) { return [(p[0] - pose.x) / pose.zoom, (p[1] - pose.y) / pose.zoom]; }
+    geometry.entry.model = {
+      parts: geometry.parts.map(function (r) {
+        if (!r) return null;
+        var rect = expandRect(r, -MARK_BOX_PAD_PX);
+        return point(rect).concat([rect[2] / pose.zoom, rect[3] / pose.zoom]);
+      }),
+      arrow: geometry.arrow ? { from: point(geometry.arrow.from), to: point(geometry.arrow.to) } : null
+    };
+    geometry.parts.forEach(function (part, i) { if (!part) hidePartNodes(geometry.entry.parts[i]); });
+    geometry.entry.paintPose = null;
+  }
+
+  function projectMark(entry) {
+    var pose = canvasView.pose, model = entry.model;
+    function point(p) { return [p[0] * pose.zoom + pose.x, p[1] * pose.zoom + pose.y]; }
+    return { entry: entry, parts: model.parts.map(function (r) {
+      return r ? expandRect(point(r).concat([r[2] * pose.zoom, r[3] * pose.zoom])) : null;
+    }), arrow: model.arrow ? { from: point(model.arrow.from), to: point(model.arrow.to) } : null };
+  }
+
+  function markLocalRect(viewR) {
+    var r = viewToOverlayRect(viewR);
+    if (measuringCanvas) { r[0] += canvasView.stage.scrollLeft; r[1] += canvasView.stage.scrollTop; }
+    return r;
+  }
+
+  function measureMark(entry) {
+    var m = entry.m;
+    var views = [], els = [];
+    if (m.type === 'region') {
+      var anchor = resolveMarkAnchor(m);
+      els.push(anchor.el);
+      views.push(anchor.live ? visibleViewRectDoc(anchor.rectDoc, anchor.el) : null);
+    } else {
+      (entry.liveTargets || []).forEach(function (target) {
+        els.push(target.el);
+        views.push(visibleViewRectOf(target.el));
+      });
+    }
+    var parts = views.map(function (r) { return r ? expandRect(markLocalRect(r)) : null; });
+    var arrow = null;
+    if (m.move && views[0]) {
+      var endDoc = moveEndPoint(m);
+      var endEl = m.move.to_selector ? resolveMarkSelector(m.move.to_selector, m.screenId || '') : els[0];
+      if (endDoc && viewPointInClips(docPointToView(endDoc), endEl)) {
+        var fromRect = m.type === 'region' ? parts[0] : markLocalRect(views[0]);
+        var to = markLocalRect([endDoc[0] - scrollX, endDoc[1] - scrollY, 0, 0]);
+        arrow = { from: [fromRect[0] + fromRect[2] / 2, fromRect[1] + fromRect[3] / 2], to: [to[0], to[1]] };
+      }
+    }
+    return { entry: entry, parts: parts, arrow: arrow };
+  }
+
+  function paintMark(geometry) {
+    var entry = geometry.entry;
+    entry.parts.forEach(function (part, i) {
+      var local = geometry.parts[i];
+      if (!local) { hidePartNodes(part); return; }
+      showPartNodes(part);
+      placeFixedRect(part.frame, local);
+      var pos = badgePositionForRect(local);
+      part.badge.style.left = pos.left + 'px';
+      part.badge.style.top = pos.top + 'px';
+    });
+    if (geometry.arrow) placeArrow(entry, geometry.arrow.from, geometry.arrow.to);
+    else clearMarkArrow(entry);
+  }
+
+  function geometryBounds(updates) {
+    var x = Infinity, y = Infinity, right = -Infinity, bottom = -Infinity;
+    function include(r) {
+      if (!r) return;
+      x = Math.min(x, r[0]); y = Math.min(y, r[1]);
+      right = Math.max(right, r[0] + r[2]); bottom = Math.max(bottom, r[1] + r[3]);
+    }
+    updates.forEach(function (item) {
+      item.parts.forEach(include);
+      if (item.arrow) { include(item.arrow.from.concat([1, 1])); include(item.arrow.to.concat([1, 1])); }
+    });
+    return x === Infinity ? null : [x - 24, y - 24, right - x + 48, bottom - y + 48];
+  }
+
+  // Native scrolling moves the HTML; one transform moves its annotation layer.
+  // Only frame groups entering/leaving the viewport change visibility. No mark
+  // selectors, target rects or ancestor styles are read on this path.
+  function syncCanvasPose() {
+    if (!canvasView) return;
+    var pose = canvasView.pose;
+    var sx = canvasView.stage.scrollLeft, sy = canvasView.stage.scrollTop;
+    var viewport = [(sx - pose.x) / pose.zoom, (sy - pose.y) / pose.zoom,
+      canvasView.width / pose.zoom, canvasView.height / pose.zoom];
+    canvasView.groups.forEach(function (group) {
+      var visible = !!intersectRects(group.bounds, viewport);
+      if (visible !== group.visible) { group.visible = visible; group.node.style.display = visible ? '' : 'none'; }
+      if (!visible) return;
+      group.entries.forEach(function (entry) {
+        if (!entry.model || entry.paintPose === pose) return;
+        paintMark(projectMark(entry)); entry.paintPose = pose;
+      });
+    });
+    marksLayer.style.transform = 'translate3d(' + (-sx) + 'px,' + (-sy) + 'px,0)';
+  }
+
+  function frameLayoutRect(root) {
+    if (!root) return null;
+    var el = root.matches('.wb-screen') ? root.querySelector('.ios-stage, .wb-comp-stage, .wb-html-stage, .wb-screen-err') : root;
+    if (!el) return null;
+    var pose = canvasView.pose, r = markLocalRect(viewRect(el));
+    return [(r[0] - pose.x) / pose.zoom, (r[1] - pose.y) / pose.zoom, r[2] / pose.zoom, r[3] / pose.zoom];
+  }
+
+  function updateMarkGeometry(dirtyRoots, layoutChanged, dirtyEntries) {
+    var stage = canvasStage();
+    if (canvasView && canvasView.stage !== stage) resetCanvasView();
+    beginOverlayFrame();
+    if (stage) prepareCanvasView(stage);
+    var updates = [];
+    measuringCanvas = !!canvasView;
+    try {
+      geometryBatch(function () {
+        if (canvasView) {
+          canvasView.pose = canvasPose(stage);
+          var overlayRect = viewRect(overlay);
+          canvasView.width = overlayRect[2]; canvasView.height = overlayRect[3];
+          // Frame layout changes can move neighbours without changing their contents.
+          canvasView.groups.forEach(function (group) {
+            var old = group.box;
+            var box = !dirtyRoots || layoutChanged ? frameLayoutRect(group.root) : old;
+            group.box = box;
+            var dx = old && box ? box[0] - old[0] : 0, dy = old && box ? box[1] - old[1] : 0;
+            var resized = old && box && (Math.abs(old[2] - box[2]) > .1 || Math.abs(old[3] - box[3]) > .1);
+            group.entries.forEach(function (entry) {
+              var dirty = dirtyEntries ? dirtyEntries.has(entry) : (!dirtyRoots || !entry.model || !group.root || resized);
+              if (!dirtyEntries && dirtyRoots && entry.roots) entry.roots.forEach(function (root) { if (dirtyRoots.has(root)) dirty = true; });
+              if (!dirty && (dx || dy)) {
+                if (entry.roots.size > 1) dirty = true;
+                else {
+                  entry.model.parts.forEach(function (r) { if (r) { r[0] += dx; r[1] += dy; } });
+                  if (entry.model.arrow) { entry.model.arrow.from[0] += dx; entry.model.arrow.from[1] += dy;
+                    entry.model.arrow.to[0] += dx; entry.model.arrow.to[1] += dy; }
+                }
+              }
+              if (dirty) updates.push(measureMark(entry));
+            });
+          });
+        } else updates = Object.keys(markNodes).map(function (key) { return measureMark(markNodes[key]); });
+      });
+    } finally { measuringCanvas = false; }
+    if (canvasView) {
+      updates.forEach(cacheMarkGeometry);
+      canvasView.groups.forEach(function (group) {
+        group.bounds = geometryBounds(group.entries.map(function (entry) { return entry.model; }).filter(Boolean));
+      });
+      syncCanvasPose();
+    } else updates.forEach(paintMark);
+  }
+
+  function updateCanvasZoom() {
+    if (!canvasView) { onViewChange(); return; }
+    beginOverlayFrame(); canvasView.pose = canvasPose(canvasView.stage);
+    syncCanvasPose();
   }
 
   function updateCountLabel(shown) {
@@ -2831,7 +3075,8 @@
         node.className = 'ann-bubble';
         node.setAttribute('data-ann-ui', '');
         node.setAttribute('data-n', m.n);
-        node.innerHTML = bubbleInnerHtml(bubbleMarkView(m));
+        var html = bubbleInnerHtml(bubbleMarkView(m));
+        node.innerHTML = html;
         node.addEventListener('click', function (e) {
           if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
         });
@@ -2839,13 +3084,21 @@
         node.addEventListener('mouseenter', function () { showBubbleFor(m.n, 0); });
         node.addEventListener('mouseleave', hideBubbleSoon);
         bubblesLayer.appendChild(node);
-        entry = bubbleNodes[m.n] = { m: m, node: node, height: 0 };
+        entry = bubbleNodes[m.n] = { m: m, node: node, height: 0, html: html };
       } else {
         entry.m = m;
-        // content may have changed; refresh inner HTML + re-measure
-        entry.node.innerHTML = bubbleInnerHtml(bubbleMarkView(m));
+        var nextHtml = bubbleInnerHtml(bubbleMarkView(m));
+        if (entry.html !== nextHtml) {
+          entry.node.innerHTML = nextHtml;
+          entry.html = nextHtml;
+          entry.height = 0;
+        }
       }
-      entry.height = entry.node.offsetHeight || 0;
+    });
+    // DOM writes above are complete before any height reads. Canvas comments
+    // are measured only when hovered/focused, never once per hidden comment.
+    if (!canvasStage()) Object.keys(bubbleNodes).forEach(function (n) {
+      bubbleNodes[n].height = bubbleNodes[n].node.offsetHeight || 0;
     });
     Object.keys(bubbleNodes).forEach(function (n) {
       if (keep[n]) return;
@@ -2854,10 +3107,37 @@
     });
   }
 
+  function updateCanvasBubble() {
+    var n = bubbleShowN != null ? bubbleShowN : bubbleFocusN;
+    var bubble = bubbleNodes[n];
+    if (!bubble) return;
+    var mark = markNodes[n];
+    var r = mark && mark.model ? projectMark(mark).parts[0] : null;
+    if (!r || bubbleLayout === 'sidebar') { bubble.node.hidden = true; return; }
+    var local = expandRect(r, -MARK_BOX_PAD_PX);
+    local[0] -= canvasView.stage.scrollLeft; local[1] -= canvasView.stage.scrollTop;
+    local = intersectRects(local, [0, 0, canvasView.width, canvasView.height]);
+    if (!isVisibleEnough(local)) { bubble.node.hidden = true; return; }
+    bubble.node.hidden = false;
+    var bw = Math.min(BUBBLE_W, Math.max(160, canvasView.width - BUBBLE_MARGIN * 2));
+    if (!bubble.height || bubble.width !== bw) {
+      bubble.node.style.width = bw + 'px';
+      bubble.width = bw;
+      bubble.height = bubble.node.offsetHeight;
+    }
+    var left = local[0] + local[2] + 13;
+    if (left + bw > canvasView.width - BUBBLE_MARGIN) left = local[0] - bw - 13;
+    left = Math.max(BUBBLE_MARGIN, Math.min(left, canvasView.width - bw - BUBBLE_MARGIN));
+    var top = Math.max(BUBBLE_MARGIN, Math.min(local[1] - 6, canvasView.height - bubble.height - BUBBLE_MARGIN));
+    bubble.node.style.left = Math.round(left) + 'px';
+    bubble.node.style.top = Math.round(top) + 'px';
+  }
+
   /** Two-column greedy packer: sparse → right; when right crowds, spill left.
    *  No connector lines — bubble numbers match pin badges for correspondence. */
   function updateBubbleGeometry() {
     if (!renderComments) return;
+    if (canvasView) { updateCanvasBubble(); return; }
     beginOverlayFrame();
     // sidebar 模式：iframe 内不画气泡（由父级 workbench 在右侧 gutter 渲染）。
     if (bubbleLayout === 'sidebar') {
@@ -2923,29 +3203,136 @@
     return out;
   }
 
+  function markGeometryKey(m) {
+    return JSON.stringify([m.type, m.pageId, m.screenId, m.section, m.group,
+      m.selector, m.targets, m.rect, m.base, m.contains, m.move]);
+  }
+
+  // Ledger replacements can change one comment without invalidating every DOM anchor.
+  function renderLedgerChange() {
+    if (!canvasView) { renderAll(); return; }
+    return withLiveTargets(function () {
+      var affected = new Set(), present = new Set();
+      selectorCache.clear(); frameRoots = null;
+      var pageMarks = geometryBatch(function () {
+        return marks.filter(function (m) {
+          if (!markOnActivePage(m)) return false;
+          present.add(String(m.n));
+          var entry = markNodes[m.n];
+          if (entry && entry.signature === markGeometryKey(m)) {
+            var fact = markFacts.get(entry.m);
+            if (fact) markFacts.set(m, fact);
+            entry.m = m;
+          } else {
+            if (entry) entry.m = m;
+            markFacts.delete(m); affected.add(m);
+          }
+          return markHasLiveTarget(m) && !(activeComposer && activeComposer.persistedN === m.n);
+        });
+      });
+      Object.keys(markNodes).forEach(function (key) {
+        if (!present.has(key)) affected.add(markNodes[key].m);
+      });
+      if (affected.size) {
+        syncMarkStructure(pageMarks.filter(function (m) { return affected.has(m); }), affected);
+        prepareCanvasView(canvasView.stage, true);
+        var entries = new Set();
+        affected.forEach(function (m) { if (markNodes[m.n]) entries.add(markNodes[m.n]); });
+        updateMarkGeometry(new Set(), false, entries);
+      }
+      structureDirty = false;
+      syncBubbleStructure(pageMarks); updateBubbleGeometry(); updateDraftGeometry();
+      updateCountLabel(pageMarks.length); syncGhost();
+    });
+  }
+
   function renderAll() {
-    var pageMarks = visiblePageMarks();
-    syncMarkStructure(pageMarks);
-    updateMarkGeometry();
-    syncBubbleStructure(pageMarks);
-    updateBubbleGeometry();
-    updateDraftGeometry();
-    updateCountLabel(pageMarks.length);
-    syncGhost();
+    return withLiveTargets(function () {
+      clearAnchorCache();
+      if (!canvasStage() && frameResizeObserver) { frameResizeObserver.disconnect(); observedFrames.clear(); }
+      var pageMarks = geometryBatch(visiblePageMarks);
+      syncMarkStructure(pageMarks);
+      updateMarkGeometry();
+      syncBubbleStructure(pageMarks);
+      updateBubbleGeometry();
+      updateDraftGeometry();
+      updateCountLabel(pageMarks.length);
+      syncGhost();
+    });
   }
 
   var viewRaf = 0;
-  function onViewChange() {
+  var geometryDirty = false;
+  var zoomDirty = false;
+  var contentFullDirty = false;
+  var contentRoots = new Set();
+  var dirtyFrameRoots = new Set();
+
+  function refreshFrameContent(roots) {
+    return withLiveTargets(function () {
+      var affected = new Set();
+      var changedState = false;
+      marks.forEach(function (m) {
+        if (!markOnActivePage(m)) return;
+        var entry = markNodes[m.n];
+        var touches = !entry || !entry.roots || !entry.roots.size;
+        roots.forEach(function (root) {
+          if (m.screenId === root.getAttribute('data-screen') || (entry && entry.roots.has(root))) touches = true;
+        });
+        if (touches) affected.add(m);
+      });
+      selectorCache.clear(); frameRoots = null;
+      var visible = geometryBatch(function () {
+        var list = [];
+        affected.forEach(function (m) {
+          var old = markFacts.get(m);
+          markFacts.delete(m);
+          var live = markHasLiveTarget(m), broken = isMarkBroken(m);
+          if (!old || old.live !== live || old.broken !== broken) changedState = true;
+          if (live && !(activeComposer && activeComposer.persistedN === m.n)) list.push(m);
+        });
+        return list;
+      });
+      syncMarkStructure(visible, affected);
+      prepareCanvasView(canvasView.stage, true);
+      updateMarkGeometry(roots, true);
+      if (changedState) {
+        var pageMarks = geometryBatch(visiblePageMarks);
+        syncBubbleStructure(pageMarks); updateCountLabel(pageMarks.length); notify();
+      }
+      updateBubbleGeometry(); updateDraftGeometry(); syncGhost();
+    });
+  }
+  function onViewChange(event) {
+    var stage = canvasStage();
+    if (!event || event.type !== 'scroll' || event.target !== stage) {
+      var root = event && event.type === 'scroll' && event.target.closest && event.target.closest('.wb-screen');
+      if (root && canvasView) dirtyFrameRoots.add(root);
+      else geometryDirty = true;
+    }
+    scheduleViewUpdate();
+  }
+
+  function scheduleViewUpdate() {
     if (viewRaf) return;
     viewRaf = requestAnimationFrame(function () {
       viewRaf = 0;
-      if (structureDirty) renderAll();
+      if (structureDirty || contentFullDirty) { renderAll(); notify(); }
+      else if (contentRoots.size && canvasView) {
+        dirtyFrameRoots.forEach(function (root) { contentRoots.add(root); });
+        refreshFrameContent(contentRoots);
+      }
       else {
-        updateMarkGeometry();
+        if (!canvasView || geometryDirty) updateMarkGeometry();
+        else if (dirtyFrameRoots.size) updateMarkGeometry(dirtyFrameRoots);
+        else if (zoomDirty) updateCanvasZoom();
+        else syncCanvasPose();
         updateBubbleGeometry();
         updateDraftGeometry();
         syncGhost();
       }
+      geometryDirty = false; zoomDirty = false; contentFullDirty = false;
+      contentRoots.clear(); dirtyFrameRoots.clear();
     });
   }
 
@@ -2956,10 +3343,9 @@
 
   // Interactive HTML documents change views without navigating or resizing:
   // tabs toggle `hidden`, dialogs change classes, and async renders replace
-  // children. Treat those product-DOM changes as a structural redraw. Ignore
+  // children. Invalidate affected frames, with a full fallback for global changes. Ignore
   // mutations made by the annotation UI itself or renderAll would observe its
   // own overlay updates and loop forever.
-  var contentRenderRaf = 0;
 
   function annotationUiNode(node) {
     var el = node && (node.nodeType === 1 ? node : node.parentElement);
@@ -2968,39 +3354,115 @@
 
   function contentMutation(record) {
     if (annotationUiNode(record.target)) return false;
+    if (record.target === document.documentElement && record.type === 'attributes') {
+      if (record.attributeName === 'data-canvas-zoom' || record.attributeName === 'data-pinpoint-mode') return false;
+      if (record.attributeName === 'style') {
+        var withoutViewport = function (value) { return String(value || '').split(';').filter(function (v) {
+          return v.trim() && !/^\s*(--wb-board-zoom|--wb-strip-w)\s*:/.test(v);
+        }).join(';'); };
+        if (withoutViewport(record.oldValue) === withoutViewport(record.target.getAttribute('style'))) return false;
+      }
+    }
+    if (record.target.id === 'wbstage' && record.type === 'attributes' && record.attributeName === 'style') {
+      var withoutScrollPadding = function (value) { return String(value || '').split(';').filter(function (v) {
+        return v.trim() && !/^\s*scroll-padding-bottom\s*:/.test(v);
+      }).join(';'); };
+      if (withoutScrollPadding(record.oldValue) === withoutScrollPadding(record.target.getAttribute('style'))) return false;
+    }
+    // Only the workbench-owned zoom wrap dimensions are viewport bookkeeping.
+    if (canvasView && record.type === 'attributes' && record.attributeName === 'style' &&
+        record.target.matches('.wb-zoom-wrap, .wb-library')) {
+      var withoutSize = function (value) { return String(value || '').split(';').filter(function (v) {
+        return v.trim() && !/^\s*(width|height|--wb-board-zoom)\s*:/.test(v);
+      }).join(';'); };
+      if (withoutSize(record.oldValue) === withoutSize(record.target.getAttribute('style'))) return false;
+    }
+    // Cursor/user-select changes are navigation feedback, not content layout.
+    if (record.type === 'attributes' && record.attributeName === 'class' &&
+        (record.target === document.body || record.target.id === 'wbstage')) {
+      var withoutPan = function (value) {
+        return String(value || '').split(/\s+/).filter(function (c) {
+          return c && c !== 'wb-panning' && c !== 'wb-space-pan';
+        }).sort().join(' ');
+      };
+      if (withoutPan(record.oldValue) === withoutPan(record.target.className)) return false;
+    }
     if (record.type !== 'childList') return true;
     var changed = Array.prototype.slice.call(record.addedNodes || [])
       .concat(Array.prototype.slice.call(record.removedNodes || []));
     return changed.some(function (node) { return !annotationUiNode(node); });
   }
 
-  function scheduleContentRender() {
-    if (contentRenderRaf) return;
-    contentRenderRaf = requestAnimationFrame(function () {
-      contentRenderRaf = 0;
-      structureDirty = true;
-      renderAll();
-      notify();
-    });
+  function scheduleContentRender(event) {
+    var target = event && event.target;
+    if (target && target.nodeType !== 1) target = target.parentElement;
+    var root = target && target.closest && target.closest('.wb-screen');
+    if (canvasView && root) contentRoots.add(root);
+    else contentFullDirty = true;
+    scheduleViewUpdate();
   }
 
   if (typeof MutationObserver !== 'undefined' && document.body) {
     var contentMutationObserver = new MutationObserver(function (records) {
-      if (records.some(contentMutation)) scheduleContentRender();
+      var dependencies;
+      function selectorDependencies() {
+        if (dependencies) return dependencies;
+        dependencies = { relational: false, global: false };
+        marks.forEach(function (m) {
+          var selectors = markElementTargets(m).map(function (t) { return t.selector; });
+          if (m.base) selectors.push(m.base.selector);
+          if (m.move) selectors.push(m.move.to_selector);
+          selectors.forEach(function (selector) {
+            if (!selector) return;
+            if (/:has\(|[+~]|\[style/.test(selector)) dependencies.relational = true;
+            if (!frameInternalSelector(selector)) dependencies.global = true;
+          });
+        });
+        return dependencies;
+      }
+      records.forEach(function (record) {
+        if (!contentMutation(record)) return;
+        // Stylesheets and relational/global selector dependencies can reach other frames.
+        var node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
+        var broad = node && node.closest('style, link');
+        if (!broad) {
+          var deps = selectorDependencies();
+          broad = deps.relational || (record.type !== 'characterData' && record.attributeName !== 'style' && deps.global);
+        }
+        scheduleContentRender(broad ? null : record);
+      });
     });
+    contentMutationObserver.observe(document.documentElement, { attributes: true, attributeOldValue: true });
+    contentMutationObserver.observe(document.head, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true });
     contentMutationObserver.observe(document.body, {
       subtree: true,
       childList: true,
+      characterData: true,
       attributes: true,
-      attributeFilter: [
-        'hidden',
-        'class',
-        'style',
-        'open',
-        'aria-hidden',
-        'aria-expanded',
-        'aria-selected'
-      ]
+      attributeOldValue: true
+    });
+  }
+
+  var observedFrames = new Map();
+  var frameResizeObserver = typeof ResizeObserver === 'undefined' ? null : new ResizeObserver(function (entries) {
+    entries.forEach(function (entry) {
+      var old = observedFrames.get(entry.target);
+      if (!old) return;
+      var size = [entry.contentRect.width, entry.contentRect.height];
+      observedFrames.set(entry.target, size);
+      if (old.length && (Math.abs(old[0] - size[0]) > .1 || Math.abs(old[1] - size[1]) > .1)) {
+        scheduleContentRender({ target: entry.target });
+      }
+    });
+  });
+  function syncFrameResizeObservers(stage) {
+    if (!frameResizeObserver) return;
+    var current = new Set(stage.querySelectorAll('.wb-lib-item, .ios-stage, .wb-comp-stage, .wb-html-stage'));
+    observedFrames.forEach(function (_, node) {
+      if (!current.has(node)) { frameResizeObserver.unobserve(node); observedFrames.delete(node); }
+    });
+    current.forEach(function (node) {
+      if (!observedFrames.has(node)) { observedFrames.set(node, []); frameResizeObserver.observe(node); }
     });
   }
 
@@ -3010,9 +3472,11 @@
   if (typeof ResizeObserver !== 'undefined' && document.body) {
     var contentResizeObserver = new ResizeObserver(scheduleContentRender);
     contentResizeObserver.observe(document.body);
+    var observedStage = document.getElementById('wbstage');
+    if (observedStage) contentResizeObserver.observe(observedStage);
   }
   document.addEventListener('load', function (event) {
-    if (!annotationUiNode(event.target)) scheduleContentRender();
+    if (!annotationUiNode(event.target)) scheduleContentRender(event);
   }, true);
   document.addEventListener('transitionend', function (event) {
     if (!annotationUiNode(event.target)) scheduleContentRender();
@@ -3170,7 +3634,9 @@
   // ---------- 对外 API（workbench 切 tab 时可主动调 render；也便于脚本化）----------
   window.pinpoint = {
     render: renderAll,
+    viewportChanged: function () { zoomDirty = true; onViewChange({ type: 'scroll', target: canvasStage() }); },
     setMode: function (on) { if (!!on !== mode) toggleMode(); },
+    setNavigationActive: setNavigationActive,
     toggle: toggleMode,
     setPaused: setPaused,
     setRenderComments: setRenderComments,
