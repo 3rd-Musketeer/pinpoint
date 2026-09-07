@@ -109,7 +109,7 @@ test('extension injects annotate client and annotations land in the url entry bu
   await page.locator('#target-el').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill('ext ann');
+  await box.locator('#ann-input').fill('ext ann');
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
 
@@ -118,7 +118,7 @@ test('extension injects annotate client and annotations land in the url entry bu
     if (!fs.existsSync(BUCKET)) return null;
     const name = fs.readdirSync(BUCKET).find((n) => n.startsWith('ext-fixture.html_') && n.endsWith('.json'));
     return name ? JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8')) : null;
-  }).toMatchObject({ annotations: [{ content: 'ext ann' }] });
+  }).toMatchObject({ annotations: [{ content: '[@t:i1] ext ann' }] });
   const name = fs.readdirSync(BUCKET).find((n) => n.endsWith('.json'));
   const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
   expect(doc.annotations).toHaveLength(1);
@@ -179,7 +179,7 @@ test('side panel shell renders the ledger and bridges commands to the page clien
   await page.locator('#target-el').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill('panel ann');
+  await box.locator('#ann-input').fill('panel ann');
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
   await page.evaluate(() => window.pinpoint.setMode(false));

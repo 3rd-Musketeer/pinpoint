@@ -29,12 +29,12 @@ test('saved annotations land in the pinpoint entry bucket', async ({ page }) => 
   await target.click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill('bucket check');
+  await box.locator('#ann-input').fill('bucket check');
   await box.locator('#ann-save').click();
 
   await expect.poll(() => bucketJsonFiles().length).toBe(1);
   const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketJsonFiles()[0]), 'utf8'));
-  expect(doc.annotations.map((a) => a.content)).toContain('bucket check');
+  expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('bucket check'));
   // The data root itself must stay clean — everything lives under an entry bucket.
   expect(fs.readdirSync(E2E_DATA_DIR).filter((name) => name.endsWith('.json'))).toEqual([]);
 });

@@ -104,6 +104,10 @@ function NoteCard(props) {
     }
   }
 
+  if (target.kind === 'frame') {
+    return liveNote ? <div className="wb-detail-note" data-detail-note><div className="wb-detail-note-text" data-detail-note-text>{liveNote}</div></div> : null;
+  }
+
   return (
     <div className="wb-detail-note" data-detail-note>
       {editing ? (

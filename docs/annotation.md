@@ -161,3 +161,24 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
 `src/server/lib/zip-store.js`）。agent 的 CLI 用同一个 Chromium 渲染器：
 `npm run export -- --page <page> --section <section> [--frame <screen>]`。
 不要把截图逻辑加进单个屏的片段里。
+
+可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（`topics/chat-stream-polish/prototypes/plugins/pk.js` 是样例）。
+
+## 执行结果与输入框（review-refinements，2026-09-07 起）
+
+本轮开发分支的 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
+
+`window.pinpoint.recordResults(id, operations, { baseRevision })` 在当前已加载页面校验结果目标并按账本 revision 保存。`id` 是原标注稳定 ID；`operations` 元素含 `action`（add/modify/move/delete）与 `targets`。非删除操作的 target 含 selector、可选 screenId；需在指定 frame 内存在且唯一，不能命中 Pinpoint UI。删除操作 targets 为空。
+
+保存只增加或替换原标注的 `result: { operations, updatedAt }`，不改变原意见、ID、targets。结果目标显示蓝框与同一序号。删除记录显示“已删除”，蓝框不代表用户接受。没有追加评论、验收状态或版本历史。用户可删除原标注后重新标注。
+
+写入拒绝条件包括旧 revision、未结束的草稿/同步、跨当前页面标注、无目标或目标匹配不唯一。发生拒绝后重新读取当前状态再判断，不使用原请求强行覆盖。原始 /save 协议仍用于兼容客户端；agent 应使用经过 DOM 验证的 recordResults，不绕过它手写 result。
+
+`clearInvalid()` 仅作用当前页，要求所有原目标和结果目标都无法解析且所属 frame 已加载。隐藏目标仍存在，保留；缺失/加载中的 frame 保留。显式删除的操作记录保留，避免当作意外失效清除。该保守判定不是任意外部 SPA 加载状态的识别器。
+
+页面置顶和归档属于 viewer 偏好，存于 `pinpoint-wb.pagePreferences`，不同浏览器不同步。归档不改 registry、源文件或标注，恢复保留原置顶及文件夹归属。
+
+
+结果框沿用画布几何缓存：内容和布局变化时集中测量，平移只平移结果层，缩放投影缓存坐标。不能在每个平移帧重新遍历结果 selector 或读取目标矩形。
+
+composer 会避让可见的 Pinpoint 面板，而非透明的全屏停靠容器。原生 modal 的 inert 约束通过把 overlay 挂入当前 modal 处理，不能仅靠 z-index；modal 关闭后恢复挂载。图片粘贴、正文中间插入目标和原生弹窗输入均有用户故事 E2E。

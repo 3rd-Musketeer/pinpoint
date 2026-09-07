@@ -89,7 +89,6 @@
   var drag = null;
   var arrowFrom = null;
   var activeComposer = null;
-  var composerPlacement = null; // session-local viewport position after handle drag
   // 2026-09-04 评审板 H1 起默认开：评论卡是画布上的主体表达（钉子常显、卡在
   // hover 钉子时出），不再是一个要先去开的开关。「隐藏批注」这一档仍在，
   // 只是不再是默认。
@@ -953,6 +952,7 @@
   // Lucide 风格内联图标（24 viewBox、stroke currentColor）。注入包保持单文件
   // 自包含，composer/侧栏用的几个图标以 path data 放这里，不引 workbench-icons.js。
   var ANN_ICONS = {
+    trash: '<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -1021,12 +1021,13 @@
     '#ann-sidebar .wb-ann-broken-tag{align-self:flex-start;}',
     '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:4px 4px 4px 0;opacity:0;pointer-events:none;}',
     '#ann-sidebar .wb-ann-item:hover .ann-sb-acts,#ann-sidebar .wb-ann-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
-    '#ann-sidebar .ann-sb-acts button{width:24px;height:24px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:var(--wb-faint);}',
+    '#ann-sidebar .ann-sb-acts button{min-width:32px;height:24px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:var(--wb-faint);}',
     '#ann-sidebar .ann-sb-acts button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
-    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;}',
+    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:2147483647;overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
+    '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
     '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
     '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
@@ -1056,7 +1057,16 @@
     // 悬停提示：反色气泡，与 vendored tooltip（bg-foreground/text-background）同语言。
     '#ann-tip{position:absolute;z-index:2;max-width:min(280px,calc(100% - 24px));background:var(--wb-fg,#1c2024);color:var(--wb-surface,#fff);font-size:12px;line-height:1.4;padding:7px 12px;border-radius:var(--wb-r-2,6px);pointer-events:none;word-break:break-word;}',
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
-    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:720px;max-height:min(62vh,560px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));padding:12px;pointer-events:auto;}',
+    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));padding:12px;pointer-events:auto;}',
+    '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
+    '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:14px;padding:2px 0;margin-top:8px}',
+    '#ann-input:empty:before{content:attr(data-placeholder);color:var(--wb-muted,#888);pointer-events:none}',
+    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:210px;border-radius:8px;padding:0 6px;background:rgba(245,166,35,.12);color:#8a5a00;line-height:22px;font-size:12px;white-space:nowrap}',
+    '#ann-input .ann-inline-target>span{overflow:hidden;text-overflow:ellipsis}#ann-input .ann-inline-remove{background:none;padding:0 0 0 4px;opacity:0}#ann-input .ann-inline-target:hover .ann-inline-remove,#ann-input .ann-inline-target:focus-within .ann-inline-remove{opacity:1}',
+    '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
+    '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#fff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
+    '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
+    '#ann-box #ann-save{display:grid;place-items:center;border-radius:50%;width:32px;height:32px;font-size:20px;padding:0}#ann-imgs{margin-top:0;margin-bottom:8px}',
     '#ann-box .head{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-width:0;}',
     '#ann-box .t{flex:1;min-width:0;font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
     '#ann-box .t b{color:var(--wb-muted,#6b6b70);font-weight:var(--wb-w-semibold,600);}',
@@ -1065,38 +1075,17 @@
     '#ann-box .top .x{width:24px;height:24px;padding:0;border-radius:var(--wb-r-2,6px);font-size:14px;line-height:24px;text-align:center;color:var(--wb-faint,#8d8d8d);}',
     '#ann-box .top .x:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
     '#ann-box .top .warn{padding:4px 8px;font-size:11px;}',
-    '#ann-box textarea{display:block;width:100%;border:0;border-radius:var(--wb-r-4,12px);padding:9px 10px;font-size:14px;line-height:1.5;min-height:68px;max-height:180px;resize:vertical;outline:none;font-family:inherit;background:var(--wb-hover,rgba(0,0,0,.04));}',
-    '#ann-box .ann-target-bar{display:flex;align-items:flex-start;gap:8px;margin:0 0 8px;min-width:0;}',
-    '#ann-box .ann-target-modes{display:flex;flex:none;gap:2px;padding:2px;border-radius:var(--wb-r-3,8px);background:var(--wb-fill,rgba(0,0,0,.055));}',
-    '#ann-box .ann-target-modes button{padding:4px 7px;border-radius:var(--wb-r-2,6px);font-size:10px;background:transparent;color:var(--wb-muted,#6b6b70);}',
-    '#ann-box .ann-target-modes button:hover{background:transparent;color:var(--wb-fg,#1c2024);}',
-    '#ann-box .ann-target-modes button.on{background:var(--wb-surface,#fff);color:var(--wb-fg,#1c2024);box-shadow:var(--wb-sh-1,0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04));font-weight:var(--wb-w-semibold,600);}',
-    '#ann-box .ann-target-pills{display:flex;flex:1;min-width:0;gap:5px;flex-wrap:wrap;align-items:center;}',
-    '#ann-box .ann-target-pill{display:flex;align-items:center;gap:5px;max-width:230px;min-height:25px;padding:4px 6px 4px 8px;border:0;border-radius:999px;background:rgba(245,166,35,.13);color:#8a5a00;font-size:11px;line-height:1.2;cursor:pointer;outline:none;}',
-    '#ann-box .ann-target-pill:hover,#ann-box .ann-target-pill:focus-visible{border-color:rgba(245,166,35,.75);background:rgba(245,166,35,.17);}',
-    '#ann-box .ann-target-pill.broken{border-color:color-mix(in srgb,var(--wb-danger,#b84230) 28%,transparent);background:color-mix(in srgb,var(--wb-danger,#b84230) 7%,transparent);color:var(--wb-danger,#b84230);}',
-    '#ann-box .ann-target-pill-label{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}',
-    '#ann-box .ann-target-remove{position:relative;flex:none;width:17px;height:17px;padding:0;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;line-height:1;background:var(--wb-fill,rgba(0,0,0,.055));color:var(--wb-muted,#6b6b70);opacity:0;pointer-events:none;}',
-    '#ann-box .ann-target-remove::after{content:"";position:absolute;inset:-4px;border-radius:50%;}',
-    '#ann-box .ann-target-pill:hover .ann-target-remove,#ann-box .ann-target-pill:focus-within .ann-target-remove{opacity:1;pointer-events:auto;}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
-    '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:flex-end;gap:6px;margin-top:10px;}',
+    '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;}',
     '#ann-box button{border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-box button:hover{background:var(--wb-fill,rgba(0,0,0,.055));}',
-    '#ann-box .ann-drag-handle{flex:none;width:24px;height:24px;padding:0;display:flex;align-items:center;justify-content:center;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-faint,#8d8d8d);cursor:grab;touch-action:none;}',
-    '#ann-box .ann-drag-handle:hover{background:var(--wb-fill,rgba(0,0,0,.055));color:var(--wb-muted,#6b6b70);}',
-    '#ann-box .ann-drag-handle[data-dragging="true"]{cursor:grabbing;background:rgba(245,166,35,.12);color:#8a5a00;}',
-    '#ann-box .ann-drag-handle svg{display:block;width:14px;height:14px;pointer-events:none;}',
     '#ann-box button.dark{background:var(--wb-accent,#5b7fa6);color:var(--wb-surface,#fff);font-weight:var(--wb-w-semibold,600);}',
     '#ann-box button.dark:hover{background:color-mix(in srgb,var(--wb-accent,#5b7fa6) 90%,transparent);}',
     '#ann-box button.warn{color:var(--wb-danger,#b84230);background:transparent;}',
     '#ann-box button.warn:hover{background:color-mix(in srgb,var(--wb-danger,#b84230) 10%,transparent);color:var(--wb-danger,#b84230);}',
     '#ann-box button:disabled{opacity:.4;cursor:not-allowed;}',
     '#ann-box button:disabled:hover{background:var(--wb-hover,rgba(0,0,0,.04));}',
-    '#ann-box #ann-copy-ind.ok{background:var(--wb-ok-soft,#edf8f1);color:var(--wb-ok,#1d7144);}',
     '#ann-box .hint{font-size:10px;color:var(--wb-faint,#8d8d8d);margin-top:6px;}',
-    '#ann-box .research-opt{margin-top:8px;font-size:12px;color:var(--wb-muted,#6b6b70);line-height:1.4;}',
-    '#ann-box .research-opt label{cursor:pointer;display:flex;align-items:center;gap:6px;min-width:0;}',
     '#ann-mention{position:absolute;z-index:6;min-width:200px;max-width:min(280px,calc(100% - 24px));max-height:180px;overflow:auto;background:var(--wb-surface,#fff);border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));border:0;padding:4px;pointer-events:auto;}',
     '#ann-mention .ann-men-item{display:flex;gap:8px;align-items:flex-start;width:100%;border:0;background:transparent;text-align:left;font:inherit;padding:7px 8px;border-radius:var(--wb-r-3,8px);cursor:pointer;color:var(--wb-fg,#1c2024);}',
     '#ann-mention .ann-men-item.on,#ann-mention .ann-men-item:hover{background:var(--wb-hover,rgba(0,0,0,.04));}',
@@ -1142,9 +1131,14 @@
   overlay.appendChild(chromeLayer);
   bubblesLayer.style.display = renderComments ? '' : 'none';
   // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
-  function mountOverlay() {
+  function mountOverlay(modal) {
     var stageWrap = document.querySelector('.wb-stage-wrap');
-    if (stageWrap) {
+    if (modal && modal.matches('dialog:modal')) {
+      // Native modal dialogs make nodes outside their subtree inert, even when
+      // those nodes are painted in the top layer. Keep the composer inside it.
+      overlay.setAttribute('data-ann-viewport', '');
+      modal.appendChild(overlay);
+    } else if (stageWrap) {
       overlay.removeAttribute('data-ann-viewport');
       stageWrap.appendChild(overlay);
     } else {
@@ -1155,9 +1149,16 @@
       overlay.setAttribute('data-ann-viewport', '');
       document.body.appendChild(overlay);
     }
+    if (typeof overlay.showPopover === 'function') {
+      overlay.setAttribute('popover', 'manual');
+      if (!overlay.matches(':popover-open')) overlay.showPopover();
+    }
     _originCache = null; // 挂载点/模式变了 origin 语义也变，缓存作废
   }
   mountOverlay();
+  document.addEventListener('close', function (event) {
+    if (event.target === overlay.parentElement) { mountOverlay(); renderAll(); }
+  }, true);
   var hoverGhost = null;
 
   var toolbar = document.createElement('div');
@@ -1350,7 +1351,160 @@
 
   btnHide.addEventListener('click', function () { setPaused(!paused); });
 
+  function resultTargets(mark) {
+    return ((mark.result && mark.result.operations) || []).flatMap(function (operation) { return operation.targets || []; });
+  }
+
+  function resultScope(screenId) {
+    if (FRAME) return FRAME.screenId === screenId || !screenId ? document : null;
+    if (!screenId) return document.getElementById('wb-board-panel') || document;
+    return document.querySelector('.wb-screen[data-screen="' + CSS.escape(screenId) + '"]');
+  }
+
+  function findResultTarget(target) {
+    var scope = resultScope(target.screenId);
+    if (!scope) return null;
+    try {
+      var matches = scope.querySelectorAll(target.selector);
+      return matches.length === 1 && !isUI(matches[0]) ? matches[0] : null;
+    } catch (_) { return null; }
+  }
+
+  var resultWriting = false;
+  async function recordResults(id, operations, options) {
+    options = options || {};
+    if (options.baseRevision !== revision) throw new Error('revision_conflict: refresh annotations before reporting results');
+    if (syncing || ledgerSwitching || resultWriting || activeComposer || mutationVersion !== syncedMutationVersion) throw new Error('annotation_busy: finish the current edit first');
+    var mark = marks.find(function (item) { return item.id === id; });
+    if (!mark || !markOnActivePage(mark)) throw new Error('annotation_not_on_current_page');
+    if (!Array.isArray(operations) || !operations.length) throw new Error('operations_required');
+    var normalized = operations.map(function (operation) {
+      if (!operation || ['add', 'modify', 'move', 'delete'].indexOf(operation.action) < 0) throw new Error('invalid_operation');
+      if (operation.action === 'delete') {
+        if (operation.targets && operation.targets.length) throw new Error('deleted_operation_has_no_result_target');
+        return { action: 'delete', targets: [] };
+      }
+      if (!Array.isArray(operation.targets) || !operation.targets.length) throw new Error('result_target_required');
+      return { action: operation.action, targets: operation.targets.map(function (target) {
+        if (!target || typeof target.selector !== 'string' || !target.selector.trim()) throw new Error('selector_required');
+        if (target.pageId && target.pageId !== mark.pageId) throw new Error('result_page_mismatch');
+        var candidate = { selector: target.selector, screenId: target.screenId || mark.screenId || '' };
+        var el = findResultTarget(candidate);
+        if (!el) throw new Error('result_target_must_exist_and_be_unique');
+        candidate.text = excerpt(el);
+        return candidate;
+      }) };
+    });
+    var next = marks.map(function (item) { return item.id === id ? Object.assign({}, item, { result: { operations: normalized, updatedAt: new Date().toISOString() } }) : item; });
+    var epoch = syncEpoch;
+    resultWriting = true;
+    try {
+      var response = await fetch(SERVER + '/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: PAGE, entry: ENTRY, path: decodeURIComponent(LEDGER_PATHNAME), baseRevision: options.baseRevision, annotations: next }) });
+      var doc = await response.json();
+      if (!response.ok) throw new Error(response.status === 409 ? 'revision_conflict' : 'result_save_failed');
+      if (epoch === syncEpoch) applyRemoteDoc(doc, '结果已同步');
+      return { id: id, revision: doc.revision, result: next.find(function (item) { return item.id === id; }).result };
+    } finally { resultWriting = false; }
+  }
+
+  // Missing DOM is conclusive only inside a loaded scope. Hidden elements are
+  // still present and must never be cleared merely because they cannot paint.
+  function canClearInvalid(mark, scopes) {
+    function loadedScope(screenId) {
+      if (scopes && scopes.has(screenId)) return scopes.get(screenId);
+      var scope = resultScope(screenId);
+      var loading = '.wb-screen-loading,.wb-screen-err,[data-loading="true"],[aria-busy="true"]';
+      var loaded = scope && !(scope.matches && scope.matches(loading)) && !scope.querySelector(loading) ? scope : null;
+      if (scopes) scopes.set(screenId, loaded);
+      return loaded;
+    }
+    if (!markOnActivePage(mark) || ledgerSwitching || document.readyState !== 'complete') return false;
+    if (mark.result && mark.result.operations.some(function (op) { return op.action === 'delete'; })) return false;
+    if (!loadedScope(mark.screenId || '')) return false;
+    var selectors = mark.type === 'element' ? markElementTargets(mark).map(function (target) { return target.selector; }) : [mark.base && mark.base.selector].concat((mark.contains || []).map(function (target) { return target.selector; })).filter(Boolean);
+    if (!selectors.length) return false;
+    if (selectors.some(function (selector) { return !!resolveMarkSelector(selector, mark.screenId || ''); })) return false;
+    return resultTargets(mark).every(function (target) { return !!loadedScope(target.screenId) && !findResultTarget(target); });
+  }
+
+  function clearInvalid() {
+    if (resultWriting || activeComposer) return false;
+    clearAnchorCache();
+    var scopes = new Map();
+    var invalid = marks.filter(function (mark) { return canClearInvalid(mark, scopes); });
+    if (!invalid.length) return 0;
+    var ids = new Set(invalid.map(function (mark) { return mark.id; }));
+    marks = marks.filter(function (mark) { return !ids.has(mark.id); });
+    persist();
+    return invalid.length;
+  }
+
+  var resultNodes = new Map();
+  var resultMarks = [];
+  var resultGeometry = [];
+  var resultPose = null;
+  var resultLayer = null;
+  function renderResultIndicators(refresh) {
+    if (refresh) resultMarks = marksForActivePage().filter(function (mark) { return resultTargets(mark).length; });
+    if (!resultMarks.length && !resultNodes.size) return;
+    if (!overlay) return;
+    if (!resultLayer) {
+      resultLayer = document.createElement('div');
+      resultLayer.setAttribute('data-ann-ui', '');
+      resultLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none';
+      hoverLayer.appendChild(resultLayer);
+    }
+    // Canvas targets are measured only when content/layout changes. Pure pan
+    // translates one layer; zoom projects cached canvas coordinates, like marks.
+    if (refresh || !canvasView) {
+      beginOverlayFrame();
+      measuringCanvas = !!canvasView;
+      try {
+        resultGeometry = geometryBatch(function () {
+          var geometry = [];
+          resultMarks.forEach(function (mark) {
+            resultTargets(mark).forEach(function (target, index) {
+              var el = findResultTarget(target);
+              var rect = el && !isHidden(el) ? visibleViewRectOf(el) : null;
+              if (!rect) return;
+              rect = markLocalRect(rect);
+              if (canvasView) {
+                var pose = canvasView.pose;
+                rect = [(rect[0] - pose.x) / pose.zoom, (rect[1] - pose.y) / pose.zoom, rect[2] / pose.zoom, rect[3] / pose.zoom];
+              }
+              geometry.push({ key: mark.id + ':' + index, mark: mark, rect: rect });
+            });
+          });
+          return geometry;
+        });
+      } finally { measuringCanvas = false; }
+      resultPose = null;
+    }
+    var pose = canvasView && canvasView.pose;
+    if (!pose || resultPose !== pose) {
+      var present = new Set();
+      resultGeometry.forEach(function (item) {
+        present.add(item.key);
+        var node = resultNodes.get(item.key);
+        if (!node) {
+          node = document.createElement('div'); node.className = 'ann-result-target'; node.dataset.resultAnnotation = item.mark.id;
+          node.setAttribute('data-ann-ui', '');
+          var badge = document.createElement('button'); badge.type = 'button'; badge.textContent = item.mark.n;
+          badge.setAttribute('aria-label', '查看标注 ' + item.mark.n + ' 的执行结果');
+          badge.addEventListener('click', function () { openMark(item.mark.n); });
+          node.appendChild(badge); resultLayer.appendChild(node); resultNodes.set(item.key, node);
+        }
+        var r = item.rect;
+        placeFixedRect(node, pose ? [r[0] * pose.zoom + pose.x, r[1] * pose.zoom + pose.y, r[2] * pose.zoom, r[3] * pose.zoom] : r);
+      });
+      resultNodes.forEach(function (node, key) { if (!present.has(key)) { node.remove(); resultNodes.delete(key); } });
+      resultPose = pose;
+    }
+    resultLayer.style.transform = canvasView ? 'translate3d(' + (-canvasView.stage.scrollLeft) + 'px,' + (-canvasView.stage.scrollTop) + 'px,0)' : '';
+  }
+
   function doClear() {
+    if (resultWriting) return false;
     marks = marks.filter(function (k) { return !markOnActivePage(k); });
     closeComposer({ silentRender: true });
     persist();
@@ -1359,6 +1513,7 @@
   }
 
   function removeMark(n) {
+    if (resultWriting) return false;
     n = parseInt(n, 10);
     if (!isFinite(n)) return false;
     var before = marks.length;
@@ -1391,50 +1546,6 @@
     if (window.workbench) return true;                       // workbench 壳：列表在左栏
     if (window.top !== window.self) return true;             // 被嵌入（workbench doc iframe 等）
     return false;
-  }
-
-  /** composer 的左右让位（2026-09-04 外壳重设计前只让右边）：workbench 的 chrome
-      从三栏布局变成压在满铺画布上的浮层，composer 又是绝对定位居中的一条 ——
-      不减掉浮层占位它就会钻到左栏玻璃面板或右下浮层槽底下（点得到但人看不见）。
-      两侧都按实际 bounding box 量：左 = 左栏面板右缘，右 = 注入端侧栏通道 /
-      画布 dock（section-nav + minimap）/ 右下浮层槽（弹出列表 · detail 卡）里
-      最靠左的那块。折叠、拖宽、列表开合都自动跟上，不吃 token 常量。 */
-  function composerDockInsets() {
-    var pad = 24;
-    var gap = 12;
-    var or = overlay.getBoundingClientRect();
-    function shownRect(el) {
-      if (!el || el.hidden) return null;
-      var r = el.getBoundingClientRect();
-      return r.width > 1 && r.height > 1 ? r : null;
-    }
-    // 浮层容器本身不吃事件也没有尺寸（inset:0 的透明层），量它露出来的孩子。
-    function leftmostChild(root) {
-      if (!root) return null;
-      var best = null;
-      Array.prototype.forEach.call(root.children, function (child) {
-        var r = shownRect(child);
-        if (r && (!best || r.left < best.left)) best = r;
-      });
-      return best;
-    }
-    var left = pad;
-    var side = shownRect(document.getElementById('wbside'));
-    if (side) left = Math.max(pad, side.right - or.left + gap);
-    var right = sidebarOpen ? 304 : pad;
-    [leftmostChild(document.getElementById('wbcanvas-dock')),
-      leftmostChild(document.getElementById('wbdock'))].forEach(function (r) {
-      if (r) right = Math.max(right, or.right - r.left + gap);
-    });
-    // 窄到放不下一条能用的 composer 时，让位全部作废 —— 挤成一条缝比压住更糟。
-    if (or.width - left - right < 320) return { left: pad + 'px', right: pad + 'px' };
-    return { left: left + 'px', right: right + 'px' };
-  }
-
-  function applyComposerDock(box) {
-    var insets = composerDockInsets();
-    box.style.left = insets.left;
-    box.style.right = insets.right;
   }
 
   function sidebarRowModel() {
@@ -1480,13 +1591,15 @@
         e.preventDefault();
         e.stopPropagation();
         var an = parseInt(act.getAttribute('data-ann-n'), 10);
-        if (act.getAttribute('data-ann-act') === 'edit') openMark(an);
-        else if (act.getAttribute('data-ann-act') === 'del') removeMark(an); // 删除即生效，与 composer/工具条清空同款无确认
+        if (act.getAttribute('data-ann-act') === 'del') {
+          if (act.dataset.confirm === 'true') removeMark(an);
+          else { act.dataset.confirm = 'true'; act.textContent = '确认'; act.setAttribute('aria-label', '确认删除标注 ' + an); }
+        }
         return;
       }
       var row = e.target && e.target.closest ? e.target.closest('.wb-ann-item[data-ann-n]') : null;
       if (!row) return;
-      goToMark(parseInt(row.getAttribute('data-ann-n'), 10));
+      goToMark(parseInt(row.getAttribute('data-ann-n'), 10)).then(function (completed) { if (completed !== false) setSidebarOpen(false); });
     });
     return sidebar;
   }
@@ -1503,7 +1616,7 @@
     var rows = sidebarRowModel();
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken;
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags;
     }).join('~');
     sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
     if (sig === sidebarSig) return;
@@ -1555,22 +1668,15 @@
       main.appendChild(body);
       var acts = document.createElement('span');
       acts.className = 'ann-sb-acts';
-      var edit = document.createElement('button');
-      edit.type = 'button';
-      edit.className = 'ann-sb-edit';
-      edit.setAttribute('data-ann-act', 'edit');
-      edit.setAttribute('data-ann-n', r.n);
-      edit.title = '编辑';
-      edit.setAttribute('aria-label', '编辑标注 ' + r.n);
-      edit.innerHTML = annIcon('pencil');
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'ann-sb-del';
       del.setAttribute('data-ann-act', 'del');
       del.setAttribute('data-ann-n', r.n);
       del.title = '删除';
-      del.textContent = '×';
-      acts.appendChild(edit);
+      function resetDelete() { delete del.dataset.confirm; del.innerHTML = annIcon('trash'); del.setAttribute('aria-label', '删除标注 ' + r.n); }
+      resetDelete();
+      del.addEventListener('blur', resetDelete);
       acts.appendChild(del);
       item.appendChild(main);
       item.appendChild(acts);
@@ -1590,11 +1696,9 @@
       sidebar.hidden = false;
       renderSidebar();
     } else if (sidebar) {
-      sidebar.hidden = true;
+      sidebar.hidden = true; sidebarSig = '';
     }
-    // 开着的 composer 保持让位（未被用户拖走时）
-    var openBox = document.getElementById('ann-box');
-    if (openBox && !composerPlacement) applyComposerDock(openBox);
+    if (activeComposer && activeComposer.syncLayout) activeComposer.syncLayout();
     notify();
   }
 
@@ -1638,8 +1742,6 @@
   var hoverSuppress = null; // 拖拽松手后 2s 内、鼠标没走远时不再出 hover 框
   document.addEventListener('mousemove', function (e) {
     var openComposer = document.getElementById('ann-box');
-    var targetPill = e.target && e.target.closest ? e.target.closest('.ann-target-pill') : null;
-    if (openComposer && targetPill) return;
     if (!mode || paused || navigationActive || drag || arrowFrom || openComposer) { clearHover(); return; }
     if (hoverSuppress) {
       if (Date.now() < hoverSuppress.until && Math.hypot(e.pageX - hoverSuppress.x, e.pageY - hoverSuppress.y) < 120) {
@@ -1710,14 +1812,13 @@
 
   function insertComposerIndicator(ref) {
     var composer = activeComposer;
-    if (!composer || composer.targetMode !== 'inline') return;
+    if (!composer) return;
     if (composer.composing) {
       if (composer.pendingInlineRefs.indexOf(ref) < 0) composer.pendingInlineRefs.push(ref);
       return;
     }
     var ta = composer.ta;
-    var number = parseInt(String(ref).slice(1), 10);
-    var token = '[indicator ' + number + '] ';
+    var token = targetContentToDisplay('[@t:' + ref + ']', markElementTargets(composer.m)) + ' ';
     var start = typeof ta.selectionStart === 'number' ? ta.selectionStart : ta.value.length;
     var end = typeof ta.selectionEnd === 'number' ? ta.selectionEnd : start;
     ta.value = ta.value.slice(0, start) + token + ta.value.slice(end);
@@ -1943,11 +2044,102 @@
     if (!opts.silentRender) requestAnimationFrame(renderAll);
   }
 
+  // DOM-backed input keeps the persisted text-token format; pills are atomic
+  // editing nodes, never selectors reconstructed from their display labels.
+  function richAnnotationInput(el, mark) {
+    var savedSelection = [0, 0];
+    function text(node) {
+      if (node.nodeType === 3) return node.data;
+      if (node.nodeType !== 1 && node.nodeType !== 11) return '';
+      if (node.dataset && node.dataset.token) return node.dataset.token;
+      if (node.nodeName === 'BR') return '\n';
+      var out = '';
+      Array.prototype.forEach.call(node.childNodes, function (child, i) {
+        if (i && /^(DIV|P)$/.test(child.nodeName) && !out.endsWith('\n')) out += '\n';
+        out += text(child);
+      });
+      return out;
+    }
+    function offsets() {
+      var selection = window.getSelection();
+      if (!selection || !selection.rangeCount || !el.contains(selection.anchorNode) || !el.contains(selection.focusNode)) return savedSelection;
+      var range = selection.getRangeAt(0);
+      var prefix = range.cloneRange(); prefix.selectNodeContents(el); prefix.setEnd(range.startContainer, range.startOffset);
+      var suffix = range.cloneRange(); suffix.selectNodeContents(el); suffix.setEnd(range.endContainer, range.endOffset);
+      savedSelection = [text(prefix.cloneContents()).length, text(suffix.cloneContents()).length];
+      return savedSelection;
+    }
+    function render(value) {
+      el.replaceChildren();
+      var regex = /\[indicator ([1-9][0-9]*)\]/g, offset = 0, hit;
+      while ((hit = regex.exec(value))) {
+        el.appendChild(document.createTextNode(value.slice(offset, hit.index)));
+        var ref = 'i' + hit[1];
+        var target = markElementTargets(mark).find(function (t) { return t.ref === ref; });
+        if (!target) el.appendChild(document.createTextNode(hit[0]));
+        else {
+          var pill = document.createElement('span');
+          pill.className = 'ann-inline-target'; pill.contentEditable = 'false';
+          pill.dataset.token = hit[0]; pill.dataset.targetRef = ref;
+          pill.title = target.text || '元素';
+          var label = document.createElement('span'); label.textContent = target.text || '元素';
+          var remove = document.createElement('button'); remove.type = 'button';
+          remove.className = 'ann-inline-remove'; remove.textContent = '×'; remove.setAttribute('aria-label', '移除目标 ' + hit[1]);
+          pill.appendChild(label); pill.appendChild(remove); el.appendChild(pill);
+        }
+        offset = regex.lastIndex;
+      }
+      el.appendChild(document.createTextNode(value.slice(offset)));
+    }
+    function setSelection(start, end) {
+      function point(position) {
+        var remaining = position, answer;
+        function walk(node) {
+          if (answer) return;
+          if (node.nodeType === 3) {
+            if (remaining <= node.length) answer = [node, remaining]; else remaining -= node.length;
+          } else if (node.dataset && node.dataset.token) {
+            var index = Array.prototype.indexOf.call(node.parentNode.childNodes, node);
+            if (remaining <= node.dataset.token.length) answer = [node.parentNode, index + (remaining ? 1 : 0)];
+            else remaining -= node.dataset.token.length;
+          } else Array.prototype.forEach.call(node.childNodes, walk);
+        }
+        walk(el); return answer || [el, el.childNodes.length];
+      }
+      var a = point(start), b = point(end), range = document.createRange();
+      range.setStart(a[0], a[1]); range.setEnd(b[0], b[1]);
+      var selection = window.getSelection(); selection.removeAllRanges(); selection.addRange(range);
+      savedSelection = [start, end];
+    }
+    Object.defineProperties(el, {
+      value: { get: function () { return text(el); }, set: function (value) { render(String(value)); } },
+      selectionStart: { get: function () { return offsets()[0]; } },
+      selectionEnd: { get: function () { return offsets()[1]; } }
+    });
+    el.setSelectionRange = setSelection;
+    el.addEventListener('keyup', offsets); el.addEventListener('mouseup', offsets); el.addEventListener('blur', offsets);
+    el.addEventListener('mousedown', function (event) { if (event.target.closest('.ann-inline-remove')) event.preventDefault(); });
+    el.addEventListener('click', function (event) {
+      var remove = event.target.closest('.ann-inline-remove'); if (!remove) return;
+      remove.closest('.ann-inline-target').remove(); el.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+    el.addEventListener('paste', function (event) {
+      if (!event.clipboardData || Array.prototype.some.call(event.clipboardData.items, function (item) { return item.type.indexOf('image/') === 0; })) return;
+      event.preventDefault();
+      document.execCommand('insertText', false, event.clipboardData.getData('text/plain'));
+    });
+    return el;
+  }
+
   function openComposer(m, anchorRect, isNew) {
     closeComposer({ silentRender: true });
     m = normalizeAnnotation(JSON.parse(JSON.stringify(m)));
     ensureMarkId(m);
-    var broken = !resolveMarkAnchor(m).live;
+    var selectedAnchor = resolveMarkAnchor(m);
+    var broken = !selectedAnchor.live;
+    var modal = selectedAnchor.el && selectedAnchor.el.closest('dialog:modal');
+    if (modal && overlay.parentElement !== modal) mountOverlay(modal);
+    else if (!modal && overlay.parentElement.matches('dialog')) mountOverlay();
     var box = document.createElement('div');
     box.id = 'ann-box'; box.setAttribute('data-ann-ui', '');
     var label = m.type === 'region' ? '框选区域' : (m.text ? m.text.slice(0, 40) : m.selector);
@@ -1958,44 +2150,37 @@
       ? ('<b>' + secLabel + '</b>' + (flowSelf ? '' : ' · '))
       : '';
     if (flowSelf) label = '';
-    var moveInfo = m.move ? '<div class="t" style="-webkit-line-clamp:1;margin-bottom:8px">↗ 已画移动箭头 → ' + ((m.move.to_text || '').slice(0, 30) || '空白处') + '</div>' : '';
-    var brokenInfo = broken
+    var recordedDeletion = m.result && m.result.operations.some(function (op) { return op.action === 'delete'; });
+    var brokenInfo = broken && !recordedDeletion
       ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
       : '';
     var res = m.research || null;
     var changeOn = !!m.changeTo;
-    var indPreview = indicatorForMark(m);
     box.innerHTML =
       '<div class="head">' +
-      '<button type="button" class="ann-drag-handle" aria-label="拖动标注框" title="拖动标注框">' +
-      '<svg viewBox="0 0 14 14" aria-hidden="true"><circle cx="4" cy="3" r="1.25" fill="currentColor"/><circle cx="10" cy="3" r="1.25" fill="currentColor"/><circle cx="4" cy="7" r="1.25" fill="currentColor"/><circle cx="10" cy="7" r="1.25" fill="currentColor"/><circle cx="4" cy="11" r="1.25" fill="currentColor"/><circle cx="10" cy="11" r="1.25" fill="currentColor"/></svg></button>' +
       '<div class="t"><span class="n">#' + m.n + '</span> · ' + gtag + label + '</div>' +
       '<div class="top">' + (isNew ? '' : '<button type="button" id="ann-del" class="warn">删除</button>') +
       '<button type="button" id="ann-cancel" class="x">×</button></div></div>' +
+      (m.result ? '<div class="t" data-result-summary>' + annResultSummary(m) + '</div>' : '') +
       brokenInfo +
-      moveInfo +
-      (m.type === 'element'
-        ? '<div class="ann-target-bar"><div class="ann-target-modes" role="group" aria-label="Target 引用方式">' +
-          '<button type="button" id="ann-target-mode-reference">仅引用</button>' +
-          '<button type="button" id="ann-target-mode-inline">插入到文本</button></div>' +
-          '<div class="ann-target-pills" id="ann-target-pills"></div></div>'
-        : '') +
-      '<textarea placeholder="写标注…（回车保存，Shift+回车换行；@ 引用其他标注）"></textarea>' +
       '<div id="ann-imgs"></div>' +
-      '<div class="acts">' +
-      '<button type="button" id="ann-copy-ind" aria-label="复制 indicator" title="Copy indicator: ' + indPreview.replace(/"/g, '&quot;') + '">' + annIcon('link') + '</button>' +
-      '<button type="button" id="ann-img" aria-label="添加图片" title="添加图片">' + annIcon('image') + '</button>' +
-      '<button type="button" id="ann-change"' + (changeOn ? ' class="dark"' : '') + ' title="提示 agent：把文案改成标注内容">' + annIcon('pencil') + '<span>改文案</span></button>' +
-      '<button type="button" id="ann-research"' + (res ? ' class="dark"' : '') + '>' + annIcon('search') + '<span>调研</span></button>' +
-      '<button type="button" id="ann-move"' + (broken ? ' disabled title="锚点失效，无法画箭头"' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button>' +
-      '<button type="button" id="ann-save" class="dark">保存</button></div>' +
-      '<div id="ann-research-opt" class="research-opt" style="display:' + (res ? 'block' : 'none') + '">' +
-      '<label><input type="checkbox" id="ann-research-existing"' + (res && res.existing_code ? ' checked' : '') + '>可能已有代码</label></div>';
+      '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
+      '<div class="acts"><div class="ann-tools">' +
+      '<button type="button" id="ann-plus" aria-label="标注操作" aria-expanded="false">+</button>' +
+      '<div id="ann-mode-pills"></div>' +
+      '<div id="ann-tools-menu" hidden>' +
+      '<button type="button" id="ann-change">' + annIcon('pencil') + '<span>改文案</span></button>' +
+      '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
+      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">↑</button></div>';
     chromeLayer.appendChild(box);
-    var ta = box.querySelector('textarea');
-    ta.value = m._draft != null
-      ? m._draft
-      : contentToDisplay(annotationContent(m), markElementTargets(m));
+    if (typeof overlay.showPopover === 'function') {
+      overlay.hidePopover(); overlay.showPopover();
+    }
+    var ta = richAnnotationInput(box.querySelector('#ann-input'), m);
+    var initialText = m._draft != null ? m._draft : contentToDisplay(annotationContent(m), markElementTargets(m));
+    var missingRefs = markElementTargets(m).filter(function (target) { return initialText.indexOf(targetContentToDisplay('[@t:' + target.ref + ']', [target])) < 0; });
+    ta.value = missingRefs.map(function (target) { return targetContentToDisplay('[@t:' + target.ref + ']', [target]) + ' '; }).join('') + initialText;
+    ta.setSelectionRange(ta.value.length, ta.value.length);
 
     normalizeElementTargets(m);
     var stageEl = document.getElementById('wbstage');
@@ -2004,7 +2189,6 @@
       m: m,
       isNew: !!isNew,
       persistedN: isNew ? null : m.n,
-      targetMode: m._targetMode || (/\[@t:i[1-9][0-9]*\]/i.test(annotationContent(m)) ? 'inline' : 'reference'),
       nextTargetNumber: parseInt(nextTargetRef(markElementTargets(m)).slice(1), 10),
       composing: false,
       pendingInlineRefs: [],
@@ -2018,177 +2202,70 @@
     composer.save = save; // SPA 切账本收尾用：把打开中的草稿存回旧账本
     var composerMaxWidth = parseFloat(getComputedStyle(box).maxWidth) || box.offsetWidth;
 
-    function placeFloatingComposer(left, top, remember) {
-      var pad = 12;
-      var width = Math.min(composerMaxWidth, Math.max(0, overlay.clientWidth - pad * 2));
-      var maxLeft = Math.max(pad, overlay.clientWidth - width - pad);
-      var maxTop = Math.max(pad, overlay.clientHeight - box.offsetHeight - pad);
-      var nextLeft = Math.max(pad, Math.min(left, maxLeft));
-      var nextTop = Math.max(pad, Math.min(top, maxTop));
-      box.style.left = nextLeft + 'px';
-      box.style.right = 'auto';
-      box.style.top = nextTop + 'px';
-      box.style.bottom = 'auto';
-      box.style.width = width + 'px';
-      box.style.margin = '0';
-      if (remember) composerPlacement = { left: nextLeft, top: nextTop };
-      if (stageEl) stageEl.style.scrollPaddingBottom = composer.previousScrollPadding || '';
-    }
-
+    // Use the selected DOM geometry, including every visible selected target.
+    // When none of the adjacent positions fits, dock without moving the canvas.
     function syncComposerLayout() {
-      if (activeComposer !== composer) return;
-      if (composerPlacement) {
-        placeFloatingComposer(composerPlacement.left, composerPlacement.top, true);
-      } else {
-        applyComposerDock(box);
-        if (stageEl) stageEl.style.scrollPaddingBottom = (box.offsetHeight + 96) + 'px';
+      if (activeComposer !== composer || !box.isConnected) return;
+      beginOverlayFrame();
+      var bounds = overlay.getBoundingClientRect();
+      var pad = 12, gap = 12;
+      var width = Math.min(composerMaxWidth, Math.max(0, bounds.width - pad * 2));
+      box.style.width = width + 'px';
+      box.style.maxHeight = Math.max(80, bounds.height - pad * 2) + 'px';
+      var height = box.offsetHeight;
+      var rects = m.type === 'element' ? resolveAllLiveTargets(m).map(function (target) {
+        return target.el.getBoundingClientRect();
+      }) : [];
+      resultTargets(m).forEach(function (target) { var el = findResultTarget(target); if (el && !isHidden(el)) rects.push(el.getBoundingClientRect()); });
+      if (m.type === 'region') {
+        var anchor = resolveMarkAnchor(m);
+        if (anchor.live && anchor.rectDoc) {
+          var r = docToView(anchor.rectDoc);
+          rects.push({left:r[0],top:r[1],right:r[0]+r[2],bottom:r[1]+r[3]});
+        }
       }
-    }
-
-    var dragHandle = box.querySelector('.ann-drag-handle');
-    var composerDrag = null;
-    dragHandle.addEventListener('pointerdown', function (event) {
-      if (event.button !== 0) return;
-      event.preventDefault();
-      event.stopPropagation();
-      var br = box.getBoundingClientRect();
-      var or = overlay.getBoundingClientRect();
-      composerDrag = {
-        pointerId: event.pointerId,
-        startX: event.clientX,
-        startY: event.clientY,
-        left: br.left - or.left,
-        top: br.top - or.top
-      };
-      dragHandle.setAttribute('data-dragging', 'true');
-      dragHandle.setPointerCapture(event.pointerId);
-    });
-    dragHandle.addEventListener('pointermove', function (event) {
-      if (!composerDrag || event.pointerId !== composerDrag.pointerId) return;
-      event.preventDefault();
-      placeFloatingComposer(
-        composerDrag.left + event.clientX - composerDrag.startX,
-        composerDrag.top + event.clientY - composerDrag.startY,
-        true
-      );
-    });
-    function finishComposerDrag(event) {
-      if (!composerDrag || event.pointerId !== composerDrag.pointerId) return;
-      composerDrag = null;
-      dragHandle.removeAttribute('data-dragging');
-      if (dragHandle.hasPointerCapture(event.pointerId)) dragHandle.releasePointerCapture(event.pointerId);
-      ta.focus({ preventScroll: true });
-    }
-    dragHandle.addEventListener('pointerup', finishComposerDrag);
-    dragHandle.addEventListener('pointercancel', finishComposerDrag);
-
-    function focusComposerTarget(el) {
-      if (!el || isHidden(el)) {
-        setStatus('目标已失效，无法定位', true);
-        return;
+      rects = rects.filter(function (r) { return r.right > bounds.left && r.left < bounds.right && r.bottom > bounds.top && r.top < bounds.bottom; });
+      var candidates = [];
+      if (rects.length) {
+        var left = Math.min.apply(null, rects.map(function (r) { return r.left; })) - bounds.left;
+        var right = Math.max.apply(null, rects.map(function (r) { return r.right; })) - bounds.left;
+        var top = Math.min.apply(null, rects.map(function (r) { return r.top; })) - bounds.top;
+        var bottom = Math.max.apply(null, rects.map(function (r) { return r.bottom; })) - bounds.top;
+        var y = Math.max(pad, Math.min(top, bounds.height - height - pad));
+        var x = Math.max(pad, Math.min(left, bounds.width - width - pad));
+        candidates = [[right + gap, y], [left - gap - width, y], [x, bottom + gap], [x, top - gap - height]];
       }
-      if (stageEl) {
-        var er = el.getBoundingClientRect();
-        var sr = stageEl.getBoundingClientRect();
-        var br = box.getBoundingClientRect();
-        var visibleBottom = Math.min(sr.bottom, br.top - 16);
-        var visibleHeight = Math.max(80, visibleBottom - sr.top);
-        stageEl.scrollTop += er.top - sr.top - (visibleHeight - er.height) / 2;
-        stageEl.scrollLeft += er.left - sr.left - (stageEl.clientWidth - er.width) / 2;
-      }
-      showGhostForEl(el, 'ann-flash');
-      setTimeout(function () {
-        if (activeComposer === composer) hideGhost();
-      }, 1500);
-    }
-
-    function setTargetMode(nextMode) {
-      composer.targetMode = nextMode === 'inline' ? 'inline' : 'reference';
-      var refBtn = box.querySelector('#ann-target-mode-reference');
-      var inlineBtn = box.querySelector('#ann-target-mode-inline');
-      if (refBtn) refBtn.classList.toggle('on', composer.targetMode === 'reference');
-      if (inlineBtn) inlineBtn.classList.toggle('on', composer.targetMode === 'inline');
-    }
-
-    function renderTargetPills() {
-      var wrap = box.querySelector('#ann-target-pills');
-      if (!wrap) return;
-      wrap.innerHTML = '';
-      var targets = markElementTargets(m);
-      targets.forEach(function (target) {
-        var el = resolve(target.selector);
-        var brokenTarget = !el || isHidden(el);
-        var pill = document.createElement('div');
-        pill.className = 'ann-target-pill' + (brokenTarget ? ' broken' : '');
-        pill.setAttribute('data-target-ref', target.ref);
-        pill.setAttribute('role', 'button');
-        pill.setAttribute('tabindex', '0');
-        pill.setAttribute('aria-label', '定位 indicator ' + String(target.ref).slice(1));
-        var labelEl = document.createElement('span');
-        labelEl.className = 'ann-target-pill-label';
-        labelEl.textContent = (brokenTarget ? '⚠ ' : '') + 'indicator ' + String(target.ref).slice(1) + ' · ' + (target.text || '元素');
-        var removeBtn = document.createElement('button');
-        removeBtn.type = 'button';
-        removeBtn.className = 'ann-target-remove';
-        removeBtn.setAttribute('aria-label', '删除 indicator ' + String(target.ref).slice(1));
-        removeBtn.textContent = '×';
-        pill.appendChild(labelEl);
-        pill.appendChild(removeBtn);
-        pill.addEventListener('mousedown', function (event) { event.preventDefault(); });
-        pill.addEventListener('mouseenter', function () {
-          if (el && !isHidden(el)) showGhostForEl(el);
-        });
-        pill.addEventListener('mouseleave', function () { hideGhost(); });
-        pill.addEventListener('click', function (event) {
-          if (event.target.closest('.ann-target-remove')) return;
-          focusComposerTarget(el);
-        });
-        pill.addEventListener('keydown', function (event) {
-          if (event.key === 'Enter' || event.key === ' ') {
-            event.preventDefault();
-            focusComposerTarget(el);
-          }
-        });
-        removeBtn.addEventListener('mousedown', function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-        });
-        removeBtn.addEventListener('click', function (event) {
-          event.preventDefault();
-          event.stopPropagation();
-          if (targets.length === 1) {
-            if (composer.isNew) closeComposer();
-            else setStatus('至少保留一个目标；删除整条标注请用“删除”', true);
-            return;
-          }
-          m.targets = targets.filter(function (item) { return item.ref !== target.ref; });
-          ta.value = removeTargetContentRef(ta.value, target.ref);
-          normalizeElementTargets(m);
-          var firstEl = resolve(m.selector);
-          if (firstEl) {
-            m.rect = docRect(firstEl);
-            stampTargetMeta(m, firstEl);
-          }
-          ta.dispatchEvent(new Event('input', { bubbles: true }));
-          renderTargetPills();
-          renderComposerDraftVisuals();
-        });
-        wrap.appendChild(pill);
+      var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #wbcanvas-dock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
+      var position = candidates.find(function (p) {
+        if (p[0] < pad || p[1] < pad || p[0] + width > bounds.width - pad || p[1] + height > bounds.height - pad) return false;
+        return !chrome.some(function (r) { return p[0] + bounds.left < r.right && p[0] + width + bounds.left > r.left && p[1] + bounds.top < r.bottom && p[1] + height + bounds.top > r.top; });
       });
-      requestAnimationFrame(syncComposerLayout);
+      box.dataset.placement = position ? 'anchor' : 'dock';
+      if (!position) {
+        var strip = document.getElementById('wbstrip');
+        var bottomSpace = strip && strip.getClientRects().length ? Math.max(pad, bounds.bottom - strip.getBoundingClientRect().top + gap) : pad;
+        position = [(bounds.width - width) / 2, Math.max(pad, bounds.height - height - bottomSpace)];
+      }
+      box.style.left = position[0] + 'px';
+      box.style.top = position[1] + 'px';
+      box.style.right = 'auto'; box.style.bottom = 'auto'; box.style.margin = '0';
     }
+    composer.syncLayout = syncComposerLayout;
 
-    composer.renderTargets = renderTargetPills;
-    var modeButtons = box.querySelectorAll('.ann-target-modes button');
-    Array.prototype.forEach.call(modeButtons, function (button) {
-      button.addEventListener('mousedown', function (event) { event.preventDefault(); });
-    });
-    var referenceModeBtn = box.querySelector('#ann-target-mode-reference');
-    var inlineModeBtn = box.querySelector('#ann-target-mode-inline');
-    if (referenceModeBtn) referenceModeBtn.addEventListener('click', function () { setTargetMode('reference'); });
-    if (inlineModeBtn) inlineModeBtn.addEventListener('click', function () { setTargetMode('inline'); });
-    setTargetMode(composer.targetMode);
-    renderTargetPills();
+    composer.renderTargets = function () { syncComposerLayout(); };
+    function syncTargetReferences() {
+      var refs = Array.from(ta.querySelectorAll('[data-target-ref]')).map(function (node) { return node.dataset.targetRef; });
+      var targets = markElementTargets(m);
+      if (!refs.length && targets.length) {
+        // A mark always needs one anchor; make the retained anchor visible.
+        ta.value = targetContentToDisplay('[@t:' + targets[0].ref + ']', targets) + ' ' + ta.value;
+        ta.setSelectionRange(ta.value.length, ta.value.length);
+        refs = [targets[0].ref];
+      }
+      m.targets = targets.filter(function (target) { return refs.indexOf(target.ref) >= 0; });
+      normalizeElementTargets(m);
+      renderComposerDraftVisuals();
+    }
     renderComposerDraftVisuals();
 
     ta.addEventListener('compositionstart', function () { composer.composing = true; });
@@ -2197,6 +2274,8 @@
       var refs = composer.pendingInlineRefs.slice();
       composer.pendingInlineRefs = [];
       refs.forEach(insertComposerIndicator);
+      syncTargetReferences();
+      syncComposerLayout();
     });
     if (typeof ResizeObserver !== 'undefined') {
       composer.resizeObserver = new ResizeObserver(syncComposerLayout);
@@ -2228,30 +2307,9 @@
       if (sideEl) composer.resizeObserver.observe(sideEl);
     }
     syncComposerLayout();
-    ta.focus();
+    ta.focus({ preventScroll: true });
 
     var researchOn = !!res;
-    var copyBtn = box.querySelector('#ann-copy-ind');
-    if (copyBtn) {
-      copyBtn.addEventListener('click', function () {
-        var text = indicatorForMark(m);
-        if (!text) {
-          setStatus('无可复制 indicator（先保存或补全 page）', true);
-          return;
-        }
-        copyText(text).then(function () {
-          copyBtn.classList.add('ok');
-          copyBtn.title = 'Copied ' + text;
-          setTimeout(function () {
-            copyBtn.classList.remove('ok');
-            copyBtn.title = 'Copy indicator: ' + text;
-          }, 1200);
-        }).catch(function () {
-          setStatus('复制失败', true);
-        });
-      });
-    }
-
     // ---- @ mention picker (UI @n → disk [@a:id]) ----
     var mentionItems = [];
     var mentionIndex = 0;
@@ -2398,30 +2456,29 @@
         if (items[i].type.indexOf('image/') === 0) { e.preventDefault(); addImageFile(items[i].getAsFile()); }
       }
     });
-    box.querySelector('#ann-img').addEventListener('click', function () {
-      var inp = document.createElement('input');
-      inp.type = 'file'; inp.accept = 'image/*'; inp.multiple = true;
-      inp.addEventListener('change', function () {
-        Array.prototype.forEach.call(inp.files, addImageFile);
+    var plus = box.querySelector('#ann-plus');
+    var toolsMenu = box.querySelector('#ann-tools-menu');
+    function closeTools() { toolsMenu.hidden = true; plus.setAttribute('aria-expanded', 'false'); }
+    plus.addEventListener('click', function () { toolsMenu.hidden = !toolsMenu.hidden; plus.setAttribute('aria-expanded', String(!toolsMenu.hidden)); });
+    box.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !toolsMenu.hidden) { event.preventDefault(); event.stopPropagation(); closeTools(); plus.focus(); } });
+    function renderModes() {
+      var wrap = box.querySelector('#ann-mode-pills'); wrap.replaceChildren();
+      [['change', '改文案', changeOn], ['move', '移动', !!m.move]].forEach(function (item) {
+        if (!item[2]) return;
+        var pill = document.createElement('button'); pill.type = 'button'; pill.className = 'ann-mode-pill';
+        pill.textContent = item[1]; pill.setAttribute('aria-label', '取消' + item[1]);
+        var cross = document.createElement('span'); cross.textContent = '×'; pill.appendChild(cross);
+        pill.addEventListener('click', function () { if (item[0] === 'change') changeOn = false; else { delete m.move; removeTempArrow(); } renderModes(); });
+        wrap.appendChild(pill);
       });
-      inp.click();
+    }
+    box.querySelector('#ann-change').addEventListener('click', function () {
+      changeOn = true; closeTools(); renderModes(); ta.focus({ preventScroll: true });
     });
-
-    var btnRes = box.querySelector('#ann-research');
-    btnRes.addEventListener('click', function () {
-      researchOn = !researchOn;
-      btnRes.className = researchOn ? 'dark' : '';
-      box.querySelector('#ann-research-opt').style.display = researchOn ? 'block' : 'none';
-      ta.focus();
-    });
-    var btnChange = box.querySelector('#ann-change');
-    btnChange.addEventListener('click', function () {
-      changeOn = !changeOn;
-      btnChange.className = changeOn ? 'dark' : '';
-      ta.focus();
-    });
+    renderModes();
 
     function save() {
+      if (resultWriting) { setStatus('正在保存执行结果，请稍后发送', true); return; }
       closeMentionPicker();
       ensureMarkId(m);
       var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
@@ -2430,7 +2487,7 @@
       var mentionIds = extractMentionIds(stored);
       if (mentionIds.length) m.mentions = mentionIds; else delete m.mentions;
       if (researchOn) {
-        m.research = { existing_code: box.querySelector('#ann-research-existing').checked };
+        m.research = res;
       } else {
         delete m.research;
       }
@@ -2440,16 +2497,21 @@
       delete m._draft;
       delete m._targetMode;
       delete m._anchor;
-      if (!m.content && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
+      if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
       var idx = marks.findIndex(function (k) { return k.n === m.n; });
-      if (idx < 0) marks.push(m); else marks[idx] = m;
+      if (idx < 0) marks.push(m); else {
+        if (marks[idx].result) m.result = marks[idx].result;
+        marks[idx] = m;
+      }
       closeComposer({ silentRender: true }); persist();
     }
     ta.addEventListener('input', function () {
+      if (!composer.composing) syncTargetReferences();
+      syncComposerLayout();
       syncMentionFromCaret();
     });
     ta.addEventListener('keydown', function (e) {
-      if (e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法
+      if (composer.composing || e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法
       var mentionOpen = !!document.getElementById('ann-mention');
       if (mentionOpen) {
         if (e.key === 'ArrowDown') { e.preventDefault(); mentionMove(1); return; }
@@ -2478,7 +2540,8 @@
       }
       closeMentionPicker();
       m._draft = ta.value; // 暂存已输入文字（展示态 @n）
-      m._targetMode = composer.targetMode;
+      if (changeOn) m.changeTo = true; else delete m.changeTo;
+      if (images.length) m.images = images; else delete m.images;
       m._anchor = [anchorRect[0] + anchorRect[2] / 2, anchorRect[1] + anchorRect[3] / 2];
       arrowFrom = m;
       box.remove(); // 隐藏标注框，拖完箭头再弹回
@@ -2547,7 +2610,7 @@
     tempArrow = null; lasso = null; pinned = null;
     openComposer(m, anchorRect, !marks.some(function (k) { return k.n === m.n; }));
     tempArrow = kA; lasso = kL; pinned = kP;
-    var ta = document.querySelector('#ann-box textarea');
+    var ta = document.querySelector('#ann-input');
     if (ta && m._draft) ta.value = m._draft;
     syncGhost();
   }
@@ -3242,11 +3305,12 @@
       }
       structureDirty = false;
       syncBubbleStructure(pageMarks); updateBubbleGeometry(); updateDraftGeometry();
-      updateCountLabel(pageMarks.length); syncGhost();
+      updateCountLabel(pageMarks.length); syncGhost(); renderResultIndicators(true);
     });
   }
 
   function renderAll() {
+    if (!overlay.isConnected) mountOverlay();
     return withLiveTargets(function () {
       clearAnchorCache();
       if (!canvasStage() && frameResizeObserver) { frameResizeObserver.disconnect(); observedFrames.clear(); }
@@ -3257,7 +3321,7 @@
       updateBubbleGeometry();
       updateDraftGeometry();
       updateCountLabel(pageMarks.length);
-      syncGhost();
+      syncGhost(); renderResultIndicators(true);
     });
   }
 
@@ -3331,6 +3395,8 @@
         updateDraftGeometry();
         syncGhost();
       }
+      renderResultIndicators(geometryDirty || contentRoots.size > 0 || dirtyFrameRoots.size > 0);
+      if (activeComposer && activeComposer.syncLayout) activeComposer.syncLayout();
       geometryDirty = false; zoomDirty = false; contentFullDirty = false;
       contentRoots.clear(); dirtyFrameRoots.clear();
     });
@@ -3410,6 +3476,7 @@
         dependencies = { relational: false, global: false };
         marks.forEach(function (m) {
           var selectors = markElementTargets(m).map(function (t) { return t.selector; });
+          resultTargets(m).forEach(function (target) { selectors.push(target.selector); });
           if (m.base) selectors.push(m.base.selector);
           if (m.move) selectors.push(m.move.to_selector);
           selectors.forEach(function (selector) {
@@ -3619,6 +3686,7 @@
 
   function getState() {
     var pageMarks = marks.filter(markOnActivePage);
+    var invalidScopes = new Map();
     var broken = 0;
     var live = 0;
     var hidden = 0;
@@ -3639,6 +3707,9 @@
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
+      countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
+      revision: revision,
+      syncing: syncing || resultWriting,
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,
@@ -3663,6 +3734,9 @@
     setBubbleLayout: setBubbleLayout,
     visibleBubbleAnchors: visibleBubbleAnchors,
     clear: doClear,
+    clearInvalid: clearInvalid,
+    canClearInvalid: canClearInvalid,
+    recordResults: recordResults,
     removeMark: removeMark,
     setFloatingToolbar: setFloatingToolbar,
     setSidebar: setSidebarOpen,

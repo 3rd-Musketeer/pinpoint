@@ -45,7 +45,7 @@ async function annotate(page, selector, text) {
   await page.locator(selector).click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill(text);
+  await box.locator('#ann-input').fill(text);
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
 }
@@ -77,7 +77,7 @@ test('SPA route change splits annotations into per-pathname ledgers', async ({ p
   await expect.poll(() => {
     const doc = docByPrefix('spa-fixture.html_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['home ann']);
+  }).toEqual(['[@t:i1] home ann']);
 
   const epoch = await currentEpoch(page);
   await setAnnotateMode(page, false); // 标注模式下点击会被拦截为标选，切回交互再导航
@@ -89,14 +89,14 @@ test('SPA route change splits annotations into per-pathname ledgers', async ({ p
   await expect.poll(() => {
     const doc = docByPrefix('route-a_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['route-a ann']);
+  }).toEqual(['[@t:i1] route-a ann']);
 
   // 各记各账：两个 key 的文件各自只有自己那条，selector 指向各自路由的元素。
   const docs = bucketDocs();
   expect(Object.keys(docs)).toHaveLength(2);
   const home = docByPrefix('spa-fixture.html_');
   const routeA = docByPrefix('route-a_');
-  expect(home.annotations.map((a) => a.content)).toEqual(['home ann']);
+  expect(home.annotations.map((a) => a.content)).toEqual(['[@t:i1] home ann']);
   expect(home.annotations[0].selector).toContain('home-el');
   expect(routeA.annotations).toHaveLength(1);
   expect(routeA.annotations[0].selector).toContain('route-a-el');
@@ -126,18 +126,18 @@ test('in-flight old-ledger save response cannot pollute the new ledger', async (
   await expect.poll(() => {
     const doc = docByPrefix('spa-fixture.html_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['home ann']);
+  }).toEqual(['[@t:i1] home ann']);
   await held.shift().continue();
   await expect.poll(() => {
     const doc = docByPrefix('route-a_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['route-a ann']);
+  }).toEqual(['[@t:i1] route-a ann']);
 
   expect(Object.keys(bucketDocs())).toHaveLength(2);
   // 新账本的内存状态只有自己那条（旧响应被丢弃，没有 applyRemoteDoc/deferred 污染）。
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countAll)).toBe(1);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.map((m) => m.content)))
-    .toEqual(['route-a ann']);
+    .toEqual(['[@t:i1] route-a ann']);
 });
 
 test('hash-only change keeps the same ledger (no re-hydrate, no new file)', async ({ page }) => {
@@ -152,7 +152,7 @@ test('hash-only change keeps the same ledger (no re-hydrate, no new file)', asyn
   await expect.poll(() => {
     const doc = docByPrefix('spa-fixture.html_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['home ann']);
+  }).toEqual(['[@t:i1] home ann']);
   const hydratesBeforeHash = hydrateRequests.length;
 
   await page.evaluate(() => { location.hash = 'x'; });
@@ -161,7 +161,7 @@ test('hash-only change keeps the same ledger (no re-hydrate, no new file)', asyn
   await expect.poll(() => {
     const doc = docByPrefix('spa-fixture.html_');
     return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['home ann', 'home ann 2']);
+  }).toEqual(['[@t:i1] home ann', '[@t:i1] home ann 2']);
 
   expect(Object.keys(bucketDocs())).toHaveLength(1);
   expect(hydrateRequests.length).toBe(hydratesBeforeHash);

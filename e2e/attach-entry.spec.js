@@ -53,6 +53,7 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
 
     // 目标页「内容」区：产物组仍是 e2e-dir 自己的两条，草稿组出 attach 条目（纯标题无 tag）。
     await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
+    await page.getByRole('tab', { name: '大纲', exact: true }).click();
     const products = page.locator('#wbcontents [data-group="product"] [data-entry]');
     await expect(products.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
     await expect(page.locator('#wbcontents .wb-entry-group-head')).toHaveText(['产物', '草稿']);
@@ -86,10 +87,10 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
       const at = { bubbles: true, cancelable: true, clientX: Math.round(r.x + 8), clientY: Math.round(r.y + 8), button: 0 };
       el.dispatchEvent(new w.MouseEvent('mousedown', at));
       el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('textarea');
+      const ta = d.querySelector('#ann-input');
       ta.value = 'attached draft mark';
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+      d.querySelector('#ann-save').click();
       return true;
     }`)).toBe(true);
     await expect.poll(() => bucketDocs().length).toBe(1);
@@ -97,7 +98,7 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     // 账本 doc.path 存 decode 后的 pathname（annotate client 契约）；iframe src 与
     // page key 里的文件名仍是 percent-encode 规范形（synth-board 同例）。
     expect(ledger.path).toBe('/sites/e2e-cli-draft/Button Draft.html');
-    expect(ledger.annotations.map((a) => a.content)).toContain('attached draft mark');
+    expect(ledger.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('attached draft mark'));
     await page.locator('#wbann-count').click();
     await expect(page.locator('#wbann-list')).toContainText('attached draft mark');
     await page.locator('#wbann-count').click();

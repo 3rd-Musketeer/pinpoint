@@ -34,6 +34,7 @@ async function openWorkbench(page) {
 async function openDirDoc(page) {
   await openWorkbench(page);
   await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wbcontents [data-entry="doc"]').click();
   await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
 }
@@ -74,7 +75,7 @@ async function annotateInFrame(page, frameSelector, targetSelector, text) {
   await doc.locator(targetSelector).click();
   const box = doc.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill(text);
+  await box.locator('#ann-input').fill(text);
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
 }
@@ -107,6 +108,7 @@ test('文档条目：横条出「窗口｜手机」两段，默认窗口 = 1:1 �
   await expect(page.locator('#wb-board-panel .wb-screen--phone-doc')).toHaveCount(0);
 
   // 画布页没有视口控件：画布条目没有第二种看法。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="cards"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wbviewport')).toHaveCount(0);

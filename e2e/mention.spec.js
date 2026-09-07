@@ -43,10 +43,10 @@ async function saveComposerIn(page, scope, text) {
         .find((f) => f.title === scope.frameTitle).contentWindow;
     }
     const d = w.document;
-    const ta = d.querySelector('#ann-box textarea');
+    const ta = d.querySelector('#ann-input');
     ta.value = text;
     ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    [...d.querySelectorAll('#ann-box button')].find((b) => /保存/.test(b.textContent)).click();
+    d.querySelector('#ann-save').click();
   }, { scope, text });
 }
 
@@ -118,8 +118,8 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   const canvasTarget = page.locator('#wb-board-panel [data-screen="recipe"] .ios-cell').first();
   await canvasTarget.click();
   await expect(page.locator('#ann-box')).toBeVisible();
-  await page.locator('#ann-box textarea').fill('画布上标：这张卡');
-  await page.locator('#ann-box').getByRole('button', { name: '保存' }).click();
+  await page.locator('#ann-input').fill('画布上标：这张卡');
+  await page.locator('#ann-box').getByRole('button', { name: '发送标注' }).click();
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(2);
   // 8) 回文档：画布那条出现在文档里的活 frame 上（切页重建 iframe → 磁盘水合）
   await page.locator('#wbpages [data-vpage="e2e-mention"]').click();

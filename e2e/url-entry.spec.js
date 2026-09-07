@@ -33,6 +33,7 @@ test('url entry appears as a workbench page and renders live through the proxy',
   await expect(navBtn).toBeVisible();
   await navBtn.click();
 
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   const webRow = page.locator('#wbcontents [data-entry="index"]');
   await expect(webRow).toBeVisible();
   await expect(webRow.locator('.wb-entry-tag')).toHaveText('网页');
@@ -115,10 +116,10 @@ test('proxied page annotates into the entry bucket, driven by the sidebar', asyn
     const at = { bubbles: true, cancelable: true, clientX: Math.round(r.x + 8), clientY: Math.round(r.y + 8), button: 0 };
     el.dispatchEvent(new w.MouseEvent('mousedown', at));
     el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('textarea');
+    const ta = d.querySelector('#ann-input');
     ta.value = 'url entry mark';
     ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+    d.querySelector('#ann-save').click();
     return true;
   }`)).toBe(true);
 
@@ -127,7 +128,7 @@ test('proxied page annotates into the entry bucket, driven by the sidebar', asyn
   await expect.poll(() => bucketDocs().length).toBe(1);
   const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
   expect(doc.path).toBe('/');
-  expect(doc.annotations.map((a) => a.content)).toContain('url entry mark');
+  expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('url entry mark'));
 
   // 弹出的标注列表能看到这条标注（2026-09-04：右栏取消常驻，点横条计数钮弹出）。
   await page.locator('#wbann-count').click();

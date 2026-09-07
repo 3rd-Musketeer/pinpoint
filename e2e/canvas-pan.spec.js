@@ -3,7 +3,7 @@ import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
 const cellSelector = '[data-screen="settings"] .ios-cell';
 
-async function openCanvas(page, count = 0) {
+async function openCanvas(page, count = 0, withResults = false) {
   await seedTemplatePagesVisible(page);
   // Synthetic ledgers never write the user's data, even when a test edits a mark.
   await page.route('**/annotations/**', route => route.fulfill({ json: {
@@ -11,6 +11,7 @@ async function openCanvas(page, count = 0) {
     annotations: Array.isArray(count) ? count : Array.from({ length: count }, (_, i) => ({
       id: `pan-fixture-${i}`, n: i + 1, type: 'element', pageId: 'library',
       screenId: 'settings', content: `Pan annotation ${i + 1}`,
+      ...(withResults ? { result: { operations: [{action:'modify', targets:[{screenId:'settings', selector:`.ios-page > .ios-section:first-child .ios-cell:nth-child(${i % 3 + 1})`}]}] } } : {}),
       targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(${i % 3 + 1})`, text: 'Cell' }],
     })),
   } }));
@@ -41,8 +42,9 @@ for (const mode of [false, true]) for (const button of ['middle', 'space']) {
   });
 }
 
-for (const count of [200, 1000]) test(`${count} annotation pan reuses geometry instead of measuring every mark every frame`, async ({ page }) => {
-  await openCanvas(page, count);
+for (const count of [200, 1000]) for (const withResults of [false, true]) test(`${count} annotation pan with results ${withResults} reuses geometry instead of measuring every mark every frame`, async ({ page }) => {
+  await openCanvas(page, count, withResults);
+  if (withResults) await expect(page.locator('.ann-result-target')).toHaveCount(count);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
   const before = await cdp.send('Performance.getMetrics');
@@ -71,7 +73,7 @@ for (const count of [200, 1000]) test(`${count} annotation pan reuses geometry i
   });
   const after = await cdp.send('Performance.getMetrics');
   const delta = name => after.metrics.find(m => m.name === name).value - before.metrics.find(m => m.name === name).value;
-  console.log(JSON.stringify({ count, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
+  console.log(JSON.stringify({ count, withResults, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
   // Deterministic work budgets; frame-time measurements are reported, not a flaky CI gate.
   expect(sample.reads).toBeLessThan(1200);
   expect(delta('LayoutCount')).toBeLessThan(120);
@@ -107,10 +109,10 @@ test('space in composer types normally; navigation preserves the draft and clear
   await openCanvas(page);
   await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator(cellSelector).first().click();
-  const input = page.locator('#ann-box textarea');
+  const input = page.locator('#ann-input');
   await input.fill('draft');
   await input.press('Space');
-  await expect(input).toHaveValue('draft ');
+  await expect(input).toContainText('draft');
   // Explicit navigation outside the composer does not cancel or save the draft.
   const box = await page.locator(cellSelector).nth(2).boundingBox();
   await page.mouse.move(box.x + 20, box.y + 10);
@@ -118,7 +120,7 @@ test('space in composer types normally; navigation preserves the draft and clear
   await page.mouse.move(box.x - 50, box.y - 30, { steps: 5 });
   await page.evaluate(() => window.dispatchEvent(new Event('blur')));
   await page.mouse.up({ button: 'middle' });
-  await expect(input).toHaveValue('draft ');
+  await expect(input).toContainText('draft');
   await expect(page.locator('body')).not.toHaveClass(/wb-panning/);
   await expect.poll(() => page.evaluate(() => window.pinpoint.hasActiveDraft())).toBe(true);
 });
@@ -279,7 +281,7 @@ test('draft geometry is not translated twice during pan and zoom', async ({ page
   await openCanvas(page);
   await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator(`${cellSelector} .ios-cell-title`).first().click();
-  await page.locator('#ann-box textarea').fill('keep draft');
+  await page.locator('#ann-input').fill('keep draft');
   await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 50; s.scrollTop += 20; });
   const error = () => page.evaluate(() => {
     const target = document.querySelector('[data-screen="settings"] .ios-cell-title').getBoundingClientRect();
@@ -289,7 +291,7 @@ test('draft geometry is not translated twice during pan and zoom', async ({ page
   await expect.poll(error).toBeLessThan(2);
   await page.locator('#wbzoom-in').click();
   await expect.poll(error).toBeLessThan(2);
-  await expect(page.locator('#ann-box textarea')).toHaveValue('keep draft');
+  await expect(page.locator('#ann-input')).toContainText('keep draft');
 });
 
 test('a hidden secondary target in another frame is restored by local style changes', async ({ page }) => {
@@ -324,7 +326,7 @@ test('saving one comment preserves unrelated geometry and sends one complete led
     await route.fulfill({ json: { ok: true, revision: 2 } });
   });
   await page.evaluate(() => window.pinpoint.openMark(1));
-  await page.locator('#ann-box textarea').fill('Updated comment');
+  await page.locator('#ann-input').fill('Updated comment');
   await page.waitForTimeout(200);
   const result = await page.evaluate(async () => {
     const original = Element.prototype.getBoundingClientRect;
@@ -342,6 +344,26 @@ test('saving one comment preserves unrelated geometry and sends one complete led
   await expect.poll(() => saves.length).toBe(1);
   expect(saves[0].baseRevision).toBe(1);
   expect(saves[0].annotations).toHaveLength(1000);
-  expect(saves[0].annotations[0].content).toBe('Updated comment');
+  expect(saves[0].annotations[0].content).toBe('[@t:i1] Updated comment');
   await expect(page.locator('#ann-marks .ann-target')).toHaveCount(1000);
+});
+
+
+test('result boxes stay on the reported DOM through pan, zoom, target replacement and reload', async ({page}) => {
+  await openCanvas(page, 1, true);
+  const error = () => page.evaluate(selector => {
+    const target=document.querySelector(selector).getBoundingClientRect();
+    const box=document.querySelector('.ann-result-target').getBoundingClientRect();
+    return Math.max(Math.abs(target.left-box.left),Math.abs(target.top-box.top),Math.abs(target.width-box.width));
+  }, `${cellSelector}:nth-child(1)`);
+  await expect.poll(error).toBeLessThan(2);
+  await page.locator('#wbstage').evaluate(s=>{s.scrollLeft+=100;s.scrollTop+=60;});
+  await expect.poll(error).toBeLessThan(2);
+  await page.locator('#wbzoom-in').click();
+  await expect.poll(error).toBeLessThan(2);
+  await page.locator(cellSelector).first().evaluate(el=>{const next=el.cloneNode(true);next.style.marginTop='25px';el.replaceWith(next);});
+  await expect.poll(error).toBeLessThan(2);
+  await page.reload();
+  await expect(page.locator('.ann-result-target')).toHaveCount(1);
+  await expect.poll(error).toBeLessThan(2);
 });

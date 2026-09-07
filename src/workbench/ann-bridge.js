@@ -113,6 +113,7 @@ export function syncAnnSnap() {
       count: st.count || 0,
       countLive: st.countLive || 0,
       countBroken: st.countBroken || 0,
+      countInvalid: st.countInvalid || 0,
       rows: rows
     }
   });

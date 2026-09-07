@@ -21,7 +21,7 @@ async function saveAnnotation(page, target, comment) {
   await target.click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill(comment);
+  await box.locator('#ann-input').fill(comment);
   await box.locator('#ann-save').click();
 }
 
@@ -55,7 +55,7 @@ async function pickBubbleMode(page, mode) {
 async function expectBubbleMode(page, label) {
   await openAnnList(page);
   await page.locator('#wbann-more').click();
-  await expect(page.locator('#wbann-bubble-v')).toHaveText(label);
+  await expect(page.locator('.wb-ann-more-menu [data-bubble]').filter({hasText:label}).locator('span')).toHaveText('✓');
   await page.locator('#wbann-more').click();
   await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
   await expect(page.locator('#wbann-pop')).toBeVisible();
@@ -122,24 +122,24 @@ async function chromeInsets(page) {
   });
 }
 
-/* 列表开着时「定位」的到位判据（2026-09-04 H2 owner 批注 2）：目标不再居中 ——
-   nudgeAwayFromPopover 把它推出列表遮挡区，居中断言与这条要求互斥。所以断的是
-   「人看得见」：目标与列表矩形不相交、留在左栏右边、且还在横条上方的可见区里。
-   全程比 bounding box（AGENTS 坑与约定：可见性断言不查视口）。 */
+/* 整行点击后列表关闭、输入框打开，目标 frame 留在可见画布内。
+   用 bounding box 检查左栏与底栏占位，而非只断 DOM 可见。 */
 async function expectLocatedTarget(page, selector) {
+  await expect(page.locator('#ann-box')).toBeVisible();
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
   await expect.poll(() => page.evaluate((targetSelector) => {
     var target = document.querySelector(targetSelector);
     var pop = document.querySelector('#wbann-pop');
     var strip = document.querySelector('#wbstrip');
-    if (!target || !pop || !strip) return null;
+    if (!target || !strip) return null;
     var t = target.getBoundingClientRect();
-    var p = pop.getBoundingClientRect();
+    var p = pop && pop.getBoundingClientRect();
     var st = strip.getBoundingClientRect();
     var side = document.querySelector('#wbside');
     var sr = side ? side.getBoundingClientRect() : null;
     var leftEdge = sr && sr.width > 1 ? sr.right : 0;
     return {
-      clearOfList: !(t.right > p.left && t.left < p.right && t.bottom > p.top && t.top < p.bottom),
+      clearOfList: !p || !(t.right > p.left && t.left < p.right && t.bottom > p.top && t.top < p.bottom),
       rightOfPanel: t.left >= leftEdge - 1,
       onScreen: t.right > 0 && t.left < window.innerWidth && t.bottom > 0 && t.top < st.top
     };
@@ -245,13 +245,16 @@ test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page })
 
   // 类型信息只以图标出现，不再有 pill / data-page-mode。
   // 2026-09-05：每行一个类型图标（画布 / 文档 / 网页），数量 = 行数。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(await page.locator('#wbpages .wb-page').count());
   await expect(page.locator('#wbpages .wb-page[data-page-mode]')).toHaveCount(0);
 
   // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wbcanvas-tools')).toBeVisible();
@@ -261,6 +264,7 @@ test('HTML board fills the viewport, drops canvas chrome, and collapses the cont
   await openWorkbench(page);
 
   // 壳形态是选中条目的属性：点文档页（单 doc 条目），stage 即阅读器。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
 
   // Document is hosted in an iframe, not inlined: its own <head>/<style> stay inside.
@@ -282,8 +286,10 @@ test('HTML board fills the viewport, drops canvas chrome, and collapses the cont
   await expect(page.locator('#wbcontents')).toHaveCount(0);
 
   // 纯画布页：「内容」区在、frame 树在，但条目行坍缩（无多余「画布」行）。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(0);
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents')).toBeVisible();
   await expect(page.locator('#wbcontents [data-entry]')).toHaveCount(0);
   await expect(page.locator('#wboutline [data-ol-frame]')).not.toHaveCount(0);
@@ -294,8 +300,11 @@ test('doc entry rows export full HTML, no-css HTML, and long PNG (2026-08-16f �
   await openWorkbench(page);
   // 多文档页（e2e-dir，cards + doc 两个产物条目）：「内容」区出产物组条目行，
   // doc 导出入口 = 条目行右键菜单（2026-08-17 hover icon 钮退役）。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-dir"]').click();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="doc"]')).toBeVisible();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wbcontents [data-entry="doc"]').click({ button: 'right' });
   await page.locator('[data-entry-export="doc"]').click();
   const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
@@ -345,11 +354,14 @@ test('sidebar rows expose locator copy / rename / export via right-click menu (2
   // 「已复制 <全文>」（行上无可见元素，菜单是复制反馈的唯一落点）。
   await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   const readClip = () => page.evaluate(() => navigator.clipboard.readText());
 
   // Page 行：复制 @page；同一开着的菜单里再点重命名 → 行内输入框出现
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click({ button: 'right' });
   const pageCopy = page.locator('[data-copy-page="e2e-mixed"]');
   await expect(pageCopy).toBeVisible();
@@ -369,12 +381,14 @@ test('sidebar rows expose locator copy / rename / export via right-click menu (2
   await page.keyboard.press('Escape');
 
   // 系统页（Component Library，id = components）：复制项在、重命名项不在
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="components"]').click({ button: 'right' });
   await expect(page.locator('[data-copy-page="components"]')).toBeVisible();
   await expect(page.locator('[data-rename-page]')).toHaveCount(0);
   await page.keyboard.press('Escape');
 
   // 产物 doc 条目：复制 @frame 后菜单仍开着，同菜单点「导出…」开对话框
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wbcontents [data-entry="spec"]').click({ button: 'right' });
   await page.locator('[data-copy-frame="e2e-mixed/spec"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/spec');
@@ -385,12 +399,14 @@ test('sidebar rows expose locator copy / rename / export via right-click menu (2
   await dialog.locator('.wb-export-close').click();
 
   // 画布条目：复制 @page（画布 = 页面默认视图，@frame 语法不覆盖它）
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wbcontents [data-entry="@canvas"]').click({ button: 'right' });
   await page.locator('[data-copy-page="e2e-mixed"]').click();
   await expect.poll(readClip).toBe('@page:e2e-mixed');
   await page.keyboard.press('Escape');
 
   // frame 树行：复制 @frame
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wboutline [data-ol-frame="home"]').click({ button: 'right' });
   await page.locator('[data-copy-frame="e2e-mixed/home"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
@@ -405,9 +421,11 @@ test('doc entry exports with comments: mark boxes HTML, no-css text, and long PN
   await fs.rm(bucket, { recursive: true, force: true });
   try {
     await openWorkbench(page);
+    await page.getByRole('tab', {name:'页面', exact:true}).click();
     await page.locator('#wbpages [data-vpage="e2e-dir"]').click();
     // 选中 doc 条目（阅读器显示 doc.html）；doc 屏 iframe 选择器要按屏 scoped
     // （同板多 doc 屏都在 DOM，非选中屏被条目显隐收起）。
+    await page.getByRole('tab', {name:'大纲', exact:true}).click();
     await page.locator('#wbcontents [data-entry="doc"]').click();
     const DOC_FRAME = '#wb-board-panel [data-screen="doc"] .wb-doc-frame';
     const doc = page.frameLocator(DOC_FRAME);
@@ -438,10 +456,10 @@ test('doc entry exports with comments: mark boxes HTML, no-css text, and long PN
           clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
         el.dispatchEvent(new w.MouseEvent('mousedown', at));
         el.dispatchEvent(new w.MouseEvent('mouseup', at));
-        const ta = d.querySelector('textarea');
+        const ta = d.querySelector('#ann-input');
         ta.value = text;
         ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-        [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+        d.querySelector('#ann-save').click();
       }
       clickEl('#doc-title', '导出评论 doc-title');
       clickEl('#doc-target', '导出评论 doc-target');
@@ -465,6 +483,7 @@ test('doc entry exports with comments: mark boxes HTML, no-css text, and long PN
     }, DOC_FRAME)).toBe(2);
 
     // 条目行右键菜单开导出对话框（2026-08-17 hover icon 钮退役）
+    await page.getByRole('tab', {name:'大纲', exact:true}).click();
     await page.locator('#wbcontents [data-entry="doc"]').click({ button: 'right' });
     await page.locator('[data-entry-export="doc"]').click();
     const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
@@ -556,6 +575,7 @@ test('doc entry exports with comments: mark boxes HTML, no-css text, and long PN
 
 test('doc annotate layer stays pinned to the viewport after the document scrolls', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
 
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
@@ -619,6 +639,7 @@ test('doc annotate layer stays pinned to the viewport after the document scrolls
 
 test('HTML board: sidebar drives the document annotate instance and lists its marks', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
@@ -661,10 +682,10 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
     const at = { bubbles: true, cancelable: true, clientX: Math.round(r.x + 8), clientY: Math.round(r.y + 8), button: 0 };
     el.dispatchEvent(new w.MouseEvent('mousedown', at));
     el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('textarea');
+    const ta = d.querySelector('#ann-input');
     ta.value = 'sidebar sync check';
     ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+    d.querySelector('#ann-save').click();
   });
 
   await expect.poll(async () => (await docState()).count).toBe(1);
@@ -676,6 +697,7 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
 
 test('HTML board: annotations redraw when an interactive view hides and returns', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
   await expect.poll(() => page.evaluate(() => !!(
@@ -701,10 +723,10 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
     };
     el.dispatchEvent(new w.MouseEvent('mousedown', at));
     el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('textarea');
+    const ta = d.querySelector('#ann-input');
     ta.value = 'interactive view redraw';
     ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+    d.querySelector('#ann-save').click();
   });
 
   const docState = () => page.evaluate(() => {
@@ -743,6 +765,7 @@ test('HTML board: annotations redraw when an interactive view hides and returns'
 
 test('HTML board: annotations on SVG elements are not falsely broken', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
@@ -790,7 +813,7 @@ test('HTML board: annotations on SVG elements are not falsely broken', async ({ 
     el.dispatchEvent(new w.MouseEvent('mousedown', at));
     el.dispatchEvent(new w.MouseEvent('mouseup', at));
     const box = d.getElementById('ann-box');
-    const pill = box && box.querySelector('.ann-target-pill');
+    const pill = box && box.querySelector('.ann-inline-target');
     return {
       boxOpen: !!box,
       brokenText: /锚点失效/.test(box ? (box.textContent || '') : ''),
@@ -801,11 +824,12 @@ test('HTML board: annotations on SVG elements are not falsely broken', async ({ 
   expect(out.boxOpen).toBe(true);
   expect(out.brokenText).toBe(false);
   expect(out.pillBroken).toBe(false);
-  expect(out.pillLabel).toContain('indicator');
+  expect(out.pillLabel).toContain('峰值');
 });
 
 test('HTML board: "render comments" toggle draws content bubbles on the canvas', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
@@ -837,10 +861,10 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
         clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
       el.dispatchEvent(new w.MouseEvent('mousedown', at));
       el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('textarea');
+      const ta = d.querySelector('#ann-input');
       ta.value = '评论内容 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+      d.querySelector('#ann-save').click();
     }
     clickEl('h1');
     clickEl('#s2');
@@ -886,6 +910,7 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
 
 test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
@@ -916,10 +941,10 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
         clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
       el.dispatchEvent(new w.MouseEvent('mousedown', at));
       el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('textarea');
+      const ta = d.querySelector('#ann-input');
       ta.value = '评论 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+      d.querySelector('#ann-save').click();
     }
     clickEl('h1');
     clickEl('#s2');
@@ -973,6 +998,7 @@ test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', asyn
 
 test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside the iframe, no squeeze', async ({ page }) => {
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
   await expect(doc.locator('h1')).toHaveText('Sample Report');
@@ -1001,10 +1027,10 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
         clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
       el.dispatchEvent(new w.MouseEvent('mousedown', at));
       el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('textarea');
+      const ta = d.querySelector('#ann-input');
       ta.value = '评论 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      [...d.querySelectorAll('button')].find((b) => /保存/.test(b.textContent)).click();
+      d.querySelector('#ann-save').click();
     }
     clickEl('h1');
     clickEl('#s2');
@@ -1124,6 +1150,7 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('components');
 
   // 回到坏页 → 面板重现；修好后「重试」原地把板拉回来，不用刷新整页
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(panel).toBeVisible();
   broken = false;
@@ -1345,9 +1372,8 @@ test('every Frame exposes a title menu (export entry retired to the HUD picker)'
   })).toEqual({ alpha: 1, backdropFilter: 'none' });
 });
 
-test('Detail 面板：选中 frame 展示 note，编辑保存走共享 revision（2026-08-17 选中模型）', async ({ page }) => {
+test('Detail 面板：frame 旧描述只读保留，不再提供增加或编辑入口', async ({ page }) => {
   const initial = '场景：会议刚刚结束。';
-  const revised = '场景：会议刚刚结束。\n交互：点击 Suggested Prompt。';
   let savedBody = null;
 
   await page.route('**/previews/library/board.json', async (route) => {
@@ -1356,13 +1382,9 @@ test('Detail 面板：选中 frame 展示 note，编辑保存走共享 revision�
     board.sections[0].screens[0].note = initial; // home / home
     await route.fulfill({ response, json: board });
   });
-  await page.route('**/api/frame-notes/library/home', async (route) => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({ json: { pageId: 'library', screenId: 'home', note: initial, revision: 'revision-1' } });
-      return;
-    }
-    savedBody = route.request().postDataJSON();
-    await route.fulfill({ json: { pageId: 'library', screenId: 'home', note: revised, revision: 'revision-2' } });
+  await page.route('**/api/frame-notes/**', async (route) => {
+    savedBody = route.request().postData();
+    throw new Error('Read-only frame descriptions must not call the write API');
   });
 
   await openWorkbench(page);
@@ -1380,11 +1402,9 @@ test('Detail 面板：选中 frame 展示 note，编辑保存走共享 revision�
   // 画布选中态 class 同步
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
 
-  await detail.locator('[data-detail-note-edit]').click();
-  await detail.locator('[data-detail-note-input]').fill(revised);
-  await detail.locator('[data-detail-note-save]').click();
-  await expect(detail.locator('[data-detail-note-text]')).toHaveText(revised);
-  expect(savedBody).toEqual({ note: revised, baseRevision: 'revision-1' });
+  await expect(detail.locator('[data-detail-note-edit]')).toHaveCount(0);
+  await expect(detail.locator('[data-detail-note-input]')).toHaveCount(0);
+  expect(savedBody).toBeNull();
 });
 
 test('Detail 面板：section note 走 /api/section-notes（2026-08-17 section note 落地）', async ({ page }) => {
@@ -1429,6 +1449,7 @@ test('画布点选模型：原型内部不动选中、板空白清选中（2026-
   await expect(detail).toHaveCount(0);
 
   // frame 树行点击（既有链路）同样驱动 detail 面板
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wboutline [data-ol-frame="recipe"]').click();
   await expect(detail).toBeVisible();
   await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
@@ -1538,6 +1559,7 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(navigator).toBeVisible();
   await expect(minimap).toBeVisible();
 
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="components"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
   await expect(navigator).toBeVisible();
@@ -1643,204 +1665,30 @@ test('sidebar annotation navigation focuses the owning frame, not the comment an
   await page.evaluate(() => window.pinpoint.clear());
 });
 
-test('bottom composer keeps focus while canvas clicks attach and inline targets', async ({ page }) => {
+// The old reference-mode and draggable-composer stories are retired. Inline
+// input and DOM-positioning coverage also runs in review-refinements.spec.js.
+test('canvas multi-target pills preserve text and cancel edits without changing the saved annotation', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   await page.evaluate(() => window.pinpoint.setMode(true));
-
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).click();
-
-  const box = page.locator('#ann-box');
-  const textarea = box.locator('textarea');
-  await expect(box).toBeVisible();
-  await expect(textarea).toBeFocused();
-  await expect(box.locator('.ann-target-pill')).toHaveCount(1);
-  await expect(box.locator('#ann-target-mode-reference')).toHaveClass(/on/);
-
-  const composerLayout = await page.evaluate(() => {
-    const wrap = document.querySelector('.wb-stage-wrap').getBoundingClientRect();
-    const composer = document.querySelector('#ann-box').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    const stage = document.querySelector('#wbstage');
-    return {
-      insideBottom: composer.bottom <= wrap.bottom,
-      aboveHud: composer.bottom <= strip.top,
-      scrollPaddingBottom: parseFloat(getComputedStyle(stage).scrollPaddingBottom),
-      composerHeight: composer.height,
-    };
-  });
-  expect(composerLayout.insideBottom).toBe(true);
-  expect(composerLayout.aboveHud).toBe(true);
-  expect(composerLayout.scrollPaddingBottom).toBeGreaterThan(composerLayout.composerHeight);
-
-  await page.locator('#wbsection-nav-toggle').click();
-  await expect(page.locator('#wbsection-nav')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => {
-    const composer = document.querySelector('#ann-box').getBoundingClientRect();
-    const dock = document.querySelector('#wbcanvas-dock').getBoundingClientRect();
-    return composer.right <= dock.left;
-  })).toBe(true);
-
-  await textarea.fill('把颜色对齐');
-  await textarea.evaluate((el) => el.setSelectionRange(0, 0));
+  const input = page.locator('#ann-input');
+  await input.fill('已保存');
   await cells.nth(1).click();
-  await expect(textarea).toBeFocused();
-  await expect(textarea).toHaveValue('把颜色对齐');
-  await expect(box.locator('.ann-target-pill')).toHaveCount(2);
-
-  await box.locator('#ann-target-mode-inline').click();
-  await expect(textarea).toBeFocused();
-  await textarea.dispatchEvent('compositionstart');
-  await cells.nth(2).click();
-  await expect(textarea).toBeFocused();
-  await expect(textarea).toHaveValue('把颜色对齐');
-  await textarea.dispatchEvent('compositionend');
-  await expect(textarea).toHaveValue('[indicator 3] 把颜色对齐');
-  await expect(box.locator('.ann-target-pill')).toHaveCount(3);
-
-  await box.locator('#ann-save').click();
-  await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toMatchObject({
-    content: '[@t:i3] 把颜色对齐',
-    selector: expect.any(String),
-    targets: [
-      { ref: 'i1', selector: expect.any(String), text: expect.any(String) },
-      { ref: 'i2', selector: expect.any(String), text: expect.any(String) },
-      { ref: 'i3', selector: expect.any(String), text: expect.any(String) },
-    ],
-  });
-
-  await page.locator('.ann-badge').first().click();
-  await expect(box).toBeVisible();
-  await expect(textarea).toHaveValue('[indicator 3] 把颜色对齐');
-  await expect(box.locator('#ann-target-mode-inline')).toHaveClass(/on/);
-  await expect(box.locator('.ann-target-pill')).toHaveCount(3);
-});
-
-test('composer moves only from its drag handle and stays fixed in the viewport', async ({ page }) => {
-  await openWorkbench(page);
-  // 双栏布局（2026-08-15）在默认 1280 宽下舞台只剩 ~715px，composer（max 720）
-  // 几乎顶满，水平拖拽无可移动空间。拉宽视口让水平位移成立（后续窄视口钳位
-  // 断言不受影响）。
-  await page.setViewportSize({ width: 1600, height: 900 });
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).click();
-  const box = page.locator('#ann-box');
-  const textarea = box.locator('textarea');
-  const handle = box.locator('.ann-drag-handle');
-  await expect(handle).toBeVisible();
-  await expect(handle).toHaveAttribute('aria-label', '拖动标注框');
-
-  const before = await box.boundingBox();
-  const handleRect = await handle.boundingBox();
-  await page.mouse.move(handleRect.x + handleRect.width / 2, handleRect.y + handleRect.height / 2);
-  await page.mouse.down();
-  await page.mouse.move(handleRect.x - 150, handleRect.y - 110, { steps: 6 });
-  await page.mouse.up();
-
-  const moved = await box.boundingBox();
-  expect(Math.abs(moved.x - before.x)).toBeGreaterThan(80);
-  expect(Math.abs(moved.y - before.y)).toBeGreaterThan(60);
-  await expect(textarea).toBeFocused();
-
-  const textareaRect = await textarea.boundingBox();
-  await page.mouse.move(textareaRect.x + 30, textareaRect.y + 24);
-  await page.mouse.down();
-  await page.mouse.move(textareaRect.x + 100, textareaRect.y + 24, { steps: 4 });
-  await page.mouse.up();
-  const afterTextareaDrag = await box.boundingBox();
-  expect(afterTextareaDrag.x).toBeCloseTo(moved.x, 0);
-  expect(afterTextareaDrag.y).toBeCloseTo(moved.y, 0);
-
-  await page.locator('#wbstage').evaluate((stage) => { stage.scrollTop += 300; });
-  const afterCanvasScroll = await box.boundingBox();
-  expect(afterCanvasScroll.x).toBeCloseTo(moved.x, 0);
-  expect(afterCanvasScroll.y).toBeCloseTo(moved.y, 0);
-
-  await textarea.fill('记住这个位置');
-  await box.locator('#ann-save').click();
-  await page.evaluate(() => window.pinpoint.openMark(window.pinpoint.marks[0].n));
-  const reopened = await box.boundingBox();
-  expect(reopened.x).toBeCloseTo(moved.x, 0);
-  expect(reopened.y).toBeCloseTo(moved.y, 0);
-
-  // 2026-09-04 起画布满铺，composer 不再被两侧栏挤窄 —— 要让「窄视口钳位 →
-  // 拉宽回弹」成立，窄档必须窄过 composer 的 720 上限。
-  await page.setViewportSize({ width: 560, height: 700 });
-  await expect.poll(() => page.evaluate(() => {
-    const wrap = document.querySelector('.wb-stage-wrap').getBoundingClientRect();
-    const composer = document.querySelector('#ann-box').getBoundingClientRect();
-    return composer.left >= wrap.left + 11
-      && composer.right <= wrap.right - 11
-      && composer.top >= wrap.top + 11
-      && composer.bottom <= wrap.bottom - 11;
-  })).toBe(true);
-  const narrow = await box.boundingBox();
-
-  await page.setViewportSize({ width: 1280, height: 700 });
-  await expect.poll(async () => (await box.boundingBox()).width).toBeGreaterThan(narrow.width + 100);
-});
-
-test('target pills locate, remove inline refs, and cancel existing edits', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).click();
-  const box = page.locator('#ann-box');
-  const textarea = box.locator('textarea');
-  await box.locator('.ann-target-pill').hover();
-  await box.locator('.ann-target-remove').click();
-  await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-
-  await cells.nth(0).click();
-  await box.locator('#ann-target-mode-inline').click();
-  await textarea.fill('参考 ');
-  await textarea.evaluate((el) => el.setSelectionRange(el.value.length, el.value.length));
-  await cells.nth(1).click();
-  await expect(textarea).toHaveValue('参考 [indicator 2] ');
-
-  const secondPill = box.locator('.ann-target-pill[data-target-ref="i2"]');
-  await secondPill.hover();
-  await expect(page.locator('.ann-hover-ghost')).not.toHaveAttribute('hidden', '');
-  await secondPill.click();
-  await expect(textarea).toBeFocused();
-  await secondPill.locator('.ann-target-remove').click();
-  await expect(textarea).toHaveValue('参考 ');
-  await expect(box.locator('.ann-target-pill')).toHaveCount(1);
-
-  await cells.nth(2).click();
-  await expect(box.locator('.ann-target-pill[data-target-ref="i3"]')).toHaveCount(1);
-  await expect(textarea).toHaveValue('参考 [indicator 3] ');
-  await box.locator('.ann-target-pill[data-target-ref="i3"]').hover();
-  await box.locator('.ann-target-pill[data-target-ref="i3"] .ann-target-remove').click();
-  await expect(textarea).toHaveValue('参考 ');
-
-  await textarea.fill('已保存');
-  await box.locator('#ann-save').click();
-  await page.locator('.ann-badge').first().click();
-  await box.locator('.ann-target-pill').hover();
-  await box.locator('.ann-target-remove').click();
-  await expect(box).toBeVisible();
-  await expect(box.locator('.ann-target-pill')).toHaveCount(1);
-  await textarea.fill('不应保存');
-  await box.locator('#ann-cancel').click();
-  await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].content)).toBe('已保存');
-
-  await page.locator('.ann-badge').first().click();
-  await textarea.fill('换页也不应保存');
+  await expect(input.locator('[data-target-ref]')).toHaveCount(2);
+  await page.locator('#ann-save').click();
+  const saved = await page.evaluate(() => window.pinpoint.marks[0]);
+  expect(saved.targets).toHaveLength(2);
+  await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
+  await input.fill('不应保存');
+  await page.locator('#ann-cancel').click();
+  expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
+  await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
+  await input.fill('换页也不应保存');
   await page.evaluate(() => window.workbench.setActivePage('components'));
-  await expect(box).toBeHidden();
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].content)).toBe('已保存');
+  await expect(input).toHaveCount(0);
+  expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
@@ -1939,6 +1787,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await expect(recipe.locator('.wb-screen-dim')).toHaveText('402 × 874');
   await expect(page.locator('#lib-brew-flow .wb-lib-cap .wb-cap-ref')).toHaveText('B');
 
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   // 大纲：section → frame 树，引用号纯派生自 board 顺序
   const outline = page.locator('#wboutline');
   await expect(outline.locator('.ol')).toHaveCount(6);
@@ -1976,19 +1825,12 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
-  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
-  // 行尾「定位」是同一个动作的第二个入口（hover 才现，几何上在行内）
-  const goBtn = page.locator('#wbann-list [data-ann-go="1"]');
-  await page.locator('#wbann-list .wb-ann-item').hover();
-  await expect(goBtn).toBeVisible();
-  await goBtn.click();
-  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
-
-  // Esc 关列表；再点计数钮开回来
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await page.locator('#ann-cancel').click();
   await openAnnList(page);
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
+  await expect(page.locator('#wbann-list [data-ann-go]')).toHaveCount(0);
+  await expect(page.locator('#wbann-list .wb-ann-delete')).toBeVisible();
 
   // 左栏折叠 / 复开：唯一入口是横条左端的 Pages 开关（画布两缘浮钮已退役）
   await page.locator('#wbside-toggle').click();
@@ -2000,7 +1842,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行
   await page.locator('#wbann-more').click();
   await page.locator('#wbann-clear').click();
-  await expect(page.locator('#wbann-clear')).toHaveText('确认清空');
+  await expect(page.locator('#wbann-clear')).toHaveText('确认清空标注（1）');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await page.locator('#wbann-clear').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
@@ -2059,6 +1901,7 @@ test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互�
   // 文档 1:1 铺满整个视口，玻璃面板与横条压在文档上，和画布页一模一样 ——
   // 文档底下不露画布。判据：doc iframe 矩形 = 视口；面板与横条的矩形都落在
   // 它里面；面板中心 elementFromPoint 命中的是面板自己（浮在文档之上）。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="doc-library"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
   const docGeom = () => page.evaluate(() => {
@@ -2155,9 +1998,7 @@ test('弹出列表：定位不被自己盖住、行几何在卡内（2026-09-04 
   // 行整行落在卡内（点得到 ≠ 人看得见 —— 比 bounding box）
   expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
 
-  // 「定位」之后：被定位的 frame 不落在列表矩形里（owner 批注 2 的第二条）——
-  // nudgeAwayFromPopover 把画布横向推开。层级那一半（批注 2 的第一条）在下一条
-  // 用例里断（点亮源用 hover，比定位的 3s 窗口稳）。
+  // 整行点击后打开输入框，关闭列表，目标 frame 仍在可见画布内。
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
 
@@ -2444,8 +2285,10 @@ test('first visit lands focused on the first frame at the 100% default zoom (202
     const p = await readWbPrefs(page);
     return p.pageViewports && p.pageViewports.library && p.pageViewports.library.canvasZoom;
   }).toBe('1.1');
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="components"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="button/catalog"]')).toBeVisible();
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="library"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
   await expect(page.locator('#wbzoom-label')).toHaveText('110%');
@@ -2481,7 +2324,9 @@ test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶
   // 产物条目的类型 tag：<230 整枚隐藏，只留标题；断点与宽度偏好行为不变。
   // 固件 = e2e-mixed（混合板，产物组有「画布/文档」两枚 tag）。
   await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   const side = page.locator('#wbside');
   const tags = page.locator('#wbcontents .wb-entry-tag');
@@ -2497,6 +2342,7 @@ test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶
   await expect(side).toHaveClass(/compact/);
   await expect(page.locator('#wbcontents .wb-entry-tag:visible')).toHaveCount(0);
   // 条目行本身仍在（坍缩的只是 tag，不是条目）
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
 
   // 拖回 300 ≥ 230 自动恢复；reload 后偏好保持
@@ -2508,6 +2354,7 @@ test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect.poll(async () => (await readWbPrefs(page)).sideWidth).toBe(300);
   await expect(side).not.toHaveClass(/compact/);
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
 });
 
@@ -2534,17 +2381,23 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
 
   // 左栏：混合板页（产物条目带 tag），默认 250 与紧凑 200 两档——
   // Page 行、内容区条目行全部在栏内（2026-08-17 行尾钮随右键菜单退役）
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   expect(await sideWidth(page)).toBe(250);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 
   await dragSideSplitter(page, -120);
   expect(await sideWidth(page)).toBe(200);
   await expect(page.locator('#wbside')).toHaveClass(/compact/);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 });

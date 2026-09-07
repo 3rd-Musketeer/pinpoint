@@ -17,6 +17,7 @@ async function openWorkbench(page) {
 async function openMixed(page) {
   await openWorkbench(page);
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  await page.getByRole('tab', {name:'大纲',exact:true}).click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
 }
 
@@ -77,6 +78,7 @@ test('混合板：点文档行 stage 变阅读器，点「画布」行回画布'
   await expect.poll(() => page.url()).toContain('entry=draft-variants');
 
   // 点「画布」行回画布：两帧回来、树回来、阅读器退场、URL 收掉 entry（默认条目不写）。
+  await page.getByRole('tab', {name:'大纲',exact:true}).click();
   await page.locator('#wbcontents [data-entry="@canvas"]').click();
   expect(await stageForm(page)).toBe('ios');
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
@@ -144,6 +146,7 @@ test('混合板：条目选择跨 reload 保持（prefs.activeEntryIdByPage）',
   await expect(page.locator('#wbcontents [data-entry="draft-variants"]')).toHaveAttribute('data-state', 'on');
 
   // 切回画布条目后 reload：回到画布。
+  await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wbcontents [data-entry="@canvas"]').click();
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await page.reload();

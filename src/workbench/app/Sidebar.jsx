@@ -53,7 +53,7 @@
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
   entriesOfActiveBoard,
@@ -198,7 +198,12 @@ function SearchField(props) {
   );
 }
 
+const PagePreferences = createContext(null);
+
 function PageRow(props) {
+  var preferences = useContext(PagePreferences);
+  var pinned = !!preferences.value.pinned[props.page.id];
+  var archived = !!preferences.value.archived[props.page.id];
   var page = props.page;
   var system = !!page.system;
   var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
@@ -247,6 +252,12 @@ function PageRow(props) {
     { kind: 'copy', label: '复制 @page', text: '@page:' + page.id,
       attr: { 'data-copy-page': page.id } }
   ];
+  menuItems.push({ kind: 'action', label: pinned ? '取消置顶' : '置顶', icon: 'pin',
+    onSelect: function () { preferences.toggle('pinned', page.id); },
+    attr: { 'data-pin-page': page.id } });
+  menuItems.push({ kind: 'action', label: archived ? '恢复页面' : '归档', icon: 'archive',
+    onSelect: function () { preferences.toggle('archived', page.id); },
+    attr: { 'data-archive-page': page.id } });
   if (!system) {
     menuItems.push({
       kind: 'action', label: '重命名', icon: 'pencil',
@@ -451,7 +462,7 @@ function PagesSection(props) {
   return (
     <section className="wb-section" data-section="pages">
       <div className="wb-section-head-row">
-        <div className={SECTION_HEAD}>页面</div>
+
         <Button type="button" variant="tool" size="icon"
           className="wb-page-sort size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
           data-page-sort={props.sort}
@@ -675,7 +686,7 @@ function Contents() {
 
   return (
     <section className="wb-section" data-section="contents">
-      <div className={SECTION_HEAD}>内容</div>
+
       <nav className="wb-contents flex flex-col gap-px pb-1 pt-0.5" id="wbcontents" aria-label="内容">
         {model.productRows.length ? (
           <div className="wb-entry-group flex flex-col gap-px" data-group="product">
@@ -910,6 +921,21 @@ function useFolderActions(folders, model, sort) {
 }
 
 export function Sidebar() {
+  var [sidebarTab, setSidebarTab] = useState('pages');
+  var [showArchived, setShowArchived] = useState(false);
+  var [pagePreferences, setPagePreferences] = useState(function () {
+    var stored = readPrefs().pagePreferences || {};
+    return { pinned: stored.pinned || {}, archived: stored.archived || {} };
+  });
+  function togglePagePreference(kind, pageId) {
+    setPagePreferences(function (current) {
+      var next = { ...current, [kind]: { ...current[kind] } };
+      if (next[kind][pageId]) delete next[kind][pageId];
+      else next[kind][pageId] = true;
+      savePrefs({ pagePreferences: next });
+      return next;
+    });
+  }
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
@@ -933,16 +959,18 @@ export function Sidebar() {
     );
     return {
       grouping: grouping,
-      pages: pages,
+      pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
+      pinned: pages.filter(function (page) { return !pagePreferences.archived[page.id] && pagePreferences.pinned[page.id]; }),
+      archived: pages.filter(function (page) { return pagePreferences.archived[page.id]; }),
       model: groupPages({
-        pages: pages,
+        pages: pages.filter(function (page) { return !pagePreferences.archived[page.id] && !pagePreferences.pinned[page.id]; }),
         folders: grouping.folders,
         pageFolders: grouping.pageFolders,
         pageOrder: grouping.pageOrder,
         sort: sort
       })
     };
-  }, [manifest, showTemplates, activePageId, query, sort]);
+  }, [manifest, showTemplates, activePageId, query, sort, pagePreferences]);
   var model = derived.model;
   var dnd = useFolderActions(derived.grouping.folders, model, sort);
   // 「最近」与「页面」吃同一份过滤结果 —— 搜索是跨段的一条规则，不是每段一套。
@@ -952,16 +980,39 @@ export function Sidebar() {
     <Fragment>
       <SideHead />
       {settingsOpen ? null : <SearchField value={query} onChange={setQuery} />}
+      {!settingsOpen && <div className="wb-side-tabs" role="tablist" aria-label="侧栏视图">
+        {['pages', 'outline'].map(function (tab) { return <button key={tab} role="tab" type="button" aria-selected={sidebarTab === tab} tabIndex={sidebarTab === tab ? 0 : -1} onKeyDown={function (event) {
+          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
+            event.preventDefault();
+            setSidebarTab(tab === 'pages' ? 'outline' : 'pages');
+            var sibling = tab === 'pages' ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling;
+            if (sibling) sibling.focus();
+          }
+        }} onClick={function () { setSidebarTab(tab); }}>{tab === 'pages' ? '页面' : '大纲'}</button>; })}
+      </div>}
       <div className="wb-side-body">
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
-          <RecentSection rows={recent} now={now} />
+          <div hidden={sidebarTab !== 'pages'}>
+          <PagePreferences.Provider value={{ value: pagePreferences, toggle: togglePagePreference }}>
+          {showArchived ? <nav aria-label="已归档页面">
+            {derived.archived.map(function (page) { return <PageRow key={page.id} page={page} dnd={dnd} now={now} />; })}
+            {!derived.archived.length && <p className="wb-row">没有归档页面</p>}
+          </nav> : <>
+          {derived.pinned.length > 0 && <nav className="wb-pinned-pages" aria-label="置顶页面">
+            {derived.pinned.map(function (page) { return <PageRow key={page.id} page={page} folderId={derived.grouping.pageFolders[page.id]} dnd={dnd} now={now} />; })}
+          </nav>}
+          <RecentSection rows={recent.filter(function (row) { return !pagePreferences.pinned[row.page.id]; })} now={now} />
           <PagesSection model={model} dnd={dnd} sort={sort} now={now}
             onCycleSort={function () {
               var next = nextPageSort(sort);
               savePrefs({ pageSort: next });
               setSort(next);
             }} />
-          <Contents />
+          </>}
+          <button type="button" className="wb-row wb-archive-toggle" data-show-archived aria-pressed={showArchived} onClick={function () { setShowArchived(!showArchived); }}><WbIcon name={showArchived ? 'chevron-left' : 'archive'} size={14} />{showArchived ? '返回页面' : '已归档'}</button>
+          </PagePreferences.Provider>
+          </div>
+          <div hidden={sidebarTab !== 'outline'}><Contents /></div>
         </ScrollArea>
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />

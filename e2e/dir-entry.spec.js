@@ -76,6 +76,7 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
 
   // dir 条目默认 doc 壳：每屏一个 iframe 文档（保留文档自己注入的 annotate
   // 客户端），侧栏「内容」区出产物条目行；board.json 里残留的 shell:"web" 归一到 doc。
+  await page.getByRole('tab', { name: '大纲', exact: true }).click();
   const entries = page.locator('#wbcontents [data-group="product"] [data-entry]');
   await expect(entries).toHaveCount(2);
   await expect(entries.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
@@ -118,13 +119,13 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
   await page.locator('#doc-target').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill('dir entry mark');
+  await box.locator('#ann-input').fill('dir entry mark');
   await box.locator('#ann-save').click();
 
   await expect.poll(() => bucketDocs().length).toBe(1);
   const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
   expect(doc.path).toBe('/sites/e2e-dir/doc.html');
-  expect(doc.annotations.map((a) => a.content)).toContain('dir entry mark');
+  expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('dir entry mark'));
 });
 
 // 注入端的材质与卡片皮肤（ADR 0031「注入端 #ann-sidebar 换同一档玻璃，两端材质
@@ -139,7 +140,7 @@ test('注入端工具条与面板穿同一档 F2 玻璃，评论卡是 H1 皮肤
   await page.locator('#doc-target').click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill('注入端皮肤');
+  await box.locator('#ann-input').fill('注入端皮肤');
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
 
@@ -200,7 +201,7 @@ test('注入端工具条与面板穿同一档 F2 玻璃，评论卡是 H1 皮肤
     };
   })).toMatchObject({ width: '186px', size: '11px', capMono: true, capSize: '11px', hasChip: false });
   await expect(card).not.toContainText('评论');
-  await expect(card.locator('.ann-bubble-body')).toHaveText('注入端皮肤');
+  await expect(card.locator('.ann-bubble-body')).toHaveText('[indicator 1] 注入端皮肤');
 });
 
 test('?annotate=off serves the same page with zero annotation surface', async ({ page }) => {

@@ -4,7 +4,10 @@ import { seedTemplatePagesVisible } from './workbench-helpers.js';
 test.beforeEach(async ({ page }) => {
   await seedTemplatePagesVisible(page);
   await page.goto('/index.html?page=library&mode=ios');
-  await page.waitForFunction(() => window.workbench && document.querySelector('[data-screen="settings"]'));
+  // afterMount wires navigation and applies the initial viewport after scripts.
+  // Starting a spring at HTML insertion time races that legitimate first focus.
+  await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  await page.evaluate(() => window.workbench.whenScrollSettled());
 });
 
 test('frame focus moves through intermediate positions and settles on the instant target', async ({ page }) => {

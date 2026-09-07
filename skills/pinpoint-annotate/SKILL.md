@@ -1,213 +1,67 @@
 ---
 name: pinpoint-annotate
-description: pinpoint 的 Figma 式标注评审闭环：用户在浏览器「标注」模式里点选/框选元素写意见、画移动箭头、粘参考图，落盘到 ~/.pinpoint/<entry-id>/ 桶（默认 entry 是 pinpoint，路径从 /health 的 dataDir 字段取；entry 清单在本机 registry ~/.pinpoint/registry.json）；agent 读盘逐条改稿。当用户说「标注」「标好了」「你看一下标注」「读一下标注」「清空标记」，贴出 @page: / @section: / @frame: / @a: 形式的 indicator，要登记 / 验证一个 dir 或 url 评审目标，或要求按标注修改预览时，必须先读本 skill——标注 JSON 的字段语义、mention 解析规则、注入契约和「改哪个文件」的路由表都在这里，不读容易改错对象或弄丢用户的标注。
+description: 读取 Pinpoint 标注，定位对应页面和源文件，按意见修改并验证结果。用户要求查看或处理标注，或给出 @page、@section、@frame、@a 引用时使用。
 ---
 
-# pinpoint-annotate
+# Pinpoint 标注改稿
 
-标注评审闭环：**用户标 → agent 读 → agent 改 → 用户复核 / 清空 → 下一轮**。全程离线、零模型依赖；锚定基于 CSS selector，整机 `transform: scale()` / 窗口缩放都不错位。
+流程：定位页面 → 读意见与目标 → 修改页面 → 验证 → 用户复核。搭页与 board 结构见 [build skill](../pinpoint-build/SKILL.md)。
 
-搭页 / 改 `board.json` 走 [`pinpoint-build`](../pinpoint-build/SKILL.md)。总入口：根目录 [`AGENTS.md`](../../AGENTS.md)。
+## 1. 定位页面与标注
 
-运行时：`src/client/annotate.js`（浏览器客户端）+ Vite `src/server/annotate-api.js`（磁盘 + SSE）与 `src/server/sites-api.js`（registry dir 只读 serve），与预览同端口。基于 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)，加了 section / `pageId` / `screenId` 路由、registry 分桶与「登记过才注入」契约（见 §2）。
+先运行 `pinpoint status`，核对服务 root、registry 和数据目录。不要为了读标注重启现用服务。隔离测试使用独立 worktree、端口、registry 和数据目录。
 
-## Domain language
+`GET /health` 的 `dataRoot` 是数据根，`dataDir` 是默认桶；`GET /registry` 才是完整 entry 清单。标注磁盘文件是事实源，localStorage 是缓存，不能用空缓存覆盖磁盘。服务按 registry entry 分桶、按 pathname 分账本。
 
-| Term | Meaning |
+读取完整账本的 `annotations[]`，再按引用过滤：
+
+| 引用 | 匹配 |
 |---|---|
-| **annotate / 标注** | 模式 + 动作（点选 → 打开标注框）。快捷键 **A**。 |
-| **interact / 交互** | 演示模式（默认）：产品点击/滚动；可选中文字；不触发标注。 |
-| **annotation** | 一条持久化评审意见（`annotations[]`）。 |
-| **content** | 标注正文（旧字段 `comment`）。 |
-| **page** | Workbench 侧栏页（`pageId` / `data-vpage`）。 |
-| **canvas → section → frame** | 画布层级。 |
-| **screen** | frame 里的 iOS 内容（`content/previews/<page>/<screenId>.html`）。 |
-| **frame** | 板上的手机/组件壳 ≈ screen + chrome；frame id = `screenId`。 |
+| `@page:<pageId>` | `pageId` |
+| `@section:<pageId>/<sectionId>` | `pageId` + `section` |
+| `@frame:<pageId>/<screenId>` | `pageId` + `screenId` |
+| `@a:<id>` | 稳定 `id` |
 
-## Indicators（给 agent 的短定位符）
+正文 `[@t:iN]` 只指向本条 `targets[].ref`；`[@a:id]` 指向另一条标注。不要根据显示序号猜引用。缺失引用保持原样并说明。旧 `marks/comment/group/[@m:id]` 由读取层兼容。
 
-不是新实体，只是对既有 JSON 字段的查询串。读整份标注 JSON 再过滤（或一次性 `jq`），没有 resolver CLI。
+看不到标注时先检查当前 entry 与完整 pathname，`/` 和 `/index.html` 可能是不同账本。再检查 board 是否成功加载：无效的 section layout 也会使页面和标注看起来消失。不要先创建新桶或重建标注。
 
-```
-@page:<pageId>
-@section:<pageId>/<sectionId>
-@frame:<pageId>/<screenId>
-@a:<id>
-```
+## 2. 修改对应页面
 
-| Indicator | 含义 | 过滤字段 |
-|---|---|---|
-| `@page:library` | 该 workbench 页的全部标注 | `pageId == "library"` |
-| `@section:library/brew-flow` | 该 section 下全部 | `pageId` + `section` |
-| `@frame:library/timer` | 该 frame/screen 上全部 | `pageId` + `screenId` |
-| `@a:ab12cd` | 单条 | `id == "ab12cd"` |
+从 registry 找源目录，再按 board 的 `screenId` 找 HTML 或 sidecar。业务 HTML 直接在页面里修改；iOS kit 与共享 CSS 继续使用。只有页面实际包含 `data-ios-include` / `data-ios-from` 时才读[存量兼容说明](../../docs/legacy-includes.md)，不要默认改共享源。
 
-**复制入口**：Pages 列表行 🔗 → `@page:<id>`；标注框 🔗 → 对目标最具体的一档（已保存 → `@a:`；未保存回落 section/frame/page）。
+改前列出目标 frame 和明确的例外 frame。改后逐项核对，报告已改、保留、未解决。修改共享 CSS 时检查所有匹配页面，局部需求使用局部选择器。产品手势放同屏脚本，不放进 `ios-kit.js`。
 
-**匹配规则**：scope indicator 要求 `annotation.pageId` 严格相等；缺 `pageId` 的旧数据不匹配 `@page` / `@section` / `@frame`（仍可 `@a:id` 命中）。
+- `changeTo: true` 表示改文案意图。结合正文、目标 pill 和各目标上下文理解要求，多目标分别处理；不要把整段指令当成替换文案。
+- `move` 是移动目的地与箭头；结合 `to_selector` / `to_point` 理解位置。
+- `images` 是参考图；读取实际图片。
+- 原锚点失效时仍读原正文和目标摘录，不用旧 `rect` 伪造活框，也不自动清空意见。
 
-```bash
-DIR=$(curl -s https://pinpoint.localhost/health | jq -r .dataDir)
-jq '.annotations[] | select(.pageId == "library" and .section == "brew-flow")' "$DIR"/*.json
-```
+## 3. 报告执行结果
 
-正文里的 mention 写 `[@a:<id>]`；旧 `[@m:<id>]` 读时兼容、保存时升级。
+结果指示保留原意见与 ID，用蓝框展示当前结果；蓝框不代表用户已验收。一个标注可对应多个操作，首版不追加评论或版本历史；用户不满意时可删除后重新标注。
 
-## 1. 保证服务在跑（每次涉及标注前先做）
+在实际修改后的页面中，由浏览器工具读取 DOM，选择结果元素；优先使用源码中稳定且唯一的 id/data 属性，不写猜测的 selector。客户端会在指定 frame 内验证存在且唯一。
 
-```bash
-curl -s --max-time 1 https://pinpoint.localhost/health || \
-  (nohup npm run dev >/dev/null 2>&1 & sleep 1 && curl -s https://pinpoint.localhost/health)
+通过实际页面的 `window.pinpoint`（workbench 文档页使用其 iframe 实例）读取 `getState().revision`，再调用：
+
+```javascript
+await window.pinpoint.recordResults(annotationId, [
+  { action: 'add', targets: [{ selector: '#new-message', screenId: 'chat' }] },
+  { action: 'modify', targets: [{ selector: '#send-label', screenId: 'chat' }] },
+  { action: 'move', targets: [{ selector: '#toolbar', screenId: 'chat' }] },
+  { action: 'delete', targets: [] }
+], { baseRevision: window.pinpoint.getState().revision });
 ```
 
-- 正常入口是 Portless 管理的 `https://pinpoint.localhost`；先探活再启动。
-- 落盘：**磁盘 SSOT**，按 registry entry 分桶——`~/.pinpoint/<entry-id>/<页面名>.json`（本项目 entry 是 `pinpoint`，含 `revision`），参考图在同桶 `images/`。**目录路径从 `/health` 响应的 `dataDir` 字段取**（默认桶路径），不要自己拼；entry 清单来自 `~/.pinpoint/registry.json`。`PINPOINT_DATA_DIR` 环境变量覆盖数据根（e2e 在用）。`/health` 还带 `dataRoot`（数据根）和 `registry` 摘要段——注意其中的 `entries` 是**计数**，完整清单走 `GET /registry`。
-- 浏览器 `localStorage` 只是缓存；启动时从磁盘 hydrate，多窗口经 SSE（`GET /events`）同步。
-- 所有修改（含清空）走串行 `POST /save`，`baseRevision` 必填；没有 `/clear` endpoint。
-- Workbench prefs（当前页 / 缩放 / 侧栏）在 `pinpoint-wb`，viewer 本地状态，**不同步**。
+只提交实际发生的操作。删除操作无结果 DOM；其他操作至少一个目标。普通文档可省略 `screenId`。目标不存在、匹配多个、页面不符、仍有编辑或 revision 已过期时会拒绝写入；重新读取并核对，不覆盖重试。
 
-## 2. 注入：登记过才注入
+写完重新读取标注，核对原正文、ID 和 targets 未被改写，再看蓝框是否指对元素。没有可验证的结果 DOM 时如实说明，不提交伪造结果。工具与保存字段详见[标注协议](../../docs/annotation.md)。
 
-同一个 client（`src/client/annotate.js`，serve 为 `/annotate.js`），三条投递路径。未登记的一切打开方式（`file://`、自起 server、未登记 origin）完全干净——这是契约，不是配置项；导出的 PNG / HTML 也不含注入脚本。
+## 4. 用户复核
 
-1. **workbench 自身与 kit 页面**：`ios-kit.js` 在 loopback / `.localhost` 自动注入 `/annotate.js`（同源；服务没跑则静默失败；非本机 host 不注入）。link 了 `ios-kit.js` 的页面零样板即有标注；关掉：`<html data-annotate="off">`。自带 `<head>` 的裸 HTML 文档（如 `content/previews/doc-library/` 的汇报页）在页尾复制同一段 localhost 判断脚本即可，独立打开时再调 `pinpoint.setFloatingToolbar(true)`。
+点击标注列表整行可定位并打开编辑；删除需要两次点击确认。输入框以 DOM 边界避让，正文 pill 与文字混排，粘贴附图在上，最多十行高；`+` 菜单提供改文案和移动。
 
-2. **registry `dir` entry → `/sites/`**：目标是磁盘上一个静态目录（构建产物、汇报页目录），不想改它任何文件时用它。登记用 CLI（手编 JSON 已不是推荐路径）：
+用户清理无效标注时，只清当前页原目标与结果目标全部失效的整条标注，隐藏/未加载不算失效。agent 不替用户清空标注。
 
-   ```bash
-   pinpoint add /abs/path/to/your-app/dist            # 目录 → dir
-   pinpoint add /abs/path/to/report.html              # 单个 .html → file
-   pinpoint add https://your-app.localhost            # URL → url
-   ```
-
-   原子写 `~/.pinpoint/registry.json`，服务在跑时自动 `POST /registry/reload` 即时生效；`--registry` / `PINPOINT_REGISTRY` 可指向别的 registry 文件。
-
-   源目录搬了位置就 `pinpoint move <id> <新路径>`：id 与 title 原样保留，标注桶 `~/.pinpoint/<id>/` 跟着继续用。撞 id 时 `add` 会报错并指向 `move`（不再静默追加 `-2` 开空桶）。注意 `--page` 的意思是「挂到既有页 `<id>`」，不是「指定本条目的 id」——本条目的 id 用 `--id`。
-
-   要换的是 id 本身就 `pinpoint rename <旧 id> <新 id>`：id 同时是登记表条目、标注桶 `~/.pinpoint/<id>/` 和资源 URL 前缀 `/sites/<id>/` 三处的地址，rename 一次改齐（登记表 + 挂在旧 id 上的条目的 `page` 字段 → 标注桶改名 → dir 条目目录下 `*.html`/`*.css`/`*.js` 里的 `/sites/<旧 id>/` 前缀 → 服务重载），四件都能做才动手。把两个条目并成一个 = `rename` + `move`。字段与预检规则见 [`docs/registry.md`](../../docs/registry.md)。
-
-   服务本身起不来时先 `pinpoint status`（路由 / 进程 / 直连与代理两条 `/health` / 服务 root / registry），起停用 `pinpoint start｜stop｜restart`。
-
-   - 打开 `https://pinpoint.localhost/sites/your-app/`。registry 即白名单：未知 id、`..` 穿越、symlink 逃逸一律 404；目录回落 `index.html`；GET/HEAD 之外 405。`file` entry 只有 `/sites/<id>/` 与 `/sites/<id>/<文件名>` 两个拼法能出内容，同目录其它文件够不着。
-   - HTML 在 `</body>` 前注入 `<script>window.__pinpointEntry='your-app'</script><script src="/annotate.js"></script>`；`?annotate=off` 输出磁盘原字节（导出管线和 workbench 内联加载走它）。
-   - `dir` / `file` entry 同时成为 workbench 页面（`dir` 的 `board` 选壳：`ios` / `html`，缺省 `html`；`file` 恒 doc 壳），详见 [pinpoint-build](../pinpoint-build/SKILL.md) §3.1。条目自己没有 `board.json` 时服务合成 doc 阅读板：`file` 一屏，`dir` 顶层每个 `*.html` 一屏（2026-08-16f 阶段 6 起每屏是侧栏的一个文档条目），所以登记了就能打开读；磁盘 `board.json` 永远优先。
-   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（doc 型页面想常驻工具条，自己在页尾调 `pinpoint.setFloatingToolbar(true)`）。标注面板（`#ann-sidebar`：顶部「交互 | 标注」segmented，下面当前账本逐条列出、点击跳转；开合状态存 localStorage viewer 偏好）的主入口是**浏览器工具栏的 pinpoint 扩展图标**，**S** 键与工具条「列表」按钮是次要入口。
-   - **验证注入**：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入片段。
-   - 标注落在 `~/.pinpoint/your-app/` 桶；改稿对象是登记目录里的磁盘文件（serve 只读，不影响编辑源文件）。
-
-3. **registry `url` entry → 同源代理内嵌（阶段 4 起，免扩展）+ 浏览器扩展并存**：目标是自己起服务、按 origin 访问的 SPA / web app。登记：`pinpoint add https://your-app.localhost`（等价的手编 JSON：`{ "id": "your-spa", "title": "Your SPA", "kind": "url", "url": "https://your-app.localhost" }`）。两条路径共用同一个 `~/.pinpoint/<id>/` 标注桶，标注天然汇合。
-
-   **代理内嵌（默认路径）**：服务把目标 origin 代理到 `/sites/<id>/`（`src/server/lib/site-proxy.js`），workbench Pages 出现该条目（恒 doc 壳、文档标），打开即以 iframe 阅读器内嵌活应用——assets、API、SSE/WS 都经代理到达目标。
-   - 机制：HTML 里根绝对路径 `src`/`href`/`action`/`srcset` 等被重写到 `/sites/<id>/` 前缀；CSS 里 `url(/…)` 同理；JS 里的 `fetch('/api/…')` / XHR / `EventSource` / `WebSocket` / `sendBeacon` 由注入在 `<head>` 最前的重基 bootstrap（monkey-patch，豁免 pinpoint 自己的 `/save`、`/annotations`、`/images/`、`/image`、`/events`、`/annotate.js`、`/sites/`）兜底；bootstrap 还会**虚拟化 URL**（`history.replaceState` 回应用自身的路径）——SPA 路由直读 `location.pathname`（原生 getter 无法 patch），不虚拟化会掉进路由兜底（my-todos 会渲染「Not Found」）。响应侧重写 3xx `Location` 与 `Set-Cookie`（去 Domain、Path 加前缀），整头剥掉 CSP / X-Frame-Options / COOP / COEP。`/sites/<id>/board.json` 恒为本地合成的单屏 doc 板（遮蔽上游同名文件）。
-   - `?annotate=off` 只关标注注入，重基 bootstrap 保留（它是代理机制的一部分）。
-   - 已知盲区：JS 给 DOM 属性赋 URL（`img.src='/x.png'`）、无引号属性、`//` 协议相对 URL、目标自身路由与豁免清单撞名（如目标自己用 `/save`）、与 workbench 同源共享 localStorage/indexedDB；虚拟化的代价：应用里 `location.reload()` 会重载虚拟路径（iframe 刷新即离开代理），硬导航（`location.href='/x'`）跳出代理（路由拦截的 SPA 链接不受影响）。
-   - **验证**：`curl -s https://pinpoint.localhost/sites/your-spa/ | grep __pinpointEntry` 有注入片段；workbench 打开该页，侧栏「标注」模式可点选元素，标注落 `~/.pinpoint/your-spa/`。
-
-   **浏览器扩展（自有 origin 路径）**：要在应用自己的 origin 上标注（如真机/能力测试）时用它。
-   - 一次性安装扩展：`chrome://extensions` → Developer mode → **Load unpacked** → 选本仓 `extension/`（机制细节见 [`extension/README.md`](../../extension/README.md)）。
-   - content script 依次探 `https://pinpoint.localhost/registry` 和页面自身 origin；`location.origin` 与某个 url entry **精确匹配**才注入；服务不在线 = 不注入，未登记 = 不注入。
-   - 页面上没有默认浮条：按 **A** 进入标注模式，点元素出标注框（与 workbench 同一套交互）。**点浏览器工具栏的 pinpoint 扩展图标**开合标注面板（顶部「交互 | 标注」segmented 可纯鼠标进标注模式），**S** 键保留；换路由后列表自动换成新账本。
-   - **SPA 行为**：client 只随页面加载跑一次，但路由切换会自动换账本——pathname 一变就重算 page key / localStorage key，后续标注记到新路由名下（Navigation API 优先，降级 patch `pushState`/`replaceState` + `popstate`；仅 hash 变化不换）。在途 sync/hydrate 按世代号作废，不会写进旧账本；切换途中又来导航会合并到最新 pathname。代理内嵌路径同理：bootstrap 把 iframe URL 虚拟化成应用路径（`/sites/<id>/` → `/`），账本 key 与扩展在目标 origin 上注入出的逐字节一致——两条路径的标注在同一页名下汇合。
-   - **验证注入**：devtools 看 `<html data-pinpoint-entry="your-spa">`（扩展经 DOM 属性把 entry 递到主世界）；或按 **A** 点任意元素出标注框；`curl -s https://pinpoint.localhost/health | jq .registry` 确认 entry 计数与 errors。
-
-显式指定未登记的 entry（`?entry=` 或 POST body）会吃 `400 unknown_entry`——配置错了要响，不能静默落进别的桶。
-
-## 3. 用户怎么用（向用户解释时按这个说）
-
-侧栏 **Pages** + **Annotations**（可折叠）：
-
-- Pages：顶端 **Component Library**；其下 flow 页。每行 🔗 复制 `@page:<id>`。
-- Annotations：**标注 / 交互**切换、暂停、**评论**、清空、Pin；列表按 section 分组；点一条先切到对应 page，再以所属 **frame** 为中心定位（和略缩图 / Section Navigator 同一套规则），标注锚点只闪烁提示；旧数据缺 `screenId` 才居中锚点。× 删除单条；过滤 全部 / 当前示例。
-
-画布：
-
-- **A** 切换 标注 ↔ 交互
-- **评论**（在画布渲染评论）：开关，把每条标注的 `content` 作为 Word 式气泡渲染在画布 overlay 上、锚点旁。气泡带序号（与 pin 一致），稀疏默认放右侧 margin、密集时左右分流。**不画连线**——靠序号与 pin / 选区对应。只渲染当前视口内锚点对应的气泡，滚动/缩放重排；与 标注/交互 模式独立，只读，点气泡打开该标注。不改磁盘数据。
-  - **inline / sidebar**（评论开启后才出现，点击二态切换）：inline=气泡在 iframe overlay、锚点旁（窄窗口可能压正文）；sidebar=气泡搬到父级 workbench 右侧 gutter（iframe 收窄腾位、文档自己响应式回流，不注入 foreign style、不压不遮）。关评论即撤销。
-- **导出含评论**：HTML 板导出对话框勾选「含评论（标注框 + 序号 + 侧栏气泡）」后，三种格式都带评论。导出画 **live 同款选区框 + 橙色序号角标 + 右侧侧栏评论气泡**（content，按序号排序）：
-  - 长图 → 1184 宽（920+264）PNG，叠加 `.ann-target`/`.ann-frame` + `.ann-badge` + `.ann-bubble`；
-  - HTML 完整 → 内联定位脚本，打开时按锚点重算框 + 气泡位置（适配不同窗口/`@media`）；不加载 annotate 编辑器；
-  - 去除 CSS → 文末 `#comments` 纯文本列表（喂 AI）。
-  导出只读 annotation store，不写盘；失效锚点跳过。
-- **标注**：单击元素在画布底部打开 Target Composer；composer 开着继续单击会向当前草稿加 target，textarea 保持焦点。点屏标题 / bezel 标整机 **frame**；**Alt/⌥+单击**屏内内容升到 frame；拖拽框选 region；Space 拖动画布
-- **交互**：演示产品（可选中文字；中键 / Space 拖画布）
-- Target Composer：默认「仅引用」；「插入到文本」在光标处插 `[indicator N]`。Pill hover 高亮、点击定位、× 移除；文字、粘图、「改文案」「调研」、「移动到」箭头、`@` 引用其他标注都在这里；🔗 复制 indicator
-- Composer 只能从标题栏六点手柄拖动；隔离草稿，保存才落盘，取消 / Esc / 换页都会回滚
-- **Esc** 关 mention / 关框 / 取消拖拽
-
-## 4. Agent 怎么读（用户说「标好了」时）
-
-```bash
-DIR=$(curl -s https://pinpoint.localhost/health | jq -r .dataDir)
-ls -t "$DIR"/*.json
-```
-
-- 默认桶是 entry `pinpoint`（本仓 workbench 的标注）。读其他 entry 的桶：`ROOT=$(curl -s https://pinpoint.localhost/health | jq -r .dataRoot)` 后看 `"$ROOT/<entry-id>/"`；或走 API `curl -s "https://pinpoint.localhost/annotations/<page>?entry=<id>"`。跨桶调试清单：`GET /annotations`（无 page，flatten 成 `[{entry, ...doc}]`）。
-- `path` = 被标页面（workbench 多为壳 `index.html`）。
-- 先按 `pageId`，再按 `section`，再用 `screenId` / `selector` 区分同 section 多屏（AB）。
-- 用户贴了 indicator：按 `@page` / `@section` / `@frame` / `@a` 过滤后再改。
-- 裸页 / `starter.html` 才直接改 `path` 指向的文件。
-- 实际改完后，在对话中简短说明“改了什么 / 为什么”；不要只说“已处理”，也不要替用户清空标注。
-
-### Schema
-
-磁盘文档：
-
-```json
-{
-  "page": "index.html~…",
-  "path": "/index.html",
-  "revision": 3,
-  "annotations": [ /* … */ ]
-}
-```
-
-每条 annotation：
-
-- `pageId` — workbench 页（`library` / `components` / …）
-- `section` / `sectionLabel` — board section（`[data-ann-section]`；旧 `group` 兼容读）
-- `screenId` — frame id（= screen 文件 id）
-- `type` — `element` | `region`
-- `id` — 稳定短 uid（6 位 `[a-z0-9]`）
-- `indicatorKind` — 可选 `page` | `section` | `frame` | `annotation`
-- `selector` / `rect` / `content` / `move` / `images` / `research` / `changeTo` / `mentions`
-- `targets` — element 标注必有 `[{ ref, selector, text }, …]`；`ref` 是 annotation 内稳定的 `i1`, `i2`, …，删除不重排；顶层 `selector` / `text` 镜像第一个目标（兼容旧读法）
-- 旧数据 hydrate 时双读：`marks`→`annotations`、`comment`→`content`、`group`→`section`、`[@m:id]`→`[@a:id]`
-
-**`changeTo: true`**：用户点了「改文案」——把目标文案改成本条 `content` 的正文（去掉 mention 语法后的可读文案）。侧栏 tag：`✎`。
-
-**Mentions**：磁盘存稳定引用 `[@a:<id>]`（UI 显示 `@n` 序号）。读盘时按 `id` 解析到对应 annotation 再读其 `content` / 锚点；**不要**只信 `@n`（序号会变）。
-
-**Target indicators**：UI 显示 `[indicator N]`；磁盘存 `[@t:iN]`，只解析到本条的 `targets[].ref`，不进 `mentions[]`、不跨 annotation。缺失 ref 保留原样并如实呈现，不要猜测或自动重绑。
-
-**锚点失效**：agent 改稿后 selector 可能解析失败。画布不画幽灵框；侧栏列出该条并标「锚点失效」，`content` + `text` 仍可读。失效是渲染时计算，不写进 JSON——结构恢复后框自动回来。frame 在画布上换序/跨 section 移动不再算失效：带 stage 段（`.ios-stage` 等）的 selector 在解析时归一到 `pageId + screenId + frame 内路径`（`src/shared/frame-anchor.js`），跟随 frame 自愈（2026-08-16 阶段 5 起）。
-
-**文档 mention 的 frame 标注（双向透传，阶段 5）**：doc 页正文可写
-`<div data-pinpoint-frame="<pageId>/<screenId>"></div>` 把画布的 frame 嵌成活 DOM。
-在文档里对嵌入 frame 做的标注**不写文档自己的账本**，而是落在该 frame 所属画布板的
-workbench 账本（行带 `pageId`/`section`/`screenId`，与画布上标的同桶同步）；所以读某个
-frame 的标注时不用管它是画布上还是文档里标的——同一批行。文档正文自己的标注仍归文档
-自己的 page key（两个命名空间共存）。导出的文档里 frame 是静态图，不携带可交互标注。
-
-### 改哪里（路由表）
-
-| 标注落点 | 改 |
-|---|---|
-| Component Library 页 | `content/kits/ios/components/<id>/` |
-| flow 屏且节点带 `data-ios-from="bubble/outgoing"` | 优先改该组件源 |
-| flow screen（静态） | `content/previews/<pageId>/<screen>.html` 内容层 only |
-| flow screen（手势 / 动画） | 同屏 `data-preview-script` 或同名 sidecar `.js`；**不要**改 `ios-kit.js` |
-| `/sites/<entry-id>/` 下的 site 页 | 登记目录里的对应磁盘文件（服务只读 serve，改稿照常改源文件） |
-| `url` entry 的 SPA 页面 | 该 app 自己的源码仓（按 `path` / selector 定位路由与组件） |
-
-## 5. 反模式
-
-- 替用户清空标注（清空是用户的动作）
-- 把 localStorage 当标注真相（磁盘才是；空 LS 不得覆盖磁盘）
-- 用陈旧 `rect` 硬画已失效锚点（侧栏「锚点失效」即可）
-- 只按 `@n` 序号解析 mention（用 `[@a:id]` / `mentions`）
-- 改 `ios-kit.css` / bezel 去「修」一条标注
-- 组件 HTML 复制进 screen（用 `data-ios-include`）
-- 手写 caption font-size（用 board tokens）
-- 手工给未登记页面注入 `/annotate.js`（先登记 dir / url entry；未登记页面保持干净是契约）
-- 把 `/health` 的 `registry.entries` 当 entry 清单用（那是计数；清单走 `GET /registry`）
+登记新页面、移动源路径、注入与代理问题按需读[registry 文档](../../docs/registry.md)。不要手工给未登记页面注入脚本。

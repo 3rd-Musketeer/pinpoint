@@ -50,7 +50,7 @@ async function annotate(page, selector, text) {
   await page.locator(selector).click();
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
-  await box.locator('textarea').fill(text);
+  await box.locator('#ann-input').fill(text);
   await box.locator('#ann-save').click();
   await expect(box).toBeHidden();
 }
@@ -132,8 +132,9 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(page.locator('#ann-box')).toBeVisible();
   await expect(page.locator('#ann-box .head .t')).toContainText('#2');
 
-  // 回到第一条（composer 占用时不换目标，先关掉）。
+  // 回到第一条：关闭输入框，再用 S 打开刚随定位关闭的列表。
   await closeComposer(page);
+  await page.keyboard.press('s');
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="1"] .wb-ann-item-main').click();
   await expect.poll(() => inViewport(page, '#doc-target')).toBe(true);
   await expect(page.locator('#ann-box')).toBeVisible();
@@ -142,9 +143,9 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
 
   // S 键开合。
   await page.keyboard.press('s');
-  await expect(page.locator('#ann-sidebar')).toBeHidden();
-  await page.keyboard.press('s');
   await expect(page.locator('#ann-sidebar')).toBeVisible();
+  await page.keyboard.press('s');
+  await expect(page.locator('#ann-sidebar')).toBeHidden();
 });
 
 test('/sites/ page: row shows the broken state after its target leaves the DOM', async ({ page }) => {

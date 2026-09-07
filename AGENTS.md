@@ -89,7 +89,7 @@ review 和清理标注留给用户，不要替用户清空标注。
 
 | 要做什么 | 打开 |
 |---|---|
-| 加页 / section / 屏 / 组件 / 交互 frame | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)（组件何时抽：§4.0；safe area：§1.2） |
+| 加页 / section / 屏 / 组件 / 交互 frame | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)（页面内容：§4；safe area：§1.2） |
 | 标注 → 读标注 → 修改 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 登记 / 重指 / 验证一个 registry dir 或 url 条目 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) §2 |
 | `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
@@ -162,8 +162,4 @@ exclude 不进共享的 `.gitignore`，模板使用者看不到这些目录名�
 不在 `content/kits/ios/components/_index.json` 里的组件目录会被自动发现并追加；
 `PREVIEW_TEMPLATE_ONLY=1` 把仓内的覆盖全藏起来（e2e 与发布校验跑这个模式）。
 
-**组件归属**（ADR 0028）—— 组件 = 跨页共享资产，kit 是它的天然住所：通用 / 可复用的进
-`content/kits/ios/components/`（tracked 或 owner-local exclude），单页专用的片段内联进页面 HTML、不进 kit。
-page-local 组件解析不实现，启动信号是组件 fork（两个页面要同名组件的不同版本）或多机 / 协作需求。
-存量证据：16 个 exclude 组件里 15 个只在单个 topic 用，但 `time-dashboard` 跨 topic 共享——
-page-local 归属模型被这一个真实反例证伪。
+**页面内容**（2026-09-07 使用契约简化）——业务 HTML 直接在所属页面修改，保留 iOS kit 与共享 CSS。不因重复而主动抽业务组件；实际遇到存量 include 时按 [兼容说明](docs/legacy-includes.md) 处理，先确认修改范围。底层 include/slot 保留。

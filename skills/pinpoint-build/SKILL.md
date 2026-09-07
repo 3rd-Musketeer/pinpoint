@@ -10,9 +10,14 @@ description: 在本仓库（pinpoint workbench）里搭预览内容：加 page /
 ## 0. 服务
 
 ```bash
-npm run dev    # https://pinpoint.localhost/index.html
-curl -s https://pinpoint.localhost/health
+pinpoint status
 ```
+
+核对服务 root 与当前工作区。仅在确需启动时用 `pinpoint start`；隔离开发使用独立端口、registry 和数据目录，不重启用户现用服务。
+
+## 修改前后核对
+
+先定位 page 的 registry 路径和 board，再列出本次要改、保持原样的 frame。按页面源文件修改，完成后对照清单逐屏检查，并报告已改、保留及未解决的项。共享 CSS 改动额外检查引用它的例外页面。
 
 ## 1. 加 screen（已有 section）
 
@@ -116,37 +121,9 @@ title 是单行短名词短语，只回答“这是什么”。引用编号由�
   （这是把整组图例塞进了 section title；正确做法是 title = `同日型基线 vs 当日 sankey`，
   图例迁进 section 的 `note`。）
 
-### 2.2 Note（帧/组说明）
+### 2.2 Section 说明
 
-note 是原型自身的持久说明，不是处理后会删除的评审 Annotation。两级挂载：
-
-```json
-{
-  "id": "msg-flow",
-  "title": "锁屏 → 消息 → 回复",
-  "note": "整组图例：直通带 = 照常的部分；斜带 = 被挤占。",
-  "screens": [
-    {
-      "id": "msg-thread",
-      "title": "查看消息",
-      "note": "场景：用户点开通知。\n交互：进入对应会话。\n验证：入口 Context 正确传入。"
-    }
-  ]
-}
-```
-
-- section `note` 承载整组共用的说明（图例、对比结论、数据来源）；screen `note`
-  回答“为什么存在、如何交互、验证什么”。属于整组的内容不要逐帧重复。
-- `note` 可多行（上限 12000 字符），**不渲染在画布上**——选中 frame / section 后
-  在 Workbench 右栏 detail 面板阅读与编辑（点图注选 frame，点 section 大标题选 section）。
-- HTTP API：`GET/PUT /api/frame-notes/<pageId>/<screenId>` 与
-  `GET/PUT /api/section-notes/<pageId>/<sectionId>`，PUT 带 `baseRevision` 防并发覆盖。
-- 浏览器与 Agent 共同以该页 `board.json` 为 SSOT；浏览器保存带 revision，遇到并发修改不覆盖。
-- 先用一个自由文本字段；可以采用“场景 / 交互 / 验证”写法，不要拆成更多 schema 字段。
-- 评审意见仍走 Annotation，不要写进 `note`。
-- 导出图片当前不含 note（note 注入导出图随导出系统重构另立）。
-
-Canonical：[`content/previews/library/board.json`](../../content/previews/library/board.json)。顶层必须是 `sections[]`，不接受扁平 `{ "id", "screens" }`。
+整组共用的图例、对比结论和来源可写入 section 的 `note`。点击 section 标题可读取和编辑，保存使用 board revision。frame 描述入口已移除；存量 `screens[].note` 只读保留，不为改稿新增或清空旧描述。
 
 ### 2.3 导出 Frame 图片
 
@@ -226,69 +203,11 @@ CLI 会从目录名派生 id（slug 化，冲突自动追加 `-2`/`-3`；`--id` 
 - 标注落在 `~/.pinpoint/your-app/` 桶，与本仓 `pinpoint` 桶互不干扰。
 - 验证：`curl -s https://pinpoint.localhost/registry | jq '.entries[] | select(.id=="your-app")'` 能看到 entry；`curl -s https://pinpoint.localhost/sites/your-app/ | grep __pinpointEntry` 能看到注入；workbench 侧栏出现该页（CLI 触发的 reload 会让打开的 workbench 自动刷新 Pages）。
 
-## 4. 加 component
+## 4. 页面内容与共享样式
 
-Component Library ≈ Figma Components：**可复用 / 可单独评审的原子**，不是「所有 UI 的仓库」。
-默认先写在 screen 里；满足下面任一条件再抽到 `content/kits/ios/components/`。
+业务 HTML 直接放在所属 page，保留 iOS kit 与共享 CSS。不要因跨屏重复就主动建立组件库。仅在实际遇到 `data-ios-include` / `data-ios-from` 时读取[存量兼容说明](../../docs/legacy-includes.md)。
 
-### 4.0 何时进 Library / 何时留在 screen
-
-| 进 `content/kits/ios/components/<id>/` | 留在 `content/previews/<page>/…` |
-|---|---|
-| **跨屏复用**（同一块会出现在 ≥2 个 screen / page） | 只服务这一屏 / 这一段 flow 的构图与文案 |
-| **要并排看 variants**（形态 A/B、密度、状态），且评审对象是这块本身 | 整页叙事、流程步骤、一次性探索稿 |
-| 预期标注会说「改这个组件 / 这个 widget」，希望打在 Library 或带 `data-ios-from` | 标注对象是整屏布局、文案语气、flow 顺序 |
-| 边界已经稳：有清晰名字、若干稳定 variant | 边界还在变——先在 screen 里长成形，再抽 |
-
-心智：
-
-1. **Screen 是构图**（page → section → frame）；**Component 是原子**（可 include 的一块）。
-2. **先屏后组件**：探索期直接写 HTML；第二次要用、或要单独开 variant 墙时再抽。
-3. **抽了就必须引用**：screen 用 `data-ios-include`，禁止再复制一份 HTML（否则「改组件」类反馈会只改到一处）。
-4. **`system: true` 只给 kit 原语**（button / list / nav…），少而稳；产品组件一律 `system: false`（实例本地的可放 `content/kits/ios/components/`，模板发布靠 `_index.json` / exclude 隔离）。
-
-正例：`bubble`（消息气泡，多屏 include 复用）；variant 墙类组件——一个 `meta.json` 挂多份 variant HTML 并排评审（参考模板自带组件的 `catalog.html` 形态）。  
-反例：某 flow 独有的 onboard 文案块、只出现一次的设置页分区——留在 screen。
-
-### 4.1 怎么加
-
-```
-content/kits/ios/components/<id>/
-  meta.json
-  <variant>.html
-```
-
-```json
-{
-  "id": "bubble",
-  "title": "Message Bubble",
-  "system": false,
-  "layout": "row",
-  "variants": [
-    { "id": "incoming", "title": "Incoming" },
-    { "id": "outgoing", "title": "Outgoing" }
-  ]
-}
-```
-
-- 可选 `content/kits/ios/components/_index.json` 排序；不在清单里的目录会自动发现、排在后面（`PREVIEW_TEMPLATE_ONLY=1` 时只认清单）
-- Component Library 页自动合成（`/components/board.json`），无需手动注册
-
-## 5. 在 screen 里引用组件
-
-```html
-<div data-ios-include="bubble/outgoing" data-text="好的，我先看。"></div>
-
-<div data-ios-include="your-card/default"
-     data-text="冲煮完成"
-     data-slot-detail="总时长 3:12 · 粉水比 1:16"></div>
-```
-
-- `data-text` → 填 `[data-ios-slot="text"]`
-- 任意 `data-slot-<name>` → 填同一组件里的 `[data-ios-slot="<name>"]`；用来复用同一组件的文案/状态，不要为每组文字复制一个 variant
-- Slot 只替换节点内容，不改属性或样式；结构和视觉仍由 component variant 统一拥有
-- 改组件源 → Library 页和引用它的 flow 一起 HMR
-- **不要**把组件 HTML 复制进 screen——复制体会让后续「改组件」类反馈只改到一处
+改共享 CSS 前列出匹配页面；如果需求只针对部分 frame，收窄到这些 frame 的 class。改后检查目标与例外 frame，避免扩大范围。
 
 ## 6. Caption / HMR
 
@@ -347,6 +266,4 @@ export default function mount(root) {
 - 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 font-size
 - title 里手写编号 / 用「·」拼接多段信息 / 塞图例与意图（title = 单行短名词短语，说明进 note，见 §2.1）
 - 把待处理的评审意见写成 note（note 是长期设计说明）
-- 组件 HTML 复制进 screen（用 `data-ios-include`）
-- 把一次性 flow 构图提前抽进 Library（先屏后组件，见 §4.0）
-- 为「整理文件」而抽组件、却仍在 screen 里留复制体
+- 为普通改稿主动搭建业务组件库

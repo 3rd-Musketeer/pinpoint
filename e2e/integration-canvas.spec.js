@@ -19,7 +19,7 @@ async function open(page) {
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
 }
 async function save(page, content) {
-  await page.locator('#ann-box textarea').fill(content);
+  await page.locator('#ann-input').fill(content);
   await Promise.all([
     page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok()),
     page.locator('#ann-save').click(),

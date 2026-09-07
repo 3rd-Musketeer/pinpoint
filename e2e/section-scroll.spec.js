@@ -43,7 +43,7 @@ for (const zoom of ['0.75', '1.17', '2.5']) {
     await page.evaluate(id => window.workbench.focusFrame(id, 'settings', { smooth: false }), lastSection);
     await page.evaluate(() => window.pinpoint.setMode(true));
     await page.locator('[data-screen="settings"] .ios-cell').first().click();
-    await page.locator('#ann-box textarea').fill('section scroll regression');
+    await page.locator('#ann-input').fill('section scroll regression');
     await saveMark(page);
     await expect(page.locator('#ann-box')).toBeHidden();
     await page.evaluate((id) => window.workbench.focusFrame(id, 'home', { smooth: false }), firstId);
@@ -67,7 +67,7 @@ for (const zoom of ['0.75', '1.17', '2.5']) {
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
     await page.evaluate(() => window.pinpoint.setMode(true));
     await page.mouse.click(hit.x, hit.y);
-    await page.locator('#ann-box textarea').fill('new mark after returning to earlier section');
+    await page.locator('#ann-input').fill('new mark after returning to earlier section');
     await saveMark(page);
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(2);
     await expect(page.locator('.wb-zoom-wrap')).toHaveJSProperty('scrollTop', 0);
