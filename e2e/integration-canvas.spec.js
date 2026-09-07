@@ -99,3 +99,27 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     fs.rmSync(ledger, { force: true });
   }
 });
+
+test('Escape cancels a queued annotation jump before it can reopen the composer', async ({ page }) => {
+  fs.rmSync(ledger, { force: true });
+  try {
+    await open(page);
+    await focus(page, 'settings');
+    await page.evaluate(() => window.pinpoint.setMode(true));
+    await page.locator('[data-screen="settings"] .ios-cell').first().click();
+    await save(page, 'cancel pending navigation');
+    await focus(page, 'home');
+    const completed = await page.evaluate(async () => {
+      const pending = window.pinpoint.goToMark(window.pinpoint.marks[0].n);
+      // The jump queues two animation frames before creating its scroll motion.
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return pending;
+    });
+    expect(completed).toBe(false);
+    await expect(page.locator('#ann-box')).toBeHidden();
+    expect(read()).toHaveLength(1);
+  } finally {
+    await page.close();
+    fs.rmSync(ledger, { force: true });
+  }
+});

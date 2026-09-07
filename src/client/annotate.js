@@ -3543,6 +3543,11 @@
   }
 
   var markNavigation = 0;
+  // Escape must also cancel jumps still waiting for their initial animation frames.
+  // Capture runs before the list/composer can consume the dismissal event.
+  document.addEventListener("keydown", function (event) {
+    if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) markNavigation++;
+  }, true);
 
   function flashAndOpen(m, navigation) {
     var anchor = resolveMarkAnchor(m);
