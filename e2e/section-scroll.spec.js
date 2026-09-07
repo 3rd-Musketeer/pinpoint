@@ -46,6 +46,7 @@ for (const zoom of ['0.75', '1.17', '2.5']) {
     await page.locator('#ann-box textarea').fill('section scroll regression');
     await saveMark(page);
     await expect(page.locator('#ann-box')).toBeHidden();
+    await page.evaluate((id) => window.workbench.focusFrame(id, 'home', { smooth: false }), firstId);
     await page.locator('#wbann-count').click();
     await page.locator('.wb-ann-item-main').click();
     await expect(page.locator('#ann-box')).toBeVisible();

@@ -1,3 +1,4 @@
+import { scrollStageTo } from './scroll-motion.js';
 // Workbench 画布导航簇 — 板内定位、minimap、Section Navigator、缩放 HUD。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
@@ -34,12 +35,7 @@ export function frameBoardInView(panel, options) {
   var insets = chromeInsets();
   var left = Math.max(0, padL - inset - insets.left);
   var top = Math.max(0, padT - inset - insets.top);
-  if (options.smooth) {
-    stage.scrollTo({ left: left, top: top, behavior: 'smooth' });
-  } else {
-    stage.scrollLeft = left;
-    stage.scrollTop = top;
-  }
+  scrollStageTo(stage, { left, top }, { smooth: !!options.smooth });
 }
 
 var boardNavigationModel = null;
@@ -74,7 +70,7 @@ export function recenterBoard() {
     { x: bounds.left + bounds.width / 2, y: bounds.top + bounds.height / 2 },
     stageViewportMetrics()
   );
-  stage.scrollTo({ left: target.left, top: target.top, behavior: 'smooth' });
+  scrollStageTo(stage, target);
 }
 
 /** Board load failure: drop stale nav geometry and hide both navigators. */
@@ -272,22 +268,14 @@ function focusStageOnRect(rect, options) {
   if (!stage || !rect) return;
   options = options || {};
   var target = focusScrollForRect(rect, stageViewportMetrics(), { inset: options.inset || 24 });
-  stage.scrollTo({
-    left: target.left,
-    top: target.top,
-    behavior: options.smooth === false ? 'auto' : 'smooth'
-  });
+  scrollStageTo(stage, target, options);
 }
 
 function centerStageOnPoint(x, y, options) {
   if (!stage) return;
   options = options || {};
   var target = centerScrollForPoint({ x: x, y: y }, stageViewportMetrics());
-  stage.scrollTo({
-    left: target.left,
-    top: target.top,
-    behavior: options.smooth === false ? 'auto' : 'smooth'
-  });
+  scrollStageTo(stage, target, options);
 }
 
 function minimapJump(clientX, clientY) {
