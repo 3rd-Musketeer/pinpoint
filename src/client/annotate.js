@@ -1059,22 +1059,17 @@
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
     '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));padding:12px;pointer-events:auto;}',
     '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
-    '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:14px;padding:2px 0;margin-top:8px}',
+    '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:14px;padding:2px 32px 2px 0;margin-top:0}',
     '#ann-input:empty:before{content:attr(data-placeholder);color:var(--wb-muted,#888);pointer-events:none}',
-    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:210px;border-radius:8px;padding:0 6px;background:rgba(245,166,35,.12);color:#8a5a00;line-height:22px;font-size:12px;white-space:nowrap}',
+    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:8px;padding:0 6px;background:rgba(245,166,35,.12);color:#8a5a00;line-height:22px;font-size:12px;white-space:nowrap}',
     '#ann-input .ann-inline-target>span{overflow:hidden;text-overflow:ellipsis}#ann-input .ann-inline-remove{background:none;padding:0 0 0 4px;opacity:0}#ann-input .ann-inline-target:hover .ann-inline-remove,#ann-input .ann-inline-target:focus-within .ann-inline-remove{opacity:1}',
     '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
     '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#fff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
     '#ann-box #ann-save{display:grid;place-items:center;border-radius:50%;width:32px;height:32px;font-size:20px;padding:0}#ann-imgs{margin-top:0;margin-bottom:8px}',
-    '#ann-box .head{display:flex;align-items:center;gap:8px;margin-bottom:8px;min-width:0;}',
-    '#ann-box .t{flex:1;min-width:0;font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;word-break:break-word;}',
-    '#ann-box .t b{color:var(--wb-muted,#6b6b70);font-weight:var(--wb-w-semibold,600);}',
-    '#ann-box .t .n{color:#8a5a00;font-weight:var(--wb-w-semibold,600);}',
-    '#ann-box .top{flex:none;display:flex;gap:4px;align-items:center;}',
-    '#ann-box .top .x{width:24px;height:24px;padding:0;border-radius:var(--wb-r-2,6px);font-size:14px;line-height:24px;text-align:center;color:var(--wb-faint,#8d8d8d);}',
-    '#ann-box .top .x:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
-    '#ann-box .top .warn{padding:4px 8px;font-size:11px;}',
+    '#ann-box .t{font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;margin-right:32px}',
+    '#ann-box #ann-cancel{position:absolute;top:12px;right:12px;width:24px;height:24px;padding:0;font-size:14px;color:var(--wb-faint,#8d8d8d)}',
+    '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;}',
     '#ann-box button{border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
@@ -2142,14 +2137,6 @@
     else if (!modal && overlay.parentElement.matches('dialog')) mountOverlay();
     var box = document.createElement('div');
     box.id = 'ann-box'; box.setAttribute('data-ann-ui', '');
-    var label = m.type === 'region' ? '框选区域' : (m.text ? m.text.slice(0, 40) : m.selector);
-    var secLabel = annotationSectionLabel(m);
-    // Section self-target: title only once
-    var flowSelf = !!(secLabel && label && label === secLabel);
-    var gtag = secLabel
-      ? ('<b>' + secLabel + '</b>' + (flowSelf ? '' : ' · '))
-      : '';
-    if (flowSelf) label = '';
     var recordedDeletion = m.result && m.result.operations.some(function (op) { return op.action === 'delete'; });
     var brokenInfo = broken && !recordedDeletion
       ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
@@ -2157,10 +2144,7 @@
     var res = m.research || null;
     var changeOn = !!m.changeTo;
     box.innerHTML =
-      '<div class="head">' +
-      '<div class="t"><span class="n">#' + m.n + '</span> · ' + gtag + label + '</div>' +
-      '<div class="top">' + (isNew ? '' : '<button type="button" id="ann-del" class="warn">删除</button>') +
-      '<button type="button" id="ann-cancel" class="x">×</button></div></div>' +
+      '<button type="button" id="ann-cancel" aria-label="关闭标注">×</button>' +
       (m.result ? '<div class="t" data-result-summary>' + annResultSummary(m) + '</div>' : '') +
       brokenInfo +
       '<div id="ann-imgs"></div>' +
@@ -2171,7 +2155,8 @@
       '<div id="ann-tools-menu" hidden>' +
       '<button type="button" id="ann-change">' + annIcon('pencil') + '<span>改文案</span></button>' +
       '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
-      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">↑</button></div>';
+      '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" class="warn">删除</button>') +
+      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">↑</button></div></div>';
     chromeLayer.appendChild(box);
     if (typeof overlay.showPopover === 'function') {
       overlay.hidePopover(); overlay.showPopover();
