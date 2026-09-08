@@ -1372,7 +1372,7 @@ test('every Frame exposes a title menu (export entry retired to the HUD picker)'
   })).toEqual({ alpha: 1, backdropFilter: 'none' });
 });
 
-test('Detail 面板：frame 旧描述只读保留，不再提供增加或编辑入口', async ({ page }) => {
+test('Detail 面板：画布和大纲选中 frame 都不显示旧描述', async ({ page }) => {
   const initial = '场景：会议刚刚结束。';
   let savedBody = null;
 
@@ -1393,12 +1393,13 @@ test('Detail 面板：frame 旧描述只读保留，不再提供增加或编辑�
   // 未选中时 detail 面板不渲染
   await expect(page.locator('#wbdetail')).toHaveCount(0);
 
-  // 点图注选中 frame → detail 面板展示 note
+  // 点图注仍选中 frame，但不再弹出旧描述
   await page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap').click();
   const detail = page.locator('#wbdetail');
-  await expect(detail).toBeVisible();
-  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
-  await expect(detail.locator('[data-detail-note-text]')).toHaveText(initial);
+  await expect(detail).toHaveCount(0);
+  await page.getByRole('tab', {name:'大纲',exact:true}).click();
+  await page.locator('#wboutline [data-ol-frame="home"]').first().click();
+  await expect(detail).toHaveCount(0);
   // 画布选中态 class 同步
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
 
@@ -2015,10 +2016,10 @@ test('右下浮层槽一个位置两个住客：detail 与列表二选一、列�
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'dock slot mark');
 
-  // 选中一个 frame → detail 进槽（ADR 0026 的面板，右栏退役后住这里）。
+  // 选中一个 section → detail 进槽（ADR 0026 的面板，右栏退役后住这里）。
   // 图注要在交互模式下才点得到 —— 标注模式的 overlay 吃掉画布上的点击。
   await page.locator('#wbann-interact').click();
-  await page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap').click();
+  await page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"] > .wb-lib-cap').click();
   await expect(page.locator('#wbdetail')).toBeVisible();
   await expect(page.locator('#wbann-pop')).toHaveCount(0);
   const slot = await page.evaluate(() => {
@@ -2041,7 +2042,7 @@ test('右下浮层槽一个位置两个住客：detail 与列表二选一、列�
   // 再一次 Esc 清选中 → 槽空
   await page.keyboard.press('Escape');
   await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).not.toHaveClass(/wb-sel/);
+  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).not.toHaveClass(/wb-sel/);
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);

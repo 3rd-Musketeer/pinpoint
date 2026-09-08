@@ -1,31 +1,20 @@
-// Detail 面板（2026-08-17 选中模型）— 2026-09-04 外壳重设计起住在右下按需浮层槽
-// （app/Dock.jsx，与「这页的标注」列表同一块 280 玻璃卡、二选一显示），不再是
-// 右栏上段。选中源 = store.focusFrameKey / focusSectionId
-// （互斥；画布点选 / frame 树 / 标注卡都写这两个字段）。展示选中 frame/section
-// 的引用号、标题与 note；note 编辑走 note-api（GET 拉 revision → PUT 带
-// baseRevision，409 保留草稿），保存后 SSE 失效 board 自动回填。
-// Frame Note 从画布收编到这里（decisions 2026-08-17）：画布只留图注 + 机身，
-// 说明文字的读/写都归本面板；section note 随本面板首次落地（整组共用说明）。
+// Section 说明浮层；frame 选中只用于定位与高亮，不再展示描述。
 import { useEffect, useMemo, useState } from 'react';
 import { useWorkbenchStore, wbSet } from './store.js';
 import { queryClient } from './query-client.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { canvasBoard } from '../lib/board-entries.js';
 import { COMPONENTS_ID } from '../lib/page-url.js';
-import { fetchNote, frameNoteUrl, saveNote, sectionNoteUrl } from '../lib/note-api.js';
+import { fetchNote, saveNote, sectionNoteUrl } from '../lib/note-api.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 
 function noteTargetUrl(target, pageId) {
-  return target.kind === 'frame'
-    ? frameNoteUrl(pageId, target.screenId)
-    : sectionNoteUrl(pageId, target.sectionId);
+  return sectionNoteUrl(pageId, target.sectionId);
 }
 
 function noteQueryKey(target, pageId) {
-  return target.kind === 'frame'
-    ? ['frame-note', pageId, target.screenId]
-    : ['section-note', pageId, target.sectionId];
+  return ['section-note', pageId, target.sectionId];
 }
 
 function NoteCard(props) {
@@ -104,9 +93,6 @@ function NoteCard(props) {
     }
   }
 
-  if (target.kind === 'frame') {
-    return liveNote ? <div className="wb-detail-note" data-detail-note><div className="wb-detail-note-text" data-detail-note-text>{liveNote}</div></div> : null;
-  }
 
   return (
     <div className="wb-detail-note" data-detail-note>
@@ -143,7 +129,7 @@ function NoteCard(props) {
   );
 }
 
-/** 选中对象（frame / section）的派生视图 —— Dock 用它决定这个槽给谁。 */
+/** 选中 section 的派生视图 —— Dock 用它决定这个槽给谁。 */
 export function useDetailTarget() {
   var focusFrameKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
   var focusSectionId = useWorkbenchStore(function (s) { return s.focusSectionId; });
@@ -156,24 +142,7 @@ export function useDetailTarget() {
     if (!active || active.pageId !== activePageId) return null;
     var board = canvasBoard(active.board);
     var refs = boardRefs(board);
-    if (focusFrameKey) {
-      var parts = focusFrameKey.split('\0');
-      for (var i = 0; i < board.sections.length; i++) {
-        var sec = board.sections[i];
-        if (sec.id !== parts[0]) continue;
-        var screen = (sec.screens || []).find(function (sc) { return sc.id === parts[1]; });
-        if (!screen) return null;
-        return {
-          kind: 'frame',
-          sectionId: sec.id,
-          screenId: screen.id,
-          ref: refs.byFrame[focusFrameKey] || '',
-          title: screen.title || screen.id,
-          note: screen.note || ''
-        };
-      }
-      return null;
-    }
+    if (focusFrameKey) return null;
     if (focusSectionId) {
       for (var j = 0; j < board.sections.length; j++) {
         var section = board.sections[j];

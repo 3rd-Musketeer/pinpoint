@@ -2,7 +2,7 @@
 // 一个槽，两个住客，永不同时出现：
 //   · 标注列表（app/AnnPopover.jsx，评审板 H2）—— 点横条右端的计数钮开；
 //   · detail 面板（app/DetailPanel.jsx，ADR 0026 的选中详情 + note 编辑）——
-//     画布 / frame 树里选中一个 frame 或 section 时出现。
+//     画布 / 大纲里选中 section 时出现，frame 不展示详情。
 // 冲突规则：列表优先 —— 点计数钮就是「我要浏览这页还剩什么」，此刻 detail 让位。
 // Esc 关掉当前这个（列表 → 关列表；detail → 清选中）。
 // 两者共用同一块 280 玻璃卡（.wb-dock-card + .wb-glass，几何在 index.html）。
