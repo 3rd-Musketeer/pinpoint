@@ -1,3 +1,4 @@
+import { startCanvasDiagnostics } from './canvas-diagnostics.js';
 import { whenStageScrollSettled, scrollStageTo } from './scroll-motion.js';
 // Workbench stage entry（P4 由 workbench.js 正名）— 舞台侧命令式入口与装配：
 // board 加载编排（loadBoard/initBoard + 各簇 DI 布线）、window.workbench API、
@@ -238,6 +239,9 @@ window.workbench = {
   exportDoc: requestDocExport,
   activeDocExportTarget: activeDocExportTarget
 };
+
+window.workbench.diagnostics = startCanvasDiagnostics(stage, () => wbGet().activePageId);
+if (import.meta.hot) import.meta.hot.dispose(() => window.workbench.diagnostics.stop());
 
 startAnnBridge();
 

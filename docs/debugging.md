@@ -278,3 +278,18 @@ index.html），屏装载器把它当正常预览 HTML 挂进 iframe。
 时机 / service worker 休眠。
 
 防回归：无。
+
+## Canvas flicker diagnostics
+
+The workbench keeps a local ring of up to 720 diagnostic events per load. During canvas
+movement it samples viewport geometry at most four times per second and measures frame
+gaps without scanning frames. It records input type, scroll position, zoom transform,
+container visibility and error categories; it does not record annotation text or HTML.
+Idle stops sampling. Data is saved to this tab's sessionStorage after movement and on
+pagehide; the previous load is retained across a reload. Closing the tab or a browser
+crash may lose the record. Nothing is uploaded.
+
+After a flicker, use Settings → 导出诊断日志 to download current and previous-load records.
+`window.workbench.diagnostics.snapshot()` provides the same metadata for debugging.
+A normal DOM snapshot cannot rule out a GPU/compositor paint failure; pair the log with
+a screen recording when the canvas is visibly blank but its geometry remains normal.

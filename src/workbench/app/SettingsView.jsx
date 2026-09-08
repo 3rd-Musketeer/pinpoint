@@ -114,6 +114,10 @@ export function SettingsView() {
               savePrefs({ showTemplatePages: on });
             }} />
         </div>
+        <Button type="button" variant="ghost" size="sm"
+          onClick={() => window.workbench?.diagnostics?.download()}>
+          导出诊断日志
+        </Button>
       </div>
     </Fragment>
   );

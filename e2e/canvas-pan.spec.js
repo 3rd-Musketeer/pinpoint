@@ -175,6 +175,7 @@ test('region and movement-arrow geometry translate together without rebuilding t
     rect: [20, 180, 200, 70],
     move: { to_selector: `${cellSelector}:nth-child(2)`, to_rel: [.5, .5] },
   }]);
+  await expect(page.locator('#ann-marks svg[data-arrow]')).toBeVisible();
   const before = await page.evaluate(() => {
     const frame = document.querySelector('#ann-marks .ann-frame');
     const arrow = document.querySelector('#ann-marks svg[data-arrow]');
