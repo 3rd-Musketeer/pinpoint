@@ -12,6 +12,14 @@ dev:
 check:
     npm run check
 
+# Run all browser stories in two isolated groups.
+e2e-parallel:
+    npm run test:e2e:parallel
+
+# Run browser stories serially, including isolated performance measurements.
+e2e-serial:
+    npm run test:e2e:serial
+
 # Verify and push the clean dev branch. This changes origin/dev.
 ship-dev:
     #!/usr/bin/env bash

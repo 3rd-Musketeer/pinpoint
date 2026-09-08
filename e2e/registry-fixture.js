@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { E2E_BASE_URL, E2E_REGISTRY, E2E_UPSTREAM_ORIGIN } from './env.js';
+import { E2E_BASE_URL, E2E_REGISTRY, E2E_SITES_DIR, E2E_UPSTREAM_ORIGIN } from './env.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -30,13 +30,20 @@ export function writeRegistryFixture() {
       { id: 'pinpoint', title: 'pinpoint workbench', kind: 'dir', path: ROOT },
       { id: 'e2e-site', title: 'E2E Site', kind: 'url', url: E2E_BASE_URL },
       { id: 'e2e-proxy', title: 'E2E Proxy App', kind: 'url', url: E2E_UPSTREAM_ORIGIN },
-      { id: 'e2e-dir', title: 'E2E Dir', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site') },
-      { id: 'e2e-dir-ios', title: 'E2E Dir iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios' },
+      { id: 'e2e-dir', title: 'E2E Dir', kind: 'dir', path: path.join(E2E_SITES_DIR, 'dir-site') },
+      { id: 'e2e-dir-ios', title: 'E2E Dir iOS', kind: 'dir', path: path.join(E2E_SITES_DIR, 'dir-site-ios'), board: 'ios' },
       // 阶段 5：mention 文档固件（doc 壳，正文里 mention library 的两个活 frame）。
-      { id: 'e2e-mention', title: 'E2E Mention Doc', kind: 'dir', path: path.join(ROOT, 'e2e', 'mention-site') },
+      { id: 'e2e-mention', title: 'E2E Mention Doc', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mention-site') },
       // 阶段 6：混合板固件（board:'ios' 页级缺省壳；board.json 里 2 个 app 屏 +
       // 1 个 product doc 屏 + 1 个 draft doc 屏）—— 画布条目 + 两个文档条目。
-      { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(ROOT, 'e2e', 'mixed-site'), board: 'ios' },
+      { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mixed-site'), board: 'ios' },
     ],
   }, null, 2));
+}
+
+export function copySiteFixtures() {
+  fs.rmSync(E2E_SITES_DIR, {recursive:true, force:true});
+  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site']) {
+    fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
+  }
 }

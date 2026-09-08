@@ -1,27 +1,23 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { E2E_SITES_DIR } from './env.js';
 
 import { expect, test } from '@playwright/test';
 
 import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
-// 2026-08-17g：Pages 时间显示与排序切换。四个 dir 固件的 mtime 在 beforeAll
-// 压成受控值（git 不追踪 mtime，utimes 不污染工作区；workers=1 串行，无并发
-// 竞争），「最近更新」档的顺序因此是确定的。
-
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Each server owns a copy; sorting never changes source fixture timestamps.
 
 const FIXTURE_MTIMES = [
-  ['e2e/dir-site', Date.parse('2026-01-01T00:00:00Z')],
-  ['e2e/mention-site', Date.parse('2026-02-01T00:00:00Z')],
-  ['e2e/dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
-  ['e2e/mixed-site', Date.now()],
+  ['dir-site', Date.parse('2026-01-01T00:00:00Z')],
+  ['mention-site', Date.parse('2026-02-01T00:00:00Z')],
+  ['dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
+  ['mixed-site', Date.now()],
 ];
 
 function pressMtimes() {
   for (const [rel, ms] of FIXTURE_MTIMES) {
-    const dir = path.join(ROOT, rel);
+    const dir = path.join(E2E_SITES_DIR, rel);
     const date = new Date(ms);
     for (const name of fs.readdirSync(dir)) fs.utimesSync(path.join(dir, name), date, date);
     fs.utimesSync(dir, date, date);

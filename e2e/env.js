@@ -27,3 +27,5 @@ export const E2E_RUN_SLOT = process.env.E2E_PORT ? String(E2E_PORT) : '';
 // (<root>/<entry-id>/). E2E_REGISTRY keeps e2e off the real machine registry.
 export const E2E_DATA_DIR = path.join(E2E_FIXTURE_DIR, 'annotations');
 export const E2E_REGISTRY = path.join(E2E_FIXTURE_DIR, 'registry.json');
+
+export const E2E_SITES_DIR = path.join(E2E_FIXTURE_DIR, 'sites');

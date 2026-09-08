@@ -19,7 +19,8 @@ async function openCanvas(page, count = 0, withResults = false) {
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
-  await page.waitForTimeout(300);
+  await page.waitForFunction(expected => window.pinpoint.getState().countAll === expected, Array.isArray(count) ? count.length : count);
+  await page.evaluate(() => window.workbench.whenScrollSettled());
 }
 
 for (const mode of [false, true]) for (const button of ['middle', 'space']) {

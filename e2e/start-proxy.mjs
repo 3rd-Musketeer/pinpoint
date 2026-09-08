@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import { chromium } from '@playwright/test';
 import { startProxyUpstream } from './proxy-upstream.js';
-import { writeRegistryFixture } from './registry-fixture.js';
+import { writeRegistryFixture, copySiteFixtures } from './registry-fixture.js';
 
 // Extension tests need full Chromium; ordinary tests also need headless shell.
 try {
@@ -12,6 +12,7 @@ try {
   console.error('Playwright Chromium is unavailable. Run: npx playwright install chromium\n' + error.message);
   process.exit(1);
 }
+copySiteFixtures();
 writeRegistryFixture();
 const server = startProxyUpstream();
 server.on('error', error => { console.error(error); process.exit(1); });

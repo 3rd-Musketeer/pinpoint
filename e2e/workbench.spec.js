@@ -1,3 +1,4 @@
+// Functional navigation checks final state; scroll-motion.spec.js covers real motion.
 import fs from 'node:fs/promises';
 import path from 'node:path';
 
@@ -7,6 +8,10 @@ import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
 import { E2E_DATA_DIR } from './env.js';
 
+test.use({ reducedMotion: 'reduce' });
+// Every story starts with its own empty ledger, independent of spec ordering.
+test.beforeEach(() => fs.rm(E2E_DATA_DIR, {recursive:true, force:true}));
+
 // The e2e server runs with PREVIEW_TEMPLATE_ONLY=1 (playwright.config.js), so
 // every assertion here targets template content only — instance-local pages and
 // components are hidden and counts stay deterministic on any machine.
@@ -14,7 +19,7 @@ import { E2E_DATA_DIR } from './env.js';
 async function openWorkbench(page) {
   await seedTemplatePagesVisible(page);
   await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
 }
 
 async function saveAnnotation(page, target, comment) {
@@ -402,9 +407,10 @@ test('sidebar rows expose locator copy / rename / export via right-click menu (2
   await page.locator('[data-copy-frame="e2e-mixed/home"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
   await page.keyboard.press('Escape');
+  // Wait for the context menu to restore focus before opening the next menu.
+  await expect(page.locator('#wboutline [data-ol-frame="home"]')).toBeFocused();
   const trigger = page.locator('[data-screen="home"] .wb-frame-menu-trigger');
-  await trigger.focus();
-  await page.keyboard.press('Enter');
+  await trigger.press('Enter');
   const frameCopy = page.locator('[data-screen="home"] [data-frame-copy]');
   await expect(frameCopy).toBeVisible();
   await frameCopy.click();

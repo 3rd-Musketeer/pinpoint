@@ -64,7 +64,18 @@ npx playwright install chromium
 E2E startup checks full Chromium and headless shell before testing. Playwright owns both
 the proxy fixture and workbench server and stops them on exit; an occupied port fails
 instead of silently reusing another service. Use a distinct `E2E_PORT` for a separate run;
-the upstream defaults to that port + 10. Keep one worker until shared fixtures are isolated.
+the upstream defaults to that port + 10.
+
+`just check` now uses the same two-group E2E runner as `just e2e-parallel`. It runs two independent groups, each with one worker and its own server,
+registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
+(default 5299), +10, +20 and +30; choose a base whose four ports are free. New spec files
+are included automatically. Any group failure fails the command, and Ctrl+C stops both.
+
+Use `just e2e-serial` for serial verification. For a targeted test, use
+`npm run test:e2e:serial -- e2e/scroll-motion.spec.js`. Ordinary workbench navigation uses
+reduced motion; dedicated motion stories retain real animation. Run `canvas-pan.spec.js`
+alone when comparing frame timings: parallel load is suitable for functional checks,
+not an isolated rendering benchmark.
 
 Prefer fast contract tests for parsing, persistence, rejection paths and data migration.
 Browser tests cover complete user flows, browser-specific behavior and serious regressions;

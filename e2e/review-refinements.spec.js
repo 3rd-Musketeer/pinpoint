@@ -45,7 +45,7 @@ test('page pin, archive and restore survive reload without deleting the page', a
   expect(box.x).toBeGreaterThanOrEqual(sidebar.x);
   expect(box.x + box.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
   expect(await (await request.get('/registry')).json()).toEqual(before);
-  await page.screenshot({ path: '.tmp/review-refinements/navigation.png' });
+  await page.screenshot({ path: test.info().outputPath('navigation.png') });
 });
 
 // Exercise the shipped export CLI against the isolated running application.
@@ -54,7 +54,7 @@ test('reviewer exports a frame as an actual PNG', async () => {
   const { promisify } = await import('node:util');
   const fs = await import('node:fs/promises');
   const { E2E_BASE_URL } = await import('./env.js');
-  const output = '.tmp/review-refinements/export-cards.png';
+  const output = test.info().outputPath('export-cards.png');
   const result = await promisify(execFile)(process.execPath, [
     'scripts/export-preview.mjs', '--url', E2E_BASE_URL,
     '--page', 'e2e-dir-ios', '--section', 'main', '--frame', 'cards',
@@ -91,7 +91,7 @@ test('composer follows the selected DOM and docks only when adjacent space runs 
   expect(docked.x + docked.width).toBeLessThanOrEqual(540);
   expect(docked.y + docked.height).toBeLessThanOrEqual(500);
   expect(await page.evaluate(() => window.scrollY)).toBe(120);
-  await page.screenshot({path:'.tmp/review-refinements/composer-dock.png'});
+  await page.screenshot({path:test.info().outputPath('composer-dock.png')});
 });
 
 test('reviewer mixes target pills and Chinese text, chooses an intent and reopens the saved annotation', async ({ page }) => {
@@ -159,7 +159,7 @@ test('reviewer writes a long correction and adds a real move arrow without losin
   await expect(input).toContainText('第 14 行');
   await expect(page.getByRole('button',{name:'取消改文案',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'取消移动',exact:true})).toBeVisible();
-  await page.screenshot({path:'.tmp/review-refinements/composer-rich.png'});
+  await page.screenshot({path:test.info().outputPath('composer-rich.png')});
   await page.getByRole('button',{name:'发送标注',exact:true}).click();
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   expect(mark.move.to_selector).toBe('#doc-target');
@@ -224,7 +224,7 @@ test('agent reports added, modified, moved and deleted results without replacing
   expect(stale).toContain('revision_conflict');
   await page.evaluate(id=>window.pinpoint.openMark(window.pinpoint.marks.find(m=>m.id===id).n),original.id);
   await expect(page.locator('[data-result-summary]')).toHaveText('已增加 · 已修改 · 已移动 · 已删除');
-  await page.screenshot({path:'.tmp/review-refinements/result-indicators.png'});
+  await page.screenshot({path:test.info().outputPath('result-indicators.png')});
 });
 
 test('reviewer clears only wholly invalid annotations and can delete then reannotate a result', async ({ page }) => {
@@ -456,12 +456,16 @@ test('annotation number stays visible while editing and follows the target after
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
   await expect(page.locator('#ann-box')).toBeVisible();
-  await page.evaluate(()=>window.scrollTo(0,0));
+  // Scroll events update the overlay on the next animation frame. Capture after paint.
+  await page.evaluate(async () => {
+    window.scrollTo({top:0, behavior:'instant'});
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  });
   const badge=page.locator('.ann-badge');
   await expect(badge).toHaveCount(1);
   await expect(badge).toHaveText(String(mark.n));
   const before=await badge.boundingBox();
-  await page.evaluate(()=>window.scrollTo(0,100));
+  await page.evaluate(()=>window.scrollTo({top:100, behavior:'instant'}));
   await expect.poll(async()=>(await badge.boundingBox()).y).toBeCloseTo(before.y-100,0);
   await expect(badge).toBeVisible();
   await page.locator('#ann-cancel').click();
