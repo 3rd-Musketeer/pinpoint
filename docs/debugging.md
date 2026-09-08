@@ -298,3 +298,5 @@ is an optional manual fallback.
 `window.workbench.diagnostics.snapshot()` provides the same metadata for debugging.
 A normal DOM snapshot cannot rule out a GPU/compositor paint failure; pair the log with
 a screen recording when the canvas is visibly blank but its geometry remains normal.
+
+日志容量按需要回溯的操作时长估算，而非只设一个磁盘上限。当前约 460–520 字节/条、移动时每秒约 4 条；50 MiB 预计覆盖约 5–8 小时连续操作，多标签页共享容量。该值是估算，不保证固定保留天数。
