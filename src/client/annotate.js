@@ -1752,7 +1752,7 @@
 
   // ---------- 点选 / 框选 / 箭头 ----------
   var lasso = null;
-  var draftNodes = [];   // active composer target frames [{ frame, selector }]
+  var draftNodes = [];   // active composer targets [{ frame, badge, selector }]
 
   function clearDraftNodes() {
     draftNodes.forEach(function (p) {
@@ -1800,7 +1800,13 @@
       frame.className = 'ann-target ann-draft-target';
       frame.setAttribute('data-ann-ui', '');
       hoverLayer.appendChild(frame);
-      var part = { frame: frame, selector: target.selector };
+      // Editing replaces the persisted target visuals; keep its number on the draft too.
+      var badge = document.createElement('div');
+      badge.className = 'ann-badge';
+      badge.textContent = activeComposer.m.n;
+      badge.style.pointerEvents = 'none';
+      hoverLayer.appendChild(badge);
+      var part = { frame: frame, badge: badge, selector: target.selector };
       draftNodes.push(part);
       placePartGeometry(part, el);
     });
@@ -2705,7 +2711,7 @@
   function visiblePageMarks() {
     var out = [];
     marks.forEach(function (m) {
-      if (activeComposer && activeComposer.persistedN === m.n) return;
+      if (activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n) return;
       if (!markOnActivePage(m)) return;
       if (!markHasLiveTarget(m)) return;
       out.push(m);
@@ -3276,7 +3282,7 @@
             if (entry) entry.m = m;
             markFacts.delete(m); affected.add(m);
           }
-          return markHasLiveTarget(m) && !(activeComposer && activeComposer.persistedN === m.n);
+          return markHasLiveTarget(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n);
         });
       });
       Object.keys(markNodes).forEach(function (key) {
@@ -3339,7 +3345,7 @@
           markFacts.delete(m);
           var live = markHasLiveTarget(m), broken = isMarkBroken(m);
           if (!old || old.live !== live || old.broken !== broken) changedState = true;
-          if (live && !(activeComposer && activeComposer.persistedN === m.n)) list.push(m);
+          if (live && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
         });
         return list;
       });

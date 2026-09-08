@@ -442,3 +442,29 @@ test('the injected sidebar opens annotations, confirms deletion and can toggle w
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.marks.length)).toBe(0);
   expect(errors).toEqual([]);
 });
+
+test('annotation number stays visible while editing and follows the target after scrolling', async ({page}) => {
+  await page.goto('/sites/e2e-dir/doc.html');
+  await page.waitForFunction(()=>window.pinpoint);
+  await page.addStyleTag({content:'body{min-height:2000px} h1{position:absolute;left:240px;top:300px;width:180px;height:100px;margin:0}'});
+  await page.evaluate(()=>window.pinpoint.setMode(true));
+  await page.locator('#doc-title').click({position:{x:10,y:10}});
+  await page.locator('#ann-input').press('End');
+  await page.keyboard.insertText('保留序号');
+  await page.locator('#ann-save').click();
+  const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
+  await expect(page.locator('.ann-badge')).toHaveCount(1);
+  await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
+  await expect(page.locator('#ann-box')).toBeVisible();
+  await page.evaluate(()=>window.scrollTo(0,0));
+  const badge=page.locator('.ann-badge');
+  await expect(badge).toHaveCount(1);
+  await expect(badge).toHaveText(String(mark.n));
+  const before=await badge.boundingBox();
+  await page.evaluate(()=>window.scrollTo(0,100));
+  await expect.poll(async()=>(await badge.boundingBox()).y).toBeCloseTo(before.y-100,0);
+  await expect(badge).toBeVisible();
+  await page.locator('#ann-cancel').click();
+  await expect(badge).toHaveCount(1);
+  expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
+});
