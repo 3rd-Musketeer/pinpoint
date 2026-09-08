@@ -428,8 +428,8 @@ test('the injected sidebar opens annotations, confirms deletion and can toggle w
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   await page.locator('#ann-sidebar .wb-ann-item-main').click();
-  await expect(input).toBeVisible();await expect(page.locator('#ann-sidebar')).toBeHidden();
-  await page.locator('#ann-cancel').click();await page.evaluate(()=>window.pinpoint.toggleSidebar());
+  await expect(input).toBeVisible();await expect(page.locator('#ann-sidebar')).toBeVisible();
+  await page.locator('#ann-cancel').click();
   await page.locator('#ann-sidebar .wb-ann-item').hover();
   const del=page.getByRole('button',{name:'删除标注 '+mark.n,exact:true});
   await expect(del.locator('svg path')).toHaveCount(1);await del.click();

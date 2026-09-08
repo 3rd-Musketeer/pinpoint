@@ -133,9 +133,9 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(page.locator('#ann-input')).toContainText('second mark');
   await expect(page.locator('.ann-badge').filter({hasText: /^2$/})).toBeVisible();
 
-  // 回到第一条：关闭输入框，再用 S 打开刚随定位关闭的列表。
+  // 列表保持展开，可继续选择另一条。
   await closeComposer(page);
-  await page.keyboard.press('s');
+  await expect(sidebar).toBeVisible();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="1"] .wb-ann-item-main').click();
   await expect.poll(() => inViewport(page, '#doc-target')).toBe(true);
   await expect(page.locator('#ann-box')).toBeVisible();
@@ -143,11 +143,11 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(page.locator('.ann-badge').filter({hasText: /^1$/})).toBeVisible();
   await closeComposer(page);
 
-  // S 键开合。
+  // S 键收起，再次打开。
   await page.keyboard.press('s');
-  await expect(page.locator('#ann-sidebar')).toBeVisible();
+  await expect(sidebar).toBeHidden();
   await page.keyboard.press('s');
-  await expect(page.locator('#ann-sidebar')).toBeHidden();
+  await expect(sidebar).toBeVisible();
 });
 
 test('/sites/ page: row shows the broken state after its target leaves the DOM', async ({ page }) => {

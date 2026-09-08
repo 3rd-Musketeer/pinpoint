@@ -1595,7 +1595,7 @@
       }
       var row = e.target && e.target.closest ? e.target.closest('.wb-ann-item[data-ann-n]') : null;
       if (!row) return;
-      goToMark(parseInt(row.getAttribute('data-ann-n'), 10)).then(function (completed) { if (completed !== false) setSidebarOpen(false); });
+      goToMark(parseInt(row.getAttribute('data-ann-n'), 10));
     });
     return sidebar;
   }

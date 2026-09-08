@@ -1631,6 +1631,7 @@ test('sidebar annotation navigation centers the target and composer', async ({ p
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await expect(page.locator('#ann-box')).toBeVisible();
   await page.evaluate(() => window.workbench.whenScrollSettled());
+  await expect(page.locator('#wbann-pop')).toBeVisible();
   await expect.poll(() => page.evaluate(() => {
     const stage = document.querySelector('#wbstage').getBoundingClientRect();
     const cell = document.querySelector('.ann-draft-target').getBoundingClientRect();
@@ -1641,6 +1642,10 @@ test('sidebar annotation navigation centers the target and composer', async ({ p
     return Math.max(Math.abs(x - (stage.left + stage.right) / 2),
       Math.abs(y - (stage.top + 24 + Math.min(stage.bottom - 24, strip.top - 12)) / 2));
   })).toBeLessThan(5);
+
+  await page.locator('#wbann-count').click();
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await expect(page.locator('#ann-box')).toBeVisible();
 
   await page.evaluate(() => window.pinpoint.clear());
 });

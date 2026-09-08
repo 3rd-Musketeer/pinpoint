@@ -118,7 +118,7 @@ export function AnnPopover() {
   function onGoTo(n) {
     var a = annotateApi();
     if (!a || typeof a.goToMark !== 'function') return;
-    // Client navigation opens the composer; close the list and mirror its focus.
+    // Client navigation opens the composer; keep the list pinned and mirror its focus.
     var row = rows.find(function (r) { return r.n === n; });
     a.goToMark(n).then(function (completed) {
       if (completed === false) return;
@@ -129,7 +129,6 @@ export function AnnPopover() {
       });
       var item = listRef.current && listRef.current.querySelector('.wb-ann-item[data-ann-n="' + n + '"]');
       if (item) item.scrollIntoView({ block: 'nearest' });
-      wbSet({ annListOpen: false });
     });
   }
 
