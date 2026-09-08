@@ -130,7 +130,8 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect.poll(() => inViewport(page, '#doc-target-2')).toBe(true);
   await expect(page.locator('.ann-hover-ghost.ann-flash')).toBeVisible();
   await expect(page.locator('#ann-box')).toBeVisible();
-  await expect(page.locator('#ann-box .head .t')).toContainText('#2');
+  await expect(page.locator('#ann-input')).toContainText('second mark');
+  await expect(page.locator('.ann-badge').filter({hasText: /^2$/})).toBeVisible();
 
   // 回到第一条：关闭输入框，再用 S 打开刚随定位关闭的列表。
   await closeComposer(page);
@@ -138,7 +139,8 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="1"] .wb-ann-item-main').click();
   await expect.poll(() => inViewport(page, '#doc-target')).toBe(true);
   await expect(page.locator('#ann-box')).toBeVisible();
-  await expect(page.locator('#ann-box .head .t')).toContainText('#1');
+  await expect(page.locator('#ann-input')).toContainText('first mark');
+  await expect(page.locator('.ann-badge').filter({hasText: /^1$/})).toBeVisible();
   await closeComposer(page);
 
   // S 键开合。

@@ -1,20 +1,11 @@
-// 右下按需浮层槽（2026-09-04 外壳重设计）—— 挂 #wbdock，锚在底部横条右端正上方。
-// 一个槽，两个住客，永不同时出现：
-//   · 标注列表（app/AnnPopover.jsx，评审板 H2）—— 点横条右端的计数钮开；
-//   · detail 面板（app/DetailPanel.jsx，ADR 0026 的选中详情 + note 编辑）——
-//     画布 / 大纲里选中 section 时出现，frame 不展示详情。
-// 冲突规则：列表优先 —— 点计数钮就是「我要浏览这页还剩什么」，此刻 detail 让位。
-// Esc 关掉当前这个（列表 → 关列表；detail → 清选中）。
-// 两者共用同一块 280 玻璃卡（.wb-dock-card + .wb-glass，几何在 index.html）。
+// 按需显示标注列表；Esc 关闭列表或清除画布选择。
 import { useEffect } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { isTypingTarget } from '../board-nav.js';
 import { AnnPopover } from './AnnPopover.jsx';
-import { DetailPanel, useDetailTarget } from './DetailPanel.jsx';
 
 export function Dock() {
   var listOpen = useWorkbenchStore(function (s) { return s.annListOpen; });
-  var target = useDetailTarget();
 
   useEffect(function () {
     function onKey(event) {
@@ -47,10 +38,5 @@ export function Dock() {
       </div>
     );
   }
-  if (!target) return null;
-  return (
-    <div className="wb-dock-card wb-glass" id="wbdetail-card">
-      <DetailPanel target={target} />
-    </div>
-  );
+  return null;
 }

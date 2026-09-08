@@ -11,7 +11,7 @@
 // 2026-08-15d 收敛：图片导出的唯一入口 = HUD「导出」→ app/ExportPicker.jsx
 // （React 岛，单向 import 本模块的快照/请求函数）；旧 per-frame/per-section
 // 触发器、旧导出对话框（预设/格式/清晰度 radio + 复制 PNG）已退役，图纸内容
-// （图注/尺寸/frame note）永随导出。
+// （图注/尺寸）永随导出。
 import { wbGet, activeBoardMode } from './app/store.js';
 import { escHtml } from './lib/esc-html.js';
 import { pageBaseUrl } from './lib/page-url.js';

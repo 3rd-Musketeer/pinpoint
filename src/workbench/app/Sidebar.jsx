@@ -550,7 +550,7 @@ function FrameTree(props) {
     flashBoardFrame(sectionId, screenId);
   }
 
-  // section 行点击 = 选中 section（detail 面板展示 section note）+ 定位到
+  // section 行点击 = 选中 section+ 定位到
   // 该组第一帧（与 frame 行同一套定位原语）
   function onPickSection(sec) {
     wbSet({ focusSectionId: sec.id, focusFrameKey: null, focusAnnN: null });

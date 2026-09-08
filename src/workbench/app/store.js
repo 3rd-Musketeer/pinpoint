@@ -44,7 +44,7 @@ export const useWorkbenchStore = create((set) => ({
   focusAnnN: null,
   // 2026-08-17 选中模型（detail 面板）：focusSectionId = 画布点选的 section；
   // 与 focusFrameKey 互斥（setter 一侧写入时另一侧置空）。两者即右栏 detail
-  // 面板的选中源 —— frame 选中展示 frame note，section 选中展示 section note。
+  // 画布与大纲的选中源，用于定位和高亮。
   focusSectionId: null,
   // settings view
   settingsOpen: false,

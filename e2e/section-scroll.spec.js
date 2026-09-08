@@ -6,6 +6,12 @@ import { E2E_DATA_DIR } from './env.js';
 import { annotationSlug } from '../src/shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
+test.beforeEach(() => {
+  // Other specs may leave marks for another page in the shared workbench ledger.
+  // UI clear intentionally affects only the active page; start this fixture empty.
+  fs.rmSync(path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json'), { force: true });
+});
+
 test.afterEach(async ({ page }) => {
   await page.close();
   // This spec creates the workbench ledger; later SPA tests count their own files.

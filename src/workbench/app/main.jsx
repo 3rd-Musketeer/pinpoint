@@ -1,7 +1,7 @@
 // React chrome 入口（goal-20260810-workbench-react-rebuild P1b）— 2026-09-04
 // 外壳重设计后的挂载点清单：左栏整树挂 #wbside（浮动玻璃面板），底部横条挂
 // #wbstrip（app/Strip.jsx，内含画布工具那一段 CanvasHud），按需浮层槽挂 #wbdock
-// （app/Dock.jsx：标注列表 / detail 面板二选一），dock 面板挂 #wbcanvas-dock。
+// （app/Dock.jsx：标注列表），dock 面板挂 #wbcanvas-dock。
 // 右栏（#wbann-side）与画布两缘浮钮（#wbrails）随本刀退役。
 // DOM id 契约不变（e2e 选择器即契约）。舞台（#wbstage 及其内容）永远不走 React。
 import { createElement as h } from 'react';

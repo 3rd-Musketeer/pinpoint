@@ -622,37 +622,6 @@
   .wb-library .wb-screen.wb-sel:hover .wb-comp-stage,
   .wb-library .wb-screen.wb-sel:hover .wb-doc-stage { outline-color:transparent; }
   .wb-lib-item.wb-sel > .wb-lib-cap { color:var(--wb-accent); }
-  /* Detail 面板（右栏上段，app/DetailPanel.jsx）：note 视图/编辑器皮肤。
-     行内按钮与状态行沿用被收编的画布 Frame Note 视觉语言。 */
-  .wb-detail-note-text {
-    flex:1; min-width:0;
-    color:var(--wb-fg); opacity:.68;
-    font-size:var(--wb-cap-note); line-height:1.55;
-    white-space:pre-wrap; overflow-wrap:anywhere;
-  }
-  .wb-detail-note-placeholder { color:var(--wb-faint); opacity:1; }
-  .wb-note-action {
-    appearance:none; flex:none;
-    border:0; border-radius:var(--wb-r-3);
-    padding:5px 8px;
-    background:transparent; color:var(--wb-faint);
-    font:inherit; font-size:11px; font-weight:var(--wb-w-semibold); line-height:1.2;
-    cursor:pointer;
-  }
-  .wb-note-action:hover { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-note-action--save { background:var(--wb-accent); color:#fff; }
-  .wb-note-action:disabled { cursor:default; opacity:.45; }
-  .wb-note-input {
-    width:100%; min-height:120px; resize:vertical; box-sizing:border-box;
-    border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
-    padding:10px 11px;
-    background:var(--wb-side); color:var(--wb-fg);
-    font:inherit; font-size:var(--wb-cap-note); line-height:1.55;
-    outline:none;
-  }
-  .wb-note-input:focus { border-color:var(--wb-accent); box-shadow:0 0 0 3px color-mix(in srgb, var(--wb-accent) 14%, transparent); }
-  .wb-note-status { flex:1; min-width:0; color:var(--wb-faint); font-size:10.5px; }
-  .wb-note-status.is-error { color:var(--wb-danger); }
   /* Component Library: light board, no phone chrome */
   .wb-screen--comp {
     --wb-phone-w: auto;

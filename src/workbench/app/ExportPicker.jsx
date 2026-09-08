@@ -4,7 +4,7 @@
 // 两栏 = 左 proto tree（当前页 section → frame，引用号 A1 体系复用 lib/board-refs.js，
 // section 行 = 整选开关），右 = 实时预览（选中几帧并排几帧，复用 /api/export-image
 // 低清档 scale 1 + 300ms debounce + seq 序号丢旧响应）+ 选项（背景三档）。
-// 固定项 PNG 2×；图纸内容（图注 / 尺寸 / frame note）永随；单张直出 PNG，
+// 固定项 PNG 2×；图纸内容（图注 / 尺寸）永随；单张直出 PNG，
 // 多张 /api/export-zip 打包。快照构建与请求函数单向 import 自 ../export-core.js
 // （app → 命令式 方向，与 Sidebar → openDocExportDialog 同例）。
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';

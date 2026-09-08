@@ -1408,40 +1408,17 @@ test('Detail 面板：画布和大纲选中 frame 都不显示旧描述', async 
   expect(savedBody).toBeNull();
 });
 
-test('Detail 面板：section note 走 /api/section-notes（2026-08-17 section note 落地）', async ({ page }) => {
-  const initial = '整组图例：直通带 = 照常。';
-  const revised = '整组图例：直通带 = 照常；斜带 = 挤占。';
-  let savedBody = null;
-
-  await page.route('**/previews/library/board.json', async (route) => {
-    const response = await route.fetch();
-    const board = await response.json();
-    board.sections[1].note = initial; // brew-flow
-    await route.fulfill({ response, json: board });
-  });
-  await page.route('**/api/section-notes/library/brew-flow', async (route) => {
-    if (route.request().method() === 'GET') {
-      await route.fulfill({ json: { pageId: 'library', sectionId: 'brew-flow', note: initial, revision: 'revision-1' } });
-      return;
-    }
-    savedBody = route.request().postDataJSON();
-    await route.fulfill({ json: { pageId: 'library', sectionId: 'brew-flow', note: revised, revision: 'revision-2' } });
-  });
-
+test('section selection keeps its title and highlight without a description popup', async ({ page }) => {
   await openWorkbench(page);
-  // 点 section 大标题 → section detail
-  await page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"] > .wb-lib-cap').click();
-  const detail = page.locator('#wbdetail');
-  await expect(detail).toBeVisible();
-  await expect(detail).toHaveAttribute('data-detail-kind', 'section');
-  await expect(detail.locator('[data-detail-note-text]')).toHaveText(initial);
-  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toHaveClass(/wb-sel/);
-
-  await detail.locator('[data-detail-note-edit]').click();
-  await detail.locator('[data-detail-note-input]').fill(revised);
-  await detail.locator('[data-detail-note-save]').click();
-  await expect(detail.locator('[data-detail-note-text]')).toHaveText(revised);
-  expect(savedBody).toEqual({ note: revised, baseRevision: 'revision-1' });
+  const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
+  await section.locator(':scope > .wb-lib-cap').click();
+  await expect(section).toHaveClass(/wb-sel/);
+  await expect(section.locator(':scope > .wb-lib-cap')).not.toHaveText('');
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
+  await page.getByRole('tab', { name: '大纲', exact: true }).click();
+  await page.locator('#wboutline [data-ol-section="brew-flow"] > .ol-sec').click();
+  await expect(section).toHaveClass(/wb-sel/);
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
 });
 
 test('画布点选模型：原型内部不动选中、板空白清选中（2026-08-17 选中模型）', async ({ page }) => {
@@ -1449,16 +1426,17 @@ test('画布点选模型：原型内部不动选中、板空白清选中（2026-
   const detail = page.locator('#wbdetail');
   await expect(detail).toHaveCount(0);
 
-  // frame 树行点击（既有链路）同样驱动 detail 面板
+  // frame 树行只定位、高亮，不再打开已退役的详情面板
   await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await page.locator('#wboutline [data-ol-frame="recipe"]').click();
-  await expect(detail).toBeVisible();
-  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
-  await expect(detail.locator('[data-detail-title]')).toHaveText('参数（内联脚本）');
+  const selected = page.locator('#wb-board-panel [data-screen="recipe"]');
+  await expect(selected).toHaveClass(/wb-sel/);
+  await expect(detail).toHaveCount(0);
 
   // 原型内部点击 = 原型交互，选中不变
   await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
-  await expect(detail).toHaveAttribute('data-detail-kind', 'frame');
+  await expect(selected).toHaveClass(/wb-sel/);
+  await expect(detail).toHaveCount(0);
 
   // 板空白（面板留白）= 清选中
   await page.locator('#wb-board-panel').click({ position: { x: 10, y: 10 } });
@@ -1638,7 +1616,7 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
   await context.close();
 });
 
-test('sidebar annotation navigation focuses the owning frame, not the comment anchor', async ({ page }) => {
+test('sidebar annotation navigation centers the target and composer', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
@@ -1651,17 +1629,18 @@ test('sidebar annotation navigation focuses the owning frame, not the comment an
 
   await openAnnList(page);
   await page.locator('#wbann-list .wb-ann-item-main').click();
-  await page.waitForTimeout(350); // prove no earlier section-scroll animation can pull focus away
-  // 列表开着时的到位判据（居中会与「让开列表」互斥，见 expectLocatedTarget）
-  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
   await expect(page.locator('#ann-box')).toBeVisible();
-
-  // A small anchor should remain away from viewport center when its full phone is focused.
+  await page.evaluate(() => window.workbench.whenScrollSettled());
   await expect.poll(() => page.evaluate(() => {
     const stage = document.querySelector('#wbstage').getBoundingClientRect();
-    const cell = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-cell').getBoundingClientRect();
-    return Math.abs((cell.top + cell.height / 2) - (stage.top + stage.height / 2));
-  })).toBeGreaterThan(100);
+    const cell = document.querySelector('.ann-draft-target').getBoundingClientRect();
+    const box = document.querySelector('#ann-box').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    const x = (Math.min(cell.left, box.left) + Math.max(cell.right, box.right)) / 2;
+    const y = (Math.min(cell.top, box.top) + Math.max(cell.bottom, box.bottom)) / 2;
+    return Math.max(Math.abs(x - (stage.left + stage.right) / 2),
+      Math.abs(y - (stage.top + 24 + Math.min(stage.bottom - 24, strip.top - 12)) / 2));
+  })).toBeLessThan(5);
 
   await page.evaluate(() => window.pinpoint.clear());
 });
@@ -2008,7 +1987,7 @@ test('弹出列表：定位不被自己盖住、行几何在卡内（2026-09-04 
   await closeAnnList(page);
 });
 
-test('右下浮层槽一个位置两个住客：detail 与列表二选一、列表优先、Esc 关（2026-09-04）', async ({ page }) => {
+test('标注列表在底栏上方，Esc 关闭列表后清除选择', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -2016,33 +1995,23 @@ test('右下浮层槽一个位置两个住客：detail 与列表二选一、列�
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'dock slot mark');
 
-  // 选中一个 section → detail 进槽（ADR 0026 的面板，右栏退役后住这里）。
-  // 图注要在交互模式下才点得到 —— 标注模式的 overlay 吃掉画布上的点击。
   await page.locator('#wbann-interact').click();
-  await page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"] > .wb-lib-cap').click();
-  await expect(page.locator('#wbdetail')).toBeVisible();
-  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
+  await section.locator(':scope > .wb-lib-cap').click();
+  await expect(page.locator('#wbdetail')).toHaveCount(0);
+  await openAnnList(page);
   const slot = await page.evaluate(() => {
-    const card = document.querySelector('#wbdetail').closest('.wb-dock-card').getBoundingClientRect();
+    const card = document.querySelector('#wbann-pop').getBoundingClientRect();
     const strip = document.querySelector('#wbstrip').getBoundingClientRect();
     return { rightAligned: Math.abs(card.right - strip.right) < 2, aboveStrip: card.bottom <= strip.top, width: Math.round(card.width) };
   });
   expect(slot).toEqual({ rightAligned: true, aboveStrip: true, width: 280 });
-
-  // 列表优先：点计数钮，detail 让位（两者永不同时出现）
-  await openAnnList(page);
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await expect(page.locator('#wbann-pop')).toBeVisible();
-
-  // Esc 先关列表 —— 选中还在，所以 detail 回到槽里
   await page.keyboard.press('Escape');
   await expect(page.locator('#wbann-pop')).toHaveCount(0);
-  await expect(page.locator('#wbdetail')).toBeVisible();
-
-  // 再一次 Esc 清选中 → 槽空
-  await page.keyboard.press('Escape');
   await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).not.toHaveClass(/wb-sel/);
+  await expect(section).toHaveClass(/wb-sel/);
+  await page.keyboard.press('Escape');
+  await expect(section).not.toHaveClass(/wb-sel/);
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);

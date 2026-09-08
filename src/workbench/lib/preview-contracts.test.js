@@ -121,8 +121,8 @@ test('board normalizes valid screen entries and rejects duplicate screen ids', (
     }],
   }, { pageId: 'library' });
 
-  assert.deepEqual(board.sections[0].screens[0], { id: 'home', title: '', note: '', shell: 'app', role: 'product', src: '' });
-  assert.equal(board.sections[0].screens[1].note, 'Explain this frame.');
+  assert.deepEqual(board.sections[0].screens[0], { id: 'home', title: '', shell: 'app', role: 'product', src: '' });
+  assert.equal(Object.hasOwn(board.sections[0].screens[1], 'note'), false);
   assert.throws(
     () => validateBoard({
       sections: [
@@ -210,7 +210,7 @@ test('screen role: 默认 product、收 draft、非法值报错（2026-08-16f �
   );
 });
 
-test('section note survives board validation (2026-08-17 section note)', () => {
+test('retired section note is ignored by board validation', () => {
   const board = validateBoard({
     sections: [{
       id: 'flow',
@@ -220,15 +220,15 @@ test('section note survives board validation (2026-08-17 section note)', () => {
       screens: ['home'],
     }],
   }, { pageId: 'library' });
-  assert.equal(board.sections[0].note, '图例：直通带 = 照常；斜带 = 挤占。');
+  assert.equal(Object.hasOwn(board.sections[0], 'note'), false);
 
   const bare = validateBoard({
     sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ['home'] }],
   }, { pageId: 'library' });
-  assert.equal(bare.sections[0].note, '');
+  assert.equal(Object.hasOwn(bare.sections[0], 'note'), false);
 });
 
-test('title 规矩：换行一律拒绝，说明文字进 note（2026-08-17）', () => {
+test('title 规矩：换行一律拒绝', () => {
   assert.throws(
     () => validateBoard({
       sections: [{ id: 'main', title: '第一行\n第二行', layout: 'row', screens: ['home'] }],

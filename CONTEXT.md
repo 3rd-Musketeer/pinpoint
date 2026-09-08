@@ -17,7 +17,7 @@ Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一�
 要避开：拿 board 指画布那块区域——那叫 canvas。
 
 **section（区）**
-board 里的一组屏，有 `id` / `title` / `layout` / 可选 `note`。`section.id` 会写进 DOM 的
+board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 DOM 的
 `[data-ann-section]`，成为标注的 `section` 字段。引用号里 section 是字母（A、B）。
 
 **screen（屏）**

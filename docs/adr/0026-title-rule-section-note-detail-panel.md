@@ -2,6 +2,8 @@
 
 Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/app/DetailPanel.jsx`、`src/server/lib/frame-note-store.js`、`src/workbench/lib/preview-contracts.js`
 
+2026-09-08 更新：frame / section 说明及其详情面板、API 均已退役；本文对应部分仅保留历史。title 和画布选择规则仍有效。当前数据契约见 [board schema](../board-schema.md)，清理见 [迁移说明](../board-note-retirement.md)。
+
 Supersedes: ADR 0015（note 导出永随语义）
 
 **Decided**（owner 2026-08-17 报「历史案例里的 title 非常杂乱且不美观」，指明两手——告知 agent title 的目的写法案例 + 给 notes/desc 找承载；讨论中 owner 两条裁决：禁「·」（编号系统已自动派生）、「section note 和 frame note 的样式需要设计……detail 可以放在右侧栏」；导出兼容 owner 明示「不用兼容，导出逻辑要重构，列为 backlog」）：

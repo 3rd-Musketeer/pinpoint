@@ -114,24 +114,20 @@ title 是单行短名词短语，只回答“这是什么”。引用编号由�
 （section = A/B/C，frame = A1/B2，显示在 title 左侧），**不要在 title 里手写编号**，
 否则画面上编号会出现两次。
 
-- 单行：契约层硬拦换行（`validateBoard` 报错），说明文字一律进 `note`。
+- 单行：契约层硬拦换行（`validateBoard` 报错）。
 - 短：名词短语，不用「·」拼接多段信息，不写图例、设计意图、对比结论。
 - 正例：`锁屏通知`、`同日型基线 vs 当日 sankey`、`阴性对照（这种天不推）`。
 - 反例：`★ SPIKE · B 形态 · 同日型基线 vs 当日 sankey — 直通带 = 照常的部分；彩色斜带 = 挤占……`
-  （这是把整组图例塞进了 section title；正确做法是 title = `同日型基线 vs 当日 sankey`，
-  图例迁进 section 的 `note`。）
+  （这是把整组图例塞进了 section title；正确做法是 title = `同日型基线 vs 当日 sankey`。）
 
-### 2.2 Section 说明
+section 和 frame 只使用标题，不添加 note / description 字段或说明浮层。
 
-整组共用的图例、对比结论和来源可写入 section 的 `note`。点击 section 标题可读取和编辑，保存使用 board revision。frame 描述入口已移除；存量 `screens[].note` 只读保留，不为改稿新增或清空旧描述。
-
-### 2.3 导出 Frame 图片
+### 2.2 导出 Frame 图片
 
 导出属于 Workbench，不在单个 screen 里实现截图逻辑。唯一入口 = 画布 HUD 的「导出」
 钮 → picker 对话框（当前页 proto tree 任意多选，section 行整选；实时预览；背景三档
 画布 / 白底 / 透明）。输出固定 PNG 2×：单张直出 PNG，多张服务端打包 zip。
-图注（引用号 + 屏名 + 尺寸）是图纸内容，导出永随（decisions 2026-08-15d）；
-note 自 2026-08-17 起收编右栏 detail 面板、不上画布，导出图不含 note（注入另立）。
+图注（引用号 + 屏名 + 尺寸）是图纸内容，导出永随（decisions 2026-08-15d）。
 Agent / CLI 使用同一条隔离 Chromium 渲染链路：
 
 ```bash
@@ -155,7 +151,7 @@ pinpoint add <目录> --id <pageId> --title "My Flow" --board ios   # 画布页
 pinpoint add <目录> --id <pageId> --title "My Doc"                # 文档页（默认 html）
 ```
 
-登记后页面立即出现在 Pages（服务在线时 CLI 自动触发 reload）；note 读写、热刷新、标注注入对 registry 页面全部同权。`content/previews/` 新增页面只限于要分发给所有使用者的模板内容（进 `content/previews/_index.json` + git）。
+登记后页面立即出现在 Pages（服务在线时 CLI 自动触发 reload）；热刷新、标注注入对 registry 页面全部同权。`content/previews/` 新增页面只限于要分发给所有使用者的模板内容（进 `content/previews/_index.json` + git）。
 
 **完整单页 HTML 文档**（汇报页、说明页这类自带 `<head>` 和全套样式的）用 `"shell": "doc"`（registry 登记时 `--board html`，也是默认值），参考 `content/previews/doc-library/`。两点与 iOS 板不同：
 
@@ -264,6 +260,6 @@ export default function mount(root) {
 - 改 loader chrome / bezel / `ios-kit.css` 去「对齐」一条标注
 - 产品手势 / 屏状态写进 `ios-kit.js`
 - 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 font-size
-- title 里手写编号 / 用「·」拼接多段信息 / 塞图例与意图（title = 单行短名词短语，说明进 note，见 §2.1）
-- 把待处理的评审意见写成 note（note 是长期设计说明）
+- title 里手写编号 / 用「·」拼接多段信息 / 塞图例与意图（title = 单行短名词短语，见 §2.1）
+- 新增 section / frame 说明字段；评审意见应使用 annotations
 - 为普通改稿主动搭建业务组件库

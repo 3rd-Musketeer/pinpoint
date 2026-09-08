@@ -46,7 +46,7 @@ function nonEmptyString(value, path) {
 }
 
 // 2026-08-17 title 规矩（decisions 当日）：title = 单行短名词短语 —— 编号由系统
-// 派生（board-refs A/B1），说明文字（图例/意图/结论）进 note，不进 title。
+// 派生（board-refs A/B1），标题只保留单行短名，不承载说明文字。
 // 契约层硬拦换行；长度不钉死，画布 caption 两行截断兜底。
 function titleString(value, path) {
   const title = nonEmptyString(value, path);
@@ -134,13 +134,12 @@ function validateRole(value, path) {
 function normalizeScreen(entry, path, sectionShell, options) {
   const allowComponentRefs = !!options.allowComponentRefs;
   if (typeof entry === 'string') {
-    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', note: '', shell: sectionShell, role: 'product', src: '' };
+    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
   return {
     id: screenIdentifier(screen.id, `${path}.id`, allowComponentRefs),
     title: screen.title == null ? '' : titleString(screen.title, `${path}.title`),
-    note: screen.note == null ? '' : nonEmptyString(screen.note, `${path}.note`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
     role: validateRole(screen.role, `${path}.role`),
     src: screen.src == null ? '' : nonEmptyString(screen.src, `${path}.src`),
@@ -180,9 +179,6 @@ export function validateBoard(raw, options = {}) {
     return {
       id,
       title: section.title == null ? id : titleString(section.title, `${path}.title`),
-      // 2026-08-17：section 级 note —— 整组共用说明（图例/对比结论）的正当归宿，
-      // 不再挤进 section title。编辑入口 = 右栏 detail 面板（选中 section）。
-      note: section.note == null ? '' : nonEmptyString(section.note, `${path}.note`),
       layout,
       shell,
       screens,

@@ -18,11 +18,10 @@
     {
       "id": "msg-flow",
       "title": "锁屏 → 消息 → 回复",
-      "note": "整组图例：直通带 = 照常的部分；斜带 = 被挤占。",
       "layout": "row",
       "screens": [
         { "id": "msg-lock", "title": "锁屏通知", "shell": "lock" },
-        { "id": "msg-thread", "title": "查看消息", "note": "场景：用户点开通知。\n交互：进入对应会话。" }
+        { "id": "msg-thread", "title": "查看消息" }
       ]
     }
   ]
@@ -37,14 +36,11 @@
   HTML 文档壳写 `"shell": "doc"`。
 - `section.id` 会写进 DOM 的 `[data-ann-section]`，成为标注的 `section` 字段。
 - **title 规矩**（ADR 0026）：单行短名词短语，只回答「这是什么」。编号由系统按 board 顺序派生
-  （A / B1），手写必重复；禁「·」拼接多段信息；图例、意图、结论、要验证什么一律进 `note`。
+  （A / B1），手写必重复；禁「·」拼接多段信息。
   `validateBoard` 硬拦 title 里的换行；画布 caption 两行截断 + hover 全文兜底。
-- **note** = 可选的 `screens[].note` / `sections[].note`，是耐久的原型上下文（图例、意图、交互、
-  要验证什么），不是一次性的评审标注。section note 承载整组共用的说明。
-  note **不渲染在画布上**——点 frame 的图注选中 frame、点 section 大标题选中 section，
-  在右栏 detail 面板读或改。写回 API：`GET/PUT /api/frame-notes/<pageId>/<screenId>` 与
-  `GET/PUT /api/section-notes/<pageId>/<sectionId>`（PUT 要带 `baseRevision`）。
-  note 目前不进图片导出。
+- section 与 frame 只保留标题，不提供说明字段或详情浮层。
+  旧 `sections[].note` / `screens[].note` 加载时忽略，两类旧 note API 均返回 410。
+  存量字段的备份清理见 [迁移说明](board-note-retirement.md)。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把一个 doc 屏标成草稿还是产物。它只影响条目派生，
   不改变加载与壳语义。
 
