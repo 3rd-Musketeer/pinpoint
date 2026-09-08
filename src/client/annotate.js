@@ -1057,21 +1057,22 @@
     // 悬停提示：反色气泡，与 vendored tooltip（bg-foreground/text-background）同语言。
     '#ann-tip{position:absolute;z-index:2;max-width:min(280px,calc(100% - 24px));background:var(--wb-fg,#1c2024);color:var(--wb-surface,#fff);font-size:12px;line-height:1.4;padding:7px 12px;border-radius:var(--wb-r-2,6px);pointer-events:none;word-break:break-word;}',
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
-    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:0;border-radius:var(--wb-r-4,12px);box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));padding:12px;pointer-events:auto;}',
+    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:1px solid rgba(0,0,0,.08);border-radius:26px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:20px;pointer-events:auto;}',
     '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
-    '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:14px;padding:2px 32px 2px 0;margin-top:0}',
+    '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:15px;padding:0;margin-top:0;border:0;border-radius:0;background:transparent;box-shadow:none}',
+    '#ann-box #ann-input:hover,#ann-box #ann-input:focus{background:transparent;box-shadow:none;outline:none}',
     '#ann-input:empty:before{content:attr(data-placeholder);color:var(--wb-muted,#888);pointer-events:none}',
-    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:8px;padding:0 6px;background:rgba(245,166,35,.12);color:#8a5a00;line-height:22px;font-size:12px;white-space:nowrap}',
+    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:6px;padding:0 6px;background:rgba(0,0,0,.045);color:#555;line-height:22px;font-size:12px;white-space:nowrap}',
     '#ann-input .ann-inline-target>span{overflow:hidden;text-overflow:ellipsis}#ann-input .ann-inline-remove{background:none;padding:0 0 0 4px;opacity:0}#ann-input .ann-inline-target:hover .ann-inline-remove,#ann-input .ann-inline-target:focus-within .ann-inline-remove{opacity:1}',
     '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
     '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#fff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
-    '#ann-box #ann-save{display:grid;place-items:center;border-radius:50%;width:32px;height:32px;font-size:20px;padding:0}#ann-imgs{margin-top:0;margin-bottom:8px}',
+    '#ann-box #ann-save{border-radius:999px;height:36px;font-size:14px;font-weight:500;padding:0 17px;background:#111;color:#fff}#ann-box #ann-save:hover{background:#292929}#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
     '#ann-box .t{font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;margin-right:32px}',
-    '#ann-box #ann-cancel{position:absolute;top:12px;right:12px;width:24px;height:24px;padding:0;font-size:14px;color:var(--wb-faint,#8d8d8d)}',
+    '#ann-box #ann-cancel{border:1px solid rgba(0,0,0,.1);border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:#555;background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}',
     '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
-    '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:10px;}',
+    '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:28px;}',
     '#ann-box button{border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-box button:hover{background:var(--wb-fill,rgba(0,0,0,.055));}',
     '#ann-box button.dark{background:var(--wb-accent,#5b7fa6);color:var(--wb-surface,#fff);font-weight:var(--wb-w-semibold,600);}',
@@ -2144,7 +2145,6 @@
     var res = m.research || null;
     var changeOn = !!m.changeTo;
     box.innerHTML =
-      '<button type="button" id="ann-cancel" aria-label="关闭标注">×</button>' +
       (m.result ? '<div class="t" data-result-summary>' + annResultSummary(m) + '</div>' : '') +
       brokenInfo +
       '<div id="ann-imgs"></div>' +
@@ -2155,8 +2155,9 @@
       '<div id="ann-tools-menu" hidden>' +
       '<button type="button" id="ann-change">' + annIcon('pencil') + '<span>改文案</span></button>' +
       '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
-      '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" class="warn">删除</button>') +
-      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">↑</button></div></div>';
+      '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
+      '<button type="button" id="ann-cancel" aria-label="关闭标注">取消</button>' +
+      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">保存</button></div></div>';
     chromeLayer.appendChild(box);
     if (typeof overlay.showPopover === 'function') {
       overlay.hidePopover(); overlay.showPopover();
