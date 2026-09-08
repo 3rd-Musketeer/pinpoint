@@ -2133,6 +2133,21 @@
     return el;
   }
 
+  function annotationTargetRects(m) {
+    var rects = m.type === 'element' ? resolveAllLiveTargets(m).map(function (target) {
+      return target.el.getBoundingClientRect();
+    }) : [];
+    resultTargets(m).forEach(function (target) { var el = findResultTarget(target); if (el && !isHidden(el)) rects.push(el.getBoundingClientRect()); });
+    if (m.type === 'region') {
+      var anchor = resolveMarkAnchor(m);
+      if (anchor.live && anchor.rectDoc) {
+        var r = docToView(anchor.rectDoc);
+        rects.push({left:r[0],top:r[1],right:r[0]+r[2],bottom:r[1]+r[3]});
+      }
+    }
+    return rects;
+  }
+
   function openComposer(m, anchorRect, isNew) {
     closeComposer({ silentRender: true });
     m = normalizeAnnotation(JSON.parse(JSON.stringify(m)));
@@ -2205,17 +2220,7 @@
       box.style.width = width + 'px';
       box.style.maxHeight = Math.max(80, bounds.height - pad * 2) + 'px';
       var height = box.offsetHeight;
-      var rects = m.type === 'element' ? resolveAllLiveTargets(m).map(function (target) {
-        return target.el.getBoundingClientRect();
-      }) : [];
-      resultTargets(m).forEach(function (target) { var el = findResultTarget(target); if (el && !isHidden(el)) rects.push(el.getBoundingClientRect()); });
-      if (m.type === 'region') {
-        var anchor = resolveMarkAnchor(m);
-        if (anchor.live && anchor.rectDoc) {
-          var r = docToView(anchor.rectDoc);
-          rects.push({left:r[0],top:r[1],right:r[0]+r[2],bottom:r[1]+r[3]});
-        }
-      }
+      var rects = annotationTargetRects(m);
       rects = rects.filter(function (r) { return r.right > bounds.left && r.left < bounds.right && r.bottom > bounds.top && r.top < bounds.bottom; });
       var candidates = [];
       if (rects.length) {
@@ -2226,6 +2231,7 @@
         var y = Math.max(pad, Math.min(top, bounds.height - height - pad));
         var x = Math.max(pad, Math.min(left, bounds.width - width - pad));
         candidates = [[right + gap, y], [left - gap - width, y], [x, bottom + gap], [x, top - gap - height]];
+        if (composer.preferredSide === 'below') candidates.unshift(candidates.splice(2, 1)[0]);
       }
       var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #wbcanvas-dock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
       var position = candidates.find(function (p) {
@@ -3608,11 +3614,53 @@
     if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) markNavigation++;
   }, true);
 
+  // Explicit annotation navigation frames the review pair once. Typing only lays out the popup.
+  function focusAnnotationReview(m, stageEl, wb) {
+    if (!stageEl || !wb || !wb.scrollTo) return false;
+    var rects = annotationTargetRects(m);
+    if (!rects.length) return false;
+    openMark(m.n);
+    if (!activeComposer || activeComposer.persistedN !== m.n) return false;
+    var box = document.getElementById('ann-box');
+    activeComposer.syncLayout();
+    var sr = stageEl.getBoundingClientRect();
+    var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
+    var side = document.getElementById('wbside');
+    if (side && side.getClientRects().length) {
+      var sideRect = side.getBoundingClientRect();
+      if (sideRect.right > sr.left && sideRect.left < sr.right) area.left = Math.max(area.left, sideRect.right + 12);
+    }
+    var strip = document.getElementById('wbstrip');
+    if (strip && strip.getClientRects().length) area.bottom = Math.min(area.bottom, strip.getBoundingClientRect().top - 12);
+    var left = Math.min.apply(null, rects.map(function (r) { return r.left; }));
+    var top = Math.min.apply(null, rects.map(function (r) { return r.top; }));
+    var width = Math.max.apply(null, rects.map(function (r) { return r.right; })) - left;
+    var height = Math.max.apply(null, rects.map(function (r) { return r.bottom; })) - top;
+    var pairWidth = width, pairHeight = height;
+    if (width + 12 + box.offsetWidth <= area.right - area.left && Math.max(height, box.offsetHeight) <= area.bottom - area.top) {
+      pairWidth += 12 + box.offsetWidth;
+      pairHeight = Math.max(height, box.offsetHeight);
+      activeComposer.preferredSide = 'right';
+    } else if (Math.max(width, box.offsetWidth) <= area.right - area.left && height + 12 + box.offsetHeight <= area.bottom - area.top) {
+      pairWidth = Math.max(width, box.offsetWidth);
+      pairHeight += 12 + box.offsetHeight;
+      activeComposer.preferredSide = 'below';
+    }
+    // Oversized selections retain zoom and center the target; the regular popup fallback still applies.
+    box.style.visibility = 'hidden';
+    wb.scrollTo({
+      left: stageEl.scrollLeft + left - (area.left + (area.right - area.left - pairWidth) / 2),
+      top: stageEl.scrollTop + top - (area.top + (area.bottom - area.top - pairHeight) / 2)
+    });
+    return true;
+  }
+
   function flashAndOpen(m, navigation) {
     var anchor = resolveMarkAnchor(m);
     var stageEl = document.getElementById('wbstage');
     var wb = window.workbench;
-    var frameFocused = !!(
+    var reviewFocused = focusAnnotationReview(m, stageEl, wb);
+    var frameFocused = reviewFocused || !!(
       wb && m.screenId && typeof wb.focusFrame === 'function' &&
       wb.focusFrame(annotationSection(m), m.screenId)
     );
@@ -3631,6 +3679,11 @@
     }
     var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
     return settled.then(function (completed) {
+      if (activeComposer && activeComposer.persistedN === m.n) {
+        activeComposer.syncLayout();
+        var reviewBox = document.getElementById('ann-box');
+        if (reviewBox) reviewBox.style.visibility = '';
+      }
       if (!completed || navigation !== markNavigation) return false;
       renderAll();
       focusBubble(m.n);

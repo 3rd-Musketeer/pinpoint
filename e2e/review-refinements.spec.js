@@ -468,3 +468,31 @@ test('annotation number stays visible while editing and follows the target after
   await expect(badge).toHaveCount(1);
   expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
 });
+
+test('annotation jumps center the DOM and composer together without moving while typing', async ({page}) => {
+  await page.setViewportSize({width:1500,height:1000});
+  await page.goto('/index.html?page=e2e-dir-ios');
+  await page.waitForFunction(()=>window.pinpoint?.getState().connected && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  await page.evaluate(()=>window.workbench.whenScrollSettled());
+  await page.evaluate(()=>window.pinpoint.setMode(true));
+  await page.locator('[data-screen="cards"] [data-card]').first().click();
+  await page.locator('#ann-input').press('End');
+  await page.keyboard.insertText('检查组合居中');
+  await page.locator('#ann-save').click();
+  const n=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
+  for(let i=0;i<2;i++) {
+    await page.evaluate(n=>window.pinpoint.goToMark(n),n);
+    await expect(page.locator('#ann-box')).toBeVisible();
+    const geometry=await page.evaluate(()=>{
+      const t=document.querySelector('.ann-draft-target').getBoundingClientRect(),c=document.querySelector('#ann-box').getBoundingClientRect(),side=document.querySelector('#wbside').getBoundingClientRect(),strip=document.querySelector('#wbstrip').getBoundingClientRect(),stage=document.querySelector('#wbstage');
+      const sr=stage.getBoundingClientRect();
+      return {x:(Math.min(t.left,c.left)+Math.max(t.right,c.right))/2,y:(Math.min(t.top,c.top)+Math.max(t.bottom,c.bottom))/2,wantX:(Math.max(sr.left+24,side.right+12)+sr.right-24)/2,wantY:(sr.top+24+Math.min(sr.bottom-24,strip.top-12))/2,left:stage.scrollLeft,top:stage.scrollTop};
+    });
+    expect(Math.abs(geometry.x-geometry.wantX)).toBeLessThan(5);
+    expect(Math.abs(geometry.y-geometry.wantY)).toBeLessThan(5);
+    await page.locator('#ann-input').press('End');
+    await page.keyboard.insertText('\n继续输入，不移动画布\n第三行');
+    await expect.poll(()=>page.evaluate(()=>({left:document.querySelector('#wbstage').scrollLeft,top:document.querySelector('#wbstage').scrollTop}))).toEqual({left:geometry.left,top:geometry.top});
+    await page.locator('#ann-cancel').click();
+  }
+});
