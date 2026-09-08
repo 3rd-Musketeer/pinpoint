@@ -2,8 +2,8 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dataRoot } from './lib/annotate-data-dir.js';
 
-// Fixed filenames, one serialized writer and three bounded files per service data root.
-export function createDiagnosticsWriter(dir, maxBytes = 1024 * 1024) {
+// Fixed filenames, one serialized writer and five bounded files per service data root.
+export function createDiagnosticsWriter(dir, maxBytes = 10 * 1024 * 1024) {
   let queue = Promise.resolve(), pending = 0;
   return async record => {
     if (pending >= 32) throw new Error('busy');
@@ -15,8 +15,10 @@ export function createDiagnosticsWriter(dir, maxBytes = 1024 * 1024) {
       const file = path.join(dir,'canvas.ndjson');
       const size = await fs.stat(file).then(s=>s.size, e=>{if(e.code==='ENOENT')return 0;throw e;});
       if (size + Buffer.byteLength(line) > maxBytes) {
-        await fs.rm(file+'.2', {force:true});
-        for (const [from,to] of [[file+'.1',file+'.2'],[file,file+'.1']]) {
+        await fs.rm(file+'.4', {force:true});
+        for (let i = 3; i >= 0; i--) {
+          const from = i === 0 ? file : file+'.'+i;
+          const to = file+'.'+(i+1);
           await fs.rename(from,to).catch(e=>{if(e.code!=='ENOENT')throw e;});
         }
       }

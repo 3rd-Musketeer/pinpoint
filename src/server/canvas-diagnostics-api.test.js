@@ -10,16 +10,16 @@ test('diagnostics serialize writes and rotate oldest records within a byte bound
   const dir = await fs.mkdtemp(path.join(os.tmpdir(), 'diagnostics-'));
   t.after(() => fs.rm(dir, { recursive: true, force: true }));
   const write = createDiagnosticsWriter(dir, 40);
-  await Promise.all(Array.from({ length: 20 }, (_, i) => write({ i })));
+  await Promise.all(Array.from({ length: 30 }, (_, i) => write({ i })));
   const names = (await fs.readdir(dir)).sort();
-  assert.deepEqual(names, ['canvas.ndjson', 'canvas.ndjson.1', 'canvas.ndjson.2']);
+  assert.deepEqual(names, ['canvas.ndjson', 'canvas.ndjson.1', 'canvas.ndjson.2', 'canvas.ndjson.3', 'canvas.ndjson.4']);
   const rows = [];
   for (const name of names.reverse()) {
     const text = await fs.readFile(path.join(dir, name), 'utf8');
     assert.ok(Buffer.byteLength(text) <= 40);
     rows.push(...text.trim().split('\n').map(JSON.parse));
   }
-  assert.equal(rows.at(-1).i, 19);
+  assert.equal(rows.at(-1).i, 29);
   assert.ok(rows[0].i > 0);
   assert.deepEqual(rows.map(r => r.i), Array.from({length:rows.length}, (_, i) => rows[0].i + i));
 });

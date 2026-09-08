@@ -287,8 +287,8 @@ gaps without scanning frames. It records input type, scroll position, zoom trans
 container visibility and error categories; it does not record annotation text or HTML.
 Idle stops sampling. Batches are automatically sent to the local workbench server every
 two seconds when events are pending. The server writes `<dataRoot>/diagnostics/canvas.ndjson`
-(default `~/.pinpoint/diagnostics/`), rotating at 1 MiB and keeping `.1` and `.2` only:
-at most 3 MiB per service data root, oldest records overwritten. Preview/test data roots
+(default `~/.pinpoint/diagnostics/`), rotating at 10 MiB and keeping four older files (`.1` through `.4`):
+at most 50 MiB per service data root, oldest records overwritten. Preview/test data roots
 remain isolated. Records include wall-clock time and a session ID; no remote upload.
 An unavailable server keeps only a bounded retry buffer; a crash can lose the latest batch.
 
