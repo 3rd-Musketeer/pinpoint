@@ -285,11 +285,16 @@ The workbench keeps a local ring of up to 720 diagnostic events per load. During
 movement it samples viewport geometry at most four times per second and measures frame
 gaps without scanning frames. It records input type, scroll position, zoom transform,
 container visibility and error categories; it does not record annotation text or HTML.
-Idle stops sampling. Data is saved to this tab's sessionStorage after movement and on
-pagehide; the previous load is retained across a reload. Closing the tab or a browser
-crash may lose the record. Nothing is uploaded.
+Idle stops sampling. Batches are automatically sent to the local workbench server every
+two seconds when events are pending. The server writes `<dataRoot>/diagnostics/canvas.ndjson`
+(default `~/.pinpoint/diagnostics/`), rotating at 1 MiB and keeping `.1` and `.2` only:
+at most 3 MiB per service data root, oldest records overwritten. Preview/test data roots
+remain isolated. Records include wall-clock time and a session ID; no remote upload.
+An unavailable server keeps only a bounded retry buffer; a crash can lose the latest batch.
 
-After a flicker, use Settings → 导出诊断日志 to download current and previous-load records.
+After a flicker, read these local files around the reported time; export is unnecessary.
+The tab also retains current/previous-load sessionStorage records. Settings → 导出诊断日志
+is an optional manual fallback.
 `window.workbench.diagnostics.snapshot()` provides the same metadata for debugging.
 A normal DOM snapshot cannot rule out a GPU/compositor paint failure; pair the log with
 a screen recording when the canvas is visibly blank but its geometry remains normal.

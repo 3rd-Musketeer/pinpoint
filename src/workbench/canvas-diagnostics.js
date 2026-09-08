@@ -1,4 +1,4 @@
-// Local, bounded metadata only. No annotation text, HTML, URLs, or network upload.
+// Local, bounded metadata only. No annotation text, HTML, URLs, or remote upload.
 const KEY = 'pinpoint-canvas-diagnostics-v1';
 const LIMIT = 720;
 export function startCanvasDiagnostics(stage, pageId) {
@@ -8,12 +8,42 @@ export function startCanvasDiagnostics(stage, pageId) {
   let lastActivity = 0, lastFrame = 0, lastSample = 0, maxGap = 0, raf = 0, persistTimer = 0;
   let input = 'unknown', space = false;
   const removers = [];
+  const session = crypto.randomUUID();
+  let pending = [], uploadTimer = 0, uploading = false, stopped = false;
+  function scheduleUpload() {
+    if (!uploadTimer && !stopped) uploadTimer = setTimeout(flush, 2000);
+  }
+  async function flush() {
+    uploadTimer = 0;
+    if (uploading || !pending.length) return;
+    uploading = true;
+    const batch = pending.splice(0, 24);
+    try {
+      const response = await fetch('/api/canvas-diagnostics', {method:'POST',
+        headers:{'Content-Type':'application/json'}, signal:AbortSignal.timeout(5000), keepalive:true,
+        body:JSON.stringify({session,started:current.started,events:batch})});
+      if (!response.ok) throw new Error('diagnostics unavailable');
+    } catch { pending = [...batch, ...pending].slice(-120); }
+    finally { uploading = false; if (pending.length) scheduleUpload(); }
+  }
+  function finalUpload() {
+    if (!pending.length) return;
+    const batch = pending.slice(-24);
+    const accepted = navigator.sendBeacon('/api/canvas-diagnostics', new Blob([
+      JSON.stringify({session,started:current.started,events:batch})
+    ],{type:'application/json'}));
+    if (accepted) pending = [];
+  }
   function persist() {
     clearTimeout(persistTimer); persistTimer = 0;
     try { sessionStorage.setItem(KEY, JSON.stringify({previous, current})); } catch {}
   }
   function record(type, data = {}) {
-    current.events.push({ms: Math.round(performance.now()), type, ...data});
+    const event = {at:Date.now(), ms: Math.round(performance.now()), type, ...data};
+    current.events.push(event);
+    pending.push(event);
+    if (pending.length > 120) pending.splice(0,pending.length-120);
+    scheduleUpload();
     if (current.events.length > LIMIT) current.events.splice(0, current.events.length - LIMIT);
     if (!persistTimer) persistTimer = setTimeout(() => { persistTimer = 0; if (!raf) persist(); }, 2000);
   }
@@ -58,7 +88,7 @@ export function startCanvasDiagnostics(stage, pageId) {
   // Error text may contain user content. Keep only the error category and count.
   listen(window,'error',e=>record('error',{name:e.error?.name||'Error',line:e.lineno,column:e.colno}));
   listen(window,'unhandledrejection',()=>record('unhandledrejection'));
-  listen(window,'pagehide',persist);
+  listen(window,'pagehide',()=>{persist();finalUpload();});
   record('start'); activity();
   const api = {
     snapshot() { sample(); persist(); return JSON.parse(JSON.stringify({version:1,previous,current})); },
@@ -68,7 +98,7 @@ export function startCanvasDiagnostics(stage, pageId) {
       const a=document.createElement('a');a.href=url;a.download=`pinpoint-diagnostics-${Date.now()}.json`;a.click();
       setTimeout(()=>URL.revokeObjectURL(url),1000);
     },
-    stop() {cancelAnimationFrame(raf);removers.forEach(fn=>fn());persist();}
+    stop() {stopped=true;clearTimeout(uploadTimer);cancelAnimationFrame(raf);removers.forEach(fn=>fn());persist();finalUpload();}
   };
   return api;
 }

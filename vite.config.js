@@ -7,6 +7,7 @@ import tailwindcss from '@tailwindcss/vite';
 import annotateApi from './src/server/annotate-api.js';
 import sitesApi from './src/server/sites-api.js';
 import frameApi from './src/server/frame-api.js';
+import canvasDiagnosticsApi from './src/server/canvas-diagnostics-api.js';
 import retiredNotesApi from './src/server/retired-notes-api.js';
 import exportImageApi from './src/server/export-image-api.js';
 import exportDocApi from './src/server/export-doc-api.js';
@@ -34,7 +35,7 @@ registryStore.reload = () => {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), retiredNotesApi(), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
+  plugins: [react(), tailwindcss(), templateOnlyPlugin(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), retiredNotesApi(), canvasDiagnosticsApi(), exportImageApi(), exportDocApi({ registry: registryStore }), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

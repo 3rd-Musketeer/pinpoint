@@ -1,5 +1,6 @@
 import {test,expect} from '@playwright/test';
 import fs from 'node:fs/promises';
+import { E2E_DATA_DIR } from './env.js';
 test('canvas diagnostics survive reload and export bounded metadata without page content',async({page})=>{
   await page.goto('/index.html?page=library');
   await page.waitForFunction(()=>window.workbench?.diagnostics);
@@ -12,6 +13,12 @@ test('canvas diagnostics survive reload and export bounded metadata without page
   const before=await page.evaluate(()=>window.workbench.diagnostics.snapshot());
   expect(before.current.events.length).toBeLessThan(50);
   expect(JSON.stringify(before)).not.toContain('PRIVATE-DIAGNOSTIC-TEXT');
+  await expect.poll(async()=>{
+    const text=await fs.readFile(`${E2E_DATA_DIR}/diagnostics/canvas.ndjson`,'utf8').catch(()=> '');
+    expect(text).not.toContain('PRIVATE-DIAGNOSTIC-TEXT');
+    return text.trim().split('\n').filter(Boolean).map(line=>JSON.parse(line))
+      .some(batch=>batch.started===before.current.started&&batch.events.some(e=>e.type==='viewport'));
+  }).toBe(true);
   await page.reload();
   await page.waitForFunction(()=>window.workbench?.diagnostics);
   await page.locator('#wbgear').click();
