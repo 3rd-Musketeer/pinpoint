@@ -187,7 +187,7 @@ export function AnnPopover() {
                   var label = kind === 'all' ? '清空标注' : '清空无效标注';
                   return <DropdownMenu.Item key={kind} asChild disabled={!count} onSelect={function (e) { e.preventDefault(); onClear(kind); }}>
                     <button type="button" id={kind === 'all' ? 'wbann-clear' : 'wbann-clear-invalid'} disabled={!count}
-                      className={cn('wb-ann-clear flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px]', clearArmed === kind && 'text-destructive')}>
+                      className={cn('wb-ann-clear flex w-full cursor-pointer items-center gap-[7px] rounded-md border-0 bg-transparent px-2 py-[6px] text-left font-sans text-[12px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-accent data-[highlighted]:bg-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent', clearArmed === kind && 'text-destructive')}>
                       <WbIcon name="trash" size={13} />{clearArmed === kind ? '确认' + label + '（' + count + '）' : label}
                     </button>
                   </DropdownMenu.Item>;
