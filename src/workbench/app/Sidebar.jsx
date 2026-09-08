@@ -1009,11 +1009,13 @@ export function Sidebar() {
               setSort(next);
             }} />
           </>}
-          <button type="button" className="wb-row wb-archive-toggle" data-show-archived aria-pressed={showArchived} onClick={function () { setShowArchived(!showArchived); }}><WbIcon name={showArchived ? 'chevron-left' : 'archive'} size={14} />{showArchived ? '返回页面' : '已归档'}</button>
           </PagePreferences.Provider>
           </div>
           <div hidden={sidebarTab !== 'outline'}><Contents /></div>
         </ScrollArea>
+        {!settingsOpen && sidebarTab === 'pages' && <div className="wb-side-footer">
+          <button type="button" className="wb-row wb-archive-toggle" data-show-archived aria-pressed={showArchived} onClick={function () { setShowArchived(!showArchived); }}><WbIcon name={showArchived ? 'chevron-left' : 'archive'} size={14} />{showArchived ? '返回页面' : '已归档'}</button>
+        </div>}
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />
         </div>
