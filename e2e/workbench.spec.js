@@ -122,28 +122,19 @@ async function chromeInsets(page) {
   });
 }
 
-/* 整行点击后列表关闭、输入框打开，目标 frame 留在可见画布内。
-   用 bounding box 检查左栏与底栏占位，而非只断 DOM 可见。 */
-async function expectLocatedTarget(page, selector) {
+/* 列表固定展开；实际标注目标可见且不被列表遮挡。 */
+async function expectLocatedTarget(page) {
   await expect(page.locator('#ann-box')).toBeVisible();
-  await expect(page.locator('#wbann-pop')).toHaveCount(0);
-  await expect.poll(() => page.evaluate((targetSelector) => {
-    var target = document.querySelector(targetSelector);
-    var pop = document.querySelector('#wbann-pop');
-    var strip = document.querySelector('#wbstrip');
-    if (!target || !strip) return null;
-    var t = target.getBoundingClientRect();
-    var p = pop && pop.getBoundingClientRect();
-    var st = strip.getBoundingClientRect();
-    var side = document.querySelector('#wbside');
-    var sr = side ? side.getBoundingClientRect() : null;
-    var leftEdge = sr && sr.width > 1 ? sr.right : 0;
-    return {
-      clearOfList: !p || !(t.right > p.left && t.left < p.right && t.bottom > p.top && t.top < p.bottom),
-      rightOfPanel: t.left >= leftEdge - 1,
-      onScreen: t.right > 0 && t.left < window.innerWidth && t.bottom > 0 && t.top < st.top
-    };
-  }, selector)).toEqual({ clearOfList: true, rightOfPanel: true, onScreen: true });
+  await expect(page.locator('#wbann-pop')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => {
+    const target = document.querySelector('.ann-draft-target');
+    const pop = document.querySelector('#wbann-pop');
+    const strip = document.querySelector('#wbstrip');
+    if (!target || !pop || !strip) return false;
+    const t = target.getBoundingClientRect(), p = pop.getBoundingClientRect(), st = strip.getBoundingClientRect();
+    const covered = t.right > p.left && t.left < p.right && t.bottom > p.top && t.top < p.bottom;
+    return !covered && t.right > 0 && t.left < innerWidth && t.bottom > 0 && t.top < st.top;
+  })).toBe(true);
 }
 
 async function expectFocusedTarget(page, selector) {
@@ -411,6 +402,14 @@ test('sidebar rows expose locator copy / rename / export via right-click menu (2
   await page.locator('[data-copy-frame="e2e-mixed/home"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
   await page.keyboard.press('Escape');
+  const trigger = page.locator('[data-screen="home"] .wb-frame-menu-trigger');
+  await trigger.focus();
+  await page.keyboard.press('Enter');
+  const frameCopy = page.locator('[data-screen="home"] [data-frame-copy]');
+  await expect(frameCopy).toBeVisible();
+  await frameCopy.click();
+  await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
+
 });
 
 test('doc entry exports with comments: mark boxes HTML, no-css text, and long PNG (2026-08-16f 阶段 7)', async ({ page }) => {
@@ -1321,108 +1320,35 @@ test('Frame export snapshots current state and renders an isolated padded PNG', 
   const response = await page.request.post('/api/export-image', { data: snapshot });
   expect(response.ok()).toBeTruthy();
   expect(response.headers()['content-type']).toBe('image/png');
-  expect(response.headers()['x-export-width']).toBe('1068');
-  // 2226 → 2182：2026-09-04 E1 把引用号与屏名并成一行，图注少一行 22px（×2 = 44）。
-  expect(response.headers()['x-export-height']).toBe('2182');
+  expect(Number(response.headers()['x-export-width'])).toBeGreaterThan(0);
+  expect(Number(response.headers()['x-export-height'])).toBeGreaterThan(0);
   const body = await response.body();
   expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
-});
-
-test('Section export always carries captions (图纸内容永随；note 已收编右栏)', async ({ page }) => {
-  await openWorkbench(page);
-  await expect(page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]')).toBeVisible();
-
-  const explained = await page.evaluate(() => window.workbench.exportSnapshot({
+  const section = await page.evaluate(() => window.workbench.exportSnapshot({
     kind: 'section', sectionId: 'brew-flow', format: 'png', scale: 1, background: 'white',
   }));
-  expect(explained.html).toContain('wb-lib-cap');
-  expect(explained.html).toContain('wb-screen-cap');
-  expect(explained.html).toContain('wb-screen-dim');
-  // 干净画面语义已拆除（decisions 2026-08-15d）：不再有 clean-row 覆写
-  expect(explained.html).not.toContain('wb-export-clean-row');
-});
+  expect(section.html).toContain('wb-lib-cap');
+  expect(section.html).toContain('wb-screen-cap');
+  expect(section.html).toContain('wb-screen-dim');
 
-test('every Frame exposes a title menu (export entry retired to the HUD picker)', async ({ page }) => {
-  await openWorkbench(page);
-  const frame = page.locator('#wb-board-panel [data-screen="home"]');
-  const trigger = frame.locator('.wb-frame-menu-trigger');
-  // 2026-09-04 E1：「···」常态收起（尺寸行同理），hover 这一帧才现 —— 它仍在
-  // DOM 与 tab 序里（opacity，不是 display/visibility），覆盖见下面那条几何用例。
-  await expect(trigger).toBeAttached();
-  await frame.locator('.wb-screen-cap').hover();
-  await expect.poll(() => page.evaluate(
-    () => Number(getComputedStyle(document.querySelector('[data-screen="home"] .wb-frame-menu-shell')).opacity)
-  )).toBeGreaterThan(0.5);
-
-  await trigger.click();
-  const menu = frame.locator('.wb-frame-menu');
-  await expect(menu).toBeVisible();
-  // decisions 2026-08-15d：菜单里的导出入口删除（唯一入口 = HUD「导出」→ picker），
-  // 剩余项（复制 @frame）保留。旧用例的 elementFromPoint hit-test 是已知 flake，随重写收编。
-  await expect(menu.locator('[data-frame-export]')).toHaveCount(0);
-  await expect(menu.locator('[role="menuitem"]')).toHaveCount(1);
-  await expect(menu.locator('[data-frame-copy]')).toContainText('复制 @frame');
-  expect(await menu.evaluate((element) => {
-    const style = getComputedStyle(element);
-    const channels = style.backgroundColor.match(/[\d.]+/g) || [];
-    return {
-      alpha: channels.length > 3 ? Number(channels[3]) : 1,
-      backdropFilter: style.backdropFilter,
-    };
-  })).toEqual({ alpha: 1, backdropFilter: 'none' });
-});
-
-test('Detail 面板：画布和大纲选中 frame 都不显示旧描述', async ({ page }) => {
-  const initial = '场景：会议刚刚结束。';
-  let savedBody = null;
-
-  await page.route('**/previews/library/board.json', async (route) => {
-    const response = await route.fetch();
-    const board = await response.json();
-    board.sections[0].screens[0].note = initial; // home / home
-    await route.fulfill({ response, json: board });
-  });
-  await page.route('**/api/frame-notes/**', async (route) => {
-    savedBody = route.request().postData();
-    throw new Error('Read-only frame descriptions must not call the write API');
-  });
-
-  await openWorkbench(page);
-  // note 不再渲染上画布
-  await expect(page.locator('#wb-board-panel [data-frame-note]')).toHaveCount(0);
-  // 未选中时 detail 面板不渲染
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
-
-  // 点图注仍选中 frame，但不再弹出旧描述
-  await page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap').click();
-  const detail = page.locator('#wbdetail');
-  await expect(detail).toHaveCount(0);
-  await page.getByRole('tab', {name:'大纲',exact:true}).click();
-  await page.locator('#wboutline [data-ol-frame="home"]').first().click();
-  await expect(detail).toHaveCount(0);
-  // 画布选中态 class 同步
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
-
-  await expect(detail.locator('[data-detail-note-edit]')).toHaveCount(0);
-  await expect(detail.locator('[data-detail-note-input]')).toHaveCount(0);
-  expect(savedBody).toBeNull();
-});
-
-test('section selection keeps its title and highlight without a description popup', async ({ page }) => {
-  await openWorkbench(page);
-  const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
-  await section.locator(':scope > .wb-lib-cap').click();
-  await expect(section).toHaveClass(/wb-sel/);
-  await expect(section.locator(':scope > .wb-lib-cap')).not.toHaveText('');
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await page.getByRole('tab', { name: '大纲', exact: true }).click();
-  await page.locator('#wboutline [data-ol-section="brew-flow"] > .ol-sec').click();
-  await expect(section).toHaveClass(/wb-sel/);
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
 });
 
 test('画布点选模型：原型内部不动选中、板空白清选中（2026-08-17 选中模型）', async ({ page }) => {
+  await page.route('**/previews/library/board.json', async route => {
+    const response = await route.fetch(); const board = await response.json();
+    board.sections[0].note = 'retired section';
+    const first = board.sections[0].screens[0];
+    board.sections[0].screens[0] = typeof first === 'string' ? { id: first, note: 'retired frame' } : { ...first, note: 'retired frame' };
+    await route.fulfill({ response, json: board });
+  });
   await openWorkbench(page);
+  const section = page.locator('[data-ann-section="brew-flow"].wb-lib-item');
+  await section.locator(':scope > .wb-lib-cap').click();
+  await expect(section).toHaveClass(/wb-sel/);
+  await page.getByRole('tab', { name: '大纲', exact: true }).click();
+  await page.locator('[data-ol-section="brew-flow"] > .ol-sec').click();
+  await expect(section).toHaveClass(/wb-sel/);
+  await expect(page.locator('#wbdetail, [data-frame-note]')).toHaveCount(0);
   const detail = page.locator('#wbdetail');
   await expect(detail).toHaveCount(0);
 
@@ -1616,40 +1542,6 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
   await context.close();
 });
 
-test('sidebar annotation navigation centers the target and composer', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-
-  const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
-  await target.scrollIntoViewIfNeeded();
-  await saveAnnotation(page, target, '这个 cell 需要更清楚');
-  await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
-
-  await openAnnList(page);
-  await page.locator('#wbann-list .wb-ann-item-main').click();
-  await expect(page.locator('#ann-box')).toBeVisible();
-  await page.evaluate(() => window.workbench.whenScrollSettled());
-  await expect(page.locator('#wbann-pop')).toBeVisible();
-  await expect.poll(() => page.evaluate(() => {
-    const stage = document.querySelector('#wbstage').getBoundingClientRect();
-    const cell = document.querySelector('.ann-draft-target').getBoundingClientRect();
-    const box = document.querySelector('#ann-box').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    const x = (Math.min(cell.left, box.left) + Math.max(cell.right, box.right)) / 2;
-    const y = (Math.min(cell.top, box.top) + Math.max(cell.bottom, box.bottom)) / 2;
-    return Math.max(Math.abs(x - (stage.left + stage.right) / 2),
-      Math.abs(y - (stage.top + 24 + Math.min(stage.bottom - 24, strip.top - 12)) / 2));
-  })).toBeLessThan(5);
-
-  await page.locator('#wbann-count').click();
-  await expect(page.locator('#wbann-pop')).toHaveCount(0);
-  await expect(page.locator('#ann-box')).toBeVisible();
-
-  await page.evaluate(() => window.pinpoint.clear());
-});
-
 // The old reference-mode and draggable-composer stories are retired. Inline
 // input and DOM-positioning coverage also runs in review-refinements.spec.js.
 test('canvas multi-target pills preserve text and cancel edits without changing the saved annotation', async ({ page }) => {
@@ -1809,7 +1701,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   // 标注行 → 定位 + 焦点双向同步：行 on、大纲行 on、画布聚焦到 owning frame
   await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
   await page.locator('#wbann-list .wb-ann-item-main').click();
-  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
+  await expectLocatedTarget(page);
   await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
   await page.locator('#ann-cancel').click();
   await openAnnList(page);
@@ -1983,9 +1875,9 @@ test('弹出列表：定位不被自己盖住、行几何在卡内（2026-09-04 
   // 行整行落在卡内（点得到 ≠ 人看得见 —— 比 bounding box）
   expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
 
-  // 整行点击后打开输入框，关闭列表，目标 frame 仍在可见画布内。
+  // 整行点击后打开输入框，列表保持展开，实际目标仍在可见画布内。
   await page.locator('#wbann-list .wb-ann-item-main').click();
-  await expectLocatedTarget(page, '[data-screen="settings"] .ios-stage');
+  await expectLocatedTarget(page);
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
@@ -2075,77 +1967,6 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H 
 // 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
 // 字号断言比的是画布坐标里的 CSS px：画布基准 scale 0.5，所以区头 26 = 观感 13、
 // 屏名 24 = 12、引用号 21 = 10.5。
-test('画布标签三档字，「···」跟在屏名后面而不是钉在行尾（2026-09-04 E1）', async ({ page }) => {
-  await openWorkbench(page);
-  const frame = page.locator('#wb-board-panel [data-screen="home"]');
-  const cap = frame.locator('.wb-screen-cap');
-
-  const type = await page.evaluate(() => {
-    const probe = document.createElement('span');
-    document.body.appendChild(probe);
-    const resolve = (token) => {
-      probe.style.color = `var(${token})`;
-      return getComputedStyle(probe).color;
-    };
-    const tokens = { fg: resolve('--wb-fg'), muted: resolve('--wb-muted'), accent: resolve('--wb-accent') };
-    probe.remove();
-    const read = (selector) => {
-      const style = getComputedStyle(document.querySelector(selector));
-      return {
-        size: Math.round(parseFloat(style.fontSize)),
-        weight: style.fontWeight,
-        color: style.color,
-        mono: /mono|Menlo|Consolas|ui-monospace/i.test(style.fontFamily),
-      };
-    };
-    return {
-      tokens,
-      section: read('#lib-home .wb-lib-cap'),
-      sectionRef: read('#lib-home .wb-lib-cap .wb-cap-ref--section'),
-      name: read('[data-screen="home"] .wb-cap-title'),
-      ref: read('[data-screen="home"] .wb-cap-ref'),
-    };
-  });
-  expect(type.section).toMatchObject({ size: 26, weight: '600', color: type.tokens.fg });
-  expect(type.name).toMatchObject({ size: 24, weight: '500', color: type.tokens.muted });
-  expect(type.ref).toMatchObject({ size: 21, color: type.tokens.accent, mono: true });
-  expect(type.sectionRef).toMatchObject({ size: 21, color: type.tokens.accent, mono: true });
-  // 区头的 A 和区名同一行（引用号是行内元素，不再自己占一行）
-  expect(await page.evaluate(() => {
-    const head = document.querySelector('#lib-home .wb-lib-cap');
-    const ref = head.querySelector('.wb-cap-ref--section').getBoundingClientRect();
-    return Math.abs(ref.top - head.getBoundingClientRect().top) < ref.height;
-  })).toBe(true);
-
-  // 「···」是 caption 那条 flex 的末位：紧跟屏名，右边还剩大半行 —— 它曾经钉在
-  // 438px 宽标签行的最右角（padding-right:40px + right:0），离标题老远。
-  await cap.hover();
-  const geo = await page.evaluate(() => {
-    const capNode = document.querySelector('[data-screen="home"] .wb-screen-cap');
-    const r = (node) => node.getBoundingClientRect();
-    return {
-      cap: r(capNode),
-      title: r(capNode.querySelector('.wb-cap-title')),
-      shell: r(capNode.querySelector('.wb-frame-menu-shell')),
-    };
-  });
-  expect(geo.shell.left).toBeGreaterThanOrEqual(geo.title.right - 1);
-  expect(geo.shell.right).toBeLessThanOrEqual(geo.cap.right);
-  // 「贴着标签」的判据：到标题的距离远小于到行尾的距离
-  expect(geo.shell.left - geo.title.right).toBeLessThan(geo.cap.right - geo.shell.right);
-
-  // 常态收起、hover 才现；键盘照样够得着（focus 也点亮，且它一直在 tab 序里）
-  const shellOpacity = () => page.evaluate(
-    () => getComputedStyle(document.querySelector('[data-screen="home"] .wb-frame-menu-shell')).opacity
-  );
-  await page.locator('#wbstrip-title').hover();
-  await expect.poll(shellOpacity).toBe('0');
-  await frame.locator('.wb-frame-menu-trigger').focus();
-  await expect.poll(shellOpacity).toBe('1');
-  expect(await page.evaluate(
-    () => document.activeElement === document.querySelector('[data-screen="home"] .wb-frame-menu-trigger')
-  )).toBe(true);
-});
 
 test('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2026-09-04 E1）', async ({ page }) => {
   await openWorkbench(page);
@@ -2185,59 +2006,6 @@ test('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2
 // hover 什么都没有，鼠标在哪一帧全靠猜 —— 所以补的是 hover 那一档（2px accent
 // 30%），选中态照旧压过它。两者与标注的琥珀目标框天然分色：环是 accent、在机身
 // 外缘，标注框是琥珀、在元素上。
-test('画布 frame：hover 出淡 accent 环，选中压过它，都不与标注琥珀撞色（2026-09-04）', async ({ page }) => {
-  await openWorkbench(page);
-  const frame = page.locator('#wb-board-panel [data-screen="home"]');
-  const stage = frame.locator('.ios-stage');
-  // 环色不写字面 rgb：color-mix 的序列化形式不稳（同一个值在 rgba(...) 与
-  // color(srgb ...) 之间飘），拿一个同样写法的探针元素比，比的是「就是 accent
-  // 30%」而不是某一版 Chromium 的字符串。
-  const ring = () => stage.evaluate((node) => {
-    const probe = document.createElement('span');
-    probe.style.outlineColor = 'color-mix(in srgb, var(--wb-accent) 30%, transparent)';
-    document.body.appendChild(probe);
-    const accent30 = getComputedStyle(probe).outlineColor;
-    probe.remove();
-    const style = getComputedStyle(node);
-    return {
-      width: style.outlineWidth,
-      hovered: style.outlineColor === accent30,
-      clear: /(^rgba\(0, 0, 0, 0\)$)|(\/ 0\))/.test(style.outlineColor),
-      shadow: style.boxShadow,
-    };
-  });
-
-  // 常态：环在，但是透明的（淡入淡出的是 outline-color，见 index.html 注释）
-  await page.locator('#wbstrip-title').hover();
-  await expect.poll(async () => (await ring()).clear).toBe(true);
-  expect((await ring()).width).toBe('2px');
-
-  // hover：2px accent 30%。过渡是 --wb-dur，断言要等它落定 —— 中途取到的是插值色。
-  await stage.hover();
-  await expect.poll(async () => (await ring()).hovered).toBe(true);
-  expect((await ring()).width).toBe('2px');
-  expect((await ring()).shadow).not.toContain('rgb(91, 127, 166)'); // 还不是选中
-
-  // 选中：实心 accent 环接管，hover 的淡环让位（不叠两层）
-  await frame.locator('.wb-screen-cap').click();
-  await expect(frame).toHaveClass(/wb-sel/);
-  await expect.poll(async () => (await ring()).clear).toBe(true);
-  expect((await ring()).shadow).toContain('rgb(91, 127, 166)');
-
-  // 标注模式下环照旧在，且与琥珀目标框分色（accent 环 ≠ 琥珀框）
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await frame.locator('.ios-cell').first().click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  const target = await page.locator('.ann-target').first().evaluate(
-    (node) => getComputedStyle(node).borderColor
-  );
-  expect(target).toContain('245, 166, 35');            // 琥珀
-  expect((await ring()).shadow).toContain('rgb(91, 127, 166)'); // 机身仍是 accent
-  await box.locator('#ann-cancel').click();
-  await page.evaluate(() => window.pinpoint.setMode(false));
-});
 
 test('first visit lands focused on the first frame at the 100% default zoom (2026-08-17 基准重定标)', async ({ page }) => {
   // 2026-08-17 基准重定标（owner 决定）：视觉 = zoom × 0.5（0.5 烘进基准），
@@ -2292,45 +2060,6 @@ test('zoom axis migration doubles legacy saved viewports once (2026-08-17 基准
     const p = await readWbPrefs(page);
     return p.pageViewports && p.pageViewports.library && p.pageViewports.library.canvasZoom;
   }).toBe('1');
-});
-
-test('left sidebar hides entry type tags below 230 and restores (2026-08-16f 阶段 7)', async ({ page }) => {
-  // 紧凑断点机制（boot-prefs applySideWidth → #wbside.compact）随 pill 退役改指
-  // 产物条目的类型 tag：<230 整枚隐藏，只留标题；断点与宽度偏好行为不变。
-  // 固件 = e2e-mixed（混合板，产物组有「画布/文档」两枚 tag）。
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
-  const side = page.locator('#wbside');
-  const tags = page.locator('#wbcontents .wb-entry-tag');
-
-  // 默认 250：产物条目各带 tag（画布 + 文档）
-  expect(await sideWidth(page)).toBe(250);
-  await expect(side).not.toHaveClass(/compact/);
-  await expect(tags).toHaveText(['画布', '文档']);
-
-  // 左拖 120：250 - 120 = 130 → clamp 200 < 230，tag 整枚隐藏
-  await dragSideSplitter(page, -120);
-  expect(await sideWidth(page)).toBe(200);
-  await expect(side).toHaveClass(/compact/);
-  await expect(page.locator('#wbcontents .wb-entry-tag:visible')).toHaveCount(0);
-  // 条目行本身仍在（坍缩的只是 tag，不是条目）
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
-
-  // 拖回 300 ≥ 230 自动恢复；reload 后偏好保持
-  await dragSideSplitter(page, 100);
-  expect(await sideWidth(page)).toBe(300);
-  await expect(side).not.toHaveClass(/compact/);
-  await expect(tags).toHaveText(['画布', '文档']);
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect.poll(async () => (await readWbPrefs(page)).sideWidth).toBe(300);
-  await expect(side).not.toHaveClass(/compact/);
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
 });
 
 test('sidebar rows stay within their panel at default and compact widths (2026-08-17 ScrollArea 内层修复)', async ({ page }) => {

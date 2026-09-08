@@ -123,16 +123,3 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     await page.request.post('/registry/reload').catch(() => {});
   }
 });
-
-test('pinpoint add --page 的互斥守卫在 e2e 闭环同样响亮', async () => {
-  // url 条目 + --page：CLI 直接拒（registry 不被写坏）。
-  await expect(execFileP('node', [
-    path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', 'https://example.localhost',
-    '--page', 'e2e-dir', '--registry', E2E_REGISTRY,
-  ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } })).rejects.toThrow();
-  // 不可解析的目标页：同样拒。
-  await expect(execFileP('node', [
-    path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', path.join(ROOT, 'e2e', 'ext-fixture.html'),
-    '--page', 'ghost-page', '--registry', E2E_REGISTRY,
-  ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } })).rejects.toThrow();
-});

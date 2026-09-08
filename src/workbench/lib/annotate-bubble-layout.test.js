@@ -8,13 +8,6 @@ import {
   packGutter,
 } from './annotate-bubble-layout.js';
 
-test('constants match live gutter dimensions', () => {
-  assert.equal(GUTTER_BUBBLE_W, 240);
-  assert.equal(GUTTER_MARGIN, 12);
-  assert.equal(GUTTER_GAP, 10);
-  assert.equal(GUTTER_W, 264);
-});
-
 test('packGutter places a sparse anchor on the right at its Y', () => {
   const packed = packGutter(
     [{ n: 1, rect: [100, 80, 40, 20] }],

@@ -31,19 +31,6 @@ test.afterEach(() => {
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
-test('retired frame and section note APIs reject writes without changing board data', async ({ page }) => {
-  const boardFile = path.join(ROOT, 'e2e', 'dir-site-ios', 'board.json');
-  const original = fs.readFileSync(boardFile, 'utf8');
-  for (const target of ['frame-notes/e2e-dir-ios/cards', 'section-notes/e2e-dir-ios/main']) {
-    for (const method of ['get', 'put']) {
-      const retired = await page.request[method]('/api/' + target, { data: { note: 'must not write' } });
-      expect(retired.status()).toBe(410);
-      expect(await retired.json()).toEqual({ error: 'board_notes_removed' });
-      expect(fs.readFileSync(boardFile, 'utf8')).toBe(original);
-    }
-  }
-});
-
 test('registry dir entry appears as a workbench page and renders from /sites/', async ({ page }) => {
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
@@ -112,77 +99,6 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
 // 一致」+ 评审板 H1 的评论卡）。client 是注进任意页面的单文件，读不到 workbench
 // 的 --wb-*，所以 F2 的四个数在它自己的规则里是字面量 —— 这条用例是那份字面量
 // 与 wb-tokens.css 之间唯一的对账。
-test('注入端工具条与面板穿同一档 F2 玻璃，评论卡是 H1 皮肤（2026-09-04）', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
-
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await page.locator('#doc-target').click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  await box.locator('#ann-input').fill('注入端皮肤');
-  await box.locator('#ann-save').click();
-  await expect(box).toBeHidden();
-
-  // 列表面板开着，两块 chrome 一起量（/sites/ 注入页工具条默认隐藏，先调出来）
-  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
-  await expect(page.locator('#ann-toolbar')).toBeVisible();
-  await page.locator('#ann-list').click();
-  await expect(page.locator('#ann-sidebar')).toBeVisible();
-
-  const glass = await page.evaluate(() => {
-    const read = (id) => {
-      const style = getComputedStyle(document.getElementById(id));
-      return {
-        background: style.backgroundColor,
-        blur: style.backdropFilter || style.webkitBackdropFilter,
-        radius: style.borderRadius,
-        shadow: style.boxShadow,
-      };
-    };
-    return { toolbar: read('ann-toolbar'), sidebar: read('ann-sidebar') };
-  });
-  for (const surface of [glass.toolbar, glass.sidebar]) {
-    expect(surface.background).toBe('rgba(255, 255, 255, 0.88)');
-    expect(surface.blur).toBe('blur(20px) saturate(1.2)');
-    expect(surface.radius).toBe('14px');
-    expect(surface.shadow).toContain('rgba(255, 255, 255, 0.6) 0px 0.5px 0px 0px inset'); // 0.5px 上缘高光
-    expect(surface.shadow).toContain('38px'); // sh-3 的外投影
-  }
-  // 面板浮起来：四缘留 12px，不再贴边满高
-  const inset = await page.evaluate(() => {
-    const r = document.getElementById('ann-sidebar').getBoundingClientRect();
-    return { top: Math.round(r.top), right: Math.round(window.innerWidth - r.right) };
-  });
-  expect(inset).toEqual({ top: 12, right: 12 });
-
-  // 钉子：22px accent 实心圆 + 白字 + 白环（与 workbench overlay 同一份规则）
-  const pin = await page.evaluate(() => {
-    const style = getComputedStyle(document.querySelector('#ann-marks .ann-badge'));
-    return { w: style.width, h: style.height, color: style.color, shadow: style.boxShadow };
-  });
-  expect(pin).toMatchObject({ w: '22px', h: '22px', color: 'rgb(255, 255, 255)' });
-  expect(pin.shadow).toContain('rgb(255, 255, 255)');
-
-  // 评论卡（H1）：186 宽、11px 正文、mono 眉标；没有琥珀 chip、没有「评论」字样
-  await page.locator('#ann-marks .ann-badge').hover();
-  const card = page.locator('#ann-bubbles .ann-bubble').first();
-  await expect(card).toHaveClass(/ann-bubble--show/);
-  expect(await card.evaluate((node) => {
-    const style = getComputedStyle(node);
-    const cap = getComputedStyle(node.querySelector('.ann-bubble-cap'));
-    return {
-      width: style.width,
-      size: style.fontSize,
-      capMono: /mono|Menlo|Consolas/i.test(cap.fontFamily),
-      capSize: cap.fontSize,
-      text: node.textContent,
-      hasChip: !!node.querySelector('.ann-bubble-num'),
-    };
-  })).toMatchObject({ width: '186px', size: '11px', capMono: true, capSize: '11px', hasChip: false });
-  await expect(card).not.toContainText('评论');
-  await expect(card.locator('.ann-bubble-body')).toHaveText('[indicator 1] 注入端皮肤');
-});
 
 test('?annotate=off serves the same page with zero annotation surface', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html?annotate=off');

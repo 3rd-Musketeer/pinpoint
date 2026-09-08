@@ -8,7 +8,7 @@ export const E2E_PORT = Number(process.env.E2E_PORT || 5299);
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
 // 阶段 4：url 条目代理的上游 fixture origin（e2e/proxy-upstream.js，
-// playwright.config.js 模块作用域起服、写 registry 前必须拿到端口，用固定值）。
+// 独立 webServer 启动；registry 与上游共享这个端口）。
 export const E2E_UPSTREAM_PORT = Number(process.env.E2E_UPSTREAM_PORT || E2E_PORT + 10);
 export const E2E_UPSTREAM_ORIGIN = `http://127.0.0.1:${E2E_UPSTREAM_PORT}`;
 

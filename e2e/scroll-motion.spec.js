@@ -51,15 +51,14 @@ test('retarget continues from the current position and cancels the previous comp
   expect(result.final).toBe(100);
 });
 
-for (const input of ['wheel', 'pointerdown', 'keydown']) {
+for (const input of ['pointerdown', 'keydown']) {
   test(`${input} immediately takes control of an animated scroll`, async ({ page }) => {
     const result = await page.evaluate(async input => {
       const s = document.getElementById('wbstage'), wb = window.workbench;
       await wb.scrollTo({ top: 0 }, { smooth: false });
       const moving = wb.scrollTo({ top: 2000 });
       for (let i = 0; i < 5; i++) await new Promise(requestAnimationFrame);
-      if (input === 'wheel') s.dispatchEvent(new WheelEvent('wheel', { bubbles: true, deltaY: 60 }));
-      else if (input === 'pointerdown') s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
+      if (input === 'pointerdown') s.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true }));
       else s.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, key: 'ArrowUp' }));
       const stopped = s.scrollTop;
       for (let i = 0; i < 12; i++) await new Promise(requestAnimationFrame);

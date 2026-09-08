@@ -482,7 +482,12 @@ test('annotation jumps center the DOM and composer together without moving while
   const n=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
   for(let i=0;i<2;i++) {
     if (i === 1) await page.locator('#wbside-toggle').click();
-    await page.evaluate(n=>window.pinpoint.goToMark(n),n);
+    await page.locator('#wbann-count').click();
+    await page.locator('.wb-ann-item-main[data-ann-n="'+n+'"]').click();
+    await expect(page.locator('#ann-box')).toBeVisible();
+    await expect(page.locator('#wbann-pop')).toBeVisible();
+    await page.locator('#wbann-count').click();
+    await expect(page.locator('#wbann-pop')).toHaveCount(0);
     await expect(page.locator('#ann-box')).toBeVisible();
     const geometry=await page.evaluate(()=>{
       const t=document.querySelector('.ann-draft-target').getBoundingClientRect(),c=document.querySelector('#ann-box').getBoundingClientRect(),strip=document.querySelector('#wbstrip').getBoundingClientRect(),stage=document.querySelector('#wbstage');

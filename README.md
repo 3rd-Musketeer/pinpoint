@@ -55,12 +55,20 @@ Then tell your agent:
 
 > 读一下 AGENTS.md，然后在 Example Library 加一屏 XXX
 
-Verify changes:
+Verify changes with `just check` (or `npm run check`). Install the matching browser on the first run:
 
 ```bash
-npx playwright install chromium   # first browser-test run only
-just check                        # node contracts + template-only workbench e2e
+npx playwright install chromium
 ```
+
+E2E startup checks full Chromium and headless shell before testing. Playwright owns both
+the proxy fixture and workbench server and stops them on exit; an occupied port fails
+instead of silently reusing another service. Use a distinct `E2E_PORT` for a separate run;
+the upstream defaults to that port + 10. Keep one worker until shared fixtures are isolated.
+
+Prefer fast contract tests for parsing, persistence, rejection paths and data migration.
+Browser tests cover complete user flows, browser-specific behavior and serious regressions;
+avoid fixing font sizes, colors or obsolete DOM structure in long-lived assertions.
 
 Requires Node ≥ 24 and [just](https://just.systems/).
 

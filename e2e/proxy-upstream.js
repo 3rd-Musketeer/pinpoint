@@ -4,7 +4,7 @@
  * 302、cookie。它模拟 my-todos 那样的 portless 应用：HTML/JS 里全是根绝对
  * 路径，全靠 pinpoint 代理的重写 + 运行时重基才能在 /sites/e2e-proxy/ 下活。
  *
- * 进程拓扑：playwright.config.js 模块作用域起服（webServer 拉起 e2e server
+ * 进程拓扑：独立 webServer 进程起服（webServer 拉起 e2e server
  * 之前 registry fixture 就要带上这个 origin），spec 跑在 worker 进程里，
  * 经 /__hits 回读请求日志做「确实走了代理」的断言。
  */
@@ -120,9 +120,8 @@ function wsEcho(socket) {
   });
 }
 
-/** Idempotent: playwright 可能多次加载 config 模块。 */
+/** Owned by the dedicated Playwright webServer process. */
 export function startProxyUpstream() {
-  if (globalThis.__pinpointE2eUpstream) return globalThis.__pinpointE2eUpstream;
   const hits = [];
   const server = http.createServer((req, res) => {
     const u = new URL(req.url || '/', 'http://upstream.local');
@@ -223,14 +222,6 @@ export function startProxyUpstream() {
     );
     wsEcho(socket);
   });
-  server.unref(); // config 模块作用域起服，不拖住 playwright 进程退出
-  server.on('error', (error) => {
-    // config 模块会被 runner 与 worker 各加载一次：后到者 EADDRINUSE，
-    // 先到者已在 serve 同一个 fixture —— 这不是故障。
-    const level = error.code === 'EADDRINUSE' ? 'reused' : 'failed';
-    console.error(`[e2e-proxy-upstream] listen ${level} on ${E2E_UPSTREAM_PORT}: ${error.message}`);
-  });
   server.listen(E2E_UPSTREAM_PORT, '127.0.0.1');
-  globalThis.__pinpointE2eUpstream = server;
   return server;
 }

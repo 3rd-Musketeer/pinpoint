@@ -18,7 +18,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // E2E never reads the real machine registry (PINPOINT_REGISTRY is set
 // in playwright.config.js).
 //
-// Written from playwright.config.js module scope: the webServer boots before
+// Written by start-proxy.mjs before the workbench boots. Playwright webServer starts before
 // globalSetup runs, and the annotate handler reads the registry once at boot —
 // a globalSetup write would land too late (and a clean machine would boot with
 // the default pinpoint-only registry).

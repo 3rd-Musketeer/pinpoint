@@ -46,6 +46,8 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     await page.locator('[data-screen="settings"] .ios-cell').first().click();
     await save(page, 'integration original');
     const first = read()[0];
+    expect(first.content).toContain('integration original');
+    expect(fs.readdirSync(E2E_DATA_DIR).filter(name => name.endsWith('.json'))).toEqual([]);
     expect(first.id).toBeTruthy();
     expect(first.targets.length).toBeGreaterThan(0);
     await expect.poll(() => other.evaluate(() => window.pinpoint.marks.map(m => m.id))).toContain(first.id);
