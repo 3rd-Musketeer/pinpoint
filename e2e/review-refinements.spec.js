@@ -481,12 +481,13 @@ test('annotation jumps center the DOM and composer together without moving while
   await page.locator('#ann-save').click();
   const n=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
   for(let i=0;i<2;i++) {
+    if (i === 1) await page.locator('#wbside-toggle').click();
     await page.evaluate(n=>window.pinpoint.goToMark(n),n);
     await expect(page.locator('#ann-box')).toBeVisible();
     const geometry=await page.evaluate(()=>{
-      const t=document.querySelector('.ann-draft-target').getBoundingClientRect(),c=document.querySelector('#ann-box').getBoundingClientRect(),side=document.querySelector('#wbside').getBoundingClientRect(),strip=document.querySelector('#wbstrip').getBoundingClientRect(),stage=document.querySelector('#wbstage');
+      const t=document.querySelector('.ann-draft-target').getBoundingClientRect(),c=document.querySelector('#ann-box').getBoundingClientRect(),strip=document.querySelector('#wbstrip').getBoundingClientRect(),stage=document.querySelector('#wbstage');
       const sr=stage.getBoundingClientRect();
-      return {x:(Math.min(t.left,c.left)+Math.max(t.right,c.right))/2,y:(Math.min(t.top,c.top)+Math.max(t.bottom,c.bottom))/2,wantX:(Math.max(sr.left+24,side.right+12)+sr.right-24)/2,wantY:(sr.top+24+Math.min(sr.bottom-24,strip.top-12))/2,left:stage.scrollLeft,top:stage.scrollTop};
+      return {x:(Math.min(t.left,c.left)+Math.max(t.right,c.right))/2,y:(Math.min(t.top,c.top)+Math.max(t.bottom,c.bottom))/2,wantX:(sr.left+sr.right)/2,wantY:(sr.top+24+Math.min(sr.bottom-24,strip.top-12))/2,left:stage.scrollLeft,top:stage.scrollTop};
     });
     expect(Math.abs(geometry.x-geometry.wantX)).toBeLessThan(5);
     expect(Math.abs(geometry.y-geometry.wantY)).toBeLessThan(5);

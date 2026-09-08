@@ -3625,11 +3625,6 @@
     activeComposer.syncLayout();
     var sr = stageEl.getBoundingClientRect();
     var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
-    var side = document.getElementById('wbside');
-    if (side && side.getClientRects().length) {
-      var sideRect = side.getBoundingClientRect();
-      if (sideRect.right > sr.left && sideRect.left < sr.right) area.left = Math.max(area.left, sideRect.right + 12);
-    }
     var strip = document.getElementById('wbstrip');
     if (strip && strip.getClientRects().length) area.bottom = Math.min(area.bottom, strip.getBoundingClientRect().top - 12);
     var left = Math.min.apply(null, rects.map(function (r) { return r.left; }));
