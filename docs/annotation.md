@@ -164,6 +164,12 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（`topics/chat-stream-polish/prototypes/plugins/pk.js` 是样例）。
 
+可交互 HTML（`<page>__interactive.html`）打开后就是 workbench 的画布（ADR 0033）：满铺的网格画布 +
+左侧浮动玻璃面板（页名 + 大纲，横条最左的钮收起 / 展开）+ 底部横条（‹ n / N › 帧导航、缩放读数、回中）。
+滚轮滚动，ctrl / ⌘ + 滚轮围绕光标缩放，空格 + 拖或中键拖平移，空白画布上直接拖也能平移。窄屏（≤ 760px）
+面板默认收起、帧竖排按屏宽适配、单指滚动。没有标注面：它是分享面，不是工作面。运行时在
+`src/client/share-runtime.js`，内联进导出文件，不依赖服务。
+
 ## 执行结果与输入框（review-refinements，2026-09-07 起）
 
 本轮开发分支的 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。

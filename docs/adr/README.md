@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0033](0033-offline-export-uses-live-shell.md) | 2026-09-15 | 离线分享 HTML 用 workbench 的外壳：满铺画布 + 浮动面板 + 底部横条 + 窄屏适配 | 现行 | — |
 | [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 现行 | — |
 | [0031](0031-shell-glass-panel-bottom-strip-on-demand-list.md) | 2026-09-04 | 外壳重设计：满铺画布 + 浮动玻璃面板 + 底部单条 + 按需标注列表 | 现行 | — |
 | [0030](0030-layout-src-content-and-url-contract.md) | 2026-09-04 | 目录重排：src/ 与 content/ 两轴，服务 URL 是契约 | 现行 | — |

@@ -167,6 +167,13 @@ library__brew-flow__timer@2x.png
 library__frames@2x.zip
 ```
 
+The picker's other kind, **可交互 HTML**, writes one self-contained `<page>__interactive.html`
+(`POST /api/export-page-html`). It opens as the same shell you use in the workbench: the full-bleed
+grid canvas, the floating glass panel with the outline, and the bottom strip (panel toggle, page
+title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ + wheel zooms around
+the cursor, Space + drag or middle-drag pans. On narrow screens (≤ 760px) the panel starts collapsed
+and frames stack vertically at screen width. No annotation surface (ADR 0033).
+
 Agents and scripts use the same renderer (start `npm run dev` first):
 
 ```bash

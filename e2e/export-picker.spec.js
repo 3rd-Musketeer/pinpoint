@@ -75,21 +75,56 @@ test('HUD export produces one offline interactive HTML with outline and spatial 
   expect(body).not.toMatch(/(?:src|href)=["']\/(?:sites|kits|workbench|api)\//);
 
   const offline = await context.newPage();
+  await offline.setViewportSize({ width: 1280, height: 720 });
   await offline.goto('file://' + file.replaceAll('\\', '/'));
-  await expect(offline.locator('.share-outline-section > a:not(.share-outline-frame)')).toHaveCount(1);
-  await expect(offline.locator('.share-outline-frame')).toHaveCount(1);
-  await expect(offline.locator('.share-section')).toHaveCount(1);
-  await expect(offline.locator('.share-frame-viewport')).toHaveCount(1);
+  // 分享壳 = workbench 外壳（ADR 0033）：满铺画布 + 浮动玻璃面板（大纲）+ 底部横条。
+  await expect(offline.locator('.wb-stage-wrap > .wb-stage > .wb-panel > .wb-zoom-wrap > .wb-library')).toHaveCount(1);
+  await expect(offline.locator('#wboutline .ol-sec')).toHaveCount(1);
+  await expect(offline.locator('#wboutline .ol-row')).toHaveCount(1);
+  await expect(offline.locator('.wb-library .wb-lib-item[data-ann-section]')).toHaveCount(1);
+  await expect(offline.locator('.wb-library .wb-sec-row .wb-screen[id^="frame-"]')).toHaveCount(1);
+  await expect(offline.locator('#wbside.wb-side.wb-glass')).toHaveCount(1);
+  await expect(offline.locator('#wbstrip.wb-strip.wb-glass')).toBeVisible();
+  await expect(offline.locator('#wbsection-nav-position')).toHaveText('1 / 1');
+  await expect(offline.locator('.share-frame-viewport, .share-outline, .share-section')).toHaveCount(0);
   await offline.getByRole('button', { name: 'Try it' }).click();
   await expect(offline.locator('[data-result]')).toHaveText('Done');
 
-  // Workbench 自身锁 body 滚动；分享壳必须显式解除，才能用鼠标滚轮纵向浏览 Section。
-  await offline.setViewportSize({ width: 1280, height: 400 });
-  await offline.mouse.move(1000, 350);
-  await offline.mouse.wheel(0, 700);
-  await expect.poll(() => offline.evaluate(() => window.scrollY)).toBeGreaterThan(0);
-  await offline.mouse.wheel(0, -700);
-  await expect.poll(() => offline.evaluate(() => window.scrollY)).toBe(0);
+  // 画布是 #wbstage 这个 scrollport：普通滚轮滚动它、不缩放；ctrl+滚轮缩放（zoom 轴 0.5–5，
+  // 写在 .wb-library 的 --wb-board-zoom 上）并改读数；横条最左的钮收起 / 展开面板。
+  const stageScroll = () => offline.evaluate(() => {
+    const s = document.getElementById('wbstage');
+    return { top: s.scrollTop, zoom: document.querySelector('.wb-library').style.getPropertyValue('--wb-board-zoom') };
+  });
+  const start = await stageScroll();
+  expect(start.zoom).toBe('1');
+  await offline.mouse.move(900, 300);
+  await offline.mouse.wheel(0, 300);
+  await expect.poll(async () => (await stageScroll()).top).toBeGreaterThan(start.top);
+  expect((await stageScroll()).zoom).toBe('1');
+  await offline.keyboard.down('Control');
+  await offline.mouse.wheel(0, -100);
+  await offline.keyboard.up('Control');
+  await expect.poll(async () => (await stageScroll()).zoom).toBe('1.08');
+  await expect(offline.locator('#wbzoom-label')).toHaveText('108%');
+  await offline.locator('#wbzoom-label').click();
+  await expect(offline.locator('#wbzoom-label')).toHaveText('100%');
+
+  const sideBefore = await offline.locator('#wbside').boundingBox();
+  await offline.locator('#wbside-toggle').click();
+  await expect(offline.locator('#wbroot')).toHaveClass(/wb-side-collapsed/);
+  await expect(offline.locator('#wbside-toggle')).toHaveAttribute('aria-expanded', 'false');
+  await expect.poll(async () => (await offline.locator('#wbside').boundingBox()).width).toBeLessThan(sideBefore.width);
+  await offline.locator('#wbside-toggle').click();
+  await expect(offline.locator('#wbroot')).not.toHaveClass(/wb-side-collapsed/);
+
+  // 窄屏（≤ 760）：面板收起、帧竖排按视口宽适配，页面与画布都没有横向滚动。
+  await offline.setViewportSize({ width: 375, height: 812 });
+  await expect.poll(() => offline.evaluate(() => {
+    const s = document.getElementById('wbstage');
+    return document.documentElement.scrollWidth <= window.innerWidth && s.scrollWidth <= s.clientWidth + 1;
+  })).toBe(true);
+  await expect(offline.locator('#wbzoom-label')).toBeHidden();
 });
 
 test('interactive HTML requires per-resource approval for an exact HTTPS snapshot', async ({ page }) => {

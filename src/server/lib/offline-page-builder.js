@@ -25,6 +25,15 @@ function readText(relative) {
   return fs.readFileSync(path.join(ROOT, relative), 'utf8');
 }
 
+// 经典脚本内联进 <script>（与 frame-boot 同一做法），正文里不能有 </script。
+function readInlineScript(relative) {
+  const source = readText(relative);
+  if (/<\/script/i.test(source)) {
+    throw new OfflinePageExportError('unsafe_script', `${relative} must not contain </script>`);
+  }
+  return source;
+}
+
 function resolvePage(pageId, registry) {
   if (!PAGE_ID_RE.test(String(pageId || ''))) {
     throw new OfflinePageExportError('bad_page', `invalid page id: ${pageId}`);
@@ -61,7 +70,8 @@ function frameHtml(screen, target, body, ref) {
     (ref ? `<span class="wb-cap-ref">${escHtml(ref)}</span>` : '') +
     `<span class="wb-cap-title" title="${escHtml(screen.title || screen.id)}">${escHtml(screen.title || screen.id)}</span>` +
     '</div>';
-  return `<div class="wb-screen" data-screen="${escHtml(screen.id)}">${cap}${body}<div class="wb-screen-dim">402 × 874</div></div>`;
+  // id="frame-<screenId>" 是大纲链接与深链的锚（ADR 0033）；class 与画布的 .wb-screen 同名。
+  return `<div class="wb-screen" id="frame-${escHtml(screen.id)}" data-screen="${escHtml(screen.id)}">${cap}${body}<div class="wb-screen-dim">402 × 874</div></div>`;
 }
 
 function uniqueRemote(items) {
@@ -148,7 +158,8 @@ export async function buildOfflinePage(options = {}) {
       workbenchCss: readText('src/workbench/wb-tokens.css') + '\n' + readWorkbenchInlineStyles(),
       iosCss: readText('content/kits/ios/ios-kit.css'),
       iosKitJs: readText('content/kits/ios/ios-kit.js'),
-      frameBootJs: readText('src/client/frame-boot.js'),
+      frameBootJs: readInlineScript('src/client/frame-boot.js'),
+      shareRuntimeJs: readInlineScript('src/client/share-runtime.js'),
     }),
   };
 }
