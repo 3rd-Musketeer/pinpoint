@@ -120,7 +120,6 @@ title 是单行短名词短语，只回答“这是什么”。引用编号由�
 - 反例：`★ SPIKE · B 形态 · 同日型基线 vs 当日 sankey — 直通带 = 照常的部分；彩色斜带 = 挤占……`
   （这是把整组图例塞进了 section title；正确做法是 title = `同日型基线 vs 当日 sankey`。）
 
-section 和 frame 只使用标题，不添加 note / description 字段或说明浮层。
 
 ### 2.2 导出 Frame 图片
 
