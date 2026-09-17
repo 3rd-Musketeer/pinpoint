@@ -1920,6 +1920,39 @@ test('标注列表在底栏上方，Esc 关闭列表后清除选择', async ({ p
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
+test('钉子和命中框画在底部横条之下，横条永远在最上（2026-09-17）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'under strip mark');
+
+  // workbench 里 overlay 留在 .wb-stage-wrap 按 z-index 排，不进 top layer
+  expect(await page.evaluate(() => {
+    const overlay = document.querySelector('#ann-overlay');
+    return { parent: overlay.parentElement.className, popover: overlay.matches(':popover-open') };
+  })).toEqual({ parent: 'wb-stage-wrap', popover: false });
+
+  // 把钉子滚到横条正后方：横条中心那一点命中的必须是横条，不是钉子
+  await page.evaluate(() => {
+    const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    document.querySelector('#wbstage').scrollTop += (badge.top + badge.height / 2) - (strip.top + strip.height / 2);
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    const cx = badge.left + badge.width / 2, cy = badge.top + badge.height / 2;
+    if (cy < strip.top || cy > strip.bottom || cx < strip.left || cx > strip.right) return 'badge-not-behind-strip';
+    const hit = document.elementFromPoint(cx, cy);
+    return hit && hit.closest('#wbstrip') ? 'strip' : (hit ? hit.className : 'none');
+  })).toBe('strip');
+
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
 test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());

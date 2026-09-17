@@ -1025,7 +1025,7 @@
     '#ann-sidebar .ann-sb-acts button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
-    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:2147483647;overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
+    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
@@ -1129,9 +1129,18 @@
   // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
   function mountOverlay(modal) {
     var stageWrap = document.querySelector('.wb-stage-wrap');
-    if (modal && modal.matches('dialog:modal')) {
-      // Native modal dialogs make nodes outside their subtree inert, even when
-      // those nodes are painted in the top layer. Keep the composer inside it.
+    var inModal = !!(modal && modal.matches('dialog:modal'));
+    // overlay 只在两种挂法下进 top layer：挂进原生 modal（modal 之外的节点都
+    // inert，光靠 z-index 盖不住）；挂在 body（独立文档 / 汇报页 iframe，被评审的
+    // 页面自己可能有 z-index 顶格的 fixed 弹窗，composer 得压得住）。挂在
+    // workbench 的 .wb-stage-wrap 里时按 z-index 排：钉子和命中框在外壳（浮动面板
+    // z6 / 停靠槽 z7-8 / 底部横条 z10）之下，选中气泡升到 z9 越过面板和停靠槽，
+    // 横条永远在最上。2026-09-17 修：此前三种挂法都 showPopover，钉子和黄框画到
+    // 横条上面。
+    var topLayer = inModal || !stageWrap;
+    if (typeof overlay.hidePopover === 'function' && overlay.matches(':popover-open')) overlay.hidePopover();
+    overlay.removeAttribute('popover');
+    if (inModal) {
       overlay.setAttribute('data-ann-viewport', '');
       modal.appendChild(overlay);
     } else if (stageWrap) {
@@ -1145,7 +1154,7 @@
       overlay.setAttribute('data-ann-viewport', '');
       document.body.appendChild(overlay);
     }
-    if (typeof overlay.showPopover === 'function') {
+    if (topLayer && typeof overlay.showPopover === 'function') {
       overlay.setAttribute('popover', 'manual');
       if (!overlay.matches(':popover-open')) overlay.showPopover();
     }
@@ -2180,7 +2189,7 @@
       '<button type="button" id="ann-cancel" aria-label="关闭标注">取消</button>' +
       '<button type="button" id="ann-save" class="dark" aria-label="发送标注">保存</button></div></div>';
     chromeLayer.appendChild(box);
-    if (typeof overlay.showPopover === 'function') {
+    if (overlay.hasAttribute('popover') && overlay.matches(':popover-open')) {
       overlay.hidePopover(); overlay.showPopover();
     }
     var ta = richAnnotationInput(box.querySelector('#ann-input'), m);
