@@ -91,6 +91,22 @@ export function buildWbTokensCss() {
   --wb-r-glass:14px; /* 浮动玻璃面板圆角（F2 配方；圆角阶梯之外的一档，只给这一族） */
   --wb-ease:cubic-bezier(.25,0,0,1);
   --wb-dur:.2s;
+
+  /* ── 层级阶梯（2026-09-17，ADR 0034）：workbench 外壳里每一个带 z-index 的元素都从这里挑一档，
+     代码里不写数字（src/workbench/layering.test.js 守）。.wb 是 isolation:isolate 的堆叠上下文，
+     页内各档只在它里面比；Portal 到 body 的浮层（float 档）与原生 dialog 的 top layer 天然在整个
+     外壳之上。值留空档，新元素先挑档，挑不到就在这里加一档并写清“谁用、压谁、不压谁”。
+     独立文档页不加载本文件，src/client/annotate.js 里写 var(--wb-z-*, N) 带兜底，N 必须与这里同值。 ── */
+  --wb-z-marks:10;          /* #ann-overlay 静止：钉子 / 命中框 / 结果蓝框 / hover ghost。在所有 shell 浮层之下 */
+  --wb-z-panel:20;          /* .wb-side 左栏玻璃面板；#wb-ann-gutter 同层 */
+  --wb-z-dock:30;           /* .wb-splitter；#wbdock（按需列表 / detail 停靠槽） */
+  --wb-z-hud:40;            /* .wb-canvas-dock（section nav + minimap） */
+  --wb-z-marks-active:50;   /* #ann-overlay 抬升态（选中气泡 / composer / flash）：压过面板、停靠槽、HUD，不压横条（ADR 0031 “列表不盖被定位气泡”） */
+  --wb-z-strip:60;          /* .wb-strip 底部横条：页内 shell 最上 */
+  --wb-z-float:100;         /* Portal 到 body 的浮层：tooltip / row-menu / PageSortMenu */
+  --wb-z-float-2:110;       /* 从浮层里再开的菜单（AnnPopover more-menu） */
+  --wb-z-cap:30;            /* 画布内子阶梯（.wb-library 是 transform 上下文，只和帧内容比）：.wb-screen-cap.has-frame-menu */
+  --wb-z-frame-menu:50;     /* 画布内子阶梯：frame ⋯ 菜单面板 */
 }
 
 /* ── shadcn 主题桥（V0）：语义变量全部引用 --wb-*，本段是唯一映射点 ──

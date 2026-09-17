@@ -29,7 +29,7 @@ export var ROW_MENU_ITEM =
 
 // 浮层面板皮肤（定位类不含在内 —— frame-menu 自带绝对定位，这里由 Radix 定位）
 export var ROW_MENU_PANEL =
-  'z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]';
+  'z-(--wb-z-float) box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]';
 
 // 复制项：点击不关闭菜单（preventDefault），标签换「已复制 <全文>」1200ms
 function CopyMenuItem(props) {

@@ -152,6 +152,10 @@ shared / pages），被服务的内容住 `content/`（kits / previews），但�
 本节只记组件的**静态契约**；完整故障案例（现象 → 误判 → 根因 → 识别特征）归
 [`docs/debugging.md`](docs/debugging.md)。
 
+**层级（z-index）** —— 外壳里的 z-index 一律走 `--wb-z-*` 阶梯，不写数字；`.wb` 是隔离的堆叠上下文，
+`.wb-stage-wrap` 永远不能成为堆叠上下文。阶梯表与两条规则在 [`docs/design.md`](docs/design.md) “层级”一节，
+`src/workbench/layering.test.js` 守；来龙去脉见 ADR 0034。
+
 **模板与实例的边界** —— 进 git 的只有模板：框架代码、Example Library、system 组件，
 `content/previews/` 里只放这些。owner 在这台机器上的东西靠 `.git/info/exclude` 挡在 git 之外，
 清单是：`prototypes/`（设计探索页，经 registry 登记进 Pages）、`tasks/`、`BACKLOG.md`、`TODO.md`、

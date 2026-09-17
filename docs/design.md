@@ -62,6 +62,32 @@
 - **画布 dock**（section-nav + minimap）停在画布右下角、横条正上方。它不在横条正上方，因为那是底部 composer 的地盘。
 - **浮起的 chrome 不许压住内容**。fit-to-view、回中、定位、首访聚焦都在“视口减掉 chrome 实际 bounding box”的可用区里算（`board-nav` 的 `chromeInsets`，量的是实际矩形而不是 token 常量，折叠与拖宽自动跟上）；composer 两侧按实际占位让开。这条只管画布：**文档形态不让位**——文档 1:1 铺满整个视口，面板与横条照样浮在文档上，文档底下不露画布（owner 2026-09-05：“html 不需要画布承载；我预期这个侧栏是 float 在画布上的，而不是挤压 html 的位置”；09-04 那版把 stage 收成让开左栏与横条的一栏，已撤）。被面板压住的正文靠收起面板来看。几何断言一律比 bounding box，不靠可见性断言（ADR 0023）。
 
+## 层级
+
+外壳里每一个带 z-index 的元素都从 `--wb-z-*` 阶梯挑一档（`scripts/build-wb-tokens.mjs` 生成 `src/workbench/wb-tokens.css`），代码里不写数字。2026-09-17 定，见 [adr/0034](adr/0034-named-z-scale-and-stacking-rules.md)。
+
+| token | 值 | 元素 | 压谁 / 不压谁 |
+|---|---|---|---|
+| `--wb-z-marks` | 10 | `#ann-overlay` 静止：钉子、命中框、结果蓝框、hover ghost | 在所有 shell 浮层之下 |
+| `--wb-z-panel` | 20 | `.wb-side` 左栏玻璃面板；`#wb-ann-gutter` | 压静止的钉子 |
+| `--wb-z-dock` | 30 | `.wb-splitter`；`#wbdock`（按需列表 / detail 停靠槽） | 压面板 |
+| `--wb-z-hud` | 40 | `.wb-canvas-dock`（section nav + minimap） | 压停靠槽 |
+| `--wb-z-marks-active` | 50 | `#ann-overlay` 抬升态：选中气泡、composer、flash | 压面板、停靠槽、HUD；不压横条（ADR 0031：列表不盖被定位的气泡） |
+| `--wb-z-strip` | 60 | `.wb-strip` 底部横条 | 页内 shell 最上 |
+| `--wb-z-float` | 100 | Portal 到 body 的浮层：tooltip、row-menu、PageSortMenu | 在整个外壳之上 |
+| `--wb-z-float-2` | 110 | 从浮层里再开的菜单（AnnPopover 的“···”） | 压 float |
+| `--wb-z-cap` | 30 | `.wb-screen-cap.has-frame-menu` | 画布内子阶梯：`.wb-library` 是 transform 上下文，只和帧内容比 |
+| `--wb-z-frame-menu` | 50 | frame “···”菜单面板 | 画布内子阶梯，压 cap |
+
+阶梯之外的两层不编号。**top layer** = 原生 `<dialog>` showModal（导出 picker 等）与 `#ann-overlay` 挂进 modal 或挂在 body 时的 popover。**客座层** = `#ann-toolbar` / `#ann-sidebar` / `#ann-export-overlay` 的 21474836xx：注入到别人页面时和宿主竞争用的，workbench 里不出现，数字保留不动。
+
+两条结构规则，`src/workbench/layering.test.js` 解析源码守，`e2e/workbench.spec.js` 读计算样式守：
+
+- R1 `.wb { isolation:isolate; }`：外壳自成一个堆叠上下文，页内各档只在它里面比；body 上的 portal 与 top layer 天然在整个外壳之上。
+- R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#wb-ann-gutter`、`#wbdock`、`.wb-canvas-dock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
+
+新元素先挑 token；没有合适的档就在 `build-wb-tokens.mjs` 里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 内部（`#ann-marks`、`#ann-tip`、气泡、`#ann-box`、`#ann-chrome` 等）的 z-index 只在 `#ann-overlay` 内部比，不进阶梯。
+
 ## 左栏结构
 
 从上到下：head → 搜索 → 段 → 行。设置视图在同一块面板里整屏替换（齿轮进，头部“‹ 预览”返回）。
@@ -109,7 +135,7 @@
 - **弹出列表**（“这页的标注”）：头部保留标题、总数和“···”；显示方式只通过菜单选项的勾选表达，不重复显示状态。分割线下为“清空标注”和“清空无效标注”，两次确认，确认文案显示数量。清空无效只处理当前 page 所有原目标与结果目标都失效的标注；隐藏、未加载、显式删除的执行记录保留。
 - 整行点击定位并打开标注，列表随之关闭。行尾垃圾桶首次变为“确认”，再次点击删除；关闭或失焦复位。
 - **输入框**：按照目标 DOM 完整边界弹出，多目标整体避让，随滚动更新；空间不足停靠底部，不自动移动画布。正文以目标 pill 与文本混排，附图在上，正文自动增高最多十行，超出内部滚动。底部左侧 `+` 收纳改文案与移动，右侧删除图标（已有标注）、取消与黑色保存按钮；顶部不重复展示编号、section 和目标文本。整体使用白底、26px 圆角、细边框与弱阴影，输入区无独立底色或聚焦描边。引用 pill 最宽 120px，完整文本通过 hover 查看（2026-09-08）；所选意图用可移除 pill 表达。没有引用模式切换、顶部 indicator 条或拖动区。保留图片粘贴及移除。
-- 浮层使用 top layer；原生 modal 内标注时，输入框保持在该 modal 的可交互子树中。关闭 modal 后恢复页面挂载。
+- 输入框只在两种挂法下进 top layer：挂进原生 modal，或挂在 body（独立文档页）。在 workbench 里它留在 `.wb-stage-wrap`，按“层级”一节的阶梯排。原生 modal 内标注时，输入框保持在该 modal 的可交互子树中。关闭 modal 后恢复页面挂载。
 - **执行结果**：结果 DOM 蓝框带原标注序号；增加/修改/移动/删除写入同一标注的执行记录，删除明确显示“已删除”。蓝框表示 agent 的操作位置，不表示用户接受。不做追加评论、stacked blocks 或版本历史；不满意时删除再标。
 - 锚点失效 = 整卡红描边 + 红浅面 + 文本退灰 + 序号钉转红，不用 tag。
 

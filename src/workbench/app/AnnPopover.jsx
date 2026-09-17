@@ -165,7 +165,7 @@ export function AnnPopover() {
                 （DOM 断言全绿、人点不到，与 2026-08-17 ScrollArea 同形）。 */}
             <DropdownMenu.Portal>
             <DropdownMenu.Content asChild align="end" sideOffset={4} collisionPadding={12}>
-              <div className="wb-ann-more-menu z-[60] min-w-[148px] rounded-lg bg-card p-1 shadow-[var(--wb-sh-3)]">
+              <div className="wb-ann-more-menu z-(--wb-z-float-2) min-w-[148px] rounded-lg bg-card p-1 shadow-[var(--wb-sh-3)]">
                 {BUBBLE_MODES.map(function (m) {
                   var sel = bubbleMode === m[0];
                   return (

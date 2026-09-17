@@ -29,7 +29,11 @@
   /* 外壳（2026-09-04 重设计，评审板 F2 + G1）：画布满铺整个视口，chrome 全是
      压在它上面的浮层 —— 左栏玻璃面板、底部横条、按需弹出的列表 / detail。
      .wb 只当定位容器，不再是 flex 三栏。 */
-  .wb { position:relative; height:100vh; overflow:hidden; }
+  /* R1（ADR 0034）：.wb 自成一个堆叠上下文（isolation:isolate）。页内所有 z-index 只在它里面比，
+     取值一律走 --wb-z 阶梯（src/workbench/wb-tokens.css，表见 docs/design.md “层级”）；Portal 到 body
+     的浮层（--wb-z-float）与原生 dialog 的 top layer 天然在整个外壳之上。
+     src/workbench/layering.test.js 解析本规则守这条。 */
+  .wb { position:relative; isolation:isolate; height:100vh; overflow:hidden; }
 
   /* 左栏 = 浮动玻璃面板（2026-09-04 重设计：F2 磨砂 + G1b 几何）。
      位置：四缘距视口 --wb-chrome-gap；下沿停在底部横条上方同一间距
@@ -44,7 +48,7 @@
     box-shadow:inset 0 .5px 0 rgba(255,255,255,.6), var(--wb-sh-3);
   }
   .wb-side {
-    position:absolute; z-index:6;
+    position:absolute; z-index:var(--wb-z-panel);
     left:var(--wb-chrome-gap); top:var(--wb-chrome-gap);
     bottom:calc(var(--wb-strip-h) + var(--wb-chrome-gap) * 2);
     width:var(--wb-side-w);
@@ -60,7 +64,7 @@
      常态不画线 —— 画布上不该有一条无来由的竖线；hover / 拖拽中才现出握把。
      折叠态贴左缘变成一条「点开」条（单击展开，拖动跟手）。 */
   .wb-splitter {
-    position:absolute; z-index:7;
+    position:absolute; z-index:var(--wb-z-dock);
     left:calc(var(--wb-chrome-gap) + var(--wb-side-w) - 2px);
     top:var(--wb-chrome-gap);
     bottom:calc(var(--wb-strip-h) + var(--wb-chrome-gap) * 2);
@@ -365,6 +369,12 @@
   /* 画布背景（2026-08-15 V2 图纸人格）：24/120 双线网格钉在不滚动的 wrap 上
      （屏空间固定 —— pan/zoom 不带动、无 moiré），#wbstage 透明透出。
      2026-09-05 起只有这一档：圆点纸 / 空白两档与「画布」设置一起退役。 */
+  /* R2（ADR 0034）：.wb-stage-wrap 永远不能成为堆叠上下文 —— 本规则不许出现 z-index / transform /
+     filter / backdrop-filter / opacity<1 / contain / isolation / will-change / perspective /
+     mix-blend-mode / clip-path / mask。它的孩子（#wbstage、#ann-overlay、#wb-ann-gutter、#wbdock、
+     .wb-canvas-dock）靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错；它一旦成了上下文，这些孩子会被
+     整体压到面板之下或之上。
+     src/workbench/layering.test.js 解析本规则守这条。 */
   .wb-stage-wrap {
     position:absolute; inset:0; display:flex; min-height:0;
     background-color:var(--wb-stage-bg);
@@ -392,7 +402,7 @@
      这里只留容器几何与材质。--wb-strip-w 由 Strip.jsx 量测回写在 :root 上，
      dock 与弹出列表靠它对齐横条两端。 */
   .wb-strip {
-    position:absolute; z-index:10;
+    position:absolute; z-index:var(--wb-z-strip);
     left:50%; transform:translateX(-50%);
     bottom:var(--wb-chrome-gap);
     height:var(--wb-strip-h); max-width:calc(100% - var(--wb-chrome-gap) * 2);
@@ -405,7 +415,7 @@
   /* 按需浮层的停靠槽（弹出的标注列表 / detail 面板）：横条右端正上方。
      容器本身不吃事件，只有里面的卡片吃。 */
   #wbdock {
-    position:absolute; z-index:7; inset:0; pointer-events:none;
+    position:absolute; z-index:var(--wb-z-dock); inset:0; pointer-events:none;
   }
   .wb-dock-card {
     position:absolute; pointer-events:auto;
@@ -421,7 +431,7 @@
      右下浮层槽（#wbdock 贴横条右端，x 落在横条内），两块卡不打架。 */
   .wb-canvas-dock {
     --wb-canvas-nav-w:232px;
-    position:absolute; z-index:8;
+    position:absolute; z-index:var(--wb-z-hud);
     right:var(--wb-chrome-gap);
     bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
     max-height:calc(100% - var(--wb-strip-h) - 60px);
@@ -819,7 +829,7 @@
      出没不推版面，按钮始终在 tab 序里（visibility/display 会把它踢出去）。
      shell 保持 position:static —— 菜单面板的绝对定位因此落在 caption 上（左对齐、
      宽度进得去），而不是跟着这颗按钮在行里滑来滑去。 */
-  .wb-screen-cap.has-frame-menu { position:relative; z-index:30; min-height:30px; }
+  .wb-screen-cap.has-frame-menu { position:relative; z-index:var(--wb-z-cap); min-height:30px; }
   .wb-frame-menu-shell {
     flex:none; align-self:center;
     width:30px; height:30px;

@@ -158,7 +158,7 @@ function ensureGutterOverlay() {
   gutterOverlay = document.createElement('div');
   gutterOverlay.id = 'wb-ann-gutter';
   gutterOverlay.setAttribute('data-ann-ui', '');
-  gutterOverlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:6;display:none;';
+  gutterOverlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-panel);display:none;';
   var style = document.createElement('style');
   style.setAttribute('data-ann-ui', '');
   style.textContent = ''

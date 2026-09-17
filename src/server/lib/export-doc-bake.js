@@ -150,6 +150,7 @@ export function buildExportBakeScript(annotations, opts) {
         + (bubbles && docW > 0
           ? 'body{padding-right:' + GUTTER_W + 'px !important;}'
           : '')
+        // 客座层：烘焙进导出文件、与宿主页面的 z-index 竞争，不进 --wb-z 阶梯。
         + '#ann-export-overlay{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:2147483000;}'
         + '#ann-export-overlay .ann-target,#ann-export-overlay .ann-frame,'
         + '#ann-export-overlay .ann-badge{position:absolute;pointer-events:none;}'
@@ -381,6 +382,7 @@ export function injectBakedCommentsHtml(sourceHtml, overlayHtml) {
   let html = stripAnnotateBootstrap(sourceHtml);
   const styleBlock = `<style data-export-comments>${exportMarkCss()}`
     + `body{position:relative;}`
+    // 客座层：与上面 buildExportBakeScript 那处同理，不进 --wb-z 阶梯。
     + `#ann-export-overlay{position:absolute;left:0;top:0;width:100%;pointer-events:none;z-index:2147483000;}`
     + `#ann-export-overlay .ann-target,#ann-export-overlay .ann-frame,`
     + `#ann-export-overlay .ann-badge{position:absolute;pointer-events:none;}`

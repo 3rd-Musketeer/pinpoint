@@ -1934,6 +1934,21 @@ test('钉子和命中框画在底部横条之下，横条永远在最上（2026-
     return { parent: overlay.parentElement.className, popover: overlay.matches(':popover-open') };
   })).toEqual({ parent: 'wb-stage-wrap', popover: false });
 
+  // R1 / R2（ADR 0034）：.wb 是隔离的堆叠上下文；.wb-stage-wrap 不是堆叠上下文，
+  // 它的孩子才能靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错。
+  expect(await page.evaluate(() => {
+    const wrap = getComputedStyle(document.querySelector('.wb-stage-wrap'));
+    const wb = getComputedStyle(document.querySelector('.wb'));
+    return {
+      wrapZIndex: wrap.zIndex, wrapTransform: wrap.transform, wrapFilter: wrap.filter,
+      wrapBackdropFilter: wrap.backdropFilter, wrapOpacity: wrap.opacity, wrapIsolation: wrap.isolation,
+      wrapContain: wrap.contain, wbIsolation: wb.isolation,
+    };
+  })).toEqual({
+    wrapZIndex: 'auto', wrapTransform: 'none', wrapFilter: 'none', wrapBackdropFilter: 'none',
+    wrapOpacity: '1', wrapIsolation: 'auto', wrapContain: 'none', wbIsolation: 'isolate',
+  });
+
   // 把钉子滚到横条正后方：横条中心那一点命中的必须是横条，不是钉子
   await page.evaluate(() => {
     const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
@@ -1951,6 +1966,106 @@ test('钉子和命中框画在底部横条之下，横条永远在最上（2026-
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
+// 命中分类：一个点上最先吃到事件的是谁。overlay 本身 pointer-events:none，所以命中的
+// 只会是气泡 / 钉子 / composer 这些 pointer-events:auto 的孩子，或外壳的浮层。
+const HIT_AT = `(x, y) => {
+  const hit = document.elementFromPoint(x, y);
+  if (!hit) return 'none';
+  if (hit.closest('.ann-bubble')) return 'bubble';
+  if (hit.closest('#ann-box')) return 'composer';
+  if (hit.closest('#wbann-pop')) return 'list';
+  if (hit.closest('#wbstrip')) return 'strip';
+  if (hit.closest('[role="menu"]')) return 'menu';
+  return hit.id || hit.className || hit.tagName;
+}`;
+
+// 把钉子滚到 (x, y)，等 overlay 重排到位，再把鼠标放上去点亮气泡。
+// 列表定位（整行点击）会把那条标注换成 composer，钉子和气泡都不在；点亮的气泡只有 hover 这一条路，
+// 与上面 1992 行那条数值比较用的是同一个触发。
+async function parkBadgeAndHover(page, x, y) {
+  await page.evaluate(([x, y]) => {
+    const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+    const stage = document.querySelector('#wbstage');
+    stage.scrollTop += (badge.top + badge.height / 2) - y;
+    stage.scrollLeft += (badge.left + badge.width / 2) - x;
+  }, [x, y]);
+  await expect.poll(() => page.evaluate(([x, y]) => {
+    const b = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+    return Math.abs(b.left + b.width / 2 - x) < 2 && Math.abs(b.top + b.height / 2 - y) < 2;
+  }, [x, y])).toBe(true);
+  await page.mouse.move(x, y);
+  await expect(page.locator('#ann-bubbles .ann-bubble--show')).toHaveCount(1);
+}
+
+test('点亮的气泡压过弹出列表，滚到横条后面则被横条压住（ADR 0031 批注 2 / ADR 0034）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'bubble over list mark');
+  await openAnnList(page);
+  await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
+
+  // 钉子停在列表卡左缘外 20px、卡的中线上：钉子本身露着能 hover，气泡（摆在钉子右边）伸到卡后面
+  const pop = await page.locator('#wbann-pop').boundingBox();
+  await parkBadgeAndHover(page, pop.x - 20, pop.y + pop.height / 2);
+
+  // 抬升态 overlay 取 --wb-z-marks-active（50）：高于停靠槽 --wb-z-dock（30），低于横条 --wb-z-strip（60）
+  expect(await page.evaluate(() => ({
+    overlay: getComputedStyle(document.querySelector('#ann-overlay')).zIndex,
+    dock: getComputedStyle(document.getElementById('wbdock')).zIndex,
+    strip: getComputedStyle(document.getElementById('wbstrip')).zIndex,
+  }))).toEqual({ overlay: '50', dock: '30', strip: '60' });
+
+  // 气泡中心在列表卡的矩形里，命中的必须是气泡，不是列表卡
+  expect(await page.evaluate((hitSrc) => {
+    const hitAt = eval(hitSrc);
+    const r = document.querySelector('#ann-bubbles .ann-bubble--show').getBoundingClientRect();
+    const pop = document.querySelector('#wbann-pop').getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    if (cx < pop.left || cx > pop.right || cy < pop.top || cy > pop.bottom) return 'bubble-not-behind-list';
+    return hitAt(cx, cy);
+  }, HIT_AT)).toBe('bubble');
+
+  // 再把钉子停在横条左缘外 20px、横条中线上：气泡伸到横条后面，命中的必须是横条
+  const strip = await page.locator('#wbstrip').boundingBox();
+  await parkBadgeAndHover(page, strip.x - 20, strip.y + strip.height / 2);
+  expect(await page.evaluate((hitSrc) => {
+    const hitAt = eval(hitSrc);
+    const r = document.querySelector('#ann-bubbles .ann-bubble--show').getBoundingClientRect();
+    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
+    if (cx < strip.left || cx > strip.right || cy < strip.top || cy > strip.bottom) return 'bubble-not-behind-strip';
+    return hitAt(cx, cy);
+  }, HIT_AT)).toBe('strip');
+
+  await page.mouse.move(5, 5);
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await closeAnnList(page);
+});
+
+test('左栏行右键菜单 Portal 在外壳之上：菜单中心命中菜单（ADR 0034 float 档）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.getByRole('tab', { name: '页面', exact: true }).click();
+  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click({ button: 'right' });
+  const menu = page.locator('[role="menu"]');
+  await expect(menu).toBeVisible();
+  expect(await page.evaluate((hitSrc) => {
+    const hitAt = eval(hitSrc);
+    const m = document.querySelector('[role="menu"]');
+    const r = m.getBoundingClientRect();
+    return {
+      hit: hitAt(r.left + r.width / 2, r.top + r.height / 2),
+      zIndex: getComputedStyle(m).zIndex,          // Tailwind z-(--wb-z-float) 真的生成了
+      portaled: !m.closest('.wb'),                 // 在 body 上，不在 .wb 的隔离上下文里
+    };
+  }, HIT_AT)).toEqual({ hit: 'menu', zIndex: '100', portaled: true });
+  await page.keyboard.press('Escape');
+  await expect(menu).toHaveCount(0);
 });
 
 test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async ({ page }) => {

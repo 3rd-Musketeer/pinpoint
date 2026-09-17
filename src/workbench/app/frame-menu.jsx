@@ -59,7 +59,7 @@ function FrameMenu(props) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Content asChild>
         <span role="menu" tabIndex={-1}
-          className="wb-frame-menu absolute left-0 top-[35px] z-50 box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
+          className="wb-frame-menu absolute left-0 top-[35px] z-(--wb-z-frame-menu) box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
           <DropdownMenu.Item asChild onSelect={function (event) { event.preventDefault(); copyFrameRef(); }}>
             <button type="button" className={'wb-frame-menu-item ' + ROW_MENU_ITEM} role="menuitem" data-frame-copy>
               <span aria-hidden="true" className="w-[15px] text-center text-muted-foreground">@</span>

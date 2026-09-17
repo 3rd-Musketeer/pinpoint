@@ -978,6 +978,7 @@
        改这四个数要连 src/workbench/wb-tokens.css 的 --wb-glass / --wb-glass-blur /
        --wb-r-glass / --wb-sh-3 一起改，双端材质不许分家。 */
     '#ann-sidebar,#ann-toolbar{background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
+    // 客座层：注入到别人页面时与宿主的 z-index 竞争，workbench 里 hidden。数字保留，不进 --wb-z 阶梯。
     '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;padding:7px 12px;}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;font-weight:var(--wb-w-medium,500);height:28px;padding:0 10px;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-muted,#6b6b70);transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),box-shadow var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
@@ -993,6 +994,7 @@
     // 宽度 280 不变，工具条让位的 304 = 12 + 280 + 12。
     // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
+    // 客座层：与 #ann-toolbar 同理，数字保留，不进 --wb-z 阶梯。
     '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
@@ -1025,7 +1027,12 @@
     '#ann-sidebar .ann-sb-acts button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
-    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:5;overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
+    /* #ann-overlay 在 workbench 外壳里的层级取 --wb-z 阶梯（src/workbench/wb-tokens.css，ADR 0034）：
+       静止 = --wb-z-marks，抬升 = --wb-z-marks-active。带兜底值是因为独立文档页不加载
+       wb-tokens.css；兜底数必须与 token 同值，src/workbench/layering.test.js 逐一比对。
+       从这条起到 #ann-mention 为止，其余 z-index（1 / 2 / 3 / 4 / 5 / 6 / 10）只在 #ann-overlay
+       内部比，不进 --wb-z 阶梯，数字原样保留。 */
+    '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
@@ -1048,9 +1055,10 @@
     '#ann-bubbles .ann-bubble{opacity:0;pointer-events:none;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease;}',
     '#ann-bubbles .ann-bubble.ann-bubble--show{opacity:1;pointer-events:auto;transform:none;}',
     /* owner 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子点亮 / 有卡在显示 /
-       定位闪烁时，整个 overlay 升到列表（#wbdock，z-index 7）之上；平时留在它下面，
-       列表照常盖住画布。底部横条（z-index 10）永远在最上层，不受这条影响。 */
-    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:9;}',
+       定位闪烁时，整个 overlay 升到 --wb-z-marks-active，越过面板（--wb-z-panel）、停靠槽
+       （--wb-z-dock）与 HUD（--wb-z-hud）；平时留在 --wb-z-marks，列表照常盖住画布。
+       底部横条（--wb-z-strip）永远在最上层，不受这条影响。 */
+    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:var(--wb-z-marks-active,50);}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
     '#ann-lasso{position:absolute;border:2px dashed #f5a623;background:rgba(245,166,35,.1);border-radius:var(--wb-r-1,4px);pointer-events:none;}',
@@ -1133,8 +1141,9 @@
     // overlay 只在两种挂法下进 top layer：挂进原生 modal（modal 之外的节点都
     // inert，光靠 z-index 盖不住）；挂在 body（独立文档 / 汇报页 iframe，被评审的
     // 页面自己可能有 z-index 顶格的 fixed 弹窗，composer 得压得住）。挂在
-    // workbench 的 .wb-stage-wrap 里时按 z-index 排：钉子和命中框在外壳（浮动面板
-    // z6 / 停靠槽 z7-8 / 底部横条 z10）之下，选中气泡升到 z9 越过面板和停靠槽，
+    // workbench 的 .wb-stage-wrap 里时按 --wb-z 阶梯排（ADR 0034）：钉子和命中框在
+    // --wb-z-marks，低于面板（--wb-z-panel）、停靠槽（--wb-z-dock）、HUD（--wb-z-hud）
+    // 与横条（--wb-z-strip）；选中气泡升到 --wb-z-marks-active 越过面板、停靠槽和 HUD，
     // 横条永远在最上。2026-09-17 修：此前三种挂法都 showPopover，钉子和黄框画到
     // 横条上面。
     var topLayer = inModal || !stageWrap;
