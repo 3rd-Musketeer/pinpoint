@@ -1058,7 +1058,7 @@
        定位闪烁时，整个 overlay 升到 --wb-z-marks-active，越过面板（--wb-z-panel）、停靠槽
        （--wb-z-dock）与 HUD（--wb-z-hud）；平时留在 --wb-z-marks，列表照常盖住画布。
        底部横条（--wb-z-strip）永远在最上层，不受这条影响。 */
-    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:var(--wb-z-marks-active,50);}',
+    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash),#ann-overlay:has(#ann-box){z-index:var(--wb-z-marks-active,50);}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
     '#ann-lasso{position:absolute;border:2px dashed #f5a623;background:rgba(245,166,35,.1);border-radius:var(--wb-r-1,4px);pointer-events:none;}',
