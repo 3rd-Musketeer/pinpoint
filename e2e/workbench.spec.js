@@ -2068,6 +2068,69 @@ test('左栏行右键菜单 Portal 在外壳之上：菜单中心命中菜单（
   await expect(menu).toHaveCount(0);
 });
 
+test('写标注的输入框是外壳里最高的层：压过横条、列表卡与 section 导航（2026-09-18 owner 决定，ADR 0034）', async ({ page }) => {
+  await openWorkbench(page);
+  // 矮视口：输入框长到十行后停靠在底部，盒子必然压到横条、列表卡与右下导航上
+  await page.setViewportSize({ width: 900, height: 380 });
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), Array.from({ length: 12 }, (_, i) => 'line ' + (i + 1)).join('\n'));
+  await page.locator('#ann-marks .ann-badge').first().click();
+  const box = page.locator('#ann-box');
+  await expect(box).toBeVisible();
+  // 输入框开着时再开列表卡与 section 导航。用程序点击：横条中段的钮此时在输入框后面，
+  // 真实点击会被输入框吃掉（这正是本用例要证明的层级）。输入框不因这两下关闭。
+  await page.evaluate(() => { document.getElementById('wbann-count').click(); document.getElementById('wbsection-nav-toggle').click(); });
+  await expect(page.locator('#wbann-pop')).toBeVisible();
+  await expect(page.locator('#wbsection-nav')).toBeVisible();
+  await expect(box).toBeVisible();
+
+  // 挂法：#ann-chrome 是 overlay 在 .wb-stage-wrap 里的兄弟，取 --wb-z-composer 70；横条 60；overlay 不再因输入框抬升
+  expect(await page.evaluate(() => {
+    const chrome = document.getElementById('ann-chrome');
+    return {
+      chromeParent: chrome.parentElement.className,
+      chromeUi: chrome.hasAttribute('data-ann-ui'),
+      boxInOverlay: !!document.querySelector('#ann-overlay #ann-box'),
+      chromeZ: getComputedStyle(chrome).zIndex,
+      stripZ: getComputedStyle(document.getElementById('wbstrip')).zIndex,
+      overlayZ: getComputedStyle(document.getElementById('ann-overlay')).zIndex,
+    };
+  })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false, chromeZ: '70', stripZ: '60', overlayZ: '10' });
+
+  // 盒子中心、以及盒子与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
+  await expect.poll(() => page.evaluate((hitSrc) => {
+    const hitAt = eval(hitSrc);
+    const rect = (sel) => document.querySelector(sel).getBoundingClientRect();
+    const box = rect('#ann-box');
+    const inter = (a, b) => {
+      const l = Math.max(a.left, b.left), t = Math.max(a.top, b.top), r = Math.min(a.right, b.right), btm = Math.min(a.bottom, b.bottom);
+      return r - l > 4 && btm - t > 4 ? [(l + r) / 2, (t + btm) / 2] : null;
+    };
+    const out = { center: hitAt(box.left + box.width / 2, box.top + box.height / 2) };
+    for (const [name, sel] of [['strip', '#wbstrip'], ['list', '#wbann-pop'], ['nav', '#wbsection-nav']]) {
+      const p = inter(box, rect(sel));
+      out[name] = p ? hitAt(p[0], p[1]) : 'no-overlap';
+    }
+    return out;
+  }, HIT_AT)).toEqual({ center: 'composer', strip: 'composer', list: 'composer', nav: 'composer' });
+
+  // 打开输入框就是要打字：键入到达输入区
+  await page.keyboard.type(' typed');
+  await expect.poll(() => page.evaluate(() => {
+    const el = document.querySelector('#ann-box #ann-input');
+    return (el.value !== undefined ? el.value : el.textContent).trim();
+  })).toMatch(/ typed$/);
+
+  await page.keyboard.press('Escape');
+  await expect(box).toHaveCount(0);
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await closeAnnList(page);
+});
+
 test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());

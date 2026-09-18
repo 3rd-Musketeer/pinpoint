@@ -1030,15 +1030,17 @@
     /* #ann-overlay 在 workbench 外壳里的层级取 --wb-z 阶梯（src/workbench/wb-tokens.css，ADR 0034）：
        静止 = --wb-z-marks，抬升 = --wb-z-marks-active。带兜底值是因为独立文档页不加载
        wb-tokens.css；兜底数必须与 token 同值，src/workbench/layering.test.js 逐一比对。
-       从这条起到 #ann-mention 为止，其余 z-index（1 / 2 / 3 / 4 / 5 / 6 / 10）只在 #ann-overlay
-       内部比，不进 --wb-z 阶梯，数字原样保留。 */
+       #ann-chrome（lasso / tip / 输入框）取 --wb-z-composer：workbench 挂法下它是 overlay 的兄弟，
+       直接挂在 .wb-stage-wrap 里，所以能压过横条（2026-09-18 owner 决定：输入框最高）。
+       从这条起到 #ann-mention 为止，其余 z-index（1 / 2 / 3 / 4 / 5 / 6）只在 #ann-overlay 或
+       #ann-chrome 内部比，不进 --wb-z 阶梯，数字原样保留。 */
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
     '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
     '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
-    '#ann-chrome{position:absolute;inset:0;pointer-events:none;z-index:10;overflow:visible;}',
+    '#ann-chrome{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-composer,70);overflow:visible;}',
     // 锚点框/套索/序号徽章：琥珀是标注功能色（双端同值），只把圆角/阴影收进 token 阶梯。
     '.ann-hover-ghost{position:absolute;box-sizing:border-box;border:2px solid #f5a623;border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.07);pointer-events:none;z-index:1;}',
     '.ann-hover-ghost[hidden]{display:none;}',
@@ -1057,8 +1059,9 @@
     /* owner 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子点亮 / 有卡在显示 /
        定位闪烁时，整个 overlay 升到 --wb-z-marks-active，越过面板（--wb-z-panel）、停靠槽
        （--wb-z-dock）与 HUD（--wb-z-hud）；平时留在 --wb-z-marks，列表照常盖住画布。
-       底部横条（--wb-z-strip）永远在最上层，不受这条影响。 */
-    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash),#ann-overlay:has(#ann-box){z-index:var(--wb-z-marks-active,50);}',
+       底部横条（--wb-z-strip）在 overlay 之上，不受这条影响。输入框不靠这条：它在
+       #ann-chrome 里，workbench 挂法下 #ann-chrome 是 overlay 的兄弟（--wb-z-composer）。 */
+    '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:var(--wb-z-marks-active,50);}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
     '#ann-lasso{position:absolute;border:2px dashed #f5a623;background:rgba(245,166,35,.1);border-radius:var(--wb-r-1,4px);pointer-events:none;}',
@@ -1127,8 +1130,10 @@
   bubblesLayer.setAttribute('data-ann-ui', '');
   var hoverLayer = document.createElement('div');
   hoverLayer.id = 'ann-hover-layer';
+  // #ann-chrome 自带 data-ann-ui：workbench 挂法下它不在 overlay 里，命中排除
+  //（isUI）与 [data-ann-ui] 的 token / 字体基规则都要靠它自己这一个属性。
   var chromeLayer = document.createElement('div');
-  chromeLayer.id = 'ann-chrome';
+  chromeLayer.id = 'ann-chrome'; chromeLayer.setAttribute('data-ann-ui', '');
   overlay.appendChild(marksLayer);
   overlay.appendChild(bubblesLayer);
   overlay.appendChild(hoverLayer);
@@ -1144,23 +1149,31 @@
     // workbench 的 .wb-stage-wrap 里时按 --wb-z 阶梯排（ADR 0034）：钉子和命中框在
     // --wb-z-marks，低于面板（--wb-z-panel）、停靠槽（--wb-z-dock）、HUD（--wb-z-hud）
     // 与横条（--wb-z-strip）；选中气泡升到 --wb-z-marks-active 越过面板、停靠槽和 HUD，
-    // 横条永远在最上。2026-09-17 修：此前三种挂法都 showPopover，钉子和黄框画到
+    // 横条在钉子与气泡之上。2026-09-17 修：此前三种挂法都 showPopover，钉子和黄框画到
     // 横条上面。
+    // #ann-chrome（lasso / tip / 输入框）在 workbench 挂法下不留在 overlay 里，而是作为
+    // overlay 的兄弟直接挂在 .wb-stage-wrap 上，取 --wb-z-composer 压过横条（2026-09-18
+    // owner 决定：打开输入框就是要打字，什么都不能挡它）。两个盒子都是同一个父级的
+    // inset:0，所以 overlayOrigin() / overlay.getBoundingClientRect() 的坐标对 chrome 同样成立。
+    // modal 与 body 两种 top layer 挂法里 chrome 留在 overlay 内，随 popover 一起进 top layer。
     var topLayer = inModal || !stageWrap;
     if (typeof overlay.hidePopover === 'function' && overlay.matches(':popover-open')) overlay.hidePopover();
     overlay.removeAttribute('popover');
     if (inModal) {
       overlay.setAttribute('data-ann-viewport', '');
+      overlay.appendChild(chromeLayer);
       modal.appendChild(overlay);
     } else if (stageWrap) {
       overlay.removeAttribute('data-ann-viewport');
       stageWrap.appendChild(overlay);
+      stageWrap.appendChild(chromeLayer);
     } else {
       // 没有 workbench 舞台时（独立 HTML 文档、HTML 板 iframe 里的汇报页），overlay
       // 只能挂 body。此时 position:absolute + inset:0 的包含块是初始包含块——overlay
       // 锚在文档原点、尺寸只有一屏、还带 overflow:hidden，于是一往下滚，命中框和
       // 标注框全被裁掉，表现成「标注模式点了没反应」。贴视口即可，origin 恒为 (0,0)。
       overlay.setAttribute('data-ann-viewport', '');
+      overlay.appendChild(chromeLayer);
       document.body.appendChild(overlay);
     }
     if (topLayer && typeof overlay.showPopover === 'function') {
@@ -3326,7 +3339,7 @@
   }
 
   function renderAll() {
-    if (!overlay.isConnected) mountOverlay();
+    if (!overlay.isConnected || !chromeLayer.isConnected) mountOverlay();
     return withLiveTargets(function () {
       clearAnchorCache();
       if (!canvasStage() && frameResizeObserver) { frameResizeObserver.disconnect(); observedFrames.clear(); }
@@ -3880,7 +3893,7 @@
     syncError = false;
     // 5. SPA 路由可能重建挂载点：掉出文档则按原逻辑重挂（data-ann-viewport 两种
     //    模式的定位差异与 _originCache 失效由 mountOverlay 处理）
-    if (!overlay.isConnected) mountOverlay();
+    if (!overlay.isConnected || !chromeLayer.isConnected) mountOverlay();
     if (!toolbar.isConnected) document.body.appendChild(toolbar);
     if (sidebar && !sidebar.isConnected) document.body.appendChild(sidebar);
     // 6. hydrate 新账本

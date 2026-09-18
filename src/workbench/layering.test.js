@@ -40,17 +40,17 @@ const SCANNED = [
 // 允许名单：{ file, where: 命中行要匹配的正则, values: 允许的字面量, reason }。
 // where 对着含 z-index 的那一行文本测，所以多行拼接的 CSS 字符串要写 z-index 所在的那一行。
 const ALLOW = [
-  // #ann-overlay 内部序：只在 overlay 内部比，不进阶梯（annotate.js 那段 CSS 开头有同一句注释）。
+  // #ann-overlay / #ann-chrome 内部序：只在各自盒子内部比，不进阶梯（annotate.js 那段 CSS 开头有同一句注释）。
+  // #ann-chrome 本身取 --wb-z-composer（2026-09-18），不在名单里。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-marks,#ann-hover-layer\{/, values: ['1'], reason: 'overlay 内部序：钉子层 / hover 层' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-chrome\{/, values: ['10'], reason: 'overlay 内部序：chrome 层压过一切内部层' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-hover-ghost\{/, values: ['1'], reason: 'overlay 内部序：hover ghost' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-badge\{/, values: ['3'], reason: 'overlay 内部序：序号钉' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-target\{/, values: ['1'], reason: 'overlay 内部序：命中框' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-frame\{/, values: ['1'], reason: 'overlay 内部序：frame 框' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'overlay 内部序：提示' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'overlay 内部序：composer' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'overlay 内部序：composer 里的工具菜单' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-mention\{/, values: ['6'], reason: 'overlay 内部序：mention 下拉' },
+  { file: 'src/client/annotate.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'chrome 内部序：提示' },
+  { file: 'src/client/annotate.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
+  { file: 'src/client/annotate.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
+  { file: 'src/client/annotate.js', where: /^\s*'#ann-mention\{/, values: ['6'], reason: 'chrome 内部序：mention 下拉' },
   { file: 'src/client/annotate.js', where: /svg\.style\.cssText = 'position:absolute;pointer-events:none;z-index:2;'/, values: ['2'], reason: 'overlay 内部序：箭头 SVG' },
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },

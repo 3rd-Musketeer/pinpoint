@@ -49,3 +49,7 @@ Related: ADR 0031（外壳重设计，“列表不盖被定位气泡”那一条
 - 新元素先挑 token；挑不到就在 `build-wb-tokens.mjs` 加一档并写注释，重跑 `npm run build:tokens`。
 - `toggle-group.jsx` 的 `focus:z-10` 是组件内部序，留在允许名单里。
 - `docs/design.md` “钉子与评论卡”里“浮层使用 top layer”一句改为只在 modal / body 挂载时成立。
+- 2026-09-18 owner 决定：输入框最高。加一档 `--wb-z-composer` 70（横条 60 之上、float 100 之下）；workbench 挂法下
+  `#ann-chrome`（lasso / tip / 输入框）不再是 `#ann-overlay` 的孩子，而是它在 `.wb-stage-wrap` 里的兄弟，坐标不变
+  （两者都是同一父级的 inset:0）。modal / body 两种 top layer 挂法里 chrome 仍留在 overlay 内。
+  `--wb-z-marks-active` 从此只管点亮的气泡与 flash。

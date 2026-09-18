@@ -72,8 +72,9 @@
 | `--wb-z-panel` | 20 | `.wb-side` 左栏玻璃面板；`#wb-ann-gutter` | 压静止的钉子 |
 | `--wb-z-dock` | 30 | `.wb-splitter`；`#wbdock`（按需列表 / detail 停靠槽） | 压面板 |
 | `--wb-z-hud` | 40 | `.wb-canvas-dock`（section nav + minimap） | 压停靠槽 |
-| `--wb-z-marks-active` | 50 | `#ann-overlay` 抬升态：选中气泡、composer、flash | 压面板、停靠槽、HUD；不压横条（ADR 0031：列表不盖被定位的气泡） |
-| `--wb-z-strip` | 60 | `.wb-strip` 底部横条 | 页内 shell 最上 |
+| `--wb-z-marks-active` | 50 | `#ann-overlay` 抬升态：点亮的气泡、flash | 压面板、停靠槽、HUD；不压横条（ADR 0031：列表不盖被定位的气泡） |
+| `--wb-z-strip` | 60 | `.wb-strip` 底部横条 | shell 浮层里最上 |
+| `--wb-z-composer` | 70 | `#ann-chrome`：写标注的输入框及其 lasso / tip | 外壳里最高，压过横条；只有 portal 浮层与 top layer 在它之上（2026-09-18 owner 决定） |
 | `--wb-z-float` | 100 | Portal 到 body 的浮层：tooltip、row-menu、PageSortMenu | 在整个外壳之上 |
 | `--wb-z-float-2` | 110 | 从浮层里再开的菜单（AnnPopover 的“···”） | 压 float |
 | `--wb-z-cap` | 30 | `.wb-screen-cap.has-frame-menu` | 画布内子阶梯：`.wb-library` 是 transform 上下文，只和帧内容比 |
@@ -84,9 +85,9 @@
 两条结构规则，`src/workbench/layering.test.js` 解析源码守，`e2e/workbench.spec.js` 读计算样式守：
 
 - R1 `.wb { isolation:isolate; }`：外壳自成一个堆叠上下文，页内各档只在它里面比；body 上的 portal 与 top layer 天然在整个外壳之上。
-- R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#wb-ann-gutter`、`#wbdock`、`.wb-canvas-dock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
+- R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#ann-chrome`、`#wb-ann-gutter`、`#wbdock`、`.wb-canvas-dock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
 
-新元素先挑 token；没有合适的档就在 `build-wb-tokens.mjs` 里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 内部（`#ann-marks`、`#ann-tip`、气泡、`#ann-box`、`#ann-chrome` 等）的 z-index 只在 `#ann-overlay` 内部比，不进阶梯。
+新元素先挑 token；没有合适的档就在 `build-wb-tokens.mjs` 里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 与 chrome 内部（`#ann-marks`、气泡、`#ann-tip`、`#ann-box` 等）的 z-index 只在各自盒子内部比，不进阶梯。workbench 挂法下 `#ann-chrome` 是 `#ann-overlay` 在 `.wb-stage-wrap` 里的兄弟，两者同一父级 inset:0，坐标一致；modal / body 挂载时 chrome 留在 overlay 内随它进 top layer。
 
 ## 左栏结构
 
