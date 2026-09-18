@@ -1027,13 +1027,10 @@
     '#ann-sidebar .ann-sb-acts button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
-    /* #ann-overlay 在 workbench 外壳里的层级取 --wb-z 阶梯（src/workbench/wb-tokens.css，ADR 0034）：
-       静止 = --wb-z-marks，抬升 = --wb-z-marks-active。带兜底值是因为独立文档页不加载
-       wb-tokens.css；兜底数必须与 token 同值，src/workbench/layering.test.js 逐一比对。
-       #ann-chrome（lasso / tip / 输入框）取 --wb-z-composer：workbench 挂法下它是 overlay 的兄弟，
-       直接挂在 .wb-stage-wrap 里，所以能压过横条（2026-09-18 owner 决定：输入框最高）。
-       从这条起到 #ann-mention 为止，其余 z-index（1 / 2 / 3 / 4 / 5 / 6）只在 #ann-overlay 或
-       #ann-chrome 内部比，不进 --wb-z 阶梯，数字原样保留。 */
+    /* 层级走 --wb-z 阶梯（src/workbench/wb-tokens.css，ADR 0034）：#ann-overlay 静止 --wb-z-marks、
+       抬升 --wb-z-marks-active；#ann-chrome（lasso / tip / 输入框）--wb-z-composer，压过横条。
+       兜底数给不加载 wb-tokens.css 的独立文档页，必须与 token 同值（layering.test.js 比对）。
+       其余 z-index（1–6）只在 #ann-overlay 或 #ann-chrome 内部比，不进阶梯。 */
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
@@ -1056,11 +1053,8 @@
        视口外」那条既有规矩，两个语义不许合并。 */
     '#ann-bubbles .ann-bubble{opacity:0;pointer-events:none;transform:translateY(2px);transition:opacity .12s ease,transform .12s ease;}',
     '#ann-bubbles .ann-bubble.ann-bubble--show{opacity:1;pointer-events:auto;transform:none;}',
-    /* owner 批注 2：弹出的标注列表不能盖住被定位的气泡 —— 有钉子点亮 / 有卡在显示 /
-       定位闪烁时，整个 overlay 升到 --wb-z-marks-active，越过面板（--wb-z-panel）、停靠槽
-       （--wb-z-dock）与 HUD（--wb-z-hud）；平时留在 --wb-z-marks，列表照常盖住画布。
-       底部横条（--wb-z-strip）在 overlay 之上，不受这条影响。输入框不靠这条：它在
-       #ann-chrome 里，workbench 挂法下 #ann-chrome 是 overlay 的兄弟（--wb-z-composer）。 */
+    /* 弹出的标注列表不能盖住被定位的气泡（ADR 0031）：钉子点亮 / 气泡显示 / 定位闪烁时整个 overlay
+       升到 --wb-z-marks-active，越过面板、停靠槽与 HUD；横条仍在其上。输入框不靠这条，见 #ann-chrome。 */
     '#ann-overlay:has(.ann-badge--on),#ann-overlay:has(.ann-bubble--show),#ann-overlay:has(.ann-flash){z-index:var(--wb-z-marks-active,50);}',
     '.ann-target{position:absolute;box-sizing:border-box;border:2px solid rgba(245,166,35,.85);border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.05);pointer-events:none;z-index:1;}',
     '.ann-frame{position:absolute;box-sizing:border-box;border:2px dashed #f5a623;background:rgba(245,166,35,.06);border-radius:var(--wb-r-2,6px);pointer-events:none;z-index:1;}',
@@ -1141,44 +1135,24 @@
   bubblesLayer.style.display = renderComments ? '' : 'none';
   // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
   function mountOverlay(modal) {
+    // 三种挂法。workbench：overlay 与 chrome 都直接挂在 .wb-stage-wrap 里按 --wb-z 阶梯排
+    //（钉子在面板 / 横条之下，输入框在横条之上；两者同一父级 inset:0，坐标一致）。
+    // 原生 modal：modal 之外的节点都 inert，overlay 连同 chrome 挂进 modal 并进 top layer。
+    // 没有舞台（独立文档、汇报页 iframe）：挂 body、贴视口并进 top layer，压住被评审页面
+    // 自己的 fixed 弹窗；挂 body 时若不贴视口，absolute + inset:0 只覆盖第一屏，滚下去命中框全被裁掉。
     var stageWrap = document.querySelector('.wb-stage-wrap');
     var inModal = !!(modal && modal.matches('dialog:modal'));
-    // overlay 只在两种挂法下进 top layer：挂进原生 modal（modal 之外的节点都
-    // inert，光靠 z-index 盖不住）；挂在 body（独立文档 / 汇报页 iframe，被评审的
-    // 页面自己可能有 z-index 顶格的 fixed 弹窗，composer 得压得住）。挂在
-    // workbench 的 .wb-stage-wrap 里时按 --wb-z 阶梯排（ADR 0034）：钉子和命中框在
-    // --wb-z-marks，低于面板（--wb-z-panel）、停靠槽（--wb-z-dock）、HUD（--wb-z-hud）
-    // 与横条（--wb-z-strip）；选中气泡升到 --wb-z-marks-active 越过面板、停靠槽和 HUD，
-    // 横条在钉子与气泡之上。2026-09-17 修：此前三种挂法都 showPopover，钉子和黄框画到
-    // 横条上面。
-    // #ann-chrome（lasso / tip / 输入框）在 workbench 挂法下不留在 overlay 里，而是作为
-    // overlay 的兄弟直接挂在 .wb-stage-wrap 上，取 --wb-z-composer 压过横条（2026-09-18
-    // owner 决定：打开输入框就是要打字，什么都不能挡它）。两个盒子都是同一个父级的
-    // inset:0，所以 overlayOrigin() / overlay.getBoundingClientRect() 的坐标对 chrome 同样成立。
-    // modal 与 body 两种 top layer 挂法里 chrome 留在 overlay 内，随 popover 一起进 top layer。
-    var topLayer = inModal || !stageWrap;
-    if (typeof overlay.hidePopover === 'function' && overlay.matches(':popover-open')) overlay.hidePopover();
+    var host = inModal ? modal : (stageWrap || document.body);
+    var topLayer = host !== stageWrap;
+    var popoverApi = typeof overlay.showPopover === 'function';
+    if (popoverApi && overlay.matches(':popover-open')) overlay.hidePopover();
     overlay.removeAttribute('popover');
-    if (inModal) {
-      overlay.setAttribute('data-ann-viewport', '');
-      overlay.appendChild(chromeLayer);
-      modal.appendChild(overlay);
-    } else if (stageWrap) {
-      overlay.removeAttribute('data-ann-viewport');
-      stageWrap.appendChild(overlay);
-      stageWrap.appendChild(chromeLayer);
-    } else {
-      // 没有 workbench 舞台时（独立 HTML 文档、HTML 板 iframe 里的汇报页），overlay
-      // 只能挂 body。此时 position:absolute + inset:0 的包含块是初始包含块——overlay
-      // 锚在文档原点、尺寸只有一屏、还带 overflow:hidden，于是一往下滚，命中框和
-      // 标注框全被裁掉，表现成「标注模式点了没反应」。贴视口即可，origin 恒为 (0,0)。
-      overlay.setAttribute('data-ann-viewport', '');
-      overlay.appendChild(chromeLayer);
-      document.body.appendChild(overlay);
-    }
-    if (topLayer && typeof overlay.showPopover === 'function') {
+    overlay.toggleAttribute('data-ann-viewport', topLayer);
+    (topLayer ? overlay : stageWrap).appendChild(chromeLayer);
+    host.appendChild(overlay);
+    if (topLayer && popoverApi) {
       overlay.setAttribute('popover', 'manual');
-      if (!overlay.matches(':popover-open')) overlay.showPopover();
+      overlay.showPopover();
     }
     _originCache = null; // 挂载点/模式变了 origin 语义也变，缓存作废
   }
@@ -2211,9 +2185,8 @@
       '<button type="button" id="ann-cancel" aria-label="关闭标注">取消</button>' +
       '<button type="button" id="ann-save" class="dark" aria-label="发送标注">保存</button></div></div>';
     chromeLayer.appendChild(box);
-    if (overlay.hasAttribute('popover') && overlay.matches(':popover-open')) {
-      overlay.hidePopover(); overlay.showPopover();
-    }
+    // top layer 挂法：重开一次让 overlay 回到 top layer 栈顶，压过页面后开的 popover
+    if (overlay.matches(':popover-open')) { overlay.hidePopover(); overlay.showPopover(); }
     var ta = richAnnotationInput(box.querySelector('#ann-input'), m);
     var initialText = m._draft != null ? m._draft : contentToDisplay(annotationContent(m), markElementTargets(m));
     var missingRefs = markElementTargets(m).filter(function (target) { return initialText.indexOf(targetContentToDisplay('[@t:' + target.ref + ']', [target])) < 0; });

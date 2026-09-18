@@ -1968,22 +1968,34 @@ test('钉子和命中框画在底部横条之下，横条永远在最上（2026-
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
-// 命中分类：一个点上最先吃到事件的是谁。overlay 本身 pointer-events:none，所以命中的
-// 只会是气泡 / 钉子 / composer 这些 pointer-events:auto 的孩子，或外壳的浮层。
-const HIT_AT = `(x, y) => {
-  const hit = document.elementFromPoint(x, y);
-  if (!hit) return 'none';
-  if (hit.closest('.ann-bubble')) return 'bubble';
-  if (hit.closest('#ann-box')) return 'composer';
-  if (hit.closest('#wbann-pop')) return 'list';
-  if (hit.closest('#wbstrip')) return 'strip';
-  if (hit.closest('[role="menu"]')) return 'menu';
-  return hit.id || hit.className || hit.tagName;
-}`;
+// 命中分类：(x, y) 上最先吃到事件的是谁。overlay 本身 pointer-events:none，命中的只会是
+// 气泡 / 钉子 / 输入框这些 pointer-events:auto 的孩子，或外壳的浮层。
+function hitKindAt(page, point) {
+  return page.evaluate(([x, y]) => {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit) return 'none';
+    if (hit.closest('.ann-bubble')) return 'bubble';
+    if (hit.closest('#ann-box')) return 'composer';
+    if (hit.closest('#wbann-pop')) return 'list';
+    if (hit.closest('#wbstrip')) return 'strip';
+    if (hit.closest('[role="menu"]')) return 'menu';
+    return hit.id || hit.className || hit.tagName;
+  }, point);
+}
+
+// a 与 b 两个元素矩形交集的中心；不相交（或交集窄于 4px）返回 null。
+function overlapCenter(page, selA, selB) {
+  return page.evaluate(([a, b]) => {
+    const ra = document.querySelector(a).getBoundingClientRect();
+    const rb = document.querySelector(b).getBoundingClientRect();
+    const l = Math.max(ra.left, rb.left), t = Math.max(ra.top, rb.top);
+    const r = Math.min(ra.right, rb.right), btm = Math.min(ra.bottom, rb.bottom);
+    return r - l > 4 && btm - t > 4 ? [(l + r) / 2, (t + btm) / 2] : null;
+  }, [selA, selB]);
+}
 
 // 把钉子滚到 (x, y)，等 overlay 重排到位，再把鼠标放上去点亮气泡。
-// 列表定位（整行点击）会把那条标注换成 composer，钉子和气泡都不在；点亮的气泡只有 hover 这一条路，
-// 与上面 1992 行那条数值比较用的是同一个触发。
+// 列表定位（整行点击）会把那条标注换成输入框，钉子和气泡都不在；点亮气泡只有 hover 这一条路。
 async function parkBadgeAndHover(page, x, y) {
   await page.evaluate(([x, y]) => {
     const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
@@ -2020,27 +2032,17 @@ test('点亮的气泡压过弹出列表，滚到横条后面则被横条压住�
     strip: getComputedStyle(document.getElementById('wbstrip')).zIndex,
   }))).toEqual({ overlay: '50', dock: '30', strip: '60' });
 
-  // 气泡中心在列表卡的矩形里，命中的必须是气泡，不是列表卡
-  expect(await page.evaluate((hitSrc) => {
-    const hitAt = eval(hitSrc);
-    const r = document.querySelector('#ann-bubbles .ann-bubble--show').getBoundingClientRect();
-    const pop = document.querySelector('#wbann-pop').getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (cx < pop.left || cx > pop.right || cy < pop.top || cy > pop.bottom) return 'bubble-not-behind-list';
-    return hitAt(cx, cy);
-  }, HIT_AT)).toBe('bubble');
+  // 气泡与列表卡相交处，命中的必须是气泡，不是列表卡
+  const overList = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbann-pop');
+  expect(overList).not.toBeNull();
+  expect(await hitKindAt(page, overList)).toBe('bubble');
 
   // 再把钉子停在横条左缘外 20px、横条中线上：气泡伸到横条后面，命中的必须是横条
   const strip = await page.locator('#wbstrip').boundingBox();
   await parkBadgeAndHover(page, strip.x - 20, strip.y + strip.height / 2);
-  expect(await page.evaluate((hitSrc) => {
-    const hitAt = eval(hitSrc);
-    const r = document.querySelector('#ann-bubbles .ann-bubble--show').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    const cx = r.left + r.width / 2, cy = r.top + r.height / 2;
-    if (cx < strip.left || cx > strip.right || cy < strip.top || cy > strip.bottom) return 'bubble-not-behind-strip';
-    return hitAt(cx, cy);
-  }, HIT_AT)).toBe('strip');
+  const overStrip = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbstrip');
+  expect(overStrip).not.toBeNull();
+  expect(await hitKindAt(page, overStrip)).toBe('strip');
 
   await page.mouse.move(5, 5);
   await page.evaluate(() => window.pinpoint.clear());
@@ -2054,16 +2056,12 @@ test('左栏行右键菜单 Portal 在外壳之上：菜单中心命中菜单（
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click({ button: 'right' });
   const menu = page.locator('[role="menu"]');
   await expect(menu).toBeVisible();
-  expect(await page.evaluate((hitSrc) => {
-    const hitAt = eval(hitSrc);
-    const m = document.querySelector('[role="menu"]');
-    const r = m.getBoundingClientRect();
-    return {
-      hit: hitAt(r.left + r.width / 2, r.top + r.height / 2),
-      zIndex: getComputedStyle(m).zIndex,          // Tailwind z-(--wb-z-float) 真的生成了
-      portaled: !m.closest('.wb'),                 // 在 body 上，不在 .wb 的隔离上下文里
-    };
-  }, HIT_AT)).toEqual({ hit: 'menu', zIndex: '100', portaled: true });
+  const box = await menu.boundingBox();
+  expect(await hitKindAt(page, [box.x + box.width / 2, box.y + box.height / 2])).toBe('menu');
+  expect(await menu.evaluate((m) => ({
+    zIndex: getComputedStyle(m).zIndex, // Tailwind z-(--wb-z-float) 真的生成了
+    portaled: !m.closest('.wb'),        // 在 body 上，不在 .wb 的隔离上下文里
+  }))).toEqual({ zIndex: '100', portaled: true });
   await page.keyboard.press('Escape');
   await expect(menu).toHaveCount(0);
 });
@@ -2100,22 +2098,12 @@ test('写标注的输入框是外壳里最高的层：压过横条、列表卡�
     };
   })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false, chromeZ: '70', stripZ: '60', overlayZ: '10' });
 
-  // 盒子中心、以及盒子与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
-  await expect.poll(() => page.evaluate((hitSrc) => {
-    const hitAt = eval(hitSrc);
-    const rect = (sel) => document.querySelector(sel).getBoundingClientRect();
-    const box = rect('#ann-box');
-    const inter = (a, b) => {
-      const l = Math.max(a.left, b.left), t = Math.max(a.top, b.top), r = Math.min(a.right, b.right), btm = Math.min(a.bottom, b.bottom);
-      return r - l > 4 && btm - t > 4 ? [(l + r) / 2, (t + btm) / 2] : null;
-    };
-    const out = { center: hitAt(box.left + box.width / 2, box.top + box.height / 2) };
-    for (const [name, sel] of [['strip', '#wbstrip'], ['list', '#wbann-pop'], ['nav', '#wbsection-nav']]) {
-      const p = inter(box, rect(sel));
-      out[name] = p ? hitAt(p[0], p[1]) : 'no-overlap';
-    }
-    return out;
-  }, HIT_AT)).toEqual({ center: 'composer', strip: 'composer', list: 'composer', nav: 'composer' });
+  // 输入框与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
+  for (const sel of ['#wbstrip', '#wbann-pop', '#wbsection-nav']) {
+    const point = await overlapCenter(page, '#ann-box', sel);
+    expect(point, sel + ' overlaps the composer').not.toBeNull();
+    await expect.poll(() => hitKindAt(page, point)).toBe('composer');
+  }
 
   // 打开输入框就是要打字：键入到达输入区
   await page.keyboard.type(' typed');

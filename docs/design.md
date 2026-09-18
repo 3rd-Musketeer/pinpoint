@@ -64,7 +64,7 @@
 
 ## 层级
 
-外壳里每一个带 z-index 的元素都从 `--wb-z-*` 阶梯挑一档（`scripts/build-wb-tokens.mjs` 生成 `src/workbench/wb-tokens.css`），代码里不写数字。2026-09-17 定，见 [adr/0034](adr/0034-named-z-scale-and-stacking-rules.md)。
+外壳里每一个带 z-index 的元素都从 `--wb-z-*` 阶梯挑一档（`scripts/build-wb-tokens.mjs` 生成 `src/workbench/wb-tokens.css`），代码里不写数字。见 [adr/0034](adr/0034-named-z-scale-and-stacking-rules.md)。
 
 | token | 值 | 元素 | 压谁 / 不压谁 |
 |---|---|---|---|
@@ -74,7 +74,7 @@
 | `--wb-z-hud` | 40 | `.wb-canvas-dock`（section nav + minimap） | 压停靠槽 |
 | `--wb-z-marks-active` | 50 | `#ann-overlay` 抬升态：点亮的气泡、flash | 压面板、停靠槽、HUD；不压横条（ADR 0031：列表不盖被定位的气泡） |
 | `--wb-z-strip` | 60 | `.wb-strip` 底部横条 | shell 浮层里最上 |
-| `--wb-z-composer` | 70 | `#ann-chrome`：写标注的输入框及其 lasso / tip | 外壳里最高，压过横条；只有 portal 浮层与 top layer 在它之上（2026-09-18 owner 决定） |
+| `--wb-z-composer` | 70 | `#ann-chrome`：写标注的输入框及其 lasso / tip | 外壳里最高，压过横条；只有 portal 浮层与 top layer 在它之上 |
 | `--wb-z-float` | 100 | Portal 到 body 的浮层：tooltip、row-menu、PageSortMenu | 在整个外壳之上 |
 | `--wb-z-float-2` | 110 | 从浮层里再开的菜单（AnnPopover 的“···”） | 压 float |
 | `--wb-z-cap` | 30 | `.wb-screen-cap.has-frame-menu` | 画布内子阶梯：`.wb-library` 是 transform 上下文，只和帧内容比 |
