@@ -17,7 +17,7 @@ import { Fragment, useEffect } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
-import { entriesOfActiveBoard, setActiveViewport, sidebarPages } from '../pages.js';
+import { entriesOfActiveBoard, setActiveEntry, setActiveViewport, sidebarPages } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
 import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
@@ -66,8 +66,17 @@ export function Strip() {
   }, []);
 
   var title = pageDisplayTitle(sidebarPages().find(function (p) { return p.id === activePageId; }), pageNames);
-  var entry = resolveEntry(entriesOfActiveBoard(), activeEntryId);
+  var entries = entriesOfActiveBoard();
+  var entry = resolveEntry(entries, activeEntryId);
   var kindKey = entry ? entryTag(entry) : null;
+  // 条目步进（文档形态）：按大纲顺序在本板的条目之间前后切换。画布形态有自己的
+  // 帧导航（CanvasHud），这一段只在文档条目选中且本板不止一个条目时出现。
+  var entryIndex = entry ? entries.indexOf(entry) : -1;
+  var showEntryNav = !!(entry && entry.kind === 'doc' && entries.length > 1);
+  function stepEntry(delta) {
+    var next = entries[entryIndex + delta];
+    if (next) setActiveEntry(next.id);
+  }
   var hasViewport = entryHasViewport(entry);
   var mode = !!(snap && snap.available && snap.mode);
   var count = (snap && snap.count) || 0;
@@ -115,6 +124,30 @@ export function Strip() {
                   onClick={function () { setActiveViewport(key); }}>{VIEWPORT_LABELS[key]}</button>
               );
             })}
+          </div>
+        </Fragment>
+      ) : null}
+
+      {showEntryNav ? (
+        <Fragment>
+          <span className="wb-strip-div" aria-hidden="true"></span>
+          <div className="wb-entry-nav flex items-center gap-0.5" id="wbentry-nav" role="group" aria-label="条目导航">
+            <Button type="button" variant="tool" size="icon" id="wbentry-prev"
+              className="wb-hud-btn wb-nav-step" disabled={entryIndex <= 0}
+              title={entryIndex > 0 ? '上一个条目：' + entries[entryIndex - 1].title : '已是第一个条目'}
+              aria-label="上一个条目"
+              onClick={function () { stepEntry(-1); }}>
+              <WbIcon name="chevron-left" size={14} className="size-3.5" />
+            </Button>
+            <span className="wb-entry-nav-position min-w-[46px] px-1.5 text-center font-[var(--wb-font-mono)] text-[12px] font-semibold tabular-nums whitespace-nowrap"
+              id="wbentry-position" title={entry.title}>{(entryIndex + 1) + ' / ' + entries.length}</span>
+            <Button type="button" variant="tool" size="icon" id="wbentry-next"
+              className="wb-hud-btn wb-nav-step" disabled={entryIndex >= entries.length - 1}
+              title={entryIndex < entries.length - 1 ? '下一个条目：' + entries[entryIndex + 1].title : '已是最后一个条目'}
+              aria-label="下一个条目"
+              onClick={function () { stepEntry(1); }}>
+              <WbIcon name="chevron-right" size={14} className="size-3.5" />
+            </Button>
           </div>
         </Fragment>
       ) : null}

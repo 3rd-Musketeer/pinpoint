@@ -1920,6 +1920,32 @@ test('标注列表在底栏上方，Esc 关闭列表后清除选择', async ({ p
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
+test('文档形态的横条有条目步进：‹ n / N › 在本板条目间前后切换（2026-09-20）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.getByRole('tab', { name: '页面', exact: true }).click();
+  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
+  // 画布条目选中时没有条目步进（画布有自己的帧导航）
+  await expect(page.locator('#wbentry-nav')).toHaveCount(0);
+  await page.getByRole('tab', { name: '大纲', exact: true }).click();
+  await page.locator('#wbcontents [data-entry="spec"]').click();
+
+  // 混合板三个条目：画布 → 设计说明 → 气泡三手感；选中第二个
+  const nav = page.locator('#wbentry-nav');
+  await expect(nav).toBeVisible();
+  await expect(page.locator('#wbentry-position')).toHaveText('2 / 3');
+  await page.locator('#wbentry-next').click();
+  await expect(page.locator('#wbentry-position')).toHaveText('3 / 3');
+  await expect(page.locator('#wbentry-next')).toBeDisabled();
+  await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('draft-variants');
+  await expect(page.locator('#wbcontents [data-entry="draft-variants"]')).toHaveAttribute('data-state', 'on');
+  await page.locator('#wbentry-prev').click();
+  await page.locator('#wbentry-prev').click();
+  // 退回画布条目：形态切回画布，条目步进收起，画布工具那一段回来
+  await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('@canvas');
+  await expect(nav).toHaveCount(0);
+  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
+});
+
 test('钉子和命中框画在底部横条之下，横条永远在最上（2026-09-17）', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
