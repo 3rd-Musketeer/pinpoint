@@ -8,7 +8,6 @@ import { fileURLToPath } from 'node:url';
 import {
   FrameDocError,
   assembleFrameContent,
-  frameExportSnapshot,
   framePageHtml,
   frameTokens,
   neutralizePreviewScripts,
@@ -153,20 +152,4 @@ test('frameTokens extracts canvas geometry + color tokens from the real files', 
   assert.equal(tokens['--wb-accent'], '#5b7fa6');
   assert.ok(tokens['--wb-cap-screen']);
   assert.ok(tokens['--wb-fg']);
-});
-
-test('frameExportSnapshot: script-free .wb-screen payload with tokens and dim row', async () => {
-  const target = resolveFrameTarget('e2e-ios', 'timer', { registry });
-  const snapshot = await frameExportSnapshot(target);
-  assert.equal(snapshot.kind, 'frame');
-  assert.equal(snapshot.pageId, 'e2e-ios');
-  assert.equal(snapshot.sectionId, 'brew-flow');
-  assert.equal(snapshot.screenId, 'timer');
-  assert.equal(snapshot.format, 'png');
-  assert.equal(snapshot.scale, 2);
-  assert.ok(snapshot.html.startsWith('<div class="wb-screen" data-screen="timer">'));
-  assert.ok(snapshot.html.includes('wb-screen-cap'));
-  assert.ok(snapshot.html.includes('402 × 874'));
-  assert.ok(!/<script/.test(snapshot.html));
-  assert.equal(snapshot.tokens['--wb-phone-w'], '438px');
 });

@@ -12,7 +12,6 @@
  * pp2（2026-09-22 review 1-4）：页内 board 屏（previews 页与有板 dir 条目、无 src
  * 的屏）改从 dist 出（target.distTarget，unbuilt 懒编译，编译失败 500）——.jsx 屏
  * 从此可以被 mention；kit 组件屏与 src 屏（外链 / 合成板）仍磁盘直读。
- * 导出烤图复用本库的 frameExportSnapshot（/api/export-image 同款快照负载）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -398,26 +397,4 @@ ${wrapped}
 ${inject}
 </body>
 </html>`;
-}
-
-/** 文档导出烤图用的 /api/export-image 快照负载（PNG 2×，白底 —— 文档语境）。 */
-export async function frameExportSnapshot(target) {
-  const wrapped = stripScripts(await assembleFrameContent(target));
-  const dimHtml = target.shell === 'app' || target.shell === 'lock'
-    ? '<div class="wb-screen-dim">402 × 874</div>'
-    : '';
-  const html = '<div class="wb-screen" data-screen="' + escHtml(target.screenId) + '">' +
-    frameCaptionHtml(target) + wrapped + dimHtml + '</div>';
-  return {
-    kind: 'frame',
-    pageId: target.pageId,
-    sectionId: target.section || 'main',
-    screenId: target.screenId,
-    format: 'png',
-    scale: 2,
-    background: 'white',
-    includeNotes: false,
-    tokens: frameTokens(),
-    html,
-  };
 }
