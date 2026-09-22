@@ -15,7 +15,7 @@ import { FOLDER_ID_PATTERN, slugify } from '../../shared/registry-ids.js';
 // 模板页 = content/previews/_index.json 的三个 manifest 页（ADR 0032）。
 // 按 id 点名，不按「来自 manifest」推断：实例自己的 _index.local.json 里的页
 // 也来自 manifest，但那是 owner 每天要找的页，不是模板资产。
-export var TEMPLATE_PAGE_IDS = ['components', 'library', 'doc-library'];
+export var TEMPLATE_PAGE_IDS = ['library', 'doc-library'];
 
 var TEMPLATE_SET = TEMPLATE_PAGE_IDS.reduce(function (acc, id) { acc[id] = true; return acc; }, {});
 

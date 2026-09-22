@@ -6,7 +6,18 @@
       "layout": "row",
       "screens": [
         { "id": "hello", "title": "Hello JSX" },
+        { "id": "kit-frame", "title": "Kit Frame" },
         { "id": "ghost", "title": "Ghost" }
+      ]
+    },
+    {
+      "id": "badge-wall",
+      "title": "Badge Variants",
+      "layout": "row",
+      "shell": "comp",
+      "screens": [
+        { "id": "badge-new", "title": "新", "comp": "Badge", "props": { "label": "新" } },
+        { "id": "badge-hot", "title": "热", "comp": "Badge", "props": { "label": "热" } }
       ]
     }
   ]

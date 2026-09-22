@@ -1,7 +1,7 @@
 // Workbench 预览脚本挂载簇（form A/B）与挂载后处理。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet } from './app/store.js';
-import { COMPONENTS_ID, pageBaseUrl } from './lib/page-url.js';
+import { pageBaseUrl } from './lib/page-url.js';
 import { wireExportControls } from './export-core.js';
 import {
   focusFirstBoardFrame,
@@ -232,7 +232,7 @@ function runOnePreviewScript(el, pageId, session) {
 
 /** B: roots marked data-preview-mount load previews/<page>/<screenId>.js */
 function runSidecarMounts(scope, pageId, session) {
-  if (!scope || pageId === COMPONENTS_ID || !session.active) return Promise.resolve();
+  if (!scope || !session.active) return Promise.resolve();
   var roots = scope.querySelectorAll('[data-preview-mount]');
   var jobs = [];
   for (var i = 0; i < roots.length; i++) {

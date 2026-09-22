@@ -24,7 +24,6 @@ import { escHtml } from './lib/esc-html.js';
 import { canvasBoard } from './lib/board-entries.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
 import {
-  COMPONENTS_ID,
   defaultShellForPage,
   pageBaseUrl,
   pageEntry
@@ -34,7 +33,6 @@ import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
 import {
   wrapCompStage,
-  wrapFragmentForLibrary,
   wrapPhoneShell
 } from '../shared/frame-shell.js';
 
@@ -81,8 +79,6 @@ export function fetchScreenHtml(pageId, screen) {
   var url;
   if (sc.src) {
     url = sc.src;
-  } else if (pageId === COMPONENTS_ID && String(sc.id).indexOf('/') >= 0) {
-    url = 'kits/ios/components/' + sc.id + '.html';
   } else {
     url = pageBaseUrl(wbGet().pageManifest, pageId) + sc.id + '.html';
   }
@@ -110,15 +106,12 @@ export function fetchScreenHtml(pageId, screen) {
     .then(function (raw) {
       var shell = sc.shell || defaultShellForPage(wbGet().pageManifest, pageId);
       // comp 屏（pp2 切片 2，variants 墙）是无机壳片段，不套 ios-app 契约校验。
-      if (pageId !== COMPONENTS_ID && shell !== 'comp') {
+      if (shell !== 'comp') {
         raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', { shell: shell });
       }
-      // pp2：屏内容就是 dist（include 已在编译期展开，客户端不再二次展开）。
-      if (pageId === COMPONENTS_ID) return { ok: true, html: wrapFragmentForLibrary(raw) };
       // fragment 里的 CSS 资源与 JS sidecar 同规则重定位到 pageBaseUrl
       // （lib/sidecar-css.js 有理由与测试）：@import 本来按 index.html 解析，
-      // 相对路径会打到站点根，作者写 ./x.css 必 404。组件页不改写 —— 它的
-      // 片段来自 kits/，pageBaseUrl 对它没有意义（JS sidecar 同样不覆盖）。
+      // 相对路径会打到站点根，作者写 ./x.css 必 404。
       return {
         ok: true,
         html: rewriteFragmentAssetUrls(raw, pageBaseUrl(wbGet().pageManifest, pageId))
@@ -162,7 +155,6 @@ function wrapDocPhoneShell(bodyHtml) {
 function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
   // comp 屏（pp2 切片 2，variants 墙）：无机壳 comp 画板，不按页分派、按 shell 分派。
   if (shell === 'comp') return wrapCompStage(bodyHtml);
-  if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
   if (shell === 'doc') return viewport === 'phone' ? wrapDocPhoneShell(bodyHtml) : wrapDocShell(bodyHtml);
   return wrapPhoneShell(bodyHtml, shell);
 }
@@ -174,7 +166,7 @@ var IOS_DEVICE_DIM = PHONE_SCREEN_W + ' × ' + PHONE_SCREEN_H;
 /** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行
     （手机视口里的 doc 屏也不出：它不在画布上，图注 / 尺寸行都是画布语汇）。 */
 function isPhoneFrame(pageId, shell) {
-  return pageId !== COMPONENTS_ID && shell !== 'doc' && shell !== 'comp';
+  return shell !== 'doc' && shell !== 'comp';
 }
 
 /** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
@@ -184,20 +176,16 @@ export function frameDimLabel(pageId, shell) {
 
 function screenClassForShell(pageId, shell, viewport) {
   if (shell === 'comp') return 'wb-screen wb-screen--comp';
-  if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
   if (shell === 'doc') return viewport === 'phone' ? 'wb-screen wb-screen--phone-doc' : 'wb-screen wb-screen--doc';
   return 'wb-screen';
 }
 
 export function buildBoardHtml(pageId, board, screenMap, options) {
   var viewport = (options && options.viewport) || 'window';
-  var isCompLib = pageId === COMPONENTS_ID;
   var sections = board.sections || [];
   if (!sections.length || (sections.length === 1 && sections[0].id === '_empty')) {
-    var emptyTitle = isCompLib ? '暂无组件' : '暂无屏幕';
-    var emptyHelp = isCompLib
-      ? '在 kits/ios/components/ 下添加 meta.json + variant HTML，刷新后会出现在此页。'
-      : '在这个页面的 board.json sections[] 中添加 screen。';
+    var emptyTitle = '暂无屏幕';
+    var emptyHelp = '在这个页面的 board.json sections[] 中添加 screen。';
     return '<div class="wb-zoom-wrap"><div class="wb-library">' +
       '<article class="wb-lib-item" id="lib-_empty" data-ann-section="_empty" data-ann-section-label="' + emptyTitle + '" data-ann-group="_empty" data-ann-group-label="' + emptyTitle + '">' +
       '<h2 class="wb-lib-cap">' + emptyTitle + '</h2>' +

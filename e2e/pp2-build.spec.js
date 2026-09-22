@@ -45,6 +45,31 @@ test('.jsx 帧编译后出现在工作台画布，DOM 带 data-pp-id', async ({ 
 
   // 缺源码屏：serve 500 → 工作台的错误面板。
   await expect(page.locator('#wb-board-panel [data-screen="ghost"] .wb-screen-err')).toHaveCount(1);
+
+  // .jsx 帧 import pinpoint/kit：kit 的 JSX 印章渲染进 dist。
+  const kitFrame = page.locator('#wb-board-panel [data-screen="kit-frame"]');
+  await expect(kitFrame.locator('.ios-bubble')).toContainText('kit 气泡');
+  await expect(kitFrame.locator('[data-pp-comp="Bubble"]')).toHaveCount(1);
+
+  // comp section（variants 墙）：两格页内组件，无机壳 comp 画板、不出尺寸行。
+  const badgeNew = page.locator('#wb-board-panel [data-screen="badge-new"]');
+  await expect(badgeNew).toHaveClass(/wb-screen--comp/);
+  await expect(badgeNew.locator('.wb-comp-stage')).toHaveCount(1);
+  await expect(badgeNew.locator('.ios-stage')).toHaveCount(0);
+  await expect(badgeNew.locator('.e2e-badge')).toHaveText('新');
+  await expect(badgeNew.locator('[data-pp-comp="Badge"]')).toHaveCount(1);
+  await expect(badgeNew.locator('.wb-screen-dim')).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel [data-screen="badge-hot"] .e2e-badge')).toHaveText('热');
+});
+
+test('Component Library 系统页已退役：?page=components 出「页面不存在」面板', async ({ page }) => {
+  await page.goto('/index.html?page=components');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  const panel = page.locator('#wb-board-panel .wb-screen-err');
+  await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
+  await expect(panel.locator('.wb-screen-err-src')).toHaveText('?page=components');
+  // Pages 清单里也没有它。
+  await expect(page.locator('#wbpages [data-vpage="components"]')).toHaveCount(0);
 });
 
 test('/sites/ 屏从 dist 出；缺源码屏 500 带错误文本', async ({ page }) => {

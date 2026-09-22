@@ -1,8 +1,5 @@
-/** Page id of the built-in Component Library board. */
-export var COMPONENTS_ID = 'components';
 export var LIB_ID = 'library';
 export var DOC_LIB_ID = 'doc-library';
-export var SYSTEM_PAGES = { components: true };
 
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
 export function pageEntry(manifest, pageId) {
@@ -26,7 +23,6 @@ export function pageBaseUrl(manifest, pageId) {
    Pages 行壳标 pill 后只剩两个用途：1) defaultShellForPage 给 validateBoard
    的缺省壳；2) 深链 ?mode= 提示的页面回落（resolveActivePage）。 */
 export function modeForPage(manifest, pageId) {
-  if (pageId === COMPONENTS_ID) return 'ios';
   var page = pageEntry(manifest, pageId);
   return (page && page.mode) || 'ios';
 }

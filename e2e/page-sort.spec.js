@@ -38,7 +38,7 @@ function pageOrder(page) {
 }
 
 const DEFAULT_ORDER = [
-  'components', 'library', 'doc-library',
+  'library', 'doc-library',
   'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed',
 ];
 
@@ -63,20 +63,18 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   expect(await pageOrder(page)).toEqual(DEFAULT_ORDER);
 
   // 最近更新：mtime 倒序；无 mtime 的页（本地示例 + url 条目）按原相对顺序沉底。
-  // 2026-09-04 起 Component Library 也走同一趟排序（切片 ② 把它并进了分组模型，
-  // 不再是钉在表头的系统行）—— 它没有 mtime，所以跟着其它无 mtime 的页沉底。
+  // pp2 切片 2 起 Component Library 退役，清单里没有系统行。
   await sortBtn.click();
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
     'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
   ]);
 
   // 名称：zh locale 排序（此处全 Latin 标题，E2E* 先于 Example*）。
   await sortBtn.click();
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'name');
   expect(await pageOrder(page)).toEqual([
-    'components',
     'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-proxy', 'e2e-site',
     'doc-library', 'library',
   ]);
@@ -97,6 +95,6 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   await expect(page.locator('.wb-page-sort')).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
     'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
   ]);
 });

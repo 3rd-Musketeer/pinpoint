@@ -27,9 +27,7 @@ import {
   withViewportPref
 } from './lib/viewport.js';
 import {
-  COMPONENTS_ID,
   LIB_ID,
-  SYSTEM_PAGES,
   modeForPage,
   pageEntry
 } from './lib/page-url.js';
@@ -76,7 +74,7 @@ export function switchPage(id, options) {
   // Annotation API: section id within current board — or a top-level page id.
   // 认页面靠清单，不靠左栏有没有画出那一行 —— 2026-09-04 起模板页默认不显示，
   // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。
-  if (SYSTEM_PAGES[id] || id === LIB_ID || pageEntry(wbGet().pageManifest, id)
+  if (id === LIB_ID || pageEntry(wbGet().pageManifest, id)
       || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
@@ -129,14 +127,11 @@ export function manifestPages() {
   return manifest.pages;
 }
 
-/* Component Library 是内建页，不在任何 manifest 里 —— 左栏要把它和 manifest 页
-   一起分组（模板页三条之一），所以列表在这里合，不在组件里手拼。system:true
-   的页不参与改名、也不能拖进夹（服务端的「认识的 id」名单里没有它）。
-   mode:'ios' = 它是画布（组件排在画布上），左栏的类型图标据此出 smartphone。 */
-export var COMPONENTS_PAGE = { id: COMPONENTS_ID, title: 'Component Library', system: true, mode: 'ios' };
+/* pp2 切片 2：Component Library 系统页退役（藏起，components-board.js 服务端留用
+   —— BACKLOG 有启动信号）——左栏不再前置系统行，Pages = manifest 页一份清单。 */
 
 export function sidebarPages() {
-  return [COMPONENTS_PAGE].concat(manifestPages());
+  return manifestPages();
 }
 
 /** 登记表的分组层（folders / pageFolders / pageOrder）——左栏分组的唯一来源。 */
@@ -171,7 +166,6 @@ function rememberActivePage(pageId) {
 export function resolveActivePage(preferredId, modeHint) {
   var pages = manifestPages();
   var ids = {};
-  ids[COMPONENTS_ID] = true;
   pages.forEach(function (page) { ids[page.id] = true; });
   if (preferredId && ids[preferredId]) return preferredId;
   if (modeHint) {

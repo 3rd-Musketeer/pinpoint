@@ -55,7 +55,7 @@ test('搜索框：打字即筛跨段、⌘K 聚焦、Esc 清空', async ({ page 
   // Esc 清空并交还焦点，列表整份回来。
   await input.press('Escape');
   await expect(input).toHaveValue('');
-  await expect(page.locator('#wbpages .wb-page')).toHaveCount(9);
+  await expect(page.locator('#wbpages .wb-page')).toHaveCount(8);
 });
 
 test('「最近」段：打开过的页最新在前，空则整段不出', async ({ page }) => {
@@ -86,7 +86,8 @@ test('「最近」段：打开过的页最新在前，空则整段不出', async
 test('模板页默认藏起来，设置里的开关打开它；当前页是模板页时照旧显示', async ({ page }) => {
   await openWorkbench(page);
 
-  // 默认页就是 library（一个模板页）—— 它留着，另外两个模板页不出。
+  // 默认页就是 library（一个模板页）—— 它留着，另一个模板页不出。
+  // pp2 切片 2：Component Library 系统页退役，模板组只剩 library / doc-library。
   await expect(page.locator('#wbpages [data-vpage="library"]')).toBeVisible();
   await expect(page.locator('#wbpages [data-vpage="components"]')).toHaveCount(0);
   await expect(page.locator('#wbpages [data-vpage="doc-library"]')).toHaveCount(0);
@@ -99,7 +100,7 @@ test('模板页默认藏起来，设置里的开关打开它；当前页是模�
   await page.locator('#wbgear').click();
   await page.locator('#showtemplates [data-show-templates="on"]').click();
   await page.locator('[data-wb-back]').click();
-  await expect(page.locator('#wbpages [data-vpage="components"]')).toBeVisible();
+  await expect(page.locator('#wbpages [data-vpage="library"]')).toBeVisible();
   await expect(page.locator('#wbpages [data-vpage="doc-library"]')).toBeVisible();
 
   // 落 prefs，reload 后保持。
@@ -108,7 +109,7 @@ test('模板页默认藏起来，设置里的开关打开它；当前页是模�
   ).toBe(true);
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbpages [data-vpage="components"]')).toBeVisible();
+  await expect(page.locator('#wbpages [data-vpage="library"]')).toBeVisible();
 });
 
 test('预览主题搬进预览设置：切的是被预览页面的主题', async ({ page }) => {
