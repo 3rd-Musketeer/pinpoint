@@ -1,4 +1,6 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import os from 'node:os';
 import test from 'node:test';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -17,11 +19,16 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 
+// pp2：board 屏改从 dist 出 —— 懒编译与读盘都落在 PINPOINT_DATA_DIR 下，
+// 指到临时目录，不写真机的 ~/.pinpoint/dist。
+process.env.PINPOINT_DATA_DIR = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-framedoc-'));
+
 // 与 e2e/registry-fixture.js 对齐的极简 registry 视图（提交固件 e2e/dir-site*）。
 const registry = {
   resolve(id) {
     if (id === 'e2e-dir') return { id, title: 'E2E Dir', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site') };
     if (id === 'e2e-dir-ios') return { id, title: 'E2E Dir iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios' };
+    if (id === 'e2e-jsx') return { id, title: 'E2E JSX', kind: 'dir', path: path.join(ROOT, 'e2e', 'jsx-site'), board: 'ios' };
     if (id === 'e2e-url') return { id, title: 'E2E Url', kind: 'url', url: 'https://example.localhost' };
     return null;
   },
@@ -36,7 +43,8 @@ test('resolveFrameTarget: previews fragment screen → fragment target with canv
   assert.equal(target.section, 'brew-flow');
   assert.equal(target.sectionLabel, '冲一杯');
   assert.equal(target.ref, 'B2'); // brew-flow 是第 2 个 section，recipe 是第 2 屏
-  assert.ok(target.fragmentPath.endsWith(path.join('previews', 'library', 'recipe.html')));
+  assert.ok(target.distTarget.pageDir.endsWith(path.join('previews', 'library')));
+  assert.equal(target.distTarget.kind, 'template');
   assert.equal(target.title, '参数（内联脚本）');
 });
 
@@ -53,12 +61,13 @@ test('resolveFrameTarget: components board resolves comp/variant ids', () => {
   assert.ok(target.fragmentPath.endsWith(path.join('components', 'bubble', 'outgoing.html')));
 });
 
-test('resolveFrameTarget: registry ios dir entry serves fragments from disk', () => {
+test('resolveFrameTarget: registry ios dir entry 的页内屏改从 dist 出', () => {
   const target = resolveFrameTarget('e2e-dir-ios', 'cards', { registry });
   assert.equal(target.kind, 'fragment');
   assert.equal(target.entry, 'e2e-dir-ios');
   assert.equal(target.baseUrl, '/sites/e2e-dir-ios/');
-  assert.ok(target.fragmentPath.endsWith(path.join('e2e', 'dir-site-ios', 'cards.html')));
+  assert.ok(target.distTarget.pageDir.endsWith(path.join('e2e', 'dir-site-ios')));
+  assert.equal(target.distTarget.kind, 'dir');
 });
 
 test('resolveFrameTarget: legacy shell "web" normalizes to doc redirect', () => {
@@ -86,6 +95,19 @@ test('assembleFrameContent wraps the fragment in the shared phone shell', async 
   assert.ok(html.startsWith('<div class="ios-stage">'));
   assert.ok(html.includes('<div class="ios-screen">'));
   assert.ok(html.includes('data-preview-script'));
+});
+
+test('pp2：.jsx 屏经 /api/frame 拿到带 data-pp-id 的 HTML（dist 懒编译）', async () => {
+  const target = resolveFrameTarget('e2e-jsx', 'hello', { registry });
+  assert.equal(target.kind, 'fragment');
+  const html = await assembleFrameContent(target);
+  assert.ok(html.includes('E2E jsx-site hello'));
+  assert.ok(html.includes('data-pp-id="hello.jsx:3#1"'), html);
+  assert.ok(html.includes('data-pp-comp="Hello"'), html);
+
+  // 缺源码屏：编译错误冒成 500（frame-api 把普通 Error 落 frame_failed）。
+  const ghost = resolveFrameTarget('e2e-jsx', 'ghost', { registry });
+  await assert.rejects(() => assembleFrameContent(ghost), /源码不存在/);
 });
 
 test('neutralizePreviewScripts makes preview scripts inert and keeps contract attrs', () => {

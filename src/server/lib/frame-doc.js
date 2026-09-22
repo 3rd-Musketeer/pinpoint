@@ -9,6 +9,9 @@
  * - doc 壳屏（完整文档 / 合成板 / url 条目）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
  *
+ * pp2（2026-09-22 review 1-4）：页内 board 屏（previews 页与有板 dir 条目、无 src
+ * 的屏）改从 dist 出（target.distTarget，unbuilt 懒编译，编译失败 500）——.jsx 屏
+ * 从此可以被 mention；kit 组件屏与 src 屏（外链 / 合成板）仍磁盘直读。
  * 导出烤图复用本库的 frameExportSnapshot（/api/export-image 同款快照负载）。
  */
 import fs from 'node:fs';
@@ -24,6 +27,7 @@ import {
 import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
+import { loadDistScreenHtml } from './page-compiler.js';
 import { synthesizeBoard } from './synth-board.js';
 import { templateOnly } from '../template-only.js';
 
@@ -176,17 +180,31 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       };
     }
     const src = hit.screen.src ? String(hit.screen.src) : '';
+    // pp2：页内 board 屏（无 src）→ dist（.jsx 屏也在此落地）。
+    if (!src) {
+      return {
+        kind: 'fragment',
+        pageId,
+        screenId,
+        title: hit.screen.title || screenId,
+        shell,
+        section: hit.section,
+        sectionLabel: hit.sectionLabel,
+        ref: hit.ref,
+        entry: 'pinpoint',
+        baseUrl,
+        distTarget: { entryId: pageId, pageDir: path.join(PREVIEWS_ROOT, pageId), urlBase: baseUrl, kind: 'template' },
+      };
+    }
     let fragmentPath;
     if (src.startsWith('sites/')) {
       fragmentPath = siteSrcToAbsPath(src, registry);
-    } else if (src) {
+    } else {
       const abs = path.resolve(CONTENT_ROOT, src);
       if (abs !== PREVIEWS_ROOT && !abs.startsWith(PREVIEWS_ROOT + path.sep)) {
         throw new FrameDocError('bad_request', 'screen src must resolve under previews/');
       }
       fragmentPath = abs;
-    } else {
-      fragmentPath = path.join(PREVIEWS_ROOT, pageId, `${screenId}.html`);
     }
     if (!fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
       throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
@@ -229,6 +247,24 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
+  // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
+  // file 条目保留磁盘直读。
+  if (entry.kind === 'dir' && diskBoard && !src) {
+    const pageDir = path.resolve(entry.path);
+    return {
+      kind: 'fragment',
+      pageId,
+      screenId,
+      title: hit.screen.title || screenId,
+      shell,
+      section: hit.section,
+      sectionLabel: hit.sectionLabel,
+      ref: hit.ref,
+      entry: entry.id,
+      baseUrl,
+      distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
+    };
+  }
   const fragmentPath = src
     ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
     : path.join(path.resolve(entry.path), `${screenId}.html`);
@@ -265,9 +301,18 @@ function readIncludeFragment(component, variant) {
   return Promise.resolve(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
 }
 
-/** fragment 屏内容：磁盘读取 → include 展开 → 机壳包装（与画布同一份 lib）。 */
+/** fragment 屏内容：dist（页内 board 屏）或磁盘（kit 组件 / src 屏）读取 →
+    include 展开（dist 里已无 include，空操作）→ 机壳包装（与画布同一份 lib）。
+    编译失败的屏抛普通 Error —— frame-api 落 500 frame_failed 带错误文本。 */
 export async function assembleFrameContent(target) {
-  const raw = fs.readFileSync(target.fragmentPath, 'utf8');
+  let raw;
+  if (target.distTarget) {
+    const dist = await loadDistScreenHtml(target.distTarget, target.screenId);
+    if (!dist.ok) throw new Error(dist.error);
+    raw = dist.html;
+  } else {
+    raw = fs.readFileSync(target.fragmentPath, 'utf8');
+  }
   let html = await expandIncludeRefs(raw, readIncludeFragment, applyIncludeSlots);
   if (target.shell === 'comp') html = wrapFragmentForLibrary(html);
   return target.shell === 'comp' ? wrapCompStage(html) : wrapPhoneShell(html, target.shell);

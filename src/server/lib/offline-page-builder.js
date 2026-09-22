@@ -117,7 +117,11 @@ export async function buildOfflinePage(options = {}) {
         throw new OfflinePageExportError('unsupported_screen', `${pageId}/${screen.id}: expected an iOS fragment`);
       }
       const bundled = await bundleHtmlAssets(await assembleFrameContent(target), {
-        baseFile: target.fragmentPath,
+        // pp2：dist 屏的资源引用以页目录为基准（dist 在 ~/.pinpoint 下，相对引用
+        // 按源目录语义解读）；磁盘屏照旧以自己的文件位置为基准。
+        baseFile: target.distTarget
+          ? path.join(target.distTarget.pageDir, `${target.screenId}.html`)
+          : target.fragmentPath,
         entryRoot: resolved.root,
         entryId: pageId,
         pinpointRoot: ROOT,

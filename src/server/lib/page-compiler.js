@@ -517,13 +517,10 @@ export function screenIdFromRel(rel) {
 }
 
 /**
- * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
- * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本 —— 工作台
- * 的 .wb-screen-err 面板吃非 200 状态。
- * inject(html) → html：annotate 注入由调用方决定（/sites/ 全量注入；/previews/
- * 只对 doctype 整文档注入）。
+ * 读一屏 dist（unbuilt 时懒编译一次）：ok → html；否则 error 文本。
+ * serve 层（500 上面板）与 /api/frame（500 frame_failed）共用同一条路。
  */
-export async function serveDistScreenResponse(req, res, target, screenId, { inject = null } = {}) {
+export async function loadDistScreenHtml(target, screenId) {
   let result = readDistScreen(target.entryId, screenId);
   if (result.kind === 'unbuilt') {
     try {
@@ -531,7 +528,23 @@ export async function serveDistScreenResponse(req, res, target, screenId, { inje
     } catch { /* 编译异常已进 build.json / 下面按状态报错 */ }
     result = readDistScreen(target.entryId, screenId);
   }
-  if (result.kind === 'ok') {
+  if (result.kind === 'ok') return { ok: true, html: result.html };
+  return {
+    ok: false,
+    error: result.kind === 'error' ? result.message : `屏未编译：ppnt build ${target.entryId}`,
+  };
+}
+
+/**
+ * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
+ * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本 —— 工作台
+ * 的 .wb-screen-err 面板吃非 200 状态。
+ * inject(html) → html：annotate 注入由调用方决定（/sites/ 全量注入；/previews/
+ * 只对 doctype 整文档注入）。
+ */
+export async function serveDistScreenResponse(req, res, target, screenId, { inject = null } = {}) {
+  const result = await loadDistScreenHtml(target, screenId);
+  if (result.ok) {
     let body = Buffer.from(result.html, 'utf8');
     if (inject) body = Buffer.from(inject(body.toString('utf8')), 'utf8');
     res.statusCode = 200;
@@ -544,10 +557,7 @@ export async function serveDistScreenResponse(req, res, target, screenId, { inje
     res.end(body);
     return true;
   }
-  const message = result.kind === 'error'
-    ? result.message
-    : `屏未编译：ppnt build ${target.entryId}`;
-  const body = Buffer.from(message, 'utf8');
+  const body = Buffer.from(result.error, 'utf8');
   res.statusCode = 500;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Length', String(body.length));
