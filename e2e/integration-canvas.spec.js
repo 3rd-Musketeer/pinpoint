@@ -71,7 +71,11 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     }
     await page.locator('#wbzoom-in').click();
     await page.locator('#wbzoom-out').click();
-    expect(read()).toEqual([first]);
+    // R4 + §2b：创建后的首测量会把 lastRect（带 space 标记）debounce 落盘一次
+    // —— 先等这次合法写盘 settle，再要求 pan / zoom 期间账本字节不动。
+    await expect.poll(() => (read()[0].lastRect ? 1 : 0)).toBe(1);
+    const settled = read()[0];
+    expect(read()).toEqual([settled]);
     await page.evaluate(n => window.pinpoint.goToMark(n), first.n);
     await save(page, 'integration edited after pan and zoom');
     const edited = read()[0];

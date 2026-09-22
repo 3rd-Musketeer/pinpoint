@@ -1305,3 +1305,169 @@ test('runRender：限内打全文，超限截断并落 spill 文件，--full 不
   // render 不落 dist
   assert.equal(fs.existsSync(path.join(failing.env.PINPOINT_DATA_DIR, 'dist')), false);
 });
+
+/* ---- pp2 切片 4：check / locate / mark / status --page ---- */
+
+import {
+  runCheck,
+  runLocate,
+  runMark,
+} from './pinpoint-cli.js';
+
+const HOME_JSX = [
+  'export default function Home() {',   // 1
+  '  return (',                         // 2
+  '    <div className="ios-app">',      // 3
+  '      <p>目标段</p>',                // 4
+  '      <p>第二段</p>',                // 5
+  '    </div>',                         // 6
+  '  );',                               // 7
+  '}',                                  // 8
+  '',
+].join('\n');
+
+/** 编译好的页 + pinpoint 桶里一条指向 home.jsx:4 的帧标注。 */
+async function makeAnnotatedPage(t) {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'home', title: 'Home' }],
+    files: { 'home.jsx': HOME_JSX },
+  });
+  const build = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
+  fs.mkdirSync(path.join(made.env.PINPOINT_DATA_DIR, 'pinpoint'), { recursive: true });
+  fs.writeFileSync(path.join(made.env.PINPOINT_DATA_DIR, 'pinpoint', 'index~t.json'), JSON.stringify({
+    page: 'index~t', revision: 2,
+    annotations: [{
+      id: 'k1', n: 1, type: 'element', pageId: 't-page', screenId: 'home', status: 'open',
+      content: '这段要改 [@t:i1]',
+      targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > p:nth-of-type(1)', text: '目标段' }],
+    }, {
+      id: 'k2', n: 2, type: 'element', pageId: 't-page', screenId: 'home', status: 'done',
+      content: '第二段已改 [@t:i1]',
+      targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > p:nth-of-type(2)', text: '第二段' }],
+    }],
+  }));
+  return made;
+}
+
+test('parseArgs：check / locate / shot / mark 的形状与用法错误', () => {
+  assert.deepEqual(parseArgs(['check', 'p', '--frame', 'B3', '--status', 'done', '--mode', 'both', '--group-by', 'component', '--json']), {
+    command: 'check', target: 'p',
+    flags: { frame: 'B3', status: 'done', mode: 'both', 'group-by': 'component', json: true },
+  });
+  assert.deepEqual(parseArgs(['locate', '#1', 'B3']), { command: 'locate', refs: ['#1', 'B3'], flags: {} });
+  assert.deepEqual(parseArgs(['shot', 'B', '--marks', '--scale', '2']), { command: 'shot', refs: ['B'], flags: { marks: true, scale: '2' } });
+  assert.deepEqual(parseArgs(['mark', '#1', '#3-#5', 'done', '--note', 'x y']), {
+    command: 'mark', refs: ['#1', '#3-#5'], statusWord: 'done', flags: { note: 'x y' },
+  });
+  assert.throws(() => parseArgs(['locate']), /至少要一个引用/);
+  assert.throws(() => parseArgs(['mark', '#1']), /mark 需要引用与状态/);
+  assert.throws(() => parseArgs(['check', 'p', '--watch', '--registry', 'r']), /--watch 不适用于 check/);
+});
+
+test('runCheck：默认 open 按帧分组，摘录指到源码行；--json 结构化', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const rec = recorder();
+  const code = await runCheck(['check', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('# demo-page') || line.includes('# t-page')), rec.out[0]);
+  assert.ok(rec.out.some((line) => line.includes('[#1]') && line.includes('这段要改') && line.includes('open')), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => /4>/.test(line) && line.includes('目标段')), '锚点行 home.jsx:4 带 > 前缀');
+  assert.ok(!rec.out.some((line) => line.includes('[#2]')), '默认只看 open');
+
+  const all = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'all'], { ...all.io, env: made.env }), 0);
+  assert.ok(all.out.some((line) => line.includes('[#2]') && line.includes('done')));
+
+  const json = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--json'], { ...json.io, env: made.env }), 0);
+  const parsed = JSON.parse(json.out.join('\n'));
+  assert.equal(parsed.groups[0].rows[0].file, 'home.jsx');
+  assert.equal(parsed.groups[0].rows[0].line, 4);
+});
+
+test('runCheck：未知帧 / 坏状态码非零退出并报因', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const ghost = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--frame', 'Z9'], { ...ghost.io, env: made.env }), 1);
+  assert.ok(ghost.err.some((line) => /没有帧 Z9/.test(line)));
+  const bad = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'nope'], { ...bad.io, env: made.env }), 1);
+  assert.ok(bad.err.some((line) => /--status/.test(line)));
+});
+
+test('runLocate：#n → 源文件:行；未编页给 selector', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const rec = recorder();
+  const code = await runLocate(['locate', '#1', '--registry', made.registry], { ...rec.io, env: made.env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /#1 → home\.jsx:4/.test(line)), rec.out.join('\n'));
+  const range = recorder();
+  assert.equal(await runLocate(['locate', '#1-#2', '--registry', made.registry], { ...range.io, env: made.env }), 0);
+  assert.ok(range.out.some((line) => /#2 → home\.jsx:5/.test(line)), range.out.join('\n'));
+});
+
+test('runMark：走状态端点带 baseRevision，逐条打印；close 拒收；服务不在跑报 ppnt start', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const close = recorder();
+  assert.equal(await runMark(['mark', '#1', 'close', '--registry', made.registry], { ...close.io, env: made.env }), 1);
+  assert.ok(close.err.some((line) => /close 只在工作台/.test(line)));
+
+  // 服务不在跑（requestFn 抛错 = 探活失败）。
+  const down = recorder();
+  assert.equal(await runMark(['mark', '#1', 'done', '--registry', made.registry], {
+    ...down.io,
+    env: { ...made.env, PINPOINT_ORIGIN: 'http://127.0.0.1:1' },
+  }), 1);
+  assert.ok(down.err.some((line) => /ppnt start/.test(line)), down.err.join('\n'));
+
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, ...opts });
+    if (opts.method === 'POST') {
+      const body = opts.body;
+      if (body.baseRevision !== 2) return { status: 409, json: { error: 'revision_conflict' } };
+      return { status: 200, json: { revision: 3, annotation: { n: 1, status: body.status } } };
+    }
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const rec = recorder();
+  const code = await runMark(['mark', '#1', 'done', '--note', '改完了', '--registry', made.registry], {
+    ...rec.io, env: made.env, requestFn,
+  });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /#1 → done（note：改完了）/.test(line)), rec.out.join('\n'));
+  const post = calls.find((call) => call.method === 'POST');
+  assert.match(post.url, /\/annotations\/index~t\/1\/status$/);
+  assert.equal(post.body.entry, 'pinpoint');
+  assert.equal(post.body.baseRevision, 2);
+
+  // 409 不中断其他条：#1 成功（rev 2 对上）后 #2 因端点只认（返回 409 模拟非法转换）失败。
+  const mixed = recorder();
+  const mixedFn = async (urlString, opts = {}) => {
+    if (opts.method === 'POST') {
+      return opts.body.status === 'done'
+        ? { status: 200, json: { revision: 3, annotation: { status: 'done' } } }
+        : { status: 409, json: { error: 'illegal_transition', detail: 'done → check' } };
+    }
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const code2 = await runMark(['mark', '#1-#2', 'done', '--registry', made.registry], { ...mixed.io, env: made.env, requestFn: mixedFn });
+  assert.equal(code2, 0);
+  assert.equal(mixed.out.filter((line) => line.includes('→ done')).length, 2, mixed.out.join('\n'));
+});
+
+test('runStatus --page：各状态计数 + dist 过期状态', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const rec = recorder();
+  const code = await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /open 1 · check 0 · done 1 · close 0 · 共 2/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('dist ') && line.includes('最新')), rec.out.join('\n'));
+  // 源码比产物新 → 过期。
+  const future = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(made.page, 'home.jsx'), future, future);
+  const stale = recorder();
+  assert.equal(await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...stale.io, env: made.env }), 0);
+  assert.ok(stale.out.some((line) => line.includes('已过期')), stale.out.join('\n'));
+});
