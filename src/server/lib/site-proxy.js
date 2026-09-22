@@ -1,3 +1,4 @@
+import { parseReqUrl } from './req-url.js';
 /**
  * Same-origin path-prefix proxy for registry `url` entries (阶段 4 live 代理画中画).
  *
@@ -334,7 +335,7 @@ function collectBody(stream) {
  */
 export function proxySiteRequest(req, res, entry) {
   const prefix = `/sites/${entry.id}`;
-  const annotate = new URL(req.url || '/', 'http://proxy.local').searchParams.get('annotate') !== 'off';
+  const annotate = parseReqUrl(req).query.get('annotate') !== 'off';
   let target;
   try {
     target = new URL(entry.url);
@@ -498,7 +499,7 @@ export function proxySiteUpgrade(req, socket, head, entry) {
  */
 export function createSiteUpgradeHandler({ registry } = {}) {
   return function handleSiteUpgrade(req, socket, head) {
-    const urlPath = (req.url || '').split('?')[0];
+    const urlPath = parseReqUrl(req).pathname;
     if (!urlPath.startsWith('/sites/')) return;
     const rest = urlPath.slice('/sites/'.length);
     const slash = rest.indexOf('/');

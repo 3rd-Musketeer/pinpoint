@@ -1,6 +1,7 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
 import { dataRoot } from './lib/annotate-data-dir.js';
+import { parseReqUrl } from './lib/req-url.js';
 
 // Fixed filenames, one serialized writer and five bounded files per service data root.
 export function createDiagnosticsWriter(dir, maxBytes = 10 * 1024 * 1024) {
@@ -51,7 +52,7 @@ export default function canvasDiagnosticsApi({dir=path.join(dataRoot(),'diagnost
   const write=createDiagnosticsWriter(dir);
   return {name:'canvas-diagnostics-api',configureServer(server){
     server.middlewares.use(async(req,res,next)=>{
-      if(req.url?.split('?')[0]!=='/api/canvas-diagnostics')return next();
+      if(parseReqUrl(req).pathname!=='/api/canvas-diagnostics')return next();
       const reply=(status)=>{res.statusCode=status;res.end();};
       if(req.method!=='POST')return reply(405);
       // This endpoint belongs to the local workbench, not arbitrary injected sites.

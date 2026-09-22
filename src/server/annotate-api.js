@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
+import { parseReqUrl } from './lib/req-url.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import { contentMtimeMs } from './lib/content-mtime.js';
 import { manifestPageIds } from './lib/page-manifest.js';
@@ -306,7 +307,7 @@ export function createAnnotateHandler(options = {}) {
     }
 
     // urlPath has the query stripped by the caller; req.url keeps it.
-    const query = new URL(req.url || '/', 'http://annotate.local').searchParams;
+    const query = parseReqUrl(req).query;
 
     if (req.method === 'GET' && urlPath === '/annotate.js') {
       sendBytes(res, 200, readAnnotateJs(), 'application/javascript');
@@ -492,7 +493,7 @@ export default function annotateApi(options = {}) {
       httpServer = server.httpServer;
       viteServer = server;
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (await handleAnnotate(req, res, urlPath)) return;
         next();
       });

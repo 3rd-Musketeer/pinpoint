@@ -1,6 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parseReqUrl } from './lib/req-url.js';
 
 import { chromium } from '@playwright/test';
 
@@ -162,7 +163,7 @@ export default function exportImageApi(options = {}) {
     name: 'export-image-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (req.method !== 'POST') return next();
         try {
           if (urlPath === '/api/export-image') return await handleExportImage(req, res, renderer);

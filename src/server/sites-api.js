@@ -1,3 +1,4 @@
+import { parseReqUrl } from './lib/req-url.js';
 /**
  * /sites/<entry-id>/ — one URL space for every registry entry:
  *
@@ -211,7 +212,7 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    const query = new URL(req.url || '/', 'http://sites.local').searchParams;
+    const query = parseReqUrl(req).query;
 
     // pp2（2026-09-22 切片 1）：dir 条目的「屏」从 dist 出 —— board.json 里的
     // screenId 对应的 <id>.html 读 <dataRoot>/dist/<entry>/（懒编译兜底）；
@@ -277,7 +278,7 @@ export default function sitesApi(options = {}) {
     name: 'sites-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (await handleSites(req, res, urlPath)) return;
         next();
       });

@@ -1,3 +1,4 @@
+import { parseReqUrl } from './lib/req-url.js';
 /**
  * GET /api/frame?page=<pageId>&screen=<screenId>[&ledger=<pathname>][&annotate=off]
  * 阶段 5：文档 mention 的活 frame 渲染端点。
@@ -22,13 +23,13 @@ export default function frameApi(options = {}) {
     name: 'frame-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (urlPath !== '/api/frame') return next();
         if (req.method !== 'GET' && req.method !== 'HEAD') {
           sendJson(res, 405, { error: 'method_not_allowed' });
           return;
         }
-        const query = new URL(req.url || '/', 'http://frame.local').searchParams;
+        const query = parseReqUrl(req).query;
         const pageId = query.get('page') || '';
         const screenId = query.get('screen') || '';
         const rawLedger = query.get('ledger');
