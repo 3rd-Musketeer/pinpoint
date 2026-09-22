@@ -51,7 +51,6 @@ function markSummary(m, ann) {
   var body = (m && (m.content != null ? m.content : m.comment)) || '';
   if (body) {
     if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
-    if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
     return body;
   }
   if (m.type === 'region') return '框选区域';

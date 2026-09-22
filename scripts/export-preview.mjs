@@ -15,9 +15,7 @@ function parseArgs(argv) {
   };
   for (let index = 0; index < argv.length; index += 1) {
     const arg = argv[index];
-    // --with-notes 退役（图纸内容永随，decisions 2026-08-15d）：继续吞下不报错的占位。
-    if (arg === '--with-notes') continue;
-    else if (arg.startsWith('--')) values[arg.slice(2)] = argv[++index];
+    if (arg.startsWith('--')) values[arg.slice(2)] = argv[++index];
   }
   values.scale = Number(values.scale);
   return values;

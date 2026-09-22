@@ -130,7 +130,6 @@
       return hit ? ('@' + hit.n) : '@?';
     });
   }
-  var commentToDisplay = contentToDisplay; // compat alias for workbench
 
   /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用）。
    * iframe 内 overlay 与父级 gutter 共用，避免两边显示不一致。 */
@@ -3856,7 +3855,6 @@
     markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
     isMarkBroken: isMarkBroken,
-    commentToDisplay: contentToDisplay,
     contentToDisplay: contentToDisplay,
     indicatorForMark: indicatorForMark,
     onUpdate: function (fn) { if (typeof fn === 'function') updateListeners.push(fn); },
@@ -3864,10 +3862,6 @@
     get annotations() { return marks.slice(); },
     get pageMarks() { return marksForActivePage(); }
   };
-
-  // Deprecated alias: external doc pages still call iOSAnnotate.* from their
-  // tail scripts (pre-rename); keep it pointing at the live API until they migrate.
-  window.iOSAnnotate = window.pinpoint;
 
   syncModeClass();
 
