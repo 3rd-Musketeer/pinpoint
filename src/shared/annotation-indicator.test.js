@@ -107,23 +107,6 @@ test('indicatorForAnnotation prefers kind then @a; unsaved falls back to scope',
   );
 });
 
-test('normalizeAnnotation upgrades legacy fields and mentions', () => {
-  const a = normalizeAnnotation({
-    n: 1,
-    id: 'ab12cd',
-    comment: 'see [@m:zz99aa] please',
-    group: 'inbox',
-    groupLabel: 'Inbox',
-    mentions: ['zz99aa'],
-  });
-  assert.equal(a.content, 'see [@a:zz99aa] please');
-  assert.equal(a.section, 'inbox');
-  assert.equal(a.sectionLabel, 'Inbox');
-  assert.equal(a.comment, undefined);
-  assert.equal(a.group, undefined);
-  assert.deepEqual(a.mentions, ['zz99aa']);
-});
-
 test('normalizeAnnotation drops retired response data', () => {
   const annotation = normalizeAnnotation({
     id: 'ab12cd',
@@ -133,17 +116,17 @@ test('normalizeAnnotation drops retired response data', () => {
   assert.equal(annotation.reply, undefined);
 });
 
-test('normalizeDoc dual-reads marks and writes annotations shape', () => {
+test('normalizeDoc 只认 annotations（旧 marks 键由 migrate-ledgers.mjs 迁净）', () => {
   const doc = normalizeDoc({
     page: 'index.html',
     revision: 3,
-    marks: [{ n: 1, comment: 'hi', group: 'a', groupLabel: 'A' }],
+    annotations: [{ n: 1, content: 'hi', section: 'a' }],
   });
   assert.equal(doc.revision, 3);
   assert.equal(doc.annotations.length, 1);
   assert.equal(doc.annotations[0].content, 'hi');
-  assert.equal(doc.annotations[0].section, 'a');
   assert.equal(doc.marks, undefined);
+  assert.deepEqual(normalizeDoc({ marks: [{ n: 1 }] }).annotations, [], '旧键不再被读');
 });
 
 test('normalizeAnnotation upgrades element targets with stable refs and compatibility mirrors', () => {

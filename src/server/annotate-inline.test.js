@@ -127,7 +127,7 @@ test('inlined lib output matches direct lib import on fixtures', () => {
     indicatorForAnnotation({ id: 'ab12cd', pageId: 'p', section: 's' }, 'p', { persisted: true }),
     '@a:ab12cd',
   );
-  assert.deepEqual(normalizeAnnotation({ comment: 'hi', group: 'g' }), { content: 'hi', section: 'g', status: 'open' });
+  assert.deepEqual(normalizeAnnotation({ content: 'hi', section: 'g' }), { content: 'hi', section: 'g', status: 'open' });
   const targets = [{ ref: 'i1', selector: '#one', text: 'One' }, { ref: 'i3', selector: '#three', text: 'Three' }];
   assert.equal(targetContentToDisplay('[@a:ab12cd] [@t:i3]', targets), '[@a:ab12cd] [indicator 3]');
   assert.equal(targetContentToStorage('[@a:ab12cd] [indicator 3]', targets), '[@a:ab12cd] [@t:i3]');

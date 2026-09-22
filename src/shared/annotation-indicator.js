@@ -155,7 +155,7 @@ export function annotationMatchesIndicator(a, ind) {
   if (!ind.pageId || !a.pageId || a.pageId !== ind.pageId) return false;
   if (ind.kind === 'page') return true;
   if (ind.kind === 'section') {
-    const section = a.section || a.group;
+    const section = a.section;
     return !!ind.sectionId && section === ind.sectionId;
   }
   if (ind.kind === 'frame') {
@@ -165,8 +165,9 @@ export function annotationMatchesIndicator(a, ind) {
 }
 
 /**
- * Normalize one annotation for disk / API (new shape).
- * Dual-reads legacy comment/group/groupLabel and [@m:] mentions.
+ * Normalize one annotation for disk / API。旧字段（comment / group /
+ * groupLabel、[@m:] mention）的读侧升级已随迁移脚本（scripts/
+ * migrate-ledgers.mjs）删除 —— 磁盘形态由脚本一次性迁净。
  */
 export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
@@ -176,17 +177,6 @@ export function normalizeAnnotation(raw) {
   a.status = normalizeStatus(a.status, a);
   if (a.result) delete a.result;
 
-  if (a.content == null && a.comment != null) a.content = a.comment;
-  delete a.comment;
-
-  if (a.section == null && a.group != null) a.section = a.group;
-  if (a.sectionLabel == null && a.groupLabel != null) a.sectionLabel = a.groupLabel;
-  delete a.group;
-  delete a.groupLabel;
-
-  if (typeof a.content === 'string' && a.content) {
-    a.content = a.content.replace(/\[@m:([a-z0-9]+)\]/gi, '[@a:$1]');
-  }
   if (Array.isArray(a.mentions)) {
     a.mentions = a.mentions.map((id) => String(id));
   }
@@ -206,12 +196,10 @@ export function normalizeAnnotation(raw) {
   return a;
 }
 
-/** Pick annotations array from a doc that may use annotations or legacy marks. */
+/** Pick annotations array from a doc（legacy marks 键已由迁移脚本迁净）。 */
 export function annotationsFromDoc(doc) {
   if (!doc || typeof doc !== 'object') return [];
-  if (Array.isArray(doc.annotations)) return doc.annotations;
-  if (Array.isArray(doc.marks)) return doc.marks;
-  return [];
+  return Array.isArray(doc.annotations) ? doc.annotations : [];
 }
 
 /** Normalize a full document to the new on-disk shape. */
@@ -236,7 +224,7 @@ export function indicatorForAnnotation(a, fallbackPageId, opts) {
   if (!a) return '';
   const pageId = a.pageId || fallbackPageId || '';
   const kind = a.indicatorKind || 'annotation';
-  const section = a.section || a.group;
+  const section = a.section;
   const persisted = !opts || opts.persisted !== false;
 
   function scopeFallback() {

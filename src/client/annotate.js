@@ -83,7 +83,7 @@
   var bubbleLayout = 'inline';
 
   // Mention: UI shows @n; disk stores [@a:<id>] (legacy [@m:<id>] still read).
-  var MENTION_STORE_RE = /\[@(?:a|m):([a-z0-9]+)\]/gi;
+  var MENTION_STORE_RE = /\[@a:([a-z0-9]+)\]/gi;
   var MENTION_DISPLAY_RE = /@(\d+)\b/g;
 
   function newMarkId() {
@@ -163,19 +163,15 @@
   }
 
   function annotationContent(m) {
-    if (!m) return '';
-    if (m.content != null) return m.content;
-    return m.comment || '';
+    return (m && m.content) || '';
   }
 
   function annotationSection(m) {
-    if (!m) return '';
-    return m.section || m.group || '';
+    return (m && m.section) || '';
   }
 
   function annotationSectionLabel(m) {
-    if (!m) return '';
-    return m.sectionLabel || m.groupLabel || '';
+    return (m && m.sectionLabel) || '';
   }
 
   // Indicator/normalize logic is inlined from lib/annotation-indicator.js at serve
@@ -183,8 +179,7 @@
 
   function docAnnotations(doc) {
     if (!doc) return null;
-    if (Array.isArray(doc.annotations) || Array.isArray(doc.marks)) return annotationsFromDoc(doc);
-    return null;
+    return Array.isArray(doc.annotations) ? doc.annotations : null;
   }
 
   function indicatorForMark(m) {

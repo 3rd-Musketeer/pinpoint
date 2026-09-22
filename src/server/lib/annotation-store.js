@@ -71,8 +71,8 @@ export function createAnnotationStore(options) {
     };
   }
 
-  // Shape returned to the API. Disk reads dual-read legacy `marks` via
-  // annotationsFromDoc; new writes and broadcasts carry `annotations` only.
+  // Shape returned to the API：新写与广播只带 annotations（旧 marks 键由
+  // scripts/migrate-ledgers.mjs 一次性迁净）。
   function asDoc(doc) {
     const annotations = Array.isArray(doc.annotations) ? doc.annotations : [];
     return {
@@ -118,7 +118,7 @@ export function createAnnotationStore(options) {
   function writeDoc(page, doc) {
     const safePage = annotationSlug(page);
     fs.mkdirSync(dataDir, { recursive: true });
-    const annotations = (Array.isArray(doc.annotations) ? doc.annotations : annotationsFromDoc(doc))
+    const annotations = (Array.isArray(doc.annotations) ? doc.annotations : [])
       .map(normalizeAnnotation);
     const output = {
       page: safePage,
@@ -176,9 +176,7 @@ export function createAnnotationStore(options) {
     if (disk.revision !== input.baseRevision) {
       return { status: 409, error: 'revision_conflict', doc: disk };
     }
-    const list = Array.isArray(input.annotations)
-      ? input.annotations
-      : (Array.isArray(input.marks) ? input.marks : []);
+    const list = Array.isArray(input.annotations) ? input.annotations : [];
     const byId = new Map(disk.annotations.map((a) => [a.id, a]));
     const annotations = [];
     for (const raw of list) {

@@ -47,7 +47,7 @@ export function readBucketRows(bucketPath) {
     } catch {
       continue;
     }
-    const rows = Array.isArray(doc.annotations) ? doc.annotations : (Array.isArray(doc.marks) ? doc.marks : []);
+    const rows = Array.isArray(doc.annotations) ? doc.annotations : [];
     const ledger = name.replace(/\.json$/, '');
     for (const row of rows) {
       const normalized = normalizeAnnotation(row);
