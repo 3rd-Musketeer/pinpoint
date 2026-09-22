@@ -355,9 +355,10 @@ function compileHtmlScreen(target, screenId, file) {
   return { ok: true, html };
 }
 
-/** board.json assets 注入：css 帧开头 / js 帧末尾，按 URL 去重。 */
+/** board.json assets 注入：css 帧开头 / js 帧末尾。assets 数组先自去重（R10），
+    再按「帧里已有同 URL 行」去重。 */
 export function injectAssets(html, assets, urlBase) {
-  const list = (value) => (Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item) : []);
+  const list = (value) => [...new Set(Array.isArray(value) ? value.filter((item) => typeof item === 'string' && item) : [])];
   const cssLines = list(assets && assets.css)
     .map((href) => `${urlBase}${href}`)
     .filter((url) => !html.includes(url))

@@ -337,9 +337,12 @@ describe('assets 注入', () => {
     assert.ok(html.includes('extra.css'), '没手写的 css 仍然注入');
   });
 
-  test('injectAssets 纯函数：非数组 / 非字符串项宽容忽略', () => {
+  test('injectAssets 纯函数：非数组 / 非字符串项宽容忽略；assets 自身重复先去重（R10）', () => {
     assert.equal(injectAssets('<div/>', null, '/sites/x/'), '<div/>');
     assert.equal(injectAssets('<div/>', { css: [1, ''] }, '/sites/x/'), '<div/>');
+    const html = injectAssets('<div/>', { css: ['pk.css', 'pk.css'], js: ['pk.js', 'pk.js', 'pk.js'] }, '/sites/x/');
+    assert.equal(html.match(/pk\.css/g).length, 1, html);
+    assert.equal(html.match(/pk\.js/g).length, 1, html);
   });
 });
 
