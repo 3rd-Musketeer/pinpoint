@@ -457,6 +457,9 @@ export function createAnnotateHandler(options = {}) {
         saved: store.jsonPathFor(result.doc.page),
         count,
         revision: result.doc.revision,
+        // M1：#n 由服务端发，应答把带号的行带回，客户端按 id 认领覆盖本地的
+        // 临时号（nextN 只是显示占位）。
+        annotations: result.doc.annotations,
       });
       return true;
     }

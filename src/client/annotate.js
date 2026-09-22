@@ -740,6 +740,28 @@
     }
   }
 
+  /** M1：#n 的取号权在服务端。保存应答把带号的行带回来，按 id 认领覆盖本地
+      的临时号（nextN 只管应答前的显示）；不在应答里的行（在途新草稿）不动。
+      只改 n，不 bump mutationVersion —— 认领不触发再保存。 */
+  function adoptServerNumbers(data) {
+    var list = data && Array.isArray(data.annotations) ? data.annotations : null;
+    if (!list) return;
+    var serverN = Object.create(null);
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      if (a && a.id && Number.isInteger(a.n)) serverN[a.id] = a.n;
+    }
+    var changed = false;
+    for (var j = 0; j < marks.length; j++) {
+      var m = marks[j];
+      if (serverN[m.id] !== undefined && serverN[m.id] !== m.n) { m.n = serverN[m.id]; changed = true; }
+    }
+    if (!changed) return;
+    structureDirty = true;
+    renderLedgerChange();
+    notify();
+  }
+
   function persist() {
     mutationVersion++;
     writeLocalCache();
@@ -800,6 +822,7 @@
             revision = Number(res.data.revision);
           }
           syncedMutationVersion = Math.max(syncedMutationVersion, sentVersion);
+          adoptServerNumbers(res.data);
           var shouldRetry = settleDeferredRemote(sentVersion);
           if (syncError) { syncError = false; notify(); }
           setStatus('已同步');
@@ -1876,6 +1899,8 @@
   }, true);
 
   // ---------- 新建标注 ----------
+  // nextN 只做保存应答回来前的临时显示：#n 的取号权在服务端（M1），应答回来
+  // 按 id 认领覆盖（adoptServerNumbers）。
   function nextN() { return marks.reduce(function (m, k) { return Math.max(m, k.n); }, 0) + 1; }
 
   function newElementMark(el) {

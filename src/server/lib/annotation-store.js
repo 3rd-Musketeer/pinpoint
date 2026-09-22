@@ -177,14 +177,19 @@ export function createAnnotationStore(options) {
       return { status: 409, error: 'revision_conflict', doc: disk };
     }
     const list = Array.isArray(input.annotations) ? input.annotations : [];
-    const byId = new Map(disk.annotations.map((a) => [a.id, a]));
+    // byId 只索引带 id 的存量行：没有 id 的行无从比对，一律当新标注（M1）。
+    const byId = new Map(disk.annotations.filter((a) => a.id).map((a) => [a.id, a]));
     const annotations = [];
     for (const raw of list) {
       const a = normalizeAnnotation(raw);
       const before = a.id ? byId.get(a.id) : null;
       if (!before) {
-        // 新标注恒为 open（客户端声明什么都不算）。
+        // 新标注恒为 open（客户端声明什么都不算）；#n 一律由服务端从 _seq.json
+        // 取号，客户端带来的 n 直接忽略（M1）。客户端的 nextN 只是保存应答回来
+        // 前的临时显示——取号权在服务端，「按桶单调、跨账本唯一、永不复用」
+        // 才守得住；客户端猜的号在多账本桶里必撞。
         a.status = 'open';
+        delete a.n;
       } else {
         // 沿用旧号（review R3）：重存既有标注缺 n 时绝不重新取号 —— #n 是对外
         // 引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）不该

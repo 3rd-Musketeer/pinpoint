@@ -39,12 +39,14 @@ test('save atomically replaces the document without leaving temp files', (t) => 
   const { dataDir, store } = withStore(t);
 
   store.save({ page: 'index.html', baseRevision: 0, annotations: [{ n: 1 }] });
+  // 两行都没带 id：M1 下无从比对存量，一律当新标注由服务端取号（2、3），
+  // 客户端自带的 n 不被采纳。
   store.save({ page: 'index.html', baseRevision: 1, annotations: [{ n: 1 }, { n: 2 }] });
 
   const disk = JSON.parse(fs.readFileSync(path.join(dataDir, 'index.html.json'), 'utf8'));
   assert.ok(Array.isArray(disk.annotations));
   assert.equal(disk.marks, undefined);
-  assert.deepEqual(store.readDoc('index.html').annotations, [{ n: 1, status: 'open' }, { n: 2, status: 'open' }]);
+  assert.deepEqual(store.readDoc('index.html').annotations, [{ n: 2, status: 'open' }, { n: 3, status: 'open' }]);
   assert.deepEqual(fs.readdirSync(dataDir).filter((name) => name.includes('.tmp-')), []);
 });
 
@@ -103,6 +105,24 @@ test('read and save preserve stable target refs and first-target compatibility a
 });
 
 /* ---- pp2 状态机：#n 取号 / 转换校验 / setStatus ---- */
+
+test('#n（M1）：新标注一律服务端取号，客户端带的 n 忽略', (t) => {
+  const { store } = withStore(t);
+
+  // 同桶两个账本各存一条新标注，两条都自称 n:1（客户端 nextN 的视角看不到
+  // 别的账本）：服务端各发 #1、#2，不认客户端的号。
+  const a = store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', n: 1, content: '甲' }] });
+  assert.equal(a.status, 200);
+  assert.deepEqual(a.doc.annotations.map((row) => row.n), [1]);
+  const b = store.save({ page: 'b.html', baseRevision: 0, annotations: [{ id: 'y1', n: 1, content: '乙' }] });
+  assert.equal(b.status, 200);
+  assert.deepEqual(b.doc.annotations.map((row) => row.n), [2]);
+
+  // 删掉 #1 再存新的：号接在桶级计数器后面（#3），已发过的号不复活。
+  store.save({ page: 'a.html', baseRevision: 1, annotations: [] });
+  const c = store.save({ page: 'a.html', baseRevision: 2, annotations: [{ id: 'x2', content: '丙' }] });
+  assert.deepEqual(c.doc.annotations.map((row) => row.n), [3]);
+});
 
 test('#n：缺号标注按创建顺序补号，跨账本唯一，删过的号不复用', (t) => {
   const { dataDir, store } = withStore(t);

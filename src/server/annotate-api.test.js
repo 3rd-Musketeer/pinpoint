@@ -78,11 +78,12 @@ test('an unknown entry is a loud 400 and writes nothing', async (t) => {
 test('GET /annotations/<page> resolves entry from the query string', async (t) => {
   const { handler } = withFixture(t);
   await call(handler, 'POST', '/save', {
+    // n:7 是填料：M1 下新行的号由服务端发，客户端带来的 7 不被采纳。
     page: 'index.html', entry: 'web', baseRevision: 0, annotations: [{ n: 7 }],
   });
   const hit = await call(handler, 'GET', '/annotations/index.html?entry=web');
   assert.equal(hit.res.statusCode, 200);
-  assert.deepEqual(hit.json.annotations, [{ n: 7, status: 'open' }]);
+  assert.deepEqual(hit.json.annotations, [{ n: 1, status: 'open' }]);
   const miss = await call(handler, 'GET', '/annotations/index.html?entry=ghost');
   assert.equal(miss.res.statusCode, 400);
   assert.equal(miss.json.error, 'unknown_entry');
