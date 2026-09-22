@@ -149,7 +149,7 @@ html-no-css 档换成文本引用）。
 
 `content/previews/` 是**纯模板**（ADR 0027）：只放进 git 的示例页，页 id / 标题 / 顺序 / 默认页在
 `content/previews/_index.json`。实例页不住这里——它们住各自 owning topic 的 `prototypes/`（或磁盘任何地方），
-经 registry 进来。遗留的 `content/previews/_index.local.json` 覆盖机制还能用，但实际已退役。
+经 registry 进来。
 
 组件包含支持 `data-text` → `[data-ios-slot="text"]`，以及具名的 `data-slot-<name>` →
 `[data-ios-slot="<name>"]`。两个屏共用一个组件和状态模型、只是文案或进度不同时用具名槽；

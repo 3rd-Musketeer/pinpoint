@@ -29,7 +29,6 @@ import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { loadDistScreenHtml } from './page-compiler.js';
 import { synthesizeBoard } from './synth-board.js';
-import { templateOnly } from '../template-only.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -58,15 +57,10 @@ function readJsonSafe(file) {
   }
 }
 
-/** Workbench Pages 清单的服务端镜像：模板 _index.json + 实例 _index.local.json。 */
+/** Workbench Pages 清单的服务端镜像：模板 _index.json（_index.local.json 已于 pp2 切片 3 退役）。 */
 function previewManifestPages() {
   const base = readJsonSafe(path.join(PREVIEWS_ROOT, '_index.json'));
-  const pages = Array.isArray(base && base.pages) ? base.pages.slice() : [];
-  if (!templateOnly()) {
-    const local = readJsonSafe(path.join(PREVIEWS_ROOT, '_index.local.json'));
-    if (local && Array.isArray(local.pages)) pages.push(...local.pages);
-  }
-  return pages;
+  return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
 /** 壳归一：legacy "web" 值与 html 模式同落 doc（与 preview-contracts validateShell 的归一同义）。 */

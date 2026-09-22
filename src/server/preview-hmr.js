@@ -111,7 +111,7 @@ export default function previewHmr(options = {}) {
     syncWatcher,
     handleHotUpdate({ file, server }) {
       const rel = file.replace(/\\/g, '/');
-      if (/\/previews\/_index(?:\.local)?\.json$/.test(rel)) {
+      if (/\/previews\/_index\.json$/.test(rel)) {
         server.ws.send({ type: 'full-reload' });
         return [];
       }

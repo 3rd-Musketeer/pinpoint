@@ -473,25 +473,15 @@ function registryToPages(data) {
 }
 
 export function loadPageManifest() {
-  // previews/_index.local.json (gitignored) overrides the tracked manifest, so
-  // an instance can keep private pages without touching versioned files. Only
-  // a missing local file falls back — a broken one must surface as an error.
-  // 「缺失」的判定含 dev server 的 SPA fallback：不存在路径会被喂成
-  // index.html（200 + text/html），2026-08-17e 实例搬迁后该文件常态不存在，
-  // 必须把「200 但不是 JSON」同样按缺失回落，否则页面清单整体加载失败。
+  // 页面清单 = tracked previews/_index.json（_index.local.json 覆盖机制已于 pp2
+  // 切片 3 退役）。失败上抛，页面清单整体失败要响亮，不静默回落。
   return queryClient.fetchQuery({
     queryKey: ['page-manifest'],
     queryFn: function () {
-      return fetch('previews/_index.local.json')
-        .then(function (response) {
-          var type = response.headers.get('content-type') || '';
-          if (response.ok && type.indexOf('json') >= 0) return response.json();
-          if (!response.ok && response.status !== 404) throw new Error(String(response.status));
-          return fetch('previews/_index.json').then(function (tracked) {
-            if (!tracked.ok) throw new Error(String(tracked.status));
-            return tracked.json();
-          });
-        });
+      return fetch('previews/_index.json').then(function (response) {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      });
     }
   })
     .then(function (raw) {
