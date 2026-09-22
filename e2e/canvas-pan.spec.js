@@ -2,14 +2,13 @@ import { test, expect } from '@playwright/test';
 
 const cellSelector = '[data-screen="settings"] .ios-cell';
 
-async function openCanvas(page, count = 0, withResults = false) {
+async function openCanvas(page, count = 0) {
   // Synthetic ledgers never write the user's data, even when a test edits a mark.
   await page.route('**/annotations/**', route => route.fulfill({ json: {
     revision: 1,
     annotations: Array.isArray(count) ? count : Array.from({ length: count }, (_, i) => ({
       id: `pan-fixture-${i}`, n: i + 1, type: 'element', pageId: 'e2e-ios',
       screenId: 'settings', content: `Pan annotation ${i + 1}`,
-      ...(withResults ? { result: { operations: [{action:'modify', targets:[{screenId:'settings', selector:`.ios-page > .ios-section:first-child .ios-cell:nth-child(${i % 3 + 1})`}]}] } } : {}),
       targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(${i % 3 + 1})`, text: 'Cell' }],
     })),
   } }));
@@ -41,9 +40,8 @@ for (const mode of [false, true]) for (const button of ['middle', 'space']) {
   });
 }
 
-for (const count of [200, 1000]) for (const withResults of [false, true]) test(`${count} annotation pan with results ${withResults} reuses geometry instead of measuring every mark every frame`, async ({ page }) => {
-  await openCanvas(page, count, withResults);
-  if (withResults) await expect(page.locator('.ann-result-target')).toHaveCount(count);
+for (const count of [200, 1000]) test(`${count} annotation pan reuses geometry instead of measuring every mark every frame`, async ({ page }) => {
+  await openCanvas(page, count);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
   const before = await cdp.send('Performance.getMetrics');
@@ -72,7 +70,7 @@ for (const count of [200, 1000]) for (const withResults of [false, true]) test(`
   });
   const after = await cdp.send('Performance.getMetrics');
   const delta = name => after.metrics.find(m => m.name === name).value - before.metrics.find(m => m.name === name).value;
-  console.log(JSON.stringify({ count, withResults, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
+  console.log(JSON.stringify({ count, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
   // Deterministic work budgets; frame-time measurements are reported, not a flaky CI gate.
   expect(sample.reads).toBeLessThan(1200);
   expect(delta('LayoutCount')).toBeLessThan(120);
@@ -349,21 +347,31 @@ test('saving one comment preserves unrelated geometry and sends one complete led
 });
 
 
-test('result boxes stay on the reported DOM through pan, zoom, target replacement and reload', async ({page}) => {
-  await openCanvas(page, 1, true);
-  const error = () => page.evaluate(selector => {
-    const target=document.querySelector(selector).getBoundingClientRect();
-    const box=document.querySelector('.ann-result-target').getBoundingClientRect();
-    return Math.max(Math.abs(target.left-box.left),Math.abs(target.top-box.top),Math.abs(target.width-box.width));
-  }, `${cellSelector}:nth-child(1)`);
-  await expect.poll(error).toBeLessThan(2);
-  await page.locator('#wbstage').evaluate(s=>{s.scrollLeft+=100;s.scrollTop+=60;});
-  await expect.poll(error).toBeLessThan(2);
+test('ghost rect keeps the last known spot through pan and zoom after the target leaves the DOM', async ({page}) => {
+  await openCanvas(page, 1);
+  // lastRect 在锚点活着时已记下；目标离场后幽灵框钉在原位，pan / zoom 跟着投影走。
+  // 比的是舞台绝对坐标（scrollLeft/Top 参与换算）：视口移动不算误差。
+  const oldRect = await page.locator(`${cellSelector}:nth-child(1)`).first().boundingBox();
+  const oldAbs = await page.evaluate((r) => {
+    const s = document.getElementById('wbstage');
+    return { x: r.x + s.scrollLeft, y: r.y + s.scrollTop };
+  }, oldRect);
+  // 种子的锚 selector 命中 3 格（三个列表各自的 first cell）—— 全部清掉才算锚点失效。
+  await page.locator(`${cellSelector}:nth-child(1)`).evaluateAll(els => els.forEach(el => el.remove()));
+  const ghost = page.locator('.ann-ghost-rect');
+  await expect(ghost).toHaveCount(1);
+  const oldAbs2 = { ...oldAbs, width: oldRect.width, height: oldRect.height };
+  const error = () => page.evaluate(old => {
+    const s = document.getElementById('wbstage');
+    const box = document.querySelector('.ann-ghost-rect').getBoundingClientRect();
+    const zoom = Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1;
+    const ax = (box.x + s.scrollLeft) / zoom, ay = (box.y + s.scrollTop) / zoom;
+    const aw = box.width / zoom, ah = box.height / zoom;
+    return Math.max(Math.abs(old.x - ax), Math.abs(old.y - ay), Math.abs(old.width - aw), Math.abs(old.height - ah));
+  }, oldAbs2);
+  await expect.poll(error).toBeLessThan(8);
+  await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 100; s.scrollTop += 60; });
+  await expect.poll(error).toBeLessThan(8);
   await page.locator('#wbzoom-in').click();
-  await expect.poll(error).toBeLessThan(2);
-  await page.locator(cellSelector).first().evaluate(el=>{const next=el.cloneNode(true);next.style.marginTop='25px';el.replaceWith(next);});
-  await expect.poll(error).toBeLessThan(2);
-  await page.reload();
-  await expect(page.locator('.ann-result-target')).toHaveCount(1);
-  await expect.poll(error).toBeLessThan(2);
+  await expect.poll(error).toBeLessThan(8);
 });

@@ -2,6 +2,7 @@ import { expect, test } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { E2E_DATA_DIR } from './env.js';
+import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // These stories deliberately create and invalidate DOM targets. Their ledger
 // must not survive into another story with a fresh document.
@@ -187,7 +188,7 @@ test('composer remains clickable above the reviewed page popup', async ({ page }
   expect(await page.evaluate(()=>window.pinpoint.marks.at(-1).content)).toContain('弹窗按钮改成继续');
 });
 
-test('agent reports added, modified, moved and deleted results without replacing the original annotation', async ({ page }) => {
+test('pp2 状态机：mark 端点 open → check → done 带 note，非法转换 409，编辑回 open', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));
@@ -196,38 +197,45 @@ test('agent reports added, modified, moved and deleted results without replacing
   await page.getByRole('button',{name:'发送标注',exact:true}).click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const original=await page.evaluate(()=>window.pinpoint.marks.at(-1));
-  await page.evaluate(()=>{
-    const bubble=document.createElement('div');bubble.id='agent-added-bubble';bubble.textContent='新增的对话气泡';bubble.style.cssText='margin:20px;padding:20px;background:#dbeafe';document.querySelector('#doc-target').after(bubble);
-    document.querySelector('#doc-target').textContent='修改后的正文';
-    document.querySelector('#doc-title').style.marginLeft='80px';
-  });
-  const report=await page.evaluate(async id=>{
-    return window.pinpoint.recordResults(id,[
-      {action:'add',targets:[{selector:'#agent-added-bubble'}]},
-      {action:'modify',targets:[{selector:'#doc-target'}]},
-      {action:'move',targets:[{selector:'#doc-title'}]},
-      {action:'delete',targets:[]},
-    ],{baseRevision:window.pinpoint.getState().revision});
-  },original.id);
-  expect(report.id).toBe(original.id);
-  const updated=await page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id),original.id);
-  expect(updated.content).toBe(original.content);
-  expect(updated.targets).toEqual(original.targets);
-  await expect(page.locator('[data-result-annotation="'+original.id+'"]')).toHaveCount(3);
-  const invalid=await page.evaluate(async id=>{
-    try { await window.pinpoint.recordResults(id,[{action:'add',targets:[{selector:'p'}]}],{baseRevision:window.pinpoint.getState().revision});return ''; } catch(e) {return e.message;}
-  },original.id);
-  expect(invalid).toContain('unique');
-  const stale=await page.evaluate(async id=>{
-    try { await window.pinpoint.recordResults(id,[{action:'delete'}],{baseRevision:0});return ''; } catch(e) {return e.message;}
-  },original.id);
-  expect(stale).toContain('revision_conflict');
-  await page.evaluate(id=>window.pinpoint.openMark(window.pinpoint.marks.find(m=>m.id===id).n),original.id);
-  await expect(page.locator('[data-result-summary]')).toHaveText('已增加 · 已修改 · 已移动 · 已删除');
-  await page.screenshot({path:test.info().outputPath('result-indicators.png')});
+  expect(original.status).toBe('open');
+  expect(original.n).toBeGreaterThanOrEqual(1);
+  const ledger=pageKeyFromPathname('/sites/e2e-dir/doc.html');
+
+  // open → check（带 note）
+  let rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  let res=await page.request.post(`/annotations/${ledger}/${original.n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check',note:'看过，不改'}});
+  expect(res.status()).toBe(200);
+  let body=await res.json();
+  expect(body.annotation.status).toBe('check');
+  expect(body.annotation.note).toBe('看过，不改');
+
+  // check → done
+  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  res=await page.request.post(`/annotations/${ledger}/${original.n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  expect(res.status()).toBe(200);
+  expect((await res.json()).annotation.status).toBe('done');
+
+  // 非法：done → done / 端点写 close / 未知 id / 过期 revision
+  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  expect((await page.request.post(`/annotations/${ledger}/${original.n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}})).status()).toBe(409);
+  expect((await page.request.post(`/annotations/${ledger}/${original.n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'close'}})).status()).toBe(400);
+  expect((await page.request.post(`/annotations/${ledger}/999/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}})).status()).toBe(404);
+  expect((await page.request.post(`/annotations/${ledger}/${original.n}/status`,{data:{entry:'e2e-dir',baseRevision:0,status:'check'}})).status()).toBe(409);
+
+  // 列表行出 #n 序号 + done 灰标 + hover note
+  await page.keyboard.press('s');
+  const row=page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+original.n+'"]');
+  await expect(row.locator('.wb-ann-status-tag')).toHaveText('done');
+  await expect(row).toHaveAttribute('title','看过，不改');
+
+  // owner 编辑正文 → 自动回 open
+  await page.evaluate(n=>window.pinpoint.openMark(n),original.n);
+  await page.locator('#ann-input').fill('改过的正文');
+  await page.locator('#ann-save').click();
+  await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,original.id)).toBe('open');
 });
 
-test('reviewer clears only wholly invalid annotations and can delete then reannotate a result', async ({ page }) => {
+test('reviewer clears only wholly invalid annotations and can delete then reannotate', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(()=>{
@@ -244,27 +252,24 @@ test('reviewer clears only wholly invalid annotations and can delete then reanno
     await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
     ids[kind]=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
   }
-  await page.evaluate(async id=>{
-    await window.pinpoint.recordResults(id,[{action:'modify',targets:[{selector:'#doc-target'}]}],{baseRevision:window.pinpoint.getState().revision});
+  await page.evaluate(()=>{
     document.querySelector('#review-stale').remove();
     document.querySelector('#review-replaced').remove();
     document.querySelector('#review-hidden').style.display='none';
     window.pinpoint.render();
-  },ids.replaced);
-  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(1);
-  expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(1);
+  });
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(2);
+  expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(2);
   const remaining=await page.evaluate(()=>window.pinpoint.marks.map(m=>m.id));
   expect(remaining).not.toContain(ids.stale);
   expect(remaining).toContain(ids.hidden);
-  expect(remaining).toContain(ids.replaced);
-  await page.evaluate(id=>window.pinpoint.removeMark(window.pinpoint.marks.find(m=>m.id===id).n),ids.replaced);
-  await expect(page.locator('[data-result-annotation="'+ids.replaced+'"]')).toHaveCount(0);
+  expect(remaining).not.toContain(ids.replaced);
   await page.locator('#doc-target').click();
   await page.getByRole('textbox',{name:'写标注'}).fill('重新标注：再精简一点');
   await page.getByRole('button',{name:'发送标注',exact:true}).click();
   const fresh=await page.evaluate(()=>window.pinpoint.marks.at(-1));
-  expect(fresh.id).not.toBe(ids.replaced);
-  expect(fresh.result).toBeUndefined();
+  expect(fresh.id).not.toBe(ids.replaced || 'x');
+  expect(fresh.status).toBe('open');
 });
 
 
@@ -339,45 +344,63 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
   expect(edited.images).toBeUndefined();expect(edited.content).toBe(saved.content);
 });
 
-test('a concurrent ledger write rejects stale agent results without overwriting the other edit', async ({page,request}) => {
+test('a concurrent ledger write rejects a stale status write without overwriting the other edit', async ({page,request}) => {
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-title').click();
   await page.getByRole('textbox',{name:'写标注'}).fill('请改标题');await page.locator('#ann-save').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
-  let held;
-  await page.route('**/save',route=>{held=route;});
-  await page.evaluate(()=>{
-    const mark=window.pinpoint.marks.at(-1);
-    window.reportPromise=window.pinpoint.recordResults(mark.id,[{action:'modify',targets:[{selector:'#doc-title'}]}],{baseRevision:window.pinpoint.getState().revision}).then(()=>({ok:true}),e=>({error:e.message}));
-  });
-  await expect.poll(()=>!!held).toBe(true);
-  const pending=held.request().postDataJSON();
-  const other={...pending,annotations:pending.annotations.map(m=>{const copy={...m,content:'另一窗口更新后的意见'};delete copy.result;return copy;})};
-  const response=await request.post('/save',{data:other});expect(response.ok()).toBe(true);
-  await held.continue();
-  const result=await page.evaluate(()=>window.reportPromise);expect(result.error).toContain('revision_conflict');
-  await expect.poll(()=>page.evaluate(()=>window.pinpoint.marks.at(-1).content)).toBe('另一窗口更新后的意见');
-  expect(await page.evaluate(()=>window.pinpoint.marks.at(-1).result)).toBeUndefined();
-  await page.unroute('**/save');
+  const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
+  const staleRev=await page.evaluate(()=>window.pinpoint.getState().revision);
+
+  // 另一个窗口先把账本推进一格（正文改写 + revision+1）。
+  const ledger=pageKeyFromPathname('/sites/e2e-dir/doc.html');
+  const doc=await page.request.get(`/annotations/${ledger}?entry=e2e-dir`).then(r=>r.json());
+  const other=await request.post('/save',{data:{page:ledger,entry:'e2e-dir',path:'/sites/e2e-dir/doc.html',baseRevision:staleRev,annotations:doc.annotations.map(m=>({...m,content:'另一窗口更新后的意见'}))}});
+  expect(other.ok()).toBe(true);
+
+  // 拿着旧 revision 的 mark 写入被 409 拒掉，另一窗口的改动原样保留。
+  const stale=await request.post(`/annotations/${ledger}/${mark.n}/status`,{data:{entry:'e2e-dir',baseRevision:staleRev,status:'check'}});
+  expect(stale.status()).toBe(409);
+  expect((await stale.json()).error).toBe('revision_conflict');
+  const after=await page.request.get(`/annotations/${ledger}?entry=e2e-dir`).then(r=>r.json());
+  expect(after.annotations[0].content).toBe('另一窗口更新后的意见');
+  expect(after.annotations[0].status).toBe('open');
 });
 
 
-test('an intentional deletion remains an execution result instead of an invalid annotation to clear', async ({page}) => {
+test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；失效不等于已解决', async ({page}) => {
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
-  await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-title').click();
-  await page.getByRole('textbox',{name:'写标注'}).fill('删除这个标题');await page.locator('#ann-save').click();
+  await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-target-2').click();
+  await page.getByRole('textbox',{name:'写标注'}).fill('这个目标会走');await page.locator('#ann-save').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const before=await page.evaluate(()=>window.pinpoint.marks.at(-1));
-  await page.evaluate(async id=>{
-    document.querySelector('#doc-title').remove();
-    await window.pinpoint.recordResults(id,[{action:'delete'}],{baseRevision:window.pinpoint.getState().revision});
-  },before.id);
-  expect(await page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(0);
-  expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(0);
-  await page.evaluate(n=>window.pinpoint.openMark(n),before.n);
-  await expect(page.locator('[data-result-summary]')).toHaveText('已删除');
-  await expect(page.locator('#ann-box')).not.toContainText('锚点失效');
-  expect(await page.evaluate(()=>window.pinpoint.marks.at(-1).content)).toBe(before.content);
+  const oldRect=await page.locator('#doc-target-2').boundingBox();
+  const oldAbs=await page.evaluate(y=>window.scrollY+y,oldRect.y);
+
+  await page.evaluate(()=>{document.querySelector('#doc-target-2').remove();});
+  // 幽灵框：虚线框 + 序号钉出现在目标原来的位置（按文档绝对坐标比：滚动不算误差）。
+  const ghost=page.locator('.ann-ghost-rect');
+  await expect(ghost).toHaveCount(1);
+  await expect(page.locator('#ann-marks .ann-badge').filter({hasText:new RegExp('^'+before.n+'$')})).toBeVisible();
+  const g=await ghost.boundingBox();
+  const gAbs=await page.evaluate(y=>window.scrollY+y,g.y);
+  expect(Math.abs(g.x-oldRect.x)).toBeLessThan(6);
+  expect(Math.abs(gAbs-oldAbs)).toBeLessThan(6);
+
+  // 点列表行仍跳到最后位置（页面滚回幽灵处），行标「锚点失效」照旧。
+  await page.keyboard.press('s');
+  await page.evaluate(()=>window.scrollTo(0,0));
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+before.n+'"] .wb-ann-item-main').click();
+  await expect.poll(()=>page.evaluate(()=>window.scrollY)).toBeGreaterThan(0);
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+before.n+'"] .wb-ann-broken-tag')).toHaveText('锚点失效');
+
+  // 行点击打开了 composer；clearInvalid 在有草稿时拒动 —— 先关掉。
+  await page.evaluate(()=>window.pinpoint.cancelDraft());
+
+  // 失效不等于已解决：幽灵框不是免死牌，clearInvalid 照样清它。
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(1);
+  expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(1);
+  await expect(page.locator('.ann-ghost-rect')).toHaveCount(0);
 });
 
 test('invalid cleanup retains partial targets and scopes that are loading or temporarily absent', async ({page}) => {

@@ -3667,7 +3667,8 @@
       if (wb && wb.scrollTo) wb.scrollTo(gtarget);
       else stageEl.scrollTo(gtarget);
     } else if (!frameFocused && !anchor.live && m.lastRect) {
-      var gy = m.lastRect.y + scrollY - window.innerHeight / 2;
+      // lastRect 是文档绝对坐标：居中滚到幽灵处。
+      var gy = m.lastRect.y + m.lastRect.h / 2 - window.innerHeight / 2;
       window.scrollTo({ top: Math.max(0, gy) });
     }
     var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
