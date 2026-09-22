@@ -157,6 +157,87 @@ describe('anchorComp', () => {
   });
 });
 
+describe('excerptForRow 多实例帧', () => {
+  /** 一帧三个 <Bubble>：实例行按文档序取第 k 个 <Comp 匹配（S3）。 */
+  function makeMultiInstanceSite() {
+    const pageDir = path.join(tmp, 'multi-page');
+    fs.mkdirSync(pageDir, { recursive: true });
+    fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+      sections: [
+        { id: 'chat', title: '对话', layout: 'row', screens: [{ id: 'home', title: '首页' }] },
+      ],
+    }, null, 2));
+    fs.writeFileSync(path.join(pageDir, 'home.jsx'), [
+      "import { Bubble } from 'pinpoint/kit';",
+      'export default function Home() {',          // 2
+      '  return (',                                 // 3
+      '    <div class="ios-app">',                  // 4
+      '      <Bubble side="incoming">早</Bubble>',  // 5  ← 第 1 个实例
+      '      <Bubble side="incoming">午</Bubble>',  // 6  ← 第 2 个实例
+      '      <Bubble side="incoming">晚</Bubble>',  // 7  ← 第 3 个实例
+      '    </div>',                                 // 8
+      '  );',                                       // 9
+      '}',                                          // 10
+      '',
+    ].join('\n'));
+    const dataRoot = path.join(tmp, 'multi-data', 'pinpoint');
+    fs.mkdirSync(dataRoot, { recursive: true });
+    return { pageDir, dataRoot };
+  }
+
+  function multiRow(site, nth, text) {
+    return {
+      id: `m${nth}`, n: nth, type: 'element', pageId: 'multi-page', screenId: 'home', status: 'open',
+      content: `${text} [@t:i1]`,
+      targets: [{
+        ref: 'i1',
+        selector: `div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.ios-bubble:nth-of-type(${nth})`,
+        text,
+      }],
+    };
+  }
+
+  test('锚第二个实例 → 实例行指向第 2 个 <Bubble，段名注明文档序', () => {
+    const site = makeMultiInstanceSite();
+    fs.writeFileSync(path.join(site.dataRoot, 'doc~m.json'), JSON.stringify({
+      page: 'doc~m', revision: 1, annotations: [multiRow(site, 2, '午')],
+    }));
+    const context = {
+      pageId: 'multi-page',
+      target: { entryId: 'multi-page', pageDir: site.pageDir, urlBase: '/sites/multi-page/', kind: 'dir' },
+      board: null,
+      refs: { outline: [
+        { id: 'chat', title: '对话', letter: 'A', frames: [{ id: 'home', title: '首页', ref: 'A1' }] },
+      ], bySection: { chat: 'A' }, byFrame: { 'chat\0home': 'A1' } },
+      frameRows: collectPageRows({ root: path.dirname(site.dataRoot), pageId: 'multi-page' }).frameRows,
+      docRows: [],
+      distHtmlFor: (screenId) => screenId === 'home' ? [
+        '<div class="ios-app" data-pp-id="home.jsx:4@1" data-pp-comp="Home">',
+        '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@1" data-pp-comp="Bubble">早</div>',
+        '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@2" data-pp-comp="Bubble">午</div>',
+        '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@3" data-pp-comp="Bubble">晚</div>',
+        '</div>',
+      ].join('\n') : null,
+      readFile: (file) => fs.readFileSync(file, 'utf8'),
+    };
+    const report = buildCheckReport(context, {});
+    const row = report.groups[0].rows[0];
+    const excerpt = JSON.stringify(row.excerpt);
+    assert.ok(excerpt.includes('home.jsx（帧内实例 · 文档序第 2 个）'), excerpt);
+    // 实例段真的指到第 6 行的第 2 个 <Bubble>，不是首匹配的第 5 行。
+    assert.ok(row.excerpt.some((line) => /^\s*6>.*午/.test(line)), excerpt);
+    assert.ok(!row.excerpt.some((line) => /^\s*5>/.test(line)), excerpt);
+  });
+
+  test('单实例帧段名不变（回归）', () => {
+    const site = makeSite();
+    const context = contextFor(site);
+    const report = buildCheckReport(context, {});
+    const bubble = report.groups[0].rows[0];
+    assert.ok(bubble.excerpt.some((line) => line.includes('home.jsx（帧内实例）')), JSON.stringify(bubble.excerpt));
+  });
+});
+
 describe('buildCheckReport', () => {
   test('默认 open / 按帧分组 / 摘录带源码与组件信息', () => {
     const site = makeSite();

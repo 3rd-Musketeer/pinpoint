@@ -218,14 +218,24 @@ export function excerptForRow(row, context) {
     if (comp && frameFile && file !== frameFile) {
       const frameAbs = sourceFileFor(frameFile, target.pageDir);
       const frameSource = frameAbs ? readFile(frameAbs) : null;
-      const instanceLine = frameSource
-        ? frameSource.split('\n').findIndex((text) => new RegExp(`<${comp}[\\s/>]`).test(text)) + 1
-        : 0;
-      if (frameSource != null && instanceLine > 0) {
-        segments.unshift({
-          file: `${frameFile}（帧内实例）`,
-          lines: foldRange(frameSource.split(String.fromCharCode(10)), instanceLine, rangeOrFallback(jsxElementRange(frameSource, instanceLine), instanceLine, frameSource.split(String.fromCharCode(10)).length), 15),
-        });
+      if (frameSource != null) {
+        // 实例行（S3）：一帧多实例时，锚点是 dist 文档序里第 k 个该组件实例，
+        // 实例行取帧源码里第 k 个 <Comp 匹配，不再恒指首匹配。帧源码里的匹配
+        // 数不够（循环 / 条件渲染等映射不完美）时退回首匹配，并在段名注明。
+        const k = instanceOrdinal(anchor.tree, node, comp);
+        let instanceLine = kthTagLine(frameSource, comp, k);
+        let label = k > 1 ? `（帧内实例 · 文档序第 ${k} 个）` : '（帧内实例）';
+        if (!instanceLine) {
+          instanceLine = kthTagLine(frameSource, comp, 1);
+          label = `（帧内实例 · 文档序第 ${k} 个，源码只匹配到首处）`;
+        }
+        if (instanceLine > 0) {
+          const frameLines = frameSource.split(String.fromCharCode(10));
+          segments.unshift({
+            file: `${frameFile}${label}`,
+            lines: foldRange(frameLines, instanceLine, rangeOrFallback(jsxElementRange(frameSource, instanceLine), instanceLine, frameLines.length), 15),
+          });
+        }
       }
     }
   } else {
@@ -243,6 +253,47 @@ export function excerptForRow(row, context) {
 
 function lineOfNode(node, html) {
   return String(html).slice(0, node.start).split('\n').length;
+}
+
+/** 锚点所属的组件元素（自身或最近祖先带 data-pp-comp；帧根不算，与 anchorComp
+    同一条规则）在 dist 文档序里是该组件的第几个实例（1 起）。 */
+function instanceOrdinal(tree, node, comp) {
+  const isFragmentRoot = (el) => el.parent && el.parent.tag === '#root';
+  const isCompEl = (el) => el && el.attrs && el.attrs['data-pp-comp'] === comp && !isFragmentRoot(el);
+  let target = isCompEl(node) ? node : null;
+  if (!target) {
+    for (let cur = node.parent; cur && cur.tag !== '#root'; cur = cur.parent) {
+      if (isCompEl(cur)) { target = cur; break; }
+    }
+  }
+  if (!target) return 1;
+  let seen = 0;
+  const walk = (el) => {
+    if (isCompEl(el)) seen += 1;
+    if (el === target) return true;
+    for (const child of el.children || []) {
+      if (walk(child)) return true;
+    }
+    return false;
+  };
+  walk(tree);
+  return Math.max(1, seen);
+}
+
+/** 帧源码里第 k 个 `<Comp` 匹配所在的行（1 起；匹配不足返回 0）。同一行的多个
+    匹配按出现次数计。 */
+function kthTagLine(source, comp, k) {
+  const re = new RegExp(`<${comp}(?=[\\s/>])`, 'g');
+  const lines = source.split('\n');
+  let seen = 0;
+  for (let i = 0; i < lines.length; i++) {
+    re.lastIndex = 0;
+    let hits = 0;
+    while (re.exec(lines[i])) hits += 1;
+    if (seen + hits >= k) return i + 1;
+    seen += hits;
+  }
+  return 0;
 }
 
 /* ---- check 模型与格式化 ---- */
