@@ -55,10 +55,17 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
   let p = props;
   if (typeof t === 'function') {
     t = __ppWrapComponent(t);
-  } else if (typeof t === 'string' && source && source.fileName) {
-    const file = String(source.fileName).replace(/\\/g, '/');
-    seq += 1;
-    p = { ...(p || {}), 'data-pp-id': `${file}:${source.lineNumber}#${seq}` };
+  } else if (typeof t === 'string') {
+    // goto="<screenId>"（pp2 切片 2，flow 边的数据层）编译成 data-goto，运行时先不消费。
+    if (p && 'goto' in p) {
+      const { goto, ...rest } = p;
+      p = { ...rest, 'data-goto': goto };
+    }
+    if (source && source.fileName) {
+      const file = String(source.fileName).replace(/\\/g, '/');
+      seq += 1;
+      p = { ...p, 'data-pp-id': `${file}:${source.lineNumber}#${seq}` };
+    }
   }
   return preactJsxDEV(t, p, key, isStaticChildren, source, self);
 }

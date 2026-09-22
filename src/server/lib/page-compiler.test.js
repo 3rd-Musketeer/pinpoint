@@ -172,14 +172,14 @@ describe('jsx 帧编译', () => {
     assert.match(named, /<span class="badge" data-pp-id="components\/Badge\.jsx:1#1" data-pp-comp="Badge">章<\/span>/);
   });
 
-  test('pinpoint/kit 解析成空模块（切片 2 再填）', async () => {
+  test('pinpoint/kit 解析到 kit JSX 组件（切片 2）', async () => {
     const target = makePage('jsx-kit', {
       board: BASIC_BOARD,
       files: {
         'home.jsx': [
-          'import \'pinpoint/kit\';',
+          'import { Bubble } from \'pinpoint/kit\';',
           'export default function Home() {',
-          '  return <div className="ios-app"><p>ok</p></div>;',
+          '  return <div className="ios-app"><Bubble side="incoming">早</Bubble></div>;',
           '}',
           '',
         ].join('\n'),
@@ -187,6 +187,28 @@ describe('jsx 帧编译', () => {
     });
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+    assert.ok(html.includes('ios-bubble ios-bubble-in'), html);
+    assert.match(html, /data-pp-comp="Bubble"/);
+  });
+
+  test('goto 属性编译成 data-goto（flow 边数据层，lint 不拦）', async () => {
+    const target = makePage('jsx-goto', {
+      board: BASIC_BOARD,
+      files: {
+        'home.jsx': [
+          'export default function Home() {',
+          '  return <div className="ios-app"><button goto="detail">去看</button></div>;',
+          '}',
+          '',
+        ].join('\n'),
+      },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+    assert.ok(html.includes('data-goto="detail"'), html);
+    assert.ok(!/\bgoto=/.test(html.replace('data-goto=', '')), html);
   });
 
   test('相对 import 解析失败 = 编译错误，报文件与行', async () => {

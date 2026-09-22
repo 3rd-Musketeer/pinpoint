@@ -39,6 +39,9 @@ import { PAGE_ID_PATTERN } from './registry.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const KIT_COMPONENTS = path.join(ROOT, 'content', 'kits', 'ios', 'components');
+// pinpoint/kit 的落点（pp2 切片 2）：kit 的 10 个系统组件的 JSX 印章住这里。
+const KIT_JSX = path.join(ROOT, 'content', 'kits', 'ios', 'jsx');
+const KIT_JSX_INDEX = path.join(KIT_JSX, 'index.js');
 
 export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
@@ -206,22 +209,31 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
  * 创建顺序发号（嵌套同行时父元素反而靠后），这里对 renderToString 的输出字符串扫
  * 一遍 data-pp-id="文件:行#k"，同一 文件:行 按出现先后从 1 重排 —— 字符串本身就是
  * 文档顺序；preact 会把文本里的 " 转义成 &quot;，属性值不会误匹配。
+ * 文件部分顺带归一（pp2 切片 2）：页外文件（kit JSX）按 esbuild 给的是 ../../ 链，
+ * 落在仓内就改写成仓相对（content/kits/ios/jsx/Bubble.jsx），锚点可读、跨页稳定。
  */
-export function renumberPpIds(html) {
+export function renumberPpIds(html, { pageDir = null } = {}) {
   const counts = new Map();
   return String(html).replace(/data-pp-id="([^"]+?:\d+)#\d+"/g, (all, key) => {
-    const n = (counts.get(key) || 0) + 1;
-    counts.set(key, n);
-    return `data-pp-id="${key}#${n}"`;
+    let normalized = key;
+    if (pageDir && key.startsWith('../')) {
+      const cut = key.lastIndexOf(':');
+      const abs = path.resolve(pageDir, key.slice(0, cut));
+      if (abs === ROOT || abs.startsWith(ROOT + path.sep)) {
+        normalized = `${path.relative(ROOT, abs).split(path.sep).join('/')}${key.slice(cut)}`;
+      }
+    }
+    const n = (counts.get(normalized) || 0) + 1;
+    counts.set(normalized, n);
+    return `data-pp-id="${normalized}#${n}"`;
   });
 }
 
-function emptyKitPlugin() {
+function kitJsxPlugin() {
   return {
-    name: 'pp2-kit-stub',
+    name: 'pp2-kit',
     setup(build) {
-      build.onResolve({ filter: /^pinpoint\/kit$/ }, () => ({ path: 'pinpoint/kit', namespace: 'pp2-kit-stub' }));
-      build.onLoad({ filter: /.*/, namespace: 'pp2-kit-stub' }, () => ({ contents: 'export {};' }));
+      build.onResolve({ filter: /^pinpoint\/kit$/ }, () => ({ path: KIT_JSX_INDEX }));
     },
   };
 }
@@ -279,7 +291,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: [emptyKitPlugin()],
+      plugins: [kitJsxPlugin()],
     });
   } catch (error) {
     return { ok: false, error: formatBuildFailure(error) };
@@ -303,7 +315,7 @@ async function compileJsxScreen(target, screenId, file) {
     if (!mod || typeof mod.default !== 'function') {
       return { ok: false, error: `${file}: 帧文件必须默认导出一个返回 JSX 的函数` };
     }
-    return { ok: true, html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {}))) };
+    return { ok: true, html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir }) };
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
