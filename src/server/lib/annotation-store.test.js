@@ -182,6 +182,14 @@ test('#n：重存既有标注缺 n 时沿用旧号，永不重新取号（R3）'
   assert.deepEqual(next.doc.annotations.map((a) => a.n), [1, 2]);
 });
 
+test('listDocs 跳过 _seq.json：聚合视图不多出 _seq 空文档（R6）', (t) => {
+  const { dataDir, store } = withStore(t);
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+  assert.ok(fs.existsSync(path.join(dataDir, '_seq.json')), '取过号的桶里 _seq.json 存在');
+  const docs = store.listDocs();
+  assert.deepEqual(Object.keys(docs), ['a.html.json']);
+});
+
 test('/save 转换校验：非法转换 409，编辑回 open，新标注恒 open', (t) => {
   const { store } = withStore(t);
   store.save({ page: 'index.html', baseRevision: 0, annotations: [{ id: 'a1', content: '一' }] });

@@ -251,7 +251,9 @@ export function createAnnotationStore(options) {
     const output = {};
     if (!fs.existsSync(dataDir)) return output;
     for (const name of fs.readdirSync(dataDir).sort()) {
-      if (!name.endsWith('.json')) continue;
+      // _seq.json 是 #n 的桶级计数器，不是账本（R6）：泄进聚合视图会多出
+      // 一个 page:'_seq' 的空文档。
+      if (!name.endsWith('.json') || name === '_seq.json') continue;
       try {
         const raw = JSON.parse(fs.readFileSync(path.join(dataDir, name), 'utf8'));
         const slug = name.replace(/\.json$/, '');
