@@ -21,6 +21,7 @@ const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotation-slug.js'),
   path.join(SRC, 'shared', 'annotate-page-key.js'),
   path.join(SRC, 'shared', 'annotate-clip.js'),
+  path.join(SRC, 'workbench', 'lib', 'esc-html.js'),
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
@@ -47,10 +48,11 @@ function readAnnotateJs() {
   if (cachedScript && mtime === cachedMtime) return cachedScript;
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
   // Inline SSOT libs into the IIFE so the browser script and the node-tested
-  // libs share one implementation. Strip ESM `export ` keywords; these files
-  // are pure functions + top-level consts. Stylesheets land as JS string
-  // constants (JSON-quoted), referenced by the client's <style> block.
-  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^export /gm, '')).join('\n');
+  // libs share one implementation. Strip ESM `export ` keywords and `import`
+  // lines（被引的库也在名单里、先于引用方内联，作用域共享）；这些文件是纯
+  // 函数 + 顶层常量。Stylesheets land as JS string constants (JSON-quoted),
+  // referenced by the client's <style> block.
+  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^import[^\n]*$\n?/gm, '').replace(/^export /gm, '')).join('\n');
   const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
   const marker = "'use strict';";
   const at = annotateSrc.indexOf(marker);

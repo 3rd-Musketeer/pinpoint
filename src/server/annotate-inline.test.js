@@ -26,6 +26,7 @@ const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotation-slug.js'),
   path.join(SRC, 'shared', 'annotate-page-key.js'),
   path.join(SRC, 'shared', 'annotate-clip.js'),
+  path.join(SRC, 'workbench', 'lib', 'esc-html.js'),
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
@@ -39,7 +40,7 @@ const INLINED_CSS = [
 // land as JSON-quoted JS string constants.
 function buildServedBundle() {
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
-  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^export /gm, '')).join('\n');
+  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^import[^\n]*$\n?/gm, '').replace(/^export /gm, '')).join('\n');
   const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
   const marker = "'use strict';";
   const at = annotateSrc.indexOf(marker);

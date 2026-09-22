@@ -10,11 +10,7 @@
  *   └────────────────────┘
  */
 
-function esc(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+
 
 /** CSS for .ann-bubble (+ export anchor badge). Shared by live overlay and export bake.
  *  2026-09-04 评审板 H1：卡片收成一块白面小卡 —— 186 宽、11px 正文、一条 11px
@@ -24,6 +20,7 @@ function esc(s) {
  *  var(--wb-*, fallback)：live 侧钉值在 [data-ann-ui] 基规则（src/client/annotate.js），
  *  export bake 无钉值走兜底 —— 兜底值与 src/workbench/wb-tokens.css 同值。
  *  240 宽的两处（doc 导出烤图、workbench gutter）自己写 inline width，不吃这里的值。 */
+import { escHtml } from '../workbench/lib/esc-html.js';
 export function bubbleCss() {
   return [
     '.ann-bubble{position:absolute;width:186px;background:var(--wb-surface,#fff);',
@@ -50,18 +47,18 @@ export function bubbleInnerHtml(m) {
   var cap = String((m && m.cap != null ? m.cap : '') || '').trim();
   var content = String((m && m.content != null ? m.content : '') || '');
   var body = content
-    ? '<div class="ann-bubble-body">' + esc(content) + '</div>'
+    ? '<div class="ann-bubble-body">' + escHtml(content) + '</div>'
     : '<div class="ann-bubble-body ann-bubble-empty">（无正文）</div>';
   return '<div class="ann-bubble-cap">'
-    + '<span class="ann-bubble-n">' + esc(n) + '</span>'
-    + (cap ? '<span class="ann-bubble-ref">' + esc(cap) + '</span>' : '')
+    + '<span class="ann-bubble-n">' + escHtml(n) + '</span>'
+    + (cap ? '<span class="ann-bubble-ref">' + escHtml(cap) + '</span>' : '')
     + '</div>' + body;
 }
 
 /** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node. */
 export function bubbleHtml(m) {
   var n = (m && m.n) != null ? m.n : '';
-  return '<div class="ann-bubble" data-n="' + esc(n) + '">'
+  return '<div class="ann-bubble" data-n="' + escHtml(n) + '">'
     + bubbleInnerHtml(m)
     + '</div>';
 }

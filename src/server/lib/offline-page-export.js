@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { escHtml } from '../../workbench/lib/esc-html.js';
 const MAX_RESOURCE_BYTES = 25 * 1024 * 1024;
 const RESOURCE_ATTRS = new Set(['src', 'poster']);
 
@@ -14,13 +15,6 @@ export class OfflinePageExportError extends Error {
   }
 }
 
-function escapeHtml(value) {
-  return String(value)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
-}
 
 function escapeInlineScript(source) {
   return String(source).replace(/<\/script/gi, '<\\/script');
@@ -440,17 +434,17 @@ html{height:100%}
 
 function outlineHtml(sections) {
   return sections.map((section) => {
-    const sectionId = escapeHtml(section.id);
+    const sectionId = escHtml(section.id);
     const rows = section.screens.map((screen) =>
-      `<a class="ol-row" href="#frame-${escapeHtml(screen.id)}" data-ol-frame="${escapeHtml(screen.id)}" data-ol-section="${sectionId}" title="${escapeHtml(screen.ref)} ${escapeHtml(screen.title || screen.id)}">` +
+      `<a class="ol-row" href="#frame-${escHtml(screen.id)}" data-ol-frame="${escHtml(screen.id)}" data-ol-section="${sectionId}" title="${escHtml(screen.ref)} ${escHtml(screen.title || screen.id)}">` +
       '<span class="spine" aria-hidden="true"></span>' +
-      `<span class="no">${escapeHtml(screen.ref)}</span>` +
-      `<span class="nm">${escapeHtml(screen.title || screen.id)}</span></a>`,
+      `<span class="no">${escHtml(screen.ref)}</span>` +
+      `<span class="nm">${escHtml(screen.title || screen.id)}</span></a>`,
     ).join('');
     return `<div class="ol" data-ol-section="${sectionId}">` +
-      `<a class="ol-sec" href="#section-${sectionId}" data-ol-section="${sectionId}" title="${escapeHtml(section.ref)} ${escapeHtml(section.title || section.id)}">` +
-      `<span class="ol-L">${escapeHtml(section.ref)}</span>` +
-      `<span class="ol-sec-t">${escapeHtml(section.title || section.id)}</span></a>${rows}</div>`;
+      `<a class="ol-sec" href="#section-${sectionId}" data-ol-section="${sectionId}" title="${escHtml(section.ref)} ${escHtml(section.title || section.id)}">` +
+      `<span class="ol-L">${escHtml(section.ref)}</span>` +
+      `<span class="ol-sec-t">${escHtml(section.title || section.id)}</span></a>${rows}</div>`;
   }).join('');
 }
 
@@ -459,12 +453,12 @@ function outlineHtml(sections) {
    （id="frame-<screenId>"）；.wb-sec-row 的三行网格由内联样式提供。 */
 function boardHtml(sections) {
   return sections.map((section) => {
-    const sectionId = escapeHtml(section.id);
-    const title = escapeHtml(section.title || section.id);
+    const sectionId = escHtml(section.id);
+    const title = escHtml(section.title || section.id);
     const frames = section.screens.map((screen) => screen.html).join('');
     return `<article class="wb-lib-item" id="section-${sectionId}" data-ann-section="${sectionId}" data-ann-section-label="${title}">` +
       `<h2 class="wb-lib-cap" title="${title}">` +
-      (section.ref ? `<span class="wb-cap-ref wb-cap-ref--section">${escapeHtml(section.ref)}</span>` : '') +
+      (section.ref ? `<span class="wb-cap-ref wb-cap-ref--section">${escHtml(section.ref)}</span>` : '') +
       `${title}</h2>` +
       `<div class="wb-sec-body wb-sec-row">${frames}</div></article>`;
   }).join('');
@@ -473,7 +467,7 @@ function boardHtml(sections) {
 function stripHtml(title, frameCount) {
   return '<div class="wb-strip wb-glass" id="wbstrip">' +
     `<button type="button" class="share-btn share-btn--icon wb-side-toggle" id="wbside-toggle" aria-expanded="true" aria-controls="wbside" aria-label="收起 Pages 面板" title="收起 Pages 面板">${PANEL_ICON_CLOSE}${PANEL_ICON_OPEN}</button>` +
-    `<span class="wb-strip-title" id="wbstrip-title" title="${escapeHtml(title)}">${escapeHtml(title)}</span>` +
+    `<span class="wb-strip-title" id="wbstrip-title" title="${escHtml(title)}">${escHtml(title)}</span>` +
     '<span class="wb-strip-div" aria-hidden="true"></span>' +
     '<div class="share-nav" id="wbsection-nav-wrap">' +
     `<button type="button" class="share-btn share-btn--icon" id="wbnav-prev" title="上一帧" aria-label="上一帧">${CHEVRON_LEFT}</button>` +
@@ -489,9 +483,9 @@ function stripHtml(title, frameCount) {
 export function buildOfflineShareHtml(options) {
   const sections = Array.isArray(options.sections) ? options.sections : [];
   const frameCount = sections.reduce((sum, section) => sum + section.screens.length, 0);
-  const title = escapeHtml(options.title);
+  const title = escHtml(options.title);
   return `<!doctype html>
-<html lang="zh-CN" data-annotate="off" data-offline-page="${escapeHtml(options.pageId)}">
+<html lang="zh-CN" data-annotate="off" data-offline-page="${escHtml(options.pageId)}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>${escapeInlineStyle(options.workbenchCss || '')}\n${escapeInlineStyle(options.iosCss || '')}\n${SHARE_CSS}</style></head>
 <body><div class="wb" id="wbroot" data-section-count="${sections.length}" data-frame-count="${frameCount}">
