@@ -141,37 +141,3 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   expect(canvasAfter.annotations.length).toBe(2);
   expect(canvasAfter.annotations.every((a) => !a.content.includes('标文档正文'))).toBe(true);
 });
-
-test('doc export bakes mentioned frames into static images (html-full / no-css / long PNG)', async ({ page }) => {
-  await openWorkbench(page); // 导出渲染走本服务 origin，无需打开 mention 页本身
-  const src = 'sites/e2e-mention/index.html';
-  const base = { pageId: 'e2e-mention', screenId: 'index', src };
-
-  // html-full：挂载点换成自包含 <img dataURL>
-  const full = await page.request.post('/api/export-doc', { data: { ...base, mode: 'html-full' } });
-  expect(full.ok()).toBe(true);
-  expect(full.headers()['x-export-frames']).toBe('2');
-  const fullHtml = await full.text();
-  expect(fullHtml).toContain('data-pinpoint-frame-baked="library/recipe"');
-  expect(fullHtml).toContain('data-pinpoint-frame-baked="library/timer"');
-  expect(fullHtml).toContain('data:image/png;base64,');
-  expect(fullHtml).not.toContain('data-pinpoint-frame="library/recipe"');
-
-  // html-no-css：挂载点换成文本引用（不塞 base64）
-  const noCss = await page.request.post('/api/export-doc', { data: { ...base, mode: 'html-no-css' } });
-  expect(noCss.ok()).toBe(true);
-  const noCssHtml = await noCss.text();
-  expect(noCssHtml).toContain('data-pinpoint-frame-ref="library/recipe"');
-  expect(noCssHtml).toContain('data-pinpoint-frame-ref="library/timer"');
-  expect(noCssHtml).toContain('计时（sidecar 交互）（library/timer）'); // 引用带 frame 标题
-  expect(noCssHtml).not.toContain('data:image/png;base64,');
-
-  // 长图 PNG：渲染浏览器里运行时换图，出图含烤入的 frame
-  const image = await page.request.post('/api/export-doc', { data: { ...base, mode: 'image' } });
-  expect(image.ok()).toBe(true);
-  expect(image.headers()['x-export-frames']).toBe('2');
-  const buf = await image.body();
-  expect(buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
-  expect(Number(image.headers()['x-export-width'])).toBe(1840); // 920 × 2
-  expect(buf.length).toBeGreaterThan(50 * 1024); // 烤入两个 frame 的长图不可能是小文件
-});

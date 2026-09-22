@@ -12,12 +12,6 @@ import {
 import { wbGet, wbSet, activeBoardMode, useWorkbenchStore } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { LIB_ID, defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
-import {
-  activeDocExportTarget,
-  buildExportSnapshot,
-  requestDocExport,
-  requestExportImage
-} from './export-core.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
@@ -232,11 +226,7 @@ window.workbench = {
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
   // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）
-  boardMode: function () { return activeBoardMode(); },
-  exportSnapshot: buildExportSnapshot,
-  exportImage: requestExportImage,
-  exportDoc: requestDocExport,
-  activeDocExportTarget: activeDocExportTarget
+  boardMode: function () { return activeBoardMode(); }
 };
 
 window.workbench.diagnostics = startCanvasDiagnostics(stage, () => wbGet().activePageId);

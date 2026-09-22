@@ -14,7 +14,7 @@ pinpoint runs as one persistent local service (`https://pinpoint.localhost`) wit
   land on disk for the agent to read and act on. One client, injected only into what you registered.
 
 Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the
-contracts), 🖼️ **doc-ready export** (Frame picker → isolated 2× PNG / zip), 🔁 **HMR** (edit a screen
+contracts), 🖼️ **offline interactive HTML export** (one self-contained file per page), 🔁 **HMR** (edit a screen
 or component, the open board refreshes in place).
 
 ## 问题 → 文档
@@ -146,32 +146,22 @@ The annotation layer never touches a page you didn't register — **登记过才
 `file://`, a self-started server, an unregistered origin — opens the identical bytes with zero
 annotation surface, and exported artifacts never contain the injected client.
 
-## Export Frame images
+## Export an offline interactive HTML
 
-Open the export picker from the bottom strip's **导出** button — the single entry point (ADR 0015).
-The picker shows the current page's proto tree (section rows select all their frames, frames check
-freely), a live preview of the selected frames, and the only option that changes the delivered
-pixels: background (**画布** paper grid / **白底** / **透明**). Output is fixed **PNG 2×**. Captions
-(A1 ref + screen title + dim line) always ride along. One selected frame downloads a PNG directly;
-several frames are packed into a zip on the server (`POST /api/export-zip`, store-only).
+The strip's **导出** button writes one self-contained `<page>__interactive.html`
+(`POST /api/export-page-html`, ADR 0033) — the single user-facing export (pp2). It
+opens as the same shell you use in the workbench: the full-bleed grid canvas, the
+floating glass panel with the outline, and the bottom strip (panel toggle, page
+title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ +
+wheel zooms around the cursor, Space + drag or middle-drag pans. On narrow screens
+(≤ 760px) the panel starts collapsed and frames stack vertically at screen width.
+No annotation surface.
 
-Export snapshots the live DOM before rendering in an isolated Chromium surface, so open sheets,
-Ask User panels, selected controls, form values, internal scroll positions, and canvas output are
-kept. The default filenames are stable and document-friendly:
+HTTPS static dependencies are scanned first and frozen byte-exact only after
+per-resource approval; pages without remote resources download immediately.
 
-```text
-library__brew-flow__timer@2x.png
-library__frames@2x.zip
-```
-
-The picker's other kind, **可交互 HTML**, writes one self-contained `<page>__interactive.html`
-(`POST /api/export-page-html`). It opens as the same shell you use in the workbench: the full-bleed
-grid canvas, the floating glass panel with the outline, and the bottom strip (panel toggle, page
-title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ + wheel zooms around
-the cursor, Space + drag or middle-drag pans. On narrow screens (≤ 760px) the panel starts collapsed
-and frames stack vertically at screen width. No annotation surface (ADR 0033).
-
-Agents and scripts use the same renderer (start `npm run dev` first):
+The image renderer behind the retired frame picker still powers scripted use
+(`POST /api/export-image`, and `scripts/export-preview.mjs` after `npm run dev`):
 
 ```bash
 npm run export -- --page library --section brew-flow --frame timer
@@ -182,9 +172,6 @@ Output defaults to gitignored `exports/`. Options: `--scale 1|2`,
 `--background canvas|white|transparent`, `--format png|webp`, and `--output <path>`.
 Transparent output requires PNG; very large 2× Sections fail with a clear 1× retry hint instead of
 silently wrapping or clipping the flow.
-
-Document entries export from their own row in the sidebar's 「内容」区 (full HTML, CSS-stripped HTML
-for AI, or a full-page 2× PNG).
 
 ## One phone, no workbench
 

@@ -34,7 +34,6 @@ const SCANNED = [
   ...workbenchSources(),
   'src/client/annotate.js',
   'src/shared/annotate-bubble.js',
-  'src/server/lib/export-doc-bake.js',
 ];
 
 // 允许名单：{ file, where: 命中行要匹配的正则, values: 允许的字面量, reason }。
@@ -55,11 +54,8 @@ const ALLOW = [
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
-  // 双端共享的气泡样式：气泡与导出序号只在 overlay（或导出烘焙层）内部比。
+  // 双端共享的气泡样式：气泡与导出序号只在 overlay 内部比。
   { file: 'src/shared/annotate-bubble.js', where: /pointer-events:auto;z-index:3;overflow:hidden;\}/, values: ['3'], reason: 'overlay 内部序：.ann-bubble 评论卡' },
-  { file: 'src/shared/annotate-bubble.js', where: /pointer-events:none;z-index:4;\}/, values: ['4'], reason: '导出烘焙内部序：.ann-export-badge' },
-  // 离线导出的烘焙 CSS：宿主是导出文件里的 #ann-export-overlay（客座层），自成一套。
-  { file: 'src/server/lib/export-doc-bake.js', where: /./, values: ['1', '3', '2147483000'], reason: '客座层：离线 doc 导出的烘焙 CSS' },
   // 组件内部序：分段控件焦点项压过相邻项的边，不与外壳比。
   { file: 'src/workbench/app/ui/toggle-group.jsx', where: /focus:z-10 focus-visible:z-10/, values: ['10'], reason: '组件内部序：toggle-group 焦点项' },
 ];

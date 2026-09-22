@@ -150,14 +150,11 @@
 
 **2026-08-15 缓期进 backlog**：owner 复评——当前迭代节奏下“这条标注针对哪一版”不是真实痛点（chat 即 changelog）。完整设计与分期预案见 [adr/0012](adr/0012-sheet-format-rev-a1-refs.md)、[adr/0013](adr/0013-rev-deferred.md) 与 owner-local 的 `BACKLOG.md`；视觉储备在体验板。痛点信号出现前不要实现。
 
-## 导出（ADR 0015 定，已落地）
+## 导出（pp2 切片 3 收敛）
 
-- 单入口：底部横条的“导出”钮 → picker 对话框；per-frame / per-section 触发器与“···”菜单里的导出入口已删除（菜单本体保留剩余项）。
-- picker 两栏：左 proto tree（section 整选 / frame 任意勾选），右实时预览（选中几帧并排几帧，随背景刷新；复用 `/api/export-image` 低清档 + debounce，不起新管线）。
-- 批量规则：任意多选；单张直出 PNG，多张 `/api/export-zip` 打包（store-only zip，`src/server/lib/zip-store.js`）。
-- 固定项：PNG、2×。选项只留对应真实投放面的：背景三档（画布 / 白底 / 透明）。标注烘焙（序号钉 + 评论随图）缓期进 backlog——场景未证实；doc 导出“含评论”管线在线保留。
-- 图纸内容（图注 = 引用号 + 屏名 + 尺寸）导出永随，不再有“干净画面”摘图注语义。不导出已退役的说明。
-- 可交互 HTML（picker 的另一型，`<page>__interactive.html`，ADR 0033）：不另做版式，就是这份外壳——满铺画布 + 浮动玻璃面板（大纲）+ 底部横条（面板开关 · 页名 · ‹ n/N › · 缩放 · 回中），平移 / 缩放 / 定位语义与画布相同；窄屏面板收起、帧竖排。分享面没有标注、Section Navigator、minimap 与拖宽。
+- 用户面只有一个：底部横条的“导出”钮 → 离线可交互 HTML（`<page>__interactive.html`，ADR 0033）。图片 / zip picker、文档导出对话框与 `/api/export-doc` 一族、`/api/export-zip` 均已退役；`/api/export-image` 与渲染器保留给 `ppnt shot`（服务端组快照，不经 workbench）。
+- 可交互 HTML：不另做版式，就是这份外壳——满铺画布 + 浮动玻璃面板（大纲）+ 底部横条（面板开关 · 页名 · ‹ n/N › · 缩放 · 回中），平移 / 缩放 / 定位语义与画布相同；窄屏面板收起、帧竖排。分享面没有标注、Section Navigator、minimap 与拖宽。
+- HTTPS 静态资源先扫描、逐项批准后才按精确字节冻结进离线文件；没有远端资源时直接下载。
 
 ## 组件惯用式
 

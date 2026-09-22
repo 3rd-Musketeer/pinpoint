@@ -11,7 +11,6 @@ import {
   validateExportRequest,
 } from './lib/export-contract.js';
 import { readWorkbenchInlineStyles } from './lib/frame-doc.js';
-import { zipStore } from './lib/zip-store.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -157,39 +156,6 @@ async function handleExportImage(req, res, renderer) {
   res.end(result.buffer);
 }
 
-// 多张打包（decisions 2026-08-15d）：收 snapshot 数组逐张渲染，store-only zip 回传。
-// 逐张串行渲染 —— 共享同一个 headless browser，避免一次性开 N 个 context。
-async function handleExportZip(req, res, renderer) {
-  const raw = JSON.parse(await readBody(req, 64 * 1024 * 1024));
-  const list = raw && Array.isArray(raw.entries) ? raw.entries : null;
-  if (!list || list.length < 2) throw new ExportContractError('entries', 'expected at least 2 snapshots');
-  if (list.length > 60) throw new ExportContractError('entries', `too many snapshots (${list.length})`);
-  const requests = list.map((entry) => validateExportRequest(entry));
-  const origin = requestOrigin(req);
-  const files = [];
-  const usedNames = new Set();
-  for (const request of requests) {
-    const result = await renderer.render(request, origin);
-    const base = exportFilename(request);
-    let name = base;
-    let suffix = 2;
-    while (usedNames.has(name)) {
-      name = base.replace(/(\.[a-z0-9]+)$/i, `-${suffix}$1`);
-      suffix += 1;
-    }
-    usedNames.add(name);
-    files.push({ name, data: result.buffer });
-  }
-  const zip = zipStore(files);
-  const zipName = `${requests[0].pageId}__frames@${requests[0].scale}x.zip`.replace(/\//g, '-');
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/zip');
-  res.setHeader('Content-Disposition', `attachment; filename="${zipName}"`);
-  res.setHeader('Content-Length', String(zip.length));
-  res.setHeader('X-Export-Entries', String(files.length));
-  res.end(zip);
-}
-
 export default function exportImageApi(options = {}) {
   const renderer = options.renderer || createExportRenderer(options);
   return {
@@ -200,7 +166,6 @@ export default function exportImageApi(options = {}) {
         if (req.method !== 'POST') return next();
         try {
           if (urlPath === '/api/export-image') return await handleExportImage(req, res, renderer);
-          if (urlPath === '/api/export-zip') return await handleExportZip(req, res, renderer);
           return next();
         } catch (error) {
           sendExportError(res, error);

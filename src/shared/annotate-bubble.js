@@ -40,24 +40,8 @@ export function bubbleCss() {
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
     '.ann-bubble-empty{color:var(--wb-faint,#8d8d8d);font-style:italic;}',
-    /* Export-only: soft circular number pinned to the selected-box top-right
-       (same corner as live .ann-badge via badgePositionForRect). */
-    '.ann-export-badge{position:absolute;width:18px;height:18px;border-radius:50%;',
-    'background:rgba(245,166,35,.55);color:#fff;',
-    'font:var(--wb-w-semibold,600) 10px/1 var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);',
-    'display:flex;align-items:center;justify-content:center;',
-    'letter-spacing:0;box-shadow:var(--wb-sh-1,0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04));',
-    'pointer-events:none;z-index:4;}',
   ].join('');
 }
-
-/** Soft circular number badge for export bake (absolute, caller sets left/top). */
-export function exportBadgeHtml(n) {
-  return '<div class="ann-export-badge" data-n="' + esc(n) + '">' + esc(n) + '</div>';
-}
-
-/** Badge size used by export bake; half of this is passed to badgePositionForRect. */
-export const EXPORT_BADGE_SIZE = 18;
 
 /** Inner markup (眉标 + 正文) for one bubble. Caller wraps + positions.
  *  `m.cap` = 这条标注指着什么（annRowCap 的同一份口径）；没有就只出序号。 */
