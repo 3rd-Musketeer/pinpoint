@@ -437,7 +437,7 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     lines.push('');
     lines.push(`## ${group.title}${group.detail ? ` · ${group.detail}` : ''}`);
     for (const row of group.rows) {
-      const parts = [`[#${row.n}]`, row.content, `· ${row.intent}`, `· ${row.status}`];
+      const parts = [`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`];
       if (row.note) parts.push(`· note：${row.note}`);
       if (row.comp) parts.push(`· ${row.comp}（共用 ${row.sharedFrames} 帧）`);
       lines.push(parts.join(' '));
@@ -452,16 +452,22 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
 
 /* ---- locate ---- */
 
+/** 读侧显示序号：没跑过发号服务的冷账本行没有 n，显示 #?，不出 #undefined（建议 9）。 */
+function displayN(row) {
+  return Number.isInteger(row && row.n) ? String(row.n) : '?';
+}
+
 /** 一条标注的定位行。 */
 export function locateLine(row, context) {
+  const n = displayN(row);
   const distHtml = context.distHtmlFor(row.screenId || '');
   const where = row.screenId ? `${row.screenId}` : '文档页';
   if (!distHtml) {
-    return { n: row.n, text: `#${row.n} → 帧无 dist 产物（${where}）；selector：${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}` };
+    return { n: row.n, text: `#${n} → 帧无 dist 产物（${where}）；selector：${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}` };
   }
   const anchor = anchorNode(row, distHtml);
   if (anchor.error) {
-    return { n: row.n, text: `#${row.n} → ${anchor.error}；selector：${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}` };
+    return { n: row.n, text: `#${n} → ${anchor.error}；selector：${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}` };
   }
   const ppId = anchor.node.attrs['data-pp-id'] || '';
   const idMatch = ppId.match(PP_ID_RE);
@@ -469,10 +475,10 @@ export function locateLine(row, context) {
   const usage = comp ? compFrameUsage(context.distHtmlFor, context.refs.outline.flatMap((section) => section.frames.map((frame) => frame.id)))(comp) : 0;
   if (idMatch) {
     const tail = comp ? ` · 组件 ${comp}（共用 ${usage} 帧）` : '';
-    return { n: row.n, text: `#${row.n} → ${idMatch[1]}:${idMatch[2]}${tail}` };
+    return { n: row.n, text: `#${n} → ${idMatch[1]}:${idMatch[2]}${tail}` };
   }
   return {
     n: row.n,
-    text: `#${row.n} → dist/${context.pageId}/${row.screenId}.html · ${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}`,
+    text: `#${n} → dist/${context.pageId}/${row.screenId}.html · ${(row.targets && row.targets[0] && row.targets[0].selector) || row.selector || ''}`,
   };
 }

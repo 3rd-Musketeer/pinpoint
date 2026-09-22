@@ -157,6 +157,23 @@ describe('anchorComp', () => {
   });
 });
 
+describe('读侧显示序号', () => {
+  test('无 n 的冷账本行显示 #?，不出 #undefined（建议 9）', () => {
+    const site = makeSite();
+    const context = contextFor(site);
+    const cold = {
+      id: 'cold1', type: 'element', pageId: 'demo-page', screenId: 'home', status: 'open',
+      content: '冷账本行 [@t:i1]',
+      targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.card:nth-of-type(1)', text: '卡' }],
+    };
+    const line = locateLine(cold, context);
+    assert.match(line.text, /#\? → /);
+    assert.ok(!line.text.includes('undefined'));
+    const report = buildCheckReport({ ...context, frameRows: [cold], docRows: [] }, { status: 'all' });
+    assert.ok(formatCheckMarkdown(report).join('\n').includes('[#?]'));
+  });
+});
+
 describe('excerptForRow 多实例帧', () => {
   /** 一帧三个 <Bubble>：实例行按文档序取第 k 个 <Comp 匹配（S3）。 */
   function makeMultiInstanceSite() {
