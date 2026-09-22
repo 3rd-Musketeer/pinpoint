@@ -322,7 +322,7 @@ test('reviewer clears only wholly invalid annotations and can delete then reanno
   await page.getByRole('textbox',{name:'写标注'}).fill('重新标注：再精简一点');
   await page.getByRole('button',{name:'发送标注',exact:true}).click();
   const fresh=await page.evaluate(()=>window.pinpoint.marks.at(-1));
-  expect(fresh.id).not.toBe(ids.replaced || 'x');
+  expect(fresh.id).not.toBe(ids.replaced);
   expect(fresh.status).toBe('open');
 });
 
@@ -473,9 +473,9 @@ test('R5：done / close 的失效标注不被 clearInvalid 清掉（执行历史
   expect(res.status()).toBe(200);
   await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,mark.id)).toBe('done');
   // 目标按标注删掉 → 锚点失效是干完活的常态形态，但 done 的账不能一键清掉。
+  // 失效重算是异步的一拍：轮询到安定值，不用固定等待。
   await page.evaluate(()=>{document.querySelector('#doc-target-2').remove();});
-  await page.waitForTimeout(300);
-  expect(await page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(0);
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(0);
   expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(0);
   expect(await page.evaluate(id=>window.pinpoint.marks.some(m=>m.id===id),mark.id)).toBe(true);
 });
