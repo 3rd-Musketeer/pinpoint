@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { readBoard } from './board-file.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { validateBoard } from '../../workbench/lib/preview-contracts.js';
 import {
@@ -44,14 +45,12 @@ function resolvePage(pageId, registry) {
     throw new OfflinePageExportError('unsupported_page', `${pageId}: offline HTML V1 supports registry dir entries with board "ios" only`);
   }
   const root = path.resolve(entry.path);
-  const boardFile = path.join(root, 'board.json');
-  if (!fs.existsSync(boardFile)) {
+  if (!fs.existsSync(path.join(root, 'board.json'))) {
     throw new OfflinePageExportError('board_missing', `${pageId}: board.json not found`);
   }
-  let raw;
-  try { raw = JSON.parse(fs.readFileSync(boardFile, 'utf8')); }
-  catch (error) { throw new OfflinePageExportError('board_invalid', `${pageId}: ${error.message || error}`); }
-  const board = validateBoard(raw, { pageId, defaultShell: 'app' });
+  const parsed = readBoard(root);
+  if (!parsed) throw new OfflinePageExportError('board_invalid', `${pageId}: board.json 不是合法 JSON`);
+  const board = validateBoard(parsed, { pageId, defaultShell: 'app' });
   for (const section of board.sections) {
     if (section.layout !== 'row') {
       throw new OfflinePageExportError('unsupported_layout', `${pageId}/${section.id}: V1 requires row sections`);

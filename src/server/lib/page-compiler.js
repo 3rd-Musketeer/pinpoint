@@ -29,6 +29,7 @@ import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
+import { readBoard } from './board-file.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
@@ -115,13 +116,8 @@ function trackedManifestPageIds(root) {
 
 /** board.json 里的 screen id 集合（serve 层判「这个 .html 是不是屏」用）；读不到返回 null。 */
 export function boardScreenIds(pageDir) {
-  let board;
-  try {
-    board = JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8'));
-  } catch {
-    return null;
-  }
-  return screenIdsFromBoard(board);
+  const board = readBoard(pageDir);
+  return board ? screenIdsFromBoard(board) : null;
 }
 
 function screenIdsFromBoard(board) {

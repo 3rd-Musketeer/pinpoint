@@ -25,6 +25,7 @@ import {
 } from '../../shared/frame-shell.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
+import { readBoard } from './board-file.js';
 import { loadDistScreenHtml } from './page-compiler.js';
 import { synthesizeBoard } from './synth-board.js';
 
@@ -131,7 +132,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   // 1) previews 模板/实例页
   const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
   if (pageEntry) {
-    const board = readJsonSafe(path.join(PREVIEWS_ROOT, pageId, 'board.json'));
+    const board = readBoard(path.join(PREVIEWS_ROOT, pageId));
     if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no board.json`);
     const hit = findScreen(board, screenId);
     if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
@@ -195,9 +196,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   // 2) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
   const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
-  const diskBoard = entry.kind === 'dir'
-    ? readJsonSafe(path.join(path.resolve(entry.path), 'board.json'))
-    : null;
+  const diskBoard = entry.kind === 'dir' ? readBoard(path.resolve(entry.path)) : null;
   const board = diskBoard || synthesizeBoard(entry);
   if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
   const hit = findScreen(board, screenId);
