@@ -201,7 +201,15 @@ test('layering: annotate.js var(--wb-z-*, N) fallbacks equal the token values', 
   const refs = [...read('src/client/annotate.js').matchAll(/var\((--wb-z-[a-z0-9-]+)\s*,\s*(\d+)\)/g)];
   assert.ok(refs.length >= 2, 'annotate.js references at least --wb-z-marks and --wb-z-marks-active with fallbacks');
   for (const [, name, fallback] of refs) {
-    if (DUAL_MODE_FALLBACK.has(name)) continue;
+    if (DUAL_MODE_FALLBACK.has(name)) {
+      // 豁免不等于没人看守（S4）：客座页的兜底值必须仍在 int32 顶格一带，
+      // 改小（比如 100）的话 toast 会被宿主页面盖住，测试必须红。
+      assert.ok(
+        Number(fallback) >= 2147483646,
+        `${name} fallback ${fallback} must stay >= 2147483646 (guest-page toast above host)`,
+      );
+      continue;
+    }
     assert.equal(fallback, tokens.get(name), `${name} fallback ${fallback} must equal token value ${tokens.get(name)}`);
   }
   const names = new Set(refs.map((r) => r[1]));
