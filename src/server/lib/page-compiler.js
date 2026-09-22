@@ -530,6 +530,14 @@ export async function compilePage(target, options = {}) {
     for (const [id, html] of Object.entries(htmls)) {
       fs.writeFileSync(path.join(outDir, `${id}.html`), html);
     }
+    // 失败屏的旧产物必须删掉（review R1）：否则改坏一帧后 serve 拿改坏前的
+    // 画面顶班，错误面板、stale、mention 全部零信号。删了文件还不够 —— 读取侧
+    // （readDistScreen）也改成 errors 优先，旧状态下的孤儿文件同样不能顶班。
+    for (const screen of screens) {
+      if (screen.ok) continue;
+      const staleFile = path.join(outDir, `${screen.id}.html`);
+      if (fs.existsSync(staleFile)) fs.unlinkSync(staleFile);
+    }
     // --screen 单屏编译：合并既有 build.json，其余屏的记录原样保留。
     let mergedSources = sources;
     let mergedErrors = errors;
@@ -594,19 +602,22 @@ export async function buildAllPages(options = {}) {
  *   stale   → 编过、但这屏既无产物也无错误记录（dist 落后于 board 的状态）
  */
 export function readDistScreen(entryId, screenId, { distRoot = defaultDistRoot() } = {}) {
+  // build.json.errors 优先于磁盘文件（review R1）：错误记录在案时旧产物（含
+  // 历史遗留的孤儿文件）不得顶班，agent 看到的必须与源码状态一致。
+  const build = readBuildJson(distRoot, entryId);
+  if (build && build.errors && build.errors[screenId]) return { kind: 'error', message: build.errors[screenId] };
   const file = path.join(distRoot, entryId, `${screenId}.html`);
   if (fs.existsSync(file)) return { kind: 'ok', html: fs.readFileSync(file, 'utf8') };
-  const build = readBuildJson(distRoot, entryId);
   if (!build) return { kind: 'unbuilt' };
-  if (build.errors && build.errors[screenId]) return { kind: 'error', message: build.errors[screenId] };
   return { kind: 'stale' };
 }
 
-/** board 响应附带的 dist 状态：builtAt + stale（任一源文件 mtime 晚于 builtAt）。 */
+/** board 响应附带的 dist 状态：builtAt + stale（任一源文件 mtime 晚于 builtAt，
+    或 build.json 记有失败屏 —— 失败重编虽刷新 builtAt，产物并不代表源码）。 */
 export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = {}) {
   const build = readBuildJson(distRoot, entryId);
   if (!build || typeof build.builtAt !== 'number') return { builtAt: null, stale: true };
-  let stale = false;
+  let stale = Object.keys(build.errors || {}).length > 0;
   const newerThanBuild = (file) => {
     try {
       return fs.statSync(file).mtimeMs > build.builtAt;

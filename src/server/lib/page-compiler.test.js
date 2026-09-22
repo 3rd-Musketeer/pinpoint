@@ -478,6 +478,27 @@ describe('dist 状态与 serve 读取', () => {
     assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true);
   });
 
+  test('编成功后改出 lint 错：旧产物删除、serve 报 error、stale 不被失败重编刷绿（R1）', async () => {
+    const target = makePage('fail-rebuild', {
+      board: BASIC_BOARD,
+      files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>好</p></div>;\n}\n' },
+    });
+    const distRoot = path.join(tmp, 'dist');
+    const first = await compilePage(target, { distRoot });
+    assert.equal(first.ok, true);
+    assert.equal(readDistScreen(target.entryId, 'home', { distRoot }).kind, 'ok');
+    assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, false);
+    // 改出 lint 错（onClick）→ 失败重编：旧 home.html 必须删，不能拿改坏前的画面顶班。
+    fs.writeFileSync(path.join(target.pageDir, 'home.jsx'), 'export default function Home() {\n  return <div className="ios-app"><button onClick={() => 1}>坏</button></div>;\n}\n');
+    const second = await compilePage(target, { distRoot });
+    assert.equal(second.ok, false);
+    assert.equal(fs.existsSync(distFile(target, 'home.html')), false, '失败屏的旧产物必须删除');
+    const read = readDistScreen(target.entryId, 'home', { distRoot });
+    assert.equal(read.kind, 'error');
+    assert.match(read.message, /onClick/);
+    assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true, '失败重编不得把 stale 刷成 false');
+  });
+
   test('renderScreenHtml 编译单屏但不落 dist', async () => {
     const target = makePage('render-page', {
       board: BASIC_BOARD,
