@@ -1039,7 +1039,7 @@
     /* 幽灵框：锚点解析失败但有 lastRect 时，在 lastRect 处画虚线框 + 序号钉。 */
     '.ann-ghost-rect{position:absolute;box-sizing:border-box;border:2px dashed var(--wb-faint,#8d8d8d);background:transparent;border-radius:var(--wb-r-1,4px);pointer-events:none;z-index:1;}',
     /* 关闭 / 撤销的 toast（注入端与工作台共用注入侧样式） */
-    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(28,32,36,.92);color:#fff;font:500 12.5px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28);}',
+    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:var(--wb-z-float-2,2147483647);display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(28,32,36,.92);color:#fff;font:500 12.5px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28);}',
     '#ann-toast[hidden]{display:none;}',
     '#ann-toast button{border:0;background:transparent;color:#9ec2f0;cursor:pointer;font:600 12.5px system-ui;padding:2px 4px;}',
     /* 评论卡只在 hover 钉子（或该条被定位）时出（批注 1 的后半句「hover 时显示，

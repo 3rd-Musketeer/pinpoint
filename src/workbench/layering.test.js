@@ -55,7 +55,6 @@ const ALLOW = [
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-toast\{/, values: ['2147483647'], reason: '客座层：关闭 / 撤销 toast（pp2）' },
   // 双端共享的气泡样式：气泡与导出序号只在 overlay 内部比。
   { file: 'src/shared/annotate-bubble.js', where: /pointer-events:auto;z-index:3;overflow:hidden;\}/, values: ['3'], reason: 'overlay 内部序：.ann-bubble 评论卡' },
   // 组件内部序：分段控件焦点项压过相邻项的边，不与外壳比。
@@ -196,9 +195,13 @@ function ladderTokens() {
 test('layering: annotate.js var(--wb-z-*, N) fallbacks equal the token values', () => {
   const tokens = ladderTokens();
   assert.ok(tokens.size >= 10, 'ladder present in wb-tokens.css');
+  // #ann-toast（§2b）是双端两用引用：工作台落 token 110，客座页没有 token 落
+  // 2147483647 压过宿主 —— 它的兜底故意不等于 token 值，按名字豁免这一类。
+  const DUAL_MODE_FALLBACK = new Set(['--wb-z-float-2']);
   const refs = [...read('src/client/annotate.js').matchAll(/var\((--wb-z-[a-z0-9-]+)\s*,\s*(\d+)\)/g)];
   assert.ok(refs.length >= 2, 'annotate.js references at least --wb-z-marks and --wb-z-marks-active with fallbacks');
   for (const [, name, fallback] of refs) {
+    if (DUAL_MODE_FALLBACK.has(name)) continue;
     assert.equal(fallback, tokens.get(name), `${name} fallback ${fallback} must equal token value ${tokens.get(name)}`);
   }
   const names = new Set(refs.map((r) => r[1]));
