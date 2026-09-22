@@ -63,10 +63,26 @@ function identifier(value, path, pattern = ID_PATTERN) {
 
 const PAGE_MODES = ['ios', 'html'];
 
+/* ---- web 退役的归一（2026-08-16 阶段 2）唯一定义 ---------------------------
+   存量数据里的 'web'：模式落 html（doc 阅读器）、壳落 doc。读侧（深链 / 服务端
+   frame 解析 / registry→manifest）不再各写一份映射。 */
+
+export function legacyMode(mode) {
+  return mode === 'web' ? 'html' : mode;
+}
+
+export function legacyShell(shell, fallback = 'app') {
+  const value = shell || fallback;
+  return value === 'web' ? 'doc' : value;
+}
+
+/** registry 条目 → manifest 页模式：只有显式 board:'ios' 上画布，其余落 html。 */
+export function entryBoardMode(entry) {
+  return entry && entry.kind === 'dir' && entry.board === 'ios' ? 'ios' : 'html';
+}
+
 function validatePageMode(value, path) {
-  const mode = value == null || value === '' ? 'ios' : value;
-  // 2026-08-16 阶段 2：web 模式/壳退役 —— 存量数据里的 'web' 安全落 doc 阅读器。
-  if (mode === 'web') return 'html';
+  const mode = legacyMode(value == null || value === '' ? 'ios' : value);
   if (!PAGE_MODES.includes(mode)) {
     throw new ContractError(path, 'expected "ios" or "html"');
   }
@@ -106,12 +122,11 @@ export function validatePageManifest(raw) {
 }
 
 function validateShell(value, path, fallback = 'app') {
-  const shell = value || fallback;
   // "doc" = a complete standalone HTML document rendered in an iframe (HTML board).
   // "app"/"lock" take body fragments the loader wraps in phone chrome.
   // "comp"（pp2 切片 2）= variants 墙：无机壳 comp 画板，screen 条目带 comp + props。
-  // Legacy "web" (2026-08-16 退役) 归一到 "doc" —— 裸画板壳已连壳删除。
-  if (shell === 'web') return 'doc';
+  // Legacy "web" 的归一在 legacyShell（唯一定义）。
+  const shell = legacyShell(value, fallback);
   if (shell !== 'app' && shell !== 'lock' && shell !== 'doc' && shell !== 'comp') {
     throw new ContractError(path, 'expected "app", "lock", "doc", or "comp"');
   }

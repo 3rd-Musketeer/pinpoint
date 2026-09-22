@@ -31,7 +31,7 @@ import {
   pageEntry
 } from './lib/page-url.js';
 import { closestBoardSection } from './lib/board-navigation.js';
-import { validatePageManifest } from './lib/preview-contracts.js';
+import { entryBoardMode, validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
 import {
   refit,
@@ -454,7 +454,7 @@ function registryToPages(data) {
       // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
       // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
       // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
-      mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
+      mode: entryBoardMode(entry),
       // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
       // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
       // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。

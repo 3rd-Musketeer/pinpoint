@@ -1,4 +1,5 @@
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
+import { legacyMode } from './preview-contracts.js';
 export function pageEntry(manifest, pageId) {
   if (!manifest || !manifest.pages) return null;
   for (var i = 0; i < manifest.pages.length; i++) {
@@ -45,8 +46,7 @@ var DEEP_LINK_MODES = { ios: true, html: true };
 export function parseDeepLink(search) {
   var params = new URLSearchParams(search || '');
   var pageId = params.get('page');
-  var mode = params.get('mode');
-  if (mode === 'web') mode = 'html';
+  var mode = legacyMode(params.get('mode'));
   var entry = params.get('entry');
   return {
     pageId: pageId || null,

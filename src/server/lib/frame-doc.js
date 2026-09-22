@@ -24,6 +24,7 @@ import {
   wrapPhoneShell,
 } from '../../shared/frame-shell.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { readBoard } from './board-file.js';
 import { loadDistScreenHtml } from './page-compiler.js';
@@ -59,10 +60,9 @@ function previewManifestPages() {
   return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
-/** 壳归一：legacy "web" 值与 html 模式同落 doc（与 preview-contracts validateShell 的归一同义）。 */
+/** 壳归一（web→doc 与缺省壳的唯一定义在 preview-contracts.legacyShell）。 */
 function normalizeShell(shell, mode) {
-  const s = shell || (mode === 'html' ? 'doc' : 'app');
-  return s === 'web' ? 'doc' : s;
+  return legacyShell(shell, mode === 'html' ? 'doc' : 'app');
 }
 
 function findScreen(board, screenId) {  const refs = boardRefs(board);
@@ -201,7 +201,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
   const hit = findScreen(board, screenId);
   if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
-  const mode = entry.kind === 'dir' && entry.board === 'ios' ? 'ios' : 'html';
+  const mode = entryBoardMode(entry);
   const shell = normalizeShell(hit.screen.shell || hit.sectionShell, mode);
   const baseUrl = `/sites/${entry.id}/`;
   if (shell === 'doc') {
