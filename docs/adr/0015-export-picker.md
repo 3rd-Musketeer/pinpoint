@@ -1,6 +1,10 @@
 # 0015 · 导出 picker 收敛：任意多选 + 预览 + 选项减重
 
-Status: 现行（批注档缓期） · Date: 2026-08-15 · Scope: `src/workbench/app/ExportPicker.jsx`、`src/server/export-image-api.js`、`src/server/lib/zip-store.js`
+Status: 已退役 · Date: 2026-08-15 · Superseded-by: 0035（picker 随导出削减删除；批注烘图经 `ppnt shot --marks` 落地） · Scope: `src/workbench/app/ExportPicker.jsx`、`src/server/export-image-api.js`、`src/server/lib/zip-store.js`
+
+> 2026-09-22：pp2 只留“整个画布导出为离线可交互 HTML”（ADR 0033），图片 / zip picker 连同
+> 本条的批量规则与选项减重一并退场；`/api/export-image` 渲染器保留给 `ppnt shot` /
+> `check --mode image`。
 
 **Decided**（owner 在体验板 picker 上拍板）:
 - 批量规则 = 任意多选（勾选任意帧组合，section 行整选）+ 智能打包：单张直接下载 PNG，多张才 zip。
