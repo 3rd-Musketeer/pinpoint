@@ -15,7 +15,7 @@ test('buildOfflinePage assembles a registry iOS Page into one offline document',
     }],
   }));
   fs.writeFileSync(path.join(root, 'first.html'), [
-    '<div class="ios-app"><button data-choice>选择</button></div>',
+    '<div class="ios-app" data-pp-id="first.html:1@1" data-pp-comp="Home"><button data-choice data-pp-id="first.html:1@2">选择</button></div>',
     '<script type="module" data-preview-script>export default function mount(root){root.dataset.mounted="yes"}</script>',
   ].join('\n'));
   const entry = { id: 'offline-fixture', title: 'Offline Fixture', kind: 'dir', path: root, board: 'ios' };
@@ -30,6 +30,9 @@ test('buildOfflinePage assembles a registry iOS Page into one offline document',
   assert.match(result.html, /data-preview-kind="module"/);
   assert.match(result.html, /export default function mount/);
   assert.doesNotMatch(result.html, /src="\/(?:sites|kits|workbench)\//);
+  // R8：内部锚点（源码文件名与标注地址）不进 handoff HTML。
+  assert.doesNotMatch(result.html, /data-pp-(?:id|comp)=/);
+  assert.match(result.html, /<div class="ios-app"><button data-choice>选择<\/button><\/div>/);
 });
 
 test('buildOfflinePage fetches a shared remote resource once per export', async (t) => {

@@ -65,6 +65,12 @@ function resolvePage(pageId, registry) {
   return { entry, root, board };
 }
 
+// 导出剥内部锚点（review R8）：data-pp-id / data-pp-comp 是标注锚与源码文件名，
+// 只活在 pinpoint 里 —— handoff 出去的 HTML 不带页内文件名与机器地址。
+function stripPpAnchors(html) {
+  return String(html).replace(/ data-pp-(?:id|comp)="[^"]*"/g, '');
+}
+
 function frameHtml(screen, target, body, ref) {
   const cap = '<div class="wb-screen-cap">' +
     (ref ? `<span class="wb-cap-ref">${escHtml(ref)}</span>` : '') +
@@ -135,7 +141,7 @@ export async function buildOfflinePage(options = {}) {
         id: screen.id,
         title: screen.title || screen.id,
         ref,
-        html: frameHtml(screen, target, neutralizePreviewScripts(bundled.html), ref),
+        html: frameHtml(screen, target, neutralizePreviewScripts(stripPpAnchors(bundled.html)), ref),
       });
     }
     sections.push({
