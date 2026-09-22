@@ -225,6 +225,78 @@ describe('jsx 帧编译', () => {
   });
 });
 
+describe('comp 屏（variants 墙）', () => {
+  const COMP_BOARD = (screens) => ({
+    sections: [{ id: 'wall', title: 'Wall', layout: 'row', shell: 'comp', screens }],
+  });
+
+  test('页内组件：命名导出与默认导出都能渲染，props 到位', async () => {
+    const target = makePage('comp-page', {
+      board: COMP_BOARD([
+        { id: 'pill', title: 'pill', comp: 'Composer', props: { state: 'pill' } },
+        { id: 'bar', title: 'bar', comp: 'Plain' },
+      ]),
+      files: {
+        'components/Composer.jsx': [
+          'export function Composer({ state }) {',
+          '  return <div className="composer">状态:{state}</div>;',
+          '}',
+          '',
+        ].join('\n'),
+        'components/Plain.jsx': 'export default function Plain() {\n  return <div className="plain">默认导出</div>;\n}\n',
+      },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const pill = fs.readFileSync(distFile(target, 'pill.html'), 'utf8');
+    assert.match(pill, /<div class="composer" data-pp-id="components\/Composer\.jsx:2#1" data-pp-comp="Composer">状态:pill<\/div>/);
+    const bar = fs.readFileSync(distFile(target, 'bar.html'), 'utf8');
+    assert.match(bar, /data-pp-comp="Plain"/);
+    const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.equal(build.sources.pill.file, 'components/Composer.jsx');
+  });
+
+  test('页内没有就回退 pinpoint/kit', async () => {
+    const target = makePage('comp-kit', {
+      board: COMP_BOARD([{ id: 'b-in', title: 'incoming', comp: 'Bubble', props: { side: 'incoming' } }]),
+      files: {},
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'b-in.html'), 'utf8');
+    assert.ok(html.includes('ios-bubble ios-bubble-in'), html);
+    assert.match(html, /data-pp-comp="Bubble"/);
+    const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.match(build.sources['b-in'].file, /content\/kits\/ios\/jsx\/Bubble\.jsx$/);
+  });
+
+  test('找不到组件的屏报错，其他屏照常', async () => {
+    const target = makePage('comp-missing', {
+      board: COMP_BOARD([
+        { id: 'nope', title: 'nope', comp: 'Ghost' },
+        { id: 'ok', title: 'ok', comp: 'Bubble' },
+      ]),
+      files: {},
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, false);
+    assert.match(result.screens.find((s) => s.id === 'nope').error, /找不到组件 Ghost/);
+    assert.equal(result.screens.find((s) => s.id === 'ok').ok, true);
+    const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.match(build.errors.nope, /找不到组件/);
+  });
+
+  test('组件文件存在但没有可用导出 → 明确错误', async () => {
+    const target = makePage('comp-noexport', {
+      board: COMP_BOARD([{ id: 'x', title: 'x', comp: 'Empty' }]),
+      files: { 'components/Empty.jsx': 'export const notAComponent = 1;\n' },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, false);
+    assert.match(result.screens[0].error, /没有命名导出或默认导出/);
+  });
+});
+
 describe('.html 帧', () => {
   test('无 include 的存量帧逐字节恒等', async () => {
     const fragment = '<div class="ios-app">\n  <div class="ios-page">恒等</div>\n</div>\n';

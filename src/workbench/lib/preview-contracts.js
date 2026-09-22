@@ -110,10 +110,11 @@ function validateShell(value, path, fallback = 'app') {
   const shell = value || fallback;
   // "doc" = a complete standalone HTML document rendered in an iframe (HTML board).
   // "app"/"lock" take body fragments the loader wraps in phone chrome.
+  // "comp"（pp2 切片 2）= variants 墙：无机壳 comp 画板，screen 条目带 comp + props。
   // Legacy "web" (2026-08-16 退役) 归一到 "doc" —— 裸画板壳已连壳删除。
   if (shell === 'web') return 'doc';
-  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc') {
-    throw new ContractError(path, 'expected "app", "lock", or "doc"');
+  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc' && shell !== 'comp') {
+    throw new ContractError(path, 'expected "app", "lock", "doc", or "comp"');
   }
   return shell;
 }
@@ -131,18 +132,41 @@ function validateRole(value, path) {
   return role;
 }
 
+// pp2 切片 2：comp section 的 screen 条目 { id, title?, comp, props? } —— comp 是
+// 组件名（JS 标识符；页目录 components/<Name>.jsx 或 pinpoint/kit），props 是喂给
+// 组件的 JSON 值（board.json 本身已保证 JSON 安全，这里只拦非对象）。
+const COMP_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function normalizeComp(screen, path) {
+  if (screen.comp == null) return {};
+  const comp = nonEmptyString(screen.comp, `${path}.comp`);
+  if (!COMP_NAME_PATTERN.test(comp)) throw new ContractError(`${path}.comp`, `invalid component name "${comp}"`);
+  let props = {};
+  if (screen.props != null) {
+    if (!screen.props || typeof screen.props !== 'object' || Array.isArray(screen.props)) {
+      throw new ContractError(`${path}.props`, 'expected a JSON object of component props');
+    }
+    props = screen.props;
+  }
+  return { comp, props };
+}
+
 function normalizeScreen(entry, path, sectionShell, options) {
   const allowComponentRefs = !!options.allowComponentRefs;
   if (typeof entry === 'string') {
     return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
+  const compPart = normalizeComp(screen, path);
+  // comp 屏的 title 缺省用 id（variants 墙的一格一名）；普通屏 title 可空。
+  const titleFallback = compPart.comp ? screen.id : '';
   return {
     id: screenIdentifier(screen.id, `${path}.id`, allowComponentRefs),
-    title: screen.title == null ? '' : titleString(screen.title, `${path}.title`),
+    title: screen.title == null ? titleFallback : titleString(screen.title, `${path}.title`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
     role: validateRole(screen.role, `${path}.role`),
     src: screen.src == null ? '' : nonEmptyString(screen.src, `${path}.src`),
+    ...compPart,
   };
 }
 

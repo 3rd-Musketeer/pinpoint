@@ -31,9 +31,13 @@
 ## 字段
 
 - 顶层是 **`sections[]`**，不是扁平的 `{ id, screens }`。
-- 屏文件 = `content/previews/<pageId>/<screenId>.html`，内容是片段（`.ios-app` + 同级 overlay），不含机壳。
+- 屏的源码按 `<screenId>.jsx` → `<screenId>.html` 的顺序找（pp2：源码编译成 dist 后 serve；
+  存量 `.html` 原样当片段，`.jsx` 是默认导出一个返回 JSX 的函数的帧文件）。
 - 默认壳是 **app**。锁屏壳：section 或 screen 上写 `"shell": "lock"` + `.ios-lockscreen`。
-  HTML 文档壳写 `"shell": "doc"`。
+  HTML 文档壳写 `"shell": "doc"`。组件 variants 墙写 `"shell": "comp"`（见下「comp section」）。
+- 顶层可写 **`assets: { css?: string[], js?: string[] }`**（pp2）：页级资源，路径相对页目录。
+  编译器把 css 注入每帧开头（`@import`）、js 注入每帧末尾（`data-preview-script` module）；
+  存量帧手写了同 URL 行的不重复注入。
 - `section.id` 会写进 DOM 的 `[data-ann-section]`，成为标注的 `section` 字段。
 - **title 规矩**（ADR 0026）：单行短名词短语，只回答「这是什么」。编号由系统按 board 顺序派生
   （A / B1），手写必重复；禁「·」拼接多段信息。
@@ -43,6 +47,20 @@
   存量字段的备份清理见 [迁移说明](board-note-retirement.md)。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把一个 doc 屏标成草稿还是产物。它只影响条目派生，
   不改变加载与壳语义。
+
+## comp section（variants 墙，pp2）
+
+section 写 `"shell": "comp"` 后，它的 screen 条目不再对应屏文件，而是直接喂组件：
+
+```json
+{ "id": "composer-pill", "title": "pill", "comp": "Composer", "props": { "state": "pill" } }
+```
+
+- `comp` 是组件名：编译器先在页目录 `components/<Name>.jsx`（命名导出 `Name` 或默认导出）找，
+  没有再回 `pinpoint/kit`（`content/kits/ios/jsx/<Name>.jsx`，kit 的系统组件 JSX 印章）。
+  `props` 只允许 JSON 值；`title` 缺省用 `id`。找不到组件的屏进错误面板。
+- 组件是印章：输入 props 和 children 输出 HTML，无状态无事件无副作用；variant 全用 props 表达。
+- 这种屏用无机壳的 comp 画板（不出尺寸行），归画布条目，导出 picker 里和普通帧一样出现。
 
 ## 从 board 派生出来的东西
 
@@ -121,12 +139,14 @@ html-no-css 档换成文本引用）。
 
 | 可以改 | 不要改 |
 |---|---|
-| `content/previews/<pageId>/*.html`（iOS：`.ios-app` + 同级 overlay；HTML：任何非文档片段） | 手机机壳 / bezel / 状态栏（归加载器） |
-| `content/previews/<pageId>/*.js`（屏的 sidecar `mount(root)`） | `ios-kit.js` 里的产品手势 |
-| `content/previews/<pageId>/board.json` | 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 `font-size` |
-| `content/kits/ios/components/<id>/`（`meta.json` + variants） | 把组件 HTML 粘贴复制进屏里 |
-| 加页时改 `content/previews/_index.json`（`mode`：`ios` \| `html`） | 为了「修好一条标注」去动 `ios-kit.css` |
-| 经 `pinpoint add`（或小心手改）改 `~/.pinpoint/registry.json` 登记仓外评审目标 | 往 tracked 文件里夹带实例内容 |
+| `content/previews/<pageId>/<screenId>.jsx`（pp2 帧文件：默认导出一个返回 JSX 的函数；顶层只许 import / export default / 函数声明） | 手机机壳 / bezel / 状态栏（归加载器） |
+| `content/previews/<pageId>/<screenId>.html`（存量 iOS 片段：`.ios-app` + 同级 overlay；HTML：任何非文档片段） | `ios-kit.js` 里的产品手势 |
+| `content/previews/<pageId>/components/<Name>.jsx`（页内组件：命名导出的印章函数；帧文件显式 import，跨页复用时手动搬进 kit） | 把组件 HTML 粘贴复制进屏里 |
+| `content/previews/<pageId>/*.js`（屏的 sidecar `mount(root)`） | 手写 `.wb-lib-cap` / `.wb-screen-cap` 的 `font-size` |
+| `content/previews/<pageId>/board.json`（含顶层 `assets`） | 为了「修好一条标注」去动 `ios-kit.css` |
+| `content/kits/ios/jsx/<Name>.jsx`（kit 系统组件 JSX 印章，帧经 `pinpoint/kit` 引用） | 往 tracked 文件里夹带实例内容 |
+| 加页时改 `content/previews/_index.json`（`mode`：`ios` \| `html`） | |
+| 经 `pinpoint add`（或小心手改）改 `~/.pinpoint/registry.json` 登记仓外评审目标 | |
 
 `content/previews/` 是**纯模板**（ADR 0027）：只放进 git 的示例页，页 id / 标题 / 顺序 / 默认页在
 `content/previews/_index.json`。实例页不住这里——它们住各自 owning topic 的 `prototypes/`（或磁盘任何地方），

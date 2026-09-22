@@ -362,17 +362,47 @@ export function injectAssets(html, assets, urlBase) {
     + (jsLines.length ? `\n${jsLines.join('\n')}` : '');
 }
 
-async function compileScreen(target, screenId, options = {}) {
+/** board.json 的 screen 条目序列（编译用）：{ id, comp?, props? }，按 id 去重保序。 */
+export function screenEntriesFromBoard(board) {
+  if (!board || !Array.isArray(board.sections)) return [];
+  const seen = new Set();
+  const entries = [];
+  for (const section of board.sections) {
+    for (const screen of (section && section.screens) || []) {
+      const raw = typeof screen === 'string' ? { id: screen } : screen;
+      if (!raw || typeof raw.id !== 'string' || !PAGE_ID_PATTERN.test(raw.id)) continue;
+      if (seen.has(raw.id)) continue;
+      seen.add(raw.id);
+      const entry = { id: raw.id };
+      // comp section 的 variants 墙（pp2 切片 2）：comp = 组件名，props 只允许 JSON 值
+      // （board.json 本身是 JSON，天然满足；非对象的 props 按空对象处理）。
+      if (typeof raw.comp === 'string' && raw.comp) {
+        entry.comp = raw.comp;
+        entry.props = raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props) ? raw.props : {};
+      }
+      entries.push(entry);
+    }
+  }
+  return entries;
+}
+
+async function compileScreen(target, entry, options = {}) {
   const started = performance.now();
+  const screenId = entry.id;
   const jsxFile = `${screenId}.jsx`;
   const htmlFile = `${screenId}.html`;
   let result;
   let source = null;
-  if (fs.existsSync(path.join(target.pageDir, jsxFile))) {
-    source = jsxFile;
+  const sourceRecord = (file) => ({ file, mtimeMs: fs.statSync(path.join(target.pageDir, file)).mtimeMs });
+  if (entry.comp) {
+    const found = await compileCompScreen(target, entry, options);
+    result = found.result;
+    source = found.source;
+  } else if (fs.existsSync(path.join(target.pageDir, jsxFile))) {
+    source = sourceRecord(jsxFile);
     result = await compileJsxScreen(target, screenId, jsxFile);
   } else if (fs.existsSync(path.join(target.pageDir, htmlFile))) {
-    source = htmlFile;
+    source = sourceRecord(htmlFile);
     result = await compileHtmlScreen(target, screenId, htmlFile, options);
   } else {
     result = { ok: false, error: `${screenId}: 源码不存在（既没有 ${jsxFile} 也没有 ${htmlFile}）` };
@@ -381,10 +411,97 @@ async function compileScreen(target, screenId, options = {}) {
   return {
     ...result,
     ms: Math.round((performance.now() - started) * 10) / 10,
-    source: source
-      ? { file: source, mtimeMs: fs.statSync(path.join(target.pageDir, source)).mtimeMs }
-      : null,
+    source,
   };
+}
+
+/**
+ * comp 屏（variants 墙的一格）：生成一个虚拟帧 `<Name {...props} />` 渲染。
+ * 组件先在页目录 components/<Name>.jsx（命名导出 Name 或默认导出）找，没有再回
+ * pinpoint/kit（content/kits/ios/jsx/<Name>.jsx）。虚拟帧走 esbuild stdin，不进 lint；
+ * 组件文件本身照常过 lint（非 entry）。
+ */
+async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
+  const { id, comp, props } = entry;
+  const pageComp = path.join(target.pageDir, 'components', `${comp}.jsx`);
+  const kitComp = path.join(kitJsx, `${comp}.jsx`);
+  let importPath;
+  let sourceAbs;
+  let sourceDesc;
+  if (fs.existsSync(pageComp)) {
+    importPath = `./components/${comp}.jsx`;
+    sourceAbs = pageComp;
+    sourceDesc = `components/${comp}.jsx`;
+  } else if (fs.existsSync(kitComp)) {
+    importPath = 'pinpoint/kit';
+    sourceAbs = kitComp;
+    sourceDesc = 'pinpoint/kit';
+  } else {
+    return {
+      result: { ok: false, error: `${id}: 找不到组件 ${comp}（页内 components/${comp}.jsx 与 pinpoint/kit 都没有）` },
+      source: null,
+    };
+  }
+  const virtual = [
+    `import * as __M from ${JSON.stringify(importPath)};`,
+    `const __C = __M[${JSON.stringify(comp)}] || __M.default;`,
+    `export const __picked = __C;`,
+    `const __props = ${JSON.stringify(props || {})};`,
+    'export default function __CompScreen() {',
+    '  return <__C {...__props} />;',
+    '}',
+    '',
+  ].join('\n');
+  let built;
+  try {
+    built = await esbuild.build({
+      stdin: { contents: virtual, sourcefile: '__comp__.jsx', resolveDir: target.pageDir, loader: 'jsx' },
+      absWorkingDir: target.pageDir,
+      bundle: true,
+      write: false,
+      format: 'cjs',
+      platform: 'neutral',
+      jsx: 'automatic',
+      jsxDev: true,
+      jsxImportSource: 'pp-jsx-runtime',
+      external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
+      metafile: true,
+      logLevel: 'silent',
+      plugins: [kitJsxPlugin()],
+    });
+  } catch (error) {
+    return { result: { ok: false, error: formatBuildFailure(error) }, source: null };
+  }
+  const lintErrors = [];
+  for (const input of Object.keys(built.metafile.inputs)) {
+    if (!/\.jsx$/.test(input)) continue;
+    let text;
+    try {
+      text = fs.readFileSync(path.join(target.pageDir, input), 'utf8');
+    } catch {
+      continue;
+    }
+    lintErrors.push(...lintStampSource(text, input, { entry: false }));
+  }
+  if (lintErrors.length) {
+    return { result: { ok: false, error: lintErrors.map((row) => row.message).join('\n') }, source: null };
+  }
+  try {
+    const mod = evaluateFrameBundle(built.outputFiles[0].text);
+    if (typeof mod.__picked !== 'function') {
+      return {
+        result: { ok: false, error: `${id}: 组件 ${comp} 在 ${sourceDesc} 里没有命名导出或默认导出` },
+        source: null,
+      };
+    }
+    const html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
+    return {
+      result: { ok: true, html },
+      source: { file: path.relative(target.pageDir, sourceAbs).split(path.sep).join('/'), mtimeMs: fs.statSync(sourceAbs).mtimeMs },
+    };
+  } catch (error) {
+    return { result: { ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` }, source: null };
+  }
 }
 
 function readBuildJson(distRoot, entryId) {
@@ -410,19 +527,19 @@ export async function compilePage(target, options = {}) {
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 读取失败：${(error && error.message) || error}` };
   }
-  const ids = [...(screenIdsFromBoard(board) || [])];
+  const ids = screenEntriesFromBoard(board);
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
-  const picked = onlyScreen ? ids.filter((id) => id === onlyScreen) : ids;
+  const picked = onlyScreen ? ids.filter((entry) => entry.id === onlyScreen) : ids;
   const screens = [];
   const sources = {};
   const errors = {};
   const htmls = {};
-  for (const id of picked) {
-    const row = await compileScreen(target, id, { assets, kitRoot: options.kitRoot });
-    screens.push({ id, ok: row.ok, ms: row.ms, ...(row.ok ? {} : { error: row.error }) });
-    if (row.source) sources[id] = row.source;
-    if (row.ok) htmls[id] = row.html;
-    else errors[id] = row.error;
+  for (const entry of picked) {
+    const row = await compileScreen(target, entry, { assets, kitRoot: options.kitRoot });
+    screens.push({ id: entry.id, ok: row.ok, ms: row.ms, ...(row.ok ? {} : { error: row.error }) });
+    if (row.source) sources[entry.id] = row.source;
+    if (row.ok) htmls[entry.id] = row.html;
+    else errors[entry.id] = row.error;
   }
   // 浮点历元毫秒：与 stat 的 mtimeMs（亚毫秒浮点）同精度，stale 比较才不吃截断亏。
   const builtAt = performance.timeOrigin + performance.now();
@@ -439,9 +556,9 @@ export async function compilePage(target, options = {}) {
       const old = readBuildJson(distRoot, target.entryId) || {};
       mergedSources = { ...(old.sources || {}), ...sources };
       mergedErrors = { ...(old.errors || {}) };
-      for (const id of picked) {
-        if (errors[id]) mergedErrors[id] = errors[id];
-        else delete mergedErrors[id];
+      for (const entry of picked) {
+        if (errors[entry.id]) mergedErrors[entry.id] = errors[entry.id];
+        else delete mergedErrors[entry.id];
       }
     }
     fs.writeFileSync(path.join(outDir, 'build.json'), JSON.stringify({
@@ -468,7 +585,8 @@ export async function renderScreenHtml(target, screenId, options = {}) {
     return { ok: false, error: `board.json 读取失败：${(error && error.message) || error}` };
   }
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
-  const row = await compileScreen(target, screenId, { assets, kitRoot: options.kitRoot });
+  const entry = screenEntriesFromBoard(board).find((row) => row.id === screenId) || { id: screenId };
+  const row = await compileScreen(target, entry, { assets, kitRoot: options.kitRoot });
   return row.ok ? { ok: true, html: row.html } : { ok: false, error: row.error };
 }
 

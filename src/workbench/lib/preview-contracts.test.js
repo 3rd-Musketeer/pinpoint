@@ -253,3 +253,40 @@ test('title 规矩：换行一律拒绝', () => {
     (error) => error instanceof ContractError && error.message.includes('pages[0].title'),
   );
 });
+
+test('comp section（pp2 切片 2）：shell "comp" 放行，comp/props 条目归一，title 缺省用 id', () => {
+  const board = validateBoard({
+    sections: [{
+      id: 'composer', title: 'Composer', layout: 'row', shell: 'comp',
+      screens: [
+        { id: 'composer-pill', comp: 'Composer', props: { state: 'pill' } },
+        { id: 'composer-bar', title: 'bar', comp: 'Composer', shell: 'comp' },
+      ],
+    }],
+  }, { pageId: 'p' });
+  assert.equal(board.sections[0].shell, 'comp');
+  assert.deepEqual(board.sections[0].screens[0], {
+    id: 'composer-pill', title: 'composer-pill', shell: 'comp', role: 'product', src: '',
+    comp: 'Composer', props: { state: 'pill' },
+  });
+  assert.deepEqual(board.sections[0].screens[1], {
+    id: 'composer-bar', title: 'bar', shell: 'comp', role: 'product', src: '',
+    comp: 'Composer', props: {},
+  });
+  // 普通屏不带 comp 字段
+  const plain = validateBoard({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ['home'] }],
+  }, { pageId: 'p' });
+  assert.equal(Object.hasOwn(plain.sections[0].screens[0], 'comp'), false);
+  // 非法形态照拦
+  assert.throws(() => validateBoard({
+    sections: [{ id: 's', title: 'S', layout: 'row', shell: 'comp', screens: [{ id: 'x', comp: 'not-a-name!' }] }],
+  }), (e) => e instanceof ContractError && e.message.includes('.comp'));
+  assert.throws(() => validateBoard({
+    sections: [{ id: 's', title: 'S', layout: 'row', shell: 'comp', screens: [{ id: 'x', comp: 'C', props: [1] }] }],
+  }), (e) => e instanceof ContractError && e.message.includes('.props'));
+  // 未知壳值照拦
+  assert.throws(() => validateBoard({
+    sections: [{ id: 's', title: 'S', layout: 'row', shell: 'weird', screens: ['x'] }],
+  }), (e) => e instanceof ContractError && e.message.includes('shell'));
+});

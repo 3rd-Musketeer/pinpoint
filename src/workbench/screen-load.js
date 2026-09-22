@@ -135,10 +135,10 @@ export function fetchScreenHtml(pageId, screen) {
     }
   })
     .then(function (raw) {
-      if (pageId !== COMPONENTS_ID) {
-        raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', {
-          shell: sc.shell || defaultShellForPage(wbGet().pageManifest, pageId)
-        });
+      var shell = sc.shell || defaultShellForPage(wbGet().pageManifest, pageId);
+      // comp 屏（pp2 切片 2，variants 墙）是无机壳片段，不套 ios-app 契约校验。
+      if (pageId !== COMPONENTS_ID && shell !== 'comp') {
+        raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', { shell: shell });
       }
       return resolveIncludes(raw).then(function (html) {
         if (pageId === COMPONENTS_ID) return { ok: true, html: wrapFragmentForLibrary(html) };
@@ -188,6 +188,8 @@ function wrapDocPhoneShell(bodyHtml) {
 }
 
 function wrapScreenShell(pageId, bodyHtml, shell, viewport) {
+  // comp 屏（pp2 切片 2，variants 墙）：无机壳 comp 画板，不按页分派、按 shell 分派。
+  if (shell === 'comp') return wrapCompStage(bodyHtml);
   if (pageId === COMPONENTS_ID) return wrapCompStage(bodyHtml);
   if (shell === 'doc') return viewport === 'phone' ? wrapDocPhoneShell(bodyHtml) : wrapDocShell(bodyHtml);
   return wrapPhoneShell(bodyHtml, shell);
@@ -200,7 +202,7 @@ var IOS_DEVICE_DIM = PHONE_SCREEN_W + ' × ' + PHONE_SCREEN_H;
 /** 只有手机机身 frame 有固定逻辑分辨率可标；comp/doc 画板是流体尺寸，不出尺寸行
     （手机视口里的 doc 屏也不出：它不在画布上，图注 / 尺寸行都是画布语汇）。 */
 function isPhoneFrame(pageId, shell) {
-  return pageId !== COMPONENTS_ID && shell !== 'doc';
+  return pageId !== COMPONENTS_ID && shell !== 'doc' && shell !== 'comp';
 }
 
 /** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
@@ -209,6 +211,7 @@ export function frameDimLabel(pageId, shell) {
 }
 
 function screenClassForShell(pageId, shell, viewport) {
+  if (shell === 'comp') return 'wb-screen wb-screen--comp';
   if (pageId === COMPONENTS_ID) return 'wb-screen wb-screen--comp';
   if (shell === 'doc') return viewport === 'phone' ? 'wb-screen wb-screen--phone-doc' : 'wb-screen wb-screen--doc';
   return 'wb-screen';
