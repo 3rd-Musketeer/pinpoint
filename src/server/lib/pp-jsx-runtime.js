@@ -2,33 +2,24 @@
  * pp2 帧编译的 JSX 运行时（2026-09-22 切片 1）：包一层 preact 的 jsx-dev-runtime。
  * esbuild 以 jsx automatic + jsxDev 转译帧文件，每个元素带着 __source（文件、行）
  * 调进这里的 jsxDEV：
- * - 宿主元素（type 是字符串）打 data-pp-id="<相对页目录的文件>:<行>#<n>"，
- *   n = 本次渲染同一 文件:行 的第几次（1 起）；编译器每渲一帧调一次 __ppReset 归零。
+ * - 宿主元素（type 是字符串）打 data-pp-id="<相对页目录的文件>:<行>#<n>"：
+ *   n 只保证同一 文件:行 的元素互不相同（全局自增）；最终对外编号是编译器在
+ *   renderToString 之后按文档顺序的重编（renumberPpIds），与 agent 读源码 /
+ *   读 DOM 的直觉一致。
  * - 函数组件包一层：渲染结果是宿主元素就 cloneElement 补 data-pp-comp="<函数名>"。
  * 编译产物是静态 HTML，本模块只在编译期（node 进程内）跑，不进浏览器。
- * esbuild 产出的 bundle 以 file URL 外部引用本文件，与编译器 import 的是同一个
- * 模块实例 —— 计数器与包装缓存是进程内共享状态，__ppReset 的时机因此可靠。
+ * 帧 bundle 经编译器注入的 require 映射拿到本模块（同一个模块实例），包装缓存
+ * 挂在模块顶层即可，没有第二份实例。
  */
 import { cloneElement } from 'preact';
 import { Fragment, jsxDEV as preactJsxDEV } from 'preact/jsx-dev-runtime';
 
-// 计数器与包装缓存挂 globalThis：vite 把 vite.config.js 连同相对 import（本文件的
-// 编译器侧副本）打进一个配置 bundle，而帧 bundle 以 file URL import 本文件 ——
-// 两份模块实例并存时，挂模块顶层的 Map 会各自为政（帧侧计数永不被 reset，
-// 实测 dev server 里 #n 随编译次数累加）。globalThis 上只有一份，reset 必然命中。
-const store = globalThis.__ppJsxRuntimeStore || (globalThis.__ppJsxRuntimeStore = {
-  counts: new Map(),
-  wrapped: new WeakMap(),
-});
-
-/** 每渲染一帧调一次：data-pp-id 的 #n 计数归零。 */
-export function __ppReset() {
-  store.counts = new Map();
-}
+const wrapped = new WeakMap();
+let seq = 0;
 
 /** 编译器包帧默认导出用：与 jsxDEV 内部同一个包装，帧根宿主元素也带 data-pp-comp。 */
 export function __ppWrapComponent(fn) {
-  let hit = store.wrapped.get(fn);
+  let hit = wrapped.get(fn);
   if (!hit) {
     const name = fn.displayName || fn.name || 'Anonymous';
     hit = function PpStampComponent(props) {
@@ -39,7 +30,7 @@ export function __ppWrapComponent(fn) {
       return out;
     };
     if (fn.defaultProps) hit.defaultProps = fn.defaultProps;
-    store.wrapped.set(fn, hit);
+    wrapped.set(fn, hit);
   }
   return hit;
 }
@@ -51,10 +42,8 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
     t = __ppWrapComponent(t);
   } else if (typeof t === 'string' && source && source.fileName) {
     const file = String(source.fileName).replace(/\\/g, '/');
-    const fl = `${file}:${source.lineNumber}`;
-    const n = (store.counts.get(fl) || 0) + 1;
-    store.counts.set(fl, n);
-    p = { ...(p || {}), 'data-pp-id': `${fl}#${n}` };
+    seq += 1;
+    p = { ...(p || {}), 'data-pp-id': `${file}:${source.lineNumber}#${seq}` };
   }
   return preactJsxDEV(t, p, key, isStaticChildren, source, self);
 }

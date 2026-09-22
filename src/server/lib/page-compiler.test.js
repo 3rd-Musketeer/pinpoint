@@ -106,6 +106,25 @@ describe('jsx 帧编译', () => {
     assert.match(html, /<span class="badge" data-pp-id="components\/Badge\.jsx:2#1" data-pp-comp="Badge">新<\/span>/);
   });
 
+  test('#n 按文档顺序编号：同一行嵌套父元素在前，map 同行实例顺序排', async () => {
+    const target = makePage('jsx-doc-order', {
+      board: BASIC_BOARD,
+      files: {
+        'home.jsx': [
+          'export default function Home() {',
+          '  return <div className="ios-app"><p>同</p></div>;',  // line 2：div 与 p 同行
+          '}',
+          '',
+        ].join('\n'),
+      },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+    // 创建顺序是 p 先 div 后，文档顺序必须 div #1、p #2。
+    assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2#1"[^>]*><p data-pp-id="home\.jsx:2#2">同<\/p><\/div>$/);
+  });
+
   test('pinpoint/kit 解析成空模块（切片 2 再填）', async () => {
     const target = makePage('jsx-kit', {
       board: BASIC_BOARD,

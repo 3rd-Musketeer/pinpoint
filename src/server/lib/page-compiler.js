@@ -33,7 +33,7 @@ import { expandIncludeRefs } from '../../shared/frame-shell.js';
 import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { dataRoot } from './annotate-data-dir.js';
 import { localManifestPageIds } from './page-manifest.js';
-import { __ppReset, __ppWrapComponent } from './pp-jsx-runtime.js';
+import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -199,6 +199,21 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
 
 let bundleSeq = 0;
 
+/**
+ * data-pp-id 的 #n 按文档顺序重编（2026-09-22 review 1-1，owner 决定）：运行时按
+ * 创建顺序发号（嵌套同行时父元素反而靠后），这里对 renderToString 的输出字符串扫
+ * 一遍 data-pp-id="文件:行#k"，同一 文件:行 按出现先后从 1 重排 —— 字符串本身就是
+ * 文档顺序；preact 会把文本里的 " 转义成 &quot;，属性值不会误匹配。
+ */
+export function renumberPpIds(html) {
+  const counts = new Map();
+  return String(html).replace(/data-pp-id="([^"]+?:\d+)#\d+"/g, (all, key) => {
+    const n = (counts.get(key) || 0) + 1;
+    counts.set(key, n);
+    return `data-pp-id="${key}#${n}"`;
+  });
+}
+
 function emptyKitPlugin() {
   return {
     name: 'pp2-kit-stub',
@@ -268,8 +283,7 @@ async function compileJsxScreen(target, screenId, file) {
     if (!mod || typeof mod.default !== 'function') {
       return { ok: false, error: `${file}: 帧文件必须默认导出一个返回 JSX 的函数` };
     }
-    __ppReset();
-    return { ok: true, html: renderToString(h(__ppWrapComponent(mod.default), {})) };
+    return { ok: true, html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {}))) };
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
