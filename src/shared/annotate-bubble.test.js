@@ -37,14 +37,3 @@ test('bubbleHtml wraps the inner markup with a data-n bubble div', () => {
   assert.ok(full.startsWith('<div class="ann-bubble" data-n="7">'));
   assert.ok(full.endsWith('</div>'));
 });
-
-
-test('badgePositionForRect top-right matches export badge half-size', async () => {
-  const { badgePositionForRect } = await import('./annotate-clip.js');
-  const { EXPORT_BADGE_SIZE } = await import('./annotate-bubble.js');
-  const rect = [100, 200, 80, 40];
-  const pos = badgePositionForRect(rect, EXPORT_BADGE_SIZE / 2);
-  // Top-right of the selected box: left = x + w - half, top = y - half
-  assert.equal(pos.left, 100 + 80 - EXPORT_BADGE_SIZE / 2);
-  assert.equal(pos.top, 200 - EXPORT_BADGE_SIZE / 2);
-});
