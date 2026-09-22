@@ -125,6 +125,24 @@ describe('jsx 帧编译', () => {
     assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2#1"[^>]*><p data-pp-id="home\.jsx:2#2">同<\/p><\/div>$/);
   });
 
+  test('同一屏连编 3 次结果一致（cjs 求值无模块缓存残留）', async () => {
+    const target = makePage('jsx-repeat', {
+      board: BASIC_BOARD,
+      files: {
+        'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>稳</p></div>;\n}\n',
+      },
+    });
+    const distRoot = path.join(tmp, 'dist');
+    const outputs = [];
+    for (let i = 0; i < 3; i += 1) {
+      const result = await compilePage(target, { distRoot });
+      assert.equal(result.ok, true, JSON.stringify(result.screens));
+      outputs.push(fs.readFileSync(distFile(target, 'home.html'), 'utf8'));
+    }
+    assert.equal(outputs[0], outputs[1]);
+    assert.equal(outputs[1], outputs[2]);
+  });
+
   test('data-pp-comp 只打用户命名的组件：匿名默认导出不打，命名导出照打', async () => {
     const target = makePage('jsx-comp-name', {
       board: {

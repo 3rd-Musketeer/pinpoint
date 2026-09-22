@@ -4,8 +4,8 @@
  * 输入（页目录 = registry dir 条目的 path，或 content/previews/<pageId>）：
  * - 每个 screen 按 <screenId>.jsx → <screenId>.html 的顺序找源码；都没有则该屏报
  *   “源码不存在”，其余屏照常编译。
- * - .jsx 帧：esbuild（jsx automatic + jsxDev + 我们的 pp-jsx-runtime）转 bundle，
- *   data URL import 后 renderToString 成 HTML 片段；`pinpoint/kit` 本切片解析成
+ * - .jsx 帧：esbuild（jsx automatic + jsxDev + 我们的 pp-jsx-runtime）转 cjs bundle，
+ *   new Function 就地求值后 renderToString 成 HTML 片段；`pinpoint/kit` 本切片解析成
  *   空模块（切片 2 填）。相对 import 走 esbuild 默认解析。
  * - .html 帧：原样保留；含 data-ios-include 的用 src/shared/frame-shell.js 的
  *   expandIncludeRefs 在编译期展开一次（组件文件在 content/kits/ios/components/）。
@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { fileURLToPath, pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 import esbuild from 'esbuild';
 import { h } from 'preact';
@@ -39,7 +39,6 @@ import { PAGE_ID_PATTERN } from './registry.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const KIT_COMPONENTS = path.join(ROOT, 'content', 'kits', 'ios', 'components');
-const RUNTIME_URL = pathToFileURL(path.join(__dirname, 'pp-jsx-runtime.js')).href;
 
 export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
@@ -197,8 +196,6 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
 
 /* ---- 单屏编译 ---- */
 
-let bundleSeq = 0;
-
 /**
  * data-pp-id 的 #n 按文档顺序重编（2026-09-22 review 1-1，owner 决定）：运行时按
  * 创建顺序发号（嵌套同行时父元素反而靠后），这里对 renderToString 的输出字符串扫
@@ -224,13 +221,32 @@ function emptyKitPlugin() {
   };
 }
 
-function runtimePlugin() {
-  return {
-    name: 'pp2-jsx-runtime',
-    setup(build) {
-      build.onResolve({ filter: /^pp-jsx-runtime\/jsx-dev-runtime$/ }, () => ({ path: RUNTIME_URL, external: true }));
-    },
+// 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
+// 编译器共享同一个 preact / 运行时实例（vnode 鸭子类型跨实例不兼容），也不再
+// 需要 file URL external 的插件。
+import * as preactModule from 'preact';
+import * as preactJsxDevRuntime from 'preact/jsx-dev-runtime';
+import * as ppRuntimeModule from './pp-jsx-runtime.js';
+
+const REQUIRE_MAP = {
+  preact: preactModule,
+  'preact/jsx-dev-runtime': preactJsxDevRuntime,
+  'pp-jsx-runtime/jsx-dev-runtime': ppRuntimeModule,
+};
+
+/**
+ * cjs bundle 就地求值（2026-09-22 review 1-3）：new Function 的函数对象用完即可被
+ * GC 回收；此前的 data: URL import 每编一屏往 Node 的 ESM 缓存塞一个永不回收的
+ * 模块，--watch 与 dev server 长跑会无限增长。
+ */
+function evaluateFrameBundle(code) {
+  const mod = { exports: {} };
+  const require = (id) => {
+    if (!(id in REQUIRE_MAP)) throw new Error(`帧 bundle 出现未映射的 require：${id}`);
+    return REQUIRE_MAP[id];
   };
+  new Function('require', 'module', 'exports', code)(require, mod, mod.exports);
+  return mod.exports;
 }
 
 function formatBuildFailure(error) {
@@ -250,14 +266,15 @@ async function compileJsxScreen(target, screenId, file) {
       absWorkingDir: target.pageDir,
       bundle: true,
       write: false,
-      format: 'esm',
+      format: 'cjs',
       platform: 'neutral',
       jsx: 'automatic',
       jsxDev: true,
       jsxImportSource: 'pp-jsx-runtime',
+      external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: [runtimePlugin(), emptyKitPlugin()],
+      plugins: [emptyKitPlugin()],
     });
   } catch (error) {
     return { ok: false, error: formatBuildFailure(error) };
@@ -277,9 +294,7 @@ async function compileJsxScreen(target, screenId, file) {
     return { ok: false, error: lintErrors.map((row) => row.message).join('\n') };
   }
   try {
-    const code = built.outputFiles[0].text;
-    bundleSeq += 1;
-    const mod = await import(`data:text/javascript;charset=utf-8,${encodeURIComponent(code)}#pp${bundleSeq}`);
+    const mod = evaluateFrameBundle(built.outputFiles[0].text);
     if (!mod || typeof mod.default !== 'function') {
       return { ok: false, error: `${file}: 帧文件必须默认导出一个返回 JSX 的函数` };
     }
