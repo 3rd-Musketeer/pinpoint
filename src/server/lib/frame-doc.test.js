@@ -55,13 +55,6 @@ test('resolveFrameTarget: doc-shell screen → redirect target with the screen U
   assert.equal(target.url, '/sites/e2e-dir/doc.html');
 });
 
-test('resolveFrameTarget: components board resolves comp/variant ids', () => {
-  const target = resolveFrameTarget('components', 'bubble/outgoing', { registry });
-  assert.equal(target.kind, 'fragment');
-  assert.equal(target.shell, 'comp');
-  assert.ok(target.fragmentPath.endsWith(path.join('components', 'bubble', 'outgoing.html')));
-});
-
 test('resolveFrameTarget: registry ios dir entry 的页内屏改从 dist 出', () => {
   const target = resolveFrameTarget('e2e-dir-ios', 'cards', { registry });
   assert.equal(target.kind, 'fragment');

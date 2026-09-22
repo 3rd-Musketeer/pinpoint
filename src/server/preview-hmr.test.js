@@ -84,13 +84,15 @@ test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async 
   assert.deepEqual(server.added, [EXT, path.join(EXT, '..', 'single.html')]);
 });
 
-test('kit 组件变更 → 全量重编并对每页发 preview:update（review 1-5）', async (t) => {
+test('kit JSX 印章变更 → 全量重编并对每页发 preview:update（review 1-5 接力）', async (t) => {
   const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
   t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
-  const hit = previewHmr({ registry: { entries: ENTRIES }, distRoot });
+  const entries = ENTRIES.concat([{ id: 'e2e-ios', kind: 'dir', path: path.join(ROOT, 'e2e', 'ios-site') }]);
+  const hit = previewHmr({ registry: { entries }, distRoot });
   const s = fakeServer();
-  await hit.handleHotUpdate({ file: path.join(ROOT, 'content', 'kits', 'ios', 'components', 'button', 'catalog.html'), server: s });
-  const ids = s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id);
-  // 模板页退役后全量重编只剩 registry 有板条目（本固件没有），通知只剩组件板那条。
-  assert.deepEqual(ids, ['components']);
+  const out = await hit.handleHotUpdate({ file: path.join(ROOT, 'content', 'kits', 'ios', 'jsx', 'Bubble.jsx'), server: s });
+  // 编译期印章不吃 .js 的 full-reload（没有浏览器模块缓存）；全量重编后逐页通知，
+  // 无板条目（ext-page）不在通知集。
+  assert.deepEqual(out, []);
+  assert.deepEqual(s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id), ['e2e-ios']);
 });

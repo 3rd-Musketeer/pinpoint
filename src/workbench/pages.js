@@ -126,8 +126,8 @@ export function manifestPages() {
   return manifest.pages;
 }
 
-/* pp2 切片 2：Component Library 系统页退役（藏起，components-board.js 服务端留用
-   —— BACKLOG 有启动信号）——左栏不再前置系统行，Pages = manifest 页一份清单。 */
+/* Component Library 系统页已随 pp2 退役（服务端组件板与 kit 组件目录一并删除）
+   ——左栏不再前置系统行，Pages = manifest 页一份清单。 */
 
 export function sidebarPages() {
   return manifestPages();

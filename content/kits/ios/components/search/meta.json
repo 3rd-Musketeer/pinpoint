@@ -1,7 +1,0 @@
-{
-  "id": "search",
-  "title": "Search",
-  "system": true,
-  "layout": "column",
-  "variants": [{ "id": "catalog", "title": "Field" }]
-}

@@ -134,19 +134,6 @@ test('board normalizes valid screen entries and rejects duplicate screen ids', (
   );
 });
 
-test('component boards accept component slash variant ids', () => {
-  const board = validateBoard({
-    sections: [{
-      id: 'button',
-      title: 'Button',
-      layout: 'row',
-      screens: [{ id: 'button/catalog', src: 'components/button/catalog.html' }],
-    }],
-  }, { pageId: 'components', allowComponentRefs: true });
-
-  assert.equal(board.sections[0].screens[0].id, 'button/catalog');
-});
-
 test('checked-in preview boards satisfy the manifest contract', () => {
   const root = new URL('../../../content/', import.meta.url);
   const manifest = validatePageManifest(JSON.parse(fs.readFileSync(new URL('previews/_index.json', root))));

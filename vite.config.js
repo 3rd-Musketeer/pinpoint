@@ -12,7 +12,6 @@ import exportImageApi from './src/server/export-image-api.js';
 import exportPageHtmlApi from './src/server/export-page-html-api.js';
 import previewHmr from './src/server/preview-hmr.js';
 import previewInject from './src/server/preview-inject.js';
-import componentsBoard from './src/server/components-board.js';
 import contentRoutes from './src/server/content-routes.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
 
@@ -32,7 +31,7 @@ registryStore.reload = () => {
 };
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), componentsBoard(), previewInject(), hmr, contentRoutes()],
+  plugins: [react(), tailwindcss(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

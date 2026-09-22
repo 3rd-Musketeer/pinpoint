@@ -1,8 +1,8 @@
 /**
  * /api/frame 渲染端点的组装库（阶段 5：文档 mention 活 frame）。
  *
- * 解析 pageId + screenId → frame 目标（previews 模板页 / components 系统板 /
- * registry dir·file·url 条目），然后：
+ * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file·url
+ * 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
  *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
@@ -19,12 +19,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  expandIncludeRefs,
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell,
 } from '../../shared/frame-shell.js';
-import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { loadDistScreenHtml } from './page-compiler.js';
@@ -34,7 +32,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const CONTENT_ROOT = path.join(ROOT, 'content');
 const PREVIEWS_ROOT = path.join(CONTENT_ROOT, 'previews');
-const COMPONENTS_ROOT = path.join(CONTENT_ROOT, 'kits', 'ios', 'components');
 
 export class FrameDocError extends Error {
   constructor(code, message) {
@@ -45,9 +42,7 @@ export class FrameDocError extends Error {
 }
 
 const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-// screenId 允许 components 的 comp/variant 形态（与 export-contract 同口径）。
-const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)*$/;
-const COMPONENTS_ID = 'components';
+const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readJsonSafe(file) {
   try {
@@ -133,28 +128,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
 
-  // 1) Component Library 系统板
-  if (pageId === COMPONENTS_ID) {
-    const variantPath = path.resolve(COMPONENTS_ROOT, `${screenId}.html`);
-    if (!variantPath.startsWith(COMPONENTS_ROOT + path.sep) || !fs.existsSync(variantPath)) {
-      throw new FrameDocError('unknown_screen', `unknown component variant: ${screenId}`);
-    }
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: screenId,
-      shell: 'comp',
-      section: '',
-      sectionLabel: '',
-      ref: '',
-      entry: 'pinpoint',
-      baseUrl: '/kits/ios/components/',
-      fragmentPath: variantPath,
-    };
-  }
-
-  // 2) previews 模板/实例页
+  // 1) previews 模板/实例页
   const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
   if (pageEntry) {
     const board = readJsonSafe(path.join(PREVIEWS_ROOT, pageId, 'board.json'));
@@ -218,7 +192,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
 
-  // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
+  // 2) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
   const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
   const diskBoard = entry.kind === 'dir'
@@ -291,14 +265,8 @@ function docUrlForScreen(screen, baseUrl) {
   return `${baseUrl}${encodeURIComponent(screen.id)}.html`;
 }
 
-function readIncludeFragment(component, variant) {
-  const file = path.join(COMPONENTS_ROOT, component, `${variant}.html`);
-  if (!file.startsWith(COMPONENTS_ROOT + path.sep)) return Promise.resolve(null);
-  return Promise.resolve(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
-}
-
-/** fragment 屏内容：dist（页内 board 屏）或磁盘（kit 组件 / src 屏）读取 →
-    include 展开（dist 里已无 include，空操作）→ 机壳包装（与画布同一份 lib）。
+/** fragment 屏内容：dist（页内 board 屏）或磁盘（src 屏）读取 →
+    机壳包装（与画布同一份 lib）。
     编译失败的屏抛普通 Error —— frame-api 落 500 frame_failed 带错误文本。 */
 export async function assembleFrameContent(target) {
   let raw;
@@ -309,9 +277,8 @@ export async function assembleFrameContent(target) {
   } else {
     raw = fs.readFileSync(target.fragmentPath, 'utf8');
   }
-  let html = await expandIncludeRefs(raw, readIncludeFragment, applyIncludeSlots);
-  if (target.shell === 'comp') html = wrapFragmentForLibrary(html);
-  return target.shell === 'comp' ? wrapCompStage(html) : wrapPhoneShell(html, target.shell);
+  if (target.shell === 'comp') raw = wrapFragmentForLibrary(raw);
+  return target.shell === 'comp' ? wrapCompStage(raw) : wrapPhoneShell(raw, target.shell);
 }
 
 function frameCaptionHtml(target) {

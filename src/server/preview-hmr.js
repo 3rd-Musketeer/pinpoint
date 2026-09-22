@@ -2,8 +2,8 @@
 // registry 条目（2026-08-17e 实例搬迁地基）：vite 默认只 watch 仓库根，仓外
 // 条目目录经 configureServer 的 watcher.add 补挂；条目增删随 registry:reload
 // 同步（vite.config 里包装 registryStore.reload 调本插件的 syncWatcher）。
-// 仓库自身（id 多为 'pinpoint' 的默认条目）不算——previews//components 走下面
-// 的既有分支，workbench 源码走 vite 默认 HMR，都不许被 preview:update 吞掉。
+// 仓库自身（id 多为 'pinpoint' 的默认条目）不算——previews/ 走下面的既有分支，
+// workbench 源码走 vite 默认 HMR，都不许被 preview:update 吞掉。
 //
 // pp2（2026-09-22 切片 1）：页是「源码 → 编译 → dist」——
 // - 服务启动时对所有 dir 条目与模板页跑一遍全量编译，日志打总耗时与每页耗时；
@@ -124,16 +124,14 @@ export default function previewHmr(options = {}) {
           return [];
         });
       }
-      // kit 组件源 / meta 变更（2026-09-22 review 1-5）：存量 .html 帧的 include 是
-      // 编译期展开的，组件一改必须全量重编（144ms 量级，不算依赖）→ 对每页发
-      // preview:update；Component Library 自己的板照旧更新。分支收窄到 kit 目录：
-      // 名字里带 components 的仓外条目交给下面的 registry 分支正确归属。
-      if (/\/kits\/ios\/components\//.test(rel) && (/\.html$/.test(rel) || /meta\.json$/.test(rel) || /_index\.json$/.test(rel))) {
+      // kit JSX 印章变更（review 1-5 的接力）：comp 屏对 pinpoint/kit 的引用在
+      // 编译期定型，印章一改必须全量重编 → 对每页发 preview:update。分支收窄到
+      // kit 目录：名字里带 jsx 的仓外条目交给下面的 registry 分支正确归属。
+      if (/\/kits\/ios\/jsx\//.test(rel)) {
         return buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) }).then((results) => {
           for (const result of results) {
             server.ws.send({ type: 'custom', event: 'preview:update', data: { id: result.entryId } });
           }
-          server.ws.send({ type: 'custom', event: 'preview:update', data: { id: 'components', alsoActive: true } });
           return [];
         });
       }
