@@ -9,24 +9,24 @@
 
 `src/server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
 形状 `{"version":1,"entries":[...]}`（2026-09-04 起还有可选的 `folders` / `pageFolders` /
-`pageOrder` 三段，见下面「分组层」），条目
+`pageOrder` 三段，见下面“分组层”），条目
 `{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?, folder?, order?}`。
 
 - `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
 - `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
   file 条目永远在阅读器里打开，不带板。
 - `page` + `role`（`"product"` 默认 | `"draft"`）是挂靠字段：带 `page` 的条目**不**自己成为一行 Pages，
-  而是并进目标页的「内容」区（`role:"draft"` 时进草稿组）。url 条目永远是独立页，
+  而是并进目标页的“内容”区（`role:"draft"` 时进草稿组）。url 条目永远是独立页，
   所以对它写 `page` 是非法的（会被显著跳过）。
 - 条目的 `kind` 一路透传到 workbench 的 page manifest 和 board 条目上，所以 url 条目的
-  document 条目在「内容」区带「网页」类型 tag。
+  document 条目在“内容”区带“网页”类型 tag。
 - 文件缺失时用默认的只含 pinpoint 一条的登记表（`{id:"pinpoint", kind:"dir", path:<仓库根>}`）。
   JSON 坏了或顶层形状不对就回落到默认并记下 error；单条非法只跳过那一条；
   dir / file 路径不存在是 warning，不是删除。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表 + `service.directOrigin`）。
 - `GET /registry` 还给 dir / file 条目附 `mtime`（内容 mtime，dir 递归取最大），
-  给 Pages 的「最近更新」排序用（ADR 0029）。
+  给 Pages 的“最近更新”排序用（ADR 0029）。
 
 ## 分组层（文件夹）
 
@@ -46,7 +46,7 @@
   缺省等于 id。夹 id 与条目 id 是同一套模式（`^[a-z0-9][a-z0-9-]*$`），但**两个命名空间各自独立**——
   条目的 `folder` 只引用 `folders[]` 里的 id，夹 id 撞上某个条目 id 不是冲突。
   数组顺序就是左栏顺序（拖动重排 = 整表按新顺序写回）。
-- 条目的 `folder` / `order`：归属哪个夹、手动次序（`order` 只在 workbench 的排序档是「默认」时生效）。
+- 条目的 `folder` / `order`：归属哪个夹、手动次序（`order` 只在 workbench 的排序档是“默认”时生效）。
 - `pageFolders{}` / `pageOrder{}` 装的是**不在登记表里的** manifest 页（来自
   `content/previews/_index.json` 的模板页）——它们没有条目可以写字段，归属与次序只能记在顶层。
   键撞上某个 registry 条目 id 时那条映射是死数据（条目自己的字段才算数），读侧 warn 掉。
@@ -70,7 +70,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 | `PUT /registry/order` | `{ids:[…]}` | 按给定顺序写 `order` 0、1、2… |
 
 `:id` 是 registry 条目就改条目自己的字段，是本地 manifest 页就落 `pageFolders` / `pageOrder`。
-「id 认不认识」的名单 = registry 条目 + `content/previews/_index.json` 里的模板页
+“id 认不认识”的名单 = registry 条目 + `content/previews/_index.json` 里的模板页
 （服务自报的 root 下读，与 CLI 的 `--page` 共用 `src/server/lib/page-manifest.js`）。
 未知 id、未知文件夹、坏 `order`、重复或带未知字段的 folders 一律
 `400 {error:"bad_request", message:"<一句人话>"}`，且登记表一个字节不动；
@@ -94,9 +94,9 @@ pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <i
 而不是新增一行 Pages——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
 对 url 目标会被拒绝；`--draft` 必须搭配 `--page`，把条目放进草稿组。
 
-**`--page` 是「挂到既有页 `<id>`」，不是「指定本条目的 id」。** 本条目自己的 id 用 `--id`。
+**`--page` 是“挂到既有页 `<id>`”，不是“指定本条目的 id”。** 本条目自己的 id 用 `--id`。
 反例：`pinpoint add ./v2 --id weekly-review-v2` 是让这个条目自己叫 weekly-review-v2；
-`pinpoint add ./v2 --page weekly-review` 是把它塞进 weekly-review 那一页的「内容」区、
+`pinpoint add ./v2 --page weekly-review` 是把它塞进 weekly-review 那一页的“内容”区、
 自己不成一行 Pages。
 
 `move` 原地改一个既有条目的落点（dir / file / url 三种目标，校验方式与 `add` 一致：路径必须存在、
@@ -124,8 +124,8 @@ pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <i
 `rename` 自己不做合并——目标 id 已被占用时它一律拒绝，不会去动别人的标注桶。
 
 **撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
-CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
-`--id <其他 id>`」并退非零。历史行为是静默追加 `-2`，那会开一个空桶、让既有标注孤儿化
+CLI 打印“id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
+`--id <其他 id>`”并退非零。历史行为是静默追加 `-2`，那会开一个空桶、让既有标注孤儿化
 （2026-09-01 实迁踩到）。
 
 `folder` 管的是上面那层分组，五个子命令：
@@ -157,7 +157,7 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
 
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的
-「起服务与验收」。
+“起服务与验收”。
 
 ## 三条投递路径
 
@@ -166,7 +166,7 @@ client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
 ### 1 · workbench 自己的页面
 
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 `/annotate.js`（退出方式：`<html data-annotate="off">`）。
-独立文档不需要自己接线：2026-08-17 起 previews 与 `/sites/` 同一条「serve 即注入」契约
+独立文档不需要自己接线：2026-08-17 起 previews 与 `/sites/` 同一条“serve 即注入”契约
 （ADR 0027），整份文档自动成为可标注区域。范例见 `e2e/doc-site/report.html`。
 
 自 ADR 0027 起还有一层：`src/server/preview-inject.js` 给任何含 `<!doctype` 的 `content/previews/**.html`

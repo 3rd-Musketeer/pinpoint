@@ -13,7 +13,7 @@ pp2（2026-09-22 起）页是**源码**：`<screenId>.jsx` 帧 + `components/<Na
 
 1. [`CONTEXT.md`](CONTEXT.md) —— 词汇表。page / board / entry / frame / 桶 / 账本这些词在这里各有一条定义，
    `entry` 有两个意思，读代码前先看清楚。
-2. 本文的「坑与约定」一节 —— agent 猜不到、猜错了会白干的东西。
+2. 本文的“坑与约定”一节 —— agent 猜不到、猜错了会白干的东西。
 3. 下面的技能路由表 —— 按你要碰的面打开对应文档，不要通读全部。
 
 设计语言正典是 [`docs/design.md`](docs/design.md)：写或改任何 UI 之前先读。
@@ -96,7 +96,7 @@ agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`close` 只有 o
 
 **overlay 与 `.ios-app` 同级（iOS）** —— `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` 是
 `.ios-app` 的**同级元素**，不是子元素；嵌进 `.ios-app` 会弄坏滚动与 sheet 定位。见
-board-schema「iOS 帧的硬约束」。
+board-schema“iOS 帧的硬约束”。
 
 **safe area 走 token** —— 自定义导航栏 / composer 必须用 `--ios-safe-top` / `--ios-safe-bottom`
 （变量在 `ios-kit.css`）；不要写死 px，也不要拿占位 div 顶。
@@ -108,13 +108,13 @@ board-schema「iOS 帧的硬约束」。
 在 serve 时被内联进 `/annotate.js`，改它们就是改 client——保持纯函数、不碰 DOM。
 
 **Playwright 的可见性断言不查视口** —— `toBeVisible` / `click` 对被画布 padding 推到 3000px 外、
-被祖先 `overflow` 裁掉的元素照样全绿。要断言「人看得见、点得到」，用 boundingBox 和 stage 几何比。
+被祖先 `overflow` 裁掉的元素照样全绿。要断言“人看得见、点得到”，用 boundingBox 和 stage 几何比。
 
-**vendored 组件有看不见的内部契约** —— `src/workbench/app/ui/` 里的 shadcn 副本「source-owned,
-edit freely」只说对一半：包装层是仓内的，Radix Primitive 的内部 DOM 契约（ScrollArea 视口的
+**vendored 组件有看不见的内部契约** —— `src/workbench/app/ui/` 里的 shadcn 副本“source-owned,
+edit freely”只说对一半：包装层是仓内的，Radix Primitive 的内部 DOM 契约（ScrollArea 视口的
 `display:table`、Popper 的定位 wrapper）读代码看不见，只有 computed style 看得见。改这些组件或
 周边布局前先读 ADR 0023 与 [`docs/debugging.md`](docs/debugging.md) 的对应案例。
 
 **层级（z-index）走 `--wb-z-*` 阶梯** —— 外壳里带 z-index 的元素一律从阶梯挑档，不写数字；
 `.wb` 是隔离的堆叠上下文，`.wb-stage-wrap` 永远不能成为堆叠上下文。阶梯表与两条结构规则在
-[`docs/design.md`](docs/design.md)「层级」，`src/workbench/layering.test.js` 守，来龙去脉见 ADR 0034。
+[`docs/design.md`](docs/design.md)“层级”，`src/workbench/layering.test.js` 守，来龙去脉见 ADR 0034。

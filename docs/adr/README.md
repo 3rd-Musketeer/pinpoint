@@ -20,7 +20,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 现行 | — |
 | [0031](0031-shell-glass-panel-bottom-strip-on-demand-list.md) | 2026-09-04 | 外壳重设计：满铺画布 + 浮动玻璃面板 + 底部单条 + 按需标注列表 | 现行 | — |
 | [0030](0030-layout-src-content-and-url-contract.md) | 2026-09-04 | 目录重排：src/ 与 content/ 两轴，服务 URL 是契约 | 现行 | — |
-| [0029](0029-pages-mtime-and-sort.md) | 2026-08-17 | Pages 时间显示 + 排序；「最近更新」= 仅内容改动 | 现行 | — |
+| [0029](0029-pages-mtime-and-sort.md) | 2026-08-17 | Pages 时间显示 + 排序；“最近更新”= 仅内容改动 | 现行 | — |
 | [0028](0028-areta-chat-eval-repoint-and-component-ownership.md) | 2026-08-17 | areta-chat-eval 条目重指 + 组件归属边界成文 | 部分被取代（条目重指仍现行；组件归属归 pp2 印章模型） | ADR 0035 |
 | [0027](0027-serve-injects-and-instances-leave-previews.md) | 2026-08-17 | 注入契约统一 + registry 补全 + 实例迁出 previews/ | 现行 | — |
 | [0026](0026-title-rule-section-note-detail-panel.md) | 2026-08-17 | title 规矩 + section note + 选中模型（note 收编右栏 detail 面板） | 现行 | — |

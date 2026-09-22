@@ -35,7 +35,7 @@ description: 读取 Pinpoint 标注、判断改帧还是改组件、改完编译
 
 改源码（不碰 `~/.pinpoint/dist/`；kit 只在确要改所有页时动）→ `ppnt build <页>` 到全绿 →
 `ppnt shot <帧>`（或 `ppnt check <页> --mode image`）对照看效果。lint / 编译错误指到文件与行，
-规则见 build skill 的「lint 四禁」。改不动或没道理的标注留着不动，准备在 note 里说明。
+规则见 build skill 的“lint 四禁”。改不动或没道理的标注留着不动，准备在 note 里说明。
 
 ## 4. `ppnt mark <ref…> done|check|open --note "…"`
 

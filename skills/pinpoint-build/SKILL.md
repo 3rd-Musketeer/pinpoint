@@ -1,6 +1,6 @@
 ---
 name: pinpoint-build
-description: 在 pinpoint 里搭原型页：写 .jsx 帧、页内组件、kit 组件，改 board.json，做屏内交互。只要任务涉及新增或修改某个页的帧 / 组件 / board.json，或用户说「加一屏」「加个对比」「搭个 variants 墙」「做个交互」「写 board」，先读本 skill 再动手——帧与组件的写法、源码与 dist 的关系有几条硬约束（overlay 同级、safe area 接 token、组件是印章），跳过容易白干。
+description: 在 pinpoint 里搭原型页：写 .jsx 帧、页内组件、kit 组件，改 board.json，做屏内交互。只要任务涉及新增或修改某个页的帧 / 组件 / board.json，或用户说“加一屏”“加个对比”“搭个 variants 墙”“做个交互”“写 board”，先读本 skill 再动手——帧与组件的写法、源码与 dist 的关系有几条硬约束（overlay 同级、safe area 接 token、组件是印章），跳过容易白干。
 ---
 
 # pinpoint-build
@@ -53,7 +53,7 @@ export default function Settings() {
 - 帧输出 body 片段；机壳（bezel / 状态栏 / home 条）归 loader，不要写。
 - 正文在 `.ios-app` / `.ios-lockscreen`；**sheet / tabbar / backdrop 与 `.ios-app` 同级**，不进滚动层。
 - 自定义顶栏 / 底栏的 inset 用 `--ios-safe-top` / `--ios-safe-bottom`，不写死 px、不拿占位 div 顶。
-  这两条的机制与错挂症状见 board-schema「iOS 帧的硬约束」。
+  这两条的机制与错挂症状见 board-schema“iOS 帧的硬约束”。
 - 样式类从 kit 拿（`.ios-*`，token 在 `ios-kit.css`）；组件 css 页级一份（`assets`），不要每帧抄。
 - 帧内小组件用 `function` 声明写在同文件；两个以上帧要用就搬进 `components/`。
 - 存量 `.html` 帧继续认，原样编译、写法不变。
@@ -93,7 +93,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 - **B · sidecar（逻辑长首选）**：同名 `<screenId>.js` 导出 `mount(root)`，帧根标 `data-preview-mount`；
   `mount` 可返回 `unmount`，换板 / HMR 会调它——有定时器、全局监听必须返回。
 
-`root` 约定、`data-preview-root` 覆盖、sidecar 资源报错行为见 board-schema「交互 frame」。
+`root` 约定、`data-preview-root` 覆盖、sidecar 资源报错行为见 board-schema“交互 frame”。
 产品手势不进 `ios-kit.js`：kit 只承载通用原语，放进去所有页互相污染。
 
 ## 4. board.json：登记帧与 variants 墙
@@ -125,7 +125,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 
 - 把 sheet / tabbar / backdrop 塞进 `.ios-app`；手写 safe-area 像素。
 - 给图注设 font-size；title 里手写编号或塞图例（caption 与 title 规矩在 board-schema）。
-- 为「以后可能复用」抽组件；把状态、事件、fetch 写进组件。
+- 为“以后可能复用”抽组件；把状态、事件、fetch 写进组件。
 - 把产品手势写进 `ios-kit.js`；改 loader 机壳或 `ios-kit.css` 去对齐一条标注。
 - 手改 `~/.pinpoint/dist/`；往 tracked 文件夹带实例内容（实例页住你自己的目录，经
-  `pinpoint add` 登记，见 board-schema「模板与实例」）。
+  `pinpoint add` 登记，见 board-schema“模板与实例”）。

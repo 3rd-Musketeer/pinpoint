@@ -9,7 +9,7 @@
 Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一个页可以同时装画布、文档和网页。
 `pageId` 同时是标注地址 `@page:<id>` 和 DOM 上的 `data-vpage`。
 住在 `content/previews/_index.json`（模板页）或 `~/.pinpoint/registry.json`（登记进来的页）。
-要避开：「册」（owner 明确否掉的自造词，ADR 0021）、「project」、「board」当页用。
+要避开：“册”（owner 明确否掉的自造词，ADR 0021）、“project”、“board”当页用。
 
 **board（板）**
 一个页的内容定义，就是那份 `board.json`：顶层是 `sections[]`，不是扁平的 `{id, screens}`。
@@ -26,13 +26,13 @@ board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 D
 
 **frame（帧）**
 画布上的一个取景框，装一个 screen。引用号里 frame 是数字，和 section 字母拼成 A1 / B3。
-人对 agent 说「改 A2」，机器仍走 `@frame:<pageId>/<screenId>`。
+人对 agent 说“改 A2”，机器仍走 `@frame:<pageId>/<screenId>`。
 要避开：拿 frame 指 iframe——mention 水合出来的那个 iframe 是实现手段，不是这个词。
 
 **folder（文件夹）**
 Pages 列表里 owner 手动建的一层分组，页靠拖放入夹；只有一层，不嵌套。
 住在 `~/.pinpoint/registry.json` 顶层 `folders[]` 与条目的 `folder` 字段（2026-09-04 定，实现中）。
-要避开：「project」「group」当文件夹用；「归档」——那只是 owner 自己建的一个夹，不是功能。
+要避开：“project”“group”当文件夹用；“归档”——那只是 owner 自己建的一个夹，不是功能。
 
 **entry（条目）· 这个词有两个意思，别混**
 - **board entry**：`src/workbench/lib/board-entries.js` 从 board 派生出来的可选中单位。
@@ -47,7 +47,7 @@ Pages 列表里 owner 手动建的一层分组，页靠拖放入夹；只有一�
 **canvas（画布）与 doc（文档）· 两种形态，不是两种页**
 canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达态：整份独立 HTML 在 iframe 里 1:1
 铺满舞台，没有缩放、没有画板、没有 frame 标题。同一个页可以两种都有，切哪个由选中的 board entry 决定。
-要避开：「web 模式」——那个壳 2026-08-16 已连壳退役（ADR 0017），只在历史文档里出现。
+要避开：“web 模式”——那个壳 2026-08-16 已连壳退役（ADR 0017），只在历史文档里出现。
 
 **viewport（视口）**
 文档条目怎么被看：窗口 = 整份 HTML 在 iframe 里 1:1 铺满舞台；手机 = 同一份 HTML 装进一块
@@ -56,11 +56,11 @@ canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达�
 页的偏好，住 `prefs.viewportByPage`（`src/workbench/lib/viewport.js`，横条 `#wbviewport`
 切换），不进 registry。只对文档条目有意义。
 要避开：拿 viewport 指 `pageViewports`——那是每页画布的滚动位置与缩放存档，不是这个词；
-也别拿它指浏览器窗口本身——「窗口」只是这两种看法之一的名字；也别把手机视口说成
-「frame」——它不在画布上，没有引用号。
+也别拿它指浏览器窗口本身——“窗口”只是这两种看法之一的名字；也别把手机视口说成
+“frame”——它不在画布上，没有引用号。
 
 **产物与草稿**
-左栏「内容」区的两组。产物 = 交付物（画布 / 文档 / 网页，条目上带类型 tag）；
+左栏“内容”区的两组。产物 = 交付物（画布 / 文档 / 网页，条目上带类型 tag）；
 草稿 = 过程里派生出来的整页 HTML（screen 上 `role: "draft"`）。两者没有机制耦合——
 选中一版之后回灌是 agent 改代码的动作，pinpoint 不提供这个功能。
 
@@ -100,7 +100,7 @@ template = 进 git 的那部分：框架代码 + Example Library + system 组件
 instance = 这台机器上 owner 自己的内容：`prototypes/`、`tasks/`、`BACKLOG.md`、`TODO.md`、
 `.archive/`、以及一批 owner-local 的 kit 组件，全部靠 `.git/info/exclude` 挡在 git 之外。
 `PREVIEW_TEMPLATE_ONLY=1` 把实例内容藏起来，e2e 与发布校验跑在这个模式下。
-要避开：拿 instance 指「一个 annotate client 实例」——那个说 client 实例。
+要避开：拿 instance 指“一个 annotate client 实例”——那个说 client 实例。
 
 ## 服务层
 
@@ -130,7 +130,7 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
 mention 是语义：doc 正文用 `<div data-pinpoint-frame="<pageId>/<screenId>"></div>` 引用一个活 frame。
 embed 是实现：doc 自己的 annotate client 把挂载点水合成一个指向 `/api/frame` 的 iframe。
 标注绑对象不绑视图，所以 frame 里的标注在画布和文档两个面都看得到、实时同步。
-要避开：把 mention 说成「截图」或「副本」——它引用的是活对象。
+要避开：把 mention 说成“截图”或“副本”——它引用的是活对象。
 
 **REV**
 按字母递增的页面版次，配一条更改栏。**没有实现**：2026-08-15 缓期进 BACKLOG（ADR 0013），

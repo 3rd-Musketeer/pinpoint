@@ -109,7 +109,7 @@ ppnt mark <ref…> done|check    # write annotation status, --note for the one-l
 
 ## Repository layout
 
-```
+```text
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: board-schema, registry, annotation, design; adr/ = decisions
@@ -156,7 +156,7 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the bottom
    composer (pills reference targets; `[indicator N]` inlines them), paste reference images,
    draw move-arrows.
-2. Say「标好了，你看一下」— the agent runs `ppnt check <page>` (statuses, intents, code excerpts,
+2. Say“标好了，你看一下”— the agent runs `ppnt check <page>` (statuses, intents, code excerpts,
    no browser), edits the routed source file, `ppnt build`, then writes `ppnt mark … done --note`.
    Annotations live in per-entry buckets under `~/.pinpoint/<entry-id>/` (disk is the SSOT;
    revisioned, SSE-synced). Four states: `open` (yours) → `check` / `done` (agent) → `close` (yours).

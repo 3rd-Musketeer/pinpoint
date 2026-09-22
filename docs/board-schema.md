@@ -8,7 +8,7 @@
 ## 源码与 dist
 
 - 页目录 = 源码：`<screenId>.jsx`（或存量 `.html`）、`components/<Name>.jsx`、页级 css / js、`board.json`。
-- 每屏按 `<screenId>.jsx` → `<screenId>.html` 找源码；都没有该屏报「源码不存在」，其余照编。
+- 每屏按 `<screenId>.jsx` → `<screenId>.html` 找源码；都没有该屏报“源码不存在”，其余照编。
 - `ppnt build <页>` 编出 `~/.pinpoint/dist/<entry>/<screenId>.html` 与 `build.json`
   （`builtAt` / `sources` / `errors`）。dist 不进 git、不放回页目录，重编即得。
 - 服务只对屏 HTML 出 dist（`/sites/<entry>/<screenId>.html`；模板页 `/previews/<page>/…` 同理），
@@ -59,8 +59,8 @@ props 在各文件首行注释。
 - **`assets`**：页级资源，路径相对页目录；编译器把 css 注入每帧开头（`@import`）、js 注入每帧末尾
   （`data-preview-script` module），存量帧手写了同 URL 行的不重复注入。
 - `section.id` 写进 DOM 的 `[data-ann-section]`，成为标注的 `section` 字段。
-- **title 规矩**（ADR 0026）：单行短名词短语，只回答「这是什么」。编号由系统按 board 顺序派生
-  （section = A/B，frame = A1/B2），手写必重复；禁「·」拼接多段信息，不写图例与设计意图。
+- **title 规矩**（ADR 0026）：单行短名词短语，只回答“这是什么”。编号由系统按 board 顺序派生
+  （section = A/B，frame = A1/B2），手写必重复；禁“·”拼接多段信息，不写图例与设计意图。
   `validateBoard` 硬拦 title 换行；画布 caption 两行截断 + hover 全文兜底。
 - section 与 frame 只保留标题，没有说明字段或详情浮层；旧 `note` 字段加载时忽略。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
@@ -135,7 +135,7 @@ client 把空挂载点水合成 `/api/frame` 的 iframe，标注绑定对象不�
 
 ## 导出与截图
 
-用户面只有一个：整个画布导出为离线可交互 HTML（横条「导出」钮，ADR 0033）。
+用户面只有一个：整个画布导出为离线可交互 HTML（横条“导出”钮，ADR 0033）。
 帧与 section 的图片归 agent 面：`ppnt shot`（`--marks` 烤序号钉）与 `check --mode image` 走同一条
 服务端渲染链（`/api/export-image`），屏里不写截图逻辑。图注（引用号 + 屏名 + 尺寸）永随图。
 
@@ -157,13 +157,13 @@ owning topic 的 `prototypes/`（或磁盘任何地方），经 `pinpoint add` �
 | `<page>/components/<Name>.jsx`（页内组件） | 把组件 HTML 复制粘贴进帧里 |
 | `<page>/board.json`（含 `assets`） | `ios-kit.js` 里的产品手势 |
 | `<page>/<screenId>.js`（sidecar `mount(root)`） | 图注 font-size、屏里手写引用号 |
-| `content/kits/ios/jsx/`（手动升 kit 时） | 为「修一条标注」去动 `ios-kit.css` 或 loader |
+| `content/kits/ios/jsx/`（手动升 kit 时） | 为“修一条标注”去动 `ios-kit.css` 或 loader |
 | 经 `pinpoint add` 登记 registry 条目 | 往 tracked 文件里夹带实例内容 |
 
 ## 反例
 
 - 扁平 `board.json`（缺 `sections[]`）；把 sheet / backdrop / tabbar 嵌进 `.ios-app`。
 - 手写 safe-area 像素；在屏里设图注字号或手写编号；title 塞图例。
-- 把产品手势或屏状态写进 `ios-kit.js`；为普通改稿预抽「以后可能复用」的组件。
+- 把产品手势或屏状态写进 `ios-kit.js`；为普通改稿预抽“以后可能复用”的组件。
 - 手改 `~/.pinpoint/dist/`；往未登记页面手工注入 `/annotate.js`（改用 `pinpoint add`）。
 - 把机器本地的 registry 内容或实例私有页面提交进 tracked 文件。
