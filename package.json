@@ -3,7 +3,8 @@
   "private": true,
   "type": "module",
   "bin": {
-    "pinpoint": "bin/pinpoint.mjs"
+    "pinpoint": "bin/pinpoint.mjs",
+    "ppnt": "bin/pinpoint.mjs"
   },
   "engines": {
     "node": ">=24"

@@ -28,6 +28,7 @@ import {
   pickRoute,
   planAdd,
   planFolder,
+  planRenderOutput,
   portlessRoutesPath,
   requestJson,
   rewriteSitePrefix,
@@ -35,9 +36,11 @@ import {
   resolveRegistryPath,
   run,
   runAdd,
+  runBuild,
   runFolder,
   runMove,
   runRename,
+  runRender,
   runStatus,
   runStop,
   serviceLogPath,
@@ -1180,4 +1183,130 @@ test('run: 未知命令退 1 并打 usage；无参数打 usage', async (t) => {
   assert.ok(rec.err.some((line) => /未知命令：reload/.test(line)));
   assert.equal(await run([], io), 0);
   assert.match(rec.out.at(-1), /用法/);
+});
+
+/* ---- pp2：build / render ---- */
+
+test('parseArgs: build / render 的选项与位置参数', () => {
+  assert.deepEqual(parseArgs(['build', 'plugins']), { command: 'build', target: 'plugins', flags: {} });
+  assert.deepEqual(parseArgs(['build', 'plugins', '--screen', 's1-home', '--watch']), {
+    command: 'build', target: 'plugins', flags: { screen: 's1-home', watch: true },
+  });
+  assert.deepEqual(parseArgs(['render', 'library/home', '--full']), {
+    command: 'render', target: 'library/home', flags: { full: true },
+  });
+  assert.throws(() => parseArgs(['build']), /build 需要一个页/);
+  assert.throws(() => parseArgs(['render']), /render 需要一帧/);
+  assert.throws(() => parseArgs(['build', 'x', '--full']), /选项 --full 不适用于 build/);
+  assert.throws(() => parseArgs(['render', 'x/y', '--watch']), /选项 --watch 不适用于 render/);
+  assert.throws(() => parseArgs(['build', 'x', '--screen']), /选项 --screen 缺少值/);
+});
+
+test('planRenderOutput：限内原文，超限截断 + 落盘计划，--full 不截断', () => {
+  const small = planRenderOutput('x'.repeat(100), { limit: 8000, spillPath: '/tmp/s.html' });
+  assert.equal(small.text, 'x'.repeat(100));
+  assert.equal(small.spill, null);
+
+  const big = 'y'.repeat(9001);
+  const plan = planRenderOutput(big, { limit: 8000, spillPath: '/tmp/s.html' });
+  assert.ok(plan.text.startsWith('y'.repeat(8000)));
+  assert.match(plan.text, /已截断（共 9001 字符），全文见 \/tmp\/s\.html$/);
+  assert.deepEqual(plan.spill, { path: '/tmp/s.html', content: big });
+
+  const full = planRenderOutput(big, { full: true, spillPath: '/tmp/s.html' });
+  assert.equal(full.text, big);
+  assert.equal(full.spill, null);
+});
+
+/** pp2 页 fixture：一份临时 registry 指一个带 board.json 的页目录。 */
+function makeCompiledPage(t, { screens, files }) {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'page');
+  fs.mkdirSync(page, { recursive: true });
+  fs.writeFileSync(path.join(page, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens }],
+  }));
+  for (const [rel, content] of Object.entries(files)) {
+    fs.writeFileSync(path.join(page, rel), content);
+  }
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({
+    version: 1,
+    entries: [{ id: 't-page', title: 'T', kind: 'dir', path: page }],
+  }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  return { dir, page, registry, env };
+}
+
+test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出', async (t) => {
+  const rec = recorder();
+  const { registry, env } = makeCompiledPage(t, {
+    screens: [{ id: 'home', title: 'Home' }],
+    files: { 'home.html': '<div class="ios-app">在</div>\n' },
+  });
+  const code = await runBuild(['build', 't-page', '--registry', registry], { ...rec.io, env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /^ok {3}home {2}/.test(line)));
+  assert.ok(rec.out.some((line) => /完成 t-page/.test(line)));
+  // dist 落在 PINPOINT_DATA_DIR 下
+  assert.equal(
+    fs.readFileSync(path.join(env.PINPOINT_DATA_DIR, 'dist', 't-page', 'home.html'), 'utf8'),
+    '<div class="ios-app">在</div>\n',
+  );
+
+  const bad = recorder();
+  const failing = makeCompiledPage(t, {
+    screens: [{ id: 'home', title: 'Home' }],
+    files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><button onClick={() => 1}>x</button></div>;\n}\n' },
+  });
+  const code2 = await runBuild(['build', 't-page', '--registry', failing.registry], { ...bad.io, env: failing.env });
+  assert.equal(code2, 1);
+  assert.ok(bad.err.some((line) => /onClick/.test(line)));
+
+  const ghost = recorder();
+  const code3 = await runBuild(['build', 'ghost', '--registry', registry], { ...ghost.io, env });
+  assert.equal(code3, 1);
+  assert.ok(ghost.err.some((line) => /找不到页：ghost/.test(line)));
+  assert.ok(ghost.err.some((line) => /t-page/.test(line)), '报错列出可用 id');
+});
+
+test('runRender：限内打全文，超限截断并落 spill 文件，--full 不截断', async (t) => {
+  const bigBody = '长'.repeat(9000);
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'small', title: 'Small' }, { id: 'big', title: 'Big' }],
+    files: {
+      'small.html': '<div class="ios-app">小</div>\n',
+      'big.html': `<div class="ios-app">${bigBody}</div>\n`,
+    },
+  });
+  const args = ['--registry', made.registry];
+
+  const small = recorder();
+  assert.equal(await runRender(['render', 't-page/small', ...args], { ...small.io, env: made.env }), 0);
+  assert.equal(small.out.at(-1), '<div class="ios-app">小</div>\n');
+
+  const big = recorder();
+  assert.equal(await runRender(['render', 't-page/big', ...args], { ...big.io, env: made.env }), 0);
+  const spill = path.join(made.env.PINPOINT_DATA_DIR, 'render', 't-page', 'big.html');
+  assert.match(big.out.at(-1), /已截断（共 \d+ 字符），全文见 /);
+  assert.equal(fs.readFileSync(spill, 'utf8'), `<div class="ios-app">${bigBody}</div>\n`);
+  assert.ok(big.out.at(-1).length < 9000, 'stdout 是截断版');
+
+  const full = recorder();
+  assert.equal(await runRender(['render', 't-page/big', '--full', ...args], { ...full.io, env: made.env }), 0);
+  assert.equal(full.out.at(-1), `<div class="ios-app">${bigBody}</div>\n`);
+
+  const badRef = recorder();
+  assert.equal(await runRender(['render', 't-page', ...args], { ...badRef.io, env: made.env }), 1);
+  assert.ok(badRef.err.some((line) => /形如 <页>\/<屏>/.test(line)));
+
+  const lint = recorder();
+  const failing = makeCompiledPage(t, {
+    screens: [{ id: 'home', title: 'Home' }],
+    files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app">{fetch(\'/x\')}</div>;\n}\n' },
+  });
+  assert.equal(await runRender(['render', 't-page/home', '--registry', failing.registry], { ...lint.io, env: failing.env }), 1);
+  assert.ok(lint.err.some((line) => /编译失败.*fetch/s.test(line)));
+  // render 不落 dist
+  assert.equal(fs.existsSync(path.join(failing.env.PINPOINT_DATA_DIR, 'dist')), false);
 });

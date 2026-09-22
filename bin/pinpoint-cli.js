@@ -22,12 +22,19 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
+import {
+  compilePage,
+  listPageIds,
+  renderScreenHtml,
+  resolvePageTarget,
+} from '../src/server/lib/page-compiler.js';
 import { localManifestPageIds as manifestPageIds } from '../src/server/lib/page-manifest.js';
 import {
   defaultEntries,
   defaultRegistryPath,
   ENTRY_ID_PATTERN,
   FOLDER_ID_PATTERN,
+  loadRegistry,
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
 import { slugify } from '../src/shared/registry-ids.js';
@@ -54,8 +61,8 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page']);
-const BOOLEAN_FLAGS = new Set(['draft']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen']);
+const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full']);
 // 每个命令接受的选项与位置参数个数。folder 的位置参数个数按子命令定（见
 // FOLDER_SUBCOMMANDS），所以它的 positional 是 null = 由子命令自己校验。
 const COMMANDS = {
@@ -67,6 +74,8 @@ const COMMANDS = {
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
   restart: { positional: 0, flags: new Set() },
+  build: { positional: 1, flags: new Set(['registry', 'screen', 'watch']) },
+  render: { positional: 1, flags: new Set(['registry', 'full']) },
 };
 
 // `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
@@ -88,6 +97,8 @@ export const USAGE = `用法：
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
   pinpoint folder <list|add|rename|rm|move> …          左栏的一层分组（详见下面 folder 一节）
+  pinpoint build <页> [--screen <屏>] [--watch]        编译一页（源码 → dist），打印每屏 ok / 错误与耗时
+  pinpoint render <页>/<屏> [--full]                   编译一帧打到 stdout（不落 dist）；超 8000 字符截断并落全文文件
   pinpoint status                                      服务体检（路由 / 进程 / 健康 / root / registry）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
@@ -132,6 +143,15 @@ folder —— 左栏的一层分组（不嵌套；workbench 里拖放写的是�
 选项（folder）：
   --registry 路径  同上（list 之外的子命令要求登记表已经存在）
   --id xxx         只用于 folder add：显式指定新夹的 id
+
+build / render —— pp2 的编译面（<页> = registry dir 条目 id 或模板页 id）：
+  pinpoint build <页>                  整页编译到 dist（<dataRoot>/dist/<页>/）
+  pinpoint build <页> --screen <屏>    只编一屏（build.json 里其余屏的记录保留）
+  pinpoint build <页> --watch          编完后 fs.watch 盯页目录，变更自动重编
+  pinpoint render <页>/<屏>            编译该帧（不落 dist）打到 stdout；超 8000 字符
+                                       截断，全文写 <dataRoot>/render/<页>/<屏>.html
+                                       并在末尾打出路径；--full 不截断
+  --registry 路径                      解析页 id 用哪份 registry（同 add）
 
   -h, --help       显示本说明
 
@@ -184,6 +204,7 @@ export function parseArgs(argv) {
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
+  if (command === 'build' || command === 'render') return { command, target: positional[0], flags };
   return { command, flags };
 }
 
@@ -217,6 +238,12 @@ function positionalProblem(command, want, got) {
     return got < 2
       ? 'rename 需要两个参数：<旧 id> <新 id>'
       : `rename 只接受两个参数，收到 ${got} 个`;
+  }
+  if (command === 'build') {
+    return got === 0 ? 'build 需要一个页（registry 条目 id 或模板页 id）' : `build 只接受一个页，收到 ${got} 个`;
+  }
+  if (command === 'render') {
+    return got === 0 ? 'render 需要一帧（<page>/<screen>）' : `render 只接受一帧，收到 ${got} 个`;
   }
   return `${command} 不接受位置参数，收到 ${got} 个`;
 }
@@ -1261,6 +1288,101 @@ export async function runRestart(argv, io = {}) {
   return startService(io);
 }
 
+/* ---- pp2：build / render（编译面，进程内直接编译，不依赖服务） ---- */
+
+/** 解析 <页> 为编译目标；找不到时报错并列出可用 id。返回 null 表示已报错。 */
+function pageTargetOrReport(pageRef, flags, { env, err }) {
+  const registryPath = resolveRegistryPath(flags, env);
+  const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+  const target = resolvePageTarget(pageRef, { registry, root: REPO_ROOT });
+  if (!target) {
+    err(`错误：找不到页：${pageRef}`);
+    const ids = listPageIds({ registry, root: REPO_ROOT });
+    err(`可用页 id：${ids.join('、') || '（无）'}`);
+    return null;
+  }
+  return target;
+}
+
+function printBuildResult(result, { out, err }) {
+  for (const row of result.screens) {
+    if (row.ok) out(`ok   ${row.id}  ${row.ms}ms`);
+    else err(`错误 ${row.id}  ${row.error}`);
+  }
+  if (result.error) err(`错误 ${result.entryId}  ${result.error}`);
+  out(`${result.ok ? '完成' : '有失败'} ${result.entryId}  共 ${result.ms}ms（${result.screens.length} 屏）`);
+}
+
+/** fs.watch 盯页目录：board.json / 帧 / 资源变更 → 去抖后整页重编。返回 watcher（测试用）。 */
+export function startPageWatch(target, onResult, { debounceMs = 120, distRoot } = {}) {
+  const WATCHED = /(?:^|\/)(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/;
+  let timer = null;
+  let running = Promise.resolve();
+  const watcher = fs.watch(target.pageDir, { recursive: true }, (_event, filename) => {
+    if (filename && !WATCHED.test(String(filename).replace(/\\/g, '/'))) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      running = running.then(() => compilePage(target, distRoot ? { distRoot } : {})).then(onResult);
+    }, debounceMs);
+  });
+  return { watcher, done: () => running };
+}
+
+export async function runBuild(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const target = pageTargetOrReport(parsed.target, parsed.flags, { env, err });
+  if (!target) return 1;
+  const distRoot = path.join(dataRoot(env), 'dist');
+  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.screen || null });
+  printBuildResult(first, { out, err });
+  if (!parsed.flags.watch) return first.ok ? 0 : 1;
+  out(`监视 ${target.pageDir}（Ctrl-C 退出）…`);
+  startPageWatch(target, (result) => printBuildResult(result, { out, err }), { distRoot });
+  return new Promise(() => {}); // watch 常驻，进程不退出
+}
+
+/** render 输出形态（纯函数）：超 limit 截断并给出全文落盘计划。 */
+export function planRenderOutput(html, { full = false, limit = 8000, spillPath = null } = {}) {
+  if (full || html.length <= limit) return { text: html, spill: null };
+  return {
+    text: `${html.slice(0, limit)}\n… 已截断（共 ${html.length} 字符），全文见 ${spillPath}`,
+    spill: spillPath ? { path: spillPath, content: html } : null,
+  };
+}
+
+export async function runRender(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const ref = parsed.target;
+  const slash = ref.indexOf('/');
+  if (slash <= 0 || slash === ref.length - 1) {
+    err(`错误：render 参数形如 <页>/<屏>，收到：${ref}`);
+    return 1;
+  }
+  const pageRef = ref.slice(0, slash);
+  const screenId = ref.slice(slash + 1);
+  const target = pageTargetOrReport(pageRef, parsed.flags, { env, err });
+  if (!target) return 1;
+  const result = await renderScreenHtml(target, screenId);
+  if (!result.ok) {
+    err(`编译失败：${result.error}`);
+    return 1;
+  }
+  const spillPath = path.join(dataRoot(env), 'render', pageRef, `${screenId}.html`);
+  const plan = planRenderOutput(result.html, { full: !!parsed.flags.full, spillPath });
+  if (plan.spill) {
+    fs.mkdirSync(path.dirname(plan.spill.path), { recursive: true });
+    fs.writeFileSync(plan.spill.path, plan.spill.content);
+  }
+  out(plan.text);
+  return 0;
+}
+
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
 export async function run(argv, io = {}) {
   const { out, err } = ioOf(io);
@@ -1277,6 +1399,8 @@ export async function run(argv, io = {}) {
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);
     case 'restart': return runRestart(argv, io);
+    case 'build': return runBuild(argv, io);
+    case 'render': return runRender(argv, io);
     default:
       err(`错误：未知命令：${argv[0]}`);
       err(USAGE);
