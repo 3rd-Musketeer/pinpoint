@@ -21,8 +21,8 @@ board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 D
 `[data-ann-section]`，成为标注的 `section` 字段。引用号里 section 是字母（A、B）。
 
 **screen（屏）**
-一个 frame 里装的内容，也就是那个 HTML 片段文件本身（`content/previews/<pageId>/<screenId>.html`）。
-`screenId` 就是 frame 的 id——同一个东西的两个名字，看你说的是内容还是位置。
+一个 frame 里装的内容，也就是那个帧源文件本身（`<pageId>/<screenId>.jsx`，存量页是
+`<screenId>.html`）。`screenId` 就是 frame 的 id——同一个东西的两个名字，看你说的是内容还是位置。
 
 **frame（帧）**
 画布上的一个取景框，装一个 screen。引用号里 frame 是数字，和 section 字母拼成 A1 / B3。
@@ -68,18 +68,15 @@ canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达�
 
 **kit**
 积累下来的设计规范：tokens、primitive、产品组件。今天只有 `content/kits/ios/`
-（`ios-kit.css` + `ios-kit.js` + `components/`）。kit 是第一个 kit，不是产品本身。
+（`ios-kit.css` + `ios-kit.js` + `jsx/`——系统组件的 JSX 印章，帧经 `pinpoint/kit` 引用）。
+kit 是第一个 kit，不是产品本身。
 
 **component（组件）**
-跨页共享的资产，住 `content/kits/ios/components/<id>/`（`meta.json` + 各 variant 的 HTML）。
-判据：跨屏复用、要做 variant 墙、或预期会收到「改这个控件」的标注，才抽成组件；
-单页专用的片段内联进页面 HTML。page-local 组件解析不实现（ADR 0028）。
-用 `data-ios-include="<comp>/<variant>"` 引入，`data-text` / `data-slot-<name>` 填槽。
-**pp2 起改口径（2026-09-22 决定，实现中，见 tasks/2026-09-22-pp2/）**：组件先住页里，
-`<page>/components/<Name>.jsx`，帧文件显式 `import` 它；跨页复用时手动搬进 kit（`pinpoint/kit`）。
-组件是印章：输入 props 和 children，输出 HTML，没有状态、事件、副作用；variant 用 props 表达，
-variants 墙是 board.json 里 `shell: "comp"` 的 section，screen 条目内联 `comp` + `props`。
-`data-ios-include` 随之退役，只在编译存量 HTML 页时展开一次。
+先住页里的印章：`<page>/components/<Name>.jsx`，命名导出一个纯函数，输入 props 和 children、
+输出 HTML，没有状态、事件、副作用（lint 四禁挡着）；帧文件显式 `import` 它，同名时页内覆盖 kit。
+variant 用 props 表达，variants 墙是 board.json 里 `shell: "comp"` 的 section，screen 条目内联
+`comp` + `props`。跨页复用 = 手动把文件搬进 kit（`content/kits/ios/jsx/`），之后走 `pinpoint/kit`，
+没有自动提升（2026-09-22 pp2 决定，取代 ADR 0028 的 kit 集中归属；机制见 `docs/board-schema.md`）。
 要避开：拿“组件”指 workbench 自己的 React 组件——那个说 workbench 组件。
 
 **source 与 dist（源码与编译产物）· pp2**
