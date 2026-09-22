@@ -59,6 +59,12 @@ async function ppnt(args, { expectFail = false } = {}) {
   }
 }
 
+test.afterEach(() => {
+  // seedLedger 播的账本自己收走：bucket pinpoint 是与 spa-ledger 等 spec 共享的，
+  // 残留会把别人「恰好这些账本」的断言数多一个（实测复现过）。
+  fs.rmSync(LEDGER, { force: true });
+});
+
 test('ppnt check --mode both → mark done → status --page 全链（CLI 子进程）', async ({ request }) => {
   seedLedger();
   // globalSetup 在服务启动编译之后清空数据根（账本重置），dist 被一并抹掉、

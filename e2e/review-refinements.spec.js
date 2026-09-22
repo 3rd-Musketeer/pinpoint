@@ -270,12 +270,17 @@ test('pp2 状态机：done 行点关闭 → toast 撤销 5s；close 收进「已
   await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('open');
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
   await expect(toast).toBeHidden();
+  // 撤销触发的 save 回包落定、revision 归位后再拿它当 baseRevision：
+  // 在途时读到的 revision 会让下面的 status POST 409，行停在 open（revision 抢跑）。
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
 
   // 不撤销再来一遍：行收进「已关闭 1」，点开关展开可见
   rev=await page.evaluate(()=>window.pinpoint.getState().revision);
-  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}});
+  const recheck=await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}});
+  expect(recheck.status()).toBe(200);
   rev=await page.evaluate(()=>window.pinpoint.getState().revision);
-  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  const redone=await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  expect(redone.status()).toBe(200);
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark')).toBeVisible();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]').hover();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark').click();
@@ -552,17 +557,30 @@ test('annotation number stays visible while editing and follows the target after
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
   await expect(page.locator('#ann-box')).toBeVisible();
-  // Scroll events update the overlay on the next animation frame. Capture after paint.
-  await page.evaluate(async () => {
-    window.scrollTo({top:0, behavior:'instant'});
-    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  const badgeDocTop=()=>page.evaluate(()=>{
+    const badge=document.querySelector('.ann-badge');
+    return badge ? badge.getBoundingClientRect().top + window.scrollY : null;
   });
+  // 滚动事件驱动的 overlay 重绘排在自己的 rAF 上，与测试发起的 rAF 之间的先后
+  // 没有契约：负载下基准若在重绘落地前取，会拿到差一个滚动量的陈旧位置
+  // （实测差 143px）。所以基线取「跨帧不再变化」的文档坐标（视口 y + scrollY，
+  // 滚动不变量），等首测量 settle，不加固定等待。
+  const settledDocTop=async()=>{
+    let prev=await badgeDocTop();
+    for(let i=0;i<20&&prev!==null;i++){
+      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
+      const cur=await badgeDocTop();
+      if(cur===prev) return cur;
+      prev=cur;
+    }
+    return prev;
+  };
   const badge=page.locator('.ann-badge');
   await expect(badge).toHaveCount(1);
   await expect(badge).toHaveText(String(mark.n));
-  const before=await badge.boundingBox();
+  const before=await settledDocTop();
   await page.evaluate(()=>window.scrollTo({top:100, behavior:'instant'}));
-  await expect.poll(async()=>(await badge.boundingBox()).y).toBeCloseTo(before.y-100,0);
+  await expect.poll(badgeDocTop).toBe(before);
   await expect(badge).toBeVisible();
   await page.locator('#ann-cancel').click();
   await expect(badge).toHaveCount(1);
