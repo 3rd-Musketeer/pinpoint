@@ -52,17 +52,11 @@ export function annRowPreview(displayContent, max = 80) {
 }
 
 /** Tag glyphs for the row's affordance line:
- * ✎ changeTo · ↗ move · 🖼 images · 🔍 research · @ mentions. */
-export function annResultSummary(mark) {
-  const labels = { add: '已增加', modify: '已修改', move: '已移动', delete: '已删除' };
-  return [...new Set(((mark && mark.result && mark.result.operations) || []).map(op => labels[op.action]).filter(Boolean))].join(' · ');
-}
-
+ * ✎ changeTo · ↗ move · 🖼 images · 🔍 research · @ mentions.
+ * （蓝框执行结果摘要已随 pp2 切片 3 退役，不再是行内 tag。） */
 export function annRowTags(mark) {
   if (!mark) return '';
   const tags = [];
-  const result = annResultSummary(mark);
-  if (result) tags.push(result);
   if (mark.changeTo) tags.push('✎');
   if (mark.move) tags.push('↗');
   if (mark.images && mark.images.length) tags.push('🖼');
@@ -108,5 +102,8 @@ export function annRowModel(mark, context = {}) {
     preview: context.preview == null ? '' : String(context.preview),
     broken: !!context.broken,
     tags: annRowTags(mark),
+    // pp2 状态机：四态与 agent note 随行（消费端自行决定怎么摆）。
+    status: (mark && mark.status) || 'open',
+    note: (mark && mark.note) || '',
   };
 }

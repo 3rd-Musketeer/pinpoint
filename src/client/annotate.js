@@ -68,6 +68,7 @@
   var paused = false;  // hide pins / overlay without leaving Annotate intent
   var floatingToolbar = false;
   var sidebarOpen = false; // 标注面板（#ann-sidebar）；viewer 偏好，持久化到 LS
+  var sidebarClosedOpen = false; // 侧栏「已关闭 n」组的展开态（pp2 状态机）
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -1017,7 +1018,6 @@
        其余 z-index（1–6）只在 #ann-overlay 或 #ann-chrome 内部比，不进阶梯。 */
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
-    '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
     '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
     '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
@@ -1032,6 +1032,16 @@
        accent 只给已经落下的这一枚。 */
     '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:11px;font-weight:var(--wb-w-semibold,600);font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);pointer-events:auto;cursor:pointer;z-index:3;transition:box-shadow .12s ease;}',
     '.ann-badge.ann-badge--on{box-shadow:0 0 0 2px #fff,0 0 0 5px color-mix(in srgb,var(--wb-accent,#5b7fa6) 32%,transparent),0 1px 3px rgba(0,0,0,.35);}',
+    /* pp2 状态机的钉子三态（2026-09-22）：open = 现状；check = 同形但描边灰、
+       填充空心；done = 现状 + 右上角小勾；close 不画（列表收起，见侧栏）。 */
+    '.ann-badge.ann-badge--check{background:transparent;color:var(--wb-faint,#8d8d8d);box-shadow:0 0 0 1.5px var(--wb-faint,#8d8d8d);}',
+    '.ann-badge.ann-badge--done::after{content:"✓";position:absolute;top:-5px;right:-5px;width:13px;height:13px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:9px;line-height:13px;text-align:center;box-shadow:0 0 0 1.5px #fff;}',
+    /* 幽灵框：锚点解析失败但有 lastRect 时，在 lastRect 处画虚线框 + 序号钉。 */
+    '.ann-ghost-rect{position:absolute;box-sizing:border-box;border:2px dashed var(--wb-faint,#8d8d8d);background:transparent;border-radius:var(--wb-r-1,4px);pointer-events:none;z-index:1;}',
+    /* 关闭 / 撤销的 toast（注入端与工作台共用注入侧样式） */
+    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:2147483647;display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(28,32,36,.92);color:#fff;font:500 12.5px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28);}',
+    '#ann-toast[hidden]{display:none;}',
+    '#ann-toast button{border:0;background:transparent;color:#9ec2f0;cursor:pointer;font:600 12.5px system-ui;padding:2px 4px;}',
     /* 评论卡只在 hover 钉子（或该条被定位）时出（批注 1 的后半句「hover 时显示，
        不然有点挡视野」）。这里只切可见性，不动 [hidden] —— [hidden] 归「锚点在
        视口外」那条既有规矩，两个语义不许合并。 */
@@ -1334,60 +1344,10 @@
 
   btnHide.addEventListener('click', function () { setPaused(!paused); });
 
-  function resultTargets(mark) {
-    return ((mark.result && mark.result.operations) || []).flatMap(function (operation) { return operation.targets || []; });
-  }
-
-  function resultScope(screenId) {
+  function scopeForScreen(screenId) {
     if (FRAME) return FRAME.screenId === screenId || !screenId ? document : null;
     if (!screenId) return document.getElementById('wb-board-panel') || document;
     return document.querySelector('.wb-screen[data-screen="' + CSS.escape(screenId) + '"]');
-  }
-
-  function findResultTarget(target) {
-    var scope = resultScope(target.screenId);
-    if (!scope) return null;
-    try {
-      var matches = scope.querySelectorAll(target.selector);
-      return matches.length === 1 && !isUI(matches[0]) ? matches[0] : null;
-    } catch (_) { return null; }
-  }
-
-  var resultWriting = false;
-  async function recordResults(id, operations, options) {
-    options = options || {};
-    if (options.baseRevision !== revision) throw new Error('revision_conflict: refresh annotations before reporting results');
-    if (syncing || ledgerSwitching || resultWriting || activeComposer || mutationVersion !== syncedMutationVersion) throw new Error('annotation_busy: finish the current edit first');
-    var mark = marks.find(function (item) { return item.id === id; });
-    if (!mark || !markOnActivePage(mark)) throw new Error('annotation_not_on_current_page');
-    if (!Array.isArray(operations) || !operations.length) throw new Error('operations_required');
-    var normalized = operations.map(function (operation) {
-      if (!operation || ['add', 'modify', 'move', 'delete'].indexOf(operation.action) < 0) throw new Error('invalid_operation');
-      if (operation.action === 'delete') {
-        if (operation.targets && operation.targets.length) throw new Error('deleted_operation_has_no_result_target');
-        return { action: 'delete', targets: [] };
-      }
-      if (!Array.isArray(operation.targets) || !operation.targets.length) throw new Error('result_target_required');
-      return { action: operation.action, targets: operation.targets.map(function (target) {
-        if (!target || typeof target.selector !== 'string' || !target.selector.trim()) throw new Error('selector_required');
-        if (target.pageId && target.pageId !== mark.pageId) throw new Error('result_page_mismatch');
-        var candidate = { selector: target.selector, screenId: target.screenId || mark.screenId || '' };
-        var el = findResultTarget(candidate);
-        if (!el) throw new Error('result_target_must_exist_and_be_unique');
-        candidate.text = excerpt(el);
-        return candidate;
-      }) };
-    });
-    var next = marks.map(function (item) { return item.id === id ? Object.assign({}, item, { result: { operations: normalized, updatedAt: new Date().toISOString() } }) : item; });
-    var epoch = syncEpoch;
-    resultWriting = true;
-    try {
-      var response = await fetch(SERVER + '/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: PAGE, entry: ENTRY, path: decodeURIComponent(LEDGER_PATHNAME), baseRevision: options.baseRevision, annotations: next }) });
-      var doc = await response.json();
-      if (!response.ok) throw new Error(response.status === 409 ? 'revision_conflict' : 'result_save_failed');
-      if (epoch === syncEpoch) applyRemoteDoc(doc, '结果已同步');
-      return { id: id, revision: doc.revision, result: next.find(function (item) { return item.id === id; }).result };
-    } finally { resultWriting = false; }
   }
 
   // Missing DOM is conclusive only inside a loaded scope. Hidden elements are
@@ -1395,23 +1355,22 @@
   function canClearInvalid(mark, scopes) {
     function loadedScope(screenId) {
       if (scopes && scopes.has(screenId)) return scopes.get(screenId);
-      var scope = resultScope(screenId);
+      var scope = scopeForScreen(screenId);
       var loading = '.wb-screen-loading,.wb-screen-err,[data-loading="true"],[aria-busy="true"]';
       var loaded = scope && !(scope.matches && scope.matches(loading)) && !scope.querySelector(loading) ? scope : null;
       if (scopes) scopes.set(screenId, loaded);
       return loaded;
     }
     if (!markOnActivePage(mark) || ledgerSwitching || document.readyState !== 'complete') return false;
-    if (mark.result && mark.result.operations.some(function (op) { return op.action === 'delete'; })) return false;
     if (!loadedScope(mark.screenId || '')) return false;
     var selectors = mark.type === 'element' ? markElementTargets(mark).map(function (target) { return target.selector; }) : [mark.base && mark.base.selector].concat((mark.contains || []).map(function (target) { return target.selector; })).filter(Boolean);
     if (!selectors.length) return false;
     if (selectors.some(function (selector) { return !!resolveMarkSelector(selector, mark.screenId || ''); })) return false;
-    return resultTargets(mark).every(function (target) { return !!loadedScope(target.screenId) && !findResultTarget(target); });
+    return true;
   }
 
   function clearInvalid() {
-    if (resultWriting || activeComposer) return false;
+    if (activeComposer) return false;
     clearAnchorCache();
     var scopes = new Map();
     var invalid = marks.filter(function (mark) { return canClearInvalid(mark, scopes); });
@@ -1422,72 +1381,7 @@
     return invalid.length;
   }
 
-  var resultNodes = new Map();
-  var resultMarks = [];
-  var resultGeometry = [];
-  var resultPose = null;
-  var resultLayer = null;
-  function renderResultIndicators(refresh) {
-    if (refresh) resultMarks = marksForActivePage().filter(function (mark) { return resultTargets(mark).length; });
-    if (!resultMarks.length && !resultNodes.size) return;
-    if (!overlay) return;
-    if (!resultLayer) {
-      resultLayer = document.createElement('div');
-      resultLayer.setAttribute('data-ann-ui', '');
-      resultLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none';
-      hoverLayer.appendChild(resultLayer);
-    }
-    // Canvas targets are measured only when content/layout changes. Pure pan
-    // translates one layer; zoom projects cached canvas coordinates, like marks.
-    if (refresh || !canvasView) {
-      beginOverlayFrame();
-      measuringCanvas = !!canvasView;
-      try {
-        resultGeometry = geometryBatch(function () {
-          var geometry = [];
-          resultMarks.forEach(function (mark) {
-            resultTargets(mark).forEach(function (target, index) {
-              var el = findResultTarget(target);
-              var rect = el && !isHidden(el) ? visibleViewRectOf(el) : null;
-              if (!rect) return;
-              rect = markLocalRect(rect);
-              if (canvasView) {
-                var pose = canvasView.pose;
-                rect = [(rect[0] - pose.x) / pose.zoom, (rect[1] - pose.y) / pose.zoom, rect[2] / pose.zoom, rect[3] / pose.zoom];
-              }
-              geometry.push({ key: mark.id + ':' + index, mark: mark, rect: rect });
-            });
-          });
-          return geometry;
-        });
-      } finally { measuringCanvas = false; }
-      resultPose = null;
-    }
-    var pose = canvasView && canvasView.pose;
-    if (!pose || resultPose !== pose) {
-      var present = new Set();
-      resultGeometry.forEach(function (item) {
-        present.add(item.key);
-        var node = resultNodes.get(item.key);
-        if (!node) {
-          node = document.createElement('div'); node.className = 'ann-result-target'; node.dataset.resultAnnotation = item.mark.id;
-          node.setAttribute('data-ann-ui', '');
-          var badge = document.createElement('button'); badge.type = 'button'; badge.textContent = item.mark.n;
-          badge.setAttribute('aria-label', '查看标注 ' + item.mark.n + ' 的执行结果');
-          badge.addEventListener('click', function () { openMark(item.mark.n); });
-          node.appendChild(badge); resultLayer.appendChild(node); resultNodes.set(item.key, node);
-        }
-        var r = item.rect;
-        placeFixedRect(node, pose ? [r[0] * pose.zoom + pose.x, r[1] * pose.zoom + pose.y, r[2] * pose.zoom, r[3] * pose.zoom] : r);
-      });
-      resultNodes.forEach(function (node, key) { if (!present.has(key)) { node.remove(); resultNodes.delete(key); } });
-      resultPose = pose;
-    }
-    resultLayer.style.transform = canvasView ? 'translate3d(' + (-canvasView.stage.scrollLeft) + 'px,' + (-canvasView.stage.scrollTop) + 'px,0)' : '';
-  }
-
   function doClear() {
-    if (resultWriting) return false;
     marks = marks.filter(function (k) { return !markOnActivePage(k); });
     closeComposer({ silentRender: true });
     persist();
@@ -1496,7 +1390,6 @@
   }
 
   function removeMark(n) {
-    if (resultWriting) return false;
     n = parseInt(n, 10);
     if (!isFinite(n)) return false;
     var before = marks.length;
@@ -1599,9 +1492,11 @@
     var rows = sidebarRowModel();
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags;
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + r.note + '|' + sidebarClosedOpen;
     }).join('~');
-    sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
+    var openRows = rows.filter(function (r) { return r.status !== 'close'; });
+    var closedRows = rows.filter(function (r) { return r.status === 'close'; });
+    sidebarCount.textContent = openRows.length ? '(' + openRows.length + ')' : '';
     if (sig === sidebarSig) return;
     sidebarSig = sig;
     sidebarBody.textContent = '';
@@ -1619,10 +1514,12 @@
       sidebarBody.appendChild(empty);
       return;
     }
-    rows.forEach(function (r) {
+
+    function buildRow(r) {
       var item = document.createElement('div');
       item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
+      if (r.note) item.title = r.note; // hover 出 agent 留的 note（和正文 hover 同一种卡）
       var main = document.createElement('button');
       main.type = 'button';
       main.className = 'wb-ann-item-main';
@@ -1641,6 +1538,13 @@
         text.textContent = r.preview;
         body.appendChild(text);
       }
+      // 状态灰标（check / done；open 不出标，close 整行在收起组里）。
+      if (r.status === 'check' || r.status === 'done') {
+        var stTag = document.createElement('span');
+        stTag.className = 'wb-ann-status-tag';
+        stTag.textContent = r.status === 'check' ? 'check' : 'done';
+        body.appendChild(stTag);
+      }
       if (r.broken) {
         var tag = document.createElement('span');
         tag.className = 'wb-ann-broken-tag';
@@ -1651,6 +1555,19 @@
       main.appendChild(body);
       var acts = document.createElement('span');
       acts.className = 'ann-sb-acts';
+      if (r.status === 'done') {
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'ann-sb-close-mark';
+        closeBtn.textContent = '关闭';
+        closeBtn.setAttribute('aria-label', '关闭标注 ' + r.n);
+        closeBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAnnotation(r.n);
+        });
+        acts.appendChild(closeBtn);
+      }
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'ann-sb-del';
@@ -1663,8 +1580,76 @@
       acts.appendChild(del);
       item.appendChild(main);
       item.appendChild(acts);
-      sidebarBody.appendChild(item);
-    });
+      return item;
+    }
+
+    openRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
+
+    // close 默认收起：组头一个「已关闭 n」开关，点开才看。
+    if (closedRows.length) {
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'wb-ann-closed-toggle';
+      toggle.textContent = (sidebarClosedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedRows.length;
+      toggle.addEventListener('click', function () {
+        sidebarClosedOpen = !sidebarClosedOpen;
+        sidebarSig = '';
+        renderSidebar();
+      });
+      sidebarBody.appendChild(toggle);
+      if (sidebarClosedOpen) {
+        closedRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
+      }
+    }
+  }
+
+  // ---------- 关闭 / 撤销（done → close 单击，toast + 撤销 5s，不二次确认）----------
+  var toastEl = null;
+  var toastTimer = 0;
+
+  function hideToast() {
+    if (toastEl) toastEl.hidden = true;
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = 0; }
+  }
+
+  function showToast(text, actionLabel, onAction) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.id = 'ann-toast';
+      toastEl.setAttribute('data-ann-ui', '');
+      document.body.appendChild(toastEl);
+    }
+    hideToast();
+    toastEl.textContent = '';
+    var label = document.createElement('span');
+    label.textContent = text;
+    toastEl.appendChild(label);
+    if (actionLabel) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = actionLabel;
+      btn.addEventListener('click', function () { hideToast(); if (onAction) onAction(); });
+      toastEl.appendChild(btn);
+    }
+    toastEl.hidden = false;
+    toastTimer = setTimeout(hideToast, 5000);
+  }
+
+  /** 客户端允许的转换：done → close、close → open（check / done 只经 ppnt mark 端点）。 */
+  function markStatus(n, next) {
+    var m = marks.find(function (k) { return k.n === n; });
+    if (!m) return false;
+    var from = m.status || 'open';
+    if (from === next) return true;
+    if (!((from === 'done' && next === 'close') || (from === 'close' && next === 'open'))) return false;
+    m.status = next;
+    persist();
+    return true;
+  }
+
+  function closeAnnotation(n) {
+    if (!markStatus(n, 'close')) return;
+    showToast('已关闭 #' + n, '撤销', function () { markStatus(n, 'open'); });
   }
 
   function setSidebarOpen(on) {
@@ -2106,7 +2091,6 @@
     var rects = m.type === 'element' ? resolveAllLiveTargets(m).map(function (target) {
       return target.el.getBoundingClientRect();
     }) : [];
-    resultTargets(m).forEach(function (target) { var el = findResultTarget(target); if (el && !isHidden(el)) rects.push(el.getBoundingClientRect()); });
     if (m.type === 'region') {
       var anchor = resolveMarkAnchor(m);
       if (anchor.live && anchor.rectDoc) {
@@ -2128,14 +2112,12 @@
     else if (!modal && overlay.parentElement.matches('dialog')) mountOverlay();
     var box = document.createElement('div');
     box.id = 'ann-box'; box.setAttribute('data-ann-ui', '');
-    var recordedDeletion = m.result && m.result.operations.some(function (op) { return op.action === 'delete'; });
-    var brokenInfo = broken && !recordedDeletion
+    var brokenInfo = broken
       ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
       : '';
     var res = m.research || null;
     var changeOn = !!m.changeTo;
     box.innerHTML =
-      (m.result ? '<div class="t" data-result-summary>' + annResultSummary(m) + '</div>' : '') +
       brokenInfo +
       '<div id="ann-imgs"></div>' +
       '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
@@ -2444,7 +2426,6 @@
     renderModes();
 
     function save() {
-      if (resultWriting) { setStatus('正在保存执行结果，请稍后发送', true); return; }
       closeMentionPicker();
       ensureMarkId(m);
       var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
@@ -2465,8 +2446,10 @@
       delete m._anchor;
       if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
       var idx = marks.findIndex(function (k) { return k.n === m.n; });
+      // pp2 状态机：新标注恒 open；owner 编辑正文或目标 → 保存时状态回 open
+      // （服务端同样强制，客户端先把生效态带上看得到）。
+      m.status = 'open';
       if (idx < 0) marks.push(m); else {
-        if (marks[idx].result) m.result = marks[idx].result;
         marks[idx] = m;
       }
       closeComposer({ silentRender: true }); persist();
@@ -2681,13 +2664,20 @@
     return resolveMarkAnchor(m).el;
   }
 
-  /** Live marks on the active page that should be drawn on the canvas. */
+  /** Live marks on the active page that should be drawn on the canvas.
+      pp2：close 不画；锚点失效但有 lastRect 的画幽灵框。 */
+  function drawableMark(m) {
+    if ((m.status || 'open') === 'close') return false;
+    if (markHasLiveTarget(m)) return true;
+    return !!(m.lastRect && isMarkBroken(m));
+  }
+
   function visiblePageMarks() {
     var out = [];
     marks.forEach(function (m) {
       if (activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n) return;
       if (!markOnActivePage(m)) return;
-      if (!markHasLiveTarget(m)) return;
+      if (!drawableMark(m)) return;
       out.push(m);
     });
     return out;
@@ -2777,6 +2767,11 @@
     updateArrowGeometry(entry.arrow, from, to);
   }
 
+  function statusBadgeClass(m) {
+    var st = (m && m.status) || 'open';
+    return st === 'open' ? '' : ' ann-badge--' + st;
+  }
+
   function syncMarkStructure(pageMarks, affected) {
     if (!affected) resetCanvasView();
     var targets = geometryBatch(function () {
@@ -2789,8 +2784,10 @@
     pageMarks.forEach(function (m, index) {
       keep[m.n] = true;
       var entry = markNodes[m.n];
-      var frameClass = m.type === 'region' ? 'ann-frame' : 'ann-target';
-      var wantParts = m.type === 'region' ? 1 : targets[index].length;
+      // 幽灵：锚点失效但有 lastRect 时也在画布上留一格（虚线框 + 序号钉）。
+      var ghost = m.type !== 'region' && !targets[index].length && !!m.lastRect;
+      var frameClass = m.type === 'region' ? 'ann-frame' : (ghost ? 'ann-ghost-rect' : 'ann-target');
+      var wantParts = m.type === 'region' ? 1 : (targets[index].length || (ghost ? 1 : 0));
 
       if (!entry) {
         entry = { m: m, parts: [], arrow: null };
@@ -2806,7 +2803,7 @@
         var frame = document.createElement('div');
         frame.className = frameClass;
         var badge = document.createElement('div');
-        badge.className = 'ann-badge';
+        badge.className = 'ann-badge' + statusBadgeClass(m);
         badge.textContent = m.n;
         wireMarkBadge(badge, m.n);
         marksLayer.appendChild(frame);
@@ -2817,6 +2814,8 @@
       entry.parts.forEach(function (part) {
         if (part.frame.className !== frameClass) part.frame.className = frameClass;
         if (part.badge.textContent !== String(m.n)) part.badge.textContent = m.n;
+        var wantBadge = 'ann-badge' + statusBadgeClass(m);
+        if (part.badge.className !== wantBadge) part.badge.className = wantBadge;
       });
       entry.signature = markGeometryKey(m);
       entry.liveTargets = targets[index];
@@ -2935,6 +2934,17 @@
     return r;
   }
 
+  function recordLastRect(m, docR) {
+    // lastRect = 最后一次锚点解析成功的几何（文档坐标）：几何变了才更新，
+    // 合并进下一次 persist 落盘，不为它单独触发写盘（节流约定）。
+    if (!docR || !m) return;
+    var r = [Math.round(docR[0]), Math.round(docR[1]), Math.round(docR[2]), Math.round(docR[3])];
+    var prev = m.lastRect;
+    if (prev && prev.x === r[0] && prev.y === r[1] && prev.w === r[2] && prev.h === r[3]) return;
+    m.lastRect = { x: r[0], y: r[1], w: r[2], h: r[3] };
+    if (m.screenId) m.lastRect.screenId = m.screenId;
+  }
+
   function measureMark(entry) {
     var m = entry.m;
     var views = [], els = [];
@@ -2942,11 +2952,17 @@
       var anchor = resolveMarkAnchor(m);
       els.push(anchor.el);
       views.push(anchor.live ? visibleViewRectDoc(anchor.rectDoc, anchor.el) : null);
+      if (anchor.live) recordLastRect(m, anchor.rectDoc);
     } else {
       (entry.liveTargets || []).forEach(function (target) {
         els.push(target.el);
         views.push(visibleViewRectOf(target.el));
       });
+      if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, docRect(entry.liveTargets[0].el));
+      // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框。
+      if (!views.length && m.lastRect && (m.status || 'open') !== 'close') {
+        views.push(docToView([m.lastRect.x, m.lastRect.y, m.lastRect.w, m.lastRect.h]));
+      }
     }
     var parts = views.map(function (r) { return r ? expandRect(markLocalRect(r)) : null; });
     var arrow = null;
@@ -3256,7 +3272,10 @@
             if (entry) entry.m = m;
             markFacts.delete(m); affected.add(m);
           }
-          return markHasLiveTarget(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n);
+          if ((m.status || 'open') === 'close') return false;
+          return markHasLiveTarget(m)
+            ? !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)
+            : drawableMark(m);
         });
       });
       Object.keys(markNodes).forEach(function (key) {
@@ -3271,7 +3290,7 @@
       }
       structureDirty = false;
       syncBubbleStructure(pageMarks); updateBubbleGeometry(); updateDraftGeometry();
-      updateCountLabel(pageMarks.length); syncGhost(); renderResultIndicators(true);
+      updateCountLabel(pageMarks.length); syncGhost();
     });
   }
 
@@ -3287,7 +3306,7 @@
       updateBubbleGeometry();
       updateDraftGeometry();
       updateCountLabel(pageMarks.length);
-      syncGhost(); renderResultIndicators(true);
+      syncGhost();
     });
   }
 
@@ -3319,7 +3338,7 @@
           markFacts.delete(m);
           var live = markHasLiveTarget(m), broken = isMarkBroken(m);
           if (!old || old.live !== live || old.broken !== broken) changedState = true;
-          if (live && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
+          if ((m.status || 'open') !== 'close' && drawableMark(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
         });
         return list;
       });
@@ -3361,7 +3380,6 @@
         updateDraftGeometry();
         syncGhost();
       }
-      renderResultIndicators(geometryDirty || contentRoots.size > 0 || dirtyFrameRoots.size > 0);
       if (activeComposer && activeComposer.syncLayout) activeComposer.syncLayout();
       geometryDirty = false; zoomDirty = false; contentFullDirty = false;
       contentRoots.clear(); dirtyFrameRoots.clear();
@@ -3442,7 +3460,6 @@
         dependencies = { relational: false, global: false };
         marks.forEach(function (m) {
           var selectors = markElementTargets(m).map(function (t) { return t.selector; });
-          resultTargets(m).forEach(function (target) { selectors.push(target.selector); });
           if (m.base) selectors.push(m.base.selector);
           if (m.move) selectors.push(m.move.to_selector);
           selectors.forEach(function (selector) {
@@ -3639,6 +3656,19 @@
     } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
       // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } else if (!frameFocused && !anchor.live && m.lastRect && stageEl) {
+      // 幽灵跳转（pp2）：锚点失效但有 lastRect —— 滚到它最后一次在的地方。
+      var gr = docToView([m.lastRect.x, m.lastRect.y, m.lastRect.w, m.lastRect.h]);
+      var gsr = stageEl.getBoundingClientRect();
+      var gtarget = {
+        top: stageEl.scrollTop + gr[1] - gsr.top - gsr.height / 2 + gr[3] / 2,
+        left: stageEl.scrollLeft + gr[0] - gsr.left - gsr.width / 2 + gr[2] / 2
+      };
+      if (wb && wb.scrollTo) wb.scrollTo(gtarget);
+      else stageEl.scrollTo(gtarget);
+    } else if (!frameFocused && !anchor.live && m.lastRect) {
+      var gy = m.lastRect.y + scrollY - window.innerHeight / 2;
+      window.scrollTo({ top: Math.max(0, gy) });
     }
     var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
     return settled.then(function (completed) {
@@ -3703,6 +3733,7 @@
       else if (isMarkBroken(m)) broken++;
       else hidden++;
     });
+    var closed = pageMarks.filter(function (m) { return (m.status || 'open') === 'close'; }).length;
     return {
       mode: mode,
       connected: serverOnline,
@@ -3715,9 +3746,10 @@
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
+      countClosed: closed,
       countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
       revision: revision,
-      syncing: syncing || resultWriting,
+      syncing: syncing,
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,
@@ -3744,7 +3776,6 @@
     clear: doClear,
     clearInvalid: clearInvalid,
     canClearInvalid: canClearInvalid,
-    recordResults: recordResults,
     removeMark: removeMark,
     setFloatingToolbar: setFloatingToolbar,
     setSidebar: setSidebarOpen,
@@ -3757,6 +3788,8 @@
     },
     openMark: openMark,
     goToMark: goToMark,
+    markStatus: markStatus,
+    closeAnnotation: closeAnnotation,
     hydrateFrames: hydrateMentionFrames,
     getState: getState,
     markOnActivePage: markOnActivePage,

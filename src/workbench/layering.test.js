@@ -46,6 +46,7 @@ const ALLOW = [
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-badge\{/, values: ['3'], reason: 'overlay 内部序：序号钉' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-target\{/, values: ['1'], reason: 'overlay 内部序：命中框' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-frame\{/, values: ['1'], reason: 'overlay 内部序：frame 框' },
+  { file: 'src/client/annotate.js', where: /^\s*'\.ann-ghost-rect\{/, values: ['1'], reason: 'overlay 内部序：幽灵框（pp2 lastRect）' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'chrome 内部序：提示' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
@@ -54,6 +55,7 @@ const ALLOW = [
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
+  { file: 'src/client/annotate.js', where: /^\s*'#ann-toast\{/, values: ['2147483647'], reason: '客座层：关闭 / 撤销 toast（pp2）' },
   // 双端共享的气泡样式：气泡与导出序号只在 overlay 内部比。
   { file: 'src/shared/annotate-bubble.js', where: /pointer-events:auto;z-index:3;overflow:hidden;\}/, values: ['3'], reason: 'overlay 内部序：.ann-bubble 评论卡' },
   // 组件内部序：分段控件焦点项压过相邻项的边，不与外壳比。
