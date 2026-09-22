@@ -1,0 +1,13 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "title": "JSX Screens",
+      "layout": "row",
+      "screens": [
+        { "id": "hello", "title": "Hello JSX" },
+        { "id": "ghost", "title": "Ghost" }
+      ]
+    }
+  ]
+}

@@ -37,7 +37,7 @@ import { __ppReset, __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const ROOT = path.resolve(__dirname, '..', '..');
+const ROOT = path.resolve(__dirname, '..', '..', '..');
 const KIT_COMPONENTS = path.join(ROOT, 'content', 'kits', 'ios', 'components');
 const RUNTIME_URL = pathToFileURL(path.join(__dirname, 'pp-jsx-runtime.js')).href;
 

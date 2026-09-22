@@ -37,13 +37,15 @@ export function writeRegistryFixture() {
       // 阶段 6：混合板固件（board:'ios' 页级缺省壳；board.json 里 2 个 app 屏 +
       // 1 个 product doc 屏 + 1 个 draft doc 屏）—— 画布条目 + 两个文档条目。
       { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mixed-site'), board: 'ios' },
+      // pp2 切片 1 的 .jsx 帧固件（e2e/jsx-site/）不在共享固件里常驻 —— 多一条页会
+      // 撞翻一批断言整份 Pages 清单的 spec；pp2-build.spec.js 自己登记自己清理。
     ],
   }, null, 2));
 }
 
 export function copySiteFixtures() {
   fs.rmSync(E2E_SITES_DIR, {recursive:true, force:true});
-  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site']) {
+  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site']) {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
 }

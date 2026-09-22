@@ -352,4 +352,16 @@ describe('页解析', () => {
     assert.deepEqual(listPageIds({ registry, root }), ['ext-page', 'tpl']);
     assert.deepEqual(boardScreenIds(pageDir), null);
   });
+
+  test('默认 root / kitRoot 指向真仓库（__dirname 深度的回归哨兵）', async () => {
+    // page-compiler.js 住 src/server/lib/：ROOT 少退一级就会指到 src/ 下，
+    // 模板页与 kit 组件全部静默落空（include 全烤成失败块）。
+    assert.equal(resolvePageTarget('library')?.kind, 'template');
+    assert.equal(resolvePageTarget('doc-library')?.kind, 'template');
+    const target = resolvePageTarget('library');
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'msg-thread.html'), 'utf8');
+    assert.ok(!html.includes('include 失败'), '默认 kitRoot 下 library 的 include 必须展开成功');
+  });
 });

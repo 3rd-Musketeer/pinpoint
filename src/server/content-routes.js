@@ -116,8 +116,9 @@ export default function contentRoutes() {
         // 非屏路径照旧走下面的磁盘投影。doctype 整文档在这里注入 annotate
         // （preview-inject 已把 board 屏让过来；fragment 不注入，与从前一致）。
         if (req.method === 'GET' || req.method === 'HEAD') {
-          const urlPath = req.url.split('?')[0];
-          const query = req.url.slice(urlPath.length);
+          const parts = req.url.split('?');
+          const urlPath = parts[0];
+          const query = parts[1] || '';
           const boardMatch = urlPath.match(/^\/previews\/([a-zA-Z0-9_-]+)\/board\.json$/);
           if (boardMatch) {
             const pageDir = path.join(previewsRoot, boardMatch[1]);
