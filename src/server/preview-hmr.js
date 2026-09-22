@@ -19,10 +19,15 @@ import { templateOnly } from './template-only.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const WATCHED_EXT = /(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/;
+// previews 分支（M2）：模板页的 components/ 子目录（pp2 的核心输入）与任意
+// 深层的帧/资源都要接住，正则此前只认页目录顶层单段文件名，子目录变更静默
+// 不重编；board.json 仍单列顶层——嵌套的同名文件不是板。
+const PREVIEWS_FILE = /\/previews\/([^/]+)\/(?:board\.json|(?:[^/]+\/)*[^/]+\.(?:html|js|jsx|css))$/;
 
 export default function previewHmr(options = {}) {
   const registry = options.registry || null;
   const distRoot = options.distRoot || null;
+  const templateRoot = options.templateRoot || ROOT;
   let watcher = null;
   const watched = new Set();
   const compiling = new Map();
@@ -100,7 +105,7 @@ export default function previewHmr(options = {}) {
   }
 
   function templateTarget(pageId) {
-    return resolvePageTarget(pageId, { registry: null, root: ROOT });
+    return resolvePageTarget(pageId, { registry: null, root: templateRoot });
   }
 
   function notify(server, target, file) {
@@ -133,7 +138,7 @@ export default function previewHmr(options = {}) {
         server.ws.send({ type: 'full-reload' });
         return [];
       }
-      const preview = rel.match(/\/previews\/([^/]+)\/(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/);
+      const preview = rel.match(PREVIEWS_FILE);
       if (preview) {
         const target = templateTarget(preview[1]);
         if (!target) return [];

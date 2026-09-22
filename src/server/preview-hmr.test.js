@@ -71,6 +71,39 @@ test('registry dir/file 条目变更 → preview:update（2026-08-17e；pp2 起 
   assert.ok(server);
 });
 
+test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）', async (t) => {
+  // 造一个模板页：root/content/previews/<页>/，帧 + components/X.jsx。
+  const templateRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-tpl-'));
+  t.after(() => fs.rmSync(templateRoot, { recursive: true, force: true }));
+  const pageDir = path.join(templateRoot, 'content', 'previews', 'tpl-page');
+  fs.mkdirSync(path.join(pageDir, 'components'), { recursive: true });
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: 'Home' }] }],
+  }));
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">第一版</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'components', 'X.jsx'), 'export default function X(){return null}\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [] }, distRoot, templateRoot });
+  const s = fakeServer();
+
+  // 组件子目录变更（旧正则只认顶层单段文件名，这里静默失配不重编）。
+  const out = await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'X.jsx'), server: s });
+  assert.deepEqual(out, []);
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
+
+  // 子目录里的资源同样接住；顶层 board.json 照旧；嵌套 board.json 不是板。
+  s.sent.length = 0;
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'X.css'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
+  s.sent.length = 0;
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
+  s.sent.length = 0;
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'board.json'), server: s });
+  assert.equal(s.sent.length, 0);
+});
+
 test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async (t) => {
   const { server } = await setup(t, ENTRIES);
   assert.deepEqual(server.added, [EXT, path.join(EXT, '..', 'single.html')]);
