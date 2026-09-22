@@ -50,11 +50,38 @@ export function createAnnotationStore(options) {
     fs.writeFileSync(seqPath(), JSON.stringify({ next }, null, 2) + '\n');
   }
 
-  /** 缺 n 的标注按数组顺序（= 创建顺序）补号；返回 { annotations, assigned }。 */
+  /** 桶内全部账本现有 max(n) + 1（M3）：_seq.json 被删或损坏时 readSeq 回落 1，
+      没有这个地板，新标注会从 #1 重新起号撞存量，「永不复用」破。读不出的
+      损坏账本跳过（readDoc 同样把它当空文档，桶内可读状态不含它）。 */
+  function bucketFloor() {
+    let names;
+    try {
+      names = fs.readdirSync(dataDir);
+    } catch {
+      return 1;
+    }
+    let max = 0;
+    for (const name of names) {
+      if (!name.endsWith('.json') || name === '_seq.json') continue;
+      let doc;
+      try {
+        doc = normalizeDoc(JSON.parse(fs.readFileSync(path.join(dataDir, name), 'utf8')), name.replace(/\.json$/, ''));
+      } catch {
+        continue;
+      }
+      for (const row of doc.annotations) {
+        if (Number.isInteger(row.n) && row.n > max) max = row.n;
+      }
+    }
+    return max + 1;
+  }
+
+  /** 缺 n 的标注按数组顺序（= 创建顺序）补号；返回 { annotations, assigned }。
+      起点 = _seq.next 与桶级地板取大者（M3）。 */
   function assignNumbers(annotations) {
     const missing = annotations.filter((a) => !Number.isInteger(a && a.n));
     if (!missing.length) return { annotations, assigned: 0 };
-    let next = readSeq();
+    let next = Math.max(readSeq(), bucketFloor());
     const out = annotations.map((a) => (Number.isInteger(a && a.n) ? a : { ...a, n: next++ }));
     writeSeq(next);
     return { annotations: out, assigned: missing.length };

@@ -153,6 +153,25 @@ test('#n：缺号标注按创建顺序补号，跨账本唯一，删过的号不
   assert.equal(rewritten.revision, 1, '补号不动 revision');
 });
 
+test('#n（M3）：_seq.json 丢失后取号以桶内现有 max(n)+1 为地板', (t) => {
+  const { dataDir, store } = withStore(t);
+
+  // 两条标注 (#1,#2) → 删 _seq.json → 新标注得 #3，不回到 #1 撞存量。
+  // （save 是整文档原子替换：加一行要带上存量行，同 id 沿用旧号。）
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }, { id: 'x2', content: '乙' }] });
+  fs.rmSync(path.join(dataDir, '_seq.json'));
+  const after = store.save({ page: 'a.html', baseRevision: 1, annotations: [
+    { id: 'x1', content: '甲' }, { id: 'x2', content: '乙' }, { id: 'x3', content: '丙' },
+  ] });
+  assert.deepEqual(after.doc.annotations.map((row) => row.n), [1, 2, 3]);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, '_seq.json'), 'utf8')).next, 4);
+
+  // 损坏的 _seq.json 同样成立；地板跨账本生效（b.html 的新条接 #4）。
+  fs.writeFileSync(path.join(dataDir, '_seq.json'), '{broken');
+  const other = store.save({ page: 'b.html', baseRevision: 0, annotations: [{ id: 'y1', content: '丁' }] });
+  assert.deepEqual(other.doc.annotations.map((row) => row.n), [4]);
+});
+
 test('#n：重存既有标注缺 n 时沿用旧号，永不重新取号（R3）', (t) => {
   const { dataDir, store } = withStore(t);
 
