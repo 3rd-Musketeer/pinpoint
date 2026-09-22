@@ -122,6 +122,59 @@ describe('jsxElementRange / foldRange', () => {
   test('行外锚点返回 null', () => {
     assert.equal(jsxElementRange(JSX, 99), null);
   });
+
+  test('多行开标签跨行入栈（prettier 风格不再退化 ±3）', () => {
+    const MULTILINE = [
+      'export default function Home() {', // 1
+      '  return (',                       // 2
+      '    <Card',                        // 3
+      '      title="长标题"',             // 4
+      '      wide',                       // 5
+      '    >',                           // 6
+      '      <p>正文</p>',                // 7
+      '    </Card>',                      // 8
+      '  );',                             // 9
+      '}',                                // 10
+    ].join('\n');
+    // 卡片元素 (3,8) 注册成功：锚在属性行也能拿到完整元素区间，而不是 ±3。
+    assert.deepEqual(jsxElementRange(MULTILINE, 5), { start: 3, end: 8 });
+    assert.deepEqual(jsxElementRange(MULTILINE, 7), { start: 7, end: 7 });
+    // 自闭合同样支持跨行。
+    const SPREAD = [
+      'export default function Home() {', // 1
+      '  return <Card',                   // 2
+      '    {...props}',                   // 3
+      '  />;',                            // 4
+      '}',                                // 5
+    ].join('\n');
+    assert.deepEqual(jsxElementRange(SPREAD, 3), { start: 2, end: 4 });
+  });
+
+  test('同行比较文本不入栈：`{a<b && c>d}` 不再污染配对', () => {
+    const POLLUTED = [
+      'const ok = a<b && c>d;',   // 1 —— 老扫描器把 `<b` 压栈，`</p>` 错配给它
+      'export default Home() {',  // 2
+      '  return (',               // 3
+      '    <div class="app">',    // 4
+      '      <p>普通</p>',        // 5
+      '    </div>',               // 6
+      '  );',                     // 7
+      '}',                        // 8
+    ].join('\n');
+    // 锚在 <p> 行：区间是 p 自己（老行为给出被污染的 (1,5)）。
+    assert.deepEqual(jsxElementRange(POLLUTED, 5), { start: 5, end: 5 });
+    assert.deepEqual(jsxElementRange(POLLUTED, 4), { start: 4, end: 6 });
+    // 表达式括号里的比较同样不入栈。
+    const EXPR = [
+      'export default Home() {',                  // 1
+      '  const pick = (x) => (x<a && x>b ? 1 : 0);', // 2
+      '  return (',                               // 3
+      '    <p>文字</p>',                          // 4
+      '  );',                                     // 5
+      '}',                                        // 6
+    ].join('\n');
+    assert.deepEqual(jsxElementRange(EXPR, 4), { start: 4, end: 4 });
+  });
 });
 
 describe('foldHtmlElement / renderExcerpt', () => {

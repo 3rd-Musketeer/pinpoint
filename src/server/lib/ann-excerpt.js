@@ -166,58 +166,124 @@ export function ancestorsOf(node) {
 
 /* ---- JSX 源码摘录 ---- */
 
+/** 从标签名之后扫到本标签收尾的 `>`（跨行；跳过属性字符串与 `{}` 表达式，
+    `onClick={() => a>b}` 里的尖括号不会误当标签收尾）。找不到返回 -1。 */
+function scanTagEnd(text, from) {
+  let depth = 0;
+  let i = from;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch === '"' || ch === "'" || ch === '`') {
+      i += 1;
+      while (i < text.length && text[i] !== ch) {
+        if (text[i] === '\\') i += 1;
+        i += 1;
+      }
+    } else if (ch === '{') depth += 1;
+    else if (ch === '}') depth -= 1;
+    else if (ch === '>' && depth <= 0) return i;
+    i += 1;
+  }
+  return -1;
+}
+
+const OPEN_TAG = /<([A-Za-z][\w.-]*)/y;
+const CLOSE_TAG = /<\/\s*([A-Za-z][\w.-]*)?/y;
+
 /**
- * 找「包含 anchorLine（1 基）的最小完整 JSX 元素」：逐字符扫标签记栈，取包住
- * 该行的最内层标签区间。配不准（找不到 / 区间可疑地长）退化成 ±3 行。
- * 返回 { startLine, endLine }（1 基闭区间）。
+ * 找「包含 anchorLine（1 基）的最小完整 JSX 元素」：全文扫标签记栈，取包住
+ * 该行的最内层标签区间。prettier 风格的多行开标签（`<Card` 后属性换行）跨行
+ * 找 `>` 再入栈；`{a<b && c>d}` 这类同行比较文本靠开标签守卫（名字后第一个
+ * 非空白必须是属性 / 结束字符）挡在栈外。配不准（找不到 / 区间可疑地长）
+ * 退化成 ±3 行。返回 { startLine, endLine }（1 基闭区间）。
  */
 export function jsxElementRange(source, anchorLine) {
   const text = String(source || '');
   const lines = text.split('\n');
   if (anchorLine < 1 || anchorLine > lines.length) return null;
-  const stack = [];
-  let offset = 0;
+  const lineStarts = [0];
+  for (let p = 0; p < text.length; p += 1) {
+    if (text[p] === '\n') lineStarts.push(p + 1);
+  }
+  const lineOf = (offset) => {
+    let lo = 0;
+    let hi = lineStarts.length - 1;
+    while (lo < hi) {
+      const mid = (lo + hi + 1) >> 1;
+      if (lineStarts[mid] <= offset) lo = mid;
+      else hi = mid - 1;
+    }
+    return lo + 1;
+  };
   const starts = [];
   const ends = [];
-  for (let li = 0; li < lines.length; li += 1) {
-    const line = lines[li];
-    for (let ci = 0; ci < line.length; ci += 1) {
-      const ch = line[ci];
-      if (ch === '<') {
-        const rest = line.slice(ci);
-        const tag = rest.match(/^<([A-Za-z][\w.-]*)/);
-        if (tag) {
-          const closeAt = rest.indexOf('>');
-          if (closeAt >= 0) {
-            const inner = rest.slice(1, closeAt);
-            if (inner.endsWith('/')) {
-              starts.push(li + 1);
-              ends.push(li + 1);
-            } else {
-              stack.push(li + 1);
-            }
-            ci += closeAt;
-          }
-        } else if (/^<\//.test(rest)) {
-          const closeAt = rest.indexOf('>');
-          if (closeAt >= 0) {
-            const open = stack.pop();
-            if (open !== undefined) {
-              starts.push(open);
-              ends.push(li + 1);
-            }
-            ci += closeAt;
+  const stack = [];
+  let i = 0;
+  while (i < text.length) {
+    const ch = text[i];
+    if (ch !== '<') {
+      i += 1;
+      continue;
+    }
+    if (text[i + 1] === '/') {
+      CLOSE_TAG.lastIndex = i;
+      const m = CLOSE_TAG.exec(text);
+      const gt = text.indexOf('>', i);
+      const endLine = lineOf(gt < 0 ? text.length - 1 : gt);
+      // 闭标签向栈内找同名开标签；游离的（如 fragment 的 `</>`、字符串里的）
+      // 忽略，不吞别人的区间。
+      let idx = -1;
+      const name = m && m[1];
+      if (name) {
+        for (let s = stack.length - 1; s >= 0; s -= 1) {
+          if (stack[s].name === name) {
+            idx = s;
+            break;
           }
         }
       }
+      if (idx >= 0) {
+        for (let s = stack.length - 1; s >= idx; s -= 1) {
+          starts.push(stack[s].startLine);
+          ends.push(endLine);
+        }
+        stack.length = idx;
+      }
+      i = gt < 0 ? text.length : gt + 1;
+      continue;
     }
-    offset += line.length + 1;
+    OPEN_TAG.lastIndex = i;
+    const m = OPEN_TAG.exec(text);
+    if (!m) {
+      i += 1;
+      continue;
+    }
+    let k = i + m[0].length;
+    while (k < text.length && /\s/.test(text[k])) k += 1;
+    if (k < text.length && !/[>/{=.A-Za-z0-9_:@-]/.test(text[k])) {
+      i += 1;
+      continue;
+    }
+    const gt = scanTagEnd(text, k);
+    if (gt < 0) {
+      i += 1;
+      continue;
+    }
+    const startLine = lineOf(i);
+    const endLine = lineOf(gt);
+    if (text[gt - 1] === '/') {
+      starts.push(startLine);
+      ends.push(endLine);
+    } else {
+      stack.push({ name: m[1], startLine });
+    }
+    i = gt + 1;
   }
   let best = null;
-  for (let i = 0; i < starts.length; i += 1) {
-    if (starts[i] <= anchorLine && anchorLine <= ends[i]) {
-      const span = ends[i] - starts[i];
-      if (best === null || span < best.end - best.start) best = { start: starts[i], end: ends[i] };
+  for (let j = 0; j < starts.length; j += 1) {
+    if (starts[j] <= anchorLine && anchorLine <= ends[j]) {
+      const span = ends[j] - starts[j];
+      if (best === null || span < best.end - best.start) best = { start: starts[j], end: ends[j] };
     }
   }
   if (best && best.end - best.start <= 200) return best;
