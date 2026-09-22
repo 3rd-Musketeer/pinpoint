@@ -102,10 +102,6 @@ export function expandIncludeRefs(html, loadVariant, applySlots) {
       }
       var frag = fetched.trim();
       frag = applySlots(frag, attrs);
-      // Mark include root for annotate → component source routing
-      if (/^<([a-zA-Z0-9]+)/.test(frag)) {
-        frag = frag.replace(/^<([a-zA-Z0-9]+)/, '<$1 data-ios-from="' + ref + '"');
-      }
       return frag;
     });
   });

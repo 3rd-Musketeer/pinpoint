@@ -544,8 +544,6 @@ export function setActivePage(pageId, options) {
   }
   // stage 形态随选中条目在装载后应用（loadBoard → syncEntries，2026-08-16f 阶段 6）——
   // 条目要 board 先到位才能解析，换页途中保留旧形态，避免裸闪。
-  // Includes resolve to shared component files (page-independent); keep the
-  // cache across page switches — only a component change busts it (see HMR).
   return pagesDeps.loadBoard(panel, pageId).then(function () {
     // Viewport restore happens in afterMount; do not reset to origin here.
   });

@@ -60,8 +60,8 @@ test('expandIncludeRefs expands placeholders via the injected loader', async () 
     assert.equal(variant, 'outgoing');
     return '<div class="bubble"><span data-ios-slot="text">old</span></div>';
   }, (frag, attrs) => frag.replace('old', 'hi'));
-  assert.ok(out.includes('data-ios-from="bubble/outgoing"'));
   assert.ok(out.includes('hi'));
+  assert.ok(!out.includes('data-ios-include'));
 });
 
 test('expandIncludeRefs renders an error block for missing includes', async () => {
@@ -78,7 +78,7 @@ test('expandIncludeRefs dedupes refs and leaves include-free html untouched', as
     (f) => f,
   );
   assert.equal(calls, 1);
-  assert.equal((out.match(/<i\s/g) || []).length, 2);
+  assert.equal((out.match(/<i>x<\/i>/g) || []).length, 2);
   const plain = await expandIncludeRefs('<p>none</p>', async () => null, (f) => f);
   assert.equal(plain, '<p>none</p>');
 });

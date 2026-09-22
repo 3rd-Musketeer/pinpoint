@@ -319,7 +319,6 @@ describe('.html 帧', () => {
     const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
     assert.ok(!html.includes('data-ios-include'), html);
     assert.ok(html.includes('展开我'), html);
-    assert.ok(html.includes('data-ios-from="x-card/default"'), html);
   });
 });
 

@@ -1,7 +1,8 @@
-// Workbench 屏幕装配簇 — 屏幕 HTML 拉取、include 展开、壳装配、整板 HTML。
+// Workbench 屏幕装配簇 — 屏幕 HTML 拉取（pp2：dist）、壳装配、整板 HTML。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
-// P2：screen/include 拉取迁入 TanStack Query（app/query-client.js），手工
-// includeCache/clearIncludeCache 机械删除 —— 失效只由 SSE 桥的 invalidateQueries 驱动。
+// P2：screen 拉取迁入 TanStack Query（app/query-client.js），失效由 SSE 桥的
+// invalidateQueries 驱动。pp2 切片 2：客户端 include 展开退役 —— dist 里已无
+// data-ios-include（编译期展开），expandIncludeRefs 留在编译器与 frame-doc 用。
 // 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
 // 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
 // 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
@@ -20,7 +21,6 @@
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
-import { applyIncludeSlots } from './lib/include-slots.js';
 import { canvasBoard } from './lib/board-entries.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
 import {
@@ -33,7 +33,6 @@ import { boardRefs } from './lib/board-refs.js';
 import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
 import {
-  expandIncludeRefs,
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell
@@ -72,31 +71,6 @@ function screenErrorHtml(pageId, screenId, err) {
   });
 }
 
-function fetchIncludeHtml(ref) {
-  // 失败不走缓存（fetchQuery reject，query 不留 data）——下次装载自然重试；
-  // 组件修复经 SSE invalidate 后同样重拉。
-  var parsed = ref.split('/');
-  return queryClient.fetchQuery({
-    queryKey: ['include', parsed[0], parsed[1]],
-    queryFn: function () {
-      return fetch('kits/ios/components/' + ref + '.html')
-        .then(function (r) {
-          if (!r.ok) throw r.status;
-          return r.text();
-        });
-    }
-  });
-}
-
-/** Expand <div data-ios-include="comp/variant" data-text="…"> placeholders. */
-function resolveIncludes(html) {
-  // 展开算法收编到 src/shared/frame-shell.js（与 /api/frame 嵌入页、导出烤图共享同一份
-  // 机壳不变量）；这里只注入 client 侧 fetch loader 与 slot 应用。
-  return expandIncludeRefs(html, function (parsed) {
-    return fetchIncludeHtml(parsed.component + '/' + parsed.variant).catch(function () { return null; });
-  }, applyIncludeSlots);
-}
-
 function docFrameHtml(url, title) {
   return '<iframe class="wb-doc-frame" src="' + escHtml(url) + '"' +
     ' title="' + escHtml(title || url) + '" loading="lazy"></iframe>';
@@ -123,8 +97,7 @@ export function fetchScreenHtml(pageId, screen) {
   var fetchUrl = url;
   var page = pageEntry(wbGet().pageManifest, pageId);
   if (page && page.site) fetchUrl += (fetchUrl.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off';
-  // Query 缓存的是未展开 include 的原始片段 —— 组件变更只需 invalidate ['include']，
-  // 重装载时重新展开即拿到新内容；校验与 include 展开留在缓存外逐次执行。
+  // pp2：拉到的就是 dist 屏（include 已在编译期展开）；缓存只按 SSE 失效重拉。
   return queryClient.fetchQuery({
     queryKey: ['screen', pageId, sc.id],
     queryFn: function () {
@@ -140,17 +113,16 @@ export function fetchScreenHtml(pageId, screen) {
       if (pageId !== COMPONENTS_ID && shell !== 'comp') {
         raw = validateScreenFragment(raw, 'screen(' + pageId + '/' + sc.id + ')', { shell: shell });
       }
-      return resolveIncludes(raw).then(function (html) {
-        if (pageId === COMPONENTS_ID) return { ok: true, html: wrapFragmentForLibrary(html) };
-        // fragment 里的 CSS 资源与 JS sidecar 同规则重定位到 pageBaseUrl
-        // （lib/sidecar-css.js 有理由与测试）：@import 本来按 index.html 解析，
-        // 相对路径会打到站点根，作者写 ./x.css 必 404。组件页不改写 —— 它的
-        // 片段来自 kits/，pageBaseUrl 对它没有意义（JS sidecar 同样不覆盖）。
-        return {
-          ok: true,
-          html: rewriteFragmentAssetUrls(html, pageBaseUrl(wbGet().pageManifest, pageId))
-        };
-      });
+      // pp2：屏内容就是 dist（include 已在编译期展开，客户端不再二次展开）。
+      if (pageId === COMPONENTS_ID) return { ok: true, html: wrapFragmentForLibrary(raw) };
+      // fragment 里的 CSS 资源与 JS sidecar 同规则重定位到 pageBaseUrl
+      // （lib/sidecar-css.js 有理由与测试）：@import 本来按 index.html 解析，
+      // 相对路径会打到站点根，作者写 ./x.css 必 404。组件页不改写 —— 它的
+      // 片段来自 kits/，pageBaseUrl 对它没有意义（JS sidecar 同样不覆盖）。
+      return {
+        ok: true,
+        html: rewriteFragmentAssetUrls(raw, pageBaseUrl(wbGet().pageManifest, pageId))
+      };
     })
     .catch(function (e) { return { ok: false, err: e }; });
 }

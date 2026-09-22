@@ -586,13 +586,11 @@ if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
     var id = (data && data.id) || wbGet().activePageId;
-    // SSE 是唯一失效源：页面变更失效自己的 board/screen；组件变更失效组件页
-    // board/screen 与全部 include（screen 缓存的是未展开的原始片段，include
-    // 失效后重装载重新展开即拿到新内容）。页面变更不动 include 缓存。
+    // SSE 是唯一失效源：页面变更（含 kit 组件触发全量重编后的逐页通知）失效自己的
+    // board/screen；pp2 起屏内容就是 dist，客户端没有 include 缓存可失效。
     if (id === COMPONENTS_ID || (data && data.alsoActive)) {
       queryClient.invalidateQueries({ queryKey: ['board', COMPONENTS_ID] });
       queryClient.invalidateQueries({ queryKey: ['screen', COMPONENTS_ID] });
-      queryClient.invalidateQueries({ queryKey: ['include'] });
     } else {
       queryClient.invalidateQueries({ queryKey: ['board', id] });
       queryClient.invalidateQueries({ queryKey: ['screen', id] });
