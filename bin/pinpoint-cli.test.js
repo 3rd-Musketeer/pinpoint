@@ -1407,11 +1407,15 @@ test('runLocate：#n → 源文件:行；未编页给 selector', async (t) => {
   assert.ok(range.out.some((line) => /#2 → home\.jsx:5/.test(line)), range.out.join('\n'));
 });
 
-test('runMark：走状态端点带 baseRevision，逐条打印；close 拒收；服务不在跑报 ppnt start', async (t) => {
+test('runMark：走状态端点带 baseRevision，逐条打印；close / open 拒收；服务不在跑报 ppnt start', async (t) => {
   const made = await makeAnnotatedPage(t);
   const close = recorder();
   assert.equal(await runMark(['mark', '#1', 'close', '--registry', made.registry], { ...close.io, env: made.env }), 1);
   assert.ok(close.err.some((line) => /close 只在工作台/.test(line)));
+  // open 只由 owner 在工作台编辑触发，mark 不写——传 open 指名道姓报因。
+  const open = recorder();
+  assert.equal(await runMark(['mark', '#1', 'open', '--registry', made.registry], { ...open.io, env: made.env }), 1);
+  assert.ok(open.err.some((line) => /open 由工作台编辑触发，mark 不写/.test(line)));
 
   // 服务不在跑（requestFn 抛错 = 探活失败）。
   const down = recorder();

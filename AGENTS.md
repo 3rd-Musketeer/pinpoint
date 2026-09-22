@@ -59,7 +59,8 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 pp2 切片 4 契约，落地前以 `bin/pinpoint-cli.js` 为准）。改完页源码跑 `ppnt build <页>`
 （或 `--watch` 挂着）——dist 落后于源码或某屏没编过时，那个 frame 出错误面板，
 重编即修，不要手改 `~/.pinpoint/dist/` 下的任何文件。标注四态 open / check / done / close：
-agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`close` 只有 owner 在工作台做），
+agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`open` 由 owner 在工作台编辑时
+自动回，`close` 只有 owner 在工作台做），
 字段与转换规则见 [`docs/annotation.md`](docs/annotation.md)。
 
 ## worktree 与发布契约

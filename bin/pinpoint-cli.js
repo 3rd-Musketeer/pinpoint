@@ -116,7 +116,7 @@ export const USAGE = `用法：
   pinpoint check <页> [选项]                           标注清单（只读）：序号 / 正文 / 意图 / 源码摘录 / 状态 / note
   pinpoint locate <引用…> [--page <页>]                标注定位：#n → 源文件:行 · 组件（共用 n 帧）
   pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
-  pinpoint mark <引用…> done|check|open [--note "…"]   写状态（close 只在工作台）；逐条打印结果
+  pinpoint mark <引用…> done|check [--note "…"]        写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
@@ -185,9 +185,10 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
   pinpoint shot <引用…> [--scale 1] [--marks]
                                        PNG 到 <dataRoot>/shot/<页>/<引用>.png，打印路径；
                                        --marks 烤 #n 序号钉（清单由 check 给）
-  pinpoint mark <引用…> done|check|open [--note "…"]
+  pinpoint mark <引用…> done|check [--note "…"]
                                        走服务状态端点（带 baseRevision）；冲突 / 非法转换
-                                       打 409 原因，不中断其他条；close 只在工作台
+                                       打 409 原因，不中断其他条；open 由 owner 编辑触发、
+                                       close 只在工作台，两者 mark 都不写
   --page <页>                          locate / shot / mark 的基页（缺省 registry 第一个可编译页）
   --registry 路径                      同 add
 
@@ -249,7 +250,7 @@ export function parseArgs(argv) {
     return { command, refs: positional, flags };
   }
   if (command === 'mark') {
-    if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check|open [--note "…"]');
+    if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check [--note "…"]');
     return { command, refs: positional.slice(0, -1), statusWord: positional[positional.length - 1], flags };
   }
   return { command, flags };
@@ -1670,8 +1671,12 @@ export async function runMark(argv, io = {}) {
     err('close 只在工作台（owner 单击验收，带 toast 撤销）；ppnt mark 不接受 close。');
     return 1;
   }
-  if (!['done', 'check', 'open'].includes(parsed.statusWord)) {
-    err(`错误：状态只支持 done | check | open，收到：${parsed.statusWord}`);
+  if (parsed.statusWord === 'open') {
+    err('open 由工作台编辑触发，mark 不写；ppnt mark 只写 check / done。');
+    return 1;
+  }
+  if (!['done', 'check'].includes(parsed.statusWord)) {
+    err(`错误：状态只支持 done | check，收到：${parsed.statusWord}`);
     return 1;
   }
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });

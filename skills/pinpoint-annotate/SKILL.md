@@ -37,12 +37,13 @@ description: 读取 Pinpoint 标注、判断改帧还是改组件、改完编译
 `ppnt shot <帧>`（或 `ppnt check <页> --mode image`）对照看效果。lint / 编译错误指到文件与行，
 规则见 build skill 的“lint 四禁”。改不动或没道理的标注留着不动，准备在 note 里说明。
 
-## 4. `ppnt mark <ref…> done|check|open --note "…"`
+## 4. `ppnt mark <ref…> done|check --note "…"`
 
 - 看了但不改 → `check`，带一行 note（owner hover 可见）。
-- 改完 → `done`，note 可选；`open` 把状态退回去。
+- 改完 → `done`，note 可选。
 - 服务端按 `baseRevision` 校验：冲突或非法转换逐条报 409，不影响其余条目，按提示重读再写。
-- `close` 只有 owner 在工作台做（CLI 不接受）；owner 编辑正文或目标会自动回 `open`。
+- CLI 不接受 `open` / `close`：open 由 owner 在工作台编辑正文或目标时自动回，close 只有
+  owner 在工作台做。
 
 最后在对话里汇报：每条标注做了什么（done / check / 未动 + 原因）。清理与关闭标注留给 owner。
 登记新页面、移动源路径、注入与代理问题见 [`docs/registry.md`](../../docs/registry.md)。
