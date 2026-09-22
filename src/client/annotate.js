@@ -1362,6 +1362,9 @@
       return loaded;
     }
     if (!markOnActivePage(mark) || ledgerSwitching || document.readyState !== 'complete') return false;
+    // R5：done 未 close 与已 close 的不参与清空 —— agent 按标注删掉目标元素（=
+    // 干完活）后锚点必失效，一键清掉丢的是 owner 还没验收 / 已留档的执行历史。
+    if (mark.status === 'done' || mark.status === 'close') return false;
     if (!loadedScope(mark.screenId || '')) return false;
     var selectors = mark.type === 'element' ? markElementTargets(mark).map(function (target) { return target.selector; }) : [mark.base && mark.base.selector].concat((mark.contains || []).map(function (target) { return target.selector; })).filter(Boolean);
     if (!selectors.length) return false;

@@ -452,6 +452,29 @@ test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；�
   await expect(page.locator('.ann-ghost-rect')).toHaveCount(0);
 });
 
+test('R5：done / close 的失效标注不被 clearInvalid 清掉（执行历史留给 owner 验收）', async ({page}) => {
+  await page.goto('/sites/e2e-dir/doc.html');
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(()=>window.pinpoint.setMode(true));
+  await page.locator('#doc-target-2').click();
+  await page.getByRole('textbox',{name:'写标注'}).fill('按标注删掉这个目标');
+  await page.locator('#ann-save').click();
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
+  const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
+  const ledger=pageKeyFromPathname('/sites/e2e-dir/doc.html');
+  // agent 干完活：mark 端点推进到 done。
+  let rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  const res=await page.request.post(`/annotations/${ledger}/${mark.n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  expect(res.status()).toBe(200);
+  await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,mark.id)).toBe('done');
+  // 目标按标注删掉 → 锚点失效是干完活的常态形态，但 done 的账不能一键清掉。
+  await page.evaluate(()=>{document.querySelector('#doc-target-2').remove();});
+  await page.waitForTimeout(300);
+  expect(await page.evaluate(()=>window.pinpoint.getState().countInvalid)).toBe(0);
+  expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(0);
+  expect(await page.evaluate(id=>window.pinpoint.marks.some(m=>m.id===id),mark.id)).toBe(true);
+});
+
 test('invalid cleanup retains partial targets and scopes that are loading or temporarily absent', async ({page}) => {
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>{
