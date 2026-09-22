@@ -82,3 +82,17 @@ test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async 
   const { server } = await setup(t, ENTRIES);
   assert.deepEqual(server.added, [EXT, path.join(EXT, '..', 'single.html')]);
 });
+
+test('kit 组件变更 → 全量重编并对每页发 preview:update（review 1-5）', async (t) => {
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: ENTRIES }, distRoot });
+  const s = fakeServer();
+  await hit.handleHotUpdate({ file: path.join(ROOT, 'content', 'kits', 'ios', 'components', 'button', 'catalog.html'), server: s });
+  const ids = s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id);
+  assert.ok(ids.includes('library'), JSON.stringify(ids));
+  assert.ok(ids.includes('doc-library'), JSON.stringify(ids));
+  assert.ok(ids.includes('components'), JSON.stringify(ids));
+  // dist 真的重编了（全量重编落进注入的 distRoot）
+  assert.ok(fs.existsSync(path.join(distRoot, 'library', 'build.json')));
+});

@@ -124,10 +124,18 @@ export default function previewHmr(options = {}) {
           return [];
         });
       }
-      // Component source or meta — refresh Component Library + any open flow that may include it
-      if (/\/components\//.test(rel) && (/\.html$/.test(rel) || /meta\.json$/.test(rel) || /_index\.json$/.test(rel))) {
-        server.ws.send({ type: 'custom', event: 'preview:update', data: { id: 'components', alsoActive: true } });
-        return [];
+      // kit 组件源 / meta 变更（2026-09-22 review 1-5）：存量 .html 帧的 include 是
+      // 编译期展开的，组件一改必须全量重编（144ms 量级，不算依赖）→ 对每页发
+      // preview:update；Component Library 自己的板照旧更新。分支收窄到 kit 目录：
+      // 名字里带 components 的仓外条目交给下面的 registry 分支正确归属。
+      if (/\/kits\/ios\/components\//.test(rel) && (/\.html$/.test(rel) || /meta\.json$/.test(rel) || /_index\.json$/.test(rel))) {
+        return buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) }).then((results) => {
+          for (const result of results) {
+            server.ws.send({ type: 'custom', event: 'preview:update', data: { id: result.entryId } });
+          }
+          server.ws.send({ type: 'custom', event: 'preview:update', data: { id: 'components', alsoActive: true } });
+          return [];
+        });
       }
       // registry dir/file 条目（仓外）：板、屏、sidecar 变更 → 重编译 → 该条目页重摆
       if (WATCHED_EXT.test(rel)) {
