@@ -47,8 +47,8 @@
   条目的 `folder` 只引用 `folders[]` 里的 id，夹 id 撞上某个条目 id 不是冲突。
   数组顺序就是左栏顺序（拖动重排 = 整表按新顺序写回）。
 - 条目的 `folder` / `order`：归属哪个夹、手动次序（`order` 只在 workbench 的排序档是「默认」时生效）。
-- `pageFolders{}` / `pageOrder{}` 装的是**不在登记表里的** manifest 页（Component Library 等来自
-  `content/previews/_index[.local].json`）——它们没有条目可以写字段，归属与次序只能记在顶层。
+- `pageFolders{}` / `pageOrder{}` 装的是**不在登记表里的** manifest 页（来自
+  `content/previews/_index.json` 的模板页）——它们没有条目可以写字段，归属与次序只能记在顶层。
   键撞上某个 registry 条目 id 时那条映射是死数据（条目自己的字段才算数），读侧 warn 掉。
 - **分组从不决定一个页存不存在。** 指着不存在的夹是 warning + 那个条目变散页（丢一行 Pages 比丢一层
   分组难查得多），坏 `order` 同样只 warn 掉；夹自己 id 重复或不合模式才是 error，且只毙那一条，
@@ -70,7 +70,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 | `PUT /registry/order` | `{ids:[…]}` | 按给定顺序写 `order` 0、1、2… |
 
 `:id` 是 registry 条目就改条目自己的字段，是本地 manifest 页就落 `pageFolders` / `pageOrder`。
-「id 认不认识」的名单 = registry 条目 + `content/previews/_index[.local].json` 里的模板页
+「id 认不认识」的名单 = registry 条目 + `content/previews/_index.json` 里的模板页
 （服务自报的 root 下读，与 CLI 的 `--page` 共用 `src/server/lib/page-manifest.js`）。
 未知 id、未知文件夹、坏 `order`、重复或带未知字段的 folders 一律
 `400 {error:"bad_request", message:"<一句人话>"}`，且登记表一个字节不动；
@@ -166,8 +166,8 @@ client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
 ### 1 · workbench 自己的页面
 
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 `/annotate.js`（退出方式：`<html data-annotate="off">`）。
-独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`——
-见 `content/previews/doc-library/sample-report.html`。
+独立文档不需要自己接线：2026-08-17 起 previews 与 `/sites/` 同一条「serve 即注入」契约
+（ADR 0027），整份文档自动成为可标注区域。范例见 `e2e/doc-site/report.html`。
 
 自 ADR 0027 起还有一层：`src/server/preview-inject.js` 给任何含 `<!doctype` 的 `content/previews/**.html`
 响应自动注入 client（`?annotate=off` 豁免，片段没有 doctype 天然放行）。previews 的注入
