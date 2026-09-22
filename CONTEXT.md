@@ -75,6 +75,28 @@ canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达�
 判据：跨屏复用、要做 variant 墙、或预期会收到「改这个控件」的标注，才抽成组件；
 单页专用的片段内联进页面 HTML。page-local 组件解析不实现（ADR 0028）。
 用 `data-ios-include="<comp>/<variant>"` 引入，`data-text` / `data-slot-<name>` 填槽。
+**pp2 起改口径（2026-09-22 决定，实现中，见 tasks/2026-09-22-pp2/）**：组件先住页里，
+`<page>/components/<Name>.jsx`，帧文件显式 `import` 它；跨页复用时手动搬进 kit（`pinpoint/kit`）。
+组件是印章：输入 props 和 children，输出 HTML，没有状态、事件、副作用；variant 用 props 表达，
+variants 墙是 board.json 里 `shell: "comp"` 的 section，screen 条目内联 `comp` + `props`。
+`data-ios-include` 随之退役，只在编译存量 HTML 页时展开一次。
+要避开：拿“组件”指 workbench 自己的 React 组件——那个说 workbench 组件。
+
+**source 与 dist（源码与编译产物）· pp2**
+源码 = 页目录里 agent 写的东西（`.jsx` 帧、`components/`、页级 css / js、board.json；存量 `.html` 也是源码）。
+dist = `ppnt build` 编出来的静态 HTML 帧，住 `~/.pinpoint/dist/<entry>/`，不进 git，不放回页目录。
+标注、导出、mention、`/sites/` 下的屏 HTML 只认 dist；看 dist 走 `ppnt render`。
+页级资源在 board.json 的 `assets`，由编译器注入每帧。
+要避开：拿“产物”单说 dist——左栏的“产物”仍是交付物（见上），说编译结果就说 dist。
+
+**标注状态（status）· pp2**
+一条标注四态：open（owner 写下）→ check（agent 看了、不改，带一行 note）/ done（agent 改完）→ close（owner 单击确认，可撤销）。
+owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done，close 只在工作台；close 不删，默认收起。
+取代 review-refinements 的“结果指示”（蓝框）。
+要避开：把 done 说成“已验收”——验收是 close。
+
+**`#n`（标注序号）· pp2**
+标注对外引用号，按 registry entry 单调计数、永不复用，跨页写 `<entry>#12`。随机 `id` 留作内部主键，`@a:<id>` 继续兼容。
 
 **template 与 instance（模板与实例）**
 template = 进 git 的那部分：框架代码 + Example Library + system 组件，`content/previews/` 里只有它。
@@ -120,5 +142,6 @@ embed 是实现：doc 自己的 annotate client 把挂载点水合成一个指�
 ## 引用地址
 
 `@page:<pageId>` · `@section:<pageId>/<sectionId>` · `@frame:<pageId>/<screenId>` · `@a:<annotationId>`。
+pp2 起 CLI 还认 `B3`（图纸号）和 `#12`（标注序号），见资产层“`#n`”。
 这四个是人和 agent 在对话里互指的短地址。标注正文里指自己的目标用 `[@t:iN]`，
 它只在那一条标注内解析，永远不进 `mentions[]`。
