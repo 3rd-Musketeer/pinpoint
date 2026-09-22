@@ -48,3 +48,17 @@ test('migrate-annotation-status：dry-run 不写盘，--apply 备份后把 resul
   const again = await execFileP('node', [SCRIPT], { env: { ...process.env, PINPOINT_DATA_DIR: dir } });
   assert.match(again.stdout, /0 个带 result，共 0 条待迁/);
 });
+
+test('migrate-annotation-status：build-notes 页的账本不因文件名前缀被吞（R9）', async (t) => {
+  const dir = seedLedger(t);
+  fs.writeFileSync(path.join(dir, 'bucket-a', 'build-notes.json'), JSON.stringify({
+    page: 'build-notes', revision: 1,
+    annotations: [{ id: 'b1', n: 1, content: '结果在 build 页', result: { operations: [] } }],
+  }));
+  // dist / render / migrations 目录里的 .json 一概不算账本。
+  fs.mkdirSync(path.join(dir, 'bucket-a', 'dist', 'build-notes'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'bucket-a', 'dist', 'build-notes', 'build.json'), '{"builtAt":1}');
+  const out = await execFileP('node', [SCRIPT], { env: { ...process.env, PINPOINT_DATA_DIR: dir } });
+  assert.match(out.stdout, /build-notes\.json × 1/);
+  assert.doesNotMatch(out.stdout, /dist/);
+});

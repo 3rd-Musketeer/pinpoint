@@ -17,8 +17,11 @@ import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
 const BACKUP_ROOT = path.join(dataRoot(), 'migrations', '2026-09-22-status');
 const APPLY = process.argv.includes('--apply');
 
+// 账本判定按精确名单排除（review R9）：_seq.json 是 #n 计数器不是账本；dist /
+// render / migrations 是产物与备份目录（见 ledgerFiles）。旧版的
+// !startsWith('build') 会静默吞掉 build-notes 这类页的账本。
 function isLedger(name) {
-  return name.endsWith('.json') && name !== '_seq.json' && !name.startsWith('build');
+  return name.endsWith('.json') && name !== '_seq.json';
 }
 
 function migrateDoc(doc) {
