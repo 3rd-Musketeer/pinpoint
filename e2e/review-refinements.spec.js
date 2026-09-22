@@ -45,7 +45,11 @@ test('page pin, archive and restore survive reload without deleting the page', a
   const sidebar = await page.locator('#wbside').boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(sidebar.x);
   expect(box.x + box.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
-  expect(await (await request.get('/registry')).json()).toEqual(before);
+  // 钉/存档/恢复不该动登记表：比内容，不比 dir 条目的 mtime——那是登记目录
+  // 本身的 mtime，并行跑时另一组 runner 往仓库根写产物就会顶新它（与登记表
+  // 是否被改写无关）。
+  const withoutMtime = (doc) => JSON.stringify(doc.entries.map(({ mtime, ...rest }) => rest));
+  expect(withoutMtime(await (await request.get('/registry')).json())).toBe(withoutMtime(before));
   await page.screenshot({ path: test.info().outputPath('navigation.png') });
 });
 
