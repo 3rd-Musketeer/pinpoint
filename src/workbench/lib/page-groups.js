@@ -1,9 +1,9 @@
 // 左栏 Pages 的分组模型（2026-09-04 切片 ②，ADR 0032）：纯函数，Sidebar 消费。
-// 回答四件事，每件一个函数，互不缠绕：
-//  1. 模板页显不显示（三个 manifest 页默认藏起来，设置里有开关）；
-//  2. 搜索框打进来的字过滤谁（标题或 id 命中即留，段与段之间同一条规则）；
-//  3. 页归哪个夹（registry 条目看自己的 folder 字段，模板页看顶层 pageFolders）；
-//  4. 「最近」段那五条本地记录怎么进出。
+// 回答三件事，每件一个函数，互不缠绕：
+//  1. 搜索框打进来的字过滤谁（标题或 id 命中即留，段与段之间同一条规则）；
+//  2. 页归哪个夹（registry 条目看自己的 folder 字段，模板页看顶层 pageFolders）；
+//  3. 「最近」段那五条本地记录怎么进出。
+// （模板页已于 pp2 切片 3 全数退役，「模板显隐开关」随之一并删除。）
 //
 // 顺序规则（ADR 0032）：文件夹在前、散页在后，夹按 folders[] 数组序。夹内与散页
 // 区都沿用 Pages 的三档排序（lib/page-sort.js），**手动 order 只在夹内、且排序档
@@ -12,23 +12,9 @@
 import { sortPages } from './page-sort.js';
 import { FOLDER_ID_PATTERN, slugify } from '../../shared/registry-ids.js';
 
-// 模板页 = content/previews/_index.json 的 manifest 页（ADR 0032）。
-// 按 id 点名，不按「来自 manifest」推断。
-export var TEMPLATE_PAGE_IDS = ['library', 'doc-library'];
-
-var TEMPLATE_SET = TEMPLATE_PAGE_IDS.reduce(function (acc, id) { acc[id] = true; return acc; }, {});
-
-export function isTemplatePage(pageId) {
-  return !!TEMPLATE_SET[pageId];
-}
-
-/** 模板页的显隐。keepId = 当前页：藏起来的时候它仍要留在列表里，否则选中态无处可落。 */
-export function visiblePages(pages, options) {
-  options = options || {};
-  if (options.showTemplates) return pages.slice();
-  return pages.filter(function (page) {
-    return !isTemplatePage(page.id) || page.id === options.keepId;
-  });
+/** 列表全集（模板显隐曾是这里唯一的过滤；退役后是全量返回）。 */
+export function visiblePages(pages) {
+  return (pages || []).slice();
 }
 
 /** 搜索命中：标题或 id 的大小写无关子串。空查询 = 全留。 */

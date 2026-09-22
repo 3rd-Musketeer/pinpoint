@@ -933,7 +933,6 @@ export function Sidebar() {
   }
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
   var [query, setQuery] = useState('');
   var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
   // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
@@ -944,14 +943,11 @@ export function Sidebar() {
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 
-  // 分组模型只在清单 / 开关 / 当前页 / 搜索 / 排序变了才重算 —— 拖放中的落点态
+  // 分组模型只在清单 / 当前页 / 搜索 / 排序变了才重算 —— 拖放中的落点态
   // 与每分钟的时间 tick 都会让整栏重渲染，别让它们顺带重排一遍。
   var derived = useMemo(function () {
     var grouping = pageGrouping();
-    var pages = filterPages(
-      visiblePages(sidebarPages(), { showTemplates: showTemplates, keepId: activePageId }),
-      query
-    );
+    var pages = filterPages(visiblePages(sidebarPages()), query);
     return {
       grouping: grouping,
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
@@ -965,7 +961,7 @@ export function Sidebar() {
         sort: sort
       })
     };
-  }, [manifest, showTemplates, activePageId, query, sort, pagePreferences]);
+  }, [manifest, activePageId, query, sort, pagePreferences]);
   var model = derived.model;
   var dnd = useFolderActions(derived.grouping.folders, model, sort);
   // 「最近」与「页面」吃同一份过滤结果 —— 搜索是跨段的一条规则，不是每段一套。

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 import { E2E_DATA_DIR } from './env.js';
 import { annotationSlug } from '../src/shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
@@ -28,13 +27,12 @@ async function saveMark(page) {
 for (const zoom of ['0.75', '1.17', '2.5']) {
   test(`annotation navigation preserves earlier sections at zoom ${zoom}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
-    await seedTemplatePagesVisible(page);
-    await page.addInitScript((zoom) => {
+      await page.addInitScript((zoom) => {
       const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-      Object.assign(prefs, { zoomAxis: 2, sideCollapsed: true, pageViewports: { library: { canvasZoom: zoom } } });
+      Object.assign(prefs, { zoomAxis: 2, sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: zoom } } });
       localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
     }, zoom);
-    await page.goto('/index.html?page=library&mode=ios');
+    await page.goto('/index.html?page=e2e-ios&mode=ios');
     await page.waitForFunction(() => window.workbench && window.pinpoint);
     await expect(page.locator('[data-screen="settings"] .ios-cell').first()).toBeVisible();
     await page.evaluate(() => window.pinpoint.clear());

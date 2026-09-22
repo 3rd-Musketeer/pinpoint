@@ -27,7 +27,6 @@ import {
   withViewportPref
 } from './lib/viewport.js';
 import {
-  LIB_ID,
   modeForPage,
   pageEntry
 } from './lib/page-url.js';
@@ -74,7 +73,7 @@ export function switchPage(id, options) {
   // Annotation API: section id within current board — or a top-level page id.
   // 认页面靠清单，不靠左栏有没有画出那一行 —— 2026-09-04 起模板页默认不显示，
   // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。
-  if (id === LIB_ID || pageEntry(wbGet().pageManifest, id)
+  if (pageEntry(wbGet().pageManifest, id)
       || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
@@ -143,7 +142,7 @@ export function pageGrouping() {
 
 function defaultPageId() {
   var pages = manifestPages();
-  if (!pages.length) return LIB_ID;
+  if (!pages.length) return '';
   var manifest = wbGet().pageManifest;
   if (manifest && manifest.defaultPage) {
     for (var i = 0; i < pages.length; i++) {
@@ -173,7 +172,6 @@ export function resolveActivePage(preferredId, modeHint) {
       if (modeForPage(wbGet().pageManifest, pages[i].id) === modeHint) return pages[i].id;
     }
   }
-  if (ids[LIB_ID]) return LIB_ID;
   return defaultPageId();
 }
 

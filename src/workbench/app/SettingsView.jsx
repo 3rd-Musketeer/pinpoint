@@ -49,7 +49,6 @@ export function SettingsView() {
   var clockMode = useWorkbenchStore(function (s) { return s.clockMode; });
   var clockFixed = useWorkbenchStore(function (s) { return s.clockFixed; });
   var theme = useWorkbenchStore(function (s) { return s.theme; });
-  var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
 
   return (
     <Fragment>
@@ -101,19 +100,6 @@ export function SettingsView() {
 
         {/* ── 界面：pinpoint 自己 ── */}
         <div className={SECTION_HEAD} data-settings-section="ui">界面</div>
-        {/* 模板页开关（ADR 0032）：Component Library / Example Library /
-            Example HTML 是模板资产，不是 owner 每天要找的页 —— 默认藏起来。 */}
-        <div className={ROW}>
-          <span className="flex-1 text-xs font-medium text-muted-foreground">显示模板页</span>
-          <Seg id="showtemplates" role="group" aria-label="显示模板页"
-            value={showTemplates ? 'on' : 'off'} dataAttr="data-show-templates"
-            options={[['off', '隐藏'], ['on', '显示']]}
-            onPick={function (v) {
-              var on = v === 'on';
-              wbSet({ showTemplatePages: on });
-              savePrefs({ showTemplatePages: on });
-            }} />
-        </div>
         <Button type="button" variant="ghost" size="sm"
           onClick={() => window.workbench?.diagnostics?.download()}>
           导出诊断日志

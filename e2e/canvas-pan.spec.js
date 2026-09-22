@@ -1,21 +1,19 @@
 import { test, expect } from '@playwright/test';
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
 const cellSelector = '[data-screen="settings"] .ios-cell';
 
 async function openCanvas(page, count = 0, withResults = false) {
-  await seedTemplatePagesVisible(page);
   // Synthetic ledgers never write the user's data, even when a test edits a mark.
   await page.route('**/annotations/**', route => route.fulfill({ json: {
     revision: 1,
     annotations: Array.isArray(count) ? count : Array.from({ length: count }, (_, i) => ({
-      id: `pan-fixture-${i}`, n: i + 1, type: 'element', pageId: 'library',
+      id: `pan-fixture-${i}`, n: i + 1, type: 'element', pageId: 'e2e-ios',
       screenId: 'settings', content: `Pan annotation ${i + 1}`,
       ...(withResults ? { result: { operations: [{action:'modify', targets:[{screenId:'settings', selector:`.ios-page > .ios-section:first-child .ios-cell:nth-child(${i % 3 + 1})`}]}] } } : {}),
       targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(${i % 3 + 1})`, text: 'Cell' }],
     })),
   } }));
-  await page.goto('/index.html?page=library');
+  await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
@@ -140,7 +138,7 @@ test('zoom invalidates cached geometry and preserves screen-size annotation bord
 
 test('scrolling one phone remeasures that frame only', async ({ page }) => {
   const annotations = ['settings', 'home'].map((screenId, i) => ({
-    id: `frame-scroll-${i}`, n: i + 1, type: 'element', pageId: 'library', screenId,
+    id: `frame-scroll-${i}`, n: i + 1, type: 'element', pageId: 'e2e-ios', screenId,
     targets: [{ ref: 'i1', selector: `[data-screen="${screenId}"] .ios-stage`, text: screenId }],
     content: screenId,
   }));
@@ -170,7 +168,7 @@ test('scrolling one phone remeasures that frame only', async ({ page }) => {
 
 test('region and movement-arrow geometry translate together without rebuilding the arrow', async ({ page }) => {
   await openCanvas(page, [{
-    id: 'region-pan', n: 1, type: 'region', pageId: 'library', screenId: 'settings', content: 'Region and arrow',
+    id: 'region-pan', n: 1, type: 'region', pageId: 'e2e-ios', screenId: 'settings', content: 'Region and arrow',
     base: { selector: '[data-screen="settings"] .ios-stage', rect: [0, 0, 402, 874] },
     rect: [20, 180, 200, 70],
     move: { to_selector: `${cellSelector}:nth-child(2)`, to_rel: [.5, .5] },
@@ -219,7 +217,7 @@ test('continuous zoom projects targets without resolving or measuring them and n
 
 test('local content reflow preserves unrelated target geometry and updates the changed target', async ({ page }) => {
   await openCanvas(page, ['settings', 'home'].map((screenId, i) => ({
-    id: `local-${i}`, n: i + 1, type: 'element', pageId: 'library', screenId,
+    id: `local-${i}`, n: i + 1, type: 'element', pageId: 'e2e-ios', screenId,
     targets: [{ ref: 'i1', selector: screenId === 'home' ? '[data-screen="home"] .ios-app' : `${cellSelector}:nth-child(1)`, text: screenId }], content: screenId,
   })));
   await expect(page.locator('#ann-marks .ann-target')).toHaveCount(2);
@@ -241,7 +239,7 @@ test('local content reflow preserves unrelated target geometry and updates the c
 });
 
 test('cached anchor state distinguishes hidden, removed and restored content including selector attribute edits', async ({ page }) => {
-  await openCanvas(page, [{ id: 'unique-anchor', n: 1, type: 'element', pageId: 'library', screenId: 'settings',
+  await openCanvas(page, [{ id: 'unique-anchor', n: 1, type: 'element', pageId: 'e2e-ios', screenId: 'settings',
     targets: [{ ref: 'i1', selector: '[data-screen="settings"] label.ios-cell:nth-of-type(1)', text: 'First label' }], content: 'State' }]);
   const cell = page.locator(cellSelector).first();
   await cell.evaluate(el => { window.__restoreCell = el; el.style.display = 'none'; });
@@ -262,7 +260,7 @@ test('cached anchor state distinguishes hidden, removed and restored content inc
 
 test('a multi-frame annotation follows changes to its second target and keeps its arrow node on zoom', async ({ page }) => {
   await openCanvas(page, [{
-    id: 'multi-frame', n: 1, type: 'element', pageId: 'library', screenId: 'settings', content: 'Both frames',
+    id: 'multi-frame', n: 1, type: 'element', pageId: 'e2e-ios', screenId: 'settings', content: 'Both frames',
     targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(1)`, text: 'settings' },
       { ref: 'i2', selector: '[data-screen="home"] .ios-stage', text: 'home' }],
     move: { to_selector: '[data-screen="home"] .ios-stage', to_rel: [.5, .5] },
@@ -297,7 +295,7 @@ test('draft geometry is not translated twice during pan and zoom', async ({ page
 });
 
 test('a hidden secondary target in another frame is restored by local style changes', async ({ page }) => {
-  await openCanvas(page, [{ id: 'hidden-secondary', n: 1, type: 'element', pageId: 'library', screenId: 'settings',
+  await openCanvas(page, [{ id: 'hidden-secondary', n: 1, type: 'element', pageId: 'e2e-ios', screenId: 'settings',
     targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(1)`, text: 'Settings' },
       { ref: 'i2', selector: '[data-screen="home"] .ios-app', text: 'Home' }], content: 'Two targets' }]);
   await expect(page.locator('#ann-marks .ann-target')).toHaveCount(2);

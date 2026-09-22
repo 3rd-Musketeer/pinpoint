@@ -11,7 +11,7 @@ import {
 } from './lib/preview-contracts.js';
 import { wbGet, wbSet, activeBoardMode, useWorkbenchStore } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { LIB_ID, defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
+import { defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
@@ -61,7 +61,7 @@ import { startDeepLinkSync } from './url-sync.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
-wbSet({ activePageId: LIB_ID });
+wbSet({ activePageId: '' });
 var stage  = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var boardPanel;
@@ -600,7 +600,7 @@ if (import.meta.hot) {
 
 (function init() {
   var prefs = readPrefs();
-  applyBootPrefs(prefs, { pageId: prefs.activePageId || LIB_ID, refit: false });
+  applyBootPrefs(prefs, { pageId: prefs.activePageId || '', refit: false });
 })();
 
 if (stage) {

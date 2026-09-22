@@ -67,13 +67,14 @@ test('registry dir/file 条目变更 → preview:update（2026-08-17e；pp2 起 
   await hit.handleHotUpdate({ file: path.join(EXT, 'notes.txt'), server: s2 });
   assert.equal(s2.sent.length, 0);
 
-  // 仓库自身条目不吞 workbench 源码的默认 HMR；previews/components 分支优先
+  // 仓库自身条目不吞 workbench 源码的默认 HMR；模板页退役后 /previews/ 下没有
+  // 编译目标，该路径的变更不再发通知（pp2 切片 3）。
   s2.sent.length = 0;
   assert.equal(await hit.handleHotUpdate({ file: path.join(ROOT, 'workbench', 'stage.js'), server: s2 }), undefined);
   assert.equal(s2.sent.length, 0);
   s2.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(ROOT, 'previews', 'library', 'home.html'), server: s2 });
-  assert.deepEqual(s2.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'library' } }]);
+  assert.equal(s2.sent.length, 0);
 
   assert.ok(server);
 });
@@ -90,9 +91,6 @@ test('kit 组件变更 → 全量重编并对每页发 preview:update（review 1
   const s = fakeServer();
   await hit.handleHotUpdate({ file: path.join(ROOT, 'content', 'kits', 'ios', 'components', 'button', 'catalog.html'), server: s });
   const ids = s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id);
-  assert.ok(ids.includes('library'), JSON.stringify(ids));
-  assert.ok(ids.includes('doc-library'), JSON.stringify(ids));
-  assert.ok(ids.includes('components'), JSON.stringify(ids));
-  // dist 真的重编了（全量重编落进注入的 distRoot）
-  assert.ok(fs.existsSync(path.join(distRoot, 'library', 'build.json')));
+  // 模板页退役后全量重编只剩 registry 有板条目（本固件没有），通知只剩组件板那条。
+  assert.deepEqual(ids, ['components']);
 });

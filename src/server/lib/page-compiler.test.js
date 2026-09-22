@@ -535,15 +535,19 @@ describe('页解析', () => {
     assert.deepEqual(boardScreenIds(pageDir), null);
   });
 
-  test('默认 root / kitRoot 指向真仓库（__dirname 深度的回归哨兵）', async () => {
+  test('默认 kitRoot 指向真仓 kit（__dirname 深度的回归哨兵）', async () => {
     // page-compiler.js 住 src/server/lib/：ROOT 少退一级就会指到 src/ 下，
-    // 模板页与 kit 组件全部静默落空（include 全烤成失败块）。
-    assert.equal(resolvePageTarget('library')?.kind, 'template');
-    assert.equal(resolvePageTarget('doc-library')?.kind, 'template');
-    const target = resolvePageTarget('library');
+    // kit 组件全部静默落空（include 全烤成失败块）。模板页已随 pp2 切片 3 退役，
+    // 哨兵改吃「不传 kitRoot 时真仓组件能展开」。
+    const target = makePage('kit-guard', {
+      board: BASIC_BOARD,
+      files: { 'home.html': '<div class="ios-app"><div data-ios-include="bubble/incoming" data-text="哨兵"></div></div>\n' },
+    });
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true, JSON.stringify(result.screens));
-    const html = fs.readFileSync(distFile(target, 'msg-thread.html'), 'utf8');
-    assert.ok(!html.includes('include 失败'), '默认 kitRoot 下 library 的 include 必须展开成功');
+    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+    assert.ok(html.includes('哨兵'), html);
+    assert.ok(!html.includes('include 失败'), html);
+    assert.ok(html.includes('ios-bubble-in'), html);
   });
 });

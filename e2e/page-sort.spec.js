@@ -4,14 +4,14 @@ import { E2E_SITES_DIR } from './env.js';
 
 import { expect, test } from '@playwright/test';
 
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
-
 // Each server owns a copy; sorting never changes source fixture timestamps.
 
 const FIXTURE_MTIMES = [
   ['dir-site', Date.parse('2026-01-01T00:00:00Z')],
   ['mention-site', Date.parse('2026-02-01T00:00:00Z')],
   ['dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
+  ['ios-site', Date.parse('2026-04-01T00:00:00Z')],
+  ['doc-site', Date.parse('2026-05-01T00:00:00Z')],
   ['mixed-site', Date.now()],
 ];
 
@@ -25,7 +25,6 @@ function pressMtimes() {
 }
 
 async function openWorkbench(page) {
-  await seedTemplatePagesVisible(page);
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
@@ -37,9 +36,9 @@ function pageOrder(page) {
   );
 }
 
+// 模板页退役后（pp2 切片 3）：清单 = 全部 registry 行，书写顺序。
 const DEFAULT_ORDER = [
-  'library', 'doc-library',
-  'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed',
+  'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-doc',
 ];
 
 test.beforeAll(pressMtimes);
@@ -50,9 +49,8 @@ test('Pages 行内时间显示：dir 条目出相对时间，url 条目不出', 
   // mtime = now 的固件渲染「刚刚」；2026-01-01 的固件渲染「1-1」（同年超 7 天，M-D 不补零）。
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"] .wb-page-time')).toHaveText('刚刚');
   await expect(page.locator('#wbpages [data-vpage="e2e-dir"] .wb-page-time')).toHaveText('1-1');
-  // url 条目与本地示例页无 mtime，不出时间元素。
+  // url 条目无 mtime，不出时间元素。
   await expect(page.locator('#wbpages [data-vpage="e2e-site"] .wb-page-time')).toHaveCount(0);
-  await expect(page.locator('#wbpages [data-vpage="library"] .wb-page-time')).toHaveCount(0);
 });
 
 test('排序切换循环三档并持久化', async ({ page }) => {
@@ -62,21 +60,19 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'default');
   expect(await pageOrder(page)).toEqual(DEFAULT_ORDER);
 
-  // 最近更新：mtime 倒序；无 mtime 的页（本地示例 + url 条目）按原相对顺序沉底。
-  // pp2 切片 2 起 Component Library 退役，清单里没有系统行。
+  // 最近更新：mtime 倒序；无 mtime 的页（url 条目）按原相对顺序沉底。
   await sortBtn.click();
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
-    'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'e2e-mixed', 'e2e-doc', 'e2e-ios', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
+    'e2e-site', 'e2e-proxy',
   ]);
 
-  // 名称：zh locale 排序（此处全 Latin 标题，E2E* 先于 Example*）。
+  // 名称：zh locale 排序（此处全 Latin 标题，E2E* 字典序）。
   await sortBtn.click();
   await expect(sortBtn).toHaveAttribute('data-page-sort', 'name');
   expect(await pageOrder(page)).toEqual([
-    'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-proxy', 'e2e-site',
-    'doc-library', 'library',
+    'e2e-dir', 'e2e-dir-ios', 'e2e-doc', 'e2e-ios', 'e2e-mention', 'e2e-mixed', 'e2e-proxy', 'e2e-site',
   ]);
 
   // 第三击回到默认；选择写进 prefs。
@@ -94,7 +90,7 @@ test('排序切换循环三档并持久化', async ({ page }) => {
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator('.wb-page-sort')).toHaveAttribute('data-page-sort', 'updated');
   expect(await pageOrder(page)).toEqual([
-    'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'library', 'doc-library', 'e2e-site', 'e2e-proxy',
+    'e2e-mixed', 'e2e-doc', 'e2e-ios', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
+    'e2e-site', 'e2e-proxy',
   ]);
 });

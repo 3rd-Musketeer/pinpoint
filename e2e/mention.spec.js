@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
 import { E2E_DATA_DIR } from './env.js';
 
@@ -27,7 +26,6 @@ test.afterEach(() => {
 });
 
 async function openWorkbench(page) {
-  await seedTemplatePagesVisible(page);
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 }
@@ -59,8 +57,8 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   await expect(docFrame.locator('h1')).toHaveText('冲煮手账 · 评审稿');
   await expect(docFrame.locator('iframe[data-pinpoint-frame-iframe]')).toHaveCount(2);
 
-  const recipeFrame = docFrame.frameLocator('iframe[title="@frame:library/recipe"]');
-  const timerFrame = docFrame.frameLocator('iframe[title="@frame:library/timer"]');
+  const recipeFrame = docFrame.frameLocator('iframe[title="@frame:e2e-ios/recipe"]');
+  const timerFrame = docFrame.frameLocator('iframe[title="@frame:e2e-ios/timer"]');
   await expect(recipeFrame.locator('.ios-app')).toBeVisible();
   await expect(timerFrame.locator('[data-timer-toggle]')).toHaveText('开始');
 
@@ -88,7 +86,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   // 4) 标注模式下在文档里标注 frame 内元素（点选 = 标注，不触发交互）
   await recipeFrame.locator('[data-ratio-cycle]').click();
   await expect(recipeFrame.locator('#ann-box')).toBeVisible();
-  await saveComposerIn(page, { frameTitle: '@frame:library/recipe' }, '文档里标：粉水比控件');
+  await saveComposerIn(page, { frameTitle: '@frame:e2e-ios/recipe' }, '文档里标：粉水比控件');
   await expect(recipeFrame.locator('.ann-badge')).toHaveCount(1);
 
   // 5) 落在画布账本（pinpoint 桶的 /index.html 账本），行带 pageId+screenId+section
@@ -99,7 +97,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   }).toBe(1);
   const canvasDoc = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '/index.html');
   const row = canvasDoc.annotations[0];
-  expect(row.pageId).toBe('library');
+  expect(row.pageId).toBe('e2e-ios');
   expect(row.screenId).toBe('recipe');
   expect(row.section).toBe('brew-flow');
   expect(row.content).toContain('文档里标');
@@ -107,7 +105,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
 
   // 6) 画布对应板：同一 frame 上出现同一标注（画布 pin 渲染在 stage 级 overlay 的
   //    #ann-marks 里，不嵌在 frame 元素内 —— 这里按 overlay 计数 + 侧栏文本双断言）
-  await page.locator('#wbpages [data-vpage="library"]').click();
+  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
   await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list')).toContainText('文档里标：粉水比控件');
@@ -124,7 +122,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   // 8) 回文档：画布那条出现在文档里的活 frame 上（切页重建 iframe → 磁盘水合）
   await page.locator('#wbpages [data-vpage="e2e-mention"]').click();
   const docFrame2 = page.frameLocator('#wb-board-panel .wb-doc-frame');
-  const recipeFrame2 = docFrame2.frameLocator('iframe[title="@frame:library/recipe"]');
+  const recipeFrame2 = docFrame2.frameLocator('iframe[title="@frame:e2e-ios/recipe"]');
   await expect(recipeFrame2.locator('.ann-badge')).toHaveCount(2);
 
   // 9) 文档正文标注归文档自己的桶（e2e-mention），与 frame 标注两个命名空间

@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 import { E2E_DATA_DIR } from './env.js';
 import { annotationSlug } from '../src/shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
@@ -9,13 +8,12 @@ import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 const ledger = path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json');
 const read = () => JSON.parse(fs.readFileSync(ledger, 'utf8')).annotations;
 async function open(page) {
-  await seedTemplatePagesVisible(page);
   await page.addInitScript(() => {
     const p = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-    Object.assign(p, { zoomAxis: 2, sideCollapsed: true, pageViewports: { library: { canvasZoom: '1.17' } } });
+    Object.assign(p, { zoomAxis: 2, sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: '1.17' } } });
     localStorage.setItem('pinpoint-wb', JSON.stringify(p));
   });
-  await page.goto('/index.html?page=library&mode=ios');
+  await page.goto('/index.html?page=e2e-ios&mode=ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
 }
 async function save(page, content) {

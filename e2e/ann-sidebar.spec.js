@@ -192,7 +192,9 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   await expect(page.locator('#ann-toggle')).toBeVisible();
   await expect(page.locator('#ann-list')).toBeHidden();
 
-  // workbench 自己的标注列表正常工作。
+  // workbench 自己的标注列表正常工作（e2e-ios 的 settings 屏）。
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  await expect(page.locator('#wb-board-panel [data-screen="settings"]')).toBeVisible();
   await page.evaluate(() => window.pinpoint.setMode(true));
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.scrollIntoViewIfNeeded();

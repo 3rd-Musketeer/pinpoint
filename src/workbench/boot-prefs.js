@@ -346,9 +346,7 @@ export function applyBootPrefs(prefs, options) {
   applyIosRoots(prefs);
   wbSet({
     theme: prefs.theme || 'light',
-    frame: prefs.frame || 'screen',
-    // 模板页开关（ADR 0032）：设置视图写，左栏读，初值与其它偏好同一处进 store。
-    showTemplatePages: !!prefs.showTemplatePages
+    frame: prefs.frame || 'screen'
   });
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
   setCanvasZoom(zoomForPage(pageId), { save: false });

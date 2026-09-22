@@ -1,0 +1,13 @@
+{
+  "sections": [
+    {
+      "id": "doc",
+      "title": "文档",
+      "layout": "column",
+      "shell": "doc",
+      "screens": [
+        { "id": "report", "title": "评审稿" }
+      ]
+    }
+  ]
+}

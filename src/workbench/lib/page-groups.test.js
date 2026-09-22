@@ -5,7 +5,6 @@ import {
   filterPages,
   folderOfPage,
   groupPages,
-  isTemplatePage,
   nextFolderId,
   orderOfPage,
   pushRecent,
@@ -23,19 +22,9 @@ var PAGES = [
   { id: 'loose', title: 'my-todos' }
 ];
 
-test('模板页默认藏起来，当前页除外（选中态不能没有落点）', () => {
-  assert.equal(isTemplatePage('doc-library'), true);
-  assert.equal(isTemplatePage('weekly'), false);
-
-  assert.deepEqual(
-    visiblePages(PAGES, {}).map((p) => p.id),
-    ['weekly', 'daily', 'ghost', 'loose']
-  );
-  assert.deepEqual(
-    visiblePages(PAGES, { keepId: 'library' }).map((p) => p.id),
-    ['library', 'weekly', 'daily', 'ghost', 'loose']
-  );
-  assert.equal(visiblePages(PAGES, { showTemplates: true }).length, PAGES.length);
+test('visiblePages：模板页机制退役后全量返回（pp2 切片 3）', () => {
+  assert.deepEqual(visiblePages(PAGES).map((p) => p.id), PAGES.map((p) => p.id));
+  assert.deepEqual(visiblePages([]), []);
 });
 
 test('搜索：标题或 id 的大小写无关子串，空查询全留', () => {

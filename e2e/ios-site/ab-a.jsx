@@ -1,0 +1,28 @@
+export default function AbA() {
+  return (
+    <>
+    <div class="ios-app">
+      <div class="ios-nav"><div class="ios-nav-eyebrow">耶加雪菲 · V60</div><h1>冲煮完成</h1></div>
+      <div class="ios-page">
+        <div class="ios-card ios-section">
+          <div class="ios-card-title">这一杯的数据</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:14px 10px">
+            <div><div class="ios-title2" style="font-weight:600">2′28″</div><div class="ios-muted ios-caption" style="margin-top:2px">总时长</div></div>
+            <div><div class="ios-title2" style="font-weight:600">1:15</div><div class="ios-muted ios-caption" style="margin-top:2px">粉水比</div></div>
+            <div><div class="ios-title2" style="font-weight:600">92°C</div><div class="ios-muted ios-caption" style="margin-top:2px">水温</div></div>
+            <div><div class="ios-title2" style="font-weight:600">20.1%</div><div class="ios-muted ios-caption" style="margin-top:2px">萃取率</div></div>
+          </div>
+        </div>
+        <div class="ios-row ios-section" style="gap:8px;flex-wrap:wrap">
+          <span class="ios-chip green">顺滑</span><span class="ios-chip violet">花香</span><span class="ios-chip blue">酸感干净</span>
+        </div>
+        <div class="ios-card ios-section">
+          <div class="ios-card-title">手记</div>
+          <div class="ios-body ios-muted">写两句这杯的感受…</div>
+        </div>
+        <button class="ios-btn filled block lg">保存这一杯</button>
+      </div>
+    </div>
+        </>
+  );
+}

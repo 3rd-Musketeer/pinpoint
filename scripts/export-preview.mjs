@@ -52,7 +52,41 @@ if (!args.page || !args.section) {
     await page.waitForFunction(() => window.workbench);
     await page.evaluate((pageId) => window.workbench.setActivePage(pageId), args.page);
     await page.waitForFunction((pageId) => window.workbench.activePageId() === pageId && document.querySelector('#wb-board-panel .wb-lib-item'), args.page);
-    const snapshot = await page.evaluate((options) => window.workbench.exportSnapshot(options), {
+    // window.workbench.exportSnapshot 已随 pp2 切片 3 的导出削减退役 —— 快照按同一
+    // 契约在页内手组：clone → 摘 script 与 data-export-ui → 带上画布 token。
+    const snapshot = await page.evaluate((options) => {
+      const panel = document.getElementById('wb-board-panel');
+      const target = options.kind === 'section'
+        ? panel.querySelector(`.wb-lib-item[data-ann-section="${CSS.escape(options.sectionId)}"]`)
+        : panel.querySelector(`[data-screen="${CSS.escape(options.screenId)}"]`);
+      if (!target) throw new Error('找不到要导出的 ' + (options.kind === 'frame' ? 'Frame' : 'Section'));
+      const clone = target.cloneNode(true);
+      clone.querySelectorAll('script,[data-export-ui]').forEach((node) => node.remove());
+      clone.removeAttribute('data-export-ui');
+      const TOKEN_NAMES = [
+        '--wb-phone-w', '--wb-phone-h', '--wb-cap-section', '--wb-cap-screen', '--wb-cap-note', '--wb-cap-gap', '--wb-cap-ref',
+        '--wb-fg', '--wb-muted', '--wb-faint', '--wb-side', '--wb-line', '--wb-hover', '--wb-accent',
+      ];
+      const computed = getComputedStyle(panel.querySelector('.wb-library'));
+      const tokens = {};
+      TOKEN_NAMES.forEach((name) => {
+        const value = computed.getPropertyValue(name).trim();
+        if (value) tokens[name] = value;
+      });
+      const section = options.kind === 'section' ? target : target.closest('.wb-lib-item');
+      const screen = options.kind === 'frame' ? target : null;
+      return {
+        kind: options.kind,
+        pageId: window.workbench.activePageId(),
+        sectionId: section.getAttribute('data-ann-section') || section.getAttribute('data-ann-group'),
+        screenId: screen ? screen.getAttribute('data-screen') : '',
+        format: options.format,
+        scale: options.scale,
+        background: options.background,
+        tokens,
+        html: clone.outerHTML,
+      };
+    }, {
       kind: args.frame ? 'frame' : 'section',
       sectionId: args.section,
       screenId: args.frame || '',

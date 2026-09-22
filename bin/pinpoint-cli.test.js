@@ -242,10 +242,9 @@ test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
   assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
 });
 
-test('localManifestPageIds: 读真实仓库 manifest（tracked 模板页恒在）', () => {
+test('localManifestPageIds: 读真实仓库 manifest（模板页退役后为空数组）', () => {
   const ids = localManifestPageIds();
-  assert.ok(Array.isArray(ids));
-  assert.ok(ids.includes('library'), 'tracked 模板页 library 必在');
+  assert.deepEqual(ids, []);
 });
 
 /* ---- resolveRegistryPath / planAdd ---- */
@@ -368,16 +367,17 @@ test('runAdd: --page --draft 写入归属字段并提示分组', async (t) => {
   const page = path.join(dir, 'Draft.html');
   fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
   const rec = recorder();
-  const file = path.join(dir, 'registry.json');
+  // 目标页 = 已登记的 registry 条目（模板页退役后 --page 只认登记表与空 manifest，
+  // CLI 读真实仓库 manifest 解析，空 manifest 不报错）。
+  const file = seedRegistry(dir, { entries: [{ id: 'target-page', kind: 'dir', path: dir }] });
   const requestFn = () => Promise.reject(new Error('down'));
-  // 目标页 = tracked 模板页 library（CLI 读真实仓库 manifest 解析）
-  const code = await runAdd(['add', page, '--page', 'library', '--draft', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
+  const code = await runAdd(['add', page, '--page', 'target-page', '--draft', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
   assert.equal(code, 0);
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
   const entry = doc.entries.find((e) => e.id === 'draft');
-  assert.equal(entry.page, 'library');
+  assert.equal(entry.page, 'target-page');
   assert.equal(entry.role, 'draft');
-  assert.ok(rec.out.some((line) => /归属 Page「library」.*草稿组/.test(line)));
+  assert.ok(rec.out.some((line) => /归属 Page「target-page」.*草稿组/.test(line)));
   // 不可解析页整单失败，registry 不动（换个文件，避开 id 查重先报错）
   const other = path.join(dir, 'Draft2.html');
   fs.writeFileSync(other, '<!doctype html><html><body>d2</body></html>');
@@ -845,7 +845,7 @@ test('runFolder add / rename / rm: 一次原子写 + 一次 reload；删夹不�
   assert.ok(rm.out.some((line) => /1 个页没有被删，变成散页：site/.test(line)));
 });
 
-test('runFolder move: registry 条目落条目字段，manifest 页落 pageFolders，none 拖出来', async (t) => {
+test('runFolder move: registry 条目落条目字段，none 拖出来成散页', async (t) => {
   const dir = withTempDir(t);
   const file = seedRegistry(dir, { folders: [{ id: 'design', name: 'Design' }] });
   const io = { cwd: dir, env: {}, requestFn: serverDown };
@@ -856,12 +856,7 @@ test('runFolder move: registry 条目落条目字段，manifest 页落 pageFolde
   assert.equal(readDoc(file).pageFolders, undefined);
   assert.ok(entry.out.some((line) => /已把 site 放进文件夹 design（registry 条目）/.test(line)));
 
-  // library = 仓库里 tracked 的模板页，不在登记表里，一样能进夹
-  const page = recorder();
-  assert.equal(await runFolder(['folder', 'move', 'library', 'design', '--registry', file], { ...page.io, ...io }), 0);
-  assert.deepEqual(readDoc(file).pageFolders, { library: 'design' });
-  assert.ok(page.out.some((line) => /pageFolders/.test(line)));
-
+  // 模板页退役后 manifest 为空，「manifest 页进夹」没有对象；未知页照常被拒（见预检用例）。
   const loose = recorder();
   assert.equal(await runFolder(['folder', 'move', 'site', 'none', '--registry', file], { ...loose.io, ...io }), 0);
   assert.equal(readDoc(file).entries[0].folder, undefined);

@@ -242,7 +242,9 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
-  // file 条目保留磁盘直读。
+  // file 条目保留磁盘直读。fragment 帧的标注桶恒为 'pinpoint'（与画布同一本
+  // 账本 —— 画布实例按 pinpoint 桶 + pageId 行写，mention 与画布双向同步
+  // 依赖同一桶；条目自己的桶只服务 /sites/ 直开页面）。
   if (entry.kind === 'dir' && diskBoard && !src) {
     const pageDir = path.resolve(entry.path);
     return {
@@ -254,7 +256,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       section: hit.section,
       sectionLabel: hit.sectionLabel,
       ref: hit.ref,
-      entry: entry.id,
+      entry: 'pinpoint',
       baseUrl,
       distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
     };
@@ -274,7 +276,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: entry.id,
+    entry: 'pinpoint',
     baseUrl,
     fragmentPath,
   };

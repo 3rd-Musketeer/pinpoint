@@ -2,7 +2,7 @@ import {test,expect} from '@playwright/test';
 import fs from 'node:fs/promises';
 import { E2E_DATA_DIR } from './env.js';
 test('canvas diagnostics survive reload and export bounded metadata without page content',async({page})=>{
-  await page.goto('/index.html?page=library');
+  await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(()=>window.workbench?.diagnostics);
   await page.evaluate(()=>{
     const stage=document.getElementById('wbstage');

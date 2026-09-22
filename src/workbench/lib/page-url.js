@@ -1,6 +1,3 @@
-export var LIB_ID = 'library';
-export var DOC_LIB_ID = 'doc-library';
-
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
 export function pageEntry(manifest, pageId) {
   if (!manifest || !manifest.pages) return null;

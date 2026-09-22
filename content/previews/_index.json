@@ -1,15 +1,4 @@
 {
-  "defaultPage": "library",
-  "pages": [
-    {
-      "id": "library",
-      "title": "Example Library",
-      "mode": "ios"
-    },
-    {
-      "id": "doc-library",
-      "title": "Example HTML",
-      "mode": "html"
-    }
-  ]
+  "defaultPage": "",
+  "pages": []
 }

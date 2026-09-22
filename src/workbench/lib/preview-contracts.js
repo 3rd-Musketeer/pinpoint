@@ -84,8 +84,10 @@ function validatePageMode(value, path) {
 
 export function validatePageManifest(raw) {
   const input = objectAt(raw, 'manifest');
-  if (!Array.isArray(input.pages) || !input.pages.length) {
-    throw new ContractError('pages', 'expected a non-empty array');
+  // pp2 切片 3：模板页退役后 pages 可以为空（清单只剩 registry 条目经
+  // registrySitePages 并入）；空时 defaultPage 不再必填。
+  if (!Array.isArray(input.pages)) {
+    throw new ContractError('pages', 'expected an array');
   }
   const seen = new Set();
   const pages = input.pages.map((entry, index) => {
@@ -99,6 +101,12 @@ export function validatePageManifest(raw) {
       mode: validatePageMode(page.mode, `pages[${index}].mode`),
     };
   });
+  if (!pages.length) {
+    if (input.defaultPage != null && input.defaultPage !== '') {
+      throw new ContractError('defaultPage', `"${input.defaultPage}" is not listed in pages`);
+    }
+    return { defaultPage: '', pages };
+  }
   const defaultPage = identifier(input.defaultPage, 'defaultPage');
   if (!seen.has(defaultPage)) {
     throw new ContractError('defaultPage', `"${defaultPage}" is not listed in pages`);
