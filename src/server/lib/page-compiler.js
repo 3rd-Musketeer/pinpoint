@@ -149,12 +149,15 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
   const lines = String(text).split('\n');
   // 顶层允许的形态：import 一定放行；export 在帧文件（entry）里只许 default 那一个，
   // 组件文件里是命名导出函数（export function Badge），放行一切 export。
+  // 帧文件（pp2 切片 2）再放行 function Name( 开头的函数声明 —— 帧内小组件；
+  // const / let / 表达式语句仍然禁止。
   const exportOk = entry ? /^export\s+default\b/ : /^export\b/;
   const exportLabel = entry ? 'export default' : 'export';
+  const functionOk = entry ? /^function\s+[A-Za-z_$]/ : /$./;
   let depthB = 0;
   let depthP = 0;
   let depthK = 0;
-  let mode = null; // 'import' | 'export'
+  let mode = null; // 'import' | 'export' | 'function'
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const trimmed = line.trim();
@@ -174,12 +177,14 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
     if (!mode && atTop && trimmed
       && !/^import\b/.test(trimmed)
       && !exportOk.test(trimmed)
+      && !functionOk.test(trimmed)
       && !/^\/\//.test(trimmed) && !/^\/\*/.test(trimmed) && !/^\*/.test(trimmed) && !/^\*\//.test(trimmed)) {
-      errors.push({ line: i + 1, message: `${file}:${i + 1}: 顶层只允许 import 和 ${exportLabel}（组件是印章，没有顶层逻辑）` });
+      errors.push({ line: i + 1, message: `${file}:${i + 1}: 顶层只允许 import、${exportLabel}${entry ? ' 和函数声明' : ''}（组件是印章，没有顶层逻辑）` });
     }
     if (!mode && atTop) {
       if (/^import\b/.test(trimmed)) mode = 'import';
       else if (exportOk.test(trimmed)) mode = 'export';
+      else if (functionOk.test(trimmed)) mode = 'function';
     }
     for (const ch of line) {
       if (ch === '{') depthB += 1;

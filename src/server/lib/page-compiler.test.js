@@ -292,6 +292,29 @@ describe('lint', () => {
     assert.match(error, /home\.jsx:5.*顶层/);
   });
 
+  test('帧文件顶层放行函数声明（帧内小组件），const 仍拦', async () => {
+    const target = makePage('lint-fn-decl', {
+      board: BASIC_BOARD,
+      files: {
+        'home.jsx': [
+          'function Card({ label }) {',
+          '  return <div className="ios-card">{label}</div>;',
+          '}',
+          '',
+          'export default function Home() {',
+          '  return <div className="ios-app"><Card label="内" /></div>;',
+          '}',
+          '',
+        ].join('\n'),
+      },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
+    assert.ok(html.includes('内'));
+    assert.match(html, /data-pp-comp="Card"/);
+  });
+
   test('顶层语句判定不咬函数体与多行 import', () => {
     const ok = [
       'import {',
