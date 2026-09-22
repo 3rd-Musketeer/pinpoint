@@ -190,6 +190,27 @@ test('listDocs 跳过 _seq.json：聚合视图不多出 _seq 空文档（R6）',
   assert.deepEqual(Object.keys(docs), ['a.html.json']);
 });
 
+test('R14：/save 无编辑的 → open 拒绝；编辑回 open 与 close 撤销照常放行', (t) => {
+  const { store } = withStore(t);
+  // open → check（经 mark 端点），再拿 /save 原样重存但把状态写回 open：409。
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+  store.setStatus({ page: 'a.html', baseRevision: 1, id: 'x1', status: 'check' });
+  const demote = store.save({ page: 'a.html', baseRevision: 2, annotations: [{ id: 'x1', content: '甲', status: 'open' }] });
+  assert.equal(demote.status, 409);
+  assert.equal(demote.error, 'illegal_transition');
+  // 编辑正文（内容变了）→ 服务端强制回 open，放行。
+  const edited = store.save({ page: 'a.html', baseRevision: 2, annotations: [{ id: 'x1', content: '乙' }] });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.doc.annotations[0].status, 'open');
+  // done → close（工作台）后，/save 无编辑撤回 open：放行（close 撤销路径）。
+  store.setStatus({ page: 'a.html', baseRevision: 3, id: 'x1', status: 'done' });
+  const closed = store.save({ page: 'a.html', baseRevision: 4, annotations: [{ id: 'x1', content: '乙', status: 'close' }] });
+  assert.equal(closed.status, 200);
+  const reverted = store.save({ page: 'a.html', baseRevision: 5, annotations: [{ id: 'x1', content: '乙', status: 'open' }] });
+  assert.equal(reverted.status, 200);
+  assert.equal(reverted.doc.annotations[0].status, 'open');
+});
+
 test('/save 转换校验：非法转换 409，编辑回 open，新标注恒 open', (t) => {
   const { store } = withStore(t);
   store.save({ page: 'index.html', baseRevision: 0, annotations: [{ id: 'a1', content: '一' }] });
