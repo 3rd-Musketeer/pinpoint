@@ -352,23 +352,26 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   // lastRect 在锚点活着时已记下；目标离场后幽灵框钉在原位，pan / zoom 跟着投影走。
   // 比的是舞台绝对坐标（scrollLeft/Top 参与换算）：视口移动不算误差。
   const oldRect = await page.locator(`${cellSelector}:nth-child(1)`).first().boundingBox();
-  const oldAbs = await page.evaluate((r) => {
-    const s = document.getElementById('wbstage');
-    return { x: r.x + s.scrollLeft, y: r.y + s.scrollTop };
+  // 比对基准 = 格子相对板上内容原点（zoom-wrap）的位置：视口平移与 zoom
+  // 变换对这个量都是等比缩放，除回 zoom 即得板上内容坐标，pan / zoom 不变量。
+  const oldRel = await page.evaluate((r) => {
+    const wr = document.querySelector('#wb-board-panel .wb-zoom-wrap').getBoundingClientRect();
+    return { x: r.x - wr.left, y: r.y - wr.top, w: r.width, h: r.height };
   }, oldRect);
-  // 种子的锚 selector 命中 3 格（三个列表各自的 first cell）—— 全部清掉才算锚点失效。
-  await page.locator(`${cellSelector}:nth-child(1)`).evaluateAll(els => els.forEach(el => el.remove()));
+  // 种子的锚 selector 是位置式的（.ios-cell:nth-child(1)）：只删命中的 3 格，
+  // 后继 cell 会晋升成新的 first-child，锚点永远杀不死 —— 必须把 .ios-cell 清光。
+  await page.locator(cellSelector).evaluateAll(els => els.forEach(el => el.remove()));
   const ghost = page.locator('.ann-ghost-rect');
   await expect(ghost).toHaveCount(1);
-  const oldAbs2 = { ...oldAbs, width: oldRect.width, height: oldRect.height };
   const error = () => page.evaluate(old => {
-    const s = document.getElementById('wbstage');
+    const wr = document.querySelector('#wb-board-panel .wb-zoom-wrap').getBoundingClientRect();
     const box = document.querySelector('.ann-ghost-rect').getBoundingClientRect();
     const zoom = Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1;
-    const ax = (box.x + s.scrollLeft) / zoom, ay = (box.y + s.scrollTop) / zoom;
-    const aw = box.width / zoom, ah = box.height / zoom;
-    return Math.max(Math.abs(old.x - ax), Math.abs(old.y - ay), Math.abs(old.width - aw), Math.abs(old.height - ah));
-  }, oldAbs2);
+    // 标记框四周外扩 MARK_BOX_PAD_PX=4（同 .ann-target），比对前先扣回去。
+    const gx = (box.x + 4 - wr.left) / zoom, gy = (box.y + 4 - wr.top) / zoom;
+    const gw = (box.width - 8) / zoom, gh = (box.height - 8) / zoom;
+    return Math.max(Math.abs(old.x - gx), Math.abs(old.y - gy), Math.abs(old.w - gw), Math.abs(old.h - gh));
+  }, oldRel);
   await expect.poll(error).toBeLessThan(8);
   await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 100; s.scrollTop += 60; });
   await expect.poll(error).toBeLessThan(8);

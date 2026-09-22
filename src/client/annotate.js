@@ -2935,14 +2935,43 @@
   }
 
   function recordLastRect(m, docR) {
-    // lastRect = 最后一次锚点解析成功的几何（文档坐标）：几何变了才更新，
+    // lastRect = 最后一次锚点解析成功的几何：几何变了才更新，
     // 合并进下一次 persist 落盘，不为它单独触发写盘（节流约定）。
+    // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标。
     if (!docR || !m) return;
     var r = [Math.round(docR[0]), Math.round(docR[1]), Math.round(docR[2]), Math.round(docR[3])];
     var prev = m.lastRect;
     if (prev && prev.x === r[0] && prev.y === r[1] && prev.w === r[2] && prev.h === r[3]) return;
     m.lastRect = { x: r[0], y: r[1], w: r[2], h: r[3] };
     if (m.screenId) m.lastRect.screenId = m.screenId;
+  }
+
+  /* lastRect 的坐标约定（记录与消费必须同一把尺子）：
+   * 注入页没有舞台滚动，docRect（视口 + 窗口滚动）就是稳定的文档坐标；
+   * 画布端的滚动发生在 #wbstage，docRect 会随 pan 漂移，必须换成板上内容
+   * 坐标（= 几何缓存的模型坐标：pan 不变、zoom 无关），否则幽灵框消费时
+   * 会把当前舞台滚动再算一遍，把框推出视口、组可见性跟着把它藏掉。 */
+  function lastRectFromDoc(doc) {
+    if (!doc) return null;
+    if (!canvasView) return doc;
+    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    return [
+      (doc[0] - scrollX + canvasView.stage.scrollLeft - o[0] - pose.x) / zoom,
+      (doc[1] - scrollY + canvasView.stage.scrollTop - o[1] - pose.y) / zoom,
+      doc[2] / zoom, doc[3] / zoom
+    ];
+  }
+
+  /** lastRect → 当前视口矩形（幽灵框绘制与跳转共用；注入页 = 文档转视口）。 */
+  function lastRectViewRect(lr) {
+    if (!lr) return null;
+    if (!canvasView) return docToView([lr.x, lr.y, lr.w, lr.h]);
+    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    return [
+      o[0] + lr.x * zoom + pose.x - canvasView.stage.scrollLeft,
+      o[1] + lr.y * zoom + pose.y - canvasView.stage.scrollTop,
+      lr.w * zoom, lr.h * zoom
+    ];
   }
 
   function measureMark(entry) {
@@ -2952,16 +2981,16 @@
       var anchor = resolveMarkAnchor(m);
       els.push(anchor.el);
       views.push(anchor.live ? visibleViewRectDoc(anchor.rectDoc, anchor.el) : null);
-      if (anchor.live) recordLastRect(m, anchor.rectDoc);
+      if (anchor.live) recordLastRect(m, lastRectFromDoc(anchor.rectDoc));
     } else {
       (entry.liveTargets || []).forEach(function (target) {
         els.push(target.el);
         views.push(visibleViewRectOf(target.el));
       });
-      if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, docRect(entry.liveTargets[0].el));
+      if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, lastRectFromDoc(docRect(entry.liveTargets[0].el)));
       // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框。
       if (!views.length && m.lastRect && (m.status || 'open') !== 'close') {
-        views.push(docToView([m.lastRect.x, m.lastRect.y, m.lastRect.w, m.lastRect.h]));
+        views.push(lastRectViewRect(m.lastRect));
       }
     }
     var parts = views.map(function (r) { return r ? expandRect(markLocalRect(r)) : null; });
@@ -3658,7 +3687,7 @@
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
     } else if (!frameFocused && !anchor.live && m.lastRect && stageEl) {
       // 幽灵跳转（pp2）：锚点失效但有 lastRect —— 滚到它最后一次在的地方。
-      var gr = docToView([m.lastRect.x, m.lastRect.y, m.lastRect.w, m.lastRect.h]);
+      var gr = lastRectViewRect(m.lastRect);
       var gsr = stageEl.getBoundingClientRect();
       var gtarget = {
         top: stageEl.scrollTop + gr[1] - gsr.top - gsr.height / 2 + gr[3] / 2,
