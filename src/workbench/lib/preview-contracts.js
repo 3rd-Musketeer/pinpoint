@@ -149,7 +149,8 @@ function validateRole(value, path) {
 // pp2 切片 2：comp section 的 screen 条目 { id, title?, comp, props? } —— comp 是
 // 组件名（JS 标识符；页目录 components/<Name>.jsx 或 pinpoint/kit），props 是喂给
 // 组件的 JSON 值（board.json 本身已保证 JSON 安全，这里只拦非对象）。
-const COMP_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+// 编译侧（page-compiler 的 screenEntriesFromBoard）用同一条规则校验，保证两边一致。
+export const COMP_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
 
 function normalizeComp(screen, path) {
   if (screen.comp == null) return {};

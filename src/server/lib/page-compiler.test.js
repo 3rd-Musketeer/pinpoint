@@ -511,6 +511,27 @@ describe('dist 状态与 serve 读取', () => {
     assert.equal(distStatus(ghostTarget.entryId, ghostTarget.pageDir, { distRoot }).stale, false, '缺源码屏不算 stale');
   });
 
+  test('comp 名不合法的屏进 errors，页外文件不进 dist（建议 4）', async () => {
+    // board.json 手写绕得过 workbench 的 preview-contracts，编译侧用同一条
+    // COMP_NAME_PATTERN 再拦一道：`../../x` 这类名不进路径拼接。
+    const target = makePage('bad-comp', {
+      board: { sections: [{ id: 'main', title: 'Main', layout: 'row', shell: 'comp', screens: [
+        { id: 'evil', title: 'evil', comp: '../../x' },
+        { id: 'bub', title: 'bub', comp: 'Bubble', props: { side: 'incoming' } },
+      ] }] },
+      files: {},
+    });
+    // 页外文件真的放在指到的位置：没有校验的话它会被编进 dist。
+    fs.writeFileSync(path.join(tmp, 'x.jsx'), 'export function x() {\n  return null;\n}\n');
+    const distRoot = path.join(tmp, 'dist');
+    const result = await compilePage(target, { distRoot });
+    assert.equal(result.ok, false);
+    const evil = result.screens.find((row) => row.id === 'evil');
+    assert.match(evil.error, /comp 名不合法/);
+    assert.equal(result.screens.find((row) => row.id === 'bub').ok, true, '其余屏照常编译');
+    assert.equal(fs.existsSync(path.join(distRoot, 'bad-comp', 'evil.html')), false);
+  });
+
   test('帧的组件依赖进 sources：kit / 页内组件改动后 stale 如实上报（R2）', async () => {
     // kit 印章在本仓库里，测试临时改它的 mtime（finally 里恢复原值）。
     const kitFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'content', 'kits', 'ios', 'jsx', 'Bubble.jsx');

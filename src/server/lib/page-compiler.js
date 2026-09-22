@@ -33,6 +33,7 @@ import { readBoard } from './board-file.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
+import { COMP_NAME_PATTERN } from '../../workbench/lib/preview-contracts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -383,8 +384,15 @@ export function screenEntriesFromBoard(board) {
       // comp section 的 variants 墙（pp2 切片 2）：comp = 组件名，props 只允许 JSON 值
       // （board.json 本身是 JSON，天然满足；非对象的 props 按空对象处理）。
       if (typeof raw.comp === 'string' && raw.comp) {
-        entry.comp = raw.comp;
-        entry.props = raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props) ? raw.props : {};
+        if (!COMP_NAME_PATTERN.test(raw.comp)) {
+          // 编译侧与 workbench 的 preview-contracts 同一条 comp 名规则：不合法的
+          // 名不进路径拼接（`../../x` 会指到页外）也不进生成的 import 代码，
+          // 屏级报错，其余屏照常。
+          entry.compError = `comp 名不合法："${raw.comp}"（必须匹配 ${COMP_NAME_PATTERN}）`;
+        } else {
+          entry.comp = raw.comp;
+          entry.props = raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props) ? raw.props : {};
+        }
       }
       entries.push(entry);
     }
@@ -395,6 +403,9 @@ export function screenEntriesFromBoard(board) {
 async function compileScreen(target, entry, options = {}) {
   const started = performance.now();
   const screenId = entry.id;
+  if (entry.compError) {
+    return { ok: false, error: `${screenId}: ${entry.compError}`, ms: 0, source: null };
+  }
   const jsxFile = `${screenId}.jsx`;
   const htmlFile = `${screenId}.html`;
   let result;
