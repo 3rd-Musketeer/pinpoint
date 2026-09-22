@@ -1,6 +1,9 @@
 # 0017 · 五阶段 ROADMAP：Web 退役 + Pages 统一 + CLI / 代理 / 文档 mention 方向
 
-Status: 现行（阶段 2–5 实现中） · Date: 2026-08-16 · Scope: `docs/2026-08-16-roadmap.md`
+Status: 部分被取代 · Date: 2026-08-16 · Superseded-by: 0035（“Component Library 作系统行保留”一句作废） · Scope: `docs/2026-08-16-roadmap.md`
+
+> 2026-09-22：阶段地图与各阶段方向仍现行（见 roadmap 顶部的 pp2 指针）；阶段 2 里
+> Component Library 作系统行保留的那句被 0035 推翻——系统行藏起，跨页信号出现再开。
 
 **Decided**（owner 2026-08-16 讨论定稿；`ROADMAP.md` 落盘为阶段地图，goal 驱动执行）:
 
