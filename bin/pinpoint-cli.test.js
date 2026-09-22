@@ -22,7 +22,7 @@ import {
   folderRows,
   formatFolderList,
   formatStatus,
-  localManifestPageIds,
+  manifestPageIds,
   parseArgs,
   parseRoutes,
   pickRoute,
@@ -242,8 +242,8 @@ test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
   assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
 });
 
-test('localManifestPageIds: 读真实仓库 manifest（模板页退役后为空数组）', () => {
-  const ids = localManifestPageIds();
+test('manifestPageIds: 读真实仓库 manifest（模板页退役后为空数组）', () => {
+  const ids = manifestPageIds();
   assert.deepEqual(ids, []);
 });
 

@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
 import { contentMtimeMs } from './lib/content-mtime.js';
-import { localManifestPageIds } from './lib/page-manifest.js';
+import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -241,7 +241,7 @@ export function createAnnotateHandler(options = {}) {
   // 文件夹写接口认识的 id：registry 条目 + 本地 manifest 页（Component
   // Library 等模板页不在登记表里，但一样能拖进夹）。
   function knownPageIds() {
-    return localManifestPageIds(serviceRoot);
+    return manifestPageIds(serviceRoot);
   }
 
   /**

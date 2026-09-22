@@ -29,7 +29,7 @@ import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
-import { localManifestPageIds } from './page-manifest.js';
+import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
 
@@ -71,7 +71,7 @@ export function listPageIds({ registry = null, root = ROOT } = {}) {
     if (entry.kind !== 'dir' || typeof entry.path !== 'string') continue;
     if (fs.existsSync(path.join(path.resolve(entry.path), 'board.json'))) ids.add(entry.id);
   }
-  for (const id of localManifestPageIds(root)) {
+  for (const id of manifestPageIds(root)) {
     if (fs.existsSync(path.join(root, 'content', 'previews', id, 'board.json'))) ids.add(id);
   }
   return [...ids].sort();
@@ -91,7 +91,7 @@ export function listCompileTargets({ registry = null, root = ROOT, templateOnly 
   }
   const manifestIds = templateOnly
     ? trackedManifestPageIds(root)
-    : localManifestPageIds(root);
+    : manifestPageIds(root);
   for (const id of manifestIds) {
     if (seen.has(id)) continue;
     const target = resolvePageTarget(id, { registry: null, root });

@@ -12,7 +12,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-export function localManifestPageIds(root) {
+export function manifestPageIds(root) {
   const file = path.join(root, 'content', 'previews', '_index.json');
   if (!fs.existsSync(file)) return [];
   try {

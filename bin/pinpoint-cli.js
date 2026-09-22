@@ -28,7 +28,7 @@ import {
   renderScreenHtml,
   resolvePageTarget,
 } from '../src/server/lib/page-compiler.js';
-import { localManifestPageIds as manifestPageIds } from '../src/server/lib/page-manifest.js';
+import { manifestPageIds as libManifestPageIds } from '../src/server/lib/page-manifest.js';
 import {
   defaultEntries,
   defaultRegistryPath,
@@ -352,7 +352,7 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
     if (!PAGE_ID_PATTERN.test(flags.page)) {
       throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
     }
-    const resolvable = new Set([...(pageIds || localManifestPageIds()), ...existingIds]);
+    const resolvable = new Set([...(pageIds || manifestPageIds()), ...existingIds]);
     if (!resolvable.has(flags.page)) {
       throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
     }
@@ -370,8 +370,8 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
 
 /** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端的
     文件夹写接口用的是同一份）。缺省读本 CLI 所在仓库。 */
-export function localManifestPageIds(root = REPO_ROOT) {
-  return manifestPageIds(root);
+export function manifestPageIds(root = REPO_ROOT) {
+  return libManifestPageIds(root);
 }
 
 /**
@@ -916,7 +916,7 @@ export function planFolder(argv, { cwd = process.cwd(), env = process.env, pageI
   if (parsed.sub === 'rm') {
     return { ...parsed, registryPath, ...buildFolderRemove(parsed.args[0], state) };
   }
-  const known = pageIds || localManifestPageIds();
+  const known = pageIds || manifestPageIds();
   const move = buildFolderMove(parsed.args[0], parsed.args[1], {
     folders: state.folders,
     entryIds: state.entries.map((entry) => entry && entry.id),
