@@ -5,10 +5,9 @@
  * - 每个 screen 按 <screenId>.jsx → <screenId>.html 的顺序找源码；都没有则该屏报
  *   “源码不存在”，其余屏照常编译。
  * - .jsx 帧：esbuild（jsx automatic + jsxDev + 我们的 pp-jsx-runtime）转 cjs bundle，
- *   new Function 就地求值后 renderToString 成 HTML 片段；`pinpoint/kit` 本切片解析成
- *   空模块（切片 2 填）。相对 import 走 esbuild 默认解析。
- * - .html 帧：原样保留；含 data-ios-include 的用 src/shared/frame-shell.js 的
- *   expandIncludeRefs 在编译期展开一次（组件文件在 content/kits/ios/components/）。
+ *   new Function 就地求值后 renderToString 成 HTML 片段；相对 import 走 esbuild
+ *   默认解析。
+ * - .html 帧：原样保留。
  * - board.json 顶层 assets: { css?: [], js?: [] } 注入每帧：css 在帧开头
  *   `<style>@import …`，js 在帧末尾 `<script type="module" data-preview-script …>`；
  *   存量帧手写了同 URL 行的不重复注入。
@@ -29,8 +28,6 @@ import esbuild from 'esbuild';
 import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
-import { expandIncludeRefs } from '../../shared/frame-shell.js';
-import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { dataRoot } from './annotate-data-dir.js';
 import { localManifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
@@ -38,7 +35,6 @@ import { PAGE_ID_PATTERN } from './registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
-const KIT_COMPONENTS = path.join(ROOT, 'content', 'kits', 'ios', 'components');
 // pinpoint/kit 的落点（pp2 切片 2）：kit 的 10 个系统组件的 JSX 印章住这里。
 const KIT_JSX = path.join(ROOT, 'content', 'kits', 'ios', 'jsx');
 const KIT_JSX_INDEX = path.join(KIT_JSX, 'index.js');
@@ -321,27 +317,12 @@ async function compileJsxScreen(target, screenId, file) {
   }
 }
 
-function kitVariantLoader(kitRoot) {
-  return ({ component, variant }) => {
-    const file = path.join(kitRoot, component, `${variant}.html`);
-    if (!file.startsWith(path.resolve(kitRoot) + path.sep)) return null;
-    try {
-      return fs.readFileSync(file, 'utf8');
-    } catch {
-      return null;
-    }
-  };
-}
-
-async function compileHtmlScreen(target, screenId, file, { kitRoot = KIT_COMPONENTS } = {}) {
+function compileHtmlScreen(target, screenId, file) {
   let html;
   try {
     html = fs.readFileSync(path.join(target.pageDir, file), 'utf8');
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
-  }
-  if (/\bdata-ios-include=/.test(html)) {
-    html = await expandIncludeRefs(html, kitVariantLoader(kitRoot), applyIncludeSlots);
   }
   return { ok: true, html };
 }
@@ -403,7 +384,7 @@ async function compileScreen(target, entry, options = {}) {
     result = await compileJsxScreen(target, screenId, jsxFile);
   } else if (fs.existsSync(path.join(target.pageDir, htmlFile))) {
     source = sourceRecord(htmlFile);
-    result = await compileHtmlScreen(target, screenId, htmlFile, options);
+    result = compileHtmlScreen(target, screenId, htmlFile);
   } else {
     result = { ok: false, error: `${screenId}: 源码不存在（既没有 ${jsxFile} 也没有 ${htmlFile}）` };
   }
@@ -535,7 +516,7 @@ export async function compilePage(target, options = {}) {
   const errors = {};
   const htmls = {};
   for (const entry of picked) {
-    const row = await compileScreen(target, entry, { assets, kitRoot: options.kitRoot });
+    const row = await compileScreen(target, entry, { assets });
     screens.push({ id: entry.id, ok: row.ok, ms: row.ms, ...(row.ok ? {} : { error: row.error }) });
     if (row.source) sources[entry.id] = row.source;
     if (row.ok) htmls[entry.id] = row.html;
@@ -577,7 +558,7 @@ export async function compilePage(target, options = {}) {
 }
 
 /** 编译单屏但不落 dist（ppnt render）。 */
-export async function renderScreenHtml(target, screenId, options = {}) {
+export async function renderScreenHtml(target, screenId) {
   let board;
   try {
     board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
@@ -586,7 +567,7 @@ export async function renderScreenHtml(target, screenId, options = {}) {
   }
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
   const entry = screenEntriesFromBoard(board).find((row) => row.id === screenId) || { id: screenId };
-  const row = await compileScreen(target, entry, { assets, kitRoot: options.kitRoot });
+  const row = await compileScreen(target, entry, { assets });
   return row.ok ? { ok: true, html: row.html } : { ok: false, error: row.error };
 }
 

@@ -19,12 +19,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  expandIncludeRefs,
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell,
 } from '../../shared/frame-shell.js';
-import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { loadDistScreenHtml } from './page-compiler.js';
@@ -291,14 +289,8 @@ function docUrlForScreen(screen, baseUrl) {
   return `${baseUrl}${encodeURIComponent(screen.id)}.html`;
 }
 
-function readIncludeFragment(component, variant) {
-  const file = path.join(COMPONENTS_ROOT, component, `${variant}.html`);
-  if (!file.startsWith(COMPONENTS_ROOT + path.sep)) return Promise.resolve(null);
-  return Promise.resolve(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
-}
-
-/** fragment 屏内容：dist（页内 board 屏）或磁盘（kit 组件 / src 屏）读取 →
-    include 展开（dist 里已无 include，空操作）→ 机壳包装（与画布同一份 lib）。
+/** fragment 屏内容：dist（页内 board 屏）或磁盘（src 屏）读取 →
+    机壳包装（与画布同一份 lib）。
     编译失败的屏抛普通 Error —— frame-api 落 500 frame_failed 带错误文本。 */
 export async function assembleFrameContent(target) {
   let raw;
@@ -309,9 +301,8 @@ export async function assembleFrameContent(target) {
   } else {
     raw = fs.readFileSync(target.fragmentPath, 'utf8');
   }
-  let html = await expandIncludeRefs(raw, readIncludeFragment, applyIncludeSlots);
-  if (target.shell === 'comp') html = wrapFragmentForLibrary(html);
-  return target.shell === 'comp' ? wrapCompStage(html) : wrapPhoneShell(html, target.shell);
+  if (target.shell === 'comp') raw = wrapFragmentForLibrary(raw);
+  return target.shell === 'comp' ? wrapCompStage(raw) : wrapPhoneShell(raw, target.shell);
 }
 
 function frameCaptionHtml(target) {

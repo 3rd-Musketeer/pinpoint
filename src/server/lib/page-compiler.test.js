@@ -298,27 +298,12 @@ describe('comp 屏（variants 墙）', () => {
 });
 
 describe('.html 帧', () => {
-  test('无 include 的存量帧逐字节恒等', async () => {
+  test('.html 帧逐字节恒等', async () => {
     const fragment = '<div class="ios-app">\n  <div class="ios-page">恒等</div>\n</div>\n';
     const target = makePage('html-identity', { board: BASIC_BOARD, files: { 'home.html': fragment } });
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true);
     assert.equal(fs.readFileSync(distFile(target, 'home.html'), 'utf8'), fragment);
-  });
-
-  test('include 在编译期展开一次，dist 里不再有 include', async () => {
-    const kitRoot = path.join(tmp, 'kit');
-    fs.mkdirSync(path.join(kitRoot, 'x-card'), { recursive: true });
-    fs.writeFileSync(path.join(kitRoot, 'x-card', 'default.html'), '<div class="x-card" data-ios-slot="text">占位</div>');
-    const target = makePage('html-include', {
-      board: BASIC_BOARD,
-      files: { 'home.html': '<div class="ios-app"><div data-ios-include="x-card/default" data-text="展开我"></div></div>\n' },
-    });
-    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist'), kitRoot });
-    assert.equal(result.ok, true);
-    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
-    assert.ok(!html.includes('data-ios-include'), html);
-    assert.ok(html.includes('展开我'), html);
   });
 });
 
@@ -499,12 +484,12 @@ describe('dist 状态与 serve 读取', () => {
       files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>看</p></div>;\n}\n' },
     });
     const distRoot = path.join(tmp, 'dist');
-    const result = await renderScreenHtml(target, 'home', { distRoot });
+    const result = await renderScreenHtml(target, 'home');
     assert.equal(result.ok, true);
     assert.ok(result.html.includes('看'));
     assert.ok(result.html.includes('data-pp-id="home.jsx:2#1"'));
     assert.equal(fs.existsSync(distRoot), false);
-    const missing = await renderScreenHtml(target, 'ghost', { distRoot });
+    const missing = await renderScreenHtml(target, 'ghost');
     assert.equal(missing.ok, false);
     assert.match(missing.error, /源码不存在/);
   });
@@ -533,21 +518,5 @@ describe('页解析', () => {
     assert.equal(resolvePageTarget('../etc', { registry, root }), null);
     assert.deepEqual(listPageIds({ registry, root }), ['ext-page', 'tpl']);
     assert.deepEqual(boardScreenIds(pageDir), null);
-  });
-
-  test('默认 kitRoot 指向真仓 kit（__dirname 深度的回归哨兵）', async () => {
-    // page-compiler.js 住 src/server/lib/：ROOT 少退一级就会指到 src/ 下，
-    // kit 组件全部静默落空（include 全烤成失败块）。模板页已随 pp2 切片 3 退役，
-    // 哨兵改吃「不传 kitRoot 时真仓组件能展开」。
-    const target = makePage('kit-guard', {
-      board: BASIC_BOARD,
-      files: { 'home.html': '<div class="ios-app"><div data-ios-include="bubble/incoming" data-text="哨兵"></div></div>\n' },
-    });
-    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
-    assert.equal(result.ok, true, JSON.stringify(result.screens));
-    const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
-    assert.ok(html.includes('哨兵'), html);
-    assert.ok(!html.includes('include 失败'), html);
-    assert.ok(html.includes('ios-bubble-in'), html);
   });
 });
