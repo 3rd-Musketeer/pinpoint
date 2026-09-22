@@ -1,8 +1,7 @@
 // Workbench 屏幕装配簇 — 屏幕 HTML 拉取（pp2：dist）、壳装配、整板 HTML。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // P2：screen 拉取迁入 TanStack Query（app/query-client.js），失效由 SSE 桥的
-// invalidateQueries 驱动。pp2 切片 2：客户端 include 展开退役 —— dist 里已无
-// data-ios-include（编译期展开），expandIncludeRefs 留在编译器与 frame-doc 用。
+// invalidateQueries 驱动。
 // 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
 // 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
 // 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
@@ -93,7 +92,7 @@ export function fetchScreenHtml(pageId, screen) {
   var fetchUrl = url;
   var page = pageEntry(wbGet().pageManifest, pageId);
   if (page && page.site) fetchUrl += (fetchUrl.indexOf('?') >= 0 ? '&' : '?') + 'annotate=off';
-  // pp2：拉到的就是 dist 屏（include 已在编译期展开）；缓存只按 SSE 失效重拉。
+  // pp2：拉到的就是 dist 屏；缓存只按 SSE 失效重拉。
   return queryClient.fetchQuery({
     queryKey: ['screen', pageId, sc.id],
     queryFn: function () {
