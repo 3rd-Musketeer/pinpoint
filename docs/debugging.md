@@ -267,18 +267,6 @@ index.html），屏装载器把它当正常预览 HTML 挂进 iframe。
 
 ---
 
-## 2026-08-16 浏览器扩展点击后无 sidebar，⌘R 后恢复
-
-现象：pinpoint 浏览器扩展在页面上点击后侧边栏不出现，刷新页面（⌘R）后正常。
-
-根因：未定位（内容脚本注入时机或扩展 SW 休眠待查；复发时再深挖，届时补全
-本条）。
-
-识别特征：扩展行为异常先试 ⌘R；若只有刷新能恢复，嫌疑集中在内容脚本注入
-时机 / service worker 休眠。
-
-防回归：无。
-
 ## Canvas flicker diagnostics
 
 The workbench keeps a local ring of up to 720 diagnostic events per load. During canvas

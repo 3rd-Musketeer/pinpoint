@@ -192,9 +192,9 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 合成板里屏的 `src` 做 percent-encode，好让 iframe URL、`location.pathname`、
 导出管线算标注 page key 的那个 hash 三者逐字节一致。
 
-### 3 · url 条目 → 两条并存的路径，落进同一个桶
+### 3 · url 条目 → 同源代理内嵌
 
-**同源代理内嵌（不需要扩展）** — `src/server/lib/site-proxy.js` 把登记的 origin 代理在
+**同源代理内嵌** — `src/server/lib/site-proxy.js` 把登记的 origin 代理在
 `/sites/<entry-id>/` 下。所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
 于是活的应用在 workbench 的 doc 壳 iframe 里同源渲染，侧栏经既有的 ann-bridge 直接驱动它的
 annotate 实例。
@@ -215,8 +215,8 @@ HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventS
 
 bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
 （`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——
-不虚拟化就会掉进它们的 catch-all。副作用是好的：标注账本因此落在应用路径（`/`、`/global`、…），
-与扩展在应用自己 origin 上注入出的账本逐字节同 key。前缀下的 WS upgrade 在 vite 的
+不虚拟化就会掉进它们的 catch-all。副作用是好的：标注账本因此落在应用路径（`/`、`/global`、…）。
+前缀下的 WS upgrade 在 vite 的
 httpServer `'upgrade'` 上转发到目标 origin（通用兜底；SSE 走普通 HTTP 转发）。
 
 url 条目出现在 Pages 里（永远 doc 壳）：`/sites/<id>/board.json` 永远是合成的单屏板
@@ -229,19 +229,7 @@ indexedDB，同源内嵌即同一 storage 分区），以及虚拟化的两个�
 URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`location.href = '/x'`）会跳出代理
 （被 router 拦截的 SPA 链接没问题）。
 
-**浏览器扩展（应用自己 origin 那条路）** — `extension/` 是一个 MV3 扩展，content script
-（只在顶层 frame，匹配 `localhost` / `*.localhost` / `127.0.0.1`）先探 `https://pinpoint.localhost/registry`、
-再探页面自己的 origin，谁先返回 JSON 用谁。当 `location.origin` 与某个 registry url 条目**精确相等**时，
-它打上 `<html data-pinpoint-entry="...">`（页面的 CSP 会挡掉 content script 注入的内联 `<script>`；
-`window.__pinpointEntry` 仍是同源注入方的契约，两者都在时它赢），并从 `service.directOrigin`
-——也就是 API 的普通 loopback 绑定——加载 `annotate.js`。这一步绕的是 Chrome ≥130：
-它拿扩展自己的 CSP 校验 content script 注入的脚本，而那份 CSP 只放行
-`http://localhost:*` / `http://127.0.0.1:*`，不放行远端 https origin。
-没有任何候选返回登记表 = 服务没起 = 什么都不注入。
-所有 annotate API 路由对跨源请求答 `Access-Control-Allow-Origin: *`（不带凭证）并处理 `OPTIONS` 预检。
-
-一次性安装：`chrome://extensions` → Load unpacked → 选本仓 `extension/`，细节见
-[`extension/README.md`](../extension/README.md)。
+（浏览器扩展注入路径已于 pp2 切片 3 整体退役：代理内嵌覆盖了它的使用场景，两条注入路径只留一条。）
 
 ## 导出的纯净性
 

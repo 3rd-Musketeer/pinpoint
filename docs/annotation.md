@@ -56,31 +56,24 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
 只改 hash 不重新定位，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一条路由上。
 
-桶归属由 client 这样决定：`window.__pinpointEntry` → `<html data-pinpoint-entry>` → `'pinpoint'`；
+桶归属由 client 这样决定：`window.__pinpointEntry` → `'pinpoint'`；
 API 调用打的是脚本被加载的那个 origin。
 
 ## 控制面
 
-在非 workbench 页面（`/sites/`、扩展注入）上浮动工具条默认隐藏——**A** 键切标注模式。
-主入口是**pinpoint 工具栏图标**，它打开标注**侧面板**（Chrome Side Panel，浏览器原生分屏，
-页面保有自己的视口；owner 2026-08-11 的判断：页面内的 `#ann-sidebar` 浮层会压掉页面右侧 280px）。
-面板是一个扩展壳（`extension/sidepanel.html/js`）iframe 着服务托管的 `panel.html`：
-壳向标签页的 content script 要 `pinpoint:page-info`（经 `chrome.scripting` 幂等重注 content script
-来自愈陈旧标签页），把各种死路映射成本地提示（服务没起 / 页面不支持 / 页面 client 过旧 → ⌘R /
-未登记 / workbench 壳页），并把面板命令（`jump`/`edit`/`del`/`mode`）经 content script 那座
-CSP 安全的 DOM `CustomEvent('pinpoint:command')` 桥转给 client。面板页经 annotate API 读账本、
-经 SSE 实时更新；所有写入都留在页面 client 里（面板永远不是第二个写入方）。
+在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。
 
-工具条与侧面板各带一个**「打开 workbench」**入口（2026-09-04）：`/sites/` 页面与扩展注入页
-都在 workbench 之外，之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
-`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；面板的同名链接（`#panel-workbench`）
-走面板自己的 origin（面板页由服务托管）。两处都在 workbench 壳页与被嵌入的 frame 里隐藏——
-那里已经在 workbench 里，同「只留一个控制面」的规矩。
+工具条带一个**「打开 workbench」**入口（2026-09-04）：`/sites/` 页面在 workbench 之外，
+之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
+`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
+frame 里隐藏——那里已经在 workbench 里，同「只留一个控制面」的规矩。
 
-页面内的 `#ann-sidebar` 留给没有扩展的场合（`/sites/` 直开、**S** 键、工具条的「列表」钮）：
+页面内的 `#ann-sidebar`（**S** 键、工具条的「列表」钮）：
 head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
 凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条「只留一个控制面」的规矩。
+
+（浏览器扩展与它的 Chrome Side Panel 控制面已于 pp2 切片 3 退役。）
 
 ## workbench 偏好
 

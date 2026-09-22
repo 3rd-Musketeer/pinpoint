@@ -4,7 +4,6 @@
  *   /kits/…            → content/kits/…
  *   /previews/…        → content/previews/…
  *   /lib/…             → src/shared/…        （ann-list.css 的历史 URL）
- *   /panel.html        → src/pages/panel.html
  * 只改 req.url 的磁盘投影。本插件注册在插件链末尾，所以前面按原 URL 匹配的
  * 中间件（preview-inject / template-only / sites-api / annotate API）看到的
  * 仍是原样 URL，改写只对 vite 自己的静态与 html 服务生效。
@@ -36,10 +35,6 @@ const PREFIXES = [
   ['/lib/', '/src/shared/'],
 ];
 
-const EXACT = new Map([
-  ['/panel.html', '/src/pages/panel.html'],
-]);
-
 function normalizedPathname(pathname) {
   let decoded;
   try { decoded = decodeURIComponent(pathname); }
@@ -52,8 +47,6 @@ export function rewriteContentUrl(url) {
   const cut = url.indexOf('?');
   const pathname = cut === -1 ? url : url.slice(0, cut);
   const query = cut === -1 ? '' : url.slice(cut);
-  const exact = EXACT.get(pathname);
-  if (exact) return exact + query;
   const normalized = normalizedPathname(pathname);
   if (normalized === null) return url;
   for (const [from, to] of PREFIXES) {

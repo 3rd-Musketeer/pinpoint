@@ -15,33 +15,17 @@
   'use strict';
   if (window.__pinpoint) return;
   window.__pinpoint = true;
-  // 启动就绪标记：扩展 content script 的自愈路径据此判断主世界 client 已装好
-  // pinpoint:command 监听（见 extension/content.js）。IIFE 同步执行到底，标记
-  // 打在最前面即可——任何后续的 DOM 事件派发都排在本脚本求值之后。
-  // 抑制标记同理：workbench 壳/被嵌入页的标注控制面在壳上，content script 的
-  // 点击反馈据此区分「壳页」与「client 过旧」（sidebarSuppressed 是函数声明，
-  // 提升到 IIFE 顶部，此时可调）。
-  if (document.documentElement) {
-    document.documentElement.setAttribute('data-pinpoint-client', '1');
-    if (sidebarSuppressed()) document.documentElement.setAttribute('data-pinpoint-sidebar', 'suppressed');
-  }
 
   var SERVER = (function () {
     var src = document.currentScript && document.currentScript.src;
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  // Registry entry this page annotates under. Sources, in order: page-world
-  // global (same-origin injectors), then the <html data-pinpoint-entry>
-  // attribute — the browser extension (WP3) sets that one because a page with
-  // a strict CSP blocks content-script-injected inline <script> nodes, while
-  // the DOM stays shared across isolated/main worlds. Default: 'pinpoint'.
-  var ENTRY = window.__pinpointEntry ||
-    (document.documentElement && document.documentElement.getAttribute('data-pinpoint-entry')) ||
-    'pinpoint';
-  // 打回 DOM：/sites/ 等服务端注入路径走的是 window.__pinpointEntry（主世界
-  // 全局，隔离世界读不到），扩展 content script 的 page-info 依赖 DOM 属性。
-  if (document.documentElement) document.documentElement.setAttribute('data-pinpoint-entry', ENTRY);
+  // Registry entry this page annotates under: the page-world global set by
+  // same-origin injectors (/sites/、/api/frame）。Default: 'pinpoint'.
+  // （浏览器扩展已于 pp2 切片 3 退役 —— 它曾走 <html data-pinpoint-entry>
+  // 属性绕 CSP，那条通道与属性一并删除。）
+  var ENTRY = window.__pinpointEntry || 'pinpoint';
   // ---------- 阶段 5：/api/frame 嵌入帧身份 ----------
   // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel} 与
   // __pinpointLedger（顶层 workbench 的 pathname）：本实例读写画布同一份账本，
@@ -1275,8 +1259,6 @@
 
   function toggleMode() {
     mode = !mode;
-    // 模式标记：扩展 content script 的 page-info 应答把它捎给侧边栏面板。
-    document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
     if (!mode) { clearHover(); closeComposer(); }
     propagateModeToFrames();
     notify();
@@ -1529,12 +1511,12 @@
   btnClear.addEventListener('click', doClear);
 
   // ---------- 标注面板（#ann-sidebar）----------
-  // 没有 workbench 的页面（/sites/ 注入、扩展注入、SPA）的标注控制面：顶部
+  // 没有 workbench 的页面（/sites/ 注入、SPA）的标注控制面：顶部
   // 「交互 | 标注」segmented 切 mode，下面当前账本按 n 列出，点击跳转
-  // （goToMark），hover 出编辑/删除。主入口 = 浏览器工具栏扩展图标（见下方
-  // pinpoint:command 监听），次要入口 = 工具条「列表」按钮、S 键。抑制规则与
-  // 浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；doc iframe
-  // 由父级出控制面。
+  // （goToMark），hover 出编辑/删除。入口 = 工具条「列表」按钮、S 键。
+  // 抑制规则与浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；
+  // doc iframe 由父级出控制面。（浏览器扩展的 pinpoint:command 桥已于 pp2
+  // 切片 3 随扩展一并退役。）
   var SIDEBAR_LS_KEY = 'pinpoint:' + ENTRY + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
@@ -1704,24 +1686,6 @@
   }
 
   function toggleSidebar() { setSidebarOpen(!sidebarOpen); }
-
-  // 扩展命令通道（content script 经共享 DOM CustomEvent 桥进主世界，内联
-  // script 会被 CSP 拦，见 extension/content.js 头注）：
-  //   toggle-sidebar —— 页面内 #ann-sidebar 开合（S 键/「列表」按钮之外的桥入口）
-  //   jump/edit/del  —— Chrome Side Panel 面板远程驱动（跳转/编辑/删除）
-  //   mode {on}      —— 面板的「交互 | 标注」分段开关
-  // 抑制规则不变：workbench 壳/被嵌入页 setSidebarOpen 自会让位。
-  document.addEventListener('pinpoint:command', function (e) {
-    var d = e.detail || {};
-    var cmd = d.command;
-    if (cmd === 'toggle-sidebar') toggleSidebar();
-    else if (cmd === 'jump') goToMark(d.n);
-    else if (cmd === 'edit') openMark(d.n);
-    else if (cmd === 'del') removeMark(d.n);
-    else if (cmd === 'mode') { if (!!d.on !== !!mode) toggleMode(); }
-  });
-  // 初始模式标记（后续变化由 toggleMode 里更新）。
-  document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
   if (btnWorkbench) btnWorkbench.addEventListener('click', function () {
@@ -3423,7 +3387,7 @@
   function contentMutation(record) {
     if (annotationUiNode(record.target)) return false;
     if (record.target === document.documentElement && record.type === 'attributes') {
-      if (record.attributeName === 'data-canvas-zoom' || record.attributeName === 'data-pinpoint-mode') return false;
+      if (record.attributeName === 'data-canvas-zoom') return false;
       if (record.attributeName === 'style') {
         var withoutViewport = function (value) { return String(value || '').split(';').filter(function (v) {
           return v.trim() && !/^\s*(--wb-board-zoom|--wb-strip-w)\s*:/.test(v);

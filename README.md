@@ -100,7 +100,6 @@ src/                         pinpoint itself — the disk layout moves, the serv
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
                              slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
-  src/pages/                 panel.html (extension side panel) — served as /panel.html
 
 content/                     what the service serves
   content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
@@ -111,10 +110,9 @@ content/                     what the service serves
 
 bin/pinpoint.mjs             CLI — registry (`add` / `move`) + service lifecycle (`status` / `start` /
                              `stop` / `restart`); logic + tests in bin/pinpoint-cli.js
-extension/                   MV3 browser extension — injects the client on registered url entries
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 scripts/                     CLI entry for export + the wb-token generator
-e2e/                         Playwright workbench / registry / extension tests
+e2e/                         Playwright workbench / registry tests
 ```
 
 Your own pages do **not** live in this repo. Register any directory, single HTML file, or live URL
