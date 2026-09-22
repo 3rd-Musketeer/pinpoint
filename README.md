@@ -100,8 +100,7 @@ src/                         pinpoint itself — the disk layout moves, the serv
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
                              slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
-  src/pages/                 panel.html (extension side panel) + starter.html — served as /panel.html,
-                             /starter.html
+  src/pages/                 panel.html (extension side panel) — served as /panel.html
 
 content/                     what the service serves
   content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
@@ -191,7 +190,7 @@ for AI, or a full-page 2× PNG).
 
 ## One phone, no workbench
 
-Copy [`src/pages/starter.html`](src/pages/starter.html), or use the minimal skeleton:
+Use the minimal skeleton:
 
 ```html
 <link rel="stylesheet" href="/kits/ios/ios-kit.css">

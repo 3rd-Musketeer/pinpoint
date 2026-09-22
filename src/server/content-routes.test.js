@@ -8,7 +8,6 @@ test('rewriteContentUrl maps the served URL prefixes onto their disk location', 
   assert.equal(rewriteContentUrl('/previews/_index.json'), '/content/previews/_index.json');
   assert.equal(rewriteContentUrl('/lib/ann-list.css'), '/src/shared/ann-list.css');
   assert.equal(rewriteContentUrl('/panel.html'), '/src/pages/panel.html');
-  assert.equal(rewriteContentUrl('/starter.html'), '/src/pages/starter.html');
 });
 
 test('rewriteContentUrl keeps the query string and leaves unmapped URLs alone', () => {
