@@ -1,5 +1,4 @@
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const COMPONENT_SCREEN_PATTERN = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/;
 
 export class ContractError extends Error {
   constructor(path, message) {
@@ -59,14 +58,6 @@ function titleString(value, path) {
 function identifier(value, path, pattern = ID_PATTERN) {
   const id = nonEmptyString(value, path);
   if (!pattern.test(id)) throw new ContractError(path, `invalid id "${id}"`);
-  return id;
-}
-
-function screenIdentifier(value, path, allowComponentRefs) {
-  const id = nonEmptyString(value, path);
-  if (!ID_PATTERN.test(id) && !(allowComponentRefs && COMPONENT_SCREEN_PATTERN.test(id))) {
-    throw new ContractError(path, `invalid id "${id}"`);
-  }
   return id;
 }
 
@@ -159,17 +150,16 @@ function normalizeComp(screen, path) {
   return { comp, props };
 }
 
-function normalizeScreen(entry, path, sectionShell, options) {
-  const allowComponentRefs = !!options.allowComponentRefs;
+function normalizeScreen(entry, path, sectionShell) {
   if (typeof entry === 'string') {
-    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', shell: sectionShell, role: 'product', src: '' };
+    return { id: identifier(entry, path), title: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
   const compPart = normalizeComp(screen, path);
   // comp 屏的 title 缺省用 id（variants 墙的一格一名）；普通屏 title 可空。
   const titleFallback = compPart.comp ? screen.id : '';
   return {
-    id: screenIdentifier(screen.id, `${path}.id`, allowComponentRefs),
+    id: identifier(screen.id, `${path}.id`),
     title: screen.title == null ? titleFallback : titleString(screen.title, `${path}.title`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
     role: validateRole(screen.role, `${path}.role`),
@@ -201,7 +191,7 @@ export function validateBoard(raw, options = {}) {
     const shell = validateShell(section.shell, `${path}.shell`, options.defaultShell || 'app');
     const screens = section.screens.map((screen, screenIndex) => {
       const screenPath = `${path}.screens[${screenIndex}]`;
-      const normalized = normalizeScreen(screen, screenPath, shell, options);
+      const normalized = normalizeScreen(screen, screenPath, shell);
       if (screenIds.has(normalized.id)) {
         throw new ContractError(screenPath, `duplicate screen id "${normalized.id}"`);
       }

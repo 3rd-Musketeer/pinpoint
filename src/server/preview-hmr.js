@@ -2,8 +2,8 @@
 // registry 条目（2026-08-17e 实例搬迁地基）：vite 默认只 watch 仓库根，仓外
 // 条目目录经 configureServer 的 watcher.add 补挂；条目增删随 registry:reload
 // 同步（vite.config 里包装 registryStore.reload 调本插件的 syncWatcher）。
-// 仓库自身（id 多为 'pinpoint' 的默认条目）不算——previews//components 走下面
-// 的既有分支，workbench 源码走 vite 默认 HMR，都不许被 preview:update 吞掉。
+// 仓库自身（id 多为 'pinpoint' 的默认条目）不算——previews/ 走下面的既有分支，
+// workbench 源码走 vite 默认 HMR，都不许被 preview:update 吞掉。
 //
 // pp2（2026-09-22 切片 1）：页是「源码 → 编译 → dist」——
 // - 服务启动时对所有 dir 条目与模板页跑一遍全量编译，日志打总耗时与每页耗时；

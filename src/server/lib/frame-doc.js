@@ -1,8 +1,8 @@
 /**
  * /api/frame 渲染端点的组装库（阶段 5：文档 mention 活 frame）。
  *
- * 解析 pageId + screenId → frame 目标（previews 模板页 / components 系统板 /
- * registry dir·file·url 条目），然后：
+ * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file·url
+ * 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
  *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
@@ -32,7 +32,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const CONTENT_ROOT = path.join(ROOT, 'content');
 const PREVIEWS_ROOT = path.join(CONTENT_ROOT, 'previews');
-const COMPONENTS_ROOT = path.join(CONTENT_ROOT, 'kits', 'ios', 'components');
 
 export class FrameDocError extends Error {
   constructor(code, message) {
@@ -43,9 +42,7 @@ export class FrameDocError extends Error {
 }
 
 const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-// screenId 允许 components 的 comp/variant 形态（与 export-contract 同口径）。
-const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)*$/;
-const COMPONENTS_ID = 'components';
+const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readJsonSafe(file) {
   try {
@@ -131,28 +128,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
 
-  // 1) Component Library 系统板
-  if (pageId === COMPONENTS_ID) {
-    const variantPath = path.resolve(COMPONENTS_ROOT, `${screenId}.html`);
-    if (!variantPath.startsWith(COMPONENTS_ROOT + path.sep) || !fs.existsSync(variantPath)) {
-      throw new FrameDocError('unknown_screen', `unknown component variant: ${screenId}`);
-    }
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: screenId,
-      shell: 'comp',
-      section: '',
-      sectionLabel: '',
-      ref: '',
-      entry: 'pinpoint',
-      baseUrl: '/kits/ios/components/',
-      fragmentPath: variantPath,
-    };
-  }
-
-  // 2) previews 模板/实例页
+  // 1) previews 模板/实例页
   const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
   if (pageEntry) {
     const board = readJsonSafe(path.join(PREVIEWS_ROOT, pageId, 'board.json'));
@@ -216,7 +192,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
 
-  // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
+  // 2) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
   const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
   const diskBoard = entry.kind === 'dir'

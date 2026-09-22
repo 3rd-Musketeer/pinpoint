@@ -7,7 +7,7 @@ import { afterEach, test } from 'node:test';
 import { compilePage } from './page-compiler.js';
 
 // pp2 切片 2：kit 的 10 个系统组件 JSX 印章（content/kits/ios/jsx/）的快照测试。
-// 期望串按原 variant HTML（content/kits/ios/components/*/）的 DOM 与 class 手写，
+// 期望串按原 variant HTML 的 DOM 与 class 手写（pp2 切片 2 已 JSX 化到 kits/ios/jsx），
 // 序列化差异只有 preact 的形态（void 元素自闭合、布尔属性裸写、style 对象转串）——
 // include 时代的 data-ios-slot 已退役，不再输出。
 
