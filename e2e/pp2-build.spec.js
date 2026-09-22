@@ -37,9 +37,9 @@ test('.jsx 帧编译后出现在工作台画布，DOM 带 data-pp-id', async ({ 
   await expect(frame).toContainText('E2E jsx-site hello');
 
   // 编译期打进去的源码锚点：宿主元素带 文件:行#n；map 出来的同行实例逐个计数。
-  await expect(frame.locator('[data-pp-id="hello.jsx:3#1"]')).toHaveCount(1);
-  await expect(frame.locator('[data-pp-id="hello.jsx:6#1"]')).toHaveCount(1);
-  await expect(frame.locator('[data-pp-id="hello.jsx:6#2"]')).toHaveCount(1);
+  await expect(frame.locator('[data-pp-id="hello.jsx:3@1"]')).toHaveCount(1);
+  await expect(frame.locator('[data-pp-id="hello.jsx:6@1"]')).toHaveCount(1);
+  await expect(frame.locator('[data-pp-id="hello.jsx:6@2"]')).toHaveCount(1);
   // 帧默认导出也是函数组件：根宿主元素带 data-pp-comp。
   await expect(frame.locator('[data-pp-comp="Hello"]')).toHaveCount(1);
 
@@ -77,7 +77,7 @@ test('/sites/ 屏从 dist 出；缺源码屏 500 带错误文本', async ({ page
   expect(ok.status()).toBe(200);
   const body = await ok.text();
   expect(body).toContain('E2E jsx-site hello');
-  expect(body).toContain('data-pp-id="hello.jsx:3#1"');
+  expect(body).toContain('data-pp-id="hello.jsx:3@1"');
 
   const ghost = await page.request.get('/sites/e2e-jsx/ghost.html');
   expect(ghost.status()).toBe(500);

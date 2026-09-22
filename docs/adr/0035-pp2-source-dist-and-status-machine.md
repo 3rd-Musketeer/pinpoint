@@ -7,7 +7,7 @@ Status: 现行 · Date: 2026-09-22 · Supersedes: 0028（组件归属半边）�
 - **源码 / dist 分层**：页目录是源码——`<screenId>.jsx`、`components/<Name>.jsx`、页级 css / js、
   `board.json`（存量 `.html` 也是源码）；`ppnt build` 编成静态 HTML 产物，住 `~/.pinpoint/dist/<entry>/`，
   不进 git、不放回页目录。标注、导出、mention、`/sites/` 下的屏 HTML 只认产物。内容层内核借 Preact
-  （工作台留 React），编译期打 `data-pp-id="<文件>:<行>#<n>"`（按文档顺序编号，永不复用）与
+  （工作台留 React），编译期打 `data-pp-id="<文件>:<行>@<n>"`（按文档顺序编号，永不复用）与
   `data-pp-comp`；服务启动全量编译 34 页 144 ms。
 - **页内组件优先**：组件先住页里——印章，输入 props 与 children 输出 HTML，无状态无事件无副作用，
   lint 四禁（`preact/hooks` / `onX` 属性 / `fetch` / 帧顶层语句）在编译期挡；variant 用 props 表达；

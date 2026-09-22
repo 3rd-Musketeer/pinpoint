@@ -20,7 +20,7 @@
 
 **`.jsx` 帧**：默认导出一个返回 JSX 的函数；顶层只许 `import`、`function` 声明、`export default`。
 内核 Preact，esbuild 转译后 `renderToString` 出静态 HTML 片段。编译期给每个宿主元素打
-`data-pp-id="<文件>:<行>#<n>"`（同一 `文件:行` 按文档顺序从 1 编号，永不复用），给组件根元素打
+`data-pp-id="<文件>:<行>@<n>"`（同一 `文件:行` 按文档顺序从 1 编号，永不复用；后缀用 `@`，`#` 只属于标注序号），给组件根元素打
 `data-pp-comp="<Name>"`（只打用户命名的组件）——它们是标注锚点与 `ppnt check` / `locate` 的地址。
 存量 `.html` 帧原样编译，锚点仍是 cssPath + 文本摘录。
 

@@ -48,7 +48,7 @@ const BASIC_BOARD = {
 };
 
 describe('jsx 帧编译', () => {
-  test('渲染产物落 dist，宿主元素带 data-pp-id（文件:行#n）', async () => {
+  test('渲染产物落 dist，宿主元素带 data-pp-id（文件:行@n）', async () => {
     const target = makePage('jsx-basic', {
       board: BASIC_BOARD,
       files: {
@@ -68,8 +68,8 @@ describe('jsx 帧编译', () => {
     assert.equal(result.ok, true);
     assert.equal(result.screens.length, 1);
     const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
-    assert.match(html, /<div class="ios-app" data-pp-id="home\.jsx:3#1" data-pp-comp="Home">/);
-    assert.match(html, /<p data-pp-id="home\.jsx:4#1">你好<\/p>/);
+    assert.match(html, /<div class="ios-app" data-pp-id="home\.jsx:3@1" data-pp-comp="Home">/);
+    assert.match(html, /<p data-pp-id="home\.jsx:4@1">你好<\/p>/);
     assert.ok(!html.includes('<!doctype'), '输出是 HTML 片段，不带 doctype');
   });
 
@@ -101,13 +101,13 @@ describe('jsx 帧编译', () => {
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true, JSON.stringify(result.screens));
     const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
-    assert.ok(html.includes('data-pp-id="home.jsx:6#1"'), html);
-    assert.ok(html.includes('data-pp-id="home.jsx:6#2"'), html);
-    assert.ok(html.includes('data-pp-id="home.jsx:6#3"'), html);
-    assert.match(html, /<span class="badge" data-pp-id="components\/Badge\.jsx:2#1" data-pp-comp="Badge">新<\/span>/);
+    assert.ok(html.includes('data-pp-id="home.jsx:6@1"'), html);
+    assert.ok(html.includes('data-pp-id="home.jsx:6@2"'), html);
+    assert.ok(html.includes('data-pp-id="home.jsx:6@3"'), html);
+    assert.match(html, /<span class="badge" data-pp-id="components\/Badge\.jsx:2@1" data-pp-comp="Badge">新<\/span>/);
   });
 
-  test('#n 按文档顺序编号：同一行嵌套父元素在前，map 同行实例顺序排', async () => {
+  test('@n 按文档顺序编号：同一行嵌套父元素在前，map 同行实例顺序排', async () => {
     const target = makePage('jsx-doc-order', {
       board: BASIC_BOARD,
       files: {
@@ -122,8 +122,8 @@ describe('jsx 帧编译', () => {
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true, JSON.stringify(result.screens));
     const html = fs.readFileSync(distFile(target, 'home.html'), 'utf8');
-    // 创建顺序是 p 先 div 后，文档顺序必须 div #1、p #2。
-    assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2#1"[^>]*><p data-pp-id="home\.jsx:2#2">同<\/p><\/div>$/);
+    // 创建顺序是 p 先 div 后，文档顺序必须 div @1、p @2。
+    assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2@1"[^>]*><p data-pp-id="home\.jsx:2@2">同<\/p><\/div>$/);
   });
 
   test('同一屏连编 3 次结果一致（cjs 求值无模块缓存残留）', async () => {
@@ -169,8 +169,8 @@ describe('jsx 帧编译', () => {
     const anon = fs.readFileSync(distFile(target, 'anon.html'), 'utf8');
     assert.ok(!anon.includes('data-pp-comp'), anon);
     const named = fs.readFileSync(distFile(target, 'named.html'), 'utf8');
-    assert.match(named, /<div class="ios-app" data-pp-id="named\.jsx:3#1" data-pp-comp="Named">/);
-    assert.match(named, /<span class="badge" data-pp-id="components\/Badge\.jsx:1#1" data-pp-comp="Badge">章<\/span>/);
+    assert.match(named, /<div class="ios-app" data-pp-id="named\.jsx:3@1" data-pp-comp="Named">/);
+    assert.match(named, /<span class="badge" data-pp-id="components\/Badge\.jsx:1@1" data-pp-comp="Badge">章<\/span>/);
   });
 
   test('pinpoint/kit 解析到 kit JSX 组件（切片 2）', async () => {
@@ -250,7 +250,7 @@ describe('comp 屏（variants 墙）', () => {
     const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
     assert.equal(result.ok, true, JSON.stringify(result.screens));
     const pill = fs.readFileSync(distFile(target, 'pill.html'), 'utf8');
-    assert.match(pill, /<div class="composer" data-pp-id="components\/Composer\.jsx:2#1" data-pp-comp="Composer">状态:pill<\/div>/);
+    assert.match(pill, /<div class="composer" data-pp-id="components\/Composer\.jsx:2@1" data-pp-comp="Composer">状态:pill<\/div>/);
     const bar = fs.readFileSync(distFile(target, 'bar.html'), 'utf8');
     assert.match(bar, /data-pp-comp="Plain"/);
     const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
@@ -550,7 +550,7 @@ describe('dist 状态与 serve 读取', () => {
     const result = await renderScreenHtml(target, 'home');
     assert.equal(result.ok, true);
     assert.ok(result.html.includes('看'));
-    assert.ok(result.html.includes('data-pp-id="home.jsx:2#1"'));
+    assert.ok(result.html.includes('data-pp-id="home.jsx:2@1"'));
     assert.equal(fs.existsSync(distRoot), false);
     const missing = await renderScreenHtml(target, 'ghost');
     assert.equal(missing.ok, false);

@@ -94,6 +94,8 @@ owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done�
 
 **`#n`（标注序号）· pp2**
 标注对外引用号，按 registry entry 单调计数、永不复用，跨页写 `<entry>#12`。随机 `id` 留作内部主键，`@a:<id>` 继续兼容。
+`#` 只属于标注序号：编译锚点 `data-pp-id` 的同行实例后缀用 `@`（`Nav.jsx:18@2`），两套符号不共用。
+要避开：把锚点后缀写成 `#`——那是标注号的地盘。
 
 **template 与 instance（模板与实例）**
 template = 进 git 的那部分：框架代码 + Example Library + system 组件，`content/previews/` 里只有它。

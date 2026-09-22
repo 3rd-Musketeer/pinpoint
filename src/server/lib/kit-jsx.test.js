@@ -73,7 +73,7 @@ test.before(async () => {
   // 快照比 DOM 结构：编译期锚点（data-pp-id / data-pp-comp）不是组件皮肤的一部分，剥掉再比。
   html = raw.replace(/ data-pp-(id|comp)="[^"]*"/g, '');
   // 锚点本身也要在：kit 组件的 data-pp-id 用仓相对路径（不是 ../../ 链）。
-  assert.match(raw, /data-pp-id="content\/kits\/ios\/jsx\/Bubble\.jsx:\d+#\d+"/);
+  assert.match(raw, /data-pp-id="content\/kits\/ios\/jsx\/Bubble\.jsx:\d+@\d+"/);
   assert.match(raw, /data-pp-comp="Button"/);
 });
 

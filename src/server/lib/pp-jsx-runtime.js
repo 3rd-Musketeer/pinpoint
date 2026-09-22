@@ -2,10 +2,11 @@
  * pp2 帧编译的 JSX 运行时（2026-09-22 切片 1）：包一层 preact 的 jsx-dev-runtime。
  * esbuild 以 jsx automatic + jsxDev 转译帧文件，每个元素带着 __source（文件、行）
  * 调进这里的 jsxDEV：
- * - 宿主元素（type 是字符串）打 data-pp-id="<相对页目录的文件>:<行>#<n>"：
+ * - 宿主元素（type 是字符串）打 data-pp-id="<相对页目录的文件>:<行>@<n>"：
  *   n 只保证同一 文件:行 的元素互不相同（全局自增）；最终对外编号是编译器在
  *   renderToString 之后按文档顺序的重编（renumberPpIds），与 agent 读源码 /
- *   读 DOM 的直觉一致。
+ *   读 DOM 的直觉一致。后缀用 @：# 只属于标注序号（review R7），两套符号
+ *   不共用了。
  * - 函数组件包一层：渲染结果是宿主元素就 cloneElement 补 data-pp-comp="<函数名>"。
  * 编译产物是静态 HTML，本模块只在编译期（node 进程内）跑，不进浏览器。
  * 帧 bundle 经编译器注入的 require 映射拿到本模块（同一个模块实例），包装缓存
@@ -64,7 +65,7 @@ export function jsxDEV(type, props, key, isStaticChildren, source, self) {
     if (source && source.fileName) {
       const file = String(source.fileName).replace(/\\/g, '/');
       seq += 1;
-      p = { ...p, 'data-pp-id': `${file}:${source.lineNumber}#${seq}` };
+      p = { ...p, 'data-pp-id': `${file}:${source.lineNumber}@${seq}` };
     }
   }
   return preactJsxDEV(t, p, key, isStaticChildren, source, self);

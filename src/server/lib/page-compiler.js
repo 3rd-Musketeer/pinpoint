@@ -201,16 +201,17 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
 /* ---- 单屏编译 ---- */
 
 /**
- * data-pp-id 的 #n 按文档顺序重编（2026-09-22 review 1-1，owner 决定）：运行时按
+ * data-pp-id 的 @n 按文档顺序重编（2026-09-22 review 1-1，owner 决定）：运行时按
  * 创建顺序发号（嵌套同行时父元素反而靠后），这里对 renderToString 的输出字符串扫
- * 一遍 data-pp-id="文件:行#k"，同一 文件:行 按出现先后从 1 重排 —— 字符串本身就是
+ * 一遍 data-pp-id="文件:行@k"，同一 文件:行 按出现先后从 1 重排 —— 字符串本身就是
  * 文档顺序；preact 会把文本里的 " 转义成 &quot;，属性值不会误匹配。
+ * 后缀 @：# 只留给标注序号（review R7），DOM 锚点与对话引用不再共用符号。
  * 文件部分顺带归一（pp2 切片 2）：页外文件（kit JSX）按 esbuild 给的是 ../../ 链，
  * 落在仓内就改写成仓相对（content/kits/ios/jsx/Bubble.jsx），锚点可读、跨页稳定。
  */
 export function renumberPpIds(html, { pageDir = null } = {}) {
   const counts = new Map();
-  return String(html).replace(/data-pp-id="([^"]+?:\d+)#\d+"/g, (all, key) => {
+  return String(html).replace(/data-pp-id="([^"]+?:\d+)@\d+"/g, (all, key) => {
     let normalized = key;
     if (pageDir && key.startsWith('../')) {
       const cut = key.lastIndexOf(':');
@@ -221,7 +222,7 @@ export function renumberPpIds(html, { pageDir = null } = {}) {
     }
     const n = (counts.get(normalized) || 0) + 1;
     counts.set(normalized, n);
-    return `data-pp-id="${normalized}#${n}"`;
+    return `data-pp-id="${normalized}@${n}"`;
   });
 }
 

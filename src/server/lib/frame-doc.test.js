@@ -96,7 +96,7 @@ test('pp2：.jsx 屏经 /api/frame 拿到带 data-pp-id 的 HTML（dist 懒编�
   assert.equal(target.kind, 'fragment');
   const html = await assembleFrameContent(target);
   assert.ok(html.includes('E2E jsx-site hello'));
-  assert.ok(html.includes('data-pp-id="hello.jsx:3#1"'), html);
+  assert.ok(html.includes('data-pp-id="hello.jsx:3@1"'), html);
   assert.ok(html.includes('data-pp-comp="Hello"'), html);
 
   // 缺源码屏：编译错误冒成 500（frame-api 把普通 Error 落 frame_failed）。
