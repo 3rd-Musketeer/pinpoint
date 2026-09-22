@@ -188,6 +188,10 @@ export function createAnnotationStore(options) {
         // 新标注恒为 open（客户端声明什么都不算）。
         a.status = 'open';
       } else {
+        // 沿用旧号（review R3）：重存既有标注缺 n 时绝不重新取号 —— #n 是对外
+        // 引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）不该
+        // 因为没带 n 就把既有引用烧悬空。
+        if (Number.isInteger(before.n) && !Number.isInteger(a.n)) a.n = before.n;
         const edited = a.content !== before.content || targetsFingerprint(a) !== targetsFingerprint(before);
         if (edited) {
           // owner 编辑正文或目标 → 保存时状态回 open（服务端强制，与客户端一致）。

@@ -168,6 +168,20 @@ test('#n：缺号标注按创建顺序补号，跨账本唯一，删过的号不
   assert.equal(rewritten.revision, 1, '补号不动 revision');
 });
 
+test('#n：重存既有标注缺 n 时沿用旧号，永不重新取号（R3）', (t) => {
+  const { dataDir, store } = withStore(t);
+
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+  // 非工作台写入方（CLI / 直 POST /save 的 agent）同 id 不带 n：号必须沿用。
+  const resave = store.save({ page: 'a.html', baseRevision: 1, annotations: [{ id: 'x1', content: '甲' }] });
+  assert.equal(resave.status, 200);
+  assert.deepEqual(resave.doc.annotations.map((a) => a.n), [1]);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, '_seq.json'), 'utf8')).next, 2, '_seq 不被无谓烧号');
+  // 新标注仍正常取号（1 已占用，落 2）。
+  const next = store.save({ page: 'a.html', baseRevision: 2, annotations: [{ id: 'x1', content: '甲' }, { id: 'x2', content: '乙' }] });
+  assert.deepEqual(next.doc.annotations.map((a) => a.n), [1, 2]);
+});
+
 test('/save 转换校验：非法转换 409，编辑回 open，新标注恒 open', (t) => {
   const { store } = withStore(t);
   store.save({ page: 'index.html', baseRevision: 0, annotations: [{ id: 'a1', content: '一' }] });
