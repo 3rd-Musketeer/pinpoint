@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
@@ -497,6 +498,47 @@ describe('dist 状态与 serve 读取', () => {
     assert.equal(read.kind, 'error');
     assert.match(read.message, /onClick/);
     assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true, '失败重编不得把 stale 刷成 false');
+  });
+
+  test('帧的组件依赖进 sources：kit / 页内组件改动后 stale 如实上报（R2）', async () => {
+    // kit 印章在本仓库里，测试临时改它的 mtime（finally 里恢复原值）。
+    const kitFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'content', 'kits', 'ios', 'jsx', 'Bubble.jsx');
+    const kitStat = fs.statSync(kitFile);
+    const compTarget = makePage('deps-comp', {
+      board: { sections: [{ id: 'main', title: 'Main', layout: 'row', shell: 'comp', screens: [
+        { id: 'pill', title: 'pill', comp: 'Composer' },
+        { id: 'bub', title: 'bub', comp: 'Bubble', props: { side: 'incoming' } },
+      ] }] },
+      files: { 'components/Composer.jsx': 'export function Composer() {\n  return <div className="composer">x</div>;\n}\n' },
+    });
+    const frameTarget = makePage('deps-frame', {
+      board: BASIC_BOARD,
+      files: {
+        'components/Badge.jsx': 'export function Badge() {\n  return <span className="badge">章</span>;\n}\n',
+        'home.jsx': 'import { Badge } from \'./components/Badge.jsx\';\nexport default function Home() {\n  return <div className="ios-app"><Badge /></div>;\n}\n',
+      },
+    });
+    const distRoot = path.join(tmp, 'dist');
+    await compilePage(compTarget, { distRoot });
+    await compilePage(frameTarget, { distRoot });
+    assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, false);
+    assert.equal(distStatus(frameTarget.entryId, frameTarget.pageDir, { distRoot }).stale, false);
+    try {
+      const future = new Date(Date.now() + 5000);
+      // 页内组件改动 → comp 屏与 import 它的帧都过期。
+      fs.utimesSync(path.join(compTarget.pageDir, 'components', 'Composer.jsx'), future, future);
+      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
+      fs.utimesSync(path.join(compTarget.pageDir, 'components', 'Composer.jsx'), kitStat.atime, kitStat.mtime);
+      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, false, '恢复后不再过期');
+      // kit 印章改动 → 用它的 comp 屏过期（deps 记 ../ 链，distStatus 照样解析）。
+      fs.utimesSync(kitFile, future, future);
+      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
+      // kit 印章改动 → import kit 的帧过期（deps 记的是 ../ 链，distStatus 照样解析）。
+      fs.utimesSync(kitFile, future, future);
+      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
+    } finally {
+      fs.utimesSync(kitFile, kitStat.atime, kitStat.mtime);
+    }
   });
 
   test('renderScreenHtml 编译单屏但不落 dist', async () => {

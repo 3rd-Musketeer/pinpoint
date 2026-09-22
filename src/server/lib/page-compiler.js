@@ -271,6 +271,29 @@ function formatBuildFailure(error) {
   }).join('\n');
 }
 
+/**
+ * metafile inputs → 依赖记录（review R2）：帧 import 的页内组件与 kit 印章在
+ * 编译期定型，不记进 sources 的话 kit 改动后 distStatus 恒报 fresh。页内文件记
+ * 相对路径，页外（kit）记 ../ 链 —— distStatus 用 pageDir join 解析两者。
+ */
+function depRecordsFromInputs(target, inputs, exclude) {
+  const skipped = new Set(exclude);
+  const out = [];
+  for (const input of Object.keys(inputs)) {
+    if (skipped.has(input)) continue;
+    const abs = path.resolve(target.pageDir, input);
+    let stat;
+    try {
+      stat = fs.statSync(abs);
+    } catch {
+      continue;
+    }
+    if (!stat.isFile()) continue;
+    out.push({ file: path.relative(target.pageDir, abs).split(path.sep).join('/'), mtimeMs: stat.mtimeMs });
+  }
+  return out;
+}
+
 async function compileJsxScreen(target, screenId, file) {
   let built;
   try {
@@ -311,7 +334,11 @@ async function compileJsxScreen(target, screenId, file) {
     if (!mod || typeof mod.default !== 'function') {
       return { ok: false, error: `${file}: 帧文件必须默认导出一个返回 JSX 的函数` };
     }
-    return { ok: true, html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir }) };
+    return {
+      ok: true,
+      html: renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir }),
+      deps: depRecordsFromInputs(target, built.metafile.inputs, [file]),
+    };
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
@@ -388,6 +415,8 @@ async function compileScreen(target, entry, options = {}) {
   } else {
     result = { ok: false, error: `${screenId}: 源码不存在（既没有 ${jsxFile} 也没有 ${htmlFile}）` };
   }
+  // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
+  if (result.ok && result.deps && source) source = { ...source, deps: result.deps };
   if (result.ok) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
   return {
     ...result,
@@ -476,9 +505,11 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       };
     }
     const html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
+    const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
+    const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel]);
     return {
       result: { ok: true, html },
-      source: { file: path.relative(target.pageDir, sourceAbs).split(path.sep).join('/'), mtimeMs: fs.statSync(sourceAbs).mtimeMs },
+      source: { file: sourceRel, mtimeMs: fs.statSync(sourceAbs).mtimeMs, ...(deps.length ? { deps } : {}) },
     };
   } catch (error) {
     return { result: { ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` }, source: null };
@@ -630,6 +661,14 @@ export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = 
       stale = true;
       break;
     }
+    // R2：帧 import 的组件依赖（页内 components/ 与 kit）也参与 stale 判定。
+    for (const dep of (record && record.deps) || []) {
+      if (dep && typeof dep.file === 'string' && newerThanBuild(path.join(pageDir, dep.file))) {
+        stale = true;
+        break;
+      }
+    }
+    if (stale) break;
   }
   if (!stale && newerThanBuild(path.join(pageDir, 'board.json'))) stale = true;
   return { builtAt: build.builtAt, stale };
