@@ -128,7 +128,10 @@ test('non-HTML files are served untouched with the right MIME', async (t) => {
   const json = await call(handler, 'GET', '/sites/site/board.json');
   assert.equal(json.res.statusCode, 200);
   assert.match(json.res.headers['Content-Type'], /^application\/json/);
-  assert.equal(json.res.text, '{"sections":[]}');
+  // pp2：磁盘板内容原样优先，响应附带 dist 状态（这页没编过 → builtAt null / stale）。
+  const board = JSON.parse(json.res.text);
+  assert.deepEqual(board.sections, []);
+  assert.deepEqual(board.dist, { builtAt: null, stale: true });
 });
 
 test('HTML without a </body> gets the snippet appended', async (t) => {
@@ -302,7 +305,10 @@ test('disk board.json always wins over synthesis', async (t) => {
   const { handler, site } = withFixture(t);
   const { res } = await call(handler, 'GET', '/sites/site/board.json');
   assert.equal(res.statusCode, 200);
-  assert.equal(res.text, fs.readFileSync(path.join(site, 'board.json'), 'utf8'), '磁盘原字节，非合成');
+  // pp2：磁盘板优先于合成板，响应 = 磁盘内容 + dist 状态段。
+  const board = JSON.parse(res.text);
+  assert.deepEqual(board.sections, JSON.parse(fs.readFileSync(path.join(site, 'board.json'), 'utf8')).sections, '磁盘内容，非合成');
+  assert.deepEqual(board.dist, { builtAt: null, stale: true });
 });
 
 test('no synthesis: dir without top-level .html / ios-mode dir / missing dir all 404', async (t) => {

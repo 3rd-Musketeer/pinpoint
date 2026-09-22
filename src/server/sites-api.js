@@ -30,6 +30,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
+import {
+  boardScreenIds,
+  screenIdFromRel,
+  serveBoardJsonWithDist,
+  serveDistScreenResponse,
+} from './lib/page-compiler.js';
 import { loadRegistry } from './lib/registry.js';
 import { createSiteUpgradeHandler, proxySiteRequest } from './lib/site-proxy.js';
 import { synthesizeBoard } from './lib/synth-board.js';
@@ -205,6 +211,34 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
+    const query = new URL(req.url || '/', 'http://sites.local').searchParams;
+
+    // pp2（2026-09-22 切片 1）：dir 条目的「屏」从 dist 出 —— board.json 里的
+    // screenId 对应的 <id>.html 读 <dataRoot>/dist/<entry>/（懒编译兜底）；
+    // 编译失败的屏 500 带错误文本（工作台的 .wb-screen-err 面板吃非 200）。
+    // 非屏路径（css / js / 图片 / 非屏 html）仍走下面的源目录静态服务。
+    if (entry.kind === 'dir') {
+      const pageDir = path.resolve(entry.path);
+      const screenId = screenIdFromRel(rel);
+      if (screenId) {
+        const ids = boardScreenIds(pageDir);
+        if (ids && ids.has(screenId)) {
+          return serveDistScreenResponse(req, res, {
+            entryId: entry.id,
+            pageDir,
+            urlBase: `/sites/${entry.id}/`,
+            kind: 'dir',
+          }, screenId, {
+            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id),
+          });
+        }
+      }
+      // board.json：磁盘有板时附带 dist: { builtAt, stale }（工作台先不消费）。
+      if (rel === 'board.json' && serveBoardJsonWithDist(req, res, entry.id, pageDir)) {
+        return true;
+      }
+    }
+
     const file = entry.kind === 'file'
       ? resolveRegisteredFile(entry, rel)
       : resolveFileWithin(path.resolve(entry.path), rel || 'index.html');
@@ -218,7 +252,6 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    const query = new URL(req.url || '/', 'http://sites.local').searchParams;
     const isHtml = mimeFor(file) === 'text/html';
     let body = fs.readFileSync(file);
     if (isHtml && query.get('annotate') !== 'off') {

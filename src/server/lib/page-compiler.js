@@ -48,7 +48,11 @@ export function defaultDistRoot(env = process.env) {
 /** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页。 */
 export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}) {
   if (typeof pageRef !== 'string' || !PAGE_ID_PATTERN.test(pageRef)) return null;
-  const entry = registry && registry.resolve(pageRef);
+  const entry = registry
+    ? (typeof registry.resolve === 'function'
+      ? registry.resolve(pageRef)
+      : ((registry.entries || []).find((row) => row && row.id === pageRef) || null))
+    : null;
   if (entry && entry.kind === 'dir' && typeof entry.path === 'string') {
     const pageDir = path.resolve(entry.path);
     if (fs.existsSync(path.join(pageDir, 'board.json'))) {
@@ -473,4 +477,80 @@ export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = 
   }
   if (!stale && newerThanBuild(path.join(pageDir, 'board.json'))) stale = true;
   return { builtAt: build.builtAt, stale };
+}
+
+/* ---- serve 层响应（sites-api 与 content-routes 共用） ---- */
+
+/** rel 路径 → 屏 id（屏源码恒在页目录顶层，单段 <id>.html 才算）。 */
+export function screenIdFromRel(rel) {
+  const match = String(rel || '').match(/^([a-zA-Z0-9_-]+)\.html$/);
+  return match ? match[1] : null;
+}
+
+/**
+ * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
+ * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本 —— 工作台
+ * 的 .wb-screen-err 面板吃非 200 状态。
+ * inject(html) → html：annotate 注入由调用方决定（/sites/ 全量注入；/previews/
+ * 只对 doctype 整文档注入）。
+ */
+export async function serveDistScreenResponse(req, res, target, screenId, { inject = null } = {}) {
+  let result = readDistScreen(target.entryId, screenId);
+  if (result.kind === 'unbuilt') {
+    try {
+      await compilePage(target);
+    } catch { /* 编译异常已进 build.json / 下面按状态报错 */ }
+    result = readDistScreen(target.entryId, screenId);
+  }
+  if (result.kind === 'ok') {
+    let body = Buffer.from(result.html, 'utf8');
+    if (inject) body = Buffer.from(inject(body.toString('utf8')), 'utf8');
+    res.statusCode = 200;
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.setHeader('Content-Length', String(body.length));
+    if (req.method === 'HEAD') {
+      res.end();
+      return true;
+    }
+    res.end(body);
+    return true;
+  }
+  const message = result.kind === 'error'
+    ? result.message
+    : `屏未编译：ppnt build ${target.entryId}`;
+  const body = Buffer.from(message, 'utf8');
+  res.statusCode = 500;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Content-Length', String(body.length));
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  res.end(body);
+  return true;
+}
+
+/** board.json 响应附带 dist: { builtAt, stale }；磁盘没板 / 板坏时回落原样字节。 */
+export function serveBoardJsonWithDist(req, res, entryId, pageDir) {
+  let raw;
+  try {
+    raw = fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8');
+  } catch {
+    return false;
+  }
+  let text = raw;
+  try {
+    const board = JSON.parse(raw);
+    text = `${JSON.stringify({ ...board, dist: distStatus(entryId, pageDir) }, null, 2)}\n`;
+  } catch { /* 板坏了也照原样吐，workbench 的契约校验会报出真正的问题 */ }
+  const body = Buffer.from(text, 'utf8');
+  res.statusCode = 200;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Content-Length', String(body.length));
+  if (req.method === 'HEAD') {
+    res.end();
+    return true;
+  }
+  res.end(body);
+  return true;
 }
