@@ -1,6 +1,9 @@
 # 0028 · areta-chat-eval 条目重指 + 组件归属边界成文
 
-Status: 现行 · Date: 2026-08-17 · Scope: `content/kits/ios/components/`、`~/.pinpoint/registry.json`
+Status: 部分被取代 · Date: 2026-08-17 · Superseded-by: 0035（组件归属半边：页内组件优先 + 手动升 kit） · Scope: `content/kits/ios/components/`、`~/.pinpoint/registry.json`
+
+> 2026-09-22：条目重指那半边仍现行；组件归属被 pp2 的页内组件印章模型取代（ADR 0035），
+> `content/kits/ios/components/` 的 HTML 组件目录随 include 退役。
 
 **Decided**（owner 2026-08-17 要求分析两个 backlog 遗留项后采纳推荐）：
 
