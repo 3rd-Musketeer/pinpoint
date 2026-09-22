@@ -99,7 +99,9 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     };
     expect(stripLastRect(await marksAfterReload(page))).toEqual(persisted);
     expect(stripLastRect(await marksAfterReload(other))).toEqual(persisted);
-    expect(read()).toEqual(final);
+    // R4 + §2b：reload 后活锚点重测会把 lastRect 补上 space 标记并 debounce 落盘
+    // —— 除 lastRect 本身外，磁盘不再有别的变化。
+    expect(stripLastRect(read())).toEqual(persisted);
     await page.screenshot({ path: test.info().outputPath('integrated-restored.png') });
   } finally {
     await otherContext.close();

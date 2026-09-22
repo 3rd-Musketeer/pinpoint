@@ -2939,16 +2939,28 @@
 
   var lastRectPersistTimer = null;
 
+  /** lastRect 的坐标系与记录端一致才可消费（§2b）：同一条标注会在画布与注入
+      frame（mention）两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
+      边只能拿错坐标画框。旧记录没有 space：按当前端解释（保持既有行为），
+      下一次活锚点测量就会写成带 space 的新记录。 */
+  function lastRectSpaceOk(lr) {
+    if (!lr || !lr.space) return true;
+    return lr.space === (canvasView ? 'canvas' : 'doc');
+  }
+
   function recordLastRect(m, docR) {
     // lastRect = 最后一次锚点解析成功的几何：几何变了才更新（±1px 守卫见下），
-    // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标。
+    // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标，
+    // 记录时用 space 标明是哪一把尺子。
     // 亚像素抖动不算「变」：zoom 进出往返后 pose 带浮点残差，同一元素重算
     // 会在取整边界上 ±1 跳 —— 差不足 1px 时保持原值，省掉无谓的落盘。
     if (!docR || !m) return;
     var prev = m.lastRect;
-    if (prev && Math.abs(prev.x - docR[0]) < 1 && Math.abs(prev.y - docR[1]) < 1 &&
+    // 守卫附带 space 相等：换了尺子的记录哪怕数字巧合相同也是实质变化，照写。
+    if (prev && prev.space === (canvasView ? 'canvas' : 'doc')
+        && Math.abs(prev.x - docR[0]) < 1 && Math.abs(prev.y - docR[1]) < 1 &&
         Math.abs(prev.w - docR[2]) < 1 && Math.abs(prev.h - docR[3]) < 1) return;
-    m.lastRect = { x: Math.round(docR[0]), y: Math.round(docR[1]), w: Math.round(docR[2]), h: Math.round(docR[3]) };
+    m.lastRect = { x: Math.round(docR[0]), y: Math.round(docR[1]), w: Math.round(docR[2]), h: Math.round(docR[3]), space: canvasView ? 'canvas' : 'doc' };
     if (m.screenId) m.lastRect.screenId = m.screenId;
     // 变了就要落盘（review R4）：旧约定是「合并进下一次 persist」，但新标注
     // 创建后的首次 persist 常发生在几何管线跑过之前，此后也只在碰巧有别的
@@ -3006,8 +3018,9 @@
         views.push(visibleViewRectOf(target.el));
       });
       if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, lastRectFromDoc(docRect(entry.liveTargets[0].el)));
-      // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框。
-      if (!views.length && m.lastRect && (m.status || 'open') !== 'close') {
+      // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框；
+      // 坐标系的尺子对不上（另一端写进的）不画，只留列表行的「锚点失效」。
+      if (!views.length && m.lastRect && lastRectSpaceOk(m.lastRect) && (m.status || 'open') !== 'close') {
         views.push(lastRectViewRect(m.lastRect));
       }
     }
@@ -3703,7 +3716,7 @@
     } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
       // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
-    } else if (!frameFocused && !anchor.live && m.lastRect && stageEl) {
+    } else if (!frameFocused && !anchor.live && m.lastRect && lastRectSpaceOk(m.lastRect) && stageEl) {
       // 幽灵跳转（pp2）：锚点失效但有 lastRect —— 滚到它最后一次在的地方。
       var gr = lastRectViewRect(m.lastRect);
       var gsr = stageEl.getBoundingClientRect();

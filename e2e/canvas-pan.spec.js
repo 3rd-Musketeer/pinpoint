@@ -427,4 +427,24 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   await page.locator(cellSelector).evaluateAll(els => els.forEach(el => el.remove()));
   await expect(ghost).toHaveCount(1);
   await expect.poll(error).toBeLessThan(8);
+  // §2b space 标记：画布端只消费 canvas 尺子的记录。注入 frame 后写的 doc 尺
+  // 记录（mention 双端都会写同一条标注）不得在画布上画框；旧记录无 space 按
+  // 当前端解释（保持既有行为）。挂一个无害 DOM 变更逼一次全量重测（几何
+  // 缓存默认复用），幽灵框节点常驻、按可见性断言。
+  const nudge = () => page.evaluate(tag => {
+    const probe = document.createElement('div');
+    probe.setAttribute('data-space-probe', tag);
+    document.body.appendChild(probe);
+    probe.remove();
+  }, Date.now());
+  await page.evaluate(() => {
+    window.pinpoint.marks[0].lastRect = Object.assign({}, window.pinpoint.marks[0].lastRect, { space: 'doc' });
+  });
+  await nudge();
+  await expect(ghost).toBeHidden();
+  await page.evaluate(() => {
+    delete window.pinpoint.marks[0].lastRect.space;
+  });
+  await nudge();
+  await expect(ghost).toBeVisible();
 });
