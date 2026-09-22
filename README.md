@@ -5,8 +5,8 @@ them, you review the real thing in a browser and hand feedback back through anno
 
 pinpoint runs as one persistent local service (`https://pinpoint.localhost`) with three layers:
 
-- 🧰 **Kits** — accumulated design specs. `content/kits/ios/` (HIG-accurate, CJK-safe, zero runtime deps) is
-  the first kit, not the product; the layout leaves room for future web/html kits.
+- 🧰 **Kits** — accumulated design specs. `content/kits/ios/` (`ios-kit.css` + `ios-kit.js` + `jsx/`
+  component stamps; HIG-accurate, CJK-safe, zero runtime deps) is the first kit, not the product.
 - 🖥️ **Workbench / canvas** — a Figma-like multi-page viewer for comparing prototype variants side
   by side. A page holds two forms: **canvas** (phone artboards, the iterating form) and **doc**
   (a whole standalone document in a full-viewport iframe, the presenting form).
@@ -14,8 +14,13 @@ pinpoint runs as one persistent local service (`https://pinpoint.localhost`) wit
   land on disk for the agent to read and act on. One client, injected only into what you registered.
 
 Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the
-contracts), 🖼️ **offline interactive HTML export** (one self-contained file per page), 🔁 **HMR** (edit a screen
-or component, the open board refreshes in place).
+contracts), 🖼️ **offline interactive HTML export** (one self-contained file per page), 🔁 **HMR**
+(source change → recompile → the open board refreshes in place).
+
+Since pp2 (2026-09-22) a page is **source**: `<screenId>.jsx` frames + `components/<Name>.jsx`
+page-local components + `board.json`. `ppnt build` compiles it to dist under `~/.pinpoint/dist/<entry>/`;
+the canvas, annotations, exports and mentions only ever see the compiled output. Existing `.html`
+frames keep working as-is.
 
 ## 问题 → 文档
 
@@ -83,6 +88,25 @@ avoid fixing font sizes, colors or obsolete DOM structure in long-lived assertio
 
 Requires Node ≥ 24 and [just](https://just.systems/).
 
+## CLI (`ppnt` = `pinpoint`)
+
+One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH):
+
+```bash
+ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
+ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
+ppnt add <dir|file|url>        # register an entry (files stay where they are) — see docs/registry.md
+ppnt move <id> <target>        # re-point an entry, keep its id and annotations
+ppnt rename <old> <new>        # rename id + annotation bucket + /sites/ prefix in one shot
+ppnt folder list|add|rename|rm|move   # the one level of page grouping in the sidebar
+ppnt build <page> [--watch]    # compile source → dist (~/.pinpoint/dist/<entry>/)
+ppnt render <page>/<screen>    # compile one frame to stdout, no dist write
+ppnt check <page>              # read annotations: statuses, intents, code excerpts (contract, slice 4)
+ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (contract, slice 4)
+ppnt shot <ref…> [--marks]     # PNG of frames/sections/page, --marks bakes the #n pins (contract)
+ppnt mark <ref…> done|check    # write annotation status, --note for the one-liner (contract)
+```
+
 ## Repository layout
 
 ```
@@ -92,10 +116,10 @@ docs/                        Rules and runbooks: board-schema, registry, annotat
 index.html                   WORKBENCH shell — full-bleed canvas + floating glass panel + bottom strip
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
-  src/workbench/             Board loader, data-ios-include, preview-script mount (A+B), HMR client
+  src/workbench/             Board loader, dist screens, preview-script mount (A+B), HMR client
   src/client/annotate.js     The annotation client (served as /annotate.js)
-  src/server/                Vite plugins: annotate/sites/export APIs, components-board, preview-hmr,
-                             preview-inject, template-only, content-routes (URL → disk mapping);
+  src/server/                Vite plugins: annotate/sites/export APIs, page compiler, preview-hmr,
+                             preview-inject, content-routes (URL → disk mapping);
                              lib/site-proxy.js = same-origin proxy for url entries;
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
@@ -104,15 +128,17 @@ src/                         pinpoint itself — the disk layout moves, the serv
 content/                     what the service serves
   content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
   content/kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock
-  content/kits/ios/components/   Component Library sources (meta.json + variant HTML) — URL /kits/…
-  content/previews/<page>/       Template pages only — board.json + screen HTML (+ optional <screen>.js)
-  content/previews/_index.json   Page manifest (id / title / order / default / mode) — URL /previews/…
+  content/kits/ios/jsx/          Kit component stamps (JSX), imported from 'pinpoint/kit'
+  content/previews/              Template pages only — each a source dir: board.json + <screen>.jsx
+                                 + components/ (+ assets); manifest _index.json — URL /previews/…
 
-bin/pinpoint.mjs             CLI — registry (`add` / `move`) + service lifecycle (`status` / `start` /
-                             `stop` / `restart`); logic + tests in bin/pinpoint-cli.js
+bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render; logic + tests in
+                             bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
-scripts/                     CLI entry for export + the wb-token generator
-e2e/                         Playwright workbench / registry tests
+scripts/                     wb-token generator + export-preview (frame renderer)
+e2e/                         Playwright workbench / registry tests + page fixtures (e2e/jsx-site …)
+
+~/.pinpoint/dist/<entry>/    Compiled screens (pp2 dist) — generated, not in git, not in the page dir
 ```
 
 Your own pages do **not** live in this repo. Register any directory, single HTML file, or live URL
@@ -130,16 +156,16 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the bottom
    composer (pills reference targets; `[indicator N]` inlines them), paste reference images,
    draw move-arrows.
-2. Say「标好了，你看一下」— the agent reads the annotation documents (disk SSOT in per-entry buckets
-   under `~/.pinpoint/<entry-id>/`, exposed by `GET /health`; revisioned, SSE-synced) grouped by
-   `pageId → section → screenId`, edits the routed source file, and the board hot-reloads.
-   The agent summarizes what changed and why in the conversation.
+2. Say「标好了，你看一下」— the agent runs `ppnt check <page>` (statuses, intents, code excerpts,
+   no browser), edits the routed source file, `ppnt build`, then writes `ppnt mark … done --note`.
+   Annotations live in per-entry buckets under `~/.pinpoint/<entry-id>/` (disk is the SSOT;
+   revisioned, SSE-synced). Four states: `open` (yours) → `check` / `done` (agent) → `close` (yours).
 3. Hover a pin on the canvas to read its comment card, or open “这页的标注” from the count
    button at the right end of the bottom strip and click 定位 to focus the owning frame. Review the
-   visual change, then clear resolved marks and repeat.
+   change and click 关闭 on the done row (one click, toast with 5 s undo). Closed rows collapse away.
 
-Short locators for chat: `@page:library` · `@section:library/brew-flow` · `@frame:library/timer` ·
-`@a:<id>`. Full schema and routing: [`docs/annotation.md`](docs/annotation.md).
+Short locators for chat: `#12` · `plugins#12` · `B3` · `@frame:<page>/<screen>` · `@a:<id>`.
+Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
 The annotation layer never touches a page you didn't register — **登记过才注入**. Everything else —
@@ -160,18 +186,9 @@ No annotation surface.
 HTTPS static dependencies are scanned first and frozen byte-exact only after
 per-resource approval; pages without remote resources download immediately.
 
-The image renderer behind the retired frame picker still powers scripted use
-(`POST /api/export-image`, and `scripts/export-preview.mjs` after `npm run dev`):
-
-```bash
-npm run export -- --page library --section brew-flow --frame timer
-npm run export -- --page library --section brew-flow
-```
-
-Output defaults to gitignored `exports/`. Options: `--scale 1|2`,
-`--background canvas|white|transparent`, `--format png|webp`, and `--output <path>`.
-Transparent output requires PNG; very large 2× Sections fail with a clear 1× retry hint instead of
-silently wrapping or clipping the flow.
+Frame images are the agent side: `ppnt shot` (with `--marks` baking the `#n` pins)
+and `ppnt check --mode image` reuse the same server-side renderer
+(`POST /api/export-image`) — screens never implement their own screenshotting.
 
 ## One phone, no workbench
 
@@ -234,8 +251,8 @@ Everything inside `.ios-screen` renders at **true iOS points**.
 - **Lock** — `ios-lockscreen` `ios-notification` …
 - **Utils** — `ios-muted` `ios-row` `ios-spacer` `ios-clamp1/2`
 
-See the Component Library page for live recipes. Sheet + tabbar structure:
-[`content/previews/library/home.html`](content/previews/library/home.html).
+Live recipes: the page fixtures under `e2e/` (`e2e/jsx-site/` for JSX frames + components,
+`e2e/ios-site/` for the full board shapes). Sheet + tabbar structure: `e2e/ios-site/home.jsx`.
 
 **Icons** — emoji for app/content; system chrome SVG (`#c-back`, `#c-chev`, `#c-search`) auto-injected.
 
@@ -270,9 +287,10 @@ own `node_modules`, so publishing installs the exact lockfile before running the
 `just publish` refuses dirty or divergent worktrees, never force-pushes, and never creates a merge
 commit. The full contract is in [`AGENTS.md`](AGENTS.md).
 
-Clone per project. `content/previews/` holds **template content only**: the tracked examples (`library/`,
-`doc-library/`). Framework files stay untouched, so pulling template updates is a clean overwrite of
-`content/kits/ios/ios-kit.*` / `src/` / `index.html`.
+Clone per project. `content/previews/` holds **template content only** (pp2 removed the old tracked
+example pages; instance content always registers via `pinpoint add` and lives outside this repo).
+Framework files stay untouched, so pulling template updates is a clean overwrite of
+`content/kits/ios/` / `src/` / `index.html`.
 
 ## Credits
 
