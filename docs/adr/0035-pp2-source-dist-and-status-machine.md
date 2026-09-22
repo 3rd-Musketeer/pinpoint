@@ -1,6 +1,6 @@
 # 0035 · pp2：源码 / dist 分层、页内组件印章、标注状态机、agent 面 CLI
 
-Status: 现行 · Date: 2026-09-22 · Supersedes: 0028（组件归属半边）、0015（导出 picker）、0017（“Component Library 作系统行保留”一句） · Scope: `src/server/lib/page-compiler.js`、`src/server/lib/pp-jsx-runtime.js`、`content/kits/ios/jsx/`、`bin/pinpoint-cli.js`、`src/client/annotate.js`（状态机与幽灵框）、`docs/board-schema.md`
+Status: 现行 · Date: 2026-09-22 · Supersedes: 0028（组件归属半边）、0015（导出 picker）、0017（“Component Library 作系统行保留”一句）、0009（扩展整体） · Scope: `src/server/lib/page-compiler.js`、`src/server/lib/pp-jsx-runtime.js`、`content/kits/ios/jsx/`、`bin/pinpoint-cli.js`、`src/client/annotate.js`（状态机与幽灵框）、`docs/board-schema.md`
 
 **Decided**（2026-09-22，owner 对话定稿；决定全表与切片执行记录在 `tasks/2026-09-22-pp2/`）：
 
@@ -26,9 +26,9 @@ Status: 现行 · Date: 2026-09-22 · Supersedes: 0028（组件归属半边）�
   无副作用；只有 `mark` 写状态。补充 0018。
 - **`shot --marks`**：把标注序号钉烤进帧图（图上只烤钉，清单由 `check` 给）。0015 当日缓期的
   “批注烘进 frame 导出”以此落地，缓期关闭。
-- **Component Library 藏起**：不再前置系统行，`?page=components` 落“页面不存在”；
-  `components-board.js` 代码留着，跨页复用信号出现再开。0017 阶段 2 的“Component Library 作
-  系统行保留”一句作废。
+- **Component Library 删除**：组件板、`components-board.js`、`/components/board.json` 路由与
+  `allowComponentRefs` 整个删掉（screenId 收窄为单段），`?page=components` 落“页面不存在”；
+  跨页复用信号出现再按印章模型重做。0017 阶段 2 的“Component Library 作系统行保留”一句作废。
 - **退役**：浏览器扩展（Chrome Side Panel，0009 的实现）与文档导出（三种模式、token 估算、zip）
   退场；用户面导出只剩“整个画布导出为离线可交互 HTML”（ADR 0033），服务端帧图片渲染器保留给
   `ppnt shot` / `check --mode image`。模板页（library / doc-library）删除，范例页由 owner 在 pp2

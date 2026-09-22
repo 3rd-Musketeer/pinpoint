@@ -40,7 +40,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0012](0012-sheet-format-rev-a1-refs.md) | 2026-08-15 | 图纸版式：铭牌 + REV 协议 + A1 引用法 + 装饰检验；DESIGN.md 正典化 | 部分缓期（图注 / 装饰检验 / 文档权威现行） | ADR 0013 |
 | [0011](0011-sidebar-split-and-design-v2.md) | 2026-08-14 | 侧栏左右分工 + 设计语言 V2（钢灰蓝 × S3 圆角） | 部分被取代（accent / 圆角 / 网格人格 / 设置视图仍现行） | ADR 0031 |
 | [0010](0010-design-tokens-steel-blue.md) | 2026-08-13 | 设计语言 token 级锚定：Steel Blue accent + 画布点阵 + 结构缝回调 | 部分被取代（语义色 / 结构缝 / mono 档仍现行） | ADR 0011、ADR 0012、ADR 0031 |
-| [0009](0009-extension-side-panel.md) | 2026-08-11 | 扩展标注面板 = Chrome Side Panel（原生分屏）；点击必达 + 陈旧自愈 | 现行 | — |
+| [0009](0009-extension-side-panel.md) | 2026-08-11 | 扩展标注面板 = Chrome Side Panel（原生分屏）；点击必达 + 陈旧自愈 | 已退役（扩展整体删除） | ADR 0035 |
 | [0008](0008-design-anchor-flat-linear-light.md) | 2026-08-11 | 设计语言锚：扁平 / Linear 风 / light theme（owner 审美准则） | 部分被取代（准则本体仍现行） | ADR 0010、ADR 0031 |
 | [0007](0007-workbench-react-rebuild.md) | 2026-08-10 | workbench 技术栈重构（react-rebuild milestone 收官） | 现行 | — |
 | [0006](0006-pinpoint-service-closeout.md) | 2026-08-10 | pinpoint 服务化 milestone 收尾（closeout） | 现行 | — |

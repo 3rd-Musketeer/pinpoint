@@ -14,7 +14,7 @@
 | `screenId` | frame / 屏文件的 id |
 | `content` | 标注正文（遗留名：`comment`） |
 | `n` | 对外序号：按桶单调取号（桶目录下 `_seq.json` 的 `next`），跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
-| `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文「标注状态机」 |
+| `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
 | `note` | agent 在 check / done 时留的一句话，可选 |
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
@@ -67,15 +67,15 @@ API 调用打的是脚本被加载的那个 origin。
 
 在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。
 
-工具条带一个**「打开 workbench」**入口（2026-09-04）：`/sites/` 页面在 workbench 之外，
+工具条带一个**“打开 workbench”**入口（2026-09-04）：`/sites/` 页面在 workbench 之外，
 之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
 `<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
-frame 里隐藏——那里已经在 workbench 里，同「只留一个控制面」的规矩。
+frame 里隐藏——那里已经在 workbench 里，同“只留一个控制面”的规矩。
 
-页面内的 `#ann-sidebar`（**S** 键、工具条的「列表」钮）：
-head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
+页面内的 `#ann-sidebar`（**S** 键、工具条的“列表”钮）：
+head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
-凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条「只留一个控制面」的规矩。
+凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条“只留一个控制面”的规矩。
 
 （浏览器扩展与它的 Chrome Side Panel 控制面已于 pp2 切片 3 退役。）
 
@@ -127,11 +127,11 @@ head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n
 ## 装载失败与 sidecar 资源
 
 板装载失败（`board.json` 404 / 契约错误）与单屏装载失败走同一个面板（`.wb-screen-err`）：
-三行说明（标题 / 出处 / 原因）+ 固定两个动作「回到 Pages」「重试」。动作只写 data 契约
+三行说明（标题 / 出处 / 原因）+ 固定两个动作“回到 Pages”“重试”。动作只写 data 契约
 （`data-err-home` / `data-err-retry` + `data-err-page` / `data-err-screen`），点击由挂在 stage 上的
-委托监听执行——板每次装载整替换 `innerHTML`，监听不能挂面板自己身上。「回到 Pages」落到
-Component Library 并展开左栏；「重试」失效对应的 `board` / `screen` 查询后原地重装。
-左栏「页面清单读取失败」同样带一个「重试」（`pages.js` 的 `retryPageManifest`）。
+委托监听执行——板每次装载整替换 `innerHTML`，监听不能挂面板自己身上。“回到 Pages”落到
+默认页（第一个可装载的页）并展开左栏；“重试”失效对应的 `board` / `screen` 查询后原地重装。
+左栏“页面清单读取失败”同样带一个“重试”（`pages.js` 的 `retryPageManifest`）。
 
 fragment 里的 **CSS 资源 url 与 JS sidecar 同规则**（2026-09-04）：`<style>` 块里的 `@import` 与
 `<link rel=stylesheet>` 的相对 url，在装配时被 `src/workbench/lib/sidecar-css.js` 改写成
@@ -144,20 +144,12 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 显式写了 `src` 的 sidecar，约定式的 `<screenId>.js`（`data-preview-mount` 隐式探的那条）
 允许缺席、不报。
 
-## 图片导出
+## 导出
 
-图片导出归 workbench（ADR 0015）。单一入口：HUD 的「导出」钮打开导出 picker
-（`src/workbench/app/ExportPicker.jsx`，原生 dialog）——当前页的 proto 树（section 行整选，
-frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` 走 scale 1 + debounce）、
-背景三态（画布 / 白底 / 透明）。输出固定 **PNG 2×**；图注（引用号 + 标题 + dim 行）永远随图走。
-旧的「干净画面 / 带说明」预设、WebP 与 1× 选项、per-frame / per-section 触发器、
-以及「复制 PNG」都已退役。note 自 ADR 0026 起挪进 detail 面板，不进导出——
-重新注入随导出系统重构（见 `BACKLOG.md`）。
-
-选中一个 frame 直接下载 PNG，多个则服务端打包（`POST /api/export-zip`，store-only 写入器
-`src/server/lib/zip-store.js`）。agent 的 CLI 用同一个 Chromium 渲染器：
-`npm run export -- --page <page> --section <section> [--frame <screen>]`。
-不要把截图逻辑加进单个屏的片段里。
+用户面只剩一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
+原生 dialog；ADR 0033）。图片 picker、zip 打包（`/api/export-zip`）、文档导出三模式都在 pp2 切片 3 退役。
+服务端帧图片渲染器（`/api/export-image`、`scripts/export-preview.mjs`）保留给 agent：`ppnt shot`
+与 `ppnt check --mode image` 走它，不再是用户面入口。不要把截图逻辑加进单个屏的片段里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（`topics/chat-stream-polish/prototypes/plugins/pk.js` 是样例）。
 
@@ -182,11 +174,11 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
   `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
   revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
   `404 annotation_not_found`。这是 `ppnt mark` 的后端；
-- `done` → `close`：owner 在侧栏对 done 行点「关闭」——单击，toast 带「撤销」5 秒，不二次确认；
+- `done` → `close`：owner 在侧栏对 done 行点“关闭”——单击，toast 带“撤销”5 秒，不二次确认；
   撤销即 `close → open`，再编辑也回 `open`。
 
 UI 随状态走：画布钉子 open = 现状、check = 空心灰描边、done = 右上角小勾、close 不画；
-侧栏行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进「已关闭 n」开关组。
+侧栏行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进“已关闭 n”开关组。
 锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
