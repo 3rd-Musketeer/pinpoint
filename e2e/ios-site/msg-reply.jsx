@@ -10,9 +10,9 @@ export default function MsgReply() {
       </div>
       <div class="ios-page" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:12px">
         <div class="ios-muted ios-footnote" style="text-align:center;padding:8px 0 4px">今天 9:41</div>
-        <div data-ios-include="bubble/incoming" data-text="试试 1:16，我早上冲花魁甜感清楚多了。"></div>
-        <div data-ios-include="bubble/incoming" data-text="水温也别超 90，日晒豆容易带苦。"></div>
-        <div data-ios-include="bubble/outgoing" data-text="收到，下一杯就试 1:16 + 88°C，晚点发你记录。"></div>
+        <div class="ios-bubble ios-bubble-in" style="align-self:flex-start;max-width:78%;background:var(--ios-fill-3);color:var(--ios-text);border-radius:18px;border-bottom-left-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">试试 1:16，我早上冲花魁甜感清楚多了。</div>
+        <div class="ios-bubble ios-bubble-in" style="align-self:flex-start;max-width:78%;background:var(--ios-fill-3);color:var(--ios-text);border-radius:18px;border-bottom-left-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">水温也别超 90，日晒豆容易带苦。</div>
+        <div class="ios-bubble ios-bubble-out" style="align-self:flex-end;max-width:78%;background:var(--ios-accent);color:#fff;border-radius:18px;border-bottom-right-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">收到，下一杯就试 1:16 + 88°C，晚点发你记录。</div>
       </div>
       <div style="flex:none;display:flex;align-items:flex-end;gap:8px;padding:8px 12px 10px;border-top:0.5px solid var(--ios-sep);background:var(--ios-bg-2)">
         <button class="ios-btn gray" style="width:34px;height:34px;padding:0;border-radius:50%;flex:none;font-size:20px;line-height:1">＋</button>
