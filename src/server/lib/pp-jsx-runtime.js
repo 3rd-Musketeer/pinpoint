@@ -17,19 +17,34 @@ import { Fragment, jsxDEV as preactJsxDEV } from 'preact/jsx-dev-runtime';
 const wrapped = new WeakMap();
 let seq = 0;
 
+/**
+ * data-pp-comp 只打用户命名的组件（2026-09-22 review 1-2）：匿名默认导出经 esbuild
+ * 得到 <文件>_default 的推断名，export default () => … 的 name 是 "default"，
+ * 这些都不是用户起的名字，打上只是噪声。返回 null = 不包装不打标。
+ */
+function userCompName(fn) {
+  const name = fn.displayName || fn.name || '';
+  if (!name || name === 'default' || name === 'Anonymous' || name.endsWith('_default')) return null;
+  return name;
+}
+
 /** 编译器包帧默认导出用：与 jsxDEV 内部同一个包装，帧根宿主元素也带 data-pp-comp。 */
 export function __ppWrapComponent(fn) {
   let hit = wrapped.get(fn);
   if (!hit) {
-    const name = fn.displayName || fn.name || 'Anonymous';
-    hit = function PpStampComponent(props) {
-      const out = fn(props);
-      if (out && typeof out.type === 'string') {
-        return cloneElement(out, { 'data-pp-comp': name });
-      }
-      return out;
-    };
-    if (fn.defaultProps) hit.defaultProps = fn.defaultProps;
+    const name = userCompName(fn);
+    if (name === null) {
+      hit = fn;
+    } else {
+      hit = function PpStampComponent(props) {
+        const out = fn(props);
+        if (out && typeof out.type === 'string') {
+          return cloneElement(out, { 'data-pp-comp': name });
+        }
+        return out;
+      };
+      if (fn.defaultProps) hit.defaultProps = fn.defaultProps;
+    }
     wrapped.set(fn, hit);
   }
   return hit;

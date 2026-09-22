@@ -125,6 +125,35 @@ describe('jsx 帧编译', () => {
     assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2#1"[^>]*><p data-pp-id="home\.jsx:2#2">同<\/p><\/div>$/);
   });
 
+  test('data-pp-comp 只打用户命名的组件：匿名默认导出不打，命名导出照打', async () => {
+    const target = makePage('jsx-comp-name', {
+      board: {
+        sections: [{
+          id: 'main', title: 'Main', layout: 'row',
+          screens: [{ id: 'anon', title: 'Anon' }, { id: 'named', title: 'Named' }],
+        }],
+      },
+      files: {
+        'components/Badge.jsx': 'export const Badge = () => <span className="badge">章</span>;\n',
+        'anon.jsx': 'export default () => <div className="ios-app"><p>匿名</p></div>;\n',
+        'named.jsx': [
+          'import { Badge } from \'./components/Badge.jsx\';',
+          'export default function Named() {',
+          '  return <div className="ios-app"><Badge /></div>;',
+          '}',
+          '',
+        ].join('\n'),
+      },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result.screens));
+    const anon = fs.readFileSync(distFile(target, 'anon.html'), 'utf8');
+    assert.ok(!anon.includes('data-pp-comp'), anon);
+    const named = fs.readFileSync(distFile(target, 'named.html'), 'utf8');
+    assert.match(named, /<div class="ios-app" data-pp-id="named\.jsx:3#1" data-pp-comp="Named">/);
+    assert.match(named, /<span class="badge" data-pp-id="components\/Badge\.jsx:1#1" data-pp-comp="Badge">章<\/span>/);
+  });
+
   test('pinpoint/kit 解析成空模块（切片 2 再填）', async () => {
     const target = makePage('jsx-kit', {
       board: BASIC_BOARD,
