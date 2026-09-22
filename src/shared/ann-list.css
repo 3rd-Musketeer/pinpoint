@@ -1,11 +1,9 @@
-/* Shared annotation-list rows — the row/empty visual language of all three
+/* Shared annotation-list rows — the row/empty visual language of the two
  * annotation list consumers:
  *   - workbench sidebar (#wbann-list in index.html, links this file)
  *   - injected client sidebar (#ann-sidebar; this file is inlined into the
  *     served /annotate.js by src/server/annotate-api.js so the client stays a
  *     single self-contained bundle)
- *   - extension side panel (#panel-list in panel.html, links this file;
- *     scope added 2026-08-13 — the panel shipped without it at first)
  * Row data comes from src/shared/ann-row.js; keep classes in sync with all
  * consumers' renderers.
  *
@@ -28,66 +26,54 @@
  */
 
 #wbann-list .wb-ann-item,
-#panel-list .wb-ann-item,
 #ann-sidebar .wb-ann-item {
   width:100%; margin-bottom:2px; border-radius:var(--wb-r-2, 6px);
   transition:background var(--wb-dur, .2s) var(--wb-ease, cubic-bezier(.25,0,0,1));
 }
 #wbann-list .wb-ann-item:hover,
-#panel-list .wb-ann-item:hover,
 #ann-sidebar .wb-ann-item:hover { background:var(--wb-hover, rgba(0,0,0,.04)); }
 #wbann-list .wb-ann-item--broken,
-#panel-list .wb-ann-item--broken,
 #ann-sidebar .wb-ann-item--broken { opacity:.72; }
 
 #wbann-list .wb-ann-item-main,
-#panel-list .wb-ann-item-main,
 #ann-sidebar .wb-ann-item-main {
   flex:1; min-width:0; display:flex; gap:8px; align-items:flex-start;
   padding:7px 4px 7px 8px; border:0; background:transparent; cursor:pointer;
   text-align:left; font:inherit; color:inherit;
 }
 #wbann-list .wb-ann-num,
-#panel-list .wb-ann-num,
 #ann-sidebar .wb-ann-num {
   flex:none; height:18px; margin-top:1px; border-radius:50%;
   background:#f5a623; color:#1a1a1a; font-size:10px; font-weight:var(--wb-w-bold, 700);
   display:flex; align-items:center; justify-content:center;
 }
 #wbann-list .wb-ann-item--broken .wb-ann-num,
-#panel-list .wb-ann-item--broken .wb-ann-num,
 #ann-sidebar .wb-ann-item--broken .wb-ann-num {
   background:transparent; color:var(--wb-faint, #8d8d8d);
 }
 #wbann-list .wb-ann-body,
-#panel-list .wb-ann-body,
 #ann-sidebar .wb-ann-body {
   flex:1; min-width:0; display:flex; flex-direction:column; gap:2px;
 }
 #wbann-list .wb-ann-cap,
-#panel-list .wb-ann-cap,
 #ann-sidebar .wb-ann-cap {
   font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 #wbann-list .wb-ann-text,
-#panel-list .wb-ann-text,
 #ann-sidebar .wb-ann-text {
   font-size:12px; line-height:1.4; color:var(--wb-fg, #1c2024);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }
 #wbann-list .wb-ann-item--broken .wb-ann-text,
-#panel-list .wb-ann-item--broken .wb-ann-text,
 #ann-sidebar .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted, #6b6b70); }
 #wbann-list .wb-ann-broken-tag,
-#panel-list .wb-ann-broken-tag,
 #ann-sidebar .wb-ann-broken-tag {
   font-size:10px; font-weight:var(--wb-w-semibold, 600); letter-spacing:.02em; line-height:1.3; color:var(--wb-danger, #b84230);
 }
 #wbann-list .wb-ann-tags,
-#panel-list .wb-ann-tags,
 #ann-sidebar .wb-ann-tags {
   font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
@@ -95,18 +81,15 @@
 }
 
 #wbann-list .wb-ann-empty,
-#panel-list .wb-ann-empty,
 #ann-sidebar .wb-ann-empty {
   padding:20px 12px 18px; border-radius:var(--wb-r-2, 6px);
   background:rgba(255,255,255,.45); text-align:center;
 }
 #wbann-list .wb-ann-empty-title,
-#panel-list .wb-ann-empty-title,
 #ann-sidebar .wb-ann-empty-title {
   font-size:12px; font-weight:var(--wb-w-medium, 500); color:var(--wb-muted, #6b6b70);
 }
 #wbann-list .wb-ann-empty-hint,
-#panel-list .wb-ann-empty-hint,
 #ann-sidebar .wb-ann-empty-hint {
   margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint, #8d8d8d);
 }
