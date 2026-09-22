@@ -43,8 +43,7 @@
   （A / B1），手写必重复；禁「·」拼接多段信息。
   `validateBoard` 硬拦 title 里的换行；画布 caption 两行截断 + hover 全文兜底。
 - section 与 frame 只保留标题，不提供说明字段或详情浮层。
-  旧 `sections[].note` / `screens[].note` 加载时忽略，两类旧 note API 均返回 410。
-  存量字段的备份清理见 [迁移说明](board-note-retirement.md)。
+  旧 `sections[].note` / `screens[].note` 加载时忽略（退役 410 端点已于 pp2 切片 3 连端点删除）。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把一个 doc 屏标成草稿还是产物。它只影响条目派生，
   不改变加载与壳语义。
 
