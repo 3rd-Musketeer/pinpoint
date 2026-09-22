@@ -597,6 +597,10 @@ test('annotation jumps center the DOM and composer together without moving while
   await page.locator('#ann-input').press('End');
   await page.keyboard.insertText('检查组合居中');
   await page.locator('#ann-save').click();
+  // n 要等保存应答回来再取（M1）：画布账本桶不被本用例清空，桶级计数器里
+  // 留着上个 spec 的号，服务端发的号会覆盖客户端的临时号，侧栏行的
+  // data-ann-n 随之而变。
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const n=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
   for(let i=0;i<2;i++) {
     if (i === 1) await page.locator('#wbside-toggle').click();
