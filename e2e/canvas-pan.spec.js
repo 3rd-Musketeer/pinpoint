@@ -12,12 +12,23 @@ async function openCanvas(page, count = 0) {
       targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(${i % 3 + 1})`, text: 'Cell' }],
     })),
   } }));
+  // R4 起锚点几何也会 debounce 落盘（recordLastRect → persist）：默认把 /save 也
+  // 拦在页面里（假账本桶），不写真实 e2e 数据目录 —— 后面的 scroll-motion 等
+  // 用例直接读真桶。返回捕获的保存列表，要断言保存行为的用例先等它 settle。
+  let revision = 1;
+  const saves = [];
+  await page.route('**/save', async route => {
+    saves.push(route.request().postDataJSON());
+    revision += 1;
+    await route.fulfill({ json: { ok: true, revision } });
+  });
   await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
   await page.waitForFunction(expected => window.pinpoint.getState().countAll === expected, Array.isArray(count) ? count.length : count);
   await page.evaluate(() => window.workbench.whenScrollSettled());
+  return saves;
 }
 
 for (const mode of [false, true]) for (const button of ['middle', 'space']) {
@@ -188,9 +199,11 @@ test('region and movement-arrow geometry translate together without rebuilding t
 });
 
 test('continuous zoom projects targets without resolving or measuring them and never saves annotations', async ({ page }) => {
-  await openCanvas(page, 1000);
-  const saves = [];
-  page.on('request', request => { if (request.method() === 'POST' && new URL(request.url()).pathname === '/save') saves.push(request.url()); });
+  const saves = await openCanvas(page, 1000);
+  // R4 的首测量 lastRect 落盘是一次合法保存：先等它 settle，清零后再数
+  // zoom 期间的新保存 —— 断言的仍然是「zoom 不触发保存」本身。
+  await expect.poll(() => saves.length).toBeGreaterThanOrEqual(1);
+  saves.length = 0;
   const result = await page.evaluate(async () => {
     const stage = document.querySelector('#wbstage');
     const first = document.querySelector('#ann-marks .ann-target');
@@ -210,6 +223,8 @@ test('continuous zoom projects targets without resolving or measuring them and n
   });
   expect(result).toEqual({ reads: 0, queries: 0, same: true });
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);
+  // debounce 600ms：等一个周期，确认 zoom 没排下任何新保存。
+  await page.waitForTimeout(700);
   expect(saves).toEqual([]);
 });
 
@@ -317,7 +332,10 @@ test('global stylesheet updates invalidate cached geometry', async ({ page }) =>
 });
 
 test('saving one comment preserves unrelated geometry and sends one complete ledger update', async ({ page }) => {
-  await openCanvas(page, 1000);
+  const startup = await openCanvas(page, 1000);
+  // R4 的首测量 lastRect 落盘先走默认假桶（revision 1→2）；下面的 route 覆盖
+  // 它之后，本用例自己的保存从头计数，baseRevision 是推进后的 2。
+  await expect.poll(() => startup.length).toBeGreaterThanOrEqual(1);
   const saves = [];
   await page.route('**/save', async route => {
     saves.push(route.request().postDataJSON());
@@ -340,7 +358,7 @@ test('saving one comment preserves unrelated geometry and sends one complete led
   expect(result.retained).toBe(true);
   expect(result.reads).toBeLessThan(10);
   await expect.poll(() => saves.length).toBe(1);
-  expect(saves[0].baseRevision).toBe(1);
+  expect(saves[0].baseRevision).toBe(2);
   expect(saves[0].annotations).toHaveLength(1000);
   expect(saves[0].annotations[0].content).toBe('[@t:i1] Updated comment');
   await expect(page.locator('#ann-marks .ann-target')).toHaveCount(1000);
@@ -348,7 +366,30 @@ test('saving one comment preserves unrelated geometry and sends one complete led
 
 
 test('ghost rect keeps the last known spot through pan and zoom after the target leaves the DOM', async ({page}) => {
-  await openCanvas(page, 1);
+  // R4：lastRect 现在会 debounce 落盘 —— 用一对有状态假路由（/save 合并进账本、
+  // GET 回账本）从首次装载就接住本页，reload 后幽灵框必须还在原位（补回旧
+  // result 用例被删掉的 reload 存活断言，蓝框退役后的等价物）。
+  const ledger = {
+    revision: 1,
+    annotations: [{
+      id: 'pan-fixture-0', n: 1, type: 'element', pageId: 'e2e-ios',
+      screenId: 'settings', content: 'Pan annotation 1',
+      targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(1)`, text: 'Cell' }],
+    }],
+  };
+  await page.route('**/save', async route => {
+    const body = route.request().postDataJSON();
+    ledger.revision += 1;
+    ledger.annotations = body.annotations;
+    await route.fulfill({ json: { ok: true, revision: ledger.revision } });
+  });
+  await page.route('**/annotations/**', route => route.fulfill({ json: ledger }));
+  await page.goto('/index.html?page=e2e-ios');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await expect(page.locator(cellSelector).first()).toBeVisible();
+  await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
+  await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);
+  await page.evaluate(() => window.workbench.whenScrollSettled());
   // lastRect 在锚点活着时已记下；目标离场后幽灵框钉在原位，pan / zoom 跟着投影走。
   // 比的是舞台绝对坐标（scrollLeft/Top 参与换算）：视口移动不算误差。
   const oldRect = await page.locator(`${cellSelector}:nth-child(1)`).first().boundingBox();
@@ -376,5 +417,14 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 100; s.scrollTop += 60; });
   await expect.poll(error).toBeLessThan(8);
   await page.locator('#wbzoom-in').click();
+  await expect.poll(error).toBeLessThan(8);
+  // reload 存活：等 lastRect 落进假账本，重载（DOM 恢复、锚点复活）后再把
+  // 目标删掉 —— 幽灵框仍须出现在原位。lastRect 没落盘的话这里直接没有幽灵框。
+  await expect.poll(() => Boolean(ledger.annotations[0] && ledger.annotations[0].lastRect)).toBe(true);
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);
+  await page.locator(cellSelector).evaluateAll(els => els.forEach(el => el.remove()));
+  await expect(ghost).toHaveCount(1);
   await expect.poll(error).toBeLessThan(8);
 });

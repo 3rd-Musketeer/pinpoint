@@ -2934,9 +2934,10 @@
     return r;
   }
 
+  var lastRectPersistTimer = null;
+
   function recordLastRect(m, docR) {
-    // lastRect = 最后一次锚点解析成功的几何：几何变了才更新，
-    // 合并进下一次 persist 落盘，不为它单独触发写盘（节流约定）。
+    // lastRect = 最后一次锚点解析成功的几何：几何变了才更新（±1px 守卫见下），
     // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标。
     // 亚像素抖动不算「变」：zoom 进出往返后 pose 带浮点残差，同一元素重算
     // 会在取整边界上 ±1 跳 —— 差不足 1px 时保持原值，省掉无谓的落盘。
@@ -2946,6 +2947,18 @@
         Math.abs(prev.w - docR[2]) < 1 && Math.abs(prev.h - docR[3]) < 1) return;
     m.lastRect = { x: Math.round(docR[0]), y: Math.round(docR[1]), w: Math.round(docR[2]), h: Math.round(docR[3]) };
     if (m.screenId) m.lastRect.screenId = m.screenId;
+    // 变了就要落盘（review R4）：旧约定是「合并进下一次 persist」，但新标注
+    // 创建后的首次 persist 常发生在几何管线跑过之前，此后也只在碰巧有别的
+    // 写盘时才更新 —— 页面一关，重开后的幽灵框就是陈旧位置或根本不画。
+    // debounce 到几何安定再写一次；epoch 捕获在 timer 里再校验，切账本后
+    // 的迟到触发不把旧账本的 lastRect 写进新账本。
+    if (lastRectPersistTimer) clearTimeout(lastRectPersistTimer);
+    var epoch = syncEpoch;
+    lastRectPersistTimer = setTimeout(function () {
+      lastRectPersistTimer = null;
+      if (epoch !== syncEpoch || ledgerSwitching) return;
+      persist();
+    }, 600);
   }
 
   /* lastRect 的坐标约定（记录与消费必须同一把尺子）：
