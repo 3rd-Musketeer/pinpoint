@@ -1522,7 +1522,7 @@
       var item = document.createElement('div');
       item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
-      if (r.note) item.title = r.note; // hover 出 agent 留的 note（和正文 hover 同一种卡）
+      if (r.note) item.title = r.note; // 原生 title，卡片留切片 5（GLM 收尾时的简化，勿当卡片找）
       var main = document.createElement('button');
       main.type = 'button';
       main.className = 'wb-ann-item-main';
