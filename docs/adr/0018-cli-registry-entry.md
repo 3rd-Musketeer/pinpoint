@@ -1,6 +1,6 @@
 # 0018 · CLI 注册入口：pinpoint add + 合成板 + registry 热重载
 
-Status: 现行（已落地） · Date: 2026-08-16 · Scope: `bin/pinpoint.mjs`、`src/server/lib/registry-store.js`、`src/server/lib/synth-board.js`
+Status: 现行（已落地） · Date: 2026-08-16 · 补充: 0035（命令名 `ppnt` 与 build / render / check / locate / shot / mark 扩面） · Scope: `bin/pinpoint.mjs`、`src/server/lib/registry-store.js`、`src/server/lib/synth-board.js`
 
 **Decided**（阶段 3/5 落地）:
 
