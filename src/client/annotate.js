@@ -2938,11 +2938,13 @@
     // lastRect = 最后一次锚点解析成功的几何：几何变了才更新，
     // 合并进下一次 persist 落盘，不为它单独触发写盘（节流约定）。
     // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标。
+    // 亚像素抖动不算「变」：zoom 进出往返后 pose 带浮点残差，同一元素重算
+    // 会在取整边界上 ±1 跳 —— 差不足 1px 时保持原值，省掉无谓的落盘。
     if (!docR || !m) return;
-    var r = [Math.round(docR[0]), Math.round(docR[1]), Math.round(docR[2]), Math.round(docR[3])];
     var prev = m.lastRect;
-    if (prev && prev.x === r[0] && prev.y === r[1] && prev.w === r[2] && prev.h === r[3]) return;
-    m.lastRect = { x: r[0], y: r[1], w: r[2], h: r[3] };
+    if (prev && Math.abs(prev.x - docR[0]) < 1 && Math.abs(prev.y - docR[1]) < 1 &&
+        Math.abs(prev.w - docR[2]) < 1 && Math.abs(prev.h - docR[3]) < 1) return;
+    m.lastRect = { x: Math.round(docR[0]), y: Math.round(docR[1]), w: Math.round(docR[2]), h: Math.round(docR[3]) };
     if (m.screenId) m.lastRect.screenId = m.screenId;
   }
 

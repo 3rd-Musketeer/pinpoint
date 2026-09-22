@@ -456,7 +456,7 @@ test('invalid cleanup retains partial targets and scopes that are loading or tem
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>{
     window.pinpoint.setMode(true);
-    for(const id of ['temporary','absent']){const el=document.createElement('button');el.id='guard-'+id;el.textContent=id;document.body.appendChild(el);}
+    const el=document.createElement('button');el.id='guard-temporary';el.textContent='temporary';document.body.appendChild(el);
     const frame=document.createElement('div');frame.className='wb-screen';frame.dataset.screen='lazy-result';
     frame.innerHTML='<div id="lazy-result-target">执行后的内容</div>';document.body.appendChild(frame);
   });
@@ -468,24 +468,25 @@ test('invalid cleanup retains partial targets and scopes that are loading or tem
   await page.locator('#ann-save').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const partial=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
-  const ids={};
-  for(const kind of ['temporary','absent']){
-    await page.locator('#guard-'+kind).click();await input.fill('修改 '+kind);await page.locator('#ann-save').click();
-    await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
-    ids[kind]=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
-  }
-  await page.evaluate(async id=>{
-    await window.pinpoint.recordResults(id,[{action:'modify',targets:[{screenId:'lazy-result',selector:'#lazy-result-target'}]}],{baseRevision:window.pinpoint.getState().revision});
+  await page.locator('#guard-temporary').click();await input.fill('修改 temporary');await page.locator('#ann-save').click();
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
+  const temporary=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
+  // 蓝框退役前，缺席作用域经 recordResults 的结果目标表达；现在直接把标注打进
+  // 稍后会缺席的 frame，clearInvalid 的保守判定同一规则：frame 未加载不清理。
+  await page.locator('#lazy-result-target').click();await input.fill('标在将缺席的 frame 里');await page.locator('#ann-save').click();
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
+  const absentScope=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
+  await page.evaluate(()=>{
     document.querySelector('#doc-title').remove();
-    document.querySelector('#guard-temporary').remove();document.querySelector('#guard-absent').remove();
+    document.querySelector('#guard-temporary').remove();
     document.querySelector('[data-screen="lazy-result"]').remove();
     document.body.dataset.loading='true';window.pinpoint.render();
-  },ids.absent);
+  });
   expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(0);
   await page.evaluate(()=>{delete document.body.dataset.loading;window.pinpoint.render();});
   expect(await page.evaluate(()=>window.pinpoint.clearInvalid())).toBe(1);
   const remaining=await page.evaluate(()=>window.pinpoint.marks.map(m=>m.id));
-  expect(remaining).toContain(partial);expect(remaining).toContain(ids.absent);expect(remaining).not.toContain(ids.temporary);
+  expect(remaining).toContain(partial);expect(remaining).toContain(absentScope);expect(remaining).not.toContain(temporary);
 });
 
 

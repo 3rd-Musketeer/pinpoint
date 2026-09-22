@@ -30,6 +30,9 @@ async function focus(page, screen) {
     window.workbench.focusFrame(group, screen, { smooth: false });
   }, screen);
 }
+// lastRect 是「锚点最后位置」提示：随保存合并落盘（新建的标注要等下一次
+// persist 才带上），重测又按复合坐标取整 —— 比对保存/重载保真时把它摘掉。
+const stripLastRect = list => list.map(({ lastRect, ...rest }) => rest);
 
 test('integrated navigation, pan, zoom and edits preserve persisted targets across reload and another browser context', async ({ page, browser }) => {
   fs.rmSync(ledger, { force: true });
@@ -85,12 +88,17 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     await save(page, 'integration new mark in earlier section');
     const final = read();
     expect(final).toHaveLength(2);
-    expect(final.find(m => m.id === first.id)).toEqual(edited);
+    expect(stripLastRect(final.filter(m => m.id === first.id))).toEqual(stripLastRect([edited]));
+    expect(final.find(m => m.id === first.id).lastRect).toEqual(edited.lastRect);
     await expect.poll(() => other.evaluate(() => window.pinpoint.marks.length)).toBe(2);
-    await page.reload();
-    await expect.poll(() => page.evaluate(() => window.pinpoint?.marks)).toEqual(final);
-    await other.reload();
-    await expect.poll(() => other.evaluate(() => window.pinpoint?.marks)).toEqual(final);
+    const persisted = stripLastRect(final);
+    const marksAfterReload = async context => {
+      await context.reload();
+      await expect.poll(() => context.evaluate(() => window.pinpoint?.marks?.length)).toBe(2);
+      return context.evaluate(() => window.pinpoint.marks);
+    };
+    expect(stripLastRect(await marksAfterReload(page))).toEqual(persisted);
+    expect(stripLastRect(await marksAfterReload(other))).toEqual(persisted);
     expect(read()).toEqual(final);
     await page.screenshot({ path: test.info().outputPath('integrated-restored.png') });
   } finally {
