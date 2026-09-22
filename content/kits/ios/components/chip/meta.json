@@ -1,7 +1,0 @@
-{
-  "id": "chip",
-  "title": "Chips & Badges",
-  "system": true,
-  "layout": "column",
-  "variants": [{ "id": "catalog", "title": "Status" }]
-}
