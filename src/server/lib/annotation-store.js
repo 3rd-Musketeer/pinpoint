@@ -3,6 +3,8 @@ import path from 'node:path';
 
 import {
   annotationsFromDoc,
+  isLegalMarkTransition,
+  isLegalTransition,
   normalizeAnnotation,
   normalizeDoc,
 } from '../../shared/annotation-indicator.js';
@@ -12,6 +14,14 @@ export { annotationSlug };
 
 export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
 
+/** targets 的稳定指纹（编辑目标判定用：选择器集合变了才算改了目标）。 */
+function targetsFingerprint(annotation) {
+  const list = Array.isArray(annotation && annotation.targets) && annotation.targets.length
+    ? annotation.targets
+    : (annotation && annotation.selector ? [{ selector: annotation.selector }] : []);
+  return list.map((target) => `${target.ref || ''}${target.selector || ''}`).join('') || '';
+}
+
 export function createAnnotationStore(options) {
   const dataDir = options.dataDir;
   const now = options.now || (() => new Date());
@@ -19,6 +29,35 @@ export function createAnnotationStore(options) {
 
   function jsonPathFor(page) {
     return path.join(dataDir, `${annotationSlug(page)}.json`);
+  }
+
+  // `_seq.json`（{ next }）：标注对外序号 #n 的按桶单调计数器，跨账本唯一、永不复用。
+  function seqPath() {
+    return path.join(dataDir, '_seq.json');
+  }
+
+  function readSeq() {
+    try {
+      const raw = JSON.parse(fs.readFileSync(seqPath(), 'utf8'));
+      return Number.isInteger(raw.next) && raw.next >= 1 ? raw.next : 1;
+    } catch {
+      return 1;
+    }
+  }
+
+  function writeSeq(next) {
+    fs.mkdirSync(dataDir, { recursive: true });
+    fs.writeFileSync(seqPath(), JSON.stringify({ next }, null, 2) + '\n');
+  }
+
+  /** 缺 n 的标注按数组顺序（= 创建顺序）补号；返回 { annotations, assigned }。 */
+  function assignNumbers(annotations) {
+    const missing = annotations.filter((a) => !Number.isInteger(a && a.n));
+    if (!missing.length) return { annotations, assigned: 0 };
+    let next = readSeq();
+    const out = annotations.map((a) => (Number.isInteger(a && a.n) ? a : { ...a, n: next++ }));
+    writeSeq(next);
+    return { annotations: out, assigned: missing.length };
   }
 
   function emptyDoc(page) {
@@ -56,9 +95,20 @@ export function createAnnotationStore(options) {
       const revision = Number.isInteger(parsedRevision) && parsedRevision >= 0
         ? parsedRevision
         : (normalized.annotations.length ? 1 : 0);
+      // 旧标注没有 n 的，首次读到时按创建顺序补号并写回（补号本身不改 revision）。
+      const numbered = assignNumbers(normalized.annotations);
+      if (numbered.assigned) {
+        writeDoc(safePage, {
+          path: normalized.path,
+          updated_at: normalized.updated_at,
+          revision,
+          annotations: numbered.annotations,
+        });
+      }
       return asDoc({
         ...normalized,
         revision,
+        annotations: numbered.annotations,
       });
     } catch {
       return emptyDoc(safePage);
@@ -129,15 +179,68 @@ export function createAnnotationStore(options) {
     const list = Array.isArray(input.annotations)
       ? input.annotations
       : (Array.isArray(input.marks) ? input.marks : []);
-    const annotations = list.map(normalizeAnnotation);
+    const byId = new Map(disk.annotations.map((a) => [a.id, a]));
+    const annotations = [];
+    for (const raw of list) {
+      const a = normalizeAnnotation(raw);
+      const before = a.id ? byId.get(a.id) : null;
+      if (!before) {
+        // 新标注恒为 open（客户端声明什么都不算）。
+        a.status = 'open';
+      } else {
+        const edited = a.content !== before.content || targetsFingerprint(a) !== targetsFingerprint(before);
+        if (edited) {
+          // owner 编辑正文或目标 → 保存时状态回 open（服务端强制，与客户端一致）。
+          a.status = 'open';
+        } else if (!isLegalTransition(before.status, a.status)) {
+          return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${a.status}（check / done 只经 /status 端点）`, doc: disk };
+        }
+      }
+      annotations.push(a);
+    }
     const doc = writeDoc(safePage, {
       path: input.path || disk.path || '',
       updated_at: input.updated_at || now().toISOString(),
       revision: disk.revision + 1,
-      annotations,
+      annotations: assignNumbers(annotations).annotations,
     });
     collectUnusedImages(safePage, annotations);
     return { status: 200, doc };
+  }
+
+  /** ppnt mark 的后端：open / check → check / done（带一行 note）。 */
+  function setStatus(input) {
+    const safePage = annotationSlug(input.page ?? 'index');
+    if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
+      return { status: 400, error: 'invalid_base_revision', doc: readDoc(safePage) };
+    }
+    const disk = readDoc(safePage);
+    if (disk.revision !== input.baseRevision) {
+      return { status: 409, error: 'revision_conflict', doc: disk };
+    }
+    const wanted = String(input.status || '');
+    if (wanted !== 'check' && wanted !== 'done') {
+      return { status: 400, error: 'invalid_status', detail: 'status 端点只写 check / done', doc: disk };
+    }
+    const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
+    if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
+    const before = disk.annotations[index];
+    if (!isLegalMarkTransition(before.status, wanted)) {
+      return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${wanted}`, doc: disk };
+    }
+    const annotations = disk.annotations.slice();
+    annotations[index] = {
+      ...before,
+      status: wanted,
+      ...(typeof input.note === 'string' && input.note ? { note: input.note } : {}),
+    };
+    const doc = writeDoc(safePage, {
+      path: disk.path || '',
+      updated_at: now().toISOString(),
+      revision: disk.revision + 1,
+      annotations,
+    });
+    return { status: 200, doc, annotation: annotations[index] };
   }
 
   function listDocs() {
@@ -181,6 +284,7 @@ export function createAnnotationStore(options) {
     listDocs,
     readDoc,
     save,
+    setStatus,
     writeImage,
   };
 }

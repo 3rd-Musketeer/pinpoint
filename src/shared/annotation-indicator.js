@@ -8,7 +8,32 @@
  *
  * Scope indicators mean “all annotations under this locator”.
  * @a means one annotation.
+ *
+ * pp2 标注状态机（2026-09-22）：open → check / done → close；close 可撤销回 open。
+ * 写状态的只有两条路：工作台编辑 / 单击（走 /save 整写）与 ppnt mark（走
+ * /api/annotations/:page/:id/status）——两条路各有自己的合法转换表。
  */
+
+/** 四态。缺省 open；存量 result 字段读时归一成 done（显式迁移脚本之外的读侧自愈）。 */
+export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
+
+export function normalizeStatus(value, raw) {
+  if (ANNOTATION_STATUSES.includes(value)) return value;
+  if (raw && raw.result) return 'done';
+  return 'open';
+}
+
+/** /save 整写的合法转换：任何 → open（编辑 / 撤销）、done → close（工作台单击）。 */
+export function isLegalTransition(from, to) {
+  if (from === to) return true;
+  if (to === 'open') return true;
+  return from === 'done' && to === 'close';
+}
+
+/** mark 端点的合法转换：open / check → check / done。 */
+export function isLegalMarkTransition(from, to) {
+  return (from === 'open' || from === 'check') && (to === 'check' || to === 'done');
+}
 
 const ID_RE = '[A-Za-z0-9._-]+';
 const TARGET_REF_RE = /^i([1-9][0-9]*)$/;
@@ -144,6 +169,10 @@ export function annotationMatchesIndicator(a, ind) {
 export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const a = { ...raw };
+
+  // pp2 状态机：status 归一（存量 result → done 并摘字段）；note / n / lastRect 透传。
+  a.status = normalizeStatus(a.status, a);
+  if (a.result) delete a.result;
 
   if (a.content == null && a.comment != null) a.content = a.comment;
   delete a.comment;

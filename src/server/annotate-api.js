@@ -12,6 +12,8 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
 const ROOT = path.resolve(SRC, '..');
 const SCRIPT = path.join(SRC, 'client', 'annotate.js');
+// pp2 状态机端点：/annotations/<page>/<id|#n>/status
+const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
 const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotation-indicator.js'),
   path.join(SRC, 'client', 'lib', 'annotate-hit-test.js'),
@@ -374,7 +376,37 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
-    if (req.method !== 'POST' || !['/save', '/image', '/registry/reload'].includes(urlPath)) return false;
+    if (req.method !== 'POST' || !(['/save', '/image', '/registry/reload'].includes(urlPath) || STATUS_ROUTE.test(urlPath))) return false;
+
+    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done（带 note）。
+    if (req.method === 'POST' && STATUS_ROUTE.test(urlPath)) {
+      const parts = urlPath.match(STATUS_ROUTE);
+      let body;
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        sendJson(res, 400, { error: 'bad_json' });
+        return true;
+      }
+      const entryId = entryOrReject(res, body.entry);
+      if (!entryId) return true;
+      const rawId = decodeURIComponent(parts[2]);
+      const numeric = /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId;
+      const result = storeFor(entryId).setStatus({
+        page: decodeURIComponent(parts[1]),
+        id: numeric,
+        status: body.status,
+        note: typeof body.note === 'string' ? body.note : undefined,
+        baseRevision: body.baseRevision,
+      });
+      if (result.status !== 200) {
+        sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+        return true;
+      }
+      broadcastAnnotations(result.doc, entryId);
+      sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+      return true;
+    }
 
     // Re-read the registry file and swap the shared in-memory snapshot, so a
     // `pinpoint add` takes effect for serving / injection / bucket routing

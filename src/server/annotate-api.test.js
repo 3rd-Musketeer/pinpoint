@@ -102,7 +102,7 @@ test('GET /annotations/<page> resolves entry from the query string', async (t) =
   });
   const hit = await call(handler, 'GET', '/annotations/index.html?entry=web');
   assert.equal(hit.res.statusCode, 200);
-  assert.deepEqual(hit.json.annotations, [{ n: 7 }]);
+  assert.deepEqual(hit.json.annotations, [{ n: 7, status: 'open' }]);
   const miss = await call(handler, 'GET', '/annotations/index.html?entry=ghost');
   assert.equal(miss.res.statusCode, 400);
   assert.equal(miss.json.error, 'unknown_entry');
