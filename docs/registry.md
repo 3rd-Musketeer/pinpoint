@@ -233,6 +233,8 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 ## 导出的纯净性
 
-文档导出接受 `sites/<entry-id>/…` 形式的 src，并保证不含注入的 client：管线请求 `?annotate=off`、
-在渲染浏览器里 abort 掉 `**/annotate.js`、并用 `stripAnnotateBootstrap` 从导出的 HTML 里
-删掉注入片段（连 `__pinpointEntry` 标记一起）。
+现存的导出只有离线 HTML 一条（export-picker 的 HUD 导出，服务端是
+`POST /api/export-page-html`）：页内取屏本就走 `?annotate=off` 单请求豁免（见 sites-api 一节），
+拿到的帧不含注入的 client；导出器再把 CSS / 图片 / 脚本内联成单文件。
+旧「文档导出」管线连同它的兜底 `stripAnnotateBootstrap`（导出后再删注入段）已退役，不再存在
+「导出物需要事后清洗」的路径。

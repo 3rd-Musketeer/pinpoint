@@ -58,7 +58,7 @@ health endpoints, and whether the running service is the repo you are standing i
 
 Then tell your agent:
 
-> 读一下 AGENTS.md，然后在 Example Library 加一屏 XXX
+> 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 搭一页，跑 `ppnt build` 编译
 
 Verify changes with `just check` (or `npm run check`). Install the matching browser on the first run:
 

@@ -123,7 +123,7 @@ export const USAGE = `用法：
 add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
   目录             → kind "dir"，服务只读 host 在 /sites/<id>/ 并注入标注
   单个 .html 文件  → kind "file"，仅 serve 该文件（/sites/<id>/ 与 /sites/<id>/<文件名>）
-  http(s)://URL    → kind "url"，同源代理内嵌 + 浏览器扩展按 origin 注入
+  http(s)://URL    → kind "url"，同源代理内嵌 + 内嵌响应注入标注
 
 选项（add）：
   --title X        显示名（默认：目录名 / 文件名 / hostname）

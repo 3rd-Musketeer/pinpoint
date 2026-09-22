@@ -25,8 +25,11 @@
 
 ## 读到标注去改哪里
 
-- 流程节点带 `data-ios-from="bubble/outgoing"` → 优先改那个组件的源文件。
-- 流程屏的标注 → 只改 `content/previews/<pageId>/<screen>.html`。
+锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
+实例）与 `data-pp-comp`（组件名）。
+
+- 锚点带 `data-pp-comp` → 改 `<页>/components/<Name>.jsx`，所有引用它的帧一起变。
+- 锚点只带 `data-pp-id` → 改该帧的源文件 `<页>/<screenId>.jsx`。
 - `/sites/<entry-id>/` 下做的标注 → 改登记目录里磁盘上的那个文件（服务本身是只读的）。
 
 overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`goToMark` 需要时先切页，
