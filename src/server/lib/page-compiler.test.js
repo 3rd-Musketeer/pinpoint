@@ -498,6 +498,14 @@ describe('dist 状态与 serve 读取', () => {
     assert.equal(read.kind, 'error');
     assert.match(read.message, /onClick/);
     assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true, '失败重编不得把 stale 刷成 false');
+    // 「源码不存在」的屏没有源码记录，不算 stale —— e2e 的 jsx-site 固件页
+    // 常年挂一屏缺源码（500 + 错误面板如实表达），dist 并没有落后于什么。
+    const ghostTarget = makePage('fail-ghost', {
+      board: { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: 'Home' }, { id: 'ghost', title: 'Ghost' }] }] },
+      files: { 'home.html': '<div class="ios-app">在</div>\n' },
+    });
+    await compilePage(ghostTarget, { distRoot });
+    assert.equal(distStatus(ghostTarget.entryId, ghostTarget.pageDir, { distRoot }).stale, false, '缺源码屏不算 stale');
   });
 
   test('帧的组件依赖进 sources：kit / 页内组件改动后 stale 如实上报（R2）', async () => {

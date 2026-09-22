@@ -644,12 +644,16 @@ export function readDistScreen(entryId, screenId, { distRoot = defaultDistRoot()
   return { kind: 'stale' };
 }
 
-/** board 响应附带的 dist 状态：builtAt + stale（任一源文件 mtime 晚于 builtAt，
-    或 build.json 记有失败屏 —— 失败重编虽刷新 builtAt，产物并不代表源码）。 */
+/** board 响应附带的 dist 状态：builtAt + stale。stale 的判据：
+    ① 有源码记录的屏编译失败（源码在、产物没了，失败重编虽刷新 builtAt，
+    产物并不代表源码 —— review R1）；② 任一源文件 / 依赖 mtime 晚于 builtAt。
+    「源码不存在」的屏（板里挂了、文件从来没有）没有源码记录，不算 stale ——
+    错误面板已如实表达这个状态，dist 并没有落后于什么。 */
 export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = {}) {
   const build = readBuildJson(distRoot, entryId);
   if (!build || typeof build.builtAt !== 'number') return { builtAt: null, stale: true };
-  let stale = Object.keys(build.errors || {}).length > 0;
+  const sources = build.sources || {};
+  let stale = Object.keys(build.errors || {}).some((id) => sources[id]);
   const newerThanBuild = (file) => {
     try {
       return fs.statSync(file).mtimeMs > build.builtAt;
@@ -657,7 +661,7 @@ export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = 
       return true; // 源文件消失也算过期
     }
   };
-  for (const record of Object.values(build.sources || {})) {
+  for (const record of Object.values(sources)) {
     if (record && typeof record.file === 'string' && newerThanBuild(path.join(pageDir, record.file))) {
       stale = true;
       break;
