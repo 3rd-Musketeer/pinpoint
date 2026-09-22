@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { createAnnotateHandler, resolveRequestEntry } from './annotate-api.js';
 import { loadRegistry } from './lib/registry.js';
+import { mockReq, mockRes } from './test-harness.js';
 
 function withFixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-'));
@@ -24,28 +25,7 @@ function withFixture(t) {
   return { dir, dataRoot, registry, handler: createAnnotateHandler({ dataRoot, registry }) };
 }
 
-function mockReq(method, url, body) {
-  const req = new EventEmitter();
-  req.method = method;
-  req.url = url;
-  process.nextTick(() => {
-    if (body !== undefined) req.emit('data', Buffer.from(JSON.stringify(body)));
-    req.emit('end');
-  });
-  return req;
-}
 
-function mockRes() {
-  return {
-    headers: {},
-    statusCode: 0,
-    body: '',
-    setHeader(key, value) { this.headers[key] = value; },
-    writeHead(code, headers) { this.statusCode = code; Object.assign(this.headers, headers || {}); },
-    write(chunk) { this.body += chunk; },
-    end(data) { if (data !== undefined) this.body += String(data); },
-  };
-}
 
 async function call(handler, method, url, body) {
   const req = mockReq(method, url, body);
@@ -172,12 +152,12 @@ test('SSE broadcasts carry the entry of the saved bucket', async (t) => {
   sseReq.method = 'GET';
   sseReq.url = '/events';
   assert.equal(await handler(sseReq, sseRes, '/events'), true);
-  sseRes.body = ''; // drop the ": connected" prelude
+  const preludeChunks = sseRes.chunks.length; // ": connected" 前奏已入列，跳过
 
   await call(handler, 'POST', '/save', {
     page: 'index.html', entry: 'web', baseRevision: 0, annotations: [{ n: 1 }],
   });
-  const dataLine = sseRes.body.split('\n').find((line) => line.startsWith('data: '));
+  const dataLine = sseRes.chunks.slice(preludeChunks).join('').split('\n').find((line) => line.startsWith('data: '));
   assert.ok(dataLine, 'broadcast chunk received');
   assert.equal(JSON.parse(dataLine.slice('data: '.length)).entry, 'web');
   sseReq.emit('close');

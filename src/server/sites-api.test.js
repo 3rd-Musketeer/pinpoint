@@ -7,6 +7,7 @@ import test from 'node:test';
 
 import { loadRegistry } from './lib/registry.js';
 import { annotateSnippet, createSitesHandler, injectAnnotateClient } from './sites-api.js';
+import { mockReq, mockRes } from './test-harness.js';
 
 function withFixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-sites-'));
@@ -59,32 +60,7 @@ function withFixture(t) {
   return { dir, site, single, handler: createSitesHandler({ registry }) };
 }
 
-function mockReq(method, url) {
-  const req = new EventEmitter();
-  req.method = method;
-  req.url = url;
-  req.headers = {};
-  req.pipe = () => {}; // url 条目的代理分支把请求体 pipe 给上游
-  return req;
-}
 
-function mockRes() {
-  return {
-    headers: {},
-    statusCode: 0,
-    chunks: [],
-    headersSent: false,
-    writableEnded: false,
-    setHeader(key, value) { this.headers[key] = value; },
-    on() { return this; },      // 代理分支挂 close 监听
-    destroy() {},
-    writeHead(code, headers) { this.statusCode = code; Object.assign(this.headers, headers || {}); },
-    write(chunk) { this.chunks.push(Buffer.from(chunk)); },
-    end(data) { if (data !== undefined) this.chunks.push(Buffer.from(data)); },
-    get body() { return Buffer.concat(this.chunks); },
-    get text() { return this.body.toString('utf8'); },
-  };
-}
 
 async function call(handler, method, url) {
   const req = mockReq(method, url);

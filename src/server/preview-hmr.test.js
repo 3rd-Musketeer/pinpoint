@@ -6,19 +6,11 @@ import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
 import previewHmr from './preview-hmr.js';
+import { fakeServer } from './test-harness.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const EXT = path.join(ROOT, '..', 'external-site');
 
-function fakeServer() {
-  const server = {
-    sent: [],
-    added: [],
-    ws: { send(message) { server.sent.push(message); } },
-    watcher: { add(target) { server.added.push(target); } },
-  };
-  return server;
-}
 
 function setup(t, entries) {
   const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));

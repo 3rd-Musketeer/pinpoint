@@ -15,6 +15,7 @@ import test from 'node:test';
 import { createAnnotateHandler } from './annotate-api.js';
 import { loadRegistry } from './lib/registry.js';
 import { createRegistryStore, writeRegistryFile } from './lib/registry-store.js';
+import { mockReq, mockRes } from './test-harness.js';
 
 function withFixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-folders-'));
@@ -47,31 +48,7 @@ function withFixture(t) {
   return { dir, dataRoot, registryFile, site, store, annotate, reloads };
 }
 
-function mockReq(method, url, body) {
-  const req = new EventEmitter();
-  req.method = method;
-  req.url = url;
-  queueMicrotask(() => {
-    if (body !== undefined) req.emit('data', Buffer.from(body));
-    req.emit('end');
-  });
-  return req;
-}
 
-function mockRes() {
-  return {
-    headers: {},
-    statusCode: 0,
-    chunks: [],
-    setHeader(key, value) { this.headers[key] = value; },
-    writeHead(code, headers) { this.statusCode = code; Object.assign(this.headers, headers || {}); },
-    write(chunk) { this.chunks.push(Buffer.from(chunk)); },
-    end(data) { if (data !== undefined) this.chunks.push(Buffer.from(data)); },
-    get body() { return Buffer.concat(this.chunks); },
-    get text() { return this.body.toString('utf8'); },
-    get json() { return JSON.parse(this.text); },
-  };
-}
 
 async function call(handler, method, url, body) {
   const req = mockReq(method, url, body === undefined ? undefined : JSON.stringify(body));
