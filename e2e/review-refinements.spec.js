@@ -235,6 +235,55 @@ test('pp2 状态机：mark 端点 open → check → done 带 note，非法转�
   await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,original.id)).toBe('open');
 });
 
+test('pp2 状态机：done 行点关闭 → toast 撤销 5s；close 收进「已关闭 n」开关组', async ({ page }) => {
+  await page.goto('/sites/e2e-dir/doc.html');
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(()=>window.pinpoint.setMode(true));
+  await page.locator('#doc-title').click();
+  await page.getByRole('textbox',{name:'写标注'}).fill('走完关闭流程的意见');
+  await page.getByRole('button',{name:'发送标注',exact:true}).click();
+  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
+  const n=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
+  const ledger=pageKeyFromPathname('/sites/e2e-dir/doc.html');
+
+  // open → check → done（只经 mark 端点，SSE 把变更推回页面）
+  let rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}});
+  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  await page.keyboard.press('s');
+  const row=page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]');
+  await expect(row.locator('.wb-ann-status-tag')).toHaveText('done');
+
+  // done 行「关闭」单击 → 行退出 open 列表（close 收起），toast 出「撤销」
+  // （acts 列 hover 才 pointer-events:auto，先 hover 行再点）
+  await row.hover();
+  await row.locator('.ann-sb-close-mark').click();
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(0);
+  await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
+  const toast=page.locator('#ann-toast');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('已关闭 #'+n);
+
+  // 撤销 → close → open，行回到列表，toast 收起
+  await toast.locator('button').click();
+  await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('open');
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
+  await expect(toast).toBeHidden();
+
+  // 不撤销再来一遍：行收进「已关闭 1」，点开关展开可见
+  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}});
+  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
+  await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark')).toBeVisible();
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]').hover();
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark').click();
+  await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
+  await page.locator('#ann-sidebar .wb-ann-closed-toggle').click();
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
+});
+
 test('reviewer clears only wholly invalid annotations and can delete then reannotate', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
