@@ -312,5 +312,5 @@ test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素�
   await expect(page.frameLocator(DOC_FRAME).locator('.ann-badge')).toHaveCount(2);
   await expect(page.frameLocator(DOC_FRAME).locator('.ann-badge')).toHaveText(['1', '2']);
   // 账本落在 e2e-dir 桶（与 /sites/ 直开同一个）。
-  expect(fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json')).length).toBe(1);
+  expect(fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json') && n !== '_seq.json').length).toBe(1); // _seq.json 是桶级计数器不是账本（M1）
 });

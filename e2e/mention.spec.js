@@ -16,7 +16,8 @@ const DOC_BUCKET = path.join(E2E_DATA_DIR, 'e2e-mention');
 
 function bucketDocs(bucket) {
   if (!fs.existsSync(bucket)) return [];
-  return fs.readdirSync(bucket).filter((name) => name.endsWith('.json'))
+  // _seq.json 是桶级计数器不是账本，不计进名单（M1）。
+  return fs.readdirSync(bucket).filter((name) => name.endsWith('.json') && name !== '_seq.json')
     .map((name) => JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8')));
 }
 

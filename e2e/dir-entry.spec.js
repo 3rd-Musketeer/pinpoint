@@ -19,7 +19,8 @@ const execFileP = promisify(execFile);
 
 function bucketDocs() {
   if (!fs.existsSync(BUCKET)) return [];
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json'));
+  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
+  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
 }
 
 async function rawStatus(url) {
