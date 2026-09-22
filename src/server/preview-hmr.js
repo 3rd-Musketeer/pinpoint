@@ -59,26 +59,44 @@ export default function previewHmr(options = {}) {
 
   // 重编译该页（dir 条目或模板页；file 条目与无板目录没有编译目标，跳过）。
   // 同一页的并发触发共享一次编译；编译失败的屏进 build.json，serve 时 500 上面板。
+  // 编译期间到达的新变更拿到的是变更前结果 —— job 收尾后补跑一轮，直到收尾
+  // 时刻没有新事件为止（review R11；CLI startPageWatch 有 debounce+串行链，
+  // 服务端这里补上等价的「不丢最后一拍」）。
   function recompile(target) {
     if (!target) return Promise.resolve(null);
-    if (compiling.has(target.entryId)) return compiling.get(target.entryId);
-    const job = compilePage(target, distRoot ? { distRoot } : {})
-      .then((result) => {
+    const inflight = compiling.get(target.entryId);
+    if (inflight) {
+      inflight.rerun = true;
+      return inflight.promise;
+    }
+    const state = { rerun: false, promise: null };
+    const runOnce = async () => {
+      try {
+        const result = await compilePage(target, distRoot ? { distRoot } : {});
         const failed = result.screens.filter((row) => !row.ok);
         if (result.error || failed.length) {
           console.error(`[pp2] 编译 ${target.entryId} 有失败屏：${result.error || failed.map((row) => `${row.id}（${row.error}）`).join('；')}`);
         }
         return result;
-      })
-      .catch((error) => {
+      } catch (error) {
         console.error(`[pp2] 编译 ${target.entryId} 异常：${(error && error.message) || error}`);
         return null;
-      })
-      .finally(() => {
-        if (compiling.get(target.entryId) === job) compiling.delete(target.entryId);
-      });
-    compiling.set(target.entryId, job);
-    return job;
+      }
+    };
+    state.promise = (async () => {
+      try {
+        let result = await runOnce();
+        while (state.rerun) {
+          state.rerun = false;
+          result = await runOnce();
+        }
+        return result;
+      } finally {
+        if (compiling.get(target.entryId) === state) compiling.delete(target.entryId);
+      }
+    })();
+    compiling.set(target.entryId, state);
+    return state.promise;
   }
 
   function templateTarget(pageId) {

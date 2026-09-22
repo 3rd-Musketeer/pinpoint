@@ -96,3 +96,26 @@ test('kit JSX 印章变更 → 全量重编并对每页发 preview:update（revi
   assert.deepEqual(out, []);
   assert.deepEqual(s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id), ['e2e-ios']);
 });
+
+test('编译期间到达的变更：job 收尾后补跑一轮，dist 落最后状态（R11）', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-rerun-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'home', title: 'Home' }] }],
+  }));
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">第一版</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'rerun-page', kind: 'dir', path: pageDir }] }, distRoot });
+  const s = fakeServer();
+  // .html 帧在 compilePage 的第一个同步段就读盘：第一个 job 确定拿「第一版」。
+  const first = hit.handleHotUpdate({ file: path.join(pageDir, 'home.html'), server: s });
+  fs.writeFileSync(path.join(pageDir, 'home.html'), '<div class="ios-app">第二版</div>\n');
+  const second = hit.handleHotUpdate({ file: path.join(pageDir, 'home.html'), server: s });
+  await Promise.all([first, second]);
+  // 没有补跑的话这里停在「第一版」——编译期间的新事件拿到的是变更前结果。
+  assert.equal(
+    fs.readFileSync(path.join(distRoot, 'rerun-page', 'home.html'), 'utf8'),
+    '<div class="ios-app">第二版</div>\n',
+  );
+});
