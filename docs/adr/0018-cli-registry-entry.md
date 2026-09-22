@@ -1,6 +1,6 @@
 # 0018 · CLI 注册入口：pinpoint add + 合成板 + registry 热重载
 
-Status: 现行（已落地） · Date: 2026-08-16 · Scope: `bin/pinpoint.mjs`、`src/server/lib/registry-store.js`、`src/server/lib/synth-board.js`
+Status: 现行（已落地） · Date: 2026-08-16 · 补充: 0035（命令名 `ppnt` 与 build / render / check / locate / shot / mark 扩面） · Scope: `bin/pinpoint.mjs`、`src/server/lib/registry-store.js`、`src/server/lib/synth-board.js`
 
 **Decided**（阶段 3/5 落地）:
 
@@ -10,4 +10,4 @@ Status: 现行（已落地） · Date: 2026-08-16 · Scope: `bin/pinpoint.mjs`�
 - **合成板**：`/sites/<id>/board.json` 磁盘优先，缺失时合成 doc 板——file 条目单屏；无板 dir 顶层 *.html 码位序各一屏（侧栏版本列表）；dir 无顶层 html / 目录缺失 / 显式 `board:'ios'` 无板 → 404（不合成，与 registry 白名单惯例一致，打开呈现明确加载失败而非空页）。合成板导出、标注分桶（src percent-encode 三处逐字节一致）闭环。
 - url 条目仍不进 Pages（阶段 4 代理内嵌时才进）。
 
-**Why**: 「出现在 Pages」的语义 = 出现且能打开可读可标；否则不如不出现（改动前缺板条目打开是 404 错误面板）。
+**Why**: “出现在 Pages”的语义 = 出现且能打开可读可标；否则不如不出现（改动前缺板条目打开是 404 错误面板）。
