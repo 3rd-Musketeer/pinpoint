@@ -196,10 +196,10 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
   --registry 路径                      同 add
 
 prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面已不存在的账本：
-  文档文件删了、url 条目移走了、页不在 registry 与 manifest 里了（整桶皆孤儿）。
-  check / status --page 会把这些行单独列出（不计入 open 等计数）；页信息面板
-  显示每页孤儿数。清理只经本命令，直接删除、不备份（owner 裁决）；--dry-run
-  先看清单。
+  文档文件删了、条目改挂别页或从登记表移走了、页不在 registry 与 manifest 里
+  了（整桶皆孤儿）。check / status --page 会把这些行单独列出（不计入 open 等
+  计数）；页信息面板显示每页孤儿数。清理只经本命令，直接删除、不备份
+  （owner 裁决）；--dry-run 先看清单。
 
   -h, --help       显示本说明
 

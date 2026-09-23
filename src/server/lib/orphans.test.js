@@ -52,7 +52,7 @@ test('pageSurfaceSpaces：自己 + 挂靠条目 + manifest 页各成一个 URL �
   assert.equal(root.length > 0, true);
 });
 
-test('collectPageOrphans：文件没了 / url 移走是孤儿；@canvas、活文件、dist 屏不是', (t) => {
+test('collectPageOrphans：文件没了 / 错放别页空间是孤儿；@canvas、活文件、dist 屏不是', (t) => {
   const { dataRoot, siteDir, previewsRoot, entries } = withFixture(t);
   const bucket = path.join(dataRoot, 'site-a');
   writeLedger(bucket, '@canvas.json', { page: '@canvas', path: '@canvas', annotations: [] });
@@ -60,23 +60,52 @@ test('collectPageOrphans：文件没了 / url 移走是孤儿；@canvas、活文
   writeLedger(bucket, 'gone~2.json', { page: 'gone~2', path: '/sites/site-a/gone.html', annotations: [] });
   // 挂靠条目的文档（宿主页桶里、/sites/<挂靠 id>/ 空间）。
   writeLedger(bucket, 'draft~3.json', { page: 'draft~3', path: '/sites/draft-b/draft.html', annotations: [] });
-  // 没挂靠的 url 条目空间不存在于本页：错放，保守不判。
+  // 指向别页条目空间的账本 = 错放（G3 第 2 种的形态）：表面活着但不归本页。
   writeLedger(bucket, 'stray~4.json', { page: 'stray~4', path: '/sites/live-url/app', annotations: [] });
   // 存量账本没有 path：表面未知，不判。
   writeLedger(bucket, 'legacy~5.json', { page: 'legacy~5', annotations: [] });
   fs.rmSync(path.join(siteDir, 'gone.html'));
-  assert.deepEqual(collectPageOrphans({ pageId: 'site-a', dataRoot, entries, previewsRoot }), ['gone~2.json']);
+  assert.deepEqual(
+    collectPageOrphans({ pageId: 'site-a', dataRoot, entries, previewsRoot }).sort(),
+    ['gone~2.json', 'stray~4.json'],
+  );
 
-  // url 条目从登记表移走：它自己的桶不再是任何页 —— 整桶孤儿走 CLI 的按桶
-  // 判定（ppnt prune），不进 /registry 的按页计数；落在别的页桶里、指向该
-  // url 空间的账本是错放不是表面消失，保守放过。
+  // url 条目从登记表移走（G3 第 3 种）：指向 /sites/live-url/ 的账本在任何页
+  // 的空间里都查不到了 —— 表面已消失，判孤儿；它自己的桶（页没了）整桶皆
+  // 孤儿，走 CLI 的按桶判定（ppnt prune），不进 /registry 的按页计数。
   const after = entries.filter((e) => e.id !== 'live-url');
   writeLedger(path.join(dataRoot, 'live-url'), 'url~6.json', { page: 'url~6', path: '/sites/live-url/app', annotations: [] });
   assert.deepEqual(
     collectPageOrphans({ pageId: 'site-a', dataRoot, entries: after, previewsRoot }).sort(),
-    ['gone~2.json'],
+    ['gone~2.json', 'stray~4.json'],
   );
   assert.deepEqual(collectBucketOrphans('live-url', dataRoot), ['url~6.json']);
+});
+
+test('ledgerIsOrphan：挂靠条目改挂别页，宿主页桶里的旧账本成孤儿（G3）', (t) => {
+  const { dataRoot, previewsRoot, entries } = withFixture(t);
+  const siteBucket = path.join(dataRoot, 'site-a');
+  const tplBucket = path.join(dataRoot, 'tpl-page');
+  writeLedger(siteBucket, 'draft~3.json', { page: 'draft~3', path: '/sites/draft-b/draft.html', annotations: [] });
+  assert.equal(
+    collectPageOrphans({ pageId: 'site-a', dataRoot, entries, isManifestPage: true, previewsRoot }).includes('draft~3.json'),
+    false,
+    '条目还挂在本页：不是孤儿',
+  );
+  // 改挂 tpl-page：本页空间里查不到 /sites/draft-b/ 了 → 本桶孤儿；
+  // 新宿主页的空间里查得到、登记文件还在 → 那边不是孤儿。
+  const regrouped = entries.map((e) => (e.id === 'draft-b' ? { ...e, page: 'tpl-page' } : e));
+  assert.equal(
+    collectPageOrphans({ pageId: 'site-a', dataRoot, entries: regrouped, isManifestPage: true, previewsRoot }).includes('draft~3.json'),
+    true,
+    '改挂别页后旧账本是孤儿',
+  );
+  writeLedger(tplBucket, 'draft~4.json', { page: 'draft~4', path: '/sites/draft-b/draft.html', annotations: [] });
+  assert.equal(
+    collectPageOrphans({ pageId: 'tpl-page', dataRoot, entries: regrouped, isManifestPage: true, previewsRoot }).includes('draft~4.json'),
+    false,
+    '新宿主页那边账本照常活着',
+  );
 });
 
 test('模板页：board 屏（只有 .jsx 源）不是孤儿，子路径文件没了是', (t) => {
