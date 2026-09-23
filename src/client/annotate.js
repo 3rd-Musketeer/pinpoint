@@ -3954,6 +3954,7 @@
     getState: getState,
     markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
+    resolveMarkTarget: resolveMarkTarget,
     isMarkBroken: isMarkBroken,
     contentToDisplay: contentToDisplay,
     indicatorForMark: indicatorForMark,

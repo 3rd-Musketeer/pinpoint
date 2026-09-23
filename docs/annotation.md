@@ -30,7 +30,8 @@
 ## 读到标注去改哪里
 
 锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
-实例）与 `data-pp-comp`（组件名）。
+实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt check` / `locate` 直接按它取锚点
+（多命中按文本择近），不再拿 cssPath 反查；没有 `ppId` 的存量标注仍走 cssPath 链。
 
 - 锚点带 `data-pp-comp` → 改 `<页>/components/<Name>.jsx`，所有引用它的帧一起变。
 - 锚点只带 `data-pp-id` → 改该帧的源文件 `<页>/<screenId>.jsx`。

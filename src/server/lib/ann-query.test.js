@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
   anchorComp,
+  anchorNode,
   buildCheckReport,
   collectPageRows,
   countByStatus,
@@ -13,7 +14,7 @@ import {
   intentOf,
   locateLine,
 } from './ann-query.js';
-import { parseHtmlFragment } from './ann-excerpt.js';
+import { elementTextOf, parseHtmlFragment } from './ann-excerpt.js';
 
 let tmp;
 
@@ -157,6 +158,64 @@ describe('anchorComp', () => {
     assert.equal(anchorComp(bubble), 'Bubble');
     assert.equal(anchorComp(p), null, '普通元素只有帧根祖先');
     assert.equal(anchorComp(card), 'Card');
+  });
+});
+
+describe('anchorNode 决定 #15：ppId 直取，cssPath 兜底', () => {
+  const homeDist = distFor('home');
+  const chainOf = (tail) => `div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > ${tail}`;
+
+  test('有 ppId 直取，cssPath 已漂也不跟错', () => {
+    // 帧结构改过：存量 cssPath 指到气泡上，ppId 仍指原段落 —— locate 按段落报。
+    const drifted = {
+      id: 'pp1', n: 9, type: 'element', pageId: 'demo-page', screenId: 'home', status: 'open',
+      content: '段落 [@t:i1]',
+      targets: [{
+        ref: 'i1',
+        selector: chainOf('div.ios-bubble:nth-of-type(1)'),
+        text: '普通段落',
+        ppId: 'home.jsx:9@1',
+      }],
+    };
+    const anchor = anchorNode(drifted, homeDist);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.tag, 'p');
+    assert.equal(anchor.node.attrs['data-pp-id'], 'home.jsx:9@1');
+    assert.match(locateLine(drifted, { ...contextFor(makeSite()), distHtmlFor: distFor }).text, /#9 → home\.jsx:9/);
+  });
+
+  test('同一 ppId 多命中按文本择近', () => {
+    // 防御形态：产物里出现同值（手写 dist / 未来格式），文本把「午」挑出来。
+    const dup = [
+      '<div class="ios-app" data-pp-id="home.jsx:4@1" data-pp-comp="Home">',
+      '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@2" data-pp-comp="Bubble">早</div>',
+      '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@2" data-pp-comp="Bubble">午</div>',
+      '  <div class="ios-bubble" data-pp-id="content/kits/ios/jsx/Bubble.jsx:17@2" data-pp-comp="Bubble">晚</div>',
+      '</div>',
+    ].join('\n');
+    const row = {
+      id: 'pp2', n: 10, type: 'element', pageId: 'demo-page', screenId: 'home', status: 'open',
+      content: '第二个气泡 [@t:i1]',
+      targets: [{ ref: 'i1', selector: chainOf('div.ios-bubble:nth-of-type(2)'), text: '午', ppId: 'content/kits/ios/jsx/Bubble.jsx:17@2' }],
+    };
+    const anchor = anchorNode(row, dup);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(elementTextOf(anchor.node, dup), '午');
+  });
+
+  test('ppId 落空回落 cssPath；两者皆空才报错', () => {
+    const staleId = {
+      id: 'pp3', type: 'element', pageId: 'demo-page', screenId: 'home', status: 'open',
+      content: '段落 [@t:i1]',
+      targets: [{ ref: 'i1', selector: chainOf('p:nth-of-type(1)'), text: '普通段落', ppId: 'home.jsx:99@7' }],
+    };
+    const anchor = anchorNode(staleId, homeDist);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.tag, 'p', 'ppId 找不到时 cssPath 仍解析');
+    const bothGone = anchorNode({
+      targets: [{ ref: 'i1', selector: chainOf('span.gone:nth-of-type(1)'), ppId: 'home.jsx:99@7' }],
+    }, homeDist);
+    assert.equal(bothGone.error, '锚点在当前产物里解析不到（可能已失效）');
   });
 });
 
