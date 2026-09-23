@@ -204,7 +204,8 @@ test('文件夹：新建 → 改名 → 拖进 → 折叠记住 → 拖出 → �
   await page.locator('[data-remove-folder="folder-1"]').click();
   await expect(page.locator('#wbpages [data-folder="folder-1"]')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-loose [data-vpage="e2e-dir"]')).toHaveCount(1);
-  await expect(page.locator('#wbpages .wb-page')).toHaveCount(8);
+  // 8 registry 行 + 范例页（_index.json 的 manifest 行）= 9，一个不少。
+  await expect(page.locator('#wbpages .wb-page')).toHaveCount(9);
 });
 
 test('夹内拖排序只在「默认」档写 order；右键菜单是拖放之外的第二条路', async ({ page }) => {
