@@ -1,4 +1,10 @@
 {
   "defaultPage": "",
-  "pages": []
+  "pages": [
+    {
+      "id": "example",
+      "title": "范例：冲一杯",
+      "mode": "ios"
+    }
+  ]
 }

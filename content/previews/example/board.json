@@ -1,0 +1,37 @@
+{
+  "assets": { "css": ["example.css"] },
+  "sections": [
+    {
+      "id": "brew",
+      "title": "冲一杯",
+      "layout": "row",
+      "screens": [
+        { "id": "beans", "title": "选豆" },
+        { "id": "recipe", "title": "参数" },
+        { "id": "timer", "title": "计时（sidecar 交互）" }
+      ]
+    },
+    {
+      "id": "bean-card",
+      "title": "BeanCard 的三种状态",
+      "layout": "row",
+      "shell": "comp",
+      "screens": [
+        { "id": "card-idle", "title": "未选", "comp": "BeanCard", "props": { "name": "埃塞 耶加雪菲", "origin": "水洗 · 浅烘", "roast": "light" } },
+        { "id": "card-selected", "title": "已选", "comp": "BeanCard", "props": { "name": "哥伦比亚 慧兰", "origin": "水洗 · 中烘", "roast": "medium", "selected": true } },
+        { "id": "card-empty", "title": "喝完了", "comp": "BeanCard", "props": { "name": "云南 保山", "origin": "日晒 · 深烘", "roast": "dark", "empty": true } }
+      ]
+    },
+    {
+      "id": "step-row",
+      "title": "StepRow 的三种状态",
+      "layout": "row",
+      "shell": "comp",
+      "screens": [
+        { "id": "step-todo", "title": "待开始", "comp": "StepRow", "props": { "title": "一段注水", "sub": "0:30 – 1:30 · 注水至 150g" } },
+        { "id": "step-now", "title": "进行中", "comp": "StepRow", "props": { "title": "一段注水", "sub": "0:30 – 1:30 · 注水至 150g", "state": "now" } },
+        { "id": "step-done", "title": "完成", "comp": "StepRow", "props": { "title": "一段注水", "sub": "0:30 – 1:30 · 注水至 150g", "state": "done" } }
+      ]
+    }
+  ]
+}
