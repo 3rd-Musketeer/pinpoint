@@ -21,9 +21,9 @@
  * de-emphasis. Both are recorded, not hidden. */
 export var ANN_STATUS_COLORS = {
   open: '#5b7fa6',   // = --wb-accent，现状蓝灰
-  check: '#c98a1b',  // 琥珀
+  check: '#b87c14',  // 琥珀
   done: '#2f9e63',   // 绿
-  close: '#9aa3ae',  // 灰
+  close: '#858e99',  // 灰
 };
 
 /** Status → CSS variable name carrying the color. Unknown / missing status

@@ -64,15 +64,12 @@ test('status colors are value-identical at all three CSS definition sites', () =
 });
 
 test('white-on-status contrast ratios (WCAG AA large-text bar = 3:1)', () => {
-  // 算出来的值（2026-09-23）：open 4.17 · done 3.39 过线；check 2.94、
-  // close 2.55 在线下一侧 —— check 是 owner 指定的琥珀（等 owner 看），
-  // close 是有意的弱化。这里钉住当前值，改色 = 有意识更新这段。
-  assert.ok(whiteContrast(ANN_STATUS_COLORS.open) >= 3, 'open ≥ 3:1');
-  assert.ok(whiteContrast(ANN_STATUS_COLORS.done) >= 3, 'done ≥ 3:1');
-  const check = whiteContrast(ANN_STATUS_COLORS.check);
-  assert.ok(check > 2.8 && check < 3, 'check sits just under 3:1 (owner-picked amber)');
-  const closed = whiteContrast(ANN_STATUS_COLORS.close);
-  assert.ok(closed > 2.4 && closed < 2.7, 'close sits well under 3:1 (deliberate de-emphasis)');
+  // 2026-09-23：四色白字都要过 3:1（钉子与序号圆是白字小圆）。算出来的值：
+  // open 4.17 · check 3.54 · done 3.39 · close 3.32。首版 check #c98a1b 2.94、
+  // close #9aa3ae 2.55 没过线，已各压暗一档。
+  for (const status of ['open', 'check', 'done', 'close']) {
+    assert.ok(whiteContrast(ANN_STATUS_COLORS[status]) >= 3, status + ' ≥ 3:1');
+  }
 });
 
 /* ---- 状态筛选（annFilterCounts / annFilterRows / LS 读写）---- */

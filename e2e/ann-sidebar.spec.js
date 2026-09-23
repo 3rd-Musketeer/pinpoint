@@ -413,7 +413,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(rows.first().locator('.wb-ann-num')).toHaveText(String(nCheck));
   const pins = page.locator('.ann-badge');
   await expect(pins).toHaveCount(1);
-  await expect(pins).toHaveCSS('background-color', 'rgb(201, 138, 27)');
+  await expect(pins).toHaveCSS('background-color', 'rgb(184, 124, 20)');
 
   // 切到 closed：closed 行（带「重新打开」）+ 一枚灰钉
   await filters.locator('[data-ann-filter="closed"]').click();
@@ -422,7 +422,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(rows.first().locator('.wb-ann-status-tag')).toHaveText('close');
   await expect(rows.first().getByRole('button', { name: '重新打开标注 ' + nClose, exact: true })).toBeVisible();
   await expect(pins).toHaveCount(1);
-  await expect(pins).toHaveCSS('background-color', 'rgb(154, 163, 174)');
+  await expect(pins).toHaveCSS('background-color', 'rgb(133, 142, 153)');
 
   // 刷新：筛选按页记在 LS，closed 视图与灰钉原样回来
   await page.reload();
@@ -432,5 +432,5 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar.locator('.wb-ann-status-tag')).toHaveText('close');
   await expect(page.locator('.ann-badge')).toHaveCount(1);
-  await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(154, 163, 174)');
+  await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(133, 142, 153)');
 });

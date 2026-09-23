@@ -51,11 +51,11 @@
   display:flex; align-items:center; justify-content:center;
 }
 #wbann-list .wb-ann-item[data-ann-status="check"] .wb-ann-num,
-#ann-sidebar .wb-ann-item[data-ann-status="check"] .wb-ann-num { background:var(--ann-st-check, #c98a1b); }
+#ann-sidebar .wb-ann-item[data-ann-status="check"] .wb-ann-num { background:var(--ann-st-check, #b87c14); }
 #wbann-list .wb-ann-item[data-ann-status="done"] .wb-ann-num,
 #ann-sidebar .wb-ann-item[data-ann-status="done"] .wb-ann-num { background:var(--ann-st-done, #2f9e63); }
 #wbann-list .wb-ann-item[data-ann-status="close"] .wb-ann-num,
-#ann-sidebar .wb-ann-item[data-ann-status="close"] .wb-ann-num { background:var(--ann-st-close, #9aa3ae); }
+#ann-sidebar .wb-ann-item[data-ann-status="close"] .wb-ann-num { background:var(--ann-st-close, #858e99); }
 /* 锚点失效仍压过状态色：序号圆转空心灰（client）/ 红（workbench 皮肤）。 */
 #wbann-list .wb-ann-item--broken .wb-ann-num,
 #ann-sidebar .wb-ann-item--broken .wb-ann-num {
