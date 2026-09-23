@@ -201,7 +201,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
     // 图注引用号（decisions 2026-08-15）：纯派生自 board 顺序，不落盘；
     // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
     var secLetter = refs.bySection[sec.id] || '';
-    var body = screens.map(function (sc) {
+    var body = screens.map(function (sc, col) {
       var key = sc.id;
       var fetched = screenMap[key];
       var inner;
@@ -222,7 +222,12 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
         : '';
       // 2026-08-17：Frame Note 不再渲染上画布 —— note 的读/写收编到右栏
       // detail 面板（选中模型），画布只留图注 + 机身 + 尺寸行。
-      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '">' +
+      // row 段（2026-09-23 comp 布局修复）：.wb-screen 在段级三行网格里是
+      // display:contents，三个子块直接占格。列号钉在 --wb-col 上（行号在
+      // index.html 按 nth-child 钉死）—— comp / doc 屏不出尺寸行，每屏只有
+      // 两格，隐式按列填充会从第二屏起整体串位（图注落进上一列的空格）。
+      var colAttr = layout === 'row' ? ' style="--wb-col:' + (col + 1) + '"' : '';
+      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '"' + colAttr + '>' +
         capHtml +
         inner +
         dimHtml +
