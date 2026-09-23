@@ -45,7 +45,7 @@
     background:var(--wb-glass);
     -webkit-backdrop-filter:var(--wb-glass-blur);
     backdrop-filter:var(--wb-glass-blur);
-    box-shadow:inset 0 .5px 0 rgba(255,255,255,.6), var(--wb-sh-3);
+    box-shadow:inset 0 .5px 0 var(--wb-glass-hi), var(--wb-sh-3);
   }
   .wb-side {
     position:absolute; z-index:var(--wb-z-panel);
@@ -948,7 +948,7 @@
     transition:background var(--wb-dur) var(--wb-ease), border-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
   }
   .wb-export-action:hover { background:var(--wb-hover); }
-  .wb-export-action.primary { border-color:var(--wb-accent); background:var(--wb-accent); color:var(--wb-surface); }
+  .wb-export-action.primary { border-color:var(--wb-accent); background:var(--wb-accent); color:var(--wb-on-accent); }
   .wb-export-action.primary:hover { background:color-mix(in srgb, var(--wb-accent) 90%, var(--wb-surface)); }
   .wb-export-action:disabled { cursor:wait; opacity:.55; }
 
@@ -979,7 +979,7 @@
     font-family:var(--wb-font-mono); font-size:9px; font-weight:var(--wb-w-bold); line-height:1;
   }
   .wb-pk-sec.on .wb-pk-box, .wb-pk-fr.on .wb-pk-box {
-    background:var(--wb-accent); border-color:var(--wb-accent); color:var(--wb-surface);
+    background:var(--wb-accent); border-color:var(--wb-accent); color:var(--wb-on-accent);
   }
   .wb-pk-letter {
     width:18px; height:18px; border-radius:var(--wb-r-1); flex:none; text-align:center;
@@ -1041,8 +1041,8 @@
 .wb-side-toolbar button:focus-visible {outline:2px solid var(--wb-accent);outline-offset:2px}
 .wb-ann-done {border:0;background:none;padding:8px;border-radius:8px;color:var(--wb-muted);cursor:pointer;}
 .wb-ann-done:hover {color:var(--wb-fg);background:var(--wb-hover);}
-.wb-pinned-pages {border-bottom:1px solid var(--wb-border, #ddd); padding-bottom:6px; margin-bottom:6px}
-.wb-page-info {width:min(580px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:0;border-radius:20px;background:white;color:var(--wb-fg);box-shadow:var(--wb-sh-3);font:var(--wb-t-body) var(--wb-font)}
+.wb-pinned-pages {border-bottom:1px solid var(--wb-seam); padding-bottom:6px; margin-bottom:6px}
+.wb-page-info {width:min(580px,calc(100vw - 32px));max-height:calc(100vh - 32px);padding:0;border:0;border-radius:20px;background:var(--wb-surface);color:var(--wb-fg);box-shadow:var(--wb-sh-3);font:var(--wb-t-body) var(--wb-font)}
 .wb-page-info::backdrop {background:rgba(0,0,0,.16)}
 .wb-page-info-content {padding:24px}
 .wb-page-info header,.wb-page-info-source > div {display:flex;align-items:center;justify-content:space-between;gap:12px}

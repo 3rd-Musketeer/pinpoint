@@ -93,7 +93,7 @@
 #wbann-list .wb-ann-empty,
 #ann-sidebar .wb-ann-empty {
   padding:20px 12px 18px; border-radius:var(--wb-r-2, 6px);
-  background:rgba(255,255,255,.45); text-align:center;
+  background:color-mix(in srgb, var(--wb-surface, #fff) 45%, transparent); text-align:center;
 }
 #wbann-list .wb-ann-empty-title,
 #ann-sidebar .wb-ann-empty-title {

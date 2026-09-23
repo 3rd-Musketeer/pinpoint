@@ -1052,7 +1052,7 @@
     // --ann-st-* 状态色板（2026-09-23）：SSOT = src/shared/ann-status.js，workbench
     // 侧同值钉在 index.html 的 #wbann-pop 上（ann-status.test.js 三向比对）。
     // 画布钉子、弹层/侧栏行首序号圆消费同一组变量，三处颜色一致。
-    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--ann-st-open:#5b7fa6;--ann-st-check:#b87c14;--ann-st-done:#2f9e63;--ann-st-close:#858e99;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--ann-st-open:#5b7fa6;--ann-st-check:#b87c14;--ann-st-done:#2f9e63;--ann-st-close:#858e99;--wb-on-accent:#fff;--wb-glass:rgba(255,255,255,.88);--wb-glass-hi:rgba(255,255,255,.6);--wb-seam:rgba(0,0,0,.09);--ann-amber-bg:color-mix(in srgb,#f5a623 16%,#fff);--ann-amber-fg:#8a5a00;--ann-ink:#111;--ann-ink-hover:#292929;--ann-on-ink:#fff;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{box-sizing:border-box;}',
     /* 悬浮工具条与标注面板：2026-09-04 外壳重设计（ADR 0031）「注入端 #ann-sidebar
        换同一档玻璃，两端材质一致」。F2 磨砂的配方在这里是字面量，不是 token ——
@@ -1061,12 +1061,12 @@
        白 88% + blur 20 saturate 1.2 + 圆角 14 + sh-3 + 0.5px 上缘内高光。
        改这四个数要连 src/workbench/wb-tokens.css 的 --wb-glass / --wb-glass-blur /
        --wb-r-glass / --wb-sh-3 一起改，双端材质不许分家。 */
-    '#ann-sidebar,#ann-toolbar{background:rgba(255,255,255,.88);-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;box-shadow:inset 0 .5px 0 rgba(255,255,255,.6),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
+    '#ann-sidebar,#ann-toolbar{background:var(--wb-glass,rgba(255,255,255,.88));-webkit-backdrop-filter:blur(20px) saturate(1.2);backdrop-filter:blur(20px) saturate(1.2);border-radius:14px;box-shadow:inset 0 .5px 0 var(--wb-glass-hi,rgba(255,255,255,.6)),0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);}',
     // 客座层：注入到别人页面时与宿主的 z-index 竞争，workbench 里 hidden。数字保留，不进 --wb-z 阶梯。
     '#ann-toolbar{position:fixed;right:16px;bottom:16px;z-index:2147483646;display:flex;gap:8px;align-items:center;padding:7px 12px;}',
     '#ann-toolbar button{border:none;cursor:pointer;font-size:12px;font-weight:var(--wb-w-medium,500);height:28px;padding:0 10px;border-radius:var(--wb-r-2,6px);background:transparent;color:var(--wb-muted,#6b6b70);transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),box-shadow var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-toolbar button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);}',
-    '#ann-toolbar button.on{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
+    '#ann-toolbar button.on{background:var(--ann-amber-bg,color-mix(in srgb,#f5a623 16%,#fff));color:var(--ann-amber-fg,#8a5a00);font-weight:var(--wb-w-semibold,600);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     '#ann-toolbar button[hidden]{display:none;}',
     '#ann-toolbar button.ok{background:var(--wb-ok-soft,#edf8f1);color:var(--wb-ok,#1d7144);}',
     '#ann-count{font-size:11px;color:var(--wb-muted,#6b6b70);}',
@@ -1079,7 +1079,7 @@
     // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
     // 客座层：与 #ann-toolbar 同理，数字保留，不进 --wb-z 阶梯。
-    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-surface:#fff;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
@@ -1092,7 +1092,7 @@
     '#ann-sidebar .ann-sb-modes button{flex:1;border:0;border-radius:var(--wb-r-2);cursor:pointer;background:transparent;color:var(--wb-muted);font:inherit;font-size:11.5px;font-weight:var(--wb-w-semibold);letter-spacing:.02em;padding:6px 8px;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1),box-shadow .2s cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar .ann-sb-modes button:hover{color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-modes button.on{background:var(--wb-surface,#fff);color:var(--wb-fg);box-shadow:var(--wb-sh-1);}',
-    '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
+    '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:var(--ann-amber-bg,color-mix(in srgb,#f5a623 16%,#fff));color:var(--ann-amber-fg,#8a5a00);box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
     // 状态筛选分段（pp2：取代「已关闭 n」折叠段）：同 .ann-sb-modes 的灰槽 +
     // 白色凸起语言，密度低一档（五段挤一行）；计数为 0 的段弱化但仍可点。
     '#ann-sidebar .ann-sb-filters{flex:none;display:flex;gap:2px;margin:6px 12px 2px;padding:2px;border-radius:var(--wb-r-3);background:var(--wb-fill,rgba(0,0,0,.055));}',
@@ -1107,7 +1107,7 @@
     ANN_LIST_CSS,
     // 以下为 client 侧结构增量，与 workbench 侧有意不同、不进共享层：行 flex 壳、
     // min-width 序号徽标、失效徽标描边色、broken-tag 对齐、空态盒边距/边框、操作列。
-    '#ann-sidebar .wb-ann-empty{margin:6px 4px;border:1px dashed rgba(0,0,0,.12);}',
+    '#ann-sidebar .wb-ann-empty{margin:6px 4px;border:1px dashed var(--wb-seam,rgba(0,0,0,.12));}',
     '#ann-sidebar .wb-ann-empty-title{margin:0 0 6px;}',
     '#ann-sidebar .wb-ann-item{display:flex;gap:2px;align-items:stretch;}',
     '#ann-sidebar .wb-ann-num{min-width:18px;padding:0 5px;}',
@@ -1164,25 +1164,25 @@
     // 悬停提示：反色气泡，与 vendored tooltip（bg-foreground/text-background）同语言。
     '#ann-tip{position:absolute;z-index:2;max-width:min(280px,calc(100% - 24px));background:var(--wb-fg,#1c2024);color:var(--wb-surface,#fff);font-size:12px;line-height:1.4;padding:7px 12px;border-radius:var(--wb-r-2,6px);pointer-events:none;word-break:break-word;}',
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
-    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);border:1px solid rgba(0,0,0,.08);border-radius:26px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:20px;pointer-events:auto;}',
+    '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);color:var(--wb-fg,#1c2024);border:1px solid var(--wb-seam,rgba(0,0,0,.08));border-radius:26px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:20px;pointer-events:auto;}',
     '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
     '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:15px;padding:0;margin-top:0;border:0;border-radius:0;background:transparent;box-shadow:none}',
     '#ann-box #ann-input:hover,#ann-box #ann-input:focus{background:transparent;box-shadow:none;outline:none}',
     '#ann-input:empty:before{content:attr(data-placeholder);color:var(--wb-muted,#888);pointer-events:none}',
-    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:6px;padding:0 6px;background:rgba(0,0,0,.045);color:#555;line-height:22px;font-size:12px;white-space:nowrap}',
+    '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:6px;padding:0 6px;background:var(--wb-fill,rgba(0,0,0,.045));color:var(--wb-muted,#555);line-height:22px;font-size:12px;white-space:nowrap}',
     '#ann-input .ann-inline-target>span{overflow:hidden;text-overflow:ellipsis}#ann-input .ann-inline-remove{background:none;padding:0 0 0 4px;opacity:0}#ann-input .ann-inline-target:hover .ann-inline-remove,#ann-input .ann-inline-target:focus-within .ann-inline-remove{opacity:1}',
     '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
     '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#fff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
-    '#ann-box #ann-save{border-radius:999px;height:36px;font-size:14px;font-weight:500;padding:0 17px;background:#111;color:#fff}#ann-box #ann-save:hover{background:#292929}#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
+    '#ann-box #ann-save{border-radius:999px;height:36px;font-size:14px;font-weight:500;padding:0 17px;background:var(--ann-ink,#111);color:var(--ann-on-ink,#fff)}#ann-box #ann-save:hover{background:var(--ann-ink-hover,#292929)}#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
     '#ann-box .t{font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;margin-right:32px}',
-    '#ann-box #ann-cancel{border:1px solid rgba(0,0,0,.1);border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:#555;background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}',
+    '#ann-box #ann-cancel{border:1px solid var(--wb-seam,rgba(0,0,0,.1));border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}',
     '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:28px;}',
     '#ann-box button{border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg,#1c2024);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
     '#ann-box button:hover{background:var(--wb-fill,rgba(0,0,0,.055));}',
-    '#ann-box button.dark{background:var(--wb-accent,#5b7fa6);color:var(--wb-surface,#fff);font-weight:var(--wb-w-semibold,600);}',
+    '#ann-box button.dark{background:var(--wb-accent,#5b7fa6);color:var(--wb-on-accent,#fff);font-weight:var(--wb-w-semibold,600);}',
     '#ann-box button.dark:hover{background:color-mix(in srgb,var(--wb-accent,#5b7fa6) 90%,transparent);}',
     '#ann-box button.warn{color:var(--wb-danger,#b84230);background:transparent;}',
     '#ann-box button.warn:hover{background:color-mix(in srgb,var(--wb-danger,#b84230) 10%,transparent);color:var(--wb-danger,#b84230);}',
@@ -1205,6 +1205,11 @@
     // a11y 基线：注入的每个控件都要有可见 focus 态；reduced-motion 下关掉全部过渡/动画。
     // focus 环与 workbench 全局 catch-all 同式（accent color-mix，V4 起双端一致）。
     '[data-ann-ui] :is(button,a,input,textarea,select,[tabindex]):focus-visible{outline:2px solid color-mix(in srgb,var(--wb-accent,#5b7fa6) 55%,transparent);outline-offset:1px;}',
+    // 暗色（2026-09-23）：跟随系统 prefers-color-scheme，与宿主页是否暗色无关 ——
+    // 输入框、面板、评论卡的底与字同时换，文字不会再落在白底上看不见。值与
+    // src/workbench/wb-tokens.css 的暗色段同值（改一边连另一边）；状态色与 accent 不换。
+    // 本条必须排在 #ann-sidebar 钉值规则之后：同优先级靠后者生效，且守卫测试取第一条 #ann-sidebar{。
+    '@media (prefers-color-scheme: dark){[data-ann-ui],#ann-sidebar{--wb-surface:#272a2d;--wb-side:#212225;--wb-fg:#edeef0;--wb-muted:#b0b4ba;--wb-faint:#777b84;--wb-line:rgba(255,255,255,.08);--wb-seam:rgba(255,255,255,.1);--wb-hover:rgba(255,255,255,.06);--wb-fill:rgba(255,255,255,.08);--wb-danger:#e5735f;--wb-ok:#4cc38a;--wb-ok-soft:rgba(76,195,138,.14);--wb-glass:rgba(33,34,37,.88);--wb-glass-hi:rgba(255,255,255,.06);--ann-amber-bg:color-mix(in srgb,#f5a623 20%,#272a2d);--ann-amber-fg:#f5b94a;--ann-ink:#edeef0;--ann-ink-hover:#d7d9dd;--ann-on-ink:#111;--wb-sh-1:0 1px 2px rgba(0,0,0,.4),0 0 0 0.5px rgba(255,255,255,.06);--wb-sh-2:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.45);--wb-sh-3:0 1px 2px rgba(0,0,0,.4),0 14px 38px rgba(0,0,0,.55);}}',
     '@media (prefers-reduced-motion: reduce){[data-ann-ui],[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{transition:none !important;animation:none !important;}}',
     // mention 空态不渲染盒子 Chrome —— 带边框阴影的空态看起来像坏掉的输入框。
     '#ann-mention:has(.ann-men-empty){min-width:0;border:0;box-shadow:none;background:transparent;}',

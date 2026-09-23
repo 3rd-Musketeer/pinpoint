@@ -12,7 +12,7 @@
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { gray, slate } from '@radix-ui/colors';
+import { gray, slate, slateDark } from '@radix-ui/colors';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -43,6 +43,8 @@ export function buildWbTokensCss() {
   --wb-grid-2:color-mix(in srgb, var(--wb-accent) 4%, transparent);  /* 24px 发丝网格线（6% → 4%） */
   --wb-surface:#fff; /* chrome 纯白面（选中态/卡面/强调面上的文字）—— shadcn 桥需要时归并的起点 */
   --wb-glass:rgba(255,255,255,.88); /* 浮动面板材质（2026-09-04 评审板 F2 磨砂：白 88%）—— 左栏 / 底部横条 / 弹出列表同一配方 */
+  --wb-glass-hi:rgba(255,255,255,.6); /* 玻璃面板顶沿高光（inset 0 .5px 0），暗色下收成一丝 */
+  --wb-on-accent:#fff; /* 色块（accent / danger / 状态色）上的字 —— 与 --wb-surface 分开：暗色下 surface 变深，色块上的字仍是白 */
   --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */
   --wb-sel:color-mix(in srgb, var(--wb-accent) 10%, transparent); /* 列表选中行底（2026-09-04 字阶裁决：选中 accent 10%，hover 走 --wb-hover 4%） */
 
@@ -122,7 +124,7 @@ export function buildWbTokensCss() {
   --popover:var(--wb-side);          /* 浮层面（frame menu / export dialog 现取 --wb-side） */
   --popover-foreground:var(--wb-fg);
   --primary:var(--wb-accent);        /* 钢灰蓝（2026-08-14） */
-  --primary-foreground:var(--wb-surface);
+  --primary-foreground:var(--wb-on-accent);
   --secondary:var(--wb-fill);        /* 次级面 = 浅填充 */
   --secondary-foreground:var(--wb-fg);
   --muted:var(--wb-fill);            /* 哑面（toggle-group 容器等） */
@@ -130,11 +132,43 @@ export function buildWbTokensCss() {
   --accent:var(--wb-hover);          /* shadcn accent = hover 浅面，不是产品 accent */
   --accent-foreground:var(--wb-fg);
   --destructive:var(--wb-danger);
-  --destructive-foreground:var(--wb-surface);
+  --destructive-foreground:var(--wb-on-accent);
   --border:var(--wb-line);           /* 发丝边 */
   --input:var(--wb-line);
   --ring:var(--wb-accent);           /* focus ring：accent，alpha 由类名 /50 或 color-mix 给 */
   --radius:var(--wb-r-2);            /* 基准圆角；阶梯经 wb-tw.css @theme 直挂 --wb-r-* */
+}
+/* ── 暗色（2026-09-23）：跟随系统 prefers-color-scheme，只换色与阴影，几何不动。
+ * 中性色锚 Radix slateDark；accent 与状态色不换（色块上是白字，暗底上对比够）。
+ * 帧内容（iOS 屏、文档页纸面）不跟随：它们是被评审的内容，保持原样。
+ * 注入端 src/client/annotate.js 在 [data-ann-ui] 上钉了同款暗色值，改这里要连那边。 */
+@media (prefers-color-scheme: dark) {
+  :root {
+    --wb-bg:${slateDark.slate2};
+    --wb-side:${slateDark.slate3};
+    --wb-fg:${slateDark.slate12};
+    --wb-muted:${slateDark.slate11};
+    --wb-faint:${slateDark.slate10};
+    --wb-line:rgba(255,255,255,.08);
+    --wb-seam:rgba(255,255,255,.1);
+    --wb-hover:rgba(255,255,255,.06);
+    --wb-fill:rgba(255,255,255,.08);
+    --wb-danger:#e5735f; /* 暗底上作字色要提亮 */
+    --wb-ok:#4cc38a;
+    --wb-ok-soft:rgba(76,195,138,.14);
+    --wb-stage-bg:${slateDark.slate1};
+    --wb-grid-1:color-mix(in srgb, var(--wb-accent) 16%, transparent);
+    --wb-grid-2:color-mix(in srgb, var(--wb-accent) 7%, transparent);
+    --wb-surface:${slateDark.slate4};
+    --wb-glass:rgba(33,34,37,.88);
+    --wb-glass-hi:rgba(255,255,255,.06);
+    --wb-sel:color-mix(in srgb, var(--wb-accent) 24%, transparent);
+    --wb-sh-1:0 1px 2px rgba(0,0,0,.4), 0 0 0 0.5px rgba(255,255,255,.06);
+    --wb-sh-2:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.45);
+    --wb-sh-3:0 1px 2px rgba(0,0,0,.4), 0 14px 38px rgba(0,0,0,.55);
+    --wb-sh-4:0 28px 80px rgba(0,0,0,.6);
+    --wb-sh-board:0 1px 0 rgba(0,0,0,.3), 0 14px 40px rgba(0,0,0,.45);
+  }
 }
 `;
 }
