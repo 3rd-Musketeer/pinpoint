@@ -1484,7 +1484,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(page.locator('#wbann-list [data-ann-go]')).toHaveCount(0);
-  await expect(page.locator('#wbann-list .wb-ann-delete')).toBeVisible();
+  await expect(page.locator('#wbann-list .wb-ann-done')).toBeVisible();
 
   // 左栏折叠 / 复开：唯一入口是横条左端的 Pages 开关（画布两缘浮钮已退役）
   await page.locator('#wbside-toggle').click();

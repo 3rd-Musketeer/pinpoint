@@ -59,7 +59,6 @@ var BUBBLE_MODES = [
 
 function AnnRow(props) {
   var r = props.row;
-  var [armed, setArmed] = useState(false);
   var rowRef = useRef(null);
   var cardRef = useRef(null);
   var showT = useRef(0);
@@ -119,23 +118,26 @@ function AnnRow(props) {
           <span className="wb-ann-body">
             <span className="wb-ann-cap">{r.cap}</span>
             <span className="wb-ann-text">{r.preview}</span>
-            {r.status === 'check' || r.status === 'done'
+            {r.status !== 'open'
               ? <span className="wb-ann-status-tag">{r.status}</span>
               : null}
             {r.tags ? <span className="wb-ann-tags">{r.tags}</span> : null}
           </span>
         </button>
-        {r.status === 'done' ? (
-          <button type="button" className="ann-sb-close-mark" aria-label={'关闭标注 ' + r.n}
+        {/* 状态机（决定 #11）：删除退役，open / check / done 行的收尾动作都是
+            「完成」= close，单击即关不二次确认，toast 出「撤销」回关前原态；
+            close 行（展开后）给「重新打开」= open。 */}
+        {r.status !== 'close' ? (
+          <button type="button" className="wb-ann-done" aria-label={'完成 #' + r.n} title={'完成 #' + r.n}
             onClick={function () { var api = annotateApi(); if (api && typeof api.closeAnnotation === 'function') api.closeAnnotation(r.n); }}>
-            关闭
+            <WbIcon name="check" size={14} />
           </button>
-        ) : null}
-        <button type="button" className="wb-ann-delete" aria-label={(armed ? '确认删除标注 ' : '删除标注 ') + r.n}
-          onBlur={function () { setArmed(false); }}
-          onClick={function () { if (!armed) { setArmed(true); return; } var api = annotateApi(); if (api) api.removeMark(r.n); }}>
-          {armed ? '确认' : <WbIcon name="trash" size={14} />}
-        </button>
+        ) : (
+          <button type="button" className="wb-ann-reopen" aria-label={'重新打开标注 ' + r.n}
+            onClick={function () { var api = annotateApi(); if (api && typeof api.reopenAnnotation === 'function') api.reopenAnnotation(r.n); }}>
+            重新打开
+          </button>
+        )}
       </div>
       {noteOpen ? <NoteCard n={r.n} text={r.note} anchor={rowRef.current}
         id={'wb-ann-note-card-' + r.n} cardRef={cardRef}
@@ -321,17 +323,15 @@ function OpenRows(props) {
       {openItems.map(function (r) {
         return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
       })}
-      {closedItems.length ? (
-        <Fragment>
-          <button type="button" className="wb-ann-closed-toggle" data-closed-open={closedOpen ? '1' : undefined}
-            onClick={function () { setClosedOpen(!closedOpen); }}>
-            {(closedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedItems.length}
-          </button>
-          {closedOpen ? closedItems.map(function (r) {
-            return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
-          }) : null}
-        </Fragment>
-      ) : null}
+      {/* 已关闭段常驻：N = 0 也显示（disabled 弱化、不可展开），owner 才找得到入口。 */}
+      <button type="button" className="wb-ann-closed-toggle" disabled={!closedItems.length}
+        data-closed-open={closedOpen ? '1' : undefined}
+        onClick={function () { if (closedItems.length) setClosedOpen(!closedOpen); }}>
+        {(closedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedItems.length}
+      </button>
+      {closedOpen ? closedItems.map(function (r) {
+        return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
+      }) : null}
     </Fragment>
   );
 }
