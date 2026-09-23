@@ -4,7 +4,6 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
-import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // 标注列表面板（#ann-sidebar）：/sites/ 注入页、SPA 页这些没有 workbench 的页面，
 // 靠面板看到当前账本的所有标注并点击跳转。入口 = 浮动工具条「列表」按钮 +
@@ -232,8 +231,8 @@ test('workbench 列表 note hover 卡：done 行 120 ms 出卡，无 note 的行
   const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
   const n2 = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
 
-  const ledger = pageKeyFromPathname('/index.html');
-  const post = (n, data) => page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'pinpoint', ...data } });
+  // 存储统一（ADR 0036）：画布标注住活动页自己的桶，账本固定 @canvas。
+  const post = (n, data) => page.request.post(`/annotations/@canvas/${n}/status`, { data: { entry: 'e2e-ios', ...data } });
   let rev = await page.evaluate(() => window.pinpoint.getState().revision);
   expect((await post(n1, { baseRevision: rev, status: 'check', note: NOTE })).status()).toBe(200);
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
