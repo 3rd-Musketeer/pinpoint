@@ -336,6 +336,9 @@ function planStorageUnify(model, pageIndexValue, report) {
       for (const [name, doc] of bucket.ledgers) {
         const target = targetBucket.ledgers.get(name);
         if (!target) {
+          // 先初始化宿主页的 used 集合再放入账本：放完再算，账本自己的号已在
+          // 桶里，每行都「撞自己」无条件改号。先算再放，只有真撞号才改（G2）。
+          usedN(targetPage);
           targetBucket.ledgers.set(name, doc);
           for (const row of annotationsOf(doc)) {
             const state = usedN(targetPage);

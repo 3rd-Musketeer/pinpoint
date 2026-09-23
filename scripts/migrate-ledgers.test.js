@@ -185,8 +185,26 @@ test('storage-unify：--apply 落盘后形状正确，第二遍 0 变更', async
   assert.deepEqual(hostCanvas2, hostCanvas, '第二遍 --apply 后字节级不变');
 });
 
-/* ---- K1：/previews/ 表面已不存在的账本（真实数据形状）→ 孤儿、原地不动 ---- */
+test('storage-unify：挂靠桶并入宿主无撞号不改号（G2）', async (t) => {
+  const dir = seedUnify(t);
+  // 宿主桶只占 #5（r1 那条同 id 行照旧冲突保留，不参与计数），挂靠账本的 #1
+  // 独占：并进去不许「撞自己」改号。
+  const canvas = JSON.parse(fs.readFileSync(path.join(dir, 'host', '@canvas.json'), 'utf8'));
+  canvas.annotations.push({ id: 'host5', n: 5, pageId: 'host', status: 'open', content: '宿主行' });
+  fs.writeFileSync(path.join(dir, 'host', '@canvas.json'), JSON.stringify(canvas));
+  const draftLedger = JSON.parse(fs.readFileSync(path.join(dir, 'draft', 'x~3.json'), 'utf8'));
+  draftLedger.annotations = [{ id: 'r5', n: 1, status: 'open', content: '挂靠文档行（唯一号 #1）' }];
+  fs.writeFileSync(path.join(dir, 'draft', 'x~3.json'), JSON.stringify(draftLedger));
 
+  const out = await run(dir, '--apply');
+  assert.match(out.stdout, /重号 0 条/, '无撞号就无改号');
+  const doc = JSON.parse(fs.readFileSync(path.join(dir, 'host', 'x~3.json'), 'utf8'));
+  assert.equal(doc.annotations[0].n, 1, '宿主 #5 + 挂靠 #1 → 仍是 #1');
+  const afterCanvas = JSON.parse(fs.readFileSync(path.join(dir, 'host', '@canvas.json'), 'utf8'));
+  assert.deepEqual(afterCanvas.annotations.map((r) => r.n), [9, 5], '宿主桶原有号原样');
+});
+
+/* ---- K1：/previews/ 表面已不存在的账本（真实数据形状）→ 孤儿、原地不动 ---- */
 /** 真实 ~/.pinpoint 的 pinpoint 桶形状：wr-w29 / wr-w30 归到模板页 weekly-review、
     sheet 归到 sheet-rev，两页都不存在（registry 只有 weekly-review 这个 dir 条目，
     它的表面是 /sites/weekly-review/，与 /previews/ 无关；manifest 不含这些页）。 */
