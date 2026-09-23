@@ -221,6 +221,11 @@ function planStorageUnify(model, pageIndexValue, report) {
   };
 
   const movedImages = []; // { from, to, name }
+  /** 每页迁入行数（G4：只列页名看不出哪页收了多少）。 */
+  const noteMove = (page, rows) => {
+    report.moved.set(page, (report.moved.get(page) || 0) + rows);
+    report.movedRows += rows;
+  };
   const noteImage = (row, fromBucket, toBucket) => {
     for (const name of rowImages(row)) movedImages.push({ from: fromBucket, to: toBucket, name });
   };
@@ -296,8 +301,7 @@ function planStorageUnify(model, pageIndexValue, report) {
         if (targetDoc.path === '' && doc.path) targetDoc.path = doc.path;
         if (mergeRow(targetDoc, row, target.page, target.ledger, `pinpoint/${name}`)) {
           touched = true;
-          report.moved.add(target.page);
-          report.movedRows += 1;
+          noteMove(target.page, 1);
           targetDoc.updated_at = laterOf(targetDoc.updated_at, doc.updated_at);
           noteImage(row, 'pinpoint', target.page);
         }
@@ -353,15 +357,13 @@ function planStorageUnify(model, pageIndexValue, report) {
               }
             }
           }
-          report.moved.add(targetPage);
-          report.movedRows += annotationsOf(doc).length;
+          noteMove(targetPage, annotationsOf(doc).length);
           continue;
         }
         // 同名账本：按 id 去重合并，新行重号。
         for (const row of annotationsOf(doc)) {
           if (mergeRow(target, row, targetPage, name, `${bucketName}/${name}`)) {
-            report.moved.add(targetPage);
-            report.movedRows += 1;
+            noteMove(targetPage, 1);
           }
         }
         target.updated_at = laterOf(target.updated_at, doc.updated_at);
@@ -435,7 +437,7 @@ for (const bucket of model.buckets.values()) {
 
 // 阶段 B：归桶。
 const report = {
-  moved: new Set(),
+  moved: new Map(),
   movedRows: 0,
   renumbers: [],
   conflicts: [],
@@ -459,7 +461,7 @@ for (const row of formPlan) {
   console.log(`  ${path.relative(root, row.file)} ${detail}`);
 }
 console.log(`归桶（storage-unify）：${report.movedRows} 行迁入 ${report.moved.size} 个页桶 · ${report.orphans.length} 本账本有孤儿行（不自动删） · 重号 ${report.renumbers.length} 条 · 图片 ${report.imageMoves.length} 张 · _seq 重算 ${report.seqWrites.length} 桶`);
-for (const page of [...report.moved].sort()) console.log(`  ${page}/ ← 迁入`);
+for (const [page, rows] of [...report.moved].sort(([a], [b]) => (a < b ? -1 : 1))) console.log(`  ${page}/ ← 迁入 ${rows} 行`);
 for (const line of report.bucketMerges) console.log(`  桶合并：${line}`);
 for (const line of report.splitLedgers) console.log(`  拆分：${line}（部分行迁出）`);
 for (const line of report.removedLedgers) console.log(`  删除：${line}（行全部迁出）`);

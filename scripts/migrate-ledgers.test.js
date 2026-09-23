@@ -128,8 +128,8 @@ test('storage-unify：dry-run 拆分/合并/改号/图片/孤儿清单齐全，�
   const before = fs.readdirSync(path.join(dir, 'pinpoint')).sort().join(',');
   const out = await run(dir);
   assert.match(out.stdout, /归桶（storage-unify）：3 行迁入 2 个页桶/);
-  assert.match(out.stdout, /host\/ ← 迁入/);
-  assert.match(out.stdout, /site\/ ← 迁入/);
+  assert.match(out.stdout, /host\/ ← 迁入 2 行/, '每页报迁入行数（G4）');
+  assert.match(out.stdout, /site\/ ← 迁入 1 行/);
   assert.match(out.stdout, /桶合并：draft → host/);
   assert.match(out.stdout, /冲突：host：行 r1 已存在且内容不同/);
   assert.match(out.stdout, /重号：host\/x~3\.json #3 → #\d+/);
