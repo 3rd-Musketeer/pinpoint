@@ -17,10 +17,6 @@ import path from 'node:path';
 
 import { boardScreenIds } from './page-compiler.js';
 
-function decodeSafe(value) {
-  try { return decodeURIComponent(value); } catch { return null; }
-}
-
 /** 一个页的表面空间列表。entries 是 registry 条目（含挂靠）；isManifestPage
     = 该 id 在 content/previews/_index.json 里。 */
 export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false, previewsRoot }) {
@@ -53,9 +49,11 @@ export function ledgerIsOrphan({ name, doc }, spaces) {
   if (!space) return false;
   if (space.kind === 'url') return false;
   if (space.kind === 'file') return !fs.existsSync(space.file);
-  const rel = decodeSafe(p.slice(space.prefix.length));
-  if (rel === null) return true;
-  const relFile = rel === '' ? 'index.html' : rel;
+  // doc.path 是 decode 后的 pathname（客户端写入侧已解），这里不再二次 decode：
+  // 再解一次遇到字面 %（如 50%.html）会抛异常，反而把活账本判成孤儿。
+  const rel = p.slice(space.prefix.length);
+  // 目录形 URL（/sub/ 与裸前缀）回落 index.html，别拿 statSync 命中目录当不在盘。
+  const relFile = rel === '' ? 'index.html' : (rel.endsWith('/') ? `${rel}index.html` : rel);
   const base = path.resolve(space.root);
   const abs = path.resolve(base, relFile);
   if (abs !== base && !abs.startsWith(base + path.sep)) return true;

@@ -111,3 +111,16 @@ test('ledgerIsOrphan：目录 URL 回落 index.html；穿越路径是孤儿', (t
   assert.equal(ledgerIsOrphan({ name: 'x.json', doc: { path: '/sites/site-a/' } }, spaces), false, 'index.html 在');
   assert.equal(ledgerIsOrphan({ name: 'x.json', doc: { path: '/sites/site-a/../../etc/passwd' } }, spaces), true);
 });
+
+test('ledgerIsOrphan：子目录索引页与字面 % 文件名都不是孤儿（G1 误判两型）', (t) => {
+  const { dataRoot, siteDir, previewsRoot, entries } = withFixture(t);
+  fs.mkdirSync(path.join(siteDir, 'sub'), { recursive: true });
+  fs.writeFileSync(path.join(siteDir, 'sub', 'index.html'), '<!doctype html><p>sub home</p>');
+  fs.writeFileSync(path.join(siteDir, '50%.html'), '<!doctype html><p>percent</p>');
+  const spaces = pageSurfaceSpaces({ pageId: 'site-a', entries, previewsRoot });
+  // 子目录索引 URL 的 rel 以 / 结尾：statSync 命中的是目录，回落 sub/index.html 判。
+  assert.equal(ledgerIsOrphan({ name: 'sub.json', doc: { path: '/sites/site-a/sub/' } }, spaces), false);
+  // path 已是 decode 形，字面 % 不再二次 decode（原来 decode 抛异常 → 误判孤儿）。
+  assert.equal(ledgerIsOrphan({ name: 'pct.json', doc: { path: '/sites/site-a/50%.html' } }, spaces), false);
+  assert.equal(ledgerIsOrphan({ name: 'gone.json', doc: { path: '/sites/site-a/sub/gone.html' } }, spaces), true, '子目录里的文件真没了照判');
+});
