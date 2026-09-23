@@ -3786,8 +3786,14 @@
     var p = Promise.resolve();
     var wb = window.workbench;
     if (wb) {
-      if (m.pageId && typeof wb.setActivePage === 'function' && m.pageId !== currentWorkbenchPageId()) {
-        // storage-unify：跨页跳转 = 换页（= 换桶）。定位必须等新页账本水合落定，
+      var crossPage = m.pageId && typeof wb.setActivePage === 'function' && m.pageId !== currentWorkbenchPageId()
+        // storage-unify：行上的 pageId 不承担归属（桶 = 页），rename 后旧行带着
+        // 旧 id。目标页不在页清单里就别 setActivePage —— 那会把工作台切到
+        // 「页面不存在」面板、把画布换到不存在的桶，然后误报未连接；行就在
+        // 本页账本里，按本页行定位。
+        && (typeof wb.hasPage !== 'function' || wb.hasPage(m.pageId));
+      if (crossPage) {
+        // 跨页跳转 = 换页（= 换桶）。定位必须等新页账本水合落定，
         // 再按新账本里的同一 #n 取行（行对象属于新账本）。
         p = Promise.resolve(wb.setActivePage(m.pageId, { scrollTop: false })).then(function () {
           return whenSettled();

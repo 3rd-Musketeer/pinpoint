@@ -225,6 +225,9 @@ window.workbench = {
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
+  // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
+  // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。
+  hasPage: function (pageId) { return deepLinkPageExists(pageId); },
   // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）
   boardMode: function () { return activeBoardMode(); },
   // storage-unify：活动页订阅（画布标注客户端靠它切页 = 切桶）。返回退订函数。
