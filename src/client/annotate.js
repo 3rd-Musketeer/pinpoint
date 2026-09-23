@@ -1539,7 +1539,9 @@
       var item = document.createElement('div');
       item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
-      if (r.note) item.title = r.note; // 原生 title，卡片留切片 5（GLM 收尾时的简化，勿当卡片找）
+      // 注入侧列表的 note 用原生 title（hover 提示即可）；工作台列表已换
+      // hover 卡（AnnPopover.jsx NoteCard，切片 5），两处有意不同步。
+      if (r.note) item.title = r.note;
       var main = document.createElement('button');
       main.type = 'button';
       main.className = 'wb-ann-item-main';
