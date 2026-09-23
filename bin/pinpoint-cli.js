@@ -2,7 +2,8 @@
  * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
- * 已登记条目换路径用 `pinpoint move`（保留 id，标注桶按 id 寻址，不会孤儿化）；
+ * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址——挂靠条目的
+ * 桶是宿主页的桶（storage-unify），换路径不会孤儿化）；
  * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）。
  * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
  * 文件留在原地，CLI 只登记路径/URL。
@@ -142,7 +143,8 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
 
 选项（move）：
   --registry 路径  同上。move 只改 kind/path/url，id 与 title 原样保留——
-                   标注桶按 id 寻址（~/.pinpoint/<id>/），换路径不动既有标注。
+                   标注桶按页寻址（桶 = 页：自成页的条目用 ~/.pinpoint/<id>/，
+                   挂靠条目用宿主页的桶），换路径不动既有标注。
 
 选项（rename）：
   --registry 路径  同上。rename 一次做四件事，四件都能做才动手：
@@ -439,7 +441,7 @@ export function manifestPageIds(root = REPO_ROOT) {
 
 /**
  * move 的新条目（纯函数 + fs 探测；不写盘）：只换 kind 与落点，id / title /
- * page / role 原样带走——标注桶按 id 寻址，换路径不该动标注归属。
+ * page / role 原样带走——标注桶按页寻址（桶 = 页），换路径不该动标注归属。
  */
 export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}) {
   const before = entries.find((entry) => entry && entry.id === id);
