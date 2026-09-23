@@ -9,7 +9,7 @@
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar).
  * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
- * frame 内标注与画布同账本（注入 __pinpointFrame/__pinpointLedger），锚点按
+ * frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入 __pinpointFrame），锚点按
  * frame 内路径归一（src/shared/frame-anchor.js），模式开关向 frame iframe 级联。 */
 (function () {
   'use strict';
@@ -27,9 +27,9 @@
   // 属性绕 CSP，那条通道与属性一并删除。）
   var ENTRY = window.__pinpointEntry || 'pinpoint';
   // ---------- 阶段 5：/api/frame 嵌入帧身份 ----------
-  // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel} 与
-  // __pinpointLedger（顶层 workbench 的 pathname）：本实例读写画布同一份账本，
-  // 行带 pageId + screenId，锚点按 frame 内路径归一（src/shared/frame-anchor.js，内联）。
+  // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel}：
+  // 本实例读写所属页画布同一份账本（桶 = 帧所属页，账本固定 @canvas），行带
+  // pageId + screenId，锚点按 frame 内路径归一（src/shared/frame-anchor.js，内联）。
   // 文档正文标注仍走文档自己的账本 —— 两个命名空间共存不打架。
   var FRAME = (function () {
     var f = window.__pinpointFrame;
@@ -41,13 +41,28 @@
       sectionLabel: f.sectionLabel ? String(f.sectionLabel) : ''
     };
   })();
+  // ---------- storage-unify：桶 = 页、画布账本固定名 ----------
+  // 工作台画布实例没有 entry 标记（ios-kit 注入），它的桶 = 活动页 id，加载时
+  // 定不了 —— CANVAS_MODE 只判形态，ENTRY/账本由 watchWorkbenchPages 在页定下
+  // 来时经 switchLedgerTo 换上，切活动页 = 换桶重 hydrate。
+  var CANVAS_PAGE = '@canvas';
+  var CANVAS_MODE = !FRAME && !window.__pinpointEntry && (function () {
+    if (document.getElementById('wb-board-panel')) return true;
+    if (window.workbench && typeof window.workbench.activePageId === 'function') return true;
+    var p = location.pathname.replace(/\/+$/, '') || '/';
+    return p === '/' || p === '/index.html';
+  })();
   var LEDGER_PATHNAME =
-    (typeof window.__pinpointLedger === 'string' && window.__pinpointLedger.charAt(0) === '/')
-      ? window.__pinpointLedger
-      : location.pathname;
+    FRAME || CANVAS_MODE
+      ? CANVAS_PAGE
+      : ((typeof window.__pinpointLedger === 'string' && window.__pinpointLedger.charAt(0) === '/')
+          ? window.__pinpointLedger
+          : location.pathname);
   var LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
-  // 页面标识 = 文件名 + 全路径短哈希（SSOT: src/shared/annotate-page-key.js，内联）
-  var PAGE = pageKeyFromPathname(LEDGER_PATHNAME);
+  // 页面标识 = 文件名 + 全路径短哈希（SSOT: src/shared/annotate-page-key.js，内联）；
+  // 画布 / 帧实例的账本是固定名 @canvas（不跟工作台 pathname 走，`/` 与
+  // `/index.html` 两个拼法从此同一本）。
+  var PAGE = (FRAME || CANVAS_MODE) ? CANVAS_PAGE : pageKeyFromPathname(LEDGER_PATHNAME);
   var PAGE_KEY = annotationSlug(PAGE);
   // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
   // （frame 嵌入页不导航，账本恒定 —— 路由监听在 FRAME 模式下不安装。）
@@ -59,8 +74,9 @@
   var syncedMutationVersion = 0;
   var deferredRemoteDoc = null;
   var syncEpoch = 0;          // 账本世代：路由切换即 +1，在途 sync/hydrate 回调凭世代号丢弃
-  var ledgerSwitching = false; // switchLedger 已清账、hydrate 未落地期间为 true
-  var queuedPathname = null;   // 切换途中又来导航：coalesce 到最新 pathname
+  var ledgerSwitching = false; // switchLedgerTo 已清账、hydrate 未落地期间为 true
+  var queuedSwitch = null;    // 切换途中又来换账本请求：coalesce 到最新一个
+  var settleWaiters = [];     // whenSettled 的等待者：hydrate 落地后一次性放行
   var eventSource = null;
   var serverOnline = false;   // SSE OPEN liveness only (not hydrate/POST success)
   var syncError = false;      // last POST/save failed while SSE may still be open
@@ -945,6 +961,15 @@
     setServerOnline(false);
   }
 
+  // SSE 连接与账本无关（事件按 entry + page 过滤），画布实例在第一次换桶前就
+  // 可以连上 —— 连接状态指示不等人。
+  var eventsConnected = false;
+  function connectEventsOnce() {
+    if (eventsConnected) return;
+    eventsConnected = true;
+    connectEvents();
+  }
+
   window.addEventListener('pagehide', closeEvents);
   window.addEventListener('pageshow', function (event) {
     if (event.persisted && !eventSource) connectEvents();
@@ -1144,7 +1169,7 @@
   overlay.appendChild(hoverLayer);
   overlay.appendChild(chromeLayer);
   bubblesLayer.style.display = renderComments ? '' : 'none';
-  // SPA 路由可能重建挂载点，switchLedger 复用这套逻辑重挂。
+  // SPA 路由可能重建挂载点，switchLedgerTo 复用这套逻辑重挂。
   function mountOverlay(modal) {
     // 三种挂法。workbench：overlay 与 chrome 都直接挂在 .wb-stage-wrap 里按 --wb-z 阶梯排
     //（钉子在面板 / 横条之下，输入框在横条之上；两者同一父级 inset:0，坐标一致）。
@@ -1430,7 +1455,9 @@
   // 抑制规则与浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；
   // doc iframe 由父级出控制面。（浏览器扩展的 pinpoint:command 桥已于 pp2
   // 切片 3 随扩展一并退役。）
-  var SIDEBAR_LS_KEY = 'pinpoint:' + ENTRY + ':sidebar-open';
+  // 画布实例的 key 不跟活动页换（面板开合是 workbench 级浏览偏好；账本缓存
+  // key LS_KEY 才跟页桶走）。
+  var SIDEBAR_LS_KEY = 'pinpoint:' + (CANVAS_MODE ? 'workbench' : ENTRY) + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
   var sidebarCount = null;
@@ -3782,7 +3809,11 @@
     var wb = window.workbench;
     if (wb) {
       if (m.pageId && typeof wb.setActivePage === 'function' && m.pageId !== currentWorkbenchPageId()) {
+        // storage-unify：跨页跳转 = 换页（= 换桶）。定位必须等新页账本水合落定，
+        // 再按新账本里的同一 #n 取行（行对象属于新账本）。
         p = Promise.resolve(wb.setActivePage(m.pageId, { scrollTop: false })).then(function () {
+          return whenSettled();
+        }).then(function () {
           var sec = annotationSection(m);
           if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { scroll: false });
         });
@@ -3795,7 +3826,8 @@
         requestAnimationFrame(function () {
           requestAnimationFrame(function () {
             if (navigation !== markNavigation) { resolve(false); return; }
-            resolve(flashAndOpen(m, navigation));
+            var fresh = markByN(n) || m;
+            resolve(flashAndOpen(fresh, navigation));
           });
         });
       });
@@ -3868,6 +3900,7 @@
     },
     openMark: openMark,
     goToMark: goToMark,
+    whenSettled: whenSettled,
     markStatus: markStatus,
     closeAnnotation: closeAnnotation,
     hydrateFrames: hydrateMentionFrames,
@@ -3885,9 +3918,12 @@
 
   syncModeClass();
 
-  // ---------- SPA 路由账本切换 ----------
+  // ---------- 账本切换（SPA 路由 + 画布切页共用） ----------
   // SPA 用 pushState/replaceState 改 URL 不刷新页面，本脚本只跑过一次；pathname 一变，
   // 标注必须改记到新 pathname 的账本（PAGE/PAGE_KEY/LS_KEY 重算），否则静默记到旧页面名下。
+  // storage-unify 加了第二种切换源：工作台画布切活动页 = 换桶（ENTRY = 新页 id、
+  // 账本 @canvas）并重新 hydrate。两种切换共用同一条 switchLedgerTo 管线：
+  // 会话收尾 → epoch 护栏 → 清渲染 → 重算 key → hydrate → 落定放行。
   // hash-only 变化不触发：key 公式只含 pathname（已接受的边界）。
 
   function finishSessionForLedgerSwitch() {
@@ -3908,14 +3944,16 @@
     hideGhost();
   }
 
-  function onRouteChange(newPathname) {
-    if (!newPathname || newPathname === currentPathname) return;
-    // 一次 switchLedger 未完成时再变：coalesce 到最新 pathname。
-    if (ledgerSwitching) { queuedPathname = newPathname; return; }
-    switchLedger(newPathname);
+  /** 换账本的统一入口：next = { entry, ledgerPathname, page, currentPathname }。
+      切换途中再来的请求 coalesce 到最新一个；目标与当前同账本则不动。 */
+  function requestSwitch(next) {
+    if (!next) return;
+    if (ledgerSwitching) { queuedSwitch = next; return; }
+    if (next.entry === ENTRY && next.page === PAGE) return;
+    switchLedgerTo(next);
   }
 
-  function switchLedger(newPathname) {
+  function switchLedgerTo(next) {
     ledgerSwitching = true;
     // 1. 会话态收尾（草稿存回旧账本）
     finishSessionForLedgerSwitch();
@@ -3928,10 +3966,12 @@
     structureDirty = true;
     renderAll();
     // 4. 重算账本（闭包 var 重赋值即全局生效）
-    currentPathname = newPathname;
-    PAGE = pageKeyFromPathname(newPathname);
+    ENTRY = next.entry;
+    LEDGER_PATHNAME = next.ledgerPathname;
+    PAGE = next.page;
     PAGE_KEY = annotationSlug(PAGE);
-    LS_KEY = 'pinpoint:' + ENTRY + ':' + newPathname;
+    LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
+    currentPathname = next.currentPathname;
     revision = 0;
     mutationVersion = 0;
     syncedMutationVersion = 0;
@@ -3947,19 +3987,74 @@
       renderAll();
       notify();
       ledgerSwitching = false;
-      if (queuedPathname && queuedPathname !== currentPathname) {
-        var next = queuedPathname;
-        queuedPathname = null;
-        onRouteChange(next);
+      var waiters = settleWaiters;
+      settleWaiters = [];
+      for (var i = 0; i < waiters.length; i++) waiters[i](true);
+      if (queuedSwitch) {
+        var queued = queuedSwitch;
+        queuedSwitch = null;
+        requestSwitch(queued);
       }
     });
+  }
+
+  /** 账本切换是否已落定（hydrate 完成）。跨页跳转（goToMark）先切页再定位，
+      定位必须等新页的账本水合完，否则旧 marks 里找不到行。 */
+  function whenSettled() {
+    if (!ledgerSwitching) return Promise.resolve(true);
+    return new Promise(function (resolve) { settleWaiters.push(resolve); });
+  }
+
+  function onRouteChange(newPathname) {
+    if (!newPathname || newPathname === currentPathname) return;
+    requestSwitch({
+      entry: ENTRY,
+      ledgerPathname: newPathname,
+      page: pageKeyFromPathname(newPathname),
+      currentPathname: newPathname,
+    });
+  }
+
+  // ---------- 画布切页换桶（storage-unify） ----------
+  // 工作台的活动页由 stage.js 持有；这里经 window.workbench.onPageChange 订阅
+  // （boot 早于订阅时直接读 activePageId 兜底）。活动页一定 → 桶一定，
+  // 账本恒 @canvas；workbench 一直不出现（理论上的兜底页）落 pinpoint 桶。
+
+  function canvasSwitchFor(pageId) {
+    return { entry: pageId, ledgerPathname: CANVAS_PAGE, page: CANVAS_PAGE, currentPathname: CANVAS_PAGE };
+  }
+
+  function watchWorkbenchPages() {
+    var applied = null;
+    var apply = function (id) {
+      if (!id || id === applied) return;
+      applied = id;
+      requestSwitch(canvasSwitchFor(id));
+    };
+    connectEventsOnce();
+    var tries = 0;
+    var timer = setInterval(function () {
+      var wb = window.workbench;
+      if (wb && typeof wb.onPageChange === 'function') {
+        clearInterval(timer);
+        wb.onPageChange(apply);
+        apply(typeof wb.activePageId === 'function' ? wb.activePageId() : null);
+        return;
+      }
+      apply(currentWorkbenchPageId());
+      tries += 1;
+      if (tries > 250) { // ~20s 没有 workbench：当兜底页（pinpoint 桶的 @canvas）
+        clearInterval(timer);
+        if (!applied) requestSwitch(canvasSwitchFor('pinpoint'));
+      }
+    }, 80);
   }
 
   // 层 1：路由信号。首选 Navigation API（只关心 same-document 导航，比较新旧
   // pathname）；没有 window.navigation 时降级为 patch pushState/replaceState
   // （调原实现后再检查）+ popstate。与已有的 popstate → scheduleContentRender
   // 监听共存——popstate 现在多一个账本切换语义。
-  // /api/frame 嵌入帧不导航（账本恒定 = 注入的 __pinpointLedger），不装路由监听。
+  // /api/frame 嵌入帧不导航（账本恒定 = 所属页的 @canvas），不装路由监听。
   if (!FRAME) {
     if (window.navigation && typeof window.navigation.addEventListener === 'function') {
       window.navigation.addEventListener('navigate', function (event) {
@@ -3996,19 +4091,6 @@
   // 已含子节点的挂载点跳过：那是导出烤图（<img>）或已水合的重复扫描。
   var MENTION_VALUE_RE = /^([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)$/;
 
-  function embedLedgerPathname() {
-    // frame 标注必须与画布同账本：顶层是 workbench 时用顶层的真实 pathname
-    // （/ 与 /index.html 两个拼法历史上都开着各自的账本）；否则回落规范入口。
-    try {
-      var top = window.top;
-      if (top && top !== window && top.document && top.document.getElementById('wb-board-panel')) {
-        var p = top.location.pathname;
-        if (typeof p === 'string' && p.charAt(0) === '/') return p;
-      }
-    } catch (e) { /* 跨域顶层：按 standalone 处理 */ }
-    return '/index.html';
-  }
-
   function autosizeMentionFrame(iframe) {
     function measure() {
       try {
@@ -4030,7 +4112,6 @@
     var scope = root && root.querySelectorAll ? root : document;
     var mounts = scope.querySelectorAll('[data-pinpoint-frame]');
     if (!mounts.length) return;
-    var ledger = embedLedgerPathname();
     for (var i = 0; i < mounts.length; i++) {
       (function (mount) {
         if (mount.getAttribute('data-pinpoint-hydrated') === '1') return;
@@ -4040,13 +4121,14 @@
           mount.setAttribute('data-pinpoint-frame-error', 'bad-ref');
           return;
         }
+        // 帧账本 = 被引用帧所属页的 @canvas（storage-unify），端点按 page+screen
+        // 解析归属，不再需要顶层工作台的 pathname。
         var iframe = document.createElement('iframe');
         iframe.setAttribute('data-pinpoint-frame-iframe', '');
         iframe.setAttribute('title', '@frame:' + m[1] + '/' + m[2]);
         iframe.setAttribute('scrolling', 'no');
         iframe.src = '/api/frame?page=' + encodeURIComponent(m[1]) +
-          '&screen=' + encodeURIComponent(m[2]) +
-          '&ledger=' + encodeURIComponent(ledger);
+          '&screen=' + encodeURIComponent(m[2]);
         iframe.style.cssText = 'width:100%;border:0;display:block;background:transparent;overflow:hidden';
         autosizeMentionFrame(iframe);
         mount.appendChild(iframe);
@@ -4084,18 +4166,29 @@
   }
 
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
-  hydrateFromDisk().then(function (online) {
+  if (CANVAS_MODE) {
+    // 画布实例：活动页定了才有桶（storage-unify）。SSE 先连（连接指示与事件流
+    // 都与桶无关），账本由 watchWorkbenchPages 的第一次换页带入；workbench
+    // 一直不出现的兜底页落 pinpoint 桶。
     renderAll();
     notify();
-    if (online) {
-      // connected is set by SSE onopen, not by hydrate success.
-      setStatus('已连接');
-      setTimeout(function () { setStatus(''); }, 2000);
-      connectEvents();
-    } else {
-      setServerOnline(false);
-    }
+    watchWorkbenchPages();
     bootMentionHydration();
-    adoptParentMode();
-  });
+  } else {
+    hydrateFromDisk().then(function (online) {
+      renderAll();
+      notify();
+      if (online) {
+        // connected is set by SSE onopen, not by hydrate success.
+        setStatus('已连接');
+        setTimeout(function () { setStatus(''); }, 2000);
+        connectEvents();
+        eventsConnected = true;
+      } else {
+        setServerOnline(false);
+      }
+      bootMentionHydration();
+      adoptParentMode();
+    });
+  }
 })();
