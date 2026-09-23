@@ -911,7 +911,7 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
 
 test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
   let broken = true;
-  // 坏页是 e2e-doc：「回到 Pages」落默认页（清单第一行 e2e-site，好的），两头互不干扰。
+  // 坏页是 e2e-doc：「回到 Pages」落默认页（manifest.defaultPage = 范例页，好的），两头互不干扰。
   await page.route('**/sites/e2e-doc/board.json', async (route) => {
     if (!broken) {
       await route.fallback();
@@ -929,14 +929,14 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(panel.locator('[data-err-home]')).toHaveText('回到 Pages');
   await expect(panel.locator('[data-err-retry]')).toHaveText('重试');
 
-  // 「回到 Pages」= 落到一个能打开的页（默认页 = 清单第一行）+ 左栏展开（折叠着也要看得见 Pages）
+  // 「回到 Pages」= 落到默认页（manifest.defaultPage，范例页）+ 左栏展开（折叠着也要看得见 Pages）
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeHidden();
   await panel.locator('[data-err-home]').click();
   await expect(page.locator('#wbside')).toBeVisible();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
 
   // 回到坏页 → 面板重现；修好后「重试」原地把板拉回来，不用刷新整页
   await page.getByRole('tab', {name:'页面', exact:true}).click();
@@ -972,10 +972,11 @@ test('?page= 指向不存在的页 → 显式面板，地址栏留着坏 id（20
   })).toBe(true);
 
   await panel.locator('[data-err-home]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  // 「回到 Pages」落默认页 = manifest.defaultPage（范例页）；URL 同步随 activePageId。
+  await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
-  await expect.poll(() => page.url()).toContain('page=e2e-ios');
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
+  await expect.poll(() => page.url()).toContain('page=example');
 });
 
 test('深链失效面板的「重试」：页面清单里出现了那个 id 就直接打开它', async ({ page }) => {
