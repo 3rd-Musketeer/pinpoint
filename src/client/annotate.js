@@ -1662,21 +1662,31 @@
     toastTimer = setTimeout(hideToast, 5000);
   }
 
-  /** 客户端允许的转换：done → close、close → open（check / done 只经 ppnt mark 端点）。 */
+  /** 客户端允许的转换：owner 完成（open / check / done → close，工作台单击）与
+      close 撤销 / 重新打开（→ 关闭前的原态）。check / done 的升档仍只经 ppnt
+      mark 端点。 */
   function markStatus(n, next) {
     var m = marks.find(function (k) { return k.n === n; });
     if (!m) return false;
     var from = m.status || 'open';
     if (from === next) return true;
-    if (!((from === 'done' && next === 'close') || (from === 'close' && next === 'open'))) return false;
+    var ownerMove = (next === 'close' && from !== 'close') || (from === 'close' && next !== 'close');
+    if (!ownerMove) return false;
     m.status = next;
     persist();
     return true;
   }
 
   function closeAnnotation(n) {
+    // 撤销要回关闭前的原态（open / check / done），不是一律回 open。
+    var m = marks.find(function (k) { return k.n === n; });
+    var from = m ? (m.status || 'open') : null;
     if (!markStatus(n, 'close')) return;
-    showToast('已关闭 #' + n, '撤销', function () { markStatus(n, 'open'); });
+    showToast('已完成 #' + n, '撤销', function () { markStatus(n, from); });
+  }
+
+  function reopenAnnotation(n) {
+    markStatus(n, 'open');
   }
 
   function setSidebarOpen(on) {
@@ -3896,6 +3906,7 @@
     whenSettled: whenSettled,
     markStatus: markStatus,
     closeAnnotation: closeAnnotation,
+    reopenAnnotation: reopenAnnotation,
     hydrateFrames: hydrateMentionFrames,
     getState: getState,
     markOnActivePage: markOnActivePage,
