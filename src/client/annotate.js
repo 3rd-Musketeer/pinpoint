@@ -742,6 +742,29 @@
     return m;
   }
 
+  // 决定 #15 迁移：存量标注不带 ppId，owner 下次编辑保存时在这里自然补上 ——
+  // 不跑账本迁移脚本，磁盘账本不整体重写。解析不到的目标不硬补（锚已失效的
+  // 行保持原样，等 cssPath 修好或被人处理）；补 ppId 不改 selector 集合，服务
+  // 端的目标指纹不变，状态不会被这次保存顶回 open。
+  function backfillTargetPpIds(m) {
+    if (!m || m.type !== 'element') return m;
+    var targets = markElementTargets(m);
+    var changed = false;
+    targets.forEach(function (t) {
+      if (t.ppId) return;
+      var el = resolveMarkTarget(t, m.screenId || '');
+      var ppId = el ? ppIdOf(el) : '';
+      if (ppId) { t.ppId = ppId; changed = true; }
+    });
+    // markElementTargets 给的是归一副本：改在副本上，必须写回 m.target 再归一，
+    // 否则补的字段随副本一起丢。
+    if (changed) {
+      m.targets = targets;
+      normalizeElementTargets(m);
+    }
+    return m;
+  }
+
   // ---------- 持久化（磁盘 SSOT；LS 仅缓存）----------
   function readLocalMarks() {
     try {
@@ -2530,6 +2553,7 @@
       if (changeOn) m.changeTo = true; else delete m.changeTo;
       if (images.length) m.images = images; else delete m.images;
       normalizeElementTargets(m);
+      backfillTargetPpIds(m);
       delete m._draft;
       delete m._targetMode;
       delete m._anchor;

@@ -23,7 +23,9 @@
 顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`ppId`（决定 #15）是编译页锚点的
 源码稳定 id（`data-pp-id` 的值，命中元素或最近带标祖先）：解析时先按 `[data-pp-id="…"]`
 找、多命中取文本最接近的，找不到再回落 cssPath + 文本；只要那行源码还在，帧结构怎么改
-锚都不漂。存量 HTML 页与工作台 chrome 没有 `data-pp-id`，target 不带 `ppId`，行为不变。
+锚都不漂。存量 HTML 页与工作台 chrome 没有 `data-pp-id`，target 不带 `ppId`，行为不变；
+存量编译页标注不带 `ppId` 的，owner 下次在工作台编辑保存该条时自动补上（不跑迁移脚本，
+账本不因此整体重写，补 `ppId` 不算目标变更、不会把 check / done 顶回 open）。
 `[@t:iN]` 只在那一条标注内解析，
 永远不进 `mentions[]`；`[@a:id]` 保持它的跨标注含义。
 
