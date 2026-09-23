@@ -6,6 +6,7 @@ import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { canvasBoard } from '../lib/board-entries.js';
 import { NOTE_CARD_W, noteCardPosition } from '../lib/note-card-pos.js';
+import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel } from '../../shared/ann-status.js';
 import { WbIcon } from './WbIcon.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -64,7 +65,6 @@ function AnnRow(props) {
   var showT = useRef(0);
   var hideT = useRef(0);
   var [noteOpen, setNoteOpen] = useState(false);
-
   useEffect(function () {
     return function () { clearTimeout(showT.current); clearTimeout(hideT.current); };
   }, []);
@@ -106,8 +106,9 @@ function AnnRow(props) {
   }
 
   return (
-    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
-      ref={rowRef} data-ann-n={r.n}
+    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on',
+      props.dim && 'wb-ann-item--closed')}
+      ref={rowRef} data-ann-n={r.n} data-ann-status={r.status || 'open'}
       onMouseEnter={openSoon} onMouseLeave={closeSoon}
       onFocus={openSoon} onBlur={closeSoon}
       aria-describedby={noteOpen ? 'wb-ann-note-card-' + r.n : undefined}>
@@ -237,6 +238,16 @@ export function AnnPopover() {
   var renderComments = snap.available && snap.renderComments;
   var bubbleMode = !renderComments ? 'off' : (snap.bubbleLayout === 'sidebar' ? 'chan' : 'inline');
 
+  // 状态筛选：SSOT 在 annotate 实例里（setStatusFilter 落账本侧 LS，按页保留，
+  // iframe 重载 / 切页后 annSnap 把值带回来）。列表与画布钉子吃同一个值。
+  var statusFilter = snap.statusFilter || 'all';
+  var counts = annFilterCounts(items);
+  var visibleItems = annFilterRows(items, statusFilter);
+  function onFilterPick(value) {
+    var a = annotateApi();
+    if (a && typeof a.setStatusFilter === 'function') a.setStatusFilter(value);
+  }
+
 
   var statusText = '';
   if (snap.available && snap.count) {
@@ -301,8 +312,40 @@ export function AnnPopover() {
         ) : null}
       </div>
 
+      {/* 状态筛选分段（2026-09-23，取代「已关闭 N」折叠段）：全部 · open · check ·
+          done · closed，各带计数；0 计数弱化但可点（点了就是空态，见列表主体）。 */}
+      {snap.available && items.length ? (
+        <div className="mx-[9px] mb-1.5 flex flex-none gap-0.5 rounded-[var(--wb-r-2)] bg-[var(--wb-fill)] p-0.5"
+          role="group" aria-label="按状态筛选" id="wbann-filters">
+          {ANN_FILTERS.map(function (f) {
+            return (
+              <button key={f} type="button" data-ann-filter={f} aria-pressed={statusFilter === f}
+                onClick={function () { onFilterPick(f); }}
+                className={cn(
+                  'min-w-0 flex-1 truncate rounded-[4px] px-1 py-[3px] text-[10.5px] font-semibold leading-none tabular-nums transition-colors duration-150',
+                  statusFilter === f
+                    ? 'bg-[var(--wb-surface)] text-[var(--wb-fg)] shadow-[var(--wb-sh-1)]'
+                    : 'text-muted-foreground hover:text-foreground',
+                  !counts[f] && 'opacity-45'
+                )}>
+                {annStatusLabel(f) + ' ' + counts[f]}
+              </button>
+            );
+          })}
+        </div>
+      ) : null}
+
       <div className="wb-ann-list flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-[7px] pb-2" id="wbann-list" ref={listRef}>
-        {items.length ? <OpenRows items={items} focusAnnN={focusAnnN} onGoTo={onGoTo} /> : (
+        {items.length ? (
+          visibleItems.length ? visibleItems.map(function (r) {
+            return <AnnRow key={r.key} row={r} on={focusAnnN === r.n} onGoTo={onGoTo}
+              dim={statusFilter === 'all' && r.status === 'close'} />;
+          }) : (
+            <div className="wb-ann-filter-empty m-auto py-4 text-center text-[11.5px]">
+              没有 {annStatusLabel(statusFilter)} 的标注
+            </div>
+          )
+        ) : (
           <div className="wb-ann-empty m-auto flex flex-col items-center justify-center gap-1.5 py-6">
             <WbIcon name="empty-ann" size={22} className="wb-ann-empty-ico block size-[22px] text-[color:var(--wb-faint)] opacity-75" />
             <p className="wb-ann-empty-title m-0">暂无标注</p>
@@ -310,28 +353,6 @@ export function AnnPopover() {
           </div>
         )}
       </div>
-    </Fragment>
-  );
-}
-
-function OpenRows(props) {
-  var [closedOpen, setClosedOpen] = useState(false);
-  var openItems = props.items.filter(function (r) { return r.status !== 'close'; });
-  var closedItems = props.items.filter(function (r) { return r.status === 'close'; });
-  return (
-    <Fragment>
-      {openItems.map(function (r) {
-        return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
-      })}
-      {/* 已关闭段常驻：N = 0 也显示（disabled 弱化、不可展开），owner 才找得到入口。 */}
-      <button type="button" className="wb-ann-closed-toggle" disabled={!closedItems.length}
-        data-closed-open={closedOpen ? '1' : undefined}
-        onClick={function () { if (closedItems.length) setClosedOpen(!closedOpen); }}>
-        {(closedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedItems.length}
-      </button>
-      {closedOpen ? closedItems.map(function (r) {
-        return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
-      }) : null}
     </Fragment>
   );
 }

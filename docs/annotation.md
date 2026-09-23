@@ -206,9 +206,13 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
   单击，toast 带“撤销”5 秒，不二次确认；撤销回关闭前的原态（`close → open` / `check` / `done`），
   再编辑也回 `open`。
 
-UI 随状态走：画布钉子 open = 现状、check = 空心灰描边、done = 右上角小勾、close 不画；
-列表行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进“已关闭 n”开关组
-（N = 0 时开关也常驻，不可展开）。
+UI 随状态走：颜色即状态 —— 画布钉子与列表行首序号圆共用一组状态色变量
+（`--ann-st-*`，SSOT = `src/shared/ann-status.js`）：open 蓝灰、check 琥珀、done 绿、
+close 灰，白字共用，不做角标；列表行另出 check / done / close 文字灰标，行 hover 出
+`note`。列表顶部有状态筛选分段（全部 · open · check · done · closed，各带计数，
+0 计数弱化但可点）：「全部」= 非 close 行 + close 行沉底整行弱化，单状态只看该状态，
+落空显示“没有 <状态> 的标注”；选择按页记 localStorage，刷新保留，画布钉子跟随筛选
+（选 closed 才画灰钉，「全部」不画 close 钉）。
 锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
