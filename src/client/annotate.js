@@ -64,6 +64,9 @@
   // `/index.html` 两个拼法从此同一本）。
   var PAGE = (FRAME || CANVAS_MODE) ? CANVAS_PAGE : pageKeyFromPathname(LEDGER_PATHNAME);
   var PAGE_KEY = annotationSlug(PAGE);
+
+  /** 状态筛选的 LS 槽：跟账本同键（= 按页），后缀区分标注数据本体。 */
+  function statusFilterKey() { return LS_KEY + ':stfilter'; }
   // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
   // （frame 嵌入页不导航，账本恒定 —— 路由监听在 FRAME 模式下不安装。）
   var currentPathname = LEDGER_PATHNAME;
@@ -85,7 +88,9 @@
   var paused = false;  // hide pins / overlay without leaving Annotate intent
   var floatingToolbar = false;
   var sidebarOpen = false; // 标注面板（#ann-sidebar）；viewer 偏好，持久化到 LS
-  var sidebarClosedOpen = false; // 侧栏「已关闭 n」组的展开态（pp2 状态机）
+  // 状态筛选（pp2：取代「已关闭 n」折叠段）：驱动侧栏列表与画布钉子两处。
+  // 按页记在 LS（key 跟账本走，账本切换时重读）；读不到 / 坏值回 'all'。
+  var statusFilter = readAnnFilter(localStorage, statusFilterKey()); // 'all' | 'open' | 'check' | 'done' | 'closed'
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -1086,6 +1091,14 @@
     '#ann-sidebar .ann-sb-modes button:hover{color:var(--wb-fg);}',
     '#ann-sidebar .ann-sb-modes button.on{background:var(--wb-surface,#fff);color:var(--wb-fg);box-shadow:var(--wb-sh-1);}',
     '#ann-sidebar .ann-sb-modes button.on[data-ann-mode="annotate"]{background:color-mix(in srgb,#f5a623 16%,#fff);color:#8a5a00;box-shadow:inset 0 0 0 1px color-mix(in srgb,#f5a623 35%,transparent);}',
+    // 状态筛选分段（pp2：取代「已关闭 n」折叠段）：同 .ann-sb-modes 的灰槽 +
+    // 白色凸起语言，密度低一档（五段挤一行）；计数为 0 的段弱化但仍可点。
+    '#ann-sidebar .ann-sb-filters{flex:none;display:flex;gap:2px;margin:6px 12px 2px;padding:2px;border-radius:var(--wb-r-3);background:var(--wb-fill,rgba(0,0,0,.055));}',
+    '#ann-sidebar .ann-sb-filters[hidden]{display:none;}',
+    '#ann-sidebar .ann-sb-filters button{flex:1;min-width:0;border:0;border-radius:var(--wb-r-2);cursor:pointer;background:transparent;color:var(--wb-muted);font:inherit;font-size:10.5px;font-weight:var(--wb-w-semibold);letter-spacing:.02em;padding:4px 2px;white-space:nowrap;font-variant-numeric:tabular-nums;transition:background .2s cubic-bezier(.25,0,0,1),color .2s cubic-bezier(.25,0,0,1),box-shadow .2s cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar .ann-sb-filters button:hover{color:var(--wb-fg);}',
+    '#ann-sidebar .ann-sb-filters button.on{background:var(--wb-surface,#fff);color:var(--wb-fg);box-shadow:var(--wb-sh-1);}',
+    '#ann-sidebar .ann-sb-filters button.dim{opacity:.45;}',
     '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
     // 行/失效态/空态的共享视觉 = src/shared/ann-list.css，serve 时内联为 ANN_LIST_CSS
     // （workbench 侧栏 link 同一份；行类名统一为 .wb-ann-*）。
@@ -1518,6 +1531,7 @@
   var sidebar = null;
   var sidebarBody = null;
   var sidebarCount = null;
+  var sidebarFilters = null;
   var sidebarSegInteract = null;
   var sidebarSegAnnotate = null;
   var sidebarSig = '';
@@ -1555,13 +1569,24 @@
       '<button type="button" data-ann-mode="interact" aria-pressed="true">交互</button>' +
       '<button type="button" data-ann-mode="annotate" aria-pressed="false">标注</button>' +
       '</div>' +
+      '<div class="ann-sb-filters" role="group" aria-label="按状态筛选" hidden></div>' +
       '<div class="ann-sb-body"></div>';
     document.body.appendChild(sidebar);
     sidebar.querySelector('.ann-sb-close').addEventListener('click', function () { setSidebarOpen(false); });
     sidebarBody = sidebar.querySelector('.ann-sb-body');
     sidebarCount = sidebar.querySelector('.ann-sb-count');
+    sidebarFilters = sidebar.querySelector('.ann-sb-filters');
     sidebarSegInteract = sidebar.querySelector('[data-ann-mode="interact"]');
     sidebarSegAnnotate = sidebar.querySelector('[data-ann-mode="annotate"]');
+    // 状态筛选分段（pp2：取代「已关闭 n」折叠段）。5 个段钮骨架建一次，
+    // 计数 / 选中态由 renderSidebar 就地刷新；计数为 0 弱化但仍可点。
+    ANN_FILTERS.forEach(function (key) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.setAttribute('data-ann-filter', key);
+      b.addEventListener('click', function () { setStatusFilter(key); });
+      sidebarFilters.appendChild(b);
+    });
     // segmented 是 setMode 的纯鼠标入口（同 pinpoint.setMode 语义）。
     sidebarSegInteract.addEventListener('click', function () { if (mode) toggleMode(); });
     sidebarSegAnnotate.addEventListener('click', function () { if (!mode) toggleMode(); });
@@ -1585,13 +1610,25 @@
     sidebarSegAnnotate.classList.toggle('on', !!mode);
     sidebarSegAnnotate.setAttribute('aria-pressed', String(!!mode));
     var rows = sidebarRowModel();
+    var visibleRows = annFilterRows(rows, statusFilter);
+    // 筛选分段就地刷新（骨架建一次，不随 sig 重建）：计数 + 选中态 + 0 计数弱化。
+    if (sidebarFilters) {
+      var counts = annFilterCounts(rows);
+      sidebarFilters.hidden = !rows.length;
+      ANN_FILTERS.forEach(function (key) {
+        var b = sidebarFilters.querySelector('[data-ann-filter="' + key + '"]');
+        if (!b) return;
+        b.textContent = annStatusLabel(key) + ' ' + counts[key];
+        b.classList.toggle('on', statusFilter === key);
+        b.setAttribute('aria-pressed', String(statusFilter === key));
+        b.classList.toggle('dim', !counts[key]);
+      });
+    }
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + r.note + '|' + sidebarClosedOpen;
-    }).join('~');
-    var openRows = rows.filter(function (r) { return r.status !== 'close'; });
-    var closedRows = rows.filter(function (r) { return r.status === 'close'; });
-    sidebarCount.textContent = openRows.length ? '(' + openRows.length + ')' : '';
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + r.note;
+    }).join('~') + '|f:' + statusFilter;
+    sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
     if (sig === sidebarSig) return;
     sidebarSig = sig;
     sidebarBody.textContent = '';
@@ -1609,105 +1646,98 @@
       sidebarBody.appendChild(empty);
       return;
     }
-
-    function buildRow(r) {
-      var item = document.createElement('div');
-      item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
-      item.setAttribute('data-ann-n', r.n);
-      // 序号圆颜色跟着状态走（--ann-st-*，与画布钉子同一组变量）。
-      item.setAttribute('data-ann-status', r.status || 'open');
-      // 注入侧列表的 note 用原生 title（hover 提示即可）；工作台列表已换
-      // hover 卡（AnnPopover.jsx NoteCard，切片 5），两处有意不同步。
-      if (r.note) item.title = r.note;
-      var main = document.createElement('button');
-      main.type = 'button';
-      main.className = 'wb-ann-item-main';
-      var num = document.createElement('span');
-      num.className = 'wb-ann-num';
-      num.textContent = r.n;
-      var body = document.createElement('span');
-      body.className = 'wb-ann-body';
-      var cap = document.createElement('span');
-      cap.className = 'wb-ann-cap';
-      cap.textContent = r.cap;
-      body.appendChild(cap);
-      if (r.preview) {
-        var text = document.createElement('span');
-        text.className = 'wb-ann-text';
-        text.textContent = r.preview;
-        body.appendChild(text);
-      }
-      // 状态灰标（check / done / close；open 不出标，close 行在收起组里）。
-      if (r.status !== 'open') {
-        var stTag = document.createElement('span');
-        stTag.className = 'wb-ann-status-tag';
-        stTag.textContent = r.status;
-        body.appendChild(stTag);
-      }
-      if (r.broken) {
-        var tag = document.createElement('span');
-        tag.className = 'wb-ann-broken-tag';
-        tag.textContent = '锚点失效';
-        body.appendChild(tag);
-      }
-      main.appendChild(num);
-      main.appendChild(body);
-      var acts = document.createElement('span');
-      acts.className = 'ann-sb-acts';
-      // 行件与工作台弹层同款（pp2 状态机）：删除退役，open / check / done 行的
-      // 收尾动作是「完成」= close（单击即关不二次确认，toast「已完成 #n」带
-      // 撤销）；close 行（展开后）给「重新打开」回 open。硬删只走工具条
-      // 「清空标记」与 composer 的删除钮。
-      if (r.status !== 'close') {
-        var doneBtn = document.createElement('button');
-        doneBtn.type = 'button';
-        doneBtn.className = 'wb-ann-done';
-        doneBtn.innerHTML = annIcon('check');
-        doneBtn.setAttribute('aria-label', '完成 #' + r.n);
-        doneBtn.title = '完成 #' + r.n;
-        doneBtn.addEventListener('click', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          closeAnnotation(r.n);
-        });
-        acts.appendChild(doneBtn);
-      } else {
-        var reopenBtn = document.createElement('button');
-        reopenBtn.type = 'button';
-        reopenBtn.className = 'wb-ann-reopen';
-        reopenBtn.textContent = '重新打开';
-        reopenBtn.setAttribute('aria-label', '重新打开标注 ' + r.n);
-        reopenBtn.addEventListener('click', function (e) {
-          e.preventDefault();
-          e.stopPropagation();
-          reopenAnnotation(r.n);
-        });
-        acts.appendChild(reopenBtn);
-      }
-      item.appendChild(main);
-      item.appendChild(acts);
-      return item;
+    if (!visibleRows.length) {
+      var filterEmpty = document.createElement('div');
+      filterEmpty.className = 'wb-ann-filter-empty';
+      filterEmpty.textContent = '没有 ' + annStatusLabel(statusFilter) + ' 的标注';
+      sidebarBody.appendChild(filterEmpty);
+      return;
     }
-
-    openRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
-
-    // close 默认收起：组头一个「已关闭 N」开关，常驻 —— N = 0 时 disabled 弱化
-    // 不可展开，owner 才找得到入口（与工作台弹层一致）。
-    var toggle = document.createElement('button');
-    toggle.type = 'button';
-    toggle.className = 'wb-ann-closed-toggle';
-    toggle.disabled = !closedRows.length;
-    toggle.textContent = (sidebarClosedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedRows.length;
-    toggle.addEventListener('click', function () {
-      if (!closedRows.length) return;
-      sidebarClosedOpen = !sidebarClosedOpen;
-      sidebarSig = '';
-      renderSidebar();
+    visibleRows.forEach(function (r) {
+      // 「全部」里 closed 沉底整行弱化；单看 closed 时就是普通行。
+      sidebarBody.appendChild(buildRow(r, statusFilter === 'all' && r.status === 'close'));
     });
-    sidebarBody.appendChild(toggle);
-    if (sidebarClosedOpen) {
-      closedRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
+  }
+
+  /** 侧栏一行。dim = 「全部」视图里沉底的 closed 行（整行弱化）；单看 closed
+      时是普通行。 */
+  function buildRow(r, dim) {
+    var item = document.createElement('div');
+    item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '') + (dim ? ' wb-ann-item--closed' : '');
+    item.setAttribute('data-ann-n', r.n);
+    // 序号圆颜色跟着状态走（--ann-st-*，与画布钉子同一组变量）。
+    item.setAttribute('data-ann-status', r.status || 'open');
+    // 注入侧列表的 note 用原生 title（hover 提示即可）；工作台列表已换
+    // hover 卡（AnnPopover.jsx NoteCard，切片 5），两处有意不同步。
+    if (r.note) item.title = r.note;
+    var main = document.createElement('button');
+    main.type = 'button';
+    main.className = 'wb-ann-item-main';
+    var num = document.createElement('span');
+    num.className = 'wb-ann-num';
+    num.textContent = r.n;
+    var body = document.createElement('span');
+    body.className = 'wb-ann-body';
+    var cap = document.createElement('span');
+    cap.className = 'wb-ann-cap';
+    cap.textContent = r.cap;
+    body.appendChild(cap);
+    if (r.preview) {
+      var text = document.createElement('span');
+      text.className = 'wb-ann-text';
+      text.textContent = r.preview;
+      body.appendChild(text);
     }
+    // 文字状态标（check / done / close；open 不出标）。
+    if (r.status !== 'open') {
+      var stTag = document.createElement('span');
+      stTag.className = 'wb-ann-status-tag';
+      stTag.textContent = r.status;
+      body.appendChild(stTag);
+    }
+    if (r.broken) {
+      var tag = document.createElement('span');
+      tag.className = 'wb-ann-broken-tag';
+      tag.textContent = '锚点失效';
+      body.appendChild(tag);
+    }
+    main.appendChild(num);
+    main.appendChild(body);
+    var acts = document.createElement('span');
+    acts.className = 'ann-sb-acts';
+    // 行件与工作台弹层同款（pp2 状态机）：删除退役，open / check / done 行的
+    // 收尾动作是「完成」= close（单击即关不二次确认，toast「已完成 #n」带
+    // 撤销）；close 行给「重新打开」回 open。硬删只走工具条
+    // 「清空标记」与 composer 的删除钮。
+    if (r.status !== 'close') {
+      var doneBtn = document.createElement('button');
+      doneBtn.type = 'button';
+      doneBtn.className = 'wb-ann-done';
+      doneBtn.innerHTML = annIcon('check');
+      doneBtn.setAttribute('aria-label', '完成 #' + r.n);
+      doneBtn.title = '完成 #' + r.n;
+      doneBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        closeAnnotation(r.n);
+      });
+      acts.appendChild(doneBtn);
+    } else {
+      var reopenBtn = document.createElement('button');
+      reopenBtn.type = 'button';
+      reopenBtn.className = 'wb-ann-reopen';
+      reopenBtn.textContent = '重新打开';
+      reopenBtn.setAttribute('aria-label', '重新打开标注 ' + r.n);
+      reopenBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        reopenAnnotation(r.n);
+      });
+      acts.appendChild(reopenBtn);
+    }
+    item.appendChild(main);
+    item.appendChild(acts);
+    return item;
   }
 
   // ---------- 关闭 / 撤销（done → close 单击，toast + 撤销 5s，不二次确认）----------
@@ -1767,6 +1797,17 @@
 
   function reopenAnnotation(n) {
     markStatus(n, 'open');
+  }
+
+  /** 状态筛选（侧栏分段 / 工作台弹层共用入口）：记 LS（按页）→ 重画钉子 →
+      notify 让侧栏与 annSnap 跟上。同值幂等。 */
+  function setStatusFilter(next) {
+    if (ANN_FILTERS.indexOf(next) < 0 || next === statusFilter) return;
+    statusFilter = next;
+    writeAnnFilter(localStorage, statusFilterKey(), next);
+    structureDirty = true;
+    renderAll();
+    notify();
   }
 
   function setSidebarOpen(on) {
@@ -2795,11 +2836,23 @@
     return resolveMarkAnchor(m).el;
   }
 
+  /** 状态筛选筛掉哪些钉子：'all' = closed 不画（现行为）；单状态 = 只画该状态
+      （选 closed 才见灰钉）。 */
+  function filterDrawsStatus(m) {
+    var st = (m && m.status) || 'open';
+    var want = filterStatusOf(statusFilter);
+    if (!want) return st !== 'close';
+    return st === want;
+  }
+
   /** Live marks on the active page that should be drawn on the canvas.
-      pp2：close 不画；锚点失效但有 lastRect 的画幽灵框。 */
+      pp2：close 不画（除非筛选选中 closed）；锚点失效但有 lastRect 的画幽灵框；
+      正在编辑的草稿行（live target 分支）让位给 composer 的草稿视觉。 */
   function drawableMark(m) {
-    if ((m.status || 'open') === 'close') return false;
-    if (markHasLiveTarget(m)) return true;
+    if (!filterDrawsStatus(m)) return false;
+    if (markHasLiveTarget(m)) {
+      return !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n);
+    }
     return !!(m.lastRect && isMarkBroken(m));
   }
 
@@ -3460,10 +3513,7 @@
             if (entry) entry.m = m;
             markFacts.delete(m); affected.add(m);
           }
-          if ((m.status || 'open') === 'close') return false;
-          return markHasLiveTarget(m)
-            ? !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)
-            : drawableMark(m);
+          return drawableMark(m);
         });
       });
       Object.keys(markNodes).forEach(function (key) {
@@ -3526,7 +3576,7 @@
           markFacts.delete(m);
           var live = markHasLiveTarget(m), broken = isMarkBroken(m);
           if (!old || old.live !== live || old.broken !== broken) changedState = true;
-          if ((m.status || 'open') !== 'close' && drawableMark(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
+          if (drawableMark(m)) list.push(m);
         });
         return list;
       });
@@ -3943,6 +3993,7 @@
       sidebar: sidebarOpen,
       renderComments: renderComments,
       bubbleLayout: bubbleLayout,
+      statusFilter: statusFilter,
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
@@ -3992,6 +4043,7 @@
     markStatus: markStatus,
     closeAnnotation: closeAnnotation,
     reopenAnnotation: reopenAnnotation,
+    setStatusFilter: setStatusFilter,
     hydrateFrames: hydrateMentionFrames,
     getState: getState,
     markOnActivePage: markOnActivePage,
@@ -4068,6 +4120,8 @@
     PAGE = next.page;
     PAGE_KEY = annotationSlug(PAGE);
     LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
+    // 筛选按页记忆：换账本即换槽（画布实例切活动页时弹层筛选跟着换页）。
+    statusFilter = readAnnFilter(localStorage, statusFilterKey());
     currentPathname = next.currentPathname;
     revision = 0;
     mutationVersion = 0;

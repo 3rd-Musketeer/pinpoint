@@ -25,6 +25,7 @@ const INLINED_LIBS = [
   path.join(SRC, 'workbench', 'lib', 'esc-html.js'),
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
+  path.join(SRC, 'shared', 'ann-status.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
   path.join(SRC, 'shared', 'ann-ppid.js'),
 ];

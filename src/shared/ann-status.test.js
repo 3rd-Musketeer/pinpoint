@@ -4,7 +4,17 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { ANN_STATUS_COLORS, annStatusVar } from './ann-status.js';
+import {
+  ANN_STATUS_COLORS,
+  ANN_FILTERS,
+  annStatusVar,
+  annStatusLabel,
+  filterStatusOf,
+  annFilterCounts,
+  annFilterRows,
+  readAnnFilter,
+  writeAnnFilter,
+} from './ann-status.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
@@ -63,4 +73,64 @@ test('white-on-status contrast ratios (WCAG AA large-text bar = 3:1)', () => {
   assert.ok(check > 2.8 && check < 3, 'check sits just under 3:1 (owner-picked amber)');
   const closed = whiteContrast(ANN_STATUS_COLORS.close);
   assert.ok(closed > 2.4 && closed < 2.7, 'close sits well under 3:1 (deliberate de-emphasis)');
+});
+
+/* ---- 状态筛选（annFilterCounts / annFilterRows / LS 读写）---- */
+
+const ROWS = [
+  { n: 1, status: 'open' },
+  { n: 2, status: 'check' },
+  { n: 3, status: 'done' },
+  { n: 4, status: 'close' },
+  { n: 5, status: 'open' },
+  { n: 6, status: 'close' },
+];
+
+test('filter labels and status mapping (closed ↔ close jump)', () => {
+  assert.deepEqual(ANN_FILTERS, ['all', 'open', 'check', 'done', 'closed']);
+  assert.equal(annStatusLabel('all'), '全部');
+  assert.equal(annStatusLabel('closed'), 'closed');
+  assert.equal(annStatusLabel('nope'), '全部');
+  assert.equal(filterStatusOf('closed'), 'close');
+  assert.equal(filterStatusOf('check'), 'check');
+  assert.equal(filterStatusOf('all'), null);
+  assert.equal(filterStatusOf('bogus'), null);
+});
+
+test('annFilterCounts: all counts every row, closed counts status close', () => {
+  assert.deepEqual(annFilterCounts(ROWS), { all: 6, open: 2, check: 1, done: 1, closed: 2 });
+  assert.deepEqual(annFilterCounts([]), { all: 0, open: 0, check: 0, done: 0, closed: 0 });
+  assert.deepEqual(annFilterCounts(undefined), { all: 0, open: 0, check: 0, done: 0, closed: 0 });
+  // 缺 status 的行按 open 计（与 annRowModel 默认一致）。
+  assert.deepEqual(annFilterCounts([{ n: 9 }]), { all: 1, open: 1, check: 0, done: 0, closed: 0 });
+});
+
+test('annFilterRows: all keeps order with closed last; single status filters', () => {
+  // 全部 = closed 沉底，其余与 closed 各自保持原序。
+  assert.deepEqual(annFilterRows(ROWS, 'all').map((r) => r.n), [1, 2, 3, 5, 4, 6]);
+  // 单状态 = 只留该状态，原序。
+  assert.deepEqual(annFilterRows(ROWS, 'check').map((r) => r.n), [2]);
+  assert.deepEqual(annFilterRows(ROWS, 'open').map((r) => r.n), [1, 5]);
+  assert.deepEqual(annFilterRows(ROWS, 'done').map((r) => r.n), [3]);
+  assert.deepEqual(annFilterRows(ROWS, 'closed').map((r) => r.n), [4, 6]);
+  // 未知筛选键与 'all' 同义（防脏 LS 值）。
+  assert.deepEqual(annFilterRows(ROWS, 'bogus').map((r) => r.n), [1, 2, 3, 5, 4, 6]);
+  // 不改传入数组。
+  assert.equal(ROWS[3].status, 'close');
+  assert.equal(ROWS.length, 6);
+});
+
+test('annFilter storage helpers: roundtrip, bad values, throwing storage', () => {
+  const backing = new Map();
+  const storage = { getItem: (k) => (backing.has(k) ? backing.get(k) : null), setItem: (k, v) => backing.set(k, v), removeItem: (k) => backing.delete(k) };
+  assert.equal(readAnnFilter(storage, 'k'), 'all', 'missing → all');
+  writeAnnFilter(storage, 'k', 'check');
+  assert.equal(readAnnFilter(storage, 'k'), 'check');
+  backing.set('k', 'bogus');
+  assert.equal(readAnnFilter(storage, 'k'), 'all', 'bad value → all');
+  writeAnnFilter(storage, 'k', 'nope');
+  assert.equal(backing.has('k'), false, 'bad write clears the slot');
+  const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('blocked'); } };
+  assert.equal(readAnnFilter(throwing, 'k'), 'all', 'throwing read → all');
+  assert.doesNotThrow(() => writeAnnFilter(throwing, 'k', 'done'), 'throwing write is swallowed');
 });

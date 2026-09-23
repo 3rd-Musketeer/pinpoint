@@ -107,6 +107,9 @@ export function syncAnnSnap() {
       floating: !!st.floating,
       renderComments: !!st.renderComments,
       bubbleLayout: st.bubbleLayout || 'inline',
+      // 状态筛选 SSOT 在 annotate 实例（setStatusFilter 落 LS，按页保留）；
+      // 实例切换（切页 / iframe 重载）后弹层从这里读回当前值。
+      statusFilter: st.statusFilter || 'all',
       connected: !!st.connected,
       syncError: !!st.syncError,
       count: st.count || 0,
