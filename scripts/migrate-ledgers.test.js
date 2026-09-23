@@ -206,6 +206,16 @@ test('storage-unify：坏 JSON 账本原样保留，清理阶段跳过（G7）',
   assert.equal(fs.readFileSync(path.join(otherBucket, 'broken.json'), 'utf8'), broken, '无变更的桶同样不动');
 });
 
+test('storage-unify：数据根下的隐藏目录原样保留（K9）', async (t) => {
+  const dir = seedLedger(t);
+  const hidden = path.join(dir, '.staging');
+  fs.mkdirSync(path.join(hidden, 'nested'), { recursive: true });
+  fs.writeFileSync(path.join(hidden, 'nested', 'keep.json'), '{"keep":true}');
+
+  await run(dir, '--apply');
+  assert.equal(fs.readFileSync(path.join(hidden, 'nested', 'keep.json'), 'utf8'), '{"keep":true}', '隐藏目录不被当桶清掉');
+});
+
 test('storage-unify：备份目录带时分秒，已存在就拒绝（G6）', async (t) => {
   const dir = seedLedger(t);
   await run(dir, '--apply');

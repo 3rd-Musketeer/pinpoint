@@ -554,9 +554,11 @@ for (const move of report.imageMoves) {
 }
 
 // 桶内容与模型对齐：模型里没有的账本文件删掉，有的（重）写；解析失败的
-// 坏账本不在模型里，但那是用户数据 —— 原样保留（G7），不趁迁移顺手删。
+// 坏账本不在模型里，但那是用户数据 —— 原样保留（G7），不趁迁移顺手删；
+// 点号开头的隐藏目录读侧就跳过，清理同样跳过 —— 不然它们不在模型里，
+// 会被当成「整桶并走的桶」rm -rf（K9）。
 for (const bucketName of fs.readdirSync(root, { withFileTypes: true })) {
-  if (!bucketName.isDirectory() || bucketName.name === 'migrations' || NON_BUCKET_DIRS.has(bucketName.name)) continue;
+  if (!bucketName.isDirectory() || bucketName.name.startsWith('.') || bucketName.name === 'migrations' || NON_BUCKET_DIRS.has(bucketName.name)) continue;
   if (!model.buckets.has(bucketName.name)) {
     // 整桶并走的挂靠桶：剩余内容（模型外文件，如 _seq.json）一并删除后移除目录；
     // 桶里有解析不了的坏账本时不能整目录删（G7），只清已迁走的账本，坏文件留底。
