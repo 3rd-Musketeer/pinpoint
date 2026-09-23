@@ -67,26 +67,29 @@ export function annRowTags(mark) {
 
 /**
  * Brokenness, distilled from the client's anchor check into a pure predicate:
- * `hasSelector(selector)` reports whether a selector still resolves in the
- * caller's live document; `elementTargets` is the mark's normalized target
- * list (only consulted for type 'element'). A hidden-but-resolvable target is
- * NOT broken — the same selector goes live again when the view returns.
+ * `resolvesTarget(target)` reports whether one anchor target ({ selector, … })
+ * still resolves in the caller's live document — the callback owns the priority
+ * (决定 #15：target 带 ppId 时先按 [data-pp-id] 找，找不到再 cssPath），这里
+ * 只问结果。`elementTargets` is the mark's normalized target list (only
+ * consulted for type 'element'); region base / contains entries pass through
+ * the same callback as plain selector objects. A hidden-but-resolvable target
+ * is NOT broken — the same anchor goes live again when the view returns.
  */
-export function annMarkResolvable(mark, hasSelector, elementTargets) {
+export function annMarkResolvable(mark, resolvesTarget, elementTargets) {
   if (!mark) return false;
   if (mark.type === 'element') {
     const targets = Array.isArray(elementTargets) ? elementTargets : [];
-    return targets.some((target) => !!(target && target.selector && hasSelector(target.selector)));
+    return targets.some((target) => !!(target && target.selector && resolvesTarget(target)));
   }
-  if (mark.base && mark.base.selector && hasSelector(mark.base.selector)) return true;
+  if (mark.base && mark.base.selector && resolvesTarget(mark.base)) return true;
   if (Array.isArray(mark.contains) && mark.contains.length) {
-    return mark.contains.some((item) => !!(item && item.selector && hasSelector(item.selector)));
+    return mark.contains.some((item) => !!(item && item.selector && resolvesTarget(item)));
   }
   return false;
 }
 
-export function annMarkBroken(mark, hasSelector, elementTargets) {
-  return !annMarkResolvable(mark, hasSelector, elementTargets);
+export function annMarkBroken(mark, resolvesTarget, elementTargets) {
+  return !annMarkResolvable(mark, resolvesTarget, elementTargets);
 }
 
 /**

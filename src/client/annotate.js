@@ -613,6 +613,41 @@
     return resolve(selector);
   }
 
+  // ---------- ppId 优先解析（决定 #15）----------
+  // target 带 ppId（编译页源码稳定 id）时先按 [data-pp-id="…"] 找：帧结构改了
+  // （前面插元素、换包裹层）cssPath 的 nth-of-type 会漂到别的元素上，ppId 只要
+  // 那行源码还在就指同一个元素。范围与 cssPath 解析同界 —— 帧的 stage 根里
+  // （同行多实例靠文本择近；kit 组件同 id 出现在多帧时也不串）。多命中取文本
+  // 最接近的（pickByTargetText，src/shared/ann-ppid.js 内联）；找不到回落
+  // cssPath + 文本。缓存走同一个 selectorCache：clearAnchorCache 一并失效。
+  function resolveByPpId(ppId, text, screenId) {
+    var sel = ppIdAttrSelector(ppId);
+    if (!sel) return null;
+    var sid = FRAME ? FRAME.screenId : (screenId || '');
+    var key = sid + '\nppId:' + ppId + '\n' + (text || '');
+    if (selectorCache.has(key)) {
+      var cached = selectorCache.get(key);
+      if (!cached || cached.isConnected) return cached;
+    }
+    var root = scopedStageRoot(sid) || document;
+    var hits = [];
+    try { hits = Array.prototype.slice.call(root.querySelectorAll(sel)); } catch (e) { return null; }
+    var best = pickByTargetText(hits.map(function (el) { return { el: el, text: excerpt(el) }; }), text);
+    var el = best ? best.el : null;
+    selectorCache.set(key, el);
+    return el;
+  }
+
+  /** 一个 target 的解析（决定 #15 优先级）：ppId 先行，cssPath 兜底。 */
+  function resolveMarkTarget(target, screenId) {
+    if (!target || !target.selector) return null;
+    if (target.ppId) {
+      var byId = resolveByPpId(target.ppId, target.text || '', screenId);
+      if (byId) return byId;
+    }
+    return resolveMarkSelector(target.selector, screenId);
+  }
+
   /** Annotation belongs to the active workbench page. */
   function markOnActivePage(m) {
     if (!m) return false;
@@ -687,7 +722,7 @@
     if (liveTargetBatch && liveTargetBatch.has(m)) return liveTargetBatch.get(m);
     var out = [];
     markElementTargets(m).forEach(function (t) {
-      var el = resolveMarkSelector(t.selector, m.screenId || '');
+      var el = resolveMarkTarget(t, m.screenId || '');
       if (el && !isHidden(el)) {
         out.push({ el: el, ref: t.ref, selector: t.selector, text: t.text, rectDoc: docRect(el) });
       }
@@ -1396,9 +1431,14 @@
     // 干完活）后锚点必失效，一键清掉丢的是 owner 还没验收 / 已留档的执行历史。
     if (mark.status === 'done' || mark.status === 'close') return false;
     if (!loadedScope(mark.screenId || '')) return false;
-    var selectors = mark.type === 'element' ? markElementTargets(mark).map(function (target) { return target.selector; }) : [mark.base && mark.base.selector].concat((mark.contains || []).map(function (target) { return target.selector; })).filter(Boolean);
-    if (!selectors.length) return false;
-    if (selectors.some(function (selector) { return !!resolveMarkSelector(selector, mark.screenId || ''); })) return false;
+    var sid = mark.screenId || '';
+    // 判定与解析同一条优先级（决定 #15）：ppId 还指得到的目标不算失效 ——
+    // 否则 cssPath 被结构改动漂掉、ppId 仍锚着的标注会被 clearInvalid 误清。
+    var targets = mark.type === 'element'
+      ? markElementTargets(mark)
+      : [mark.base].concat(mark.contains || []).filter(Boolean);
+    if (!targets.length) return false;
+    if (targets.some(function (target) { return !!resolveMarkTarget(target, sid); })) return false;
     return true;
   }
 
@@ -1743,7 +1783,7 @@
 
   // ---------- 点选 / 框选 / 箭头 ----------
   var lasso = null;
-  var draftNodes = [];   // active composer targets [{ frame, badge, selector }]
+  var draftNodes = [];   // active composer targets [{ frame, badge, target, sid }]
 
   function clearDraftNodes() {
     draftNodes.forEach(function (p) {
@@ -1774,7 +1814,7 @@
     if (!draftNodes.length) return;
     beginOverlayFrame();
     draftNodes.forEach(function (p) {
-      var el = resolve(p.selector);
+      var el = p.target ? resolveMarkTarget(p.target, p.sid) : null;
       if (!el || isHidden(el)) return;
       placePartGeometry(p, el);
     });
@@ -1784,8 +1824,9 @@
     clearDraftNodes();
     if (!activeComposer || activeComposer.m.type !== 'element') return;
     beginOverlayFrame();
+    var sid = activeComposer.m.screenId || '';
     markElementTargets(activeComposer.m).forEach(function (target) {
-      var el = resolve(target.selector);
+      var el = resolveMarkTarget(target, sid);
       if (!el || isHidden(el)) return;
       var frame = document.createElement('div');
       frame.className = 'ann-target ann-draft-target';
@@ -1797,7 +1838,7 @@
       badge.textContent = activeComposer.m.n;
       badge.style.pointerEvents = 'none';
       hoverLayer.appendChild(badge);
-      var part = { frame: frame, badge: badge, selector: target.selector };
+      var part = { frame: frame, badge: badge, target: target, sid: sid };
       draftNodes.push(part);
       placePartGeometry(part, el);
     });
@@ -2669,14 +2710,15 @@
     return resolveMarkAnchor(m).live;
   }
 
-  /** The selector still resolves, even if its current product view is hidden.
+  /** The anchor target still resolves, even if its current product view is hidden.
    *  A hidden tab / route is not a broken annotation: once the view returns,
-   *  the same selector can become live again. The resolvability walk itself is
-   *  the shared pure predicate from src/shared/ann-row.js (inlined at serve time). */
+   *  the same anchor can become live again. The resolvability walk itself is
+   *  the shared pure predicate from src/shared/ann-row.js (inlined at serve time);
+   *  the callback owns the 决定 #15 priority (ppId first, cssPath fallback). */
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
     var fact = markFact(m);
-    if (fact.broken == null) fact.broken = annMarkBroken(m, function (selector) { return !!resolveMarkSelector(selector, sid); }, markElementTargets(m));
+    if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, sid); }, markElementTargets(m));
     return fact.broken;
   }
 
@@ -2915,7 +2957,7 @@
     var roots = new Set();
     function add(el) { var root = el && el.closest('.wb-screen, .wb-lib-item'); if (root) roots.add(root); }
     if (entry.m.type === 'element') markElementTargets(entry.m).forEach(function (t) {
-      add(resolveMarkSelector(t.selector, entry.m.screenId || ''));
+      add(resolveMarkTarget(t, entry.m.screenId || ''));
     });
     else if (entry.m.base) add(resolveMarkSelector(entry.m.base.selector, entry.m.screenId || ''));
     else (entry.m.contains || []).forEach(function (t) { add(resolveMarkSelector(t.selector, entry.m.screenId || '')); });
