@@ -15,14 +15,14 @@
  * client pins cover every --wb-* this file consumes.
  *
  * Deliberately NOT here (per-side local rules): the row's flex shell and
- * action slot (workbench: .wb-ann-item-row wrapper + one 28px delete button;
- * client: edit+delete .ann-sb-acts column), the number-badge sizing
- * (fixed 18px vs min-width+padding), the broken-tag box alignment, and the
- * empty-state box layout/border. Those differ by design; sharing them would
- * change computed styles. The workbench right panel additionally layers a
- * card skin (white face + accent tint border + red broken state, decisions
- * 2026-08-14) via #wbann-list rules in index.html — that skin is workbench-only
- * and must not leak into this shared file.
+ * action slot (workbench: .wb-ann-item-row wrapper + always-visible done /
+ * reopen button; client: hover-revealed .ann-sb-acts column), the
+ * number-badge sizing (fixed 18px vs min-width+padding), the broken-tag box
+ * alignment, and the empty-state box layout/border. Those differ by design;
+ * sharing them would change computed styles. The workbench right panel
+ * additionally layers a card skin (white face + accent tint border + red
+ * broken state, decisions 2026-08-14) via #wbann-list rules in index.html —
+ * that skin is workbench-only and must not leak into this shared file.
  */
 
 #wbann-list .wb-ann-item,
@@ -113,16 +113,11 @@
 #wbann-list .wb-ann-closed-toggle:disabled { opacity:.6; cursor:default; }
 #ann-sidebar .wb-ann-closed-toggle:disabled:hover,
 #wbann-list .wb-ann-closed-toggle:disabled:hover { background:transparent; color:var(--wb-faint, #8d8d8d); }
-/* 工作台列表 close 行（展开后）的「重新打开」文字钮；client 侧栏没有这个动作。 */
+/* close 行（展开后）的「重新打开」文字钮，两个消费者同款。 */
+#ann-sidebar .wb-ann-reopen,
 #wbann-list .wb-ann-reopen {
   flex:none; border:0; border-radius:var(--wb-r-2,6px); padding:2px 6px; cursor:pointer;
   background:transparent; color:var(--wb-muted, #6b6b70); font:var(--wb-w-medium,500) 11px/1.4 system-ui;
 }
+#ann-sidebar .wb-ann-reopen:hover,
 #wbann-list .wb-ann-reopen:hover { background:var(--wb-hover, rgba(0,0,0,.06)); color:var(--wb-fg, #1c2024); }
-#ann-sidebar .ann-sb-close-mark,
-#wbann-list .ann-sb-close-mark {
-  flex:none; border:0; border-radius:var(--wb-r-2,6px); padding:2px 6px; cursor:pointer;
-  background:transparent; color:var(--wb-muted, #6b6b70); font:var(--wb-w-medium,500) 11px/1.4 system-ui;
-}
-#ann-sidebar .ann-sb-close-mark:hover,
-#wbann-list .ann-sb-close-mark:hover { background:var(--wb-hover, rgba(0,0,0,.06)); color:var(--wb-fg, #1c2024); }

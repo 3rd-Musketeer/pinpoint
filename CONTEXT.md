@@ -88,7 +88,7 @@ dist = `ppnt build` 编出来的静态 HTML 帧，住 `~/.pinpoint/dist/<entry>/
 
 **标注状态（status）· pp2**
 一条标注四态：open（owner 写下）→ check（agent 看了、不改，带一行 note）/ done（agent 改完）→ close（owner 单击确认，可撤销）。
-owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done，close 只在工作台；close 不删，默认收起。
+owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done，close 只由 owner 点（工作台弹层或注入侧栏的行尾完成勾）；close 不删，默认收起。
 取代 review-refinements 的“结果指示”（蓝框）。
 要避开：把 done 说成“已验收”——验收是 close。
 

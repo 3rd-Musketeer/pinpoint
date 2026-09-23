@@ -239,7 +239,7 @@ test('pp2 状态机：mark 端点 open → check → done 带 note，非法转�
   await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,original.id)).toBe('open');
 });
 
-test('pp2 状态机：done 行点关闭 → toast（已完成）撤销回 done；close 收进「已关闭 n」开关组', async ({ page }) => {
+test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done；close 收进「已关闭 n」开关组', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));
@@ -259,10 +259,10 @@ test('pp2 状态机：done 行点关闭 → toast（已完成）撤销回 done�
   const row=page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]');
   await expect(row.locator('.wb-ann-status-tag')).toHaveText('done');
 
-  // done 行「关闭」单击 → 行退出 open 列表（close 收起），toast 出「撤销」
+  // done 行「完成」勾单击 → 行退出 open 列表（close 收起），toast 出「撤销」
   // （acts 列 hover 才 pointer-events:auto，先 hover 行再点）
   await row.hover();
-  await row.locator('.ann-sb-close-mark').click();
+  await row.locator('.wb-ann-done').click();
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(0);
   await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
   const toast=page.locator('#ann-toast');
@@ -277,10 +277,10 @@ test('pp2 状态机：done 行点关闭 → toast（已完成）撤销回 done�
   // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
 
-  // 不撤销再来一遍（撤销后行已是 done，直接再点「关闭」）：行收进「已关闭 1」，点开关展开可见
-  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark')).toBeVisible();
+  // 不撤销再来一遍（撤销后行已是 done，直接再点「完成」）：行收进「已关闭 1」，点开关展开可见
+  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .wb-ann-done')).toBeVisible();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]').hover();
-  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark').click();
+  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .wb-ann-done').click();
   await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
   await page.locator('#ann-sidebar .wb-ann-closed-toggle').click();
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
@@ -515,7 +515,7 @@ test('invalid cleanup retains partial targets and scopes that are loading or tem
 });
 
 
-test('the injected sidebar opens annotations, confirms deletion and can toggle while composing', async ({page}) => {
+test('the injected sidebar opens annotations, rows complete instead of deleting and can toggle while composing', async ({page}) => {
   const errors=[];page.on('pageerror',e=>errors.push(e.message));
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-title').click();
@@ -528,15 +528,13 @@ test('the injected sidebar opens annotations, confirms deletion and can toggle w
   await page.locator('#ann-sidebar .wb-ann-item-main').click();
   await expect(input).toBeVisible();await expect(page.locator('#ann-sidebar')).toBeVisible();
   await page.locator('#ann-cancel').click();
+  // 行级删除退役（与工作台弹层一致）：行尾是「完成 #n」勾，没有垃圾桶与两段确认。
   await page.locator('#ann-sidebar .wb-ann-item').hover();
-  const del=page.getByRole('button',{name:'删除标注 '+mark.n,exact:true});
-  await expect(del.locator('svg path')).toHaveCount(1);await del.click();
-  await expect(page.getByRole('button',{name:'确认删除标注 '+mark.n,exact:true})).toBeVisible();
-  expect(await page.evaluate(()=>window.pinpoint.marks.length)).toBe(1);
-  await page.locator('.ann-sb-close').click();await page.evaluate(()=>window.pinpoint.toggleSidebar());
-  await page.locator('#ann-sidebar .wb-ann-item').hover();
-  await expect(del).toBeVisible();await del.click();
-  await page.getByRole('button',{name:'确认删除标注 '+mark.n,exact:true}).click();
+  await expect(page.getByRole('button',{name:'完成 #'+mark.n,exact:true})).toBeVisible();
+  await expect(page.locator('#ann-sidebar .ann-sb-del')).toHaveCount(0);
+  // 行上删不掉了；单条删除收进 composer 的删除钮。
+  await page.locator('#ann-sidebar .wb-ann-item-main').click();
+  await page.locator('#ann-del').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.marks.length)).toBe(0);
   expect(errors).toEqual([]);
 });
