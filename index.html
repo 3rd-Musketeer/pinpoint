@@ -287,6 +287,12 @@
      仍来自 src/shared/ann-list.css，本块只叠 workbench 的弹出列表皮肤 ——
      client 运行期会再内联一份 ann-list.css（源码序在本块之后），同权重会盖掉，
      所以选择器一律加 #wbann-pop 前缀升权（旧右栏踩过这条）。 */
+  /* 状态色板（2026-09-23）：SSOT = src/shared/ann-status.js，client 端同值钉在
+     [data-ann-ui] 基规则上 —— 行首序号圆与画布钉子三处同色（ann-status.test.js
+     三向比对）。 */
+  #wbann-pop {
+    --ann-st-open:#5b7fa6; --ann-st-check:#c98a1b; --ann-st-done:#2f9e63; --ann-st-close:#9aa3ae;
+  }
   #wbann-pop #wbann-list .wb-ann-item {
     background:transparent; border:0; border-radius:var(--wb-r-3);
     margin:0; position:relative;
@@ -299,9 +305,13 @@
   #wbann-pop #wbann-list .wb-ann-num {
     width:18px; height:18px; min-width:18px; padding:0; margin-top:0;
     display:inline-flex; align-items:center; justify-content:center;
-    border-radius:50%; background:var(--wb-accent); color:#fff;
+    border-radius:50%; background:var(--ann-st-open); color:#fff;
     font-family:var(--wb-font-mono); font-size:10px; font-weight:var(--wb-w-semibold);
   }
+  /* 序号圆跟状态走（与画布钉子同一组变量；置于 broken 覆盖之前，失效仍赢）。 */
+  #wbann-pop #wbann-list .wb-ann-item[data-ann-status="check"] .wb-ann-num { background:var(--ann-st-check); }
+  #wbann-pop #wbann-list .wb-ann-item[data-ann-status="done"] .wb-ann-num { background:var(--ann-st-done); }
+  #wbann-pop #wbann-list .wb-ann-item[data-ann-status="close"] .wb-ann-num { background:var(--ann-st-close); }
   #wbann-pop #wbann-list .wb-ann-cap {
     font-family:var(--wb-font-mono); font-size:10.5px; line-height:1.4; color:var(--wb-muted);
   }

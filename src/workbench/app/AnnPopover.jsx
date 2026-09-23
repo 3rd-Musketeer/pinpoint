@@ -107,7 +107,7 @@ function AnnRow(props) {
 
   return (
     <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
-      ref={rowRef} data-ann-n={r.n}
+      ref={rowRef} data-ann-n={r.n} data-ann-status={r.status || 'open'}
       onMouseEnter={openSoon} onMouseLeave={closeSoon}
       onFocus={openSoon} onBlur={closeSoon}
       aria-describedby={noteOpen ? 'wb-ann-note-card-' + r.n : undefined}>

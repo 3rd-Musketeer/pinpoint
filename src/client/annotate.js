@@ -1042,7 +1042,10 @@
     // [data-ann-ui] 基规则 —— 工具条/composer/气泡/mention/侧栏消费同一套 token（命名与值
     // 跟随 workbench/wb-tokens.css）；钉在注入 UI 根上，宿主页面的同名变量渗不进来。
     // #ann-sidebar 规则上的钉值保留原样：共享行样式入参 + 三向守卫锚点（与本规则同值）。
-    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    // --ann-st-* 状态色板（2026-09-23）：SSOT = src/shared/ann-status.js，workbench
+    // 侧同值钉在 index.html 的 #wbann-pop 上（ann-status.test.js 三向比对）。
+    // 画布钉子、弹层/侧栏行首序号圆消费同一组变量，三处颜色一致。
+    '[data-ann-ui]{font-family:var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);box-sizing:border-box;--wb-surface:#fff;--wb-side:#f6f6f7;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-line:rgba(0,0,0,.07);--wb-hover:rgba(0,0,0,.04);--wb-fill:rgba(0,0,0,.055);--wb-accent:#5b7fa6;--wb-danger:#b84230;--wb-ok:#1d7144;--wb-ok-soft:#edf8f1;--ann-st-open:#5b7fa6;--ann-st-check:#c98a1b;--ann-st-done:#2f9e63;--ann-st-close:#9aa3ae;--wb-r-1:4px;--wb-r-2:6px;--wb-r-3:8px;--wb-r-4:12px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-sh-2:0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1);--wb-sh-3:0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16);--wb-font:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif;--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '[data-ann-ui] *,[data-ann-ui] *::before,[data-ann-ui] *::after{box-sizing:border-box;}',
     /* 悬浮工具条与标注面板：2026-09-04 外壳重设计（ADR 0031）「注入端 #ann-sidebar
        换同一档玻璃，两端材质一致」。F2 磨砂的配方在这里是字面量，不是 token ——
@@ -1114,16 +1117,18 @@
     '.ann-hover-ghost{position:absolute;box-sizing:border-box;border:2px solid #f5a623;border-radius:var(--wb-r-1,4px);background:rgba(245,166,35,.07);pointer-events:none;z-index:1;}',
     '.ann-hover-ghost[hidden]{display:none;}',
     /* 序号钉（2026-09-04 评审板 H 批注 1：「不够明显，需要跟下面的画面有高对比」）：
-       22px accent 实心圆 + 白字 + 2px 白描边 + 投影 —— 白环把钉子从任何底色里
+       22px 实心圆 + 白字 + 2px 白描边 + 投影 —— 白环把钉子从任何底色里
        切出来（深色屏、彩色卡片、白纸都成立），所以它可以常显不打折。
-       琥珀仍是「正在圈选」的功能色（hover ghost / target / lasso 不变），
-       accent 只给已经落下的这一枚。 */
-    '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:11px;font-weight:var(--wb-w-semibold,600);font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);pointer-events:auto;cursor:pointer;z-index:3;transition:box-shadow .12s ease;}',
-    '.ann-badge.ann-badge--on{box-shadow:0 0 0 2px #fff,0 0 0 5px color-mix(in srgb,var(--wb-accent,#5b7fa6) 32%,transparent),0 1px 3px rgba(0,0,0,.35);}',
-    /* pp2 状态机的钉子三态（2026-09-22）：open = 现状；check = 同形但描边灰、
-       填充空心；done = 现状 + 右上角小勾；close 不画（列表收起，见侧栏）。 */
-    '.ann-badge.ann-badge--check{background:transparent;color:var(--wb-faint,#8d8d8d);box-shadow:0 0 0 1.5px var(--wb-faint,#8d8d8d);}',
-    '.ann-badge.ann-badge--done::after{content:"✓";position:absolute;top:-5px;right:-5px;width:13px;height:13px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:9px;line-height:13px;text-align:center;box-shadow:0 0 0 1.5px #fff;}',
+       底色即状态色（--ann-st 板，SSOT = src/shared/ann-status.js）：owner
+       2026-09-23「在 pin 上面打标记有点奇怪，不如用颜色标识」—— 角标退役，
+       颜色本身就是状态。琥珀仍是「正在圈选」的功能色（hover ghost / target /
+       lasso 不变），不再给已落下的钉子。 */
+    '.ann-badge{--ann-st:var(--ann-st-open,#5b7fa6);position:absolute;width:22px;height:22px;border-radius:50%;background:var(--ann-st);color:#fff;font-size:11px;font-weight:var(--wb-w-semibold,600);font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);pointer-events:auto;cursor:pointer;z-index:3;transition:box-shadow .12s ease;}',
+    '.ann-badge.ann-badge--on{box-shadow:0 0 0 2px #fff,0 0 0 5px color-mix(in srgb,var(--ann-st) 32%,transparent),0 1px 3px rgba(0,0,0,.35);}',
+    /* 状态只换 --ann-st 一跳，点亮环跟着同色 mix。 */
+    '.ann-badge.ann-badge--check{--ann-st:var(--ann-st-check,#c98a1b);}',
+    '.ann-badge.ann-badge--done{--ann-st:var(--ann-st-done,#2f9e63);}',
+    '.ann-badge.ann-badge--close{--ann-st:var(--ann-st-close,#9aa3ae);}',
     /* 幽灵框：锚点解析失败但有 lastRect 时，在 lastRect 处画虚线框 + 序号钉。 */
     '.ann-ghost-rect{position:absolute;box-sizing:border-box;border:2px dashed var(--wb-faint,#8d8d8d);background:transparent;border-radius:var(--wb-r-1,4px);pointer-events:none;z-index:1;}',
     /* 关闭 / 撤销的 toast（注入端与工作台共用注入侧样式） */
@@ -1609,6 +1614,8 @@
       var item = document.createElement('div');
       item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
+      // 序号圆颜色跟着状态走（--ann-st-*，与画布钉子同一组变量）。
+      item.setAttribute('data-ann-status', r.status || 'open');
       // 注入侧列表的 note 用原生 title（hover 提示即可）；工作台列表已换
       // hover 卡（AnnPopover.jsx NoteCard，切片 5），两处有意不同步。
       if (r.note) item.title = r.note;
