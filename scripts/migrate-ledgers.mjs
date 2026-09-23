@@ -345,13 +345,11 @@ function planStorageUnify(model, pageIndexValue, report) {
           noteImage(row, 'pinpoint', target.page, target.ledger.replace(/\.json$/, ''));
         }
       }
-      const allStay = rows.length > 0 && stay.length === rows.length;
+      if (rows.length === 0) continue; // 空账本归 sweepEmptyPinpoint（K10）
+      const allStay = stay.length === rows.length;
       if (!allStay) {
         if (stay.length) {
           doc.annotations = stay;
-        } else if (Object.keys(doc.page_updated_at || {}).length) {
-          // 行都走了但还带着存量逐页时间映射：留着喂读侧兼容（page-times 还认它）。
-          doc.annotations = [];
         } else {
           bucket.ledgers.delete(name);
           report.removedLedgers.push(`pinpoint/${name}`);
@@ -362,7 +360,20 @@ function planStorageUnify(model, pageIndexValue, report) {
         report.orphans.push(`pinpoint/${name}：${count} 行（${reason}）`);
       }
     }
-    // pinpoint 桶里不再被任何行引用的图片清掉（跟行走的已记 movedImages）。
+  };
+
+  /** pinpoint 兜底桶里 0 行的账本直接删（K10）：它们没有内容，迁移后也没有
+      任何孤儿判定或 prune 的入口会再碰到这些 /previews/ 空壳；删了列在输出里。
+      （原先为读侧兼容留下的空壳 page_updated_at 映射一并随删 —— 桶 = 页之后
+      各页的桶自己有 updated_at，映射不再有喂头。） */
+  const sweepEmptyPinpoint = () => {
+    const bucket = buckets.get('pinpoint');
+    if (!bucket) return;
+    for (const [name, doc] of [...bucket.ledgers.entries()]) {
+      if (annotationsOf(doc).length) continue;
+      bucket.ledgers.delete(name);
+      report.removedEmpty.push(`pinpoint/${name}`);
+    }
   };
 
   /** 挂靠条目（entry.page）的桶整桶并进宿主页。账本同名合并，图片全搬。 */
@@ -413,6 +424,7 @@ function planStorageUnify(model, pageIndexValue, report) {
   };
 
   splitPinpoint();
+  sweepEmptyPinpoint();
   mergeAttached();
 
   // 阶段 B 收尾：图片搬运（去重）+ _seq 重算。挂靠桶的图片整桶随走（源桶已从
@@ -482,6 +494,7 @@ const report = {
   conflicts: [],
   orphans: [],
   removedLedgers: [],
+  removedEmpty: [],
   splitLedgers: [],
   bucketMerges: [],
   imageMoves: [],
@@ -493,7 +506,7 @@ planStorageUnify(model, pages, report);
 
 const formSummary = Object.entries(formTotals).map(([key, count]) => `${key} × ${count}`).join('、') || '无';
 const storageChanged = report.movedRows + report.renumbers.length + report.conflicts.length + report.imageMoves.length
-  + report.seqWrites.length + report.removedLedgers.length + report.bucketMerges.length + report.splitLedgers.length;
+  + report.seqWrites.length + report.removedLedgers.length + report.removedEmpty.length + report.bucketMerges.length + report.splitLedgers.length;
 console.log(`形态：${formFiles} 个账本里 ${formTouched} 个待迁（${formSummary}）`);
 for (const row of formPlan) {
   const detail = Object.entries(row.changes).map(([key, count]) => `${key}:${count}`).join(' ');
@@ -504,6 +517,7 @@ for (const [page, rows] of [...report.moved].sort(([a], [b]) => (a < b ? -1 : 1)
 for (const line of report.bucketMerges) console.log(`  桶合并：${line}`);
 for (const line of report.splitLedgers) console.log(`  拆分：${line}（部分行迁出）`);
 for (const line of report.removedLedgers) console.log(`  删除：${line}（行全部迁出）`);
+for (const line of report.removedEmpty) console.log(`  删空账本：${line}（0 行，没有内容）`);
 for (const renumber of report.renumbers) console.log(`  重号：${renumber.page}/${renumber.ledger} #${renumber.from} → #${renumber.to}`);
 for (const line of report.conflicts) console.log(`  冲突：${line}`);
 for (const move of report.imageMoves) console.log(`  图片：${move.from}/images/${move.name} → ${move.to}/images/${move.renamedTo || move.name}`);

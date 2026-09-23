@@ -216,6 +216,28 @@ test('storage-unify：数据根下的隐藏目录原样保留（K9）', async (t
   assert.equal(fs.readFileSync(path.join(hidden, 'nested', 'keep.json'), 'utf8'), '{"keep":true}', '隐藏目录不被当桶清掉');
 });
 
+test('storage-unify：pinpoint 兜底桶里 0 行的账本直接删除并列出（K10）', async (t) => {
+  const dir = seedUnify(t);
+  const emptyLedger = (name, extra = {}) => fs.writeFileSync(path.join(dir, 'pinpoint', name), JSON.stringify({
+    page: name.replace(/\.json$/, ''), path: `/previews/gone-page/${name}`, revision: 4,
+    updated_at: '2026-08-10T17:04:27.947Z', annotations: [], ...extra,
+  }));
+  emptyLedger('home.html_arqfbl.json');
+  emptyLedger('index.html_zgl8za.json', {
+    path: '/index.html',
+    page_updated_at: { 'host': 1789558165337 },
+  });
+
+  const out = await run(dir, '--apply');
+  assert.match(out.stdout, /删空账本：pinpoint\/home\.html_arqfbl\.json（0 行，没有内容）/);
+  assert.match(out.stdout, /删空账本：pinpoint\/index\.html_zgl8za\.json（0 行，没有内容）/);
+  assert.ok(!fs.existsSync(path.join(dir, 'pinpoint', 'home.html_arqfbl.json')), '空账本删除');
+  assert.ok(!fs.existsSync(path.join(dir, 'pinpoint', 'index.html_zgl8za.json')), '只有 page_updated_at 映射的空壳同样删');
+  // 有行的照旧：孤儿原地、画布行迁走。
+  assert.ok(fs.existsSync(path.join(dir, 'pinpoint', 'wr~4.json')), '孤儿账本不误删');
+  assert.ok(fs.existsSync(path.join(dir, 'host', '@canvas.json')));
+});
+
 test('storage-unify：备份目录带时分秒，已存在就拒绝（G6）', async (t) => {
   const dir = seedLedger(t);
   await run(dir, '--apply');
