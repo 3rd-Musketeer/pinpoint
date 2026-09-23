@@ -123,7 +123,7 @@ test('模板页：board 屏（只有 .jsx 源）不是孤儿，子路径文件�
   );
 });
 
-test('collectOrphanCounts：按已知页计数；collectBucketOrphans：未知页整桶皆孤儿', (t) => {
+test('collectOrphanCounts：按已知页计数（口径 = 行数，K7）；未知页整桶皆孤儿', (t) => {
   const { root, dataRoot, previewsRoot, entries } = withFixture(t);
   const bucket = path.join(dataRoot, 'ghost-page');
   writeLedger(bucket, '@canvas.json', { page: '@canvas', path: '@canvas', annotations: [{ id: 'g1' }] });
@@ -131,6 +131,14 @@ test('collectOrphanCounts：按已知页计数；collectBucketOrphans：未知�
   const counts = collectOrphanCounts({ entries, dataRoot, localIds: ['tpl-page'], root });
   assert.deepEqual(counts, { 'tpl-page': 0, 'site-a': 0, 'live-url': 0 });
   assert.deepEqual(collectBucketOrphans('ghost-page', dataRoot).sort(), ['@canvas.json', 'doc~1.json']);
+  // 孤儿计数的口径是行数：一本孤儿账本装 3 行就计 3，与 status --page 一致。
+  writeLedger(path.join(dataRoot, 'site-a'), 'gone~9.json', {
+    page: 'gone~9', path: '/sites/site-a/gone.html',
+    annotations: [{ id: 'x1' }, { id: 'x2' }, { id: 'x3' }],
+  });
+  fs.rmSync(path.join(root, 'site', 'gone.html'));
+  const after = collectOrphanCounts({ entries, dataRoot, localIds: ['tpl-page'], root });
+  assert.equal(after['site-a'], 3, '一本孤儿账本按行数计');
 });
 
 test('ledgerIsOrphan：目录 URL 回落 index.html；穿越路径是孤儿', (t) => {

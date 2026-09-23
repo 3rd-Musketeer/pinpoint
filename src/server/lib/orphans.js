@@ -109,20 +109,26 @@ export function collectBucketOrphans(pageId, dataRoot) {
   return readBucketLedgers(path.join(dataRoot, pageId)).map((ledger) => ledger.name);
 }
 
-/** 每个已知页的孤儿账本数（GET /registry 的页信息用）。 */
+/** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数，与
+    status --page 的「孤儿 N 条」一致（K7）；一本孤儿账本可能装着几十行。 */
 export function collectOrphanCounts({ entries, dataRoot, localIds, root }) {
   const previewsRoot = path.join(root, 'content', 'previews');
   const ids = new Set([...localIds]);
   for (const entry of entries) if (entry.id !== 'pinpoint' && !entry.page) ids.add(entry.id);
   const out = {};
   for (const pageId of ids) {
-    out[pageId] = collectPageOrphans({
+    const orphanLedgers = new Set(collectPageOrphans({
       pageId,
       dataRoot,
       entries,
       isManifestPage: localIds.includes(pageId),
       previewsRoot,
-    }).length;
+    }));
+    out[pageId] = readBucketLedgers(path.join(dataRoot, pageId))
+      .filter((ledger) => orphanLedgers.has(ledger.name))
+      .reduce((sum, ledger) => sum + annotationsCount(ledger.doc), 0);
   }
   return out;
 }
+
+const annotationsCount = (doc) => (Array.isArray(doc && doc.annotations) ? doc.annotations.length : 0);
