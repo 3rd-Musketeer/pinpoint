@@ -410,7 +410,9 @@ export function proxySiteRequest(req, res, entry) {
       } else {
         out = rewriteProxyHtml(text, prefix);
         out = injectProxyBootstrap(out, proxyBootstrapSnippet(entry.id, entry.url));
-        if (annotate) out = injectAnnotateClient(out, entry.id);
+        // storage-unify：注入的 entry = 页桶 id（url 条目恒自成页，= 自己的 id；
+        // 写成 entry.page || entry.id 与其余注入方同形）。
+        if (annotate) out = injectAnnotateClient(out, entry.page || entry.id);
       }
       const data = Buffer.from(out, 'utf8');
       outHeaders['content-length'] = String(data.length);

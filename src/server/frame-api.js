@@ -1,15 +1,14 @@
 import { parseReqUrl } from './lib/req-url.js';
 /**
- * GET /api/frame?page=<pageId>&screen=<screenId>[&ledger=<pathname>][&annotate=off]
+ * GET /api/frame?page=<pageId>&screen=<screenId>[&annotate=off]
  * 阶段 5：文档 mention 的活 frame 渲染端点。
  * fragment 屏 → 完整自包含 HTML（机壳 + ios-kit + frame-boot + annotate 注入，
- * 注入带 __pinpointFrame/__pinpointLedger —— frame 内标注与画布同账本）；
+ * 注入带 __pinpointFrame —— frame 内标注与画布同账本：storage-unify 起帧账本
+ * 恒为所属页桶的 @canvas，不再跟顶层工作台 pathname 走，ledger 参数退役）；
  * doc 壳屏 → 302 到该屏自己的 URL（同 pathname = 同账本，透传自然成立）。
  * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, framePageHtml, resolveFrameTarget } from './lib/frame-doc.js';
-
-const LEDGER_RE = /^\/[\x20-\x7e]{0,200}$/;
 
 function sendJson(res, status, body) {
   res.statusCode = status;
@@ -32,8 +31,6 @@ export default function frameApi(options = {}) {
         const query = parseReqUrl(req).query;
         const pageId = query.get('page') || '';
         const screenId = query.get('screen') || '';
-        const rawLedger = query.get('ledger');
-        const ledger = rawLedger && LEDGER_RE.test(rawLedger) ? rawLedger : '/index.html';
         const annotate = query.get('annotate') !== 'off';
         try {
           const target = resolveFrameTarget(pageId, screenId, { registry });
@@ -43,7 +40,7 @@ export default function frameApi(options = {}) {
             res.end();
             return;
           }
-          const html = await framePageHtml(target, { ledger, annotate });
+          const html = await framePageHtml(target, { annotate });
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.setHeader('Cache-Control', 'no-cache');

@@ -45,8 +45,11 @@ test('previews 完整文档自动注入 annotate 客户端（契约统一）', (
   assert.equal(handled, true);
   assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
   assert.ok(res.text.includes('<script src="/annotate.js"></script>'));
-  // previews 注入不带 entry 标记 —— 账本 ENTRY 保持缺省 pinpoint（存量账本兼容）
-  assert.ok(!res.text.includes('__pinpointEntry'));
+  // storage-unify：注入带 entry 标记 = 该 previews 页自己的 id（桶 = 页）。
+  assert.ok(res.text.includes("window.__pinpointEntry='demo'"));
+  // 子路径整文档同样以第一段（页 id）为 entry。
+  const nested = call(handler, 'GET', '/previews/demo/pages/about.html');
+  assert.ok(nested.res.text.includes("window.__pinpointEntry='demo'"));
 });
 
 test('fragment / 非 html / 不存在 一律放行', (t) => {

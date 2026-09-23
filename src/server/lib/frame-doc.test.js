@@ -30,6 +30,7 @@ const registry = {
     if (id === 'e2e-ios') return { id, title: 'E2E iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'ios-site'), board: 'ios' };
     if (id === 'e2e-jsx') return { id, title: 'E2E JSX', kind: 'dir', path: path.join(ROOT, 'e2e', 'jsx-site'), board: 'ios' };
     if (id === 'e2e-url') return { id, title: 'E2E Url', kind: 'url', url: 'https://example.localhost' };
+    if (id === 'e2e-attach') return { id, title: 'E2E Attached', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios', page: 'e2e-ios' };
     return null;
   },
 };
@@ -37,7 +38,7 @@ const registry = {
 test('resolveFrameTarget: registry ios 固件的 fragment 屏 → fragment target with canvas identity', () => {
   const target = resolveFrameTarget('e2e-ios', 'recipe', { registry });
   assert.equal(target.kind, 'fragment');
-  assert.equal(target.entry, 'pinpoint');
+  assert.equal(target.entry, 'e2e-ios', '帧标注住所属页的桶（storage-unify）');
   assert.equal(target.baseUrl, '/sites/e2e-ios/');
   assert.equal(target.shell, 'app');
   assert.equal(target.section, 'brew-flow');
@@ -57,7 +58,7 @@ test('resolveFrameTarget: doc-shell screen → redirect target with the screen U
 test('resolveFrameTarget: registry ios dir entry 的页内屏改从 dist 出', () => {
   const target = resolveFrameTarget('e2e-dir-ios', 'cards', { registry });
   assert.equal(target.kind, 'fragment');
-  assert.equal(target.entry, 'pinpoint');
+  assert.equal(target.entry, 'e2e-dir-ios');
   assert.equal(target.baseUrl, '/sites/e2e-dir-ios/');
   assert.ok(target.distTarget.pageDir.endsWith(path.join('e2e', 'dir-site-ios')));
   assert.equal(target.distTarget.kind, 'dir');
@@ -67,6 +68,13 @@ test('resolveFrameTarget: legacy shell "web" normalizes to doc redirect', () => 
   const target = resolveFrameTarget('e2e-dir', 'cards', { registry });
   assert.equal(target.kind, 'doc');
   assert.equal(target.url, '/sites/e2e-dir/cards.html');
+});
+
+test('storage-unify：挂靠条目（entry.page）的帧住宿主页的桶', () => {
+  const target = resolveFrameTarget('e2e-attach', 'cards', { registry });
+  assert.equal(target.kind, 'fragment');
+  assert.equal(target.entry, 'e2e-ios', 'entry = 宿主页 id（挂靠条目自己不是页）');
+  assert.equal(target.pageId, 'e2e-attach', '帧身份的 pageId 仍是条目 id（mention 引用地址）');
 });
 
 test('resolveFrameTarget: url entry synthesizes a single doc screen', () => {
@@ -120,15 +128,17 @@ test('stripScripts removes all script tags', () => {
 
 test('framePageHtml: self-contained document with identity injection and inert preview scripts', async () => {
   const target = resolveFrameTarget('e2e-ios', 'recipe', { registry });
-  const html = await framePageHtml(target, { ledger: '/index.html' });
+  const html = await framePageHtml(target, {});
   assert.ok(html.includes('<base href="/sites/e2e-ios/">'));
   assert.ok(html.includes('data-annotate="off"'));
   assert.ok(html.includes('/kits/ios/ios-kit.css'));
   assert.ok(html.includes('[frame-boot]'));
   assert.ok(html.includes('window.__pinpointFrame={"pageId":"e2e-ios","screenId":"recipe"'));
   assert.ok(html.includes('"section":"brew-flow"'));
-  assert.ok(html.includes('window.__pinpointLedger="/index.html"'));
-  assert.ok(html.includes('window.__pinpointEntry="pinpoint"'));
+  // storage-unify：entry = 帧所属页；不再注入 __pinpointLedger（帧账本恒 @canvas，
+  // 客户端按 FRAME 身份自取）。
+  assert.ok(!html.includes('__pinpointLedger'));
+  assert.ok(html.includes('window.__pinpointEntry="e2e-ios"'));
   assert.ok(html.includes('data-screen="recipe"'));
   assert.ok(html.includes('wb-screen-cap'));
   assert.ok(html.includes('B2'));
