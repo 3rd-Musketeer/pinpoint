@@ -69,12 +69,16 @@ test('annRowTags maps affordances to glyphs in a stable order', () => {
   assert.equal(annRowTags({ images: [], mentions: [] }), '');
 });
 
-test('annMarkResolvable: element marks consult their normalized targets', () => {
+test('annMarkResolvable: element marks consult their normalized targets (whole target, not just selector)', () => {
   const seen = [];
-  const has = (sel) => { seen.push(sel); return sel === '#live'; };
-  const targets = [{ ref: 'i1', selector: '#dead' }, { ref: 'i2', selector: '#live' }];
+  const has = (target) => { seen.push(target); return target.selector === '#live'; };
+  const targets = [
+    { ref: 'i1', selector: '#dead', ppId: 'home.jsx:3@1' },
+    { ref: 'i2', selector: '#live' },
+  ];
   assert.equal(annMarkResolvable({ type: 'element' }, has, targets), true);
-  assert.deepEqual(seen, ['#dead', '#live']);
+  // 回调收到整个 target：ppId 优先的解析在回调里做，这里只看结果。
+  assert.deepEqual(seen, targets);
   assert.equal(annMarkBroken({ type: 'element' }, has, targets), false);
   assert.equal(annMarkBroken({ type: 'element' }, () => false, targets), true);
   // No targets at all → broken.
@@ -85,7 +89,7 @@ test('annMarkResolvable: element marks consult their normalized targets', () => 
 });
 
 test('annMarkResolvable: region/area marks use base then contains', () => {
-  const has = (sel) => sel === '#base';
+  const has = (target) => target.selector === '#base';
   assert.equal(annMarkResolvable({ base: { selector: '#base' } }, has), true);
   assert.equal(annMarkResolvable({ base: { selector: '#gone' } }, has), false);
   // contains is only consulted when base does not resolve.

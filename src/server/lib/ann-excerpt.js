@@ -16,6 +16,7 @@
  * HTML 解析只服务 renderToString 产物与手写静态片段（属性带引号、标签配平），
  * 不做容错 HTML；配不上就安安静静摘不出，调用方降级。
  */
+import { normalizeTargetText } from '../../shared/ann-ppid.js';
 
 const VOID_TAGS = new Set(['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'link', 'meta', 'param', 'source', 'track', 'wbr']);
 const RAW_TEXT_TAGS = new Set(['script', 'style']);
@@ -162,6 +163,15 @@ export function ancestorsOf(node) {
   const out = [];
   for (let cur = node && node.parent; cur && cur.tag !== '#root'; cur = cur.parent) out.push(cur);
   return out.reverse();
+}
+
+/** 元素的可见文本（决定 #15 择近用）：原文区间剥标签后按 client excerpt() 同
+ *  规则归一（空白折一、截 120）。树不存裸文本节点，只能回原文取；属性里带
+ *  `>` 会剥歪一点 —— 只影响相似度排序，不影响命中与否。 */
+export function elementTextOf(node, html) {
+  if (!node || node.tag === '#root') return '';
+  const raw = String(html || '').slice(node.start, node.end).replace(/<[^>]*>/g, ' ');
+  return normalizeTargetText(raw);
 }
 
 /* ---- JSX 源码摘录 ---- */

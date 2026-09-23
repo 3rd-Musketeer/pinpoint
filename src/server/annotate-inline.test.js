@@ -30,6 +30,7 @@ const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
+  path.join(SRC, 'shared', 'ann-ppid.js'),
 ];
 const INLINED_CSS = [
   { name: 'ANN_LIST_CSS', path: path.join(SRC, 'shared', 'ann-list.css') },
@@ -66,6 +67,8 @@ test('served /annotate.js inlines the indicator + hit-test + slug libs', () => {
   assert.match(bundle, /function annMarkBroken/, 'annMarkBroken inlined');
   assert.match(bundle, /function frameInternalSelector/, 'frameInternalSelector inlined');
   assert.match(bundle, /function queryFrameScope/, 'queryFrameScope inlined');
+  assert.match(bundle, /function ppIdAttrSelector/, 'ppIdAttrSelector inlined');
+  assert.match(bundle, /function pickByTargetText/, 'pickByTargetText inlined');
   assert.doesNotMatch(bundle, /export function formatPageIndicator/);
   assert.doesNotMatch(bundle, /export function pickContained/);
   assert.doesNotMatch(bundle, /export function annotationSlug/);

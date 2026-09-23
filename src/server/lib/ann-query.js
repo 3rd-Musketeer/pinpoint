@@ -27,8 +27,10 @@ import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
+import { pickByTargetText } from '../../shared/ann-ppid.js';
 import {
   ancestorsOf,
+  elementTextOf,
   foldHtmlElement,
   foldRange,
   jsxElementRange,
@@ -129,19 +131,46 @@ function orphanLedgerOf(row, orphanLedgers, bucketPath) {
   return orphanLedgers[0] ? orphanLedgers[0].replace(/\.json$/, '') : '';
 }
 
-/* ---- 锚点解析：selector → dist 元素 ---- */
+/* ---- 锚点解析：ppId 直取 → selector 链 ---- */
 
 const PP_ID_RE = /^(.+):(\d+)@(\d+)$/;
 
+/** 树里按 data-pp-id 值收集节点（文档序）。 */
+function nodesByPpId(tree, ppId) {
+  const hits = [];
+  const walk = (node) => {
+    if (node.attrs && node.attrs['data-pp-id'] === ppId) hits.push(node);
+    for (const child of node.children || []) walk(child);
+  };
+  walk(tree);
+  return hits;
+}
+
 /**
- * 行的第一个目标在帧 dist HTML 里的元素（cssPath 链经 frameInternalSelector
- * 归一到 stage 后缀）。返回 { tree, node, html } 或 { error }。
+ * 行的第一个目标在帧 dist HTML 里的元素。决定 #15：target 带 ppId 时先按
+ * [data-pp-id] 直取（不再拿 cssPath 反查元素读它的 id —— 帧结构一改 cssPath
+ * 会漂到别的元素上）；同一 id 多实例（同行循环渲染）按文本择近；没有 ppId
+ * 或直取落空再走 cssPath 链（frameInternalSelector 归一到 stage 后缀）。
+ * 返回 { tree, node, html } 或 { error }。
  */
 export function anchorNode(row, distHtml) {
-  const selector = row && row.targets && row.targets[0] && row.targets[0].selector;
-  if (!selector) return { error: '无锚点 selector' };
+  const target = row && row.targets && row.targets[0];
+  const selector = target && target.selector;
+  const ppId = target && target.ppId;
+  if (!selector && !ppId) return { error: '无锚点 selector' };
   const tree = parseHtmlFragment(distHtml);
   if (!tree) return { error: 'dist HTML 解析失败' };
+  if (ppId) {
+    const hits = nodesByPpId(tree, ppId);
+    if (hits.length) {
+      const best = pickByTargetText(
+        hits.map((node) => ({ node, text: elementTextOf(node, distHtml) })),
+        target.text || '',
+      );
+      return { tree, node: best.node, html: distHtml };
+    }
+  }
+  if (!selector) return { error: '锚点在当前产物里解析不到（可能已失效）' };
   let chain = frameInternalSelector(selector);
   if (chain) chain = chain.replace(/^:scope\s*>\s*/, '');
   else if (/^#/.test(selector)) chain = selector;

@@ -19,14 +19,21 @@
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
 
-元素标注一律写 `targets: [{ ref, selector, text }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
-顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`[@t:iN]` 只在那一条标注内解析，
+元素标注一律写 `targets: [{ ref, selector, text, ppId? }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
+顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`ppId`（决定 #15）是编译页锚点的
+源码稳定 id（`data-pp-id` 的值，命中元素或最近带标祖先）：解析时先按 `[data-pp-id="…"]`
+找、多命中取文本最接近的，找不到再回落 cssPath + 文本；只要那行源码还在，帧结构怎么改
+锚都不漂。存量 HTML 页与工作台 chrome 没有 `data-pp-id`，target 不带 `ppId`，行为不变；
+存量编译页标注不带 `ppId` 的，owner 下次在工作台编辑保存该条时自动补上（不跑迁移脚本，
+账本不因此整体重写，补 `ppId` 不算目标变更、不会把 check / done 顶回 open）。
+`[@t:iN]` 只在那一条标注内解析，
 永远不进 `mentions[]`；`[@a:id]` 保持它的跨标注含义。
 
 ## 读到标注去改哪里
 
 锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
-实例）与 `data-pp-comp`（组件名）。
+实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt check` / `locate` 直接按它取锚点
+（多命中按文本择近），不再拿 cssPath 反查；没有 `ppId` 的存量标注仍走 cssPath 链。
 
 - 锚点带 `data-pp-comp` → 改 `<页>/components/<Name>.jsx`，所有引用它的帧一起变。
 - 锚点只带 `data-pp-id` → 改该帧的源文件 `<页>/<screenId>.jsx`。

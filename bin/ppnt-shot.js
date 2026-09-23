@@ -17,8 +17,9 @@ export const PIN_CSS = 'position:absolute;min-width:18px;height:18px;padding:0 4
 
 /**
  * 渲染一组图。jobs = [{ kind:'frame'|'section'|'page', screenId?, sectionId?,
- * out, scale, marks }]；marks = [{ n, screenId, selector }]（selector 是账本里
- * 存的画布 cssPath，Node 侧先归一成帧内链）。返回 [{ out, width, height }]；
+ * out, scale, marks }]；marks 是账本行（带 targets）。锚点解析走页面里
+ * window.pinpoint.resolveMarkTarget（决定 #15：ppId 优先，cssPath 兜底），
+ * 帧内相对链作旧路兜底。返回 [{ out, width, height }]；
  * 服务不在跑 / 渲染失败抛错；锚点解析不到的钉安静跳过（失效 ≠ 不能出图）。
  */
 export async function renderShots({ origin, pageId, jobs }) {
@@ -33,9 +34,16 @@ export async function renderShots({ origin, pageId, jobs }) {
   const prepared = jobs.map((job) => ({
     ...job,
     marks: (job.marks || []).map((mark) => {
-      const internal = frameInternalSelector(mark.selector) || (/^#/.test(mark.selector) ? mark.selector : null);
-      return { n: mark.n, screenId: mark.screenId, internal };
-    }).filter((mark) => mark.internal),
+      const target = Array.isArray(mark.targets) && mark.targets[0] ? mark.targets[0] : null;
+      const selector = target ? target.selector : mark.selector;
+      const internal = frameInternalSelector(selector) || (/^#/.test(selector || '') ? selector : null);
+      return {
+        n: mark.n,
+        screenId: mark.screenId,
+        internal,
+        target: target ? { selector: target.selector, text: target.text || '', ppId: target.ppId || '' } : null,
+      };
+    }).filter((mark) => mark.internal || (mark.target && mark.target.ppId)),
   }));
   const browser = await chromium.launch({ headless: true });
   const results = [];
@@ -90,9 +98,16 @@ async function buildSnapshot(page, job) {
           scope = frame.querySelector('.ios-stage, .wb-comp-stage, .wb-html-stage') || frame;
         }
         let el = null;
-        try {
-          el = mark.internal === ':scope' ? scope : scope.querySelector(mark.internal);
-        } catch (e) { el = null; }
+        // 决定 #15：target 带 ppId 时先走页面里 annotate 实例的同一条解析
+        //（ppId 优先、帧 stage 内择近），cssPath 链只在它缺席 / 落空时兜底。
+        if (mark.target && mark.target.ppId && window.pinpoint && typeof window.pinpoint.resolveMarkTarget === 'function') {
+          el = window.pinpoint.resolveMarkTarget(mark.target, mark.screenId || '');
+        }
+        if (!el && mark.internal) {
+          try {
+            el = mark.internal === ':scope' ? scope : scope.querySelector(mark.internal);
+          } catch (e) { el = null; }
+        }
         if (!el || !el.getBoundingClientRect) continue;
         const rect = el.getBoundingClientRect();
         if (rect.width < 1 && rect.height < 1) continue;

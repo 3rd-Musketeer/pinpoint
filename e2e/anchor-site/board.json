@@ -1,0 +1,12 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "title": "Anchor Screens",
+      "layout": "row",
+      "screens": [
+        { "id": "anchor", "title": "Anchor" }
+      ]
+    }
+  ]
+}

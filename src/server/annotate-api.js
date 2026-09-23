@@ -26,6 +26,7 @@ const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
+  path.join(SRC, 'shared', 'ann-ppid.js'),
 ];
 // Stylesheets injected into the bundle as JS string constants (the client must
 // stay a single self-contained file — no runtime requests). annotate.js
