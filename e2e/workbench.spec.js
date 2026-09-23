@@ -16,7 +16,10 @@ test.beforeEach(() => fs.rm(E2E_DATA_DIR, {recursive:true, force:true}));
 // components are hidden and counts stay deterministic on any machine.
 
 async function openWorkbench(page) {
-  await page.goto('/index.html');
+  // 深链显式钉 e2e-ios：无 ?page= 时工作台落 manifest.defaultPage（范例页），
+  // 而本文件的画布 / 标注用例标的从来是 e2e-ios 的板——钉死基页，让用例不依赖
+  // 默认页是哪一页。
+  await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
 }
 
