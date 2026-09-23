@@ -16,7 +16,7 @@ export default function mount(root) {
   function render() {
     time.textContent = Math.floor(elapsed / 60) + ':' + String(elapsed % 60).padStart(2, '0');
     const now = STAGES.find((s) => elapsed < s.until);
-    label.textContent = now ? LABEL[now.id] : '完成';
+    label.textContent = !ticker && elapsed === 0 ? '准备好了吗' : now ? LABEL[now.id] : '完成';
     for (const s of STAGES) {
       const row = root.querySelector(`[data-stage="${s.id}"]`);
       const state = elapsed >= s.until ? 'done' : s === now && ticker ? 'now' : 'todo';
