@@ -1493,10 +1493,11 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeVisible();
 
-  // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行
+  // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行。
+  // 决定 #11：close 是执行历史 —— 按钮与计数只看未关闭的行。
   await page.locator('#wbann-more').click();
   await page.locator('#wbann-clear').click();
-  await expect(page.locator('#wbann-clear')).toHaveText('确认清空标注（1）');
+  await expect(page.locator('#wbann-clear')).toHaveText('确认清空未关闭标注（1）');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await page.locator('#wbann-clear').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
@@ -1560,6 +1561,43 @@ test('pp2 面板状态筛选：open 行点完成 → 撤销回 open → 再完�
   await expect(row).toHaveCount(1);
   await expect(row).not.toHaveClass(/wb-ann-item--closed/);
   await page.keyboard.press('Escape');
+});
+
+test('清空只带走未关闭：close 行留在账本与已关闭段里（决定 #11）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'close 的是执行历史');
+  const keep = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+  await cells.nth(1).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(1), '清空带走的 open 行');
+  const gone = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  await openAnnList(page);
+  // 第一条标 close（owner 收尾），行收进已关闭段
+  await page.locator('#wbann-list .wb-ann-item[data-ann-n="' + keep + '"] .wb-ann-done').click();
+  await expect(page.locator('#wbann-list .wb-ann-closed-toggle')).toHaveText('▸ 已关闭 1');
+
+  // 文案换成清空未关闭；确认态的计数只数未关闭（页上 1 open + 1 close）
+  await page.locator('#wbann-more').click();
+  const clearBtn = page.locator('#wbann-clear');
+  await expect(clearBtn).toHaveText('清空未关闭标注');
+  await clearBtn.click();
+  await expect(clearBtn).toHaveText('确认清空未关闭标注（1）');
+  await clearBtn.click();
+
+  // open 行没了，close 行还在账本里；「···」仍在（总数 = 1），展开已关闭段找得到它
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].status)).toBe('close');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].n)).toBe(keep);
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
+  await page.locator('#wbann-more').click();
+  await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
+  await page.locator('#wbann-list .wb-ann-closed-toggle').click();
+  const closedRow = page.locator('#wbann-list .wb-ann-item[data-ann-n="' + keep + '"]');
+  await expect(closedRow.locator('.wb-ann-status-tag')).toHaveText('close');
+  await expect(closedRow.locator('.wb-ann-text')).toContainText('close 的是执行历史');
 });
 
 test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互不压盖（2026-09-04 G1 + G1b）', async ({ page }) => {
@@ -2019,6 +2057,75 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H 
   })).toBe(true);
   await page.locator('#wbstrip-title').hover();
   await expect(bubble).not.toHaveClass(/ann-bubble--show/);
+
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
+// 画布评论卡上的 agent 备注（2026-09-23）：owner 看着工作台弹层里要 hover 才出的
+// 备注卡，「画布上看不到」。note 走状态端点（与 ppnt mark 同一条路），SSE 回流后
+// 画布账本带上；卡正文下出折叠头，展开 / 收起只改页面内记忆。
+const CANVAS_NOTE = '默认温度从 90 改到 92 度：medium 烘焙下 92 度萃取更稳。\n杯测数据见 8-31 记录第三组，'
+  + '同一组里 90 度那杯的 TDS 明显偏低，口感单薄；改完同步设置页文案，'
+  + '帮助页的注水建议与研磨刻度提示也要跟着更新，避免两处口径不一致，'
+  + '另外记得通知仓库把包装上的建议参数一并换掉。';
+
+test('画布评论卡的 agent 备注：折叠头默认收起，点开看全文再收起；无 note 的卡没有折叠头', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), '有备注的一条');
+  await cells.nth(1).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(1), '没备注的一条');
+  const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
+  const n2 = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  const post = (n, data) => page.request.post(`/annotations/@canvas/${n}/status`, { data: { entry: 'e2e-ios', ...data } });
+  const rev = await page.evaluate(() => window.pinpoint.getState().revision);
+  expect((await post(n1, { baseRevision: rev, status: 'check', note: CANVAS_NOTE })).status()).toBe(200);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  const badges = page.locator('#ann-marks .ann-badge');
+  await expect(badges).toHaveCount(2);
+  const bubble1 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n1}"]`);
+  const bubble2 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n2}"]`);
+
+  // 默认折叠：折叠头在，原文不在
+  await badges.nth(0).hover();
+  await expect(bubble1).toHaveClass(/ann-bubble--show/);
+  const head = bubble1.locator('.ann-bubble-note-head');
+  await expect(head).toHaveText('agent 备注 ▸');
+  await expect(bubble1.locator('.ann-bubble-note-body')).toHaveCount(0);
+
+  // 展开：原文全文（textContent 逐字比对，pre-wrap 保留换行），超过 6 行进卡内滚动
+  await head.click();
+  await expect(head).toHaveText('agent 备注 ▾');
+  const body = bubble1.locator('.ann-bubble-note-body');
+  await expect.poll(() => body.evaluate((el) => el.textContent)).toBe(CANVAS_NOTE);
+  await expect(body).toHaveCSS('white-space', 'pre-wrap');
+  expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  // 展开态是本次页面内的记忆：挪开收卡再回来，还是展开的
+  await page.locator('#wbstrip-title').hover();
+  await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
+  await badges.nth(0).hover();
+  await expect(bubble1).toHaveClass(/ann-bubble--show/);
+  await expect(head).toHaveText('agent 备注 ▾');
+
+  // 再点收起；收起同样被记住
+  await head.click();
+  await expect(head).toHaveText('agent 备注 ▸');
+  await expect(bubble1.locator('.ann-bubble-note-body')).toHaveCount(0);
+  await page.locator('#wbstrip-title').hover();
+  await badges.nth(0).hover();
+  await expect(bubble1).toHaveClass(/ann-bubble--show/);
+  await expect(head).toHaveText('agent 备注 ▸');
+
+  // 无 note 的标注没有折叠头
+  await badges.nth(1).hover();
+  await expect(bubble2).toHaveClass(/ann-bubble--show/);
+  await expect(bubble2.locator('.ann-bubble-note-head')).toHaveCount(0);
 
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);

@@ -274,7 +274,7 @@ export function AnnPopover() {
             </DropdownMenu.Trigger>
             {/* Portal 到 body 是必须的：这块卡是 .wb-glass（backdrop-filter 给
                 position:fixed 的后代造了包含块）+ overflow:hidden，菜单留在卡里
-                会被卡的下沿裁掉 —— 卡越短裁得越多，最后一项「清空标注」首当其冲
+                会被卡的下沿裁掉 —— 卡越短裁得越多，最后一项「清空未关闭标注」首当其冲
                 （DOM 断言全绿、人点不到，与 2026-08-17 ScrollArea 同形）。 */}
             <DropdownMenu.Portal>
             <DropdownMenu.Content asChild align="end" sideOffset={4} collisionPadding={12}>
@@ -296,8 +296,10 @@ export function AnnPopover() {
                 })}
                 <div className="my-1 h-px bg-[var(--wb-seam)]" role="separator"></div>
                 {['all', 'invalid'].map(function (kind) {
-                  var count = kind === 'all' ? snap.count : (snap.countInvalid || 0);
-                  var label = kind === 'all' ? '清空标注' : '清空无效标注';
+                  // 决定 #11：清空不删已关闭（close 是执行历史）—— 计数与可点性
+                  // 只看未关闭的行；页内工具条的「清空标记」同一份口径。
+                  var count = kind === 'all' ? snap.count - (snap.countClosed || 0) : (snap.countInvalid || 0);
+                  var label = kind === 'all' ? '清空未关闭标注' : '清空无效标注';
                   return <DropdownMenu.Item key={kind} asChild disabled={!count} onSelect={function (e) { e.preventDefault(); onClear(kind); }}>
                     <button type="button" id={kind === 'all' ? 'wbann-clear' : 'wbann-clear-invalid'} disabled={!count}
                       className={cn('wb-ann-clear flex w-full cursor-pointer items-center gap-[7px] rounded-md border-0 bg-transparent px-2 py-[6px] text-left font-sans text-[12px] font-medium text-foreground outline-none transition-colors duration-150 hover:bg-accent data-[highlighted]:bg-accent disabled:cursor-default disabled:opacity-40 disabled:hover:bg-transparent', clearArmed === kind && 'text-destructive')}>

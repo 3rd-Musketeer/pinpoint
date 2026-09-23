@@ -41,6 +41,14 @@ export function isLegalMarkTransition(from, to) {
   return (from === 'open' || from === 'check') && (to === 'check' || to === 'done');
 }
 
+/** 「清空」的目标行（决定 #11）：close 是执行历史，清空不带走 —— 只清
+ *  open / check / done。「当前页」过滤归调用方（页面归属只有 client 知道），
+ *  页内工具条「清空标记」与工作台「清空未关闭标注」同一份口径。 */
+export function isClearableMark(mark) {
+  if (!mark) return false;
+  return (mark.status || 'open') !== 'close';
+}
+
 const ID_RE = '[A-Za-z0-9._-]+';
 const TARGET_REF_RE = /^i([1-9][0-9]*)$/;
 const TARGET_STORE_RE = /\[@t:(i[1-9][0-9]*)\]/gi;

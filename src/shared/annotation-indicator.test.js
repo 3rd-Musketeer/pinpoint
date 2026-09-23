@@ -8,6 +8,7 @@ import {
   formatPageIndicator,
   formatSectionIndicator,
   indicatorForAnnotation,
+  isClearableMark,
   isLegalMarkTransition,
   isLegalTransition,
   nextTargetRef,
@@ -230,4 +231,13 @@ test('removing a target strips only its inline references and never renumbers su
     '[indicator 1] reference; align and.',
   );
   assert.equal(nextTargetRef([{ ref: 'i1' }, { ref: 'i4' }]), 'i5');
+});
+
+test('isClearableMark: 清空只带走未关闭的行，close 是执行历史留下来（决定 #11）', () => {
+  assert.equal(isClearableMark({ status: 'open' }), true);
+  assert.equal(isClearableMark({ status: 'check' }), true);
+  assert.equal(isClearableMark({ status: 'done' }), true);
+  assert.equal(isClearableMark({ status: 'close' }), false);
+  assert.equal(isClearableMark({}), true, '缺省 open');
+  assert.equal(isClearableMark(null), false, '非行不清');
 });

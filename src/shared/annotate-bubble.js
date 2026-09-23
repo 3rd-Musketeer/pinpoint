@@ -7,6 +7,7 @@
  *   ┌────────────────────┐
  *   │ 1 指着的那段         │  ← 11px mono 眉标：序号 accent + 引用淡色
  *   │ 正文                 │
+ *   │ agent 备注 ▸（有 note）│  ← 2026-09-23 折叠段，点开展开原文
  *   └────────────────────┘
  */
 
@@ -37,28 +38,47 @@ export function bubbleCss() {
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
     '.ann-bubble-empty{color:var(--wb-faint,#8d8d8d);font-style:italic;}',
+    // agent 备注折叠段（2026-09-23）：折叠头一行 mono muted 与眉标同档，正文
+    // 下加分隔线；展开的原文 pre-wrap 保留换行，最多 6 行（6 × 1.45em）后卡内
+    // 滚动 —— 上限与工作台 hover 备注卡（AnnPopover NoteCard）一致。live 评论卡
+    // 消费；导出烤图（bubbleHtml）不消费：静态图没有交互，折叠头不进烤图。
+    '.ann-bubble-note-head{margin-top:6px;padding-top:5px;border-top:1px solid var(--wb-line,rgba(0,0,0,.07));cursor:pointer;user-select:none;font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:11px;line-height:1.3;color:var(--wb-muted,#6b6b70);}',
+    '.ann-bubble-note-head:hover{color:var(--wb-fg,#1c2024);}',
+    '.ann-bubble-note-body{margin-top:4px;white-space:pre-wrap;word-break:break-word;max-height:8.7em;overflow-y:auto;}',
   ].join('');
 }
 
-/** Inner markup (眉标 + 正文) for one bubble. Caller wraps + positions.
- *  `m.cap` = 这条标注指着什么（annRowCap 的同一份口径）；没有就只出序号。 */
-export function bubbleInnerHtml(m) {
+/** agent 备注折叠段（画布评论卡，2026-09-23）。`expanded` 归调用方持有（本次
+ *  页面内存，不落盘）：收起只出折叠头，展开才出原文。note 由调用方保证非空。 */
+export function bubbleNoteHtml(note, expanded) {
+  return '<div class="ann-bubble-note-head">' + (expanded ? 'agent 备注 ▾' : 'agent 备注 ▸') + '</div>'
+    + (expanded ? '<div class="ann-bubble-note-body">' + escHtml(note) + '</div>' : '');
+}
+
+/** Inner markup (眉标 + 正文 + agent 备注折叠段) for one bubble. Caller wraps + positions.
+ *  `m.cap` = 这条标注指着什么（annRowCap 的同一份口径）；没有就只出序号。
+ *  `m.note` = agent 备注（pp2 状态机随行字段）：有才出折叠段，展开态走
+ *  opts.noteExpanded（调用方持有，见 bubbleNoteHtml）。 */
+export function bubbleInnerHtml(m, opts) {
   var n = (m && m.n) != null ? m.n : '';
   var cap = String((m && m.cap != null ? m.cap : '') || '').trim();
   var content = String((m && m.content != null ? m.content : '') || '');
+  var note = String((m && m.note != null ? m.note : '') || '');
   var body = content
     ? '<div class="ann-bubble-body">' + escHtml(content) + '</div>'
     : '<div class="ann-bubble-body ann-bubble-empty">（无正文）</div>';
   return '<div class="ann-bubble-cap">'
     + '<span class="ann-bubble-n">' + escHtml(n) + '</span>'
     + (cap ? '<span class="ann-bubble-ref">' + escHtml(cap) + '</span>' : '')
-    + '</div>' + body;
+    + '</div>' + body
+    + (note.trim() ? bubbleNoteHtml(note, !!(opts && opts.noteExpanded)) : '');
 }
 
-/** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node. */
+/** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node.
+ *  导出不消费 agent 备注：烤图是静态的，折叠头点不开，note 在这里剥掉。 */
 export function bubbleHtml(m) {
   var n = (m && m.n) != null ? m.n : '';
   return '<div class="ann-bubble" data-n="' + escHtml(n) + '">'
-    + bubbleInnerHtml(m)
+    + bubbleInnerHtml(Object.assign({}, m, { note: '' }))
     + '</div>';
 }
