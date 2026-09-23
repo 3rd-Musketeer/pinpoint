@@ -2,19 +2,19 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
-import { annotationSlug } from '../src/shared/annotation-slug.js';
-import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
+
+// storage-unify：画布账本 = 活动页桶的 @canvas.json（e2e-ios）。
+const ledger = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
 
 test.beforeEach(() => {
-  // Other specs may leave marks for another page in the shared workbench ledger.
-  // UI clear intentionally affects only the active page; start this fixture empty.
-  fs.rmSync(path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json'), { force: true });
+  // Start this fixture empty; UI clear now affects only the active page's bucket,
+  // so leftover marks from other specs on this page are the only collision left.
+  fs.rmSync(ledger, { force: true });
 });
 
 test.afterEach(async ({ page }) => {
   await page.close();
-  // This spec creates the workbench ledger; later SPA tests count their own files.
-  fs.rmSync(path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json'), { force: true });
+  fs.rmSync(ledger, { force: true });
 });
 
 async function saveMark(page) {

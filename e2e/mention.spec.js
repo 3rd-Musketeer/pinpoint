@@ -7,11 +7,12 @@ import { expect, test } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
 
 // 阶段 5：doc 页正文 mention 画布 frame（data-pinpoint-frame）→ 水合为活 DOM；
-// frame 内标注与画布同账本（pinpoint 桶的 workbench 账本），两处渲染、实时同步；
-// 文档正文标注归文档自己的桶（e2e-mention）—— 两个命名空间共存不打架。
-// frame 标注行的锚点 selector 含 stage 段，两端各自归一到 frame 内路径解析。
+// storage-unify：frame 内标注与画布同账本 = 被引用帧所属页（e2e-ios）桶里的
+// @canvas，两处渲染、实时同步；文档正文标注归文档自己的桶（e2e-mention）——
+// 两个命名空间共存不打架。frame 标注行的锚点 selector 含 stage 段，两端各自
+// 归一到 frame 内路径解析。
 
-const CANVAS_BUCKET = path.join(E2E_DATA_DIR, 'pinpoint');
+const CANVAS_BUCKET = path.join(E2E_DATA_DIR, 'e2e-ios');
 const DOC_BUCKET = path.join(E2E_DATA_DIR, 'e2e-mention');
 
 function bucketDocs(bucket) {
@@ -90,13 +91,13 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   await saveComposerIn(page, { frameTitle: '@frame:e2e-ios/recipe' }, '文档里标：粉水比控件');
   await expect(recipeFrame.locator('.ann-badge')).toHaveCount(1);
 
-  // 5) 落在画布账本（pinpoint 桶的 /index.html 账本），行带 pageId+screenId+section
+  // 5) 落在被引用帧所属页的画布账本（e2e-ios 桶的 @canvas），行带 pageId+screenId+section
   await expect.poll(() => {
     const docs = bucketDocs(CANVAS_BUCKET);
-    const canvas = docs.find((d) => d.path === '/index.html');
+    const canvas = docs.find((d) => d.path === '@canvas');
     return canvas ? canvas.annotations.length : 0;
   }).toBe(1);
-  const canvasDoc = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '/index.html');
+  const canvasDoc = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
   const row = canvasDoc.annotations[0];
   expect(row.pageId).toBe('e2e-ios');
   expect(row.screenId).toBe('recipe');
@@ -136,7 +137,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   expect(docLedger.path).toBe('/sites/e2e-mention/index.html');
   expect(docLedger.annotations[0].content).toContain('标文档正文');
   // 画布账本不被文档正文标注污染
-  const canvasAfter = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '/index.html');
+  const canvasAfter = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
   expect(canvasAfter.annotations.length).toBe(2);
   expect(canvasAfter.annotations.every((a) => !a.content.includes('标文档正文'))).toBe(true);
 });

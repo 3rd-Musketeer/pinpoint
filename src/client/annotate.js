@@ -76,6 +76,7 @@
   var syncEpoch = 0;          // 账本世代：路由切换即 +1，在途 sync/hydrate 回调凭世代号丢弃
   var ledgerSwitching = false; // switchLedgerTo 已清账、hydrate 未落地期间为 true
   var queuedSwitch = null;    // 切换途中又来换账本请求：coalesce 到最新一个
+  var canvasLedgerApplied = false; // 画布实例是否已落到第一个页桶（boot 占位结束）
   var settleWaiters = [];     // whenSettled 的等待者：hydrate 落地后一次性放行
   var eventSource = null;
   var serverOnline = false;   // SSE OPEN liveness only (not hydrate/POST success)
@@ -3888,6 +3889,8 @@
     contentToDisplay: contentToDisplay,
     indicatorForMark: indicatorForMark,
     onUpdate: function (fn) { if (typeof fn === 'function') updateListeners.push(fn); },
+    // 当前账本桶 id（画布实例 = 活动页；测试与调试用，只读）。
+    get entry() { return ENTRY; },
     get marks() { return marks.slice(); },
     get annotations() { return marks.slice(); },
     get pageMarks() { return marksForActivePage(); }
@@ -3903,10 +3906,13 @@
   // 会话收尾 → epoch 护栏 → 清渲染 → 重算 key → hydrate → 落定放行。
   // hash-only 变化不触发：key 公式只含 pathname（已接受的边界）。
 
-  function finishSessionForLedgerSwitch() {
+  function finishSessionForLedgerSwitch(pristineBoot) {
     // 打开中的草稿：有实质内容先走现有 save() 存回旧账本（save → persist → POST 带
     // 旧 PAGE，服务端落旧账本）；空草稿丢弃。这一切都必须发生在重算 key 之前。
-    if (activeComposer) {
+    // 例外：boot 占位账本（画布实例还没落到第一个页桶）上的草稿跟着人走 ——
+    // 用户看着的已经是目标页的板，草稿属于它；不关不存，PAGE 同步切过去后由
+    // 用户正常保存。
+    if (activeComposer && !pristineBoot) {
       var draft = activeComposer.ta ? activeComposer.ta.value.trim() : '';
       if (draft && typeof activeComposer.save === 'function') activeComposer.save();
       else closeComposer({ silentRender: true });
@@ -3932,8 +3938,10 @@
 
   function switchLedgerTo(next) {
     ledgerSwitching = true;
-    // 1. 会话态收尾（草稿存回旧账本）
-    finishSessionForLedgerSwitch();
+    // 1. 会话态收尾（草稿存回旧账本；boot 占位账本例外，见函数注释）
+    var pristineBoot = CANVAS_MODE && !canvasLedgerApplied && marks.length === 0 && mutationVersion === 0;
+    finishSessionForLedgerSwitch(pristineBoot);
+    if (CANVAS_MODE) canvasLedgerApplied = true;
     // 2. epoch 护栏：在途 sync/hydrate 响应全部作废；deferred 属于旧账本
     syncEpoch++;
     deferredRemoteDoc = null;
@@ -4020,19 +4028,23 @@
       }
       apply(currentWorkbenchPageId());
       tries += 1;
-      if (tries > 250) { // ~20s 没有 workbench：当兜底页（pinpoint 桶的 @canvas）
+      if (tries > 800) { // ~20s 没有 workbench：当兜底页（pinpoint 桶的 @canvas）
         clearInterval(timer);
         if (!applied) requestSwitch(canvasSwitchFor('pinpoint'));
       }
-    }, 80);
+    }, 25);
   }
 
   // 层 1：路由信号。首选 Navigation API（只关心 same-document 导航，比较新旧
   // pathname）；没有 window.navigation 时降级为 patch pushState/replaceState
   // （调原实现后再检查）+ popstate。与已有的 popstate → scheduleContentRender
   // 监听共存——popstate 现在多一个账本切换语义。
-  // /api/frame 嵌入帧不导航（账本恒定 = 所属页的 @canvas），不装路由监听。
-  if (!FRAME) {
+  // /api/frame 嵌入帧不导航（账本恒定 = 所属页的 @canvas），不装路由监听；
+  // 工作台画布实例同样不装 —— 它的 pathname 恒定（/ 或 /index.html），而
+  // url-sync 的深链回写会不停 replaceState，装了会把画布账本切回按 pathname
+  // 分的旧形态（实测：切页换桶后一发 replaceState 就切走）。画布实例的账本
+  // 只跟活动页走（watchWorkbenchPages）。
+  if (!FRAME && !CANVAS_MODE) {
     if (window.navigation && typeof window.navigation.addEventListener === 'function') {
       window.navigation.addEventListener('navigate', function (event) {
         try {
