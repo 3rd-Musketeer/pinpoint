@@ -114,19 +114,23 @@ function isLedgerFile(name) {
   return name.endsWith('.json') && name !== '_seq.json';
 }
 
-/** { buckets: Map<桶名, { ledgers: Map<文件名, doc>, images: string[] }> } */
+/** { buckets: Map<桶名, { ledgers: Map<文件名, doc>, images: string[] }>,
+    badLedgers: Map<桶名, Set<文件名>>（解析失败的账本，落盘时原样保留）。 } */
 function readModel() {
   const buckets = new Map();
-  if (!fs.existsSync(root)) return { buckets };
+  const badLedgers = new Map();
+  if (!fs.existsSync(root)) return { buckets, badLedgers };
   for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
     if (!entry.isDirectory() || entry.name.startsWith('.') || NON_BUCKET_DIRS.has(entry.name)) continue;
     const bucketPath = path.join(root, entry.name);
     const ledgers = new Map();
+    const bad = new Set();
     for (const name of fs.readdirSync(bucketPath).sort()) {
       if (!isLedgerFile(name)) continue;
       try {
         ledgers.set(name, JSON.parse(fs.readFileSync(path.join(bucketPath, name), 'utf8')));
       } catch {
+        bad.add(name);
         console.error(`  跳过坏账本：${path.join(bucketPath, name)}`);
       }
     }
@@ -135,8 +139,9 @@ function readModel() {
       ? fs.readdirSync(imagesDir).filter((name) => fs.statSync(path.join(imagesDir, name)).isFile())
       : [];
     buckets.set(entry.name, { ledgers, images });
+    if (bad.size) badLedgers.set(entry.name, bad);
   }
-  return { buckets };
+  return { buckets, badLedgers };
 }
 
 /** registry 与 manifest 的页索引：pageOf = 条目 id → 所属页 id（挂靠条目给宿主页，
@@ -548,16 +553,26 @@ for (const move of report.imageMoves) {
   fs.copyFileSync(from, to);
 }
 
-// 桶内容与模型对齐：模型里没有的账本文件删掉，有的（重）写。
+// 桶内容与模型对齐：模型里没有的账本文件删掉，有的（重）写；解析失败的
+// 坏账本不在模型里，但那是用户数据 —— 原样保留（G7），不趁迁移顺手删。
 for (const bucketName of fs.readdirSync(root, { withFileTypes: true })) {
   if (!bucketName.isDirectory() || bucketName.name === 'migrations' || NON_BUCKET_DIRS.has(bucketName.name)) continue;
   if (!model.buckets.has(bucketName.name)) {
-    // 整桶并走的挂靠桶：剩余内容（模型外文件，如 _seq.json）一并删除后移除目录。
-    fs.rmSync(path.join(root, bucketName.name), { recursive: true, force: true });
+    // 整桶并走的挂靠桶：剩余内容（模型外文件，如 _seq.json）一并删除后移除目录；
+    // 桶里有解析不了的坏账本时不能整目录删（G7），只清已迁走的账本，坏文件留底。
+    const bad = model.badLedgers.get(bucketName.name) || new Set();
+    if (bad.size) {
+      for (const name of fs.readdirSync(path.join(root, bucketName.name))) {
+        if (isLedgerFile(name) && !bad.has(name)) fs.rmSync(path.join(root, bucketName.name, name), { force: true });
+      }
+    } else {
+      fs.rmSync(path.join(root, bucketName.name), { recursive: true, force: true });
+    }
     continue;
   }
+  const bad = model.badLedgers.get(bucketName.name) || new Set();
   for (const name of fs.readdirSync(path.join(root, bucketName.name))) {
-    if (isLedgerFile(name)) fs.rmSync(path.join(root, bucketName.name, name), { force: true });
+    if (isLedgerFile(name) && !bad.has(name)) fs.rmSync(path.join(root, bucketName.name, name), { force: true });
   }
 }
 for (const [bucketName, bucket] of model.buckets) {

@@ -191,6 +191,21 @@ test('storage-unify：--apply 落盘后形状正确，第二遍 0 变更', async
   assert.deepEqual(hostCanvas2, hostCanvas, '第二遍 --apply 后字节级不变');
 });
 
+test('storage-unify：坏 JSON 账本原样保留，清理阶段跳过（G7）', async (t) => {
+  const dir = seedLedger(t);
+  const brokenPath = path.join(dir, 'bucket-a', 'broken.json');
+  const broken = '{"annotations": [ {"id": "x"'; // 截断的 JSON
+  fs.writeFileSync(brokenPath, broken);
+  const otherBucket = path.join(dir, 'bucket-b');
+  fs.mkdirSync(otherBucket, { recursive: true });
+  fs.writeFileSync(path.join(otherBucket, 'broken.json'), broken);
+
+  const out = await run(dir, '--apply');
+  assert.match(out.stderr, /跳过坏账本/);
+  assert.equal(fs.readFileSync(brokenPath, 'utf8'), broken, '有别的变更也不顺手删坏账本');
+  assert.equal(fs.readFileSync(path.join(otherBucket, 'broken.json'), 'utf8'), broken, '无变更的桶同样不动');
+});
+
 test('storage-unify：备份目录带时分秒，已存在就拒绝（G6）', async (t) => {
   const dir = seedLedger(t);
   await run(dir, '--apply');
