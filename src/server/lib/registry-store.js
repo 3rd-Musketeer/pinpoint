@@ -202,6 +202,22 @@ export function renameRegistryEntry(registryPath, oldId, newId) {
 }
 
 /**
+ * Drop one entry from the registry file (the `pinpoint remove` path): the
+ * entry disappears, every other entry keeps its position. Same strict read
+ * and same atomic rewrite as every other write; guards against losing
+ * annotations live in the CLI's preflight (attached entries, non-empty
+ * bucket) — this layer only refuses an unknown id. Returns the removed entry.
+ */
+export function removeRegistryEntry(registryPath, id) {
+  const doc = readRegistryDoc(registryPath);
+  const index = doc.entries.findIndex((entry) => entry && entry.id === id);
+  if (index < 0) throw new Error(`条目不存在：${id}`);
+  const removed = doc.entries[index];
+  writeRegistryFile(registryPath, { ...doc, entries: doc.entries.filter((_, i) => i !== index) });
+  return removed;
+}
+
+/**
  * Append one entry to the registry file: strict-validate, then atomically
  * rewrite preserving the existing top-level shape (version et al). Throws on
  * any problem; the on-disk file is left untouched in that case. Returns the

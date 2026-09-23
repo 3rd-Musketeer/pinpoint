@@ -78,7 +78,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 
 ## 写入走 CLI；文件夹操作也可以来自 workbench
 
-**条目**的写入（登记、重指、改 id）只有 CLI 一个入口。**文件夹**有两个：CLI 的 `pinpoint folder`
+**条目**的写入（登记、重指、改 id、删除）只有 CLI 一个入口。**文件夹**有两个：CLI 的 `pinpoint folder`
 和 workbench 左栏的拖放（走上面那三条 PUT）——写的是同一份登记表、同一条原子写，谁先谁后都行。
 
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
@@ -87,6 +87,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
+pinpoint remove <id>
 pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <id> | move <页 id> <夹 id|none>
 ```
 
@@ -121,8 +122,14 @@ pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <i
 4. **重载**：与 `add` / `move` 同一条即时生效路径。
 
 **把两个条目并成一个 = `rename` + `move`**：先把要保留的那个条目 `rename` 成目标 id，
-再把另一个条目的内容 `move` 到同一个落点（或直接从登记表里删掉那一条）。
+再把另一个条目的内容 `move` 到同一个落点（或用 `pinpoint remove` 把它从登记表里删掉）。
 `rename` 自己不做合并——目标 id 已被占用时它一律拒绝，不会去动别人的标注桶。
+
+`remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件 / URL 留在原地，
+重新 `add` 同一个目标即恢复登记。三种情况拒绝动手（registry 一个字节不动）：id 不存在；
+还有条目挂着它（`page` 等于它，先把那些条目 remove 掉）；标注桶 `~/.pinpoint/<id>/` 里
+还有标注行（先在工作台处理，或 `pinpoint prune <id>` 清掉孤儿账本）。桶不存在或只剩
+空账本 / `_seq.json` 时放行，并顺手删掉这个空桶。
 
 **撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
 CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
@@ -145,7 +152,8 @@ CLI 打印「id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id
 再建夹。未知的页、未知的夹、撞车的夹 id 都在写之前拒绝，registry 一个字节不动。
 
 写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
-`renameRegistryEntry` / `writeRegistryFolders` / `setEntryFolder` / `assignRegistryOrder`
+`renameRegistryEntry` / `removeRegistryEntry` / `writeRegistryFolders` / `setEntryFolder` /
+`assignRegistryOrder`
 共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
 url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
@@ -154,7 +162,7 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
 挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
 
-`add`、`move`、`rename` 与 `folder` 的写子命令写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
+`add`、`move`、`rename`、`remove` 与 `folder` 的写子命令写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
 
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的

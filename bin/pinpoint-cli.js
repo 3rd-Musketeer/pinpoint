@@ -4,7 +4,9 @@
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
  * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址——挂靠条目的
  * 桶是宿主页的桶（storage-unify），换路径不会孤儿化）；
- * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）。
+ * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）；
+ * 从登记表删掉条目用 `pinpoint remove`（只删登记，源文件 / URL 不动；桶里还有
+ * 标注行或有条目挂着它时拒绝，空桶顺手删掉）。
  * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
  * 文件留在原地，CLI 只登记路径/URL。
  *
@@ -48,12 +50,13 @@ import {
   loadRegistry,
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
-import { collectBucketOrphans, collectPageOrphans } from '../src/server/lib/orphans.js';
+import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../src/server/lib/orphans.js';
 import { slugify } from '../src/shared/registry-ids.js';
 import {
   addRegistryEntry,
   listRegistryEntries,
   listRegistryGrouping,
+  removeRegistryEntry,
   renameRegistryEntry,
   setEntryFolder,
   updateRegistryEntry,
@@ -81,6 +84,7 @@ const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
+  remove: { positional: 1, flags: new Set(['registry']) },
   folder: { positional: null, flags: new Set(['registry', 'id']) },
   status: { positional: 0, flags: new Set(['page', 'registry']) },
   start: { positional: 0, flags: new Set() },
@@ -113,6 +117,7 @@ export const USAGE = `用法：
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
+  pinpoint remove <id>                                 从登记表删一个条目（源文件 / URL 不动；详见下面 remove 一节）
   pinpoint folder <list|add|rename|rm|move> …          左栏的一层分组（详见下面 folder 一节）
   pinpoint build <页> [--screen <屏>] [--watch]        编译一页（源码 → dist），打印每屏 ok / 错误与耗时
   pinpoint render <页>/<屏> [--full]                   编译一帧打到 stdout（不落 dist）；超 8000 字符截断并落全文文件
@@ -154,6 +159,18 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
                    ④ 服务重载
                    把两个条目合并成一个 = rename + move（先把其中一个改成目标 id
                    之外的名字，再 move 到同一个落点）。
+
+remove —— 把一个条目从登记表里删掉。只删登记：源文件 / URL 留在原地，重新
+  \`pinpoint add\` 同一个目标即恢复登记。三种情况拒绝动手，登记表一个字节不动：
+  · id 不存在；
+  · 还有条目挂着它（page 字段等于它）——先把那些条目 remove 掉（重新 add
+    时用 --page 挂到别的页）；
+  · 标注桶 ~/.pinpoint/<id>/ 里还有标注行——先在工作台处理，或用
+    \`pinpoint prune <id>\`（--dry-run 先看清单）清掉孤儿账本。
+  桶不存在或只剩空账本 / _seq.json 时放行，并顺手删掉这个空桶。
+
+选项（remove）：
+  --registry 路径  同上
 
 folder —— 左栏的一层分组（不嵌套；workbench 里拖放写的是同一份登记表，CLI 是另一个入口）：
   pinpoint folder list                      列出文件夹：id / 名称 / 页数 / 是否折叠
@@ -255,6 +272,7 @@ export function parseArgs(argv) {
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
+  if (command === 'remove') return { command, id: positional[0], flags };
   if (command === 'build' || command === 'render' || command === 'check' || command === 'prune') return { command, target: positional[0], flags };
   if (command === 'locate' || command === 'shot') {
     if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 页 / @frame:p/s / @a:id）`);
@@ -297,6 +315,9 @@ function positionalProblem(command, want, got) {
     return got < 2
       ? 'rename 需要两个参数：<旧 id> <新 id>'
       : `rename 只接受两个参数，收到 ${got} 个`;
+  }
+  if (command === 'remove') {
+    return got === 0 ? 'remove 需要一个条目 id' : `remove 只接受一个条目 id，收到 ${got} 个`;
   }
   if (command === 'build') {
     return got === 0 ? 'build 需要一个页（registry 条目 id 或模板页 id）' : `build 只接受一个页，收到 ${got} 个`;
@@ -895,6 +916,85 @@ export async function runRename(argv, io = {}) {
 
   out(`registry：${plan.registryPath}`);
   // ④ 重载
+  await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
+
+/* ---------------------------- remove（删条目） ----------------------------
+   删条目与 rename 相反：id 从三处地址里退场——登记表去掉一行，/sites/<id>/
+   前缀不再有人应答，标注桶只在空的时候才允许跟着删。所以动手前要把「还有
+   什么挂在 id 上」数清楚：挂靠条目、桶里的标注行，数不平就整单不动。 */
+
+/** parse + 定位既有条目 + 预检挂靠与标注桶（不写盘、不联网）。 */
+export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}) {
+  const parsed = parseArgs(argv);
+  if (parsed.help) return parsed;
+  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+  const id = parsed.id;
+  const entries = existingEntriesFor(registryPath);
+  const before = entries.find((entry) => entry && entry.id === id);
+  if (!before) {
+    const known = entries.map((entry) => entry && entry.id).filter(Boolean).join('、');
+    throw new CliError(`条目不存在：${id}${known ? `（现有：${known}）` : ''}`);
+  }
+  // 挂靠条目的 page 字段指着它：删掉宿主，那些条目会在 workbench 里静默消失
+  //（rename 换 id 时必须带上它们，是同一个原因的反向）。
+  const attached = entries
+    .filter((entry) => entry && entry.page === id)
+    .map((entry) => entry.id);
+  if (attached.length) {
+    throw new CliError(
+      `条目 ${id} 还被 ${attached.length} 条挂靠（${attached.join('、')} 的 page 字段指着它）；` +
+      `先把它们 remove 掉（重新 add 时用 --page 挂到别的页），再 remove ${id}`,
+    );
+  }
+  // 桶里有标注行就拒绝：删登记随时可以重新 add 找回，删行找不回来。
+  const bucket = path.join(dataRoot(env), id);
+  const rows = readBucketLedgers(bucket)
+    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
+  if (rows > 0) {
+    throw new CliError(
+      `标注桶 ${bucket} 里还有 ${rows} 行标注；先在工作台处理掉，或 \`pinpoint prune ${id}\`（--dry-run 先看清单）清完再 remove`,
+    );
+  }
+  return { ...parsed, registryPath, before, bucket, bucketExists: fs.existsSync(bucket), rows };
+}
+
+/**
+ * 执行一次 remove：预检（id 存在、无挂靠、桶里没有标注行）→ 从登记表去掉条目
+ * → 空桶顺手删 → 探活服务 → 可达则 reload。只删登记，条目指向的源文件 / URL
+ * 原地不动，重新 `pinpoint add` 同一个目标即恢复登记。
+ */
+export async function runRemove(argv, io = {}) {
+  const { cwd, env, out, err, requestFn } = ioOf(io);
+
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  let plan;
+  try {
+    plan = planRemove(argv, { cwd, env });
+  } catch (error) {
+    err(`${error instanceof CliError ? '错误' : '删除失败'}：${error.message}`);
+    return 1;
+  }
+
+  let removed;
+  try {
+    removed = removeRegistryEntry(plan.registryPath, plan.id);
+  } catch (error) {
+    err(`删除失败：${error.message}`);
+    return 1;
+  }
+  out(`已从登记表删除 ${removed.id}（${removed.kind}）：${entryTargetDesc(removed)}`);
+  out(`  源文件 / URL 不动：${entryTargetDesc(removed)} 还在原地，重新 \`pinpoint add\` 即恢复登记。`);
+  if (plan.bucketExists) {
+    fs.rmSync(plan.bucket, { recursive: true, force: true });
+    out(`  标注桶 ${plan.bucket} 里没有标注行，已顺手删掉。`);
+  } else {
+    out(`  标注桶 ${plan.bucket} 不存在，没有桶要清。`);
+  }
+  out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;
 }
@@ -1910,6 +2010,7 @@ export async function run(argv, io = {}) {
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
+    case 'remove': return runRemove(argv, io);
     case 'folder': return runFolder(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);
