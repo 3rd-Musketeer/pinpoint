@@ -145,6 +145,9 @@ export function startAnnBridge() {
 var gutterOverlay = null;
 var gutterBubblesEl = null;
 var gutterRaf = 0;
+// agent 备注折叠头的展开态（本次页面内存，不落盘）：gutter 每帧重建 DOM，
+// 展开态没法存在 DOM 里，只能挂在模块级等下一帧拼回去。
+var gutterNotesOpen = Object.create(null);   // String(n) → true
 
 function gutterStageWrap() {
   return document.querySelector('.wb-stage-wrap');
@@ -172,11 +175,19 @@ function ensureGutterOverlay() {
   gutterOverlay.appendChild(style);
   gutterOverlay.appendChild(gutterBubblesEl);
   wrap.appendChild(gutterOverlay);
-  // 委派点击：点气泡打开该标注（驱动 iframe 实例）。
+  // 委派点击：点气泡打开该标注（驱动 iframe 实例）；点备注折叠头 = 展开 / 收起，
+  // 不打开标注（与画布卡同一条规矩：composer 只归卡身其余部分）。
   gutterBubblesEl.addEventListener('click', function (e) {
     var b = e.target.closest('.ann-bubble');
     if (!b) return;
     var n = b.getAttribute('data-n');
+    if (e.target.closest('.ann-bubble-note-head')) {
+      var key = String(n);
+      if (gutterNotesOpen[key]) delete gutterNotesOpen[key];
+      else gutterNotesOpen[key] = true;
+      renderGutter();
+      return;
+    }
     var a = annotateApi();
     if (a && typeof a.openMark === 'function') a.openMark(n);
   });
@@ -205,6 +216,13 @@ function renderGutter() {
   // 按「显示宽 / 布局宽」缩一次 —— 这个比就是 k；窗口视口下是 1。
   var k = iframeEl.offsetWidth ? ifRect.width / iframeEl.offsetWidth : 1;
   var anchors = a.visibleBubbleAnchors();
+  // 展开备注的滚动位置跨帧保留：gutter 每帧重建 DOM，原生 scrollTop 会被冲掉，
+  // 先把展开中的原文滚到哪记下来，重建后拼回去。
+  var keptNoteScroll = Object.create(null);
+  Array.prototype.forEach.call(gutterBubblesEl.querySelectorAll('.ann-bubble-note-body'), function (el) {
+    var host = el.closest('.ann-bubble');
+    if (host && el.scrollTop) keptNoteScroll[host.getAttribute('data-n')] = el.scrollTop;
+  });
   while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
 
   // Pass 1: build hidden bubbles + measure heights (packGutter is pure).
@@ -216,7 +234,15 @@ function renderGutter() {
     node.className = 'ann-bubble';
     node.setAttribute('data-ann-ui', '');
     node.setAttribute('data-n', an.n);
-    node.innerHTML = bubbleInnerHtml({ n: an.n, cap: an.cap, content: an.content });
+    var noteOpen = !!gutterNotesOpen[String(an.n)];
+    node.innerHTML = bubbleInnerHtml(
+      { n: an.n, cap: an.cap, content: an.content, note: an.note },
+      { noteExpanded: noteOpen }
+    );
+    if (noteOpen) {
+      var noteBody = node.querySelector('.ann-bubble-note-body');
+      if (noteBody && keptNoteScroll[String(an.n)]) noteBody.scrollTop = keptNoteScroll[String(an.n)];
+    }
     node.style.visibility = 'hidden';
     node.style.left = '0';
     node.style.top = '0';

@@ -149,14 +149,16 @@
   }
 
   /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用）。
-   * iframe 内 overlay 与父级 gutter 共用，避免两边显示不一致。 */
+   * iframe 内 overlay 与父级 gutter 共用，避免两边显示不一致。note 原文随行，
+   * 折叠 / 展开由渲染侧按各自的页面内记忆拼装（bubbleInnerHtml 的 opts）。 */
   function bubbleMarkView(m) {
     return {
       n: m.n,
       // 眉标 = 这条标注指着什么，与侧栏行的 cap 同一份口径（annRowCap）——
       // 2026-09-04 评审板 H1 起卡片头不再是琥珀序号 chip + 「评论」。
       cap: annRowCap(m),
-      content: contentToDisplay(m.content != null ? m.content : '', m.targets || [])
+      content: contentToDisplay(m.content != null ? m.content : '', m.targets || []),
+      note: (m && m.note) || ''
     };
   }
 
@@ -3278,6 +3280,9 @@
   // 但独立于 标注/交互 模式：开关一开就在画布上把 content 渲染成气泡，
   // 序号与 pin 对应，半透明细线指向锚点。稀疏默认放右侧，密集时左右分流。
   var bubbleNodes = Object.create(null);   // n → { m, node, height }
+  // agent 备注折叠头的展开态：本次页面内存（刷新即忘、不落盘）——与评论卡
+  // 「hover 才出」的瞬时性一致，owner 展开读完就收，不动账本。
+  var expandedNotes = Object.create(null); // String(n) → true
   var BUBBLE_W = 186;   // 2026-09-04 评审板 H1 的评论卡宽度
   var BUBBLE_MARGIN = 12;
 
@@ -3301,9 +3306,11 @@
         node.className = 'ann-bubble';
         node.setAttribute('data-ann-ui', '');
         node.setAttribute('data-n', m.n);
-        var html = bubbleInnerHtml(bubbleMarkView(m));
+        var html = bubbleInnerHtml(bubbleMarkView(m), { noteExpanded: !!expandedNotes[m.n] });
         node.innerHTML = html;
         node.addEventListener('click', function (e) {
+          // 折叠头点击 = 展开 / 收起备注；composer（openMark）只归卡身其余部分。
+          if (e.target.closest('.ann-bubble-note-head')) { e.stopPropagation(); toggleBubbleNote(m.n); return; }
           if (e.target.closest('.ann-bubble')) { e.stopPropagation(); openMark(m.n); }
         });
         // 指针从钉子挪到卡上 = 继续读，不收
@@ -3313,7 +3320,7 @@
         entry = bubbleNodes[m.n] = { m: m, node: node, height: 0, html: html };
       } else {
         entry.m = m;
-        var nextHtml = bubbleInnerHtml(bubbleMarkView(m));
+        var nextHtml = bubbleInnerHtml(bubbleMarkView(m), { noteExpanded: !!expandedNotes[m.n] });
         if (entry.html !== nextHtml) {
           entry.node.innerHTML = nextHtml;
           entry.html = nextHtml;
@@ -3331,6 +3338,21 @@
       if (bubbleNodes[n].node.parentNode) bubbleNodes[n].node.parentNode.removeChild(bubbleNodes[n].node);
       delete bubbleNodes[n];
     });
+  }
+
+  /** 折叠头点击：展开 / 收起该卡的 agent 备注。就地重写卡内 HTML（监听器挂在
+   *  卡节点上，不受影响）；高度缓存就地重测 —— 定位管线吃缓存值，不重测会把
+   *  展开后的下半截裁掉。 */
+  function toggleBubbleNote(n) {
+    var entry = bubbleNodes[n];
+    if (!entry || !entry.m) return;
+    var key = String(n);
+    if (expandedNotes[key]) delete expandedNotes[key];
+    else expandedNotes[key] = true;
+    entry.html = bubbleInnerHtml(bubbleMarkView(entry.m), { noteExpanded: !!expandedNotes[key] });
+    entry.node.innerHTML = entry.html;
+    entry.height = entry.node.offsetHeight || 0;
+    updateBubbleGeometry();
   }
 
   function updateCanvasBubble() {
@@ -3423,7 +3445,8 @@
         n: m.n,
         rect: [Math.round(local[0]), Math.round(local[1]), Math.round(local[2]), Math.round(local[3])],
         cap: view.cap,
-        content: view.content
+        content: view.content,
+        note: view.note
       });
     });
     return out;
