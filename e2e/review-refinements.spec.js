@@ -239,7 +239,7 @@ test('pp2 状态机：mark 端点 open → check → done 带 note，非法转�
   await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,original.id)).toBe('open');
 });
 
-test('pp2 状态机：done 行点关闭 → toast 撤销 5s；close 收进「已关闭 n」开关组', async ({ page }) => {
+test('pp2 状态机：done 行点关闭 → toast（已完成）撤销回 done；close 收进「已关闭 n」开关组', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));
@@ -267,24 +267,17 @@ test('pp2 状态机：done 行点关闭 → toast 撤销 5s；close 收进「已
   await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
   const toast=page.locator('#ann-toast');
   await expect(toast).toBeVisible();
-  await expect(toast).toContainText('已关闭 #'+n);
+  await expect(toast).toContainText('已完成 #'+n);
 
-  // 撤销 → close → open，行回到列表，toast 收起
+  // 撤销 → close 回关闭前的原态（这行关前是 done），行回到列表，toast 收起
   await toast.locator('button').click();
-  await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('open');
+  await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('done');
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
   await expect(toast).toBeHidden();
-  // 撤销触发的 save 回包落定、revision 归位后再拿它当 baseRevision：
-  // 在途时读到的 revision 会让下面的 status POST 409，行停在 open（revision 抢跑）。
+  // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
 
-  // 不撤销再来一遍：行收进「已关闭 1」，点开关展开可见
-  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
-  const recheck=await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'check'}});
-  expect(recheck.status()).toBe(200);
-  rev=await page.evaluate(()=>window.pinpoint.getState().revision);
-  const redone=await page.request.post(`/annotations/${ledger}/${n}/status`,{data:{entry:'e2e-dir',baseRevision:rev,status:'done'}});
-  expect(redone.status()).toBe(200);
+  // 不撤销再来一遍（撤销后行已是 done，直接再点「关闭」）：行收进「已关闭 1」，点开关展开可见
   await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark')).toBeVisible();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]').hover();
   await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .ann-sb-close-mark').click();

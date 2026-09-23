@@ -108,6 +108,17 @@
 }
 #ann-sidebar .wb-ann-closed-toggle:hover,
 #wbann-list .wb-ann-closed-toggle:hover { background:var(--wb-hover, rgba(0,0,0,.04)); color:var(--wb-muted, #6b6b70); }
+/* N = 0 的常驻开关：不可展开，弱化到不招点击。 */
+#ann-sidebar .wb-ann-closed-toggle:disabled,
+#wbann-list .wb-ann-closed-toggle:disabled { opacity:.6; cursor:default; }
+#ann-sidebar .wb-ann-closed-toggle:disabled:hover,
+#wbann-list .wb-ann-closed-toggle:disabled:hover { background:transparent; color:var(--wb-faint, #8d8d8d); }
+/* 工作台列表 close 行（展开后）的「重新打开」文字钮；client 侧栏没有这个动作。 */
+#wbann-list .wb-ann-reopen {
+  flex:none; border:0; border-radius:var(--wb-r-2,6px); padding:2px 6px; cursor:pointer;
+  background:transparent; color:var(--wb-muted, #6b6b70); font:var(--wb-w-medium,500) 11px/1.4 system-ui;
+}
+#wbann-list .wb-ann-reopen:hover { background:var(--wb-hover, rgba(0,0,0,.06)); color:var(--wb-fg, #1c2024); }
 #ann-sidebar .ann-sb-close-mark,
 #wbann-list .ann-sb-close-mark {
   flex:none; border:0; border-radius:var(--wb-r-2,6px); padding:2px 6px; cursor:pointer;

@@ -1484,7 +1484,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(page.locator('#wbann-list [data-ann-go]')).toHaveCount(0);
-  await expect(page.locator('#wbann-list .wb-ann-delete')).toBeVisible();
+  await expect(page.locator('#wbann-list .wb-ann-done')).toBeVisible();
 
   // 左栏折叠 / 复开：唯一入口是横条左端的 Pages 开关（画布两缘浮钮已退役）
   await page.locator('#wbside-toggle').click();
@@ -1501,6 +1501,56 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.locator('#wbann-clear').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.keyboard.press('Escape');
+});
+
+test('pp2 面板关闭全流程：open 行点完成 → 撤销回 open → 再完成 → 已关闭段展开 → 重新打开', async ({ page }) => {
+  await openWorkbench(page);
+  // 干净起点（共享落盘文档，前面的用例可能留标注）
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'close loop mark');
+  const n = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  await openAnnList(page);
+  const toggle = page.locator('#wbann-list .wb-ann-closed-toggle');
+  // 已关闭段常驻：还没有关闭行时也显示，弱化不可展开
+  await expect(toggle).toHaveText('▸ 已关闭 0');
+  await expect(toggle).toBeDisabled();
+
+  // open 行点「完成」：单击即关（不二次确认），toast「已完成 #n」带撤销
+  const done = page.getByRole('button', { name: '完成 #' + n, exact: true });
+  await done.click();
+  await expect(page.locator('#wbann-list .wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(0);
+  await expect(toggle).toHaveText('▸ 已关闭 1');
+  const toast = page.locator('#ann-toast');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('已完成 #' + n);
+
+  // 撤销 → 回关闭前的原态（这行是 open），行回列表，toast 收起
+  await toast.locator('button').click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
+  await expect(page.locator('#wbann-list .wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(1);
+  await expect(toast).toBeHidden();
+
+  // 再点完成，这次不撤销：行收进已关闭段，点开关展开，close 行带状态标与「重新打开」
+  await page.getByRole('button', { name: '完成 #' + n, exact: true }).click();
+  await expect(page.locator('#wbann-list .wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(0);
+  await expect(toggle).toHaveText('▸ 已关闭 1');
+  await toggle.click();
+  const closedRow = page.locator('#wbann-list .wb-ann-item[data-ann-n="' + n + '"]');
+  await expect(closedRow.locator('.wb-ann-status-tag')).toHaveText('close');
+  await expect(closedRow.getByRole('button', { name: '重新打开标注 ' + n, exact: true })).toBeVisible();
+
+  // 重新打开 → 回 open 列表，已关闭段回 0（仍常驻；展开态保持，只是空了）
+  await closedRow.getByRole('button', { name: '重新打开标注 ' + n, exact: true }).click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
+  await expect(page.locator('#wbann-list .wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(1);
+  await expect(toggle).toHaveText('▾ 已关闭 0');
+  await expect(toggle).toBeDisabled();
   await page.keyboard.press('Escape');
 });
 

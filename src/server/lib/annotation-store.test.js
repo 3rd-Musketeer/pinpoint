@@ -302,6 +302,32 @@ test('setStatus：open/check → check/done 带 note；其余一律拒', (t) => 
 
   assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'done', baseRevision: 3 }).status, 409, 'done → done 非法');
   assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'open', baseRevision: 3 }).status, 400, '端点只写 check/done');
+  assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'close', baseRevision: 3 }).status, 400, 'close 仍只归工作台');
   assert.equal(store.setStatus({ page: 'index.html', id: 99, status: 'check', baseRevision: 3 }).status, 404);
   assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'check', baseRevision: 1 }).status, 409, 'baseRevision 过期');
+});
+
+test('owner 关闭：open / check / done 三态经 /save 入 close，撤销回关闭前的原态', (t) => {
+  const { store } = withStore(t);
+  // 三种来源状态各占一页，互不纠缠：check / done 先经 mark 端点升档。
+  for (const [page, wanted] of [['o.html', 'open'], ['c.html', 'check'], ['d.html', 'done']]) {
+    store.save({ page, baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+    if (wanted === 'check' || wanted === 'done') {
+      assert.equal(store.setStatus({ page, baseRevision: 1, id: 'x1', status: 'check' }).status, 200);
+    }
+    if (wanted === 'done') {
+      assert.equal(store.setStatus({ page, baseRevision: 2, id: 'x1', status: 'done' }).status, 200);
+    }
+    const rev = store.readDoc(page).revision;
+    const closed = store.save({ page, baseRevision: rev, annotations: [{ id: 'x1', content: '甲', status: 'close' }] });
+    assert.equal(closed.status, 200, `${wanted} → close 放行`);
+    assert.equal(closed.doc.annotations[0].status, 'close');
+    const undone = store.save({
+      page,
+      baseRevision: closed.doc.revision,
+      annotations: [{ id: 'x1', content: '甲', status: wanted }],
+    });
+    assert.equal(undone.status, 200, `close 撤销回 ${wanted} 放行`);
+    assert.equal(undone.doc.annotations[0].status, wanted);
+  }
 });

@@ -8,6 +8,8 @@ import {
   formatPageIndicator,
   formatSectionIndicator,
   indicatorForAnnotation,
+  isLegalMarkTransition,
+  isLegalTransition,
   nextTargetRef,
   normalizeAnnotation,
   normalizeDoc,
@@ -114,6 +116,37 @@ test('normalizeAnnotation drops retired response data', () => {
     reply: { content: '  已修改  ', author: 'agent' },
   });
   assert.equal(annotation.reply, undefined);
+});
+
+test('isLegalTransition：owner 三态入 close，close 撤销回原态；升档只经 mark 端点', () => {
+  // owner 完成：open / check / done 任一态单击入 close（2026-09-23 放开）。
+  assert.equal(isLegalTransition('open', 'close'), true);
+  assert.equal(isLegalTransition('check', 'close'), true);
+  assert.equal(isLegalTransition('done', 'close'), true);
+  // close 撤销 / 重新打开：回关闭前的原态，三种都放行。
+  assert.equal(isLegalTransition('close', 'open'), true);
+  assert.equal(isLegalTransition('close', 'check'), true);
+  assert.equal(isLegalTransition('close', 'done'), true);
+  // 恒等恒真。
+  for (const status of ['open', 'check', 'done', 'close']) {
+    assert.equal(isLegalTransition(status, status), true);
+  }
+  // 升档与无编辑降档仍拒：check / done 只经 mark 端点（R14）。
+  assert.equal(isLegalTransition('open', 'check'), false);
+  assert.equal(isLegalTransition('open', 'done'), false);
+  assert.equal(isLegalTransition('check', 'done'), false);
+  assert.equal(isLegalTransition('check', 'open'), false);
+  assert.equal(isLegalTransition('done', 'open'), false);
+  assert.equal(isLegalTransition('done', 'check'), false);
+});
+
+test('isLegalMarkTransition：mark 端点仍只收 open / check → check / done，不收 close', () => {
+  assert.equal(isLegalMarkTransition('open', 'check'), true);
+  assert.equal(isLegalMarkTransition('open', 'done'), true);
+  assert.equal(isLegalMarkTransition('check', 'done'), true);
+  assert.equal(isLegalMarkTransition('done', 'done'), false);
+  assert.equal(isLegalMarkTransition('done', 'close'), false);
+  assert.equal(isLegalMarkTransition('close', 'open'), false);
 });
 
 test('normalizeDoc 只认 annotations（旧 marks 键由 migrate-ledgers.mjs 迁净）', () => {
