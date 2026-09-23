@@ -185,8 +185,10 @@ test('manifest navigation survives rapid page switches and persists the winner',
   // 阶段 7：Page 去类型化 —— 行只剩标题，壳标 pill 撤除（类型信息下移到
   // 「内容」区产物条目的 tag）。
   // pp2 切片 2：Component Library 系统页退役，清单里不再有系统行。
+  // 范例页：_index.json 重新有页，manifest 行排在 registry 行前。
   // 2026-08-17g：行尾新增相对时间元素，标题断言收窄到 .wb-page-t。
   await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
+    '范例：冲一杯',
     'E2E iOS',
     'E2E Site',
     'E2E Proxy App',
@@ -227,9 +229,11 @@ test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page })
   // 阶段 6：e2e-mixed 固件（混合板）追加在尾。
   // 阶段 7：Page 去类型化 —— 行 = 纯标题（壳标 pill / data-page-mode 一并撤除）。
   // pp2 切片 2：Component Library 系统页退役，清单里不再有系统行。
+  // 范例页：_index.json 重新有页，manifest 行排在 registry 行前。
   // 2026-08-17g：行尾新增相对时间元素，标题断言收窄到 .wb-page-t。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
+    '范例：冲一杯',
     'E2E iOS',
     'E2E Site',
     'E2E Proxy App',
