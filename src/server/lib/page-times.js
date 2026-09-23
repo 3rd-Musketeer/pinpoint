@@ -6,11 +6,11 @@ import { annotationsFromDoc } from '../../shared/annotation-indicator.js';
 /**
  * 一个桶目录里各账本的时间 → { pageId: ms }。
  *
- * storage-unify（桶 = 页）后主规则：桶里的账本整体属于这个页，页时间 = 各账本
- * 最近一次保存（updated_at）。读侧兼容两条存量形态：
- * - `page_updated_at` 逐页映射（写侧已停写，见 annotation-store.save）：照读；
- * - 无映射的旧账本：行上 pageId 唯一时把 updated_at 记给那个页；一行 pageId
- *   都没有（含空账本）记给桶的 fallback 页。
+ * storage-unify（桶 = 页）后主规则：桶里的账本整体属于这个页，各账本
+ * updated_at 一律记给桶 id（fallbackPageId）——rename 只改桶名就够，宿主 +
+ * 挂靠混合桶也不断档。行上 pageId 归因只作旧账本兼容：迁移前的 pinpoint
+ * 兜底桶（fallbackPageId = null）里一本账装多页，按单页行归因；page_updated_at
+ * 逐页映射（写侧已停写，见 annotation-store.save）两种读法都照读。
  * 多页混合且无映射的旧画布账本归因不了，不造时间（与旧读侧同判）。
  */
 export function annotationPageTimes(dataDir, fallbackPageId) {
@@ -22,9 +22,15 @@ export function annotationPageTimes(dataDir, fallbackPageId) {
     try {
       const doc = JSON.parse(fs.readFileSync(path.join(dataDir, file), 'utf8'));
       for (const [id, at] of Object.entries(doc.page_updated_at || {})) take(id, at);
-      const ids = [...new Set(annotationsFromDoc(doc).map(a => a.pageId).filter(Boolean))];
-      if (ids.length === 1) take(ids[0], doc.updated_at);
-      else if (!ids.length && fallbackPageId) take(fallbackPageId, doc.updated_at);
+      // 桶 = 页：账本时间记给桶 id。行上 pageId 归因只在旧账本读法（pinpoint
+      // 兜底桶，fallbackPageId 为空）里保留 —— 单页行记给那个页，多页混合
+      // 归因不了，不造时间。
+      if (fallbackPageId) {
+        take(fallbackPageId, doc.updated_at);
+      } else {
+        const ids = [...new Set(annotationsFromDoc(doc).map(a => a.pageId).filter(Boolean))];
+        if (ids.length === 1) take(ids[0], doc.updated_at);
+      }
     } catch { /* A broken ledger does not fabricate a timestamp. */ }
   }
   return times;
