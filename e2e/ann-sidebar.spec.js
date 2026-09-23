@@ -143,6 +143,61 @@ test('/sites/ page: row shows the broken state after its target leaves the DOM',
   await expect(row.locator('.wb-ann-broken-tag')).toHaveText('锚点失效');
 });
 
+test('pp2 侧栏关闭全流程：open 行点完成 → 撤销回 open → 再完成 → 已关闭段展开 → 重新打开', async ({ page }) => {
+  // 与 workbench.spec 的面板关闭全流程同一条链，跑在注入侧栏上：行尾完成勾
+  // 单击即 close，toast 撤销回关前原态，已关闭段常驻、close 行可重开。
+  await page.goto('/sites/e2e-dir/doc.html');
+  await page.waitForFunction(() => window.pinpoint);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await annotate(page, '#doc-target', '走完侧栏关闭流程的意见');
+  const n = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+  await page.keyboard.press('s');
+  const sidebar = page.locator('#ann-sidebar');
+  await expect(sidebar).toBeVisible();
+
+  const toggle = sidebar.locator('.wb-ann-closed-toggle');
+  // 已关闭段常驻：还没有关闭行时也显示，弱化不可展开
+  await expect(toggle).toHaveText('▸ 已关闭 0');
+  await expect(toggle).toBeDisabled();
+
+  // open 行点「完成」：单击即关（不二次确认），toast「已完成 #n」带撤销
+  // （acts 列 hover 才 pointer-events:auto，先 hover 行再点）
+  const openRow = sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]');
+  await openRow.hover();
+  await openRow.getByRole('button', { name: '完成 #' + n, exact: true }).click();
+  await expect(sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(0);
+  await expect(toggle).toHaveText('▸ 已关闭 1');
+  const toast = page.locator('#ann-toast');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('已完成 #' + n);
+
+  // 撤销 → 回关闭前的原态（这行是 open），行回列表，toast 收起
+  await toast.locator('button').click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
+  await expect(sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(1);
+  await expect(toast).toBeHidden();
+  // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  // 再点完成，这次不撤销：行收进已关闭段，点开关展开，close 行带状态标与「重新打开」
+  const redoRow = sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]');
+  await redoRow.hover();
+  await redoRow.getByRole('button', { name: '完成 #' + n, exact: true }).click();
+  await expect(toggle).toHaveText('▸ 已关闭 1');
+  await toggle.click();
+  const closedRow = sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]');
+  await expect(closedRow.locator('.wb-ann-status-tag')).toHaveText('close');
+  await closedRow.hover();
+  await expect(closedRow.getByRole('button', { name: '重新打开标注 ' + n, exact: true })).toBeVisible();
+
+  // 重新打开 → 回 open 列表，已关闭段回 0（仍常驻；展开态保持，只是空了）
+  await closedRow.getByRole('button', { name: '重新打开标注 ' + n, exact: true }).click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
+  await expect(sidebar.locator('.wb-ann-item[data-ann-n="' + n + '"]')).toHaveCount(1);
+  await expect(toggle).toHaveText('▾ 已关闭 0');
+  await expect(toggle).toBeDisabled();
+});
+
 test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => {
   await page.goto('/e2e/spa-fixture.html');
   await page.waitForFunction(() => window.pinpoint);
