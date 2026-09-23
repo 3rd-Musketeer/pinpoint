@@ -43,6 +43,7 @@ import {
   runRename,
   runRender,
   runRemove,
+  runList,
   runStatus,
   runStop,
   serviceLogPath,
@@ -1854,4 +1855,36 @@ test('runStatus --page：页在 registry 里但加载失败（url 条目）原�
   assert.equal(code, 1);
   assert.ok(rec.err.some((line) => /找不到页：t-live/.test(line)), rec.err.join('\n'));
   assert.ok(!rec.out.some((line) => line.includes('全是孤儿')), `活页的账本不该被报成孤儿：\n${rec.out.join('\n')}`);
+});
+
+/* ---- list ---- */
+
+test('runList: 关键词对上口头说法，计数读页桶，找不到时给出路', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'routine');
+  fs.writeFileSync(path.join(site, 'board.json'), '{"sections":[]}');
+  const file = registryWith(dir, [
+    { id: 'routine-creator', title: 'Routine 创建', kind: 'dir', path: site },
+    { id: 'docs', title: 'Handbook', kind: 'dir', path: makeSite(dir, 'docs') },
+  ]);
+  const dataRootDir = path.join(dir, 'data');
+  fs.mkdirSync(path.join(dataRootDir, 'routine-creator'), { recursive: true });
+  fs.writeFileSync(path.join(dataRootDir, 'routine-creator', '@canvas.json'), JSON.stringify({
+    annotations: [{ n: 1, status: 'open' }, { n: 2, status: 'check' }, { n: 3, status: 'close' }],
+  }));
+  const env = { PINPOINT_DATA_DIR: dataRootDir };
+
+  const rec = recorder();
+  assert.equal(await runList(['list', 'routines', '--registry', file], { ...rec.io, cwd: dir, env }), 0);
+  assert.match(rec.out[0], /^routine-creator {2}· {2}Routine 创建 {2}· {2}编译页 {2}· {2}open 1 · check 1 · done 0$/);
+  assert.equal(rec.out[1], '    ' + site);
+  assert.match(rec.out.at(-1), /^共 1 页（匹配“routines”）/);
+
+  const all = recorder();
+  assert.equal(await runList(['list', '--registry', file], { ...all.io, cwd: dir, env }), 0);
+  assert.ok(all.out.some((line) => /^docs {2}· {2}Handbook {2}· {2}文档页$/.test(line)));
+
+  const none = recorder();
+  assert.equal(await runList(['list', 'zzz-nothing', '--registry', file], { ...none.io, cwd: dir, env }), 1);
+  assert.match(none.out[0], /没有匹配“zzz-nothing”的页/);
 });

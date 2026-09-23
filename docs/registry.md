@@ -88,8 +88,11 @@ pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
 pinpoint remove <id>
+pinpoint list   [关键词…]
 pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <id> | move <页 id> <夹 id|none>
 ```
+
+`list` 只读：每页一行 id · 标题 · 类型 · 标注计数 · 文件夹，次行源路径；带关键词时在 id、标题、路径、文件夹名上宽松匹配（英文复数自动去 s），给 agent 把 owner 的口头说法对上页 id。
 
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
 而不是新增一行 Pages——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），

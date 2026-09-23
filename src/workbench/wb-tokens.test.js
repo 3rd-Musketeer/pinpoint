@@ -20,7 +20,8 @@ test('workbench/wb-tokens.css is in sync with its generator', () => {
 // wb-tw.css 的 @theme inline 映射也只能指向桥里真实定义的变量。
 test('shadcn bridge section only references --wb-* tokens', () => {
   const css = buildWbTokensCss();
-  const blocks = css.match(/:root \{[\s\S]*?\n\}/g) || [];
+  // 只数顶层 :root（行首）；暗色段在 @media 里缩进，不算桥。
+  const blocks = css.match(/^:root \{[\s\S]*?\n\}/gm) || [];
   assert.equal(blocks.length, 2, 'expected ladder :root + bridge :root');
   const bridge = blocks[1];
   const defined = new Set([...blocks[0].matchAll(/(--wb-[a-z0-9-]+)\s*:/gi)].map((m) => m[1]));
