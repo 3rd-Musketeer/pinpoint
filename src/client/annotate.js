@@ -1480,10 +1480,19 @@
   }
 
   function doClear() {
-    marks = marks.filter(function (k) { return !markOnActivePage(k); });
-    closeComposer({ silentRender: true });
-    persist();
-    btnClear.className = 'ok'; btnClear.textContent = '已清空 ✓';
+    // 决定 #11：close 是执行历史 —— 清空只带走当前页未关闭的行（open / check /
+    // done），已关闭的留在账本里。页内工具条「清空标记」与工作台弹层「清空未
+    // 关闭标注」走同一个函数；后者的计数只数未关闭（annSnap.countClosed）。
+    var before = marks.length;
+    marks = marks.filter(function (k) { return !(markOnActivePage(k) && isClearableMark(k)); });
+    if (marks.length === before) {
+      // 只剩已关闭：没东西可清，别谎报成功。
+      btnClear.textContent = '仅剩已关闭';
+    } else {
+      closeComposer({ silentRender: true });
+      persist();
+      btnClear.className = 'ok'; btnClear.textContent = '已清空 ✓';
+    }
     setTimeout(function () { btnClear.className = ''; btnClear.textContent = '清空标记'; }, 2000);
   }
 

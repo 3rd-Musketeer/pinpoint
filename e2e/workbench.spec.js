@@ -1493,10 +1493,11 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeVisible();
 
-  // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行
+  // 清空 = 两段确认（收在「···」里）：首击 armed（确认清空），再击才执行。
+  // 决定 #11：close 是执行历史 —— 按钮与计数只看未关闭的行。
   await page.locator('#wbann-more').click();
   await page.locator('#wbann-clear').click();
-  await expect(page.locator('#wbann-clear')).toHaveText('确认清空标注（1）');
+  await expect(page.locator('#wbann-clear')).toHaveText('确认清空未关闭标注（1）');
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await page.locator('#wbann-clear').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
@@ -1552,6 +1553,43 @@ test('pp2 面板关闭全流程：open 行点完成 → 撤销回 open → 再�
   await expect(toggle).toHaveText('▾ 已关闭 0');
   await expect(toggle).toBeDisabled();
   await page.keyboard.press('Escape');
+});
+
+test('清空只带走未关闭：close 行留在账本与已关闭段里（决定 #11）', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'close 的是执行历史');
+  const keep = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+  await cells.nth(1).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(1), '清空带走的 open 行');
+  const gone = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  await openAnnList(page);
+  // 第一条标 close（owner 收尾），行收进已关闭段
+  await page.locator('#wbann-list .wb-ann-item[data-ann-n="' + keep + '"] .wb-ann-done').click();
+  await expect(page.locator('#wbann-list .wb-ann-closed-toggle')).toHaveText('▸ 已关闭 1');
+
+  // 文案换成清空未关闭；确认态的计数只数未关闭（页上 1 open + 1 close）
+  await page.locator('#wbann-more').click();
+  const clearBtn = page.locator('#wbann-clear');
+  await expect(clearBtn).toHaveText('清空未关闭标注');
+  await clearBtn.click();
+  await expect(clearBtn).toHaveText('确认清空未关闭标注（1）');
+  await clearBtn.click();
+
+  // open 行没了，close 行还在账本里；「···」仍在（总数 = 1），展开已关闭段找得到它
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].status)).toBe('close');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].n)).toBe(keep);
+  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(0);
+  await page.locator('#wbann-more').click();
+  await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
+  await page.locator('#wbann-list .wb-ann-closed-toggle').click();
+  const closedRow = page.locator('#wbann-list .wb-ann-item[data-ann-n="' + keep + '"]');
+  await expect(closedRow.locator('.wb-ann-status-tag')).toHaveText('close');
+  await expect(closedRow.locator('.wb-ann-text')).toContainText('close 的是执行历史');
 });
 
 test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互不压盖（2026-09-04 G1 + G1b）', async ({ page }) => {
