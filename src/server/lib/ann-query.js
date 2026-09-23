@@ -45,7 +45,8 @@ import {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 
-/** 一个桶目录下的全部账本行（跳过 _seq.json；坏文件跳过）。 */
+/** 一个桶目录下的全部账本行（跳过 _seq.json；坏文件跳过）。行带 __ledger 与
+    __docPath（账本的表面路径，doc 页标注按路径分账本，check 显示用）。 */
 export function readBucketRows(bucketPath) {
   const out = [];
   if (!fs.existsSync(bucketPath)) return out;
@@ -59,10 +60,11 @@ export function readBucketRows(bucketPath) {
     }
     const rows = Array.isArray(doc.annotations) ? doc.annotations : [];
     const ledger = name.replace(/\.json$/, '');
+    const docPath = typeof doc.path === 'string' ? doc.path : '';
     for (const row of rows) {
       const normalized = normalizeAnnotation(row);
       if (!normalized || typeof normalized !== 'object') continue;
-      out.push({ ...normalized, __ledger: ledger });
+      out.push({ ...normalized, __ledger: ledger, __docPath: docPath });
     }
   }
   return out;
@@ -86,38 +88,70 @@ export function collectPageRows({ root, pageId, skipLedgers = [] }) {
   return { frameRows, docRows };
 }
 
-/** check / locate / status / prune 的页上下文：编译目标 + 板 + 引用号 + 标注 + 孤儿。 */
-export function loadPageContext({ pageRef, registryPath = null, root = null, dataRootDir = null }) {
-  const repoRoot = root || REPO_ROOT;
-  const registry = loadRegistry({ root: repoRoot, path: registryPath || undefined });
-  const target = resolvePageTarget(pageRef, { registry, root: repoRoot });
-  if (!target) return null;
-  let board = null;
-  try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
-  } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
-  const dataRootValue = dataRootDir || dataRoot();
-  // 孤儿账本（storage-unify）：从帧/文档行里摘出去，单独挂在上下文上。
-  const localIds = manifestPageIds(repoRoot);
+/** 孤儿账本 + 本页标注行的装配（编译页与 doc 页共用）：孤儿从帧/文档行里
+    摘出去，单独挂在上下文上，清理只经 prune。 */
+function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, board, isManifestPage }) {
   const orphanLedgers = collectPageOrphans({
-    pageId: target.entryId,
+    pageId,
     dataRoot: dataRootValue,
     entries: registry.entries,
-    isManifestPage: !registry.resolve(target.entryId) && localIds.includes(target.entryId),
+    isManifestPage,
     previewsRoot: path.join(repoRoot, 'content', 'previews'),
   });
   const { frameRows, docRows } = collectPageRows({
     root: dataRootValue,
-    pageId: target.entryId,
+    pageId,
     skipLedgers: orphanLedgers.map((name) => name.replace(/\.json$/, '')),
   });
-  const orphanRows = readBucketLedgers(path.join(dataRootValue, target.entryId))
+  const orphanRows = readBucketLedgers(path.join(dataRootValue, pageId))
     .filter((ledger) => orphanLedgers.includes(ledger.name))
     .flatMap((ledger) => (Array.isArray(ledger.doc.annotations) ? ledger.doc.annotations : [])
       .map((row) => normalizeAnnotation(row)))
     .filter(Boolean)
-    .map((row) => ({ ...row, __bucket: target.entryId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, target.entryId)) }));
-  return { pageId: target.entryId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows };
+    .map((row) => ({ ...row, __bucket: pageId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, pageId)) }));
+  return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows };
+}
+
+/**
+ * check / locate / status / prune 的页上下文：编译目标 + 板 + 引用号 + 标注 + 孤儿。
+ * 编译页落空时的回落：registry 里没有 board.json 的 dir / file 条目也是页
+ * （storage-unify 的桶就是页，每个 pathname 一本文档账本）—— 没有板、没有
+ * dist，check / status / mark 照常，摘录与截图这类编译面由调用方按 docOnly
+ * 明说不可用。url 条目不认（页清单只收 dir / file），维持「找不到页」。
+ */
+export function loadPageContext({ pageRef, registryPath = null, root = null, dataRootDir = null }) {
+  const repoRoot = root || REPO_ROOT;
+  const registry = loadRegistry({ root: repoRoot, path: registryPath || undefined });
+  const dataRootValue = dataRootDir || dataRoot();
+  const target = resolvePageTarget(pageRef, { registry, root: repoRoot });
+  if (!target) {
+    const entry = registry.resolve(String(pageRef || ''));
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
+    const docTarget = {
+      entryId: entry.id,
+      pageDir: entry.kind === 'dir' && typeof entry.path === 'string' ? path.resolve(entry.path) : null,
+      urlBase: `/sites/${entry.id}/`,
+      kind: entry.kind,
+      docOnly: true,
+    };
+    return {
+      ...contextWithRows({ registry, repoRoot, dataRootValue, pageId: entry.id, target: docTarget, board: null, isManifestPage: false }),
+      docOnly: true,
+    };
+  }
+  let board = null;
+  try {
+    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+  } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
+  return contextWithRows({
+    registry,
+    repoRoot,
+    dataRootValue,
+    pageId: target.entryId,
+    target,
+    board,
+    isManifestPage: !registry.resolve(target.entryId) && manifestPageIds(repoRoot).includes(target.entryId),
+  });
 }
 
 function orphanLedgerOf(row, orphanLedgers, bucketPath) {
@@ -448,6 +482,7 @@ export function checkRowModel(row, context) {
     frameRef: frame ? frame[1] : '',
     bucket: row.__bucket,
     ledger: row.__ledger,
+    docPath: row.__docPath || '',
   };
 }
 
@@ -458,7 +493,9 @@ export function checkRowModel(row, context) {
 export function buildCheckReport(context, options = {}) {
   const status = options.status || 'open';
   const groupBy = options.groupBy || 'frame';
-  const wantExcerpt = (options.mode || 'excerpt') !== 'image';
+  // doc 页（无 board.json 的 dir / file 条目）没有编译面：不产摘录，报告里
+  // 明说（formatCheckMarkdown 的 docOnly 行）。
+  const wantExcerpt = (options.mode || 'excerpt') !== 'image' && !context.docOnly;
   const screenIds = context.refs.outline.flatMap((section) => section.frames.map((frame) => frame.id));
   const usage = compFrameUsage(context.distHtmlFor, screenIds);
 
@@ -544,7 +581,14 @@ export function buildCheckReport(context, options = {}) {
       rows: orphanRows.map((row) => ({ ...checkRowModel(row, context), orphan: true })),
     });
   }
-  return { page: context.pageId, status, groupBy, groups, counts: countByStatus([...context.frameRows, ...context.docRows]) };
+  return {
+    page: context.pageId,
+    status,
+    groupBy,
+    docOnly: !!context.docOnly,
+    groups,
+    counts: countByStatus([...context.frameRows, ...context.docRows]),
+  };
 }
 
 export function countByStatus(rows) {
@@ -560,6 +604,7 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
   lines.push(`# ${report.page} · 标注清单（${report.status}）`);
   const total = report.groups.reduce((sum, group) => sum + group.rows.length, 0);
   lines.push(`共 ${total} 条${report.status === 'all' ? '' : `（全量 ${report.counts.total}）`}`);
+  if (report.docOnly) lines.push('这页不是编译页，没有源码摘录。');
   if (imagePaths && report.groups.some((group) => group.kind === 'frame')) {
     const seen = new Set();
     for (const group of report.groups) {
@@ -574,6 +619,7 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     for (const row of group.rows) {
       const parts = [`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`];
       if (row.note) parts.push(`· note：${row.note}`);
+      if (row.docPath) parts.push(`· ${row.docPath}`);
       if (row.comp) parts.push(`· ${row.comp}（共用 ${row.sharedFrames} 帧）`);
       lines.push(parts.join(' '));
       if (row.excerpt && row.excerpt.length) {
@@ -595,6 +641,11 @@ function displayN(row) {
 /** 一条标注的定位行。 */
 export function locateLine(row, context) {
   const n = displayN(row);
+  // doc 页（无 board.json 的 dir / file 条目）没有源码定位：给出账本的表面路径。
+  if (context.docOnly) {
+    const where = row.__docPath || '文档页';
+    return { n: row.n, text: `#${n} → ${where}（这页不是编译页，没有源码定位）` };
+  }
   const distHtml = context.distHtmlFor(row.screenId || '');
   const where = row.screenId ? `${row.screenId}` : '文档页';
   if (!distHtml) {

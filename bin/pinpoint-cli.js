@@ -1870,19 +1870,25 @@ function printPageStatus(parsed, { env, out, err }) {
   // 找不到页的报错先攒着：整桶孤儿的页（删页后残留）有专门的报告，先打一行
   // 「错误：找不到页 + 可用页清单」全是噪音（K8）；真没桶再原样报错。
   const errors = [];
-  const context = loadAnnotateContext(parsed.flags.page, parsed, { env, err: (m) => errors.push(m) });
+  const pageRef = parsed.flags.page;
+  const context = loadAnnotateContext(pageRef, parsed, { env, err: (m) => errors.push(m) });
   if (!context) {
     // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
-    // 报告而不是裸报错，不然删页后的残留账本没有入口可见。
-    if (printBucketOrphanStatus(parsed.flags.page, { env, out })) return 0;
+    // 报告而不是裸报错，不然删页后的残留账本没有入口可见。报告只给两处都不在
+    // 的桶：页已知而加载失败的（url 条目等）原样报错，不把活页的账本吞成孤儿。
+    if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return 0;
     for (const line of errors) err(line);
     return 1;
   }
   const counts = countByStatus([...context.frameRows, ...context.docRows]);
-  const dist = distStatus(context.target.entryId, context.target.pageDir, { distRoot: path.join(dataRoot(env), 'dist') });
   out(`页 ${context.pageId}`);
   out(`  open ${counts.open} · check ${counts.check} · done ${counts.done} · close ${counts.close} · 共 ${counts.total}`);
-  out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
+  if (context.docOnly) {
+    out('  这页不是编译页（registry 条目没有 board.json），没有 dist 与源码摘录');
+  } else {
+    const dist = distStatus(context.target.entryId, context.target.pageDir, { distRoot: path.join(dataRoot(env), 'dist') });
+    out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
+  }
   const orphanCount = (context.orphanRows || []).length;
   if (orphanCount) out(`  孤儿 ${orphanCount} 条 · ${(context.orphanLedgers || []).join('、')}（表面已不存在，ppnt prune ${context.pageId} 清理）`);
   return 0;
@@ -1897,6 +1903,14 @@ function printBucketOrphanStatus(pageRef, { env, out }) {
   for (const name of names) out(`  ${name}`);
   out(`清理：ppnt prune ${pageRef}（--dry-run 先看清单）`);
   return true;
+}
+
+/** 页 id 是否在 registry 或本地 manifest 里（整桶孤儿报告只给两处都不在的桶）。 */
+function pageIdKnown(pageRef, parsed, { env }) {
+  if (!pageRef || !PAGE_ID_PATTERN.test(String(pageRef))) return false;
+  const registry = loadRegistry({ root: REPO_ROOT, path: resolveRegistryPath(parsed.flags, env) });
+  if (registry.resolve(pageRef)) return true;
+  return manifestPageIds(REPO_ROOT).includes(pageRef);
 }
 
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
