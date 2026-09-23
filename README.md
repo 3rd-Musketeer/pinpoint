@@ -295,3 +295,7 @@ Clone per project. `content/previews/` holds **template content only**: the trac
 The annotation system is a heavily extended fork of
 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)
 (section/page routing, disk SSOT + SSE, target composer, indicators).
+
+## “去 Manus 配置” 移出产品页（2026-09-10 晚，owner 问“正式的 web 里会有吗”）
+
+不会有。它只是原型里跳到 Manus 设置页模拟的入口，用来演示 “把 key 填进应用” 这一步；正式 Web 无法深链进第三方设置页。已从保存 key 页删除，保存页只剩 “我已保存”。模拟页改由评审工具栏的 “模拟 Manus 配置” 打开。

@@ -31,56 +31,81 @@ test.afterEach(async ({ request }) => {
   await resetFolders(request);
 });
 
-test('搜索框：打字即筛跨段、⌘K 聚焦、Esc 清空', async ({ page }) => {
+test('查看信息显示所点页面的真实来源，区分目录、URL 和内置组件库', async ({ page, request, context }) => {
+  await context.grantPermissions(['clipboard-read', 'clipboard-write']);
   await seedTemplatePagesVisible(page);
   await openWorkbench(page);
-
-  const input = page.locator('#wbsearch-input');
-  await expect(input).toHaveAttribute('placeholder', '搜索页面');
-
-  // ⌘K 把焦点送进搜索框（画布上按也管用 —— 监听挂在 window 上）。
-  await page.locator('#wbstage').click({ position: { x: 900, y: 300 } });
-  await page.keyboard.press('ControlOrMeta+k');
-  await expect(input).toBeFocused();
-
-  // 标题子串：只剩 E2E Mixed 一行。
-  await input.fill('mixed');
-  await expect(page.locator('#wbpages .wb-page')).toHaveCount(1);
-  await expect(page.locator('#wbpages .wb-page-t')).toHaveText(['E2E Mixed']);
-
-  // id 子串同样命中（标题里没有 "doc-library" 这个词）。
-  await input.fill('doc-library');
-  await expect(page.locator('#wbpages .wb-page-t')).toHaveText(['Example HTML']);
-
-  // Esc 清空并交还焦点，列表整份回来。
-  await input.press('Escape');
-  await expect(input).toHaveValue('');
-  await expect(page.locator('#wbpages .wb-page')).toHaveCount(9);
+  const registry = await (await request.get('/registry')).json();
+  const directory = registry.entries.find(entry => entry.id === 'e2e-dir');
+  const urlEntry = registry.entries.find(entry => entry.kind === 'url' && !entry.page);
+  const dialog = page.getByRole('dialog', { name: '查看信息' });
+  for (const [id, source, kind] of [
+    ['e2e-dir', directory.path, '本地目录'],
+    [urlEntry.id, urlEntry.url, 'URL 网页'],
+    ['components', '/content/kits/ios/components', '内置组件库']
+  ]) {
+    await page.locator('#wbpages [data-vpage="' + id + '"]').click({ button: 'right' });
+    await page.locator('[data-page-info="' + id + '"]').click();
+    await expect(dialog).toBeVisible();
+    await expect(dialog.locator('code')).toContainText(source);
+    await expect(dialog).toContainText(kind);
+    await expect(dialog.locator('dd').filter({ hasText: new RegExp('^' + id + '$') })).toHaveCount(1);
+    const box = await dialog.boundingBox();
+    const viewport = page.viewportSize();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(viewport.width);
+    expect(box.y + box.height).toBeLessThanOrEqual(viewport.height);
+    await dialog.getByRole('button', { name: '复制', exact: true }).click();
+    await expect(dialog.getByRole('button', { name: '已复制' })).toBeVisible();
+    expect(await page.evaluate(() => navigator.clipboard.readText())).toContain(source);
+    await dialog.press('Escape');
+    await expect(dialog).toHaveCount(0);
+  }
 });
 
-test('「最近」段：打开过的页最新在前，空则整段不出', async ({ page }) => {
+test('三个 icon tab 支持名称提示和键盘切换，只有页面 tab 提供新建', async ({ page }) => {
   await openWorkbench(page);
+  const tabs = page.getByRole('tablist', { name: '侧栏视图' });
+  await expect(tabs.getByRole('tab')).toHaveCount(3);
+  await expect(page.locator('#wbsearch')).toHaveCount(0);
+  for (const name of ['页面', '大纲', '已归档']) {
+    const tab = tabs.getByRole('tab', { name, exact: true });
+    await expect(tab).toHaveAttribute('title', name);
+    await expect(tab).toHaveText('');
+    await tab.click();
+    await expect(tab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.locator('.wb-side-toolbar [data-new-folder]')).toHaveCount(name === '页面' ? 1 : 0);
+  }
+  await tabs.getByRole('tab', { name: '已归档' }).press('ArrowRight');
+  await expect(tabs.getByRole('tab', { name: '页面', exact: true })).toBeFocused();
+  await tabs.getByRole('tab', { name: '页面', exact: true }).press('End');
+  await expect(tabs.getByRole('tab', { name: '已归档' })).toBeFocused();
+});
 
-  // 首访只记了默认页一条，`最近` 已经在了；打开两页后是最新在前。
+test('最近按三种变动时间排序，打开页面不会更新顺序', async ({ page, request }) => {
+  await openWorkbench(page);
+  const readIds = () => page.locator('#wbrecent [data-recent-page]').evaluateAll(els => els.map(el => el.dataset.recentPage));
+  const before = await readIds();
+  expect(before.length).toBeGreaterThan(0);
   await page.locator('#wbpages [data-vpage="e2e-dir"]').click();
-  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await expect(page.locator('#wbrecent [data-recent-page="e2e-mixed"]')).toBeVisible();
-  const recent = await page.locator('#wbrecent .wb-recent')
-    .evaluateAll((els) => els.map((el) => el.getAttribute('data-recent-page')));
-  expect(recent.slice(0, 2)).toEqual(['e2e-mixed', 'e2e-dir']);
-  expect(recent.length).toBeLessThanOrEqual(5);
-  // 行尾是「打开时刻」的相对时间，不是内容 mtime —— 刚点的那一行必然是「刚刚」。
-  await expect(page.locator('#wbrecent [data-recent-page="e2e-mixed"] .wb-row-m')).toHaveText('刚刚');
-
-  // 记录清空 → 整段不出（空段不留一个孤零零的段头）。
-  await page.evaluate(() => {
-    const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-    prefs.recentPages = [];
-    localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
-  });
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbrecent')).toHaveCount(0);
+  await expect.poll(readIds).toEqual(before);
+  const registry = await (await request.get('/registry')).json();
+  const expected = registry.entries.filter(e => !['pinpoint'].includes(e.id)).map(e => ({ id:e.id, at:Math.max(e.addedAt||0,e.mtime||0,e.annotatedAt||0) })).filter(e=>e.at).sort((a,b)=>b.at-a.at).slice(0,5).map(e=>e.id);
+  expect(before).toEqual(expected);
+  // Saving in another page's ledger must refresh Recent without reloading.
+  const saved = await request.post('/save', { data: {
+    entry: 'e2e-dir', page: 'recent-time-test', baseRevision: 0,
+    annotations: [{ id: 'recent-time-mark', pageId: 'e2e-dir', comment: 'time test' }]
+  } });
+  expect(saved.ok()).toBeTruthy();
+  const { revision } = await saved.json();
+  await expect.poll(async () => (await readIds())[0]).toBe('e2e-dir');
+  const after = await (await request.get('/registry')).json();
+  expect(after.pageTimes['e2e-dir'].annotatedAt).toBeGreaterThan(0);
+  const removed = await request.post('/save', { data: {
+    entry: 'e2e-dir', page: 'recent-time-test', baseRevision: revision, annotations: []
+  } });
+  expect(removed.ok()).toBeTruthy();
 });
 
 test('模板页默认藏起来，设置里的开关打开它；当前页是模板页时照旧显示', async ({ page }) => {
@@ -130,11 +155,44 @@ test('预览主题搬进预览设置：切的是被预览页面的主题', async
   await expect(page.locator('#wb-board-panel .ios-root').first()).toHaveAttribute('data-theme', 'light');
 });
 
+test('页面 tab 新建：聚焦全选、Esc 保留文件夹', async ({ page, request }) => {
+  await page.setViewportSize({ width: 1000, height: 480 });
+  await openWorkbench(page);
+  const archive = page.getByRole('tab', { name: '已归档' });
+  const create = page.locator('.wb-side-toolbar [data-new-folder]');
+  await archive.click();
+  await expect(page.getByRole('navigation', { name: '已归档页面' })).toBeVisible();
+  await expect(create).toHaveCount(0);
+  await page.getByRole('tab', { name: '页面', exact: true }).click();
+  const a = await archive.boundingBox();
+  const c = await create.boundingBox();
+  const scroll = await page.locator('#wbside-scroll').boundingBox();
+  expect(Math.abs(a.y + a.height / 2 - c.y - c.height / 2)).toBeLessThan(1);
+  expect(c.y + c.height).toBeLessThanOrEqual(scroll.y);
+  expect(c.x).toBeGreaterThan(a.x + a.width);
+  await create.click();
+  const input = page.getByRole('textbox', { name: '重命名文件夹' });
+  await expect(input).toBeFocused();
+  await expect(input).toHaveValue('新建文件夹');
+  expect(await input.evaluate(el => el.selectionEnd - el.selectionStart)).toBe(5);
+  const box = await input.boundingBox();
+  expect(box.y).toBeGreaterThanOrEqual(scroll.y);
+  expect(box.y + box.height).toBeLessThanOrEqual(scroll.y + scroll.height - 22);
+  await input.fill('');
+  await input.press('Escape');
+  await expect(input).toHaveCount(0);
+  await expect(page.locator('[data-folder="folder-1"]')).toHaveText('新建文件夹');
+  const registry = await (await request.get('/registry')).json();
+  expect(registry.folders).toContainEqual({ id: 'folder-1', name: '新建文件夹' });
+  await page.reload();
+  await expect(page.locator('[data-folder="folder-1"]')).toHaveText('新建文件夹');
+});
+
 test('文件夹：新建 → 改名 → 拖进 → 折叠记住 → 拖出 → 删夹不删页', async ({ page }) => {
   await openWorkbench(page);
 
-  // 新建：段尾那一行；建完当场进行内改名。
-  await page.locator('#wbpages [data-new-folder]').click();
+  // 新建：页面工具栏入口；建完当场进行内改名。
+  await page.locator('.wb-side-toolbar [data-new-folder]').click();
   const folder = page.locator('#wbpages [data-folder="folder-1"]');
   await expect(folder).toBeVisible();
   await page.locator('.wb-folder-rename').fill('在做');
@@ -218,3 +276,31 @@ test('夹内拖排序只在「默认」档写 order；右键菜单是拖放之�
 // 页面行行首的类型图标（owner 2026-09-05 下午定的映射：画布 smartphone / 文档
 // file-text / 网页 globe，每一行都有——上午撤掉是因为只给了两种、目录条目没有）。
 // 横条的类型标用同一个图标，两处一致。
+
+
+test('最近与 Pages 共用右键菜单，信息与归档作用于同一页', async ({ page }) => {
+  await openWorkbench(page);
+  const row = page.locator('#wbrecent [data-recent-page]').first();
+  const id = await row.getAttribute('data-recent-page');
+  await row.click({ button: 'right' });
+  const menu = page.getByRole('menu');
+  await expect(menu).toBeVisible();
+  const box = await menu.boundingBox();
+  expect(box.x).toBeGreaterThanOrEqual(0);
+  expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize().height);
+  const labels = await menu.getByRole('menuitem').allTextContents();
+  await page.locator('[data-page-info="' + id + '"]').click();
+  const dialog = page.getByRole('dialog', { name: '查看信息' });
+  await expect(dialog).toContainText(id);
+  await dialog.press('Escape');
+  await page.locator('#wbpages [data-vpage="' + id + '"]').click({ button: 'right' });
+  await expect(menu).toBeVisible();
+  expect(await menu.getByRole('menuitem').allTextContents()).toEqual(labels);
+  await page.keyboard.press('Escape');
+  await row.click({ button: 'right' });
+  await page.locator('[data-archive-page="' + id + '"]').click();
+  await expect(page.locator('#wbrecent [data-recent-page="' + id + '"]')).toHaveCount(0);
+  await expect(page.locator('#wbpages [data-vpage="' + id + '"]')).toHaveCount(0);
+  await page.getByRole('tab', { name: '已归档', exact: true }).click();
+  await expect(page.locator('[data-vpage="' + id + '"]')).toBeVisible();
+});

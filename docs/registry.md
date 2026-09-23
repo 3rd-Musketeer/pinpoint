@@ -25,8 +25,8 @@
   dir / file 路径不存在是 warning，不是删除。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表 + `service.directOrigin`）。
-- `GET /registry` 还给 dir / file 条目附 `mtime`（内容 mtime，dir 递归取最大），
-  给 Pages 的「最近更新」排序用（ADR 0029）。
+- `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。URL 页的内容修改时间未知。
+- 标注账本的 `page_updated_at` 保留逐页时间，新增、修改和删除标注都会更新；无变化或冲突拒绝的保存不更新。旧单页账本可使用保存时间，旧混合账本无法准确归属时留空。
 
 ## 分组层（文件夹）
 

@@ -52,51 +52,51 @@ test('Pages 行内时间显示：dir 条目出相对时间，url 条目不出', 
   await expect(page.locator('#wbpages [data-vpage="e2e-dir"] .wb-page-time')).toHaveText('1-1');
   // url 条目与本地示例页无 mtime，不出时间元素。
   await expect(page.locator('#wbpages [data-vpage="e2e-site"] .wb-page-time')).toHaveCount(0);
-  await expect(page.locator('#wbpages [data-vpage="library"] .wb-page-time')).toHaveCount(0);
+  await expect(page.locator('#wbpages [data-vpage="library"] .wb-page-time')).toHaveCount(1);
 });
 
-test('排序切换循环三档并持久化', async ({ page }) => {
+test('排序菜单选择依据与方向，勾选、关闭、持久化且最近不变', async ({ page, request }) => {
   await openWorkbench(page);
-
-  const sortBtn = page.locator('.wb-page-sort');
-  await expect(sortBtn).toHaveAttribute('data-page-sort', 'default');
-  expect(await pageOrder(page)).toEqual(DEFAULT_ORDER);
-
-  // 最近更新：mtime 倒序；无 mtime 的页（本地示例 + url 条目）按原相对顺序沉底。
-  // 2026-09-04 起 Component Library 也走同一趟排序（切片 ② 把它并进了分组模型，
-  // 不再是钉在表头的系统行）—— 它没有 mtime，所以跟着其它无 mtime 的页沉底。
-  await sortBtn.click();
-  await expect(sortBtn).toHaveAttribute('data-page-sort', 'updated');
-  expect(await pageOrder(page)).toEqual([
-    'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
-  ]);
-
-  // 名称：zh locale 排序（此处全 Latin 标题，E2E* 先于 Example*）。
-  await sortBtn.click();
-  await expect(sortBtn).toHaveAttribute('data-page-sort', 'name');
-  expect(await pageOrder(page)).toEqual([
-    'components',
-    'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-proxy', 'e2e-site',
-    'doc-library', 'library',
-  ]);
-
-  // 第三击回到默认；选择写进 prefs。
-  await sortBtn.click();
-  await expect(sortBtn).toHaveAttribute('data-page-sort', 'default');
-  expect(await pageOrder(page)).toEqual(DEFAULT_ORDER);
-  await expect.poll(() =>
-    page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).pageSort),
-  ).toBe('default');
-
-  // 持久化：切到 updated 后 reload，排序档与顺序都保持。
-  await sortBtn.click();
-  await expect(sortBtn).toHaveAttribute('data-page-sort', 'updated');
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('.wb-page-sort')).toHaveAttribute('data-page-sort', 'updated');
-  expect(await pageOrder(page)).toEqual([
-    'e2e-mixed', 'e2e-dir-ios', 'e2e-mention', 'e2e-dir',
-    'components', 'library', 'doc-library', 'e2e-site', 'e2e-proxy',
-  ]);
+  const button = page.locator('.wb-page-sort');
+  const menu = page.getByRole('menu', { name: /^Pages 排序：/ });
+  const data = await (await request.get('/registry')).json();
+  const readRecent = () => page.locator('#wbrecent [data-recent-page]').evaluateAll(els => els.map(el => el.dataset.recentPage));
+  const recent = await readRecent();
+  const choices = [
+    ['name', '名称（A–Z）'], ['name-desc', '名称（Z–A）'],
+    ['added', '添加时间（从新到旧）', 'addedAt'], ['added-asc', '添加时间（从旧到新）', 'addedAt'],
+    ['updated', '最后修改时间（从新到旧）', 'mtime'], ['updated-asc', '最后修改时间（从旧到新）', 'mtime'],
+    ['annotated', '最后标注时间（从新到旧）', 'annotatedAt'], ['annotated-asc', '最后标注时间（从旧到新）', 'annotatedAt'],
+    ['default', '手动排序']
+  ];
+  const titles = await page.locator('#wbpages [data-vpage]').evaluateAll(els => Object.fromEntries(els.map(el => [el.dataset.vpage, el.querySelector('.wb-page-t').textContent])));
+  for (const [sort, label, key] of choices) {
+    await button.click();
+    await expect(menu.getByRole('menuitemradio')).toHaveCount(9);
+    const box = await menu.boundingBox();
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(page.viewportSize().width);
+    expect(box.y + box.height).toBeLessThanOrEqual(page.viewportSize().height);
+    await menu.getByRole('menuitemradio', { name: label, exact: true }).click();
+    await expect(menu).toHaveCount(0);
+    await expect(button).toHaveAttribute('data-page-sort', sort);
+    const expected = DEFAULT_ORDER.slice().sort((a, b) => {
+      if (key) {
+        const at = data.pageTimes[a]?.[key] || 0, bt = data.pageTimes[b]?.[key] || 0;
+        if (!at || !bt) return at ? -1 : bt ? 1 : 0;
+        return sort.endsWith('-asc') ? at - bt : bt - at;
+      }
+      if (sort.startsWith('name')) return titles[a].localeCompare(titles[b], 'zh') * (sort === 'name-desc' ? -1 : 1);
+      return 0;
+    });
+    expect(await pageOrder(page)).toEqual(expected);
+    expect(await readRecent()).toEqual(recent);
+    await page.reload();
+    await expect(button).toHaveAttribute('data-page-sort', sort);
+    await button.click();
+    await expect(menu.getByRole('menuitemradio', { name: label, exact: true })).toHaveAttribute('aria-checked', 'true');
+    await page.keyboard.press('Escape');
+    await expect(menu).toHaveCount(0);
+    await expect(button).toBeFocused();
+  }
 });

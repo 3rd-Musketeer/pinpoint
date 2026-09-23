@@ -1,19 +1,23 @@
-// Pages 排序与相对时间（2026-08-17g）：纯函数，Sidebar 消费。
-// 排序档：default（manifest + registry 书写顺序）→ updated（内容 mtime 倒序，
-// 无 mtime 的页保持原相对顺序沉底）→ name（标题 locale 排序）。一档只回答
-// 一个问题；「最近活跃（含标注）」是另一个档，不在此列（见 backlog）。
-export var PAGE_SORTS = ['default', 'updated', 'name'];
-
+// 页面时间排序：添加、源文件修改、标注变动独立记录；最近取三者最大值。
+export var PAGE_SORT_GROUPS = [
+  ['name', 'name-desc'],
+  ['added', 'added-asc'],
+  ['updated', 'updated-asc'],
+  ['annotated', 'annotated-asc'],
+  ['default']
+];
+export var PAGE_SORTS = PAGE_SORT_GROUPS.flat();
 export var PAGE_SORT_LABELS = {
-  default: '默认',
-  updated: '最近更新',
-  name: '名称'
+  default: '手动排序',
+  name: '名称（A–Z）',
+  'name-desc': '名称（Z–A）',
+  added: '添加时间（从新到旧）',
+  'added-asc': '添加时间（从旧到新）',
+  updated: '最后修改时间（从新到旧）',
+  'updated-asc': '最后修改时间（从旧到新）',
+  annotated: '最后标注时间（从新到旧）',
+  'annotated-asc': '最后标注时间（从旧到新）'
 };
-
-export function nextPageSort(current) {
-  var i = PAGE_SORTS.indexOf(current);
-  return PAGE_SORTS[(i + 1) % PAGE_SORTS.length] || PAGE_SORTS[0];
-}
 
 export function normalizePageSort(value) {
   return PAGE_SORTS.indexOf(value) >= 0 ? value : 'default';
@@ -21,12 +25,18 @@ export function normalizePageSort(value) {
 
 export function sortPages(pages, sort) {
   var list = pages.slice();
-  if (sort === 'updated') {
-    // Array.prototype.sort 是稳定排序：无 mtime（0）的页按原顺序沉底。
-    list.sort(function (a, b) { return (b.mtime || 0) - (a.mtime || 0); });
-  } else if (sort === 'name') {
+  var basis = sort?.split('-')[0];
+  if (['added', 'updated', 'annotated'].includes(basis)) {
     list.sort(function (a, b) {
-      return String(a.title || a.id).localeCompare(String(b.title || b.id), 'zh');
+      var at = pageTime(a, basis), bt = pageTime(b, basis);
+      // Unknown times stay last in either direction; ties retain their order.
+      if (!at || !bt) return at ? -1 : bt ? 1 : 0;
+      return sort.endsWith('-asc') ? at - bt : bt - at;
+    });
+  } else if (basis === 'name') {
+    list.sort(function (a, b) {
+      var comparison = String(a.title || a.id).localeCompare(String(b.title || b.id), 'zh');
+      return sort === 'name-desc' ? -comparison : comparison;
     });
   }
   return list;
@@ -53,4 +63,17 @@ export function formatRelativeTime(mtimeMs, nowMs) {
   var md = (date.getMonth() + 1) + '-' + date.getDate();
   if (date.getFullYear() === now.getFullYear()) return md;
   return date.getFullYear() + '-' + md;
+}
+
+export function pageTime(page, sort) {
+  sort = sort?.split('-')[0];
+  if (sort === 'added') return page.addedAt || 0;
+  if (sort === 'updated') return page.mtime || 0;
+  if (sort === 'annotated') return page.annotatedAt || 0;
+  return Math.max(page.addedAt || 0, page.mtime || 0, page.annotatedAt || 0);
+}
+
+export function activityRows(pages) {
+  return pages.map(page => ({ page, at: pageTime(page) })).filter(row => row.at > 0)
+    .sort((a, b) => b.at - a.at).slice(0, 5);
 }

@@ -37,8 +37,7 @@
 // data-entry-export / data-rename-page（e2e 选择器）。
 // 2026-08-17g（Pages 时间与排序）：PageRow 行尾出内容 mtime 的相对时间
 // （lib/page-sort.js formatRelativeTime；无 mtime 的页不出）；Pages 段头右侧
-// 排序钮循环 default → 最近更新 → 名称（lib/page-sort.js sortPages，持久化
-// prefs.pageSort）。语义 = 内容文件改动，标注活动不参与。
+// 排序菜单提供依据与方向的组合选项（lib/page-sort.js，持久化 prefs.pageSort）。
 //
 // 2026-09-04 切片 ②（外壳重设计的左栏内容，评审板 C1 + ADR 0031/0032）：
 //  - head 第一眼是产品名与搜索，不是「已连接」：wordmark + 连接小点（状态只剩
@@ -54,11 +53,14 @@
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { PageInfo } from './PageInfo.jsx';
+import { PageSortMenu } from './PageSortMenu.jsx';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
   entriesOfActiveBoard,
   pageGrouping,
   retryPageManifest,
+  refreshRegistry,
   setActiveEntry,
   setActivePage,
   showSettings,
@@ -79,21 +81,20 @@ import { boardRefs } from '../lib/board-refs.js';
 import {
   PAGE_SORT_LABELS,
   formatRelativeTime,
-  nextPageSort,
+  pageTime,
+  activityRows,
   normalizePageSort
 } from '../lib/page-sort.js';
 import {
-  filterPages,
   groupPages,
   nextFolderId,
   PAGE_KIND_ICONS,
   pageDisplayTitle,
   pageKindKey,
-  recentRows,
   visiblePages
 } from '../lib/page-groups.js';
 import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
-import { readPrefs, readRecentPages, savePrefs } from '../lib/prefs.js';
+import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
@@ -162,42 +163,6 @@ function SideHead() {
   );
 }
 
-/* 搜索框（C1）：打字即筛，跨「最近」与「页面」两段按标题或 id 过滤。
-   ⌘K / Ctrl+K 聚焦（全局监听，画布上也管用），Esc 清空并交还焦点。 */
-function SearchField(props) {
-  var inputRef = useRef(null);
-  useEffect(function () {
-    function onKey(e) {
-      if ((e.metaKey || e.ctrlKey) && (e.key === 'k' || e.key === 'K')) {
-        e.preventDefault();
-        if (inputRef.current) {
-          inputRef.current.focus();
-          inputRef.current.select();
-        }
-      }
-    }
-    window.addEventListener('keydown', onKey);
-    return function () { window.removeEventListener('keydown', onKey); };
-  }, []);
-  return (
-    <div className="wb-search" id="wbsearch">
-      <WbIcon name="search" size={13} className="wb-search-ic" />
-      <input ref={inputRef} type="text" id="wbsearch-input" aria-label="搜索页面"
-        placeholder="搜索页面" autoComplete="off" spellCheck="false"
-        value={props.value}
-        onChange={function (e) { props.onChange(e.target.value); }}
-        onKeyDown={function (e) {
-          if (e.key !== 'Escape') return;
-          e.preventDefault();
-          e.stopPropagation();
-          props.onChange('');
-          e.target.blur();
-        }} />
-      <span className="wb-search-kbd" aria-hidden="true">⌘K</span>
-    </div>
-  );
-}
-
 const PagePreferences = createContext(null);
 
 function PageRow(props) {
@@ -207,6 +172,8 @@ function PageRow(props) {
   var page = props.page;
   var system = !!page.system;
   var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
+  var timeSort = props.recent ? 'default' : preferences.sort;
+  var time = pageTime(page, timeSort);
   var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
   var [renaming, setRenaming] = useState(false);
   var inputRef = useRef(null);
@@ -249,6 +216,9 @@ function PageRow(props) {
   }
 
   var menuItems = [
+    { kind: 'action', label: '查看信息', icon: 'file-text',
+      onSelect: function () { preferences.showInfo({ ...page, title: title }); },
+      attr: { 'data-page-info': page.id } },
     { kind: 'copy', label: '复制 @page', text: '@page:' + page.id,
       attr: { 'data-copy-page': page.id } }
   ];
@@ -293,7 +263,8 @@ function PageRow(props) {
     <RowMenu items={menuItems}>
     <div className="wb-page-row group" data-page-system={system ? '1' : undefined}>
       <button type="button"
-        data-vpage={page.id} data-page-system={system ? '1' : undefined}
+        data-vpage={props.recent ? undefined : page.id}
+        data-recent-page={props.recent ? page.id : undefined} data-page-system={system ? '1' : undefined}
         data-page-default={page.title}
         data-state={active ? 'on' : undefined}
         data-drop-hint={dropHint || undefined}
@@ -303,7 +274,7 @@ function PageRow(props) {
         onDragOver={function (e) { dnd.onPageDragOver(e, page.id, props.folderId || null); }}
         onDragLeave={function () { dnd.onDragLeave(); }}
         onDrop={function (e) { dnd.onPageDrop(e, page.id, props.folderId || null); }}
-        className={cn('wb-row wb-page', props.indent && 'ind', active && 'on', renaming && 'renaming')}
+        className={cn('wb-row wb-page', props.recent && 'wb-recent', props.indent && 'ind', active && 'on', renaming && 'renaming')}
         onClick={function () {
           if (renaming) return;
           showTabs();
@@ -332,11 +303,11 @@ function PageRow(props) {
             （url 条目 / 本地示例页）不出此元素——行尾那一格就留空，标题
             不许借位（2026-09-04 切片 ② 第 10 条）；紧凑断点整枚隐藏
             （index.html #wbside.compact 规则）。 */}
-        {!renaming && page.mtime ? (
+        {!renaming && time ? (
           <span className="wb-page-time wb-row-m"
             data-page-time={page.id}
-            title={new Date(page.mtime).toLocaleString('zh-CN', { hour12: false })}>
-            {formatRelativeTime(page.mtime, props.now || Date.now())}
+            title={(PAGE_SORT_LABELS[timeSort] && !['default', 'name', 'name-desc'].includes(timeSort) ? PAGE_SORT_LABELS[timeSort] : '最近变动') + '：' + new Date(time).toLocaleString('zh-CN', { hour12: false })}>
+            {formatRelativeTime(time, props.now || Date.now())}
           </span>
         ) : null}
       </button>
@@ -357,6 +328,7 @@ function FolderRow(props) {
   useEffect(function () {
     if (renaming && inputRef.current) {
       doneRef.current = false;
+      inputRef.current.scrollIntoView({ block: 'center', inline: 'nearest' });
       inputRef.current.focus();
       inputRef.current.select();
     }
@@ -400,7 +372,7 @@ function FolderRow(props) {
             onClick={function (e) { e.stopPropagation(); }}
             onKeyDown={function (e) {
               if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); finishRename(true, e.target.value); }
-              else if (e.key === 'Escape') { e.preventDefault(); finishRename(false, e.target.value); }
+              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false, e.target.value); }
             }}
             onBlur={function (e) { finishRename(true, e.target.value); }} />
         ) : (
@@ -412,18 +384,18 @@ function FolderRow(props) {
   );
 }
 
-/* 「最近」段（2026-09-04 裁决 5c）：本地记录的最近打开五条，行尾是打开时刻的
-   相对时间（不是内容 mtime —— 这一段回答「我刚才在看什么」）。空则整段不出。 */
+/* 最近取添加、内容修改、标注变动三个时间的最大值，最多五条。 */
 function RecentSection(props) {
   var rows = props.rows;
   if (!rows.length) return null;
   return (
     <section className="wb-section" data-section="recent">
       <div className={SECTION_HEAD}>最近</div>
-      <nav className="wb-side-nav" id="wbrecent" aria-label="最近打开">
+      <nav className="wb-side-nav" id="wbrecent" aria-label="最近变动">
         {rows.map(function (row) {
           return (
-            <RecentRow key={row.page.id} page={row.page} at={row.at} now={props.now} />
+            <PageRow key={row.page.id} page={row.page} recent now={props.now}
+              dnd={props.dnd} folderId={props.pageFolders[row.page.id]} />
           );
         })}
       </nav>
@@ -431,28 +403,9 @@ function RecentSection(props) {
   );
 }
 
-function RecentRow(props) {
-  var page = props.page;
-  var active = useWorkbenchStore(function (s) { return s.activePageId === page.id; });
-  var customName = useWorkbenchStore(function (s) { return s.pageNames[page.id]; });
-  var title = pageDisplayTitle(page, customName === undefined ? null : { [page.id]: customName });
-  return (
-    <button type="button" data-recent-page={page.id}
-      data-state={active ? 'on' : undefined}
-      className={cn('wb-row wb-recent', active && 'on')}
-      onClick={function () { showTabs(); setActivePage(page.id); }}>
-      <WbIcon name={PAGE_KIND_ICONS[pageKindKey(page)]} size={14}
-        className="wb-row-glyph wb-page-kind" data-kind={pageKindKey(page)} aria-hidden="true" />
-      <span className="wb-row-t">{title}</span>
-      <span className="wb-row-m">{formatRelativeTime(props.at, props.now)}</span>
-    </button>
-  );
-}
-
 /* Pages 段（2026-08-17g 排序钮 + 2026-09-04 分组层）：
-   段头右侧仍是排序切换钮（default → 最近更新 → 名称，持久化 prefs.pageSort，
-   data-page-sort 是 e2e 契约）；段身 = 文件夹在前、散页在后，最后一行「新建
-   文件夹」。散页区整块是「拖出来」的落点。 */
+   段头右侧是排序菜单（持久化 prefs.pageSort，data-page-sort 是 e2e 契约）。
+   段身 = 文件夹在前、散页在后；散页区整块是「拖出来」的落点。 */
 function PagesSection(props) {
   useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 sidebarPages
   var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
@@ -463,14 +416,7 @@ function PagesSection(props) {
     <section className="wb-section" data-section="pages">
       <div className="wb-section-head-row">
 
-        <Button type="button" variant="tool" size="icon"
-          className="wb-page-sort size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
-          data-page-sort={props.sort}
-          aria-label={'Pages 排序：' + PAGE_SORT_LABELS[props.sort]}
-          title={'排序：' + PAGE_SORT_LABELS[props.sort] + '（点击切换）'}
-          onClick={props.onCycleSort}>
-          <WbIcon name="sort" size={11} className="size-[11px]" />
-        </Button>
+        <PageSortMenu sort={props.sort} onChange={props.onSortChange} />
       </div>
       <nav className="wb-side-nav wb-pages" id="wbpages">
         {model.folders.map(function (folder) {
@@ -496,12 +442,6 @@ function PagesSection(props) {
             return <PageRow key={page.id} page={page} dnd={dnd} now={props.now} />;
           })}
         </div>
-        <button type="button" className="wb-row wb-new-folder" data-new-folder="1"
-          onClick={function () { dnd.createFolderWith(null); }}>
-          <span className="wb-row-slot" aria-hidden="true"></span>
-          <WbIcon name="folder-plus" size={14} className="wb-row-glyph" />
-          <span className="wb-row-t">新建文件夹</span>
-        </button>
         {dnd.error ? (
           <p className="wb-folder-error" role="alert">{dnd.error}</p>
         ) : null}
@@ -921,8 +861,18 @@ function useFolderActions(folders, model, sort) {
 }
 
 export function Sidebar() {
+  var [infoPage, setInfoPage] = useState(null);
+  useEffect(function () {
+    var timer;
+    var events = new EventSource('/events');
+    function refresh() {
+      clearTimeout(timer);
+      timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
+    }
+    events.addEventListener('annotations', refresh);
+    return function () { clearTimeout(timer); events.close(); };
+  }, []);
   var [sidebarTab, setSidebarTab] = useState('pages');
-  var [showArchived, setShowArchived] = useState(false);
   var [pagePreferences, setPagePreferences] = useState(function () {
     var stored = readPrefs().pagePreferences || {};
     return { pinned: stored.pinned || {}, archived: stored.archived || {} };
@@ -939,7 +889,6 @@ export function Sidebar() {
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
-  var [query, setQuery] = useState('');
   var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
   // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
   var [now, setNow] = useState(function () { return Date.now(); });
@@ -949,14 +898,11 @@ export function Sidebar() {
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 
-  // 分组模型只在清单 / 开关 / 当前页 / 搜索 / 排序变了才重算 —— 拖放中的落点态
+  // 分组模型只在清单 / 开关 / 当前页 / 排序变了才重算 —— 拖放中的落点态
   // 与每分钟的时间 tick 都会让整栏重渲染，别让它们顺带重排一遍。
   var derived = useMemo(function () {
     var grouping = pageGrouping();
-    var pages = filterPages(
-      visiblePages(sidebarPages(), { showTemplates: showTemplates, keepId: activePageId }),
-      query
-    );
+    var pages = visiblePages(sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] })), { showTemplates: showTemplates, keepId: activePageId });
     return {
       grouping: grouping,
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
@@ -970,52 +916,60 @@ export function Sidebar() {
         sort: sort
       })
     };
-  }, [manifest, showTemplates, activePageId, query, sort, pagePreferences]);
+  }, [manifest, showTemplates, activePageId, sort, pagePreferences]);
   var model = derived.model;
   var dnd = useFolderActions(derived.grouping.folders, model, sort);
-  // 「最近」与「页面」吃同一份过滤结果 —— 搜索是跨段的一条规则，不是每段一套。
-  var recent = recentRows(readRecentPages(), derived.pages);
+  // 最近与页面共用归档、置顶筛选。
+  var recent = activityRows(visiblePages(derived.pages, { showTemplates: showTemplates }));
 
   return (
     <Fragment>
       <SideHead />
-      {settingsOpen ? null : <SearchField value={query} onChange={setQuery} />}
-      {!settingsOpen && <div className="wb-side-tabs" role="tablist" aria-label="侧栏视图">
-        {['pages', 'outline'].map(function (tab) { return <button key={tab} role="tab" type="button" aria-selected={sidebarTab === tab} tabIndex={sidebarTab === tab ? 0 : -1} onKeyDown={function (event) {
-          if (event.key === 'ArrowLeft' || event.key === 'ArrowRight') {
-            event.preventDefault();
-            setSidebarTab(tab === 'pages' ? 'outline' : 'pages');
-            var sibling = tab === 'pages' ? event.currentTarget.nextElementSibling : event.currentTarget.previousElementSibling;
-            if (sibling) sibling.focus();
-          }
-        }} onClick={function () { setSidebarTab(tab); }}>{tab === 'pages' ? '页面' : '大纲'}</button>; })}
+      {infoPage && <PageInfo page={infoPage} onClose={function () { setInfoPage(null); }} />}
+      {!settingsOpen && <div className="wb-side-toolbar">
+        <div className="wb-side-tabs" role="tablist" aria-label="侧栏视图">
+          {[['pages', '页面', 'files'], ['outline', '大纲', 'section-nav'], ['archived', '已归档', 'archive']].map(function ([tab, label, icon], index, tabs) {
+            return <button key={tab} id={'wb-tab-' + tab} role="tab" type="button"
+              aria-label={label} title={label} aria-controls={'wb-panel-' + tab}
+              aria-selected={sidebarTab === tab} tabIndex={sidebarTab === tab ? 0 : -1}
+              onKeyDown={function (event) {
+                var next;
+                if (event.key === 'ArrowRight') next = (index + 1) % tabs.length;
+                else if (event.key === 'ArrowLeft') next = (index + tabs.length - 1) % tabs.length;
+                else if (event.key === 'Home') next = 0;
+                else if (event.key === 'End') next = tabs.length - 1;
+                else return;
+                event.preventDefault();
+                setSidebarTab(tabs[next][0]);
+                event.currentTarget.parentElement.children[next].focus();
+              }} onClick={function () { setSidebarTab(tab); }}><WbIcon name={icon} size={18} /></button>;
+          })}
+        </div>
+        {sidebarTab === 'pages' && <Button type="button" variant="tool" size="icon" className="wb-new-folder" data-new-folder="1"
+          aria-label="新建文件夹" title="新建文件夹" onClick={function () { dnd.createFolderWith(null); }}>
+          <WbIcon name="folder-plus" size={16} />
+        </Button>}
       </div>}
       <div className="wb-side-body">
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
-          <div hidden={sidebarTab !== 'pages'}>
-          <PagePreferences.Provider value={{ value: pagePreferences, toggle: togglePagePreference }}>
-          {showArchived ? <nav aria-label="已归档页面">
+          <PagePreferences.Provider value={{ value: pagePreferences, toggle: togglePagePreference, showInfo: setInfoPage, sort: sort }}>
+          {sidebarTab === 'archived' ? <div role="tabpanel" id="wb-panel-archived" aria-labelledby="wb-tab-archived"><nav aria-label="已归档页面">
             {derived.archived.map(function (page) { return <PageRow key={page.id} page={page} dnd={dnd} now={now} />; })}
             {!derived.archived.length && <p className="wb-row">没有归档页面</p>}
-          </nav> : <>
+          </nav></div> : <div role="tabpanel" id="wb-panel-pages" aria-labelledby="wb-tab-pages" hidden={sidebarTab !== 'pages'}>
           {derived.pinned.length > 0 && <nav className="wb-pinned-pages" aria-label="置顶页面">
             {derived.pinned.map(function (page) { return <PageRow key={page.id} page={page} folderId={derived.grouping.pageFolders[page.id]} dnd={dnd} now={now} />; })}
           </nav>}
-          <RecentSection rows={recent.filter(function (row) { return !pagePreferences.pinned[row.page.id]; })} now={now} />
+          <RecentSection dnd={dnd} pageFolders={derived.grouping.pageFolders} rows={recent.filter(function (row) { return !pagePreferences.pinned[row.page.id]; })} now={now} />
           <PagesSection model={model} dnd={dnd} sort={sort} now={now}
-            onCycleSort={function () {
-              var next = nextPageSort(sort);
+            onSortChange={function (next) {
               savePrefs({ pageSort: next });
               setSort(next);
             }} />
-          </>}
+          </div>}
           </PagePreferences.Provider>
-          </div>
-          <div hidden={sidebarTab !== 'outline'}><Contents /></div>
+          <div role="tabpanel" id="wb-panel-outline" aria-labelledby="wb-tab-outline" hidden={sidebarTab !== 'outline'}><Contents /></div>
         </ScrollArea>
-        {!settingsOpen && sidebarTab === 'pages' && <div className="wb-side-footer">
-          <button type="button" className="wb-row wb-archive-toggle" data-show-archived aria-pressed={showArchived} onClick={function () { setShowArchived(!showArchived); }}><WbIcon name={showArchived ? 'chevron-left' : 'archive'} size={14} />{showArchived ? '返回页面' : '已归档'}</button>
-        </div>}
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />
         </div>

@@ -162,7 +162,7 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
 `npm run export -- --page <page> --section <section> [--frame <screen>]`。
 不要把截图逻辑加进单个屏的片段里。
 
-可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（`topics/chat-stream-polish/prototypes/plugins/pk.js` 是样例）。
+可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。
 
 可交互 HTML（`<page>__interactive.html`）打开后就是 workbench 的画布（ADR 0033）：满铺的网格画布 +
 左侧浮动玻璃面板（页名 + 大纲，横条最左的钮收起 / 展开）+ 底部横条（‹ n / N › 帧导航、缩放读数、回中）。

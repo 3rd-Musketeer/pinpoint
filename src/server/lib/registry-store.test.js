@@ -102,10 +102,12 @@ test('addRegistryEntry: page/role 合法组合落盘并原样透传', (t) => {
   const page = path.join(dir, 'draft.html');
   fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
   const entry = addRegistryEntry(file, { id: 'draft', kind: 'file', path: page, page: 'library', role: 'draft' });
-  assert.deepEqual(entry, { id: 'draft', kind: 'file', title: 'draft', path: page, page: 'library', role: 'draft' });
+  assert.ok(entry.addedAt > 0);
+  assert.deepEqual(entry, { addedAt: entry.addedAt, id: 'draft', kind: 'file', title: 'draft', path: page, page: 'library', role: 'draft' });
   // 缺省不带 page/role 的条目字段面不变（不写死数据）
   const plain = addRegistryEntry(file, { id: 'plain', kind: 'file', path: page });
-  assert.deepEqual(plain, { id: 'plain', kind: 'file', title: 'plain', path: page });
+  assert.ok(plain.addedAt > 0);
+  assert.deepEqual(plain, { addedAt: plain.addedAt, id: 'plain', kind: 'file', title: 'plain', path: page });
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(doc.entries[0].page, 'library');
   assert.equal(doc.entries[0].role, 'draft');
@@ -127,7 +129,8 @@ test('addRegistryEntry: file entries keep their absolute path and board', (t) =>
   const page = path.join(dir, 'report.html');
   fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
   const entry = addRegistryEntry(file, { id: 'report', title: 'Report', kind: 'file', path: page, board: 'ios' });
-  assert.deepEqual(entry, { id: 'report', kind: 'file', title: 'Report', path: page, board: 'ios' });
+  assert.ok(entry.addedAt > 0);
+  assert.deepEqual(entry, { addedAt: entry.addedAt, id: 'report', kind: 'file', title: 'Report', path: page, board: 'ios' });
 });
 
 test('listRegistryIds: missing file is empty, malformed throws', (t) => {

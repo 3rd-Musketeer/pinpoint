@@ -27,14 +27,14 @@ test('page pin, archive and restore survive reload without deleting the page', a
   await page.locator('[data-archive-page="e2e-dir-ios"]').click();
   await expect(row).toHaveCount(0);
   await page.reload();
-  await expect(page.locator('[data-show-archived]')).toBeVisible();
+  await expect(page.getByRole('tab', {name:'已归档'})).toBeVisible();
   await expect(row).toHaveCount(0);
-  await page.locator('[data-show-archived]').click();
+  await page.getByRole('tab', {name:'已归档'}).click();
   await expect(row).toBeVisible();
   await row.click({ button: 'right' });
   await page.locator('[data-archive-page="e2e-dir-ios"]').click();
   await expect(row).toHaveCount(0);
-  await page.locator('[data-show-archived]').click();
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
   await expect(page.locator('.wb-pinned-pages [data-vpage="e2e-dir-ios"]')).toBeVisible();
   await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(row).not.toBeVisible();

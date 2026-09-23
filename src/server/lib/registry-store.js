@@ -26,7 +26,7 @@ const WRITE_KINDS = new Set(['dir', 'file', 'url']);
 const WRITE_ROLES = new Set(['product', 'draft']);
 // 写入白名单（2026-08-16f 阶段 8 起含 page/role，2026-09-04 起含 folder/order）：
 // 未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
-const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role', 'folder', 'order']);
+const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role', 'folder', 'order', 'addedAt']);
 // folders[] 一条记录的写入白名单。
 const FOLDER_KEYS = new Set(['id', 'name', 'collapsed', 'order']);
 
@@ -74,6 +74,7 @@ export function validateNewEntry(raw, existingIds) {
       return `条目 "${raw.id}" 的 url 只支持 http(s)：${raw.url}`;
     }
   }
+  if (raw.addedAt !== undefined && (!Number.isFinite(raw.addedAt) || raw.addedAt <= 0)) return 'addedAt 必须是正数时间戳';
   if (raw.board !== undefined && typeof raw.board !== 'string') {
     return `条目 "${raw.id}" 的 board 必须是字符串`;
   }
@@ -105,6 +106,7 @@ function normalizeNewEntry(raw) {
   entry.title = typeof raw.title === 'string' && raw.title ? raw.title : raw.id;
   if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
   else entry.url = raw.url;
+  if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (typeof raw.board === 'string') entry.board = raw.board;
   if (typeof raw.page === 'string') entry.page = raw.page;
   if (typeof raw.role === 'string') entry.role = raw.role;
@@ -166,7 +168,7 @@ function replaceEntry(entries, index, raw) {
   const problem = validateNewEntry(raw, otherIds);
   if (problem) throw new Error(problem);
   const next = [...entries];
-  next[index] = normalizeNewEntry(raw);
+  next[index] = normalizeNewEntry({ ...raw, addedAt: entries[index].addedAt });
   return next;
 }
 
@@ -219,7 +221,7 @@ export function addRegistryEntry(registryPath, raw, options = {}) {
   const existingIds = new Set(doc.entries.map((entry) => entry && entry.id));
   const problem = validateNewEntry(raw, existingIds);
   if (problem) throw new Error(problem);
-  const entry = normalizeNewEntry(raw);
+  const entry = normalizeNewEntry({ ...raw, addedAt: Date.now() });
   writeRegistryFile(registryPath, { ...doc, entries: [...doc.entries, entry] });
   return entry;
 }

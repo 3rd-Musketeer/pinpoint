@@ -3,7 +3,8 @@ import test from 'node:test';
 
 import {
   formatRelativeTime,
-  nextPageSort,
+  PAGE_SORTS,
+  pageTime,
   normalizePageSort,
   sortPages
 } from './page-sort.js';
@@ -42,10 +43,8 @@ test('sortPages name = 标题 locale 排序（zh 排序规则：CJK 在前，数
   );
 });
 
-test('nextPageSort 循环三档；normalizePageSort 拦非法值', () => {
-  assert.equal(nextPageSort('default'), 'updated');
-  assert.equal(nextPageSort('updated'), 'name');
-  assert.equal(nextPageSort('name'), 'default');
+test('normalizePageSort 保留旧偏好并接受双向排序，拦非法值', () => {
+  for (const sort of PAGE_SORTS) assert.equal(normalizePageSort(sort), sort);
   assert.equal(normalizePageSort('updated'), 'updated');
   assert.equal(normalizePageSort('bogus'), 'default');
   assert.equal(normalizePageSort(undefined), 'default');
@@ -63,4 +62,15 @@ test('formatRelativeTime 档位', () => {
   assert.equal(formatRelativeTime(new Date(2025, 11, 25, 12, 0, 0).getTime(), now), '2025-12-25');
   // 未来时间（时钟漂移）按「刚刚」处理，不出负数
   assert.equal(formatRelativeTime(now + 60000, now), '刚刚');
+});
+
+
+test('时间正反序都把未知值放末尾，行内时间保持所选依据', () => {
+  for (const [sort, key] of [['added', 'addedAt'], ['updated', 'mtime'], ['annotated', 'annotatedAt']]) {
+    const pages = [{ id: 'unknown' }, { id: 'new', [key]: 300 }, { id: 'old', [key]: 100 }];
+    assert.deepEqual(sortPages(pages, sort).map(p => p.id), ['new', 'old', 'unknown']);
+    assert.deepEqual(sortPages(pages, sort + '-asc').map(p => p.id), ['old', 'new', 'unknown']);
+    assert.equal(pageTime({ addedAt: 1, mtime: 2, annotatedAt: 3 }, sort + '-asc'), { addedAt: 1, mtime: 2, annotatedAt: 3 }[key]);
+  }
+  assert.deepEqual(sortPages([{ id: 'A' }, { id: 'Z' }], 'name-desc').map(p => p.id), ['Z', 'A']);
 });

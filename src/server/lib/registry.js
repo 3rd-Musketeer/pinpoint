@@ -69,6 +69,7 @@ function normalizeEntry(raw) {
   };
   if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
   else entry.url = raw.url;
+  if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (typeof raw.board === 'string') entry.board = raw.board;
   if (typeof raw.page === 'string') entry.page = raw.page;
   if (typeof raw.role === 'string') entry.role = raw.role;

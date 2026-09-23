@@ -1,10 +1,10 @@
+import { collectPageTimes } from './lib/page-times.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
-import { contentMtimeMs } from './lib/content-mtime.js';
 import { localManifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 
@@ -192,7 +192,7 @@ export function createAnnotateHandler(options = {}) {
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
-      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
+      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId), pageId: entryId === 'pinpoint' ? null : entryId }));
     }
     return stores.get(entryId);
   }
@@ -200,15 +200,16 @@ export function createAnnotateHandler(options = {}) {
   // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
   // 登记表整份还回去，调用方不必再打一次 GET）。
   function registryPayload() {
+    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds: localManifestPageIds(serviceRoot) });
     return {
+      pageTimes,
       ok: registry.ok,
       path: registry.path,
       // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；url 条目与缺失
       // 路径无此字段）—— workbench Pages 的「最近更新」排序与行内时间显示
       // 的唯一来源。语义 = 内容文件改动，与标注活动无关。
       entries: registry.entries.map((entry) => {
-        const mtime = contentMtimeMs(entry);
-        return mtime ? { ...entry, mtime } : entry;
+        return { ...entry, ...pageTimes[entry.id] };
       }),
       // 分组层（2026-09-04）：folders = owner 建的一层夹；pageFolders /
       // pageOrder 只装「不是 registry 条目」的 manifest 页（条目自己的归属

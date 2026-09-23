@@ -1,3 +1,4 @@
+import { changedAnnotationPages } from './page-times.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -40,6 +41,7 @@ export function createAnnotationStore(options) {
       page: doc.page,
       path: doc.path || '',
       updated_at: doc.updated_at || null,
+      page_updated_at: doc.page_updated_at,
       revision: doc.revision,
       annotations,
     };
@@ -58,6 +60,7 @@ export function createAnnotationStore(options) {
         : (normalized.annotations.length ? 1 : 0);
       return asDoc({
         ...normalized,
+        page_updated_at: raw.page_updated_at,
         revision,
       });
     } catch {
@@ -75,6 +78,7 @@ export function createAnnotationStore(options) {
       path: doc.path || '',
       updated_at: doc.updated_at || now().toISOString(),
       revision: doc.revision,
+      page_updated_at: doc.page_updated_at,
       annotations,
     };
     const destination = jsonPathFor(safePage);
@@ -130,7 +134,15 @@ export function createAnnotationStore(options) {
       ? input.annotations
       : (Array.isArray(input.marks) ? input.marks : []);
     const annotations = list.map(normalizeAnnotation);
+    const pageTimes = { ...(disk.page_updated_at || {}) };
+    if (!disk.page_updated_at) {
+      const ids = [...new Set(disk.annotations.map(a => a.pageId || options.pageId).filter(Boolean))];
+      const previousAt = Date.parse(disk.updated_at);
+      if (ids.length === 1 && Number.isFinite(previousAt)) pageTimes[ids[0]] = previousAt;
+    }
+    for (const id of changedAnnotationPages(disk.annotations, annotations, options.pageId)) pageTimes[id] = now().getTime();
     const doc = writeDoc(safePage, {
+      page_updated_at: pageTimes,
       path: input.path || disk.path || '',
       updated_at: input.updated_at || now().toISOString(),
       revision: disk.revision + 1,

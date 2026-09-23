@@ -10,8 +10,7 @@ import { scrollStageTo, cancelStageScroll } from './scroll-motion.js';
 // prefs.activeEntryIdByPage（reload 后保持；activeDocId 从未落过 prefs，无迁移面）。
 import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { readPrefs, readRecentPages, savePrefs, saveRecentPages } from './lib/prefs.js';
-import { pushRecent } from './lib/page-groups.js';
+import { readPrefs, savePrefs } from './lib/prefs.js';
 import {
   boardEntries,
   defaultEntryId,
@@ -161,8 +160,6 @@ function defaultPageId() {
 function rememberActivePage(pageId) {
   if (!pageId) return;
   savePrefs({ activePageId: pageId });
-  // 「最近」段（2026-09-04 裁决 5c）：打开即记，本地五条，与登记表无关。
-  saveRecentPages(pushRecent(readRecentPages(), pageId, Date.now()));
 }
 
 /** 解析目标页：偏好页存在即用；否则深链 mode 提示（web 已被 parseDeepLink 归一
@@ -467,6 +464,8 @@ function registryToPages(data) {
       // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
       // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。
       kind: entry.kind,
+      addedAt: entry.addedAt || null,
+      annotatedAt: entry.annotatedAt || null,
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
       // url 条目无此字段 → null，排序沉底、行内不显示时间）。
       mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
@@ -475,7 +474,7 @@ function registryToPages(data) {
       site: true
     });
   });
-  return { pages: pages, attached: attached, grouping: grouping };
+  return { pages: pages, attached: attached, grouping: grouping, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -512,6 +511,8 @@ export function loadPageManifest() {
         // 阶段 8：attach 条目（registry 带 page 字段）随 manifest 走——
         // stage.js loadBoard 经 withAttachedScreens 把归属本页的条目合并成
         // 合成 doc 屏；目标页不存在时条目自然悬空（不合并、不出行、不报错）。
+        manifest.pages = manifest.pages.map(page => ({ ...page, ...sitePages.pageTimes[page.id] }));
+        manifest.pageTimes = sitePages.pageTimes;
         manifest.attached = sitePages.attached;
         manifest.grouping = sitePages.grouping;
         wbSet({ pageManifest: manifest });
