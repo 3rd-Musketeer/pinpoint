@@ -1,4 +1,5 @@
 import { collectPageTimes } from './lib/page-times.js';
+import { collectOrphanCounts } from './lib/orphans.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -210,7 +211,14 @@ export function createAnnotateHandler(options = {}) {
   // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
   // 登记表整份还回去，调用方不必再打一次 GET）。
   function registryPayload() {
-    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds: manifestPageIds(serviceRoot) });
+    const localIds = manifestPageIds(serviceRoot);
+    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds });
+    // storage-unify：每页的孤儿账本数（表面已不存在的账本；页信息面板显示，
+    // 清理只经 ppnt prune）。
+    const orphanCounts = collectOrphanCounts({ entries: registry.entries, dataRoot: root, localIds, root: serviceRoot });
+    for (const [id, count] of Object.entries(orphanCounts)) {
+      if (pageTimes[id]) pageTimes[id].orphans = count;
+    }
     return {
       pageTimes,
       ok: registry.ok,
