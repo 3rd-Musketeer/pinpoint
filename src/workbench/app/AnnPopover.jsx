@@ -330,7 +330,7 @@ export function AnnPopover() {
                     : 'text-muted-foreground hover:text-foreground',
                   !counts[f] && 'opacity-45'
                 )}>
-                {annStatusLabel(f)}<span className="ml-[3px] font-normal opacity-70">{counts[f]}</span>
+                {annStatusLabel(f) + ' '}<span className="font-normal opacity-70">{counts[f]}</span>
               </button>
             );
           })}
