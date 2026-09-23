@@ -239,7 +239,7 @@ test('pp2 状态机：mark 端点 open → check → done 带 note，非法转�
   await expect.poll(()=>page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id).status,original.id)).toBe('open');
 });
 
-test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done；close 收进「已关闭 n」开关组', async ({ page }) => {
+test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done；close 沉底、closed 筛选可见', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));
@@ -258,32 +258,35 @@ test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done�
   await page.keyboard.press('s');
   const row=page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]');
   await expect(row.locator('.wb-ann-status-tag')).toHaveText('done');
+  // 状态色上钉：done 行的序号圆是 done 绿（--ann-st-*，与画布钉子同组变量）
+  await expect(row.locator('.wb-ann-num')).toHaveCSS('background-color', 'rgb(47, 158, 99)');
 
-  // done 行「完成」勾单击 → 行退出 open 列表（close 收起），toast 出「撤销」
+  // done 行「完成」勾单击 → 行不退出列表：全部视图里沉底弱化，toast 出「撤销」
   // （acts 列 hover 才 pointer-events:auto，先 hover 行再点）
   await row.hover();
   await row.locator('.wb-ann-done').click();
-  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(0);
-  await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
+  await expect(row).toHaveClass(/wb-ann-item--closed/);
   const toast=page.locator('#ann-toast');
   await expect(toast).toBeVisible();
   await expect(toast).toContainText('已完成 #'+n);
 
-  // 撤销 → close 回关闭前的原态（这行关前是 done），行回到列表，toast 收起
+  // 撤销 → close 回关闭前的原态（这行关前是 done），行回正常亮度，toast 收起
   await toast.locator('button').click();
   await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('done');
-  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
+  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
   await expect(toast).toBeHidden();
   // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
 
-  // 不撤销再来一遍（撤销后行已是 done，直接再点「完成」）：行收进「已关闭 1」，点开关展开可见
-  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .wb-ann-done')).toBeVisible();
-  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]').hover();
-  await page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"] .wb-ann-done').click();
-  await expect(page.locator('#ann-sidebar .wb-ann-closed-toggle')).toHaveText(/已关闭 1/);
-  await page.locator('#ann-sidebar .wb-ann-closed-toggle').click();
-  await expect(page.locator('#ann-sidebar .wb-ann-item[data-ann-n="'+n+'"]')).toHaveCount(1);
+  // 不撤销再来一遍（撤销后行已是 done，直接再点「完成」）：切到 closed 筛选可见
+  await expect(row.locator('.wb-ann-done')).toBeVisible();
+  await row.hover();
+  await row.locator('.wb-ann-done').click();
+  await expect(row).toHaveClass(/wb-ann-item--closed/);
+  await page.locator('#ann-sidebar [data-ann-filter="closed"]').click();
+  await expect(row).toHaveCount(1);
+  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
+  await expect(row.locator('.wb-ann-status-tag')).toHaveText('close');
 });
 
 test('reviewer clears only wholly invalid annotations and can delete then reannotate', async ({ page }) => {
