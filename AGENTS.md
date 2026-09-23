@@ -40,6 +40,10 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
 完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。
 
+**功能分支上只跑单测和相关的 spec，不跑全量。** 全量两组约 2 分钟、机器满载时时序用例会偶挂，
+每个分支各跑一遍再回基点对照，时间都花在这里。分支上：`npm test` + 改动涉及的 spec（新写的与
+断言被改的）。全量两组只在合入 dev 后跑一次，几个分支攒一起跑；那一轮挂了才单跑定位。
+
 **站点打不开，第一件事是 `pinpoint status`**——不要先猜、也不要先 `ps`：
 
 ```bash
