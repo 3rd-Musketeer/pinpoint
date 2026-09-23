@@ -8,12 +8,12 @@
 
 | 字段 | 含义 |
 |---|---|
-| `entry` | registry 条目 id —— 这份文档住在哪个桶（缺省 `pinpoint`） |
+| `entry` | 页 id —— 这份文档住在哪个页桶（桶 = 页，ADR 0036；兜底 `pinpoint`） |
 | `pageId` | workbench 的页 = `data-vpage`（`library`、`components`，或自定义） |
 | `section` | board 的 section `id`（遗留名：`group`） |
 | `screenId` | frame / 屏文件的 id |
 | `content` | 标注正文（遗留名：`comment`） |
-| `n` | 对外序号：按桶单调取号（桶目录下 `_seq.json` 的 `next`），跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
+| `n` | 对外序号：按桶（= 页）单调取号（桶目录下 `_seq.json` 的 `next`），页内跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
 | `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
 | `note` | agent 在 check / done 时留的一句话，可选 |
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
@@ -42,11 +42,19 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 
 ## 账本与桶
 
-标注按条目分桶落在 `~/.pinpoint/<entry-id>/*.json`（**磁盘就是事实源**），形状是 `annotations[]`。
-条目来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；本仓自己标注在 entry `pinpoint` 下。
-默认桶的确切路径从 `GET /health` 的 `dataDir` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根
-（e2e 用的就是它）。改名前的 `HTML_ANNOTATE_DATA_DIR` / `HTML_ANNOTATE_REGISTRY` 在新名字缺席时
-仍生效，并打一条弃用警告。
+**桶 = 页**（2026-09-23 起，ADR 0036）：一个页一个桶 `~/.pinpoint/<pageId>/*.json`
+（**磁盘就是事实源**），形状是 `annotations[]`。pageId = 这条内容在 Pages 列表里属于
+哪一行：registry 条目 id（挂靠条目 `entry.page` 用宿主页 id）、`content/previews/_index.json`
+的模板页用自己的 id。`pinpoint` 桶只是「不属于任何页」的兜底（SPA fallback 页等），不是页。
+registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。数据根的确切路径从
+`GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
+
+账本 = 桶内的一个表面：
+- **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
+  同一本）；mention 帧也写这本（桶 = 被引用帧所属的页），与画布双向实时同步。
+- **文档、直开页、url 条目**仍是一个 pathname 一本，命名规则见
+  `src/shared/annotate-page-key.js`。
+- 工作台切活动页 = 换桶重新 hydrate；`#n` 按页（桶）编号，一页一套序列。
 
 `POST /save` 要带 `baseRevision`（整数 ≥ 0；不匹配返回 `409 revision_conflict` 并附磁盘上的文档）；
 清空走同一条保存队列、传 `annotations: []`（没有 `/clear` 路由）。显式传一个未登记的 `entry` 是
@@ -54,8 +62,13 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
-`GET /annotations`（不带 page）是调试用的聚合，把每个桶摊平成 `[{entry, ...doc}]`；
-按页读要带 `?entry=<id>`，`GET /images/<name>` 也是。
+`GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
+按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
+
+**孤儿**（storage-unify）：一本账本对应的表面已不存在（文档文件删了、条目移走了、
+页不在 registry 与 manifest 里了 = 整桶皆孤儿）。`ppnt status --page` 与 `check`
+把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
+面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录
@@ -63,8 +76,11 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
 只改 hash 不重新定位，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一条路由上。
 
-桶归属由 client 这样决定：`window.__pinpointEntry` → `'pinpoint'`；
-API 调用打的是脚本被加载的那个 origin。
+桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、url 代理、`/api/frame`）
+注入的 `window.__pinpointEntry` = 页 id；工作台画布实例没有标记，桶 = 活动页 id
+（切页 = 换桶）；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
+存量账本（previews 直开页与 mention 帧旧落 pinpoint 桶、画布账本按工作台 pathname
+分本）由 `scripts/migrate-ledgers.mjs` 一次性迁到页桶 —— 迁移是这次模型切换的一部分。
 
 ## 控制面
 

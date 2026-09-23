@@ -40,7 +40,7 @@ Pages 列表里 owner 手动建的一层分组，页靠拖放入夹；只有一�
   document entry（id = screenId）。舞台形态跟着选中的 entry 走，不跟着页走。
 - **registry entry**：`~/.pinpoint/registry.json` 里的一条登记，形状
   `{id, title?, kind: "dir"|"file"|"url", path?|url?, board?, page?, role?}`。
-  它是标注分桶的单位，`entry` 字段写进每条标注。
+  它决定这条内容属于哪个页桶（挂靠条目给宿主页），`entry` 字段写进每条保存请求。
 两者在代码里都叫 entry，读代码时靠上下文分：`board-entries.js` 里的是前者，
 `registry*.js` 与标注记录里的是后者。
 
@@ -122,10 +122,18 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
 注入片段的唯一事实源是 `src/server/lib/annotate-snippet.js`。
 
 **bucket 与 ledger（桶与账本）**
-- **bucket（桶）**：一个 registry entry 一个目录 `~/.pinpoint/<entry-id>/`，磁盘就是事实源。
-- **ledger（账本）**：桶里的一个 JSON 文件 = 一个页面路径的标注集合。
-  文件名（page key）= `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`
-  （`src/shared/annotate-page-key.js`），所以同名文件在不同目录各有各的账本。
+- **bucket（桶）= 页**（2026-09-23 起，ADR 0036）：一个页一个目录
+  `~/.pinpoint/<pageId>/`，磁盘就是事实源。pageId = 这条内容在 Pages 列表里属于
+  哪一行（registry 条目 id；挂靠条目用宿主页 id；manifest 模板页用自己的 id）。
+  `pinpoint` 桶只是「不属于任何页」的兜底，不是页。
+- **ledger（账本）** = 桶内的一个表面。画布是一本固定名 `@canvas.json`
+  （mention 帧也写这本，与画布双向同步）；文档、直开页、url 条目仍是一个
+  pathname 一本，文件名（page key）= `decodeURIComponent(filename) + '~' +
+  hash31(pathname).toString(36)`（`src/shared/annotate-page-key.js`），所以同名
+  文件在不同目录各有各的账本。`#n` 按桶（= 页）单调编号。
+- **孤儿（orphan）**：一本账本对应的表面已不存在（文档文件删了、页不在
+  registry 与 manifest 里了）。`check` / `status --page` 单独列出，清理只经
+  `ppnt prune <页>`。
 浏览器 `localStorage` 只是缓存，不是权威。
 
 **mention（提及）与 embed（嵌入）**
