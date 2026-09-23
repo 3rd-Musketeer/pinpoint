@@ -46,6 +46,19 @@ function registerAnchorSite() {
   fs.writeFileSync(E2E_REGISTRY, JSON.stringify(doc, null, 2));
 }
 
+async function ppnt(args, { expectFail = false } = {}) {
+  try {
+    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
+      cwd: ROOT,
+      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY },
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    if (!expectFail) throw error;
+    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
+  }
+}
+
 function readLedger() {
   return JSON.parse(fs.readFileSync(LEDGER, 'utf8'));
 }
@@ -149,4 +162,51 @@ test('ppId 锚：帧顶插元素 + 换包裹重编，标注仍锚原元素、无
   const overlap = Math.max(0, Math.min(mark.x + mark.width, blurbRect.x + blurbRect.width) - Math.max(mark.x, blurbRect.x))
     * Math.max(0, Math.min(mark.y + mark.height, blurbRect.y + blurbRect.height) - Math.max(mark.y, blurbRect.y));
   expect(overlap / (mark.width * mark.height)).toBeGreaterThan(0.5);
+});
+
+test('存量画布标注：ppId 摘掉后，CLI locate 走剥机壳兜底仍给出正确的 文件:行', async ({ page }) => {
+  test.setTimeout(90_000);
+  fs.rmSync(path.dirname(LEDGER), { recursive: true, force: true });
+
+  // 1 ─ 建标注：工作台 UI 点帧里的元素。cssPath 以画布 DOM 为根 —— 机壳四层
+  //     （ios-root > ios-device > ios-bezel > ios-screen）在链上，机壳往
+  //     ios-screen 里插了 island / statusbar，片段顶层的 nth-of-type 是漂的。
+  await openBoard(page);
+  const blurb = page.locator('[data-screen="anchor"] [data-blurb]');
+  await expect(blurb).toHaveText('组件里的锚点段');
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await blurb.click();
+  await page.locator('#ann-input').fill('存量行也要能定位');
+  await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
+  await expect(page.locator('#ann-box')).toBeHidden();
+  const captured = readLedger().annotations;
+  expect(captured).toHaveLength(1);
+  const selector = captured[0].targets[0].selector;
+  expect(selector).toContain('div.ios-root:nth-of-type(1)');
+  expect(selector).toContain('div.ios-bezel:nth-of-type(1)');
+  expect(selector).toContain('div.ios-screen:nth-of-type(1)');
+
+  // 2 ─ 存量模拟：磁盘上摘掉 ppId（决定 #15 之前的行就长这样；CLI 只读文件）。
+  const onDisk = readLedger();
+  delete onDisk.annotations[0].targets[0].ppId;
+  fs.writeFileSync(LEDGER, JSON.stringify(onDisk));
+
+  // 3 ─ 钉的同一条兜底路径（ppnt shot --marks 的 resolveMarkTarget，ppId 空、
+  //     cssPath 兜底）在工作台 DOM 里解析回原元素 —— 机壳只在画布缺，不缺。
+  await openBoard(page);
+  const pin = await page.evaluate(() => {
+    const m = window.pinpoint.marks[0];
+    const el = window.pinpoint.resolveMarkTarget(
+      { selector: m.targets[0].selector, text: m.targets[0].text || '', ppId: '' },
+      m.screenId || '',
+    );
+    return { hit: !!el, onBlurb: !!(el && el.hasAttribute && el.hasAttribute('data-blurb')) };
+  });
+  expect(pin.hit).toBe(true);
+  expect(pin.onBlurb).toBe(true);
+
+  // 4 ─ CLI locate：dist 片段没有机壳、顶层 nth 对不上 —— 剥机壳、首段按
+  //     class 在片段顶层找后仍锚到原元素，给出正确的 文件:行。
+  const locate = await ppnt(['locate', '#1', '--page', 'e2e-anchor']);
+  expect(locate.stdout).toContain('#1 → components/Blurb.jsx:2');
 });

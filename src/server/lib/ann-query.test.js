@@ -219,6 +219,77 @@ describe('anchorNode 决定 #15：ppId 直取，cssPath 兜底', () => {
   });
 });
 
+describe('anchorNode 存量画布标注：剥机壳兜底', () => {
+  // 真实形态的 dist 片段（抄 areta-ost-ui 的产物结构）：片段只是屏幕内容，
+  // 没有 ios-root > ios-device > ios-bezel > ios-screen 机壳层；assets 的
+  // <style> 在片段开头。
+  const FRAGMENT = [
+    '<style>@import url("/sites/areta-ost-ui/ost.css");</style>',
+    '<div class="ost ios-app" data-pp-id="components/Frame.jsx:18@1">',
+    '  <div class="ost-day" data-pp-id="components/Frame.jsx:19@1">今天</div>',
+    '</div>',
+    '<div class="ost-nav" data-pp-id="components/Frame.jsx:22@1">在聊国庆去川西？</div>',
+    '<div class="ost-bottom" data-pp-id="components/Frame.jsx:23@1">',
+    '  <div class="ost-chips" data-pp-id="components/Status.jsx:69@1">折多山路况和天气</div>',
+    '</div>',
+  ].join('\n');
+  // 真实形态的存量 selector（工作台画布 DOM 为根）：机壳往 ios-screen 里插了
+  // island / statusbar，片段顶层的 nth-of-type 整体偏移（ost-bottom 在画布上
+  // 是第 5 个 div，在片段里是第 3 个）。
+  const LEGACY_SELECTOR = (tail) => '#lib-hint > div.wb-sec-body:nth-of-type(1) > div.wb-screen:nth-of-type(2)'
+    + ` > div.ios-stage:nth-of-type(2) > div.ios-root:nth-of-type(1) > div.ios-device:nth-of-type(1)`
+    + ` > div.ios-bezel:nth-of-type(1) > div.ios-screen:nth-of-type(1) > ${tail}`;
+  const rowOf = (tail, text) => ({
+    id: 'legacy1', n: 1, type: 'element', pageId: 'areta-ost-ui', screenId: 'hint-chips', status: 'open',
+    content: '存量行 [@t:i1]',
+    targets: [{ ref: 'i1', selector: LEGACY_SELECTOR(tail), text }],
+  });
+
+  test('ppId 缺席的存量行：链止于片段内元素，定位到它的 data-pp-id', () => {
+    const row = rowOf('div.ost-bottom:nth-of-type(5) > div.ost-chips:nth-of-type(1)', '折多山路况和天气');
+    const anchor = anchorNode(row, FRAGMENT);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.attrs['data-pp-id'], 'components/Status.jsx:69@1');
+    const context = { pageId: 'areta-ost-ui', refs: { outline: [] }, distHtmlFor: () => FRAGMENT };
+    assert.match(locateLine(row, context).text, /#1 → components\/Status\.jsx:69/);
+  });
+
+  test('锚点本身就是机壳下第一段：去 nth 按 class 在片段顶层找', () => {
+    const row = rowOf('div.ost-bottom:nth-of-type(5)', '折多山路况和天气');
+    const anchor = anchorNode(row, FRAGMENT);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.attrs['data-pp-id'], 'components/Frame.jsx:23@1');
+  });
+
+  test('片段顶层同 class 多命中按 target.text 择近', () => {
+    const dup = [
+      '<div class="ost-block" data-pp-id="components/Frame.jsx:2@1">早</div>',
+      '<div class="ost-block" data-pp-id="components/Frame.jsx:3@1">午</div>',
+    ].join('\n');
+    const row = rowOf('div.ost-block:nth-of-type(2)', '午');
+    const anchor = anchorNode(row, dup);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.attrs['data-pp-id'], 'components/Frame.jsx:3@1');
+  });
+
+  test('不认识的壳结构不猜：非机壳四层整链维持原报错', () => {
+    // 链首不是 ios-root > ios-device > ios-bezel > ios-screen：剥不了，也不该
+    // 按 class 乱撞 —— 维持「解析不到」。
+    const row = rowOf('div.ios-root:nth-of-type(1) > div.ost-chips:nth-of-type(1)', '折多山路况和天气');
+    const anchor = anchorNode(row, FRAGMENT);
+    assert.equal(anchor.error, '锚点在当前产物里解析不到（可能已失效）');
+  });
+
+  test('手写 dist 形 selector（e2e 播种形态）走直链，行为不变', () => {
+    const row = {
+      targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ost-bottom:nth-of-type(1) > div.ost-chips:nth-of-type(1)', text: '折多山路况和天气' }],
+    };
+    const anchor = anchorNode(row, FRAGMENT);
+    assert.ok(!anchor.error, anchor.error);
+    assert.equal(anchor.node.attrs['data-pp-id'], 'components/Status.jsx:69@1');
+  });
+});
+
 describe('读侧显示序号', () => {
   test('无 n 的冷账本行显示 #?，不出 #undefined（建议 9）', () => {
     const site = makeSite();

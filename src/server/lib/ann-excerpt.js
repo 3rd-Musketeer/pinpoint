@@ -99,15 +99,17 @@ export function parseHtmlFragment(html) {
   return root;
 }
 
-/** `tag.cls:nth-of-type(n)` 段解析（annotate.cssPath 的段形）。 */
-function segmentMatcher(segment) {
+/** `tag.cls:nth-of-type(n)` 段解析（annotate.cssPath 的段形）。导出给
+    ann-query 的机壳剥离兜底复用 —— 段形知识只此一份。 */
+export function segmentMatcher(segment) {
   const m = String(segment).trim().match(/^(?:#([A-Za-z][\w-]*)|([a-z][a-z0-9-]*)(?:\.([\w-]+))?(?::nth-of-type\((\d+)\))?)$/);
   if (!m) return null;
   if (m[1]) return { id: m[1] };
   return { tag: m[2] || '*', cls: m[3] || null, nth: m[4] ? Number(m[4]) : 0 };
 }
 
-function nodeMatches(node, matcher) {
+/** 节点对单个 matcher 的匹配（id 段 / tag+cls 段；#root 恒不匹配）。 */
+export function nodeMatches(node, matcher) {
   if (!node || node.tag === '#root') return false;
   if (matcher.id) return node.attrs.id === matcher.id;
   if (matcher.tag && matcher.tag !== '*' && node.tag !== matcher.tag) return false;

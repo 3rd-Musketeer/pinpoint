@@ -1776,3 +1776,82 @@ test('runStatus --page：整桶孤儿的页直接报孤儿，不先打「找不�
   assert.equal(code2, 1);
   assert.ok(bare.err.some((line) => /找不到页：no-bucket/.test(line)));
 });
+
+test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname、status 给计数、mark 能写', async (t) => {
+  const dir = withTempDir(t);
+  const site = path.join(dir, 'handbook');
+  fs.mkdirSync(site, { recursive: true });
+  fs.writeFileSync(path.join(site, 'index.html'), '<h1>handbook</h1>\n');
+  fs.writeFileSync(path.join(site, 'guide.html'), '<h1>guide</h1>\n');
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({
+    version: 1,
+    entries: [{ id: 't-handbook', title: 'H', kind: 'dir', path: site, board: 'html' }],
+  }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  const bucket = path.join(env.PINPOINT_DATA_DIR, 't-handbook');
+  fs.mkdirSync(bucket, { recursive: true });
+  // doc 页的账本形态：每个 pathname 一本，doc.path 记表面路径；路径都落在
+  // 条目目录里 → 不是孤儿（prune 不得误判）。
+  fs.writeFileSync(path.join(bucket, 'index.html_1a2b3c.json'), JSON.stringify({
+    page: 'index.html~1a2b3c', path: '/sites/t-handbook/index.html', revision: 3,
+    annotations: [{ id: 'd1', n: 1, type: 'element', status: 'open', content: '首页意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'guide.html_4d5e6f.json'), JSON.stringify({
+    page: 'guide.html~4d5e6f', path: '/sites/t-handbook/guide.html', revision: 1,
+    annotations: [{ id: 'd2', n: 2, type: 'element', status: 'done', content: '指南页意见' }],
+  }));
+
+  // check：每行带账本对应的 pathname；摘录位置明说不是编译页，退 0。
+  const rec = recorder();
+  const code = await runCheck(['check', 't-handbook', '--registry', registry, '--status', 'all'], { ...rec.io, env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('[#1]') && line.includes('首页意见') && line.includes('/sites/t-handbook/index.html')), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('[#2]') && line.includes('/sites/t-handbook/guide.html')), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('这页不是编译页，没有源码摘录')), rec.out.join('\n'));
+  assert.ok(!rec.out.some((line) => /home\.jsx|dist\//.test(line)), 'doc 页没有源码 / dist 摘录');
+
+  // status --page：计数 + 不是编译页的明说；不再误报「整桶孤儿」。
+  const st = recorder();
+  const code2 = await runStatus(['status', '--page', 't-handbook', '--registry', registry], { ...st.io, env });
+  assert.equal(code2, 0, st.err.join('\n'));
+  assert.ok(st.out.some((line) => /open 1 · check 0 · done 1 · close 0 · 共 2/.test(line)), st.out.join('\n'));
+  assert.ok(st.out.some((line) => line.includes('这页不是编译页')), st.out.join('\n'));
+  assert.ok(!st.out.some((line) => line.includes('全是孤儿')), st.out.join('\n'));
+
+  // mark：#1 → done 走服务端点（mock），桶 = 页。
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (opts.method === 'POST') return { status: 200, json: { revision: 4, annotation: { status: 'done' } } };
+    return { status: 200, json: { revision: 3, annotations: [] } };
+  };
+  const mk = recorder();
+  const code3 = await runMark(['mark', '#1', 'done', '--page', 't-handbook', '--registry', registry], { ...mk.io, env, requestFn });
+  assert.equal(code3, 0, mk.err.join('\n'));
+  assert.ok(mk.out.some((line) => line.includes('#1 → done')), mk.out.join('\n'));
+  const post = calls.find((call) => call.method === 'POST');
+  assert.match(post.url, /\/annotations\/index\.html_1a2b3c\/1\/status$/);
+  assert.equal(post.body.entry, 't-handbook');
+});
+
+test('runStatus --page：页在 registry 里但加载失败（url 条目）原样报错，不再吞成整桶孤儿', async (t) => {
+  const dir = withTempDir(t);
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({
+    version: 1,
+    entries: [{ id: 't-live', title: 'L', kind: 'url', url: 'https://live.example/app' }],
+  }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  const bucket = path.join(env.PINPOINT_DATA_DIR, 't-live');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'app_x1.json'), JSON.stringify({
+    page: 'app~x1', path: '/sites/t-live/app', revision: 2,
+    annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
+  }));
+  const rec = recorder();
+  const code = await runStatus(['status', '--page', 't-live', '--registry', registry], { ...rec.io, env });
+  assert.equal(code, 1);
+  assert.ok(rec.err.some((line) => /找不到页：t-live/.test(line)), rec.err.join('\n'));
+  assert.ok(!rec.out.some((line) => line.includes('全是孤儿')), `活页的账本不该被报成孤儿：\n${rec.out.join('\n')}`);
+});
