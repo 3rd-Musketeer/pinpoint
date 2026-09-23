@@ -615,3 +615,22 @@ describe('页解析', () => {
     assert.deepEqual(boardScreenIds(pageDir), null);
   });
 });
+
+describe('范例页整页编译（checked-in content/previews/example）', () => {
+  // 范例页是「新页照这个结构写」的门面（见页内 README），它自己必须始终可编译。
+  // 钉住两件事：0 错误、9 屏齐全（与 board.json 的三段九屏一一对应，顺序一致）。
+  const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+
+  test('0 错误、9 屏齐全', async () => {
+    const target = resolvePageTarget('example', { registry: null, root: REPO_ROOT });
+    assert.ok(target, '范例页解析为模板页编译目标');
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, result.error || JSON.stringify(result.screens.filter((row) => !row.ok)));
+    assert.deepEqual(result.screens.map((row) => row.id), [
+      'beans', 'recipe', 'timer',
+      'card-idle', 'card-selected', 'card-empty',
+      'step-todo', 'step-now', 'step-done',
+    ]);
+    assert.deepEqual(result.screens.filter((row) => !row.ok), []);
+  });
+});

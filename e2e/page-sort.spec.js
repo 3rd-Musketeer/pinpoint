@@ -36,9 +36,10 @@ function pageOrder(page) {
   );
 }
 
-// 模板页退役后（pp2 切片 3）：清单 = 全部 registry 行，书写顺序。
+// 范例页回归后（_index.json 重新有页）：清单 = manifest 行（范例页）+ 全部
+// registry 行，书写顺序（_index 在前）。
 const DEFAULT_ORDER = [
-  'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-doc',
+  'example', 'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-doc',
 ];
 
 test.beforeAll(pressMtimes);

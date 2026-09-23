@@ -16,7 +16,10 @@ test.beforeEach(() => fs.rm(E2E_DATA_DIR, {recursive:true, force:true}));
 // components are hidden and counts stay deterministic on any machine.
 
 async function openWorkbench(page) {
-  await page.goto('/index.html');
+  // 深链显式钉 e2e-ios：无 ?page= 时工作台落 manifest.defaultPage（范例页），
+  // 而本文件的画布 / 标注用例标的从来是 e2e-ios 的板——钉死基页，让用例不依赖
+  // 默认页是哪一页。
+  await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
 }
 
@@ -182,8 +185,10 @@ test('manifest navigation survives rapid page switches and persists the winner',
   // 阶段 7：Page 去类型化 —— 行只剩标题，壳标 pill 撤除（类型信息下移到
   // 「内容」区产物条目的 tag）。
   // pp2 切片 2：Component Library 系统页退役，清单里不再有系统行。
+  // 范例页：_index.json 重新有页，manifest 行排在 registry 行前。
   // 2026-08-17g：行尾新增相对时间元素，标题断言收窄到 .wb-page-t。
   await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
+    '范例：冲一杯',
     'E2E iOS',
     'E2E Site',
     'E2E Proxy App',
@@ -224,9 +229,11 @@ test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page })
   // 阶段 6：e2e-mixed 固件（混合板）追加在尾。
   // 阶段 7：Page 去类型化 —— 行 = 纯标题（壳标 pill / data-page-mode 一并撤除）。
   // pp2 切片 2：Component Library 系统页退役，清单里不再有系统行。
+  // 范例页：_index.json 重新有页，manifest 行排在 registry 行前。
   // 2026-08-17g：行尾新增相对时间元素，标题断言收窄到 .wb-page-t。
   await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
+    '范例：冲一杯',
     'E2E iOS',
     'E2E Site',
     'E2E Proxy App',
@@ -904,7 +911,7 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
 
 test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
   let broken = true;
-  // 坏页是 e2e-doc：「回到 Pages」落默认页（清单第一行 e2e-site，好的），两头互不干扰。
+  // 坏页是 e2e-doc：「回到 Pages」落默认页（manifest.defaultPage = 范例页，好的），两头互不干扰。
   await page.route('**/sites/e2e-doc/board.json', async (route) => {
     if (!broken) {
       await route.fallback();
@@ -922,14 +929,14 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(panel.locator('[data-err-home]')).toHaveText('回到 Pages');
   await expect(panel.locator('[data-err-retry]')).toHaveText('重试');
 
-  // 「回到 Pages」= 落到一个能打开的页（默认页 = 清单第一行）+ 左栏展开（折叠着也要看得见 Pages）
+  // 「回到 Pages」= 落到默认页（manifest.defaultPage，范例页）+ 左栏展开（折叠着也要看得见 Pages）
   await page.locator('#wbside-toggle').click();
   await expect(page.locator('#wbside')).toBeHidden();
   await panel.locator('[data-err-home]').click();
   await expect(page.locator('#wbside')).toBeVisible();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
 
   // 回到坏页 → 面板重现；修好后「重试」原地把板拉回来，不用刷新整页
   await page.getByRole('tab', {name:'页面', exact:true}).click();
@@ -965,10 +972,11 @@ test('?page= 指向不存在的页 → 显式面板，地址栏留着坏 id（20
   })).toBe(true);
 
   await panel.locator('[data-err-home]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
+  // 「回到 Pages」落默认页 = manifest.defaultPage（范例页）；URL 同步随 activePageId。
+  await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
-  await expect.poll(() => page.url()).toContain('page=e2e-ios');
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
+  await expect.poll(() => page.url()).toContain('page=example');
 });
 
 test('深链失效面板的「重试」：页面清单里出现了那个 id 就直接打开它', async ({ page }) => {

@@ -242,9 +242,13 @@ test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
   assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
 });
 
-test('manifestPageIds: 读真实仓库 manifest（模板页退役后为空数组）', () => {
+test('manifestPageIds: 读真实仓库 manifest（与 _index.json 的 pages 一致）', () => {
+  // 范例页落地后模板页不再是空名单——断言从钉死「空数组」改为钉死「函数输出
+  // 与真实 manifest 逐字一致」，既不依赖模板页数量，也不放宽（多列、漏列都挂）。
+  const doc = JSON.parse(fs.readFileSync(new URL('../content/previews/_index.json', import.meta.url), 'utf8'));
   const ids = manifestPageIds();
-  assert.deepEqual(ids, []);
+  assert.deepEqual(ids, doc.pages.map((page) => page.id));
+  assert.ok(ids.includes('example'), '范例页在名单里');
 });
 
 /* ---- resolveRegistryPath / planAdd ---- */
@@ -1399,27 +1403,32 @@ test('runCheck：未知帧 / 坏状态码非零退出并报因', async (t) => {
 test('runLocate：#n → 源文件:行；未编页给 selector', async (t) => {
   const made = await makeAnnotatedPage(t);
   const rec = recorder();
-  const code = await runLocate(['locate', '#1', '--registry', made.registry], { ...rec.io, env: made.env });
+  // --page 显式钉基页：缺省基页是「第一个可编译页」，范例页入 manifest 后按
+  // 字典序排在临时 registry 的 t-page 前面，不钉会解析到别人的页上。
+  const code = await runLocate(['locate', '#1', '--page', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => /#1 → home\.jsx:4/.test(line)), rec.out.join('\n'));
   const range = recorder();
-  assert.equal(await runLocate(['locate', '#1-#2', '--registry', made.registry], { ...range.io, env: made.env }), 0);
+  assert.equal(await runLocate(['locate', '#1-#2', '--page', 't-page', '--registry', made.registry], { ...range.io, env: made.env }), 0);
   assert.ok(range.out.some((line) => /#2 → home\.jsx:5/.test(line)), range.out.join('\n'));
 });
 
 test('runMark：走状态端点带 baseRevision，逐条打印；close / open 拒收；服务不在跑报 ppnt start', async (t) => {
   const made = await makeAnnotatedPage(t);
+  // --page 显式钉基页，理由同 runLocate：缺省基页按字典序取第一个可编译页，
+  // 范例页入 manifest 后会抢在临时 registry 的 t-page 前面。
+  const page = ['--page', 't-page'];
   const close = recorder();
-  assert.equal(await runMark(['mark', '#1', 'close', '--registry', made.registry], { ...close.io, env: made.env }), 1);
+  assert.equal(await runMark(['mark', '#1', 'close', ...page, '--registry', made.registry], { ...close.io, env: made.env }), 1);
   assert.ok(close.err.some((line) => /close 只在工作台/.test(line)));
   // open 只由 owner 在工作台编辑触发，mark 不写——传 open 指名道姓报因。
   const open = recorder();
-  assert.equal(await runMark(['mark', '#1', 'open', '--registry', made.registry], { ...open.io, env: made.env }), 1);
+  assert.equal(await runMark(['mark', '#1', 'open', ...page, '--registry', made.registry], { ...open.io, env: made.env }), 1);
   assert.ok(open.err.some((line) => /open 由工作台编辑触发，mark 不写/.test(line)));
 
   // 服务不在跑（requestFn 抛错 = 探活失败）。
   const down = recorder();
-  assert.equal(await runMark(['mark', '#1', 'done', '--registry', made.registry], {
+  assert.equal(await runMark(['mark', '#1', 'done', ...page, '--registry', made.registry], {
     ...down.io,
     env: { ...made.env, PINPOINT_ORIGIN: 'http://127.0.0.1:1' },
   }), 1);
@@ -1436,7 +1445,7 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
   const rec = recorder();
-  const code = await runMark(['mark', '#1', 'done', '--note', '改完了', '--registry', made.registry], {
+  const code = await runMark(['mark', '#1', 'done', '--note', '改完了', ...page, '--registry', made.registry], {
     ...rec.io, env: made.env, requestFn,
   });
   assert.equal(code, 0, rec.err.join('\n'));
@@ -1456,7 +1465,7 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     }
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
-  const code2 = await runMark(['mark', '#1-#2', 'done', '--registry', made.registry], { ...mixed.io, env: made.env, requestFn: mixedFn });
+  const code2 = await runMark(['mark', '#1-#2', 'done', ...page, '--registry', made.registry], { ...mixed.io, env: made.env, requestFn: mixedFn });
   assert.equal(code2, 0);
   assert.equal(mixed.out.filter((line) => line.includes('→ done')).length, 2, mixed.out.join('\n'));
 });

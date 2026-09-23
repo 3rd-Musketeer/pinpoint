@@ -117,9 +117,11 @@ test('kit JSX 印章变更 → 全量重编并对每页发 preview:update（revi
   const s = fakeServer();
   const out = await hit.handleHotUpdate({ file: path.join(ROOT, 'content', 'kits', 'ios', 'jsx', 'Bubble.jsx'), server: s });
   // 编译期印章不吃 .js 的 full-reload（没有浏览器模块缓存）；全量重编后逐页通知，
-  // 无板条目（ext-page）不在通知集。
+  // 无板条目（ext-page）不在通知集。范例页（example）是仓库真实 manifest 里的
+  // 模板页且 kit 印章入编译期产物，通知集随它入场多一页——这正是该分支要保证的
+  // 「模板页也在印章重编的通报范围内」。
   assert.deepEqual(out, []);
-  assert.deepEqual(s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id), ['e2e-ios']);
+  assert.deepEqual(s.sent.filter((m) => m.event === 'preview:update').map((m) => m.data.id), ['e2e-ios', 'example']);
 });
 
 test('编译期间到达的变更：job 收尾后补跑一轮，dist 落最后状态（R11）', async (t) => {

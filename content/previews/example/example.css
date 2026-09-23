@@ -1,0 +1,16 @@
+/* 页级样式：board.json 的 assets.css 把它注入每一帧。组件的样式都写在这里，一页一份。 */
+.ex-bean { display: flex; align-items: center; gap: 12px; padding: 12px 14px; border-radius: 14px; background: var(--ios-bg-2, #fff); }
+.ex-bean + .ex-bean { margin-top: 10px; }
+.ex-bean.selected { box-shadow: inset 0 0 0 2px var(--ios-accent); }
+.ex-bean.empty { opacity: .45; }
+.ex-bean-dot { width: 36px; height: 36px; border-radius: 50%; flex: none; }
+.ex-bean-dot.light { background: #c79a6b; }
+.ex-bean-dot.medium { background: #8a5a36; }
+.ex-bean-dot.dark { background: #4a2f1f; }
+.ex-bean-body { flex: 1; min-width: 0; }
+.ex-bean-name { font-weight: 600; }
+.ex-bean-sub { color: var(--ios-label-2); font-size: 13px; }
+.ex-step .ios-chip { min-width: 52px; text-align: center; }
+.ex-step.now .ios-cell-title { color: var(--ios-accent); }
+.ex-step.done .ios-cell-title { color: var(--ios-label-2); }
+.ex-page { padding: 0 16px 24px; }
