@@ -34,9 +34,11 @@ import {
   foldHtmlElement,
   foldRange,
   jsxElementRange,
+  nodeMatches,
   parseHtmlFragment,
   renderExcerpt,
   resolveSelectorChain,
+  segmentMatcher,
   siblingHints,
 } from './ann-excerpt.js';
 
@@ -146,11 +148,56 @@ function nodesByPpId(tree, ppId) {
   return hits;
 }
 
+/* ---- 存量画布标注的机壳剥离兜底 ---- */
+
+// wrapPhoneShell（src/shared/frame-shell.js）垫在 stage 与片段之间的四层机壳。
+// 画布上片段被装进 ios-screen 时，机壳还往里插了 island / statusbar / home 等
+// 兄弟，所以片段顶层元素的 nth-of-type 在画布 selector 里整体偏移 —— dist 片段
+// （只是屏幕内容）既没有这四层、顶层 nth 也对不上。
+const PHONE_SHELL_CLASSES = ['ios-root', 'ios-device', 'ios-bezel', 'ios-screen'];
+const SHELL_SEGMENT_RES = PHONE_SHELL_CLASSES.map(
+  (cls) => new RegExp(`^div\\.${cls}(?:\\.[-\\w]+)*(?::nth-of-type\\(\\d+\\))?$`),
+);
+
+/**
+ * 链首恰为四层机壳段时返回机壳后的剩余段，否则 null。只认 wrapPhoneShell 这
+ * 一种形状 —— 别的壳结构不猜，维持原解析与原报错。
+ */
+function stripPhoneShell(chain) {
+  const segments = String(chain || '').split(' > ');
+  if (segments.length <= PHONE_SHELL_CLASSES.length) return null;
+  for (let i = 0; i < PHONE_SHELL_CLASSES.length; i++) {
+    if (!SHELL_SEGMENT_RES[i].test(segments[i])) return null;
+  }
+  return segments.slice(PHONE_SHELL_CLASSES.length);
+}
+
+/**
+ * 机壳剥掉后的解析：剩余链的第一段去掉 :nth-of-type、按 class 在片段顶层
+ * （#root 的孩子）找 —— 片段顶层正是机壳 ios-screen 里被插过兄弟的那一层；
+ * 多命中按存储的 target.text 择近；其余段结构没被动过，照常在其下解析。
+ */
+function resolveAfterShell(tree, rest, distHtml, storedText) {
+  const head = segmentMatcher(rest[0]);
+  // cssPath 段形是 tag.cls[:nth-of-type(n)]，没有 class 的顶层元素认不出，不猜。
+  if (!head || head.id || !head.cls) return null;
+  const hits = tree.children.filter((child) => nodeMatches(child, { tag: head.tag, cls: head.cls, nth: 0 }));
+  if (!hits.length) return null;
+  const best = pickByTargetText(
+    hits.map((node) => ({ node, text: elementTextOf(node, distHtml) })),
+    storedText,
+  );
+  const tail = rest.slice(1).join(' > ');
+  return tail ? resolveSelectorChain(best.node, tail) : best.node;
+}
+
 /**
  * 行的第一个目标在帧 dist HTML 里的元素。决定 #15：target 带 ppId 时先按
  * [data-pp-id] 直取（不再拿 cssPath 反查元素读它的 id —— 帧结构一改 cssPath
  * 会漂到别的元素上）；同一 id 多实例（同行循环渲染）按文本择近；没有 ppId
  * 或直取落空再走 cssPath 链（frameInternalSelector 归一到 stage 后缀）。
+ * 存量画布标注的 selector 以工作台 DOM 为根：直链解析不到且链首是机壳四层时，
+ * 剥掉机壳改按 class 在片段顶层找（resolveAfterShell）。
  * 返回 { tree, node, html } 或 { error }。
  */
 export function anchorNode(row, distHtml) {
@@ -175,7 +222,11 @@ export function anchorNode(row, distHtml) {
   if (chain) chain = chain.replace(/^:scope\s*>\s*/, '');
   else if (/^#/.test(selector)) chain = selector;
   if (!chain) return { error: '锚点 selector 不可归一（无 stage 段）' };
-  const node = resolveSelectorChain(tree, chain);
+  let node = resolveSelectorChain(tree, chain);
+  if (!node) {
+    const rest = stripPhoneShell(chain);
+    if (rest) node = resolveAfterShell(tree, rest, distHtml, target.text || '');
+  }
   if (!node) return { error: '锚点在当前产物里解析不到（可能已失效）' };
   return { tree, node, html: distHtml };
 }
