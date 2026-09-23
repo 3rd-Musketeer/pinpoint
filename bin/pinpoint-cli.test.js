@@ -1313,6 +1313,7 @@ test('runRender：限内打全文，超限截断并落 spill 文件，--full 不
 /* ---- pp2 切片 4：check / locate / mark / status --page ---- */
 
 import {
+  planShotJobs,
   runCheck,
   runLocate,
   runMark,
@@ -1483,4 +1484,57 @@ test('runStatus --page：各状态计数 + dist 过期状态', async (t) => {
   const stale = recorder();
   assert.equal(await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...stale.io, env: made.env }), 0);
   assert.ok(stale.out.some((line) => line.includes('已过期')), stale.out.join('\n'));
+});
+
+/* ---- shot：页引用（<页>）作业规划 ---- */
+
+test('planShotJobs：页引用不必是基页 —— 非基页装载自己的上下文、marks 与输出目录', () => {
+  const base = { pageId: 'demo', frameRows: [{ screenId: 'home', status: 'open' }, { screenId: 'settings', status: 'close' }] };
+  const other = { pageId: 'example', frameRows: [{ screenId: 'beans', status: 'open' }] };
+  const plan = planShotJobs(
+    [
+      { kind: 'page', pageId: 'demo' },
+      { kind: 'page', pageId: 'example' },
+      { kind: 'frame', screenId: 'home', via: 'A1' },
+      { kind: 'frame', screenId: 'home', via: 'A1' }, // 重复：按 screenId 去重
+    ],
+    {
+      basePageId: 'demo',
+      baseContext: base,
+      scale: 2,
+      withMarks: true,
+      contextFor: (pageId) => (pageId === 'example' ? other : null),
+      dataRootDir: '/data',
+    },
+  );
+  assert.deepEqual(plan.problems, []);
+  assert.equal(plan.jobs.length, 3);
+  const pageJobs = plan.jobs.filter((job) => job.kind === 'page');
+  assert.deepEqual(pageJobs.map((job) => job.pageId), ['demo', 'example']);
+  assert.equal(pageJobs[0].scale, 2);
+  // marks 跟着页走：基页只出 open 行，非基页出自己页的行；目录也按页分家。
+  assert.deepEqual(pageJobs[0].marks.map((row) => row.screenId), ['home']);
+  assert.deepEqual(pageJobs[1].marks.map((row) => row.screenId), ['beans']);
+  assert.equal(pageJobs[1].out, path.join('/data', 'shot', 'example', 'example.png'));
+  const frameJob = plan.jobs.find((job) => job.kind === 'frame');
+  assert.equal(frameJob.pageId, 'demo');
+  assert.equal(frameJob.out, path.join('/data', 'shot', 'demo', 'A1.png'));
+  assert.deepEqual(frameJob.marks.map((row) => row.screenId), ['home']);
+});
+
+test('planShotJobs：非基页装载失败 → problem 逐条报，不炸整批', () => {
+  const plan = planShotJobs(
+    [{ kind: 'page', pageId: 'ghost' }, { kind: 'frame', screenId: 'home', via: 'A1' }],
+    {
+      basePageId: 'demo',
+      baseContext: { pageId: 'demo', frameRows: [] },
+      scale: 1,
+      withMarks: false,
+      contextFor: () => null,
+      dataRootDir: '/data',
+    },
+  );
+  assert.equal(plan.jobs.length, 1);
+  assert.equal(plan.problems.length, 1);
+  assert.match(plan.problems[0], /找不到页：ghost/);
 });

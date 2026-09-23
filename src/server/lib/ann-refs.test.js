@@ -52,8 +52,18 @@ describe('resolveRef', () => {
     const b = resolveRef('B', CTX);
     assert.equal(b.kind, 'section');
     assert.deepEqual(b.frames.map((f) => f.id), ['login']);
-    assert.equal(resolveRef('demo', CTX).kind, 'page');
+    assert.deepEqual(resolveRef('demo', CTX), { kind: 'page', pageId: 'demo' });
     assert.equal(resolveRef('Q', CTX).kind, 'unknown');
+  });
+
+  test('页 id 对照登记页清单：不限基页，未登记的照旧认不出', () => {
+    const ctx = { ...CTX, pageIds: ['demo', 'example'] };
+    assert.deepEqual(resolveRef('demo', ctx), { kind: 'page', pageId: 'demo' });
+    // 基页是 demo，「example」是别的登记页 —— <页> 语义本就该指到它。
+    assert.deepEqual(resolveRef('example', ctx), { kind: 'page', pageId: 'example' });
+    assert.equal(resolveRef('ghost', ctx).kind, 'unknown');
+    // 段字母 / 帧号优先级不受影响：大写 token 不会被当成页。
+    assert.equal(resolveRef('B', ctx).kind, 'section');
   });
 
   test('@a:id → 标注内部 id', () => {
@@ -73,6 +83,15 @@ describe('expandRefs', () => {
     const { picks } = expandRefs(['A2', 'B', 'demo'], CTX, { shotRefs: true });
     assert.deepEqual(picks.map((p) => p.kind), ['frame', 'section', 'page']);
     assert.equal(picks[0].screenId, 'settings');
+    assert.equal(picks[2].pageId, 'demo');
+  });
+
+  test('shot 语义：页引用带着自己的 pageId 走（可异于基页）', () => {
+    const ctx = { ...CTX, pageIds: ['demo', 'example'] };
+    const { picks, errors } = expandRefs(['demo', 'example'], ctx, { shotRefs: true });
+    assert.deepEqual(picks.map((p) => p.kind), ['page', 'page']);
+    assert.deepEqual(picks.map((p) => p.pageId), ['demo', 'example']);
+    assert.deepEqual(errors, []);
   });
 
   test('空帧 / 坏引用逐条报错，不炸整批', () => {

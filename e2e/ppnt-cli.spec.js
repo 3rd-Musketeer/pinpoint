@@ -122,4 +122,12 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
   const framePng = path.join(E2E_DATA_DIR, 'shot', 'e2e-ios', 'A1.png');
   if (!shot.stdout.includes(framePng)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
   if (!fs.existsSync(framePng) || fs.readFileSync(framePng).length < 2000) throw new Error('帧图没落盘');
+
+  // 6. shot <页>：页引用不必是基页（缺省基页 = registry 第一页，不是 example）
+  // —— 整页一张拼图，落在 <dataRoot>/shot/<页>/<页>.png。
+  const pageShot = await ppnt(['shot', 'example']);
+  const pagePng = path.join(E2E_DATA_DIR, 'shot', 'example', 'example.png');
+  if (pageShot.code !== 0) throw new Error(`shot <页> 退出 ${pageShot.code}：${pageShot.stderr}`);
+  if (!pageShot.stdout.includes(pagePng)) throw new Error(`shot <页> 没打路径：\n${pageShot.stdout}`);
+  if (!fs.existsSync(pagePng) || fs.readFileSync(pagePng).length < 2000) throw new Error('整页图没落盘');
 });

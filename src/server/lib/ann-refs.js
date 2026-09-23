@@ -6,7 +6,7 @@
  *   #3-#7        区间（含端点）
  *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
  *   B            段字母 → 整段（section）
- *   <page>       整页（仅 shot）
+ *   <page>       整页（仅 shot；任意登记页 id，不限基页）
  *   @frame:p/s   机器帧语法（annotation-indicator 的 parseIndicator）
  *   @a:<id>      标注内部 id
  *   --status s   按状态展开（open|check|done|close|all）
@@ -28,12 +28,13 @@ const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
  *   { kind: 'annotation', row }            一条标注
  *   { kind: 'frame', screenId, ref }       一帧（mark/locate 展开成该帧标注，shot 指帧图）
  *   { kind: 'section', sectionId, ref }    一段
- *   { kind: 'page' }                       整页（仅 shot 有意义）
+ *   { kind: 'page', pageId }               整页（仅 shot 有意义；pageId 可异于基页）
  * 或 { kind: 'unknown', token, message }。
  *
- * ctx = { rows, board, pageId, crossPageRows }；rows 是本页标注行（任何带
+ * ctx = { rows, board, pageId, crossPageRows, pageIds }；rows 是本页标注行（任何带
  * n / id / screenId / status 的对象）；crossPageRows(pageRef) → rows（按需读，
- * 缺省 null = 该页没有）。frameRefs 由 board 派生。
+ * 缺省 null = 该页没有）。frameRefs 由 board 派生；pageIds 是登记页 id 清单
+ * （缺省只有基页自己可作页引用）。
  */
 export function resolveRef(token, ctx = {}) {
   const raw = String(token || '').trim();
@@ -78,7 +79,10 @@ export function resolveRef(token, ctx = {}) {
     const outline = refs.outline.find((section) => section.id === sectionId);
     return { kind: 'section', sectionId, ref: raw, title: outline ? outline.title : sectionId, frames: outline ? outline.frames : [] };
   }
-  if (raw === pageId && pageId) return { kind: 'page' };
+  // 整页（仅 shot）：基页直接认；其余 bare token 对照登记页 id 清单 —— 页引用
+  // 指向别的页是 <页> 语义的本义，不该因为不是基页就「认不出引用」。
+  if (pageId && raw === pageId) return { kind: 'page', pageId };
+  if ((ctx.pageIds || []).includes(raw)) return { kind: 'page', pageId: raw };
   const indicator = parseIndicator(raw);
   if (indicator && indicator.kind === 'frame') {
     const hit = refs.outline.flatMap((section) => section.frames).find((frame) => frame.id === indicator.screenId);
@@ -90,7 +94,7 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、页 id、@frame:p/s、@a:id）` };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];
@@ -151,7 +155,7 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
         errors.push(`${token}：整页引用只在 shot 里可用`);
         continue;
       }
-      picks.push({ kind: 'page', via: token });
+      picks.push({ kind: 'page', pageId: pick.pageId || ctx.pageId || '', via: token });
     }
   }
   return { picks, errors };

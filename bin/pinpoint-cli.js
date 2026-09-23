@@ -1576,6 +1576,70 @@ export async function runLocate(argv, io = {}) {
   return errors.length ? 1 : 0;
 }
 
+/**
+ * shot 的作业规划（纯函数，2026-09-23 页引用修复时抽出）：picks → 渲染作业。
+ * 帧按 screenId 去重；段整段一图；页引用出整页一图。页 id 不必是基页（<页>
+ * 语义），非基页经 contextFor 现场装载该页上下文 —— marks 与输出目录都跟着
+ * 页走。渲染按页分组：一次 renderShots 只动一个画布页（ppnt-shot 的
+ * setActivePage 是会话级的）。
+ */
+export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks, contextFor, dataRootDir }) {
+  const jobs = [];
+  const problems = [];
+  const contexts = new Map([[basePageId, baseContext]]);
+  const contextOf = (pageId) => {
+    if (!contexts.has(pageId)) contexts.set(pageId, contextFor ? contextFor(pageId) : null);
+    return contexts.get(pageId);
+  };
+  const shotDirOf = (pageId) => path.join(dataRootDir, 'shot', pageId);
+  const openRows = (ctx) => ctx.frameRows.filter((row) => (row.status || 'open') !== 'close');
+  const seenScreens = new Set();
+  const frameJob = (screenId, via) => {
+    if (seenScreens.has(screenId)) return;
+    seenScreens.add(screenId);
+    jobs.push({
+      kind: 'frame',
+      pageId: basePageId,
+      screenId,
+      scale,
+      out: path.join(shotDirOf(basePageId), `${via || screenId}.png`),
+      marks: withMarks
+        ? openRows(baseContext).filter((row) => row.screenId === screenId)
+        : [],
+    });
+  };
+  for (const pick of picks) {
+    if (pick.kind === 'frame') frameJob(pick.screenId, pick.via);
+    else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId, pick.row.screenId);
+    else if (pick.kind === 'section') {
+      jobs.push({
+        kind: 'section',
+        pageId: basePageId,
+        sectionId: pick.sectionId,
+        scale,
+        out: path.join(shotDirOf(basePageId), `${pick.via}.png`),
+        marks: withMarks
+          ? openRows(baseContext).filter((row) => pick.frames.some((frame) => frame.id === row.screenId))
+          : [],
+      });
+    } else if (pick.kind === 'page') {
+      const pageContext = contextOf(pick.pageId);
+      if (!pageContext) {
+        problems.push(`错误：找不到页：${pick.pageId}`);
+        continue;
+      }
+      jobs.push({
+        kind: 'page',
+        pageId: pageContext.pageId,
+        scale,
+        out: path.join(shotDirOf(pageContext.pageId), `${pageContext.pageId}.png`),
+        marks: withMarks ? openRows(pageContext) : [],
+      });
+    }
+  }
+  return { jobs, problems };
+}
+
 export async function runShot(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
@@ -1589,7 +1653,11 @@ export async function runShot(argv, io = {}) {
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
   if (!context) return 1;
   const rows = [...context.frameRows, ...context.docRows];
-  const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows: null }, { shotRefs: true });
+  // 页引用（<页>）对照登记页 id 清单解析 —— 基页是 --page / 缺省第一页，页
+  // 引用自己可以指向任何登记页（2026-09-23 修复「ppnt shot <页> 认不出」）。
+  const registry = loadRegistry({ root: REPO_ROOT, path: resolveRegistryPath(parsed.flags, env) });
+  const pageIds = listPageIds({ registry, root: REPO_ROOT });
+  const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, pageIds, crossPageRows: null }, { shotRefs: true });
   if (parsed.flags.status) {
     if (!REF_STATUSES.includes(parsed.flags.status)) {
       err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
@@ -1600,46 +1668,16 @@ export async function runShot(argv, io = {}) {
     }
   }
   for (const error of errors) err(error);
-  const jobs = [];
-  const seenScreens = new Set();
-  const shotDir = path.join(dataRoot(env), 'shot', context.pageId);
-  const frameJob = (screenId, via) => {
-    if (seenScreens.has(screenId)) return;
-    seenScreens.add(screenId);
-    jobs.push({
-      kind: 'frame',
-      screenId,
-      scale,
-      out: path.join(shotDir, `${via || screenId}.png`),
-      marks: parsed.flags.marks
-        ? context.frameRows.filter((row) => row.screenId === screenId && (row.status || 'open') !== 'close')
-        : [],
-    });
-  };
-  for (const pick of picks) {
-    if (pick.kind === 'frame') frameJob(pick.screenId, pick.via);
-    else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId, pick.row.screenId);
-    else if (pick.kind === 'section') {
-      jobs.push({
-        kind: 'section',
-        sectionId: pick.sectionId,
-        scale,
-        out: path.join(shotDir, `${pick.via}.png`),
-        marks: parsed.flags.marks
-          ? context.frameRows.filter((row) => pick.frames.some((frame) => frame.id === row.screenId) && (row.status || 'open') !== 'close')
-          : [],
-      });
-    } else if (pick.kind === 'page') {
-      jobs.push({
-        kind: 'page',
-        scale,
-        out: path.join(shotDir, `${context.pageId}.png`),
-        marks: parsed.flags.marks
-          ? context.frameRows.filter((row) => (row.status || 'open') !== 'close')
-          : [],
-      });
-    }
-  }
+  const plan = planShotJobs(picks, {
+    basePageId: context.pageId,
+    baseContext: context,
+    scale,
+    withMarks: !!parsed.flags.marks,
+    contextFor: (pageId) => loadAnnotateContext(pageId, parsed, { env, err }),
+    dataRootDir: dataRoot(env),
+  });
+  for (const problem of plan.problems) err(problem);
+  const jobs = plan.jobs;
   if (!jobs.length) {
     err('没有可拍的目标（引用都未命中）。');
     return 1;
@@ -1652,9 +1690,16 @@ export async function runShot(argv, io = {}) {
     err(`错误：渲染器加载失败：${error.message}`);
     return 1;
   }
+  const byPage = new Map();
+  for (const job of jobs) {
+    if (!byPage.has(job.pageId)) byPage.set(job.pageId, []);
+    byPage.get(job.pageId).push(job);
+  }
   try {
-    const results = await renderShots({ origin, pageId: context.pageId, jobs });
-    for (const result of results) out(`${result.out} · ${result.width}×${result.height}`);
+    for (const [pageId, group] of byPage) {
+      const results = await renderShots({ origin, pageId, jobs: group });
+      for (const result of results) out(`${result.out} · ${result.width}×${result.height}`);
+    }
   } catch (error) {
     err(`错误：${error.message}`);
     return 1;
