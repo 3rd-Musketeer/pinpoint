@@ -16,6 +16,7 @@ description: 在 pinpoint 里搭原型页：写 .jsx 帧、页内组件、kit �
 ## 0. 编译与看图
 
 ```bash
+ppnt list [关键词]        # 页清单：owner 用口头说法指页时先用它对上页 id 和源目录
 ppnt status               # 服务在不在、root 对不对；站点打不开先查它
 ppnt build <页>           # 源码 → dist（~/.pinpoint/dist/<entry>/）；画布、标注、导出只认 dist
 ppnt build <页> --watch   # 改源码自动重编；sidecar .js 变更触发整页刷新

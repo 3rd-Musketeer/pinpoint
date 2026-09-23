@@ -51,6 +51,7 @@ import {
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
 import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../src/server/lib/orphans.js';
+import { buildPageList, formatPageRow, matchPages, suggestPages } from '../src/server/lib/page-list.js';
 import { slugify } from '../src/shared/registry-ids.js';
 import {
   addRegistryEntry,
@@ -114,6 +115,7 @@ const NO_FOLDER = 'none';
 export class CliError extends Error {}
 
 export const USAGE = `用法：
+  pinpoint list [关键词…]                               列出页：id · 标题 · 类型 · 标注计数 · 源路径；关键词在 id / 标题 / 路径上宽松匹配
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
@@ -213,6 +215,14 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
                                        close 只在工作台，两者 mark 都不写
   --page <页>                          locate / shot / mark 的基页（缺省 registry 第一个可编译页）
   --registry 路径                      同 add
+
+list —— 把口头说的页对上页 id。每页两行：id · 标题 · 类型（编译页 / 文档页 / 网页 /
+  单文件，模板页另标）· open / check / done 计数 · 文件夹；次行源路径（挂靠条目列在宿主下）。
+  带关键词时只列匹配的，按匹配程度排序：多个词要同时对上，英文复数自动去 s
+  （routines 能对上 routine-creator），连字符与空格互通。例：
+    pinpoint list routines          → routine-creator  ·  Routine 创建  ·  编译页 …
+    pinpoint list areta 界面
+  其他命令找不到页时，也按同一规则给最接近的候选。
 
 prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面已不存在的账本：
   文档文件删了、条目改挂别页或从登记表移走了、页不在 registry 与 manifest 里
@@ -1529,8 +1539,10 @@ function pageTargetOrReport(pageRef, flags, { env, err }) {
   const target = resolvePageTarget(pageRef, { registry, root: REPO_ROOT });
   if (!target) {
     err(`错误：找不到页：${pageRef}`);
-    const ids = listPageIds({ registry, root: REPO_ROOT });
-    err(`可用页 id：${ids.join('、') || '（无）'}`);
+    if (!reportPageSuggestions(pageRef, { registryPath, env, err })) {
+      const ids = listPageIds({ registry, root: REPO_ROOT });
+      err(`可用页 id：${ids.join('、') || '（无）'}`);
+    }
     return null;
   }
   return target;
@@ -1639,8 +1651,10 @@ function loadAnnotateContext(pageRef, parsed, { env, err }) {
   const context = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
   if (!context) {
     err(`错误：找不到页：${pageRef}`);
-    const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
-    err(`可用页 id：${listPageIds({ registry, root: REPO_ROOT }).join('、') || '（无）'}`);
+    if (!reportPageSuggestions(pageRef, { registryPath, env, err })) {
+      const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+      err(`可用页 id：${listPageIds({ registry, root: REPO_ROOT }).join('、') || '（无）'}`);
+    }
     return null;
   }
   const distRoot = path.join(dataRoot(env), 'dist');
@@ -2014,6 +2028,75 @@ function pageIdKnown(pageRef, parsed, { env }) {
 }
 
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
+/* ---- list：页清单与“找不到页”的候选 ---- */
+
+function statusCountsOf(bucketPath) {
+  const counts = { open: 0, check: 0, done: 0, close: 0 };
+  for (const { doc } of readBucketLedgers(bucketPath)) {
+    for (const row of (doc && Array.isArray(doc.annotations) ? doc.annotations : [])) {
+      const st = row && row.status;
+      if (st && Object.prototype.hasOwnProperty.call(counts, st)) counts[st] += 1;
+      else counts.open += 1;
+    }
+  }
+  return counts;
+}
+
+function manifestPagesOf(root) {
+  try {
+    const doc = JSON.parse(fs.readFileSync(path.join(root, 'content', 'previews', '_index.json'), 'utf8'));
+    return Array.isArray(doc && doc.pages) ? doc.pages : [];
+  } catch {
+    return [];
+  }
+}
+
+/** 页清单（registry + 本地模板页），list 与“找不到页”的候选共用。 */
+export function pageListRows({ registryPath, env = process.env, root = REPO_ROOT } = {}) {
+  const entries = existingEntriesFor(registryPath);
+  const grouping = fs.existsSync(registryPath) ? listRegistryGrouping(registryPath) : { folders: [], pageFolders: {} };
+  const bucketRoot = dataRoot(env);
+  return buildPageList({
+    entries,
+    manifestPages: manifestPagesOf(root),
+    folders: grouping.folders,
+    pageFolders: grouping.pageFolders,
+    hasBoard: (entry) => typeof entry.path === 'string' && fs.existsSync(path.join(path.resolve(entry.path), 'board.json')),
+    countsFor: (id) => statusCountsOf(path.join(bucketRoot, id)),
+  });
+}
+
+/** “找不到页”报错的候选行；清单读不出时退回 null（调用方沿用 id 清单）。 */
+function reportPageSuggestions(pageRef, { registryPath, env, err }) {
+  let rows;
+  try { rows = pageListRows({ registryPath, env }); } catch { return false; }
+  const picks = suggestPages(rows, pageRef);
+  if (!picks.length) return false;
+  err('最接近的页（`pinpoint list <关键词>` 看全部）：');
+  for (const row of picks) err(`  ${row.id}  ·  ${row.title || '（无标题）'}`);
+  return true;
+}
+
+export async function runList(argv, io = {}) {
+  const { cwd, env, out } = ioOf(io);
+  const words = [];
+  const flags = {};
+  for (let i = 1; i < argv.length; i++) {
+    if (argv[i] === '--registry') { flags.registry = argv[++i]; continue; }
+    words.push(argv[i]);
+  }
+  const registryPath = resolveRegistryPath(flags, env, cwd);
+  const query = words.join(' ');
+  const rows = matchPages(pageListRows({ registryPath, env }), query);
+  if (!rows.length) {
+    out(`没有匹配“${query}”的页。不带关键词跑 \`pinpoint list\` 看全部。`);
+    return 1;
+  }
+  for (const row of rows) for (const line of formatPageRow(row)) out(line);
+  out(`共 ${rows.length} 页${query ? `（匹配“${query}”）` : ''} · registry：${registryPath}`);
+  return 0;
+}
+
 export async function run(argv, io = {}) {
   const { out, err } = ioOf(io);
   if (argv.includes('-h') || argv.includes('--help') || argv.length === 0) {
@@ -2021,6 +2104,7 @@ export async function run(argv, io = {}) {
     return 0;
   }
   switch (argv[0]) {
+    case 'list': return runList(argv, io);
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
