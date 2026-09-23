@@ -6,10 +6,12 @@ import { expect, test } from '@playwright/test';
 
 
 import { E2E_DATA_DIR } from './env.js';
+import { maybeThrottle } from './cpu-throttle.js';
 
 test.use({ reducedMotion: 'reduce' });
 // Every story starts with its own empty ledger, independent of spec ordering.
 test.beforeEach(() => fs.rm(E2E_DATA_DIR, {recursive:true, force:true}));
+test.beforeEach(async ({ page }) => { await maybeThrottle(page); });
 
 // The e2e server runs with PREVIEW_TEMPLATE_ONLY=1 (playwright.config.js), so
 // every assertion here targets template content only — instance-local pages and
@@ -21,6 +23,10 @@ async function openWorkbench(page) {
   // 默认页是哪一页。
   await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
+  // shell 就绪 ≠ 板就绪：navigator / 首访聚焦 / minimap 在挂载会话的几何批里
+  // 才落定（全量负载下这段与 sidecar 导入解耦前能拖过 5s 断言窗口——
+  // workbench.spec.js:1146 全量 flake 的根因）。等只读完成标记，不猜时序。
+  await page.waitForFunction(() => window.workbench.whenBoardSettled().then((ok) => ok === true));
 }
 
 async function saveAnnotation(page, target, comment) {
@@ -1270,6 +1276,19 @@ test('persistent canvas toolbar supports continuous section nav and layered mini
   await expect(minimap).toBeVisible();
   await minimapToggle.click();
   await expect(minimap).toBeHidden();
+});
+
+test('挂载几何批不等预览脚本：sidecar 永远在途 navigator 照常就位（2026-09-23 flake 根因）', async ({ page }) => {
+  // 全量负载下（load 5~6、两组并行）scroll-motion ×4 / workbench:1146 /
+  // review-refinements:585 同一根因：afterMount 曾把 navigator 重建、首访聚焦
+  // 排在全部预览脚本的动态 import 之后 —— dev 服务器慢时板已画好、minimap 也
+  // 因 zoom 应用而可用，唯独 Section Navigator 迟迟不出，用例的 5s 断言 /
+  // 30s 测试预算全烧在等待上。现在几何批只依赖 loadBoard 已插入的板 DOM。
+  // 这里把 sidecar 永久挂起（route 不应答），navigator 必须照常出现。
+  await page.route('**/e2e-ios/timer.js*', () => {});
+  await page.goto('/index.html?page=e2e-ios');
+  await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  expect(await page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
 });
 
 test('queued annotation saves survive own SSE, sync to another window, and clear through save', async ({ browser }) => {

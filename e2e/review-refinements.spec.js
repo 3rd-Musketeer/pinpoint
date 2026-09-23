@@ -2,11 +2,13 @@ import { expect, test } from '@playwright/test';
 import fs from 'node:fs';
 import path from 'node:path';
 import { E2E_DATA_DIR } from './env.js';
+import { maybeThrottle } from './cpu-throttle.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // These stories deliberately create and invalidate DOM targets. Their ledger
 // must not survive into another story with a fresh document.
 test.beforeEach(() => fs.rmSync(path.join(E2E_DATA_DIR, 'e2e-dir'), { recursive: true, force: true }));
+test.beforeEach(async ({ page }) => { await maybeThrottle(page); });
 test.afterEach(async ({page}) => {
   if (!page.isClosed()) {
     await page.waitForFunction(() => !window.pinpoint || !window.pinpoint.getState().syncing);

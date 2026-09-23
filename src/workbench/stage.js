@@ -222,6 +222,11 @@ window.workbench = {
   setActiveEntry: setActiveEntry,
   focusFrame: focusWorkbenchFrame,
   whenScrollSettled: whenStageScrollSettled,
+  // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。false =
+  // 会话已被下一次装载替换或取消 —— 等待方应重取再等（waitForFunction 轮询）。
+  whenBoardSettled: function () {
+    return mountManager.current ? mountManager.current.boardSettled : Promise.resolve(false);
+  },
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },

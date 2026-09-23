@@ -262,7 +262,7 @@ function runPreviewScripts(scope, pageId, session) {
 
 export function afterMount(panel, session) {
   return session.defer(function () {
-      if (!session.isUsable(panel)) return;
+      if (!session.isUsable(panel)) { session.settleBoard(false); return; }
       // Board phones keep intrinsic size; zoom is on .wb-library, not per-stage fit.
       panel.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
         s.removeAttribute('data-fit');
@@ -274,19 +274,22 @@ export function afterMount(panel, session) {
       var hadViewport = restorePageViewportAfterMount(session.pageId);
       if (window.iOSKit) window.iOSKit.refresh(panel);
       probeFragmentStyles(panel, session);
-      return runPreviewScripts(panel, session.pageId, session).then(function () {
+      // 几何批（navigator / 滚动 spy / 首访聚焦 / minimap / ann 渲染）只依赖
+      // loadBoard 已插入的板 DOM，不能排在预览脚本导入后面 —— sidecar 是网络
+      // import，dev 服务器慢或连接排队时，板已画好而 navigator 迟迟不出、首访
+      // 不聚焦（2026-09-23 全量负载下 e2e 三处 30s/5s 等待超时的根因）。脚本
+      // 之后自己挂载；挂载引起的 DOM 变化由 annotate client 的 MutationObserver
+      // 兜底刷新，不依赖这里再排一次渲染。
+      requestAnimationFrame(function () {
         if (!session.isUsable(panel)) return;
-        // Coalesce the post-script DOM batch into one frame so layout
-        // reads/writes (navigator positions, frame-in-view, ann panel) batch.
-        requestAnimationFrame(function () {
-          if (!session.isUsable(panel)) return;
-          var _a = annotateApi(); if (_a) _a.render();
-          rebuildSectionNavigator(panel);
-          mountDeps.wireLibraryScrollSpy();
-          if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
-          scheduleAnnSnap();
-          scheduleMinimapUpdate();
-        });
+        var _a = annotateApi(); if (_a) _a.render();
+        rebuildSectionNavigator(panel);
+        mountDeps.wireLibraryScrollSpy();
+        if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
+        scheduleAnnSnap();
+        scheduleMinimapUpdate();
+        session.settleBoard(session.active);
       });
+      return runPreviewScripts(panel, session.pageId, session);
   }, 0);
 }

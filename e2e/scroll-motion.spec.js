@@ -1,9 +1,13 @@
 import { test, expect } from '@playwright/test';
 
+import { maybeThrottle } from './cpu-throttle.js';
+
 test.beforeEach(async ({ page }) => {
+  await maybeThrottle(page);
   await page.goto('/index.html?page=e2e-ios&mode=ios');
-  // afterMount wires navigation and applies the initial viewport after scripts.
-  // Starting a spring at HTML insertion time races that legitimate first focus.
+  // afterMount wires navigation and applies the initial viewport in the geometry
+  // batch (board DOM in; independent of preview-script imports). Starting a spring
+  // at HTML insertion time races that legitimate first focus.
   await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
   await page.evaluate(() => window.workbench.whenScrollSettled());
 });

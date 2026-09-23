@@ -11,10 +11,18 @@ export class BoardMountSession {
     this.active = true;
     this.disposers = [];
     this.pendingTasks = new Set();
+    // 只读完成标记：几何批（navigator / spy / 首访聚焦 / minimap）跑完且本会话
+    // 仍是当前会话 → true；会话被替换 / 取消 → false。测试与外部调用方靠它等
+    // 「板真正挂好」，不用猜 shell 就绪等于板就绪。
+    this.boardSettled = new Promise((resolve) => { this._settleBoard = resolve; });
   }
 
   isUsable(root) {
     return this.active && (!root || root.isConnected !== false);
+  }
+
+  settleBoard(ok) {
+    this._settleBoard(!!ok);
   }
 
   defer(callback, delay = 0) {
@@ -61,6 +69,7 @@ export class BoardMountSession {
       task.settle(false);
     }
     this.pendingTasks.clear();
+    this.settleBoard(false);
     const list = this.disposers.splice(0, this.disposers.length);
     for (const disposer of list) {
       try { disposer(); } catch (error) { console.error('[preview-script] unmount', error); }
