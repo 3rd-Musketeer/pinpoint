@@ -19,8 +19,12 @@
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
 
-元素标注一律写 `targets: [{ ref, selector, text }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
-顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`[@t:iN]` 只在那一条标注内解析，
+元素标注一律写 `targets: [{ ref, selector, text, ppId? }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
+顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`ppId`（决定 #15）是编译页锚点的
+源码稳定 id（`data-pp-id` 的值，命中元素或最近带标祖先）：解析时先按 `[data-pp-id="…"]`
+找、多命中取文本最接近的，找不到再回落 cssPath + 文本；只要那行源码还在，帧结构怎么改
+锚都不漂。存量 HTML 页与工作台 chrome 没有 `data-pp-id`，target 不带 `ppId`，行为不变。
+`[@t:iN]` 只在那一条标注内解析，
 永远不进 `mentions[]`；`[@a:id]` 保持它的跨标注含义。
 
 ## 读到标注去改哪里

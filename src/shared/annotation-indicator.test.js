@@ -158,6 +158,24 @@ test('normalizeAnnotation upgrades element targets with stable refs and compatib
   assert.equal(nextTargetRef(multi.targets), 'i8');
 });
 
+test('normalizeTargetRefs 透传 target 的 ppId，非法值摘掉（决定 #15）', () => {
+  const normalized = normalizeAnnotation({
+    type: 'element',
+    targets: [
+      { selector: '#first', text: 'First', ppId: 'home.jsx:9@1' },
+      { selector: '#second', text: 'Second', ppId: '' },
+      { selector: '#third', text: 'Third', ppId: 42 },
+    ],
+  });
+  assert.deepEqual(normalized.targets, [
+    { ref: 'i1', selector: '#first', text: 'First', ppId: 'home.jsx:9@1' },
+    { ref: 'i2', selector: '#second', text: 'Second' },
+    { ref: 'i3', selector: '#third', text: 'Third' },
+  ]);
+  // 顶层只镜像 selector / text；ppId 属于 target，不出兼容镜像。
+  assert.equal(normalized.ppId, undefined);
+});
+
 test('target content converts display indicators without disturbing annotation mentions', () => {
   const targets = [
     { ref: 'i1', selector: '#first', text: 'First' },

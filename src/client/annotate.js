@@ -384,6 +384,16 @@
     return parts.join(' > ');
   }
 
+  // 决定 #15：编译页的宿主元素都带 data-pp-id（文件:行@n，源码在锚就在）。
+  // 取目标时存它进 target.ppId；cssPath + 文本照存作兜底。命中元素自己没有
+  // （机壳 wrapper 等）就取最近带标祖先 —— 锚到组件根等价于锚到它内部的
+  // wrapper。工作台 chrome 不打这个属性，closest 爬不出 frame 之外。
+  function ppIdOf(el) {
+    if (!el || !el.closest) return '';
+    var hit = el.closest('[data-pp-id]');
+    return hit ? (hit.getAttribute('data-pp-id') || '') : '';
+  }
+
   function docRect(el) {
     var r = viewRect(el);
     return [r[0] + scrollX, r[1] + scrollY, r[2], r[3]];
@@ -1816,7 +1826,8 @@
     var targets = markElementTargets(activeComposer.m);
     if (targets.some(function (target) { return target.selector === sel; })) return true;
     var ref = 'i' + activeComposer.nextTargetNumber++;
-    targets.push({ ref: ref, selector: sel, text: excerpt(el) });
+    var ppId = ppIdOf(el);
+    targets.push({ ref: ref, selector: sel, text: excerpt(el), ppId: ppId || undefined });
     activeComposer.m.targets = targets;
     normalizeElementTargets(activeComposer.m);
     insertComposerIndicator(ref);
@@ -1913,13 +1924,14 @@
   function newElementMark(el) {
     var selector = cssPath(el);
     var text = excerpt(el);
+    var ppId = ppIdOf(el);
     var m = stampPage({
       n: nextN(),
       id: newMarkId(),
       type: 'element',
       selector: selector,
       text: text,
-      targets: [{ ref: 'i1', selector: selector, text: text }],
+      targets: [{ ref: 'i1', selector: selector, text: text, ppId: ppId || undefined }],
       rect: docRect(el),
       content: ''
     });
