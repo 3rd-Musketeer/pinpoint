@@ -263,33 +263,52 @@ function runPreviewScripts(scope, pageId, session) {
 export function afterMount(panel, session) {
   return session.defer(function () {
       if (!session.isUsable(panel)) { session.settleBoard(false); return; }
-      // Board phones keep intrinsic size; zoom is on .wb-library, not per-stage fit.
-      panel.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
-        s.removeAttribute('data-fit');
-        var device = s.querySelector('.ios-device');
-        if (device) device.style.setProperty('--ios-scale', '1');
-      });
-      syncPanelPrefs(panel);
-      wireExportControls(panel);
-      var hadViewport = restorePageViewportAfterMount(session.pageId);
-      if (window.iOSKit) window.iOSKit.refresh(panel);
-      probeFragmentStyles(panel, session);
+      try {
+        // Board phones keep intrinsic size; zoom is on .wb-library, not per-stage fit.
+        panel.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
+          s.removeAttribute('data-fit');
+          var device = s.querySelector('.ios-device');
+          if (device) device.style.setProperty('--ios-scale', '1');
+        });
+        syncPanelPrefs(panel);
+        wireExportControls(panel);
+        var hadViewport = restorePageViewportAfterMount(session.pageId);
+        if (window.iOSKit) window.iOSKit.refresh(panel);
+        probeFragmentStyles(panel, session);
+      } catch (error) {
+        // 几何批之前的同步准备抛错：rAF 还没排上，完成标记在这里落 false。
+        session.settleBoard(false);
+        throw error;
+      }
       // 几何批（navigator / 滚动 spy / 首访聚焦 / minimap / ann 渲染）只依赖
       // loadBoard 已插入的板 DOM，不能排在预览脚本导入后面 —— sidecar 是网络
       // import，dev 服务器慢或连接排队时，板已画好而 navigator 迟迟不出、首访
       // 不聚焦（2026-09-23 全量负载下 e2e 三处 30s/5s 等待超时的根因）。脚本
       // 之后自己挂载；挂载引起的 DOM 变化由 annotate client 的 MutationObserver
       // 兜底刷新，不依赖这里再排一次渲染。
+      // 完成标记每条出口都要落定：不可用就 false、几何批抛错也 false（finally），
+      // 否则等它的调用方会一直挂着（2026-09-23 满载下 openWorkbench 30s 超时）。
       requestAnimationFrame(function () {
-        if (!session.isUsable(panel)) return;
-        var _a = annotateApi(); if (_a) _a.render();
-        rebuildSectionNavigator(panel);
-        mountDeps.wireLibraryScrollSpy();
-        if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
-        scheduleAnnSnap();
-        scheduleMinimapUpdate();
-        session.settleBoard(session.active);
+        var ok = false;
+        try {
+          if (!session.isUsable(panel)) return;
+          var _a = annotateApi(); if (_a) _a.render();
+          rebuildSectionNavigator(panel);
+          mountDeps.wireLibraryScrollSpy();
+          if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
+          scheduleAnnSnap();
+          scheduleMinimapUpdate();
+          ok = session.active;
+        } finally {
+          session.settleBoard(ok);
+        }
       });
       return runPreviewScripts(panel, session.pageId, session);
-  }, 0);
+  }, 0).then(function (value) {
+    // 会话在回调跑之前就失效（defer 直接回 false、回调没执行）时 rAF 那条出口
+    // 不存在，这里补 false。预览脚本导入失败也会让 value 为 false，但那时板
+    // 已经画好、会话仍有效，不能记成未落定 —— 所以只认会话失效。
+    if (value === false && !session.active) session.settleBoard(false);
+    return value;
+  });
 }
