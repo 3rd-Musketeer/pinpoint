@@ -1822,11 +1822,15 @@ export async function runMark(argv, io = {}) {
 
 /** status --page <页>：各状态计数 + dist 是否过期 + 孤儿账本（只读，不依赖服务）。 */
 function printPageStatus(parsed, { env, out, err }) {
-  const context = loadAnnotateContext(parsed.flags.page, parsed, { env, err });
+  // 找不到页的报错先攒着：整桶孤儿的页（删页后残留）有专门的报告，先打一行
+  // 「错误：找不到页 + 可用页清单」全是噪音（K8）；真没桶再原样报错。
+  const errors = [];
+  const context = loadAnnotateContext(parsed.flags.page, parsed, { env, err: (m) => errors.push(m) });
   if (!context) {
     // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
     // 报告而不是裸报错，不然删页后的残留账本没有入口可见。
     if (printBucketOrphanStatus(parsed.flags.page, { env, out })) return 0;
+    for (const line of errors) err(line);
     return 1;
   }
   const counts = countByStatus([...context.frameRows, ...context.docRows]);

@@ -1566,3 +1566,25 @@ test('runStatus --page：各状态计数 + dist 过期状态', async (t) => {
   assert.equal(await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...stale.io, env: made.env }), 0);
   assert.ok(stale.out.some((line) => line.includes('已过期')), stale.out.join('\n'));
 });
+
+test('runStatus --page：整桶孤儿的页直接报孤儿，不先打「找不到页」（K8）', async (t) => {
+  const made = await makeAnnotatedPage(t);
+  const bucket = path.join(made.env.PINPOINT_DATA_DIR, 'ghost-page');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 1,
+    annotations: [{ id: 'g1', n: 1, type: 'element', pageId: 'ghost-page', status: 'open', content: '残留行' }],
+  }));
+
+  const rec = recorder();
+  const code = await runStatus(['status', '--page', 'ghost-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /页 ghost-page 不在 registry 与本地页面清单里；桶里 1 本账本全是孤儿/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.err.length === 0, '不先打「找不到页」错误');
+
+  // 桶也不在：没有报告可给，原样报错退 1。
+  const bare = recorder();
+  const code2 = await runStatus(['status', '--page', 'no-bucket', '--registry', made.registry], { ...bare.io, env: made.env });
+  assert.equal(code2, 1);
+  assert.ok(bare.err.some((line) => /找不到页：no-bucket/.test(line)));
+});
