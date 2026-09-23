@@ -386,7 +386,11 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
     expect(res.status()).toBe(200);
     return (await res.json()).revision;
   };
-  let rev = await page.evaluate(() => window.pinpoint.getState().revision);
+  // 起点 revision 取服务端的：客户端第四条的保存可能还在路上，拿客户端
+  // revision 会和那次落盘抢跑成 409。等服务端账本里出现第四条再读它的 revision。
+  const serverDoc = async () => (await page.request.get(`/annotations/${ledger}?entry=e2e-dir`)).json();
+  await expect.poll(async () => ((await serverDoc()).annotations || []).some((a) => a.n === nClose)).toBe(true);
+  let rev = (await serverDoc()).revision;
   rev = await postStatus(nCheck, 'check', rev);
   rev = await postStatus(nDone, 'done', rev);
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('done');
