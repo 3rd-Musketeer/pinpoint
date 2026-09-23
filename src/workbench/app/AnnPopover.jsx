@@ -1,12 +1,50 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useWorkbenchStore, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { canvasBoard } from '../lib/board-entries.js';
+import { NOTE_CARD_W, noteCardPosition } from '../lib/note-card-pos.js';
 import { WbIcon } from './WbIcon.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
+
+// agent 备注 hover 卡的节律 = 评论卡（docs/design.md「钉子与评论卡」）：hover
+// 120ms 才出（扫过不闪），离开给 90ms 宽限，指针可以挪到卡上继续读。
+var NOTE_SHOW_MS = 120;
+var NOTE_HIDE_MS = 90;
+
+/* 卡的皮肤逐项抄 .ann-bubble（src/shared/annotate-bubble.js，H1）：186 宽白面
+   --wb-surface + 圆角 --wb-r-3 + 影 --wb-sh-2，11px/1.45 正文，眉标一行 11px
+   mono muted。只换层级档：portal 到 body，走 --wb-z-float（tooltip 档）。
+   最多 6 行（6 × 1.45em），超出卡内滚动，note 原文不截断。 */
+function NoteCard(props) {
+  var ref = useRef(null);
+  var [pos, setPos] = useState(null);
+  // 行里的滚动守卫（cardRef）与这里量测用的 ref 指向同一个节点。
+  function setNode(el) {
+    ref.current = el;
+    if (props.cardRef) props.cardRef.current = el;
+  }
+  useLayoutEffect(function () {
+    var el = ref.current;
+    if (!el) return;
+    var r = props.anchor.getBoundingClientRect();
+    var box = noteCardPosition(r, NOTE_CARD_W, el.offsetHeight, window.innerWidth, window.innerHeight);
+    setPos({ left: box.left + 'px', top: box.top + 'px' });
+  }, [props.anchor, props.text]);
+  return createPortal(
+    <div ref={setNode} role="tooltip" id={props.id} data-ann-n={props.n}
+      className="wb-ann-note-card fixed z-(--wb-z-float) w-[186px] rounded-[var(--wb-r-3)] bg-[var(--wb-surface)] px-[9px] pt-[7px] pb-[8px] text-[11px] leading-[1.45] text-[var(--wb-fg)] shadow-[var(--wb-sh-2)]"
+      style={pos || { visibility: 'hidden', left: 0, top: 0 }}
+      onMouseEnter={props.onEnter} onMouseLeave={props.onLeave}>
+      <div className="mb-[3px] font-[var(--wb-font-mono)] text-[11px] leading-[1.3] text-[var(--wb-muted)]">agent 备注</div>
+      <div className="max-h-[8.7em] overflow-y-auto whitespace-pre-wrap break-words">{props.text}</div>
+    </div>,
+    document.body
+  );
+}
 
 var SNAP_OFF = { available: false, rows: [] };
 
@@ -22,9 +60,58 @@ var BUBBLE_MODES = [
 function AnnRow(props) {
   var r = props.row;
   var [armed, setArmed] = useState(false);
+  var rowRef = useRef(null);
+  var cardRef = useRef(null);
+  var showT = useRef(0);
+  var hideT = useRef(0);
+  var [noteOpen, setNoteOpen] = useState(false);
+
+  useEffect(function () {
+    return function () { clearTimeout(showT.current); clearTimeout(hideT.current); };
+  }, []);
+
+  // 卡开着时，任何不在卡里的滚动（列表滚走行、画布滚动）都立刻收卡，
+  // 免得 fixed 卡留在原地指着别的行。卡自己 body 的滚动除外（6 行后可滚）。
+  useEffect(function () {
+    if (!noteOpen) return;
+    function onScroll(e) {
+      if (cardRef.current && cardRef.current.contains(e.target)) return;
+      closeNow();
+    }
+    window.addEventListener('scroll', onScroll, true);
+    return function () { window.removeEventListener('scroll', onScroll, true); };
+  }, [noteOpen]);
+
+  function openSoon() {
+    if (!r.note) return;
+    clearTimeout(hideT.current);
+    clearTimeout(showT.current);
+    showT.current = setTimeout(function () { setNoteOpen(true); }, NOTE_SHOW_MS);
+  }
+  // 指针从卡上回到行（宽限期内）：不再重计 120ms。
+  function openNow() {
+    if (!r.note) return;
+    clearTimeout(hideT.current);
+    clearTimeout(showT.current);
+    setNoteOpen(true);
+  }
+  function closeSoon() {
+    clearTimeout(showT.current);
+    clearTimeout(hideT.current);
+    hideT.current = setTimeout(function () { setNoteOpen(false); }, NOTE_HIDE_MS);
+  }
+  function closeNow() {
+    clearTimeout(showT.current);
+    clearTimeout(hideT.current);
+    setNoteOpen(false);
+  }
+
   return (
     <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
-      data-ann-n={r.n} title={r.note || undefined}>
+      ref={rowRef} data-ann-n={r.n}
+      onMouseEnter={openSoon} onMouseLeave={closeSoon}
+      onFocus={openSoon} onBlur={closeSoon}
+      aria-describedby={noteOpen ? 'wb-ann-note-card-' + r.n : undefined}>
       <div className="wb-ann-item-row flex w-full items-stretch gap-0.5">
         <button type="button" className="wb-ann-item-main rounded-md" data-ann-n={r.n}
           onClick={function () { props.onGoTo(r.n); }}>
@@ -50,6 +137,9 @@ function AnnRow(props) {
           {armed ? '确认' : <WbIcon name="trash" size={14} />}
         </button>
       </div>
+      {noteOpen ? <NoteCard n={r.n} text={r.note} anchor={rowRef.current}
+        id={'wb-ann-note-card-' + r.n} cardRef={cardRef}
+        onEnter={openNow} onLeave={closeSoon} /> : null}
     </div>
   );
 }
