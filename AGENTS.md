@@ -40,6 +40,8 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
 完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。
 
+**高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 4 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。
+
 **功能分支上只跑单测和相关的 spec，不跑全量。** 全量两组约 2 分钟、机器满载时时序用例会偶挂，
 每个分支各跑一遍再回基点对照，时间都花在这里。分支上：`npm test` + 改动涉及的 spec（新写的与
 断言被改的）。全量两组只在合入 dev 后跑一次，几个分支攒一起跑；那一轮挂了才单跑定位。
