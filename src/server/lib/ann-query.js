@@ -1,10 +1,13 @@
 /**
- * ppnt check / locate / status 的查询层（2026-09-22 切片 4）。
+ * ppnt check / locate / status / prune 的查询层（2026-09-22 切片 4；
+ * storage-unify 起读模型换成桶 = 页）。
  *
  * 数据从哪来（读侧，无副作用）：
- * - 帧标注：pinpoint 桶（画布与 mention frame 共用一本账），行带 pageId /
- *   screenId —— 按行过滤 pageId 即得本页帧标注；
- * - 文档标注：条目自己桶里的账本（/sites/<id>/ 直开页按路径分账本）。
+ * - 帧标注：本页桶里的 @canvas 账本（画布与 mention frame 共用这一本），
+ *   行带 pageId / screenId；
+ * - 文档标注：同一桶里按路径分的其余账本（/sites/<id>/ 与 /previews/ 直开页）；
+ * - 孤儿账本：表面已不存在的账本（lib/orphans.js 判定），check / status 单独
+ *   列出、不计入计数，清理只经 prune；
  * - 帧 HTML：dist（readDistScreen，不触发编译 —— check 只读，未编译的帧在
  *   摘录处降级为提示，不去写 dist）。
  *
@@ -16,6 +19,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { dataRoot } from './annotate-data-dir.js';
+import { CANVAS_LEDGER } from './annotation-store.js';
+import { collectPageOrphans, readBucketLedgers } from './orphans.js';
+import { manifestPageIds } from './page-manifest.js';
 import { resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
@@ -59,29 +65,68 @@ export function readBucketRows(bucketPath) {
 }
 
 /**
- * 一页的标注全量：帧标注（pinpoint 桶，pageId 行过滤）+ 文档标注（条目桶）。
+ * 一页的标注全量（storage-unify：桶 = 页）：帧标注 = 本页桶的 @canvas 账本，
+ * 文档标注 = 桶里按路径分的其余账本。skipLedgers = 孤儿账本名（不带 .json），
+ * 它们的行不进计数、不走引用解析，只由 check / status 单独列出。
  * 返回 { frameRows, docRows }；行上带 __bucket / __ledger，mark 回写时用。
  */
-export function collectPageRows({ root, pageId }) {
-  const frameRows = readBucketRows(path.join(root, 'pinpoint'))
-    .filter((row) => row.pageId === pageId)
-    .map((row) => ({ ...row, __bucket: 'pinpoint' }));
-  const docRows = readBucketRows(path.join(root, pageId))
-    .map((row) => ({ ...row, __bucket: pageId, __page: row.__ledger }));
+export function collectPageRows({ root, pageId, skipLedgers = [] }) {
+  const skip = new Set(skipLedgers);
+  const rows = readBucketRows(path.join(root, pageId))
+    .filter((row) => !skip.has(row.__ledger))
+    .map((row) => ({ ...row, __bucket: pageId }));
+  const frameRows = rows.filter((row) => row.__ledger === CANVAS_LEDGER);
+  const docRows = rows
+    .filter((row) => row.__ledger !== CANVAS_LEDGER)
+    .map((row) => ({ ...row, __page: row.__ledger }));
   return { frameRows, docRows };
 }
 
-/** check / locate 的页上下文：编译目标 + 板 + 引用号 + 标注。 */
+/** check / locate / status / prune 的页上下文：编译目标 + 板 + 引用号 + 标注 + 孤儿。 */
 export function loadPageContext({ pageRef, registryPath = null, root = null, dataRootDir = null }) {
-  const registry = loadRegistry({ root: root || REPO_ROOT, path: registryPath || undefined });
-  const target = resolvePageTarget(pageRef, { registry, root: root || REPO_ROOT });
+  const repoRoot = root || REPO_ROOT;
+  const registry = loadRegistry({ root: repoRoot, path: registryPath || undefined });
+  const target = resolvePageTarget(pageRef, { registry, root: repoRoot });
   if (!target) return null;
   let board = null;
   try {
     board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
   } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
-  const { frameRows, docRows } = collectPageRows({ root: dataRootDir || dataRoot(), pageId: target.entryId });
-  return { pageId: target.entryId, target, board, refs: boardRefs(board || {}), frameRows, docRows };
+  const dataRootValue = dataRootDir || dataRoot();
+  // 孤儿账本（storage-unify）：从帧/文档行里摘出去，单独挂在上下文上。
+  const localIds = manifestPageIds(repoRoot);
+  const orphanLedgers = collectPageOrphans({
+    pageId: target.entryId,
+    dataRoot: dataRootValue,
+    entries: registry.entries,
+    isManifestPage: !registry.resolve(target.entryId) && localIds.includes(target.entryId),
+    previewsRoot: path.join(repoRoot, 'content', 'previews'),
+  });
+  const { frameRows, docRows } = collectPageRows({
+    root: dataRootValue,
+    pageId: target.entryId,
+    skipLedgers: orphanLedgers.map((name) => name.replace(/\.json$/, '')),
+  });
+  const orphanRows = readBucketLedgers(path.join(dataRootValue, target.entryId))
+    .filter((ledger) => orphanLedgers.includes(ledger.name))
+    .flatMap((ledger) => (Array.isArray(ledger.doc.annotations) ? ledger.doc.annotations : [])
+      .map((row) => normalizeAnnotation(row)))
+    .filter(Boolean)
+    .map((row) => ({ ...row, __bucket: target.entryId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, target.entryId)) }));
+  return { pageId: target.entryId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows };
+}
+
+function orphanLedgerOf(row, orphanLedgers, bucketPath) {
+  // 行来自哪本孤儿账本不可靠（行上没有账本信息），这里只为显示服务：逐本比对 id。
+  for (const name of orphanLedgers) {
+    try {
+      const doc = JSON.parse(fs.readFileSync(path.join(bucketPath, name), 'utf8'));
+      if (Array.isArray(doc.annotations) && doc.annotations.some((a) => a && a.id && a.id === row.id)) {
+        return name.replace(/\.json$/, '');
+      }
+    } catch { /* 坏文件跳过 */ }
+  }
+  return orphanLedgers[0] ? orphanLedgers[0].replace(/\.json$/, '') : '';
 }
 
 /* ---- 锚点解析：selector → dist 元素 ---- */
@@ -407,6 +452,16 @@ export function buildCheckReport(context, options = {}) {
       kind: 'doc',
       title: '文档页标注（非帧）',
       rows: docRows.map((row) => checkRowModel({ ...row, __ledger: row.__page || row.__ledger }, context)),
+    });
+  }
+  // 孤儿账本（storage-unify）：单独一组、标「孤儿」，不进上面的状态过滤，也不
+  // 计入 counts —— 表面已经不存在，处理它们走 ppnt prune，不走 mark。
+  const orphanRows = (context.orphanRows || []);
+  if (orphanRows.length) {
+    groups.push({
+      kind: 'orphan',
+      title: `孤儿标注（表面已不存在，ppnt prune ${context.pageId} 清理）`,
+      rows: orphanRows.map((row) => ({ ...checkRowModel(row, context), orphan: true })),
     });
   }
   return { page: context.pageId, status, groupBy, groups, counts: countByStatus([...context.frameRows, ...context.docRows]) };

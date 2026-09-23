@@ -602,40 +602,17 @@
     return resolve(selector);
   }
 
-  function sectionSelector(sectionId) {
-    var id = String(sectionId).replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-    return '#wb-board-panel [data-ann-section="' + id + '"], #wb-board-panel [data-ann-group="' + id + '"]';
-  }
-
   /** Annotation belongs to the active workbench page. */
   function markOnActivePage(m) {
     if (!m) return false;
     // /api/frame 嵌入帧：本实例只承载「某一个 frame」的标注 —— 同账本里其它
     // page/screen 的行既不渲染也不计数（行的读写仍整账本报文，绝不丢行）。
     if (FRAME) return m.pageId === FRAME.pageId && m.screenId === FRAME.screenId;
-    // 独立 HTML 文档（没有 workbench 画布）：下面的判据全是「这个标注落在当前
-    // 画布的哪个页/哪个 frame 里」，在这里一条都不成立，结果是所有标注都被判为
-    // 不属于本页 —— 计数恒为 0、侧栏列表恒空，尽管标注确实存在并已落盘。
-    // 这类文档的页面身份由磁盘 page key（按路径分文件）保证，不需要再过滤。
-    if (!document.getElementById('wb-board-panel')) return true;
-    var pid = currentWorkbenchPageId();
-    if (m.pageId) return !pid || m.pageId === pid;
-    var sec = annotationSection(m);
-    if (sec) {
-      try {
-        return !!document.querySelector(sectionSelector(sec));
-      } catch (e) { return false; }
-    }
-    if (m.type === 'element') {
-      var targets = markElementTargets(m);
-      for (var ti = 0; ti < targets.length; ti++) {
-        var tel = resolve(targets[ti].selector);
-        if (tel && tel.closest && tel.closest('#wb-board-panel')) return true;
-      }
-      return false;
-    }
-    var el = m.base ? resolve(m.base.selector) : null;
-    return !!(el && el.closest && el.closest('#wb-board-panel'));
+    // storage-unify：桶 = 页 —— 画布账本（@canvas）与独立文档账本（按路径分）
+    // 整本都属于「当前这一页」，行上的 pageId 不再承担归属：rename 只改桶名
+    // 不改行，切页 = 换桶。旧「一本账装多页」按 pageId/section/锚点过滤的
+    // 判定随共享账本一起退役。
+    return true;
   }
 
   // ---------- section / frame stamping ----------

@@ -629,6 +629,96 @@ test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服�
   assert.ok(rec.out.some((line) => /服务已重载/.test(line)));
 });
 
+test('storage-unify：rename 改桶名就完成归属迁移 —— @canvas 行上的 pageId 不动', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'old');
+  fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 1,
+    annotations: [{ id: 'c1', n: 1, pageId: 'old', screenId: 'home', status: 'open', content: '帧意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
+    page: 'doc~1', path: `/sites/old/card.html`, revision: 1,
+    annotations: [{ id: 'd1', n: 2, status: 'open', content: '文档意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'images', '@canvas-1-1.png'), 'pin');
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'old', title: '我的应用', kind: 'dir', path: site, board: 'ios' },
+  ]);
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  assert.equal(await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env: { PINPOINT_DATA_DIR: dataRoot }, requestFn }), 0);
+  const fresh = path.join(dataRoot, 'fresh');
+  assert.ok(!fs.existsSync(bucket), '旧桶整体改名');
+  const canvas = JSON.parse(fs.readFileSync(path.join(fresh, '@canvas.json'), 'utf8'));
+  assert.equal(canvas.annotations[0].pageId, 'old', '行上的 pageId 不承担归属（桶 = 页），rename 不改行');
+  assert.ok(fs.existsSync(path.join(fresh, 'doc~1.json')), '文档账本随桶走');
+  assert.ok(fs.existsSync(path.join(fresh, 'images', '@canvas-1-1.png')), '图片随桶走');
+});
+
+test('runPrune：--dry-run 只列不删；落盘删孤儿账本与它的图片，活的账本不动', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  fs.writeFileSync(path.join(site, 'doc.html'), '<!doctype html><p>doc</p>');
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'gone-page');
+  fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
+    page: 'doc~1', path: '/sites/gone-page/missing.html', revision: 1,
+    annotations: [{ id: 'd1', n: 1, status: 'open', content: '孤儿行' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'doc~2.json'), JSON.stringify({
+    page: 'doc~2', path: '/sites/gone-page/doc.html', revision: 1,
+    annotations: [{ id: 'd2', n: 2, status: 'open', content: '活账本' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'images', 'doc~1-1-1.png'), 'orphan');
+  fs.writeFileSync(path.join(bucket, 'images', 'doc~2-1-1.png'), 'live');
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'gone-page', kind: 'dir', path: site },
+  ]);
+  const env = { PINPOINT_DATA_DIR: dataRoot, PINPOINT_REGISTRY: file };
+
+  const dry = recorder();
+  assert.equal(await runPrune(['prune', 'gone-page', '--dry-run'], { ...dry.io, env }), 0);
+  assert.ok(dry.out.some((line) => line.includes('doc~1.json') && line.includes('missing.html') === false), dry.out.join('\n'));
+  assert.ok(dry.out.some((line) => /--dry-run：1 本孤儿账本待删/.test(line)), dry.out.join('\n'));
+  assert.ok(fs.existsSync(path.join(bucket, 'doc~1.json')), 'dry-run 不删');
+
+  const rec = recorder();
+  assert.equal(await runPrune(['prune', 'gone-page'], { ...rec.io, env }), 0);
+  assert.ok(rec.out.some((line) => /已删除 1 本孤儿账本 与 1 个孤儿图片/.test(line)), rec.out.join('\n'));
+  assert.ok(!fs.existsSync(path.join(bucket, 'doc~1.json')), '孤儿账本已删');
+  assert.ok(!fs.existsSync(path.join(bucket, 'images', 'doc~1-1-1.png')), '孤儿图片已删');
+  assert.ok(fs.existsSync(path.join(bucket, 'doc~2.json')), '活账本不动');
+  assert.ok(fs.existsSync(path.join(bucket, 'images', 'doc~2-1-1.png')), '活图片不动');
+
+  // 再跑一遍：没有孤儿了，幂等退 0。
+  const again = recorder();
+  assert.equal(await runPrune(['prune', 'gone-page'], { ...again.io, env }), 0);
+  assert.ok(again.out.some((line) => /没有孤儿账本/.test(line)), again.out.join('\n'));
+});
+
+test('runPrune：页不在 registry 与 manifest 里 = 整桶皆孤儿', async (t) => {
+  const dir = withTempDir(t);
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'ghost');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 1,
+    annotations: [{ id: 'g1', n: 1, status: 'open', content: '页没了' }],
+  }));
+  const file = registryWith(dir, [{ id: 'pinpoint', kind: 'dir', path: dir }]);
+  const env = { PINPOINT_DATA_DIR: dataRoot, PINPOINT_REGISTRY: file };
+  const rec = recorder();
+  assert.equal(await runPrune(['prune', 'ghost'], { ...rec.io, env }), 0);
+  assert.ok(rec.out.some((line) => /页已不存在，整桶孤儿/.test(line)), rec.out.join('\n'));
+  assert.ok(!fs.existsSync(path.join(bucket, '@canvas.json')), '整桶清空');
+});
+
 test('runRename: 没有标注桶 / file 与 url 条目跳过资源前缀', async (t) => {
   const dir = withTempDir(t);
   const page = path.join(dir, 'r.html');
@@ -1312,6 +1402,7 @@ import {
   runCheck,
   runLocate,
   runMark,
+  runPrune,
 } from './pinpoint-cli.js';
 
 const HOME_JSX = [
@@ -1326,7 +1417,7 @@ const HOME_JSX = [
   '',
 ].join('\n');
 
-/** 编译好的页 + pinpoint 桶里一条指向 home.jsx:4 的帧标注。 */
+/** 编译好的页 + 页桶 @canvas 里两条指向 home.jsx:4/5 的帧标注（storage-unify）。 */
 async function makeAnnotatedPage(t) {
   const made = makeCompiledPage(t, {
     screens: [{ id: 'home', title: 'Home' }],
@@ -1334,9 +1425,9 @@ async function makeAnnotatedPage(t) {
   });
   const build = recorder();
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
-  fs.mkdirSync(path.join(made.env.PINPOINT_DATA_DIR, 'pinpoint'), { recursive: true });
-  fs.writeFileSync(path.join(made.env.PINPOINT_DATA_DIR, 'pinpoint', 'index~t.json'), JSON.stringify({
-    page: 'index~t', revision: 2,
+  fs.mkdirSync(path.join(made.env.PINPOINT_DATA_DIR, 't-page'), { recursive: true });
+  fs.writeFileSync(path.join(made.env.PINPOINT_DATA_DIR, 't-page', '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 2,
     annotations: [{
       id: 'k1', n: 1, type: 'element', pageId: 't-page', screenId: 'home', status: 'open',
       content: '这段要改 [@t:i1]',
@@ -1442,8 +1533,8 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => /#1 → done（note：改完了）/.test(line)), rec.out.join('\n'));
   const post = calls.find((call) => call.method === 'POST');
-  assert.match(post.url, /\/annotations\/index~t\/1\/status$/);
-  assert.equal(post.body.entry, 'pinpoint');
+  assert.match(post.url, /\/annotations\/%40canvas\/1\/status$/);
+  assert.equal(post.body.entry, 't-page', '桶 = 页（storage-unify）');
   assert.equal(post.body.baseRevision, 2);
 
   // 409 不中断其他条：#1 成功（rev 2 对上）后 #2 因端点只认（返回 409 模拟非法转换）失败。

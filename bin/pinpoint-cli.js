@@ -47,6 +47,7 @@ import {
   loadRegistry,
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
+import { collectBucketOrphans, collectPageOrphans } from '../src/server/lib/orphans.js';
 import { slugify } from '../src/shared/registry-ids.js';
 import {
   addRegistryEntry,
@@ -72,7 +73,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
 const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'note', 'scale']);
-const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks']);
+const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run']);
 // 每个命令接受的选项与位置参数个数。folder / locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
@@ -90,6 +91,7 @@ const COMMANDS = {
   locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page']) },
   mark: { positional: null, flags: new Set(['registry', 'status', 'note', 'page']) },
+  prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
 };
 
 // `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
@@ -118,6 +120,7 @@ export const USAGE = `用法：
   pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
   pinpoint mark <引用…> done|check [--note "…"]        写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
+  pinpoint prune <页> [--dry-run]                      删除该页桶里的孤儿账本（表面已不存在；--dry-run 只列不删）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
 add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
@@ -192,6 +195,12 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
   --page <页>                          locate / shot / mark 的基页（缺省 registry 第一个可编译页）
   --registry 路径                      同 add
 
+prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面已不存在的账本：
+  文档文件删了、url 条目移走了、页不在 registry 与 manifest 里了（整桶皆孤儿）。
+  check / status --page 会把这些行单独列出（不计入 open 等计数）；页信息面板
+  显示每页孤儿数。清理只经本命令，直接删除、不备份（owner 裁决）；--dry-run
+  先看清单。
+
   -h, --help       显示本说明
 
 环境变量：
@@ -244,7 +253,7 @@ export function parseArgs(argv) {
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
-  if (command === 'build' || command === 'render' || command === 'check') return { command, target: positional[0], flags };
+  if (command === 'build' || command === 'render' || command === 'check' || command === 'prune') return { command, target: positional[0], flags };
   if (command === 'locate' || command === 'shot') {
     if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 页 / @frame:p/s / @a:id）`);
     return { command, refs: positional, flags };
@@ -295,6 +304,9 @@ function positionalProblem(command, want, got) {
   }
   if (command === 'check') {
     return got === 0 ? 'check 需要一个页（registry 条目 id 或模板页 id）' : `check 只接受一个页，收到 ${got} 个`;
+  }
+  if (command === 'prune') {
+    return got === 0 ? 'prune 需要一个页（或桶 id）' : `prune 只接受一个页，收到 ${got} 个`;
   }
   return `${command} 不接受位置参数，收到 ${got} 个`;
 }
@@ -755,6 +767,71 @@ export async function runMove(argv, io = {}) {
   out(`标注桶 ~/.pinpoint/${entry.id}/ 不变（id 保留）。`);
   out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
+  return 0;
+}
+
+/**
+ * prune <页> [--dry-run]（storage-unify）：删除该页桶里的孤儿账本。
+ * 孤儿 = 表面已不存在（文档文件没了 / url 条目移走 / 页不在 registry 与
+ * manifest 里 = 整桶皆孤儿）。owner 裁决：孤儿不备份，直接删；--dry-run 先看
+ * 清单。账本自己的图片（images/<账本 key>-*）一并清掉。
+ */
+export async function runPrune(argv, io = {}) {
+  const { env, out, err } = ioOf(io);
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const pageId = String(parsed.target || '');
+  if (!PAGE_ID_PATTERN.test(pageId)) {
+    err(`错误：页 id 不合法：${pageId}`);
+    return 1;
+  }
+  const root = dataRoot(env);
+  const bucket = path.join(root, pageId);
+  if (!fs.existsSync(bucket)) {
+    err(`错误：标注桶不存在：${bucket}`);
+    return 1;
+  }
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+  const localIds = manifestPageIds(REPO_ROOT);
+  const known = registry.resolve(pageId) != null || localIds.includes(pageId);
+  const names = known
+    ? collectPageOrphans({
+        pageId,
+        dataRoot: root,
+        entries: registry.entries,
+        isManifestPage: !registry.resolve(pageId) && localIds.includes(pageId),
+        previewsRoot: path.join(REPO_ROOT, 'content', 'previews'),
+      })
+    : collectBucketOrphans(pageId, root);
+  if (!names.length) {
+    out(known ? `页 ${pageId} 没有孤儿账本。` : `桶 ${pageId} 不在任何页里，但也没有账本。`);
+    return 0;
+  }
+  for (const name of names) out(`${path.join(bucket, name)}${known ? '' : '（页已不存在，整桶孤儿）'}`);
+  if (parsed.flags['dry-run']) {
+    out(`--dry-run：${names.length} 本孤儿账本待删（ppnt prune ${pageId} 落盘）。`);
+    return 0;
+  }
+  let images = 0;
+  for (const name of names) {
+    fs.rmSync(path.join(bucket, name), { force: true });
+    // 该账本独有的图片：文件名前缀 = 账本 key（不含 .json）+ '-'。
+    const prefix = `${name.replace(/\.json$/, '')}-`;
+    const imagesDir = path.join(bucket, 'images');
+    if (fs.existsSync(imagesDir)) {
+      for (const file of fs.readdirSync(imagesDir)) {
+        if (!file.startsWith(prefix)) continue;
+        const fileAbs = path.join(imagesDir, file);
+        if (fs.statSync(fileAbs).isFile()) {
+          fs.rmSync(fileAbs, { force: true });
+          images += 1;
+        }
+      }
+    }
+  }
+  out(`已删除 ${names.length} 本孤儿账本${images ? ` 与 ${images} 个孤儿图片` : ''}。`);
   return 0;
 }
 
@@ -1712,7 +1789,8 @@ export async function runMark(argv, io = {}) {
   let failed = 0;
   for (const pick of annotationPicks) {
     const row = pick.row;
-    const label = `#${row.n}${row.__bucket !== 'pinpoint' ? `（${row.__bucket}）` : ''}`;
+    // storage-unify：#n 只在本页桶里解析（桶名恒等于页），不再需要桶名消歧。
+    const label = `#${row.n}`;
     try {
       const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
       const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
@@ -1740,16 +1818,34 @@ export async function runMark(argv, io = {}) {
   return failed || errors.length ? 1 : 0;
 }
 
-/** status --page <页>：各状态计数 + dist 是否过期（只读，不依赖服务）。 */
+/** status --page <页>：各状态计数 + dist 是否过期 + 孤儿账本（只读，不依赖服务）。 */
 function printPageStatus(parsed, { env, out, err }) {
   const context = loadAnnotateContext(parsed.flags.page, parsed, { env, err });
-  if (!context) return 1;
+  if (!context) {
+    // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
+    // 报告而不是裸报错，不然删页后的残留账本没有入口可见。
+    if (printBucketOrphanStatus(parsed.flags.page, { env, out })) return 0;
+    return 1;
+  }
   const counts = countByStatus([...context.frameRows, ...context.docRows]);
   const dist = distStatus(context.target.entryId, context.target.pageDir, { distRoot: path.join(dataRoot(env), 'dist') });
   out(`页 ${context.pageId}`);
   out(`  open ${counts.open} · check ${counts.check} · done ${counts.done} · close ${counts.close} · 共 ${counts.total}`);
   out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
+  const orphanCount = (context.orphanRows || []).length;
+  if (orphanCount) out(`  孤儿 ${orphanCount} 条 · ${(context.orphanLedgers || []).join('、')}（表面已不存在，ppnt prune ${context.pageId} 清理）`);
   return 0;
+}
+
+/** 页消失后的整桶孤儿报告；桶也不在时返回 false（调用方走原报错）。 */
+function printBucketOrphanStatus(pageRef, { env, out }) {
+  if (!pageRef) return false;
+  const names = collectBucketOrphans(String(pageRef), dataRoot(env));
+  if (!names.length) return false;
+  out(`页 ${pageRef} 不在 registry 与本地页面清单里；桶里 ${names.length} 本账本全是孤儿：`);
+  for (const name of names) out(`  ${name}`);
+  out(`清理：ppnt prune ${pageRef}（--dry-run 先看清单）`);
+  return true;
 }
 
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
@@ -1774,6 +1870,7 @@ export async function run(argv, io = {}) {
     case 'locate': return runLocate(argv, io);
     case 'shot': return runShot(argv, io);
     case 'mark': return runMark(argv, io);
+    case 'prune': return runPrune(argv, io);
     default:
       err(`错误：未知命令：${argv[0]}`);
       err(USAGE);
