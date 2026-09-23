@@ -93,6 +93,7 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH):
 
 ```bash
+ppnt list [words…]             # page list: id · title · kind · counts · folder + source path; fuzzy match on words
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <dir|file|url>        # register an entry (files stay where they are) — see docs/registry.md
