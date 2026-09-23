@@ -32,6 +32,8 @@ export function PageInfo({ page, onClose }) {
         mtime: registry.pageTimes?.[page.id]?.mtime || entry?.mtime || page.mtime || null,
         addedAt: entry?.addedAt || null,
         annotatedAt: registry.pageTimes?.[page.id]?.annotatedAt || null,
+        // storage-unify：孤儿 = 表面已不存在的账本（文件删了 / 页没了），清理走 ppnt prune。
+        orphans: registry.pageTimes?.[page.id]?.orphans || 0,
         generated: entry?.kind === 'url' || entry?.kind === 'file'
       });
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); });
@@ -68,6 +70,7 @@ export function PageInfo({ page, onClose }) {
             <dt>添加时间</dt><dd>{info.addedAt ? new Date(info.addedAt).toLocaleString('zh-CN', { hour12: false }) : '未知'}</dd>
             <dt>最后标注</dt><dd>{info.annotatedAt ? new Date(info.annotatedAt).toLocaleString('zh-CN', { hour12: false }) : '未记录'}</dd>
             <dt>最后修改</dt><dd>{info.mtime ? new Date(info.mtime).toLocaleString('zh-CN', { hour12: false }) : '未提供'}</dd>
+            {info.orphans > 0 && <><dt>孤儿标注</dt><dd>{info.orphans} 条（表面已不存在，ppnt prune 清理）</dd></>}
           </dl>
         </>}
       </div>

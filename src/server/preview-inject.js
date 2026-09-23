@@ -7,12 +7,14 @@
  * 只拦完整文档：fragment（无 <!doctype）一律放行给 vite 静态服务，画布内联
  * 保持干净；?annotate=off 单请求豁免（导出管线）；已带手工注入段的页面跳过
  * （客户端 __pinpoint 防双载是第二道网）。
+ * storage-unify：注入带 entry 标记 = 该 previews 页自己的 id（桶 = 页），与
+ * /sites/ 完全同形；存量账本（旧落缺省 pinpoint 桶）由迁移脚本搬到页桶。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { injectAnnotateClientTag } from './lib/annotate-snippet.js';
+import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { boardScreenIds } from './lib/page-compiler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -30,8 +32,9 @@ export function createPreviewInjectHandler(options = {}) {
     const match = urlPath.match(ROUTE);
     if (!match) return false;
     // pp2：board 屏让给 content-routes 从 dist 出（doctype 的注入也在那边做），
-    // 这里只管非屏的整文档 html（index.html 之类）。
+    // 这里只管非屏的整文档 html（index.html 之类）。entry = 路径第一段（页 id）。
     const screenRef = match[1].match(SCREEN_RE);
+    const pageId = screenRef ? screenRef[1] : match[1].split('/')[0];
     if (screenRef) {
       const ids = boardScreenIds(path.join(previewsRoot, screenRef[1]));
       if (ids && ids.has(screenRef[2])) return false;
@@ -48,7 +51,7 @@ export function createPreviewInjectHandler(options = {}) {
     if (html.includes('data-ios-annotate')) return false;
     res.statusCode = 200;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(injectAnnotateClientTag(html));
+    res.end(injectAnnotateClient(html, pageId));
     return true;
   };
 }

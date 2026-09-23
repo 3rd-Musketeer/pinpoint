@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { injectAnnotateClientTag } from './lib/annotate-snippet.js';
+import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import {
   boardScreenIds,
   serveBoardJsonWithDist,
@@ -127,8 +127,9 @@ export default function contentRoutes() {
                   urlBase: `/previews/${screenMatch[1]}/`,
                   kind: 'template',
                 }, screenMatch[2], {
+                  // storage-unify：previews 屏也带 entry 标记（= 页 id），账本落页桶。
                   inject: annotate
-                    ? (html) => (/<!doctype\b/i.test(html) && !html.includes('data-ios-annotate') ? injectAnnotateClientTag(html) : html)
+                    ? (html) => (/<!doctype\b/i.test(html) && !html.includes('data-ios-annotate') ? injectAnnotateClient(html, screenMatch[1]) : html)
                     : null,
                 });
                 return;

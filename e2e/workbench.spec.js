@@ -1338,7 +1338,11 @@ test('canvas multi-target pills preserve text and cancel edits without changing 
   await input.fill('换页也不应保存');
   await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
   await expect(input).toHaveCount(0);
-  expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
+  // storage-unify：换页 = 换桶 —— e2e-doc 的画布账本是另一本，此刻为空；
+  // 已保存的标注仍在 e2e-ios 的桶里，切回来原样（不因换页丢行、也不串页）。
+  expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {

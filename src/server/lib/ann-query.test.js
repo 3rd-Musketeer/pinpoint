@@ -57,11 +57,11 @@ function makeSite() {
     '',
   ].join('\n'));
   const dataRoot = path.join(tmp, 'data');
-  // pinpoint 桶：画布帧标注（pageId 行）。selector 是真实 cssPath 形态：
-  // stage 段后缀经 frameInternalSelector 归一。
-  fs.mkdirSync(path.join(dataRoot, 'pinpoint'), { recursive: true });
-  fs.writeFileSync(path.join(dataRoot, 'pinpoint', 'index~x.json'), JSON.stringify({
-    page: 'index~x', revision: 3, annotations: [
+  // storage-unify：画布帧标注住本页桶的 @canvas 账本（行带 pageId）。
+  // selector 是真实 cssPath 形态：stage 段后缀经 frameInternalSelector 归一。
+  fs.mkdirSync(path.join(dataRoot, 'demo-page'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'demo-page', '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 3, annotations: [
       {
         id: 'b1', n: 1, type: 'element', pageId: 'demo-page', screenId: 'home', status: 'open',
         content: '气泡文案改成「你早」 [@t:i1]',
@@ -129,17 +129,20 @@ function contextFor(site) {
 }
 
 describe('collectPageRows', () => {
-  test('pinpoint 桶按 pageId 行过滤；条目桶独立', () => {
+  test('storage-unify：@canvas 账本 = 帧标注，其余账本 = 文档标注；孤儿账本跳过', () => {
     const site = makeSite();
-    fs.mkdirSync(path.join(site.dataRoot, 'demo-page'), { recursive: true });
     fs.writeFileSync(path.join(site.dataRoot, 'demo-page', 'doc~y.json'), JSON.stringify({
-      page: 'doc~y', revision: 1, annotations: [{ id: 'd1', n: 5, content: '文档意见', status: 'open' }],
+      page: 'doc~y', path: '/sites/demo-page/doc.html', revision: 1, annotations: [{ id: 'd1', n: 5, content: '文档意见', status: 'open' }],
     }));
     const { frameRows, docRows } = collectPageRows({ root: site.dataRoot, pageId: 'demo-page' });
     assert.equal(frameRows.length, 4);
-    assert.ok(frameRows.every((row) => row.__bucket === 'pinpoint'));
+    assert.ok(frameRows.every((row) => row.__bucket === 'demo-page' && row.__ledger === '@canvas'));
     assert.equal(docRows.length, 1);
     assert.equal(docRows[0].__bucket, 'demo-page');
+    // 孤儿账本（这里直接按名字跳过；判定本身在 orphans.test.js）不进两边。
+    const skipped = collectPageRows({ root: site.dataRoot, pageId: 'demo-page', skipLedgers: ['@canvas'] });
+    assert.equal(skipped.frameRows.length, 0);
+    assert.equal(skipped.docRows.length, 1);
   });
 });
 
@@ -197,7 +200,7 @@ describe('excerptForRow 多实例帧', () => {
       '}',                                          // 10
       '',
     ].join('\n'));
-    const dataRoot = path.join(tmp, 'multi-data', 'pinpoint');
+    const dataRoot = path.join(tmp, 'multi-data', 'multi-page');
     fs.mkdirSync(dataRoot, { recursive: true });
     return { pageDir, dataRoot };
   }
@@ -216,8 +219,8 @@ describe('excerptForRow 多实例帧', () => {
 
   test('锚第二个实例 → 实例行指向第 2 个 <Bubble，段名注明文档序', () => {
     const site = makeMultiInstanceSite();
-    fs.writeFileSync(path.join(site.dataRoot, 'doc~m.json'), JSON.stringify({
-      page: 'doc~m', revision: 1, annotations: [multiRow(site, 2, '午')],
+    fs.writeFileSync(path.join(site.dataRoot, '@canvas.json'), JSON.stringify({
+      page: '@canvas', path: '@canvas', revision: 1, annotations: [multiRow(site, 2, '午')],
     }));
     const context = {
       pageId: 'multi-page',

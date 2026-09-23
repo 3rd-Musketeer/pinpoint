@@ -2,10 +2,10 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
-import { annotationSlug } from '../src/shared/annotation-slug.js';
-import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
-const ledger = path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json');
+// storage-unify：工作台画布的标注住活动页的桶（e2e-ios），账本固定 @canvas.json，
+// 不再跟工作台 pathname（/ 与 /index.html）走。
+const ledger = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
 const read = () => JSON.parse(fs.readFileSync(ledger, 'utf8')).annotations;
 async function open(page) {
   await page.addInitScript(() => {

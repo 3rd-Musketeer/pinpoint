@@ -13,7 +13,8 @@ import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
 // mark done（真端点，带 baseRevision）→ status --page（计数移动 + dist 状态）。
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const LEDGER = path.join(E2E_DATA_DIR, 'pinpoint', 'ppnt-cli.json');
+// storage-unify：e2e-ios 的画布账本 = 页桶里的 @canvas.json。
+const LEDGER = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
 // home.jsx 的真实产物链：segmented 的「日」按钮（button.on 是 classList[0] 形态）。
 const DAY_BUTTON = 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.ios-page:nth-of-type(1) > div.ios-segmented:nth-of-type(1) > button.on:nth-of-type(1)';
 const TITLE = 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.ios-nav:nth-of-type(1) > h1:nth-of-type(1)';
@@ -21,8 +22,8 @@ const TITLE = 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.i
 function seedLedger() {
   fs.mkdirSync(path.dirname(LEDGER), { recursive: true });
   fs.writeFileSync(LEDGER, JSON.stringify({
-    page: 'ppnt-cli',
-    path: '/index.html',
+    page: '@canvas',
+    path: '@canvas',
     revision: 1,
     annotations: [
       {
@@ -60,8 +61,8 @@ async function ppnt(args, { expectFail = false } = {}) {
 }
 
 test.afterEach(() => {
-  // seedLedger 播的账本自己收走：bucket pinpoint 是与 spa-ledger 等 spec 共享的，
-  // 残留会把别人「恰好这些账本」的断言数多一个（实测复现过）。
+  // seedLedger 播的账本自己收走：e2e-ios 桶与 integration-canvas / section-scroll
+  // 等 spec 共享，残留会把别人「恰好这些账本」的断言数多一个（实测复现过）。
   fs.rmSync(LEDGER, { force: true });
 });
 

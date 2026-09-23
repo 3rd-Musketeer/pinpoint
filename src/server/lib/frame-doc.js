@@ -159,7 +159,8 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
         section: hit.section,
         sectionLabel: hit.sectionLabel,
         ref: hit.ref,
-        entry: 'pinpoint',
+        // storage-unify：帧标注住所属页的桶、账本 @canvas（与画布同一本）。
+        entry: pageId,
         baseUrl,
         distTarget: { entryId: pageId, pageDir: path.join(PREVIEWS_ROOT, pageId), urlBase: baseUrl, kind: 'template' },
       };
@@ -186,7 +187,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       section: hit.section,
       sectionLabel: hit.sectionLabel,
       ref: hit.ref,
-      entry: 'pinpoint',
+      entry: pageId,
       baseUrl,
       fragmentPath,
     };
@@ -214,9 +215,9 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
-  // file 条目保留磁盘直读。fragment 帧的标注桶恒为 'pinpoint'（与画布同一本
-  // 账本 —— 画布实例按 pinpoint 桶 + pageId 行写，mention 与画布双向同步
-  // 依赖同一桶；条目自己的桶只服务 /sites/ 直开页面）。
+  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页
+  // （挂靠条目给宿主页 id），账本固定 @canvas —— 画布实例与 mention 实例读写
+  // 同一本账，双向实时同步靠的就是这个同桶同账本。
   if (entry.kind === 'dir' && diskBoard && !src) {
     const pageDir = path.resolve(entry.path);
     return {
@@ -228,7 +229,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       section: hit.section,
       sectionLabel: hit.sectionLabel,
       ref: hit.ref,
-      entry: 'pinpoint',
+      entry: entry.page || entry.id,
       baseUrl,
       distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
     };
@@ -248,7 +249,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: 'pinpoint',
+    entry: entry.page || entry.id,
     baseUrl,
     fragmentPath,
   };
@@ -351,7 +352,9 @@ function frameTokensStyle() {
 /**
  * 组装 /api/frame 的完整自包含 HTML 文档。
  * data-annotate="off" 只挡 ios-kit 的自注入；annotate 注入由本函数显式完成
- * （带 __pinpointFrame/__pinpointLedger），opts.annotate=false 时完全不出标注面。
+ * （带 __pinpointEntry=帧所属页 / __pinpointFrame=帧身份），opts.annotate=false
+ * 时完全不出标注面。storage-unify：不再注入 __pinpointLedger —— 帧账本恒为
+ * 所属页桶的 @canvas，客户端按 FRAME 身份自取，不再跟顶层工作台 pathname 走。
  */
 export async function framePageHtml(target, opts = {}) {
   const annotate = opts.annotate !== false;
@@ -366,8 +369,7 @@ export async function framePageHtml(target, opts = {}) {
   };
   const inject = annotate
     ? `<script>window.__pinpointEntry=${JSON.stringify(target.entry)};` +
-      `window.__pinpointFrame=${JSON.stringify(frameIdentity).replace(/<\//g, '<\\/')};` +
-      `window.__pinpointLedger=${JSON.stringify(opts.ledger || '/index.html')}</script>` +
+      `window.__pinpointFrame=${JSON.stringify(frameIdentity).replace(/<\//g, '<\\/')}</script>` +
       '<script src="/annotate.js" async></script>'
     : '';
   return `<!doctype html>

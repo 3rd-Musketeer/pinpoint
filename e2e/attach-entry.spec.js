@@ -12,13 +12,15 @@ import { writeRegistryFixture } from './registry-fixture.js';
 
 // 阶段 8（2026-08-16f 产物与草稿模型收官）：CLI 归属 —— `pinpoint add <path>
 // --page <pageId> --draft` 把 file/dir 条目 attach 到既有 Page：不再自成 Pages
-// 行，而是作为目标页「内容」区的 doc 条目（--draft 落草稿组）；标注落草稿自己的
-// entry 桶，导出走条目行 hover 钮；删掉 attach 条目后侧栏不留死行。
-// 目标页 = 固件 registry 的 e2e-dir（CLI 可解析性校验认 registry 条目 id）。
+// 行，而是作为目标页「内容」区的 doc 条目（--draft 落草稿组）；删掉 attach
+// 条目后侧栏不留死行。目标页 = 固件 registry 的 e2e-dir（CLI 可解析性校验认
+// registry 条目 id）。storage-unify：标注落宿主页的桶（e2e-dir），挂靠条目自己
+// 没有桶 —— 账本仍按 /sites/<挂靠 id>/ 路径分。
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ATTACHED_ID = 'e2e-cli-draft';
-const BUCKET = path.join(E2E_DATA_DIR, ATTACHED_ID);
+const HOST_PAGE = 'e2e-dir';
+const BUCKET = path.join(E2E_DATA_DIR, HOST_PAGE);
 const execFileP = promisify(execFile);
 
 const FRAME = '#wb-board-panel [data-screen="' + ATTACHED_ID + '"] iframe.wb-doc-frame';
@@ -31,6 +33,8 @@ function bucketDocs() {
 
 function restoreRegistry() {
   writeRegistryFixture();
+  // 本 spec 与 dir-entry.spec 分在两个 e2e 组（不同端口 = 不同固件目录），
+  // 整桶清理不会碰到别人的账本。
   fs.rmSync(BUCKET, { recursive: true, force: true });
 }
 
@@ -70,7 +74,7 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     await expect(page.frameLocator(FRAME).locator('#draft-title')).toHaveText('E2E attached draft');
     expect(await page.locator('#wbroot').getAttribute('data-page-mode')).toBe('html');
 
-    // 标注：侧栏驱动模式，标注落草稿自己的 entry 桶（账本 path = /sites/ 路径）。
+    // 标注：侧栏驱动模式，标注落宿主页桶（账本 path = /sites/ 路径）。
     const inFrame = (fn) => page.evaluate(({ sel, code }) => {
       const f = document.querySelector(sel);
       const w = f && f.contentWindow;
@@ -78,7 +82,8 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
       return Function('w', `return (${code})(w)`)(w);
     }, { sel: FRAME, code: fn });
     await expect.poll(() => inFrame('(w) => !!w.pinpoint')).toBe(true);
-    await expect.poll(() => inFrame('(w) => w.__pinpointEntry')).toBe(ATTACHED_ID);
+    // storage-unify：注入的 entry = 宿主页 id（桶 = 页），不再是挂靠条目自己的 id。
+    await expect.poll(() => inFrame('(w) => w.__pinpointEntry')).toBe(HOST_PAGE);
     await page.locator('#wbann-toggle').click();
     await expect.poll(() => inFrame('(w) => w.pinpoint.getState().mode')).toBe(true);
     expect(await inFrame(`(w) => {
@@ -94,8 +99,13 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
       d.querySelector('#ann-save').click();
       return true;
     }`)).toBe(true);
-    await expect.poll(() => bucketDocs().length).toBe(1);
-    const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
+    // 宿主页桶里，这本账本的 path 指向挂靠条目的 /sites/ URL（页面 key 按路径分）。
+    const minePaths = () => bucketDocs().filter((name) => {
+      const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
+      return doc.path === '/sites/e2e-cli-draft/Button Draft.html';
+    });
+    await expect.poll(() => minePaths().length).toBe(1);
+    const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, minePaths()[0]), 'utf8'));
     // 账本 doc.path 存 decode 后的 pathname（annotate client 契约）；iframe src 与
     // page key 里的文件名仍是 percent-encode 规范形（synth-board 同例）。
     expect(ledger.path).toBe('/sites/e2e-cli-draft/Button Draft.html');

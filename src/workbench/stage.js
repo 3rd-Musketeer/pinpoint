@@ -225,9 +225,34 @@ window.workbench = {
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
+  // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
+  // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。
+  hasPage: function (pageId) { return deepLinkPageExists(pageId); },
   // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）
-  boardMode: function () { return activeBoardMode(); }
+  boardMode: function () { return activeBoardMode(); },
+  // storage-unify：活动页订阅（画布标注客户端靠它切页 = 切桶）。返回退订函数。
+  onPageChange: function (fn) {
+    pageChangeListeners.push(fn);
+    return function () {
+      var at = pageChangeListeners.indexOf(fn);
+      if (at >= 0) pageChangeListeners.splice(at, 1);
+    };
+  }
 };
+
+// 活动页一经 store 变化即通知（覆盖 boot 的第一次解析与之后的所有切换，无论
+// 换页来自侧栏点击、深链还是失败面板的「回到 Pages」）。空 id（清单未到位）
+// 不通知 —— 订阅方要的是「现在在看哪一页」。
+var pageChangeListeners = [];
+var lastNotifiedPage = null;
+useWorkbenchStore.subscribe(function () {
+  var id = wbGet().activePageId;
+  if (!id || id === lastNotifiedPage) return;
+  lastNotifiedPage = id;
+  for (var i = 0; i < pageChangeListeners.length; i++) {
+    try { pageChangeListeners[i](id); } catch (e) { /* 订阅方自理 */ }
+  }
+});
 
 window.workbench.diagnostics = startCanvasDiagnostics(stage, () => wbGet().activePageId);
 if (import.meta.hot) import.meta.hot.dispose(() => window.workbench.diagnostics.stop());

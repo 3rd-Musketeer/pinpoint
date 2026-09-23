@@ -100,8 +100,9 @@ pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <i
 自己不成一行 Pages。
 
 `move` 原地改一个既有条目的落点（dir / file / url 三种目标，校验方式与 `add` 一致：路径必须存在、
-单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按 id 寻址
-（`~/.pinpoint/<id>/`），所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
+单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按页寻址（storage-unify
+后桶 = 页：条目自成页时桶是 `~/.pinpoint/<id>/`，挂靠条目（带 `page` 字段）用宿主页的桶），
+所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
 （改成 file / url 时丢掉，那两种壳是定死的）；挂在某页上的条目不能改指 url（url 恒为独立页），
 会被响亮拒绝。未知 id、目标不存在都整单失败，registry 一个字节不动。
 
@@ -178,7 +179,9 @@ client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
 `src/server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
 其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
 目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
-`<script>window.__pinpointEntry='<id>'</script><script src="/annotate.js"></script>`
+`<script>window.__pinpointEntry='<页桶 id>'</script><script src="/annotate.js"></script>`
+——值是条目的标注桶 id，即 `entry.page || entry.id`：条目自成页时是自己的 id，
+挂靠条目是宿主页的 id（桶 = 页，storage-unify）。
 （没有 `</body>` 就追加在末尾）；`?annotate=off` 给出磁盘上的原始字节——
 workbench 的内联片段加载器与导出渲染走的就是它。
 

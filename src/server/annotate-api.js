@@ -1,11 +1,12 @@
 import { collectPageTimes } from './lib/page-times.js';
+import { collectOrphanCounts } from './lib/orphans.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
-import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
+import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 
@@ -168,11 +169,14 @@ function handleSse(req, res) {
 }
 
 // Resolve the entry a request targets. A missing entry means the default
-// ('pinpoint', historical behavior); an explicit but unregistered entry is a
-// loud 400 — misconfiguration must not silently land in the wrong bucket.
-export function resolveRequestEntry(registry, raw) {
+// ('pinpoint', historical behavior); an explicit but unknown id is a loud 400 —
+// misconfiguration must not silently land in the wrong bucket. 桶 = 页之后，
+// 合法 id 不止 registry 条目：本地 manifest 页（content/previews/_index.json，
+// 没有条目可以登记）的桶同样是页桶，经 localIds 放行。
+export function resolveRequestEntry(registry, raw, localIds = []) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
-  return registry.resolve(id) ? { entry: id } : { entry: id, unknown: true };
+  const known = id === DEFAULT_ENTRY || registry.resolve(id) != null || localIds.includes(id);
+  return known ? { entry: id } : { entry: id, unknown: true };
 }
 
 export function createAnnotateHandler(options = {}) {
@@ -197,7 +201,9 @@ export function createAnnotateHandler(options = {}) {
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
-      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId), pageId: entryId === 'pinpoint' ? null : entryId }));
+      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页 —— 不再对 pinpoint 特判
+      // null（那层逐页映射 page_updated_at 已随桶 = 页退役，见 annotation-store）。
+      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
     }
     return stores.get(entryId);
   }
@@ -205,7 +211,14 @@ export function createAnnotateHandler(options = {}) {
   // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
   // 登记表整份还回去，调用方不必再打一次 GET）。
   function registryPayload() {
-    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds: manifestPageIds(serviceRoot) });
+    const localIds = manifestPageIds(serviceRoot);
+    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds });
+    // storage-unify：每页的孤儿账本数（表面已不存在的账本；页信息面板显示，
+    // 清理只经 ppnt prune）。
+    const orphanCounts = collectOrphanCounts({ entries: registry.entries, dataRoot: root, localIds, root: serviceRoot });
+    for (const [id, count] of Object.entries(orphanCounts)) {
+      if (pageTimes[id]) pageTimes[id].orphans = count;
+    }
     return {
       pageTimes,
       ok: registry.ok,
@@ -293,7 +306,7 @@ export function createAnnotateHandler(options = {}) {
   // Shared entry gate: resolve the request's target entry or answer the loud
   // 400. Returns the entry id, or null after sending the rejection.
   function entryOrReject(res, raw) {
-    const target = resolveRequestEntry(registry, raw);
+    const target = resolveRequestEntry(registry, raw, knownPageIds());
     if (target.unknown) {
       sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
       return null;
@@ -348,11 +361,15 @@ export function createAnnotateHandler(options = {}) {
     if (req.method === 'GET' && urlPath === '/events') return handleSse(req, res);
 
     if (req.method === 'GET' && urlPath === '/annotations') {
-      // Debug aggregate: flatten every bucket into [{entry, page, ...}].
+      // Debug aggregate: flatten every bucket into [{entry, page, ...}]. 桶 = 页：
+      // registry 条目 + manifest 模板页都是页桶，都在列。
       const docs = [];
-      for (const entry of registry.entries) {
-        for (const doc of Object.values(storeFor(entry.id).listDocs())) {
-          docs.push({ entry: entry.id, ...doc });
+      const seen = new Set();
+      for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds()]) {
+        if (seen.has(id)) continue;
+        seen.add(id);
+        for (const doc of Object.values(storeFor(id).listDocs())) {
+          docs.push({ entry: id, ...doc });
         }
       }
       sendJson(res, 200, docs);
@@ -362,7 +379,7 @@ export function createAnnotateHandler(options = {}) {
     if (req.method === 'GET' && urlPath.startsWith('/annotations/')) {
       const entryId = entryOrReject(res, query.get('entry'));
       if (!entryId) return true;
-      const page = annotationSlug(decodeURIComponent(urlPath.slice('/annotations/'.length)));
+      const page = ledgerKey(decodeURIComponent(urlPath.slice('/annotations/'.length)));
       sendJson(res, 200, storeFor(entryId).readDoc(page));
       return true;
     }
@@ -370,7 +387,7 @@ export function createAnnotateHandler(options = {}) {
     if (req.method === 'GET' && urlPath.startsWith('/images/')) {
       const entryId = entryOrReject(res, query.get('entry'));
       if (!entryId) return true;
-      const name = annotationSlug(decodeURIComponent(urlPath.slice('/images/'.length)));
+      const name = decodeURIComponent(urlPath.slice('/images/'.length));
       const file = storeFor(entryId).imagePath(name);
       if (fs.existsSync(file) && fs.statSync(file).isFile()) {
         sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
