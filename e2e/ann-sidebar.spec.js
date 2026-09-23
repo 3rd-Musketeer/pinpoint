@@ -12,7 +12,9 @@ import { E2E_DATA_DIR } from './env.js';
 // pp2 切片 3 退役。
 
 test.afterEach(async () => {
-  for (const entry of ['e2e-dir', 'e2e-site', 'pinpoint']) {
+  // storage-unify：workbench 用例的标注落进 e2e-ios 桶（桶 = 页），不清的话
+  // 同组后跑的 mention.spec 会在自己的计数断言上多出别人的行。
+  for (const entry of ['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']) {
     fs.rmSync(path.join(E2E_DATA_DIR, entry), { recursive: true, force: true });
   }
 });
