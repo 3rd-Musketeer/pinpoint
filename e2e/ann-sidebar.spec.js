@@ -1,49 +1,21 @@
 import fs from 'node:fs';
-import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
-import { chromium, expect, test } from '@playwright/test';
+import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
+import { E2E_DATA_DIR } from './env.js';
 
-// 标注列表面板（#ann-sidebar）：/sites/ 注入页、扩展注入页、SPA 页这些没有
-// workbench 的页面，靠面板看到当前账本的所有标注并点击跳转。入口 = 浏览器工具栏
-// pinpoint 扩展图标（主入口，链路见 extension.spec.js）+ 浮动工具条「列表」按钮
-// + 快捷键 S；面板顶部有「交互 | 标注」segmented。workbench 页面不提供面板
-// （单一控制面）。
-//
-// 扩展用例与 extension.spec.js 共用同一份 persistent-context 驱动（hermetic：
-// abort 真机 origin 候选，强制 fallback 到 e2e webServer）。
-
-const EXTENSION_DIR = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'extension');
-
-let context = null;
-let userDataDir = null;
+// 标注列表面板（#ann-sidebar）：/sites/ 注入页、SPA 页这些没有 workbench 的页面，
+// 靠面板看到当前账本的所有标注并点击跳转。入口 = 浮动工具条「列表」按钮 +
+// 快捷键 S；面板顶部有「交互 | 标注」segmented。workbench 页面不提供面板
+// （单一控制面）。浏览器扩展（工具栏图标入口、pinpoint:command 桥）已于
+// pp2 切片 3 退役。
 
 test.afterEach(async () => {
-  if (context) await context.close();
-  context = null;
-  if (userDataDir) fs.rmSync(userDataDir, { recursive: true, force: true });
-  userDataDir = null;
   for (const entry of ['e2e-dir', 'e2e-site', 'pinpoint']) {
     fs.rmSync(path.join(E2E_DATA_DIR, entry), { recursive: true, force: true });
   }
 });
-
-async function launchWithExtension() {
-  userDataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-ext-profile-'));
-  context = await chromium.launchPersistentContext(userDataDir, {
-    channel: 'chromium',
-    headless: true,
-    args: [
-      `--disable-extensions-except=${EXTENSION_DIR}`,
-      `--load-extension=${EXTENSION_DIR}`,
-    ],
-  });
-  await context.route('https://pinpoint.localhost/**', (route) => route.abort());
-  return context;
-}
 
 /** 在标注模式下点选元素、写内容、保存（驱动方式同 spa-ledger.spec.js）。 */
 async function annotate(page, selector, text) {
@@ -80,7 +52,7 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
 }
 
 test('/sites/ page: the floating toolbar carries a way back to the workbench', async ({ page }) => {
-  // /sites/ 与扩展注入的页面都在 workbench 之外（BACKLOG「空态与错误面板」）：
+  // /sites/ 注入的页面在 workbench 之外（BACKLOG「空态与错误面板」）：
   // 工具条上要有一条走回去的路，不靠用户记住 workbench 的 URL。
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
@@ -220,7 +192,9 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   await expect(page.locator('#ann-toggle')).toBeVisible();
   await expect(page.locator('#ann-list')).toBeHidden();
 
-  // workbench 自己的标注列表正常工作。
+  // workbench 自己的标注列表正常工作（e2e-ios 的 settings 屏）。
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  await expect(page.locator('#wb-board-panel [data-screen="settings"]')).toBeVisible();
   await page.evaluate(() => window.pinpoint.setMode(true));
   const target = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await target.scrollIntoViewIfNeeded();
@@ -232,22 +206,4 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('wb list check');
   await expect(page.locator('#ann-sidebar')).toHaveCount(0);
-});
-
-test('extension-injected page: sidebar is available', async () => {
-  const ctx = await launchWithExtension();
-  const page = await ctx.newPage();
-  await page.goto(`${E2E_BASE_URL}/e2e/ext-fixture.html`);
-  await page.waitForFunction(() => window.__pinpoint && window.pinpoint);
-
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await annotate(page, '#target-el', 'ext ann');
-  await page.evaluate(() => window.pinpoint.setMode(false));
-
-  await page.keyboard.press('s');
-  const sidebar = page.locator('#ann-sidebar');
-  await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
-  await expect(sidebar).toContainText('ext ann');
-  await expect(sidebar).toContainText('extension target text');
 });

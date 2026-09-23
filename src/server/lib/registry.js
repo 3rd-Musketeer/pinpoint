@@ -98,14 +98,9 @@ export function normalizeFolder(raw) {
   return folder;
 }
 
-/** PINPOINT_REGISTRY wins; the deprecated HTML_ANNOTATE_REGISTRY still applies with a warning. */
+/** PINPOINT_REGISTRY 是唯一的环境变量入口（HTML_ANNOTATE_REGISTRY 别名已删）。 */
 function envRegistryPath(env, log) {
-  if (env.PINPOINT_REGISTRY) return env.PINPOINT_REGISTRY;
-  if (env.HTML_ANNOTATE_REGISTRY) {
-    log('[registry] HTML_ANNOTATE_REGISTRY is deprecated; rename it to PINPOINT_REGISTRY');
-    return env.HTML_ANNOTATE_REGISTRY;
-  }
-  return null;
+  return env.PINPOINT_REGISTRY || null;
 }
 
 export function loadRegistry(options = {}) {

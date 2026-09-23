@@ -13,10 +13,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { injectAnnotateClientTag } from './lib/annotate-snippet.js';
+import { boardScreenIds } from './lib/page-compiler.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT_ROOT = path.resolve(__dirname, '..', '..', 'content');
 const ROUTE = /^\/previews\/(.+\.html)$/;
+const SCREEN_RE = /^([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)\.html$/;
 
 export function createPreviewInjectHandler(options = {}) {
   const root = options.root || CONTENT_ROOT;
@@ -27,6 +29,13 @@ export function createPreviewInjectHandler(options = {}) {
     if (/(?:^|&)annotate=off(?:&|$)/.test(query || '')) return false;
     const match = urlPath.match(ROUTE);
     if (!match) return false;
+    // pp2：board 屏让给 content-routes 从 dist 出（doctype 的注入也在那边做），
+    // 这里只管非屏的整文档 html（index.html 之类）。
+    const screenRef = match[1].match(SCREEN_RE);
+    if (screenRef) {
+      const ids = boardScreenIds(path.join(previewsRoot, screenRef[1]));
+      if (ids && ids.has(screenRef[2])) return false;
+    }
     const file = path.join(previewsRoot, match[1]);
     if (!file.startsWith(previewsRoot + path.sep)) return false;
     let html;

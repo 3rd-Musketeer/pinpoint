@@ -19,7 +19,8 @@ const execFileP = promisify(execFile);
 
 function bucketDocs() {
   if (!fs.existsSync(BUCKET)) return [];
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json'));
+  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
+  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
 }
 
 async function rawStatus(url) {
@@ -128,43 +129,6 @@ test('path traversal and unknown entries are rejected', async ({ page }) => {
   }
 });
 
-test('doc export of a /sites/ page carries no annotate bootstrap', async ({ page }) => {
-  for (const mode of ['html-full', 'html-no-css']) {
-    const res = await page.request.post('/api/export-doc', {
-      data: {
-        mode,
-        pageId: 'e2e-dir',
-        screenId: 'doc',
-        src: 'sites/e2e-dir/doc.html',
-        comments: false,
-      },
-    });
-    expect(res.status(), mode).toBe(200);
-    const body = await res.text();
-    expect(body, mode).not.toContain('__pinpointEntry');
-    expect(body, mode).not.toContain('annotate.js');
-    expect(body, mode).toContain('E2E dir-site doc');
-  }
-
-  // With comments on, the bake script replaces the live bootstrap entirely.
-  // (The bake script inlines lib sources whose header comments mention
-  // "/annotate.js", so this asserts the tag form, not the bare string.)
-  const withComments = await page.request.post('/api/export-doc', {
-    data: {
-      mode: 'html-full',
-      pageId: 'e2e-dir',
-      screenId: 'doc',
-      src: 'sites/e2e-dir/doc.html',
-      comments: true,
-    },
-  });
-  expect(withComments.status()).toBe(200);
-  const baked = await withComments.text();
-  expect(baked).not.toContain('__pinpointEntry');
-  expect(baked).not.toMatch(/<script\b[^>]*\bsrc\s*=\s*["'][^"']*annotate\.js/i);
-  expect(baked).toContain('data-export-comments');
-});
-
 // 阶段 3：CLI 登记入口的端到端闭环 —— 真实跑 bin/pinpoint.mjs 写 registry
 // （--registry 指向 e2e fixture，PINPOINT_ORIGIN 指向 e2e server，由 CLI 自己
 // 探活并触发 POST /registry/reload），新 dir 条目不重开服务即出现在 Pages。
@@ -227,21 +191,6 @@ test('pinpoint add (CLI) of a single HTML file opens as a synthesized doc page',
     await expect(
       page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#report-title')
     ).toHaveText('E2E CLI single file');
-
-    // 导出闭环：file 条目的 src 映射到注册文件本身，且不含注入客户端。
-    const res = await page.request.post('/api/export-doc', {
-      data: {
-        mode: 'html-full',
-        pageId: 'e2e-cli-file',
-        screenId: 'index',
-        src: 'sites/e2e-cli-file/Weekly%20Report.html',
-        comments: false,
-      },
-    });
-    expect(res.status()).toBe(200);
-    const body = await res.text();
-    expect(body).toContain('E2E CLI single file');
-    expect(body).not.toContain('__pinpointEntry');
   } finally {
     writeRegistryFixture();
     fs.rmSync(tmp, { recursive: true, force: true });

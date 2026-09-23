@@ -108,6 +108,8 @@ test('annRowModel assembles the shared row fields from mark + context', () => {
     preview: 'note',
     broken: true,
     tags: '✎ @',
+    status: 'open',
+    note: '',
   });
   // Workbench-flavoured cap options ride along in context.
   assert.equal(
@@ -116,7 +118,7 @@ test('annRowModel assembles the shared row fields from mark + context', () => {
   );
   // Defaults: empty preview, live row, no tags.
   assert.deepEqual(annRowModel({ n: 7, text: 't' }), {
-    n: 7, cap: 't', preview: '', broken: false, tags: '',
+    n: 7, cap: 't', preview: '', broken: false, tags: '', status: 'open', note: '',
   });
   assert.equal(annRowModel(null).n, 0);
 });

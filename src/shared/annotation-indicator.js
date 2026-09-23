@@ -8,7 +8,34 @@
  *
  * Scope indicators mean “all annotations under this locator”.
  * @a means one annotation.
+ *
+ * pp2 标注状态机（2026-09-22）：open → check / done → close；close 可撤销回 open。
+ * 写状态的只有两条路：工作台编辑 / 单击（走 /save 整写）与 ppnt mark（走
+ * /api/annotations/:page/:id/status）——两条路各有自己的合法转换表。
  */
+
+/** 四态。缺省 open；存量 result 字段读时归一成 done（显式迁移脚本之外的读侧自愈）。 */
+export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
+
+export function normalizeStatus(value, raw) {
+  if (ANNOTATION_STATUSES.includes(value)) return value;
+  if (raw && raw.result) return 'done';
+  return 'open';
+}
+
+/** /save 整写的合法转换：编辑或撤销 close → open、done → close（工作台单击）、恒等。
+ * 无编辑的 →open 不放行（review R14）：客户端不会发，但直写 /save 的 agent 可以
+ * 静默把 check / done 降回 open —— 编辑强制回 open 由 save 在判「变」后另行赋值。 */
+export function isLegalTransition(from, to) {
+  if (from === to) return true;
+  if (to === 'open') return from === 'close';
+  return from === 'done' && to === 'close';
+}
+
+/** mark 端点的合法转换：open / check → check / done。 */
+export function isLegalMarkTransition(from, to) {
+  return (from === 'open' || from === 'check') && (to === 'check' || to === 'done');
+}
 
 const ID_RE = '[A-Za-z0-9._-]+';
 const TARGET_REF_RE = /^i([1-9][0-9]*)$/;
@@ -128,7 +155,7 @@ export function annotationMatchesIndicator(a, ind) {
   if (!ind.pageId || !a.pageId || a.pageId !== ind.pageId) return false;
   if (ind.kind === 'page') return true;
   if (ind.kind === 'section') {
-    const section = a.section || a.group;
+    const section = a.section;
     return !!ind.sectionId && section === ind.sectionId;
   }
   if (ind.kind === 'frame') {
@@ -138,24 +165,18 @@ export function annotationMatchesIndicator(a, ind) {
 }
 
 /**
- * Normalize one annotation for disk / API (new shape).
- * Dual-reads legacy comment/group/groupLabel and [@m:] mentions.
+ * Normalize one annotation for disk / API。旧字段（comment / group /
+ * groupLabel、[@m:] mention）的读侧升级已随迁移脚本（scripts/
+ * migrate-ledgers.mjs）删除 —— 磁盘形态由脚本一次性迁净。
  */
 export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const a = { ...raw };
 
-  if (a.content == null && a.comment != null) a.content = a.comment;
-  delete a.comment;
+  // pp2 状态机：status 归一（存量 result → done 并摘字段）；note / n / lastRect 透传。
+  a.status = normalizeStatus(a.status, a);
+  if (a.result) delete a.result;
 
-  if (a.section == null && a.group != null) a.section = a.group;
-  if (a.sectionLabel == null && a.groupLabel != null) a.sectionLabel = a.groupLabel;
-  delete a.group;
-  delete a.groupLabel;
-
-  if (typeof a.content === 'string' && a.content) {
-    a.content = a.content.replace(/\[@m:([a-z0-9]+)\]/gi, '[@a:$1]');
-  }
   if (Array.isArray(a.mentions)) {
     a.mentions = a.mentions.map((id) => String(id));
   }
@@ -175,12 +196,10 @@ export function normalizeAnnotation(raw) {
   return a;
 }
 
-/** Pick annotations array from a doc that may use annotations or legacy marks. */
+/** Pick annotations array from a doc（legacy marks 键已由迁移脚本迁净）。 */
 export function annotationsFromDoc(doc) {
   if (!doc || typeof doc !== 'object') return [];
-  if (Array.isArray(doc.annotations)) return doc.annotations;
-  if (Array.isArray(doc.marks)) return doc.marks;
-  return [];
+  return Array.isArray(doc.annotations) ? doc.annotations : [];
 }
 
 /** Normalize a full document to the new on-disk shape. */
@@ -205,7 +224,7 @@ export function indicatorForAnnotation(a, fallbackPageId, opts) {
   if (!a) return '';
   const pageId = a.pageId || fallbackPageId || '';
   const kind = a.indicatorKind || 'annotation';
-  const section = a.section || a.group;
+  const section = a.section;
   const persisted = !opts || opts.persisted !== false;
 
   function scopeFallback() {

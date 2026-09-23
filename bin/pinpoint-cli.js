@@ -22,12 +22,29 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
-import { localManifestPageIds as manifestPageIds } from '../src/server/lib/page-manifest.js';
+import {
+  buildCheckReport,
+  countByStatus,
+  formatCheckMarkdown,
+  loadPageContext,
+  locateLine,
+} from '../src/server/lib/ann-query.js';
+import { expandRefs, expandStatus, REF_STATUSES } from '../src/server/lib/ann-refs.js';
+import {
+  compilePage,
+  distStatus,
+  listPageIds,
+  readDistScreen,
+  renderScreenHtml,
+  resolvePageTarget,
+} from '../src/server/lib/page-compiler.js';
+import { manifestPageIds as libManifestPageIds } from '../src/server/lib/page-manifest.js';
 import {
   defaultEntries,
   defaultRegistryPath,
   ENTRY_ID_PATTERN,
   FOLDER_ID_PATTERN,
+  loadRegistry,
   PAGE_ID_PATTERN,
 } from '../src/server/lib/registry.js';
 import { slugify } from '../src/shared/registry-ids.js';
@@ -54,19 +71,25 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page']);
-const BOOLEAN_FLAGS = new Set(['draft']);
-// 每个命令接受的选项与位置参数个数。folder 的位置参数个数按子命令定（见
-// FOLDER_SUBCOMMANDS），所以它的 positional 是 null = 由子命令自己校验。
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'note', 'scale']);
+const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks']);
+// 每个命令接受的选项与位置参数个数。folder / locate / shot / mark 的位置参数
+// 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
   folder: { positional: null, flags: new Set(['registry', 'id']) },
-  status: { positional: 0, flags: new Set() },
+  status: { positional: 0, flags: new Set(['page', 'registry']) },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
   restart: { positional: 0, flags: new Set() },
+  build: { positional: 1, flags: new Set(['registry', 'screen', 'watch']) },
+  render: { positional: 1, flags: new Set(['registry', 'full']) },
+  check: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
+  locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
+  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page']) },
+  mark: { positional: null, flags: new Set(['registry', 'status', 'note', 'page']) },
 };
 
 // `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
@@ -88,13 +111,19 @@ export const USAGE = `用法：
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
   pinpoint folder <list|add|rename|rm|move> …          左栏的一层分组（详见下面 folder 一节）
-  pinpoint status                                      服务体检（路由 / 进程 / 健康 / root / registry）
+  pinpoint build <页> [--screen <屏>] [--watch]        编译一页（源码 → dist），打印每屏 ok / 错误与耗时
+  pinpoint render <页>/<屏> [--full]                   编译一帧打到 stdout（不落 dist）；超 8000 字符截断并落全文文件
+  pinpoint check <页> [选项]                           标注清单（只读）：序号 / 正文 / 意图 / 源码摘录 / 状态 / note
+  pinpoint locate <引用…> [--page <页>]                标注定位：#n → 源文件:行 · 组件（共用 n 帧）
+  pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
+  pinpoint mark <引用…> done|check [--note "…"]        写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
+  pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
 add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
   目录             → kind "dir"，服务只读 host 在 /sites/<id>/ 并注入标注
   单个 .html 文件  → kind "file"，仅 serve 该文件（/sites/<id>/ 与 /sites/<id>/<文件名>）
-  http(s)://URL    → kind "url"，同源代理内嵌 + 浏览器扩展按 origin 注入
+  http(s)://URL    → kind "url"，同源代理内嵌 + 内嵌响应注入标注
 
 选项（add）：
   --title X        显示名（默认：目录名 / 文件名 / hostname）
@@ -133,12 +162,43 @@ folder —— 左栏的一层分组（不嵌套；workbench 里拖放写的是�
   --registry 路径  同上（list 之外的子命令要求登记表已经存在）
   --id xxx         只用于 folder add：显式指定新夹的 id
 
+build / render —— pp2 的编译面（<页> = registry dir 条目 id 或模板页 id）：
+  pinpoint build <页>                  整页编译到 dist（<dataRoot>/dist/<页>/）
+  pinpoint build <页> --screen <屏>    只编一屏（build.json 里其余屏的记录保留）
+  pinpoint build <页> --watch          编完后 fs.watch 盯页目录，变更自动重编
+  pinpoint render <页>/<屏>            编译该帧（不落 dist）打到 stdout；超 8000 字符
+                                       截断，全文写 <dataRoot>/render/<页>/<屏>.html
+                                       并在末尾打出路径；--full 不截断
+  --registry 路径                      解析页 id 用哪份 registry（同 add）
+
+check / locate / shot / mark —— pp2 的标注面。引用语法四处共用：
+  #12 · <entry>#12 · #3-#7（区间）· B3（帧，展开为帧内标注）· B（整段）·
+  <页>（整页，shot）· @frame:<页>/<屏> · @a:<id> · --status open|check|done|close|all
+
+  pinpoint check <页> [--frame B3] [--status open|check|done|close|all]
+                  [--mode excerpt|image|both] [--group-by frame|component] [--json]
+                                       默认 open、按帧分组；excerpt 给最小完整元素 + 父链
+                                       面包屑 + 兄弟折叠（约 300 token）；image 走服务渲染器
+                                       1x 截图到 <dataRoot>/check/<页>/<屏>.png（服务要在跑）
+  pinpoint locate <引用…>              每条一行：#n → 源文件:行 · 组件（共用 n 帧）；
+                                       存量 HTML 页给 dist 路径 + selector
+  pinpoint shot <引用…> [--scale 1] [--marks]
+                                       PNG 到 <dataRoot>/shot/<页>/<引用>.png，打印路径；
+                                       --marks 烤 #n 序号钉（清单由 check 给）
+  pinpoint mark <引用…> done|check [--note "…"]
+                                       走服务状态端点（带 baseRevision）；冲突 / 非法转换
+                                       打 409 原因，不中断其他条；open 由 owner 编辑触发、
+                                       close 只在工作台，两者 mark 都不写
+  --page <页>                          locate / shot / mark 的基页（缺省 registry 第一个可编译页）
+  --registry 路径                      同 add
+
   -h, --help       显示本说明
 
 环境变量：
   PINPOINT_REGISTRY   同 --registry（--registry 优先）
   PINPOINT_ORIGIN     服务地址（默认 ${DEFAULT_ORIGIN}）；写入后 CLI 会
-                      GET /health 探活，可达则 POST /registry/reload 即时生效
+                      GET /health 探活，可达则 POST /registry/reload 即时生效；
+                      check --mode image / shot / mark 也走它
   PORTLESS_ROUTES     portless 路由表位置（默认 ~/.portless/routes.json），status 读它`;
 
 /** 参数解析（纯函数）。add 返回 { command, target, flags }，move 返回 { command, id, target, flags }，
@@ -178,12 +238,21 @@ export function parseArgs(argv) {
     flags[name] = value;
   }
   if (command === 'folder') return parseFolderArgs(positional, flags);
-  if (positional.length !== spec.positional) {
+  if (spec.positional !== null && positional.length !== spec.positional) {
     throw new CliError(positionalProblem(command, spec.positional, positional.length));
   }
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
+  if (command === 'build' || command === 'render' || command === 'check') return { command, target: positional[0], flags };
+  if (command === 'locate' || command === 'shot') {
+    if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 页 / @frame:p/s / @a:id）`);
+    return { command, refs: positional, flags };
+  }
+  if (command === 'mark') {
+    if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check [--note "…"]');
+    return { command, refs: positional.slice(0, -1), statusWord: positional[positional.length - 1], flags };
+  }
   return { command, flags };
 }
 
@@ -217,6 +286,15 @@ function positionalProblem(command, want, got) {
     return got < 2
       ? 'rename 需要两个参数：<旧 id> <新 id>'
       : `rename 只接受两个参数，收到 ${got} 个`;
+  }
+  if (command === 'build') {
+    return got === 0 ? 'build 需要一个页（registry 条目 id 或模板页 id）' : `build 只接受一个页，收到 ${got} 个`;
+  }
+  if (command === 'render') {
+    return got === 0 ? 'render 需要一帧（<page>/<screen>）' : `render 只接受一帧，收到 ${got} 个`;
+  }
+  if (command === 'check') {
+    return got === 0 ? 'check 需要一个页（registry 条目 id 或模板页 id）' : `check 只接受一个页，收到 ${got} 个`;
   }
   return `${command} 不接受位置参数，收到 ${got} 个`;
 }
@@ -325,7 +403,7 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
     if (!PAGE_ID_PATTERN.test(flags.page)) {
       throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
     }
-    const resolvable = new Set([...(pageIds || localManifestPageIds()), ...existingIds]);
+    const resolvable = new Set([...(pageIds || manifestPageIds()), ...existingIds]);
     if (!resolvable.has(flags.page)) {
       throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
     }
@@ -343,8 +421,8 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
 
 /** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端的
     文件夹写接口用的是同一份）。缺省读本 CLI 所在仓库。 */
-export function localManifestPageIds(root = REPO_ROOT) {
-  return manifestPageIds(root);
+export function manifestPageIds(root = REPO_ROOT) {
+  return libManifestPageIds(root);
 }
 
 /**
@@ -542,7 +620,7 @@ export function planMove(argv, { cwd = process.cwd(), env = process.env } = {}) 
  * 目标只是本机开发服务的探活/reload，故 https 关闭证书校验。
  * 返回 { status, json }；网络/超时错误 reject。
  */
-export function requestJson(urlString, { method = 'GET', timeoutMs = 1500 } = {}) {
+export function requestJson(urlString, { method = 'GET', timeoutMs = 1500, body = null } = {}) {
   return new Promise((resolve, reject) => {
     const url = new URL(urlString);
     const transport = url.protocol === 'https:' ? https : http;
@@ -554,6 +632,7 @@ export function requestJson(urlString, { method = 'GET', timeoutMs = 1500 } = {}
         path: url.pathname + url.search,
         rejectUnauthorized: false, // 本机自签代理，见函数注释
         timeout: timeoutMs,
+        ...(body != null ? { headers: { 'Content-Type': 'application/json' } } : {}),
       },
       (res) => {
         const chunks = [];
@@ -569,7 +648,7 @@ export function requestJson(urlString, { method = 'GET', timeoutMs = 1500 } = {}
     );
     req.on('timeout', () => req.destroy(new Error('timeout')));
     req.on('error', reject);
-    req.end();
+    req.end(body == null ? undefined : JSON.stringify(body));
   });
 }
 
@@ -889,7 +968,7 @@ export function planFolder(argv, { cwd = process.cwd(), env = process.env, pageI
   if (parsed.sub === 'rm') {
     return { ...parsed, registryPath, ...buildFolderRemove(parsed.args[0], state) };
   }
-  const known = pageIds || localManifestPageIds();
+  const known = pageIds || manifestPageIds();
   const move = buildFolderMove(parsed.args[0], parsed.args[1], {
     folders: state.folders,
     entryIds: state.entries.map((entry) => entry && entry.id),
@@ -1146,10 +1225,11 @@ async function probe(url, requestFn) {
 }
 
 export async function runStatus(argv, io = {}) {
-  const { out } = ioOf(io);
+  const { env, out } = ioOf(io);
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
+  if (parsed.flags.page) return printPageStatus(parsed, { env, out, err: ioOf(io).err });
   const report = await collectStatus(io);
   out('pinpoint status');
   for (const line of formatStatus(report)) out(line);
@@ -1261,6 +1341,417 @@ export async function runRestart(argv, io = {}) {
   return startService(io);
 }
 
+/* ---- pp2：build / render（编译面，进程内直接编译，不依赖服务） ---- */
+
+/** 解析 <页> 为编译目标；找不到时报错并列出可用 id。返回 null 表示已报错。 */
+function pageTargetOrReport(pageRef, flags, { env, err }) {
+  const registryPath = resolveRegistryPath(flags, env);
+  const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+  const target = resolvePageTarget(pageRef, { registry, root: REPO_ROOT });
+  if (!target) {
+    err(`错误：找不到页：${pageRef}`);
+    const ids = listPageIds({ registry, root: REPO_ROOT });
+    err(`可用页 id：${ids.join('、') || '（无）'}`);
+    return null;
+  }
+  return target;
+}
+
+function printBuildResult(result, { out, err }) {
+  for (const row of result.screens) {
+    if (row.ok) out(`ok   ${row.id}  ${row.ms}ms`);
+    else err(`错误 ${row.id}  ${row.error}`);
+  }
+  if (result.error) err(`错误 ${result.entryId}  ${result.error}`);
+  out(`${result.ok ? '完成' : '有失败'} ${result.entryId}  共 ${result.ms}ms（${result.screens.length} 屏）`);
+}
+
+/** fs.watch 盯页目录：board.json / 帧 / 资源变更 → 去抖后整页重编。返回 watcher（测试用）。 */
+export function startPageWatch(target, onResult, { debounceMs = 120, distRoot } = {}) {
+  const WATCHED = /(?:^|\/)(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/;
+  let timer = null;
+  let running = Promise.resolve();
+  const watcher = fs.watch(target.pageDir, { recursive: true }, (_event, filename) => {
+    if (filename && !WATCHED.test(String(filename).replace(/\\/g, '/'))) return;
+    clearTimeout(timer);
+    timer = setTimeout(() => {
+      running = running.then(() => compilePage(target, distRoot ? { distRoot } : {})).then(onResult);
+    }, debounceMs);
+  });
+  return { watcher, done: () => running };
+}
+
+export async function runBuild(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const target = pageTargetOrReport(parsed.target, parsed.flags, { env, err });
+  if (!target) return 1;
+  const distRoot = path.join(dataRoot(env), 'dist');
+  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.screen || null });
+  printBuildResult(first, { out, err });
+  if (!parsed.flags.watch) return first.ok ? 0 : 1;
+  out(`监视 ${target.pageDir}（Ctrl-C 退出）…`);
+  startPageWatch(target, (result) => printBuildResult(result, { out, err }), { distRoot });
+  return new Promise(() => {}); // watch 常驻，进程不退出
+}
+
+/** render 输出形态（纯函数）：超 limit 截断并给出全文落盘计划。 */
+export function planRenderOutput(html, { full = false, limit = 8000, spillPath = null } = {}) {
+  if (full || html.length <= limit) return { text: html, spill: null };
+  return {
+    text: `${html.slice(0, limit)}\n… 已截断（共 ${html.length} 字符），全文见 ${spillPath}`,
+    spill: spillPath ? { path: spillPath, content: html } : null,
+  };
+}
+
+export async function runRender(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const ref = parsed.target;
+  const slash = ref.indexOf('/');
+  if (slash <= 0 || slash === ref.length - 1) {
+    err(`错误：render 参数形如 <页>/<屏>，收到：${ref}`);
+    return 1;
+  }
+  const pageRef = ref.slice(0, slash);
+  const screenId = ref.slice(slash + 1);
+  const target = pageTargetOrReport(pageRef, parsed.flags, { env, err });
+  if (!target) return 1;
+  const result = await renderScreenHtml(target, screenId);
+  if (!result.ok) {
+    err(`编译失败：${result.error}`);
+    return 1;
+  }
+  const spillPath = path.join(dataRoot(env), 'render', pageRef, `${screenId}.html`);
+  const plan = planRenderOutput(result.html, { full: !!parsed.flags.full, spillPath });
+  if (plan.spill) {
+    fs.mkdirSync(path.dirname(plan.spill.path), { recursive: true });
+    fs.writeFileSync(plan.spill.path, plan.spill.content);
+  }
+  out(plan.text);
+  return 0;
+}
+
+/* ---- pp2 切片 4：check / locate / shot / mark（标注面，只读为主） ---- */
+
+const CHECK_STATUSES = new Set(['open', 'check', 'done', 'close', 'all']);
+const CHECK_MODES = new Set(['excerpt', 'image', 'both']);
+const GROUP_BYS = new Set(['frame', 'component']);
+
+/** locate / shot / mark 的基页：--page 优先，缺省取 registry 第一个可编译页。 */
+function pageRefFor(parsed, { env, err }) {
+  if (parsed.target) return parsed.target;
+  if (parsed.flags.page) return parsed.flags.page;
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+  const first = listPageIds({ registry, root: REPO_ROOT })[0];
+  if (!first) err('错误：registry 里没有可编译页；用 --page <页 id> 指定。');
+  return first || null;
+}
+
+/** 装配查询上下文（dist 读取器注入；找不到页时已报错，返回 null）。 */
+function loadAnnotateContext(pageRef, parsed, { env, err }) {
+  if (!pageRef) return null;
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  const context = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
+  if (!context) {
+    err(`错误：找不到页：${pageRef}`);
+    const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
+    err(`可用页 id：${listPageIds({ registry, root: REPO_ROOT }).join('、') || '（无）'}`);
+    return null;
+  }
+  const distRoot = path.join(dataRoot(env), 'dist');
+  context.distHtmlFor = (screenId) => {
+    const read = readDistScreen(context.target.entryId, screenId, { distRoot });
+    return read.kind === 'ok' ? read.html : null;
+  };
+  context.readFile = (file) => {
+    try {
+      return fs.readFileSync(file, 'utf8');
+    } catch {
+      return null;
+    }
+  };
+  return context;
+}
+
+export async function runCheck(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const status = parsed.flags.status || 'open';
+  if (!CHECK_STATUSES.has(status)) {
+    err(`错误：--status 只支持 ${[...CHECK_STATUSES].join(' / ')}，收到：${status}`);
+    return 1;
+  }
+  const mode = parsed.flags.mode || 'excerpt';
+  if (!CHECK_MODES.has(mode)) {
+    err(`错误：--mode 只支持 excerpt / image / both，收到：${mode}`);
+    return 1;
+  }
+  const groupBy = parsed.flags['group-by'] || 'frame';
+  if (!GROUP_BYS.has(groupBy)) {
+    err(`错误：--group-by 只支持 frame / component，收到：${groupBy}`);
+    return 1;
+  }
+  const context = loadAnnotateContext(parsed.target, parsed, { env, err });
+  if (!context) return 1;
+  const report = buildCheckReport(context, { frame: parsed.flags.frame || null, status, groupBy, mode });
+  if (report.error) {
+    err(`错误：${report.error}`);
+    return 1;
+  }
+  let imagePaths = null;
+  if (mode === 'image' || mode === 'both') {
+    const statusAllows = (row) => status === 'all' || (row.status || 'open') === status;
+    const screenIds = [...new Set(report.groups.filter((group) => group.kind === 'frame' && !group.offBoard).map((group) => group.screenId))];
+    if (screenIds.length) {
+      const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+      let renderShots;
+      try {
+        ({ renderShots } = await import('./ppnt-shot.js'));
+      } catch (error) {
+        err(`错误：渲染器加载失败：${error.message}`);
+        return 1;
+      }
+      const jobs = screenIds.map((screenId) => ({
+        kind: 'frame',
+        screenId,
+        scale: 1,
+        out: path.join(dataRoot(env), 'check', context.pageId, `${screenId}.png`),
+        marks: context.frameRows.filter((row) => row.screenId === screenId && (row.status || 'open') !== 'close' && statusAllows(row)),
+      }));
+      try {
+        await renderShots({ origin, pageId: context.pageId, jobs });
+        imagePaths = Object.fromEntries(jobs.map((job) => [job.screenId, job.out]));
+      } catch (error) {
+        err(`错误：${error.message}`);
+        return 1;
+      }
+    }
+  }
+  if (parsed.flags.json) {
+    out(JSON.stringify({ ...report, images: imagePaths }, null, 2));
+    return 0;
+  }
+  for (const line of formatCheckMarkdown(report, { imagePaths })) out(line);
+  return 0;
+}
+
+export async function runLocate(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
+  if (!context) return 1;
+  const rows = [...context.frameRows, ...context.docRows];
+  const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows: null };
+  const { picks, errors } = expandRefs(parsed.refs, refCtx);
+  if (parsed.flags.status) {
+    if (!REF_STATUSES.includes(parsed.flags.status)) {
+      err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
+      return 1;
+    }
+    for (const row of expandStatus(parsed.flags.status, rows)) picks.push({ kind: 'annotation', row, via: `--status ${parsed.flags.status}` });
+  }
+  for (const error of errors) err(error);
+  const seen = new Set();
+  const printRow = (row) => {
+    const key = `${row.__bucket}|${row.__ledger}|${row.id || row.n}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out(locateLine(row, context).text);
+  };
+  for (const pick of picks) {
+    if (pick.kind === 'annotation') printRow(pick.row);
+    else if (pick.kind === 'frame') for (const row of rows.filter((row) => row.screenId === pick.screenId)) printRow(row);
+    else if (pick.kind === 'section') for (const row of rows.filter((row) => pick.frames.some((frame) => frame.id === row.screenId))) printRow(row);
+  }
+  return errors.length ? 1 : 0;
+}
+
+export async function runShot(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err } = ioOf(io);
+  const scale = Number(parsed.flags.scale || 1);
+  if (scale !== 1 && scale !== 2) {
+    err(`错误：--scale 只支持 1 或 2，收到：${parsed.flags.scale || '(空)'}`);
+    return 1;
+  }
+  const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
+  if (!context) return 1;
+  const rows = [...context.frameRows, ...context.docRows];
+  const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows: null }, { shotRefs: true });
+  if (parsed.flags.status) {
+    if (!REF_STATUSES.includes(parsed.flags.status)) {
+      err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
+      return 1;
+    }
+    for (const screenId of [...new Set(expandStatus(parsed.flags.status, rows).map((row) => row.screenId).filter(Boolean))]) {
+      picks.push({ kind: 'frame', screenId, via: screenId });
+    }
+  }
+  for (const error of errors) err(error);
+  const jobs = [];
+  const seenScreens = new Set();
+  const shotDir = path.join(dataRoot(env), 'shot', context.pageId);
+  const frameJob = (screenId, via) => {
+    if (seenScreens.has(screenId)) return;
+    seenScreens.add(screenId);
+    jobs.push({
+      kind: 'frame',
+      screenId,
+      scale,
+      out: path.join(shotDir, `${via || screenId}.png`),
+      marks: parsed.flags.marks
+        ? context.frameRows.filter((row) => row.screenId === screenId && (row.status || 'open') !== 'close')
+        : [],
+    });
+  };
+  for (const pick of picks) {
+    if (pick.kind === 'frame') frameJob(pick.screenId, pick.via);
+    else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId, pick.row.screenId);
+    else if (pick.kind === 'section') {
+      jobs.push({
+        kind: 'section',
+        sectionId: pick.sectionId,
+        scale,
+        out: path.join(shotDir, `${pick.via}.png`),
+        marks: parsed.flags.marks
+          ? context.frameRows.filter((row) => pick.frames.some((frame) => frame.id === row.screenId) && (row.status || 'open') !== 'close')
+          : [],
+      });
+    } else if (pick.kind === 'page') {
+      jobs.push({
+        kind: 'page',
+        scale,
+        out: path.join(shotDir, `${context.pageId}.png`),
+        marks: parsed.flags.marks
+          ? context.frameRows.filter((row) => (row.status || 'open') !== 'close')
+          : [],
+      });
+    }
+  }
+  if (!jobs.length) {
+    err('没有可拍的目标（引用都未命中）。');
+    return 1;
+  }
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  let renderShots;
+  try {
+    ({ renderShots } = await import('./ppnt-shot.js'));
+  } catch (error) {
+    err(`错误：渲染器加载失败：${error.message}`);
+    return 1;
+  }
+  try {
+    const results = await renderShots({ origin, pageId: context.pageId, jobs });
+    for (const result of results) out(`${result.out} · ${result.width}×${result.height}`);
+  } catch (error) {
+    err(`错误：${error.message}`);
+    return 1;
+  }
+  return errors.length ? 1 : 0;
+}
+
+export async function runMark(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err, requestFn } = ioOf(io);
+  if (parsed.statusWord === 'close') {
+    err('close 只在工作台（owner 单击验收，带 toast 撤销）；ppnt mark 不接受 close。');
+    return 1;
+  }
+  if (parsed.statusWord === 'open') {
+    err('open 由工作台编辑触发，mark 不写；ppnt mark 只写 check / done。');
+    return 1;
+  }
+  if (!['done', 'check'].includes(parsed.statusWord)) {
+    err(`错误：状态只支持 done | check，收到：${parsed.statusWord}`);
+    return 1;
+  }
+  const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
+  if (!context) return 1;
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  const crossPageRows = (pageRef) => {
+    const other = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
+    return other ? [...other.frameRows, ...other.docRows] : [];
+  };
+  const rows = [...context.frameRows, ...context.docRows];
+  const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  if (parsed.flags.status) {
+    if (!REF_STATUSES.includes(parsed.flags.status)) {
+      err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
+      return 1;
+    }
+    for (const row of expandStatus(parsed.flags.status, rows)) picks.push({ kind: 'annotation', row, via: `--status ${parsed.flags.status}` });
+  }
+  for (const error of errors) err(error);
+  const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
+  if (!annotationPicks.length) {
+    err('没有命中的标注。');
+    return 1;
+  }
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  try {
+    const health = await requestFn(`${origin}/health`);
+    if (health.status !== 200) throw new Error(`health ${health.status}`);
+  } catch {
+    err(`错误：pinpoint 服务未在跑（${origin}）；mark 写状态走服务端点，先 \`ppnt start\`。`);
+    return 1;
+  }
+  let failed = 0;
+  for (const pick of annotationPicks) {
+    const row = pick.row;
+    const label = `#${row.n}${row.__bucket !== 'pinpoint' ? `（${row.__bucket}）` : ''}`;
+    try {
+      const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
+      const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
+      const res = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}/${row.n}/status`, {
+        method: 'POST',
+        body: {
+          entry: row.__bucket,
+          baseRevision,
+          status: parsed.statusWord,
+          ...(parsed.flags.note ? { note: parsed.flags.note } : {}),
+        },
+      });
+      if (res.status === 200) {
+        out(`${label} → ${parsed.statusWord}${parsed.flags.note ? `（note：${parsed.flags.note}）` : ''}`);
+      } else {
+        failed += 1;
+        const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
+        out(`${label} ✗ ${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`);
+      }
+    } catch (error) {
+      failed += 1;
+      out(`${label} ✗ ${error.message}`);
+    }
+  }
+  return failed || errors.length ? 1 : 0;
+}
+
+/** status --page <页>：各状态计数 + dist 是否过期（只读，不依赖服务）。 */
+function printPageStatus(parsed, { env, out, err }) {
+  const context = loadAnnotateContext(parsed.flags.page, parsed, { env, err });
+  if (!context) return 1;
+  const counts = countByStatus([...context.frameRows, ...context.docRows]);
+  const dist = distStatus(context.target.entryId, context.target.pageDir, { distRoot: path.join(dataRoot(env), 'dist') });
+  out(`页 ${context.pageId}`);
+  out(`  open ${counts.open} · check ${counts.check} · done ${counts.done} · close ${counts.close} · 共 ${counts.total}`);
+  out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
+  return 0;
+}
+
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */
 export async function run(argv, io = {}) {
   const { out, err } = ioOf(io);
@@ -1277,6 +1768,12 @@ export async function run(argv, io = {}) {
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);
     case 'restart': return runRestart(argv, io);
+    case 'build': return runBuild(argv, io);
+    case 'render': return runRender(argv, io);
+    case 'check': return runCheck(argv, io);
+    case 'locate': return runLocate(argv, io);
+    case 'shot': return runShot(argv, io);
+    case 'mark': return runMark(argv, io);
     default:
       err(`错误：未知命令：${argv[0]}`);
       err(USAGE);

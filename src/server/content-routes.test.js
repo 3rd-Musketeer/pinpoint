@@ -7,13 +7,10 @@ test('rewriteContentUrl maps the served URL prefixes onto their disk location', 
   assert.equal(rewriteContentUrl('/kits/ios/ios-kit.css'), '/content/kits/ios/ios-kit.css');
   assert.equal(rewriteContentUrl('/previews/_index.json'), '/content/previews/_index.json');
   assert.equal(rewriteContentUrl('/lib/ann-list.css'), '/src/shared/ann-list.css');
-  assert.equal(rewriteContentUrl('/panel.html'), '/src/pages/panel.html');
-  assert.equal(rewriteContentUrl('/starter.html'), '/src/pages/starter.html');
 });
 
 test('rewriteContentUrl keeps the query string and leaves unmapped URLs alone', () => {
   assert.equal(rewriteContentUrl('/kits/ios/ios-kit.js?t=1'), '/content/kits/ios/ios-kit.js?t=1');
-  assert.equal(rewriteContentUrl('/panel.html?entry=demo'), '/src/pages/panel.html?entry=demo');
   assert.equal(rewriteContentUrl('/annotate.js'), '/annotate.js');
   assert.equal(rewriteContentUrl('/sites/demo/index.html'), '/sites/demo/index.html');
 });
@@ -64,13 +61,11 @@ test('resolveContentFile passes through anything the prefixes do not map', () =>
 });
 
 test('resolveContentFile serves an existing file and keeps the query string', () => {
-  const exists = fakeDisk({ '/content/kits/ios/ios-kit.css': 'file', '/src/pages/panel.html': 'file' });
+  const exists = fakeDisk({ '/content/kits/ios/ios-kit.css': 'file' });
   assert.deepEqual(resolveContentFile('/kits/ios/ios-kit.css', exists),
     { action: 'serve', url: '/content/kits/ios/ios-kit.css' });
   assert.deepEqual(resolveContentFile('/kits/ios/ios-kit.css?t=42', exists),
     { action: 'serve', url: '/content/kits/ios/ios-kit.css?t=42' });
-  assert.deepEqual(resolveContentFile('/panel.html?entry=demo', exists),
-    { action: 'serve', url: '/src/pages/panel.html?entry=demo' });
 });
 
 test('resolveContentFile answers 404 for a missing file, naming the requested URL', () => {

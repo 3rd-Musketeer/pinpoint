@@ -34,7 +34,6 @@ const SCANNED = [
   ...workbenchSources(),
   'src/client/annotate.js',
   'src/shared/annotate-bubble.js',
-  'src/server/lib/export-doc-bake.js',
 ];
 
 // 允许名单：{ file, where: 命中行要匹配的正则, values: 允许的字面量, reason }。
@@ -47,6 +46,7 @@ const ALLOW = [
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-badge\{/, values: ['3'], reason: 'overlay 内部序：序号钉' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-target\{/, values: ['1'], reason: 'overlay 内部序：命中框' },
   { file: 'src/client/annotate.js', where: /^\s*'\.ann-frame\{/, values: ['1'], reason: 'overlay 内部序：frame 框' },
+  { file: 'src/client/annotate.js', where: /^\s*'\.ann-ghost-rect\{/, values: ['1'], reason: 'overlay 内部序：幽灵框（pp2 lastRect）' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'chrome 内部序：提示' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
@@ -55,11 +55,8 @@ const ALLOW = [
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
   { file: 'src/client/annotate.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
-  // 双端共享的气泡样式：气泡与导出序号只在 overlay（或导出烘焙层）内部比。
+  // 双端共享的气泡样式：气泡与导出序号只在 overlay 内部比。
   { file: 'src/shared/annotate-bubble.js', where: /pointer-events:auto;z-index:3;overflow:hidden;\}/, values: ['3'], reason: 'overlay 内部序：.ann-bubble 评论卡' },
-  { file: 'src/shared/annotate-bubble.js', where: /pointer-events:none;z-index:4;\}/, values: ['4'], reason: '导出烘焙内部序：.ann-export-badge' },
-  // 离线导出的烘焙 CSS：宿主是导出文件里的 #ann-export-overlay（客座层），自成一套。
-  { file: 'src/server/lib/export-doc-bake.js', where: /./, values: ['1', '3', '2147483000'], reason: '客座层：离线 doc 导出的烘焙 CSS' },
   // 组件内部序：分段控件焦点项压过相邻项的边，不与外壳比。
   { file: 'src/workbench/app/ui/toggle-group.jsx', where: /focus:z-10 focus-visible:z-10/, values: ['10'], reason: '组件内部序：toggle-group 焦点项' },
 ];
@@ -198,9 +195,21 @@ function ladderTokens() {
 test('layering: annotate.js var(--wb-z-*, N) fallbacks equal the token values', () => {
   const tokens = ladderTokens();
   assert.ok(tokens.size >= 10, 'ladder present in wb-tokens.css');
+  // #ann-toast（§2b）是双端两用引用：工作台落 token 110，客座页没有 token 落
+  // 2147483647 压过宿主 —— 它的兜底故意不等于 token 值，按名字豁免这一类。
+  const DUAL_MODE_FALLBACK = new Set(['--wb-z-float-2']);
   const refs = [...read('src/client/annotate.js').matchAll(/var\((--wb-z-[a-z0-9-]+)\s*,\s*(\d+)\)/g)];
   assert.ok(refs.length >= 2, 'annotate.js references at least --wb-z-marks and --wb-z-marks-active with fallbacks');
   for (const [, name, fallback] of refs) {
+    if (DUAL_MODE_FALLBACK.has(name)) {
+      // 豁免不等于没人看守（S4）：客座页的兜底值必须仍在 int32 顶格一带，
+      // 改小（比如 100）的话 toast 会被宿主页面盖住，测试必须红。
+      assert.ok(
+        Number(fallback) >= 2147483646,
+        `${name} fallback ${fallback} must stay >= 2147483646 (guest-page toast above host)`,
+      );
+      continue;
+    }
     assert.equal(fallback, tokens.get(name), `${name} fallback ${fallback} must equal token value ${tokens.get(name)}`);
   }
   const names = new Set(refs.map((r) => r[1]));

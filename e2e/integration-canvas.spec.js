@@ -1,7 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 import { E2E_DATA_DIR } from './env.js';
 import { annotationSlug } from '../src/shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
@@ -9,13 +8,12 @@ import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 const ledger = path.join(E2E_DATA_DIR, 'pinpoint', annotationSlug(pageKeyFromPathname('/index.html')) + '.json');
 const read = () => JSON.parse(fs.readFileSync(ledger, 'utf8')).annotations;
 async function open(page) {
-  await seedTemplatePagesVisible(page);
   await page.addInitScript(() => {
     const p = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-    Object.assign(p, { zoomAxis: 2, sideCollapsed: true, pageViewports: { library: { canvasZoom: '1.17' } } });
+    Object.assign(p, { zoomAxis: 2, sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: '1.17' } } });
     localStorage.setItem('pinpoint-wb', JSON.stringify(p));
   });
-  await page.goto('/index.html?page=library&mode=ios');
+  await page.goto('/index.html?page=e2e-ios&mode=ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
 }
 async function save(page, content) {
@@ -32,6 +30,9 @@ async function focus(page, screen) {
     window.workbench.focusFrame(group, screen, { smooth: false });
   }, screen);
 }
+// lastRect 是「锚点最后位置」提示：随保存合并落盘（新建的标注要等下一次
+// persist 才带上），重测又按复合坐标取整 —— 比对保存/重载保真时把它摘掉。
+const stripLastRect = list => list.map(({ lastRect, ...rest }) => rest);
 
 test('integrated navigation, pan, zoom and edits preserve persisted targets across reload and another browser context', async ({ page, browser }) => {
   fs.rmSync(ledger, { force: true });
@@ -70,7 +71,11 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     }
     await page.locator('#wbzoom-in').click();
     await page.locator('#wbzoom-out').click();
-    expect(read()).toEqual([first]);
+    // R4 + §2b：创建后的首测量会把 lastRect（带 space 标记）debounce 落盘一次
+    // —— 先等这次合法写盘 settle，再要求 pan / zoom 期间账本字节不动。
+    await expect.poll(() => (read()[0].lastRect ? 1 : 0)).toBe(1);
+    const settled = read()[0];
+    expect(read()).toEqual([settled]);
     await page.evaluate(n => window.pinpoint.goToMark(n), first.n);
     await save(page, 'integration edited after pan and zoom');
     const edited = read()[0];
@@ -87,13 +92,20 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     await save(page, 'integration new mark in earlier section');
     const final = read();
     expect(final).toHaveLength(2);
-    expect(final.find(m => m.id === first.id)).toEqual(edited);
+    expect(stripLastRect(final.filter(m => m.id === first.id))).toEqual(stripLastRect([edited]));
+    expect(final.find(m => m.id === first.id).lastRect).toEqual(edited.lastRect);
     await expect.poll(() => other.evaluate(() => window.pinpoint.marks.length)).toBe(2);
-    await page.reload();
-    await expect.poll(() => page.evaluate(() => window.pinpoint?.marks)).toEqual(final);
-    await other.reload();
-    await expect.poll(() => other.evaluate(() => window.pinpoint?.marks)).toEqual(final);
-    expect(read()).toEqual(final);
+    const persisted = stripLastRect(final);
+    const marksAfterReload = async context => {
+      await context.reload();
+      await expect.poll(() => context.evaluate(() => window.pinpoint?.marks?.length)).toBe(2);
+      return context.evaluate(() => window.pinpoint.marks);
+    };
+    expect(stripLastRect(await marksAfterReload(page))).toEqual(persisted);
+    expect(stripLastRect(await marksAfterReload(other))).toEqual(persisted);
+    // R4 + §2b：reload 后活锚点重测会把 lastRect 补上 space 标记并 debounce 落盘
+    // —— 除 lastRect 本身外，磁盘不再有别的变化。
+    expect(stripLastRect(read())).toEqual(persisted);
     await page.screenshot({ path: test.info().outputPath('integrated-restored.png') });
   } finally {
     await otherContext.close();

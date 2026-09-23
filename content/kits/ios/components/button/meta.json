@@ -1,7 +1,0 @@
-{
-  "id": "button",
-  "title": "Buttons",
-  "system": true,
-  "layout": "column",
-  "variants": [{ "id": "catalog", "title": "Styles" }]
-}

@@ -23,7 +23,8 @@ function AnnRow(props) {
   var r = props.row;
   var [armed, setArmed] = useState(false);
   return (
-    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')} data-ann-n={r.n}>
+    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
+      data-ann-n={r.n} title={r.note || undefined}>
       <div className="wb-ann-item-row flex w-full items-stretch gap-0.5">
         <button type="button" className="wb-ann-item-main rounded-md" data-ann-n={r.n}
           onClick={function () { props.onGoTo(r.n); }}>
@@ -31,9 +32,18 @@ function AnnRow(props) {
           <span className="wb-ann-body">
             <span className="wb-ann-cap">{r.cap}</span>
             <span className="wb-ann-text">{r.preview}</span>
+            {r.status === 'check' || r.status === 'done'
+              ? <span className="wb-ann-status-tag">{r.status}</span>
+              : null}
             {r.tags ? <span className="wb-ann-tags">{r.tags}</span> : null}
           </span>
         </button>
+        {r.status === 'done' ? (
+          <button type="button" className="ann-sb-close-mark" aria-label={'关闭标注 ' + r.n}
+            onClick={function () { var api = annotateApi(); if (api && typeof api.closeAnnotation === 'function') api.closeAnnotation(r.n); }}>
+            关闭
+          </button>
+        ) : null}
         <button type="button" className="wb-ann-delete" aria-label={(armed ? '确认删除标注 ' : '删除标注 ') + r.n}
           onBlur={function () { setArmed(false); }}
           onClick={function () { if (!armed) { setArmed(true); return; } var api = annotateApi(); if (api) api.removeMark(r.n); }}>
@@ -200,9 +210,7 @@ export function AnnPopover() {
       </div>
 
       <div className="wb-ann-list flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-[7px] pb-2" id="wbann-list" ref={listRef}>
-        {items.length ? items.map(function (r) {
-          return <AnnRow key={r.key} row={r} on={focusAnnN === r.n} onGoTo={onGoTo} />;
-        }) : (
+        {items.length ? <OpenRows items={items} focusAnnN={focusAnnN} onGoTo={onGoTo} /> : (
           <div className="wb-ann-empty m-auto flex flex-col items-center justify-center gap-1.5 py-6">
             <WbIcon name="empty-ann" size={22} className="wb-ann-empty-ico block size-[22px] text-[color:var(--wb-faint)] opacity-75" />
             <p className="wb-ann-empty-title m-0">暂无标注</p>
@@ -210,6 +218,30 @@ export function AnnPopover() {
           </div>
         )}
       </div>
+    </Fragment>
+  );
+}
+
+function OpenRows(props) {
+  var [closedOpen, setClosedOpen] = useState(false);
+  var openItems = props.items.filter(function (r) { return r.status !== 'close'; });
+  var closedItems = props.items.filter(function (r) { return r.status === 'close'; });
+  return (
+    <Fragment>
+      {openItems.map(function (r) {
+        return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
+      })}
+      {closedItems.length ? (
+        <Fragment>
+          <button type="button" className="wb-ann-closed-toggle" data-closed-open={closedOpen ? '1' : undefined}
+            onClick={function () { setClosedOpen(!closedOpen); }}>
+            {(closedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedItems.length}
+          </button>
+          {closedOpen ? closedItems.map(function (r) {
+            return <AnnRow key={r.key} row={r} on={props.focusAnnN === r.n} onGoTo={props.onGoTo} />;
+          }) : null}
+        </Fragment>
+      ) : null}
     </Fragment>
   );
 }

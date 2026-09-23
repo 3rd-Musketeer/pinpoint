@@ -15,33 +15,17 @@
   'use strict';
   if (window.__pinpoint) return;
   window.__pinpoint = true;
-  // 启动就绪标记：扩展 content script 的自愈路径据此判断主世界 client 已装好
-  // pinpoint:command 监听（见 extension/content.js）。IIFE 同步执行到底，标记
-  // 打在最前面即可——任何后续的 DOM 事件派发都排在本脚本求值之后。
-  // 抑制标记同理：workbench 壳/被嵌入页的标注控制面在壳上，content script 的
-  // 点击反馈据此区分「壳页」与「client 过旧」（sidebarSuppressed 是函数声明，
-  // 提升到 IIFE 顶部，此时可调）。
-  if (document.documentElement) {
-    document.documentElement.setAttribute('data-pinpoint-client', '1');
-    if (sidebarSuppressed()) document.documentElement.setAttribute('data-pinpoint-sidebar', 'suppressed');
-  }
 
   var SERVER = (function () {
     var src = document.currentScript && document.currentScript.src;
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  // Registry entry this page annotates under. Sources, in order: page-world
-  // global (same-origin injectors), then the <html data-pinpoint-entry>
-  // attribute — the browser extension (WP3) sets that one because a page with
-  // a strict CSP blocks content-script-injected inline <script> nodes, while
-  // the DOM stays shared across isolated/main worlds. Default: 'pinpoint'.
-  var ENTRY = window.__pinpointEntry ||
-    (document.documentElement && document.documentElement.getAttribute('data-pinpoint-entry')) ||
-    'pinpoint';
-  // 打回 DOM：/sites/ 等服务端注入路径走的是 window.__pinpointEntry（主世界
-  // 全局，隔离世界读不到），扩展 content script 的 page-info 依赖 DOM 属性。
-  if (document.documentElement) document.documentElement.setAttribute('data-pinpoint-entry', ENTRY);
+  // Registry entry this page annotates under: the page-world global set by
+  // same-origin injectors (/sites/、/api/frame）。Default: 'pinpoint'.
+  // （浏览器扩展已于 pp2 切片 3 退役 —— 它曾走 <html data-pinpoint-entry>
+  // 属性绕 CSP，那条通道与属性一并删除。）
+  var ENTRY = window.__pinpointEntry || 'pinpoint';
   // ---------- 阶段 5：/api/frame 嵌入帧身份 ----------
   // frame 渲染端点注入 __pinpointFrame={pageId,screenId,section,sectionLabel} 与
   // __pinpointLedger（顶层 workbench 的 pathname）：本实例读写画布同一份账本，
@@ -84,6 +68,7 @@
   var paused = false;  // hide pins / overlay without leaving Annotate intent
   var floatingToolbar = false;
   var sidebarOpen = false; // 标注面板（#ann-sidebar）；viewer 偏好，持久化到 LS
+  var sidebarClosedOpen = false; // 侧栏「已关闭 n」组的展开态（pp2 状态机）
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -98,7 +83,7 @@
   var bubbleLayout = 'inline';
 
   // Mention: UI shows @n; disk stores [@a:<id>] (legacy [@m:<id>] still read).
-  var MENTION_STORE_RE = /\[@(?:a|m):([a-z0-9]+)\]/gi;
+  var MENTION_STORE_RE = /\[@a:([a-z0-9]+)\]/gi;
   var MENTION_DISPLAY_RE = /@(\d+)\b/g;
 
   function newMarkId() {
@@ -145,7 +130,6 @@
       return hit ? ('@' + hit.n) : '@?';
     });
   }
-  var commentToDisplay = contentToDisplay; // compat alias for workbench
 
   /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用）。
    * iframe 内 overlay 与父级 gutter 共用，避免两边显示不一致。 */
@@ -179,19 +163,15 @@
   }
 
   function annotationContent(m) {
-    if (!m) return '';
-    if (m.content != null) return m.content;
-    return m.comment || '';
+    return (m && m.content) || '';
   }
 
   function annotationSection(m) {
-    if (!m) return '';
-    return m.section || m.group || '';
+    return (m && m.section) || '';
   }
 
   function annotationSectionLabel(m) {
-    if (!m) return '';
-    return m.sectionLabel || m.groupLabel || '';
+    return (m && m.sectionLabel) || '';
   }
 
   // Indicator/normalize logic is inlined from lib/annotation-indicator.js at serve
@@ -199,8 +179,7 @@
 
   function docAnnotations(doc) {
     if (!doc) return null;
-    if (Array.isArray(doc.annotations) || Array.isArray(doc.marks)) return annotationsFromDoc(doc);
-    return null;
+    return Array.isArray(doc.annotations) ? doc.annotations : null;
   }
 
   function indicatorForMark(m) {
@@ -761,6 +740,28 @@
     }
   }
 
+  /** M1：#n 的取号权在服务端。保存应答把带号的行带回来，按 id 认领覆盖本地
+      的临时号（nextN 只管应答前的显示）；不在应答里的行（在途新草稿）不动。
+      只改 n，不 bump mutationVersion —— 认领不触发再保存。 */
+  function adoptServerNumbers(data) {
+    var list = data && Array.isArray(data.annotations) ? data.annotations : null;
+    if (!list) return;
+    var serverN = Object.create(null);
+    for (var i = 0; i < list.length; i++) {
+      var a = list[i];
+      if (a && a.id && Number.isInteger(a.n)) serverN[a.id] = a.n;
+    }
+    var changed = false;
+    for (var j = 0; j < marks.length; j++) {
+      var m = marks[j];
+      if (serverN[m.id] !== undefined && serverN[m.id] !== m.n) { m.n = serverN[m.id]; changed = true; }
+    }
+    if (!changed) return;
+    structureDirty = true;
+    renderLedgerChange();
+    notify();
+  }
+
   function persist() {
     mutationVersion++;
     writeLocalCache();
@@ -821,6 +822,7 @@
             revision = Number(res.data.revision);
           }
           syncedMutationVersion = Math.max(syncedMutationVersion, sentVersion);
+          adoptServerNumbers(res.data);
           var shouldRetry = settleDeferredRemote(sentVersion);
           if (syncError) { syncError = false; notify(); }
           setStatus('已同步');
@@ -1033,7 +1035,6 @@
        其余 z-index（1–6）只在 #ann-overlay 或 #ann-chrome 内部比，不进阶梯。 */
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
-    '.ann-result-target{position:absolute;border:2px solid #438bea;border-radius:4px;background:rgba(67,139,234,.06);pointer-events:none;box-sizing:border-box}.ann-result-target button{position:absolute;right:-10px;top:-12px;border:2px solid white;border-radius:999px;background:#438bea;color:white;min-width:23px;height:23px;font:600 12px system-ui;pointer-events:auto;cursor:pointer}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
     '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
     '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
@@ -1048,6 +1049,16 @@
        accent 只给已经落下的这一枚。 */
     '.ann-badge{position:absolute;width:22px;height:22px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:11px;font-weight:var(--wb-w-semibold,600);font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px #fff,0 1px 3px rgba(0,0,0,.35);pointer-events:auto;cursor:pointer;z-index:3;transition:box-shadow .12s ease;}',
     '.ann-badge.ann-badge--on{box-shadow:0 0 0 2px #fff,0 0 0 5px color-mix(in srgb,var(--wb-accent,#5b7fa6) 32%,transparent),0 1px 3px rgba(0,0,0,.35);}',
+    /* pp2 状态机的钉子三态（2026-09-22）：open = 现状；check = 同形但描边灰、
+       填充空心；done = 现状 + 右上角小勾；close 不画（列表收起，见侧栏）。 */
+    '.ann-badge.ann-badge--check{background:transparent;color:var(--wb-faint,#8d8d8d);box-shadow:0 0 0 1.5px var(--wb-faint,#8d8d8d);}',
+    '.ann-badge.ann-badge--done::after{content:"✓";position:absolute;top:-5px;right:-5px;width:13px;height:13px;border-radius:50%;background:var(--wb-accent,#5b7fa6);color:#fff;font-size:9px;line-height:13px;text-align:center;box-shadow:0 0 0 1.5px #fff;}',
+    /* 幽灵框：锚点解析失败但有 lastRect 时，在 lastRect 处画虚线框 + 序号钉。 */
+    '.ann-ghost-rect{position:absolute;box-sizing:border-box;border:2px dashed var(--wb-faint,#8d8d8d);background:transparent;border-radius:var(--wb-r-1,4px);pointer-events:none;z-index:1;}',
+    /* 关闭 / 撤销的 toast（注入端与工作台共用注入侧样式） */
+    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:var(--wb-z-float-2,2147483647);display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:10px;background:rgba(28,32,36,.92);color:#fff;font:500 12.5px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28);}',
+    '#ann-toast[hidden]{display:none;}',
+    '#ann-toast button{border:0;background:transparent;color:#9ec2f0;cursor:pointer;font:600 12.5px system-ui;padding:2px 4px;}',
     /* 评论卡只在 hover 钉子（或该条被定位）时出（批注 1 的后半句「hover 时显示，
        不然有点挡视野」）。这里只切可见性，不动 [hidden] —— [hidden] 归「锚点在
        视口外」那条既有规矩，两个语义不许合并。 */
@@ -1275,8 +1286,6 @@
 
   function toggleMode() {
     mode = !mode;
-    // 模式标记：扩展 content script 的 page-info 应答把它捎给侧边栏面板。
-    document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
     if (!mode) { clearHover(); closeComposer(); }
     propagateModeToFrames();
     notify();
@@ -1352,60 +1361,10 @@
 
   btnHide.addEventListener('click', function () { setPaused(!paused); });
 
-  function resultTargets(mark) {
-    return ((mark.result && mark.result.operations) || []).flatMap(function (operation) { return operation.targets || []; });
-  }
-
-  function resultScope(screenId) {
+  function scopeForScreen(screenId) {
     if (FRAME) return FRAME.screenId === screenId || !screenId ? document : null;
     if (!screenId) return document.getElementById('wb-board-panel') || document;
     return document.querySelector('.wb-screen[data-screen="' + CSS.escape(screenId) + '"]');
-  }
-
-  function findResultTarget(target) {
-    var scope = resultScope(target.screenId);
-    if (!scope) return null;
-    try {
-      var matches = scope.querySelectorAll(target.selector);
-      return matches.length === 1 && !isUI(matches[0]) ? matches[0] : null;
-    } catch (_) { return null; }
-  }
-
-  var resultWriting = false;
-  async function recordResults(id, operations, options) {
-    options = options || {};
-    if (options.baseRevision !== revision) throw new Error('revision_conflict: refresh annotations before reporting results');
-    if (syncing || ledgerSwitching || resultWriting || activeComposer || mutationVersion !== syncedMutationVersion) throw new Error('annotation_busy: finish the current edit first');
-    var mark = marks.find(function (item) { return item.id === id; });
-    if (!mark || !markOnActivePage(mark)) throw new Error('annotation_not_on_current_page');
-    if (!Array.isArray(operations) || !operations.length) throw new Error('operations_required');
-    var normalized = operations.map(function (operation) {
-      if (!operation || ['add', 'modify', 'move', 'delete'].indexOf(operation.action) < 0) throw new Error('invalid_operation');
-      if (operation.action === 'delete') {
-        if (operation.targets && operation.targets.length) throw new Error('deleted_operation_has_no_result_target');
-        return { action: 'delete', targets: [] };
-      }
-      if (!Array.isArray(operation.targets) || !operation.targets.length) throw new Error('result_target_required');
-      return { action: operation.action, targets: operation.targets.map(function (target) {
-        if (!target || typeof target.selector !== 'string' || !target.selector.trim()) throw new Error('selector_required');
-        if (target.pageId && target.pageId !== mark.pageId) throw new Error('result_page_mismatch');
-        var candidate = { selector: target.selector, screenId: target.screenId || mark.screenId || '' };
-        var el = findResultTarget(candidate);
-        if (!el) throw new Error('result_target_must_exist_and_be_unique');
-        candidate.text = excerpt(el);
-        return candidate;
-      }) };
-    });
-    var next = marks.map(function (item) { return item.id === id ? Object.assign({}, item, { result: { operations: normalized, updatedAt: new Date().toISOString() } }) : item; });
-    var epoch = syncEpoch;
-    resultWriting = true;
-    try {
-      var response = await fetch(SERVER + '/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ page: PAGE, entry: ENTRY, path: decodeURIComponent(LEDGER_PATHNAME), baseRevision: options.baseRevision, annotations: next }) });
-      var doc = await response.json();
-      if (!response.ok) throw new Error(response.status === 409 ? 'revision_conflict' : 'result_save_failed');
-      if (epoch === syncEpoch) applyRemoteDoc(doc, '结果已同步');
-      return { id: id, revision: doc.revision, result: next.find(function (item) { return item.id === id; }).result };
-    } finally { resultWriting = false; }
   }
 
   // Missing DOM is conclusive only inside a loaded scope. Hidden elements are
@@ -1413,23 +1372,25 @@
   function canClearInvalid(mark, scopes) {
     function loadedScope(screenId) {
       if (scopes && scopes.has(screenId)) return scopes.get(screenId);
-      var scope = resultScope(screenId);
+      var scope = scopeForScreen(screenId);
       var loading = '.wb-screen-loading,.wb-screen-err,[data-loading="true"],[aria-busy="true"]';
       var loaded = scope && !(scope.matches && scope.matches(loading)) && !scope.querySelector(loading) ? scope : null;
       if (scopes) scopes.set(screenId, loaded);
       return loaded;
     }
     if (!markOnActivePage(mark) || ledgerSwitching || document.readyState !== 'complete') return false;
-    if (mark.result && mark.result.operations.some(function (op) { return op.action === 'delete'; })) return false;
+    // R5：done 未 close 与已 close 的不参与清空 —— agent 按标注删掉目标元素（=
+    // 干完活）后锚点必失效，一键清掉丢的是 owner 还没验收 / 已留档的执行历史。
+    if (mark.status === 'done' || mark.status === 'close') return false;
     if (!loadedScope(mark.screenId || '')) return false;
     var selectors = mark.type === 'element' ? markElementTargets(mark).map(function (target) { return target.selector; }) : [mark.base && mark.base.selector].concat((mark.contains || []).map(function (target) { return target.selector; })).filter(Boolean);
     if (!selectors.length) return false;
     if (selectors.some(function (selector) { return !!resolveMarkSelector(selector, mark.screenId || ''); })) return false;
-    return resultTargets(mark).every(function (target) { return !!loadedScope(target.screenId) && !findResultTarget(target); });
+    return true;
   }
 
   function clearInvalid() {
-    if (resultWriting || activeComposer) return false;
+    if (activeComposer) return false;
     clearAnchorCache();
     var scopes = new Map();
     var invalid = marks.filter(function (mark) { return canClearInvalid(mark, scopes); });
@@ -1440,72 +1401,7 @@
     return invalid.length;
   }
 
-  var resultNodes = new Map();
-  var resultMarks = [];
-  var resultGeometry = [];
-  var resultPose = null;
-  var resultLayer = null;
-  function renderResultIndicators(refresh) {
-    if (refresh) resultMarks = marksForActivePage().filter(function (mark) { return resultTargets(mark).length; });
-    if (!resultMarks.length && !resultNodes.size) return;
-    if (!overlay) return;
-    if (!resultLayer) {
-      resultLayer = document.createElement('div');
-      resultLayer.setAttribute('data-ann-ui', '');
-      resultLayer.style.cssText = 'position:absolute;inset:0;pointer-events:none';
-      hoverLayer.appendChild(resultLayer);
-    }
-    // Canvas targets are measured only when content/layout changes. Pure pan
-    // translates one layer; zoom projects cached canvas coordinates, like marks.
-    if (refresh || !canvasView) {
-      beginOverlayFrame();
-      measuringCanvas = !!canvasView;
-      try {
-        resultGeometry = geometryBatch(function () {
-          var geometry = [];
-          resultMarks.forEach(function (mark) {
-            resultTargets(mark).forEach(function (target, index) {
-              var el = findResultTarget(target);
-              var rect = el && !isHidden(el) ? visibleViewRectOf(el) : null;
-              if (!rect) return;
-              rect = markLocalRect(rect);
-              if (canvasView) {
-                var pose = canvasView.pose;
-                rect = [(rect[0] - pose.x) / pose.zoom, (rect[1] - pose.y) / pose.zoom, rect[2] / pose.zoom, rect[3] / pose.zoom];
-              }
-              geometry.push({ key: mark.id + ':' + index, mark: mark, rect: rect });
-            });
-          });
-          return geometry;
-        });
-      } finally { measuringCanvas = false; }
-      resultPose = null;
-    }
-    var pose = canvasView && canvasView.pose;
-    if (!pose || resultPose !== pose) {
-      var present = new Set();
-      resultGeometry.forEach(function (item) {
-        present.add(item.key);
-        var node = resultNodes.get(item.key);
-        if (!node) {
-          node = document.createElement('div'); node.className = 'ann-result-target'; node.dataset.resultAnnotation = item.mark.id;
-          node.setAttribute('data-ann-ui', '');
-          var badge = document.createElement('button'); badge.type = 'button'; badge.textContent = item.mark.n;
-          badge.setAttribute('aria-label', '查看标注 ' + item.mark.n + ' 的执行结果');
-          badge.addEventListener('click', function () { openMark(item.mark.n); });
-          node.appendChild(badge); resultLayer.appendChild(node); resultNodes.set(item.key, node);
-        }
-        var r = item.rect;
-        placeFixedRect(node, pose ? [r[0] * pose.zoom + pose.x, r[1] * pose.zoom + pose.y, r[2] * pose.zoom, r[3] * pose.zoom] : r);
-      });
-      resultNodes.forEach(function (node, key) { if (!present.has(key)) { node.remove(); resultNodes.delete(key); } });
-      resultPose = pose;
-    }
-    resultLayer.style.transform = canvasView ? 'translate3d(' + (-canvasView.stage.scrollLeft) + 'px,' + (-canvasView.stage.scrollTop) + 'px,0)' : '';
-  }
-
   function doClear() {
-    if (resultWriting) return false;
     marks = marks.filter(function (k) { return !markOnActivePage(k); });
     closeComposer({ silentRender: true });
     persist();
@@ -1514,7 +1410,6 @@
   }
 
   function removeMark(n) {
-    if (resultWriting) return false;
     n = parseInt(n, 10);
     if (!isFinite(n)) return false;
     var before = marks.length;
@@ -1529,12 +1424,12 @@
   btnClear.addEventListener('click', doClear);
 
   // ---------- 标注面板（#ann-sidebar）----------
-  // 没有 workbench 的页面（/sites/ 注入、扩展注入、SPA）的标注控制面：顶部
+  // 没有 workbench 的页面（/sites/ 注入、SPA）的标注控制面：顶部
   // 「交互 | 标注」segmented 切 mode，下面当前账本按 n 列出，点击跳转
-  // （goToMark），hover 出编辑/删除。主入口 = 浏览器工具栏扩展图标（见下方
-  // pinpoint:command 监听），次要入口 = 工具条「列表」按钮、S 键。抑制规则与
-  // 浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；doc iframe
-  // 由父级出控制面。
+  // （goToMark），hover 出编辑/删除。入口 = 工具条「列表」按钮、S 键。
+  // 抑制规则与浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；
+  // doc iframe 由父级出控制面。（浏览器扩展的 pinpoint:command 桥已于 pp2
+  // 切片 3 随扩展一并退役。）
   var SIDEBAR_LS_KEY = 'pinpoint:' + ENTRY + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
@@ -1617,9 +1512,11 @@
     var rows = sidebarRowModel();
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags;
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + r.note + '|' + sidebarClosedOpen;
     }).join('~');
-    sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
+    var openRows = rows.filter(function (r) { return r.status !== 'close'; });
+    var closedRows = rows.filter(function (r) { return r.status === 'close'; });
+    sidebarCount.textContent = openRows.length ? '(' + openRows.length + ')' : '';
     if (sig === sidebarSig) return;
     sidebarSig = sig;
     sidebarBody.textContent = '';
@@ -1637,10 +1534,12 @@
       sidebarBody.appendChild(empty);
       return;
     }
-    rows.forEach(function (r) {
+
+    function buildRow(r) {
       var item = document.createElement('div');
       item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
       item.setAttribute('data-ann-n', r.n);
+      if (r.note) item.title = r.note; // 原生 title，卡片留切片 5（GLM 收尾时的简化，勿当卡片找）
       var main = document.createElement('button');
       main.type = 'button';
       main.className = 'wb-ann-item-main';
@@ -1659,6 +1558,13 @@
         text.textContent = r.preview;
         body.appendChild(text);
       }
+      // 状态灰标（check / done；open 不出标，close 整行在收起组里）。
+      if (r.status === 'check' || r.status === 'done') {
+        var stTag = document.createElement('span');
+        stTag.className = 'wb-ann-status-tag';
+        stTag.textContent = r.status === 'check' ? 'check' : 'done';
+        body.appendChild(stTag);
+      }
       if (r.broken) {
         var tag = document.createElement('span');
         tag.className = 'wb-ann-broken-tag';
@@ -1669,6 +1575,19 @@
       main.appendChild(body);
       var acts = document.createElement('span');
       acts.className = 'ann-sb-acts';
+      if (r.status === 'done') {
+        var closeBtn = document.createElement('button');
+        closeBtn.type = 'button';
+        closeBtn.className = 'ann-sb-close-mark';
+        closeBtn.textContent = '关闭';
+        closeBtn.setAttribute('aria-label', '关闭标注 ' + r.n);
+        closeBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          closeAnnotation(r.n);
+        });
+        acts.appendChild(closeBtn);
+      }
       var del = document.createElement('button');
       del.type = 'button';
       del.className = 'ann-sb-del';
@@ -1681,8 +1600,76 @@
       acts.appendChild(del);
       item.appendChild(main);
       item.appendChild(acts);
-      sidebarBody.appendChild(item);
-    });
+      return item;
+    }
+
+    openRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
+
+    // close 默认收起：组头一个「已关闭 n」开关，点开才看。
+    if (closedRows.length) {
+      var toggle = document.createElement('button');
+      toggle.type = 'button';
+      toggle.className = 'wb-ann-closed-toggle';
+      toggle.textContent = (sidebarClosedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedRows.length;
+      toggle.addEventListener('click', function () {
+        sidebarClosedOpen = !sidebarClosedOpen;
+        sidebarSig = '';
+        renderSidebar();
+      });
+      sidebarBody.appendChild(toggle);
+      if (sidebarClosedOpen) {
+        closedRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
+      }
+    }
+  }
+
+  // ---------- 关闭 / 撤销（done → close 单击，toast + 撤销 5s，不二次确认）----------
+  var toastEl = null;
+  var toastTimer = 0;
+
+  function hideToast() {
+    if (toastEl) toastEl.hidden = true;
+    if (toastTimer) { clearTimeout(toastTimer); toastTimer = 0; }
+  }
+
+  function showToast(text, actionLabel, onAction) {
+    if (!toastEl) {
+      toastEl = document.createElement('div');
+      toastEl.id = 'ann-toast';
+      toastEl.setAttribute('data-ann-ui', '');
+      document.body.appendChild(toastEl);
+    }
+    hideToast();
+    toastEl.textContent = '';
+    var label = document.createElement('span');
+    label.textContent = text;
+    toastEl.appendChild(label);
+    if (actionLabel) {
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.textContent = actionLabel;
+      btn.addEventListener('click', function () { hideToast(); if (onAction) onAction(); });
+      toastEl.appendChild(btn);
+    }
+    toastEl.hidden = false;
+    toastTimer = setTimeout(hideToast, 5000);
+  }
+
+  /** 客户端允许的转换：done → close、close → open（check / done 只经 ppnt mark 端点）。 */
+  function markStatus(n, next) {
+    var m = marks.find(function (k) { return k.n === n; });
+    if (!m) return false;
+    var from = m.status || 'open';
+    if (from === next) return true;
+    if (!((from === 'done' && next === 'close') || (from === 'close' && next === 'open'))) return false;
+    m.status = next;
+    persist();
+    return true;
+  }
+
+  function closeAnnotation(n) {
+    if (!markStatus(n, 'close')) return;
+    showToast('已关闭 #' + n, '撤销', function () { markStatus(n, 'open'); });
   }
 
   function setSidebarOpen(on) {
@@ -1704,24 +1691,6 @@
   }
 
   function toggleSidebar() { setSidebarOpen(!sidebarOpen); }
-
-  // 扩展命令通道（content script 经共享 DOM CustomEvent 桥进主世界，内联
-  // script 会被 CSP 拦，见 extension/content.js 头注）：
-  //   toggle-sidebar —— 页面内 #ann-sidebar 开合（S 键/「列表」按钮之外的桥入口）
-  //   jump/edit/del  —— Chrome Side Panel 面板远程驱动（跳转/编辑/删除）
-  //   mode {on}      —— 面板的「交互 | 标注」分段开关
-  // 抑制规则不变：workbench 壳/被嵌入页 setSidebarOpen 自会让位。
-  document.addEventListener('pinpoint:command', function (e) {
-    var d = e.detail || {};
-    var cmd = d.command;
-    if (cmd === 'toggle-sidebar') toggleSidebar();
-    else if (cmd === 'jump') goToMark(d.n);
-    else if (cmd === 'edit') openMark(d.n);
-    else if (cmd === 'del') removeMark(d.n);
-    else if (cmd === 'mode') { if (!!d.on !== !!mode) toggleMode(); }
-  });
-  // 初始模式标记（后续变化由 toggleMode 里更新）。
-  document.documentElement.setAttribute('data-pinpoint-mode', mode ? 'annotate' : 'interact');
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
   if (btnWorkbench) btnWorkbench.addEventListener('click', function () {
@@ -1930,6 +1899,8 @@
   }, true);
 
   // ---------- 新建标注 ----------
+  // nextN 只做保存应答回来前的临时显示：#n 的取号权在服务端（M1），应答回来
+  // 按 id 认领覆盖（adoptServerNumbers）。
   function nextN() { return marks.reduce(function (m, k) { return Math.max(m, k.n); }, 0) + 1; }
 
   function newElementMark(el) {
@@ -2142,7 +2113,6 @@
     var rects = m.type === 'element' ? resolveAllLiveTargets(m).map(function (target) {
       return target.el.getBoundingClientRect();
     }) : [];
-    resultTargets(m).forEach(function (target) { var el = findResultTarget(target); if (el && !isHidden(el)) rects.push(el.getBoundingClientRect()); });
     if (m.type === 'region') {
       var anchor = resolveMarkAnchor(m);
       if (anchor.live && anchor.rectDoc) {
@@ -2164,14 +2134,12 @@
     else if (!modal && overlay.parentElement.matches('dialog')) mountOverlay();
     var box = document.createElement('div');
     box.id = 'ann-box'; box.setAttribute('data-ann-ui', '');
-    var recordedDeletion = m.result && m.result.operations.some(function (op) { return op.action === 'delete'; });
-    var brokenInfo = broken && !recordedDeletion
+    var brokenInfo = broken
       ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
       : '';
     var res = m.research || null;
     var changeOn = !!m.changeTo;
     box.innerHTML =
-      (m.result ? '<div class="t" data-result-summary>' + annResultSummary(m) + '</div>' : '') +
       brokenInfo +
       '<div id="ann-imgs"></div>' +
       '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
@@ -2480,7 +2448,6 @@
     renderModes();
 
     function save() {
-      if (resultWriting) { setStatus('正在保存执行结果，请稍后发送', true); return; }
       closeMentionPicker();
       ensureMarkId(m);
       var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
@@ -2501,8 +2468,10 @@
       delete m._anchor;
       if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
       var idx = marks.findIndex(function (k) { return k.n === m.n; });
+      // pp2 状态机：新标注恒 open；owner 编辑正文或目标 → 保存时状态回 open
+      // （服务端同样强制，客户端先把生效态带上看得到）。
+      m.status = 'open';
       if (idx < 0) marks.push(m); else {
-        if (marks[idx].result) m.result = marks[idx].result;
         marks[idx] = m;
       }
       closeComposer({ silentRender: true }); persist();
@@ -2717,13 +2686,20 @@
     return resolveMarkAnchor(m).el;
   }
 
-  /** Live marks on the active page that should be drawn on the canvas. */
+  /** Live marks on the active page that should be drawn on the canvas.
+      pp2：close 不画；锚点失效但有 lastRect 的画幽灵框。 */
+  function drawableMark(m) {
+    if ((m.status || 'open') === 'close') return false;
+    if (markHasLiveTarget(m)) return true;
+    return !!(m.lastRect && isMarkBroken(m));
+  }
+
   function visiblePageMarks() {
     var out = [];
     marks.forEach(function (m) {
       if (activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n) return;
       if (!markOnActivePage(m)) return;
-      if (!markHasLiveTarget(m)) return;
+      if (!drawableMark(m)) return;
       out.push(m);
     });
     return out;
@@ -2813,6 +2789,11 @@
     updateArrowGeometry(entry.arrow, from, to);
   }
 
+  function statusBadgeClass(m) {
+    var st = (m && m.status) || 'open';
+    return st === 'open' ? '' : ' ann-badge--' + st;
+  }
+
   function syncMarkStructure(pageMarks, affected) {
     if (!affected) resetCanvasView();
     var targets = geometryBatch(function () {
@@ -2825,8 +2806,10 @@
     pageMarks.forEach(function (m, index) {
       keep[m.n] = true;
       var entry = markNodes[m.n];
-      var frameClass = m.type === 'region' ? 'ann-frame' : 'ann-target';
-      var wantParts = m.type === 'region' ? 1 : targets[index].length;
+      // 幽灵：锚点失效但有 lastRect 时也在画布上留一格（虚线框 + 序号钉）。
+      var ghost = m.type !== 'region' && !targets[index].length && !!m.lastRect;
+      var frameClass = m.type === 'region' ? 'ann-frame' : (ghost ? 'ann-ghost-rect' : 'ann-target');
+      var wantParts = m.type === 'region' ? 1 : (targets[index].length || (ghost ? 1 : 0));
 
       if (!entry) {
         entry = { m: m, parts: [], arrow: null };
@@ -2842,7 +2825,7 @@
         var frame = document.createElement('div');
         frame.className = frameClass;
         var badge = document.createElement('div');
-        badge.className = 'ann-badge';
+        badge.className = 'ann-badge' + statusBadgeClass(m);
         badge.textContent = m.n;
         wireMarkBadge(badge, m.n);
         marksLayer.appendChild(frame);
@@ -2853,6 +2836,8 @@
       entry.parts.forEach(function (part) {
         if (part.frame.className !== frameClass) part.frame.className = frameClass;
         if (part.badge.textContent !== String(m.n)) part.badge.textContent = m.n;
+        var wantBadge = 'ann-badge' + statusBadgeClass(m);
+        if (part.badge.className !== wantBadge) part.badge.className = wantBadge;
       });
       entry.signature = markGeometryKey(m);
       entry.liveTargets = targets[index];
@@ -2971,6 +2956,73 @@
     return r;
   }
 
+  var lastRectPersistTimer = null;
+
+  /** lastRect 的坐标系与记录端一致才可消费（§2b）：同一条标注会在画布与注入
+      frame（mention）两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
+      边只能拿错坐标画框。旧记录没有 space：按当前端解释（保持既有行为），
+      下一次活锚点测量就会写成带 space 的新记录。 */
+  function lastRectSpaceOk(lr) {
+    if (!lr || !lr.space) return true;
+    return lr.space === (canvasView ? 'canvas' : 'doc');
+  }
+
+  function recordLastRect(m, docR) {
+    // lastRect = 最后一次锚点解析成功的几何：几何变了才更新（±1px 守卫见下），
+    // 坐标约定见 lastRectFromDoc：画布端存板上内容坐标，注入页存窗口文档坐标，
+    // 记录时用 space 标明是哪一把尺子。
+    // 亚像素抖动不算「变」：zoom 进出往返后 pose 带浮点残差，同一元素重算
+    // 会在取整边界上 ±1 跳 —— 差不足 1px 时保持原值，省掉无谓的落盘。
+    if (!docR || !m) return;
+    var prev = m.lastRect;
+    // 守卫附带 space 相等：换了尺子的记录哪怕数字巧合相同也是实质变化，照写。
+    if (prev && prev.space === (canvasView ? 'canvas' : 'doc')
+        && Math.abs(prev.x - docR[0]) < 1 && Math.abs(prev.y - docR[1]) < 1 &&
+        Math.abs(prev.w - docR[2]) < 1 && Math.abs(prev.h - docR[3]) < 1) return;
+    m.lastRect = { x: Math.round(docR[0]), y: Math.round(docR[1]), w: Math.round(docR[2]), h: Math.round(docR[3]), space: canvasView ? 'canvas' : 'doc' };
+    if (m.screenId) m.lastRect.screenId = m.screenId;
+    // 变了就要落盘（review R4）：旧约定是「合并进下一次 persist」，但新标注
+    // 创建后的首次 persist 常发生在几何管线跑过之前，此后也只在碰巧有别的
+    // 写盘时才更新 —— 页面一关，重开后的幽灵框就是陈旧位置或根本不画。
+    // debounce 到几何安定再写一次；epoch 捕获在 timer 里再校验，切账本后
+    // 的迟到触发不把旧账本的 lastRect 写进新账本。
+    if (lastRectPersistTimer) clearTimeout(lastRectPersistTimer);
+    var epoch = syncEpoch;
+    lastRectPersistTimer = setTimeout(function () {
+      lastRectPersistTimer = null;
+      if (epoch !== syncEpoch || ledgerSwitching) return;
+      persist();
+    }, 600);
+  }
+
+  /* lastRect 的坐标约定（记录与消费必须同一把尺子）：
+   * 注入页没有舞台滚动，docRect（视口 + 窗口滚动）就是稳定的文档坐标；
+   * 画布端的滚动发生在 #wbstage，docRect 会随 pan 漂移，必须换成板上内容
+   * 坐标（= 几何缓存的模型坐标：pan 不变、zoom 无关），否则幽灵框消费时
+   * 会把当前舞台滚动再算一遍，把框推出视口、组可见性跟着把它藏掉。 */
+  function lastRectFromDoc(doc) {
+    if (!doc) return null;
+    if (!canvasView) return doc;
+    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    return [
+      (doc[0] - scrollX + canvasView.stage.scrollLeft - o[0] - pose.x) / zoom,
+      (doc[1] - scrollY + canvasView.stage.scrollTop - o[1] - pose.y) / zoom,
+      doc[2] / zoom, doc[3] / zoom
+    ];
+  }
+
+  /** lastRect → 当前视口矩形（幽灵框绘制与跳转共用；注入页 = 文档转视口）。 */
+  function lastRectViewRect(lr) {
+    if (!lr) return null;
+    if (!canvasView) return docToView([lr.x, lr.y, lr.w, lr.h]);
+    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    return [
+      o[0] + lr.x * zoom + pose.x - canvasView.stage.scrollLeft,
+      o[1] + lr.y * zoom + pose.y - canvasView.stage.scrollTop,
+      lr.w * zoom, lr.h * zoom
+    ];
+  }
+
   function measureMark(entry) {
     var m = entry.m;
     var views = [], els = [];
@@ -2978,11 +3030,18 @@
       var anchor = resolveMarkAnchor(m);
       els.push(anchor.el);
       views.push(anchor.live ? visibleViewRectDoc(anchor.rectDoc, anchor.el) : null);
+      if (anchor.live) recordLastRect(m, lastRectFromDoc(anchor.rectDoc));
     } else {
       (entry.liveTargets || []).forEach(function (target) {
         els.push(target.el);
         views.push(visibleViewRectOf(target.el));
       });
+      if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, lastRectFromDoc(docRect(entry.liveTargets[0].el)));
+      // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框；
+      // 坐标系的尺子对不上（另一端写进的）不画，只留列表行的「锚点失效」。
+      if (!views.length && m.lastRect && lastRectSpaceOk(m.lastRect) && (m.status || 'open') !== 'close') {
+        views.push(lastRectViewRect(m.lastRect));
+      }
     }
     var parts = views.map(function (r) { return r ? expandRect(markLocalRect(r)) : null; });
     var arrow = null;
@@ -3292,7 +3351,10 @@
             if (entry) entry.m = m;
             markFacts.delete(m); affected.add(m);
           }
-          return markHasLiveTarget(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n);
+          if ((m.status || 'open') === 'close') return false;
+          return markHasLiveTarget(m)
+            ? !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)
+            : drawableMark(m);
         });
       });
       Object.keys(markNodes).forEach(function (key) {
@@ -3307,7 +3369,7 @@
       }
       structureDirty = false;
       syncBubbleStructure(pageMarks); updateBubbleGeometry(); updateDraftGeometry();
-      updateCountLabel(pageMarks.length); syncGhost(); renderResultIndicators(true);
+      updateCountLabel(pageMarks.length); syncGhost();
     });
   }
 
@@ -3323,7 +3385,7 @@
       updateBubbleGeometry();
       updateDraftGeometry();
       updateCountLabel(pageMarks.length);
-      syncGhost(); renderResultIndicators(true);
+      syncGhost();
     });
   }
 
@@ -3355,7 +3417,7 @@
           markFacts.delete(m);
           var live = markHasLiveTarget(m), broken = isMarkBroken(m);
           if (!old || old.live !== live || old.broken !== broken) changedState = true;
-          if (live && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
+          if ((m.status || 'open') !== 'close' && drawableMark(m) && !(activeComposer && activeComposer.m.type === 'element' && activeComposer.persistedN === m.n)) list.push(m);
         });
         return list;
       });
@@ -3397,7 +3459,6 @@
         updateDraftGeometry();
         syncGhost();
       }
-      renderResultIndicators(geometryDirty || contentRoots.size > 0 || dirtyFrameRoots.size > 0);
       if (activeComposer && activeComposer.syncLayout) activeComposer.syncLayout();
       geometryDirty = false; zoomDirty = false; contentFullDirty = false;
       contentRoots.clear(); dirtyFrameRoots.clear();
@@ -3423,7 +3484,7 @@
   function contentMutation(record) {
     if (annotationUiNode(record.target)) return false;
     if (record.target === document.documentElement && record.type === 'attributes') {
-      if (record.attributeName === 'data-canvas-zoom' || record.attributeName === 'data-pinpoint-mode') return false;
+      if (record.attributeName === 'data-canvas-zoom') return false;
       if (record.attributeName === 'style') {
         var withoutViewport = function (value) { return String(value || '').split(';').filter(function (v) {
           return v.trim() && !/^\s*(--wb-board-zoom|--wb-strip-w)\s*:/.test(v);
@@ -3478,7 +3539,6 @@
         dependencies = { relational: false, global: false };
         marks.forEach(function (m) {
           var selectors = markElementTargets(m).map(function (t) { return t.selector; });
-          resultTargets(m).forEach(function (target) { selectors.push(target.selector); });
           if (m.base) selectors.push(m.base.selector);
           if (m.move) selectors.push(m.move.to_selector);
           selectors.forEach(function (selector) {
@@ -3675,6 +3735,20 @@
     } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
       // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
       anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
+    } else if (!frameFocused && !anchor.live && m.lastRect && lastRectSpaceOk(m.lastRect) && stageEl) {
+      // 幽灵跳转（pp2）：锚点失效但有 lastRect —— 滚到它最后一次在的地方。
+      var gr = lastRectViewRect(m.lastRect);
+      var gsr = stageEl.getBoundingClientRect();
+      var gtarget = {
+        top: stageEl.scrollTop + gr[1] - gsr.top - gsr.height / 2 + gr[3] / 2,
+        left: stageEl.scrollLeft + gr[0] - gsr.left - gsr.width / 2 + gr[2] / 2
+      };
+      if (wb && wb.scrollTo) wb.scrollTo(gtarget);
+      else stageEl.scrollTo(gtarget);
+    } else if (!frameFocused && !anchor.live && m.lastRect) {
+      // lastRect 是文档绝对坐标：居中滚到幽灵处。
+      var gy = m.lastRect.y + m.lastRect.h / 2 - window.innerHeight / 2;
+      window.scrollTo({ top: Math.max(0, gy) });
     }
     var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
     return settled.then(function (completed) {
@@ -3739,6 +3813,7 @@
       else if (isMarkBroken(m)) broken++;
       else hidden++;
     });
+    var closed = pageMarks.filter(function (m) { return (m.status || 'open') === 'close'; }).length;
     return {
       mode: mode,
       connected: serverOnline,
@@ -3751,9 +3826,10 @@
       count: pageMarks.length,
       countLive: live,
       countBroken: broken,
+      countClosed: closed,
       countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
       revision: revision,
-      syncing: syncing || resultWriting,
+      syncing: syncing,
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,
@@ -3780,7 +3856,6 @@
     clear: doClear,
     clearInvalid: clearInvalid,
     canClearInvalid: canClearInvalid,
-    recordResults: recordResults,
     removeMark: removeMark,
     setFloatingToolbar: setFloatingToolbar,
     setSidebar: setSidebarOpen,
@@ -3793,12 +3868,13 @@
     },
     openMark: openMark,
     goToMark: goToMark,
+    markStatus: markStatus,
+    closeAnnotation: closeAnnotation,
     hydrateFrames: hydrateMentionFrames,
     getState: getState,
     markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
     isMarkBroken: isMarkBroken,
-    commentToDisplay: contentToDisplay,
     contentToDisplay: contentToDisplay,
     indicatorForMark: indicatorForMark,
     onUpdate: function (fn) { if (typeof fn === 'function') updateListeners.push(fn); },
@@ -3806,10 +3882,6 @@
     get annotations() { return marks.slice(); },
     get pageMarks() { return marksForActivePage(); }
   };
-
-  // Deprecated alias: external doc pages still call iOSAnnotate.* from their
-  // tail scripts (pre-rename); keep it pointing at the live API until they migrate.
-  window.iOSAnnotate = window.pinpoint;
 
   syncModeClass();
 

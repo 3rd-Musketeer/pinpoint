@@ -1,6 +1,7 @@
 import { ContractError } from '../workbench/lib/preview-contracts.js';
 import { buildOfflinePage } from './lib/offline-page-builder.js';
 import { OfflinePageExportError } from './lib/offline-page-export.js';
+import { parseReqUrl } from './lib/req-url.js';
 
 function readBody(req, maxBytes = 128 * 1024) {
   return new Promise((resolve, reject) => {
@@ -87,7 +88,7 @@ export default function exportPageHtmlApi(options = {}) {
     name: 'export-page-html-api',
     configureServer(server) {
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (!(await handler(req, res, urlPath))) next();
       });
     },

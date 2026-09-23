@@ -1,37 +1,38 @@
 /**
  * /api/frame 渲染端点的组装库（阶段 5：文档 mention 活 frame）。
  *
- * 解析 pageId + screenId → frame 目标（previews 模板页 / components 系统板 /
- * registry dir·file·url 条目），然后：
+ * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file·url
+ * 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
  *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
  * - doc 壳屏（完整文档 / 合成板 / url 条目）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
  *
- * 导出烤图复用本库的 frameExportSnapshot（/api/export-image 同款快照负载）。
+ * pp2（2026-09-22 review 1-4）：页内 board 屏（previews 页与有板 dir 条目、无 src
+ * 的屏）改从 dist 出（target.distTarget，unbuilt 懒编译，编译失败 500）——.jsx 屏
+ * 从此可以被 mention；kit 组件屏与 src 屏（外链 / 合成板）仍磁盘直读。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  expandIncludeRefs,
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell,
 } from '../../shared/frame-shell.js';
-import { applyIncludeSlots } from '../../workbench/lib/include-slots.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
+import { readBoard } from './board-file.js';
+import { loadDistScreenHtml } from './page-compiler.js';
 import { synthesizeBoard } from './synth-board.js';
-import { templateOnly } from '../template-only.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
 const CONTENT_ROOT = path.join(ROOT, 'content');
 const PREVIEWS_ROOT = path.join(CONTENT_ROOT, 'previews');
-const COMPONENTS_ROOT = path.join(CONTENT_ROOT, 'kits', 'ios', 'components');
 
 export class FrameDocError extends Error {
   constructor(code, message) {
@@ -42,9 +43,7 @@ export class FrameDocError extends Error {
 }
 
 const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
-// screenId 允许 components 的 comp/variant 形态（与 export-contract 同口径）。
-const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+(\/[a-zA-Z0-9_-]+)*$/;
-const COMPONENTS_ID = 'components';
+const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readJsonSafe(file) {
   try {
@@ -54,21 +53,15 @@ function readJsonSafe(file) {
   }
 }
 
-/** Workbench Pages 清单的服务端镜像：模板 _index.json + 实例 _index.local.json。 */
+/** Workbench Pages 清单的服务端镜像：模板 _index.json（_index.local.json 已于 pp2 切片 3 退役）。 */
 function previewManifestPages() {
   const base = readJsonSafe(path.join(PREVIEWS_ROOT, '_index.json'));
-  const pages = Array.isArray(base && base.pages) ? base.pages.slice() : [];
-  if (!templateOnly()) {
-    const local = readJsonSafe(path.join(PREVIEWS_ROOT, '_index.local.json'));
-    if (local && Array.isArray(local.pages)) pages.push(...local.pages);
-  }
-  return pages;
+  return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
-/** 壳归一：legacy "web" 值与 html 模式同落 doc（与 preview-contracts validateShell 的归一同义）。 */
+/** 壳归一（web→doc 与缺省壳的唯一定义在 preview-contracts.legacyShell）。 */
 function normalizeShell(shell, mode) {
-  const s = shell || (mode === 'html' ? 'doc' : 'app');
-  return s === 'web' ? 'doc' : s;
+  return legacyShell(shell, mode === 'html' ? 'doc' : 'app');
 }
 
 function findScreen(board, screenId) {  const refs = boardRefs(board);
@@ -135,31 +128,10 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
 
-  // 1) Component Library 系统板
-  if (pageId === COMPONENTS_ID) {
-    const variantPath = path.resolve(COMPONENTS_ROOT, `${screenId}.html`);
-    if (!variantPath.startsWith(COMPONENTS_ROOT + path.sep) || !fs.existsSync(variantPath)) {
-      throw new FrameDocError('unknown_screen', `unknown component variant: ${screenId}`);
-    }
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: screenId,
-      shell: 'comp',
-      section: '',
-      sectionLabel: '',
-      ref: '',
-      entry: 'pinpoint',
-      baseUrl: '/kits/ios/components/',
-      fragmentPath: variantPath,
-    };
-  }
-
-  // 2) previews 模板/实例页
+  // 1) previews 模板/实例页
   const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
   if (pageEntry) {
-    const board = readJsonSafe(path.join(PREVIEWS_ROOT, pageId, 'board.json'));
+    const board = readBoard(path.join(PREVIEWS_ROOT, pageId));
     if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no board.json`);
     const hit = findScreen(board, screenId);
     if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
@@ -176,17 +148,31 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       };
     }
     const src = hit.screen.src ? String(hit.screen.src) : '';
+    // pp2：页内 board 屏（无 src）→ dist（.jsx 屏也在此落地）。
+    if (!src) {
+      return {
+        kind: 'fragment',
+        pageId,
+        screenId,
+        title: hit.screen.title || screenId,
+        shell,
+        section: hit.section,
+        sectionLabel: hit.sectionLabel,
+        ref: hit.ref,
+        entry: 'pinpoint',
+        baseUrl,
+        distTarget: { entryId: pageId, pageDir: path.join(PREVIEWS_ROOT, pageId), urlBase: baseUrl, kind: 'template' },
+      };
+    }
     let fragmentPath;
     if (src.startsWith('sites/')) {
       fragmentPath = siteSrcToAbsPath(src, registry);
-    } else if (src) {
+    } else {
       const abs = path.resolve(CONTENT_ROOT, src);
       if (abs !== PREVIEWS_ROOT && !abs.startsWith(PREVIEWS_ROOT + path.sep)) {
         throw new FrameDocError('bad_request', 'screen src must resolve under previews/');
       }
       fragmentPath = abs;
-    } else {
-      fragmentPath = path.join(PREVIEWS_ROOT, pageId, `${screenId}.html`);
     }
     if (!fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
       throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
@@ -206,17 +192,15 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
 
-  // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
+  // 2) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
   const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
-  const diskBoard = entry.kind === 'dir'
-    ? readJsonSafe(path.join(path.resolve(entry.path), 'board.json'))
-    : null;
+  const diskBoard = entry.kind === 'dir' ? readBoard(path.resolve(entry.path)) : null;
   const board = diskBoard || synthesizeBoard(entry);
   if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
   const hit = findScreen(board, screenId);
   if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
-  const mode = entry.kind === 'dir' && entry.board === 'ios' ? 'ios' : 'html';
+  const mode = entryBoardMode(entry);
   const shell = normalizeShell(hit.screen.shell || hit.sectionShell, mode);
   const baseUrl = `/sites/${entry.id}/`;
   if (shell === 'doc') {
@@ -229,6 +213,26 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
+  // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
+  // file 条目保留磁盘直读。fragment 帧的标注桶恒为 'pinpoint'（与画布同一本
+  // 账本 —— 画布实例按 pinpoint 桶 + pageId 行写，mention 与画布双向同步
+  // 依赖同一桶；条目自己的桶只服务 /sites/ 直开页面）。
+  if (entry.kind === 'dir' && diskBoard && !src) {
+    const pageDir = path.resolve(entry.path);
+    return {
+      kind: 'fragment',
+      pageId,
+      screenId,
+      title: hit.screen.title || screenId,
+      shell,
+      section: hit.section,
+      sectionLabel: hit.sectionLabel,
+      ref: hit.ref,
+      entry: 'pinpoint',
+      baseUrl,
+      distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
+    };
+  }
   const fragmentPath = src
     ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
     : path.join(path.resolve(entry.path), `${screenId}.html`);
@@ -244,7 +248,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: entry.id,
+    entry: 'pinpoint',
     baseUrl,
     fragmentPath,
   };
@@ -259,18 +263,20 @@ function docUrlForScreen(screen, baseUrl) {
   return `${baseUrl}${encodeURIComponent(screen.id)}.html`;
 }
 
-function readIncludeFragment(component, variant) {
-  const file = path.join(COMPONENTS_ROOT, component, `${variant}.html`);
-  if (!file.startsWith(COMPONENTS_ROOT + path.sep)) return Promise.resolve(null);
-  return Promise.resolve(fs.existsSync(file) ? fs.readFileSync(file, 'utf8') : null);
-}
-
-/** fragment 屏内容：磁盘读取 → include 展开 → 机壳包装（与画布同一份 lib）。 */
+/** fragment 屏内容：dist（页内 board 屏）或磁盘（src 屏）读取 →
+    机壳包装（与画布同一份 lib）。
+    编译失败的屏抛普通 Error —— frame-api 落 500 frame_failed 带错误文本。 */
 export async function assembleFrameContent(target) {
-  const raw = fs.readFileSync(target.fragmentPath, 'utf8');
-  let html = await expandIncludeRefs(raw, readIncludeFragment, applyIncludeSlots);
-  if (target.shell === 'comp') html = wrapFragmentForLibrary(html);
-  return target.shell === 'comp' ? wrapCompStage(html) : wrapPhoneShell(html, target.shell);
+  let raw;
+  if (target.distTarget) {
+    const dist = await loadDistScreenHtml(target.distTarget, target.screenId);
+    if (!dist.ok) throw new Error(dist.error);
+    raw = dist.html;
+  } else {
+    raw = fs.readFileSync(target.fragmentPath, 'utf8');
+  }
+  if (target.shell === 'comp') raw = wrapFragmentForLibrary(raw);
+  return target.shell === 'comp' ? wrapCompStage(raw) : wrapPhoneShell(raw, target.shell);
 }
 
 function frameCaptionHtml(target) {
@@ -391,26 +397,4 @@ ${wrapped}
 ${inject}
 </body>
 </html>`;
-}
-
-/** 文档导出烤图用的 /api/export-image 快照负载（PNG 2×，白底 —— 文档语境）。 */
-export async function frameExportSnapshot(target) {
-  const wrapped = stripScripts(await assembleFrameContent(target));
-  const dimHtml = target.shell === 'app' || target.shell === 'lock'
-    ? '<div class="wb-screen-dim">402 × 874</div>'
-    : '';
-  const html = '<div class="wb-screen" data-screen="' + escHtml(target.screenId) + '">' +
-    frameCaptionHtml(target) + wrapped + dimHtml + '</div>';
-  return {
-    kind: 'frame',
-    pageId: target.pageId,
-    sectionId: target.section || 'main',
-    screenId: target.screenId,
-    format: 'png',
-    scale: 2,
-    background: 'white',
-    includeNotes: false,
-    tokens: frameTokens(),
-    html,
-  };
 }

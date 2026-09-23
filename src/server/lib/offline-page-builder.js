@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { readBoard } from './board-file.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { validateBoard } from '../../workbench/lib/preview-contracts.js';
 import {
@@ -44,14 +45,12 @@ function resolvePage(pageId, registry) {
     throw new OfflinePageExportError('unsupported_page', `${pageId}: offline HTML V1 supports registry dir entries with board "ios" only`);
   }
   const root = path.resolve(entry.path);
-  const boardFile = path.join(root, 'board.json');
-  if (!fs.existsSync(boardFile)) {
+  if (!fs.existsSync(path.join(root, 'board.json'))) {
     throw new OfflinePageExportError('board_missing', `${pageId}: board.json not found`);
   }
-  let raw;
-  try { raw = JSON.parse(fs.readFileSync(boardFile, 'utf8')); }
-  catch (error) { throw new OfflinePageExportError('board_invalid', `${pageId}: ${error.message || error}`); }
-  const board = validateBoard(raw, { pageId, defaultShell: 'app' });
+  const parsed = readBoard(root);
+  if (!parsed) throw new OfflinePageExportError('board_invalid', `${pageId}: board.json 不是合法 JSON`);
+  const board = validateBoard(parsed, { pageId, defaultShell: 'app' });
   for (const section of board.sections) {
     if (section.layout !== 'row') {
       throw new OfflinePageExportError('unsupported_layout', `${pageId}/${section.id}: V1 requires row sections`);
@@ -63,6 +62,12 @@ function resolvePage(pageId, registry) {
     }
   }
   return { entry, root, board };
+}
+
+// 导出剥内部锚点（review R8）：data-pp-id / data-pp-comp 是标注锚与源码文件名，
+// 只活在 pinpoint 里 —— handoff 出去的 HTML 不带页内文件名与机器地址。
+function stripPpAnchors(html) {
+  return String(html).replace(/ data-pp-(?:id|comp)="[^"]*"/g, '');
 }
 
 function frameHtml(screen, target, body, ref) {
@@ -117,7 +122,11 @@ export async function buildOfflinePage(options = {}) {
         throw new OfflinePageExportError('unsupported_screen', `${pageId}/${screen.id}: expected an iOS fragment`);
       }
       const bundled = await bundleHtmlAssets(await assembleFrameContent(target), {
-        baseFile: target.fragmentPath,
+        // pp2：dist 屏的资源引用以页目录为基准（dist 在 ~/.pinpoint 下，相对引用
+        // 按源目录语义解读）；磁盘屏照旧以自己的文件位置为基准。
+        baseFile: target.distTarget
+          ? path.join(target.distTarget.pageDir, `${target.screenId}.html`)
+          : target.fragmentPath,
         entryRoot: resolved.root,
         entryId: pageId,
         pinpointRoot: ROOT,
@@ -131,7 +140,7 @@ export async function buildOfflinePage(options = {}) {
         id: screen.id,
         title: screen.title || screen.id,
         ref,
-        html: frameHtml(screen, target, neutralizePreviewScripts(bundled.html), ref),
+        html: frameHtml(screen, target, neutralizePreviewScripts(stripPpAnchors(bundled.html)), ref),
       });
     }
     sections.push({

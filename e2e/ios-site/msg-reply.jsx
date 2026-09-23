@@ -1,0 +1,37 @@
+// 键盘示意：纯占位块（library/msg-reply.html 的 pp2 JSX 移植）
+export default function MsgReply() {
+  return (
+    <>
+    <div class="ios-app" style="display:flex;flex-direction:column;overflow:hidden">
+      <div class="ios-navbar" style="flex:none">
+        <button class="ios-back ios-nav-lead"><svg><use href="#c-back"/></svg>信息</button>
+        <div class="ios-nav-title">阿禾</div>
+        <button class="ios-nav-trail ios-btn" style="color:var(--ios-accent);padding:6px 8px">详情</button>
+      </div>
+      <div class="ios-page" style="flex:1;min-height:0;overflow-y:auto;display:flex;flex-direction:column;gap:10px;padding-bottom:12px">
+        <div class="ios-muted ios-footnote" style="text-align:center;padding:8px 0 4px">今天 9:41</div>
+        <div class="ios-bubble ios-bubble-in" style="align-self:flex-start;max-width:78%;background:var(--ios-fill-3);color:var(--ios-text);border-radius:18px;border-bottom-left-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">试试 1:16，我早上冲花魁甜感清楚多了。</div>
+        <div class="ios-bubble ios-bubble-in" style="align-self:flex-start;max-width:78%;background:var(--ios-fill-3);color:var(--ios-text);border-radius:18px;border-bottom-left-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">水温也别超 90，日晒豆容易带苦。</div>
+        <div class="ios-bubble ios-bubble-out" style="align-self:flex-end;max-width:78%;background:var(--ios-accent);color:#fff;border-radius:18px;border-bottom-right-radius:6px;padding:10px 14px;font-size:var(--ios-t-body);line-height:1.35;letter-spacing:var(--ios-t-body-ls)">收到，下一杯就试 1:16 + 88°C，晚点发你记录。</div>
+      </div>
+      <div style="flex:none;display:flex;align-items:flex-end;gap:8px;padding:8px 12px 10px;border-top:0.5px solid var(--ios-sep);background:var(--ios-bg-2)">
+        <button class="ios-btn gray" style="width:34px;height:34px;padding:0;border-radius:50%;flex:none;font-size:20px;line-height:1">＋</button>
+        <div style="flex:1;min-width:0;min-height:34px;border-radius:18px;background:var(--ios-fill-3);padding:8px 14px;color:var(--ios-text);font-size:var(--ios-t-body);line-height:1.3;box-shadow:inset 0 0 0 1.5px var(--ios-accent)">再问一句…</div>
+        <button class="ios-btn filled" style="width:34px;height:34px;padding:0;border-radius:50%;flex:none;font-size:16px">↑</button>
+      </div>
+      
+      <div style="flex:none;background:var(--ios-bg-3);border-top:0.5px solid var(--ios-sep);padding:12px 8px calc(8px + var(--ios-safe-bottom));display:flex;flex-direction:column;gap:6px">
+        <div style="display:grid;grid-template-columns:repeat(10,1fr);gap:5px">
+          <div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.2fr repeat(7,1fr) 1.2fr;gap:5px">
+          <div style="height:40px;border-radius:6px;background:var(--ios-fill-2)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-fill-2)"></div>
+        </div>
+        <div style="display:grid;grid-template-columns:1.4fr 5.2fr 1.4fr;gap:5px">
+          <div style="height:40px;border-radius:6px;background:var(--ios-fill-2)"></div><div style="height:40px;border-radius:18px;background:var(--ios-bg-2);box-shadow:0 1px 0 var(--ios-stroke)"></div><div style="height:40px;border-radius:6px;background:var(--ios-accent)"></div>
+        </div>
+      </div>
+    </div>
+        </>
+  );
+}

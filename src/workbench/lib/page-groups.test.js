@@ -5,7 +5,6 @@ import {
   filterPages,
   folderOfPage,
   groupPages,
-  isTemplatePage,
   nextFolderId,
   orderOfPage,
   pushRecent,
@@ -16,7 +15,6 @@ import {
 } from './page-groups.js';
 
 var PAGES = [
-  { id: 'components', title: 'Component Library' },
   { id: 'library', title: 'Example Library' },
   { id: 'weekly', title: '周报卡', folder: 'time', order: 1 },
   { id: 'daily', title: 'daily review', folder: 'time', order: 0 },
@@ -24,24 +22,14 @@ var PAGES = [
   { id: 'loose', title: 'my-todos' }
 ];
 
-test('模板页默认藏起来，当前页除外（选中态不能没有落点）', () => {
-  assert.equal(isTemplatePage('doc-library'), true);
-  assert.equal(isTemplatePage('weekly'), false);
-
-  assert.deepEqual(
-    visiblePages(PAGES, {}).map((p) => p.id),
-    ['weekly', 'daily', 'ghost', 'loose']
-  );
-  assert.deepEqual(
-    visiblePages(PAGES, { keepId: 'library' }).map((p) => p.id),
-    ['library', 'weekly', 'daily', 'ghost', 'loose']
-  );
-  assert.equal(visiblePages(PAGES, { showTemplates: true }).length, PAGES.length);
+test('visiblePages：模板页机制退役后全量返回（pp2 切片 3）', () => {
+  assert.deepEqual(visiblePages(PAGES).map((p) => p.id), PAGES.map((p) => p.id));
+  assert.deepEqual(visiblePages([]), []);
 });
 
 test('搜索：标题或 id 的大小写无关子串，空查询全留', () => {
   assert.deepEqual(filterPages(PAGES, '周报').map((p) => p.id), ['weekly']);
-  assert.deepEqual(filterPages(PAGES, 'LIBRARY').map((p) => p.id), ['components', 'library']);
+  assert.deepEqual(filterPages(PAGES, 'LIBRARY').map((p) => p.id), ['library']);
   assert.deepEqual(filterPages(PAGES, '  ').length, PAGES.length);
 });
 
@@ -65,7 +53,7 @@ test('分组：夹在前散页在后，未知夹的页落回散页，夹内「�
   // daily(order 0) 在 weekly(order 1) 前；library 没有 order，沉底。
   assert.deepEqual(model.folders[0].pages.map((p) => p.id), ['daily', 'weekly', 'library']);
   // 指着不存在的夹的 ghost 与真散页都在散页区，书写顺序保持。
-  assert.deepEqual(model.loose.map((p) => p.id), ['components', 'ghost', 'loose']);
+  assert.deepEqual(model.loose.map((p) => p.id), ['ghost', 'loose']);
 });
 
 test('分组：非「默认」档夹内按该档排，order 不参与', () => {
@@ -103,7 +91,6 @@ test('pageKindKey：画布 / 文档 / 网页三分，每种都有图标', () => 
   assert.equal(pageKindKey({ id: 'x', kind: 'dir', mode: 'html' }), 'doc');
   assert.equal(pageKindKey({ id: 'x', kind: 'file', mode: 'html' }), 'doc');
   assert.equal(pageKindKey({ id: 'x', kind: 'url', mode: 'html' }), 'web');
-  assert.equal(pageKindKey({ id: 'components', title: 'Component Library', system: true, mode: 'ios' }), 'canvas');
   assert.equal(pageKindKey({ id: 'library', mode: 'ios' }), 'canvas');
   assert.equal(pageKindKey({ id: 'doc-library', mode: 'html' }), 'doc');
   for (const k of ['canvas', 'doc', 'web']) assert.ok(PAGE_KIND_ICONS[k]);

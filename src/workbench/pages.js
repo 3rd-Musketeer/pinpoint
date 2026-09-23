@@ -26,14 +26,11 @@ import {
   withViewportPref
 } from './lib/viewport.js';
 import {
-  COMPONENTS_ID,
-  LIB_ID,
-  SYSTEM_PAGES,
   modeForPage,
   pageEntry
 } from './lib/page-url.js';
 import { closestBoardSection } from './lib/board-navigation.js';
-import { validatePageManifest } from './lib/preview-contracts.js';
+import { entryBoardMode, validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
 import {
   refit,
@@ -75,7 +72,7 @@ export function switchPage(id, options) {
   // Annotation API: section id within current board — or a top-level page id.
   // 认页面靠清单，不靠左栏有没有画出那一行 —— 2026-09-04 起模板页默认不显示，
   // 拿 DOM 当名单会让 `switchPage('doc-library')` 掉进 section 那条分支。
-  if (SYSTEM_PAGES[id] || id === LIB_ID || pageEntry(wbGet().pageManifest, id)
+  if (pageEntry(wbGet().pageManifest, id)
       || document.querySelector('.wb-page[data-vpage="' + id + '"]')) {
     return setActivePage(id).then(function () {
       var first = document.querySelector('#wb-board-panel .wb-lib-item[data-ann-section], #wb-board-panel .wb-lib-item[data-ann-group]');
@@ -128,14 +125,11 @@ export function manifestPages() {
   return manifest.pages;
 }
 
-/* Component Library 是内建页，不在任何 manifest 里 —— 左栏要把它和 manifest 页
-   一起分组（模板页三条之一），所以列表在这里合，不在组件里手拼。system:true
-   的页不参与改名、也不能拖进夹（服务端的「认识的 id」名单里没有它）。
-   mode:'ios' = 它是画布（组件排在画布上），左栏的类型图标据此出 smartphone。 */
-export var COMPONENTS_PAGE = { id: COMPONENTS_ID, title: 'Component Library', system: true, mode: 'ios' };
+/* Component Library 系统页已随 pp2 退役（服务端组件板与 kit 组件目录一并删除）
+   ——左栏不再前置系统行，Pages = manifest 页一份清单。 */
 
 export function sidebarPages() {
-  return [COMPONENTS_PAGE].concat(manifestPages());
+  return manifestPages();
 }
 
 /** 登记表的分组层（folders / pageFolders / pageOrder）——左栏分组的唯一来源。 */
@@ -147,7 +141,7 @@ export function pageGrouping() {
 
 function defaultPageId() {
   var pages = manifestPages();
-  if (!pages.length) return LIB_ID;
+  if (!pages.length) return '';
   var manifest = wbGet().pageManifest;
   if (manifest && manifest.defaultPage) {
     for (var i = 0; i < pages.length; i++) {
@@ -168,7 +162,6 @@ function rememberActivePage(pageId) {
 export function resolveActivePage(preferredId, modeHint) {
   var pages = manifestPages();
   var ids = {};
-  ids[COMPONENTS_ID] = true;
   pages.forEach(function (page) { ids[page.id] = true; });
   if (preferredId && ids[preferredId]) return preferredId;
   if (modeHint) {
@@ -176,7 +169,6 @@ export function resolveActivePage(preferredId, modeHint) {
       if (modeForPage(wbGet().pageManifest, pages[i].id) === modeHint) return pages[i].id;
     }
   }
-  if (ids[LIB_ID]) return LIB_ID;
   return defaultPageId();
 }
 
@@ -459,7 +451,7 @@ function registryToPages(data) {
       // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
       // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
       // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
-      mode: entry.kind === 'dir' ? (entry.board === 'ios' ? 'ios' : 'html') : 'html',
+      mode: entryBoardMode(entry),
       // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
       // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
       // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。
@@ -478,25 +470,15 @@ function registryToPages(data) {
 }
 
 export function loadPageManifest() {
-  // previews/_index.local.json (gitignored) overrides the tracked manifest, so
-  // an instance can keep private pages without touching versioned files. Only
-  // a missing local file falls back — a broken one must surface as an error.
-  // 「缺失」的判定含 dev server 的 SPA fallback：不存在路径会被喂成
-  // index.html（200 + text/html），2026-08-17e 实例搬迁后该文件常态不存在，
-  // 必须把「200 但不是 JSON」同样按缺失回落，否则页面清单整体加载失败。
+  // 页面清单 = tracked previews/_index.json（_index.local.json 覆盖机制已于 pp2
+  // 切片 3 退役）。失败上抛，页面清单整体失败要响亮，不静默回落。
   return queryClient.fetchQuery({
     queryKey: ['page-manifest'],
     queryFn: function () {
-      return fetch('previews/_index.local.json')
-        .then(function (response) {
-          var type = response.headers.get('content-type') || '';
-          if (response.ok && type.indexOf('json') >= 0) return response.json();
-          if (!response.ok && response.status !== 404) throw new Error(String(response.status));
-          return fetch('previews/_index.json').then(function (tracked) {
-            if (!tracked.ok) throw new Error(String(tracked.status));
-            return tracked.json();
-          });
-        });
+      return fetch('previews/_index.json').then(function (response) {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.json();
+      });
     }
   })
     .then(function (raw) {
@@ -545,8 +527,6 @@ export function setActivePage(pageId, options) {
   }
   // stage 形态随选中条目在装载后应用（loadBoard → syncEntries，2026-08-16f 阶段 6）——
   // 条目要 board 先到位才能解析，换页途中保留旧形态，避免裸闪。
-  // Includes resolve to shared component files (page-independent); keep the
-  // cache across page switches — only a component change busts it (see HMR).
   return pagesDeps.loadBoard(panel, pageId).then(function () {
     // Viewport restore happens in afterMount; do not reset to origin here.
   });

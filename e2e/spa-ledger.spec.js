@@ -16,10 +16,17 @@ function bucketDocs() {
   if (!fs.existsSync(BUCKET)) return {};
   const out = {};
   for (const name of fs.readdirSync(BUCKET)) {
-    if (name.endsWith('.json')) out[name] = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
+    // _seq.json 是 #n 的桶级计数器，不是账本（与服务端 listDocs 同一条规则），
+    // 泄进来会把「恰好这些账本」的断言数多一个。
+    if (!name.endsWith('.json') || name === '_seq.json') continue;
+    out[name] = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
   }
   return out;
 }
+
+// 别的 spec（ppnt-cli 等）也在 bucket pinpoint 里落账本；这里先清一次再开跑，
+// 否则「整个 bucket 恰好这两个文件」的断言数到别人的残余。
+test.beforeEach(() => fs.rmSync(BUCKET, { recursive: true, force: true }));
 
 function docByPrefix(prefix) {
   const docs = bucketDocs();

@@ -21,9 +21,7 @@
 //    随本阶段删除）；类型信息下移到产物条目的 tag。
 //  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档/网页条目，各带
 //    mono 类型 tag）+ 草稿组（role=draft 条目，纯标题行，无 tag——草稿恒为整页
-//    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目，doc 导出挪到条目行的
-//    hover icon 钮（复用 PageRow copy 钮模式，点击 = export-core
-//    openDocExportDialog(screenId)）。
+//    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目。
 //  - 画布条目的 frame 树收编旧大纲组件（不再是独立 section）：选中画布条目时树
 //    挂在画布条目行下；纯画布页不出条目行、树直接挂区头下。树的交互（点击定位
 //    frame + 机身 flash 环、计数徽标、失效红、与标注卡焦点双向同步）全部保留，
@@ -31,10 +29,10 @@
 //  - 坍缩规则（lib/board-entries.js contentsModel）：纯单 doc 屏页整区不出现；
 //    单网页条目页仍出行（tag 是类型信息的唯一落点）；混合页条目行全出。
 // 2026-08-17 行级动作收编右键菜单（owner 决定）：Pages 行 / 条目行 / frame
-// 树行的 locator 复制、doc 导出、页面重命名统一进 app/row-menu.jsx 的右键
+// 树行的 locator 复制、页面重命名统一进 app/row-menu.jsx 的右键
 // 菜单；行尾 hover 钮（copy / 导出 icon）退役，行宽全部还给标题，窄栏也不再
 // 有行尾元素被裁切的面。菜单项 data 契约：data-copy-page / data-copy-frame /
-// data-entry-export / data-rename-page（e2e 选择器）。
+// data-rename-page（e2e 选择器）。
 // 2026-08-17g（Pages 时间与排序）：PageRow 行尾出内容 mtime 的相对时间
 // （lib/page-sort.js formatRelativeTime；无 mtime 的页不出）；Pages 段头右侧
 // 排序菜单提供依据与方向的组合选项（lib/page-sort.js，持久化 prefs.pageSort）。
@@ -68,7 +66,6 @@ import {
   sidebarPages
 } from '../pages.js';
 import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
-import { openDocExportDialog } from '../export-core.js';
 import {
   CANVAS_ENTRY_ID,
   ENTRY_TAG_LABELS,
@@ -542,9 +539,10 @@ function FrameTree(props) {
 
 /* 条目行（2026-08-16f 阶段 7）：产物行 = 标题 + 类型 tag（data-tag），草稿行 =
    纯标题（草稿恒为整页 HTML，无 tag）。2026-08-17 起行级动作进右键菜单
-   （hover icon 钮退役）：doc 条目 = 复制 @frame + 导出（export-core
-   openDocExportDialog(screenId)，不切换选中条目）；画布条目 = 复制 @page
-   （画布即页面的默认视图，@frame 语法不覆盖它）。 */
+   （hover icon 钮退役）：doc 条目 = 复制 @frame；画布条目 = 复制 @page
+   （画布即页面的默认视图，@frame 语法不覆盖它）。
+   pp2 切片 3：「导出…」菜单项随文档导出对话框一并退役 —— 用户面只剩
+   横条「导出」的离线可交互 HTML。 */
 function EntryRow(props) {
   var entry = props.entry;
   var on = !!props.on;
@@ -553,10 +551,7 @@ function EntryRow(props) {
   var menuItems = entry.kind === 'doc'
     ? [
         { kind: 'copy', label: '复制 @frame', text: '@frame:' + props.pageId + '/' + entry.id,
-          attr: { 'data-copy-frame': props.pageId + '/' + entry.id } },
-        { kind: 'action', label: '导出…', icon: 'export-image',
-          onSelect: function () { openDocExportDialog(entry.id); },
-          attr: { 'data-entry-export': entry.id } }
+          attr: { 'data-copy-frame': props.pageId + '/' + entry.id } }
       ]
     : [
         { kind: 'copy', label: '复制 @page', text: '@page:' + props.pageId,
@@ -888,7 +883,6 @@ export function Sidebar() {
   }
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  var showTemplates = useWorkbenchStore(function (s) { return s.showTemplatePages; });
   var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
   // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
   var [now, setNow] = useState(function () { return Date.now(); });
@@ -898,11 +892,11 @@ export function Sidebar() {
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 
-  // 分组模型只在清单 / 开关 / 当前页 / 排序变了才重算 —— 拖放中的落点态
+  // 分组模型只在清单 / 当前页 / 排序变了才重算 —— 拖放中的落点态
   // 与每分钟的时间 tick 都会让整栏重渲染，别让它们顺带重排一遍。
   var derived = useMemo(function () {
     var grouping = pageGrouping();
-    var pages = visiblePages(sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] })), { showTemplates: showTemplates, keepId: activePageId });
+    var pages = visiblePages(sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] })));
     return {
       grouping: grouping,
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
@@ -916,11 +910,11 @@ export function Sidebar() {
         sort: sort
       })
     };
-  }, [manifest, showTemplates, activePageId, sort, pagePreferences]);
+  }, [manifest, activePageId, sort, pagePreferences]);
   var model = derived.model;
   var dnd = useFolderActions(derived.grouping.folders, model, sort);
   // 最近与页面共用归档、置顶筛选。
-  var recent = activityRows(visiblePages(derived.pages, { showTemplates: showTemplates }));
+  var recent = activityRows(visiblePages(derived.pages));
 
   return (
     <Fragment>

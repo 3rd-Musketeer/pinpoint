@@ -48,10 +48,9 @@ export function annotateApi() {
    workbench 本地语义。cap 选项钉住 workbench 措辞：region 行显示「框选」，
    不做 selector 摘录回退。 */
 function markSummary(m, ann) {
-  var body = (m && (m.content != null ? m.content : m.comment)) || '';
+  var body = (m && m.content) || '';
   if (body) {
     if (ann && typeof ann.contentToDisplay === 'function') return ann.contentToDisplay(body, m.targets || []);
-    if (ann && typeof ann.commentToDisplay === 'function') return ann.commentToDisplay(body);
     return body;
   }
   if (m.type === 'region') return '框选区域';

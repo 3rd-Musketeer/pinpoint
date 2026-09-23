@@ -71,7 +71,6 @@ export function validateExportRequest(raw, options = {}) {
     format,
     scale,
     background,
-    includeNotes: raw.includeNotes === true,
     html,
     tokens,
   };

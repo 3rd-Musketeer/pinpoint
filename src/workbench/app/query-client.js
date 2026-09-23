@@ -1,5 +1,6 @@
 // Server state 的唯一住处（goal-20260810-workbench-react-rebuild P2）。
-// manifest / board / screen / include 的拉取与缓存都归这里；
+// manifest / board / screen 的拉取与缓存都归这里（pp2 起屏内容就是 dist，
+// 客户端没有 include 缓存这一族）；
 // SSE（preview:update HMR 通道）是唯一失效源 —— 桥接 invalidateQueries，
 // 不许再有手工 cacheBust / generation 计数机械。
 // 命令式模块直接 import queryClient 调 fetchQuery/invalidateQueries/setQueryData；

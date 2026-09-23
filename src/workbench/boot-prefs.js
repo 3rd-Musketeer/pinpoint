@@ -4,7 +4,7 @@ import { cancelStageScroll } from './scroll-motion.js';
 // 保存与恢复、启动偏好应用。P1a 从 workbench.js 平移
 // （goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
-import { readPrefs, savePrefs, replacePrefs } from './lib/prefs.js';
+import { readPrefs, savePrefs } from './lib/prefs.js';
 import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
 import { BASE_CANVAS_SCALE, clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
@@ -165,34 +165,6 @@ function stageScrollPatch() {
   return { scrollLeft: stage.scrollLeft, scrollTop: stage.scrollTop };
 }
 
-/** One-time: seed pageViewports[pageId].canvasZoom from legacy prefs.canvasZoom, then drop the global key. */
-function migrateLegacyCanvasZoom(pageId) {
-  var prefs = readPrefs();
-  if (!Object.prototype.hasOwnProperty.call(prefs, 'canvasZoom')) return;
-  var legacy = boardZoom(prefs.canvasZoom);
-  var all = Object.assign({}, readPageViewports());
-  var cur = all[pageId] || {};
-  if (cur.canvasZoom == null) {
-    all[pageId] = Object.assign({}, cur, { canvasZoom: legacy });
-  }
-  var next = Object.assign({}, prefs, { pageViewports: all });
-  delete next.canvasZoom;
-  replacePrefs(next);
-}
-
-/** One-time: drop the retired mode prefs (2026-08-16 阶段 2)—— 壳形态由 activePageId
-    派生，activePageIdByMode / boardMode 两个 key 读弃。 */
-function migrateLegacyBoardModePrefs() {
-  var prefs = readPrefs();
-  var stale = Object.prototype.hasOwnProperty.call(prefs, 'activePageIdByMode')
-    || Object.prototype.hasOwnProperty.call(prefs, 'boardMode');
-  if (!stale) return;
-  var next = Object.assign({}, prefs);
-  delete next.activePageIdByMode;
-  delete next.boardMode;
-  replacePrefs(next);
-}
-
 /** One-time（2026-08-17 基准重定标，decisions 08-17c）：pageViewports 里的
     canvasZoom 是旧轴值（视觉 = zoom），新轴视觉 = zoom × 0.5 —— 全部 ×2
     （clamp 到新轴范围）保持视觉不变，打 zoomAxis:2 标记防重跑。 */
@@ -207,8 +179,7 @@ function migrateZoomAxis2() {
     if (!isFinite(n)) return;
     all[pageId] = Object.assign({}, vp, { canvasZoom: String(clampCanvasZoom(n)) });
   });
-  var next = Object.assign({}, prefs, { pageViewports: all, zoomAxis: 2 });
-  replacePrefs(next);
+  savePrefs({ pageViewports: all, zoomAxis: 2 });
 }
 
 // 首访默认缩放 = 100%（zoom 轴 1）。2026-08-17 基准重定标（decisions 08-17c）：
@@ -331,8 +302,6 @@ export function applyBootPrefs(prefs, options) {
   options = options || {};
   prefs = prefs || readPrefs();
   var pageId = options.pageId || prefsDeps.resolveBootPageId(prefs);
-  migrateLegacyCanvasZoom(pageId);
-  migrateLegacyBoardModePrefs();
   migrateZoomAxis2();
 
   if (options.side !== false) {
@@ -346,9 +315,7 @@ export function applyBootPrefs(prefs, options) {
   applyIosRoots(prefs);
   wbSet({
     theme: prefs.theme || 'light',
-    frame: prefs.frame || 'screen',
-    // 模板页开关（ADR 0032）：设置视图写，左栏读，初值与其它偏好同一处进 store。
-    showTemplatePages: !!prefs.showTemplatePages
+    frame: prefs.frame || 'screen'
   });
   applyClock(prefs.clockMode || 'system', prefs.clockFixed || '9:41');
   setCanvasZoom(zoomForPage(pageId), { save: false });

@@ -11,13 +11,7 @@ import {
 } from './lib/preview-contracts.js';
 import { wbGet, wbSet, activeBoardMode, useWorkbenchStore } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { COMPONENTS_ID, LIB_ID, defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
-import {
-  activeDocExportTarget,
-  buildExportSnapshot,
-  requestDocExport,
-  requestExportImage
-} from './export-core.js';
+import { defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
@@ -67,15 +61,16 @@ import { startDeepLinkSync } from './url-sync.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
-wbSet({ activePageId: LIB_ID });
+wbSet({ activePageId: '' });
 var stage  = document.getElementById('wbstage');
 var splitEl = document.getElementById('wbsplit');
 var boardPanel;
 var mountManager = new BoardMountManager();
 
-/** `?page=` 指向的 id 有没有对应对象：内置的 Component Library，或清单里的一页。 */
+/** `?page=` 指向的 id 有没有对应对象：清单里的一页（pp2 切片 2 起 Component Library
+    系统页退役，components 与其他陌生 id 一样落「页面不存在」面板）。 */
 function deepLinkPageExists(pageId) {
-  return pageId === COMPONENTS_ID || !!pageEntry(wbGet().pageManifest, pageId);
+  return !!pageEntry(wbGet().pageManifest, pageId);
 }
 
 function resolveBootPageId(prefs) {
@@ -112,7 +107,6 @@ function showMissingPage(pageId) {
 }
 
 function boardUrl(pageId) {
-  if (pageId === COMPONENTS_ID) return 'components/board.json';
   return pageBaseUrl(wbGet().pageManifest, pageId) + 'board.json';
 }
 
@@ -133,7 +127,6 @@ async function loadBoard(panel, pageId) {
     if (wbGet().activePageId !== pageId) return null;
     var board = validateBoard(rawBoard, {
       pageId: pageId,
-      allowComponentRefs: pageId === COMPONENTS_ID,
       defaultShell: defaultShellForPage(wbGet().pageManifest, pageId)
     });
     // 阶段 8：registry attach 条目（pinpoint add --page）合并成合成 doc 屏，
@@ -203,7 +196,7 @@ function initBoard() {
     })
     .catch(function (error) {
       showPageManifestError(error);
-      return setActivePage(COMPONENTS_ID, { force: true, scrollTop: false, save: false });
+      return setActivePage(resolveActivePage(null), { force: true, scrollTop: false, save: false });
     })
     // 深链写入必须在 boot 页解析完成后才启动 —— 订阅活着时任何 wbSet 都会
     // 触发 replaceState，提前启动会在 resolveBootPageId 读之前覆盖掉深链参数。
@@ -233,11 +226,7 @@ window.workbench = {
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
   // 只读派生视图（2026-08-16f 阶段 6：形态由选中条目派生，不再是页级开关）
-  boardMode: function () { return activeBoardMode(); },
-  exportSnapshot: buildExportSnapshot,
-  exportImage: requestExportImage,
-  exportDoc: requestDocExport,
-  activeDocExportTarget: activeDocExportTarget
+  boardMode: function () { return activeBoardMode(); }
 };
 
 window.workbench.diagnostics = startCanvasDiagnostics(stage, () => wbGet().activePageId);
@@ -514,7 +503,7 @@ stage.addEventListener('wheel', function (e) {
   /* 失败面板的两个动作（2026-09-04，BACKLOG「空态与错误面板」）。面板是板内
      HTML，板每次装载整替换 innerHTML —— 所以监听挂 stage 做事件委托。capture
      相位先于 pan / 选中判定；面板的动作容器另带 data-ann-ui，标注模式也让开。
-     「回到 Pages」= 换到 Component Library（内置页，恒可装载）+ 展开左栏；
+     「回到 Pages」= 换到默认页（恒可装载）+ 展开左栏；
      「重试」= 失效对应的 board / screen 查询后重装当前页。深链失效面板
      （retry kind = page，2026-09-04）另走一条：重拉页面清单再解析一次那个 id，
      出现了就直接打开它，还是没有就把面板留在原地。 */
@@ -525,10 +514,9 @@ stage.addEventListener('wheel', function (e) {
     e.stopPropagation();
     if (btn.hasAttribute('data-err-home')) {
       if (wbGet().sideCollapsed) setSideCollapsed(false, { save: true });
-      var home = wbGet().activePageId === COMPONENTS_ID
-        ? resolveActivePage(null)
-        : COMPONENTS_ID;
-      setActivePage(home, { force: true });
+      // 「回到 Pages」= 落到默认页（恒可装载）+ 展开左栏；pp2 切片 2 起不再有
+      // 内置系统页可回。
+      setActivePage(resolveActivePage(null), { force: true });
       return;
     }
     var pageId = btn.getAttribute('data-err-page') || wbGet().activePageId;
@@ -586,24 +574,11 @@ if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
     var id = (data && data.id) || wbGet().activePageId;
-    // SSE 是唯一失效源：页面变更失效自己的 board/screen；组件变更失效组件页
-    // board/screen 与全部 include（screen 缓存的是未展开的原始片段，include
-    // 失效后重装载重新展开即拿到新内容）。页面变更不动 include 缓存。
-    if (id === COMPONENTS_ID || (data && data.alsoActive)) {
-      queryClient.invalidateQueries({ queryKey: ['board', COMPONENTS_ID] });
-      queryClient.invalidateQueries({ queryKey: ['screen', COMPONENTS_ID] });
-      queryClient.invalidateQueries({ queryKey: ['include'] });
-    } else {
-      queryClient.invalidateQueries({ queryKey: ['board', id] });
-      queryClient.invalidateQueries({ queryKey: ['screen', id] });
-    }
+    // SSE 是唯一失效源：页面变更（含 kit 组件触发全量重编后的逐页通知）失效自己的
+    // board/screen；pp2 起屏内容就是 dist，客户端没有 include 缓存可失效。
+    queryClient.invalidateQueries({ queryKey: ['board', id] });
+    queryClient.invalidateQueries({ queryKey: ['screen', id] });
     if (id === wbGet().activePageId) {
-      snapshotPageViewport(wbGet().activePageId);
-      loadBoard(boardPanel, wbGet().activePageId);
-      return;
-    }
-    // Component change while viewing a flow — reload active page so includes refresh
-    if (data && data.alsoActive && wbGet().activePageId !== COMPONENTS_ID) {
       snapshotPageViewport(wbGet().activePageId);
       loadBoard(boardPanel, wbGet().activePageId);
     }
@@ -625,7 +600,7 @@ if (import.meta.hot) {
 
 (function init() {
   var prefs = readPrefs();
-  applyBootPrefs(prefs, { pageId: prefs.activePageId || LIB_ID, refit: false });
+  applyBootPrefs(prefs, { pageId: prefs.activePageId || '', refit: false });
 })();
 
 if (stage) {

@@ -10,11 +10,7 @@
  *   └────────────────────┘
  */
 
-function esc(s) {
-  return String(s == null ? '' : s)
-    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
-}
+
 
 /** CSS for .ann-bubble (+ export anchor badge). Shared by live overlay and export bake.
  *  2026-09-04 评审板 H1：卡片收成一块白面小卡 —— 186 宽、11px 正文、一条 11px
@@ -24,6 +20,7 @@ function esc(s) {
  *  var(--wb-*, fallback)：live 侧钉值在 [data-ann-ui] 基规则（src/client/annotate.js），
  *  export bake 无钉值走兜底 —— 兜底值与 src/workbench/wb-tokens.css 同值。
  *  240 宽的两处（doc 导出烤图、workbench gutter）自己写 inline width，不吃这里的值。 */
+import { escHtml } from '../workbench/lib/esc-html.js';
 export function bubbleCss() {
   return [
     '.ann-bubble{position:absolute;width:186px;background:var(--wb-surface,#fff);',
@@ -40,24 +37,8 @@ export function bubbleCss() {
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
     '.ann-bubble-empty{color:var(--wb-faint,#8d8d8d);font-style:italic;}',
-    /* Export-only: soft circular number pinned to the selected-box top-right
-       (same corner as live .ann-badge via badgePositionForRect). */
-    '.ann-export-badge{position:absolute;width:18px;height:18px;border-radius:50%;',
-    'background:rgba(245,166,35,.55);color:#fff;',
-    'font:var(--wb-w-semibold,600) 10px/1 var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);',
-    'display:flex;align-items:center;justify-content:center;',
-    'letter-spacing:0;box-shadow:var(--wb-sh-1,0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04));',
-    'pointer-events:none;z-index:4;}',
   ].join('');
 }
-
-/** Soft circular number badge for export bake (absolute, caller sets left/top). */
-export function exportBadgeHtml(n) {
-  return '<div class="ann-export-badge" data-n="' + esc(n) + '">' + esc(n) + '</div>';
-}
-
-/** Badge size used by export bake; half of this is passed to badgePositionForRect. */
-export const EXPORT_BADGE_SIZE = 18;
 
 /** Inner markup (眉标 + 正文) for one bubble. Caller wraps + positions.
  *  `m.cap` = 这条标注指着什么（annRowCap 的同一份口径）；没有就只出序号。 */
@@ -66,18 +47,18 @@ export function bubbleInnerHtml(m) {
   var cap = String((m && m.cap != null ? m.cap : '') || '').trim();
   var content = String((m && m.content != null ? m.content : '') || '');
   var body = content
-    ? '<div class="ann-bubble-body">' + esc(content) + '</div>'
+    ? '<div class="ann-bubble-body">' + escHtml(content) + '</div>'
     : '<div class="ann-bubble-body ann-bubble-empty">（无正文）</div>';
   return '<div class="ann-bubble-cap">'
-    + '<span class="ann-bubble-n">' + esc(n) + '</span>'
-    + (cap ? '<span class="ann-bubble-ref">' + esc(cap) + '</span>' : '')
+    + '<span class="ann-bubble-n">' + escHtml(n) + '</span>'
+    + (cap ? '<span class="ann-bubble-ref">' + escHtml(cap) + '</span>' : '')
     + '</div>' + body;
 }
 
 /** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node. */
 export function bubbleHtml(m) {
   var n = (m && m.n) != null ? m.n : '';
-  return '<div class="ann-bubble" data-n="' + esc(n) + '">'
+  return '<div class="ann-bubble" data-n="' + escHtml(n) + '">'
     + bubbleInnerHtml(m)
     + '</div>';
 }

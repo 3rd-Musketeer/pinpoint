@@ -3,7 +3,6 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { seedTemplatePagesVisible } from './workbench-helpers.js';
 
 import { E2E_DATA_DIR } from './env.js';
 
@@ -17,7 +16,8 @@ const DOC_BUCKET = path.join(E2E_DATA_DIR, 'e2e-mention');
 
 function bucketDocs(bucket) {
   if (!fs.existsSync(bucket)) return [];
-  return fs.readdirSync(bucket).filter((name) => name.endsWith('.json'))
+  // _seq.json 是桶级计数器不是账本，不计进名单（M1）。
+  return fs.readdirSync(bucket).filter((name) => name.endsWith('.json') && name !== '_seq.json')
     .map((name) => JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8')));
 }
 
@@ -27,7 +27,6 @@ test.afterEach(() => {
 });
 
 async function openWorkbench(page) {
-  await seedTemplatePagesVisible(page);
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 }
@@ -59,8 +58,8 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   await expect(docFrame.locator('h1')).toHaveText('冲煮手账 · 评审稿');
   await expect(docFrame.locator('iframe[data-pinpoint-frame-iframe]')).toHaveCount(2);
 
-  const recipeFrame = docFrame.frameLocator('iframe[title="@frame:library/recipe"]');
-  const timerFrame = docFrame.frameLocator('iframe[title="@frame:library/timer"]');
+  const recipeFrame = docFrame.frameLocator('iframe[title="@frame:e2e-ios/recipe"]');
+  const timerFrame = docFrame.frameLocator('iframe[title="@frame:e2e-ios/timer"]');
   await expect(recipeFrame.locator('.ios-app')).toBeVisible();
   await expect(timerFrame.locator('[data-timer-toggle]')).toHaveText('开始');
 
@@ -88,7 +87,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   // 4) 标注模式下在文档里标注 frame 内元素（点选 = 标注，不触发交互）
   await recipeFrame.locator('[data-ratio-cycle]').click();
   await expect(recipeFrame.locator('#ann-box')).toBeVisible();
-  await saveComposerIn(page, { frameTitle: '@frame:library/recipe' }, '文档里标：粉水比控件');
+  await saveComposerIn(page, { frameTitle: '@frame:e2e-ios/recipe' }, '文档里标：粉水比控件');
   await expect(recipeFrame.locator('.ann-badge')).toHaveCount(1);
 
   // 5) 落在画布账本（pinpoint 桶的 /index.html 账本），行带 pageId+screenId+section
@@ -99,7 +98,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   }).toBe(1);
   const canvasDoc = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '/index.html');
   const row = canvasDoc.annotations[0];
-  expect(row.pageId).toBe('library');
+  expect(row.pageId).toBe('e2e-ios');
   expect(row.screenId).toBe('recipe');
   expect(row.section).toBe('brew-flow');
   expect(row.content).toContain('文档里标');
@@ -107,7 +106,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
 
   // 6) 画布对应板：同一 frame 上出现同一标注（画布 pin 渲染在 stage 级 overlay 的
   //    #ann-marks 里，不嵌在 frame 元素内 —— 这里按 overlay 计数 + 侧栏文本双断言）
-  await page.locator('#wbpages [data-vpage="library"]').click();
+  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
   await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list')).toContainText('文档里标：粉水比控件');
@@ -124,7 +123,7 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   // 8) 回文档：画布那条出现在文档里的活 frame 上（切页重建 iframe → 磁盘水合）
   await page.locator('#wbpages [data-vpage="e2e-mention"]').click();
   const docFrame2 = page.frameLocator('#wb-board-panel .wb-doc-frame');
-  const recipeFrame2 = docFrame2.frameLocator('iframe[title="@frame:library/recipe"]');
+  const recipeFrame2 = docFrame2.frameLocator('iframe[title="@frame:e2e-ios/recipe"]');
   await expect(recipeFrame2.locator('.ann-badge')).toHaveCount(2);
 
   // 9) 文档正文标注归文档自己的桶（e2e-mention），与 frame 标注两个命名空间
@@ -140,38 +139,4 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   const canvasAfter = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '/index.html');
   expect(canvasAfter.annotations.length).toBe(2);
   expect(canvasAfter.annotations.every((a) => !a.content.includes('标文档正文'))).toBe(true);
-});
-
-test('doc export bakes mentioned frames into static images (html-full / no-css / long PNG)', async ({ page }) => {
-  await openWorkbench(page); // 导出渲染走本服务 origin，无需打开 mention 页本身
-  const src = 'sites/e2e-mention/index.html';
-  const base = { pageId: 'e2e-mention', screenId: 'index', src };
-
-  // html-full：挂载点换成自包含 <img dataURL>
-  const full = await page.request.post('/api/export-doc', { data: { ...base, mode: 'html-full' } });
-  expect(full.ok()).toBe(true);
-  expect(full.headers()['x-export-frames']).toBe('2');
-  const fullHtml = await full.text();
-  expect(fullHtml).toContain('data-pinpoint-frame-baked="library/recipe"');
-  expect(fullHtml).toContain('data-pinpoint-frame-baked="library/timer"');
-  expect(fullHtml).toContain('data:image/png;base64,');
-  expect(fullHtml).not.toContain('data-pinpoint-frame="library/recipe"');
-
-  // html-no-css：挂载点换成文本引用（不塞 base64）
-  const noCss = await page.request.post('/api/export-doc', { data: { ...base, mode: 'html-no-css' } });
-  expect(noCss.ok()).toBe(true);
-  const noCssHtml = await noCss.text();
-  expect(noCssHtml).toContain('data-pinpoint-frame-ref="library/recipe"');
-  expect(noCssHtml).toContain('data-pinpoint-frame-ref="library/timer"');
-  expect(noCssHtml).toContain('计时（sidecar 交互）（library/timer）'); // 引用带 frame 标题
-  expect(noCssHtml).not.toContain('data:image/png;base64,');
-
-  // 长图 PNG：渲染浏览器里运行时换图，出图含烤入的 frame
-  const image = await page.request.post('/api/export-doc', { data: { ...base, mode: 'image' } });
-  expect(image.ok()).toBe(true);
-  expect(image.headers()['x-export-frames']).toBe('2');
-  const buf = await image.body();
-  expect(buf.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe(true);
-  expect(Number(image.headers()['x-export-width'])).toBe(1840); // 920 × 2
-  expect(buf.length).toBeGreaterThan(50 * 1024); // 烤入两个 frame 的长图不可能是小文件
 });

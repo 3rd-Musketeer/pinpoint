@@ -1,0 +1,31 @@
+export default function Lock() {
+  return (
+    <>
+    <div class="ios-lockscreen">
+      <div class="ios-lock-glyph"><span class="ios-emo">🔒</span></div>
+      <div class="ios-lock-date">星期二，7月21日</div>
+      <div class="ios-lock-clock"></div>
+      <div class="ios-lock-notes">
+        <div class="ios-notification">
+          <div class="ios-notif-icon" style="background:var(--ios-brown)"><span class="ios-emo">☕</span></div>
+          <div class="ios-notif-main">
+            <div class="ios-notif-top"><span class="ios-notif-title">冲煮手账</span><span class="ios-notif-time">现在</span></div>
+            <div class="ios-notif-body">水温到 92°C 了 — 耶加雪菲在等你，焖蒸 30 秒开始。</div>
+          </div>
+        </div>
+        <div class="ios-notification">
+          <div class="ios-notif-icon" style="background:var(--ios-green)"><span class="ios-emo">💬</span></div>
+          <div class="ios-notif-main">
+            <div class="ios-notif-top"><span class="ios-notif-title">阿禾</span><span class="ios-notif-time">9:41</span></div>
+            <div class="ios-notif-body">试试 1:16，我早上冲花魁甜感清楚多了。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="ios-lock-controls">
+      <div class="ios-lock-ctrl"><span class="ios-emo">🔦</span></div>
+      <div class="ios-lock-ctrl"><span class="ios-emo">📷</span></div>
+    </div>
+        </>
+  );
+}

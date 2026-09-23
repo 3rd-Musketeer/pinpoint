@@ -338,26 +338,3 @@ test('PINPOINT_REGISTRY overrides the default registry path', (t) => {
   assert.deepEqual(registry.entries.map((e) => e.id), ['env-entry']);
 });
 
-test('deprecated HTML_ANNOTATE_REGISTRY still applies, with a warning, when PINPOINT_REGISTRY is absent', (t) => {
-  const dir = withTempDir(t);
-  const file = writeRegistry(dir, {
-    version: 1,
-    entries: [{ id: 'legacy-entry', title: 'x', kind: 'url', url: 'https://legacy.localhost' }],
-  });
-  const previousNew = process.env.PINPOINT_REGISTRY;
-  const previousOld = process.env.HTML_ANNOTATE_REGISTRY;
-  delete process.env.PINPOINT_REGISTRY;
-  process.env.HTML_ANNOTATE_REGISTRY = file;
-  t.after(() => {
-    if (previousNew === undefined) delete process.env.PINPOINT_REGISTRY;
-    else process.env.PINPOINT_REGISTRY = previousNew;
-    if (previousOld === undefined) delete process.env.HTML_ANNOTATE_REGISTRY;
-    else process.env.HTML_ANNOTATE_REGISTRY = previousOld;
-  });
-
-  const { registry, logs } = quietLoad();
-  assert.equal(registry.path, file);
-  assert.deepEqual(registry.entries.map((e) => e.id), ['legacy-entry']);
-  assert.equal(logs.length, 1, 'deprecation is logged');
-  assert.match(logs[0], /deprecated/);
-});

@@ -1,5 +1,4 @@
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const COMPONENT_SCREEN_PATTERN = /^[a-zA-Z0-9_-]+\/[a-zA-Z0-9_-]+$/;
 
 export class ContractError extends Error {
   constructor(path, message) {
@@ -62,20 +61,28 @@ function identifier(value, path, pattern = ID_PATTERN) {
   return id;
 }
 
-function screenIdentifier(value, path, allowComponentRefs) {
-  const id = nonEmptyString(value, path);
-  if (!ID_PATTERN.test(id) && !(allowComponentRefs && COMPONENT_SCREEN_PATTERN.test(id))) {
-    throw new ContractError(path, `invalid id "${id}"`);
-  }
-  return id;
-}
-
 const PAGE_MODES = ['ios', 'html'];
 
+/* ---- web 退役的归一（2026-08-16 阶段 2）唯一定义 ---------------------------
+   存量数据里的 'web'：模式落 html（doc 阅读器）、壳落 doc。读侧（深链 / 服务端
+   frame 解析 / registry→manifest）不再各写一份映射。 */
+
+export function legacyMode(mode) {
+  return mode === 'web' ? 'html' : mode;
+}
+
+export function legacyShell(shell, fallback = 'app') {
+  const value = shell || fallback;
+  return value === 'web' ? 'doc' : value;
+}
+
+/** registry 条目 → manifest 页模式：只有显式 board:'ios' 上画布，其余落 html。 */
+export function entryBoardMode(entry) {
+  return entry && entry.kind === 'dir' && entry.board === 'ios' ? 'ios' : 'html';
+}
+
 function validatePageMode(value, path) {
-  const mode = value == null || value === '' ? 'ios' : value;
-  // 2026-08-16 阶段 2：web 模式/壳退役 —— 存量数据里的 'web' 安全落 doc 阅读器。
-  if (mode === 'web') return 'html';
+  const mode = legacyMode(value == null || value === '' ? 'ios' : value);
   if (!PAGE_MODES.includes(mode)) {
     throw new ContractError(path, 'expected "ios" or "html"');
   }
@@ -84,8 +91,10 @@ function validatePageMode(value, path) {
 
 export function validatePageManifest(raw) {
   const input = objectAt(raw, 'manifest');
-  if (!Array.isArray(input.pages) || !input.pages.length) {
-    throw new ContractError('pages', 'expected a non-empty array');
+  // pp2 切片 3：模板页退役后 pages 可以为空（清单只剩 registry 条目经
+  // registrySitePages 并入）；空时 defaultPage 不再必填。
+  if (!Array.isArray(input.pages)) {
+    throw new ContractError('pages', 'expected an array');
   }
   const seen = new Set();
   const pages = input.pages.map((entry, index) => {
@@ -99,6 +108,12 @@ export function validatePageManifest(raw) {
       mode: validatePageMode(page.mode, `pages[${index}].mode`),
     };
   });
+  if (!pages.length) {
+    if (input.defaultPage != null && input.defaultPage !== '') {
+      throw new ContractError('defaultPage', `"${input.defaultPage}" is not listed in pages`);
+    }
+    return { defaultPage: '', pages };
+  }
   const defaultPage = identifier(input.defaultPage, 'defaultPage');
   if (!seen.has(defaultPage)) {
     throw new ContractError('defaultPage', `"${defaultPage}" is not listed in pages`);
@@ -107,13 +122,13 @@ export function validatePageManifest(raw) {
 }
 
 function validateShell(value, path, fallback = 'app') {
-  const shell = value || fallback;
   // "doc" = a complete standalone HTML document rendered in an iframe (HTML board).
   // "app"/"lock" take body fragments the loader wraps in phone chrome.
-  // Legacy "web" (2026-08-16 退役) 归一到 "doc" —— 裸画板壳已连壳删除。
-  if (shell === 'web') return 'doc';
-  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc') {
-    throw new ContractError(path, 'expected "app", "lock", or "doc"');
+  // "comp"（pp2 切片 2）= variants 墙：无机壳 comp 画板，screen 条目带 comp + props。
+  // Legacy "web" 的归一在 legacyShell（唯一定义）。
+  const shell = legacyShell(value, fallback);
+  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc' && shell !== 'comp') {
+    throw new ContractError(path, 'expected "app", "lock", "doc", or "comp"');
   }
   return shell;
 }
@@ -131,18 +146,41 @@ function validateRole(value, path) {
   return role;
 }
 
-function normalizeScreen(entry, path, sectionShell, options) {
-  const allowComponentRefs = !!options.allowComponentRefs;
+// pp2 切片 2：comp section 的 screen 条目 { id, title?, comp, props? } —— comp 是
+// 组件名（JS 标识符；页目录 components/<Name>.jsx 或 pinpoint/kit），props 是喂给
+// 组件的 JSON 值（board.json 本身已保证 JSON 安全，这里只拦非对象）。
+// 编译侧（page-compiler 的 screenEntriesFromBoard）用同一条规则校验，保证两边一致。
+export const COMP_NAME_PATTERN = /^[A-Za-z_$][A-Za-z0-9_$]*$/;
+
+function normalizeComp(screen, path) {
+  if (screen.comp == null) return {};
+  const comp = nonEmptyString(screen.comp, `${path}.comp`);
+  if (!COMP_NAME_PATTERN.test(comp)) throw new ContractError(`${path}.comp`, `invalid component name "${comp}"`);
+  let props = {};
+  if (screen.props != null) {
+    if (!screen.props || typeof screen.props !== 'object' || Array.isArray(screen.props)) {
+      throw new ContractError(`${path}.props`, 'expected a JSON object of component props');
+    }
+    props = screen.props;
+  }
+  return { comp, props };
+}
+
+function normalizeScreen(entry, path, sectionShell) {
   if (typeof entry === 'string') {
-    return { id: screenIdentifier(entry, path, allowComponentRefs), title: '', shell: sectionShell, role: 'product', src: '' };
+    return { id: identifier(entry, path), title: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
+  const compPart = normalizeComp(screen, path);
+  // comp 屏的 title 缺省用 id（variants 墙的一格一名）；普通屏 title 可空。
+  const titleFallback = compPart.comp ? screen.id : '';
   return {
-    id: screenIdentifier(screen.id, `${path}.id`, allowComponentRefs),
-    title: screen.title == null ? '' : titleString(screen.title, `${path}.title`),
+    id: identifier(screen.id, `${path}.id`),
+    title: screen.title == null ? titleFallback : titleString(screen.title, `${path}.title`),
     shell: validateShell(screen.shell, `${path}.shell`, sectionShell),
     role: validateRole(screen.role, `${path}.role`),
     src: screen.src == null ? '' : nonEmptyString(screen.src, `${path}.src`),
+    ...compPart,
   };
 }
 
@@ -169,7 +207,7 @@ export function validateBoard(raw, options = {}) {
     const shell = validateShell(section.shell, `${path}.shell`, options.defaultShell || 'app');
     const screens = section.screens.map((screen, screenIndex) => {
       const screenPath = `${path}.screens[${screenIndex}]`;
-      const normalized = normalizeScreen(screen, screenPath, shell, options);
+      const normalized = normalizeScreen(screen, screenPath, shell);
       if (screenIds.has(normalized.id)) {
         throw new ContractError(screenPath, `duplicate screen id "${normalized.id}"`);
       }

@@ -10,6 +10,7 @@ import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
 import http from 'node:http';
 import test from 'node:test';
+import { parseReqUrl } from './lib/req-url.js';
 
 import { createSitesHandler } from './sites-api.js';
 import {
@@ -235,9 +236,10 @@ function wsEcho(socket) {
 
 function startUpstream(t, hits) {
   const server = http.createServer((req, res) => {
-    const u = new URL(req.url, 'http://upstream.local');
-    hits.push(`${req.method} ${u.pathname}${u.search}`);
-    if (u.pathname === '/') {
+    const { pathname, query } = parseReqUrl(req);
+    const search = query.toString() ? `?${query}` : '';
+    hits.push(`${req.method} ${pathname}${search}`);
+    if (pathname === '/') {
       res.writeHead(200, {
         'Content-Type': 'text/html; charset=utf-8',
         'Content-Security-Policy': "default-src 'self'",
@@ -246,22 +248,22 @@ function startUpstream(t, hits) {
       res.end(APP_HTML);
       return;
     }
-    if (u.pathname === '/assets/app.js') {
+    if (pathname === '/assets/app.js') {
       res.writeHead(200, { 'Content-Type': 'application/javascript' });
       res.end(APP_JS);
       return;
     }
-    if (u.pathname === '/assets/site.css') {
+    if (pathname === '/assets/site.css') {
       res.writeHead(200, { 'Content-Type': 'text/css' });
       res.end('body{background:url(/assets/bg.png)}\n');
       return;
     }
-    if (u.pathname === '/api/data') {
+    if (pathname === '/api/data') {
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify({ message: 'api-via-proxy' }));
       return;
     }
-    if (u.pathname === '/api/echo' && req.method === 'POST') {
+    if (pathname === '/api/echo' && req.method === 'POST') {
       const chunks = [];
       req.on('data', (c) => chunks.push(c));
       req.on('end', () => {
@@ -270,19 +272,19 @@ function startUpstream(t, hits) {
       });
       return;
     }
-    if (u.pathname === '/redirect') {
+    if (pathname === '/redirect') {
       res.writeHead(302, { Location: '/final' });
       res.end();
       return;
     }
-    if (u.pathname === '/redirect-absolute') {
+    if (pathname === '/redirect-absolute') {
       // 绝对 Location 用上游自己的 host（代理会把 Host 改写成它），这样
       // 代理侧 origin 比较才成立。
       res.writeHead(302, { Location: `http://${req.headers.host}/final-abs` });
       res.end();
       return;
     }
-    if (u.pathname === '/cookie') {
+    if (pathname === '/cookie') {
       res.writeHead(200, {
         'Content-Type': 'text/plain',
         'Set-Cookie': ['sid=42; Path=/; Domain=upstream.local; HttpOnly', 'plain=1'],
@@ -290,7 +292,7 @@ function startUpstream(t, hits) {
       res.end('cookie set');
       return;
     }
-    if (u.pathname === '/api/events') {
+    if (pathname === '/api/events') {
       res.writeHead(200, {
         'Content-Type': 'text/event-stream',
         'Cache-Control': 'no-cache',

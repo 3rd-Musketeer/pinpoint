@@ -13,6 +13,10 @@
 | `section` | board 的 section `id`（遗留名：`group`） |
 | `screenId` | frame / 屏文件的 id |
 | `content` | 标注正文（遗留名：`comment`） |
+| `n` | 对外序号：按桶单调取号（桶目录下 `_seq.json` 的 `next`），跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
+| `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
+| `note` | agent 在 check / done 时留的一句话，可选 |
+| `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
 
 元素标注一律写 `targets: [{ ref, selector, text }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
@@ -21,17 +25,20 @@
 
 ## 读到标注去改哪里
 
-- Component Library 的标注 → 改 `content/kits/ios/components/<id>/`。
-- 流程节点带 `data-ios-from="bubble/outgoing"` → 优先改那个组件的源文件。
-- 流程屏的标注 → 只改 `content/previews/<pageId>/<screen>.html`。
+锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
+实例）与 `data-pp-comp`（组件名）。
+
+- 锚点带 `data-pp-comp` → 改 `<页>/components/<Name>.jsx`，所有引用它的帧一起变。
+- 锚点只带 `data-pp-id` → 改该帧的源文件 `<页>/<screenId>.jsx`。
 - `/sites/<entry-id>/` 下做的标注 → 改登记目录里磁盘上的那个文件（服务本身是只读的）。
 
 overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`goToMark` 需要时先切页，
 再经 `src/workbench/lib/board-navigation.js` 聚焦到所属 frame；只有没有 `screenId` 的遗留标注
 才回落到把裸锚点居中。
 
-画布只画**活的锚点**。HTML 改过之后选择器解析不到了，标注仍留在侧栏，标成**锚点失效**
-（不留幽灵 frame）。失效是渲染时算出来的，不是存下来的。
+画布只画**活的锚点**（`close` 不画）。HTML 改过之后选择器解析不到的，标注仍留在侧栏，
+标成**锚点失效**；存有 `lastRect` 的在画布上留一个幽灵框（虚线框 + 序号，点列表行仍跳到
+最后位置）。失效是渲染时算出来的，不是存下来的。
 
 ## 账本与桶
 
@@ -56,31 +63,24 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
 只改 hash 不重新定位，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一条路由上。
 
-桶归属由 client 这样决定：`window.__pinpointEntry` → `<html data-pinpoint-entry>` → `'pinpoint'`；
+桶归属由 client 这样决定：`window.__pinpointEntry` → `'pinpoint'`；
 API 调用打的是脚本被加载的那个 origin。
 
 ## 控制面
 
-在非 workbench 页面（`/sites/`、扩展注入）上浮动工具条默认隐藏——**A** 键切标注模式。
-主入口是**pinpoint 工具栏图标**，它打开标注**侧面板**（Chrome Side Panel，浏览器原生分屏，
-页面保有自己的视口；owner 2026-08-11 的判断：页面内的 `#ann-sidebar` 浮层会压掉页面右侧 280px）。
-面板是一个扩展壳（`extension/sidepanel.html/js`）iframe 着服务托管的 `panel.html`：
-壳向标签页的 content script 要 `pinpoint:page-info`（经 `chrome.scripting` 幂等重注 content script
-来自愈陈旧标签页），把各种死路映射成本地提示（服务没起 / 页面不支持 / 页面 client 过旧 → ⌘R /
-未登记 / workbench 壳页），并把面板命令（`jump`/`edit`/`del`/`mode`）经 content script 那座
-CSP 安全的 DOM `CustomEvent('pinpoint:command')` 桥转给 client。面板页经 annotate API 读账本、
-经 SSE 实时更新；所有写入都留在页面 client 里（面板永远不是第二个写入方）。
+在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。
 
-工具条与侧面板各带一个**「打开 workbench」**入口（2026-09-04）：`/sites/` 页面与扩展注入页
-都在 workbench 之外，之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
-`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；面板的同名链接（`#panel-workbench`）
-走面板自己的 origin（面板页由服务托管）。两处都在 workbench 壳页与被嵌入的 frame 里隐藏——
-那里已经在 workbench 里，同「只留一个控制面」的规矩。
+工具条带一个**“打开 workbench”**入口（2026-09-04）：`/sites/` 页面在 workbench 之外，
+之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
+`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
+frame 里隐藏——那里已经在 workbench 里，同“只留一个控制面”的规矩。
 
-页面内的 `#ann-sidebar` 留给没有扩展的场合（`/sites/` 直开、**S** 键、工具条的「列表」钮）：
-head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
+页面内的 `#ann-sidebar`（**S** 键、工具条的“列表”钮）：
+head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
-凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条「只留一个控制面」的规矩。
+凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条“只留一个控制面”的规矩。
+
+（浏览器扩展与它的 Chrome Side Panel 控制面已于 pp2 切片 3 退役。）
 
 ## workbench 偏好
 
@@ -130,11 +130,11 @@ head 上是「交互 | 标注」分段开关，列出当前账本的标注按 `n
 ## 装载失败与 sidecar 资源
 
 板装载失败（`board.json` 404 / 契约错误）与单屏装载失败走同一个面板（`.wb-screen-err`）：
-三行说明（标题 / 出处 / 原因）+ 固定两个动作「回到 Pages」「重试」。动作只写 data 契约
+三行说明（标题 / 出处 / 原因）+ 固定两个动作“回到 Pages”“重试”。动作只写 data 契约
 （`data-err-home` / `data-err-retry` + `data-err-page` / `data-err-screen`），点击由挂在 stage 上的
-委托监听执行——板每次装载整替换 `innerHTML`，监听不能挂面板自己身上。「回到 Pages」落到
-Component Library 并展开左栏；「重试」失效对应的 `board` / `screen` 查询后原地重装。
-左栏「页面清单读取失败」同样带一个「重试」（`pages.js` 的 `retryPageManifest`）。
+委托监听执行——板每次装载整替换 `innerHTML`，监听不能挂面板自己身上。“回到 Pages”落到
+默认页（第一个可装载的页）并展开左栏；“重试”失效对应的 `board` / `screen` 查询后原地重装。
+左栏“页面清单读取失败”同样带一个“重试”（`pages.js` 的 `retryPageManifest`）。
 
 fragment 里的 **CSS 资源 url 与 JS sidecar 同规则**（2026-09-04）：`<style>` 块里的 `@import` 与
 `<link rel=stylesheet>` 的相对 url，在装配时被 `src/workbench/lib/sidecar-css.js` 改写成
@@ -147,20 +147,12 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 显式写了 `src` 的 sidecar，约定式的 `<screenId>.js`（`data-preview-mount` 隐式探的那条）
 允许缺席、不报。
 
-## 图片导出
+## 导出
 
-图片导出归 workbench（ADR 0015）。单一入口：HUD 的「导出」钮打开导出 picker
-（`src/workbench/app/ExportPicker.jsx`，原生 dialog）——当前页的 proto 树（section 行整选，
-frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` 走 scale 1 + debounce）、
-背景三态（画布 / 白底 / 透明）。输出固定 **PNG 2×**；图注（引用号 + 标题 + dim 行）永远随图走。
-旧的「干净画面 / 带说明」预设、WebP 与 1× 选项、per-frame / per-section 触发器、
-以及「复制 PNG」都已退役。note 自 ADR 0026 起挪进 detail 面板，不进导出——
-重新注入随导出系统重构（见 `BACKLOG.md`）。
-
-选中一个 frame 直接下载 PNG，多个则服务端打包（`POST /api/export-zip`，store-only 写入器
-`src/server/lib/zip-store.js`）。agent 的 CLI 用同一个 Chromium 渲染器：
-`npm run export -- --page <page> --section <section> [--frame <screen>]`。
-不要把截图逻辑加进单个屏的片段里。
+用户面只剩一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
+原生 dialog；ADR 0033）。图片 picker、zip 打包（`/api/export-zip`）、文档导出三模式都在 pp2 切片 3 退役。
+服务端帧图片渲染器（`/api/export-image`、`scripts/export-preview.mjs`）保留给 agent：`ppnt shot`
+与 `ppnt check --mode image` 走它，不再是用户面入口。不要把截图逻辑加进单个屏的片段里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。
 
@@ -170,21 +162,32 @@ frame 任意多选，带 A1 引用号）、实时预览（`/api/export-image` �
 面板默认收起、帧竖排按屏宽适配、单指滚动。没有标注面：它是分享面，不是工作面。运行时在
 `src/client/share-runtime.js`，内联进导出文件，不依赖服务。
 
-## 执行结果与输入框（review-refinements，2026-09-07 起）
+## 标注状态机（pp2，2026-09-22 起）
 
-本轮开发分支的 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
+每条标注带 `status`：`open`（缺省）→ `check` / `done` → `close`。`close` 不删，账本里留着。
+存量 `result` 字段读侧归一成 `done` 并摘掉；显式迁移走 `scripts/migrate-annotation-status.mjs`
+（默认 dry-run，`--apply` 前整根备份），不在启动时自动迁。
 
-`window.pinpoint.recordResults(id, operations, { baseRevision })` 在当前已加载页面校验结果目标并按账本 revision 保存。`id` 是原标注稳定 ID；`operations` 元素含 `action`（add/modify/move/delete）与 `targets`。非删除操作的 target 含 selector、可选 screenId；需在指定 frame 内存在且唯一，不能命中 Pinpoint UI。删除操作 targets 为空。
+转换规则（服务端校验，非法转换 `409 illegal_transition`）：
 
-保存只增加或替换原标注的 `result: { operations, updatedAt }`，不改变原意见、ID、targets。结果目标显示蓝框与同一序号。删除记录显示“已删除”，蓝框不代表用户接受。没有追加评论、验收状态或版本历史。用户可删除原标注后重新标注。
+- 新标注恒为 `open`（客户端声明什么都不算）；
+- owner 编辑正文或目标 → 保存时状态回 `open`（服务端强制，与客户端一致）；
+- `open` / `check` → `check` / `done` 只经
+  `POST /annotations/<page>/<id>/status`——`id` 是稳定 ID 或纯数字的对外序号 `n`，body 带
+  `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
+  revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
+  `404 annotation_not_found`。这是 `ppnt mark` 的后端；
+- `done` → `close`：owner 在侧栏对 done 行点“关闭”——单击，toast 带“撤销”5 秒，不二次确认；
+  撤销即 `close → open`，再编辑也回 `open`。
 
-写入拒绝条件包括旧 revision、未结束的草稿/同步、跨当前页面标注、无目标或目标匹配不唯一。发生拒绝后重新读取当前状态再判断，不使用原请求强行覆盖。原始 /save 协议仍用于兼容客户端；agent 应使用经过 DOM 验证的 recordResults，不绕过它手写 result。
+UI 随状态走：画布钉子 open = 现状、check = 空心灰描边、done = 右上角小勾、close 不画；
+侧栏行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进“已关闭 n”开关组。
+锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
-`clearInvalid()` 仅作用当前页，要求所有原目标和结果目标都无法解析且所属 frame 已加载。隐藏目标仍存在，保留；缺失/加载中的 frame 保留。显式删除的操作记录保留，避免当作意外失效清除。该保守判定不是任意外部 SPA 加载状态的识别器。
+composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
+
+`clearInvalid()` 仅作用当前页，要求所有目标都无法解析且所属 frame 已加载。隐藏目标仍存在，保留；缺失/加载中的 frame 保留。该保守判定不是任意外部 SPA 加载状态的识别器。
 
 页面置顶和归档属于 viewer 偏好，存于 `pinpoint-wb.pagePreferences`，不同浏览器不同步。归档不改 registry、源文件或标注，恢复保留原置顶及文件夹归属。
-
-
-结果框沿用画布几何缓存：内容和布局变化时集中测量，平移只平移结果层，缩放投影缓存坐标。不能在每个平移帧重新遍历结果 selector 或读取目标矩形。
 
 composer 会避让可见的 Pinpoint 面板，而非透明的全屏停靠容器。原生 modal 的 inert 约束通过把 overlay 挂入当前 modal 处理，不能仅靠 z-index；modal 关闭后恢复挂载。图片粘贴、正文中间插入目标和原生弹窗输入均有用户故事 E2E。

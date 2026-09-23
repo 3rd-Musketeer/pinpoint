@@ -19,15 +19,12 @@ export function PageInfo({ page, onClose }) {
     Promise.all([read('/registry'), read('/health')]).then(([registry, health]) => {
       const entry = registry.entries.find(item => item.id === page.id);
       if (page.site && !entry) throw new Error('这个页面已不在登记表中');
-      const components = page.id === 'components';
-      const source = entry ? (entry.path || entry.url) : health.root +
-        (components ? '/content/kits/ios/components' : '/content/previews/' + page.id);
-      const board = components ? '/components/board.json' :
-        (entry ? '/sites/' : '/previews/') + encodeURIComponent(page.id) + '/board.json';
+      const source = entry ? (entry.path || entry.url) : health.root + '/content/previews/' + page.id;
+      const board = (entry ? '/sites/' : '/previews/') + encodeURIComponent(page.id) + '/board.json';
       setInfo({
         source,
         kind: entry ? ({ dir: '本地目录', file: '本地 HTML 文件', url: 'URL 网页' })[entry.kind] :
-          (components ? '内置组件库' : '内置示例'),
+          '内置示例',
         sourceLabel: entry?.kind === 'url' ? '源 URL' : '源路径',
         registeredTitle: entry?.title || page.title,
         board: new URL(board, location.origin).href,
@@ -35,7 +32,7 @@ export function PageInfo({ page, onClose }) {
         mtime: registry.pageTimes?.[page.id]?.mtime || entry?.mtime || page.mtime || null,
         addedAt: entry?.addedAt || null,
         annotatedAt: registry.pageTimes?.[page.id]?.annotatedAt || null,
-        generated: components || entry?.kind === 'url' || entry?.kind === 'file'
+        generated: entry?.kind === 'url' || entry?.kind === 'file'
       });
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); });
     return () => controller.abort();

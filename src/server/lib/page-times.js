@@ -24,7 +24,6 @@ export function annotationPageTimes(dataDir, fallbackPageId) {
 export function collectPageTimes({ entries, root, dataRoot, localIds }) {
   const out = {};
   for (const id of localIds) out[id] = { addedAt: null, mtime: contentMtimeMs({ kind: 'dir', path: path.join(root, 'content/previews', id) }), annotatedAt: null };
-  out.components = { addedAt: null, mtime: contentMtimeMs({ kind: 'dir', path: path.join(root, 'content/kits/ios/components') }), annotatedAt: null };
   for (const entry of entries) if (entry.id !== 'pinpoint') out[entry.id] = { addedAt: entry.addedAt || null, mtime: contentMtimeMs(entry), annotatedAt: null };
   for (const entry of entries) {
     const times = annotationPageTimes(path.join(dataRoot, entry.id), entry.id === 'pinpoint' ? null : entry.id);

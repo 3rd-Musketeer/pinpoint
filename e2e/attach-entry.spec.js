@@ -25,7 +25,8 @@ const FRAME = '#wb-board-panel [data-screen="' + ATTACHED_ID + '"] iframe.wb-doc
 
 function bucketDocs() {
   if (!fs.existsSync(BUCKET)) return [];
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json'));
+  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
+  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
 }
 
 function restoreRegistry() {
@@ -102,14 +103,6 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     await page.locator('#wbann-count').click();
     await expect(page.locator('#wbann-list')).toContainText('attached draft mark');
     await page.locator('#wbann-count').click();
-
-    // 导出：草稿条目行右键菜单开对话框（目标标签 = 目标页 / 条目标题）。
-    await draftRow.click({ button: 'right' });
-    await page.locator('[data-entry-export="' + ATTACHED_ID + '"]').click();
-    const dialog = page.locator('dialog.wb-export-dialog', { hasText: '导出文档' });
-    await expect(dialog).toBeVisible();
-    await expect(dialog.locator('[data-export-target-label]')).toHaveText('e2e-dir / E2E 归属草稿');
-    await dialog.locator('.wb-export-close').click();
 
     // 悬空处理：删掉 attach 条目（恢复固件 + reload），侧栏草稿组消失、不留死行。
     restoreRegistry();

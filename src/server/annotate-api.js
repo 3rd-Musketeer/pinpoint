@@ -4,20 +4,24 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
+import { parseReqUrl } from './lib/req-url.js';
 import { annotationSlug, createAnnotationStore } from './lib/annotation-store.js';
-import { localManifestPageIds } from './lib/page-manifest.js';
+import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
 const ROOT = path.resolve(SRC, '..');
 const SCRIPT = path.join(SRC, 'client', 'annotate.js');
+// pp2 状态机端点：/annotations/<page>/<id|#n>/status
+const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
 const INLINED_LIBS = [
   path.join(SRC, 'shared', 'annotation-indicator.js'),
   path.join(SRC, 'client', 'lib', 'annotate-hit-test.js'),
   path.join(SRC, 'shared', 'annotation-slug.js'),
   path.join(SRC, 'shared', 'annotate-page-key.js'),
   path.join(SRC, 'shared', 'annotate-clip.js'),
+  path.join(SRC, 'workbench', 'lib', 'esc-html.js'),
   path.join(SRC, 'shared', 'annotate-bubble.js'),
   path.join(SRC, 'shared', 'ann-row.js'),
   path.join(SRC, 'shared', 'frame-anchor.js'),
@@ -44,10 +48,11 @@ function readAnnotateJs() {
   if (cachedScript && mtime === cachedMtime) return cachedScript;
   const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
   // Inline SSOT libs into the IIFE so the browser script and the node-tested
-  // libs share one implementation. Strip ESM `export ` keywords; these files
-  // are pure functions + top-level consts. Stylesheets land as JS string
-  // constants (JSON-quoted), referenced by the client's <style> block.
-  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^export /gm, '')).join('\n');
+  // libs share one implementation. Strip ESM `export ` keywords and `import`
+  // lines（被引的库也在名单里、先于引用方内联，作用域共享）；这些文件是纯
+  // 函数 + 顶层常量。Stylesheets land as JS string constants (JSON-quoted),
+  // referenced by the client's <style> block.
+  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^import[^\n]*$\n?/gm, '').replace(/^export /gm, '')).join('\n');
   const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
   const marker = "'use strict';";
   const at = annotateSrc.indexOf(marker);
@@ -200,7 +205,7 @@ export function createAnnotateHandler(options = {}) {
   // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
   // 登记表整份还回去，调用方不必再打一次 GET）。
   function registryPayload() {
-    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds: localManifestPageIds(serviceRoot) });
+    const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds: manifestPageIds(serviceRoot) });
     return {
       pageTimes,
       ok: registry.ok,
@@ -240,7 +245,7 @@ export function createAnnotateHandler(options = {}) {
   // 文件夹写接口认识的 id：registry 条目 + 本地 manifest 页（Component
   // Library 等模板页不在登记表里，但一样能拖进夹）。
   function knownPageIds() {
-    return localManifestPageIds(serviceRoot);
+    return manifestPageIds(serviceRoot);
   }
 
   /**
@@ -305,7 +310,7 @@ export function createAnnotateHandler(options = {}) {
     }
 
     // urlPath has the query stripped by the caller; req.url keeps it.
-    const query = new URL(req.url || '/', 'http://annotate.local').searchParams;
+    const query = parseReqUrl(req).query;
 
     if (req.method === 'GET' && urlPath === '/annotate.js') {
       sendBytes(res, 200, readAnnotateJs(), 'application/javascript');
@@ -375,7 +380,37 @@ export function createAnnotateHandler(options = {}) {
       return true;
     }
 
-    if (req.method !== 'POST' || !['/save', '/image', '/registry/reload'].includes(urlPath)) return false;
+    if (req.method !== 'POST' || !(['/save', '/image', '/registry/reload'].includes(urlPath) || STATUS_ROUTE.test(urlPath))) return false;
+
+    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done（带 note）。
+    if (req.method === 'POST' && STATUS_ROUTE.test(urlPath)) {
+      const parts = urlPath.match(STATUS_ROUTE);
+      let body;
+      try {
+        body = JSON.parse(await readBody(req));
+      } catch {
+        sendJson(res, 400, { error: 'bad_json' });
+        return true;
+      }
+      const entryId = entryOrReject(res, body.entry);
+      if (!entryId) return true;
+      const rawId = decodeURIComponent(parts[2]);
+      const numeric = /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId;
+      const result = storeFor(entryId).setStatus({
+        page: decodeURIComponent(parts[1]),
+        id: numeric,
+        status: body.status,
+        note: typeof body.note === 'string' ? body.note : undefined,
+        baseRevision: body.baseRevision,
+      });
+      if (result.status !== 200) {
+        sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+        return true;
+      }
+      broadcastAnnotations(result.doc, entryId);
+      sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+      return true;
+    }
 
     // Re-read the registry file and swap the shared in-memory snapshot, so a
     // `pinpoint add` takes effect for serving / injection / bucket routing
@@ -423,6 +458,9 @@ export function createAnnotateHandler(options = {}) {
         saved: store.jsonPathFor(result.doc.page),
         count,
         revision: result.doc.revision,
+        // M1：#n 由服务端发，应答把带号的行带回，客户端按 id 认领覆盖本地的
+        // 临时号（nextN 只是显示占位）。
+        annotations: result.doc.annotations,
       });
       return true;
     }
@@ -461,7 +499,7 @@ export default function annotateApi(options = {}) {
       httpServer = server.httpServer;
       viteServer = server;
       server.middlewares.use(async (req, res, next) => {
-        const urlPath = (req.url || '').split('?')[0];
+        const urlPath = parseReqUrl(req).pathname;
         if (await handleAnnotate(req, res, urlPath)) return;
         next();
       });
