@@ -21,11 +21,11 @@
 - accent = 钢灰蓝 `#5b7fa6`：可交互 / 当前 / 系统标注语义；全页唯一实心 on 态（现在是横条上的“标注”段）。chrome 与 iOS kit 内容分色，内容侧 `#007aff` 不变。（ADR 0010 → 0011）
 - 语义红 `#b84230` 只给失效 / 过期 / 危险确认。琥珀 `#f5a623` 只标“正在圈选”（hover ghost / target / lasso）；它不再当标注序号色，序号钉是 accent（ADR 0031）。
 - 发丝线 / 浅面 / muted 由 accent color-mix 派生，不另立色相。
-- 单 light 主题，不做 dark。chrome 暗色显式缓期：整套 `--wb-*` 要翻倍、玻璃材质要在暗底上重调，启动信号是 owner 在暗色环境里觉得刺眼（ADR 0031）。
+- 亮暗两套，跟随系统 `prefers-color-scheme`，没有应用内开关（2026-09-23 启动：owner 在暗色系统下看到输入框白底、文字看不见；ADR 0031 缓期的启动信号到了）。暗色值写在 `scripts/build-wb-tokens.mjs` 的 `@media` 段，中性色锚 Radix slateDark；注入端 `src/client/annotate.js` 在 `[data-ann-ui]` 上钉同款值，两边同改。accent 与状态色不换。色块上的字用 `--wb-on-accent`，不用 `--wb-surface`（暗色下 surface 是深灰）。帧内容（iOS 屏、文档纸面）是被评审的内容，不跟随。
 
 ## 材质
 
-- 全场只有一种材质：F2 磨砂玻璃。配方 = `--wb-glass` 白 88%（`rgba(255,255,255,.88)`）+ `--wb-glass-blur`（`blur(20px) saturate(1.2)`）+ 0.5px 上缘内高光 + `--wb-sh-3` + 圆角 `--wb-r-glass` 14。CSS 类是 `.wb-glass`（`index.html`），token 在 `src/workbench/wb-tokens.css`。
+- 全场只有一种材质：F2 磨砂玻璃。配方 = `--wb-glass` 白 88%（`rgba(255,255,255,.88)`；暗色为 `rgba(33,34,37,.88)`）+ `--wb-glass-blur`（`blur(20px) saturate(1.2)`）+ 0.5px 上缘内高光 + `--wb-sh-3` + 圆角 `--wb-r-glass` 14。CSS 类是 `.wb-glass`（`index.html`），token 在 `src/workbench/wb-tokens.css`。
 - **常驻浮起的表面一律用 F2**：左栏面板、底部横条、右下按需卡、注入端的 `#ann-sidebar` 与工具条。注入端读不到 workbench 的 `--wb-*`，所以那份配方在 `src/client/annotate.js` 里是字面量；两端不许分家，对账靠 `e2e/dir-entry.spec.js` 的计算样式用例。
 - 玻璃做的是材质感，不是真透视。更透的两档（白 62% / 白 38%）在评审时否掉：正文压在深色内容上读不清，一块常驻面板也不该有那种透视强度（ADR 0031）。要更透就是错的方向，不要试。
 - ADR 0008 反模式清单里的“毛玻璃”一条已被 ADR 0031 取代，其余反模式（做旧质感、假材质、装饰性描边）不变。
