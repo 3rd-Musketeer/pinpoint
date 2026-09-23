@@ -324,13 +324,13 @@ export function AnnPopover() {
               <button key={f} type="button" data-ann-filter={f} aria-pressed={statusFilter === f}
                 onClick={function () { onFilterPick(f); }}
                 className={cn(
-                  'min-w-0 flex-1 truncate rounded-[4px] px-1 py-[3px] text-[10.5px] font-semibold leading-none tabular-nums transition-colors duration-150',
+                  'flex-auto cursor-pointer whitespace-nowrap rounded-[4px] border-0 bg-transparent px-[5px] py-[4px] text-[10.5px] font-semibold leading-none tabular-nums transition-colors duration-150',
                   statusFilter === f
                     ? 'bg-[var(--wb-surface)] text-[var(--wb-fg)] shadow-[var(--wb-sh-1)]'
                     : 'text-muted-foreground hover:text-foreground',
                   !counts[f] && 'opacity-45'
                 )}>
-                {annStatusLabel(f) + ' ' + counts[f]}
+                {annStatusLabel(f)}<span className="ml-[3px] font-normal opacity-70">{counts[f]}</span>
               </button>
             );
           })}
