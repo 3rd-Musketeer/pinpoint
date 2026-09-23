@@ -1,4 +1,3 @@
-import { changedAnnotationPages } from './page-times.js';
 import fs from 'node:fs';
 import path from 'node:path';
 
@@ -15,6 +14,20 @@ export { annotationSlug };
 
 export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
 
+/** 画布账本的固定名（storage-unify）：一页的画布 + mention 帧标注住
+ *  `<pageId>/@canvas.json`。`@` 不在 annotationSlug 的保字符集里，所以这个
+ * 名字走专用通道（ledgerKey），绝不过 slug —— 过了会变成 `_canvas.json`，
+ * 客户端（PAGE='@canvas'）与服务端各写一个文件。 */
+export const CANVAS_LEDGER = '@canvas';
+
+/** 原始 page 串 → 账本 doc key：画布账本原样保留，其余走 annotationSlug。
+ * 路由层（GET /annotations/<page>）与 store 内部必须同用这一条，否则
+ * '@canvas' 会在路由处被 slug 成 '_canvas' 而读不到文件。 */
+export function ledgerKey(raw) {
+  const s = String(raw ?? '');
+  return s === CANVAS_LEDGER ? CANVAS_LEDGER : annotationSlug(s);
+}
+
 /** targets 的稳定指纹（编辑目标判定用：选择器集合变了才算改了目标）。 */
 function targetsFingerprint(annotation) {
   const list = Array.isArray(annotation && annotation.targets) && annotation.targets.length
@@ -29,7 +42,7 @@ export function createAnnotationStore(options) {
   let tempSequence = 0;
 
   function jsonPathFor(page) {
-    return path.join(dataDir, `${annotationSlug(page)}.json`);
+    return path.join(dataDir, `${ledgerKey(page)}.json`);
   }
 
   // `_seq.json`（{ next }）：标注对外序号 #n 的按桶单调计数器，跨账本唯一、永不复用。
@@ -89,7 +102,7 @@ export function createAnnotationStore(options) {
   }
 
   function emptyDoc(page) {
-    const slug = annotationSlug(page);
+    const slug = ledgerKey(page);
     return {
       page: slug,
       path: '',
@@ -114,7 +127,7 @@ export function createAnnotationStore(options) {
   }
 
   function readDoc(page) {
-    const safePage = annotationSlug(page);
+    const safePage = ledgerKey(page);
     const file = jsonPathFor(safePage);
     if (!fs.existsSync(file)) return emptyDoc(safePage);
     try {
@@ -131,6 +144,8 @@ export function createAnnotationStore(options) {
           path: normalized.path,
           updated_at: normalized.updated_at,
           revision,
+          // 补号回写同样透传存量映射（见 save 的说明）。
+          page_updated_at: raw.page_updated_at,
           annotations: numbered.annotations,
         });
       }
@@ -146,7 +161,7 @@ export function createAnnotationStore(options) {
   }
 
   function writeDoc(page, doc) {
-    const safePage = annotationSlug(page);
+    const safePage = ledgerKey(page);
     fs.mkdirSync(dataDir, { recursive: true });
     const annotations = (Array.isArray(doc.annotations) ? doc.annotations : [])
       .map(normalizeAnnotation);
@@ -187,7 +202,7 @@ export function createAnnotationStore(options) {
   }
 
   function collectUnusedImages(page, annotations) {
-    const safePage = annotationSlug(page);
+    const safePage = ledgerKey(page);
     const imagesDir = path.join(dataDir, 'images');
     if (!fs.existsSync(imagesDir)) return;
     const keep = referencedImages(annotations);
@@ -199,7 +214,7 @@ export function createAnnotationStore(options) {
   }
 
   function save(input) {
-    const safePage = annotationSlug(input.page ?? 'index');
+    const safePage = ledgerKey(input.page ?? 'index');
     if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
       return { status: 400, error: 'invalid_base_revision', doc: readDoc(safePage) };
     }
@@ -236,15 +251,11 @@ export function createAnnotationStore(options) {
       }
       annotations.push(a);
     }
-    const pageTimes = { ...(disk.page_updated_at || {}) };
-    if (!disk.page_updated_at) {
-      const ids = [...new Set(disk.annotations.map(a => a.pageId || options.pageId).filter(Boolean))];
-      const previousAt = Date.parse(disk.updated_at);
-      if (ids.length === 1 && Number.isFinite(previousAt)) pageTimes[ids[0]] = previousAt;
-    }
-    for (const id of changedAnnotationPages(disk.annotations, annotations, options.pageId)) pageTimes[id] = now().getTime();
+    // page_updated_at（逐页时间映射）停写（storage-unify）：桶 = 页之后这本账本
+    // 整体就属于这一个页，读侧直接取 updated_at；存量映射原样透传 —— 读侧兼容
+    // 旧账本（page-times 还认它），但不再新增条目。
     const doc = writeDoc(safePage, {
-      page_updated_at: pageTimes,
+      page_updated_at: disk.page_updated_at,
       path: input.path || disk.path || '',
       updated_at: input.updated_at || now().toISOString(),
       revision: disk.revision + 1,
@@ -256,7 +267,7 @@ export function createAnnotationStore(options) {
 
   /** ppnt mark 的后端：open / check → check / done（带一行 note）。 */
   function setStatus(input) {
-    const safePage = annotationSlug(input.page ?? 'index');
+    const safePage = ledgerKey(input.page ?? 'index');
     if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
       return { status: 400, error: 'invalid_base_revision', doc: readDoc(safePage) };
     }
@@ -284,6 +295,8 @@ export function createAnnotationStore(options) {
       path: disk.path || '',
       updated_at: now().toISOString(),
       revision: disk.revision + 1,
+      // 状态写入也透传存量映射（见 save 的说明）。
+      page_updated_at: disk.page_updated_at,
       annotations,
     });
     return { status: 200, doc, annotation: annotations[index] };
@@ -311,11 +324,13 @@ export function createAnnotationStore(options) {
   }
 
   function imagePath(name) {
-    return path.join(dataDir, 'images', annotationSlug(name));
+    // 只取 basename 防穿越，不再 slug：图片名的前缀是账本 key（可能是 '@canvas'），
+    // slug 会把 '@' 折成 '_' 而 404。
+    return path.join(dataDir, 'images', path.basename(String(name)));
   }
 
   function writeImage(page, extension, bytes) {
-    const safePage = annotationSlug(page);
+    const safePage = ledgerKey(page);
     const imagesDir = path.join(dataDir, 'images');
     fs.mkdirSync(imagesDir, { recursive: true });
     const name = `${safePage}-${now().getTime()}-${++tempSequence}.${extension}`;

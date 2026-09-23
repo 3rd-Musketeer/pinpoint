@@ -42,6 +42,31 @@ test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown i
   assert.deepEqual(resolveRequestEntry(registry, ''), { entry: 'pinpoint' });
   assert.deepEqual(resolveRequestEntry(registry, 'web'), { entry: 'web' });
   assert.deepEqual(resolveRequestEntry(registry, 'ghost'), { entry: 'ghost', unknown: true });
+  // 桶 = 页：manifest 模板页不在 registry 里，也是合法页桶。
+  assert.deepEqual(resolveRequestEntry(registry, 'tpl-page', ['tpl-page']), { entry: 'tpl-page' });
+  assert.deepEqual(resolveRequestEntry(registry, 'ghost', ['tpl-page']), { entry: 'ghost', unknown: true });
+});
+
+test('manifest pages are valid buckets: /save and /annotations/@canvas round-trip', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-page-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dataRoot = path.join(dir, 'data');
+  const registryFile = path.join(dir, 'registry.json');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'pinpoint', kind: 'dir', path: dir }] }));
+  fs.mkdirSync(path.join(dir, 'content', 'previews'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'content', 'previews', '_index.json'), JSON.stringify({ pages: [{ id: 'tpl-page' }] }));
+  const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
+  const handler = createAnnotateHandler({ dataRoot, registry, root: dir });
+
+  const saved = await call(handler, 'POST', '/save', {
+    page: '@canvas', entry: 'tpl-page', path: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布' }],
+  });
+  assert.equal(saved.res.statusCode, 200);
+  assert.equal(saved.json.saved, path.join(dataRoot, 'tpl-page', '@canvas.json'));
+  const read = await call(handler, 'GET', '/annotations/@canvas?entry=tpl-page');
+  assert.equal(read.res.statusCode, 200);
+  assert.equal(read.json.page, '@canvas');
+  assert.deepEqual(read.json.annotations.map((row) => row.content), ['画布']);
 });
 
 test('/save without entry lands in the pinpoint bucket', async (t) => {
