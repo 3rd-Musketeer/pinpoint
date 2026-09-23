@@ -17,7 +17,9 @@
  *   - 挂靠条目（entry.page）自己的桶整桶并进宿主页的桶。
  *   - 迁入目标已有账本就合并：按 id 去重，同 id 不同内容报冲突、保留目标行。
  *   - 桶内重号（合并后 #n 撞车）：后到的行重新取号，打印 `旧号 → 新号` 对照表。
- *   - 被行引用的 images/ 文件跟着行搬；每个桶重算 `_seq.json` = 桶内 max(n)+1。
+ *   - 被行引用的 images/ 文件跟着行搬，账本名变了图片跟着改名（前缀 = 新账本
+ *     key，collectUnusedImages 与 prune 的按前缀回收才找得到）；每个桶重算
+ *     `_seq.json` = 桶内 max(n)+1。
  *
  * 用法：node scripts/migrate-ledgers.mjs [--apply]
  *
@@ -220,14 +222,45 @@ function planStorageUnify(model, pageIndexValue, report) {
     return bucket.ledgers.get(ledger);
   };
 
-  const movedImages = []; // { from, to, name }
+  const movedImages = []; // { from, to, name, renamedTo? }
+  const imageNames = new Map(); // 桶 → 已占图片名（含规划期新分配的）
+  const allocatedRenames = new Map(); // from/to/name → 改后的名（同源图多行引用共用）
+  const takenImageNames = (bucket) => {
+    if (!imageNames.has(bucket)) imageNames.set(bucket, new Set(buckets.get(bucket) ? buckets.get(bucket).images : []));
+    return imageNames.get(bucket);
+  };
   /** 每页迁入行数（G4：只列页名看不出哪页收了多少）。 */
   const noteMove = (page, rows) => {
     report.moved.set(page, (report.moved.get(page) || 0) + rows);
     report.movedRows += rows;
   };
-  const noteImage = (row, fromBucket, toBucket) => {
-    for (const name of rowImages(row)) movedImages.push({ from: fromBucket, to: toBucket, name });
+  /** 规划一张图片的搬运。ledgerKey = 目标账本 key：图片名前缀（= 老账本 key）
+      与它对不上时改成名 `<key>-<原名>`（G5）——collectUnusedImages 与 prune
+      都按「账本 key-」前缀回收图片，按原名搬进新桶的图永远收不回。 */
+  const planImage = (from, to, name, ledgerKey) => {
+    if (!ledgerKey || name.startsWith(`${ledgerKey}-`)) {
+      movedImages.push({ from, to, name });
+      return name;
+    }
+    const dedupeKey = `${from}\u0000${to}\u0000${name}`;
+    let toName = allocatedRenames.get(dedupeKey);
+    if (!toName) {
+      const taken = takenImageNames(to);
+      toName = `${ledgerKey}-${name}`;
+      for (let i = 1; taken.has(toName); i += 1) toName = `${ledgerKey}-${i}-${name}`;
+      taken.add(toName);
+      allocatedRenames.set(dedupeKey, toName);
+    }
+    movedImages.push({ from, to, name, renamedTo: toName });
+    return toName;
+  };
+  const noteImage = (row, fromBucket, toBucket, ledgerKey) => {
+    for (const image of (row && Array.isArray(row.images) && row.images) || []) {
+      if (!image || typeof image.file !== 'string') continue;
+      const name = path.basename(image.file);
+      const toName = planImage(fromBucket, toBucket, name, ledgerKey);
+      if (toName !== name) image.file = image.file.slice(0, image.file.length - name.length) + toName;
+    }
   };
 
   /** 去重合并：同 id 保留目标行、内容不同报冲突；重号重新取号。
@@ -303,7 +336,7 @@ function planStorageUnify(model, pageIndexValue, report) {
           touched = true;
           noteMove(target.page, 1);
           targetDoc.updated_at = laterOf(targetDoc.updated_at, doc.updated_at);
-          noteImage(row, 'pinpoint', target.page);
+          noteImage(row, 'pinpoint', target.page, target.ledger.replace(/\.json$/, ''));
         }
       }
       const allStay = rows.length > 0 && stay.length === rows.length;
@@ -336,7 +369,7 @@ function planStorageUnify(model, pageIndexValue, report) {
         if (!buckets.has(targetPage)) buckets.set(targetPage, { ledgers: new Map(), images: [] });
         return buckets.get(targetPage);
       })();
-      for (const name of bucket.images) movedImages.push({ from: bucketName, to: targetPage, name });
+      for (const name of bucket.images) planImage(bucketName, targetPage, name, null); // 整桶随走，名字不动
       for (const [name, doc] of bucket.ledgers) {
         const target = targetBucket.ledgers.get(name);
         if (!target) {
@@ -467,7 +500,7 @@ for (const line of report.splitLedgers) console.log(`  拆分：${line}（部分
 for (const line of report.removedLedgers) console.log(`  删除：${line}（行全部迁出）`);
 for (const renumber of report.renumbers) console.log(`  重号：${renumber.page}/${renumber.ledger} #${renumber.from} → #${renumber.to}`);
 for (const line of report.conflicts) console.log(`  冲突：${line}`);
-for (const move of report.imageMoves) console.log(`  图片：${move.from}/images/${move.name} → ${move.to}/images/${move.name}`);
+for (const move of report.imageMoves) console.log(`  图片：${move.from}/images/${move.name} → ${move.to}/images/${move.renamedTo || move.name}`);
 for (const line of report.seqWrites) console.log(`  _seq：${line}`);
 for (const line of report.orphans) console.log(`  孤儿（留在原处）：${line}`);
 
@@ -502,7 +535,7 @@ function writeLedger(bucketName, name, doc) {
 // 图片先搬（挂靠桶随后要整目录删除，晚了源头就没了）。
 for (const move of report.imageMoves) {
   const from = path.join(root, move.from, 'images', move.name);
-  const to = path.join(root, move.to, 'images', move.name);
+  const to = path.join(root, move.to, 'images', move.renamedTo || move.name);
   if (!fs.existsSync(from) || fs.existsSync(to)) continue;
   fs.mkdirSync(path.dirname(to), { recursive: true });
   fs.copyFileSync(from, to);

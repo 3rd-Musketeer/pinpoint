@@ -204,8 +204,29 @@ test('storage-unify：挂靠桶并入宿主无撞号不改号（G2）', async (t
   assert.deepEqual(afterCanvas.annotations.map((r) => r.n), [9, 5], '宿主桶原有号原样');
 });
 
-/* ---- K1：/previews/ 表面已不存在的账本（真实数据形状）→ 孤儿、原地不动 ---- */
-/** 真实 ~/.pinpoint 的 pinpoint 桶形状：wr-w29 / wr-w30 归到模板页 weekly-review、
+test('storage-unify：跟行走的数据图按新账本 key 改名，行引用同步改（G5）', async (t) => {
+  const dir = seedUnify(t);
+  // pinpoint 的画布行带图（名字前缀 = pinpoint 桶里的老账本 key）：迁进 site
+  // 的 @canvas 后按 @canvas- 前缀改名，collectUnusedImages / prune 才回收得到。
+  const ledger = JSON.parse(fs.readFileSync(path.join(dir, 'pinpoint', 'index~1.json'), 'utf8'));
+  const row = ledger.annotations.find((r) => r.id === 'r2');
+  row.images = [{ file: 'index~1-2-1.png' }];
+  // 同一账本里两行引用同一张源图：只搬一份、共用一个新名。
+  ledger.annotations.push({ ...row, id: 'r2b', n: 7 });
+  fs.writeFileSync(path.join(dir, 'pinpoint', 'index~1.json'), JSON.stringify(ledger));
+  fs.writeFileSync(path.join(dir, 'pinpoint', 'images', 'index~1-2-1.png'), 'pin-img');
+
+  const out = await run(dir, '--apply');
+  assert.match(out.stdout, /图片：pinpoint\/images\/index~1-2-1\.png → site\/images\/@canvas-index~1-2-1\.png/);
+  const doc = JSON.parse(fs.readFileSync(path.join(dir, 'site', '@canvas.json'), 'utf8'));
+  for (const id of ['r2', 'r2b']) {
+    const moved = doc.annotations.find((r) => r.id === id);
+    assert.equal(moved.images[0].file, '@canvas-index~1-2-1.png', `${id} 的引用跟着改名`);
+  }
+  assert.equal(fs.readdirSync(path.join(dir, 'site', 'images')).filter((n) => n.includes('index~1')).length, 1, '同源图只搬一份');
+});
+
+/* ---- K1：/previews/ 表面已不存在的账本（真实数据形状）→ 孤儿、原地不动 ---- *//** 真实 ~/.pinpoint 的 pinpoint 桶形状：wr-w29 / wr-w30 归到模板页 weekly-review、
     sheet 归到 sheet-rev，两页都不存在（registry 只有 weekly-review 这个 dir 条目，
     它的表面是 /sites/weekly-review/，与 /previews/ 无关；manifest 不含这些页）。 */
 function seedGonePreviews(t, previewsRoot) {
