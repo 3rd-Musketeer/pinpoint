@@ -9,9 +9,11 @@
  * Scope indicators mean “all annotations under this locator”.
  * @a means one annotation.
  *
- * pp2 标注状态机（2026-09-22）：open → check / done → close；close 可撤销回 open。
- * 写状态的只有两条路：工作台编辑 / 单击（走 /save 整写）与 ppnt mark（走
- * /api/annotations/:page/:id/status）——两条路各有自己的合法转换表。
+ * pp2 标注状态机（2026-09-22 立，2026-09-23 放开 owner 直接关闭）：升档走
+ * open → check / done（agent，mark 端点）；owner 完成单击可从 open / check / done
+ * 任一态入 close，close 可撤销回关闭前的原态。写状态的只有两条路：工作台编辑 /
+ * 单击（走 /save 整写）与 ppnt mark（走 /api/annotations/:page/:id/status）——
+ * 两条路各有自己的合法转换表。
  */
 
 /** 四态。缺省 open；存量 result 字段读时归一成 done（显式迁移脚本之外的读侧自愈）。 */
@@ -23,13 +25,15 @@ export function normalizeStatus(value, raw) {
   return 'open';
 }
 
-/** /save 整写的合法转换：编辑或撤销 close → open、done → close（工作台单击）、恒等。
- * 无编辑的 →open 不放行（review R14）：客户端不会发，但直写 /save 的 agent 可以
- * 静默把 check / done 降回 open —— 编辑强制回 open 由 save 在判「变」后另行赋值。 */
+/** /save 整写的合法转换：owner 完成（open / check / done → close，工作台单击）、
+ * close 撤销 / 重新打开（→ open / check / done）、恒等。升档（→ check / done）
+ * 与无编辑的 →open 仍不放行（review R14）：前者只经 mark 端点，后者防止直写
+ * /save 的 agent 静默把 check / done 降回 open —— 编辑强制回 open 由 save 在
+ * 判「变」后另行赋值。 */
 export function isLegalTransition(from, to) {
   if (from === to) return true;
-  if (to === 'open') return from === 'close';
-  return from === 'done' && to === 'close';
+  if (from === 'close') return to !== 'close';
+  return to === 'close';
 }
 
 /** mark 端点的合法转换：open / check → check / done。 */

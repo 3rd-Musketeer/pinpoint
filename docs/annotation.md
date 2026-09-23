@@ -180,7 +180,8 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 ## 标注状态机（pp2，2026-09-22 起）
 
-每条标注带 `status`：`open`（缺省）→ `check` / `done` → `close`。`close` 不删，账本里留着。
+每条标注带 `status`：`open`（缺省）→ `check` / `done`（升档）→ `close`。owner 完成单击可从
+`open` / `check` / `done` 任一态直接入 `close`。`close` 不删，账本里留着。
 存量 `result` 字段读侧归一成 `done` 并摘掉；显式迁移走 `scripts/migrate-annotation-status.mjs`
 （默认 dry-run，`--apply` 前整根备份），不在启动时自动迁。
 
@@ -193,11 +194,13 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
   `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
   revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
   `404 annotation_not_found`。这是 `ppnt mark` 的后端；
-- `done` → `close`：owner 在侧栏对 done 行点“关闭”——单击，toast 带“撤销”5 秒，不二次确认；
-  撤销即 `close → open`，再编辑也回 `open`。
+- `open` / `check` / `done` → `close`：owner 在工作台列表对行点“完成”——单击，toast 带
+  “撤销”5 秒，不二次确认；撤销回关闭前的原态（`close → open` / `check` / `done`），
+  再编辑也回 `open`。
 
 UI 随状态走：画布钉子 open = 现状、check = 空心灰描边、done = 右上角小勾、close 不画；
-侧栏行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进“已关闭 n”开关组。
+列表行出 `#n` 序号与 check / done 灰标，行 hover 出 `note`；close 行收进“已关闭 n”开关组
+（N = 0 时开关也常驻，不可展开）。
 锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
