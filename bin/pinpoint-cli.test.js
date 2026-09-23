@@ -28,6 +28,7 @@ import {
   pickRoute,
   planAdd,
   planFolder,
+  planRemove,
   planRenderOutput,
   portlessRoutesPath,
   requestJson,
@@ -41,6 +42,7 @@ import {
   runMove,
   runRename,
   runRender,
+  runRemove,
   runStatus,
   runStop,
   serviceLogPath,
@@ -78,7 +80,7 @@ test('parseArgs: happy path with spaced and =inline flags', () => {
 
 test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs([]), /缺少命令/);
-  assert.throws(() => parseArgs(['remove', '/x']), /未知命令/);
+  assert.throws(() => parseArgs(['destroy', '/x']), /未知命令/);
   assert.throws(() => parseArgs(['status', 'extra']), /不接受位置参数/);
   assert.throws(() => parseArgs(['status', '--title', 'T']), /不适用于 status/);
   assert.throws(() => parseArgs(['move', 'x']), /move 需要两个参数/);
@@ -767,6 +769,129 @@ test('runRename: 预检不过就一个字节都不动（新桶已存在 / 目录
   const usage = recorder();
   assert.equal(await runRename(['rename', 'old'], { ...usage.io, cwd: dir, env, requestFn }), 1);
   assert.ok(usage.err.some((line) => /^用法：/.test(line)));
+});
+
+/* ---- remove ---- */
+
+test('parseArgs: remove 需要恰一个条目 id，只收 --registry', () => {
+  assert.deepEqual(parseArgs(['remove', 'app', '--registry', '/r.json']), {
+    command: 'remove', id: 'app', flags: { registry: '/r.json' },
+  });
+  assert.throws(() => parseArgs(['remove']), /remove 需要一个条目 id/);
+  assert.throws(() => parseArgs(['remove', 'a', 'b']), /只接受一个条目 id/);
+  assert.throws(() => parseArgs(['remove', 'a', '--draft']), /不适用于 remove/);
+});
+
+test('runRemove: 正常删——登记行消失、其余原位、源文件不动、reload 服务', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'app', kind: 'dir', path: site, board: 'ios' },
+    { id: 'keep', kind: 'url', url: 'https://keep.localhost/' },
+  ]);
+  const rec = recorder();
+  const calls = [];
+  const requestFn = (url, options = {}) => {
+    calls.push(`${options.method || 'GET'} ${url}`);
+    if (url.endsWith('/health')) return Promise.resolve({ status: 200, json: { ok: true } });
+    return Promise.resolve({ status: 200, json: { ok: true, path: file, entries: 2 } });
+  };
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  const code = await runRemove(['remove', 'app', '--registry', file], { ...rec.io, cwd: dir, env, requestFn });
+  assert.equal(code, 0);
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  assert.deepEqual(doc.entries.map((e) => e.id), ['pinpoint', 'keep'], '只少了被删的那条，位置不变');
+  assert.ok(fs.existsSync(path.join(site, 'index.html')), '源文件不动');
+  assert.deepEqual(calls, ['GET https://pinpoint.localhost/health', 'POST https://pinpoint.localhost/registry/reload']);
+  assert.ok(rec.out.some((line) => /已从登记表删除 app/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => /服务已重载/.test(line)));
+});
+
+test('runRemove: id 不存在退非零，registry 不动，并列出现有条目', async (t) => {
+  const dir = withTempDir(t);
+  const file = registryWith(dir, [{ id: 'app', kind: 'dir', path: dir }]);
+  const before = fs.readFileSync(file, 'utf8');
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  assert.equal(await runRemove(['remove', 'ghost', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.ok(rec.err.some((line) => /条目不存在：ghost（现有：app）/.test(line)), rec.err.join('\n'));
+  assert.ok(!rec.err.some((line) => /^用法：/.test(line)), '目标不成立不刷 usage，答案在错误行里');
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+});
+
+test('runRemove: 有条目挂靠时拒绝，并点名挂靠条目', async (t) => {
+  const dir = withTempDir(t);
+  const file = registryWith(dir, [
+    { id: 'app', kind: 'dir', path: dir },
+    { id: 'note', kind: 'file', path: '/n.html', page: 'app' },
+    { id: 'memo', kind: 'file', path: '/m.html', page: 'app' },
+    { id: 'other', kind: 'file', path: '/o.html', page: 'elsewhere' },
+  ]);
+  const before = fs.readFileSync(file, 'utf8');
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  assert.equal(await runRemove(['remove', 'app', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.ok(rec.err.some((line) => /还被 2 条挂靠（note、memo/.test(line) && /remove 掉/.test(line)), rec.err.join('\n'));
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+});
+
+test('runRemove: 桶里有标注行就拒绝（@canvas 算数，空账本不算），registry 与桶都不动', async (t) => {
+  const dir = withTempDir(t);
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'app');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 1,
+    annotations: [{ id: 'c1', n: 1, status: 'open', content: '帧意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
+    page: 'doc~1', path: '/sites/app/doc.html', revision: 1, annotations: [],
+  }));
+  fs.writeFileSync(path.join(bucket, '_seq.json'), '3');
+  const file = registryWith(dir, [{ id: 'app', kind: 'dir', path: dir }]);
+  const before = fs.readFileSync(file, 'utf8');
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: dataRoot };
+  assert.equal(await runRemove(['remove', 'app', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.ok(rec.err.some((line) => /还有 1 行标注/.test(line) && /pinpoint prune app/.test(line)), rec.err.join('\n'));
+  assert.ok(fs.existsSync(path.join(bucket, '@canvas.json')), '桶不动');
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
+});
+
+test('runRemove: 空桶（空账本 + _seq.json）顺手删掉；没有桶就只删登记', async (t) => {
+  const dir = withTempDir(t);
+  const site = makeSite(dir, 'site');
+  const dataRoot = path.join(dir, 'data');
+  const bucket = path.join(dataRoot, 'empty');
+  fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 4, annotations: [],
+  }));
+  fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
+    page: 'doc~1', path: '/sites/empty/doc.html', revision: 2, annotations: [],
+  }));
+  fs.writeFileSync(path.join(bucket, '_seq.json'), '7');
+  fs.writeFileSync(path.join(bucket, 'images', 'doc~1-1-1.png'), 'leftover');
+  const file = registryWith(dir, [
+    { id: 'empty', kind: 'dir', path: site },
+    { id: 'nobucket', kind: 'dir', path: site },
+  ]);
+  const rec = recorder();
+  const requestFn = () => Promise.reject(new Error('down'));
+  const env = { PINPOINT_DATA_DIR: dataRoot };
+  assert.equal(await runRemove(['remove', 'empty', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 0);
+  assert.ok(!fs.existsSync(bucket), '空桶连遗留图片一起删');
+  assert.ok(fs.existsSync(path.join(site, 'index.html')), '源文件不动');
+  assert.ok(rec.out.some((line) => /没有标注行，已顺手删掉/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.err.some((line) => /服务未在跑/.test(line)), '服务不在跑也照删，下次启动生效');
+
+  assert.equal(await runRemove(['remove', 'nobucket', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 0);
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries, [], '两条删完后登记表为空');
+  assert.ok(rec.out.some((line) => /不存在，没有桶要清/.test(line)), rec.out.join('\n'));
 });
 
 /* ---- folder（分组层） ---- */
