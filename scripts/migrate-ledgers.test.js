@@ -8,10 +8,16 @@ import { promisify } from 'node:util';
 
 const execFileP = promisify(execFile);
 const SCRIPT = new URL('./migrate-ledgers.mjs', import.meta.url).pathname;
-const BACKUP_DIR = `${new Date().toISOString().slice(0, 10)}-storage-unify`;
 
 async function run(dir, ...args) {
   return execFileP('node', [SCRIPT, ...args], { env: { ...process.env, PINPOINT_DATA_DIR: dir } });
+}
+
+/** migrations/ 下唯一的备份目录名（目录带时分秒，G6）。 */
+function backupDirOf(dir) {
+  const entries = fs.readdirSync(path.join(dir, 'migrations'));
+  assert.equal(entries.length, 1, `恰一个备份目录，实际：${entries.join('、')}`);
+  return entries[0];
 }
 
 /** 旧形态账本：result / marks / comment / group / groupLabel / [@m:] 全占齐。 */
@@ -50,7 +56,7 @@ test('migrate-ledgers：dry-run 不写盘；--apply 备份后全形态迁净', a
   ]);
   // registry.json 不是账本，原样保留；备份完整。
   assert.equal(fs.readFileSync(path.join(dir, 'registry.json'), 'utf8'), '{"version":1,"entries":[]}');
-  assert.ok(fs.existsSync(path.join(dir, 'migrations', BACKUP_DIR, 'bucket-a', 'index.html.json')));
+  assert.ok(fs.existsSync(path.join(dir, 'migrations', backupDirOf(dir), 'bucket-a', 'index.html.json')));
 
   // 幂等：再跑一遍没有可迁的。
   const again = await run(dir);
@@ -183,6 +189,22 @@ test('storage-unify：--apply 落盘后形状正确，第二遍 0 变更', async
   await run(dir, '--apply');
   const hostCanvas2 = JSON.parse(fs.readFileSync(path.join(dir, 'host', '@canvas.json'), 'utf8'));
   assert.deepEqual(hostCanvas2, hostCanvas, '第二遍 --apply 后字节级不变');
+});
+
+test('storage-unify：备份目录带时分秒，已存在就拒绝（G6）', async (t) => {
+  const dir = seedLedger(t);
+  await run(dir, '--apply');
+  assert.match(backupDirOf(dir), /-\d{2}-\d{2}-\d{2}-storage-unify$/, '目录名含时分秒');
+
+  // 再来一遍有活干的迁移：备份目录已存在（同名即拒）→ 退 1，不动盘。
+  fs.mkdirSync(path.join(dir, 'migrations', `${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}-storage-unify`), { recursive: true });
+  const ledger = path.join(dir, 'bucket-a', 'index.html.json');
+  fs.writeFileSync(ledger, JSON.stringify({
+    page: 'index.html', path: '/index.html', revision: 9,
+    marks: [{ id: 'z1', n: 1, comment: '新形态前的行' }],
+  }));
+  await assert.rejects(() => run(dir, '--apply'), /备份目录已存在/, '同名备份目录在，拒绝执行');
+  assert.match(fs.readFileSync(ledger, 'utf8'), /"marks"/, '拒绝后盘未动');
 });
 
 test('storage-unify：挂靠桶并入宿主无撞号不改号（G2）', async (t) => {

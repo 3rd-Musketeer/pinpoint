@@ -27,7 +27,8 @@
  * PINPOINT_REGISTRY，否则数据根下的 registry.json，否则默认 ~/.pinpoint/registry.json
  * （临时副本验证时三样都在副本里）；本地模板页名单读仓库的
  * content/previews/_index.json（PINPOINT_PREVIEWS_ROOT 可指向副本仓根，测试用）。
- * --apply 前整根备份到 <dataRoot>/migrations/<日期>-storage-unify/。真实账本的
+ * --apply 前整根备份到 <dataRoot>/migrations/<日期>-<时分秒>-storage-unify/
+ * （目录已存在就拒绝，不覆盖已有备份）。真实账本的
  * 迁移由 owner 指定的人跑；本脚本不给「静默跳过」留后门（排除 migrations /
  * dist / render 等非账本目录）。幂等：第二遍 0 变更。
  */
@@ -515,7 +516,13 @@ if (formTouched === 0 && storageChanged === 0) {
 
 /* ---- 落盘：备份 → 写净 ---- */
 
-const BACKUP_ROOT = path.join(root, 'migrations', `${new Date().toISOString().slice(0, 10)}-storage-unify`);
+// 备份带时分秒：同一天第二次 --apply 不再往同一目录里覆盖（cpSync 同名覆盖
+// 会污染第一遍的备份）。已存在就拒绝，不覆盖。
+const BACKUP_ROOT = path.join(root, 'migrations', `${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}-storage-unify`);
+if (fs.existsSync(BACKUP_ROOT)) {
+  console.error(`错误：备份目录已存在，拒绝覆盖：${BACKUP_ROOT}（确要复跑请先移走它）`);
+  process.exit(1);
+}
 fs.mkdirSync(BACKUP_ROOT, { recursive: true });
 for (const entry of fs.readdirSync(root, { withFileTypes: true })) {
   if (entry.name === 'migrations') continue;
