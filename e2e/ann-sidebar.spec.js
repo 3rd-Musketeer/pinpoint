@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // 标注列表面板（#ann-sidebar）：/sites/ 注入页、SPA 页这些没有 workbench 的页面，
 // 靠面板看到当前账本的所有标注并点击跳转。入口 = 浮动工具条「列表」按钮 +
@@ -206,4 +207,78 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('wb list check');
   await expect(page.locator('#ann-sidebar')).toHaveCount(0);
+});
+
+// 11px/1.45、186px 宽 ≈ 每行 15 个汉字：这条约 140 字 ≈ 9 行，专门越过 6 行滚动线。
+const NOTE = '默认温度从 90 改到 92 度：medium 烘焙下 92 度萃取更稳，杯测数据见 8-31 记录第三组，'
+  + '同一组里 90 度那杯的 TDS 明显偏低，口感单薄；改完同步设置页文案，'
+  + '帮助页的注水建议与研磨刻度提示也要跟着更新，避免两处口径不一致，'
+  + '另外记得通知仓库把包装上的建议参数一并换掉。';
+
+test('workbench 列表 note hover 卡：done 行 120 ms 出卡，无 note 的行不出', async ({ page }) => {
+  // 切片 5：行上的 agent note 不再走原生 title（工作台侧），hover 出与评论卡
+  // 同皮肤的小卡。造两条标注，一条走 open → check（带 note）→ done，一条留 open。
+  await page.goto('/index.html');
+  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  await expect(page.locator('#wb-board-panel [data-screen="settings"]')).toBeVisible();
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first().scrollIntoViewIfNeeded();
+  await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=0', '温度默认值改成 92 度');
+  await page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').nth(1).scrollIntoViewIfNeeded();
+  await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=1', '这条没有备注');
+  const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
+  const n2 = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  const ledger = pageKeyFromPathname('/index.html');
+  const post = (n, data) => page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'pinpoint', ...data } });
+  let rev = await page.evaluate(() => window.pinpoint.getState().revision);
+  expect((await post(n1, { baseRevision: rev, status: 'check', note: NOTE })).status()).toBe(200);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+  rev = await page.evaluate(() => window.pinpoint.getState().revision);
+  expect((await post(n1, { baseRevision: rev, status: 'done' })).status()).toBe(200);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(false));
+  await page.locator('#wbann-count').click();
+  const row1 = page.locator(`#wbann-list .wb-ann-item[data-ann-n="${n1}"]`);
+  const row2 = page.locator(`#wbann-list .wb-ann-item[data-ann-n="${n2}"]`);
+  await expect(row1.locator('.wb-ann-status-tag')).toHaveText('done');
+
+  // 原生 title 退役：行上不再有 title 属性。
+  expect(await row1.getAttribute('title')).toBeNull();
+  expect(await row2.getAttribute('title')).toBeNull();
+
+  // hover done 行 → 卡出，眉标 + note 原文（不截断），贴行右侧且整个在视口内。
+  await row1.hover();
+  const card = page.locator('.wb-ann-note-card');
+  await expect(card).toBeVisible();
+  await expect(card).toContainText('agent 备注');
+  await expect(card).toContainText(NOTE);
+  const rowBox = await row1.boundingBox();
+  const cardBox = await card.boundingBox();
+  const vp = page.viewportSize();
+  expect(cardBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);   // 贴行右侧
+  expect(cardBox.y).toBeGreaterThanOrEqual(0);
+  expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(vp.width);
+  expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(vp.height);
+  // note 超过 6 行：全文在 DOM 里，卡身进入滚动态。
+  expect(await card.locator('div').last().evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
+
+  // 指针挪到卡上继续读（90 ms 宽限内），挪开才收。
+  await card.hover();
+  await expect(card).toBeVisible();
+  await page.mouse.move(200, 300);
+  await expect(card).toBeHidden();
+
+  // 键盘聚焦同样出卡，失焦即收。
+  await row1.locator('.wb-ann-item-main').focus();
+  await expect(card).toBeVisible();
+  await page.evaluate(() => document.activeElement.blur());
+  await expect(card).toBeHidden();
+
+  // 无 note 的行：过了出卡窗也不出卡。
+  await row2.hover();
+  await page.waitForTimeout(300);
+  await expect(card).toHaveCount(0);
 });
