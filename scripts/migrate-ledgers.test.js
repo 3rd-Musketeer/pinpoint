@@ -144,20 +144,23 @@ test('storage-unify：--apply 落盘后形状正确，第二遍 0 变更', async
   const dir = seedUnify(t);
   await run(dir, '--apply');
 
-  // host：@canvas = 原 r1（目标行，冲突保留）+ r3（按路径迁入，号 3 不撞）；
-  // x~3.json 整本并进来（r5 已改号）；图片两侧都到。
+  // host：@canvas 只收画布行（r1 冲突保留目标行）；r3 无 pageId、按账本路径
+  // 归页（挂靠条目 draft → 宿主页 host），落到 <页>/<原账本名>.json 保留表面
+  // 绑定；x~3.json 整本并进来（r5 已改号）；图片两侧都到。
   const hostCanvas = JSON.parse(fs.readFileSync(path.join(dir, 'host', '@canvas.json'), 'utf8'));
   assert.deepEqual(hostCanvas.annotations.map((r) => [r.id, r.content]), [
     ['r1', 'host 已有的同 id 行'],
-    ['r3', '按路径找到挂靠条目'],
   ]);
   assert.equal(hostCanvas.page, '@canvas');
+  const hostPathLedger = JSON.parse(fs.readFileSync(path.join(dir, 'host', 'wr~2.json'), 'utf8'));
+  assert.deepEqual(hostPathLedger.annotations.map((r) => [r.id, r.n]), [['r3', 3]]);
+  assert.equal(hostPathLedger.path, '/sites/draft/x.html', '表面绑定跟着账本走');
   const hostDoc = JSON.parse(fs.readFileSync(path.join(dir, 'host', 'x~3.json'), 'utf8'));
   assert.equal(hostDoc.annotations[0].id, 'r5');
   assert.ok(hostDoc.annotations[0].n > 9, '撞车的 #3 已重新取号（接在桶内 max 后）');
   assert.ok(fs.existsSync(path.join(dir, 'host', 'images', 'x~3-1-1.png')));
 
-  // site：r2 迁入新建的 @canvas。
+  // site：r2 带 pageId，迁入新建的 @canvas。
   const siteCanvas = JSON.parse(fs.readFileSync(path.join(dir, 'site', '@canvas.json'), 'utf8'));
   assert.deepEqual(siteCanvas.annotations.map((r) => r.id), ['r2']);
 
@@ -180,4 +183,96 @@ test('storage-unify：--apply 落盘后形状正确，第二遍 0 变更', async
   await run(dir, '--apply');
   const hostCanvas2 = JSON.parse(fs.readFileSync(path.join(dir, 'host', '@canvas.json'), 'utf8'));
   assert.deepEqual(hostCanvas2, hostCanvas, '第二遍 --apply 后字节级不变');
+});
+
+/* ---- K1：/previews/ 表面已不存在的账本（真实数据形状）→ 孤儿、原地不动 ---- */
+
+/** 真实 ~/.pinpoint 的 pinpoint 桶形状：wr-w29 / wr-w30 归到模板页 weekly-review、
+    sheet 归到 sheet-rev，两页都不存在（registry 只有 weekly-review 这个 dir 条目，
+    它的表面是 /sites/weekly-review/，与 /previews/ 无关；manifest 不含这些页）。 */
+function seedGonePreviews(t, previewsRoot) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-migrate-gone-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify({
+    version: 1,
+    entries: [
+      { id: 'pinpoint', kind: 'dir', path: dir },
+      { id: 'weekly-review', kind: 'dir', path: path.join(dir, 'weekly-review-site') },
+    ],
+  }));
+  const ledger = (name, ledgerPath, ns, startAt) => fs.writeFileSync(path.join(dir, 'pinpoint', name), JSON.stringify({
+    page: name.replace(/\.json$/, ''), path: ledgerPath, revision: 56,
+    updated_at: startAt,
+    annotations: Array.from({ length: ns }, (_, i) => ({
+      id: `g${i + 1}`, n: i + 1, type: 'element', status: 'open', content: `行 ${i + 1}`,
+    })),
+  }));
+  fs.mkdirSync(path.join(dir, 'pinpoint'), { recursive: true });
+  ledger('wr-w29.html_173ikfh.json', '/previews/weekly-review/wr-w29.html', 48, '2026-07-29T08:23:47.615Z');
+  ledger('wr-w30.html_1hii93r.json', '/previews/weekly-review/wr-w30.html', 18, '2026-07-29T08:38:37.917Z');
+  ledger('sheet.html_1umsrux.json', '/previews/sheet-rev/sheet.html', 1, '2026-08-15T06:37:29.634Z');
+  // 副本仓根：manifest 只认 example（weekly-review / sheet-rev 都不在）。
+  fs.mkdirSync(path.join(previewsRoot, 'content', 'previews'), { recursive: true });
+  fs.writeFileSync(path.join(previewsRoot, 'content', 'previews', '_index.json'), JSON.stringify({ defaultPage: '', pages: [{ id: 'example' }] }));
+  return dir;
+}
+
+test('storage-unify：/previews/ 已不存在的账本全部报孤儿、原地不动、不建新桶', async (t) => {
+  const previewsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-migrate-repo-'));
+  t.after(() => fs.rmSync(previewsRoot, { recursive: true, force: true }));
+  const dir = seedGonePreviews(t, previewsRoot);
+  const before = fs.readdirSync(path.join(dir, 'pinpoint')).filter((name) => name !== '_seq.json').sort().join(',');
+  const snapshot = Object.fromEntries(fs.readdirSync(path.join(dir, 'pinpoint'))
+    .filter((name) => name.endsWith('.json') && name !== '_seq.json')
+    .map((name) => [name, fs.readFileSync(path.join(dir, 'pinpoint', name), 'utf8')]));
+
+  async function runWithManifest(...args) {
+    return execFileP('node', [SCRIPT, ...args], {
+      env: { ...process.env, PINPOINT_DATA_DIR: dir, PINPOINT_PREVIEWS_ROOT: previewsRoot },
+    });
+  }
+
+  const dry = await runWithManifest();
+  assert.match(dry.stdout, /归桶（storage-unify）：0 行迁入 0 个页桶 · 3 本账本有孤儿行（不自动删）/);
+  assert.match(dry.stdout, /pinpoint\/wr-w29\.html_173ikfh\.json：48 行（path=\/previews\/weekly-review\/wr-w29\.html 归到的模板页 weekly-review 不在 manifest 里）/);
+  assert.match(dry.stdout, /pinpoint\/wr-w30\.html_1hii93r\.json：18 行（path=\/previews\/weekly-review\/wr-w30\.html 归到的模板页 weekly-review 不在 manifest 里）/);
+  assert.match(dry.stdout, /pinpoint\/sheet\.html_1umsrux\.json：1 行（path=\/previews\/sheet-rev\/sheet\.html 归到的模板页 sheet-rev 不在 manifest 里）/);
+  assert.doesNotMatch(dry.stdout, /weekly-review\/ ← 迁入/, '不建新桶');
+
+  await runWithManifest('--apply');
+  assert.equal(
+    fs.readdirSync(path.join(dir, 'pinpoint')).filter((name) => name !== '_seq.json').sort().join(','),
+    before,
+    '原地不动（_seq 计数器除外，桶级 #n 水位本就要落）',
+  );
+  for (const [name, text] of Object.entries(snapshot)) {
+    assert.deepEqual(
+      JSON.parse(fs.readFileSync(path.join(dir, 'pinpoint', name), 'utf8')),
+      JSON.parse(text),
+      `${name} 内容原样（行没动）`,
+    );
+  }
+  assert.ok(!fs.existsSync(path.join(dir, 'weekly-review')), 'weekly-review 桶没有被造出来');
+  assert.ok(!fs.existsSync(path.join(dir, 'sheet-rev')), 'sheet-rev 桶没有被造出来');
+});
+
+test('storage-unify：无 pageId 的行归到 manifest 页时落 <页>/<原账本名>.json，不进 @canvas', async (t) => {
+  const previewsRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-migrate-repo-'));
+  t.after(() => fs.rmSync(previewsRoot, { recursive: true, force: true }));
+  const dir = seedGonePreviews(t, previewsRoot);
+  // 换成 manifest 里真实存在的页：行按路径归页，账本名原样保留。
+  fs.writeFileSync(path.join(dir, 'pinpoint', 'doc.html_9zz.json'), JSON.stringify({
+    page: 'doc.html_9zz', path: '/previews/example/report.html', revision: 3,
+    updated_at: '2026-09-01T00:00:00.000Z',
+    annotations: [{ id: 'p1', n: 1, type: 'element', status: 'open', content: '模板页文档行' }],
+  }));
+
+  const applied = await execFileP('node', [SCRIPT, '--apply'], {
+    env: { ...process.env, PINPOINT_DATA_DIR: dir, PINPOINT_PREVIEWS_ROOT: previewsRoot },
+  });
+  assert.match(applied.stdout, /example\/ ← 迁入/);
+  const moved = JSON.parse(fs.readFileSync(path.join(dir, 'example', 'doc.html_9zz.json'), 'utf8'));
+  assert.deepEqual(moved.annotations.map((r) => [r.id, r.n]), [['p1', 1]], '不撞号不改号');
+  assert.equal(moved.path, '/previews/example/report.html', '表面绑定保留');
+  assert.ok(!fs.existsSync(path.join(dir, 'example', '@canvas.json')), '@canvas 只收画布行，不因路径行被造出来');
 });

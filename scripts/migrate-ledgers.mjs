@@ -9,10 +9,11 @@
  *   `[@m:id]`       → `[@a:id]`
  *
  * 阶段 B · 归桶（2026-09-23 storage-unify：桶 = 页）：
- *   - `pinpoint` 桶的账本按行上的 pageId 拆进 `<pageId>/@canvas.json`
+ *   - `pinpoint` 桶的账本按行拆：带 pageId 的画布行进 `<pageId>/@canvas.json`
  *     （pageId 挂在别页条目上时并进宿主页）；没有 pageId 的行按账本 pathname
- *     找页（`/previews/<p>/` → p；`/sites/<id>/` → 该条目所属页），找不到报为
- *     孤儿、列清单、留在原处不自动删。
+ *     归页，迁到 `<页>/<原账本文件名>.json` 保留表面绑定 —— @canvas 只收画布行。
+ *     归到的页不在 registry 与 manifest 里（`/previews/<p>/` 查 manifest、
+ *     `/sites/<id>/` 查 registry）就算孤儿：留在原处、列清单、不建新桶。
  *   - 挂靠条目（entry.page）自己的桶整桶并进宿主页的桶。
  *   - 迁入目标已有账本就合并：按 id 去重，同 id 不同内容报冲突、保留目标行。
  *   - 桶内重号（合并后 #n 撞车）：后到的行重新取号，打印 `旧号 → 新号` 对照表。
@@ -22,15 +23,17 @@
  *
  * 数据根 = dataRoot()（PINPOINT_DATA_DIR 可覆盖）；registry 取
  * PINPOINT_REGISTRY，否则数据根下的 registry.json，否则默认 ~/.pinpoint/registry.json
- * （临时副本验证时三样都在副本里）。--apply 前整根备份到
- * <dataRoot>/migrations/<日期>-storage-unify/。真实账本的迁移由 owner 指定的
- * 人跑；本脚本不给「静默跳过」留后门（排除 migrations / dist / render 等非账本
- * 目录）。幂等：第二遍 0 变更。
+ * （临时副本验证时三样都在副本里）；本地模板页名单读仓库的
+ * content/previews/_index.json（PINPOINT_PREVIEWS_ROOT 可指向副本仓根，测试用）。
+ * --apply 前整根备份到 <dataRoot>/migrations/<日期>-storage-unify/。真实账本的
+ * 迁移由 owner 指定的人跑；本脚本不给「静默跳过」留后门（排除 migrations /
+ * dist / render 等非账本目录）。幂等：第二遍 0 变更。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
 import { dataRoot } from '../src/server/lib/annotate-data-dir.js';
+import { manifestPageIds } from '../src/server/lib/page-manifest.js';
 import { loadRegistry } from '../src/server/lib/registry.js';
 
 const APPLY = process.argv.includes('--apply');
@@ -40,6 +43,10 @@ const CANVAS_KEY = '@canvas';
 const NON_BUCKET_DIRS = new Set(['migrations', 'dist', 'render', 'check', 'shot', 'logs', 'diagnostics']);
 
 const root = dataRoot();
+// 仓库根：本地模板页名单的来源（CLI 与服务同用这一份）。测试拿 PINPOINT_PREVIEWS_ROOT
+// 指向副本仓根，跟 PINPOINT_DATA_DIR / PINPOINT_REGISTRY 配套。
+const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const PREVIEWS_ROOT = process.env.PINPOINT_PREVIEWS_ROOT || REPO_ROOT;
 
 /* ---- 阶段 A：形态迁移（纯变换，无 IO） ---- */
 
@@ -129,14 +136,22 @@ function readModel() {
   return { buckets };
 }
 
-/** registry 的页归属映射：条目 id → 它所属的页 id（挂靠条目给宿主页，其余自己）。 */
-function pageMap() {
+/** registry 与 manifest 的页索引：pageOf = 条目 id → 所属页 id（挂靠条目给宿主页，
+    其余自己）；registryIds = 登记过的条目 id；manifestIds = 本地模板页 id。
+    「页真实存在」按这两个名单判 —— 名单兜底 `id → id` 会给死页造桶（K5）。 */
+function pageIndex() {
   const registryPath = process.env.PINPOINT_REGISTRY
     || (fs.existsSync(path.join(root, 'registry.json')) ? path.join(root, 'registry.json') : null);
   const registry = loadRegistry({ root, path: registryPath || undefined, log: () => {} });
   const map = new Map();
-  for (const entry of registry.entries) map.set(entry.id, entry.page || entry.id);
-  return (id) => map.get(id) || id; // 不在登记表里的 id 按页 id 原样用（manifest 页）
+  const registryIds = new Set();
+  for (const entry of registry.entries) {
+    map.set(entry.id, entry.page || entry.id);
+    registryIds.add(entry.id);
+  }
+  const manifestIds = new Set(manifestPageIds(PREVIEWS_ROOT));
+  const known = new Set([...map.values(), ...manifestIds]);
+  return { pageOf: (id) => map.get(id) || id, registryIds, manifestIds, known };
 }
 
 const annotationsOf = (doc) => (Array.isArray(doc.annotations) ? doc.annotations : []);
@@ -160,8 +175,9 @@ const laterOf = (a, b) => {
 
 /* ---- 阶段 B：归桶（桶 = 页） ---- */
 
-function planStorageUnify(model, pageOf, report) {
+function planStorageUnify(model, pageIndexValue, report) {
   const { buckets } = model;
+  const { pageOf, registryIds, manifestIds, known } = pageIndexValue;
   const canvasOf = (page) => buckets.get(page).ledgers.get(CANVAS_FILE) || null;
 
   /** 桶内已占的 #n 集合与最大号（跨全部账本；随迁入动态更新）。 */
@@ -190,14 +206,18 @@ function planStorageUnify(model, pageOf, report) {
     return state.max;
   };
 
-  /** 把一行并入目标桶的 @canvas 账本（page 桶须已存在或先 ensurePage）。 */
-  const ensurePageBucket = (page) => {
+  /** 确保页桶存在；只要画布账本时走 canvas=true（@canvas 只收画布行，
+      按路径归页的行落到 <页>/<原账本名>.json，不给他们造画布）。 */
+  const ensureBucket = (page, ledger, canvas) => {
     if (!buckets.has(page)) buckets.set(page, { ledgers: new Map(), images: [] });
     const bucket = buckets.get(page);
-    if (!bucket.ledgers.has(CANVAS_FILE)) {
+    if (canvas && !bucket.ledgers.has(CANVAS_FILE)) {
       bucket.ledgers.set(CANVAS_FILE, { page: CANVAS_KEY, path: CANVAS_KEY, revision: 0, updated_at: null, annotations: [] });
     }
-    return bucket.ledgers.get(CANVAS_FILE);
+    if (!bucket.ledgers.has(ledger)) {
+      bucket.ledgers.set(ledger, { page: ledger.replace(/\.json$/, ''), path: '', revision: 0, updated_at: null, annotations: [] });
+    }
+    return bucket.ledgers.get(ledger);
   };
 
   const movedImages = []; // { from, to, name }
@@ -206,9 +226,9 @@ function planStorageUnify(model, pageOf, report) {
   };
 
   /** 去重合并：同 id 保留目标行、内容不同报冲突；重号重新取号。
-      页时间随行走：@canvas 的 updated_at 抬到源账本最近一次保存（splitPinpoint
+      页时间随行走：目标账本的 updated_at 抬到源账本最近一次保存（splitPinpoint
       逐本 laterOf），page-times 读侧按 updated_at 记页时间，排序不断档。 */
-  const mergeRow = (targetDoc, row, page, provenance) => {
+  const mergeRow = (targetDoc, row, page, ledgerName, provenance) => {
     const existing = annotationsOf(targetDoc).find((r) => r && r.id && row.id && r.id === row.id);
     if (existing) {
       if (JSON.stringify(existing) !== JSON.stringify(row)) {
@@ -220,7 +240,7 @@ function planStorageUnify(model, pageOf, report) {
     if (Number.isInteger(row.n) && state.used.has(row.n)) {
       const old = row.n;
       row = { ...row, n: takeNumber(page) };
-      report.renumbers.push({ page, ledger: targetDoc === canvasOf(page) ? CANVAS_FILE : targetDoc.page || '', from: old, to: row.n });
+      report.renumbers.push({ page, ledger: ledgerName, from: old, to: row.n });
     } else if (Number.isInteger(row.n)) {
       state.used.add(row.n);
       if (row.n > state.max) state.max = row.n;
@@ -229,41 +249,75 @@ function planStorageUnify(model, pageOf, report) {
     return true;
   };
 
-  /** pinpoint 桶：按行拆进各页的 @canvas。 */
+  /** 一行的归属：带 pageId 的画布行 → 那个页的 @canvas；无 pageId 的行按账本
+      pathname 归页（`/previews/<p>/` 查 manifest、`/sites/<id>/` 查 registry，
+      名单里没有 = 页已不存在）。返回 { page, ledger } 或 { reason }。 */
+  const rowTarget = (row, doc, ledgerName) => {
+    if (row && typeof row.pageId === 'string' && row.pageId) {
+      const page = pageOf(row.pageId);
+      if (!known.has(page)) return { reason: `pageId=${row.pageId} 的页不在 registry 与 manifest 里` };
+      return { page, ledger: CANVAS_FILE };
+    }
+    let p;
+    try { p = decodeURIComponent(String(doc.path || '')); } catch { p = String(doc.path || ''); }
+    let m = p.match(/^\/previews\/([a-z0-9][a-z0-9-]*)\//);
+    if (m) {
+      if (!manifestIds.has(m[1])) return { reason: `path=${doc.path || '（空）'} 归到的模板页 ${m[1]} 不在 manifest 里` };
+      return { page: m[1], ledger: ledgerName };
+    }
+    m = p.match(/^\/sites\/([a-z0-9][a-z0-9-]*)\//);
+    if (m) {
+      if (!registryIds.has(m[1])) return { reason: `path=${doc.path || '（空）'} 归到的条目 ${m[1]} 不在 registry 里` };
+      return { page: pageOf(m[1]), ledger: ledgerName };
+    }
+    return { reason: `path=${doc.path || '（空）'} 解析不出页` };
+  };
+
+  /** pinpoint 桶：带 pageId 的行拆进各页 @canvas；无 pageId 的行整本归到
+      `<页>/<原账本文件名>.json`（保留表面绑定）。归不到真实页的行算孤儿：
+      留在原处、列清单，不建新桶。 */
   const splitPinpoint = () => {
     const bucket = buckets.get('pinpoint');
     if (!bucket) return;
     for (const [name, doc] of [...bucket.ledgers.entries()]) {
       const rows = annotationsOf(doc);
       const stay = [];
+      const stayReasons = new Map();
+      let touched = false;
       for (const row of rows) {
-        let page = row && typeof row.pageId === 'string' && row.pageId ? pageOf(row.pageId) : null;
-        if (!page) {
-          page = pageFromPathname(String(doc.path || ''), pageOf);
-        }
-        if (!page) {
+        const target = rowTarget(row, doc, name);
+        if (target.reason) {
           stay.push(row);
+          stayReasons.set(target.reason, (stayReasons.get(target.reason) || 0) + 1);
           continue;
         }
-        const target = ensurePageBucket(page);
-        if (mergeRow(target, row, page, `pinpoint/${name}`)) {
-          report.moved.add(page);
+        const targetDoc = ensureBucket(target.page, target.ledger, target.ledger === CANVAS_FILE);
+        // 新建的目标账本继承源账本的表面绑定（pathname）：孤儿判定与 prune 靠它。
+        if (targetDoc.path === '' && doc.path) targetDoc.path = doc.path;
+        if (mergeRow(targetDoc, row, target.page, target.ledger, `pinpoint/${name}`)) {
+          touched = true;
+          report.moved.add(target.page);
           report.movedRows += 1;
-          target.updated_at = laterOf(target.updated_at, doc.updated_at);
-          noteImage(row, 'pinpoint', page);
+          targetDoc.updated_at = laterOf(targetDoc.updated_at, doc.updated_at);
+          noteImage(row, 'pinpoint', target.page);
         }
       }
-      if (stay.length === rows.length) continue; // 整本没动
-      if (stay.length) {
-        doc.annotations = stay;
-      } else if (Object.keys(doc.page_updated_at || {}).length) {
-        // 行都走了但还带着存量逐页时间映射：留着喂读侧兼容（page-times 还认它）。
-        doc.annotations = [];
-      } else {
-        bucket.ledgers.delete(name);
-        report.removedLedgers.push(`pinpoint/${name}`);
+      const allStay = rows.length > 0 && stay.length === rows.length;
+      if (!allStay) {
+        if (stay.length) {
+          doc.annotations = stay;
+        } else if (Object.keys(doc.page_updated_at || {}).length) {
+          // 行都走了但还带着存量逐页时间映射：留着喂读侧兼容（page-times 还认它）。
+          doc.annotations = [];
+        } else {
+          bucket.ledgers.delete(name);
+          report.removedLedgers.push(`pinpoint/${name}`);
+        }
+        if (stay.length) report.splitLedgers.push(`pinpoint/${name}`);
       }
-      if (stay.length !== rows.length && stay.length) report.splitLedgers.push(`pinpoint/${name}`);
+      for (const [reason, count] of stayReasons) {
+        report.orphans.push(`pinpoint/${name}：${count} 行（${reason}）`);
+      }
     }
     // pinpoint 桶里不再被任何行引用的图片清掉（跟行走的已记 movedImages）。
   };
@@ -302,7 +356,7 @@ function planStorageUnify(model, pageOf, report) {
         }
         // 同名账本：按 id 去重合并，新行重号。
         for (const row of annotationsOf(doc)) {
-          if (mergeRow(target, row, targetPage, `${bucketName}/${name}`)) {
+          if (mergeRow(target, row, targetPage, name, `${bucketName}/${name}`)) {
             report.moved.add(targetPage);
             report.movedRows += 1;
           }
@@ -324,17 +378,6 @@ function planStorageUnify(model, pageOf, report) {
   for (const bucketName of [...buckets.keys()]) {
     if (!NON_BUCKET_DIRS.has(bucketName)) recomputeSeq(model, bucketName, report);
   }
-}
-
-/** pinpoint 账本没有 pageId 的行按 pathname 找页。 */
-function pageFromPathname(pathname, pageOf) {
-  let p;
-  try { p = decodeURIComponent(String(pathname || '')); } catch { return null; }
-  let m = p.match(/^\/previews\/([a-z0-9][a-z0-9-]*)\//);
-  if (m) return m[1];
-  m = p.match(/^\/sites\/([a-z0-9][a-z0-9-]*)\//);
-  if (m) return pageOf(m[1]);
-  return null;
 }
 
 /** 桶内 _seq.json = max(n)+1（只在值变化时记一笔）。 */
@@ -360,7 +403,7 @@ function recomputeSeq(model, bucketName, report) {
 /* ---- 主流程 ---- */
 
 const model = readModel();
-const pageOf = pageMap();
+const pages = pageIndex();
 
 // 阶段 A：形态。
 const formPlan = [];
@@ -400,17 +443,9 @@ const report = {
   imageMoves: [],
   seqWrites: [],
 };
-planStorageUnify(model, pageOf, report);
+planStorageUnify(model, pages, report);
 
-// 孤儿清单：pinpoint 桶里剩下的行（无 pageId、路径解析不出页）。
-const leftover = model.buckets.get('pinpoint');
-if (leftover) {
-  for (const [name, doc] of leftover.ledgers) {
-    const rows = annotationsOf(doc);
-    const orphans = rows.filter((row) => row && !row.pageId);
-    if (orphans.length) report.orphans.push(`pinpoint/${name}：${orphans.length} 行（无 pageId，path=${doc.path || '（空）'} 解析不出页）`);
-  }
-}
+// 孤儿清单由 splitPinpoint 在拆分时逐本记录（带原因）；pinpoint 桶外的行不判。
 
 const formSummary = Object.entries(formTotals).map(([key, count]) => `${key} × ${count}`).join('、') || '无';
 const storageChanged = report.movedRows + report.renumbers.length + report.conflicts.length + report.imageMoves.length
