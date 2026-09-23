@@ -242,9 +242,13 @@ test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
   assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
 });
 
-test('manifestPageIds: 读真实仓库 manifest（模板页退役后为空数组）', () => {
+test('manifestPageIds: 读真实仓库 manifest（与 _index.json 的 pages 一致）', () => {
+  // 范例页落地后模板页不再是空名单——断言从钉死「空数组」改为钉死「函数输出
+  // 与真实 manifest 逐字一致」，既不依赖模板页数量，也不放宽（多列、漏列都挂）。
+  const doc = JSON.parse(fs.readFileSync(new URL('../content/previews/_index.json', import.meta.url), 'utf8'));
   const ids = manifestPageIds();
-  assert.deepEqual(ids, []);
+  assert.deepEqual(ids, doc.pages.map((page) => page.id));
+  assert.ok(ids.includes('example'), '范例页在名单里');
 });
 
 /* ---- resolveRegistryPath / planAdd ---- */
