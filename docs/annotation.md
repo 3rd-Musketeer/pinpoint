@@ -99,7 +99,8 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 frame 里隐藏——那里已经在 workbench 里，同“只留一个控制面”的规矩。
 
 页面内的 `#ann-sidebar`（**S** 键、工具条的“列表”钮）：
-head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n` 排序，点击跳转，hover 出编辑 / 删除，
+head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n` 排序，点击跳转，行尾动作与
+工作台列表同款（open / check / done 行 hover 出完成勾，close 行 hover 出“重新打开”），
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
 凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条“只留一个控制面”的规矩。
 
@@ -201,8 +202,8 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
   `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
   revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
   `404 annotation_not_found`。这是 `ppnt mark` 的后端；
-- `open` / `check` / `done` → `close`：owner 在工作台列表对行点“完成”——单击，toast 带
-  “撤销”5 秒，不二次确认；撤销回关闭前的原态（`close → open` / `check` / `done`），
+- `open` / `check` / `done` → `close`：owner 在列表行（工作台弹层或注入侧栏）上点“完成”——
+  单击，toast 带“撤销”5 秒，不二次确认；撤销回关闭前的原态（`close → open` / `check` / `done`），
   再编辑也回 `open`。
 
 UI 随状态走：画布钉子 open = 现状、check = 空心灰描边、done = 右上角小勾、close 不画；

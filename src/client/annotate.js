@@ -1026,6 +1026,7 @@
   // 自包含，composer/侧栏用的几个图标以 path data 放这里，不引 workbench-icons.js。
   var ANN_ICONS = {
     trash: '<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>',
+    check: '<path d="M20 6 9 17l-5-5"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -1098,7 +1099,6 @@
     '#ann-sidebar .wb-ann-item:hover .ann-sb-acts,#ann-sidebar .wb-ann-item:focus-within .ann-sb-acts{opacity:1;pointer-events:auto;}',
     '#ann-sidebar .ann-sb-acts button{min-width:32px;height:24px;padding:0;border:none;border-radius:var(--wb-r-2);background:transparent;cursor:pointer;font:inherit;font-size:12px;line-height:24px;text-align:center;color:var(--wb-faint);}',
     '#ann-sidebar .ann-sb-acts button:hover{background:var(--wb-hover,rgba(0,0,0,.04));color:var(--wb-fg);}',
-    '#ann-sidebar .ann-sb-acts .ann-sb-del:hover{color:var(--wb-danger);background:color-mix(in srgb,var(--wb-danger) 10%,transparent);}',
     'html.ann-mode-on #wbstage{cursor:crosshair;}',
     /* 层级走 --wb-z 阶梯（src/workbench/wb-tokens.css，ADR 0034）：#ann-overlay 静止 --wb-z-marks、
        抬升 --wb-z-marks-active；#ann-chrome（lasso / tip / 输入框）--wb-z-composer，压过横条。
@@ -1502,7 +1502,8 @@
   // ---------- 标注面板（#ann-sidebar）----------
   // 没有 workbench 的页面（/sites/ 注入、SPA）的标注控制面：顶部
   // 「交互 | 标注」segmented 切 mode，下面当前账本按 n 列出，点击跳转
-  // （goToMark），hover 出编辑/删除。入口 = 工具条「列表」按钮、S 键。
+  // （goToMark），行尾动作与工作台弹层同款（完成勾 / close 行「重新打开」）。
+  // 入口 = 工具条「列表」按钮、S 键。
   // 抑制规则与浮动工具条同款「单一控制面」：workbench 壳有自己的标注列表；
   // doc iframe 由父级出控制面。（浏览器扩展的 pinpoint:command 桥已于 pp2
   // 切片 3 随扩展一并退役。）
@@ -1559,18 +1560,9 @@
     // segmented 是 setMode 的纯鼠标入口（同 pinpoint.setMode 语义）。
     sidebarSegInteract.addEventListener('click', function () { if (mode) toggleMode(); });
     sidebarSegAnnotate.addEventListener('click', function () { if (!mode) toggleMode(); });
+    // 行内动作钮（完成 / 重新打开）各自带 listener 并 stopPropagation，
+    // 这里只兜「点行 = 跳转」。
     sidebarBody.addEventListener('click', function (e) {
-      var act = e.target && e.target.closest ? e.target.closest('[data-ann-act]') : null;
-      if (act) {
-        e.preventDefault();
-        e.stopPropagation();
-        var an = parseInt(act.getAttribute('data-ann-n'), 10);
-        if (act.getAttribute('data-ann-act') === 'del') {
-          if (act.dataset.confirm === 'true') removeMark(an);
-          else { act.dataset.confirm = 'true'; act.textContent = '确认'; act.setAttribute('aria-label', '确认删除标注 ' + an); }
-        }
-        return;
-      }
       var row = e.target && e.target.closest ? e.target.closest('.wb-ann-item[data-ann-n]') : null;
       if (!row) return;
       goToMark(parseInt(row.getAttribute('data-ann-n'), 10));
@@ -1638,11 +1630,11 @@
         text.textContent = r.preview;
         body.appendChild(text);
       }
-      // 状态灰标（check / done；open 不出标，close 整行在收起组里）。
-      if (r.status === 'check' || r.status === 'done') {
+      // 状态灰标（check / done / close；open 不出标，close 行在收起组里）。
+      if (r.status !== 'open') {
         var stTag = document.createElement('span');
         stTag.className = 'wb-ann-status-tag';
-        stTag.textContent = r.status === 'check' ? 'check' : 'done';
+        stTag.textContent = r.status;
         body.appendChild(stTag);
       }
       if (r.broken) {
@@ -1655,29 +1647,36 @@
       main.appendChild(body);
       var acts = document.createElement('span');
       acts.className = 'ann-sb-acts';
-      if (r.status === 'done') {
-        var closeBtn = document.createElement('button');
-        closeBtn.type = 'button';
-        closeBtn.className = 'ann-sb-close-mark';
-        closeBtn.textContent = '关闭';
-        closeBtn.setAttribute('aria-label', '关闭标注 ' + r.n);
-        closeBtn.addEventListener('click', function (e) {
+      // 行件与工作台弹层同款（pp2 状态机）：删除退役，open / check / done 行的
+      // 收尾动作是「完成」= close（单击即关不二次确认，toast「已完成 #n」带
+      // 撤销）；close 行（展开后）给「重新打开」回 open。硬删只走工具条
+      // 「清空标记」与 composer 的删除钮。
+      if (r.status !== 'close') {
+        var doneBtn = document.createElement('button');
+        doneBtn.type = 'button';
+        doneBtn.className = 'wb-ann-done';
+        doneBtn.innerHTML = annIcon('check');
+        doneBtn.setAttribute('aria-label', '完成 #' + r.n);
+        doneBtn.title = '完成 #' + r.n;
+        doneBtn.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
           closeAnnotation(r.n);
         });
-        acts.appendChild(closeBtn);
+        acts.appendChild(doneBtn);
+      } else {
+        var reopenBtn = document.createElement('button');
+        reopenBtn.type = 'button';
+        reopenBtn.className = 'wb-ann-reopen';
+        reopenBtn.textContent = '重新打开';
+        reopenBtn.setAttribute('aria-label', '重新打开标注 ' + r.n);
+        reopenBtn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          reopenAnnotation(r.n);
+        });
+        acts.appendChild(reopenBtn);
       }
-      var del = document.createElement('button');
-      del.type = 'button';
-      del.className = 'ann-sb-del';
-      del.setAttribute('data-ann-act', 'del');
-      del.setAttribute('data-ann-n', r.n);
-      del.title = '删除';
-      function resetDelete() { delete del.dataset.confirm; del.innerHTML = annIcon('trash'); del.setAttribute('aria-label', '删除标注 ' + r.n); }
-      resetDelete();
-      del.addEventListener('blur', resetDelete);
-      acts.appendChild(del);
       item.appendChild(main);
       item.appendChild(acts);
       return item;
@@ -1685,21 +1684,22 @@
 
     openRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
 
-    // close 默认收起：组头一个「已关闭 n」开关，点开才看。
-    if (closedRows.length) {
-      var toggle = document.createElement('button');
-      toggle.type = 'button';
-      toggle.className = 'wb-ann-closed-toggle';
-      toggle.textContent = (sidebarClosedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedRows.length;
-      toggle.addEventListener('click', function () {
-        sidebarClosedOpen = !sidebarClosedOpen;
-        sidebarSig = '';
-        renderSidebar();
-      });
-      sidebarBody.appendChild(toggle);
-      if (sidebarClosedOpen) {
-        closedRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
-      }
+    // close 默认收起：组头一个「已关闭 N」开关，常驻 —— N = 0 时 disabled 弱化
+    // 不可展开，owner 才找得到入口（与工作台弹层一致）。
+    var toggle = document.createElement('button');
+    toggle.type = 'button';
+    toggle.className = 'wb-ann-closed-toggle';
+    toggle.disabled = !closedRows.length;
+    toggle.textContent = (sidebarClosedOpen ? '▾ ' : '▸ ') + '已关闭 ' + closedRows.length;
+    toggle.addEventListener('click', function () {
+      if (!closedRows.length) return;
+      sidebarClosedOpen = !sidebarClosedOpen;
+      sidebarSig = '';
+      renderSidebar();
+    });
+    sidebarBody.appendChild(toggle);
+    if (sidebarClosedOpen) {
+      closedRows.forEach(function (r) { sidebarBody.appendChild(buildRow(r)); });
     }
   }
 
