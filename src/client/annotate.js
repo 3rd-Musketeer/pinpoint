@@ -2453,6 +2453,13 @@
     renderModes();
 
     function save() {
+      // storage-unify：画布实例 boot 占位期（活动页未定、ENTRY 还是 pinpoint）
+      // 不保存——占位账本上的行没有归属，换桶不带它走。占位窗口毫秒级
+      // （workbench 启动即报活动页），真出现就是在等一个还没就绪的页面。
+      if (CANVAS_MODE && !canvasLedgerApplied) {
+        setStatus('活动页还没就绪，稍等一下再保存', true);
+        return;
+      }
       closeMentionPicker();
       ensureMarkId(m);
       var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
@@ -4009,7 +4016,9 @@
   // ---------- 画布切页换桶（storage-unify） ----------
   // 工作台的活动页由 stage.js 持有；这里经 window.workbench.onPageChange 订阅
   // （boot 早于订阅时直接读 activePageId 兜底）。活动页一定 → 桶一定，
-  // 账本恒 @canvas；workbench 一直不出现（理论上的兜底页）落 pinpoint 桶。
+  // 账本恒 @canvas。workbench 一直不出现就没有活动页可言：账本留在 boot 占位，
+  // 不再「落 pinpoint 兜底桶」——那是个空转承诺（requestSwitch 同账本短路，
+  // 永不 hydrate），且占位期保存的行没有归属（保存已被拦下，见 save 的占位判断）。
 
   function canvasSwitchFor(pageId) {
     return { entry: pageId, ledgerPathname: CANVAS_PAGE, page: CANVAS_PAGE, currentPathname: CANVAS_PAGE };
@@ -4023,7 +4032,6 @@
       requestSwitch(canvasSwitchFor(id));
     };
     connectEventsOnce();
-    var tries = 0;
     var timer = setInterval(function () {
       var wb = window.workbench;
       if (wb && typeof wb.onPageChange === 'function') {
@@ -4033,11 +4041,6 @@
         return;
       }
       apply(currentWorkbenchPageId());
-      tries += 1;
-      if (tries > 800) { // ~20s 没有 workbench：当兜底页（pinpoint 桶的 @canvas）
-        clearInterval(timer);
-        if (!applied) requestSwitch(canvasSwitchFor('pinpoint'));
-      }
     }, 25);
   }
 
@@ -4163,8 +4166,7 @@
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
   if (CANVAS_MODE) {
     // 画布实例：活动页定了才有桶（storage-unify）。SSE 先连（连接指示与事件流
-    // 都与桶无关），账本由 watchWorkbenchPages 的第一次换页带入；workbench
-    // 一直不出现的兜底页落 pinpoint 桶。
+    // 都与桶无关），账本由 watchWorkbenchPages 的第一次换页带入。
     renderAll();
     notify();
     watchWorkbenchPages();
