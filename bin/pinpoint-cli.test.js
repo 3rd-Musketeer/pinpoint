@@ -1486,7 +1486,7 @@ test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出',
   assert.ok(ghost.err.some((line) => /t-page/.test(line)), '报错列出可用 id');
 });
 
-test('startPageWatch：窗口内多个文件攒一批，只重编命中的屏（审计 B1）', async (t) => {
+test('startPageWatch：多个文件的改动都编出来；只改一屏时没改的屏不重编（审计 B1）', async (t) => {
   const made = makeCompiledPage(t, {
     screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }],
     files: {
@@ -1517,19 +1517,33 @@ test('startPageWatch：窗口内多个文件攒一批，只重编命中的屏（
     await new Promise((resolve) => setTimeout(resolve, 100));
     await done();
   }
-  const cBefore = fs.statSync(path.join(distEntry, 'c.html')).mtimeMs;
-  // 周期性重写直到 dist 出现新内容（重写同内容幂等，只当触发器用）；事件送达与
-  // 去抖的时序不打紧，拆成几批终态也一样。
-  const deadline = Date.now() + 5000;
-  for (;;) {
-    fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n');
-    fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n');
-    const aNew = fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a2');
-    const bNew = fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2');
-    if (aNew && bNew) break;
-    if (Date.now() > deadline) throw new Error(`watch 5s 内没编出新 dist（a=${aNew} b=${bNew}）`);
-    await new Promise((resolve) => setTimeout(resolve, 250));
+  // 第一段：a、b 都改，两屏都编出新内容。周期性重写直到 dist 出现新内容（重写
+  // 同内容幂等，只当触发器用）；事件送达与去抖的时序不打紧，拆成几批终态也一样。
+  // 这一段不断言 c：a 那一批规划时 b 的事件可能还没送到，漂移校验会判全编
+  // （宁可多编，正确行为），c 被重写与否取决于负载下的事件时序。
+  const writeUntil = async (writes, expect) => {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      for (const [file, body] of writes) fs.writeFileSync(path.join(made.page, file), body);
+      const state = expect.map(([file, needle]) => fs.readFileSync(path.join(distEntry, file), 'utf8').includes(needle));
+      if (state.every(Boolean)) return;
+      if (Date.now() > deadline) throw new Error(`watch 5s 内没编出新 dist（${expect.map(([f], i) => `${f}=${state[i]}`).join(' ')}）`);
+      await new Promise((resolve) => setTimeout(resolve, 250));
+    }
+  };
+  await writeUntil(
+    [['a.html', '<div class="ios-app">a2</div>\n'], ['b.html', '<div class="ios-app">b2</div>\n']],
+    [['a.html', 'a2'], ['b.html', 'b2']],
+  );
+  // 等迟到的事件排空：结果数 500ms 不再增长才记 c 的基线。
+  for (let seen = -1; seen !== results.length;) {
+    seen = results.length;
+    await new Promise((resolve) => setTimeout(resolve, 500));
+    await done();
   }
+  const cBefore = fs.statSync(path.join(distEntry, 'c.html')).mtimeMs;
+  // 第二段：只改 a。a 自己在变更集合里，b、c 的记录与盘一致，没有漂移 → 只编 a。
+  await writeUntil([['a.html', '<div class="ios-app">a3</div>\n']], [['a.html', 'a3']]);
   watcher.close();
   await done();
   assert.ok(results.length >= 1, 'onResult 至少收到一次编译结果');
