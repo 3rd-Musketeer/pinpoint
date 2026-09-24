@@ -3878,11 +3878,17 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   document.addEventListener('load', function (event) {
     if (!annotationUiNode(event.target)) scheduleContentRender(event);
   }, true);
+  // 只改绘制、不动几何的过渡不重排钉子：工作台帧 hover 的描边色 / 暗层透明度
+  // 每次指针进帧都会跑完一轮，之前触发整层重建 —— 钉子被移出再插回 DOM，
+  // hover 脉冲重放一次、按下中的点击丢失（2026-09-24 owner：“脉冲出现两次，
+  // 第一次点击无效”）。其余过渡 / 动画按所在帧局部刷新。
+  var PAINT_ONLY_TRANSITION = /^(opacity|visibility|color|caret-color|fill|stroke|filter|backdrop-filter|box-shadow|text-shadow|text-decoration-color|background(-color|-image)?|outline(-color|-style|-width|-offset)?|border(-top|-right|-bottom|-left)?-color)$/;
   document.addEventListener('transitionend', function (event) {
-    if (!annotationUiNode(event.target)) scheduleContentRender();
+    if (annotationUiNode(event.target) || PAINT_ONLY_TRANSITION.test(event.propertyName || '')) return;
+    scheduleContentRender(event);
   }, true);
   document.addEventListener('animationend', function (event) {
-    if (!annotationUiNode(event.target)) scheduleContentRender();
+    if (!annotationUiNode(event.target)) scheduleContentRender(event);
   }, true);
   addEventListener('hashchange', scheduleContentRender);
   addEventListener('popstate', scheduleContentRender);

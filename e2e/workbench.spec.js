@@ -1827,6 +1827,32 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
   });
 });
 
+// 2026-09-24 owner：hover 钉子“脉冲出现两次，第一次点击无效”。根因：指针进帧时
+// 工作台帧 hover 的描边色 / 暗层透明度过渡跑完，transitionend 触发整层重建，
+// 钉子被移出再插回 DOM。只动绘制的过渡不得重建钉子。
+test('帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await cell.scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cell, 'pulse once');
+  await page.evaluate(() => window.pinpoint.setMode(false));
+  await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
+  const fire = (prop) => page.evaluate(async (prop) => {
+    const badge = document.querySelector('#ann-marks .ann-badge');
+    let moved = 0;
+    const mo = new MutationObserver((rs) => rs.forEach((r) => r.removedNodes.forEach((n) => { if (n === badge) moved++; })));
+    mo.observe(document.getElementById('ann-marks'), { childList: true, subtree: true });
+    const stage = document.querySelector('#wb-board-panel [data-screen="settings"] .ios-stage');
+    stage.dispatchEvent(new TransitionEvent('transitionend', { bubbles: true, propertyName: prop }));
+    stage.closest('.wb-screen').querySelector('.wb-screen-dim, .ios-stage').dispatchEvent(new TransitionEvent('transitionend', { bubbles: true, propertyName: 'opacity' }));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    mo.disconnect();
+    return { moved, same: document.querySelector('#ann-marks .ann-badge') === badge };
+  }, prop);
+  expect(await fire('outline-color')).toEqual({ moved: 0, same: true });
+});
+
 // 面板状态筛选 + 清空保留 close 故事（1812 / 1872 合并，2026-09-24 e2e 审计）：
 // 同一块弹出列表上先走完状态机（完成 → 撤销 → 再关闭 → closed 可见 → 重新
 // 打开），再在同一状态下验「清空只带走未关闭」—— 那正是 1 open + 1 close 的
