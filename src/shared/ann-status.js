@@ -32,58 +32,54 @@ export function annStatusVar(status) {
   return '--ann-st-' + (ANN_STATUS_COLORS[status] ? status : 'open');
 }
 
-/* ---- 状态筛选（owner 2026-09-23：「用 filter 切换查看 all、open、check、
-   done、closed」）——取代「已关闭 N」折叠段：全部含 closed（沉底弱化），
-   单状态只看该状态。行模型（annRowModel）的 status 是 'close'，筛选键按
-   owner 的叫法是 'closed'，filterStatusOf 负责这一跳。 ---- */
+/* ---- 状态筛选（owner 2026-09-24 改为两段）：pending = open / check / done，
+   都在等 owner 验收；closed = owner 确认做完的。取代 09-23 的全部 · open ·
+   check · done · closed 五段。行模型（annRowModel）的 status 是 'close'，
+   筛选键按 owner 的叫法是 'closed'。 ---- */
 
-export var ANN_FILTERS = ['all', 'open', 'check', 'done', 'closed'];
+export var ANN_FILTERS = ['pending', 'closed'];
 
-var FILTER_LABELS = { all: '全部', open: 'open', check: 'check', done: 'done', closed: 'closed' };
+var FILTER_LABELS = { pending: 'pending', closed: 'closed' };
 
-/** 段钮文案：全部/open/check/done/closed（状态名不翻，与行上的状态标同词）。 */
+/** 段钮文案：与筛选键同词（owner 的叫法）。 */
 export function annStatusLabel(filter) {
-  return FILTER_LABELS[filter] || '全部';
+  return FILTER_LABELS[filter] || 'pending';
 }
 
-/** 筛选键 → 行 status；'all' 与未知键回 null（调用方按不过滤处理）。 */
-export function filterStatusOf(filter) {
-  if (filter === 'closed') return 'close';
-  return ANN_STATUS_COLORS[filter] ? filter : null;
+function isClosed(r) {
+  return ((r && r.status) || 'open') === 'close';
 }
 
-/** 段钮计数：all = 全部行（含 closed），closed 计 status 'close'。 */
+/** 该状态在这个筛选下是否可见（画布钉子与列表行同一口径）；未知键按 pending。 */
+export function filterIncludesStatus(filter, status) {
+  var closed = (status || 'open') === 'close';
+  return filter === 'closed' ? closed : !closed;
+}
+
+/** 段钮计数，也是右下角计数的口径（pending）。 */
 export function annFilterCounts(rows) {
-  var out = { all: 0, open: 0, check: 0, done: 0, closed: 0 };
+  var out = { pending: 0, closed: 0 };
   (Array.isArray(rows) ? rows : []).forEach(function (r) {
-    var status = (r && r.status) || 'open';
-    out.all++;
-    out[status === 'close' ? 'closed' : (FILTER_LABELS[status] ? status : 'open')]++;
+    out[isClosed(r) ? 'closed' : 'pending']++;
   });
   return out;
 }
 
-/** 筛选后的行序：'all' = 非 closed 在前、closed 沉底（各自保持原序）；
- * 单状态 = 只留该状态，原序。不改传入数组。 */
+/** 筛选后的行，保持原序；未知键按 pending。不改传入数组。 */
 export function annFilterRows(rows, filter) {
   var list = Array.isArray(rows) ? rows.slice() : [];
-  var want = filterStatusOf(filter);
-  if (!want) {
-    var open = list.filter(function (r) { return ((r && r.status) || 'open') !== 'close'; });
-    var closed = list.filter(function (r) { return ((r && r.status) || 'open') === 'close'; });
-    return open.concat(closed);
-  }
-  return list.filter(function (r) { return ((r && r.status) || 'open') === want; });
+  var wantClosed = filter === 'closed';
+  return list.filter(function (r) { return isClosed(r) === wantClosed; });
 }
 
 /** 筛选选择的本地记忆（按页，key 由调用方拼）：读写都包 try/catch ——
- * 隐私模式 / quota 下静默回 'all'，列表照常可用。 */
+ * 隐私模式 / quota 下静默回 'pending'。09-23 存下的旧值（all / open /
+ * check / done）一律读成 'pending'。 */
 export function readAnnFilter(storage, key) {
   try {
-    var value = storage.getItem(key);
-    return FILTER_LABELS[value] ? value : 'all';
+    return storage.getItem(key) === 'closed' ? 'closed' : 'pending';
   } catch (e) {
-    return 'all';
+    return 'pending';
   }
 }
 

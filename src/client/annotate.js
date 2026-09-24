@@ -89,8 +89,8 @@
   var floatingToolbar = false;
   var sidebarOpen = false; // 标注面板（#ann-sidebar）；viewer 偏好，持久化到 LS
   // 状态筛选（pp2：取代「已关闭 n」折叠段）：驱动侧栏列表与画布钉子两处。
-  // 按页记在 LS（key 跟账本走，账本切换时重读）；读不到 / 坏值回 'all'。
-  var statusFilter = readAnnFilter(localStorage, statusFilterKey()); // 'all' | 'open' | 'check' | 'done' | 'closed'
+  // 按页记在 LS（key 跟账本走，账本切换时重读）；读不到 / 坏值回 'pending'。
+  var statusFilter = readAnnFilter(localStorage, statusFilterKey()); // 'pending' | 'closed'
   var updateListeners = [];
   var hoverEl = null;
   var drag = null;
@@ -1079,7 +1079,7 @@
     // 本规则上的 --wb-* 钉值是共享行样式（src/shared/ann-list.css）的主题入参 + 三向守卫锚点，
     // 与 [data-ann-ui] 基规则的钉值同值；宿主页面即便定义了同名变量也渗不进来。
     // 客座层：与 #ann-toolbar 同理，数字保留，不进 --wb-z 阶梯。
-    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-surface:#fff;--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
+    '#ann-sidebar{position:fixed;top:12px;right:12px;bottom:12px;width:280px;z-index:2147483645;overflow:hidden;display:flex;flex-direction:column;--wb-surface:#fff;--wb-fill:rgba(0,0,0,.055);--wb-fg:#1c2024;--wb-muted:#6b6b70;--wb-faint:#8d8d8d;--wb-hover:rgba(0,0,0,.04);--wb-danger:#b84230;--wb-r-2:6px;--wb-r-3:8px;--wb-w-medium:500;--wb-w-semibold:600;--wb-w-bold:700;--wb-sh-1:0 1px 2px rgba(0,0,0,.06),0 0 0 0.5px rgba(0,0,0,.04);--wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;--wb-dur:.2s;--wb-ease:cubic-bezier(.25,0,0,1);}',
     '#ann-sidebar[hidden]{display:none;}',
     '#ann-sidebar .ann-sb-head{flex:none;display:flex;align-items:center;gap:8px;padding:12px 14px 10px;}',
     '#ann-sidebar .ann-sb-title{flex:1;font-size:13px;font-weight:var(--wb-w-semibold);color:var(--wb-fg);}',
@@ -1594,7 +1594,7 @@
     sidebarFilters = sidebar.querySelector('.ann-sb-filters');
     sidebarSegInteract = sidebar.querySelector('[data-ann-mode="interact"]');
     sidebarSegAnnotate = sidebar.querySelector('[data-ann-mode="annotate"]');
-    // 状态筛选分段（pp2：取代「已关闭 n」折叠段）。5 个段钮骨架建一次，
+    // 状态筛选分段（2026-09-24 两段：pending / closed）。段钮骨架建一次，
     // 计数 / 选中态由 renderSidebar 就地刷新；计数为 0 弱化但仍可点。
     ANN_FILTERS.forEach(function (key) {
       var b = document.createElement('button');
@@ -1644,7 +1644,8 @@
     var sig = rows.map(function (r) {
       return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + r.note;
     }).join('~') + '|f:' + statusFilter;
-    sidebarCount.textContent = rows.length ? '(' + rows.length + ')' : '';
+    var pendingCount = rows.filter(function (r) { return filterIncludesStatus('pending', r.status); }).length;
+    sidebarCount.textContent = pendingCount ? '(' + pendingCount + ')' : '';
     if (sig === sidebarSig) return;
     sidebarSig = sig;
     sidebarBody.textContent = '';
@@ -1670,16 +1671,14 @@
       return;
     }
     visibleRows.forEach(function (r) {
-      // 「全部」里 closed 沉底整行弱化；单看 closed 时就是普通行。
-      sidebarBody.appendChild(buildRow(r, statusFilter === 'all' && r.status === 'close'));
+      sidebarBody.appendChild(buildRow(r));
     });
   }
 
-  /** 侧栏一行。dim = 「全部」视图里沉底的 closed 行（整行弱化）；单看 closed
-      时是普通行。 */
-  function buildRow(r, dim) {
+  /** 侧栏一行。 */
+  function buildRow(r) {
     var item = document.createElement('div');
-    item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '') + (dim ? ' wb-ann-item--closed' : '');
+    item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
     item.setAttribute('data-ann-n', r.n);
     // 序号圆颜色跟着状态走（--ann-st-*，与画布钉子同一组变量）。
     item.setAttribute('data-ann-status', r.status || 'open');
@@ -2852,13 +2851,9 @@
     return resolveMarkAnchor(m).el;
   }
 
-  /** 状态筛选筛掉哪些钉子：'all' = closed 不画（现行为）；单状态 = 只画该状态
-      （选 closed 才见灰钉）。 */
+  /** 状态筛选筛掉哪些钉子：pending = 不画 closed；closed = 只画灰钉。 */
   function filterDrawsStatus(m) {
-    var st = (m && m.status) || 'open';
-    var want = filterStatusOf(statusFilter);
-    if (!want) return st !== 'close';
-    return st === want;
+    return filterIncludesStatus(statusFilter, m && m.status);
   }
 
   /** Live marks on the active page that should be drawn on the canvas.
@@ -4035,6 +4030,7 @@
       countLive: live,
       countBroken: broken,
       countClosed: closed,
+      countPending: pageMarks.length - closed, // 右下角计数：等 owner 验收的（open / check / done）
       countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
       revision: revision,
       syncing: syncing,

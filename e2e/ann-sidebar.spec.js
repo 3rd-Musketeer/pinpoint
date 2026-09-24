@@ -147,7 +147,7 @@ test('/sites/ page: row shows the broken state after its target leaves the DOM',
 test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完成沉底弱化 → closed 筛选可见 → 重新打开', async ({ page }) => {
   // 与 workbench.spec 的面板筛选全流程同一条链，跑在注入侧栏上：行尾完成勾
   // 单击即 close，toast 撤销回关前原态；「已关闭 N」折叠段由状态筛选取代 ——
-  // 全部视图里 close 行沉底弱化仍可见，closed 段只看关闭行，close 行可重开。
+  // 两段筛选（2026-09-24）：pending = open / check / done，closed 只看关闭行，close 行可重开。
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -167,7 +167,7 @@ test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完�
   await expect(sidebar.locator('.wb-ann-filter-empty')).toHaveText('没有 closed 的标注');
   // 画布跟随筛选：closed 视图里 open 钉子不画
   await expect(page.locator('.ann-badge')).toHaveCount(0);
-  await filters.locator('[data-ann-filter="all"]').click();
+  await filters.locator('[data-ann-filter="pending"]').click();
   await expect(page.locator('.ann-badge')).toHaveCount(1);
 
   // open 行点「完成」：单击即关（不二次确认），toast「已完成 #n」带撤销
@@ -178,39 +178,37 @@ test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完�
   const toast = page.locator('#ann-toast');
   await expect(toast).toBeVisible();
   await expect(toast).toContainText('已完成 #' + n);
-  // 取代「收进折叠段」：行留在全部视图里 —— 沉底、整行弱化、closed 计数 +1
-  await expect(row).toHaveCount(1);
-  await expect(row).toHaveClass(/wb-ann-item--closed/);
+  // 关闭的行离开 pending 视图，closed 计数 +1
+  await expect(row).toHaveCount(0);
+  await expect(filters.locator('[data-ann-filter="pending"]')).toHaveText('pending 0');
   await expect(closedSeg).toHaveText('closed 1');
   await expect(page.locator('.ann-badge')).toHaveCount(0);
 
-  // 撤销 → 回关闭前的原态（这行是 open），行回正常态，toast 收起
+  // 撤销 → 回关闭前的原态（这行是 open），行回到 pending 视图，toast 收起
   await toast.locator('button').click();
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
-  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
+  await expect(row).toHaveCount(1);
   await expect(toast).toBeHidden();
   // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
 
-  // 再点完成，这次不撤销：切到 closed 筛选才看这行 —— 正常亮度、状态标 +「重新打开」
+  // 再点完成，这次不撤销：切到 closed 筛选才看这行 —— 状态标 +「重新打开」
   await row.hover();
   await row.getByRole('button', { name: '完成 #' + n, exact: true }).click();
   await expect(closedSeg).toHaveText('closed 1');
   await closedSeg.click();
   await expect(row).toHaveCount(1);
-  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
   await expect(row.locator('.wb-ann-status-tag')).toHaveText('close');
   await row.hover();
   await expect(row.getByRole('button', { name: '重新打开标注 ' + n, exact: true })).toBeVisible();
 
-  // 重新打开 → closed 计数回 0（空态），切回「全部」行回正常亮度
+  // 重新打开 → closed 计数回 0（空态），切回 pending 行在
   await row.getByRole('button', { name: '重新打开标注 ' + n, exact: true }).click();
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, n)).toBe('open');
   await expect(closedSeg).toHaveText('closed 0');
   await expect(sidebar.locator('.wb-ann-filter-empty')).toHaveText('没有 closed 的标注');
-  await filters.locator('[data-ann-filter="all"]').click();
+  await filters.locator('[data-ann-filter="pending"]').click();
   await expect(row).toHaveCount(1);
-  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
   await expect(page.locator('.ann-badge')).toHaveCount(1);
 });
 
@@ -402,22 +400,17 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   const closeRow = sidebar.locator('.wb-ann-item[data-ann-n="' + nClose + '"]');
   await closeRow.hover();
   await closeRow.getByRole('button', { name: '完成 #' + nClose, exact: true }).click();
-  await expect(closeRow).toHaveClass(/wb-ann-item--closed/);
+  await expect(closeRow).toHaveCount(0);
 
-  // 全部：四行都在（closed 沉底），钉子只画非 closed 的三枚（现行为不变）
-  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(4);
-  await expect(filters.locator('[data-ann-filter="all"]')).toHaveText('全部 4');
-  await expect(filters.locator('[data-ann-filter="closed"]')).toHaveText('closed 1');
-  await expect(page.locator('.ann-badge')).toHaveCount(3);
-
-  // 切到 check：只剩一行、画布只剩一枚琥珀钉
-  await filters.locator('[data-ann-filter="check"]').click();
+  // pending：open / check / done 三行，钉子三枚；closed 计 1
   const rows = sidebar.locator('.wb-ann-item');
-  await expect(rows).toHaveCount(1);
-  await expect(rows.first().locator('.wb-ann-num')).toHaveText(String(nCheck));
+  await expect(rows).toHaveCount(3);
+  await expect(filters.locator('[data-ann-filter="pending"]')).toHaveText('pending 3');
+  await expect(filters.locator('[data-ann-filter="closed"]')).toHaveText('closed 1');
   const pins = page.locator('.ann-badge');
-  await expect(pins).toHaveCount(1);
-  await expect(pins).toHaveCSS('background-color', 'rgb(184, 124, 20)');
+  await expect(pins).toHaveCount(3);
+  // pending 里三种状态各自保留状态色（琥珀 = check）
+  await expect(page.locator('.ann-badge.ann-badge--check')).toHaveCSS('background-color', 'rgb(184, 124, 20)');
 
   // 切到 closed：closed 行（带「重新打开」）+ 一枚灰钉
   await filters.locator('[data-ann-filter="closed"]').click();

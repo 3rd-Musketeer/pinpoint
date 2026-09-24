@@ -9,7 +9,7 @@ import {
   ANN_FILTERS,
   annStatusVar,
   annStatusLabel,
-  filterStatusOf,
+  filterIncludesStatus,
   annFilterCounts,
   annFilterRows,
   readAnnFilter,
@@ -83,51 +83,51 @@ const ROWS = [
   { n: 6, status: 'close' },
 ];
 
-test('filter labels and status mapping (closed ↔ close jump)', () => {
-  assert.deepEqual(ANN_FILTERS, ['all', 'open', 'check', 'done', 'closed']);
-  assert.equal(annStatusLabel('all'), '全部');
+test('two filters: pending = open / check / done, closed = close', () => {
+  assert.deepEqual(ANN_FILTERS, ['pending', 'closed']);
+  assert.equal(annStatusLabel('pending'), 'pending');
   assert.equal(annStatusLabel('closed'), 'closed');
-  assert.equal(annStatusLabel('nope'), '全部');
-  assert.equal(filterStatusOf('closed'), 'close');
-  assert.equal(filterStatusOf('check'), 'check');
-  assert.equal(filterStatusOf('all'), null);
-  assert.equal(filterStatusOf('bogus'), null);
+  assert.equal(annStatusLabel('nope'), 'pending');
+  for (const st of ['open', 'check', 'done', undefined]) {
+    assert.equal(filterIncludesStatus('pending', st), true, `pending includes ${st}`);
+    assert.equal(filterIncludesStatus('closed', st), false);
+  }
+  assert.equal(filterIncludesStatus('closed', 'close'), true);
+  assert.equal(filterIncludesStatus('pending', 'close'), false);
+  assert.equal(filterIncludesStatus('bogus', 'close'), false, 'unknown key reads as pending');
 });
 
-test('annFilterCounts: all counts every row, closed counts status close', () => {
-  assert.deepEqual(annFilterCounts(ROWS), { all: 6, open: 2, check: 1, done: 1, closed: 2 });
-  assert.deepEqual(annFilterCounts([]), { all: 0, open: 0, check: 0, done: 0, closed: 0 });
-  assert.deepEqual(annFilterCounts(undefined), { all: 0, open: 0, check: 0, done: 0, closed: 0 });
+test('annFilterCounts: pending = not close, closed = close', () => {
+  assert.deepEqual(annFilterCounts(ROWS), { pending: 4, closed: 2 });
+  assert.deepEqual(annFilterCounts([]), { pending: 0, closed: 0 });
+  assert.deepEqual(annFilterCounts(undefined), { pending: 0, closed: 0 });
   // 缺 status 的行按 open 计（与 annRowModel 默认一致）。
-  assert.deepEqual(annFilterCounts([{ n: 9 }]), { all: 1, open: 1, check: 0, done: 0, closed: 0 });
+  assert.deepEqual(annFilterCounts([{ n: 9 }]), { pending: 1, closed: 0 });
 });
 
-test('annFilterRows: all keeps order with closed last; single status filters', () => {
-  // 全部 = closed 沉底，其余与 closed 各自保持原序。
-  assert.deepEqual(annFilterRows(ROWS, 'all').map((r) => r.n), [1, 2, 3, 5, 4, 6]);
-  // 单状态 = 只留该状态，原序。
-  assert.deepEqual(annFilterRows(ROWS, 'check').map((r) => r.n), [2]);
-  assert.deepEqual(annFilterRows(ROWS, 'open').map((r) => r.n), [1, 5]);
-  assert.deepEqual(annFilterRows(ROWS, 'done').map((r) => r.n), [3]);
+test('annFilterRows: keeps original order within each filter', () => {
+  assert.deepEqual(annFilterRows(ROWS, 'pending').map((r) => r.n), [1, 2, 3, 5]);
   assert.deepEqual(annFilterRows(ROWS, 'closed').map((r) => r.n), [4, 6]);
-  // 未知筛选键与 'all' 同义（防脏 LS 值）。
-  assert.deepEqual(annFilterRows(ROWS, 'bogus').map((r) => r.n), [1, 2, 3, 5, 4, 6]);
+  // 未知筛选键按 pending（防脏 LS 值）。
+  assert.deepEqual(annFilterRows(ROWS, 'bogus').map((r) => r.n), [1, 2, 3, 5]);
   // 不改传入数组。
   assert.equal(ROWS[3].status, 'close');
   assert.equal(ROWS.length, 6);
 });
 
-test('annFilter storage helpers: roundtrip, bad values, throwing storage', () => {
+test('annFilter storage helpers: roundtrip, legacy values, throwing storage', () => {
   const backing = new Map();
   const storage = { getItem: (k) => (backing.has(k) ? backing.get(k) : null), setItem: (k, v) => backing.set(k, v), removeItem: (k) => backing.delete(k) };
-  assert.equal(readAnnFilter(storage, 'k'), 'all', 'missing → all');
-  writeAnnFilter(storage, 'k', 'check');
-  assert.equal(readAnnFilter(storage, 'k'), 'check');
-  backing.set('k', 'bogus');
-  assert.equal(readAnnFilter(storage, 'k'), 'all', 'bad value → all');
+  assert.equal(readAnnFilter(storage, 'k'), 'pending', 'missing → pending');
+  writeAnnFilter(storage, 'k', 'closed');
+  assert.equal(readAnnFilter(storage, 'k'), 'closed');
+  for (const legacy of ['all', 'open', 'check', 'done', 'bogus']) {
+    backing.set('k', legacy);
+    assert.equal(readAnnFilter(storage, 'k'), 'pending', `09-23 value ${legacy} → pending`);
+  }
   writeAnnFilter(storage, 'k', 'nope');
   assert.equal(backing.has('k'), false, 'bad write clears the slot');
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('blocked'); } };
-  assert.equal(readAnnFilter(throwing, 'k'), 'all', 'throwing read → all');
-  assert.doesNotThrow(() => writeAnnFilter(throwing, 'k', 'done'), 'throwing write is swallowed');
+  assert.equal(readAnnFilter(throwing, 'k'), 'pending', 'throwing read → pending');
+  assert.doesNotThrow(() => writeAnnFilter(throwing, 'k', 'closed'), 'throwing write is swallowed');
 });

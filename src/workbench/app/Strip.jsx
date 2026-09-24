@@ -79,7 +79,10 @@ export function Strip() {
   }
   var hasViewport = entryHasViewport(entry);
   var mode = !!(snap && snap.available && snap.mode);
-  var count = (snap && snap.count) || 0;
+  // 计数 = pending（open / check / done，等 owner 验收的；owner 2026-09-24）。
+  // closed 不计：它是 owner 已确认的，列表里切到 closed 段看。
+  var count = (snap && snap.countPending) || 0;
+  var total = (snap && snap.count) || 0;
 
   // 每次点击重新解析 annotate 实例：文档条目要驱动的是 iframe 里那个。
   function setMode(on) {
@@ -172,8 +175,8 @@ export function Strip() {
       </div>
       <button type="button" id="wbann-count"
         aria-expanded={listOpen ? 'true' : 'false'} aria-controls="wbann-pop"
-        aria-label={'这页的标注 ' + count + ' 条'}
-        title={count ? '这页的标注（点击展开列表）' : '这页还没有标注'}
+        aria-label={'这页待验收的标注 ' + count + ' 条'}
+        title={count ? '待验收的标注（点击展开列表）' : (total ? '没有待验收的标注（点击展开列表）' : '这页还没有标注')}
         className={cn(
           'wb-ann-hcount inline-flex h-[18px] min-w-[18px] cursor-pointer items-center justify-center rounded-full border-0 px-[5px]',
           'font-[var(--wb-font-mono)] text-[10.5px] font-semibold leading-none tabular-nums transition-[background-color,color] duration-150',
