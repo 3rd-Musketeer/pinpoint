@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
+import { etagMatches } from './lib/etag.js';
 import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
@@ -81,20 +82,16 @@ function mimeFor(name) {
 // （HEAD 只回头），构建失败显式 500 带原因，绝不静默发旧版。
 
 // 浏览器与 curl 的 Accept-Encoding 都不带 q 值，出现即支持；q=0 的怪请求落到
-// identity 大文件，宁可浪费也不写一套 q 值解析。
+// identity 大文件，宁可浪费也不写一套 q 值解析。按逗号拆开精确匹配编码名
+//（;q= 后缀剥掉）：子串匹配会把 xgzip 这类怪值误判成 gzip。
 function pickAnnotateEncoding(acceptEncoding) {
-  const enc = String(acceptEncoding || '').toLowerCase();
-  if (enc.includes('br')) return 'br';
-  if (enc.includes('gzip')) return 'gzip';
-  return 'identity';
-}
-
-function etagMatches(ifNoneMatch, etag) {
-  if (!ifNoneMatch) return false;
-  return String(ifNoneMatch)
+  const offered = String(acceptEncoding || '')
+    .toLowerCase()
     .split(',')
-    .map((t) => t.trim().replace(/^W\//, ''))
-    .some((t) => t === '*' || t === etag);
+    .map((token) => token.split(';')[0].trim());
+  if (offered.includes('br')) return 'br';
+  if (offered.includes('gzip')) return 'gzip';
+  return 'identity';
 }
 
 let lastLoggedBundleError = '';

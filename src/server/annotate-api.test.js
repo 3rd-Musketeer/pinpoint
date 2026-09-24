@@ -288,6 +288,12 @@ test('GET /annotate.<hash>.js is immutable and encoding-negotiated; HEAD returns
   assert.equal(plain.res.headers['Content-Encoding'], undefined);
   assert.equal(plain.res.body.toString('utf8'), artifact.js);
 
+  // 编码名按逗号拆开精确匹配：子串匹配会把怪值误判成 gzip / br。
+  const weird = await call(handler, 'GET', hashed, undefined, { 'accept-encoding': 'xgzip, brotli' });
+  assert.equal(weird.res.headers['Content-Encoding'], undefined, 'xgzip / brotli 不是 gzip / br');
+  const withQ = await call(handler, 'GET', hashed, undefined, { 'accept-encoding': 'gzip;q=0.9, br;q=0.8' });
+  assert.equal(withQ.res.headers['Content-Encoding'], 'br', '带 q 值的编码名仍认得出');
+
   const head = await call(handler, 'HEAD', hashed, undefined, { 'accept-encoding': 'br' });
   assert.equal(head.res.statusCode, 200);
   assert.equal(head.res.headers['Content-Length'], String(artifact.br.length), 'HEAD 给全元数据');

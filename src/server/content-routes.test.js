@@ -107,12 +107,12 @@ function kitMiddleware() {
   return handler;
 }
 
-function callKit(handler, method, url) {
+function callKit(handler, method, url, headers = {}) {
   return new Promise((resolve, reject) => {
     const req = new EventEmitter();
     req.method = method;
     req.url = url;
-    req.headers = {};
+    req.headers = headers;
     const res = {
       statusCode: 0,
       headers: {},
@@ -142,10 +142,31 @@ test('served ios-kit.js self-injection references the hashed artifact URL', asyn
   assert.equal(res.statusCode, 200);
   assert.match(res.headers['Content-Type'], /^application\/javascript/);
   assert.equal(res.headers['Cache-Control'], 'no-cache', '换版后新哈希要立刻跟着发出去');
+  assert.match(res.headers.ETag, /^"\/annotate\.[0-9a-f]{10}\.js-\d+"$/, 'ETag 由产物地址 + kit 源 mtime 拼');
   assert.ok(/s\.src = '\/annotate\.[0-9a-f]{10}\.js';/.test(res.text), 'self-injection swapped to the hash URL');
   assert.ok(!res.text.includes("s.src = '/annotate.js';"), 'old literal gone from the served bytes');
   // HEAD 同路径同头，无响应体。
   const head = await callKit(handler, 'HEAD', '/kits/ios/ios-kit.js');
   assert.equal(head.res.statusCode, 200);
   assert.equal(head.res.chunks.length, 0);
+  // If-None-Match 命中（精确、弱化、列表）答 304。
+  const etag = res.headers.ETag;
+  for (const header of [etag, `W/${etag}`, `"whatever", ${etag}`]) {
+    const notModified = await callKit(handler, 'GET', '/kits/ios/ios-kit.js', { 'if-none-match': header });
+    assert.equal(notModified.res.statusCode, 304, header);
+    assert.equal(notModified.res.chunks.length, 0);
+  }
+  const changed = await callKit(handler, 'GET', '/kits/ios/ios-kit.js', { 'if-none-match': '"other"' });
+  assert.equal(changed.res.statusCode, 200, 'ETag 不匹配照常 200 带体');
+});
+
+test('kit path only answers GET/HEAD; write methods are a loud 405', async () => {
+  const handler = kitMiddleware();
+  for (const method of ['POST', 'PUT', 'DELETE']) {
+    const { next, res } = await callKit(handler, method, '/kits/ios/ios-kit.js');
+    assert.equal(next, false, `${method} 不放行给 vite 静态层（此前 200 带体）`);
+    assert.equal(res.statusCode, 405, method);
+    assert.equal(res.headers.Allow, 'GET, HEAD', method);
+    assert.equal(res.chunks.length, 0, method);
+  }
 });
