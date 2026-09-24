@@ -424,6 +424,11 @@ test('proxy: POST body round-trips; 302 Location and Set-Cookie rewritten', asyn
     assert.equal(redirect.status, 302);
     assert.equal(redirect.headers.get('location'), '/sites/app/final');
 
+    // 上游 404 如实回传（原 e2e url-entry 的 /sites/e2e-proxy/nope 那半句）。
+    const missing = await fetch(`${base}/sites/app/nope`);
+    assert.equal(missing.status, 404);
+    assert.equal(await missing.text(), 'upstream 404');
+
     // 上游 Location 里的「绝对 URL」指它自己 origin 时同样折回前缀。
     const absolute = await fetch(`${base}/sites/app/redirect-absolute`, { redirect: 'manual' });
     assert.equal(absolute.headers.get('location'), '/sites/app/final-abs');

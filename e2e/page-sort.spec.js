@@ -43,8 +43,9 @@ test.beforeAll(pressMtimes);
 // 压旧的 mtime 必须恢复原值：同轮后面的 spec（sidebar-content 等）还在用这些
 // 固件目录，不该看到被压旧的假时间。恢复放回用例末尾而不是 afterAll ——
 // utimes 一批固件会触发 preview-hmr 的 watch 风暴（六个登记页重编 + 广播），
-// afterAll 紧贴下一条 spec 的启动，风暴正好砸在它的 annotate 客户端上；
-// 收进用例内，用末尾的 reload + 断言给风暴留出落定窗口。
+// afterAll 紧贴下一条 spec 的启动，风暴正好砸在它的 annotate 客户端上。
+// 收进用例末尾：这些固件都是 HTML，风暴只触发重编广播、不毁页面（毁页面的
+// full-reload 来自 ios-site 的 .js sidecar，所以 ios-site 根本不压）。
 
 async function openWorkbench(page) {
   await page.goto('/index.html');
