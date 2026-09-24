@@ -20,7 +20,7 @@ async function save(page, content) {
   await page.locator('#ann-input').fill(content);
   await Promise.all([
     page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok()),
-    page.locator('#ann-save').click(),
+    page.locator('#ann-close').click(),
   ]);
   await expect(page.locator('#ann-box')).toBeHidden();
 }

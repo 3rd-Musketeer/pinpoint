@@ -47,7 +47,7 @@ async function annotateOn(page, vpage, selector, text) {
   await page.locator('#ann-input').fill(text);
   await Promise.all([
     page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok()),
-    page.locator('#ann-save').click(),
+    page.locator('#ann-close').click(),
   ]);
   await expect(page.locator('#ann-box')).toBeHidden();
   // 保存应答把带号行带回；等侧栏计数跟上再继续（#n 由服务端发）。

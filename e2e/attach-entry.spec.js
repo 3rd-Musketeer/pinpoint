@@ -96,7 +96,7 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
       const ta = d.querySelector('#ann-input');
       ta.value = 'attached draft mark';
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
       return true;
     }`)).toBe(true);
     // 宿主页桶里，这本账本的 path 指向挂靠条目的 /sites/ URL（页面 key 按路径分）。

@@ -35,7 +35,7 @@ async function saveAnnotation(page, target, comment) {
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
   await box.locator('#ann-input').fill(comment);
-  await box.locator('#ann-save').click();
+  await box.locator('#ann-close').click();
 }
 
 // 「这页的标注」弹出列表（2026-09-04 评审板 H2，取代常驻右栏）：横条右端的计数
@@ -407,7 +407,7 @@ test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动�
       const ta = d.querySelector('#ann-input');
       ta.value = 'sidebar sync check';
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
     });
 
     await expect.poll(async () => (await docState()).count).toBe(1);
@@ -504,7 +504,7 @@ test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动�
       const ta = d.querySelector('#ann-input');
       ta.value = 'interactive view redraw';
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
     });
 
     const docTargetCount = () => page.evaluate(() => {
@@ -664,7 +664,7 @@ test('HTML board: 评论三档 —— inline 叠在页面、chan 右侧通道、
       const ta = d.querySelector('#ann-input');
       ta.value = '评论 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
     }
     clickEl('h1');
     clickEl('#s2');
@@ -849,7 +849,7 @@ async function openSidebarGutter(page) {
       const ta = d.querySelector('#ann-input');
       ta.value = '评论 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
     }
     clickEl('h1');
     clickEl('#s2');
@@ -991,7 +991,7 @@ test('gutter renders only on events: idle, scroll, filter/ledger changes, and la
       const ta = d.querySelector('#ann-input');
       ta.value = '评论 p.sub';
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
+      d.querySelector('#ann-close').click();
     });
     await expect.poll(bubbleCount).toBe(3);
 
@@ -1547,7 +1547,8 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
 
 // The old reference-mode and draggable-composer stories are retired. Inline
 // input and DOM-positioning coverage also runs in review-refinements.spec.js.
-test('canvas multi-target pills preserve text and cancel edits without changing the saved annotation', async ({ page }) => {
+// 2026-09-24 owner：没有「取消」—— 关框（X / Esc / Enter）、换页都把修改存下。
+test('canvas multi-target pills preserve text; closing the card or switching pages keeps the edit', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -1557,26 +1558,32 @@ test('canvas multi-target pills preserve text and cancel edits without changing 
   await input.fill('已保存');
   await cells.nth(1).click();
   await expect(input.locator('[data-target-ref]')).toHaveCount(2);
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   const saved = await page.evaluate(() => window.pinpoint.marks[0]);
   expect(saved.targets).toHaveLength(2);
   await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
-  await input.fill('不应保存');
-  await page.locator('#ann-cancel').click();
-  expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
-  // 编辑中途换页不落账（原 1624 尾段，2026-09-24 review 补回）：openMark 后
-  // fill 进 composer 的草稿没保存，切回后 marks[0] 仍逐字等于 saved —— 若哪天
-  // composer 被改成换页时顺手保存草稿，这条会红。换桶 hydrate、切回原样另由
-  // page-bucket.spec.js「一页一桶」共守。
+  // 在末尾续写（fill 会整段替换，连目标 pill 一起删掉）
+  await input.focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' 关框即存');
+  await expect(input).toContainText('关框即存');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveCount(0);
+  const edited = await page.evaluate(() => window.pinpoint.marks[0]);
+  expect(edited.id).toBe(saved.id);
+  expect(edited.content).toContain('关框即存');
+  expect(edited.targets).toHaveLength(2);
+  // 编辑中途换页：草稿存回原页的桶，切回来能看到。
   await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
-  await input.fill('换页也不应保存');
+  await input.fill('换页也存');
   await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
   await expect(input).toHaveCount(0);
   // storage-unify：换页 = 换桶 —— e2e-doc 的画布账本是另一本，此刻为空；
   // 已保存的标注仍在 e2e-ios 的桶里，切回来原样（不因换页丢行、也不串页）。
   expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0]?.content || '')).toContain('换页也存');
+  expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
@@ -1714,7 +1721,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await expectLocatedTarget(page);
   await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
-  await page.locator('#ann-cancel').click();
+  await page.locator('#ann-close').click();
   await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(page.locator('#wbann-list [data-ann-go]')).toHaveCount(0);
@@ -1739,14 +1746,27 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.keyboard.press('Escape');
 });
 
-// 2026-09-24 owner：框开着时点别的钉子要点两次才开（第一下被静默拦下，提示在
-// 隐藏的工具条里）；标注框上只有删除、没有完成。
-test('标注框：开着时点别的钉子，没改过直接换、改过留着并提示；框里的完成钮 close', async ({ page }) => {
+// 2026-09-24 owner：标注框没有保存 / 取消 —— 输入去抖自动存，Esc / X / Enter
+// 结束这一条（都先存）；框开着点别的钉子直接存了再换；框开着 hover 别的元素也出
+// 高亮框（点下去 = 给这条加目标）；框里有完成钮（→ close）。
+test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 hover，框里完成', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'pin switch A');
+  const box = page.locator('#ann-box');
+  const input = box.locator('#ann-input');
+  const markByN = (n) => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n), n);
+
+  await test.step('新建：只有 X / 删除类按钮，没有保存 / 取消；Enter 存并关框', async () => {
+    await cells.nth(0).scrollIntoViewIfNeeded();
+    await cells.nth(0).click();
+    await expect(box.getByRole('button', { name: '关闭标注', exact: true })).toBeVisible();
+    await expect(box.locator('#ann-save, #ann-cancel')).toHaveCount(0);
+    await input.fill('pin switch A');
+    await input.press('Enter');
+    await expect(box).toHaveCount(0);
+    expect((await page.evaluate(() => window.pinpoint.marks.at(-1))).content).toContain('pin switch A');
+  });
   // B 放在另一帧：同帧相邻的钉子会被 A 的框压住，点不到
   const other = page.locator('#wb-board-panel [data-screen="msg-reply"] .ios-stage');
   await other.scrollIntoViewIfNeeded();
@@ -1757,30 +1777,54 @@ test('标注框：开着时点别的钉子，没改过直接换、改过留着�
     await target.scrollIntoViewIfNeeded();
     await page.locator('#ann-marks .ann-badge').filter({ hasText: new RegExp('^' + n + '$') }).click();
   };
-  const box = page.locator('#ann-box');
-  const input = box.locator('#ann-input');
 
-  await clickBadge(nA, cells.nth(0));
-  await expect(input).toContainText('pin switch A');
-  // 没改过：点一次 B 就换过去
-  await clickBadge(nB, other);
-  await expect(input).toContainText('pin switch B');
+  await test.step('框开着点别的钉子：一下就换；没改过的那条不写账本', async () => {
+    const aBefore = await markByN(nA);
+    await clickBadge(nA, cells.nth(0));
+    await expect(input).toContainText('pin switch A');
+    await clickBadge(nB, other);
+    await expect(input).toContainText('pin switch B');
+    expect(await markByN(nA)).toEqual(aBefore);
+  });
 
-  // 改过：点 A 不换，框留着 B 的修改，toast 说明原因
-  await input.click();
-  await page.keyboard.press('End');
-  await page.keyboard.type(' edited');
-  await clickBadge(nA, cells.nth(0));
-  await expect(input).toContainText('pin switch B edited');
-  await expect(page.locator('#ann-toast')).toContainText('未保存');
+  await test.step('改过再换钉子：先存再换', async () => {
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' edited');
+    await clickBadge(nA, cells.nth(0));
+    await expect(input).toContainText('pin switch A');
+    expect((await markByN(nB)).content).toContain('pin switch B edited');
+  });
 
-  // 框里的完成钮：先存修改，再 close，框收起
-  await box.getByRole('button', { name: '完成标注', exact: true }).click();
-  await expect(box).toHaveCount(0);
-  await expect(page.locator('#ann-toast')).toContainText('已完成 #' + nB);
-  const b = await page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n), nB);
-  expect(b.status).toBe('close');
-  expect(b.content).toContain('pin switch B edited');
+  await test.step('输入停下自动存，框不关', async () => {
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' autosaved');
+    await expect.poll(async () => (await markByN(nA)).content).toContain('pin switch A autosaved');
+    await expect(box).toBeVisible();
+  });
+
+  await test.step('框开着 hover 别的元素出高亮框；Esc 关框', async () => {
+    const cell = cells.nth(3);
+    const bb = await cell.boundingBox();
+    await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2, { steps: 4 });
+    await expect(page.locator('.ann-hover-ghost')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(box).toHaveCount(0);
+  });
+
+  await test.step('框里的完成钮：先存修改，再 close，框收起', async () => {
+    await clickBadge(nB, other);
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' closing');
+    await box.getByRole('button', { name: '完成标注', exact: true }).click();
+    await expect(box).toHaveCount(0);
+    await expect(page.locator('#ann-toast')).toContainText('已完成 #' + nB);
+    const b = await markByN(nB);
+    expect(b.status).toBe('close');
+    expect(b.content).toContain('pin switch B edited closing');
+  });
 });
 
 // 面板状态筛选 + 清空保留 close 故事（1812 / 1872 合并，2026-09-24 e2e 审计）：

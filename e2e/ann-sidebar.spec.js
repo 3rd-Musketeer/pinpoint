@@ -26,13 +26,13 @@ async function annotate(page, selector, text) {
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
   await box.locator('#ann-input').fill(text);
-  await box.locator('#ann-save').click();
+  await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
 }
 
 async function closeComposer(page) {
   const box = page.locator('#ann-box');
-  if (await box.isVisible()) await box.locator('#ann-cancel').click();
+  if (await box.isVisible()) await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
 }
 
@@ -81,7 +81,7 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await page.evaluate(() => window.pinpoint.toggleSidebar());
   await expect(box.locator('#ann-input')).toBeVisible();
   await expect(page.locator('#ann-sidebar')).toBeVisible();
-  await box.locator('#ann-save').click();
+  await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
 
   await annotate(page, '#doc-target-2', 'second mark');
@@ -477,7 +477,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await page.evaluate((n) => window.pinpoint.openMark(n), nDone);
   await expect(page.locator('#ann-box')).toBeVisible();
   await page.locator('#ann-input').fill('改过的正文');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('open');
   // 这是本用例最后一次保存：等回包落定再收尾，afterEach 删桶不与在途写入抢跑。
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);

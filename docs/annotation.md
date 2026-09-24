@@ -202,7 +202,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
   `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
   revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
   `404 annotation_not_found`。这是 `ppnt mark` 的后端；
-- `open` / `check` / `done` → `close`：owner 在列表行（工作台弹层或注入侧栏）上点“完成”——
+- `open` / `check` / `done` → `close`：owner 在列表行（工作台弹层或注入侧栏）或标注框里点“完成”——
   单击，toast 带“撤销”5 秒，不二次确认；撤销回关闭前的原态（`close → open` / `check` / `done`），
   再编辑也回 `open`。
 
@@ -218,6 +218,8 @@ pending。
 锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
 composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
+
+标注框没有保存和取消（2026-09-24 owner 定）。正文输入停 600 ms 自动存一次；Esc、右上角 X、Enter 结束这一条，都先存再关，⇧Enter 换行。框开着时点别的钉子、点列表行、切页、退出标注模式，也都先存再走。只在内容和上次存的不一样时写账本：打开再关掉不改状态，一改就按状态机回 `open`。新建的写了内容才落账本、拿到 `#n`，空着关掉就丢；已有的清空正文不存，保留原文，删除走框里的垃圾桶。框开着时 hover 别的元素照常出高亮框，点下去给这条加目标（多目标），不开新标注。
 
 `clearInvalid()` 仅作用当前页，要求所有目标都无法解析且所属 frame 已加载。隐藏目标仍存在，保留；缺失/加载中的 frame 保留。该保守判定不是任意外部 SPA 加载状态的识别器。
 

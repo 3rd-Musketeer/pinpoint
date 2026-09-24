@@ -20,7 +20,7 @@ test.afterEach(async ({ page }) => {
 async function saveMark(page) {
   await Promise.all([
     page.waitForResponse(response => new URL(response.url()).pathname === '/save' && response.request().method() === 'POST' && response.ok()),
-    page.locator('#ann-save').click(),
+    page.locator('#ann-close').click(),
   ]);
 }
 

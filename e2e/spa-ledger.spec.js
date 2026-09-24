@@ -53,7 +53,7 @@ async function annotate(page, selector, text) {
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
   await box.locator('#ann-input').fill(text);
-  await box.locator('#ann-save').click();
+  await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
 }
 

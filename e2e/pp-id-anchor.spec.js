@@ -107,7 +107,7 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
     await expect(page.locator('#ann-box')).toBeVisible();
   }).toPass({ timeout: 20_000 });
   await page.locator('#ann-input').fill('这段文案改成两行');
-  await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
+  await Promise.all([waitForSave(page), page.locator('#ann-close').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
   const captured = readLedger().annotations;
   expect(captured).toHaveLength(1);
@@ -144,10 +144,13 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   const locate = await ppnt(['locate', '#1', '--page', 'e2e-anchor']);
   expect(locate.stdout).toContain('#1 → components/Blurb.jsx:2');
 
-  // 4 ─ 迁移：owner 编辑保存自然补回 ppId。
+  // 4 ─ 迁移：owner 编辑保存自然补回 ppId（只打开再关不写账本，要真改一笔）。
   await page.evaluate(() => window.pinpoint.openMark(1));
   await expect(page.locator('#ann-box')).toBeVisible();
-  await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
+  await page.locator('#ann-input').focus();
+  await page.keyboard.press('End');
+  await page.keyboard.type('。');
+  await Promise.all([waitForSave(page), page.locator('#ann-close').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
   expect(readLedger().annotations[0].targets[0].ppId).toBe(BLURB_PP_ID);
 

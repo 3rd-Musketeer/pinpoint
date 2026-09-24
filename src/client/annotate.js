@@ -1074,6 +1074,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   var ANN_ICONS = {
     trash: '<path d="M3 6h18M9 6V4h6v2M5 6l1 14h12l1-14M10 10v6M14 10v6"/>',
     check: '<path d="M20 6 9 17l-5-5"/>',
+    x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
     link: '<path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/>',
     image: '<rect width="18" height="18" x="3" y="3" rx="2" ry="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/>',
     pencil: '<path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/>',
@@ -1214,9 +1215,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
     '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#fff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
-    '#ann-box #ann-save{border-radius:999px;height:36px;font-size:14px;font-weight:500;padding:0 17px;background:var(--ann-ink,#111);color:var(--ann-on-ink,#fff)}#ann-box #ann-save:hover{background:var(--ann-ink-hover,#292929)}#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
+    '#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
     '#ann-box .t{font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;margin-right:32px}',
-    '#ann-box #ann-cancel{border:1px solid var(--wb-seam,rgba(0,0,0,.1));border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}#ann-box #ann-close-mark{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-close-mark:hover{color:var(--ann-st-done,#2f9e63);background:rgba(0,0,0,.04)}#ann-box #ann-close-mark svg{width:18px;height:18px}',
+    '#ann-box #ann-close{position:absolute;top:10px;right:10px;display:grid;place-items:center;width:28px;height:28px;padding:0;border-radius:999px;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-close:hover{color:var(--wb-fg,#1c2024);background:rgba(0,0,0,.05)}#ann-box #ann-close svg{width:16px;height:16px}#ann-box #ann-input{padding-right:24px}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}#ann-box #ann-close-mark{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-close-mark:hover{color:var(--ann-st-done,#2f9e63);background:rgba(0,0,0,.04)}#ann-box #ann-close-mark svg{width:18px;height:18px}',
     '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:28px;}',
@@ -1552,7 +1553,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       // 只剩已关闭：没东西可清，别谎报成功。
       btnClear.textContent = '仅剩已关闭';
     } else {
-      closeComposer({ silentRender: true });
+      closeComposer({ silentRender: true, discard: true });
       persist();
       btnClear.className = 'ok'; btnClear.textContent = '已清空 ✓';
     }
@@ -1566,7 +1567,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     marks = marks.filter(function (k) { return k.n !== n; });
     if (marks.length === before) return false;
     var open = document.getElementById('ann-box');
-    if (open) closeComposer({ silentRender: true });
+    if (open) closeComposer({ silentRender: true, discard: true });
     persist();
     return true;
   }
@@ -1583,6 +1584,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   // 切片 3 随扩展一并退役。）
   // 画布实例的 key 不跟活动页换（面板开合是 workbench 级浏览偏好；账本缓存
   // key LS_KEY 才跟页桶走）。
+  var AUTOSAVE_MS = 600; // 标注框输入停下多久自动存一次
   var SIDEBAR_LS_KEY = 'pinpoint:' + (CANVAS_MODE ? 'workbench' : ENTRY) + ':sidebar-open';
   var sidebar = null;
   var sidebarBody = null;
@@ -1844,12 +1846,12 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
 
   function closeAnnotation(n) {
     // 撤销要回关闭前的原态（open / check / done），不是一律回 open。
+    // 完成的正是当前打开的这条（列表点行打开后点完成，或框里的完成钮）：先关框
+    // —— 关框会把没存的修改存下（状态回 open），再 close，顺序反了会把 close 盖掉。
+    if (activeComposer && activeComposer.persistedN === n) closeComposer();
     var m = marks.find(function (k) { return k.n === n; });
     var from = m ? (m.status || 'open') : null;
     if (!markStatus(n, 'close')) return;
-    // 列表里完成的正是当前打开的这条（常见路径：点行跳转打开 → 点完成）：
-    // 标注框随之收起，与点「取消」同款。
-    if (activeComposer && activeComposer.persistedN === n) closeComposer();
     showToast('已完成 #' + n, '撤销', function () { markStatus(n, from); });
   }
 
@@ -1907,8 +1909,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
   var hoverSuppress = null; // 拖拽松手后 2s 内、鼠标没走远时不再出 hover 框
   document.addEventListener('mousemove', function (e) {
-    var openComposer = document.getElementById('ann-box');
-    if (!mode || paused || navigationActive || drag || arrowFrom || openComposer) { clearHover(); return; }
+    // 标注框开着也出 hover 框：点下去 = 给这条加目标（元素标注）或开新标注。
+    if (!mode || paused || navigationActive || drag || arrowFrom) { clearHover(); return; }
     if (hoverSuppress) {
       if (Date.now() < hoverSuppress.until && Math.hypot(e.pageX - hoverSuppress.x, e.pageY - hoverSuppress.y) < 120) {
         clearHover(); return;
@@ -2010,6 +2012,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     targets.push({ ref: ref, selector: sel, text: excerpt(el), ppId: ppId || undefined });
     activeComposer.m.targets = targets;
     normalizeElementTargets(activeComposer.m);
+    if (activeComposer.scheduleAutosave) activeComposer.scheduleAutosave();
     insertComposerIndicator(ref);
     activeComposer.renderTargets();
     renderComposerDraftVisuals();
@@ -2202,9 +2205,15 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (el) el.remove();
   }
 
+  /** 关标注框。没有「取消」：框里的修改默认先存（commit），只有删除 / 清空
+      这类「行已经不该存在」的路径传 discard。 */
   function closeComposer(opts) {
     opts = opts || {};
     closeMention();
+    if (activeComposer) {
+      if (activeComposer.cancelAutosave) activeComposer.cancelAutosave();
+      if (!opts.discard && activeComposer.commit) activeComposer.commit();
+    }
     if (activeComposer) {
       if (activeComposer.resizeObserver) activeComposer.resizeObserver.disconnect();
       if (activeComposer.dockObserver) activeComposer.dockObserver.disconnect();
@@ -2323,7 +2332,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
 
   function openComposer(m, anchorRect, isNew) {
-    closeComposer({ silentRender: true });
+    // 进来时还开着的框只有画箭头回弹这一种：它的状态已随 m（_draft / move）带进来。
+    closeComposer({ silentRender: true, discard: true });
     m = normalizeAnnotation(JSON.parse(JSON.stringify(m)));
     ensureMarkId(m);
     var selectedAnchor = resolveMarkAnchor(m);
@@ -2339,6 +2349,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var res = m.research || null;
     var changeOn = !!m.changeTo;
     box.innerHTML =
+      '<button type="button" id="ann-close" aria-label="关闭标注" title="关闭（Esc）">' + annIcon('x') + '</button>' +
       brokenInfo +
       '<div id="ann-imgs"></div>' +
       '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
@@ -2350,8 +2361,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
       '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
       (isNew || (m.status || 'open') === 'close' ? '' : '<button type="button" id="ann-close-mark" aria-label="完成标注" title="完成（close）">' + annIcon('check') + '</button>') +
-      '<button type="button" id="ann-cancel" aria-label="关闭标注">取消</button>' +
-      '<button type="button" id="ann-save" class="dark" aria-label="发送标注">保存</button></div></div>';
+      '</div></div>';
     chromeLayer.appendChild(box);
     // top layer 挂法：重开一次让 overlay 回到 top layer 栈顶，压过页面后开的 popover
     if (overlay.matches(':popover-open')) { overlay.hidePopover(); overlay.showPopover(); }
@@ -2367,7 +2377,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       ta: ta,
       m: m,
       isNew: !!isNew,
-      persistedN: isNew ? null : m.n,
+      // 已落账本的行号；新建的在第一次自动保存后才有。getter：服务端认领可能改写 m.n。
+      get persistedN() { return this.isNew ? null : m.n; },
       nextTargetNumber: parseInt(nextTargetRef(markElementTargets(m)).slice(1), 10),
       composing: false,
       pendingInlineRefs: [],
@@ -2595,12 +2606,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
 
     // ---- 参考截图：粘贴或选文件，立即上传到本机服务，JSON 里存绝对路径供 Claude 读 ----
     var images = (m.images || []).slice();
-    // 打开时的快照：点别的钉子时，没改过就直接切过去，改过才拦（openMark）。
-    function editSnapshot() {
-      return JSON.stringify([ta.value, changeOn, researchOn, images.length, !!m.move, markElementTargets(m).length]);
-    }
-    var openedSnapshot = editSnapshot();
-    composer.isDirty = function () { return editSnapshot() !== openedSnapshot; };
     var imgWrap = box.querySelector('#ann-imgs');
     function renderImgs() {
       imgWrap.innerHTML = '';
@@ -2653,15 +2658,31 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     });
     renderModes();
 
-    function save() {
+    // 自动保存：没有保存按钮。输入停 AUTOSAVE_MS 存一次，关框（Esc / X /
+    // Enter / 换钉子 / 切页 / 退出标注模式）时立即存。只在和上次存的不一样时
+    // 写账本 —— 打开再关掉不改状态；一改就按状态机回 open。
+    function editSnapshot() {
+      return JSON.stringify([ta.value, changeOn, researchOn, images.length, m.move || null,
+        markElementTargets(m).map(function (t) { return t.selector; })]);
+    }
+    var lastCommitted = null; // 打开设置全部完成后再取（见 openComposer 末尾）
+    var autosaveT = null;
+    composer.isDirty = function () { return editSnapshot() !== lastCommitted; };
+    composer.scheduleAutosave = function () {
+      clearTimeout(autosaveT);
+      autosaveT = setTimeout(function () { if (activeComposer === composer) commit(); }, AUTOSAVE_MS);
+    };
+    composer.cancelAutosave = function () { clearTimeout(autosaveT); };
+    composer.commit = commit;
+    composer.takeSnapshot = function () { lastCommitted = editSnapshot(); };
+
+    function commit() {
+      if (!composer.isDirty()) return false;
+      if (arrowFrom === m) return false; // 正在拖箭头：拖完回弹后再存
       // storage-unify：画布实例 boot 占位期（活动页未定、ENTRY 还是 pinpoint）
       // 不保存——占位账本上的行没有归属，换桶不带它走。占位窗口毫秒级
       // （workbench 启动即报活动页），真出现就是在等一个还没就绪的页面。
-      if (CANVAS_MODE && !canvasLedgerApplied) {
-        setStatus('活动页还没就绪，稍等一下再保存', true);
-        return;
-      }
-      closeMentionPicker();
+      if (CANVAS_MODE && !canvasLedgerApplied) return false;
       ensureMarkId(m);
       var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
       m.content = stored;
@@ -2680,20 +2701,28 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       delete m._draft;
       delete m._targetMode;
       delete m._anchor;
-      if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) { closeComposer(); return; } // 空标注丢弃
-      var idx = marks.findIndex(function (k) { return k.n === m.n; });
+      // 空内容不存：新建的不落账本（关框即丢），已有的保留上次存的正文；要删走垃圾桶。
+      if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) return false;
+      // 按 id 认领：#n 的取号权在服务端，自动保存之间 n 可能已被改写。
+      var idx = marks.findIndex(function (k) { return k.id === m.id; });
       // pp2 状态机：新标注恒 open；owner 编辑正文或目标 → 保存时状态回 open
       // （服务端同样强制，客户端先把生效态带上看得到）。
       m.status = 'open';
       if (idx < 0) marks.push(m); else {
         marks[idx] = m;
       }
-      closeComposer({ silentRender: true }); persist();
+      composer.isNew = false;
+      lastCommitted = editSnapshot();
+      persist();
+      return true;
     }
+    // Enter = 写完这一条：存并关框。
+    function save() { closeComposer(); }
     ta.addEventListener('input', function () {
       if (!composer.composing) syncTargetReferences();
       syncComposerLayout();
       syncMentionFromCaret();
+      composer.scheduleAutosave();
     });
     ta.addEventListener('keydown', function (e) {
       if (composer.composing || e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法
@@ -2712,18 +2741,14 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
       // Escape (no mention): document listener closes box
     });
-    box.querySelector('#ann-save').addEventListener('click', save);
-    box.querySelector('#ann-cancel').addEventListener('click', function () { closeComposer(); });
+    box.querySelector('#ann-close').addEventListener('click', function () { closeComposer(); });
     var del = box.querySelector('#ann-del');
     if (del) del.addEventListener('click', function () {
       removeMark(m.n);
     });
     // 完成 = owner 确认（→ close），与列表行的完成勾同一条路；框里有没保存的修改先存。
     var closeMarkBtn = box.querySelector('#ann-close-mark');
-    if (closeMarkBtn) closeMarkBtn.addEventListener('click', function () {
-      if (composer.isDirty()) save();
-      closeAnnotation(m.n);
-    });
+    if (closeMarkBtn) closeMarkBtn.addEventListener('click', function () { closeAnnotation(m.n); });
     box.querySelector('#ann-move').addEventListener('click', function () {
       if (isMarkBroken(m) || !anchorRect) {
         setStatus('锚点失效，无法画箭头', true);
@@ -2751,6 +2776,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
         if (markEl) showGhostForEl(markEl, flashCls);
       }
     }
+    // 自动保存的基线：设置全部完成后取。画箭头回弹（带 _draft）的框本身就是
+    // 未存的修改，不取基线，关框时照常存。
+    if (m._draft == null) composer.takeSnapshot();
   }
 
   // ---------- 移动箭头 ----------
@@ -2799,7 +2827,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     // 写标注期间保留刚拖出的箭头 + 原有的框选框/元素高亮（openComposer 会先清理旧草稿）
     var kA = tempArrow, kL = lasso, kP = pinned;
     tempArrow = null; lasso = null; pinned = null;
-    openComposer(m, anchorRect, !marks.some(function (k) { return k.n === m.n; }));
+    openComposer(m, anchorRect, !marks.some(function (k) { return k.id === m.id; }));
     tempArrow = kA; lasso = kL; pinned = kP;
     var ta = document.querySelector('#ann-input');
     if (ta && m._draft) ta.value = m._draft;
@@ -3899,13 +3927,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (!m) return;
     if (activeComposer) {
       if (activeComposer.persistedN === n) return;
-      // 开着的框没改过：直接换到这条。改过：留着，提示用 toast（工作台里
-      // 工具条是隐藏的，setStatus 看不到）。
-      if (activeComposer.isDirty && activeComposer.isDirty()) {
-        showToast('当前标注有未保存的修改，先保存或取消');
-        return;
-      }
-      closeComposer();
+      closeComposer(); // 当前这条先存再换
     }
     var rect = markAnchorRect(m);
     openComposer(m, rect, false);

@@ -114,7 +114,7 @@ test('url entry renders live through the proxy and annotates into the entry buck
     const ta = d.querySelector('#ann-input');
     ta.value = 'url entry mark';
     ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    d.querySelector('#ann-save').click();
+    d.querySelector('#ann-close').click();
     return true;
   }`)).toBe(true);
 

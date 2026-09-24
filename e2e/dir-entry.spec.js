@@ -94,7 +94,7 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
   const box = page.locator('#ann-box');
   await expect(box).toBeVisible();
   await box.locator('#ann-input').fill('dir entry mark');
-  await box.locator('#ann-save').click();
+  await box.locator('#ann-close').click();
 
   await expect.poll(() => bucketDocs().length).toBe(1);
   const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));

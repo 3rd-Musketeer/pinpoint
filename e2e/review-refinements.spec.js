@@ -64,7 +64,7 @@ test('reviewer mixes target pills and Chinese text, chooses an intent and reopen
   await input.press('Enter');
   await expect(input).toBeVisible();
   await input.dispatchEvent('compositionend');
-  await page.getByRole('button',{name:'发送标注',exact:true}).click();
+  await page.getByRole('button',{name:'关闭标注',exact:true}).click();
   await expect(input).toHaveCount(0);
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   expect(mark.content).toContain('[@t:i1]');
@@ -77,7 +77,7 @@ test('reviewer mixes target pills and Chinese text, chooses an intent and reopen
   await input.locator('[data-target-ref="i2"]').hover();
   await input.getByRole('button',{name:'移除目标 2'}).click();
   await expect(input.locator('[data-target-ref]')).toHaveCount(1);
-  await page.getByRole('button',{name:'发送标注',exact:true}).click();
+  await page.getByRole('button',{name:'关闭标注',exact:true}).click();
   const updated=await page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n),mark.n);
   expect(updated.targets).toHaveLength(1);
   expect(updated.content).not.toContain('[@t:i2]');
@@ -109,7 +109,7 @@ test('reviewer writes a long correction and adds a real move arrow without losin
   await expect(page.getByRole('button',{name:'取消改文案',exact:true})).toBeVisible();
   await expect(page.getByRole('button',{name:'取消移动',exact:true})).toBeVisible();
   await page.screenshot({path:test.info().outputPath('composer-rich.png')});
-  await page.getByRole('button',{name:'发送标注',exact:true}).click();
+  await page.getByRole('button',{name:'关闭标注',exact:true}).click();
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   expect(mark.move.to_selector).toBe('#doc-target');
   expect(mark.changeTo).toBe(true);
@@ -131,7 +131,7 @@ test('composer 压得过被审页面自己的浮层：z-index 极值弹层与原
   });
   await page.locator('#popup-target').click();
   await input.fill('弹窗按钮改成继续');
-  const send=page.getByRole('button',{name:'发送标注',exact:true});
+  const send=page.getByRole('button',{name:'关闭标注',exact:true});
   const hit=await send.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+r.width/2,r.y+r.height/2));});
   expect(hit).toBe(true);
   await send.click();
@@ -149,13 +149,13 @@ test('composer 压得过被审页面自己的浮层：z-index 极值弹层与原
   await expect(input).toBeVisible();
   expect(await input.evaluate(el=>{const r=el.getBoundingClientRect();return el.contains(document.elementFromPoint(r.x+10,r.y+10));})).toBe(true);
   await input.fill('把确认选择改成继续');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   expect(await page.evaluate(()=>window.pinpoint.marks.at(-1).content)).toContain('把确认选择改成继续');
   await page.locator('#review-native-dialog').evaluate(el=>el.close());
   await page.locator('#doc-title').click();
   await input.fill('弹窗关闭后继续标注');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   expect(await page.evaluate(()=>window.pinpoint.marks.at(-1).content)).toContain('弹窗关闭后继续标注');
 });
 
@@ -179,7 +179,7 @@ test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑�
     for (const kind of ['stale','hidden','replaced']) {
       await page.locator('#review-'+kind).click();
       await page.getByRole('textbox',{name:'写标注'}).fill('修改 '+kind);
-      await page.getByRole('button',{name:'发送标注',exact:true}).click();
+      await page.getByRole('button',{name:'关闭标注',exact:true}).click();
       await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
       ids[kind]=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
     }
@@ -187,7 +187,7 @@ test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑�
     // 一键清掉（R5）—— mark 端点推进到 done。
     await page.locator('#doc-target-2').click();
     await page.getByRole('textbox',{name:'写标注'}).fill('按标注删掉这个目标');
-    await page.locator('#ann-save').click();
+    await page.locator('#ann-close').click();
     await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
     ids.done=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
     const doneN=await page.evaluate(()=>window.pinpoint.marks.at(-1).n);
@@ -201,15 +201,15 @@ test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑�
     await input.fill('保留第二个目标仍有效的意见');
     await page.locator('#doc-target').click();
     await expect(input.locator('[data-target-ref]')).toHaveCount(2);
-    await page.locator('#ann-save').click();
+    await page.locator('#ann-close').click();
     await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
     ids.partial=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
     // temporary：目标整个消失。
-    await page.locator('#guard-temporary').click();await input.fill('修改 temporary');await page.locator('#ann-save').click();
+    await page.locator('#guard-temporary').click();await input.fill('修改 temporary');await page.locator('#ann-close').click();
     await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
     ids.temporary=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
     // absent-frame：标注打在稍后整体缺席的 frame 里。
-    await page.locator('#lazy-result-target').click();await input.fill('标在将缺席的 frame 里');await page.locator('#ann-save').click();
+    await page.locator('#lazy-result-target').click();await input.fill('标在将缺席的 frame 里');await page.locator('#ann-close').click();
     await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
     ids.absentScope=await page.evaluate(()=>window.pinpoint.marks.at(-1).id);
   });
@@ -251,7 +251,7 @@ test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑�
   await test.step('清后可重新标注得新 id', async () => {
     await page.locator('#doc-target').click();
     await page.getByRole('textbox',{name:'写标注'}).fill('重新标注：再精简一点');
-    await page.getByRole('button',{name:'发送标注',exact:true}).click();
+    await page.getByRole('button',{name:'关闭标注',exact:true}).click();
     const fresh=await page.evaluate(()=>window.pinpoint.marks.at(-1));
     expect(fresh.id).not.toBe(ids.replaced);
     expect(fresh.status).toBe('open');
@@ -277,7 +277,7 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
   await expect.poll(()=>page.locator('#ann-imgs img').evaluate(el=>el.complete&&el.naturalWidth>0)).toBe(true);
   const imageBox=await page.locator('#ann-imgs').boundingBox(),inputBox=await input.boundingBox();
   expect(imageBox.y+imageBox.height).toBeLessThanOrEqual(inputBox.y);
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const saved=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   expect(saved.content).toContain('第一行\n第二行[@t:i2] 尾');
@@ -287,7 +287,7 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
   await expect(page.locator('#ann-imgs img')).toHaveCount(1);
   await page.locator('#ann-imgs .x').click();
   await expect(page.locator('#ann-imgs img')).toHaveCount(0);
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   const edited=await page.evaluate(id=>window.pinpoint.marks.find(m=>m.id===id),saved.id);
   expect(edited.images).toBeUndefined();expect(edited.content).toBe(saved.content);
 });
@@ -295,7 +295,7 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
 test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；失效不等于已解决', async ({page}) => {
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-target-2').click();
-  await page.getByRole('textbox',{name:'写标注'}).fill('这个目标会走');await page.locator('#ann-save').click();
+  await page.getByRole('textbox',{name:'写标注'}).fill('这个目标会走');await page.locator('#ann-close').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
   const before=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   const oldRect=await page.locator('#doc-target-2').boundingBox();
@@ -336,7 +336,7 @@ test('annotation number stays visible while editing and follows the target after
   await page.locator('#doc-title').click({position:{x:10,y:10}});
   await page.locator('#ann-input').press('End');
   await page.keyboard.insertText('保留序号');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
@@ -366,7 +366,7 @@ test('annotation number stays visible while editing and follows the target after
   await page.evaluate(()=>window.scrollTo({top:100, behavior:'instant'}));
   await expect.poll(badgeDocTop).toBe(before);
   await expect(badge).toBeVisible();
-  await page.locator('#ann-cancel').click();
+  await page.locator('#ann-close').click();
   await expect(badge).toHaveCount(1);
   expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
 });
@@ -387,7 +387,7 @@ test('annotation jumps center the DOM and composer together without moving while
   expect(composerBox.x+composerBox.width<=cardBox.x || composerBox.x>=cardBox.x+cardBox.width || composerBox.y+composerBox.height<=cardBox.y || composerBox.y>=cardBox.y+cardBox.height).toBe(true);
   await page.locator('#ann-input').press('End');
   await page.keyboard.insertText('检查组合居中');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   // n 要等保存应答回来再取（M1）：画布账本桶不被本用例清空，桶级计数器里
   // 留着上个 spec 的号，服务端发的号会覆盖客户端的临时号，侧栏行的
   // data-ann-n 随之而变。
@@ -429,6 +429,6 @@ test('annotation jumps center the DOM and composer together without moving while
     await page.locator('#ann-input').press('End');
     await page.keyboard.insertText('\n继续输入，不移动画布\n第三行');
     await expect.poll(()=>page.evaluate(()=>({left:document.querySelector('#wbstage').scrollLeft,top:document.querySelector('#wbstage').scrollTop}))).toEqual({left:settled.left,top:settled.top});
-    await page.locator('#ann-cancel').click();
+    await page.locator('#ann-close').click();
   }
 });

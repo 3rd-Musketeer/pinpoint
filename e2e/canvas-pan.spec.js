@@ -244,7 +244,7 @@ test('continuous zoom projects targets without resolving or measuring them and n
   // 就是刚才的保存。
   await page.evaluate(() => window.pinpoint.openMark(1));
   await page.locator('#ann-input').fill('zoom 不触发保存');
-  await page.locator('#ann-save').click();
+  await page.locator('#ann-close').click();
   await expect.poll(() => saves.length).toBe(1);
   expect(saves[0].annotations[0].content).toBe('[@t:i1] zoom 不触发保存');
   // 负断言要确定的观察窗：recordLastRect 的落盘是 trailing debounce（最后
@@ -387,7 +387,7 @@ test('saving one comment preserves unrelated geometry and sends one complete led
     const nodes = Array.from(document.querySelectorAll('#ann-marks .ann-target'));
     Element.prototype.getBoundingClientRect = function () { if (this.matches('.ios-cell')) reads++; return original.call(this); };
     try {
-      document.querySelector('#ann-save').click();
+      document.querySelector('#ann-close').click();
       await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     } finally { Element.prototype.getBoundingClientRect = original; }
     return { reads, retained: nodes.every(node => node.isConnected) };
