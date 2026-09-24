@@ -9,33 +9,36 @@ const root = fileURLToPath(new URL('../', import.meta.url));
 const all = readdirSync(new URL('../e2e/', import.meta.url)).filter(name => name.endsWith('.spec.js')).sort();
 // 各 spec 实测时长（秒，只含 test 本身，不含起服）。重测更新这张表：
 //   E2E_PORT=<空闲基准> npm run test:e2e:serial -- --reporter=json > durations.json
-// 把 JSON 报告里每条用例的 duration 按文件汇总填进来（2026-09-24 实测，
-// load 7–9；负载只抬高绝对值，比例可用）。表里没有的新 spec 按表内平均
+// 把 JSON 报告里每条用例的 duration 按文件汇总填进来（2026-09-24 e2e 精简后实测，
+// load 约 5.4；负载只抬高绝对值，比例可用）。表里没有的新 spec 按表内平均
 // 时长计，不用登记也进得了对组。
 const durations = {
-  'ann-sidebar.spec.js': 5.5,
-  'attach-entry.spec.js': 0.8,
-  'canvas-diagnostics.spec.js': 2.5,
-  'canvas-pan.spec.js': 16.3,
-  'comp-layout.spec.js': 0.4,
-  'dir-entry.spec.js': 2.5,
-  'export-picker.spec.js': 1.6,
-  'integration-canvas.spec.js': 3.7,
+  'ann-sidebar.spec.js': 6.2,
+  'attach-entry.spec.js': 1.0,
+  'bundle-cache.spec.js': 0.1,
+  'canvas-diagnostics.spec.js': 2.6,
+  'canvas-pan.spec.js': 13.5,
+  'comp-layout.spec.js': 0.3,
+  'dir-entry.spec.js': 1.5,
+  'export-picker.spec.js': 1.2,
+  'grouping-refresh.spec.js': 0.8,
+  'integration-canvas.spec.js': 3.4,
   'mention.spec.js': 1.2,
-  'mixed-board.spec.js': 2.3,
-  'page-bucket.spec.js': 2.6,
-  'page-sort.spec.js': 4.9,
-  'pp-id-anchor.spec.js': 1.2,
-  'pp2-build.spec.js': 0.9,
-  'ppnt-cli.spec.js': 2.5,
-  'review-refinements.spec.js': 10.1,
-  'scroll-motion.spec.js': 4.5,
-  'section-scroll.spec.js': 4.3,
-  'sidebar-content.spec.js': 5.8,
-  'spa-ledger.spec.js': 1.3,
-  'url-entry.spec.js': 1.7,
-  'viewport.spec.js': 5.1,
-  'workbench.spec.js': 49.1,
+  'mixed-board.spec.js': 1.2,
+  'page-bucket.spec.js': 1.6,
+  'page-sort.spec.js': 1.4,
+  'pp-id-anchor.spec.js': 0.9,
+  'pp2-build.spec.js': 0.6,
+  'ppnt-cli.spec.js': 2.6,
+  'preview-hmr.spec.js': 0.5,
+  'review-refinements.spec.js': 6.6,
+  'scroll-motion.spec.js': 2.1,
+  'section-scroll.spec.js': 3.0,
+  'sidebar-content.spec.js': 5.5,
+  'spa-ledger.spec.js': 1.1,
+  'url-entry.spec.js': 1.1,
+  'viewport.spec.js': 3.9,
+  'workbench.spec.js': 46.3,
 };
 // 按表贪心分两组：时长降序，依次放进当前总时长更短的那组（2026-09-24 之前
 // 是手排 first 集合，workbench 长出来后第一组独大约 73%、第二组空等 ~30s）。
