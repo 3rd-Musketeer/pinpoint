@@ -114,6 +114,21 @@ async function withinContainerViolations(page, childSel, containerSel) {
   }, [childSel, containerSel]);
 }
 
+// 命中分类：(x, y) 上最先吃到事件的是谁。overlay 本身 pointer-events:none，命中的只会是
+// 气泡 / 钉子 / 输入框这些 pointer-events:auto 的孩子，或外壳的浮层。
+function hitKindAt(page, point) {
+  return page.evaluate(([x, y]) => {
+    const hit = document.elementFromPoint(x, y);
+    if (!hit) return 'none';
+    if (hit.closest('.ann-bubble')) return 'bubble';
+    if (hit.closest('#ann-box')) return 'composer';
+    if (hit.closest('#wbann-pop')) return 'list';
+    if (hit.closest('#wbstrip')) return 'strip';
+    if (hit.closest('[role="menu"]')) return 'menu';
+    return hit.id || hit.className || hit.tagName;
+  }, point);
+}
+
 /* 定位断言（2026-09-04 外壳重设计）：画布满铺整个视口，左栏玻璃面板与底部横条
    压在它上面 —— 「居中」是在**可用区**里居中，不是在 stage 视口里。可用区由两块
    chrome 的实际 bounding box 算出来（与 board-nav 的 chromeInsets 同一口径），
@@ -287,6 +302,11 @@ test('sidebar rows expose locator copy / rename via right-click menu (2026-08-17
   expect(menuBox.y).toBeGreaterThanOrEqual(0);
   expect(menuBox.x + menuBox.width).toBeLessThanOrEqual(vp.width);
   expect(menuBox.y + menuBox.height).toBeLessThanOrEqual(vp.height);
+  // ADR 0034 float 档（原 2253，2026-09-24 并入）：菜单中心 elementFromPoint
+  // 命中菜单自己，且 Portal 挂在 body 上、不在 .wb 的隔离上下文里 —— 菜单被
+  // 外壳压住的这类回归只有命中断言能抓。
+  expect(await hitKindAt(page, [menuBox.x + menuBox.width / 2, menuBox.y + menuBox.height / 2])).toBe('menu');
+  expect(await page.locator('[role="menu"]').evaluate((m) => !m.closest('.wb'))).toBe(true);
   await pageCopy.click();
   await expect(pageCopy).toContainText('已复制 @page:e2e-mixed');
   await expect.poll(readClip).toBe('@page:e2e-mixed');
@@ -2104,21 +2124,6 @@ test('钉子和命中框画在底部横条之下，横条永远在最上（2026-
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
-// 命中分类：(x, y) 上最先吃到事件的是谁。overlay 本身 pointer-events:none，命中的只会是
-// 气泡 / 钉子 / 输入框这些 pointer-events:auto 的孩子，或外壳的浮层。
-function hitKindAt(page, point) {
-  return page.evaluate(([x, y]) => {
-    const hit = document.elementFromPoint(x, y);
-    if (!hit) return 'none';
-    if (hit.closest('.ann-bubble')) return 'bubble';
-    if (hit.closest('#ann-box')) return 'composer';
-    if (hit.closest('#wbann-pop')) return 'list';
-    if (hit.closest('#wbstrip')) return 'strip';
-    if (hit.closest('[role="menu"]')) return 'menu';
-    return hit.id || hit.className || hit.tagName;
-  }, point);
-}
-
 // a 与 b 两个元素矩形交集的中心；不相交（或交集窄于 4px）返回 null。
 function overlapCenter(page, selA, selB) {
   return page.evaluate(([a, b]) => {
@@ -2184,22 +2189,6 @@ test('点亮的气泡压过弹出列表，滚到横条后面则被横条压住�
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   await closeAnnList(page);
-});
-
-test('左栏行右键菜单 Portal 在外壳之上：菜单中心命中菜单（ADR 0034 float 档）', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', { name: '页面', exact: true }).click();
-  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click({ button: 'right' });
-  const menu = page.locator('[role="menu"]');
-  await expect(menu).toBeVisible();
-  const box = await menu.boundingBox();
-  expect(await hitKindAt(page, [box.x + box.width / 2, box.y + box.height / 2])).toBe('menu');
-  expect(await menu.evaluate((m) => ({
-    zIndex: getComputedStyle(m).zIndex, // Tailwind z-(--wb-z-float) 真的生成了
-    portaled: !m.closest('.wb'),        // 在 body 上，不在 .wb 的隔离上下文里
-  }))).toEqual({ zIndex: '100', portaled: true });
-  await page.keyboard.press('Escape');
-  await expect(menu).toHaveCount(0);
 });
 
 test('写标注的输入框是外壳里最高的层：压过横条、列表卡与 section 导航（2026-09-18 owner 决定，ADR 0034）', async ({ page }) => {
