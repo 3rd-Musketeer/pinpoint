@@ -1,5 +1,6 @@
 // Functional navigation checks final state; scroll-motion.spec.js covers real motion.
 import fs from 'node:fs/promises';
+import http from 'node:http';
 import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
@@ -1111,6 +1112,92 @@ test('gutter listeners detach on page switch and never stack on re-entry', async
     bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
   }))).toEqual({ on: 'on', bubbles: 2 });
   expect(await scrollRequests(page, 'doc')).toBe(1);
+});
+
+// 晚到布局位移（A4 修复轮，2026-09-24）：图片 / 字体在页面 settle 之后才拿到
+// 尺寸，锚点位移不改 iframe 元素盒子（RO 看不见）、不是滚动、也不一定有 DOM
+// mutation —— 旧实现靠常驻 rAF 每帧重算自然跟上，事件化之后必须由 iframe
+// document 上 load 的 capture 监听接住。
+test('gutter follows late layout shifts: an image that gets its size after the page settles', async ({ page }) => {
+  await openSidebarGutter(page);
+  await waitGutterQuiet(page);
+
+  // 图片由本 spec 进程里的 HTTP server 提供，压 800ms 才回，让「晚到」成为
+  // 确定性时序 —— data URL 的 load 快到可能赶进 src 赋值那一批 mutation 触发的
+  // 同一帧渲染里，用例就空转通过了。
+  const server = http.createServer((req, res) => {
+    setTimeout(() => {
+      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+      res.end('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"></svg>');
+    }, 800);
+  });
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+  try {
+    // 先插一张无 src 的空图（display:block，0×0，零位移）到 #s2 之前；插入
+    // 本身是 mutation 信号，冲掉它那一帧渲染后记静止基线。
+    const baseline = await page.evaluate(async () => {
+      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+      const img = d.createElement('img');
+      img.id = 'late-img';
+      img.style.display = 'block';
+      d.getElementById('s2').before(img);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
+      const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
+      const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
+      const h1 = bubbles.find((b) => (b.textContent || '').includes('评论 h1'));
+      window.__gutterS2 = s2;
+      window.__gutterH1 = h1;
+      window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
+      return { s2Top: parseFloat(s2.style.top), h1Top: parseFloat(h1.style.top) };
+    });
+
+    // 赋 src：这批 mutation 照常触发重算（链路是 client MutationObserver →
+    // renderAll → notify → 快照 → startGutter），但图还没到，那几帧读到的布局
+    // 没动 —— 计数在走、top 不动、图确实没加载完。
+    const pre = await page.evaluate(async (port) => {
+      const frame = document.querySelector('#wb-board-panel .wb-doc-frame');
+      frame.contentDocument.getElementById('late-img').src = 'http://127.0.0.1:' + port + '/late.svg';
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
+      return {
+        complete: frame.contentDocument.getElementById('late-img').complete,
+        s2Top: parseFloat(window.__gutterS2.style.top),
+        requests: window.__wbGutter.requests,
+        renders: window.__wbGutter.renders,
+      };
+    }, server.address().port);
+    expect(pre.complete).toBe(false);
+    expect(pre.renders).toBeGreaterThanOrEqual(1);
+    expect(pre.s2Top).toBe(baseline.s2Top);
+
+    // 图到了：load 事件（不冒泡，capture 接住）→ 重算 → #s2 的气泡跟着锚点
+    // 下移 200px；h1 在图上方不动；节点复用（同一元素引用）。计数在 load 前
+    // 归零，load 之后窗口里没有任何别的信号，这里的账全是 load 自己的。
+    await page.evaluate(() => { window.__wbGutter.requests = 0; window.__wbGutter.renders = 0; });
+    const after = await page.evaluate(async () => {
+      const img = document.querySelector('#wb-board-panel .wb-doc-frame')
+        .contentDocument.getElementById('late-img');
+      await new Promise((r) => { if (img.complete) r(); else img.addEventListener('load', () => r(), { once: true }); });
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      return {
+        requests: window.__wbGutter.requests,
+        renders: window.__wbGutter.renders,
+        imgH: img.getBoundingClientRect().height,
+        s2Top: parseFloat(window.__gutterS2.style.top),
+        h1Top: parseFloat(window.__gutterH1.style.top),
+        sameNode: Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'))
+          .find((b) => (b.textContent || '').includes('评论 #s2')) === window.__gutterS2,
+      };
+    });
+    expect(after.requests).toBeGreaterThanOrEqual(1);
+    expect(after.renders).toBeGreaterThanOrEqual(1);
+    expect(after.imgH).toBe(200);
+    expect(Math.abs(after.s2Top - (baseline.s2Top + 200))).toBeLessThanOrEqual(2);
+    expect(Math.abs(after.h1Top - baseline.h1Top)).toBeLessThanOrEqual(2);
+    expect(after.sameNode).toBe(true);
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+  }
 });
 
 test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
