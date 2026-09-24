@@ -1847,6 +1847,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var m = marks.find(function (k) { return k.n === n; });
     var from = m ? (m.status || 'open') : null;
     if (!markStatus(n, 'close')) return;
+    // 列表里完成的正是当前打开的这条（常见路径：点行跳转打开 → 点完成）：
+    // 标注框随之收起，与点「取消」同款。
+    if (activeComposer && activeComposer.persistedN === n) closeComposer();
     showToast('已完成 #' + n, '撤销', function () { markStatus(n, from); });
   }
 

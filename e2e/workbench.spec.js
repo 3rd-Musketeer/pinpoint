@@ -1768,9 +1768,13 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
   await expect(page.locator('#wbann-count')).toHaveText('1');
 
   await test.step('pp2 面板状态筛选：open 行点完成离开 pending → 撤销回 open → 再完成 → closed 筛选可见 → 重新打开', async () => {
-    // open 行点「完成」：单击即关（不二次确认），toast「已完成 #n」带撤销
+    // 先点行跳转，标注框打开；再点「完成」：单击即关（不二次确认），标注框随之收起，
+    // toast「已完成 #n」带撤销
+    await row.click();
+    await expect(page.locator('#ann-box')).toBeVisible();
     const done = page.getByRole('button', { name: '完成 #' + n, exact: true });
     await done.click();
+    await expect(page.locator('#ann-box')).toHaveCount(0);
     const toast = page.locator('#ann-toast');
     await expect(toast).toBeVisible();
     await expect(toast).toContainText('已完成 #' + n);
