@@ -42,6 +42,7 @@ import {
   resolvePageTarget,
 } from '../src/server/lib/page-compiler.js';
 import { manifestPageIds as libManifestPageIds } from '../src/server/lib/page-manifest.js';
+import { planPageRecompile } from '../src/server/lib/recompile-plan.js';
 import {
   defaultEntries,
   defaultRegistryPath,
@@ -1557,16 +1558,31 @@ function printBuildResult(result, { out, err }) {
   out(`${result.ok ? '完成' : '有失败'} ${result.entryId}  共 ${result.ms}ms（${result.screens.length} 屏）`);
 }
 
-/** fs.watch 盯页目录：board.json / 帧 / 资源变更 → 去抖后整页重编。返回 watcher（测试用）。 */
+/**
+ * fs.watch 盯页目录：board.json / 帧 / 资源变更 → 去抖后重编。返回 watcher（测试用）。
+ * 增量（审计 B1）：debounce 窗口里的多个文件攒成一批，按 recompile-plan 筛出
+ * 命中的屏只编这些，筛不动就整页重编；计划在串行链轮到这一拍时才算 ——
+ * build.json 是上一拍写下的，链上保证它是最新的。
+ */
 export function startPageWatch(target, onResult, { debounceMs = 120, distRoot } = {}) {
   const WATCHED = /(?:^|\/)(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/;
   let timer = null;
   let running = Promise.resolve();
+  const pending = new Set();
   const watcher = fs.watch(target.pageDir, { recursive: true }, (_event, filename) => {
     if (filename && !WATCHED.test(String(filename).replace(/\\/g, '/'))) return;
+    // 平台拿不到文件名时存 null：planRecompile 对拿不准的批次回落全编。
+    pending.add(filename ? path.resolve(target.pageDir, String(filename)) : null);
     clearTimeout(timer);
     timer = setTimeout(() => {
-      running = running.then(() => compilePage(target, distRoot ? { distRoot } : {})).then(onResult);
+      const batch = [...pending];
+      pending.clear();
+      running = running.then(async () => {
+        const options = distRoot ? { distRoot } : {};
+        const plan = planPageRecompile(target, batch, options);
+        if (!plan.all) options.onlyScreens = plan.screens;
+        return compilePage(target, options);
+      }).then(onResult);
     }, debounceMs);
   });
   return { watcher, done: () => running };

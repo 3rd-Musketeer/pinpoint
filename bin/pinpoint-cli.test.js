@@ -48,6 +48,7 @@ import {
   runStop,
   serviceLogPath,
   slugify,
+  startPageWatch,
 } from './pinpoint-cli.js';
 
 function withTempDir(t) {
@@ -1483,6 +1484,48 @@ test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出',
   assert.equal(code3, 1);
   assert.ok(ghost.err.some((line) => /找不到页：ghost/.test(line)));
   assert.ok(ghost.err.some((line) => /t-page/.test(line)), '报错列出可用 id');
+});
+
+test('startPageWatch：窗口内多个文件攒一批，只重编命中的屏（审计 B1）', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }],
+    files: {
+      'a.html': '<div class="ios-app">a1</div>\n',
+      'b.html': '<div class="ios-app">b1</div>\n',
+      'c.html': '<div class="ios-app">c1</div>\n',
+    },
+  });
+  // 先整页编一次：dist 与 build.json 的依赖图就位，watch 才有得筛。
+  const first = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...first.io, env: made.env }), 0, first.err.join('\n'));
+  const distEntry = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page');
+  const cBefore = fs.statSync(path.join(distEntry, 'c.html')).mtimeMs;
+
+  const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
+  const results = [];
+  const { watcher, done } = startPageWatch(
+    target,
+    (result) => results.push(result),
+    { debounceMs: 30, distRoot: path.join(made.env.PINPOINT_DATA_DIR, 'dist') },
+  );
+  t.after(() => watcher.close());
+  // macOS 的 recursive fs.watch 走 FSEvents，挂载是异步的：起 watch 后立刻写
+  // 文件会赶不上第一拍。所以周期性重写直到 dist 出现新内容（重写同内容幂等，
+  // 只当触发器用）；事件送达与去抖的时序不打紧，拆成几批终态也一样。
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n');
+    fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n');
+    const aNew = fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a2');
+    const bNew = fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2');
+    if (aNew && bNew) break;
+    if (Date.now() > deadline) throw new Error(`watch 5s 内没编出新 dist（a=${aNew} b=${bNew}）`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  watcher.close();
+  await done();
+  assert.ok(results.length >= 1, 'onResult 至少收到一次编译结果');
+  assert.equal(fs.statSync(path.join(distEntry, 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
 });
 
 test('runRender：限内打全文，超限截断并落 spill 文件，--full 不截断', async (t) => {

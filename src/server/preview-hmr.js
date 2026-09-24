@@ -15,6 +15,7 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import { buildAllPages, compilePage, resolvePageTarget } from './lib/page-compiler.js';
+import { planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
@@ -64,20 +65,30 @@ export default function previewHmr(options = {}) {
 
   // 重编译该页（dir 条目或模板页；file 条目与无板目录没有编译目标，跳过）。
   // 同一页的并发触发共享一次编译；编译失败的屏进 build.json，serve 时 500 上面板。
+  // 增量（审计 B1）：每轮先按「变更文件集合 ∩ build.json 依赖图」筛出要重编的屏，
+  // 筛不动（板变、屏增删、认领不到的文件、上次有失败屏……）就整页重编 ——
+  // planPageRecompile 的方向是宁可多编。
   // 编译期间到达的新变更拿到的是变更前结果 —— job 收尾后补跑一轮，直到收尾
   // 时刻没有新事件为止（review R11；CLI startPageWatch 有 debounce+串行链，
-  // 服务端这里补上等价的「不丢最后一拍」）。
-  function recompile(target) {
+  // 服务端这里补上等价的「不丢最后一拍」）。补跑合并期间的全部变更文件
+  // （state.pending 是集合，不是最后一个事件）。
+  function recompile(target, files) {
     if (!target) return Promise.resolve(null);
     const inflight = compiling.get(target.entryId);
     if (inflight) {
+      for (const file of files || []) inflight.pending.add(file);
       inflight.rerun = true;
       return inflight.promise;
     }
-    const state = { rerun: false, promise: null };
+    const state = { rerun: false, pending: new Set(files || []), promise: null };
     const runOnce = async () => {
+      const changed = [...state.pending];
+      state.pending.clear();
       try {
-        const result = await compilePage(target, distRoot ? { distRoot } : {});
+        const options = distRoot ? { distRoot } : {};
+        const plan = planPageRecompile(target, changed, options);
+        if (!plan.all) options.onlyScreens = plan.screens;
+        const result = await compilePage(target, options);
         const failed = result.screens.filter((row) => !row.ok);
         if (result.error || failed.length) {
           console.error(`[pp2] 编译 ${target.entryId} 有失败屏：${result.error || failed.map((row) => `${row.id}（${row.error}）`).join('；')}`);
@@ -142,7 +153,7 @@ export default function previewHmr(options = {}) {
       if (preview) {
         const target = templateTarget(preview[1]);
         if (!target) return [];
-        return recompile(target).then(() => {
+        return recompile(target, [file]).then(() => {
           notify(server, target, rel);
           return [];
         });
@@ -169,7 +180,7 @@ export default function previewHmr(options = {}) {
           else server.ws.send({ type: 'custom', event: 'preview:update', data: { id: owner.id } });
           return [];
         }
-        return recompile(target).then(() => {
+        return recompile(target, [file]).then(() => {
           notify(server, target, rel);
           return [];
         });
