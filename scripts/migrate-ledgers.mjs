@@ -28,7 +28,8 @@
  * （临时副本验证时三样都在副本里）；本地模板页名单读仓库的
  * content/previews/_index.json（PINPOINT_PREVIEWS_ROOT 可指向副本仓根，测试用）。
  * --apply 前整根备份到 <dataRoot>/migrations/<日期>-<时分秒>-storage-unify/
- * （目录已存在就拒绝，不覆盖已有备份）。真实账本的
+ * （目录已存在就拒绝，不覆盖已有备份；时间戳可经 PINPOINT_MIGRATE_BACKUP_STAMP
+ * 注入，仅测试用）。真实账本的
  * 迁移由 owner 指定的人跑；本脚本不给「静默跳过」留后门（排除 migrations /
  * dist / render 等非账本目录）。幂等：第二遍 0 变更。
  */
@@ -536,8 +537,12 @@ if (formTouched === 0 && storageChanged === 0) {
 /* ---- 落盘：备份 → 写净 ---- */
 
 // 备份带时分秒：同一天第二次 --apply 不再往同一目录里覆盖（cpSync 同名覆盖
-// 会污染第一遍的备份）。已存在就拒绝，不覆盖。
-const BACKUP_ROOT = path.join(root, 'migrations', `${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}-storage-unify`);
+// 会污染第一遍的备份）。已存在就拒绝，不覆盖。时间戳可经
+// PINPOINT_MIGRATE_BACKUP_STAMP 注入（仅测试用）：G6 用例要在自己的进程里
+// 预造同名备份目录，真实时钟下两个进程跨秒边界名字就错位，用例随机失败。
+const stamp = process.env.PINPOINT_MIGRATE_BACKUP_STAMP
+  || new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19);
+const BACKUP_ROOT = path.join(root, 'migrations', `${stamp}-storage-unify`);
 if (fs.existsSync(BACKUP_ROOT)) {
   console.error(`错误：备份目录已存在，拒绝覆盖：${BACKUP_ROOT}（确要复跑请先移走它）`);
   process.exit(1);

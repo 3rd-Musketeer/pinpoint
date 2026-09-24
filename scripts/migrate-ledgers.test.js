@@ -243,14 +243,22 @@ test('storage-unify：备份目录带时分秒，已存在就拒绝（G6）', as
   await run(dir, '--apply');
   assert.match(backupDirOf(dir), /-\d{2}-\d{2}-\d{2}-storage-unify$/, '目录名含时分秒');
 
-  // 再来一遍有活干的迁移：备份目录已存在（同名即拒）→ 退 1，不动盘。
-  fs.mkdirSync(path.join(dir, 'migrations', `${new Date().toISOString().replace(/[:T]/g, '-').slice(0, 19)}-storage-unify`), { recursive: true });
+  // 再来一遍有活干的迁移：备份目录已存在（同名即拒）→ 退 1，不动盘。时间戳
+  // 注入固定（脚本里 PINPOINT_MIGRATE_BACKUP_STAMP，仅测试用）——按真实时钟
+  // 在本进程预造目录，子进程跨秒边界取的名字就对不上，用例随机失败。
+  const stamp = '2000-01-01-00-00-00';
+  fs.mkdirSync(path.join(dir, 'migrations', `${stamp}-storage-unify`), { recursive: true });
   const ledger = path.join(dir, 'bucket-a', 'index.html.json');
   fs.writeFileSync(ledger, JSON.stringify({
     page: 'index.html', path: '/index.html', revision: 9,
     marks: [{ id: 'z1', n: 1, comment: '新形态前的行' }],
   }));
-  await assert.rejects(() => run(dir, '--apply'), /备份目录已存在/, '同名备份目录在，拒绝执行');
+  await assert.rejects(
+    () => execFileP('node', [SCRIPT, '--apply'], {
+      env: { ...process.env, PINPOINT_DATA_DIR: dir, PINPOINT_MIGRATE_BACKUP_STAMP: stamp },
+    }),
+    /备份目录已存在/, '同名备份目录在，拒绝执行',
+  );
   assert.match(fs.readFileSync(ledger, 'utf8'), /"marks"/, '拒绝后盘未动');
 });
 
