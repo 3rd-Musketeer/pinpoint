@@ -146,13 +146,46 @@ export function startAnnBridge() {
 /* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
  * iframe 收窄腾出 gutter，文档按自己的响应式回流；气泡/连线在父级 overlay 里，
  * 锚点用 iframe.getBoundingClientRect() 跨 frame 映射。只在文档条目形态生效。
- * 布局算法 SSOT：src/workbench/lib/annotate-bubble-layout.js packGutter。 */
+ * 布局算法 SSOT：src/workbench/lib/annotate-bubble-layout.js packGutter。
+ * 渲染是事件驱动的（perf 审计 A4，2026-09-24）：没有常驻 rAF，重算一律经
+ * scheduleGutterRender（rAF 合并）安排，触发源——
+ *   · iframe 文档滚动 / 舞台内滚动：capture 监听（前者挂 iframe document，
+ *     跨 frame 不冒泡；后者挂 stage-wrap，盖住 .wb-stage 平移）
+ *   · iframe / 舞台尺寸变化：ResizeObserver（手机视口的缩放是 transform，
+ *     RO 看不见，但它只随窗口 resize 变，舞台盒子同帧跟着变，仍被盖住）
+ *   · iframe 文档里晚到的资源：document 上 load 的 capture 监听 + document.fonts
+ *     的 loadingdone。图片 / 字体落定尺寸引起的布局位移既不改 iframe 元素的盒子
+ *     （RO 看不见）、不是滚动、也不一定有 DOM mutation，只有资源自己的事件知道；
+ *     load 不冒泡但能被 capture 到。旧实现的常驻 rAF 是每帧重算才「自然跟上」的，
+ *     这类信号是事件化后唯一补不回来的盲区，专门挂这两条
+ *   · 账本 / 筛选 / 布局 / 评论开关：annotate 实例 notify → 快照订阅
+ *     （syncAnnSnap 收尾的 syncGutterComments）；iframe 内 DOM 变更走同一条
+ *     —— client 的 MutationObserver 全量重渲染路径本身就会 notify
+ *   · 备注展开 / 收起：gutter 气泡的点击委派
+ * 渲染是增量的：气泡节点按 n 复用，内容没变只重排定位、不重建 innerHTML。
+ * 监听登记全部在 stopGutter 解除，切页 / 关通道 / 条目卸载不留悬挂。 */
 var gutterOverlay = null;
 var gutterBubblesEl = null;
 var gutterRaf = 0;
-// agent 备注折叠头的展开态（本次页面内存，不落盘）：gutter 每帧重建 DOM，
-// 展开态没法存在 DOM 里，只能挂在模块级等下一帧拼回去。
+// 复用的气泡节点：String(n) → {node, html, left, top, height}。html 是
+// bubbleInnerHtml 的产物，相同 = 内容没变，跳过重建与高度重测。
+var gutterNodes = Object.create(null);
+// agent 备注折叠头的展开态（本次页面内存，不落盘）：节点复用后展开态本可留在
+// DOM 里，但内容重建（正文 / 筛选变更）会冲掉，仍挂模块级等重建时拼回去。
 var gutterNotesOpen = Object.create(null);   // String(n) → true
+// 事件监听登记：滚动挂文档（capture，任意深度的滚动容器都算），尺寸挂
+// ResizeObserver。只在 gutter 开着时挂；stopGutter 全部解除。
+var gutterScrollDoc = null;      // 挂了 scroll 监听的 iframe Document
+var gutterWrapEl = null;         // 挂了 scroll 监听的舞台 wrap
+var gutterResizeObs = null;
+var gutterObservedFrame = null;  // RO 正在观察的 iframe 元素
+
+// e2e 观测点（perf 审计 A4）：requests = 重算排程次数（断言监听不重复挂），
+// renders = 实际渲染次数（断言页面静止时零渲染）。只供 e2e 用例读，生产代码
+// 不读、行为也不依赖它。它只出现在 workbench 页面上：本模块不进注入端 bundle
+// （/annotate.js 只内联 src/shared 与 src/client/lib，清单见
+// src/server/annotate-api.js 的 INLINED_LIBS），/sites/ 注入页的 window 没有它。
+window.__wbGutter = { requests: 0, renders: 0 };
 
 function gutterStageWrap() {
   return document.querySelector('.wb-stage-wrap');
@@ -190,7 +223,7 @@ function ensureGutterOverlay() {
       var key = String(n);
       if (gutterNotesOpen[key]) delete gutterNotesOpen[key];
       else gutterNotesOpen[key] = true;
-      renderGutter();
+      scheduleGutterRender();
       return;
     }
     var a = annotateApi();
@@ -206,6 +239,7 @@ function gutterActive() {
 }
 
 function renderGutter() {
+  window.__wbGutter.renders++;
   var a = annotateApi();
   if (!a || typeof a.visibleBubbleAnchors !== 'function') return;
   var wrap = gutterStageWrap();
@@ -220,87 +254,179 @@ function renderGutter() {
   // （pages.js syncPhoneDocScale），锚点 rect 是 iframe 自己的 CSS px，映射到父级前
   // 按「显示宽 / 布局宽」缩一次 —— 这个比就是 k；窗口视口下是 1。
   var k = iframeEl.offsetWidth ? ifRect.width / iframeEl.offsetWidth : 1;
+  // bubbleLeft = wrap width - bubble - margin（live gutter is inside the padded
+  // wrap; export uses docW + margin）。单列右贴边，一次渲染内 left 恒定。
+  var bubbleLeft = wrapRect.width - GUTTER_BUBBLE_W - GUTTER_MARGIN;
   var anchors = a.visibleBubbleAnchors();
-  // 展开备注的滚动位置跨帧保留：gutter 每帧重建 DOM，原生 scrollTop 会被冲掉，
-  // 先把展开中的原文滚到哪记下来，重建后拼回去。
+  // 展开备注的滚动位置只有内容重建会冲掉（复用的节点原生保留 scrollTop）：
+  // 重建前把展开中的原文滚到哪记下来，重建后拼回去。
   var keptNoteScroll = Object.create(null);
   Array.prototype.forEach.call(gutterBubblesEl.querySelectorAll('.ann-bubble-note-body'), function (el) {
     var host = el.closest('.ann-bubble');
     if (host && el.scrollTop) keptNoteScroll[host.getAttribute('data-n')] = el.scrollTop;
   });
-  while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
 
-  // Pass 1: build hidden bubbles + measure heights (packGutter is pure).
+  // Pass 1: 复用 / 重建节点（只写不读）。html 没变的不碰 innerHTML、不重测高度
+  // —— 定位更新（滚动 / 挪位）因此不付每个气泡一次回流的代价。
+  var present = Object.create(null);
+  var remeasure = [];
   var mapped = [];
-  var heights = Object.create(null);
-  var nodes = Object.create(null);
   anchors.forEach(function (an) {
-    var node = document.createElement('div');
-    node.className = 'ann-bubble';
-    node.setAttribute('data-ann-ui', '');
-    node.setAttribute('data-n', an.n);
+    present[an.n] = true;
     var noteOpen = !!gutterNotesOpen[String(an.n)];
-    node.innerHTML = bubbleInnerHtml(
+    var html = bubbleInnerHtml(
       { n: an.n, cap: an.cap, content: an.content, note: an.note },
       { noteExpanded: noteOpen }
     );
-    if (noteOpen) {
-      var noteBody = node.querySelector('.ann-bubble-note-body');
-      if (noteBody && keptNoteScroll[String(an.n)]) noteBody.scrollTop = keptNoteScroll[String(an.n)];
+    var entry = gutterNodes[an.n];
+    if (!entry) {
+      var node = document.createElement('div');
+      node.className = 'ann-bubble';
+      node.setAttribute('data-ann-ui', '');
+      node.setAttribute('data-n', an.n);
+      node.style.left = bubbleLeft + 'px';
+      node.style.top = '0';
+      gutterBubblesEl.appendChild(node);
+      entry = gutterNodes[an.n] = { node: node, html: '', left: bubbleLeft, top: 0, height: 0 };
     }
-    node.style.visibility = 'hidden';
-    node.style.left = '0';
-    node.style.top = '0';
-    node.style.width = GUTTER_BUBBLE_W + 'px';
-    gutterBubblesEl.appendChild(node);
-    heights[an.n] = node.offsetHeight || 60;
-    nodes[an.n] = node;
+    if (entry.left !== bubbleLeft) {
+      entry.left = bubbleLeft;
+      entry.node.style.left = bubbleLeft + 'px';
+    }
+    if (entry.html !== html) {
+      entry.node.innerHTML = html;
+      entry.html = html;
+      if (noteOpen) {
+        var noteBody = entry.node.querySelector('.ann-bubble-note-body');
+        if (noteBody && keptNoteScroll[String(an.n)]) noteBody.scrollTop = keptNoteScroll[String(an.n)];
+      }
+      entry.height = 0;
+      remeasure.push(entry);
+    }
     mapped.push({
       n: an.n,
       rect: [dx + an.rect[0] * k, dy + an.rect[1] * k, an.rect[2] * k, an.rect[3] * k],
     });
   });
+  // 不在场的（筛选切走 / 删除 / 滚出视口）节点摘掉。
+  Object.keys(gutterNodes).forEach(function (n) {
+    if (present[n]) return;
+    gutterNodes[n].node.remove();
+    delete gutterNodes[n];
+  });
+  // 重建过的才重测高度：写在读后，一批重建只付一次回流（packGutter is pure）。
+  remeasure.forEach(function (entry) { entry.height = entry.node.offsetHeight || 60; });
+  var heights = Object.create(null);
+  anchors.forEach(function (an) { heights[an.n] = gutterNodes[an.n].height; });
 
-  // Pass 2: pack + position. bubbleLeft = wrap width - bubble - margin
-  // (live gutter is inside the padded wrap; export uses docW + margin).
-  // No connector lines — bubble numbers match pin badges.
-  var wrapW = wrapRect.width;
-  var bubbleLeft = wrapW - GUTTER_BUBBLE_W - GUTTER_MARGIN;
+  // Pass 2: pack + 定位。宽度固定（CSS 钉 240px），top 变了才写样式。
   var packed = packGutter(mapped, heights, { bubbleLeft: bubbleLeft, bubbleW: GUTTER_BUBBLE_W });
   packed.forEach(function (p) {
-    var node = nodes[p.n];
-    if (!node) return;
-    node.style.visibility = '';
-    node.style.left = p.left + 'px';
-    node.style.top = p.top + 'px';
-    node.style.width = p.width + 'px';
+    var entry = gutterNodes[p.n];
+    if (!entry || entry.top === p.top) return;
+    entry.top = p.top;
+    entry.node.style.top = p.top + 'px';
   });
 }
 
-function gutterTick() {
-  gutterRaf = 0;
-  if (!gutterActive()) { stopGutter(); return; }
-  renderGutter();
-  gutterRaf = requestAnimationFrame(gutterTick);
+function scheduleGutterRender() {
+  window.__wbGutter.requests++;
+  if (gutterRaf) return;
+  gutterRaf = requestAnimationFrame(function () {
+    gutterRaf = 0;
+    if (!gutterActive()) { stopGutter(); return; }
+    renderGutter();
+  });
 }
 
+function onGutterSignal() { scheduleGutterRender(); }
+
+/** iframe document 上的 gutter 事件面：滚动 + 晚到资源（load capture、字体
+ *  loadingdone）。换 document 时整套挪挂，由 attachGutterListeners / detach
+ *  共用，保证两条路径解得一样干净。 */
+function detachDocListeners(doc) {
+  doc.removeEventListener('scroll', onGutterSignal, true);
+  doc.removeEventListener('load', onGutterSignal, true);
+  if (doc.fonts) doc.fonts.removeEventListener('loadingdone', onGutterSignal);
+}
+
+/** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时挪挂，
+ *  不叠层）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
+function attachGutterListeners() {
+  var iframeEl = activeDocFrameEl();
+  if (!iframeEl) return;
+  var doc = null;
+  try { doc = iframeEl.contentDocument; } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
+  if (doc && gutterScrollDoc !== doc) {
+    if (gutterScrollDoc) detachDocListeners(gutterScrollDoc);
+    doc.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
+    // load 不冒泡，capture 才接得到资源级 load（img / iframe…）；连 document
+    // 自己的 load 也会从这里过，多排一次渲染，无妨。字体落定走 loadingdone
+    // （旧引擎没有 document.fonts 就跳过）。渲染读矩形时强制同步布局，拿到的
+    // 就是落定后的几何，不用再等一拍。
+    doc.addEventListener('load', onGutterSignal, true);
+    if (doc.fonts) doc.fonts.addEventListener('loadingdone', onGutterSignal);
+    gutterScrollDoc = doc;
+  }
+  var wrap = gutterStageWrap();
+  if (wrap && gutterWrapEl !== wrap) {
+    if (gutterWrapEl) gutterWrapEl.removeEventListener('scroll', onGutterSignal, true);
+    wrap.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
+    gutterWrapEl = wrap;
+  }
+  if (typeof ResizeObserver !== 'function') return;
+  if (!gutterResizeObs) {
+    gutterResizeObs = new ResizeObserver(onGutterSignal);
+    if (wrap) gutterResizeObs.observe(wrap);
+  }
+  if (gutterObservedFrame !== iframeEl) {
+    if (gutterObservedFrame) gutterResizeObs.unobserve(gutterObservedFrame);
+    gutterResizeObs.observe(iframeEl);
+    gutterObservedFrame = iframeEl;
+  }
+}
+
+function detachGutterListeners() {
+  if (gutterScrollDoc) {
+    detachDocListeners(gutterScrollDoc);
+    gutterScrollDoc = null;
+  }
+  if (gutterWrapEl) {
+    gutterWrapEl.removeEventListener('scroll', onGutterSignal, true);
+    gutterWrapEl = null;
+  }
+  if (gutterResizeObs) { gutterResizeObs.disconnect(); gutterResizeObs = null; }
+  gutterObservedFrame = null;
+}
+
+/* 启停的 DOM 写出必须幂等：syncGutterComments 挂在快照订阅上，每次快照都会
+ * 走到。无脑 setAttribute / 置 display 会喂出一条自持循环 —— 同值属性变更被
+ * 父级 annotate 实例的 MutationObserver 当内容变更 → renderAll + notify →
+ * onUpdate → 快照 → startGutter → 又一次同值写……（旧实现的常驻循环里那条
+ * 「无标注也满帧率空转」就是这么被喂起来的）。 */
 function startGutter() {
   ensureGutterOverlay();
   var wrap = gutterStageWrap();
-  if (wrap) wrap.setAttribute('data-ann-gutter', 'on');
-  if (gutterOverlay) gutterOverlay.style.display = '';
-  if (!gutterRaf) gutterRaf = requestAnimationFrame(gutterTick);
+  if (wrap && wrap.getAttribute('data-ann-gutter') !== 'on') wrap.setAttribute('data-ann-gutter', 'on');
+  if (gutterOverlay && gutterOverlay.style.display !== '') gutterOverlay.style.display = '';
+  attachGutterListeners();
+  scheduleGutterRender();
 }
 
 export function stopGutter() {
   if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
+  detachGutterListeners();
   var wrap = gutterStageWrap();
-  if (wrap) wrap.removeAttribute('data-ann-gutter');
-  if (gutterOverlay) gutterOverlay.style.display = 'none';
-  if (gutterBubblesEl) while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
+  if (wrap && wrap.hasAttribute('data-ann-gutter')) wrap.removeAttribute('data-ann-gutter');
+  if (gutterOverlay && gutterOverlay.style.display !== 'none') gutterOverlay.style.display = 'none';
+  gutterNodes = Object.create(null);
+  if (gutterBubblesEl && gutterBubblesEl.firstChild) {
+    while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
+  }
 }
 
-/** 由侧栏更新路径与 board 切换调用：按当前状态启停 gutter。 */
+/** 由侧栏更新路径与 board 切换调用：按当前状态启停 gutter。快照每次更新都会
+ *  走到这里 —— gutter 开着时它同时是账本 / 筛选 / 布局变化的渲染触发点。 */
 export function syncGutterComments() {
   if (gutterActive()) startGutter();
   else stopGutter();
@@ -316,6 +442,8 @@ function bindDocAnnotate() {
     docAnnotateSeen.add(ann);
     if (typeof ann.onUpdate === 'function') ann.onUpdate(scheduleAnnSnap);
   }
+  // gutter 开着时 iframe（重）载入 / 换条目，滚动监听要挪到新 document 上。
+  if (gutterActive()) attachGutterListeners();
   scheduleAnnSnap();
   return true;
 }
