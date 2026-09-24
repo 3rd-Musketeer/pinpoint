@@ -10,19 +10,22 @@
 // - 页目录里 .jsx / .html / board.json / .css 变更 → 重编译该页 → 照旧发
 //   preview:update；.js（sidecar）变更 → 重编译该页 → 发 full-reload
 //   （ES module 缓存，见 BACKLOG「sidecar 模块改动后画板自动刷新」）。
+//   帧 import 的 .json / .ts / .tsx / .mjs / .cjs 同样盯（它们会进 build.json
+//   的 deps，不盯就改了零事件），类型清单与排除项见 recompile-plan 的 isWatchedSource。
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
-import { buildAllPages, compilePage, resolvePageTarget } from './lib/page-compiler.js';
+import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
+import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const WATCHED_EXT = /(?:board\.json|[^/]+\.(?:html|js|jsx|css))$/;
 // previews 分支（M2）：模板页的 components/ 子目录（pp2 的核心输入）与任意
 // 深层的帧/资源都要接住，正则此前只认页目录顶层单段文件名，子目录变更静默
-// 不重编；board.json 仍单列顶层——嵌套的同名文件不是板。
-const PREVIEWS_FILE = /\/previews\/([^/]+)\/(?:board\.json|(?:[^/]+\/)*[^/]+\.(?:html|js|jsx|css))$/;
+// 不重编。这里只取页 id，文件类型由 isWatchedSource 判；嵌套的 board.json 不是
+// 板，由 recompile-plan 认领不到 → 全编。
+const PREVIEWS_FILE = /\/previews\/([^/]+)\/(?:[^/]+\/)*[^/]+$/;
 
 export default function previewHmr(options = {}) {
   const registry = options.registry || null;
@@ -64,20 +67,31 @@ export default function previewHmr(options = {}) {
 
   // 重编译该页（dir 条目或模板页；file 条目与无板目录没有编译目标，跳过）。
   // 同一页的并发触发共享一次编译；编译失败的屏进 build.json，serve 时 500 上面板。
+  // 增量（审计 B1）：每轮先按「变更文件集合 ∩ build.json 依赖图」筛出要重编的屏，
+  // 筛不动（板变、屏增删、认领不到的文件、上次有失败屏……）就整页重编 ——
+  // planPageRecompile 的方向是宁可多编。
   // 编译期间到达的新变更拿到的是变更前结果 —— job 收尾后补跑一轮，直到收尾
   // 时刻没有新事件为止（review R11；CLI startPageWatch 有 debounce+串行链，
-  // 服务端这里补上等价的「不丢最后一拍」）。
-  function recompile(target) {
+  // 服务端这里补上等价的「不丢最后一拍」）。补跑合并期间的全部变更文件
+  // （state.pending 是集合，不是最后一个事件）。
+  function recompile(target, files) {
     if (!target) return Promise.resolve(null);
     const inflight = compiling.get(target.entryId);
     if (inflight) {
+      for (const file of files || []) inflight.pending.add(file);
       inflight.rerun = true;
       return inflight.promise;
     }
-    const state = { rerun: false, promise: null };
+    const state = { rerun: false, pending: new Set(files || []), promise: null };
     const runOnce = async () => {
+      const changed = [...state.pending];
+      state.pending.clear();
       try {
-        const result = await compilePage(target, distRoot ? { distRoot } : {});
+        const options = distRoot ? { distRoot } : {};
+        const plan = planPageRecompile(target, changed, options);
+        if (plan.drift) console.log(`[pp2] ${target.entryId}：${plan.drift} 变了但没收到 watch 事件，整页重编`);
+        if (!plan.all) options.onlyScreens = plan.screens;
+        const result = await compilePage(target, options);
         const failed = result.screens.filter((row) => !row.ok);
         if (result.error || failed.length) {
           console.error(`[pp2] 编译 ${target.entryId} 有失败屏：${result.error || failed.map((row) => `${row.id}（${row.error}）`).join('；')}`);
@@ -138,11 +152,14 @@ export default function previewHmr(options = {}) {
         server.ws.send({ type: 'full-reload' });
         return [];
       }
-      const preview = rel.match(PREVIEWS_FILE);
+      // 页源码之外的东西（dist、build.json、node_modules、非 deps 类型）不进编译分支，
+      // 编译写盘不会再触发编译。
+      const isSource = isWatchedSource(file, { distRoot: distRoot || defaultDistRoot() });
+      const preview = isSource && rel.match(PREVIEWS_FILE);
       if (preview) {
         const target = templateTarget(preview[1]);
         if (!target) return [];
-        return recompile(target).then(() => {
+        return recompile(target, [file]).then(() => {
           notify(server, target, rel);
           return [];
         });
@@ -159,7 +176,7 @@ export default function previewHmr(options = {}) {
         });
       }
       // registry dir/file 条目（仓外）：板、屏、sidecar 变更 → 重编译 → 该条目页重摆
-      if (WATCHED_EXT.test(rel)) {
+      if (isSource) {
         const owner = ownerFor(file);
         if (!owner) return undefined;
         const target = owner.kind === 'dir' ? resolvePageTarget(owner.id, { registry, root: ROOT }) : null;
@@ -169,7 +186,7 @@ export default function previewHmr(options = {}) {
           else server.ws.send({ type: 'custom', event: 'preview:update', data: { id: owner.id } });
           return [];
         }
-        return recompile(target).then(() => {
+        return recompile(target, [file]).then(() => {
           notify(server, target, rel);
           return [];
         });

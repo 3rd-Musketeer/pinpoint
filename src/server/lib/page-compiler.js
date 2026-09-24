@@ -525,7 +525,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   }
 }
 
-function readBuildJson(distRoot, entryId) {
+export function readBuildJson(distRoot, entryId) {
   try {
     return JSON.parse(fs.readFileSync(path.join(distRoot, entryId, 'build.json'), 'utf8'));
   } catch {
@@ -535,11 +535,19 @@ function readBuildJson(distRoot, entryId) {
 
 /**
  * 编译一整页 → 写 dist（writeDist=false 时只算不写，ppnt render 用）。
- * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], error? }。
+ * onlyScreen（CLI --screen，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
+ * 都走「只编挑中的屏 + 合并既有 build.json」的路径，其余屏的产物与记录原样保留。
+ * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], partial, totalScreens, error? }；
+ * partial = 只编了挑中的屏，totalScreens = 板上的屏数（CLI 打「增量 M/N 屏」用）。
  */
 export async function compilePage(target, options = {}) {
   const distRoot = options.distRoot || defaultDistRoot();
   const onlyScreen = options.onlyScreen || null;
+  // 空数组按全编处理（review 建议 2）：[] 是 truthy，放进增量分支就是一屏不编、
+  // 只刷新 builtAt —— 正是 recompile-plan 用「空批全编」专门防的假 fresh。
+  const onlyScreens = onlyScreen
+    ? [onlyScreen]
+    : (Array.isArray(options.onlyScreens) && options.onlyScreens.length ? options.onlyScreens : null);
   const writeDist = options.writeDist !== false;
   const started = performance.now();
   let board;
@@ -550,7 +558,7 @@ export async function compilePage(target, options = {}) {
   }
   const ids = screenEntriesFromBoard(board);
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
-  const picked = onlyScreen ? ids.filter((entry) => entry.id === onlyScreen) : ids;
+  const picked = onlyScreens ? ids.filter((entry) => onlyScreens.includes(entry.id)) : ids;
   const screens = [];
   const sources = {};
   const errors = {};
@@ -578,10 +586,10 @@ export async function compilePage(target, options = {}) {
       const staleFile = path.join(outDir, `${screen.id}.html`);
       if (fs.existsSync(staleFile)) fs.unlinkSync(staleFile);
     }
-    // --screen 单屏编译：合并既有 build.json，其余屏的记录原样保留。
+    // 单屏/多屏增量编译：合并既有 build.json，没重编的屏记录原样保留。
     let mergedSources = sources;
     let mergedErrors = errors;
-    if (onlyScreen) {
+    if (onlyScreens) {
       const old = readBuildJson(distRoot, target.entryId) || {};
       mergedSources = { ...(old.sources || {}), ...sources };
       mergedErrors = { ...(old.errors || {}) };
@@ -602,6 +610,8 @@ export async function compilePage(target, options = {}) {
     builtAt,
     ms: Math.round((performance.now() - started) * 10) / 10,
     screens,
+    partial: Boolean(onlyScreens),
+    totalScreens: ids.length,
   };
 }
 

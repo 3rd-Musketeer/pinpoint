@@ -1,0 +1,13 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "title": "HMR Screens",
+      "layout": "row",
+      "screens": [
+        { "id": "alpha", "title": "Alpha" },
+        { "id": "beta", "title": "Beta" }
+      ]
+    }
+  ]
+}

@@ -92,7 +92,9 @@ test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）'
   assert.deepEqual(out, []);
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
 
-  // 子目录里的资源同样接住；顶层 board.json 照旧；嵌套 board.json 不是板。
+  // 子目录里的资源同样接住；顶层 board.json 照旧。嵌套 board.json 不是板，但
+  // .json 可能是帧 import 的数据（进 deps），现在同样触发 —— recompile-plan 认领
+  // 不到 → 整页重编，多编不少编。
   s.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'X.css'), server: s });
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
@@ -101,7 +103,31 @@ test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）'
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
   s.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'board.json'), server: s });
-  assert.equal(s.sent.length, 0);
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
+});
+
+test('deps 可能出现的 json / ts / tsx / mjs / cjs 也触发重编；dist、build.json、node_modules 不触发（review 必须修 2）', async () => {
+  // dist 故意放进条目目录里：这是会自触发循环的布局（EXT 不存在，没有编译目标，
+  // 什么都不会写盘；命中的文件走「无编译目标 → 直接通知」分支）。
+  const distRoot = path.join(EXT, 'dist-out');
+  const hit = previewHmr({ registry: { entries: ENTRIES }, distRoot });
+  const s = fakeServer();
+  for (const name of ['data.json', 'util.ts', 'Card.tsx', 'lib.mjs', 'lib.cjs']) {
+    s.sent.length = 0;
+    await hit.handleHotUpdate({ file: path.join(EXT, name), server: s });
+    assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'ext-page' } }], name);
+  }
+  // 编译自己写出的东西与依赖目录：盯了就是「写盘 → 事件 → 再编译」的循环。
+  for (const file of [
+    path.join(EXT, 'node_modules', 'pkg', 'index.js'),
+    path.join(EXT, 'node_modules', 'pkg', 'package.json'),
+    path.join(EXT, 'build.json'),
+    path.join(distRoot, 'ext-page', 'home.html'),
+  ]) {
+    s.sent.length = 0;
+    assert.equal(await hit.handleHotUpdate({ file, server: s }), undefined, file);
+    assert.equal(s.sent.length, 0, file);
+  }
 });
 
 test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async (t) => {
@@ -145,4 +171,52 @@ test('编译期间到达的变更：job 收尾后补跑一轮，dist 落最后�
     fs.readFileSync(path.join(distRoot, 'rerun-page', 'home.html'), 'utf8'),
     '<div class="ios-app">第二版</div>\n',
   );
+});
+
+test('编译期间到达多个变更：补跑合并全部变更文件，逐屏命中各编各的（审计 B1）', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-merge-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify(board));
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a1</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'merge-page', kind: 'dir', path: pageDir }] }, distRoot });
+  const s = fakeServer();
+  // 先全量一次，让 build.json 建起依赖图。
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  // 编译 a=a2 期间，b 与 a 自己又各来一拍：两个事件都在 inflight 期进 pending，
+  // 补跑那轮合并成一批 [b, a] —— 只拿最后一个事件的话 b 会停在 b1。
+  const aFinal = '<div class="ios-app">a3</div>\n';
+  const bFinal = '<div class="ios-app">b2</div>\n';
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
+  const first = hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s });
+  fs.writeFileSync(path.join(pageDir, 'b.html'), bFinal);
+  const second = hit.handleHotUpdate({ file: path.join(pageDir, 'b.html'), server: s });
+  fs.writeFileSync(path.join(pageDir, 'a.html'), aFinal);
+  const third = hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s });
+  await Promise.all([first, second, third]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'merge-page', 'a.html'), 'utf8'), aFinal);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'merge-page', 'b.html'), 'utf8'), bFinal);
+});
+
+test('改一屏只重编该屏：其余屏的 dist 产物不重写（审计 B1）', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-pick-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify(board));
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a1</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'pick-page', kind: 'dir', path: pageDir }] }, distRoot });
+  const s = fakeServer();
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  const bBefore = fs.statSync(path.join(distRoot, 'pick-page', 'b.html')).mtimeMs;
+  // 只动 a 的帧：b 的产物 mtime 必须原地不动 —— 这是「只重编该屏」的观察点。
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s });
+  assert.equal(fs.readFileSync(path.join(distRoot, 'pick-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
+  assert.equal(fs.statSync(path.join(distRoot, 'pick-page', 'b.html')).mtimeMs, bBefore);
 });

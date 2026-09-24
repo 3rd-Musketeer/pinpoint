@@ -48,6 +48,7 @@ import {
   runStop,
   serviceLogPath,
   slugify,
+  startPageWatch,
 } from './pinpoint-cli.js';
 
 function withTempDir(t) {
@@ -1483,6 +1484,109 @@ test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出',
   assert.equal(code3, 1);
   assert.ok(ghost.err.some((line) => /找不到页：ghost/.test(line)));
   assert.ok(ghost.err.some((line) => /t-page/.test(line)), '报错列出可用 id');
+});
+
+test('startPageWatch：窗口内多个文件攒一批，只重编命中的屏（审计 B1）', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }],
+    files: {
+      'a.html': '<div class="ios-app">a1</div>\n',
+      'b.html': '<div class="ios-app">b1</div>\n',
+      'c.html': '<div class="ios-app">c1</div>\n',
+    },
+  });
+  // 先整页编一次：dist 与 build.json 的依赖图就位，watch 才有得筛。
+  const first = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...first.io, env: made.env }), 0, first.err.join('\n'));
+  const distEntry = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page');
+
+  const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
+  const results = [];
+  const { watcher, done } = startPageWatch(
+    target,
+    (result) => results.push(result),
+    { debounceMs: 30, distRoot: path.join(made.env.PINPOINT_DATA_DIR, 'dist') },
+  );
+  t.after(() => watcher.close());
+  // macOS 的 recursive fs.watch 走 FSEvents，挂载是异步的：起 watch 后立刻写
+  // 文件会赶不上第一拍。挂载前写丢的改动会被漂移校验判成全编（正确行为，但会
+  // 重写 c），所以先只重写 a（同内容）直到收到第一拍，确认 watch 已挂上，再记 c 的基线。
+  for (const deadline = Date.now() + 5000; !results.length;) {
+    if (Date.now() > deadline) throw new Error('watch 5s 内没挂上');
+    fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a1</div>\n');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    await done();
+  }
+  const cBefore = fs.statSync(path.join(distEntry, 'c.html')).mtimeMs;
+  // 周期性重写直到 dist 出现新内容（重写同内容幂等，只当触发器用）；事件送达与
+  // 去抖的时序不打紧，拆成几批终态也一样。
+  const deadline = Date.now() + 5000;
+  for (;;) {
+    fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n');
+    fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n');
+    const aNew = fs.readFileSync(path.join(distEntry, 'a.html'), 'utf8').includes('a2');
+    const bNew = fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2');
+    if (aNew && bNew) break;
+    if (Date.now() > deadline) throw new Error(`watch 5s 内没编出新 dist（a=${aNew} b=${bNew}）`);
+    await new Promise((resolve) => setTimeout(resolve, 250));
+  }
+  watcher.close();
+  await done();
+  assert.ok(results.length >= 1, 'onResult 至少收到一次编译结果');
+  assert.equal(fs.statSync(path.join(distEntry, 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
+});
+
+test('runBuild：只编部分屏时写明「增量 M/N 屏」，整页照旧打屏数（review kimi 建议 1）', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
+    files: { 'a.html': '<div class="ios-app">a</div>\n', 'b.html': '<div class="ios-app">b</div>\n' },
+  });
+  const full = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...full.io, env: made.env }), 0);
+  assert.match(full.out.at(-1), /^完成 t-page {2}共 [\d.]+ms（2 屏）$/);
+  const one = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--screen', 'b', '--registry', made.registry], { ...one.io, env: made.env }), 0);
+  assert.match(one.out.at(-1), /^完成 t-page {2}共 [\d.]+ms（增量 1\/2 屏）$/);
+});
+
+test('startPageWatch：一拍抛错只打日志，串行链不断，后面的批次照常编（review glm 建议 3）', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
+    files: { 'a.html': '<div class="ios-app">a1</div>\n', 'b.html': '<div class="ios-app">b1</div>\n' },
+  });
+  const first = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...first.io, env: made.env }), 0);
+  const distEntry = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page');
+  const target = { entryId: 't-page', pageDir: made.page, urlBase: '/sites/t-page/', kind: 'dir' };
+  const errors = [];
+  const results = [];
+  const { watcher, done } = startPageWatch(target, (result) => {
+    results.push(result);
+    // 第一拍的收尾抛错（替身：dist 写盘 IO 错之类）；链必须活下来。
+    if (results.length === 1) throw new Error('第一拍炸了');
+  }, {
+    debounceMs: 30,
+    distRoot: path.join(made.env.PINPOINT_DATA_DIR, 'dist'),
+    onError: (error) => errors.push(error.message),
+  });
+  t.after(() => watcher.close());
+  // FSEvents 挂载是异步的，周期性重写当触发器（见上一条的注释）。
+  const until = async (label, ready, touch) => {
+    const deadline = Date.now() + 5000;
+    for (;;) {
+      touch();
+      await new Promise((resolve) => setTimeout(resolve, 250));
+      await done();
+      if (ready()) return;
+      if (Date.now() > deadline) throw new Error(`watch 5s 内没等到：${label}`);
+    }
+  };
+  await until('第一拍抛错', () => errors.length >= 1, () => fs.writeFileSync(path.join(made.page, 'a.html'), '<div class="ios-app">a2</div>\n'));
+  await until('抛错之后的下一拍照常编', () => fs.readFileSync(path.join(distEntry, 'b.html'), 'utf8').includes('b2'),
+    () => fs.writeFileSync(path.join(made.page, 'b.html'), '<div class="ios-app">b2</div>\n'));
+  watcher.close();
+  assert.deepEqual(errors, ['第一拍炸了']);
+  assert.ok(results.length >= 2, '抛错后的批次仍回报结果');
 });
 
 test('runRender：限内打全文，超限截断并落 spill 文件，--full 不截断', async (t) => {
