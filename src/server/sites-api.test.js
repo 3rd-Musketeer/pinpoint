@@ -6,6 +6,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { loadRegistry } from './lib/registry.js';
+import { compilePage } from './lib/page-compiler.js';
 import { annotateSnippet, createSitesHandler, injectAnnotateClient } from './sites-api.js';
 import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 import { mockReq, mockRes } from './test-harness.js';
@@ -297,4 +298,58 @@ test('no synthesis: dir without top-level .html / ios-mode dir / missing dir all
   assert.equal((await call(handler, 'GET', '/sites/empty/board.json')).res.statusCode, 404, '顶层无 .html');
   assert.equal((await call(handler, 'GET', '/sites/ios-noboard/board.json')).res.statusCode, 404, 'ios 壳必须手写 board.json');
   assert.equal((await call(handler, 'GET', '/sites/ghost-dir/board.json')).res.statusCode, 404, '目录缺失');
+});
+
+/* ---- pp2：已编译的 jsx 屏从 dist 出（原 e2e/pp2-build 的 /sites/ 用例下沉）---- */
+
+test('compiled jsx screen serves from dist; board.json reports dist built and fresh', async (t) => {
+  // dist 落点走 PINPOINT_DATA_DIR（serve 层读默认 distRoot），出测试作用域即还原。
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-sites-jsx-'));
+  const prevDataDir = process.env.PINPOINT_DATA_DIR;
+  process.env.PINPOINT_DATA_DIR = dir;
+  t.after(() => {
+    if (prevDataDir === undefined) delete process.env.PINPOINT_DATA_DIR;
+    else process.env.PINPOINT_DATA_DIR = prevDataDir;
+    fs.rmSync(dir, { recursive: true, force: true });
+  });
+
+  const pageDir = path.join(dir, 'jsx-page');
+  fs.mkdirSync(pageDir, { recursive: true });
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify({
+    sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'hello', title: 'Hello' }] }],
+  }));
+  fs.writeFileSync(path.join(pageDir, 'hello.jsx'), [
+    'export default function Hello() {',
+    '  return (',
+    '    <div className="ios-app">',
+    '      <h1>E2E jsx hello</h1>',
+    '    </div>',
+    '  );',
+    '}',
+    '',
+  ].join('\n'));
+  fs.writeFileSync(path.join(dir, 'registry.json'), JSON.stringify({
+    version: 1,
+    entries: [{ id: 'jsx-page', title: 'JSX Page', kind: 'dir', path: pageDir }],
+  }));
+  const registry = loadRegistry({ path: path.join(dir, 'registry.json'), root: dir, log: () => {} });
+  const handler = createSitesHandler({ registry });
+
+  // 先编一次再 GET：被测的是「已编译态」，不是懒编译兜底。
+  const built = await compilePage(
+    { entryId: 'jsx-page', pageDir, urlBase: '/sites/jsx-page/', kind: 'dir' },
+    { distRoot: path.join(dir, 'dist') },
+  );
+  assert.equal(built.ok, true, JSON.stringify(built).slice(0, 200));
+
+  const screen = await call(handler, 'GET', '/sites/jsx-page/hello.html?annotate=off');
+  assert.equal(screen.res.statusCode, 200);
+  assert.ok(screen.res.text.includes('E2E jsx hello'), '屏内容来自编译产物');
+  assert.ok(screen.res.text.includes('data-pp-id="hello.jsx:3@1"'), '编译锚点在产物里');
+
+  const board = await call(handler, 'GET', '/sites/jsx-page/board.json');
+  assert.equal(board.res.statusCode, 200);
+  const json = JSON.parse(board.res.text);
+  assert.equal(typeof json.dist.builtAt, 'number', 'board.json 附带编译时间');
+  assert.equal(json.dist.stale, false, '刚编译的页不算过期');
 });
