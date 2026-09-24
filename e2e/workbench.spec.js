@@ -227,48 +227,13 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).activePageId)).toBe('e2e-ios');
 });
 
-test('Pages is one mixed list of untyped rows and no mode Seg', async ({ page }) => {
-  await openWorkbench(page);
-
-  // 模式 Seg 退役；本地页 + registry 条目混排（顺序 = 系统行 → _index → registry）。
-  // 阶段 4：url 条目（E2E Site / E2E Proxy App）恒 doc 壳同列。
-  // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
-  // 阶段 6：e2e-mixed 固件（混合板）追加在尾。
-  // 阶段 7：Page 去类型化 —— 行 = 纯标题（壳标 pill / data-page-mode 一并撤除）。
-  // pp2 切片 2：Component Library 系统页退役，清单里不再有系统行。
-  // 范例页：_index.json 重新有页，manifest 行排在 registry 行前。
-  // 2026-08-17g：行尾新增相对时间元素，标题断言收窄到 .wb-page-t。
-  await expect(page.locator('#wbboard-mode')).toHaveCount(0);
-  await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
-    '范例：冲一杯',
-    'E2E iOS',
-    'E2E Site',
-    'E2E Proxy App',
-    'E2E Dir',
-    'E2E Dir iOS',
-    'E2E Mention Doc',
-    'E2E Mixed',
-    'E2E Doc',
-  ]);
-
-  // 类型信息只以图标出现，不再有 pill / data-page-mode。
-  // 2026-09-05：每行一个类型图标（画布 / 文档 / 网页），数量 = 行数。
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(await page.locator('#wbpages .wb-page').count());
-  await expect(page.locator('#wbpages .wb-page[data-page-mode]')).toHaveCount(0);
-
-  // 点文档页 → stage 变阅读器；点回机壳页 → 画布回来。
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-  await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
-  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
-  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
-});
-
-test('HTML board fills the viewport, drops canvas chrome, and collapses the contents section (2026-08-16f 阶段 7)', async ({ page }) => {
+// 壳形态是选中条目的属性（230 / 271 合并，2026-09-24 e2e 审计）：doc 条目 =
+// 阅读器（iframe 托管、无画布 chrome），canvas 条目 = 画布（工具、条目行、
+// frame 树）。doc 1:1 铺满与画布工具隐藏的几何断言由 viewport.spec.js（dir doc
+// 页，同口径 bounding box）守；contents 区三种坍缩形态是纯函数，由
+// board-entries.test.js 守 —— e2e 只留接线断言。九行清单断言归 185（逐字同一份），
+// 类型图标数量断言从 230 并入这里的画布段。
+test('HTML board: doc / canvas 形态随选中条目切换，contents 区按形态坍缩 (2026-08-16f 阶段 7)', async ({ page }) => {
   await openWorkbench(page);
 
   // 壳形态是选中条目的属性：点文档页（单 doc 条目），stage 即阅读器。
@@ -276,27 +241,20 @@ test('HTML board fills the viewport, drops canvas chrome, and collapses the cont
   await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
 
   // Document is hosted in an iframe, not inlined: its own <head>/<style> stay inside.
-  const frame = page.locator('#wb-board-panel .wb-doc-stage .wb-doc-frame');
-  await expect(frame).toHaveCount(1);
+  await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
-
-  // Not a canvas: no zoom/pan HUD, and the doc matches the stage 1:1 so a report
-  // renders at the reader's real window size.
-  await expect(page.locator('#wbcanvas-tools')).toBeHidden();
-  const [frameBox, stageBox] = await Promise.all([
-    frame.boundingBox(),
-    page.locator('#wbstage').boundingBox(),
-  ]);
-  expect(Math.round(frameBox.width)).toBe(Math.round(stageBox.width));
-  expect(Math.round(frameBox.height)).toBe(Math.round(stageBox.height));
 
   // 阶段 7 坍缩：纯单 doc 屏页（无画布、无草稿、非网页）整个「内容」区不出现。
   await expect(page.locator('#wbcontents')).toHaveCount(0);
 
-  // 纯画布页：「内容」区在、frame 树在，但条目行坍缩（无多余「画布」行）。
+  // 纯画布页：「内容」区在、frame 树在，但条目行坍缩（无多余「画布」行）；
+  // 画布工具回来（230 并入：类型图标一行一个，数量 = 行数）。
   await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(0);
+  await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
+  await expect(page.locator('#wbcanvas-tools')).toBeVisible();
+  await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(await page.locator('#wbpages .wb-page').count());
   await page.getByRole('tab', {name:'大纲', exact:true}).click();
   await expect(page.locator('#wbcontents')).toBeVisible();
   await expect(page.locator('#wbcontents [data-entry]')).toHaveCount(0);
