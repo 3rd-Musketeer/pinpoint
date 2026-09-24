@@ -380,30 +380,6 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
   expect(edited.images).toBeUndefined();expect(edited.content).toBe(saved.content);
 });
 
-test('a concurrent ledger write rejects a stale status write without overwriting the other edit', async ({page,request}) => {
-  await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
-  await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-title').click();
-  await page.getByRole('textbox',{name:'写标注'}).fill('请改标题');await page.locator('#ann-save').click();
-  await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
-  const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
-  const staleRev=await page.evaluate(()=>window.pinpoint.getState().revision);
-
-  // 另一个窗口先把账本推进一格（正文改写 + revision+1）。
-  const ledger=pageKeyFromPathname('/sites/e2e-dir/doc.html');
-  const doc=await page.request.get(`/annotations/${ledger}?entry=e2e-dir`).then(r=>r.json());
-  const other=await request.post('/save',{data:{page:ledger,entry:'e2e-dir',path:'/sites/e2e-dir/doc.html',baseRevision:staleRev,annotations:doc.annotations.map(m=>({...m,content:'另一窗口更新后的意见'}))}});
-  expect(other.ok()).toBe(true);
-
-  // 拿着旧 revision 的 mark 写入被 409 拒掉，另一窗口的改动原样保留。
-  const stale=await request.post(`/annotations/${ledger}/${mark.n}/status`,{data:{entry:'e2e-dir',baseRevision:staleRev,status:'check'}});
-  expect(stale.status()).toBe(409);
-  expect((await stale.json()).error).toBe('revision_conflict');
-  const after=await page.request.get(`/annotations/${ledger}?entry=e2e-dir`).then(r=>r.json());
-  expect(after.annotations[0].content).toBe('另一窗口更新后的意见');
-  expect(after.annotations[0].status).toBe('open');
-});
-
-
 test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；失效不等于已解决', async ({page}) => {
   await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
   await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-target-2').click();

@@ -340,3 +340,33 @@ test('build failure is a loud 500 with the reason; retained hashes keep serving'
   const retained = await call(handler, 'GET', `/annotate.${artifact.hash}.js`);
   assert.equal(retained.res.statusCode, 200);
 });
+
+test('a concurrent ledger write rejects a stale /status with revision_conflict and keeps the other edit', async (t) => {
+  const { handler } = withFixture(t);
+  // 浏览器只用来造第一条标注，判定全在 HTTP 之下：/save 推进 revision 后，
+  // 拿旧 revision 的 /status 写入要 409 revision_conflict，另一窗口的改动原样保留。
+  const first = await call(handler, 'POST', '/save', {
+    page: 'index.html', entry: 'web', baseRevision: 0, annotations: [{ content: '请改标题' }],
+  });
+  assert.equal(first.res.statusCode, 200);
+  const staleRev = first.json.revision;
+
+  // 另一个窗口先把账本推进一格（正文改写 + revision+1）。
+  const doc = await call(handler, 'GET', '/annotations/index.html?entry=web');
+  const other = await call(handler, 'POST', '/save', {
+    page: 'index.html', entry: 'web', baseRevision: staleRev,
+    annotations: doc.json.annotations.map((m) => ({ ...m, content: '另一窗口更新后的意见' })),
+  });
+  assert.equal(other.res.statusCode, 200);
+
+  // 旧 revision 的 status 写入被 409 拒掉，错误码 revision_conflict 原样透出。
+  const stale = await call(handler, 'POST', '/annotations/index.html/1/status', {
+    entry: 'web', baseRevision: staleRev, status: 'check',
+  });
+  assert.equal(stale.res.statusCode, 409);
+  assert.equal(stale.json.error, 'revision_conflict');
+
+  const after = await call(handler, 'GET', '/annotations/index.html?entry=web');
+  assert.equal(after.json.annotations[0].content, '另一窗口更新后的意见');
+  assert.equal(after.json.annotations[0].status, 'open');
+});
