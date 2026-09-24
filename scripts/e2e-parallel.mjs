@@ -56,6 +56,9 @@ function splitGroups(files) {
 // 高负载降为单组（2026-09-23）：机器 1 分钟 load ≥ 阈值时两组并行会随机超时，
 // 每次挂的用例不同、单跑全过。阈值默认 4（实测 load < 4 时两组稳定），
 // E2E_SINGLE_GROUP_LOAD 改阈值，E2E_GROUPS=1|2 强制组数。
+// 2026-09-24 校准：根因修复（挂载几何批、whenBoardSettled）之后，load 6.6~8.6
+// 下强制两组连跑 3 轮，每轮首跑仍有 2~3 条随机超时、一轮重跑后仍挂（单跑全过），
+// 所以阈值维持 4，不上调。
 const load = loadavg()[0];
 const threshold = Number(process.env.E2E_SINGLE_GROUP_LOAD || 4);
 const forced = process.env.E2E_GROUPS;
