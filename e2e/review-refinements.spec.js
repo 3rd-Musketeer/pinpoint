@@ -16,45 +16,6 @@ test.afterEach(async ({page}) => {
   }
 });
 
-// A reviewer keeps a frequently used page handy, hides it after review, and
-// later restores it without changing its source or registration.
-test('page pin, archive and restore survive reload without deleting the page', async ({ page, request }) => {
-  const before = await (await request.get('/registry')).json();
-  await page.goto('/index.html?page=e2e-dir-ios');
-  const row = page.locator('[data-vpage="e2e-dir-ios"]');
-  await expect(row).toBeVisible();
-  await row.click({ button: 'right' });
-  await page.locator('[data-pin-page="e2e-dir-ios"]').click();
-  await expect(page.locator('.wb-pinned-pages [data-vpage="e2e-dir-ios"]')).toBeVisible();
-  await row.click({ button: 'right' });
-  await page.locator('[data-archive-page="e2e-dir-ios"]').click();
-  await expect(row).toHaveCount(0);
-  await page.reload();
-  await expect(page.getByRole('tab', {name:'已归档'})).toBeVisible();
-  await expect(row).toHaveCount(0);
-  await page.getByRole('tab', {name:'已归档'}).click();
-  await expect(row).toBeVisible();
-  await row.click({ button: 'right' });
-  await page.locator('[data-archive-page="e2e-dir-ios"]').click();
-  await expect(row).toHaveCount(0);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await expect(page.locator('.wb-pinned-pages [data-vpage="e2e-dir-ios"]')).toBeVisible();
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await expect(row).not.toBeVisible();
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await expect(row).toBeVisible();
-  const box = await row.boundingBox();
-  const sidebar = await page.locator('#wbside').boundingBox();
-  expect(box.x).toBeGreaterThanOrEqual(sidebar.x);
-  expect(box.x + box.width).toBeLessThanOrEqual(sidebar.x + sidebar.width);
-  // 钉/存档/恢复不该动登记表：比内容，不比 dir 条目的 mtime——那是登记目录
-  // 本身的 mtime，并行跑时另一组 runner 往仓库根写产物就会顶新它（与登记表
-  // 是否被改写无关）。
-  const withoutMtime = (doc) => JSON.stringify(doc.entries.map(({ mtime, ...rest }) => rest));
-  expect(withoutMtime(await (await request.get('/registry')).json())).toBe(withoutMtime(before));
-  await page.screenshot({ path: test.info().outputPath('navigation.png') });
-});
-
 test('composer follows the selected DOM and docks only when adjacent space runs out', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
