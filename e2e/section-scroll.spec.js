@@ -24,7 +24,9 @@ async function saveMark(page) {
   ]);
 }
 
-for (const zoom of ['0.75', '1.17', '2.5']) {
+// 250% 档退役（2026-09-24 审计）：修复前它也过 —— 放大态 zoom-wrap 没有内部
+// 可滚空间，是阴性对照，守不住回归；真失败档是 75% / 117%，留这两档。
+for (const zoom of ['0.75', '1.17']) {
   test(`annotation navigation preserves earlier sections at zoom ${zoom}`, async ({ page }) => {
     await page.setViewportSize({ width: 1440, height: 900 });
       await page.addInitScript((zoom) => {

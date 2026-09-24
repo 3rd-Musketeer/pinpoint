@@ -2,17 +2,38 @@ import { test, expect } from '@playwright/test';
 
 import { maybeThrottle } from './cpu-throttle.js';
 
-test.beforeEach(async ({ page }) => {
+// 七条都是纯 API 调用、不写账本也不改 DOM（emulateMedia 例外，放最后并在
+// 收尾复位），共用一次装载：beforeAll 开页，每条开头瞬时滚回顶部复位。
+// 装载从 7 次降到 1 次，过去「第一条撞冷启动」的随机超时随之收敛成一次；
+// 就绪信号与 workbench.spec 同款 whenBoardSettled，单独放宽超时 —— 冷装载
+// （vite transform + 板挂载）不该被 30s 的用例全局上限掐死（校准 run1:97）。
+test.describe.configure({ mode: 'serial' });
+
+let page;
+
+test.beforeAll(async ({ browser }) => {
+  const context = await browser.newContext();
+  page = await context.newPage();
   await maybeThrottle(page);
   await page.goto('/index.html?page=e2e-ios&mode=ios');
   // afterMount wires navigation and applies the initial viewport in the geometry
   // batch (board DOM in; independent of preview-script imports). Starting a spring
   // at HTML insertion time races that legitimate first focus.
   await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  // shell 就绪 ≠ 板就绪：navigator / 首访聚焦在挂载会话的几何批里才落定。
+  await page.waitForFunction(() => window.workbench.whenBoardSettled().then((ok) => ok === true), { timeout: 60_000 });
   await page.evaluate(() => window.workbench.whenScrollSettled());
 });
 
-test('frame focus moves through intermediate positions and settles on the instant target', async ({ page }) => {
+test.afterAll(async () => {
+  if (page && !page.isClosed()) await page.context().close();
+});
+
+test.beforeEach(async () => {
+  await page.evaluate(() => window.workbench.scrollTo({ top: 0 }, { smooth: false }));
+});
+
+test('frame focus moves through intermediate positions and settles on the instant target', async () => {
   const result = await page.evaluate(async () => {
     const s = document.getElementById('wbstage'), wb = window.workbench;
     const group = document.querySelector('[data-screen="settings"]').closest('.wb-lib-item').dataset.annSection;
@@ -35,7 +56,7 @@ test('frame focus moves through intermediate positions and settles on the instan
   expect(result.inner).toBe(0);
 });
 
-test('retarget continues from the current position and cancels the previous completion', async ({ page }) => {
+test('retarget continues from the current position and cancels the previous completion', async () => {
   const result = await page.evaluate(async () => {
     const s = document.getElementById('wbstage'), wb = window.workbench;
     await wb.scrollTo({ top: 0 }, { smooth: false });
@@ -54,7 +75,7 @@ test('retarget continues from the current position and cancels the previous comp
 });
 
 for (const input of ['pointerdown', 'keydown']) {
-  test(`${input} immediately takes control of an animated scroll`, async ({ page }) => {
+  test(`${input} immediately takes control of an animated scroll`, async () => {
     const result = await page.evaluate(async input => {
       const s = document.getElementById('wbstage'), wb = window.workbench;
       await wb.scrollTo({ top: 0 }, { smooth: false });
@@ -71,7 +92,7 @@ for (const input of ['pointerdown', 'keydown']) {
   });
 }
 
-test('reduced motion positions immediately without a delayed follow-up', async ({ page }) => {
+test('reduced motion positions immediately without a delayed follow-up', async () => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const result = await page.evaluate(async () => {
     const wb = window.workbench, s = document.getElementById('wbstage');
@@ -82,7 +103,7 @@ test('reduced motion positions immediately without a delayed follow-up', async (
   expect(result.complete).toBe(true);
 });
 
-test('changing reduced motion during navigation settles and preserves completion', async ({ page }) => {
+test('changing reduced motion during navigation settles and preserves completion', async () => {
   await page.evaluate(() => {
     window.workbench.scrollTo({ top: 0 }, { smooth: false });
     window.motionCompletion = window.workbench.scrollTo({ top: 2000 });
@@ -92,7 +113,10 @@ test('changing reduced motion during navigation settles and preserves completion
   await expect(page.locator('#wbstage')).toHaveJSProperty('scrollTop', 2000);
 });
 
-test('a real wheel gesture cancels navigation without the spring taking control again', async ({ page }) => {
+test('a real wheel gesture cancels navigation without the spring taking control again', async () => {
+  // 上一条把 reduced-motion 切成了 reduce（emulateMedia 粘在共用页面上）：
+  // 这条要弹簧动画先跑起来，先复位。
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
     window.workbench.scrollTo({ top: 0 }, { smooth: false });
     window.motionCompletion = window.workbench.scrollTo({ top: 2000 });
@@ -100,8 +124,19 @@ test('a real wheel gesture cancels navigation without the spring taking control 
   await page.mouse.move(1100, 300);
   await page.mouse.wheel(0, 100);
   expect(await page.evaluate(() => window.motionCompletion)).toBe(false);
-  await page.waitForTimeout(200);
-  const stopped = await page.locator('#wbstage').evaluate(el => el.scrollTop);
-  await page.waitForTimeout(200);
-  await expect(page.locator('#wbstage')).toHaveJSProperty('scrollTop', stopped);
+  // 「之后没有再动」不靠固定等待：先轮询到滚轮自己的原生滚动停住（连续
+  // 两帧位置相等 —— 取消后弹簧不得接管，若又动起来这里就等不到），再确认
+  // 没有 active 动画（空闲时 whenScrollSettled 是已兑现的 promise，与下一个
+  // rAF 竞速必赢）。
+  await expect.poll(() => page.evaluate(async () => {
+    const s = document.getElementById('wbstage');
+    const a = s.scrollTop;
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return s.scrollTop === a;
+  })).toBe(true);
+  const idledBeforeNextFrame = await page.evaluate(() => Promise.race([
+    window.workbench.whenScrollSettled().then(() => true),
+    new Promise(resolve => requestAnimationFrame(() => resolve(false))),
+  ]));
+  expect(idledBeforeNextFrame).toBe(true);
 });

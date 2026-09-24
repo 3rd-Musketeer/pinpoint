@@ -54,32 +54,41 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
   }, [pathname, prevEpoch]);
 }
 
-test('/sites/ page: the floating toolbar carries a way back to the workbench', async ({ page }) => {
-  // /sites/ 注入的页面在 workbench 之外（BACKLOG「空态与错误面板」）：
-  // 工具条上要有一条走回去的路，不靠用户记住 workbench 的 URL。
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
-  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
-
-  const entry = page.locator('#ann-workbench');
-  await expect(entry).toBeVisible();
-  await expect(entry).toHaveText('打开 workbench');
-
-  const [opened] = await Promise.all([page.waitForEvent('popup'), entry.click()]);
-  expect(new URL(opened.url()).pathname).toBe('/index.html');
-  await opened.close();
-});
-
 test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the target', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await annotate(page, '#doc-target', 'first mark');
+
+  // 工具条入口（/sites/ 注入页工具条默认隐藏，先显式调出）：除了「列表」，
+  // 还要有走回 workbench 的路，不靠用户记住 workbench 的 URL。
+  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
+  const entry = page.locator('#ann-workbench');
+  await expect(entry).toBeVisible();
+  await expect(entry).toHaveText('打开 workbench');
+  const [opened] = await Promise.all([page.waitForEvent('popup'), entry.click()]);
+  expect(new URL(opened.url()).pathname).toBe('/index.html');
+  await opened.close();
+
+  // 第一条写到一半 toggle 侧栏：composer 草稿不丢，保存照常落账。
+  await page.locator('#doc-target').click();
+  const box = page.locator('#ann-box');
+  await expect(box).toBeVisible();
+  await box.locator('#ann-input').fill('first mark');
+  await page.evaluate(() => window.pinpoint.toggleSidebar());
+  await expect(box.locator('#ann-input')).toBeVisible();
+  await expect(page.locator('#ann-sidebar')).toBeVisible();
+  await box.locator('#ann-save').click();
+  await expect(box).toBeHidden();
+
   await annotate(page, '#doc-target-2', 'second mark');
+  // 保存回包落定再往下走：下一步就是 reload，负载下 POST 慢几百毫秒时抢跑
+  // 会打断在途保存，刷出来的账本少一条。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
   await page.evaluate(() => window.pinpoint.setMode(false));
 
-  // 工具条入口：/sites/ 注入页工具条默认隐藏，先显式调出再点「列表」。
-  await page.evaluate(() => window.pinpoint.setFloatingToolbar(true));
+  // 侧栏已由 toggle 开着：S 收起，再从工具条「列表」打开 —— 两个入口都验到。
+  await page.keyboard.press('s');
+  await expect(page.locator('#ann-sidebar')).toBeHidden();
   await page.locator('#ann-list').click();
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
@@ -116,32 +125,24 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(page.locator('#ann-box')).toBeVisible();
   await expect(page.locator('#ann-input')).toContainText('first mark');
   await expect(page.locator('.ann-badge').filter({hasText: /^1$/})).toBeVisible();
-  await closeComposer(page);
+
+  // 行级删除退役（与工作台弹层一致）：行上没有垃圾桶，单条删除收进
+  // composer 的删除钮 —— 眼下 composer 开着第一条，删它正好。
+  await page.locator('#ann-del').click();
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
+
+  // 目标元素离开 DOM：内容 MutationObserver → notify → 侧边栏重估锚点状态，
+  // 行出「锚点失效」标。
+  await expect(sidebar).not.toContainText('锚点失效');
+  await page.evaluate(() => document.getElementById('doc-target-2').remove());
+  const brokenRow = sidebar.locator('.wb-ann-item[data-ann-n="2"]');
+  await expect(brokenRow.locator('.wb-ann-broken-tag')).toHaveText('锚点失效');
 
   // S 键收起，再次打开。
   await page.keyboard.press('s');
   await expect(sidebar).toBeHidden();
   await page.keyboard.press('s');
   await expect(sidebar).toBeVisible();
-});
-
-test('/sites/ page: row shows the broken state after its target leaves the DOM', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await annotate(page, '#doc-target', 'will break');
-  await page.evaluate(() => window.pinpoint.setMode(false));
-
-  await page.keyboard.press('s');
-  const sidebar = page.locator('#ann-sidebar');
-  await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
-  await expect(sidebar).not.toContainText('锚点失效');
-
-  // 目标元素离开 DOM：内容 MutationObserver → notify → 侧边栏重估锚点状态。
-  await page.evaluate(() => document.getElementById('doc-target').remove());
-  const row = sidebar.locator('.wb-ann-item[data-ann-n="1"]');
-  await expect(row.locator('.wb-ann-broken-tag')).toHaveText('锚点失效');
 });
 
 test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完成沉底弱化 → closed 筛选可见 → 重新打开', async ({ page }) => {
@@ -347,9 +348,13 @@ test('workbench 列表 note hover 卡：done 行 120 ms 出卡，无 note 的行
   await page.evaluate(() => document.activeElement.blur());
   await expect(card).toBeHidden();
 
-  // 无 note 的行：过了出卡窗也不出卡。
+  // 无 note 的行：换行的反应可观察 —— hover 挪到 row2，row1 的卡先收
+  // （90ms 离开宽限走完，收卡被轮询到 = 换行事件已处理）；row2 没有 note，
+  // 过了 120ms 出卡窗也不出（计数断言自带 5s 重试窗口兜住迟到出卡）。
+  await row1.hover();
+  await expect(card).toBeVisible();
   await row2.hover();
-  await page.waitForTimeout(300);
+  await expect(card).toBeHidden();
   await expect(card).toHaveCount(0);
 });
 
@@ -379,8 +384,8 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   // check / done 升档只经 mark 端点（revision 用回包里的，不等 SSE）；
   // close 是 owner 动作，端点不收 —— 走行上的「完成」勾。
   const ledger = pageKeyFromPathname('/sites/e2e-dir/doc.html');
-  const postStatus = async (n, status, baseRev) => {
-    const res = await page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'e2e-dir', baseRevision: baseRev, status } });
+  const postStatus = async (n, status, baseRev, note) => {
+    const res = await page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'e2e-dir', baseRevision: baseRev, status, ...(note ? { note } : {}) } });
     expect(res.status()).toBe(200);
     return (await res.json()).revision;
   };
@@ -389,7 +394,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   const serverDoc = async () => (await page.request.get(`/annotations/${ledger}?entry=e2e-dir`)).json();
   await expect.poll(async () => ((await serverDoc()).annotations || []).some((a) => a.n === nClose)).toBe(true);
   let rev = (await serverDoc()).revision;
-  rev = await postStatus(nCheck, 'check', rev);
+  rev = await postStatus(nCheck, 'check', rev, '看过，不改');
   rev = await postStatus(nDone, 'done', rev);
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('done');
 
@@ -402,6 +407,23 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await closeRow.getByRole('button', { name: '完成 #' + nClose, exact: true }).click();
   await expect(closeRow).toHaveCount(0);
 
+  // done 行的「完成」勾关的是「关前原态」不是 open：关 → toast 撤销 →
+  // status 回 done，序号圆保持 done 绿（与画布钉子同组变量）。
+  const doneRow = sidebar.locator('.wb-ann-item[data-ann-n="' + nDone + '"]');
+  await doneRow.hover();
+  await doneRow.getByRole('button', { name: '完成 #' + nDone, exact: true }).click();
+  await expect(doneRow).toHaveCount(0);
+  const toast = page.locator('#ann-toast');
+  await expect(toast).toBeVisible();
+  await expect(toast).toContainText('已完成 #' + nDone);
+  await toast.locator('button').click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('done');
+  await expect(doneRow).toHaveCount(1);
+  await expect(doneRow.locator('.wb-ann-num')).toHaveCSS('background-color', 'rgb(47, 158, 99)');
+  await expect(toast).toBeHidden();
+  // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
   // pending：open / check / done 三行，钉子三枚；closed 计 1
   const rows = sidebar.locator('.wb-ann-item');
   await expect(rows).toHaveCount(3);
@@ -411,6 +433,10 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(pins).toHaveCount(3);
   // pending 里三种状态各自保留状态色（琥珀 = check）
   await expect(page.locator('.ann-badge.ann-badge--check')).toHaveCSS('background-color', 'rgb(184, 124, 20)');
+  // done 行出文字状态标；check 的 note 走行上的原生 title（注入侧栏仍用
+  // title，工作台侧已换 hover 卡 —— 两边有意不同步）
+  await expect(doneRow.locator('.wb-ann-status-tag')).toHaveText('done');
+  await expect(sidebar.locator('.wb-ann-item[data-ann-n="' + nCheck + '"]')).toHaveAttribute('title', '看过，不改');
 
   // 切到 closed：closed 行（带「重新打开」）+ 一枚灰钉
   await filters.locator('[data-ann-filter="closed"]').click();
@@ -430,4 +456,14 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(sidebar.locator('.wb-ann-status-tag')).toHaveText('close');
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(133, 142, 153)');
+
+  // owner 在 UI 里编辑正文 → 状态自动回 open（水合完成再开，否则 openMark 扑空）。
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.some((m) => m.n === n), nDone)).toBe(true);
+  await page.evaluate((n) => window.pinpoint.openMark(n), nDone);
+  await expect(page.locator('#ann-box')).toBeVisible();
+  await page.locator('#ann-input').fill('改过的正文');
+  await page.locator('#ann-save').click();
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('open');
+  // 这是本用例最后一次保存：等回包落定再收尾，afterEach 删桶不与在途写入抢跑。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
 });

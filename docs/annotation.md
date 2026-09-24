@@ -148,7 +148,7 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
 账本及原有 revision，缓存不写入持久化数据。文档页面沿用原来的视口定位；未卸载原型 HTML。
 
 `e2e/canvas-pan.spec.js` 覆盖平移手势、连续缩放、草稿、内部滚动、区域、跨 frame 多目标、
-箭头、锚点失效恢复、全局样式和单条保存，以及 200 / 1000 条模拟标注。回归门槛约束目标读取、
+箭头、锚点失效恢复、全局样式和单条保存，以及 1000 条模拟标注。回归门槛约束目标读取、
 节点复用、对齐和保存请求；墙钟帧间隔单独采样，不用机器负载敏感的毫秒数作为 CI 门槛。
 
 ## 装载失败与 sidecar 资源
@@ -175,7 +175,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 用户面只剩一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
 原生 dialog；ADR 0033）。图片 picker、zip 打包（`/api/export-zip`）、文档导出三模式都在 pp2 切片 3 退役。
-服务端帧图片渲染器（`/api/export-image`、`scripts/export-preview.mjs`）保留给 agent：`ppnt shot`
+服务端帧图片渲染器（`/api/export-image`）保留给 agent：`ppnt shot`
 与 `ppnt check --mode image` 走它，不再是用户面入口。不要把截图逻辑加进单个屏的片段里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。

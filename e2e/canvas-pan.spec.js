@@ -31,10 +31,14 @@ async function openCanvas(page, count = 0) {
   return saves;
 }
 
-for (const mode of [false, true]) for (const button of ['middle', 'space']) {
-  test(`canvas pans over content with ${button}, annotation mode ${mode}`, async ({ page }) => {
-    await openCanvas(page);
+test('canvas pans with middle drag and space+drag, in and out of annotation mode', async ({ page }) => {
+  // 四种组合（中键/空格+左键 × 标注模式开/关）一次页面连做：每轮把手势目标
+  // 格子滚回视口再拖（平移后格子会出视口，鼠标落到视口外就点不到东西），
+  // 位移断言按「拖前位置 + 120/70」相对比，口径与拆分前一致。
+  await openCanvas(page);
+  for (const mode of [false, true]) for (const button of ['middle', 'space']) {
     await page.evaluate(mode => window.pinpoint.setMode(mode), mode);
+    await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
     const box = await page.locator(cellSelector).first().boundingBox();
     const before = await page.locator('#wbstage').evaluate(s => [s.scrollLeft, s.scrollTop]);
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
@@ -48,11 +52,14 @@ for (const mode of [false, true]) for (const button of ['middle', 'space']) {
     await expect(page.locator('#ann-box')).toHaveCount(0);
     await expect(page.locator('#ann-lasso')).toHaveCount(0);
     await expect.poll(() => page.evaluate(() => window.pinpoint.getState().mode)).toBe(mode);
-  });
-}
+  }
+});
 
-for (const count of [200, 1000]) test(`${count} annotation pan reuses geometry instead of measuring every mark every frame`, async ({ page }) => {
-  await openCanvas(page, count);
+test('1000 annotation pan reuses geometry instead of measuring every mark every frame', async ({ page }) => {
+  // debugging.md 2026-09-07「输入次数少于全量刷新次数」指名的回归门：拦
+  // 「pan 路径又挂回全量重测」。确定性计数门槛，与 200 条那条共用阈值 ——
+  // 标注越少读数越少，1000 条能过是 200 条能过的必然结果，故只留这条。
+  await openCanvas(page, 1000);
   const cdp = await page.context().newCDPSession(page);
   await cdp.send('Performance.enable');
   const before = await cdp.send('Performance.getMetrics');
@@ -81,7 +88,7 @@ for (const count of [200, 1000]) test(`${count} annotation pan reuses geometry i
   });
   const after = await cdp.send('Performance.getMetrics');
   const delta = name => after.metrics.find(m => m.name === name).value - before.metrics.find(m => m.name === name).value;
-  console.log(JSON.stringify({ count, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
+  console.log(JSON.stringify({ count: 1000, ...sample, layouts: delta('LayoutCount'), layoutMs: delta('LayoutDuration') * 1000 }));
   // Deterministic work budgets; frame-time measurements are reported, not a flaky CI gate.
   expect(sample.reads).toBeLessThan(1200);
   expect(delta('LayoutCount')).toBeLessThan(120);
@@ -153,10 +160,19 @@ test('scrolling one phone remeasures that frame only', async ({ page }) => {
   }));
   annotations[0].targets[0].selector = `${cellSelector}:nth-child(1)`;
   await openCanvas(page, annotations);
+  // 插 pad 触发该 frame 的重测（rAF 排程）：等 settings 的标注几何两次采样
+  // 相等（= 排程的重测已落）再开始计数，计数里只剩滚动驱动的读取。
   await page.locator('[data-screen="settings"] .ios-app').evaluate(app => {
     const pad = document.createElement('div'); pad.style.height = '1200px'; app.appendChild(pad);
   });
-  await page.waitForTimeout(300);
+  await expect.poll(() => page.evaluate(async () => {
+    // 标注框在 #ann-marks 覆盖层里，不在 frame DOM 里；第一枚是 settings 的。
+    const box = document.querySelector('#ann-marks .ann-target');
+    const top = () => (box ? box.getBoundingClientRect().top : null);
+    const before = top();
+    await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    return before !== null && top() === before;
+  })).toBe(true);
   const reads = await page.evaluate(async () => {
     const original = Element.prototype.getBoundingClientRect;
     let home = 0, settings = 0;
@@ -199,7 +215,8 @@ test('region and movement-arrow geometry translate together without rebuilding t
 });
 
 test('continuous zoom projects targets without resolving or measuring them and never saves annotations', async ({ page }) => {
-  const saves = await openCanvas(page, 1000);
+  // 断言的是「缩放零读数 / 零保存」，与账本规模无关，200 条足够。
+  const saves = await openCanvas(page, 200);
   // R4 的首测量 lastRect 落盘是一次合法保存：先等它 settle，清零后再数
   // zoom 期间的新保存 —— 断言的仍然是「zoom 不触发保存」本身。
   await expect.poll(() => saves.length).toBeGreaterThanOrEqual(1);
@@ -223,9 +240,14 @@ test('continuous zoom projects targets without resolving or measuring them and n
   });
   expect(result).toEqual({ reads: 0, queries: 0, same: true });
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);
-  // debounce 600ms：等一个周期，确认 zoom 没排下任何新保存。
-  await page.waitForTimeout(700);
-  expect(saves).toEqual([]);
+  // 「zoom 不排保存」不再等 debounce 窗口：触发一次真实保存，等它落进假桶。
+  // 若 zoom 期间排下了 recordLastRect 的 debounce 落盘，这里会多出一条（内容
+  // 不对）—— 轮询窗口盖过 600ms debounce，多等也可观察。
+  await page.evaluate(() => window.pinpoint.openMark(1));
+  await page.locator('#ann-input').fill('zoom 不触发保存');
+  await page.locator('#ann-save').click();
+  await expect.poll(() => saves.length).toBe(1);
+  expect(saves[0].annotations[0].content).toBe('[@t:i1] zoom 不触发保存');
 });
 
 test('local content reflow preserves unrelated target geometry and updates the changed target', async ({ page }) => {
@@ -286,6 +308,16 @@ test('a multi-frame annotation follows changes to its second target and keeps it
     const mark = document.querySelectorAll('#ann-marks .ann-target')[1].getBoundingClientRect();
     return Math.abs(mark.x + 4 - target.x);
   })).toBeLessThan(2);
+  // 位移走的是缓存投影：箭头节点原样复用。
+  await expect.poll(() => page.evaluate(() => window.__arrowIdentity === document.querySelector('#ann-marks svg[data-arrow]'))).toBe(true);
+  // 同一固件顺路守「另一 frame 里的第二目标 display:none → 恢复」的缓存计数：
+  // 藏起后只剩 settings 一枚标注，恢复后两枚都回来（目标消失会拆掉箭头节点，
+  // 恢复重建的是新节点 —— 所以「缩放不重建」的身份在恢复之后重新取）。
+  await page.locator('[data-screen="home"] .ios-stage').evaluate(el => { el.style.display = 'none'; });
+  await expect(page.locator('#ann-marks .ann-target')).toHaveCount(1);
+  await page.locator('[data-screen="home"] .ios-stage').evaluate(el => { el.style.display = ''; });
+  await expect(page.locator('#ann-marks .ann-target')).toHaveCount(2);
+  await page.evaluate(() => { window.__arrowIdentity = document.querySelector('#ann-marks svg[data-arrow]'); });
   await page.locator('#wbzoom-in').click();
   await expect.poll(() => page.evaluate(() => window.__arrowIdentity === document.querySelector('#ann-marks svg[data-arrow]'))).toBe(true);
 });
@@ -305,17 +337,6 @@ test('draft geometry is not translated twice during pan and zoom', async ({ page
   await page.locator('#wbzoom-in').click();
   await expect.poll(error).toBeLessThan(2);
   await expect(page.locator('#ann-input')).toContainText('keep draft');
-});
-
-test('a hidden secondary target in another frame is restored by local style changes', async ({ page }) => {
-  await openCanvas(page, [{ id: 'hidden-secondary', n: 1, type: 'element', pageId: 'e2e-ios', screenId: 'settings',
-    targets: [{ ref: 'i1', selector: `${cellSelector}:nth-child(1)`, text: 'Settings' },
-      { ref: 'i2', selector: '[data-screen="home"] .ios-app', text: 'Home' }], content: 'Two targets' }]);
-  await expect(page.locator('#ann-marks .ann-target')).toHaveCount(2);
-  await page.locator('[data-screen="home"] .ios-app').first().evaluate(el => { el.style.display = 'none'; });
-  await expect(page.locator('#ann-marks .ann-target')).toHaveCount(1);
-  await page.locator('[data-screen="home"] .ios-app').first().evaluate(el => { el.style.display = ''; });
-  await expect(page.locator('#ann-marks .ann-target')).toHaveCount(2);
 });
 
 test('global stylesheet updates invalidate cached geometry', async ({ page }) => {
@@ -343,7 +364,7 @@ test('saving one comment preserves unrelated geometry and sends one complete led
   });
   await page.evaluate(() => window.pinpoint.openMark(1));
   await page.locator('#ann-input').fill('Updated comment');
-  await page.waitForTimeout(200);
+  await expect(page.locator('#ann-input')).toContainText('Updated comment');
   const result = await page.evaluate(async () => {
     const original = Element.prototype.getBoundingClientRect;
     let reads = 0;

@@ -2,8 +2,8 @@
  * ppnt shot / check --mode image 的渲染端（2026-09-22 切片 4）。
  *
  * 复用 /api/export-image 的渲染链：本模块只负责在 playwright 里打开 workbench、
- * 取快照（clone → 摘 script / data-export-ui → 带画布 token，与
- * scripts/export-preview.mjs 同一契约），--marks 时把 #n 序号钉烤进快照，然后
+ * 取快照（clone → 摘 script / data-export-ui → 带画布 token，渲染端同一份
+ * 契约），--marks 时把 #n 序号钉烤进快照，然后
  * POST 给服务的渲染器出 PNG。不另起渲染实现；服务不在跑就报错指 ppnt start。
  */
 import fs from 'node:fs';
@@ -75,7 +75,7 @@ export async function renderShots({ origin, pageId, jobs }) {
   return results;
 }
 
-/** 快照（export-preview 同契约）+ 序号钉 overlay。 */
+/** 快照（/api/export-image 同契约）+ 序号钉 overlay。 */
 async function buildSnapshot(page, job) {
   return page.evaluate(({ job, pinCss }) => {
     const panel = document.getElementById('wb-board-panel');
