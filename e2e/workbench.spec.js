@@ -620,7 +620,12 @@ test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动�
   });
 });
 
-test('HTML board: "render comments" toggle draws content bubbles on the canvas', async ({ page }) => {
+// 画布批注三档故事（624 / 705 / 793 合并，2026-09-24 e2e 审计）：同一份两条标注
+// 按 inline → chan → inline（窄视口）→ off 走完三档 —— inline 气泡在 iframe
+// overlay、chan 气泡在父级 gutter 且与正文零重叠、off 清零。三条原本前 40 行
+// 逐字相同（开页、等实例、clear、打 h1 / #s2 两条、数到 2），合并后开页成本
+// 只付一次；793 的两处 rAF 双帧 + 裸 evaluate 采样改成 expect.poll 整体重采。
+test('HTML board: 评论三档 —— inline 叠在页面、chan 右侧通道、off 隐藏批注', async ({ page }) => {
   await openWorkbench(page);
   await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
@@ -655,7 +660,7 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
       el.dispatchEvent(new w.MouseEvent('mousedown', at));
       el.dispatchEvent(new w.MouseEvent('mouseup', at));
       const ta = d.querySelector('#ann-input');
-      ta.value = '评论内容 ' + sel;
+      ta.value = '评论 ' + sel;
       ta.dispatchEvent(new w.Event('input', { bubbles: true }));
       d.querySelector('#ann-save').click();
     }
@@ -666,253 +671,138 @@ test('HTML board: "render comments" toggle draws content bubbles on the canvas',
     document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
   ))).toBe(2);
 
-  // Toggle "render comments" from the sidebar; bubbles must appear in the doc overlay.
-  // （2026-08-15：旧 #wbann-comments 钮并入「画布批注」dropdown，选「叠在页面」= on）
-  await pickBubbleMode(page, 'inline');
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().renderComments
-  ))).toBe(true);
+  await test.step('HTML board: "render comments" toggle draws content bubbles on the canvas', async () => {
+    // Toggle "render comments" from the sidebar; bubbles must appear in the doc overlay.
+    // （2026-08-15：旧 #wbann-comments 钮并入「画布批注」dropdown，选「叠在页面」= on）
+    await pickBubbleMode(page, 'inline');
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().renderComments
+    ))).toBe(true);
 
-  const out = await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const bubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')];
-    const connectors = d.querySelectorAll('.ann-connector line');
-    return {
-      bubbleCount: bubbles.length,
-      ns: bubbles.map((b) => b.getAttribute('data-n')),
-      hasContent: bubbles.some((b) => /评论内容/.test(b.textContent || '')),
-      connectorCount: connectors.length,
-    };
+    const out = await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const bubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')];
+      const connectors = d.querySelectorAll('.ann-connector line');
+      return {
+        bubbleCount: bubbles.length,
+        hasContent: bubbles.some((b) => /评论 h1|评论 #s2/.test(b.textContent || '')),
+        connectorCount: connectors.length,
+      };
+    });
+    expect(out.bubbleCount).toBe(2);
+    expect(out.hasContent).toBe(true);
+    // Live comment view has no connector lines — numbers match pin badges.
+    expect(out.connectorCount).toBe(0);
+    // 「···」里的当前档位跟着走。
+    await expectBubbleMode(page, '叠在页面');
   });
-  expect(out.bubbleCount).toBe(2);
-  expect(out.hasContent).toBe(true);
-  // Live comment view has no connector lines — numbers match pin badges.
-  expect(out.connectorCount).toBe(0);
-  // 「···」里的当前档位跟着走。
-  await expectBubbleMode(page, '叠在页面');
+
+  await test.step('HTML board: 评论 sidebar — bubbles render in a parent gutter outside the iframe, no squeeze', async () => {
+    // Cycle inline → sidebar（dropdown 选「右侧通道」，client 侧布局名仍叫 sidebar）。
+    await pickBubbleMode(page, 'chan');
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
+    ))).toBe('sidebar');
+    await expectBubbleMode(page, '右侧通道');
+
+    // 同 inline 用例：右栏收窄 iframe 后文档回流，先把文档滚回顶部让两个锚点
+    // 都在视口内（离屏锚点的气泡按规矩不渲染）。
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      w.document.documentElement.style.scrollBehavior = 'auto';
+      w.document.documentElement.scrollTop = 0;
+    });
+
+    // 采样与判据整体进 expect.poll：原 rAF 双帧等待后裸采样，负载下量到的可能
+    // 是半路布局，失败即重采而不是直接判死。
+    await expect.poll(() => page.evaluate(() => {
+      const f = document.querySelector('#wb-board-panel .wb-doc-frame');
+      const d = f.contentDocument;
+      const wrap = document.querySelector('.wb-stage-wrap');
+      const go = document.getElementById('wb-ann-gutter');
+      const pageEl = d.querySelector('.page') || d.querySelector('main') || d.body;
+      const pR = pageEl.getBoundingClientRect();
+      const parentBubbles = go ? [...go.querySelectorAll('.ann-bubble')] : [];
+      const iframeBubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden);
+      let overlap = 0;
+      parentBubbles.forEach((b) => {
+        const r = b.getBoundingClientRect();
+        if (r.right > pR.left + 2 && r.left < pR.right - 2) overlap++;
+      });
+      return {
+        wrapGutter: wrap.getAttribute('data-ann-gutter'),
+        gutterVisible: go ? go.style.display !== 'none' : false,
+        parentBubbles: parentBubbles.length,
+        parentLines: go ? go.querySelectorAll('line').length : 0,
+        iframeBubbles: iframeBubbles.length,
+        hasRealContent: parentBubbles.some((b) => /评论 h1|评论 #s2/.test(b.textContent || '')),
+        hasObjectObject: parentBubbles.some((b) => /\[object Object\]/.test(b.textContent || '')),
+        overlap,
+      };
+    })).toEqual({
+      wrapGutter: 'on',
+      gutterVisible: true,
+      parentBubbles: 2,
+      parentLines: 0,
+      iframeBubbles: 0,
+      hasRealContent: true,
+      hasObjectObject: false,
+      overlap: 0,
+    });
+
+    // Cycling back to inline stops the gutter and brings iframe bubbles back.
+    await pickBubbleMode(page, 'inline');
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
+    ))).toBe('inline');
+    await expect.poll(() => page.evaluate(() => {
+      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+      const wrap = document.querySelector('.wb-stage-wrap');
+      const go = document.getElementById('wb-ann-gutter');
+      return {
+        wrapGutter: wrap.getAttribute('data-ann-gutter'),
+        gutterVisible: go ? go.style.display !== 'none' : false,
+        parentBubbles: go ? go.querySelectorAll('.ann-bubble').length : 0,
+        iframeBubbles: [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden).length,
+      };
+    })).toEqual({ wrapGutter: null, gutterVisible: false, parentBubbles: 0, iframeBubbles: 2 });
+  });
+
+  await test.step('HTML board: 评论 inline 模式 — 窄视口下气泡仍渲染在 iframe overlay', async () => {
+    // Force a narrow viewport so the natural margins can't hold a 240px bubble.
+    await page.setViewportSize({ width: 1024, height: 800 });
+
+    // 右栏上线后（2026-08-15）iframe 只剩 ~465px 宽，文档回流变高：落点 #s2 时
+    // h1 已滚出视口，其气泡按「离屏即隐藏」规矩不渲染。回到文档顶部让两个锚点
+    // 都在视口内再数气泡。
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      w.document.documentElement.style.scrollBehavior = 'auto';
+      w.document.documentElement.scrollTop = 0;
+    });
+
+    // inline: bubbles render in the iframe overlay (may overlap text in a narrow window).
+    await expect.poll(() => page.evaluate(() => {
+      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+      const bubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden);
+      return {
+        bubbleCount: bubbles.length,
+        hasContent: bubbles.some((b) => /评论 h1|评论 #s2/.test(b.textContent || '')),
+        hasObjectObject: bubbles.some((b) => /\[object Object\]/.test(b.textContent || '')),
+        // sidebar gutter must NOT be active in inline mode
+        gutterWrap: document.querySelector('.wb-stage-wrap').getAttribute('data-ann-gutter'),
+      };
+    })).toEqual({ bubbleCount: 2, hasContent: true, hasObjectObject: false, gutterWrap: null });
+  });
 
   // Toggling off hides the bubbles.
   await pickBubbleMode(page, 'off');
   await expect.poll(() => page.evaluate(() => {
     const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-    return d.querySelectorAll('#ann-bubbles .ann-bubble').length;
-  })).toBe(0);
-  await expectBubbleMode(page, '隐藏批注');
-});
-
-test('HTML board: 评论 inline 模式 — 气泡渲染在 iframe overlay', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-  const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
-  await expect(doc.locator('h1')).toHaveText('Sample Report');
-
-  await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
-  ))).toBe(true);
-  // Enter annotate mode so clicks open the composer.
-  await page.locator('#wbann-toggle').click();
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
-  ))).toBe(true);
-  // Clean slate, then seed two annotations with live anchors.
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
-  });
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
-  ))).toBe(0);
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    function clickEl(sel) {
-      const el = d.querySelector(sel);
-      el.scrollIntoView({ block: 'center' });
-      const r = el.getBoundingClientRect();
-      const at = { bubbles: true, cancelable: true,
-        clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
-      el.dispatchEvent(new w.MouseEvent('mousedown', at));
-      el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('#ann-input');
-      ta.value = '评论 ' + sel;
-      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
-    }
-    clickEl('h1');
-    clickEl('#s2');
-  });
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
-  ))).toBe(2);
-
-  // Turn on render comments; the bubble dropdown must read 叠在页面 (inline).
-  // （2026-08-15：#wbann-channel 钮并入 dropdown，inline/sidebar 切换走选项）
-  await pickBubbleMode(page, 'inline');
-  await expectBubbleMode(page, '叠在页面');
-
-  // Force a narrow viewport so the natural margins can't hold a 240px bubble.
-  await page.setViewportSize({ width: 1024, height: 800 });
-
-  // 右栏上线后（2026-08-15）iframe 只剩 ~465px 宽，文档回流变高：落点 #s2 时
-  // h1 已滚出视口，其气泡按「离屏即隐藏」规矩不渲染。回到文档顶部让两个锚点
-  // 都在视口内再数气泡。
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    w.document.documentElement.style.scrollBehavior = 'auto';
-    w.document.documentElement.scrollTop = 0;
-  });
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-  // inline: bubbles render in the iframe overlay (may overlap text in a narrow window).
-  const outInline = await page.evaluate(() => {
-    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-    const bubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden);
-    return {
-      bubbleCount: bubbles.length,
-      hasContent: bubbles.some((b) => /评论 h1|评论 #s2/.test(b.textContent || '')),
-      hasObjectObject: bubbles.some((b) => /\[object Object\]/.test(b.textContent || '')),
-      // sidebar gutter must NOT be active in inline mode
-      gutterWrap: document.querySelector('.wb-stage-wrap').getAttribute('data-ann-gutter'),
-    };
-  });
-  expect(outInline.bubbleCount).toBe(2);
-  expect(outInline.hasContent).toBe(true);
-  expect(outInline.hasObjectObject).toBe(false);
-  expect(outInline.gutterWrap).toBe(null);
-
-  // Toggling 评论 off clears the iframe bubbles.
-  await pickBubbleMode(page, 'off');
-  await expect.poll(() => page.evaluate(() => {
-    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
     return [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden).length;
   })).toBe(0);
-});
-
-test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside the iframe, no squeeze', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-  const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
-  await expect(doc.locator('h1')).toHaveText('Sample Report');
-
-  await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
-  ))).toBe(true);
-  await page.locator('#wbann-toggle').click();
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
-  ))).toBe(true);
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
-  });
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
-  ))).toBe(0);
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    function clickEl(sel) {
-      const el = d.querySelector(sel);
-      el.scrollIntoView({ block: 'center' });
-      const r = el.getBoundingClientRect();
-      const at = { bubbles: true, cancelable: true,
-        clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
-      el.dispatchEvent(new w.MouseEvent('mousedown', at));
-      el.dispatchEvent(new w.MouseEvent('mouseup', at));
-      const ta = d.querySelector('#ann-input');
-      ta.value = '评论 ' + sel;
-      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-      d.querySelector('#ann-save').click();
-    }
-    clickEl('h1');
-    clickEl('#s2');
-  });
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
-  ))).toBe(2);
-
-  await pickBubbleMode(page, 'inline');
-  // Cycle inline → sidebar（dropdown 选「右侧通道」，client 侧布局名仍叫 sidebar）。
-  await pickBubbleMode(page, 'chan');
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
-  ))).toBe('sidebar');
-  await expectBubbleMode(page, '右侧通道');
-
-  // 同 inline 用例：右栏收窄 iframe 后文档回流，先把文档滚回顶部让两个锚点
-  // 都在视口内（离屏锚点的气泡按规矩不渲染）。
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    w.document.documentElement.style.scrollBehavior = 'auto';
-    w.document.documentElement.scrollTop = 0;
-  });
-
-  // Give the parent rAF loop a couple frames to render.
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-
-  const out = await page.evaluate(() => {
-    const f = document.querySelector('#wb-board-panel .wb-doc-frame');
-    const d = f.contentDocument;
-    const wrap = document.querySelector('.wb-stage-wrap');
-    const go = document.getElementById('wb-ann-gutter');
-    const page = d.querySelector('.page') || d.querySelector('main') || d.body;
-    const pR = page.getBoundingClientRect();
-    const ifR = f.getBoundingClientRect();
-    const parentBubbles = go ? [...go.querySelectorAll('.ann-bubble')] : [];
-    const parentLines = go ? go.querySelectorAll('line') : [];
-    const iframeBubbles = [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden);
-    let overlap = 0;
-    parentBubbles.forEach((b) => {
-      const r = b.getBoundingClientRect();
-      if (r.right > pR.left + 2 && r.left < pR.right - 2) overlap++;
-    });
-    return {
-      wrapGutter: wrap.getAttribute('data-ann-gutter'),
-      gutterVisible: go ? go.style.display !== 'none' : false,
-      parentBubbles: parentBubbles.length,
-      parentLines: parentLines.length,
-      iframeBubbles: iframeBubbles.length,
-      hasRealContent: parentBubbles.some((b) => /评论 h1|评论 #s2/.test(b.textContent || '')),
-      hasObjectObject: parentBubbles.some((b) => /\[object Object\]/.test(b.textContent || '')),
-      iframeW: Math.round(ifR.width),
-      pageW: Math.round(pR.width),
-      overlap,
-    };
-  });
-  // Gutter reserved on the stage wrap; bubbles live in the parent overlay, not the iframe.
-  expect(out.wrapGutter).toBe('on');
-  expect(out.gutterVisible).toBe(true);
-  expect(out.parentBubbles).toBe(2);
-  expect(out.parentLines).toBe(0);
-  expect(out.iframeBubbles).toBe(0);
-  // Content renders as real text, not [object Object].
-  expect(out.hasRealContent).toBe(true);
-  expect(out.hasObjectObject).toBe(false);
-  // Bubbles sit in the gutter, not over the text.
-  expect(out.overlap).toBe(0);
-
-  // Cycling back to inline stops the gutter and brings iframe bubbles back.
-  await pickBubbleMode(page, 'inline');
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().bubbleLayout
-  ))).toBe('inline');
-  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r))));
-  const back = await page.evaluate(() => {
-    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-    const wrap = document.querySelector('.wb-stage-wrap');
-    const go = document.getElementById('wb-ann-gutter');
-    return {
-      wrapGutter: wrap.getAttribute('data-ann-gutter'),
-      gutterVisible: go ? go.style.display !== 'none' : false,
-      parentBubbles: go ? go.querySelectorAll('.ann-bubble').length : 0,
-      iframeBubbles: [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden).length,
-    };
-  });
-  expect(back.wrapGutter).toBe(null);
-  expect(back.gutterVisible).toBe(false);
-  expect(back.parentBubbles).toBe(0);
-  expect(back.iframeBubbles).toBe(2);
+  await expectBubbleMode(page, '隐藏批注');
 });
 
 // ---- perf 审计 A4（2026-09-24）：gutter 渲染事件驱动，不再常驻 rAF ----
