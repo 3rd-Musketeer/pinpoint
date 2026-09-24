@@ -36,8 +36,6 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 
-  // Pages 单一列表（2026-08-16 阶段 2）：dir 条目与模板页同列，无模式 Seg。
-  await expect(page.locator('#wbboard-mode')).toHaveCount(0);
   const navBtn = page.locator('.wb-page[data-vpage="e2e-dir"]');
   await expect(navBtn).toBeVisible();
   await navBtn.click();
@@ -62,19 +60,27 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   await expect(
     page.frameLocator('#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame').locator('#doc-title')
   ).toHaveText('E2E dir-site doc');
-});
 
-test('registry dir entry with board "ios" inlines fragments fetched with annotate=off', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-
+  // board:"ios" 的 dir 条目走画布壳：fragment 以 annotate=off 抓取内联进机壳，
+  // 注入的客户端因此进不了板（原独立用例并入 —— 同一次开页，只多点一条 Page）。
+  await page.getByRole('tab', { name: '页面', exact: true }).click();
   await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
-  // Fragment inlined into phone chrome: fetched from /sites/ with annotate=off,
-  // so the injected client never enters the board.
   const cards = page.locator('#wb-board-panel [data-screen="cards"]');
   await expect(cards).toContainText('ios fragment served from /sites/');
   await expect(cards.locator('script')).toHaveCount(0);
   await expect(cards.locator('.ios-stage')).toHaveCount(1);
+
+  // 真实 vite 中间件栈没有把 %2e%2e 先解出来服务掉：raw 路径穿越必须 404。
+  // HTTP 客户端会把 ../（和 %2e%2e）在上线前归一化，得用 curl --path-as-is 发。
+  // （handler 语义本身在 sites-api.test.js；/sites/ghost 与 missing.html 的
+  // 404 也在那里，e2e 只留中间件顺序这一层。）
+  for (const p of [
+    '/sites/e2e-dir/%2e%2e/%2e%2e/etc/passwd',
+    '/sites/e2e-dir/%2e%2e/env.js',
+    '/sites/e2e-dir/../../etc/passwd',
+  ]) {
+    expect(await rawStatus(E2E_BASE_URL + p), p).toBe(404);
+  }
 });
 
 test('/sites/<id>/ HTML injects the annotate client and saves into the entry bucket', async ({ page }) => {
@@ -96,43 +102,12 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
   expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('dir entry mark'));
 });
 
-// 注入端的材质与卡片皮肤（ADR 0031「注入端 #ann-sidebar 换同一档玻璃，两端材质
-// 一致」+ 评审板 H1 的评论卡）。client 是注进任意页面的单文件，读不到 workbench
-// 的 --wb-*，所以 F2 的四个数在它自己的规则里是字面量 —— 这条用例是那份字面量
-// 与 wb-tokens.css 之间唯一的对账。
-
-test('?annotate=off serves the same page with zero annotation surface', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html?annotate=off');
-  await expect(page.locator('#doc-title')).toHaveText('E2E dir-site doc');
-  expect(await page.evaluate(() => !!window.__pinpoint)).toBe(false);
-  expect(await page.evaluate(() => window.__pinpointEntry || null)).toBe(null);
-});
-
-test('path traversal and unknown entries are rejected', async ({ page }) => {
-  // Raw-path probes: HTTP clients normalize ../ (and %2e%2e) away before it
-  // hits the wire, so traversal attempts must be sent with curl --path-as-is.
-  for (const p of [
-    '/sites/e2e-dir/%2e%2e/%2e%2e/etc/passwd',
-    '/sites/e2e-dir/%2e%2e/env.js',
-    '/sites/e2e-dir/../../etc/passwd',
-  ]) {
-    expect(await rawStatus(E2E_BASE_URL + p), p).toBe(404);
-  }
-  // Semantic rejections go through the normal client.（e2e-site 是 url 条目，
-  // 阶段 4 起 /sites/e2e-site/ 走代理而不再是 404 —— 代理行为见 url-entry.spec.js。）
-  for (const url of [
-    '/sites/ghost/doc.html',
-    '/sites/e2e-dir/missing.html',
-  ]) {
-    const res = await page.request.get(url);
-    expect(res.status(), url).toBe(404);
-  }
-});
-
 // 阶段 3：CLI 登记入口的端到端闭环 —— 真实跑 bin/pinpoint.mjs 写 registry
 // （--registry 指向 e2e fixture，PINPOINT_ORIGIN 指向 e2e server，由 CLI 自己
-// 探活并触发 POST /registry/reload），新 dir 条目不重开服务即出现在 Pages。
-test('pinpoint add (CLI) registers a dir that appears in Pages after reload', async ({ page }) => {
+// 探活并触发 POST /registry/reload），新条目不重开服务即出现在 Pages。
+// CLI 侧与合成板的纯逻辑单测在 bin/pinpoint-cli.test.js / synth-board.test.js，
+// 这里守的是「CLI → reload → 浏览器」整链。
+test('pinpoint add (CLI)：dir 条目 reload 后进 Pages，单文件条目开成合成 doc 板', async ({ page }) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-e2e-cli-'));
   const site = path.join(tmp, 'clisite');
   fs.mkdirSync(site);
@@ -140,39 +115,15 @@ test('pinpoint add (CLI) registers a dir that appears in Pages after reload', as
   fs.writeFileSync(path.join(site, 'board.json'), JSON.stringify({
     sections: [{ id: 'main', title: 'Main', layout: 'column', screens: [{ id: 'index', title: 'Index' }] }],
   }));
+  const file = path.join(tmp, 'Weekly Report.html');
+  fs.writeFileSync(file, '<!doctype html><html><body><h1 id="report-title">E2E CLI single file</h1></body></html>');
   try {
+    // 两次真实 CLI add：dir（自带 board.json）与 file（无板 → 服务合成单屏 doc 板）。
+    // CLI 自己探活并 POST /registry/reload，工作台经 HMR registry:update 重拉 Pages。
     await execFileP('node', [
       path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', site,
       '--id', 'e2e-cli-add', '--title', 'E2E CLI Add', '--registry', E2E_REGISTRY,
     ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
-
-    await page.goto('/index.html');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
-    const navBtn = page.locator('.wb-page[data-vpage="e2e-cli-add"]');
-    await expect(navBtn).toBeVisible();
-    await navBtn.click();
-
-    // dir 条目默认 doc 壳：单屏 index → iframe 从 /sites/e2e-cli-add/ 渲染。
-    const frame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
-    await expect(frame).toHaveAttribute('src', /\/sites\/e2e-cli-add\/index\.html$/);
-    await expect(
-      page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#cli-title')
-    ).toHaveText('E2E CLI-added site');
-  } finally {
-    // 恢复共享 registry fixture 并让服务忘掉该条目，不能影响后续 spec。
-    writeRegistryFixture();
-    fs.rmSync(tmp, { recursive: true, force: true });
-    await page.request.post('/registry/reload');
-  }
-});
-
-// 阶段 3 收尾：单文件 entry 没有 board.json —— 服务合成单屏 doc 板，
-// Pages 出现、打开即读、导出走 file 条目的 src 映射。
-test('pinpoint add (CLI) of a single HTML file opens as a synthesized doc page', async ({ page }) => {
-  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-e2e-cli-file-'));
-  const file = path.join(tmp, 'Weekly Report.html');
-  fs.writeFileSync(file, '<!doctype html><html><body><h1 id="report-title">E2E CLI single file</h1></body></html>');
-  try {
     await execFileP('node', [
       path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', file,
       '--id', 'e2e-cli-file', '--registry', E2E_REGISTRY,
@@ -180,18 +131,29 @@ test('pinpoint add (CLI) of a single HTML file opens as a synthesized doc page',
 
     await page.goto('/index.html');
     await page.waitForFunction(() => window.workbench && window.pinpoint);
-    const navBtn = page.locator('.wb-page[data-vpage="e2e-cli-file"]');
-    await expect(navBtn).toBeVisible();
-    await navBtn.click();
 
-    // 合成板：单屏 index，src = sites/<id>/<percent-encoded 文件名>（契约规范形，
+    // dir 行：单屏 index → iframe 从 /sites/e2e-cli-add/ 渲染。
+    const dirBtn = page.locator('.wb-page[data-vpage="e2e-cli-add"]');
+    await expect(dirBtn).toBeVisible();
+    await dirBtn.click();
+    const dirFrame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
+    await expect(dirFrame).toHaveAttribute('src', /\/sites\/e2e-cli-add\/index\.html$/);
+    await expect(
+      page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#cli-title')
+    ).toHaveText('E2E CLI-added site');
+
+    // file 行：合成板 src = sites/<id>/<percent-encoded 文件名>（契约规范形，
     // 无前导斜杠；iframe 从 /index.html 相对解析到 /sites/…）。
-    const frame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
-    await expect(frame).toHaveAttribute('src', /^sites\/e2e-cli-file\/Weekly%20Report\.html$/);
+    const fileBtn = page.locator('.wb-page[data-vpage="e2e-cli-file"]');
+    await expect(fileBtn).toBeVisible();
+    await fileBtn.click();
+    const fileFrame = page.locator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame');
+    await expect(fileFrame).toHaveAttribute('src', /^sites\/e2e-cli-file\/Weekly%20Report\.html$/);
     await expect(
       page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#report-title')
     ).toHaveText('E2E CLI single file');
   } finally {
+    // 恢复共享 registry fixture 并让服务忘掉这两条，不能影响后续 spec。
     writeRegistryFixture();
     fs.rmSync(tmp, { recursive: true, force: true });
     await page.request.post('/registry/reload');

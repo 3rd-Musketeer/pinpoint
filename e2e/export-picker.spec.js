@@ -4,7 +4,8 @@ import { expect, test } from '@playwright/test';
 
 // 导出（pp2 切片 3 收敛）：用户面只剩「导出整个画布为离线可交互 HTML」
 // （/api/export-page-html，ADR 0033）。横条「导出」钮直接开这个对话框；
-// 有 HTTPS 静态资源时逐项批准后才冻结下载。
+// 有 HTTPS 静态资源时逐项批准后才冻结下载。两条用例合一：真下载一次守离线
+// 文件全形态，同一页面上 route 两个端点再走一遍批准状态机。
 
 async function openWorkbench(page) {
   await page.goto('/index.html');
@@ -15,7 +16,7 @@ function picker(page) {
   return page.locator('dialog.wb-export-picker');
 }
 
-test('HUD export produces one offline interactive HTML with outline and spatial structure', async ({ page, context }, testInfo) => {
+test('HUD export：离线可交互 HTML 全形态 + 远程资源逐项批准后精确快照', async ({ page, context }, testInfo) => {
   await openWorkbench(page);
   await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-dir-ios');
@@ -87,11 +88,11 @@ test('HUD export produces one offline interactive HTML with outline and spatial 
     return document.documentElement.scrollWidth <= window.innerWidth && s.scrollWidth <= s.clientWidth + 1;
   })).toBe(true);
   await expect(offline.locator('#wbzoom-label')).toBeHidden();
-});
 
-test('interactive HTML requires per-resource approval for an exact HTTPS snapshot', async ({ page }) => {
-  await openWorkbench(page);
-  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
+  // ── 远程资源逐项批准（原独立用例并入：真下载已走完一次无远程资源的扫描，
+  // 这里 route 掉 scan / download 端点，守对话框的批准状态机——不需要第二次
+  // 开工作台；重开对话框会重新发 scan，route 正好接住）。服务端 scan /
+  // download 的契约在 export-page-html-api.test.js。
   const digest = 'a'.repeat(64);
   let downloadBody = null;
   await page.route('**/api/export-page-html/scan', async (route) => route.fulfill({
@@ -110,17 +111,19 @@ test('interactive HTML requires per-resource approval for an exact HTTPS snapsho
     });
   });
 
+  // 第一次真下载后对话框还开着，先关掉再重开（重开会重新发 scan，route 接得住）。
+  await page.locator('.wb-export-close').click();
   await page.locator('#wbexport-open').click();
-  const dialog = picker(page);
-  await dialog.getByRole('button', { name: '检查并下载' }).click();
-  await expect(dialog.locator('.wb-offline-resource')).toContainText('https://assets.example · image/svg+xml · 321 B');
-  await expect(dialog.getByRole('button', { name: '确认并下载' })).toBeDisabled();
-  await dialog.locator('.wb-offline-resource input').check();
-  const [download] = await Promise.all([
+  const approvalDialog = picker(page);
+  await approvalDialog.getByRole('button', { name: '检查并下载' }).click();
+  await expect(approvalDialog.locator('.wb-offline-resource')).toContainText('https://assets.example · image/svg+xml · 321 B');
+  await expect(approvalDialog.getByRole('button', { name: '确认并下载' })).toBeDisabled();
+  await approvalDialog.locator('.wb-offline-resource input').check();
+  const [approvedDownload] = await Promise.all([
     page.waitForEvent('download'),
-    dialog.getByRole('button', { name: '确认并下载' }).click(),
+    approvalDialog.getByRole('button', { name: '确认并下载' }).click(),
   ]);
-  expect(download.suggestedFilename()).toBe('e2e-dir-ios__interactive.html');
+  expect(approvedDownload.suggestedFilename()).toBe('e2e-dir-ios__interactive.html');
   expect(downloadBody.approvals).toEqual([{
     url: 'https://assets.example/icon.svg', origin: 'https://assets.example', mime: 'image/svg+xml', size: 321, sha256: digest,
   }]);

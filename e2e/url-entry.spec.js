@@ -9,6 +9,9 @@ import { E2E_DATA_DIR, E2E_UPSTREAM_ORIGIN } from './env.js';
 // 以 doc 壳内嵌进 workbench —— 绝对路径资源/API 由「HTML 重写 + 运行时重基
 // bootstrap」兜底，侧栏直接驱动标注，bucket = entry id（与扩展注入同一个桶）。
 // 上游 fixture：e2e/proxy-upstream.js（playwright.config.js 模块作用域起服）。
+// 纯 HTTP 层（重写 302 / Set-Cookie、annotate=off 只留机制、search 剥参、
+// 虚拟化路径映射）在 site-proxy.test.js 与 proxy-rebase.test.js，e2e 只留
+// 真浏览器里的运行时层（EventSource / WebSocket / replaceState / 计算样式）。
 
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-proxy');
 const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
@@ -23,7 +26,7 @@ test.afterEach(() => {
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
-test('url entry appears as a workbench page and renders live through the proxy', async ({ page }) => {
+test('url entry renders live through the proxy and annotates into the entry bucket', async ({ page }) => {
   await page.goto('/index.html');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
 
@@ -80,18 +83,9 @@ test('url entry appears as a workbench page and renders live through the proxy',
     return ['GET /assets/app.js', 'GET /api/data', 'GET /api/xhr', 'POST /api/echo']
       .every((h) => hits.includes(h));
   }).toBe(true);
-});
 
-test('proxied page annotates into the entry bucket, driven by the sidebar', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
-
-  const frame = page.locator(FRAME);
-  await expect(frame).toHaveAttribute('src', /^sites\/e2e-proxy\/$/);
-  await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
-  // 注：iframe 元素在装载/重绑间隙可能被瞬态替换，poll 回调一律 null 保护
-  // （expect.poll 回调抛错不重试，直接失败）。
+  // ── 桥驱动标注（原独立用例并入：同一次开页同一条 Page，先把收起的侧栏点回来）──
+  await page.locator('#wbside-toggle').click();
   const inFrame = (fn) => page.evaluate(({ sel, code }) => {
     const f = document.querySelector(sel);
     const w = f && f.contentWindow;
@@ -127,39 +121,12 @@ test('proxied page annotates into the entry bucket, driven by the sidebar', asyn
   // bucket = entry id：与扩展注入同一个桶；URL 虚拟化后账本 path = 应用路径
   // （'/'），与扩展在目标 origin 上注入出的账本逐字节同 key。
   await expect.poll(() => bucketDocs().length).toBe(1);
-  const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
-  expect(doc.path).toBe('/');
-  expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('url entry mark'));
+  const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
+  expect(ledger.path).toBe('/');
+  expect(ledger.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('url entry mark'));
 
   // 弹出的标注列表能看到这条标注（2026-09-04：右栏取消常驻，点横条计数钮弹出）。
   await page.locator('#wbann-count').click();
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   await expect(page.locator('#wbann-list')).toContainText('url entry mark');
-});
-
-test('annotate=off on a proxied page drops the annotate client but keeps proxy mechanics', async ({ page }) => {
-  await page.goto('/sites/e2e-proxy/?annotate=off');
-  await expect(page.locator('#title')).toHaveText('E2E proxy upstream');
-  expect(await page.evaluate(() => !!window.__pinpoint)).toBe(false);
-  expect(await page.evaluate(() => window.__pinpointEntry || null)).toBe(null);
-  // bootstrap 与 URL 重写是代理机制的一部分：关掉它们会让运行时 API 指错 origin。
-  expect(await page.evaluate(() => (window.__pinpointProxy && window.__pinpointProxy.prefix) || null)).toBe('/sites/e2e-proxy');
-  // URL 虚拟化后地址栏是应用路径，annotate 参数不透给应用。
-  await expect.poll(() => page.evaluate(() => location.pathname + location.search)).toBe('/');
-  await expect(page.locator('#api-result')).toHaveText('api-via-proxy');
-});
-
-test('proxy rewrites 302 Location and Set-Cookie back under the prefix', async ({ page }) => {
-  const redirect = await page.request.get('/sites/e2e-proxy/redirect', { maxRedirects: 0 });
-  expect(redirect.status()).toBe(302);
-  expect(redirect.headers().location).toBe('/sites/e2e-proxy/final');
-
-  const cookie = await page.request.get('/sites/e2e-proxy/cookie');
-  const setCookie = cookie.headers()['set-cookie'] || '';
-  expect(setCookie).toContain('Path=/sites/e2e-proxy');
-  expect(setCookie).not.toMatch(/Domain=/i);
-
-  // 上游 404 与未知条目 404 都如实回传。
-  expect((await page.request.get('/sites/e2e-proxy/nope')).status()).toBe(404);
-  expect((await page.request.get('/sites/ghost-url/')).status()).toBe(404);
 });

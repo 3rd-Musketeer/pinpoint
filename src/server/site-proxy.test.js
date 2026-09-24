@@ -486,3 +486,16 @@ test('proxy: board.json is synthesized locally (shadows upstream), unknown entri
     assert.equal(ghost.status, 404);
   });
 });
+
+test('proxy: bootstrap 虚拟化把 annotate 参数从 search 剥掉，其余 query 原样保留', async (t) => {
+  await withPair(t, async (base) => {
+    const res = await fetch(`${base}/sites/app/?annotate=off&keep=1`);
+    const html = await res.text();
+    const bootstrap = html.match(/<script data-pinpoint-proxy="app">([\s\S]*?)<\/script>/)[1];
+    // annotate 是代理机制参数，不许透给应用（url-entry.spec.js 曾直开代理页断言
+    // location.search 为空，2026-09-24 精简下沉到这里）；replaceState 的 search
+    // 只由删过 annotate 的剩余参数拼出。
+    assert.match(bootstrap, /__qs\.delete\('annotate'\)/, 'annotate 参数被剥掉');
+    assert.match(bootstrap, /history\.replaceState\([^\n]*__q\?'\?'\+__q:''/, 'search 只留剩余参数');
+  });
+});

@@ -7,14 +7,17 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
-import { writeRegistryFixture } from './registry-fixture.js';
+import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 决定 #15：编译页标注锚到 data-pp-id。固件 anchor-site 的被标注元素住在
 // 页内组件 components/Blurb.jsx（ppId = 组件文件:行@1，不随帧文件改结构漂），
 // 帧文件 anchor.jsx 承担「帧顶插元素 + 组件外包一层」的重构 —— cssPath 的
 // 子链从此解析不到原元素，ppId 仍指它。
-// 全链分四拍：UI 建标注（取值存 ppId）→ 磁盘摘 ppId 模拟存量行 → owner
-// 编辑保存自然补回（迁移）→ 重构重编重载，标注仍锚原元素、画布无幽灵框。
+// 全链分五拍：UI 建标注（取值存 ppId，selector 带机壳四层）→ 磁盘摘 ppId 模拟
+// 存量行 → 客户端兜底解析 + CLI locate 都仍命中（剥机壳兜底）→ owner 编辑保存
+// 自然补回（迁移）→ 重构重编重载，标注仍锚原元素、画布无幽灵框。
+// 存量行的兜底两拍原是独立用例（2026-09-23 cli-legacy-anchor），与摘 ppId 之后的
+// 状态完全重合，合并后少一次建标注 + 一次开板。
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_SRC = path.join(ROOT, 'e2e', 'anchor-site');
@@ -39,12 +42,6 @@ const RESTRUCTURED_FRAME = [
   '}',
   '',
 ].join('\n');
-
-function registerAnchorSite() {
-  const doc = JSON.parse(fs.readFileSync(E2E_REGISTRY, 'utf8'));
-  doc.entries.push({ id: 'e2e-anchor', title: 'E2E Anchor', kind: 'dir', path: SITE_DIR, board: 'ios' });
-  fs.writeFileSync(E2E_REGISTRY, JSON.stringify(doc, null, 2));
-}
 
 async function ppnt(args, { expectFail = false } = {}) {
   try {
@@ -80,7 +77,7 @@ async function ppntBuild() {
 }
 
 test.beforeEach(async ({ request }) => {
-  registerAnchorSite();
+  appendRegistryEntry({ id: 'e2e-anchor', title: 'E2E Anchor', kind: 'dir', path: SITE_DIR, board: 'ios' });
   await request.post('/registry/reload');
 });
 
@@ -90,20 +87,25 @@ test.afterEach(async ({ request }) => {
   fs.cpSync(SITE_SRC, SITE_DIR, { recursive: true });
   fs.rmSync(DIST_ENTRY, { recursive: true, force: true });
   fs.rmSync(path.dirname(LEDGER), { recursive: true, force: true });
-  writeRegistryFixture();
-  await request.post('/registry/reload');
+  await restoreRegistryFixture(request);
 });
 
-test('ppId 锚：帧顶插元素 + 换包裹重编，标注仍锚原元素、无幽灵框', async ({ page }) => {
+test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍命中，编辑补回、重编仍锚', async ({ page }) => {
   test.setTimeout(90_000);
   fs.rmSync(path.dirname(LEDGER), { recursive: true, force: true });
 
-  // 1 ─ 建标注：点组件内元素，target 落盘带 ppId。
+  // 1 ─ 建标注：点组件内元素，target 落盘带 ppId。cssPath 以画布 DOM 为根 ——
+  //     机壳四层（ios-root > ios-device > ios-bezel > ios-screen）在链上，机壳往
+  //     ios-screen 里插了 island / statusbar，片段顶层的 nth-of-type 是漂的。
   await openBoard(page);
   const blurb = page.locator('[data-screen="anchor"] [data-blurb]');
   await expect(blurb).toHaveText('组件里的锚点段');
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await blurb.click();
+  // 负载下首次点击可能落在画布重渲染的间隙被吞掉：composer 开不起来就重试点。
+  await expect(async () => {
+    await blurb.click();
+    await expect(page.locator('#ann-box')).toBeVisible();
+  }).toPass({ timeout: 20_000 });
   await page.locator('#ann-input').fill('这段文案改成两行');
   await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
@@ -112,25 +114,47 @@ test('ppId 锚：帧顶插元素 + 换包裹重编，标注仍锚原元素、无
   expect(captured[0].targets[0].ppId).toBe(BLURB_PP_ID);
   expect(captured[0].targets[0].text).toBe('组件里的锚点段');
   expect(captured[0].targets[0].selector).toContain('p:nth-of-type(1)');
+  expect(captured[0].targets[0].selector).toContain('div.ios-root:nth-of-type(1)');
+  expect(captured[0].targets[0].selector).toContain('div.ios-bezel:nth-of-type(1)');
+  expect(captured[0].targets[0].selector).toContain('div.ios-screen:nth-of-type(1)');
 
-  // 2 ─ 存量行模拟：磁盘上摘掉 ppId，重载水合后再由 owner 编辑保存补回。
+  // 2 ─ 存量行模拟：磁盘上摘掉 ppId（决定 #15 之前的行就长这样），重载水合。
   const onDisk = readLedger();
   delete onDisk.annotations[0].targets[0].ppId;
   fs.writeFileSync(LEDGER, JSON.stringify(onDisk));
   await openBoard(page);
   await expect(page.locator('#ann-box')).toBeHidden();
   expect(readLedger().annotations[0].targets[0].ppId).toBeUndefined();
+
+  // 3 ─ 存量行的双端兜底：客户端 resolveMarkTarget（ppnt shot --marks 同一条
+  //     路径）在工作台 DOM 里解析回原元素 —— 机壳只在画布缺，不缺；CLI locate
+  //     面对没有机壳的 dist 片段，剥机壳、首段按 class 找，给出正确的 文件:行。
+  //     先等水合完成（goToMark / 兜底解析都吃 marks，负载下 hydrate 会晚到）。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
+  const pin = await page.evaluate(() => {
+    const m = window.pinpoint.marks[0];
+    const el = window.pinpoint.resolveMarkTarget(
+      { selector: m.targets[0].selector, text: m.targets[0].text || '', ppId: '' },
+      m.screenId || '',
+    );
+    return { hit: !!el, onBlurb: !!(el && el.hasAttribute && el.hasAttribute('data-blurb')) };
+  });
+  expect(pin.hit).toBe(true);
+  expect(pin.onBlurb).toBe(true);
+  const locate = await ppnt(['locate', '#1', '--page', 'e2e-anchor']);
+  expect(locate.stdout).toContain('#1 → components/Blurb.jsx:2');
+
+  // 4 ─ 迁移：owner 编辑保存自然补回 ppId。
   await page.evaluate(() => window.pinpoint.openMark(1));
   await expect(page.locator('#ann-box')).toBeVisible();
   await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
   expect(readLedger().annotations[0].targets[0].ppId).toBe(BLURB_PP_ID);
 
-  // 3 ─ 帧顶插元素 + 组件外包一层，CLI 重编（组件文件不动）。
+  // 5 ─ 帧顶插元素 + 组件外包一层，CLI 重编（组件文件不动）；重载新 dist：
+  //     标注锚在原元素上（ppId 直取），画布一个实框、零幽灵框。
   fs.writeFileSync(path.join(SITE_DIR, 'anchor.jsx'), RESTRUCTURED_FRAME);
   await ppntBuild();
-
-  // 4 ─ 重载新 dist：标注锚在原元素上（ppId 直取），画布一个实框、零幽灵框。
   await openBoard(page);
   await expect(page.locator('[data-screen="anchor"] .e2e-banner')).toHaveText('顶部横幅');
   await expect(page.locator('[data-screen="anchor"] .e2e-wrap [data-blurb]')).toHaveText('组件里的锚点段');
@@ -158,55 +182,13 @@ test('ppId 锚：帧顶插元素 + 换包裹重编，标注仍锚原元素、无
   const targetBox = page.locator('#ann-overlay .ann-target');
   await expect(targetBox).toHaveCount(1);
   await expect(page.locator('#ann-overlay .ann-ghost-rect')).toHaveCount(0);
-  const [mark, blurbRect] = await Promise.all([targetBox.boundingBox(), blurb.boundingBox()]);
+  // 负载下两框可能恰逢重渲染摘除：拿到非空包围盒再比（断言本身不打折）。
+  let mark, blurbRect;
+  await expect.poll(async () => {
+    [mark, blurbRect] = await Promise.all([targetBox.boundingBox(), blurb.boundingBox()]);
+    return mark && blurbRect ? 1 : 0;
+  }, { timeout: 15_000 }).toBe(1);
   const overlap = Math.max(0, Math.min(mark.x + mark.width, blurbRect.x + blurbRect.width) - Math.max(mark.x, blurbRect.x))
     * Math.max(0, Math.min(mark.y + mark.height, blurbRect.y + blurbRect.height) - Math.max(mark.y, blurbRect.y));
   expect(overlap / (mark.width * mark.height)).toBeGreaterThan(0.5);
-});
-
-test('存量画布标注：ppId 摘掉后，CLI locate 走剥机壳兜底仍给出正确的 文件:行', async ({ page }) => {
-  test.setTimeout(90_000);
-  fs.rmSync(path.dirname(LEDGER), { recursive: true, force: true });
-
-  // 1 ─ 建标注：工作台 UI 点帧里的元素。cssPath 以画布 DOM 为根 —— 机壳四层
-  //     （ios-root > ios-device > ios-bezel > ios-screen）在链上，机壳往
-  //     ios-screen 里插了 island / statusbar，片段顶层的 nth-of-type 是漂的。
-  await openBoard(page);
-  const blurb = page.locator('[data-screen="anchor"] [data-blurb]');
-  await expect(blurb).toHaveText('组件里的锚点段');
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await blurb.click();
-  await page.locator('#ann-input').fill('存量行也要能定位');
-  await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
-  await expect(page.locator('#ann-box')).toBeHidden();
-  const captured = readLedger().annotations;
-  expect(captured).toHaveLength(1);
-  const selector = captured[0].targets[0].selector;
-  expect(selector).toContain('div.ios-root:nth-of-type(1)');
-  expect(selector).toContain('div.ios-bezel:nth-of-type(1)');
-  expect(selector).toContain('div.ios-screen:nth-of-type(1)');
-
-  // 2 ─ 存量模拟：磁盘上摘掉 ppId（决定 #15 之前的行就长这样；CLI 只读文件）。
-  const onDisk = readLedger();
-  delete onDisk.annotations[0].targets[0].ppId;
-  fs.writeFileSync(LEDGER, JSON.stringify(onDisk));
-
-  // 3 ─ 钉的同一条兜底路径（ppnt shot --marks 的 resolveMarkTarget，ppId 空、
-  //     cssPath 兜底）在工作台 DOM 里解析回原元素 —— 机壳只在画布缺，不缺。
-  await openBoard(page);
-  const pin = await page.evaluate(() => {
-    const m = window.pinpoint.marks[0];
-    const el = window.pinpoint.resolveMarkTarget(
-      { selector: m.targets[0].selector, text: m.targets[0].text || '', ppId: '' },
-      m.screenId || '',
-    );
-    return { hit: !!el, onBlurb: !!(el && el.hasAttribute && el.hasAttribute('data-blurb')) };
-  });
-  expect(pin.hit).toBe(true);
-  expect(pin.onBlurb).toBe(true);
-
-  // 4 ─ CLI locate：dist 片段没有机壳、顶层 nth 对不上 —— 剥机壳、首段按
-  //     class 在片段顶层找后仍锚到原元素，给出正确的 文件:行。
-  const locate = await ppnt(['locate', '#1', '--page', 'e2e-anchor']);
-  expect(locate.stdout).toContain('#1 → components/Blurb.jsx:2');
 });

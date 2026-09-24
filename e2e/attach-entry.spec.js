@@ -33,8 +33,8 @@ function bucketDocs() {
 
 function restoreRegistry() {
   writeRegistryFixture();
-  // 本 spec 与 dir-entry.spec 分在两个 e2e 组（不同端口 = 不同固件目录），
-  // 整桶清理不会碰到别人的账本。
+  // 桶 = 页：本 spec 往 e2e-dir 桶里写的只有挂靠条目自己的账本，清桶清的是
+  // 这个页自己的残余，不碰别人的桶。
   fs.rmSync(BUCKET, { recursive: true, force: true });
 }
 
