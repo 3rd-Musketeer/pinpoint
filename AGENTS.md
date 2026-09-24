@@ -94,6 +94,8 @@ agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`open` 由 owner
 | registry 条目形状、注入契约、CLI（add / move / rename / folder）、代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
+
+`skills/pinpoint-build` 与 `skills/pinpoint-annotate` 是实现的一部分，不是事后补的说明：别的仓的 agent 只读这两个 skill，照着它们写帧、读标注、调 `ppnt`。改实现（CLI 命令与参数、board 形状、标注状态机、帧与组件写法）的同一个提交里，逐段检查这两个 skill 要不要同步改；退役或改名一个机制时，删掉 skill 里对它的描述。skill 落后于实现，别的 agent 就会照旧用法做（2026-09-17：frame notes 退役后仍有 agent 写 `frame-notes.md`）。
 | 一个决定为什么是这样 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查（先查案例库再动手） | [`docs/debugging.md`](docs/debugging.md) |
 | token / class 词汇表 / knobs | [`README.md`](README.md) |
