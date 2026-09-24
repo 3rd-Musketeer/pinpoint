@@ -120,3 +120,15 @@ test('同一次库改动后老地址 /annotate.js 也发新版', async (t) => {
   assert.ok(served.js.includes('xyzzy-old-path-probe'), '老地址产物包含库改动');
   assert.equal(bundle.annotateClientSrc(), `/annotate.${served.hash}.js`, '注入点与老地址是同一版');
 });
+
+test('import 图里的库被删 → 构建显式失败，注入点回退老地址而不是静默发旧版', async (t) => {
+  const { bundle, srcRoot } = await bundleCopyFor(t);
+  const annStatus = path.join(srcRoot, 'shared', 'ann-status.js');
+  await bundle.ensureAnnotateBundle();
+
+  fs.rmSync(annStatus);
+  // 失效判定 stat 不到文件 → 按过期处理 → 真构建给出带文件名的错误。
+  await assert.rejects(bundle.ensureAnnotateBundle(), /ann-status/);
+  // 注入面回退老地址（那条路由对同一失败显式 500），绝不静默引用旧哈希。
+  assert.equal(bundle.annotateClientSrc(), '/annotate.js');
+});
