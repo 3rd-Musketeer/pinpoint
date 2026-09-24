@@ -2,8 +2,10 @@ import { test, expect } from '@playwright/test';
 
 import { maybeThrottle } from './cpu-throttle.js';
 
-// 七条都是纯 API 调用、不写账本也不改 DOM（emulateMedia 例外，放最后并在
-// 收尾复位），共用一次装载：beforeAll 开页，每条开头瞬时滚回顶部复位。
+// 七条都是纯 API 调用、不写账本也不改 DOM（emulateMedia 例外），共用一次
+// 装载：beforeAll 开页；beforeEach 把 reduced-motion 和滚动位置都收回起点 ——
+// emulateMedia 粘在共用页面上，复位放在公共前置里每条用例都不依赖用例顺序
+// （要 reduce 的用例自己再显式切）。
 // 装载从 7 次降到 1 次，过去「第一条撞冷启动」的随机超时随之收敛成一次；
 // 就绪信号与 workbench.spec 同款 whenBoardSettled，单独放宽超时 —— 冷装载
 // （vite transform + 板挂载）不该被 30s 的用例全局上限掐死（校准 run1:97）。
@@ -30,6 +32,8 @@ test.afterAll(async () => {
 });
 
 test.beforeEach(async () => {
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  // scrollStageTo 开头先 cancelStageScroll：前一条残留的动画不会带进下一条。
   await page.evaluate(() => window.workbench.scrollTo({ top: 0 }, { smooth: false }));
 });
 
@@ -104,6 +108,11 @@ test('reduced motion positions immediately without a delayed follow-up', async (
 });
 
 test('changing reduced motion during navigation settles and preserves completion', async () => {
+  // 本条的命题是「弹簧在飞时切 reduce」：起飞前必须真的是 no-preference，
+  // 否则 scrollStageTo 直接走即时落位分支（scroll-motion.js:27-29），不注册
+  // onReduced，动画根本不存在，断言全部瞬时满足 —— 整条恒真。复位虽已在
+  // beforeEach，这里点名写出来。
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
   await page.evaluate(() => {
     window.workbench.scrollTo({ top: 0 }, { smooth: false });
     window.motionCompletion = window.workbench.scrollTo({ top: 2000 });

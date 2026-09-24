@@ -240,14 +240,30 @@ test('continuous zoom projects targets without resolving or measuring them and n
   });
   expect(result).toEqual({ reads: 0, queries: 0, same: true });
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);
-  // 「zoom 不排保存」不再等 debounce 窗口：触发一次真实保存，等它落进假桶。
-  // 若 zoom 期间排下了 recordLastRect 的 debounce 落盘，这里会多出一条（内容
-  // 不对）—— 轮询窗口盖过 600ms debounce，多等也可观察。
+  // 「zoom 不排保存」：触发一次真实保存，等它落进假桶，内容断言钉住这一条
+  // 就是刚才的保存。
   await page.evaluate(() => window.pinpoint.openMark(1));
   await page.locator('#ann-input').fill('zoom 不触发保存');
   await page.locator('#ann-save').click();
   await expect.poll(() => saves.length).toBe(1);
   expect(saves[0].annotations[0].content).toBe('[@t:i1] zoom 不触发保存');
+  // 负断言要确定的观察窗：recordLastRect 的落盘是 trailing debounce（最后
+  // 事件后 600ms 发火，src/client/annotate.js:3202-3208），poll 满足即停，
+  // 兜不住「zoom 结束后才发火」的迟到保存。再来一段 zoom + 静默尾段当观察
+  // 窗 —— zoom 段（20×2 rAF ≈ 640ms）盖过上一段 zoom 时代排下的挂账，尾段
+  // （performance.now() 计时 ≥ 650ms，rAF 计步不用 sleep）给本段最后事件排下
+  // 的 debounce 留足发火窗；zoom 路径若回归成「持续 dirty」，这里必见第 2 条。
+  await page.evaluate(async () => {
+    const stage = document.querySelector('#wbstage');
+    for (let i = 0; i < 20; i++) {
+      stage.dispatchEvent(new WheelEvent('wheel', { bubbles: true, cancelable: true, ctrlKey: true,
+        deltaY: i % 2 ? 100 : -100, clientX: 900, clientY: 450 }));
+      await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+    }
+    const quietSince = performance.now();
+    while (performance.now() - quietSince < 650) await new Promise(resolve => requestAnimationFrame(resolve));
+  });
+  expect(saves.length).toBe(1);
 });
 
 test('local content reflow preserves unrelated target geometry and updates the changed target', async ({ page }) => {

@@ -273,10 +273,17 @@ test('最近与 Pages 共用右键菜单：查看信息显示真实来源，归�
   await expect(page.locator('#wbpages [data-vpage="' + id + '"]')).toHaveCount(0);
   await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(page.locator('[data-vpage="' + id + '"]')).toBeVisible();
+  // 归档段收尾把 id 恢复（同一菜单项，已归档视图里是「恢复页面」）：后半段钉
+  // 的是固定页 e2e-dir-ios，而 id 是「最近」第一行、跟着前面用例的写账时间走
+  // 并非常量 —— 若它恰好也是 e2e-dir-ios，钉一个已归档页必挂。段间不许有这种
+  // 隐性依赖。
+  await page.locator('[data-vpage="' + id + '"]').click({ button: 'right' });
+  await page.locator('[data-archive-page="' + id + '"]').click();
+  await expect(page.locator('[data-vpage="' + id + '"]')).toHaveCount(0);
 
   // 钉 / 归档 / 恢复不该动登记表（合并自 review-refinements 的钉住-归档-恢复
-  // 刷新存活用例）：快照从这里取——上一步归档了别的页，那笔改动不算在这三个
-  // 动作头上。
+  // 刷新存活用例）：快照在归档并恢复 id 之后取 —— 那两步走的都是 localStorage
+  // pagePreferences，本就不写登记表，之后对账的仍是「这三个动作不碰登记表」。
   const withoutMtime = (doc) => JSON.stringify(doc.entries.map(({ mtime, ...rest }) => rest));
   const before = withoutMtime(await (await request.get('/registry')).json());
   const pinnedRow = page.locator('[data-vpage="e2e-dir-ios"]');
