@@ -29,7 +29,7 @@ for (const zoom of ['0.75', '1.17', '2.5']) {
     await page.setViewportSize({ width: 1440, height: 900 });
       await page.addInitScript((zoom) => {
       const prefs = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-      Object.assign(prefs, { zoomAxis: 2, sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: zoom } } });
+      Object.assign(prefs, { sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: zoom } } });
       localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
     }, zoom);
     await page.goto('/index.html?page=e2e-ios&mode=ios');

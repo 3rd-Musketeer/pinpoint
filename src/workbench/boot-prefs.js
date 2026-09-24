@@ -5,8 +5,8 @@ import { cancelStageScroll } from './scroll-motion.js';
 // （goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
-import { readPageViewports, pageViewport, savePageViewport } from './lib/page-viewports.js';
-import { BASE_CANVAS_SCALE, clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
+import { pageViewport, savePageViewport } from './lib/page-viewports.js';
+import { BASE_CANVAS_SCALE, currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
 import {
   refreshBoardNavigationModel,
@@ -165,23 +165,6 @@ function stageScrollPatch() {
   return { scrollLeft: stage.scrollLeft, scrollTop: stage.scrollTop };
 }
 
-/** One-time（2026-08-17 基准重定标，decisions 08-17c）：pageViewports 里的
-    canvasZoom 是旧轴值（视觉 = zoom），新轴视觉 = zoom × 0.5 —— 全部 ×2
-    （clamp 到新轴范围）保持视觉不变，打 zoomAxis:2 标记防重跑。 */
-function migrateZoomAxis2() {
-  var prefs = readPrefs();
-  if (prefs.zoomAxis === 2) return;
-  var all = Object.assign({}, readPageViewports());
-  Object.keys(all).forEach(function (pageId) {
-    var vp = all[pageId];
-    if (!vp || vp.canvasZoom == null) return;
-    var n = parseFloat(vp.canvasZoom) * 2;
-    if (!isFinite(n)) return;
-    all[pageId] = Object.assign({}, vp, { canvasZoom: String(clampCanvasZoom(n)) });
-  });
-  savePrefs({ pageViewports: all, zoomAxis: 2 });
-}
-
 // 首访默认缩放 = 100%（zoom 轴 1）。2026-08-17 基准重定标（decisions 08-17c）：
 // 视觉 = zoom × 0.5（0.5 烘在 index.html 的 .wb-library transform），HUD 100%
 // 即 owner 舒适默认（旧轴 50% 的视觉）；存档视口（pageViewports）始终优先。
@@ -302,7 +285,6 @@ export function applyBootPrefs(prefs, options) {
   options = options || {};
   prefs = prefs || readPrefs();
   var pageId = options.pageId || prefsDeps.resolveBootPageId(prefs);
-  migrateZoomAxis2();
 
   if (options.side !== false) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);

@@ -10,7 +10,7 @@ const read = () => JSON.parse(fs.readFileSync(ledger, 'utf8')).annotations;
 async function open(page) {
   await page.addInitScript(() => {
     const p = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
-    Object.assign(p, { zoomAxis: 2, sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: '1.17' } } });
+    Object.assign(p, { sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: '1.17' } } });
     localStorage.setItem('pinpoint-wb', JSON.stringify(p));
   });
   await page.goto('/index.html?page=e2e-ios&mode=ios');

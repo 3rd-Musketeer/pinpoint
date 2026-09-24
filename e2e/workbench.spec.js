@@ -2511,31 +2511,6 @@ test('first visit lands focused on the first frame at the 100% default zoom (202
   await expect(page.locator('#wbzoom-label')).toHaveText('110%');
 });
 
-test('zoom axis migration doubles legacy saved viewports once (2026-08-17 基准重定标)', async ({ page }) => {
-  // 旧轴存档（视觉 = zoom）：canvasZoom '0.5' 是当时的舒适默认。迁移应 ×2 成
-  // 新轴 '1'（视觉不变 = HUD 100%），打 zoomAxis:2 标记防重跑。
-  await page.addInitScript(() => {
-    localStorage.setItem('pinpoint-wb', JSON.stringify({
-      pageViewports: { 'e2e-ios': { canvasZoom: '0.5', scrollLeft: 0, scrollTop: 0 } }
-    }));
-  });
-  await openWorkbench(page);
-  await expect(page.locator('#wbzoom-label')).toHaveText('100%');
-  await expect.poll(async () => (await readWbPrefs(page)).zoomAxis).toBe(2);
-  await expect.poll(async () => {
-    const p = await readWbPrefs(page);
-    return p.pageViewports && p.pageViewports['e2e-ios'] && p.pageViewports['e2e-ios'].canvasZoom;
-  }).toBe('1');
-  // reload 不再翻倍
-  await page.reload();
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbzoom-label')).toHaveText('100%');
-  await expect.poll(async () => {
-    const p = await readWbPrefs(page);
-    return p.pageViewports && p.pageViewports['e2e-ios'] && p.pageViewports['e2e-ios'].canvasZoom;
-  }).toBe('1');
-});
-
 test('sidebar rows stay within their panel at default and compact widths (2026-08-17 ScrollArea 内层修复)', async ({ page }) => {
   // Radix ScrollArea viewport 内层是内联 display:table，内容按自然宽排版、不随
   // 栏宽收缩，行尾 copy 钮被 #wbside 的 overflow-x:hidden 裁出栏外（实况：自然
