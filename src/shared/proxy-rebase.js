@@ -22,15 +22,21 @@
 
 // pinpoint-owned root endpoints used by the in-page annotate client
 // (src/client/annotate.js): /save, /image, /annotations[/<page>], /images/<name>,
-// /events (SSE), /annotate.<hash>.js. /sites/ covers every already-rebased URL.
-// annotate 客户端按前缀豁免：产物换版哈希跟着变（/annotate.<hash>.js），老地址
-// /annotate.js 同样落在这个前缀里。
-export const REBASE_EXEMPT_EXACT = ['/save', '/image', '/annotations', '/events'];
-export const REBASE_EXEMPT_PREFIX = ['/annotate.', '/annotations/', '/images/', '/sites/'];
+// /events (SSE), /annotate.js + /annotate.<hash>.js. /sites/ covers every
+// already-rebased URL.
+// 客户端脚本地址只豁免「精确老地址 + 哈希形状」：宽前缀 /annotate. 会把目标应用
+// 自己的 /annotate.css、/annotate.v2.js 这类资源也吞下来（打到 pinpoint origin，
+// 拿到 SPA fallback 的 HTML）。哈希形状与 annotate-bundle.js 的
+// ANNOTATE_BUNDLE_URL_RE 同形——本文件被 site-proxy 剥掉 `export ` 后内联进
+// bootstrap，不能 import，正则在这里自带一份，proxy-rebase.test.js 钉住两处一致。
+export const REBASE_EXEMPT_EXACT = ['/save', '/image', '/annotations', '/events', '/annotate.js'];
+export const REBASE_EXEMPT_PREFIX = ['/annotations/', '/images/', '/sites/'];
+export const ANNOTATE_HASHED_URL_RE = /^\/annotate\.[0-9a-f]{10}\.js$/;
 
 export function isRebaseExemptPath(pathname) {
   if (typeof pathname !== 'string') return false;
   if (REBASE_EXEMPT_EXACT.includes(pathname)) return true;
+  if (ANNOTATE_HASHED_URL_RE.test(pathname)) return true;
   return REBASE_EXEMPT_PREFIX.some((prefix) => pathname.startsWith(prefix));
 }
 

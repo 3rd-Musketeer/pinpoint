@@ -228,8 +228,9 @@ CSS 响应改写 `url(/…)` 与 `@import "/…"`。
 HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventSource`、`WebSocket`、`sendBeacon`——
 由一段**重基 bootstrap** 兜底：作为 `<head>` 的第一个脚本注入（`proxyBootstrapSnippet`，内联
 `src/shared/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
-重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.*`（老地址
-与哈希地址都在这个前缀里）、`/save`、`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
+重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`（老地址）
+与哈希地址 `/annotate.<hash>.js`（严格形状，与 annotate-bundle 的产物地址正则同形）、
+`/save`、`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
 
 bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
 （`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——
