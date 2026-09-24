@@ -136,7 +136,7 @@ content/                     what the service serves
 bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render; logic + tests in
                              bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
-scripts/                     wb-token generator + export-preview (frame renderer)
+scripts/                     wb-token generator + offline-export verifier + e2e runner
 e2e/                         Playwright workbench / registry tests + page fixtures (e2e/jsx-site …)
 
 ~/.pinpoint/dist/<entry>/    Compiled screens (pp2 dist) — generated, not in git, not in the page dir

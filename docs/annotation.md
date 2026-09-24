@@ -175,7 +175,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 用户面只剩一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
 原生 dialog；ADR 0033）。图片 picker、zip 打包（`/api/export-zip`）、文档导出三模式都在 pp2 切片 3 退役。
-服务端帧图片渲染器（`/api/export-image`、`scripts/export-preview.mjs`）保留给 agent：`ppnt shot`
+服务端帧图片渲染器（`/api/export-image`）保留给 agent：`ppnt shot`
 与 `ppnt check --mode image` 走它，不再是用户面入口。不要把截图逻辑加进单个屏的片段里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。

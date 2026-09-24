@@ -13,7 +13,6 @@
     "dev": "portless run --name pinpoint npm run dev:app",
     "dev:app": "vite",
     "dev:direct": "npm run dev:app",
-    "export": "node scripts/export-preview.mjs",
     "build:tokens": "node scripts/build-wb-tokens.mjs",
     "test": "node --test",
     "test:e2e": "node scripts/e2e-parallel.mjs",

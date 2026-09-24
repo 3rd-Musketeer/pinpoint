@@ -55,25 +55,6 @@ test('page pin, archive and restore survive reload without deleting the page', a
   await page.screenshot({ path: test.info().outputPath('navigation.png') });
 });
 
-// Exercise the shipped export CLI against the isolated running application.
-test('reviewer exports a frame as an actual PNG', async () => {
-  const { execFile } = await import('node:child_process');
-  const { promisify } = await import('node:util');
-  const fs = await import('node:fs/promises');
-  const { E2E_BASE_URL } = await import('./env.js');
-  const output = test.info().outputPath('export-cards.png');
-  const result = await promisify(execFile)(process.execPath, [
-    'scripts/export-preview.mjs', '--url', E2E_BASE_URL,
-    '--page', 'e2e-dir-ios', '--section', 'main', '--frame', 'cards',
-    '--output', output,
-  ]);
-  expect(result.stdout).toContain('image/png');
-  const bytes = await fs.readFile(output);
-  expect(bytes.subarray(0, 8).toString('hex')).toBe('89504e470d0a1a0a');
-  expect(bytes.readUInt32BE(16)).toBeGreaterThan(300);
-  expect(bytes.readUInt32BE(20)).toBeGreaterThan(500);
-});
-
 test('composer follows the selected DOM and docks only when adjacent space runs out', async ({ page }) => {
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
