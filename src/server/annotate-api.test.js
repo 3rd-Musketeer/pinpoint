@@ -4,6 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import zlib from 'node:zlib';
 
 import { createAnnotateHandler, resolveRequestEntry } from './annotate-api.js';
 import { loadRegistry } from './lib/registry.js';
@@ -27,8 +28,9 @@ function withFixture(t) {
 
 
 
-async function call(handler, method, url, body) {
+async function call(handler, method, url, body, headers) {
   const req = mockReq(method, url, body);
+  Object.assign(req.headers, headers || {});
   const res = mockRes();
   const handled = await handler(req, res, url.split('?')[0]);
   let json = null;
@@ -218,4 +220,117 @@ test('every API response carries Access-Control-Allow-Origin *', async (t) => {
   for (const { res } of checks) {
     assert.equal(res.headers['Access-Control-Allow-Origin'], '*');
   }
+});
+
+// ---- /annotate.js · /annotate.<hash>.js（审计 B3：产物 + 缓存契约）-----------
+
+function bundleStub(overrides = {}) {
+  const js = '/* annotate bundle stub */console.log("stub");';
+  return {
+    js,
+    hash: '44bc529372',
+    gzip: zlib.gzipSync(Buffer.from(js)),
+    br: zlib.brotliCompressSync(Buffer.from(js)),
+    ...overrides,
+  };
+}
+
+function withBundleStub(t, artifact, ensureError) {
+  const fx = withFixture(t);
+  const handler = createAnnotateHandler({
+    dataRoot: fx.dataRoot,
+    registry: fx.registry,
+    annotateBundleByHash: (hash) => (hash === artifact.hash ? artifact : null),
+    ensureAnnotateBundle: () => (ensureError ? Promise.reject(ensureError) : Promise.resolve(artifact)),
+  });
+  return { ...fx, handler };
+}
+
+test('GET /annotate.js serves the current artifact with ETag + no-cache + Vary', async (t) => {
+  const artifact = bundleStub();
+  const { handler } = withBundleStub(t, artifact);
+  const { res } = await call(handler, 'GET', '/annotate.js', undefined, { 'accept-encoding': 'br' });
+  assert.equal(res.statusCode, 200);
+  assert.equal(res.headers.ETag, '"44bc529372"');
+  assert.equal(res.headers['Cache-Control'], 'no-cache');
+  assert.equal(res.headers.Vary, 'Accept-Encoding');
+  assert.equal(res.headers['Content-Encoding'], 'br');
+  assert.equal(zlib.brotliDecompressSync(res.body).toString('utf8'), artifact.js, 'brotli 解回来 = 产物原文');
+});
+
+test('GET /annotate.js answers If-None-Match with 304 (weak and list forms too)', async (t) => {
+  const artifact = bundleStub();
+  const { handler } = withBundleStub(t, artifact);
+  for (const header of ['"44bc529372"', 'W/"44bc529372"', '"deadbeef01", "44bc529372"', '*']) {
+    const { res } = await call(handler, 'GET', '/annotate.js', undefined, { 'if-none-match': header });
+    assert.equal(res.statusCode, 304, header);
+    assert.equal(res.headers.ETag, '"44bc529372"');
+    assert.equal(res.chunks.length, 0, '304 无响应体');
+  }
+  const miss = await call(handler, 'GET', '/annotate.js', undefined, { 'if-none-match': '"other000000"' });
+  assert.equal(miss.res.statusCode, 200);
+});
+
+test('GET /annotate.<hash>.js is immutable and encoding-negotiated; HEAD returns headers only', async (t) => {
+  const artifact = bundleStub();
+  const { handler } = withBundleStub(t, artifact);
+  const hashed = `/annotate.${artifact.hash}.js`;
+  const hit = await call(handler, 'GET', hashed, undefined, { 'accept-encoding': 'gzip, deflate, br, zstd' });
+  assert.equal(hit.res.statusCode, 200);
+  assert.equal(hit.res.headers['Cache-Control'], 'public, max-age=31536000, immutable');
+  assert.equal(hit.res.headers.Vary, 'Accept-Encoding');
+  assert.equal(hit.res.headers['Content-Encoding'], 'br', 'br 声明了就优先');
+  assert.equal(hit.res.headers.ETag, undefined, 'immutable 地址不需要 ETag 协商');
+
+  const gzipOnly = await call(handler, 'GET', hashed, undefined, { 'accept-encoding': 'gzip' });
+  assert.equal(gzipOnly.res.headers['Content-Encoding'], 'gzip');
+  const plain = await call(handler, 'GET', hashed);
+  assert.equal(plain.res.headers['Content-Encoding'], undefined);
+  assert.equal(plain.res.body.toString('utf8'), artifact.js);
+
+  const head = await call(handler, 'HEAD', hashed, undefined, { 'accept-encoding': 'br' });
+  assert.equal(head.res.statusCode, 200);
+  assert.equal(head.res.headers['Content-Length'], String(artifact.br.length), 'HEAD 给全元数据');
+  assert.equal(head.res.chunks.length, 0, 'HEAD 无响应体');
+  const headOld = await call(handler, 'HEAD', '/annotate.js');
+  assert.equal(headOld.res.statusCode, 200);
+  assert.equal(headOld.res.headers.ETag, '"44bc529372"');
+  assert.equal(headOld.res.chunks.length, 0);
+});
+
+test('unknown hash is a loud 404; stale-hash rebuild finds the same content', async (t) => {
+  const artifact = bundleStub();
+  // byHash 找不到（进程重启内存清空）但 ensure 重编出同哈希 → 200。
+  const restarted = createAnnotateHandler({
+    dataRoot: path.join(os.tmpdir(), 'pinpoint-api-x'),
+    registry: loadRegistry({ path: path.join(os.tmpdir(), 'pinpoint-api-x-reg.json'), root: os.tmpdir(), log: () => {} }),
+    annotateBundleByHash: () => null,
+    ensureAnnotateBundle: () => Promise.resolve(artifact),
+  });
+  const rematched = await call(restarted, 'GET', `/annotate.${artifact.hash}.js`);
+  assert.equal(rematched.res.statusCode, 200);
+  // ensure 也对不上 → 真不认识的哈希，404。
+  const unknown = await call(restarted, 'GET', '/annotate.0000000000.js');
+  assert.equal(unknown.res.statusCode, 404);
+});
+
+test('build failure is a loud 500 with the reason; retained hashes keep serving', async (t) => {
+  const failure = Object.assign(new Error('annotate client build failed: src/client/annotate.js:1 Expected ident'), {
+    name: 'AnnotateBundleError',
+  });
+  const artifact = bundleStub();
+  const { handler } = withBundleStub(t, artifact, failure);
+  // 老地址（构建还没落地或失败时注入点的回退目标）必须把原因喊出来。
+  const old = await call(handler, 'GET', '/annotate.js');
+  assert.equal(old.res.statusCode, 500);
+  assert.match(old.res.text, /Expected ident/);
+  assert.equal(old.res.headers['Cache-Control'], undefined);
+  // 内存里没有的哈希要靠重编对上，重编挂了同样 500。
+  const unknown = await call(handler, 'GET', '/annotate.0000000000.js');
+  assert.equal(unknown.res.statusCode, 500);
+  // 已经发出去的哈希地址是 immutable 契约：那份字节还在内存里就继续发
+  // （缓存的页面拿着旧地址不该拿 404），这与「不静默发旧版」不冲突 ——
+  // 新注入在构建失败时回退老地址拿 500，不会引用旧哈希。
+  const retained = await call(handler, 'GET', `/annotate.${artifact.hash}.js`);
+  assert.equal(retained.res.statusCode, 200);
 });
