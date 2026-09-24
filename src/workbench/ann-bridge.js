@@ -153,6 +153,11 @@ export function startAnnBridge() {
  *     跨 frame 不冒泡；后者挂 stage-wrap，盖住 .wb-stage 平移）
  *   · iframe / 舞台尺寸变化：ResizeObserver（手机视口的缩放是 transform，
  *     RO 看不见，但它只随窗口 resize 变，舞台盒子同帧跟着变，仍被盖住）
+ *   · iframe 文档里晚到的资源：document 上 load 的 capture 监听 + document.fonts
+ *     的 loadingdone。图片 / 字体落定尺寸引起的布局位移既不改 iframe 元素的盒子
+ *     （RO 看不见）、不是滚动、也不一定有 DOM mutation，只有资源自己的事件知道；
+ *     load 不冒泡但能被 capture 到。旧实现的常驻 rAF 是每帧重算才「自然跟上」的，
+ *     这类信号是事件化后唯一补不回来的盲区，专门挂这两条
  *   · 账本 / 筛选 / 布局 / 评论开关：annotate 实例 notify → 快照订阅
  *     （syncAnnSnap 收尾的 syncGutterComments）；iframe 内 DOM 变更走同一条
  *     —— client 的 MutationObserver 全量重渲染路径本身就会 notify
@@ -176,7 +181,10 @@ var gutterResizeObs = null;
 var gutterObservedFrame = null;  // RO 正在观察的 iframe 元素
 
 // e2e 观测点（perf 审计 A4）：requests = 重算排程次数（断言监听不重复挂），
-// renders = 实际渲染次数（断言页面静止时零渲染）。生产代码无读方。
+// renders = 实际渲染次数（断言页面静止时零渲染）。只供 e2e 用例读，生产代码
+// 不读、行为也不依赖它。它只出现在 workbench 页面上：本模块不进注入端 bundle
+// （/annotate.js 只内联 src/shared 与 src/client/lib，清单见
+// src/server/annotate-api.js 的 INLINED_LIBS），/sites/ 注入页的 window 没有它。
 window.__wbGutter = { requests: 0, renders: 0 };
 
 function gutterStageWrap() {
@@ -333,16 +341,31 @@ function scheduleGutterRender() {
 
 function onGutterSignal() { scheduleGutterRender(); }
 
-/** gutter 开着期间的事件面：iframe 文档滚动（换 document 时挪挂，不叠层）、
- *  舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
+/** iframe document 上的 gutter 事件面：滚动 + 晚到资源（load capture、字体
+ *  loadingdone）。换 document 时整套挪挂，由 attachGutterListeners / detach
+ *  共用，保证两条路径解得一样干净。 */
+function detachDocListeners(doc) {
+  doc.removeEventListener('scroll', onGutterSignal, true);
+  doc.removeEventListener('load', onGutterSignal, true);
+  if (doc.fonts) doc.fonts.removeEventListener('loadingdone', onGutterSignal);
+}
+
+/** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时挪挂，
+ *  不叠层）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
 function attachGutterListeners() {
   var iframeEl = activeDocFrameEl();
   if (!iframeEl) return;
   var doc = null;
   try { doc = iframeEl.contentDocument; } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
   if (doc && gutterScrollDoc !== doc) {
-    if (gutterScrollDoc) gutterScrollDoc.removeEventListener('scroll', onGutterSignal, true);
+    if (gutterScrollDoc) detachDocListeners(gutterScrollDoc);
     doc.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
+    // load 不冒泡，capture 才接得到资源级 load（img / iframe…）；连 document
+    // 自己的 load 也会从这里过，多排一次渲染，无妨。字体落定走 loadingdone
+    // （旧引擎没有 document.fonts 就跳过）。渲染读矩形时强制同步布局，拿到的
+    // 就是落定后的几何，不用再等一拍。
+    doc.addEventListener('load', onGutterSignal, true);
+    if (doc.fonts) doc.fonts.addEventListener('loadingdone', onGutterSignal);
     gutterScrollDoc = doc;
   }
   var wrap = gutterStageWrap();
@@ -365,7 +388,7 @@ function attachGutterListeners() {
 
 function detachGutterListeners() {
   if (gutterScrollDoc) {
-    gutterScrollDoc.removeEventListener('scroll', onGutterSignal, true);
+    detachDocListeners(gutterScrollDoc);
     gutterScrollDoc = null;
   }
   if (gutterWrapEl) {
