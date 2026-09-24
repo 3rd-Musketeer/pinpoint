@@ -54,3 +54,19 @@ export function copySiteFixtures() {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
 }
+
+// 临时登记条目：pp-id-anchor / preview-hmr / pp2-build 三个 spec 各自往 registry
+// 追加一条 dir 条目、用完恢复 —— 多一条页会撞翻断言整份 Pages 清单的 spec
+// （workbench.spec.js 两处 toHaveText([...]) 与 sidebar-content.spec.js 的
+// toHaveCount(9)），所以不进上面的共享固件。三个 spec 的登记 / 恢复共用这一对。
+export function appendRegistryEntry(entry) {
+  const doc = JSON.parse(fs.readFileSync(E2E_REGISTRY, 'utf8'));
+  doc.entries.push(entry);
+  fs.writeFileSync(E2E_REGISTRY, JSON.stringify(doc, null, 2));
+}
+
+// 恢复共享固件并让服务重读（afterEach 用；条目类写必须 reload 才生效）。
+export async function restoreRegistryFixture(request) {
+  writeRegistryFixture();
+  await request.post('/registry/reload');
+}
