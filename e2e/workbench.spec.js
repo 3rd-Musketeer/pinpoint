@@ -1208,28 +1208,6 @@ test('?page= 指向不存在的页 → 显式面板；登记后「重试」原�
   await expect.poll(() => page.url()).toContain('page=e2e-doc');
 });
 
-test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
-  await openWorkbench(page);
-
-  // Form A — recipe.html carries an inline data-preview-script that cycles the ratio chip.
-  const ratio = page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio]');
-  await expect(ratio).toHaveText('1:15');
-  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
-  await expect(ratio).toHaveText('1:16');
-
-  // Form B — timer.html marks data-preview-mount, so workbench imports timer.js.
-  const timerRoot = page.locator('#wb-board-panel [data-screen="timer"] [data-preview-mount]');
-  await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
-  const toggle = page.locator('#wb-board-panel [data-screen="timer"] [data-timer-toggle]');
-  await toggle.click();
-  await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
-  await expect(toggle).toHaveText('暂停');
-  await toggle.click();
-  await expect(timerRoot).toHaveAttribute('data-timer-state', 'paused');
-  await page.locator('#wb-board-panel [data-screen="timer"] [data-timer-reset]').click();
-  await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
-});
-
 test('/api/export-image renders an isolated padded PNG from a posted snapshot', async ({ page }) => {
   await openWorkbench(page);
   await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
@@ -1263,41 +1241,108 @@ test('/api/export-image renders an isolated padded PNG from a posted snapshot', 
   expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 });
 
-test('画布点选模型：原型内部不动选中、板空白清选中（2026-08-17 选中模型）', async ({ page }) => {
-  await page.route('**/sites/e2e-ios/board.json', async route => {
-    const response = await route.fetch(); const board = await response.json();
-    board.sections[0].note = 'retired section';
-    const first = board.sections[0].screens[0];
-    board.sections[0].screens[0] = typeof first === 'string' ? { id: first, note: 'retired frame' } : { ...first, note: 'retired frame' };
-    await route.fulfill({ response, json: board });
-  });
+// 画布选中故事（1400 / 2067 / 2445 / 1345 合并，2026-09-24 e2e 审计）：同一块
+// e2e-ios 画布走完 —— 三种选中入口、原型内部点击不动选中（顺手断 form A 内联
+// 脚本的交互）、form B sidecar 状态机、板空白清选中、Esc 两级链（先关列表、
+// 再清选中）、尺寸行随 hover / 选中出没。bdf552b 退役 detail 面板时留下的
+// retired note 路由注入与 #wbdetail 计 0 断言随合并删除：钉「退役功能不再
+// 出现」没有用户可见对立面（index.html 里面板已整个删掉）。
+test('画布点选模型：三种选中入口、原型内部不动选中、空白清选中、Esc 两级链', async ({ page }) => {
   await openWorkbench(page);
-  const section = page.locator('[data-ann-section="brew-flow"].wb-lib-item');
-  await section.locator(':scope > .wb-lib-cap').click();
-  await expect(section).toHaveClass(/wb-sel/);
-  await page.getByRole('tab', { name: '大纲', exact: true }).click();
-  await page.locator('[data-ol-section="brew-flow"] > .ol-sec').click();
-  await expect(section).toHaveClass(/wb-sel/);
-  await expect(page.locator('#wbdetail, [data-frame-note]')).toHaveCount(0);
-  const detail = page.locator('#wbdetail');
-  await expect(detail).toHaveCount(0);
 
-  // frame 树行只定位、高亮，不再打开已退役的详情面板
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await page.locator('#wboutline [data-ol-frame="recipe"]').click();
-  const selected = page.locator('#wb-board-panel [data-screen="recipe"]');
-  await expect(selected).toHaveClass(/wb-sel/);
-  await expect(detail).toHaveCount(0);
+  await test.step('画布点选模型：原型内部不动选中、板空白清选中（2026-08-17 选中模型）', async () => {
+    const section = page.locator('[data-ann-section="brew-flow"].wb-lib-item');
+    await section.locator(':scope > .wb-lib-cap').click();
+    await expect(section).toHaveClass(/wb-sel/);
+    await page.getByRole('tab', { name: '大纲', exact: true }).click();
+    await page.locator('[data-ol-section="brew-flow"] > .ol-sec').click();
+    await expect(section).toHaveClass(/wb-sel/);
 
-  // 原型内部点击 = 原型交互，选中不变
-  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
-  await expect(selected).toHaveClass(/wb-sel/);
-  await expect(detail).toHaveCount(0);
+    // frame 树行 = 第三种选中入口
+    await page.getByRole('tab', {name:'大纲', exact:true}).click();
+    await page.locator('#wboutline [data-ol-frame="recipe"]').click();
+    const selected = page.locator('#wb-board-panel [data-screen="recipe"]');
+    await expect(selected).toHaveClass(/wb-sel/);
 
-  // 板空白（面板留白）= 清选中
-  await page.locator('#wb-board-panel').click({ position: { x: 10, y: 10 } });
-  await expect(detail).toHaveCount(0);
-  await expect(page.locator('#wb-board-panel .wb-sel')).toHaveCount(0);
+    // 原型内部点击 = 原型交互，选中不变。form A —— recipe 屏内联
+    // data-preview-script 驱动比例 chip（1:15 → 1:16）。
+    const ratio = page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio]');
+    await expect(ratio).toHaveText('1:15');
+    await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
+    await expect(ratio).toHaveText('1:16');
+    await expect(selected).toHaveClass(/wb-sel/);
+
+    // form B —— timer 屏标 data-preview-mount，workbench import 的 sidecar
+    // 状态机 idle → running → paused → idle。
+    const timerRoot = page.locator('#wb-board-panel [data-screen="timer"] [data-preview-mount]');
+    await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
+    const toggle = page.locator('#wb-board-panel [data-screen="timer"] [data-timer-toggle]');
+    await toggle.click();
+    await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
+    await expect(toggle).toHaveText('暂停');
+    await toggle.click();
+    await expect(timerRoot).toHaveAttribute('data-timer-state', 'paused');
+    await page.locator('#wb-board-panel [data-screen="timer"] [data-timer-reset]').click();
+    await expect(timerRoot).toHaveAttribute('data-timer-state', 'idle');
+
+    // 板空白（面板留白）= 清选中
+    await page.locator('#wb-board-panel').click({ position: { x: 10, y: 10 } });
+    await expect(page.locator('#wb-board-panel .wb-sel')).toHaveCount(0);
+  });
+
+  await test.step('标注列表在底栏上方，Esc 关闭列表后清除选择', async () => {
+    // 干净起点（共享落盘文档），一条标注让列表有内容可开
+    await page.evaluate(() => window.pinpoint.clear());
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+    await page.evaluate(() => window.pinpoint.setMode(true));
+    const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+    await cells.nth(0).scrollIntoViewIfNeeded();
+    await saveAnnotation(page, cells.nth(0), 'dock slot mark');
+
+    await page.locator('#wbann-interact').click();
+    const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
+    await section.locator(':scope > .wb-lib-cap').click();
+    await openAnnList(page);
+    // Esc 两级链：第一级关列表（选中还在），第二级清选中
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#wbann-pop')).toHaveCount(0);
+    await expect(section).toHaveClass(/wb-sel/);
+    await page.keyboard.press('Escape');
+    await expect(section).not.toHaveClass(/wb-sel/);
+  });
+
+  await test.step('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2026-09-04 E1）', async () => {
+    const opacity = (screenId) => page.evaluate(
+      (id) => getComputedStyle(document.querySelector(`[data-screen="${id}"] .wb-screen-dim`)).opacity,
+      screenId,
+    );
+    const homeCap = page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap');
+
+    // 常态：一行都不出（「尺寸行常驻太吵」）
+    await page.locator('#wbstrip-title').hover();
+    await expect.poll(() => opacity('home')).toBe('0');
+    await expect.poll(() => opacity('beans')).toBe('0');
+
+    // 行高留着：opacity 不是 display —— hover 前后 frame 的高度一模一样
+    const heightOf = () => page.evaluate(
+      () => document.querySelector('[data-screen="home"] .wb-screen-dim').getBoundingClientRect().height
+    );
+    const idleHeight = await heightOf();
+    expect(idleHeight).toBeGreaterThan(0);
+
+    // hover 只点亮这一帧
+    await homeCap.hover();
+    await expect.poll(() => opacity('home')).toBe('1');
+    await expect.poll(() => opacity('beans')).toBe('0');
+    expect(await heightOf()).toBeCloseTo(idleHeight, 1);
+
+    // 选中：鼠标移开也留着（选中是持久态，hover 不是）
+    await homeCap.click();
+    await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
+    await page.locator('#wbstrip-title').hover();
+    await expect.poll(() => opacity('home')).toBe('1');
+    await expect.poll(() => opacity('beans')).toBe('0');
+  });
 });
 
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
@@ -1908,36 +1953,6 @@ test('左栏 splitter 拖宽 / 折叠偏好在浮动面板上照旧（ADR 0016 �
      · 折叠 / 复开 → 横条左端的 Pages 开关（上一条主用例 + 几何用例）；
      · 标注列表的可读性 → 弹出列表的几何与行内容用例（下方 wb-ann-item 几何断言）。 */
 
-test('标注列表在底栏上方，Esc 关闭列表后清除选择', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'dock slot mark');
-
-  await page.locator('#wbann-interact').click();
-  const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
-  await section.locator(':scope > .wb-lib-cap').click();
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await openAnnList(page);
-  const slot = await page.evaluate(() => {
-    const card = document.querySelector('#wbann-pop').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    return { rightAligned: Math.abs(card.right - strip.right) < 2, aboveStrip: card.bottom <= strip.top, width: Math.round(card.width) };
-  });
-  expect(slot).toEqual({ rightAligned: true, aboveStrip: true, width: 280 });
-  await page.keyboard.press('Escape');
-  await expect(page.locator('#wbann-pop')).toHaveCount(0);
-  await expect(page.locator('#wbdetail')).toHaveCount(0);
-  await expect(section).toHaveClass(/wb-sel/);
-  await page.keyboard.press('Escape');
-  await expect(section).not.toHaveClass(/wb-sel/);
-
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-});
-
 test('文档形态的横条有条目步进：‹ n / N › 在本板条目间前后切换（2026-09-20）', async ({ page }) => {
   await openWorkbench(page);
   await page.getByRole('tab', { name: '页面', exact: true }).click();
@@ -2254,40 +2269,6 @@ test('画布评论卡的 agent 备注：折叠头默认收起，点开看全文�
 // 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
 // 字号断言比的是画布坐标里的 CSS px：画布基准 scale 0.5，所以区头 26 = 观感 13、
 // 屏名 24 = 12、引用号 21 = 10.5。
-
-test('尺寸行只在这一帧 hover 或选中时出，且出没不推版面（2026-09-04 E1）', async ({ page }) => {
-  await openWorkbench(page);
-  const opacity = (screenId) => page.evaluate(
-    (id) => getComputedStyle(document.querySelector(`[data-screen="${id}"] .wb-screen-dim`)).opacity,
-    screenId,
-  );
-  const homeCap = page.locator('#wb-board-panel [data-screen="home"] .wb-screen-cap');
-
-  // 常态：一行都不出（「尺寸行常驻太吵」）
-  await page.locator('#wbstrip-title').hover();
-  await expect.poll(() => opacity('home')).toBe('0');
-  await expect.poll(() => opacity('beans')).toBe('0');
-
-  // 行高留着：opacity 不是 display —— hover 前后 frame 的高度一模一样
-  const heightOf = () => page.evaluate(
-    () => document.querySelector('[data-screen="home"] .wb-screen-dim').getBoundingClientRect().height
-  );
-  const idleHeight = await heightOf();
-  expect(idleHeight).toBeGreaterThan(0);
-
-  // hover 只点亮这一帧
-  await homeCap.hover();
-  await expect.poll(() => opacity('home')).toBe('1');
-  await expect.poll(() => opacity('beans')).toBe('0');
-  expect(await heightOf()).toBeCloseTo(idleHeight, 1);
-
-  // 选中：鼠标移开也留着（选中是持久态，hover 不是）
-  await homeCap.click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toHaveClass(/wb-sel/);
-  await page.locator('#wbstrip-title').hover();
-  await expect.poll(() => opacity('home')).toBe('1');
-  await expect.poll(() => opacity('beans')).toBe('0');
-});
 
 // 切片 ③ 第 15 条的核查结论：选中本来就有 2px accent 实环 + 6px 淡晕，够看；
 // hover 什么都没有，鼠标在哪一帧全靠猜 —— 所以补的是 hover 那一档（2px accent
