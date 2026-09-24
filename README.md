@@ -75,6 +75,10 @@ the upstream defaults to that port + 10.
 registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
 (default 5299), +10, +20 and +30; choose a base whose four ports are free. New spec files
 are included automatically. Any group failure fails the command, and Ctrl+C stops both.
+When the 1-minute load average is 4 or higher it runs one group instead of two, and each
+failed group reruns its failed tests once; only a failure on that rerun counts (details in
+`AGENTS.md`). Write regression tests as unit tests first; e2e is for behavior only a real
+browser can check (see `AGENTS.md`).
 
 Use `just e2e-serial` for serial verification. For a targeted test, use
 `npm run test:e2e:serial -- e2e/scroll-motion.spec.js`. Ordinary workbench navigation uses
