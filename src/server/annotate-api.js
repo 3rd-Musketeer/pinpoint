@@ -197,8 +197,11 @@ export function createAnnotateHandler(options = {}) {
   // origins. String or lazy resolver; null when the server is not listening.
   const directOrigin = options.directOrigin || (() => null);
   const resolveDirectOrigin = typeof directOrigin === 'function' ? directOrigin : () => directOrigin;
-  // After a successful POST /registry/reload — the vite plugin wires this to
-  // an HMR `registry:update` event so open workbenches refresh their Pages.
+  // After a grouping write or POST /registry/reload — the vite plugin wires
+  // this to an HMR `registry:update` event so open workbenches refresh their
+  // Pages. scope 告诉前端这次动了什么：'grouping' = 只动分组 / 顺序 / 折叠
+  // （左栏重拉清单即可，别重装画板），'entries' = 条目本身可能变了（照旧整板
+  // 重摆）。
   const onRegistryReload = options.onRegistryReload || (() => {});
 
   function storeFor(entryId) {
@@ -300,7 +303,9 @@ export function createAnnotateHandler(options = {}) {
       sendJson(res, 400, { error: 'bad_request', message: error.message });
       return true;
     }
-    onRegistryReload(registrySummary(registry));
+    // 审计 B2（2026-09-24）：三条写接口都只动分组与顺序，条目本身没变 —— 广播
+    // 带 grouping 标记，前端只刷左栏，不再整板重装（文档页 iframe 会闪）。
+    onRegistryReload(registrySummary(registry), 'grouping');
     sendJson(res, 200, registryPayload());
     return true;
   }
@@ -442,7 +447,8 @@ export function createAnnotateHandler(options = {}) {
       }
       const next = registry.reload();
       const summary = registrySummary(next);
-      onRegistryReload(summary);
+      // CLI 写文件后的 reload：条目可能增删改名，照旧按条目级广播。
+      onRegistryReload(summary, 'entries');
       sendJson(res, 200, summary);
       return true;
     }
@@ -506,10 +512,12 @@ export default function annotateApi(options = {}) {
     const loopback = ['::', '0.0.0.0', '::1', 'localhost'].includes(address.address) ? '127.0.0.1' : address.address;
     return `http://${loopback}:${address.port}`;
   });
-  const onRegistryReload = options.onRegistryReload || ((summary) => {
+  const onRegistryReload = options.onRegistryReload || ((summary, scope) => {
     // Tell open workbenches the registry changed; stage.js invalidates its
     // registry-sites query and re-pulls the page manifest off this event.
-    if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: summary });
+    // scope（grouping / entries）跟着进载荷 —— 前端据它决定只刷左栏还是整板重摆
+    // （审计 B2：分组写接口的整板重装是纯浪费）。
+    if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: { ...summary, scope: scope || 'entries' } });
   });
   const handleAnnotate = createAnnotateHandler({ ...options, directOrigin, onRegistryReload });
   return {
