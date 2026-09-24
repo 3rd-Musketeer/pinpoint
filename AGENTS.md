@@ -38,7 +38,7 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 5299（共占 5299~5329）。一个端口一套固件，registry、标注数据根、`test-results-<port>/` 全从
 这一个数推导（`e2e/env.js`）。在别人也在跑 e2e 的机器上换基准跑自己的那一轮：
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
-完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。
+完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5870~5900：组端口 +10 / +20 / +30 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
 
 **高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 4 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。
 
