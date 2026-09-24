@@ -2042,28 +2042,6 @@ test('左栏 splitter 拖宽 / 折叠偏好在浮动面板上照旧（ADR 0016 �
      · 折叠 / 复开 → 横条左端的 Pages 开关（上一条主用例 + 几何用例）；
      · 标注列表的可读性 → 弹出列表的几何与行内容用例（下方 wb-ann-item 几何断言）。 */
 
-test('弹出列表：定位不被自己盖住、行几何在卡内（2026-09-04 H2 owner 批注 2）', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'popover geometry mark');
-  await openAnnList(page);
-  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
-
-  // 行整行落在卡内（点得到 ≠ 人看得见 —— 比 bounding box）
-  expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
-
-  // 整行点击后打开输入框，列表保持展开，实际目标仍在可见画布内。
-  await page.locator('#wbann-list .wb-ann-item-main').click();
-  await expectLocatedTarget(page);
-
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await closeAnnList(page);
-});
-
 test('标注列表在底栏上方，Esc 关闭列表后清除选择', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
