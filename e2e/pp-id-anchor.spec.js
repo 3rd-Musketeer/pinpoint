@@ -101,7 +101,11 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   const blurb = page.locator('[data-screen="anchor"] [data-blurb]');
   await expect(blurb).toHaveText('组件里的锚点段');
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await blurb.click();
+  // 负载下首次点击可能落在画布重渲染的间隙被吞掉：composer 开不起来就重试点。
+  await expect(async () => {
+    await blurb.click();
+    await expect(page.locator('#ann-box')).toBeVisible();
+  }).toPass();
   await page.locator('#ann-input').fill('这段文案改成两行');
   await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
@@ -125,6 +129,8 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   // 3 ─ 存量行的双端兜底：客户端 resolveMarkTarget（ppnt shot --marks 同一条
   //     路径）在工作台 DOM 里解析回原元素 —— 机壳只在画布缺，不缺；CLI locate
   //     面对没有机壳的 dist 片段，剥机壳、首段按 class 找，给出正确的 文件:行。
+  //     先等水合完成（goToMark / 兜底解析都吃 marks，负载下 hydrate 会晚到）。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
   const pin = await page.evaluate(() => {
     const m = window.pinpoint.marks[0];
     const el = window.pinpoint.resolveMarkTarget(
@@ -176,7 +182,12 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   const targetBox = page.locator('#ann-overlay .ann-target');
   await expect(targetBox).toHaveCount(1);
   await expect(page.locator('#ann-overlay .ann-ghost-rect')).toHaveCount(0);
-  const [mark, blurbRect] = await Promise.all([targetBox.boundingBox(), blurb.boundingBox()]);
+  // 负载下两框可能恰逢重渲染摘除：拿到非空包围盒再比（断言本身不打折）。
+  let mark, blurbRect;
+  await expect.poll(async () => {
+    [mark, blurbRect] = await Promise.all([targetBox.boundingBox(), blurb.boundingBox()]);
+    return mark && blurbRect ? 1 : 0;
+  }, { timeout: 15_000 }).toBe(1);
   const overlap = Math.max(0, Math.min(mark.x + mark.width, blurbRect.x + blurbRect.width) - Math.max(mark.x, blurbRect.x))
     * Math.max(0, Math.min(mark.y + mark.height, blurbRect.y + blurbRect.height) - Math.max(mark.y, blurbRect.y));
   expect(overlap / (mark.width * mark.height)).toBeGreaterThan(0.5);

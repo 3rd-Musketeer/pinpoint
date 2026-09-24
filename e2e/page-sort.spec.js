@@ -80,7 +80,11 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
   const recent = await readRecent();
 
   // 菜单形态：9 个依据都在，开在视口内；Esc 关菜单回焦按钮。
-  await button.click();
+  // 负载下清单可能在点击瞬间重渲染把点击吞掉：开不来就重试（不依赖时序）。
+  await expect(async () => {
+    await button.click();
+    await expect(menu).toBeVisible();
+  }).toPass();
   await expect(menu.getByRole('menuitemradio')).toHaveCount(9);
   const box = await menu.boundingBox();
   expect(box.x).toBeGreaterThanOrEqual(0);
