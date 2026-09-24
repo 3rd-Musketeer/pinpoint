@@ -382,7 +382,8 @@ export function syncEntries() {
 
 /** 分组层写完之后的当场生效（lib/folder-api.js 三条 PUT 的收尾）：应答就是重载
     后的完整 /registry 载荷，直接灌回 registry-sites 缓存再重建 manifest，左栏
-    当场重排。HMR 的 registry:update 随后照样会到，那一路顺带重摆当前板。 */
+    当场重排。HMR 的 registry:update 随后照样会到 —— 那条广播带 scope=grouping
+    （审计 B2），stage.js 只重拉清单刷新左栏，不再重摆当前板。 */
 export function refreshRegistry(payload) {
   if (payload) queryClient.setQueryData(['registry-sites'], registryToPages(payload));
   else queryClient.invalidateQueries({ queryKey: ['registry-sites'] });

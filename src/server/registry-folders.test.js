@@ -43,7 +43,8 @@ function withFixture(t) {
     dataRoot,
     root: dir,
     registry: store,
-    onRegistryReload: (summary) => reloads.push(summary),
+    // scope 平铺进捕获对象，既有的 summary 断言照旧可用。
+    onRegistryReload: (summary, scope) => reloads.push({ ...summary, scope }),
   });
   return { dir, dataRoot, registryFile, site, store, annotate, reloads };
 }
@@ -119,6 +120,27 @@ test('PUT /registry/order：一串 id 按序写 order，条目与模板页各落
   assert.equal(res.statusCode, 200);
   assert.deepEqual(json.entries.map((e) => [e.id, e.order]), [['mysite', 2], ['other', 0]]);
   assert.deepEqual(json.pageOrder, { 'component-library': 1 });
+});
+
+test('三条写接口的广播都带 scope=grouping，/registry/reload 是 entries（审计 B2）', async (t) => {
+  const f = withFixture(t);
+  await call(f.annotate, 'PUT', '/registry/folders', { folders: [{ id: 'wip', name: '在做' }] });
+  await call(f.annotate, 'PUT', '/registry/entries/mysite/folder', { folder: 'wip' });
+  await call(f.annotate, 'PUT', '/registry/order', { ids: ['mysite', 'other'] });
+  assert.deepEqual(
+    f.reloads.map((r) => r.scope),
+    ['grouping', 'grouping', 'grouping'],
+    '分组与顺序类写接口不触发条目级失效',
+  );
+
+  // CLI 写文件后的 reload：条目可能增删改名，照旧条目级。
+  writeRegistryFile(f.registryFile, { version: 1, entries: [
+    { id: 'mysite', title: 'My Site', kind: 'dir', path: f.site },
+    { id: 'other', title: 'Other', kind: 'url', url: 'https://other.localhost' },
+  ] });
+  const reload = await call(f.annotate, 'POST', '/registry/reload');
+  assert.equal(reload.res.statusCode, 200);
+  assert.equal(f.reloads[3].scope, 'entries');
 });
 
 test('未知 id / 未知文件夹 / 坏形状都是 400 + 一句人话，登记表一个字节不动', async (t) => {
