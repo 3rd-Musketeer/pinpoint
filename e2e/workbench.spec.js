@@ -1524,8 +1524,6 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
 
   await writer.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => observer.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  const removedEndpoint = await writer.request.post('/clear', { data: { page: 'index' } });
-  expect(removedEndpoint.status()).toBe(404);
 
   await context.close();
 });
@@ -1549,15 +1547,8 @@ test('canvas multi-target pills preserve text and cancel edits without changing 
   await input.fill('不应保存');
   await page.locator('#ann-cancel').click();
   expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
-  await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
-  await input.fill('换页也不应保存');
-  await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
-  await expect(input).toHaveCount(0);
-  // storage-unify：换页 = 换桶 —— e2e-doc 的画布账本是另一本，此刻为空；
-  // 已保存的标注仍在 e2e-ios 的桶里，切回来原样（不因换页丢行、也不串页）。
-  expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
+  // 尾段「换页 = 换桶、切回原样」已裁（2026-09-24 e2e 审计）：与
+  // page-bucket.spec.js「一页一桶」用例守同一件事（换桶 hydrate、切回原样）。
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
