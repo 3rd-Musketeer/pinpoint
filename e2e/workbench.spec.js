@@ -1739,6 +1739,50 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await page.keyboard.press('Escape');
 });
 
+// 2026-09-24 owner：框开着时点别的钉子要点两次才开（第一下被静默拦下，提示在
+// 隐藏的工具条里）；标注框上只有删除、没有完成。
+test('标注框：开着时点别的钉子，没改过直接换、改过留着并提示；框里的完成钮 close', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  await cells.nth(0).scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cells.nth(0), 'pin switch A');
+  // B 放在另一帧：同帧相邻的钉子会被 A 的框压住，点不到
+  const other = page.locator('#wb-board-panel [data-screen="msg-reply"] .ios-stage');
+  await other.scrollIntoViewIfNeeded();
+  await saveAnnotation(page, other, 'pin switch B');
+  const [nA, nB] = await page.evaluate(() => window.pinpoint.marks.slice(-2).map((m) => m.n));
+  // 画布离屏的钉子会隐藏：点钉子前先把它的目标滚进可视区
+  const clickBadge = async (n, target) => {
+    await target.scrollIntoViewIfNeeded();
+    await page.locator('#ann-marks .ann-badge').filter({ hasText: new RegExp('^' + n + '$') }).click();
+  };
+  const box = page.locator('#ann-box');
+  const input = box.locator('#ann-input');
+
+  await clickBadge(nA, cells.nth(0));
+  await expect(input).toContainText('pin switch A');
+  // 没改过：点一次 B 就换过去
+  await clickBadge(nB, other);
+  await expect(input).toContainText('pin switch B');
+
+  // 改过：点 A 不换，框留着 B 的修改，toast 说明原因
+  await input.click();
+  await page.keyboard.press('End');
+  await page.keyboard.type(' edited');
+  await clickBadge(nA, cells.nth(0));
+  await expect(input).toContainText('pin switch B edited');
+  await expect(page.locator('#ann-toast')).toContainText('未保存');
+
+  // 框里的完成钮：先存修改，再 close，框收起
+  await box.getByRole('button', { name: '完成标注', exact: true }).click();
+  await expect(box).toHaveCount(0);
+  await expect(page.locator('#ann-toast')).toContainText('已完成 #' + nB);
+  const b = await page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n), nB);
+  expect(b.status).toBe('close');
+  expect(b.content).toContain('pin switch B edited');
+});
+
 // 面板状态筛选 + 清空保留 close 故事（1812 / 1872 合并，2026-09-24 e2e 审计）：
 // 同一块弹出列表上先走完状态机（完成 → 撤销 → 再关闭 → closed 可见 → 重新
 // 打开），再在同一状态下验「清空只带走未关闭」—— 那正是 1 open + 1 close 的

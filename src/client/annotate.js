@@ -1216,7 +1216,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
     '#ann-box #ann-save{border-radius:999px;height:36px;font-size:14px;font-weight:500;padding:0 17px;background:var(--ann-ink,#111);color:var(--ann-on-ink,#fff)}#ann-box #ann-save:hover{background:var(--ann-ink-hover,#292929)}#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
     '#ann-box .t{font-size:11px;color:var(--wb-faint,#8d8d8d);line-height:1.45;margin-right:32px}',
-    '#ann-box #ann-cancel{border:1px solid var(--wb-seam,rgba(0,0,0,.1));border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}',
+    '#ann-box #ann-cancel{border:1px solid var(--wb-seam,rgba(0,0,0,.1));border-radius:999px;height:36px;padding:0 15px;font-size:14px;background:transparent}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#b84230);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}#ann-box #ann-close-mark{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#555);background:transparent}#ann-box #ann-close-mark:hover{color:var(--ann-st-done,#2f9e63);background:rgba(0,0,0,.04)}#ann-box #ann-close-mark svg{width:18px;height:18px}',
     '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:28px;}',
@@ -2349,6 +2349,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       '<button type="button" id="ann-change">' + annIcon('pencil') + '<span>改文案</span></button>' +
       '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
       '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
+      (isNew || (m.status || 'open') === 'close' ? '' : '<button type="button" id="ann-close-mark" aria-label="完成标注" title="完成（close）">' + annIcon('check') + '</button>') +
       '<button type="button" id="ann-cancel" aria-label="关闭标注">取消</button>' +
       '<button type="button" id="ann-save" class="dark" aria-label="发送标注">保存</button></div></div>';
     chromeLayer.appendChild(box);
@@ -2594,6 +2595,12 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
 
     // ---- 参考截图：粘贴或选文件，立即上传到本机服务，JSON 里存绝对路径供 Claude 读 ----
     var images = (m.images || []).slice();
+    // 打开时的快照：点别的钉子时，没改过就直接切过去，改过才拦（openMark）。
+    function editSnapshot() {
+      return JSON.stringify([ta.value, changeOn, researchOn, images.length, !!m.move, markElementTargets(m).length]);
+    }
+    var openedSnapshot = editSnapshot();
+    composer.isDirty = function () { return editSnapshot() !== openedSnapshot; };
     var imgWrap = box.querySelector('#ann-imgs');
     function renderImgs() {
       imgWrap.innerHTML = '';
@@ -2710,6 +2717,12 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var del = box.querySelector('#ann-del');
     if (del) del.addEventListener('click', function () {
       removeMark(m.n);
+    });
+    // 完成 = owner 确认（→ close），与列表行的完成勾同一条路；框里有没保存的修改先存。
+    var closeMarkBtn = box.querySelector('#ann-close-mark');
+    if (closeMarkBtn) closeMarkBtn.addEventListener('click', function () {
+      if (composer.isDirty()) save();
+      closeAnnotation(m.n);
     });
     box.querySelector('#ann-move').addEventListener('click', function () {
       if (isMarkBroken(m) || !anchorRect) {
@@ -2986,10 +2999,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   function wireMarkBadge(badge, n) {
     badge.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (activeComposer) {
-        if (activeComposer.persistedN !== n) setStatus('请先保存或取消当前标注', true);
-        return;
-      }
       openMark(n);
     });
     badge.addEventListener('mouseenter', function () { showBubbleFor(n, 120); });
@@ -3889,8 +3898,14 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var m = marks.find(function (k) { return k.n === n; });
     if (!m) return;
     if (activeComposer) {
-      if (activeComposer.persistedN !== n) setStatus('请先保存或取消当前标注', true);
-      return;
+      if (activeComposer.persistedN === n) return;
+      // 开着的框没改过：直接换到这条。改过：留着，提示用 toast（工作台里
+      // 工具条是隐藏的，setStatus 看不到）。
+      if (activeComposer.isDirty && activeComposer.isDirty()) {
+        showToast('当前标注有未保存的修改，先保存或取消');
+        return;
+      }
+      closeComposer();
     }
     var rect = markAnchorRect(m);
     openComposer(m, rect, false);
