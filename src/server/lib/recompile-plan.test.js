@@ -4,8 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { afterEach, beforeEach, describe, test } from 'node:test';
 
-import { compilePage } from './page-compiler.js';
-import { planPageRecompile, planRecompile } from './recompile-plan.js';
+import { compilePage, distStatus } from './page-compiler.js';
+import { findDrift, isWatchedSource, planPageRecompile, planRecompile } from './recompile-plan.js';
 
 let tmp;
 
@@ -144,5 +144,160 @@ describe('planPageRecompile：读盘包装', () => {
     // 板没了 → 全编（compilePage 那边会报板错误，同一条保守路）。
     fs.rmSync(path.join(target.pageDir, 'board.json'));
     assert.deepEqual(planPageRecompile(target, [changed], { distRoot }), { all: true });
+  });
+});
+
+describe('findDrift：build.json 与盘上对不上的文件', () => {
+  // 盘上 mtime 的替身：按页相对路径查表，表里没有 = 文件消失。
+  const disk = (table) => (file) => {
+    const rel = path.relative(abs(''), file).split(path.sep).join('/');
+    return Object.hasOwn(table, rel) ? table[rel] : null;
+  };
+  const SAME = { 'home.jsx': 900, 'detail.jsx': 900, 'about.html': 900, 'components/Shared.jsx': 800, 'board.json': 500 };
+
+  test('全部与记录一致、board.json 早于 builtAt → 无漂移', () => {
+    assert.equal(findDrift({ build: greenBuild(), exempt: [], pageDir: abs(''), mtimeOf: disk(SAME) }), null);
+  });
+
+  test('记录了 mtime 的文件：变了（含往回拨）或消失 → 漂移', () => {
+    assert.equal(findDrift({ build: greenBuild(), pageDir: abs(''), mtimeOf: disk({ ...SAME, 'components/Shared.jsx': 801 }) }), 'components/Shared.jsx');
+    assert.equal(findDrift({ build: greenBuild(), pageDir: abs(''), mtimeOf: disk({ ...SAME, 'about.html': 10 }) }), 'about.html');
+    const gone = { ...SAME };
+    delete gone['detail.jsx'];
+    assert.equal(findDrift({ build: greenBuild(), pageDir: abs(''), mtimeOf: disk(gone) }), 'detail.jsx');
+  });
+
+  test('这批变更里的文件不算漂移（它的屏正要重编）', () => {
+    const moved = { ...SAME, 'components/Shared.jsx': 801 };
+    assert.equal(findDrift({ build: greenBuild(), exempt: [abs('components/Shared.jsx')], pageDir: abs(''), mtimeOf: disk(moved) }), null);
+  });
+
+  test('没有 mtime 记录的文件（board.json、旧格式记录）与 builtAt 比', () => {
+    assert.equal(findDrift({ build: greenBuild(), pageDir: abs(''), mtimeOf: disk({ ...SAME, 'board.json': 1001 }) }), 'board.json');
+    const legacy = greenBuild();
+    delete legacy.sources.about.mtimeMs;
+    assert.equal(findDrift({ build: legacy, pageDir: abs(''), mtimeOf: disk({ ...SAME, 'about.html': 999 }) }), null);
+    assert.equal(findDrift({ build: legacy, pageDir: abs(''), mtimeOf: disk({ ...SAME, 'about.html': 1001 }) }), 'about.html');
+  });
+});
+
+describe('isWatchedSource：watch 盯哪些文件（review 必须修 2）', () => {
+  test('deps 可能出现的类型都盯', () => {
+    for (const rel of ['a.jsx', 'a.html', 'board.json', 'pk.css', 'pk.js', 'data.json', 'util.ts', 'Card.tsx', 'lib.mjs', 'lib.cjs', 'components/x/y.json']) {
+      assert.equal(isWatchedSource(rel), true, rel);
+    }
+  });
+
+  test('编译产物、依赖目录、非 deps 类型不盯', () => {
+    for (const rel of ['build.json', 'sub/build.json', 'node_modules/p/index.js', '.git/HEAD.json', 'notes.txt', 'shot.png', 'README.md']) {
+      assert.equal(isWatchedSource(rel), false, rel);
+    }
+    const distRoot = path.join(tmp, 'page', '.dist');
+    assert.equal(isWatchedSource(path.join(distRoot, 'p', 'a.html'), { distRoot }), false);
+    assert.equal(isWatchedSource(path.join(tmp, 'page', 'a.html'), { distRoot }), true);
+  });
+});
+
+describe('planPageRecompile：漂移校验把 watch 漏掉的改动拉回全编（review 必须修 1）', () => {
+  const FRAME = (body, head = '') => `${head}export default function F() {\n  return <div className="ios-app">${body}</div>;\n}\n`;
+  const BOARD = (ids) => JSON.stringify({ sections: [{ id: 'main', title: 'Main', layout: 'row', screens: ids.map((id) => ({ id, title: id })) }] });
+  const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+  async function compiled(name, files) {
+    const pageDir = path.join(tmp, name);
+    for (const [rel, content] of Object.entries(files)) {
+      fs.mkdirSync(path.dirname(path.join(pageDir, rel)), { recursive: true });
+      fs.writeFileSync(path.join(pageDir, rel), content);
+    }
+    const target = { entryId: name, pageDir, urlBase: `/sites/${name}/`, kind: 'dir' };
+    const distRoot = path.join(tmp, 'dist');
+    await compilePage(target, { distRoot });
+    const write = (rel, content) => fs.writeFileSync(path.join(pageDir, rel), content);
+    const dist = (id) => fs.readFileSync(path.join(distRoot, name, `${id}.html`), 'utf8');
+    return { target, distRoot, pageDir, write, dist };
+  }
+
+  // 走一拍 watch 的完整流程：算计划 → 按计划编 → 回报计划与编完后的 stale。
+  async function beat(page, changed, extra = {}) {
+    const plan = planPageRecompile(page.target, changed.map((rel) => path.join(page.pageDir, rel)), { distRoot: page.distRoot, ...extra });
+    await compilePage(page.target, { distRoot: page.distRoot, ...(plan.all ? {} : { onlyScreens: plan.screens }) });
+    return { plan, stale: distStatus(page.target.entryId, page.pageDir, { distRoot: page.distRoot }).stale };
+  }
+
+  test('帧 import 的 data.json 改了没事件，接着改另一帧 → 全编，旧画面被纠正', async () => {
+    const page = await compiled('json-dep', {
+      'board.json': BOARD(['a', 'b']),
+      'data.json': JSON.stringify({ text: 'data-v1' }),
+      'a.jsx': FRAME('<p>{data.text}</p>', "import data from './data.json';\n"),
+      'b.jsx': FRAME('<p>b-v1</p>'),
+    });
+    page.write('data.json', JSON.stringify({ text: 'data-v2' }));
+    page.write('b.jsx', FRAME('<p>b-v2</p>'));
+    const { plan, stale } = await beat(page, ['b.jsx']);
+    assert.deepEqual(plan, { all: true, drift: 'data.json' });
+    assert.match(page.dist('a'), /data-v2/);
+    assert.match(page.dist('b'), /b-v2/);
+    assert.equal(stale, false);
+  });
+
+  test('丢了 a.jsx 的事件，接着 b.jsx 正常一拍 → 全编，a 不停在旧版', async () => {
+    const page = await compiled('lost-event', {
+      'board.json': BOARD(['a', 'b']),
+      'a.jsx': FRAME('<p>a-v1</p>'),
+      'b.jsx': FRAME('<p>b-v1</p>'),
+    });
+    page.write('a.jsx', FRAME('<p>a-v2</p>'));
+    page.write('b.jsx', FRAME('<p>b-v2</p>'));
+    const { plan, stale } = await beat(page, ['b.jsx']);
+    assert.deepEqual(plan, { all: true, drift: 'a.jsx' });
+    assert.match(page.dist('a'), /a-v2/);
+    assert.equal(stale, false);
+  });
+
+  test('共享组件带外改了，另一屏的 html 事件到达 → 全编，引用组件的屏更新', async () => {
+    const page = await compiled('oob-component', {
+      'board.json': BOARD(['a', 'e']),
+      'a.jsx': FRAME('<Chip />', "import { Chip } from './components/Chip.jsx';\n"),
+      'components/Chip.jsx': 'export function Chip() {\n  return <span>chip-v1</span>;\n}\n',
+      'e.html': '<div class="ios-app">e1</div>\n',
+    });
+    page.write('components/Chip.jsx', 'export function Chip() {\n  return <span>chip-v2</span>;\n}\n');
+    page.write('e.html', '<div class="ios-app">e2</div>\n');
+    const { plan, stale } = await beat(page, ['e.html']);
+    assert.deepEqual(plan, { all: true, drift: 'components/Chip.jsx' });
+    assert.match(page.dist('a'), /chip-v2/);
+    assert.match(page.dist('e'), /e2/);
+    assert.equal(stale, false);
+  });
+
+  test('board.json 在上次编译之后改过却没进这批 → 全编', async () => {
+    const page = await compiled('board-drift', {
+      'board.json': BOARD(['a', 'b']),
+      'a.jsx': FRAME('<p>a</p>'),
+      'b.jsx': FRAME('<p>b</p>'),
+    });
+    await sleep(20); // board.json 没有 mtime 记录，与 builtAt 比；拉开间隔免得同拍
+    page.write('board.json', BOARD(['a', 'b']));
+    page.write('a.jsx', FRAME('<p>a2</p>'));
+    assert.deepEqual((await beat(page, ['a.jsx'])).plan, { all: true, drift: 'board.json' });
+  });
+
+  test('排在下一批的文件（pendingFiles）不算漂移：各拍各编，没改的屏不动', async () => {
+    const page = await compiled('pending', {
+      'board.json': BOARD(['a', 'b', 'c']),
+      'a.jsx': FRAME('<p>a1</p>'),
+      'b.jsx': FRAME('<p>b1</p>'),
+      'c.jsx': FRAME('<p>c1</p>'),
+    });
+    const cBefore = fs.statSync(path.join(page.distRoot, 'pending', 'c.html')).mtimeMs;
+    page.write('a.jsx', FRAME('<p>a2</p>'));
+    page.write('b.jsx', FRAME('<p>b2</p>'));
+    const first = await beat(page, ['a.jsx'], { pendingFiles: [path.join(page.pageDir, 'b.jsx')] });
+    assert.deepEqual(first.plan, { all: false, screens: ['a'] });
+    const second = await beat(page, ['b.jsx']);
+    assert.deepEqual(second.plan, { all: false, screens: ['b'] });
+    assert.match(page.dist('b'), /b2/);
+    assert.equal(second.stale, false);
+    assert.equal(fs.statSync(path.join(page.distRoot, 'pending', 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
   });
 });

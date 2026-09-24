@@ -92,7 +92,9 @@ test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）'
   assert.deepEqual(out, []);
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
 
-  // 子目录里的资源同样接住；顶层 board.json 照旧；嵌套 board.json 不是板。
+  // 子目录里的资源同样接住；顶层 board.json 照旧。嵌套 board.json 不是板，但
+  // .json 可能是帧 import 的数据（进 deps），现在同样触发 —— recompile-plan 认领
+  // 不到 → 整页重编，多编不少编。
   s.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'X.css'), server: s });
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
@@ -101,7 +103,31 @@ test('模板页 components/ 子目录变更 → 重编 + preview:update（M2）'
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
   s.sent.length = 0;
   await hit.handleHotUpdate({ file: path.join(pageDir, 'components', 'board.json'), server: s });
-  assert.equal(s.sent.length, 0);
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'tpl-page' } }]);
+});
+
+test('deps 可能出现的 json / ts / tsx / mjs / cjs 也触发重编；dist、build.json、node_modules 不触发（review 必须修 2）', async () => {
+  // dist 故意放进条目目录里：这是会自触发循环的布局（EXT 不存在，没有编译目标，
+  // 什么都不会写盘；命中的文件走「无编译目标 → 直接通知」分支）。
+  const distRoot = path.join(EXT, 'dist-out');
+  const hit = previewHmr({ registry: { entries: ENTRIES }, distRoot });
+  const s = fakeServer();
+  for (const name of ['data.json', 'util.ts', 'Card.tsx', 'lib.mjs', 'lib.cjs']) {
+    s.sent.length = 0;
+    await hit.handleHotUpdate({ file: path.join(EXT, name), server: s });
+    assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'ext-page' } }], name);
+  }
+  // 编译自己写出的东西与依赖目录：盯了就是「写盘 → 事件 → 再编译」的循环。
+  for (const file of [
+    path.join(EXT, 'node_modules', 'pkg', 'index.js'),
+    path.join(EXT, 'node_modules', 'pkg', 'package.json'),
+    path.join(EXT, 'build.json'),
+    path.join(distRoot, 'ext-page', 'home.html'),
+  ]) {
+    s.sent.length = 0;
+    assert.equal(await hit.handleHotUpdate({ file, server: s }), undefined, file);
+    assert.equal(s.sent.length, 0, file);
+  }
 });
 
 test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async (t) => {
