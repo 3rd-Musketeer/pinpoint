@@ -506,6 +506,22 @@ describe('缺源码与 build.json', () => {
     assert.equal(final.errors.a, undefined);
     assert.equal(fs.readFileSync(distFile(target, 'a.html'), 'utf8').includes('a3</div>'), true);
   });
+
+  test('onlyScreens 为空数组按全编处理：不许一屏不编只刷 builtAt（review 建议 2）', async () => {
+    const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+    const target = makePage('partial-empty', {
+      board,
+      files: { 'a.html': '<div class="ios-app">a1</div>\n', 'b.html': '<div class="ios-app">b1</div>\n' },
+    });
+    const distRoot = path.join(tmp, 'dist');
+    await compilePage(target, { distRoot });
+    fs.writeFileSync(path.join(target.pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
+    const result = await compilePage(target, { distRoot, onlyScreens: [] });
+    assert.deepEqual(result.screens.map((row) => row.id), ['a', 'b']);
+    assert.equal(result.partial, false);
+    assert.equal(fs.readFileSync(distFile(target, 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
+    assert.equal(distStatus('partial-empty', target.pageDir, { distRoot }).stale, false);
+  });
 });
 
 describe('dist 状态与 serve 读取', () => {
