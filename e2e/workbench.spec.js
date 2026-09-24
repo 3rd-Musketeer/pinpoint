@@ -915,6 +915,204 @@ test('HTML board: 评论 sidebar — bubbles render in a parent gutter outside t
   expect(back.iframeBubbles).toBe(2);
 });
 
+// ---- perf 审计 A4（2026-09-24）：gutter 渲染事件驱动，不再常驻 rAF ----
+// window.__wbGutter = { requests, renders }（ann-bridge 暴露的调试计数）：
+// requests = 重算排程次数（一次信号必须只排一次，多挂一层监听就会翻倍），
+// renders = 实际渲染次数（页面静止时必须为 0）。
+
+// 两条 A4 用例的公共前序：打开 e2e-doc、清账本、打两条标注（h1 / #s2）、
+// 评论布局切到右侧通道、滚回顶部。返回时 gutter 已渲染出 2 个气泡。
+async function openSidebarGutter(page) {
+  await openWorkbench(page);
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
+  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
+  const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
+  await expect(doc.locator('h1')).toHaveText('Sample Report');
+  await expect.poll(() => page.evaluate(() => !!(
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
+  ))).toBe(true);
+  await page.locator('#wbann-toggle').click();
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
+  ))).toBe(true);
+  await page.evaluate(() => {
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
+  });
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
+  ))).toBe(0);
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    const d = w.document;
+    function clickEl(sel) {
+      const el = d.querySelector(sel);
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true,
+        clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
+      el.dispatchEvent(new w.MouseEvent('mousedown', at));
+      el.dispatchEvent(new w.MouseEvent('mouseup', at));
+      const ta = d.querySelector('#ann-input');
+      ta.value = '评论 ' + sel;
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.querySelector('#ann-save').click();
+    }
+    clickEl('h1');
+    clickEl('#s2');
+  });
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().count
+  ))).toBe(2);
+  await pickBubbleMode(page, 'chan');
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    w.document.documentElement.style.scrollBehavior = 'auto';
+    w.document.documentElement.scrollTop = 0;
+  });
+  await expect.poll(() => page.evaluate(() => ({
+    on: document.querySelector('.wb-stage-wrap').getAttribute('data-ann-gutter'),
+    bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
+  }))).toEqual({ on: 'on', bubbles: 2 });
+}
+
+// 一次合成 scroll 信号后的排程数：事件驱动契约的直接观感。先空转两帧把在途
+// 的排程冲掉，归零后再发信号，读到的就是这一次信号自身的账。where = 'doc'
+// 滚 iframe 文档，'stage' 滚舞台 wrap。
+async function scrollRequests(page, where) {
+  return page.evaluate(async (where) => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    window.__wbGutter.requests = 0;
+    if (where === 'doc') {
+      document.querySelector('#wb-board-panel .wb-doc-frame')
+        .contentDocument.dispatchEvent(new Event('scroll'));
+    } else {
+      document.querySelector('.wb-stage-wrap').dispatchEvent(new Event('scroll'));
+    }
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return window.__wbGutter.requests;
+  }, where);
+}
+
+// 等背景里的一次性事件（SSE 接通、父级实例换页后的账本 hydrate 收尾这类，
+// 实测最晚约激活后 1.5s）全部落定：计数器连续 1.5s 不动才算静。之后的静止
+// 窗口里再有任何一次渲染都判失败。
+async function waitGutterQuiet(page) {
+  await expect.poll(async () => {
+    const a = await page.evaluate(() => window.__wbGutter.requests + ':' + window.__wbGutter.renders);
+    await page.waitForTimeout(1500);
+    const b = await page.evaluate(() => window.__wbGutter.requests + ':' + window.__wbGutter.renders);
+    return a === b ? 'quiet' : 'busy';
+  }, { timeout: 15000 }).toBe('quiet');
+  await page.evaluate(() => { window.__wbGutter.requests = 0; window.__wbGutter.renders = 0; });
+}
+
+test('gutter renders only on events: idle costs nothing, scroll repositions without rebuilding', async ({ page }) => {
+  await openSidebarGutter(page);
+
+  // 静止 1 秒：没有滚动 / 账本 / 尺寸信号，就一次排程、一次渲染都不该有。
+  await waitGutterQuiet(page);
+  await page.waitForTimeout(1000);
+  expect(await page.evaluate(() => ({
+    requests: window.__wbGutter.requests, renders: window.__wbGutter.renders,
+  }))).toEqual({ requests: 0, renders: 0 });
+
+  // 滚动 iframe：一个滚动信号合并成一帧一次重算；气泡节点复用（元素引用不变，
+  // innerHTML 不重建），#s2 的气泡跟着锚点上移 200px；滚出视口的 h1 气泡摘除。
+  // 注意挑 #s2 的气泡：h1 在页首，滚 200px 就出视口，它的气泡会被摘掉。
+  const before = await page.evaluate(() => {
+    const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
+    const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
+    return { n: s2.getAttribute('data-n'), top: parseFloat(s2.style.top) };
+  });
+  const scrolled = await page.evaluate(async (prev) => {
+    const f = document.querySelector('#wb-board-panel .wb-doc-frame');
+    f.contentDocument.documentElement.style.scrollBehavior = 'auto';
+    const target = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
+    window.__gutterBubble = target;
+    window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
+    f.contentWindow.scrollTo(0, 200);
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    const after = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
+    return {
+      requests: window.__wbGutter.requests,
+      renders: window.__wbGutter.renders,
+      sameNode: !!after && window.__gutterBubble === after,
+      topAfter: after ? parseFloat(after.style.top) : null,
+      bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
+    };
+  }, before);
+  expect(scrolled).toMatchObject({ requests: 1, renders: 1, sameNode: true, bubbles: 1 });
+  // 锚点随文档上移 200px，气泡 top 跟着走（顶到 gutter 沿口才夹在 margin 上）。
+  expect(Math.abs(scrolled.topAfter - Math.max(12, before.top - 200))).toBeLessThanOrEqual(2);
+});
+
+test('gutter tracks filter switches and new annotations through the snapshot subscription', async ({ page }) => {
+  await openSidebarGutter(page);
+  const bubbleCount = () => page.evaluate(() =>
+    document.querySelectorAll('#wb-ann-gutter .ann-bubble').length);
+
+  // 筛选切到 closed：两条 open 全退场；切回 pending 恢复。走的是 annotate 实例
+  // notify → 快照订阅 → syncGutterComments 这条已有事件链，不经任何轮询。
+  const setFilter = (v) => page.evaluate((v) => (
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.setStatusFilter(v)
+  ), v);
+  await setFilter('closed');
+  await expect.poll(bubbleCount).toBe(0);
+  await setFilter('pending');
+  await expect.poll(bubbleCount).toBe(2);
+
+  // 新增第三条（p.sub 与 h1 / #s2 同屏）：账本变化 → 气泡数跟上。
+  await page.evaluate(() => {
+    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+    const d = w.document;
+    const el = d.querySelector('p.sub');
+    const r = el.getBoundingClientRect();
+    const at = { bubbles: true, cancelable: true,
+      clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
+    el.dispatchEvent(new w.MouseEvent('mousedown', at));
+    el.dispatchEvent(new w.MouseEvent('mouseup', at));
+    const ta = d.querySelector('#ann-input');
+    ta.value = '评论 p.sub';
+    ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+    d.querySelector('#ann-save').click();
+  });
+  await expect.poll(bubbleCount).toBe(3);
+});
+
+test('gutter listeners detach on page switch and never stack on re-entry', async ({ page }) => {
+  await openSidebarGutter(page);
+  expect(await scrollRequests(page, 'doc')).toBe(1);
+
+  // 切到画布页：gutter 停，事件面全拆 —— 舞台滚动不再排程任何重算。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
+  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
+  await expect.poll(() => page.evaluate(() =>
+    document.querySelector('.wb-stage-wrap').getAttribute('data-ann-gutter'))).toBe(null);
+  const stageRequests = await page.evaluate(async () => {
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    window.__wbGutter.requests = 0;
+    document.querySelector('.wb-stage-wrap').dispatchEvent(new Event('scroll'));
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    return window.__wbGutter.requests;
+  });
+  expect(stageRequests).toBe(0);
+
+  // 切回来：新 iframe 实例布局回 inline，重选右侧通道后照常工作；新 document
+  // 上依旧一次信号一次排程（监听挪挂不叠层）。
+  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
+  const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
+  await expect(doc.locator('h1')).toHaveText('Sample Report');
+  await expect.poll(() => page.evaluate(() => !!(
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
+  ))).toBe(true);
+  await pickBubbleMode(page, 'chan');
+  await expect.poll(() => page.evaluate(() => ({
+    on: document.querySelector('.wb-stage-wrap').getAttribute('data-ann-gutter'),
+    bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
+  }))).toEqual({ on: 'on', bubbles: 2 });
+  expect(await scrollRequests(page, 'doc')).toBe(1);
+});
+
 test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
   let broken = true;
   // 坏页是 e2e-doc：「回到 Pages」落默认页（manifest.defaultPage = 范例页，好的），两头互不干扰。
