@@ -263,19 +263,19 @@ test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done�
   // 状态色上钉：done 行的序号圆是 done 绿（--ann-st-*，与画布钉子同组变量）
   await expect(row.locator('.wb-ann-num')).toHaveCSS('background-color', 'rgb(47, 158, 99)');
 
-  // done 行「完成」勾单击 → 行不退出列表：全部视图里沉底弱化，toast 出「撤销」
+  // done 行「完成」勾单击 → 行离开 pending 视图（去 closed），toast 出「撤销」
   // （acts 列 hover 才 pointer-events:auto，先 hover 行再点）
   await row.hover();
   await row.locator('.wb-ann-done').click();
-  await expect(row).toHaveClass(/wb-ann-item--closed/);
+  await expect(row).toHaveCount(0);
   const toast=page.locator('#ann-toast');
   await expect(toast).toBeVisible();
   await expect(toast).toContainText('已完成 #'+n);
 
-  // 撤销 → close 回关闭前的原态（这行关前是 done），行回正常亮度，toast 收起
+  // 撤销 → close 回关闭前的原态（这行关前是 done），行回 pending 视图，toast 收起
   await toast.locator('button').click();
   await expect.poll(()=>page.evaluate(n=>window.pinpoint.marks.find(m=>m.n===n).status,n)).toBe('done');
-  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
+  await expect(row).toHaveCount(1);
   await expect(toast).toBeHidden();
   // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
@@ -284,10 +284,9 @@ test('pp2 状态机：done 行点完成 → toast（已完成）撤销回 done�
   await expect(row.locator('.wb-ann-done')).toBeVisible();
   await row.hover();
   await row.locator('.wb-ann-done').click();
-  await expect(row).toHaveClass(/wb-ann-item--closed/);
+  await expect(row).toHaveCount(0);
   await page.locator('#ann-sidebar [data-ann-filter="closed"]').click();
   await expect(row).toHaveCount(1);
-  await expect(row).not.toHaveClass(/wb-ann-item--closed/);
   await expect(row.locator('.wb-ann-status-tag')).toHaveText('close');
 });
 

@@ -106,8 +106,7 @@ function AnnRow(props) {
   }
 
   return (
-    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on',
-      props.dim && 'wb-ann-item--closed')}
+    <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
       ref={rowRef} data-ann-n={r.n} data-ann-status={r.status || 'open'}
       onMouseEnter={openSoon} onMouseLeave={closeSoon}
       onFocus={openSoon} onBlur={closeSoon}
@@ -240,7 +239,7 @@ export function AnnPopover() {
 
   // 状态筛选：SSOT 在 annotate 实例里（setStatusFilter 落账本侧 LS，按页保留，
   // iframe 重载 / 切页后 annSnap 把值带回来）。列表与画布钉子吃同一个值。
-  var statusFilter = snap.statusFilter || 'all';
+  var statusFilter = snap.statusFilter || 'pending';
   var counts = annFilterCounts(items);
   var visibleItems = annFilterRows(items, statusFilter);
   function onFilterPick(value) {
@@ -251,7 +250,7 @@ export function AnnPopover() {
 
   var statusText = '';
   if (snap.available && snap.count) {
-    statusText = '共 ' + snap.count + ' 条' + (snap.countBroken ? '，' + snap.countBroken + ' 锚点失效' : '');
+    statusText = '待验收 ' + (snap.countPending || 0) + ' 条，共 ' + snap.count + ' 条' + (snap.countBroken ? '，' + snap.countBroken + ' 锚点失效' : '');
   }
 
   return (
@@ -260,7 +259,7 @@ export function AnnPopover() {
         <span className="wb-ann-pop-title text-[13px] font-semibold leading-none tracking-[-0.01em]">这页的标注</span>
         <span id="wbann-status" aria-live="polite" title={statusText}
           className="wb-ann-pop-count inline-flex min-w-[17px] items-center justify-center rounded-full bg-[var(--wb-fill)] px-[5px] font-[var(--wb-font-mono)] text-[10.5px] font-semibold leading-[17px] tabular-nums text-muted-foreground">
-          {snap.count || 0}
+          {snap.countPending || 0}
         </span>
         <span className="flex-1"></span>
         {/* 「···」只在有标注时出现 —— 里面唯一的一项是清空，没有标注就没有动作 */}
@@ -314,8 +313,8 @@ export function AnnPopover() {
         ) : null}
       </div>
 
-      {/* 状态筛选分段（2026-09-23，取代「已关闭 N」折叠段）：全部 · open · check ·
-          done · closed，各带计数；0 计数弱化但可点（点了就是空态，见列表主体）。 */}
+      {/* 状态筛选分段（owner 2026-09-24 两段）：pending = open / check / done，等 owner
+          验收；closed = owner 确认做完的。各带计数；0 计数弱化但可点（点了就是空态）。 */}
       {snap.available && items.length ? (
         <div className="mx-[9px] mb-1.5 flex flex-none gap-0.5 rounded-[var(--wb-r-2)] bg-[var(--wb-fill)] p-0.5"
           role="group" aria-label="按状态筛选" id="wbann-filters">
@@ -340,8 +339,7 @@ export function AnnPopover() {
       <div className="wb-ann-list flex min-h-0 flex-1 flex-col gap-px overflow-y-auto px-[7px] pb-2" id="wbann-list" ref={listRef}>
         {items.length ? (
           visibleItems.length ? visibleItems.map(function (r) {
-            return <AnnRow key={r.key} row={r} on={focusAnnN === r.n} onGoTo={onGoTo}
-              dim={statusFilter === 'all' && r.status === 'close'} />;
+            return <AnnRow key={r.key} row={r} on={focusAnnN === r.n} onGoTo={onGoTo} />;
           }) : (
             <div className="wb-ann-filter-empty m-auto py-4 text-center text-[11.5px]">
               没有 {annStatusLabel(statusFilter)} 的标注

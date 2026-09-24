@@ -109,13 +109,14 @@ export function syncAnnSnap() {
       bubbleLayout: st.bubbleLayout || 'inline',
       // 状态筛选 SSOT 在 annotate 实例（setStatusFilter 落 LS，按页保留）；
       // 实例切换（切页 / iframe 重载）后弹层从这里读回当前值。
-      statusFilter: st.statusFilter || 'all',
+      statusFilter: st.statusFilter || 'pending',
       connected: !!st.connected,
       syncError: !!st.syncError,
       count: st.count || 0,
       countLive: st.countLive || 0,
       countBroken: st.countBroken || 0,
       countClosed: st.countClosed || 0,
+      countPending: st.countPending || 0,
       countInvalid: st.countInvalid || 0,
       rows: rows
     }
