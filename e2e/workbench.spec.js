@@ -1133,6 +1133,9 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(panel.locator('.wb-screen-err-src')).toContainText('/sites/e2e-doc/board.json');
   await expect(panel.locator('[data-err-home]')).toHaveText('回到 Pages');
   await expect(panel.locator('[data-err-retry]')).toHaveText('重试');
+  // 加载失败的渲染接线（原 1302，判定本体已由 preview-contracts.test.js 守）：
+  // 错误落在 .wb-screen-err，且不把喂进来的内容嵌套成第二个工作台 #wbroot。
+  await expect(page.locator('#wb-board-panel #wbroot')).toHaveCount(0);
 
   // 「回到 Pages」= 落到默认页（manifest.defaultPage，范例页）+ 左栏展开（折叠着也要看得见 Pages）
   await page.locator('#wbside-toggle').click();
@@ -1142,6 +1145,8 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
+  // URL 同步随 activePageId（原 1242 的「回到 Pages」段）。
+  await expect.poll(() => page.url()).toContain('page=example');
 
   // 回到坏页 → 面板重现；修好后「重试」原地把板拉回来，不用刷新整页
   await page.getByRole('tab', {name:'页面', exact:true}).click();
@@ -1153,38 +1158,12 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
 });
 
-test('?page= 指向不存在的页 → 显式面板，地址栏留着坏 id（2026-09-04 深链失效）', async ({ page }) => {
-  await page.goto('/index.html?page=does-not-exist');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-
-  const panel = page.locator('#wb-board-panel .wb-screen-err');
-  await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
-  await expect(panel.locator('.wb-screen-err-src')).toHaveText('?page=does-not-exist');
-  await expect(panel.locator('.wb-screen-err-why')).toContainText('does-not-exist');
-  // 地址栏不被规范化：坏的是哪个 id 必须一直看得见
-  expect(page.url()).toContain('page=does-not-exist');
-  // 左栏照常渲染，别的页都还能点（本用例不经 openWorkbench，模板页默认藏着 ——
-  // 拿一个 registry 条目页断言，与模板页开关无关）
-  await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
-  // 肉眼可见：面板要落在**可用区**里（板面有 3200px 画布留白，不特判就跑到视口外
-  // 三千像素；2026-09-04 起还要让开压在画布上的左栏与横条）
-  expect(await page.evaluate(() => {
-    const a = document.querySelector('#wb-board-panel .wb-screen-err').getBoundingClientRect();
-    const b = document.getElementById('wbstage').getBoundingClientRect();
-    const side = document.getElementById('wbside').getBoundingClientRect();
-    const strip = document.getElementById('wbstrip').getBoundingClientRect();
-    return a.left >= side.right && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= strip.top;
-  })).toBe(true);
-
-  await panel.locator('[data-err-home]').click();
-  // 「回到 Pages」落默认页 = manifest.defaultPage（范例页）；URL 同步随 activePageId。
-  await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeVisible();
-  await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('example');
-  await expect.poll(() => page.url()).toContain('page=example');
-});
-
-test('深链失效面板的「重试」：页面清单里出现了那个 id 就直接打开它', async ({ page }) => {
+// 深链失效面板（1242 / 1273 合并，2026-09-24 e2e 审计）：坏 id 停在显式面板、
+// 地址栏保留坏 id 不被规范化；登记表出现该 id 后「重试」原地打开。路由方案取
+// 1273 的（藏 registry 条目，比凭空 id 更真实）；「回到 Pages 落默认页 + URL
+// 同步」并入 1203（那里已经点过 data-err-home）。面板几何（不能跑到 3200px
+// 画布留白外）只有真浏览器能量。
+test('?page= 指向不存在的页 → 显式面板；登记后「重试」原地打开（2026-09-04 深链失效）', async ({ page }) => {
   let hidden = true;
   await page.route('**/registry', async (route) => {
     if (!hidden) {
@@ -1201,9 +1180,25 @@ test('深链失效面板的「重试」：页面清单里出现了那个 id 就�
   await page.goto('/index.html?page=e2e-doc');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   const panel = page.locator('#wb-board-panel .wb-screen-err');
+  // 标题 / 出处 / 原因三行；地址栏不被规范化：坏的是哪个 id 必须一直看得见
   await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
+  await expect(panel.locator('.wb-screen-err-src')).toHaveText('?page=e2e-doc');
+  await expect(panel.locator('.wb-screen-err-why')).toContainText('e2e-doc');
   expect(page.url()).toContain('page=e2e-doc');
+  // 左栏照常渲染，别的页都还能点（本用例不经 openWorkbench，模板页默认藏着 ——
+  // 拿一个 registry 条目页断言，与模板页开关无关）
+  await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
+  // 肉眼可见：面板要落在**可用区**里（板面有 3200px 画布留白，不特判就跑到视口外
+  // 三千像素；2026-09-04 起还要让开压在画布上的左栏与横条）
+  expect(await page.evaluate(() => {
+    const a = document.querySelector('#wb-board-panel .wb-screen-err').getBoundingClientRect();
+    const b = document.getElementById('wbstage').getBoundingClientRect();
+    const side = document.getElementById('wbside').getBoundingClientRect();
+    const strip = document.getElementById('wbstrip').getBoundingClientRect();
+    return a.left >= side.right && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= strip.top;
+  })).toBe(true);
 
+  // 登记表恢复后「重试」直接打开该页
   hidden = false;
   await panel.locator('[data-err-retry]').click();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
@@ -1211,20 +1206,6 @@ test('深链失效面板的「重试」：页面清单里出现了那个 id 就�
   await expect(page.locator('#wb-board-panel .wb-doc-frame').first()).toBeVisible();
   // 落到真实页后地址栏恢复同步
   await expect.poll(() => page.url()).toContain('page=e2e-doc');
-});
-
-test('screen loader rejects a dev-server fallback document instead of nesting the workbench', async ({ page }) => {
-  await page.route('**/sites/e2e-ios/home.html*', (route) => route.fulfill({
-    status: 200,
-    contentType: 'text/html',
-    body: '<!doctype html><html><head><title>pinpoint</title></head><body><div id="wbroot" class="wb"><aside class="wb-side">Sidebar</aside></div></body></html>',
-  }));
-
-  await openWorkbench(page);
-
-  const frame = page.locator('#wb-board-panel [data-screen="home"]');
-  await expect(frame.locator('.wb-screen-err')).toContainText('full HTML document');
-  await expect(frame.locator('#wbroot, .wb-side')).toHaveCount(0);
 });
 
 test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
