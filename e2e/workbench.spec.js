@@ -345,71 +345,13 @@ test('sidebar rows expose locator copy / rename via right-click menu (2026-08-17
 
 });
 
-test('doc annotate layer stays pinned to the viewport after the document scrolls', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-
-  const doc = page.frameLocator('#wb-board-panel .wb-doc-frame');
-  await expect(doc.locator('h1')).toHaveText('Sample Report');
-  // The document wires annotate itself (localhost only) — no workbench stage inside the iframe.
-  // Plain docs carry no board chrome to keep unselectable — the whole body is the
-  // hit surface. (The wb-html-surface opt-in went away with the web shell; the
-  // client's dead branches for it were removed on 2026-09-04, see BACKLOG.)
-  await expect.poll(() => page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    return !!(w && w.pinpoint);
-  })).toBe(true);
-
-  // Scroll first and let the scroll settle, the way a reader actually does it —
-  // hovering in the same synchronous block measures a pre-scroll layout.
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    w.pinpoint.setMode(true);
-    w.document.documentElement.style.scrollBehavior = 'auto';
-    w.document.documentElement.scrollTop = 800;
-  });
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.scrollY
-  ))).toBe(800);
-
-  // 一次 elementFromPoint + mousemove 采样是几何量测，全量负载下 ghost 可能还没
-  // 落位（BACKLOG「frame 菜单 hit-test 的套件内 flake」同类：裸 expect 无 poll）。
-  // 整个采样连同判据放进 expect.poll —— 失败即重采，不是重跑一遍断言。
-  // With no workbench stage the overlay must be pinned to the viewport. Left as
-  // position:absolute it anchors at the document origin, is only one screen tall,
-  // and clips everything below the fold — which reads as "annotate does nothing".
-  const sampleGhost = () => page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const ov = d.getElementById('ann-overlay');
-    const el = d.elementFromPoint(300, 300);
-    if (!el || !ov) return { ready: false };
-    el.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 300, clientY: 300 }));
-    const ghost = d.querySelector('#ann-hover-layer > *');
-    const g = ghost && ghost.getBoundingClientRect();
-    const t = el.getBoundingClientRect();
-    return {
-      ready: true,
-      scrolled: w.scrollY > 0,
-      overlayPosition: w.getComputedStyle(ov).position,
-      overlayY: Math.round(ov.getBoundingClientRect().y),
-      tracksTarget: !!g && Math.abs(Math.round(g.y) - Math.round(t.y)) <= 2,
-      ghostVisible: !!g && Math.round(g.width) > 0 &&
-        Math.round(g.bottom) > 0 && Math.round(g.y) < w.innerHeight,
-    };
-  });
-  await expect.poll(sampleGhost, { timeout: 15000 }).toEqual({
-    ready: true,
-    scrolled: true,
-    overlayPosition: 'fixed',
-    overlayY: 0,
-    tracksTarget: true,
-    ghostVisible: true,
-  });
-});
-
-test('HTML board: sidebar drives the document annotate instance and lists its marks', async ({ page }) => {
+// e2e-doc 标注桥故事（370 / 434 / 492 / 560 / 1316 合并，2026-09-24 e2e 审计）：
+// 侧栏 ↔ iframe 客户端这条桥的四个侧面加一次重载重绑，串成一条顺序故事 ——
+// 桥接通（侧栏驱动 iframe 实例、标注进列表）→ 滚动后 overlay 钉在视口 →
+// 交互视图隐藏不误判失效 → SVG 目标不误判失效 → iframe 强刷后桥自动重绑。
+// 五条原本各自开一次 e2e-doc、各自等实例、各自 clear；合并后开页成本只付一次，
+// 断言一条不丢。
+test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动钉视口、隐藏/SVG 不误判、重载重绑', async ({ page }) => {
   await openWorkbench(page);
   await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
@@ -420,183 +362,257 @@ test('HTML board: sidebar drives the document annotate instance and lists its ma
     const st = w.pinpoint.getState();
     return { mode: st.mode, count: st.count, toolbar: w.document.getElementById('ann-toolbar').style.display };
   });
-  await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
-  ))).toBe(true);
 
-  // Embedded: the sidebar is the control surface, so the document hides its own toolbar.
-  expect((await docState()).toolbar).toBe('none');
-  expect((await docState()).mode).toBe(false);
+  await test.step('HTML board: sidebar drives the document annotate instance and lists its marks', async () => {
+    await expect.poll(() => page.evaluate(() => !!(
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
+    ))).toBe(true);
 
-  // The sidebar toggle must reach the iframe's instance, not the parent's — two
-  // disconnected instances is what made "annotate mode does nothing" from the sidebar.
-  await page.locator('#wbann-toggle').click();
-  await expect.poll(async () => (await docState()).mode).toBe(true);
-  await expect(page.locator('#wbann-toggle')).toHaveClass(/on/);
-  // 模式两段（2026-09-04 裁决 7，取代 ADR 0011 单钮）：选中 = 实心 accent + aria-pressed
-  await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
-  await expect(page.locator('#wbann-interact')).toHaveAttribute('aria-pressed', 'false');
+    // Embedded: the sidebar is the control surface, so the document hides its own toolbar.
+    expect((await docState()).toolbar).toBe('none');
+    expect((await docState()).mode).toBe(false);
 
-  // Prior tests may have left marks on the shared on-disk doc.
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
-  });
-  await expect.poll(async () => (await docState()).count).toBe(0);
+    // The sidebar toggle must reach the iframe's instance, not the parent's — two
+    // disconnected instances is what made "annotate mode does nothing" from the sidebar.
+    await page.locator('#wbann-toggle').click();
+    await expect.poll(async () => (await docState()).mode).toBe(true);
+    await expect(page.locator('#wbann-toggle')).toHaveClass(/on/);
+    // 模式两段（2026-09-04 裁决 7，取代 ADR 0011 单钮）：选中 = 实心 accent + aria-pressed
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect(page.locator('#wbann-interact')).toHaveAttribute('aria-pressed', 'false');
 
-  // A mark made in the document must appear in the sidebar list. On a plain
-  // document every mark belongs to the page — the workbench page/canvas filters
-  // do not apply, and applying them made count read 0 with marks on screen.
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const el = d.querySelector('h1');
-    const r = el.getBoundingClientRect();
-    const at = { bubbles: true, cancelable: true, clientX: Math.round(r.x + 8), clientY: Math.round(r.y + 8), button: 0 };
-    el.dispatchEvent(new w.MouseEvent('mousedown', at));
-    el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('#ann-input');
-    ta.value = 'sidebar sync check';
-    ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    d.querySelector('#ann-save').click();
-  });
+    // 共享落盘文档可能有别的用例留下的存留，先清零再断精确计数。
+    await page.evaluate(() => {
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
+    });
+    await expect.poll(async () => (await docState()).count).toBe(0);
 
-  await expect.poll(async () => (await docState()).count).toBe(1);
-  await openAnnList(page);
-  await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
-  await expect(page.locator('#wbann-list')).toContainText('sidebar sync check');
-  await closeAnnList(page);
-});
+    // A mark made in the document must appear in the sidebar list. On a plain
+    // document every mark belongs to the page — the workbench page/canvas filters
+    // do not apply, and applying them made count read 0 with marks on screen.
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const el = d.querySelector('h1');
+      const r = el.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true, clientX: Math.round(r.x + 8), clientY: Math.round(r.y + 8), button: 0 };
+      el.dispatchEvent(new w.MouseEvent('mousedown', at));
+      el.dispatchEvent(new w.MouseEvent('mouseup', at));
+      const ta = d.querySelector('#ann-input');
+      ta.value = 'sidebar sync check';
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.querySelector('#ann-save').click();
+    });
 
-test('HTML board: annotations redraw when an interactive view hides and returns', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-  await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
-  await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
-  ))).toBe(true);
-
-  await page.locator('#wbann-toggle').click();
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
+    await expect.poll(async () => (await docState()).count).toBe(1);
+    await openAnnList(page);
+    await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
+    await expect(page.locator('#wbann-list')).toContainText('sidebar sync check');
+    await closeAnnList(page);
   });
 
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const el = d.querySelector('h1');
-    const r = el.getBoundingClientRect();
-    const at = {
-      bubbles: true,
-      cancelable: true,
-      clientX: Math.round(r.x + 8),
-      clientY: Math.round(r.y + 8),
-      button: 0,
-    };
-    el.dispatchEvent(new w.MouseEvent('mousedown', at));
-    el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('#ann-input');
-    ta.value = 'interactive view redraw';
-    ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    d.querySelector('#ann-save').click();
+  await test.step('doc annotate layer stays pinned to the viewport after the document scrolls', async () => {
+    // The document wires annotate itself (localhost only) — no workbench stage inside the iframe.
+    // Plain docs carry no board chrome to keep unselectable — the whole body is the
+    // hit surface. (The wb-html-surface opt-in went away with the web shell; the
+    // client's dead branches for it were removed on 2026-09-04, see BACKLOG.)
+
+    // Scroll first and let the scroll settle, the way a reader actually does it —
+    // hovering in the same synchronous block measures a pre-scroll layout.
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      w.document.documentElement.style.scrollBehavior = 'auto';
+      w.document.documentElement.scrollTop = 800;
+    });
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.scrollY
+    ))).toBe(800);
+
+    // 一次 elementFromPoint + mousemove 采样是几何量测，全量负载下 ghost 可能还没
+    // 落位（BACKLOG「frame 菜单 hit-test 的套件内 flake」同类：裸 expect 无 poll）。
+    // 整个采样连同判据放进 expect.poll —— 失败即重采，不是重跑一遍断言。
+    // With no workbench stage the overlay must be pinned to the viewport. Left as
+    // position:absolute it anchors at the document origin, is only one screen tall,
+    // and clips everything below the fold — which reads as "annotate does nothing".
+    const sampleGhost = () => page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const ov = d.getElementById('ann-overlay');
+      const el = d.elementFromPoint(300, 300);
+      if (!el || !ov) return { ready: false };
+      el.dispatchEvent(new w.MouseEvent('mousemove', { bubbles: true, clientX: 300, clientY: 300 }));
+      const ghost = d.querySelector('#ann-hover-layer > *');
+      const g = ghost && ghost.getBoundingClientRect();
+      const t = el.getBoundingClientRect();
+      return {
+        ready: true,
+        scrolled: w.scrollY > 0,
+        overlayPosition: w.getComputedStyle(ov).position,
+        overlayY: Math.round(ov.getBoundingClientRect().y),
+        tracksTarget: !!g && Math.abs(Math.round(g.y) - Math.round(t.y)) <= 2,
+        ghostVisible: !!g && Math.round(g.width) > 0 &&
+          Math.round(g.bottom) > 0 && Math.round(g.y) < w.innerHeight,
+      };
+    });
+    await expect.poll(sampleGhost, { timeout: 15000 }).toEqual({
+      ready: true,
+      scrolled: true,
+      overlayPosition: 'fixed',
+      overlayY: 0,
+      tracksTarget: true,
+      ghostVisible: true,
+    });
   });
 
-  const docState = () => page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    return w.pinpoint.getState();
+  await test.step('HTML board: annotations redraw when an interactive view hides and returns', async () => {
+    // 上一段把文档滚到了 800，滚回顶部再量 hidden / restore（回到原用例的前提）。
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      w.document.documentElement.style.scrollBehavior = 'auto';
+      w.document.documentElement.scrollTop = 0;
+    });
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.scrollY
+    ))).toBe(0);
+
+    // 前一段留了一条标注；本段的计数断言按唯一一条算，先清干净。
+    await page.evaluate(() => {
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.clear();
+    });
+    await expect.poll(async () => (await docState()).count).toBe(0);
+
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const el = d.querySelector('h1');
+      const r = el.getBoundingClientRect();
+      const at = {
+        bubbles: true,
+        cancelable: true,
+        clientX: Math.round(r.x + 8),
+        clientY: Math.round(r.y + 8),
+        button: 0,
+      };
+      el.dispatchEvent(new w.MouseEvent('mousedown', at));
+      el.dispatchEvent(new w.MouseEvent('mouseup', at));
+      const ta = d.querySelector('#ann-input');
+      ta.value = 'interactive view redraw';
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.querySelector('#ann-save').click();
+    });
+
+    const docTargetCount = () => page.evaluate(() => {
+      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+      return d.querySelectorAll('#ann-marks .ann-target').length;
+    });
+
+    await expect.poll(docTargetCount).toBe(1);
+    await expect.poll(async () => (await docState()).countLive).toBe(1);
+
+    // Product navigation commonly uses hidden/class changes without scroll or
+    // resize. The mark remains persisted but leaves the canvas while its target
+    // is off-view; it must not be mislabeled as a broken selector.
+    await page.evaluate(() => {
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = true;
+    });
+    await expect.poll(docTargetCount).toBe(0);
+    await expect.poll(async () => (await docState()).countHidden).toBe(1);
+    expect((await docState()).countBroken).toBe(0);
+    await openAnnList(page);
+    await expect(page.locator('#wbann-list')).not.toContainText('锚点失效');
+    await closeAnnList(page);
+
+    // Returning to the prior product view is enough; no manual scroll, resize,
+    // or pinpoint.render() call should be required.
+    await page.evaluate(() => {
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = false;
+    });
+    await expect.poll(docTargetCount).toBe(1);
+    await expect.poll(async () => (await docState()).countLive).toBe(1);
   });
-  const docTargetCount = () => page.evaluate(() => {
-    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-    return d.querySelectorAll('#ann-marks .ann-target').length;
+
+  await test.step('HTML board: annotations on SVG elements are not falsely broken', async () => {
+    // SVG elements have no offsetParent; the old probe falsely read them as hidden
+    // and showed 锚点失效 even though the hover box drew fine. The SVG chart sits at
+    // the bottom of a tall doc, so scroll it into view first, then hover an SVG
+    // <text> — the ghost must render (also proves the plain-doc surface fallback
+    // makes body the hit surface so SVG children are selectable).
+    // 采样与判据整体进 expect.poll（原裸 evaluate 采样改写，同上一段写法）。
+    const sampleSvgHover = () => page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const el = [...d.querySelectorAll('#sample-chart text')].find((t) => /峰值/.test(t.textContent));
+      if (!el) return { ready: false, ghostDrawn: false };
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      el.dispatchEvent(new w.MouseEvent('mousemove', {
+        bubbles: true, clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2),
+      }));
+      const ghost = d.querySelector('#ann-hover-layer > *');
+      const g = ghost && ghost.getBoundingClientRect();
+      return {
+        ready: true,
+        ghostDrawn: !!g && Math.round(g.width) > 0 && ghost.hidden === false,
+      };
+    });
+    await expect.poll(sampleSvgHover, { timeout: 15000 }).toEqual({ ready: true, ghostDrawn: true });
+
+    // Click the SVG <text> and confirm the composer treats it as a live target:
+    // no 锚点失效 banner, no broken pill. 点选只做一次 —— 标注模式里重复点击会给
+    // 草稿追加目标；poll 只负责读回 composer 的落点状态。
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const el = [...d.querySelectorAll('#sample-chart text')].find((t) => /峰值/.test(t.textContent));
+      el.scrollIntoView({ block: 'center' });
+      const r = el.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true,
+        clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
+      el.dispatchEvent(new w.MouseEvent('mousedown', at));
+      el.dispatchEvent(new w.MouseEvent('mouseup', at));
+    });
+    const composerState = () => page.evaluate(() => {
+      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+      const box = d.getElementById('ann-box');
+      const pill = box && box.querySelector('.ann-inline-target');
+      return {
+        boxOpen: !!box,
+        brokenText: /锚点失效/.test(box ? (box.textContent || '') : ''),
+        pillBroken: pill ? pill.classList.contains('broken') : null,
+        pillLabel: pill ? pill.textContent : null,
+      };
+    });
+    await expect.poll(composerState, { timeout: 15000 }).toMatchObject({
+      boxOpen: true,
+      brokenText: false,
+      pillBroken: false,
+    });
+    expect((await composerState()).pillLabel).toContain('峰值');
   });
 
-  await expect.poll(docTargetCount).toBe(1);
-  await expect.poll(async () => (await docState()).countLive).toBe(1);
+  await test.step('doc iframe 重载后标注桥自动重绑（2026-08-17e）', async () => {
+    // 先关标注模式再强刷：重载出的新客户端 mode 从 false 起步，「再开得动」
+    // 才能证明桥接的是新实例 —— 旧实例销毁后 onUpdate 订阅不跟着搬
+    // （debugging.md 2026-08-17 条目记的次生现象）。
+    await page.locator('#wbann-toggle').click();
+    await expect.poll(async () => (await docState()).mode).toBe(false);
 
-  // Product navigation commonly uses hidden/class changes without scroll or
-  // resize. The mark remains persisted but leaves the canvas while its target
-  // is off-view; it must not be mislabeled as a broken selector.
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = true;
+    // 给旧窗口打标记：poll 抓到 contentWindow.pinpoint 时能确认是新文档的
+    // 实例，不是 reload 还没 detached 的旧实例。
+    await page.evaluate(() => {
+      const f = document.querySelector('#wb-board-panel .wb-doc-frame');
+      f.contentWindow.__retiredInstance = true;
+      f.src = f.src;
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      return !!(w && w.pinpoint && !w.__retiredInstance);
+    })).toBe(true);
+
+    // 桥持续轮询并重绑：侧栏模式切换驱动的是新客户端
+    await page.locator('#wbann-toggle').click();
+    await expect.poll(async () => (await docState()).mode).toBe(true);
   });
-  await expect.poll(docTargetCount).toBe(0);
-  await expect.poll(async () => (await docState()).countHidden).toBe(1);
-  expect((await docState()).countBroken).toBe(0);
-  await openAnnList(page);
-  await expect(page.locator('#wbann-list')).not.toContainText('锚点失效');
-  await closeAnnList(page);
-
-  // Returning to the prior product view is enough; no manual scroll, resize,
-  // or pinpoint.render() call should be required.
-  await page.evaluate(() => {
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument.querySelector('h1').hidden = false;
-  });
-  await expect.poll(docTargetCount).toBe(1);
-  await expect.poll(async () => (await docState()).countLive).toBe(1);
-});
-
-test('HTML board: annotations on SVG elements are not falsely broken', async ({ page }) => {
-  await openWorkbench(page);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
-  await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
-
-  await expect.poll(() => page.evaluate(() => !!(
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint
-  ))).toBe(true);
-
-  // Sidebar drives the iframe instance.
-  await page.locator('#wbann-toggle').click();
-  await expect.poll(() => page.evaluate(() => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.getState().mode
-  ))).toBe(true);
-
-  // SVG elements have no offsetParent; the old probe falsely read them as hidden
-  // and showed 锚点失效 even though the hover box drew fine. The SVG chart sits at
-  // the bottom of a tall doc, so scroll it into view first, then hover an SVG
-  // <text> — the ghost must render (also proves the plain-doc surface fallback
-  // makes body the hit surface so SVG children are selectable).
-  const hover = await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const el = [...d.querySelectorAll('#sample-chart text')].find((t) => /峰值/.test(t.textContent));
-    el.scrollIntoView({ block: 'center' });
-    const r = el.getBoundingClientRect();
-    el.dispatchEvent(new w.MouseEvent('mousemove', {
-      bubbles: true, clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2),
-    }));
-    const ghost = d.querySelector('#ann-hover-layer > *');
-    const g = ghost && ghost.getBoundingClientRect();
-    return { ghostW: g ? Math.round(g.width) : 0, ghostHidden: ghost ? ghost.hidden : null };
-  });
-  expect(hover.ghostW).toBeGreaterThan(0);
-  expect(hover.ghostHidden).toBe(false);
-
-  // Click the SVG <text> and confirm the composer treats it as a live target:
-  // no 锚点失效 banner, no broken pill.
-  const out = await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const el = [...d.querySelectorAll('#sample-chart text')].find((t) => /峰值/.test(t.textContent));
-    el.scrollIntoView({ block: 'center' });
-    const r = el.getBoundingClientRect();
-    const at = { bubbles: true, cancelable: true,
-      clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
-    el.dispatchEvent(new w.MouseEvent('mousedown', at));
-    el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const box = d.getElementById('ann-box');
-    const pill = box && box.querySelector('.ann-inline-target');
-    return {
-      boxOpen: !!box,
-      brokenText: /锚点失效/.test(box ? (box.textContent || '') : ''),
-      pillBroken: pill ? pill.classList.contains('broken') : null,
-      pillLabel: pill ? pill.textContent : null,
-    };
-  });
-  expect(out.boxOpen).toBe(true);
-  expect(out.brokenText).toBe(false);
-  expect(out.pillBroken).toBe(false);
-  expect(out.pillLabel).toContain('峰值');
 });
 
 test('HTML board: "render comments" toggle draws content bubbles on the canvas', async ({ page }) => {
@@ -1289,35 +1305,6 @@ test('screen loader rejects a dev-server fallback document instead of nesting th
   const frame = page.locator('#wb-board-panel [data-screen="home"]');
   await expect(frame.locator('.wb-screen-err')).toContainText('full HTML document');
   await expect(frame.locator('#wbroot, .wb-side')).toHaveCount(0);
-});
-
-test('doc iframe 重载后标注桥自动重绑（2026-08-17e）', async ({ page }) => {
-  await page.goto('/index.html?page=e2e-doc');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  const frame = page.locator('.wb-doc-frame');
-  await expect(frame).toBeVisible();
-  await page.waitForFunction(() => {
-    const f = document.querySelector('.wb-doc-frame');
-    return f && f.contentWindow && f.contentWindow.pinpoint;
-  });
-
-  // 强制 iframe 重载（等价 HMR 后的文档刷新），客户端换成新实例
-  await page.evaluate(() => {
-    const f = document.querySelector('.wb-doc-frame');
-    f.src = f.src;
-  });
-  await page.waitForFunction(() => {
-    const f = document.querySelector('.wb-doc-frame');
-    return f && f.contentWindow && f.contentWindow.pinpoint;
-  });
-
-  // 桥持续轮询并重绑：侧栏模式切换驱动的是新客户端
-  await page.locator('#wbann-toggle').click();
-  await page.waitForFunction(() => {
-    const f = document.querySelector('.wb-doc-frame');
-    return f && f.contentWindow && f.contentWindow.pinpoint
-      && f.contentWindow.pinpoint.getState().mode === true;
-  });
 });
 
 test('interactive frames: inline script (form A) and sidecar mount (form B) respond', async ({ page }) => {
