@@ -896,77 +896,188 @@ async function waitGutterQuiet(page) {
   await page.evaluate(() => { window.__wbGutter.requests = 0; window.__wbGutter.renders = 0; });
 }
 
-test('gutter renders only on events: idle costs nothing, scroll repositions without rebuilding', async ({ page }) => {
+// gutter 事件驱动故事（1010 / 1050 / 1121 合并，2026-09-24 e2e 审计）：共用
+// openSidebarGutter 前序，串成一条顺序故事走完四个触发源 —— 静止零渲染、
+// 滚动增量重排、筛选 / 账本变化、晚到图片 load。滚动段会把 h1 滚出 iframe
+// 视口（气泡摘除），每段之间滚回顶部等气泡回来再量。1083（跨页拆挂）要换
+// iframe 实例，单独留一条。
+test('gutter renders only on events: idle, scroll, filter/ledger changes, and late layout shifts', async ({ page }) => {
   await openSidebarGutter(page);
 
-  // 静止 1 秒：没有滚动 / 账本 / 尺寸信号，就一次排程、一次渲染都不该有。
-  await waitGutterQuiet(page);
-  await page.waitForTimeout(1000);
-  expect(await page.evaluate(() => ({
-    requests: window.__wbGutter.requests, renders: window.__wbGutter.renders,
-  }))).toEqual({ requests: 0, renders: 0 });
+  // 滚回文档顶部，等离屏摘掉的气泡（h1）重新渲染出来。
+  const backToTop = async () => {
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      w.document.documentElement.style.scrollBehavior = 'auto';
+      w.document.documentElement.scrollTop = 0;
+    });
+    await expect.poll(() => page.evaluate(() => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.scrollY
+    ))).toBe(0);
+    await expect.poll(() => page.evaluate(() => {
+      const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
+      return bubbles.filter((b) => /评论 h1|评论 #s2/.test(b.textContent || '')).length;
+    })).toBe(2);
+  };
 
-  // 滚动 iframe：一个滚动信号合并成一帧一次重算；气泡节点复用（元素引用不变，
-  // innerHTML 不重建），#s2 的气泡跟着锚点上移 200px；滚出视口的 h1 气泡摘除。
-  // 注意挑 #s2 的气泡：h1 在页首，滚 200px 就出视口，它的气泡会被摘掉。
-  const before = await page.evaluate(() => {
-    const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
-    const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
-    return { n: s2.getAttribute('data-n'), top: parseFloat(s2.style.top) };
+  await test.step('gutter renders only on events: idle costs nothing, scroll repositions without rebuilding', async () => {
+    // 静止 1 秒：没有滚动 / 账本 / 尺寸信号，就一次排程、一次渲染都不该有。
+    await waitGutterQuiet(page);
+    await page.waitForTimeout(1000);
+    expect(await page.evaluate(() => ({
+      requests: window.__wbGutter.requests, renders: window.__wbGutter.renders,
+    }))).toEqual({ requests: 0, renders: 0 });
+
+    // 滚动 iframe：一个滚动信号合并成一帧一次重算；气泡节点复用（元素引用不变，
+    // innerHTML 不重建），#s2 的气泡跟着锚点上移 200px；滚出视口的 h1 气泡摘除。
+    // 注意挑 #s2 的气泡：h1 在页首，滚 200px 就出视口，它的气泡会被摘掉。
+    const before = await page.evaluate(() => {
+      const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
+      const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
+      return { n: s2.getAttribute('data-n'), top: parseFloat(s2.style.top) };
+    });
+    const scrolled = await page.evaluate(async (prev) => {
+      const f = document.querySelector('#wb-board-panel .wb-doc-frame');
+      f.contentDocument.documentElement.style.scrollBehavior = 'auto';
+      const target = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
+      window.__gutterBubble = target;
+      window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
+      f.contentWindow.scrollTo(0, 200);
+      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+      const after = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
+      return {
+        requests: window.__wbGutter.requests,
+        renders: window.__wbGutter.renders,
+        sameNode: !!after && window.__gutterBubble === after,
+        topAfter: after ? parseFloat(after.style.top) : null,
+        bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
+      };
+    }, before);
+    expect(scrolled).toMatchObject({ requests: 1, renders: 1, sameNode: true, bubbles: 1 });
+    // 锚点随文档上移 200px，气泡 top 跟着走（顶到 gutter 沿口才夹在 margin 上）。
+    expect(Math.abs(scrolled.topAfter - Math.max(12, before.top - 200))).toBeLessThanOrEqual(2);
+
+    await backToTop();
   });
-  const scrolled = await page.evaluate(async (prev) => {
-    const f = document.querySelector('#wb-board-panel .wb-doc-frame');
-    f.contentDocument.documentElement.style.scrollBehavior = 'auto';
-    const target = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
-    window.__gutterBubble = target;
-    window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
-    f.contentWindow.scrollTo(0, 200);
-    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-    const after = document.querySelector(`#wb-ann-gutter .ann-bubble[data-n="${prev.n}"]`);
-    return {
-      requests: window.__wbGutter.requests,
-      renders: window.__wbGutter.renders,
-      sameNode: !!after && window.__gutterBubble === after,
-      topAfter: after ? parseFloat(after.style.top) : null,
-      bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
-    };
-  }, before);
-  expect(scrolled).toMatchObject({ requests: 1, renders: 1, sameNode: true, bubbles: 1 });
-  // 锚点随文档上移 200px，气泡 top 跟着走（顶到 gutter 沿口才夹在 margin 上）。
-  expect(Math.abs(scrolled.topAfter - Math.max(12, before.top - 200))).toBeLessThanOrEqual(2);
-});
 
-test('gutter tracks filter switches and new annotations through the snapshot subscription', async ({ page }) => {
-  await openSidebarGutter(page);
-  const bubbleCount = () => page.evaluate(() =>
-    document.querySelectorAll('#wb-ann-gutter .ann-bubble').length);
+  await test.step('gutter tracks filter switches and new annotations through the snapshot subscription', async () => {
+    const bubbleCount = () => page.evaluate(() =>
+      document.querySelectorAll('#wb-ann-gutter .ann-bubble').length);
 
-  // 筛选切到 closed：两条 open 全退场；切回 pending 恢复。走的是 annotate 实例
-  // notify → 快照订阅 → syncGutterComments 这条已有事件链，不经任何轮询。
-  const setFilter = (v) => page.evaluate((v) => (
-    document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.setStatusFilter(v)
-  ), v);
-  await setFilter('closed');
-  await expect.poll(bubbleCount).toBe(0);
-  await setFilter('pending');
-  await expect.poll(bubbleCount).toBe(2);
+    // 筛选切到 closed：两条 open 全退场；切回 pending 恢复。走的是 annotate 实例
+    // notify → 快照订阅 → syncGutterComments 这条已有事件链，不经任何轮询。
+    const setFilter = (v) => page.evaluate((v) => (
+      document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow.pinpoint.setStatusFilter(v)
+    ), v);
+    await setFilter('closed');
+    await expect.poll(bubbleCount).toBe(0);
+    await setFilter('pending');
+    await expect.poll(bubbleCount).toBe(2);
 
-  // 新增第三条（p.sub 与 h1 / #s2 同屏）：账本变化 → 气泡数跟上。
-  await page.evaluate(() => {
-    const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
-    const d = w.document;
-    const el = d.querySelector('p.sub');
-    const r = el.getBoundingClientRect();
-    const at = { bubbles: true, cancelable: true,
-      clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
-    el.dispatchEvent(new w.MouseEvent('mousedown', at));
-    el.dispatchEvent(new w.MouseEvent('mouseup', at));
-    const ta = d.querySelector('#ann-input');
-    ta.value = '评论 p.sub';
-    ta.dispatchEvent(new w.Event('input', { bubbles: true }));
-    d.querySelector('#ann-save').click();
+    // 新增第三条（p.sub 与 h1 / #s2 同屏）：账本变化 → 气泡数跟上。
+    await page.evaluate(() => {
+      const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
+      const d = w.document;
+      const el = d.querySelector('p.sub');
+      const r = el.getBoundingClientRect();
+      const at = { bubbles: true, cancelable: true,
+        clientX: Math.round(r.x + r.width / 2), clientY: Math.round(r.y + r.height / 2), button: 0 };
+      el.dispatchEvent(new w.MouseEvent('mousedown', at));
+      el.dispatchEvent(new w.MouseEvent('mouseup', at));
+      const ta = d.querySelector('#ann-input');
+      ta.value = '评论 p.sub';
+      ta.dispatchEvent(new w.Event('input', { bubbles: true }));
+      d.querySelector('#ann-save').click();
+    });
+    await expect.poll(bubbleCount).toBe(3);
+
+    await backToTop();
   });
-  await expect.poll(bubbleCount).toBe(3);
+
+  // 晚到布局位移（A4 修复轮，2026-09-24）：图片 / 字体在页面 settle 之后才拿到
+  // 尺寸，锚点位移不改 iframe 元素盒子（RO 看不见）、不是滚动、也不一定有 DOM
+  // mutation —— 旧实现靠常驻 rAF 每帧重算自然跟上，事件化之后必须由 iframe
+  // document 上 load 的 capture 监听接住。
+  await test.step('gutter follows late layout shifts: an image that gets its size after the page settles', async () => {
+    await waitGutterQuiet(page);
+
+    // 图片由本 spec 进程里的 HTTP server 提供，压 800ms 才回，让「晚到」成为
+    // 确定性时序 —— data URL 的 load 快到可能赶进 src 赋值那一批 mutation 触发的
+    // 同一帧渲染里，用例就空转通过了。
+    const server = http.createServer((req, res) => {
+      setTimeout(() => {
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
+        res.end('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"></svg>');
+      }, 800);
+    });
+    await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+
+    try {
+      // 先插一张无 src 的空图（display:block，0×0，零位移）到 #s2 之前；插入
+      // 本身是 mutation 信号，冲掉它那一帧渲染后记静止基线。
+      const baseline = await page.evaluate(async () => {
+        const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
+        const img = d.createElement('img');
+        img.id = 'late-img';
+        img.style.display = 'block';
+        d.getElementById('s2').before(img);
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
+        const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
+        const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
+        const h1 = bubbles.find((b) => (b.textContent || '').includes('评论 h1'));
+        window.__gutterS2 = s2;
+        window.__gutterH1 = h1;
+        window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
+        return { s2Top: parseFloat(s2.style.top), h1Top: parseFloat(h1.style.top) };
+      });
+
+      // 赋 src：这批 mutation 照常触发重算（链路是 client MutationObserver →
+      // renderAll → notify → 快照 → startGutter），但图还没到，那几帧读到的布局
+      // 没动 —— 计数在走、top 不动、图确实没加载完。
+      const pre = await page.evaluate(async (port) => {
+        const frame = document.querySelector('#wb-board-panel .wb-doc-frame');
+        frame.contentDocument.getElementById('late-img').src = 'http://127.0.0.1:' + port + '/late.svg';
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
+        return {
+          complete: frame.contentDocument.getElementById('late-img').complete,
+          s2Top: parseFloat(window.__gutterS2.style.top),
+          requests: window.__wbGutter.requests,
+          renders: window.__wbGutter.renders,
+        };
+      }, server.address().port);
+      expect(pre.complete).toBe(false);
+      expect(pre.renders).toBeGreaterThanOrEqual(1);
+      expect(pre.s2Top).toBe(baseline.s2Top);
+
+      // 图到了：load 事件（不冒泡，capture 接住）→ 重算 → #s2 的气泡跟着锚点
+      // 下移 200px；h1 在图上方不动；节点复用（同一元素引用）。计数在 load 前
+      // 归零，load 之后窗口里没有任何别的信号，这里的账全是 load 自己的。
+      await page.evaluate(() => { window.__wbGutter.requests = 0; window.__wbGutter.renders = 0; });
+      const after = await page.evaluate(async () => {
+        const img = document.querySelector('#wb-board-panel .wb-doc-frame')
+          .contentDocument.getElementById('late-img');
+        await new Promise((r) => { if (img.complete) r(); else img.addEventListener('load', () => r(), { once: true }); });
+        await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+        return {
+          requests: window.__wbGutter.requests,
+          renders: window.__wbGutter.renders,
+          imgH: img.getBoundingClientRect().height,
+          s2Top: parseFloat(window.__gutterS2.style.top),
+          h1Top: parseFloat(window.__gutterH1.style.top),
+          sameNode: Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'))
+            .find((b) => (b.textContent || '').includes('评论 #s2')) === window.__gutterS2,
+        };
+      });
+      expect(after.requests).toBeGreaterThanOrEqual(1);
+      expect(after.renders).toBeGreaterThanOrEqual(1);
+      expect(after.imgH).toBe(200);
+      expect(Math.abs(after.s2Top - (baseline.s2Top + 200))).toBeLessThanOrEqual(2);
+      expect(Math.abs(after.h1Top - baseline.h1Top)).toBeLessThanOrEqual(2);
+      expect(after.sameNode).toBe(true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+    }
+  });
 });
 
 test('gutter listeners detach on page switch and never stack on re-entry', async ({ page }) => {
@@ -1001,92 +1112,6 @@ test('gutter listeners detach on page switch and never stack on re-entry', async
     bubbles: document.querySelectorAll('#wb-ann-gutter .ann-bubble').length,
   }))).toEqual({ on: 'on', bubbles: 2 });
   expect(await scrollRequests(page, 'doc')).toBe(1);
-});
-
-// 晚到布局位移（A4 修复轮，2026-09-24）：图片 / 字体在页面 settle 之后才拿到
-// 尺寸，锚点位移不改 iframe 元素盒子（RO 看不见）、不是滚动、也不一定有 DOM
-// mutation —— 旧实现靠常驻 rAF 每帧重算自然跟上，事件化之后必须由 iframe
-// document 上 load 的 capture 监听接住。
-test('gutter follows late layout shifts: an image that gets its size after the page settles', async ({ page }) => {
-  await openSidebarGutter(page);
-  await waitGutterQuiet(page);
-
-  // 图片由本 spec 进程里的 HTTP server 提供，压 800ms 才回，让「晚到」成为
-  // 确定性时序 —— data URL 的 load 快到可能赶进 src 赋值那一批 mutation 触发的
-  // 同一帧渲染里，用例就空转通过了。
-  const server = http.createServer((req, res) => {
-    setTimeout(() => {
-      res.writeHead(200, { 'Content-Type': 'image/svg+xml' });
-      res.end('<svg xmlns="http://www.w3.org/2000/svg" width="320" height="200"></svg>');
-    }, 800);
-  });
-  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
-
-  try {
-    // 先插一张无 src 的空图（display:block，0×0，零位移）到 #s2 之前；插入
-    // 本身是 mutation 信号，冲掉它那一帧渲染后记静止基线。
-    const baseline = await page.evaluate(async () => {
-      const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-      const img = d.createElement('img');
-      img.id = 'late-img';
-      img.style.display = 'block';
-      d.getElementById('s2').before(img);
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
-      const bubbles = Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'));
-      const s2 = bubbles.find((b) => (b.textContent || '').includes('评论 #s2'));
-      const h1 = bubbles.find((b) => (b.textContent || '').includes('评论 h1'));
-      window.__gutterS2 = s2;
-      window.__gutterH1 = h1;
-      window.__wbGutter.requests = 0; window.__wbGutter.renders = 0;
-      return { s2Top: parseFloat(s2.style.top), h1Top: parseFloat(h1.style.top) };
-    });
-
-    // 赋 src：这批 mutation 照常触发重算（链路是 client MutationObserver →
-    // renderAll → notify → 快照 → startGutter），但图还没到，那几帧读到的布局
-    // 没动 —— 计数在走、top 不动、图确实没加载完。
-    const pre = await page.evaluate(async (port) => {
-      const frame = document.querySelector('#wb-board-panel .wb-doc-frame');
-      frame.contentDocument.getElementById('late-img').src = 'http://127.0.0.1:' + port + '/late.svg';
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(() => requestAnimationFrame(r))))));
-      return {
-        complete: frame.contentDocument.getElementById('late-img').complete,
-        s2Top: parseFloat(window.__gutterS2.style.top),
-        requests: window.__wbGutter.requests,
-        renders: window.__wbGutter.renders,
-      };
-    }, server.address().port);
-    expect(pre.complete).toBe(false);
-    expect(pre.renders).toBeGreaterThanOrEqual(1);
-    expect(pre.s2Top).toBe(baseline.s2Top);
-
-    // 图到了：load 事件（不冒泡，capture 接住）→ 重算 → #s2 的气泡跟着锚点
-    // 下移 200px；h1 在图上方不动；节点复用（同一元素引用）。计数在 load 前
-    // 归零，load 之后窗口里没有任何别的信号，这里的账全是 load 自己的。
-    await page.evaluate(() => { window.__wbGutter.requests = 0; window.__wbGutter.renders = 0; });
-    const after = await page.evaluate(async () => {
-      const img = document.querySelector('#wb-board-panel .wb-doc-frame')
-        .contentDocument.getElementById('late-img');
-      await new Promise((r) => { if (img.complete) r(); else img.addEventListener('load', () => r(), { once: true }); });
-      await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
-      return {
-        requests: window.__wbGutter.requests,
-        renders: window.__wbGutter.renders,
-        imgH: img.getBoundingClientRect().height,
-        s2Top: parseFloat(window.__gutterS2.style.top),
-        h1Top: parseFloat(window.__gutterH1.style.top),
-        sameNode: Array.from(document.querySelectorAll('#wb-ann-gutter .ann-bubble'))
-          .find((b) => (b.textContent || '').includes('评论 #s2')) === window.__gutterS2,
-      };
-    });
-    expect(after.requests).toBeGreaterThanOrEqual(1);
-    expect(after.renders).toBeGreaterThanOrEqual(1);
-    expect(after.imgH).toBe(200);
-    expect(Math.abs(after.s2Top - (baseline.s2Top + 200))).toBeLessThanOrEqual(2);
-    expect(Math.abs(after.h1Top - baseline.h1Top)).toBeLessThanOrEqual(2);
-    expect(after.sameNode).toBe(true);
-  } finally {
-    await new Promise((resolve) => server.close(resolve));
-  }
 });
 
 test('board load failure panel offers a way home and an in-place retry (2026-09-04 错误面板)', async ({ page }) => {
