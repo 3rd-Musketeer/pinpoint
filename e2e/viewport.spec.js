@@ -84,11 +84,13 @@ test.afterEach(() => {
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
-test('文档条目：横条出「窗口｜手机」两段，默认窗口 = 1:1 铺满，中段只剩视口控件', async ({ page }) => {
+test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居中，没有画布也没有系统 chrome，切回即还原', async ({ page }) => {
   await openDirDoc(page);
+
+  // 默认窗口态（原独立用例）：横条出「窗口｜手机」两段，1:1 铺满 = iframe 与
+  // 舞台 bounding box 重合（ADR 0023：几何断言比 box）。
   expect(await stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
-
   const control = page.locator('#wbviewport');
   await expect(control).toBeVisible();
   await expect(control.locator('button')).toHaveText(['窗口', '手机']);
@@ -97,25 +99,14 @@ test('文档条目：横条出「窗口｜手机」两段，默认窗口 = 1:1 �
   // 窗口视口：画布工具收起（阅读器没有画布可缩放），视口控件在中段独自出现。
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   await expect(page.locator('#wbexport-open')).toBeHidden();
-
-  // 1:1 铺满：iframe 的 bounding box 与舞台重合（ADR 0023：几何断言比 box）。
-  const stage = await page.locator('#wbstage').boundingBox();
-  const frame = await page.locator(DOC_FRAME).boundingBox();
-  expect(Math.abs(frame.x - stage.x)).toBeLessThan(1);
-  expect(Math.abs(frame.y - stage.y)).toBeLessThan(1);
-  expect(Math.abs(frame.width - stage.width)).toBeLessThan(1);
-  expect(Math.abs(frame.height - stage.height)).toBeLessThan(1);
+  const stage0 = await page.locator('#wbstage').boundingBox();
+  const frame0 = await page.locator(DOC_FRAME).boundingBox();
+  expect(Math.abs(frame0.x - stage0.x)).toBeLessThan(1);
+  expect(Math.abs(frame0.y - stage0.y)).toBeLessThan(1);
+  expect(Math.abs(frame0.width - stage0.width)).toBeLessThan(1);
+  expect(Math.abs(frame0.height - stage0.height)).toBeLessThan(1);
   await expect(page.locator('#wb-board-panel .wb-screen--phone-doc')).toHaveCount(0);
 
-  // 画布页没有视口控件：画布条目没有第二种看法。
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="cards"] .ios-stage')).toBeVisible();
-  await expect(page.locator('#wbviewport')).toHaveCount(0);
-});
-
-test('切到手机：一块 402 × 874 的手机屏缩到可用高九成、居中，没有画布也没有系统 chrome，切回即还原', async ({ page }) => {
-  await openDirDoc(page);
   await setViewport(page, 'phone');
 
   // 还是文档形态（html），只是 data-viewport=phone；iframe 还是那一个 src。
@@ -179,6 +170,12 @@ test('切到手机：一块 402 × 874 的手机屏缩到可用高九成、居�
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   // 选中条目跟着回来（不是掉回默认的 cards）。
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('doc');
+
+  // 画布页没有视口控件：画布条目没有第二种看法。
+  await page.getByRole('tab', {name:'页面', exact:true}).click();
+  await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
+  await expect(page.locator('#wb-board-panel [data-screen="cards"] .ios-stage')).toBeVisible();
+  await expect(page.locator('#wbviewport')).toHaveCount(0);
 });
 
 test('机壳「有」时手机屏带 iPhone 机身（仍无状态栏 / 岛 / home 条），整块机身装进可用高九成', async ({ page }) => {
@@ -212,7 +209,10 @@ test('机壳「有」时手机屏带 iPhone 机身（仍无状态栏 / 岛 / hom
     .toBe(Math.round(shell.height));
 });
 
-test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的页不受影响', async ({ page }) => {
+test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；url 条目在手机视口里照走同源代理', async ({ page }) => {
+  // 偏好写入 / 删除的规则在 viewport.test.js（withViewportPref）已守，这里守
+  // 集成行为：reload 保持、别的页不受影响、回窗口删 key。代理链路本身由
+  // url-entry.spec 守，这里守「手机视口不改 src」。两条合一条（原独立两案）。
   await openDirDoc(page);
   await setViewport(page, 'phone');
   await expect.poll(() => page.evaluate(
@@ -229,27 +229,14 @@ test('视口偏好按页记在 prefs.viewportByPage，跨 reload 保持，别的
   // 条目记忆也带回来：还是 doc，不是默认的 cards。
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('doc');
 
-  // 另一页（url 条目）仍是窗口。
+  // 切到另一页（url 条目）：仍是窗口 —— 偏好按页记，互不沾染。
+  const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
   await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
-  await expect(page.frameLocator('#wb-board-panel [data-screen="index"] iframe.wb-doc-frame').locator('#title'))
-    .toHaveText('E2E proxy upstream');
+  await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
   expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wbviewport [data-viewport="window"]')).toHaveAttribute('aria-pressed', 'true');
 
-  // 回窗口 = 删 key（默认值不积灰）。
-  await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
-  await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
-  await setViewport(page, 'window');
-  await expect.poll(() => page.evaluate(
-    () => JSON.parse(localStorage.getItem('pinpoint-wb')).viewportByPage
-  )).toEqual({});
-});
-
-test('url 条目在手机视口里照走同源代理：src 不变，活应用在手机屏里跑', async ({ page }) => {
-  await openWorkbench(page);
-  await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
-  const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
-  await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
+  // url 条目切手机：src 不变，活应用在手机屏里跑。
   await setViewport(page, 'phone');
   await expect(page.locator(FRAME)).toHaveAttribute('src', /^sites\/e2e-proxy\/$/);
   await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
@@ -257,8 +244,17 @@ test('url 条目在手机视口里照走同源代理：src 不变，活应用在
   expect(await layoutSize(page, FRAME)).toEqual([402, 874]);
   await expectPhoneFit(page, '#wb-board-panel [data-screen="index"] .wb-phone-doc');
   await expect(page.locator('#wbstrip-kind')).toHaveText('网页');
-  // 本用例把 e2e-proxy 记成手机，收尾还原，别影响 url-entry.spec 的断言。
+
+  // 两页各切回窗口，key 删净（默认值不积灰）。
+  await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
+  await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
   await setViewport(page, 'window');
+  await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
+  await setViewport(page, 'window');
+  await expect.poll(() => page.evaluate(
+    () => JSON.parse(localStorage.getItem('pinpoint-wb')).viewportByPage
+  )).toEqual({});
+  // e2e-proxy 桶清掉，别影响 url-entry.spec 的断言。
   fs.rmSync(path.join(E2E_DATA_DIR, 'e2e-proxy'), { recursive: true, force: true });
 });
 
