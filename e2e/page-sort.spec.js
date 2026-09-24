@@ -7,14 +7,14 @@ import { expect, test } from '@playwright/test';
 import { sortPages } from '../src/workbench/lib/page-sort.js';
 
 // Each server owns a copy; sorting never changes source fixture timestamps.
-// 压旧的 mtime 在 afterAll 恢复原值：同轮后面的 spec（sidebar-content 等）
-// 还在用这些固件目录，不该看到被压旧的假时间。
 
+// ios-site 刻意不压：它带 .js sidecar（timer.js），utimes 会被 preview-hmr 认成
+// 源码变更发 full-reload 广播，把几秒后开板的下一条 spec 的页面整个刷掉
+// （2026-09-24 实测，pp-id-anchor 连挂）。本用例的断言也用不到它的时间。
 const FIXTURE_MTIMES = [
   ['dir-site', Date.parse('2026-01-01T00:00:00Z')],
   ['mention-site', Date.parse('2026-02-01T00:00:00Z')],
   ['dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
-  ['ios-site', Date.parse('2026-04-01T00:00:00Z')],
   ['doc-site', Date.parse('2026-05-01T00:00:00Z')],
   ['mixed-site', Date.now()],
 ];
@@ -40,9 +40,11 @@ function pressMtimes() {
 
 test.beforeAll(pressMtimes);
 
-test.afterAll(() => {
-  for (const [target, times] of ORIGINAL_MTIMES) fs.utimesSync(target, times.atime, times.mtime);
-});
+// 压旧的 mtime 必须恢复原值：同轮后面的 spec（sidebar-content 等）还在用这些
+// 固件目录，不该看到被压旧的假时间。恢复放回用例末尾而不是 afterAll ——
+// utimes 一批固件会触发 preview-hmr 的 watch 风暴（六个登记页重编 + 广播），
+// afterAll 紧贴下一条 spec 的启动，风暴正好砸在它的 annotate 客户端上；
+// 收进用例内，用末尾的 reload + 断言给风暴留出落定窗口。
 
 async function openWorkbench(page) {
   await page.goto('/index.html');
@@ -128,4 +130,8 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
     await expect(menu).toHaveCount(0);
     await expect(button).toBeFocused();
   }
+
+  // 收尾：恢复固件原 mtime（B 组报告：压旧的值不许漏给同组后面的 spec 用例）。
+  // 恢复后时间渲染回到真实值，「刚刚」那类断言只在压住期间成立，不再复验。
+  for (const [target, times] of ORIGINAL_MTIMES) fs.utimesSync(target, times.atime, times.mtime);
 });

@@ -105,7 +105,7 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   await expect(async () => {
     await blurb.click();
     await expect(page.locator('#ann-box')).toBeVisible();
-  }).toPass();
+  }).toPass({ timeout: 20_000 });
   await page.locator('#ann-input').fill('这段文案改成两行');
   await Promise.all([waitForSave(page), page.locator('#ann-save').click()]);
   await expect(page.locator('#ann-box')).toBeHidden();
