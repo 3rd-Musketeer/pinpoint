@@ -90,7 +90,9 @@ async function dragSideSplitter(page, dx) {
 }
 
 async function readWbPrefs(page) {
-  return page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')));
+  // 首访档案在第一次偏好落盘前没有 pinpoint-wb 键（2026-09-24 迁移删除后不再有
+  // 启动时预写的 {}）—— 容错成 {}，让 expect.poll 拿到 undefined 等收敛。
+  return page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb') || '{}'));
 }
 
 // 几何断言（2026-08-17）：所有匹配元素都必须落在容器的横向可视盒内。
@@ -360,7 +362,9 @@ test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动�
   const docState = () => page.evaluate(() => {
     const w = document.querySelector('#wb-board-panel .wb-doc-frame').contentWindow;
     const st = w.pinpoint.getState();
-    return { mode: st.mode, count: st.count, toolbar: w.document.getElementById('ann-toolbar').style.display };
+    // 整份 state 展开（492 段要读 countLive / countHidden / countBroken），
+    // toolbar 是 434 段独有的一行。
+    return Object.assign({}, st, { toolbar: w.document.getElementById('ann-toolbar').style.display });
   });
 
   await test.step('HTML board: sidebar drives the document annotate instance and lists its marks', async () => {
@@ -593,8 +597,9 @@ test('HTML board: e2e-doc 标注桥 —— 侧栏驱动 iframe 实例、滚动�
   await test.step('doc iframe 重载后标注桥自动重绑（2026-08-17e）', async () => {
     // 先关标注模式再强刷：重载出的新客户端 mode 从 false 起步，「再开得动」
     // 才能证明桥接的是新实例 —— 旧实例销毁后 onUpdate 订阅不跟着搬
-    // （debugging.md 2026-08-17 条目记的次生现象）。
-    await page.locator('#wbann-toggle').click();
+    // （debugging.md 2026-08-17 条目记的次生现象）。关 = 切交互段
+    // （#wbann-toggle 沿用为「把标注模式打开」的那个控件，见 Strip.jsx）。
+    await page.locator('#wbann-interact').click();
     await expect.poll(async () => (await docState()).mode).toBe(false);
 
     // 给旧窗口打标记：poll 抓到 contentWindow.pinpoint 时能确认是新文档的
