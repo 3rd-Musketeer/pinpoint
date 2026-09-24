@@ -6,69 +6,25 @@ import { fileURLToPath } from 'node:url';
 
 import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
+import { etagMatches } from './lib/etag.js';
 import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
+import {
+  ANNOTATE_BUNDLE_URL_RE,
+  annotateBundleByHash,
+  ensureAnnotateBundle,
+} from './lib/annotate-bundle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
 const ROOT = path.resolve(SRC, '..');
-const SCRIPT = path.join(SRC, 'client', 'annotate.js');
 // pp2 状态机端点：/annotations/<page>/<id|#n>/status
 const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
-const INLINED_LIBS = [
-  path.join(SRC, 'shared', 'annotation-indicator.js'),
-  path.join(SRC, 'client', 'lib', 'annotate-hit-test.js'),
-  path.join(SRC, 'shared', 'annotation-slug.js'),
-  path.join(SRC, 'shared', 'annotate-page-key.js'),
-  path.join(SRC, 'shared', 'annotate-clip.js'),
-  path.join(SRC, 'workbench', 'lib', 'esc-html.js'),
-  path.join(SRC, 'shared', 'annotate-bubble.js'),
-  path.join(SRC, 'shared', 'ann-row.js'),
-  path.join(SRC, 'shared', 'ann-status.js'),
-  path.join(SRC, 'shared', 'frame-anchor.js'),
-  path.join(SRC, 'shared', 'ann-ppid.js'),
-];
-// Stylesheets injected into the bundle as JS string constants (the client must
-// stay a single self-contained file — no runtime requests). annotate.js
-// references the constant in its <style> block; index.html links the same CSS.
-// Keep the mirror in src/server/annotate-inline.test.js in sync.
-const INLINED_CSS = [
-  { name: 'ANN_LIST_CSS', path: path.join(SRC, 'shared', 'ann-list.css') },
-];
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();
 let heartbeatTimer = null;
-
-let cachedScript = null;
-let cachedMtime = 0;
-function readAnnotateJs() {
-  const annotateStat = fs.statSync(SCRIPT);
-  const mtimes = INLINED_LIBS.map((p) => fs.statSync(p).mtimeMs)
-    .concat(INLINED_CSS.map((c) => fs.statSync(c.path).mtimeMs));
-  const mtime = Math.max(annotateStat.mtimeMs, ...mtimes);
-  if (cachedScript && mtime === cachedMtime) return cachedScript;
-  const annotateSrc = fs.readFileSync(SCRIPT, 'utf8');
-  // Inline SSOT libs into the IIFE so the browser script and the node-tested
-  // libs share one implementation. Strip ESM `export ` keywords and `import`
-  // lines（被引的库也在名单里、先于引用方内联，作用域共享）；这些文件是纯
-  // 函数 + 顶层常量。Stylesheets land as JS string constants (JSON-quoted),
-  // referenced by the client's <style> block.
-  const libSrc = INLINED_LIBS.map((p) => fs.readFileSync(p, 'utf8').replace(/^import[^\n]*$\n?/gm, '').replace(/^export /gm, '')).join('\n');
-  const cssSrc = INLINED_CSS.map((c) => `var ${c.name} = ${JSON.stringify(fs.readFileSync(c.path, 'utf8'))};`).join('\n');
-  const marker = "'use strict';";
-  const at = annotateSrc.indexOf(marker);
-  const out = at < 0
-    ? annotateSrc
-    : annotateSrc.slice(0, at + marker.length) +
-      '\n  /* inlined from lib/ — single source of truth */\n  ' +
-      libSrc + '\n' + cssSrc +
-      annotateSrc.slice(at + marker.length);
-  cachedScript = Buffer.from(out, 'utf8');
-  cachedMtime = mtime;
-  return cachedScript;
-}
 
 // Extension-injected clients call this API cross-origin (e.g. from
 // https://my-todos.localhost to https://pinpoint.localhost). No credentials
@@ -116,6 +72,33 @@ function mimeFor(name) {
     '.webp': 'image/webp',
     '.gif': 'image/gif',
   }[extension] || 'image/png';
+}
+
+// ---- /annotate.js · /annotate.<hash>.js（审计 B3）----------------------------
+// 同一份构建产物两个地址：哈希地址 immutable 永久缓存（pinpoint 生成的注入点都
+// 引用它）；老地址 ETag（内容哈希）+ no-cache + If-None-Match 304 —— 内容页里的
+// 手写标签、浏览器扩展与跨域注入还走这里，每次刷新只付一次 revalidate。
+// gzip / brotli 在构建期压好，按 Accept-Encoding 挑；HEAD 与 GET 走同一套头
+// （HEAD 只回头），构建失败显式 500 带原因，绝不静默发旧版。
+
+// 浏览器与 curl 的 Accept-Encoding 都不带 q 值，出现即支持；q=0 的怪请求落到
+// identity 大文件，宁可浪费也不写一套 q 值解析。按逗号拆开精确匹配编码名
+//（;q= 后缀剥掉）：子串匹配会把 xgzip 这类怪值误判成 gzip。
+function pickAnnotateEncoding(acceptEncoding) {
+  const offered = String(acceptEncoding || '')
+    .toLowerCase()
+    .split(',')
+    .map((token) => token.split(';')[0].trim());
+  if (offered.includes('br')) return 'br';
+  if (offered.includes('gzip')) return 'gzip';
+  return 'identity';
+}
+
+let lastLoggedBundleError = '';
+function logBundleErrorOnce(error) {
+  if (error.message === lastLoggedBundleError) return;
+  lastLoggedBundleError = error.message;
+  console.error('[annotate-bundle]', error.message);
 }
 
 function ensureHeartbeat() {
@@ -183,6 +166,9 @@ export function resolveRequestEntry(registry, raw, localIds = []) {
 
 export function createAnnotateHandler(options = {}) {
   const root = options.dataRoot || dataRoot();
+  // 构建产物的取用口。测试注入口（与 registry/stores 同一模式）；缺省走真构建。
+  const ensureBundle = options.ensureAnnotateBundle || ensureAnnotateBundle;
+  const bundleByHash = options.annotateBundleByHash || annotateBundleByHash;
   // The repo this service serves from (vite.config passes its own root).
   // Reported on /health so the CLI can catch a service running out of a stale
   // or foreign directory. Not to be confused with `root` above = data root.
@@ -321,6 +307,64 @@ export function createAnnotateHandler(options = {}) {
     return target.entry;
   }
 
+  async function serveAnnotateClient(req, res, urlPath) {
+    cors(res);
+    res.setHeader('Vary', 'Accept-Encoding');
+    let artifact = null;
+    const hashMatch = urlPath !== '/annotate.js' ? urlPath.match(ANNOTATE_BUNDLE_URL_RE) : null;
+    if (hashMatch) {
+      artifact = bundleByHash(hashMatch[1]);
+      if (!artifact) {
+        // 进程重启会清掉内存里的历史产物；同内容构建出的哈希不变，重编一次
+        // 就能对上缓存页带来的地址。还对不上就是真不认识的哈希，404。
+        try {
+          const fresh = await ensureBundle();
+          if (fresh.hash === hashMatch[1]) artifact = fresh;
+        } catch (error) {
+          logBundleErrorOnce(error);
+          res.statusCode = 500;
+          res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          res.end(error.message);
+          return;
+        }
+      }
+      if (!artifact) {
+        res.statusCode = 404;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end(`unknown annotate bundle: ${urlPath}`);
+        return;
+      }
+      res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    } else {
+      try {
+        artifact = await ensureBundle();
+      } catch (error) {
+        logBundleErrorOnce(error);
+        res.statusCode = 500;
+        res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+        res.end(error.message);
+        return;
+      }
+      const etag = `"${artifact.hash}"`;
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('ETag', etag);
+      if (etagMatches(req.headers['if-none-match'], etag)) {
+        res.statusCode = 304;
+        res.end();
+        return;
+      }
+    }
+    const encoding = pickAnnotateEncoding(req.headers['accept-encoding']);
+    const body = encoding === 'br' ? artifact.br
+      : encoding === 'gzip' ? artifact.gzip
+      : Buffer.from(artifact.js, 'utf8');
+    res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+    if (encoding !== 'identity') res.setHeader('Content-Encoding', encoding);
+    res.setHeader('Content-Length', String(body.length));
+    res.statusCode = 200;
+    res.end(req.method === 'HEAD' ? undefined : body);
+  }
+
   return async function handleAnnotate(req, res, urlPath) {
     if (req.method === 'OPTIONS') {
       cors(res);
@@ -332,8 +376,9 @@ export function createAnnotateHandler(options = {}) {
     // urlPath has the query stripped by the caller; req.url keeps it.
     const query = parseReqUrl(req).query;
 
-    if (req.method === 'GET' && urlPath === '/annotate.js') {
-      sendBytes(res, 200, readAnnotateJs(), 'application/javascript');
+    if ((req.method === 'GET' || req.method === 'HEAD') &&
+        (urlPath === '/annotate.js' || ANNOTATE_BUNDLE_URL_RE.test(urlPath))) {
+      await serveAnnotateClient(req, res, urlPath);
       return true;
     }
 
@@ -525,6 +570,9 @@ export default function annotateApi(options = {}) {
     configureServer(server) {
       httpServer = server.httpServer;
       viteServer = server;
+      // 启动即构建一次，注入点从第一个页面起就能引用哈希地址；失败只落日志，
+      // 不挡端口监听 —— 第一个 /annotate.js 请求会把原因带回给页面（500）。
+      ensureAnnotateBundle().catch((error) => logBundleErrorOnce(error));
       server.middlewares.use(async (req, res, next) => {
         const urlPath = parseReqUrl(req).pathname;
         if (await handleAnnotate(req, res, urlPath)) return;

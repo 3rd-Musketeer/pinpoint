@@ -23,6 +23,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
+import { etagMatches } from './lib/etag.js';
 import {
   boardScreenIds,
   serveBoardJsonWithDist,
@@ -83,12 +85,21 @@ export function resolveContentFile(url, exists) {
   return { action: 'notFound', url };
 }
 
+// 同一问题只喊一次（换版、修复后也不再刷屏；每次导航都会走到这里）。
+let lastKitWarning = '';
+function warnKitOnce(message) {
+  if (message === lastKitWarning) return;
+  lastKitWarning = message;
+  console.warn('[content-routes]', message);
+}
+
 export default function contentRoutes() {
   return {
     name: 'content-routes',
     configureServer(server) {
       const root = server.config.root;
       const previewsRoot = path.join(root, 'content', 'previews');
+      const kitFile = path.join(root, 'content', 'kits', 'ios', 'ios-kit.js');
       const exists = (diskPath) => {
         let stat;
         try {
@@ -101,15 +112,59 @@ export default function contentRoutes() {
       };
       server.middlewares.use(async (req, res, next) => {
         if (!req.url) return next();
+        const parts = req.url.split('?');
+        const urlPath = parts[0];
+        const query = parts[1] || '';
+
+        // 工作台自身的 annotate 加载处（ios-kit 自注入）换到构建产物的哈希
+        // 地址 —— kit 源文件保持老地址字面量，serve 时在这里精确替换。
+        // 缓存契约：no-cache（换版后新哈希地址要立刻跟着发出去）+ ETag
+        //（产物哈希 + kit 源 mtime 拼，二者任一变都算新内容），If-None-Match
+        // 304。只接 GET / HEAD（sites-api 家规）：此前写方法会落到 vite 静态层
+        // 200 带体。kit 文件缺了 warn 一次、落到下面 resolveContentFile 的
+        // notFound，答真 404；替换字面量不在（kit 源被改过）也 warn 一次，
+        // 按原样服务走老地址（行为不变，只丢 immutable）。
+        if (urlPath === '/kits/ios/ios-kit.js') {
+          if (req.method !== 'GET' && req.method !== 'HEAD') {
+            res.statusCode = 405;
+            res.setHeader('Allow', 'GET, HEAD');
+            res.end();
+            return;
+          }
+          let kitSource;
+          try {
+            kitSource = fs.readFileSync(kitFile, 'utf8');
+          } catch (error) {
+            warnKitOnce(`ios-kit.js 读不到，回落磁盘投影 404：${error.code || error.message}`);
+          }
+          if (kitSource !== undefined) {
+            const clientSrc = annotateClientSrc();
+            const body = injectAnnotateSrc(kitSource, clientSrc);
+            if (body === kitSource) {
+              warnKitOnce('ios-kit.js 里没有自注入字面量，按原样服务（老地址 /annotate.js）');
+            }
+            const kitMtimeMs = fs.statSync(kitFile).mtimeMs;
+            const etag = `"${clientSrc}-${Math.round(kitMtimeMs)}"`;
+            res.setHeader('Cache-Control', 'no-cache');
+            res.setHeader('ETag', etag);
+            if (etagMatches(req.headers['if-none-match'], etag)) {
+              res.statusCode = 304;
+              res.end();
+              return;
+            }
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            res.setHeader('Content-Length', String(Buffer.byteLength(body)));
+            res.end(req.method === 'HEAD' ? undefined : body);
+            return;
+          }
+        }
 
         // pp2（2026-09-22 切片 1）：模板页的「屏」从 dist 出，与 /sites/ 同约 ——
         // <dataRoot>/dist/<pageId>/<screenId>.html（懒编译兜底，失败 500）。
         // 非屏路径照旧走下面的磁盘投影。doctype 整文档在这里注入 annotate
         // （preview-inject 已把 board 屏让过来；fragment 不注入，与从前一致）。
         if (req.method === 'GET' || req.method === 'HEAD') {
-          const parts = req.url.split('?');
-          const urlPath = parts[0];
-          const query = parts[1] || '';
           const boardMatch = urlPath.match(/^\/previews\/([a-zA-Z0-9_-]+)\/board\.json$/);
           if (boardMatch) {
             const pageDir = path.join(previewsRoot, boardMatch[1]);

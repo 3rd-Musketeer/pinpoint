@@ -26,6 +26,7 @@ import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { readBoard } from './board-file.js';
+import { annotateClientSrc } from './annotate-bundle.js';
 import { loadDistScreenHtml } from './page-compiler.js';
 import { synthesizeBoard } from './synth-board.js';
 
@@ -370,7 +371,7 @@ export async function framePageHtml(target, opts = {}) {
   const inject = annotate
     ? `<script>window.__pinpointEntry=${JSON.stringify(target.entry)};` +
       `window.__pinpointFrame=${JSON.stringify(frameIdentity).replace(/<\//g, '<\\/')}</script>` +
-      '<script src="/annotate.js" async></script>'
+      `<script src="${annotateClientSrc()}" async></script>`
     : '';
   return `<!doctype html>
 <html data-annotate="off">

@@ -173,11 +173,15 @@ url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空�
 
 ## 三条投递路径
 
-client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
+client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annotate-bundle.js`，esbuild 打包
+共享库 + minify + 预压缩）成自包含 IIFE 后按内容哈希 serve 在 `/annotate.<hash>.js`
+（`Cache-Control: immutable`，pinpoint 生成的注入点都引用它）；老地址 `/annotate.js` 发同一份
+产物（ETag + no-cache），留给内容页里的手写标签。
 
 ### 1 · workbench 自己的页面
 
-`ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 `/annotate.js`（退出方式：`<html data-annotate="off">`）。
+`ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 annotate 客户端（serve 时字面量被换成
+当前哈希地址；退出方式：`<html data-annotate="off">`）。
 独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`——
 见 `content/previews/doc-library/sample-report.html`。
 
@@ -190,7 +194,7 @@ client 只有一份：`src/client/annotate.js`，serve 成 `/annotate.js`。
 `src/server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
 其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
 目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
-`<script>window.__pinpointEntry='<页桶 id>'</script><script src="/annotate.js"></script>`
+`<script>window.__pinpointEntry='<页桶 id>'</script><script src="/annotate.<hash>.js"></script>`
 ——值是条目的标注桶 id，即 `entry.page || entry.id`：条目自成页时是自己的 id，
 挂靠条目是宿主页的 id（桶 = 页，storage-unify）。
 （没有 `</body>` 就追加在末尾）；`?annotate=off` 给出磁盘上的原始字节——
@@ -224,8 +228,9 @@ CSS 响应改写 `url(/…)` 与 `@import "/…"`。
 HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventSource`、`WebSocket`、`sendBeacon`——
 由一段**重基 bootstrap** 兜底：作为 `<head>` 的第一个脚本注入（`proxyBootstrapSnippet`，内联
 `src/shared/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
-重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`、`/save`、
-`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
+重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`（老地址）
+与哈希地址 `/annotate.<hash>.js`（严格形状，与 annotate-bundle 的产物地址正则同形）、
+`/save`、`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
 
 bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
 （`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——

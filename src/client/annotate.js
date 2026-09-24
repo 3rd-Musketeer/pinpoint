@@ -11,6 +11,46 @@
  * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
  * frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入 __pinpointFrame），锚点按
  * frame 内路径归一（src/shared/frame-anchor.js），模式开关向 frame iframe 级联。 */
+
+// SSOT 共享库（src/shared、src/client/lib）走真正的 ES 模块，由
+// src/server/lib/annotate-bundle.js 用 esbuild 打成单个自包含 IIFE 再 serve
+// （审计 B3：取代运行时正则拼接 + 压缩 + 常驻缓存）。本文件不再被原样 serve，
+// 这些 import 只进构建 —— 引用方式不变，仍然是不加限定符的裸名字。
+import {
+  isClearableMark,
+  normalizeAnnotation,
+  normalizeTargetRefs,
+  nextTargetRef,
+  targetContentToDisplay,
+  targetContentToStorage,
+  indicatorForAnnotation,
+} from '../shared/annotation-indicator.js';
+import { pickContained } from './lib/annotate-hit-test.js';
+import { annotationSlug } from '../shared/annotation-slug.js';
+import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
+import {
+  MARK_BOX_PAD_PX,
+  badgePositionForRect,
+  clipByRects,
+  expandRect,
+  intersectRects,
+  isVisibleEnough,
+} from '../shared/annotate-clip.js';
+import { bubbleCss, bubbleInnerHtml } from '../shared/annotate-bubble.js';
+import { annMarkBroken, annRowCap, annRowModel, annRowPreview } from '../shared/ann-row.js';
+import {
+  ANN_FILTERS,
+  annFilterCounts,
+  annFilterRows,
+  annStatusLabel,
+  filterIncludesStatus,
+  readAnnFilter,
+  writeAnnFilter,
+} from '../shared/ann-status.js';
+import { FRAME_STAGE_SELECTOR, frameInternalSelector, queryFrameScope } from '../shared/frame-anchor.js';
+import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
+import ANN_LIST_CSS from '../shared/ann-list.css';
+
 (function () {
   'use strict';
   if (window.__pinpoint) return;

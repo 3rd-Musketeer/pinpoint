@@ -37,12 +37,41 @@ test('the annotate client API is exempt (in-page client stays on pinpoint)', () 
   for (const path of ['/save', '/image', '/annotations', '/events', '/annotate.js']) {
     assert.equal(rebaseProxyUrl(path, CFG), path, path);
   }
+  // 客户端按内容哈希地址加载（审计 B3）：豁免按严格形状 ^/annotate\.[0-9a-f]{10}\.js$，
+  // 不是 /annotate. 前缀——目标应用自己的 /annotate.* 资源必须照常重基
+  //（前缀豁免曾把它们错打到 pinpoint origin，拿到 SPA fallback 的 HTML）。
+  assert.equal(isRebaseExemptPath('/annotate.44bc529372.js'), true);
+  assert.equal(rebaseProxyUrl('/annotate.44bc529372.js', CFG), '/annotate.44bc529372.js');
+  for (const path of [
+    '/annotate.css',
+    '/annotate.html',
+    '/annotate.v2.js',
+    '/annotate.min.js',
+    '/annotate.worker.js',
+    '/annotate.44bc52937.css',   // 哈希形状但扩展名不对
+    '/annotate.44bc529372.mjs',  // 哈希长度对但扩展名不对
+    '/annotate.44bc52937.js',    // 哈希短一位
+  ]) {
+    assert.equal(isRebaseExemptPath(path), false, path);
+    assert.equal(rebaseProxyUrl(path, CFG), `/sites/app${path}`, path);
+  }
+  // annotate 命名空间之外的前缀撞不上：/annotations/ 另有豁免，其余照重基。
+  assert.equal(isRebaseExemptPath('/annotation.js'), false);
   assert.equal(rebaseProxyUrl('/annotations/index.html~abc?entry=app', CFG), '/annotations/index.html~abc?entry=app');
   assert.equal(rebaseProxyUrl('/images/shot.png?entry=app', CFG), '/images/shot.png?entry=app');
   // 绝对形态（client 用 script origin 拼 SERVER + '/save'）同样豁免。
   assert.equal(
     rebaseProxyUrl('https://pinpoint.localhost/save', CFG),
     'https://pinpoint.localhost/save',
+  );
+  assert.equal(
+    rebaseProxyUrl('https://pinpoint.localhost/annotate.44bc529372.js', CFG),
+    'https://pinpoint.localhost/annotate.44bc529372.js',
+  );
+  assert.equal(
+    rebaseProxyUrl('https://pinpoint.localhost/annotate.css', CFG),
+    '/sites/app/annotate.css',
+    '非哈希形状的绝对路径照常重基',
   );
 });
 
@@ -77,6 +106,23 @@ test('WebSocket: root-absolute expands against the page origin after rebasing', 
   assert.equal(rebaseProxyWsUrl('/ws', CFG), 'wss://pinpoint.localhost/sites/app/ws');
   assert.equal(rebaseProxyWsUrl('/sites/app/ws', CFG), 'wss://pinpoint.localhost/sites/app/ws');
   assert.equal(rebaseProxyWsUrl('/events', CFG), 'wss://pinpoint.localhost/events', 'exempt paths stay unprefixed');
+  assert.equal(
+    rebaseProxyWsUrl('/annotate.sock', CFG),
+    'wss://pinpoint.localhost/sites/app/annotate.sock',
+    '目标应用自己的 ws 端点照常重基（前缀豁免曾把它指到 pinpoint origin）',
+  );
+  assert.equal(
+    rebaseProxyWsUrl('/annotate.44bc529372.js', CFG),
+    'wss://pinpoint.localhost/annotate.44bc529372.js',
+    '哈希形状的豁免对 WS 一致',
+  );
+});
+
+test('哈希豁免正则与 annotate-bundle 的产物地址形状一致（SSOT 在 annotate-bundle）', async () => {
+  const { ANNOTATE_BUNDLE_URL_RE } = await import('../server/lib/annotate-bundle.js');
+  const { ANNOTATE_HASHED_URL_RE } = await import('./proxy-rebase.js');
+  // 路由正则带捕获组（取哈希用），豁免判定不需要：去掉捕获组后 source 必须逐字节相同。
+  assert.equal(ANNOTATE_HASHED_URL_RE.source, ANNOTATE_BUNDLE_URL_RE.source.replaceAll('(', '').replaceAll(')', ''));
 });
 
 test('WebSocket: absolute ws(s) URLs to self or target origin rebase back onto the proxy', () => {

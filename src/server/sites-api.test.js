@@ -7,7 +7,12 @@ import test from 'node:test';
 
 import { loadRegistry } from './lib/registry.js';
 import { annotateSnippet, createSitesHandler, injectAnnotateClient } from './sites-api.js';
+import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 import { mockReq, mockRes } from './test-harness.js';
+
+// 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
+await ensureAnnotateBundle();
+const HASHED_SCRIPT_RE = /<script src="\/annotate\.[0-9a-f]{10}\.js"><\/script>/;
 
 function withFixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-sites-'));
@@ -84,7 +89,7 @@ test('HTML GET injects the annotate client before </body>', async (t) => {
   assert.ok(body.includes(annotateSnippet('site')));
   assert.ok(body.indexOf(annotateSnippet('site')) < body.indexOf('</body>'));
   assert.ok(body.includes("window.__pinpointEntry='site'"));
-  assert.ok(body.includes('<script src="/annotate.js"></script>'));
+  assert.ok(HASHED_SCRIPT_RE.test(body), 'client tag references the content-hashed artifact');
 });
 
 test('?annotate=off serves the exact disk bytes', async (t) => {
