@@ -1979,52 +1979,132 @@ test('文档形态的横条有条目步进：‹ n / N › 在本板条目间前
   await expect(page.locator('#wbcanvas-tools')).toBeVisible();
 });
 
-test('钉子和命中框画在底部横条之下，横条永远在最上（2026-09-17）', async ({ page }) => {
+// ADR 0034 层级故事（2123 / 2214 / 2269 合并，2026-09-24 e2e 审计）：同一条
+// 标注走完三层裁决 —— overlay 留在 wrap（R1 / R2 计算样式，ADR 明文要求的
+// 源码单测之外的第二道）、钉子压不过横条、点亮的气泡压过列表卡压不过横条、
+// 写标注的输入框压过一切且键入可达。标注用 12 行长文：输入框长过十行后停靠
+// 在底部，矮视口下必然压到横条 / 列表卡 / 导航（2269 段的前提）。
+// z-index 数值断言（50 / 30 / 60 / 70 / 10）不迁：token 值由 layering.test.js
+// 的阶梯检查守，e2e 只留命中与结构。
+test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、输入框最高', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'under strip mark');
+  await saveAnnotation(page, cells.nth(0),
+    Array.from({ length: 12 }, (_, i) => 'line ' + (i + 1)).join('\n'));
 
-  // workbench 里 overlay 留在 .wb-stage-wrap 按 z-index 排，不进 top layer
-  expect(await page.evaluate(() => {
-    const overlay = document.querySelector('#ann-overlay');
-    return { parent: overlay.parentElement.className, popover: overlay.matches(':popover-open') };
-  })).toEqual({ parent: 'wb-stage-wrap', popover: false });
+  await test.step('钉子和命中框画在底部横条之下，横条永远在最上（2026-09-17）', async () => {
+    // workbench 里 overlay 留在 .wb-stage-wrap 按 z-index 排，不进 top layer
+    expect(await page.evaluate(() => {
+      const overlay = document.querySelector('#ann-overlay');
+      return { parent: overlay.parentElement.className, popover: overlay.matches(':popover-open') };
+    })).toEqual({ parent: 'wb-stage-wrap', popover: false });
 
-  // R1 / R2（ADR 0034）：.wb 是隔离的堆叠上下文；.wb-stage-wrap 不是堆叠上下文，
-  // 它的孩子才能靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错。
-  expect(await page.evaluate(() => {
-    const wrap = getComputedStyle(document.querySelector('.wb-stage-wrap'));
-    const wb = getComputedStyle(document.querySelector('.wb'));
-    return {
-      wrapZIndex: wrap.zIndex, wrapTransform: wrap.transform, wrapFilter: wrap.filter,
-      wrapBackdropFilter: wrap.backdropFilter, wrapOpacity: wrap.opacity, wrapIsolation: wrap.isolation,
-      wrapContain: wrap.contain, wbIsolation: wb.isolation,
-    };
-  })).toEqual({
-    wrapZIndex: 'auto', wrapTransform: 'none', wrapFilter: 'none', wrapBackdropFilter: 'none',
-    wrapOpacity: '1', wrapIsolation: 'auto', wrapContain: 'none', wbIsolation: 'isolate',
+    // R1 / R2（ADR 0034）：.wb 是隔离的堆叠上下文；.wb-stage-wrap 不是堆叠上下文，
+    // 它的孩子才能靠 --wb-z 阶梯与 .wb-side / .wb-strip 交错。
+    expect(await page.evaluate(() => {
+      const wrap = getComputedStyle(document.querySelector('.wb-stage-wrap'));
+      const wb = getComputedStyle(document.querySelector('.wb'));
+      return {
+        wrapZIndex: wrap.zIndex, wrapTransform: wrap.transform, wrapFilter: wrap.filter,
+        wrapBackdropFilter: wrap.backdropFilter, wrapOpacity: wrap.opacity, wrapIsolation: wrap.isolation,
+        wrapContain: wrap.contain, wbIsolation: wb.isolation,
+      };
+    })).toEqual({
+      wrapZIndex: 'auto', wrapTransform: 'none', wrapFilter: 'none', wrapBackdropFilter: 'none',
+      wrapOpacity: '1', wrapIsolation: 'auto', wrapContain: 'none', wbIsolation: 'isolate',
+    });
+
+    // 把钉子滚到横条正后方：横条中心那一点命中的必须是横条，不是钉子
+    await page.evaluate(() => {
+      const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+      const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+      document.querySelector('#wbstage').scrollTop += (badge.top + badge.height / 2) - (strip.top + strip.height / 2);
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
+      const strip = document.querySelector('#wbstrip').getBoundingClientRect();
+      const cx = badge.left + badge.width / 2, cy = badge.top + badge.height / 2;
+      if (cy < strip.top || cy > strip.bottom || cx < strip.left || cx > strip.right) return 'badge-not-behind-strip';
+      const hit = document.elementFromPoint(cx, cy);
+      return hit && hit.closest('#wbstrip') ? 'strip' : (hit ? hit.className : 'none');
+    })).toBe('strip');
   });
 
-  // 把钉子滚到横条正后方：横条中心那一点命中的必须是横条，不是钉子
-  await page.evaluate(() => {
-    const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    document.querySelector('#wbstage').scrollTop += (badge.top + badge.height / 2) - (strip.top + strip.height / 2);
-  });
-  await expect.poll(() => page.evaluate(() => {
-    const badge = document.querySelector('#ann-marks .ann-badge').getBoundingClientRect();
-    const strip = document.querySelector('#wbstrip').getBoundingClientRect();
-    const cx = badge.left + badge.width / 2, cy = badge.top + badge.height / 2;
-    if (cy < strip.top || cy > strip.bottom || cx < strip.left || cx > strip.right) return 'badge-not-behind-strip';
-    const hit = document.elementFromPoint(cx, cy);
-    return hit && hit.closest('#wbstrip') ? 'strip' : (hit ? hit.className : 'none');
-  })).toBe('strip');
+  await test.step('点亮的气泡压过弹出列表，滚到横条后面则被横条压住（ADR 0031 批注 2 / ADR 0034）', async () => {
+    await openAnnList(page);
+    await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
 
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+    // 钉子停在列表卡左缘外 20px、卡的中线上：钉子本身露着能 hover，气泡（摆在钉子右边）伸到卡后面
+    const pop = await page.locator('#wbann-pop').boundingBox();
+    await parkBadgeAndHover(page, pop.x - 20, pop.y + pop.height / 2);
+
+    // 气泡与列表卡相交处，命中的必须是气泡，不是列表卡
+    const overList = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbann-pop');
+    expect(overList).not.toBeNull();
+    expect(await hitKindAt(page, overList)).toBe('bubble');
+
+    // 再把钉子停在横条左缘外 20px、横条中线上：气泡伸到横条后面，命中的必须是横条
+    const strip = await page.locator('#wbstrip').boundingBox();
+    await parkBadgeAndHover(page, strip.x - 20, strip.y + strip.height / 2);
+    const overStrip = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbstrip');
+    expect(overStrip).not.toBeNull();
+    expect(await hitKindAt(page, overStrip)).toBe('strip');
+
+    await page.mouse.move(5, 5);
+    await closeAnnList(page);
+  });
+
+  await test.step('写标注的输入框是外壳里最高的层：压过横条、列表卡与 section 导航（2026-09-18 owner 决定，ADR 0034）', async () => {
+    // 矮视口：输入框长到十行后停靠在底部，盒子必然压到横条、列表卡与右下导航上
+    await page.setViewportSize({ width: 900, height: 380 });
+    // 视口压矮后可用区变小，上一段停靠的钉子落在可视区外（离屏即隐藏）：
+    // 把目标单元格滚回可视区再点钉子（原用例在矮视口下现打标注，等价前提）。
+    await page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first().scrollIntoViewIfNeeded();
+    await expect(page.locator('#ann-marks .ann-badge')).toBeVisible();
+    await page.locator('#ann-marks .ann-badge').first().click();
+    const box = page.locator('#ann-box');
+    await expect(box).toBeVisible();
+    // 输入框开着时再开列表卡与 section 导航。用程序点击：横条中段的钮此时在输入框后面，
+    // 真实点击会被输入框吃掉（这正是本用例要证明的层级）。输入框不因这两下关闭。
+    await page.evaluate(() => { document.getElementById('wbann-count').click(); document.getElementById('wbsection-nav-toggle').click(); });
+    await expect(page.locator('#wbann-pop')).toBeVisible();
+    await expect(page.locator('#wbsection-nav')).toBeVisible();
+    await expect(box).toBeVisible();
+
+    // 挂法（结构层）：#ann-chrome 是 overlay 在 .wb-stage-wrap 里的兄弟，
+    // 输入框不在 overlay 里 —— 各档 z 值归 layering.test.js 的 token 检查。
+    expect(await page.evaluate(() => {
+      const chrome = document.getElementById('ann-chrome');
+      return {
+        chromeParent: chrome.parentElement.className,
+        chromeUi: chrome.hasAttribute('data-ann-ui'),
+        boxInOverlay: !!document.querySelector('#ann-overlay #ann-box'),
+      };
+    })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false });
+
+    // 输入框与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
+    for (const sel of ['#wbstrip', '#wbann-pop', '#wbsection-nav']) {
+      const point = await overlapCenter(page, '#ann-box', sel);
+      expect(point, sel + ' overlaps the composer').not.toBeNull();
+      await expect.poll(() => hitKindAt(page, point)).toBe('composer');
+    }
+
+    // 打开输入框就是要打字：键入到达输入区
+    await page.keyboard.type(' typed');
+    await expect.poll(() => page.evaluate(() => {
+      const el = document.querySelector('#ann-box #ann-input');
+      return (el.value !== undefined ? el.value : el.textContent).trim();
+    })).toMatch(/ typed$/);
+
+    await page.keyboard.press('Escape');
+    await expect(box).toHaveCount(0);
+    await page.evaluate(() => window.pinpoint.clear());
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+    await closeAnnList(page);
+  });
 });
 
 // a 与 b 两个元素矩形交集的中心；不相交（或交集窄于 4px）返回 null。
@@ -2054,98 +2134,6 @@ async function parkBadgeAndHover(page, x, y) {
   await page.mouse.move(x, y);
   await expect(page.locator('#ann-bubbles .ann-bubble--show')).toHaveCount(1);
 }
-
-test('点亮的气泡压过弹出列表，滚到横条后面则被横条压住（ADR 0031 批注 2 / ADR 0034）', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'bubble over list mark');
-  await openAnnList(page);
-  await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
-
-  // 钉子停在列表卡左缘外 20px、卡的中线上：钉子本身露着能 hover，气泡（摆在钉子右边）伸到卡后面
-  const pop = await page.locator('#wbann-pop').boundingBox();
-  await parkBadgeAndHover(page, pop.x - 20, pop.y + pop.height / 2);
-
-  // 抬升态 overlay 取 --wb-z-marks-active（50）：高于停靠槽 --wb-z-dock（30），低于横条 --wb-z-strip（60）
-  expect(await page.evaluate(() => ({
-    overlay: getComputedStyle(document.querySelector('#ann-overlay')).zIndex,
-    dock: getComputedStyle(document.getElementById('wbdock')).zIndex,
-    strip: getComputedStyle(document.getElementById('wbstrip')).zIndex,
-  }))).toEqual({ overlay: '50', dock: '30', strip: '60' });
-
-  // 气泡与列表卡相交处，命中的必须是气泡，不是列表卡
-  const overList = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbann-pop');
-  expect(overList).not.toBeNull();
-  expect(await hitKindAt(page, overList)).toBe('bubble');
-
-  // 再把钉子停在横条左缘外 20px、横条中线上：气泡伸到横条后面，命中的必须是横条
-  const strip = await page.locator('#wbstrip').boundingBox();
-  await parkBadgeAndHover(page, strip.x - 20, strip.y + strip.height / 2);
-  const overStrip = await overlapCenter(page, '#ann-bubbles .ann-bubble--show', '#wbstrip');
-  expect(overStrip).not.toBeNull();
-  expect(await hitKindAt(page, overStrip)).toBe('strip');
-
-  await page.mouse.move(5, 5);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await closeAnnList(page);
-});
-
-test('写标注的输入框是外壳里最高的层：压过横条、列表卡与 section 导航（2026-09-18 owner 决定，ADR 0034）', async ({ page }) => {
-  await openWorkbench(page);
-  // 矮视口：输入框长到十行后停靠在底部，盒子必然压到横条、列表卡与右下导航上
-  await page.setViewportSize({ width: 900, height: 380 });
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), Array.from({ length: 12 }, (_, i) => 'line ' + (i + 1)).join('\n'));
-  await page.locator('#ann-marks .ann-badge').first().click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  // 输入框开着时再开列表卡与 section 导航。用程序点击：横条中段的钮此时在输入框后面，
-  // 真实点击会被输入框吃掉（这正是本用例要证明的层级）。输入框不因这两下关闭。
-  await page.evaluate(() => { document.getElementById('wbann-count').click(); document.getElementById('wbsection-nav-toggle').click(); });
-  await expect(page.locator('#wbann-pop')).toBeVisible();
-  await expect(page.locator('#wbsection-nav')).toBeVisible();
-  await expect(box).toBeVisible();
-
-  // 挂法：#ann-chrome 是 overlay 在 .wb-stage-wrap 里的兄弟，取 --wb-z-composer 70；横条 60；overlay 不再因输入框抬升
-  expect(await page.evaluate(() => {
-    const chrome = document.getElementById('ann-chrome');
-    return {
-      chromeParent: chrome.parentElement.className,
-      chromeUi: chrome.hasAttribute('data-ann-ui'),
-      boxInOverlay: !!document.querySelector('#ann-overlay #ann-box'),
-      chromeZ: getComputedStyle(chrome).zIndex,
-      stripZ: getComputedStyle(document.getElementById('wbstrip')).zIndex,
-      overlayZ: getComputedStyle(document.getElementById('ann-overlay')).zIndex,
-    };
-  })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false, chromeZ: '70', stripZ: '60', overlayZ: '10' });
-
-  // 输入框与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
-  for (const sel of ['#wbstrip', '#wbann-pop', '#wbsection-nav']) {
-    const point = await overlapCenter(page, '#ann-box', sel);
-    expect(point, sel + ' overlaps the composer').not.toBeNull();
-    await expect.poll(() => hitKindAt(page, point)).toBe('composer');
-  }
-
-  // 打开输入框就是要打字：键入到达输入区
-  await page.keyboard.type(' typed');
-  await expect.poll(() => page.evaluate(() => {
-    const el = document.querySelector('#ann-box #ann-input');
-    return (el.value !== undefined ? el.value : el.textContent).trim();
-  })).toMatch(/ typed$/);
-
-  await page.keyboard.press('Escape');
-  await expect(box).toHaveCount(0);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await closeAnnList(page);
-});
 
 test('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async ({ page }) => {
   await openWorkbench(page);
