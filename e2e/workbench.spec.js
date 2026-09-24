@@ -1208,35 +1208,31 @@ test('?page= 指向不存在的页 → 显式面板；登记后「重试」原�
   await expect.poll(() => page.url()).toContain('page=e2e-doc');
 });
 
-test('/api/export-image renders an isolated padded PNG from a posted snapshot', async ({ page }) => {
-  await openWorkbench(page);
-  await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
-
+// /api/export-image 契约（1367 改写，2026-09-24 e2e 审计）：端点留给 ppnt shot，
+// 这是它唯一的自动化守卫 —— 改成不开工作台页面的 request-only 用例，固定一段
+// HTML 快照直打端点。原用例断宽高 > 0；固定输入让断言能精确到「内容 + frame 档
+// 四周 48px 隔离留白，按 scale 折算」，把端点的 padding 契约也钉住。
+test('/api/export-image renders an isolated padded PNG from a posted snapshot', async ({ request }) => {
   // workbench 侧的 exportSnapshot API 已随导出削减退役（pp2 切片 3）；端点
-  // （ppnt shot 要用）继续吃契约快照 —— 这里按契约手工组一份。
-  const snapshot = await page.evaluate(() => {
-    const target = document.querySelector('#wb-board-panel [data-screen="recipe"]');
-    const clone = target.cloneNode(true);
-    clone.querySelectorAll('script,[data-export-ui]').forEach((node) => node.remove());
-    return {
-      kind: 'frame',
-      pageId: 'e2e-ios',
-      sectionId: 'brew-flow',
-      screenId: 'recipe',
-      format: 'png',
-      scale: 2,
-      background: 'canvas',
-      tokens: {},
-      html: clone.outerHTML,
-    };
-  });
-  expect(snapshot.html).toContain('1:16');
+  // （ppnt shot 要用）继续吃契约快照 —— 这里按契约手工组一份固定输入。
+  const snapshot = {
+    kind: 'frame',
+    pageId: 'e2e-ios',
+    sectionId: 'brew-flow',
+    screenId: 'recipe',
+    format: 'png',
+    scale: 2,
+    background: 'canvas',
+    tokens: {},
+    html: '<div data-e2e-export-probe style="width:300px;height:200px;box-sizing:border-box"></div>',
+  };
 
-  const response = await page.request.post('/api/export-image', { data: snapshot });
+  const response = await request.post('/api/export-image', { data: snapshot });
   expect(response.ok()).toBeTruthy();
   expect(response.headers()['content-type']).toBe('image/png');
-  expect(Number(response.headers()['x-export-width'])).toBeGreaterThan(0);
-  expect(Number(response.headers()['x-export-height'])).toBeGreaterThan(0);
+  // 隔离留白：300×200 内容 + 四周 48px padding（frame 档），×2 scale
+  expect(Number(response.headers()['x-export-width'])).toBe((300 + 48 * 2) * 2);
+  expect(Number(response.headers()['x-export-height'])).toBe((200 + 48 * 2) * 2);
   const body = await response.body();
   expect(body.subarray(0, 8)).toEqual(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]));
 });
