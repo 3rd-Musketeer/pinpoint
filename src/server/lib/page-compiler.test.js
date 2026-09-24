@@ -466,6 +466,46 @@ describe('缺源码与 build.json', () => {
     assert.equal(build.sources.b.file, 'b.html');
     assert.equal(fs.readFileSync(distFile(target, 'b.html'), 'utf8'), '<div class="ios-app">b</div>\n');
   });
+
+  test('onlyScreens 多屏增量：只重编点名的屏，其余产物与记录不动（审计 B1）', async () => {
+    const board = {
+      sections: [{
+        id: 'main', title: 'Main', layout: 'row',
+        screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }, { id: 'c', title: 'C' }],
+      }],
+    };
+    const target = makePage('partial-multi', {
+      board,
+      files: {
+        'a.jsx': 'export default function A() {\n  return <div className="ios-app">a1</div>;\n}\n',
+        'b.html': '<div class="ios-app">b1</div>\n',
+        'c.html': '<div class="ios-app">c1</div>\n',
+      },
+    });
+    const distRoot = path.join(tmp, 'dist');
+    await compilePage(target, { distRoot });
+    const cBefore = fs.statSync(distFile(target, 'c.html')).mtimeMs;
+    // 改 a、b：失败屏的旧产物要删、错误只落点名屏；c 原样。
+    fs.writeFileSync(path.join(target.pageDir, 'a.jsx'), 'export default function A() {\n  return <div className="ios-app"><p onClick={() => 1}>a2 坏</p></div>;\n}\n');
+    fs.writeFileSync(path.join(target.pageDir, 'b.html'), '<div class="ios-app">b2</div>\n');
+    const second = await compilePage(target, { distRoot, onlyScreens: ['a', 'b'] });
+    assert.equal(second.ok, false);
+    assert.deepEqual(second.screens.map((row) => row.id), ['a', 'b'], '结果里只有点名的屏');
+    const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.match(build.errors.a, /onClick/);
+    assert.equal(build.errors.b, undefined);
+    assert.equal(fs.existsSync(distFile(target, 'a.html')), false, '失败屏旧产物删除');
+    assert.equal(fs.readFileSync(distFile(target, 'b.html'), 'utf8'), '<div class="ios-app">b2</div>\n');
+    assert.equal(fs.statSync(distFile(target, 'c.html')).mtimeMs, cBefore, '没点名的屏产物不重写');
+    assert.equal(build.sources.c.file, 'c.html');
+    // 修好 a 再增量一轮：错误清掉，产物回来。
+    fs.writeFileSync(path.join(target.pageDir, 'a.jsx'), 'export default function A() {\n  return <div className="ios-app">a3</div>;\n}\n');
+    const third = await compilePage(target, { distRoot, onlyScreens: ['a'] });
+    assert.equal(third.ok, true);
+    const final = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.equal(final.errors.a, undefined);
+    assert.equal(fs.readFileSync(distFile(target, 'a.html'), 'utf8').includes('a3</div>'), true);
+  });
 });
 
 describe('dist 状态与 serve 读取', () => {
