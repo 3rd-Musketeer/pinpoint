@@ -241,7 +241,9 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).activePageId)).toBe('e2e-ios');
+  // 偏好落盘走容错读取（readWbPrefs）：poll 回调抛非断言异常时本仓 Playwright
+  // 不重试、直接判死，缺键窗口不能炸。
+  await expect.poll(async () => (await readWbPrefs(page)).activePageId).toBe('e2e-ios');
 });
 
 // 壳形态是选中条目的属性（230 / 271 合并，2026-09-24 e2e 审计）：doc 条目 =
@@ -796,12 +798,14 @@ test('HTML board: 评论三档 —— inline 叠在页面、chan 右侧通道、
     })).toEqual({ bubbleCount: 2, hasContent: true, hasObjectObject: false, gutterWrap: null });
   });
 
-  // Toggling off hides the bubbles.
+  // Toggling off hides the bubbles. 无过滤计 0（原 624 口径，2026-09-24 review
+  // 补回）：off 档必须把气泡节点从 DOM 清掉，而不是「节点留 DOM、hidden 挂
+  // true」——后者用户同样看不见，但 DOM 清理这层约定就没人守了。
   await pickBubbleMode(page, 'off');
-  await expect.poll(() => page.evaluate(() => {
-    const d = document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument;
-    return [...d.querySelectorAll('#ann-bubbles .ann-bubble')].filter((b) => !b.hidden).length;
-  })).toBe(0);
+  await expect.poll(() => page.evaluate(() => (
+    document.querySelector('#wb-board-panel .wb-doc-frame').contentDocument
+      .querySelectorAll('#ann-bubbles .ann-bubble').length
+  ))).toBe(0);
   await expectBubbleMode(page, '隐藏批注');
 });
 
@@ -1124,6 +1128,15 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
     }
     await route.fulfill({ status: 404, contentType: 'text/plain', body: 'not found' });
   });
+  // frame 级 screen 路径（原 1302，2026-09-24 review 补回）也在本用例走：整页
+  // HTML 喂给单屏 loader，必须在 frame 内报错，而不是把工作台嵌套进自己。
+  // route 得赶在首次拉取前装上 —— screen 文本由 TanStack 缓存持有
+  // （staleTime: Infinity，页面切换不重拉），开页后再装 route 就拦不到了。
+  await page.route('**/sites/e2e-ios/home.html*', (route) => route.fulfill({
+    status: 200,
+    contentType: 'text/html',
+    body: '<!doctype html><html><head><title>pinpoint</title></head><body><div id="wbroot" class="wb"><aside class="wb-side">Sidebar</aside></div></body></html>',
+  }));
 
   await openWorkbench(page);
   await page.locator('#wbpages [data-vpage="e2e-doc"]').click();
@@ -1133,8 +1146,8 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await expect(panel.locator('.wb-screen-err-src')).toContainText('/sites/e2e-doc/board.json');
   await expect(panel.locator('[data-err-home]')).toHaveText('回到 Pages');
   await expect(panel.locator('[data-err-retry]')).toHaveText('重试');
-  // 加载失败的渲染接线（原 1302，判定本体已由 preview-contracts.test.js 守）：
-  // 错误落在 .wb-screen-err，且不把喂进来的内容嵌套成第二个工作台 #wbroot。
+  // 加载失败的渲染接线：错误落在 .wb-screen-err，且不把喂进来的内容嵌套成
+  // 第二个工作台 #wbroot（frame 级 screen 路径 = 原 1302，断言在本用例尾段）。
   await expect(page.locator('#wb-board-panel #wbroot')).toHaveCount(0);
 
   // 「回到 Pages」= 落到默认页（manifest.defaultPage，范例页）+ 左栏展开（折叠着也要看得见 Pages）
@@ -1156,6 +1169,14 @@ test('board load failure panel offers a way home and an in-place retry (2026-09-
   await panel.locator('[data-err-retry]').click();
   await expect(page.locator('#wb-board-panel [data-screen="report"]')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+
+  // screen 路径的断言（原 1302）：boot 拉到的整页 HTML 已被 loader 拒绝，缓存
+  // 里存的正是这份坏文本 —— 切回 e2e-ios，home frame 内是错误面板而不是嵌进
+  // 来的第二个工作台。
+  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
+  const homeFrame = page.locator('#wb-board-panel [data-screen="home"]');
+  await expect(homeFrame.locator('.wb-screen-err')).toContainText('full HTML document');
+  await expect(homeFrame.locator('#wbroot, .wb-side')).toHaveCount(0);
 });
 
 // 深链失效面板（1242 / 1273 合并，2026-09-24 e2e 审计）：坏 id 停在显式面板、
@@ -1543,8 +1564,19 @@ test('canvas multi-target pills preserve text and cancel edits without changing 
   await input.fill('不应保存');
   await page.locator('#ann-cancel').click();
   expect(await page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
-  // 尾段「换页 = 换桶、切回原样」已裁（2026-09-24 e2e 审计）：与
-  // page-bucket.spec.js「一页一桶」用例守同一件事（换桶 hydrate、切回原样）。
+  // 编辑中途换页不落账（原 1624 尾段，2026-09-24 review 补回）：openMark 后
+  // fill 进 composer 的草稿没保存，切回后 marks[0] 仍逐字等于 saved —— 若哪天
+  // composer 被改成换页时顺手保存草稿，这条会红。换桶 hydrate、切回原样另由
+  // page-bucket.spec.js「一页一桶」共守。
+  await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
+  await input.fill('换页也不应保存');
+  await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
+  await expect(input).toHaveCount(0);
+  // storage-unify：换页 = 换桶 —— e2e-doc 的画布账本是另一本，此刻为空；
+  // 已保存的标注仍在 e2e-ios 的桶里，切回来原样（不因换页丢行、也不串页）。
+  expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0])).toEqual(saved);
 });
 
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
