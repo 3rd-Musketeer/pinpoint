@@ -58,6 +58,21 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     await expect(page.locator('#ann-box')).toBeVisible();
     await page.keyboard.press('Escape');
     if (await page.locator('#wbann-count').getAttribute('aria-expanded') === 'true') await page.locator('#wbann-count').click();
+    // Esc 落在 goToMark 排队的两帧 rAF 里：跳转取消、composer 不被重开、账本不动
+    //（修「Esc 关掉 UI 后排队的定位仍会重开 composer」；原独立用例并入 —— 这里
+    // 的 marks/composer 状态与它开板后的完全一致，省一次开板）。
+    const completed = await page.evaluate(async () => {
+      const pending = window.pinpoint.goToMark(window.pinpoint.marks[0].n);
+      // The jump queues two animation frames before creating its scroll motion.
+      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+      return pending;
+    });
+    expect(completed).toBe(false);
+    await expect(page.locator('#ann-box')).toBeHidden();
+    expect(read()).toHaveLength(1);
+    // composer 已关时这条 Escape 会走客户端 Esc 链的最后一支：顺带退出标注模式。
+    // 后面 pan / zoom 不需要模式，但「再标一条」要在标注模式下点选，先恢复。
+    await page.evaluate(() => window.pinpoint.setMode(true));
     for (const method of ['middle', 'space']) {
       const box = await page.locator('[data-screen="settings"] .ios-cell').first().boundingBox();
       const before = await page.locator('#wbstage').evaluate(s => ({ left: s.scrollLeft, top: s.scrollTop }));
@@ -109,30 +124,6 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     await page.screenshot({ path: test.info().outputPath('integrated-restored.png') });
   } finally {
     await otherContext.close();
-    await page.close();
-    fs.rmSync(ledger, { force: true });
-  }
-});
-
-test('Escape cancels a queued annotation jump before it can reopen the composer', async ({ page }) => {
-  fs.rmSync(ledger, { force: true });
-  try {
-    await open(page);
-    await focus(page, 'settings');
-    await page.evaluate(() => window.pinpoint.setMode(true));
-    await page.locator('[data-screen="settings"] .ios-cell').first().click();
-    await save(page, 'cancel pending navigation');
-    await focus(page, 'home');
-    const completed = await page.evaluate(async () => {
-      const pending = window.pinpoint.goToMark(window.pinpoint.marks[0].n);
-      // The jump queues two animation frames before creating its scroll motion.
-      document.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
-      return pending;
-    });
-    expect(completed).toBe(false);
-    await expect(page.locator('#ann-box')).toBeHidden();
-    expect(read()).toHaveLength(1);
-  } finally {
     await page.close();
     fs.rmSync(ledger, { force: true });
   }

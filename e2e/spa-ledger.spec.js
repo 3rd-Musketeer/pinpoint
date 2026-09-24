@@ -77,7 +77,13 @@ async function currentEpoch(page) {
   });
 }
 
-test('SPA route change splits annotations into per-pathname ledgers', async ({ page }) => {
+test('SPA route change splits ledgers per pathname; hash-only change keeps the same ledger', async ({ page }) => {
+  // hydrate 计数要从开页前挂上：hash 一拍靠「请求数不增」守不换账本。
+  const hydrateRequests = [];
+  page.on('request', (req) => {
+    if (req.method() === 'GET' && req.url().includes('/annotations/')) hydrateRequests.push(req.url());
+  });
+
   await openFixture(page);
   await setAnnotateMode(page, true);
   await annotate(page, '#home-el', 'home ann');
@@ -107,6 +113,18 @@ test('SPA route change splits annotations into per-pathname ledgers', async ({ p
   expect(home.annotations[0].selector).toContain('home-el');
   expect(routeA.annotations).toHaveLength(1);
   expect(routeA.annotations[0].selector).toContain('route-a-el');
+
+  // 只改 hash 不换路由：账本 key 不变，第二条仍进 route-a 那份文件，也不发新的
+  // hydrate GET（原独立用例并入 —— 同一开页同一路由状态，只多标一条）。
+  const hydratesBeforeHash = hydrateRequests.length;
+  await page.evaluate(() => { location.hash = 'x'; });
+  await annotate(page, '#route-a-el', 'route-a ann 2');
+  await expect.poll(() => {
+    const doc = docByPrefix('route-a_');
+    return doc ? doc.annotations.map((a) => a.content) : null;
+  }).toEqual(['[@t:i1] route-a ann', '[@t:i1] route-a ann 2']);
+  expect(Object.keys(bucketDocs())).toHaveLength(2);
+  expect(hydrateRequests.length).toBe(hydratesBeforeHash);
 });
 
 test('in-flight old-ledger save response cannot pollute the new ledger', async ({ page }) => {
@@ -145,31 +163,4 @@ test('in-flight old-ledger save response cannot pollute the new ledger', async (
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countAll)).toBe(1);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.map((m) => m.content)))
     .toEqual(['[@t:i1] route-a ann']);
-});
-
-test('hash-only change keeps the same ledger (no re-hydrate, no new file)', async ({ page }) => {
-  const hydrateRequests = [];
-  page.on('request', (req) => {
-    if (req.method() === 'GET' && req.url().includes('/annotations/')) hydrateRequests.push(req.url());
-  });
-
-  await openFixture(page);
-  await setAnnotateMode(page, true);
-  await annotate(page, '#home-el', 'home ann');
-  await expect.poll(() => {
-    const doc = docByPrefix('spa-fixture.html_');
-    return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['[@t:i1] home ann']);
-  const hydratesBeforeHash = hydrateRequests.length;
-
-  await page.evaluate(() => { location.hash = 'x'; });
-  // 账本不变：hash 后写的第二条仍落在同一个 key 的文件里。
-  await annotate(page, '#home-el', 'home ann 2');
-  await expect.poll(() => {
-    const doc = docByPrefix('spa-fixture.html_');
-    return doc ? doc.annotations.map((a) => a.content) : null;
-  }).toEqual(['[@t:i1] home ann', '[@t:i1] home ann 2']);
-
-  expect(Object.keys(bucketDocs())).toHaveLength(1);
-  expect(hydrateRequests.length).toBe(hydratesBeforeHash);
 });
