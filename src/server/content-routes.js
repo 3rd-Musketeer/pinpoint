@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
 import {
   boardScreenIds,
   serveBoardJsonWithDist,
@@ -110,6 +111,26 @@ export default function contentRoutes() {
           const parts = req.url.split('?');
           const urlPath = parts[0];
           const query = parts[1] || '';
+          // 工作台自身的 annotate 加载处（ios-kit 自注入）换到构建产物的哈希
+          // 地址 —— kit 源文件保持老地址字面量，serve 时在这里精确替换。
+          // no-cache：换版后新哈希地址要立刻跟着发出去。kit 文件缺了就落到
+          // 下面 resolveContentFile 的 notFound，答真 404。
+          if (urlPath === '/kits/ios/ios-kit.js') {
+            try {
+              const body = injectAnnotateSrc(
+                fs.readFileSync(path.join(root, 'content', 'kits', 'ios', 'ios-kit.js'), 'utf8'),
+                annotateClientSrc(),
+              );
+              res.statusCode = 200;
+              res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+              res.setHeader('Cache-Control', 'no-cache');
+              res.setHeader('Content-Length', String(Buffer.byteLength(body)));
+              res.end(req.method === 'HEAD' ? undefined : body);
+              return;
+            } catch {
+              // fall through
+            }
+          }
           const boardMatch = urlPath.match(/^\/previews\/([a-zA-Z0-9_-]+)\/board\.json$/);
           if (boardMatch) {
             const pageDir = path.join(previewsRoot, boardMatch[1]);

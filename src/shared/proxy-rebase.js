@@ -16,15 +16,17 @@
  * entry or the app route in that case.
  *
  * Isomorphic: no DOM / node deps. The browser bootstrap inlines this file
- * (src/server/lib/site-proxy.js reads it and strips the `export ` keywords, the
- * same pattern as /annotate.js); node tests import it directly.
+ * (src/server/lib/site-proxy.js reads it and strips the `export ` keywords);
+ * node tests import it directly.
  */
 
 // pinpoint-owned root endpoints used by the in-page annotate client
 // (src/client/annotate.js): /save, /image, /annotations[/<page>], /images/<name>,
-// /events (SSE), /annotate.js. /sites/ covers every already-rebased URL.
-export const REBASE_EXEMPT_EXACT = ['/annotate.js', '/save', '/image', '/annotations', '/events'];
-export const REBASE_EXEMPT_PREFIX = ['/annotations/', '/images/', '/sites/'];
+// /events (SSE), /annotate.<hash>.js. /sites/ covers every already-rebased URL.
+// annotate 客户端按前缀豁免：产物换版哈希跟着变（/annotate.<hash>.js），老地址
+// /annotate.js 同样落在这个前缀里。
+export const REBASE_EXEMPT_EXACT = ['/save', '/image', '/annotations', '/events'];
+export const REBASE_EXEMPT_PREFIX = ['/annotate.', '/annotations/', '/images/', '/sites/'];
 
 export function isRebaseExemptPath(pathname) {
   if (typeof pathname !== 'string') return false;

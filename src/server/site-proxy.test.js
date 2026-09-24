@@ -23,6 +23,11 @@ import {
   rewriteProxyReferer,
   rewriteProxySetCookie,
 } from './lib/site-proxy.js';
+import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
+
+// 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
+await ensureAnnotateBundle();
+const HASHED_SCRIPT_RE = /<script src="\/annotate\.[0-9a-f]{10}\.js"><\/script>/;
 
 const PREFIX = '/sites/app';
 const TARGET = 'https://app.localhost';
@@ -369,7 +374,7 @@ test('proxy: HTML rewritten + bootstrap first + annotate injected; annotate=off 
     assert.ok(html.includes('src="/sites/app/assets/app.js"'), 'absolute script src rewritten');
     assert.ok(html.includes('href="/sites/app/assets/site.css"'), 'absolute link href rewritten');
     assert.ok(html.includes("window.__pinpointEntry='app'"), 'annotate entry marker injected');
-    assert.ok(html.includes('<script src="/annotate.js"></script>'), 'annotate client injected');
+    assert.ok(HASHED_SCRIPT_RE.test(html), 'annotate client injected on the hashed artifact URL');
     assert.ok(html.includes('window.__pinpointProxy'), 'rebase bootstrap injected');
     assert.ok(
       html.indexOf('__pinpointProxy') < html.indexOf('/assets/app.js'),
@@ -382,8 +387,8 @@ test('proxy: HTML rewritten + bootstrap first + annotate injected; annotate=off 
     const off = await fetch(`${base}/sites/app/?annotate=off`);
     const offHtml = await off.text();
     assert.ok(!offHtml.includes('__pinpointEntry'), 'annotate=off: 无标注面');
-    // bootstrap 内联的 lib 源码里点名了 /annotate.js（豁免清单），断言钉 script 标签形态。
-    assert.ok(!offHtml.includes('<script src="/annotate.js"'));
+    // annotate=off 一个客户端标签都不许有（哈希地址与老地址都算）。
+    assert.ok(!/<script src="\/annotate/.test(offHtml), 'annotate=off: 无 annotate script 标签');
     assert.ok(offHtml.includes('window.__pinpointProxy'), 'annotate=off: 重基 bootstrap 保留（代理机制）');
     assert.ok(offHtml.includes('src="/sites/app/assets/app.js"'), 'annotate=off: URL 重写保留');
   });

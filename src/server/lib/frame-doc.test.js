@@ -14,6 +14,10 @@ import {
   resolveFrameTarget,
   stripScripts,
 } from './frame-doc.js';
+import { ensureAnnotateBundle } from './annotate-bundle.js';
+
+// 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
+await ensureAnnotateBundle();
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -142,6 +146,8 @@ test('framePageHtml: self-contained document with identity injection and inert p
   assert.ok(html.includes('data-screen="recipe"'));
   assert.ok(html.includes('wb-screen-cap'));
   assert.ok(html.includes('B2'));
+  // 客户端标签引用构建产物的内容哈希地址（审计 B3）。
+  assert.match(html, /<script src="\/annotate\.[0-9a-f]{10}\.js" async><\/script>/);
   // 预览脚本惰性化（防原生执行，交给 frame-boot）
   assert.ok(html.includes('type="text/x-pinpoint-preview"'));
   assert.ok(!/<script data-preview-script>/.test(html));
@@ -150,7 +156,8 @@ test('framePageHtml: self-contained document with identity injection and inert p
 test('framePageHtml: annotate=off drops the annotate client but keeps boot mechanics', async () => {
   const target = resolveFrameTarget('e2e-ios', 'timer', { registry });
   const html = await framePageHtml(target, { annotate: false });
-  assert.ok(!html.includes('/annotate.js'));
+  // 哈希地址与老地址都不许出现。
+  assert.ok(!/<script src="\/annotate/.test(html));
   assert.ok(!html.includes('__pinpointFrame'));
   assert.ok(html.includes('[frame-boot]'));
   assert.ok(html.includes('data-preview-mount'));

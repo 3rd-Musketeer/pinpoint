@@ -1,7 +1,10 @@
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
+import path from 'node:path';
 import test from 'node:test';
 
-import { resolveContentFile, rewriteContentUrl } from './content-routes.js';
+import contentRoutes, { resolveContentFile, rewriteContentUrl } from './content-routes.js';
+import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 
 test('rewriteContentUrl maps the served URL prefixes onto their disk location', () => {
   assert.equal(rewriteContentUrl('/kits/ios/ios-kit.css'), '/content/kits/ios/ios-kit.css');
@@ -88,4 +91,61 @@ test('resolveContentFile serves a directory only when it holds an index.html', (
   const bare = fakeDisk({ '/content/previews/library': 'dir' });
   assert.deepEqual(resolveContentFile('/previews/library/', bare),
     { action: 'notFound', url: '/previews/library/' });
+});
+
+/* ---- ios-kit 自注入的哈希地址替换（审计 B3，工作台自身的加载处）---- */
+
+const ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+
+function kitMiddleware() {
+  const plugin = contentRoutes();
+  let handler;
+  plugin.configureServer({
+    config: { root: ROOT },
+    middlewares: { use(fn) { handler = fn; } },
+  });
+  return handler;
+}
+
+function callKit(handler, method, url) {
+  return new Promise((resolve, reject) => {
+    const req = new EventEmitter();
+    req.method = method;
+    req.url = url;
+    req.headers = {};
+    const res = {
+      statusCode: 0,
+      headers: {},
+      chunks: [],
+      setHeader(k, v) { this.headers[k] = v; },
+      end(data) {
+        if (data !== undefined) this.chunks.push(Buffer.from(data));
+        this.ended = true;
+        resolve({ next: false, res: this });
+      },
+      get text() { return Buffer.concat(this.chunks).toString('utf8'); },
+    };
+    const next = () => resolve({ next: true, res });
+    try {
+      Promise.resolve(handler(req, res, next)).then((r) => { if (r !== undefined) return; }, reject);
+    } catch (error) { reject(error); }
+    // 中间件同步 end / next 之外没有别的出口；超时即 fail。
+    setTimeout(() => reject(new Error('kit middleware neither ended nor called next')), 2000);
+  });
+}
+
+test('served ios-kit.js self-injection references the hashed artifact URL', async () => {
+  await ensureAnnotateBundle();
+  const handler = kitMiddleware();
+  const { next, res } = await callKit(handler, 'GET', '/kits/ios/ios-kit.js?t=1');
+  assert.equal(next, false, '替换命中时不放行给磁盘投影');
+  assert.equal(res.statusCode, 200);
+  assert.match(res.headers['Content-Type'], /^application\/javascript/);
+  assert.equal(res.headers['Cache-Control'], 'no-cache', '换版后新哈希要立刻跟着发出去');
+  assert.ok(/s\.src = '\/annotate\.[0-9a-f]{10}\.js';/.test(res.text), 'self-injection swapped to the hash URL');
+  assert.ok(!res.text.includes("s.src = '/annotate.js';"), 'old literal gone from the served bytes');
+  // HEAD 同路径同头，无响应体。
+  const head = await callKit(handler, 'HEAD', '/kits/ios/ios-kit.js');
+  assert.equal(head.res.statusCode, 200);
+  assert.equal(head.res.chunks.length, 0);
 });

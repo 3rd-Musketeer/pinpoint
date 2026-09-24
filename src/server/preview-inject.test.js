@@ -6,6 +6,11 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { createPreviewInjectHandler } from './preview-inject.js';
+import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
+
+// 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
+await ensureAnnotateBundle();
+const HASHED_SCRIPT_RE = /<script src="\/annotate\.[0-9a-f]{10}\.js"><\/script>/;
 
 function withFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'preview-inject-'));
@@ -44,7 +49,7 @@ test('previews 完整文档自动注入 annotate 客户端（契约统一）', (
   const { handled, res } = call(handler, 'GET', '/previews/demo/doc.html');
   assert.equal(handled, true);
   assert.equal(res.headers['content-type'], 'text/html; charset=utf-8');
-  assert.ok(res.text.includes('<script src="/annotate.js"></script>'));
+  assert.ok(HASHED_SCRIPT_RE.test(res.text), 'client tag references the content-hashed artifact');
   // storage-unify：注入带 entry 标记 = 该 previews 页自己的 id（桶 = 页）。
   assert.ok(res.text.includes("window.__pinpointEntry='demo'"));
   // 子路径整文档同样以第一段（页 id）为 entry。
@@ -73,12 +78,12 @@ test('pp2：board 屏 URL 不注入（让给 content-routes 从 dist 出）；�
   // 屏形状但不在板里（doc 不在 board.json，盘上有文件）：当非屏整文档照常注入。
   const notInBoard = call(handler, 'GET', '/previews/demo/doc.html');
   assert.equal(notInBoard.handled, true);
-  assert.ok(notInBoard.res.text.includes('<script src="/annotate.js"></script>'));
+  assert.ok(HASHED_SCRIPT_RE.test(notInBoard.res.text), 'client tag references the content-hashed artifact');
   // 非屏形状（子路径整文档）照注入——屏分支收窄不得波及。
   const nested = call(handler, 'GET', '/previews/demo/pages/about.html');
   assert.equal(nested.handled, true);
   assert.ok(nested.res.text.includes('<!doctype html>'));
-  assert.ok(nested.res.text.includes('<script src="/annotate.js"></script>'));
+  assert.ok(HASHED_SCRIPT_RE.test(nested.res.text), 'client tag references the content-hashed artifact');
 });
 
 test('路径穿越拒绝', (t) => {

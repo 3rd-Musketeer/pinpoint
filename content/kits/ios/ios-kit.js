@@ -185,6 +185,9 @@
     if (document.documentElement.getAttribute('data-annotate') === 'off') return;
     if (window.__pinpoint || document.querySelector('script[data-ios-annotate]')) return;
     var s = document.createElement('script');
+    /* 服务端把这一行字面量换成构建产物的内容哈希地址 /annotate.<hash>.js（审计
+       B3，immutable 缓存）—— 见 src/server/lib/annotate-bundle.js injectAnnotateSrc；
+       字面量保持可独立工作：模板静态发布（无 pinpoint 服务替换）时仍走老地址。 */
     s.src = '/annotate.js';
     s.async = true;
     s.setAttribute('data-ios-annotate', '');

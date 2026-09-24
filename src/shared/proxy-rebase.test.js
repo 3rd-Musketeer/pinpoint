@@ -37,12 +37,22 @@ test('the annotate client API is exempt (in-page client stays on pinpoint)', () 
   for (const path of ['/save', '/image', '/annotations', '/events', '/annotate.js']) {
     assert.equal(rebaseProxyUrl(path, CFG), path, path);
   }
+  // 客户端按内容哈希地址加载（审计 B3）：换版哈希跟着变，豁免按 /annotate. 前缀。
+  assert.equal(isRebaseExemptPath('/annotate.44bc529372.js'), true);
+  assert.equal(rebaseProxyUrl('/annotate.44bc529372.js', CFG), '/annotate.44bc529372.js');
+  assert.equal(isRebaseExemptPath('/annotate.js'), true, '老地址（手写标签 / 扩展注入）同前缀豁免');
+  // annotate 命名空间之外的前缀撞不上：/annotations/ 另有豁免，其余照重基。
+  assert.equal(isRebaseExemptPath('/annotation.js'), false);
   assert.equal(rebaseProxyUrl('/annotations/index.html~abc?entry=app', CFG), '/annotations/index.html~abc?entry=app');
   assert.equal(rebaseProxyUrl('/images/shot.png?entry=app', CFG), '/images/shot.png?entry=app');
   // 绝对形态（client 用 script origin 拼 SERVER + '/save'）同样豁免。
   assert.equal(
     rebaseProxyUrl('https://pinpoint.localhost/save', CFG),
     'https://pinpoint.localhost/save',
+  );
+  assert.equal(
+    rebaseProxyUrl('https://pinpoint.localhost/annotate.44bc529372.js', CFG),
+    'https://pinpoint.localhost/annotate.44bc529372.js',
   );
 });
 
