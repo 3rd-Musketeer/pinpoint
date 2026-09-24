@@ -9,8 +9,10 @@
  *
  * 产物按内容算短哈希：pinpoint 生成的注入点引用 /annotate.<hash>.js
  * （immutable 永久缓存）；老地址 /annotate.js 继续发同一份产物（内容页里的
- * 手写标签、浏览器扩展与跨域注入还在用），带 ETag + no-cache。构建失败的错误
- * 不吞：HTTP 面显式 500 带原因，绝不静默发旧版。
+ * 手写标签、浏览器扩展与跨域注入还在用），带 ETag + no-cache。失效判定覆盖
+ * 整个 import 图（esbuild metafile 给名单），注入点取地址前同步重验——源码
+ * 变了哈希跟着变，任何注入面都不会静默发旧版。构建失败的错误不吞：HTTP 面
+ * 显式 500 带原因，绝不静默发旧版。
  */
 import crypto from 'node:crypto';
 import fs from 'node:fs';
@@ -23,7 +25,12 @@ import esbuild from 'esbuild';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..', '..');
 
-/** 参与失效判定的全部源文件（annotate.js 的 import 由 esbuild 自己追）。 */
+/**
+ * 失效判定的固定名单：入口 + 共享 CSS。import 图不在这里手工列——每次构建由
+ * esbuild metafile 给出真实名单（artifact.inputs），随产物存下来成为下一次的
+ * 判定范围。固定名单的意义：给 annotate.js 新增一个 import 时，改的是被追踪的
+ * 入口文件，第一次就能触发重编，新名单在那次构建后落地。
+ */
 export function annotateBundleSources() {
   return [
     path.join(SRC, 'client', 'annotate.js'),
@@ -32,16 +39,21 @@ export function annotateBundleSources() {
 }
 
 // 哈希地址的形状与 hashJs 的截断长度绑死（SSOT 在这里）：/annotate.<hash>.js。
+// proxy-rebase.js 的豁免判定要同一形状，但它不能 import 本模块（内联进
+// bootstrap），那边自带一份同形正则，proxy-rebase.test.js 钉住两处一致。
 const HASH_RE = '[0-9a-f]{10}';
 export const ANNOTATE_BUNDLE_URL_RE = new RegExp(`^\\/annotate\\.(${HASH_RE})\\.js$`);
 
 function esbuildOptions() {
   return {
     entryPoints: [path.join(SRC, 'client', 'annotate.js')],
+    // absWorkingDir 钉住 metafile 路径基准（相对 SRC），不随进程 cwd 漂移。
+    absWorkingDir: SRC,
     bundle: true,
     format: 'iife',
     minify: true,
     write: false,
+    metafile: true,
     // 注入到别人页面：必须恰好一个输出文件，运行时不能再去拉 chunk。
     // charset utf8：client 文案里中文很多，默认 ascii 转义会把体积打回去。
     loader: { '.css': 'text' },
@@ -64,21 +76,26 @@ function compress(js) {
   };
 }
 
+function toArtifact(result) {
+  const js = result.outputFiles[0].text;
+  // inputs = 这次产物真正的 import 图（含 text loader 的 CSS），路径相对 SRC
+  //（绝对路径 resolve 原样通过）。它决定下一次失效判定 stat 哪些文件。
+  const inputs = Object.keys(result.metafile.inputs).map((p) => path.resolve(SRC, p));
+  return { js, hash: hashJs(js), inputs, ...compress(js) };
+}
+
 /**
- * 构建一次 annotate 客户端。返回 { js, hash, gzip, br }：js 是产物文本，
- * gzip / br 是构建期预压缩好的 buffer，serve 层按 Accept-Encoding 挑。
+ * 构建一次 annotate 客户端。返回 { js, hash, inputs, gzip, br }：js 是产物
+ * 文本，inputs 是 import 图文件清单（失效判定的下一个范围），gzip / br 是
+ * 构建期预压缩好的 buffer，serve 层按 Accept-Encoding 挑。
  * minify:false 仅供测试对未压缩中间产物断言。
  */
 export async function buildAnnotateBundle({ minify = true } = {}) {
-  const result = await esbuild.build({ ...esbuildOptions(), minify });
-  const js = result.outputFiles[0].text;
-  return { js, hash: hashJs(js), ...compress(js) };
+  return toArtifact(await esbuild.build({ ...esbuildOptions(), minify }));
 }
 
 function buildAnnotateBundleSync() {
-  const result = esbuild.buildSync(esbuildOptions());
-  const js = result.outputFiles[0].text;
-  return { js, hash: hashJs(js), ...compress(js) };
+  return toArtifact(esbuild.buildSync(esbuildOptions()));
 }
 
 export class AnnotateBundleError extends Error {
@@ -103,11 +120,50 @@ function describeBuildError(error) {
 const ARTIFACT_KEEP = 5;
 const artifacts = new Map(); // hash -> artifact（按构建顺序，最新的在最后）
 let current = null;          // 最新一次成功构建
-let currentMtime = null;     // 构建时的源文件 max-mtime
+let currentMtime = null;     // current 覆盖到的源文件 max-mtime；NaN = 过期待重编
+let trackedInputs = [];      // 上一次构建的 import 图（绝对路径），失效名单的一部分
 let building = null;         // 在途的 async 构建（并发调用共享同一份 promise）
 
-function maxSourceMtime() {
-  return Math.max(...annotateBundleSources().map((p) => fs.statSync(p).mtimeMs));
+// 失效判定范围 = 固定名单 + 上一次构建的 import 图。只看固定名单会漏掉被
+// annotate.js import 的共享库（改了它们连老地址都一直发旧版）；只看 import 图
+// 则新增 import 的第一次没有触发（新文件上次构建时不在名单里）——固定名单里
+// 的入口文件兜住这一下。
+function invalidationFiles() {
+  const fixed = annotateBundleSources();
+  return trackedInputs.length ? [...fixed, ...trackedInputs] : fixed;
+}
+
+/**
+ * 名单内全部文件的 max mtime。源文件缺失抛 AnnotateBundleError（不把原始
+ * ENOENT 漏给 HTTP 面）；调用方把取不到 mtime 一律当「过期」处理，交给真正
+ * 的构建去报带文件名的错误。
+ */
+function maxSourceMtime(files) {
+  let max = -Infinity;
+  for (const p of files) {
+    let mtimeMs;
+    try {
+      mtimeMs = fs.statSync(p).mtimeMs;
+    } catch (error) {
+      throw new AnnotateBundleError(`source file missing: ${p} (${error.code || error.message})`);
+    }
+    if (mtimeMs > max) max = mtimeMs;
+  }
+  return max;
+}
+
+function sourceStamp() {
+  try {
+    return maxSourceMtime(invalidationFiles());
+  } catch {
+    return null;
+  }
+}
+
+function isFresh() {
+  if (!current) return false;
+  const stamp = sourceStamp();
+  return stamp !== null && stamp === currentMtime;
 }
 
 function remember(artifact) {
@@ -116,6 +172,17 @@ function remember(artifact) {
     artifacts.delete(artifacts.keys().next().value);
   }
   current = artifact;
+  trackedInputs = artifact.inputs;
+  return artifact;
+}
+
+// 构建后落账。mtime 在构建**前**采样（旧 readAnnotateJs 的顺序）：构建期间又
+// 落盘的编辑不能被记成「已见过」——那次的内容没进这份产物。构建后复验，前后
+// 不一致（或构建期间文件被删）就保持过期（NaN），下一次取用再编一次。
+function settleAfterBuild(artifact, before) {
+  remember(artifact);
+  const after = sourceStamp();
+  currentMtime = after !== null && after === before ? after : NaN;
   return artifact;
 }
 
@@ -124,13 +191,11 @@ function remember(artifact) {
  * 回退老地址）。并发调用与在途构建合并成同一份 promise。
  */
 export function ensureAnnotateBundle() {
-  if (current && !building && currentMtime === maxSourceMtime()) return Promise.resolve(current);
   if (building) return building;
+  if (isFresh()) return Promise.resolve(current);
+  const before = sourceStamp();
   building = buildAnnotateBundle()
-    .then((artifact) => {
-      currentMtime = maxSourceMtime();
-      return remember(artifact);
-    })
+    .then((artifact) => settleAfterBuild(artifact, before))
     .catch((error) => {
       // 重编失败就摘掉 current：注入点回退老地址、/annotate.js 显式 500 带原因
       // —— 不能让页面继续引用旧哈希地址、静默吃旧版（immutable 缓存下更没救）。
@@ -150,11 +215,10 @@ export function currentAnnotateBundle() {
     if (!current) throw new AnnotateBundleError('first build still running');
     return current;
   }
-  if (current && currentMtime === maxSourceMtime()) return current;
+  if (isFresh()) return current;
+  const before = sourceStamp();
   try {
-    const artifact = buildAnnotateBundleSync();
-    currentMtime = maxSourceMtime();
-    return remember(artifact);
+    return settleAfterBuild(buildAnnotateBundleSync(), before);
   } catch (error) {
     current = null;
     throw new AnnotateBundleError(describeBuildError(error));
@@ -167,11 +231,17 @@ export function annotateBundleByHash(hash) {
 }
 
 /**
- * 注入点该引用的客户端地址。有产物用哈希地址；构建还没落地或失败时回退老
- * 地址 /annotate.js —— 那条路由对同一个失败显式 500 带原因，不吞错。
+ * 注入点该引用的客户端地址。取地址前重验（同步失效检查，过期就同步重编一次
+ * ~几十 ms，与旧 readAnnotateJs 同量级）：源码变了还发旧哈希，旧产物在
+ * immutable 缓存下永远追不回来。构建还没落地或失败时回退老地址 /annotate.js
+ * —— 那条路由对同一个失败显式 500 带原因，不吞错。
  */
 export function annotateClientSrc() {
-  return current ? `/annotate.${current.hash}.js` : '/annotate.js';
+  try {
+    return `/annotate.${currentAnnotateBundle().hash}.js`;
+  } catch {
+    return '/annotate.js';
+  }
 }
 
 /**
