@@ -618,8 +618,17 @@ if (import.meta.hot) {
   // 阶段 8：attach 条目在板装载时合并进目标页 —— manifest 重拉后重摆当前板，
   // add/remove --page 条目即时反映到「内容」区（目标页不是当前页时，下次切页
   // 自然合并，无需全量重载）。
-  import.meta.hot.on('registry:update', function () {
+  // 审计 B2（2026-09-24）：分组类广播（拖页入夹 / 折叠 / 改名 / 排序，服务端
+  // 带 scope=grouping）只动分组与顺序，重拉清单让左栏重排就够了 —— 整板重装
+  // 会把文档页 iframe 全部重载，一次拖放闪一场。条目类（scope=entries，CLI
+  // add / rename 等）照旧整板重摆：attach 条目要重新合并进 board。选中态按
+  // pageId 派生，页挪进哪个夹行都跟得对。
+  import.meta.hot.on('registry:update', function (data) {
     queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+    if (data && data.scope === 'grouping') {
+      loadPageManifest();
+      return;
+    }
     loadPageManifest().then(function () {
       if (!boardPanel || !wbGet().activePageId) return;
       snapshotPageViewport(wbGet().activePageId);
