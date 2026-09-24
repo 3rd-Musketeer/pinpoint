@@ -15,8 +15,12 @@
   css / js / 图片等其余资源仍从源目录出。没编过的页先懒编译一次；编译失败或没编过的屏 500 带
   错误文本，画布出 `.wb-screen-err` 面板——重跑 `ppnt build` 即修。
 - board.json 响应附 `dist: { builtAt, stale }`，`stale` = 任一源文件的 mtime 晚于 `builtAt`。
-- watch（服务与 `ppnt build --watch` 同一条管线）：`.jsx` / `.html` / board.json / 页级 css 变更 →
-  重编该页 + 板软刷新；sidecar `.js` 变更 → 重编 + 整页 reload（ES module 缓存）。
+- watch（服务与 `ppnt build --watch` 同一条管线）盯页目录里的 `.jsx` / `.html` / `.css` / `.js` /
+  `.json`（含 board.json）/ `.ts` / `.tsx` / `.mjs` / `.cjs` / `.mts` / `.cts`——帧 import 的数据与
+  模块都会进 `build.json` 的依赖记录，所以一并盯；`build.json`、dist、`node_modules`、`.git` 不盯。
+  变更后按变更文件筛屏增量重编：只重编源码或依赖命中的屏，拿不准就整页重编（board.json 变、屏
+  增删、上次有失败屏、变更文件认领不到屏、依赖记录的文件在盘上变了却不在这批变更里）。之后板
+  软刷新；sidecar `.js` 变更 → 重编 + 整页 reload（ES module 缓存）。
 
 **`.jsx` 帧**：默认导出一个返回 JSX 的函数；顶层只许 `import`、`function` 声明、`export default`。
 内核 Preact，esbuild 转译后 `renderToString` 出静态 HTML 片段。编译期给每个宿主元素打
