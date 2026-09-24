@@ -1,19 +1,17 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_DATA_DIR } from './env.js';
 
 // storage-unify 的核心不变量：一页一个桶。两页各标一条 → 各自的 @canvas 各自
 // 编号（两个 #1，#n 按页）；清空只作用当前页的账本，另一页的标注原样；
-// 切页 = 换桶重新 hydrate，回到旧页标注照常显示。
+// 切页 = 换桶重新 hydrate，回到旧页标注照常显示。末拍守「行指向已不存在的
+// 页」：rename 后账本行带旧 pageId，按本页行定位、不跳错误面板不报未连接
+//（K4；rename 的登记表 + 桶 + reload 链路在 bin/pinpoint-cli.test.js，这里
+// 直接把盘上 pageId 伪造成 ghost 造出同一状态，省掉 CLI 子进程与整页懒编译）。
 
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const CANVAS_PAGES = ['e2e-ios', 'e2e-mixed'];
 
 test.afterEach(() => {
@@ -22,8 +20,12 @@ test.afterEach(() => {
   }
 });
 
+function canvasFile(vpage) {
+  return path.join(E2E_DATA_DIR, vpage, '@canvas.json');
+}
+
 function readCanvas(vpage) {
-  const file = path.join(E2E_DATA_DIR, vpage, '@canvas.json');
+  const file = canvasFile(vpage);
   return fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, 'utf8')) : null;
 }
 
@@ -76,42 +78,25 @@ test('一页一桶：两页各自标注各自编号，清空当前页不动另�
   await switchPageSettled(page, 'e2e-ios');
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
   await expect.poll(() => page.evaluate(() => window.pinpoint.pageMarks.length)).toBe(1);
-});
 
-test('rename 后点标注：行带旧 pageId，按本页行定位，不跳错误面板不报未连接', async ({ page }) => {
-  test.setTimeout(60000);
-  let renamed = false;
-  const ppnt = (...args) => execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-    cwd: ROOT,
-    env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-  });
-  try {
-    await page.setViewportSize({ width: 1440, height: 900 });
-    await page.goto('/index.html');
-    await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
-    await annotateOn(page, 'e2e-ios', '[data-screen="settings"] .ios-cell', 'rename 前的标注');
-
-    // rename：登记表 + 标注桶一起改名，行上的 pageId 留着旧 id（桶 = 页，
-    // 行不随 rename 改写）。改完服务 reload，页清单里从此只有新 id。
-    await ppnt('rename', 'e2e-ios', 'e2e-ios-r');
-    renamed = true;
-
-    await page.goto('/index.html?page=e2e-ios-r');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
-    await expect.poll(() => page.evaluate(() => window.pinpoint.entry)).toBe('e2e-ios-r');
-    await expect.poll(() => page.evaluate(() => window.pinpoint.getState().connected)).toBe(true);
-
-    // 点这条标注：旧 pageId 不在页清单里 → 不许 setActivePage 到不存在的页
-    // （那会落到「页面不存在」面板，并把画布换到不存在的桶、误报未连接），
-    // 按本页账本里的行直接定位。
+  // ── 行带已不存在的 pageId（rename 后的等价状态）：goToMark 按本页账本里的行
+  //    直接定位，不许 setActivePage 到不存在的页（那会跳「页面不存在」面板、
+  //    换到不存在的桶、误报未连接）。
+  const onDisk = readCanvas('e2e-ios');
+  onDisk.annotations[0].pageId = 'ghost';
+  fs.writeFileSync(canvasFile('e2e-ios'), JSON.stringify(onDisk));
+  await page.reload();
+  await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
+  // hydrate 完成后再跳：goToMark 在 marks 里找不到 #n 时静默无操作，负载下
+  // hydrate 晚于 goToMark 曾把这条测成随机超时（先等真信号再断言）。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.some((m) => m.n === 1))).toBe(true);
+  await expect.poll(async () => {
     await page.evaluate(() => window.pinpoint.goToMark(1));
-    await expect(page.locator('#ann-box')).toBeVisible();
-    await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios-r');
-    await expect.poll(() => page.evaluate(() => {
-      const st = window.pinpoint.getState();
-      return st.connected && !st.syncError && !st.routing;
-    })).toBe(true);
-  } finally {
-    if (renamed) await ppnt('rename', 'e2e-ios-r', 'e2e-ios');
-  }
+    return page.locator('#ann-box').isVisible();
+  }).toBe(true);
+  await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-ios');
+  await expect.poll(() => page.evaluate(() => {
+    const st = window.pinpoint.getState();
+    return st.connected && !st.syncError && !st.routing;
+  })).toBe(true);
 });

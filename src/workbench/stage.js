@@ -227,6 +227,10 @@ window.workbench = {
   whenBoardSettled: function () {
     return mountManager.current ? mountManager.current.boardSettled : Promise.resolve(false);
   },
+  // 当前挂载会话代号（只读）：每次整板重装 begin() 递增。分组类 registry 写
+  // 只刷左栏、不重装板，代号不变 —— e2e 拿它作「板没重装」的正向信号，
+  // 不用再靠固定等待猜「没发生重装」。
+  mountGeneration: function () { return mountManager.generation; },
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
