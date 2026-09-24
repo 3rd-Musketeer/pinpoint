@@ -55,6 +55,10 @@ async function waitRouteSettled(page, pathname, prevEpoch) {
 }
 
 test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the target', async ({ page }) => {
+  // 合并自 review-refinements「the injected sidebar opens annotations…」的一条：
+  // 整条跑完（含 reload）页面不得抛未捕获异常。
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
   await page.goto('/sites/e2e-dir/doc.html');
   await page.waitForFunction(() => window.pinpoint);
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -143,6 +147,7 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(sidebar).toBeHidden();
   await page.keyboard.press('s');
   await expect(sidebar).toBeVisible();
+  expect(errors).toEqual([]);
 });
 
 test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完成沉底弱化 → closed 筛选可见 → 重新打开', async ({ page }) => {
@@ -350,11 +355,19 @@ test('workbench 列表 note hover 卡：done 行 120 ms 出卡，无 note 的行
 
   // 无 note 的行：换行的反应可观察 —— hover 挪到 row2，row1 的卡先收
   // （90ms 离开宽限走完，收卡被轮询到 = 换行事件已处理）；row2 没有 note，
-  // 过了 120ms 出卡窗也不出（计数断言自带 5s 重试窗口兜住迟到出卡）。
+  // 过了出卡窗也不出。负断言要确定的观察窗：expect 的重试只在断言失败时
+  // 延续，count 已是 0 会立即通过，兜不住「过出卡窗才迟到出卡」的回归 ——
+  // 所以先记下观察起点，用 performance.now() 差值等满 2 倍出卡窗再断 count 0。
+  // NOTE_SHOW_MS 未导出（src/workbench/app/AnnPopover.jsx:16），这里用同值
+  // 常量并注明出处；出卡窗改值时这里要跟着改。
+  const NOTE_SHOW_MS = 120;
   await row1.hover();
   await expect(card).toBeVisible();
   await row2.hover();
   await expect(card).toBeHidden();
+  const windowStart = await page.evaluate(() => performance.now());
+  await expect.poll(async () => (await page.evaluate(() => performance.now())) - windowStart)
+    .toBeGreaterThanOrEqual(2 * NOTE_SHOW_MS);
   await expect(card).toHaveCount(0);
 });
 
@@ -457,8 +470,10 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(133, 142, 153)');
 
-  // owner 在 UI 里编辑正文 → 状态自动回 open（水合完成再开，否则 openMark 扑空）。
-  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.some((m) => m.n === n), nDone)).toBe(true);
+  // owner 在 UI 里编辑正文 → 状态自动回 open。水合完成再开（否则 openMark
+  // 扑空），且起始态必须是 done：reload 若丢了状态，行还在、编辑照常能开，
+  // 「编辑回 open」就成了恒真 —— 所以这里等的不是行存在，是 status 回到 done。
+  await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n)?.status, nDone)).toBe('done');
   await page.evaluate((n) => window.pinpoint.openMark(n), nDone);
   await expect(page.locator('#ann-box')).toBeVisible();
   await page.locator('#ann-input').fill('改过的正文');
