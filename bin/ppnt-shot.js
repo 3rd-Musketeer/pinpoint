@@ -57,6 +57,7 @@ export async function renderShots({ origin, pageId, jobs }) {
     await page.waitForFunction(() => window.workbench);
     await page.evaluate((id) => window.workbench.setActivePage(id), pageId);
     await page.waitForFunction((id) => window.workbench.activePageId() === id && document.querySelector('#wb-board-panel .wb-lib-item'), pageId);
+    await waitForQuiet(page);
     for (const job of prepared) {
       const snapshot = await buildSnapshot(page, job);
       const response = await context.request.post(`${origin}/api/export-image`, { data: snapshot });
@@ -73,6 +74,22 @@ export async function renderShots({ origin, pageId, jobs }) {
     await browser.close();
   }
   return results;
+}
+
+/** 帧的 sidecar 是异步挂载的（模块链 + 绘制都要时间）：等页面资源安静两拍再开拍，
+   否则第一份快照可能拍到还没上色的 canvas。资源计数连续两轮不再增长即视为安静；
+   SSE 是长连接但不产生新的 resource 条目，不影响。 */
+async function waitForQuiet(page, { timeout = 4000, interval = 150 } = {}) {
+  const start = Date.now();
+  let last = -1;
+  for (;;) {
+    const count = await page.evaluate(() => performance.getEntriesByType('resource').length);
+    if (count === last && count > 0) break;
+    last = count;
+    if (Date.now() - start > timeout) break;
+    await page.waitForTimeout(interval);
+  }
+  await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
 }
 
 /** 快照（/api/export-image 同契约）+ 序号钉 overlay。 */
@@ -122,6 +139,24 @@ async function buildSnapshot(page, job) {
     const clone = target.cloneNode(true);
     clone.querySelectorAll('script,[data-export-ui]').forEach((node) => node.remove());
     clone.removeAttribute('data-export-ui');
+    // 运行时 canvas 的位图不随克隆走（出图里全空白）：原位换成活页位图的
+    // dataURL 图片，尺寸照布局尺寸（offsetWidth/Height，不吃画布缩放）。
+    // toDataURL 会抛的（跨域污染）canvas 跳过，出图保持空白，与现状一致。
+    const cloneCanvases = clone.querySelectorAll('canvas');
+    target.querySelectorAll('canvas').forEach((live, i) => {
+      const twin = cloneCanvases[i];
+      if (!twin) return;
+      let url = '';
+      try { url = live.toDataURL('image/png'); } catch { return; }
+      const img = document.createElement('img');
+      for (const attr of twin.attributes) img.setAttribute(attr.name, attr.value);
+      img.setAttribute('width', String(Math.max(1, live.offsetWidth)));
+      img.setAttribute('height', String(Math.max(1, live.offsetHeight)));
+      img.style.width = `${live.offsetWidth}px`;
+      img.style.height = `${live.offsetHeight}px`;
+      img.src = url;
+      twin.replaceWith(img);
+    });
     if (overlay) {
       clone.style.position = 'relative';
       clone.insertAdjacentHTML('afterbegin', overlay);

@@ -6,7 +6,8 @@ import { fileURLToPath } from 'node:url';
 
 import { test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // ppnt CLI 四命令的端到端（切片 4）：不开浏览器工具做验证，全部走 CLI 子进程。
 // 链路：seed 账本 → check --mode both（markdown + 服务渲染的 1x 截图）→
@@ -131,4 +132,38 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
   if (pageShot.code !== 0) throw new Error(`shot <页> 退出 ${pageShot.code}：${pageShot.stderr}`);
   if (!pageShot.stdout.includes(pagePng)) throw new Error(`shot <页> 没打路径：\n${pageShot.stdout}`);
   if (!fs.existsSync(pagePng) || fs.readFileSync(pagePng).length < 2000) throw new Error('整页图没落盘');
+});
+
+// 快照烤 canvas 位图（2026-09-26）：帧里的运行时 canvas 克隆时不带位图，出图全空白；
+// buildSnapshot 现在把 canvas 原位换成 dataURL 图片。固件 e2e-canvas 自登记自恢复
+// （多一条页会撞翻断言整份 Pages 清单的 spec），画的是别处不会出现的 #ff00ff。
+test('shot 把运行时 canvas 的位图烤进 PNG', async ({ page, request }) => {
+  appendRegistryEntry({ id: 'e2e-canvas', title: 'E2E Canvas', kind: 'dir', path: path.join(E2E_SITES_DIR, 'canvas-site'), board: 'ios' });
+  await request.post('/registry/reload');
+  try {
+    const out = path.join(E2E_DATA_DIR, 'shot', 'e2e-canvas', '@frame:e2e-canvas/dots.png');
+    fs.rmSync(out, { force: true });
+    const shot = await ppnt(['shot', '@frame:e2e-canvas/dots', '--page', 'e2e-canvas']);
+    if (shot.code !== 0) throw new Error(`shot 退出 ${shot.code}：${shot.stderr}`);
+    if (!shot.stdout.includes(out)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
+
+    await page.goto('/index.html');
+    const b64 = fs.readFileSync(out).toString('base64');
+    const hasFuchsia = await page.evaluate(async (data) => {
+      const img = new Image();
+      await new Promise((resolve, reject) => { img.onload = resolve; img.onerror = reject; img.src = `data:image/png;base64,${data}`; });
+      const c = document.createElement('canvas');
+      c.width = img.naturalWidth; c.height = img.naturalHeight;
+      const ctx = c.getContext('2d');
+      ctx.drawImage(img, 0, 0);
+      const d = ctx.getImageData(0, 0, c.width, c.height).data;
+      for (let i = 0; i < d.length; i += 4) {
+        if (d[i] > 200 && d[i + 1] < 90 && d[i + 2] > 200) return true;
+      }
+      return false;
+    }, b64);
+    if (!hasFuchsia) throw new Error('PNG 里没有帧 canvas 画的 #ff00ff——位图没进快照');
+  } finally {
+    await restoreRegistryFixture(request);
+  }
 });

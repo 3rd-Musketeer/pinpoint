@@ -50,7 +50,7 @@ export function writeRegistryFixture() {
 
 export function copySiteFixtures() {
   fs.rmSync(E2E_SITES_DIR, {recursive:true, force:true});
-  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site']) {
+  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site']) {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
 }

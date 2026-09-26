@@ -1,0 +1,12 @@
+{
+  "sections": [
+    {
+      "id": "main",
+      "title": "Canvas Screens",
+      "layout": "row",
+      "screens": [
+        { "id": "dots", "title": "Painted Canvas" }
+      ]
+    }
+  ]
+}
