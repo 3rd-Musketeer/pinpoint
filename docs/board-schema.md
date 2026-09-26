@@ -151,7 +151,7 @@ git 之外，清单：`prototypes/`（经 registry 登记进 Pages）、`tasks/`
 `.archive/`。exclude 不进共享的 `.gitignore`。实例页不住 `content/previews/`——它们住各自
 owning topic 的 `prototypes/`（或磁盘任何地方），经 `pinpoint add` 进 registry。往 tracked 文件里
 夹带实例内容（页面、组件、机器本地的 registry 内容）是这个仓最容易犯也最难回收的错。
-`PREVIEW_TEMPLATE_ONLY=1` 把实例内容藏起来，e2e 与发布校验跑在这个模式下。
+`PREVIEW_TEMPLATE_ONLY=1` 把实例内容藏起来，e2e 跑在这个模式下。
 
 ## 编辑面
 

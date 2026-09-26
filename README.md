@@ -271,26 +271,20 @@ Live recipes: the page fixtures under `e2e/` (`e2e/jsx-site/` for JSX frames + c
 
 The workbench's own design language is a separate canon — see [`docs/design.md`](docs/design.md).
 
-## Development and publishing
+## Development and shipping
 
-One Git repository, two long-lived worktrees:
-
-| Branch / worktree role | Responsibility |
-|---|---|
-| **`dev` / daily worktree** | Ongoing development and the only owner of the persistent `pinpoint.localhost` route |
-| **`main` / release worktree** | Clean public-template verification and publishing; no feature development or private instance content |
+One long-lived branch, `main`, in one primary clone that also runs the persistent
+`pinpoint.localhost` route. Larger features get a short-lived `feat/*` worktree and are merged back
+with `--ff-only`.
 
 ```bash
-just dev       # local server; no Git write
-just check     # local verification; no remote write
-just ship-dev  # check and push the clean dev branch to origin/dev
-just publish   # from the release worktree on main: ff-only, npm ci, template-only check, push
+just dev    # local server; no Git write
+just check  # local verification; no remote write
+just ship   # on main: clean + non-divergent guard, full check, push origin/main
 ```
 
-`main` only advances by fast-forwarding to a clean, published `dev` tip. The release worktree has its
-own `node_modules`, so publishing installs the exact lockfile before running the template-only gate.
-`just publish` refuses dirty or divergent worktrees, never force-pushes, and never creates a merge
-commit. The full contract is in [`AGENTS.md`](AGENTS.md).
+`just ship` refuses a dirty or divergent `main` and never force-pushes. The full contract is in
+[`AGENTS.md`](AGENTS.md).
 
 Clone per project. `content/previews/` holds **template content only** (pp2 removed the old tracked
 example pages; instance content always registers via `pinpoint add` and lives outside this repo).

@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0037](0037-single-main-branch.md) | 2026-09-26 | 单分支 main：dev / release worktree / publish 退役，`just ship` 推 main，功能按需开 worktree | 现行 | — |
 | [0036](0036-storage-unify-bucket-per-page.md) | 2026-09-23 | 存储统一：桶 = 页（`@canvas` 账本取代 pinpoint 共享画布账本）；孤儿显式化与 `ppnt prune` | 现行 | — |
 | [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 现行 | — |
 | [0034](0034-named-z-scale-and-stacking-rules.md) | 2026-09-17 | 外壳层级：命名阶梯 `--wb-z-*` + `.wb` 隔离 / `.wb-stage-wrap` 不成上下文两条规则 + 测试守 | 现行 | — |
@@ -46,7 +47,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0007](0007-workbench-react-rebuild.md) | 2026-08-10 | workbench 技术栈重构（react-rebuild milestone 收官） | 现行 | — |
 | [0006](0006-pinpoint-service-closeout.md) | 2026-08-10 | pinpoint 服务化 milestone 收尾（closeout） | 现行 | — |
 | [0005](0005-product-positioning.md) | 2026-08-07 | Product positioning: UIUX 原型交付与对齐工具 | 现行 | — |
-| [0004](0004-branch-model-main-dev.md) | 2026-07-21 | Branch model: main = public template, dev = daily | 现行 | — |
+| [0004](0004-branch-model-main-dev.md) | 2026-07-21 | Branch model: main = public template, dev = daily | 已被取代 | ADR 0037 |
 | [0003](0003-per-project-annotation-dir.md) | 2026-07-21 | Per-project annotation dir | 部分被取代（桶按条目分的半边归 0036 桶 = 页） | ADR 0036 |
-| [0002](0002-template-split-and-exclude.md) | 2026-07-21 | Template split + release workflow | 部分被修订（实例内容排除仍现行） | ADR 0012 |
+| [0002](0002-template-split-and-exclude.md) | 2026-07-21 | Template split + release workflow | 部分被修订（实例内容排除仍现行；发布流程退役） | ADR 0012、ADR 0037 |
 | [0001](0001-topic-source-delivery-semantics.md) | 2026-07-20 | Separate topic, source, and delivery semantics | 现行（产品 SSOT 已归档到 workspace 的 .archive/2026-08-13-topic-subs/） | — |

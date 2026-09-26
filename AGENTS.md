@@ -71,18 +71,18 @@ agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`open` 由 owner
 自动回，`close` 只有 owner 在工作台做），
 字段与转换规则见 [`docs/annotation.md`](docs/annotation.md)。
 
-## worktree 与发布契约
+## 分支与推送
 
-- 一个 git 仓库，两个长期 worktree：日常开发在 `dev`
-  （`repos/github.com/3rd-Musketeer/pinpoint/`），公开模板发布在 `main`
-  （`repos/.worktrees/github.com/3rd-Musketeer/pinpoint/release/`）。
-- 常驻的 `pinpoint.localhost` 服务**只**从 dev worktree 起。release worktree 是冷的校验与发布面。
-- 不要在 `main` 上开发、造私有实例内容、或直接提交。`main` 只能 fast-forward 到已发布的 dev tip。
-- `just ship-dev` 是唯一的 dev push 工作流：要求 dev 干净且不发散，跑完整 check，推 `origin/dev`，再核对 ref。
-- `just publish` 是唯一的 main 发布工作流：在 release worktree 的 `main` 上跑；要求两个 worktree 都干净、
-  本地 `dev == origin/dev`，用 `git merge --ff-only`，按 lockfile 安装，跑 template-only 校验，
-  推 `origin/main`，核对 `origin/main == origin/dev`。
-- 两条 recipe 都会改远端状态。永远不要绕过失败的 guard、不要 force-push、不要为了让发布通过而造 merge commit。
+- 只有一个长期分支 `main`，唯一 clone 在 `repos/github.com/3rd-Musketeer/pinpoint/`。
+  常驻的 `pinpoint.localhost` 服务从这个 clone 起。
+- 小改动直接在 `main` 上提交。较大的功能开 worktree：
+  `git worktree add ../../../.worktrees/github.com/3rd-Musketeer/pinpoint/<任务名> -b feat/<任务名>`。
+  做完在 clone 里 `git merge --ff-only feat/<任务名>`，再 `git worktree remove` 并删掉分支。
+  worktree 里没有 owner-local 文件（`tasks/`、`TODO.md` 等），派 worker 时给 clone 里的绝对路径；
+  `git worktree remove` 会连 ignored 文件一起删，只在 worktree 里的东西先挪出来。
+- `just ship` 是唯一的推送工作流：要求在 `main`、工作区干净、不与 `origin/main` 发散，
+  跑完整 check，推 `origin/main`，再核对 ref。它会改远端状态；不要绕过失败的 guard，不要 force-push。
+- 推没推看 git：`git log --oneline origin/main..main` 为空就是都推了。
 
 ## 技能路由
 

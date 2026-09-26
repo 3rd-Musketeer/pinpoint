@@ -101,7 +101,7 @@ owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done�
 template = 进 git 的那部分：框架代码 + Example Library + system 组件，`content/previews/` 里只有它。
 instance = 这台机器上 owner 自己的内容：`prototypes/`、`tasks/`、`BACKLOG.md`、`TODO.md`、
 `.archive/`、以及一批 owner-local 的 kit 组件，全部靠 `.git/info/exclude` 挡在 git 之外。
-`PREVIEW_TEMPLATE_ONLY=1` 把实例内容藏起来，e2e 与发布校验跑在这个模式下。
+`PREVIEW_TEMPLATE_ONLY=1` 把实例内容藏起来，e2e 跑在这个模式下。
 要避开：拿 instance 指“一个 annotate client 实例”——那个说 client 实例。
 
 ## 服务层
