@@ -50,18 +50,24 @@ function resolvePage(pageId, registry) {
   }
   const parsed = readBoard(root);
   if (!parsed) throw new OfflinePageExportError('board_invalid', `${pageId}: board.json 不是合法 JSON`);
-  const board = validateBoard(parsed, { pageId, defaultShell: 'app' });
-  for (const section of board.sections) {
+  const validated = validateBoard(parsed, { pageId, defaultShell: 'app' });
+  // 导出的是画布：doc 帧不在导出范围内（与导出对话框的计数同一口径），
+  // 整个 Section 都是 doc 帧时连 Section 一起略过。
+  const sections = [];
+  for (const section of validated.sections) {
+    const screens = section.screens.filter((screen) => screen.shell !== 'doc');
+    if (!screens.length) continue;
     if (section.layout !== 'row') {
       throw new OfflinePageExportError('unsupported_layout', `${pageId}/${section.id}: V1 requires row sections`);
     }
-    for (const screen of section.screens) {
+    for (const screen of screens) {
       if (screen.shell !== 'app' && screen.shell !== 'lock') {
         throw new OfflinePageExportError('unsupported_screen', `${pageId}/${screen.id}: V1 supports app/lock Frames only`);
       }
     }
+    sections.push({ ...section, screens });
   }
-  return { entry, root, board };
+  return { entry, root, board: { ...validated, sections } };
 }
 
 // 导出剥内部锚点（review R8）：data-pp-id / data-pp-comp 是标注锚与源码文件名，

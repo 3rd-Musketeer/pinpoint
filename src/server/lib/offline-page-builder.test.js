@@ -35,6 +35,29 @@ test('buildOfflinePage assembles a registry iOS Page into one offline document',
   assert.match(result.html, /<div class="ios-app"><button data-choice>选择<\/button><\/div>/);
 });
 
+test('buildOfflinePage exports the canvas only: doc Frames and all-doc Sections are left out', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-page-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'board.json'), JSON.stringify({
+    sections: [
+      { id: 'notes', title: '说明', shell: 'doc', layout: 'row', screens: [{ id: 'guide' }] },
+      { id: 'flow', title: '流程', layout: 'row', screens: [{ id: 'first' }, { id: 'aside', shell: 'doc' }] },
+    ],
+  }));
+  fs.writeFileSync(path.join(root, 'guide.html'), '<main>说明文档</main>');
+  fs.writeFileSync(path.join(root, 'aside.html'), '<main>旁注文档</main>');
+  fs.writeFileSync(path.join(root, 'first.html'), '<div class="ios-app">第一屏</div>');
+  const entry = { id: 'doc-fixture', title: 'Doc Fixture', kind: 'dir', path: root, board: 'ios' };
+  const registry = { resolve(id) { return id === entry.id ? entry : null; } };
+
+  const result = await buildOfflinePage({ pageId: entry.id, registry, approvals: [] });
+
+  assert.equal(result.sectionCount, 1);
+  assert.equal(result.frameCount, 1);
+  assert.match(result.html, /id="frame-first"/);
+  assert.doesNotMatch(result.html, /说明文档|旁注文档/);
+});
+
 test('buildOfflinePage fetches a shared remote resource once per export', async (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-page-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
