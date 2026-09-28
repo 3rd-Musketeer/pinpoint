@@ -2404,3 +2404,42 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   await page.getByRole('tab', {name:'大纲', exact:true}).click();
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
 });
+
+// 2026-09-28 满载 flake：Section Navigator 的条目只在板装载那一帧按几何建一次，那一帧
+// 板还没排好版就建成空列表，之后 resize / 缩放重量了几何却没人重建，导航一直藏着。
+// 这里用一段样式把板在装载那一帧压成 0 尺寸，稳定复现“那一帧量不出来”。
+test('Section Navigator：板装载那一帧量不出几何，之后排好版能自己补上条目', async ({ page }) => {
+  await page.addInitScript(() => {
+    document.addEventListener('DOMContentLoaded', () => {
+      const style = document.createElement('style');
+      style.id = 'e2e-hide-board';
+      style.textContent = '#wb-board-panel .wb-lib-item{display:none!important}';
+      document.head.appendChild(style);
+    });
+  });
+  await openWorkbench(page);
+  const navWrap = page.locator('#wbsection-nav-wrap');
+
+  await test.step('装载后立刻排好版：逐帧重量补上，不需要任何交互', async () => {
+    await expect(navWrap).toBeHidden();
+    await page.evaluate(() => document.getElementById('e2e-hide-board').remove());
+    await expect(navWrap).toBeVisible();
+    expect(await page.locator('#wbsection-nav-list .wb-section-nav-item').count()).toBeGreaterThan(1);
+  });
+
+  await test.step('重试用完之后才排好版：下一次重量几何（resize）补上', async () => {
+    await page.evaluate(() => {
+      const style = document.createElement('style');
+      style.id = 'e2e-hide-board';
+      style.textContent = '#wb-board-panel .wb-lib-item{display:none!important}';
+      document.head.appendChild(style);
+      window.workbench.setActivePage('e2e-ios');
+    });
+    await page.setViewportSize({ width: 1200, height: 800 });
+    await expect(navWrap).toBeHidden();
+    await page.waitForTimeout(1000); // 逐帧重量的次数用完
+    await page.evaluate(() => document.getElementById('e2e-hide-board').remove());
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await expect(navWrap).toBeVisible();
+  });
+});

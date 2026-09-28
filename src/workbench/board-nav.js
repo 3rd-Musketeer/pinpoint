@@ -123,6 +123,13 @@ export function updateMinimapAvailability(panel) {
     minimapLayout = null;
     setMinimapOpen(false);
   }
+  // 每次重量几何都顺手对一遍 Section Navigator 的条目：条目只在板装载那一帧建过一次时，
+  // 那一帧板还没排好版（量出来全是 0 尺寸）就会建成空列表，之后 resize / 缩放 / minimap
+  // 都重量了几何却没人重建，导航一直藏着（2026-09-28 满载 e2e 偶发的根因）。
+  if (syncSectionNavigatorItems(available ? measured : null)) {
+    updateSectionNavigatorVisibility();
+    updateSectionNavigatorActive(wbGet().activeGroup);
+  }
   return available ? measured : null;
 }
 
@@ -375,10 +382,17 @@ export function updateSectionNavigatorActive(groupId) {
   });
 }
 
-export function rebuildSectionNavigator(panel) {
-  if (!sectionNavList || !sectionNavWrap) return;
-  var model = updateMinimapAvailability(panel);
-  sectionNavItems = collectSectionNavigatorItems(model);
+// 上次渲染进列表的条目签名：几何重量时条目没变就不动 DOM。
+var sectionNavSig = null;
+
+/** 按几何模型重建 Section Navigator 条目；条目有变才重写 DOM，返回是否变了。 */
+function syncSectionNavigatorItems(model) {
+  if (!sectionNavList) return false;
+  var items = collectSectionNavigatorItems(model);
+  var sig = JSON.stringify(items);
+  if (sig === sectionNavSig) return false;
+  sectionNavSig = sig;
+  sectionNavItems = items;
   sectionNavList.innerHTML = '';
 
   sectionNavItems.forEach(function (entry) {
@@ -412,6 +426,18 @@ export function rebuildSectionNavigator(panel) {
     item.appendChild(screens);
     sectionNavList.appendChild(item);
   });
+  return true;
+}
+
+// 板装载那一帧量不出几何（还没排版）时，逐帧重量，最多这么多帧。
+var SECTION_NAV_RETRY_FRAMES = 30;
+var sectionNavRetryRaf = 0;
+
+export function rebuildSectionNavigator(panel) {
+  if (!sectionNavList || !sectionNavWrap) return;
+  if (sectionNavRetryRaf) cancelAnimationFrame(sectionNavRetryRaf);
+  sectionNavRetryRaf = 0;
+  if (!updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, SECTION_NAV_RETRY_FRAMES);
 
   updateSectionNavigatorVisibility();
   var closest = closestSectionNavigatorGroup() || sectionNavItems[0] && sectionNavItems[0].id;
@@ -419,6 +445,16 @@ export function rebuildSectionNavigator(panel) {
   updateSectionNavigatorActive(wbGet().activeGroup);
   setSectionNavigatorOpen(wbGet().sectionNavOpen);
   setMinimapOpen(wbGet().minimapOpen);
+}
+
+/** 板里有 section 却量不出几何：下一帧再量，量到了（或板换掉、次数用完）就停。
+ *  量到时 updateMinimapAvailability 会顺手把导航条目补上。 */
+function retryUnmeasuredBoard(panel, framesLeft) {
+  if (framesLeft <= 0 || !panel || !panel.isConnected || !panel.querySelector('.wb-lib-item')) return;
+  sectionNavRetryRaf = requestAnimationFrame(function () {
+    sectionNavRetryRaf = 0;
+    if (!updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, framesLeft - 1);
+  });
 }
 
 /* 横条中段的 ‹ 1 / 6 ›（2026-09-04 评审板 G1）：单位与 Section Navigator 的

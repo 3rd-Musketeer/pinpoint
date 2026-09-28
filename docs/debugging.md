@@ -19,6 +19,25 @@
 
 ---
 
+## 2026-09-28 Section Navigator 偶发整段消失（满载时板装载那一帧量不出几何）
+
+现象：`workbench.spec.js` 的 ADR 0034 层级用例在 `just ship` 全量跑里挂过一次，重跑即过。
+挂在 `expect(#wbsection-nav).toBeVisible()`：点了开关，导航 5 秒都不出来。失败快照里横条
+上连“‹ n / N ›”开关都没有，缩略图开关却在；trace 录屏显示从装载起就没有这段，不是点击没生效。
+误判路径：先怀疑用例里两下程序点击（列表卡、导航开关）互相抢状态，读代码后排除。
+根因：导航条目只在板装载后那一帧（`preview-mount.js` 的几何批）由 `rebuildSectionNavigator`
+按几何建一次。满载时那一帧板还没排好版，section 量出来全是 0 尺寸，条目建成空列表、
+`sectionNavVisible` 置假；之后 resize、缩放、minimap 都重量了几何，却没人重建条目，
+导航一直藏着。缩略图每次都重量，所以它自己恢复了。
+修复：`board-nav.js` 的 `updateMinimapAvailability` 每次重量几何都对一遍条目（签名变了才重写 DOM）；
+装载那一帧量不出几何时逐帧重量，最多 30 帧。
+识别特征：只在全量负载下偶发、重跑即过；失败时“某个按几何算出来的东西”缺了，而同一份几何的
+另一个消费者正常。先找“只在装载那一帧算一次、之后只读缓存”的地方。
+防回归：`workbench.spec.js`“Section Navigator：板装载那一帧量不出几何…”用样式把板在装载那一帧
+压成 0 尺寸，稳定复现；去掉修复即挂。
+
+---
+
 ## 2026-09-22 浏览器扩展的“点击后无 sidebar，⌘R 恢复”
 
 该案例随浏览器扩展（Chrome Side Panel，ADR 0009）于 2026-09-22 整体退役：扩展未再使用，
@@ -256,7 +275,8 @@ trigger，焦点移动触发 B 的 focus-outside dismiss，B 被关。
 这里的断言已经用 `expect.poll` 在等稳定态，15 秒都不收敛，说明是状态卡住，
 不是断言抢跑。候选机制（未验证）：画布端 `cacheMarkGeometry` 把测量当刻不可见的
 part 缓存成 null 并隐藏；之后的平移缩放只重投影缓存，不重新测量，直到该帧被标脏。
-测量若恰好落在帧内容尚未排好版的瞬间，框就一直藏着。
+测量若恰好落在帧内容尚未排好版的瞬间，框就一直藏着。2026-09-28 的 Section Navigator
+偶发（见上文同名条目）已证实是同一种形状：装载那一帧量一次、之后只读缓存。
 
 下次复现：读 `test-results-<端口>-first-run/` 里这条的 trace，先看失败时 `.ann-target`
 的 `style.display` 与该 mark 的 `model.parts`。
