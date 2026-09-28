@@ -3576,9 +3576,12 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     return out;
   }
 
+  // 钉子结构签名：几何字段之外还要带状态 —— 状态决定钉子颜色，也决定当前筛选下画不画
+  // （pending 不画 close）。只比几何时，列表里点“完成”几何没变，钉子不重画，
+  // 颜色和去留都停在原态，刷新才对（2026-09-28 owner 报）。
   function markGeometryKey(m) {
     return JSON.stringify([m.type, m.pageId, m.screenId, m.section, m.group,
-      m.selector, m.targets, m.rect, m.base, m.contains, m.move]);
+      m.selector, m.targets, m.rect, m.base, m.contains, m.move, m.status || 'open']);
   }
 
   // Ledger replacements can change one comment without invalidating every DOM anchor.

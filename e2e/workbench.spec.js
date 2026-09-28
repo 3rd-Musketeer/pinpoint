@@ -2443,3 +2443,25 @@ test('Section Navigator：板装载那一帧量不出几何，之后排好版能
     await expect(navWrap).toBeVisible();
   });
 });
+
+// 2026-09-28 owner 报：列表里点“完成”后画布钉子不消失，颜色也停在原态。账本局部重画
+// （renderLedgerChange）只认几何签名，状态变了几何没变，钉子不重画；刷新后才对。
+test('列表点“完成”：画布钉子当场消失，撤销后回来并恢复原态颜色', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await cell.scrollIntoViewIfNeeded();
+  await saveAnnotation(page, cell, '完成后钉子应当消失');
+  const badge = page.locator('#ann-marks .ann-badge');
+  await expect(badge).toHaveCount(1);
+  await expect(badge.first()).toBeVisible();
+
+  await openAnnList(page);
+  await page.locator('#wbann-pop .wb-ann-done').first().click();
+  await expect(badge).toHaveCount(0);
+
+  await page.getByRole('button', { name: '撤销' }).click();
+  await expect(badge).toHaveCount(1);
+  await expect(badge.first()).not.toHaveClass(/ann-badge--close/);
+});
