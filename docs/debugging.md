@@ -258,6 +258,27 @@ trigger，焦点移动触发 B 的 focus-outside dismiss，B 被关。
 
 ---
 
+## 2026-09 pp-id-anchor 偶发：标注框连续 15 秒拿不到包围盒（未定位）
+
+现象：`pp-id-anchor.spec.js:93` 在 `just ship` 的单组全量跑里挂过一次（第 36 条），
+重跑即过。挂在最后一步：`expect.poll` 等 `.ann-target` 与 `[data-blurb]` 都有包围盒，
+15 秒内一直拿不到。前面几步已确认标注锚在原元素上、`.ann-target` 恰好一个。
+
+已排除：
+- 单独跑 20 次、满 CPU 负载下单独跑 30 次、按首跑顺序连跑前 14 个 spec 加它三轮，都没复现。
+- trace 写进 `test-results-<端口>/` 的 `.html` 资源会让 vite 打出“page reload”日志，
+  但 vite 只刷新路径匹配的页面；另起一个 vite 服务实测，被测页面没有刷新。
+
+和 2026-08 那两条不同，这里的断言已经在等稳定态，15 秒都不收敛，说明是状态卡住，
+不是断言抢跑。候选机制（未验证）：画布端 `cacheMarkGeometry` 把测量当刻不可见的
+part 缓存成 null 并隐藏；之后的平移缩放只重投影缓存，不重新测量，直到该帧被标脏。
+测量若恰好落在帧内容尚未排好版的瞬间，框就一直藏着。
+
+下次复现：读 `test-results-<端口>-first-run/` 里这条的 trace，先看失败时 `.ann-target`
+的 `style.display` 与该 mark 的 `model.parts`。
+
+---
+
 ## 2026-08 预览 iframe 里嵌套了整个工作台（dev-server fallback）
 
 现象：某个屏的 iframe 里没有预览内容，而是又装了一个完整 workbench。

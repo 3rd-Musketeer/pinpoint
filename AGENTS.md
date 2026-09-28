@@ -40,7 +40,7 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
 完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5870~5900：组端口 +10 / +20 / +30 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
 
-**高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 4 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。
+**高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 4 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。重跑会清空该组产物目录，首跑的截图、trace 与报告先复制到 `test-results-<端口>-first-run/`、`playwright-report-<端口>-first-run/`，查重跑过了的偶发失败从这里读。
 
 **功能分支上只跑单测和相关的 spec，不跑全量。** 全量两组约 2 分钟、机器满载时时序用例会偶挂，
 每个分支各跑一遍再回基点对照，时间都花在这里。分支上：`npm test` + 改动涉及的 spec（新写的与

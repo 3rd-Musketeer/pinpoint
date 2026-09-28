@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
-import { readdirSync } from 'node:fs';
+import { cpSync, existsSync, readdirSync, rmSync } from 'node:fs';
 import { loadavg } from 'node:os';
+import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 if (process.argv.length > 2) throw new Error('Use npm run test:e2e:serial -- <options> for targeted runs.');
@@ -107,8 +108,21 @@ console.log(`E2E groups finished in ${((Date.now() - started) / 1000).toFixed(1)
 
 // 失败用例自动重跑一次（2026-09-23）：只重跑失败的（playwright --last-failed，读该组
 // 产物目录里的 .last-run.json），各组依次跑、不再并行。重跑仍挂才算挂。
+// 重跑会清空该组的产物目录；先把首跑的截图、trace 与报告复制到 *-first-run，
+// 重跑过了的偶发失败也留得下证据（2026-09-28：pp-id-anchor 一次偶发，trace 被重跑清掉）。
+function keepFirstRunArtifacts(index) {
+  const groupPort = port + index * 20;
+  for (const dir of [`test-results-${groupPort}`, `playwright-report-${groupPort}`]) {
+    const from = path.join(root, dir), kept = `${from}-first-run`;
+    rmSync(kept, { recursive: true, force: true });
+    if (existsSync(from)) cpSync(from, kept, { recursive: true });
+  }
+  console.log(`E2E group ${index + 1}: first-run artifacts kept in test-results-${groupPort}-first-run/`);
+}
+
 for (const [index, code] of results.entries()) {
   if (code === 0) continue;
+  keepFirstRunArtifacts(index);
   console.log(`E2E group ${index + 1}: rerunning failed tests once`);
   results[index] = await runGroup(index, ['--last-failed']);
   console.log(`E2E group ${index + 1}: rerun exit code ${results[index]}`);
