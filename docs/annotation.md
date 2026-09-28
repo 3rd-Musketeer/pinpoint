@@ -127,7 +127,8 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
   独立的持久开关。打开的面板停靠右侧，按工具条顺序竖着堆。Ctrl/meta + 滚轮缩放。
   两种导航模式都必须经 `src/workbench/lib/board-navigation.js` 解析几何与聚焦策略；
   永远不要用 `.wb-screen` 包装元素导航——row 布局会让它 `display: contents`。
-- **HMR**：`content/previews/<page>/**`（html / js / board）或 `content/kits/ios/components/**` 的改动会刷新板。
+- **HMR**：模板页 `content/previews/<page>/**` 与 registry 条目目录里的源码、board 改动会重编该页并重摆板，
+  `.js`（sidecar）改动整页刷新；kit 印章 `content/kits/ios/jsx/**` 改动全量重编所有页。
 
 ## 画布标注的几何缓存
 
