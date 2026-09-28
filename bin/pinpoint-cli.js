@@ -64,6 +64,7 @@ import {
   updateRegistryEntry,
   writeRegistryFolders,
 } from '../src/server/lib/registry-store.js';
+import { refLikeFrameIds } from '../src/workbench/lib/board-refs.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 /** 服务在 portless 里的注册名 / 主机名（`portless run --name pinpoint`）。 */
@@ -78,7 +79,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'note', 'scale']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale']);
 const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run']);
 // 每个命令接受的选项与位置参数个数。folder / locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
@@ -97,7 +98,7 @@ const COMMANDS = {
   check: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
   locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page']) },
-  mark: { positional: null, flags: new Set(['registry', 'status', 'note', 'page']) },
+  mark: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
 };
 
@@ -117,6 +118,7 @@ export class CliError extends Error {}
 
 export const USAGE = `用法：
   pinpoint list [关键词…]                               列出页：id · 标题 · 类型 · 标注计数 · 源路径；关键词在 id / 标题 / 路径上宽松匹配
+  pinpoint list <页> --frames                           列画布帧：编号 · 帧 id · 源文件 · 标题（编号 ↔ id 对照）
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
@@ -124,10 +126,10 @@ export const USAGE = `用法：
   pinpoint folder <list|add|rename|rm|move> …          左栏的一层分组（详见下面 folder 一节）
   pinpoint build <页> [--screen <屏>] [--watch]        编译一页（源码 → dist），打印每屏 ok / 错误与耗时
   pinpoint render <页>/<屏> [--full]                   编译一帧打到 stdout（不落 dist）；超 8000 字符截断并落全文文件
-  pinpoint check <页> [选项]                           标注清单（只读）：序号 / 正文 / 意图 / 源码摘录 / 状态 / note
+  pinpoint check <页> [选项]                           标注清单（只读）：序号 / 正文 / 意图 / 源码摘录 / 状态
   pinpoint locate <引用…> [--page <页>]                标注定位：#n → 源文件:行 · 组件（共用 n 帧）
   pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
-  pinpoint mark <引用…> done|check [--note "…"]        写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
+  pinpoint mark <引用…> done|check                     写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
   pinpoint prune <页> [--dry-run]                      删除该页桶里的孤儿账本（表面已不存在；--dry-run 只列不删）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
@@ -198,9 +200,12 @@ build / render —— pp2 的编译面（<页> = registry dir 条目 id 或模�
 
 check / locate / shot / mark —— pp2 的标注面。引用语法四处共用：
   #12 · <entry>#12 · #3-#7（区间）· B3（帧，展开为帧内标注）· B（整段）·
-  <页>（整页，shot）· @frame:<页>/<屏> · @a:<id> · --status open|check|done|close|all
+  帧 id / 段 id（与 B3 / B 同义）· <页>（整页，shot）· @frame:<页>/<屏> · @a:<id> ·
+  --status open|check|done|close|all
+  B3 / B 是按 board 顺序派生的显示编号，调序就变；帧 id / 段 id 不变。
+  写进 README、交接稿这类留存文字时用 id，编号只在当场对话里用。
 
-  pinpoint check <页> [--frame B3] [--status open|check|done|close|all]
+  pinpoint check <页> [--frame B3|帧 id] [--status open|check|done|close|all]
                   [--mode excerpt|image|both] [--group-by frame|component] [--json]
                                        默认 open、按帧分组；excerpt 给最小完整元素 + 父链
                                        面包屑 + 兄弟折叠（约 300 token）；image 走服务渲染器
@@ -208,9 +213,9 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
   pinpoint locate <引用…>              每条一行：#n → 源文件:行 · 组件（共用 n 帧）；
                                        存量 HTML 页给 dist 路径 + selector
   pinpoint shot <引用…> [--scale 1] [--marks]
-                                       PNG 到 <dataRoot>/shot/<页>/<引用>.png，打印路径；
+                                       PNG 到 <dataRoot>/shot/<页>/<帧 id|段 id|页>.png，打印“编号 · id → 路径”；
                                        --marks 烤 #n 序号钉（清单由 check 给）
-  pinpoint mark <引用…> done|check [--note "…"]
+  pinpoint mark <引用…> done|check
                                        走服务状态端点（带 baseRevision）；冲突 / 非法转换
                                        打 409 原因，不中断其他条；open 由 owner 编辑触发、
                                        close 只在工作台，两者 mark 都不写
@@ -224,6 +229,9 @@ list —— 把口头说的页对上页 id。每页两行：id · 标题 · 类�
     pinpoint list routines          → routine-creator  ·  Routine 创建  ·  编译页 …
     pinpoint list areta 界面
   其他命令找不到页时，也按同一规则给最接近的候选。
+  list <页> --frames 改列这一页的画布帧，每段一个小标题，每帧一行：编号 · 帧 id ·
+  源文件（相对页目录）· 标题。编号（B3）按 board 顺序派生、调序就变；帧 id 不变，
+  也是源文件名。owner 说“D1”时用它对上文件，写进留存文字时用 id。
 
 prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面已不存在的账本：
   文档文件删了、条目改挂别页或从登记表移走了、页不在 registry 与 manifest 里
@@ -286,11 +294,11 @@ export function parseArgs(argv) {
   if (command === 'remove') return { command, id: positional[0], flags };
   if (command === 'build' || command === 'render' || command === 'check' || command === 'prune') return { command, target: positional[0], flags };
   if (command === 'locate' || command === 'shot') {
-    if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 页 / @frame:p/s / @a:id）`);
+    if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 帧 id / 段 id / 页 / @frame:p/s / @a:id）`);
     return { command, refs: positional, flags };
   }
   if (command === 'mark') {
-    if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check [--note "…"]');
+    if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check');
     return { command, refs: positional.slice(0, -1), statusWord: positional[positional.length - 1], flags };
   }
   return { command, flags };
@@ -1549,6 +1557,24 @@ function pageTargetOrReport(pageRef, flags, { env, err }) {
   return target;
 }
 
+/**
+ * 帧 id 形如显示编号时给一行提示（只提示、不算失败）。已有帧别改名：id 是标注
+ * 锚点，改名会断标注；只管新起的帧。
+ */
+export function refLikeIdNotice(pageDir) {
+  let board = null;
+  try {
+    board = JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8'));
+  } catch {
+    return '';
+  }
+  const ids = refLikeFrameIds(board);
+  if (!ids.length) return '';
+  const shown = ids.slice(0, 3).join('、') + (ids.length > 3 ? ` 等 ${ids.length} 个帧 id ` : ' 这些帧 id ');
+  return `注意 ${shown}形如编号。编号按 board 顺序派生、调序就变，id 不变；`
+    + '新帧的 id 用描述内容的短词（如 detail-noop-run），已有的帧不要改名（id 是标注锚点）。';
+}
+
 function printBuildResult(result, { out, err }, plan = null) {
   // 漂移：build.json 记下的文件变了却没收到 watch 事件（丢事件 / 页外依赖），
   // 这一拍已按全编纠正；打一行让「为什么突然整页重编」有据可查。
@@ -1612,6 +1638,8 @@ export async function runBuild(argv, io = {}) {
   const distRoot = path.join(dataRoot(env), 'dist');
   const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.screen || null });
   printBuildResult(first, { out, err });
+  const refLike = refLikeIdNotice(target.pageDir);
+  if (refLike) out(refLike);
   if (!parsed.flags.watch) return first.ok ? 0 : 1;
   out(`监视 ${target.pageDir}（Ctrl-C 退出）…`);
   startPageWatch(target, (result, plan) => printBuildResult(result, { out, err }, plan), {
@@ -1820,7 +1848,13 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   const shotDirOf = (pageId) => path.join(dataRootDir, 'shot', pageId);
   const openRows = (ctx) => ctx.frameRows.filter((row) => (row.status || 'open') !== 'close');
   const seenScreens = new Set();
-  const frameJob = (screenId, via) => {
+  // 产物按不变的 id 命名（编号会随 board 调序漂移）；打印时编号与 id 并列。
+  const frameRefOf = (screenId) => {
+    const byFrame = (baseContext.refs && baseContext.refs.byFrame) || {};
+    const key = Object.keys(byFrame).find((k) => k.split('\0')[1] === screenId);
+    return key ? byFrame[key] : '';
+  };
+  const frameJob = (screenId) => {
     if (seenScreens.has(screenId)) return;
     seenScreens.add(screenId);
     jobs.push({
@@ -1828,22 +1862,24 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
       pageId: basePageId,
       screenId,
       scale,
-      out: path.join(shotDirOf(basePageId), `${via || screenId}.png`),
+      label: [frameRefOf(screenId), screenId].filter(Boolean).join(' · '),
+      out: path.join(shotDirOf(basePageId), `${screenId}.png`),
       marks: withMarks
         ? openRows(baseContext).filter((row) => row.screenId === screenId)
         : [],
     });
   };
   for (const pick of picks) {
-    if (pick.kind === 'frame') frameJob(pick.screenId, pick.via);
-    else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId, pick.row.screenId);
+    if (pick.kind === 'frame') frameJob(pick.screenId);
+    else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId);
     else if (pick.kind === 'section') {
       jobs.push({
         kind: 'section',
         pageId: basePageId,
         sectionId: pick.sectionId,
         scale,
-        out: path.join(shotDirOf(basePageId), `${pick.via}.png`),
+        label: [pick.ref, pick.sectionId].filter(Boolean).join(' · '),
+        out: path.join(shotDirOf(basePageId), `${pick.sectionId}.png`),
         marks: withMarks
           ? openRows(baseContext).filter((row) => pick.frames.some((frame) => frame.id === row.screenId))
           : [],
@@ -1858,6 +1894,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
         kind: 'page',
         pageId: pageContext.pageId,
         scale,
+        label: pageContext.pageId,
         out: path.join(shotDirOf(pageContext.pageId), `${pageContext.pageId}.png`),
         marks: withMarks ? openRows(pageContext) : [],
       });
@@ -1924,7 +1961,7 @@ export async function runShot(argv, io = {}) {
   try {
     for (const [pageId, group] of byPage) {
       const results = await renderShots({ origin, pageId, jobs: group });
-      for (const result of results) out(`${result.out} · ${result.width}×${result.height}`);
+      for (const result of results) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
     }
   } catch (error) {
     err(`错误：${error.message}`);
@@ -1994,11 +2031,10 @@ export async function runMark(argv, io = {}) {
           entry: row.__bucket,
           baseRevision,
           status: parsed.statusWord,
-          ...(parsed.flags.note ? { note: parsed.flags.note } : {}),
         },
       });
       if (res.status === 200) {
-        out(`${label} → ${parsed.statusWord}${parsed.flags.note ? `（note：${parsed.flags.note}）` : ''}`);
+        out(`${label} → ${parsed.statusWord}`);
       } else {
         failed += 1;
         const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
@@ -2110,15 +2146,75 @@ function reportPageSuggestions(pageRef, { registryPath, env, err }) {
   return true;
 }
 
+/** 帧的源文件：页目录里的 <id>.jsx / <id>.html（page-compiler 同一查找序），否则 board 的 src。 */
+function frameSourceOf(pageDir, screen) {
+  for (const ext of ['.jsx', '.html']) {
+    const file = pageDir ? path.join(pageDir, `${screen.id}${ext}`) : '';
+    if (file && fs.existsSync(file)) return file;
+  }
+  return screen.src ? String(screen.src) : '（无源文件）';
+}
+
+/**
+ * `list <页> --frames`：显示编号 ↔ 不变 id ↔ 源文件的对照。编号（B3）按 board
+ * 顺序派生、调序就变；id 是帧的身份，也是源文件名。编号与 check / shot 同一份
+ * boardRefs，doc 帧不上画布、不占编号。
+ */
+function listFrames(words, { registryPath, env, out, err }) {
+  if (words.length !== 1) {
+    err('错误：list --frames 需要且只要一个页 id：ppnt list <页> --frames');
+    return 1;
+  }
+  const context = loadPageContext({ pageRef: words[0], registryPath, dataRootDir: dataRoot(env) });
+  if (!context || !context.board) {
+    err(`错误：${words[0]} 不是带 board.json 的编译页（list --frames 只列画布帧）`);
+    if (!context) reportPageSuggestions(words[0], { registryPath, env, err });
+    return 1;
+  }
+  const rawScreens = new Map();
+  for (const section of context.board.sections || []) {
+    for (const entry of section.screens || []) {
+      const screen = typeof entry === 'string' ? { id: entry } : entry;
+      if (!rawScreens.has(screen.id)) rawScreens.set(screen.id, screen);
+    }
+  }
+  const pageDir = context.target && context.target.pageDir;
+  const rows = context.refs.outline.map((section) => ({
+    section,
+    frames: section.frames.map((frame) => {
+      const source = frameSourceOf(pageDir, rawScreens.get(frame.id) || { id: frame.id });
+      return { ...frame, source: pageDir && source.startsWith(pageDir + path.sep) ? path.relative(pageDir, source) : source };
+    }),
+  }));
+  const refWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.ref.length)));
+  const idWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.id.length)));
+  const sourceWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.source.length)));
+  out(`# ${context.pageId} · 画布帧（编号随 board 顺序变；id 不变，留存文字里用 id）`);
+  if (pageDir) out(`页目录：${pageDir}`);
+  for (const row of rows) {
+    out('');
+    out(`${row.section.letter}  ${row.section.id}  ${row.section.title}`);
+    for (const frame of row.frames) {
+      out(`  ${frame.ref.padEnd(refWidth)}  ${frame.id.padEnd(idWidth)}  ${frame.source.padEnd(sourceWidth)}  ${frame.title}`);
+    }
+  }
+  const frameCount = rows.reduce((sum, row) => sum + row.frames.length, 0);
+  out('');
+  out(`共 ${rows.length} 段 ${frameCount} 帧`);
+  return 0;
+}
+
 export async function runList(argv, io = {}) {
   const { cwd, env, out } = ioOf(io);
   const words = [];
   const flags = {};
   for (let i = 1; i < argv.length; i++) {
     if (argv[i] === '--registry') { flags.registry = argv[++i]; continue; }
+    if (argv[i] === '--frames') { flags.frames = true; continue; }
     words.push(argv[i]);
   }
   const registryPath = resolveRegistryPath(flags, env, cwd);
+  if (flags.frames) return listFrames(words, { registryPath, env, out, err: ioOf(io).err });
   const query = words.join(' ');
   const rows = matchPages(pageListRows({ registryPath, env }), query);
   if (!rows.length) {

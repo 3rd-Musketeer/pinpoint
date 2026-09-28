@@ -74,7 +74,7 @@ function makeSite() {
         targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > p:nth-of-type(1)', text: '普通段落' }],
       },
       {
-        id: 'b3', n: 3, type: 'element', pageId: 'demo-page', screenId: 'home', status: 'check', note: '看过，不改',
+        id: 'b3', n: 3, type: 'element', pageId: 'demo-page', screenId: 'home', status: 'check', note: '存量账本里的旧 note',
         content: '卡里的字 [@t:i1]',
         targets: [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > div.card:nth-of-type(1)', text: '卡' }],
       },
@@ -393,7 +393,7 @@ describe('buildCheckReport', () => {
     const site = makeSite();
     const context = contextFor(site);
     const report = buildCheckReport(context, {});
-    assert.deepEqual(report.groups.map((group) => group.title), ['A1 首页', 'A2 存量']);
+    assert.deepEqual(report.groups.map((group) => group.title), ['A1 · home · 首页', 'A2 · old · 存量']);
     const homeRows = report.groups[0].rows;
     assert.deepEqual(homeRows.map((row) => row.n), [1, 2]);
     // #1 锚在 Bubble 组件根：摘录两段（帧实例 + 组件定义），组件与共用帧数就位。
@@ -453,12 +453,13 @@ describe('buildCheckReport', () => {
 });
 
 describe('formatCheckMarkdown / countByStatus / intentOf', () => {
-  test('markdown：状态与 note 与摘录缩进', () => {
+  test('markdown：状态与摘录缩进；存量 note 不输出', () => {
     const site = makeSite();
     const report = buildCheckReport(contextFor(site), { status: 'all' });
     const lines = formatCheckMarkdown(report);
     assert.ok(lines[0].startsWith('# demo-page'));
-    assert.ok(lines.some((line) => line.includes('[#3]') && line.includes('check') && line.includes('看过，不改')));
+    assert.ok(lines.some((line) => line.includes('[#3]') && line.includes('check')));
+    assert.ok(!lines.some((line) => line.includes('存量账本里的旧 note')), 'note 机制已关，旧值不再输出');
     assert.ok(lines.some((line) => line.trimStart().startsWith('↖')), '兄弟提示在');
   });
 

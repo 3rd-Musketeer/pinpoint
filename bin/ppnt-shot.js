@@ -67,7 +67,7 @@ export async function renderShots({ origin, pageId, jobs }) {
       fs.mkdirSync(path.dirname(job.out), { recursive: true });
       fs.writeFileSync(job.out, await response.body());
       const headers = response.headers();
-      results.push({ out: job.out, width: headers['x-export-width'], height: headers['x-export-height'] });
+      results.push({ out: job.out, label: job.label || '', width: headers['x-export-width'], height: headers['x-export-height'] });
     }
     await context.close();
   } finally {

@@ -17,6 +17,7 @@ description: 在 pinpoint 里搭原型页：写 .jsx 帧、页内组件、kit �
 
 ```bash
 ppnt list [关键词]        # 页清单：owner 用口头说法指页时先用它对上页 id 和源目录
+ppnt list <页> --frames   # 画布帧对照：编号（D1）· 帧 id · 源文件 · 标题
 ppnt status               # 服务在不在、root 对不对；站点打不开先查它
 ppnt build <页>           # 源码 → dist（~/.pinpoint/dist/<entry>/）；画布、标注、导出只认 dist
 ppnt build <页> --watch   # 改源码自动重编；sidecar .js 变更触发整页刷新
@@ -114,6 +115,8 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 - `shell` 四种：`app`（默认）/ `lock`（section 或 screen 上）/ `doc`（整份 HTML 文档）/ `comp`。
 - `assets: { "css": […], "js": […] }` 登记页级资源，编译器注入每帧。
 - title = 单行短名词短语，不手写编号、不塞图例（规矩全文在 board-schema）。
+- 帧 id 用描述内容的短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）。画布编号按 board
+  顺序派生、调序就变；id 不变，还是源文件名和标注锚点，已有的帧不要改名。
 - 元素可写 `goto="<screenId>"` 指向另一帧，编译进产物属性（flow 边的数据层）。
 
 ## 5. 改完自检
@@ -126,6 +129,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 
 - 把 sheet / tabbar / backdrop 塞进 `.ios-app`；手写 safe-area 像素。
 - 给图注设 font-size；title 里手写编号或塞图例（caption 与 title 规矩在 board-schema）。
+- 帧 id 仿编号（`a4b-ask2`、`c1c-run`）；为了和编号对齐去改已有帧的 id。
 - 为“以后可能复用”抽组件；把状态、事件、fetch 写进组件。
 - 把产品手势写进 `ios-kit.js`；改 loader 机壳或 `ios-kit.css` 去对齐一条标注。
 - 手改 `~/.pinpoint/dist/`；往 tracked 文件夹带实例内容（实例页住你自己的目录，经

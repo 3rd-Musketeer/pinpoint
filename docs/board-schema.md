@@ -67,6 +67,11 @@ props 在各文件首行注释。
   （section = A/B，frame = A1/B2），手写必重复；禁“·”拼接多段信息，不写图例与设计意图。
   `validateBoard` 硬拦 title 换行；画布 caption 两行截断 + hover 全文兜底。
 - section 与 frame 只保留标题，没有说明字段或详情浮层；旧 `note` 字段加载时忽略。
+- **编号与 id**（ADR 0038）：编号（A、B3）是显示编号，由 `boardRefs` 按 board 顺序现算，doc 帧
+  不占编号，调序、插帧、删帧后就变。`section.id` 与 screen `id` 是不变的身份：帧 id 同时是源文件名
+  （`<id>.jsx` / `<id>.html`）和标注锚点（`@frame:<页>/<id>`），改名会断标注。所以 id 用描述内容的
+  短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）：仿编号的 id 一调序就和编号对不上，
+  `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
 ## comp section（variants 墙）

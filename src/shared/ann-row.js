@@ -105,8 +105,7 @@ export function annRowModel(mark, context = {}) {
     preview: context.preview == null ? '' : String(context.preview),
     broken: !!context.broken,
     tags: annRowTags(mark),
-    // pp2 状态机：四态与 agent note 随行（消费端自行决定怎么摆）。
+    // pp2 状态机：四态随行（消费端自行决定怎么摆）。
     status: (mark && mark.status) || 'open',
-    note: (mark && mark.note) || '',
   };
 }

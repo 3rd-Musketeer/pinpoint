@@ -15,7 +15,6 @@
 | `content` | 标注正文（遗留名：`comment`） |
 | `n` | 对外序号：按桶（= 页）单调取号（桶目录下 `_seq.json` 的 `next`），页内跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
 | `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
-| `note` | agent 在 check / done 时留的一句话，可选 |
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
 
@@ -200,7 +199,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 - owner 编辑正文或目标 → 保存时状态回 `open`（服务端强制，与客户端一致）；
 - `open` / `check` → `check` / `done` 只经
   `POST /annotations/<page>/<id>/status`——`id` 是稳定 ID 或纯数字的对外序号 `n`，body 带
-  `entry`、`baseRevision`、`status: check|done`、可选 `note`（agent 留的一句话）。
+  `entry`、`baseRevision`、`status: check|done`。
   revision 不匹配 `409 revision_conflict`，其余 status `400 invalid_status`，找不到标注
   `404 annotation_not_found`。这是 `ppnt mark` 的后端；
 - `open` / `check` / `done` → `close`：owner 在列表行（工作台弹层或注入侧栏）或标注框里点“完成”——
@@ -209,8 +208,8 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 UI 随状态走：颜色即状态 —— 画布钉子与列表行首序号圆共用一组状态色变量
 （`--ann-st-*`，SSOT = `src/shared/ann-status.js`）：open 蓝灰、check 琥珀、done 绿、
-close 灰，白字共用，不做角标；列表行另出 check / done / close 文字灰标，行 hover 出
-`note`。列表顶部有两段状态筛选（2026-09-24 owner 定）：pending = open / check / done，
+close 灰，白字共用，不做角标；列表行另出 check / done / close 文字灰标。
+旧账本里可能还有 `note` 字段（2026-09 以前 agent 写的备注），原样留在盘上，界面与 CLI 都不读（ADR 0038）。列表顶部有两段状态筛选（2026-09-24 owner 定）：pending = open / check / done，
 都在等 owner 验收；closed = owner 确认做完的。两段各带计数，0 计数弱化但可点，落空显示
 “没有 <段名> 的标注”。默认 pending；选择按页记 localStorage，刷新保留，09-23 五段时期存下的
 旧值读成 pending。画布钉子跟随筛选：pending 不画 close 钉，closed 只画灰钉。行点“完成”后

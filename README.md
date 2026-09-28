@@ -109,7 +109,7 @@ ppnt render <page>/<screen>    # compile one frame to stdout, no dist write
 ppnt check <page>              # read annotations: statuses, intents, code excerpts (contract, slice 4)
 ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (contract, slice 4)
 ppnt shot <ref…> [--marks]     # PNG of frames/sections/page, --marks bakes the #n pins (contract)
-ppnt mark <ref…> done|check    # write annotation status, --note for the one-liner (contract)
+ppnt mark <ref…> done|check    # write annotation status (contract)
 ```
 
 ## Repository layout
@@ -162,7 +162,7 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
    composer (pills reference targets; `[indicator N]` inlines them), paste reference images,
    draw move-arrows.
 2. Say“标好了，你看一下”— the agent runs `ppnt check <page>` (statuses, intents, code excerpts,
-   no browser), edits the routed source file, `ppnt build`, then writes `ppnt mark … done --note`.
+   no browser), edits the routed source file, `ppnt build`, then writes `ppnt mark … done`.
    Annotations live in per-entry buckets under `~/.pinpoint/<entry-id>/` (disk is the SSOT;
    revisioned, SSE-synced). Four states: `open` (yours) → `check` / `done` (agent) → `close` (yours).
 3. Hover a pin on the canvas to read its comment card, or open “这页的标注” from the count

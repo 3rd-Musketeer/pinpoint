@@ -14,9 +14,10 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0038](0038-display-ref-vs-id-and-note-retired.md) | 2026-09-28 | 编号是显示编号、id 是身份；标注 note 退役 | 现行 | — |
 | [0037](0037-single-main-branch.md) | 2026-09-26 | 单分支 main：dev / release worktree / publish 退役，`just ship` 推 main，功能按需开 worktree | 现行 | — |
 | [0036](0036-storage-unify-bucket-per-page.md) | 2026-09-23 | 存储统一：桶 = 页（`@canvas` 账本取代 pinpoint 共享画布账本）；孤儿显式化与 `ppnt prune` | 现行 | — |
-| [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 现行 | — |
+| [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 部分被取代（note 退役） | ADR 0038 |
 | [0034](0034-named-z-scale-and-stacking-rules.md) | 2026-09-17 | 外壳层级：命名阶梯 `--wb-z-*` + `.wb` 隔离 / `.wb-stage-wrap` 不成上下文两条规则 + 测试守 | 现行 | — |
 | [0033](0033-offline-export-uses-live-shell.md) | 2026-09-15 | 离线分享 HTML 用 workbench 的外壳：满铺画布 + 浮动面板 + 底部横条 + 窄屏适配 | 现行 | — |
 | [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 现行 | — |

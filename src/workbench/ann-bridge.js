@@ -170,9 +170,6 @@ var gutterRaf = 0;
 // 复用的气泡节点：String(n) → {node, html, left, top, height}。html 是
 // bubbleInnerHtml 的产物，相同 = 内容没变，跳过重建与高度重测。
 var gutterNodes = Object.create(null);
-// agent 备注折叠头的展开态（本次页面内存，不落盘）：节点复用后展开态本可留在
-// DOM 里，但内容重建（正文 / 筛选变更）会冲掉，仍挂模块级等重建时拼回去。
-var gutterNotesOpen = Object.create(null);   // String(n) → true
 // 事件监听登记：滚动挂文档（capture，任意深度的滚动容器都算），尺寸挂
 // ResizeObserver。只在 gutter 开着时挂；stopGutter 全部解除。
 var gutterScrollDoc = null;      // 挂了 scroll 监听的 iframe Document
@@ -213,19 +210,11 @@ function ensureGutterOverlay() {
   gutterOverlay.appendChild(style);
   gutterOverlay.appendChild(gutterBubblesEl);
   wrap.appendChild(gutterOverlay);
-  // 委派点击：点气泡打开该标注（驱动 iframe 实例）；点备注折叠头 = 展开 / 收起，
-  // 不打开标注（与画布卡同一条规矩：composer 只归卡身其余部分）。
+  // 委派点击：点气泡打开该标注（驱动 iframe 实例）。
   gutterBubblesEl.addEventListener('click', function (e) {
     var b = e.target.closest('.ann-bubble');
     if (!b) return;
     var n = b.getAttribute('data-n');
-    if (e.target.closest('.ann-bubble-note-head')) {
-      var key = String(n);
-      if (gutterNotesOpen[key]) delete gutterNotesOpen[key];
-      else gutterNotesOpen[key] = true;
-      scheduleGutterRender();
-      return;
-    }
     var a = annotateApi();
     if (a && typeof a.openMark === 'function') a.openMark(n);
   });
@@ -258,13 +247,6 @@ function renderGutter() {
   // wrap; export uses docW + margin）。单列右贴边，一次渲染内 left 恒定。
   var bubbleLeft = wrapRect.width - GUTTER_BUBBLE_W - GUTTER_MARGIN;
   var anchors = a.visibleBubbleAnchors();
-  // 展开备注的滚动位置只有内容重建会冲掉（复用的节点原生保留 scrollTop）：
-  // 重建前把展开中的原文滚到哪记下来，重建后拼回去。
-  var keptNoteScroll = Object.create(null);
-  Array.prototype.forEach.call(gutterBubblesEl.querySelectorAll('.ann-bubble-note-body'), function (el) {
-    var host = el.closest('.ann-bubble');
-    if (host && el.scrollTop) keptNoteScroll[host.getAttribute('data-n')] = el.scrollTop;
-  });
 
   // Pass 1: 复用 / 重建节点（只写不读）。html 没变的不碰 innerHTML、不重测高度
   // —— 定位更新（滚动 / 挪位）因此不付每个气泡一次回流的代价。
@@ -273,11 +255,7 @@ function renderGutter() {
   var mapped = [];
   anchors.forEach(function (an) {
     present[an.n] = true;
-    var noteOpen = !!gutterNotesOpen[String(an.n)];
-    var html = bubbleInnerHtml(
-      { n: an.n, cap: an.cap, content: an.content, note: an.note },
-      { noteExpanded: noteOpen }
-    );
+    var html = bubbleInnerHtml({ n: an.n, cap: an.cap, content: an.content });
     var entry = gutterNodes[an.n];
     if (!entry) {
       var node = document.createElement('div');
@@ -296,10 +274,6 @@ function renderGutter() {
     if (entry.html !== html) {
       entry.node.innerHTML = html;
       entry.html = html;
-      if (noteOpen) {
-        var noteBody = entry.node.querySelector('.ann-bubble-note-body');
-        if (noteBody && keptNoteScroll[String(an.n)]) noteBody.scrollTop = keptNoteScroll[String(an.n)];
-      }
       entry.height = 0;
       remeasure.push(entry);
     }

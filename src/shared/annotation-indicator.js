@@ -189,7 +189,7 @@ export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const a = { ...raw };
 
-  // pp2 状态机：status 归一（存量 result → done 并摘字段）；note / n / lastRect 透传。
+  // pp2 状态机：status 归一（存量 result → done 并摘字段）；n / lastRect 透传（存量 note 字段原样留在盘上，界面与 CLI 都不读）。
   a.status = normalizeStatus(a.status, a);
   if (a.result) delete a.result;
 

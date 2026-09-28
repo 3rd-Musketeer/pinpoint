@@ -1,6 +1,6 @@
 # 0035 · pp2：源码 / dist 分层、页内组件印章、标注状态机、agent 面 CLI
 
-Status: 现行 · Date: 2026-09-22 · Supersedes: 0028（组件归属半边）、0015（导出 picker）、0017（“Component Library 作系统行保留”一句）、0009（扩展整体） · Scope: `src/server/lib/page-compiler.js`、`src/server/lib/pp-jsx-runtime.js`、`content/kits/ios/jsx/`、`bin/pinpoint-cli.js`、`src/client/annotate.js`（状态机与幽灵框）、`docs/board-schema.md`
+Status: 现行（note 那半边已退役） · Date: 2026-09-22 · Superseded-in-part-by: 0038 · Supersedes: 0028（组件归属半边）、0015（导出 picker）、0017（“Component Library 作系统行保留”一句）、0009（扩展整体） · Scope: `src/server/lib/page-compiler.js`、`src/server/lib/pp-jsx-runtime.js`、`content/kits/ios/jsx/`、`bin/pinpoint-cli.js`、`src/client/annotate.js`（状态机与幽灵框）、`docs/board-schema.md`
 
 **Decided**（2026-09-22，owner 对话定稿；决定全表与切片执行记录在 `tasks/done/2026-09-22-pp2/`）：
 

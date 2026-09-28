@@ -285,92 +285,6 @@ test('workbench page: no sidebar entry, the workbench annotation list stays the 
   await expect(page.locator('#ann-sidebar')).toHaveCount(0);
 });
 
-// 11px/1.45、186px 宽 ≈ 每行 15 个汉字：这条约 140 字 ≈ 9 行，专门越过 6 行滚动线。
-const NOTE = '默认温度从 90 改到 92 度：medium 烘焙下 92 度萃取更稳，杯测数据见 8-31 记录第三组，'
-  + '同一组里 90 度那杯的 TDS 明显偏低，口感单薄；改完同步设置页文案，'
-  + '帮助页的注水建议与研磨刻度提示也要跟着更新，避免两处口径不一致，'
-  + '另外记得通知仓库把包装上的建议参数一并换掉。';
-
-test('workbench 列表 note hover 卡：done 行 120 ms 出卡，无 note 的行不出', async ({ page }) => {
-  // 切片 5：行上的 agent note 不再走原生 title（工作台侧），hover 出与评论卡
-  // 同皮肤的小卡。造两条标注，一条走 open → check（带 note）→ done，一条留 open。
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
-  await expect(page.locator('#wb-board-panel [data-screen="settings"]')).toBeVisible();
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first().scrollIntoViewIfNeeded();
-  await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=0', '温度默认值改成 92 度');
-  await page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').nth(1).scrollIntoViewIfNeeded();
-  await annotate(page, '#wb-board-panel [data-screen="settings"] .ios-cell >> nth=1', '这条没有备注');
-  const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
-  const n2 = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
-
-  // 存储统一（ADR 0036）：画布标注住活动页自己的桶，账本固定 @canvas。
-  const post = (n, data) => page.request.post(`/annotations/@canvas/${n}/status`, { data: { entry: 'e2e-ios', ...data } });
-  let rev = await page.evaluate(() => window.pinpoint.getState().revision);
-  expect((await post(n1, { baseRevision: rev, status: 'check', note: NOTE })).status()).toBe(200);
-  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
-  rev = await page.evaluate(() => window.pinpoint.getState().revision);
-  expect((await post(n1, { baseRevision: rev, status: 'done' })).status()).toBe(200);
-  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
-
-  await page.evaluate(() => window.pinpoint.setFloatingToolbar(false));
-  await page.locator('#wbann-count').click();
-  const row1 = page.locator(`#wbann-list .wb-ann-item[data-ann-n="${n1}"]`);
-  const row2 = page.locator(`#wbann-list .wb-ann-item[data-ann-n="${n2}"]`);
-  await expect(row1.locator('.wb-ann-status-tag')).toHaveText('done');
-
-  // 原生 title 退役：行上不再有 title 属性。
-  expect(await row1.getAttribute('title')).toBeNull();
-  expect(await row2.getAttribute('title')).toBeNull();
-
-  // hover done 行 → 卡出，眉标 + note 原文（不截断），贴行右侧且整个在视口内。
-  await row1.hover();
-  const card = page.locator('.wb-ann-note-card');
-  await expect(card).toBeVisible();
-  await expect(card).toContainText('agent 备注');
-  await expect(card).toContainText(NOTE);
-  const rowBox = await row1.boundingBox();
-  const cardBox = await card.boundingBox();
-  const vp = page.viewportSize();
-  expect(cardBox.x).toBeGreaterThanOrEqual(rowBox.x + rowBox.width);   // 贴行右侧
-  expect(cardBox.y).toBeGreaterThanOrEqual(0);
-  expect(cardBox.x + cardBox.width).toBeLessThanOrEqual(vp.width);
-  expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(vp.height);
-  // note 超过 6 行：全文在 DOM 里，卡身进入滚动态。
-  expect(await card.locator('div').last().evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-
-  // 指针挪到卡上继续读（90 ms 宽限内），挪开才收。
-  await card.hover();
-  await expect(card).toBeVisible();
-  await page.mouse.move(200, 300);
-  await expect(card).toBeHidden();
-
-  // 键盘聚焦同样出卡，失焦即收。
-  await row1.locator('.wb-ann-item-main').focus();
-  await expect(card).toBeVisible();
-  await page.evaluate(() => document.activeElement.blur());
-  await expect(card).toBeHidden();
-
-  // 无 note 的行：换行的反应可观察 —— hover 挪到 row2，row1 的卡先收
-  // （90ms 离开宽限走完，收卡被轮询到 = 换行事件已处理）；row2 没有 note，
-  // 过了出卡窗也不出。负断言要确定的观察窗：expect 的重试只在断言失败时
-  // 延续，count 已是 0 会立即通过，兜不住「过出卡窗才迟到出卡」的回归 ——
-  // 所以先记下观察起点，用 performance.now() 差值等满 2 倍出卡窗再断 count 0。
-  // NOTE_SHOW_MS 未导出（src/workbench/app/AnnPopover.jsx:16），这里用同值
-  // 常量并注明出处；出卡窗改值时这里要跟着改。
-  const NOTE_SHOW_MS = 120;
-  await row1.hover();
-  await expect(card).toBeVisible();
-  await row2.hover();
-  await expect(card).toBeHidden();
-  const windowStart = await page.evaluate(() => performance.now());
-  await expect.poll(async () => (await page.evaluate(() => performance.now())) - windowStart)
-    .toBeGreaterThanOrEqual(2 * NOTE_SHOW_MS);
-  await expect(card).toHaveCount(0);
-});
-
 test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀钉 → closed 见灰钉 → 刷新保留', async ({ page }) => {
   // owner 2026-09-23：颜色即状态 + filter 切换查看。这条把三件事串起来 ——
   // 分段筛选驱动列表行数、画布钉子跟着筛选出没、钉色随状态（琥珀 check /
@@ -397,8 +311,8 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   // check / done 升档只经 mark 端点（revision 用回包里的，不等 SSE）；
   // close 是 owner 动作，端点不收 —— 走行上的「完成」勾。
   const ledger = pageKeyFromPathname('/sites/e2e-dir/doc.html');
-  const postStatus = async (n, status, baseRev, note) => {
-    const res = await page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'e2e-dir', baseRevision: baseRev, status, ...(note ? { note } : {}) } });
+  const postStatus = async (n, status, baseRev) => {
+    const res = await page.request.post(`/annotations/${ledger}/${n}/status`, { data: { entry: 'e2e-dir', baseRevision: baseRev, status } });
     expect(res.status()).toBe(200);
     return (await res.json()).revision;
   };
@@ -407,7 +321,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   const serverDoc = async () => (await page.request.get(`/annotations/${ledger}?entry=e2e-dir`)).json();
   await expect.poll(async () => ((await serverDoc()).annotations || []).some((a) => a.n === nClose)).toBe(true);
   let rev = (await serverDoc()).revision;
-  rev = await postStatus(nCheck, 'check', rev, '看过，不改');
+  rev = await postStatus(nCheck, 'check', rev);
   rev = await postStatus(nDone, 'done', rev);
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('done');
 
@@ -446,10 +360,8 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(pins).toHaveCount(3);
   // pending 里三种状态各自保留状态色（琥珀 = check）
   await expect(page.locator('.ann-badge.ann-badge--check')).toHaveCSS('background-color', 'rgb(184, 124, 20)');
-  // done 行出文字状态标；check 的 note 走行上的原生 title（注入侧栏仍用
-  // title，工作台侧已换 hover 卡 —— 两边有意不同步）
+  // done 行出文字状态标
   await expect(doneRow.locator('.wb-ann-status-tag')).toHaveText('done');
-  await expect(sidebar.locator('.wb-ann-item[data-ann-n="' + nCheck + '"]')).toHaveAttribute('title', '看过，不改');
 
   // 切到 closed：closed 行（带「重新打开」）+ 一枚灰钉
   await filters.locator('[data-ann-filter="closed"]').click();

@@ -265,7 +265,7 @@ export function createAnnotationStore(options) {
     return { status: 200, doc };
   }
 
-  /** ppnt mark 的后端：open / check → check / done（带一行 note）。 */
+  /** ppnt mark 的后端：open / check → check / done。 */
   function setStatus(input) {
     const safePage = ledgerKey(input.page ?? 'index');
     if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
@@ -286,11 +286,7 @@ export function createAnnotationStore(options) {
       return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${wanted}`, doc: disk };
     }
     const annotations = disk.annotations.slice();
-    annotations[index] = {
-      ...before,
-      status: wanted,
-      ...(typeof input.note === 'string' && input.note ? { note: input.note } : {}),
-    };
+    annotations[index] = { ...before, status: wanted };
     const doc = writeDoc(safePage, {
       path: disk.path || '',
       updated_at: now().toISOString(),

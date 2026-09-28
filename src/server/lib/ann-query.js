@@ -477,7 +477,6 @@ export function checkRowModel(row, context) {
     content: display,
     intent: intentOf(row),
     status: row.status || 'open',
-    note: row.note || '',
     screenId,
     frameRef: frame ? frame[1] : '',
     bucket: row.__bucket,
@@ -502,7 +501,7 @@ export function buildCheckReport(context, options = {}) {
   let rows = [...context.frameRows];
   if (status !== 'all') rows = rows.filter((row) => (row.status || 'open') === status);
   if (options.frame) {
-    const hit = context.refs.outline.flatMap((section) => section.frames).find((frame) => frame.ref === options.frame);
+    const hit = context.refs.outline.flatMap((section) => section.frames).find((frame) => frame.ref === options.frame || frame.id === options.frame);
     if (!hit) return { error: `图纸上没有帧 ${options.frame}` };
     rows = rows.filter((row) => row.screenId === hit.id);
   }
@@ -553,7 +552,8 @@ export function buildCheckReport(context, options = {}) {
       if (!byScreen.has(frame.id)) continue;
       groups.push({
         kind: 'frame',
-        title: `${frame.ref} ${frame.title}`,
+        // 编号是按位置派生的显示编号，id 是不变身份：两个都给，agent 写进留存文字时用 id。
+        title: `${frame.ref} · ${frame.id} · ${frame.title}`,
         ref: frame.ref,
         screenId: frame.id,
         rows: byScreen.get(frame.id),
@@ -610,7 +610,7 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     for (const group of report.groups) {
       if (group.kind !== 'frame' || !imagePaths[group.screenId] || seen.has(group.screenId)) continue;
       seen.add(group.screenId);
-      lines.push(`截图 ${group.ref || group.screenId}：${imagePaths[group.screenId]}`);
+      lines.push(`截图 ${group.ref ? `${group.ref} · ${group.screenId}` : group.screenId}：${imagePaths[group.screenId]}`);
     }
   }
   for (const group of report.groups) {
@@ -618,7 +618,6 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     lines.push(`## ${group.title}${group.detail ? ` · ${group.detail}` : ''}`);
     for (const row of group.rows) {
       const parts = [`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`];
-      if (row.note) parts.push(`· note：${row.note}`);
       if (row.docPath) parts.push(`· ${row.docPath}`);
       if (row.comp) parts.push(`· ${row.comp}（共用 ${row.sharedFrames} 帧）`);
       lines.push(parts.join(' '));

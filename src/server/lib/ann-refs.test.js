@@ -114,3 +114,24 @@ describe('expandStatus', () => {
     assert.deepEqual(expandStatus('open', [{ n: 7, content: '无状态字段' }]).map((r) => r.n), [7]);
   });
 });
+
+describe('resolveRef：裸 id 与显示编号同义', () => {
+  test('帧 id → 同一帧，带当前编号；段 id → 同一段', () => {
+    assert.deepEqual(resolveRef('settings', CTX), resolveRef('A2', CTX));
+    const section = resolveRef('flow', CTX);
+    assert.equal(section.kind, 'section');
+    assert.equal(section.ref, 'B');
+    assert.equal(section.sectionId, 'flow');
+  });
+
+  test('页 id 同名时页优先', () => {
+    const ctx = { ...CTX, board: { sections: [{ id: 'chat', screens: [{ id: 'demo' }] }] } };
+    assert.equal(resolveRef('demo', ctx).kind, 'page');
+  });
+
+  test('doc 帧不占编号：B3 与 CLI、画布同一口径', () => {
+    const ctx = { ...CTX, board: { sections: [{ id: 'intro', shell: 'doc', screens: [{ id: 'm1' }] }, ...BOARD.sections] } };
+    assert.equal(resolveRef('A1', ctx).screenId, 'home');
+    assert.equal(resolveRef('m1', ctx).kind, 'unknown');
+  });
+});

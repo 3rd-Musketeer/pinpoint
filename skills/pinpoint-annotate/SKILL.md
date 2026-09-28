@@ -10,7 +10,13 @@ description: 读取 Pinpoint 标注、判断改帧还是改组件、改完编译
 字段、账本与状态机的权威是 [`docs/annotation.md`](../../docs/annotation.md)。
 
 引用写法：`#12`（本页序号，永不复用）、`plugins#12`（跨页）、`B3`（图纸号 = 该帧全部标注）、
-`@frame:<page>/<screen>`、`@a:<id>`（兼容写法）。多条用空格分隔，区间 `#3-#7`。
+`B`（整段）、裸帧 id / 段 id（与 `B3` / `B` 同义）、`@frame:<page>/<screen>`、`@a:<id>`（兼容写法）。
+多条用空格分隔，区间 `#3-#7`。
+
+`B3` 这类编号是显示编号：按 board 顺序现算，调序、插帧、删帧后就指向别的帧。帧 id 不变，也是源文件名。
+所以对 owner 当场说话用编号；写进 README、交接稿、验收记录这类留存文字时写 id，或写成
+“D2（c1b-detail-time）”。编号与 id、源文件的对照用 `ppnt list <页> --frames` 查，`check` 的帧标题也
+同时给两者。
 
 ## 0. 先确定是哪一页
 
@@ -45,12 +51,12 @@ owner 常用口头说法指页（“routines 原型”“那个雾玻璃界面�
 
 改源码（不碰 `~/.pinpoint/dist/`；kit 只在确要改所有页时动）→ `ppnt build <页>` 到全绿 →
 `ppnt shot <帧>`（或 `ppnt check <页> --mode image`）对照看效果。lint / 编译错误指到文件与行，
-规则见 build skill 的“lint 四禁”。改不动或没道理的标注留着不动，准备在 note 里说明。
+规则见 build skill 的“lint 四禁”。改不动或没道理的标注留着不动，原因在最后的汇报里说。
 
-## 4. `ppnt mark <ref…> done|check --note "…"`
+## 4. `ppnt mark <ref…> done|check`
 
-- 看了但不改 → `check`，带一行 note（owner hover 可见）。
-- 改完 → `done`，note 可选。
+- 看了但不改 → `check`。
+- 改完 → `done`。
 - 服务端按 `baseRevision` 校验：冲突或非法转换逐条报 409，不影响其余条目，按提示重读再写。
 - CLI 不接受 `open` / `close`：open 由 owner 在工作台编辑正文或目标时自动回，close 只有
   owner 在工作台做。

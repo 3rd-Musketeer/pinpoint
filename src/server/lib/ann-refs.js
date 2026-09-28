@@ -6,6 +6,8 @@
  *   #3-#7        区间（含端点）
  *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
  *   B            段字母 → 整段（section）
+ *   <帧 id>      裸帧 id，与 B3 同义（B3 是按位置派生的显示编号，id 不变）
+ *   <段 id>      裸段 id，与 B 同义
  *   <page>       整页（仅 shot；任意登记页 id，不限基页）
  *   @frame:p/s   机器帧语法（annotation-indicator 的 parseIndicator）
  *   @a:<id>      标注内部 id
@@ -83,6 +85,14 @@ export function resolveRef(token, ctx = {}) {
   // 指向别的页是 <页> 语义的本义，不该因为不是基页就「认不出引用」。
   if (pageId && raw === pageId) return { kind: 'page', pageId };
   if ((ctx.pageIds || []).includes(raw)) return { kind: 'page', pageId: raw };
+  // 裸 id：帧 id / 段 id 是不变的机器身份，B3 / B 只是按位置派生的显示编号。
+  // 能写编号的地方都能写 id，精确指代时不必拼 @frame:p/s。页 id 同名时页优先（上一步）。
+  const byId = refs.outline.flatMap((section) => section.frames).find((frame) => frame.id === raw);
+  if (byId) return { kind: 'frame', screenId: byId.id, ref: byId.ref, title: byId.title };
+  const sectionById = refs.outline.find((section) => section.id === raw);
+  if (sectionById) {
+    return { kind: 'section', sectionId: sectionById.id, ref: sectionById.letter, title: sectionById.title, frames: sectionById.frames };
+  }
   const indicator = parseIndicator(raw);
   if (indicator && indicator.kind === 'frame') {
     const hit = refs.outline.flatMap((section) => section.frames).find((frame) => frame.id === indicator.screenId);
@@ -94,7 +104,7 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、页 id、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、帧 id、段 id、页 id、@frame:p/s、@a:id）` };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];

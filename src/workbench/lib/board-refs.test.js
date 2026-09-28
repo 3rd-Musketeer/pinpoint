@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { boardRefs, frameRef, sectionLetter } from './board-refs.js';
+import { boardRefs, frameRef, refLikeFrameIds, sectionLetter } from './board-refs.js';
 
 const BOARD = {
   sections: [
@@ -62,4 +62,26 @@ test('frameRef: 命中返回引用号，缺参/未命中返回空串', () => {
   assert.equal(frameRef(BOARD, 'nope', 'b'), '');
   assert.equal(frameRef(null, 'flow', 'b'), '');
   assert.equal(frameRef(BOARD, '', 'b'), '');
+});
+
+test('boardRefs: doc 帧不占编号，board.json 原文（shell 只写在 section 上）也和画布一致', () => {
+  const { bySection, byFrame } = boardRefs({
+    sections: [
+      { id: 'mech', shell: 'doc', screens: [{ id: 'm1' }] },
+      { id: 'flow', screens: [{ id: 'a' }, { id: 'note', shell: 'doc' }, { id: 'b' }] },
+      { id: 'legacy', screens: [{ id: 'w', shell: 'web' }] },
+    ],
+  });
+  assert.deepEqual(bySection, { flow: 'A' });
+  assert.deepEqual(byFrame, { 'flow\0a': 'A1', 'flow\0b': 'A2' });
+});
+
+test('refLikeFrameIds: 只挑形如编号的帧 id，按 board 序去重', () => {
+  const ids = refLikeFrameIds({
+    sections: [
+      { id: 'a', screens: [{ id: 'a1-home' }, { id: 'detail-noop-run' }, 'c1b-detail', { id: 'b3' }] },
+      { id: 'b', screens: [{ id: 'a1-home' }, { id: 'v2-layout' }, { id: 'home' }, { id: 'step10' }] },
+    ],
+  });
+  assert.deepEqual(ids, ['a1-home', 'c1b-detail', 'b3', 'v2-layout']);
 });

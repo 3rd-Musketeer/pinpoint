@@ -2268,11 +2268,10 @@ async function parkBadgeAndHover(page, x, y) {
   await expect(page.locator('#ann-bubbles .ann-bubble--show')).toHaveCount(1);
 }
 
-// 钉子与评论卡故事（2322 / 2380 合并，2026-09-24 e2e 审计）：先断钉子样式与
-// 常显、评论卡 hover 才出，再用状态端点给第一条挂 note 走 SSE 回流，验折叠头
-// 交互；第二条全程无 note 作对照。2322 的「overlay z > dock」与层级故事里的
+// 钉子与评论卡故事（2322 / 2380 合并，2026-09-24 e2e 审计）：断钉子样式与
+// 常显、评论卡 hover 才出。2322 的「overlay z > dock」与层级故事里的
 // 命中断言重复，随合并删。
-test('画布钉子常显高对比，评论卡 hover 钉子才出；agent 备注折叠头默认收起', async ({ page }) => {
+test('画布钉子常显高对比，评论卡 hover 钉子才出', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
@@ -2281,13 +2280,11 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出；agent 备注�
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'pin contrast mark');
   await cells.nth(1).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(1), '没备注的一条');
+  await saveAnnotation(page, cells.nth(1), 'second mark');
   const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
-  const n2 = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
 
   const badges = page.locator('#ann-marks .ann-badge');
   const bubble1 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n1}"]`);
-  const bubble2 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n2}"]`);
 
   await test.step('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async () => {
     await expect(badges).toHaveCount(2);
@@ -2321,62 +2318,9 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出；agent 备注�
     await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
   });
 
-  await test.step('画布评论卡的 agent 备注：折叠头默认收起，点开看全文再收起；无 note 的卡没有折叠头', async () => {
-    // note 走状态端点（与 ppnt mark 同一条路），SSE 回流后画布账本带上；
-    // 卡正文下出折叠头，展开 / 收起只改页面内记忆。
-    const post = (n, data) => page.request.post(`/annotations/@canvas/${n}/status`, { data: { entry: 'e2e-ios', ...data } });
-    const rev = await page.evaluate(() => window.pinpoint.getState().revision);
-    expect((await post(n1, { baseRevision: rev, status: 'check', note: CANVAS_NOTE })).status()).toBe(200);
-    await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
-
-    // 默认折叠：折叠头在，原文不在
-    await badges.nth(0).hover();
-    await expect(bubble1).toHaveClass(/ann-bubble--show/);
-    const head = bubble1.locator('.ann-bubble-note-head');
-    await expect(head).toHaveText('agent 备注 ▸');
-    await expect(bubble1.locator('.ann-bubble-note-body')).toHaveCount(0);
-
-    // 展开：原文全文（textContent 逐字比对，pre-wrap 保留换行），超过 6 行进卡内滚动
-    await head.click();
-    await expect(head).toHaveText('agent 备注 ▾');
-    const body = bubble1.locator('.ann-bubble-note-body');
-    await expect.poll(() => body.evaluate((el) => el.textContent)).toBe(CANVAS_NOTE);
-    await expect(body).toHaveCSS('white-space', 'pre-wrap');
-    expect(await body.evaluate((el) => el.scrollHeight > el.clientHeight)).toBe(true);
-
-    // 展开态是本次页面内的记忆：挪开收卡再回来，还是展开的
-    await page.locator('#wbstrip-title').hover();
-    await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
-    await badges.nth(0).hover();
-    await expect(bubble1).toHaveClass(/ann-bubble--show/);
-    await expect(head).toHaveText('agent 备注 ▾');
-
-    // 再点收起；收起同样被记住
-    await head.click();
-    await expect(head).toHaveText('agent 备注 ▸');
-    await expect(bubble1.locator('.ann-bubble-note-body')).toHaveCount(0);
-    await page.locator('#wbstrip-title').hover();
-    await badges.nth(0).hover();
-    await expect(bubble1).toHaveClass(/ann-bubble--show/);
-    await expect(head).toHaveText('agent 备注 ▸');
-
-    // 无 note 的标注没有折叠头
-    await badges.nth(1).hover();
-    await expect(bubble2).toHaveClass(/ann-bubble--show/);
-    await expect(bubble2.locator('.ann-bubble-note-head')).toHaveCount(0);
-  });
-
   await page.evaluate(() => window.pinpoint.clear());
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
-
-// 画布评论卡上的 agent 备注（2026-09-23）：owner 看着工作台弹层里要 hover 才出的
-// 备注卡，「画布上看不到」。note 走状态端点（与 ppnt mark 同一条路），SSE 回流后
-// 画布账本带上；卡正文下出折叠头，展开 / 收起只改页面内记忆。
-const CANVAS_NOTE = '默认温度从 90 改到 92 度：medium 烘焙下 92 度萃取更稳。\n杯测数据见 8-31 记录第三组，'
-  + '同一组里 90 度那杯的 TDS 明显偏低，口感单薄；改完同步设置页文案，'
-  + '帮助页的注水建议与研磨刻度提示也要跟着更新，避免两处口径不一致，'
-  + '另外记得通知仓库把包装上的建议参数一并换掉。';
 
 // 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
 // 字号断言比的是画布坐标里的 CSS px：画布基准 scale 0.5，所以区头 26 = 观感 13、

@@ -286,14 +286,14 @@ test('/save 转换校验：非法转换 409，编辑回 open，新标注恒 open
   assert.equal(fresh.doc.annotations[1].status, 'open');
 });
 
-test('setStatus：open/check → check/done 带 note；其余一律拒', (t) => {
+test('setStatus：open/check → check/done；传 note 不落盘；其余一律拒', (t) => {
   const { store } = withStore(t);
   store.save({ page: 'index.html', baseRevision: 0, annotations: [{ id: 'a1', content: '一' }] });
 
   const checked = store.setStatus({ page: 'index.html', id: 1, status: 'check', note: '看过，不改', baseRevision: 1 });
   assert.equal(checked.status, 200);
   assert.equal(checked.annotation.status, 'check');
-  assert.equal(checked.annotation.note, '看过，不改');
+  assert.equal(Object.hasOwn(checked.annotation, 'note'), false, 'note 机制已关，请求里带了也不写');
   assert.equal(checked.doc.revision, 2);
 
   const done = store.setStatus({ page: 'index.html', id: 'a1', status: 'done', baseRevision: 2 });

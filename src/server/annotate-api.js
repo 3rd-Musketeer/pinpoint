@@ -451,7 +451,7 @@ export function createAnnotateHandler(options = {}) {
 
     if (req.method !== 'POST' || !(['/save', '/image', '/registry/reload'].includes(urlPath) || STATUS_ROUTE.test(urlPath))) return false;
 
-    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done（带 note）。
+    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done。
     if (req.method === 'POST' && STATUS_ROUTE.test(urlPath)) {
       const parts = urlPath.match(STATUS_ROUTE);
       let body;
@@ -469,7 +469,6 @@ export function createAnnotateHandler(options = {}) {
         page: decodeURIComponent(parts[1]),
         id: numeric,
         status: body.status,
-        note: typeof body.note === 'string' ? body.note : undefined,
         baseRevision: body.baseRevision,
       });
       if (result.status !== 200) {

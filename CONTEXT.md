@@ -27,6 +27,12 @@ board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 D
 **frame（帧）**
 画布上的一个取景框，装一个 screen。引用号里 frame 是数字，和 section 字母拼成 A1 / B3。
 人对 agent 说“改 A2”，机器仍走 `@frame:<pageId>/<screenId>`。
+
+**编号（显示编号）与 id**
+编号 = A / B3 这类引用号，由 `boardRefs`（`src/workbench/lib/board-refs.js`）按 board 顺序现算，
+doc 帧不占编号；调序、插帧、删帧后就变，不落盘。id = `sectionId` / `screenId`，不变的身份，
+帧 id 还是源文件名和标注锚点。当场对话用编号，留存文字用 id；对照表 `ppnt list <页> --frames`（ADR 0038）。
+要避开：把 id 起成编号的样子（`c1b-detail`）；把编号写进 README、交接稿、验收记录。
 要避开：拿 frame 指 iframe——mention 水合出来的那个 iframe 是实现手段，不是这个词。
 
 **folder（文件夹）**
@@ -87,7 +93,7 @@ dist = `ppnt build` 编出来的静态 HTML 帧，住 `~/.pinpoint/dist/<entry>/
 要避开：拿“产物”单说 dist——左栏的“产物”仍是交付物（见上），说编译结果就说 dist。
 
 **标注状态（status）· pp2**
-一条标注四态：open（owner 写下）→ check（agent 看了、不改，带一行 note）/ done（agent 改完）→ close（owner 单击确认，可撤销）。
+一条标注四态：open（owner 写下）→ check（agent 看了、不改）/ done（agent 改完）→ close（owner 单击确认，可撤销）。
 owner 编辑正文或目标自动回 open。只有 `ppnt mark` 写 check / done，close 只由 owner 点（工作台弹层或注入侧栏的行尾完成勾）；close 不删，默认收起。
 取代 review-refinements 的“结果指示”（蓝框）。
 要避开：把 done 说成“已验收”——验收是 close。
@@ -149,6 +155,6 @@ embed 是实现：doc 自己的 annotate client 把挂载点水合成一个指�
 ## 引用地址
 
 `@page:<pageId>` · `@section:<pageId>/<sectionId>` · `@frame:<pageId>/<screenId>` · `@a:<annotationId>`。
-pp2 起 CLI 还认 `B3`（图纸号）和 `#12`（标注序号），见资产层“`#n`”。
+pp2 起 CLI 还认 `B3`（图纸号）、裸帧 id / 段 id 和 `#12`（标注序号），见资产层“`#n`”。
 这四个是人和 agent 在对话里互指的短地址。标注正文里指自己的目标用 `[@t:iN]`，
 它只在那一条标注内解析，永远不进 `mentions[]`。

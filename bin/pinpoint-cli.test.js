@@ -1697,9 +1697,10 @@ test('parseArgs：check / locate / shot / mark 的形状与用法错误', () => 
   });
   assert.deepEqual(parseArgs(['locate', '#1', 'B3']), { command: 'locate', refs: ['#1', 'B3'], flags: {} });
   assert.deepEqual(parseArgs(['shot', 'B', '--marks', '--scale', '2']), { command: 'shot', refs: ['B'], flags: { marks: true, scale: '2' } });
-  assert.deepEqual(parseArgs(['mark', '#1', '#3-#5', 'done', '--note', 'x y']), {
-    command: 'mark', refs: ['#1', '#3-#5'], statusWord: 'done', flags: { note: 'x y' },
+  assert.deepEqual(parseArgs(['mark', '#1', '#3-#5', 'done']), {
+    command: 'mark', refs: ['#1', '#3-#5'], statusWord: 'done', flags: {},
   });
+  assert.throws(() => parseArgs(['mark', '#1', 'done', '--note', 'x']), /未知选项：--note/);
   assert.throws(() => parseArgs(['locate']), /至少要一个引用/);
   assert.throws(() => parseArgs(['mark', '#1']), /mark 需要引用与状态/);
   assert.throws(() => parseArgs(['check', 'p', '--watch', '--registry', 'r']), /--watch 不适用于 check/);
@@ -1781,11 +1782,11 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
   const rec = recorder();
-  const code = await runMark(['mark', '#1', 'done', '--note', '改完了', ...page, '--registry', made.registry], {
+  const code = await runMark(['mark', '#1', 'done', ...page, '--registry', made.registry], {
     ...rec.io, env: made.env, requestFn,
   });
   assert.equal(code, 0, rec.err.join('\n'));
-  assert.ok(rec.out.some((line) => /#1 → done（note：改完了）/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => /#1 → done$/.test(line)), rec.out.join('\n'));
   const post = calls.find((call) => call.method === 'POST');
   assert.match(post.url, /\/annotations\/%40canvas\/1\/status$/);
   assert.equal(post.body.entry, 't-page', '桶 = 页（storage-unify）');
@@ -1853,7 +1854,8 @@ test('planShotJobs：页引用不必是基页 —— 非基页装载自己的上
   assert.equal(pageJobs[1].out, path.join('/data', 'shot', 'example', 'example.png'));
   const frameJob = plan.jobs.find((job) => job.kind === 'frame');
   assert.equal(frameJob.pageId, 'demo');
-  assert.equal(frameJob.out, path.join('/data', 'shot', 'demo', 'A1.png'));
+  // 产物按不变的帧 id 命名，不按显示编号（编号随 board 调序漂移）。
+  assert.equal(frameJob.out, path.join('/data', 'shot', 'demo', 'home.png'));
   assert.deepEqual(frameJob.marks.map((row) => row.screenId), ['home']);
 });
 
@@ -2005,4 +2007,24 @@ test('runList: 关键词对上口头说法，计数读页桶，找不到时给�
   const none = recorder();
   assert.equal(await runList(['list', 'zzz-nothing', '--registry', file], { ...none.io, cwd: dir, env }), 1);
   assert.match(none.out[0], /没有匹配“zzz-nothing”的页/);
+});
+
+test('list <页> --frames：编号 · 帧 id · 源文件 · 标题；build 对形如编号的 id 给提示', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'c1b-detail', title: '详情' }, { id: 'run-noop', title: '没出卡' }],
+    files: { 'c1b-detail.html': '<div class="ios-app">详情</div>\n', 'run-noop.jsx': 'export default () => <div className="ios-app">空</div>;\n' },
+  });
+  const rec = recorder();
+  assert.equal(await runList(['list', 't-page', '--frames', '--registry', made.registry], { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => /^A {2}main {2}Main$/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => /^ {2}A1 +c1b-detail +c1b-detail\.html +详情$/.test(line)), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => /^ {2}A2 +run-noop +run-noop\.jsx +没出卡$/.test(line)), rec.out.join('\n'));
+
+  const bad = recorder();
+  assert.equal(await runList(['list', 't-page', 'extra', '--frames', '--registry', made.registry], { ...bad.io, env: made.env }), 1);
+
+  const build = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
+  assert.ok(build.out.some((line) => /注意 c1b-detail 这些帧 id 形如编号/.test(line)), build.out.join('\n'));
+  assert.ok(!build.out.some((line) => /run-noop/.test(line) && /形如编号/.test(line)));
 });

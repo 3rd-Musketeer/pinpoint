@@ -4,6 +4,8 @@
 // （app/Sidebar.jsx）、标注列表的行引用号（ann-bridge.js → app/AnnPopover.jsx）。
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
+import { legacyShell } from './preview-contracts.js';
+
 /** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */
 export function sectionLetter(index) {
   var n = Math.max(0, Math.floor(Number(index) || 0));
@@ -29,10 +31,17 @@ export function boardRefs(board) {
   var sections = (board && board.sections) || [];
   sections.forEach(function (sec) {
     if (!sec || sec.id === '_empty') return;
+    // doc 帧不上画布、不占编号（与 canvasBoard 同一口径）。这里自己过滤，服务端拿
+    // board.json 原文直接调也能和画布对上：原文的 shell 可能只写在 section 上。
+    var screens = (sec.screens || []).map(function (entry) {
+      return typeof entry === 'string' ? { id: entry } : entry;
+    }).filter(function (sc) {
+      return legacyShell(sc.shell || sec.shell) !== 'doc';
+    });
+    if (!screens.length) return;
     var letter = sectionLetter(outline.length);
     bySection[sec.id] = letter;
-    var frames = (sec.screens || []).map(function (entry, fi) {
-      var sc = typeof entry === 'string' ? { id: entry } : entry;
+    var frames = screens.map(function (sc, fi) {
       var ref = letter + (fi + 1);
       var key = sec.id + '\0' + sc.id;
       if (!byFrame[key]) byFrame[key] = ref;
@@ -47,4 +56,23 @@ export function boardRefs(board) {
 export function frameRef(board, sectionId, screenId) {
   if (!board || !sectionId || !screenId) return '';
   return boardRefs(board).byFrame[sectionId + '\0' + screenId] || '';
+}
+
+// 形如显示编号的帧 id（a1-home、c1b-detail、b3）：编号按位置派生、调序就变，
+// id 不变；id 仿编号，两套编号迟早对不上（2026-09-28 routine-creator：D1 的文件叫 c1-detail）。
+var REF_LIKE_ID_RE = /^[a-z]{1,2}[0-9]+[a-z]?(?:-|$)/i;
+
+/** board → 形如编号的帧 id 列表（board 序、去重）；ppnt build 据此提示。 */
+export function refLikeFrameIds(board) {
+  var seen = Object.create(null);
+  var ids = [];
+  ((board && board.sections) || []).forEach(function (sec) {
+    ((sec && sec.screens) || []).forEach(function (entry) {
+      var id = typeof entry === 'string' ? entry : entry && entry.id;
+      if (!id || seen[id] || !REF_LIKE_ID_RE.test(id)) return;
+      seen[id] = true;
+      ids.push(id);
+    });
+  });
+  return ids;
 }

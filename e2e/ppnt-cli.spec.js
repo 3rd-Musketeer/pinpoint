@@ -101,8 +101,8 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
   if (!locate.stdout.includes('#1 → home.jsx:')) throw new Error(`locate 输出不对：\n${locate.stdout}`);
 
   // 3. mark（真端点 + baseRevision）；done → done 的非法转换打 409 原因不中断。
-  const mark = await ppnt(['mark', '#2', 'check', '--note', '看了，改不了', '--page', 'e2e-ios']);
-  if (!mark.stdout.includes('#2 → check（note：看了，改不了）')) throw new Error(`mark 输出不对：\n${mark.stdout}`);
+  const mark = await ppnt(['mark', '#2', 'check', '--page', 'e2e-ios']);
+  if (!mark.stdout.includes('#2 → check')) throw new Error(`mark 输出不对：\n${mark.stdout}`);
   const done = await ppnt(['mark', '#2', 'done', '--page', 'e2e-ios']);
   if (!done.stdout.includes('#2 → done')) throw new Error(`done 输出不对：\n${done.stdout}`);
   const again = await ppnt(['mark', '#2', 'done', '--page', 'e2e-ios'], { expectFail: true });
@@ -121,7 +121,7 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
 
   // 5. shot --marks：帧图带序号钉，落在 <dataRoot>/shot/ 下。
   const shot = await ppnt(['shot', 'A1', '--marks', '--page', 'e2e-ios']);
-  const framePng = path.join(E2E_DATA_DIR, 'shot', 'e2e-ios', 'A1.png');
+  const framePng = path.join(E2E_DATA_DIR, 'shot', 'e2e-ios', 'home.png');
   if (!shot.stdout.includes(framePng)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
   if (!fs.existsSync(framePng) || fs.readFileSync(framePng).length < 2000) throw new Error('帧图没落盘');
 
@@ -141,7 +141,7 @@ test('shot 把运行时 canvas 的位图烤进 PNG', async ({ page, request }) =
   appendRegistryEntry({ id: 'e2e-canvas', title: 'E2E Canvas', kind: 'dir', path: path.join(E2E_SITES_DIR, 'canvas-site'), board: 'ios' });
   await request.post('/registry/reload');
   try {
-    const out = path.join(E2E_DATA_DIR, 'shot', 'e2e-canvas', '@frame:e2e-canvas/dots.png');
+    const out = path.join(E2E_DATA_DIR, 'shot', 'e2e-canvas', 'dots.png');
     fs.rmSync(out, { force: true });
     const shot = await ppnt(['shot', '@frame:e2e-canvas/dots', '--page', 'e2e-canvas']);
     if (shot.code !== 0) throw new Error(`shot 退出 ${shot.code}：${shot.stderr}`);
