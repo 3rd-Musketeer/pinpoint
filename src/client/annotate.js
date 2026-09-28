@@ -1144,8 +1144,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     '#ann-sidebar .ann-sb-filters button.dim{opacity:.45;}',
     '#ann-sidebar .ann-sb-body{flex:1;overflow-y:auto;padding:6px 8px 8px;}',
     // 行/失效态/空态的共享视觉 = src/shared/ann-list.css，serve 时内联为 ANN_LIST_CSS
-    // （workbench 侧栏 link 同一份；行类名统一为 .wb-ann-*）。
-    ANN_LIST_CSS,
+    // （行类名统一为 .wb-ann-*）。workbench 父页已 link 同一份：再内联一份会排在
+    // index.html 的弹出列表皮肤之后、同权重盖掉它，所以文档里已有这份 link 就不内联。
+    document.querySelector('link[href$="/shared/ann-list.css"]') ? '' : ANN_LIST_CSS,
     // 以下为 client 侧结构增量，与 workbench 侧有意不同、不进共享层：行 flex 壳、
     // min-width 序号徽标、失效徽标描边色、broken-tag 对齐、空态盒边距/边框、操作列。
     '#ann-sidebar .wb-ann-empty{margin:6px 4px;border:1px dashed var(--wb-seam,rgba(0,0,0,.12));}',

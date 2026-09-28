@@ -34,17 +34,16 @@
 ## 字体与排印
 
 - 系统字栈（Apple）。mono（ui-monospace / SF Mono）给机器精度信息：编号、日期、尺寸、id、引用号；读数 tabular-nums。
-- **字阶四档**（ADR 0031），四档之外不另起字号：
+- **字阶三档 + 元数据**（ADR 0031 定四档，2026-09-28 按实现收成三档 token），之外不另起字号：
 
   | token | 值 | 用在哪 |
   |---|---|---|
-  | `--wb-t-title` | 600 15px/1.2 | 面板标题 |
+  | `--wb-t-title` | 600 13px/1.2 | 标题：左栏 wordmark、横条页名、弹出列表头、页面信息对话框、导出页标题 |
   | `--wb-t-row` | 500 13px/1.2 | 列表行，正色 `--wb-fg`，不是 muted |
   | `--wb-t-body` | 400 12.5px/1.45 | 正文（标注正文、说明） |
-  | `--wb-t-meta` | 500 11px/1.2 | 元数据，配 `--wb-font-mono` + `--wb-faint` |
+  | （无 token） | 11px mono | 元数据，配 `--wb-faint`；字重随位置（行尾计数 400 11px/1，区头 600 加字距） |
 
-- 两种消费方式。手写 CSS（`index.html` 的行与面板几何）写 `font:var(--wb-t-*) var(--wb-font)`，元数据档换 `var(--wb-font-mono)`。React 组件走 Tailwind：`wb-tw.css` 的 `@theme inline` 只把颜色、圆角、字体栈与字重接到 `--wb-*`，字号没有对应的 utility，所以组件里写的是与某一档相同的字面量（`text-[13px] font-medium`）——值必须落在四档上，不要在类名里发明新字号。
-- 面板标题当前落在 13/600（左栏 wordmark、横条页名、弹出列表头），`--wb-t-title` 的 15/600 还没有消费点。这是 token 与实现的一处未对齐，改动标题字号时先决定往哪一边收。
+- 两种消费方式。手写 CSS（`index.html` 的行与面板几何）写 `font:var(--wb-t-*) var(--wb-font)`，元数据写 `11px` 字面量配 `var(--wb-font-mono)`。React 组件走 Tailwind：`wb-tw.css` 的 `@theme inline` 只把颜色、圆角、字体栈与字重接到 `--wb-*`，字号没有对应的 utility，所以组件里写的是与某一档相同的字面量（`text-[13px] font-medium`）——值必须落在上面几档上，不要在类名里发明新字号。
 - 区头 / eyebrow：11px semibold mono + 字距，英文大写（左栏段头）。
 - 图标 = SVG 线性（lucide 族，约 1.7px 描边），emoji 不当图标。
 - 文案不用“·”拼合信息：层级用版面表达（分行 / eyebrow / chip / 字重）。判据与案例归 workspace 的 topics/text-quality/ui-text.md 第 8 条。

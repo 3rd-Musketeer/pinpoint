@@ -74,11 +74,10 @@ export function buildWbTokensCss() {
   --wb-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace; /* 元数据档（指示器/标签等排障信息）；补 PingFang 兜底防汉字换字 */
 
   /* ── 字阶（2026-09-04 外壳重设计裁决）：写法 = font:var(--wb-t-*) var(--wb-font)
-     （元数据档配 var(--wb-font-mono)）。四档各有语义，不要另起字号。 ── */
-  --wb-t-title:600 15px/1.2;   /* 面板标题（左栏 head、弹出列表头） */
+     三档各有语义，不要另起字号；元数据是 11px mono，字重随位置，直接写字面量。 ── */
+  --wb-t-title:600 13px/1.2;   /* 标题（页面信息对话框、导出页标题；React 里的左栏 wordmark、横条页名、弹出列表头写同值字面量） */
   --wb-t-row:500 13px/1.2;     /* 列表行 —— 正色（var(--wb-fg)），不是 muted */
   --wb-t-body:400 12.5px/1.45; /* 正文（标注正文、说明） */
-  --wb-t-meta:500 11px/1.2;    /* 元数据 —— mono + 淡色（var(--wb-faint)） */
 
   /* ── 结构 / 动效 ── */
   --wb-side-w:252px;
