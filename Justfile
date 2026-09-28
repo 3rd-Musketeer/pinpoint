@@ -8,6 +8,30 @@ default:
 dev:
     npm run dev
 
+# Snapshot kept in .tmp/preview-data/; `git worktree remove` deletes it.
+# In a feat worktree, serve this code on <branch>.pinpoint.localhost against a ~/.pinpoint snapshot.
+preview:
+    #!/usr/bin/env bash
+    set -euo pipefail
+
+    fail() {
+      printf 'preview: %s\n' "$*" >&2
+      exit 1
+    }
+
+    [[ "$(git rev-parse --git-dir)" != "$(git rev-parse --git-common-dir)" ]] || fail "run this in a feat worktree; the primary clone serves the live service (just dev)"
+    [[ -e node_modules ]] || fail "no node_modules in this worktree; run npm ci, or symlink the clone's node_modules"
+
+    data="$PWD/.tmp/preview-data"
+    if [[ ! -d "$data" ]]; then
+      mkdir -p "$data"
+      rsync -a --exclude dist --exclude migrations --exclude diagnostics --exclude logs --exclude shot --exclude 'registry.json.bak-*' "$HOME/.pinpoint/" "$data/"
+      printf 'preview: copied ~/.pinpoint to %s\n' "$data"
+    fi
+
+    export PINPOINT_DATA_DIR="$data" PINPOINT_REGISTRY="$data/registry.json"
+    exec npm run dev
+
 # Run the canonical local verification suite.
 check:
     npm run check

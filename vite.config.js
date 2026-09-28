@@ -36,5 +36,8 @@ export default defineConfig({
     port: Number(process.env.PORT) || 5199,
     strictPort: true,
     host: '127.0.0.1',
+    // .tmp/ 放一次性产物，其中 just preview 的数据快照会被服务自己写（账本、dist），
+    // 监听它会让每次保存都触发整页刷新。
+    watch: { ignored: [path.join(ROOT, '.tmp') + '/**'] },
   },
 });

@@ -278,9 +278,10 @@ One long-lived branch, `main`, in one primary clone that also runs the persisten
 with `--ff-only`.
 
 ```bash
-just dev    # local server; no Git write
-just check  # local verification; no remote write
-just ship   # on main: clean + non-divergent guard, full check, push origin/main
+just dev      # local server; no Git write
+just preview  # in a feat worktree: <branch>.pinpoint.localhost on a snapshot of ~/.pinpoint
+just check    # local verification; no remote write
+just ship     # on main: clean + non-divergent guard, full check, push origin/main
 ```
 
 `just ship` refuses a dirty or divergent `main` and never force-pushes. The full contract is in

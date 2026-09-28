@@ -80,6 +80,11 @@ agent 只经 `ppnt mark <ref…> check|done --note` 写状态（`open` 由 owner
   做完在 clone 里 `git merge --ff-only feat/<任务名>`，再 `git worktree remove` 并删掉分支。
   worktree 里没有 owner-local 文件（`tasks/`、`TODO.md` 等），派 worker 时给 clone 里的绝对路径；
   `git worktree remove` 会连 ignored 文件一起删，只在 worktree 里的东西先挪出来。
+- 在 feat worktree 里亲手试改动用 `just preview`：用 worktree 的代码起 `<分支名>.pinpoint.localhost`，
+  数据是 `~/.pinpoint` 的一份快照，放在 worktree 的 `.tmp/preview-data/`，标注写进快照、不动真实账本。
+  快照只在第一次启动时复制；要重新取真实数据就删掉这个目录再起。停预览在它的终端按 Ctrl-C
+  （预览和常驻服务的进程命令行一样，不要按命令行 pkill）。`git worktree remove` 时快照随之删除。
+  worktree 里要有 `node_modules`（`npm ci`，或软链 clone 的）。
 - `just ship` 是唯一的推送工作流：要求在 `main`、工作区干净、不与 `origin/main` 发散，
   跑完整 check，推 `origin/main`，再核对 ref。它会改远端状态；不要绕过失败的 guard，不要 force-push。
 - 推没推看 git：`git log --oneline origin/main..main` 为空就是都推了。
