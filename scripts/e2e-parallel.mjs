@@ -64,7 +64,10 @@ function splitGroups(files) {
 // 下强制两组连跑 3 轮，每轮首跑仍有 2~3 条随机超时、一轮重跑后仍挂（单跑全过），
 // 所以阈值维持 4，不上调。
 const load = loadavg()[0];
-const threshold = Number(process.env.E2E_SINGLE_GROUP_LOAD || 4);
+// 2026-09-29 性能调研：本机 load 常年 5~20，阈值 4 等于永远单组（约 114 秒）；
+// 强制两组在 load 5~7 下连跑 3 轮均为 60~85 秒、首跑各有 1~6 条超时且一次重跑全清。
+// 所以阈值抬到 10：日常两组，机器真的被压垮（load ≥ 10）才退回单组。
+const threshold = Number(process.env.E2E_SINGLE_GROUP_LOAD || 10);
 const forced = process.env.E2E_GROUPS;
 if (forced && forced !== '1' && forced !== '2') throw new Error('E2E_GROUPS must be 1 or 2');
 const single = forced ? forced === '1' : load >= threshold;

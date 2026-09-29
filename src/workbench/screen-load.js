@@ -34,6 +34,7 @@ import {
   wrapCompStage,
   wrapPhoneShell
 } from '../shared/frame-shell.js';
+import { hoistImportOnlyStyles } from './lib/hoist-imports.js';
 
 /**
  * 装载失败面板（2026-09-04，BACKLOG「空态与错误面板」）：说明三行（标题 / 出处 /
@@ -245,5 +246,5 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       '<div class="wb-sec-body wb-sec-' + layout + '">' + body + '</div>' +
       '</article>';
   });
-  return '<div class="wb-zoom-wrap"><div class="wb-library">' + parts.join('') + '</div></div>';
+  return '<div class="wb-zoom-wrap"><div class="wb-library">' + hoistImportOnlyStyles(parts.join('')) + '</div></div>';
 }

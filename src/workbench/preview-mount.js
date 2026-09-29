@@ -116,6 +116,9 @@ function noteAssetFailure(el, url) {
    pageBaseUrl 前缀，跨域资源不归我们判。 */
 function probeFragmentStyles(panel, session) {
   if (!panel) return;
+  // 同一份页面 CSS 每屏都 @import 一次：按 url 归并，整板每个 url 只探一次
+  // （plugins 61 屏原先 61 次 × 50KB），失败时再回报给用到它的每一屏。
+  var users = {};
   panel.querySelectorAll('.wb-screen').forEach(function (screen) {
     var urls = [];
     screen.querySelectorAll('style').forEach(function (node) {
@@ -124,17 +127,19 @@ function probeFragmentStyles(panel, session) {
     screen.querySelectorAll('link[rel~="stylesheet"]').forEach(function (node) {
       urls.push(node.getAttribute('href') || '');
     });
-    var seen = {};
     urls.forEach(function (url) {
-      if (!url || url.charAt(0) !== '/' || seen[url]) return;
-      seen[url] = true;
-      fetch(url).then(function (res) {
-        if (res.ok || !session.isUsable(screen)) return;
-        noteAssetFailure(screen, url);
-      }, function () {
-        if (session.isUsable(screen)) noteAssetFailure(screen, url);
-      });
+      if (!url || url.charAt(0) !== '/') return;
+      var list = users[url] || (users[url] = []);
+      if (list.indexOf(screen) < 0) list.push(screen);
     });
+  });
+  function report(url) {
+    users[url].forEach(function (screen) {
+      if (session.isUsable(screen)) noteAssetFailure(screen, url);
+    });
+  }
+  Object.keys(users).forEach(function (url) {
+    fetch(url).then(function (res) { if (!res.ok) report(url); }, function () { report(url); });
   });
 }
 

@@ -11,7 +11,13 @@ import { maybeThrottle } from './cpu-throttle.js';
 
 test.use({ reducedMotion: 'reduce' });
 // Every story starts with its own empty ledger, independent of spec ordering.
-test.beforeEach(() => fs.rm(E2E_DATA_DIR, {recursive:true, force:true}));
+// 每条用例清空账本，但留下 dist：编译产物只由源码决定，删了下一条用例访问页面又要
+// 整页重编译（每条 4~6 秒的量级，2026-09-29 性能调研）。
+test.beforeEach(async () => {
+  const entries = await fs.readdir(E2E_DATA_DIR).catch(() => []);
+  await Promise.all(entries.filter(name => name !== 'dist')
+    .map(name => fs.rm(path.join(E2E_DATA_DIR, name), {recursive:true, force:true})));
+});
 test.beforeEach(async ({ page }) => { await maybeThrottle(page); });
 
 // The e2e server runs with PREVIEW_TEMPLATE_ONLY=1 (playwright.config.js), so

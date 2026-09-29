@@ -38,6 +38,7 @@ export default defineConfig({
     host: '127.0.0.1',
     // .tmp/ 放一次性产物，其中 just preview 的数据快照会被服务自己写（账本、dist），
     // 监听它会让每次保存都触发整页刷新。
-    watch: { ignored: [path.join(ROOT, '.tmp') + '/**'] },
+    // e2e 的 test-results-* / playwright-report-* 每条用例都写文件，同样不该进 watch。
+    watch: { ignored: [path.join(ROOT, '.tmp') + '/**', path.join(ROOT, 'test-results*') + '/**', path.join(ROOT, 'playwright-report*') + '/**'] },
   },
 });
