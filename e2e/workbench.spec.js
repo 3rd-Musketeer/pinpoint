@@ -1586,6 +1586,30 @@ test('canvas multi-target pills preserve text; closing the card or switching pag
   expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
 });
 
+test('多选跨 frame：每个目标的草稿框落在它自己的 frame 里', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const a = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  const b = page.locator('#wb-board-panel [data-screen="home"] .ios-cell').first();
+  await a.scrollIntoViewIfNeeded();
+  await a.click();
+  await b.scrollIntoViewIfNeeded();
+  await b.click();
+  await expect(page.locator('#ann-input [data-target-ref]')).toHaveCount(2);
+  const boxes = await page.evaluate(() => {
+    const frames = Array.from(document.querySelectorAll('.ann-draft-target')).map((n) => n.getBoundingClientRect());
+    const inside = (rect, sid) => {
+      const s = document.querySelector('#wb-board-panel [data-screen="' + sid + '"]').getBoundingClientRect();
+      return rect.left >= s.left - 2 && rect.right <= s.right + 2;
+    };
+    return frames.map((r) => ({ settings: inside(r, 'settings'), home: inside(r, 'home') }));
+  });
+  expect(boxes).toHaveLength(2);
+  expect(boxes.filter((x) => x.settings)).toHaveLength(1);
+  expect(boxes.filter((x) => x.home)).toHaveLength(1);
+});
+
 test('frame scroll updates mark geometry and hides marks outside the phone clip', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());

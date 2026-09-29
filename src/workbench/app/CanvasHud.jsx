@@ -23,7 +23,7 @@
 import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
-import { setCanvasZoom } from '../boot-prefs.js';
+import { setCanvasZoom, zoomCanvasAt } from '../boot-prefs.js';
 import { clampCanvasZoom, currentCanvasZoom, formatZoomLabel } from '../lib/canvas-zoom.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -40,7 +40,7 @@ var HUD_ITEM =
   'transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground';
 
 function nudgeZoom(factor) {
-  setCanvasZoom(String(clampCanvasZoom(currentCanvasZoom() * factor)), { save: true });
+  zoomCanvasAt(clampCanvasZoom(currentCanvasZoom() * factor));
 }
 
 export function CanvasDock() {

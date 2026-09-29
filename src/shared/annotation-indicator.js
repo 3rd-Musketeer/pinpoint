@@ -85,6 +85,7 @@ export function normalizeTargetRefs(rawTargets, fallbackSelector, fallbackText) 
     next = Math.max(next, targetRefNumber(ref) + 1);
     const target = { ref, selector: raw.selector, text: raw.text || '' };
     if (typeof raw.ppId === 'string' && raw.ppId) target.ppId = raw.ppId;
+    if (typeof raw.screenId === 'string' && raw.screenId) target.screenId = raw.screenId;
     out.push(target);
   }
   return out;

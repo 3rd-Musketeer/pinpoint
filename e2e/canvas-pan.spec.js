@@ -355,6 +355,57 @@ test('draft geometry is not translated twice during pan and zoom', async ({ page
   await expect(page.locator('#ann-input')).toContainText('keep draft');
 });
 
+test('HUD 缩放保持视野中心不动', async ({ page }) => {
+  await openCanvas(page);
+  await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 300; s.scrollTop += 120; });
+  // 取视野中心下的画布点（frame 内某个元素占比）作参照：缩放前后它应仍在视野中心附近。
+  const probe = () => page.evaluate(() => {
+    const s = document.querySelector('#wbstage').getBoundingClientRect();
+    const w = document.querySelector('#wb-board-panel .wb-zoom-wrap').getBoundingClientRect();
+    const z = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom')) || 1;
+    // 视野中心相对 wrap 左上角的「未缩放坐标」
+    return { x: (s.left + s.width / 2 - w.left) / z, y: (s.top + s.height / 2 - w.top) / z };
+  });
+  const before = await probe();
+  await page.locator('#wbzoom-in').click();
+  await page.locator('#wbzoom-in').click();
+  await page.locator('#wbzoom-in').click();
+  await expect.poll(async () => {
+    const after = await probe();
+    return Math.max(Math.abs(after.x - before.x), Math.abs(after.y - before.y));
+  }).toBeLessThan(3);
+});
+
+test('标注框可以拖动，拖完不被自动让位拉回', async ({ page }) => {
+  await openCanvas(page);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await page.locator(`${cellSelector} .ios-cell-title`).first().click();
+  const box = page.locator('#ann-box');
+  await expect(box).toBeVisible();
+  const at = () => box.evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top }; });
+  const before = await at();
+  const r = await box.boundingBox();
+  // 内边距（左上角 6px 处）是拖动把手，不在输入区和按钮上。
+  // 朝视口中心拖（框可能已贴边，反向会被夹回）。
+  const vp = page.viewportSize();
+  const dx = r.x + r.width / 2 < vp.width / 2 ? 40 : -40;
+  const dy = r.y + r.height / 2 < vp.height / 2 ? 40 : -40;
+  await page.mouse.move(r.x + 24, r.y + 8);
+  await page.mouse.down();
+  await page.mouse.move(r.x + 24 + dx, r.y + 8 + dy, { steps: 5 });
+  await page.mouse.up();
+  const after = await at();
+  expect(Math.abs(after.x - (before.x + dx))).toBeLessThan(3);
+  expect(Math.abs(after.y - (before.y + dy))).toBeLessThan(3);
+  // 输入一段字触发重新布局，位置不回弹。
+  await page.locator('#ann-input').fill('拖完继续写');
+  await page.locator('#wbzoom-in').click();
+  const later = await at();
+  expect(Math.abs(later.x - after.x)).toBeLessThan(3);
+  expect(Math.abs(later.y - after.y)).toBeLessThan(3);
+  await expect(box).toHaveAttribute('data-placement', 'user');
+});
+
 test('global stylesheet updates invalidate cached geometry', async ({ page }) => {
   await openCanvas(page, 1);
   await page.evaluate(() => {

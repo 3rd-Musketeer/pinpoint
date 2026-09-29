@@ -12,6 +12,7 @@ import {
   isLegalMarkTransition,
   isLegalTransition,
   nextTargetRef,
+  normalizeTargetRefs,
   normalizeAnnotation,
   normalizeDoc,
   parseIndicator,
@@ -240,4 +241,13 @@ test('isClearableMark: 清空只带走未关闭的行，close 是执行历史留
   assert.equal(isClearableMark({ status: 'close' }), false);
   assert.equal(isClearableMark({}), true, '缺省 open');
   assert.equal(isClearableMark(null), false, '非行不清');
+});
+
+test('normalizeTargetRefs keeps per-target screenId for cross-frame multi-select', () => {
+  const out = normalizeTargetRefs([
+    { ref: 'i1', selector: 'a', screenId: 'g3' },
+    { ref: 'i2', selector: 'b', screenId: 'g4' },
+    { ref: 'i3', selector: 'c' },
+  ]);
+  assert.deepEqual(out.map((t) => t.screenId), ['g3', 'g4', undefined]);
 });

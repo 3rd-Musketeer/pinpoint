@@ -143,6 +143,29 @@ setCanvasZoom = function (val, options) {
   if (options.save) scheduleZoomSave(val);
 };
 
+/** 以视口内一点为不动点缩放（缺省 = 舞台可视中心）。缩放挂在 .wb-library（origin 0 0），
+ * 板四周的 pad 不缩放，所以以 wrap 左上角为原点换算，缩放后回写 scroll 抵消漂移。 */
+export function zoomCanvasAt(next, clientX, clientY, options) {
+  var oldZ = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom')) || 1;
+  var rect = stage.getBoundingClientRect();
+  var mx = (clientX == null ? rect.left + rect.width / 2 : clientX) - rect.left;
+  var my = (clientY == null ? rect.top + rect.height / 2 : clientY) - rect.top;
+  var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
+  var originX = 0;
+  var originY = 0;
+  if (wrap) {
+    var wr = wrap.getBoundingClientRect();
+    originX = stage.scrollLeft + (wr.left - rect.left);
+    originY = stage.scrollTop + (wr.top - rect.top);
+  }
+  var localX = stage.scrollLeft + mx - originX;
+  var localY = stage.scrollTop + my - originY;
+  setCanvasZoom(String(next), options || { save: true });
+  var ratio = parseFloat(boardZoom(next)) / oldZ;
+  stage.scrollLeft = originX + localX * ratio - mx;
+  stage.scrollTop = originY + localY * ratio - my;
+}
+
 function scheduleZoomSave(val) {
   pendingZoomSave = boardZoom(val);
   clearTimeout(zoomSaveT);

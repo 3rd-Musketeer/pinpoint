@@ -38,6 +38,7 @@ import {
   refit,
   scheduleViewportScrollSave,
   setCanvasZoom,
+  zoomCanvasAt,
   setSideCollapsed,
   snapshotPageViewport,
   toggleSideCollapsed
@@ -363,25 +364,7 @@ stage.addEventListener('wheel', function (e) {
   var oldZ = currentCanvasZoom();
   var next = clampCanvasZoom(oldZ * (e.deltaY > 0 ? 0.92 : 1.08));
   if (next === oldZ) return;
-  // Scale is on .wb-library (origin 0 0); board pad around it does not scale.
-  // Anchor scroll to the wrap's top-left in scroll space, not the stage origin.
-  var rect = stage.getBoundingClientRect();
-  var mx = e.clientX - rect.left;
-  var my = e.clientY - rect.top;
-  var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
-  var originX = 0;
-  var originY = 0;
-  if (wrap) {
-    var wr = wrap.getBoundingClientRect();
-    originX = stage.scrollLeft + (wr.left - rect.left);
-    originY = stage.scrollTop + (wr.top - rect.top);
-  }
-  var localX = stage.scrollLeft + mx - originX;
-  var localY = stage.scrollTop + my - originY;
-  var ratio = next / oldZ;
-  setCanvasZoom(String(next), { save: true });
-  stage.scrollLeft = originX + localX * ratio - mx;
-  stage.scrollTop = originY + localY * ratio - my;
+  zoomCanvasAt(next, e.clientX, e.clientY);
 }, { passive: false });
 
 (function wireStagePan() {

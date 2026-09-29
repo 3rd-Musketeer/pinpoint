@@ -751,6 +751,11 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
 
   // ---------- multi-anchor element marks ----------
+  // 多选跨 frame：每个 target 自带所在 frame（screenId）；存量 target 没有，回落到行的 screenId。
+  function targetScreenId(target, fallback) {
+    return (target && target.screenId) || fallback || '';
+  }
+
   function markElementTargets(m) {
     if (!m || m.type !== 'element') return [];
     return normalizeTargetRefs(m.targets, m.selector, m.text);
@@ -767,7 +772,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (liveTargetBatch && liveTargetBatch.has(m)) return liveTargetBatch.get(m);
     var out = [];
     markElementTargets(m).forEach(function (t) {
-      var el = resolveMarkTarget(t, m.screenId || '');
+      var el = resolveMarkTarget(t, targetScreenId(t, m.screenId));
       if (el && !isHidden(el)) {
         out.push({ el: el, ref: t.ref, selector: t.selector, text: t.text, rectDoc: docRect(el) });
       }
@@ -797,7 +802,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var changed = false;
     targets.forEach(function (t) {
       if (t.ppId) return;
-      var el = resolveMarkTarget(t, m.screenId || '');
+      var el = resolveMarkTarget(t, targetScreenId(t, m.screenId));
       var ppId = el ? ppIdOf(el) : '';
       if (ppId) { t.ppId = ppId; changed = true; }
     });
@@ -808,6 +813,33 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       normalizeElementTargets(m);
     }
     return m;
+  }
+
+  // 修复 2026-09-30 之前的跨 frame 多选：那时整条标注只记第一个目标的 screenId，
+  // 其余目标被塞进同一个 frame 解析。目标的绝对 selector 里仍带着它真正所在的
+  // frame（.wb-screen:nth-of-type），按当前板文档解析回去、文本对得上才补 screenId。
+  // 解析不到或文本对不上的不猜。返回补了几个目标；调用方负责 persist。
+  function repairTargetScreens() {
+    var fixed = 0;
+    marks.forEach(function (m) {
+      if (m.type !== 'element' || !markOnActivePage(m)) return;
+      var targets = markElementTargets(m);
+      if (targets.length < 2) return;
+      var changed = false;
+      targets.forEach(function (t) {
+        if (t.screenId) return;
+        var el = null;
+        try { el = document.querySelector(t.selector); } catch (e) { el = null; }
+        var sid = el ? screenIdOf(el) : '';
+        if (!sid) return;
+        var text = excerpt(el), want = t.text || '';
+        if (want && text !== want && text.indexOf(want) < 0 && want.indexOf(text) < 0) return;
+        t.screenId = sid; changed = true; fixed++;
+      });
+      if (changed) { m.targets = targets; normalizeElementTargets(m); }
+    });
+    if (fixed) { clearAnchorCache(); persist(); renderAll(); }
+    return fixed;
   }
 
   // ---------- 持久化（磁盘 SSOT；LS 仅缓存）----------
@@ -1206,6 +1238,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
     '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#fff);color:var(--wb-fg,#1c2024);border:1px solid var(--wb-seam,rgba(0,0,0,.08));border-radius:26px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:20px;pointer-events:auto;}',
     '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
+    '#ann-box{cursor:grab}#ann-box.ann-dragging{cursor:grabbing;user-select:none}#ann-box button{cursor:pointer}#ann-input{cursor:text}',
     '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:15px;padding:0;margin-top:0;border:0;border-radius:0;background:transparent;box-shadow:none}',
     '#ann-box #ann-input:hover,#ann-box #ann-input:focus{background:transparent;box-shadow:none;outline:none}',
     '#ann-input:empty:before{content:attr(data-placeholder);color:var(--wb-muted,#888);pointer-events:none}',
@@ -1526,7 +1559,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       ? markElementTargets(mark)
       : [mark.base].concat(mark.contains || []).filter(Boolean);
     if (!targets.length) return false;
-    if (targets.some(function (target) { return !!resolveMarkTarget(target, sid); })) return false;
+    if (targets.some(function (target) { return !!resolveMarkTarget(target, targetScreenId(target, sid)); })) return false;
     return true;
   }
 
@@ -1951,7 +1984,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (!draftNodes.length) return;
     beginOverlayFrame();
     draftNodes.forEach(function (p) {
-      var el = p.target ? resolveMarkTarget(p.target, p.sid) : null;
+      var el = p.target ? resolveMarkTarget(p.target, targetScreenId(p.target, p.sid)) : null;
       if (!el || isHidden(el)) return;
       placePartGeometry(p, el);
     });
@@ -1963,7 +1996,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     beginOverlayFrame();
     var sid = activeComposer.m.screenId || '';
     markElementTargets(activeComposer.m).forEach(function (target) {
-      var el = resolveMarkTarget(target, sid);
+      var el = resolveMarkTarget(target, targetScreenId(target, sid));
       if (!el || isHidden(el)) return;
       var frame = document.createElement('div');
       frame.className = 'ann-target ann-draft-target';
@@ -2005,7 +2038,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (targets.some(function (target) { return target.selector === sel; })) return true;
     var ref = 'i' + activeComposer.nextTargetNumber++;
     var ppId = ppIdOf(el);
-    targets.push({ ref: ref, selector: sel, text: excerpt(el), ppId: ppId || undefined });
+    targets.push({ ref: ref, selector: sel, text: excerpt(el), ppId: ppId || undefined, screenId: screenIdOf(el) || undefined });
     activeComposer.m.targets = targets;
     normalizeElementTargets(activeComposer.m);
     if (activeComposer.scheduleAutosave) activeComposer.scheduleAutosave();
@@ -2110,7 +2143,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       type: 'element',
       selector: selector,
       text: text,
-      targets: [{ ref: 'i1', selector: selector, text: text, ppId: ppId || undefined }],
+      targets: [{ ref: 'i1', selector: selector, text: text, ppId: ppId || undefined, screenId: screenIdOf(el) || undefined }],
       rect: docRect(el),
       content: ''
     });
@@ -2418,7 +2451,14 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
         return !chrome.some(function (r) { return p[0] + bounds.left < r.right && p[0] + width + bounds.left > r.left && p[1] + bounds.top < r.bottom && p[1] + height + bounds.top > r.top; });
       });
       box.dataset.placement = position ? 'anchor' : 'dock';
-      if (!position) {
+      if (composer.userPos) {
+        // 用户拖过：位置固定在视口里，只夹回可视范围，不再跟着目标自动让位。
+        position = [
+          Math.max(pad, Math.min(composer.userPos[0], bounds.width - width - pad)),
+          Math.max(pad, Math.min(composer.userPos[1], bounds.height - height - pad))
+        ];
+        box.dataset.placement = 'user';
+      } else if (!position) {
         var strip = document.getElementById('wbstrip');
         var bottomSpace = strip && strip.getClientRects().length ? Math.max(pad, bounds.bottom - strip.getBoundingClientRect().top + gap) : pad;
         position = [(bounds.width - width) / 2, Math.max(pad, bounds.height - height - bottomSpace)];
@@ -2428,6 +2468,35 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       box.style.right = 'auto'; box.style.bottom = 'auto'; box.style.margin = '0';
     }
     composer.syncLayout = syncComposerLayout;
+
+    // 拖动：按住框的空白处（内边距、按钮之间）移动；正文输入区和按钮保持原有行为。
+    box.addEventListener('pointerdown', function (e) {
+      if (e.button !== 0 || e.target.closest('#ann-input, button, a, input, textarea, select, [contenteditable]')) return;
+      var startX = e.clientX, startY = e.clientY;
+      var startLeft = parseFloat(box.style.left) || 0, startTop = parseFloat(box.style.top) || 0;
+      var pid = e.pointerId, dragging = false;
+      // 位移超过 4px 才算拖动：单击不被吞，框内自带点击的小控件（图片删除叉等）照常响应。
+      function move(ev) {
+        if (ev.pointerId !== pid) return;
+        if (!dragging) {
+          if (Math.abs(ev.clientX - startX) + Math.abs(ev.clientY - startY) < 4) return;
+          dragging = true;
+          box.classList.add('ann-dragging');
+        }
+        composer.userPos = [startLeft + ev.clientX - startX, startTop + ev.clientY - startY];
+        syncComposerLayout();
+      }
+      function end(ev) {
+        if (ev.pointerId !== pid) return;
+        box.classList.remove('ann-dragging');
+        document.removeEventListener('pointermove', move, true);
+        document.removeEventListener('pointerup', end, true);
+        document.removeEventListener('pointercancel', end, true);
+      }
+      document.addEventListener('pointermove', move, true);
+      document.addEventListener('pointerup', end, true);
+      document.addEventListener('pointercancel', end, true);
+    });
 
     composer.renderTargets = function () { syncComposerLayout(); };
     function syncTargetReferences() {
@@ -2895,7 +2964,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
     var fact = markFact(m);
-    if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, sid); }, markElementTargets(m));
+    if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, targetScreenId(target, sid)); }, markElementTargets(m));
     return fact.broken;
   }
 
@@ -3138,7 +3207,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var roots = new Set();
     function add(el) { var root = el && el.closest('.wb-screen, .wb-lib-item'); if (root) roots.add(root); }
     if (entry.m.type === 'element') markElementTargets(entry.m).forEach(function (t) {
-      add(resolveMarkTarget(t, entry.m.screenId || ''));
+      add(resolveMarkTarget(t, targetScreenId(t, entry.m.screenId)));
     });
     else if (entry.m.base) add(resolveMarkSelector(entry.m.base.selector, entry.m.screenId || ''));
     else (entry.m.contains || []).forEach(function (t) { add(resolveMarkSelector(t.selector, entry.m.screenId || '')); });
@@ -4142,6 +4211,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     reopenAnnotation: reopenAnnotation,
     setStatusFilter: setStatusFilter,
     hydrateFrames: hydrateMentionFrames,
+    repairTargetScreens: repairTargetScreens,
     getState: getState,
     markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
