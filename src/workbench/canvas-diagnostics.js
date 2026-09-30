@@ -56,7 +56,7 @@ export function startCanvasDiagnostics(stage, pageId) {
   }
   // 长帧归因：Chrome 的 long-animation-frame（带脚本归属）与 longtask。只留计数 / 毫秒 / 脚本文件名，
   // 不带 URL 查询、不带页面内容。不支持的浏览器静默跳过。
-  let frames = 0, loaf = 0, loafMax = 0, loafBlock = 0, loafScript = '', longTasks = 0, longTaskMax = 0;
+  let loaf = 0, loafMax = 0, loafScript = '', longTasks = 0;
   function scriptName(url) { return String(url || '').split('?')[0].split('/').pop().slice(0, 60); }
   function observe(type, onEntry) {
     try {
@@ -66,30 +66,27 @@ export function startCanvasDiagnostics(stage, pageId) {
     } catch {}
   }
   observe('long-animation-frame', e => {
-    loaf++; loafBlock += e.blockingDuration || 0;
+    loaf++;
     if (e.duration > loafMax) {
       loafMax = e.duration;
       const top = (e.scripts || []).slice().sort((a, b) => b.duration - a.duration)[0];
       loafScript = top ? scriptName(top.sourceURL) + ':' + String(top.invoker || top.entryType || '').slice(0, 40) : 'no-script';
     }
   });
-  observe('longtask', e => { longTasks++; if (e.duration > longTaskMax) longTaskMax = e.duration; });
+  observe('longtask', () => { longTasks++; });
   function sample() {
-    const ann = window.pinpoint?.perfDrain?.() || {n:0, sum:0, max:0, full:0};
+    const annMax = window.pinpoint?.perfDrain?.() ?? 0; // 标注层本采样窗口内最慢的一帧同步耗时（ms）
     const wrap = stage.querySelector('.wb-zoom-wrap');
     record('viewport', {page:pageId(), input, scroll:[stage.scrollLeft,stage.scrollTop],
       extent:[stage.scrollWidth,stage.scrollHeight], viewport:[stage.clientWidth,stage.clientHeight],
       dpr:devicePixelRatio, maxFrameGap:Math.round(maxGap), hidden:document.hidden,
       wrap:geometry(wrap), panel:geometry(document.getElementById('wb-board-panel')),
-      frames, loaf, loafMax:Math.round(loafMax), loafBlock:Math.round(loafBlock), loafScript,
-      longTasks, longTaskMax:Math.round(longTaskMax),
-      annN:ann.n, annSum:Math.round(ann.sum), annMax:Math.round(ann.max), annFull:ann.full,
+      loaf, loafMax:Math.round(loafMax), loafScript, longTasks, annMax:Math.round(annMax),
       zoom:Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1,
       marks:window.pinpoint?.marks?.length ?? 0});
-    maxGap = 0; frames = 0; loaf = 0; loafMax = 0; loafBlock = 0; loafScript = ''; longTasks = 0; longTaskMax = 0;
+    maxGap = 0; loaf = 0; loafMax = 0; loafScript = ''; longTasks = 0;
   }
   function tick(now) {
-    frames++;
     if (lastFrame) maxGap = Math.max(maxGap, now-lastFrame);
     lastFrame = now;
     if (now-lastSample >= 250) { sample(); lastSample = now; }

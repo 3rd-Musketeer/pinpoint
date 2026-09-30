@@ -133,20 +133,6 @@ export function contentsModel(entries) {
   };
 }
 
-/** 画布视图：摘掉 doc 屏、丢掉空 section。A1 引用号 / 大纲 / 导出树的图纸语汇
-    只覆盖画布 frame（doc 屏从不上画布），四个消费端共用此视图保编号一致。 */
-export function canvasBoard(board) {
-  var sections = ((board && board.sections) || []).map(function (sec) {
-    var screens = (sec.screens || []).filter(function (sc) {
-      return screenShellOf(sc) !== 'doc';
-    });
-    return Object.assign({}, sec, { screens: screens });
-  }).filter(function (sec) {
-    return sec.id === '_empty' || sec.screens.length > 0;
-  });
-  return { sections: sections };
-}
-
 /* ---- 阶段 8：registry attach 条目合并 --------------------------------------
    registry 条目带 page 字段（pinpoint add --page）= 归属到既有 Page：不自成
    Pages 行，而是在板装载时合并成目标页末尾的合成 doc 屏（「登记」section），

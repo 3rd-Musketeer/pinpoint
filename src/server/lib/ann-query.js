@@ -25,7 +25,7 @@ import { manifestPageIds } from './page-manifest.js';
 import { resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
-import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
 import { pickByTargetText } from '../../shared/ann-ppid.js';
 import {
@@ -495,13 +495,13 @@ export function buildCheckReport(context, options = {}) {
   // doc 页（无 board.json 的 dir / file 条目）没有编译面：不产摘录，报告里
   // 明说（formatCheckMarkdown 的 docOnly 行）。
   const wantExcerpt = (options.mode || 'excerpt') !== 'image' && !context.docOnly;
-  const screenIds = context.refs.outline.flatMap((section) => section.frames.map((frame) => frame.id));
+  const screenIds = outlineFrames(context.refs).map((frame) => frame.id);
   const usage = compFrameUsage(context.distHtmlFor, screenIds);
 
   let rows = [...context.frameRows];
   if (status !== 'all') rows = rows.filter((row) => (row.status || 'open') === status);
   if (options.frame) {
-    const hit = context.refs.outline.flatMap((section) => section.frames).find((frame) => frame.ref === options.frame || frame.id === options.frame);
+    const hit = outlineFrames(context.refs).find((frame) => frame.ref === options.frame || frame.id === options.frame);
     if (!hit) return { error: `图纸上没有帧 ${options.frame}` };
     rows = rows.filter((row) => row.screenId === hit.id);
   }
@@ -540,7 +540,7 @@ export function buildCheckReport(context, options = {}) {
       });
     }
   } else {
-    const orderedFrames = context.refs.outline.flatMap((section) => section.frames);
+    const orderedFrames = outlineFrames(context.refs);
     const byScreen = new Map();
     for (const model of modeled) {
       if (!byScreen.has(model.screenId)) byScreen.set(model.screenId, []);
@@ -657,7 +657,7 @@ export function locateLine(row, context) {
   const ppId = anchor.node.attrs['data-pp-id'] || '';
   const idMatch = ppId.match(PP_ID_RE);
   const comp = anchorComp(anchor.node);
-  const usage = comp ? compFrameUsage(context.distHtmlFor, context.refs.outline.flatMap((section) => section.frames.map((frame) => frame.id)))(comp) : 0;
+  const usage = comp ? compFrameUsage(context.distHtmlFor, outlineFrames(context.refs).map((frame) => frame.id))(comp) : 0;
   if (idMatch) {
     const tail = comp ? ` · 组件 ${comp}（共用 ${usage} 帧）` : '';
     return { n: row.n, text: `#${n} → ${idMatch[1]}:${idMatch[2]}${tail}` };

@@ -5,7 +5,7 @@
 // 2026-08-15 图纸图注（decisions 08-15）：frame 上方两行（mono 引用号 accent +
 // 屏名 .wb-cap-title），尺寸行 .wb-screen-dim 在 frame 下方居中（仅手机机身 frame，
 // 402 × 874 = iPhone 16 Pro 逻辑分辨率，钉值对齐 kits/ios/ios-kit.css）；引用号
-// 纯派生自画布视图（src/workbench/lib/board-refs.js over src/workbench/lib/board-entries.js canvasBoard），
+// 纯派生自画布视图（src/workbench/lib/board-refs.js，doc 屏在那里被滤掉），
 // 不落盘。doc 屏不上画布、不套图注（阅读器态由 index.html [data-page-mode="html"]
 // 规则隐藏图注语汇）。
 // 2026-08-16f 阶段 6（产物与草稿模型）：壳分派只看 screen.shell（validateBoard
@@ -20,7 +20,6 @@
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { escHtml } from './lib/esc-html.js';
-import { canvasBoard } from './lib/board-entries.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
 import {
   defaultShellForPage,
@@ -195,7 +194,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
   // 图注引用号（decisions 2026-08-15）：纯派生自画布视图（doc 屏不进引用体系，
   // 混合板的 A1 编号与大纲/导出树同源），不落盘；
   // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
-  var refs = boardRefs(canvasBoard(board));
+  var refs = boardRefs(board);
   var parts = sections.map(function (sec) {
     var layout = sec.layout === 'row' ? 'row' : 'column';
     var screens = sec.screens || [];

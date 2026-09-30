@@ -3633,10 +3633,10 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
 
   // 标注层每帧同步工作的耗时账（canvas-diagnostics 的 viewport 采样里 drain 走）：
   // 拖动卡顿时靠它区分“标注层自己慢”与“别处慢”。只存计数 / 毫秒，不含内容。
-  var viewPerf = { n: 0, sum: 0, max: 0, full: 0 };
+  var viewPerfMax = 0;
   function perfDrain() {
-    var out = viewPerf;
-    viewPerf = { n: 0, sum: 0, max: 0, full: 0 };
+    var out = viewPerfMax;
+    viewPerfMax = 0;
     return out;
   }
 
@@ -3645,7 +3645,6 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     viewRaf = requestAnimationFrame(function () {
       viewRaf = 0;
       var perfStart = performance.now();
-      var perfFull = structureDirty || contentFullDirty || contentRoots.size || geometryDirty;
       if (structureDirty || contentFullDirty) { renderAll(); notify(); }
       else if (contentRoots.size && canvasView) {
         dirtyFrameRoots.forEach(function (root) { contentRoots.add(root); });
@@ -3664,8 +3663,7 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
       geometryDirty = false; zoomDirty = false; contentFullDirty = false;
       contentRoots.clear(); dirtyFrameRoots.clear();
       var perfMs = performance.now() - perfStart;
-      viewPerf.n++; viewPerf.sum += perfMs; if (perfMs > viewPerf.max) viewPerf.max = perfMs;
-      if (perfFull) viewPerf.full++;
+      if (perfMs > viewPerfMax) viewPerfMax = perfMs;
     });
   }
 

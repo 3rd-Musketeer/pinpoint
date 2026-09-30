@@ -3,7 +3,6 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useWorkbenchStore, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
-import { canvasBoard } from '../lib/board-entries.js';
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel } from '../../shared/ann-status.js';
 import { WbIcon } from './WbIcon.jsx';
 import { cn } from './lib/utils.js';
@@ -72,13 +71,13 @@ export function AnnPopover() {
 
   var rows = snap.rows;
 
-  // 引用号 / 屏名全部从画布视图纯派生（lib/board-refs.js over board-entries.js
-  // canvasBoard，2026-08-16f 阶段 6：doc 屏不进引用体系）；板切换途中 activeBoard
+  // 引用号 / 屏名全部从画布视图纯派生（lib/board-refs.js，
+  // 2026-08-16f 阶段 6：doc 屏不进引用体系）；板切换途中 activeBoard
   // 可能还停在上一页 —— 不匹配就退回行自带的分组标签。
   var boardMeta = useMemo(function () {
     var out = { frames: {}, sections: {} };
     if (!active || active.pageId !== activePageId) return out;
-    var refs = boardRefs(canvasBoard(active.board));
+    var refs = boardRefs(active.board);
     refs.outline.forEach(function (sec, si) {
       out.sections[sec.id] = { letter: sec.letter, order: si };
       sec.frames.forEach(function (f, fi) {

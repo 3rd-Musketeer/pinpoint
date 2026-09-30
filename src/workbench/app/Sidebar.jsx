@@ -69,7 +69,6 @@ import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
 import {
   CANVAS_ENTRY_ID,
   ENTRY_TAG_LABELS,
-  canvasBoard,
   contentsModel,
   entryTag,
   resolveEntry
@@ -463,7 +462,7 @@ function PagesSection(props) {
    的 section → frame 树，行 = mono 引用号 + 屏名 + 计数徽标（红 = 含失效锚点）。
    延伸线几何（.ol-*）在 index.html；点击复用 board-nav 的 frame 定位（与标注卡
    goToMark 同一导航源），机身闪 focus 环。选中态（store.focusFrameKey）由树点击
-   与标注卡点击双向写入。树是画布语汇：只覆盖画布屏（canvasBoard 滤掉 doc 屏，
+   与标注卡点击双向写入。树是画布语汇：只覆盖画布屏（boardRefs 滤掉 doc 屏，
    引用号与图注/导出树同源）。 */
 function FrameTree(props) {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
@@ -594,9 +593,9 @@ function Contents() {
   if (!active || active.pageId !== activePageId) return null;
   var entries = entriesOfActiveBoard();
   var model = contentsModel(entries);
-  // frame 树 = 画布语汇，只覆盖画布屏（canvasBoard 滤掉 doc 屏，引用号与
+  // frame 树 = 画布语汇，只覆盖画布屏（boardRefs 滤掉 doc 屏，引用号与
   // 图注/导出树同源）；展开时机 = 画布条目选中（阅读器态下定位无意义）。
-  var refs = model.tree ? boardRefs(canvasBoard(active.board)) : null;
+  var refs = model.tree ? boardRefs(active.board) : null;
   var hasTree = !!(refs && refs.outline.length);
   var current = resolveEntry(entries, activeEntryId);
   var treeOpen = hasTree && !!current && current.kind === 'canvas';

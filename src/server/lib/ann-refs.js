@@ -16,7 +16,7 @@
  * 纯函数：ctx 由调用方备好（本页标注行、board、跨页行读取器），这里只做匹配
  * 与展开，错误逐条带原文返回，不让一个坏引用打断整批。
  */
-import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { parseIndicator } from '../../shared/annotation-indicator.js';
 
 const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
@@ -70,7 +70,7 @@ export function resolveRef(token, ctx = {}) {
   }
   m = raw.match(FRAME_REF_RE);
   if (m) {
-    const hit = refs.outline.flatMap((section) => section.frames).find((frame) => frame.ref === raw);
+    const hit = outlineFrames(refs).find((frame) => frame.ref === raw);
     if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${raw}` };
     return { kind: 'frame', screenId: hit.id, ref: raw, title: hit.title };
   }
@@ -87,7 +87,7 @@ export function resolveRef(token, ctx = {}) {
   if ((ctx.pageIds || []).includes(raw)) return { kind: 'page', pageId: raw };
   // 裸 id：帧 id / 段 id 是不变的机器身份，B3 / B 只是按位置派生的显示编号。
   // 能写编号的地方都能写 id，精确指代时不必拼 @frame:p/s。页 id 同名时页优先（上一步）。
-  const byId = refs.outline.flatMap((section) => section.frames).find((frame) => frame.id === raw);
+  const byId = outlineFrames(refs).find((frame) => frame.id === raw);
   if (byId) return { kind: 'frame', screenId: byId.id, ref: byId.ref, title: byId.title };
   const sectionById = refs.outline.find((section) => section.id === raw);
   if (sectionById) {
@@ -95,7 +95,7 @@ export function resolveRef(token, ctx = {}) {
   }
   const indicator = parseIndicator(raw);
   if (indicator && indicator.kind === 'frame') {
-    const hit = refs.outline.flatMap((section) => section.frames).find((frame) => frame.id === indicator.screenId);
+    const hit = outlineFrames(refs).find((frame) => frame.id === indicator.screenId);
     if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${indicator.screenId}` };
     return { kind: 'frame', screenId: hit.id, ref: hit.ref, title: hit.title };
   }

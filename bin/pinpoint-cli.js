@@ -64,7 +64,7 @@ import {
   updateRegistryEntry,
   writeRegistryFolders,
 } from '../src/server/lib/registry-store.js';
-import { refLikeFrameIds } from '../src/workbench/lib/board-refs.js';
+import { outlineFrames, refLikeFrameIds, screenOf } from '../src/workbench/lib/board-refs.js';
 
 export const DEFAULT_ORIGIN = 'https://pinpoint.localhost';
 /** 服务在 portless 里的注册名 / 主机名（`portless run --name pinpoint`）。 */
@@ -1849,11 +1849,9 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   const openRows = (ctx) => ctx.frameRows.filter((row) => (row.status || 'open') !== 'close');
   const seenScreens = new Set();
   // 产物按不变的 id 命名（编号会随 board 调序漂移）；打印时编号与 id 并列。
-  const frameRefOf = (screenId) => {
-    const byFrame = (baseContext.refs && baseContext.refs.byFrame) || {};
-    const key = Object.keys(byFrame).find((k) => k.split('\0')[1] === screenId);
-    return key ? byFrame[key] : '';
-  };
+  const frameRefById = new Map();
+  if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (!frameRefById.has(frame.id)) frameRefById.set(frame.id, frame.ref);
+  const frameRefOf = (screenId) => frameRefById.get(screenId) || '';
   const frameJob = (screenId) => {
     if (seenScreens.has(screenId)) return;
     seenScreens.add(screenId);
@@ -2174,7 +2172,7 @@ function listFrames(words, { registryPath, env, out, err }) {
   const rawScreens = new Map();
   for (const section of context.board.sections || []) {
     for (const entry of section.screens || []) {
-      const screen = typeof entry === 'string' ? { id: entry } : entry;
+      const screen = screenOf(entry);
       if (!rawScreens.has(screen.id)) rawScreens.set(screen.id, screen);
     }
   }

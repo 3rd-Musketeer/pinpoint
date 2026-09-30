@@ -146,7 +146,7 @@ test('从标注列表 / 卡片定位：视角落在标注所在 frame 上，与�
   expect(Math.abs(viaMark[1] - viaFrame[1])).toBeLessThan(2);
 });
 
-test('拖动采样带归因字段：帧数、标注层每帧同步耗时、长帧计数', async ({ page }) => {
+test('拖动采样带归因字段：标注层每帧同步耗时、长帧 / 长任务计数', async ({ page }) => {
   await openCanvas(page, 3);
   await page.evaluate(async () => {
     const stage = document.querySelector('#wbstage');
@@ -158,8 +158,8 @@ test('拖动采样带归因字段：帧数、标注层每帧同步耗时、长�
     });
   });
   await expect.poll(() => page.evaluate(() => {
-    const ev = window.workbench.diagnostics.snapshot().current.events.filter(e => e.type === 'viewport' && 'frames' in e);
-    return ev.some(e => e.frames > 3 && e.annN > 0 && typeof e.annMax === 'number' && e.marks === 3 && typeof e.loaf === 'number');
+    const ev = window.workbench.diagnostics.snapshot().current.events.filter(e => e.type === 'viewport' && 'loaf' in e);
+    return ev.some(e => typeof e.annMax === 'number' && e.marks === 3 && typeof e.loaf === 'number' && typeof e.longTasks === 'number');
   })).toBe(true);
 });
 

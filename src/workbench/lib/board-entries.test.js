@@ -7,7 +7,6 @@ import {
   ENTRY_TAG_LABELS,
   attachedEntrySrc,
   boardEntries,
-  canvasBoard,
   contentsModel,
   defaultEntryId,
   entryById,
@@ -99,23 +98,6 @@ test('entryForm: 文档条目 → html 阅读器形态，画布条目 → ios �
   assert.equal(entryForm(entries[1]), 'html');
   assert.equal(entryForm(null), 'ios');
 });
-
-test('canvasBoard: 摘掉 doc 屏、丢掉空 section，画布屏顺序不动', () => {
-  const view = canvasBoard(mixedBoard());
-  assert.deepEqual(view.sections.map((s) => s.id), ['proto']);
-  assert.deepEqual(view.sections[0].screens.map((s) => s.id), ['home', 'detail']);
-  // 原 board 不被改写
-  assert.equal(mixedBoard().sections.length, 2);
-  // 混合 section 只滤屏不丢 section；纯 doc 板 → 空 sections
-  const mixed = canvasBoard({
-    sections: [{ id: 'm', title: 'M', layout: 'row', screens: [{ id: 'a', shell: 'app' }, { id: 'd', shell: 'doc' }] }],
-  });
-  assert.deepEqual(mixed.sections[0].screens.map((s) => s.id), ['a']);
-  assert.deepEqual(canvasBoard({
-    sections: [{ id: 'd', title: 'D', layout: 'column', screens: [{ id: 'v', shell: 'doc' }] }],
-  }).sections, []);
-});
-
 
 /* ---- 阶段 7：类型 tag 与「内容」区坍缩 ---------------------------------- */
 

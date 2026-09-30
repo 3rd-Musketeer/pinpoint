@@ -31,11 +31,9 @@ export function boardRefs(board) {
   var sections = (board && board.sections) || [];
   sections.forEach(function (sec) {
     if (!sec || sec.id === '_empty') return;
-    // doc 帧不上画布、不占编号（与 canvasBoard 同一口径）。这里自己过滤，服务端拿
+    // doc 帧不上画布、不占编号（画布视图的口径，各消费端直接喂 board 即可）。这里自己过滤，服务端拿
     // board.json 原文直接调也能和画布对上：原文的 shell 可能只写在 section 上。
-    var screens = (sec.screens || []).map(function (entry) {
-      return typeof entry === 'string' ? { id: entry } : entry;
-    }).filter(function (sc) {
+    var screens = (sec.screens || []).map(screenOf).filter(function (sc) {
       return legacyShell(sc.shell || sec.shell) !== 'doc';
     });
     if (!screens.length) return;
@@ -63,12 +61,23 @@ export function frameRef(board, sectionId, screenId) {
 var REF_LIKE_ID_RE = /^[a-z]{1,2}[0-9]+[a-z]?(?:-|$)/i;
 
 /** board → 形如编号的帧 id 列表（board 序、去重）；ppnt build 据此提示。 */
+/** board.sections[].screens 的条目可以是 id 字符串或屏对象；统一成对象（其余原样返回）。 */
+export function screenOf(entry) {
+  return typeof entry === 'string' ? { id: entry } : entry;
+}
+
+/** boardRefs 结果里按 section 序摊平的全部 frame。 */
+export function outlineFrames(refs) {
+  return refs.outline.flatMap(function (section) { return section.frames; });
+}
+
 export function refLikeFrameIds(board) {
   var seen = Object.create(null);
   var ids = [];
   ((board && board.sections) || []).forEach(function (sec) {
     ((sec && sec.screens) || []).forEach(function (entry) {
-      var id = typeof entry === 'string' ? entry : entry && entry.id;
+      var sc = screenOf(entry);
+      var id = sc && sc.id;
       if (!id || seen[id] || !REF_LIKE_ID_RE.test(id)) return;
       seen[id] = true;
       ids.push(id);

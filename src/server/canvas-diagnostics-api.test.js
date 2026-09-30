@@ -32,10 +32,10 @@ test('diagnostics accept only bounded metadata', () => {
 });
 
 test('diagnostics keep frame-pacing attribution fields and drop anything else', () => {
-  const result = cleanDiagnostics({session:'abc-123', events:[{type:'viewport', frames:14, loaf:2, loafMax:88.4, loafBlock:40, loafScript:'annotate.js:onscroll',
-    longTasks:1, longTaskMax:70, annN:12, annSum:30, annMax:9, annFull:1, zoom:0.5, marks:33, url:'http://secret', text:'secret'}]});
-  assert.deepEqual(result.events, [{type:'viewport', frames:14, loaf:2, loafMax:88.4, loafBlock:40, loafScript:'annotate.js:onscroll',
-    longTasks:1, longTaskMax:70, annN:12, annSum:30, annMax:9, annFull:1, zoom:0.5, marks:33}]);
+  const result = cleanDiagnostics({session:'abc-123', events:[{type:'viewport', loaf:2, loafMax:88.4, loafScript:'annotate.js:onscroll',
+    longTasks:1, annMax:9, zoom:0.5, marks:33, url:'http://secret', text:'secret'}]});
+  assert.deepEqual(result.events, [{type:'viewport', loaf:2, loafMax:88.4, loafScript:'annotate.js:onscroll',
+    longTasks:1, annMax:9, zoom:0.5, marks:33}]);
 });
 
 test('local diagnostics endpoint persists valid batches and rejects foreign or oversized requests', async t => {
