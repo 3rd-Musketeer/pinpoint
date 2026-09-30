@@ -163,6 +163,27 @@ test('拖动采样带归因字段：帧数、标注层每帧同步耗时、长�
   })).toBe(true);
 });
 
+test('按住空格时 frame 不接收指针：滚轮 / hover / 点击都落到画布，松开即恢复', async ({ page }) => {
+  await openCanvas(page, 0);
+  const cell = page.locator(cellSelector).first();
+  await cell.scrollIntoViewIfNeeded();
+  const c = await cell.boundingBox();
+  const at = () => page.evaluate(([x, y]) => {
+    const el = document.elementFromPoint(x, y);
+    return !!(el && el.closest('.wb-screen'));
+  }, [c.x + c.width / 2, c.y + c.height / 2]);
+  expect(await at()).toBe(true);
+  await page.mouse.move(c.x + c.width / 2, c.y + c.height / 2);
+  await page.keyboard.down('Space');
+  await expect.poll(at).toBe(false);
+  // 按下拖动开始后（光标态已撤）惰性仍在
+  await page.mouse.down(); await page.mouse.move(c.x + c.width / 2 + 30, c.y + c.height / 2 + 10, { steps: 3 });
+  expect(await at()).toBe(false);
+  await page.mouse.up();
+  await page.keyboard.up('Space');
+  await expect.poll(at).toBe(true);
+});
+
 test('cached marks stay aligned through pan, viewport exit/reentry, resize and content changes', async ({ page }) => {
   await openCanvas(page, 1);
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);

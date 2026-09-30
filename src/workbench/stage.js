@@ -398,6 +398,9 @@ stage.addEventListener('wheel', function (e) {
   function syncSpaceCursor() {
     // Keep grab cursor through the pre-move threshold; drop once panning starts.
     stage.classList.toggle('wb-space-pan', spaceDown && !(pan && pan.moved));
+    // 按住空格 = 画布导航态：frame 整体不接收指针（滚轮 / 触控板落到画布上平移，hover / 点击也穿不进去）。
+    // 与上面的 grab 光标分开：光标在开始拖动后就撤了，惰性要撑到松开空格。
+    stage.classList.toggle('wb-space-held', spaceDown);
   }
 
   function endPan(e) {
