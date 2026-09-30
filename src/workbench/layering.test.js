@@ -3,7 +3,7 @@
 //     允许名单里写明是谁、为什么。名单里的每一条都必须真的命中，过期的条目一样报错。
 //  b. index.html 里 .wb 必须 isolation:isolate（R1）；.wb-stage-wrap 不许带任何会造堆叠上下文的
 //     属性（R2）。
-//  c. src/client/annotate.js 里 var(--wb-z-*, N) 的兜底数必须与 wb-tokens.css 的 token 同值，
+//  c. src/client/annotate-css.js 里 var(--wb-z-*, N) 的兜底数必须与 wb-tokens.css 的 token 同值，
 //     引用到的 token 必须真实存在。
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync, statSync } from 'node:fs';
@@ -33,6 +33,7 @@ const SCANNED = [
   'index.html',
   ...workbenchSources(),
   'src/client/annotate.js',
+  'src/client/annotate-css.js',
   'src/shared/annotate-bubble.js',
 ];
 
@@ -41,20 +42,20 @@ const SCANNED = [
 const ALLOW = [
   // #ann-overlay / #ann-chrome 内部序：只在各自盒子内部比，不进阶梯（annotate.js 那段 CSS 开头有同一句注释）。
   // #ann-chrome 本身取 --wb-z-composer（2026-09-18），不在名单里。
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-marks,#ann-hover-layer\{/, values: ['1'], reason: 'overlay 内部序：钉子层 / hover 层' },
-  { file: 'src/client/annotate.js', where: /^\s*'\.ann-hover-ghost\{/, values: ['1'], reason: 'overlay 内部序：hover ghost' },
-  { file: 'src/client/annotate.js', where: /^\s*'\.ann-badge\{/, values: ['3'], reason: 'overlay 内部序：序号钉' },
-  { file: 'src/client/annotate.js', where: /^\s*'\.ann-target\{/, values: ['1'], reason: 'overlay 内部序：命中框' },
-  { file: 'src/client/annotate.js', where: /^\s*'\.ann-frame\{/, values: ['1'], reason: 'overlay 内部序：frame 框' },
-  { file: 'src/client/annotate.js', where: /^\s*'\.ann-ghost-rect\{/, values: ['1'], reason: 'overlay 内部序：幽灵框（pp2 lastRect）' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'chrome 内部序：提示' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-mention\{/, values: ['6'], reason: 'chrome 内部序：mention 下拉' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-marks,#ann-hover-layer\{/, values: ['1'], reason: 'overlay 内部序：钉子层 / hover 层' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'\.ann-hover-ghost\{/, values: ['1'], reason: 'overlay 内部序：hover ghost' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'\.ann-badge\{/, values: ['3'], reason: 'overlay 内部序：序号钉' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'\.ann-target\{/, values: ['1'], reason: 'overlay 内部序：命中框' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'\.ann-frame\{/, values: ['1'], reason: 'overlay 内部序：frame 框' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'\.ann-ghost-rect\{/, values: ['1'], reason: 'overlay 内部序：幽灵框（pp2 lastRect）' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-tip\{/, values: ['2'], reason: 'chrome 内部序：提示' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-mention\{/, values: ['6'], reason: 'chrome 内部序：mention 下拉' },
   { file: 'src/client/annotate.js', where: /svg\.style\.cssText = 'position:absolute;pointer-events:none;z-index:2;'/, values: ['2'], reason: 'overlay 内部序：箭头 SVG' },
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
-  { file: 'src/client/annotate.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
+  { file: 'src/client/annotate-css.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
   // 双端共享的气泡样式：气泡与导出序号只在 overlay 内部比。
   { file: 'src/shared/annotate-bubble.js', where: /pointer-events:auto;z-index:3;overflow:hidden;\}/, values: ['3'], reason: 'overlay 内部序：.ann-bubble 评论卡' },
   // 组件内部序：分段控件焦点项压过相邻项的边，不与外壳比。
@@ -198,7 +199,7 @@ test('layering: annotate.js var(--wb-z-*, N) fallbacks equal the token values', 
   // #ann-toast（§2b）是双端两用引用：工作台落 token 110，客座页没有 token 落
   // 2147483647 压过宿主 —— 它的兜底故意不等于 token 值，按名字豁免这一类。
   const DUAL_MODE_FALLBACK = new Set(['--wb-z-float-2']);
-  const refs = [...read('src/client/annotate.js').matchAll(/var\((--wb-z-[a-z0-9-]+)\s*,\s*(\d+)\)/g)];
+  const refs = [...(read('src/client/annotate.js') + read('src/client/annotate-css.js')).matchAll(/var\((--wb-z-[a-z0-9-]+)\s*,\s*(\d+)\)/g)];
   assert.ok(refs.length >= 2, 'annotate.js references at least --wb-z-marks and --wb-z-marks-active with fallbacks');
   for (const [, name, fallback] of refs) {
     if (DUAL_MODE_FALLBACK.has(name)) {

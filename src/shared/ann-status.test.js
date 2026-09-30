@@ -44,15 +44,15 @@ test('status → color variable mapping (unknown falls back to open)', () => {
 });
 
 test('status colors are value-identical at all three CSS definition sites', () => {
-  // SSOT = 本模块；两个定义端：client [data-ann-ui] 基规则（annotate.js）、
+  // SSOT = 本模块；两个定义端：client [data-ann-ui] 基规则（annotate-css.js）、
   // workbench #wbann-pop（index.html）。ann-list.css 只消费不定义。
-  const annotate = fs.readFileSync(path.join(SRC, 'client', 'annotate.js'), 'utf8');
+  const annotate = fs.readFileSync(path.join(SRC, 'client', 'annotate-css.js'), 'utf8');
   const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
   const listCss = fs.readFileSync(path.join(SRC, 'shared', 'ann-list.css'), 'utf8');
   for (const [status, hex] of Object.entries(ANN_STATUS_COLORS)) {
     const name = '--ann-st-' + status;
     const clientMatches = annotate.match(new RegExp(name + ':(' + hex + ')'));
-    assert.ok(clientMatches, `annotate.js [data-ann-ui] pins ${name}:${hex}`);
+    assert.ok(clientMatches, `annotate-css.js [data-ann-ui] pins ${name}:${hex}`);
     const wbMatches = indexHtml.match(new RegExp(name + ':(' + hex + ')'));
     assert.ok(wbMatches, `index.html #wbann-pop pins ${name}:${hex}`);
     assert.match(listCss, new RegExp('var\\(' + name + ',\\s*' + hex + '\\)'), `ann-list.css consumes ${name} with the same fallback`);

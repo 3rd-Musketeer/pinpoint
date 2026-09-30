@@ -5,11 +5,11 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 // F2 磨砂玻璃的两端对账（design.md「材质」）：client 是注进任意页面的单文件，
-// 读不到 workbench 的 --wb-*，所以玻璃配方在 annotate.js 里是字面量。这里把那
+// 读不到 workbench 的 --wb-*，所以玻璃配方在 annotate-css.js 里是字面量。这里把那
 // 四个数与 wb-tokens.css 逐个比对 —— 双端材质不许分家（曾由 e2e/dir-entry 的
 // 计算样式用例对账，2026-09-08 精简后改在这里守）。
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const client = fs.readFileSync(path.join(__dirname, 'annotate.js'), 'utf8');
+const client = fs.readFileSync(path.join(__dirname, 'annotate-css.js'), 'utf8');
 const tokens = fs.readFileSync(path.join(__dirname, '..', 'workbench', 'wb-tokens.css'), 'utf8');
 
 function tokenValue(name) {

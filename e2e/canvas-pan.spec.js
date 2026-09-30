@@ -184,6 +184,28 @@ test('按住空格时 frame 不接收指针：滚轮 / hover / 点击都落到�
   await expect.poll(at).toBe(true);
 });
 
+test('标注框里的 @ 引用选择器：出候选、方向键换项、回车插入 @n、Esc 只关选择器不关框', async ({ page }) => {
+  await openCanvas(page, 2);
+  await page.evaluate(() => window.pinpoint.goToMark(window.pinpoint.marks[0].n));
+  const input = page.locator('#ann-box #ann-input');
+  await expect(input).toBeVisible();
+  await input.press('End');
+  await page.keyboard.insertText(' @');
+  const picker = page.locator('#ann-mention');
+  await expect(picker.locator('.ann-men-item')).toHaveCount(1); // 只有另一条（本条自己不进候选）
+  await expect(picker.locator('.ann-men-item.on .ann-men-n')).toHaveText('@2');
+  await page.keyboard.press('Escape');
+  await expect(picker).toHaveCount(0);
+  await expect(page.locator('#ann-box')).toBeVisible();
+  await page.keyboard.press('Backspace');
+  await page.keyboard.insertText(' @');
+  await expect(picker.locator('.ann-men-item')).toHaveCount(1);
+  await page.keyboard.press('Enter');
+  await expect(picker).toHaveCount(0);
+  await expect(input).toContainText('@2');
+  await expect(page.locator('#ann-box')).toBeVisible();
+});
+
 test('cached marks stay aligned through pan, viewport exit/reentry, resize and content changes', async ({ page }) => {
   await openCanvas(page, 1);
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);
