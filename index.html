@@ -378,6 +378,7 @@
   /* main stage — canvas has intrinsic size; #wbstage is only a scrollport */
   .wb-stage {
     flex:1; min-width:0; display:block; padding:0; background:transparent; overflow:auto;
+    position:relative; /* #ann-marks 的定位祖先；只 relative、不带 z-index，不成堆叠上下文 */
     cursor:default;
   }
   .wb-stage.wb-space-pan { cursor:grab !important; }

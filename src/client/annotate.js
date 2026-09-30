@@ -232,6 +232,15 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     return (m && m.section) || '';
   }
 
+  // 定位 frame 用的 section：账本行没带 section（旧行 / 手写行）时，从锚点元素所在的
+  // 板 section 推，别因为行里缺字段就退回“以标注居中”。
+  function frameSectionFor(m, el) {
+    var own = annotationSection(m);
+    if (own || !el || !el.closest) return own;
+    var item = el.closest('.wb-lib-item[data-ann-section]');
+    return item ? item.getAttribute('data-ann-section') : '';
+  }
+
   function annotationSectionLabel(m) {
     return (m && m.sectionLabel) || '';
   }
@@ -572,7 +581,15 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     _originCache = [Math.round(r.left), Math.round(r.top)];
     return _originCache;
   }
-  function beginOverlayFrame() { _originCache = null; }
+  function beginOverlayFrame() { _originCache = null; _stageOriginCache = null; }
+  // 画布模式的标注坐标系原点 = #wbstage 的 padding box 左上（#ann-marks 挂在它的滚动内容里，随内容平移）。
+  var _stageOriginCache = null;
+  function stageOrigin(stage) {
+    if (_stageOriginCache) return _stageOriginCache;
+    var r = stage.getBoundingClientRect();
+    _stageOriginCache = [Math.round(r.left + stage.clientLeft), Math.round(r.top + stage.clientTop)];
+    return _stageOriginCache;
+  }
   function viewToOverlayRect(r) {
     var o = overlayOrigin();
     return [r[0] - o[0], r[1] - o[1], r[2], r[3]];
@@ -1197,6 +1214,10 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     '#ann-overlay{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-marks,10);overflow:hidden;margin:0;padding:0;border:0;width:auto;height:auto;background:transparent;color:inherit;}#ann-overlay::backdrop{background:transparent;pointer-events:none}',
     '#ann-overlay[data-ann-viewport]{position:fixed;}',
     '#ann-marks,#ann-hover-layer{position:absolute;inset:0;pointer-events:none;z-index:1;}',
+    /* 画布模式：#ann-marks 是 #wbstage 滚动内容的孩子，跟画布一起被浏览器原生滚动（不再由 JS 补 translate，
+       拖动时钉子 / 框与 frame 同帧）。它自己进 --wb-z 阶梯：静止 marks 档，钉子点亮 / 定位闪烁抬到 marks-active。 */
+    '#wbstage>#ann-marks{z-index:var(--wb-z-marks,10);}',
+    '#wbstage>#ann-marks:has(.ann-badge--on),#wbstage>#ann-marks:has(.ann-flash){z-index:var(--wb-z-marks-active,50);}',
     '.ann-mark-group{position:absolute;inset:0;pointer-events:none;}',
     '.wb-stage-wrap #ann-bubbles .ann-bubble:not(.ann-bubble--show){display:none;}',
     '#ann-chrome{position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-composer,70);overflow:visible;}',
@@ -1299,6 +1320,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   overlay.id = 'ann-overlay'; overlay.setAttribute('data-ann-ui', '');
   var marksLayer = document.createElement('div');
   marksLayer.id = 'ann-marks';
+  // 画布模式下 #ann-marks 挂在 #wbstage 的滚动内容里（不在 #ann-overlay 下），isUI / mutation 过滤
+  // 都靠这个属性认它，不再借 overlay 的。
+  marksLayer.setAttribute('data-ann-ui', '');
   var bubblesLayer = document.createElement('div');
   bubblesLayer.id = 'ann-bubbles';
   bubblesLayer.setAttribute('data-ann-ui', '');
@@ -3187,6 +3211,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       group.entries.forEach(function (entry) { entry.group = null; });
     });
     marksLayer.style.transform = '';
+    if (marksLayer.parentNode !== overlay) overlay.insertBefore(marksLayer, overlay.firstChild);
     canvasView = null;
   }
 
@@ -3198,7 +3223,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   function canvasPose(stage) {
     var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
     var r = wrap ? wrap.getBoundingClientRect() : { left: 0, top: 0 };
-    var o = overlayOrigin();
+    var o = stageOrigin(stage);
     return { x: r.left - o[0] + stage.scrollLeft, y: r.top - o[1] + stage.scrollTop,
       zoom: Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1 };
   }
@@ -3219,7 +3244,10 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (canvasView && !rebuild) return;
     var groups = new Map();
     if (canvasView) canvasView.groups.forEach(function (g) { g.entries = []; groups.set(g.root, g); });
-    else canvasView = { stage: stage, groups: [], width: 0, height: 0, pose: canvasPose(stage) };
+    else {
+      if (marksLayer.parentNode !== stage) stage.appendChild(marksLayer);
+      canvasView = { stage: stage, groups: [], width: 0, height: 0, pose: canvasPose(stage) };
+    }
     Object.keys(markNodes).forEach(function (key) {
       var entry = markNodes[key];
       if (!entry.model) entry.roots = entryRoots(entry);
@@ -3269,9 +3297,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
 
   function markLocalRect(viewR) {
-    var r = viewToOverlayRect(viewR);
-    if (measuringCanvas) { r[0] += canvasView.stage.scrollLeft; r[1] += canvasView.stage.scrollTop; }
-    return r;
+    if (!measuringCanvas) return viewToOverlayRect(viewR);
+    var stage = canvasView.stage, o = stageOrigin(stage);
+    return [viewR[0] - o[0] + stage.scrollLeft, viewR[1] - o[1] + stage.scrollTop, viewR[2], viewR[3]];
   }
 
   var lastRectPersistTimer = null;
@@ -3411,8 +3439,10 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (!canvasView) return;
     var pose = canvasView.pose;
     var sx = canvasView.stage.scrollLeft, sy = canvasView.stage.scrollTop;
-    var viewport = [(sx - pose.x) / pose.zoom, (sy - pose.y) / pose.zoom,
-      canvasView.width / pose.zoom, canvasView.height / pose.zoom];
+    // 画布由浏览器原生滚动，组的显隐只能在下一帧才追上；四周各多留半屏，边缘的框不会晚一帧才冒出来。
+    var mx = canvasView.width / 2, my = canvasView.height / 2;
+    var viewport = [(sx - pose.x - mx) / pose.zoom, (sy - pose.y - my) / pose.zoom,
+      (canvasView.width + 2 * mx) / pose.zoom, (canvasView.height + 2 * my) / pose.zoom];
     canvasView.groups.forEach(function (group) {
       var visible = !!intersectRects(group.bounds, viewport);
       if (visible !== group.visible) { group.visible = visible; group.node.style.display = visible ? '' : 'none'; }
@@ -3422,7 +3452,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
         paintMark(projectMark(entry)); entry.paintPose = pose;
       });
     });
-    marksLayer.style.transform = 'translate3d(' + (-sx) + 'px,' + (-sy) + 'px,0)';
   }
 
   function frameLayoutRect(root) {
@@ -3759,10 +3788,21 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     scheduleViewUpdate();
   }
 
+  // 标注层每帧同步工作的耗时账（canvas-diagnostics 的 viewport 采样里 drain 走）：
+  // 拖动卡顿时靠它区分“标注层自己慢”与“别处慢”。只存计数 / 毫秒，不含内容。
+  var viewPerf = { n: 0, sum: 0, max: 0, full: 0 };
+  function perfDrain() {
+    var out = { n: viewPerf.n, sum: viewPerf.sum, max: viewPerf.max, full: viewPerf.full };
+    viewPerf.n = 0; viewPerf.sum = 0; viewPerf.max = 0; viewPerf.full = 0;
+    return out;
+  }
+
   function scheduleViewUpdate() {
     if (viewRaf) return;
     viewRaf = requestAnimationFrame(function () {
       viewRaf = 0;
+      var perfStart = performance.now();
+      var perfFull = structureDirty || contentFullDirty || contentRoots.size || geometryDirty;
       if (structureDirty || contentFullDirty) { renderAll(); notify(); }
       else if (contentRoots.size && canvasView) {
         dirtyFrameRoots.forEach(function (root) { contentRoots.add(root); });
@@ -3780,6 +3820,9 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       if (activeComposer && activeComposer.syncLayout) activeComposer.syncLayout();
       geometryDirty = false; zoomDirty = false; contentFullDirty = false;
       contentRoots.clear(); dirtyFrameRoots.clear();
+      var perfMs = performance.now() - perfStart;
+      viewPerf.n++; viewPerf.sum += perfMs; if (perfMs > viewPerf.max) viewPerf.max = perfMs;
+      if (perfFull) viewPerf.full++;
     });
   }
 
@@ -4002,7 +4045,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) markNavigation++;
   }, true);
 
-  // Explicit annotation navigation frames the review pair once. Typing only lays out the popup.
+  // Explicit annotation navigation centers the annotation's frame once (fallback: the target + popup pair). Typing only lays out the popup.
   function focusAnnotationReview(m, stageEl, wb) {
     if (!stageEl || !wb || !wb.scrollTo) return false;
     var rects = annotationTargetRects(m);
@@ -4011,6 +4054,15 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (!activeComposer || activeComposer.persistedN !== m.n) return false;
     var box = document.getElementById('ann-box');
     activeComposer.syncLayout();
+    // 列表 / 卡片点进来以标注所在 frame 居中（owner 2026-09-30：以 frame 为中心更直觉，
+    // 以标注为中心会把 frame 切成一半）。输入框由 syncLayout 在 frame 旁自动让位；
+    // 没有 frame 可聚焦（无 screenId / 板里找不到）才退回下面以标注 + 输入框为一对居中。
+    if (m.screenId && typeof wb.focusFrame === 'function') {
+      box.style.visibility = 'hidden';
+      var firstLive = resolveAllLiveTargets(m)[0];
+      if (wb.focusFrame(frameSectionFor(m, firstLive && firstLive.el), m.screenId)) return true;
+      box.style.visibility = '';
+    }
     var sr = stageEl.getBoundingClientRect();
     var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
     var strip = document.getElementById('wbstrip');
@@ -4045,7 +4097,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var reviewFocused = focusAnnotationReview(m, stageEl, wb);
     var frameFocused = reviewFocused || !!(
       wb && m.screenId && typeof wb.focusFrame === 'function' &&
-      wb.focusFrame(annotationSection(m), m.screenId)
+      wb.focusFrame(frameSectionFor(m, anchor.el), m.screenId)
     );
     if (!frameFocused && anchor.live && anchor.el && stageEl) {
       var er = anchor.el.getBoundingClientRect();
@@ -4182,6 +4234,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   // ---------- 对外 API（workbench 切 tab 时可主动调 render；也便于脚本化）----------
   window.pinpoint = {
     render: renderAll,
+    perfDrain: perfDrain,
     viewportChanged: function () { zoomDirty = true; onViewChange({ type: 'scroll', target: canvasStage() }); },
     setMode: function (on) { if (!!on !== mode) toggleMode(); },
     setNavigationActive: setNavigationActive,

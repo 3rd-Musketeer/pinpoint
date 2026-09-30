@@ -371,7 +371,7 @@ test('annotation number stays visible while editing and follows the target after
   expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
 });
 
-test('annotation jumps center the DOM and composer together without moving while typing', async ({page}) => {
+test('annotation jumps center the annotation frame, and typing never moves the canvas', async ({page}) => {
   await page.setViewportSize({width:1500,height:1000});
   await page.goto('/index.html?page=e2e-dir-ios');
   await page.waitForFunction(()=>window.pinpoint?.getState().connected && document.querySelector('#wbsection-nav .wb-section-nav-item'));
@@ -412,20 +412,19 @@ test('annotation jumps center the DOM and composer together without moving while
     await page.locator('#wbann-count').click();
     await expect(page.locator('#wbann-pop')).toHaveCount(0);
     await expect(page.locator('#ann-box')).toBeVisible();
-    // 几何读取包进轮询：composer 在弹簧动画期间 visibility:hidden，落定后才
-    // 可见，但 scroll 位置被外部改动 >1px 时动画会提前取消、几何停在半路 ——
-    // 一次性读取在负载下会读到中间态，轮询等到落定值为止；scroll 位置取
-    // 落定那一拍，给后面「输入不移画布」当基准。
+    // 落点 = 标注所在 frame 居中（owner 2026-09-30：以 frame 为中心比以标注为中心直觉；此前是
+    // 标注 + 输入框成对居中）。composer 在弹簧动画期间 visibility:hidden，可见即已落定；
+    // 再用 frame 树点击走的 focusFrame（instant）当基准：已在落点上，它不会再移动画布。
     const settled={left:0,top:0};
-    await expect.poll(async ()=>{
-      const g=await page.evaluate(()=>{
-        const t=document.querySelector('.ann-draft-target').getBoundingClientRect(),c=document.querySelector('#ann-box').getBoundingClientRect(),strip=document.querySelector('#wbstrip').getBoundingClientRect(),stage=document.querySelector('#wbstage');
-        const sr=stage.getBoundingClientRect();
-        return {x:(Math.min(t.left,c.left)+Math.max(t.right,c.right))/2,y:(Math.min(t.top,c.top)+Math.max(t.bottom,c.bottom))/2,wantX:(sr.left+sr.right)/2,wantY:(sr.top+24+Math.min(sr.bottom-24,strip.top-12))/2,left:stage.scrollLeft,top:stage.scrollTop};
-      });
-      settled.left=g.left;settled.top=g.top;
-      return Math.max(Math.abs(g.x-g.wantX),Math.abs(g.y-g.wantY));
-    }).toBeLessThan(5);
+    // 只测一次：轮询会让第二拍的基准调用把画布挪过去，错误落点也就“自愈”通过。
+    expect(await page.evaluate(()=>{
+      const stage=document.querySelector('#wbstage');
+      const section=document.querySelector('[data-screen="cards"]').closest('.wb-lib-item').getAttribute('data-ann-section');
+      const before=[stage.scrollLeft,stage.scrollTop];
+      window.workbench.focusFrame(section,'cards',{smooth:false});
+      return Math.max(Math.abs(stage.scrollLeft-before[0]),Math.abs(stage.scrollTop-before[1]));
+    })).toBeLessThan(3);
+    Object.assign(settled,await page.evaluate(()=>({left:document.querySelector('#wbstage').scrollLeft,top:document.querySelector('#wbstage').scrollTop})));
     await page.locator('#ann-input').press('End');
     await page.keyboard.insertText('\n继续输入，不移动画布\n第三行');
     await expect.poll(()=>page.evaluate(()=>({left:document.querySelector('#wbstage').scrollLeft,top:document.querySelector('#wbstage').scrollTop}))).toEqual({left:settled.left,top:settled.top});

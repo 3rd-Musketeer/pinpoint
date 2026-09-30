@@ -182,9 +182,9 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
 
   // 画布侧：唯一的 .ann-target 套在被标注元素上（视口空间比对，与缩放无关），
   // 没有幽灵框（.ann-ghost-rect 只在锚点失效且有 lastRect 时出现）。
-  const targetBox = page.locator('#ann-overlay .ann-target');
+  const targetBox = page.locator('#ann-marks .ann-target');
   await expect(targetBox).toHaveCount(1);
-  await expect(page.locator('#ann-overlay .ann-ghost-rect')).toHaveCount(0);
+  await expect(page.locator('#ann-marks .ann-ghost-rect')).toHaveCount(0);
   // 负载下两框可能恰逢重渲染摘除：拿到非空包围盒再比（断言本身不打折）。
   let mark, blurbRect;
   await expect.poll(async () => {

@@ -102,6 +102,67 @@ async function alignmentError(page) {
   }, `${cellSelector}:nth-child(1)`);
 }
 
+test('拖动画布时钉子与框和 frame 同帧：滚动后同步测量，不等 JS 追帧', async ({ page }) => {
+  await openCanvas(page, 1);
+  await expect.poll(() => alignmentError(page)).toBeLessThan(2);
+  // #ann-marks 是 #wbstage 滚动内容的孩子，浏览器随画布原生滚动；若又退回 scroll 事件 + JS 补 translate，
+  // 改完 scrollLeft 立刻同步测量就会看到整段滚动量的偏差。
+  const worst = await page.evaluate(selector => {
+    const stage = document.querySelector('#wbstage');
+    const sx = stage.scrollLeft, sy = stage.scrollTop;
+    let max = 0;
+    for (let i = 1; i <= 20; i++) {
+      stage.scrollLeft = sx + i * 9; stage.scrollTop = sy + i * 4;
+      const t = document.querySelector(selector).getBoundingClientRect();
+      const m = document.querySelector('#ann-marks .ann-target').getBoundingClientRect();
+      max = Math.max(max, Math.abs(m.left + 4 - t.left), Math.abs(m.top + 4 - t.top));
+    }
+    return max;
+  }, `${cellSelector}:nth-child(1)`);
+  expect(worst).toBeLessThan(2);
+  expect(await page.evaluate(() => document.getElementById('ann-marks').parentElement.id)).toBe('wbstage');
+});
+
+test('从标注列表 / 卡片定位：视角落在标注所在 frame 上，与树 / minimap 聚焦 frame 同一落点', async ({ page }) => {
+  await openCanvas(page, 1);
+  const stage = page.locator('#wbstage');
+  // 先把视角挪开，免得“本来就在那儿”蒙混过关。
+  await stage.evaluate(s => { s.scrollLeft = 0; s.scrollTop = 0; });
+  await page.evaluate(() => window.workbench.whenScrollSettled());
+  await page.evaluate(() => window.pinpoint.goToMark(window.pinpoint.marks[0].n));
+  await page.evaluate(() => window.workbench.whenScrollSettled());
+  const viaMark = await stage.evaluate(s => [s.scrollLeft, s.scrollTop]);
+  // 基准：同一 frame 走 focusFrame（frame 树点击走的那条）
+  const viaFrame = await page.evaluate(async () => {
+    const stage = document.querySelector('#wbstage');
+    const section = document.querySelector('[data-screen="settings"]').closest('.wb-lib-item').getAttribute('data-ann-section');
+    stage.scrollLeft = 0; stage.scrollTop = 0;
+    window.workbench.focusFrame(section, 'settings');
+    await window.workbench.whenScrollSettled();
+    return [stage.scrollLeft, stage.scrollTop];
+  });
+  expect(viaMark[0]).toBeGreaterThan(0);
+  expect(Math.abs(viaMark[0] - viaFrame[0])).toBeLessThan(2);
+  expect(Math.abs(viaMark[1] - viaFrame[1])).toBeLessThan(2);
+});
+
+test('拖动采样带归因字段：帧数、标注层每帧同步耗时、长帧计数', async ({ page }) => {
+  await openCanvas(page, 3);
+  await page.evaluate(async () => {
+    const stage = document.querySelector('#wbstage');
+    const sx = stage.scrollLeft;
+    await new Promise(resolve => {
+      let i = 0;
+      const step = () => { stage.scrollLeft = sx + i * 6; if (++i < 90) requestAnimationFrame(step); else resolve(); };
+      requestAnimationFrame(step);
+    });
+  });
+  await expect.poll(() => page.evaluate(() => {
+    const ev = window.workbench.diagnostics.snapshot().current.events.filter(e => e.type === 'viewport' && 'frames' in e);
+    return ev.some(e => e.frames > 3 && e.annN > 0 && typeof e.annMax === 'number' && e.marks === 3 && typeof e.loaf === 'number');
+  })).toBe(true);
+});
+
 test('cached marks stay aligned through pan, viewport exit/reentry, resize and content changes', async ({ page }) => {
   await openCanvas(page, 1);
   await expect.poll(() => alignmentError(page)).toBeLessThan(2);

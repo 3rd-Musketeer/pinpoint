@@ -8,6 +8,7 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
 import { maybeThrottle } from './cpu-throttle.js';
+import { FEATURES } from '../src/workbench/features.js';
 
 test.use({ reducedMotion: 'reduce' });
 // Every story starts with its own empty ledger, independent of spec ordering.
@@ -1369,6 +1370,7 @@ test('画布点选模型：三种选中入口、原型内部不动选中、空�
 });
 
 test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
+  test.skip(!FEATURES.sectionNav || !FEATURES.minimap, 'section nav / minimap 暂时收起（src/workbench/features.js）');
   await openWorkbench(page);
   await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
   // 钉住 100% 缩放：本用例的 scrollTop 阈值断言依赖 zoom=1 的几何
@@ -1836,6 +1838,7 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
 
   await test.step('框开着 hover 别的元素出高亮框；Esc 关框', async () => {
     const cell = cells.nth(3);
+    await cell.scrollIntoViewIfNeeded(); // 鼠标坐标要落在视口内；此前的滚动位置只是点钉子的副产物
     const bb = await cell.boundingBox();
     await page.mouse.move(bb.x + bb.width / 2, bb.y + bb.height / 2, { steps: 4 });
     await expect(page.locator('.ann-hover-ghost')).toBeVisible();
@@ -2232,9 +2235,9 @@ test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、
     await expect(box).toBeVisible();
     // 输入框开着时再开列表卡与 section 导航。用程序点击：横条中段的钮此时在输入框后面，
     // 真实点击会被输入框吃掉（这正是本用例要证明的层级）。输入框不因这两下关闭。
-    await page.evaluate(() => { document.getElementById('wbann-count').click(); document.getElementById('wbsection-nav-toggle').click(); });
+    await page.evaluate((withNav) => { document.getElementById('wbann-count').click(); if (withNav) document.getElementById('wbsection-nav-toggle').click(); }, FEATURES.sectionNav);
     await expect(page.locator('#wbann-pop')).toBeVisible();
-    await expect(page.locator('#wbsection-nav')).toBeVisible();
+    if (FEATURES.sectionNav) await expect(page.locator('#wbsection-nav')).toBeVisible();
     await expect(box).toBeVisible();
 
     // 挂法（结构层）：#ann-chrome 是 overlay 在 .wb-stage-wrap 里的兄弟，
@@ -2249,7 +2252,7 @@ test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、
     })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false });
 
     // 输入框与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
-    for (const sel of ['#wbstrip', '#wbann-pop', '#wbsection-nav']) {
+    for (const sel of ['#wbstrip', '#wbann-pop', ...(FEATURES.sectionNav ? ['#wbsection-nav'] : [])]) {
       const point = await overlapCenter(page, '#ann-box', sel);
       expect(point, sel + ' overlaps the composer').not.toBeNull();
       await expect.poll(() => hitKindAt(page, point)).toBe('composer');
@@ -2439,6 +2442,7 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
 // 板还没排好版就建成空列表，之后 resize / 缩放重量了几何却没人重建，导航一直藏着。
 // 这里用一段样式把板在装载那一帧压成 0 尺寸，稳定复现“那一帧量不出来”。
 test('Section Navigator：板装载那一帧量不出几何，之后排好版能自己补上条目', async ({ page }) => {
+  test.skip(!FEATURES.sectionNav, 'section nav 暂时收起（src/workbench/features.js）');
   await page.addInitScript(() => {
     document.addEventListener('DOMContentLoaded', () => {
       const style = document.createElement('style');

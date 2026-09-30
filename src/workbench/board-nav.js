@@ -5,6 +5,7 @@ import { scrollStageTo } from './scroll-motion.js';
 import { wbGet, wbSet } from './app/store.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport } from './lib/page-viewports.js';
+import { FEATURES } from './features.js';
 import {
   centerScrollForPoint,
   closestBoardSection,
@@ -118,8 +119,9 @@ export function updateMinimapAvailability(panel) {
   panel = panel || document.getElementById('wb-board-panel');
   var measured = panel ? refreshBoardNavigationModel(panel) : null;
   var available = !!(measured && measured.bounds.width >= 8 && measured.bounds.height >= 8);
-  wbSet({ minimapAvailable: available });
-  if (!available) {
+  // 几何量与条目模型照常算（导航模型还有别的消费者）；FEATURES.minimap 只决定按钮出不出来。
+  wbSet({ minimapAvailable: available && FEATURES.minimap });
+  if (!available || !FEATURES.minimap) {
     minimapLayout = null;
     setMinimapOpen(false);
   }
@@ -355,7 +357,7 @@ function sectionNavigatorShouldShow(panel) {
 
 export function updateSectionNavigatorVisibility() {
   var panel = document.getElementById('wb-board-panel');
-  var visible = sectionNavigatorShouldShow(panel);
+  var visible = FEATURES.sectionNav && sectionNavigatorShouldShow(panel);
   wbSet({ sectionNavVisible: visible });
   if (!visible) setSectionNavigatorOpen(false);
 }
@@ -582,7 +584,7 @@ export function wireSectionNavigator() {
       return;
     }
     if (event.key.toLowerCase() !== 'm' || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (isTypingTarget(event.target)) return;
+    if (!FEATURES.sectionNav || isTypingTarget(event.target)) return;
     event.preventDefault();
     setSectionNavigatorOpen(!wbGet().sectionNavOpen);
   });
