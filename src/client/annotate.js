@@ -1,5 +1,5 @@
 /* pinpoint: Figma-style HTML annotate tool.
- * Browser annotation client. Served as /annotate.js by Vite annotate-api;
+ * Browser annotation client. Bundled by esbuild (src/server/lib/annotate-bundle.js) and served as /annotate.js;
  * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).
  * SSOT = ~/.pinpoint/<entry>/; localStorage is cache; SSE /events syncs browsers.
@@ -144,7 +144,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   //  'sidebar'=气泡在父级 workbench 右侧 gutter（iframe 收窄、文档自己响应式回流，不压不遮）。
   var bubbleLayout = 'inline';
 
-  // Mention: UI shows @n; disk stores [@a:<id>] (legacy [@m:<id>] still read).
+  // Mention: UI shows @n; disk stores [@a:<id>] （旧 [@m:] 写法的读侧升级已随迁移脚本删除）.
   var MENTION_STORE_RE = /\[@a:([a-z0-9]+)\]/gi;
   var MENTION_DISPLAY_RE = /@(\d+)\b/g;
 
@@ -245,8 +245,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     return (m && m.sectionLabel) || '';
   }
 
-  // Indicator/normalize logic is inlined from lib/annotation-indicator.js at serve
-  // time (SSOT, node-tested). These thin wrappers preserve annotate.js semantics.
+  // Indicator/normalize logic comes from lib/annotation-indicator.js (SSOT, node-tested)
+  // via the esbuild bundle. These thin wrappers preserve annotate.js semantics.
 
   function docAnnotations(doc) {
     if (!doc) return null;
@@ -701,8 +701,10 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
 
   /** 一个 target 的解析（决定 #15 优先级）：ppId 先行，cssPath 兜底。 */
-  function resolveMarkTarget(target, screenId) {
+  // 多选跨 frame：每个 target 自带所在 frame（screenId）；存量 target 没有，回落到 fallbackScreenId（行 / 部件的 frame）。
+  function resolveMarkTarget(target, fallbackScreenId) {
     if (!target || !target.selector) return null;
+    var screenId = target.screenId || fallbackScreenId || '';
     if (target.ppId) {
       var byId = resolveByPpId(target.ppId, target.text || '', screenId);
       if (byId) return byId;
@@ -768,11 +770,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   }
 
   // ---------- multi-anchor element marks ----------
-  // 多选跨 frame：每个 target 自带所在 frame（screenId）；存量 target 没有，回落到行的 screenId。
-  function targetScreenId(target, fallback) {
-    return (target && target.screenId) || fallback || '';
-  }
-
   function markElementTargets(m) {
     if (!m || m.type !== 'element') return [];
     return normalizeTargetRefs(m.targets, m.selector, m.text);
@@ -789,7 +786,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (liveTargetBatch && liveTargetBatch.has(m)) return liveTargetBatch.get(m);
     var out = [];
     markElementTargets(m).forEach(function (t) {
-      var el = resolveMarkTarget(t, targetScreenId(t, m.screenId));
+      var el = resolveMarkTarget(t, m.screenId);
       if (el && !isHidden(el)) {
         out.push({ el: el, ref: t.ref, selector: t.selector, text: t.text, rectDoc: docRect(el) });
       }
@@ -819,7 +816,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var changed = false;
     targets.forEach(function (t) {
       if (t.ppId) return;
-      var el = resolveMarkTarget(t, targetScreenId(t, m.screenId));
+      var el = resolveMarkTarget(t, m.screenId);
       var ppId = el ? ppIdOf(el) : '';
       if (ppId) { t.ppId = ppId; changed = true; }
     });
@@ -1583,7 +1580,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       ? markElementTargets(mark)
       : [mark.base].concat(mark.contains || []).filter(Boolean);
     if (!targets.length) return false;
-    if (targets.some(function (target) { return !!resolveMarkTarget(target, targetScreenId(target, sid)); })) return false;
+    if (targets.some(function (target) { return !!resolveMarkTarget(target, sid); })) return false;
     return true;
   }
 
@@ -2008,7 +2005,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     if (!draftNodes.length) return;
     beginOverlayFrame();
     draftNodes.forEach(function (p) {
-      var el = p.target ? resolveMarkTarget(p.target, targetScreenId(p.target, p.sid)) : null;
+      var el = p.target ? resolveMarkTarget(p.target, p.sid) : null;
       if (!el || isHidden(el)) return;
       placePartGeometry(p, el);
     });
@@ -2020,7 +2017,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     beginOverlayFrame();
     var sid = activeComposer.m.screenId || '';
     markElementTargets(activeComposer.m).forEach(function (target) {
-      var el = resolveMarkTarget(target, targetScreenId(target, sid));
+      var el = resolveMarkTarget(target, sid);
       if (!el || isHidden(el)) return;
       var frame = document.createElement('div');
       frame.className = 'ann-target ann-draft-target';
@@ -2988,7 +2985,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
     var fact = markFact(m);
-    if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, targetScreenId(target, sid)); }, markElementTargets(m));
+    if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, sid); }, markElementTargets(m));
     return fact.broken;
   }
 
@@ -3210,7 +3207,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       group.node.remove();
       group.entries.forEach(function (entry) { entry.group = null; });
     });
-    marksLayer.style.transform = '';
     if (marksLayer.parentNode !== overlay) overlay.insertBefore(marksLayer, overlay.firstChild);
     canvasView = null;
   }
@@ -3232,7 +3228,7 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     var roots = new Set();
     function add(el) { var root = el && el.closest('.wb-screen, .wb-lib-item'); if (root) roots.add(root); }
     if (entry.m.type === 'element') markElementTargets(entry.m).forEach(function (t) {
-      add(resolveMarkTarget(t, targetScreenId(t, entry.m.screenId)));
+      add(resolveMarkTarget(t, entry.m.screenId));
     });
     else if (entry.m.base) add(resolveMarkSelector(entry.m.base.selector, entry.m.screenId || ''));
     else (entry.m.contains || []).forEach(function (t) { add(resolveMarkSelector(t.selector, entry.m.screenId || '')); });
@@ -3432,8 +3428,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     return x === Infinity ? null : [x - 24, y - 24, right - x + 48, bottom - y + 48];
   }
 
-  // Native scrolling moves the HTML; one transform moves its annotation layer.
-  // Only frame groups entering/leaving the viewport change visibility. No mark
+  // #ann-marks lives inside #wbstage's scroll content, so native scrolling moves the HTML and
+  // the marks together. Only frame groups entering/leaving the (padded) viewport change visibility. No mark
   // selectors, target rects or ancestor styles are read on this path.
   function syncCanvasPose() {
     if (!canvasView) return;
@@ -3792,8 +3788,8 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
   // 拖动卡顿时靠它区分“标注层自己慢”与“别处慢”。只存计数 / 毫秒，不含内容。
   var viewPerf = { n: 0, sum: 0, max: 0, full: 0 };
   function perfDrain() {
-    var out = { n: viewPerf.n, sum: viewPerf.sum, max: viewPerf.max, full: viewPerf.full };
-    viewPerf.n = 0; viewPerf.sum = 0; viewPerf.max = 0; viewPerf.full = 0;
+    var out = viewPerf;
+    viewPerf = { n: 0, sum: 0, max: 0, full: 0 };
     return out;
   }
 
@@ -4057,11 +4053,10 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
     // 列表 / 卡片点进来以标注所在 frame 居中（owner 2026-09-30：以 frame 为中心更直觉，
     // 以标注为中心会把 frame 切成一半）。输入框由 syncLayout 在 frame 旁自动让位；
     // 没有 frame 可聚焦（无 screenId / 板里找不到）才退回下面以标注 + 输入框为一对居中。
+    box.style.visibility = 'hidden'; // 两条路径都要等滚动落定：flashAndOpen 在 whenScrollSettled 之后恢复
     if (m.screenId && typeof wb.focusFrame === 'function') {
-      box.style.visibility = 'hidden';
       var firstLive = resolveAllLiveTargets(m)[0];
       if (wb.focusFrame(frameSectionFor(m, firstLive && firstLive.el), m.screenId)) return true;
-      box.style.visibility = '';
     }
     var sr = stageEl.getBoundingClientRect();
     var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
@@ -4082,7 +4077,6 @@ import ANN_LIST_CSS from '../shared/ann-list.css';
       activeComposer.preferredSide = 'below';
     }
     // Oversized selections retain zoom and center the target; the regular popup fallback still applies.
-    box.style.visibility = 'hidden';
     wb.scrollTo({
       left: stageEl.scrollLeft + left - (area.left + (area.right - area.left - pairWidth) / 2),
       top: stageEl.scrollTop + top - (area.top + (area.bottom - area.top - pairHeight) / 2)

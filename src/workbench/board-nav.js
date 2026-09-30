@@ -18,7 +18,7 @@ import {
 
 // 反向依赖注入已随 annFilter 退役（2026-08-15 侧栏重构）：跳转后不再需要
 // 面板侧刷新回调。HUD 缩放按钮由 CanvasHud 组件直接调 boot-prefs 的
-// setCanvasZoom，不走这里。
+// zoomCanvasAt / setCanvasZoom，不走这里。
 
 var stage = document.getElementById('wbstage');
 

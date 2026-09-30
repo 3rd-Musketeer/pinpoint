@@ -161,7 +161,6 @@ export function startAnnBridge() {
  *   · 账本 / 筛选 / 布局 / 评论开关：annotate 实例 notify → 快照订阅
  *     （syncAnnSnap 收尾的 syncGutterComments）；iframe 内 DOM 变更走同一条
  *     —— client 的 MutationObserver 全量重渲染路径本身就会 notify
- *   · 备注展开 / 收起：gutter 气泡的点击委派
  * 渲染是增量的：气泡节点按 n 复用，内容没变只重排定位、不重建 innerHTML。
  * 监听登记全部在 stopGutter 解除，切页 / 关通道 / 条目卸载不留悬挂。 */
 var gutterOverlay = null;

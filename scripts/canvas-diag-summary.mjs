@@ -38,6 +38,5 @@ for (const [input, list] of byInput) {
   const scripts = new Map();
   for (const e of withAttr) if (e.loafScript) scripts.set(e.loafScript, (scripts.get(e.loafScript) || 0) + 1);
   console.log('  长帧脚本 top:', [...scripts].sort((a, b) => b[1] - a[1]).slice(0, 5).map(([k, v]) => `${k}×${v}`).join('  ') || '-');
-  const fps = withAttr.filter(e => e.frames > 0);
   console.log(`  标注层 marks 中位数=${q(withAttr.map(e => e.marks).sort((a, b) => a - b), .5)}  zoom 中位数=${q(withAttr.map(e => e.zoom).sort((a, b) => a - b), .5)}`);
 }
