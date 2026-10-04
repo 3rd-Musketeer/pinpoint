@@ -29,7 +29,6 @@ const minified = await buildAnnotateBundle({ minify: true });
 test('build bundles the SSOT libs into one self-contained IIFE', () => {
   // 注入到别人页面：恰好一个输出文件，运行时不拉任何 chunk（构建期保证）。
   assert.equal(unminified.js.startsWith('(() =>'), true, 'IIFE wrapper present');
-  assert.match(unminified.js, /function indicatorForAnnotation/, 'indicatorForAnnotation inlined');
   assert.match(unminified.js, /function normalizeAnnotation/, 'normalizeAnnotation inlined');
   assert.match(unminified.js, /function targetContentToDisplay/, 'targetContentToDisplay inlined');
   assert.match(unminified.js, /function targetContentToStorage/, 'targetContentToStorage inlined');

@@ -2,7 +2,7 @@
  * Browser annotation client. Bundled by esbuild (src/server/lib/annotate-bundle.js) and served as /annotate.js;
  * ios-kit.js injects it on localhost.
  * Anchors use CSS selectors; coords are secondary (scale-safe).
- * SSOT = ~/.pinpoint/<entry>/; localStorage is cache; SSE /events syncs browsers.
+ * SSOT = ~/.pinpoint/<pageId>/ (bucket = page, ADR 0036); localStorage is cache; SSE /events syncs browsers.
  * Modes: 标注 (click → box) | 交互 (demo; default). Text selection stays enabled in 交互.
  * Hierarchy: page → canvas → section → frame (screen + chrome). screenId = frame id.
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
@@ -23,7 +23,6 @@ import {
   nextTargetRef,
   targetContentToDisplay,
   targetContentToStorage,
-  indicatorForAnnotation,
 } from '../shared/annotation-indicator.js';
 import { pickContained } from './lib/annotate-hit-test.js';
 import { annotationSlug } from '../shared/annotation-slug.js';
@@ -251,13 +250,6 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
   function docAnnotations(doc) {
     if (!doc) return null;
     return Array.isArray(doc.annotations) ? doc.annotations : null;
-  }
-
-  function indicatorForMark(m) {
-    if (!m) return '';
-    ensureMarkId(m);
-    var persisted = marks.some(function (k) { return k.n === m.n; });
-    return indicatorForAnnotation(m, currentWorkbenchPageId(), { persisted: persisted });
   }
 
   function copyText(text) {
@@ -2484,6 +2476,69 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     return images;
   }
 
+  // 自动保存与存盘：把框里的草稿（正文、改文案开关、截图、箭头、目标）按 editSnapshot 判脏，
+  // 输入停 AUTOSAVE_MS 存一次，关框时由 closeComposer 立即 commit。草稿状态在 draft 上，共享给 UI 侧的改动。
+  function attachComposerAutosave(composer, ta, m, draft) {
+    // 自动保存：没有保存按钮。输入停 AUTOSAVE_MS 存一次，关框（Esc / X /
+    // Enter / 换钉子 / 切页 / 退出标注模式）时立即存。只在和上次存的不一样时
+    // 写账本 —— 打开再关掉不改状态；一改就按状态机回 open。
+    function editSnapshot() {
+      return JSON.stringify([ta.value, draft.changeOn, !!draft.research, draft.images.length, m.move || null,
+        markElementTargets(m).map(function (t) { return t.selector; })]);
+    }
+    var lastCommitted = null; // 打开设置全部完成后再取（见 openComposer 末尾）
+    var autosaveT = null;
+    composer.isDirty = function () { return editSnapshot() !== lastCommitted; };
+    composer.scheduleAutosave = function () {
+      clearTimeout(autosaveT);
+      autosaveT = setTimeout(function () { if (activeComposer === composer) commit(); }, AUTOSAVE_MS);
+    };
+    composer.cancelAutosave = function () { clearTimeout(autosaveT); };
+    composer.commit = commit;
+    composer.takeSnapshot = function () { lastCommitted = editSnapshot(); };
+
+    function commit() {
+      if (!composer.isDirty()) return false;
+      if (arrowFrom === m) return false; // 正在拖箭头：拖完回弹后再存
+      // storage-unify：画布实例 boot 占位期（活动页未定、ENTRY 还是 pinpoint）
+      // 不保存——占位账本上的行没有归属，换桶不带它走。占位窗口毫秒级
+      // （workbench 启动即报活动页），真出现就是在等一个还没就绪的页面。
+      if (CANVAS_MODE && !canvasLedgerApplied) return false;
+      ensureMarkId(m);
+      var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
+      m.content = stored;
+      delete m.comment;
+      var mentionIds = extractMentionIds(stored);
+      if (mentionIds.length) m.mentions = mentionIds; else delete m.mentions;
+      if (draft.research) {
+        m.research = draft.research;
+      } else {
+        delete m.research;
+      }
+      if (draft.changeOn) m.changeTo = true; else delete m.changeTo;
+      if (draft.images.length) m.images = draft.images; else delete m.images;
+      normalizeElementTargets(m);
+      backfillTargetPpIds(m);
+      delete m._draft;
+      delete m._targetMode;
+      delete m._anchor;
+      // 空内容不存：新建的不落账本（关框即丢），已有的保留上次存的正文；要删走垃圾桶。
+      if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) return false;
+      // 按 id 认领：#n 的取号权在服务端，自动保存之间 n 可能已被改写。
+      var idx = marks.findIndex(function (k) { return k.id === m.id; });
+      // pp2 状态机：新标注恒 open；owner 编辑正文或目标 → 保存时状态回 open
+      // （服务端同样强制，客户端先把生效态带上看得到）。
+      m.status = 'open';
+      if (idx < 0) marks.push(m); else {
+        marks[idx] = m;
+      }
+      composer.isNew = false;
+      lastCommitted = editSnapshot();
+      persist();
+      return true;
+    }
+  }
+
   function openComposer(m, anchorRect, isNew) {
     // 进来时还开着的框只有画箭头回弹这一种：它的状态已随 m（_draft / move）带进来。
     closeComposer({ silentRender: true, discard: true });
@@ -2496,8 +2551,8 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     else if (!modal && overlay.parentElement.matches('dialog')) mountOverlay();
     var box = document.createElement('div');
     box.id = 'ann-box'; box.setAttribute('data-ann-ui', '');
-    var res = m.research || null;
-    var changeOn = !!m.changeTo;
+    // 框内可编辑的草稿状态：改文案开关、研究对象（只透传）、参考截图列表。自动保存与关框存盘都读它。
+    var draft = { changeOn: !!m.changeTo, research: m.research || null, images: null };
     box.innerHTML = composerBoxHtml(m, broken, isNew);
     chromeLayer.appendChild(box);
     // top layer 挂法：重开一次让 overlay 回到 top layer 栈顶，压过页面后开的 popover
@@ -2566,10 +2621,9 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     syncComposerLayout();
     ta.focus({ preventScroll: true });
 
-    var researchOn = !!res;
     var mention = createMentionPicker(ta, m);
 
-    var images = attachComposerImages(box, ta, m);
+    draft.images = attachComposerImages(box, ta, m);
     var plus = box.querySelector('#ann-plus');
     var toolsMenu = box.querySelector('#ann-tools-menu');
     function closeTools() { toolsMenu.hidden = true; plus.setAttribute('aria-expanded', 'false'); }
@@ -2577,78 +2631,21 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     box.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !toolsMenu.hidden) { event.preventDefault(); event.stopPropagation(); closeTools(); plus.focus(); } });
     function renderModes() {
       var wrap = box.querySelector('#ann-mode-pills'); wrap.replaceChildren();
-      [['change', '改文案', changeOn], ['move', '移动', !!m.move]].forEach(function (item) {
+      [['change', '改文案', draft.changeOn], ['move', '移动', !!m.move]].forEach(function (item) {
         if (!item[2]) return;
         var pill = document.createElement('button'); pill.type = 'button'; pill.className = 'ann-mode-pill';
         pill.textContent = item[1]; pill.setAttribute('aria-label', '取消' + item[1]);
         var cross = document.createElement('span'); cross.textContent = '×'; pill.appendChild(cross);
-        pill.addEventListener('click', function () { if (item[0] === 'change') changeOn = false; else { delete m.move; removeTempArrow(); } renderModes(); });
+        pill.addEventListener('click', function () { if (item[0] === 'change') draft.changeOn = false; else { delete m.move; removeTempArrow(); } renderModes(); });
         wrap.appendChild(pill);
       });
     }
     box.querySelector('#ann-change').addEventListener('click', function () {
-      changeOn = true; closeTools(); renderModes(); ta.focus({ preventScroll: true });
+      draft.changeOn = true; closeTools(); renderModes(); ta.focus({ preventScroll: true });
     });
     renderModes();
 
-    // 自动保存：没有保存按钮。输入停 AUTOSAVE_MS 存一次，关框（Esc / X /
-    // Enter / 换钉子 / 切页 / 退出标注模式）时立即存。只在和上次存的不一样时
-    // 写账本 —— 打开再关掉不改状态；一改就按状态机回 open。
-    function editSnapshot() {
-      return JSON.stringify([ta.value, changeOn, researchOn, images.length, m.move || null,
-        markElementTargets(m).map(function (t) { return t.selector; })]);
-    }
-    var lastCommitted = null; // 打开设置全部完成后再取（见 openComposer 末尾）
-    var autosaveT = null;
-    composer.isDirty = function () { return editSnapshot() !== lastCommitted; };
-    composer.scheduleAutosave = function () {
-      clearTimeout(autosaveT);
-      autosaveT = setTimeout(function () { if (activeComposer === composer) commit(); }, AUTOSAVE_MS);
-    };
-    composer.cancelAutosave = function () { clearTimeout(autosaveT); };
-    composer.commit = commit;
-    composer.takeSnapshot = function () { lastCommitted = editSnapshot(); };
-
-    function commit() {
-      if (!composer.isDirty()) return false;
-      if (arrowFrom === m) return false; // 正在拖箭头：拖完回弹后再存
-      // storage-unify：画布实例 boot 占位期（活动页未定、ENTRY 还是 pinpoint）
-      // 不保存——占位账本上的行没有归属，换桶不带它走。占位窗口毫秒级
-      // （workbench 启动即报活动页），真出现就是在等一个还没就绪的页面。
-      if (CANVAS_MODE && !canvasLedgerApplied) return false;
-      ensureMarkId(m);
-      var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
-      m.content = stored;
-      delete m.comment;
-      var mentionIds = extractMentionIds(stored);
-      if (mentionIds.length) m.mentions = mentionIds; else delete m.mentions;
-      if (researchOn) {
-        m.research = res;
-      } else {
-        delete m.research;
-      }
-      if (changeOn) m.changeTo = true; else delete m.changeTo;
-      if (images.length) m.images = images; else delete m.images;
-      normalizeElementTargets(m);
-      backfillTargetPpIds(m);
-      delete m._draft;
-      delete m._targetMode;
-      delete m._anchor;
-      // 空内容不存：新建的不落账本（关框即丢），已有的保留上次存的正文；要删走垃圾桶。
-      if (!m.content.replace(/\[@t:i[1-9][0-9]*\]/g, '').trim() && !m.move && !m.research && !m.changeTo && !m.images) return false;
-      // 按 id 认领：#n 的取号权在服务端，自动保存之间 n 可能已被改写。
-      var idx = marks.findIndex(function (k) { return k.id === m.id; });
-      // pp2 状态机：新标注恒 open；owner 编辑正文或目标 → 保存时状态回 open
-      // （服务端同样强制，客户端先把生效态带上看得到）。
-      m.status = 'open';
-      if (idx < 0) marks.push(m); else {
-        marks[idx] = m;
-      }
-      composer.isNew = false;
-      lastCommitted = editSnapshot();
-      persist();
-      return true;
-    }
+    attachComposerAutosave(composer, ta, m, draft);
     // Enter = 写完这一条：存并关框。
     function save() { closeComposer(); }
     ta.addEventListener('input', function () {
@@ -2689,8 +2686,8 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
       }
       mention.close();
       m._draft = ta.value; // 暂存已输入文字（展示态 @n）
-      if (changeOn) m.changeTo = true; else delete m.changeTo;
-      if (images.length) m.images = images; else delete m.images;
+      if (draft.changeOn) m.changeTo = true; else delete m.changeTo;
+      if (draft.images.length) m.images = draft.images; else delete m.images;
       m._anchor = [anchorRect[0] + anchorRect[2] / 2, anchorRect[1] + anchorRect[3] / 2];
       arrowFrom = m;
       box.remove(); // 隐藏标注框，拖完箭头再弹回
@@ -3192,7 +3189,7 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
   function lastRectFromDoc(doc) {
     if (!doc) return null;
     if (!canvasView) return doc;
-    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    var pose = canvasView.pose, o = stageOrigin(canvasView.stage), zoom = pose.zoom || 1; // 与 canvasPose 同一把原点
     return [
       (doc[0] - scrollX + canvasView.stage.scrollLeft - o[0] - pose.x) / zoom,
       (doc[1] - scrollY + canvasView.stage.scrollTop - o[1] - pose.y) / zoom,
@@ -3204,7 +3201,7 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
   function lastRectViewRect(lr) {
     if (!lr) return null;
     if (!canvasView) return docToView([lr.x, lr.y, lr.w, lr.h]);
-    var pose = canvasView.pose, o = overlayOrigin(), zoom = pose.zoom || 1;
+    var pose = canvasView.pose, o = stageOrigin(canvasView.stage), zoom = pose.zoom || 1; // 与 canvasPose 同一把原点
     return [
       o[0] + lr.x * zoom + pose.x - canvasView.stage.scrollLeft,
       o[1] + lr.y * zoom + pose.y - canvasView.stage.scrollTop,
@@ -4078,16 +4075,13 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     setMode: function (on) { if (!!on !== mode) toggleMode(); },
     setNavigationActive: setNavigationActive,
     toggle: toggleMode,
-    setPaused: setPaused,
     setRenderComments: setRenderComments,
     setBubbleLayout: setBubbleLayout,
     visibleBubbleAnchors: visibleBubbleAnchors,
     clear: doClear,
     clearInvalid: clearInvalid,
-    canClearInvalid: canClearInvalid,
     removeMark: removeMark,
     setFloatingToolbar: setFloatingToolbar,
-    setSidebar: setSidebarOpen,
     toggleSidebar: toggleSidebar,
     hasActiveDraft: function () { return !!activeComposer; },
     cancelDraft: function () {
@@ -4097,20 +4091,15 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     },
     openMark: openMark,
     goToMark: goToMark,
-    whenSettled: whenSettled,
-    markStatus: markStatus,
     closeAnnotation: closeAnnotation,
     reopenAnnotation: reopenAnnotation,
     setStatusFilter: setStatusFilter,
-    hydrateFrames: hydrateMentionFrames,
     repairTargetScreens: repairTargetScreens,
     getState: getState,
-    markOnActivePage: markOnActivePage,
     resolveMarkAnchor: resolveMarkAnchor,
     resolveMarkTarget: resolveMarkTarget,
     isMarkBroken: isMarkBroken,
     contentToDisplay: contentToDisplay,
-    indicatorForMark: indicatorForMark,
     onUpdate: function (fn) { if (typeof fn === 'function') updateListeners.push(fn); },
     // 当前账本桶 id（画布实例 = 活动页；测试与调试用，只读）。
     get entry() { return ENTRY; },
