@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 
 import { E2E_DATA_DIR } from './env.js';
+import { openWorkbench } from './open-workbench.js';
 
 // 阶段 5：doc 页正文 mention 画布 frame（data-pinpoint-frame）→ 水合为活 DOM；
 // storage-unify：frame 内标注与画布同账本 = 被引用帧所属页（e2e-ios）桶里的
@@ -26,11 +27,6 @@ test.afterEach(() => {
   fs.rmSync(CANVAS_BUCKET, { recursive: true, force: true });
   fs.rmSync(DOC_BUCKET, { recursive: true, force: true });
 });
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-}
 
 // 嵌套 iframe 里的 composer 保存按钮可能落在可视区外（frame 页比视口高）——
 // 填词与保存走 DOM 派发（与 workbench.spec.js 的文档标注惯例一致）；点选手势

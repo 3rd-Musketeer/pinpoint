@@ -5,6 +5,7 @@ import { E2E_SITES_DIR } from './env.js';
 import { expect, test } from '@playwright/test';
 
 import { sortPages } from '../src/workbench/lib/page-sort.js';
+import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
 
 // Each server owns a copy; sorting never changes source fixture timestamps.
 
@@ -46,12 +47,6 @@ test.beforeAll(pressMtimes);
 // afterAll 紧贴下一条 spec 的启动，风暴正好砸在它的 annotate 客户端上。
 // 收进用例末尾：这些固件都是 HTML，风暴只触发重编广播、不毁页面（毁页面的
 // full-reload 来自 ios-site 的 .js sidecar，所以 ios-site 根本不压）。
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
-}
 
 function pageOrder(page) {
   return page.locator('#wbpages .wb-page').evaluateAll((els) =>

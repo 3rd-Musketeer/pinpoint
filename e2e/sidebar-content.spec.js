@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
 
 
 // 左栏内容（2026-09-04 切片 ②，评审板 C1 + ADR 0031/0032）：搜索、「最近」段、
@@ -10,12 +11,6 @@ import { expect, test } from '@playwright/test';
 // `PUT /registry/folders {folders: []}` 一次原子写就把所有页释放回散页区
 // （删夹不删页），后面的 spec 因此看到的仍是固件原样。手动 order 只在夹内生效，
 // 所以残留的 order 字段不会改变散页区的书写顺序。
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
-}
 
 async function resetFolders(request) {
   const response = await request.put('/registry/folders', { data: { folders: [] } });

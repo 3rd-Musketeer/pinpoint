@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { openWorkbench } from './open-workbench.js';
 
 // 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 —— 窗口｜手机。owner 裁决：
 // 「doc 本身就是要展示的终态，而 prototype app 有多屏，所以 doc 可以只展示 html 本身，
@@ -25,11 +26,6 @@ const PHONE_SHELL = '#wb-board-panel [data-screen="doc"] .wb-phone-doc';
 // 横条那一带 = gap × 2 + strip-h（wb-tokens.css：12 × 2 + 38）
 const STRIP_BAND = 62;
 const FILL = 0.9;
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-}
 
 async function openDirDoc(page) {
   await openWorkbench(page);

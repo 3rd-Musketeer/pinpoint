@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openWorkbench } from './open-workbench.js';
 
 // 阶段 6（2026-08-16f 产物与草稿模型）：混合板 = 一个 Page 的 board.json 里同时有
 // app/lock 屏（画布条目）与 doc 屏（文档/草稿条目）。stage 形态由选中条目派生：
@@ -10,11 +11,6 @@ import { expect, test } from '@playwright/test';
 // draft-variants 草稿文档，role:"draft"）。
 // 四条用例合并成一条（同一个固件同一次开页能走完）：静态形态 → 阅读器切换 →
 // 条目记忆（reload）→ 深链。
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-}
 
 async function openMixed(page) {
   await openWorkbench(page);

@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import { E2E_REGISTRY } from './env.js';
 
 import { expect, test } from '@playwright/test';
+import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
 
 // 分组类 registry 写不整板重装（2026-09-24 审计 B2）：拖页入夹 / 折叠 / 改名 /
 // 排序只动分组与顺序，服务端广播带 scope=grouping，工作台只重拉清单刷新左栏 ——
@@ -14,12 +15,6 @@ import { expect, test } from '@playwright/test';
 // contentWindow 和板内 .wb-screen 元素上各挂一个探针，整板重装走
 // panel.innerHTML 整替换，两个探针都会丢。左栏更新（说明广播已落地、旧实现
 // 此刻早已开始重装）之后验代号与探针，不再靠固定等待猜「没发生重装」。
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
-}
 
 async function openDocPage(page) {
   await openWorkbench(page);

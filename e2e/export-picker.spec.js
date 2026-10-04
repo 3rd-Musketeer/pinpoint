@@ -1,16 +1,12 @@
 import fs from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
+import { openWorkbench } from './open-workbench.js';
 
 // 导出（pp2 切片 3 收敛）：用户面只剩「导出整个画布为离线可交互 HTML」
 // （/api/export-page-html，ADR 0033）。横条「导出」钮直接开这个对话框；
 // 有 HTTPS 静态资源时逐项批准后才冻结下载。两条用例合一：真下载一次守离线
 // 文件全形态，同一页面上 route 两个端点再走一遍批准状态机。
-
-async function openWorkbench(page) {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
-}
 
 function picker(page) {
   return page.locator('dialog.wb-export-picker');
