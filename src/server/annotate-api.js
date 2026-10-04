@@ -356,6 +356,216 @@ export function createAnnotateHandler(options = {}) {
     res.end(req.method === 'HEAD' ? undefined : body);
   }
 
+  // POST 体是 JSON 且带 entry：解析失败 400，entry 未知 400，都在这里答掉。
+  async function readEntryBody(req, res) {
+    let body;
+    try {
+      body = JSON.parse(await readBody(req));
+    } catch {
+      sendJson(res, 400, { error: 'bad_json' });
+      return null;
+    }
+    const entryId = entryOrReject(res, body.entry);
+    return entryId ? { body, entryId } : null;
+  }
+
+  // 路由表按声明顺序匹配，第一条命中即答；全不命中返回 false 交给下一个中间件。
+  // match 是 [方法, 路径]：路径可为字符串（全等）、RegExp 或前缀函数。
+  const GET_HEAD = ['GET', 'HEAD'];
+  const routes = [
+    {
+      methods: GET_HEAD,
+      match: (urlPath) => urlPath === '/annotate.js' || ANNOTATE_BUNDLE_URL_RE.test(urlPath),
+      run: async ({ req, res, urlPath }) => { await serveAnnotateClient(req, res, urlPath); return true; },
+    },
+    {
+      methods: ['GET'],
+      match: '/health',
+      run: ({ res }) => {
+        // dataDir stays the default bucket path so existing `jq -r .dataDir`
+        // consumers keep working; dataRoot + registry carry the new model.
+        sendJson(res, 200, {
+          ok: true,
+          // root = the repository this service is actually running out of.
+          // `pinpoint status` compares it with the CLI's own repo root: a long
+          // lived vite that survived a directory move keeps the absolute paths
+          // it resolved at boot, so "process alive, wrong root" is a real and
+          // otherwise invisible failure mode (docs/debugging.md, 2026-09-04).
+          root: serviceRoot,
+          dataDir: bucketDir(root, DEFAULT_ENTRY),
+          dataRoot: root,
+          registry: registrySummary(registry),
+        });
+        return true;
+      },
+    },
+    {
+      methods: ['GET'],
+      match: '/registry',
+      run: ({ res }) => { sendJson(res, 200, registryPayload()); return true; },
+    },
+    // 分组层的写接口（workbench 的文件夹操作；CLI 仍是文件直写 + reload）。
+    {
+      methods: ['PUT'],
+      match: (urlPath) => urlPath.startsWith('/registry/'),
+      run: ({ req, res, urlPath }) => handleRegistryWrite(req, res, urlPath),
+    },
+    {
+      methods: ['GET'],
+      match: '/events',
+      run: ({ req, res }) => handleSse(req, res),
+    },
+    {
+      methods: ['GET'],
+      match: '/annotations',
+      run: ({ res }) => {
+        // Debug aggregate: flatten every bucket into [{entry, page, ...}]. 桶 = 页：
+        // registry 条目 + manifest 模板页都是页桶，都在列。
+        const docs = [];
+        const seen = new Set();
+        for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds()]) {
+          if (seen.has(id)) continue;
+          seen.add(id);
+          for (const doc of Object.values(storeFor(id).listDocs())) {
+            docs.push({ entry: id, ...doc });
+          }
+        }
+        sendJson(res, 200, docs);
+        return true;
+      },
+    },
+    {
+      methods: ['GET'],
+      match: (urlPath) => urlPath.startsWith('/annotations/'),
+      run: ({ res, urlPath, query }) => {
+        const entryId = entryOrReject(res, query.get('entry'));
+        if (!entryId) return true;
+        const page = ledgerKey(decodeURIComponent(urlPath.slice('/annotations/'.length)));
+        sendJson(res, 200, storeFor(entryId).readDoc(page));
+        return true;
+      },
+    },
+    {
+      methods: ['GET'],
+      match: (urlPath) => urlPath.startsWith('/images/'),
+      run: ({ res, urlPath, query }) => {
+        const entryId = entryOrReject(res, query.get('entry'));
+        if (!entryId) return true;
+        const name = decodeURIComponent(urlPath.slice('/images/'.length));
+        const file = storeFor(entryId).imagePath(name);
+        if (fs.existsSync(file) && fs.statSync(file).isFile()) {
+          sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
+        } else {
+          sendJson(res, 404, { error: 'not found' });
+        }
+        return true;
+      },
+    },
+    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done。
+    {
+      methods: ['POST'],
+      match: STATUS_ROUTE,
+      run: async ({ req, res, urlPath }) => {
+        const parts = urlPath.match(STATUS_ROUTE);
+        const parsed = await readEntryBody(req, res);
+        if (!parsed) return true;
+        const { body, entryId } = parsed;
+        const rawId = decodeURIComponent(parts[2]);
+        const numeric = /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId;
+        const result = storeFor(entryId).setStatus({
+          page: decodeURIComponent(parts[1]),
+          id: numeric,
+          status: body.status,
+          baseRevision: body.baseRevision,
+        });
+        if (result.status !== 200) {
+          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          return true;
+        }
+        broadcastAnnotations(result.doc, entryId);
+        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+        return true;
+      },
+    },
+    // Re-read the registry file and swap the shared in-memory snapshot, so a
+    // `pinpoint add` takes effect for serving / injection / bucket routing
+    // without a server restart. Only a live registry-store is reloadable; a
+    // static snapshot (tests) answers 409.
+    {
+      methods: ['POST'],
+      match: '/registry/reload',
+      run: ({ res }) => {
+        if (typeof registry.reload !== 'function') {
+          sendJson(res, 409, { error: 'registry_not_reloadable' });
+          return true;
+        }
+        const next = registry.reload();
+        const summary = registrySummary(next);
+        // CLI 写文件后的 reload：条目可能增删改名，照旧按条目级广播。
+        onRegistryReload(summary, 'entries');
+        sendJson(res, 200, summary);
+        return true;
+      },
+    },
+    {
+      methods: ['POST'],
+      match: '/save',
+      run: async ({ req, res }) => {
+        const parsed = await readEntryBody(req, res);
+        if (!parsed) return true;
+        const { body, entryId } = parsed;
+        const store = storeFor(entryId);
+        const result = store.save({
+          page: body.page,
+          path: body.path,
+          updated_at: body.updated_at,
+          baseRevision: body.baseRevision,
+          annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
+        });
+        if (result.status !== 200) {
+          sendJson(res, result.status, { error: result.error, ...result.doc });
+          return true;
+        }
+        broadcastAnnotations(result.doc, entryId);
+        const count = (result.doc.annotations || []).length;
+        sendJson(res, 200, {
+          saved: store.jsonPathFor(result.doc.page),
+          count,
+          revision: result.doc.revision,
+          // M1：#n 由服务端发，应答把带号的行带回，客户端按 id 认领覆盖本地的
+          // 临时号（nextN 只是显示占位）。
+          annotations: result.doc.annotations,
+        });
+        return true;
+      },
+    },
+    {
+      methods: ['POST'],
+      match: '/image',
+      run: async ({ req, res }) => {
+        const parsed = await readEntryBody(req, res);
+        if (!parsed) return true;
+        const { body, entryId } = parsed;
+        const data = String(body.data ?? '');
+        const match = data.match(/^data:image\/(\w+);base64,(.+)$/s);
+        if (!match) {
+          sendJson(res, 400, { error: 'bad dataURL' });
+          return true;
+        }
+        const extension = ['jpeg', 'jpg', 'webp', 'gif'].includes(match[1]) ? match[1] : 'png';
+        const image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
+        sendJson(res, 200, image);
+        return true;
+      },
+    },
+  ];
+
+  function pathMatches(match, urlPath) {
+    if (typeof match === 'string') return urlPath === match;
+    if (match instanceof RegExp) return match.test(urlPath);
+    return match(urlPath);
+  }
+
   return async function handleAnnotate(req, res, urlPath) {
     if (req.method === 'OPTIONS') {
       cors(res);
@@ -363,178 +573,11 @@ export function createAnnotateHandler(options = {}) {
       res.end();
       return true;
     }
-
     // urlPath has the query stripped by the caller; req.url keeps it.
     const query = parseReqUrl(req).query;
-
-    if ((req.method === 'GET' || req.method === 'HEAD') &&
-        (urlPath === '/annotate.js' || ANNOTATE_BUNDLE_URL_RE.test(urlPath))) {
-      await serveAnnotateClient(req, res, urlPath);
-      return true;
-    }
-
-    if (req.method === 'GET' && urlPath === '/health') {
-      // dataDir stays the default bucket path so existing `jq -r .dataDir`
-      // consumers keep working; dataRoot + registry carry the new model.
-      sendJson(res, 200, {
-        ok: true,
-        // root = the repository this service is actually running out of.
-        // `pinpoint status` compares it with the CLI's own repo root: a long
-        // lived vite that survived a directory move keeps the absolute paths
-        // it resolved at boot, so "process alive, wrong root" is a real and
-        // otherwise invisible failure mode (docs/debugging.md, 2026-09-04).
-        root: serviceRoot,
-        dataDir: bucketDir(root, DEFAULT_ENTRY),
-        dataRoot: root,
-        registry: registrySummary(registry),
-      });
-      return true;
-    }
-
-    if (req.method === 'GET' && urlPath === '/registry') {
-      sendJson(res, 200, registryPayload());
-      return true;
-    }
-
-    // 分组层的写接口（workbench 的文件夹操作；CLI 仍是文件直写 + reload）。
-    if (req.method === 'PUT' && urlPath.startsWith('/registry/')) {
-      return handleRegistryWrite(req, res, urlPath);
-    }
-
-    if (req.method === 'GET' && urlPath === '/events') return handleSse(req, res);
-
-    if (req.method === 'GET' && urlPath === '/annotations') {
-      // Debug aggregate: flatten every bucket into [{entry, page, ...}]. 桶 = 页：
-      // registry 条目 + manifest 模板页都是页桶，都在列。
-      const docs = [];
-      const seen = new Set();
-      for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds()]) {
-        if (seen.has(id)) continue;
-        seen.add(id);
-        for (const doc of Object.values(storeFor(id).listDocs())) {
-          docs.push({ entry: id, ...doc });
-        }
-      }
-      sendJson(res, 200, docs);
-      return true;
-    }
-
-    if (req.method === 'GET' && urlPath.startsWith('/annotations/')) {
-      const entryId = entryOrReject(res, query.get('entry'));
-      if (!entryId) return true;
-      const page = ledgerKey(decodeURIComponent(urlPath.slice('/annotations/'.length)));
-      sendJson(res, 200, storeFor(entryId).readDoc(page));
-      return true;
-    }
-
-    if (req.method === 'GET' && urlPath.startsWith('/images/')) {
-      const entryId = entryOrReject(res, query.get('entry'));
-      if (!entryId) return true;
-      const name = decodeURIComponent(urlPath.slice('/images/'.length));
-      const file = storeFor(entryId).imagePath(name);
-      if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-        sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
-      } else {
-        sendJson(res, 404, { error: 'not found' });
-      }
-      return true;
-    }
-
-    if (req.method !== 'POST' || !(['/save', '/image', '/registry/reload'].includes(urlPath) || STATUS_ROUTE.test(urlPath))) return false;
-
-    // pp2 状态机：ppnt mark 的后端 —— open / check → check / done。
-    if (req.method === 'POST' && STATUS_ROUTE.test(urlPath)) {
-      const parts = urlPath.match(STATUS_ROUTE);
-      let body;
-      try {
-        body = JSON.parse(await readBody(req));
-      } catch {
-        sendJson(res, 400, { error: 'bad_json' });
-        return true;
-      }
-      const entryId = entryOrReject(res, body.entry);
-      if (!entryId) return true;
-      const rawId = decodeURIComponent(parts[2]);
-      const numeric = /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId;
-      const result = storeFor(entryId).setStatus({
-        page: decodeURIComponent(parts[1]),
-        id: numeric,
-        status: body.status,
-        baseRevision: body.baseRevision,
-      });
-      if (result.status !== 200) {
-        sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
-        return true;
-      }
-      broadcastAnnotations(result.doc, entryId);
-      sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
-      return true;
-    }
-
-    // Re-read the registry file and swap the shared in-memory snapshot, so a
-    // `pinpoint add` takes effect for serving / injection / bucket routing
-    // without a server restart. Only a live registry-store is reloadable; a
-    // static snapshot (tests) answers 409.
-    if (urlPath === '/registry/reload') {
-      if (typeof registry.reload !== 'function') {
-        sendJson(res, 409, { error: 'registry_not_reloadable' });
-        return true;
-      }
-      const next = registry.reload();
-      const summary = registrySummary(next);
-      // CLI 写文件后的 reload：条目可能增删改名，照旧按条目级广播。
-      onRegistryReload(summary, 'entries');
-      sendJson(res, 200, summary);
-      return true;
-    }
-
-    let body;
-    try {
-      body = JSON.parse(await readBody(req));
-    } catch {
-      sendJson(res, 400, { error: 'bad_json' });
-      return true;
-    }
-
-    const entryId = entryOrReject(res, body.entry);
-    if (!entryId) return true;
-    const store = storeFor(entryId);
-
-    if (urlPath === '/save') {
-      const result = store.save({
-        page: body.page,
-        path: body.path,
-        updated_at: body.updated_at,
-        baseRevision: body.baseRevision,
-        annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
-      });
-      if (result.status !== 200) {
-        sendJson(res, result.status, { error: result.error, ...result.doc });
-        return true;
-      }
-      broadcastAnnotations(result.doc, entryId);
-      const count = (result.doc.annotations || []).length;
-      sendJson(res, 200, {
-        saved: store.jsonPathFor(result.doc.page),
-        count,
-        revision: result.doc.revision,
-        // M1：#n 由服务端发，应答把带号的行带回，客户端按 id 认领覆盖本地的
-        // 临时号（nextN 只是显示占位）。
-        annotations: result.doc.annotations,
-      });
-      return true;
-    }
-
-    const data = String(body.data ?? '');
-    const match = data.match(/^data:image\/(\w+);base64,(.+)$/s);
-    if (!match) {
-      sendJson(res, 400, { error: 'bad dataURL' });
-      return true;
-    }
-    const extension = ['jpeg', 'jpg', 'webp', 'gif'].includes(match[1]) ? match[1] : 'png';
-    const image = store.writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
-    sendJson(res, 200, image);
-    return true;
+    const route = routes.find((r) => r.methods.includes(req.method) && pathMatches(r.match, urlPath));
+    if (!route) return false;
+    return route.run({ req, res, urlPath, query });
   };
 }
 
