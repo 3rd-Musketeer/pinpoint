@@ -163,16 +163,6 @@ test('/registry returns the registered entries', async (t) => {
   assert.equal(json.path, registry.path);
 });
 
-test('/registry reports the service direct origin for extension injection', async (t) => {
-  const { registry, dataRoot } = withFixture(t);
-  const handler = createAnnotateHandler({ dataRoot, registry, directOrigin: 'http://127.0.0.1:4612' });
-  const { json } = await call(handler, 'GET', '/registry');
-  assert.deepEqual(json.service, { directOrigin: 'http://127.0.0.1:4612' });
-  // 未接线时（handler 单测默认）也要保持响应形状稳定。
-  const bare = await call(withFixture(t).handler, 'GET', '/registry');
-  assert.deepEqual(bare.json.service, { directOrigin: null });
-});
-
 test('SSE broadcasts carry the entry of the saved bucket', async (t) => {
   const { handler } = withFixture(t);
   const sseRes = mockRes();

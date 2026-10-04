@@ -26,7 +26,7 @@ const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
 const sseClients = new Set();
 let heartbeatTimer = null;
 
-// Extension-injected clients call this API cross-origin (e.g. from
+// Cross-origin prototype pages call this API (e.g. from
 // https://my-todos.localhost to https://pinpoint.localhost). No credentials
 // are involved, so a plain `*` preflight contract covers every route.
 function cors(res) {
@@ -77,7 +77,7 @@ function mimeFor(name) {
 // ---- /annotate.js · /annotate.<hash>.js（审计 B3）----------------------------
 // 同一份构建产物两个地址：哈希地址 immutable 永久缓存（pinpoint 生成的注入点都
 // 引用它）；老地址 ETag（内容哈希）+ no-cache + If-None-Match 304 —— 内容页里的
-// 手写标签、浏览器扩展与跨域注入还走这里，每次刷新只付一次 revalidate。
+// 手写标签与跨域注入还走这里，每次刷新只付一次 revalidate。
 // gzip / brotli 在构建期压好，按 Accept-Encoding 挑；HEAD 与 GET 走同一套头
 // （HEAD 只回头），构建失败显式 500 带原因，绝不静默发旧版。
 
@@ -175,14 +175,6 @@ export function createAnnotateHandler(options = {}) {
   const serviceRoot = options.root || ROOT;
   const registry = options.registry || loadRegistry({ root: ROOT });
   const stores = options.stores || new Map();
-  // Direct loopback origin the annotate API is actually bound to (bypassing
-  // any TLS proxy such as portless). The browser extension injects the
-  // annotate client from this origin because Chromium applies the default
-  // extension CSP to content-script-injected scripts — a policy that
-  // whitelists http://localhost:* / http://127.0.0.1:* but not remote https
-  // origins. String or lazy resolver; null when the server is not listening.
-  const directOrigin = options.directOrigin || (() => null);
-  const resolveDirectOrigin = typeof directOrigin === 'function' ? directOrigin : () => directOrigin;
   // After a grouping write or POST /registry/reload — the vite plugin wires
   // this to an HMR `registry:update` event so open workbenches refresh their
   // Pages. scope 告诉前端这次动了什么：'grouping' = 只动分组 / 顺序 / 折叠
@@ -228,7 +220,6 @@ export function createAnnotateHandler(options = {}) {
       pageOrder: registry.pageOrder || {},
       errors: registry.errors,
       warnings: registry.warnings,
-      service: { directOrigin: resolveDirectOrigin() },
     };
   }
 
@@ -550,12 +541,6 @@ export function createAnnotateHandler(options = {}) {
 export default function annotateApi(options = {}) {
   let httpServer = null;
   let viteServer = null;
-  const directOrigin = options.directOrigin || (() => {
-    const address = httpServer && typeof httpServer.address === 'function' ? httpServer.address() : null;
-    if (!address || typeof address !== 'object') return null; // not listening yet
-    const loopback = ['::', '0.0.0.0', '::1', 'localhost'].includes(address.address) ? '127.0.0.1' : address.address;
-    return `http://${loopback}:${address.port}`;
-  });
   const onRegistryReload = options.onRegistryReload || ((summary, scope) => {
     // Tell open workbenches the registry changed; stage.js invalidates its
     // registry-sites query and re-pulls the page manifest off this event.
@@ -563,7 +548,7 @@ export default function annotateApi(options = {}) {
     // （审计 B2：分组写接口的整板重装是纯浪费）。
     if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: { ...summary, scope: scope || 'entries' } });
   });
-  const handleAnnotate = createAnnotateHandler({ ...options, directOrigin, onRegistryReload });
+  const handleAnnotate = createAnnotateHandler({ ...options, onRegistryReload });
   return {
     name: 'annotate-api',
     configureServer(server) {
