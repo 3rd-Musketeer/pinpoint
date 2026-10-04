@@ -103,30 +103,6 @@ export function nextFolderId(existingIds, name) {
   }
 }
 
-/* ---- 「最近」段（2026-09-04 裁决 5c：最近打开，本地记录）----------------
-   记录形状 [{id, at}]，最新在前，最多 RECENT_MAX 条。落 prefs.recentPages
-   （localStorage），与登记表无关——「最近」是这台机器上的行为，不是页的属性。 */
-
-export var RECENT_MAX = 5;
-
-export function pushRecent(list, pageId, nowMs) {
-  if (!pageId) return (list || []).slice(0, RECENT_MAX);
-  var rest = (list || []).filter(function (row) { return row && row.id !== pageId; });
-  return [{ id: pageId, at: nowMs }].concat(rest).slice(0, RECENT_MAX);
-}
-
-/** 记录 → 可渲染的行：只留还存在的页，带上打开时刻（行尾相对时间用它，不是 mtime）。 */
-export function recentRows(list, pages) {
-  var byId = {};
-  (pages || []).forEach(function (page) { byId[page.id] = page; });
-  var out = [];
-  (list || []).forEach(function (row) {
-    if (!row || !byId[row.id]) return;
-    out.push({ page: byId[row.id], at: row.at });
-  });
-  return out.slice(0, RECENT_MAX);
-}
-
 /* 页面类型 → 图标（owner 2026-09-05 定的映射，与横条类型标同一套词，见
    board-entries.js ENTRY_TAG_LABELS）：画布 = 目录条目 board ios（多屏排在画布上）
    → smartphone；文档 = 单份 HTML 或 board html → file-text；网页 = url 条目 → globe。

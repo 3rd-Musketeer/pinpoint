@@ -7,8 +7,6 @@ import {
   groupPages,
   nextFolderId,
   orderOfPage,
-  pushRecent,
-  recentRows,
   visiblePages,
   PAGE_KIND_ICONS,
   pageKindKey
@@ -71,19 +69,6 @@ test('新夹 id：名称能派生 slug 就用，中文名或撞车落 folder-N',
   assert.equal(nextFolderId([], 'Design Drafts'), 'design-drafts');
   assert.equal(nextFolderId(['design-drafts'], 'Design Drafts'), 'folder-1');
   assert.equal(nextFolderId(['folder-1'], '设计稿'), 'folder-2');
-});
-
-test('最近：最新在前、去重、封顶五条；只渲染还存在的页', () => {
-  var list = [];
-  ['a', 'b', 'c', 'd', 'e', 'f'].forEach((id, i) => { list = pushRecent(list, id, 100 + i); });
-  assert.deepEqual(list.map((r) => r.id), ['f', 'e', 'd', 'c', 'b']);
-
-  list = pushRecent(list, 'b', 200);
-  assert.deepEqual(list.map((r) => r.id), ['b', 'f', 'e', 'd', 'c']);
-  assert.equal(list[0].at, 200);
-
-  var rows = recentRows(list, [{ id: 'b', title: 'B' }, { id: 'e', title: 'E' }]);
-  assert.deepEqual(rows.map((r) => [r.page.id, r.at]), [['b', 200], ['e', 104]]);
 });
 
 test('pageKindKey：画布 / 文档 / 网页三分，每种都有图标', () => {

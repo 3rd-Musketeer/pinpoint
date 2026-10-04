@@ -142,8 +142,6 @@
   .wb-row:hover { background:var(--wb-hover); }
   .wb-row.on, .wb-row.on:hover { background:var(--wb-sel); font-weight:var(--wb-w-semibold); }
   .wb-row-glyph { width:14px; height:14px; flex:none; color:var(--wb-faint); }
-  /* 只剩「新建文件夹」一行用：把 folder-plus 图标对到文件夹行的夹图标那一列。 */
-  .wb-row-slot { width:14px; flex:none; }
   /* 页面行与最近行行首 = 类型图标（2026-09-05 下午 owner 定的映射：画布 / 文档 / 网页
      每行都有），14 + gap 7 = 21，标题离面板边 35px，与评审板 C1 / F2 一致。
      选中行图标转正色。文件夹行自己带 chevron + 夹图标。 */
@@ -326,16 +324,6 @@
   }
   #wbann-list .wb-ann-item--broken .wb-ann-text,
   #wbann-list .wb-ann-item--broken .wb-ann-cap { color:var(--wb-faint); }
-  /* 行尾「定位」= ghost 钮，hover / focus 才现出（H2） */
-  #wbann-pop .wb-ann-go {
-    flex:none; align-self:center; height:22px; padding:0 9px; margin-right:2px;
-    border:0; border-radius:var(--wb-r-2); background:var(--wb-fill);
-    font:var(--wb-w-medium) 11px/22px var(--wb-font); color:var(--wb-muted);
-    cursor:pointer; visibility:hidden;
-  }
-  #wbann-pop .wb-ann-item:hover .wb-ann-go,
-  #wbann-pop .wb-ann-item:focus-within .wb-ann-go { visibility:visible; }
-  #wbann-pop .wb-ann-go:hover { background:var(--wb-hover); color:var(--wb-fg); }
   /* 左栏紧凑断点（2026-08-16b 立，2026-08-16f 阶段 7 改指条目 tag）：左栏宽 < 230
      时 boot-prefs applySideWidth 给 #wbside 打 compact —— 产物条目的类型 tag
      （.wb-entry-tag，基础形态在 app/Sidebar.jsx Tailwind 类）整枚隐藏，只留标题；
@@ -523,7 +511,6 @@
     width:max-content; display:flex; align-items:flex-start; justify-content:flex-start;
     flex:none;
   }
-  .wb-sec-column { flex-direction:column; align-items:flex-start; gap:24px; flex-wrap:nowrap; }
   /* Row: titles, phones, and dims each share a row（2026-08-17：Frame Note 收编
      右栏 detail 面板，画布网格从四行收为三行）。 */
   .wb-sec-row {
@@ -746,19 +733,9 @@
      混合板里画布条目态也要藏住 doc 屏。one entry at a time; the sidebar picks which. */
   .wb-lib-item[data-doc-hidden],
   .wb-screen[data-doc-hidden] { display:none; }
-
   /* 「内容」区（#wbcontents、.wb-entry* 系、条目行导出钮）与旧 version switcher
      的视觉都收编在 app/Sidebar.jsx（V2/阶段 7）—— 旧 #wbdoc-versions/.wb-doc-ver
      规则删除；frame 树（.wb-outline/.ol-*）几何保留在上方大纲块。 */
-  .wb-export-options.wb-export-options--stack {
-    grid-auto-flow:row; grid-auto-columns:unset; grid-template-columns:1fr;
-  }
-  .wb-export-options.wb-export-options--stack .wb-export-option span {
-    justify-content:flex-start; min-height:40px; padding:8px 12px; gap:8px;
-  }
-  .wb-export-option-copy { display:flex; flex-direction:column; gap:1px; text-align:left; }
-  .wb-export-option-copy strong { font-size:12.5px; font-weight:var(--wb-w-semibold); color:inherit; }
-  .wb-export-option-copy small { font-size:11px; font-weight:var(--wb-w-medium); color:var(--wb-faint); }
   .wb-comp-stage .ios-root {
     display:block; width:100%; min-width:0;
     font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",sans-serif;
@@ -876,21 +853,6 @@
     transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
   }
   .wb-export-close:hover { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-export-back {
-    border:0; background:transparent; color:var(--wb-muted); cursor:pointer; flex:none;
-    width:28px; height:28px; padding:0; border-radius:var(--wb-r-2);
-    display:inline-flex; align-items:center; justify-content:center; font:inherit; font-size:22px;
-  }
-  .wb-export-back:hover { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-export-kinds { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
-  .wb-export-kinds button {
-    min-height:112px; padding:16px; border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
-    background:var(--wb-surface); color:var(--wb-fg); text-align:left; cursor:pointer;
-    display:flex; flex-direction:column; justify-content:center; gap:7px; font:inherit;
-  }
-  .wb-export-kinds button:hover { background:var(--wb-hover); border-color:color-mix(in srgb, var(--wb-accent) 45%, var(--wb-line)); }
-  .wb-export-kinds strong { font-size:14px; }
-  .wb-export-kinds span { color:var(--wb-muted); font-size:12px; line-height:1.45; }
   .wb-offline-summary {
     padding:14px; border:1px solid var(--wb-line); border-radius:var(--wb-r-4);
     background:var(--wb-surface); display:flex; flex-direction:column; gap:6px;
@@ -908,43 +870,6 @@
   .wb-offline-resource-copy span, .wb-offline-resource-copy code {
     color:var(--wb-faint); font:10px/1.35 var(--wb-font-mono); white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
   }
-  .wb-export-field { display:flex; flex-direction:column; gap:7px; }
-  .wb-export-label { color:var(--wb-muted); font-size:12px; font-weight:var(--wb-w-semibold); }
-  .wb-export-check {
-    display:flex; align-items:flex-start; gap:8px; padding:8px 10px;
-    border-radius:var(--wb-r-2); background:var(--wb-fill); cursor:pointer;
-    font-size:12.5px; font-weight:var(--wb-w-medium); color:var(--wb-fg);
-  }
-  .wb-export-check input { margin-top:2px; flex:none; accent-color:var(--wb-accent); }
-  .wb-export-check span { line-height:1.4; }
-  .wb-export-options { display:grid; grid-auto-flow:column; grid-auto-columns:1fr; gap:2px; padding:2px; border-radius:var(--wb-r-2); background:var(--wb-fill); }
-  .wb-export-option { position:relative; }
-  .wb-export-option input { position:absolute; opacity:0; pointer-events:none; }
-  .wb-export-option span {
-    display:flex; align-items:center; justify-content:center; min-height:24px; padding:0 9px;
-    border-radius:var(--wb-r-1); color:var(--wb-muted); font-size:12px; font-weight:var(--wb-w-semibold); cursor:pointer;
-    transition:background var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease);
-  }
-  .wb-export-option:hover span { background:var(--wb-hover); color:var(--wb-fg); }
-  .wb-export-option input:checked+span { background:var(--wb-surface); color:var(--wb-fg); box-shadow:var(--wb-sh-1); }
-  .wb-export-note-toggle { display:flex; align-items:flex-start; gap:9px; color:var(--wb-muted); font-size:13px; line-height:1.4; }
-  .wb-export-note-toggle input { margin-top:2px; accent-color:var(--wb-accent); }
-  .wb-export-status { min-height:17px; color:var(--wb-faint); font-size:12px; }
-  .wb-export-status.is-error { color:var(--wb-danger); }
-  .wb-export-tokens {
-    display:flex; flex-wrap:wrap; gap:8px; margin-top:-4px;
-  }
-  .wb-export-tokens[hidden] { display:none; }
-  .wb-export-token {
-    display:inline-flex; align-items:baseline; gap:5px;
-    min-height:26px; padding:3px 9px; border-radius:999px;
-    border:1px solid var(--wb-line); background:var(--wb-hover);
-    color:var(--wb-muted); font-size:11.5px; font-weight:var(--wb-w-semibold);
-  }
-  .wb-export-token-label { color:var(--wb-faint); font-weight:var(--wb-w-semibold); }
-  .wb-export-token-n { color:var(--wb-fg); font-variant-numeric:tabular-nums; font-weight:var(--wb-w-bold); }
-  .wb-export-token-pending { color:var(--wb-faint); font-size:12px; }
-  .wb-export-actions { display:flex; justify-content:flex-end; gap:8px; }
   .wb-export-action {
     min-height:28px; padding:0 12px; border:1px solid var(--wb-line); border-radius:var(--wb-r-2);
     background:var(--wb-surface); color:var(--wb-fg); font:inherit; font-size:13px; font-weight:var(--wb-w-semibold); cursor:pointer;
@@ -961,73 +886,6 @@
      checkbox 是 token 化手写皮肤 —— 与 .wb-export-* 同区同居。 */
   .wb-export-picker { width:648px; max-width:calc(100vw - 48px); }
   .wb-export-picker .wb-export-form { padding:14px 16px 12px; gap:12px; }
-  .wb-pk-body { display:flex; gap:14px; }
-  .wb-pk-tree {
-    width:228px; flex:none; display:flex; flex-direction:column; gap:1px;
-    max-height:min(56vh, 420px); overflow-y:auto;
-  }
-  .wb-pk-sec, .wb-pk-fr {
-    display:flex; align-items:center; gap:8px; width:100%; box-sizing:border-box;
-    padding:5px 6px; border:0; border-radius:var(--wb-r-2); background:transparent;
-    color:var(--wb-fg); font:inherit; font-size:12px; text-align:left; cursor:pointer;
-  }
-  .wb-pk-sec { font-weight:var(--wb-w-semibold); }
-  .wb-pk-fr { padding-left:26px; font-weight:var(--wb-w-medium); }
-  .wb-pk-sec:hover, .wb-pk-fr:hover { background:var(--wb-hover); }
-  .wb-pk-box {
-    width:14px; height:14px; border-radius:var(--wb-r-1); flex:none;
-    display:grid; place-items:center;
-    border:1px solid color-mix(in srgb, var(--wb-accent) 38%, transparent);
-    background:var(--wb-surface); color:transparent;
-    font-family:var(--wb-font-mono); font-size:9px; font-weight:var(--wb-w-bold); line-height:1;
-  }
-  .wb-pk-sec.on .wb-pk-box, .wb-pk-fr.on .wb-pk-box {
-    background:var(--wb-accent); border-color:var(--wb-accent); color:var(--wb-on-accent);
-  }
-  .wb-pk-letter {
-    width:18px; height:18px; border-radius:var(--wb-r-1); flex:none; text-align:center;
-    border:1px solid color-mix(in srgb, var(--wb-accent) 42%, transparent); color:var(--wb-accent);
-    font-family:var(--wb-font-mono); font-size:9.5px; font-weight:var(--wb-w-bold); line-height:18px;
-  }
-  .wb-pk-no {
-    min-width:20px; flex:none; color:var(--wb-accent);
-    font-family:var(--wb-font-mono); font-size:9px; font-weight:var(--wb-w-bold);
-    line-height:1; letter-spacing:.06em;
-  }
-  .wb-pk-name { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-  .wb-pk-dim {
-    margin-left:auto; flex:none; color:var(--wb-faint);
-    font-family:var(--wb-font-mono); font-size:9px; font-weight:var(--wb-w-medium); line-height:1;
-  }
-  .wb-pk-side { flex:1; min-width:0; display:flex; flex-direction:column; gap:10px; }
-  /* 预览面三态纹理与画布背景三态同源：画布 = 暖纸双线网格，透明 = 棋盘格 */
-  .wb-pk-pv {
-    height:292px; border-radius:var(--wb-r-4); box-sizing:border-box;
-    display:flex; flex-direction:column; align-items:center; justify-content:center;
-    gap:6px; padding:12px; overflow:auto;
-    box-shadow:inset 0 0 0 1px color-mix(in srgb, var(--wb-accent) 14%, transparent);
-  }
-  .wb-pk-pv[data-multi="true"] { flex-direction:row; align-items:flex-start; justify-content:flex-start; gap:16px; }
-  .wb-pk-pv[data-bg="canvas"] {
-    background:#faf8f4;
-    background-image:
-      linear-gradient(color-mix(in srgb, var(--wb-accent) 13%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--wb-accent) 13%, transparent) 1px, transparent 1px),
-      linear-gradient(color-mix(in srgb, var(--wb-accent) 6%, transparent) 1px, transparent 1px),
-      linear-gradient(90deg, color-mix(in srgb, var(--wb-accent) 6%, transparent) 1px, transparent 1px);
-    background-size:120px 120px, 120px 120px, 24px 24px, 24px 24px;
-  }
-  .wb-pk-pv[data-bg="white"] { background:#fff; }
-  .wb-pk-pv[data-bg="transparent"] {
-    background:repeating-conic-gradient(#ececee 0 25%, #fff 0 50%); background-size:14px 14px;
-  }
-  .wb-pk-pv.is-loading .wb-pk-pv-item { opacity:.55; }
-  .wb-pk-pv-item { flex:none; display:flex; }
-  .wb-pk-pv-item img { display:block; width:auto; height:auto; max-width:100%; max-height:268px; object-fit:contain; }
-  .wb-pk-pv-empty { margin:0; font-size:10.5px; color:var(--wb-faint); }
-  .wb-pk-opt { display:flex; align-items:center; gap:8px; font-size:11px; }
-  .wb-pk-k { width:40px; flex:none; font-weight:var(--wb-w-semibold); color:var(--wb-fg); }
-  .wb-pk-opt .wb-export-options { flex:1; }
   .wb-pk-ft { display:flex; align-items:center; gap:8px; }
   .wb-pk-st { flex:1; min-width:0; font-size:10.5px; color:var(--wb-faint); }
   .wb-pk-st.is-error { color:var(--wb-danger); }

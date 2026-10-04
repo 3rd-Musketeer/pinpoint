@@ -168,11 +168,6 @@ function isPhoneFrame(pageId, shell) {
   return shell !== 'doc' && shell !== 'comp';
 }
 
-/** 尺寸行文案：手机机身 frame → '402 × 874'，其余画板 → ''（导出 picker tree 复用）。 */
-export function frameDimLabel(pageId, shell) {
-  return isPhoneFrame(pageId, shell) ? IOS_DEVICE_DIM : '';
-}
-
 function screenClassForShell(pageId, shell, viewport) {
   if (shell === 'comp') return 'wb-screen wb-screen--comp';
   if (shell === 'doc') return viewport === 'phone' ? 'wb-screen wb-screen--phone-doc' : 'wb-screen wb-screen--doc';
