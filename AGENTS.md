@@ -85,6 +85,7 @@ agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工
   快照只在第一次启动时复制；要重新取真实数据就删掉这个目录再起。停预览在它的终端按 Ctrl-C
   （预览和常驻服务的进程命令行一样，不要按命令行 pkill）。`git worktree remove` 时快照随之删除。
   worktree 里要有 `node_modules`（`npm ci`，或软链 clone 的）。
+- 删 CSS class 前先 grep 运行时拼接的写法（如 `'wb-sec-' + layout`），静态扫描看不到它们；删后跑 `e2e/viewport.spec.js`。
 - `just ship` 是唯一的推送工作流：要求在 `main`、工作区干净、不与 `origin/main` 发散，
   跑完整 check，推 `origin/main`，再核对 ref。它会改远端状态；不要绕过失败的 guard，不要 force-push。
 - 推没推看 git：`git log --oneline origin/main..main` 为空就是都推了。
