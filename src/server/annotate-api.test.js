@@ -360,3 +360,53 @@ test('a concurrent ledger write rejects a stale /status with revision_conflict a
   assert.equal(after.json.annotations[0].content, '另一窗口更新后的意见');
   assert.equal(after.json.annotations[0].status, 'open');
 });
+
+// 路由优先级 / 交给下一个中间件：handled=false 的请求必须原样落到 vite 的静态服务。
+test('route dispatch: which method+path combos are claimed and which fall through', async (t) => {
+  const { handler } = withFixture(t);
+  const claimed = [
+    ['OPTIONS', '/anything/at/all', 204],
+    ['GET', '/health', 200],
+    ['GET', '/registry', 200],
+    ['GET', '/annotations', 200],
+    ['GET', '/annotations/index?entry=pinpoint', 200],
+    ['GET', '/annotations/index?entry=ghost', 400],
+    ['GET', '/images/nope.png?entry=pinpoint', 404],
+    ['PUT', '/registry/folders', 409],
+    ['PUT', '/registry/order', 409],
+    ['POST', '/registry/reload', 409],
+    ['POST', '/save', 400],
+    ['POST', '/image', 400],
+    ['POST', '/annotations/index/1/status', 400],
+  ];
+  for (const [method, url, status] of claimed) {
+    const { handled, res } = await call(handler, method, url, method === 'GET' ? undefined : {});
+    assert.equal(handled, true, `${method} ${url} should be claimed`);
+    assert.equal(res.statusCode, status, `${method} ${url} status`);
+  }
+  const fallsThrough = [
+    ['GET', '/'], ['GET', '/index.html'], ['GET', '/save'], ['GET', '/image'],
+    ['GET', '/registry/reload'], ['GET', '/registry/folders'], ['GET', '/registry/entries/web/folder'],
+    ['POST', '/registry'], ['POST', '/health'], ['POST', '/annotate.js'], ['POST', '/annotations'],
+    ['PUT', '/save'], ['PUT', '/registry'], ['DELETE', '/save'], ['DELETE', '/registry/folders'],
+    ['POST', '/annotations/index/1'], ['POST', '/annotations/index/1/status/x'],
+  ];
+  for (const [method, url] of fallsThrough) {
+    const { handled } = await call(handler, method, url, method === 'GET' ? undefined : {});
+    assert.equal(handled, false, `${method} ${url} should fall through`);
+  }
+});
+
+test('route dispatch: PUT /registry/<unknown> is claimed by the write handler but falls through once writable', async (t) => {
+  const { handler } = withFixture(t);
+  // 静态 registry 不可写：整个 PUT /registry/ 前缀先答 409，不问子路径。
+  const { handled, res } = await call(handler, 'PUT', '/registry/unknown', {});
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 409);
+});
+
+test('route dispatch: HEAD and GET share the annotate client route; HEAD elsewhere falls through', async (t) => {
+  const { handler } = withFixture(t);
+  assert.equal((await call(handler, 'HEAD', '/health')).handled, false);
+  assert.equal((await call(handler, 'HEAD', '/registry')).handled, false);
+});
