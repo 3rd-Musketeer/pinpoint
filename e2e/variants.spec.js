@@ -167,6 +167,8 @@ test('展开的组有组底框，收起没有；框圈住组里全部变体', as
   await frame(page, 'confirm-grant').locator('[data-var-toggle]').click();
   const box = page.locator('#wb-board-panel .wb-var-box');
   await expect(box).toHaveCount(1);
+  // 展开会带动画把视窗移到选中的变体：等位置不再变再量。
+  await expect.poll(async () => { const a = (await rectOf(page, 'confirm-grant')).left; await page.waitForTimeout(150); return a === (await rectOf(page, 'confirm-grant')).left; }).toBe(true);
   const b = await box.evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });
   const first = await rectOf(page, 'confirm-grant');
   const last = await rectOf(page, 'confirm-inline');

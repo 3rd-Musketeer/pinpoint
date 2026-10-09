@@ -198,7 +198,7 @@ export function wireVariants(panel, options) {
       change(panel, pageId, group, { open: !state.open, sel: state.sel }, screen);
       // 展开：后面的帧右移、组变宽，选中的那个可能被挤出视窗——把视窗带到它身上。
       if (!state.open && window.workbench && window.workbench.focusFrame) {
-        window.workbench.focusFrame(group.section.getAttribute('data-ann-section'), state.sel, { smooth: false });
+        window.workbench.focusFrame(group.section.getAttribute('data-ann-section'), state.sel);
       }
     }
   });
