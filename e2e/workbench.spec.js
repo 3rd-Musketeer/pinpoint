@@ -1961,6 +1961,9 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
     await clearBtn.click();
     await expect(clearBtn).toHaveText('确认清空未关闭标注（1）');
     await clearBtn.click();
+    // 「···」菜单在右栏顶部展开，会盖住下面的筛选段：点列表标题收菜单（Esc 会连列表一起关）。
+    await page.locator('.wb-ann-pop-title').click();
+    await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
 
     // open 行没了，close 行还在账本里；closed 筛选里找得到它
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
@@ -2012,13 +2015,13 @@ test('浮动外壳几何：面板 / 横条 / 弹出列表都在视口内且互�
   // 面板与横条不重叠（横条永远整条可见）
   expect(a.side.bottom).toBeLessThanOrEqual(a.strip.top);
 
-  // 弹出列表贴横条右端、落在横条上方，整块在视口内
+  // 标注列表是右栏：与左栏同几何，右缘、上缘距视口 12px，下沿停在横条上方 12px，整块在视口内
   await openAnnList(page);
   const b = await rects();
-  expect(Math.abs(b.pop.right - b.strip.right)).toBeLessThan(2);
-  expect(b.pop.bottom).toBeLessThanOrEqual(b.strip.top);
-  expect(Math.round(b.pop.width)).toBe(280);
-  expect(b.pop.top).toBeGreaterThan(0);
+  expect(Math.round(b.vw - b.pop.right)).toBe(12);
+  expect(Math.round(b.pop.top)).toBe(12);
+  expect(Math.round(b.pop.bottom)).toBe(Math.round(b.strip.top) - 12);
+  expect(Math.round(b.pop.width)).toBe(320);
   await closeAnnList(page);
 
   // 收起左栏：面板退场，横条与它的 Pages 开关照旧在视口内

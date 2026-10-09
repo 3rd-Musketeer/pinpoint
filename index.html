@@ -397,14 +397,19 @@
   #wbdock {
     position:absolute; z-index:var(--wb-z-dock); inset:0; pointer-events:none;
   }
+  /* 标注列表 = 右栏（2026-10-09 owner：弹出卡经常挡视野、使用又高频）：与左栏同一套
+     浮起面板几何 —— 右缘、上缘距视口 --wb-chrome-gap，下沿停在横条上方同一间距，
+     宽 --wb-annpanel-w；画布 dock 在它开着时让到它左边（见下），chromeInsets 也把它算进去。 */
+  .wb { --wb-annpanel-w:320px; }
   .wb-dock-card {
     position:absolute; pointer-events:auto;
-    right:calc(50% - var(--wb-strip-w) / 2);
-    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
-    width:280px; max-height:60vh;
+    right:var(--wb-chrome-gap); top:var(--wb-chrome-gap);
+    bottom:calc(var(--wb-strip-h) + var(--wb-chrome-gap) * 2);
+    width:var(--wb-annpanel-w); max-height:none;
     display:flex; flex-direction:column; overflow:hidden;
     border-radius:var(--wb-r-glass);
   }
+  .wb:has(#wbann-pop) .wb-canvas-dock { right:calc(var(--wb-chrome-gap) * 2 + var(--wb-annpanel-w)); }
   /* 画布 dock（section-nav + minimap）：2026-09-04 起停靠画布右下角、横条正上方。
      开关钮虽然搬进了横条中段，面板本体仍留在角上——横条中段正上方是底部
      composer（#ann-box，居中 720 宽）的地盘，两者会压在一起。右下角同时避开

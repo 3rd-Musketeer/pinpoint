@@ -409,8 +409,6 @@ test('annotation jumps center the annotation frame, and typing never moves the c
     await page.locator('.wb-ann-item-main[data-ann-n="'+n+'"]').click();
     await expect(page.locator('#ann-box')).toBeVisible();
     await expect(page.locator('#wbann-pop')).toBeVisible();
-    await page.locator('#wbann-count').click();
-    await expect(page.locator('#wbann-pop')).toHaveCount(0);
     await expect(page.locator('#ann-box')).toBeVisible();
     // 落点 = 标注所在 frame 居中（owner 2026-09-30：以 frame 为中心比以标注为中心直觉；此前是
     // 标注 + 输入框成对居中）。composer 在弹簧动画期间 visibility:hidden，可见即已落定；
@@ -429,5 +427,8 @@ test('annotation jumps center the annotation frame, and typing never moves the c
     await page.keyboard.insertText('\n继续输入，不移动画布\n第三行');
     await expect.poll(()=>page.evaluate(()=>({left:document.querySelector('#wbstage').scrollLeft,top:document.querySelector('#wbstage').scrollTop}))).toEqual({left:settled.left,top:settled.top});
     await page.locator('#ann-close').click();
+    // 右栏开着时落点已按它让开；基准也是在开着时量的。收栏不动画布。
+    await page.locator('#wbann-count').click();
+    await expect(page.locator('#wbann-pop')).toHaveCount(0);
   }
 });

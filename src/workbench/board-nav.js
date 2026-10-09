@@ -254,6 +254,11 @@ export function chromeInsets() {
     var sr = side.getBoundingClientRect();
     if (sr.width > 1) out.left = Math.max(0, sr.right - stageRect.left + 12);
   }
+  var annPanel = document.getElementById('wbann-pop');
+  if (annPanel) {
+    var ar = annPanel.getBoundingClientRect();
+    if (ar.width > 1) out.right = Math.max(0, stageRect.right - ar.left + 12);
+  }
   var strip = document.getElementById('wbstrip');
   if (strip) {
     var tr = strip.getBoundingClientRect();
