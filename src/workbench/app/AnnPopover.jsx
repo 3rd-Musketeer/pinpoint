@@ -63,6 +63,7 @@ export function AnnPopover() {
   var focusAnnN = useWorkbenchStore(function (s) { return s.focusAnnN; });
   var listRef = useRef(null);
   var [clearArmed, setClearArmed] = useState(null);
+  var [menuOpen, setMenuOpen] = useState(false);
   var clearTimer = useRef(0);
 
   useEffect(function () {
@@ -113,6 +114,7 @@ export function AnnPopover() {
     }
     clearTimeout(clearTimer.current);
     setClearArmed(false);
+    setMenuOpen(false);
     var a = annotateApi(); if (a) { if (kind === 'invalid') a.clearInvalid(); else a.clear(); }
   }
 
@@ -174,7 +176,7 @@ export function AnnPopover() {
         <span className="flex-1"></span>
         {/* 「···」只在有标注时出现 —— 里面唯一的一项是清空，没有标注就没有动作 */}
         {snap.count ? (
-          <DropdownMenu.Root modal={false} onOpenChange={function () { setClearArmed(null); }}>
+          <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={function (o) { setMenuOpen(o); setClearArmed(null); }}>
             <DropdownMenu.Trigger asChild>
               <Button type="button" variant="tool" size="icon" id="wbann-more"
                 aria-label="更多标注操作" title="更多">

@@ -1961,8 +1961,7 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
     await clearBtn.click();
     await expect(clearBtn).toHaveText('确认清空未关闭标注（1）');
     await clearBtn.click();
-    // 「···」菜单在右栏顶部展开，会盖住下面的筛选段：点列表标题收菜单（Esc 会连列表一起关）。
-    await page.locator('.wb-ann-pop-title').click();
+    // 确认清空后菜单自己收起（它在右栏顶部展开，开着会盖住下面的筛选段）。
     await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
 
     // open 行没了，close 行还在账本里；closed 筛选里找得到它
@@ -1973,6 +1972,16 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
     await expect(row.locator('.wb-ann-status-tag')).toHaveText('close');
     await expect(row.locator('.wb-ann-text')).toContainText('close loop mark');
   });
+
+  // 一次 Esc 只关最上面那层：菜单开着先关菜单、列表留着，再按才关列表。
+  await page.locator('#wbann-more').click();
+  await expect(page.locator('.wb-ann-more-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.wb-ann-more-menu')).toHaveCount(0);
+  await expect(page.locator('#wbann-pop')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wbann-pop')).toHaveCount(0);
+  await openAnnList(page);
 
   // 重新打开 → closed 计数回 0（空态），切回 pending 行在
   await row.getByRole('button', { name: '重新打开标注 ' + n, exact: true }).click();
