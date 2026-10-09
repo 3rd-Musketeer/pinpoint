@@ -5,7 +5,7 @@ import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { compilePage, listPageIds, renderScreenHtml, resolvePageTarget } from '../../src/server/lib/page-compiler.js';
 import { isWatchedSource, planPageRecompile } from '../../src/server/lib/recompile-plan.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
-import { refLikeFrameIds } from '../../src/workbench/lib/board-refs.js';
+import { refLikeFrameIds, refLikeTitles } from '../../src/workbench/lib/board-refs.js';
 
 import { REPO_ROOT, ioOf } from './core.js';
 import { resolveRegistryPath } from './registry.js';
@@ -40,10 +40,19 @@ export function refLikeIdNotice(pageDir) {
     return '';
   }
   const ids = refLikeFrameIds(board);
-  if (!ids.length) return '';
-  const shown = ids.slice(0, 3).join('、') + (ids.length > 3 ? ` 等 ${ids.length} 个帧 id ` : ' 这些帧 id ');
-  return `注意 ${shown}形如编号。编号按 board 顺序派生、调序就变，id 不变；`
-    + '新帧的 id 用描述内容的短词（如 detail-noop-run），已有的帧不要改名（id 是标注锚点）。';
+  const notes = [];
+  if (ids.length) {
+    const shown = ids.slice(0, 3).join('、') + (ids.length > 3 ? ` 等 ${ids.length} 个帧 id ` : ' 这些帧 id ');
+    notes.push(`注意 ${shown}形如编号。编号按 board 顺序派生、调序就变，id 不变；`
+      + '新帧的 id 用描述内容的短词（如 detail-noop-run），已有的帧不要改名（id 是标注锚点）。');
+  }
+  const titles = refLikeTitles(board);
+  if (titles.length) {
+    const shown = titles.slice(0, 3).map((t) => `“${t}”`).join('、') + (titles.length > 3 ? ` 等 ${titles.length} 个标题 ` : ' 这些标题 ');
+    notes.push(`注意 ${shown}以编号开头。编号由系统按 board 顺序派生，手写必重复（ADR 0026）；`
+      + '同一个关键帧要画几种做法，用变体组（screen 条目写 variants），不要自造编号。');
+  }
+  return notes.join('\n');
 }
 
 function printBuildResult(result, { out, err }, plan = null) {

@@ -4,9 +4,11 @@
  *   #12          本页标注序号（registry entry 内单调、跨账本唯一）
  *   <entry>#12   跨页标注（plugins#12）
  *   #3-#7        区间（含端点）
- *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
+ *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）；若 B3 是变体组，则是组内全部变体
+ *   B3b          变体号 → 该变体（变体组里的第 b 种画法，派生编号，组 id / 变体 id 不变）
  *   B            段字母 → 整段（section）
- *   <帧 id>      裸帧 id，与 B3 同义（B3 是按位置派生的显示编号，id 不变）
+ *   <帧 id>      裸帧 id，与 B3 同义（B3 是按位置派生的显示编号，id 不变）；变体 id 同 B3b
+ *   <组 id>      裸变体组 id，与 B3（组）同义
  *   <段 id>      裸段 id，与 B 同义
  *   <page>       整页（仅 shot；任意登记页 id，不限基页）
  *   @frame:p/s   机器帧语法（annotation-indicator 的 parseIndicator）
@@ -19,7 +21,7 @@
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { parseIndicator } from '../../shared/annotation-indicator.js';
 
-const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
+const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)([a-z]*)$/;
 const SECTION_REF_RE = /^([A-Z]+)$/;
 const NUM_REF_RE = /^#([1-9][0-9]*)$/;
 const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*)#([1-9][0-9]*)$/;
@@ -29,6 +31,7 @@ const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
  * board + 本页标注 → 解析一枚引用。返回 pick 之一：
  *   { kind: 'annotation', row }            一条标注
  *   { kind: 'frame', screenId, ref }       一帧（mark/locate 展开成该帧标注，shot 指帧图）
+ *   { kind: 'group', groupId, ref, frames } 一个变体组（mark/locate 展开成全部变体的标注，shot 逐个变体各一张）
  *   { kind: 'section', sectionId, ref }    一段
  *   { kind: 'page', pageId }               整页（仅 shot 有意义；pageId 可异于基页）
  * 或 { kind: 'unknown', token, message }。
@@ -71,8 +74,11 @@ export function resolveRef(token, ctx = {}) {
   m = raw.match(FRAME_REF_RE);
   if (m) {
     const hit = outlineFrames(refs).find((frame) => frame.ref === raw);
-    if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${raw}` };
-    return { kind: 'frame', screenId: hit.id, ref: raw, title: hit.title };
+    if (hit) return { kind: 'frame', screenId: hit.id, ref: raw, title: hit.title };
+    // B3 指变体组时，帧里没有叫 B3 的（变体是 B3a、B3b…），按组认。
+    const group = m[3] ? null : groupsOf(refs).find((g) => g.ref === raw);
+    if (group) return groupPick(group);
+    return { kind: 'unknown', token, message: `图纸上没有${m[3] ? '变体' : '帧'} ${raw}` };
   }
   m = raw.match(SECTION_REF_RE);
   if (m) {
@@ -89,6 +95,8 @@ export function resolveRef(token, ctx = {}) {
   // 能写编号的地方都能写 id，精确指代时不必拼 @frame:p/s。页 id 同名时页优先（上一步）。
   const byId = outlineFrames(refs).find((frame) => frame.id === raw);
   if (byId) return { kind: 'frame', screenId: byId.id, ref: byId.ref, title: byId.title };
+  const groupById = groupsOf(refs).find((g) => g.id === raw);
+  if (groupById) return groupPick(groupById);
   const sectionById = refs.outline.find((section) => section.id === raw);
   if (sectionById) {
     return { kind: 'section', sectionId: sectionById.id, ref: sectionById.letter, title: sectionById.title, frames: sectionById.frames };
@@ -104,7 +112,15 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、帧 id、段 id、页 id、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B3b（变体）、B、帧 id、组 id、段 id、页 id、@frame:p/s、@a:id）` };
+}
+
+function groupsOf(refs) {
+  return refs.outline.flatMap((section) => section.groups || []);
+}
+
+function groupPick(group) {
+  return { kind: 'group', groupId: group.id, ref: group.ref, title: group.title, frames: group.frames };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];
@@ -147,6 +163,20 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
     if (pick.kind === 'frame') {
       if (shotRefs) picks.push({ kind: 'frame', screenId: pick.screenId, ref: pick.ref, title: pick.title, via: token });
       else pushFrameAnnotations(pick.screenId, token);
+      continue;
+    }
+    if (pick.kind === 'group') {
+      // 变体组：标注按全部变体展开；shot 逐个变体各拍一张（每张带自己的 B3a / B3b）。
+      if (shotRefs) {
+        for (const frame of pick.frames) {
+          picks.push({ kind: 'frame', screenId: frame.id, ref: frame.ref, title: frame.title, via: token });
+        }
+        continue;
+      }
+      const screenIds = pick.frames.map((frame) => frame.id);
+      const rows = (ctx.rows || []).filter((a) => screenIds.includes(a.screenId));
+      if (!rows.length) errors.push(`${token}：该变体组暂无标注`);
+      for (const row of rows) pushAnnotation(row, token);
       continue;
     }
     if (pick.kind === 'section') {

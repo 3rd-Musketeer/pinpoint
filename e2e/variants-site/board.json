@@ -1,0 +1,22 @@
+{
+  "sections": [
+    {
+      "id": "flow",
+      "title": "流程",
+      "layout": "row",
+      "screens": [
+        { "id": "start", "title": "开始" },
+        {
+          "id": "confirm",
+          "title": "提交前确认",
+          "variants": [
+            { "id": "confirm-grant", "title": "授权" },
+            { "id": "confirm-check", "title": "核对信息" },
+            { "id": "confirm-inline", "title": "写在回复里" }
+          ]
+        },
+        { "id": "done", "title": "完成" }
+      ]
+    }
+  ]
+}

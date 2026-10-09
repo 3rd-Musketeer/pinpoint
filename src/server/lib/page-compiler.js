@@ -30,6 +30,7 @@ import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
 import { readBoard } from './board-file.js';
+import { expandVariants } from '../../workbench/lib/board-variants.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
@@ -552,7 +553,7 @@ export async function compilePage(target, options = {}) {
   const started = performance.now();
   let board;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = expandVariants(JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8')));
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 读取失败：${(error && error.message) || error}` };
   }
@@ -619,7 +620,7 @@ export async function compilePage(target, options = {}) {
 export async function renderScreenHtml(target, screenId) {
   let board;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = expandVariants(JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8')));
   } catch (error) {
     return { ok: false, error: `board.json 读取失败：${(error && error.message) || error}` };
   }

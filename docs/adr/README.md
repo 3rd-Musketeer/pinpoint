@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0039](0039-variant-groups.md) | 2026-10-10 | 变体组：同一个关键帧的几种画法，整组一个位置号、变体派生 a/b/c；变体仍是独立屏，标注挂变体 | 现行 | — |
 | [0038](0038-display-ref-vs-id-and-note-retired.md) | 2026-09-28 | 编号是显示编号、id 是身份；标注 note 退役 | 现行 | — |
 | [0037](0037-single-main-branch.md) | 2026-09-26 | 单分支 main：dev / release worktree / publish 退役，`just ship` 推 main，功能按需开 worktree | 现行 | — |
 | [0036](0036-storage-unify-bucket-per-page.md) | 2026-09-23 | 存储统一：桶 = 页（`@canvas` 账本取代 pinpoint 共享画布账本）；孤儿显式化与 `ppnt prune` | 现行 | — |

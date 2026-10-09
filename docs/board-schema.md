@@ -74,7 +74,7 @@ props 在各文件首行注释。
   `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
-## comp section（variants 墙）
+## comp section（组件 variants 墙）
 
 section 写 `"shell": "comp"` 后，它的 screen 条目直接喂组件：
 
@@ -85,6 +85,26 @@ section 写 `"shell": "comp"` 后，它的 screen 条目直接喂组件：
 - `comp` 先在页目录 `components/<Name>.jsx`（命名导出或默认导出）找，没有再回 `pinpoint/kit`；
   都没有进错误面板。`props` 只允许 JSON 值；`title` 缺省用 `id`。
 - 这种屏用无机壳的 comp 画板（不出尺寸行），归画布条目，截图时和普通帧一样。
+
+## 变体组（同一个关键帧的几种画法）
+
+screen 条目写 `variants`，它就是一个变体组（ADR 0039）：
+
+```json
+{ "id": "confirm", "title": "提交前确认", "variants": [
+  { "id": "confirm-grant", "title": "授权" },
+  { "id": "confirm-check", "title": "核对信息" }
+] }
+```
+
+- **变体仍是独立屏**：各有源文件（`confirm-grant.jsx`）、id、标注；`title` 写变体各自的名字。组没有文件，
+  `id` / `title` 只用来命名和引用，`shell` / `role` 可写在组上由变体继承，`src` / `comp` / `props` 不可。
+- **编号**：整组占一个位置号（A2），变体派生 A2a / A2b（显示编号，随调序而变）；组后面的帧顺延成 A3。
+  不要在 title 里自造编号（K11、B3）：`ppnt build` 会提示。
+- **引用**：`A2` / 组 id = 组内全部变体，`A2b` / 变体 id = 单个。`ppnt check --frame`、`locate`、`mark`、`shot`
+  都认；`shot` 对组逐个变体各拍一张。
+- 变体组的 id 与屏 id 共用裸 id 引用的命名空间，不许撞名；组不能嵌套。
+- 当前画布把变体全部摊开成普通帧；收起 / 选中 / 展开是后续切片。
 
 ## iOS 帧的硬约束
 
