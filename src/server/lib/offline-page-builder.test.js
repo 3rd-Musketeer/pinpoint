@@ -136,6 +136,8 @@ test('buildOfflinePage: variant groups export fully expanded, the reviewer-selec
   // 没选过：第一个变体高亮；三个帧都在，编号 A2a / A2b，图注带组名。
   const dflt = await buildOfflinePage({ pageId: entry.id, registry, approvals: [] });
   assert.equal(dflt.frameCount, 3);
+  // 组底：一块 box 跨组里两个变体的列（第 2、3 屏 → 列 2 / 4），不跨 first。
+  assert.match(dflt.html, /<div class="wb-var-box" aria-hidden="true" style="grid-column:2 \/ 4"><\/div>/);
   assert.equal(frame(dflt.html, 'first'), 'wb-screen');
   assert.equal(frame(dflt.html, 'grant'), 'wb-screen wb-var-sel');
   assert.equal(frame(dflt.html, 'check'), 'wb-screen');

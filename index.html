@@ -586,6 +586,15 @@
   .wb-var-toggle { font-family:var(--wb-font); font-weight:var(--wb-w-semibold); background:transparent; }
   .wb-var-chip:hover, .wb-var-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
   .wb-var-chip[aria-pressed="true"] { background:var(--wb-accent); color:var(--wb-on-accent); }
+  /* 展开态的组底（.wb-var-box，variants.js 摆 / 分享页 offline-page-export 摆）：一块虚线框 + 淡底，
+     跨组里全部变体的列、三行（图注 / 机身 / 尺寸）通高，向外让 20px 把整组圈住；落在列间距（28px）里，
+     不压邻帧。z-index:-1 留在 .wb-library 的变换上下文里：在板底之上、所有帧之下；不吃事件。 */
+  .wb-var-box {
+    grid-row:1 / span 3; align-self:stretch; margin:-20px;
+    border:3px dashed color-mix(in srgb, var(--wb-accent) 60%, transparent); border-radius:32px;
+    background:color-mix(in srgb, var(--wb-accent) 9%, transparent);
+    z-index:var(--wb-z-var-box); pointer-events:none;
+  }
   /* 展开态里控件只留在组里第一个变体的图注上（chips 选中、收起），其余变体的图注不重复。 */
   .wb-screen[data-var-open="true"]:not([data-var-first]) .wb-var-ctl { display:none; }
   .wb-screen.wb-var-off > * {

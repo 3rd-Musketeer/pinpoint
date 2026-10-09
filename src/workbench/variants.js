@@ -66,6 +66,36 @@ export function applyVariantState(panel, pageId, options) {
     if (touched.indexOf(group.section) < 0) touched.push(group.section);
   });
   touched.forEach(renumberColumns);
+  syncGroupBoxes(panel, openGroups(panel, pageId, prefs, options));
+}
+
+/** 展开的组：[{ group, state }]，供摆组底。 */
+function openGroups(panel, pageId, prefs, options) {
+  return collectGroups(panel).map(function (group) {
+    var state = groupState(prefs, pageId, group.key, group.ids);
+    if (options && options.forceOpen) state = { open: true, sel: state.sel };
+    return { group: group, state: state };
+  }).filter(function (entry) { return entry.state.open; });
+}
+
+/** 展开态的组底：每个展开的组一块框，跨它的列（列号 = renumberColumns 刚写的 --wb-col）。 */
+function syncGroupBoxes(panel, opened) {
+  panel.querySelectorAll('.wb-var-box').forEach(function (box) { box.remove(); });
+  opened.forEach(function (entry) {
+    var body = entry.group.section.querySelector('.wb-sec-body');
+    if (!body || !body.classList.contains('wb-sec-row')) return;
+    var cols = entry.group.screens
+      .filter(function (el) { return !el.classList.contains('wb-var-off'); })
+      .map(function (el) { return parseInt(el.style.getPropertyValue('--wb-col'), 10); })
+      .filter(function (n) { return n > 0; });
+    if (!cols.length) return;
+    var box = document.createElement('div');
+    box.className = 'wb-var-box';
+    box.setAttribute('aria-hidden', 'true');
+    box.setAttribute('data-var-box', entry.group.id);
+    box.style.gridColumn = Math.min.apply(null, cols) + ' / ' + (Math.max.apply(null, cols) + 1);
+    body.insertBefore(box, body.firstChild);
+  });
 }
 
 // 点钮的那一帧在屏幕上的位置：变体展开 / 收起会让后面的帧挪位、画布变宽变窄；不补偿的话，

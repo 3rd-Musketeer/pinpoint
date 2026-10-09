@@ -160,3 +160,21 @@ test('分享页导出：变体全部展开，评审者选中的高亮', async ({
   expect([sel(picked, 'confirm-grant'), sel(picked, 'confirm-check'), sel(picked, 'confirm-inline')]).toEqual([false, false, true]);
   expect(sel(picked, 'start')).toBe(false);
 });
+
+test('展开的组有组底框，收起没有；框圈住组里全部变体', async ({ page }) => {
+  await openVariantsPage(page);
+  await expect(page.locator('#wb-board-panel .wb-var-box')).toHaveCount(0);
+  await frame(page, 'confirm-grant').locator('[data-var-toggle]').click();
+  const box = page.locator('#wb-board-panel .wb-var-box');
+  await expect(box).toHaveCount(1);
+  const b = await box.evaluate((el) => { const r = el.getBoundingClientRect(); return { left: r.left, right: r.right, top: r.top, bottom: r.bottom }; });
+  const first = await rectOf(page, 'confirm-grant');
+  const last = await rectOf(page, 'confirm-inline');
+  const next = await rectOf(page, 'done');
+  expect(b.left).toBeLessThan(first.left);
+  expect(b.right).toBeGreaterThan(last.right);
+  expect(b.right).toBeLessThan(next.left);
+  await page.evaluate(() => window.workbench.focusFrame('flow', 'confirm-grant', { smooth: false }));
+  await frame(page, 'confirm-grant').locator('[data-var-toggle]').click();
+  await expect(page.locator('#wb-board-panel .wb-var-box')).toHaveCount(0);
+});

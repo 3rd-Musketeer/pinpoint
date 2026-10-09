@@ -427,6 +427,7 @@ html{height:100%}
   .wb-sec-row{display:flex;flex-direction:column;align-items:flex-start;gap:calc(var(--wb-cap-gap) * 2)}
   .wb-sec-row .wb-screen{display:flex}
   .wb-library .wb-screen-dim{opacity:1}
+  .wb-var-box{display:none}
   .wb-strip .wb-strip-title{max-width:34vw}
   .wb-strip .share-desktop{display:none}
 }
@@ -455,7 +456,17 @@ function boardHtml(sections) {
   return sections.map((section) => {
     const sectionId = escHtml(section.id);
     const title = escHtml(section.title || section.id);
-    const frames = section.screens.map((screen) => screen.html).join('');
+    // 变体组底（与工作台画布的 .wb-var-box 同款）：分享页全部展开，每组一块框跨它的列。
+    // 分享页的屏不写 --wb-col，网格按屏序自动排列：第 i 个屏 = 第 i + 1 列。
+    const boxes = [];
+    section.screens.forEach((screen, index) => {
+      if (!screen.variantOf) return;
+      const last = boxes[boxes.length - 1];
+      if (last && last.group === screen.variantOf) last.to = index + 2;
+      else boxes.push({ group: screen.variantOf, from: index + 1, to: index + 2 });
+    });
+    const boxHtml = boxes.map((box) => `<div class="wb-var-box" aria-hidden="true" style="grid-column:${box.from} / ${box.to}"></div>`).join('');
+    const frames = boxHtml + section.screens.map((screen) => screen.html).join('');
     return `<article class="wb-lib-item" id="section-${sectionId}" data-ann-section="${sectionId}" data-ann-section-label="${title}">` +
       `<h2 class="wb-lib-cap" title="${title}">` +
       (section.ref ? `<span class="wb-cap-ref wb-cap-ref--section">${escHtml(section.ref)}</span>` : '') +

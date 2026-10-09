@@ -167,6 +167,7 @@ export async function buildOfflinePage(options = {}) {
       screens.push({
         id: screen.id,
         title: screen.title || screen.id,
+        variantOf: screen.variantOf || '',
         ref,
         html: frameHtml(screen, target, neutralizePreviewScripts(stripPpAnchors(bundled.html)), ref, !!screen.variantOf && chosen.get(screen.variantOf) === screen.id),
       });

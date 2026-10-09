@@ -76,6 +76,7 @@
 | `--wb-z-composer` | 70 | `#ann-chrome`：写标注的输入框及其 lasso / tip | 外壳里最高，压过横条；只有 portal 浮层与 top layer 在它之上 |
 | `--wb-z-float` | 100 | Portal 到 body 的浮层：tooltip、row-menu、PageSortMenu | 在整个外壳之上 |
 | `--wb-z-float-2` | 110 | 从浮层里再开的菜单（AnnPopover 的“···”） | 压 float |
+| `--wb-z-var-box` | -1 | `.wb-var-box`（展开的变体组底） | 画布内子阶梯：负数，在板底之上、所有帧之下 |
 | `--wb-z-cap` | 30 | `.wb-screen-cap.has-frame-menu` | 画布内子阶梯：`.wb-library` 是 transform 上下文，只和帧内容比 |
 | `--wb-z-frame-menu` | 50 | frame “···”菜单面板 | 画布内子阶梯，压 cap |
 

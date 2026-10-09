@@ -189,7 +189,7 @@ test('layering R2: .wb-stage-wrap never becomes a stacking context', () => {
 function ladderTokens() {
   const css = read('src/workbench/wb-tokens.css');
   const map = new Map();
-  for (const m of css.matchAll(/(--wb-z-[a-z0-9-]+)\s*:\s*(\d+)\s*;/g)) map.set(m[1], m[2]);
+  for (const m of css.matchAll(/(--wb-z-[a-z0-9-]+)\s*:\s*(-?\d+)\s*;/g)) map.set(m[1], m[2]);
   return map;
 }
 
