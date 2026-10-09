@@ -194,6 +194,12 @@ export function wireVariants(panel, options) {
     var screen = (pick || toggle).closest('.wb-screen')
       || group.screens.find(function (el) { return !el.classList.contains('wb-var-off'); });
     if (pick) change(panel, pageId, group, { open: state.open, sel: pick.getAttribute('data-var-pick') }, screen);
-    else change(panel, pageId, group, { open: !state.open, sel: state.sel }, screen);
+    else {
+      change(panel, pageId, group, { open: !state.open, sel: state.sel }, screen);
+      // 展开：后面的帧右移、组变宽，选中的那个可能被挤出视窗——把视窗带到它身上。
+      if (!state.open && window.workbench && window.workbench.focusFrame) {
+        window.workbench.focusFrame(group.section.getAttribute('data-ann-section'), state.sel, { smooth: false });
+      }
+    }
   });
 }

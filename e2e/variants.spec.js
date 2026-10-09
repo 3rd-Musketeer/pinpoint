@@ -178,3 +178,18 @@ test('展开的组有组底框，收起没有；框圈住组里全部变体', as
   await page.locator('#wb-board-panel .wb-var-collapse').click();
   await expect(page.locator('#wb-board-panel .wb-var-box')).toHaveCount(0);
 });
+
+test('展开时视窗带到选中的变体身上，不被挤出去', async ({ page }) => {
+  await openVariantsPage(page);
+  const toggle = frame(page, 'confirm-grant').locator('[data-var-toggle]');
+  await toggle.click();
+  await frame(page, 'confirm-inline').locator('[data-var-pick]').click();
+  await page.locator('#wb-board-panel .wb-var-collapse').click();
+  await page.setViewportSize({ width: 900, height: 800 });
+  await page.evaluate(() => window.workbench.focusFrame('flow', 'confirm-inline', { smooth: false }));
+  await frame(page, 'confirm-inline').locator('[data-var-toggle]').click();
+  await expect.poll(async () => {
+    const r = await rectOf(page, 'confirm-inline');
+    return r.left >= 0 && r.right <= 900;
+  }).toBe(true);
+});
