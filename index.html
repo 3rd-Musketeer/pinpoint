@@ -607,8 +607,18 @@
     background:color-mix(in srgb, var(--wb-accent) 9%, transparent);
     z-index:var(--wb-z-var-box); pointer-events:none;
   }
-  /* 展开态里“收起”只留在组里第一个变体的图注上，其余变体的图注不重复（每个图注各有自己的 tickbox）。 */
-  .wb-screen[data-var-open="true"]:not([data-var-first]) .wb-var-ctl { display:none; }
+  /* 展开态里图注上不再有展开 / 收起钮：“收起”挂在组底框上沿（.wb-var-collapse），不占图注的位置。 */
+  .wb-screen[data-var-open="true"] .wb-var-ctl { display:none; }
+  .wb-var-collapse {
+    grid-row:1; align-self:start; justify-self:end; z-index:var(--wb-z-cap);
+    margin:-20px calc(var(--wb-cap-ref) * 2 - 20px) 0 0; transform:translateY(-50%);
+    font:inherit; font-size:var(--wb-cap-ref); font-weight:var(--wb-w-semibold); line-height:1; cursor:pointer;
+    padding:calc(var(--wb-cap-ref) * 0.4) calc(var(--wb-cap-ref) * 0.9); border-radius:999px;
+    border:calc(var(--wb-cap-ref) * 0.14) solid color-mix(in srgb, var(--wb-accent) 60%, transparent);
+    background:var(--wb-surface); color:var(--wb-accent);
+    transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-var-collapse:hover { background:var(--wb-accent); color:var(--wb-on-accent); }
   .wb-screen.wb-var-off > * {
     position:absolute !important; left:-100000px; top:0; visibility:hidden; pointer-events:none;
   }

@@ -80,7 +80,7 @@ function openGroups(panel, pageId, prefs, options) {
 
 /** 展开态的组底：每个展开的组一块框，跨它的列（列号 = renumberColumns 刚写的 --wb-col）。 */
 function syncGroupBoxes(panel, opened) {
-  panel.querySelectorAll('.wb-var-box').forEach(function (box) { box.remove(); });
+  panel.querySelectorAll('.wb-var-box, .wb-var-collapse').forEach(function (box) { box.remove(); });
   opened.forEach(function (entry) {
     var body = entry.group.section.querySelector('.wb-sec-body');
     if (!body || !body.classList.contains('wb-sec-row')) return;
@@ -93,8 +93,20 @@ function syncGroupBoxes(panel, opened) {
     box.className = 'wb-var-box';
     box.setAttribute('aria-hidden', 'true');
     box.setAttribute('data-var-box', entry.group.id);
-    box.style.gridColumn = Math.min.apply(null, cols) + ' / ' + (Math.max.apply(null, cols) + 1);
+    var span = Math.min.apply(null, cols) + ' / ' + (Math.max.apply(null, cols) + 1);
+    box.style.gridColumn = span;
     body.insertBefore(box, body.firstChild);
+    // “收起”挂在组底框的上沿（不占变体图注的位置）。框在帧之下（z:-1）吃不到点击，
+    // 所以钮是框的同格兄弟、层级在帧之上。
+    var collapse = document.createElement('button');
+    collapse.type = 'button';
+    collapse.className = 'wb-var-collapse';
+    collapse.setAttribute('data-var-toggle', '');
+    collapse.setAttribute('data-var-box', entry.group.id);
+    collapse.setAttribute('aria-expanded', 'true');
+    collapse.textContent = '收起';
+    collapse.style.gridColumn = span;
+    body.insertBefore(collapse, box.nextSibling);
   });
 }
 
@@ -140,9 +152,10 @@ function change(panel, pageId, group, next, anchorScreen) {
 
 function groupOf(panel, el) {
   var screen = el.closest('.wb-screen[data-var-group]');
-  if (!screen) return null;
-  var gid = screen.getAttribute('data-var-group');
-  var section = screen.closest('.wb-lib-item').getAttribute('data-ann-section');
+  var box = screen ? null : el.closest('.wb-var-collapse');
+  if (!screen && !box) return null;
+  var gid = screen ? screen.getAttribute('data-var-group') : box.getAttribute('data-var-box');
+  var section = (screen || box).closest('.wb-lib-item').getAttribute('data-ann-section');
   var key = variantGroupKey(section, gid);
   return collectGroups(panel).find(function (g) { return g.key === key; }) || null;
 }
@@ -177,7 +190,9 @@ export function wireVariants(panel, options) {
     e.stopPropagation();
     e.preventDefault();
     var state = groupState(readPrefs(), pageId, group.key, group.ids);
-    var screen = (pick || toggle).closest('.wb-screen');
+    // 组底框上的“收起”没有自己的屏：锚点取组里摆在画布上的第一个变体。
+    var screen = (pick || toggle).closest('.wb-screen')
+      || group.screens.find(function (el) { return !el.classList.contains('wb-var-off'); });
     if (pick) change(panel, pageId, group, { open: state.open, sel: pick.getAttribute('data-var-pick') }, screen);
     else change(panel, pageId, group, { open: !state.open, sel: state.sel }, screen);
   });

@@ -62,6 +62,7 @@ test('展开后每个变体图注有 tickbox：勾哪个哪个选中并高亮；
     await locator.click();
   };
   const toggleOf = (id) => frame(page, id).locator('[data-var-toggle]');
+  const collapse = page.locator('#wb-board-panel .wb-var-collapse');
 
   // 收起态没有 tickbox，也没有外部的 a / b / c。
   await expect(tick('confirm-grant')).toBeHidden();
@@ -74,8 +75,9 @@ test('展开后每个变体图注有 tickbox：勾哪个哪个选中并高亮；
   await expect(tick('confirm-check')).toHaveAttribute('aria-checked', 'false');
   await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-sel/);
   expect(await frame(page, 'confirm-grant').locator('.ios-stage').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
-  // “收起”只在第一个变体的图注上。
-  await expect(frame(page, 'confirm-check').locator('.wb-var-ctl')).toBeHidden();
+  // 展开后图注上没有展开 / 收起钮；“收起”在组底框的上沿，不占图注的位置。
+  for (const id of ['confirm-grant', 'confirm-check', 'confirm-inline']) await expect(frame(page, id).locator('.wb-var-ctl')).toBeHidden();
+  await expect(page.locator('#wb-board-panel .wb-var-collapse')).toBeVisible();
 
   // 勾第三个：勾和环移到它，三个仍都在；组底框跟着在。
   await click('confirm-inline', tick('confirm-inline'));
@@ -91,7 +93,7 @@ test('展开后每个变体图注有 tickbox：勾哪个哪个选中并高亮；
   await expect(tick('confirm-inline')).toHaveAttribute('aria-checked', 'true');
 
   // 收起：只剩勾选的第三个，tickbox 不再出现。
-  await click('confirm-grant', toggleOf('confirm-grant'));
+  await click('confirm-grant', collapse);
   await expect(frame(page, 'confirm-inline')).not.toHaveClass(/wb-var-off/);
   await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-off/);
   await expect(frame(page, 'confirm-check')).toHaveClass(/wb-var-off/);
@@ -100,7 +102,7 @@ test('展开后每个变体图注有 tickbox：勾哪个哪个选中并高亮；
   // 回到缺省（收起 + 选第一个）时偏好键被清掉，不积灰：展开、勾第一个、收起。
   await click('confirm-inline', toggleOf('confirm-inline'));
   await click('confirm-grant', tick('confirm-grant'));
-  await click('confirm-grant', toggleOf('confirm-grant'));
+  await click('confirm-grant', collapse);
   expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('pinpoint-wb') || '{}').variantsByPage || {}))).toEqual([]);
 });
 
@@ -173,6 +175,6 @@ test('展开的组有组底框，收起没有；框圈住组里全部变体', as
   expect(b.right).toBeGreaterThan(last.right);
   expect(b.right).toBeLessThan(next.left);
   await page.evaluate(() => window.workbench.focusFrame('flow', 'confirm-grant', { smooth: false }));
-  await frame(page, 'confirm-grant').locator('[data-var-toggle]').click();
+  await page.locator('#wb-board-panel .wb-var-collapse').click();
   await expect(page.locator('#wb-board-panel .wb-var-box')).toHaveCount(0);
 });
