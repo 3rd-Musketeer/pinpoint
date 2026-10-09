@@ -26,7 +26,7 @@ import {
   pageBaseUrl,
   pageEntry
 } from './lib/page-url.js';
-import { boardRefs, variantLetter } from './lib/board-refs.js';
+import { boardRefs } from './lib/board-refs.js';
 import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
 import {
@@ -208,24 +208,22 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
-      // 变体（lib/board-variants.js）：图注带组名 + chips（选中哪个）+ 展开 / 收起钮；谁在画布上、谁高亮
+      // 变体（lib/board-variants.js）：图注带组名 + tickbox（展开态里勾选中的）+ 展开 / 收起钮；谁在画布上、谁高亮
       // 由 variants.js 按本机偏好装载后灌（data-var-* 与 .wb-var-off / .wb-var-sel）。
       var variantAttr = '';
       var variantCtl = '';
+      var variantTick = '';
       var capTitle = sc.title || '';
       if (sc.variantOf) {
         var siblings = screens.filter(function (other) { return other.variantOf === sc.variantOf; });
         variantAttr = ' data-var-group="' + escHtml(sc.variantOf) + '"' + (siblings[0] === sc ? ' data-var-first' : '');
         capTitle = (sc.groupTitle || sc.variantOf) + (sc.title ? ' · ' + sc.title : '');
-        variantCtl = '<span class="wb-var-ctl">' +
-          siblings.map(function (other, i) {
-            return '<button type="button" class="wb-var-chip" data-var-pick="' + escHtml(other.id) + '"' +
-              ' title="' + escHtml(other.title || other.id) + '" aria-pressed="false">' + variantLetter(i) + '</button>';
-          }).join('') +
-          '<button type="button" class="wb-var-toggle" data-var-toggle aria-expanded="false">展开</button>' +
-          '</span>';
+        variantTick = '<button type="button" class="wb-var-tick" role="checkbox" aria-checked="false"' +
+          ' data-var-pick="' + escHtml(sc.id) + '" title="选中这个变体（分享页、整段截图里高亮它）"></button>';
+        variantCtl = '<span class="wb-var-ctl"><button type="button" class="wb-var-toggle" data-var-toggle aria-expanded="false">展开</button></span>';
       }
       var capHtml = '<div class="wb-screen-cap">' +
+        variantTick +
         (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
         '<span class="wb-cap-title" title="' + escHtml(capTitle) + '">' + escHtml(capTitle) + '</span>' +
         variantCtl +

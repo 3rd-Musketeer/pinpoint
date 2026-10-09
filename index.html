@@ -568,24 +568,36 @@
     color:var(--wb-muted);
   }
   .wb-cap-title:empty { display:none; }
-  /* 变体组（ADR 0039，画布侧在 workbench/variants.js）：图注后跟 chips（a b c = 选中哪个变体）与
+  /* 变体组（ADR 0039，画布侧在 workbench/variants.js）：图注前有 tickbox（展开态，勾 = 选中的变体），图注后有
      展开 / 收起钮。收起的变体不用 display:none —— 标注层靠“有排版”判锚点活没活着，display:none
      会让它们的标注全显示“锚点失效”；.wb-var-off = 脱离网格、挪到画布外、不可见，DOM 与排版都在。
-     尺寸跟 .wb-cap-ref 同一档（随机身宽缩放），chips 选中态是 accent 实心，同横条里的模式钮语言。 */
+     尺寸跟 .wb-cap-ref 同一档（随机身宽缩放）。 */
   .wb-var-ctl {
     flex:none; display:inline-flex; align-items:center; gap:calc(var(--wb-cap-gap) * 0.3);
     margin-left:calc(var(--wb-cap-gap) * 0.4);
   }
-  .wb-var-chip, .wb-var-toggle {
-    font:inherit; font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-bold);
-    line-height:1; cursor:pointer; border:0; border-radius:calc(var(--wb-cap-ref) * 0.45);
-    padding:calc(var(--wb-cap-ref) * 0.28) calc(var(--wb-cap-ref) * 0.6);
-    background:var(--wb-fill); color:var(--wb-muted);
+  .wb-var-toggle {
+    font:inherit; font-size:var(--wb-cap-ref); font-weight:var(--wb-w-semibold); line-height:1; cursor:pointer;
+    border:0; border-radius:calc(var(--wb-cap-ref) * 0.45); padding:calc(var(--wb-cap-ref) * 0.28) calc(var(--wb-cap-ref) * 0.6);
+    background:transparent; color:var(--wb-muted);
     transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
   }
-  .wb-var-toggle { font-family:var(--wb-font); font-weight:var(--wb-w-semibold); background:transparent; }
-  .wb-var-chip:hover, .wb-var-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
-  .wb-var-chip[aria-pressed="true"] { background:var(--wb-accent); color:var(--wb-on-accent); }
+  .wb-var-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
+  /* tickbox：只在展开态出现，在每个变体图注的最前面；选中的那个打勾（accent 实心 + 白勾）。 */
+  .wb-var-tick {
+    display:none; flex:none; align-self:center; box-sizing:border-box; position:relative; cursor:pointer;
+    width:calc(var(--wb-cap-ref) * 1.25); height:calc(var(--wb-cap-ref) * 1.25); padding:0;
+    border:calc(var(--wb-cap-ref) * 0.16) solid var(--wb-faint); border-radius:calc(var(--wb-cap-ref) * 0.3);
+    background:transparent; transition:background-color var(--wb-dur) var(--wb-ease), border-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-var-tick:hover { border-color:var(--wb-accent); }
+  .wb-var-tick[aria-checked="true"] { background:var(--wb-accent); border-color:var(--wb-accent); }
+  .wb-var-tick[aria-checked="true"]::after {
+    content:''; position:absolute; left:28%; top:8%; width:30%; height:56%;
+    border:solid var(--wb-on-accent); border-width:0 calc(var(--wb-cap-ref) * 0.2) calc(var(--wb-cap-ref) * 0.2) 0;
+    transform:rotate(45deg);
+  }
+  .wb-screen[data-var-open="true"] .wb-var-tick { display:inline-block; }
   /* 展开态的组底（.wb-var-box，variants.js 摆 / 分享页 offline-page-export 摆）：一块虚线框 + 淡底，
      跨组里全部变体的列、三行（图注 / 机身 / 尺寸）通高，向外让 20px 把整组圈住；落在列间距（28px）里，
      不压邻帧。z-index:-1 留在 .wb-library 的变换上下文里：在板底之上、所有帧之下；不吃事件。 */
@@ -595,7 +607,7 @@
     background:color-mix(in srgb, var(--wb-accent) 9%, transparent);
     z-index:var(--wb-z-var-box); pointer-events:none;
   }
-  /* 展开态里控件只留在组里第一个变体的图注上（chips 选中、收起），其余变体的图注不重复。 */
+  /* 展开态里“收起”只留在组里第一个变体的图注上，其余变体的图注不重复（每个图注各有自己的 tickbox）。 */
   .wb-screen[data-var-open="true"]:not([data-var-first]) .wb-var-ctl { display:none; }
   .wb-screen.wb-var-off > * {
     position:absolute !important; left:-100000px; top:0; visibility:hidden; pointer-events:none;

@@ -53,56 +53,54 @@ test('默认收起：只摆第一个变体，后面的帧紧挨着补位；图�
   expect((await rectOf(page, 'confirm-check')).left).toBeLessThan(-40000);
 });
 
-test('chips 换选中的变体，展开并排、选中的高亮，收起回到只剩选中的；偏好跨刷新保持', async ({ page }) => {
+test('展开后每个变体图注有 tickbox：勾哪个哪个选中并高亮；收起只剩勾选的；偏好跨刷新保持', async ({ page }) => {
   await openVariantsPage(page);
-  const chip = (id, pick) => frame(page, id).locator(`[data-var-pick="${pick}"]`);
+  const tick = (id) => frame(page, id).locator('[data-var-pick]');
   // 画布是自己的滚动容器：控件在视口外时先用导航把那一帧带进来（帧已在画布上，不改选中）再点。
-  const click = async (id, pick) => {
+  const click = async (id, locator) => {
     await page.evaluate((screen) => window.workbench.focusFrame('flow', screen, { smooth: false }), id);
-    await chip(id, pick).click();
+    await locator.click();
   };
+  const toggleOf = (id) => frame(page, id).locator('[data-var-toggle]');
 
-  // 收起态点 b：画布上换成 b。
-  await click('confirm-grant', 'confirm-check');
-  await expect(frame(page, 'confirm-check')).not.toHaveClass(/wb-var-off/);
-  await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-off/);
-  await expect(chip('confirm-check', 'confirm-check')).toHaveAttribute('aria-pressed', 'true');
+  // 收起态没有 tickbox，也没有外部的 a / b / c。
+  await expect(tick('confirm-grant')).toBeHidden();
+  await expect(page.locator('.wb-var-chip')).toHaveCount(0);
 
-  // 刷新后仍是 b（本机偏好，不进 board.json）。
+  // 展开：三个并排，每个图注前一个 tickbox，勾的是第一个；高亮环也在第一个上。
+  await click('confirm-grant', toggleOf('confirm-grant'));
+  for (const id of ['confirm-grant', 'confirm-check', 'confirm-inline']) await expect(tick(id)).toBeVisible();
+  await expect(tick('confirm-grant')).toHaveAttribute('aria-checked', 'true');
+  await expect(tick('confirm-check')).toHaveAttribute('aria-checked', 'false');
+  await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-sel/);
+  expect(await frame(page, 'confirm-grant').locator('.ios-stage').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
+  // “收起”只在第一个变体的图注上。
+  await expect(frame(page, 'confirm-check').locator('.wb-var-ctl')).toBeHidden();
+
+  // 勾第三个：勾和环移到它，三个仍都在；组底框跟着在。
+  await click('confirm-inline', tick('confirm-inline'));
+  await expect(tick('confirm-inline')).toHaveAttribute('aria-checked', 'true');
+  await expect(tick('confirm-grant')).toHaveAttribute('aria-checked', 'false');
+  await expect(frame(page, 'confirm-inline')).toHaveClass(/wb-var-sel/);
+  await expect(frame(page, 'confirm-grant')).not.toHaveClass(/wb-var-sel/);
+  await expect(frame(page, 'confirm-grant')).not.toHaveClass(/wb-var-off/);
+
+  // 刷新后仍是展开 + 勾第三个（本机偏好，不进 board.json）。
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
-  await expect(frame(page, 'confirm-check')).not.toHaveClass(/wb-var-off/);
-  await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-off/);
+  await expect(tick('confirm-inline')).toHaveAttribute('aria-checked', 'true');
 
-  // 展开：三个并排，只有选中的 b 带高亮环。
-  // 收起态控件在选中那一帧的图注上（b）；展开后控件只留在组里第一个变体（a）的图注上。
-  await frame(page, 'confirm-check').locator('[data-var-toggle]').click();
-  await expect(frame(page, 'confirm-check').locator('.wb-var-ctl')).toBeHidden();
-  await expect(frame(page, 'confirm-grant').locator('.wb-var-ctl')).toBeVisible();
-  for (const id of ['confirm-grant', 'confirm-check', 'confirm-inline']) {
-    await expect(frame(page, id)).not.toHaveClass(/wb-var-off/);
-  }
-  await expect(frame(page, 'confirm-check')).toHaveClass(/wb-var-sel/);
-  await expect(frame(page, 'confirm-grant')).not.toHaveClass(/wb-var-sel/);
-  expect(await frame(page, 'confirm-check').locator('.ios-stage').evaluate((el) => getComputedStyle(el).outlineStyle)).toBe('solid');
-  const [g, k, n, d] = await Promise.all(['confirm-grant', 'confirm-check', 'confirm-inline', 'done'].map((id) => rectOf(page, id)));
-  expect(g.left).toBeLessThan(k.left);
-  expect(k.left).toBeLessThan(n.left);
-  expect(n.right).toBeLessThan(d.left);
-
-  // 展开态点 c：高亮移到 c，三个仍都在；收起后只剩 c。（c 在视口外：先用导航把它带进来，展开态下不改选中。）
-  await click('confirm-grant', 'confirm-inline');
-  await expect(frame(page, 'confirm-inline')).toHaveClass(/wb-var-sel/);
-  await expect(frame(page, 'confirm-check')).not.toHaveClass(/wb-var-sel/);
-  await expect(frame(page, 'confirm-grant')).not.toHaveClass(/wb-var-off/);
-  await page.evaluate(() => window.workbench.focusFrame('flow', 'confirm-grant', { smooth: false }));
-  await frame(page, 'confirm-grant').locator('[data-var-toggle]').click();
+  // 收起：只剩勾选的第三个，tickbox 不再出现。
+  await click('confirm-grant', toggleOf('confirm-grant'));
   await expect(frame(page, 'confirm-inline')).not.toHaveClass(/wb-var-off/);
   await expect(frame(page, 'confirm-grant')).toHaveClass(/wb-var-off/);
   await expect(frame(page, 'confirm-check')).toHaveClass(/wb-var-off/);
+  await expect(tick('confirm-inline')).toBeHidden();
 
-  // 回到缺省（收起 + 选第一个）时偏好键被清掉，不积灰。
-  await click('confirm-inline', 'confirm-grant');
+  // 回到缺省（收起 + 选第一个）时偏好键被清掉，不积灰：展开、勾第一个、收起。
+  await click('confirm-inline', toggleOf('confirm-inline'));
+  await click('confirm-grant', tick('confirm-grant'));
+  await click('confirm-grant', toggleOf('confirm-grant'));
   expect(await page.evaluate(() => Object.keys(JSON.parse(localStorage.getItem('pinpoint-wb') || '{}').variantsByPage || {}))).toEqual([]);
 });
 

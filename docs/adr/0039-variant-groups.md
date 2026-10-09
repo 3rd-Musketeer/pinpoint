@@ -17,7 +17,7 @@ Status: 现行 · Date: 2026-10-10 · Scope: `src/workbench/lib/board-variants.j
 - 实现上先把板摊平（`expandVariants`）：组条目换成带 `variantOf` 的普通屏，编译、装载、导出、截图这些只认屏的
   消费端不用改；编号与引用按 `variantOf` 归组。
 - 选中的变体存本机偏好（`prefs.variantsByPage`）、不进 `board.json`（评审状态不污染原型源码）。
-- 画布：默认收起、只摆选中的；展开时原位横向并排、后面的帧右移（owner：“1 A”）；展开态选中的画 accent 外环。
+- 画布：默认收起、只摆选中的；展开时原位横向并排、后面的帧右移（owner：“1 A”），整组圈在虚线框里；展开态每个变体图注前有 tickbox，勾哪个哪个就是选中的（owner：“不要用外部的 abc 选择，展开的时候每个 sub-frame 的 header 上给一个 tickbox 就行”），选中的画 accent 外环。
   收起的变体不用 `display:none`（会让标注层把它们的标注全判成“锚点失效”），用 `.wb-var-off` 挪出画布。
 - 分享页、整段 / 整页截图一律全部展开并高亮选中的（owner：“2 B，且高亮被选中的”）；单帧图不带环。
 - 导航（minimap、‹ ›、大纲点击、标注列表跳转）只落在摆在画布上的变体；目标是被收起的变体时先选中它。

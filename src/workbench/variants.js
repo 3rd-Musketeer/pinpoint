@@ -1,6 +1,6 @@
 // 变体组的画布侧（2026-10-10；纯逻辑在 lib/variant-state.js，数据模型见 ADR 0039）。
 //
-// screen-load 把变体都渲染进板子，各带 data-var-group / 图注里的 chips；这里按本机偏好决定谁摆上画布：
+// screen-load 把变体都渲染进板子，各带 data-var-group / 图注里的 tickbox；这里按本机偏好决定谁摆上画布：
 // 收起 = 只有选中的（缺省第一个），展开 = 全部并排、选中的高亮。收起的变体不用 display:none ——
 // 标注层靠“有排版”判锚点是否活着（annotate.js hasLayout），display:none 会让它们全显示“锚点失效”。
 // 所以收起 = .wb-var-off：脱离网格、挪到画布外、不可见（index.html），DOM 与排版都在，标注照常解析，
@@ -41,7 +41,7 @@ function renumberColumns(item) {
   });
 }
 
-/** 把偏好灌进板子：显隐、选中高亮、chips / 展开钮读数、网格列号。装载板后与每次操作后都调。
+/** 把偏好灌进板子：显隐、选中高亮、tickbox / 展开钮读数、网格列号。装载板后与每次操作后都调。
     options.forceOpen = 全部展开（ppnt shot 用：一张图要把组里的变体都拍进去；不写偏好）。 */
 export function applyVariantState(panel, pageId, options) {
   if (!panel) return;
@@ -55,8 +55,8 @@ export function applyVariantState(panel, pageId, options) {
       screen.classList.toggle('wb-var-off', !variantShown(state, id));
       screen.classList.toggle('wb-var-sel', state.open && state.sel === id);
       screen.setAttribute('data-var-open', state.open ? 'true' : 'false');
-      screen.querySelectorAll('[data-var-pick]').forEach(function (chip) {
-        chip.setAttribute('aria-pressed', chip.getAttribute('data-var-pick') === state.sel ? 'true' : 'false');
+      screen.querySelectorAll('[data-var-pick]').forEach(function (tick) {
+        tick.setAttribute('aria-checked', tick.getAttribute('data-var-pick') === state.sel ? 'true' : 'false');
       });
       screen.querySelectorAll('[data-var-toggle]').forEach(function (btn) {
         btn.textContent = state.open ? '收起' : '展开';
@@ -125,7 +125,7 @@ function change(panel, pageId, group, next, anchorScreen) {
   // 否则展开出来的变体被裁在旧外框外（点不到），收起后滚动范围还是旧的。
   syncBoardZoomLayout();
   if (stage && before) {
-    // 锚帧被收起了（点的是别的变体的 chip）：改锚到现在摆在画布上的那一个。
+    // 锚帧被收起了（点的是别的变体的 tickbox）：改锚到现在摆在画布上的那一个。
     var anchor = anchorScreen.classList.contains('wb-var-off')
       ? group.screens.find(function (el) { return !el.classList.contains('wb-var-off'); })
       : anchorScreen;
@@ -163,7 +163,7 @@ export function revealVariant(panel, pageId, sectionId, screenId) {
   return true;
 }
 
-/** 事件委托：图注里的 chips（选中）与展开 / 收起钮。onChange = 变了之后让标注层和导航重算。 */
+/** 事件委托：图注里的 tickbox（选中）与展开 / 收起钮。onChange = 变了之后让标注层和导航重算。 */
 export function wireVariants(panel, options) {
   panelDeps.onChange = (options && options.onChange) || null;
   panel.addEventListener('click', function (e) {
