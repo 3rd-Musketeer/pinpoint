@@ -6,6 +6,7 @@ import { wbGet, wbSet } from './app/store.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
+import { revealVariant } from './variants.js';
 import {
   centerScrollForPoint,
   closestBoardSection,
@@ -488,7 +489,18 @@ function jumpSectionNavigatorToScreen(groupId, screenId) {
   focusWorkbenchFrame(groupId, screenId);
 }
 
+/** 目标帧是被收起的变体：先请出来（选中它），标注层与导航模型随后才量得到它。返回是否动了。 */
+export function revealBoardFrame(groupId, screenId) {
+  var panel = document.getElementById('wb-board-panel');
+  if (!panel || !revealVariant(panel, wbGet().activePageId, groupId, screenId)) return false;
+  var ann = window.pinpoint;
+  if (ann && ann.viewportChanged) ann.viewportChanged();
+  refreshBoardNavigationModel(panel);
+  return true;
+}
+
 export function focusWorkbenchFrame(groupId, screenId, options) {
+  revealBoardFrame(groupId, screenId);
   var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
   if (!frame || !stage) return false;
   wbSet({ activeGroup: groupId });

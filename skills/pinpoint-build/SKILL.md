@@ -117,6 +117,11 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 - title = 单行短名词短语，不手写编号、不塞图例（规矩全文在 board-schema）。
 - 帧 id 用描述内容的短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）。画布编号按 board
   顺序派生、调序就变；id 不变，还是源文件名和标注锚点，已有的帧不要改名。
+- **同一个关键帧要画几种做法 = 变体组**，不是多开几个帧再自造编号（K11、B3 之类）：screen 条目写
+  `{ "id": "confirm", "title": "提交前确认", "variants": [{ "id": "confirm-grant", "title": "授权" }, …] }`。
+  每个变体仍是独立帧（`confirm-grant.jsx`、自己的 id、标注挂在它上面）；整组占一个位置号，变体显示为
+  A2a / A2b。画布默认只摆第一个，评审者在图注上换 / 展开；分享页与整段截图全部展开。
+  `ppnt check --frame A2`（组）/ `A2b`（变体）都认。说明表、总览这类“画板上的非手机内容”不是变体。
 - 元素可写 `goto="<screenId>"` 指向另一帧，编译进产物属性（flow 边的数据层）。
 
 ## 5. 改完自检
@@ -128,7 +133,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 ## 6. 反例
 
 - 把 sheet / tabbar / backdrop 塞进 `.ios-app`；手写 safe-area 像素。
-- 给图注设 font-size；title 里手写编号或塞图例（caption 与 title 规矩在 board-schema）。
+- 给图注设 font-size；title 里手写编号（K11、B3）或塞图例；为同一关键帧的多种做法各开一帧再自造编号（该用 variants）（caption 与 title 规矩在 board-schema）。
 - 帧 id 仿编号（`a4b-ask2`、`c1c-run`）；为了和编号对齐去改已有帧的 id。
 - 为“以后可能复用”抽组件；把状态、事件、fetch 写进组件。
 - 把产品手势写进 `ios-kit.js`；改 loader 机壳或 `ios-kit.css` 去对齐一条标注。

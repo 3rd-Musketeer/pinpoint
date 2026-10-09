@@ -568,6 +568,35 @@
     color:var(--wb-muted);
   }
   .wb-cap-title:empty { display:none; }
+  /* 变体组（ADR 0039，画布侧在 workbench/variants.js）：图注后跟 chips（a b c = 选中哪个变体）与
+     展开 / 收起钮。收起的变体不用 display:none —— 标注层靠“有排版”判锚点活没活着，display:none
+     会让它们的标注全显示“锚点失效”；.wb-var-off = 脱离网格、挪到画布外、不可见，DOM 与排版都在。
+     尺寸跟 .wb-cap-ref 同一档（随机身宽缩放），chips 选中态是 accent 实心，同横条里的模式钮语言。 */
+  .wb-var-ctl {
+    flex:none; display:inline-flex; align-items:center; gap:calc(var(--wb-cap-gap) * 0.3);
+    margin-left:calc(var(--wb-cap-gap) * 0.4);
+  }
+  .wb-var-chip, .wb-var-toggle {
+    font:inherit; font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-bold);
+    line-height:1; cursor:pointer; border:0; border-radius:calc(var(--wb-cap-ref) * 0.45);
+    padding:calc(var(--wb-cap-ref) * 0.28) calc(var(--wb-cap-ref) * 0.6);
+    background:var(--wb-fill); color:var(--wb-muted);
+    transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-var-toggle { font-family:var(--wb-font); font-weight:var(--wb-w-semibold); background:transparent; }
+  .wb-var-chip:hover, .wb-var-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
+  .wb-var-chip[aria-pressed="true"] { background:var(--wb-accent); color:var(--wb-on-accent); }
+  /* 展开态里控件只留在组里第一个变体的图注上（chips 选中、收起），其余变体的图注不重复。 */
+  .wb-screen[data-var-open="true"]:not([data-var-first]) .wb-var-ctl { display:none; }
+  .wb-screen.wb-var-off > * {
+    position:absolute !important; left:-100000px; top:0; visibility:hidden; pointer-events:none;
+  }
+  /* 展开态里被选中的变体：accent 外环（outline，不顶掉机身自带的 box-shadow 板影；hover 淡环不压它）。 */
+  .wb-library .wb-screen.wb-var-sel .ios-stage,
+  .wb-library .wb-screen.wb-var-sel:hover .ios-stage,
+  .wb-library .wb-screen.wb-var-sel .wb-comp-stage {
+    outline:3px solid var(--wb-accent); outline-offset:6px;
+  }
   /* 2026-08-17 caption 截断兜底：title 规矩（单行短词）靠文档+契约拦新增，
      存量/超长由两行 clamp 兜住，全文经 title 属性悬停可读。 */
   .wb-cap-title, .wb-lib-cap {

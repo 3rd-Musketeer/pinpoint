@@ -47,6 +47,7 @@ export function createExportPageHtmlHandler(options = {}) {
       const result = await builder({
         pageId: body && body.pageId,
         approvals: scan ? undefined : (body.approvals || []),
+        variantSelection: body && typeof body.variantSelection === 'object' ? body.variantSelection : null,
         registry,
         fetchRemote,
       });

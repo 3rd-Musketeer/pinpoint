@@ -26,7 +26,7 @@ import {
   pageBaseUrl,
   pageEntry
 } from './lib/page-url.js';
-import { boardRefs } from './lib/board-refs.js';
+import { boardRefs, variantLetter } from './lib/board-refs.js';
 import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
 import {
@@ -208,9 +208,27 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
+      // 变体（lib/board-variants.js）：图注带组名 + chips（选中哪个）+ 展开 / 收起钮；谁在画布上、谁高亮
+      // 由 variants.js 按本机偏好装载后灌（data-var-* 与 .wb-var-off / .wb-var-sel）。
+      var variantAttr = '';
+      var variantCtl = '';
+      var capTitle = sc.title || '';
+      if (sc.variantOf) {
+        var siblings = screens.filter(function (other) { return other.variantOf === sc.variantOf; });
+        variantAttr = ' data-var-group="' + escHtml(sc.variantOf) + '"' + (siblings[0] === sc ? ' data-var-first' : '');
+        capTitle = (sc.groupTitle || sc.variantOf) + (sc.title ? ' · ' + sc.title : '');
+        variantCtl = '<span class="wb-var-ctl">' +
+          siblings.map(function (other, i) {
+            return '<button type="button" class="wb-var-chip" data-var-pick="' + escHtml(other.id) + '"' +
+              ' title="' + escHtml(other.title || other.id) + '" aria-pressed="false">' + variantLetter(i) + '</button>';
+          }).join('') +
+          '<button type="button" class="wb-var-toggle" data-var-toggle aria-expanded="false">展开</button>' +
+          '</span>';
+      }
       var capHtml = '<div class="wb-screen-cap">' +
         (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
-        '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
+        '<span class="wb-cap-title" title="' + escHtml(capTitle) + '">' + escHtml(capTitle) + '</span>' +
+        variantCtl +
         '</div>';
       var dimHtml = isPhoneFrame(pageId, sc.shell)
         ? '<div class="wb-screen-dim">' + IOS_DEVICE_DIM + '</div>'
@@ -222,7 +240,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       // index.html 按 nth-child 钉死）—— comp / doc 屏不出尺寸行，每屏只有
       // 两格，隐式按列填充会从第二屏起整体串位（图注落进上一列的空格）。
       var colAttr = layout === 'row' ? ' style="--wb-col:' + (col + 1) + '"' : '';
-      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '"' + colAttr + '>' +
+      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '"' + variantAttr + colAttr + '>' +
         capHtml +
         inner +
         dimHtml +

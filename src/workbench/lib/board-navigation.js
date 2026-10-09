@@ -56,6 +56,8 @@ export function measureBoardNavigation(stage, panel) {
       const frameRect = stageRectFor(frameNode, stageRect, stage);
       if (!frameRect) return;
       const screenNode = frameNode.closest('.wb-screen[data-screen]');
+      // 收起的变体（variants.js 的 .wb-var-off）还在 DOM 里、有排版，但不在画布上：不进导航模型。
+      if (screenNode && screenNode.classList.contains('wb-var-off')) return;
       const screenId = screenNode?.getAttribute('data-screen') || '';
       const caption = screenNode?.querySelector('.wb-screen-cap');
       // 图注两行结构（2026-08-15）：屏名在 .wb-cap-title，引用号不进导航标题。
