@@ -186,13 +186,16 @@ export function withAttachedScreens(board, attached, pageId) {
   if (!screens.length) return board;
   var sectionId = ATTACHED_SECTION_ID;
   for (var m = 2; takenSections[sectionId]; m++) sectionId = ATTACHED_SECTION_ID + '-' + m;
+  var merged = {
+    id: sectionId,
+    title: '登记',
+    layout: 'column',
+    shell: 'doc',
+    screens: screens
+  };
+  // 页 tab（ADR 0041）：登记进来的文档不属于任何 tab 的作者内容，挂在第一个 tab 上。
+  if (board.tabs && board.tabs.length) merged.tabId = board.tabs[0].id;
   return Object.assign({}, board, {
-    sections: (board.sections || []).concat([{
-      id: sectionId,
-      title: '登记',
-      layout: 'column',
-      shell: 'doc',
-      screens: screens
-    }])
+    sections: (board.sections || []).concat([merged])
   });
 }

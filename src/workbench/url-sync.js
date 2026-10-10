@@ -1,7 +1,7 @@
 // URL 深链写入侧（goal-20260810-workbench-react-rebuild P3）— store 的
 // activePageId + activeEntryId 单向镜像到 ?page=&mode=&entry=（mode 是页的
 // manifest 属性，留给缺省壳/深链提示两个用途，Page 行壳标 pill 已随阶段 7 撤除；
-// entry = 选中条目，2026-08-16f 阶段 6）：replaceState 只替换不堆历史（所以无需
+// entry = 选中条目，2026-08-16f 阶段 6；tab = 多 tab 页的活动 tab，ADR 0041）：replaceState 只替换不堆历史（所以无需
 // popstate 处理），每次切换后地址栏即可直接复制当深链用。entry 是默认条目（画布
 // 条目 / 单条目板）时省略 —— 深链打开即默认选中，保持 URL 干净。
 // 读取侧（boot 时 URL 优先于 prefs）在 stage.js resolveBootPageId + initBoard。
@@ -19,13 +19,19 @@ export function startDeepLinkSync() {
   function sync(state) {
     if (state.missingPageId) return;
     var entryParam = null;
+    var tabParam = null;
     if (state.activeBoard && state.activeBoard.pageId === state.activePageId) {
       var entries = boardEntries(state.activeBoard.board);
       if (state.activeEntryId && state.activeEntryId !== defaultEntryId(entries)) {
         entryParam = state.activeEntryId;
       }
+      // 页 tab（ADR 0041）：多 tab 页上不是第一个 tab 才写 ?tab=，和 entry 一样默认值省略。
+      var tabs = state.activeBoard.board && state.activeBoard.board.tabs;
+      if (tabs && tabs.length > 1 && state.activeBoard.tabId && state.activeBoard.tabId !== tabs[0].id) {
+        tabParam = state.activeBoard.tabId;
+      }
     }
-    var query = deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam);
+    var query = deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam);
     if (!query || query === last) return;
     last = query;
     history.replaceState(null, '', location.pathname + '?' + query + location.hash);

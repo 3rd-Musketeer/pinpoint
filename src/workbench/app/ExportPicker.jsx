@@ -124,7 +124,9 @@ export function ExportPicker() {
   }, [open]);
 
   var pageId = activeBoard && activeBoard.pageId;
-  var sections = (activeBoard && activeBoard.board && activeBoard.board.sections) || [];
+  // 导出的是整页（页 tab 全部带上），计数取 fullBoard；存量页 fullBoard 就是 board。
+  var exported = activeBoard && (activeBoard.fullBoard || activeBoard.board);
+  var sections = (exported && exported.sections) || [];
   var frameCount = sections.reduce(function (count, sec) {
     return count + ((sec && sec.screens) || []).filter(function (sc) { return (sc.shell || 'app') !== 'doc'; }).length;
   }, 0);

@@ -392,6 +392,22 @@
   }
   .wb-strip > * { flex:none; white-space:nowrap; }
   .wb-strip-div { width:1px; height:17px; flex:none; background:var(--wb-seam); }
+  /* 页 tab 切换条（ADR 0041）：与横条平行的第二条胶囊，居中叠在它正上方（间距 6px），
+     同一档层级 --wb-z-strip。高 --wb-tabbar-h = 32，比横条矮一档；只在多 tab 页出现。
+     容器 .wb-tabbar-root 铺满 .wb 但不吃事件；条自己吃。文档形态里也在（tab 属于页，不属于形态）。 */
+  .wb { --wb-tabbar-h:32px; }
+  .wb-tabbar-root { position:absolute; inset:0; pointer-events:none; z-index:var(--wb-z-strip); }
+  .wb-tabbar {
+    position:absolute; pointer-events:auto;
+    left:50%; transform:translateX(-50%);
+    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 6px);
+    height:var(--wb-tabbar-h); max-width:calc(100% - var(--wb-chrome-gap) * 2);
+    box-sizing:border-box; display:flex; align-items:center; gap:2px; padding:0 4px;
+    border-radius:999px; overflow-x:auto; scrollbar-width:none;
+    font-size:12px; color:var(--wb-fg);
+  }
+  .wb-tabbar::-webkit-scrollbar { display:none; }
+  .wb-tabbar > * { flex:none; }
   /* 按需浮层的停靠槽（弹出的标注列表 / detail 面板）：横条右端正上方。
      容器本身不吃事件，只有里面的卡片吃。 */
   #wbdock {
@@ -947,6 +963,10 @@
   <!-- React 挂载点：底部横条（app/Strip.jsx，2026-09-04 评审板 G1）——
        画布工具那一段仍是 app/CanvasHud.jsx，wireCanvasHud 的句柄契约不变 -->
   <div class="wb-strip wb-glass" id="wbstrip" data-ann-ui></div>
+
+  <!-- React 挂载点：页 tab 切换条（app/TabBar.jsx，ADR 0041）——叠在横条正上方、与它平行；
+       ≥ 2 个 tab 才渲染里面的 #wbtabbar。本容器不吃事件、没有盒子。 -->
+  <div class="wb-tabbar-root" id="wbtabbar-root"></div>
 </div>
 
 <script src="/kits/ios/ios-kit.js"></script>

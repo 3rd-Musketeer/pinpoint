@@ -75,14 +75,21 @@ export function AnnPopover() {
   // 引用号 / 屏名全部从画布视图纯派生（lib/board-refs.js，
   // 2026-08-16f 阶段 6：doc 屏不进引用体系）；板切换途中 activeBoard
   // 可能还停在上一页 —— 不匹配就退回行自带的分组标签。
+  // 页 tab（ADR 0041）：列表要列出整页账本的标注，包括别的 tab 里的 —— 引用号表取全部 tab
+  // （fullBoard，编号按 tab 各自从 A 起），多 tab 页上每行的 cap 前缀写 tab 标题，免得 A2 指到两处。
   var boardMeta = useMemo(function () {
     var out = { frames: {}, sections: {} };
     if (!active || active.pageId !== activePageId) return out;
-    var refs = boardRefs(active.board);
+    var refs = boardRefs(active.fullBoard || active.board);
+    var tabs = refs.tabs && refs.tabs.length >= 2 ? refs.tabs : [];
+    var tabTitle = {};
+    var tabOrder = {};
+    tabs.forEach(function (tab, ti) { tabTitle[tab.id] = tab.title; tabOrder[tab.id] = ti; });
     refs.outline.forEach(function (sec, si) {
-      out.sections[sec.id] = { letter: sec.letter, order: si };
+      var prefix = sec.tabId && tabTitle[sec.tabId] ? tabTitle[sec.tabId] + ' ' : '';
+      out.sections[sec.id] = { letter: prefix + sec.letter, order: si };
       sec.frames.forEach(function (f, fi) {
-        out.frames[sec.id + '\0' + f.id] = { ref: f.ref, title: f.title, order: si * 1000 + fi };
+        out.frames[sec.id + '\0' + f.id] = { ref: prefix + f.ref, title: f.title, order: si * 1000 + fi };
       });
     });
     return out;

@@ -1,0 +1,42 @@
+{
+  "tabs": [
+    {
+      "id": "comps",
+      "title": "组件",
+      "sections": [
+        {
+          "id": "btn-wall",
+          "title": "按钮",
+          "layout": "row",
+          "screens": [
+            { "id": "btn-default", "title": "默认" },
+            { "id": "btn-busy", "title": "加载中" }
+          ]
+        },
+        {
+          "id": "chip-wall",
+          "title": "标签",
+          "layout": "row",
+          "screens": [
+            { "id": "chip-a", "title": "单个标签" }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "flow",
+      "title": "交互",
+      "sections": [
+        {
+          "id": "onboard",
+          "title": "引导",
+          "layout": "row",
+          "screens": [
+            { "id": "ob-welcome", "title": "欢迎" },
+            { "id": "ob-done", "title": "完成" }
+          ]
+        }
+      ]
+    }
+  ]
+}

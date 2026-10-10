@@ -2806,6 +2806,11 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     return { live: true, el: el, rectDoc: docRect(el) };
   }
 
+  function screenOffTab(screenId) {
+    var wb = window.workbench;
+    return !!(wb && typeof wb.isScreenOffTab === 'function' && wb.isScreenOffTab(screenId));
+  }
+
   function markHasLiveTarget(m) {
     if (!m) return false;
     var fact = markFact(m);
@@ -2828,6 +2833,9 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
    *  the callback owns the 决定 #15 priority (ppId first, cssPath fallback). */
   function isMarkBroken(m) {
     var sid = (m && m.screenId) || '';
+    // 页 tab（ADR 0041）：这屏在另一个 tab 里、此刻没挂载 —— 找不到锚点是因为没挂，不是标注坏了。
+    // 切到那个 tab 之前既不画钉子（不是 live）也不画幽灵框（不是 broken）。
+    if (sid && screenOffTab(sid)) return false;
     var fact = markFact(m);
     if (fact.broken == null) fact.broken = annMarkBroken(m, function (target) { return !!resolveMarkTarget(target, sid); }, markElementTargets(m));
     return fact.broken;
@@ -3904,6 +3912,8 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
     var strip = document.getElementById('wbstrip');
     if (strip && strip.getClientRects().length) area.bottom = Math.min(area.bottom, strip.getBoundingClientRect().top - 12);
+    var tabbar = document.getElementById('wbtabbar');
+    if (tabbar && tabbar.getClientRects().length) area.bottom = Math.min(area.bottom, tabbar.getBoundingClientRect().top - 12);
     var left = Math.min.apply(null, rects.map(function (r) { return r.left; }));
     var top = Math.min.apply(null, rects.map(function (r) { return r.top; }));
     var width = Math.max.apply(null, rects.map(function (r) { return r.right; })) - left;
@@ -3986,6 +3996,13 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     });
   }
 
+  // 页 tab（ADR 0041）：标注所在的帧在另一个 tab 里时，先把那个 tab 切出来 ——
+  // 不挂载就没有锚点可量，后面的居中 / 闪框都无从谈起。同 tab 或存量页立刻返回。
+  function revealMarkTab(wb, m) {
+    if (!wb || !m.screenId || typeof wb.revealFrame !== 'function') return null;
+    return wb.revealFrame(m.screenId) || null;
+  }
+
   function goToMark(n) {
     var navigation = ++markNavigation;
     var m = marks.find(function (k) { return k.n === n; });
@@ -4005,11 +4022,16 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
         p = Promise.resolve(wb.setActivePage(m.pageId, { scrollTop: false })).then(function () {
           return whenSettled();
         }).then(function () {
+          return revealMarkTab(wb, m);
+        }).then(function () {
           var sec = annotationSection(m);
           if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { scroll: false });
         });
-      } else if (annotationSection(m) && typeof wb.switchPage === 'function') {
-        p = wb.switchPage(annotationSection(m), { scroll: false });
+      } else {
+        p = Promise.resolve(revealMarkTab(wb, m)).then(function () {
+          var sec = annotationSection(m);
+          if (sec && typeof wb.switchPage === 'function') return wb.switchPage(sec, { scroll: false });
+        });
       }
     }
     return Promise.resolve(p).then(function () {

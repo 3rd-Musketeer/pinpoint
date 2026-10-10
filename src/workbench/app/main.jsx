@@ -13,6 +13,7 @@ import { initExportCore } from '../export-core.js';
 import { Sidebar } from './Sidebar.jsx';
 import { Dock } from './Dock.jsx';
 import { Strip } from './Strip.jsx';
+import { TabBar } from './TabBar.jsx';
 import { CanvasDock } from './CanvasHud.jsx';
 import { ExportPicker } from './ExportPicker.jsx';
 import { mountFrameMenu, sweepFrameMenus } from './frame-menu.jsx';
@@ -36,4 +37,6 @@ flushSync(function () {
 flushSync(function () {
   createRoot(document.getElementById('wbstrip')).render(h(Strip));
 });
+// 页 tab 切换条（ADR 0041）：叠在横条正上方；单 tab / 存量页什么都不渲染。
+createRoot(document.getElementById('wbtabbar-root')).render(h(TabBar));
 wireCanvasHud();

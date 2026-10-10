@@ -1,0 +1,11 @@
+{
+  "tabs": [
+    {
+      "id": "only",
+      "title": "唯一",
+      "sections": [
+        { "id": "solo", "title": "单段", "layout": "row", "screens": [{ "id": "solo-a", "title": "单帧" }] }
+      ]
+    }
+  ]
+}

@@ -21,10 +21,12 @@ import {
   resetBoardNavOnLoadFailure,
   selectBoardFrame,
   selectBoardSection,
+  setFrameRevealer,
   syncBoardSelection
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { withAttachedScreens } from './lib/board-entries.js';
+import { boardForTab, resolveTabId } from './lib/board-tabs.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import {
   annotateApi,
@@ -46,13 +48,19 @@ import {
 import {
   applyPageFormFallback,
   applyPageNames,
+  activeTabId,
   applyPageViewport,
   initPages,
   loadPageManifest,
   resolveActivePage,
   retryPageManifest,
+  revealFrame,
+  screenOffTab,
   setActiveEntry,
   setActivePage,
+  setActiveTab,
+  tabPrefFor,
+  tabsOfActiveBoard,
   showPageManifestError,
   switchPage,
   syncEntries,
@@ -114,7 +122,8 @@ function boardUrl(pageId) {
 // P2：board/screen 拉取由 TanStack Query 持有（app/query-client.js）。
 // 过期保护不再是 generation 计数 —— 同页并发由 fetchQuery 按 key 天然去重，
 // 跨页过期在 await 后检查 activePageId；mount 会话生命周期由 mountManager 自理。
-async function loadBoard(panel, pageId) {
+async function loadBoard(panel, pageId, loadOptions) {
+  loadOptions = loadOptions || {};
   try {
     var rawBoard = await queryClient.fetchQuery({
       queryKey: ['board', pageId],
@@ -133,6 +142,16 @@ async function loadBoard(panel, pageId) {
     // 阶段 8：registry attach 条目（pinpoint add --page）合并成合成 doc 屏，
     // 下游（条目派生 / 屏显隐 / 导出 / 标注分桶）全部复用 doc 屏既有管线。
     board = withAttachedScreens(board, wbGet().pageManifest && wbGet().pageManifest.attached, pageId);
+    // 页 tab（ADR 0041）：只挂活动 tab 的 section（画布 / 大纲 / 引用号 / 导航随之只看这个 tab，
+    // 也只拉这个 tab 的屏）。活动 tab：显式指定 > 正在看的（同页重载，如 HMR）> 本机偏好 > 第一个。
+    // fullBoard 留着全部 tab，跨 tab 定位与引用号表靠它。存量 board 没有 tab：board === fullBoard。
+    var fullBoard = board;
+    var current = wbGet().activeBoard;
+    var wantedTab = loadOptions.tabId
+      || (current && current.pageId === pageId && current.tabId)
+      || tabPrefFor(pageId);
+    var tabId = resolveTabId(fullBoard, wantedTab);
+    board = boardForTab(fullBoard, tabId);
     var entries = [];
     var seen = {};
     (board.sections || []).forEach(function (sec) {
@@ -154,7 +173,7 @@ async function loadBoard(panel, pageId) {
     // 决定 doc 屏套阅读器壳还是手机屏；形态不变（两种视口都是文档形态）。
     var viewport = applyPageViewport(pageId);
     panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
-    wbSet({ activeBoard: { pageId: pageId, board: board } });
+    wbSet({ activeBoard: { pageId: pageId, board: board, fullBoard: fullBoard, tabId: tabId } });
     syncEntries();
     watchDocAnnotate();
     return afterMount(panel, session);
@@ -193,6 +212,9 @@ function initBoard() {
     .then(function () {
       if (wbGet().missingPageId) return;
       var link = parseDeepLink(location.search);
+      if (link.tab) return setActiveTab(link.tab, { save: false }).then(function () {
+        if (link.entry) setActiveEntry(link.entry, { save: false });
+      });
       if (link.entry) setActiveEntry(link.entry, { save: false });
     })
     .catch(function (error) {
@@ -204,6 +226,7 @@ function initBoard() {
     .then(function () { startDeepLinkSync(); });
 }
 
+setFrameRevealer(revealFrame);
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
   applyPageNames: applyPageNames
@@ -235,6 +258,14 @@ window.workbench = {
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
+  // 页 tab（ADR 0041）：切换活动 tab（返回板重挂完成的 Promise）；多 tab 页才有 tabs() 内容。
+  setActiveTab: setActiveTab,
+  activeTabId: activeTabId,
+  tabs: tabsOfActiveBoard,
+  // 目标帧在别的 tab：切过去（Promise<boolean>）；已在当前 tab / 查不到：false。标注层 goToMark 先问它。
+  revealFrame: revealFrame,
+  // 标注层：这屏属于另一个 tab、此刻没挂载 —— 它的标注不是“锚点失效”。
+  isScreenOffTab: screenOffTab,
   // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
   // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。
   hasPage: function (pageId) { return deepLinkPageExists(pageId); },

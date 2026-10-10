@@ -5,7 +5,7 @@ import { cancelStageScroll } from './scroll-motion.js';
 // （goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
-import { pageViewport, savePageViewport } from './lib/page-viewports.js';
+import { pageViewport, savePageViewport, viewportKey } from './lib/page-viewports.js';
 import { BASE_CANVAS_SCALE, currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
 import {
@@ -178,7 +178,7 @@ function flushZoomSave() {
   var z = pendingZoomSave;
   pendingZoomSave = null;
   if (z == null) return;
-  savePageViewport(wbGet().activePageId, { canvasZoom: z });
+  savePageViewport(keyFor(wbGet().activePageId), { canvasZoom: z });
 }
 
 var viewportSaveT;
@@ -196,8 +196,13 @@ var DEFAULT_CANVAS_ZOOM = '1';
 // 视口存档仍按 pageId 键（2026-08-16f 阶段 6：条目级后刻意不变 key —— 存量存档
 // 不丢；doc 条目形态 1:1 铺满 stage，没有可存档的视口，写读两侧都用
 // activeBoardMode() 守卫跳过）。
+/** 存档键：多 tab 页每个 tab 一份（lib/page-viewports.js viewportKey），其余 = 页 id。 */
+function keyFor(pageId) {
+  return viewportKey(pageId, wbGet().activeBoard);
+}
+
 export function zoomForPage(pageId) {
-  var vp = pageViewport(pageId);
+  var vp = pageViewport(keyFor(pageId));
   return boardZoom((vp && vp.canvasZoom) || DEFAULT_CANVAS_ZOOM);
 }
 
@@ -209,7 +214,7 @@ export function snapshotPageViewport(pageId) {
   clearTimeout(viewportSaveT);
   viewportSaveT = null;
   flushZoomSave();
-  savePageViewport(pageId, Object.assign(stageScrollPatch(), {
+  savePageViewport(keyFor(pageId), Object.assign(stageScrollPatch(), {
     canvasZoom: String(currentCanvasZoom())
   }));
 }
@@ -221,14 +226,14 @@ export function scheduleViewportScrollSave() {
   clearTimeout(viewportSaveT);
   viewportSaveT = setTimeout(function () {
     if (restoringViewport) return;
-    savePageViewport(wbGet().activePageId, stageScrollPatch());
+    savePageViewport(keyFor(wbGet().activePageId), stageScrollPatch());
   }, 300);
 }
 
 function restorePageViewport(pageId, options) {
   options = options || {};
   if (!stage) return false;
-  var vp = pageViewport(pageId);
+  var vp = pageViewport(keyFor(pageId));
   if (!vp) return false;
   restoringViewport = true;
   if (vp.canvasZoom != null && options.zoom !== false) {
@@ -250,7 +255,7 @@ function restorePageViewport(pageId, options) {
     文档条目形态跳过（2026-08-16f 阶段 6）：阅读器 1:1 铺满 stage，无视口可恢复。 */
 export function restorePageViewportAfterMount(pageId) {
   if (activeBoardMode() === 'html') return false;
-  if (!pageViewport(pageId)) return false;
+  if (!pageViewport(keyFor(pageId))) return false;
   restorePageViewport(pageId, { scroll: false });
   syncBoardZoomLayout();
   restorePageViewport(pageId, { zoom: false });

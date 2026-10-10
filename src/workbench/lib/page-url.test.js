@@ -39,3 +39,11 @@ test('deepLinkQuery encodes, omits invalid mode, round-trips', () => {
   assert.equal(deepLinkQuery('', 'ios'), '');
   assert.deepEqual(parseDeepLink('?' + deepLinkQuery('x', 'html')), { pageId: 'x', mode: 'html', entry: null });
 });
+
+test('deep link carries the page tab only when given (ADR 0041)', () => {
+  assert.deepEqual(parseDeepLink('?page=ui&tab=flow'), { pageId: 'ui', mode: null, entry: null, tab: 'flow' });
+  assert.equal('tab' in parseDeepLink('?page=ui'), false);
+  assert.equal(deepLinkQuery('ui', 'ios', null, 'flow'), 'page=ui&mode=ios&tab=flow');
+  assert.equal(deepLinkQuery('ui', 'ios', '@canvas', 'flow'), 'page=ui&mode=ios&entry=%40canvas&tab=flow');
+  assert.equal(deepLinkQuery('ui', 'ios', null, null), 'page=ui&mode=ios');
+});

@@ -30,6 +30,7 @@ import {
   pageEntry
 } from './lib/page-url.js';
 import { closestBoardSection } from './lib/board-navigation.js';
+import { boardTabList, resolveTabId, tabIdOfScreen, tabIdOfSection } from './lib/board-tabs.js';
 import { entryBoardMode, validatePageManifest } from './lib/preview-contracts.js';
 import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
 import {
@@ -83,6 +84,12 @@ export function switchPage(id, options) {
       }
       scheduleAnnSnap();
     });
+  }
+  // 页 tab（ADR 0041）：目标 section 在另一个 tab 里 —— 先切过去，板重挂完再滚。
+  var active = wbGet().activeBoard;
+  var sectionTab = active && active.pageId === wbGet().activePageId ? tabIdOfSection(active.fullBoard, id) : '';
+  if (sectionTab && sectionTab !== active.tabId) {
+    return setActiveTab(sectionTab).then(function () { scrollToGroup(id, options); });
   }
   scrollToGroup(id, options);
   return Promise.resolve();
@@ -188,6 +195,88 @@ export function entriesOfActiveBoard() {
   if (!active || active.pageId !== s.activePageId) return [];
   var page = pageEntry(s.pageManifest, active.pageId);
   return withEntryWeb(boardEntries(active.board), page && page.kind);
+}
+
+/* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
+   loadBoard（stage.js）只把活动 tab 的 section 挂上画布；activeBoard.board 因此就是
+   「活动 tab 的视图」（大纲、引用号、导航、minimap、条目都只看它），activeBoard.fullBoard
+   留着全部 tab（跨 tab 定位、引用号表）。活动 tab 是页的本机偏好 prefs.activeTabByPage。
+   存量 board（只有 sections）没有 tab：这些函数恒返回空 / false，行为同从前。 */
+
+function tabPrefs() {
+  var raw = readPrefs().activeTabByPage;
+  return raw && typeof raw === 'object' ? raw : {};
+}
+
+export function tabPrefFor(pageId) {
+  return tabPrefs()[pageId] || null;
+}
+
+function saveTabPref(pageId, tabId) {
+  var all = Object.assign({}, tabPrefs());
+  all[pageId] = tabId;
+  savePrefs({ activeTabByPage: all });
+}
+
+function activeBoardOfPage() {
+  var s = wbGet();
+  var active = s.activeBoard;
+  return active && active.pageId === s.activePageId ? active : null;
+}
+
+/** 当前页的活动 tab id；存量页 / 板未装载 → ''。 */
+export function activeTabId() {
+  var active = activeBoardOfPage();
+  return (active && active.tabId) || '';
+}
+
+/** 切换条要显示的 tab 列表：≥ 2 个才有，否则 []（单 tab 与存量页不出条）。 */
+export function tabsOfActiveBoard() {
+  var active = activeBoardOfPage();
+  var tabs = active ? boardTabList(active.fullBoard || active.board) : [];
+  return tabs.length >= 2 ? tabs : [];
+}
+
+/** 这屏属于另一个 tab（此刻没挂载）。标注层据此不把它的标注当成“锚点失效”。 */
+export function screenOffTab(screenId) {
+  var active = activeBoardOfPage();
+  if (!active || !screenId) return false;
+  var tab = tabIdOfScreen(active.fullBoard || active.board, screenId);
+  return !!tab && tab !== active.tabId;
+}
+
+/** 切活动 tab：存档当前 tab 的视口 → 记偏好 → 只重挂新 tab 的 section（屏 HTML 走查询缓存）。
+    返回 Promise<boolean>：切好（或本来就在这个 tab）= true；存量页 / 板未就绪 = false。 */
+export function setActiveTab(tabId, options) {
+  options = options || {};
+  var panel = document.getElementById('wb-board-panel');
+  var active = activeBoardOfPage();
+  if (!panel || !active) return Promise.resolve(false);
+  var id = resolveTabId(active.fullBoard || active.board, tabId);
+  if (!id) return Promise.resolve(false);
+  if (id === active.tabId) return Promise.resolve(true);
+  cancelStageScroll();
+  var draft = annotateApi();
+  if (draft && typeof draft.cancelDraft === 'function') draft.cancelDraft();
+  snapshotPageViewport(active.pageId);
+  if (options.save !== false) saveTabPref(active.pageId, id);
+  wbSet({ focusFrameKey: null, focusSectionId: null, focusAnnN: null });
+  return pagesDeps.loadBoard(panel, active.pageId, { tabId: id }).then(function () {
+    var mount = pagesDeps.mountManager.current;
+    return mount && mount.boardSettled ? mount.boardSettled : true;
+  }).then(function () {
+    var now = activeBoardOfPage();
+    return !!now && now.tabId === id;
+  });
+}
+
+/** 目标帧在另一个 tab：切过去（Promise<boolean>）；已在当前 tab / 查不到 / 存量页：false。 */
+export function revealFrame(screenId) {
+  var active = activeBoardOfPage();
+  if (!active || !screenId) return false;
+  var tab = tabIdOfScreen(active.fullBoard || active.board, screenId);
+  if (!tab || tab === active.tabId) return false;
+  return setActiveTab(tab);
 }
 
 function entryPrefs() {

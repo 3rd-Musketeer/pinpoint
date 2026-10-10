@@ -13,6 +13,7 @@ import {
   tabIdOfSection,
 } from './board-tabs.js';
 import { boardRefs, outlineFrames } from './board-refs.js';
+import { viewportKey } from './page-viewports.js';
 import { ContractError, validateBoard, validateBoardTabs } from './preview-contracts.js';
 
 const sec = (id, screens, extra = {}) => ({ id, title: id, layout: 'row', screens, ...extra });
@@ -167,4 +168,15 @@ test('validateBoard: 存量 sections board 输出不带 tabs / tabId', () => {
   const out = validateBoard({ sections: [sec('a', ['x'])] });
   assert.deepEqual(Object.keys(out), ['sections']);
   assert.equal('tabId' in out.sections[0], false);
+});
+
+test('viewportKey: 多 tab 页每个 tab 一份视口存档，存量 / 单 tab / 换页途中仍用页 id', () => {
+  const view = boardForTab(TABBED, 'flow');
+  const active = { pageId: 'p', tabId: 'flow', board: view };
+  assert.equal(viewportKey('p', active), 'p::flow');
+  assert.equal(viewportKey('other', active), 'other');
+  assert.equal(viewportKey('p', null), 'p');
+  const one = boardForTab({ tabs: [{ id: 'only', sections: [sec('a', ['x'])] }] }, 'only');
+  assert.equal(viewportKey('p', { pageId: 'p', tabId: 'only', board: one }), 'p');
+  assert.equal(viewportKey('p', { pageId: 'p', tabId: '', board: { sections: [] } }), 'p');
 });

@@ -4,7 +4,7 @@ import { scrollStageTo } from './scroll-motion.js';
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
-import { pageViewport } from './lib/page-viewports.js';
+import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
 import {
   centerScrollForPoint,
@@ -26,7 +26,8 @@ var stage = document.getElementById('wbstage');
 export function frameBoardInView(panel, options) {
   options = options || {};
   if (!stage || !panel) return;
-  if (!options.force && pageViewport(options.pageId || wbGet().activePageId)) return;
+  var viewportPage = options.pageId || wbGet().activePageId;
+  if (!options.force && pageViewport(viewportKey(viewportPage, wbGet().activeBoard))) return;
   var cs = getComputedStyle(panel);
   var padL = parseFloat(cs.paddingLeft) || 0;
   var padT = parseFloat(cs.paddingTop) || 0;
@@ -259,11 +260,13 @@ export function chromeInsets() {
     var ar = annPanel.getBoundingClientRect();
     if (ar.width > 1) out.right = Math.max(0, stageRect.right - ar.left + 12);
   }
-  var strip = document.getElementById('wbstrip');
-  if (strip) {
-    var tr = strip.getBoundingClientRect();
-    if (tr.height > 1) out.bottom = Math.max(0, stageRect.bottom - tr.top + 12);
-  }
+  // 底部：横条，以及叠在它上面的 tab 切换条（页 tab，ADR 0041）—— 取更高的那一条。
+  ['wbstrip', 'wbtabbar'].forEach(function (id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    var tr = el.getBoundingClientRect();
+    if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + 12);
+  });
   return out;
 }
 
@@ -488,8 +491,26 @@ function jumpSectionNavigatorToScreen(groupId, screenId) {
   focusWorkbenchFrame(groupId, screenId);
 }
 
+// 页 tab（ADR 0041）：目标帧不在当前 tab 的 DOM 里时，由 stage.js 经 setFrameRevealer 注入
+// 的函数把活动 tab 切过去（pages.js revealFrame；board-nav 不能反向 import pages.js）。
+// 返回 Promise<boolean>，已在当前 tab / 查不到时返回 false。
+var frameRevealer = null;
+
+export function setFrameRevealer(fn) {
+  frameRevealer = fn;
+}
+
+/** 定位到某个帧。同 tab 里同步返回 boolean；帧在另一个 tab 时先切 tab、板重挂完再定位，返回 Promise<boolean>。 */
 export function focusWorkbenchFrame(groupId, screenId, options) {
   var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
+  if (!frame && frameRevealer) {
+    var pending = frameRevealer(screenId);
+    if (pending) {
+      return pending.then(function (ok) {
+        return ok ? focusWorkbenchFrame(groupId, screenId, options) : false;
+      });
+    }
+  }
   if (!frame || !stage) return false;
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
