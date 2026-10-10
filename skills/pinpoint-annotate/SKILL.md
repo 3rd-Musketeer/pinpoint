@@ -13,6 +13,10 @@ description: 读取 Pinpoint 标注、判断改帧还是改组件、改完编译
 `B`（整段）、裸帧 id / 段 id（与 `B3` / `B` 同义）、`@frame:<page>/<screen>`、`@a:<id>`（兼容写法）。
 多条用空格分隔，区间 `#3-#7`。
 
+多 tab 的页（`board.json` 写了 `tabs`，ADR 0041）：编号按 tab 各自从 A 重来，位置引用写 `<tab>:B3` / `<tab>:B`
+（如 `flow:B3`）。裸 `B3` 只在一个 tab 里存在时能用，几个 tab 里都有就报错并列出候选。帧 id、段 id 仍是裸的。
+`ppnt list <页> --frames` 按 tab 分组列出；`ppnt shot` 整页每个 tab 出一张（`<页>--<tab>.png`），指定引用就只出它所在的 tab。
+
 `B3` 这类编号是显示编号：按 board 顺序现算，调序、插帧、删帧后就指向别的帧。帧 id 不变，也是源文件名。
 所以对 owner 当场说话用编号；写进 README、交接稿、验收记录这类留存文字时写 id，或写成
 “D2（c1b-detail-time）”。编号与 id、源文件的对照用 `ppnt list <页> --frames` 查，`check` 的帧标题也

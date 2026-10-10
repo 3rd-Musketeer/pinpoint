@@ -98,7 +98,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 `root` 约定、`data-preview-root` 覆盖、sidecar 资源报错行为见 board-schema“交互 frame”。
 产品手势不进 `ios-kit.js`：kit 只承载通用原语，放进去所有页互相污染。
 
-## 4. board.json：登记帧与 variants 墙
+## 4. board.json：登记帧、variants 墙与页内 tab
 
 帧在 `sections[].screens` 追加 id 或对象；variants 墙 = `shell: "comp"` 的 section，screen 条目
 内联组件与 props，不建帧文件：
@@ -121,10 +121,23 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
   （K11、B3 之类）。分两种页，底层一样（section 里放普通帧），区别在用途：
   - **组件页**：每个 section 服务一个组件，里面是同一个 UI 上下文（同一个手机界面）下它的几个变体，
     一个变体一个普通帧，`title` 写变体的内容（“收起：一行胶囊”）。用来在界面里感受效果、并排比较。
-    可以是单独的页，也可以是交互页末尾的 section 组；交互页画板臃肿时拆成单独的页。
-  - **交互页**：正式流程，每个关键帧只放定下来的那一个。
-  评审选定变体后，把它 **复制** 成交互页里自己的帧（新 id、新文件），之后两边各改各的；不做活引用。
+    放在页里的“组件”tab（见下“页内 tab”）。
+  - **交互页**：正式流程，每个关键帧只放定下来的那一个，放在同一个页里的“交互”tab。
+  评审选定变体后，把它 **复制** 成交互 tab 里自己的帧（新 id、新文件），之后两边各改各的；不做活引用。
   说明表、总览这类“画板上的非手机内容”不是变体，放 `doc` / `comp` 屏。
+- **页内 tab**（ADR 0041）：一个页里要分几块（组件 / 交互 / 试验场）就用 `tabs`，不要拆成几个页。
+  tab 只是 section 的视图分组：共用 `components/`、资源和标注，section id 与帧 id 在整页内唯一，编号按 tab 各自
+  从 A 重来。`tabs` 与顶层 `sections` 二选一，每个 tab 至少一个 section；一个 tab 的页等于没有 tab。
+  ```json
+  { "tabs": [
+      { "id": "comps", "title": "组件", "sections": [
+          { "id": "composer-states", "title": "输入框", "layout": "row", "screens": [{ "id": "composer-pill" }, { "id": "composer-open" }] } ] },
+      { "id": "flow", "title": "交互", "sections": [
+          { "id": "ask", "title": "提问", "layout": "row", "screens": [{ "id": "ask-start" }] } ] }
+  ] }
+  ```
+  多 tab 页上，对 `ppnt check / shot / locate` 和 owner 说话时位置引用写 `flow:A1`（裸 `A1` 在多个 tab 里都有就报错
+  并列候选）；帧 id 和 section id 仍是裸的。
 - 元素可写 `goto="<screenId>"` 指向另一帧，编译进产物属性（flow 边的数据层）。
 
 ## 5. 改完自检

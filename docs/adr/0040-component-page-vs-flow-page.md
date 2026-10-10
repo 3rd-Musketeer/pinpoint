@@ -3,6 +3,9 @@
 Status: 现行 · Date: 2026-10-10 · Scope: `skills/pinpoint-build/SKILL.md`、`docs/board-schema.md`（变体组一节已删）
 Supersedes: [0039](0039-variant-groups.md)
 
+2026-10-10 补注：组件页与交互页不再拆成两个独立的页，而是同一个页里的两个 tab（组件 tab + 交互 tab），
+见 [ADR 0041](0041-page-tabs.md)。共用 `components/` 与资源，复制选定变体的流程不变。
+
 **起因**：0039 让一个帧带多个变体（展开 / 勾选 / 收起），当天上线。用起来，变体仍和交互流程混在同一张画板里，
 流程板臃肿；而变体要在手机界面里才看得出效果（单看组件的 comp 墙用得很少）。
 

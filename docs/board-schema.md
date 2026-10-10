@@ -74,6 +74,26 @@ props 在各文件首行注释。
   `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
+### 页内 tab（ADR 0041）
+
+一个页要分几块（组件 / 交互 / 试验场）时，把 `sections` 换成 `tabs`：
+
+```json
+{
+  "tabs": [
+    { "id": "comps", "title": "组件", "sections": [
+        { "id": "btn-wall", "title": "按钮", "layout": "row", "screens": [{ "id": "btn-default" }, { "id": "btn-busy" }] } ] },
+    { "id": "flow", "title": "交互", "sections": [
+        { "id": "onboard", "title": "引导", "layout": "row", "screens": [{ "id": "ob-welcome" }] } ] }
+  ]
+}
+```
+
+- `tabs` 与顶层 `sections` 二选一。tab 的 `id` 在页内唯一、是 id 的样子；每个 tab 至少一个 section。
+- tab 只是 section 的视图分组：共用 `components/`、资源和标注账本；section id、screen id 在整页内唯一（跨 tab 也不许重复）。
+- 编号按 tab 各自从 A 重来；多 tab 页的位置引用写 `<tab>:B3`，id 仍是裸的。不足 2 个 tab 的页没有切换条、引用不带前缀。
+- 工作台只挂活动 tab 的 section；`ppnt build` 与导出覆盖所有 tab。
+
 ## comp section（variants 墙）
 
 section 写 `"shell": "comp"` 后，它的 screen 条目直接喂组件：
@@ -136,7 +156,7 @@ client 把空挂载点水合成 `/api/frame` 的 iframe，标注绑定对象不�
 
 ## 从 board 派生出来的东西
 
-层级：**page → entries → canvas → section → frame**；screen 是 frame 里的内容（`screenId` = frame id）。
+层级：**page → entries → canvas → [tab →] section → frame**（tab 见上，可选）；screen 是 frame 里的内容（`screenId` = frame id）。
 条目派生在 `src/workbench/lib/board-entries.js`：app / lock / comp 屏合成一个 canvas 条目（id
 `@canvas`），每个 doc 屏各成一个 document 条目。舞台形态跟选中的条目走，选择持久化在
 `prefs.activeEntryIdByPage`，深链 `?page=<id>&entry=<screenId>`。A1 引用体系、frame 树、截图清单

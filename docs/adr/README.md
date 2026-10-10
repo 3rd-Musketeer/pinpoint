@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0041](0041-page-tabs.md) | 2026-10-10 | 页内 tab：page → tab → section，tab 只是 section 的视图分组；编号按 tab 重来，多 tab 页引用写 `<tab>:B3` | 现行 | — |
 | [0040](0040-component-page-vs-flow-page.md) | 2026-10-10 | 组件页与交互页：变体放 section 里的普通帧，选定后复制进交互页；整屏变体组退役 | 现行 | — |
 | [0039](0039-variant-groups.md) | 2026-10-10 | 变体组：同一个关键帧的几种画法，整组一个位置号、变体派生 a/b/c；变体仍是独立屏，标注挂变体 | Superseded by ADR 0040（2026-10-10 退役） | ADR 0040 |
 | [0038](0038-display-ref-vs-id-and-note-retired.md) | 2026-09-28 | 编号是显示编号、id 是身份；标注 note 退役 | 现行 | — |

@@ -8,7 +8,7 @@ Status: 现行 · Date: 2026-09-28 · Supersedes-in-part: 0035（状态机里 ch
 
 **Decided**（2026-09-28 owner：“编号是 display id，实际的 SSOT id 是不变的”“把 note 机制先关掉吧，目前没觉得有用，还带来很多问题”）：
 
-- 编号（A、B3）是显示编号，`boardRefs` 按 board 顺序现算、不落盘；section / screen 的 id 是不变的身份，帧 id 同时是
+- 编号（A、B3）是显示编号，`boardRefs` 按 board 顺序现算、不落盘（2026-10-10 补注：多 tab 页里按 tab 各自从 A 重来，位置引用写 `<tab>:B3`，见 [ADR 0041](0041-page-tabs.md)）；section / screen 的 id 是不变的身份，帧 id 同时是
   源文件名和标注锚点。当场对话用编号，留存文字用 id。
 - `boardRefs` 自己跳过 doc 帧（screen 或 section 上的 `shell: "doc"`），服务端拿 board.json 原文调用也和画布一致。
   此前只有画布先过 `canvasBoard` 再算，CLI 直接用原文：有 doc 分区的页，`ppnt check / shot / locate` 的字母比画布多一位。

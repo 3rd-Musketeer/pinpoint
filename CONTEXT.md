@@ -20,6 +20,12 @@ Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一�
 board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 DOM 的
 `[data-ann-section]`，成为标注的 `section` 字段。引用号里 section 是字母（A、B）。
 
+**tab（页内 tab）**
+page 里 section 的视图分组，`board.json` 写 `tabs: [{id, title, sections}]`（与顶层 `sections` 二选一，ADR 0041）。
+tab 不是独立的 board：共用 `components/`、资源和标注，section / screen id 整页唯一；编号按 tab 各自从 A 重来，
+多 tab 页的位置引用写 `flow:B3`。工作台底部横条上方的切换条只在 ≥ 2 个 tab 时出现。
+要避开：把 tab 说成“页”或“board”；给 tab 套版本、playground 之类的语义。
+
 **screen（屏）**
 一个 frame 里装的内容，也就是那个帧源文件本身（`<pageId>/<screenId>.jsx`，存量页是
 `<screenId>.html`）。`screenId` 就是 frame 的 id——同一个东西的两个名字，看你说的是内容还是位置。

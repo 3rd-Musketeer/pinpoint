@@ -6,6 +6,8 @@ Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/app/DetailPanel.jsx`
 
 Supersedes: ADR 0015（note 导出永随语义）
 
+2026-10-10 补注：编号（A/B1）的作用域是一个 tab：页内有 tab 时每个 tab 各自从 A 重来，见 [ADR 0041](0041-page-tabs.md)。
+
 **Decided**（owner 2026-08-17 报「历史案例里的 title 非常杂乱且不美观」，指明两手——告知 agent title 的目的写法案例 + 给 notes/desc 找承载；讨论中 owner 两条裁决：禁「·」（编号系统已自动派生）、「section note 和 frame note 的样式需要设计……detail 可以放在右侧栏」；导出兼容 owner 明示「不用兼容，导出逻辑要重构，列为 backlog」）：
 
 - **title 规矩成文**（SKILL.md §2.1 + AGENTS.md schema 节 + README）：title = 单行短名词短语，只回答「这是什么」；编号由系统按 board 顺序派生（A/B1），手写必重复；禁「·」拼接多段信息；图例 / 意图 / 结论 / 验证一律进 note。防线三层：文档正反例（反例 = goal-weekly B 区真实案例）→ `validateBoard` 硬拦换行（长度不钉死，存量 50+ 超长 title 不炸板）→ 画布 caption 两行 clamp + hover 全文兜底。library 模板板同步改成规矩范例（`1 · 选豆` → `选豆` 等 16 处）。
