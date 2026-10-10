@@ -136,7 +136,7 @@ workbench 用 `innerHTML` 挂帧，裸 `<script>` 不执行，两种形态都由
 ## 6. 反例
 
 - 把 sheet / tabbar / backdrop 塞进 `.ios-app`；手写 safe-area 像素。
-- 给图注设 font-size；title 里手写编号（K11、B3）或塞图例；在交互页里为同一关键帧的多种做法各开一帧再自造编号（该用 variants）（caption 与 title 规矩在 board-schema）。
+- 给图注设 font-size；title 里手写编号（K11、B3）或塞图例；在交互页里为同一关键帧的多种做法各开一帧再自造编号（该建组件页 section，见 §4）（caption 与 title 规矩在 board-schema）。
 - 帧 id 仿编号（`a4b-ask2`、`c1c-run`）；为了和编号对齐去改已有帧的 id。
 - 为“以后可能复用”抽组件；把状态、事件、fetch 写进组件。
 - 把产品手势写进 `ios-kit.js`；改 loader 机壳或 `ios-kit.css` 去对齐一条标注。
