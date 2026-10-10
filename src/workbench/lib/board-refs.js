@@ -5,6 +5,7 @@
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
 import { legacyShell } from './preview-contracts.js';
+import { boardTabList, flattenTabs } from './board-tabs.js';
 
 /** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */
 export function sectionLetter(index) {
@@ -18,16 +19,22 @@ export function sectionLetter(index) {
 }
 
 /**
- * board.sections → { outline, bySection, byFrame }：
- * - outline: [{ id, title, letter, frames: [{ id, title, ref }] }]（引用序，大纲/图注直接消费）；
+ * board.sections → { outline, bySection, byFrame, tabs }：
+ * - outline: [{ id, title, letter, tabId?, frames: [{ id, title, ref, tabId? }] }]（引用序，大纲/图注直接消费）；
  * - bySection: sectionId → letter；
- * - byFrame: sectionId + '\0' + screenId → ref（同一 screen 重复挂载取首次出现）。
+ * - byFrame: sectionId + '\0' + screenId → ref（同一 screen 重复挂载取首次出现）；
+ * - tabs?: [{ id, title }]（ADR 0041 页 tab；存量 board 没有这个键，结果形状同从前）。
+ * 编号按 tab 重新从 A 开始（tabId 一变，字母计数清零）；section / screen id 全页唯一，
+ * 所以 bySection / byFrame 仍以 id 为键，不必带 tab。多 tab 页上的位置号靠 tabId 区分，
+ * 机器侧引用写 `<tabId>:B3`（server/lib/ann-refs.js）。
  * _empty 占位 section 不进引用体系（validateBoard 合成的空板标记，无对应图纸）。
  */
-export function boardRefs(board) {
+export function boardRefs(rawBoard) {
+  var board = flattenTabs(rawBoard);
   var outline = [];
   var bySection = {};
   var byFrame = {};
+  var counters = {};
   var sections = (board && board.sections) || [];
   sections.forEach(function (sec) {
     if (!sec || sec.id === '_empty') return;
@@ -37,17 +44,27 @@ export function boardRefs(board) {
       return legacyShell(sc.shell || sec.shell) !== 'doc';
     });
     if (!screens.length) return;
-    var letter = sectionLetter(outline.length);
+    var tabKey = sec.tabId || '';
+    var index = counters[tabKey] || 0;
+    counters[tabKey] = index + 1;
+    var letter = sectionLetter(index);
     bySection[sec.id] = letter;
     var frames = screens.map(function (sc, fi) {
       var ref = letter + (fi + 1);
       var key = sec.id + '\0' + sc.id;
       if (!byFrame[key]) byFrame[key] = ref;
-      return { id: sc.id, title: sc.title || sc.id, ref: ref };
+      var frame = { id: sc.id, title: sc.title || sc.id, ref: ref };
+      if (tabKey) frame.tabId = tabKey;
+      return frame;
     });
-    outline.push({ id: sec.id, title: sec.title || sec.id, letter: letter, frames: frames });
+    var section = { id: sec.id, title: sec.title || sec.id, letter: letter, frames: frames };
+    if (tabKey) section.tabId = tabKey;
+    outline.push(section);
   });
-  return { outline: outline, bySection: bySection, byFrame: byFrame };
+  var result = { outline: outline, bySection: bySection, byFrame: byFrame };
+  var tabs = boardTabList(board);
+  if (tabs.length) result.tabs = tabs;
+  return result;
 }
 
 /** (board, sectionId, screenId) → 'A1' | ''（查不到即空串，调用方自行降级）。 */
@@ -75,7 +92,8 @@ export function outlineFrames(refs) {
 var REF_LIKE_TITLE_RE = /^[A-Za-z]{1,2}[0-9]+[a-z]?(?:[\s·:：.\-—]|$)/;
 
 /** board → title 以编号样前缀开头的帧 / 段标题（board 序、去重）；ppnt build 据此提示。 */
-export function refLikeTitles(board) {
+export function refLikeTitles(rawBoard) {
+  var board = flattenTabs(rawBoard);
   var seen = Object.create(null);
   var titles = [];
   function note(title) {
@@ -94,7 +112,8 @@ export function refLikeTitles(board) {
   return titles;
 }
 
-export function refLikeFrameIds(board) {
+export function refLikeFrameIds(rawBoard) {
+  var board = flattenTabs(rawBoard);
   var seen = Object.create(null);
   var ids = [];
   ((board && board.sections) || []).forEach(function (sec) {

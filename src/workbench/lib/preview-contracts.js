@@ -1,3 +1,5 @@
+import { flattenTabs } from './board-tabs.js';
+
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export class ContractError extends Error {
@@ -173,7 +175,8 @@ export function retiredVariantsMessage(screenId) {
 }
 
 /** board → 第一个还带 variants 的 screen id（没有返回 null）；不做别的校验。 */
-export function findRetiredVariantGroup(board) {
+export function findRetiredVariantGroup(rawBoard) {
+  const board = flattenTabs(rawBoard);
   const sections = board && Array.isArray(board.sections) ? board.sections : [];
   for (const section of sections) {
     const screens = section && Array.isArray(section.screens) ? section.screens : [];
@@ -203,15 +206,54 @@ function normalizeScreen(entry, path, sectionShell) {
   };
 }
 
+/**
+ * 页 tab（ADR 0041）的磁盘形态检查：`tabs` 与 `sections` 二选一；tab id 合法且唯一；
+ * 每个 tab 至少一个 section。只管 tab 这一层 —— section / screen 的细节与全页 id 唯一
+ * 由 validateBoard 对摊平后的 sections 统一查。没写 tabs 的存量 board 恒通过。
+ * 编译侧（page-compiler）直接用它，校验与 ppnt build 共一份文字。
+ */
+export function validateBoardTabs(raw) {
+  if (!raw || typeof raw !== 'object' || !Object.hasOwn(raw, 'tabs')) return;
+  if (Object.hasOwn(raw, 'sections')) {
+    throw new ContractError('tabs', 'sections 与 tabs 二选一：要分 tab 就把全部 section 放进各个 tab，顶层不再写 sections');
+  }
+  if (!Array.isArray(raw.tabs) || !raw.tabs.length) {
+    throw new ContractError('tabs', 'expected a non-empty array of tabs');
+  }
+  const tabIds = new Set();
+  raw.tabs.forEach((entry, index) => {
+    const path = `tabs[${index}]`;
+    const tab = objectAt(entry, path);
+    const id = identifier(tab.id, `${path}.id`);
+    if (tabIds.has(id)) throw new ContractError(`${path}.id`, `duplicate tab id "${id}"`);
+    tabIds.add(id);
+    if (tab.title != null) titleString(tab.title, `${path}.title`);
+    if (!Array.isArray(tab.sections) || !tab.sections.length) {
+      throw new ContractError(`${path}.sections`, `tab "${id}" 至少要有一个 section`);
+    }
+  });
+}
+
 export function validateBoard(raw, options = {}) {
   const board = objectAt(raw, options.pageId ? `board(${options.pageId})` : 'board');
-  if (!Array.isArray(board.sections)) {
+  validateBoardTabs(board);
+  const flat = flattenTabs(board);
+  const tabbed = flat !== board;
+  if (!Array.isArray(flat.sections)) {
     throw new ContractError('sections', 'expected an array; flat board shapes are not supported');
   }
   const sectionIds = new Set();
   const screenIds = new Set();
-  const sections = board.sections.map((entry, sectionIndex) => {
-    const path = `sections[${sectionIndex}]`;
+  // 摊平后的 sections 带 tabId：报错路径回写成磁盘位置（tabs[i].sections[j]），一眼找得到。
+  const perTab = new Map();
+  const sections = flat.sections.map((entry, sectionIndex) => {
+    let path = `sections[${sectionIndex}]`;
+    if (tabbed && entry && typeof entry === 'object') {
+      const tabIndex = board.tabs.findIndex((tab) => tab && tab.id === entry.tabId);
+      const inTab = perTab.get(entry.tabId) || 0;
+      perTab.set(entry.tabId, inTab + 1);
+      path = `tabs[${tabIndex}].sections[${inTab}]`;
+    }
     const section = objectAt(entry, path);
     const id = identifier(section.id, `${path}.id`);
     if (sectionIds.has(id)) throw new ContractError(`${path}.id`, `duplicate id "${id}"`);
@@ -233,13 +275,19 @@ export function validateBoard(raw, options = {}) {
       screenIds.add(normalized.id);
       return normalized;
     });
-    return {
+    const out = {
       id,
       title: section.title == null ? id : titleString(section.title, `${path}.title`),
       layout,
       shell,
       screens,
     };
+    if (tabbed) out.tabId = section.tabId;
+    return out;
   });
-  return { sections };
+  if (!tabbed) return { sections };
+  return {
+    sections,
+    tabs: flat.tabs.map((tab) => ({ id: tab.id, title: tab.title == null || tab.title === '' ? tab.id : String(tab.title).trim() })),
+  };
 }
