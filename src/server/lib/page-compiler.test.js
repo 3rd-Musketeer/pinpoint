@@ -126,6 +126,15 @@ describe('jsx 帧编译', () => {
     assert.match(html, /^<div class="ios-app" data-pp-id="home\.jsx:2@1"[^>]*><p data-pp-id="home\.jsx:2@2">同<\/p><\/div>$/);
   });
 
+  test('board 里还有 variants 的 screen 条目：整页不编，报迁移提示（ADR 0040）', async () => {
+    const target = makePage('retired-variants', {
+      board: { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'confirm', variants: [{ id: 'a' }, { id: 'b' }] }] }] },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, false);
+    assert.match(result.error, /screen confirm：变体组已退役（ADR 0040）；把变体摊平成同一个 section 里的普通 frame/);
+  });
+
   test('同一屏连编 3 次结果一致（cjs 求值无模块缓存残留）', async () => {
     const target = makePage('jsx-repeat', {
       board: BASIC_BOARD,

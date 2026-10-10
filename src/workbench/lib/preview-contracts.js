@@ -166,11 +166,30 @@ function normalizeComp(screen, path) {
   return { comp, props };
 }
 
+// 变体组（screen 条目带 variants）已退役（ADR 0040）：同一个关键帧的几种画法摊成同一个 section 里的普通 frame。
+// 校验与 ppnt build 共用这句话，旧 board 一眼看出怎么改。
+export function retiredVariantsMessage(screenId) {
+  return `screen ${screenId}：变体组已退役（ADR 0040）；把变体摊平成同一个 section 里的普通 frame`;
+}
+
+/** board → 第一个还带 variants 的 screen id（没有返回 null）；不做别的校验。 */
+export function findRetiredVariantGroup(board) {
+  const sections = board && Array.isArray(board.sections) ? board.sections : [];
+  for (const section of sections) {
+    const screens = section && Array.isArray(section.screens) ? section.screens : [];
+    for (const screen of screens) {
+      if (screen && typeof screen === 'object' && Object.hasOwn(screen, 'variants')) return String(screen.id);
+    }
+  }
+  return null;
+}
+
 function normalizeScreen(entry, path, sectionShell) {
   if (typeof entry === 'string') {
     return { id: identifier(entry, path), title: '', shell: sectionShell, role: 'product', src: '' };
   }
   const screen = objectAt(entry, path);
+  if (Object.hasOwn(screen, 'variants')) throw new ContractError(path, retiredVariantsMessage(screen.id));
   const compPart = normalizeComp(screen, path);
   // comp 屏的 title 缺省用 id（variants 墙的一格一名）；普通屏 title 可空。
   const titleFallback = compPart.comp ? screen.id : '';

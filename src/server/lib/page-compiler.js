@@ -33,7 +33,7 @@ import { readBoard } from './board-file.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
-import { COMP_NAME_PATTERN } from '../../workbench/lib/preview-contracts.js';
+import { COMP_NAME_PATTERN, findRetiredVariantGroup, retiredVariantsMessage } from '../../workbench/lib/preview-contracts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -555,6 +555,10 @@ export async function compilePage(target, options = {}) {
     board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 读取失败：${(error && error.message) || error}` };
+  }
+  const retiredGroup = findRetiredVariantGroup(board);
+  if (retiredGroup) {
+    return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 无效：${retiredVariantsMessage(retiredGroup)}` };
   }
   const ids = screenEntriesFromBoard(board);
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};

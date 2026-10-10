@@ -4,6 +4,7 @@ import test from 'node:test';
 
 import {
   ContractError,
+  findRetiredVariantGroup,
   validateBoard,
   validatePageManifest,
   validateScreenFragment,
@@ -276,4 +277,21 @@ test('comp section（pp2 切片 2）：shell "comp" 放行，comp/props 条目�
   assert.throws(() => validateBoard({
     sections: [{ id: 's', title: 'S', layout: 'row', shell: 'weird', screens: ['x'] }],
   }), (e) => e instanceof ContractError && e.message.includes('shell'));
+});
+
+test('validateBoard: screen 条目带 variants（已退役的变体组）报清楚的迁移提示', () => {
+  const board = {
+    sections: [{
+      id: 's', title: 'S', layout: 'row',
+      screens: ['a', { id: 'confirm', title: '确认', variants: [{ id: 'confirm-a' }, { id: 'confirm-b' }] }],
+    }],
+  };
+  assert.throws(() => validateBoard(board, { pageId: 'p' }), (e) => (
+    e instanceof ContractError
+    && e.path === 'sections[0].screens[1]'
+    && e.message.includes('screen confirm：变体组已退役（ADR 0040）；把变体摊平成同一个 section 里的普通 frame')
+  ));
+  assert.equal(findRetiredVariantGroup(board), 'confirm');
+  assert.equal(findRetiredVariantGroup({ sections: [{ id: 's', screens: ['a', { id: 'b' }] }] }), null);
+  assert.equal(findRetiredVariantGroup(null), null);
 });
