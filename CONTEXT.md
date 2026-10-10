@@ -80,17 +80,10 @@ kit 是第一个 kit，不是产品本身。
 **component（组件）**
 先住页里的印章：`<page>/components/<Name>.jsx`，命名导出一个纯函数，输入 props 和 children、
 输出 HTML，没有状态、事件、副作用（lint 四禁挡着）；帧文件显式 `import` 它，同名时页内覆盖 kit。
-组件 variant 用 props 表达，variants 墙是 board.json 里 `shell: "comp"` 的 section，screen 条目内联
+variant 用 props 表达，variants 墙是 board.json 里 `shell: "comp"` 的 section，screen 条目内联
 `comp` + `props`。跨页复用 = 手动把文件搬进 kit（`content/kits/ios/jsx/`），之后走 `pinpoint/kit`，
 没有自动提升（2026-09-22 pp2 决定，取代 ADR 0028 的 kit 集中归属；机制见 `docs/board-schema.md`）。
 要避开：拿“组件”指 workbench 自己的 React 组件——那个说 workbench 组件。
-
-**变体与变体组（variant / variant group）**
-同一个关键帧的另一种画法叫变体；带变体的 frame 叫变体组。变体仍是独立屏文件，有自己的 id，标注挂在变体上；
-变体组在大纲、帧导航里占一个编号（B11），变体派生成 B11a / B11b（显示编号，同 ADR 0038）。收起时只显示选中的
-一个（默认第一个），展开并排看全部。与组件 variant 是两回事：那个是同一个组件按 props 换的状态，住在 comp 的
-variants 墙里（2026-10-10 owner 拍板：新概念用“变体”，comp 那个让出来叫“组件 variant”；设计未落地）。
-要避开：用“方案”“option”“K11”这类自造编号指它——title 里不写编号。
 
 **source 与 dist（源码与编译产物）· pp2**
 源码 = 页目录里 agent 写的东西（`.jsx` 帧、`components/`、页级 css / js、board.json；存量 `.html` 也是源码）。

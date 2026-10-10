@@ -1,6 +1,6 @@
 # 0039 · 变体组：同一个关键帧的几种画法
 
-Status: 现行 · Date: 2026-10-10 · Scope: `src/workbench/lib/board-variants.js`、`src/workbench/lib/board-refs.js`、`src/workbench/lib/preview-contracts.js`、`src/server/lib/ann-refs.js`、`src/server/lib/ann-query.js`、`src/server/lib/board-file.js`、`src/server/lib/page-compiler.js`、`bin/cli/list.js`、`bin/cli/pages.js`
+Status: Superseded by ADR 0040（2026-10-10 退役） · Date: 2026-10-10 · Scope: `src/workbench/lib/board-variants.js`、`src/workbench/lib/board-refs.js`、`src/workbench/lib/preview-contracts.js`、`src/server/lib/ann-refs.js`、`src/server/lib/ann-query.js`、`src/server/lib/board-file.js`、`src/server/lib/page-compiler.js`、`bin/cli/list.js`、`bin/cli/pages.js`
 
 **起因**：browser-e2e-flow 里 agent 为同一个关键帧画三种做法，三帧各占一个位置号（B11 / B12 / B13），
 它便在 title 里写了自己的“K11”来表达“同一件事”。系统编号表达不了这层关系，agent 只好自造一套，
