@@ -257,3 +257,39 @@ test('buildOfflineShareHtml escapes titles and ids in the outline and strip', ()
   assert.match(html, /data-frame-count="0"/);
   assert.match(html, /id="wbsection-nav-position"[^>]*>0 \/ 0</);
 });
+
+test('buildOfflineShareHtml renders the tab bar and hides every tab but the first (ADR 0041)', () => {
+  const screen = (id) => ({ id, title: id, ref: 'A1', html: `<div class="wb-screen" id="frame-${id}" data-screen="${id}"><div class="ios-stage"></div></div>` });
+  const html = buildOfflineShareHtml({
+    pageId: 'demo',
+    title: 'Demo',
+    tabs: [{ id: 'comps', title: '组件' }, { id: 'flow', title: '交互' }],
+    sections: [
+      { id: 'walls', title: '墙', ref: 'A', tabId: 'comps', screens: [screen('w1')] },
+      { id: 'onboard', title: '引导', ref: 'A', tabId: 'flow', screens: [screen('o1'), screen('o2')] },
+    ],
+    workbenchCss: '', iosCss: '', iosKitJs: '', frameBootJs: '', shareRuntimeJs: '',
+  });
+  assert.match(html, /data-tab-count="2"/);
+  assert.match(html, /<div class="wb-tabbar wb-glass" id="wbtabbar" role="tablist"/);
+  assert.match(html, /<button type="button" class="share-tab" role="tab" data-tab="comps" aria-selected="true"/);
+  assert.match(html, /<button type="button" class="share-tab" role="tab" data-tab="flow" aria-selected="false"/);
+  assert.match(html, /id="section-walls" data-ann-section="walls" data-ann-section-label="墙" data-tab="comps">/);
+  assert.match(html, /id="section-onboard" data-ann-section="onboard" data-ann-section-label="引导" data-tab="flow" data-tab-hidden>/);
+  assert.match(html, /<div class="ol" data-ol-section="onboard" data-tab="flow" data-tab-hidden>/);
+  // 读数起始只数第一个 tab（1 帧），data-frame-count 是整页总数（3）
+  assert.match(html, /data-frame-count="3"/);
+  assert.match(html, /1 \/ 1/);
+});
+
+test('buildOfflineShareHtml has no tab bar or tab attributes for single-tab and legacy pages', () => {
+  const html = buildOfflineShareHtml({
+    pageId: 'demo',
+    title: 'Demo',
+    sections: [{ id: 'a', title: 'A', ref: 'A', screens: [{ id: 'one', title: '1', ref: 'A1', html: '<div class="wb-screen" id="frame-one" data-screen="one"></div>' }] }],
+    workbenchCss: '', iosCss: '', iosKitJs: '', frameBootJs: '', shareRuntimeJs: '',
+  });
+  assert.doesNotMatch(html, /id="wbtabbar"/);
+  assert.doesNotMatch(html, /data-tab[="\s]/);
+  assert.doesNotMatch(html, /data-tab-count/);
+});

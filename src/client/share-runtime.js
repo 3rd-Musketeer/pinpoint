@@ -16,6 +16,10 @@
  * - 窄屏（≤ 760px）：面板默认收起、打开时是整宽的浮层；帧竖排、按视口宽度适配；
  *   单指滚动走原生。
  *
+ * - 页 tab（ADR 0041）：导出页带全部 tab，段落 / 大纲行用 data-tab 标属，非当前 tab 的带
+ *   data-tab-hidden（CSS 里 display:none）。切换条 #wbtabbar 只翻这个属性、重收集、回中；
+ *   深链 #frame-<id> 指到别的 tab 的帧时先切 tab。≤ 1 个 tab 时页里没有切换条，这段不动。
+ *
  * 纯函数（clampZoom / focusScrollForRect / usableViewport / fitZoomForWidth /
  * formatZoomLabel）挂在 window.__pinpointShare 上，供单测在 vm 里直接调用。
  */
@@ -121,6 +125,7 @@
     var zoomBtn = document.getElementById('wbzoom-label');
     var recenterBtn = document.getElementById('wbrecenter');
     var outline = document.getElementById('wboutline');
+    var tabbar = document.getElementById('wbtabbar');
     var mobileMq = typeof window.matchMedia === 'function' ? window.matchMedia(MOBILE_QUERY) : null;
 
     var zoom = 1;
@@ -139,6 +144,7 @@
       var items = lib.querySelectorAll('.wb-lib-item[data-ann-section]');
       for (var i = 0; i < items.length; i++) {
         var item = items[i];
+        if (item.hasAttribute('data-tab-hidden')) continue;   // 非当前 tab：不进模型
         var sectionId = item.getAttribute('data-ann-section') || '';
         var section = {
           id: sectionId,
@@ -209,9 +215,12 @@
         var sr = side.getBoundingClientRect();
         if (sr.width > 1) out.left = Math.max(0, sr.right - stageRect.left + CHROME_GAP);
       }
-      if (strip) {
-        var tr = strip.getBoundingClientRect();
-        if (tr.height > 1) out.bottom = Math.max(0, stageRect.bottom - tr.top + CHROME_GAP);
+      // 底部占位取横条与它上方 tab 条里更高的那条（tab 条叠在横条正上方）。
+      var bottoms = [strip, tabbar];
+      for (var b = 0; b < bottoms.length; b++) {
+        if (!bottoms[b]) continue;
+        var tr = bottoms[b].getBoundingClientRect();
+        if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + CHROME_GAP);
       }
       return out;
     }
@@ -541,8 +550,57 @@
 
     if (recenterBtn) recenterBtn.addEventListener('click', function () { fitFirstSection({ smooth: true }); });
 
+    // ── 页 tab ──
+    function tabOfNode(node) {
+      var holder = node && node.closest ? node.closest('[data-tab]') : null;
+      return holder ? holder.getAttribute('data-tab') || '' : '';
+    }
+
+    function activeTabId() {
+      if (!tabbar) return '';
+      var on = tabbar.querySelector('[role="tab"][aria-selected="true"]');
+      return on ? on.getAttribute('data-tab') || '' : '';
+    }
+
+    /** 只翻 data-tab-hidden 与按钮选中态，再重收集 / 重钉 wrap 尺寸 / 回中到该 tab 的第一段。 */
+    function setActiveTab(tabId) {
+      if (!tabbar || !tabId) return;
+      var tabs = tabbar.querySelectorAll('[role="tab"][data-tab]');
+      var known = false;
+      for (var i = 0; i < tabs.length; i++) {
+        var on = tabs[i].getAttribute('data-tab') === tabId;
+        if (on) known = true;
+        tabs[i].setAttribute('aria-selected', on ? 'true' : 'false');
+      }
+      if (!known) return;
+      var holders = root.querySelectorAll('.wb-lib-item[data-tab], .ol[data-tab]');
+      for (var j = 0; j < holders.length; j++) {
+        if (holders[j].getAttribute('data-tab') === tabId) holders[j].removeAttribute('data-tab-hidden');
+        else holders[j].setAttribute('data-tab-hidden', '');
+      }
+      collect();
+      fitFirstSection();
+    }
+
+    if (tabbar) {
+      tabbar.addEventListener('click', function (e) {
+        var btn = e.target.closest && e.target.closest('[role="tab"][data-tab]');
+        if (!btn || !tabbar.contains(btn)) return;
+        if (btn.getAttribute('data-tab') === activeTabId()) return;
+        setActiveTab(btn.getAttribute('data-tab'));
+        if (history.replaceState) history.replaceState(null, '', location.pathname + location.search);
+      });
+    }
+
     // ── 首次进入 ──
     function initialView() {
+      // 深链指到别的 tab 的帧 / 段：先切到那个 tab（hash 的 id 是 frame-<screenId> 或 section-<id>）。
+      var rawHash = decodeURIComponent((location.hash || '').slice(1));
+      if (tabbar && rawHash) {
+        var target = document.getElementById(rawHash);
+        var wantedTab = tabOfNode(target);
+        if (wantedTab && wantedTab !== activeTabId()) setActiveTab(wantedTab);
+      }
       collect();
       if (isMobile()) setSideCollapsed(true);
       applyZoom(1);

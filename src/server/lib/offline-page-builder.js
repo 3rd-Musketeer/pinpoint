@@ -112,6 +112,13 @@ function cacheRemoteResponses(fetchRemote = globalThis.fetch) {
   };
 }
 
+/** 导出页要显示的 tab 条：≥ 2 个、且每个 tab 在画布上至少还有一段（全是 doc 帧的 tab 不进导出）。 */
+function tabsOfExport(board, sections) {
+  const present = new Set(sections.map((section) => section.tabId).filter(Boolean));
+  const tabs = (board.tabs || []).filter((tab) => present.has(tab.id));
+  return tabs.length >= 2 ? tabs.map((tab) => ({ id: tab.id, title: tab.title })) : [];
+}
+
 export async function buildOfflinePage(options = {}) {
   const { pageId, registry } = options;
   const resolved = resolvePage(pageId, registry);
@@ -153,6 +160,7 @@ export async function buildOfflinePage(options = {}) {
       id: section.id,
       title: section.title || section.id,
       ref: refs.bySection[section.id] || '',
+      ...(section.tabId ? { tabId: section.tabId } : {}),
       screens,
     });
   }
@@ -170,6 +178,8 @@ export async function buildOfflinePage(options = {}) {
       pageId,
       title,
       sections,
+      // 页 tab（ADR 0041）：分享页带全部 tab、一个极简的原生切换条；单 tab / 存量页为 []。
+      tabs: tabsOfExport(resolved.board, sections),
       workbenchCss: readText('src/workbench/wb-tokens.css') + '\n' + readWorkbenchInlineStyles(),
       iosCss: readText('content/kits/ios/ios-kit.css'),
       iosKitJs: readText('content/kits/ios/ios-kit.js'),

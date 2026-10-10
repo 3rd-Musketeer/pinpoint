@@ -410,6 +410,10 @@ html{height:100%}
 #wbside .wb-outline .ol-sec{color:var(--wb-fg)}
 #wbside .wb-outline .ol-sec.on{color:var(--wb-accent)}
 #wbside .wb-outline .ol-sec-t{min-width:0;flex:1;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+[data-tab-hidden]{display:none !important}
+.wb-tabbar .share-tab{height:24px;max-width:160px;padding:0 12px;border:0;border-radius:999px;background:transparent;color:var(--wb-muted);font:var(--wb-w-medium,500) 11.5px/1 var(--wb-font);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:pointer;transition:color var(--wb-dur) var(--wb-ease),background-color var(--wb-dur) var(--wb-ease)}
+.wb-tabbar .share-tab:hover{color:var(--wb-fg)}
+.wb-tabbar .share-tab[aria-selected="true"]{background:var(--wb-fill);color:var(--wb-fg);font-weight:var(--wb-w-semibold)}
 .wb-strip .share-btn{display:inline-flex;align-items:center;justify-content:center;gap:5px;height:28px;min-width:28px;padding:0 8px;border:0;border-radius:var(--wb-r-2);background:transparent;color:var(--wb-muted);font:var(--wb-w-semibold) 12px/1 var(--wb-font);cursor:pointer;transition:color var(--wb-dur) var(--wb-ease),background-color var(--wb-dur) var(--wb-ease)}
 .wb-strip .share-btn:hover{background:var(--wb-hover);color:var(--wb-fg)}
 .wb-strip .share-btn--icon{width:28px;padding:0}
@@ -432,7 +436,13 @@ html{height:100%}
 }
 `;
 
-function outlineHtml(sections) {
+/** 页 tab：非第一个 tab 的段落与大纲行起始就藏着（`data-tab-hidden`），share-runtime 切换时翻这个属性。 */
+function tabAttrs(section, firstTabId) {
+  if (!section.tabId) return '';
+  return ` data-tab="${escHtml(section.tabId)}"${section.tabId === firstTabId ? '' : ' data-tab-hidden'}`;
+}
+
+function outlineHtml(sections, firstTabId) {
   return sections.map((section) => {
     const sectionId = escHtml(section.id);
     const rows = section.screens.map((screen) =>
@@ -441,7 +451,7 @@ function outlineHtml(sections) {
       `<span class="no">${escHtml(screen.ref)}</span>` +
       `<span class="nm">${escHtml(screen.title || screen.id)}</span></a>`,
     ).join('');
-    return `<div class="ol" data-ol-section="${sectionId}">` +
+    return `<div class="ol" data-ol-section="${sectionId}"${tabAttrs(section, firstTabId)}>` +
       `<a class="ol-sec" href="#section-${sectionId}" data-ol-section="${sectionId}" title="${escHtml(section.ref)} ${escHtml(section.title || section.id)}">` +
       `<span class="ol-L">${escHtml(section.ref)}</span>` +
       `<span class="ol-sec-t">${escHtml(section.title || section.id)}</span></a>${rows}</div>`;
@@ -451,17 +461,25 @@ function outlineHtml(sections) {
 /* 画布 = workbench 的 .wb-library：section 是 .wb-lib-item（data-ann-section 与
    screen-load.buildBoardHtml 同名），帧是 offline-page-builder.frameHtml 产出的 .wb-screen
    （id="frame-<screenId>"）；.wb-sec-row 的三行网格由内联样式提供。 */
-function boardHtml(sections) {
+function boardHtml(sections, firstTabId) {
   return sections.map((section) => {
     const sectionId = escHtml(section.id);
     const title = escHtml(section.title || section.id);
     const frames = section.screens.map((screen) => screen.html).join('');
-    return `<article class="wb-lib-item" id="section-${sectionId}" data-ann-section="${sectionId}" data-ann-section-label="${title}">` +
+    return `<article class="wb-lib-item" id="section-${sectionId}" data-ann-section="${sectionId}" data-ann-section-label="${title}"${tabAttrs(section, firstTabId)}>` +
       `<h2 class="wb-lib-cap" title="${title}">` +
       (section.ref ? `<span class="wb-cap-ref wb-cap-ref--section">${escHtml(section.ref)}</span>` : '') +
       `${title}</h2>` +
       `<div class="wb-sec-body wb-sec-row">${frames}</div></article>`;
   }).join('');
+}
+
+/** 页 tab 切换条：与工作台同款胶囊（.wb-tabbar），叠在底部横条正上方；单 tab / 存量页不出。 */
+function tabbarHtml(tabs, firstTabId) {
+  if (!tabs.length) return '';
+  return '<div class="wb-tabbar-root"><div class="wb-tabbar wb-glass" id="wbtabbar" role="tablist" aria-label="页内 tab">' +
+    tabs.map((tab) => `<button type="button" class="share-tab" role="tab" data-tab="${escHtml(tab.id)}" aria-selected="${tab.id === firstTabId ? 'true' : 'false'}" title="${escHtml(tab.title)}">${escHtml(tab.title)}</button>`).join('') +
+    '</div></div>';
 }
 
 function stripHtml(title, frameCount) {
@@ -482,16 +500,23 @@ function stripHtml(title, frameCount) {
 
 export function buildOfflineShareHtml(options) {
   const sections = Array.isArray(options.sections) ? options.sections : [];
+  const tabs = Array.isArray(options.tabs) ? options.tabs : [];
+  const firstTabId = tabs.length ? tabs[0].id : '';
   const frameCount = sections.reduce((sum, section) => sum + section.screens.length, 0);
+  // 读数 n / N 只数当前 tab（起始 = 第一个 tab）；data-frame-count 仍是整页总数。
+  const shownCount = tabs.length
+    ? sections.filter((section) => section.tabId === firstTabId).reduce((sum, section) => sum + section.screens.length, 0)
+    : frameCount;
   const title = escHtml(options.title);
   return `<!doctype html>
 <html lang="zh-CN" data-annotate="off" data-offline-page="${escHtml(options.pageId)}">
 <head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>${escapeInlineStyle(options.workbenchCss || '')}\n${escapeInlineStyle(options.iosCss || '')}\n${SHARE_CSS}</style></head>
-<body><div class="wb" id="wbroot" data-section-count="${sections.length}" data-frame-count="${frameCount}">
-<div class="wb-stage-wrap"><main class="wb-stage" id="wbstage" aria-label="画布"><div class="wb-panel" id="wb-board-panel"><div class="wb-zoom-wrap"><div class="wb-library">${boardHtml(sections)}</div></div></div></main></div>
-<aside class="wb-side wb-glass" id="wbside" aria-label="原型大纲"><div class="wb-head"><h1 class="share-title" title="${title}">${title}</h1></div><div class="wb-side-body"><div class="wb-side-scroll"><nav class="wb-outline" id="wboutline" aria-label="大纲">${outlineHtml(sections)}</nav></div></div></aside>
-${stripHtml(options.title, frameCount)}
+<body><div class="wb" id="wbroot" data-section-count="${sections.length}" data-frame-count="${frameCount}"${tabs.length ? ` data-tab-count="${tabs.length}"` : ''}>
+<div class="wb-stage-wrap"><main class="wb-stage" id="wbstage" aria-label="画布"><div class="wb-panel" id="wb-board-panel"><div class="wb-zoom-wrap"><div class="wb-library">${boardHtml(sections, firstTabId)}</div></div></div></main></div>
+<aside class="wb-side wb-glass" id="wbside" aria-label="原型大纲"><div class="wb-head"><h1 class="share-title" title="${title}">${title}</h1></div><div class="wb-side-body"><div class="wb-side-scroll"><nav class="wb-outline" id="wboutline" aria-label="大纲">${outlineHtml(sections, firstTabId)}</nav></div></div></aside>
+${stripHtml(options.title, shownCount)}
+${tabbarHtml(tabs, firstTabId)}
 </div>
 <script>${escapeInlineScript(options.iosKitJs || '')}</script>
 <script>${escapeInlineScript(options.frameBootJs || '')}</script>

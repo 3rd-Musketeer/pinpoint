@@ -115,3 +115,28 @@ test('buildOfflinePage freezes static dependencies from another registered page'
   assert.doesNotMatch(result.html, /\/sites\/shared-style\//);
   assert.deepEqual(result.remoteResources, []);
 });
+
+test('buildOfflinePage carries every tab of a tabbed Page and numbers sections per tab (ADR 0041)', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-page-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(root, 'board.json'), JSON.stringify({
+    tabs: [
+      { id: 'comps', title: '组件', sections: [{ id: 'walls', title: '墙', layout: 'row', screens: [{ id: 'w1' }] }] },
+      { id: 'flow', title: '交互', sections: [{ id: 'onboard', title: '引导', layout: 'row', screens: [{ id: 'o1' }] }] },
+    ],
+  }));
+  fs.writeFileSync(path.join(root, 'w1.html'), '<div class="ios-app">组件墙</div>');
+  fs.writeFileSync(path.join(root, 'o1.html'), '<div class="ios-app">引导页</div>');
+  const entry = { id: 'tab-fixture', title: 'Tab Fixture', kind: 'dir', path: root, board: 'ios' };
+  const registry = { resolve(id) { return id === entry.id ? entry : null; } };
+
+  const result = await buildOfflinePage({ pageId: entry.id, registry, approvals: [] });
+
+  assert.equal(result.sectionCount, 2);
+  assert.equal(result.frameCount, 2);
+  assert.match(result.html, /id="wbtabbar"/);
+  assert.match(result.html, /data-tab="comps"/);
+  assert.match(result.html, /data-tab="flow"/);
+  // 每个 tab 的第一段都是 A（序号按 tab 从 A 重来）
+  assert.equal((result.html.match(/wb-cap-ref wb-cap-ref--section">A</g) || []).length, 2);
+});
