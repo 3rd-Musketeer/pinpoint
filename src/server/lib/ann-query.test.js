@@ -420,21 +420,6 @@ describe('buildCheckReport', () => {
     assert.match(missing.error, /没有帧 Z9/);
   });
 
-  test('--frame 认变体组：组号 / 组 id = 全部变体，变体号 = 单个', () => {
-    const site = makeSite();
-    const context = contextFor(site);
-    const frames = [
-      { id: 'home', title: '首页', ref: 'A1a', variantOf: 'pair', groupRef: 'A1' },
-      { id: 'old', title: '存量', ref: 'A1b', variantOf: 'pair', groupRef: 'A1' },
-    ];
-    context.refs = { outline: [{ id: 'chat', title: '对话', letter: 'A', frames, groups: [{ id: 'pair', title: '一对', ref: 'A1', frames }] }], bySection: { chat: 'A' }, byFrame: {}, byGroup: {} };
-    const screens = (options) => buildCheckReport(context, { status: 'all', ...options }).groups.map((group) => group.screenId);
-    assert.deepEqual(screens({ frame: 'A1' }), ['home', 'old']);
-    assert.deepEqual(screens({ frame: 'pair' }), ['home', 'old']);
-    assert.deepEqual(screens({ frame: 'A1b' }), ['old']);
-    assert.match(buildCheckReport(context, { frame: 'A1c' }).error, /没有帧 A1c/);
-  });
-
   test('--group-by component：无组件归「仅本帧」；存量帧 outerHTML 摘录行号指 dist', () => {
     const site = makeSite();
     const context = contextFor(site);

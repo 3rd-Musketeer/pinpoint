@@ -50,7 +50,7 @@ export function refLikeIdNotice(pageDir) {
   if (titles.length) {
     const shown = titles.slice(0, 3).map((t) => `“${t}”`).join('、') + (titles.length > 3 ? ` 等 ${titles.length} 个标题 ` : ' 这些标题 ');
     notes.push(`注意 ${shown}以编号开头。编号由系统按 board 顺序派生，手写必重复（ADR 0026）；`
-      + '同一个关键帧要画几种做法，用变体组（screen 条目写 variants），不要自造编号。');
+      + '同一个关键帧要画几种做法，就在同一个 section 里放几个普通 frame，标题写各自做法的内容，不要自造编号。');
   }
   return notes.join('\n');
 }

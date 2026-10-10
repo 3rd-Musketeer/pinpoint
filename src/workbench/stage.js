@@ -18,18 +18,14 @@ import {
   clearBoardSelection,
   focusWorkbenchFrame,
   isTypingTarget,
-  refreshBoardNavigationModel,
   resetBoardNavOnLoadFailure,
-  scheduleMinimapUpdate,
   selectBoardFrame,
   selectBoardSection,
-  syncBoardSelection,
-  updateMinimapAvailability
+  syncBoardSelection
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { withAttachedScreens } from './lib/board-entries.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
-import { applyVariantState, expandAllVariants, wireVariants } from './variants.js';
 import {
   annotateApi,
   startAnnBridge,
@@ -158,8 +154,6 @@ async function loadBoard(panel, pageId) {
     // 决定 doc 屏套阅读器壳还是手机屏；形态不变（两种视口都是文档形态）。
     var viewport = applyPageViewport(pageId);
     panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
-    // 变体组：按本机偏好决定谁摆上画布（innerHTML 之后同步灌，没有未灌态的绘制）。
-    applyVariantState(panel, pageId);
     wbSet({ activeBoard: { pageId: pageId, board: board } });
     syncEntries();
     watchDocAnnotate();
@@ -184,16 +178,6 @@ function initBoard() {
   boardPanel.id = 'wb-board-panel';
   boardPanel.className = 'wb-panel wb-library-panel';
   stage.appendChild(boardPanel);
-  // 变体 chips / 展开钮的点击；变了之后标注层重算钉子、导航与 minimap 重量。
-  wireVariants(boardPanel, {
-    onChange: function () {
-      var _a = annotateApi();
-      if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
-      refreshBoardNavigationModel(boardPanel);
-      scheduleMinimapUpdate();
-      updateMinimapAvailability();
-    }
-  });
   return loadPageManifest()
     .then(function () {
       // 深链失效（2026-09-04）：?page= 指向不存在的页 = 显式面板，不静默回落。
@@ -238,7 +222,6 @@ window.workbench = {
   setActivePage: setActivePage,
   setActiveEntry: setActiveEntry,
   focusFrame: focusWorkbenchFrame,
-  expandAllVariants: expandAllVariants,
   whenScrollSettled: whenStageScrollSettled,
   // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。false =
   // 会话已被下一次装载替换或取消 —— 等待方应重取再等（waitForFunction 轮询）。

@@ -115,38 +115,3 @@ test('buildOfflinePage freezes static dependencies from another registered page'
   assert.doesNotMatch(result.html, /\/sites\/shared-style\//);
   assert.deepEqual(result.remoteResources, []);
 });
-
-test('buildOfflinePage: variant groups export fully expanded, the reviewer-selected variant is highlighted', async (t) => {
-  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-offline-page-'));
-  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-  fs.writeFileSync(path.join(root, 'board.json'), JSON.stringify({
-    sections: [{
-      id: 'flow', title: '流程', layout: 'row',
-      screens: [
-        { id: 'first' },
-        { id: 'confirm', title: '提交前确认', variants: [{ id: 'grant', title: '授权' }, { id: 'check', title: '核对' }] },
-      ],
-    }],
-  }));
-  for (const id of ['first', 'grant', 'check']) fs.writeFileSync(path.join(root, `${id}.html`), `<div class="ios-app">${id}</div>`);
-  const entry = { id: 'variants-fixture', title: 'Variants', kind: 'dir', path: root, board: 'ios' };
-  const registry = { resolve(id) { return id === entry.id ? entry : null; } };
-  const frame = (html, id) => (html.match(new RegExp(`<div class="([^"]*)" id="frame-${id}"`)) || [])[1];
-
-  // 没选过：第一个变体高亮；三个帧都在，编号 A2a / A2b，图注带组名。
-  const dflt = await buildOfflinePage({ pageId: entry.id, registry, approvals: [] });
-  assert.equal(dflt.frameCount, 3);
-  // 组底：一块 box 跨组里两个变体的列（第 2、3 屏 → 列 2 / 4），不跨 first。
-  assert.match(dflt.html, /<div class="wb-var-box" aria-hidden="true" style="grid-column:2 \/ 4"><\/div>/);
-  assert.equal(frame(dflt.html, 'first'), 'wb-screen');
-  assert.equal(frame(dflt.html, 'grant'), 'wb-screen wb-var-sel');
-  assert.equal(frame(dflt.html, 'check'), 'wb-screen');
-  assert.match(dflt.html, /<span class="wb-cap-ref">A2b<\/span><span class="wb-cap-title"[^>]*>提交前确认 · 核对</);
-
-  // 评审者选了第二个：高亮跟过去；选中的 id 失效（改名 / 删了）落回第一个。
-  const picked = await buildOfflinePage({ pageId: entry.id, registry, approvals: [], variantSelection: { 'flow\0confirm': 'check' } });
-  assert.equal(frame(picked.html, 'grant'), 'wb-screen');
-  assert.equal(frame(picked.html, 'check'), 'wb-screen wb-var-sel');
-  const stale = await buildOfflinePage({ pageId: entry.id, registry, approvals: [], variantSelection: { 'flow\0confirm': 'gone' } });
-  assert.equal(frame(stale.html, 'grant'), 'wb-screen wb-var-sel');
-});

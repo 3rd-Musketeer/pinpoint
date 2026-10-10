@@ -76,34 +76,13 @@ function stripPpAnchors(html) {
   return String(html).replace(/ data-pp-(?:id|comp)="[^"]*"/g, '');
 }
 
-function frameHtml(screen, target, body, ref, selected = false) {
-  // 变体（lib/board-variants.js）：图注带组名；分享页全部变体都展开，评审者选中的那个加 wb-var-sel 高亮
-  // （样式在 index.html，与工作台画布同一份）。
-  const title = screen.variantOf
-    ? (screen.groupTitle || screen.variantOf) + (screen.title ? ` · ${screen.title}` : '')
-    : (screen.title || screen.id);
+function frameHtml(screen, target, body, ref) {
   const cap = '<div class="wb-screen-cap">' +
     (ref ? `<span class="wb-cap-ref">${escHtml(ref)}</span>` : '') +
-    `<span class="wb-cap-title" title="${escHtml(title)}">${escHtml(title)}</span>` +
+    `<span class="wb-cap-title" title="${escHtml(screen.title || screen.id)}">${escHtml(screen.title || screen.id)}</span>` +
     '</div>';
   // id="frame-<screenId>" 是大纲链接与深链的锚（ADR 0033）；class 与画布的 .wb-screen 同名。
-  const cls = selected ? 'wb-screen wb-var-sel' : 'wb-screen';
-  return `<div class="${cls}" id="frame-${escHtml(screen.id)}" data-screen="${escHtml(screen.id)}">${cap}${body}<div class="wb-screen-dim">402 × 874</div></div>`;
-}
-
-/** 每个变体组选中的变体 id：评审者在工作台选的（variantSelection，键 = 段 id + NUL + 组 id），没选过就是第一个。 */
-function selectedVariants(section, variantSelection) {
-  const first = new Map();
-  for (const screen of section.screens) {
-    if (screen.variantOf && !first.has(screen.variantOf)) first.set(screen.variantOf, screen.id);
-  }
-  const chosen = new Map();
-  for (const [groupId, firstId] of first) {
-    const want = variantSelection && variantSelection[`${section.id}\0${groupId}`];
-    const valid = section.screens.some((screen) => screen.variantOf === groupId && screen.id === want);
-    chosen.set(groupId, valid ? want : firstId);
-  }
-  return chosen;
+  return `<div class="wb-screen" id="frame-${escHtml(screen.id)}" data-screen="${escHtml(screen.id)}">${cap}${body}<div class="wb-screen-dim">402 × 874</div></div>`;
 }
 
 function uniqueRemote(items) {
@@ -143,7 +122,6 @@ export async function buildOfflinePage(options = {}) {
 
   for (const section of resolved.board.sections) {
     const screens = [];
-    const chosen = selectedVariants(section, options.variantSelection);
     for (const screen of section.screens) {
       const target = resolveFrameTarget(pageId, screen.id, { registry });
       if (target.kind !== 'fragment') {
@@ -167,9 +145,8 @@ export async function buildOfflinePage(options = {}) {
       screens.push({
         id: screen.id,
         title: screen.title || screen.id,
-        variantOf: screen.variantOf || '',
         ref,
-        html: frameHtml(screen, target, neutralizePreviewScripts(stripPpAnchors(bundled.html)), ref, !!screen.variantOf && chosen.get(screen.variantOf) === screen.id),
+        html: frameHtml(screen, target, neutralizePreviewScripts(stripPpAnchors(bundled.html)), ref),
       });
     }
     sections.push({

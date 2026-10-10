@@ -5,7 +5,6 @@
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
 import { legacyShell } from './preview-contracts.js';
-import { expandVariants } from './board-variants.js';
 
 /** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */
 export function sectionLetter(index) {
@@ -18,28 +17,18 @@ export function sectionLetter(index) {
   return out;
 }
 
-/** 变体序号 → 后缀字母：0 → a，25 → z，26 → aa（小写，与段字母大写区分）。 */
-export function variantLetter(index) {
-  return sectionLetter(index).toLowerCase();
-}
-
 /**
- * board.sections → { outline, bySection, byFrame, byGroup }：
- * - outline: [{ id, title, letter, frames: [{ id, title, ref, variantOf?, groupRef? }], groups: [...] }]
- *   （引用序，大纲/图注直接消费；frames 是摊平后的全部屏，变体各占一条）；
+ * board.sections → { outline, bySection, byFrame }：
+ * - outline: [{ id, title, letter, frames: [{ id, title, ref }] }]（引用序，大纲/图注直接消费）；
  * - bySection: sectionId → letter；
- * - byFrame: sectionId + '\0' + screenId → ref（同一 screen 重复挂载取首次出现）；
- * - byGroup: sectionId + '\0' + groupId → ref。
- * 变体组（lib/board-variants.js）整组占一个位置号：B11 是组，它的变体是 B11a / B11b / …（显示编号，
- * 与位置号一样随调序而变，id 才是身份）。groups[]: [{ id, title, ref, frames }]。
+ * - byFrame: sectionId + '\0' + screenId → ref（同一 screen 重复挂载取首次出现）。
  * _empty 占位 section 不进引用体系（validateBoard 合成的空板标记，无对应图纸）。
  */
 export function boardRefs(board) {
   var outline = [];
   var bySection = {};
   var byFrame = {};
-  var byGroup = {};
-  var sections = (expandVariants(board) && expandVariants(board).sections) || [];
+  var sections = (board && board.sections) || [];
   sections.forEach(function (sec) {
     if (!sec || sec.id === '_empty') return;
     // doc 帧不上画布、不占编号（画布视图的口径，各消费端直接喂 board 即可）。这里自己过滤，服务端拿
@@ -50,36 +39,15 @@ export function boardRefs(board) {
     if (!screens.length) return;
     var letter = sectionLetter(outline.length);
     bySection[sec.id] = letter;
-    var frames = [];
-    var groups = [];
-    var position = 0;
-    var current = null;
-    screens.forEach(function (sc) {
-      var inGroup = typeof sc.variantOf === 'string' && sc.variantOf;
-      if (inGroup && current && current.id === sc.variantOf) {
-        // 同组的下一个变体：不占新位置
-      } else {
-        position += 1;
-        current = inGroup ? { id: sc.variantOf, title: sc.groupTitle || sc.variantOf, ref: letter + position, frames: [] } : null;
-        if (current) {
-          groups.push(current);
-          if (!byGroup[sec.id + '\0' + current.id]) byGroup[sec.id + '\0' + current.id] = current.ref;
-        }
-      }
-      var frame;
-      if (current) {
-        frame = { id: sc.id, title: sc.title || sc.id, ref: current.ref + variantLetter(current.frames.length), variantOf: current.id, groupRef: current.ref };
-        current.frames.push(frame);
-      } else {
-        frame = { id: sc.id, title: sc.title || sc.id, ref: letter + position };
-      }
+    var frames = screens.map(function (sc, fi) {
+      var ref = letter + (fi + 1);
       var key = sec.id + '\0' + sc.id;
-      if (!byFrame[key]) byFrame[key] = frame.ref;
-      frames.push(frame);
+      if (!byFrame[key]) byFrame[key] = ref;
+      return { id: sc.id, title: sc.title || sc.id, ref: ref };
     });
-    outline.push({ id: sec.id, title: sec.title || sec.id, letter: letter, frames: frames, groups: groups });
+    outline.push({ id: sec.id, title: sec.title || sec.id, letter: letter, frames: frames });
   });
-  return { outline: outline, bySection: bySection, byFrame: byFrame, byGroup: byGroup };
+  return { outline: outline, bySection: bySection, byFrame: byFrame };
 }
 
 /** (board, sectionId, screenId) → 'A1' | ''（查不到即空串，调用方自行降级）。 */
@@ -104,10 +72,9 @@ export function outlineFrames(refs) {
 }
 
 // 手写在 title 里的编号前缀（K11 提交前确认、B3 · 登录）：编号由系统派生，手写必重复（ADR 0026）。
-// 同一个关键帧要画几种做法时用变体组，不是自造编号（2026-10-10）。
 var REF_LIKE_TITLE_RE = /^[A-Za-z]{1,2}[0-9]+[a-z]?(?:[\s·:：.\-—]|$)/;
 
-/** board → title 以编号样前缀开头的帧 / 组 / 段标题（board 序、去重）；ppnt build 据此提示。 */
+/** board → title 以编号样前缀开头的帧 / 段标题（board 序、去重）；ppnt build 据此提示。 */
 export function refLikeTitles(board) {
   var seen = Object.create(null);
   var titles = [];
@@ -121,9 +88,7 @@ export function refLikeTitles(board) {
     note(sec.title);
     (sec.screens || []).forEach(function (entry) {
       var sc = screenOf(entry);
-      if (!sc) return;
-      note(sc.title);
-      (Array.isArray(sc.variants) ? sc.variants : []).forEach(function (v) { note(screenOf(v).title); });
+      if (sc) note(sc.title);
     });
   });
   return titles;
@@ -132,7 +97,7 @@ export function refLikeTitles(board) {
 export function refLikeFrameIds(board) {
   var seen = Object.create(null);
   var ids = [];
-  ((expandVariants(board) && expandVariants(board).sections) || []).forEach(function (sec) {
+  ((board && board.sections) || []).forEach(function (sec) {
     ((sec && sec.screens) || []).forEach(function (entry) {
       var sc = screenOf(entry);
       var id = sc && sc.id;

@@ -1,6 +1,3 @@
-import { readPrefs } from './lib/prefs.js';
-import { selectionsForPage } from './lib/variant-state.js';
-
 // Workbench export cluster — pp2 切片 3 收敛后只剩两块：
 // 1) 离线可交互 HTML 导出的请求函数（/api/export-page-html[/scan]），
 //    用户面入口 = app/ExportPicker.jsx；
@@ -23,8 +20,7 @@ function postOfflinePageExport(pathname, pageId, approvals) {
   return fetch(pathname, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    // variantSelection：评审者在工作台里选中的变体，分享页据此高亮（全部变体都展开）。
-    body: JSON.stringify({ pageId: pageId, approvals: approvals, variantSelection: selectionsForPage(readPrefs(), pageId) })
+    body: JSON.stringify({ pageId: pageId, approvals: approvals })
   }).then(function (response) {
     if (!response.ok) return response.json().catch(function () { return {}; }).then(function (body) {
       throw new Error(body.message || ('HTML 导出失败 · ' + response.status));

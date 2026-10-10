@@ -58,9 +58,6 @@ export async function renderShots({ origin, pageId, jobs }) {
     await page.evaluate((id) => window.workbench.setActivePage(id), pageId);
     await page.waitForFunction((id) => window.workbench.activePageId() === id && document.querySelector('#wb-board-panel .wb-lib-item'), pageId);
     await waitForQuiet(page);
-    // 变体组：一张图要把组里的变体都拍进去（不写偏好），选中的那个高亮；单帧图里去掉高亮环。
-    await page.evaluate(() => (window.workbench && window.workbench.expandAllVariants ? window.workbench.expandAllVariants() : false));
-    await page.evaluate(() => new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve))));
     for (const job of prepared) {
       const snapshot = await buildSnapshot(page, job);
       const response = await context.request.post(`${origin}/api/export-image`, { data: snapshot });
@@ -105,8 +102,6 @@ async function buildSnapshot(page, job) {
         ? panel.querySelector(`.wb-lib-item[data-ann-section="${CSS.escape(job.sectionId)}"]`)
         : panel.querySelector(`[data-screen="${CSS.escape(job.screenId)}"]`);
     if (!target) throw new Error(`找不到要拍的 ${job.kind}`);
-    // 单帧图不带“选中”高亮环（环在机身外缘，单张图里没有可比的对象）。
-    if (job.kind === 'frame') target.classList.remove('wb-var-sel');
     // 序号钉：锚点还活着的标注，按元素位置烤进快照（stage 内相对链解析）。
     let overlay = '';
     if (job.marks && job.marks.length) {

@@ -1,5 +1,3 @@
-import { expandVariants, isVariantGroup } from './board-variants.js';
-
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 export class ContractError extends Error {
@@ -168,25 +166,6 @@ function normalizeComp(screen, path) {
   return { comp, props };
 }
 
-// 变体组条目（lib/board-variants.js）：{ id, title?, shell?, role?, variants: [id | { id, title?, … }] }。
-// 严格校验在这里（摊平本身宽松）：组 id 是标识符、variants 非空数组、变体不再嵌套。
-function validateVariantGroup(entry, path) {
-  const group = objectAt(entry, path);
-  identifier(group.id, `${path}.id`);
-  if (group.title != null) titleString(group.title, `${path}.title`);
-  if (!Array.isArray(group.variants) || !group.variants.length) {
-    throw new ContractError(`${path}.variants`, 'expected a non-empty array');
-  }
-  ['src', 'comp', 'props'].forEach((key) => {
-    if (group[key] != null) throw new ContractError(`${path}.${key}`, 'a variant group has no file of its own; put it on the variant');
-  });
-  group.variants.forEach((variant, index) => {
-    if (isVariantGroup(variant)) {
-      throw new ContractError(`${path}.variants[${index}]`, 'variant groups cannot nest');
-    }
-  });
-}
-
 function normalizeScreen(entry, path, sectionShell) {
   if (typeof entry === 'string') {
     return { id: identifier(entry, path), title: '', shell: sectionShell, role: 'product', src: '' };
@@ -202,7 +181,6 @@ function normalizeScreen(entry, path, sectionShell) {
     role: validateRole(screen.role, `${path}.role`),
     src: screen.src == null ? '' : nonEmptyString(screen.src, `${path}.src`),
     ...compPart,
-    ...(screen.variantOf ? { variantOf: identifier(screen.variantOf, `${path}.variantOf`), groupTitle: typeof screen.groupTitle === 'string' ? screen.groupTitle : '' } : {}),
   };
 }
 
@@ -213,15 +191,7 @@ export function validateBoard(raw, options = {}) {
   }
   const sectionIds = new Set();
   const screenIds = new Set();
-  // 变体组先在原板上校验（摊平后组条目已不在），再摊平成普通屏走下面的常规校验。
-  board.sections.forEach((entry, sectionIndex) => {
-    if (!entry || typeof entry !== 'object' || !Array.isArray(entry.screens)) return;
-    entry.screens.forEach((screen, screenIndex) => {
-      if (isVariantGroup(screen)) validateVariantGroup(screen, `sections[${sectionIndex}].screens[${screenIndex}]`);
-    });
-  });
-  const groupIds = new Set();
-  const sections = expandVariants(board).sections.map((entry, sectionIndex) => {
+  const sections = board.sections.map((entry, sectionIndex) => {
     const path = `sections[${sectionIndex}]`;
     const section = objectAt(entry, path);
     const id = identifier(section.id, `${path}.id`);
@@ -242,7 +212,6 @@ export function validateBoard(raw, options = {}) {
         throw new ContractError(screenPath, `duplicate screen id "${normalized.id}"`);
       }
       screenIds.add(normalized.id);
-      if (normalized.variantOf) groupIds.add(normalized.variantOf);
       return normalized;
     });
     return {
@@ -252,10 +221,6 @@ export function validateBoard(raw, options = {}) {
       shell,
       screens,
     };
-  });
-  // 组 id 与屏 id 共用裸 id 引用的命名空间：撞名会让 `ppnt check <id>` 不知道指组还是指屏。
-  groupIds.forEach((id) => {
-    if (screenIds.has(id)) throw new ContractError('sections', `variant group id "${id}" collides with a screen id`);
   });
   return { sections };
 }

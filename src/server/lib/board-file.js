@@ -6,12 +6,10 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { expandVariants } from '../../workbench/lib/board-variants.js';
 
 export function readBoard(pageDir) {
   try {
-    // 变体组摊平成普通屏（lib/board-variants.js）：服务端各消费者只认屏。
-    return expandVariants(JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8')));
+    return JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8'));
   } catch {
     return null;
   }

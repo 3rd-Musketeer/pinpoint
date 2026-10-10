@@ -261,7 +261,7 @@ export function restorePageViewportAfterMount(pageId) {
  *  On HTML pages the zoom-wrap is width:100% + transform:none (a fluid reader
  *  column, not a fixed canvas), so we must not pin an inline content-measured width —
  *  that would override the CSS and make the iframe overflow the stage into the gutter. */
-export function syncBoardZoomLayout() {
+function syncBoardZoomLayout() {
   var wrap = document.querySelector('#wb-board-panel .wb-zoom-wrap');
   var lib = wrap && wrap.querySelector('.wb-library');
   if (!wrap || !lib) return;

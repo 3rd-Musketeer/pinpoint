@@ -180,31 +180,20 @@ function listFrames(words, { registryPath, env, out, err }) {
     }),
   }));
   const refWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.ref.length)));
-  const idWidth = Math.max(2, ...rows.flatMap((row) => [
-    ...row.frames.map((frame) => frame.id.length),
-    ...(row.section.groups || []).map((group) => group.id.length),
-  ]));
+  const idWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.id.length)));
   const sourceWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.source.length)));
   out(`# ${context.pageId} · 画布帧（编号随 board 顺序变；id 不变，留存文字里用 id）`);
   if (pageDir) out(`页目录：${pageDir}`);
   for (const row of rows) {
     out('');
     out(`${row.section.letter}  ${row.section.id}  ${row.section.title}`);
-    let lastGroup = '';
     for (const frame of row.frames) {
-      // 变体组：先一行组头（组号 · 组 id · 标题），变体缩进在下面各占一行。
-      if (frame.variantOf && frame.variantOf !== lastGroup) {
-        const group = row.section.groups.find((g) => g.id === frame.variantOf);
-        out(`  ${group.ref.padEnd(refWidth)}  ${group.id.padEnd(idWidth)}  ${'（变体组）'.padEnd(sourceWidth)}  ${group.title}`);
-      }
-      lastGroup = frame.variantOf || '';
       out(`  ${frame.ref.padEnd(refWidth)}  ${frame.id.padEnd(idWidth)}  ${frame.source.padEnd(sourceWidth)}  ${frame.title}`);
     }
   }
   const frameCount = rows.reduce((sum, row) => sum + row.frames.length, 0);
-  const groupCount = rows.reduce((sum, row) => sum + (row.section.groups || []).length, 0);
   out('');
-  out(`共 ${rows.length} 段 ${frameCount} 帧${groupCount ? `（含 ${groupCount} 个变体组）` : ''}`);
+  out(`共 ${rows.length} 段 ${frameCount} 帧`);
   return 0;
 }
 

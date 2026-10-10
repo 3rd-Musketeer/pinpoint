@@ -568,66 +568,6 @@
     color:var(--wb-muted);
   }
   .wb-cap-title:empty { display:none; }
-  /* 变体组（ADR 0039，画布侧在 workbench/variants.js）：图注前有 tickbox（展开态，勾 = 选中的变体），图注后有
-     展开 / 收起钮。收起的变体不用 display:none —— 标注层靠“有排版”判锚点活没活着，display:none
-     会让它们的标注全显示“锚点失效”；.wb-var-off = 脱离网格、挪到画布外、不可见，DOM 与排版都在。
-     尺寸跟 .wb-cap-ref 同一档（随机身宽缩放）。 */
-  .wb-var-ctl {
-    flex:none; display:inline-flex; align-items:center; gap:calc(var(--wb-cap-gap) * 0.3);
-    margin-left:calc(var(--wb-cap-gap) * 0.4);
-  }
-  .wb-var-toggle {
-    font:inherit; font-size:var(--wb-cap-ref); font-weight:var(--wb-w-semibold); line-height:1; cursor:pointer;
-    border:0; border-radius:calc(var(--wb-cap-ref) * 0.45); padding:calc(var(--wb-cap-ref) * 0.28) calc(var(--wb-cap-ref) * 0.6);
-    background:transparent; color:var(--wb-muted);
-    transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-var-toggle:hover { color:var(--wb-fg); background:var(--wb-hover); }
-  /* tickbox：只在展开态出现，在每个变体图注的最前面；选中的那个打勾（accent 实心 + 白勾）。 */
-  .wb-var-tick {
-    display:none; flex:none; align-self:center; box-sizing:border-box; position:relative; cursor:pointer;
-    width:calc(var(--wb-cap-ref) * 1.25); height:calc(var(--wb-cap-ref) * 1.25); padding:0;
-    border:calc(var(--wb-cap-ref) * 0.16) solid var(--wb-faint); border-radius:calc(var(--wb-cap-ref) * 0.3);
-    background:transparent; transition:background-color var(--wb-dur) var(--wb-ease), border-color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-var-tick:hover { border-color:var(--wb-accent); }
-  .wb-var-tick[aria-checked="true"] { background:var(--wb-accent); border-color:var(--wb-accent); }
-  .wb-var-tick[aria-checked="true"]::after {
-    content:''; position:absolute; left:28%; top:8%; width:30%; height:56%;
-    border:solid var(--wb-on-accent); border-width:0 calc(var(--wb-cap-ref) * 0.2) calc(var(--wb-cap-ref) * 0.2) 0;
-    transform:rotate(45deg);
-  }
-  .wb-screen[data-var-open="true"] .wb-var-tick { display:inline-block; }
-  /* 展开态的组底（.wb-var-box，variants.js 摆 / 分享页 offline-page-export 摆）：一块虚线框 + 淡底，
-     跨组里全部变体的列、三行（图注 / 机身 / 尺寸）通高，向外让 20px 把整组圈住；落在列间距（28px）里，
-     不压邻帧。z-index:-1 留在 .wb-library 的变换上下文里：在板底之上、所有帧之下；不吃事件。 */
-  .wb-var-box {
-    grid-row:1 / span 3; align-self:stretch; margin:-20px;
-    border:3px dashed color-mix(in srgb, var(--wb-accent) 60%, transparent); border-radius:32px;
-    background:color-mix(in srgb, var(--wb-accent) 9%, transparent);
-    z-index:var(--wb-z-var-box); pointer-events:none;
-  }
-  /* 展开态里图注上不再有展开 / 收起钮：“收起”挂在组底框上沿（.wb-var-collapse），不占图注的位置。 */
-  .wb-screen[data-var-open="true"] .wb-var-ctl { display:none; }
-  .wb-var-collapse {
-    grid-row:1; align-self:start; justify-self:end; z-index:var(--wb-z-cap);
-    margin:-20px calc(var(--wb-cap-ref) * 2 - 20px) 0 0; transform:translateY(-50%);
-    font:inherit; font-size:var(--wb-cap-ref); font-weight:var(--wb-w-semibold); line-height:1; cursor:pointer;
-    padding:calc(var(--wb-cap-ref) * 0.4) calc(var(--wb-cap-ref) * 0.9); border-radius:999px;
-    border:calc(var(--wb-cap-ref) * 0.14) solid color-mix(in srgb, var(--wb-accent) 60%, transparent);
-    background:var(--wb-surface); color:var(--wb-accent);
-    transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
-  }
-  .wb-var-collapse:hover { background:var(--wb-accent); color:var(--wb-on-accent); }
-  .wb-screen.wb-var-off > * {
-    position:absolute !important; left:-100000px; top:0; visibility:hidden; pointer-events:none;
-  }
-  /* 展开态里被选中的变体：accent 外环（outline，不顶掉机身自带的 box-shadow 板影；hover 淡环不压它）。 */
-  .wb-library .wb-screen.wb-var-sel .ios-stage,
-  .wb-library .wb-screen.wb-var-sel:hover .ios-stage,
-  .wb-library .wb-screen.wb-var-sel .wb-comp-stage {
-    outline:3px solid var(--wb-accent); outline-offset:6px;
-  }
   /* 2026-08-17 caption 截断兜底：title 规矩（单行短词）靠文档+契约拦新增，
      存量/超长由两行 clamp 兜住，全文经 title 属性悬停可读。 */
   .wb-cap-title, .wb-lib-cap {

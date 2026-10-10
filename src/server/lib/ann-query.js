@@ -26,7 +26,6 @@ import { resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
-import { expandVariants } from '../../workbench/lib/board-variants.js';
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
 import { pickByTargetText } from '../../shared/ann-ppid.js';
 import {
@@ -142,7 +141,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   }
   let board = null;
   try {
-    board = expandVariants(JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8')));
+    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
   } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
   return contextWithRows({
     registry,
@@ -502,13 +501,9 @@ export function buildCheckReport(context, options = {}) {
   let rows = [...context.frameRows];
   if (status !== 'all') rows = rows.filter((row) => (row.status || 'open') === status);
   if (options.frame) {
-    const frames = outlineFrames(context.refs);
-    const hit = frames.find((frame) => frame.ref === options.frame || frame.id === options.frame);
-    // 变体组（B3 / 组 id）= 组内全部变体；变体（B3b / 变体 id）走上面的单帧。
-    const group = hit ? null : frames.filter((frame) => frame.groupRef === options.frame || frame.variantOf === options.frame);
-    if (!hit && !group.length) return { error: `图纸上没有帧 ${options.frame}` };
-    const ids = hit ? [hit.id] : group.map((frame) => frame.id);
-    rows = rows.filter((row) => ids.includes(row.screenId));
+    const hit = outlineFrames(context.refs).find((frame) => frame.ref === options.frame || frame.id === options.frame);
+    if (!hit) return { error: `图纸上没有帧 ${options.frame}` };
+    rows = rows.filter((row) => row.screenId === hit.id);
   }
 
   const modeled = rows.map((row) => {

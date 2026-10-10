@@ -2,7 +2,6 @@ import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useWorkbenchStore, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
-import { revealBoardFrame } from '../board-nav.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel } from '../../shared/ann-status.js';
 import { WbIcon } from './WbIcon.jsx';
@@ -135,8 +134,6 @@ export function AnnPopover() {
     if (!a || typeof a.goToMark !== 'function') return;
     // Client navigation opens the composer; keep the list pinned and mirror its focus.
     var row = rows.find(function (r) { return r.n === n; });
-    // 标注在被收起的变体上：先把那个变体请出来，goToMark 才找得到可见的锚点。
-    if (row && row.screenId) revealBoardFrame(row.group, row.screenId);
     a.goToMark(n).then(function (completed) {
       if (completed === false) return;
       wbSet({
