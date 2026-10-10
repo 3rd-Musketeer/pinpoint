@@ -59,6 +59,12 @@ export async function renderShots({ origin, pageId, jobs }) {
     await page.waitForFunction((id) => window.workbench.activePageId() === id && document.querySelector('#wb-board-panel .wb-lib-item'), pageId);
     await waitForQuiet(page);
     for (const job of prepared) {
+      // 页 tab（ADR 0041）：工作台只挂活动 tab，拍之前切到目标所在的 tab 并等板重挂完。
+      if (job.tabId) {
+        await page.evaluate((id) => window.workbench.setActiveTab(id), job.tabId);
+        await page.waitForFunction((id) => window.workbench.activeTabId() === id && document.querySelector('#wb-board-panel .wb-lib-item'), job.tabId);
+        await waitForQuiet(page);
+      }
       const snapshot = await buildSnapshot(page, job);
       const response = await context.request.post(`${origin}/api/export-image`, { data: snapshot });
       if (!response.ok()) {

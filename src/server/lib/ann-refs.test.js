@@ -135,3 +135,81 @@ describe('resolveRef：裸 id 与显示编号同义', () => {
     assert.equal(resolveRef('m1', ctx).kind, 'unknown');
   });
 });
+
+describe('resolveRef：多 tab 页（ADR 0041）', () => {
+  const sec = (id, screens) => ({ id, title: id, layout: 'row', screens });
+  const TABBED = {
+    tabs: [
+      { id: 'comps', title: '组件', sections: [sec('btn', ['btn-a', 'btn-b']), sec('chip', ['chip-a'])] },
+      { id: 'flow', title: '交互', sections: [sec('onboard', ['ob-1', 'ob-2'])] },
+    ],
+  };
+  const TROWS = [
+    { id: 't1', n: 1, screenId: 'btn-b', status: 'open' },
+    { id: 't2', n: 2, screenId: 'ob-2', status: 'open' },
+  ];
+  const TCTX = { rows: TROWS, board: TABBED, pageId: 'demo' };
+
+  test('<tab>:B3 / <tab>:B 指到那个 tab 里的帧与段，ref 带前缀', () => {
+    const frame = resolveRef('flow:A2', TCTX);
+    assert.equal(frame.kind, 'frame');
+    assert.equal(frame.screenId, 'ob-2');
+    assert.equal(frame.ref, 'flow:A2');
+    assert.equal(frame.tabId, 'flow');
+    assert.equal(resolveRef('comps:A2', TCTX).screenId, 'btn-b');
+    const section = resolveRef('comps:B', TCTX);
+    assert.equal(section.kind, 'section');
+    assert.equal(section.sectionId, 'chip');
+    assert.equal(section.ref, 'comps:B');
+    assert.equal(resolveRef('flow:A', TCTX).sectionId, 'onboard');
+  });
+
+  test('裸 A1 / A 在多个 tab 里都有：报歧义并点名候选', () => {
+    const frame = resolveRef('A1', TCTX);
+    assert.equal(frame.kind, 'unknown');
+    assert.match(frame.message, /A1 在多个 tab 里有，写 comps:A1 或 flow:A1/);
+    const section = resolveRef('A', TCTX);
+    assert.equal(section.kind, 'unknown');
+    assert.match(section.message, /A 在多个 tab 里有，写 comps:A 或 flow:A/);
+  });
+
+  test('裸 B1 只在一个 tab 里有：放行（带前缀的 ref 返回）', () => {
+    const frame = resolveRef('B1', TCTX);
+    assert.equal(frame.kind, 'frame');
+    assert.equal(frame.screenId, 'chip-a');
+    assert.equal(frame.ref, 'comps:B1');
+    assert.equal(resolveRef('B', TCTX).sectionId, 'chip');
+  });
+
+  test('未知 tab、tab 里没有那个号都带原文报错；存量页写前缀也报清楚', () => {
+    assert.match(resolveRef('nope:A1', TCTX).message, /没有 tab "nope"（有：comps、flow）/);
+    assert.match(resolveRef('flow:A9', TCTX).message, /图纸上没有帧 flow:A9/);
+    assert.match(resolveRef('flow:Z', TCTX).message, /图纸上没有段 flow:Z/);
+    assert.match(resolveRef('flow:A1', CTX).message, /这页没有 tab/);
+  });
+
+  test('帧 id / 段 id / @frame 在多 tab 页上仍裸写可用，且带 tabId', () => {
+    assert.equal(resolveRef('ob-1', TCTX).screenId, 'ob-1');
+    assert.equal(resolveRef('ob-1', TCTX).ref, 'flow:A1');
+    assert.equal(resolveRef('onboard', TCTX).tabId, 'flow');
+    assert.equal(resolveRef('@frame:demo/btn-b', TCTX).tabId, 'comps');
+  });
+
+  test('只有一个 tab 的页：位置号不带前缀、裸写即可', () => {
+    const one = { tabs: [{ id: 'only', sections: [sec('s', ['x', 'y'])] }] };
+    const ctx = { rows: [], board: one, pageId: 'demo' };
+    const frame = resolveRef('A2', ctx);
+    assert.equal(frame.screenId, 'y');
+    assert.equal(frame.ref, 'A2');
+    assert.equal(resolveRef('only:A2', ctx).screenId, 'y');
+  });
+
+  test('expandRefs：tab 前缀引用展开成帧内标注；歧义逐条报错不炸整批；shot 语义带 tabId', () => {
+    const { picks, errors } = expandRefs(['flow:A2', 'A1', 'comps:A2'], TCTX);
+    assert.deepEqual(picks.map((p) => p.row.n), [2, 1]);
+    assert.equal(errors.length, 1);
+    assert.match(errors[0], /在多个 tab 里有/);
+    const shots = expandRefs(['flow:A', 'comps:A2'], TCTX, { shotRefs: true }).picks;
+    assert.deepEqual(shots.map((p) => [p.kind, p.tabId]), [['section', 'flow'], ['frame', 'comps']]);
+  });
+});

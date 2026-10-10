@@ -6,6 +6,8 @@
  *   #3-#7        区间（含端点）
  *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
  *   B            段字母 → 整段（section）
+ *   flow:B3      多 tab 页（ADR 0041）上的图纸号带 tab 前缀；编号按 tab 各自从 A 起，
+ *   flow:B       裸 B3 / B 在多个 tab 里都有时报歧义并列出候选，只在一个 tab 里有才放行
  *   <帧 id>      裸帧 id，与 B3 同义（B3 是按位置派生的显示编号，id 不变）
  *   <段 id>      裸段 id，与 B 同义
  *   <page>       整页（仅 shot；任意登记页 id，不限基页）
@@ -21,6 +23,8 @@ import { parseIndicator } from '../../shared/annotation-indicator.js';
 
 const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
 const SECTION_REF_RE = /^([A-Z]+)$/;
+// `<tab id>:B3` / `<tab id>:B`：@frame:p/s 以 @ 开头、跨页 entry#n 没有冒号，这条不与它们相撞。
+const TAB_REF_RE = /^([a-zA-Z0-9_-]+):([A-Z]+(?:[1-9][0-9]*)?)$/;
 const NUM_REF_RE = /^#([1-9][0-9]*)$/;
 const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*)#([1-9][0-9]*)$/;
 const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
@@ -42,7 +46,11 @@ export function resolveRef(token, ctx = {}) {
   const raw = String(token || '').trim();
   if (!raw) return { kind: 'unknown', token, message: '空引用' };
   const { rows = [], board = null, pageId = '', crossPageRows = null } = ctx;
-  const refs = board ? boardRefs(board) : { outline: [], bySection: {}, byFrame: {} };
+  // ctx.refs：调用方已算好引用号时直接用（check 的页上下文自带一份），省一次 boardRefs。
+  const refs = ctx.refs || (board ? boardRefs(board) : { outline: [], bySection: {}, byFrame: {} });
+  const tabIds = (refs.tabs || []).map((tab) => tab.id);
+  const multiTab = tabIds.length >= 2;
+  const qualified = (tabId, ref) => (multiTab && tabId ? `${tabId}:${ref}` : ref);
 
   let m = raw.match(NUM_REF_RE);
   if (m) {
@@ -68,18 +76,45 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `${m[1]} 没有 #${m[2]}` };
     return { kind: 'annotation', row };
   }
-  m = raw.match(FRAME_REF_RE);
+  // 位置号：`<tab>:B3` 指明 tab；裸 B3 在多 tab 页上先看有几个 tab 同时有这个号。
+  m = raw.match(TAB_REF_RE);
+  let tabPart = '';
+  let positionRef = raw;
   if (m) {
-    const hit = outlineFrames(refs).find((frame) => frame.ref === raw);
-    if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${raw}` };
-    return { kind: 'frame', screenId: hit.id, ref: raw, title: hit.title };
+    tabPart = m[1];
+    positionRef = m[2];
+    if (!tabIds.length) {
+      return { kind: 'unknown', token, message: `这页没有 tab，不用写前缀：${positionRef}` };
+    }
+    if (!tabIds.includes(tabPart)) {
+      return { kind: 'unknown', token, message: `这页没有 tab "${tabPart}"（有：${tabIds.join('、')}）` };
+    }
   }
-  m = raw.match(SECTION_REF_RE);
-  if (m) {
-    const sectionId = Object.keys(refs.bySection).find((id) => refs.bySection[id] === raw);
-    if (!sectionId) return { kind: 'unknown', token, message: `图纸上没有段 ${raw}` };
-    const outline = refs.outline.find((section) => section.id === sectionId);
-    return { kind: 'section', sectionId, ref: raw, title: outline ? outline.title : sectionId, frames: outline ? outline.frames : [] };
+  const asFrame = positionRef.match(FRAME_REF_RE);
+  if (asFrame) {
+    const hits = outlineFrames(refs).filter((frame) => frame.ref === positionRef && (!tabPart || frame.tabId === tabPart));
+    if (!hits.length) return { kind: 'unknown', token, message: `图纸上没有帧 ${raw}` };
+    if (hits.length > 1) {
+      return { kind: 'unknown', token, message: `${raw} 在多个 tab 里有，写 ${hits.map((frame) => `${frame.tabId}:${positionRef}`).join(' 或 ')}` };
+    }
+    const hit = hits[0];
+    return { kind: 'frame', screenId: hit.id, ref: qualified(hit.tabId, hit.ref), title: hit.title, ...(hit.tabId ? { tabId: hit.tabId } : {}) };
+  }
+  if (!asFrame && positionRef.match(SECTION_REF_RE)) {
+    const outlineHits = refs.outline.filter((section) => section.letter === positionRef && (!tabPart || section.tabId === tabPart));
+    if (!outlineHits.length) return { kind: 'unknown', token, message: `图纸上没有段 ${raw}` };
+    if (outlineHits.length > 1) {
+      return { kind: 'unknown', token, message: `${raw} 在多个 tab 里有，写 ${outlineHits.map((section) => `${section.tabId}:${positionRef}`).join(' 或 ')}` };
+    }
+    const section = outlineHits[0];
+    return {
+      kind: 'section',
+      sectionId: section.id,
+      ref: qualified(section.tabId, section.letter),
+      title: section.title,
+      frames: section.frames,
+      ...(section.tabId ? { tabId: section.tabId } : {}),
+    };
   }
   // 整页（仅 shot）：基页直接认；其余 bare token 对照登记页 id 清单 —— 页引用
   // 指向别的页是 <页> 语义的本义，不该因为不是基页就「认不出引用」。
@@ -88,23 +123,30 @@ export function resolveRef(token, ctx = {}) {
   // 裸 id：帧 id / 段 id 是不变的机器身份，B3 / B 只是按位置派生的显示编号。
   // 能写编号的地方都能写 id，精确指代时不必拼 @frame:p/s。页 id 同名时页优先（上一步）。
   const byId = outlineFrames(refs).find((frame) => frame.id === raw);
-  if (byId) return { kind: 'frame', screenId: byId.id, ref: byId.ref, title: byId.title };
+  if (byId) return { kind: 'frame', screenId: byId.id, ref: qualified(byId.tabId, byId.ref), title: byId.title, ...(byId.tabId ? { tabId: byId.tabId } : {}) };
   const sectionById = refs.outline.find((section) => section.id === raw);
   if (sectionById) {
-    return { kind: 'section', sectionId: sectionById.id, ref: sectionById.letter, title: sectionById.title, frames: sectionById.frames };
+    return {
+      kind: 'section',
+      sectionId: sectionById.id,
+      ref: qualified(sectionById.tabId, sectionById.letter),
+      title: sectionById.title,
+      frames: sectionById.frames,
+      ...(sectionById.tabId ? { tabId: sectionById.tabId } : {}),
+    };
   }
   const indicator = parseIndicator(raw);
   if (indicator && indicator.kind === 'frame') {
     const hit = outlineFrames(refs).find((frame) => frame.id === indicator.screenId);
     if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${indicator.screenId}` };
-    return { kind: 'frame', screenId: hit.id, ref: hit.ref, title: hit.title };
+    return { kind: 'frame', screenId: hit.id, ref: qualified(hit.tabId, hit.ref), title: hit.title, ...(hit.tabId ? { tabId: hit.tabId } : {}) };
   }
   if (indicator && indicator.kind === 'annotation') {
     const row = rows.find((a) => a.id === indicator.id) || rows.find((a) => String(a.n) === indicator.id);
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、帧 id、段 id、页 id、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、<tab>:B3、帧 id、段 id、页 id、@frame:p/s、@a:id）` };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];
@@ -145,13 +187,13 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
       continue;
     }
     if (pick.kind === 'frame') {
-      if (shotRefs) picks.push({ kind: 'frame', screenId: pick.screenId, ref: pick.ref, title: pick.title, via: token });
+      if (shotRefs) picks.push({ kind: 'frame', screenId: pick.screenId, ref: pick.ref, title: pick.title, tabId: pick.tabId || '', via: token });
       else pushFrameAnnotations(pick.screenId, token);
       continue;
     }
     if (pick.kind === 'section') {
       if (shotRefs) {
-        picks.push({ kind: 'section', sectionId: pick.sectionId, ref: pick.ref, title: pick.title, frames: pick.frames, via: token });
+        picks.push({ kind: 'section', sectionId: pick.sectionId, ref: pick.ref, title: pick.title, frames: pick.frames, tabId: pick.tabId || '', via: token });
         continue;
       }
       const screenIds = pick.frames.map((frame) => frame.id);

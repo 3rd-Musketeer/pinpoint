@@ -208,7 +208,7 @@ function normalizeScreen(entry, path, sectionShell) {
 
 /**
  * 页 tab（ADR 0041）的磁盘形态检查：`tabs` 与 `sections` 二选一；tab id 合法且唯一；
- * 每个 tab 至少一个 section。只管 tab 这一层 —— section / screen 的细节与全页 id 唯一
+ * 每个 tab 至少一个 section；section id / screen id 跨 tab 全页唯一。section / screen 的其余细节
  * 由 validateBoard 对摊平后的 sections 统一查。没写 tabs 的存量 board 恒通过。
  * 编译侧（page-compiler）直接用它，校验与 ppnt build 共一份文字。
  */
@@ -231,6 +231,26 @@ export function validateBoardTabs(raw) {
     if (!Array.isArray(tab.sections) || !tab.sections.length) {
       throw new ContractError(`${path}.sections`, `tab "${id}" 至少要有一个 section`);
     }
+  });
+  // section id / screen id 全页唯一（跨 tab 也算）：编译按 id 去重，重复会静默吞掉一屏，
+  // 所以放在 tab 这一层就拦，ppnt build 与工作台同一句话。
+  const sectionIds = new Set();
+  const screenIds = new Set();
+  raw.tabs.forEach((tab, tabIndex) => {
+    tab.sections.forEach((section, sectionIndex) => {
+      const path = `tabs[${tabIndex}].sections[${sectionIndex}]`;
+      if (!section || typeof section !== 'object') return;
+      if (typeof section.id === 'string') {
+        if (sectionIds.has(section.id)) throw new ContractError(`${path}.id`, `duplicate id "${section.id}"`);
+        sectionIds.add(section.id);
+      }
+      (Array.isArray(section.screens) ? section.screens : []).forEach((screen, screenIndex) => {
+        const id = typeof screen === 'string' ? screen : screen && screen.id;
+        if (typeof id !== 'string') return;
+        if (screenIds.has(id)) throw new ContractError(`${path}.screens[${screenIndex}]`, `duplicate screen id "${id}"`);
+        screenIds.add(id);
+      });
+    });
   });
 }
 

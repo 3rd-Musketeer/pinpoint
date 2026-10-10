@@ -67,9 +67,11 @@ export async function runCheck(argv, io = {}) {
         err(`错误：渲染器加载失败：${error.message}`);
         return 1;
       }
+      const tabOfScreen = new Map(outlineFrames(context.refs).filter((frame) => frame.tabId).map((frame) => [frame.id, frame.tabId]));
       const jobs = screenIds.map((screenId) => ({
         kind: 'frame',
         screenId,
+        ...(tabOfScreen.has(screenId) ? { tabId: tabOfScreen.get(screenId) } : {}),
         scale: 1,
         out: path.join(dataRoot(env), 'check', context.pageId, `${screenId}.png`),
         marks: context.frameRows.filter((row) => row.screenId === screenId && (row.status || 'open') !== 'close' && statusAllows(row)),
@@ -144,8 +146,14 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   const seenScreens = new Set();
   // 产物按不变的 id 命名（编号会随 board 调序漂移）；打印时编号与 id 并列。
   const frameRefById = new Map();
-  if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (!frameRefById.has(frame.id)) frameRefById.set(frame.id, frame.ref);
+  const multiTab = ((baseContext.refs && baseContext.refs.tabs) || []).length >= 2;
+  if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (!frameRefById.has(frame.id)) frameRefById.set(frame.id, multiTab && frame.tabId ? `${frame.tabId}:${frame.ref}` : frame.ref);
   const frameRefOf = (screenId) => frameRefById.get(screenId) || '';
+  // 页 tab（ADR 0041）：工作台只挂活动 tab，渲染端拍每一份之前要先切到目标所在的 tab。
+  // 帧 / 段的 tab 从引用号表里查，整页引用见下面“逐 tab 各拍一张”。
+  const tabOfFrame = new Map();
+  if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (frame.tabId) tabOfFrame.set(frame.id, frame.tabId);
+  const withTab = (tabId) => (tabId ? { tabId } : {});
   const frameJob = (screenId) => {
     if (seenScreens.has(screenId)) return;
     seenScreens.add(screenId);
@@ -153,6 +161,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
       kind: 'frame',
       pageId: basePageId,
       screenId,
+      ...withTab(tabOfFrame.get(screenId)),
       scale,
       label: [frameRefOf(screenId), screenId].filter(Boolean).join(' · '),
       out: path.join(shotDirOf(basePageId), `${screenId}.png`),
@@ -169,6 +178,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
         kind: 'section',
         pageId: basePageId,
         sectionId: pick.sectionId,
+        ...withTab(pick.tabId),
         scale,
         label: [pick.ref, pick.sectionId].filter(Boolean).join(' · '),
         out: path.join(shotDirOf(basePageId), `${pick.sectionId}.png`),
@@ -180,6 +190,23 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
       const pageContext = contextOf(pick.pageId);
       if (!pageContext) {
         problems.push(`错误：找不到页：${pick.pageId}`);
+        continue;
+      }
+      // 多 tab 页：逐 tab 各拍一张（一图装不下互不相干的几块画布）；产物 <页>--<tab>.png。
+      // 单 tab / 存量页一张图，路径同从前。
+      const pageTabs = (pageContext.refs && pageContext.refs.tabs) || [];
+      if (pageTabs.length >= 2) {
+        for (const tab of pageTabs) {
+          jobs.push({
+            kind: 'page',
+            pageId: pageContext.pageId,
+            tabId: tab.id,
+            scale,
+            label: `${pageContext.pageId} · ${tab.id}`,
+            out: path.join(shotDirOf(pageContext.pageId), `${pageContext.pageId}--${tab.id}.png`),
+            marks: withMarks ? openRows(pageContext) : [],
+          });
+        }
         continue;
       }
       jobs.push({

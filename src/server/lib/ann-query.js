@@ -26,6 +26,8 @@ import { resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
+import { flattenTabs } from '../../workbench/lib/board-tabs.js';
+import { resolveRef } from './ann-refs.js';
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
 import { pickByTargetText } from '../../shared/ann-ppid.js';
 import {
@@ -141,7 +143,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   }
   let board = null;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = flattenTabs(JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8')));
   } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
   return contextWithRows({
     registry,
@@ -457,6 +459,11 @@ function kthTagLine(source, comp, k) {
 
 /* ---- check 模型与格式化 ---- */
 
+/** 多 tab 页（≥ 2）的位置号带 tab 前缀：`flow:B3`；其余原样。 */
+function qualifiedRef(refs, tabId, ref) {
+  return tabId && refs.tabs && refs.tabs.length >= 2 ? `${tabId}:${ref}` : ref;
+}
+
 /** 意图标签：changeTo ✎ / move ↗ / 两者 / 普通。 */
 export function intentOf(row) {
   const intents = [];
@@ -471,6 +478,8 @@ export function checkRowModel(row, context) {
   const frame = context.refs.byFrame
     ? Object.entries(context.refs.byFrame).find(([key]) => key.split('\0')[1] === screenId)
     : null;
+  // 多 tab 页上位置号带 tab 前缀（`flow:B3`），单 tab / 存量页原样。
+  const frameOnBoard = outlineFrames(context.refs).find((entry) => entry.id === screenId);
   return {
     n: row.n,
     id: row.id,
@@ -478,7 +487,7 @@ export function checkRowModel(row, context) {
     intent: intentOf(row),
     status: row.status || 'open',
     screenId,
-    frameRef: frame ? frame[1] : '',
+    frameRef: frame ? qualifiedRef(context.refs, frameOnBoard && frameOnBoard.tabId, frame[1]) : '',
     bucket: row.__bucket,
     ledger: row.__ledger,
     docPath: row.__docPath || '',
@@ -501,9 +510,12 @@ export function buildCheckReport(context, options = {}) {
   let rows = [...context.frameRows];
   if (status !== 'all') rows = rows.filter((row) => (row.status || 'open') === status);
   if (options.frame) {
-    const hit = outlineFrames(context.refs).find((frame) => frame.ref === options.frame || frame.id === options.frame);
-    if (!hit) return { error: `图纸上没有帧 ${options.frame}` };
-    rows = rows.filter((row) => row.screenId === hit.id);
+    // 帧号走与 mark / locate / shot 同一套解析：B3、<tab>:B3、裸帧 id；多 tab 页上裸 B3 有歧义会报候选。
+    const hit = resolveRef(options.frame, { rows: [], refs: context.refs, pageId: context.pageId });
+    // 歧义 / 未知 tab 的报错带候选，原样给出；其余沿用从前那一句。
+    if (hit.kind === 'unknown' && /tab/.test(hit.message)) return { error: hit.message };
+    if (hit.kind !== 'frame') return { error: `图纸上没有帧 ${options.frame}` };
+    rows = rows.filter((row) => row.screenId === hit.screenId);
   }
 
   const modeled = rows.map((row) => {
@@ -553,8 +565,9 @@ export function buildCheckReport(context, options = {}) {
       groups.push({
         kind: 'frame',
         // 编号是按位置派生的显示编号，id 是不变身份：两个都给，agent 写进留存文字时用 id。
-        title: `${frame.ref} · ${frame.id} · ${frame.title}`,
-        ref: frame.ref,
+        title: `${qualifiedRef(context.refs, frame.tabId, frame.ref)} · ${frame.id} · ${frame.title}`,
+        ref: qualifiedRef(context.refs, frame.tabId, frame.ref),
+        tabId: frame.tabId || '',
         screenId: frame.id,
         rows: byScreen.get(frame.id),
       });

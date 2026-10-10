@@ -5,6 +5,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { boardRefs } from '../src/workbench/lib/board-refs.js';
+
 import {
   buildEntry,
   buildMove,
@@ -2027,4 +2029,152 @@ test('list <页> --frames：编号 · 帧 id · 源文件 · 标题；build 对�
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
   assert.ok(build.out.some((line) => /注意 c1b-detail 这些帧 id 形如编号/.test(line)), build.out.join('\n'));
   assert.ok(!build.out.some((line) => /run-noop/.test(line) && /形如编号/.test(line)));
+});
+
+/* ---- 页 tab（ADR 0041） ---- */
+
+/** 两个 tab 的编译页：comps（按钮 / 标签）与 flow（引导），帧各一个 .jsx。 */
+function makeTabbedPage(t, board = null) {
+  const dir = withTempDir(t);
+  const page = path.join(dir, 'page');
+  fs.mkdirSync(page, { recursive: true });
+  const sec = (id, title, ids) => ({ id, title, layout: 'row', screens: ids.map((sid) => ({ id: sid, title: `屏 ${sid}` })) });
+  fs.writeFileSync(path.join(page, 'board.json'), JSON.stringify(board || {
+    tabs: [
+      { id: 'comps', title: '组件', sections: [sec('btn', '按钮', ['btn-a', 'btn-b']), sec('chip', '标签', ['chip-a'])] },
+      { id: 'flow', title: '交互', sections: [sec('onboard', '引导', ['ob-1', 'ob-2'])] },
+    ],
+  }));
+  for (const id of ['btn-a', 'btn-b', 'chip-a', 'ob-1', 'ob-2']) {
+    fs.writeFileSync(path.join(page, `${id}.jsx`), `export default function F() {\n  return <div className="ios-app"><p>${id}</p></div>;\n}\n`);
+  }
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 't-page', title: 'T', kind: 'dir', path: page }] }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  return { dir, page, registry, env };
+}
+
+test('build 编译所有 tab 的屏（与活动 tab 无关）；list --frames 按 tab 分组、位置号带前缀', async (t) => {
+  const made = makeTabbedPage(t);
+  const build = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
+  for (const id of ['btn-a', 'btn-b', 'chip-a', 'ob-1', 'ob-2']) {
+    assert.ok(fs.existsSync(path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page', `${id}.html`)), `${id} 没编`);
+  }
+  assert.ok(build.out.some((line) => /完成 t-page.*5 屏/.test(line)), build.out.join('\n'));
+
+  const rec = recorder();
+  assert.equal(await runList(['list', 't-page', '--frames', '--registry', made.registry], { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
+  const text = rec.out.join('\n');
+  assert.match(text, /tab：comps、flow/);
+  assert.ok(rec.out.some((line) => /^tab {2}comps {2}组件$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^tab {2}flow {2}交互$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^A {2}btn {2}按钮$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^B {2}chip {2}标签$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^A {2}onboard {2}引导$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^ {2}comps:A2 +btn-b +btn-b\.jsx +屏 btn-b$/.test(line)), text);
+  assert.ok(rec.out.some((line) => /^ {2}flow:A1 +ob-1 +ob-1\.jsx +屏 ob-1$/.test(line)), text);
+  assert.match(text, /共 2 个 tab 3 段 5 帧/);
+});
+
+test('存量单 board 的 list --frames 不出 tab 行（输出与从前相同）', async (t) => {
+  const made = makeCompiledPage(t, {
+    screens: [{ id: 'home', title: 'Home' }],
+    files: { 'home.html': '<div class="ios-app">在</div>\n' },
+  });
+  const rec = recorder();
+  assert.equal(await runList(['list', 't-page', '--frames', '--registry', made.registry], { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
+  const text = rec.out.join('\n');
+  assert.doesNotMatch(text, /tab/);
+  assert.match(text, /共 1 段 1 帧/);
+});
+
+test('check --frame <tab>:A1 只出那个 tab 的帧；裸 A1 在两个 tab 里都有 → 报候选；标题带 tab 前缀', async (t) => {
+  const made = makeTabbedPage(t);
+  const build = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
+  fs.mkdirSync(path.join(made.env.PINPOINT_DATA_DIR, 't-page'), { recursive: true });
+  const target = (text) => [{ ref: 'i1', selector: 'div.ios-stage:nth-of-type(1) > div.ios-app:nth-of-type(1) > p:nth-of-type(1)', text }];
+  fs.writeFileSync(path.join(made.env.PINPOINT_DATA_DIR, 't-page', '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 2,
+    annotations: [
+      { id: 'k1', n: 1, type: 'element', pageId: 't-page', screenId: 'btn-a', status: 'open', content: '按钮这里 [@t:i1]', targets: target('btn-a') },
+      { id: 'k2', n: 2, type: 'element', pageId: 't-page', screenId: 'ob-1', status: 'open', content: '引导这里 [@t:i1]', targets: target('ob-1') },
+    ],
+  }));
+  const flow = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--frame', 'flow:A1', '--registry', made.registry], { ...flow.io, env: made.env }), 0, flow.err.join('\n'));
+  const text = flow.out.join('\n');
+  assert.match(text, /## flow:A1 · ob-1 · 屏 ob-1/);
+  assert.match(text, /引导这里/);
+  assert.doesNotMatch(text, /按钮这里/);
+
+  const ambiguous = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--frame', 'A1', '--registry', made.registry], { ...ambiguous.io, env: made.env }), 1);
+  assert.ok(ambiguous.err.some((line) => /A1 在多个 tab 里有，写 comps:A1 或 flow:A1/.test(line)), ambiguous.err.join('\n'));
+
+  const all = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry], { ...all.io, env: made.env }), 0);
+  assert.match(all.out.join('\n'), /## comps:A1 · btn-a/);
+
+  // 帧 id 裸写在多 tab 页上照旧可用
+  const bare = recorder();
+  assert.equal(await runCheck(['check', 't-page', '--frame', 'btn-a', '--registry', made.registry], { ...bare.io, env: made.env }), 0, bare.err.join('\n'));
+  assert.match(bare.out.join('\n'), /按钮这里/);
+});
+
+test('build：sections 与 tabs 并存、空 tab、跨 tab 重复 id 都是编译失败，带同一句话', async (t) => {
+  const sec = (id, ids) => ({ id, title: id, layout: 'row', screens: ids });
+  const both = makeTabbedPage(t, { sections: [sec('a', ['btn-a'])], tabs: [{ id: 't', sections: [sec('b', ['btn-b'])] }] });
+  const r1 = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', both.registry], { ...r1.io, env: both.env }), 1);
+  assert.ok(r1.err.some((line) => /sections 与 tabs 二选一/.test(line)), r1.err.join('\n'));
+
+  const empty = makeTabbedPage(t, { tabs: [{ id: 't', sections: [] }] });
+  const r2 = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', empty.registry], { ...r2.io, env: empty.env }), 1);
+  assert.ok(r2.err.some((line) => /tab "t" 至少要有一个 section/.test(line)), r2.err.join('\n'));
+
+  const dup = makeTabbedPage(t, { tabs: [
+    { id: 't1', sections: [sec('a', ['btn-a'])] },
+    { id: 't2', sections: [sec('b', ['btn-a'])] },
+  ] });
+  const r3 = recorder();
+  assert.equal(await runBuild(['build', 't-page', '--registry', dup.registry], { ...r3.io, env: dup.env }), 1);
+  assert.ok(r3.err.some((line) => /duplicate screen id "btn-a"/.test(line)), r3.err.join('\n'));
+});
+
+test('planShotJobs：多 tab 页的帧 / 段作业带 tabId；整页引用逐 tab 各拍一张', () => {
+  const sec = (id, ids) => ({ id, title: id, layout: 'row', screens: ids });
+  const board = { tabs: [
+    { id: 'comps', sections: [sec('btn', ['btn-a'])] },
+    { id: 'flow', sections: [sec('onboard', ['ob-1'])] },
+  ] };
+  const refs = boardRefs(board);
+  const base = { pageId: 'demo', board, refs, frameRows: [{ screenId: 'ob-1', status: 'open' }] };
+  const picks = [
+    { kind: 'frame', screenId: 'ob-1', ref: 'flow:A1', via: 'flow:A1' },
+    { kind: 'section', sectionId: 'btn', ref: 'comps:A', frames: refs.outline[0].frames, tabId: 'comps', via: 'comps:A' },
+    { kind: 'page', pageId: 'demo' },
+  ];
+  const plan = planShotJobs(picks, { basePageId: 'demo', baseContext: base, scale: 1, withMarks: false, contextFor: () => null, dataRootDir: '/data' });
+  assert.deepEqual(plan.problems, []);
+  const frame = plan.jobs.find((job) => job.kind === 'frame');
+  assert.equal(frame.tabId, 'flow');
+  assert.equal(frame.label, 'flow:A1 · ob-1');
+  assert.equal(frame.out, path.join('/data', 'shot', 'demo', 'ob-1.png'));
+  const section = plan.jobs.find((job) => job.kind === 'section');
+  assert.equal(section.tabId, 'comps');
+  const pages = plan.jobs.filter((job) => job.kind === 'page');
+  assert.deepEqual(pages.map((job) => job.tabId), ['comps', 'flow']);
+  assert.deepEqual(pages.map((job) => path.basename(job.out)), ['demo--comps.png', 'demo--flow.png']);
+
+  // 存量页：整页一张，没有 tabId 键
+  const legacy = planShotJobs([{ kind: 'page', pageId: 'demo' }], {
+    basePageId: 'demo', baseContext: { pageId: 'demo', frameRows: [], refs: boardRefs({ sections: [sec('a', ['x'])] }) },
+    scale: 1, withMarks: false, contextFor: () => null, dataRootDir: '/data',
+  });
+  assert.equal(legacy.jobs.length, 1);
+  assert.equal('tabId' in legacy.jobs[0], false);
+  assert.equal(path.basename(legacy.jobs[0].out), 'demo.png');
 });

@@ -179,21 +179,34 @@ function listFrames(words, { registryPath, env, out, err }) {
       return { ...frame, source: pageDir && source.startsWith(pageDir + path.sep) ? path.relative(pageDir, source) : source };
     }),
   }));
-  const refWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.ref.length)));
+  // 多 tab 页（ADR 0041）：按 tab 分组，位置号带 tab 前缀（`flow:B3`，可直接贴给 check / mark / shot）；
+  // 单 tab / 存量页与从前逐字相同。
+  const tabs = context.refs.tabs || [];
+  const multiTab = tabs.length >= 2;
+  const shownRef = (frame) => (multiTab && frame.tabId ? `${frame.tabId}:${frame.ref}` : frame.ref);
+  const refWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => shownRef(frame).length)));
   const idWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.id.length)));
   const sourceWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.source.length)));
   out(`# ${context.pageId} · 画布帧（编号随 board 顺序变；id 不变，留存文字里用 id）`);
   if (pageDir) out(`页目录：${pageDir}`);
+  if (multiTab) out(`tab：${tabs.map((tab) => tab.id).join('、')}（编号按 tab 各自从 A 起，写 <tab>:B3）`);
+  let lastTab = null;
   for (const row of rows) {
     out('');
+    if (multiTab && row.section.tabId !== lastTab) {
+      lastTab = row.section.tabId;
+      const tab = tabs.find((entry) => entry.id === lastTab);
+      out(`tab  ${lastTab}  ${tab && tab.title !== lastTab ? tab.title : ''}`.trimEnd());
+      out('');
+    }
     out(`${row.section.letter}  ${row.section.id}  ${row.section.title}`);
     for (const frame of row.frames) {
-      out(`  ${frame.ref.padEnd(refWidth)}  ${frame.id.padEnd(idWidth)}  ${frame.source.padEnd(sourceWidth)}  ${frame.title}`);
+      out(`  ${shownRef(frame).padEnd(refWidth)}  ${frame.id.padEnd(idWidth)}  ${frame.source.padEnd(sourceWidth)}  ${frame.title}`);
     }
   }
   const frameCount = rows.reduce((sum, row) => sum + row.frames.length, 0);
   out('');
-  out(`共 ${rows.length} 段 ${frameCount} 帧`);
+  out(`共 ${multiTab ? `${tabs.length} 个 tab ` : ''}${rows.length} 段 ${frameCount} 帧`);
   return 0;
 }
 

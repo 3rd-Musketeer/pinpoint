@@ -30,10 +30,11 @@ import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
 import { readBoard } from './board-file.js';
+import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN } from './registry.js';
-import { COMP_NAME_PATTERN, findRetiredVariantGroup, retiredVariantsMessage } from '../../workbench/lib/preview-contracts.js';
+import { COMP_NAME_PATTERN, ContractError, findRetiredVariantGroup, retiredVariantsMessage, validateBoardTabs } from '../../workbench/lib/preview-contracts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -121,7 +122,8 @@ export function boardScreenIds(pageDir) {
   return board ? screenIdsFromBoard(board) : null;
 }
 
-function screenIdsFromBoard(board) {
+function screenIdsFromBoard(rawBoard) {
+  const board = flattenTabs(rawBoard);
   if (!board || !Array.isArray(board.sections)) return null;
   const ids = new Set();
   for (const section of board.sections) {
@@ -370,7 +372,9 @@ export function injectAssets(html, assets, urlBase) {
 }
 
 /** board.json 的 screen 条目序列（编译用）：{ id, comp?, props? }，按 id 去重保序。 */
-export function screenEntriesFromBoard(board) {
+export function screenEntriesFromBoard(rawBoard) {
+  // 页 tab（ADR 0041）：所有 tab 的屏一起编，与活动 tab 无关。
+  const board = flattenTabs(rawBoard);
   if (!board || !Array.isArray(board.sections)) return [];
   const seen = new Set();
   const entries = [];
@@ -555,6 +559,13 @@ export async function compilePage(target, options = {}) {
     board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 读取失败：${(error && error.message) || error}` };
+  }
+  // 页 tab 的形状错（sections 与 tabs 并存、空 tab、重复 tab id）：编不了，报与工作台同一句话。
+  try {
+    validateBoardTabs(board);
+  } catch (error) {
+    if (!(error instanceof ContractError)) throw error;
+    return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 无效：${error.message}` };
   }
   const retiredGroup = findRetiredVariantGroup(board);
   if (retiredGroup) {

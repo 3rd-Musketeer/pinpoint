@@ -681,6 +681,42 @@ describe('页解析', () => {
   });
 });
 
+describe('页 tab（ADR 0041）', () => {
+  const frame = (id) => `export default function F() { return <div className="ios-app"><p>${id}</p></div>; }\n`;
+  const sec = (id, ids) => ({ id, title: id, layout: 'row', screens: ids });
+
+  test('所有 tab 的屏一起编，与活动 tab 无关；boardScreenIds 认全部 tab 的屏', async () => {
+    const target = makePage('tabbed', {
+      board: { tabs: [
+        { id: 'comps', sections: [sec('btn', ['btn-a', 'btn-b'])] },
+        { id: 'flow', sections: [sec('onboard', ['ob-1'])] },
+      ] },
+      files: { 'btn-a.jsx': frame('a'), 'btn-b.jsx': frame('b'), 'ob-1.jsx': frame('o') },
+    });
+    const result = await compilePage(target, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(result.ok, true, JSON.stringify(result));
+    assert.deepEqual(result.screens.map((row) => row.id), ['btn-a', 'btn-b', 'ob-1']);
+    assert.ok(fs.existsSync(distFile(target, 'ob-1.html')));
+    assert.deepEqual([...boardScreenIds(target.pageDir)].sort(), ['btn-a', 'btn-b', 'ob-1']);
+    assert.equal((await renderScreenHtml(target, 'ob-1')).ok, true);
+  });
+
+  test('tabs 与 sections 并存 / 空 tab / 跨 tab 重复屏 id：整页编译失败并给出原因', async () => {
+    const both = makePage('both', {
+      board: { sections: [sec('a', ['x'])], tabs: [{ id: 't', sections: [sec('b', ['y'])] }] },
+    });
+    const r1 = await compilePage(both, { distRoot: path.join(tmp, 'dist') });
+    assert.equal(r1.ok, false);
+    assert.match(r1.error, /sections 与 tabs 二选一/);
+    const empty = makePage('empty', { board: { tabs: [{ id: 't', sections: [] }] } });
+    assert.match((await compilePage(empty, { distRoot: path.join(tmp, 'dist') })).error, /至少要有一个 section/);
+    const dup = makePage('dup', {
+      board: { tabs: [{ id: 't1', sections: [sec('a', ['x'])] }, { id: 't2', sections: [sec('b', ['x'])] }] },
+    });
+    assert.match((await compilePage(dup, { distRoot: path.join(tmp, 'dist') })).error, /duplicate screen id "x"/);
+  });
+});
+
 describe('范例页整页编译（checked-in content/previews/example）', () => {
   // 范例页是「新页照这个结构写」的门面（见页内 README），它自己必须始终可编译。
   // 钉住两件事：0 错误、9 屏齐全（与 board.json 的三段九屏一一对应，顺序一致）。

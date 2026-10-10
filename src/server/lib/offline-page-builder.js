@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { readBoard } from './board-file.js';
+import { readBoardRaw } from './board-file.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { validateBoard } from '../../workbench/lib/preview-contracts.js';
 import {
@@ -48,7 +48,7 @@ function resolvePage(pageId, registry) {
   if (!fs.existsSync(path.join(root, 'board.json'))) {
     throw new OfflinePageExportError('board_missing', `${pageId}: board.json not found`);
   }
-  const parsed = readBoard(root);
+  const parsed = readBoardRaw(root);
   if (!parsed) throw new OfflinePageExportError('board_invalid', `${pageId}: board.json 不是合法 JSON`);
   const validated = validateBoard(parsed, { pageId, defaultShell: 'app' });
   // 导出的是画布：doc 帧不在导出范围内（与导出对话框的计数同一口径），
