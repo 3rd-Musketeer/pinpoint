@@ -438,7 +438,7 @@ html{height:100%}
 
 /** 页 tab：非第一个 tab 的段落与大纲行起始就藏着（`data-tab-hidden`），share-runtime 切换时翻这个属性。 */
 function tabAttrs(section, firstTabId) {
-  if (!section.tabId) return '';
+  if (!section.tabId || !firstTabId) return '';   // 单 tab / 存量页不带 tab 属性
   return ` data-tab="${escHtml(section.tabId)}"${section.tabId === firstTabId ? '' : ' data-tab-hidden'}`;
 }
 

@@ -286,7 +286,7 @@ test('buildOfflineShareHtml has no tab bar or tab attributes for single-tab and 
   const html = buildOfflineShareHtml({
     pageId: 'demo',
     title: 'Demo',
-    sections: [{ id: 'a', title: 'A', ref: 'A', screens: [{ id: 'one', title: '1', ref: 'A1', html: '<div class="wb-screen" id="frame-one" data-screen="one"></div>' }] }],
+    sections: [{ id: 'a', title: 'A', ref: 'A', tabId: 'only', screens: [{ id: 'one', title: '1', ref: 'A1', html: '<div class="wb-screen" id="frame-one" data-screen="one"></div>' }] }],
     workbenchCss: '', iosCss: '', iosKitJs: '', frameBootJs: '', shareRuntimeJs: '',
   });
   assert.doesNotMatch(html, /id="wbtabbar"/);
