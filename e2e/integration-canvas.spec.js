@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 
 // storage-unify：工作台画布的标注住活动页的桶（e2e-ios），账本固定 @canvas.json，
 // 不再跟工作台 pathname（/ 与 /index.html）走。
@@ -123,8 +124,9 @@ test('integrated navigation, pan, zoom and edits preserve persisted targets acro
     expect(stripLastRect(read())).toEqual(persisted);
     await page.screenshot({ path: test.info().outputPath('integrated-restored.png') });
   } finally {
+    await closeSettled(other);
     await otherContext.close();
-    await page.close();
+    await closeSettled(page);
     fs.rmSync(ledger, { force: true });
   }
 });

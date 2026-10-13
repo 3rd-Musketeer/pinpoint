@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 
 // storage-unify 的核心不变量：一页一个桶。两页各标一条 → 各自的 @canvas 各自
 // 编号（两个 #1，#n 按页）；清空只作用当前页的账本，另一页的标注原样；
@@ -14,10 +15,17 @@ import { E2E_DATA_DIR } from './env.js';
 
 const CANVAS_PAGES = ['e2e-ios', 'e2e-mixed'];
 
-test.afterEach(() => {
+// 开头和收尾都清：别的 spec 留在这两页桶里的行不算进本 spec 的 #n；收尾先等关页时
+// 的写落盘（ledger-settle.js），否则它在删桶之后把 @canvas.json 写回来。
+function clearBuckets() {
   for (const vpage of CANVAS_PAGES) {
     fs.rmSync(path.join(E2E_DATA_DIR, vpage), { recursive: true, force: true });
   }
+}
+test.beforeEach(clearBuckets);
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
+  clearBuckets();
 });
 
 function canvasFile(vpage) {

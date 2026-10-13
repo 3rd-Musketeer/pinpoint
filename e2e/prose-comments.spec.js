@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3 M2：文章正文选中文字评论（src/client/prose-comments.js）。固件 = registry 常驻的
@@ -62,6 +63,10 @@ async function dragSelect(page, scope, needle) {
   await page.mouse.up();
   await expect.poll(() => page.evaluate(() => String(window.getSelection()))).toBe(needle);
 }
+
+// 账本每轮从空开始（--repeat-each、重跑都要“右栏空着”）；收尾先等关页时的写落盘。
+test.beforeEach(() => fs.rmSync(LEDGER, { force: true }));
+test.afterEach(async ({ page }) => { await closeSettled(page); });
 
 const settled = (page) => page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
 

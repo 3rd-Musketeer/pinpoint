@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 决定 #15：编译页标注锚到 data-pp-id。固件 anchor-site 的被标注元素住在
@@ -81,7 +82,8 @@ test.beforeEach(async ({ request }) => {
   await request.post('/registry/reload');
 });
 
-test.afterEach(async ({ request }) => {
+test.afterEach(async ({ request, page }) => {
+  await closeSettled(page);
   // 固件与固件产物都自己收走：anchor-site 拷贝恢复原样、dist 删掉（下次访问
   // 懒编译补回）、页桶整目录清掉，不留给共享固件断言的 spec。
   fs.cpSync(SITE_SRC, SITE_DIR, { recursive: true });

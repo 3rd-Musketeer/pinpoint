@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { openWorkbench } from './open-workbench.js';
 
 // 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 —— 窗口｜手机。owner 裁决：
@@ -77,7 +78,8 @@ async function annotateInFrame(page, frameSelector, targetSelector, text) {
   await expect(box).toBeHidden();
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
