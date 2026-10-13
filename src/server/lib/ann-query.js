@@ -6,6 +6,8 @@
  * - 帧标注：本页桶里的 @canvas 账本（画布与 mention frame 共用这一本），
  *   行带 pageId / screenId；
  * - 文档标注：同一桶里按路径分的其余账本（/sites/<id>/ 与 /previews/ 直开页）；
+ * - 正文评论（pp3 M2）：article 页桶里的 @prose 账本，行 type 'prose'（引文 +
+ *   section + 线程）。它们随文档行一起进计数、mark、locate，check 单独成组；
  * - 孤儿账本：表面已不存在的账本（lib/orphans.js 判定），check / status 单独
  *   列出、不计入计数，清理只经 prune；
  * - 帧 HTML：dist（readDistScreen，不触发编译 —— check 只读，未编译的帧在
@@ -24,7 +26,9 @@ import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
 import { resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
+import { resolveArticlePage } from './projects.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
+import { isProseRow } from '../../shared/prose-thread.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { resolveRef } from './ann-refs.js';
@@ -92,6 +96,20 @@ export function collectPageRows({ root, pageId, skipLedgers = [] }) {
 
 /** 孤儿账本 + 本页标注行的装配（编译页与 doc 页共用）：孤儿从帧/文档行里
     摘出去，单独挂在上下文上，清理只经 prune。 */
+/** 一篇 article 的页（`<project>_<article>`）：上下文带上文章的源文件与地址，正文评论的
+    源码定位与 check 抬头用。不是文章页返回 null。 */
+function articleInfo(registry, pageId) {
+  const hit = resolveArticlePage(registry, pageId);
+  if (!hit) return null;
+  return {
+    projectId: hit.projectId,
+    articleId: hit.articleId,
+    title: hit.article.title,
+    file: hit.article.file,
+    url: `/${hit.projectId}/${hit.articleId}/`,
+  };
+}
+
 function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, board, isManifestPage }) {
   const orphanLedgers = collectPageOrphans({
     pageId,
@@ -111,7 +129,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
       .map((row) => normalizeAnnotation(row)))
     .filter(Boolean)
     .map((row) => ({ ...row, __bucket: pageId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, pageId)) }));
-  return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows };
+  return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows, article: articleInfo(registry, pageId) };
 }
 
 /**
@@ -128,6 +146,16 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   const target = resolvePageTarget(pageRef, { registry, root: repoRoot });
   if (!target) {
     const entry = registry.resolve(String(pageRef || ''));
+    // pp3：文章页 `<project>_<article>` 还没有编译出的画布时，仍有正文评论可读、可 mark、
+    // 可回复 —— 和 doc 页一样走无板上下文。
+    const article = !entry ? resolveArticlePage(registry, pageRef) : null;
+    if (article) {
+      const articleTarget = { entryId: article.pageId, pageDir: article.article.dir, urlBase: `/${article.projectId}/${article.articleId}/`, kind: 'article', docOnly: true };
+      return {
+        ...contextWithRows({ registry, repoRoot, dataRootValue, pageId: article.pageId, target: articleTarget, board: null, isManifestPage: false }),
+        docOnly: true,
+      };
+    }
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
     const docTarget = {
       entryId: entry.id,
@@ -530,9 +558,11 @@ export function buildCheckReport(context, options = {}) {
     }
     return model;
   });
-  const docRows = status === 'all'
+  const statusRows = status === 'all'
     ? context.docRows
     : context.docRows.filter((row) => (row.status || 'open') === status);
+  const docRows = statusRows.filter((row) => !isProseRow(row));
+  const proseRows = statusRows.filter(isProseRow);
 
   // 分组：按帧（默认）或按组件（无组件归「仅本帧」）。
   const groups = [];
@@ -577,6 +607,14 @@ export function buildCheckReport(context, options = {}) {
       groups.push({ kind: 'frame', title: screenId, ref: '', screenId, rows: models, offBoard: true });
     }
   }
+  if (proseRows.length) {
+    const source = context.article ? readSourceOnce(context) : null;
+    groups.push({
+      kind: 'prose',
+      title: context.article ? `正文评论 · ${context.article.title}（${context.article.url}）` : '正文评论',
+      rows: proseRows.map((row) => proseRowModel(row, context, source)),
+    });
+  }
   if (docRows.length) {
     groups.push({
       kind: 'doc',
@@ -599,9 +637,83 @@ export function buildCheckReport(context, options = {}) {
     status,
     groupBy,
     docOnly: !!context.docOnly,
+    ...(context.article ? { article: context.article } : {}),
     groups,
     counts: countByStatus([...context.frameRows, ...context.docRows]),
   };
+}
+
+function readSourceOnce(context) {
+  const reader = context.readFile || ((file) => {
+    try { return fs.readFileSync(file, 'utf8'); } catch { return null; }
+  });
+  return reader(context.article.file);
+}
+
+const SECTION_OPEN_RE = /<Section\b[^>]*\bid=["']([^"']+)["']/;
+
+/**
+ * 引文在文章源文件里的行号（1 起），给 agent 一个落脚行。quote = { exact, prefix, suffix }，
+ * section = 评论时所在的节。逐字找 exact，找不到退到它的前 12 个字符（渲染后的正文在
+ * 源文件里可能夹着 markdown 记号）；同一串出现在几行时，按行内前后文与 prefix / suffix
+ * 的吻合程度挑，落在 `<Section id="<section>">` 里的再加分。都没有是 0。
+ */
+export function quoteSourceLine(source, quote, section = '') {
+  const q = typeof quote === 'string' ? { exact: quote } : (quote || {});
+  const exact = q.exact || '';
+  if (typeof source !== 'string' || !exact) return 0;
+  const lines = source.split('\n');
+  const sectionOfLine = [];
+  let current = '';
+  for (const line of lines) {
+    const open = line.match(SECTION_OPEN_RE);
+    if (open) current = open[1];
+    sectionOfLine.push(current);
+    if (/<\/Section>/.test(line)) current = '';
+  }
+  const prefix = q.prefix || '';
+  const suffix = q.suffix || '';
+  const tailMatch = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1; return n; };
+  const headMatch = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[n] === b[n]) n += 1; return n; };
+  const probes = [exact, exact.slice(0, 12)].filter((probe, i, all) => probe && all.indexOf(probe) === i);
+  for (const probe of probes) {
+    let best = null;
+    lines.forEach((line, i) => {
+      const at = line.indexOf(probe);
+      if (at < 0) return;
+      const score = tailMatch(line.slice(0, at), prefix) + headMatch(line.slice(at + probe.length), suffix)
+        + (section && sectionOfLine[i] === section ? 8 : 0);
+      if (!best || score > best.score) best = { line: i + 1, score };
+    });
+    if (best) return best.line;
+  }
+  return 0;
+}
+
+/** 正文评论的一行：在普通行模型上加引文、节、线程与源码落脚行。 */
+export function proseRowModel(row, context, source = null) {
+  const model = checkRowModel(row, context);
+  const exact = (row.quote && row.quote.exact) || '';
+  const line = context.article ? quoteSourceLine(source, row.quote, row.section) : 0;
+  return {
+    ...model,
+    kind: 'prose',
+    intent: '正文评论',
+    section: row.section || '',
+    quote: exact,
+    messages: (Array.isArray(row.messages) ? row.messages : []).filter((m) => m && typeof m.text === 'string')
+      .map((m) => ({ who: m.who === 'agent' ? 'agent' : 'owner', text: m.text, at: m.at || '' })),
+    file: context.article ? context.article.file : null,
+    line,
+  };
+}
+
+/** 线程消息的时间：本地时区 MM-DD HH:MM；坏值原样。 */
+function shortTime(iso) {
+  const at = new Date(iso);
+  if (!iso || Number.isNaN(at.getTime())) return String(iso || '');
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(at.getMonth() + 1)}-${pad(at.getDate())} ${pad(at.getHours())}:${pad(at.getMinutes())}`;
 }
 
 export function countByStatus(rows) {
@@ -617,7 +729,8 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
   lines.push(`# ${report.page} · 标注清单（${report.status}）`);
   const total = report.groups.reduce((sum, group) => sum + group.rows.length, 0);
   lines.push(`共 ${total} 条${report.status === 'all' ? '' : `（全量 ${report.counts.total}）`}`);
-  if (report.docOnly) lines.push('这页不是编译页，没有源码摘录。');
+  if (report.article) lines.push(`文章：${report.article.url} · ${report.article.file}`);
+  if (report.docOnly) lines.push(report.article ? '这篇文章还没有编译的画布帧，只有正文评论。' : '这页不是编译页，没有源码摘录。');
   if (imagePaths && report.groups.some((group) => group.kind === 'frame')) {
     const seen = new Set();
     for (const group of report.groups) {
@@ -630,6 +743,13 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     lines.push('');
     lines.push(`## ${group.title}${group.detail ? ` · ${group.detail}` : ''}`);
     for (const row of group.rows) {
+      if (row.kind === 'prose') {
+        lines.push([`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`, row.section ? `· 节 ${row.section}` : ''].filter(Boolean).join(' '));
+        lines.push(`  引文：「${row.quote}」`);
+        if (row.file) lines.push(`  源文件：${row.line ? `${row.file}:${row.line}` : `${row.file}（没有逐字匹配的行${row.section ? `，按节 ${row.section} 找` : ''}）`}`);
+        for (const m of row.messages) lines.push(`  ${m.who}${m.at ? `（${shortTime(m.at)}）` : ''}：${m.text}`);
+        continue;
+      }
       const parts = [`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`];
       if (row.docPath) parts.push(`· ${row.docPath}`);
       if (row.comp) parts.push(`· ${row.comp}（共用 ${row.sharedFrames} 帧）`);
@@ -653,6 +773,13 @@ function displayN(row) {
 /** 一条标注的定位行。 */
 export function locateLine(row, context) {
   const n = displayN(row);
+  // 正文评论：落到文章源文件里引文所在的行。
+  if (isProseRow(row)) {
+    const section = row.section ? `，节 ${row.section}` : '';
+    if (!context.article) return { n: row.n, text: `#${n} → 正文评论（${row.__docPath || '文章页'}${section}）` };
+    const line = quoteSourceLine(readSourceOnce(context), row.quote, row.section);
+    return { n: row.n, text: `#${n} → ${context.article.file}${line ? `:${line}` : ''}（正文评论${section}）` };
+  }
   // doc 页（无 board.json 的 dir / file 条目）没有源码定位：给出账本的表面路径。
   if (context.docOnly) {
     const where = row.__docPath || '文档页';

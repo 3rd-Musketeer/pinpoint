@@ -2,7 +2,7 @@
  * ppnt 引用解析（2026-09-22 切片 4，决定 #18）：check / locate / shot / mark
  * 共用的一套地址语法 ——
  *   #12          本页标注序号（registry entry 内单调、跨账本唯一）
- *   <entry>#12   跨页标注（plugins#12）
+ *   <entry>#12   跨页标注（plugins#12；文章页 browser-use_payment-confirm#3）
  *   #3-#7        区间（含端点）
  *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
  *   B            段字母 → 整段（section）
@@ -26,7 +26,8 @@ const SECTION_REF_RE = /^([A-Z]+)$/;
 // `<tab id>:B3` / `<tab id>:B`：@frame:p/s 以 @ 开头、跨页 entry#n 没有冒号，这条不与它们相撞。
 const TAB_REF_RE = /^([a-zA-Z0-9_-]+):([A-Z]+(?:[1-9][0-9]*)?)$/;
 const NUM_REF_RE = /^#([1-9][0-9]*)$/;
-const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*)#([1-9][0-9]*)$/;
+// 页 id 可以是文章页 `<project>_<article>`（projects.js articlePageId），所以允许一个下划线。
+const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*(?:_[a-z0-9][a-z0-9-]*)?)#([1-9][0-9]*)$/;
 const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
 
 /**
