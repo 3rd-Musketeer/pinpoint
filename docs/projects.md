@@ -204,6 +204,54 @@ export default function ConfirmBare() {
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
 - 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 
+## 从存量页迁移
+
+一个存量页（registry 的 dir 条目或模板页）迁成一篇 article，里面每个 board section 是一节，节里一个画布（2026-10-13 owner 定：存量 page = 一篇 article）。`pinpoint migrate` 把页的源码复制进 project，写出只有结构的正文，再逐帧和旧页对比。先看计划：
+
+```shell
+pinpoint migrate <页 id> --project <project 根> --dry-run
+```
+
+再写：
+
+```shell
+pinpoint migrate <页 id> --project <project 根> --article <文章 id>
+```
+
+- project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出。project 不登记也能迁，登记了才能在服务里打开画布和正文。
+- 文章 id 缺省用页 id，画布页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
+- 旧页的文件和登记都不动。标注不迁：旧页的标注留在旧页的桶里，新文章用新桶 `<project>_<article>`，命令输出里也写明这一点。
+
+### 怎么对应
+
+| 存量页 | 文章 |
+| --- | --- |
+| board 的一个 section | 一个 `<Section id title>`，里面一行占位注释 `{/* 正文 */}` 和一个 `<Canvas frames>`。section 的 shell（含 html 页的缺省 doc）写成 `<Canvas shell>`。没有帧的 section 只留 `<Section>` |
+| 页 tab | 每个 tab 第一节前加一行 `## <tab 标题>`。二级标题不占节字母，节字母全文统一排（A、B、C…），旧页是每个 tab 各从 A 起 |
+| `<帧>.jsx`、sidecar `<帧>.js` | 同名复制 |
+| 单屏 shell（和节的不同） | 复制的帧文件末尾补一行 `export const shell = "…";`。补在末尾，前面的行号不变，`data-pp-id` 和旧页一致 |
+| comp 屏（`comp` + `props`） | 生成 `<帧>.jsx`：import 那个组件（页内 `./components/<Name>.jsx`，没有就从 `pinpoint/kit`），props 写成属性。节是 comp 墙、或这一屏是 comp 时，文件里写 `export const shell = "comp";` |
+| 帧 import 的组件和其他文件 | 按编译器的依赖记录（传递）照原相对路径复制，相对 import 不用改；没被用到的组件不复制 |
+| `assets.css` | `article.css`。只有一份就是改名；几份按顺序拼起来，`@import` 提到最前 |
+| `assets.js` | `article.js`。只有一份就是改名；几份照原路径复制，`article.js` 依次 import 它们 |
+| 引用到的静态文件（图片、字体、音视频、pdf） | 复制到 `assets/<原相对路径>`（原本就在 `assets/` 下的不再套一层） |
+
+地址改写：页地址 `/sites/<页>/x`（模板页是 `/previews/<页>/x`）换成 `/sites/<画布页>/…`，静态文件指到 `assets/x`，迁走的源文件指到新名字（页级 css 指到 `article.css`）。css 里的相对 `url()` 按 css 自己的位置重算。帧和组件里写的相对静态文件路径在运行时按页地址解析，所以按页根算，改成 `./assets/x`。拼出来的地址（`` `/sites/<页>/icons/${name}.svg` ``）找不到单个文件，就把 `icons/` 整个目录复制到 `assets/icons/`。
+
+帧标题、section 的 `layout: "column"`、screen 的 `role` 不带过来，输出里各记一条“注意”。
+
+### 拦下
+
+下面这些情况一个文件都不写，逐条列出后退 1：`.html` 帧（文章只认 `.jsx`）、帧没有源文件、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
+
+### 校验
+
+写完之后从新的 `index.mdx` 派生 board（和服务同一条路），逐帧编译到临时目录，与旧页的渲染逐行比，打一张表：编号 · 帧 · 来源（复制 / comp 生成）· shell · 编译 · 与旧页。最后一列是“相同”、“只差地址”或“差 n 行”。“只差地址”指把旧页 HTML 里的旧地址换成新地址，再去掉几份资源合并后重复的注入行，两边逐字相同。有帧编不过、或某帧的 shell 和旧页不同，退 1，文件照样写，修好后跑 `ppnt build <画布页>`。
+
+编译只写临时目录，不写数据目录的 dist。project 登记后，服务的 watcher 会自己编这篇。
+
+实现在 `src/server/lib/page-migrate.js`（`planPageMigration`、`writeMigration`、`verifyMigration`），命令在 `bin/cli/migrate.js`。
+
 ## 保留名
 
 project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由和登记校验用同一份；`projects.js` 的 `RESERVED_PROJECT_IDS`、`isReservedProjectId` 只是它的转出口。清单包括：
