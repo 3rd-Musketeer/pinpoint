@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // 标注列表面板（#ann-sidebar）：/sites/ 注入页、SPA 页这些没有 workbench 的页面，
@@ -12,7 +13,8 @@ import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 // （单一控制面）。浏览器扩展（工具栏图标入口、pinpoint:command 桥）已于
 // pp2 切片 3 退役。
 
-test.afterEach(async () => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   // storage-unify：workbench 用例的标注落进 e2e-ios 桶（桶 = 页），不清的话
   // 同组后跑的 mention.spec 会在自己的计数断言上多出别人的行。
   for (const entry of ['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']) {

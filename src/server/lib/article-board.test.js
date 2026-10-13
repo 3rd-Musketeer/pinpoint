@@ -67,7 +67,7 @@ test('articlePageId：<project>_<article>，拆得回去，匹配 PAGE_ID_PATTER
   assert.ok(!ENTRY_ID_PATTERN.test(id), 'registry 条目 id 不含 _，所以不会撞');
   assert.ok(ARTICLE_PAGE_ID_PATTERN.test(id));
   assert.deepEqual(parseArticlePageId(id), { projectId: 'browser-use', articleId: 'payment-confirm' });
-  for (const bad of ['browser-use', 'a_b_c', '_a', 'a_', 'A_b', '']) assert.equal(parseArticlePageId(bad), null, bad);
+  for (const bad of ['browser-use', 'a_b_c', '_a', 'a_', 'A_b', 'p.a', '', null]) assert.equal(parseArticlePageId(bad), null, String(bad));
   assert.throws(() => articlePageId('Bad', 'x'), /必须匹配/);
   assert.throws(() => articlePageId('a', 'b_c'), /必须匹配/);
 });

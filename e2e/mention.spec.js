@@ -5,6 +5,7 @@ import { expect, test } from '@playwright/test';
 
 
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { openWorkbench } from './open-workbench.js';
 
 // 阶段 5：doc 页正文 mention 画布 frame（data-pinpoint-frame）→ 水合为活 DOM；
@@ -23,7 +24,8 @@ function bucketDocs(bucket) {
     .map((name) => JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8')));
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   fs.rmSync(CANVAS_BUCKET, { recursive: true, force: true });
   fs.rmSync(DOC_BUCKET, { recursive: true, force: true });
 });

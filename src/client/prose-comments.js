@@ -95,8 +95,8 @@ function sectionAtFor(index) {
   };
 }
 
-/** DOM 选区 → 规范化文本上的 [start, end)；选区不碰正文返回 null。 */
-function rangeToOffsets(range, index) {
+/** DOM 选区 → 规范化文本上的 [start, end)；选区不碰正文返回 null。导出只给 e2e/prose-text-index.spec.js。 */
+export function rangeToOffsets(range, index) {
   var start = null;
   var end = null;
   for (var i = 0; i < index.nodes.length; i++) {
@@ -129,7 +129,7 @@ function offsetsToSegments(start, end, index) {
   return out;
 }
 
-function unpaint(root) {
+export function unpaint(root) {
   var marks = root.querySelectorAll('mark.' + MARK_CLASS);
   var parents = new Set();
   for (var i = 0; i < marks.length; i++) {
@@ -144,7 +144,7 @@ function unpaint(root) {
 }
 
 /** items: [{ id, start, end, draft? }]，同一段文字可被多条覆盖（data-ids 列全部）。 */
-function paintSegments(index, items) {
+export function paintSegments(index, items) {
   var byNode = new Map();
   items.forEach(function (item) {
     offsetsToSegments(item.start, item.end, index).forEach(function (seg) {

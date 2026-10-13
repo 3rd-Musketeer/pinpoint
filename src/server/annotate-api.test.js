@@ -181,7 +181,7 @@ test('/health counts project entries apart from pages and lists their layout err
     entries: [
       { id: 'pinpoint', kind: 'dir', path: dir },
       { id: 'e2e-project', kind: 'project', path: path.join(repo, 'e2e', 'project-site') },
-      { id: 'e2e-collide', kind: 'project', path: path.join(repo, 'e2e', 'project-collide') },
+      { id: 'clash', kind: 'project', path: path.join(repo, 'site', 'fixtures', 'projects', 'clash') },
     ],
   }));
   const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
@@ -190,7 +190,7 @@ test('/health counts project entries apart from pages and lists their layout err
   assert.equal(json.registry.projects, 2);
   assert.equal(json.projects.count, 2);
   assert.equal(json.projects.errors.length, 1);
-  assert.match(json.projects.errors[0], /^e2e-collide: 撞名 \[\[confirm-card\]\]/);
+  assert.match(json.projects.errors[0], /^clash: 撞名 \[\[confirm-card\]\]/);
   const listed = await call(createAnnotateHandler({ dataRoot, registry }), 'GET', '/registry');
   assert.deepEqual(listed.json.entries.map((e) => e.id), ['pinpoint'], 'projects never show up as pages');
 });

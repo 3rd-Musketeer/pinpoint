@@ -77,7 +77,7 @@ Then tell your agent:
 
 > 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 写一篇 article，跑 `ppnt build` 编译
 
-Verify changes with `just check` (or `npm run check`). Install the matching browser on the first run:
+Verify changes with `just check` (or `npm run check`): unit tests, the site build check (`npm run test:site`), then e2e. Install the matching browser on the first run:
 
 ```bash
 npx playwright install chromium
@@ -92,7 +92,7 @@ the upstream defaults to that port + 10.
 registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
 (default 5299), +10, +20 and +30; choose a base whose four ports are free. New spec files
 are included automatically. Any group failure fails the command, and Ctrl+C stops both.
-When the 1-minute load average is 4 or higher it runs one group instead of two, and each
+When the 1-minute load average is 10 or higher it runs one group instead of two, and each
 failed group reruns its failed tests once; only a failure on that rerun counts (details in
 `AGENTS.md`). Write regression tests as unit tests first; e2e is for behavior only a real
 browser can check (see `AGENTS.md`).

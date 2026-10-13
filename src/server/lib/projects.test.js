@@ -5,7 +5,6 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { articlePageId, isReservedProjectId, parseArticlePageId, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { formatProjectError } from '../../shared/project-errors.js';
 import { findProject, listProjects, readProjectJson } from './projects.js';
@@ -16,7 +15,7 @@ const lines = (errors) => errors.map(formatProjectError);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SITE = path.join(REPO, 'e2e', 'project-site');
-const COLLIDE = path.join(REPO, 'e2e', 'project-collide');
+const COLLIDE = path.join(REPO, 'site', 'fixtures', 'projects', 'clash');
 
 function tempDir(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-projects-'));
@@ -79,8 +78,8 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
 });
 
 test('collision fixture: article id and concept name share one case-insensitive namespace', (t) => {
-  const registry = registryWith(t, [{ id: 'e2e-collide', kind: 'project', path: COLLIDE }]);
-  const project = findProject(registry, 'e2e-collide');
+  const registry = registryWith(t, [{ id: 'clash', kind: 'project', path: COLLIDE }]);
+  const project = findProject(registry, 'clash');
   assert.equal(project.articles.length, 1, 'both sides stay listed; the error is reported, not thrown');
   assert.equal(project.concepts.length, 1);
   assert.equal(project.errors.length, 1);
@@ -207,18 +206,8 @@ test('parseFrontmatter: key: value lines, quotes, comments, strict on the rest',
   ]);
 });
 
-test('reserved ids cover every top-level directory the service serves from the repo root', () => {
-  const dirs = fs.readdirSync(REPO, { withFileTypes: true })
-    .filter((item) => item.isDirectory() && !item.name.startsWith('.'))
-    .map((item) => item.name)
-  for (const name of dirs) assert.ok(isReservedProjectId(name), `vite 服务 /${name}/，project id 必须拒绝它`);
-  assert.ok(isReservedProjectId('test-results-5420') && isReservedProjectId('playwright-report'));
-  assert.ok(!isReservedProjectId('browser-use'));
-  // 服务路由占用的首段（src/shared/project-ids.js RESERVED_TOP_SEGMENTS，唯一的表）：登记校验必须全部拒绝。
-  const proxySide = 'health registry events annotations save image images api sites kits previews lib bin content docs e2e scripts skills src site tasks prototypes workbench assets annotate _astro _image node_modules'.split(' ');
-  for (const name of proxySide) assert.ok(isReservedProjectId(name), name);
-  for (const name of RESERVED_TOP_SEGMENTS) assert.ok(isReservedProjectId(name), name);
-});
+// 保留首段的表、仓库根目录与服务路由都在表里：article-routes.test.js 的两条“保留首段”；
+// 表 → isReservedProjectId、e2e 产物前缀：src/shared/project-ids.test.js。
 
 test('registry: project entries live in projects, not entries; page consumers never see them', (t) => {
   const registry = registryWith(t, [
@@ -234,9 +223,3 @@ test('registry: project entries live in projects, not entries; page consumers ne
   assert.deepEqual(registry.errors, ['duplicate entry id "e2e-project"', 'entry "att" kind "project" cannot attach to a page']);
 });
 
-test('articlePageId: <project>_<article>, never an entry id, parses back one way', () => {
-  assert.equal(articlePageId('e2e-project', 'commit-confirm'), 'e2e-project_commit-confirm');
-  assert.deepEqual(parseArticlePageId('e2e-project_commit-confirm'), { projectId: 'e2e-project', articleId: 'commit-confirm' });
-  // 不是这个形状：登记条目 id（没有下划线）、空段、多一个下划线、大写、点。
-  for (const id of ['e2e-project', '_a', 'p_', 'p_a_b', 'P_a', 'p.a', '', null]) assert.equal(parseArticlePageId(id), null, String(id));
-});

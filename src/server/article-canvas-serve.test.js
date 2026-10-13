@@ -100,6 +100,20 @@ test('/api/frame 的目标：文章画布帧是 fragment，桶 = 画布页 id，
   assert.throws(() => resolveFrameTarget('demo_ghost', 'ask-open', { registry }), /unknown page/);
 });
 
+// 原在 e2e/article-canvas.spec.js（2026-10-13 测试清理下移）：同一节里手机帧与帧级
+// comp 混排时，/api/frame 各按各的 shell 出台子。
+test('/api/frame 的台子：帧级 export const shell = "comp" 进组件台，同一节的手机帧进机壳', async (t) => {
+  const { article, registry } = fixture(t);
+  write(path.join(article, 'index.mdx'), '---\ntitle: 流程\n---\n\n<Section id="ask" title="提问">\n\n<Canvas frames={["ask-open", "ask-bare"]} />\n\n</Section>\n');
+  write(path.join(article, 'ask-bare.jsx'), 'export const shell = "comp";\n\nexport default function AskBare() {\n  return <div className="bare-card">卡片</div>;\n}\n');
+  const stage = async (screen) => {
+    const html = await framePageHtml(resolveFrameTarget('demo_flow', screen, { registry }), { annotate: false });
+    return { comp: /class="wb-comp-stage[ "]/.test(html), phone: /class="ios-stage[ "]/.test(html) };
+  };
+  assert.deepEqual(await stage('ask-bare'), { comp: true, phone: false });
+  assert.deepEqual(await stage('ask-open'), { comp: false, phone: true });
+});
+
 test('标注桶：画布页 id 是合法桶；/registry 带 articles 清单，entries 里没有它', async (t) => {
   const { registry, dir } = fixture(t);
   assert.deepEqual(resolveRequestEntry(registry, 'demo_flow'), { entry: 'demo_flow' });

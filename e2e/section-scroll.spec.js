@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 
 // storage-unify：画布账本 = 活动页桶的 @canvas.json（e2e-ios）。
 const ledger = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
@@ -13,7 +14,7 @@ test.beforeEach(() => {
 });
 
 test.afterEach(async ({ page }) => {
-  await page.close();
+  await closeSettled(page);
   fs.rmSync(ledger, { force: true });
 });
 

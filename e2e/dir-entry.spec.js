@@ -8,6 +8,7 @@ import { promisify } from 'node:util';
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { writeRegistryFixture } from './registry-fixture.js';
 
 // Registry `dir` entries are served read-only under /sites/<id>/ with the
@@ -28,7 +29,8 @@ async function rawStatus(url) {
   return Number(stdout.trim());
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 

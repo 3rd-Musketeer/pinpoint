@@ -27,7 +27,7 @@ test('/api/projects returns listProjects output; /api/projects/<id> one project 
   fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [
     { id: 'pinpoint', kind: 'dir', path: REPO },
     { id: 'e2e-project', kind: 'project', path: path.join(REPO, 'e2e', 'project-site') },
-    { id: 'e2e-collide', kind: 'project', path: path.join(REPO, 'e2e', 'project-collide') },
+    { id: 'clash', kind: 'project', path: path.join(REPO, 'site', 'fixtures', 'projects', 'clash') },
   ] }));
   const registry = loadRegistry({ root: REPO, path: file, log: () => {} });
   const origin = await serve(t, registry);
@@ -40,7 +40,7 @@ test('/api/projects returns listProjects output; /api/projects/<id> one project 
   const one = await (await fetch(`${origin}/api/projects/e2e-project`)).json();
   assert.deepEqual(one.articles.map((a) => a.id), ['commit-confirm', 'takeover']);
   assert.deepEqual(one.errors, []);
-  const collide = await (await fetch(`${origin}/api/projects/e2e-collide/`)).json();
+  const collide = await (await fetch(`${origin}/api/projects/clash/`)).json();
   assert.equal(collide.errors.length, 1, 'layout errors are data, the request still succeeds');
 
   assert.equal((await fetch(`${origin}/api/projects/nope`)).status, 404);

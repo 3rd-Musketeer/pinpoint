@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3 M2：文章正文选中文字评论（src/client/prose-comments.js）。固件 = registry 常驻的
@@ -62,6 +63,10 @@ async function dragSelect(page, scope, needle) {
   await page.mouse.up();
   await expect.poll(() => page.evaluate(() => String(window.getSelection()))).toBe(needle);
 }
+
+// 账本每轮从空开始（--repeat-each、重跑都要“右栏空着”）；收尾先等关页时的写落盘。
+test.beforeEach(() => fs.rmSync(LEDGER, { force: true }));
+test.afterEach(async ({ page }) => { await closeSettled(page); });
 
 const settled = (page) => page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
 
@@ -153,20 +158,21 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
       ]);
     });
 
-    await test.step('ppnt check <文章页 id>：列出两条正文评论，带引文、节、源文件行', async () => {
+    // CLI 的输出格式（引文、节、源文件行、reply / mark 的回显）由 bin/pinpoint-cli.test.js 的
+    // 「check <project>_<article>：正文评论单独成组」与 reply / mark 用例钉住（2026-10-13 测试
+    // 清理）；这里只证明 CLI 读到的是浏览器刚写的账本、写回的东西实时出现在右栏。
+    await test.step('ppnt check <文章页 id>：读到浏览器写的两条正文评论', async () => {
       const out = await ppnt(['check', PAGE_ID]);
-      expect(out).toContain(`[#${first}] 收款方要写全称 · 正文评论 · open · 节 how`);
-      expect(out).toContain('引文：「确认卡写清收款方」');
-      expect(out).toContain(`源文件：${SOURCE}:18`);
-      expect(out).toContain(`[#${second}] 这句太长 · 正文评论 · open · 节 why`);
+      expect(out).toContain(`[#${first}] 收款方要写全称`);
+      expect(out).toContain(`[#${second}] 这句太长`);
     });
 
     await test.step('ppnt reply：agent 的回复实时出现在线程里，状态不变；ppnt mark check 改状态', async () => {
-      expect(await ppnt(['reply', `#${first}`, '已改成收款方全称', '--page', PAGE_ID])).toContain(`#${first} ← agent：已改成收款方全称（状态仍是 open）`);
+      await ppnt(['reply', `#${first}`, '已改成收款方全称', '--page', PAGE_ID]);
       await expect(thread(first).locator('.msg .who')).toHaveText(['你', 'agent']);
       await expect(thread(first).locator('.msg .text').nth(1)).toHaveText('已改成收款方全称');
       await expect(thread(first)).toHaveAttribute('data-status', 'open');
-      expect(await ppnt(['mark', `${PAGE_ID}#${first}`, 'check', '--page', PAGE_ID])).toContain(`#${first} → check`);
+      await ppnt(['mark', `${PAGE_ID}#${first}`, 'check', '--page', PAGE_ID]);
       await expect(thread(first)).toHaveAttribute('data-status', 'check');
       await expect(thread(first).locator('.pp-st')).toHaveText('check');
     });

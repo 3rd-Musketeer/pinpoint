@@ -3,7 +3,8 @@
 // refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
 // links, the section overlay's markup hooks), and that a namespace collision or a canvas error fails the build.
 // Also: two dev servers from this checkout keep separate content stores.
-// Not in the default `npm test`: the real Astro builds and dev servers take ~15 s.
+// Not in the default `npm test` (the real Astro builds and dev servers take ~15 s); `npm run check`
+// (and so `just check` / `just ship`) runs it between the unit tests and e2e.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
@@ -167,7 +168,7 @@ test('canvas errors fail the build, each with its line', (t) => {
 test('an article id that equals a concept name fails the build', (t) => {
   const b = build(t, ['clash']);
   assert.notEqual(b.status, 0);
-  assert.match(b.log, /project "clash": name "confirm-card" is used by article .*confirm-card[\\/]index\.mdx and concept .*confirm-card\.md/);
+  assert.match(b.log, /project "clash": name "Confirm-Card" is used by article .*confirm-card[\\/]index\.mdx and concept .*confirm\.md/);
 });
 
 function freePort() {

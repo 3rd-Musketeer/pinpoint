@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 
 // SPA 前端路由（pushState，不刷新页面）必须切换标注账本：pathname 变 → 标注记到
 // 新页面的 key 名下。fixture 是 e2e/spa-fixture.html（不经 previews/，不受
@@ -34,7 +35,8 @@ function docByPrefix(prefix) {
   return name ? docs[name] : null;
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
@@ -163,4 +165,7 @@ test('in-flight old-ledger save response cannot pollute the new ledger', async (
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countAll)).toBe(1);
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.map((m) => m.content)))
     .toEqual(['[@t:i1] route-a ann']);
+  // 之后的保存（lastRect 等）也被压着：放行，afterEach 的 closeSettled 才等得到它们回来。
+  await page.unroute('**/save');
+  for (const route of held.splice(0)) await route.continue().catch(() => {});
 });

@@ -4,6 +4,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
+import { closeSettled } from './ledger-settle.js';
 
 // 阶段 4：registry `url` 条目经同源路径前缀代理（/sites/<id>/ → 目标 origin）
 // 以 doc 壳内嵌进 workbench —— 绝对路径资源/API 由「HTML 重写 + 运行时重基
@@ -22,7 +23,8 @@ function bucketDocs() {
   return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
 }
 
-test.afterEach(() => {
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
