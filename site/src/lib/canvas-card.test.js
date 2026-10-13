@@ -89,15 +89,18 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   assert.match(bad.errors[1], /^第 13 行：.*帧 "gone" 没有源文件（本篇目录下缺 gone\.jsx）$/);
   assert.equal(cardModel(canvas, undefined).stray, true);
 
-  // Banner: listProjects repeats all three with the article prefix; only the page-level one is shown, once.
+  // Banner: the project's errors repeat all three with the article prefix; only the page-level one is shown, once.
+  // The site's p.errors carries them as loadProjects writes them: `project "<id>": <listProjects line>`.
   const [project] = listProjects(registry).filter((p) => p.id === 'broken');
   assert.equal(project.errors.length, 3);
-  const banner = bannerErrors([...project.errors, 'articles/other/index.mdx：别篇的错', 'project.json 的 title 必须是字符串'], 'broken-canvas', canvas);
+  const siteErrors = [...project.errors, 'articles/other/index.mdx：别篇的错', 'project.json 的 title 必须是字符串'].map((e) => `project "broken": ${e}`);
+  const banner = bannerErrors(siteErrors, 'broken-canvas', canvas);
   assert.deepEqual(banner, [
-    'articles/other/index.mdx：别篇的错',
-    'project.json 的 title 必须是字符串',
+    'project "broken": articles/other/index.mdx：别篇的错',
+    'project "broken": project.json 的 title 必须是字符串',
     '第 7 行：<Canvas> 必须写在 <Section> 里（画布按节排开）',
   ]);
+  assert.deepEqual(bannerErrors(project.errors, 'broken-canvas', canvas), ['第 7 行：<Canvas> 必须写在 <Section> 里（画布按节排开）']);
   const shown = [...banner, ...bad.errors];
   for (const e of project.errors) {
     assert.equal(shown.filter((x) => e.endsWith(x)).length, 1, `shown once: ${e}`);

@@ -45,16 +45,20 @@ export function looseErrors(canvas) {
 }
 
 /**
- * The article page's error banner, each canvas error shown once. listProjects
- * repeats every error of this article in `projectErrors` (prefixed
- * `articles/<article>/…：`), and articleCanvas returns the same ones without the
- * prefix: section errors go to that section's card, the rest (looseErrors) to
- * the banner. So this article's prefixed lines are dropped here; errors of
- * other articles and of the project itself stay.
+ * The article page's error banner, each canvas error shown once. The project's
+ * errors (`p.errors`, from listProjects via the projects collection, each
+ * line prefixed `project "<id>": `) repeat every error of this article as
+ * `articles/<article>/…：…`, and articleCanvas returns the same ones without
+ * that prefix: section errors go to that section's card, the rest
+ * (looseErrors) to the banner. So this article's lines are dropped here;
+ * errors of other articles and of the project itself stay.
  */
 export function bannerErrors(projectErrors, articleId, canvas) {
   const prefix = `articles/${articleId}`;
-  const mine = (e) => e.startsWith(`${prefix}/`) || e.startsWith(`${prefix}：`);
+  const mine = (raw) => {
+    const e = String(raw).replace(/^project "[^"]*": /, '');
+    return e.startsWith(`${prefix}/`) || e.startsWith(`${prefix}：`);
+  };
   return [...(projectErrors || []).filter((e) => !mine(e)), ...looseErrors(canvas)];
 }
 
