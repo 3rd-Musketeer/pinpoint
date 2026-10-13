@@ -145,6 +145,20 @@
 - section 和 frame 只保留标题，说明字段、详情浮层及读写接口全部退役；旧字段加载时忽略，通过显式备份迁移清理。
 - title 规矩：单行短名词短语；编号系统派生（A / B1）禁手写；禁“·”拼接。契约层硬拦换行，画布 caption 两行截断兜底。
 
+## 地址栏参数（深链）
+
+解析与生成只在 `src/workbench/lib/page-url.js`（`parseDeepLink` / `deepLinkQuery`），写回在 `src/workbench/url-sync.js`，读取在 `stage.js` 的 boot。
+
+| 参数 | 含义 | 落地后留不留 |
+|---|---|---|
+| `page` | 打开哪一页；页不存在停在“页面不存在”面板 | 留（镜像当前页） |
+| `mode` | 页的 manifest 形态提示（`ios` / `html`，残留 `web` 归一到 `html`） | 留 |
+| `entry` | 板内条目（画布 `@canvas` / 文档屏 id）；默认条目省略 | 留（镜像当前条目） |
+| `tab` | 多 tab 页的活动 tab（ADR 0041）；第一个 tab 省略；只在这次打开生效，不写偏好 | 留（镜像当前 tab） |
+| `section` | 落点 section（2026-10-13）：打开画布条目、先切到它所在的 tab，再即时定位并选中这个 section，与导航器 / 大纲点 section 同一个结果。这次打开里它赢过存档视口（缩放沿用存档）；同时给了 `tab` / `entry` 时 section 说了算；页里没有这个 id 就照常打开、`console.warn` 一条 | 不留：它是一次性落点指令，不是状态。落地后地址栏只剩 page / entry / tab，平移之后不会拿着一个已经不对的 section，刷新也不会被拽回去 |
+
+`section` 给链接生成方用（文章页 section 卡上的“打开画布”）：`deepLinkQuery(pageId, mode, entryId, tabId, sectionId)`。
+
 ## 版本管理（REV 协议）
 
 **2026-08-15 缓期进 backlog**：owner 复评——当前迭代节奏下“这条标注针对哪一版”不是真实痛点（chat 即 changelog）。完整设计与分期预案见 [adr/0012](adr/0012-sheet-format-rev-a1-refs.md)、[adr/0013](adr/0013-rev-deferred.md) 与 owner-local 的 `BACKLOG.md`；视觉储备在体验板。痛点信号出现前不要实现。
