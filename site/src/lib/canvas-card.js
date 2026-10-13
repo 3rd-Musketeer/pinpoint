@@ -4,9 +4,13 @@
  * with it, node --test covers it.
  */
 
-/** Frame preview inside the card: same-origin render endpoint, annotation client off. */
+/**
+ * Frame preview inside the card and the overlay: same-origin render endpoint,
+ * annotation client off, embed mode (no caption; the stage carries
+ * data-pp-stage, the phone body data-pp-device — what the browser side measures).
+ */
 export const frameSrc = (pageId, frameId) =>
-  `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off`;
+  `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off&embed=card`;
 
 /** Workbench canvas view of the article; with a section id it scrolls to that row (M0-D). */
 export const canvasHref = (pageId, sectionId) =>
@@ -16,16 +20,18 @@ export const canvasHref = (pageId, sectionId) =>
 export const canvasLedgerUrl = (pageId) => `/annotations/%40canvas?entry=${encodeURIComponent(pageId)}`;
 
 /**
- * Preview geometry per shell. `width` × `height` is the iframe's layout box
- * before the frame is measured, shown at `scale`. After load the client
- * measures the frame's stage: the phone (393×852 plus bezel) is fitted to a
- * fixed `fitWidth` (158 px, the preview's look); other shells (comp stage is
- * max-content ≤ 420 px in index.html) keep `scale` and take their own box.
+ * Preview geometry per shell. One scale for every frame in a card, so a bare
+ * component and the phones beside it keep their real proportions: the phone
+ * stage (the workbench's 438 × 910 iPhone chrome, --wb-phone-w × --wb-phone-h)
+ * shown 158 px wide. `width` × `height` is the iframe's layout box before the
+ * frame is measured; after load the client measures the stage
+ * ([data-pp-stage]) and keeps the scale (comp stage is max-content ≤ 420 px).
  */
-export const PHONE = { width: 393, height: 852, scale: 158 / 393, fitWidth: 158 };
+export const CARD_SCALE = 158 / 438;
+export const PHONE = { width: 438, height: 910, scale: CARD_SCALE };
 const NATURAL = {
-  comp: { width: 480, height: 320, scale: 0.75 },
-  doc: { width: 1280, height: 900, scale: 0.25 },
+  comp: { width: 480, height: 320, scale: CARD_SCALE },
+  doc: { width: 1280, height: 900, scale: CARD_SCALE },
 };
 export function shellBox(shell) {
   if (!shell || shell === 'app' || shell === 'lock') return { mode: 'phone', ...PHONE };

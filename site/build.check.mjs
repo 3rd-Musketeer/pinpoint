@@ -1,7 +1,7 @@
 // Site build test (npm run test:site): builds the fixture projects with a temp
 // registry and checks routes, [[ ]] resolution (incl. empty and cross-project
 // refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
-// links), and that a namespace collision or a canvas error fails the build.
+// links, the section overlay's markup hooks), and that a namespace collision or a canvas error fails the build.
 // Not in the default `npm test`: two real Astro builds take ~10 s.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -36,7 +36,7 @@ const refs = (html) => [...html.matchAll(/<(?:a|span) class="cref( empty)?"[^>]*
 
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Canvas cards in document order: each card runs to the next card, section or </main>. */
-const cardsOf = (html) => [...html.matchAll(/<div class="canvas-card" data-pp-canvas data-page="([^"]*)" data-section(?:="([^"]*)")?[^>]*?data-frames(?:="([^"]*)")?>([\s\S]*?)(?=<div class="canvas-card"|<\/section>|<\/main>)/g)]
+const cardsOf = (html) => [...html.matchAll(/<div class="canvas-card" data-pp-canvas data-page="([^"]*)" data-pp-section(?:="([^"]*)")?[^>]*?data-frames(?:="([^"]*)")?>([\s\S]*?)(?=<div class="canvas-card"|<\/section>|<\/main>)/g)]
   .map((m) => ({ page: m[1], section: m[2] || '', frames: m[3] || '', html: m[0] }));
 const iframesOf = (html) => [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m) => m[1]);
 const linksOf = (html) => [...html.matchAll(/<a class="(?:btn|cc-hit)"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
@@ -77,23 +77,34 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm confirm-card'], [page, 'mech', 'pay-button']]);
   const [flow, mech] = cards;
   assert.match(flow.html, /<span class="ref">B<\/span><span class="t">付款前的确认<\/span><span class="meta">B1–B3 · 3 帧<\/span>/);
-  assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm', 'confirm-card'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off`)));
+  assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm', 'confirm-card'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off&embed=card`)));
   for (const tag of flow.html.match(/<iframe [^>]*>/g)) {
     assert.match(tag, /loading="lazy"/);
     assert.match(tag, /tabindex="-1"/);
   }
   const open = q(`/?page=${encodeURIComponent(page)}&section=flow`);
-  assert.deepEqual(linksOf(flow.html), [open, open, open, open]); // 打开画布 + one per frame
+  // 打开画布 goes to the canvas; each frame opens the section overlay on the article (#overlay=<section>&frame=<frame>), no navigation.
+  assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#overlay=flow&frame=${f}`))]);
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
+  assert.equal((flow.html.match(/<a class="cc-hit" data-pp-frame-open href="#overlay=/g) || []).length, 3);
+  // data-section belongs to <Section> only (one hit per section); the card carries data-pp-section.
+  assert.doesNotMatch(article, /class="canvas-card"[^>]*\sdata-section=/);
+  assert.equal((article.match(/\sdata-section="flow"/g) || []).length, 1);
+  assert.doesNotMatch(flow.html, /class="cc-hit"[^>]*target=/);
+  // What the overlay reads from the card: section letter / title / meta / canvas link, and per frame ref, title, src.
+  assert.match(flow.html, new RegExp(`data-pp-section="flow" data-letter="B" data-title="付款前的确认" data-meta="B1–B3 · 3 帧" data-href="${escRe(open)}"`));
+  assert.match(flow.html, new RegExp(`<figure class="cc-frame" data-screen="ask" data-ref="B1" data-title="ask" data-src="${escRe(q(`/api/frame?page=${encodeURIComponent(page)}&screen=ask&annotate=off&embed=card`))}">`));
   assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2', 'B3']);
-  assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:343px"/);
+  assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:328px"/);
   // Mixed shells in one card: the phone frames are phones, confirm-card (its own `export const shell = "comp"`) is a bare component box.
-  const boxes = [...flow.html.matchAll(/<figure class="cc-frame" data-screen="([^"]+)"( data-shell="([^"]*)")?[^>]*>[\s\S]*?class="cc-box (\w+)"[^>]*style="([^"]*)"/g)]
-    .map((m) => [m[1], m[3] || '', m[4], m[5]]);
+  const boxes = [...flow.html.matchAll(/<figure class="cc-frame" data-screen="([^"]+)"( data-shell="([^"]*)")?[^>]*>[\s\S]*?class="cc-box (\w+)" data-scale="([^"]*)"[^>]*style="([^"]*)"/g)]
+    .map((m) => [m[1], m[3] || '', m[4], m[6], m[5]]);
+  assert.deepEqual([...new Set(boxes.map((b) => b.pop()))], [String(158 / 438)]); // every frame in the card: the same scale
   assert.deepEqual(boxes, [
-    ['ask', '', 'phone', 'width:158px;height:343px'],
-    ['confirm', '', 'phone', 'width:158px;height:343px'],
-    ['confirm-card', 'comp', 'natural', 'width:360px;height:240px'],
+    // One scale per card (the phone's, 158 / 438): the comp frame's starting box 480×320 at that scale, not 0.75.
+    ['ask', '', 'phone', 'width:158px;height:328px'],
+    ['confirm', '', 'phone', 'width:158px;height:328px'],
+    ['confirm-card', 'comp', 'natural', 'width:173px;height:115px'],
   ]);
   assert.doesNotMatch(flow.html.slice(0, flow.html.indexOf('<figure')), /data-shell=/); // the section itself has no shell
   assert.match(flow.html, /data-pp-badge hidden>/); // badge filled only from the live annotation ledger
@@ -102,10 +113,20 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(mech.html, /data-shell="comp"/);
   assert.match(mech.html, /class="cc-box natural"/);
   assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
-  assert.deepEqual(linksOf(mech.html), Array(2).fill(q(`/?page=${encodeURIComponent(page)}&section=mech`)));
+  assert.deepEqual(linksOf(mech.html), [q(`/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
+  // The section overlay: one empty shell per article with a canvas, outside #article, excluded from prose comments.
+  const ov = article.match(/<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">[\s\S]*?<\/dialog>/);
+  assert.ok(ov, 'overlay shell');
+  for (const hook of ['data-ov-letter', 'id="pp-ov-title" data-ov-title', 'data-ov-meta', 'data-ov-prev aria-label="上一节"', 'data-ov-next aria-label="下一节"',
+    'data-ov-canvas href="/" target="_top">打开画布 →', 'data-ov-close aria-label="关闭"', 'class="ov-strip" data-ov-strip tabindex="-1" autofocus']) {
+    assert.ok(ov[0].includes(hook), `overlay hook ${hook}`);
+  }
+  assert.doesNotMatch(ov[0], /<iframe/); // frames are created when it opens
+  assert.ok(article.indexOf('<dialog class="pp-ov"') > article.indexOf('</main>'), 'overlay is outside #article');
+  assert.equal((article.match(/<dialog /g) || []).length, 1);
   // Top bar: the article's canvas view.
   assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
-  assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas/); // no Canvas, no canvas view
+  assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas|data-pp-overlay/); // no Canvas, no canvas view, no overlay
 
   const home = b.read('demo/index.html');
   assert.deepEqual([...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['付款授权', '撤回窗口', '支付页识别']);

@@ -1,11 +1,15 @@
 ---
-// <Canvas frames={["<帧 id>", …]} shell?="comp" />：一节的画布卡片（common-m1.md §1、§3）。每帧按自己的 shell 量尺寸（帧文件的 export const shell 盖过节的）。
+// <Canvas frames={["<帧 id>", …]} shell?="comp" />：一节的画布卡片（common-m1.md §1、§3）。每帧按自己的 shell 取盒子（帧文件的 export const shell 盖过节的），
+// 一张卡片里所有帧同一个缩放（canvas-card.js CARD_SCALE）。
 // 只显示所在 Section 那一行的帧；数据来自文章页放进 Astro.locals.ppCanvas 的 articleCanvas()（lib/canvas-source.js），
+// 卡片根节点用 data-pp-section（不用 data-section：那是 Section 的，查 [data-section] 每节只该命中一个）。
 // 不信本组件自己的 props：section 由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
-// 卡片不可交互：iframe tabindex -1、pointer-events none，点帧或“打开画布”都是顶层跳转到画布并定位到这一节。
+// 卡片不可交互：iframe tabindex -1、pointer-events none。点帧打开画布浮层（CanvasOverlay.astro，地址 #overlay=<节>&frame=<帧>），
+// 浮层里的帧可交互；“打开画布”是顶层跳转到画布并定位到这一节。浮层读的是这里的 data-*。
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
 // 缺源文件的帧照占位置和编号，显示占位格“缺帧 <id>”，和画布上那一格的错误面板对应。
 import { cardModel } from '../lib/canvas-card.js';
+import { overlayHash } from '../lib/canvas-overlay.js';
 
 interface Props { section?: string; frames?: unknown; shell?: string }
 const { section } = Astro.props;
@@ -19,7 +23,11 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
   class="canvas-card"
   data-pp-canvas
   data-page={m.pageId}
-  data-section={m.sectionId}
+  data-pp-section={m.sectionId}
+  data-letter={m.letter || undefined}
+  data-title={m.title}
+  data-meta={m.meta || undefined}
+  data-href={m.href || undefined}
   data-shell={m.shell || undefined}
   data-frames={m.frames.map((f) => f.id).join(' ')}
 >
@@ -41,18 +49,18 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
   {m.frames.length > 0 && (
     <div class="cc-strip">
       {m.frames.map((f) => (
-        <figure class="cc-frame" data-screen={f.id} data-shell={f.shell || undefined}>
+        <figure class="cc-frame" data-screen={f.id} data-shell={f.shell || undefined} data-ref={f.ref} data-title={f.title} data-src={f.src || undefined} data-missing={f.missing ? '' : undefined}>
           <figcaption class="cap"><b>{f.ref}</b>{f.title}</figcaption>
           {f.missing ? (
             <div class:list={['cc-box', f.box.mode, 'missing']} data-pp-missing style={boxStyle(f.box)}>
               <div class="ph"><b>{f.ref}</b>缺帧 {f.id}</div>
             </div>
           ) : (
-            <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} data-fit-width={f.box.fitWidth} style={boxStyle(f.box)}>
+            <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} style={boxStyle(f.box)}>
               <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={`${f.ref} ${f.title}`} style={frameStyle(f.box)}></iframe>
             </div>
           )}
-          <a class="cc-hit" href={m.href} target="_top" aria-label={`在画布中打开 ${f.ref} ${f.title}`}></a>
+          <a class="cc-hit" data-pp-frame-open href={overlayHash(m.sectionId, f.id)} aria-label={`放大查看 ${f.ref} ${f.title}`}></a>
         </figure>
       ))}
     </div>

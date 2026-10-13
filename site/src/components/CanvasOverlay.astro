@@ -1,0 +1,31 @@
+---
+// 画布浮层（lightbox）：点正文卡片里的帧，在文章上面打开这一节的全部帧，帧可交互（site/README.md「画布浮层」）。
+// 一篇文章一个，空壳；内容由 lib/canvas-overlay-client.js 按卡片的 data-* 填。
+// 首尾的 data-ov-guard 把 Tab 绕回浮层里（modal dialog 自己会把焦点放出到浏览器界面）。
+// data-pp-nocomment：浮层里选字不出正文“评论”（src/client/prose-comments.js 的 SKIP_SELECTOR）。
+---
+<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">
+  <span class="ov-guard" tabindex="0" data-ov-guard="start"></span>
+  <div class="ov-panel">
+    <header class="ov-head">
+      <span class="kind">画布</span>
+      <span class="ref" data-ov-letter></span>
+      <h2 class="t" id="pp-ov-title" data-ov-title></h2>
+      <span class="meta" data-ov-meta></span>
+      <span class="sp"></span>
+      <span class="ov-nav">
+        <button class="btn ov-ic" type="button" data-ov-prev aria-label="上一节">‹</button>
+        <button class="btn ov-ic" type="button" data-ov-next aria-label="下一节">›</button>
+      </span>
+      <a class="btn" data-ov-canvas href="/" target="_top">打开画布 →</a>
+      <button class="btn ov-ic" type="button" data-ov-close aria-label="关闭">×</button>
+    </header>
+    <div class="ov-strip" data-ov-strip tabindex="-1" autofocus></div>
+  </div>
+  <span class="ov-guard" tabindex="0" data-ov-guard="end"></span>
+</dialog>
+
+<script>
+  import { initCanvasOverlay } from '../lib/canvas-overlay-client.js';
+  initCanvasOverlay();
+</script>

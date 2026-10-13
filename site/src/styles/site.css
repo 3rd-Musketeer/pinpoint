@@ -1,19 +1,19 @@
 /* Article 站点样式。token 与布局照 tasks/2026-10-13-pp3/preview/index.html（owner 认可的样子）。 */
 :root {
   --bg:#ffffff; --ink:#111111; --ink-2:#454545; --muted:#767676; --hair:#e6e6e6; --soft:#f5f5f5; --soft-2:#ececec;
-  --accent:#0e8f6c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12); --shadow-sm:0 6px 18px rgba(0,0,0,.10);
+  --accent:#0e8f6c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12); --shadow-sm:0 6px 18px rgba(0,0,0,.10); --scrim:rgba(17,17,17,.56);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-    --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45);
+    --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-  --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45);
+  --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -112,6 +112,68 @@ th { background:var(--soft); font-weight:600; }
 .cc-hit { position:absolute; inset:0; border-radius:12px; }
 .cc-hit:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cc-frame:hover .cc-box { outline:2px solid var(--accent); outline-offset:3px; }
+
+/* 画布浮层（CanvasOverlay.astro + canvas-overlay-client.js）：点卡片里的帧打开，一节的帧并排、同一缩放、可交互。
+   dialog 铺满视口，自己的背景就是暗色遮罩（不靠 ::backdrop 继承变量），面板照卡片的样子放大。 */
+html.pp-ov-lock { overflow:hidden; }
+.pp-ov { position:fixed; inset:0; width:100%; height:100%; max-width:none; max-height:none; margin:0; padding:24px; border:0;
+         background:var(--scrim); color:var(--ink); overflow:hidden; }
+.pp-ov[open] { display:flex; }
+.pp-ov::backdrop { background:transparent; }
+.ov-guard { position:fixed; width:1px; height:1px; overflow:hidden; clip-path:inset(50%); }
+.ov-panel { flex:1; min-width:0; display:flex; flex-direction:column; background:var(--soft); border:1px solid var(--hair); border-radius:18px;
+            box-shadow:var(--shadow); overflow:hidden; }
+.ov-head { flex:none; display:flex; align-items:center; gap:6px 10px; padding:10px 12px 10px 16px; background:var(--bg); border-bottom:1px solid var(--hair); font-size:14px; }
+.ov-head .kind { font-size:11.5px; font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--muted); }
+.ov-head .ref { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; color:var(--accent); font-weight:600; }
+.ov-head .t { margin:0; font-size:15px; line-height:1.4; letter-spacing:0; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-head .meta { color:var(--muted); font-size:12.5px; white-space:nowrap; }
+.ov-head .sp { flex:1; }
+.ov-nav { display:inline-flex; gap:4px; }
+.btn.ov-ic { width:32px; height:32px; padding:0; display:inline-grid; place-items:center; font-size:18px; line-height:1; }
+.ov-strip { position:relative; flex:1; min-height:0; display:flex; align-items:center; gap:28px; padding:24px 28px; overflow-x:auto; overflow-y:hidden;
+            overscroll-behavior:contain; scrollbar-width:thin; outline:none; }
+.ov-frame { position:relative; flex:none; margin:0; }
+.ov-frame:first-child { margin-left:auto; }
+.ov-frame:last-child { margin-right:auto; }
+.ov-frame .cap { display:flex; align-items:baseline; gap:6px; width:var(--ov-w, auto); margin-bottom:8px; font-size:12.5px; line-height:1.4; color:var(--muted);
+                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ov-frame .cap b { font-family:ui-monospace,"SF Mono",Menlo,monospace; color:var(--accent); font-weight:600; }
+.ov-frame .cap code { background:none; padding:0; font-size:12px; color:var(--ink-2); }
+.ov-frame .cap span { overflow:hidden; text-overflow:ellipsis; }
+.ov-shell { border-radius:12px; transition:box-shadow .2s; }
+.ov-shell.natural { box-shadow:0 1px 8px rgba(0,0,0,.10); }
+.ov-shell.phone { box-shadow:0 0 0 1px var(--hair), 0 14px 32px -10px rgba(0,0,0,.30); }
+.ov-box { position:relative; overflow:hidden; border-radius:inherit; background:var(--soft-2); }
+/* 手机帧：盒子就是机身（.ios-device），圆角 --ov-r 由脚本按机身圆角 × 缩放写上。
+   帧里带 backdrop-filter 的导航栏在缩放后的 iframe 里会越出圆角裁切（Chromium，overflow 和 clip-path 都裁不住），
+   画出的是 iframe 底色的模糊：底色取面板色，越出的那一块就看不见。 */
+.ov-frame { --ov-r:calc(55px * var(--ov-s, 1)); }
+.ov-shell.phone { border-radius:var(--ov-r); }
+.ov-box.phone { background:var(--soft); }
+.ov-box.phone iframe { background:var(--soft); }
+.ov-box.natural { background:#fff; }
+.ov-box iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; background:transparent;
+                 /* 帧页不声明 color-scheme（normal）；iframe 元素若继承站点的 light / dark，两边不一致，浏览器就给帧铺不透明底色。 */
+                 color-scheme:normal; }
+.ov-box .ph { position:absolute; inset:0; display:grid; place-items:center; align-content:center; gap:4px; padding:12px; text-align:center; color:var(--muted); font-size:13px; background:var(--soft-2); }
+.ov-box.missing { background:var(--soft); border:1.5px dashed var(--err); clip-path:none; }
+.ov-box.missing .ph { background:transparent; color:var(--err); }
+.ov-box.missing .ph b { color:var(--ink-2); }
+.ov-frame.flash .ov-shell { box-shadow:0 0 0 3px var(--accent), 0 14px 32px -10px rgba(0,0,0,.30); }
+@media (prefers-reduced-motion: reduce) { .ov-shell { transition:none; } }
+@media (max-width:600px) {
+  /* 手机：整屏的 sheet，帧按宽度缩，横向滑动，一帧一停。 */
+  .pp-ov { padding:0; }
+  .ov-panel { border:0; border-radius:0; }
+  .ov-head { flex-wrap:wrap; padding:8px 8px 8px 12px; }
+  .ov-head .kind { display:none; }
+  .ov-head .t { flex:1 1 0; }
+  .ov-head .meta { order:3; flex-basis:100%; display:none; }
+  .ov-head .sp { display:none; }
+  .ov-strip { gap:16px; padding:16px; scroll-snap-type:x mandatory; }
+  .ov-frame { scroll-snap-align:center; }
+}
 
 /* 正文评论（pp3 M2）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
    生成（src/client/prose-comments.js），样子照 tasks/2026-10-13-pp3/preview/index.html。 */

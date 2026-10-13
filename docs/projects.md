@@ -237,7 +237,8 @@ export default function ConfirmBare() {
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ message, line?, section?, frame? }]`。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。`message` 与 `listProjects` 里这篇的布局错误是同一句，只去掉 `articles/<文章>/index.mdx：` 前缀。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
-- 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
+- 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
+- `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
 
 ## 保留名
 

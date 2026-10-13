@@ -66,14 +66,14 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     expect(unexpected).toEqual([]);
     // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
     await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual(
-      ['card-plain', 'confirm-done', 'confirm-sheet', 'mixed-bare', 'mixed-phone'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off`));
+      ['card-plain', 'confirm-done', 'confirm-sheet', 'mixed-bare', 'mixed-phone'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off&embed=card`));
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
   });
 
-  await test.step('[[ ]] popup：concept 显示状态与边界；空 ref 显示还没有页；Esc 关闭', async () => {
-    await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').click();
+  await test.step('[[ ]] popup（悬停打开）：concept 显示状态与边界；空 ref 点击打开、显示还没有页；Esc 关闭', async () => {
+    await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').hover();
     const pop = page.locator('.pop');
     await expect(pop).toBeVisible();
     await expect(pop.locator('.k')).toHaveText('confirm-card收敛中');
@@ -86,7 +86,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await expect(page.locator('.pop .k')).toHaveText('risk-score空 ref');
     await page.keyboard.press('Escape');
 
-    await page.locator('.cref[data-kind="article"][data-name="takeover"]').click();
+    await page.locator('.cref[data-kind="article"][data-name="takeover"]').hover();
     await expect(page.locator('.pop .k')).toHaveText('用户接手文章');
   });
 
@@ -94,7 +94,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await page.keyboard.press('Escape');
     const cards = page.locator('[data-pp-canvas]');
     await expect(cards).toHaveCount(3);
-    expect(await cards.evaluateAll((els) => els.map((el) => [el.dataset.page, el.dataset.section, el.dataset.frames]))).toEqual([
+    expect(await cards.evaluateAll((els) => els.map((el) => [el.dataset.page, el.dataset.ppSection, el.dataset.frames]))).toEqual([
       [CANVAS_PAGE, 'confirm', 'confirm-sheet confirm-done'],
       [CANVAS_PAGE, 'variants', 'card-plain'],
       [CANVAS_PAGE, 'mixed', 'mixed-phone mixed-bare'],
@@ -103,10 +103,10 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await expect(page.locator('[data-pp-canvas] .cap b')).toHaveText(['B1', 'B2', 'C1', 'D1', 'D2']);
     await expect(page.locator('[data-pp-canvas-errors], [data-pp-missing], .cc-box .ph, .errors[role="alert"]')).toHaveCount(0);
     // 每帧加载后量过机壳 / 组件台（data-fitted），帧里的内容来自本篇组件。
-    await page.locator('[data-pp-canvas][data-section="mixed"]').scrollIntoViewIfNeeded();
+    await page.locator('[data-pp-canvas][data-pp-section="mixed"]').scrollIntoViewIfNeeded();
     await expect(page.locator('[data-pp-canvas] .cc-box[data-fitted="1"]')).toHaveCount(5);
     // 混排的一张卡：手机帧按手机缩到 158 宽；帧级 comp 的那一帧按自己的组件台量，不是手机比例。
-    const mixed = page.locator('[data-pp-canvas][data-section="mixed"]');
+    const mixed = page.locator('[data-pp-canvas][data-pp-section="mixed"]');
     await expect(mixed.locator('[data-screen="mixed-phone"] .cc-box')).toHaveClass(/\bphone\b/);
     await expect(mixed.locator('[data-screen="mixed-bare"]')).toHaveAttribute('data-shell', 'comp');
     await expect(mixed.locator('[data-screen="mixed-bare"] .cc-box')).toHaveClass(/\bnatural\b/);
@@ -119,7 +119,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
       await expect(page.frameLocator(`[data-pp-canvas] [data-screen="${screen}"] iframe`).locator('.wb-screen').first()).toBeAttached();
     }
     await expect(page.frameLocator('[data-pp-canvas] [data-screen="card-plain"] iframe').locator('.e2e-confirm-card')).toBeVisible();
-    await page.locator('[data-pp-canvas][data-section="variants"] [data-pp-open]').click();
+    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-open]').click();
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, CANVAS_PAGE);
     await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
     await expect(page.locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
@@ -129,7 +129,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
   });
 
   await test.step('从 popup 进概念页：/<project>/concepts/<slug>/，列出用到它的文章', async () => {
-    await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').click();
+    await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').hover();
     await page.locator('.pop a.go').click();
     await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/concepts/confirm-card/`);
     await expect(page.locator('#article .prose h1')).toHaveText('confirm-card');

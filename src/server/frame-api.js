@@ -1,6 +1,7 @@
 import { parseReqUrl } from './lib/req-url.js';
 /**
- * GET /api/frame?page=<pageId>&screen=<screenId>[&annotate=off]
+ * GET /api/frame?page=<pageId>&screen=<screenId>[&annotate=off][&embed=card]
+ * embed=card：文章站点卡片 / 浮层用的嵌入页（不出图注，机壳带 data-pp-stage，不注入标注），见 docs/projects.md。
  * 阶段 5：文档 mention 的活 frame 渲染端点。
  * fragment 屏 → 完整自包含 HTML（机壳 + ios-kit + frame-boot + annotate 注入，
  * 注入带 __pinpointFrame —— frame 内标注与画布同账本：storage-unify 起帧账本
@@ -32,6 +33,11 @@ export default function frameApi(options = {}) {
         const pageId = query.get('page') || '';
         const screenId = query.get('screen') || '';
         const annotate = query.get('annotate') !== 'off';
+        const embed = query.get('embed') || '';
+        if (embed && embed !== 'card') {
+          sendJson(res, 400, { error: 'bad_request', message: `unknown embed "${embed}" (only "card")` });
+          return;
+        }
         try {
           const target = resolveFrameTarget(pageId, screenId, { registry });
           if (target.kind === 'doc') {
@@ -40,7 +46,7 @@ export default function frameApi(options = {}) {
             res.end();
             return;
           }
-          const html = await framePageHtml(target, { annotate });
+          const html = await framePageHtml(target, { annotate, embed });
           res.statusCode = 200;
           res.setHeader('Content-Type', 'text/html; charset=utf-8');
           res.setHeader('Cache-Control', 'no-cache');

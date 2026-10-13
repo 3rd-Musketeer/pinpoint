@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { bannerErrors, canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
+import { bannerErrors, CARD_SCALE, canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
 import { articleCanvas, articlePageId } from './canvas-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
 import { listProjects } from '../../../src/server/lib/projects.js';
@@ -24,8 +24,8 @@ const canvas = {
 test('card model: this section only, urls, meta, errors by section', () => {
   const m = cardModel(canvas, 'flow');
   assert.deepEqual(m.frames.map((f) => [f.ref, f.title, f.src]), [
-    ['B1', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off'],
-    ['B2', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off'],
+    ['B1', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
+    ['B2', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
   ]);
   assert.equal(m.href, '/?page=demo_payments&section=flow');
   assert.equal(m.meta, 'B1–B2 · 2 帧');
@@ -41,7 +41,7 @@ test('card model: this section only, urls, meta, errors by section', () => {
   assert.equal(cardModel(canvas, undefined).stray, true);
   assert.deepEqual(cardModel(canvas, undefined).errors, []);
   assert.equal(canvasHref('a b'), '/?page=a%20b');
-  assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off');
+  assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off&embed=card');
   assert.equal(shellBox('app').mode, 'phone');
   assert.equal(shellBox('lock').mode, 'phone');
   assert.equal(shellBox('comp').mode, 'natural');
@@ -54,9 +54,11 @@ test('card model: each frame sized by its own shell (frame over section)', () =>
   ] };
   const card = cardModel(mixed, 'card');
   assert.equal(card.box.mode, 'phone'); // the section's own default stays a phone
-  assert.deepEqual(card.frames.map((f) => [f.id, f.shell, f.box.mode, f.box.fitWidth]), [
-    ['sheet', '', 'phone', 158], ['bare', 'comp', 'natural', undefined], ['gone', 'comp', 'natural', undefined],
+  // One scale per card: the phone's (its 438 px stage shown 158 px wide); a comp frame is its own box × that scale.
+  assert.deepEqual(card.frames.map((f) => [f.id, f.shell, f.box.mode, f.box.scale]), [
+    ['sheet', '', 'phone', CARD_SCALE], ['bare', 'comp', 'natural', CARD_SCALE], ['gone', 'comp', 'natural', CARD_SCALE],
   ]);
+  assert.equal(Math.round(card.frames[0].box.width * CARD_SCALE), 158);
   assert.deepEqual(cardModel(mixed, 'wall').frames.map((f) => [f.id, f.shell, f.box.mode]), [['w1', 'comp', 'natural'], ['phone', 'app', 'phone']]);
 });
 
@@ -85,9 +87,9 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   assert.equal(ok.pageId, 'demo_payments');
   assert.deepEqual(ok.errors, []);
   assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
-    ['B1', 'ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off'],
-    ['B2', 'confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off'],
-    ['B3', 'confirm-card', false, '/api/frame?page=demo_payments&screen=confirm-card&annotate=off'],
+    ['B1', 'ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
+    ['B2', 'confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
+    ['B3', 'confirm-card', false, '/api/frame?page=demo_payments&screen=confirm-card&annotate=off&embed=card'],
   ]);
   // confirm-card.jsx says `export const shell = "comp"`: that frame alone is a bare component in a phone section.
   assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.id, f.shell, f.box.mode]), [['ask', '', 'phone'], ['confirm', '', 'phone'], ['confirm-card', 'comp', 'natural']]);
@@ -97,7 +99,7 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   const bad = cardModel(canvas, 'bad');
   // The cross-page ref is not on the canvas; the missing frame is, numbered, with no preview.
   assert.deepEqual(bad.frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
-    ['A1', 'ask', false, '/api/frame?page=broken_broken-canvas&screen=ask&annotate=off'],
+    ['A1', 'ask', false, '/api/frame?page=broken_broken-canvas&screen=ask&annotate=off&embed=card'],
     ['A2', 'gone', true, ''],
   ]);
   assert.equal(bad.errors.length, 2);
