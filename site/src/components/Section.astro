@@ -1,0 +1,12 @@
+---
+// <Section id title>：文章的一节，也是画布的一行（README 已定决策）。
+// id 必填、文中唯一，成为 DOM id 与画布 section 参数；letter 由 remark-pinpoint 按出现顺序注入（A、B …）。
+interface Props { id: string; title?: string; letter?: string }
+const { id, title = id, letter } = Astro.props;
+---
+<section class="sec" id={id} data-section={id} data-title={title} data-letter={letter}>
+  <div class="prose">
+    <div class="sechead">{letter && <span class="ref">{letter}</span>}<h2>{title}</h2></div>
+  </div>
+  <div class="sec-body"><slot /></div>
+</section>

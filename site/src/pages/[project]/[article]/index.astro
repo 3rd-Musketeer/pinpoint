@@ -1,0 +1,55 @@
+---
+import { render } from 'astro:content';
+import Base from '../../../layouts/Base.astro';
+import Section from '../../../components/Section.astro';
+import Canvas from '../../../components/Canvas.astro';
+import Ref from '../../../components/Ref.astro';
+import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
+
+export async function getStaticPaths() {
+  const site = await loadSite();
+  assertBuildClean(site);
+  return [...site.projects.values()].flatMap((p) =>
+    p.articles.map((a) => ({ params: { project: p.id, article: a.id }, props: { projectId: p.id, articleId: a.id } })));
+}
+
+const { projectId, articleId } = Astro.props;
+const site = await loadSite();
+Astro.locals.ppSite = site;
+const p = site.projects.get(projectId);
+const a = p.articles.find((x) => x.id === articleId);
+const { Content, remarkPluginFrontmatter } = await render(a.entry);
+const sections = remarkPluginFrontmatter.sections || [];
+
+// 抽屉：本篇引用到的目标（按 project/名字 合并计数），已有与空 ref 分开。
+const group = (refs) => {
+  const m = new Map();
+  for (const r of refs) {
+    const key = `${r.project}\0${r.name}`;
+    const cur = m.get(key) || { label: r.kind === 'article' ? r.item.title : r.project === p.id ? r.name : `${r.project}:${r.name}`, href: r.item?.href, count: 0 };
+    cur.count += 1;
+    m.set(key, cur);
+  }
+  return [...m.values()];
+};
+const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: group(a.refs.filter((r) => r.kind === 'empty')) };
+---
+<Base
+  title={`${a.title} · ${p.title}`}
+  description={a.summary}
+  project={p.id}
+  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: a.title }]}
+  toc={sections}
+  rail={true}
+  drawer={drawer}
+  errors={p.errors}
+>
+  <div class="prose">
+    <div class="label">{p.title}</div>
+    <h1>{a.title}</h1>
+    {a.summary && <p class="lede">{a.summary}</p>}
+  </div>
+  <div class="article-body">
+    <Content components={{ Section, Canvas, Ref }} />
+  </div>
+</Base>
