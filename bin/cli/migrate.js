@@ -7,7 +7,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { loadRegistry } from '../../src/server/lib/registry.js';
+import { loadRegistry, projectEntry } from '../../src/server/lib/registry.js';
 import { MigrateError, planPageMigration, verifyMigration, writeMigration } from '../../src/server/lib/page-migrate.js';
 
 import { REPO_ROOT, displayWidth, ioOf, padWide } from './core.js';
@@ -109,7 +109,7 @@ export async function runMigrate(argv, io = {}) {
   }
   for (const line of formatPlan(plan)) out(line);
   // 新画布页 id 的桶已经有标注行（删掉或改了名的文章留下的孤儿桶）：迁完这个 id 又是活页
-  // （orphans.js 的 pageIdIsLive），旧行会静默挂到新文章上。与 rename 撞桶同一条：拒绝。
+  // （page-resolve.js 的 pageIdIsLive），旧行会静默挂到新文章上。与 rename 撞桶同一条：拒绝。
   const bucket = path.join(dataRoot(env), plan.articlePageId);
   const staleRows = readBucketLedgers(bucket)
     .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
@@ -144,7 +144,7 @@ export async function runMigrate(argv, io = {}) {
   const report = await verifyMigration(plan);
   for (const line of formatVerify(report)) out(line);
   out(keep);
-  const registered = (registry.projects || []).find((entry) => entry && entry.id === plan.project.id);
+  const registered = projectEntry(registry, plan.project.id);
   if (!registered) out(`project ${plan.project.id} 还没登记：pinpoint add ${plan.project.root} --project，之后画布在 /?page=${plan.articlePageId}`);
   else if (path.resolve(registered.path) !== plan.project.root) out(`注意 登记的 project ${plan.project.id} 指向 ${registered.path}，不是 ${plan.project.root}`);
   else out(`画布 /?page=${plan.articlePageId} · 正文 /${plan.project.id}/${plan.articleId}/（正文只有节和画布，要补写）`);

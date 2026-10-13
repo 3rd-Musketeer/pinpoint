@@ -28,7 +28,8 @@ import { escHtml } from '../../workbench/lib/esc-html.js';
 import { readBoard } from './board-file.js';
 import { annotateClientSrc } from './annotate-bundle.js';
 import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
-import { resolveArticleTarget } from './article-board.js';
+import { resolvePage } from './page-resolve.js';
+import { registryEntry } from './registry.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { ENTRY_OR_ARTICLE_ID_PATTERN } from '../../shared/project-ids.js';
 import { synthesizeBoard } from './synth-board.js';
@@ -86,15 +87,10 @@ function findScreen(board, screenId) {  const refs = boardRefs(board);
   return null;
 }
 
-function resolveSiteEntry(registry, entryId) {
-  const entry = registry && typeof registry.resolve === 'function' ? registry.resolve(entryId) : null;
-  return entry || null;
-}
-
 /** sites/<id>/<rest> → 磁盘绝对路径（dir/file 条目；containment 校验）。 */
 function siteSrcToAbsPath(src, registry) {
   const id = String(src).split('/')[1];
-  const entry = resolveSiteEntry(registry, id);
+  const entry = registryEntry(registry, id);
   if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) {
     throw new FrameDocError('unknown_page', `unknown site entry: ${id}`);
   }
@@ -196,8 +192,10 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
 
-  // 2) 文章画布（pp3 M1）：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
-  const article = resolveArticleTarget(registry, pageId);
+  // 2) 文章画布（pp3 M1）与 3) registry 条目：模板页上面按清单先认了（要它的 mode）。
+  const page = resolvePage(registry, pageId);
+  // 2) 文章画布：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
+  const article = page && page.kind === 'article' ? page.target : null;
   if (article) {
     let board;
     try {
@@ -227,7 +225,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
 
   // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
-  const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
+  const entry = pageId === 'pinpoint' || !page || page.kind !== 'entry' ? null : page.entry;
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
   const diskBoard = entry.kind === 'dir' ? readBoard(path.resolve(entry.path)) : null;
   const board = diskBoard || synthesizeBoard(entry);

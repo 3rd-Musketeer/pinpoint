@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { articlePageId, isReservedProjectId, parseArticlePageId, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { findProject, listProjects, readProjectJson } from './projects.js';
-import { loadRegistry } from './registry.js';
+import { loadRegistry, projectEntry } from './registry.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SITE = path.join(REPO, 'e2e', 'project-site');
@@ -215,7 +215,7 @@ test('registry: project entries live in projects, not entries; page consumers ne
   assert.deepEqual(registry.entries.map((e) => e.id), ['pinpoint']);
   assert.deepEqual(registry.projects, [{ id: 'e2e-project', title: 'e2e-project', kind: 'project', path: SITE }]);
   assert.equal(registry.resolve('e2e-project'), null);
-  assert.equal(registry.resolveProject('e2e-project').path, SITE);
+  assert.equal(projectEntry(registry, 'e2e-project').path, SITE);
   assert.deepEqual(registry.errors, ['duplicate entry id "e2e-project"', 'entry "att" kind "project" cannot attach to a page']);
 });
 

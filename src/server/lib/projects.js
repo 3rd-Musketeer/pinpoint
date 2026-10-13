@@ -22,11 +22,12 @@ import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS } from
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { manifestPageIds } from './page-manifest.js';
+import { PROJECT_CONTENT_DIR } from './page-resolve.js';
+import { projectEntries, projectEntry } from './registry.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
-/** project 根下的内容目录（相对路径）。 */
-export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
+export { PROJECT_CONTENT_DIR };
 
 /** concept 的 status 只有三档（CONTEXT.md concept 词条）。 */
 export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
@@ -200,12 +201,6 @@ export function readProject(entry) {
   return project;
 }
 
-function projectEntries(registry) {
-  if (!registry) return [];
-  if (Array.isArray(registry.projects)) return registry.projects;
-  return (registry.entries || []).filter((entry) => entry && entry.kind === 'project');
-}
-
 /**
  * 文章画布页 id 与既有页撞名 → 布局错误。按构造不会撞 registry 条目（见
  * ARTICLE_PAGE_ID_PATTERN），仍逐条查一遍；真正可能撞的是带 `_` 的模板页。
@@ -233,6 +228,6 @@ export function listProjects(registry) {
 
 /** 按 id 找一个 project；没登记返回 null。 */
 export function findProject(registry, id) {
-  const entry = projectEntries(registry).find((item) => item.id === id);
+  const entry = projectEntry(registry, id);
   return entry ? checkPageIdCollisions(readProject(entry), registry) : null;
 }

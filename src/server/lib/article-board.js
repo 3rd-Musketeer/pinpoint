@@ -3,7 +3,7 @@
  *
  * - 页 id = articlePageId(project, article)（src/shared/project-ids.js），`?page=`、标注桶、
  *   /sites/<id>/、ppnt 都用它。
- * - 编译目标（resolveArticleTarget）与普通 dir 页同形：pageDir = 文章目录，帧是
+ * - 编译目标（page-resolve.js 的 resolveArticleTarget）与普通 dir 页同形：pageDir = 文章目录，帧是
  *   `<帧 id>.jsx`。不同处只有 board 的来源：每次都从 index.mdx 现派生
  *   （deriveArticleBoard），编译时写进 dist（<dist>/<页 id>/board.json），从不写回
  *   源目录。
@@ -16,9 +16,10 @@ import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
-import { articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { articlePageId } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
-import { findProject, PROJECT_CONTENT_DIR } from './projects.js';
+import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
+import { findProject } from './projects.js';
 import { loadRegistry } from './registry.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -32,72 +33,6 @@ function isFile(file) {
   } catch {
     return false;
   }
-}
-
-function projectEntryOf(registry, projectId) {
-  if (!registry) return null;
-  if (typeof registry.resolveProject === 'function') return registry.resolveProject(projectId) || null;
-  const list = Array.isArray(registry.projects)
-    ? registry.projects
-    : (registry.entries || []).filter((entry) => entry && entry.kind === 'project');
-  return list.find((entry) => entry && entry.id === projectId) || null;
-}
-
-function targetFor(entry, ids, pageId) {
-  if (!entry || typeof entry.path !== 'string' || RESERVED_ARTICLE_IDS.has(ids.articleId)) return null;
-  const projectDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR);
-  const articleDir = path.join(projectDir, 'articles', ids.articleId);
-  const articleFile = path.join(articleDir, 'index.mdx');
-  if (!isFile(articleFile)) return null;
-  return {
-    entryId: pageId,
-    pageDir: articleDir,
-    urlBase: `/sites/${pageId}/`,
-    kind: 'article',
-    projectId: ids.projectId,
-    articleId: ids.articleId,
-    projectDir,
-    articleFile,
-  };
-}
-
-/**
- * 页 id → 文章画布的编译目标，或 null（不是文章页 id 的形状、project 没登记、
- * 文章目录或 index.mdx 不在）。只 stat，不解析正文。
- */
-export function resolveArticleTarget(registry, pageId) {
-  const ids = parseArticlePageId(pageId);
-  if (!ids) return null;
-  return targetFor(projectEntryOf(registry, ids.projectId), ids, pageId);
-}
-
-/** 全部登记 project 的全部文章画布目标（服务启动全量编译、watch、页 id 清单用）。 */
-export function listArticleTargets(registry) {
-  const entries = registry
-    ? (Array.isArray(registry.projects) ? registry.projects : (registry.entries || []).filter((entry) => entry && entry.kind === 'project'))
-    : [];
-  const targets = [];
-  for (const entry of entries) {
-    if (!entry || typeof entry.path !== 'string') continue;
-    const articlesDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR, 'articles');
-    let names = [];
-    try {
-      names = fs.readdirSync(articlesDir).filter((name) => !name.startsWith('.')).sort((a, b) => a.localeCompare(b));
-    } catch {
-      continue;
-    }
-    for (const name of names) {
-      let pageId;
-      try {
-        pageId = articlePageId(entry.id, name);
-      } catch {
-        continue; // 目录名不合 id 规则：listProjects 已记布局错误
-      }
-      const target = targetFor(entry, { projectId: entry.id, articleId: name }, pageId);
-      if (target) targets.push(target);
-    }
-  }
-  return targets;
 }
 
 /**

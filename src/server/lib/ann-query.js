@@ -24,6 +24,7 @@ import { dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
+import { resolvePage } from './page-resolve.js';
 import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { parseFrontmatter } from './frontmatter.js';
@@ -150,7 +151,8 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   if (!target) {
     // 文章页 `<project>_<article>` 不走这里：index.mdx 在盘上时 resolvePageTarget 已返回
     // kind 'article' 的目标（没编译过也是），不在盘上就不是页。
-    const entry = registry.resolve(String(pageRef || ''));
+    const page = resolvePage(registry, pageRef);
+    const entry = page && page.kind === 'entry' ? page.entry : null;
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
     const docTarget = {
       entryId: entry.id,
@@ -175,7 +177,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
     pageId: target.entryId,
     target,
     board,
-    isManifestPage: !registry.resolve(target.entryId) && manifestPageIds(repoRoot).includes(target.entryId),
+    isManifestPage: (resolvePage(registry, target.entryId, { manifestIds: manifestPageIds(repoRoot) }) || {}).kind === 'template',
   });
 }
 

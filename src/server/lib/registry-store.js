@@ -459,7 +459,6 @@ export function createRegistryStore(options = {}) {
     get errors() { return snapshot.errors; },
     get warnings() { return snapshot.warnings; },
     resolve(id) { return snapshot.resolve(id); },
-    resolveProject(id) { return snapshot.resolveProject(id); },
     reload() {
       snapshot = loadRegistry({ root, log, path: snapshot.path });
       return snapshot;

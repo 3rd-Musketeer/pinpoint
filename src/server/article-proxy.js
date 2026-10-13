@@ -22,7 +22,7 @@ import zlib from 'node:zlib';
 
 import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
-import { resolveArticleTarget } from './lib/article-board.js';
+import { resolveArticleTarget } from './lib/page-resolve.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { originDecision, ownOrigins } from './lib/proxy-origin.js';
 import { parseReqUrl } from './lib/req-url.js';

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
-import { collectBucketOrphans, collectPageOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { resolvePage } from '../../src/server/lib/page-resolve.js';
 import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
@@ -617,13 +618,14 @@ export async function runPrune(argv, io = {}) {
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
   const localIds = manifestPageIds(REPO_ROOT);
   // 活页（含文章画布页）只删桶里表面已死的账本；不是页了才整桶皆孤儿。
-  const known = pageIdIsLive(registry, pageId, { manifestIds: localIds });
+  const page = resolvePage(registry, pageId, { manifestIds: localIds });
+  const known = page != null;
   const names = known
     ? collectPageOrphans({
         pageId,
         dataRoot: root,
         entries: registry.entries,
-        isManifestPage: !registry.resolve(pageId) && localIds.includes(pageId),
+        isManifestPage: page.kind === 'template',
         previewsRoot: path.join(REPO_ROOT, 'content', 'previews'),
       })
     : collectBucketOrphans(pageId, root);

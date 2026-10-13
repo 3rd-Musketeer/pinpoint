@@ -19,21 +19,16 @@
  */
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { isReservedSegment, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { projectEntry } from './registry.js';
 
 // 保留首段的表在 src/shared/project-ids.js（登记校验与这里的路由用同一份）。
 export { isReservedSegment, RESERVED_SEGMENT_PATTERNS, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
 
 export const ASTRO_DEV_BASE = '/_astro/';
 
-/**
- * `id` 是不是登记过的 project。读 registry 的 `resolveProject(id)`（loadRegistry
- * 的结果与 live store 都有），退回 `projects` 列表；两样都没有就当没有 project。
- */
+/** `id` 是不是登记过的 project（registry.projects，loadRegistry 的结果与 live store 同形）。 */
 export function isProjectId(registry, id) {
-  if (!registry || typeof id !== 'string' || !id) return false;
-  if (typeof registry.resolveProject === 'function') return Boolean(registry.resolveProject(id));
-  const list = Array.isArray(registry.projects) ? registry.projects : [];
-  return list.some((entry) => entry && entry.id === id);
+  return typeof id === 'string' && id !== '' && projectEntry(registry, id) != null;
 }
 
 function splitUrl(url) {

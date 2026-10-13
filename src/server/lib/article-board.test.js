@@ -4,7 +4,8 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { articleCanvas, articlePageRows, deriveArticleBoard, listArticleTargets, resolveArticleTarget } from './article-board.js';
+import { articleCanvas, articlePageRows, deriveArticleBoard } from './article-board.js';
+import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, resolvePageTarget } from './page-compiler.js';
 import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
 import { findProject, listProjects } from './projects.js';

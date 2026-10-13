@@ -22,31 +22,10 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { resolveArticleTarget } from './article-board.js';
 import { boardScreenIds } from './page-compiler.js';
 import { CANVAS_LEDGER } from '../../shared/project-ids.js';
 
-/**
- * 这个页 id 现在是不是一页（它的桶是活桶）。孤儿判定、prune、status / check 的
- * 整桶孤儿报告、服务端收标注时的桶校验都用这一处，判定顺序只写一份：
- * - registry 条目（dir / file / url；project 条目不是页，project id 也不是桶）；
- * - 本地模板页（manifestIds = content/previews/_index.json 的页 id）；
- * - 文章画布页 `<project>_<article>`：project 登记了、文章的 index.mdx 在盘上
- *   （article-board.js resolveArticleTarget，只 stat）。文章目录删了或改名了，
- *   旧页 id 就不再是页，它的桶整桶皆孤儿。
- */
-export function pageIdIsLive(registry, pageId, { manifestIds = [] } = {}) {
-  if (!pageId) return false;
-  const id = String(pageId);
-  const entry = registry
-    ? (typeof registry.resolve === 'function'
-      ? registry.resolve(id)
-      : ((registry.entries || []).find((row) => row && row.id === id) || null))
-    : null;
-  if (entry && entry.kind !== 'project') return true;
-  if (manifestIds.includes(id)) return true;
-  return resolveArticleTarget(registry, id) != null;
-}
+// “这个页 id 现在是不是一页”在 page-resolve.js（pageIdIsLive / resolvePage）。
 
 /** 一个页的表面空间列表。entries 是 registry 条目（含挂靠）；isManifestPage
     = 该 id 在 content/previews/_index.json 里。 */
