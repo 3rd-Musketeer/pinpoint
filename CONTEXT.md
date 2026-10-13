@@ -5,11 +5,27 @@
 
 ## 对象层
 
+**project（项目）· pp3 · 2026-10-13**
+一组 article 和 concept 的家，也是分享地址的第一段：`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。磁盘上是某个目录下的 `docs/pinpoint/`，`project.json` 里写 id 和标题。登记进 registry 时 kind 是 `project`，它不是页，不进 Pages 列表，id 和页共用一个命名空间，也不能取服务占用的首段（`article-routes.js` 的 `RESERVED_TOP_SEGMENTS`）。同一个 project 里，article id 和 concept name 共用 `[[ ]]` 命名空间（不分大小写）；跨 project 写 `[[project:名字]]`。每篇 article 的画布是一个自动生成的页，id 为 `<project>_<article>`，见 `docs/projects.md`“文章的画布”。
+要避开：拿 project 指 page、文件夹或 board。
+
+**article（文章）· pp3 · 2026-10-13**
+一篇设计文档，形态像 blog post：任何人（owner、同事、agent、投资人）拿到链接就能读。是 owner 与 agent 对齐设计的权威，task 与 ADR 是它的投影。
+结构是 article → sections → components：section 是正文的一节，可以带一个 canvas 组件放帧；canvas 视图把所有 section 的帧按行排开（一行一个 section），就是今天 page 的画布。
+正文里嵌入的 frame / section 是代表画布的卡片，点开到画布页，画布上的标注只在画布页做；正文支持选中文字评论，与画布标注共用一个标注队列。
+要避开：拿 doc 指 article——doc 是“整份 HTML 铺满舞台”的形态；拿 page 指 article——存量 page 迁移后是“一篇只有一个 section 的 article”。
+
 **page（页）**
 Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一个页可以同时装画布、文档和网页。
 `pageId` 同时是标注地址 `@page:<id>` 和 DOM 上的 `data-vpage`。
 住在 `content/previews/_index.json`（模板页）或 `~/.pinpoint/registry.json`（登记进来的页）。
-要避开：“册”（owner 明确否掉的自造词，ADR 0021）、“project”、“board”当页用。
+要避开：“册”（owner 明确否掉的自造词，ADR 0021）、“board”当页用；project 是另一层，见 project 词条。
+
+**concept（概念，wiki 词条）与 `[[ ]]` 引用 · pp3 · 2026-10-13**
+concept 是一个词的定义：短，有状态（占位 / 收敛中 / 已固定）和一句边界，被多篇 article 引用，住 `docs/pinpoint/concepts/<名字>.md`。
+`[[名字]]` 既能指向 article 也能指向 concept：同一个 project 里两者共用一个命名空间，名字不能重复，撞名构建时报错；跨 project 写 `[[project:名字]]`。
+找不到目标的 `[[名字]]` 是空 ref（照 Obsidian），合法，用来梳理还缺哪些机制。点开 popup：article 显示标题、摘要、读全文；concept 显示定义、状态、用到它的文章；空 ref 显示还没有页。
+要避开：把 concept 叫 article 的一种——它没有 sections 和画布，也不单独分享。
 
 **board（板）**
 一个页的内容定义，就是那份 `board.json`：顶层是 `sections[]`，不是扁平的 `{id, screens}`。
@@ -17,7 +33,7 @@ Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一�
 要避开：拿 board 指画布那块区域——那叫 canvas。
 
 **section（区）**
-board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 DOM 的
+（2026-10-13 定：article 的 section 与画布的 section 是同一个东西，见 article。）board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 DOM 的
 `[data-ann-section]`，成为标注的 `section` 字段。引用号里 section 是字母（A、B）。
 
 **tab（页内 tab）**
@@ -44,7 +60,7 @@ doc 帧不占编号；调序、插帧、删帧后就变，不落盘。id = `sect
 **folder（文件夹）**
 Pages 列表里 owner 手动建的一层分组，页靠拖放入夹；只有一层，不嵌套。
 住在 `~/.pinpoint/registry.json` 顶层 `folders[]` 与条目的 `folder` 字段（2026-09-04 定，实现中）。
-要避开：“project”“group”当文件夹用；“归档”——那只是 owner 自己建的一个夹，不是功能。
+要避开：“group”当文件夹用、project 当文件夹用（project 见 project 词条）；“归档”——那只是 owner 自己建的一个夹，不是功能。
 
 **entry（条目）· 这个词有两个意思，别混**
 - **board entry**：`src/workbench/lib/board-entries.js` 从 board 派生出来的可选中单位。

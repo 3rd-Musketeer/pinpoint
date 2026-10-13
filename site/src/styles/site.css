@@ -67,6 +67,9 @@ blockquote { margin:0 0 14px; padding-left:14px; border-left:3px solid var(--hai
 code { font-family:ui-monospace,"SF Mono",Menlo,monospace; font-size:13px; background:var(--soft); padding:1px 5px; border-radius:4px; }
 pre { background:var(--soft); border-radius:10px; padding:12px 14px; overflow:auto; font-size:13px; line-height:1.55; }
 pre code { background:none; padding:0; }
+table { border-collapse:collapse; margin:0 0 18px; font-size:15px; display:block; overflow-x:auto; }
+th, td { border:1px solid var(--hair); padding:8px 12px; text-align:left; vertical-align:top; }
+th { background:var(--soft); font-weight:600; }
 
 /* [[ ]]：已有页 = 实线下划；空 ref = 虚线 + 灰 */
 .cref { border-bottom:1.5px solid var(--accent); cursor:pointer; color:var(--ink); text-decoration:none; }
