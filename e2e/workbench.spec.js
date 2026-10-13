@@ -1553,7 +1553,11 @@ test('canvas multi-target pills preserve text; closing the card or switching pag
   await input.fill('已保存');
   await cells.nth(1).click();
   await expect(input.locator('[data-target-ref]')).toHaveCount(2);
-  await page.locator('#ann-close').click();
+  // #n 由服务端发：等保存应答回来再读，openMark 拿的才是最终号。
+  await Promise.all([
+    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    page.locator('#ann-close').click(),
+  ]);
   const saved = await page.evaluate(() => window.pinpoint.marks[0]);
   expect(saved.targets).toHaveLength(2);
   await page.evaluate(n => window.pinpoint.openMark(n), saved.n);
@@ -1579,6 +1583,60 @@ test('canvas multi-target pills preserve text; closing the card or switching pag
   await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0]?.content || '')).toContain('换页也存');
   expect(await page.evaluate(() => window.pinpoint.marks.length)).toBe(1);
+});
+
+// 换桶不丢写：上一次保存还在路上时又改了两次（Esc 关框、换页前的草稿），
+// 换页后立刻切回。旧实现在换桶时把在途保存的应答作废，排在它后面的重试
+// 跟着没了；切回时水合读到的还是盘上的旧版。这里先落一版到盘上，再把下一次
+// /save 扣在路上，两次切页都发生后才放行，时序因此是确定的。
+test('edits made while a save is in flight survive a page switch and back', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  const input = page.locator('#ann-input');
+  const file = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
+  const diskContents = async () => {
+    const doc = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{}'));
+    return (doc.annotations || []).map(a => a.content.replace(/\[@t:[^\]]*\]\s*/g, '')).join('|');
+  };
+  await cells.nth(0).click();
+  await input.fill('第一稿');
+  await Promise.all([
+    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    page.locator('#ann-close').click(),
+  ]);
+  expect(await diskContents()).toBe('第一稿');
+
+  let releaseHeld;
+  const held = new Promise((resolve) => { releaseHeld = resolve; });
+  let heldStarted;
+  const started = new Promise((resolve) => { heldStarted = resolve; });
+  let saves = 0;
+  await page.route('**/save', async (route) => {
+    if (++saves === 1) { heldStarted(); await held; }
+    await route.continue();
+  });
+  const id = await page.evaluate(() => window.pinpoint.marks[0].id);
+  const openById = () => page.evaluate((want) => {
+    window.pinpoint.openMark(window.pinpoint.marks.find(m => m.id === want).n);
+  }, id);
+  await openById();
+  await input.fill('第二稿');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveCount(0);
+  await started;
+  await openById();
+  await input.fill('第三稿');
+  await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
+  await expect(input).toHaveCount(0);
+  await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+  releaseHeld();
+  await expect.poll(diskContents).toBe('第三稿');
+  await expect.poll(() => page.evaluate(() => {
+    const st = window.pinpoint.getState();
+    return !st.routing && window.pinpoint.entry === 'e2e-ios' ? window.pinpoint.marks.map(m => m.content.replace(/\[@t:[^\]]*\]\s*/g, '')).join('|') : '';
+  })).toBe('第三稿');
 });
 
 test('多选跨 frame：每个目标的草稿框落在它自己的 frame 里', async ({ page }) => {

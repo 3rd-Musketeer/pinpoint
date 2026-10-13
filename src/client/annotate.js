@@ -132,6 +132,9 @@ import { startProseComments } from './prose-comments.js';
   var queuedSwitch = null;    // 切换途中又来换账本请求：coalesce 到最新一个
   var canvasLedgerApplied = false; // 画布实例是否已落到第一个页桶（boot 占位结束）
   var settleWaiters = [];     // whenSettled 的等待者：hydrate 落地后一次性放行
+  var inflightSync = null;    // 在途 /save：Promise<{ok,status,data}|null>，换账本时交给 outbox 接着等
+  var inflightVersion = 0;    // 在途 /save 带的 mutationVersion
+  var ledgerOutbox = Object.create(null); // 账本键 → 换账本时没落盘的写（Promise，永不 reject）
   var eventSource = null;
   var serverOnline = false;   // SSE OPEN liveness only (not hydrate/POST success)
   var syncError = false;      // last POST/save failed while SSE may still be open
@@ -952,6 +955,7 @@ import { startProseComments } from './prose-comments.js';
     if (!SERVER || syncing || mutationVersion <= syncedMutationVersion) return;
     syncing = true;
     var sentVersion = mutationVersion;
+    inflightVersion = sentVersion;
     var sentEpoch = syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
     var body = {
       page: PAGE,
@@ -961,16 +965,9 @@ import { startProseComments } from './prose-comments.js';
       baseRevision: revision,
       annotations: marks.slice()
     };
-    fetch(SERVER + '/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    })
-      .then(function (r) {
-        return r.json().then(function (data) {
-          return { ok: r.ok, status: r.status, data: data };
-        });
-      })
+    var sent = postSave(body);
+    inflightSync = sent.catch(function () { return null; });
+    sent
       .then(function (res) {
         if (sentEpoch !== syncEpoch) return; // 陈旧响应：不得碰 syncing 或新账本状态
         syncing = false;
@@ -1008,6 +1005,73 @@ import { startProseComments } from './prose-comments.js';
       });
   }
 
+  function postSave(body) {
+    return fetch(SERVER + '/save', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    }).then(function (r) {
+      return r.json().then(function (data) {
+        return { ok: r.ok, status: r.status, data: data };
+      });
+    });
+  }
+
+  function ledgerOutboxKey(entry, page) { return entry + '\u0000' + page; }
+
+  /** 换账本时旧账本还有没落盘的写（在途 /save 之后又改过、上次保存失败、
+      lastRect 的 debounce 还没到点）：快照交给按账本排队的 outbox 写完，
+      不跟着 epoch 一起作废。outbox 先等在途那次的应答拿到新 revision，
+      再把快照发出去；409 说明别处刚写过，快照是本窗口最新的意图，按
+      服务端 revision 重发（与 requestSync 里「本地更新则重发」同一条规则）。
+      切回这本账本的 hydrate 先等它的 outbox 排空，读到的才是写完的盘。 */
+  function handOffUnsyncedWrites() {
+    if (!SERVER) return;
+    if (lastRectPersistTimer) {
+      clearTimeout(lastRectPersistTimer);
+      lastRectPersistTimer = null;
+      mutationVersion++;
+      writeLocalCache();
+    }
+    if (mutationVersion <= syncedMutationVersion) return;
+    var inflight = syncing ? inflightSync : null;
+    var covered = syncing ? inflightVersion : syncedMutationVersion;
+    var snapshotVersion = mutationVersion;
+    var baseRevision = revision;
+    var body = {
+      page: PAGE,
+      entry: ENTRY,
+      path: decodeURIComponent(LEDGER_PATHNAME),
+      updated_at: new Date().toISOString(),
+      baseRevision: revision,
+      annotations: marks.slice()
+    };
+    var key = ledgerOutboxKey(ENTRY, PAGE);
+    var job = Promise.resolve(ledgerOutbox[key])
+      .then(function () { return inflight; })
+      .then(function (res) {
+        var rev = baseRevision;
+        if (res && res.data && Number.isFinite(Number(res.data.revision))) rev = Number(res.data.revision);
+        // 在途那次已带着最新状态：成功就完事；撞 409 与 requestSync 同口径（远端为准）。
+        if (res && (res.ok || res.status === 409) && snapshotVersion <= covered) return null;
+        return sendSnapshot(rev, 3);
+      })
+      .catch(function () { return null; });
+    function sendSnapshot(rev, triesLeft) {
+      body.baseRevision = rev;
+      body.updated_at = new Date().toISOString();
+      return postSave(body).then(function (res) {
+        if (res.ok) return res;
+        if (res.status === 409 && res.data && triesLeft > 1) {
+          return sendSnapshot(Number(res.data.revision) || 0, triesLeft - 1);
+        }
+        return res;
+      });
+    }
+    ledgerOutbox[key] = job;
+    job.then(function () { if (ledgerOutbox[key] === job) delete ledgerOutbox[key]; });
+  }
+
   function hydrateFromDisk() {
     if (!SERVER) {
       marks = readLocalMarks();
@@ -1016,7 +1080,12 @@ import { startProseComments } from './prose-comments.js';
       return Promise.resolve(false);
     }
     var hydrateEpoch = syncEpoch; // 路由切换后本份 hydrate 作废
-    return fetch(SERVER + '/annotations/' + encodeURIComponent(PAGE) + '?entry=' + encodeURIComponent(ENTRY))
+    // 这本账本上次离开时还有没写完的写：等它落盘再读，否则读到的是旧版。
+    return Promise.resolve(ledgerOutbox[ledgerOutboxKey(ENTRY, PAGE)])
+      .then(function () {
+        if (hydrateEpoch !== syncEpoch) throw new Error('stale');
+        return fetch(SERVER + '/annotations/' + encodeURIComponent(PAGE) + '?entry=' + encodeURIComponent(ENTRY));
+      })
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
@@ -4149,7 +4218,8 @@ import { startProseComments } from './prose-comments.js';
   // 标注必须改记到新 pathname 的账本（PAGE/PAGE_KEY/LS_KEY 重算），否则静默记到旧页面名下。
   // storage-unify 加了第二种切换源：工作台画布切活动页 = 换桶（ENTRY = 新页 id、
   // 账本 @canvas）并重新 hydrate。两种切换共用同一条 switchLedgerTo 管线：
-  // 会话收尾 → epoch 护栏 → 清渲染 → 重算 key → hydrate → 落定放行。
+  // 会话收尾 → 旧账本未落盘的写交 outbox → epoch 护栏 → 清渲染 → 重算 key →
+  // hydrate（先等目标账本的 outbox 排空）→ 落定放行。
   // hash-only 变化不触发：key 公式只含 pathname（已接受的边界）。
 
   function finishSessionForLedgerSwitch(pristineBoot) {
@@ -4187,6 +4257,8 @@ import { startProseComments } from './prose-comments.js';
     // 1. 会话态收尾（草稿存回旧账本；boot 占位账本例外，见函数注释）
     var pristineBoot = CANVAS_MODE && !canvasLedgerApplied && marks.length === 0 && mutationVersion === 0;
     finishSessionForLedgerSwitch(pristineBoot);
+    // 1b. 旧账本没落盘的写交给 outbox（必须在 epoch 作废在途应答之前取快照）
+    handOffUnsyncedWrites();
     if (CANVAS_MODE) canvasLedgerApplied = true;
     // 2. epoch 护栏：在途 sync/hydrate 响应全部作废；deferred 属于旧账本
     syncEpoch++;
