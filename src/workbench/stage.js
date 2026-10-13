@@ -16,6 +16,7 @@ import { readPrefs, savePrefs } from './lib/prefs.js';
 import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
 import {
   clearBoardSelection,
+  focusBoardSection,
   focusWorkbenchFrame,
   isTypingTarget,
   resetBoardNavOnLoadFailure,
@@ -25,8 +26,8 @@ import {
   syncBoardSelection
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
-import { withAttachedScreens } from './lib/board-entries.js';
-import { boardForTab, resolveTabId } from './lib/board-tabs.js';
+import { CANVAS_ENTRY_ID, withAttachedScreens } from './lib/board-entries.js';
+import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import {
   annotateApi,
@@ -192,6 +193,42 @@ async function loadBoard(panel, pageId, loadOptions) {
   }
 }
 
+function applyTabAndEntryLink(link) {
+  if (link.tab) return setActiveTab(link.tab, { save: false }).then(function () {
+    if (link.entry) setActiveEntry(link.entry, { save: false });
+  });
+  if (link.entry) setActiveEntry(link.entry, { save: false });
+}
+
+/**
+ * ?section=<id> 的落点（2026-10-13）：页已装载后，切到 section 所在的 tab（ADR 0041）、选中画布条目，
+ * 等几何批落定再即时定位并选中这个 section —— 与导航器点 section 同一原语（focusBoardSection），
+ * 只是不带动画。排在 afterMount 的存档视口恢复 / 首访聚焦之后，所以这一次装载显式落点赢过存档视口；
+ * 缩放沿用存档值（导航器点击也不改缩放）。tab 与条目都不写偏好（save:false），同 ?tab= / ?entry=。
+ * 页里没有这个 section：console.warn，返回 false，调用方照常打开。返回 Promise<boolean>。
+ */
+function landOnSection(sectionId) {
+  var active = wbGet().activeBoard;
+  if (!active || active.pageId !== wbGet().activePageId) return Promise.resolve(false);
+  var full = active.fullBoard || active.board;
+  var known = (full.sections || []).some(function (sec) { return sec && sec.id === sectionId; });
+  if (!known) {
+    console.warn('[pinpoint] ?section=' + sectionId + '：页 ' + active.pageId + ' 里没有这个 section，按正常打开');
+    return Promise.resolve(false);
+  }
+  var tab = tabIdOfSection(full, sectionId);
+  var switched = tab && tab !== active.tabId ? setActiveTab(tab, { save: false }) : Promise.resolve(true);
+  return switched.then(function () {
+    if (wbGet().activeEntryId !== CANVAS_ENTRY_ID) setActiveEntry(CANVAS_ENTRY_ID, { save: false });
+    var mount = mountManager.current;
+    return mount ? mount.boardSettled : false;
+  }).then(function () {
+    if (focusBoardSection(sectionId, { smooth: false })) selectBoardSection(sectionId);
+    else console.warn('[pinpoint] ?section=' + sectionId + '：画布上量不到这个 section（不在画布条目里？）');
+    return true;
+  });
+}
+
 function initBoard() {
   boardPanel = document.createElement('section');
   boardPanel.id = 'wb-board-panel';
@@ -212,10 +249,14 @@ function initBoard() {
     .then(function () {
       if (wbGet().missingPageId) return;
       var link = parseDeepLink(location.search);
-      if (link.tab) return setActiveTab(link.tab, { save: false }).then(function () {
-        if (link.entry) setActiveEntry(link.entry, { save: false });
-      });
-      if (link.entry) setActiveEntry(link.entry, { save: false });
+      // 落点 section（2026-10-13）：认得这个 section 就由它决定 tab 与条目，?tab= / ?entry= 让位；
+      // 不认得就当没给，照常应用 tab / entry。
+      if (link.section) {
+        return landOnSection(link.section).then(function (landed) {
+          if (!landed) return applyTabAndEntryLink(link);
+        });
+      }
+      return applyTabAndEntryLink(link);
     })
     .catch(function (error) {
       showPageManifestError(error);

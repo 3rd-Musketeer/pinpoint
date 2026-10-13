@@ -496,11 +496,18 @@ export function stepSectionNavigator(delta) {
 }
 
 function jumpSectionNavigatorToGroup(groupId) {
+  focusBoardSection(groupId);
+}
+
+/** 定位到当前 tab 里的某个 section（导航器点 section 的同一原语）；量不到 = false。
+    options.smooth === false 即时到位（?section= 落点用）。 */
+export function focusBoardSection(groupId, options) {
   var section = findBoardSection(refreshBoardNavigationModel(), groupId);
-  if (!section || !stage) return;
+  if (!section || !stage) return false;
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
-  focusStageOnRect(section);
+  focusStageOnRect(section, options);
+  return true;
 }
 
 function jumpSectionNavigatorToScreen(groupId, screenId) {
