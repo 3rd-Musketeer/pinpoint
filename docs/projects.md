@@ -121,13 +121,15 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
-同一模块还导出这几个，站点需要时直接用：
+同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取，不再各抄一份：
 
-- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `orphans.js` 的 `pageIdIsLive(registry, id, { manifestIds })`：服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告都用它。
-- `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
+- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“文章的画布”。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `orphans.js` 的 `pageIdIsLive(registry, id, { manifestIds })`：服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告都用它。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
-- `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
-- `articlePageId`、`parseArticlePageId`、`ARTICLE_PAGE_ID_PATTERN`：文章画布的页 id，见“文章的画布”。
+- `RESERVED_TOP_SEGMENTS`、`isReservedProjectId`、`RESERVED_ARTICLE_IDS`：保留名，见下面“保留名”。
+- `SECTION_ID_PATTERN`、`FRAME_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
+- `CANVAS_LEDGER`（`@canvas`）、`PROSE_LEDGER`（`@prose`）：桶里两本固定账本的名字。
+
+frontmatter 子集的解析器 `parseFrontmatter(text)` → `{ data, body, errors }` 在 `src/server/lib/frontmatter.js`。
 
 HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 每条前缀 `<project id>: `。
 
@@ -291,7 +293,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ## 保留名
 
-project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由和登记校验用同一份；`projects.js` 的 `RESERVED_PROJECT_IDS`、`isReservedProjectId` 只是它的转出口。清单包括：
+project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
 
 - 2026-10-13 定的 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；

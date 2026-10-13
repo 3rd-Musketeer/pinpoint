@@ -15,12 +15,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN } from '../../shared/registry-ids.js';
+import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN } from '../../shared/registry-ids.js';
 
-export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN };
-// 归属目标 Page id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts
-// ID_PATTERN）与 registry 条目 id 都落在该模式内。
-export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN };
 const KINDS = new Set(['dir', 'file', 'url', 'project']);
 // pp3（2026-10-13）：kind "project" 的 path 是 project 根目录，内容在
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——

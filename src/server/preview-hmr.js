@@ -18,7 +18,8 @@ import { fileURLToPath } from 'node:url';
 
 import { listArticleTargets } from './lib/article-board.js';
 import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
-import { articlePageId, findProject, PROJECT_CONTENT_DIR } from './lib/projects.js';
+import { articlePageId } from '../shared/project-ids.js';
+import { findProject, PROJECT_CONTENT_DIR } from './lib/projects.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 

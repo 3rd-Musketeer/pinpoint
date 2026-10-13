@@ -22,14 +22,13 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
-import { sectionLetter } from '../../workbench/lib/board-refs.js';
-import { parseFrontmatter } from './projects.js';
-
-// 与站点 remark-pinpoint 的 Section id 规则一致；帧 id 与 screen id 契约一致。
-const SECTION_ID = /^[a-zA-Z0-9_-]+$/;
-const FRAME_ID = /^[a-zA-Z0-9_-]+$/;
-// board 的 shell 取值（docs/board-schema.md）。
-export const CANVAS_SHELLS = Object.freeze(['app', 'lock', 'doc', 'comp']);
+import {
+  CANVAS_SHELLS,
+  FRAME_ID_PATTERN as FRAME_ID,
+  SECTION_ID_PATTERN as SECTION_ID,
+  sectionLetter,
+} from '../../shared/project-ids.js';
+import { parseFrontmatter } from './frontmatter.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
 

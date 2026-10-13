@@ -18,39 +18,12 @@
  * 它答 404，这里把前缀后连续的斜杠压成一道。
  */
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
+import { isReservedSegment, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+
+// 保留首段的表在 src/shared/project-ids.js（登记校验与这里的路由用同一份）。
+export { isReservedSegment, RESERVED_SEGMENT_PATTERNS, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
 
 export const ASTRO_DEV_BASE = '/_astro/';
-
-/**
- * 服务已经占用、或保留给 pp3 的 URL 首段：唯一的一份表。project id 不能取这些
- * 名字（projects.js 的 `isReservedProjectId` 就是这里的 `isReservedSegment`，
- * 登记校验与站点读取都用它）；这里的路由也绝不把它们交给站点，双保险。
- * 带 _ 的几个（_astro、_image、node_modules）本来就不符合 id 规则，
- * 也列进来，让“哪些首段被占用”只有这一处答案。
- */
-export const RESERVED_TOP_SEGMENTS = Object.freeze([
-  // annotate-api
-  'health', 'registry', 'events', 'annotations', 'save', 'image', 'images',
-  // frame / export / diagnostics / projects API（/api/…）与登记目录（/sites/<id>/）
-  'api', 'sites',
-  // content-routes 的 URL 投影
-  'kits', 'previews', 'lib',
-  // vite 按仓库根静态服务的顶层目录（主 clone 里还有 owner 本地的 tasks、prototypes）
-  'bin', 'content', 'docs', 'e2e', 'scripts', 'skills', 'src', 'site', 'tasks', 'prototypes', 'node_modules',
-  // common.md §4 预留（kits 已在上面）
-  'workbench', 'assets', 'annotate',
-  // Astro 开发服务器的内部路径（见文件头）
-  '_astro', '_image',
-]);
-
-// e2e 产物目录（test-results-<端口>、playwright-report-<端口>）落在仓库根，也被 vite 服务。
-export const RESERVED_SEGMENT_PATTERNS = Object.freeze([/^test-results(?:-|$)/, /^playwright-report(?:-|$)/]);
-
-const RESERVED_SET = new Set(RESERVED_TOP_SEGMENTS);
-
-export function isReservedSegment(segment) {
-  return RESERVED_SET.has(segment) || RESERVED_SEGMENT_PATTERNS.some((re) => re.test(segment));
-}
 
 /**
  * `id` 是不是登记过的 project。读 registry 的 `resolveProject(id)`（loadRegistry
@@ -75,10 +48,6 @@ function astroInternalUpstream(pathname) {
   return ASTRO_DEV_BASE + rest;
 }
 
-// project 内占用的第二段（/<project>/concepts/<slug>/）；与 projects.js 的
-// RESERVED_ARTICLE_IDS 同值（那边 import 本模块，这里不能反向 import）。
-const NON_ARTICLE_SEGMENTS = new Set(['concepts']);
-
 /**
  * 一个 project 内路径是不是文章页：`/<project>/<article>/`（或不带尾斜杠、或
  * `…/index.html`）返回 article id，否则 null（project 首页、概念页、llms.txt、
@@ -94,7 +63,7 @@ export function articleIdOfPath(pathname) {
   } catch {
     return null;
   }
-  if (!ENTRY_ID_PATTERN.test(segment) || NON_ARTICLE_SEGMENTS.has(segment)) return null;
+  if (!ENTRY_ID_PATTERN.test(segment) || RESERVED_ARTICLE_IDS.has(segment)) return null;
   return segment;
 }
 

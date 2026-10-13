@@ -6,7 +6,8 @@ import test from 'node:test';
 
 import { articleCanvas, articlePageRows, deriveArticleBoard, listArticleTargets, resolveArticleTarget } from './article-board.js';
 import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, resolvePageTarget } from './page-compiler.js';
-import { articlePageId, ARTICLE_PAGE_ID_PATTERN, findProject, listProjects, parseArticlePageId } from './projects.js';
+import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
+import { findProject, listProjects } from './projects.js';
 import { planPageRecompile } from './recompile-plan.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from './registry.js';
 

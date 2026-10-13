@@ -24,6 +24,7 @@ import path from 'node:path';
 
 import { resolveArticleTarget } from './article-board.js';
 import { boardScreenIds } from './page-compiler.js';
+import { CANVAS_LEDGER } from '../../shared/project-ids.js';
 
 /**
  * 这个页 id 现在是不是一页（它的桶是活桶）。孤儿判定、prune、status / check 的
@@ -72,7 +73,7 @@ export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false
     pageSurfaceSpaces 的返回。保守取向：path 缺失（存量）或落在 /sites/ 与
     /previews/ 形态之外的未知空间都不判孤儿。 */
 export function ledgerIsOrphan({ name, doc }, spaces) {
-  if (name === '@canvas.json') return false;
+  if (name === `${CANVAS_LEDGER}.json`) return false;
   const p = String((doc && doc.path) || '');
   if (!p) return false;
   const space = spaces.find((s) => p === s.prefix.slice(0, -1) || p.startsWith(s.prefix));

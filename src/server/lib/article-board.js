@@ -1,7 +1,7 @@
 /**
  * pp3 M1：每篇 article 的画布 = 一个由正文派生的页（docs/projects.md「文章的画布」）。
  *
- * - 页 id = articlePageId(project, article)（projects.js），`?page=`、标注桶、
+ * - 页 id = articlePageId(project, article)（src/shared/project-ids.js），`?page=`、标注桶、
  *   /sites/<id>/、ppnt 都用它。
  * - 编译目标（resolveArticleTarget）与普通 dir 页同形：pageDir = 文章目录，帧是
  *   `<帧 id>.jsx`。不同处只有 board 的来源：每次都从 index.mdx 现派生
@@ -16,14 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
-import {
-  articlePageId,
-  findProject,
-  parseArticlePageId,
-  parseFrontmatter,
-  PROJECT_CONTENT_DIR,
-  RESERVED_ARTICLE_IDS,
-} from './projects.js';
+import { articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { parseFrontmatter } from './frontmatter.js';
+import { findProject, PROJECT_CONTENT_DIR } from './projects.js';
 import { loadRegistry } from './registry.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');

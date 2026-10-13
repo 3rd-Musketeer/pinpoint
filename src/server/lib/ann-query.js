@@ -26,7 +26,7 @@ import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
 import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
-import { parseFrontmatter } from './projects.js';
+import { parseFrontmatter } from './frontmatter.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { isProseRow } from '../../shared/prose-thread.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';

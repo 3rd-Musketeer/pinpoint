@@ -12,7 +12,7 @@
  * listProjects uses for its namespace check, so what collides there is what
  * resolves here.
  */
-import { refKey } from '../../../src/server/lib/projects.js';
+import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from '../../../src/shared/project-ids.js';
 export { refKey };
 
 export const REF_RE = /\[\[([^\[\]\n]+?)\]\]/g;
@@ -70,7 +70,7 @@ export function namespaceErrors(project) {
     else seen.set(key, what);
   };
   for (const a of project.articles || []) {
-    if (a.id === 'concepts') errors.push(`project "${project.id}": article id "concepts" is reserved (it is the concept route segment)`);
+    if (RESERVED_ARTICLE_IDS.has(a.id)) errors.push(`project "${project.id}": article id "concepts" is reserved (it is the concept route segment)`);
     add(a.id, `article ${a.file}`);
   }
   for (const c of project.concepts || []) add(c.name, `concept ${c.file}`);
@@ -110,4 +110,4 @@ const UNESC = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': 
 export const unesc = (s) => String(s).replace(/&(amp|lt|gt|quot|#39);/g, (m) => UNESC[m]);
 
 /** Section letters share the board's scheme (A … Z, AA …). */
-export { sectionLetter } from '../../../src/workbench/lib/board-refs.js';
+export { sectionLetter };

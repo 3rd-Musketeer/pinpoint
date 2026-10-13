@@ -6,6 +6,9 @@ export const ENTRY_ID_PATTERN = /^[a-z0-9][a-z0-9-]*$/;
 // 文件夹 id 与条目 id 同一套模式（2026-09-04 决定 5a）：一层分组，不嵌套，
 // 两个命名空间各自独立——`folder` 字段只引用 folders[] 里的 id。
 export const FOLDER_ID_PATTERN = ENTRY_ID_PATTERN;
+// 页 id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts ID_PATTERN）、registry
+// 条目 id 与文章画布页 id `<project>_<article>`（project-ids.js）都落在该模式内。
+export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /** 名称 → id 基材：小写、非字母数字折叠成 -、去首尾 -。 */
 export function slugify(name) {

@@ -6,22 +6,10 @@
 
 import { legacyShell } from './preview-contracts.js';
 import { boardTabList, flattenTabs } from './board-tabs.js';
+import { isSectionLetter, sectionLetter } from '../../shared/project-ids.js';
 
-/** 派生 board 带的节字母（A、B … AA）。 */
-export function isSectionLetter(value) {
-  return typeof value === 'string' && /^[A-Z]+$/.test(value);
-}
-
-/** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */
-export function sectionLetter(index) {
-  var n = Math.max(0, Math.floor(Number(index) || 0));
-  var out = '';
-  do {
-    out = String.fromCharCode(65 + (n % 26)) + out;
-    n = Math.floor(n / 26) - 1;
-  } while (n >= 0);
-  return out;
-}
+// 节字母（A … Z、AA …）定义在 src/shared/project-ids.js：正文节标题与画布编号同一套。
+export { isSectionLetter, sectionLetter };
 
 /**
  * board.sections → { outline, bySection, byFrame, tabs }：

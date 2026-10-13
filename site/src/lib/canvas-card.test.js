@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { bannerErrors, CARD_SCALE, canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
-import { articleCanvas, articlePageId } from './canvas-source.js';
+import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
 import { listProjects } from '../../../src/server/lib/projects.js';
 

@@ -16,9 +16,8 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { SECTION_ID_PATTERN as SECTION_ID } from '../../../src/shared/project-ids.js';
 import { REF_RE, rawRefHtml, sectionLetter } from './refs.js';
-
-const SECTION_ID = /^[a-zA-Z0-9_-]+$/;
 const SKIP = new Set(['code', 'inlineCode', 'link', 'linkReference', 'definition', 'html', 'mdxJsxAttribute', 'mdxFlowExpression', 'mdxTextExpression', 'mdxjsEsm']);
 
 const projectIdCache = new Map();

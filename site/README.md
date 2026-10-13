@@ -75,12 +75,11 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 
 ## 代码地图
 
-- `src/lib/projects-source.js`：唯一读 registry / project 的地方，用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。
+- `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），文章画布用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“文章的画布”）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
 - `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts。
 - `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编字母。
 - `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
-- `src/lib/canvas-source.js`：唯一取文章画布（`articleCanvas`、`articlePageId`）的地方，转出服务端 `src/server/lib/projects.js` 的实现（契约见 `docs/projects.md`“文章的画布”）。
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage` / `data-pp-device`）、读未处理标注数。
 - `src/lib/canvas-overlay.js`：浮层的 hash、缩放、上一节 / 下一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
 - `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、概念抽屉。

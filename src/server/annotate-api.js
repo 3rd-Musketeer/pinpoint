@@ -161,7 +161,7 @@ function handleSse(req, res) {
 // misconfiguration must not silently land in the wrong bucket. 桶 = 页之后，
 // 合法 id 不止 registry 条目：本地 manifest 页（content/previews/_index.json，
 // 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：一篇 article 的桶是
-// 它的画布页 id `<project>_<article>`（projects.js articlePageId，画布标注与正文评论
+// 它的画布页 id `<project>_<article>`（src/shared/project-ids.js articlePageId，画布标注与正文评论
 // 共用，common-m1.md §2），project 登记了、文章的 index.mdx 在盘上才算
 // （article-board.js resolveArticleTarget）；project id 本身不是桶。判定在
 // orphans.js 的 pageIdIsLive，prune 与孤儿报告用同一处。

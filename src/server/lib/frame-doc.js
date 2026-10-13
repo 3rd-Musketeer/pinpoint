@@ -30,7 +30,7 @@ import { annotateClientSrc } from './annotate-bundle.js';
 import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
 import { resolveArticleTarget } from './article-board.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
-import { ARTICLE_PAGE_ID_PATTERN } from './projects.js';
+import { ENTRY_OR_ARTICLE_ID_PATTERN } from '../../shared/project-ids.js';
 import { synthesizeBoard } from './synth-board.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -46,7 +46,6 @@ export class FrameDocError extends Error {
   }
 }
 
-const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readJsonSafe(file) {
@@ -125,7 +124,7 @@ function siteSrcToAbsPath(src, registry) {
  */
 export function resolveFrameTarget(pageId, screenId, options = {}) {
   const registry = options.registry || null;
-  if (!PAGE_ID_RE.test(String(pageId || '')) && !ARTICLE_PAGE_ID_PATTERN.test(String(pageId || ''))) {
+  if (!ENTRY_OR_ARTICLE_ID_PATTERN.test(String(pageId || ''))) {
     throw new FrameDocError('bad_request', `invalid page id "${pageId}"`);
   }
   if (!SCREEN_ID_RE.test(String(screenId || ''))) {

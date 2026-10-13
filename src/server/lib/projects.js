@@ -10,8 +10,7 @@
  * 与 CLI（pinpoint list）共用的唯一读侧。读不抛：每个 project 带一份 errors
  * 列表（缺 project.json、id 不符、撞名…），由调用方决定是报错还是照常渲染。
  *
- * frontmatter 只认 `key: value` 一行一条（值可加单 / 双引号）；看不懂的行记一条
- * error，不猜。仓里没有直接依赖的 YAML 解析器，这几个字段也用不着。
+ * frontmatter 的解析在 frontmatter.js，id 规则与保留名在 src/shared/project-ids.js。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -19,117 +18,18 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
+import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
-import { isReservedSegment, RESERVED_TOP_SEGMENTS } from './article-routes.js';
+import { parseFrontmatter } from './frontmatter.js';
 import { manifestPageIds } from './page-manifest.js';
-
-// 站点卡片（M1-F）的入口也从这里拿：articleCanvas(projectId, articleId, { registry? })。
-export { articleCanvas } from './article-board.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /** project 根下的内容目录（相对路径）。 */
 export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
 
-/**
- * project id 是站点 URL 的第一段（/<project>/<article>/），不能是服务已占用的首段。
- * 唯一的表在 article-routes.js（RESERVED_TOP_SEGMENTS + test-results* /
- * playwright-report* 前缀）：服务路由与登记校验用同一份。
- */
-export const RESERVED_PROJECT_IDS = new Set(RESERVED_TOP_SEGMENTS);
-
-/** id 是不是保留的 URL 首段（整名或前缀）。 */
-export const isReservedProjectId = (id) => isReservedSegment(String(id));
-
-/** project 内占用的 URL 第二段：/<project>/concepts/<名字>/。 */
-export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
-
-/**
- * 文章画布的页 id（M1，docs/projects.md「文章的画布」）：`<project id>_<article id>`。
- * project id 与 article id 都匹配 ENTRY_ID_PATTERN（没有 `_`），所以：
- * - 拆分无歧义（恰好一个 `_`），不同文章不会得到同一个页 id；
- * - 不会和 registry 条目撞（条目 id 也是 ENTRY_ID_PATTERN，不含 `_`）；
- * - 仍匹配 PAGE_ID_PATTERN（`?page=`、标注桶、/sites/<id>/ 都认）。
- * 唯一可能撞的是 content/previews/_index.json 里带 `_` 的模板页，读取时检查并记错误。
- */
-export const ARTICLE_PAGE_ID_SEPARATOR = '_';
-export const ARTICLE_PAGE_ID_PATTERN = /^([a-z0-9][a-z0-9-]*)_([a-z0-9][a-z0-9-]*)$/;
-
-export function articlePageId(projectId, articleId) {
-  const id = `${projectId}${ARTICLE_PAGE_ID_SEPARATOR}${articleId}`;
-  if (!ENTRY_ID_PATTERN.test(String(projectId)) || !ENTRY_ID_PATTERN.test(String(articleId))) {
-    throw new Error(`articlePageId：project id 与 article id 都必须匹配 ${ENTRY_ID_PATTERN}：${JSON.stringify(id)}`);
-  }
-  return id;
-}
-
-/** 页 id → { projectId, articleId }；不是文章画布的页 id 形状返回 null（不查盘）。 */
-export function parseArticlePageId(pageId) {
-  const match = String(pageId == null ? '' : pageId).match(ARTICLE_PAGE_ID_PATTERN);
-  return match ? { projectId: match[1], articleId: match[2] } : null;
-}
-
-const FM_KEY = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:(?:\s+(.*))?$/;
-// 这些开头在 YAML 里是块标量、流式列表 / 映射、锚点、标签：本解析器不支持，报错不猜。
-const YAML_ONLY_START = /^[>|[{&*!]/;
-
 /** concept 的 status 只有三档（CONTEXT.md concept 词条）。 */
 export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
-
-function unquote(raw) {
-  const value = raw.trim();
-  if (value.startsWith('"')) {
-    try {
-      const parsed = JSON.parse(value);
-      if (typeof parsed === 'string') return { value: parsed };
-    } catch { /* 落到下面报错 */ }
-    return { error: `双引号值没闭合或含非法转义：${value}` };
-  }
-  if (value.startsWith("'")) {
-    if (value.length >= 2 && value.endsWith("'")) return { value: value.slice(1, -1).replace(/''/g, "'") };
-    return { error: `单引号值没闭合：${value}` };
-  }
-  if (!value) return { error: '值为空（不写这个键，或写 ""）' };
-  if (YAML_ONLY_START.test(value)) return { error: `只支持单行字符串，不支持以 ${value[0]} 开头的 YAML 写法：${value}` };
-  // 不带引号的值：` #` 之后是注释（与 YAML 同规则）。
-  const hash = value.search(/\s#/);
-  return { value: (hash >= 0 ? value.slice(0, hash) : value).trim() };
-}
-
-/**
- * 解析开头的 `---` frontmatter。返回 { data, body, errors }：
- * 没有 frontmatter → data 为空、body 为全文；看不懂的行逐条进 errors。
- */
-export function parseFrontmatter(text) {
-  const source = String(text || '').replace(/^﻿/, '');
-  const lines = source.split(/\r?\n/);
-  if (lines[0] !== '---') return { data: {}, body: source, errors: [] };
-  const end = lines.indexOf('---', 1);
-  if (end < 0) return { data: {}, body: source, errors: ['frontmatter 没有结束的 ---'] };
-  const data = {};
-  const errors = [];
-  for (let i = 1; i < end; i++) {
-    const line = lines[i];
-    if (!line.trim() || line.trim().startsWith('#')) continue;
-    const match = line.match(FM_KEY);
-    if (!match) {
-      errors.push(`frontmatter 第 ${i + 1} 行只支持 key: value：${line.trim()}`);
-      continue;
-    }
-    const [, key, raw = ''] = match;
-    if (Object.prototype.hasOwnProperty.call(data, key)) {
-      errors.push(`frontmatter 第 ${i + 1} 行重复的键：${key}`);
-      continue;
-    }
-    const parsed = unquote(raw);
-    if (parsed.error) {
-      errors.push(`frontmatter 第 ${i + 1} 行：${parsed.error}`);
-      continue;
-    }
-    data[key] = parsed.value;
-  }
-  return { data, body: lines.slice(end + 1).join('\n'), errors };
-}
 
 function readText(file) {
   try {
@@ -254,11 +154,6 @@ function readConcepts(dir, errors) {
     concepts.push(concept);
   }
   return concepts;
-}
-
-/** `[[名字]]` 的命名空间键：比较不分大小写、去首尾空白（Obsidian 同规则）。 */
-export function refKey(name) {
-  return String(name).normalize('NFC').trim().toLowerCase();
 }
 
 /** article id 与 concept name 共用一个命名空间：撞名逐条记 error。 */

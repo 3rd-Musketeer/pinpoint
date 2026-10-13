@@ -50,6 +50,7 @@ import {
 } from '../shared/ann-status.js';
 import { FRAME_STAGE_SELECTOR, frameInternalSelector, queryFrameScope } from '../shared/frame-anchor.js';
 import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
+import { CANVAS_LEDGER } from '../shared/project-ids.js';
 import { startProseComments } from './prose-comments.js';
 
 (function () {
@@ -97,7 +98,7 @@ import { startProseComments } from './prose-comments.js';
   // 工作台画布实例没有 entry 标记（ios-kit 注入），它的桶 = 活动页 id，加载时
   // 定不了 —— CANVAS_MODE 只判形态，ENTRY/账本由 watchWorkbenchPages 在页定下
   // 来时经 switchLedgerTo 换上，切活动页 = 换桶重 hydrate。
-  var CANVAS_PAGE = '@canvas';
+  var CANVAS_PAGE = CANVAS_LEDGER;
   var CANVAS_MODE = !FRAME && !window.__pinpointEntry && (function () {
     if (document.getElementById('wb-board-panel')) return true;
     if (window.workbench && typeof window.workbench.activePageId === 'function') return true;

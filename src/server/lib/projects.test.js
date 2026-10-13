@@ -5,17 +5,9 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import {
-  articlePageId,
-  findProject,
-  isReservedProjectId,
-  listProjects,
-  parseArticlePageId,
-  parseFrontmatter,
-  readProjectJson,
-  RESERVED_PROJECT_IDS,
-} from './projects.js';
-import { RESERVED_TOP_SEGMENTS } from './article-routes.js';
+import { articlePageId, isReservedProjectId, parseArticlePageId, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
+import { parseFrontmatter } from './frontmatter.js';
+import { findProject, listProjects, readProjectJson } from './projects.js';
 import { loadRegistry } from './registry.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -207,10 +199,10 @@ test('reserved ids cover every top-level directory the service serves from the r
   for (const name of dirs) assert.ok(isReservedProjectId(name), `vite 服务 /${name}/，project id 必须拒绝它`);
   assert.ok(isReservedProjectId('test-results-5420') && isReservedProjectId('playwright-report'));
   assert.ok(!isReservedProjectId('browser-use'));
-  // 服务路由占用的首段（article-routes.js RESERVED_TOP_SEGMENTS，唯一的表）：登记校验必须全部拒绝。
+  // 服务路由占用的首段（src/shared/project-ids.js RESERVED_TOP_SEGMENTS，唯一的表）：登记校验必须全部拒绝。
   const proxySide = 'health registry events annotations save image images api sites kits previews lib bin content docs e2e scripts skills src site tasks prototypes workbench assets annotate _astro _image node_modules'.split(' ');
-  for (const name of proxySide) assert.ok(RESERVED_PROJECT_IDS.has(name) && isReservedProjectId(name), name);
-  assert.deepEqual([...RESERVED_PROJECT_IDS].sort(), [...RESERVED_TOP_SEGMENTS].sort());
+  for (const name of proxySide) assert.ok(isReservedProjectId(name), name);
+  for (const name of RESERVED_TOP_SEGMENTS) assert.ok(isReservedProjectId(name), name);
 });
 
 test('registry: project entries live in projects, not entries; page consumers never see them', (t) => {

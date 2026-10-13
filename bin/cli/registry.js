@@ -5,7 +5,8 @@ import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { collectBucketOrphans, collectPageOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { articlePageId, parseArticlePageId, PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
+import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
+import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
