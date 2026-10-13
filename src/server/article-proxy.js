@@ -4,8 +4,9 @@
  * 在 lib/article-routes.js；不归站点的请求一律 next()，pinpoint 原有路由不受影响。
  *
  * - 文章页的 HTML 响应注入标注客户端，与 /sites/ 同一份 injectAnnotateClient；
- *   ?annotate=off 单请求不注入。非 HTML 原样透传。注入的 entry（标注桶）先用
- *   project id，正文评论（M2）落地时再定。
+ *   ?annotate=off 单请求不注入。非 HTML 原样透传。注入的 entry（标注桶）：
+ *   文章页（/<project>/<article>/…）是这篇的画布页 id（articlePageId，画布标注
+ *   与正文评论共用一个桶，common-m1.md §2）；project 首页、概念页等仍是 project id。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
  *   启动中」页（503），其他请求拿 503 纯文本；站点起不来（failed）时那张页写
  *   原因和日志尾巴。
@@ -18,7 +19,9 @@ import zlib from 'node:zlib';
 
 import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { resolveArticleTarget } from './lib/article-board.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
+import { articlePageId } from './lib/projects.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { createSiteDevServer } from './lib/site-dev-server.js';
 
@@ -93,7 +96,21 @@ function decodeBody(body, encoding) {
   throw new Error(`unsupported content-encoding: ${enc}`);
 }
 
-function forward(req, res, route, devServer) {
+/** 注入的标注桶：登记过的文章 → 画布页 id；其余 project 路径 → project id。 */
+export function annotationBucketFor(route, registry) {
+  const second = String(route.upstream || '').split('?')[0].split('/')[3] || '';
+  let articleId = '';
+  try { articleId = decodeURIComponent(second); } catch { return route.project; }
+  if (!articleId) return route.project;
+  try {
+    const pageId = articlePageId(route.project, articleId);
+    return resolveArticleTarget(registry, pageId) ? pageId : route.project;
+  } catch {
+    return route.project;
+  }
+}
+
+function forward(req, res, route, devServer, registry) {
   const port = devServer.port;
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
@@ -132,7 +149,7 @@ function forward(req, res, route, devServer) {
         return;
       }
       delete outHeaders['content-encoding'];
-      const data = Buffer.from(injectAnnotateClient(text, route.project), 'utf8');
+      const data = Buffer.from(injectAnnotateClient(text, annotationBucketFor(route, registry)), 'utf8');
       outHeaders['content-length'] = String(data.length);
       res.writeHead(upRes.statusCode || 502, outHeaders);
       res.end(data);
@@ -175,7 +192,7 @@ export function createArticleHandler({ registry, isProject, devServer }) {
       sendWaitResponse(req, res, devServer);
       return true;
     }
-    forward(req, res, route, devServer);
+    forward(req, res, route, devServer, registry);
     return true;
   };
 }

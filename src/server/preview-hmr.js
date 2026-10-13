@@ -16,7 +16,9 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
+import { listArticleTargets } from './lib/article-board.js';
 import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
+import { articlePageId, PROJECT_CONTENT_DIR } from './lib/projects.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
@@ -44,13 +46,42 @@ export default function previewHmr(options = {}) {
     ));
   }
 
+  // pp3 M1：登记的 project 的内容目录（文章画布的帧、正文、组件都在下面）。
+  function projectDirs() {
+    if (!registry) return [];
+    return (registry.projects || [])
+      .filter((entry) => entry && typeof entry.path === 'string')
+      .map((entry) => ({ id: entry.id, dir: path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR) }));
+  }
+
   function syncWatcher() {
     if (!watcher) return;
-    for (const entry of registryTargets()) {
-      if (watched.has(entry.path)) continue;
-      watched.add(entry.path);
-      watcher.add(entry.path);
+    const paths = [...registryTargets().map((entry) => entry.path), ...projectDirs().map((project) => project.dir)];
+    for (const target of paths) {
+      if (watched.has(target)) continue;
+      watched.add(target);
+      watcher.add(target);
     }
+  }
+
+  // 变更文件 → 受影响的文章画布目标：articles/<文章>/ 下的文件归那一篇；
+  // project 的 components/ 是所有文章共用的组件，归这个 project 的每一篇。
+  function articleTargetsFor(file) {
+    for (const project of projectDirs()) {
+      if (!file.startsWith(project.dir + path.sep)) continue;
+      const parts = path.relative(project.dir, file).split(path.sep);
+      if (parts[0] === 'articles' && parts.length >= 3) {
+        let pageId;
+        try { pageId = articlePageId(project.id, parts[1]); } catch { return []; }
+        const target = resolvePageTarget(pageId, { registry, root: ROOT });
+        return target ? [target] : [];
+      }
+      if (parts[0] === 'components') {
+        return listArticleTargets({ projects: [registry.resolveProject ? registry.resolveProject(project.id) : null].filter(Boolean) });
+      }
+      return [];
+    }
+    return [];
   }
 
   // 变更文件 → 所属条目（dir 前缀匹配 / file 精确匹配；嵌套条目取最长路径）。
@@ -89,6 +120,8 @@ export default function previewHmr(options = {}) {
       try {
         const options = distRoot ? { distRoot } : {};
         const plan = planPageRecompile(target, changed, options);
+        // 文章画布：只改了正文、画布没变 → 不编（站点自己有 HMR）。
+        if (plan.noop) return { noop: true };
         if (plan.drift) console.log(`[pp2] ${target.entryId}：${plan.drift} 变了但没收到 watch 事件，整页重编`);
         if (!plan.all) options.onlyScreens = plan.screens;
         const result = await compilePage(target, options);
@@ -174,6 +207,13 @@ export default function previewHmr(options = {}) {
           }
           return [];
         });
+      }
+      // 文章画布（pp3 M1）：帧、组件、正文、article.css / .js 变更 → 重编 → 该画布页重摆。
+      const articleTargets = isSource ? articleTargetsFor(file) : [];
+      if (articleTargets.length) {
+        return Promise.all(articleTargets.map((target) => recompile(target, [file]).then((result) => {
+          if (!(result && result.noop)) notify(server, target, rel);
+        }))).then(() => []);
       }
       // registry dir/file 条目（仓外）：板、屏、sidecar 变更 → 重编译 → 该条目页重摆
       if (isSource) {

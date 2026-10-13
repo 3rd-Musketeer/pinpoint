@@ -7,3 +7,23 @@ summary: 付款与提交前，agent 停下来请用户确认。
 
 agent 在点“提交”之前先弹 [[confirm-card]]；用户接手时见 [[takeover]]。
 还没写的机制：[[risk-score]]。
+
+<Section id="why" title="为什么要停下来">
+
+不可撤销的动作之前，agent 不替用户拍板。
+
+</Section>
+
+<Section id="confirm" title="确认卡">
+
+确认卡列出要提交的内容，用户点确认后 agent 才提交。
+
+<Canvas frames={["confirm-sheet", "confirm-done"]} />
+
+</Section>
+
+<Section id="variants" title="卡片做法">
+
+<Canvas frames={["card-plain"]} shell="comp" />
+
+</Section>

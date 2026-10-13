@@ -15,7 +15,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultDistRoot, readBuildJson, screenEntriesFromBoard } from './page-compiler.js';
+import { defaultDistRoot, readBuildJson, readDistBoard, readTargetBoard, screenEntriesFromBoard } from './page-compiler.js';
 
 // watch 盯的文件类型（review 必须修 2）：build.json 的 deps 记的是 esbuild
 // metafile 的全部输入，esbuild 默认 loader 能打包的 json / ts / tsx / mjs / cjs /
@@ -25,6 +25,7 @@ import { defaultDistRoot, readBuildJson, screenEntriesFromBoard } from './page-c
 const WATCHED_SOURCE = /\.(?:html|jsx?|css|json|tsx?|[mc][jt]s)$/;
 // 不盯的：依赖目录与 VCS 目录；编译自己写出的东西（build.json、落在页目录里的
 // dist）—— 盯了就是「编译写盘 → 事件 → 再编译」的自触发循环。
+const ARTICLE_BOARD_SOURCE = /(?:^|\/)index\.mdx$/;
 const IGNORED_PATH = /(?:^|\/)(?:node_modules|\.git)\/|(?:^|\/)build\.json$/;
 
 /**
@@ -33,7 +34,8 @@ const IGNORED_PATH = /(?:^|\/)(?:node_modules|\.git)\/|(?:^|\/)build\.json$/;
  */
 export function isWatchedSource(file, { distRoot = null } = {}) {
   const rel = String(file || '').replace(/\\/g, '/');
-  if (!WATCHED_SOURCE.test(rel) || IGNORED_PATH.test(rel)) return false;
+  // 文章画布（pp3 M1）：board 由 index.mdx 派生，正文也要盯。
+  if ((!WATCHED_SOURCE.test(rel) && !ARTICLE_BOARD_SOURCE.test(rel)) || IGNORED_PATH.test(rel)) return false;
   if (distRoot && path.isAbsolute(String(file))) {
     const inDist = path.relative(path.resolve(distRoot), path.resolve(String(file)));
     if (inDist && !inDist.startsWith('..') && !path.isAbsolute(inDist)) return false;
@@ -131,7 +133,7 @@ function liveMtime(file) {
  * 对应的屏这一拍或下一拍会重编，不算漂移。只在 planRecompile 已经收窄（即 build
  * 形状已校验）之后调用。同一文件被多屏记录时只 stat 一次。
  */
-export function findDrift({ build, exempt = [], pageDir, mtimeOf = liveMtime }) {
+export function findDrift({ build, exempt = [], pageDir, mtimeOf = liveMtime, boardFile = 'board.json' }) {
   const skip = new Set();
   for (const file of exempt) {
     if (typeof file === 'string' && file) skip.add(relToPage(pageDir, file));
@@ -152,7 +154,8 @@ export function findDrift({ build, exempt = [], pageDir, mtimeOf = liveMtime }) 
       if (drifted(dep.file, dep.mtimeMs)) return dep.file;
     }
   }
-  return drifted('board.json', undefined) ? 'board.json' : null;
+  // 文章画布没有 board.json（boardFile = null）：板变没变由调用方比对派生板与 dist 那份。
+  return boardFile && drifted(boardFile, undefined) ? boardFile : null;
 }
 
 /**
@@ -163,16 +166,25 @@ export function findDrift({ build, exempt = [], pageDir, mtimeOf = liveMtime }) 
  */
 export function planPageRecompile(target, changedFiles, { distRoot = defaultDistRoot(), pendingFiles = [] } = {}) {
   let screenIds = null;
+  let board = null;
   try {
-    const board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = readTargetBoard(target);
     screenIds = screenEntriesFromBoard(board).map((entry) => entry.id);
   } catch {
     return { all: true }; // 板读不到时 compilePage 也会失败，这里直接全编同归
   }
   const build = readBuildJson(distRoot, target.entryId);
-  const changed = changedFiles ? [...changedFiles] : [];
+  let changed = changedFiles ? [...changedFiles] : [];
+  const article = target.kind === 'article';
+  if (article && changed.length && !changed.some((file) => typeof file !== 'string' || !file)) {
+    // 文章画布：index.mdx 变了不等于画布变了。派生板与 dist 里那份不同 → 全编；
+    // 相同 → 这次只是改正文，把它从变更集里去掉；什么都不剩就是 noop（不编、不通知）。
+    if (JSON.stringify(readDistBoard(distRoot, target.entryId)) !== JSON.stringify(board)) return { all: true };
+    changed = changed.filter((file) => relToPage(target.pageDir, file) !== 'index.mdx');
+    if (!changed.length) return { all: false, screens: [], noop: true };
+  }
   const plan = planRecompile({ build, changedFiles: changed, screenIds, pageDir: target.pageDir });
   if (plan.all) return plan;
-  const drift = findDrift({ build, exempt: [...changed, ...pendingFiles], pageDir: target.pageDir });
+  const drift = findDrift({ build, exempt: [...changed, ...pendingFiles], pageDir: target.pageDir, boardFile: article ? null : 'board.json' });
   return drift ? { all: true, drift } : plan;
 }

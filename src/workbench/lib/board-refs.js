@@ -7,6 +7,11 @@
 import { legacyShell } from './preview-contracts.js';
 import { boardTabList, flattenTabs } from './board-tabs.js';
 
+/** 派生 board 带的节字母（A、B … AA）。 */
+export function isSectionLetter(value) {
+  return typeof value === 'string' && /^[A-Z]+$/.test(value);
+}
+
 /** 0 → A，25 → Z，26 → AA（表格列名式递进）。 */
 export function sectionLetter(index) {
   var n = Math.max(0, Math.floor(Number(index) || 0));
@@ -47,7 +52,9 @@ export function boardRefs(rawBoard) {
     var tabKey = sec.tabId || '';
     var index = counters[tabKey] || 0;
     counters[tabKey] = index + 1;
-    var letter = sectionLetter(index);
+    // 文章画布（pp3 M1）的 board 由正文派生，每节带正文里的字母（正文所有 Section 一起数，
+    // 纯文字的节也占字母）：画布编号与文章节标题对得上。手写 board 不写这个字段。
+    var letter = isSectionLetter(sec.letter) ? sec.letter : sectionLetter(index);
     bySection[sec.id] = letter;
     var frames = screens.map(function (sc, fi) {
       var ref = letter + (fi + 1);

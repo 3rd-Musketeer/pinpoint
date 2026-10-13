@@ -11,6 +11,7 @@ import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 import { listProjects } from './lib/projects.js';
+import { articlePageRows, resolveArticleTarget } from './lib/article-board.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
   annotateBundleByHash,
@@ -160,11 +161,13 @@ function handleSse(req, res) {
 // 合法 id 不止 registry 条目：本地 manifest 页（content/previews/_index.json，
 // 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：文章页注入的标注
 // 客户端以 project id 为桶（article-proxy.js，M2 前的暂定），登记过的 project
-// 也是合法桶；project 与页共用 id 命名空间，不会撞。
+// 也是合法桶；project 与页共用 id 命名空间，不会撞。pp3 M1：文章画布页
+// （<project>_<article>，画布标注与正文评论共用的桶）同样合法。
 export function resolveRequestEntry(registry, raw, localIds = []) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
   const known = id === DEFAULT_ENTRY || registry.resolve(id) != null || localIds.includes(id)
-    || (typeof registry.resolveProject === 'function' && registry.resolveProject(id) != null);
+    || (typeof registry.resolveProject === 'function' && registry.resolveProject(id) != null)
+    || resolveArticleTarget(registry, id) != null;
   return known ? { entry: id } : { entry: id, unknown: true };
 }
 
@@ -225,6 +228,8 @@ export function createAnnotateHandler(options = {}) {
       folders: registry.folders || [],
       pageFolders: registry.pageFolders || {},
       pageOrder: registry.pageOrder || {},
+      // pp3 M1：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
+      articles: articlePageRows(registry),
       errors: registry.errors,
       warnings: registry.warnings,
     };

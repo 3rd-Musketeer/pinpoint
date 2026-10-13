@@ -87,7 +87,7 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
   "title": "E2E Project",
   "root": "/abs/project-site",
   "dir": "/abs/project-site/docs/pinpoint",
-  "articles": [{ "id": "commit-confirm", "title": "提交前确认", "summary": "…", "dir": "/abs/…/articles/commit-confirm", "file": "/abs/…/articles/commit-confirm/index.mdx" }],
+  "articles": [{ "id": "commit-confirm", "title": "提交前确认", "summary": "…", "pageId": "e2e-project_commit-confirm", "dir": "/abs/…/articles/commit-confirm", "file": "/abs/…/articles/commit-confirm/index.mdx" }],
   "concepts": [{ "name": "confirm-card", "slug": "confirm-card", "status": "收敛中", "boundary": "…", "file": "/abs/…/concepts/confirm-card.md" }],
   "errors": []
 }
@@ -102,8 +102,92 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 - `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
 - `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
+- `articlePageId`、`parseArticlePageId`、`ARTICLE_PAGE_ID_PATTERN`：文章画布的页 id，见“文章的画布”。
 
 HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 每条前缀 `<project id>: `。
+
+## 文章的画布
+
+每篇 article 的画布是一个由正文派生的页（pp3 M1）。正文里怎么写见 common-m1 §1 的定法，这里只记机制。
+
+### 写法
+
+```mdx
+<Section id="confirm" title="确认卡">
+正文……
+<Canvas frames={["confirm-sheet", "confirm-done"]} />
+</Section>
+
+<Section id="variants" title="卡片做法">
+<Canvas frames={["card-plain"]} shell="comp" />
+</Section>
+```
+
+- 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
+- `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
+- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。
+
+### 页 id
+
+`articlePageId(projectId, articleId)`（`projects.js`）= `<project id>_<article id>`，例如 `browser-use_payment-confirm`。
+
+- project id 与 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`，没有 `_`。所以拆分无歧义，两篇文章不会得到同一个页 id；registry 条目 id 也不含 `_`，不会撞。
+- 结果匹配 `PAGE_ID_PATTERN`（`^[a-zA-Z0-9_-]+$`），所以 `?page=`、标注桶、`/sites/<id>/`、`ppnt` 都认它。`parseArticlePageId(id)` 拆回 `{ projectId, articleId }`。
+- 唯一可能撞的是 `content/previews/_index.json` 里带 `_` 的模板页。读取时逐篇检查，撞了记一条布局错误，模板页优先。
+- `listProjects` 的每篇 article 多一个字段 `pageId`；`pinpoint list <project>` 在每篇文章下打一行“画布 <页 id>”。
+
+### board 从哪来
+
+- board 每次从 `index.mdx` 现派生（`src/server/lib/article-board.js` 的 `deriveArticleBoard`）。按 Section 顺序，只含有 Canvas 的节。每节是 `{ id, title, layout: "row", letter, shell?, screens: [{ id }] }`。`letter` 是正文里的节字母，见下面“给站点卡片的接口”。顶层带 `title`（文章 title）和 `article: { project, id, url }`。
+- 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
+- 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
+- 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
+- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / check / locate / mark / shot / list --frames / status --page`、编号（`boardRefs`）都按普通页工作。
+- dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
+- watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
+
+### 不进 Pages
+
+画布页属于文章，不出现在工作台左栏 Pages、`GET /registry` 的 `entries` 和 `ppnt list` 的页表里。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
+
+### 标注桶
+
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是画布页 id。文章页（`/<project>/<article>/…`）注入的标注客户端以它为桶；project 首页、概念页仍以 project id 为桶。`resolveRequestEntry` 认这两种桶。
+
+### 错误
+
+下面这些写法都记进这个 project 的 `errors`，格式是 `articles/<文章>/index.mdx：第 N 行：…`。`pinpoint list <project>` 和站点错误条会显示它们，读取本身不抛错。
+
+- 跨页引用 `"<page>/<screen>"`：提示先把帧迁进本篇目录。
+- 帧文件不存在：帧仍进画布，工作台上那一格出错误面板。
+- 一节两个 `<Canvas>`：只用第一个。
+- 重复的节 id：第二个不进画布。
+- 其他都是错误：`frames` 或 `shell` 不是字面量、`shell` 取值不对、`frames` 为空、帧 id 不合法、同一帧出现在两节、`<Canvas>` 写在 Section 外、Section 嵌套、MDX 本身写坏。
+
+### 给站点卡片的接口
+
+`articleCanvas(projectId, articleId, { registry? })`（`article-board.js`，`projects.js` 转出）。`registry` 缺省读 `loadRegistry()`。HTTP 是 `GET /api/projects/<project>/articles/<article>/canvas`，project 没登记时 404：
+
+```json
+{
+  "pageId": "e2e-project_commit-confirm",
+  "project": "e2e-project",
+  "article": "commit-confirm",
+  "sections": [
+    { "id": "confirm", "title": "确认卡", "letter": "B",
+      "frames": [{ "id": "confirm-sheet", "ref": "B1" }, { "id": "confirm-done", "ref": "B2" }] },
+    { "id": "variants", "title": "卡片做法", "letter": "C", "shell": "comp",
+      "frames": [{ "id": "card-plain", "ref": "C1" }] }
+  ],
+  "errors": []
+}
+```
+
+- `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲、`ppnt` 的 `B1` 和文章节标题对得上。
+- 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
+- `errors` 是 `[{ message, line?, section?, frame? }]`。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。`message` 与 `listProjects` 里这篇的布局错误是同一句，只去掉 `articles/<文章>/index.mdx：` 前缀。
+- 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
+- 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 
 ## 保留名
 
@@ -118,7 +202,7 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 
 ## 固件
 
-- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。
+- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。
 - `e2e/project-collide/`：project `e2e-collide`，article `confirm-card` 与 concept `Confirm-Card` 撞名，读取时恰好一条布局错误。
 
 两个固件都没有登记进 e2e 的共享 registry 固件。

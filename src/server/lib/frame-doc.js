@@ -27,7 +27,10 @@ import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contrac
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { readBoard } from './board-file.js';
 import { annotateClientSrc } from './annotate-bundle.js';
-import { loadDistScreenHtml } from './page-compiler.js';
+import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
+import { resolveArticleTarget } from './article-board.js';
+import { flattenTabs } from '../../workbench/lib/board-tabs.js';
+import { ARTICLE_PAGE_ID_PATTERN } from './projects.js';
 import { synthesizeBoard } from './synth-board.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -122,7 +125,7 @@ function siteSrcToAbsPath(src, registry) {
  */
 export function resolveFrameTarget(pageId, screenId, options = {}) {
   const registry = options.registry || null;
-  if (!PAGE_ID_RE.test(String(pageId || ''))) {
+  if (!PAGE_ID_RE.test(String(pageId || '')) && !ARTICLE_PAGE_ID_PATTERN.test(String(pageId || ''))) {
     throw new FrameDocError('bad_request', `invalid page id "${pageId}"`);
   }
   if (!SCREEN_ID_RE.test(String(screenId || ''))) {
@@ -194,7 +197,37 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     };
   }
 
-  // 2) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
+  // 2) 文章画布（pp3 M1）：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
+  const article = resolveArticleTarget(registry, pageId);
+  if (article) {
+    let board;
+    try {
+      board = flattenTabs(readTargetBoard(article));
+    } catch {
+      throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
+    }
+    const hit = findScreen(board, screenId);
+    if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
+    const shell = normalizeShell(hit.screen.shell || hit.sectionShell, 'ios');
+    if (shell === 'doc') {
+      return { kind: 'doc', url: docUrlForScreen(hit.screen, article.urlBase), pageId, screenId, title: hit.screen.title || screenId };
+    }
+    return {
+      kind: 'fragment',
+      pageId,
+      screenId,
+      title: hit.screen.title || screenId,
+      shell,
+      section: hit.section,
+      sectionLabel: hit.sectionLabel,
+      ref: hit.ref,
+      entry: pageId,
+      baseUrl: article.urlBase,
+      distTarget: article,
+    };
+  }
+
+  // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
   const entry = pageId === 'pinpoint' ? null : resolveSiteEntry(registry, pageId);
   if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
   const diskBoard = entry.kind === 'dir' ? readBoard(path.resolve(entry.path)) : null;
