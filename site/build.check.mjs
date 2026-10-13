@@ -2,13 +2,15 @@
 // registry and checks routes, [[ ]] resolution (incl. empty and cross-project
 // refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
 // links, the section overlay's markup hooks), and that a namespace collision or a canvas error fails the build.
-// Not in the default `npm test`: two real Astro builds take ~10 s.
+// Also: two dev servers from this checkout keep separate content stores.
+// Not in the default `npm test`: the real Astro builds and dev servers take ~15 s.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import net from 'node:net';
+import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 import { articlePageId } from './src/lib/canvas-source.js';
 
@@ -162,4 +164,69 @@ test('an article id that equals a concept name fails the build', (t) => {
   const b = build(t, ['clash']);
   assert.notEqual(b.status, 0);
   assert.match(b.log, /project "clash": name "confirm-card" is used by article .*confirm-card[\\/]index\.mdx and concept .*confirm-card\.md/);
+});
+
+function freePort() {
+  return new Promise((resolve, reject) => {
+    const srv = net.createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => {
+      const { port } = srv.address();
+      srv.close(() => resolve(port));
+    });
+  });
+}
+
+/** One `astro dev` the way the pinpoint service starts it (vite base /_astro/), with its own registry. */
+async function devServer(t, id) {
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-site-dev-'));
+  const port = await freePort();
+  const registry = path.join(tmp, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id, kind: 'project', path: path.join(FIX, id) }] }));
+  const child = spawn(process.execPath, [ASTRO, 'dev', '--port', String(port), '--host', '127.0.0.1', '--ignore-lock'], {
+    cwd: SITE,
+    detached: true,
+    stdio: 'ignore',
+    env: { ...process.env, PINPOINT_REGISTRY: registry, PINPOINT_SITE_PORT: String(port), PINPOINT_SITE_VITE_BASE: '/_astro/', PINPOINT_SITE_CACHE: path.join(tmp, 'cache'), ASTRO_TELEMETRY_DISABLED: '1' },
+  });
+  t.after(() => {
+    try { process.kill(-child.pid, 'SIGKILL'); } catch { /* already gone */ }
+    fs.rmSync(tmp, { recursive: true, force: true });
+    fs.rmSync(path.join(SITE, '.astro-cache', String(port)), { recursive: true, force: true });
+  });
+  const get = async (pathname) => {
+    try {
+      const res = await fetch(`http://127.0.0.1:${port}${pathname}`, { signal: AbortSignal.timeout(5000) });
+      return { status: res.status, text: await res.text() };
+    } catch {
+      return null;
+    }
+  };
+  const deadline = Date.now() + 60_000;
+  while (!(await get('/_astro/@vite/client'))) {
+    if (Date.now() > deadline) throw new Error(`astro dev for ${id} not ready on ${port}`);
+    await new Promise((resolve) => setTimeout(resolve, 200));
+  }
+  return { port, get };
+}
+
+// Astro keeps the dev content store in <root>/.astro/. With root at site/ two
+// sites from one checkout shared it, and one served the other's registry: the
+// article 404'd (2026-10-13 fresh-reader). astro.config gives each port its own root.
+test('two dev servers from one checkout each serve their own registry', async (t) => {
+  const [demo, other] = await Promise.all([devServer(t, 'demo'), devServer(t, 'other')]);
+  for (let round = 0; round < 3; round++) {
+    const [a, b] = await Promise.all([demo.get('/demo/payments/'), other.get('/other/intro/')]);
+    assert.equal(a?.status, 200, `demo round ${round}`);
+    assert.match(a.text, /浏览器任务里的付款/);
+    assert.equal(b?.status, 200, `other round ${round}`);
+    assert.match(b.text, /Other 介绍/);
+    assert.equal((await demo.get('/other/intro/'))?.status, 404);
+  }
+  // Page modules now live outside the Astro root (srcDir = site/src) and load through /_astro/@fs/.
+  const page = await demo.get('/demo/payments/');
+  const scripts = [...page.text.matchAll(/<script type="module" src="([^"]+)"/g)].map((m) => m[1]);
+  assert.ok(scripts.length > 0, 'page has module scripts');
+  for (const src of scripts) assert.equal((await demo.get(src))?.status, 200, src);
+  assert.ok(!fs.existsSync(path.join(SITE, '.astro', 'data-store.json')), 'no shared site/.astro content store');
 });

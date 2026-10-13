@@ -15,6 +15,8 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 - `--ignore-lock`：Astro 7 检测到 agent 环境会自己转后台并退出，服务要的是它管得住的前台子进程。agent 手动起 dev 也要带上。脚本里不内置这个参数，重复传会让 Astro 读成数组、判定失效。
 - `PINPOINT_SITE_VITE_BASE`：服务自己是 Vite，占着 `/@vite/`、`/@fs/`、`/@id/`、`/node_modules/` 和根路径的 HMR socket。设了它，Astro dev 的内部资源和 HMR 都走 `/_astro/…`；页面 URL 仍是 `/<project>/…`（`astro.config.mjs` 里的中间件把 base 外的请求补上前缀）。站点 `base` 始终是 `/`。
 
+每个站点进程的 Astro root 是 `site/.astro-cache/<端口>/`（build 是 `site/.astro-cache/build/`），代码照旧从 `site/src` 读。Astro 把 dev 的内容库（`.astro/data-store.json`）和生成的类型固定放在 root 下；同一个 checkout 起两个站点（e2e 两组、隔离运行、owner 的服务）时，各自的端口各自一份，不会读到别的 registry 的内容。
+
 开发服务器启动时把站点目录、仓库的 `node_modules` 和各 project 的 `docs/pinpoint/` 加进 Vite `fs.allow`，project 根下的其他文件和仓库源码不经 `/@fs/` 服务；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载。
 
 ## 路由
