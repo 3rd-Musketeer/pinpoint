@@ -47,6 +47,19 @@ test('card model: this section only, urls, meta, errors by section', () => {
   assert.equal(shellBox('comp').mode, 'natural');
 });
 
+test('card model: each frame sized by its own shell (frame over section)', () => {
+  const mixed = { pageId: 'p', sections: [
+    { id: 'card', letter: 'C', frames: [{ id: 'sheet', ref: 'C1' }, { id: 'bare', ref: 'C2', shell: 'comp' }, { id: 'gone', ref: 'C3', shell: 'comp', missing: true }] },
+    { id: 'wall', letter: 'D', shell: 'comp', frames: [{ id: 'w1', ref: 'D1' }, { id: 'phone', ref: 'D2', shell: 'app' }] },
+  ] };
+  const card = cardModel(mixed, 'card');
+  assert.equal(card.box.mode, 'phone'); // the section's own default stays a phone
+  assert.deepEqual(card.frames.map((f) => [f.id, f.shell, f.box.mode, f.box.fitWidth]), [
+    ['sheet', '', 'phone', 158], ['bare', 'comp', 'natural', undefined], ['gone', 'comp', 'natural', undefined],
+  ]);
+  assert.deepEqual(cardModel(mixed, 'wall').frames.map((f) => [f.id, f.shell, f.box.mode]), [['w1', 'comp', 'natural'], ['phone', 'app', 'phone']]);
+});
+
 test('open count: open rows on this section\'s frames of this page', () => {
   const doc = { annotations: [
     { screenId: 'ask', pageId: 'p', status: 'open' },
@@ -74,7 +87,10 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
     ['B1', 'ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off'],
     ['B2', 'confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off'],
+    ['B3', 'confirm-card', false, '/api/frame?page=demo_payments&screen=confirm-card&annotate=off'],
   ]);
+  // confirm-card.jsx says `export const shell = "comp"`: that frame alone is a bare component in a phone section.
+  assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.id, f.shell, f.box.mode]), [['ask', '', 'phone'], ['confirm', '', 'phone'], ['confirm-card', 'comp', 'natural']]);
   assert.equal(cardModel(ok, 'mech').shell, 'comp');
 
   const canvas = articleCanvas('broken', 'broken-canvas', { registry });

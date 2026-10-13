@@ -13,7 +13,7 @@
  *   存量帧手写了同 URL 行的不重复注入。
  *
  * lint（编译失败，报文件与行）：import preact/hooks、onX 属性、fetch(、帧文件顶层
- * 有 import / export default 之外的语句。实现是 esbuild metafile + 文本扫描，不引 parser。
+ * 有 import / export default / export const shell / 函数声明之外的语句。实现是 esbuild metafile + 文本扫描，不引 parser。
  *
  * 输出：<distRoot>/<entryId>/<screenId>.html + build.json
  *   { builtAt, sources: { [screen]: { file, mtimeMs } }, errors: { [screen]: message } }。
@@ -178,11 +178,13 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
   const errors = [];
   const lines = String(text).split('\n');
   // 顶层允许的形态：import 一定放行；export 在帧文件（entry）里只许 default 那一个，
+  // 外加帧级 shell 声明 `export const shell = "…"`（文章画布静态读它，见
+  // article-canvas.js 的 readFrameShell；值写坏由那里报）；
   // 组件文件里是命名导出函数（export function Badge），放行一切 export。
   // 帧文件（pp2 切片 2）再放行 function Name( 开头的函数声明 —— 帧内小组件；
-  // const / let / 表达式语句仍然禁止。
-  const exportOk = entry ? /^export\s+default\b/ : /^export\b/;
-  const exportLabel = entry ? 'export default' : 'export';
+  // 其他 const / let / 表达式语句仍然禁止。
+  const exportOk = entry ? /^export\s+(?:default\b|const\s+shell\b)/ : /^export\b/;
+  const exportLabel = entry ? 'export default、export const shell' : 'export';
   const functionOk = entry ? /^function\s+[A-Za-z_$]/ : /$./;
   let depthB = 0;
   let depthP = 0;

@@ -124,8 +124,18 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 </Section>
 ```
 
+```jsx
+// confirm-bare.jsx：和手机帧同在一节，这一帧单独是裸组件
+export const shell = "comp";
+
+export default function ConfirmBare() {
+  return <ConfirmCard />;
+}
+```
+
 - 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
 - `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
+- 帧级 shell：一节里混着手机帧和组件帧时，组件帧的文件在顶层写一行 `export const shell = "comp";`。取值和 `<Canvas shell>` 一样，只认这一行的字面量字符串。它只管这一帧，盖过 `<Canvas shell>`。服务静态读这一行（`readFrameShell`），不执行帧文件。编译器的帧 lint 放行这一行。
 - 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。
 
 ### 页 id
@@ -139,13 +149,13 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 
 ### board 从哪来
 
-- board 每次从 `index.mdx` 现派生（`src/server/lib/article-board.js` 的 `deriveArticleBoard`）。按 Section 顺序，只含有 Canvas 的节。每节是 `{ id, title, layout: "row", letter, shell?, screens: [{ id }] }`。`letter` 是正文里的节字母，见下面“给站点卡片的接口”。顶层带 `title`（文章 title）和 `article: { project, id, url }`。
+- board 每次从 `index.mdx` 现派生（`src/server/lib/article-board.js` 的 `deriveArticleBoard`）。按 Section 顺序，只含有 Canvas 的节。每节是 `{ id, title, layout: "row", letter, shell?, screens: [{ id, shell? }] }`。screen 的 `shell` 来自帧文件的 `export const shell`。`letter` 是正文里的节字母，见下面“给站点卡片的接口”。顶层带 `title`（文章 title）和 `article: { project, id, url }`。
 - 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
 - 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
 - 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
 - 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / check / locate / mark / shot / list --frames / status --page`、编号（`boardRefs`）都按普通页工作。
 - dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
-- watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
+- watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
 
 ### 不进 Pages
 
@@ -164,6 +174,7 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 - 一节两个 `<Canvas>`：只用第一个。
 - 重复的节 id：第二个不进画布。
 - 其他都是错误：`frames` 或 `shell` 不是字面量、`shell` 取值不对、`frames` 为空、帧 id 不合法、同一帧出现在两节、`<Canvas>` 写在 Section 外、Section 嵌套、MDX 本身写坏。
+- 帧级 shell 写坏（不是那一行字面量、取值不对、写了两次）：错误带节和帧，行号是那个 `<Canvas>` 的行，末尾注明帧文件里的行（`（<帧>.jsx 第 N 行）`）。这一帧照进画布，用节的 shell。
 
 ### 给站点卡片的接口
 
@@ -178,7 +189,9 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
     { "id": "confirm", "title": "确认卡", "letter": "B",
       "frames": [{ "id": "confirm-sheet", "ref": "B1" }, { "id": "confirm-done", "ref": "B2" }] },
     { "id": "variants", "title": "卡片做法", "letter": "C", "shell": "comp",
-      "frames": [{ "id": "card-plain", "ref": "C1" }] }
+      "frames": [{ "id": "card-plain", "ref": "C1" }] },
+    { "id": "mixed", "title": "手机和裸卡片", "letter": "D",
+      "frames": [{ "id": "mixed-phone", "ref": "D1" }, { "id": "mixed-bare", "ref": "D2", "shell": "comp" }] }
   ],
   "errors": []
 }
@@ -186,6 +199,7 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 
 - `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲、`ppnt` 的 `B1` 和文章节标题对得上。
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
+- 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ message, line?, section?, frame? }]`。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。`message` 与 `listProjects` 里这篇的布局错误是同一句，只去掉 `articles/<文章>/index.mdx：` 前缀。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
 - 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。

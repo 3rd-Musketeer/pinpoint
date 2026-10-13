@@ -66,7 +66,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     expect(unexpected).toEqual([]);
     // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
     await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual(
-      ['card-plain', 'confirm-done', 'confirm-sheet'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off`));
+      ['card-plain', 'confirm-done', 'confirm-sheet', 'mixed-bare', 'mixed-phone'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off`));
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
@@ -90,20 +90,32 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await expect(page.locator('.pop .k')).toHaveText('用户接手文章');
   });
 
-  await test.step('画布卡片：有 Canvas 的两节各一张，帧真渲染，编号与节字母一致；打开画布落到那一节', async () => {
+  await test.step('画布卡片：有 Canvas 的三节各一张，帧真渲染，编号与节字母一致；打开画布落到那一节', async () => {
     await page.keyboard.press('Escape');
     const cards = page.locator('[data-pp-canvas]');
-    await expect(cards).toHaveCount(2);
+    await expect(cards).toHaveCount(3);
     expect(await cards.evaluateAll((els) => els.map((el) => [el.dataset.page, el.dataset.section, el.dataset.frames]))).toEqual([
       [CANVAS_PAGE, 'confirm', 'confirm-sheet confirm-done'],
       [CANVAS_PAGE, 'variants', 'card-plain'],
+      [CANVAS_PAGE, 'mixed', 'mixed-phone mixed-bare'],
     ]);
     await expect(page.locator('#btn-canvas')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}`);
-    await expect(page.locator('[data-pp-canvas] .cap b')).toHaveText(['B1', 'B2', 'C1']);
+    await expect(page.locator('[data-pp-canvas] .cap b')).toHaveText(['B1', 'B2', 'C1', 'D1', 'D2']);
     await expect(page.locator('[data-pp-canvas-errors], [data-pp-missing], .cc-box .ph, .errors[role="alert"]')).toHaveCount(0);
     // 每帧加载后量过机壳 / 组件台（data-fitted），帧里的内容来自本篇组件。
-    await expect(page.locator('[data-pp-canvas] .cc-box[data-fitted="1"]')).toHaveCount(3);
-    for (const screen of ['confirm-sheet', 'confirm-done', 'card-plain']) {
+    await page.locator('[data-pp-canvas][data-section="mixed"]').scrollIntoViewIfNeeded();
+    await expect(page.locator('[data-pp-canvas] .cc-box[data-fitted="1"]')).toHaveCount(5);
+    // 混排的一张卡：手机帧按手机缩到 158 宽；帧级 comp 的那一帧按自己的组件台量，不是手机比例。
+    const mixed = page.locator('[data-pp-canvas][data-section="mixed"]');
+    await expect(mixed.locator('[data-screen="mixed-phone"] .cc-box')).toHaveClass(/\bphone\b/);
+    await expect(mixed.locator('[data-screen="mixed-bare"]')).toHaveAttribute('data-shell', 'comp');
+    await expect(mixed.locator('[data-screen="mixed-bare"] .cc-box')).toHaveClass(/\bnatural\b/);
+    const sizes = await mixed.locator('.cc-box').evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().width, el.getBoundingClientRect().height]));
+    expect(sizes[0][0]).toBe(158);
+    expect(sizes[0][1]).toBeGreaterThan(300);
+    expect(sizes[1][1]).toBeLessThan(sizes[1][0]); // 卡片比它高的宽：没被当成手机
+    await expect(page.frameLocator('[data-pp-canvas] [data-screen="mixed-bare"] iframe').locator('.wb-comp-stage .e2e-confirm-card')).toBeVisible();
+    for (const screen of ['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']) {
       await expect(page.frameLocator(`[data-pp-canvas] [data-screen="${screen}"] iframe`).locator('.wb-screen').first()).toBeAttached();
     }
     await expect(page.frameLocator('[data-pp-canvas] [data-screen="card-plain"] iframe').locator('.e2e-confirm-card')).toBeVisible();

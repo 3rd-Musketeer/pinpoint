@@ -422,6 +422,14 @@ describe('lint', () => {
     ].join('\n');
     assert.deepEqual(lintStampSource(ok, 'home.jsx'), []);
   });
+
+  test('帧文件顶层放行 export const shell（文章画布的帧级 shell），别的命名导出照拦', () => {
+    const frame = (decl) => [decl, '', 'export default function F() {', '  return <div />;', '}', ''].join('\n');
+    assert.deepEqual(lintStampSource(frame('export const shell = "comp";'), 'f.jsx', { entry: true }), []);
+    const bad = lintStampSource(frame('export const mode = "comp";'), 'f.jsx', { entry: true });
+    assert.equal(bad.length, 1);
+    assert.match(bad[0].message, /^f\.jsx:1: 顶层只允许 import、export default、export const shell 和函数声明/);
+  });
 });
 
 describe('缺源码与 build.json', () => {

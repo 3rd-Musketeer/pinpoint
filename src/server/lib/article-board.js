@@ -15,7 +15,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { parseArticleCanvas } from './article-canvas.js';
+import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import {
   articlePageId,
   findProject,
@@ -114,7 +114,7 @@ export function listArticleTargets(registry) {
 export function deriveArticleBoard(target) {
   const text = fs.readFileSync(target.articleFile, 'utf8');
   const fm = parseFrontmatter(text);
-  const parsed = parseArticleCanvas(text, { frameExists: (frame) => isFile(path.join(target.pageDir, `${frame}.jsx`)) });
+  const parsed = parseArticleCanvas(text, frameFileReaders(target.pageDir));
   const assets = {};
   if (isFile(path.join(target.pageDir, ARTICLE_ASSET_FILES.css))) assets.css = [ARTICLE_ASSET_FILES.css];
   if (isFile(path.join(target.pageDir, ARTICLE_ASSET_FILES.js))) assets.js = [ARTICLE_ASSET_FILES.js];
@@ -129,7 +129,8 @@ export function deriveArticleBoard(target) {
       // 正文里的节字母：画布编号（boardRefs）与文章节标题用同一个字母。
       letter: section.articleLetter,
       ...(section.shell ? { shell: section.shell } : {}),
-      screens: section.frames.map((id) => ({ id })),
+      // 帧文件的 `export const shell = "…"` 落在这一屏上，盖过节的 shell（board 的 shell 可下放到单屏）。
+      screens: section.frames.map((id) => (section.frameShells && section.frameShells[id] ? { id, shell: section.frameShells[id] } : { id })),
     })),
   };
   if (assets.css || assets.js) board.assets = assets;
@@ -139,11 +140,12 @@ export function deriveArticleBoard(target) {
 /**
  * 站点卡片（M1-F）读的画布结构：articleCanvas(projectId, articleId, { registry? })
  *   → { pageId, project, article,
- *       sections: [{ id, title, letter, shell?, frames: [{ id, ref, missing? }] }],
+ *       sections: [{ id, title, letter, shell?, frames: [{ id, ref, shell?, missing? }] }],
  *       errors: [{ message, line?, section?, frame? }] }
  * - letter 是这一节在正文里的字母（所有 Section 一起数，纯文字的节也占），画布编号
  *   （工作台、ppnt、ref）用同一个字母（派生 board 的 section.letter，见 board-refs.js）。
- * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。
+ * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。帧文件写了
+ *   `export const shell = "…"` 的帧带 shell（这一帧的实际 shell，盖过节的 shell）。
  * - errors：画布写法的错误带 section（节 id）、frame；不属于某一节的（frontmatter、
  *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。message 与
  *   listProjects 里这篇的布局错误同一句（去掉 articles/<文章>/index.mdx： 前缀）。
@@ -176,7 +178,12 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
     title: section.title,
     letter: refs.bySection[section.id] || section.articleLetter,
     ...(section.shell ? { shell: section.shell } : {}),
-    frames: section.frames.map((id) => ({ id, ref: refs.byFrame[`${section.id}\0${id}`] || '', ...(missing.has(id) ? { missing: true } : {}) })),
+    frames: section.frames.map((id) => ({
+      id,
+      ref: refs.byFrame[`${section.id}\0${id}`] || '',
+      ...(section.frameShells && section.frameShells[id] ? { shell: section.frameShells[id] } : {}),
+      ...(missing.has(id) ? { missing: true } : {}),
+    })),
   }));
   const canvasMessages = new Set(derived.errors.map((e) => e.message));
   const errors = [...derived.errors, ...own.filter((message) => !canvasMessages.has(message)).map((message) => ({ message }))];

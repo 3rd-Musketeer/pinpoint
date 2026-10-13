@@ -74,19 +74,28 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   const page = articlePageId('demo', 'payments');
   const q = (s) => s.replace(/&/g, '&amp;');
   const cards = cardsOf(article);
-  assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm'], [page, 'mech', 'pay-button']]);
+  assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm confirm-card'], [page, 'mech', 'pay-button']]);
   const [flow, mech] = cards;
-  assert.match(flow.html, /<span class="ref">B<\/span><span class="t">付款前的确认<\/span><span class="meta">B1–B2 · 2 帧<\/span>/);
-  assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off`)));
+  assert.match(flow.html, /<span class="ref">B<\/span><span class="t">付款前的确认<\/span><span class="meta">B1–B3 · 3 帧<\/span>/);
+  assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm', 'confirm-card'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off`)));
   for (const tag of flow.html.match(/<iframe [^>]*>/g)) {
     assert.match(tag, /loading="lazy"/);
     assert.match(tag, /tabindex="-1"/);
   }
   const open = q(`/?page=${encodeURIComponent(page)}&section=flow`);
-  assert.deepEqual(linksOf(flow.html), [open, open, open]); // 打开画布 + one per frame
+  assert.deepEqual(linksOf(flow.html), [open, open, open, open]); // 打开画布 + one per frame
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
-  assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2']);
+  assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2', 'B3']);
   assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:343px"/);
+  // Mixed shells in one card: the phone frames are phones, confirm-card (its own `export const shell = "comp"`) is a bare component box.
+  const boxes = [...flow.html.matchAll(/<figure class="cc-frame" data-screen="([^"]+)"( data-shell="([^"]*)")?[^>]*>[\s\S]*?class="cc-box (\w+)"[^>]*style="([^"]*)"/g)]
+    .map((m) => [m[1], m[3] || '', m[4], m[5]]);
+  assert.deepEqual(boxes, [
+    ['ask', '', 'phone', 'width:158px;height:343px'],
+    ['confirm', '', 'phone', 'width:158px;height:343px'],
+    ['confirm-card', 'comp', 'natural', 'width:360px;height:240px'],
+  ]);
+  assert.doesNotMatch(flow.html.slice(0, flow.html.indexOf('<figure')), /data-shell=/); // the section itself has no shell
   assert.match(flow.html, /data-pp-badge hidden>/); // badge filled only from the live annotation ledger
   assert.doesNotMatch(article, /data-pp-canvas-errors|data-pp-missing|class="errors"/); // the fixture's canvas is clean
   // A non-phone shell is not sized as a 393×852 phone.

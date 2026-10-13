@@ -9,8 +9,9 @@ import { expect, test } from '@playwright/test';
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
 
 // pp3 M1：每篇文章的画布 = 一个由 index.mdx 派生的页（docs/projects.md「文章的画布」）。
-// 固件：常驻 project e2e-project（e2e/project-site/）的 commit-confirm：三个 Section，
-// 有 Canvas 的两节 confirm（confirm-sheet、confirm-done）与 variants（card-plain，shell comp），
+// 固件：常驻 project e2e-project（e2e/project-site/）的 commit-confirm：四个 Section，
+// 有 Canvas 的三节 confirm（confirm-sheet、confirm-done）、variants（card-plain，shell comp）
+// 与 mixed（mixed-phone 手机帧 + mixed-bare：帧文件自己 export const shell = "comp"），
 // 帧用到本篇组件、project 共用组件和 kit，本篇有 article.css。
 // 不经过 Astro：画布页只靠 pinpoint 服务与编译器。
 const execFileP = promisify(execFile);
@@ -48,10 +49,20 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     const canvas = await (await request.get('/api/projects/e2e-project/articles/commit-confirm/canvas')).json();
     expect(canvas.pageId).toBe(PAGE_ID);
     expect(canvas.errors).toEqual([]);
-    expect(canvas.sections.map((s) => [s.id, s.letter, s.shell || '', s.frames.map((f) => `${f.ref}:${f.id}`)])).toEqual([
+    expect(canvas.sections.map((s) => [s.id, s.letter, s.shell || '', s.frames.map((f) => `${f.ref}:${f.id}${f.shell ? `(${f.shell})` : ''}`)])).toEqual([
       ['confirm', 'B', '', ['B1:confirm-sheet', 'B2:confirm-done']],
       ['variants', 'C', 'comp', ['C1:card-plain']],
+      ['mixed', 'D', '', ['D1:mixed-phone', 'D2:mixed-bare(comp)']],
     ]);
+    // 派生 board：帧级 shell 落在那一屏上，节本身没有 shell。
+    const board = await (await request.get(`/sites/${PAGE_ID}/board.json`)).json();
+    expect(board.sections.find((s) => s.id === 'mixed')).toMatchObject({ screens: [{ id: 'mixed-phone' }, { id: 'mixed-bare', shell: 'comp' }] });
+    expect(board.sections.find((s) => s.id === 'mixed').shell).toBeUndefined();
+    // /api/frame：裸组件帧进组件台，同一节的手机帧进机壳。
+    const bare = await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-bare&annotate=off`)).text();
+    expect(bare).toContain('wb-comp-stage');
+    expect(bare).not.toContain('ios-stage');
+    expect(await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-phone&annotate=off`)).text()).toContain('ios-stage');
   });
 
   await test.step('标注桶：画布页 id 是合法桶（卡片读 @canvas 账本），未知 id 仍 400', async () => {
@@ -76,6 +87,22 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     await expect(page.locator('#wb-board-panel [data-screen="card-plain"] .wb-cap-ref')).toHaveText('C1');
   });
 
+  await test.step('工作台混排节 mixed：手机帧带机壳，帧级 comp 的那一帧是裸组件，没有错误面板', async () => {
+    await page.goto(`/index.html?page=${PAGE_ID}&section=mixed`);
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    await expect(page.locator('.wb-lib-item[data-ann-section="mixed"]')).toHaveClass(/\bwb-sel\b/);
+    const bare = page.locator('#wb-board-panel [data-screen="mixed-bare"]');
+    const phone = page.locator('#wb-board-panel [data-screen="mixed-phone"]');
+    await expect(bare.locator('.e2e-confirm-card')).toBeVisible();
+    await expect(phone.locator('.e2e-confirm-card')).toBeVisible();
+    await expect(bare).toHaveClass(/\bwb-screen--comp\b/);
+    await expect(phone).not.toHaveClass(/\bwb-screen--comp\b/);
+    await expect(bare.locator('.wb-screen-dim')).toHaveCount(0); // comp 画板不出尺寸行
+    await expect(phone.locator('.wb-screen-dim')).toHaveCount(1);
+    await expect(page.locator('#wb-board-panel .wb-screen-err')).toHaveCount(0);
+    await expect(page.locator('#wb-board-panel [data-screen="mixed-bare"] .wb-cap-ref')).toHaveText('D2');
+  });
+
   await test.step('左栏 Pages 不列画布页（它属于文章），别的页照常', async () => {
     await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
     await expect(page.locator(`#wbpages [data-vpage="${PAGE_ID}"]`)).toHaveCount(0);
@@ -87,7 +114,7 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     expect(stdout).toContain(`# ${PAGE_ID} · 画布帧`);
     expect(stdout).toMatch(/B1 {2}confirm-sheet +confirm-sheet\.jsx/);
     expect(stdout).toMatch(/C1 {2}card-plain +card-plain\.jsx/);
-    expect(stdout).toContain('共 2 段 3 帧');
+    expect(stdout).toContain('共 3 段 5 帧');
   });
 
   await test.step('ppnt shot B2 --page <画布页>：帧图落盘', async () => {

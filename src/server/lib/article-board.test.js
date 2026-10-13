@@ -196,3 +196,36 @@ test('画布页 id 撞上既有页 → project 的布局错误', (t) => {
   assert.deepEqual(project.errors, ['articles/flow：画布页 id "demo_flow" 与registry 条目 "demo_flow"撞名，画布打不开（改文章 id 或那个页的 id）']);
   assert.deepEqual(listProjects(registry)[0].errors, []);
 });
+
+test('帧级 shell：export const shell 落到那一屏、盖过节的 shell；编译照过；改它就是画布变了；写坏是 project 错误', async (t) => {
+  const { registry, article, distRoot } = fixture(t);
+  // ask 节没写 shell（手机壳），ask-sent 自己声明是组件。
+  const frame = path.join(article, 'ask-sent.jsx');
+  write(frame, 'export const shell = "comp";\n\nexport default function AskSent() {\n  return <div className="bare-card">已发送</div>;\n}\n');
+  const target = resolvePageTarget('demo_flow', { registry });
+  const { board, errors } = deriveArticleBoard(target);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(board.sections[0].screens, [{ id: 'ask-open' }, { id: 'ask-sent', shell: 'comp' }]);
+  assert.deepEqual(articleCanvas('demo', 'flow', { registry }).sections[0].frames, [
+    { id: 'ask-open', ref: 'B1' },
+    { id: 'ask-sent', ref: 'B2', shell: 'comp' },
+  ]);
+  // 工作台的板校验认单屏 shell：这一屏是 comp，其余仍是手机壳。
+  const { validateBoard } = await import('../../workbench/lib/preview-contracts.js');
+  assert.deepEqual(validateBoard(board).sections[0].screens.map((s) => [s.id, s.shell]), [['ask-open', 'app'], ['ask-sent', 'comp']]);
+  const result = await compilePage(target, { distRoot });
+  assert.equal(result.ok, true, JSON.stringify(result.screens));
+  assert.match(readDistScreen('demo_flow', 'ask-sent', { distRoot }).html, /class="bare-card"/);
+  // watcher：只改了帧里的 shell 导出，派生板变了 → 整页重编（dist 的 board.json 跟着换）。
+  write(frame, fs.readFileSync(frame, 'utf8').replace('"comp"', '"app"'));
+  assert.deepEqual(planPageRecompile(target, [frame], { distRoot }), { all: true });
+  await compilePage(target, { distRoot });
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(distRoot, 'demo_flow', 'board.json'), 'utf8')).sections[0].screens[1], { id: 'ask-sent', shell: 'app' });
+  // 写坏：取值不对 → project 错误，带节和帧；帧照进画布，用节的 shell。
+  write(frame, fs.readFileSync(frame, 'utf8').replace('"app"', '"tablet"'));
+  const canvas = articleCanvas('demo', 'flow', { registry });
+  assert.deepEqual(canvas.sections[0].frames[1], { id: 'ask-sent', ref: 'B2' });
+  assert.deepEqual(canvas.errors.map(({ section, frame: f }) => ({ section, frame: f })), [{ section: 'ask', frame: 'ask-sent' }]);
+  assert.match(canvas.errors[0].message, /帧 "ask-sent" 的 shell 只能是 app \/ lock \/ doc \/ comp："tablet"（ask-sent\.jsx 第 1 行）/);
+  assert.deepEqual(findProject(registry, 'demo').errors, [`articles/flow/index.mdx：${canvas.errors[0].message}`]);
+});

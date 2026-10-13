@@ -63,7 +63,10 @@ export function bannerErrors(projectErrors, articleId, canvas) {
 }
 
 /**
- * → { pageId, sectionId, letter, title, shell, box, frames: [{ id, ref, title, src, missing }], href, meta, errors: [message] }
+ * → { pageId, sectionId, letter, title, shell, box, frames: [{ id, ref, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * `shell` / `box` on the card are the section's; each frame has its own: a
+ * frame file's `export const shell = "…"` (articleCanvas frame `shell`) wins
+ * over the section's, so one card can hold phones and bare components.
  * `sectionId` is the enclosing <Section> (the remark pass injects it). A Canvas
  * outside any Section has none: articleCanvas reports that as a page-level
  * error (banner), so the model is `stray` and the card renders nothing.
@@ -78,9 +81,13 @@ export function cardModel(canvas, sectionId) {
   const section = (canvas?.sections || []).find((s) => s.id === sectionId);
   const errors = normalizeErrors(canvas?.errors).filter((e) => e.section === sectionId).map((e) => e.message);
   if (!section && !errors.length) errors.push(`画布里没有这一节（section "${sectionId}"）`);
-  const frames = (section?.frames || []).map((f) => ({
-    id: f.id, ref: f.ref || '', title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
-  }));
+  const frames = (section?.frames || []).map((f) => {
+    const shell = f.shell || section?.shell || '';
+    return {
+      id: f.id, ref: f.ref || '', title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
+      shell, box: shellBox(shell),
+    };
+  });
   const refs = frames.map((f) => f.ref).filter(Boolean);
   const range = refs.length > 1 ? `${refs[0]}–${refs[refs.length - 1]}` : refs[0] || '';
   return {

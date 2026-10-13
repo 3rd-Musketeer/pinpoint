@@ -6,12 +6,18 @@
  * <Canvas frames={["帧 id", …]} shell="…" />。frames 只认字面量数组、元素只认字面量
  * 字符串；shell 只认字面量字符串。其他写法都是错误，不猜。
  *
- * 纯函数（帧文件存不存在由调用方的 frameExists 回答）：
- *   parseArticleCanvas(text, { frameExists }) → { sections, errors }
- *   sections = [{ id, title, articleLetter, shell?, frames: [帧 id…] }]，按正文顺序，
- *   只含有 Canvas 且至少一帧可用的节。errors = [{ message, line?, section?, frame? }]：
- *   message 以“第 N 行：”开头；属于某一节的带 section（节 id），属于某一帧的再带 frame。
+ * 纯函数（帧文件存不存在、帧级 shell 由调用方的 frameExists / frameShell 回答；
+ * 读盘的那一对由 frameFileReaders(文章目录) 给）：
+ *   parseArticleCanvas(text, { frameExists, frameShell }) → { sections, errors }
+ *   sections = [{ id, title, articleLetter, shell?, frameShells?, frames: [帧 id…] }]，
+ *   按正文顺序，只含有 Canvas 且至少一帧可用的节。frameShells = { 帧 id: shell }，只含
+ *   帧文件里写了 `export const shell = "…"` 的帧（盖过这一节的 shell）。
+ *   errors = [{ message, line?, section?, frame? }]：message 以“第 N 行：”开头；属于某
+ *   一节的带 section（节 id），属于某一帧的再带 frame。
  */
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
@@ -26,6 +32,59 @@ const FRAME_ID = /^[a-zA-Z0-9_-]+$/;
 export const CANVAS_SHELLS = Object.freeze(['app', 'lock', 'doc', 'comp']);
 
 const processor = unified().use(remarkParse).use(remarkMdx);
+
+const FRAME_SHELL_DECL = /^export\s+(?:(?:const|let|var)\s+shell\b|\{[^}]*\bshell\b)/;
+const FRAME_SHELL_LITERAL = /^export\s+const\s+shell\s*=\s*(?:"([^"\\]*)"|'([^'\\]*)')\s*;?\s*(?:\/\/.*)?$/;
+
+/**
+ * 帧文件的帧级 shell：顶层一行 `export const shell = "comp";`，值只认字面量字符串
+ * （与 <Canvas shell> 同一条规则）。只读文本，不执行帧；顶层的判定与编译器 lint
+ * 同一套（按行扫 + {} () [] 深度）。
+ * → undefined（没写）| { value, line } | { error, line }（line 是帧文件里的行号）。
+ */
+export function readFrameShell(text) {
+  const lines = String(text || '').split('\n');
+  let depth = 0;
+  let found;
+  for (let i = 0; i < lines.length; i++) {
+    const trimmed = lines[i].trim();
+    if (depth === 0 && FRAME_SHELL_DECL.test(trimmed)) {
+      if (found) return { error: '写了不止一个 shell 导出', line: i + 1 };
+      const m = trimmed.match(FRAME_SHELL_LITERAL);
+      found = m
+        ? { value: m[1] ?? m[2], line: i + 1 }
+        : { error: 'shell 必须写成一行 export const shell = "…"（字面量字符串）', line: i + 1 };
+    }
+    for (const ch of lines[i]) {
+      if (ch === '{' || ch === '(' || ch === '[') depth += 1;
+      else if (ch === '}' || ch === ')' || ch === ']') depth -= 1;
+    }
+  }
+  return found;
+}
+
+/** 读盘的 frameExists / frameShell：帧 = 文章目录下的 <帧 id>.jsx。 */
+export function frameFileReaders(articleDir) {
+  const file = (frame) => path.join(articleDir, `${frame}.jsx`);
+  return {
+    frameExists: (frame) => {
+      try {
+        return fs.statSync(file(frame)).isFile();
+      } catch {
+        return false;
+      }
+    },
+    frameShell: (frame) => {
+      let text;
+      try {
+        text = fs.readFileSync(file(frame), 'utf8');
+      } catch {
+        return undefined;
+      }
+      return readFrameShell(text);
+    },
+  };
+}
 
 function isJsx(node, name) {
   return node && (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') && node.name === name;
@@ -71,7 +130,7 @@ function* childrenDeep(node) {
 }
 
 /** 正文 → 画布结构。text 是整份 index.mdx（含 frontmatter）。 */
-export function parseArticleCanvas(text, { frameExists = () => true } = {}) {
+export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined } = {}) {
   const errors = [];
   const fm = parseFrontmatter(text);
   // body 前面有几行 frontmatter：报错的行号对到整份文件。
@@ -159,6 +218,7 @@ export function parseArticleCanvas(text, { frameExists = () => true } = {}) {
       return;
     }
     const frames = [];
+    const frameShells = {};
     for (const frame of parsed.frames) {
       if (frame.includes('/')) {
         report(canvas, `${where} 引用了别的页的帧 "${frame}"：不支持跨页引用，先把帧迁进本篇目录（articles/<文章>/<帧 id>.jsx），再写 "${frame.slice(frame.lastIndexOf('/') + 1)}"`, { section: id.value, frame });
@@ -173,7 +233,20 @@ export function parseArticleCanvas(text, { frameExists = () => true } = {}) {
         continue;
       }
       seenFrames.set(frame, id.value);
-      if (!frameExists(frame)) report(canvas, `${where} 帧 "${frame}" 没有源文件（本篇目录下缺 ${frame}.jsx）`, { section: id.value, frame });
+      if (!frameExists(frame)) {
+        report(canvas, `${where} 帧 "${frame}" 没有源文件（本篇目录下缺 ${frame}.jsx）`, { section: id.value, frame });
+      } else {
+        // 帧级 shell：写坏了照样进画布（用这一节的 shell），错误带节和帧。
+        const own = frameShell(frame);
+        const inFile = own && own.line ? `（${frame}.jsx 第 ${own.line} 行）` : '';
+        if (own && own.error) {
+          report(canvas, `${where} 帧 "${frame}" 的 ${own.error}${inFile}`, { section: id.value, frame });
+        } else if (own && !CANVAS_SHELLS.includes(own.value)) {
+          report(canvas, `${where} 帧 "${frame}" 的 shell 只能是 ${CANVAS_SHELLS.join(' / ')}：${JSON.stringify(own.value)}${inFile}`, { section: id.value, frame });
+        } else if (own) {
+          frameShells[frame] = own.value;
+        }
+      }
       frames.push(frame);
     }
     if (!frames.length) {
@@ -182,6 +255,7 @@ export function parseArticleCanvas(text, { frameExists = () => true } = {}) {
     }
     const section = { id: id.value, title: (title && title.value) || id.value, articleLetter, frames };
     if (shell) section.shell = shell.value;
+    if (Object.keys(frameShells).length) section.frameShells = frameShells;
     sections.push(section);
   };
 

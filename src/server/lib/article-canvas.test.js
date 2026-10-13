@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseArticleCanvas } from './article-canvas.js';
+import { parseArticleCanvas, readFrameShell } from './article-canvas.js';
 
 const FM = '---\ntitle: 测试\n---\n\n';
 
@@ -76,4 +76,39 @@ test('MDX 写坏了：一条错误、没有节，不抛', () => {
 
 test('没有 Section 的文章：空画布、没有错误', () => {
   assert.deepEqual(parseArticleCanvas(`${FM}# 只有正文\n\n一段话。\n`), { sections: [], errors: [] });
+});
+
+test('帧级 shell：帧文件的 export const shell 只认顶层字面量字符串，静态读', () => {
+  const frame = (decl) => `import { X } from './components/X.jsx';\n\n${decl}\n\nexport default function F() {\n  return <X />;\n}\n`;
+  assert.equal(readFrameShell(frame('')), undefined);
+  assert.deepEqual(readFrameShell(frame('export const shell = "comp";')), { value: 'comp', line: 3 });
+  assert.deepEqual(readFrameShell(frame("export const shell = 'doc' // 整份文档")), { value: 'doc', line: 3 });
+  // 值照原样交给 parseArticleCanvas 校验取值；这里只管写法。
+  assert.deepEqual(readFrameShell(frame('export const shell = "tablet";')), { value: 'tablet', line: 3 });
+  for (const decl of ['export const shell = mode;', 'export const shell = `comp`;', 'export let shell = "comp";', 'export { shell };', 'export const shell = "co" + "mp";']) {
+    assert.match(readFrameShell(frame(decl)).error, /字面量字符串/, decl);
+  }
+  assert.match(readFrameShell(frame('export const shell = "comp";\nexport const shell = "app";')).error, /不止一个/);
+  // 函数体里同名的东西不是顶层导出。
+  assert.equal(readFrameShell('export default function F() {\n  const shell = "comp";\n  return <div />;\n}\n'), undefined);
+});
+
+test('帧级 shell：落在那一帧上，盖过节的 shell；写坏了帧照进画布、错误带节和帧', () => {
+  const text = `${FM}<Section id="card" title="确认卡">\n\n<Canvas frames={["sheet", "done", "bare", "odd", "typo"]} />\n\n</Section>\n\n`
+    + '<Section id="wall">\n\n<Canvas frames={["w1", "w2"]} shell="comp" />\n\n</Section>\n';
+  const own = { bare: { value: 'comp', line: 3 }, w2: { value: 'app', line: 1 }, odd: { value: 'tablet', line: 2 }, typo: { error: 'shell 必须写成一行 export const shell = "…"（字面量字符串）', line: 4 } };
+  const { sections, errors } = parseArticleCanvas(text, { frameShell: (id) => own[id] });
+  assert.deepEqual(sections, [
+    { id: 'card', title: '确认卡', articleLetter: 'A', frameShells: { bare: 'comp' }, frames: ['sheet', 'done', 'bare', 'odd', 'typo'] },
+    { id: 'wall', title: 'wall', articleLetter: 'B', shell: 'comp', frameShells: { w2: 'app' }, frames: ['w1', 'w2'] },
+  ]);
+  assert.deepEqual(errors.map(({ line, section, frame }) => ({ line, section, frame })), [
+    { line: 7, section: 'card', frame: 'odd' },
+    { line: 7, section: 'card', frame: 'typo' },
+  ]);
+  assert.match(errors[0].message, /^第 7 行：<Section id="card"> 的 <Canvas> 帧 "odd" 的 shell 只能是 app \/ lock \/ doc \/ comp："tablet"（odd\.jsx 第 2 行）$/);
+  assert.match(errors[1].message, /帧 "typo" 的 shell 必须写成一行 export const shell = "…"（字面量字符串）（typo\.jsx 第 4 行）$/);
+  // 缺源文件的帧不去读 shell。
+  const missing = parseArticleCanvas(text, { frameExists: (id) => id !== 'bare', frameShell: (id) => { assert.notEqual(id, 'bare'); return own[id]; } });
+  assert.equal(missing.sections[0].frameShells, undefined);
 });

@@ -19,7 +19,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
-import { parseArticleCanvas } from './article-canvas.js';
+import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { isReservedSegment, RESERVED_TOP_SEGMENTS } from './article-routes.js';
 import { manifestPageIds } from './page-manifest.js';
 
@@ -232,7 +232,7 @@ function readArticles(dir, errors, projectId) {
     const fm = parseFrontmatter(text);
     for (const problem of fm.errors) errors.push(`${rel}/index.mdx：${problem}`);
     // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误。
-    const canvas = parseArticleCanvas(text, { frameExists: (frame) => isFile(path.join(articleDir, `${frame}.jsx`)) });
+    const canvas = parseArticleCanvas(text, frameFileReaders(articleDir));
     for (const problem of canvas.errors) errors.push(`${rel}/index.mdx：${problem.message}`);
     const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file };
     if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);
