@@ -7,6 +7,7 @@
  */
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import http from 'node:http';
 import net from 'node:net';
 import os from 'node:os';
 import path from 'node:path';
@@ -66,6 +67,30 @@ function firstMessage(url, protocol) {
 }
 
 const HTML = { accept: 'text/html,application/xhtml+xml' };
+
+/** 裸 websocket 握手（能自己写 Origin 头）：→ { status, frame }，frame 是升级成功后的第一帧文本。 */
+function rawUpgrade(port, pathname, origin) {
+  return new Promise((resolve, reject) => {
+    const headers = {
+      connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13',
+      'sec-websocket-key': 'dGhlIHNhbXBsZSBub25jZQ==', 'sec-websocket-protocol': 'vite-hmr',
+    };
+    if (origin) headers.origin = origin;
+    const req = http.request({ host: '127.0.0.1', port, path: pathname, headers });
+    req.on('upgrade', (res, socket, head) => {
+      const done = (data) => { socket.destroy(); resolve({ status: res.statusCode, frame: JSON.parse(data.subarray(2).toString()) }); };
+      if (head && head.length) done(head);
+      else socket.once('data', done);
+    });
+    req.on('response', (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
+}
 
 test('文章代理：真 vite + 站点替身', async (t) => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-article-proxy-'));
@@ -157,12 +182,32 @@ test('文章代理：真 vite + 站点替身', async (t) => {
 
   await t.test('HMR websocket：/_astro/ 转发到站点；pinpoint 自己的 HMR（/）照常', async () => {
     const astro = await firstMessage(`ws://127.0.0.1:${vitePort}/_astro/?token=t1`, 'vite-hmr');
-    assert.deepEqual(astro, { type: 'connected', stub: true, url: '/_astro/?token=t1' });
+    assert.deepEqual(astro, { type: 'connected', stub: true, url: '/_astro/?token=t1', origin: null });
     const clientCode = await (await fetch(`${origin}/@vite/client`)).text();
     const token = clientCode.match(/wsToken = "([^"]+)"/)[1];
     const own = await firstMessage(`ws://127.0.0.1:${vitePort}/?token=${token}`, 'vite-hmr');
     assert.equal(own.type, 'connected');
     assert.equal(own.stub, undefined);
+  });
+
+  await t.test('来源：自己的来源改写成站点地址；别的网页的 websocket 与写请求 403，GET 不带 Origin 过去', async () => {
+    const own = await rawUpgrade(vitePort, '/_astro/?token=t2', origin);
+    assert.equal(own.status, 101);
+    assert.equal(own.frame.origin, `http://127.0.0.1:${sitePort}`);
+    for (const foreign of ['https://evil.example', 'http://localhost:1', `http://evil.example:${vitePort}`]) {
+      const refused = await rawUpgrade(vitePort, '/_astro/?token=t2', foreign);
+      assert.equal(refused.status, 403, foreign);
+      assert.match(refused.body, /forbidden: websocket from foreign origin/);
+    }
+    const echo = async (init) => (await (await fetch(`${origin}/_astro/__stub/echo`, init)).json()).headers.origin;
+    assert.equal(await echo({ headers: { origin } }), `http://127.0.0.1:${sitePort}`);
+    assert.equal(await echo({ headers: { origin: 'https://pinpoint.localhost' } }), `http://127.0.0.1:${sitePort}`);
+    assert.equal(await echo({ headers: { origin: 'https://evil.example' } }), undefined, '别的来源的 GET 不转发 Origin');
+    const post = await fetch(`${origin}/demo/intro/`, { method: 'POST', headers: { origin: 'https://evil.example' }, body: 'x' });
+    assert.equal(post.status, 403);
+    await post.text();
+    const ownPost = await fetch(`${origin}/_astro/__stub/echo`, { method: 'POST', headers: { origin }, body: 'x' });
+    assert.equal((await ownPost.json()).method, 'POST');
   });
 
   await t.test('pinpoint 原有路由不受影响：/@vite/client、/sites/、未登记首段、/index.html', async () => {

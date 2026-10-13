@@ -15,7 +15,8 @@
  *   _image            PNG 字节
  *   __stub/echo       JSON：上游看到的 url、method、headers、pid
  *   <其他>            HTML 文章页（带 /_astro//@vite/client 脚本，与 Astro 的双斜杠同形）
- *   upgrade /_astro/  子协议 vite-hmr 的 websocket 握手，发一帧 {"type":"connected","stub":true}
+ *   upgrade /_astro/  子协议 vite-hmr 的 websocket 握手，发一帧 {"type":"connected","stub":true,url,origin}
+ *                     （origin = 站点看到的 Origin 头，没有为 null）
  */
 import crypto from 'node:crypto';
 import http from 'node:http';
@@ -76,7 +77,7 @@ server.on('upgrade', (req, socket) => {
     'Sec-WebSocket-Protocol: vite-hmr',
     '', '',
   ].join('\r\n'));
-  const payload = Buffer.from(JSON.stringify({ type: 'connected', stub: true, url: req.url }));
+  const payload = Buffer.from(JSON.stringify({ type: 'connected', stub: true, url: req.url, origin: req.headers.origin || null }));
   // 服务端帧不加掩码；payload < 126 字节，长度直接放第二个字节。
   socket.write(Buffer.concat([Buffer.from([0x81, payload.length]), payload]));
   socket.on('error', () => {});

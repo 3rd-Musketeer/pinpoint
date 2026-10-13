@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-import { createArticleHandler, siteWaitPageHtml } from './article-proxy.js';
+import { createArticleHandler, createArticleUpgradeHandler, siteWaitPageHtml } from './article-proxy.js';
 import { mockReq, mockRes } from './test-harness.js';
 
 function fakeDevServer(snapshot, extra = {}) {
@@ -66,6 +66,39 @@ test('站点没就绪：导航给启动中页（503，自动刷新），failed �
   assert.match(res2.text, /exit &lt;3&gt;/);
   assert.match(res2.text, /&lt;b&gt;line 2&lt;\/b&gt;/);
   assert.match(res2.text, /content="5"/);
+});
+
+test('来源：别的网页发来的写请求与 websocket upgrade 回 403，不拉起站点；自己的来源与没有 Origin 照常', () => {
+  const dev = fakeDevServer({ state: 'starting', port: 4530, command: 'x' });
+  const origins = new Set(['https://pinpoint.localhost']);
+  const handle = createArticleHandler({ isProject, devServer: dev, origins });
+  const post = mockReq('POST', '/demo/a/');
+  post.headers.origin = 'https://evil.example';
+  const res = mockRes();
+  assert.equal(handle(post, res), true);
+  assert.equal(res.statusCode, 403);
+  assert.match(res.text, /foreign origin https:\/\/evil\.example/);
+  assert.equal(dev.ensured, 0, '被拒的请求不拉起站点');
+  for (const origin of ['https://pinpoint.localhost', undefined]) {
+    const req = mockReq('POST', '/demo/a/');
+    if (origin) req.headers.origin = origin;
+    const ok = mockRes();
+    handle(req, ok);
+    assert.equal(ok.statusCode, 503, `${origin} 走到站点（这里站点还在启动）`);
+  }
+  const getFromElsewhere = mockReq('GET', '/_astro/@vite/client');
+  getFromElsewhere.headers.origin = 'https://evil.example';
+  const got = mockRes();
+  handle(getFromElsewhere, got);
+  assert.equal(got.statusCode, 503, '别的来源的 GET 放行（不转发 Origin，见集成测试）');
+
+  const upgrade = createArticleUpgradeHandler({ devServer: dev, origins });
+  const written = [];
+  const socket = { end: (text) => written.push(text), write() {}, destroy() {} };
+  const ensuredBefore = dev.ensured;
+  upgrade({ url: '/_astro/?token=x', method: 'GET', headers: { origin: 'http://localhost:3000' } }, socket, Buffer.alloc(0));
+  assert.match(written[0], /^HTTP\/1\.1 403 Forbidden\r\n/);
+  assert.equal(dev.ensured, ensuredBefore);
 });
 
 test('siteWaitPageHtml：启动中不带日志；页面自带浅色 / 深色两套颜色', () => {
