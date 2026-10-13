@@ -218,6 +218,10 @@ async function devServer(t, id) {
 // sites from one checkout shared it, and one served the other's registry: the
 // article 404'd (2026-10-13 fresh-reader). astro.config gives each port its own root.
 test('two dev servers from one checkout each serve their own registry', async (t) => {
+  // 旧配置跑过的 checkout 里 site/.astro/data-store.json 还留着（gitignored）：不看它在不在，看这两个站点写没写它。
+  const sharedStore = path.join(SITE, '.astro', 'data-store.json');
+  const storeStamp = () => (fs.existsSync(sharedStore) ? fs.statSync(sharedStore).mtimeMs : null);
+  const storeBefore = storeStamp();
   const [demo, other] = await Promise.all([devServer(t, 'demo'), devServer(t, 'other')]);
   for (let round = 0; round < 3; round++) {
     const [a, b] = await Promise.all([demo.get('/demo/payments/'), other.get('/other/intro/')]);
@@ -232,5 +236,5 @@ test('two dev servers from one checkout each serve their own registry', async (t
   const scripts = [...page.text.matchAll(/<script type="module" src="([^"]+)"/g)].map((m) => m[1]);
   assert.ok(scripts.length > 0, 'page has module scripts');
   for (const src of scripts) assert.equal((await demo.get(src))?.status, 200, src);
-  assert.ok(!fs.existsSync(path.join(SITE, '.astro', 'data-store.json')), 'no shared site/.astro content store');
+  assert.equal(storeStamp(), storeBefore, 'dev servers do not write the shared site/.astro content store');
 });
