@@ -10,8 +10,28 @@ import { E2E_BASE_URL, E2E_SITE_PORT } from './env.js';
 // 一个用例走完：冷启动那一下只发生一次，拆成多个用例就只有第一个看得到「启动中」。
 
 const ARTICLE = '/e2e-project/commit-confirm/';
+// 这篇的画布页 id（docs/projects.md「文章的画布」）：正文的画布卡片与“打开画布”都指向它。
+const CANVAS_PAGE = 'e2e-project_commit-confirm';
 
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
+
+// 冷启动的 Astro 开发服务器第一次出页后，vite 发现新依赖会让页面整页重载一次（时有时无，
+// 2026-10-13 实测在出页后约 300 ms）。重载途中点 [[ ]] 会落到普通链接上。等到 800 ms 内
+// 主框架不再导航、且已 load，再往下走。
+async function settled(page) {
+  let navs = 0;
+  const onNav = (frame) => { if (frame === page.mainFrame()) navs += 1; };
+  page.on('framenavigated', onNav);
+  try {
+    for (let seen = -1; seen !== navs;) {
+      seen = navs;
+      await page.waitForTimeout(800);
+      await page.waitForLoadState('load');
+    }
+  } finally {
+    page.off('framenavigated', onNav);
+  }
+}
 
 test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、概念页、llms.txt，工作台与深链照旧', async ({ page, request }) => {
   // 冷启动 Astro（依赖预构建 + content layer 同步）在高负载机器上要几十秒。
@@ -25,7 +45,8 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
   const sameOrigin = [];
   page.on('response', (res) => {
     const url = new URL(res.url());
-    if (url.origin === E2E_BASE_URL) sameOrigin.push({ path: url.pathname, search: url.search, status: res.status(), type: res.request().resourceType() });
+    // main：文章页自己发的请求；否则是画布卡片 iframe（/api/frame 帧页）里发的。
+    if (url.origin === E2E_BASE_URL) sameOrigin.push({ path: url.pathname, search: url.search, status: res.status(), type: res.request().resourceType(), main: res.frame() === page.mainFrame() });
   });
 
   await test.step('服务刚起：站点没拉起过（idle），端口是本轮的', async () => {
@@ -41,6 +62,8 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await expect(page.locator('main[data-site-state="starting"]')).toBeVisible();
     await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
     await expect(page.locator('#article .lede')).toHaveText('付款与提交前，agent 停下来请用户确认。');
+    await settled(page);
+    await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
     const site = await siteState(request);
     expect([site.state, site.external, site.warning]).toEqual(['ready', false, null]);
     // 启动中那几次 503 浏览器会记成「Failed to load resource」；从文章页起才算数。
@@ -53,10 +76,15 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-project_commit-confirm');
     const scripts = sameOrigin.filter((r) => r.type === 'script' && r.path.startsWith('/_astro/'));
     expect(scripts.length).toBeGreaterThan(0);
-    // 文章 HTML、Astro 内部资源、标注客户端与它的接口：此外不该有同源请求，也不该有失败。
-    const unexpected = sameOrigin.filter((r) => !(r.path === ARTICLE || r.path.startsWith('/_astro/')
+    // 文章页自己：文章 HTML、Astro 内部资源、标注客户端与它的接口（卡片的未处理数也读 /annotations）。
+    // 卡片 iframe：只有本篇画布页的帧，annotate=off；帧页里的资源（kit、article.css）只要求都成功。
+    // 此外不该有同源请求，也不该有失败。
+    const unexpected = sameOrigin.filter((r) => r.main && !(r.path === ARTICLE || r.path.startsWith('/_astro/')
       || /^\/annotate(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'));
     expect(unexpected).toEqual([]);
+    // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
+    await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual(
+      ['card-plain', 'confirm-done', 'confirm-sheet'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off`));
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
@@ -78,6 +106,32 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
 
     await page.locator('.cref[data-kind="article"][data-name="takeover"]').click();
     await expect(page.locator('.pop .k')).toHaveText('用户接手文章');
+  });
+
+  await test.step('画布卡片：有 Canvas 的两节各一张，帧真渲染，编号与节字母一致；打开画布落到那一节', async () => {
+    await page.keyboard.press('Escape');
+    const cards = page.locator('[data-pp-canvas]');
+    await expect(cards).toHaveCount(2);
+    expect(await cards.evaluateAll((els) => els.map((el) => [el.dataset.page, el.dataset.section, el.dataset.frames]))).toEqual([
+      [CANVAS_PAGE, 'confirm', 'confirm-sheet confirm-done'],
+      [CANVAS_PAGE, 'variants', 'card-plain'],
+    ]);
+    await expect(page.locator('#btn-canvas')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}`);
+    await expect(page.locator('[data-pp-canvas] .cap b')).toHaveText(['B1', 'B2', 'C1']);
+    await expect(page.locator('[data-pp-canvas-errors], [data-pp-missing], .cc-box .ph, .errors[role="alert"]')).toHaveCount(0);
+    // 每帧加载后量过机壳 / 组件台（data-fitted），帧里的内容来自本篇组件。
+    await expect(page.locator('[data-pp-canvas] .cc-box[data-fitted="1"]')).toHaveCount(3);
+    for (const screen of ['confirm-sheet', 'confirm-done', 'card-plain']) {
+      await expect(page.frameLocator(`[data-pp-canvas] [data-screen="${screen}"] iframe`).locator('.wb-screen').first()).toBeAttached();
+    }
+    await expect(page.frameLocator('[data-pp-canvas] [data-screen="card-plain"] iframe').locator('.e2e-confirm-card')).toBeVisible();
+    await page.locator('[data-pp-canvas][data-section="variants"] [data-pp-open]').click();
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, CANVAS_PAGE);
+    await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
+    await expect(page.locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
+    await expect(page.locator('#wb-board-panel [data-screen="card-plain"] .e2e-confirm-card')).toBeVisible();
+    await page.goto(ARTICLE);
+    await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
   });
 
   await test.step('从 popup 进概念页：/<project>/concepts/<slug>/，列出用到它的文章', async () => {
