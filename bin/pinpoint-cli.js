@@ -25,6 +25,7 @@ import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
 import { runCheck, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
 import { runList } from './cli/list.js';
+import { runMigrate } from './cli/migrate.js';
 
 // 原有导出面保持不变：测试与 bin/pinpoint.mjs 仍从这里 import。
 export {
@@ -100,6 +101,7 @@ export {
   runMark,
   runReply,
 } from './cli/annotate.js';
+export { formatPlan, formatVerify, runMigrate } from './cli/migrate.js';
 export {
   pageListRows,
   projectListRows,
@@ -133,6 +135,7 @@ export async function run(argv, io = {}) {
     case 'mark': return runMark(argv, io);
     case 'reply': return runReply(argv, io);
     case 'prune': return runPrune(argv, io);
+    case 'migrate': return runMigrate(argv, io);
     default:
       err(`错误：未知命令：${argv[0]}`);
       err(USAGE);

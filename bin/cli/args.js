@@ -2,9 +2,10 @@ import { DEFAULT_ORIGIN, CliError, ioOf } from './core.js';
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article']);
 const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project']);
-// 每个命令接受的选项与位置参数个数。folder / locate / shot / mark 的位置参数
+// 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
+// --project <根目录>；add 的 --project 仍是开关）。folder / locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft', 'project']) },
@@ -24,6 +25,7 @@ const COMMANDS = {
   mark: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   reply: { positional: null, flags: new Set(['registry', 'page']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
+  migrate: { positional: 1, flags: new Set(['registry', 'project', 'article', 'dry-run']), valueFlags: new Set(['project']) },
 };
 
 // `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
@@ -57,6 +59,8 @@ export const USAGE = `用法：
   pinpoint reply <引用> <回复>                          在一条正文评论的线程里回一句（agent 消息，不改状态）
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
   pinpoint prune <页> [--dry-run]                      删除该页桶里的孤儿账本（表面已不存在；--dry-run 只列不删）
+  pinpoint migrate <页> --project <根> [--article <id>] [--dry-run]
+                                                       把存量页迁成 project 里的一篇文章（旧页不动，标注留在旧页）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
 
 add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI 只登记路径/URL）：
@@ -170,6 +174,16 @@ list —— 把口头说的页对上页 id。每页两行：id · 标题 · 类�
   源文件（相对页目录）· 标题。编号（B3）按 board 顺序派生、调序就变；帧 id 不变，
   也是源文件名。owner 说“D1”时用它对上文件，写进留存文字时用 id。
 
+migrate —— 存量页 → 文章（docs/projects.md「从存量页迁移」）。每个 board section 成为正文的一节
+  （<Section> + <Canvas>，tab 摊平成二级标题），帧、用到的组件与 sidecar 照原相对路径复制，
+  comp 屏生成 <帧>.jsx，board.assets 的 css / js 成为 article.css / article.js，引用到的静态文件
+  进 assets/，/sites/<页>/… 换成 /sites/<画布页>/…。写完逐帧编译、和旧页的渲染逐行比，
+  有帧编不过或 shell 不一致退 1。
+  --project <根>   project 根目录，要已有 docs/pinpoint/project.json（不登记也能迁，登记了才能打开）
+  --article <id>   文章 id（缺省 = 页 id）；文章目录已存在就拒绝，不覆盖
+  --dry-run        只打印计划与 index.mdx，不写文件
+  旧页的文件和登记都不动；标注不迁移，留在旧页的桶里。
+
 prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面已不存在的账本：
   文档文件删了、条目改挂别页或从登记表移走了、页不在 registry 与 manifest 里
   了（整桶皆孤儿）。check / status --page 会把这些行单独列出（不计入 open 等
@@ -204,14 +218,15 @@ export function parseArgs(argv) {
     }
     const inline = arg.includes('=') ? arg.indexOf('=') : -1;
     const name = inline > 0 ? arg.slice(2, inline) : arg.slice(2);
-    if (BOOLEAN_FLAGS.has(name)) {
+    const takesValue = !!(spec.valueFlags && spec.valueFlags.has(name));
+    if (BOOLEAN_FLAGS.has(name) && !takesValue) {
       // 布尔开关：不吃下一个 token，也不许 --draft=xxx 带值。
       if (inline > 0) throw new CliError(`选项 --${name} 是开关，不带值`);
       if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 ${command}`);
       flags[name] = true;
       continue;
     }
-    if (!VALUE_FLAGS.has(name)) {
+    if (!VALUE_FLAGS.has(name) && !takesValue) {
       throw new CliError(`未知选项：--${name}`);
     }
     if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 ${command}`);
@@ -229,7 +244,7 @@ export function parseArgs(argv) {
   if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
   if (command === 'remove') return { command, id: positional[0], flags };
-  if (command === 'build' || command === 'render' || command === 'check' || command === 'prune') return { command, target: positional[0], flags };
+  if (command === 'build' || command === 'render' || command === 'check' || command === 'prune' || command === 'migrate') return { command, target: positional[0], flags };
   if (command === 'locate' || command === 'shot') {
     if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 帧 id / 段 id / 页 / @frame:p/s / @a:id）`);
     return { command, refs: positional, flags };
@@ -287,6 +302,9 @@ function positionalProblem(command, want, got) {
   }
   if (command === 'check') {
     return got === 0 ? 'check 需要一个页（registry 条目 id 或模板页 id）' : `check 只接受一个页，收到 ${got} 个`;
+  }
+  if (command === 'migrate') {
+    return got === 0 ? 'migrate 需要一个页（registry 条目 id 或模板页 id）' : `migrate 只接受一个页，收到 ${got} 个`;
   }
   if (command === 'prune') {
     return got === 0 ? 'prune 需要一个页（或桶 id）' : `prune 只接受一个页，收到 ${got} 个`;
