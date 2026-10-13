@@ -8,6 +8,7 @@ export default defineConfig({
   timeout: 30000,
   expect: { timeout: 5000 },
   globalSetup: './e2e/global-setup.js',
+  globalTeardown: './e2e/global-teardown.js',
   // 产物目录也按端口分家：两轮并发跑时，共用的 test-results/ 会让两边同时写
   // 同一个 trace zip，报错是「file data stream has unexpected number of bytes」
   // 这种读起来完全不像并发的样子（2026-09-05 实测）。默认端口保持原路径。

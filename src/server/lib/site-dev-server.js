@@ -9,7 +9,11 @@
  *   5 次，或者连续 2 次没就绪就退出，进 failed，不再自动拉。failed 之后的请求
  *   距上次失败超过 5s 才重试一次，避免自动刷新的错误页把进程拉成死循环。
  * - 跟服务一起停：stop() 给整个进程组发 SIGTERM（npm → astro 两层），3s 没退
- *   再 SIGKILL；stopSync() 给 process 'exit' 兜底。
+ *   再 SIGKILL；stopSync() 给 process 'exit' 兜底。子进程是 detached（自己一个
+ *   进程组），服务被信号杀掉时不会连带它，'exit' 也不触发（Node 对 SIGTERM 的缺省
+ *   处理是直接退出），所以 stopOnSignals() 在 SIGTERM / SIGINT / SIGHUP 时先同步
+ *   停站点，再照原样把信号交还给进程（2026-10-13：e2e 结束后站点留成孤儿，下一轮
+ *   把它当 external 用）。
  * - 端口上已经有服务在答（owner 自己跑着 npm run site:dev）：不再 spawn，直接
  *   用它，snapshot 里 external: true。
  *
@@ -74,6 +78,25 @@ function killGroup(pid, signal) {
       return false;
     }
   }
+}
+
+export const SHUTDOWN_SIGNALS = Object.freeze(['SIGTERM', 'SIGINT', 'SIGHUP']);
+
+/**
+ * 服务收到 SIGTERM / SIGINT / SIGHUP 时先 devServer.stopSync()（给站点进程组发
+ * SIGTERM），再交还信号：别的监听者（比如 vite 自己的 SIGTERM 收尾）还在就让它们
+ * 处理；没有了就按缺省行为用同一个信号结束自己。返回撤销函数。proc 供测试替换。
+ */
+export function stopOnSignals(devServer, proc = process) {
+  const handlers = SHUTDOWN_SIGNALS.map((signal) => {
+    const handler = () => {
+      devServer.stopSync();
+      if (proc.listenerCount(signal) === 0) proc.kill(proc.pid, signal);
+    };
+    proc.once(signal, handler);
+    return [signal, handler];
+  });
+  return () => { for (const [signal, handler] of handlers) proc.off(signal, handler); };
 }
 
 /**

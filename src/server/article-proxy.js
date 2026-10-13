@@ -23,7 +23,7 @@ import { resolveArticleTarget } from './lib/article-board.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { articlePageId } from './lib/projects.js';
 import { parseReqUrl } from './lib/req-url.js';
-import { createSiteDevServer } from './lib/site-dev-server.js';
+import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
 
 const HOP_BY_HOP = new Set([
   'connection', 'keep-alive', 'proxy-authenticate', 'proxy-authorization',
@@ -262,6 +262,8 @@ export default function articleProxy(options = {}) {
         server.httpServer.once('close', () => { devServer.stop(); });
       }
       process.once('exit', () => devServer.stopSync());
+      // 被信号杀掉时 'exit' 不触发，detached 的站点进程组也不会连带：先停它。
+      stopOnSignals(devServer);
     },
   };
 }

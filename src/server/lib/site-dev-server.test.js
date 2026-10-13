@@ -6,9 +6,13 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { createSiteDevServer, DEFAULT_SITE_COMMAND, probeHttp, siteDevConfig } from './site-dev-server.js';
+import { spawn } from 'node:child_process';
+import { EventEmitter } from 'node:events';
+
+import { createSiteDevServer, DEFAULT_SITE_COMMAND, probeHttp, SHUTDOWN_SIGNALS, siteDevConfig, stopOnSignals } from './site-dev-server.js';
 
 const STUB = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'site-dev-stub.mjs');
+const HOST = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', 'fixtures', 'site-dev-host.mjs');
 
 function freePort() {
   return new Promise((resolve, reject) => {
@@ -131,4 +135,43 @@ test('端口上已有服务在答：直接用它（external），vite base 不�
   dev.noteUnreachable();
   assert.equal(dev.snapshot().state, 'idle');
   assert.equal(dev.snapshot().external, false);
+});
+
+// 2026-10-13：服务被 SIGTERM 杀掉时，detached 的站点进程组留成孤儿，下一轮 e2e 把它当 external。
+for (const signal of ['SIGTERM', 'SIGINT']) {
+  test(`服务收到 ${signal}：站点进程组跟着停，服务按同一个信号退出`, async (t) => {
+    const port = await freePort();
+    const host = spawn(process.execPath, [HOST, String(port)], { stdio: ['ignore', 'pipe', 'inherit'] });
+    t.after(() => { try { host.kill('SIGKILL'); } catch { /* gone */ } });
+    let out = '';
+    host.stdout.on('data', (chunk) => { out += chunk; });
+    const ready = JSON.parse(await until(() => (out.includes('\n') ? out.split('\n')[0] : null)));
+    assert.equal(ready.state, 'ready');
+    assert.ok(pidAlive(ready.pid));
+    t.after(() => { try { process.kill(-ready.pid, 'SIGKILL'); } catch { /* gone */ } });
+    const exited = new Promise((resolve) => host.once('exit', (code, sig) => resolve({ code, sig })));
+    host.kill(signal);
+    assert.deepEqual(await exited, { code: null, sig: signal });
+    await until(() => !pidAlive(ready.pid));
+    await until(async () => (await probeHttp(port, '/_astro/@vite/client')) === null);
+  });
+}
+
+test('stopOnSignals：别的监听者还在就把信号留给它们；撤销后不再响应', () => {
+  const calls = [];
+  const fake = new (class extends EventEmitter {
+    pid = 4242;
+    kill(pid, signal) { calls.push(['kill', pid, signal]); }
+  })();
+  const dev = { stopSync: () => calls.push(['stopSync']) };
+  const off = stopOnSignals(dev, fake);
+  for (const signal of SHUTDOWN_SIGNALS) assert.equal(fake.listenerCount(signal), 1);
+  fake.on('SIGTERM', () => calls.push(['vite']));
+  fake.emit('SIGTERM');
+  assert.deepEqual(calls, [['stopSync'], ['vite']]); // vite 自己收尾，不再重发
+  calls.length = 0;
+  fake.emit('SIGHUP');
+  assert.deepEqual(calls, [['stopSync'], ['kill', 4242, 'SIGHUP']]); // 没有别人：按缺省行为退出
+  off();
+  assert.equal(fake.listenerCount('SIGINT'), 0);
 });
