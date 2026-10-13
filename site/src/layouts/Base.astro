@@ -1,5 +1,5 @@
 ---
-// 站点外壳：顶栏（project 面包屑 + 概念 + 深浅色）、左目录、正文、右评论栏占位、概念抽屉。
+// 站点外壳：顶栏（project 面包屑 + 画布视图 + 概念 + 深浅色）、左目录、正文、右评论栏占位、概念抽屉。
 // 样子照 tasks/2026-10-13-pp3/preview/index.html。
 import '../styles/site.css';
 
@@ -15,8 +15,10 @@ interface Props {
   rail?: boolean;
   drawer?: { have: DrawerItem[]; empty: DrawerItem[] };
   errors?: string[];
+  /** 文章的画布视图（/?page=<articlePageId>）；没有画布节的文章不传。 */
+  canvasHref?: string;
 }
-const { title, description, project, crumbs, toc, rail = false, drawer, errors = [] } = Astro.props;
+const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref } = Astro.props;
 const layoutClass = toc ? (rail ? 'layout' : 'layout no-rail') : 'layout single';
 const llms = `/${encodeURIComponent(project)}/llms.txt`;
 ---
@@ -43,6 +45,7 @@ const llms = `/${encodeURIComponent(project)}/llms.txt`;
         ))}
       </div>
       <div class="sp"></div>
+      {canvasHref && <a class="btn" id="btn-canvas" href={canvasHref} target="_top">画布视图</a>}
       {drawer && (
         <button class="btn" id="btn-concepts" type="button" aria-controls="drawer" aria-expanded="false">
           概念{drawer.empty.length > 0 && <span> · {drawer.empty.length} 个空 ref</span>}

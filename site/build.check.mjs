@@ -1,6 +1,7 @@
 // Site build test (npm run test:site): builds the fixture projects with a temp
 // registry and checks routes, [[ ]] resolution (incl. empty and cross-project
-// refs), sections/TOC, llms.txt, and that a namespace collision fails the build.
+// refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
+// links, error box), and that a namespace collision fails the build.
 // Not in the default `npm test`: two real Astro builds take ~10 s.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -9,6 +10,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
+import { articlePageId } from './src/lib/canvas-source.js';
 
 const SITE = fileURLToPath(new URL('.', import.meta.url));
 const ASTRO = fileURLToPath(new URL('../node_modules/astro/bin/astro.mjs', import.meta.url));
@@ -32,13 +34,21 @@ function build(t, ids) {
 const refs = (html) => [...html.matchAll(/<(?:a|span) class="cref( empty)?"[^>]*data-kind="(\w+)" data-name="([^"]*)" data-project="([^"]*)"[^>]*>([^<]*)</g)]
   .map((m) => ({ kind: m[2], name: m[3], project: m[4], label: m[5] }));
 
+const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** Canvas cards in document order: each card runs to the next card, section or </main>. */
+const cardsOf = (html) => [...html.matchAll(/<div class="canvas-card" data-pp-canvas data-page="([^"]*)" data-section(?:="([^"]*)")?[^>]*?data-frames(?:="([^"]*)")?>([\s\S]*?)(?=<div class="canvas-card"|<\/section>|<\/main>)/g)]
+  .map((m) => ({ page: m[1], section: m[2] || '', frames: m[3] || '', html: m[0] }));
+const iframesOf = (html) => [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m) => m[1]);
+const linksOf = (html) => [...html.matchAll(/<a class="(?:btn|cc-hit)"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
+
 test('fixture site builds every route and resolves [[ ]]', (t) => {
-  const b = build(t, ['demo', 'other']);
+  const b = build(t, ['demo', 'other', 'broken']);
   assert.equal(b.status, 0, b.log);
 
   for (const rel of [
     'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
     'other/index.html', 'other/intro/index.html', 'other/concepts/payee/index.html', 'other/llms.txt',
+    'broken/broken-canvas/index.html',
   ]) assert.ok(fs.existsSync(path.join(b.out, rel)), `missing route ${rel}`);
 
   const article = b.read('demo/payments/index.html');
@@ -60,7 +70,47 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   // Sections: stable ids, letters, TOC.
   assert.deepEqual([...article.matchAll(/<section class="sec" id="([^"]+)"[^>]*data-letter="([A-Z])"/g)].map((m) => `${m[2]}:${m[1]}`), ['A:overview', 'B:flow', 'C:mech']);
   assert.deepEqual([...article.matchAll(/<a href="#([^"]+)"><span class="n">([A-Z])<\/span>/g)].map((m) => `${m[2]}:${m[1]}`), ['A:overview', 'B:flow', 'C:mech']);
-  assert.match(article, /data-pp-canvas>画布卡片（M1）</);
+
+  // Canvas cards: one per Section with a <Canvas>, only that section's frames; lazy, inert iframes; links open the canvas at the section.
+  const page = articlePageId('demo', 'payments');
+  const q = (s) => s.replace(/&/g, '&amp;');
+  const cards = cardsOf(article);
+  assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm'], [page, 'mech', 'pay-button']]);
+  const [flow, mech] = cards;
+  assert.match(flow.html, /<span class="ref">B<\/span><span class="t">付款前的确认<\/span><span class="meta">B1–B2 · 2 帧<\/span>/);
+  assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off`)));
+  for (const tag of flow.html.match(/<iframe [^>]*>/g)) {
+    assert.match(tag, /loading="lazy"/);
+    assert.match(tag, /tabindex="-1"/);
+  }
+  const open = q(`/?page=${encodeURIComponent(page)}&section=flow`);
+  assert.deepEqual(linksOf(flow.html), [open, open, open]); // 打开画布 + one per frame
+  assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
+  assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2']);
+  assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:343px"/);
+  assert.match(flow.html, /data-pp-badge hidden>/); // badge filled only from the live annotation ledger
+  assert.doesNotMatch(flow.html, /data-pp-canvas-errors/);
+  // A non-phone shell is not sized as a 393×852 phone.
+  assert.match(mech.html, /data-shell="comp"/);
+  assert.match(mech.html, /class="cc-box natural"/);
+  assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
+  assert.deepEqual(linksOf(mech.html), Array(2).fill(q(`/?page=${encodeURIComponent(page)}&section=mech`)));
+  // Top bar: the article's canvas view.
+  assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
+  assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas/); // no Canvas, no canvas view
+
+  // Error state: cross-page ref and missing frame are listed in the card, the valid frame still shows; a Canvas outside a Section says so.
+  const broken = b.read('broken/broken-canvas/index.html');
+  const [stray, bad] = cardsOf(broken);
+  assert.equal(stray.section, '');
+  assert.match(stray.html, /data-pp-canvas-errors><b>[^<]+<\/b><ul><li>&lt;Canvas&gt; 要写在 &lt;Section&gt; 里/);
+  assert.equal(bad.section, 'bad');
+  assert.deepEqual([...bad.html.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]), [
+    '帧 &quot;browser-e2e-flow/ask&quot; 引用了别的页；先把帧迁进本篇目录',
+    '找不到帧 &quot;gone&quot;：本篇目录下没有 gone.jsx',
+  ]);
+  assert.match(bad.html, /role="alert" data-pp-canvas-errors/);
+  assert.deepEqual(iframesOf(bad.html), [q(`/api/frame?page=${encodeURIComponent(articlePageId('broken', 'broken-canvas'))}&screen=ask&annotate=off`)]);
 
   const home = b.read('demo/index.html');
   assert.deepEqual([...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['付款授权', '撤回窗口', '支付页识别']);

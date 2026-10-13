@@ -1,5 +1,56 @@
 ---
-// <Canvas />：画布卡片占位。真实卡片（每帧懒加载 iframe + 打开画布并定位到本 section）由 M1 包 F 实现。
-// 现在接受任意 props 并原样忽略，作者可以先写上。
+// <Canvas frames={["<帧 id>", …]} shell?="comp" />：一节的画布卡片（common-m1.md §1、§3）。
+// 只显示所在 Section 那一行的帧；数据来自文章页放进 Astro.locals.ppCanvas 的 articleCanvas()（lib/canvas-source.js），
+// 不信本组件自己的 props：section 由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
+// 卡片不可交互：iframe tabindex -1、pointer-events none，点帧或“打开画布”都是顶层跳转到画布并定位到这一节。
+import { cardModel } from '../lib/canvas-card.js';
+
+interface Props { section?: string; frames?: unknown; shell?: string }
+const { section } = Astro.props;
+const m = cardModel(Astro.locals.ppCanvas, section);
+const { box } = m;
+const boxStyle = `width:${Math.round(box.width * box.scale)}px;height:${Math.round(box.height * box.scale)}px`;
+const frameStyle = `width:${box.width}px;height:${box.height}px;transform:scale(${box.scale})`;
 ---
-<div class="canvas-stub" data-pp-canvas>画布卡片（M1）</div>
+<div
+  class="canvas-card"
+  data-pp-canvas
+  data-page={m.pageId}
+  data-section={m.sectionId}
+  data-shell={m.shell || undefined}
+  data-frames={m.frames.map((f) => f.id).join(' ')}
+>
+  <div class="cc-head">
+    <span class="kind">画布</span>
+    {m.letter && <span class="ref">{m.letter}</span>}
+    {m.title && <span class="t">{m.title}</span>}
+    {m.frames.length > 0 && <span class="meta">{m.meta}</span>}
+    <span class="sp"></span>
+    <span class="cc-badge" data-pp-badge hidden></span>
+    {m.href && <a class="btn" data-pp-open href={m.href} target="_top">打开画布 →</a>}
+  </div>
+  {m.errors.length > 0 && (
+    <div class="cc-errors" role="alert" data-pp-canvas-errors>
+      <b>这张画布卡片有错误</b>
+      <ul>{m.errors.map((e) => <li>{e}</li>)}</ul>
+    </div>
+  )}
+  {m.frames.length > 0 && (
+    <div class="cc-strip">
+      {m.frames.map((f) => (
+        <figure class="cc-frame" data-screen={f.id}>
+          <figcaption class="cap"><b>{f.ref}</b>{f.title}</figcaption>
+          <div class:list={['cc-box', box.mode]} data-scale={box.scale} data-fit-width={box.fitWidth} style={boxStyle}>
+            <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={`${f.ref} ${f.title}`} style={frameStyle}></iframe>
+          </div>
+          <a class="cc-hit" href={m.href} target="_top" aria-label={`在画布中打开 ${f.ref} ${f.title}`}></a>
+        </figure>
+      ))}
+    </div>
+  )}
+</div>
+
+<script>
+  import { initCanvasCards } from '../lib/canvas-card-client.js';
+  initCanvasCards();
+</script>

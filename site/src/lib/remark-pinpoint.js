@@ -7,6 +7,9 @@
  * - <Section id title> in MDX → gets `letter` (A, B …) in document order;
  *   the list lands in frontmatter `sections` for the TOC. Missing / bad /
  *   duplicate ids and nested sections fail the build with the file path.
+ * - <Canvas> inside a Section → gets `section="<that id>"` (an author-written
+ *   `section` is replaced), so the card knows which canvas row it shows.
+ *   A Canvas outside any Section gets nothing; the card renders the error.
  *
  * The current project id comes from <root>/docs/pinpoint/project.json above
  * the file, so the pass needs no registry.
@@ -73,7 +76,7 @@ export function remarkPinpoint() {
     const sections = [];
     const fail = (msg) => { throw new Error(`${filePath}: ${msg}`); };
 
-    const walk = (node, inSection) => {
+    const walk = (node, inSection, sectionId) => {
       if (!node.children) return;
       // Merge adjacent text nodes so a ref split by the parser is still seen.
       for (let i = node.children.length - 1; i > 0; i--) {
@@ -90,6 +93,7 @@ export function remarkPinpoint() {
         }
         if (SKIP.has(child.type)) continue;
         let nested = inSection;
+        let nestedId = sectionId;
         if (isMdx && (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') && child.name === 'Section') {
           if (inSection) fail('<Section> cannot be nested inside another <Section>');
           const id = attr(child, 'id');
@@ -102,11 +106,16 @@ export function remarkPinpoint() {
           child.attributes = (child.attributes || []).filter((a) => a.name !== 'letter');
           child.attributes.push({ type: 'mdxJsxAttribute', name: 'letter', value: letter });
           nested = true;
+          nestedId = id;
         }
-        walk(child, nested);
+        if (isMdx && (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') && child.name === 'Canvas') {
+          child.attributes = (child.attributes || []).filter((a) => a.name !== 'section');
+          if (sectionId) child.attributes.push({ type: 'mdxJsxAttribute', name: 'section', value: sectionId });
+        }
+        walk(child, nested, nestedId);
       }
     };
-    walk(tree, false);
+    walk(tree, false, null);
 
     if (isMdx) {
       file.data.astro ??= {};
