@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
@@ -11,6 +12,8 @@ import {
   routeArticleRequest,
   routeArticleUpgrade,
 } from './article-routes.js';
+import { loadRegistry } from './registry.js';
+import { createRegistryStore } from './registry-store.js';
 
 const projects = new Set(['browser-use', 'demo']);
 const isProject = (id) => projects.has(id);
@@ -92,4 +95,23 @@ test('保留首段：仓库根下 vite 会静态服务的目录名（符合 id �
     .filter((name) => /^[a-z0-9][a-z0-9-]*$/.test(name))
     .filter((name) => !isReservedSegment(name));
   assert.deepEqual(missing, []);
+});
+
+test('isProjectId 读真实 registry：loadRegistry 结果与 live store 都只认 kind project，页条目不算', (t) => {
+  const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+  const dir = fs.mkdtempSync(path.join(fs.realpathSync(os.tmpdir()), 'pp-routes-reg-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const file = path.join(dir, 'registry.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [
+    { id: 'e2e-project', kind: 'project', path: path.join(root, 'e2e', 'project-site') },
+    { id: 'a-page', kind: 'dir', path: root },
+  ] }));
+  for (const registry of [loadRegistry({ root, path: file, log: () => {} }), createRegistryStore({ root, path: file, log: () => {} })]) {
+    assert.equal(isProjectId(registry, 'e2e-project'), true);
+    assert.equal(isProjectId(registry, 'a-page'), false);
+    assert.equal(isProjectId(registry, 'nope'), false);
+    assert.deepEqual(routeArticleRequest('/e2e-project/takeover/', (id) => isProjectId(registry, id)),
+      { kind: 'article', project: 'e2e-project', upstream: '/_astro/e2e-project/takeover/' });
+    assert.equal(routeArticleRequest('/a-page/', (id) => isProjectId(registry, id)), null);
+  }
 });
