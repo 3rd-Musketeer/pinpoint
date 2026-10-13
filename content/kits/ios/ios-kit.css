@@ -545,6 +545,14 @@
 
 /* ============================================================================
    SHEET (bottom modal)
+   Sibling of .ios-app, never inside it. Closed by default (translated off-screen):
+   a frame that shows it open writes class "open" on both pieces.
+     <div class="ios-sheet-backdrop open"></div>
+     <div class="ios-sheet open">
+       <div class="ios-grabber"></div>
+       <div class="ios-sheet-body">…content…</div>   (scrolls, pads the home bar)
+     </div>
+   Interactive frames: [data-sheet-open="<id>"] on a button + id on .ios-sheet (ios-kit.js).
    ========================================================================= */
 .ios-sheet-backdrop {
   position:absolute; inset:0; z-index:50; background:rgba(0,0,0,.4);

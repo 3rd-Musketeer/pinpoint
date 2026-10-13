@@ -117,6 +117,20 @@ section 写 `"shell": "comp"` 后，它的 screen 条目直接喂组件：
   `.ios-sheet-backdrop` / `.ios-tabbar` 用 `position:absolute` 相对 `.ios-screen`（手机视口）定位，
   所以必须落在 fragment 顶层、`.ios-app` 之外。错挂的症状：sheet 关着仍占滚动溢出、开着时贴内容底
   而非手机底。sidecar 里 overlay 不在 `root` 内，用 `root.closest('.ios-screen')` 或 `document` 取。
+- **sheet 的结构**：`.ios-sheet` 缺省收在屏外，画“打开的 sheet”这一帧要在它和 backdrop 上都写 `open`；
+  里面是 `.ios-grabber`（把手）加 `.ios-sheet-body`（滚动、留出 Home 条）。少了 `open`，帧里看不到
+  sheet；内容不放进 `.ios-sheet-body`，贴边、不留 Home 条。模板也在 `ios-kit.css` 的 SHEET 段注释里。
+
+  ```jsx
+  <>
+    <div class="ios-app">…</div>
+    <div class="ios-sheet-backdrop open"></div>
+    <div class="ios-sheet open">
+      <div class="ios-grabber"></div>
+      <div class="ios-sheet-body">…</div>
+    </div>
+  </>
+  ```
 - **safe area 走 token**：`--ios-safe-top`（避 Dynamic Island）/ `--ios-safe-bottom`（Home 条）/
   `--ios-sb-h`（状态栏本身），变量在 `ios-kit.css`。自定义顶栏 `padding-top: var(--ios-safe-top)`、
   `height: calc(var(--ios-safe-top) + 44px)`；底栏 / composer 的 padding 含 `var(--ios-safe-bottom)`。
