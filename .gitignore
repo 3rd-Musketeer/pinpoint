@@ -8,3 +8,9 @@ test-results-*/
 # Instance-local overrides (never shared)
 *.local.md
 .tmp/
+
+# Astro site (site/) build output and caches
+site/dist/
+site/.astro/
+site/.astro-cache/
+site/node_modules/

@@ -1,0 +1,33 @@
+---
+import Base from '../../../../layouts/Base.astro';
+import { loadSite, assertBuildClean, projectHref, resolveRawRefs } from '../../../../lib/site-data.js';
+
+export async function getStaticPaths() {
+  const site = await loadSite();
+  assertBuildClean(site);
+  return [...site.projects.values()].flatMap((p) =>
+    p.concepts.map((c) => ({ params: { project: p.id, name: c.name }, props: { projectId: p.id, name: c.name } })));
+}
+
+const { projectId, name } = Astro.props;
+const site = await loadSite();
+const p = site.projects.get(projectId);
+const c = p.concepts.find((x) => x.name === name);
+const body = resolveRawRefs(c.entry.rendered?.html, site);
+---
+<Base title={`${c.name} · ${p.title}`} description={c.definition} project={p.id}
+  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: '概念' }, { label: c.name }]} errors={p.errors}>
+  <div class="prose">
+    <div class="label">概念<span class={`st-chip${c.fixed ? ' ok' : ''}`}>{c.status}</span></div>
+    <h1>{c.name}</h1>
+    {c.definition && <p class="lede">{c.definition}</p>}
+  </div>
+  {body.trim() && <div class="article-body block" set:html={body} />}
+  <section class="block prose" id="used-by">
+    <div class="label">用到它的文章</div>
+    {c.usedBy.length === 0 && <p class="muted">还没有文章引用。</p>}
+    <div class="cards">
+      {c.usedBy.map((a) => <a class="card" href={a.href}><div class="t">{a.title}</div>{a.summary && <div class="s">{a.summary}</div>}</a>)}
+    </div>
+  </section>
+</Base>

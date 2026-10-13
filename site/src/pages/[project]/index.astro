@@ -1,0 +1,59 @@
+---
+import Base from '../../layouts/Base.astro';
+import { loadSite, assertBuildClean } from '../../lib/site-data.js';
+
+export async function getStaticPaths() {
+  const site = await loadSite();
+  assertBuildClean(site);
+  return [...site.projects.keys()].map((id) => ({ params: { project: id }, props: { projectId: id } }));
+}
+
+const { projectId } = Astro.props;
+const site = await loadSite();
+const p = site.projects.get(projectId);
+const empty = [...p.emptyRefs.entries()].sort((x, y) => y[1].length - x[1].length || x[0].localeCompare(y[0], 'zh'));
+const sourceLabel = (s) => (s.kind === 'article' ? s.title : `概念 ${s.name}`);
+---
+<Base title={p.title} project={p.id} crumbs={[{ label: p.title }]} errors={[...p.errors, ...(site.projects.size ? [] : site.errors)]}>
+  <div class="prose">
+    <div class="label">project · {p.id}</div>
+    <h1>{p.title}</h1>
+    <p class="lede">{p.articles.length} 篇文章，{p.concepts.length} 个概念，{empty.length} 个空 ref。</p>
+  </div>
+
+  <section class="block prose" id="articles">
+    <div class="label">文章</div>
+    {p.articles.length === 0 && <p class="muted">还没有文章。</p>}
+    <div class="cards">
+      {p.articles.map((a) => (
+        <a class="card" href={a.href}><div class="t">{a.title}</div>{a.summary && <div class="s">{a.summary}</div>}</a>
+      ))}
+    </div>
+  </section>
+
+  <section class="block prose" id="concepts">
+    <div class="label">概念</div>
+    {p.concepts.length === 0 && <p class="muted">还没有概念页。</p>}
+    <div class="cards">
+      {p.concepts.map((c) => (
+        <a class="card" href={c.href}>
+          <div class="t">{c.name}<span class={`st-chip${c.fixed ? ' ok' : ''}`}>{c.status}</span></div>
+          {c.definition && <div class="s">{c.definition}</div>}
+        </a>
+      ))}
+    </div>
+  </section>
+
+  <section class="block prose" id="empty-refs">
+    <div class="label">空 ref（还没有页）</div>
+    {empty.length === 0 && <p class="muted">没有。</p>}
+    <ul class="list">
+      {empty.map(([name, sources]) => (
+        <li data-empty-ref={name}>
+          <span class="cref empty">{name}</span>
+          <span class="c">{sources.map((s) => sourceLabel(s)).join('、')}</span>
+        </li>
+      ))}
+    </ul>
+  </section>
+</Base>

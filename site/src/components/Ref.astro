@@ -1,0 +1,8 @@
+---
+// [[ ]] 引用（remark-pinpoint 生成，作者不直接写）：渲染时解析，后加的 concept 不用改文章就能连上。
+import { loadSite } from '../lib/site-data.js';
+interface Props { raw: string; from: string }
+const { raw, from } = Astro.props;
+const site = Astro.locals.ppSite || (Astro.locals.ppSite = await loadSite());
+---
+<Fragment set:html={site.renderRef(raw, from)} />
