@@ -179,6 +179,16 @@ async function buildSnapshot(page, job) {
     });
     const section = job.kind === 'page' ? null : target.closest('.wb-lib-item');
     const screen = job.kind === 'frame' ? target : null;
+    // 板级装载把帧里只有 @import 的 <style>（board assets.css、文章的 article.css、
+    // 作者手写的页 CSS）去重后提到 .wb-library 开头（src/workbench/lib/hoist-imports.js），
+    // 帧 / 节的克隆里就没有它们了。把画布上实际生效的这几条带进快照，出图与画布同一套样式；
+    // 整页快照的 target 就是 .wb-library，本来就带着。
+    const hoisted = job.kind === 'page'
+      ? ''
+      : [...panel.querySelector('.wb-library').children]
+        .filter((node) => node.tagName === 'STYLE')
+        .map((node) => node.outerHTML)
+        .join('');
     return {
       kind: job.kind === 'page' ? 'section' : job.kind,
       pageId: window.workbench.activePageId(),
@@ -189,7 +199,7 @@ async function buildSnapshot(page, job) {
       scale: job.scale,
       background: 'canvas',
       tokens,
-      html: clone.outerHTML,
+      html: hoisted + clone.outerHTML,
     };
   }, { job, pinCss: PIN_CSS });
 }

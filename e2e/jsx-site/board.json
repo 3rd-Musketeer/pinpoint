@@ -20,5 +20,6 @@
         { "id": "badge-hot", "title": "热", "comp": "Badge", "props": { "label": "热" } }
       ]
     }
-  ]
+  ],
+  "assets": { "css": ["page.css"] }
 }
