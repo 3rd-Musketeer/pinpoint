@@ -2,7 +2,7 @@
  * 正文评论的行与线程（pp3 M2）。纯数据、不碰 DOM：注入客户端与 node 测试共用。
  *
  * 一条正文评论是 @prose 账本里的一行（与画布标注同桶、同一套 #n 与状态机）：
- *   { id, n, type: 'prose', status, content, quote: { exact, prefix, suffix },
+ *   { id, n, type: 'prose', status, content, quote: { exact, prefix, suffix, start? },
  *     section, path, created_at, messages: [{ who: 'owner' | 'agent', text, at }] }
  * content 是 owner 的第一句（列表、ppnt check 照常读它）；之后的来回在 messages。
  * agent 的消息只经服务端 /reply 写（ppnt reply），不改状态。
@@ -25,7 +25,13 @@ export function newProseRow({ id, content, quote, section = '', path = '', at })
     type: 'prose',
     status: 'open',
     content: String(content ?? ''),
-    quote: { exact: quote.exact, prefix: quote.prefix || '', suffix: quote.suffix || '' },
+    quote: {
+      exact: quote.exact,
+      prefix: quote.prefix || '',
+      suffix: quote.suffix || '',
+      // 选中时在规范化文本里的位置：只在重复引文平分时作提示（src/shared/text-quote.js）。
+      ...(Number.isInteger(quote.start) ? { start: quote.start } : {}),
+    },
     section: section || '',
     path: path || '',
     created_at: at,

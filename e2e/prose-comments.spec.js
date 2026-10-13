@@ -211,3 +211,20 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
 
   expect(pageErrors).toEqual([]);
 });
+    await test.step('改折行：被评的两句在源文件里拆成两行，评论照样定位，不标失效', async () => {
+      const rewrapped = original
+        .replace('钱什么时候会被扣', '钱什么时候\n会被扣')
+        .replace('先停下，确认卡写清收款方。', '先停下，确认卡写清\n收款方。');
+      expect(rewrapped).not.toBe(original);
+      fs.writeFileSync(SOURCE, rewrapped);
+      await expect(async () => {
+        await page.reload();
+        expect(await page.evaluate(() => document.querySelector('#why').textContent.includes('什么时候\n会被扣'))).toBe(true);
+      }).toPass({ timeout: 30_000 });
+      await settled(page);
+      const marked = (sel) => page.evaluate((s) => [...document.querySelectorAll(s + ' mark.pp-hl')].map((m) => m.textContent).join('').replace(/\s/g, ''), sel);
+      await expect.poll(() => marked('#why')).toBe('始终知道钱什么时候会被扣');
+      await expect.poll(() => marked('#how')).toBe('确认卡写清收款方');
+      await expect(page.locator('.pp-stale')).toHaveCount(0);
+    });
+

@@ -6,15 +6,16 @@
  * `<project>_<article>`），账本固定 @prose，与这篇画布的 @canvas 同桶、同一套 #n
  * 和状态机；GET /annotations 水合、POST /save 带 baseRevision、/events 同步。
  *
- * 锚点：src/shared/text-quote.js（exact + prefix / suffix + section 提示）。正文
- * 被抽成一条规范化文本（buildTextIndex：空白连成一个空格，块元素边界补一个空格），
- * 每次重画都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
+ * 锚点：src/shared/text-quote.js（exact + prefix / suffix + section 与 start 提示）。
+ * 正文被抽成一条规范化文本（buildTextIndex：块元素边界算一处空白，再交给
+ * normalizeWhitespace —— 两个 CJK 字之间的空白算没有，其余连成一个空格），每次重画
+ * 都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
  * 画布卡片（[data-pp-canvas]）、脚本、错误条不进文本，选区落在那里不出“评论”。
  *
  * 写入是操作队列（src/shared/prose-thread.js applyProseOps）：保存撞上 409 时把
  * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。 */
 
-import { locateQuote, quoteFromText } from '../shared/text-quote.js';
+import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
 import {
   applyProseOps,
   authorLabel,
@@ -45,41 +46,32 @@ function esc(text) {
   });
 }
 
-/** 正文 → 规范化文本 + 每个文本节点的偏移表（map[k] = 原文第 k 个字符之前的规范化长度）。 */
+/** 正文 → 规范化文本 + 每个文本节点的偏移表（map[k] = 该节点第 k 个字符在规范化文本里的位置）。 */
 export function buildTextIndex(root) {
-  var parts = [];
-  var length = 0;
-  var lastSpace = true; // 开头的空白不进文本
-  var nodes = [];
-  function emit(ch) { parts.push(ch); length += 1; }
+  var raw = '';
+  var entries = [];
   function walk(el) {
     for (var child = el.firstChild; child; child = child.nextSibling) {
       if (child.nodeType === 3) {
-        var raw = child.data;
-        var map = new Array(raw.length + 1);
-        for (var k = 0; k < raw.length; k++) {
-          map[k] = length;
-          var c = raw.charAt(k);
-          if (/\s/.test(c)) {
-            if (!lastSpace) { emit(' '); lastSpace = true; }
-          } else {
-            emit(c);
-            lastSpace = false;
-          }
-        }
-        map[raw.length] = length;
-        nodes.push({ node: child, start: map[0], end: length, map: map });
+        entries.push({ node: child, at: raw.length });
+        raw += child.data;
       } else if (child.nodeType === 1) {
         if (child.matches(SKIP_SELECTOR)) continue;
         var block = BLOCK_TAGS.test(child.tagName);
-        if (block && !lastSpace) { emit(' '); lastSpace = true; }
+        if (block) raw += ' ';
         walk(child);
-        if (block && !lastSpace) { emit(' '); lastSpace = true; }
+        if (block) raw += ' ';
       }
     }
   }
   walk(root);
-  return { text: parts.join(''), nodes: nodes };
+  var norm = normalizeWhitespace(raw);
+  var nodes = entries.map(function (e) {
+    var len = e.node.data.length;
+    var map = norm.map.slice(e.at, e.at + len + 1);
+    return { node: e.node, start: map[0], end: map[len], map: map };
+  });
+  return { text: norm.text, nodes: nodes };
 }
 
 function sectionOfNode(node) {
@@ -556,7 +548,7 @@ export function startProseComments(options) {
     var quote = quoteFromText(index.text, offsets.start, offsets.end);
     if (!quote) return null;
     return {
-      quote: { exact: quote.exact, prefix: quote.prefix, suffix: quote.suffix },
+      quote: { exact: quote.exact, prefix: quote.prefix, suffix: quote.suffix, start: quote.start },
       start: quote.start,
       end: quote.end,
       section: sectionAtFor(index)(quote.start),

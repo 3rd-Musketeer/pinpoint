@@ -93,8 +93,8 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布上的标注是同一个队列：
 
 - 桶 = 文章页 id `<project>_<article>`（`projects.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
-- 一行的形状：`{ id, n, type: "prose", status, content, quote: { exact, prefix, suffix }, section, path, created_at, messages: [{ who: "owner" | "agent", text, at }] }`。`content` 是 owner 的第一句，之后的来回在 `messages`。
-- 锚点是 W3C TextQuote 式（`src/shared/text-quote.js`）：选中文字 + 前后各 32 字，`section` 只是提示。正文先抽成规范化文本（空白连成一个空格），每次加载都重新定位：逐字找 `exact`，多处时按前后文吻合度挑，同分看节。`exact` 一处都找不到就在右栏标“失效”，显示存下的引文，不画高亮。不做模糊匹配。画布卡片（`[data-pp-canvas]`）、脚本、错误条不进文本，选区落在那里不出“评论”。
+- 一行的形状：`{ id, n, type: "prose", status, content, quote: { exact, prefix, suffix, start? }, section, path, created_at, messages: [{ who: "owner" | "agent", text, at }] }`。`content` 是 owner 的第一句，之后的来回在 `messages`。
+- 锚点是 W3C TextQuote 式（`src/shared/text-quote.js`）：选中文字 + 前后各 32 字，`section` 和 `start`（选中时在规范化文本里的位置）只是提示。正文先抽成规范化文本：两个 CJK 字之间的空白（软换行、块边界）算没有，其余空白连成一个空格。源文件改了折行，中文引文照样定位。存下的引文定位前按同一条规则规范化，旧数据里“换行存成空格”的引文也能定位。每次加载都重新定位：逐字找 `exact`，多处时按前后文吻合度挑，同分看节，再同分取离 `start` 最近的一处。`exact` 一处都找不到就在右栏标“失效”，显示存下的引文，不画高亮。不做模糊匹配。画布卡片（`[data-pp-canvas]`）、脚本、错误条不进文本，选区落在那里不出“评论”。
 - 注入：`article-proxy` 只给文章页注入，带 `window.__pinpointProse`；客户端见到它只跑正文评论（`src/client/prose-comments.js`），不起画布标注的工具条、侧栏和元素标注。project 首页、概念页不注入。
 - 右栏：pending / closed 两段筛选（与画布列表同一口径），每条线程是序号钉（状态色）+ 状态字 + 引文 + 消息（“你” / agent，时间）+ 回复框，行尾“完成”（→ close）或“重新打开”（→ open）。点高亮聚焦线程，点线程定位高亮。
 - 写入：客户端把改动记成操作（新建、回复、改状态），存盘撞上 409 时重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。owner 回复或改了引文算 owner 编辑，服务端把状态回 open。
