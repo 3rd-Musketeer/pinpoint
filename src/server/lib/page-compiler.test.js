@@ -606,9 +606,20 @@ describe('dist 状态与 serve 读取', () => {
   });
 
   test('帧的组件依赖进 sources：kit / 页内组件改动后 stale 如实上报（R2）', async () => {
-    // kit 印章在本仓库里，测试临时改它的 mtime（finally 里恢复原值）。
+    // kit 印章是仓库里的共享文件，这里只读它的 mtime、不改：改了会和同时在跑的别的测试进程、
+    // 这个工作区里 dev 服务的 watch 互相踩（几条并发跑时约 1/5 挂在「恢复后不再过期」）。
+    // 「kit 比产物新」反过来造：把这一页的 builtAt 和页内文件一起挪到 kit 的 mtime 之前。
     const kitFile = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..', 'content', 'kits', 'ios', 'jsx', 'Bubble.jsx');
-    const kitStat = fs.statSync(kitFile);
+    const kitMtime = fs.statSync(kitFile).mtimeMs;
+    const backdateBefore = (target, ms) => {
+      const old = new Date(ms - 60_000);
+      for (const rel of ['board.json', ...fs.readdirSync(target.pageDir, { recursive: true })]) {
+        fs.utimesSync(path.join(target.pageDir, rel), old, old);
+      }
+      const buildFile = distFile(target, 'build.json');
+      const build = JSON.parse(fs.readFileSync(buildFile, 'utf8'));
+      fs.writeFileSync(buildFile, JSON.stringify({ ...build, builtAt: ms - 1 }));
+    };
     const compTarget = makePage('deps-comp', {
       board: { sections: [{ id: 'main', title: 'Main', layout: 'row', shell: 'comp', screens: [
         { id: 'pill', title: 'pill', comp: 'Composer' },
@@ -623,26 +634,35 @@ describe('dist 状态与 serve 读取', () => {
         'home.jsx': 'import { Badge } from \'./components/Badge.jsx\';\nexport default function Home() {\n  return <div className="ios-app"><Badge /></div>;\n}\n',
       },
     });
+    const kitFrameTarget = makePage('deps-kit-frame', {
+      board: BASIC_BOARD,
+      files: {
+        'home.jsx': 'import { Bubble } from \'pinpoint/kit\';\nexport default function Home() {\n  return <div className="ios-app"><Bubble side="incoming">嗨</Bubble></div>;\n}\n',
+      },
+    });
     const distRoot = path.join(tmp, 'dist');
-    await compilePage(compTarget, { distRoot });
-    await compilePage(frameTarget, { distRoot });
-    assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, false);
-    assert.equal(distStatus(frameTarget.entryId, frameTarget.pageDir, { distRoot }).stale, false);
-    try {
-      const future = new Date(Date.now() + 5000);
-      // 页内组件改动 → comp 屏与 import 它的帧都过期。
-      fs.utimesSync(path.join(compTarget.pageDir, 'components', 'Composer.jsx'), future, future);
-      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
-      fs.utimesSync(path.join(compTarget.pageDir, 'components', 'Composer.jsx'), kitStat.atime, kitStat.mtime);
-      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, false, '恢复后不再过期');
-      // kit 印章改动 → 用它的 comp 屏过期（deps 记 ../ 链，distStatus 照样解析）。
-      fs.utimesSync(kitFile, future, future);
-      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
-      // kit 印章改动 → import kit 的帧过期（deps 记的是 ../ 链，distStatus 照样解析）。
-      fs.utimesSync(kitFile, future, future);
-      assert.equal(distStatus(compTarget.entryId, compTarget.pageDir, { distRoot }).stale, true);
-    } finally {
-      fs.utimesSync(kitFile, kitStat.atime, kitStat.mtime);
+    const stale = (target) => distStatus(target.entryId, target.pageDir, { distRoot }).stale;
+    for (const target of [compTarget, frameTarget, kitFrameTarget]) {
+      assert.equal((await compilePage(target, { distRoot })).ok, true);
+      assert.equal(stale(target), false, `${target.entryId} 编完不过期`);
+    }
+    const future = new Date(Date.now() + 5000);
+    const past = new Date(Date.now() - 60_000);
+    // 页内组件改动 → comp 屏与 import 它的帧都过期；改回比 builtAt 旧就不再过期。
+    const composer = path.join(compTarget.pageDir, 'components', 'Composer.jsx');
+    fs.utimesSync(composer, future, future);
+    assert.equal(stale(compTarget), true);
+    fs.utimesSync(composer, past, past);
+    assert.equal(stale(compTarget), false, '恢复后不再过期');
+    const badge = path.join(frameTarget.pageDir, 'components', 'Badge.jsx');
+    fs.utimesSync(badge, future, future);
+    assert.equal(stale(frameTarget), true);
+    // kit 印章比产物新 → 用它的 comp 屏、import kit 的帧都过期（deps 记 ../ 链，distStatus 照样解析）。
+    for (const target of [compTarget, kitFrameTarget]) {
+      backdateBefore(target, kitMtime);
+      assert.equal(stale(target), true, `${target.entryId}：kit 晚于 builtAt`);
+      backdateBefore(target, Date.now());
+      assert.equal(stale(target), false, `${target.entryId}：builtAt 晚于 kit`);
     }
   });
 
