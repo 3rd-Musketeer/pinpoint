@@ -98,6 +98,7 @@ agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工
 | 读标注 → 改稿 → 写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | board、帧、组件、编译、交互的唯一机制权威 | [`docs/board-schema.md`](docs/board-schema.md) |
 | registry 条目形状、注入契约、CLI（add / move / rename / folder）、代理 | [`docs/registry.md`](docs/registry.md) |
+| project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects` | [`docs/projects.md`](docs/projects.md) |
 | 标注字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 
