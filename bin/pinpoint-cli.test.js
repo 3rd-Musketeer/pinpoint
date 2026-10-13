@@ -2217,6 +2217,7 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
     [['add', FIXTURE_PROJECT, '--project'], /id 已存在：e2e-project/],
     [['add', FIXTURE_COLLIDE, '--project', '--id', 'other'], /--id other 与 project.json 的 id "e2e-collide" 不同/],
     [['add', FIXTURE_COLLIDE, '--project', '--board', 'ios'], /--project 不能和 --board 同用/],
+    [['add', FIXTURE_COLLIDE, '--project', '--title', 'X'], /--project 不接受 --title/],
     [['add', FIXTURE_COLLIDE, '--project', '--page', 'pinpoint'], /--project 不能和 --page 同用/],
     [['add', makeProjectRoot(dir, 'nojson', null), '--project'], /缺 docs\/pinpoint\/project\.json/],
     [['add', makeProjectRoot(dir, 'reserved', { id: 'api' }), '--project'], /保留名（服务已占用 \/api\/）/],

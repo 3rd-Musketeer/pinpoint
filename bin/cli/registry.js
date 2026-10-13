@@ -156,12 +156,14 @@ function buildProjectEntry(target, flags, { cwd, existingIds, findExisting }) {
   for (const name of ['board', 'page', 'draft']) {
     if (flags[name] !== undefined) throw new CliError(`--project 不能和 --${name} 同用（project 不是页，没有壳也不挂靠）`);
   }
+  // 标题只有一个来源：project.json 的 title（读取时它优先），--title 写进登记表也会被盖掉。
+  if (flags.title !== undefined) throw new CliError('--project 不接受 --title：标题写在 docs/pinpoint/project.json 的 title 里');
   const { root, json } = resolveProjectRoot(target, cwd);
   if (flags.id && flags.id !== json.id) {
     throw new CliError(`--id ${flags.id} 与 project.json 的 id "${json.id}" 不同；project 的 id 只认 project.json，要换 id 先改那里`);
   }
   if (existingIds.includes(json.id)) throw idTakenError(json.id, findExisting(json.id));
-  const title = flags.title || (typeof json.title === 'string' && json.title) || path.basename(root);
+  const title = (typeof json.title === 'string' && json.title) || path.basename(root);
   return { id: json.id, title, kind: 'project', path: root };
 }
 

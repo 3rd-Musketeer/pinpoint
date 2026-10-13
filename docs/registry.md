@@ -88,7 +88,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 
 ```bash
 pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
-pinpoint add    <project 根> --project [--title X]
+pinpoint add    <project 根> --project
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
 pinpoint remove <id>

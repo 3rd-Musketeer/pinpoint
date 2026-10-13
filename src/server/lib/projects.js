@@ -40,6 +40,11 @@ export const RESERVED_PROJECT_IDS = new Set([
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
 
 const FM_KEY = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:(?:\s+(.*))?$/;
+// 这些开头在 YAML 里是块标量、流式列表 / 映射、锚点、标签：本解析器不支持，报错不猜。
+const YAML_ONLY_START = /^[>|[{&*!]/;
+
+/** concept 的 status 只有三档（CONTEXT.md concept 词条）。 */
+export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
 
 function unquote(raw) {
   const value = raw.trim();
@@ -54,6 +59,8 @@ function unquote(raw) {
     if (value.length >= 2 && value.endsWith("'")) return { value: value.slice(1, -1).replace(/''/g, "'") };
     return { error: `单引号值没闭合：${value}` };
   }
+  if (!value) return { error: '值为空（不写这个键，或写 ""）' };
+  if (YAML_ONLY_START.test(value)) return { error: `只支持单行字符串，不支持以 ${value[0]} 开头的 YAML 写法：${value}` };
   // 不带引号的值：` #` 之后是注释（与 YAML 同规则）。
   const hash = value.search(/\s#/);
   return { value: (hash >= 0 ? value.slice(0, hash) : value).trim() };
@@ -184,14 +191,20 @@ function readConcepts(dir, errors) {
   const conceptsDir = path.join(dir, 'concepts');
   const concepts = [];
   for (const item of visibleChildren(conceptsDir)) {
-    if (!item.isFile() || path.extname(item.name) !== '.md') continue;
     const rel = `concepts/${item.name}`;
+    if (!item.isFile() || path.extname(item.name) !== '.md') {
+      errors.push(`${rel}：concepts/ 下只放 <名字>.md`);
+      continue;
+    }
     const file = path.join(conceptsDir, item.name);
     const fm = parseFrontmatter(readText(file) || '');
     for (const problem of fm.errors) errors.push(`${rel}：${problem}`);
     const slug = path.basename(item.name, '.md');
     const concept = { name: fm.data.name || slug, slug, file };
-    if (fm.data.status) concept.status = fm.data.status;
+    if (fm.data.status) {
+      if (CONCEPT_STATUSES.has(fm.data.status)) concept.status = fm.data.status;
+      else errors.push(`${rel}：status 只能是 ${[...CONCEPT_STATUSES].join(' / ')}：${fm.data.status}`);
+    }
     if (fm.data.boundary) concept.boundary = fm.data.boundary;
     concepts.push(concept);
   }

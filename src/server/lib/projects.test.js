@@ -140,10 +140,19 @@ test('layout errors are listed, never thrown', async (t) => {
       'articles/Bad_Id：文章 id 必须匹配 /^[a-z0-9][a-z0-9-]*$/',
       'articles/concepts：文章 id 是保留名（/<project>/concepts/ 已被占用）',
       'articles/no-index：缺 index.mdx',
+      'articles/ok/index.mdx：frontmatter 第 3 行：值为空（不写这个键，或写 ""）',
       'articles/ok/index.mdx：frontmatter 第 4 行只支持 key: value：- a',
       'articles/stray.md：articles/ 下只放文章目录',
+      'concepts/readme.txt：concepts/ 下只放 <名字>.md',
       '撞名 [[same]]：concept "same"（concepts/one.md）、concept "Same"（concepts/two.md）（article id 与 concept name 共用一个命名空间）',
     ]);
+  });
+
+  await t.test('concept status must be one of the three states', (t) => {
+    const root = makeProject(t, { 'project.json': '{"id":"st"}', 'concepts/a.md': '---\nstatus: done\n---\n', 'concepts/b.md': '---\nstatus: 已固定\n---\n' });
+    const project = findProject(registryWith(t, [{ id: 'st', kind: 'project', path: root }]), 'st');
+    assert.deepEqual(project.concepts.map((c) => c.status), [undefined, '已固定']);
+    assert.deepEqual(project.errors, ['concepts/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
   });
 
   await t.test('reserved project ids are rejected', (t) => {
@@ -156,7 +165,7 @@ test('layout errors are listed, never thrown', async (t) => {
 
 test('parseFrontmatter: key: value lines, quotes, comments, strict on the rest', () => {
   assert.deepEqual(parseFrontmatter('no fm'), { data: {}, body: 'no fm', errors: [] });
-  const parsed = parseFrontmatter('﻿---\r\ntitle: "A: \\"q\\""\r\nsummary: it\'s fine # note\r\nname: \'x\'\'y\'\r\n# c\r\n\r\nempty:\r\n---\r\nbody');
+  const parsed = parseFrontmatter('﻿---\r\ntitle: "A: \\"q\\""\r\nsummary: it\'s fine # note\r\nname: \'x\'\'y\'\r\n# c\r\n\r\nempty: ""\r\n---\r\nbody');
   assert.deepEqual(parsed.data, { title: 'A: "q"', summary: "it's fine", name: "x'y", empty: '' });
   assert.equal(parsed.body, 'body');
   assert.deepEqual(parsed.errors, []);
@@ -164,6 +173,16 @@ test('parseFrontmatter: key: value lines, quotes, comments, strict on the rest',
   assert.deepEqual(parseFrontmatter('---\nt: a\nt: b\nx: "open\n---\n').errors, [
     'frontmatter 第 3 行重复的键：t',
     'frontmatter 第 4 行：双引号值没闭合或含非法转义："open',
+  ]);
+  // YAML 的块标量、流式列表、空值（后接块列表）都报错，字段不进 data。
+  const yamlish = parseFrontmatter('---\nsummary: >\n  folded\ntags: [a, b]\nlist:\n  - a\nok: yes\n---\n');
+  assert.deepEqual(yamlish.data, { ok: 'yes' });
+  assert.deepEqual(yamlish.errors, [
+    'frontmatter 第 2 行：只支持单行字符串，不支持以 > 开头的 YAML 写法：>',
+    'frontmatter 第 3 行只支持 key: value：folded',
+    'frontmatter 第 4 行：只支持单行字符串，不支持以 [ 开头的 YAML 写法：[a, b]',
+    'frontmatter 第 5 行：值为空（不写这个键，或写 ""）',
+    'frontmatter 第 6 行只支持 key: value：- a',
   ]);
 });
 

@@ -64,7 +64,7 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
   目录 + --project → kind "project"：目录是 project 根，内容在 <根>/docs/pinpoint/
                      （project.json、articles/<文章>/index.mdx、concepts/<名字>.md，见 docs/projects.md）。
                      id 取 project.json 的 id（--id 只能与它相同），标题取它的 title；
-                     不能和 --board / --page / --draft 同用。move / rename / remove 同样适用：
+                     不能和 --title / --board / --page / --draft 同用。move / rename / remove 同样适用：
                      move 的新根目录里 project.json 的 id 必须不变；rename 同时改写 project.json 的 id。
 
 选项（add）：
