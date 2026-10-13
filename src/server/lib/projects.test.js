@@ -5,7 +5,7 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { findProject, listProjects, parseFrontmatter, readProjectJson, RESERVED_PROJECT_IDS } from './projects.js';
+import { findProject, isReservedProjectId, listProjects, parseFrontmatter, readProjectJson, RESERVED_PROJECT_IDS } from './projects.js';
 import { loadRegistry } from './registry.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
@@ -190,10 +190,12 @@ test('reserved ids cover every top-level directory the service serves from the r
   const dirs = fs.readdirSync(REPO, { withFileTypes: true })
     .filter((item) => item.isDirectory() && !item.name.startsWith('.'))
     .map((item) => item.name)
-    // e2e 产物目录（端口后缀）不是服务的首段，也不进仓库。
-    .filter((name) => !/^(test-results|playwright-report)/.test(name));
-  for (const name of dirs) assert.ok(RESERVED_PROJECT_IDS.has(name), `vite 服务 /${name}/，project id 必须拒绝它`);
-  for (const name of ['api', 'sites', 'workbench', 'kits', 'assets', 'annotate', '_astro']) assert.ok(RESERVED_PROJECT_IDS.has(name));
+  for (const name of dirs) assert.ok(isReservedProjectId(name), `vite 服务 /${name}/，project id 必须拒绝它`);
+  assert.ok(isReservedProjectId('test-results-5420') && isReservedProjectId('playwright-report'));
+  assert.ok(!isReservedProjectId('browser-use'));
+  // 包 M0-C 的 RESERVED_TOP_SEGMENTS（article-routes.js）：本表必须覆盖它。
+  const proxySide = 'health registry events annotations save image images api sites kits previews lib bin content docs e2e scripts skills src site tasks prototypes workbench assets annotate _astro _image'.split(' ');
+  for (const name of proxySide) assert.ok(RESERVED_PROJECT_IDS.has(name), name);
 });
 
 test('registry: project entries live in projects, not entries; page consumers never see them', (t) => {

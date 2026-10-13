@@ -111,7 +111,10 @@ project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 
 
 - 2026-10-13 定的 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；
-- vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks`。`projects.test.js` 检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上。
+- vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及按前缀拒绝的 `test-results*`、`playwright-report*`（`RESERVED_PROJECT_PREFIXES`）。`projects.test.js` 检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
+- Astro 的 `_image`。
+
+判断用 `isReservedProjectId(id)`。服务代理侧（`src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`）有同一份清单，两边合入后只留一份。
 
 ## 固件
 

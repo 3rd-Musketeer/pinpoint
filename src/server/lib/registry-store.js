@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, normalizeFolder, PAGE_ID_PATTERN } from './registry.js';
-import { RESERVED_PROJECT_IDS } from './projects.js';
+import { isReservedProjectId } from './projects.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url', 'project']);
 // project 条目（pp3）只带这些字段：没有壳、不挂靠、不进左栏分组。
@@ -57,7 +57,7 @@ export function validateNewEntry(raw, existingIds) {
       if (!PROJECT_KEYS.has(key)) return `project 条目 "${raw.id}" 不能带字段：${key}`;
     }
     // project id 是站点 URL 的第一段（/<project>/<article>/），不能占服务已有的首段。
-    if (RESERVED_PROJECT_IDS.has(raw.id)) return `project id 是保留名（服务已占用 /${raw.id}/）：${raw.id}`;
+    if (isReservedProjectId(raw.id)) return `project id 是保留名（服务已占用 /${raw.id}/）：${raw.id}`;
   }
   if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') {
     if (typeof raw.path !== 'string' || !path.isAbsolute(raw.path)) {

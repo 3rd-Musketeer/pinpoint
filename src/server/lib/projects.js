@@ -27,14 +27,23 @@ export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
  * 服务路由（annotate-api: health registry events annotations images image save；
  * content-routes: previews lib）；vite 直接按仓库根服务静态文件，所以仓库根的
  * 顶层目录也都是首段（src content node_modules bin docs e2e scripts skills
- * site tasks；projects.test.js 守着它与仓库根同步）。
+ * site tasks prototypes；projects.test.js 守着它与仓库根同步）；Astro 的 _image。
+ * 与包 M0-C 的 article-routes.js RESERVED_TOP_SEGMENTS 对齐（本表是它的超集，
+ * 多 node_modules），合并后改为从那里 import，只留一份。
  */
 export const RESERVED_PROJECT_IDS = new Set([
-  'api', 'sites', 'workbench', 'kits', 'assets', 'annotate', '_astro',
+  'api', 'sites', 'workbench', 'kits', 'assets', 'annotate', '_astro', '_image',
   'health', 'registry', 'events', 'annotations', 'images', 'image', 'save',
   'previews', 'lib',
-  'src', 'content', 'node_modules', 'bin', 'docs', 'e2e', 'scripts', 'skills', 'site', 'tasks',
+  'src', 'content', 'node_modules', 'bin', 'docs', 'e2e', 'scripts', 'skills', 'site', 'tasks', 'prototypes',
 ]);
+/** e2e 产物目录（test-results-<端口>/ 等）同样被 vite 服务，按前缀拒。 */
+export const RESERVED_PROJECT_PREFIXES = ['test-results', 'playwright-report'];
+
+/** id 是不是保留的 URL 首段（整名或前缀）。 */
+export function isReservedProjectId(id) {
+  return RESERVED_PROJECT_IDS.has(id) || RESERVED_PROJECT_PREFIXES.some((prefix) => String(id).startsWith(prefix));
+}
 
 /** project 内占用的 URL 第二段：/<project>/concepts/<名字>/。 */
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
@@ -147,7 +156,7 @@ export function readProjectJson(root) {
   const errors = [];
   if (typeof json.id !== 'string' || !ENTRY_ID_PATTERN.test(json.id)) {
     errors.push(`project.json 的 id 必须匹配 ${ENTRY_ID_PATTERN}：${JSON.stringify(json.id)}`);
-  } else if (RESERVED_PROJECT_IDS.has(json.id)) {
+  } else if (isReservedProjectId(json.id)) {
     errors.push(`project id 是保留名（服务已占用 /${json.id}/）：${json.id}`);
   }
   if (json.title !== undefined && typeof json.title !== 'string') errors.push('project.json 的 title 必须是字符串');
@@ -236,7 +245,7 @@ export function readProject(entry) {
   const dir = path.join(root, PROJECT_CONTENT_DIR);
   const errors = [];
   const project = { id: entry.id, title: entry.title || entry.id, root, dir, articles: [], concepts: [], errors };
-  if (RESERVED_PROJECT_IDS.has(entry.id)) errors.push(`project id 是保留名（服务已占用 /${entry.id}/）：${entry.id}`);
+  if (isReservedProjectId(entry.id)) errors.push(`project id 是保留名（服务已占用 /${entry.id}/）：${entry.id}`);
   if (!isDir(root)) {
     errors.push(`project 根目录不存在：${root}`);
     return project;
