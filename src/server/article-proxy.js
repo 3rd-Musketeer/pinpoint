@@ -12,6 +12,9 @@
  *   原因和日志尾巴。
  * - websocket：/_astro/ 下的 upgrade（Astro 的 vite HMR）原样转发；pinpoint 自己
  *   的 HMR 在 / 上，不碰。
+ * - 来源（lib/proxy-origin.js）：Origin 是 pinpoint 自己的来源才改写成站点地址；
+ *   别的来源的 websocket upgrade 与非 GET / HEAD 请求回 403，不拉起站点；别的来源的
+ *   GET / HEAD 不转发 Origin。
  */
 import http from 'node:http';
 import path from 'node:path';
@@ -21,6 +24,7 @@ import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { resolveArticleTarget } from './lib/article-board.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
+import { originDecision, ownOrigins } from './lib/proxy-origin.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { articlePageId } from './lib/projects.js';
 import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
@@ -111,16 +115,23 @@ export function annotationBucketFor(route, registry) {
   }
 }
 
-function forward(req, res, route, devServer, registry) {
+function sendForbidden(res, reason) {
+  res.statusCode = 403;
+  res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(`forbidden: ${reason}\n`);
+}
+
+function forward(req, res, route, devServer, registry, origin) {
   const port = devServer.port;
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
-    if (HOP_BY_HOP.has(name)) continue;
+    if (HOP_BY_HOP.has(name) || name === 'origin') continue;
     headers[name] = value;
   }
   headers.host = `127.0.0.1:${port}`;
   headers['accept-encoding'] = 'identity';
-  if (headers.origin) headers.origin = `http://127.0.0.1:${port}`;
+  if (origin) headers.origin = origin;
   const entry = route.kind === 'article' ? annotationBucketFor(route, registry) : null;
   const inject = Boolean(entry) && parseReqUrl(req).query.get('annotate') !== 'off';
 
@@ -178,32 +189,63 @@ function forward(req, res, route, devServer, registry) {
   req.pipe(up);
 }
 
+/** origins 选项 → 取集合的函数：Set 原样用，函数每次调，缺省只认 https://pinpoint.localhost 与环境变量。 */
+function originsGetter(origins) {
+  if (typeof origins === 'function') return origins;
+  const fixed = origins instanceof Set ? origins : ownOrigins();
+  return () => fixed;
+}
+
+function decide(req, devServer, own, upgrade) {
+  return originDecision({
+    origin: req.headers.origin,
+    method: req.method,
+    upgrade,
+    own: own(),
+    upstreamOrigin: `http://127.0.0.1:${devServer.port}`,
+  });
+}
+
 /**
  * options:
  *   registry   live registry（isProjectId 读它）
  *   isProject  直接给 project 判定函数（测试用；缺省读 registry）
  *   devServer  createSiteDevServer() 的实例
+ *   origins    pinpoint 自己的来源：Set，或返回 Set 的函数（见 lib/proxy-origin.js）
  */
-export function createArticleHandler({ registry, isProject, devServer }) {
+export function createArticleHandler({ registry, isProject, devServer, origins }) {
   const projectCheck = isProject || ((id) => isProjectId(registry, id));
+  const own = originsGetter(origins);
   return function handleArticle(req, res) {
     const route = routeArticleRequest(req.url, projectCheck);
     if (!route) return false;
+    const verdict = decide(req, devServer, own, false);
+    if (!verdict.allow) {
+      sendForbidden(res, verdict.reason);
+      return true;
+    }
     const snapshot = devServer.ensure();
     if (snapshot.state !== 'ready') {
       sendWaitResponse(req, res, devServer);
       return true;
     }
-    forward(req, res, route, devServer, registry);
+    forward(req, res, route, devServer, registry, verdict.origin);
     return true;
   };
 }
 
 /** httpServer 'upgrade' 监听：只接 /_astro/ 下的 socket，其余不碰（vite 自己的 HMR 在 /）。 */
-export function createArticleUpgradeHandler({ devServer }) {
+export function createArticleUpgradeHandler({ devServer, origins }) {
+  const own = originsGetter(origins);
   return function handleArticleUpgrade(req, socket, head) {
     const route = routeArticleUpgrade(req.url);
     if (!route) return;
+    const verdict = decide(req, devServer, own, true);
+    if (!verdict.allow) {
+      socket.end('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n'
+        + `forbidden: ${verdict.reason}\n`);
+      return;
+    }
     if (devServer.ensure().state !== 'ready') {
       socket.end('HTTP/1.1 503 Service Unavailable\r\nConnection: close\r\n\r\n');
       return;
@@ -211,11 +253,11 @@ export function createArticleUpgradeHandler({ devServer }) {
     const port = devServer.port;
     const headers = {};
     for (const [name, value] of Object.entries(req.headers)) {
-      if (UPGRADE_SKIP.has(name)) continue;
+      if (UPGRADE_SKIP.has(name) || name === 'origin') continue;
       headers[name] = value;
     }
     headers.host = `127.0.0.1:${port}`;
-    if (headers.origin) headers.origin = `http://127.0.0.1:${port}`;
+    if (verdict.origin) headers.origin = verdict.origin;
     const up = http.request({ host: '127.0.0.1', port, method: 'GET', path: route.upstream, headers });
     up.on('upgrade', (upRes, upSocket, upHead) => {
       const lines = [`HTTP/1.1 ${upRes.statusCode} ${upRes.statusMessage || 'Switching Protocols'}`];
@@ -243,18 +285,29 @@ export function createArticleUpgradeHandler({ devServer }) {
 /**
  * vite 插件。options.devServer 给定时用它（测试），否则按环境变量建一个：
  * 仓库根下跑站点命令，日志写 <数据根>/logs/site-dev.log。
+ * options.origins 缺省 = ownOrigins({ port: 服务实际监听的端口 })。
  */
 export default function articleProxy(options = {}) {
   const devServer = options.devServer || createSiteDevServer({
     cwd: options.root || process.cwd(),
     logFile: path.join(dataRoot(), 'logs', 'site-dev.log'),
   });
-  const handleArticle = createArticleHandler({ registry: options.registry, isProject: options.isProject, devServer });
-  const handleUpgrade = createArticleUpgradeHandler({ devServer });
+  let viteServer = null;
+  let cached = null;
+  const listenOrigins = () => {
+    if (cached) return cached;
+    const address = viteServer && viteServer.httpServer && viteServer.httpServer.address();
+    if (address && typeof address === 'object') return (cached = ownOrigins({ port: address.port }));
+    return ownOrigins({ port: viteServer && viteServer.config.server.port });
+  };
+  const origins = options.origins || listenOrigins;
+  const handleArticle = createArticleHandler({ registry: options.registry, isProject: options.isProject, devServer, origins });
+  const handleUpgrade = createArticleUpgradeHandler({ devServer, origins });
   return {
     name: 'article-proxy',
     devServer,
     configureServer(server) {
+      viteServer = server;
       server.middlewares.use((req, res, next) => {
         if (handleArticle(req, res)) return;
         next();
