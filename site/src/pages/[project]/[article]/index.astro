@@ -3,6 +3,7 @@ import { render } from 'astro:content';
 import Base from '../../../layouts/Base.astro';
 import Section from '../../../components/Section.astro';
 import Canvas from '../../../components/Canvas.astro';
+import CanvasOverlay from '../../../components/CanvasOverlay.astro';
 import Ref from '../../../components/Ref.astro';
 import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
 import { articleCanvas } from '../../../lib/canvas-source.js';
@@ -59,4 +60,5 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   <div class="article-body">
     <Content components={{ Section, Canvas, Ref }} />
   </div>
+  {canvasView && <CanvasOverlay slot="overlay" />}
 </Base>

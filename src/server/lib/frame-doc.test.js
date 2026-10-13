@@ -9,6 +9,7 @@ import {
   FrameDocError,
   assembleFrameContent,
   framePageHtml,
+  markEmbedStage,
   frameTokens,
   neutralizePreviewScripts,
   resolveFrameTarget,
@@ -161,6 +162,29 @@ test('framePageHtml: annotate=off drops the annotate client but keeps boot mecha
   assert.ok(!html.includes('__pinpointFrame'));
   assert.ok(html.includes('[frame-boot]'));
   assert.ok(html.includes('data-preview-mount'));
+});
+
+test('framePageHtml embed=card: stage + device markers, no caption, no annotate client (site card / overlay contract)', async () => {
+  const phone = await framePageHtml(resolveFrameTarget('e2e-ios', 'recipe', { registry }), { embed: 'card' });
+  assert.match(phone, /<html data-annotate="off" data-pp-embed="card">/);
+  assert.equal((phone.match(/data-pp-stage=/g) || []).length, 1);
+  assert.match(phone, /<div class="ios-stage" data-pp-stage="phone">/);
+  assert.match(phone, /<div class="ios-device" data-pp-device>/);
+  assert.ok(!phone.includes('class="wb-screen-cap"'));
+  assert.ok(!/<script src="\/annotate/.test(phone));
+  assert.ok(!phone.includes('__pinpointFrame'));
+  // Without embed the frame page is unchanged: caption, no markers.
+  const plain = await framePageHtml(resolveFrameTarget('e2e-ios', 'recipe', { registry }), { annotate: false });
+  assert.ok(plain.includes('class="wb-screen-cap"'));
+  assert.ok(!plain.includes('data-pp-stage') && !plain.includes('data-pp-device'));
+});
+
+test('markEmbedStage: first stage only, comp kind, attributes added without touching structure', () => {
+  assert.equal(markEmbedStage('<div class="wb-comp-stage"><div class="ios-root">x</div></div>'),
+    '<div class="wb-comp-stage" data-pp-stage="comp"><div class="ios-root">x</div></div>');
+  assert.equal(markEmbedStage('<div id="a" class="x ios-stage y" style="z"><div class="ios-device"></div><div class="ios-stage"></div></div>'),
+    '<div id="a" class="x ios-stage y" style="z" data-pp-stage="phone"><div class="ios-device" data-pp-device></div><div class="ios-stage"></div></div>');
+  assert.equal(markEmbedStage('<p class="ios-stage">no div</p>'), '<p class="ios-stage">no div</p>');
 });
 
 test('frameTokens extracts canvas geometry + color tokens from the real files', () => {

@@ -383,6 +383,29 @@ function frameTokensStyle() {
   return decl ? `body{${decl}}` : '';
 }
 
+/** 嵌入模式（`/api/frame?…&embed=card`）给机壳打的标记：文章站点的卡片与画布浮层只认这两个属性，
+ *  不认工作台的 class 名（docs/projects.md「给站点卡片的接口」）。 */
+export const EMBED_STAGE_ATTR = 'data-pp-stage';
+export const EMBED_DEVICE_ATTR = 'data-pp-device';
+const STAGE_CLASSES = { 'ios-stage': 'phone', 'wb-comp-stage': 'comp', 'wb-doc-stage': 'doc' };
+
+/** 在第一个机壳（ios-stage / wb-comp-stage / wb-doc-stage）上打 data-pp-stage="<种类>"，第一个 ios-device 上打 data-pp-device。
+ *  只加属性，不改结构：stage 以下的 DOM 链仍与画布同构。 */
+export function markEmbedStage(html) {
+  let staged = false;
+  let deviced = false;
+  return String(html).replace(/<div\b([^>]*?)\bclass\s*=\s*(["'])([^"']*)\2([^>]*)>/gi, (full, pre, q, cls, post) => {
+    const tokens = cls.split(/\s+/);
+    let add = '';
+    if (!staged) {
+      const kind = tokens.map((t) => STAGE_CLASSES[t]).find(Boolean);
+      if (kind) { staged = true; add += ` ${EMBED_STAGE_ATTR}="${kind}"`; }
+    }
+    if (!deviced && tokens.includes('ios-device')) { deviced = true; add += ` ${EMBED_DEVICE_ATTR}`; }
+    return add ? `<div${pre}class=${q}${cls}${q}${post}${add}>` : full;
+  });
+}
+
 /**
  * 组装 /api/frame 的完整自包含 HTML 文档。
  * data-annotate="off" 只挡 ios-kit 的自注入；annotate 注入由本函数显式完成
@@ -391,10 +414,13 @@ function frameTokensStyle() {
  * 所属页桶的 @canvas，客户端按 FRAME 身份自取，不再跟顶层工作台 pathname 走。
  */
 export async function framePageHtml(target, opts = {}) {
-  const annotate = opts.annotate !== false;
+  // embed: 'card'（文章站点的卡片与浮层）：不出图注，机壳打 data-pp-stage / data-pp-device，不注入标注客户端。
+  const embed = opts.embed === 'card';
+  const annotate = opts.annotate !== false && !embed;
   // 预览脚本惰性化：完整文档里原生 <script> 会立刻执行（root 未定义），契约执行
   // 权交给 client/frame-boot.js（与画布 innerHTML 不执行语义对齐）。
-  const wrapped = neutralizePreviewScripts(await assembleFrameContent(target));
+  const content = neutralizePreviewScripts(await assembleFrameContent(target));
+  const wrapped = embed ? markEmbedStage(content) : content;
   const frameIdentity = {
     pageId: target.pageId,
     screenId: target.screenId,
@@ -407,7 +433,7 @@ export async function framePageHtml(target, opts = {}) {
       `<script src="${annotateClientSrc()}" async></script>`
     : '';
   return `<!doctype html>
-<html data-annotate="off">
+<html data-annotate="off"${embed ? ' data-pp-embed="card"' : ''}>
 <head>
 <meta charset="utf-8">
 <base href="${escHtml(target.baseUrl)}">
@@ -425,7 +451,7 @@ ${frameTokensStyle()}
 </head>
 <body>
 <div class="wb-screen" data-screen="${escHtml(target.screenId)}">
-${frameCaptionHtml(target)}
+${embed ? '' : frameCaptionHtml(target)}
 ${wrapped}
 </div>
 <script src="/kits/ios/ios-kit.js"></script>

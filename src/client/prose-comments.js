@@ -649,9 +649,15 @@ export function startProseComments(options) {
   document.addEventListener('mousedown', function (e) {
     if (selBtn && !(e.target.closest && e.target.closest('.pp-selbtn'))) hideSelBtn();
   });
+  // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
+  // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    if (draft) { cancelDraft(); return; }
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (draft) {
+      var active = document.activeElement;
+      if (active && active.matches && active.matches('textarea[data-reply="__draft"]')) cancelDraft();
+      return;
+    }
     if (focusedId) { focusedId = null; renderRail(); syncFocusClasses(); }
     hideSelBtn();
   });
