@@ -85,6 +85,20 @@ export async function loadSite() {
   return { projects, errors, resolve, renderRef: (raw, from) => renderRef(resolve(raw, from)) };
 }
 
+/**
+ * A project's empty refs, wherever they are written (article and concept bodies):
+ * [{ name, sources: [article | concept item] }], most-cited first, then by name.
+ * The project home and llms.txt both list this, so they never disagree.
+ */
+export function projectEmptyRefs(p) {
+  return [...p.emptyRefs.entries()]
+    .map(([name, sources]) => ({ name, sources }))
+    .sort((x, y) => y.sources.length - x.sources.length || x.name.localeCompare(y.name, 'zh'));
+}
+
+/** How an empty ref's source is named in lists: article title, or 概念 <name>. */
+export const emptyRefSourceLabel = (s) => (s.kind === 'article' ? s.title : `概念 ${s.name}`);
+
 /** Popup fields per kind (common.md §6, CONTEXT.md concept 词条). */
 export function renderRef(r) {
   if (r.kind === 'article') {

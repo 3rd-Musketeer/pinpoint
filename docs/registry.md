@@ -281,7 +281,7 @@ owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是
 | `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`check --mode image`、`shot`、`mark`、`reply`；设了它，`pinpoint status` 只探这个地址，不看 portless 路由 | `https://pinpoint.localhost` |
 | `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
 | `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |
-| `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选 | `site/.astro-cache` |
+| `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选。站点的内容库按 `PINPOINT_SITE_PORT` 分在 `site/.astro-cache/<端口>/`，不用为隔离再设它 | `site/.astro-cache/<端口>` |
 
 在 pinpoint 仓库里（要有 `node_modules`）起服务。下面的命令里，`<数据目录>` 是一个空的临时目录，端口换成空闲的：
 
@@ -296,5 +296,9 @@ PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json 
 ```
 
 之后的 `pinpoint list`、`ppnt build`、`ppnt shot`、`ppnt check` 都带同样的前缀。文章在 `http://127.0.0.1:5750/<project>/<article>/`，画布在 `http://127.0.0.1:5750/?page=<project>_<article>`。
+
+在 pinpoint 自己的 feat worktree 里，`pinpoint` / `ppnt` 换成 `node bin/pinpoint.mjs`：全局装的 `pinpoint` 指向 canonical clone，跑的是那里的 CLI 代码。
+
+文章站点按需拉起：服务起来后第一次请求文章，站点进程才 spawn，就绪前文章页返回 503 和“站点启动中”页（浏览器里会自己刷新），通常几秒。服务重启（包括 vite 因为 `src/server/` 下的文件改动自动重启）会连站点一起重启，又是这样几秒。脚本里读文章页要轮询到 200。`pinpoint add --project` 登记新 project 不重启站点，新文章一秒内可读（2026-10-13 隔离运行实测）。
 
 停服务在它的终端按 Ctrl-C，站点进程组跟着停。不要按命令行 `pkill`：这个服务和 owner 的常驻服务命令行一样。e2e 的固件就是这样隔离的（`playwright.config.js` 的 webServer `env`）。在 feat worktree 里想用 owner 真实数据的一份副本亲手试，用 `just preview`，见 AGENTS.md“分支与推送”。

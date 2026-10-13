@@ -12,6 +12,17 @@ const repoRoot = fileURLToPath(new URL('..', import.meta.url));
 const siteRoot = fileURLToPath(new URL('.', import.meta.url));
 const { projects } = await loadProjects();
 const viteBase = process.env.PINPOINT_SITE_VITE_BASE || undefined;
+// 端口也是下面 root 的名字：手动 `astro dev --port N` 没设 PINPOINT_SITE_PORT 时从命令行取。
+const argPort = process.argv.includes('--port') ? Number(process.argv[process.argv.indexOf('--port') + 1]) : 0;
+const port = Number(process.env.PINPOINT_SITE_PORT) || argPort || 4530;
+
+// 每个站点进程一个 Astro root：`.astro/`（dev 的内容库 data-store.json、settings.json、生成的类型）
+// 固定落在 root 下，Astro 没有单独的配置项。root 留在 site/ 时，同一个 checkout 起的两个站点共用一份
+// 内容库，一个站点会读到另一个 registry 的内容、文章 404（2026-10-13 fresh-reader 实测）。
+// root 按端口分（同一个端口同时只有一个站点进程），build 单独一份；放在 site/ 下，裸 import
+// （astro/…）才能往上找到仓库的 node_modules。代码仍从 site/src 读（srcDir）。
+// PINPOINT_SITE_CACHE 只改 vite / Astro 的缓存目录，缺省也在这个 root 里。
+const instanceRoot = path.join(siteRoot, '.astro-cache', process.argv.includes('build') ? 'build' : String(port));
 
 // 开发服务器经 /@fs/（代理后是 /_astro/@fs/）能读到的目录：站点自己、仓库的 node_modules
 // （Astro 与 vite 的客户端运行时），和每个 project 的 docs/pinpoint/（p.dir，文章引用的资源）。
@@ -40,12 +51,14 @@ const pageUrlsOutsideViteBase = () => ({
 });
 
 export default defineConfig({
-  root: siteRoot,
-  outDir: process.env.PINPOINT_SITE_OUT || './dist',
-  cacheDir: process.env.PINPOINT_SITE_CACHE || './.astro-cache',
+  root: instanceRoot,
+  srcDir: path.join(siteRoot, 'src'),
+  publicDir: path.join(siteRoot, 'public'),
+  outDir: process.env.PINPOINT_SITE_OUT ? path.resolve(process.env.PINPOINT_SITE_OUT) : path.join(siteRoot, 'dist'),
+  cacheDir: process.env.PINPOINT_SITE_CACHE ? path.resolve(process.env.PINPOINT_SITE_CACHE) : instanceRoot,
   build: { format: 'directory' },
   trailingSlash: 'ignore',
-  server: { host: '127.0.0.1', port: Number(process.env.PINPOINT_SITE_PORT) || 4530 },
+  server: { host: '127.0.0.1', port },
   devToolbar: { enabled: false },
   integrations: [mdx()],
   markdown: { remarkPlugins: [remarkPinpoint] },

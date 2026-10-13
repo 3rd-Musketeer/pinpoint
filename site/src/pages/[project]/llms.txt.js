@@ -1,4 +1,4 @@
-import { loadSite, assertBuildClean } from '../../lib/site-data.js';
+import { loadSite, assertBuildClean, projectEmptyRefs, emptyRefSourceLabel } from '../../lib/site-data.js';
 
 // Agent 视图：一个 project 的全部文章原文（MDX，保留 [[ ]]）和概念。
 export async function getStaticPaths() {
@@ -27,7 +27,7 @@ export async function GET({ props }) {
     '',
     '## 空 ref',
     '',
-    ...([...p.emptyRefs.entries()].map(([n, src]) => `- ${n}：${src.map((s) => s.title || s.name).join('、')}`)),
+    ...projectEmptyRefs(p).map(({ name, sources }) => `- ${name}：${sources.map(emptyRefSourceLabel).join('、')}`),
     '',
   ];
   for (const a of p.articles) {

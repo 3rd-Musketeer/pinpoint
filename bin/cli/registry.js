@@ -493,6 +493,18 @@ export function planMove(argv, { cwd = process.cwd(), env = process.env } = {}) 
   return { ...parsed, registryPath, before, after };
 }
 
+/**
+ * reload 应答里 entries 只数 page 条目，kind "project" 另计在 projects（annotate-api registrySummary）。
+ * 给人看的总数是文件里的条目数，两者相加。
+ */
+export function registryCountText(summary) {
+  const pages = Number(summary.entries) || 0;
+  const projects = Number(summary.projects) || 0;
+  return projects
+    ? `registry 共 ${pages + projects} 条，其中 project ${projects} 个`
+    : `registry 共 ${pages} 条`;
+}
+
 /** 写盘成功后的即时生效：服务可达就让它重读 registry；不可达不视为失败。 */
 export async function reloadService({ env, requestFn, registryPath, out, err }) {
   const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
@@ -511,7 +523,7 @@ export async function reloadService({ env, requestFn, registryPath, out, err }) 
       err(`注意：服务在用的 registry 是 ${summary.path}，与本次写入的不是同一个文件；本次写入要等服务重启或换用同一 registry 才生效。`);
       return false;
     }
-    out(`服务已重载（registry 共 ${summary.entries} 条）。`);
+    out(`服务已重载（${registryCountText(summary)}）。`);
     return true;
   } catch (error) {
     err(`服务可达但 reload 失败（${error.message}）；条目已登记，重启服务后生效。`);
