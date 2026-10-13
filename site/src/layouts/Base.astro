@@ -1,5 +1,7 @@
 ---
-// 站点外壳：顶栏（project 面包屑 + 概念 + 深浅色）、左目录、正文、右评论栏占位、概念抽屉。
+// 站点外壳：顶栏（project 面包屑 + 概念 + 深浅色）、左目录、正文、右评论栏、概念抽屉。
+// 评论栏的内容由 pinpoint 注入的标注客户端填（src/client/prose-comments.js，[data-pp-rail]）；
+// 没有注入（站点单独跑、以后的公开链接）时只留这句说明。
 // 样子照 tasks/2026-10-13-pp3/preview/index.html。
 import '../styles/site.css';
 
@@ -71,9 +73,9 @@ const llms = `/${encodeURIComponent(project)}/llms.txt`;
         <slot />
       </main>
       {rail && (
-        <aside class="rail" id="rail" aria-label="评论">
+        <aside class="rail" id="rail" aria-label="评论" data-pp-rail>
           <div class="label">评论</div>
-          <p class="empty-rail">选中文字评论在 M2 接入。</p>
+          <p class="empty-rail">经本机 pinpoint 打开时，选中正文就能评论。</p>
         </aside>
       )}
     </div>

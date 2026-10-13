@@ -49,6 +49,7 @@ import {
 } from '../shared/ann-status.js';
 import { FRAME_STAGE_SELECTOR, frameInternalSelector, queryFrameScope } from '../shared/frame-anchor.js';
 import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
+import { startProseComments } from './prose-comments.js';
 
 (function () {
   'use strict';
@@ -60,6 +61,17 @@ import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
+  // pp3 M2：文章页（article-proxy 注入 __pinpointProse）只跑正文评论 —— 选中文字
+  // → 右栏线程，桶 = 文章页 id、账本 @prose（src/client/prose-comments.js）。画布
+  // 标注的工具条、侧栏、元素标注都不在文章页上起：画布标注只在画布页做。
+  if (window.__pinpointProse && window.__pinpointEntry) {
+    var startProse = function () {
+      startProseComments({ server: SERVER, entry: String(window.__pinpointEntry), prose: window.__pinpointProse });
+    };
+    if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', startProse, { once: true });
+    else startProse();
+    return;
+  }
   // Registry entry this page annotates under: the page-world global set by
   // same-origin injectors (/sites/、/api/frame）。Default: 'pinpoint'.
   // （浏览器扩展已于 pp2 切片 3 退役 —— 它曾走 <html data-pinpoint-entry>

@@ -1,19 +1,19 @@
 /* Article 站点样式。token 与布局照 tasks/2026-10-13-pp3/preview/index.html（owner 认可的样子）。 */
 :root {
   --bg:#ffffff; --ink:#111111; --ink-2:#454545; --muted:#767676; --hair:#e6e6e6; --soft:#f5f5f5; --soft-2:#ececec;
-  --accent:#0e8f6c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12);
+  --accent:#0e8f6c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12); --shadow-sm:0 6px 18px rgba(0,0,0,.10);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-    --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5);
+    --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-  --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5);
+  --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -83,9 +83,50 @@ pre code { background:none; padding:0; }
 .canvas-stub { margin:26px 0 10px; border:1px dashed var(--hair); border-radius:18px; background:var(--soft); color:var(--muted);
                min-height:160px; display:grid; place-items:center; font-size:14px; }
 
-/* 评论栏占位（M2） */
+/* 正文评论（pp3 M2）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
+   生成（src/client/prose-comments.js），样子照 tasks/2026-10-13-pp3/preview/index.html。 */
+.btn.pri { background:var(--ink); color:var(--bg); border-color:var(--ink); }
+.btn.pri:hover { background:var(--ink-2); }
+mark.pp-hl { background:var(--hl); color:inherit; border-radius:3px; cursor:pointer; padding:0; }
+mark.pp-hl.on { background:var(--hl-on); }
+mark.pp-hl.draft { background:var(--hl-on); }
+.pp-selbtn { position:absolute; z-index:45; box-shadow:var(--shadow); }
+
 .rail { position:relative; min-width:0; }
+@media (min-width:861px) {
+  /* 右栏自己滚：点正文高亮时只滚右栏到那条线程，不把页面拽走。留白给线程的阴影，滚动容器会裁掉它。 */
+  .rail { position:sticky; top:72px; align-self:start; max-height:calc(100vh - 96px); overflow:auto; padding:4px 14px 28px; margin:-4px -14px 0; }
+}
 .empty-rail { color:var(--muted); font-size:13.5px; }
+.pp-rail-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
+.pp-rail-head .label { margin:0; }
+.pp-seg { display:flex; gap:2px; background:var(--soft); border-radius:999px; padding:2px; }
+.pp-seg button { appearance:none; border:0; background:none; color:var(--ink-2); font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; cursor:pointer; }
+.pp-seg button[aria-selected="true"] { background:var(--bg); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.08); }
+.pp-seg button.zero { color:var(--muted); }
+.pp-seg .c { font-variant-numeric:tabular-nums; color:var(--muted); }
+.pp-thread { border:1px solid var(--hair); border-radius:14px; padding:12px 14px; margin-bottom:14px; background:var(--bg); font-size:14px; line-height:1.55; cursor:pointer; transition:box-shadow .15s; }
+.pp-thread.on { cursor:default; box-shadow:var(--shadow-sm); border-color:color-mix(in srgb, var(--accent) 50%, var(--hair)); }
+.pp-thread .q { font-size:12.5px; color:var(--muted); border-left:3px solid var(--hl-on); padding-left:8px; margin-bottom:8px; overflow-wrap:anywhere; }
+.pp-thread.stale .q { border-left-style:dashed; border-left-color:var(--muted); }
+.pp-meta { display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:12px; }
+.pp-meta .sp { flex:1; }
+.pp-n { color:#fff; font-weight:600; font-size:11.5px; border-radius:999px; padding:1px 7px; font-variant-numeric:tabular-nums; }
+.pp-st, .pp-stale { color:var(--muted); font-size:11.5px; border:1px solid var(--hair); border-radius:999px; padding:0 7px; }
+.pp-stale { color:var(--warn); border-color:color-mix(in srgb, var(--warn) 45%, var(--hair)); }
+.pp-act { appearance:none; border:0; background:none; color:var(--ink-2); font:inherit; font-size:12px; padding:2px 6px; border-radius:6px; cursor:pointer; }
+.pp-act:hover { background:var(--soft); color:var(--ink); }
+.pp-thread .msg { margin:8px 0 0; }
+.pp-thread .msg:first-child { margin-top:0; }
+.pp-thread .who { font-size:12px; font-weight:600; margin-right:6px; }
+.pp-thread .who.agent { color:var(--accent); }
+.pp-thread .when { font-size:11.5px; color:var(--muted); }
+.pp-thread .text { white-space:pre-wrap; overflow-wrap:anywhere; }
+.pp-thread textarea { display:block; width:100%; margin-top:10px; font:inherit; font-size:14px; color:var(--ink); background:var(--soft); border:1px solid var(--hair);
+                      border-radius:10px; padding:8px 10px; resize:vertical; min-height:60px; }
+.pp-thread .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+.pp-rail-note { color:var(--warn); font-size:12.5px; margin:0; }
+.pp-rail-note:empty { display:none; }
 
 /* 概念抽屉 */
 .drawer { position:fixed; right:20px; bottom:20px; z-index:30; width:320px; max-height:60vh; overflow:auto; background:var(--bg); border:1px solid var(--hair);
