@@ -64,6 +64,7 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
       pageId: 'e2e-project_commit-confirm',
       dir: path.join(project.dir, 'articles', 'commit-confirm'),
       file: path.join(project.dir, 'articles', 'commit-confirm', 'index.mdx'),
+      canvasSections: 3,
     },
     {
       id: 'takeover',
@@ -71,6 +72,7 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
       pageId: 'e2e-project_takeover',
       dir: path.join(project.dir, 'articles', 'takeover'),
       file: path.join(project.dir, 'articles', 'takeover', 'index.mdx'),
+      canvasSections: 0,
     },
   ]);
   assert.deepEqual(project.concepts, [

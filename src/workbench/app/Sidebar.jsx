@@ -54,6 +54,9 @@
 //
 // 2026-10-10：大纲离开左栏。产物 / 草稿条目和 frame 树改由页 tab 条上的浮层打开
 // （app/OutlinePopover.jsx）。左栏 icon tab 只剩「页面 / 已归档」。
+//
+// 2026-10-13（pp3 M4，owner 选 A）：「页面」tab 顶上加一组「文章」（app/ArticlesSection.jsx，
+// project → 文章）；原来的置顶、最近、文件夹与散页原样搬进下面的「页面」组。
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
 import { PageSortMenu } from './PageSortMenu.jsx';
@@ -85,6 +88,7 @@ import {
 import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
+import { ArticlesSection } from './ArticlesSection.jsx';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
 import { cn } from './lib/utils.js';
@@ -734,6 +738,10 @@ export function Sidebar() {
             {derived.archived.map(function (page) { return <PageRow key={page.id} page={page} dnd={dnd} now={now} />; })}
             {!derived.archived.length && <p className="wb-row">没有归档页面</p>}
           </nav></div> : <div role="tabpanel" id="wb-panel-pages" aria-labelledby="wb-tab-pages" hidden={sidebarTab !== 'pages'}>
+          <ArticlesSection />
+          {/* 「页面」组（pp3 M4）：原来的置顶、最近、文件夹与散页原样搬进来，等存量页迁成文章后撤掉。 */}
+          <section className="wb-group" data-section="page-group" aria-labelledby="wb-page-group-head">
+          <div className={SECTION_HEAD + ' wb-group-head'} id="wb-page-group-head">页面</div>
           {derived.pinned.length > 0 && <nav className="wb-pinned-pages" aria-label="置顶页面">
             {derived.pinned.map(function (page) { return <PageRow key={page.id} page={page} folderId={derived.grouping.pageFolders[page.id]} dnd={dnd} now={now} />; })}
           </nav>}
@@ -743,6 +751,7 @@ export function Sidebar() {
               savePrefs({ pageSort: next });
               setSort(next);
             }} />
+          </section>
           </div>}
           </PagePreferences.Provider>
         </ScrollArea>

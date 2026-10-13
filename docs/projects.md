@@ -87,7 +87,7 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
   "title": "E2E Project",
   "root": "/abs/project-site",
   "dir": "/abs/project-site/docs/pinpoint",
-  "articles": [{ "id": "commit-confirm", "title": "提交前确认", "summary": "…", "pageId": "e2e-project_commit-confirm", "dir": "/abs/…/articles/commit-confirm", "file": "/abs/…/articles/commit-confirm/index.mdx" }],
+  "articles": [{ "id": "commit-confirm", "title": "提交前确认", "summary": "…", "pageId": "e2e-project_commit-confirm", "dir": "/abs/…/articles/commit-confirm", "file": "/abs/…/articles/commit-confirm/index.mdx", "canvasSections": 3 }],
   "concepts": [{ "name": "confirm-card", "slug": "confirm-card", "status": "收敛中", "boundary": "…", "file": "/abs/…/concepts/confirm-card.md" }],
   "errors": []
 }
@@ -95,6 +95,7 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 
 - article 按 id、concept 按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
 - 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`（字符串）。文章和概念的错误以相对 `docs/pinpoint/` 的路径开头（`articles/x/index.mdx：…`）；根目录、`docs/pinpoint/`、`project.json` 这三处的错误带绝对路径，因为这三处本身就是相对路径的起点。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
+- `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
 同一模块还导出这几个，站点需要时直接用：
@@ -159,7 +160,18 @@ export default function ConfirmBare() {
 
 ### 不进 Pages
 
-画布页属于文章，不出现在工作台左栏 Pages、`GET /registry` 的 `entries` 和 `ppnt list` 的页表里。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
+画布页属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的页表里；左栏另有“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
+
+### 工作台左栏
+
+2026-10-13 起（pp3 M4），工作台左栏“页面”tab 分两组：上面“文章”，下面“页面”。“页面”组就是原来的置顶、最近、文件夹与散页，存量页迁成文章之后撤掉。
+
+- “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
+- 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的画布页）：点行在工作台打开画布页 `<project>_<article>`，和 `/?page=` 是同一个页，选中态与页面行一样。没有画布的文章：点行在新标签页打开正文。
+- 行尾“阅读”钮（tooltip“阅读正文”）在新标签页打开 `/<project>/<article>/`。常态不显示，行 hover 或键盘焦点进到行时出现。右键菜单有“阅读正文”，有画布的再加“复制 @page”。
+- project 有布局错误时，标题行尾显示错误个数，tooltip 列前三条。
+- 文章不归档、不置顶、不进文件夹、不能拖。文章画布不进“最近”，“最近”只算 Pages 列表里的页。
+- 实时更新：`registry:update`（登记或移除 project）和 `projects:update` 都让左栏重读 `/api/projects`。`projects:update` 由 `preview-hmr` 发，载荷 `{ project }`：project 目录里有文件新建、修改或删除，并且列表那一层变了（project 标题、文章增删、文章标题与摘要、`canvasSections`、布局错误）。只改正文或帧内容不发。Vite 6 对新建和删除不调 `handleHotUpdate`，所以 `preview-hmr` 另外监听 watcher 的 `add` / `unlink`：新建的文章或帧在这里重编，画布页收到 `preview:update`。
 
 ### 标注桶
 

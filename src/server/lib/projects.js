@@ -234,7 +234,10 @@ function readArticles(dir, errors, projectId) {
     // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误。
     const canvas = parseArticleCanvas(text, frameFileReaders(articleDir));
     for (const problem of canvas.errors) errors.push(`${rel}/index.mdx：${problem.message}`);
-    const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file };
+    // canvasSections：画布上有几节（带 Canvas 且列了帧的节）。0 = 这篇没有画布，
+    // 工作台左栏点它直接打开正文（docs/projects.md「工作台左栏」）。
+    const canvasSections = canvas.sections.filter((section) => section.frames.length > 0).length;
+    const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file, canvasSections };
     if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);
     if (fm.data.summary) article.summary = fm.data.summary;
     articles.push(article);

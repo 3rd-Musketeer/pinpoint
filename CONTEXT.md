@@ -17,6 +17,7 @@
 
 **page（页）**
 Pages 列表里的一行 = 一件正在做的事。页自身没有类型：一个页可以同时装画布、文档和网页。
+Pages 列表 = 工作台左栏“页面”tab 下的“页面”组；同一个 tab 顶上另有“文章”组，按 project → article 列出（2026-10-13，`docs/projects.md`“工作台左栏”）。文章的画布页只在“文章”组里，不进 Pages 列表。
 `pageId` 同时是标注地址 `@page:<id>` 和 DOM 上的 `data-vpage`。
 住在 `content/previews/_index.json`（模板页）或 `~/.pinpoint/registry.json`（登记进来的页）。
 要避开：“册”（owner 明确否掉的自造词，ADR 0021）、“board”当页用；project 是另一层，见 project 词条。

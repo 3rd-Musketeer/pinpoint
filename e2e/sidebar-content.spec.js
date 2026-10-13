@@ -1,5 +1,10 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { expect, test } from '@playwright/test';
+import { E2E_SITES_DIR } from './env.js';
 import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
+import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 
 // 左栏内容（2026-09-04 切片 ②，评审板 C1 + ADR 0031/0032）：搜索、「最近」段、
@@ -314,4 +319,131 @@ test('最近与 Pages 共用右键菜单：查看信息显示真实来源，归�
   // runner 往仓库根写产物就会顶新它（与登记表是否被改写无关）。
   expect(withoutMtime(await (await request.get('/registry')).json())).toBe(before);
   await page.screenshot({ path: test.info().outputPath('navigation.png') });
+});
+
+// pp3 M4：「页面」tab 顶上的「文章」组（owner 2026-10-13 选 A）。固件是常驻的 e2e-project
+// （commit-confirm 有画布、takeover 没有）；实时更新用本轮临时登记的 e2e-live。
+test('文章组：在页面组之上；点文章开画布并高亮，阅读钮开正文，没画布的文章点了开正文；登记与新文章不刷新就出现', async ({ page, request, context }) => {
+  test.setTimeout(60_000);
+  const PAGE_ID = 'e2e-project_commit-confirm';
+  const liveRoot = path.join(E2E_SITES_DIR, 'live-project');
+  const liveContent = path.join(liveRoot, 'docs', 'pinpoint');
+  const write = (rel, text) => {
+    const file = path.join(liveContent, rel);
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  await openWorkbench(page);
+  const row = (key) => page.locator(`#wbarticles [data-article="${key}"]`);
+  const commit = row('e2e-project/commit-confirm');
+  const takeover = row('e2e-project/takeover');
+
+  await test.step('位置与结构：文章组在页面组之上，project → 文章，页面组里是原来的 Pages', async () => {
+    const order = await page.locator('#wb-panel-pages').evaluate((panel) =>
+      [...panel.querySelectorAll(':scope > [data-section]')].map((el) => el.dataset.section));
+    expect(order).toEqual(['articles', 'page-group']);
+    await expect(page.locator('[data-section="articles"] > .wb-section-head')).toHaveText('文章');
+    await expect(page.locator('[data-section="page-group"] > .wb-group-head')).toHaveText('页面');
+    await expect(page.locator('[data-section="page-group"] #wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
+    await expect(page.locator('[data-section="page-group"] #wbrecent')).toHaveCount(1);
+    const project = page.locator('#wbarticles [data-project="e2e-project"]');
+    await expect(project).toHaveText('E2E Project');
+    await expect(project).toHaveAttribute('aria-expanded', 'true');
+    await expect(project.locator('.wb-project-err')).toHaveCount(0);
+    await expect(commit).toHaveText('提交前确认');
+    await expect(commit).toHaveAttribute('data-canvas', '1');
+    await expect(commit).toHaveAttribute('title', /付款与提交前/);
+    await expect(takeover).toHaveText('用户接手');
+    await expect(takeover).toHaveAttribute('data-canvas', '0');
+    const a = await page.locator('[data-section="articles"]').boundingBox();
+    const b = await page.locator('[data-section="page-group"]').boundingBox();
+    expect(a.y + a.height).toBeLessThanOrEqual(b.y + 1);
+  });
+
+  await test.step('点有画布的文章：画布页 ?page=e2e-project_commit-confirm 装好，行高亮，reload 仍高亮', async () => {
+    await commit.click();
+    await page.waitForFunction((id) => window.workbench.activePageId() === id, PAGE_ID);
+    await expect.poll(() => new URL(page.url()).searchParams.get('page')).toBe(PAGE_ID);
+    await expect(page.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-confirm-card')).toBeVisible();
+    await expect(commit).toHaveAttribute('data-state', 'on');
+    await expect(commit).toHaveClass(/\bon\b/);
+    await expect(page.locator('.wb-page.on')).toHaveCount(0);
+    await page.reload();
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    await expect(commit).toHaveAttribute('data-state', 'on');
+  });
+
+  await test.step('阅读钮：常态不显示，hover / Tab 到它才现；在新标签页打开 /<project>/<article>/', async () => {
+    const read = page.locator('#wbarticles [data-article-read="e2e-project/commit-confirm"]');
+    await expect(read).toHaveAttribute('title', '阅读正文');
+    await page.mouse.move(0, 0);
+    await expect(read).toHaveCSS('opacity', '0');
+    await commit.focus();
+    await page.keyboard.press('Tab');
+    await expect(read).toBeFocused();
+    await expect(read).toHaveCSS('opacity', '1');
+    await commit.hover();
+    await expect(read).toHaveCSS('opacity', '1');
+    // 阅读钮出现时不压住标题：标题右端让到钮的左边。
+    const title = await commit.locator('.wb-row-t').boundingBox();
+    const btn = await read.boundingBox();
+    expect(title.x + title.width).toBeLessThanOrEqual(btn.x + 1);
+    const [popup] = await Promise.all([context.waitForEvent('page'), read.click()]);
+    expect(new URL(popup.url()).pathname).toBe('/e2e-project/commit-confirm/');
+    await popup.close();
+    expect(await page.evaluate(() => window.workbench.activePageId())).toBe(PAGE_ID);
+  });
+
+  await test.step('没有画布的文章：点行直接开正文，工作台不换页', async () => {
+    const [popup] = await Promise.all([context.waitForEvent('page'), takeover.click()]);
+    expect(new URL(popup.url()).pathname).toBe('/e2e-project/takeover/');
+    await popup.close();
+    expect(await page.evaluate(() => window.workbench.activePageId())).toBe(PAGE_ID);
+    await expect(takeover).not.toHaveAttribute('data-state', 'on');
+  });
+
+  await test.step('project 行折叠：文章行收起，reload 后记住', async () => {
+    const project = page.locator('#wbarticles [data-project="e2e-project"]');
+    await project.click();
+    await expect(project).toHaveAttribute('aria-expanded', 'false');
+    await expect(commit).toHaveCount(0);
+    await page.reload();
+    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await expect(project).toHaveAttribute('aria-expanded', 'false');
+    await expect(commit).toHaveCount(0);
+    await project.click();
+    await expect(commit).toBeVisible();
+  });
+
+  await test.step('实时：登记 project、加文章、写坏一处，不刷新就反映；撤登记后消失', async () => {
+    fs.rmSync(liveRoot, { recursive: true, force: true });
+    write('project.json', JSON.stringify({ id: 'e2e-live', title: 'Live Project' }));
+    write('articles/first/index.mdx', '---\ntitle: 第一篇\n---\n\n纯文字。\n');
+    try {
+      appendRegistryEntry({ id: 'e2e-live', kind: 'project', path: liveRoot });
+      expect((await request.post('/registry/reload')).ok()).toBeTruthy();
+      const live = page.locator('#wbarticles [data-project="e2e-live"]');
+      await expect(live).toHaveText('Live Project');
+      await expect(row('e2e-live/first')).toHaveAttribute('data-canvas', '0');
+
+      // 新文章带画布：行出现，画布页进清单，点开就是画布。
+      write('articles/second/flow.jsx', 'export default function Flow() {\n  return <div className="ios-app e2e-live-flow">流程</div>;\n}\n');
+      write('articles/second/index.mdx', '---\ntitle: 第二篇\n---\n\n<Section id="flow" title="流程">\n\n<Canvas frames={["flow"]} />\n\n</Section>\n');
+      await expect(row('e2e-live/second')).toHaveAttribute('data-canvas', '1', { timeout: 15_000 });
+      await row('e2e-live/second').click();
+      await page.waitForFunction(() => window.workbench.activePageId() === 'e2e-live_second');
+      await expect(page.locator('#wb-board-panel [data-screen="flow"] .e2e-live-flow')).toBeVisible({ timeout: 15_000 });
+
+      // 写坏：articles/ 下的散文件是一条布局错误 → 错误标带个数，tooltip 列出来。
+      write('articles/stray.md', 'x\n');
+      const mark = live.locator('.wb-project-err');
+      await expect(mark).toHaveText('1', { timeout: 15_000 });
+      await expect(mark).toHaveAttribute('title', /布局错误 1 条：\narticles\/stray\.md：articles\/ 下只放文章目录/);
+    } finally {
+      await restoreRegistryFixture(request);
+      fs.rmSync(liveRoot, { recursive: true, force: true });
+    }
+    await expect(page.locator('#wbarticles [data-project="e2e-live"]')).toHaveCount(0);
+    await expect(page.locator('#wbarticles [data-project="e2e-project"]')).toBeVisible();
+  });
 });
