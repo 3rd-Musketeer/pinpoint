@@ -1,5 +1,5 @@
 import { collectPageTimes } from './lib/page-times.js';
-import { collectOrphanCounts } from './lib/orphans.js';
+import { collectOrphanCounts, pageIdIsLive } from './lib/orphans.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,7 @@ import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 import { listProjects } from './lib/projects.js';
-import { articlePageRows, resolveArticleTarget } from './lib/article-board.js';
+import { articlePageRows } from './lib/article-board.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
   annotateBundleByHash,
@@ -163,11 +163,11 @@ function handleSse(req, res) {
 // 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：一篇 article 的桶是
 // 它的画布页 id `<project>_<article>`（projects.js articlePageId，画布标注与正文评论
 // 共用，common-m1.md §2），project 登记了、文章的 index.mdx 在盘上才算
-// （article-board.js resolveArticleTarget）；project id 本身不是桶。
+// （article-board.js resolveArticleTarget）；project id 本身不是桶。判定在
+// orphans.js 的 pageIdIsLive，prune 与孤儿报告用同一处。
 export function resolveRequestEntry(registry, raw, localIds = []) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
-  const known = id === DEFAULT_ENTRY || registry.resolve(id) != null || localIds.includes(id)
-    || resolveArticleTarget(registry, id) != null;
+  const known = id === DEFAULT_ENTRY || pageIdIsLive(registry, id, { manifestIds: localIds });
   return known ? { entry: id } : { entry: id, unknown: true };
 }
 
@@ -208,10 +208,15 @@ export function createAnnotateHandler(options = {}) {
     const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds });
     // storage-unify：每页的孤儿账本数（表面已不存在的账本；页信息面板显示，
     // 清理只经 ppnt prune）。
-    const orphanCounts = collectOrphanCounts({ entries: registry.entries, dataRoot: root, localIds, root: serviceRoot });
+    const articles = articlePageRows(registry);
+    const orphanCounts = collectOrphanCounts({
+      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleIds: articles.map((row) => row.id),
+    });
     for (const [id, count] of Object.entries(orphanCounts)) {
       if (pageTimes[id]) pageTimes[id].orphans = count;
     }
+    // 文章画布页不在 pageTimes 里：有孤儿时把行数挂在 articles 那一行上。
+    for (const row of articles) if (orphanCounts[row.id]) row.orphans = orphanCounts[row.id];
     return {
       pageTimes,
       ok: registry.ok,
@@ -229,7 +234,7 @@ export function createAnnotateHandler(options = {}) {
       pageFolders: registry.pageFolders || {},
       pageOrder: registry.pageOrder || {},
       // pp3 M1：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
-      articles: articlePageRows(registry),
+      articles,
       errors: registry.errors,
       warnings: registry.warnings,
     };

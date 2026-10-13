@@ -9,8 +9,10 @@ import {
   collectOrphanCounts,
   collectPageOrphans,
   ledgerIsOrphan,
+  pageIdIsLive,
   pageSurfaceSpaces,
 } from './orphans.js';
+import { loadRegistry } from './registry.js';
 
 function withFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-orphans-'));
@@ -160,4 +162,25 @@ test('ledgerIsOrphan：子目录索引页与字面 % 文件名都不是孤儿（
   // path 已是 decode 形，字面 % 不再二次 decode（原来 decode 抛异常 → 误判孤儿）。
   assert.equal(ledgerIsOrphan({ name: 'pct.json', doc: { path: '/sites/site-a/50%.html' } }, spaces), false);
   assert.equal(ledgerIsOrphan({ name: 'gone.json', doc: { path: '/sites/site-a/sub/gone.html' } }, spaces), true, '子目录里的文件真没了照判');
+});
+
+test('pageIdIsLive：条目、模板页、盘上有 index.mdx 的文章画布页是页；project id、删掉的文章、没登记的 project 不是', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-live-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const proj = path.join(root, 'proj');
+  fs.mkdirSync(path.join(proj, 'docs', 'pinpoint', 'articles', 'notes'), { recursive: true });
+  fs.writeFileSync(path.join(proj, 'docs', 'pinpoint', 'project.json'), JSON.stringify({ id: 'demo' }));
+  fs.writeFileSync(path.join(proj, 'docs', 'pinpoint', 'articles', 'notes', 'index.mdx'), '# n\n');
+  const file = path.join(root, 'registry.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [
+    { id: 'site', kind: 'dir', path: root },
+    { id: 'web', kind: 'url', url: 'https://example.com/' },
+    { id: 'demo', kind: 'project', path: proj },
+  ] }));
+  const registry = loadRegistry({ root, path: file });
+  const live = (id) => pageIdIsLive(registry, id, { manifestIds: ['tpl'] });
+  assert.deepEqual(
+    ['site', 'web', 'tpl', 'demo_notes', 'demo', 'demo_gone', 'other_notes', '', null].map(live),
+    [true, true, true, true, false, false, false, false, false],
+  );
 });

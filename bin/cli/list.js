@@ -6,7 +6,7 @@ import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.j
 import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
-import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { collectBucketOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
@@ -76,7 +76,7 @@ export function printPageStatus(parsed, { env, out, err }) {
 }
 
 /** 页消失后的整桶孤儿报告；桶也不在时返回 false（调用方走原报错）。 */
-function printBucketOrphanStatus(pageRef, { env, out }) {
+export function printBucketOrphanStatus(pageRef, { env, out }) {
   if (!pageRef) return false;
   const names = collectBucketOrphans(String(pageRef), dataRoot(env));
   if (!names.length) return false;
@@ -86,12 +86,11 @@ function printBucketOrphanStatus(pageRef, { env, out }) {
   return true;
 }
 
-/** 页 id 是否在 registry 或本地 manifest 里（整桶孤儿报告只给两处都不在的桶）。 */
-function pageIdKnown(pageRef, parsed, { env }) {
+/** 页 id 现在是不是一页（registry 条目、模板页、文章画布页；整桶孤儿报告只给不是页的桶）。 */
+export function pageIdKnown(pageRef, parsed, { env }) {
   if (!pageRef || !PAGE_ID_PATTERN.test(String(pageRef))) return false;
   const registry = loadRegistry({ root: REPO_ROOT, path: resolveRegistryPath(parsed.flags, env) });
-  if (registry.resolve(pageRef)) return true;
-  return manifestPageIds(REPO_ROOT).includes(pageRef);
+  return pageIdIsLive(registry, pageRef, { manifestIds: manifestPageIds(REPO_ROOT) });
 }
 
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */

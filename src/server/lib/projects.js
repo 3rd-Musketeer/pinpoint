@@ -69,19 +69,6 @@ export function parseArticlePageId(pageId) {
   return match ? { projectId: match[1], articleId: match[2] } : null;
 }
 
-/**
- * 一个页 id 对应的已登记 article：project 登记了、文章目录在盘上，返回
- * { pageId, projectId, articleId, project, article }；否则 null。
- */
-export function resolveArticlePage(registry, pageId) {
-  const parts = parseArticlePageId(pageId);
-  if (!parts) return null;
-  const project = findProject(registry, parts.projectId);
-  const article = project && project.articles.find((item) => item.id === parts.articleId);
-  if (!article) return null;
-  return { pageId: articlePageId(parts.projectId, parts.articleId), ...parts, project, article };
-}
-
 const FM_KEY = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:(?:\s+(.*))?$/;
 // 这些开头在 YAML 里是块标量、流式列表 / 映射、锚点、标签：本解析器不支持，报错不猜。
 const YAML_ONLY_START = /^[>|[{&*!]/;

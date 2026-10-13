@@ -22,7 +22,30 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { resolveArticleTarget } from './article-board.js';
 import { boardScreenIds } from './page-compiler.js';
+
+/**
+ * 这个页 id 现在是不是一页（它的桶是活桶）。孤儿判定、prune、status / check 的
+ * 整桶孤儿报告、服务端收标注时的桶校验都用这一处，判定顺序只写一份：
+ * - registry 条目（dir / file / url；project 条目不是页，project id 也不是桶）；
+ * - 本地模板页（manifestIds = content/previews/_index.json 的页 id）；
+ * - 文章画布页 `<project>_<article>`：project 登记了、文章的 index.mdx 在盘上
+ *   （article-board.js resolveArticleTarget，只 stat）。文章目录删了或改名了，
+ *   旧页 id 就不再是页，它的桶整桶皆孤儿。
+ */
+export function pageIdIsLive(registry, pageId, { manifestIds = [] } = {}) {
+  if (!pageId) return false;
+  const id = String(pageId);
+  const entry = registry
+    ? (typeof registry.resolve === 'function'
+      ? registry.resolve(id)
+      : ((registry.entries || []).find((row) => row && row.id === id) || null))
+    : null;
+  if (entry && entry.kind !== 'project') return true;
+  if (manifestIds.includes(id)) return true;
+  return resolveArticleTarget(registry, id) != null;
+}
 
 /** 一个页的表面空间列表。entries 是 registry 条目（含挂靠）；isManifestPage
     = 该 id 在 content/previews/_index.json 里。 */
@@ -110,11 +133,12 @@ export function collectBucketOrphans(pageId, dataRoot) {
 }
 
 /** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数，与
-    status --page 的「孤儿 N 条」一致（K7）；一本孤儿账本可能装着几十行。 */
-export function collectOrphanCounts({ entries, dataRoot, localIds, root }) {
+    status --page 的「孤儿 N 条」一致（K7）；一本孤儿账本可能装着几十行。
+    articleIds = 活的文章画布页 id（它们不在 entries 里，桶照样要数）。 */
+export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleIds = [] }) {
   const previewsRoot = path.join(root, 'content', 'previews');
-  const ids = new Set([...localIds]);
-  for (const entry of entries) if (entry.id !== 'pinpoint' && !entry.page) ids.add(entry.id);
+  const ids = new Set([...localIds, ...articleIds]);
+  for (const entry of entries) if (entry.id !== 'pinpoint' && !entry.page && entry.kind !== 'project') ids.add(entry.id);
   const out = {};
   for (const pageId of ids) {
     const orphanLedgers = new Set(collectPageOrphans({
