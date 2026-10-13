@@ -3,6 +3,7 @@ playwright-report/
 playwright-report-*/
 test-results/
 test-results-*/
+test-results-*.json
 .DS_Store
 
 # Instance-local overrides (never shared)

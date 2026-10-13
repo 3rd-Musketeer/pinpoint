@@ -922,12 +922,10 @@ test('gutter renders only on events: idle, scroll, filter/ledger changes, and la
   };
 
   await test.step('gutter renders only on events: idle costs nothing, scroll repositions without rebuilding', async () => {
-    // 静止 1 秒：没有滚动 / 账本 / 尺寸信号，就一次排程、一次渲染都不该有。
+    // 静止：没有滚动 / 账本 / 尺寸信号，就一次排程、一次渲染都不该有。waitGutterQuiet
+    // 等到计数器连续 1.5s 不动才返回，常驻 rAF 一类回归会让它一直“busy”到超时，这一
+    // 窗口本身就是断言（原先再加的 1s 固定等待、重读一次零，量的是同一件事）。
     await waitGutterQuiet(page);
-    await page.waitForTimeout(1000);
-    expect(await page.evaluate(() => ({
-      requests: window.__wbGutter.requests, renders: window.__wbGutter.renders,
-    }))).toEqual({ requests: 0, renders: 0 });
 
     // 滚动 iframe：一个滚动信号合并成一帧一次重算；气泡节点复用（元素引用不变，
     // innerHTML 不重建），#s2 的气泡跟着锚点上移 200px；滚出视口的 h1 气泡摘除。
@@ -1000,8 +998,8 @@ test('gutter renders only on events: idle, scroll, filter/ledger changes, and la
   // mutation —— 旧实现靠常驻 rAF 每帧重算自然跟上，事件化之后必须由 iframe
   // document 上 load 的 capture 监听接住。
   await test.step('gutter follows late layout shifts: an image that gets its size after the page settles', async () => {
-    await waitGutterQuiet(page);
-
+    // 不再先等 1.5s 静止：基线在插图之后自己冲掉在途排程并归零，后面的断言是 ≥1
+    // 与位置，背景里多出的渲染不改变它们。
     // 图片由本 spec 进程里的 HTTP server 提供，压 800ms 才回，让「晚到」成为
     // 确定性时序 —— data URL 的 load 快到可能赶进 src 赋值那一批 mutation 触发的
     // 同一帧渲染里，用例就空转通过了。
