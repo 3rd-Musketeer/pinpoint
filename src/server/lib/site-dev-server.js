@@ -99,6 +99,14 @@ export function stopOnSignals(devServer, proc = process) {
   return () => { for (const [signal, handler] of handlers) proc.off(signal, handler); };
 }
 
+/** 脱离的看门进程：delayMs 后进程组还在就 SIGKILL（发起方退出了也照样执行）。 */
+function killGroupLater(pid, delayMs) {
+  const script = `setTimeout(()=>{try{process.kill(-${Number(pid)},'SIGKILL')}catch{}},${Number(delayMs)})`;
+  try {
+    spawn(process.execPath, ['-e', script], { detached: true, stdio: 'ignore' }).unref();
+  } catch { /* 起不了看门进程：只剩 SIGTERM */ }
+}
+
 /**
  * options:
  *   cwd            spawn 的工作目录（仓库根）
@@ -357,12 +365,17 @@ export function createSiteDevServer(options = {}) {
     });
   }
 
-  /** process 'exit' 里只能做同步的事：给进程组发 SIGTERM。 */
+  /**
+   * process 'exit' 和信号处理里只能做同步的事：给进程组发 SIGTERM，再留一个脱离的
+   * 看门进程，STOP_GRACE_MS 后组还在就 SIGKILL。服务自己马上就退出了，等不到 stop()
+   * 那样的升级；Astro 在重同步内容时收到 SIGTERM 可能迟迟不退（2026-10-13 e2e 实测
+   * 留成孤儿）。
+   */
   function stopSync() {
     if (restartTimer) clearTimeout(restartTimer);
     const proc = child;
     state = 'stopped';
-    if (proc) killGroup(proc.pid, 'SIGTERM');
+    if (proc && killGroup(proc.pid, 'SIGTERM')) killGroupLater(proc.pid, STOP_GRACE_MS);
   }
 
   return {

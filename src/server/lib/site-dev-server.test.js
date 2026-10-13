@@ -138,10 +138,11 @@ test('端口上已有服务在答：直接用它（external），vite base 不�
 });
 
 // 2026-10-13：服务被 SIGTERM 杀掉时，detached 的站点进程组留成孤儿，下一轮 e2e 把它当 external。
-for (const signal of ['SIGTERM', 'SIGINT']) {
-  test(`服务收到 ${signal}：站点进程组跟着停，服务按同一个信号退出`, async (t) => {
+for (const [signal, stubEnv] of [['SIGTERM', {}], ['SIGINT', {}], ['SIGTERM', { STUB_IGNORE_SIGTERM: '1' }]]) {
+  const stubborn = Boolean(stubEnv.STUB_IGNORE_SIGTERM);
+  test(`服务收到 ${signal}：站点进程组跟着停${stubborn ? '（站点不理 SIGTERM，看门进程 SIGKILL）' : ''}，服务按同一个信号退出`, async (t) => {
     const port = await freePort();
-    const host = spawn(process.execPath, [HOST, String(port)], { stdio: ['ignore', 'pipe', 'inherit'] });
+    const host = spawn(process.execPath, [HOST, String(port)], { stdio: ['ignore', 'pipe', 'inherit'], env: { ...process.env, ...stubEnv } });
     t.after(() => { try { host.kill('SIGKILL'); } catch { /* gone */ } });
     let out = '';
     host.stdout.on('data', (chunk) => { out += chunk; });

@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_SITE_PORT } from './env.js';
+import { waitNoReload } from './site-settle.js';
 
 // pp3 M0：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
 // 固件：registry 里常驻的 project 条目 e2e-project → e2e/project-site/（两篇文章、
@@ -14,24 +15,6 @@ const ARTICLE = '/e2e-project/commit-confirm/';
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
 
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
-
-// 冷启动的 Astro 开发服务器第一次出页后，vite 发现新依赖会让页面整页重载一次（时有时无，
-// 2026-10-13 实测在出页后约 300 ms）。重载途中点 [[ ]] 会落到普通链接上。等到 800 ms 内
-// 主框架不再导航、且已 load，再往下走。
-async function settled(page) {
-  let navs = 0;
-  const onNav = (frame) => { if (frame === page.mainFrame()) navs += 1; };
-  page.on('framenavigated', onNav);
-  try {
-    for (let seen = -1; seen !== navs;) {
-      seen = navs;
-      await page.waitForTimeout(800);
-      await page.waitForLoadState('load');
-    }
-  } finally {
-    page.off('framenavigated', onNav);
-  }
-}
 
 test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、概念页、llms.txt，工作台与深链照旧', async ({ page, request }) => {
   // 冷启动 Astro（依赖预构建 + content layer 同步）在高负载机器上要几十秒。
@@ -62,7 +45,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     await expect(page.locator('main[data-site-state="starting"]')).toBeVisible();
     await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
     await expect(page.locator('#article .lede')).toHaveText('付款与提交前，agent 停下来请用户确认。');
-    await settled(page);
+    await waitNoReload(page);
     await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
     const site = await siteState(request);
     expect([site.state, site.external, site.warning]).toEqual(['ready', false, null]);

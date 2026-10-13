@@ -7,6 +7,7 @@
  *   PINPOINT_SITE_VITE_BASE            必须是 /_astro/，否则所有请求 404（vite 不认 base 外的路径）
  *   STUB_READY_DELAY_MS                延迟这么久才开始监听（测「站点启动中」页）
  *   STUB_EXIT_CODE                     立刻以这个退出码退出（测崩溃重启 / 放弃）
+ *   STUB_IGNORE_SIGTERM                收到 SIGTERM 不退（测停服时的 SIGKILL 兜底）
  *
  * 路由（全部在 /_astro/ 下）：
  *   @vite/client      JS
@@ -85,7 +86,7 @@ function shutdown() {
   server.close();
   process.exit(0);
 }
-process.on('SIGTERM', shutdown);
+process.on('SIGTERM', process.env.STUB_IGNORE_SIGTERM ? () => {} : shutdown);
 process.on('SIGINT', shutdown);
 
 setTimeout(() => server.listen(port, '127.0.0.1'), delay);

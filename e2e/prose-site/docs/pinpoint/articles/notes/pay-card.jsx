@@ -2,7 +2,9 @@
 export default function PayCard() {
   return (
     <div className="ios-app">
-      <p>确认付款给「示例商店」</p>
+      <div className="ios-page">
+        <p>确认付款给「示例商店」</p>
+      </div>
     </div>
   );
 }

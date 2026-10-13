@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { waitNoReload } from './site-settle.js';
 
 // pp3 M2：文章正文选中文字评论（src/client/prose-comments.js）。固件 = registry 常驻的
 // project e2e-prose → 本轮的副本 <sites>/prose-site/（registry-fixture.js 复制），一篇
@@ -39,6 +40,8 @@ async function dragSelect(page, scope, needle) {
     for (let node = walker.nextNode(); node; node = walker.nextNode()) {
       const at = node.data.indexOf(text);
       if (at < 0) continue;
+      // 鼠标只能在视口里拖：画布卡片把后面的正文推出首屏，先把这段滚到中间再量。
+      node.parentElement.scrollIntoView({ block: 'center' });
       const first = document.createRange();
       first.setStart(node, at);
       first.setEnd(node, at + 1);
@@ -75,6 +78,7 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
     await test.step('打开文章：桶 = 文章页 id，右栏空着，没有画布标注的工具条', async () => {
       await page.goto(ARTICLE);
       await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
+      await waitNoReload(page);
       await settled(page);
       expect(await page.evaluate(() => [window.__pinpointEntry, window.pinpointProse.ledger])).toEqual([PAGE_ID, '@prose']);
       await expect(page.locator('#rail .empty-rail')).toHaveText('选中正文里的一段文字，点“评论”。');
