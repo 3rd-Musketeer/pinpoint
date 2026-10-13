@@ -888,14 +888,17 @@ export async function runRemove(argv, io = {}) {
   }
   out(`已从登记表删除 ${removed.id}（${removed.kind}）：${entryTargetDesc(removed)}`);
   out(`  源文件 / URL 不动：${entryTargetDesc(removed)} 还在原地，重新 \`pinpoint add\` 即恢复登记。`);
+  // 删桶时服务可能正好在往里写（一次保存的临时文件刚建出来）：rmSync 遇到 ENOTEMPTY
+  // 重试几次，不让 CLI 在登记表已改之后抛栈退出。那次保存自己会回 503 bucket_gone。
+  const rmBucket = { recursive: true, force: true, maxRetries: 3 };
   if (plan.bucketExists) {
-    fs.rmSync(plan.bucket, { recursive: true, force: true });
+    fs.rmSync(plan.bucket, rmBucket);
     out(`  标注桶 ${plan.bucket} 里没有标注行，已顺手删掉。`);
   } else if (plan.before.kind !== 'project') {
     out(`  标注桶 ${plan.bucket} 不存在，没有桶要清。`);
   }
   for (const item of plan.articleBuckets || []) {
-    fs.rmSync(item.dir, { recursive: true, force: true });
+    fs.rmSync(item.dir, rmBucket);
     out(`  文章桶 ${item.dir} 里没有标注行，已顺手删掉。`);
   }
   out(`registry：${plan.registryPath}`);

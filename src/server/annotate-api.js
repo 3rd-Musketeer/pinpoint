@@ -580,7 +580,7 @@ export function createAnnotateHandler(options = {}) {
           annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
         });
         if (result.status !== 200) {
-          sendJson(res, result.status, { error: result.error, ...result.doc });
+          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
           return true;
         }
         broadcastAnnotations(result.doc, entryId);

@@ -51,6 +51,21 @@ test('a route that throws answers 500 instead of rejecting (the service stays up
   assert.equal(errors.length, 1);
 });
 
+test('/save：桶在写入途中被删 → 503 bucket_gone，带说明，不是 500', async (t) => {
+  const { dataRoot, registry } = withFixture(t);
+  const handler = createAnnotateHandler({ dataRoot, registry });
+  const original = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (String(from).includes('.json.tmp-')) fs.rmSync(path.dirname(String(from)), { recursive: true, force: true });
+    return original(from, to);
+  });
+  const { res, json } = await call(handler, 'POST', '/save', { page: '@canvas', entry: 'pinpoint', baseRevision: 0, annotations: [{ content: 'a' }] });
+  t.mock.restoreAll();
+  assert.equal(res.statusCode, 503);
+  assert.equal(json.error, 'bucket_gone');
+  assert.match(json.detail, /在写入途中被删除或移走/);
+});
+
 test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown ids', (t) => {
   const { registry } = withFixture(t);
   assert.deepEqual(resolveRequestEntry(registry, undefined), { entry: 'pinpoint' });

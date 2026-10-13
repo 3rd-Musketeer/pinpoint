@@ -386,3 +386,64 @@ test('/save 正文评论：owner 回复或改引文回 open；agent 消息原样
   const reopened = store.save({ page: '@prose', baseRevision: 4, annotations: [ownerReply] });
   assert.equal(reopened.doc.annotations[0].status, 'open');
 });
+
+// 桶在写的途中没了（ppnt remove / prune 删桶，ppnt rename 挪桶，和一次保存撞上）：
+// 在 rename 那一刻真的删 / 挪目录，看存储层自己怎么收场。
+function renameHook(t, before) {
+  const original = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (from, to) => {
+    if (String(from).includes('.json.tmp-')) before(from, to);
+    return original(from, to);
+  });
+}
+
+test('桶在保存途中被删：回 503 bucket_gone，不抛、不留临时文件、不留半份账本', (t) => {
+  const { dataDir, store } = withStore(t);
+  assert.equal(store.save({ page: '@canvas', baseRevision: 0, annotations: [{ content: 'a' }] }).status, 200);
+
+  renameHook(t, () => fs.rmSync(dataDir, { recursive: true, force: true }));
+  const gone = store.save({ page: '@canvas', baseRevision: 1, annotations: [{ content: 'a' }, { content: 'b' }] });
+  assert.equal(gone.status, 503);
+  assert.equal(gone.error, 'bucket_gone');
+  assert.match(gone.detail, /在写入途中被删除或移走/);
+  assert.equal(gone.doc.revision, 0);
+  // 删桶赢了：目录没被这次保存重新建出来，也就没有临时文件或半份账本留下。
+  assert.equal(fs.existsSync(dataDir), false);
+
+  // 之后的保存照常建桶（和删桶之后才到的保存一样）。
+  t.mock.restoreAll();
+  const again = store.save({ page: '@canvas', baseRevision: 0, annotations: [{ content: 'c' }] });
+  assert.equal(again.status, 200);
+  assert.deepEqual(fs.readdirSync(dataDir).sort(), ['@canvas.json', '_seq.json']);
+});
+
+test('桶在状态写入途中被挪走：旧账本原样随桶搬走，临时文件在下次写这个桶时清掉', (t) => {
+  const { dataDir, store } = withStore(t);
+  const saved = store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'x', content: 'a' }] });
+  assert.equal(saved.status, 200);
+  const before = fs.readFileSync(path.join(dataDir, '@canvas.json'), 'utf8');
+  const moved = `${dataDir}-moved`;
+  t.after(() => fs.rmSync(moved, { recursive: true, force: true }));
+
+  renameHook(t, () => fs.renameSync(dataDir, moved));
+  const gone = store.setStatus({ page: '@canvas', baseRevision: 1, id: 'x', status: 'check' });
+  assert.equal(gone.status, 503);
+  assert.equal(gone.error, 'bucket_gone');
+  t.mock.restoreAll();
+
+  // 搬走的账本是整份旧版本，不是半份新版本。
+  assert.equal(fs.readFileSync(path.join(moved, '@canvas.json'), 'utf8'), before);
+  // 临时文件跟着桶搬了过去（旧路径上删不到）；新名下的下一次写把它清掉。
+  assert.equal(fs.readdirSync(moved).filter((name) => name.includes('.tmp-')).length, 1);
+  const movedStore = createAnnotationStore({ dataDir: moved, now: () => new Date('2026-07-10T00:00:00.000Z') });
+  assert.equal(movedStore.setStatus({ page: '@canvas', baseRevision: 1, id: 'x', status: 'check' }).status, 200);
+  assert.deepEqual(fs.readdirSync(moved).filter((name) => name.includes('.tmp-')), []);
+});
+
+test('别的写错误照样抛（不被当成 bucket_gone 吞掉），临时文件同样清掉', (t) => {
+  const { dataDir, store } = withStore(t);
+  t.mock.method(fs, 'fsyncSync', () => { throw Object.assign(new Error('disk full'), { code: 'ENOSPC' }); });
+  assert.throws(() => store.save({ page: 'index', baseRevision: 0, annotations: [] }), /disk full/);
+  t.mock.restoreAll();
+  assert.deepEqual(fs.readdirSync(dataDir).filter((name) => name.includes('.tmp-')), []);
+});

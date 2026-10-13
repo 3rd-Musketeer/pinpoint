@@ -54,6 +54,29 @@ function ownerThreadFingerprint(annotation) {
   return JSON.stringify([quote, owner]);
 }
 
+/** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt rename` 把它挪走了）。
+    这次写什么都没落盘：临时文件已清掉，旧账本（若还在）原样。路由回 503 bucket_gone。 */
+export class BucketGoneError extends Error {
+  constructor(dataDir, cause) {
+    super(`标注桶 ${dataDir} 在写入途中被删除或移走，这次没写`);
+    this.name = 'BucketGoneError';
+    this.code = 'bucket_gone';
+    this.cause = cause;
+  }
+}
+
+// 账本与 _seq.json 的临时文件：<目标>.tmp-<pid>-<序号>。
+const TEMP_NAME = /\.json\.tmp-(\d+)-\d+$/;
+
+function processAlive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (error) {
+    return error.code === 'EPERM';
+  }
+}
+
 export function createAnnotationStore(options) {
   const dataDir = options.dataDir;
   const now = options.now || (() => new Date());
@@ -78,8 +101,59 @@ export function createAnnotationStore(options) {
   }
 
   function writeSeq(next) {
+    writeFileAtomic(seqPath(), JSON.stringify({ next }, null, 2) + '\n');
+  }
+
+  /** 遗留的临时文件：本进程的（写是同步的，进到这里时不可能有本进程在途的写）和已退出
+      进程的。它们出现在两种情况：桶在 open 与 rename 之间被 `ppnt rename` 挪走，临时文件
+      跟着桶搬到了新名下，旧路径上删不到；或写到一半进程死了。读侧本来就不认它们
+      （只读 .json），这里顺手清掉，桶里不留垃圾。 */
+  function sweepStaleTemps() {
+    let names;
+    try {
+      names = fs.readdirSync(dataDir);
+    } catch {
+      return;
+    }
+    for (const name of names) {
+      const match = name.match(TEMP_NAME);
+      if (!match) continue;
+      const pid = Number(match[1]);
+      if (pid !== process.pid && processAlive(pid)) continue;
+      try { fs.unlinkSync(path.join(dataDir, name)); } catch { /* 已被别处清掉 */ }
+    }
+  }
+
+  /** 原子写：同目录临时文件 → fsync → rename。读者只会看到旧文件或新文件，不会读到半份。
+      桶目录在这期间被删 / 被挪走（ENOENT）时清掉临时文件、抛 BucketGoneError；
+      别的错清掉临时文件后原样抛。 */
+  function writeFileAtomic(destination, text) {
     fs.mkdirSync(dataDir, { recursive: true });
-    fs.writeFileSync(seqPath(), JSON.stringify({ next }, null, 2) + '\n');
+    sweepStaleTemps();
+    const temp = `${destination}.tmp-${process.pid}-${++tempSequence}`;
+    let fd;
+    try {
+      fd = fs.openSync(temp, 'wx', 0o600);
+      fs.writeFileSync(fd, text);
+      fs.fsyncSync(fd);
+      fs.closeSync(fd);
+      fd = undefined;
+      fs.renameSync(temp, destination);
+    } catch (error) {
+      if (fd !== undefined) {
+        try { fs.closeSync(fd); } catch { /* 已关 */ }
+      }
+      try { fs.unlinkSync(temp); } catch { /* 没建成，或随桶一起没了 / 被挪走 */ }
+      if (error && error.code === 'ENOENT') throw new BucketGoneError(dataDir, error);
+      throw error;
+    }
+  }
+
+  /** 写入口（save / setStatus / appendMessage）共用：桶在写的途中没了 → 503 bucket_gone，
+      不让它变成路由里的 500。 */
+  function bucketGone(safePage, error) {
+    if (!(error instanceof BucketGoneError)) throw error;
+    return { status: 503, error: error.code, detail: error.message, doc: emptyDoc(safePage) };
   }
 
   /** 桶内全部账本现有 max(n) + 1（M3）：_seq.json 被删或损坏时 readSeq 回落 1，
@@ -180,7 +254,6 @@ export function createAnnotationStore(options) {
 
   function writeDoc(page, doc) {
     const safePage = ledgerKey(page);
-    fs.mkdirSync(dataDir, { recursive: true });
     const annotations = (Array.isArray(doc.annotations) ? doc.annotations : [])
       .map(normalizeAnnotation);
     const output = {
@@ -191,20 +264,7 @@ export function createAnnotationStore(options) {
       page_updated_at: doc.page_updated_at,
       annotations,
     };
-    const destination = jsonPathFor(safePage);
-    const temp = `${destination}.tmp-${process.pid}-${++tempSequence}`;
-    let fd;
-    try {
-      fd = fs.openSync(temp, 'w', 0o600);
-      fs.writeFileSync(fd, JSON.stringify(output, null, 1));
-      fs.fsyncSync(fd);
-      fs.closeSync(fd);
-      fd = undefined;
-      fs.renameSync(temp, destination);
-    } finally {
-      if (fd !== undefined) fs.closeSync(fd);
-      if (fs.existsSync(temp)) fs.unlinkSync(temp);
-    }
+    writeFileAtomic(jsonPathFor(safePage), JSON.stringify(output, null, 1));
     return asDoc(output);
   }
 
@@ -222,12 +282,16 @@ export function createAnnotationStore(options) {
   function collectUnusedImages(page, annotations) {
     const safePage = ledgerKey(page);
     const imagesDir = path.join(dataDir, 'images');
-    if (!fs.existsSync(imagesDir)) return;
     const keep = referencedImages(annotations);
-    for (const name of fs.readdirSync(imagesDir)) {
-      if (!name.startsWith(`${safePage}-`) || keep.has(name)) continue;
-      const file = path.join(imagesDir, name);
-      if (fs.statSync(file).isFile()) fs.unlinkSync(file);
+    // 账本已经写成，这里只是顺手清图：桶在这期间被删（ENOENT）就没有图可清。
+    try {
+      for (const name of fs.readdirSync(imagesDir)) {
+        if (!name.startsWith(`${safePage}-`) || keep.has(name)) continue;
+        const file = path.join(imagesDir, name);
+        if (fs.statSync(file).isFile()) fs.unlinkSync(file);
+      }
+    } catch (error) {
+      if (!error || error.code !== 'ENOENT') throw error;
     }
   }
 
@@ -274,13 +338,18 @@ export function createAnnotationStore(options) {
     // page_updated_at（逐页时间映射）停写（storage-unify）：桶 = 页之后这本账本
     // 整体就属于这一个页，读侧直接取 updated_at；存量映射原样透传 —— 读侧兼容
     // 旧账本（page-times 还认它），但不再新增条目。
-    const doc = writeDoc(safePage, {
-      page_updated_at: disk.page_updated_at,
-      path: input.path || disk.path || '',
-      updated_at: input.updated_at || now().toISOString(),
-      revision: disk.revision + 1,
-      annotations: assignNumbers(annotations).annotations,
-    });
+    let doc;
+    try {
+      doc = writeDoc(safePage, {
+        page_updated_at: disk.page_updated_at,
+        path: input.path || disk.path || '',
+        updated_at: input.updated_at || now().toISOString(),
+        revision: disk.revision + 1,
+        annotations: assignNumbers(annotations).annotations,
+      });
+    } catch (error) {
+      return bucketGone(safePage, error);
+    }
     collectUnusedImages(safePage, annotations);
     return { status: 200, doc };
   }
@@ -307,14 +376,19 @@ export function createAnnotationStore(options) {
     }
     const annotations = disk.annotations.slice();
     annotations[index] = { ...before, status: wanted };
-    const doc = writeDoc(safePage, {
-      path: disk.path || '',
-      updated_at: now().toISOString(),
-      revision: disk.revision + 1,
-      // 状态写入也透传存量映射（见 save 的说明）。
-      page_updated_at: disk.page_updated_at,
-      annotations,
-    });
+    let doc;
+    try {
+      doc = writeDoc(safePage, {
+        path: disk.path || '',
+        updated_at: now().toISOString(),
+        revision: disk.revision + 1,
+        // 状态写入也透传存量映射（见 save 的说明）。
+        page_updated_at: disk.page_updated_at,
+        annotations,
+      });
+    } catch (error) {
+      return bucketGone(safePage, error);
+    }
     return { status: 200, doc, annotation: annotations[index] };
   }
 
@@ -341,13 +415,18 @@ export function createAnnotationStore(options) {
     const message = { who, text, at: now().toISOString() };
     const annotations = disk.annotations.slice();
     annotations[index] = { ...before, messages: [...(Array.isArray(before.messages) ? before.messages : []), message] };
-    const doc = writeDoc(safePage, {
-      path: disk.path || '',
-      updated_at: message.at,
-      revision: disk.revision + 1,
-      page_updated_at: disk.page_updated_at,
-      annotations,
-    });
+    let doc;
+    try {
+      doc = writeDoc(safePage, {
+        path: disk.path || '',
+        updated_at: message.at,
+        revision: disk.revision + 1,
+        page_updated_at: disk.page_updated_at,
+        annotations,
+      });
+    } catch (error) {
+      return bucketGone(safePage, error);
+    }
     return { status: 200, doc, annotation: annotations[index], message };
   }
 
