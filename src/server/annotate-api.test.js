@@ -49,14 +49,17 @@ test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown i
   assert.deepEqual(resolveRequestEntry(registry, 'ghost', ['tpl-page']), { entry: 'ghost', unknown: true });
 });
 
-test('resolveRequestEntry: a registered project id is a bucket (article pages annotate under it)', (t) => {
+test('resolveRequestEntry: an article page id <project>.<article> is a bucket; the bare project id is not', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-proj-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const registryFile = path.join(dir, 'registry.json');
   const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'e2e', 'project-site');
   fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'e2e-project', kind: 'project', path: projectRoot }] }));
   const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
-  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project'), { entry: 'e2e-project' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project.commit-confirm'), { entry: 'e2e-project.commit-confirm' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project.takeover'), { entry: 'e2e-project.takeover' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project.ghost'), { entry: 'e2e-project.ghost', unknown: true });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project'), { entry: 'e2e-project', unknown: true });
   assert.deepEqual(resolveRequestEntry(registry, 'ghost'), { entry: 'ghost', unknown: true });
 });
 

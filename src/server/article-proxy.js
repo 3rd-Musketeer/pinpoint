@@ -3,9 +3,10 @@
  * 文章站点的开发服务器（Astro，按需拉起，见 lib/site-dev-server.js）。路由判定
  * 在 lib/article-routes.js；不归站点的请求一律 next()，pinpoint 原有路由不受影响。
  *
- * - 文章页的 HTML 响应注入标注客户端，与 /sites/ 同一份 injectAnnotateClient；
- *   ?annotate=off 单请求不注入。非 HTML 原样透传。注入的 entry（标注桶）先用
- *   project id，正文评论（M2）落地时再定。
+ * - 文章页（/<project>/<article>/）的 HTML 响应注入标注客户端，与 /sites/ 同一份
+ *   injectAnnotateClient：桶 = 这篇的页 id（projects.js articlePageId），并带上
+ *   __pinpointProse，客户端只跑正文评论。project 首页、概念页不注入（没有评论面）。
+ *   ?annotate=off 单请求不注入。非 HTML 原样透传。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
  *   启动中」页（503），其他请求拿 503 纯文本；站点起不来（failed）时那张页写
  *   原因和日志尾巴。
@@ -20,6 +21,7 @@ import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { parseReqUrl } from './lib/req-url.js';
+import { articlePageId } from './lib/projects.js';
 import { createSiteDevServer } from './lib/site-dev-server.js';
 
 const HOP_BY_HOP = new Set([
@@ -103,7 +105,7 @@ function forward(req, res, route, devServer) {
   headers.host = `127.0.0.1:${port}`;
   headers['accept-encoding'] = 'identity';
   if (headers.origin) headers.origin = `http://127.0.0.1:${port}`;
-  const inject = route.kind === 'article' && parseReqUrl(req).query.get('annotate') !== 'off';
+  const inject = route.kind === 'article' && Boolean(route.article) && parseReqUrl(req).query.get('annotate') !== 'off';
 
   const up = http.request({ host: '127.0.0.1', port, method: req.method, path: route.upstream, headers }, (upRes) => {
     const outHeaders = {};
@@ -132,7 +134,8 @@ function forward(req, res, route, devServer) {
         return;
       }
       delete outHeaders['content-encoding'];
-      const data = Buffer.from(injectAnnotateClient(text, route.project), 'utf8');
+      const entry = articlePageId(route.project, route.article);
+      const data = Buffer.from(injectAnnotateClient(text, entry, { prose: { project: route.project, article: route.article } }), 'utf8');
       outHeaders['content-length'] = String(data.length);
       res.writeHead(upRes.statusCode || 502, outHeaders);
       res.end(data);

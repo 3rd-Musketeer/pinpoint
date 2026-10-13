@@ -6,6 +6,7 @@ import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
 import {
+  articleIdOfPath,
   isProjectId,
   isReservedSegment,
   RESERVED_TOP_SEGMENTS,
@@ -20,19 +21,27 @@ const isProject = (id) => projects.has(id);
 
 test('routeArticleRequest：登记过的 project 首段进站点，上游带 /_astro 前缀，query 原样', () => {
   assert.deepEqual(routeArticleRequest('/browser-use/commit-confirm/', isProject), {
-    kind: 'article', project: 'browser-use', upstream: '/_astro/browser-use/commit-confirm/',
+    kind: 'article', project: 'browser-use', article: 'commit-confirm', upstream: '/_astro/browser-use/commit-confirm/',
   });
   assert.deepEqual(routeArticleRequest('/browser-use/', isProject), {
-    kind: 'article', project: 'browser-use', upstream: '/_astro/browser-use/',
+    kind: 'article', project: 'browser-use', article: null, upstream: '/_astro/browser-use/',
   });
   assert.deepEqual(routeArticleRequest('/browser-use', isProject), {
-    kind: 'article', project: 'browser-use', upstream: '/_astro/browser-use',
+    kind: 'article', project: 'browser-use', article: null, upstream: '/_astro/browser-use',
   });
   assert.deepEqual(routeArticleRequest('/demo/llms.txt', isProject), {
-    kind: 'article', project: 'demo', upstream: '/_astro/demo/llms.txt',
+    kind: 'article', project: 'demo', article: null, upstream: '/_astro/demo/llms.txt',
   });
   assert.equal(routeArticleRequest('/demo/concepts/%E7%A1%AE%E8%AE%A4/?annotate=off', isProject).upstream,
     '/_astro/demo/concepts/%E7%A1%AE%E8%AE%A4/?annotate=off');
+});
+
+test('articleIdOfPath：只有 /<project>/<article>/ 形状是文章页（注入正文评论的地方）', () => {
+  for (const [p, want] of [
+    ['/demo/intro/', 'intro'], ['/demo/intro', 'intro'], ['/demo/intro/index.html', 'intro'],
+    ['/demo/', null], ['/demo', null], ['/demo/llms.txt', null], ['/demo/concepts/', null],
+    ['/demo/concepts/x/', null], ['/demo/intro/assets/a.png', null], ['/demo/Intro/', null], ['/demo/%E4%B8%AD/', null],
+  ]) assert.equal(articleIdOfPath(p), want, p);
 });
 
 test('routeArticleRequest：没登记的首段、保留首段、pinpoint 自己的路由都不归站点', () => {
@@ -111,7 +120,7 @@ test('isProjectId 读真实 registry：loadRegistry 结果与 live store 都只�
     assert.equal(isProjectId(registry, 'a-page'), false);
     assert.equal(isProjectId(registry, 'nope'), false);
     assert.deepEqual(routeArticleRequest('/e2e-project/takeover/', (id) => isProjectId(registry, id)),
-      { kind: 'article', project: 'e2e-project', upstream: '/_astro/e2e-project/takeover/' });
+      { kind: 'article', project: 'e2e-project', article: 'takeover', upstream: '/_astro/e2e-project/takeover/' });
     assert.equal(routeArticleRequest('/a-page/', (id) => isProjectId(registry, id)), null);
   }
 });

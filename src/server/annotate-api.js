@@ -10,7 +10,7 @@ import { etagMatches } from './lib/etag.js';
 import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
-import { listProjects } from './lib/projects.js';
+import { listProjects, resolveArticlePage } from './lib/projects.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
   annotateBundleByHash,
@@ -158,13 +158,13 @@ function handleSse(req, res) {
 // ('pinpoint', historical behavior); an explicit but unknown id is a loud 400 —
 // misconfiguration must not silently land in the wrong bucket. 桶 = 页之后，
 // 合法 id 不止 registry 条目：本地 manifest 页（content/previews/_index.json，
-// 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：文章页注入的标注
-// 客户端以 project id 为桶（article-proxy.js，M2 前的暂定），登记过的 project
-// 也是合法桶；project 与页共用 id 命名空间，不会撞。
+// 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：一篇 article 的桶是
+// 它的页 id `<project>.<article>`（projects.js articlePageId，画布标注与正文评论
+// 共用），project 登记了、文章目录在盘上才算；project id 本身不是桶。
 export function resolveRequestEntry(registry, raw, localIds = []) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
   const known = id === DEFAULT_ENTRY || registry.resolve(id) != null || localIds.includes(id)
-    || (typeof registry.resolveProject === 'function' && registry.resolveProject(id) != null);
+    || resolveArticlePage(registry, id) != null;
   return known ? { entry: id } : { entry: id, unknown: true };
 }
 

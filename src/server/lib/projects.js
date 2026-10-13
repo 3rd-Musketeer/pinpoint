@@ -35,6 +35,39 @@ export const isReservedProjectId = (id) => isReservedSegment(String(id));
 /** project 内占用的 URL 第二段：/<project>/concepts/<名字>/。 */
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
 
+/**
+ * 一篇 article 的页 id：`<project id>.<article id>`。它是这篇的标注桶（画布标注与
+ * 正文评论共用，common-m1.md §2），也是 `?page=` 与 `ppnt check` 的页引用。
+ * `.` 不在 ENTRY_ID_PATTERN 里，所以它不会和任何登记条目 id 撞，拆回来也只有一种拆法。
+ */
+export function articlePageId(projectId, articleId) {
+  return `${projectId}.${articleId}`;
+}
+
+/** articlePageId 的反函数：不是这个形状返回 null（不读盘）。 */
+export function parseArticlePageId(pageId) {
+  const text = String(pageId ?? '');
+  const at = text.indexOf('.');
+  if (at <= 0) return null;
+  const projectId = text.slice(0, at);
+  const articleId = text.slice(at + 1);
+  if (!ENTRY_ID_PATTERN.test(projectId) || !ENTRY_ID_PATTERN.test(articleId)) return null;
+  return { projectId, articleId };
+}
+
+/**
+ * 一个页 id 对应的已登记 article：project 登记了、文章目录在盘上，返回
+ * { pageId, projectId, articleId, project, article }；否则 null。
+ */
+export function resolveArticlePage(registry, pageId) {
+  const parts = parseArticlePageId(pageId);
+  if (!parts) return null;
+  const project = findProject(registry, parts.projectId);
+  const article = project && project.articles.find((item) => item.id === parts.articleId);
+  if (!article) return null;
+  return { pageId: articlePageId(parts.projectId, parts.articleId), ...parts, project, article };
+}
+
 const FM_KEY = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:(?:\s+(.*))?$/;
 // 这些开头在 YAML 里是块标量、流式列表 / 映射、锚点、标签：本解析器不支持，报错不猜。
 const YAML_ONLY_START = /^[>|[{&*!]/;
