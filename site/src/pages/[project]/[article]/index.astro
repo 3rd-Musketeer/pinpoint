@@ -5,6 +5,8 @@ import Section from '../../../components/Section.astro';
 import Canvas from '../../../components/Canvas.astro';
 import Ref from '../../../components/Ref.astro';
 import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
+import { articleCanvas } from '../../../lib/canvas-source.js';
+import { canvasHref, looseErrors } from '../../../lib/canvas-card.js';
 
 export async function getStaticPaths() {
   const site = await loadSite();
@@ -20,6 +22,10 @@ const p = site.projects.get(projectId);
 const a = p.articles.find((x) => x.id === articleId);
 const { Content, remarkPluginFrontmatter } = await render(a.entry);
 const sections = remarkPluginFrontmatter.sections || [];
+// 这篇的画布（自动生成的页）：卡片从 locals 里取本节的帧；顶栏“画布视图”只在有画布节时出现。
+const canvas = await articleCanvas(p.id, a.id);
+Astro.locals.ppCanvas = canvas;
+const canvasView = canvas.pageId && canvas.sections.length ? canvasHref(canvas.pageId) : undefined;
 
 // 抽屉：本篇引用到的目标（按 project/名字 合并计数），已有与空 ref 分开。
 const group = (refs) => {
@@ -42,7 +48,8 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   toc={sections}
   rail={true}
   drawer={drawer}
-  errors={p.errors}
+  errors={[...p.errors, ...looseErrors(canvas)]}
+  canvasHref={canvasView}
 >
   <div class="prose">
     <div class="label">{p.title}</div>
