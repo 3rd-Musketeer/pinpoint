@@ -1,9 +1,9 @@
 /**
  * pp3 M1：每篇 article 的画布 = 一个由正文派生的页（docs/projects.md「文章的画布」）。
  *
- * - 页 id = articlePageId(project, article)（projects.js），`?page=`、标注桶、
+ * - 页 id = articlePageId(project, article)（src/shared/project-ids.js），`?page=`、标注桶、
  *   /sites/<id>/、ppnt 都用它。
- * - 编译目标（resolveArticleTarget）与普通 dir 页同形：pageDir = 文章目录，帧是
+ * - 编译目标（page-resolve.js 的 resolveArticleTarget）与普通 dir 页同形：pageDir = 文章目录，帧是
  *   `<帧 id>.jsx`。不同处只有 board 的来源：每次都从 index.mdx 现派生
  *   （deriveArticleBoard），编译时写进 dist（<dist>/<页 id>/board.json），从不写回
  *   源目录。
@@ -15,15 +15,12 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
-import {
-  articlePageId,
-  findProject,
-  parseArticlePageId,
-  parseFrontmatter,
-  PROJECT_CONTENT_DIR,
-  RESERVED_ARTICLE_IDS,
-} from './projects.js';
+import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas } from './article-canvas.js';
+import { articlePageId } from '../../shared/project-ids.js';
+import { isArticleError } from '../../shared/project-errors.js';
+import { parseFrontmatter } from './frontmatter.js';
+import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
+import { findProject } from './projects.js';
 import { loadRegistry } from './registry.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
@@ -37,72 +34,6 @@ function isFile(file) {
   } catch {
     return false;
   }
-}
-
-function projectEntryOf(registry, projectId) {
-  if (!registry) return null;
-  if (typeof registry.resolveProject === 'function') return registry.resolveProject(projectId) || null;
-  const list = Array.isArray(registry.projects)
-    ? registry.projects
-    : (registry.entries || []).filter((entry) => entry && entry.kind === 'project');
-  return list.find((entry) => entry && entry.id === projectId) || null;
-}
-
-function targetFor(entry, ids, pageId) {
-  if (!entry || typeof entry.path !== 'string' || RESERVED_ARTICLE_IDS.has(ids.articleId)) return null;
-  const projectDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR);
-  const articleDir = path.join(projectDir, 'articles', ids.articleId);
-  const articleFile = path.join(articleDir, 'index.mdx');
-  if (!isFile(articleFile)) return null;
-  return {
-    entryId: pageId,
-    pageDir: articleDir,
-    urlBase: `/sites/${pageId}/`,
-    kind: 'article',
-    projectId: ids.projectId,
-    articleId: ids.articleId,
-    projectDir,
-    articleFile,
-  };
-}
-
-/**
- * 页 id → 文章画布的编译目标，或 null（不是文章页 id 的形状、project 没登记、
- * 文章目录或 index.mdx 不在）。只 stat，不解析正文。
- */
-export function resolveArticleTarget(registry, pageId) {
-  const ids = parseArticlePageId(pageId);
-  if (!ids) return null;
-  return targetFor(projectEntryOf(registry, ids.projectId), ids, pageId);
-}
-
-/** 全部登记 project 的全部文章画布目标（服务启动全量编译、watch、页 id 清单用）。 */
-export function listArticleTargets(registry) {
-  const entries = registry
-    ? (Array.isArray(registry.projects) ? registry.projects : (registry.entries || []).filter((entry) => entry && entry.kind === 'project'))
-    : [];
-  const targets = [];
-  for (const entry of entries) {
-    if (!entry || typeof entry.path !== 'string') continue;
-    const articlesDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR, 'articles');
-    let names = [];
-    try {
-      names = fs.readdirSync(articlesDir).filter((name) => !name.startsWith('.')).sort((a, b) => a.localeCompare(b));
-    } catch {
-      continue;
-    }
-    for (const name of names) {
-      let pageId;
-      try {
-        pageId = articlePageId(entry.id, name);
-      } catch {
-        continue; // 目录名不合 id 规则：listProjects 已记布局错误
-      }
-      const target = targetFor(entry, { projectId: entry.id, articleId: name }, pageId);
-      if (target) targets.push(target);
-    }
-  }
-  return targets;
 }
 
 /**
@@ -141,14 +72,14 @@ export function deriveArticleBoard(target) {
  * 站点卡片（M1-F）读的画布结构：articleCanvas(projectId, articleId, { registry? })
  *   → { pageId, project, article,
  *       sections: [{ id, title, letter, shell?, frames: [{ id, ref, shell?, missing? }] }],
- *       errors: [{ message, line?, section?, frame? }] }
+ *       errors: [{ code, message, path?, line?, section?, frame? }] }
  * - letter 是这一节在正文里的字母（所有 Section 一起数，纯文字的节也占），画布编号
  *   （工作台、ppnt、ref）用同一个字母（派生 board 的 section.letter，见 board-refs.js）。
  * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。帧文件写了
  *   `export const shell = "…"` 的帧带 shell（这一帧的实际 shell，盖过节的 shell）。
  * - errors：画布写法的错误带 section（节 id）、frame；不属于某一节的（frontmatter、
- *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。message 与
- *   listProjects 里这篇的布局错误同一句（去掉 articles/<文章>/index.mdx： 前缀）。
+ *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。都是 listProjects 里
+ *   这篇的布局错误（path 在 articles/<文章> 下的那些），对象相同。
  * - registry 缺省读 loadRegistry()（PINPOINT_REGISTRY 或 ~/.pinpoint/registry.json）。
  *   project 没登记或文章不在时 sections 为空、errors 说明原因。
  */
@@ -158,17 +89,14 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   try {
     pageId = articlePageId(projectId, articleId);
   } catch (error) {
-    return { pageId, project: projectId, article: articleId, sections: [], errors: [{ message: error.message }] };
+    return { pageId, project: projectId, article: articleId, sections: [], errors: [{ code: 'article_id_invalid', message: error.message }] };
   }
   const base = { pageId, project: projectId, article: articleId, sections: [] };
   const project = findProject(reg, projectId);
-  if (!project) return { ...base, errors: [{ message: `project 没登记：${projectId}` }] };
-  const prefix = `articles/${articleId}`;
-  const own = project.errors
-    .filter((problem) => problem.startsWith(`${prefix}/`) || problem.startsWith(`${prefix}：`))
-    .map((problem) => problem.replace(new RegExp(`^${prefix}(?:/index\\.mdx)?：`), ''));
+  if (!project) return { ...base, errors: [{ code: 'project_not_registered', message: `project 没登记：${projectId}` }] };
+  const own = project.errors.filter((error) => isArticleError(error, articleId));
   const target = resolveArticleTarget(reg, pageId);
-  if (!target) return { ...base, errors: (own.length ? own : [`文章不存在：${prefix}/index.mdx`]).map((message) => ({ message })) };
+  if (!target) return { ...base, errors: own.length ? own : [{ code: 'article_missing', message: `文章不存在：articles/${articleId}/index.mdx` }] };
   const derived = deriveArticleBoard(target);
   const refs = boardRefs(derived.board);
   const missing = new Set(derived.sections.flatMap((section) => section.frames)
@@ -185,8 +113,9 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
       ...(missing.has(id) ? { missing: true } : {}),
     })),
   }));
-  const canvasMessages = new Set(derived.errors.map((e) => e.message));
-  const errors = [...derived.errors, ...own.filter((message) => !canvasMessages.has(message)).map((message) => ({ message }))];
+  // listProjects 里这篇的画布错误与 derived.errors 是同一次解析的结果：用 derived 的，其余（frontmatter、
+  // 页 id 撞名）照搬。
+  const errors = [...derived.errors, ...own.filter((error) => !CANVAS_ERROR_CODES.has(error.code))];
   return { ...base, sections, errors };
 }
 

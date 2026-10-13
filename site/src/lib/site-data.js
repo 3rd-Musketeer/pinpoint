@@ -4,6 +4,7 @@
  */
 import { getCollection } from 'astro:content';
 import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from './refs.js';
+import { projectErrorLine } from './site-errors.js';
 
 /** Concept status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
 const DEFAULT_STATUS = '占位';
@@ -23,11 +24,12 @@ export async function loadSite() {
   const [projectEntries, articleEntries, conceptEntries] = await Promise.all([
     getCollection('projects'), getCollection('articles'), getCollection('concepts'),
   ]);
-  const errors = projectEntries.flatMap((p) => p.data.errors);
+  // errors / p.errors: printable lines; p.layoutErrors: the objects (bannerErrors filters them by field).
+  const errors = projectEntries.flatMap((p) => p.data.errors.map((e) => projectErrorLine(p.id, e)));
   const projects = new Map();
   for (const p of projectEntries) {
-    if (p.id === '__errors') continue;
-    projects.set(p.id, { ...p.data, articles: [], concepts: [], names: new Map(), emptyRefs: new Map() });
+    const errorLines = p.data.errors.map((e) => projectErrorLine(p.id, e));
+    projects.set(p.id, { ...p.data, errors: errorLines, layoutErrors: p.data.errors, articles: [], concepts: [], names: new Map(), emptyRefs: new Map() });
   }
   for (const a of articleEntries) {
     const p = projects.get(a.data.project);

@@ -6,6 +6,7 @@ import path from 'node:path';
 // @mdx-js/mdx is what @astrojs/mdx compiles with; it arrives through that dependency.
 import { compile } from '@mdx-js/mdx';
 import { remarkPinpoint, projectIdFor } from './remark-pinpoint.js';
+import { parseArticleCanvas } from '../../../src/server/lib/article-canvas.js';
 
 function project(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-site-remark-'));
@@ -49,4 +50,23 @@ test('bad sections fail with the file path', async (t) => {
 test('files outside a project are left alone', async () => {
   const out = await run('[[x]]', path.join(os.tmpdir(), 'not-a-project', 'x.mdx'));
   assert.doesNotMatch(out, /raw: "x"/);
+});
+
+test('heading letters agree with the canvas the service derives from the same text', async (t) => {
+  const file = project(t);
+  const text = [
+    '---', 'title: T', '---', '',
+    '<Section id="why">', '', '纯文字。', '', '</Section>', '',
+    '<div>', '<Section id="flow">', '', '<Canvas frames={["a"]} />', '', '</Section>', '</div>', '',
+    '<Section id="mech" title="底层">', '', '<Canvas frames={["b"]} shell="comp" />', '', '</Section>', '',
+  ].join('\n');
+  const out = await run(text, file);
+  const letters = [...out.matchAll(/letter: "([A-Z]+)"/g)].map((m) => m[1]);
+  const canvas = parseArticleCanvas(text);
+  assert.deepEqual(canvas.errors, []);
+  assert.deepEqual(letters, ['A', 'B', 'C']);
+  assert.deepEqual(canvas.sections.map((s) => [s.id, s.articleLetter]), [['flow', 'B'], ['mech', 'C']]);
+  const calls = [...out.matchAll(/_jsx\(Canvas, \{([\s\S]*?)\}\)/g)].map((m) => m[1]);
+  assert.match(calls[0], /section: "flow"/);
+  assert.match(calls[1], /section: "mech"/);
 });

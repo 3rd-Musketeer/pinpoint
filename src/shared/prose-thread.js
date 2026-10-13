@@ -12,7 +12,7 @@
  * 不会被这一边的旧快照盖掉。
  */
 
-export const PROSE_LEDGER = '@prose';
+export { PROSE_LEDGER } from './project-ids.js';
 
 export function isProseRow(row) {
   return Boolean(row && row.type === 'prose');

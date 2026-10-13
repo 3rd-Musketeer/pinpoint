@@ -21,7 +21,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, normalizeFolder, PAGE_ID_PATTERN } from './registry.js';
-import { isReservedProjectId } from './projects.js';
+import { isReservedProjectId } from '../../shared/project-ids.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url', 'project']);
 // project 条目（pp3）只带这些字段：没有壳、不挂靠、不进左栏分组。
@@ -459,7 +459,6 @@ export function createRegistryStore(options = {}) {
     get errors() { return snapshot.errors; },
     get warnings() { return snapshot.warnings; },
     resolve(id) { return snapshot.resolve(id); },
-    resolveProject(id) { return snapshot.resolveProject(id); },
     reload() {
       snapshot = loadRegistry({ root, log, path: snapshot.path });
       return snapshot;

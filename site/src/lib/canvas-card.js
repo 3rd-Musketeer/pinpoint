@@ -40,32 +40,12 @@ export function shellBox(shell) {
 
 /** articleCanvas errors → { section, frame?, message }; no `section` = a page-level error. */
 export function normalizeErrors(errors) {
-  return (errors || []).map((e) => (typeof e === 'string'
-    ? { section: null, message: e }
-    : { section: e.section ?? null, frame: e.frame, message: String(e.message ?? e) }));
+  return (errors || []).map((e) => ({ section: e.section ?? null, frame: e.frame, message: String(e.message ?? '') }));
 }
 
 /** Errors that belong to no section: the article page shows them at the top. */
 export function looseErrors(canvas) {
   return normalizeErrors(canvas?.errors).filter((e) => !e.section).map((e) => e.message);
-}
-
-/**
- * The article page's error banner, each canvas error shown once. The project's
- * errors (`p.errors`, from listProjects via the projects collection, each
- * line prefixed `project "<id>": `) repeat every error of this article as
- * `articles/<article>/…：…`, and articleCanvas returns the same ones without
- * that prefix: section errors go to that section's card, the rest
- * (looseErrors) to the banner. So this article's lines are dropped here;
- * errors of other articles and of the project itself stay.
- */
-export function bannerErrors(projectErrors, articleId, canvas) {
-  const prefix = `articles/${articleId}`;
-  const mine = (raw) => {
-    const e = String(raw).replace(/^project "[^"]*": /, '');
-    return e.startsWith(`${prefix}/`) || e.startsWith(`${prefix}：`);
-  };
-  return [...(projectErrors || []).filter((e) => !mine(e)), ...looseErrors(canvas)];
 }
 
 /**

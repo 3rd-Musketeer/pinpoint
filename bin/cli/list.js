@@ -6,7 +6,9 @@ import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.j
 import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
-import { collectBucketOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { formatProjectError } from '../../src/shared/project-errors.js';
+import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { pageIdIsLive } from '../../src/server/lib/page-resolve.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
@@ -219,13 +221,8 @@ function listFrames(words, { registryPath, env, out, err }) {
 
 /** 登记表里的 project，读盘后（文章、概念、布局错误）。 */
 export function projectListRows({ registryPath } = {}) {
-  // 读的是盘上原样的条目（list 不依赖服务）；没有 path 的坏条目 loadRegistry 也会跳过。
-  const all = existingEntriesFor(registryPath);
-  const entries = all
-    .filter((entry) => entry && entry.kind === 'project' && typeof entry.path === 'string')
-    .map((entry) => ({ ...entry, title: entry.title || entry.id }));
-  // entries 只给画布页 id 的撞名检查用（listProjects 不把它们当 project）。
-  return listProjects({ projects: entries, entries: all.filter((entry) => entry && entry.kind !== 'project') });
+  // 读盘（list 不依赖服务），与服务同一个 loadRegistry + listProjects。
+  return listProjects(loadRegistry({ root: REPO_ROOT, path: registryPath, log: () => {} }));
 }
 
 /** 关键词匹配用的投影：文章 id / 标题也能对上 project。 */
@@ -272,7 +269,7 @@ export function formatProjectDetail(project) {
     lines.push(`    ${concept.file}`);
   }
   lines.push('', project.errors.length ? `布局错误（${project.errors.length}）` : '布局错误：无');
-  for (const problem of project.errors) lines.push(`  ✗ ${problem}`);
+  for (const problem of project.errors) lines.push(`  ✗ ${formatProjectError(problem)}`);
   return lines;
 }
 

@@ -4,7 +4,7 @@
  * 在 lib/article-routes.js；不归站点的请求一律 next()，pinpoint 原有路由不受影响。
  *
  * - 文章页（/<project>/<article>/）的 HTML 响应注入标注客户端，与 /sites/ 同一份
- *   injectAnnotateClient：桶 = 这篇的页 id（projects.js articlePageId），并带上
+ *   injectAnnotateClient：桶 = 这篇的页 id（src/shared/project-ids.js articlePageId），并带上
  *   __pinpointProse，客户端只跑正文评论。project 首页、概念页不注入（没有评论面）。
  *   ?annotate=off 单请求不注入。非 HTML 原样透传。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
@@ -22,11 +22,11 @@ import zlib from 'node:zlib';
 
 import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
-import { resolveArticleTarget } from './lib/article-board.js';
+import { resolveArticleTarget } from './lib/page-resolve.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { listenOrigins, originDecision, originsGetter } from './lib/proxy-origin.js';
 import { parseReqUrl } from './lib/req-url.js';
-import { articlePageId } from './lib/projects.js';
+import { articlePageId } from '../shared/project-ids.js';
 import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
 
 const HOP_BY_HOP = new Set([

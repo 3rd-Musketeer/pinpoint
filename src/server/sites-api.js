@@ -33,7 +33,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
-import { deriveArticleBoard, resolveArticleTarget } from './lib/article-board.js';
+import { deriveArticleBoard } from './lib/article-board.js';
+import { resolvePage } from './lib/page-resolve.js';
 import {
   boardScreenIds,
   screenEntriesFromBoard,
@@ -234,11 +235,11 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    const entry = id && registry.resolve(id);
+    // /sites/<id>/ 只服务登记条目与文章画布页（pp3 M1，<project>_<article>）；模板页不在这里。
+    const page = resolvePage(registry, id);
+    if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel);
+    const entry = page && page.kind === 'entry' ? page.entry : null;
     if (!entry) {
-      // pp3 M1：文章画布页（<project>_<article>）不是登记条目，按 project 现解析。
-      const article = id ? resolveArticleTarget(registry, id) : null;
-      if (article) return serveArticlePage(req, res, article, rel);
       sendJson(res, 404, { error: 'not found' });
       return true;
     }

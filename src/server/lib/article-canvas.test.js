@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { parseArticleCanvas, readFrameShell } from './article-canvas.js';
+import { articleSectionSpans, parseArticleCanvas, readFrameShell } from './article-canvas.js';
 
 const FM = '---\ntitle: 测试\n---\n\n';
 
@@ -111,4 +111,13 @@ test('帧级 shell：落在那一帧上，盖过节的 shell；写坏了帧照�
   // 缺源文件的帧不去读 shell。
   const missing = parseArticleCanvas(text, { frameExists: (id) => id !== 'bare', frameShell: (id) => { assert.notEqual(id, 'bare'); return own[id]; } });
   assert.equal(missing.sections[0].frameShells, undefined);
+});
+
+test('articleSectionSpans：每节占的行对到整份文件（含 frontmatter）；表达式 id 不算；MDX 写坏是 []', () => {
+  const text = ['---', 'title: T', '---', '', '<Section id="why">', '', 'a', '', '</Section>', '', '<Section id={x}>b</Section>', '', '<Section id="how">', 'c', '</Section>', ''].join('\n');
+  assert.deepEqual(articleSectionSpans(text), [
+    { id: 'why', startLine: 5, endLine: 9 },
+    { id: 'how', startLine: 13, endLine: 15 },
+  ]);
+  assert.deepEqual(articleSectionSpans('<Section id="s">\n\n<Canvas frames={["a"] />\n'), []);
 });

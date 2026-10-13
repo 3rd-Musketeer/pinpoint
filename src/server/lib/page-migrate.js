@@ -22,18 +22,24 @@ import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { flattenTabs, hasRawTabs } from '../../workbench/lib/board-tabs.js';
 import { COMP_NAME_PATTERN, entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
-import { ARTICLE_ASSET_FILES, deriveArticleBoard, resolveArticleTarget } from './article-board.js';
-import { CANVAS_SHELLS, readFrameShell } from './article-canvas.js';
+import { ARTICLE_ASSET_FILES, deriveArticleBoard } from './article-board.js';
+import { resolveArticleTarget } from './page-resolve.js';
+import { readFrameShell } from './article-canvas.js';
 import { compilePage, readBuildJson, readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { manifestPageIds } from './page-manifest.js';
-import { articlePageId, PROJECT_CONTENT_DIR, readProjectJson, RESERVED_ARTICLE_IDS } from './projects.js';
+import {
+  articlePageId,
+  CANVAS_SHELLS,
+  FRAME_ID_PATTERN as FRAME_ID,
+  RESERVED_ARTICLE_IDS,
+  SECTION_ID_PATTERN as SECTION_ID,
+} from '../../shared/project-ids.js';
+import { PROJECT_CONTENT_DIR, readProjectJson } from './projects.js';
+import { formatProjectError } from '../../shared/project-errors.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const KITS_DIR = path.join(REPO_ROOT, 'content', 'kits');
 
-// 与 article-canvas.js 的 Section / 帧 id 规则一致。
-const SECTION_ID = /^[a-zA-Z0-9_-]+$/;
-const FRAME_ID = /^[a-zA-Z0-9_-]+$/;
 // 文本文件：做 URL 改写；其他文件逐字节复制。
 const TEXT_EXTS = new Set(['.jsx', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts', '.json', '.css', '.svg', '.html', '.htm', '.txt', '.md']);
 const SCRIPT_EXTS = new Set(['.jsx', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.mts', '.cts']);
@@ -243,7 +249,7 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const rootAbs = path.resolve(cwd, projectRoot);
   const meta = readProjectJson(rootAbs);
   if (meta.errors.length) {
-    throw new MigrateError(`${rootAbs} 不是可用的 project：${meta.errors.join('；')}。先建 ${toPosix(path.join(PROJECT_CONTENT_DIR, 'project.json'))}（见 docs/projects.md），再迁移`);
+    throw new MigrateError(`${rootAbs} 不是可用的 project：${meta.errors.map(formatProjectError).join('；')}。先建 ${toPosix(path.join(PROJECT_CONTENT_DIR, 'project.json'))}（见 docs/projects.md），再迁移`);
   }
   const projectId = meta.json.id;
   const article = articleId || pageId;

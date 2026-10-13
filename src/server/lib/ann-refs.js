@@ -20,14 +20,15 @@
  */
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { parseIndicator } from '../../shared/annotation-indicator.js';
+import { ENTRY_OR_ARTICLE_ID_SOURCE } from '../../shared/project-ids.js';
 
 const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
 const SECTION_REF_RE = /^([A-Z]+)$/;
 // `<tab id>:B3` / `<tab id>:B`：@frame:p/s 以 @ 开头、跨页 entry#n 没有冒号，这条不与它们相撞。
 const TAB_REF_RE = /^([a-zA-Z0-9_-]+):([A-Z]+(?:[1-9][0-9]*)?)$/;
 const NUM_REF_RE = /^#([1-9][0-9]*)$/;
-// 页 id 可以是文章页 `<project>_<article>`（projects.js articlePageId），所以允许一个下划线。
-const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*(?:_[a-z0-9][a-z0-9-]*)?)#([1-9][0-9]*)$/;
+// 页 id 可以是文章页 `<project>_<article>`（src/shared/project-ids.js），所以允许一个下划线。
+const CROSS_NUM_REF_RE = new RegExp(`^(${ENTRY_OR_ARTICLE_ID_SOURCE})#([1-9][0-9]*)$`);
 const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
 
 /** `<页>#n` 跨页引用 → { pageId, n }；别的形状返回 null。CLI 没给基页时用它的页当基页。 */

@@ -16,9 +16,11 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
-import { listArticleTargets } from './lib/article-board.js';
+import { PROJECT_CONTENT_DIR, projectArticleTargets } from './lib/page-resolve.js';
 import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
-import { articlePageId, findProject, PROJECT_CONTENT_DIR } from './lib/projects.js';
+import { articlePageId } from '../shared/project-ids.js';
+import { findProject } from './lib/projects.js';
+import { projectEntries, projectEntry } from './lib/registry.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
@@ -48,8 +50,7 @@ export default function previewHmr(options = {}) {
 
   // pp3 M1：登记的 project 的内容目录（文章画布的帧、正文、组件都在下面）。
   function projectDirs() {
-    if (!registry) return [];
-    return (registry.projects || [])
+    return projectEntries(registry)
       .filter((entry) => entry && typeof entry.path === 'string')
       .map((entry) => ({ id: entry.id, dir: path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR) }));
   }
@@ -111,7 +112,7 @@ export default function previewHmr(options = {}) {
         return target ? [target] : [];
       }
       if (parts[0] === 'components') {
-        return listArticleTargets({ projects: [registry.resolveProject ? registry.resolveProject(project.id) : null].filter(Boolean) });
+        return projectArticleTargets(projectEntry(registry, project.id));
       }
       return [];
     }

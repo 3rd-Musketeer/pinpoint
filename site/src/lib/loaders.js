@@ -15,19 +15,9 @@ import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadProjects } from './projects-source.js';
 import { namespaceErrors } from './refs.js';
+import { projectErrorLine } from './site-errors.js';
 
 const posix = (p) => p.split(path.sep).join('/');
-
-function siteErrors(projects, upstream) {
-  const errors = [...upstream];
-  const ids = new Map();
-  for (const p of projects) {
-    if (ids.has(p.id)) errors.push(`project id "${p.id}" is registered twice (${ids.get(p.id)} and ${p.root})`);
-    else ids.set(p.id, p.root);
-    errors.push(...namespaceErrors(p));
-  }
-  return [...new Set(errors)];
-}
 
 function watchAll(ctx, source, reload) {
   if (!ctx.watcher) return;
@@ -51,17 +41,14 @@ export function projectsLoader() {
     load: async (ctx) => {
       const run = async () => {
         const source = await loadProjects();
-        const errors = siteErrors(source.projects, source.errors);
-        for (const e of errors) ctx.logger.error(e);
         ctx.store.clear();
         for (const p of source.projects) {
-          const own = errors.filter((e) => e.includes(`"${p.id}"`));
-          const data = await ctx.parseData({ id: p.id, data: { id: p.id, title: p.title, root: p.root, dir: p.dir, errors: own } });
+          // Layout errors stay objects (listProjects + the site's namespace check); pages print them via site-errors.js.
+          const errors = [...p.errors, ...namespaceErrors(p)];
+          for (const e of errors) ctx.logger.error(projectErrorLine(p.id, e));
+          const data = await ctx.parseData({ id: p.id, data: { id: p.id, title: p.title, root: p.root, dir: p.dir, errors } });
           ctx.store.set({ id: p.id, data });
         }
-        // Errors that name no project (bad registry JSON) ride on a sentinel entry.
-        const loose = errors.filter((e) => !source.projects.some((p) => e.includes(`"${p.id}"`)));
-        if (loose.length) ctx.store.set({ id: '__errors', data: await ctx.parseData({ id: '__errors', data: { id: '__errors', title: '', root: '', dir: '', errors: loose } }) });
         return source;
       };
       const source = await run();

@@ -11,14 +11,19 @@
  *   `section` is replaced), so the card knows which canvas row it shows.
  *   A Canvas outside any Section gets nothing; the card renders the error.
  *
+ * Which Section a node belongs to and its letter come from the same walk the
+ * service derives the canvas with (src/shared/article-structure.js), so the
+ * heading letter and the canvas numbering cannot drift apart.
+ *
  * The current project id comes from <root>/docs/pinpoint/project.json above
  * the file, so the pass needs no registry.
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { REF_RE, rawRefHtml, sectionLetter } from './refs.js';
+import { articleStructure, jsxAttribute } from '../../../src/shared/article-structure.js';
+import { SECTION_ID_PATTERN as SECTION_ID } from '../../../src/shared/project-ids.js';
+import { REF_RE, rawRefHtml } from './refs.js';
 
-const SECTION_ID = /^[a-zA-Z0-9_-]+$/;
 const SKIP = new Set(['code', 'inlineCode', 'link', 'linkReference', 'definition', 'html', 'mdxJsxAttribute', 'mdxFlowExpression', 'mdxTextExpression', 'mdxjsEsm']);
 
 const projectIdCache = new Map();
@@ -39,9 +44,35 @@ export function projectIdFor(file) {
 }
 
 function attr(node, name) {
-  const a = (node.attributes || []).find((x) => x.type === 'mdxJsxAttribute' && x.name === name);
+  const a = jsxAttribute(node, name);
   if (!a) return undefined;
   return typeof a.value === 'string' ? a.value : null; // null = expression value
+}
+
+const setAttr = (node, name, value) => {
+  node.attributes = (node.attributes || []).filter((a) => a.name !== name);
+  if (value !== undefined) node.attributes.push({ type: 'mdxJsxAttribute', name, value });
+};
+
+/** <Section> letters and the Canvas → section link (MDX only). → the TOC list. */
+function markSections(tree, fail) {
+  const sections = [];
+  for (const item of articleStructure(tree)) {
+    if (item.kind === 'stray-canvas') {
+      setAttr(item.node, 'section', undefined);
+      continue;
+    }
+    const id = attr(item.node, 'id');
+    const title = attr(item.node, 'title');
+    if (typeof id !== 'string' || !SECTION_ID.test(id)) fail(`<Section> needs a literal id matching ${SECTION_ID} (got ${JSON.stringify(id)})`);
+    if (title === null) fail(`<Section id="${id}"> title must be a literal string`);
+    if (sections.some((s) => s.id === id)) fail(`duplicate <Section id="${id}">`);
+    if (item.nested.length) fail('<Section> cannot be nested inside another <Section>');
+    sections.push({ id, title: title || id, letter: item.letter });
+    setAttr(item.node, 'letter', item.letter);
+    for (const canvas of item.canvases) setAttr(canvas, 'section', id);
+  }
+  return sections;
 }
 
 function splitText(value, from, isMdx) {
@@ -73,10 +104,11 @@ export function remarkPinpoint() {
     const isMdx = filePath.endsWith('.mdx');
     const from = filePath ? projectIdFor(filePath) : null;
     if (!from) return; // not project content: leave untouched
-    const sections = [];
     const fail = (msg) => { throw new Error(`${filePath}: ${msg}`); };
+    const sections = isMdx ? markSections(tree, fail) : [];
 
-    const walk = (node, inSection, sectionId) => {
+    // `[[ ]]` in text → <Ref> (MDX) or a placeholder span (.md).
+    const walk = (node) => {
       if (!node.children) return;
       // Merge adjacent text nodes so a ref split by the parser is still seen.
       for (let i = node.children.length - 1; i > 0; i--) {
@@ -92,30 +124,10 @@ export function remarkPinpoint() {
           continue;
         }
         if (SKIP.has(child.type)) continue;
-        let nested = inSection;
-        let nestedId = sectionId;
-        if (isMdx && (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') && child.name === 'Section') {
-          if (inSection) fail('<Section> cannot be nested inside another <Section>');
-          const id = attr(child, 'id');
-          const title = attr(child, 'title');
-          if (typeof id !== 'string' || !SECTION_ID.test(id)) fail(`<Section> needs a literal id matching ${SECTION_ID} (got ${JSON.stringify(id)})`);
-          if (title === null) fail(`<Section id="${id}"> title must be a literal string`);
-          if (sections.some((s) => s.id === id)) fail(`duplicate <Section id="${id}">`);
-          const letter = sectionLetter(sections.length);
-          sections.push({ id, title: title || id, letter });
-          child.attributes = (child.attributes || []).filter((a) => a.name !== 'letter');
-          child.attributes.push({ type: 'mdxJsxAttribute', name: 'letter', value: letter });
-          nested = true;
-          nestedId = id;
-        }
-        if (isMdx && (child.type === 'mdxJsxFlowElement' || child.type === 'mdxJsxTextElement') && child.name === 'Canvas') {
-          child.attributes = (child.attributes || []).filter((a) => a.name !== 'section');
-          if (sectionId) child.attributes.push({ type: 'mdxJsxAttribute', name: 'section', value: sectionId });
-        }
-        walk(child, nested, nestedId);
+        walk(child);
       }
     };
-    walk(tree, false, null);
+    walk(tree);
 
     if (isMdx) {
       file.data.astro ??= {};

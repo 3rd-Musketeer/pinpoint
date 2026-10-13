@@ -15,12 +15,9 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN } from '../../shared/registry-ids.js';
+import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN } from '../../shared/registry-ids.js';
 
-export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN };
-// 归属目标 Page id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts
-// ID_PATTERN）与 registry 条目 id 都落在该模式内。
-export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN };
 const KINDS = new Set(['dir', 'file', 'url', 'project']);
 // pp3（2026-10-13）：kind "project" 的 path 是 project 根目录，内容在
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
@@ -29,6 +26,25 @@ const KINDS = new Set(['dir', 'file', 'url', 'project']);
 // 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
 // （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
 const ROLES = new Set(['product', 'draft']);
+
+/**
+ * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：
+ * 页条目（dir / file / url）走 resolve(id)，kind "project" 的条目在 projects 里，两者 id 不重。
+ * 只带 entries、没有 resolve 的视图（测试与 CLI 拼的）按 entries 找。
+ */
+export function registryEntry(registry, id) {
+  if (!registry) return null;
+  if (typeof registry.resolve === 'function') return registry.resolve(id) || null;
+  return (registry.entries || []).find((entry) => entry && entry.id === id) || null;
+}
+
+export function projectEntries(registry) {
+  return registry && Array.isArray(registry.projects) ? registry.projects : [];
+}
+
+export function projectEntry(registry, id) {
+  return projectEntries(registry).find((entry) => entry && entry.id === id) || null;
+}
 
 export function defaultRegistryPath() {
   return path.join(os.homedir(), '.pinpoint', 'registry.json');
@@ -118,7 +134,6 @@ export function loadRegistry(options = {}) {
 
   function finish(entries, grouping = {}, projects = []) {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
-    const projectById = new Map(projects.map((entry) => [entry.id, entry]));
     return {
       ok: errors.length === 0,
       path: registryPath,
@@ -133,7 +148,6 @@ export function loadRegistry(options = {}) {
       errors,
       warnings,
       resolve: (id) => byId.get(id) || null,
-      resolveProject: (id) => projectById.get(id) || null,
     };
   }
 

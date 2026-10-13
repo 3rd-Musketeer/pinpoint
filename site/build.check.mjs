@@ -12,7 +12,7 @@ import path from 'node:path';
 import net from 'node:net';
 import { spawn, spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
-import { articlePageId } from './src/lib/canvas-source.js';
+import { articlePageId } from './src/lib/projects-source.js';
 
 const SITE = fileURLToPath(new URL('.', import.meta.url));
 const ASTRO = fileURLToPath(new URL('../node_modules/astro/bin/astro.mjs', import.meta.url));

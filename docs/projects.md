@@ -117,19 +117,21 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 ```
 
 - article 按 id、concept 按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
-- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`（字符串）。文章和概念的错误以相对 `docs/pinpoint/` 的路径开头（`articles/x/index.mdx：…`）；根目录、`docs/pinpoint/`、`project.json` 这三处的错误带绝对路径，因为这三处本身就是相对路径的起点。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
+- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和概念的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`concepts/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“文章的画布”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
-同一模块还导出这几个，站点需要时直接用：
+同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取，不再各抄一份：
 
-- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `orphans.js` 的 `pageIdIsLive(registry, id, { manifestIds })`：服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告都用它。
-- `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
+- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“文章的画布”。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `src/server/lib/page-resolve.js`：`resolvePage(registry, id, { manifestIds })` 答它是登记条目、模板页、文章画布页还是不是页，`pageIdIsLive` 是它的布尔版。服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告、`/sites/<id>/`、`/api/frame` 都用它。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
-- `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
-- `articlePageId`、`parseArticlePageId`、`ARTICLE_PAGE_ID_PATTERN`：文章画布的页 id，见“文章的画布”。
+- `RESERVED_TOP_SEGMENTS`、`isReservedProjectId`、`RESERVED_ARTICLE_IDS`：保留名，见下面“保留名”。
+- `SECTION_ID_PATTERN`、`FRAME_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
+- `CANVAS_LEDGER`（`@canvas`）、`PROSE_LEDGER`（`@prose`）：桶里两本固定账本的名字。
 
-HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 每条前缀 `<project id>: `。
+frontmatter 子集的解析器 `parseFrontmatter(text)` → `{ data, body, errors }` 在 `src/server/lib/frontmatter.js`。
+
+HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 是给 `pinpoint status` 显示的字符串，每条是 `<project id>: ` 加 `formatProjectError` 的结果。
 
 ## 文章的画布
 
@@ -160,7 +162,7 @@ export default function ConfirmBare() {
 - 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
 - `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
 - 帧级 shell：一节里混着手机帧和组件帧时，组件帧的文件在顶层写一行 `export const shell = "comp";`。取值和 `<Canvas shell>` 一样，只认这一行的字面量字符串。它只管这一帧，盖过 `<Canvas shell>`。服务静态读这一行（`readFrameShell`），不执行帧文件。编译器的帧 lint 放行这一行。
-- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。
+- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。哪个节点属于哪一节、第几节、节字母，由 `src/shared/article-structure.js` 的 `articleStructure(tree)` 走一遍 mdast 得出；站点的 remark 步骤（节标题字母、给 `<Canvas>` 注入 `section`）和 `ppnt check` / `locate` 判断正文评论的引文落在哪一节（`articleSectionSpans`）用的是同一个走法，所以三处数出来的节对得上。
 
 ### 页 id
 
@@ -213,7 +215,7 @@ export default function ConfirmBare() {
 
 ### 给站点卡片的接口
 
-`articleCanvas(projectId, articleId, { registry? })`（`article-board.js`，`projects.js` 转出）。`registry` 缺省读 `loadRegistry()`。HTTP 是 `GET /api/projects/<project>/articles/<article>/canvas`，project 没登记时 404：
+`articleCanvas(projectId, articleId, { registry? })`（`article-board.js`；站点经 `site/src/lib/projects-source.js` 取）。`registry` 缺省读 `loadRegistry()`。HTTP 是 `GET /api/projects/<project>/articles/<article>/canvas`，project 没登记时 404：
 
 ```json
 {
@@ -235,7 +237,7 @@ export default function ConfirmBare() {
 - `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲、`ppnt` 的 `B1` 和文章节标题对得上。
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
-- `errors` 是 `[{ message, line?, section?, frame? }]`。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。`message` 与 `listProjects` 里这篇的布局错误是同一句，只去掉 `articles/<文章>/index.mdx：` 前缀。
+- `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
 - 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 - `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
@@ -291,7 +293,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ## 保留名
 
-project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由和登记校验用同一份；`projects.js` 的 `RESERVED_PROJECT_IDS`、`isReservedProjectId` 只是它的转出口。清单包括：
+project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
 
 - 2026-10-13 定的 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；

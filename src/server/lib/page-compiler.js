@@ -29,12 +29,13 @@ import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
-import { articleComponentCandidates, deriveArticleBoard, listArticleTargets, resolveArticleTarget } from './article-board.js';
+import { articleComponentCandidates, deriveArticleBoard } from './article-board.js';
+import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
-import { PAGE_ID_PATTERN } from './registry.js';
+import { PAGE_ID_PATTERN, registryEntry } from './registry.js';
 import { COMP_NAME_PATTERN, ContractError, findRetiredVariantGroup, retiredVariantsMessage, validateBoardTabs } from '../../workbench/lib/preview-contracts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,15 +48,13 @@ export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
 }
 
-/** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页，
-    再次文章画布（pp3 M1：kind 'article'，board 由 index.mdx 派生，见 article-board.js）。 */
+/** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页目录
+    （content/previews/<id>/board.json），再次文章画布（pp3 M1：kind 'article'，board 由
+    index.mdx 派生，见 article-board.js）。页是什么的判定在 page-resolve.js，这里只加
+    “有 board 可编”这一条。 */
 export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}) {
   if (typeof pageRef !== 'string' || !PAGE_ID_PATTERN.test(pageRef)) return null;
-  const entry = registry
-    ? (typeof registry.resolve === 'function'
-      ? registry.resolve(pageRef)
-      : ((registry.entries || []).find((row) => row && row.id === pageRef) || null))
-    : null;
+  const entry = registryEntry(registry, pageRef);
   if (entry && entry.kind === 'dir' && typeof entry.path === 'string') {
     const pageDir = path.resolve(entry.path);
     if (fs.existsSync(path.join(pageDir, 'board.json'))) {
@@ -66,7 +65,7 @@ export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}
   if (fs.existsSync(path.join(pageDir, 'board.json'))) {
     return { entryId: pageRef, pageDir, urlBase: `/previews/${pageRef}/`, kind: 'template' };
   }
-  return registry ? resolveArticleTarget(registry, pageRef) : null;
+  return resolveArticleTarget(registry, pageRef);
 }
 
 /**

@@ -24,11 +24,14 @@ import { dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
+import { articleSectionSpans } from './article-canvas.js';
+import { resolvePage } from './page-resolve.js';
 import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
-import { parseFrontmatter } from './projects.js';
+import { parseFrontmatter } from './frontmatter.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { isProseRow } from '../../shared/prose-thread.js';
+import { SECTION_HINT_SCORE } from '../../shared/text-quote.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { resolveRef } from './ann-refs.js';
@@ -150,7 +153,8 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   if (!target) {
     // 文章页 `<project>_<article>` 不走这里：index.mdx 在盘上时 resolvePageTarget 已返回
     // kind 'article' 的目标（没编译过也是），不在盘上就不是页。
-    const entry = registry.resolve(String(pageRef || ''));
+    const page = resolvePage(registry, pageRef);
+    const entry = page && page.kind === 'entry' ? page.entry : null;
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
     const docTarget = {
       entryId: entry.id,
@@ -175,7 +179,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
     pageId: target.entryId,
     target,
     board,
-    isManifestPage: !registry.resolve(target.entryId) && manifestPageIds(repoRoot).includes(target.entryId),
+    isManifestPage: (resolvePage(registry, target.entryId, { manifestIds: manifestPageIds(repoRoot) }) || {}).kind === 'template',
   });
 }
 
@@ -645,27 +649,28 @@ function readSourceOnce(context) {
   return reader(context.article.file);
 }
 
-const SECTION_OPEN_RE = /<Section\b[^>]*\bid=["']([^"']+)["']/;
+// 一份源文件的节所占的行（articleSectionSpans 要解析 MDX）：同一份正文连着问几行时只解析一次。
+let sectionSpansMemo = { source: null, spans: [] };
+function sectionSpansOf(source) {
+  if (sectionSpansMemo.source !== source) sectionSpansMemo = { source, spans: articleSectionSpans(source) };
+  return sectionSpansMemo.spans;
+}
 
 /**
  * 引文在文章源文件里的行号（1 起），给 agent 一个落脚行。quote = { exact, prefix, suffix }，
  * section = 评论时所在的节。逐字找 exact，找不到退到它的前 12 个字符（渲染后的正文在
  * 源文件里可能夹着 markdown 记号）；同一串出现在几行时，按行内前后文与 prefix / suffix
- * 的吻合程度挑，落在 `<Section id="<section>">` 里的再加分。都没有是 0。
+ * 的吻合程度挑，落在 `<Section id="<section>">` 里的再加 SECTION_HINT_SCORE（与浏览器端
+ * 定位引文同一个分值）。哪些行属于哪一节，与画布、站点同一个结构走法（articleSectionSpans）。
+ * 都没有是 0。
  */
 export function quoteSourceLine(source, quote, section = '') {
   const q = typeof quote === 'string' ? { exact: quote } : (quote || {});
   const exact = q.exact || '';
   if (typeof source !== 'string' || !exact) return 0;
   const lines = source.split('\n');
-  const sectionOfLine = [];
-  let current = '';
-  for (const line of lines) {
-    const open = line.match(SECTION_OPEN_RE);
-    if (open) current = open[1];
-    sectionOfLine.push(current);
-    if (/<\/Section>/.test(line)) current = '';
-  }
+  const spans = section ? sectionSpansOf(source).filter((span) => span.id === section) : [];
+  const inSection = (lineNo) => spans.some((span) => lineNo >= span.startLine && lineNo <= span.endLine);
   const prefix = q.prefix || '';
   const suffix = q.suffix || '';
   const tailMatch = (a, b) => { let n = 0; while (n < a.length && n < b.length && a[a.length - 1 - n] === b[b.length - 1 - n]) n += 1; return n; };
@@ -677,7 +682,7 @@ export function quoteSourceLine(source, quote, section = '') {
       const at = line.indexOf(probe);
       if (at < 0) return;
       const score = tailMatch(line.slice(0, at), prefix) + headMatch(line.slice(at + probe.length), suffix)
-        + (section && sectionOfLine[i] === section ? 8 : 0);
+        + (inSection(i + 1) ? SECTION_HINT_SCORE : 0);
       if (!best || score > best.score) best = { line: i + 1, score };
     });
     if (best) return best.line;

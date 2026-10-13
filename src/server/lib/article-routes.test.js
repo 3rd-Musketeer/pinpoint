@@ -78,10 +78,9 @@ test('routeArticleUpgrade：只有 /_astro/ 下的 websocket 归站点（pinpoin
   assert.equal(routeArticleUpgrade('/browser-use/'), null);
 });
 
-test('isProjectId：读 resolveProject 或 projects；两样都没有（包 A 未合入）就是没有 project', () => {
-  assert.equal(isProjectId({ resolveProject: (id) => (id === 'p' ? { id } : null) }, 'p'), true);
-  assert.equal(isProjectId({ resolveProject: () => null }, 'p'), false);
+test('isProjectId：只认 registry.projects；页条目不算', () => {
   assert.equal(isProjectId({ projects: [{ id: 'p', kind: 'project' }] }, 'p'), true);
+  assert.equal(isProjectId({ projects: [{ id: 'q', kind: 'project' }] }, 'p'), false);
   assert.equal(isProjectId({ entries: [{ id: 'p', kind: 'dir' }], resolve: () => ({ id: 'p' }) }, 'p'), false);
   assert.equal(isProjectId(null, 'p'), false);
   assert.equal(isProjectId({ projects: [] }, ''), false);

@@ -4,8 +4,11 @@ import path from 'node:path';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
-import { collectBucketOrphans, collectPageOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { articlePageId, parseArticlePageId, PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
+import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { resolvePage } from '../../src/server/lib/page-resolve.js';
+import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
+import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
+import { formatProjectError } from '../../src/shared/project-errors.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
@@ -148,7 +151,7 @@ export function resolveProjectRoot(target, cwd = process.cwd()) {
   }
   if (!stat.isDirectory()) throw new CliError(`--project 需要 project 根目录（含 ${PROJECT_CONTENT_DIR}/project.json）：${root}`);
   const meta = readProjectJson(root);
-  if (meta.errors.length) throw new CliError(`${meta.errors.join('；')}（project 根：${root}）`);
+  if (meta.errors.length) throw new CliError(`${meta.errors.map(formatProjectError).join('；')}（project 根：${root}）`);
   return { root, json: meta.json };
 }
 
@@ -432,7 +435,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   let sitePrefixFiles = [];
   if (before.kind === 'project') {
     const meta = readProjectJson(before.path);
-    if (!meta.json) throw new CliError(`${meta.errors.join('；')}；先修好 project.json 再改 id`);
+    if (!meta.json) throw new CliError(`${meta.errors.map(formatProjectError).join('；')}；先修好 project.json 再改 id`);
     if (meta.json.id !== before.id) {
       throw new CliError(`project.json 的 id 是 "${meta.json.id}"，与登记的 ${before.id} 不一致；先让两边一致再改 id`);
     }
@@ -628,13 +631,14 @@ export async function runPrune(argv, io = {}) {
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
   const localIds = manifestPageIds(REPO_ROOT);
   // 活页（含文章画布页）只删桶里表面已死的账本；不是页了才整桶皆孤儿。
-  const known = pageIdIsLive(registry, pageId, { manifestIds: localIds });
+  const page = resolvePage(registry, pageId, { manifestIds: localIds });
+  const known = page != null;
   const names = known
     ? collectPageOrphans({
         pageId,
         dataRoot: root,
         entries: registry.entries,
-        isManifestPage: !registry.resolve(pageId) && localIds.includes(pageId),
+        isManifestPage: page.kind === 'template',
         previewsRoot: path.join(REPO_ROOT, 'content', 'previews'),
       })
     : collectBucketOrphans(pageId, root);

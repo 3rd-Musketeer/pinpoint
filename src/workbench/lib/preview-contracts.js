@@ -1,4 +1,5 @@
 import { flattenTabs } from './board-tabs.js';
+import { CANVAS_SHELLS } from '../../shared/project-ids.js';
 
 const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
@@ -129,7 +130,7 @@ function validateShell(value, path, fallback = 'app') {
   // "comp"（pp2 切片 2）= variants 墙：无机壳 comp 画板，screen 条目带 comp + props。
   // Legacy "web" 的归一在 legacyShell（唯一定义）。
   const shell = legacyShell(value, fallback);
-  if (shell !== 'app' && shell !== 'lock' && shell !== 'doc' && shell !== 'comp') {
+  if (!CANVAS_SHELLS.includes(shell)) {
     throw new ContractError(path, 'expected "app", "lock", "doc", or "comp"');
   }
   return shell;

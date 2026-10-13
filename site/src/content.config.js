@@ -11,7 +11,8 @@ const projects = defineCollection({
     title: z.string(),
     root: z.string(),
     dir: z.string(),
-    errors: z.array(z.string()),
+    // 布局错误对象 { code, message, path?, section?, frame?, line? }（src/shared/project-errors.js）。
+    errors: z.array(z.looseObject({ code: z.string(), message: z.string() })),
   }),
 });
 
