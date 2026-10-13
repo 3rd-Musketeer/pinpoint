@@ -147,6 +147,10 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(llms, /- \*\*确认卡\*\*（已固定）：对外动作执行前/);
   assert.match(llms, /## 文章：浏览器任务里的付款（\[\[payments\]\]）\n\n开头一段：这篇引用 \[\[确认卡\]\]/);
   assert.match(llms, /- 付款授权：浏览器任务里的付款、基础篇/);
+  // Same list as the home page, concept-body refs included (撤回窗口 is only in concepts/确认卡.md).
+  const llmsEmpty = llms.split('## 空 ref\n\n')[1].split('\n\n')[0].split('\n').map((l) => l.replace(/^- ([^：]+)：.*$/, '$1'));
+  assert.deepEqual(llmsEmpty, [...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]));
+  assert.match(llms, /- 撤回窗口：概念 确认卡/);
 });
 
 // A canvas error is a project error (docs/projects.md「文章的画布 · 错误」), and

@@ -44,7 +44,7 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 - `[[名字]]`：本 project 的 article（按 id）或 concept（按 `name`）。两者共用命名空间，撞名构建失败（dev 下页面顶上显示错误）。
 - `[[project:名字]]`：别的 project；前缀不是已登记的 project id 时，整串当名字。
 - `[[名字|显示文字]]`：换显示文字。
-- 找不到目标的是空 ref：虚线样式，列在 project 首页和文章的概念抽屉里。代码里的 `[[ ]]` 不解析。
+- 找不到目标的是空 ref：虚线样式，列在 project 首页、`llms.txt` 和文章的概念抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和概念正文里写的都算。代码里的 `[[ ]]` 不解析。
 
 popup：article 显示标题、摘要、读全文；concept 显示定义、状态、用到它的文章；空 ref 显示还没有页。
 
