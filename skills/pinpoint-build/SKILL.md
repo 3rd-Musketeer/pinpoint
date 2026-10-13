@@ -42,6 +42,7 @@ project 是一组相关的 article 和 concept，id 是网址的第一段 `/<pro
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`concepts/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式和资源只有文章这一级：没有 project 级的 css 和 `assets/`。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
+- 已有的文章目录不改名：目录名是页 id 的后半段，改名后旧页的标注和评论整桶成孤儿。确要改名，按 [`docs/projects.md`](../../docs/projects.md)“文章目录改名”手工挪桶。换 project id 用 `pinpoint rename <旧 id> <新 id>`，它连每篇文章的桶一起搬。
 
 ## 3. 写 index.mdx
 
@@ -114,7 +115,7 @@ boundary: 一句话说清它管什么、不管什么。
 - `ppnt build <project>_<article>`：编译这篇的全部帧，逐帧报 ok 或 lint、编译错误。
 - `ppnt shot C2 --page <project>_<article>`：一帧的 PNG，命令会打印文件路径；写 `C` 截整节。改了组件或 `article.css`，把用到它的帧都截一遍。
 - 文章页 `https://pinpoint.localhost/<project>/<article>/`：第一次打开显示“站点启动中”，就绪后自己刷新。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。
-- 画布视图 `https://pinpoint.localhost/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。
+- 画布视图 `https://pinpoint.localhost/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。工作台左栏“文章”组按 project 列出每篇文章，点它也进这一页；没有画布的文章点了在新标签页打开正文。
 - project 首页 `https://pinpoint.localhost/<project>/`：文章列表、概念和全部空 ref。写完 `[[ ]]` 想确认哪些还是空 ref，看这一页。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和概念，就是别的 agent 读到的样子。
 - 站点打不开，先跑 `pinpoint status`。

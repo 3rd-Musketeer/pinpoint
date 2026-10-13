@@ -133,7 +133,7 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 
 ## 文章的画布
 
-每篇 article 的画布是一个由正文派生的页（pp3 M1）。正文里怎么写见 common-m1 §1 的定法，这里只记机制。
+每篇 article 的画布是一个由正文派生的页。正文里怎么写见 `site/README.md` 与 `skills/pinpoint-build`，这里只记机制。
 
 ### 写法
 
@@ -187,7 +187,7 @@ export default function ConfirmBare() {
 
 ### 工作台左栏
 
-2026-10-13 起（pp3 M4），工作台左栏“页面”tab 分两组：上面“文章”，下面“页面”。“页面”组就是原来的置顶、最近、文件夹与散页，存量页迁成文章之后撤掉。
+2026-10-13 起，工作台左栏“页面”tab 分两组：上面“文章”，下面“页面”。“页面”组就是原来的置顶、最近、文件夹与散页，存量页迁成文章之后撤掉。
 
 - “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
 - 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的画布页）：点行在工作台打开画布页 `<project>_<article>`，和 `/?page=` 是同一个页，选中态与页面行一样。没有画布的文章：点行在新标签页打开正文。

@@ -172,7 +172,8 @@ with `pinpoint add`, and it shows up as a workbench page served from `/sites/<en
 stay where they are. Moved the source? `pinpoint move <id> <new path>` re-points the entry and keeps
 the id, so the annotations in `~/.pinpoint/<id>/` stay attached. Renaming the entry itself is
 `pinpoint rename <old id> <new id>` — it moves the registry entry, the annotation bucket, and the
-`/sites/<id>/` prefix written into the entry's own files in one shot. See
+`/sites/<id>/` prefix written into the entry's own files in one shot; for a project entry it moves
+every `<project>_<article>` bucket instead ([`docs/projects.md`](docs/projects.md)). See
 [`docs/registry.md`](docs/registry.md).
 
 ## Annotation review loop

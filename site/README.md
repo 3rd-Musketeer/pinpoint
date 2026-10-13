@@ -57,5 +57,5 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编字母。
 - `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
-- `src/lib/canvas-source.js`：唯一取文章画布（`articleCanvas`、`articlePageId`）的地方，转出服务端 `src/server/lib/projects.js` 的实现（契约见 `docs/projects.md`「文章的画布」）。
+- `src/lib/canvas-source.js`：唯一取文章画布（`articleCanvas`、`articlePageId`）的地方，转出服务端 `src/server/lib/projects.js` 的实现（契约见 `docs/projects.md`“文章的画布”）。
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸、读未处理标注数。

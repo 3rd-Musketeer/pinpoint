@@ -81,8 +81,8 @@ owner 常用口头说法指页（“routines 原型”“付款那篇文章”�
 ppnt reply '#3' "<回复>" --page <project>_<article>
 ```
 
-文章的条目一律带 `--page <project>_<article>`，`locate`、`mark`、`shot` 也一样：跨页写法 `<project>_<article>#3`
-目前解析不到正文评论。回复是线程里的一条 agent 消息，owner 不用刷新就能在右栏看到，它不改状态。回复里写清你改了什么、在哪里能看到。一次只回一条；画布标注没有线程，对它 `reply` 会报错退出，状态改用 `ppnt mark`。
+文章的条目带 `--page <project>_<article>`，或写成 `<project>_<article>#3`：没给 `--page` 时，`locate`、`mark`、`reply`
+取第一个这种引用的页当基页，`ppnt check <project>_<article>#3` 只列这一条。回复是线程里的一条 agent 消息，owner 不用刷新就能在右栏看到，它不改状态。回复里写清你改了什么、在哪里能看到。一次只回一条；画布标注没有线程，对它 `reply` 会报错退出，状态改用 `ppnt mark`。
 
 ## 5. `ppnt mark <ref…> done|check`
 

@@ -222,7 +222,7 @@ function readArticles(dir, errors, projectId) {
     const canvas = parseArticleCanvas(text, frameFileReaders(articleDir));
     for (const problem of canvas.errors) errors.push(`${rel}/index.mdx：${problem.message}`);
     // canvasSections：画布上有几节（带 Canvas 且列了帧的节）。0 = 这篇没有画布，
-    // 工作台左栏点它直接打开正文（docs/projects.md「工作台左栏」）。
+    // 工作台左栏点它直接打开正文（docs/projects.md“工作台左栏”）。
     const canvasSections = canvas.sections.filter((section) => section.frames.length > 0).length;
     const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file, canvasSections };
     if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);

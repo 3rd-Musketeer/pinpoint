@@ -25,7 +25,7 @@ Pages 列表 = 工作台左栏“页面”tab 下的“页面”组；同一个 
 **concept（概念，wiki 词条）与 `[[ ]]` 引用 · pp3 · 2026-10-13**
 concept 是一个词的定义：短，有状态（占位 / 收敛中 / 已固定）和一句边界，被多篇 article 引用，住 `docs/pinpoint/concepts/<名字>.md`。
 `[[名字]]` 既能指向 article 也能指向 concept：同一个 project 里两者共用一个命名空间，名字不能重复，撞名构建时报错；跨 project 写 `[[project:名字]]`。
-找不到目标的 `[[名字]]` 是空 ref（照 Obsidian），合法，用来梳理还缺哪些机制。点开 popup：article 显示标题、摘要、读全文；concept 显示定义、状态、用到它的文章；空 ref 显示还没有页。
+找不到目标的 `[[名字]]` 是空 ref（照 Obsidian），合法，用来梳理还缺哪些机制。点开的 popup 显示什么见 `site/README.md`。
 要避开：把 concept 叫 article 的一种——它没有 sections 和画布，也不单独分享。
 
 **board（板）**
@@ -154,7 +154,7 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
 - **bucket（桶）= 页**（2026-09-23 起，ADR 0036）：一个页一个目录
   `~/.pinpoint/<pageId>/`，磁盘就是事实源。pageId = 这条内容在 Pages 列表里属于
   哪一行（registry 条目 id；挂靠条目用宿主页 id；manifest 模板页用自己的 id）。
-  `pinpoint` 桶只是「不属于任何页」的兜底，不是页。
+  `pinpoint` 桶只是“不属于任何页”的兜底，不是页。
 - **ledger（账本）** = 桶内的一个表面。画布是一本固定名 `@canvas.json`
   （mention 帧也写这本，与画布双向同步）；文档、直开页、url 条目仍是一个
   pathname 一本，文件名（page key）= `decodeURIComponent(filename) + '~' +
@@ -167,7 +167,7 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
 - 文章页（pp3）：桶 = 文章页 id `<project>_<article>`；画布是 `@canvas.json`，正文评论是固定名 `@prose.json`，同一套 `#n`。
 浏览器 `localStorage` 只是缓存，不是权威。
 
-**正文评论（prose comment）· pp3 M2 · 2026-10-13**
+**正文评论（prose comment）· pp3 · 2026-10-13**
 article 页上选中正文文字写下的评论：一条标注，`type: "prose"`，锚点是引文（选中文字 + 前后文，section 作提示），
 进这篇的桶、`@prose` 账本，与画布标注同一个队列和状态机。线程 = owner 的第一句（`content`）+ `messages`（owner 与 agent 的来回）；
 agent 只经 `ppnt reply` 回复，回复不改状态。正文改了每次重新定位，引文找不到就标“失效”。

@@ -74,7 +74,7 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
   （`<id>.jsx` / `<id>.html`）和标注锚点（`@frame:<页>/<id>`），改名会断标注。所以 id 用描述内容的
   短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）：仿编号的 id 一调序就和编号对不上，
   `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
-- **section `letter`** 只出现在文章画布由正文派生的 board 里（[`projects.md`](projects.md)「文章的画布」）。它是这一节在正文里的字母，`boardRefs` 用它代替按顺序数出来的字母，画布编号因此和文章节标题一致。手写 board 不写这个字段。
+- **section `letter`** 只出现在文章画布由正文派生的 board 里（[`projects.md`](projects.md)“文章的画布”）。它是这一节在正文里的字母，`boardRefs` 用它代替按顺序数出来的字母，画布编号因此和文章节标题一致。手写 board 不写这个字段。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
 ### 页内 tab（ADR 0041）

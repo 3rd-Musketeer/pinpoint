@@ -51,7 +51,7 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 **桶 = 页**（2026-09-23 起，ADR 0036）：一个页一个桶 `~/.pinpoint/<pageId>/*.json`
 （**磁盘就是事实源**），形状是 `annotations[]`。pageId = 这条内容在 Pages 列表里属于
 哪一行：registry 条目 id（挂靠条目 `entry.page` 用宿主页 id）、`content/previews/_index.json`
-的模板页用自己的 id。`pinpoint` 桶只是「不属于任何页」的兜底（SPA fallback 页等），不是页。
+的模板页用自己的 id。`pinpoint` 桶只是“不属于任何页”的兜底（SPA fallback 页等），不是页。
 registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。数据根的确切路径从
 `GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
 
@@ -88,7 +88,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 存量账本（previews 直开页与 mention 帧旧落 pinpoint 桶、画布账本按工作台 pathname
 分本）由 `scripts/migrate-ledgers.mjs` 一次性迁到页桶 —— 迁移是这次模型切换的一部分。
 
-## 正文评论（pp3 M2）
+## 正文评论（pp3 · 2026-10-13）
 
 article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布上的标注是同一个队列：
 
@@ -142,8 +142,6 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
   `.js`（sidecar）改动整页刷新；kit 印章 `content/kits/ios/jsx/**` 改动全量重编所有页。
 
 ## 画布标注的几何缓存
-
-以下行为随 `feat/canvas-performance` 提供，尚未发布。
 
 画布标注保留 DOM，缓存未缩放的目标矩形、裁剪和箭头端点。测量时集中读取，再写入标注节点；
 普通平移更新公共 `translate3d`，纯缩放按当前视口投影缓存。两者都不重新解析或测量内容锚点，
