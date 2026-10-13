@@ -22,6 +22,13 @@ test('[[ ]] resolves in the current project, across projects, and falls back to 
   assert.equal(resolveRef('收款方', 'demo', index).kind, 'empty');
 });
 
+test('[[ ]] names compare like the listProjects namespace check (case, surrounding spaces)', () => {
+  const keyed = new Map([['demo', { names: new Map([['confirm-card', { kind: 'concept' }]]) }]]);
+  assert.equal(resolveRef(' Confirm-Card ', 'demo', keyed).kind, 'concept');
+  const errs = namespaceErrors({ id: 'p', articles: [{ id: 'confirm-card', file: '/a' }], concepts: [{ name: 'Confirm-Card', file: '/c.md' }] });
+  assert.equal(errs.length, 1);
+});
+
 test('extractRefs skips fenced and inline code, like the remark pass', () => {
   const src = 'a [[一]] `[[不算]]` b\n\n```js\nconst x = "[[也不算]]";\n```\n\n[[二|标签]]';
   assert.deepEqual(extractRefs(src), ['一', '二|标签']);

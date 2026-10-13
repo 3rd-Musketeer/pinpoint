@@ -38,7 +38,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
 
   for (const rel of [
     'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
-    'other/index.html', 'other/intro/index.html', 'other/concepts/收款方/index.html', 'other/llms.txt',
+    'other/index.html', 'other/intro/index.html', 'other/concepts/payee/index.html', 'other/llms.txt',
   ]) assert.ok(fs.existsSync(path.join(b.out, rel)), `missing route ${rel}`);
 
   const article = b.read('demo/payments/index.html');
@@ -52,6 +52,8 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
     { kind: 'empty', name: '不存在', project: 'other', label: '不存在' },
   ]);
   assert.match(article, /<code>\[\[不是引用\]\]<\/code>/);
+  // Concept URLs use the file name (slug), the ref still resolves by name.
+  assert.match(article, /href="\/other\/concepts\/payee\/" data-kind="concept" data-name="收款方" data-project="other"/);
   // Popup data per kind: article → title + summary; concept → definition, status, used-by.
   assert.match(article, /data-kind="article"[^>]*data-href="\/demo\/basics\/" data-title="基础篇" data-summary="没有 section 的短文。"/);
   assert.match(article, /data-kind="concept" data-name="确认卡"[^>]*data-status="已固定"[^>]*data-def="对外动作执行前[^"]*"[^>]*data-used="[^"]*基础篇/);

@@ -3,15 +3,14 @@
  * from the content collections (cheap; keeps dev reloads honest).
  */
 import { getCollection } from 'astro:content';
-import { extractRefs, resolveRef, refHtml, RAW_REF_RE, unesc } from './refs.js';
+import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from './refs.js';
 
-export const CONCEPT_STATUS = {
-  placeholder: '占位', converging: '收敛中', fixed: '已固定',
-  占位: '占位', 收敛中: '收敛中', 已固定: '已固定',
-};
+/** Concept status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
+const DEFAULT_STATUS = '占位';
 
 export const articleHref = (project, article) => `/${encodeURIComponent(project)}/${encodeURIComponent(article)}/`;
-export const conceptHref = (project, name) => `/${encodeURIComponent(project)}/concepts/${encodeURIComponent(name)}/`;
+/** Concept URLs use the file name (`slug`), not the display `name` (docs/projects.md). */
+export const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/concepts/${encodeURIComponent(slug)}/`;
 export const projectHref = (project) => `/${encodeURIComponent(project)}/`;
 
 /** First paragraph of a markdown body as plain text (fallback definition). */
@@ -35,21 +34,21 @@ export async function loadSite() {
     if (!p) continue;
     const item = { kind: 'article', entry: a, id: a.data.article, title: a.data.title, summary: a.data.summary || '', href: articleHref(p.id, a.data.article) };
     p.articles.push(item);
-    if (!p.names.has(item.id)) p.names.set(item.id, item);
+    if (!p.names.has(refKey(item.id))) p.names.set(refKey(item.id), item);
   }
   for (const c of conceptEntries) {
     const p = projects.get(c.data.project);
     if (!p) continue;
     const item = {
-      kind: 'concept', entry: c, name: c.data.name,
-      status: CONCEPT_STATUS[c.data.status || 'placeholder'],
-      fixed: (c.data.status || '') === 'fixed' || c.data.status === '已固定',
-      definition: c.data.definition || c.data.boundary || firstParagraph(c.body),
-      href: conceptHref(p.id, c.data.name),
+      kind: 'concept', entry: c, name: c.data.name, slug: c.data.slug,
+      status: c.data.status || DEFAULT_STATUS,
+      fixed: c.data.status === '已固定',
+      definition: c.data.boundary || firstParagraph(c.body),
+      href: conceptHref(p.id, c.data.slug),
       usedBy: [],
     };
     p.concepts.push(item);
-    if (!p.names.has(item.name)) p.names.set(item.name, item);
+    if (!p.names.has(refKey(item.name))) p.names.set(refKey(item.name), item);
   }
   for (const p of projects.values()) {
     p.articles.sort((x, y) => (x.entry.data.order ?? Infinity) - (y.entry.data.order ?? Infinity) || x.id.localeCompare(y.id));

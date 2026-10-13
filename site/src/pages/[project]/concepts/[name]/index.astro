@@ -6,13 +6,13 @@ export async function getStaticPaths() {
   const site = await loadSite();
   assertBuildClean(site);
   return [...site.projects.values()].flatMap((p) =>
-    p.concepts.map((c) => ({ params: { project: p.id, name: c.name }, props: { projectId: p.id, name: c.name } })));
+    p.concepts.map((c) => ({ params: { project: p.id, name: c.slug }, props: { projectId: p.id, slug: c.slug } })));
 }
 
-const { projectId, name } = Astro.props;
+const { projectId, slug } = Astro.props;
 const site = await loadSite();
 const p = site.projects.get(projectId);
-const c = p.concepts.find((x) => x.name === name);
+const c = p.concepts.find((x) => x.slug === slug);
 const body = resolveRawRefs(c.entry.rendered?.html, site);
 ---
 <Base title={`${c.name} · ${p.title}`} description={c.definition} project={p.id}

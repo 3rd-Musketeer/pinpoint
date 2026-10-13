@@ -7,7 +7,13 @@
  *
  * A name that resolves to nothing is an empty ref: legal, rendered dashed,
  * listed on the project page.
+ *
+ * Names compare by `refKey` (NFC, trimmed, case-insensitive) — the same key
+ * listProjects uses for its namespace check, so what collides there is what
+ * resolves here.
  */
+import { refKey } from '../../../src/server/lib/projects.js';
+export { refKey };
 
 export const REF_RE = /\[\[([^\[\]\n]+?)\]\]/g;
 
@@ -21,7 +27,7 @@ export function parseRefBody(body) {
 
 /**
  * Resolve the target against the project index.
- * `projects` = Map<projectId, { names: Map<name, item> }>, item = { kind: 'article'|'concept', ... }.
+ * `projects` = Map<projectId, { names: Map<refKey(name), item> }>, item = { kind: 'article'|'concept', ... }.
  * → { kind: 'article'|'concept'|'empty', project, name, label, item? }
  */
 export function resolveRef(raw, from, projects) {
@@ -33,7 +39,7 @@ export function resolveRef(raw, from, projects) {
     const prefix = target.slice(0, colon).trim();
     if (projects.has(prefix)) { project = prefix; name = target.slice(colon + 1).trim(); }
   }
-  const item = projects.get(project)?.names.get(name);
+  const item = projects.get(project)?.names.get(refKey(name));
   const shown = label || name;
   if (!item) return { kind: 'empty', project, name, label: shown };
   return { kind: item.kind, project, name, label: shown, item };
@@ -59,8 +65,9 @@ export function namespaceErrors(project) {
   const seen = new Map();
   const errors = [];
   const add = (name, what) => {
-    if (seen.has(name)) errors.push(`project "${project.id}": name "${name}" is used by ${seen.get(name)} and ${what} — article ids and concept names share one namespace`);
-    else seen.set(name, what);
+    const key = refKey(name);
+    if (seen.has(key)) errors.push(`project "${project.id}": name "${name}" is used by ${seen.get(key)} and ${what} — article ids and concept names share one namespace`);
+    else seen.set(key, what);
   };
   for (const a of project.articles || []) {
     if (a.id === 'concepts') errors.push(`project "${project.id}": article id "concepts" is reserved (it is the concept route segment)`);

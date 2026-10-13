@@ -48,12 +48,12 @@ popup：article 显示标题、摘要、读全文；concept 显示定义、状�
 
 ## 概念（`concepts/<名字>.md`）
 
-frontmatter：`name`（缺省用文件名）、`status`（`placeholder` 占位 / `converging` 收敛中 / `fixed` 已固定，也接受中文）、`definition`（一句边界；缺省取正文第一段）。正文里也能写 `[[ ]]`。
+frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界；缺省取正文第一段）。字段规则与解析器在 `docs/projects.md`，站点只用 `listProjects` 读出的值。概念页地址用文件名：`/<project>/concepts/<slug>/`。正文里也能写 `[[ ]]`。
 
 ## 代码地图
 
-- `src/lib/projects-source.js`：唯一读 registry / project 的地方。有 `src/server/lib/projects.js`（包 M0-A）就用它和 `loadRegistry`，没有就用同形状的 stub。
+- `src/lib/projects-source.js`：唯一读 registry / project 的地方，用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。
 - `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts。
 - `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编字母。
-- `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。
+- `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。

@@ -5,7 +5,7 @@
  *
  *   projects  id <project>               { id, title, root, dir, errors[] }
  *   articles  id <project>/<article>     frontmatter + { project, article, file }   (MDX, deferred render)
- *   concepts  id <project>/<name>        frontmatter + { project, name, file }      (md, rendered at load)
+ *   concepts  id <project>/<slug>        frontmatter + { project, name, slug, file } (md, rendered at load)
  *
  * In dev every loader watches the registry file and each project's
  * docs/pinpoint/ and reloads itself on any change.
@@ -88,7 +88,8 @@ export function articlesLoader() {
             const id = `${p.id}/${a.id}`;
             const parsed = await ctx.parseData({
               id,
-              data: { ...data, title: typeof data.title === 'string' ? data.title : a.title || a.id, project: p.id, article: a.id, file: a.file },
+              // title / summary come from listProjects (one frontmatter parser for site, service and CLI; docs/projects.md).
+              data: { ...data, title: a.title, summary: a.summary, project: p.id, article: a.id, file: a.file },
               filePath: a.file,
             });
             ctx.store.set({
@@ -124,8 +125,10 @@ export function conceptsLoader() {
             const contents = await fs.promises.readFile(c.file, 'utf8').catch(() => null);
             if (contents === null) { ctx.logger.warn(`cannot read ${c.file}`); continue; }
             const { body, data } = await md.getEntryInfo({ contents, fileUrl: pathToFileURL(c.file) });
-            const id = `${p.id}/${c.name}`;
-            const parsed = await ctx.parseData({ id, data: { ...data, name: c.name, project: p.id, file: c.file }, filePath: c.file });
+            const id = `${p.id}/${c.slug}`;
+            // name / slug / status / boundary come from listProjects, not Astro's YAML (docs/projects.md).
+            const own = { name: c.name, slug: c.slug, status: c.status, boundary: c.boundary };
+            const parsed = await ctx.parseData({ id, data: { ...data, ...own, project: p.id, file: c.file }, filePath: c.file });
             const digest = ctx.generateDigest(contents);
             let rendered;
             try {

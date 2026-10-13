@@ -28,14 +28,14 @@ const articles = defineCollection({
   }),
 });
 
-// concept frontmatter（CONTEXT.md concept 词条）：name（缺省用文件名）、status、definition（一句边界）。
-const STATUS = ['placeholder', 'converging', 'fixed', '占位', '收敛中', '已固定'];
+// concept frontmatter（CONTEXT.md concept 词条，docs/projects.md）：name（缺省用文件名）、status（占位 / 收敛中 / 已固定）、
+// boundary（一句边界）。这几项由 listProjects 读出，slug 是文件名（URL 段）。
 const concepts = defineCollection({
   loader: conceptsLoader(),
   schema: z.looseObject({
     name: z.string(),
-    status: z.enum(STATUS).optional(),
-    definition: z.string().optional(),
+    slug: z.string(),
+    status: z.enum(['占位', '收敛中', '已固定']).optional(),
     boundary: z.string().optional(),
     project: z.string(),
     file: z.string(),

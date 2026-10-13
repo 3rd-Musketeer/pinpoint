@@ -1,6 +1,6 @@
 ---
 name: confirm-card
-status: placeholder
+status: 占位
 ---
 
 和文章同名的概念。
