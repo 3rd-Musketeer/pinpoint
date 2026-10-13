@@ -15,6 +15,7 @@ import {
   buildFolderRemove,
   buildFolderRename,
   buildRename,
+  classifyOriginStatus,
   classifyStatus,
   CliError,
   collectStatus,
@@ -1368,6 +1369,44 @@ test('runStatus: 全绿退 0，出问题退 1 并打表', async (t) => {
   const dead = lifecycleIo(t, { health: null, alive: false });
   assert.equal(await runStatus(['status'], dead.io), 1);
   assert.ok(dead.rec.out.some((line) => /进程没了/.test(line)));
+});
+
+test('runStatus: 设了 PINPOINT_ORIGIN 只体检那一个服务，不读 portless 路由、不打路由端口', async (t) => {
+  // 路由表里有一条健康的 portless 路由（owner 的常驻服务）；PINPOINT_ORIGIN 指测试服务。
+  const made = lifecycleIo(t);
+  const asked = [];
+  const io = {
+    ...made.io,
+    env: { ...made.io.env, PINPOINT_ORIGIN: 'http://127.0.0.1:5710/' },
+    requestFn: (url) => {
+      asked.push(url);
+      return Promise.resolve({ status: 200, json: healthJson() });
+    },
+  };
+  assert.equal(await runStatus(['status'], io), 0);
+  assert.deepEqual(asked, ['http://127.0.0.1:5710/health']);
+  const out = made.rec.out;
+  assert.equal(out[0], 'pinpoint status · http://127.0.0.1:5710（PINPOINT_ORIGIN；没看 portless 路由）');
+  assert.ok(out.some((line) => /\/health +正常 +http:\/\/127\.0\.0\.1:5710\/health 200/.test(line)));
+  assert.ok(!out.some((line) => /路由 |进程 |直连|代理|pinpoint\.localhost|4812/.test(line)), out.join('\n'));
+  assert.ok(out.some((line) => /→ 服务正常。/.test(line)));
+
+  // 测试服务不通：报红、指名是哪个 origin，也不去问 portless 那个。
+  const down = lifecycleIo(t);
+  const downAsked = [];
+  const downIo = {
+    ...down.io,
+    env: { ...down.io.env, PINPOINT_ORIGIN: 'http://127.0.0.1:5710' },
+    requestFn: (url) => { downAsked.push(url); return Promise.reject(new Error('connect ECONNREFUSED')); },
+  };
+  assert.equal(await runStatus(['status'], downIo), 1);
+  assert.deepEqual(downAsked, ['http://127.0.0.1:5710/health']);
+  assert.ok(down.rec.out.some((line) => /→ http:\/\/127\.0\.0\.1:5710 的 \/health 不通/.test(line)));
+
+  // 服务答了但跑的是别的目录：同样判失败。
+  const other = classifyOriginStatus({ repoRoot: REPO_ROOT, origin: 'http://o', health: { url: 'http://o/health', ok: true, status: 200, json: healthJson({ root: '/elsewhere' }) } });
+  assert.equal(other.ok, false);
+  assert.match(other.diagnosis, /另一个目录（\/elsewhere）/);
 });
 
 test('runStop: 没有活进程是幂等的；有就 SIGTERM 并复核', async (t) => {

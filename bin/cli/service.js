@@ -73,6 +73,46 @@ export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, 
   rows.push(probeRow('直连 /health', direct));
   rows.push(probeRow('代理 /health', proxied));
 
+  rows.push(...healthRows(health, repoRoot));
+
+  const bad = rows.filter((row) => row.state === 'bad');
+  const ok = bad.length === 0;
+  return {
+    ok,
+    rows,
+    pid: route ? route.pid : 0,
+    port: route ? route.port : 0,
+    pidAlive: Boolean(route && route.pid && pidAlive),
+    serviceRoot,
+    diagnosis: diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, repoRoot }),
+  };
+}
+
+/**
+ * 设了 PINPOINT_ORIGIN 时的体检：只问那一个服务的 /health（测试服务、别的端口），
+ * 不读 portless 路由、不打路由端口——那是另一个服务（owner 常驻的 pinpoint.localhost），
+ * 混进来会把两个服务的状态报在一张表里。
+ *   origin  PINPOINT_ORIGIN
+ *   health  { url, ok, status?, json?, error? } —— <origin>/health
+ */
+export function classifyOriginStatus({ repoRoot, origin, health = null }) {
+  const json = health && health.ok ? health.json : null;
+  const rows = [probeRow('/health', health), ...healthRows(json, repoRoot)];
+  const ok = !rows.some((row) => row.state === 'bad');
+  const serviceRoot = json && typeof json.root === 'string' ? json.root : null;
+  let diagnosis;
+  if (ok) diagnosis = rows.some((row) => row.state === 'warn') ? '服务在跑，但有告警（见上）。' : '服务正常。';
+  else if (!json) diagnosis = `${origin} 的 /health 不通：PINPOINT_ORIGIN 指的服务没在跑，或地址写错了。`;
+  else if (serviceRoot && serviceRoot !== repoRoot) diagnosis = `${origin} 跑的是另一个目录（${serviceRoot}），不是本 CLI 所在的仓库（${repoRoot}）。`;
+  else if (rows.some((row) => row.label === '文章站点' && row.state === 'bad')) diagnosis = '服务正常，但文章站点的开发服务器起不来：看上面那行的日志路径，修好后刷新文章页会重试。';
+  else diagnosis = 'registry 有 error，服务在按回落表跑（见上）。';
+  return { ok, rows, origin, pid: 0, port: 0, pidAlive: false, serviceRoot, diagnosis };
+}
+
+/** /health 答出来的那几行（服务 root · registry · project · 文章站点）；两种 status 共用。 */
+function healthRows(health, repoRoot) {
+  const serviceRoot = health && typeof health.root === 'string' ? health.root : null;
+  const rows = [];
   if (!health) {
     rows.push({ label: '服务 root', state: 'skip', detail: '/health 不通，问不到' });
     rows.push({ label: 'registry', state: 'skip', detail: '/health 不通，问不到' });
@@ -103,18 +143,7 @@ export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, 
     }
     if (health.site) rows.push(...siteRows(health.site));
   }
-
-  const bad = rows.filter((row) => row.state === 'bad');
-  const ok = bad.length === 0;
-  return {
-    ok,
-    rows,
-    pid: route ? route.pid : 0,
-    port: route ? route.port : 0,
-    pidAlive: Boolean(route && route.pid && pidAlive),
-    serviceRoot,
-    diagnosis: diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, repoRoot }),
-  };
+  return rows;
 }
 
 /**
@@ -225,12 +254,25 @@ async function probe(url, requestFn) {
   }
 }
 
+/** 只体检 PINPOINT_ORIGIN 那一个服务（status 用；start / stop / restart 仍走 portless 那条）。 */
+export async function collectOriginStatus(io = {}) {
+  const { env, requestFn } = ioOf(io);
+  const origin = env.PINPOINT_ORIGIN.replace(/\/+$/, '');
+  return classifyOriginStatus({ repoRoot: REPO_ROOT, origin, health: await probe(`${origin}/health`, requestFn) });
+}
+
 export async function runStatus(argv, io = {}) {
   const { env, out } = ioOf(io);
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   if (parsed.flags.page) return printPageStatus(parsed, { env, out, err: ioOf(io).err });
+  if (env.PINPOINT_ORIGIN) {
+    const report = await collectOriginStatus(io);
+    out(`pinpoint status · ${report.origin}（PINPOINT_ORIGIN；没看 portless 路由）`);
+    for (const line of formatStatus(report)) out(line);
+    return report.ok ? 0 : 1;
+  }
   const report = await collectStatus(io);
   out('pinpoint status');
   for (const line of formatStatus(report)) out(line);

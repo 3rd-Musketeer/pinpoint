@@ -76,6 +76,7 @@ export {
   pickRoute,
   serviceLogPath,
   classifyStatus,
+  classifyOriginStatus,
   formatStatus,
   decideStart,
   decideStop,
