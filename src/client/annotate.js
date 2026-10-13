@@ -4187,6 +4187,7 @@ import { startProseComments } from './prose-comments.js';
       countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
       revision: revision,
       syncing: syncing,
+      outbox: Object.keys(ledgerOutbox).length, // 换账本交给 outbox、还没写完的旧账本快照
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,

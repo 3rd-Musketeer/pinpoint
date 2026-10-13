@@ -7,7 +7,7 @@
 // 正好撞上 rmSync 时服务端 rename 报 ENOENT，整个服务退出，组里后面的用例全挂
 // （2026-10-13 实测）。
 //
-// closeSettled：每个 frame 里先等在途保存回来，再在页面里派发一次 pagehide，让客户端
+// closeSettled：每个 frame 里先等在途保存和换账本 outbox 里的写回来，再在页面里派发一次 pagehide，让客户端
 // 现在就发离开时要发的写，等它回来，最后关页。真正关页时再触发的 pagehide 就没有可发的了。
 //
 // 尽力而为：用例自己扣着不放的保存（page.route 拦住 /save）等不回来，5s 后照常关页，
@@ -22,7 +22,8 @@ export async function closeSettled(page) {
       const ann = window.pinpoint && typeof window.pinpoint.getState === 'function' ? window.pinpoint : null;
       const prose = window.pinpointProse && typeof window.pinpointProse.settled === 'function' ? window.pinpointProse : null;
       if (!ann && !prose) return;
-      const idle = () => (!ann || !ann.getState().syncing) && (!prose || prose.settled());
+      // 画布：在途保存（syncing）和换账本交给 outbox、还没写完的旧账本快照（outbox）都要等完。
+      const idle = () => (!ann || (!ann.getState().syncing && !ann.getState().outbox)) && (!prose || prose.settled());
       const waitIdle = async () => {
         for (const until = Date.now() + 5000; !idle();) {
           if (Date.now() > until) return false;
