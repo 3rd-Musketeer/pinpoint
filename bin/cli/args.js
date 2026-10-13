@@ -3,11 +3,11 @@ import { DEFAULT_ORIGIN, CliError, ioOf } from './core.js';
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
 const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale']);
-const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run']);
+const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project']);
 // 每个命令接受的选项与位置参数个数。folder / locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
-  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft']) },
+  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft', 'project']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
   remove: { positional: 1, flags: new Set(['registry']) },
@@ -38,9 +38,11 @@ const FOLDER_SUBCOMMANDS = {
 export const NO_FOLDER = 'none';
 
 export const USAGE = `用法：
-  pinpoint list [关键词…]                               列出页：id · 标题 · 类型 · 标注计数 · 源路径；关键词在 id / 标题 / 路径上宽松匹配
+  pinpoint list [关键词…]                               列出页与 project：id · 标题 · 类型 · 标注计数 · 源路径；关键词在 id / 标题 / 路径上宽松匹配
   pinpoint list <页> --frames                           列画布帧：编号 · 帧 id · 源文件 · 标题（编号 ↔ id 对照）
+  pinpoint list <project>                               列一个 project 的文章、概念与布局错误
   pinpoint add <目录|文件.html|http(s)://URL> [选项]   登记一个新条目
+  pinpoint add <project 根目录> --project              登记一个 project（读 docs/pinpoint/project.json）
   pinpoint move <id> <新目录|新文件|新URL>             把既有条目重指到新路径（保留 id）
   pinpoint rename <旧 id> <新 id>                      给既有条目改 id（登记表 + 标注桶 + 资源前缀一起改）
   pinpoint remove <id>                                 从登记表删一个条目（源文件 / URL 不动；详见下面 remove 一节）
@@ -59,6 +61,11 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
   目录             → kind "dir"，服务只读 host 在 /sites/<id>/ 并注入标注
   单个 .html 文件  → kind "file"，仅 serve 该文件（/sites/<id>/ 与 /sites/<id>/<文件名>）
   http(s)://URL    → kind "url"，同源代理内嵌 + 内嵌响应注入标注
+  目录 + --project → kind "project"：目录是 project 根，内容在 <根>/docs/pinpoint/
+                     （project.json、articles/<文章>/index.mdx、concepts/<名字>.md，见 docs/projects.md）。
+                     id 取 project.json 的 id（--id 只能与它相同），标题取它的 title；
+                     不能和 --board / --page / --draft 同用。move / rename / remove 同样适用：
+                     move 的新根目录里 project.json 的 id 必须不变；rename 同时改写 project.json 的 id。
 
 选项（add）：
   --title X        显示名（默认：目录名 / 文件名 / hostname）

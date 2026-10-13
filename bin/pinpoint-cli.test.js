@@ -2178,3 +2178,158 @@ test('planShotJobs：多 tab 页的帧 / 段作业带 tabId；整页引用逐 ta
   assert.equal('tabId' in legacy.jobs[0], false);
   assert.equal(path.basename(legacy.jobs[0].out), 'demo.png');
 });
+
+/* ---- project（pp3） ---- */
+
+const FIXTURE_PROJECT = path.join(REPO_ROOT, 'e2e', 'project-site');
+const FIXTURE_COLLIDE = path.join(REPO_ROOT, 'e2e', 'project-collide');
+const offline = () => Promise.reject(new Error('connect ECONNREFUSED'));
+
+/** 临时 project 根：<dir>/<name>/docs/pinpoint/project.json + 一篇文章。 */
+function makeProjectRoot(dir, name, json) {
+  const root = path.join(dir, name);
+  const content = path.join(root, 'docs', 'pinpoint');
+  fs.mkdirSync(path.join(content, 'articles', 'intro'), { recursive: true });
+  fs.writeFileSync(path.join(content, 'articles', 'intro', 'index.mdx'), '---\ntitle: Intro\n---\n');
+  if (json !== null) fs.writeFileSync(path.join(content, 'project.json'), JSON.stringify(json));
+  return root;
+}
+
+test('parseArgs: --project is a switch on add only', () => {
+  assert.deepEqual(parseArgs(['add', './p', '--project']), { command: 'add', target: './p', flags: { project: true } });
+  assert.throws(() => parseArgs(['add', './p', '--project=yes']), /是开关，不带值/);
+  assert.throws(() => parseArgs(['move', 'a', './p', '--project']), /--project 不适用于 move/);
+});
+
+test('runAdd --project: id and title come from project.json; bad layouts and flag mixes are refused', async (t) => {
+  const dir = withTempDir(t);
+  const file = registryWith(dir, [{ id: 'pinpoint', kind: 'dir', path: dir }]);
+  const rec = recorder();
+  assert.equal(await runAdd(['add', FIXTURE_PROJECT, '--project', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn: offline }), 0, rec.err.join('\n'));
+  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
+  const { addedAt, ...entry } = doc.entries[1];
+  assert.ok(addedAt > 0);
+  assert.deepEqual(entry, { id: 'e2e-project', kind: 'project', title: 'E2E Project', path: FIXTURE_PROJECT });
+  assert.ok(rec.out.includes('已登记 e2e-project（project）：' + FIXTURE_PROJECT));
+  assert.ok(rec.out.includes('文章与概念：`pinpoint list e2e-project`'));
+
+  const refusals = [
+    [['add', FIXTURE_PROJECT, '--project'], /id 已存在：e2e-project/],
+    [['add', FIXTURE_COLLIDE, '--project', '--id', 'other'], /--id other 与 project.json 的 id "e2e-collide" 不同/],
+    [['add', FIXTURE_COLLIDE, '--project', '--board', 'ios'], /--project 不能和 --board 同用/],
+    [['add', FIXTURE_COLLIDE, '--project', '--page', 'pinpoint'], /--project 不能和 --page 同用/],
+    [['add', makeProjectRoot(dir, 'nojson', null), '--project'], /缺 docs\/pinpoint\/project\.json/],
+    [['add', makeProjectRoot(dir, 'reserved', { id: 'api' }), '--project'], /保留名（服务已占用 \/api\/）/],
+    [['add', makeProjectRoot(dir, 'badid', { id: 'Bad Id' }), '--project'], /project\.json 的 id 必须匹配/],
+    [['add', path.join(FIXTURE_PROJECT, 'docs', 'pinpoint', 'project.json'), '--project'], /需要 project 根目录/],
+  ];
+  for (const [argv, pattern] of refusals) {
+    const bad = recorder();
+    assert.equal(await runAdd([...argv, '--registry', file], { ...bad.io, cwd: dir, env: {}, requestFn: offline }), 1, argv.join(' '));
+    assert.match(bad.err.join('\n'), pattern);
+  }
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).entries.length, 2, 'refusals leave the registry untouched');
+
+  // project 不是页，不能当 --page 的挂靠目标。
+  assert.throws(() => buildEntry(makeSite(dir, 'att'), { page: 'e2e-project' }, { cwd: dir, takenEntries: doc.entries, pageIds: [] }), /--page 目标页不可解析：e2e-project/);
+});
+
+test('runMove / runRename / runRemove on a project entry', async (t) => {
+  const dir = withTempDir(t);
+  const first = makeProjectRoot(dir, 'first', { id: 'demo', title: 'Demo' });
+  const second = makeProjectRoot(dir, 'second', { id: 'demo', title: 'Demo moved' });
+  const foreign = makeProjectRoot(dir, 'foreign', { id: 'other' });
+  const file = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: dir },
+    { id: 'demo', title: 'Demo', kind: 'project', path: first },
+  ]);
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  const io = (rec) => ({ ...rec.io, cwd: dir, env, requestFn: offline });
+
+  await t.test('move keeps the id and requires the same project.json id', async () => {
+    const bad = recorder();
+    assert.equal(await runMove(['move', 'demo', foreign, '--registry', file], io(bad)), 1);
+    assert.match(bad.err.join('\n'), /project\.json id 是 "other"，不是 demo/);
+    const plain = recorder();
+    assert.equal(await runMove(['move', 'demo', makeSite(dir, 'plain'), '--registry', file], io(plain)), 1);
+    assert.match(plain.err.join('\n'), /缺 docs\/pinpoint\/project\.json/);
+    const rec = recorder();
+    assert.equal(await runMove(['move', 'demo', second, '--registry', file], io(rec)), 0, rec.err.join('\n'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[1], { id: 'demo', kind: 'project', title: 'Demo', path: second });
+  });
+
+  await t.test('rename rewrites project.json together with the registry; reserved ids are refused', async () => {
+    const reserved = recorder();
+    assert.equal(await runRename(['rename', 'demo', 'sites', '--registry', file], io(reserved)), 1);
+    assert.match(reserved.err.join('\n'), /保留名/);
+    const rec = recorder();
+    assert.equal(await runRename(['rename', 'demo', 'demo-two', '--registry', file], io(rec)), 0, rec.err.join('\n'));
+    assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).entries[1].id, 'demo-two');
+    assert.deepEqual(JSON.parse(fs.readFileSync(path.join(second, 'docs', 'pinpoint', 'project.json'), 'utf8')), { id: 'demo-two', title: 'Demo moved' });
+    assert.ok(rec.out.some((line) => line.startsWith('  project.json：id demo → demo-two')));
+  });
+
+  await t.test('remove drops the entry and leaves the project files alone', async () => {
+    const rec = recorder();
+    assert.equal(await runRemove(['remove', 'demo-two', '--registry', file], io(rec)), 0, rec.err.join('\n'));
+    assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries.map((e) => e.id), ['pinpoint']);
+    assert.ok(fs.existsSync(path.join(second, 'docs', 'pinpoint', 'project.json')));
+  });
+});
+
+test('runList: projects get their own rows with indented articles; list <project> shows articles, concepts, errors', async (t) => {
+  const dir = withTempDir(t);
+  const file = registryWith(dir, [
+    { id: 'pinpoint', title: 'pinpoint workbench', kind: 'dir', path: makeSite(dir, 'pp') },
+    { id: 'e2e-project', title: 'E2E Project', kind: 'project', path: FIXTURE_PROJECT },
+    { id: 'e2e-collide', title: 'E2E Collide', kind: 'project', path: FIXTURE_COLLIDE },
+  ]);
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+
+  const all = recorder();
+  assert.equal(await runList(['list', '--registry', file], { ...all.io, cwd: dir, env }), 0);
+  const at = all.out.indexOf('e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 个概念');
+  assert.ok(at > 0, all.out.join('\n'));
+  assert.deepEqual(all.out.slice(at + 1, at + 4), [
+    `    ${FIXTURE_PROJECT}`,
+    '    article  commit-confirm  ·  提交前确认',
+    '    article  takeover  ·  用户接手',
+  ]);
+  assert.ok(all.out.includes('e2e-collide  ·  E2E Collide  ·  project  ·  1 篇文章 · 1 个概念 · 1 个布局错误'));
+  assert.ok(!all.out.some((line) => /^e2e-project .*文档页/.test(line)), 'a project is not listed as a page');
+  assert.match(all.out.at(-1), /^共 \d+ 页 · 2 个 project · registry：/);
+
+  const byArticle = recorder();
+  assert.equal(await runList(['list', '用户接手', '--registry', file], { ...byArticle.io, cwd: dir, env }), 0);
+  assert.equal(byArticle.out[0], 'e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 个概念');
+
+  const detail = recorder();
+  assert.equal(await runList(['list', 'e2e-project', '--registry', file], { ...detail.io, cwd: dir, env }), 0);
+  const text = detail.out.join('\n');
+  assert.match(text, /^# e2e-project · E2E Project/);
+  assert.match(text, /文章（2）\n {2}commit-confirm {2}· {2}提交前确认 {2}· {2}付款与提交前/);
+  assert.match(text, /概念（2）\n {2}confirm-card {2}· {2}收敛中 {2}· {2}只在不可撤销的动作之前出现/);
+  assert.match(text, /布局错误：无$/);
+
+  const collide = recorder();
+  assert.equal(await runList(['list', 'e2e-collide', '--registry', file], { ...collide.io, cwd: dir, env }), 1, 'layout errors exit non-zero');
+  assert.match(collide.out.join('\n'), /布局错误（1）\n {2}✗ 撞名 \[\[confirm-card\]\]/);
+});
+
+test('classifyStatus: project layout errors are a warning row, not a failure', () => {
+  const json = healthJson({ projects: { count: 2, errors: ['e2e-collide: 撞名 [[confirm-card]]：…'] } });
+  const report = classifyStatus({
+    repoRoot: REPO_ROOT,
+    routesPath: '/r.json',
+    route: { hostname: 'pinpoint.localhost', port: 4812, pid: 94084 },
+    pidAlive: true,
+    direct: { url: 'http://127.0.0.1:4812/health', ok: true, status: 200, json },
+    proxied: { url: 'https://pinpoint.localhost/health', ok: true, status: 200, json },
+  });
+  assert.equal(report.ok, true);
+  const row = report.rows.find((r) => r.label === 'project');
+  assert.equal(row.state, 'warn');
+  assert.match(row.detail, /^2 个，1 个布局错误/);
+  assert.equal(report.rows[report.rows.indexOf(row) + 1].detail, 'e2e-collide: 撞名 [[confirm-card]]：…');
+  assert.equal(report.diagnosis, '服务在跑，但有告警（见上）。');
+});

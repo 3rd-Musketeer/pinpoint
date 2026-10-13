@@ -152,7 +152,8 @@ export function planFolder(argv, { cwd = process.cwd(), env = process.env, pageI
   const known = pageIds || manifestPageIds();
   const move = buildFolderMove(parsed.args[0], parsed.args[1], {
     folders: state.folders,
-    entryIds: state.entries.map((entry) => entry && entry.id),
+    // project 条目（pp3）不是页，不进左栏分组。
+    entryIds: state.entries.filter((entry) => entry && entry.kind !== 'project').map((entry) => entry.id),
     pageIds: known,
   });
   return { ...parsed, registryPath, move, pageIds: known };
