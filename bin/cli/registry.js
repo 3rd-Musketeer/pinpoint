@@ -5,6 +5,7 @@ import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
@@ -69,6 +70,7 @@ function idTakenError(id, existing) {
 export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntries = [], takenIds, pageIds } = {}) {
   const existingIds = takenIds || takenEntries.map((entry) => entry && entry.id);
   const findExisting = (id) => takenEntries.find((entry) => entry && entry.id === id) || null;
+  if (flags.project) return buildProjectEntry(target, flags, { cwd, existingIds, findExisting });
   const resolved = resolveTarget(target, cwd);
   const { kind } = resolved;
 
@@ -112,7 +114,9 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
     if (!PAGE_ID_PATTERN.test(flags.page)) {
       throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
     }
-    const resolvable = new Set([...(pageIds || manifestPageIds()), ...existingIds]);
+    // project 条目不是页，不能当挂靠目标。
+    const projectIds = new Set(takenEntries.filter((entry) => entry && entry.kind === 'project').map((entry) => entry.id));
+    const resolvable = new Set([...(pageIds || manifestPageIds()), ...existingIds.filter((id) => !projectIds.has(id))]);
     if (!resolvable.has(flags.page)) {
       throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
     }
@@ -126,6 +130,41 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
   if (page) entry.page = page;
   if (flags.draft) entry.role = 'draft';
   return entry;
+}
+
+/**
+ * project 根目录 → 校验过的 project 条目（docs/projects.md）。id 只有一个来源：
+ * project.json 的 id。站点 URL、registry 条目、将来的评论桶都用它，两处写得不一样
+ * 迟早有一处被改漏，所以 --id 只能重复它，不能另起一个。
+ */
+export function resolveProjectRoot(target, cwd = process.cwd()) {
+  const root = path.resolve(cwd, target);
+  if (isHttpUrl(target)) throw new CliError(`--project 需要 project 根目录，不是 URL：${target}`);
+  let stat;
+  try {
+    stat = fs.statSync(root);
+  } catch {
+    throw new CliError(`路径不存在：${root}`);
+  }
+  if (!stat.isDirectory()) throw new CliError(`--project 需要 project 根目录（含 ${PROJECT_CONTENT_DIR}/project.json）：${root}`);
+  const meta = readProjectJson(root);
+  if (meta.errors.length) throw new CliError(`${meta.errors.join('；')}（project 根：${root}）`);
+  return { root, json: meta.json };
+}
+
+function buildProjectEntry(target, flags, { cwd, existingIds, findExisting }) {
+  for (const name of ['board', 'page', 'draft']) {
+    if (flags[name] !== undefined) throw new CliError(`--project 不能和 --${name} 同用（project 不是页，没有壳也不挂靠）`);
+  }
+  // 标题只有一个来源：project.json 的 title（读取时它优先），--title 写进登记表也会被盖掉。
+  if (flags.title !== undefined) throw new CliError('--project 不接受 --title：标题写在 docs/pinpoint/project.json 的 title 里');
+  const { root, json } = resolveProjectRoot(target, cwd);
+  if (flags.id && flags.id !== json.id) {
+    throw new CliError(`--id ${flags.id} 与 project.json 的 id "${json.id}" 不同；project 的 id 只认 project.json，要换 id 先改那里`);
+  }
+  if (existingIds.includes(json.id)) throw idTakenError(json.id, findExisting(json.id));
+  const title = (typeof json.title === 'string' && json.title) || path.basename(root);
+  return { id: json.id, title, kind: 'project', path: root };
 }
 
 /** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端的
@@ -143,6 +182,14 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   if (!before) {
     const known = entries.map((entry) => entry && entry.id).filter(Boolean).join('、');
     throw new CliError(`条目不存在：${id}${known ? `（现有：${known}）` : ''}`);
+  }
+  if (before.kind === 'project') {
+    // project 只能重指到另一个 project 根，且 id 不变（id 写在 project.json 里）。
+    const { root, json } = resolveProjectRoot(target, cwd);
+    if (json.id !== id) {
+      throw new CliError(`新根目录的 project.json id 是 "${json.id}"，不是 ${id}；move 保留 id，换 id 用 \`pinpoint rename\``);
+    }
+    return { before, after: { ...before, path: root } };
   }
   const resolved = resolveTarget(target, cwd);
   const after = { ...before, kind: resolved.kind };
@@ -280,8 +327,18 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   }
 
   // ③ 资源前缀：只有 dir 条目有目录可扫；目录不在就先 move 到真实路径。
+  // project 条目没有 /sites/ 前缀，要改的是 project.json 里的 id。
   let rewriteDir = null;
   let rewritePreview = [];
+  let projectJson = null;
+  if (before.kind === 'project') {
+    const meta = readProjectJson(before.path);
+    if (!meta.json) throw new CliError(`${meta.errors.join('；')}；先修好 project.json 再改 id`);
+    if (meta.json.id !== before.id) {
+      throw new CliError(`project.json 的 id 是 "${meta.json.id}"，与登记的 ${before.id} 不一致；先让两边一致再改 id`);
+    }
+    projectJson = meta.file;
+  }
   if (before.kind === 'dir') {
     if (!fs.existsSync(before.path)) {
       throw new CliError(`条目 ${before.id} 的目录不存在：${before.path}；先 \`pinpoint move ${before.id} <真实路径>\` 再改 id`);
@@ -290,7 +347,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
     rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
   }
 
-  return { ...parsed, registryPath, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview };
+  return { ...parsed, registryPath, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson };
 }
 
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
@@ -376,6 +433,7 @@ export async function runAdd(argv, io = {}) {
     return 1;
   }
   out(`已登记 ${entry.id}（${entry.kind}）：${entryTargetDesc(entry)}`);
+  if (entry.kind === 'project') out(`文章与概念：\`pinpoint list ${entry.id}\``);
   if (entry.page) {
     out(`归属 Page「${entry.page}」的「内容」区${entry.role === 'draft' ? '草稿组' : '产物组'}；不新增 Pages 行。`);
   }
@@ -528,8 +586,17 @@ export async function runRename(argv, io = {}) {
     out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
   }
 
-  // ③ 资源前缀
-  if (plan.rewriteDir) {
+  // ③ 资源前缀（project：改写 project.json 的 id）
+  if (plan.projectJson) {
+    try {
+      const json = JSON.parse(fs.readFileSync(plan.projectJson, 'utf8'));
+      fs.writeFileSync(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
+      out(`  project.json：id ${plan.before.id} → ${plan.after.id}（${plan.projectJson}）`);
+    } catch (error) {
+      err(`  project.json 改写失败（登记表已改，project.json 还是旧 id）：${error.message}`);
+      return 1;
+    }
+  } else if (plan.rewriteDir) {
     const changed = rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id);
     out(changed.length
       ? `  资源前缀：${changed.length} 个文件里的 /sites/${plan.before.id}/ 已换成 /sites/${plan.after.id}/`

@@ -5,8 +5,9 @@ import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.js';
 import { distStatus, listPageIds, readDistScreen } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
+import { listProjects } from '../../src/server/lib/projects.js';
 import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { buildPageList, formatPageRow, matchPages, suggestPages } from '../../src/server/lib/page-list.js';
+import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
 
@@ -115,7 +116,8 @@ function manifestPagesOf(root) {
 
 /** 页清单（registry + 本地模板页），list 与“找不到页”的候选共用。 */
 export function pageListRows({ registryPath, env = process.env, root = REPO_ROOT } = {}) {
-  const entries = existingEntriesFor(registryPath);
+  // project 条目（pp3）不是页：单独列在 projectListRows。
+  const entries = existingEntriesFor(registryPath).filter((entry) => entry && entry.kind !== 'project');
   const grouping = fs.existsSync(registryPath) ? listRegistryGrouping(registryPath) : { folders: [], pageFolders: {} };
   const bucketRoot = dataRoot(env);
   return buildPageList({
@@ -210,6 +212,63 @@ function listFrames(words, { registryPath, env, out, err }) {
   return 0;
 }
 
+/* ---- list：project（pp3） ---- */
+
+/** 登记表里的 project，读盘后（文章、概念、布局错误）。 */
+export function projectListRows({ registryPath } = {}) {
+  // 读的是盘上原样的条目（list 不依赖服务）；没有 path 的坏条目 loadRegistry 也会跳过。
+  const entries = existingEntriesFor(registryPath)
+    .filter((entry) => entry && entry.kind === 'project' && typeof entry.path === 'string')
+    .map((entry) => ({ ...entry, title: entry.title || entry.id }));
+  return listProjects({ projects: entries });
+}
+
+/** 关键词匹配用的投影：文章 id / 标题也能对上 project。 */
+function projectMatchRow(project) {
+  return {
+    id: project.id,
+    title: project.title,
+    folder: '',
+    path: project.root,
+    attached: project.articles.flatMap((article) => [article.id, article.title]),
+  };
+}
+
+function countLabel(project) {
+  const bits = [`${project.articles.length} 篇文章`, `${project.concepts.length} 个概念`];
+  if (project.errors.length) bits.push(`${project.errors.length} 个布局错误`);
+  return bits.join(' · ');
+}
+
+/** 总表里的一个 project：首行 project · 计数，次行根目录，下面每篇文章缩进一行。 */
+export function formatProjectRow(project) {
+  const lines = [[project.id, project.title, 'project', countLabel(project)].filter(Boolean).join('  ·  ')];
+  lines.push(`    ${project.root}`);
+  for (const article of project.articles) lines.push(`    article  ${article.id}  ·  ${article.title}`);
+  return lines;
+}
+
+/** `list <project>`：文章、概念与布局错误全列出来。 */
+export function formatProjectDetail(project) {
+  const lines = [`# ${project.id} · ${project.title}`, `根目录：${project.root}`, `内容：${project.dir}`, ''];
+  lines.push(`文章（${project.articles.length}）`);
+  if (!project.articles.length) lines.push('  （无）');
+  for (const article of project.articles) {
+    lines.push(`  ${article.id}  ·  ${article.title}${article.summary ? `  ·  ${article.summary}` : ''}`);
+    lines.push(`    ${article.file}`);
+  }
+  lines.push('', `概念（${project.concepts.length}）`);
+  if (!project.concepts.length) lines.push('  （无）');
+  for (const concept of project.concepts) {
+    const bits = [concept.name, concept.status, concept.boundary].filter(Boolean);
+    lines.push(`  ${bits.join('  ·  ')}`);
+    lines.push(`    ${concept.file}`);
+  }
+  lines.push('', project.errors.length ? `布局错误（${project.errors.length}）` : '布局错误：无');
+  for (const problem of project.errors) lines.push(`  ✗ ${problem}`);
+  return lines;
+}
+
 export async function runList(argv, io = {}) {
   const { cwd, env, out } = ioOf(io);
   const words = [];
@@ -222,12 +281,25 @@ export async function runList(argv, io = {}) {
   const registryPath = resolveRegistryPath(flags, env, cwd);
   if (flags.frames) return listFrames(words, { registryPath, env, out, err: ioOf(io).err });
   const query = words.join(' ');
+  const projects = projectListRows({ registryPath });
+  // 恰好是一个 project 的 id：列它的文章、概念与布局错误。
+  const exact = words.length === 1 ? projects.find((project) => project.id === words[0]) : null;
+  if (exact) {
+    for (const line of formatProjectDetail(exact)) out(line);
+    return exact.errors.length ? 1 : 0;
+  }
   const rows = matchPages(pageListRows({ registryPath, env }), query);
-  if (!rows.length) {
+  const projectRows = projects.filter((project) => scorePage(projectMatchRow(project), query) > 0);
+  if (!rows.length && !projectRows.length) {
     out(`没有匹配“${query}”的页。不带关键词跑 \`pinpoint list\` 看全部。`);
     return 1;
   }
   for (const row of rows) for (const line of formatPageRow(row)) out(line);
-  out(`共 ${rows.length} 页${query ? `（匹配“${query}”）` : ''} · registry：${registryPath}`);
+  if (projectRows.length) {
+    if (rows.length) out('');
+    for (const project of projectRows) for (const line of formatProjectRow(project)) out(line);
+  }
+  const tail = projectRows.length ? ` · ${projectRows.length} 个 project` : '';
+  out(`共 ${rows.length} 页${tail}${query ? `（匹配“${query}”）` : ''} · registry：${registryPath}`);
   return 0;
 }

@@ -21,7 +21,11 @@ export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN };
 // 归属目标 Page id（2026-08-16f 阶段 8）：本地 manifest 页（preview-contracts
 // ID_PATTERN）与 registry 条目 id 都落在该模式内。
 export const PAGE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-const KINDS = new Set(['dir', 'file', 'url']);
+const KINDS = new Set(['dir', 'file', 'url', 'project']);
+// pp3（2026-10-13）：kind "project" 的 path 是 project 根目录，内容在
+// <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
+// entries 的每个消费者（Pages、/sites/、标注桶、编译）都按 page 理解它——
+// 而是单独放在 projects 里，由 src/server/lib/projects.js 读。
 // 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
 // （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
 const ROLES = new Set(['product', 'draft']);
@@ -40,8 +44,8 @@ function validateEntry(raw, seen) {
     return `entry id must match ${ENTRY_ID_PATTERN}: ${JSON.stringify(raw.id)}`;
   }
   if (seen.has(raw.id)) return `duplicate entry id "${raw.id}"`;
-  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", or "url"`;
-  if ((raw.kind === 'dir' || raw.kind === 'file') && typeof raw.path !== 'string') {
+  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", "url", or "project"`;
+  if ((raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') && typeof raw.path !== 'string') {
     return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
   }
   if (raw.kind === 'url' && typeof raw.url !== 'string') {
@@ -54,6 +58,7 @@ function validateEntry(raw, seen) {
       return `entry "${raw.id}" page must match ${PAGE_ID_PATTERN}`;
     }
     if (raw.kind === 'url') return `entry "${raw.id}" kind "url" cannot attach to a page`;
+    if (raw.kind === 'project') return `entry "${raw.id}" kind "project" cannot attach to a page`;
   }
   if (raw.role !== undefined && !ROLES.has(raw.role)) {
     return `entry "${raw.id}" role must be "product" or "draft"`;
@@ -67,9 +72,10 @@ function normalizeEntry(raw) {
     title: typeof raw.title === 'string' ? raw.title : raw.id,
     kind: raw.kind,
   };
-  if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
+  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') entry.path = raw.path;
   else entry.url = raw.url;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
+  if (raw.kind === 'project') return entry;
   if (typeof raw.board === 'string') entry.board = raw.board;
   if (typeof raw.page === 'string') entry.page = raw.page;
   if (typeof raw.role === 'string') entry.role = raw.role;
@@ -110,12 +116,15 @@ export function loadRegistry(options = {}) {
   const errors = [];
   const warnings = [];
 
-  function finish(entries, grouping = {}) {
+  function finish(entries, grouping = {}, projects = []) {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
+    const projectById = new Map(projects.map((entry) => [entry.id, entry]));
     return {
       ok: errors.length === 0,
       path: registryPath,
       entries,
+      // kind "project" 的条目（pp3）：与 entries 共用 id 命名空间，但不是 page。
+      projects,
       // 分组层（2026-09-04）：folders 是 owner 手建的一层夹；pageFolders /
       // pageOrder 装的是「不是 registry 条目」的 manifest 页的归属与手动次序。
       folders: grouping.folders || [],
@@ -124,6 +133,7 @@ export function loadRegistry(options = {}) {
       errors,
       warnings,
       resolve: (id) => byId.get(id) || null,
+      resolveProject: (id) => projectById.get(id) || null,
     };
   }
 
@@ -173,6 +183,7 @@ export function loadRegistry(options = {}) {
 
   const seen = new Set();
   const entries = [];
+  const projects = [];
   for (const raw of parsed.entries) {
     const problem = validateEntry(raw, seen);
     if (problem) {
@@ -182,6 +193,13 @@ export function loadRegistry(options = {}) {
     }
     seen.add(raw.id);
     const entry = normalizeEntry(raw);
+    if (entry.kind === 'project') {
+      // 布局问题（project.json、撞名…）不在这里查：那是 projects.js 的 error 列表，
+      // 不让一篇写错的文章把整份登记表标成 error。
+      if (!fs.existsSync(entry.path)) warn(`project "${entry.id}" path does not exist: ${entry.path}`);
+      projects.push(entry);
+      continue;
+    }
     if ((entry.kind === 'dir' || entry.kind === 'file') && !fs.existsSync(entry.path)) {
       // A missing path only breaks that entry's own /sites/ serving (404) —
       // keep the entry and warn rather than failing the whole registry.
@@ -224,7 +242,7 @@ export function loadRegistry(options = {}) {
     },
   });
 
-  return finish(entries, { folders, pageFolders, pageOrder });
+  return finish(entries, { folders, pageFolders, pageOrder }, projects);
 }
 
 /**

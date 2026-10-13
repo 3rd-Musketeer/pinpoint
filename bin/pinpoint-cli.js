@@ -41,6 +41,7 @@ export {
 } from './cli/args.js';
 export {
   resolveTarget,
+  resolveProjectRoot,
   entryTargetDesc,
   buildEntry,
   manifestPageIds,
@@ -100,6 +101,9 @@ export {
 } from './cli/annotate.js';
 export {
   pageListRows,
+  projectListRows,
+  formatProjectRow,
+  formatProjectDetail,
   runList,
 } from './cli/list.js';
 

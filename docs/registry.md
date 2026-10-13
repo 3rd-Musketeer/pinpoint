@@ -11,6 +11,9 @@
 形状 `{"version":1,"entries":[...]}`（2026-09-04 起还有可选的 `folders` / `pageFolders` /
 `pageOrder` 三段，见下面「分组层」），条目
 `{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?, folder?, order?}`。
+`kind: "project"`（pp3，2026-10-13）的条目只有 `{id, title?, kind, path}`，`path` 是 project 根目录；
+它与其他条目共用 id，但不是页，`loadRegistry` 把它放进 `projects` 而不是 `entries`。
+目录、登记与读取见 [`docs/projects.md`](projects.md)。
 
 - `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
 - `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
@@ -85,6 +88,7 @@ reload 共享 store → 广播 HMR 的 `registry:update`（打开着的 workbenc
 
 ```bash
 pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+pinpoint add    <project 根> --project
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
 pinpoint remove <id>

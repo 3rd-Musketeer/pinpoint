@@ -21,8 +21,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { defaultEntries, ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, loadRegistry, normalizeFolder, PAGE_ID_PATTERN } from './registry.js';
+import { isReservedProjectId } from './projects.js';
 
-const WRITE_KINDS = new Set(['dir', 'file', 'url']);
+const WRITE_KINDS = new Set(['dir', 'file', 'url', 'project']);
+// project 条目（pp3）只带这些字段：没有壳、不挂靠、不进左栏分组。
+const PROJECT_KEYS = new Set(['id', 'title', 'kind', 'path', 'addedAt']);
 const WRITE_ROLES = new Set(['product', 'draft']);
 // 写入白名单（2026-08-16f 阶段 8 起含 page/role，2026-09-04 起含 folder/order）：
 // 未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
@@ -48,8 +51,15 @@ export function validateNewEntry(raw, existingIds) {
     return `条目 id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${JSON.stringify(raw.id)}`;
   }
   if (existingIds.has(raw.id)) return `条目 id 已存在：${raw.id}`;
-  if (!WRITE_KINDS.has(raw.kind)) return `条目 "${raw.id}" 的 kind 必须是 dir / file / url`;
-  if (raw.kind === 'dir' || raw.kind === 'file') {
+  if (!WRITE_KINDS.has(raw.kind)) return `条目 "${raw.id}" 的 kind 必须是 dir / file / url / project`;
+  if (raw.kind === 'project') {
+    for (const key of Object.keys(raw)) {
+      if (!PROJECT_KEYS.has(key)) return `project 条目 "${raw.id}" 不能带字段：${key}`;
+    }
+    // project id 是站点 URL 的第一段（/<project>/<article>/），不能占服务已有的首段。
+    if (isReservedProjectId(raw.id)) return `project id 是保留名（服务已占用 /${raw.id}/）：${raw.id}`;
+  }
+  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') {
     if (typeof raw.path !== 'string' || !path.isAbsolute(raw.path)) {
       return `条目 "${raw.id}" 需要绝对路径 path`;
     }
@@ -59,7 +69,7 @@ export function validateNewEntry(raw, existingIds) {
     } catch {
       return `条目 "${raw.id}" 的路径不存在：${raw.path}`;
     }
-    if (raw.kind === 'dir' && !stat.isDirectory()) return `条目 "${raw.id}" 的路径不是目录：${raw.path}`;
+    if ((raw.kind === 'dir' || raw.kind === 'project') && !stat.isDirectory()) return `条目 "${raw.id}" 的路径不是目录：${raw.path}`;
     if (raw.kind === 'file' && !stat.isFile()) return `条目 "${raw.id}" 的路径不是文件：${raw.path}`;
   }
   if (raw.kind === 'url') {
@@ -104,7 +114,7 @@ export function validateNewEntry(raw, existingIds) {
 function normalizeNewEntry(raw) {
   const entry = { id: raw.id, kind: raw.kind };
   entry.title = typeof raw.title === 'string' && raw.title ? raw.title : raw.id;
-  if (raw.kind === 'dir' || raw.kind === 'file') entry.path = raw.path;
+  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') entry.path = raw.path;
   else entry.url = raw.url;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (typeof raw.board === 'string') entry.board = raw.board;
@@ -442,12 +452,14 @@ export function createRegistryStore(options = {}) {
     get ok() { return snapshot.ok; },
     get path() { return snapshot.path; },
     get entries() { return snapshot.entries; },
+    get projects() { return snapshot.projects; },
     get folders() { return snapshot.folders; },
     get pageFolders() { return snapshot.pageFolders; },
     get pageOrder() { return snapshot.pageOrder; },
     get errors() { return snapshot.errors; },
     get warnings() { return snapshot.warnings; },
     resolve(id) { return snapshot.resolve(id); },
+    resolveProject(id) { return snapshot.resolveProject(id); },
     reload() {
       snapshot = loadRegistry({ root, log, path: snapshot.path });
       return snapshot;
