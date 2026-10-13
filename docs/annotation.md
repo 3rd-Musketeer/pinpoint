@@ -98,7 +98,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 
 article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布上的标注是同一个队列：
 
-- 桶 = 文章页 id `<project>_<article>`（`projects.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
+- 桶 = 文章页 id `<project>_<article>`（`src/shared/project-ids.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
 - 一行的形状：`{ id, n, type: "prose", status, content, quote: { exact, prefix, suffix, start? }, section, path, created_at, messages: [{ who: "owner" | "agent", text, at }] }`。`content` 是 owner 的第一句，之后的来回在 `messages`。
 - 锚点是 W3C TextQuote 式（`src/shared/text-quote.js`）：选中文字 + 前后各 32 字，`section` 和 `start`（选中时在规范化文本里的位置）只是提示。正文先抽成规范化文本：两个 CJK 字之间的空白（软换行、块边界）算没有，其余空白连成一个空格。源文件改了折行，中文引文照样定位。存下的引文定位前按同一条规则规范化，旧数据里“换行存成空格”的引文也能定位。每次加载都重新定位：逐字找 `exact`，多处时按前后文吻合度挑，同分看节，再同分取离 `start` 最近的一处。`exact` 一处都找不到就在右栏标“失效”，显示存下的引文，不画高亮。不做模糊匹配。画布卡片（`[data-pp-canvas]`）、脚本、错误条不进文本，选区落在那里不出“评论”。
 - 注入：`article-proxy` 只给文章页注入，带 `window.__pinpointProse`；客户端见到它只跑正文评论（`src/client/prose-comments.js`），不起画布标注的工具条、侧栏和元素标注。project 首页、概念页不注入。

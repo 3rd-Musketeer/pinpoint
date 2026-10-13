@@ -166,7 +166,7 @@ export default function ConfirmBare() {
 
 ### 页 id
 
-`articlePageId(projectId, articleId)`（`projects.js`）= `<project id>_<article id>`，例如 `browser-use_payment-confirm`。
+`articlePageId(projectId, articleId)`（`src/shared/project-ids.js`）= `<project id>_<article id>`，例如 `browser-use_payment-confirm`。
 
 - project id 与 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`，没有 `_`。所以拆分无歧义，两篇文章不会得到同一个页 id；registry 条目 id 也不含 `_`，不会撞。
 - 结果匹配 `PAGE_ID_PATTERN`（`^[a-zA-Z0-9_-]+$`），所以 `?page=`、标注桶、`/sites/<id>/`、`ppnt` 都认它。`parseArticlePageId(id)` 拆回 `{ projectId, articleId }`。
@@ -300,7 +300,7 @@ project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 
 - vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及 e2e 产物目录前缀。`projects.test.js` 与 `article-routes.test.js` 都检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
 - Astro 的 `_image`。
 
-article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二段），只在 `projects.js` 里。
+article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二段），只在 `src/shared/project-ids.js` 里。
 
 ## 固件
 
