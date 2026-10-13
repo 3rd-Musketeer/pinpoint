@@ -303,8 +303,8 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 ## 固件
 
 - `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。
-- `e2e/project-collide/`：project `e2e-collide`，article `confirm-card` 与 concept `Confirm-Card` 撞名，读取时恰好一条布局错误。
+- `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 concept `Confirm-Card`（`concepts/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。
 
-`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不是页，不进 Pages）；`e2e-collide` 不登记。
+`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不是页，不进 Pages）；`clash` 不登记。

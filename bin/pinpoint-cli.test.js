@@ -2262,7 +2262,7 @@ test('planShotJobs：多 tab 页的帧 / 段作业带 tabId；整页引用逐 ta
 /* ---- project（pp3） ---- */
 
 const FIXTURE_PROJECT = path.join(REPO_ROOT, 'e2e', 'project-site');
-const FIXTURE_COLLIDE = path.join(REPO_ROOT, 'e2e', 'project-collide');
+const FIXTURE_COLLIDE = path.join(REPO_ROOT, 'site', 'fixtures', 'projects', 'clash');
 const offline = () => Promise.reject(new Error('connect ECONNREFUSED'));
 
 /** 临时 project 根：<dir>/<name>/docs/pinpoint/project.json + 一篇文章。 */
@@ -2295,7 +2295,7 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
 
   const refusals = [
     [['add', FIXTURE_PROJECT, '--project'], /id 已存在：e2e-project/],
-    [['add', FIXTURE_COLLIDE, '--project', '--id', 'other'], /--id other 与 project.json 的 id "e2e-collide" 不同/],
+    [['add', FIXTURE_COLLIDE, '--project', '--id', 'other'], /--id other 与 project.json 的 id "clash" 不同/],
     [['add', FIXTURE_COLLIDE, '--project', '--board', 'ios'], /--project 不能和 --board 同用/],
     [['add', FIXTURE_COLLIDE, '--project', '--title', 'X'], /--project 不接受 --title/],
     [['add', FIXTURE_COLLIDE, '--project', '--page', 'pinpoint'], /--project 不能和 --page 同用/],
@@ -2363,7 +2363,7 @@ test('runList: projects get their own rows with indented articles; list <project
   const file = registryWith(dir, [
     { id: 'pinpoint', title: 'pinpoint workbench', kind: 'dir', path: makeSite(dir, 'pp') },
     { id: 'e2e-project', title: 'E2E Project', kind: 'project', path: FIXTURE_PROJECT },
-    { id: 'e2e-collide', title: 'E2E Collide', kind: 'project', path: FIXTURE_COLLIDE },
+    { id: 'clash', title: '撞名项目', kind: 'project', path: FIXTURE_COLLIDE },
   ]);
   const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
 
@@ -2376,7 +2376,7 @@ test('runList: projects get their own rows with indented articles; list <project
     '    article  commit-confirm  ·  提交前确认',
     '    article  takeover  ·  用户接手',
   ]);
-  assert.ok(all.out.includes('e2e-collide  ·  E2E Collide  ·  project  ·  1 篇文章 · 1 个概念 · 1 个布局错误'));
+  assert.ok(all.out.includes('clash  ·  撞名项目  ·  project  ·  1 篇文章 · 1 个概念 · 1 个布局错误'));
   assert.ok(!all.out.some((line) => /^e2e-project .*文档页/.test(line)), 'a project is not listed as a page');
   assert.match(all.out.at(-1), /^共 \d+ 页 · 2 个 project · registry：/);
 
@@ -2393,8 +2393,23 @@ test('runList: projects get their own rows with indented articles; list <project
   assert.match(text, /布局错误：无$/);
 
   const collide = recorder();
-  assert.equal(await runList(['list', 'e2e-collide', '--registry', file], { ...collide.io, cwd: dir, env }), 1, 'layout errors exit non-zero');
+  assert.equal(await runList(['list', 'clash', '--registry', file], { ...collide.io, cwd: dir, env }), 1, 'layout errors exit non-zero');
   assert.match(collide.out.join('\n'), /布局错误（1）\n {2}✗ 撞名 \[\[confirm-card\]\]/);
+});
+
+// 原在 e2e/article-canvas.spec.js（2026-10-13 测试清理下移）：文章画布页的 --frames
+// 也是编号 ↔ 帧 id ↔ 源文件，节字母跟正文走（纯文字的 why 占了 A）。
+test('list <文章画布页> --frames：编号 · 帧 id · 源文件，节字母与正文一致', async (t) => {
+  const dir = withTempDir(t);
+  const file = registryWith(dir, [{ id: 'e2e-project', title: 'E2E Project', kind: 'project', path: FIXTURE_PROJECT }]);
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
+  const rec = recorder();
+  assert.equal(await runList(['list', 'e2e-project_commit-confirm', '--frames', '--registry', file], { ...rec.io, cwd: dir, env }), 0, rec.err.join('\n'));
+  const text = rec.out.join('\n');
+  assert.ok(text.includes('# e2e-project_commit-confirm · 画布帧'), text);
+  assert.match(text, /B1 {2}confirm-sheet +confirm-sheet\.jsx/);
+  assert.match(text, /C1 {2}card-plain +card-plain\.jsx/);
+  assert.ok(text.includes('共 3 段 5 帧'), text);
 });
 
 test('classifyStatus: project layout errors are a warning row, not a failure', () => {

@@ -27,7 +27,7 @@ async function ppnt(args) {
   return { stdout, stderr };
 }
 
-test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppnt list --frames / shot', async ({ page, request }) => {
+test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt shot', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
@@ -35,43 +35,13 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
   const consoleErrors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
 
-  await test.step('/api/frame：文章帧 200，组件三层解析、article.css 注入', async () => {
-    const res = await request.get(`/api/frame?page=${PAGE_ID}&screen=confirm-done&annotate=off`);
-    expect(res.status()).toBe(200);
-    const html = await res.text();
-    expect(html).toContain('data-pp-comp="Banner">订单已提交');
-    expect(html).toContain('data-pp-comp="Nav"');
-    expect(html).toContain(`@import url("/sites/${PAGE_ID}/article.css")`);
-    expect((await request.get(`/sites/${PAGE_ID}/article.css`)).status()).toBe(200);
-    expect((await request.get(`/api/frame?page=${PAGE_ID}&screen=ghost`)).status()).toBe(404);
-  });
-
-  await test.step('画布结构端点：节字母 = 正文字母（纯文字的 why 占了 A），编号随之', async () => {
-    const canvas = await (await request.get('/api/projects/e2e-project/articles/commit-confirm/canvas')).json();
-    expect(canvas.pageId).toBe(PAGE_ID);
-    expect(canvas.errors).toEqual([]);
-    expect(canvas.sections.map((s) => [s.id, s.letter, s.shell || '', s.frames.map((f) => `${f.ref}:${f.id}${f.shell ? `(${f.shell})` : ''}`)])).toEqual([
-      ['confirm', 'B', '', ['B1:confirm-sheet', 'B2:confirm-done']],
-      ['variants', 'C', 'comp', ['C1:card-plain']],
-      ['mixed', 'D', '', ['D1:mixed-phone', 'D2:mixed-bare(comp)']],
-    ]);
-    // 派生 board：帧级 shell 落在那一屏上，节本身没有 shell。
-    const board = await (await request.get(`/sites/${PAGE_ID}/board.json`)).json();
-    expect(board.sections.find((s) => s.id === 'mixed')).toMatchObject({ screens: [{ id: 'mixed-phone' }, { id: 'mixed-bare', shell: 'comp' }] });
-    expect(board.sections.find((s) => s.id === 'mixed').shell).toBeUndefined();
-    // /api/frame：裸组件帧进组件台，同一节的手机帧进机壳。
-    const bare = await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-bare&annotate=off`)).text();
-    expect(bare).toMatch(/class="wb-comp-stage[ "]/);
-    expect(bare).not.toMatch(/class="ios-stage[ "]/);
-    expect(await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-phone&annotate=off`)).text()).toMatch(/class="ios-stage[ "]/);
-  });
-
-  await test.step('标注桶：画布页 id 是合法桶（卡片读 @canvas 账本），未知 id 仍 400', async () => {
-    const ledger = await request.get(`/annotations/%40canvas?entry=${PAGE_ID}`);
-    expect(ledger.status()).toBe(200);
-    expect((await request.get('/annotations/%40canvas?entry=e2e-project_ghost')).status()).toBe(400);
-  });
-
+  // 纯 HTTP 的几步在单测里（2026-10-13 测试清理）：/api/frame 的组件三层解析与 article.css
+  // 注入 → src/server/lib/article-board.test.js「编译：dist 出帧…」；/sites/ 出 article.css、
+  // 未知帧 → src/server/article-canvas-serve.test.js 前两条；画布结构端点的节字母 →
+  // article-board.test.js「articleCanvas：节字母 = 正文字母」；帧级 shell 进 board →
+  // 「帧级 shell」；混排节的组件台 / 机壳 → article-canvas-serve.test.js「/api/frame 的台子」；
+  // 画布页 id 是合法桶 → 同文件「标注桶」与 annotate-api.test.js 的 400；
+  // list --frames → bin/pinpoint-cli.test.js「list <文章画布页> --frames」。这里只留要浏览器的。
   await test.step('工作台 ?page=<画布页>&section=variants：落到那一节，帧真渲染，没有错误面板', async () => {
     await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
@@ -104,18 +74,11 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     await expect(page.locator('#wb-board-panel [data-screen="mixed-bare"] .wb-cap-ref')).toHaveText('D2');
   });
 
-  await test.step('左栏 Pages 不列画布页（它属于文章），别的页照常', async () => {
+  await test.step('左栏 Pages 不列画布页（它属于文章）、也不列 project，别的页照常', async () => {
     await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
     await expect(page.locator(`#wbpages [data-vpage="${PAGE_ID}"]`)).toHaveCount(0);
+    await expect(page.locator('#wbpages [data-vpage="e2e-project"]')).toHaveCount(0);
     await expect(page.locator('#wbpages [data-vpage="e2e-project_takeover"]')).toHaveCount(0);
-  });
-
-  await test.step('ppnt list <画布页> --frames：编号 ↔ id ↔ 源文件', async () => {
-    const { stdout } = await ppnt(['list', PAGE_ID, '--frames']);
-    expect(stdout).toContain(`# ${PAGE_ID} · 画布帧`);
-    expect(stdout).toMatch(/B1 {2}confirm-sheet +confirm-sheet\.jsx/);
-    expect(stdout).toMatch(/C1 {2}card-plain +card-plain\.jsx/);
-    expect(stdout).toContain('共 3 段 5 帧');
   });
 
   await test.step('ppnt shot B2 --page <画布页>：帧图落盘', async () => {

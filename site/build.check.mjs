@@ -162,5 +162,5 @@ test('canvas errors fail the build, each with its line', (t) => {
 test('an article id that equals a concept name fails the build', (t) => {
   const b = build(t, ['clash']);
   assert.notEqual(b.status, 0);
-  assert.match(b.log, /project "clash": name "confirm-card" is used by article .*confirm-card[\\/]index\.mdx and concept .*confirm-card\.md/);
+  assert.match(b.log, /project "clash": name "Confirm-Card" is used by article .*confirm-card[\\/]index\.mdx and concept .*confirm\.md/);
 });
