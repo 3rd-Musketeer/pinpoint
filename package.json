@@ -20,7 +20,8 @@
     "test:e2e:serial": "playwright test",
     "test:e2e:parallel": "node scripts/e2e-parallel.mjs",
     "site:dev": "cd site && astro dev --ignore-lock",
-    "site:build": "cd site && astro build"
+    "site:build": "cd site && astro build",
+    "test:site": "node --test site/build.check.mjs"
   },
   "devDependencies": {
     "@radix-ui/colors": "^3.0.0",
