@@ -140,8 +140,32 @@ test('/health keeps dataDir as the default bucket and exposes registry state', a
   assert.equal(json.dataRoot, dataRoot);
   // entries / folders / pageFolders 都是数量（完整清单走 GET /registry）。
   assert.deepEqual(json.registry, {
-    ok: true, path: registry.path, entries: 2, folders: 0, pageFolders: 0, errors: [], warnings: [],
+    ok: true, path: registry.path, entries: 2, projects: 0, folders: 0, pageFolders: 0, errors: [], warnings: [],
   });
+  assert.deepEqual(json.projects, { count: 0, errors: [] });
+});
+
+test('/health counts project entries apart from pages and lists their layout errors', async (t) => {
+  const { dir, dataRoot } = withFixture(t);
+  const repo = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..');
+  const registryFile = path.join(dir, 'registry-projects.json');
+  fs.writeFileSync(registryFile, JSON.stringify({
+    version: 1,
+    entries: [
+      { id: 'pinpoint', kind: 'dir', path: dir },
+      { id: 'e2e-project', kind: 'project', path: path.join(repo, 'e2e', 'project-site') },
+      { id: 'e2e-collide', kind: 'project', path: path.join(repo, 'e2e', 'project-collide') },
+    ],
+  }));
+  const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
+  const { json } = await call(createAnnotateHandler({ dataRoot, registry }), 'GET', '/health');
+  assert.equal(json.registry.entries, 1);
+  assert.equal(json.registry.projects, 2);
+  assert.equal(json.projects.count, 2);
+  assert.equal(json.projects.errors.length, 1);
+  assert.match(json.projects.errors[0], /^e2e-collide: 撞名 \[\[confirm-card\]\]/);
+  const listed = await call(createAnnotateHandler({ dataRoot, registry }), 'GET', '/registry');
+  assert.deepEqual(listed.json.entries.map((e) => e.id), ['pinpoint'], 'projects never show up as pages');
 });
 
 test('/health reports the repo the service runs out of (pinpoint status 拿它比对)', async (t) => {

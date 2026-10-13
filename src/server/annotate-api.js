@@ -10,6 +10,7 @@ import { etagMatches } from './lib/etag.js';
 import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
+import { listProjects } from './lib/projects.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
   annotateBundleByHash,
@@ -230,10 +231,20 @@ export function createAnnotateHandler(options = {}) {
       ok: snapshot.ok,
       path: snapshot.path,
       entries: snapshot.entries.length,
+      // kind "project" 的条目（pp3）不在 entries 里，单独计数。
+      projects: (snapshot.projects || []).length,
       folders: (snapshot.folders || []).length,
       pageFolders: Object.keys(snapshot.pageFolders || {}).length,
       errors: snapshot.errors,
       warnings: snapshot.warnings,
+    };
+  }
+
+  function projectHealth(snapshot) {
+    const projects = listProjects(snapshot);
+    return {
+      count: projects.length,
+      errors: projects.flatMap((project) => project.errors.map((problem) => `${project.id}: ${problem}`)),
     };
   }
 
@@ -395,6 +406,8 @@ export function createAnnotateHandler(options = {}) {
           dataDir: bucketDir(root, DEFAULT_ENTRY),
           dataRoot: root,
           registry: registrySummary(registry),
+          // project 的布局错误（缺 project.json、撞名…）：`pinpoint status` 读这里。
+          projects: projectHealth(registry),
         });
         return true;
       },

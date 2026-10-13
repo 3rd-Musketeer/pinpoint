@@ -90,6 +90,17 @@ export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, 
     const detail = `${registry.entries ?? 0} 条，${errors.length} error，${warnings.length} warning — ${registry.path || '路径未知'}`;
     rows.push({ label: 'registry', state: errors.length ? 'bad' : (warnings.length ? 'warn' : 'ok'), detail });
     for (const line of [...errors, ...warnings]) rows.push({ label: '', state: 'note', detail: line });
+    // pp3：project 的布局错误只告警——一篇写错的文章不该让整个服务判失败。
+    const projects = health.projects;
+    if (projects && Number.isFinite(projects.count)) {
+      const problems = Array.isArray(projects.errors) ? projects.errors : [];
+      rows.push({
+        label: 'project',
+        state: problems.length ? 'warn' : 'ok',
+        detail: `${projects.count} 个，${problems.length} 个布局错误${problems.length ? '（`pinpoint list <project>` 看详情）' : ''}`,
+      });
+      for (const line of problems) rows.push({ label: '', state: 'note', detail: line });
+    }
   }
 
   const bad = rows.filter((row) => row.state === 'bad');
