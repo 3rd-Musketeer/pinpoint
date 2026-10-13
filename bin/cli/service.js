@@ -101,6 +101,7 @@ export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, 
       });
       for (const line of problems) rows.push({ label: '', state: 'note', detail: line });
     }
+    if (health.site) rows.push(...siteRows(health.site));
   }
 
   const bad = rows.filter((row) => row.state === 'bad');
@@ -114,6 +115,29 @@ export function classifyStatus({ repoRoot, routesPath, route, pidAlive = false, 
     serviceRoot,
     diagnosis: diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, repoRoot }),
   };
+}
+
+/**
+ * 文章站点（Astro 开发服务器，pp3）那一行。站点按需拉起：没打开过文章时是 idle，
+ * 不算故障；起不来（failed）才算失败。
+ */
+export function siteRows(site) {
+  const where = `127.0.0.1:${site.port}`;
+  const pid = site.external ? '外部进程' : (site.pid ? `pid ${site.pid}` : '');
+  const rows = [];
+  if (site.state === 'ready') {
+    rows.push({ label: '文章站点', state: site.warning ? 'warn' : 'ok', detail: `${where} 就绪${pid ? `（${pid}）` : ''}` });
+  } else if (site.state === 'idle') {
+    rows.push({ label: '文章站点', state: 'skip', detail: `${where} 没在跑，第一次打开文章时启动` });
+  } else if (site.state === 'starting' || site.state === 'restarting') {
+    rows.push({ label: '文章站点', state: 'warn', detail: `${where} ${site.state === 'starting' ? '启动中' : '退出后等待重启'}${site.restarts ? `，已重启 ${site.restarts} 次` : ''}` });
+  } else if (site.state === 'failed') {
+    rows.push({ label: '文章站点', state: 'bad', detail: `${where} 没起来：${site.lastError || '原因未知'}；日志 ${site.logFile || '无'}` });
+  } else {
+    rows.push({ label: '文章站点', state: 'skip', detail: `${where} ${site.state}` });
+  }
+  if (site.warning) rows.push({ label: '', state: 'note', detail: site.warning });
+  return rows;
 }
 
 function probeRow(label, probe) {
@@ -139,6 +163,10 @@ function diagnose({ ok, rows, route, pidAlive, direct, proxied, serviceRoot, rep
   }
   if (serviceRoot && serviceRoot !== repoRoot) {
     return `服务跑的是另一个目录（${serviceRoot}），不是本 CLI 所在的仓库（${repoRoot}）。要让服务改跑这里，在这里 \`pinpoint restart\`。`;
+  }
+  const siteRow = rows.find((row) => row.label === '文章站点');
+  if (siteRow && siteRow.state === 'bad') {
+    return '服务正常，但文章站点的开发服务器起不来：看上面那行的日志路径，修好后刷新文章页会重试。';
   }
   return 'registry 有 error，服务在按回落表跑（见上）。';
 }

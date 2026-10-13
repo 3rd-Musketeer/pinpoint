@@ -1178,6 +1178,46 @@ test('classifyStatus: 全绿', () => {
   assert.match(lines.at(-1), /→ 服务正常。/);
 });
 
+function siteStatusReport(site) {
+  const json = healthJson({ site });
+  return classifyStatus({
+    repoRoot: REPO_ROOT,
+    routesPath: '/r.json',
+    route: { hostname: 'pinpoint.localhost', port: 4812, pid: 94084 },
+    pidAlive: true,
+    direct: { url: 'd', ok: true, status: 200, json },
+    proxied: { url: 'p', ok: true, status: 200, json },
+  });
+}
+
+test('classifyStatus: 文章站点按需拉起 —— idle 不算故障，failed 算', () => {
+  const base = { port: 4530, pid: null, external: false, restarts: 0, logFile: '/x/logs/site-dev.log', warning: null };
+  const idle = siteStatusReport({ ...base, state: 'idle' });
+  assert.equal(idle.ok, true);
+  assert.equal(idle.diagnosis, '服务正常。');
+  const idleRow = idle.rows.find((r) => r.label === '文章站点');
+  assert.equal(idleRow.state, 'skip');
+  assert.match(idleRow.detail, /127\.0\.0\.1:4530 没在跑，第一次打开文章时启动/);
+
+  const ready = siteStatusReport({ ...base, state: 'ready', pid: 4242 });
+  assert.equal(ready.ok, true);
+  assert.match(ready.rows.find((r) => r.label === '文章站点').detail, /就绪（pid 4242）/);
+
+  const starting = siteStatusReport({ ...base, state: 'starting', pid: 4242 });
+  assert.equal(starting.ok, true);
+  assert.equal(starting.rows.find((r) => r.label === '文章站点').state, 'warn');
+
+  const misconfigured = siteStatusReport({ ...base, state: 'ready', external: true, warning: '站点的 vite 没有以 /_astro/ 为 base' });
+  const rows = misconfigured.rows.filter((r) => r.label === '文章站点' || r.state === 'note');
+  assert.deepEqual(rows.map((r) => r.state), ['warn', 'note']);
+  assert.match(rows[0].detail, /外部进程/);
+
+  const failed = siteStatusReport({ ...base, state: 'failed', lastError: '连续 2 次没就绪就退出' });
+  assert.equal(failed.ok, false);
+  assert.match(failed.rows.find((r) => r.label === '文章站点').detail, /没起来：连续 2 次没就绪就退出；日志 \/x\/logs\/site-dev\.log/);
+  assert.match(failed.diagnosis, /文章站点的开发服务器起不来/);
+});
+
 test('classifyStatus: 没起过（portless 里没有路由）', () => {
   const report = classifyStatus({ repoRoot: REPO_ROOT, routesPath: '/r.json', route: null, proxied: { url: 'p', ok: false, error: 'ECONNREFUSED' } });
   assert.equal(report.ok, false);

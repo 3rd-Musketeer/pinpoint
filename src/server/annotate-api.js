@@ -182,6 +182,9 @@ export function createAnnotateHandler(options = {}) {
   // （左栏重拉清单即可，别重装画板），'entries' = 条目本身可能变了（照旧整板
   // 重摆）。
   const onRegistryReload = options.onRegistryReload || (() => {});
+  // pp3：文章站点开发服务器的状态（article-proxy 的 devServer.snapshot），
+  // /health 带出去给 `pinpoint status`；没接站点时不出这个字段。
+  const siteStatus = options.siteStatus || null;
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
@@ -408,6 +411,7 @@ export function createAnnotateHandler(options = {}) {
           registry: registrySummary(registry),
           // project 的布局错误（缺 project.json、撞名…）：`pinpoint status` 读这里。
           projects: projectHealth(registry),
+          ...(siteStatus ? { site: siteStatus() } : {}),
         });
         return true;
       },

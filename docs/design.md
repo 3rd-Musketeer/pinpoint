@@ -187,3 +187,19 @@
 2026-09-08：按 owner 最新决定，frame 和 section 说明全部退役。画布与大纲只定位、高亮，不弹详情；旧 note 字段通过显式备份迁移清理，不在启动时自动修改。
 
 2026-09-08：主动点击标注跳转时，按目标 DOM（含多目标/结果目标）与 composer 的组合外接矩形，按完整画布宽度、仅扣除底栏的视野居中（侧栏开合不改变水平中心）。优先右侧并排，其次下方；空间不足保留缩放并让目标居中，composer 沿用边缘停靠。只在跳转时滚动一次，输入/换行不触发画布移动；缩略图的整帧聚焦不变。
+
+## 服务路由（pp3 文章）
+
+本机只有一个地址：文章和工作台、标注 API、`/sites/` 同在 `pinpoint.localhost`。服务按 URL 首段分流，代码在 `src/server/lib/article-routes.js`（判定）与 `src/server/article-proxy.js`（转发）。
+
+| 首段 | 去向 |
+| --- | --- |
+| 登记过的 project id（registry kind `project`） | 文章站点：Astro 开发服务器，路径原样，站点不设 base |
+| `_astro`（含 HMR websocket）、`_image` | Astro 开发服务器自己的 vite 内部路径与图片端点 |
+| 其他一切 | pinpoint 原有的中间件链，行为不变 |
+
+- **为什么 Astro 的内部路径在 `/_astro/` 下。** pinpoint 自己也是 vite，`/@vite/`、`/@fs/`、`/@id/`、`/node_modules/`、`/src/` 和 `/` 上的 HMR websocket 都归它。服务拉起站点时设环境变量 `PINPOINT_SITE_VITE_BASE=/_astro/`，`site/astro.config` 把它设成 vite 的 `base`，Astro 的内部路径就整体落在 `/_astro/` 下；Astro 自己的 `base` 仍是 `/`，文章链接照常写 `/<project>/<article>/`。上游请求一律带 `/_astro` 前缀，vite 剥掉前缀再交给 Astro，所以 `Astro.url` 与地址栏一致。
+- **保留首段。** project id 不能取服务已占用的首段。完整列表是 `RESERVED_TOP_SEGMENTS`（同一文件），加上 `test-results-*`、`playwright-report-*`；包含 vite 按仓库根静态服务的顶层目录。单测核对仓库根的每个目录都在表里。
+- **注入。** 文章页的 HTML 响应注入标注客户端，与 `/sites/` 同一份 `injectAnnotateClient`，entry 暂取 project id；`?annotate=off` 单请求不注入；非 HTML 原样透传。
+- **生命周期。** 第一次有文章请求时才拉起站点（`src/server/lib/site-dev-server.js`）：命令默认 `npm run -s site:dev -- --port {port} --host 127.0.0.1 --ignore-lock`，`PINPOINT_SITE_CMD` 覆盖；端口默认 4530，`PINPOINT_SITE_PORT` 覆盖；日志在 `<数据根>/logs/site-dev.log`。站点死了按退避自动重启；连续两次没就绪就退出，或 60 秒内退出五次，就停在 failed，之后的文章请求每 5 秒最多重试一次。服务停时整个进程组一起停。端口上已经有服务在答时直接用它。
+- **站点没就绪时。** 浏览器打开文章拿到一张“站点启动中”页（503，每秒自动刷新）；起不来时那张页写原因、命令、日志路径和日志末尾（502，每 5 秒重试）。`pinpoint status` 有一行“文章站点”：没拉起过是正常，起不来算失败。
