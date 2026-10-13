@@ -162,7 +162,7 @@ export default function ConfirmBare() {
 - 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
 - `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
 - 帧级 shell：一节里混着手机帧和组件帧时，组件帧的文件在顶层写一行 `export const shell = "comp";`。取值和 `<Canvas shell>` 一样，只认这一行的字面量字符串。它只管这一帧，盖过 `<Canvas shell>`。服务静态读这一行（`readFrameShell`），不执行帧文件。编译器的帧 lint 放行这一行。
-- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。
+- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。哪个节点属于哪一节、第几节、节字母，由 `src/shared/article-structure.js` 的 `articleStructure(tree)` 走一遍 mdast 得出；站点的 remark 步骤（节标题字母、给 `<Canvas>` 注入 `section`）和 `ppnt check` / `locate` 判断正文评论的引文落在哪一节（`articleSectionSpans`）用的是同一个走法，所以三处数出来的节对得上。
 
 ### 页 id
 

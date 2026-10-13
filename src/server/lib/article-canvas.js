@@ -23,12 +23,8 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
-import {
-  CANVAS_SHELLS,
-  FRAME_ID_PATTERN as FRAME_ID,
-  SECTION_ID_PATTERN as SECTION_ID,
-  sectionLetter,
-} from '../../shared/project-ids.js';
+import { articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
+import { CANVAS_SHELLS, FRAME_ID_PATTERN as FRAME_ID, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
@@ -94,25 +90,16 @@ export function frameFileReaders(articleDir) {
   };
 }
 
-function isJsx(node, name) {
-  return node && (node.type === 'mdxJsxFlowElement' || node.type === 'mdxJsxTextElement') && node.name === name;
-}
-
-function attrOf(node, name) {
-  return (node.attributes || []).find((a) => a.type === 'mdxJsxAttribute' && a.name === name);
-}
-
 /** 字符串属性：undefined = 没写；{ value } = 字面量；{ error } = 别的写法。 */
 function literalString(node, name) {
-  const attr = attrOf(node, name);
-  if (!attr) return undefined;
-  if (typeof attr.value === 'string') return { value: attr.value };
+  const attr = literalAttribute(node, name);
+  if (!attr || 'value' in attr) return attr;
   return { error: `${name} 必须是字面量字符串（写成 ${name}="…"）` };
 }
 
 /** frames={[...]} → { frames } 或 { error }。只认字面量数组 + 字面量字符串。 */
 function literalFrames(node) {
-  const attr = attrOf(node, 'frames');
+  const attr = jsxAttribute(node, 'frames');
   if (!attr) return { error: '缺 frames（写成 frames={["帧 id", …]}）' };
   const program = attr.value && attr.value.data && attr.value.data.estree;
   const statement = program && program.body && program.body.length === 1 ? program.body[0] : null;
@@ -130,20 +117,43 @@ function literalFrames(node) {
   return { frames };
 }
 
-function* childrenDeep(node) {
-  for (const child of node.children || []) {
-    yield child;
-    yield* childrenDeep(child);
+/**
+ * 整份 index.mdx（含 frontmatter）→ { tree, lineOffset } 或 { error, lineOffset }。
+ * lineOffset = body 前面有几行 frontmatter：节点的行号加上它对到整份文件。
+ */
+function parseBody(text) {
+  const fm = parseFrontmatter(text);
+  const source = String(text || '').replace(/^﻿/, '');
+  const lineOffset = fm.body === source ? 0 : source.slice(0, source.length - fm.body.length).split('\n').length - 1;
+  try {
+    return { tree: processor.parse(fm.body), lineOffset };
+  } catch (error) {
+    return { error, lineOffset };
   }
+}
+
+/**
+ * 正文里每个 <Section> 占的行（整份文件的行号，1 起）：[{ id, startLine, endLine }]，按正文顺序；
+ * id 只取字面量（写成表达式的节没有 id）。MDX 解析不了时是 []。ann-query 用它判断引文落在哪一节。
+ */
+export function articleSectionSpans(text) {
+  const { tree, lineOffset } = parseBody(text);
+  if (!tree) return [];
+  const spans = [];
+  for (const item of articleStructure(tree)) {
+    const position = item.kind === 'section' && item.node.position;
+    const id = item.kind === 'section' ? literalAttribute(item.node, 'id') : undefined;
+    if (!position || !id || !('value' in id)) continue;
+    spans.push({ id: id.value, startLine: position.start.line + lineOffset, endLine: position.end.line + lineOffset });
+  }
+  return spans;
 }
 
 /** 正文 → 画布结构。text 是整份 index.mdx（含 frontmatter）。 */
 export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined } = {}) {
   const errors = [];
-  const fm = parseFrontmatter(text);
-  // body 前面有几行 frontmatter：报错的行号对到整份文件。
-  const source = String(text || '').replace(/^﻿/, '');
-  const lineOffset = fm.body === source ? 0 : source.slice(0, source.length - fm.body.length).split('\n').length - 1;
+  const parsed = parseBody(text);
+  const { lineOffset } = parsed;
   const lineOf = (node) => (node && node.position ? node.position.start.line + lineOffset : null);
   const at = (node) => (lineOf(node) ? `第 ${lineOf(node)} 行` : '');
   // 错误对象：message 自带行号前缀（显示时原样用）；line、section、frame 给卡片定位。
@@ -151,10 +161,9 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     const line = lineOf(node);
     errors.push({ code, message, ...(line ? { line } : {}), ...extra });
   };
-  let tree;
-  try {
-    tree = processor.parse(fm.body);
-  } catch (error) {
+  const { tree } = parsed;
+  if (!tree) {
+    const { error } = parsed;
     const line = error && error.line ? `第 ${error.line + lineOffset} 行：` : '';
     return {
       sections: [],
@@ -165,29 +174,9 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
   const sections = [];
   const seenSections = new Set();
   const seenFrames = new Map(); // 帧 id → 第一次出现的节 id
-  let sectionIndex = 0;
 
-  const visit = (node, inSection) => {
-    for (const child of node.children || []) {
-      if (isJsx(child, 'Section')) {
-        if (inSection) {
-          report('section_nested', child, `${at(child)}：<Section> 不能套在另一个 <Section> 里`);
-          continue;
-        }
-        handleSection(child);
-        continue;
-      }
-      if (isJsx(child, 'Canvas')) {
-        report('canvas_outside_section', child, `${at(child)}：<Canvas> 必须写在 <Section> 里（画布按节排开）`);
-        continue;
-      }
-      visit(child, inSection);
-    }
-  };
-
-  const handleSection = (node) => {
-    const articleLetter = sectionLetter(sectionIndex);
-    sectionIndex += 1;
+  // 节怎么数、字母怎么编在 src/shared/article-structure.js（站点的 remark 步骤用同一个）。
+  const handleSection = ({ node, letter: articleLetter, canvases, nested }) => {
     const id = literalString(node, 'id');
     if (!id || id.error || !SECTION_ID.test(id.value)) {
       report('section_id', node, `${at(node)}：<Section> 需要字面量 id，且匹配 ${SECTION_ID}`);
@@ -200,11 +189,7 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     seenSections.add(id.value);
     const title = literalString(node, 'title');
     if (title && title.error) report('section_title', node, `${at(node)}：<Section id="${id.value}"> 的 ${title.error}`, { section: id.value });
-    const canvases = [];
-    for (const child of childrenDeep(node)) {
-      if (isJsx(child, 'Section')) report('section_nested', child, `${at(child)}：<Section> 不能套在另一个 <Section> 里`);
-      else if (isJsx(child, 'Canvas')) canvases.push(child);
-    }
+    for (const child of nested) report('section_nested', child, `${at(child)}：<Section> 不能套在另一个 <Section> 里`);
     if (!canvases.length) return;
     if (canvases.length > 1) {
       report('canvas_multiple', canvases[1], `${at(canvases[1])}：<Section id="${id.value}"> 里有 ${canvases.length} 个 <Canvas>，一节最多一个（只用第一个）`, { section: id.value });
@@ -267,6 +252,9 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     sections.push(section);
   };
 
-  visit(tree, false);
+  for (const item of articleStructure(tree)) {
+    if (item.kind === 'stray-canvas') report('canvas_outside_section', item.node, `${at(item.node)}：<Canvas> 必须写在 <Section> 里（画布按节排开）`);
+    else handleSection(item);
+  }
   return { sections, errors };
 }
