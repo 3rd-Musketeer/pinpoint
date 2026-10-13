@@ -10,7 +10,12 @@ npm run site:build    # 产物在 site/dist/；PINPOINT_SITE_OUT、PINPOINT_SITE
 npm run test:site     # 用 site/fixtures/ 构建两遍：路由、[[ ]] 解析、空 ref、撞名报错
 ```
 
-`site:dev` 带 `--ignore-lock`：Astro 7 检测到 agent 环境会自己转后台，pinpoint 服务要的是一个由它管生命周期的前台子进程。开发服务器启动时把各 project 根加进 Vite `fs.allow`；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载。
+pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:dev -- --port <端口> --host 127.0.0.1 --ignore-lock`。
+
+- `--ignore-lock`：Astro 7 检测到 agent 环境会自己转后台并退出，服务要的是它管得住的前台子进程。agent 手动起 dev 也要带上。脚本里不内置这个参数，重复传会让 Astro 读成数组、判定失效。
+- `PINPOINT_SITE_VITE_BASE`：服务自己是 Vite，占着 `/@vite/`、`/@fs/`、`/@id/`、`/node_modules/` 和根路径的 HMR socket。设了它，Astro dev 的内部资源和 HMR 都走 `/_astro/…`；页面 URL 仍是 `/<project>/…`（`astro.config.mjs` 里的中间件把 base 外的请求补上前缀）。站点 `base` 始终是 `/`。
+
+开发服务器启动时把各 project 根加进 Vite `fs.allow`；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载。
 
 ## 路由
 

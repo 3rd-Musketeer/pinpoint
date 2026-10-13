@@ -19,7 +19,7 @@
     "check": "npm test && npm run test:e2e",
     "test:e2e:serial": "playwright test",
     "test:e2e:parallel": "node scripts/e2e-parallel.mjs",
-    "site:dev": "cd site && astro dev --ignore-lock",
+    "site:dev": "cd site && astro dev",
     "site:build": "cd site && astro build",
     "test:site": "node --test site/build.check.mjs"
   },
