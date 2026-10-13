@@ -118,6 +118,9 @@ test('编译：dist 出帧与派生 board，源目录不多任何文件；组件
   assert.match(html, /class="project-shared"[^>]*data-pp-comp="Shared">共用</);
   assert.match(html, /data-pp-id="content\/kits\/ios\/jsx\/Nav\.jsx:\d+@1" data-pp-comp="Nav"/);
   assert.match(html, /data-pp-id="ask-open\.jsx:7@1"/);
+  // os.tmpdir() 在 macOS 经过 symlink（/var → /private/var）：组件的 data-pp-id 仍相对文章目录。
+  assert.match(html, /class="article-card" data-pp-id="components\/Card\.jsx:2@1"/);
+  assert.match(html, /class="project-shared" data-pp-id="\.\.\/\.\.\/components\/Shared\.jsx:2@1"/);
   const distBoard = JSON.parse(fs.readFileSync(path.join(distRoot, 'demo_flow', 'board.json'), 'utf8'));
   assert.deepEqual(distBoard, deriveArticleBoard(target).board);
   assert.deepEqual(await renderScreenHtml(target, 'ask-sent'), { ok: true, html: '<style>@import url("/sites/demo_flow/article.css");</style>\n<div class="ios-app" data-pp-id="ask-sent.jsx:2@1" data-pp-comp="AskSent">已发送</div>' });
