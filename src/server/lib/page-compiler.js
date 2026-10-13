@@ -29,6 +29,7 @@ import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
+import { articleComponentCandidates, deriveArticleBoard, listArticleTargets, resolveArticleTarget } from './article-board.js';
 import { readBoard } from './board-file.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
@@ -46,7 +47,8 @@ export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
 }
 
-/** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页。 */
+/** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页，
+    再次文章画布（pp3 M1：kind 'article'，board 由 index.mdx 派生，见 article-board.js）。 */
 export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}) {
   if (typeof pageRef !== 'string' || !PAGE_ID_PATTERN.test(pageRef)) return null;
   const entry = registry
@@ -64,7 +66,31 @@ export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}
   if (fs.existsSync(path.join(pageDir, 'board.json'))) {
     return { entryId: pageRef, pageDir, urlBase: `/previews/${pageRef}/`, kind: 'template' };
   }
-  return null;
+  return registry ? resolveArticleTarget(registry, pageRef) : null;
+}
+
+/**
+ * 编译目标的 board 原文（不摊平 tabs）：dir / 模板页读页目录的 board.json，
+ * 文章画布每次从 index.mdx 现派生。读不到 / 坏 JSON 抛错。
+ */
+export function readTargetBoard(target) {
+  if (target && target.kind === 'article') return deriveArticleBoard(target).board;
+  return JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+}
+
+/** 读 board 失败时的说法：文章画布读的是 index.mdx。 */
+function boardReadError(target, error) {
+  const file = target && target.kind === 'article' ? 'index.mdx' : 'board.json';
+  return `${file} 读取失败：${(error && error.message) || error}`;
+}
+
+/** 文章画布编译时写进 dist 的派生 board（<dist>/<页 id>/board.json）；没有返回 null。 */
+export function readDistBoard(distRoot, entryId) {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(distRoot, entryId, 'board.json'), 'utf8'));
+  } catch {
+    return null;
+  }
 }
 
 /** 可编译页 id 清单（CLI 报错时列给用户的）。 */
@@ -77,6 +103,7 @@ export function listPageIds({ registry = null, root = ROOT } = {}) {
   for (const id of manifestPageIds(root)) {
     if (fs.existsSync(path.join(root, 'content', 'previews', id, 'board.json'))) ids.add(id);
   }
+  for (const target of listArticleTargets(registry)) ids.add(target.entryId);
   return [...ids].sort();
 }
 
@@ -102,6 +129,11 @@ export function listCompileTargets({ registry = null, root = ROOT, templateOnly 
       seen.add(id);
       targets.push(target);
     }
+  }
+  for (const target of listArticleTargets(registry)) {
+    if (seen.has(target.entryId)) continue; // 与模板页撞名：模板页优先（listProjects 记了错误）
+    seen.add(target.entryId);
+    targets.push(target);
   }
   return targets;
 }
@@ -234,6 +266,34 @@ function kitJsxPlugin() {
   };
 }
 
+/**
+ * 文章画布的组件解析（common-m1.md §1）：本篇帧里写 `./components/<Name>.jsx`，
+ * 本篇 components/ 没有就落到 project 的 docs/pinpoint/components/，再落到
+ * pinpoint/kit 的同名印章。只接本篇目录顶层文件（帧）发出的这种 import。
+ */
+function articleComponentsPlugin(target) {
+  return {
+    name: 'pp3-article-components',
+    setup(build) {
+      // esbuild 给的 resolveDir 是真实路径（macOS 的 /var → /private/var），两边都取 realpath 再比。
+      const real = (dir) => {
+        try { return fs.realpathSync(dir); } catch { return path.resolve(dir); }
+      };
+      const pageDir = real(target.pageDir);
+      build.onResolve({ filter: /^\.\/components\/[A-Za-z_$][A-Za-z0-9_$]*(?:\.jsx)?$/ }, (args) => {
+        if (real(args.resolveDir) !== pageDir) return undefined;
+        const name = args.path.replace(/^\.\/components\//, '').replace(/\.jsx$/, '');
+        const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
+        return hit ? { path: hit } : undefined;
+      });
+    },
+  };
+}
+
+function pluginsFor(target) {
+  return target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin()] : [kitJsxPlugin()];
+}
+
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
 // 编译器共享同一个 preact / 运行时实例（vnode 鸭子类型跨实例不兼容），也不再
 // 需要 file URL external 的插件。
@@ -310,7 +370,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: [kitJsxPlugin()],
+      plugins: pluginsFor(target),
     });
   } catch (error) {
     return { ok: false, error: formatBuildFailure(error) };
@@ -490,7 +550,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: [kitJsxPlugin()],
+      plugins: pluginsFor(target),
     });
   } catch (error) {
     return { result: { ok: false, error: formatBuildFailure(error) }, source: null };
@@ -556,9 +616,9 @@ export async function compilePage(target, options = {}) {
   const started = performance.now();
   let board;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = readTargetBoard(target);
   } catch (error) {
-    return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: `board.json 读取失败：${(error && error.message) || error}` };
+    return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: boardReadError(target, error) };
   }
   // 页 tab 的形状错（sections 与 tabs 并存、空 tab、重复 tab id）：编不了，报与工作台同一句话。
   try {
@@ -593,6 +653,8 @@ export async function compilePage(target, options = {}) {
     for (const [id, html] of Object.entries(htmls)) {
       fs.writeFileSync(path.join(outDir, `${id}.html`), html);
     }
+    // 文章画布的 board 是派生物：写进编译产物，从不写回源目录（common-m1.md §2）。
+    if (target.kind === 'article') fs.writeFileSync(path.join(outDir, 'board.json'), `${JSON.stringify(board, null, 2)}\n`);
     // 失败屏的旧产物必须删掉（review R1）：否则改坏一帧后 serve 拿改坏前的
     // 画面顶班，错误面板、stale、mention 全部零信号。删了文件还不够 —— 读取侧
     // （readDistScreen）也改成 errors 优先，旧状态下的孤儿文件同样不能顶班。
@@ -634,9 +696,9 @@ export async function compilePage(target, options = {}) {
 export async function renderScreenHtml(target, screenId) {
   let board;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+    board = readTargetBoard(target);
   } catch (error) {
-    return { ok: false, error: `board.json 读取失败：${(error && error.message) || error}` };
+    return { ok: false, error: boardReadError(target, error) };
   }
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
   const entry = screenEntriesFromBoard(board).find((row) => row.id === screenId) || { id: screenId };
@@ -681,8 +743,10 @@ export function readDistScreen(entryId, screenId, { distRoot = defaultDistRoot()
     ① 有源码记录的屏编译失败（源码在、产物没了，失败重编虽刷新 builtAt，
     产物并不代表源码 —— review R1）；② 任一源文件 / 依赖 mtime 晚于 builtAt。
     「源码不存在」的屏（板里挂了、文件从来没有）没有源码记录，不算 stale ——
-    错误面板已如实表达这个状态，dist 并没有落后于什么。 */
-export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = {}) {
+    错误面板已如实表达这个状态，dist 并没有落后于什么。
+    文章画布（给了 board = 现派生的板）不看 index.mdx 的 mtime（改正文不等于改画布），
+    而是比现派生的板与 dist 里那份是否相同。 */
+export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot(), board = null } = {}) {
   const build = readBuildJson(distRoot, entryId);
   if (!build || typeof build.builtAt !== 'number') return { builtAt: null, stale: true };
   const sources = build.sources || {};
@@ -708,7 +772,10 @@ export function distStatus(entryId, pageDir, { distRoot = defaultDistRoot() } = 
     }
     if (stale) break;
   }
-  if (!stale && newerThanBuild(path.join(pageDir, 'board.json'))) stale = true;
+  if (!stale) {
+    if (board) stale = JSON.stringify(readDistBoard(distRoot, entryId)) !== JSON.stringify(board);
+    else if (newerThanBuild(path.join(pageDir, 'board.json'))) stale = true;
+  }
   return { builtAt: build.builtAt, stale };
 }
 
@@ -773,18 +840,21 @@ export async function serveDistScreenResponse(req, res, target, screenId, { inje
   return true;
 }
 
-/** board.json 响应附带 dist: { builtAt, stale }；磁盘没板 / 板坏时回落原样字节。 */
-export function serveBoardJsonWithDist(req, res, entryId, pageDir) {
-  let raw;
-  try {
-    raw = fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8');
-  } catch {
-    return false;
+/** board.json 响应附带 dist: { builtAt, stale }；磁盘没板 / 板坏时回落原样字节。
+    给了 board（文章画布现派生的板）时直接吐它。 */
+export function serveBoardJsonWithDist(req, res, entryId, pageDir, { board: derived = null } = {}) {
+  let raw = null;
+  if (!derived) {
+    try {
+      raw = fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8');
+    } catch {
+      return false;
+    }
   }
   let text = raw;
   try {
-    const board = JSON.parse(raw);
-    text = `${JSON.stringify({ ...board, dist: distStatus(entryId, pageDir) }, null, 2)}\n`;
+    const board = derived || JSON.parse(raw);
+    text = `${JSON.stringify({ ...board, dist: distStatus(entryId, pageDir, derived ? { board: derived } : {}) }, null, 2)}\n`;
   } catch { /* 板坏了也照原样吐，workbench 的契约校验会报出真正的问题 */ }
   const body = Buffer.from(text, 'utf8');
   res.statusCode = 200;

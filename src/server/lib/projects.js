@@ -16,8 +16,17 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { fileURLToPath } from 'node:url';
+
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
+import { parseArticleCanvas } from './article-canvas.js';
 import { isReservedSegment, RESERVED_TOP_SEGMENTS } from './article-routes.js';
+import { manifestPageIds } from './page-manifest.js';
+
+// 站点卡片（M1-F）的入口也从这里拿：articleCanvas(projectId, articleId, { registry? })。
+export { articleCanvas } from './article-board.js';
+
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /** project 根下的内容目录（相对路径）。 */
 export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
@@ -34,6 +43,31 @@ export const isReservedProjectId = (id) => isReservedSegment(String(id));
 
 /** project 内占用的 URL 第二段：/<project>/concepts/<名字>/。 */
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
+
+/**
+ * 文章画布的页 id（M1，docs/projects.md「文章的画布」）：`<project id>_<article id>`。
+ * project id 与 article id 都匹配 ENTRY_ID_PATTERN（没有 `_`），所以：
+ * - 拆分无歧义（恰好一个 `_`），不同文章不会得到同一个页 id；
+ * - 不会和 registry 条目撞（条目 id 也是 ENTRY_ID_PATTERN，不含 `_`）；
+ * - 仍匹配 PAGE_ID_PATTERN（`?page=`、标注桶、/sites/<id>/ 都认）。
+ * 唯一可能撞的是 content/previews/_index.json 里带 `_` 的模板页，读取时检查并记错误。
+ */
+export const ARTICLE_PAGE_ID_SEPARATOR = '_';
+export const ARTICLE_PAGE_ID_PATTERN = /^([a-z0-9][a-z0-9-]*)_([a-z0-9][a-z0-9-]*)$/;
+
+export function articlePageId(projectId, articleId) {
+  const id = `${projectId}${ARTICLE_PAGE_ID_SEPARATOR}${articleId}`;
+  if (!ENTRY_ID_PATTERN.test(String(projectId)) || !ENTRY_ID_PATTERN.test(String(articleId))) {
+    throw new Error(`articlePageId：project id 与 article id 都必须匹配 ${ENTRY_ID_PATTERN}：${JSON.stringify(id)}`);
+  }
+  return id;
+}
+
+/** 页 id → { projectId, articleId }；不是文章画布的页 id 形状返回 null（不查盘）。 */
+export function parseArticlePageId(pageId) {
+  const match = String(pageId == null ? '' : pageId).match(ARTICLE_PAGE_ID_PATTERN);
+  return match ? { projectId: match[1], articleId: match[2] } : null;
+}
 
 const FM_KEY = /^([A-Za-z_][A-Za-z0-9_-]*)\s*:(?:\s+(.*))?$/;
 // 这些开头在 YAML 里是块标量、流式列表 / 映射、锚点、标签：本解析器不支持，报错不猜。
@@ -113,6 +147,14 @@ function isDir(target) {
   }
 }
 
+function isFile(target) {
+  try {
+    return fs.statSync(target).isFile();
+  } catch {
+    return false;
+  }
+}
+
 function visibleChildren(dir) {
   try {
     return fs.readdirSync(dir, { withFileTypes: true })
@@ -150,7 +192,7 @@ export function readProjectJson(root) {
   return { json, file, errors };
 }
 
-function readArticles(dir, errors) {
+function readArticles(dir, errors, projectId) {
   const articlesDir = path.join(dir, 'articles');
   const articles = [];
   for (const item of visibleChildren(articlesDir)) {
@@ -176,7 +218,11 @@ function readArticles(dir, errors) {
     }
     const fm = parseFrontmatter(text);
     for (const problem of fm.errors) errors.push(`${rel}/index.mdx：${problem}`);
+    // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误。
+    const canvas = parseArticleCanvas(text, { frameExists: (frame) => isFile(path.join(articleDir, `${frame}.jsx`)) });
+    for (const problem of canvas.errors) errors.push(`${rel}/index.mdx：${problem.message}`);
     const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file };
+    if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);
     if (fm.data.summary) article.summary = fm.data.summary;
     articles.push(article);
   }
@@ -249,7 +295,7 @@ export function readProject(entry) {
     }
     if (typeof meta.json.title === 'string' && meta.json.title) project.title = meta.json.title;
   }
-  project.articles = readArticles(dir, errors);
+  project.articles = readArticles(dir, errors, entry.id);
   project.concepts = readConcepts(dir, errors);
   project.concepts.sort((a, b) => a.name.localeCompare(b.name));
   checkNamespace(project.articles, project.concepts, errors);
@@ -263,16 +309,32 @@ function projectEntries(registry) {
 }
 
 /**
+ * 文章画布页 id 与既有页撞名 → 布局错误。按构造不会撞 registry 条目（见
+ * ARTICLE_PAGE_ID_PATTERN），仍逐条查一遍；真正可能撞的是带 `_` 的模板页。
+ */
+function checkPageIdCollisions(project, registry, root = REPO_ROOT) {
+  const taken = new Map();
+  for (const entry of (registry && registry.entries) || []) if (entry && entry.id) taken.set(entry.id, `registry 条目 "${entry.id}"`);
+  for (const id of manifestPageIds(root)) if (!taken.has(id)) taken.set(id, `模板页 "${id}"（content/previews/_index.json）`);
+  for (const article of project.articles) {
+    if (article.pageId && taken.has(article.pageId)) {
+      project.errors.push(`articles/${article.id}：画布页 id "${article.pageId}" 与${taken.get(article.pageId)}撞名，画布打不开（改文章 id 或那个页的 id）`);
+    }
+  }
+  return project;
+}
+
+/**
  * 登记的全部 project，按登记顺序：
- * [{ id, title, root, dir, articles: [{ id, title, summary?, dir, file }],
+ * [{ id, title, root, dir, articles: [{ id, title, summary?, pageId, dir, file }],
  *    concepts: [{ name, slug, status?, boundary?, file }], errors: [] }]
  */
 export function listProjects(registry) {
-  return projectEntries(registry).map(readProject);
+  return projectEntries(registry).map((entry) => checkPageIdCollisions(readProject(entry), registry));
 }
 
 /** 按 id 找一个 project；没登记返回 null。 */
 export function findProject(registry, id) {
   const entry = projectEntries(registry).find((item) => item.id === id);
-  return entry ? readProject(entry) : null;
+  return entry ? checkPageIdCollisions(readProject(entry), registry) : null;
 }

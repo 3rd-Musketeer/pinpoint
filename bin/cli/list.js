@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.js';
-import { distStatus, listPageIds, readDistScreen } from '../../src/server/lib/page-compiler.js';
+import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
 import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
@@ -63,7 +63,11 @@ export function printPageStatus(parsed, { env, out, err }) {
   if (context.docOnly) {
     out('  这页不是编译页（registry 条目没有 board.json），没有 dist 与源码摘录');
   } else {
-    const dist = distStatus(context.target.entryId, context.target.pageDir, { distRoot: path.join(dataRoot(env), 'dist') });
+    const dist = distStatus(context.target.entryId, context.target.pageDir, {
+      distRoot: path.join(dataRoot(env), 'dist'),
+      // 文章画布：板是现派生的，比对 dist 里那份，不看 index.mdx 的 mtime。
+      ...(context.target.kind === 'article' ? { board: readTargetBoard(context.target) } : {}),
+    });
     out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
   }
   const orphanCount = (context.orphanRows || []).length;
@@ -217,10 +221,12 @@ function listFrames(words, { registryPath, env, out, err }) {
 /** 登记表里的 project，读盘后（文章、概念、布局错误）。 */
 export function projectListRows({ registryPath } = {}) {
   // 读的是盘上原样的条目（list 不依赖服务）；没有 path 的坏条目 loadRegistry 也会跳过。
-  const entries = existingEntriesFor(registryPath)
+  const all = existingEntriesFor(registryPath);
+  const entries = all
     .filter((entry) => entry && entry.kind === 'project' && typeof entry.path === 'string')
     .map((entry) => ({ ...entry, title: entry.title || entry.id }));
-  return listProjects({ projects: entries });
+  // entries 只给画布页 id 的撞名检查用（listProjects 不把它们当 project）。
+  return listProjects({ projects: entries, entries: all.filter((entry) => entry && entry.kind !== 'project') });
 }
 
 /** 关键词匹配用的投影：文章 id / 标题也能对上 project。 */
@@ -256,6 +262,8 @@ export function formatProjectDetail(project) {
   for (const article of project.articles) {
     lines.push(`  ${article.id}  ·  ${article.title}${article.summary ? `  ·  ${article.summary}` : ''}`);
     lines.push(`    ${article.file}`);
+    // 画布页 id：ppnt build / check / shot / list --frames 和 /?page= 用它。
+    if (article.pageId) lines.push(`    画布 ${article.pageId}`);
   }
   lines.push('', `概念（${project.concepts.length}）`);
   if (!project.concepts.length) lines.push('  （无）');

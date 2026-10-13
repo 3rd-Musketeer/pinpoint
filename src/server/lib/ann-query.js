@@ -22,7 +22,7 @@ import { dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
-import { resolvePageTarget } from './page-compiler.js';
+import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
@@ -143,7 +143,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   }
   let board = null;
   try {
-    board = flattenTabs(JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8')));
+    board = flattenTabs(readTargetBoard(target));
   } catch { /* 板坏：resolvePageTarget 已保证存在；真坏由调用方呈现 */ }
   return contextWithRows({
     registry,

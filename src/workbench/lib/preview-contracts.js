@@ -303,6 +303,8 @@ export function validateBoard(raw, options = {}) {
       screens,
     };
     if (tabbed) out.tabId = section.tabId;
+    // 文章画布的派生 board 带正文的节字母（board-refs.js），原样留给编号。
+    if (typeof section.letter === 'string' && /^[A-Z]+$/.test(section.letter)) out.letter = section.letter;
     return out;
   });
   if (!tabbed) return { sections };

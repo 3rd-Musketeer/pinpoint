@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
-import { compilePage, listPageIds, renderScreenHtml, resolvePageTarget } from '../../src/server/lib/page-compiler.js';
+import { compilePage, listPageIds, readTargetBoard, renderScreenHtml, resolvePageTarget } from '../../src/server/lib/page-compiler.js';
 import { isWatchedSource, planPageRecompile } from '../../src/server/lib/recompile-plan.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { refLikeFrameIds, refLikeTitles } from '../../src/workbench/lib/board-refs.js';
@@ -32,10 +32,12 @@ function pageTargetOrReport(pageRef, flags, { env, err }) {
  * 帧 id 形如显示编号时给一行提示（只提示、不算失败）。已有帧别改名：id 是标注
  * 锚点，改名会断标注；只管新起的帧。
  */
-export function refLikeIdNotice(pageDir) {
+export function refLikeIdNotice(pageDirOrTarget) {
   let board = null;
   try {
-    board = JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8'));
+    board = typeof pageDirOrTarget === 'string'
+      ? JSON.parse(fs.readFileSync(path.join(pageDirOrTarget, 'board.json'), 'utf8'))
+      : readTargetBoard(pageDirOrTarget);
   } catch {
     return '';
   }
@@ -99,6 +101,8 @@ export function startPageWatch(target, onResult, { debounceMs = 120, distRoot, o
       running = running.then(async () => {
         const options = distRoot ? { distRoot } : {};
         const plan = planPageRecompile(target, batch, { ...options, pendingFiles: [...pending].filter(Boolean) });
+        // 文章画布：这一拍只改了正文、画布没变 → 不编。
+        if (plan.noop) return undefined;
         if (!plan.all) options.onlyScreens = plan.screens;
         const result = await compilePage(target, options);
         return onResult(result, plan);
@@ -118,7 +122,7 @@ export async function runBuild(argv, io = {}) {
   const distRoot = path.join(dataRoot(env), 'dist');
   const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.screen || null });
   printBuildResult(first, { out, err });
-  const refLike = refLikeIdNotice(target.pageDir);
+  const refLike = refLikeIdNotice(target);
   if (refLike) out(refLike);
   if (!parsed.flags.watch) return first.ok ? 0 : 1;
   out(`监视 ${target.pageDir}（Ctrl-C 退出）…`);
