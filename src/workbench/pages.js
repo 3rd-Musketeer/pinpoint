@@ -516,7 +516,7 @@ function registrySitePages() {
         .then(registryToPages);
     }
   }).catch(function () {
-    return { pages: [], attached: [], grouping: { folders: [], pageFolders: {}, pageOrder: {} } };
+    return { pages: [], attached: [], articles: [], grouping: { folders: [], pageFolders: {}, pageOrder: {} } };
   });
 }
 
@@ -557,7 +557,23 @@ function registryToPages(data) {
       site: true
     });
   });
-  return { pages: pages, attached: attached, grouping: grouping, pageTimes: data.pageTimes || {} };
+  // pp3 M1：文章画布页（<project>_<article>）。它们属于文章，不进左栏 Pages；
+  // 清单另放一份 manifest.articles，pageEntry 认得它，`?page=<id>` 才能打开。
+  var articles = ((data && data.articles) || []).filter(function (row) {
+    return row && typeof row.id === 'string';
+  }).map(function (row) {
+    return {
+      id: row.id,
+      title: row.title || row.id,
+      mode: 'ios',
+      kind: 'article',
+      project: row.project || null,
+      article: row.article || null,
+      url: row.url || null,
+      site: true
+    };
+  });
+  return { pages: pages, attached: attached, articles: articles, grouping: grouping, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -587,6 +603,8 @@ export function loadPageManifest() {
         manifest.pages = manifest.pages.map(page => ({ ...page, ...sitePages.pageTimes[page.id] }));
         manifest.pageTimes = sitePages.pageTimes;
         manifest.attached = sitePages.attached;
+        // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
+        manifest.articles = (sitePages.articles || []).filter(function (page) { return !known[page.id]; });
         manifest.grouping = sitePages.grouping;
         wbSet({ pageManifest: manifest });
         return manifest;

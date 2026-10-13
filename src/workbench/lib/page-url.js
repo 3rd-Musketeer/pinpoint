@@ -1,9 +1,15 @@
-/** Manifest entry for a page (registry-sourced "site" pages carry site:true). */
+/** Manifest entry for a page (registry-sourced "site" pages carry site:true).
+    pp3 M1：文章画布页在 manifest.articles 里（不进左栏 Pages），这里一并认得。 */
 import { legacyMode } from './preview-contracts.js';
 export function pageEntry(manifest, pageId) {
-  if (!manifest || !manifest.pages) return null;
-  for (var i = 0; i < manifest.pages.length; i++) {
-    if (manifest.pages[i].id === pageId) return manifest.pages[i];
+  if (!manifest) return null;
+  var lists = [manifest.pages, manifest.articles];
+  for (var l = 0; l < lists.length; l++) {
+    var list = lists[l];
+    if (!list) continue;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i].id === pageId) return list[i];
+    }
   }
   return null;
 }

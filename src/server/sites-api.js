@@ -31,8 +31,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
+import { deriveArticleBoard, resolveArticleTarget } from './lib/article-board.js';
 import {
   boardScreenIds,
+  screenEntriesFromBoard,
   screenIdFromRel,
   serveBoardJsonWithDist,
   serveDistScreenResponse,
@@ -170,6 +172,47 @@ export function createSitesHandler(options = {}) {
     return true;
   }
 
+  /**
+   * 文章画布页：board.json 是从 index.mdx 现派生的板（附 dist 状态），屏从 dist 出
+   * （标注桶 = 画布页 id），其余（article.css / article.js / assets/ / 组件引用的资源）
+   * 从文章目录只读静态出。
+   */
+  async function serveArticlePage(req, res, target, rel) {
+    if (req.method !== 'GET' && req.method !== 'HEAD') {
+      res.statusCode = 405;
+      res.setHeader('Allow', 'GET, HEAD');
+      res.setHeader('Content-Type', 'application/json; charset=utf-8');
+      res.end(JSON.stringify({ error: 'method_not_allowed' }));
+      return true;
+    }
+    let board;
+    try {
+      board = deriveArticleBoard(target).board;
+    } catch {
+      sendJson(res, 404, { error: 'not found' });
+      return true;
+    }
+    if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
+    const screenId = screenIdFromRel(rel);
+    if (screenId && screenEntriesFromBoard(board).some((entry) => entry.id === screenId)) {
+      const query = parseReqUrl(req).query;
+      return serveDistScreenResponse(req, res, target, screenId, {
+        inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId),
+      });
+    }
+    const file = rel ? resolveFileWithin(target.pageDir, rel) : null;
+    if (!file || path.basename(file) === 'index.mdx') {
+      sendJson(res, 404, { error: 'not found' });
+      return true;
+    }
+    const body = fs.readFileSync(file);
+    res.statusCode = 200;
+    res.setHeader('Content-Type', contentType(file));
+    res.setHeader('Content-Length', String(body.length));
+    res.end(req.method === 'HEAD' ? undefined : body);
+    return true;
+  }
+
   return async function handleSites(req, res, urlPath) {
     if (!urlPath.startsWith('/sites/')) return false;
 
@@ -190,6 +233,9 @@ export function createSitesHandler(options = {}) {
 
     const entry = id && registry.resolve(id);
     if (!entry) {
+      // pp3 M1：文章画布页（<project>_<article>）不是登记条目，按 project 现解析。
+      const article = id ? resolveArticleTarget(registry, id) : null;
+      if (article) return serveArticlePage(req, res, article, rel);
       sendJson(res, 404, { error: 'not found' });
       return true;
     }
