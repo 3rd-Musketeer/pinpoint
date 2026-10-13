@@ -46,6 +46,9 @@ export function writeRegistryFixture() {
       // registry.projects，Pages / GET /registry / 桶清单都看不到它，所以能常驻。
       // 直接指仓内固件（站点只读不写）。
       { id: 'e2e-project', kind: 'project', path: path.join(ROOT, 'e2e', 'project-site') },
+      // pp3 M2：正文评论固件（e2e/prose-comments.spec.js）。指向本轮的副本，spec 要改
+      // 正文验证重新定位；同样不是页，常驻不影响 Pages 清单。
+      { id: 'e2e-prose', kind: 'project', path: path.join(E2E_SITES_DIR, 'prose-site') },
       // 页 tab 固件（e2e/tabs-site/ 两个 tab、e2e/tabs-one-site/ 一个 tab）同样不常驻：
       // tabs.spec.js 自己登记、自己清理。
       // pp2 切片 1 的 .jsx 帧固件（e2e/jsx-site/）不在共享固件里常驻 —— 多一条页会
@@ -56,7 +59,7 @@ export function writeRegistryFixture() {
 
 export function copySiteFixtures() {
   fs.rmSync(E2E_SITES_DIR, {recursive:true, force:true});
-  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site', 'tabs-site', 'tabs-one-site']) {
+  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site', 'tabs-site', 'tabs-one-site', 'prose-site']) {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
 }

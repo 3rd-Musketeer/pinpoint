@@ -5,7 +5,17 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { findProject, isReservedProjectId, listProjects, parseFrontmatter, readProjectJson, RESERVED_PROJECT_IDS } from './projects.js';
+import {
+  articlePageId,
+  findProject,
+  isReservedProjectId,
+  listProjects,
+  parseArticlePageId,
+  parseFrontmatter,
+  readProjectJson,
+  resolveArticlePage,
+  RESERVED_PROJECT_IDS,
+} from './projects.js';
 import { RESERVED_TOP_SEGMENTS } from './article-routes.js';
 import { loadRegistry } from './registry.js';
 
@@ -214,4 +224,20 @@ test('registry: project entries live in projects, not entries; page consumers ne
   assert.equal(registry.resolve('e2e-project'), null);
   assert.equal(registry.resolveProject('e2e-project').path, SITE);
   assert.deepEqual(registry.errors, ['duplicate entry id "e2e-project"', 'entry "att" kind "project" cannot attach to a page']);
+});
+
+test('articlePageId: <project>_<article>, never an entry id, parses back one way; resolve needs the article on disk', (t) => {
+  assert.equal(articlePageId('e2e-project', 'commit-confirm'), 'e2e-project_commit-confirm');
+  assert.deepEqual(parseArticlePageId('e2e-project_commit-confirm'), { projectId: 'e2e-project', articleId: 'commit-confirm' });
+  // 不是这个形状：登记条目 id（没有下划线）、空段、多一个下划线、大写、点。
+  for (const id of ['e2e-project', '_a', 'p_', 'p_a_b', 'P_a', 'p.a', '', null]) assert.equal(parseArticlePageId(id), null, String(id));
+
+  const registry = registryWith(t, [{ id: 'e2e-project', kind: 'project', path: SITE }]);
+  const hit = resolveArticlePage(registry, 'e2e-project_commit-confirm');
+  assert.equal(hit.pageId, 'e2e-project_commit-confirm');
+  assert.equal(hit.article.title, '提交前确认');
+  assert.equal(hit.project.id, 'e2e-project');
+  assert.equal(resolveArticlePage(registry, 'e2e-project_ghost'), null);
+  assert.equal(resolveArticlePage(registry, 'ghost.commit-confirm'), null);
+  assert.equal(resolveArticlePage(registry, 'e2e-project'), null);
 });

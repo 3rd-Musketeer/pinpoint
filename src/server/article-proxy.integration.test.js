@@ -74,6 +74,9 @@ test('文章代理：真 vite + 站点替身', async (t) => {
   fs.mkdirSync(dirSite);
   fs.writeFileSync(path.join(dirSite, 'index.html'), '<!doctype html><html><body><p id="dir">dir entry</p></body></html>');
 
+  // 文章 intro 在盘上：注入的桶（画布页 id）要求 index.mdx 存在。
+  fs.mkdirSync(path.join(tmp, 'docs', 'pinpoint', 'articles', 'intro'), { recursive: true });
+  fs.writeFileSync(path.join(tmp, 'docs', 'pinpoint', 'articles', 'intro', 'index.mdx'), '---\ntitle: intro\n---\n');
   // 临时 registry：一条 dir 条目（/sites/ 照旧），一条 project（包 A 的 projects 形状）。
   const registry = {
     entries: [{ id: 'dir-entry', title: 'dir', kind: 'dir', path: dirSite }],
@@ -128,7 +131,7 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     });
     const body = await res.text();
     assert.match(body, /<h1 id="stub-article">\/demo\/intro\/<\/h1>/);
-    assert.match(body, /<script>window\.__pinpointEntry='demo'<\/script><script src="\/annotate[^"]*\.js"><\/script>\n<\/body>/);
+    assert.match(body, /<script>window\.__pinpointEntry='demo_intro';window\.__pinpointProse=\{"project":"demo","article":"intro"\}<\/script><script src="\/annotate[^"]*\.js"><\/script>\n<\/body>/);
     assert.equal(Number(res.headers.get('content-length')), Buffer.byteLength(body));
 
     const off = await (await fetch(`${origin}/demo/intro/?annotate=off`, { headers: HTML })).text();

@@ -65,5 +65,17 @@ owner 常用口头说法指页（“routines 原型”“那个雾玻璃界面�
 - CLI 不接受 `open` / `close`：open 由 owner 在工作台编辑正文或目标时自动回，close 只有
   owner 在工作台做。
 
+## 文章页的正文评论
+
+article 页（`/<project>/<article>/`）上 owner 选中正文写的评论，和这篇画布上的标注在同一个桶里：页 id 是
+`<project>_<article>`（如 `browser-use_payment-confirm`）。
+
+- 读：`ppnt check <project>_<article>`。正文评论单独一组，每条给引文、节 id、`index.mdx` 里的落脚行和线程
+  （owner 与 agent 的来回）。落脚行是按引文找的，引文里夹着 markdown 记号时可能只给文件和节。
+- 改：改文章的 `index.mdx`（或节里的画布帧）。正文改了，评论会按引文重新定位；把被评的那句改写掉之后，
+  右栏会标“失效”，这是预期的，不用为它保留原句。
+- 回复：`ppnt reply <ref> "<回复>" --page <project>_<article>`（或跨页引用 `<project>_<article>#3`）在线程里回一句，
+  说改了什么、在哪看。回复不改状态，改完照旧 `ppnt mark … done|check`。画布标注没有线程，reply 会拒绝。
+
 最后在对话里汇报：每条标注做了什么（done / check / 未动 + 原因）。清理与关闭标注留给 owner。
 登记新页面、移动源路径、注入与代理问题见 [`docs/registry.md`](../../docs/registry.md)。

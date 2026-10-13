@@ -1694,6 +1694,7 @@ import {
   runLocate,
   runMark,
   runPrune,
+  runReply,
 } from './pinpoint-cli.js';
 
 const HOME_JSX = [
@@ -2373,4 +2374,147 @@ test('classifyStatus: project layout errors are a warning row, not a failure', (
   assert.match(row.detail, /^2 个，1 个布局错误/);
   assert.equal(report.rows[report.rows.indexOf(row) + 1].detail, 'e2e-collide: 撞名 [[confirm-card]]：…');
   assert.equal(report.diagnosis, '服务在跑，但有告警（见上）。');
+});
+
+/* ---- pp3 M2：文章页的正文评论 ---- */
+
+/** 一个 project（一篇文章）+ 它的文章桶里一本 @prose 账本（一条正文评论）+ 一本 @canvas。 */
+function makeArticleWithComments(t) {
+  const dir = withTempDir(t);
+  const root = path.join(dir, 'proj');
+  const content = path.join(root, 'docs', 'pinpoint');
+  fs.mkdirSync(path.join(content, 'articles', 'notes'), { recursive: true });
+  fs.writeFileSync(path.join(content, 'project.json'), JSON.stringify({ id: 't-proj', title: 'T' }));
+  fs.writeFileSync(path.join(content, 'articles', 'notes', 'index.mdx'), [
+    '---', 'title: 评论固件', '---', '', '<Section id="how" title="底层">', '', 'agent 读到提交按钮时先停下，确认卡写清收款方。', '', '</Section>', '',
+  ].join('\n'));
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [
+    { id: 't-page', kind: 'dir', path: dir },
+    { id: 't-proj', kind: 'project', path: root },
+  ] }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' };
+  const bucket = path.join(env.PINPOINT_DATA_DIR, 't-proj_notes');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@prose.json'), JSON.stringify({
+    page: '@prose', path: '/t-proj/notes/', revision: 2,
+    annotations: [{
+      id: 'p1', n: 2, type: 'prose', status: 'open', content: '“收款方”写全称', section: 'how',
+      quote: { exact: '确认卡写清收款方', prefix: '先停下，', suffix: '。' },
+      created_at: '2026-10-13T01:00:00.000Z',
+      messages: [{ who: 'agent', text: '改成了全称', at: '2026-10-13T02:00:00.000Z' }],
+    }],
+  }));
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({
+    page: '@canvas', path: '@canvas', revision: 1,
+    annotations: [{ id: 'c1', n: 1, type: 'element', status: 'open', content: '画布上的意见', pageId: 't-proj_notes', screenId: 'x' }],
+  }));
+  return { dir, registry, env, file: path.join(content, 'articles', 'notes', 'index.mdx') };
+}
+
+test('check <project>_<article>：正文评论单独成组 —— 引文、节、源文件行、线程；画布标注照列', async (t) => {
+  const made = makeArticleWithComments(t);
+  const rec = recorder();
+  const code = await runCheck(['check', 't-proj_notes', '--registry', made.registry], { ...rec.io, env: made.env });
+  assert.equal(code, 0, rec.err.join('\n'));
+  const text = rec.out.join('\n');
+  assert.ok(text.includes(`文章：/t-proj/notes/ · ${made.file}`), text);
+  // 文章就是一个画布页（M1-E 的 resolvePageTarget 命中 kind article），画布标注按帧分组照列，
+  // 正文评论另起一组；不再走“只有正文评论”的无板分支。
+  assert.ok(text.includes('## x\n[#1] 画布上的意见 · 普通 · open · @canvas'), text);
+  assert.ok(!text.includes('这篇文章还没有编译的画布帧'), text);
+  assert.ok(text.includes('## 正文评论 · 评论固件（/t-proj/notes/）'), text);
+  assert.ok(text.includes('[#2] “收款方”写全称 · 正文评论 · open · 节 how'), text);
+  assert.ok(text.includes('  引文：「确认卡写清收款方」'), text);
+  assert.ok(text.includes(`  源文件：${made.file}:7`), text);
+  assert.match(text, /  agent（10-13 \d\d:00）：改成了全称/);
+  assert.ok(text.includes('[#1] 画布上的意见'), text);
+
+  const json = recorder();
+  assert.equal(await runCheck(['check', 't-proj_notes', '--registry', made.registry, '--json'], { ...json.io, env: made.env }), 0);
+  const report = JSON.parse(json.out.join('\n'));
+  const prose = report.groups.find((group) => group.kind === 'prose');
+  assert.deepEqual(
+    [prose.rows[0].n, prose.rows[0].quote, prose.rows[0].section, prose.rows[0].line, prose.rows[0].messages.map((m) => m.who)],
+    [2, '确认卡写清收款方', 'how', 7, ['agent']],
+  );
+  assert.equal(report.counts.total, 2);
+  assert.equal(report.article.url, '/t-proj/notes/');
+
+  // 没登记的文章：找不到页。
+  const miss = recorder();
+  assert.equal(await runCheck(['check', 't-proj_ghost', '--registry', made.registry], { ...miss.io, env: made.env }), 1);
+  assert.ok(miss.err.some((line) => line.includes('找不到页：t-proj_ghost')), miss.err.join('\n'));
+});
+
+test('quoteSourceLine：逐字命中给行号；重复出现按前后文与节挑；夹了 markdown 记号退到前 12 个字符；都没有是 0', async () => {
+  const { quoteSourceLine } = await import('../src/server/lib/ann-query.js');
+  const src = 'a\n用户始终知道钱什么时候会被扣、扣给谁。\n确认卡写清**收款方**。';
+  assert.equal(quoteSourceLine(src, '扣给谁'), 2);
+  assert.equal(quoteSourceLine(src, '用户始终知道钱什么时候会被扣、扣给谁，并且最后一下由他自己点'), 2);
+  assert.equal(quoteSourceLine(src, '确认卡写清收款方'), 0);
+  assert.equal(quoteSourceLine(null, 'x'), 0);
+  const twice = ['<Section id="why">', '确认卡写清收款方。', '</Section>', '<Section id="how">', 'agent 先停下，确认卡写清收款方。', '</Section>'].join('\n');
+  assert.equal(quoteSourceLine(twice, { exact: '确认卡写清收款方', prefix: '先停下，', suffix: '。' }), 5);
+  assert.equal(quoteSourceLine(twice, { exact: '确认卡写清收款方' }, 'how'), 5);
+  assert.equal(quoteSourceLine(twice, { exact: '确认卡写清收款方' }), 2);
+});
+
+test('reply：正文评论追加 agent 消息走回复端点（带 baseRevision），不碰状态；画布标注、空回复、服务不在都拒绝', async (t) => {
+  const made = makeArticleWithComments(t);
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (urlString.endsWith('/health')) return { status: 200, json: { ok: true } };
+    if (opts.method === 'POST') return { status: 200, json: { revision: 3, annotation: { status: 'open' } } };
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const ok = recorder();
+  assert.equal(await runReply(['reply', '#2', '改好了，见', 'B4', '--page', 't-proj_notes', '--registry', made.registry], { ...ok.io, env: made.env, requestFn }), 0, ok.err.join('\n'));
+  assert.deepEqual(ok.out, ['#2 ← agent：改好了，见 B4（状态仍是 open）']);
+  const post = calls.find((call) => call.method === 'POST');
+  assert.equal(post.url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
+  assert.deepEqual(post.body, { entry: 't-proj_notes', baseRevision: 2, text: '改好了，见 B4' });
+
+  // 跨页引用 <project>_<article>#n：基页是 registry 第一个页（t-page），评论在文章桶里。
+  const cross = recorder();
+  calls.length = 0;
+  assert.equal(await runReply(['reply', 't-proj_notes#2', '再看一下', '--registry', made.registry], { ...cross.io, env: made.env, requestFn }), 0, cross.err.join('\n'));
+  const crossPost = calls.find((call) => call.method === 'POST');
+  assert.equal(crossPost.url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
+  assert.equal(crossPost.body.entry, 't-proj_notes');
+
+  const canvas = recorder();
+  assert.equal(await runReply(['reply', '#1', 'x', '--page', 't-proj_notes', '--registry', made.registry], { ...canvas.io, env: made.env, requestFn }), 1);
+  assert.ok(canvas.err.some((line) => line.includes('#1 是画布标注，没有线程')), canvas.err.join('\n'));
+
+  assert.throws(() => parseArgs(['reply', '#2']), /reply 需要引用与回复内容/);
+  assert.deepEqual(parseArgs(['reply', '#2', 'a', 'b', '--page', 'p_a']), { command: 'reply', refs: ['#2'], text: 'a b', flags: { page: 'p_a' } });
+  const blank = recorder();
+  assert.equal(await runReply(['reply', '#2', '  ', '--page', 't-proj_notes', '--registry', made.registry], { ...blank.io, env: made.env, requestFn }), 1);
+  assert.ok(blank.err.some((line) => line.includes('回复内容是空的')));
+
+  const down = recorder();
+  assert.equal(await runReply(['reply', '#2', 'x', '--page', 't-proj_notes', '--registry', made.registry], { ...down.io, env: made.env, requestFn: offline }), 1);
+  assert.ok(down.err.some((line) => line.includes('reply 走服务端点')), down.err.join('\n'));
+});
+
+test('mark / locate 在文章页上作用于正文评论：状态端点走 @prose 账本；locate 落到文章源文件的行', async (t) => {
+  const made = makeArticleWithComments(t);
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (opts.method === 'POST') return { status: 200, json: { revision: 3, annotation: { status: 'check' } } };
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const mk = recorder();
+  assert.equal(await runMark(['mark', '#2', 'check', '--page', 't-proj_notes', '--registry', made.registry], { ...mk.io, env: made.env, requestFn }), 0, mk.err.join('\n'));
+  assert.deepEqual(mk.out, ['#2 → check']);
+  const post = calls.find((call) => call.method === 'POST');
+  assert.equal(post.url, 'http://127.0.0.1:1/annotations/%40prose/2/status');
+  assert.equal(post.body.entry, 't-proj_notes');
+
+  const loc = recorder();
+  assert.equal(await runLocate(['locate', '#2', '--page', 't-proj_notes', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
+  assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
 });

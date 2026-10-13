@@ -22,7 +22,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 | URL | 内容 |
 | --- | --- |
 | `/<project>/` | 文章列表、概念、空 ref 列表 |
-| `/<project>/<article>/` | 文章：左目录（sections）、正文、右评论栏（M2 占位）、概念抽屉 |
+| `/<project>/<article>/` | 文章：左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、概念抽屉 |
 | `/<project>/concepts/<名字>/` | 概念：状态、定义、正文、用到它的文章 |
 | `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与概念 |
 

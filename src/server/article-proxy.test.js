@@ -1,5 +1,8 @@
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
 import http from 'node:http';
+import os from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
 
 import { createArticleHandler, siteWaitPageHtml } from './article-proxy.js';
@@ -18,6 +21,18 @@ function fakeDevServer(snapshot, extra = {}) {
 }
 
 const isProject = (id) => id === 'demo';
+
+/** project demo 登记在临时目录，文章目录在盘上（注入的桶要求文章存在）。 */
+function demoRegistry(t, articles) {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-article-proxy-unit-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  for (const id of articles) {
+    const dir = path.join(root, 'docs', 'pinpoint', 'articles', id);
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'index.mdx'), `---\ntitle: ${id}\n---\n`);
+  }
+  return { entries: [], projects: [{ id: 'demo', kind: 'project', path: root }], resolve: () => null };
+}
 
 test('不归站点的请求不碰：返回 false，也不拉起站点', () => {
   const dev = fakeDevServer({ state: 'idle', port: 1 });
@@ -77,7 +92,8 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
   await new Promise((resolve) => upstream.listen(0, '127.0.0.1', resolve));
   t.after(() => upstream.close());
   const { port } = upstream.address();
-  const handle = createArticleHandler({ isProject, devServer: fakeDevServer({ state: 'ready', port }) });
+  const registry = demoRegistry(t, ['a', 'gz']);
+  const handle = createArticleHandler({ registry, isProject, devServer: fakeDevServer({ state: 'ready', port }) });
   const proxy = http.createServer((req, res) => {
     if (!handle(req, res)) { res.statusCode = 404; res.end('next'); }
   });
@@ -87,14 +103,20 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
 
   const page = await fetch(`${origin}/demo/a/?q=1`);
   assert.equal(page.headers.get('x-up'), '/_astro/demo/a/?q=1');
-  assert.match(await page.text(), /<h1>a<\/h1><script>window\.__pinpointEntry='demo'<\/script>/);
+  assert.match(await page.text(), /<h1>a<\/h1><script>window\.__pinpointEntry='demo_a';window\.__pinpointProse=\{"project":"demo","article":"a"\}<\/script>/);
+
+  // project 首页、概念页不是文章页，不存在的文章没有桶：都不注入。
+  for (const p of ['/demo/', '/demo/concepts/x/', '/demo/ghost/']) {
+    const other = await fetch(`${origin}${p}`);
+    assert.doesNotMatch(await other.text(), /__pinpoint/, p);
+  }
 
   const data = await fetch(`${origin}/demo/data.json`);
   assert.equal(await data.text(), '{"a":"</body>"}');
 
   const gz = await fetch(`${origin}/demo/gz/`);
   assert.equal(gz.headers.get('content-encoding'), null);
-  assert.match(await gz.text(), /^<html><body>gz<script>window\.__pinpointEntry='demo'/);
+  assert.match(await gz.text(), /^<html><body>gz<script>window\.__pinpointEntry='demo_gz'/);
 
   const head = await fetch(`${origin}/demo/a/`, { method: 'HEAD' });
   assert.equal(head.status, 200);

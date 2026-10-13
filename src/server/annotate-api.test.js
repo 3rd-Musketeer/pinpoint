@@ -49,14 +49,17 @@ test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown i
   assert.deepEqual(resolveRequestEntry(registry, 'ghost', ['tpl-page']), { entry: 'ghost', unknown: true });
 });
 
-test('resolveRequestEntry: a registered project id is a bucket (article pages annotate under it)', (t) => {
+test('resolveRequestEntry: an article page id <project>_<article> is a bucket; the bare project id is not', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-proj-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const registryFile = path.join(dir, 'registry.json');
   const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'e2e', 'project-site');
   fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'e2e-project', kind: 'project', path: projectRoot }] }));
   const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
-  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project'), { entry: 'e2e-project' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project_commit-confirm'), { entry: 'e2e-project_commit-confirm' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project_takeover'), { entry: 'e2e-project_takeover' });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project_ghost'), { entry: 'e2e-project_ghost', unknown: true });
+  assert.deepEqual(resolveRequestEntry(registry, 'e2e-project'), { entry: 'e2e-project', unknown: true });
   assert.deepEqual(resolveRequestEntry(registry, 'ghost'), { entry: 'ghost', unknown: true });
 });
 
@@ -413,6 +416,7 @@ test('route dispatch: which method+path combos are claimed and which fall throug
     ['POST', '/save', 400],
     ['POST', '/image', 400],
     ['POST', '/annotations/index/1/status', 400],
+    ['POST', '/annotations/index/1/reply', 400],
   ];
   for (const [method, url, status] of claimed) {
     const { handled, res } = await call(handler, method, url, method === 'GET' ? undefined : {});
@@ -425,6 +429,7 @@ test('route dispatch: which method+path combos are claimed and which fall throug
     ['POST', '/registry'], ['POST', '/health'], ['POST', '/annotate.js'], ['POST', '/annotations'],
     ['PUT', '/save'], ['PUT', '/registry'], ['DELETE', '/save'], ['DELETE', '/registry/folders'],
     ['POST', '/annotations/index/1'], ['POST', '/annotations/index/1/status/x'],
+    ['POST', '/annotations/index/1/reply/x'],
   ];
   for (const [method, url] of fallsThrough) {
     const { handled } = await call(handler, method, url, method === 'GET' ? undefined : {});
@@ -444,4 +449,47 @@ test('route dispatch: HEAD and GET share the annotate client route; HEAD elsewhe
   const { handler } = withFixture(t);
   assert.equal((await call(handler, 'HEAD', '/health')).handled, false);
   assert.equal((await call(handler, 'HEAD', '/registry')).handled, false);
+});
+
+test('article bucket: prose comments save to <project>_<article>/@prose.json; /reply appends an agent message and broadcasts', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-prose-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dataRoot = path.join(dir, 'data');
+  const registryFile = path.join(dir, 'registry.json');
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'e2e', 'project-site');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'e2e-project', kind: 'project', path: projectRoot }] }));
+  const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
+  const handler = createAnnotateHandler({ dataRoot, registry });
+  const entry = 'e2e-project_commit-confirm';
+
+  const saved = await call(handler, 'POST', '/save', {
+    page: '@prose', entry, path: '/e2e-project/commit-confirm/', baseRevision: 0,
+    annotations: [{ id: 'p1', type: 'prose', content: '这句改短', quote: { exact: '先弹', prefix: '之前', suffix: '；' }, messages: [] }],
+  });
+  assert.equal(saved.res.statusCode, 200);
+  assert.ok(fs.existsSync(path.join(dataRoot, entry, '@prose.json')));
+  assert.equal(saved.json.annotations[0].n, 1);
+
+  const sse = mockRes();
+  const sseReq = new EventEmitter();
+  sseReq.method = 'GET';
+  sseReq.url = '/events';
+  await handler(sseReq, sse, '/events');
+  t.after(() => sseReq.emit('close'));
+  const bad = await call(handler, 'POST', '/annotations/@prose/1/reply', { entry, baseRevision: 0, text: 'x' });
+  assert.equal(bad.res.statusCode, 409);
+  const ok = await call(handler, 'POST', '/annotations/@prose/1/reply', { entry, baseRevision: 1, text: '改了' });
+  assert.equal(ok.res.statusCode, 200);
+  assert.equal(ok.json.revision, 2);
+  assert.equal(ok.json.annotation.status, 'open');
+  assert.equal(ok.json.message.who, 'agent');
+  assert.equal(ok.json.message.text, '改了');
+  const event = sse.text.split('\n').find((line) => line.startsWith('data: {'));
+  const payload = JSON.parse(event.slice('data: '.length));
+  assert.deepEqual([payload.entry, payload.page, payload.revision], [entry, '@prose', 2]);
+  assert.equal(payload.annotations[0].messages[0].text, '改了');
+
+  const ghost = await call(handler, 'POST', '/annotations/@prose/1/reply', { entry: 'e2e-project', baseRevision: 2, text: 'x' });
+  assert.equal(ghost.res.statusCode, 400);
+  assert.equal(ghost.json.error, 'unknown_entry');
 });

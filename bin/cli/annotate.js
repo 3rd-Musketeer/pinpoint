@@ -366,3 +366,62 @@ export async function runMark(argv, io = {}) {
   }
   return failed || errors.length ? 1 : 0;
 }
+
+export async function runReply(argv, io = {}) {
+  const parsed = guardParse(argv, io);
+  if (typeof parsed === 'number') return parsed;
+  if (parsed.help) return 0;
+  const { env, out, err, requestFn } = ioOf(io);
+  const text = String(parsed.text || '').trim();
+  if (!text) {
+    err('错误：回复内容是空的。');
+    return 1;
+  }
+  const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
+  if (!context) return 1;
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  const crossPageRows = (pageRef) => {
+    const other = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
+    return other ? [...other.frameRows, ...other.docRows] : [];
+  };
+  const rows = [...context.frameRows, ...context.docRows];
+  const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  for (const error of errors) err(error);
+  const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
+  if (annotationPicks.length !== 1) {
+    if (!errors.length) err(annotationPicks.length ? 'reply 一次只回一条评论，引用命中了多条。' : '没有命中的评论。');
+    return 1;
+  }
+  const row = annotationPicks[0].row;
+  if (row.type !== 'prose') {
+    err(`#${row.n} 是画布标注，没有线程；reply 只用于正文评论。要写状态用 ppnt mark。`);
+    return 1;
+  }
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  try {
+    const health = await requestFn(`${origin}/health`);
+    if (health.status !== 200) throw new Error(`health ${health.status}`);
+  } catch {
+    err(`错误：pinpoint 服务未在跑（${origin}）；reply 走服务端点，先 \`ppnt start\`。`);
+    return 1;
+  }
+  try {
+    const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
+    const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
+    const res = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}/${row.n}/reply`, {
+      method: 'POST',
+      body: { entry: row.__bucket, baseRevision, text },
+    });
+    if (res.status !== 200) {
+      const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
+      out(`#${row.n} ✗ ${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`);
+      return 1;
+    }
+    const status = res.json && res.json.annotation ? res.json.annotation.status : row.status;
+    out(`#${row.n} ← agent：${text}（状态仍是 ${status || 'open'}）`);
+    return 0;
+  } catch (error) {
+    out(`#${row.n} ✗ ${error.message}`);
+    return 1;
+  }
+}

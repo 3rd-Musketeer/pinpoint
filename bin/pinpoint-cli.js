@@ -23,7 +23,7 @@ import { runAdd, runMove, runPrune, runRename, runRemove } from './cli/registry.
 import { runFolder } from './cli/folders.js';
 import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
-import { runCheck, runLocate, runShot, runMark } from './cli/annotate.js';
+import { runCheck, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
 import { runList } from './cli/list.js';
 
 // 原有导出面保持不变：测试与 bin/pinpoint.mjs 仍从这里 import。
@@ -98,6 +98,7 @@ export {
   planShotJobs,
   runShot,
   runMark,
+  runReply,
 } from './cli/annotate.js';
 export {
   pageListRows,
@@ -130,6 +131,7 @@ export async function run(argv, io = {}) {
     case 'locate': return runLocate(argv, io);
     case 'shot': return runShot(argv, io);
     case 'mark': return runMark(argv, io);
+    case 'reply': return runReply(argv, io);
     case 'prune': return runPrune(argv, io);
     default:
       err(`错误：未知命令：${argv[0]}`);

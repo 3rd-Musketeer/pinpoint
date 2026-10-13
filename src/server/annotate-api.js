@@ -23,6 +23,7 @@ const SRC = path.resolve(__dirname, '..');
 const ROOT = path.resolve(SRC, '..');
 // pp2 状态机端点：/annotations/<page>/<id|#n>/status
 const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
+const REPLY_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/reply$/;
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();
@@ -159,14 +160,13 @@ function handleSse(req, res) {
 // ('pinpoint', historical behavior); an explicit but unknown id is a loud 400 —
 // misconfiguration must not silently land in the wrong bucket. 桶 = 页之后，
 // 合法 id 不止 registry 条目：本地 manifest 页（content/previews/_index.json，
-// 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：文章页注入的标注
-// 客户端以 project id 为桶（article-proxy.js，M2 前的暂定），登记过的 project
-// 也是合法桶；project 与页共用 id 命名空间，不会撞。pp3 M1：文章画布页
-// （<project>_<article>，画布标注与正文评论共用的桶）同样合法。
+// 没有条目可以登记）的桶同样是页桶，经 localIds 放行。pp3：一篇 article 的桶是
+// 它的画布页 id `<project>_<article>`（projects.js articlePageId，画布标注与正文评论
+// 共用，common-m1.md §2），project 登记了、文章的 index.mdx 在盘上才算
+// （article-board.js resolveArticleTarget）；project id 本身不是桶。
 export function resolveRequestEntry(registry, raw, localIds = []) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
   const known = id === DEFAULT_ENTRY || registry.resolve(id) != null || localIds.includes(id)
-    || (typeof registry.resolveProject === 'function' && registry.resolveProject(id) != null)
     || resolveArticleTarget(registry, id) != null;
   return known ? { entry: id } : { entry: id, unknown: true };
 }
@@ -509,6 +509,31 @@ export function createAnnotateHandler(options = {}) {
         }
         broadcastAnnotations(result.doc, entryId);
         sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+        return true;
+      },
+    },
+    // pp3 M2：ppnt reply 的后端 —— 往正文评论的线程追加一条 agent 消息，状态不动。
+    {
+      methods: ['POST'],
+      match: REPLY_ROUTE,
+      run: async ({ req, res, urlPath }) => {
+        const parts = urlPath.match(REPLY_ROUTE);
+        const parsed = await readEntryBody(req, res);
+        if (!parsed) return true;
+        const { body, entryId } = parsed;
+        const rawId = decodeURIComponent(parts[2]);
+        const result = storeFor(entryId).appendMessage({
+          page: decodeURIComponent(parts[1]),
+          id: /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId,
+          text: body.text,
+          baseRevision: body.baseRevision,
+        });
+        if (result.status !== 200) {
+          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          return true;
+        }
+        broadcastAnnotations(result.doc, entryId);
+        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation, message: result.message });
         return true;
       },
     },

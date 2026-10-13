@@ -88,6 +88,18 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 存量账本（previews 直开页与 mention 帧旧落 pinpoint 桶、画布账本按工作台 pathname
 分本）由 `scripts/migrate-ledgers.mjs` 一次性迁到页桶 —— 迁移是这次模型切换的一部分。
 
+## 正文评论（pp3 M2）
+
+article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布上的标注是同一个队列：
+
+- 桶 = 文章页 id `<project>_<article>`（`projects.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
+- 一行的形状：`{ id, n, type: "prose", status, content, quote: { exact, prefix, suffix }, section, path, created_at, messages: [{ who: "owner" | "agent", text, at }] }`。`content` 是 owner 的第一句，之后的来回在 `messages`。
+- 锚点是 W3C TextQuote 式（`src/shared/text-quote.js`）：选中文字 + 前后各 32 字，`section` 只是提示。正文先抽成规范化文本（空白连成一个空格），每次加载都重新定位：逐字找 `exact`，多处时按前后文吻合度挑，同分看节。`exact` 一处都找不到就在右栏标“失效”，显示存下的引文，不画高亮。不做模糊匹配。画布卡片（`[data-pp-canvas]`）、脚本、错误条不进文本，选区落在那里不出“评论”。
+- 注入：`article-proxy` 只给文章页注入，带 `window.__pinpointProse`；客户端见到它只跑正文评论（`src/client/prose-comments.js`），不起画布标注的工具条、侧栏和元素标注。project 首页、概念页不注入。
+- 右栏：pending / closed 两段筛选（与画布列表同一口径），每条线程是序号钉（状态色）+ 状态字 + 引文 + 消息（“你” / agent，时间）+ 回复框，行尾“完成”（→ close）或“重新打开”（→ open）。点高亮聚焦线程，点线程定位高亮。
+- 写入：客户端把改动记成操作（新建、回复、改状态），存盘撞上 409 时重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。owner 回复或改了引文算 owner 编辑，服务端把状态回 open。
+- agent：`ppnt check <project>_<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <ref> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（body 带 `entry`、`baseRevision`、`text`），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；改状态照旧 `ppnt mark`。
+
 ## 控制面
 
 在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。

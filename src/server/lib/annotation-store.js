@@ -20,13 +20,23 @@ export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
  * 客户端（PAGE='@canvas'）与服务端各写一个文件。 */
 export const CANVAS_LEDGER = '@canvas';
 
-/** 原始 page 串 → 账本 doc key：画布账本原样保留，其余走 annotationSlug。
- * 路由层（GET /annotations/<page>）与 store 内部必须同用这一条，否则
- * '@canvas' 会在路由处被 slug 成 '_canvas' 而读不到文件。 */
+/** 正文评论账本的固定名（pp3 M2）：一篇 article 的正文评论住在这篇的桶
+ *  `<articlePageId>/@prose.json`，和画布的 `@canvas.json` 同桶、同一套 #n。
+ *  同样不过 slug。 */
+export const PROSE_LEDGER = '@prose';
+
+const FIXED_LEDGERS = new Set([CANVAS_LEDGER, PROSE_LEDGER]);
+
+/** 原始 page 串 → 账本 doc key：固定名账本（@canvas、@prose）原样保留，其余走
+ * annotationSlug。路由层（GET /annotations/<page>）与 store 内部必须同用这一条，
+ * 否则 '@canvas' 会在路由处被 slug 成 '_canvas' 而读不到文件。 */
 export function ledgerKey(raw) {
   const s = String(raw ?? '');
-  return s === CANVAS_LEDGER ? CANVAS_LEDGER : annotationSlug(s);
+  return FIXED_LEDGERS.has(s) ? s : annotationSlug(s);
 }
+
+/** 线程消息的作者：owner 在页面上写，agent 只经 /reply 端点写。 */
+export const MESSAGE_AUTHORS = new Set(['owner', 'agent']);
 
 /** targets 的稳定指纹（编辑目标判定用：选择器集合变了才算改了目标）。 */
 function targetsFingerprint(annotation) {
@@ -34,6 +44,15 @@ function targetsFingerprint(annotation) {
     ? annotation.targets
     : (annotation && annotation.selector ? [{ selector: annotation.selector }] : []);
   return list.map((target) => `${target.ref || ''}${target.selector || ''}`).join('') || '';
+}
+
+/** 正文评论里 owner 写的部分（引文 + owner 的回复）的指纹：变了算 owner 编辑，
+    状态回 open。agent 的回复不算（它只经 /reply 写，且不改状态）。 */
+function ownerThreadFingerprint(annotation) {
+  const quote = annotation && annotation.quote && typeof annotation.quote === 'object' ? String(annotation.quote.exact || '') : '';
+  const messages = Array.isArray(annotation && annotation.messages) ? annotation.messages : [];
+  const owner = messages.filter((m) => m && m.who !== 'agent').map((m) => String(m.text ?? ''));
+  return JSON.stringify([quote, owner]);
 }
 
 export function createAnnotationStore(options) {
@@ -241,7 +260,9 @@ export function createAnnotationStore(options) {
         // 引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）不该
         // 因为没带 n 就把既有引用烧悬空。
         if (Number.isInteger(before.n) && !Number.isInteger(a.n)) a.n = before.n;
-        const edited = a.content !== before.content || targetsFingerprint(a) !== targetsFingerprint(before);
+        const edited = a.content !== before.content
+          || targetsFingerprint(a) !== targetsFingerprint(before)
+          || ownerThreadFingerprint(a) !== ownerThreadFingerprint(before);
         if (edited) {
           // owner 编辑正文或目标 → 保存时状态回 open（服务端强制，与客户端一致）。
           a.status = 'open';
@@ -298,6 +319,39 @@ export function createAnnotationStore(options) {
     return { status: 200, doc, annotation: annotations[index] };
   }
 
+  /** ppnt reply 的后端：往一条正文评论的线程末尾追加一条 agent 消息，状态不动。 */
+  function appendMessage(input) {
+    const safePage = ledgerKey(input.page ?? 'index');
+    if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
+      return { status: 400, error: 'invalid_base_revision', doc: readDoc(safePage) };
+    }
+    const disk = readDoc(safePage);
+    if (disk.revision !== input.baseRevision) {
+      return { status: 409, error: 'revision_conflict', doc: disk };
+    }
+    const text = typeof input.text === 'string' ? input.text.trim() : '';
+    if (!text) return { status: 400, error: 'empty_message', detail: '回复不能为空', doc: disk };
+    const who = input.who || 'agent';
+    if (!MESSAGE_AUTHORS.has(who)) return { status: 400, error: 'invalid_author', detail: `who 只能是 ${[...MESSAGE_AUTHORS].join(' / ')}`, doc: disk };
+    const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
+    if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
+    const before = disk.annotations[index];
+    if (before.type !== 'prose') {
+      return { status: 400, error: 'not_a_thread', detail: `#${before.n} 不是正文评论，没有线程`, doc: disk };
+    }
+    const message = { who, text, at: now().toISOString() };
+    const annotations = disk.annotations.slice();
+    annotations[index] = { ...before, messages: [...(Array.isArray(before.messages) ? before.messages : []), message] };
+    const doc = writeDoc(safePage, {
+      path: disk.path || '',
+      updated_at: message.at,
+      revision: disk.revision + 1,
+      page_updated_at: disk.page_updated_at,
+      annotations,
+    });
+    return { status: 200, doc, annotation: annotations[index], message };
+  }
+
   function listDocs() {
     const output = {};
     if (!fs.existsSync(dataDir)) return output;
@@ -344,6 +398,7 @@ export function createAnnotationStore(options) {
     readDoc,
     save,
     setStatus,
+    appendMessage,
     writeImage,
   };
 }

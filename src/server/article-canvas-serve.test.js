@@ -8,6 +8,7 @@ import path from 'node:path';
 import test from 'node:test';
 
 import { annotationBucketFor } from './article-proxy.js';
+import { articleIdOfPath } from './lib/article-routes.js';
 import { createAnnotateHandler, resolveRequestEntry } from './annotate-api.js';
 import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 import { framePageHtml, resolveFrameTarget } from './lib/frame-doc.js';
@@ -139,15 +140,15 @@ test('GET /api/projects/<project>/articles/<article>/canvas → articleCanvas；
   assert.deepEqual(ghost.errors, [{ message: '文章不存在：articles/ghost/index.mdx' }]);
 });
 
-test('文章页注入的桶：登记的文章 → 画布页 id；project 首页、概念页、不存在的文章 → project id', (t) => {
+test('文章页注入的桶：登记的文章 → 画布页 id；project 首页、概念页、llms.txt、不存在的文章不注入', (t) => {
   const { registry } = fixture(t);
-  const route = (pathname) => ({ kind: 'article', project: 'demo', upstream: `/_astro${pathname}?x=1` });
+  const route = (pathname) => ({ kind: 'article', project: 'demo', article: articleIdOfPath(pathname), upstream: `/_astro${pathname}?x=1` });
   assert.equal(annotationBucketFor(route('/demo/flow/'), registry), 'demo_flow');
   assert.equal(annotationBucketFor(route('/demo/flow'), registry), 'demo_flow');
-  assert.equal(annotationBucketFor(route('/demo/'), registry), 'demo');
-  assert.equal(annotationBucketFor(route('/demo/concepts/x/'), registry), 'demo');
-  assert.equal(annotationBucketFor(route('/demo/ghost/'), registry), 'demo');
-  assert.equal(annotationBucketFor(route('/demo/llms.txt'), registry), 'demo');
+  assert.equal(annotationBucketFor(route('/demo/'), registry), null);
+  assert.equal(annotationBucketFor(route('/demo/concepts/x/'), registry), null);
+  assert.equal(annotationBucketFor(route('/demo/ghost/'), registry), null);
+  assert.equal(annotationBucketFor(route('/demo/llms.txt'), registry), null);
 });
 
 test('watch：project 内容目录进 watcher；帧变更重编并通知画布页，只改正文不通知', async (t) => {

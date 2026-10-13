@@ -146,7 +146,15 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
 - **孤儿（orphan）**：一本账本对应的表面已不存在（文档文件删了、页不在
   registry 与 manifest 里了）。`check` / `status --page` 单独列出，清理只经
   `ppnt prune <页>`。
+- 文章页（pp3）：桶 = 文章页 id `<project>_<article>`；画布是 `@canvas.json`，正文评论是固定名 `@prose.json`，同一套 `#n`。
 浏览器 `localStorage` 只是缓存，不是权威。
+
+**正文评论（prose comment）· pp3 M2 · 2026-10-13**
+article 页上选中正文文字写下的评论：一条标注，`type: "prose"`，锚点是引文（选中文字 + 前后文，section 作提示），
+进这篇的桶、`@prose` 账本，与画布标注同一个队列和状态机。线程 = owner 的第一句（`content`）+ `messages`（owner 与 agent 的来回）；
+agent 只经 `ppnt reply` 回复，回复不改状态。正文改了每次重新定位，引文找不到就标“失效”。
+字段与流程见 `docs/annotation.md`“正文评论”。
+要避开：把它说成画布标注或“文档标注”（那是 `/sites/` 下按路径分本的账本）；把“失效”说成已解决。
 
 **mention（提及）与 embed（嵌入）**
 mention 是语义：doc 正文用 `<div data-pinpoint-frame="<pageId>/<screenId>"></div>` 引用一个活 frame。

@@ -331,3 +331,58 @@ test('owner 关闭：open / check / done 三态经 /save 入 close，撤销回�
     assert.equal(undone.doc.annotations[0].status, wanted);
   }
 });
+
+test('@prose 账本（pp3 M2）：文件名原样；与 @canvas 同桶共用 #n', (t) => {
+  const { dataDir, store } = withStore(t);
+  store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布' }] });
+  const saved = store.save({
+    page: '@prose',
+    path: '/demo/intro/',
+    baseRevision: 0,
+    annotations: [{ id: 'p1', type: 'prose', content: '这句改短', section: 'why', quote: { exact: '扣给谁', prefix: '什么时候会被扣、', suffix: '，并且' }, messages: [] }],
+  });
+  assert.equal(saved.status, 200);
+  assert.ok(fs.existsSync(path.join(dataDir, '@prose.json')));
+  assert.equal(saved.doc.page, '@prose');
+  assert.equal(saved.doc.annotations[0].n, 2, '#n 按桶单调：画布 #1 之后是 #2');
+  assert.deepEqual(saved.doc.annotations[0].quote, { exact: '扣给谁', prefix: '什么时候会被扣、', suffix: '，并且' });
+});
+
+test('appendMessage：agent 回复追加到线程末尾，状态不动；只认正文评论', (t) => {
+  const { store } = withStore(t);
+  store.save({ page: '@prose', baseRevision: 0, annotations: [{ id: 'p1', type: 'prose', content: '这句改短', messages: [] }] });
+  store.setStatus({ page: '@prose', id: 1, status: 'check', baseRevision: 1 });
+
+  assert.equal(store.appendMessage({ page: '@prose', id: 1, text: 'x' }).status, 400, '要 baseRevision');
+  assert.equal(store.appendMessage({ page: '@prose', id: 1, text: 'x', baseRevision: 1 }).status, 409, 'revision 过期');
+  assert.equal(store.appendMessage({ page: '@prose', id: 1, text: '  ', baseRevision: 2 }).error, 'empty_message');
+  assert.equal(store.appendMessage({ page: '@prose', id: 9, text: 'x', baseRevision: 2 }).status, 404);
+  assert.equal(store.appendMessage({ page: '@prose', id: 1, text: 'x', who: 'bot', baseRevision: 2 }).error, 'invalid_author');
+
+  const ok = store.appendMessage({ page: '@prose', id: 1, text: ' 改了，见 B4 ', baseRevision: 2 });
+  assert.equal(ok.status, 200);
+  assert.equal(ok.doc.revision, 3);
+  assert.deepEqual(ok.annotation.messages, [{ who: 'agent', text: '改了，见 B4', at: '2026-07-10T00:00:00.000Z' }]);
+  assert.equal(ok.annotation.status, 'check', '回复不改状态');
+
+  store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布' }] });
+  assert.equal(store.appendMessage({ page: '@canvas', id: 'c1', text: 'x', baseRevision: 1 }).error, 'not_a_thread');
+});
+
+test('/save 正文评论：owner 回复或改引文回 open；agent 消息原样回存不算编辑', (t) => {
+  const { store } = withStore(t);
+  const base = { id: 'p1', type: 'prose', content: '这句改短', quote: { exact: '扣给谁' }, messages: [] };
+  store.save({ page: '@prose', baseRevision: 0, annotations: [base] });
+  store.setStatus({ page: '@prose', id: 1, status: 'done', baseRevision: 1 });
+  const replied = store.appendMessage({ page: '@prose', id: 1, text: '改好了', baseRevision: 2 }).annotation;
+
+  // 客户端把带 agent 消息的行原样存回（比如同一页上另一条评论被改了）：不算编辑，done 保持。
+  const same = store.save({ page: '@prose', baseRevision: 3, annotations: [replied] });
+  assert.equal(same.status, 200);
+  assert.equal(same.doc.annotations[0].status, 'done');
+
+  // owner 在线程里回一句：回 open。
+  const ownerReply = { ...replied, messages: [...replied.messages, { who: 'owner', text: '还不够短', at: '2026-07-10T00:01:00.000Z' }] };
+  const reopened = store.save({ page: '@prose', baseRevision: 4, annotations: [ownerReply] });
+  assert.equal(reopened.doc.annotations[0].status, 'open');
+});

@@ -22,6 +22,7 @@ const COMMANDS = {
   locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page']) },
   mark: { positional: null, flags: new Set(['registry', 'status', 'page']) },
+  reply: { positional: null, flags: new Set(['registry', 'page']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
 };
 
@@ -53,6 +54,7 @@ export const USAGE = `用法：
   pinpoint locate <引用…> [--page <页>]                标注定位：#n → 源文件:行 · 组件（共用 n 帧）
   pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
   pinpoint mark <引用…> done|check                     写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
+  pinpoint reply <引用> <回复>                          在一条正文评论的线程里回一句（agent 消息，不改状态）
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
   pinpoint prune <页> [--dry-run]                      删除该页桶里的孤儿账本（表面已不存在；--dry-run 只列不删）
   pinpoint start | stop | restart                      起 / 停 / 重起常驻服务
@@ -126,7 +128,7 @@ build / render —— pp2 的编译面（<页> = registry dir 条目 id 或模�
                                        并在末尾打出路径；--full 不截断
   --registry 路径                      解析页 id 用哪份 registry（同 add）
 
-check / locate / shot / mark —— pp2 的标注面。引用语法四处共用：
+check / locate / shot / mark / reply —— pp2 的标注面。引用语法几处共用：
   #12 · <entry>#12 · #3-#7（区间）· B3（帧，展开为帧内标注）· B（整段）·
   帧 id / 段 id（与 B3 / B 同义）· <页>（整页，shot）· @frame:<页>/<屏> · @a:<id> ·
   --status open|check|done|close|all
@@ -147,7 +149,14 @@ check / locate / shot / mark —— pp2 的标注面。引用语法四处共用�
                                        走服务状态端点（带 baseRevision）；冲突 / 非法转换
                                        打 409 原因，不中断其他条；open 由 owner 编辑触发、
                                        close 只在工作台，两者 mark 都不写
-  --page <页>                          locate / shot / mark 的基页（缺省 registry 第一个可编译页）
+  pinpoint reply <引用> <回复>
+                                       正文评论（article 页选中文字的评论）的线程末尾追加一条
+                                       agent 消息，走服务回复端点（带 baseRevision），状态不动；
+                                       要改状态另用 mark。画布标注没有线程，reply 拒绝
+  文章页的页 id 是 <project>_<article>（如 browser-use_payment-confirm）：
+  check 它列画布标注与正文评论（引文、节、线程、源文件行）；mark / reply 用 --page 它，
+  或写跨页引用 browser-use_payment-confirm#3
+  --page <页>                          locate / shot / mark / reply 的基页（缺省 registry 第一个可编译页）
   --registry 路径                      同 add
 
 list —— 把口头说的页对上页 id。每页两行：id · 标题 · 类型（编译页 / 文档页 / 网页 /
@@ -224,6 +233,10 @@ export function parseArgs(argv) {
   if (command === 'locate' || command === 'shot') {
     if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 帧 id / 段 id / 页 / @frame:p/s / @a:id）`);
     return { command, refs: positional, flags };
+  }
+  if (command === 'reply') {
+    if (positional.length < 2) throw new CliError('reply 需要引用与回复内容：ppnt reply <ref> "<回复>"');
+    return { command, refs: [positional[0]], text: positional.slice(1).join(' '), flags };
   }
   if (command === 'mark') {
     if (positional.length < 2) throw new CliError('mark 需要引用与状态：ppnt mark <ref…> done|check');

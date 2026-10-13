@@ -13,12 +13,20 @@
  */
 import { annotateClientSrc } from './annotate-bundle.js';
 
-export function annotateSnippet(entryId) {
-  return `<script>window.__pinpointEntry='${entryId}'</script><script src="${annotateClientSrc()}"></script>`;
+/**
+ * options.prose（pp3 M2，文章页）：`{ project, article }`。客户端见到
+ * `window.__pinpointProse` 就只跑正文评论（选中文字 → 右栏线程），不起画布
+ * 标注的工具条与侧栏；桶 = entryId（文章页 id），账本固定 @prose。
+ */
+export function annotateSnippet(entryId, options = {}) {
+  const prose = options.prose
+    ? `;window.__pinpointProse=${JSON.stringify({ project: String(options.prose.project), article: String(options.prose.article) }).replace(/</g, '\\u003c')}`
+    : '';
+  return `<script>window.__pinpointEntry='${entryId}'${prose}</script><script src="${annotateClientSrc()}"></script>`;
 }
 
-export function injectAnnotateClient(html, entryId) {
-  const snippet = annotateSnippet(entryId);
+export function injectAnnotateClient(html, entryId, options = {}) {
+  const snippet = annotateSnippet(entryId, options);
   if (/<\/body\s*>/i.test(html)) return html.replace(/<\/body\s*>/i, `${snippet}\n</body>`);
   return `${html}\n${snippet}\n`;
 }

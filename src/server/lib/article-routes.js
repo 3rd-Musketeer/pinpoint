@@ -75,12 +75,36 @@ function astroInternalUpstream(pathname) {
   return ASTRO_DEV_BASE + rest;
 }
 
+// project 内占用的第二段（/<project>/concepts/<slug>/）；与 projects.js 的
+// RESERVED_ARTICLE_IDS 同值（那边 import 本模块，这里不能反向 import）。
+const NON_ARTICLE_SEGMENTS = new Set(['concepts']);
+
+/**
+ * 一个 project 内路径是不是文章页：`/<project>/<article>/`（或不带尾斜杠、或
+ * `…/index.html`）返回 article id，否则 null（project 首页、概念页、llms.txt、
+ * 文章目录下的资源）。只看形状，不读盘：文章不存在时站点自己答 404。
+ */
+export function articleIdOfPath(pathname) {
+  const parts = String(pathname || '').split('/').filter(Boolean);
+  if (parts.length === 3 && parts[2] === 'index.html') parts.pop();
+  if (parts.length !== 2) return null;
+  let segment;
+  try {
+    segment = decodeURIComponent(parts[1]);
+  } catch {
+    return null;
+  }
+  if (!ENTRY_ID_PATTERN.test(segment) || NON_ARTICLE_SEGMENTS.has(segment)) return null;
+  return segment;
+}
+
 /**
  * 一次 HTTP 请求的路由判定。
  *   url          req.url（原样，含百分号编码与 query）
  *   isProject(id) project id 判定（通常是 (id) => isProjectId(registry, id)）
  * 返回 null（不归站点）或
- *   { kind: 'article', project, upstream }   文章页及 project 下的一切路径
+ *   { kind: 'article', project, article, upstream }   project 下的一切路径；article =
+ *                                             文章 id（文章页）或 null（首页、概念页…）
  *   { kind: 'internal', upstream }            Astro 的 vite 内部路径与 /_image
  * upstream = 发给 Astro 开发服务器的路径 + query。
  */
@@ -102,7 +126,7 @@ export function routeArticleRequest(url, isProject) {
   }
   if (!ENTRY_ID_PATTERN.test(segment) || isReservedSegment(segment)) return null;
   if (typeof isProject !== 'function' || !isProject(segment)) return null;
-  return { kind: 'article', project: segment, upstream: '/_astro' + pathname + search };
+  return { kind: 'article', project: segment, article: articleIdOfPath(pathname), upstream: '/_astro' + pathname + search };
 }
 
 /**
