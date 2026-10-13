@@ -12,6 +12,8 @@ test('newProseRow：type prose、open、空线程，不带 n', () => {
     created_at: '2026-10-13T00:00:00.000Z', messages: [],
   });
   assert.equal(isProseRow(row), true);
+  const hinted = newProseRow({ id: 'p2', content: '写全称', quote: { ...quote, start: 12, end: 15 }, at: 't' });
+  assert.deepEqual(hinted.quote, { ...quote, start: 12 }, '带上位置提示 start，不带 end');
   assert.equal(isProseRow({ id: 'c1', type: 'element' }), false);
 });
 

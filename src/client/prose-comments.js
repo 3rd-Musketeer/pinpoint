@@ -6,15 +6,21 @@
  * `<project>_<article>`），账本固定 @prose，与这篇画布的 @canvas 同桶、同一套 #n
  * 和状态机；GET /annotations 水合、POST /save 带 baseRevision、/events 同步。
  *
- * 锚点：src/shared/text-quote.js（exact + prefix / suffix + section 提示）。正文
- * 被抽成一条规范化文本（buildTextIndex：空白连成一个空格，块元素边界补一个空格），
- * 每次重画都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
+ * 锚点：src/shared/text-quote.js（exact + prefix / suffix + section 与 start 提示）。
+ * 正文被抽成一条规范化文本（buildTextIndex：块元素边界算一处空白，再交给
+ * normalizeWhitespace —— 两个 CJK 字之间的空白算没有，其余连成一个空格），每次重画
+ * 都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
  * 画布卡片（[data-pp-canvas]）、脚本、错误条不进文本，选区落在那里不出“评论”。
  *
  * 写入是操作队列（src/shared/prose-thread.js applyProseOps）：保存撞上 409 时把
- * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。 */
+ * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉；别的拒绝
+ * 把新评论退回草稿、回复退回输入框，右栏写出原因。
+ *
+ * 同步：SSE（/events）断了会自己重连，重连上就重新水合，补上断线期间漏掉的事件；
+ * pagehide 时关掉，从 bfcache 回来（pageshow persisted，比如从画布按“返回”）时重开
+ * 并重新水合。 */
 
-import { locateQuote, quoteFromText } from '../shared/text-quote.js';
+import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
 import {
   applyProseOps,
   authorLabel,
@@ -45,41 +51,32 @@ function esc(text) {
   });
 }
 
-/** 正文 → 规范化文本 + 每个文本节点的偏移表（map[k] = 原文第 k 个字符之前的规范化长度）。 */
+/** 正文 → 规范化文本 + 每个文本节点的偏移表（map[k] = 该节点第 k 个字符在规范化文本里的位置）。 */
 export function buildTextIndex(root) {
-  var parts = [];
-  var length = 0;
-  var lastSpace = true; // 开头的空白不进文本
-  var nodes = [];
-  function emit(ch) { parts.push(ch); length += 1; }
+  var raw = '';
+  var entries = [];
   function walk(el) {
     for (var child = el.firstChild; child; child = child.nextSibling) {
       if (child.nodeType === 3) {
-        var raw = child.data;
-        var map = new Array(raw.length + 1);
-        for (var k = 0; k < raw.length; k++) {
-          map[k] = length;
-          var c = raw.charAt(k);
-          if (/\s/.test(c)) {
-            if (!lastSpace) { emit(' '); lastSpace = true; }
-          } else {
-            emit(c);
-            lastSpace = false;
-          }
-        }
-        map[raw.length] = length;
-        nodes.push({ node: child, start: map[0], end: length, map: map });
+        entries.push({ node: child, at: raw.length });
+        raw += child.data;
       } else if (child.nodeType === 1) {
         if (child.matches(SKIP_SELECTOR)) continue;
         var block = BLOCK_TAGS.test(child.tagName);
-        if (block && !lastSpace) { emit(' '); lastSpace = true; }
+        if (block) raw += ' ';
         walk(child);
-        if (block && !lastSpace) { emit(' '); lastSpace = true; }
+        if (block) raw += ' ';
       }
     }
   }
   walk(root);
-  return { text: parts.join(''), nodes: nodes };
+  var norm = normalizeWhitespace(raw);
+  var nodes = entries.map(function (e) {
+    var len = e.node.data.length;
+    var map = norm.map.slice(e.at, e.at + len + 1);
+    return { node: e.node, start: map[0], end: map[len], map: map };
+  });
+  return { text: norm.text, nodes: nodes };
 }
 
 function sectionOfNode(node) {
@@ -269,9 +266,12 @@ export function startProseComments(options) {
           adopt(res.data);
           conflicts += 1;
         } else {
-          // 服务拒了这批操作（非法转换等）：丢掉它们，回到磁盘上的样子。
-          ops.splice(0, sent);
-          syncError = '保存被拒：' + ((res.data && (res.data.detail || res.data.error)) || res.status);
+          // 服务拒了这批操作（非法转换等）：从队列里拿掉、回到磁盘上的样子，但 owner 写的
+          // 字不丢 —— 新评论退回草稿，回复退回那条线程的输入框。
+          var rejected = ops.splice(0, sent);
+          var restored = restoreRejected(rejected);
+          syncError = '保存被拒：' + ((res.data && (res.data.detail || res.data.error)) || res.status)
+            + (restored ? '。原文已放回输入框' : '');
           if (res.data && Array.isArray(res.data.annotations)) adopt(res.data);
         }
         if (remoteStash && Number(remoteStash.revision) > revision) adopt(remoteStash);
@@ -296,6 +296,26 @@ export function startProseComments(options) {
       });
   }
 
+  // 被拒的操作里 owner 写的字：新评论 → 草稿（已有草稿时不顶掉它），回复 → 输入框。
+  var restoreText = {};   // textarea data-reply id -> 下次画右栏时放回的字
+  function restoreRejected(list) {
+    var restored = false;
+    list.forEach(function (op) {
+      if (op.op === 'create' && op.row && op.row.quote && !draft) {
+        var q = op.row.quote;
+        draft = { quote: q, section: op.row.section || '', start: Number.isInteger(q.start) ? q.start : Infinity };
+        restoreText.__draft = op.row.content || '';
+        focusedId = '__draft';
+        restored = true;
+      } else if (op.op === 'reply' && op.text) {
+        restoreText[op.id] = restoreText[op.id] ? restoreText[op.id] + '\n' + op.text : op.text;
+        if (focusedId !== '__draft') focusedId = op.id;
+        restored = true;
+      }
+    });
+    return restored;
+  }
+
   function enqueue(op) {
     ops.push(op);
     recompute();
@@ -309,9 +329,15 @@ export function startProseComments(options) {
         return r.json();
       })
       .then(function (doc) {
-        adopt(doc);
         hydrated = true;
         connection = 'online';
+        if (inflight) {
+          // 保存还在路上：这一版交给保存回来时一起处理（与 SSE 推来的同一条路）。
+          if (!remoteStash || Number(doc.revision) > Number(remoteStash.revision)) remoteStash = doc;
+          render();
+          return;
+        }
+        adopt(doc);
         recompute();
         flush();
       })
@@ -328,14 +354,38 @@ export function startProseComments(options) {
     hydrateTimer = setTimeout(hydrate, 3000);
   }
 
+  var events = null;
+  var eventsBroken = false;   // 断过一次：下次连上要重新水合
+  var reconnectTimer = 0;
+  var RECONNECT_MS = 2000;
   function connectEvents() {
     if (typeof EventSource === 'undefined') return;
+    closeEvents();
     var es;
     try { es = new EventSource(SERVER + '/events'); } catch (e) { return; }
+    events = es;
     es.onopen = function () {
-      if (connection === 'offline' && hydrated) { connection = 'online'; render(); }
+      if (es !== events) return;
+      if (eventsBroken) {
+        // 断线期间推的事件都丢了：从磁盘补一次。
+        eventsBroken = false;
+        hydrate();
+      } else if (connection === 'offline' && hydrated) {
+        connection = 'online';
+        render();
+      }
+    };
+    es.onerror = function () {
+      if (es !== events) return;
+      eventsBroken = true;
+      // CONNECTING：浏览器自己在重连，连上走 onopen。CLOSED：浏览器放弃了，自己再开一条。
+      if (es.readyState === 2) {
+        clearTimeout(reconnectTimer);
+        reconnectTimer = setTimeout(function () { if (es === events) connectEvents(); }, RECONNECT_MS);
+      }
     };
     es.addEventListener('annotations', function (ev) {
+      if (es !== events) return;
       var doc;
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
       if (!doc || doc.entry !== ENTRY || doc.page !== LEDGER) return;
@@ -348,8 +398,24 @@ export function startProseComments(options) {
       adopt(doc);
       recompute();
     });
-    window.addEventListener('pagehide', function () { try { es.close(); } catch (e) { /* */ } });
   }
+
+  function closeEvents() {
+    clearTimeout(reconnectTimer);
+    if (!events) return;
+    try { events.close(); } catch (e) { /* */ }
+    events = null;
+  }
+
+  window.addEventListener('pagehide', closeEvents);
+  // 从 bfcache 回来（从画布按“返回”）：页面原样恢复，但 SSE 在 pagehide 时关了，
+  // 离开期间的改动也没收到。重开 SSE，再从磁盘水合一次。
+  window.addEventListener('pageshow', function (e) {
+    if (!e.persisted) return;
+    eventsBroken = false;
+    connectEvents();
+    hydrate();
+  });
 
   // ---------- 锚点与高亮 ----------
   function visible(row) {
@@ -509,7 +575,7 @@ export function startProseComments(options) {
       + '<div class="pp-threads">' + list + '</div>' + empty
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
     Object.keys(keep).forEach(function (id) {
-      var area = rail.querySelector('textarea[data-reply="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+      var area = railArea(id);
       if (!area) return;
       area.value = keep[id].value;
       if (keep[id].focus) {
@@ -517,6 +583,16 @@ export function startProseComments(options) {
         try { area.setSelectionRange(keep[id].start, keep[id].end); } catch (e) { /* */ }
       }
     });
+    Object.keys(restoreText).forEach(function (id) {
+      var area = railArea(id);
+      if (!area) return;
+      area.value = area.value ? area.value + '\n' + restoreText[id] : restoreText[id];
+      delete restoreText[id];
+    });
+  }
+
+  function railArea(id) {
+    return rail.querySelector('textarea[data-reply="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
   }
 
   function render() {
@@ -556,7 +632,7 @@ export function startProseComments(options) {
     var quote = quoteFromText(index.text, offsets.start, offsets.end);
     if (!quote) return null;
     return {
-      quote: { exact: quote.exact, prefix: quote.prefix, suffix: quote.suffix },
+      quote: { exact: quote.exact, prefix: quote.prefix, suffix: quote.suffix, start: quote.start },
       start: quote.start,
       end: quote.end,
       section: sectionAtFor(index)(quote.start),
