@@ -43,6 +43,16 @@ test('applyProseOps：create / reply / status 依次作用，不改原行；目�
   assert.equal(closed[1].status, 'close');
 });
 
+test('applyProseOps：重放同一条 reply（原文与 at 都相同）不追加第二遍；同文不同 at 照常追加', () => {
+  const row = { id: 'a', type: 'prose', status: 'check', messages: [{ who: 'owner', text: '好', at: 't1' }] };
+  const again = applyProseOps([row], [{ op: 'reply', id: 'a', text: '好', at: 't1' }]);
+  assert.deepEqual(again[0].messages, [{ who: 'owner', text: '好', at: 't1' }]);
+  assert.equal(again[0].status, 'check');
+  const later = applyProseOps([row], [{ op: 'reply', id: 'a', text: '好', at: 't2' }]);
+  assert.deepEqual(later[0].messages.map((m) => m.at), ['t1', 't2']);
+  assert.equal(later[0].status, 'open');
+});
+
 test('threadMessages：第一句 = content，后接 messages；authorLabel', () => {
   const row = { content: '写全称', created_at: 't0', messages: [{ who: 'agent', text: '改了', at: 't1' }, null] };
   assert.deepEqual(threadMessages(row), [{ who: 'owner', text: '写全称', at: 't0' }, { who: 'agent', text: '改了', at: 't1' }]);

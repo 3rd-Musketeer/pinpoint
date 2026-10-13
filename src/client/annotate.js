@@ -25,6 +25,7 @@ import {
   targetContentToStorage,
 } from '../shared/annotation-indicator.js';
 import { pickContained } from './lib/annotate-hit-test.js';
+import { onPageLeave, postSave as postSaveTo } from './lib/save-request.js';
 import { annotationSlug } from '../shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
 import {
@@ -957,14 +958,7 @@ import { startProseComments } from './prose-comments.js';
     var sentVersion = mutationVersion;
     inflightVersion = sentVersion;
     var sentEpoch = syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
-    var body = {
-      page: PAGE,
-      entry: ENTRY,
-      path: decodeURIComponent(LEDGER_PATHNAME),
-      updated_at: new Date().toISOString(),
-      baseRevision: revision,
-      annotations: marks.slice()
-    };
+    var body = saveBody(revision);
     var sent = postSave(body);
     inflightSync = sent.catch(function () { return null; });
     sent
@@ -1005,17 +999,55 @@ import { startProseComments } from './prose-comments.js';
       });
   }
 
+  // keepalive（够小时）：在途的保存在关页、导航走之后照样送达（lib/save-request.js）。
   function postSave(body) {
-    return fetch(SERVER + '/save', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(body)
-    }).then(function (r) {
-      return r.json().then(function (data) {
-        return { ok: r.ok, status: r.status, data: data };
+    return postSaveTo(SERVER, body);
+  }
+
+  function saveBody(baseRevision) {
+    return {
+      page: PAGE,
+      entry: ENTRY,
+      path: decodeURIComponent(LEDGER_PATHNAME),
+      updated_at: new Date().toISOString(),
+      baseRevision: baseRevision,
+      annotations: marks.slice()
+    };
+  }
+
+  /** 离开页面（关标签、导航走、切到后台）：还没落盘的写现在就发，不等应答。
+      没有在途保存 → 走 requestSync（页面还在的话应答照常处理）。有在途保存、
+      它之后又改过 → 整份快照按 revision 和 revision + 1 各发一次：在途那次先到，
+      +1 那份接上；快照先到，它直接落盘、在途那次 409。快照是整份 marks，重复
+      落盘内容相同。页面没走（只是切到后台）时，在途应答回来照旧：本地更新就重发，
+      409 按远端 revision 重发，结果一致。换账本时交给 outbox、还没发出去的快照
+      也在这里发。 */
+  var leaveSentVersion = 0;
+  function flushOnLeave() {
+    if (!SERVER) return;
+    if (lastRectPersistTimer) {
+      clearTimeout(lastRectPersistTimer);
+      lastRectPersistTimer = null;
+      mutationVersion++;
+      writeLocalCache();
+    }
+    Object.keys(outboxUnsent).forEach(function (key) {
+      var pending = outboxUnsent[key];
+      delete outboxUnsent[key];
+      pending.revisions.forEach(function (rev) {
+        postSave(Object.assign({}, pending.body, { baseRevision: rev })).catch(function () {});
       });
     });
+    if (mutationVersion <= syncedMutationVersion) return;
+    if (!syncing) { requestSync(); return; }
+    if (inflightVersion >= mutationVersion || leaveSentVersion >= mutationVersion) return;
+    leaveSentVersion = mutationVersion;
+    [revision, revision + 1].forEach(function (rev) {
+      postSave(saveBody(rev)).catch(function () {});
+    });
   }
+  // 换账本交给 outbox、还没发出的快照（离开页面时由 flushOnLeave 直接发）。
+  var outboxUnsent = {};
 
   function ledgerOutboxKey(entry, page) { return entry + '\u0000' + page; }
 
@@ -1038,26 +1070,26 @@ import { startProseComments } from './prose-comments.js';
     var covered = syncing ? inflightVersion : syncedMutationVersion;
     var snapshotVersion = mutationVersion;
     var baseRevision = revision;
-    var body = {
-      page: PAGE,
-      entry: ENTRY,
-      path: decodeURIComponent(LEDGER_PATHNAME),
-      updated_at: new Date().toISOString(),
-      baseRevision: revision,
-      annotations: marks.slice()
-    };
+    var body = saveBody(revision);
     var key = ledgerOutboxKey(ENTRY, PAGE);
+    // 离开页面时这份快照还没发：在途那次可能先到也可能后到，两个 revision 各发一次。
+    var unsent = { body: body, revisions: inflight ? [baseRevision, baseRevision + 1] : [baseRevision] };
+    outboxUnsent[key] = unsent;
     var job = Promise.resolve(ledgerOutbox[key])
       .then(function () { return inflight; })
       .then(function (res) {
         var rev = baseRevision;
         if (res && res.data && Number.isFinite(Number(res.data.revision))) rev = Number(res.data.revision);
         // 在途那次已带着最新状态：成功就完事；撞 409 与 requestSync 同口径（远端为准）。
-        if (res && (res.ok || res.status === 409) && snapshotVersion <= covered) return null;
+        if (res && (res.ok || res.status === 409) && snapshotVersion <= covered) {
+          if (outboxUnsent[key] === unsent) delete outboxUnsent[key];
+          return null;
+        }
         return sendSnapshot(rev, 3);
       })
       .catch(function () { return null; });
     function sendSnapshot(rev, triesLeft) {
+      if (outboxUnsent[key] === unsent) delete outboxUnsent[key];
       body.baseRevision = rev;
       body.updated_at = new Date().toISOString();
       return postSave(body).then(function (res) {
@@ -1180,6 +1212,7 @@ import { startProseComments } from './prose-comments.js';
     connectEvents();
   }
 
+  onPageLeave(flushOnLeave);
   window.addEventListener('pagehide', closeEvents);
   window.addEventListener('pageshow', function (event) {
     if (event.persisted && !eventSource) connectEvents();

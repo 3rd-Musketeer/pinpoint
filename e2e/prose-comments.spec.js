@@ -232,6 +232,40 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
       await settled(page);
     });
 
+    await test.step('离开页面：在途保存后面还排着一条回复时整页离开，两条回复都落盘、各一次', async () => {
+      let releaseHeld;
+      const held = new Promise((resolve) => { releaseHeld = resolve; });
+      let heldStarted;
+      const started = new Promise((resolve) => { heldStarted = resolve; });
+      let saves = 0;
+      await page.route('**/save', async (route) => {
+        if (++saves === 1) { heldStarted(); await held; }
+        await route.continue().catch(() => {}); // 离开后被浏览器取消的请求 continue 会抛
+      });
+      try {
+        await thread(first).click();
+        await thread(first).locator('textarea').fill('离开前的回复一');
+        await thread(first).getByRole('button', { name: '发送' }).click();
+        await started;
+        await thread(first).click();
+        await thread(first).locator('textarea').fill('离开前的回复二');
+        await thread(first).getByRole('button', { name: '发送' }).click();
+        await expect(thread(first).locator('.msg .text').last()).toHaveText('离开前的回复二');
+        await page.goto('/health');
+        releaseHeld();
+        const texts = () => {
+          const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.n === first);
+          return row.messages.map((m) => m.text).filter((t) => t.startsWith('离开前的回复'));
+        };
+        await expect.poll(texts, { timeout: 10_000 }).toEqual(['离开前的回复一', '离开前的回复二']);
+      } finally {
+        await page.unroute('**/save');
+      }
+      await page.goto(ARTICLE);
+      await settled(page);
+      await expect(thread(first).locator('.msg .text').last()).toHaveText('离开前的回复二');
+    });
+
     await test.step('完成 → closed 段里，高亮跟着筛选；重新打开回 pending', async () => {
       await thread(second).getByRole('button', { name: '完成' }).click();
       await expect(thread(second)).toHaveCount(0);

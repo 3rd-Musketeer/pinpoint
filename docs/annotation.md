@@ -66,6 +66,12 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 清空走同一条保存队列、传 `annotations: []`（没有 `/clear` 路由）。显式传一个未登记的 `entry` 是
 响亮的 `400 unknown_entry`——配错永远不会静默落进错误的桶。
 
+离开页面不丢写（画布 `annotate.js` 与正文 `prose-comments.js` 同一套，`src/client/lib/save-request.js`）：
+每次 `/save` 在请求体不超过 30000 字节时带 `keepalive`，关页或导航走之后在途的保存照样送达；更大的请求体走普通 fetch，
+离开时可能丢。`pagehide` 与 `visibilitychange` 转 hidden 时，没落盘的写立刻发出：没有在途保存就照常同步；
+有在途保存、之后又改过，就把整份快照按 `revision` 和 `revision + 1` 各发一次，在途那次先到还是后到，盘上都是最后一版。
+换账本时排进 outbox、还没发出去的快照也在这时发。
+
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
 `GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
@@ -98,7 +104,7 @@ article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评�
 - 注入：`article-proxy` 只给文章页注入，带 `window.__pinpointProse`；客户端见到它只跑正文评论（`src/client/prose-comments.js`），不起画布标注的工具条、侧栏和元素标注。project 首页、概念页不注入。
 - 右栏：pending / closed 两段筛选（与画布列表同一口径），每条线程是序号钉（状态色）+ 状态字 + 引文 + 消息（“你” / agent，时间）+ 回复框，行尾“完成”（→ close）或“重新打开”（→ open）。点高亮聚焦线程，点线程定位高亮。
 - 写入：客户端把改动记成操作（新建、回复、改状态），存盘撞上 409 时重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。其他拒绝时，新评论退回草稿，回复退回输入框，右栏写出原因。owner 回复或改了引文算 owner 编辑，服务端把状态回 open。
-- 同步：SSE 断了自己重连，连上后重新水合，补上断线期间的改动。页面进 bfcache 时关掉 SSE；从画布按“返回”回来（`pageshow` 且 `persisted`）时重开并重新水合。
+- 同步：SSE 断了自己重连，连上后重新水合，补上断线期间的改动。页面进 bfcache 时关掉 SSE；从画布按“返回”回来（`pageshow` 且 `persisted`）时重开并重新水合。离开页面时排着的操作立刻发出（见上面“离开页面不丢写”）；重放时 owner 的同一条回复（原文与 `at` 相同）不追加第二遍。
 - agent：`ppnt check <project>_<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <ref> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（body 带 `entry`、`baseRevision`、`text`），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；改状态照旧 `ppnt mark`。
 
 ## 控制面

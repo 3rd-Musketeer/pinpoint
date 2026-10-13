@@ -42,7 +42,7 @@ export function newProseRow({ id, content, quote, section = '', path = '', at })
 /**
  * 把操作依次作用到行列表上，返回新列表（不改传入的行）。操作：
  *   { op: 'create', row }                新评论（id 已存在就跳过）
- *   { op: 'reply', id, text, at }        owner 回一句：追加消息，状态回 open
+ *   { op: 'reply', id, text, at }        owner 回一句：追加消息，状态回 open；同一条（原文与 at 相同）已在就跳过
  *   { op: 'status', id, status }         owner 关闭 / 重新打开（close / open）
  * 目标行已经不在（别处删了）的操作跳过。
  */
@@ -60,7 +60,11 @@ export function applyProseOps(rows, ops) {
     let next = row;
     if (op.op === 'reply') {
       const messages = Array.isArray(row.messages) ? row.messages : [];
-      next = { ...row, status: 'open', messages: [...messages, { who: 'owner', text: String(op.text ?? ''), at: op.at }] };
+      const text = String(op.text ?? '');
+      // 同一条回复（owner、原文、at 都相同）已经在盘上：重放不再追加。离开页面时补发的
+      // 那份先落了盘、409 后重放剩下的操作，就是这种情况。
+      if (op.at && messages.some((m) => m && m.who === 'owner' && m.text === text && m.at === op.at)) continue;
+      next = { ...row, status: 'open', messages: [...messages, { who: 'owner', text, at: op.at }] };
     } else if (op.op === 'status') {
       next = { ...row, status: op.status };
     }

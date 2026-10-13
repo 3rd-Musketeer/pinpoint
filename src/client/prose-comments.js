@@ -21,6 +21,7 @@
  * 并重新水合。 */
 
 import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
+import { onPageLeave, postSave } from './lib/save-request.js';
 import {
   applyProseOps,
   authorLabel,
@@ -251,8 +252,8 @@ export function startProseComments(options) {
       baseRevision: revision,
       annotations: applyProseOps(base, ops),
     };
-    fetch(SERVER + '/save', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) })
-      .then(function (r) { return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; }); })
+    // keepalive（够小时）：在途的保存在关页、导航走之后照样送达（lib/save-request.js）。
+    postSave(SERVER, body)
       .then(function (res) {
         inflight = false;
         if (res.ok) {
@@ -314,6 +315,29 @@ export function startProseComments(options) {
       }
     });
     return restored;
+  }
+
+  /** 离开页面（关标签、导航走、切到后台）：排着的操作现在就发，不等应答。没有在途保存
+      → 照常 flush。有在途保存 → base + 全部操作按 revision 和 revision + 1 各发一次：
+      在途那次先到，+1 那份接上；这份先到，它直接落盘、在途那次 409。页面没走时，在途
+      应答回来照旧，剩下的操作 409 后重放到盘上的新版；reply 按 at 去重，不会回两遍。 */
+  var leaveSentOps = null;
+  function flushOnLeave() {
+    if (!hydrated || !ops.length) return;
+    if (!inflight) { clearTimeout(retryTimer); flush(); return; }
+    if (leaveSentOps === ops[ops.length - 1]) return;
+    leaveSentOps = ops[ops.length - 1];
+    var annotations = applyProseOps(base, ops);
+    [revision, revision + 1].forEach(function (rev) {
+      postSave(SERVER, {
+        page: LEDGER,
+        entry: ENTRY,
+        path: PATH,
+        updated_at: new Date().toISOString(),
+        baseRevision: rev,
+        annotations: annotations,
+      }).catch(function () {});
+    });
   }
 
   function enqueue(op) {
@@ -407,6 +431,7 @@ export function startProseComments(options) {
     events = null;
   }
 
+  onPageLeave(flushOnLeave);
   window.addEventListener('pagehide', closeEvents);
   // 从 bfcache 回来（从画布按“返回”）：页面原样恢复，但 SSE 在 pagehide 时关了，
   // 离开期间的改动也没收到。重开 SSE，再从磁盘水合一次。

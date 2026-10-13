@@ -1639,6 +1639,56 @@ test('edits made while a save is in flight survive a page switch and back', asyn
   })).toBe('第三稿');
 });
 
+// 离开页面不丢写：上一次保存还扣在路上时又改了一稿，随即整页离开（导航走）。
+// 离开时没落盘的写要经 keepalive 发出去；在途那次可能先到也可能后到，盘上最后
+// 都得是最后一稿。扣住的那次在离开之后才放行，时序因此是确定的。
+test('a save queued behind an in-flight one reaches the disk when the page is left', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  const input = page.locator('#ann-input');
+  const file = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
+  const diskContents = async () => {
+    const doc = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{}'));
+    return (doc.annotations || []).map(a => a.content.replace(/\[@t:[^\]]*\]\s*/g, '')).join('|');
+  };
+  await cells.nth(0).click();
+  await input.fill('第一稿');
+  await Promise.all([
+    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    page.locator('#ann-close').click(),
+  ]);
+  expect(await diskContents()).toBe('第一稿');
+
+  let releaseHeld;
+  const held = new Promise((resolve) => { releaseHeld = resolve; });
+  let heldStarted;
+  const started = new Promise((resolve) => { heldStarted = resolve; });
+  let saves = 0;
+  await page.route('**/save', async (route) => {
+    if (++saves === 1) { heldStarted(); await held; }
+    await route.continue().catch(() => {}); // 离开后被浏览器取消的请求 continue 会抛
+  });
+  const id = await page.evaluate(() => window.pinpoint.marks[0].id);
+  const openById = () => page.evaluate((want) => {
+    window.pinpoint.openMark(window.pinpoint.marks.find(m => m.id === want).n);
+  }, id);
+  await openById();
+  await input.fill('第二稿');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveCount(0);
+  await started;
+  await openById();
+  await input.fill('第三稿');
+  await page.keyboard.press('Escape');
+  await expect(input).toHaveCount(0);
+  await page.goto('/health');
+  releaseHeld();
+  await expect.poll(diskContents, { timeout: 10_000 }).toBe('第三稿');
+  await page.unroute('**/save');
+});
+
 test('多选跨 frame：每个目标的草稿框落在它自己的 frame 里', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
