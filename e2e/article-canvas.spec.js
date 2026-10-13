@@ -60,9 +60,9 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     expect(board.sections.find((s) => s.id === 'mixed').shell).toBeUndefined();
     // /api/frame：裸组件帧进组件台，同一节的手机帧进机壳。
     const bare = await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-bare&annotate=off`)).text();
-    expect(bare).toContain('wb-comp-stage');
-    expect(bare).not.toContain('ios-stage');
-    expect(await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-phone&annotate=off`)).text()).toContain('ios-stage');
+    expect(bare).toMatch(/class="wb-comp-stage[ "]/);
+    expect(bare).not.toMatch(/class="ios-stage[ "]/);
+    expect(await (await request.get(`/api/frame?page=${PAGE_ID}&screen=mixed-phone&annotate=off`)).text()).toMatch(/class="ios-stage[ "]/);
   });
 
   await test.step('标注桶：画布页 id 是合法桶（卡片读 @canvas 账本），未知 id 仍 400', async () => {
