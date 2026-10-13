@@ -3,6 +3,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_SITES_DIR } from './env.js';
+import { openOutline } from './open-workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // ?section=<id> 落点（2026-10-13）：打开页的画布条目，即时定位并选中这个 section；多 tab 页
@@ -30,6 +31,9 @@ const writeViewport = (page, key, vp) => page.evaluate(({ key, vp }) => {
   prefs.pageViewports = Object.assign({}, prefs.pageViewports, { [key]: vp });
   localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
 }, { key, vp });
+const stageScroll = (page) => page.locator('#wbstage').evaluate((el) => ({ top: el.scrollTop, left: el.scrollLeft }));
+/** 与落点相差不过 1px：板带缩放，section 矩形是小数，从不同滚动位置量出来的取整会差 1。 */
+const offBy = (a, b) => Math.max(Math.abs(a.top - b.top), Math.abs(a.left - b.left));
 const boardZoom = (page) => page.locator('.wb-library').evaluate((el) => el.style.getPropertyValue('--wb-board-zoom'));
 
 /** 落地完成的可观察信号：url-sync 在落点之后才启动，第一次写地址栏就把 section 去掉。 */
@@ -121,5 +125,38 @@ test('多 tab 页：section 在别的 tab 时先切 tab 再落点；section 赢�
     await expect(activeTab).toHaveText('交互');
     await openAndLand(page, 'page=e2e-tabs');
     await expect(activeTab).toHaveText('组件');
+  });
+});
+
+// 大纲浮层点 section 与 ?section= 走同一条路（stage.js focusSection）：即时、选中、跨 tab 先切，
+// 所以落到同一个滚动位置。先用深链量出落点，换到别处后从大纲点同一个 section 对照。
+test('大纲点 section 与 ?section= 落点一致：同 tab 与跨 tab', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const activeTab = page.locator('#wbtabbar [role="tab"][aria-selected="true"]');
+
+  await test.step('存量页：大纲点「设置」落到深链 section=settings 的位置并选中', async () => {
+    await openAndLand(page, 'page=e2e-ios&section=settings');
+    const landed = await stageScroll(page);
+    await openAndLand(page, 'page=e2e-ios&section=home');
+    expect(offBy(await stageScroll(page), landed)).toBeGreaterThan(100);
+    await openOutline(page);
+    await page.locator('#wboutline [data-ol-section="settings"] > .ol-sec').click();
+    await expect(page.locator('#wboutline-pop')).toHaveCount(0);
+    await expect.poll(async () => offBy(await stageScroll(page), landed)).toBeLessThanOrEqual(1);
+    await expect(page.locator('.wb-lib-item[data-ann-section="settings"]')).toHaveClass(/\bwb-sel\b/);
+    await expect(page.locator('.wb-lib-item[data-ann-section="home"]')).not.toHaveClass(/\bwb-sel\b/);
+  });
+
+  await test.step('多 tab 页：从「交互的大纲」点 onboard，先切 tab 再落到深链的位置并选中', async () => {
+    await openAndLand(page, 'page=e2e-tabs&section=onboard');
+    const landed = await stageScroll(page);
+    await openAndLand(page, 'page=e2e-tabs&section=btn-wall');
+    await expect(activeTab).toHaveText('组件');
+    await openOutline(page, '交互');
+    await page.locator('#wboutline [data-ol-section="onboard"] > .ol-sec').click();
+    await expect(activeTab).toHaveText('交互');
+    await expect(page.locator('.wb-lib-item[data-ann-section="onboard"]')).toHaveClass(/\bwb-sel\b/);
+    await expect.poll(async () => offBy(await stageScroll(page), landed)).toBeLessThanOrEqual(1);
   });
 });

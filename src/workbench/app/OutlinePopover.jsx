@@ -10,6 +10,7 @@ import { useWorkbenchStore, wbGet } from './store.js';
 import { entriesOfActiveBoard, setActiveEntry, setActiveTab } from '../pages.js';
 import {
   flashBoardFrame,
+  focusBoardSection,
   focusWorkbenchFrame,
   isTypingTarget,
   selectBoardFrame,
@@ -84,6 +85,14 @@ function focusFrame(sectionId, screenId) {
   return api ? api(sectionId, screenId) : focusWorkbenchFrame(sectionId, screenId);
 }
 
+// 点 section 与 ?section= 落点同一条路（stage.js focusSection）：跨 tab 先切、选中画布条目、
+// 即时定位并选中。没有 window.workbench（不该发生）时退到当前 tab 的同一原语。
+function goToSection(sectionId) {
+  var api = window.workbench && window.workbench.focusSection;
+  if (api) return api(sectionId);
+  if (focusBoardSection(sectionId, { smooth: false })) selectBoardSection(sectionId);
+}
+
 function FrameTree(props) {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
@@ -113,14 +122,7 @@ function FrameTree(props) {
   }
 
   function onPickSection(sec) {
-    var first = sec.frames && sec.frames[0];
-    var result = first ? focusFrame(sec.id, first.id) : false;
-    function finish(ok) {
-      if (first && ok === false) return;
-      selectBoardSection(sec.id);
-    }
-    if (result && typeof result.then === 'function') result.then(finish);
-    else finish(result);
+    goToSection(sec.id);
     if (props.onFrameNavigate) props.onFrameNavigate();
   }
 

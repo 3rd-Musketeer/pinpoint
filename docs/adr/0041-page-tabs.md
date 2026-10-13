@@ -50,5 +50,5 @@ tab。
 
 - 左栏不再有“大纲”页签，只剩“页面 / 已归档”。偏好里存过 `sidebarTab: "outline"` 的，打开时落到“页面”，并把这条偏好改写成 `pages`。
 - 页上有画布条目，`#wbtabbar` 就渲染。≥ 2 个 tab 时每个标题钮旁一个大纲钮（aria-label 为“<标题>的大纲”）；不到 2 个 tab（含存量页）不列标题，条上只有一个大纲钮（aria-label“大纲”）。纯 doc / url 页不渲染这条，条目切换仍走横条的 ‹ n / N ›。
-- 浮层不用菜单：菜单会把 Tab 圈在菜单项里，大纲行是普通按钮，Tab 要能走进去。它 Portal 到 body（条有 `overflow-x`，玻璃的 `backdrop-filter` 也会把 fixed 后代收成包含块），`.wb-glass`，层级 `--wb-z-float`，宽不超过 320，最大高度 60vh，向上弹，内部滚动。里面是那个 tab 的 section 与帧（`outlineSlice`）。文档 / 网页 / 草稿只出现在第一个 tab 的浮层里；单 tab 页的浮层是整棵树。点一帧走 `focusFrame`（跨 tab 会自己切），然后关浮层；点文档 / 网页 / 草稿条目也先关浮层再切条目（浮层留着只会盖在新内容上）。Esc 或点外面关闭，同一时刻只开一个。右键菜单开在浮层上时，点菜单或按 Esc 先交给菜单，浮层留着。
+- 浮层不用菜单：菜单会把 Tab 圈在菜单项里，大纲行是普通按钮，Tab 要能走进去。它 Portal 到 body（条有 `overflow-x`，玻璃的 `backdrop-filter` 也会把 fixed 后代收成包含块），`.wb-glass`，层级 `--wb-z-float`，宽不超过 320，最大高度 60vh，向上弹，内部滚动。里面是那个 tab 的 section 与帧（`outlineSlice`）。文档 / 网页 / 草稿只出现在第一个 tab 的浮层里；单 tab 页的浮层是整棵树。点一帧走 `focusFrame`（跨 tab 会自己切），然后关浮层；点 section 走 `window.workbench.focusSection`，与 `?section=` 落点同一条路（跨 tab 先切、选中画布条目、即时定位并选中，2026-10-13），然后关浮层；点文档 / 网页 / 草稿条目也先关浮层再切条目（浮层留着只会盖在新内容上）。Esc 或点外面关闭，同一时刻只开一个。右键菜单开在浮层上时，点菜单或按 Esc 先交给菜单，浮层留着。
 - `isMultiTab` 的意思不变：≥ 2 才给位置号加 tab 前缀，分享页才出条。工作台的条出不出，看的是有没有画布条目。

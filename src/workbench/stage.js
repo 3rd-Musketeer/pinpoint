@@ -201,30 +201,44 @@ function applyTabAndEntryLink(link) {
 }
 
 /**
- * ?section=<id> 的落点（2026-10-13）：页已装载后，切到 section 所在的 tab（ADR 0041）、选中画布条目，
- * 等几何批落定再即时定位并选中这个 section —— 与导航器点 section 同一原语（focusBoardSection），
- * 只是不带动画。排在 afterMount 的存档视口恢复 / 首访聚焦之后，所以这一次装载显式落点赢过存档视口；
- * 缩放沿用存档值（导航器点击也不改缩放）。tab 与条目都不写偏好（save:false），同 ?tab= / ?entry=。
- * 页里没有这个 section：console.warn，返回 false，调用方照常打开。返回 Promise<boolean>。
+ * 定位并选中某个 section（2026-10-13）：切到 section 所在的 tab（ADR 0041）、选中画布条目，
+ * 等几何批落定再即时定位并选中 —— 与导航器点 section 同一原语（focusBoardSection），只是不带动画、
+ * 落定后选中。?section= 落点与大纲浮层点 section 都走这一条，所以三处落点一致；缩放沿用当前值
+ *（导航器点击也不改缩放）。options.save === false 时 tab 与条目都不写偏好（深链用）。
+ * 页里没有这个 section：返回 'unknown'；量不到（不在画布条目里）：false；定位了：true。
  */
-function landOnSection(sectionId) {
+function focusSection(sectionId, options) {
+  var save = !(options && options.save === false);
   var active = wbGet().activeBoard;
-  if (!active || active.pageId !== wbGet().activePageId) return Promise.resolve(false);
+  if (!active || active.pageId !== wbGet().activePageId) return Promise.resolve('unknown');
   var full = active.fullBoard || active.board;
   var known = (full.sections || []).some(function (sec) { return sec && sec.id === sectionId; });
-  if (!known) {
-    console.warn('[pinpoint] ?section=' + sectionId + '：页 ' + active.pageId + ' 里没有这个 section，按正常打开');
-    return Promise.resolve(false);
-  }
+  if (!known) return Promise.resolve('unknown');
   var tab = tabIdOfSection(full, sectionId);
-  var switched = tab && tab !== active.tabId ? setActiveTab(tab, { save: false }) : Promise.resolve(true);
+  var switched = tab && tab !== active.tabId ? setActiveTab(tab, { save: save }) : Promise.resolve(true);
   return switched.then(function () {
-    if (wbGet().activeEntryId !== CANVAS_ENTRY_ID) setActiveEntry(CANVAS_ENTRY_ID, { save: false });
+    if (wbGet().activeEntryId !== CANVAS_ENTRY_ID) setActiveEntry(CANVAS_ENTRY_ID, { save: save });
     var mount = mountManager.current;
     return mount ? mount.boardSettled : false;
   }).then(function () {
-    if (focusBoardSection(sectionId, { smooth: false })) selectBoardSection(sectionId);
-    else console.warn('[pinpoint] ?section=' + sectionId + '：画布上量不到这个 section（不在画布条目里？）');
+    if (!focusBoardSection(sectionId, { smooth: false })) return false;
+    selectBoardSection(sectionId);
+    return true;
+  });
+}
+
+/**
+ * ?section=<id> 的落点：页已装载后走 focusSection。排在 afterMount 的存档视口恢复 / 首访聚焦之后，
+ * 所以这一次装载显式落点赢过存档视口。tab 与条目都不写偏好（save:false），同 ?tab= / ?entry=。
+ * 页里没有这个 section：console.warn，返回 false，调用方照常打开。返回 Promise<boolean>。
+ */
+function landOnSection(sectionId) {
+  return focusSection(sectionId, { save: false }).then(function (result) {
+    if (result === 'unknown') {
+      console.warn('[pinpoint] ?section=' + sectionId + '：页 ' + wbGet().activePageId + ' 里没有这个 section，按正常打开');
+      return false;
+    }
+    if (!result) console.warn('[pinpoint] ?section=' + sectionId + '：画布上量不到这个 section（不在画布条目里？）');
     return true;
   });
 }
@@ -286,6 +300,9 @@ window.workbench = {
   setActivePage: setActivePage,
   setActiveEntry: setActiveEntry,
   focusFrame: focusWorkbenchFrame,
+  // 定位并选中 section（跨 tab 先切、即时到位）：?section= 落点与大纲点 section 的同一条路。
+  // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
+  focusSection: function (sectionId) { return focusSection(sectionId); },
   whenScrollSettled: whenStageScrollSettled,
   // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。false =
   // 会话已被下一次装载替换或取消 —— 等待方应重取再等（waitForFunction 轮询）。
