@@ -2,12 +2,12 @@
 import { canvasLedgerUrl, openCount } from './canvas-card.js';
 
 // /api/frame 的页面里带着自己的图注（.wb-screen-cap），卡片外面已经有一份，进 iframe 后藏掉，
-// 再量机壳 / 组件台的盒子：iframe 只露出这一块，按卡片的比例缩放。同源，contentDocument 可读。
+// 再量机壳 / 组件台的盒子：iframe 只露出这一块。手机缩到固定宽（data-fit-width），其他机壳按 data-scale 用自己的盒子。
+// 同源，contentDocument 可读。
 const STAGE = '.ios-stage, .wb-comp-stage, .wb-doc-stage';
 
 function fitFrame(iframe) {
   const box = iframe.parentElement;
-  const scale = Number(box.dataset.scale) || 1;
   const measure = () => {
     let doc;
     try { doc = iframe.contentDocument; } catch { return; }
@@ -34,6 +34,7 @@ function fitFrame(iframe) {
     }
     const r = stage.getBoundingClientRect();
     if (!(r.width > 0 && r.height > 0)) return;
+    const scale = Number(box.dataset.fitWidth) ? Number(box.dataset.fitWidth) / r.width : Number(box.dataset.scale) || 1;
     const x = r.left + doc.defaultView.scrollX;
     const y = r.top + doc.defaultView.scrollY;
     iframe.style.width = `${Math.ceil(x + r.width)}px`;

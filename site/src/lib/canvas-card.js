@@ -16,14 +16,15 @@ export const canvasHref = (pageId, sectionId) =>
 export const canvasLedgerUrl = (pageId) => `/annotations/%40canvas?entry=${encodeURIComponent(pageId)}`;
 
 /**
- * Shells that are not the 393×852 phone. The card sizes these to the frame's
- * own box (measured after load); `width` is the iframe's layout width before
- * measuring (comp stage is max-content, ≤ 420 px in index.html), `scale` the
- * preview scale, `height` the fallback height until measured.
+ * Preview geometry per shell. `width` × `height` is the iframe's layout box
+ * before the frame is measured, shown at `scale`. After load the client
+ * measures the frame's stage: the phone (393×852 plus bezel) is fitted to a
+ * fixed `fitWidth` (158 px, the preview's look); other shells (comp stage is
+ * max-content ≤ 420 px in index.html) keep `scale` and take their own box.
  */
-export const PHONE = { width: 393, height: 852, scale: 158 / 393 };
+export const PHONE = { width: 393, height: 852, scale: 158 / 393, fitWidth: 158 };
 const NATURAL = {
-  comp: { width: 480, height: 360, scale: 0.6 },
+  comp: { width: 480, height: 320, scale: 0.75 },
   doc: { width: 1280, height: 900, scale: 0.25 },
 };
 export function shellBox(shell) {

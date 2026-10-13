@@ -40,7 +40,7 @@ const frameStyle = `width:${box.width}px;height:${box.height}px;transform:scale(
       {m.frames.map((f) => (
         <figure class="cc-frame" data-screen={f.id}>
           <figcaption class="cap"><b>{f.ref}</b>{f.title}</figcaption>
-          <div class:list={['cc-box', box.mode]} data-scale={box.scale} style={boxStyle}>
+          <div class:list={['cc-box', box.mode]} data-scale={box.scale} data-fit-width={box.fitWidth} style={boxStyle}>
             <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={`${f.ref} ${f.title}`} style={frameStyle}></iframe>
           </div>
           <a class="cc-hit" href={m.href} target="_top" aria-label={`在画布中打开 ${f.ref} ${f.title}`}></a>
