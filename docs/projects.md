@@ -257,6 +257,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 - project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出。project 不登记也能迁，登记了才能在服务里打开画布和正文。
 - 文章 id 缺省用页 id，画布页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
 - 旧页的文件和登记都不动。标注不迁：旧页的标注留在旧页的桶里，新文章用新桶 `<project>_<article>`，命令输出里也写明这一点。
+- 新桶 `<project>_<article>` 在数据目录里已经有标注行（删掉或改了名的文章留下的孤儿桶）时拒绝，`--dry-run` 也一样：迁完这个 id 又是活页，旧行会挂到新文章上。换 `--article`，或先 `ppnt prune <project>_<article>`。
 
 ### 怎么对应
 

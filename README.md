@@ -123,6 +123,7 @@ ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/
 ppnt move <id> <target>        # re-point an entry, keep its id and annotations
 ppnt rename <old> <new>        # rename id + annotation bucket + /sites/ prefix in one shot
 ppnt folder list|add|rename|rm|move   # the one level of page grouping in the sidebar
+ppnt migrate <page> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
 ppnt build <page> [--watch]    # compile source → dist (~/.pinpoint/dist/<entry>/)
 ppnt render <page>/<screen>    # compile one frame to stdout, no dist write
 ppnt check <page>              # read annotations: statuses, intents, code excerpts (contract, slice 4)

@@ -67,7 +67,7 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 `pinpoint restart`）。案例见 [`docs/debugging.md`](docs/debugging.md)。
 
 **`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、
-`add` / `move` / `rename` / `folder`（registry）、`build` / `render`（编译）、
+`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页迁成文章）、`build` / `render`（编译）、
 `check` / `locate` / `shot` / `mark` / `reply` / `status --page`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论，
 pp2 切片 4 契约，落地前以 `bin/pinpoint-cli.js` 为准）。改完页源码跑 `ppnt build <页>`
 （或 `--watch` 挂着）——dist 落后于源码或某屏没编过时，那个 frame 出错误面板，

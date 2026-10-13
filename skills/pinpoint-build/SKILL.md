@@ -134,7 +134,7 @@ boundary: 一句话说清它管什么、不管什么。
 
 ## 7. 存量 page
 
-存量 page 是一个带 `board.json` 的帧目录，`ppnt list` 里类型不是 project 的条目就是。新工作不建新 page；改存量 page 时：
+存量 page 是一个带 `board.json` 的帧目录，`ppnt list` 里类型不是 project 的条目就是。新工作不建新 page。迁成文章：`pinpoint migrate <页> --project <根>`，见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量 page 时：
 
 - 帧和组件的写法与第 4 节相同。页内组件在 `<页目录>/components/`，没有 project 这一层；页级资源登记在 board.json 的 `assets`。
 - 新帧要登记进 board.json 的 `sections[].screens`，改完跑 `ppnt build <页>`，查错和截图同第 6 节。

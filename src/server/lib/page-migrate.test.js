@@ -292,3 +292,20 @@ test('CLI: migrate takes --project <root> (add keeps --project as a switch); --d
   assert.ok(lines.some((l) => /^错误 bad：/.test(l)), lines.join('\n'));
   assert.ok(fs.existsSync(path.join(root, 'docs', 'pinpoint', 'articles', 'legacy2', 'index.mdx')));
 });
+
+test('CLI: migrate refuses when the new canvas page id already has a bucket with rows (stale orphan)', async (t) => {
+  const dir = tmpDir(t, 'stale');
+  const page = legacyPage(dir);
+  const root = projectRoot(dir);
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: registryWith(page).entries }));
+  const data = path.join(dir, 'data');
+  write(path.join(data, 'demo_legacy-page', '@canvas.json'), JSON.stringify({ annotations: [{ id: 'a1', n: 1, content: '旧的' }] }));
+  const lines = [];
+  const io = { out: (l) => lines.push(l), err: (l) => lines.push(`ERR ${l}`), env: { ...process.env, PINPOINT_REGISTRY: registry, PINPOINT_DATA_DIR: data } };
+  assert.equal(await run(['migrate', 'legacy-page', '--project', root], io), 1);
+  assert.ok(lines.some((l) => /^ERR 错误：标注桶 .*demo_legacy-page 里已有 1 行标注/.test(l)), lines.join('\n'));
+  assert.equal(fs.existsSync(path.join(root, 'docs', 'pinpoint', 'articles')), false);
+  lines.length = 0;
+  assert.equal(await run(['migrate', 'legacy-page', '--project', root, '--article', 'fresh', '--dry-run'], io), 0, lines.join('\n'));
+});

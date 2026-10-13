@@ -277,7 +277,7 @@ owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是
 | --- | --- | --- |
 | `PINPOINT_DATA_DIR` | 数据根：标注桶、dist、截图、日志（服务和 CLI 都认） | `~/.pinpoint` |
 | `PINPOINT_REGISTRY` | 登记表文件（服务、站点、CLI 都认；CLI 的 `--registry` 优先） | `~/.pinpoint/registry.json` |
-| `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`check --mode image`、`shot`、`mark`、`reply` | `https://pinpoint.localhost` |
+| `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`check --mode image`、`shot`、`mark`、`reply`；设了它，`pinpoint status` 只探这个地址，不看 portless 路由 | `https://pinpoint.localhost` |
 | `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
 | `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |
 | `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选 | `site/.astro-cache` |
