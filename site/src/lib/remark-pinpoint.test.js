@@ -30,6 +30,15 @@ test('sections get letters in order and refs become <Ref raw from>', async (t) =
   assert.doesNotMatch(out, /raw: "代码"/);
 });
 
+test('a Canvas gets the id of its Section; one outside a Section gets none', async (t) => {
+  const file = project(t);
+  const out = await run('<Canvas frames={["x"]} section="wrong" />\n\n<Section id="flow">\n\n<Canvas frames={["a"]} />\n\n</Section>\n', file);
+  const calls = [...out.matchAll(/_jsx\(Canvas, \{([\s\S]*?)\}\)/g)].map((m) => m[1]);
+  assert.equal(calls.length, 2, out);
+  assert.doesNotMatch(calls[0], /section:/);
+  assert.match(calls[1], /section: "flow"/);
+});
+
 test('bad sections fail with the file path', async (t) => {
   const file = project(t);
   await assert.rejects(run('<Section id="x">a</Section>\n\n<Section id="x">b</Section>', file), (e) => e.message.includes(file) && /duplicate <Section id="x">/.test(e.message));
