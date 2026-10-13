@@ -286,7 +286,9 @@ function articleComponentsPlugin(target) {
         if (real(args.resolveDir) !== pageDir) return undefined;
         const name = args.path.replace(/^\.\/components\//, '').replace(/\.jsx$/, '');
         const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
-        return hit ? { path: hit } : undefined;
+        // 也取 realpath：project 根经过 symlink（macOS 的 /var、/tmp）时，esbuild 按真实
+        // 工作目录算 jsxDEV 的文件名，给它非真实路径会得到一长串 ../ 的 data-pp-id。
+        return hit ? { path: real(hit) } : undefined;
       });
     },
   };
