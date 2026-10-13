@@ -1,6 +1,9 @@
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_SITE_PORT } from './env.js';
+import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3 M0：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
@@ -14,6 +17,9 @@ const ARTICLE = '/e2e-project/commit-confirm/';
 // 这篇的画布页 id（docs/projects.md「文章的画布」）：正文的画布卡片与“打开画布”都指向它。
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const PROJECT_ROOT = path.join(ROOT, 'e2e', 'project-site');
+
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
 
 test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、概念页、llms.txt，工作台与深链照旧', async ({ page, request }) => {
@@ -25,6 +31,13 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   const consoleErrors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') consoleErrors.push(msg.text()); });
+  // Astro 的 HMR websocket：记下地址和收到的帧（经 pinpoint 端口连上，不走直连站点端口的兜底）。
+  const sockets = [];
+  page.on('websocket', (ws) => {
+    const record = { url: ws.url(), frames: [] };
+    sockets.push(record);
+    ws.on('framereceived', (frame) => record.frames.push(String(frame.payload)));
+  });
   const sameOrigin = [];
   page.on('response', (res) => {
     const url = new URL(res.url());
@@ -70,6 +83,34 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
+  });
+
+  await test.step('代理的来源与文件边界：Astro HMR 经 pinpoint 同源连上；别的网页连不上；docs/pinpoint 外的文件读不到', async () => {
+    await expect.poll(() => sockets.some((s) => s.url.startsWith(`ws://127.0.0.1:${E2E_PORT}/_astro/?token=`)
+      && s.frames.some((f) => f.includes('"connected"')))).toBe(true);
+    expect(sockets.filter((s) => s.url.includes(`:${E2E_SITE_PORT}/`))).toEqual([]);
+
+    // 别的来源（本轮的上游固件，另一个 localhost 端口）拿着正确的 token 也连不上：代理回 403。
+    // 落在 /__hits（JSON，不带 CSP）：上游首页的 CSP 本身就挡 websocket，测不出代理。
+    const client = await (await request.get('/_astro/@vite/client')).text();
+    const token = client.match(/wsToken = "([^"]+)"/)[1];
+    const other = await page.context().newPage();
+    await other.goto(`${E2E_UPSTREAM_ORIGIN}/__hits`);
+    const outcome = await other.evaluate((url) => new Promise((resolve) => {
+      const ws = new WebSocket(url, 'vite-hmr');
+      ws.onopen = () => { ws.close(); resolve('open'); };
+      ws.onerror = () => resolve('error');
+    }), `ws://127.0.0.1:${E2E_PORT}/_astro/?token=${token}`);
+    expect(outcome).toBe('error');
+    await other.close();
+    const post = await request.post(ARTICLE, { headers: { origin: 'https://evil.example' }, data: 'x' });
+    expect(post.status()).toBe(403);
+
+    // fs.allow 只放 project 的 docs/pinpoint/：project 根下的 README、仓库根的文件都是 403。
+    expect((await request.get(`/_astro/@fs${PROJECT_ROOT}/docs/pinpoint/project.json`)).status()).toBe(200);
+    for (const file of [path.join(PROJECT_ROOT, 'README.md'), path.join(ROOT, 'package.json'), path.join(ROOT, 'README.md')]) {
+      expect((await request.get(`/_astro/@fs${file}`)).status(), file).toBe(403);
+    }
   });
 
   await test.step('[[ ]] popup：concept 显示状态与边界；空 ref 显示还没有页；Esc 关闭', async () => {
