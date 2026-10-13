@@ -4,8 +4,8 @@ import path from 'node:path';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
-import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
+import { collectBucketOrphans, collectPageOrphans, pageIdIsLive, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { articlePageId, parseArticlePageId, PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
@@ -225,14 +225,12 @@ export function rewriteSitePrefix(text, oldId, newId) {
 }
 
 /**
- * 条目目录下所有 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀。
- * 跳过 node_modules 与逃出条目目录的 symlink（那些文件不归这个条目管），
- * 按 realpath 记账避免 symlink 成环。返回被改写的文件相对路径列表。
- * dryRun 只统计不落盘（预检用）。
+ * 目录下扩展名在 exts 里的文本文件，逐个交给 visit(full, text)。跳过 node_modules 与
+ * 逃出目录的 symlink（那些文件不归这个目录管），按 realpath 记账避免 symlink 成环。
+ * 返回 root 的 realpath（调用方算相对路径用）。
  */
-export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false } = {}) {
+function walkTextFiles(dirPath, exts, visit) {
   const root = fs.realpathSync(dirPath);
-  const changed = [];
   const seen = new Set();
   const walk = (dir) => {
     if (seen.has(dir)) return;
@@ -263,20 +261,117 @@ export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false }
         walk(real);
         continue;
       }
-      if (!stat.isFile() || !SITE_PREFIX_EXTS.has(path.extname(item.name).toLowerCase())) continue;
+      if (!stat.isFile() || !exts.has(path.extname(item.name).toLowerCase())) continue;
       let text;
       try {
         text = fs.readFileSync(full, 'utf8');
       } catch {
         continue;
       }
-      const next = rewriteSitePrefix(text, oldId, newId);
-      if (!next.changed) continue;
-      if (!dryRun) fs.writeFileSync(full, next.text);
-      changed.push(path.relative(root, full));
+      visit(full, text);
     }
   };
   walk(root);
+  return root;
+}
+
+/**
+ * 条目目录下所有 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀。
+ * 返回被改写的文件相对路径列表。dryRun 只统计不落盘（预检用）。
+ */
+export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false } = {}) {
+  const changed = [];
+  const root = walkTextFiles(dirPath, SITE_PREFIX_EXTS, (full, text) => {
+    const next = rewriteSitePrefix(text, oldId, newId);
+    if (!next.changed) return;
+    if (!dryRun) fs.writeFileSync(full, next.text);
+    changed.push(full);
+  });
+  return changed.map((full) => path.relative(root, full));
+}
+
+/** project 内容目录里会写死文章画布地址的文件类型。 */
+const ARTICLE_SOURCE_EXTS = new Set(['.jsx', '.js', '.css', '.mdx', '.md', '.html', '.htm', '.json']);
+
+/**
+ * project 的 docs/pinpoint/ 下写死了 `/sites/<project id>_` 的文件（相对 docs/pinpoint/）。
+ * rename 不改作者的源文件，只把这些文件列出来让作者自己改（改成相对路径更好）。
+ */
+export function filesWithArticleSitePrefix(projectRoot, projectId) {
+  const dir = path.join(projectRoot, PROJECT_CONTENT_DIR);
+  if (!fs.existsSync(dir)) return [];
+  const needle = `/sites/${projectId}_`;
+  const hits = [];
+  const root = walkTextFiles(dir, ARTICLE_SOURCE_EXTS, (full, text) => {
+    if (text.includes(needle)) hits.push(full);
+  });
+  return hits.map((full) => path.relative(root, full)).sort();
+}
+
+/**
+ * 数据根下属于一个 project 的文章桶 id（`<project>_<article>`，docs/projects.md「标注桶」），
+ * 按名排序。按盘上的桶扫，不按现有文章列：文章目录删了、桶还在，那也是这个 project 的桶
+ * （孤儿），换 id 时一起带走。带 `_` 的模板页 id 不算（撞名时模板页优先）。
+ */
+export function articleBucketIds(root, projectId, { manifestIds = [] } = {}) {
+  let items;
+  try {
+    items = fs.readdirSync(root, { withFileTypes: true });
+  } catch {
+    return [];
+  }
+  return items
+    .filter((item) => item.isDirectory())
+    .map((item) => item.name)
+    .filter((name) => {
+      const parts = parseArticlePageId(name);
+      return parts && parts.projectId === projectId && !manifestIds.includes(name);
+    })
+    .sort();
+}
+
+/** 一个桶里的标注行数（各账本 annotations 之和；_seq.json 与坏文件不算）。 */
+function bucketRowCount(bucket) {
+  return readBucketLedgers(bucket)
+    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
+}
+
+/** 数据根下按页 id 存的派生物。dist / render 里的 HTML 写死了 `/sites/<页 id>/`，
+    换 id 后作废，删掉重编；check / shot 只是图片，跟着搬。 */
+const PAGE_CACHE_DROP = ['dist', 'render'];
+const PAGE_CACHE_MOVE = ['check', 'shot'];
+
+/**
+ * 搬完的文章桶里，账本还记着旧地址：行上的 `pageId`（画布标注按它对 @page / @frame
+ * 指示符）、`@prose.json` 的 `path`（`/<project>/<article>/`）。逐本改写，每本写临时
+ * 文件再 rename，单本是原子的。返回改写的账本名。
+ */
+function rewriteMovedBucket(bucket, move) {
+  const changed = [];
+  const fromPath = `/${move.fromProject}/${move.articleId}/`;
+  const toPath = `/${move.toProject}/${move.articleId}/`;
+  for (const { name, doc } of readBucketLedgers(bucket)) {
+    if (!doc || typeof doc !== 'object') continue;
+    let dirty = false;
+    const next = { ...doc };
+    if (typeof doc.path === 'string' && (doc.path === fromPath.slice(0, -1) || doc.path.startsWith(fromPath))) {
+      next.path = toPath + doc.path.slice(fromPath.length);
+      dirty = true;
+    }
+    if (Array.isArray(doc.annotations)) {
+      next.annotations = doc.annotations.map((row) => {
+        if (!row || row.pageId !== move.fromId) return row;
+        dirty = true;
+        return { ...row, pageId: move.toId };
+      });
+    }
+    if (!dirty) continue;
+    const file = path.join(bucket, name);
+    const tmp = `${file}.rename-${process.pid}.tmp`;
+    fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n');
+    fs.renameSync(tmp, file);
+    changed.push(name);
+  }
   return changed;
 }
 
@@ -318,10 +413,12 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   });
 
   // ② 标注桶：旧桶在就改名，新桶已存在是硬冲突（两份标注不能合）。
+  // project id 本身不是桶（docs/projects.md「标注桶」）：project 的桶是每篇文章的
+  // <id>_<文章>，在下面 ②' 里搬。
   const root = dataRoot(env);
   const bucketFrom = path.join(root, before.id);
   const bucketTo = path.join(root, after.id);
-  const bucketExists = fs.existsSync(bucketFrom);
+  const bucketExists = before.kind !== 'project' && fs.existsSync(bucketFrom);
   if (bucketExists && fs.existsSync(bucketTo)) {
     throw new CliError(`标注桶已存在：${bucketTo}；先处理掉它再改 id（两个桶不会自动合并）`);
   }
@@ -331,6 +428,8 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   let rewriteDir = null;
   let rewritePreview = [];
   let projectJson = null;
+  let articleMoves = [];
+  let sitePrefixFiles = [];
   if (before.kind === 'project') {
     const meta = readProjectJson(before.path);
     if (!meta.json) throw new CliError(`${meta.errors.join('；')}；先修好 project.json 再改 id`);
@@ -338,6 +437,21 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
       throw new CliError(`project.json 的 id 是 "${meta.json.id}"，与登记的 ${before.id} 不一致；先让两边一致再改 id`);
     }
     projectJson = meta.file;
+    sitePrefixFiles = filesWithArticleSitePrefix(before.path, before.id);
+    // ②' 文章桶 <旧 id>_<文章> → <新 id>_<文章>：目标有一个已存在就整单不动。
+    const manifestIds = manifestPageIds();
+    articleMoves = articleBucketIds(root, before.id, { manifestIds }).map((fromId) => {
+      const { articleId } = parseArticlePageId(fromId);
+      const toId = articlePageId(after.id, articleId);
+      return { fromId, toId, articleId, fromProject: before.id, toProject: after.id, from: path.join(root, fromId), to: path.join(root, toId) };
+    });
+    const taken = articleMoves.filter((move) => fs.existsSync(move.to) || manifestIds.includes(move.toId));
+    if (taken.length) {
+      throw new CliError(
+        `文章桶的目标已存在：${taken.map((move) => (manifestIds.includes(move.toId) ? `${move.toId}（模板页 id）` : move.to)).join('、')}；` +
+        '先处理掉它们再改 id（两个桶不会自动合并）',
+      );
+    }
   }
   if (before.kind === 'dir') {
     if (!fs.existsSync(before.path)) {
@@ -347,7 +461,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
     rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
   }
 
-  return { ...parsed, registryPath, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson };
+  return { ...parsed, registryPath, dataRoot: root, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson, articleMoves, sitePrefixFiles };
 }
 
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
@@ -501,7 +615,8 @@ export async function runPrune(argv, io = {}) {
   const registryPath = resolveRegistryPath(parsed.flags, env);
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
   const localIds = manifestPageIds(REPO_ROOT);
-  const known = registry.resolve(pageId) != null || localIds.includes(pageId);
+  // 活页（含文章画布页）只删桶里表面已死的账本；不是页了才整桶皆孤儿。
+  const known = pageIdIsLive(registry, pageId, { manifestIds: localIds });
   const names = known
     ? collectPageOrphans({
         pageId,
@@ -582,8 +697,46 @@ export async function runRename(argv, io = {}) {
       err(`  标注桶改名失败（登记表已改，标注还在旧桶）：${error.message}`);
       return 1;
     }
-  } else {
+  } else if (plan.before.kind !== 'project') {
     out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+  }
+
+  // ②' 文章桶（project）：每个桶一次 renameSync，单桶原子；中途失败时点名已搬与未搬的。
+  if (plan.before.kind === 'project') {
+    if (!plan.articleMoves.length) out(`  文章桶：没有 ${plan.before.id}_<文章> 桶要搬`);
+    const moved = [];
+    for (const move of plan.articleMoves) {
+      try {
+        fs.renameSync(move.from, move.to);
+      } catch (error) {
+        const left = plan.articleMoves.filter((item) => !moved.includes(item)).map((item) => item.fromId);
+        err(`  文章桶改名失败（登记表已改；已搬 ${moved.map((item) => item.toId).join('、') || '无'}，还在旧名下：${left.join('、')}）：${error.message}`);
+        return 1;
+      }
+      moved.push(move);
+      let rewritten = [];
+      try {
+        rewritten = rewriteMovedBucket(move.to, move);
+      } catch (error) {
+        err(`  文章桶 ${move.toId} 已搬，但账本里的旧地址没改完：${error.message}`);
+      }
+      out(`  文章桶：${move.from} → ${move.to}${rewritten.length ? `（账本改写：${rewritten.join('、')}）` : ''}`);
+      for (const dir of PAGE_CACHE_MOVE) {
+        const from = path.join(plan.dataRoot, dir, move.fromId);
+        if (!fs.existsSync(from)) continue;
+        const to = path.join(plan.dataRoot, dir, move.toId);
+        fs.rmSync(to, { recursive: true, force: true });
+        fs.renameSync(from, to);
+        out(`    ${dir}/${move.fromId} → ${dir}/${move.toId}`);
+      }
+      move.hadDist = fs.existsSync(path.join(plan.dataRoot, 'dist', move.fromId));
+      for (const dir of PAGE_CACHE_DROP) {
+        const stale = path.join(plan.dataRoot, dir, move.fromId);
+        if (!fs.existsSync(stale)) continue;
+        fs.rmSync(stale, { recursive: true, force: true });
+        out(`    ${dir}/${move.fromId} 已删（产物写死了旧的 /sites/ 地址）`);
+      }
+    }
   }
 
   // ③ 资源前缀（project：改写 project.json 的 id）
@@ -604,6 +757,32 @@ export async function runRename(argv, io = {}) {
     for (const file of changed) out(`    ${file}`);
   } else {
     out(`  资源前缀：${plan.before.kind} 条目没有目录可扫，跳过`);
+  }
+
+  // project 的源文件 rename 不改：写死了 /sites/<旧 id>_<文章>/ 的文件列出来让作者改。
+  if (plan.sitePrefixFiles && plan.sitePrefixFiles.length) {
+    err(`  注意：这些文件写死了 /sites/${plan.before.id}_…/，rename 不改源文件，请改成 /sites/${plan.after.id}_…/ 或相对路径：`);
+    for (const file of plan.sitePrefixFiles) err(`    ${path.join(plan.before.path, PROJECT_CONTENT_DIR, file)}`);
+  }
+
+  // ③' 文章画布：旧 dist 删了的，按新页 id 重编一次（和 `ppnt build <页>` 同一个编译器）。
+  const rebuild = (plan.articleMoves || []).filter((move) => move.hadDist);
+  if (rebuild.length) {
+    const { compilePage, resolvePageTarget } = await import('../../src/server/lib/page-compiler.js');
+    const registry = loadRegistry({ root: REPO_ROOT, path: plan.registryPath });
+    for (const move of rebuild) {
+      const target = resolvePageTarget(move.toId, { registry, root: REPO_ROOT });
+      if (!target) {
+        out(`  画布 ${move.toId}：文章已不在盘上，不重编`);
+        continue;
+      }
+      try {
+        const result = await compilePage(target, { distRoot: path.join(plan.dataRoot, 'dist') });
+        out(`  画布 ${move.toId}：已重编${result.ok ? '' : `（有失败，跑 \`ppnt build ${move.toId}\` 看详情）`}`);
+      } catch (error) {
+        err(`  画布 ${move.toId} 重编失败：${error.message}；跑 \`ppnt build ${move.toId}\``);
+      }
+    }
   }
 
   out(`registry：${plan.registryPath}`);
@@ -641,15 +820,28 @@ export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}
     );
   }
   // 桶里有标注行就拒绝：删登记随时可以重新 add 找回，删行找不回来。
-  const bucket = path.join(dataRoot(env), id);
-  const rows = readBucketLedgers(bucket)
-    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
+  const root = dataRoot(env);
+  const bucket = path.join(root, id);
+  // project id 本身不是桶，project 的桶是下面的文章桶。
+  const isProject = before.kind === 'project';
+  const rows = isProject ? 0 : bucketRowCount(bucket);
   if (rows > 0) {
     throw new CliError(
       `标注桶 ${bucket} 里还有 ${rows} 行标注；先在工作台处理掉，或 \`pinpoint prune ${id}\`（--dry-run 先看清单）清完再 remove`,
     );
   }
-  return { ...parsed, registryPath, before, bucket, bucketExists: fs.existsSync(bucket), rows };
+  // project：每篇文章的桶 <id>_<文章> 守同一条规则——有标注行就拒绝，空桶跟着删。
+  const articleBuckets = isProject
+    ? articleBucketIds(root, id, { manifestIds: manifestPageIds() }).map((pageId) => ({ pageId, dir: path.join(root, pageId), rows: bucketRowCount(path.join(root, pageId)) }))
+    : [];
+  const busy = articleBuckets.filter((item) => item.rows > 0);
+  if (busy.length) {
+    throw new CliError(
+      `文章桶里还有标注：${busy.map((item) => `${item.pageId}（${item.rows} 行）`).join('、')}；` +
+      `先在工作台处理掉，或逐个 \`pinpoint prune <页>\` 清完再 remove ${id}`,
+    );
+  }
+  return { ...parsed, registryPath, before, bucket, bucketExists: !isProject && fs.existsSync(bucket), rows, articleBuckets };
 }
 
 /**
@@ -683,8 +875,12 @@ export async function runRemove(argv, io = {}) {
   if (plan.bucketExists) {
     fs.rmSync(plan.bucket, { recursive: true, force: true });
     out(`  标注桶 ${plan.bucket} 里没有标注行，已顺手删掉。`);
-  } else {
+  } else if (plan.before.kind !== 'project') {
     out(`  标注桶 ${plan.bucket} 不存在，没有桶要清。`);
+  }
+  for (const item of plan.articleBuckets || []) {
+    fs.rmSync(item.dir, { recursive: true, force: true });
+    out(`  文章桶 ${item.dir} 里没有标注行，已顺手删掉。`);
   }
   out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });

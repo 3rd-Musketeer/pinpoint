@@ -64,11 +64,34 @@ pinpoint add <project 根> --project
 | 命令 | 对 project 条目做什么 |
 | --- | --- |
 | `pinpoint move <id> <新根>` | 换根目录。新根的 `project.json` id 必须仍是 `<id>`，否则拒绝 |
-| `pinpoint rename <旧 id> <新 id>` | 登记表、标注桶、`project.json` 的 `id` 一起改；新 id 是保留名时拒绝 |
-| `pinpoint remove <id>` | 只删登记，project 目录不动；标注桶的规则与其他条目相同 |
+| `pinpoint rename <旧 id> <新 id>` | 登记表、`project.json` 的 `id`、每个文章桶一起改，见下面“rename 与文章桶”；新 id 是保留名时拒绝 |
+| `pinpoint remove <id>` | 只删登记，project 目录不动。每个文章桶 `<id>_<文章>/` 守其他条目的桶规则：有一个桶里有标注行就整单拒绝（列出哪些桶几行），全空就跟着删 |
 | `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · 概念数 · 布局错误数，次行根目录，下面每篇文章缩进一行。关键词也匹配文章 id 与标题 |
 | `pinpoint list <project id>` | 列这个 project 的文章（标题、摘要、文件）、概念（name、status、boundary、文件）和布局错误；有布局错误时退 1 |
 | `pinpoint status` | `project` 一行：个数与布局错误数，有错误时是“注意”，逐条列在下面，不算失败 |
+
+### rename 与文章桶
+
+project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`。`pinpoint rename <旧 id> <新 id>` 对 project 条目这样做：
+
+- 扫数据根下所有 `<旧 id>_<文章>/`，按盘上的桶扫，不按现有文章扫，所以文章已删的孤儿桶也一起带走。带 `_` 的模板页 id 不算。
+- 预检：任何一个 `<新 id>_<文章>/` 已存在，或撞上模板页 id，就整单拒绝，登记表、`project.json`、桶都不动。
+- 每个桶一次 `rename`，单桶原子，逐行打印搬了什么。搬完改写桶里账本的旧地址：行上的 `pageId`，`@prose.json` 的 `path`（`/<旧 id>/<文章>/` 换成 `/<新 id>/<文章>/`）。
+- 按页 id 存的派生物：`shot/`、`check/` 里的图跟着搬；`dist/`、`render/` 里的 HTML 写死了 `/sites/<旧页 id>/`，删掉。有 dist 的文章按新页 id 重编一次，和 `ppnt build <页>` 用同一个编译器。
+- 源文件不改。`docs/pinpoint/` 下写死了 `/sites/<旧 id>_` 的文件（帧里引用资源的绝对地址）逐个列在警告里，作者自己改成新地址或相对路径。
+- 工作台在浏览器里记的偏好（上次打开的页、tab）是 localStorage，不在服务端，rename 碰不到；旧页 id 的那几条自然失效。
+
+### 文章目录改名
+
+`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 不再是页，它的桶整桶皆孤儿（`ppnt status --page <project>_a` 与 `ppnt check <project>_a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
+
+```shell
+mv ~/.pinpoint/<project>_a ~/.pinpoint/<project>_b      # 桶；PINPOINT_DATA_DIR 设了就换成它
+rm -rf ~/.pinpoint/dist/<project>_a                     # dist 写死旧地址，重编即可
+ppnt build <project>_b
+```
+
+手工挪时，桶里行上的 `pageId` 和 `@prose.json` 的 `path` 还是旧值（project rename 会改写它们，手工挪不会）。不要这些标注的话，直接 `ppnt prune <project>_a`。
 
 project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但不是页：不出现在工作台的 Pages、`GET /registry` 的 `entries`、`/sites/`、`--page` 挂靠目标和左栏文件夹里。
 
@@ -99,7 +122,7 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 
 同一模块还导出这几个，站点需要时直接用：
 
-- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`resolveArticlePage(registry, id)` 在 project 登记了、`listProjects` 读到这篇时返回 `{ pageId, projectId, articleId, project, article }`。
+- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `orphans.js` 的 `pageIdIsLive(registry, id, { manifestIds })`：服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告都用它。
 - `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
 - `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
@@ -163,7 +186,7 @@ export default function ConfirmBare() {
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是画布页 id。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认画布页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是画布页 id。文章目录删了、改名了，或 project 不再登记，这个页 id 就不再是页，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt check <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认画布页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 

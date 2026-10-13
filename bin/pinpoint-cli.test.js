@@ -2518,3 +2518,148 @@ test('mark / locate 在文章页上作用于正文评论：状态端点走 @pros
   assert.equal(await runLocate(['locate', '#2', '--page', 't-proj_notes', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
   assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
 });
+
+/* ---- pp3 M4：rename / remove / prune / 孤儿 对文章桶 ---- */
+
+/** project `demo`（两篇文章 alpha、beta）+ 两个文章桶（各一本 @canvas、alpha 另有 @prose）
+    + 一个已删文章的桶 demo_gone + alpha 的 dist / shot 缓存。 */
+function makeProjectWithBuckets(t) {
+  const dir = withTempDir(t);
+  const root = path.join(dir, 'proj');
+  const content = path.join(root, 'docs', 'pinpoint');
+  for (const id of ['alpha', 'beta']) {
+    fs.mkdirSync(path.join(content, 'articles', id), { recursive: true });
+    fs.writeFileSync(path.join(content, 'articles', id, 'index.mdx'), `---\ntitle: ${id}\n---\n\n<Section id="s" title="S">\n\n正文 ${id}。\n\n</Section>\n`);
+  }
+  fs.writeFileSync(path.join(content, 'articles', 'alpha', 'hero.jsx'), "export default () => <img src=\"/sites/demo_alpha/assets/a.png\" />;\n");
+  fs.writeFileSync(path.join(content, 'project.json'), JSON.stringify({ id: 'demo', title: 'Demo' }));
+  const registry = registryWith(dir, [
+    { id: 'pinpoint', kind: 'dir', path: makeSite(dir, 'pp') },
+    { id: 'demo', title: 'Demo', kind: 'project', path: root },
+  ]);
+  const data = path.join(dir, 'data');
+  const ledger = (pageId, name, doc) => {
+    fs.mkdirSync(path.join(data, pageId), { recursive: true });
+    fs.writeFileSync(path.join(data, pageId, name), JSON.stringify(doc));
+  };
+  for (const [pageId, n] of [['demo_alpha', 1], ['demo_beta', 1], ['demo_gone', 4]]) {
+    ledger(pageId, '@canvas.json', { page: '@canvas', path: '@canvas', revision: 1, annotations: [{ id: `${pageId}-c`, n, status: 'open', content: `画布 ${pageId}`, pageId, screenId: 'x' }] });
+  }
+  ledger('demo_alpha', '@prose.json', { page: '@prose', path: '/demo/alpha/', revision: 1, annotations: [{ id: 'p', n: 2, type: 'prose', status: 'open', content: '正文评论', section: 's', quote: { exact: '正文 alpha' } }] });
+  fs.mkdirSync(path.join(data, 'dist', 'demo_alpha'), { recursive: true });
+  fs.writeFileSync(path.join(data, 'dist', 'demo_alpha', 'x.html'), '<script src="/sites/demo_alpha/x.js"></script>');
+  fs.mkdirSync(path.join(data, 'shot', 'demo_alpha'), { recursive: true });
+  fs.writeFileSync(path.join(data, 'shot', 'demo_alpha', 'x.png'), 'png');
+  const env = { PINPOINT_DATA_DIR: data };
+  return { dir, root, content, registry, data, env, io: (rec) => ({ ...rec.io, cwd: dir, env, requestFn: offline }) };
+}
+
+test('rename a project moves every <old>_<article> bucket, rewrites ledger addresses, refreshes caches, warns about hard-coded /sites/ paths', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const rec = recorder();
+  assert.equal(await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 0, rec.err.join('\n'));
+  for (const id of ['alpha', 'beta', 'gone']) {
+    assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `old bucket demo_${id} is gone`);
+    assert.ok(fs.existsSync(path.join(made.data, `demo2_${id}`, '@canvas.json')), `new bucket demo2_${id}`);
+  }
+  const canvas = JSON.parse(fs.readFileSync(path.join(made.data, 'demo2_alpha', '@canvas.json'), 'utf8'));
+  assert.equal(canvas.annotations[0].pageId, 'demo2_alpha');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(made.data, 'demo2_alpha', '@prose.json'), 'utf8')).path, '/demo2/alpha/');
+  assert.ok(rec.out.includes(`  文章桶：${path.join(made.data, 'demo_alpha')} → ${path.join(made.data, 'demo2_alpha')}（账本改写：@canvas.json、@prose.json）`), rec.out.join('\n'));
+  assert.ok(fs.existsSync(path.join(made.data, 'shot', 'demo2_alpha', 'x.png')), 'shot cache moves');
+  assert.ok(!fs.existsSync(path.join(made.data, 'dist', 'demo_alpha')), 'stale dist is dropped');
+  assert.ok(rec.out.some((line) => line.startsWith('  画布 demo2_alpha：已重编')), rec.out.join('\n'));
+  assert.ok(fs.existsSync(path.join(made.data, 'dist', 'demo2_alpha')), 'dist rebuilt under the new page id');
+  assert.ok(!rec.out.some((line) => line.includes(`${path.join(made.data, 'demo')} 不存在`)), 'the project id itself is not a bucket');
+  assert.ok(rec.err.includes(`    ${path.join(made.content, 'articles', 'alpha', 'hero.jsx')}`), rec.err.join('\n'));
+  assert.match(fs.readFileSync(path.join(made.content, 'articles', 'alpha', 'hero.jsx'), 'utf8'), /\/sites\/demo_alpha\//, 'author files are not rewritten');
+
+  // 搬过去的文章桶照常是活页：check 读得到画布标注与正文评论。
+  const check = recorder();
+  assert.equal(await runCheck(['check', 'demo2_alpha', '--registry', made.registry, '--status', 'all', '--json'], { ...check.io, env: made.env }), 0, check.err.join('\n'));
+  assert.equal(JSON.parse(check.out.join('\n')).counts.total, 2);
+});
+
+test('rename a project refuses up front when any target article bucket exists', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  fs.mkdirSync(path.join(made.data, 'demo2_beta'), { recursive: true });
+  const before = fs.readFileSync(made.registry, 'utf8');
+  const rec = recorder();
+  assert.equal(await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 1);
+  assert.match(rec.err.join('\n'), new RegExp(`文章桶的目标已存在：${path.join(made.data, 'demo2_beta').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
+  assert.equal(fs.readFileSync(made.registry, 'utf8'), before, 'registry untouched');
+  assert.ok(fs.existsSync(path.join(made.data, 'demo_alpha', '@canvas.json')), 'no bucket moved');
+  assert.equal(JSON.parse(fs.readFileSync(path.join(made.content, 'project.json'), 'utf8')).id, 'demo');
+});
+
+test('remove a project: article buckets follow the bucket rule (rows refuse, empty buckets go)', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const busy = recorder();
+  assert.equal(await runRemove(['remove', 'demo', '--registry', made.registry], made.io(busy)), 1);
+  assert.match(busy.err.join('\n'), /文章桶里还有标注：demo_alpha（2 行）、demo_beta（1 行）、demo_gone（1 行）/);
+  for (const id of ['alpha', 'beta', 'gone']) {
+    fs.writeFileSync(path.join(made.data, `demo_${id}`, '@canvas.json'), JSON.stringify({ page: '@canvas', annotations: [] }));
+  }
+  fs.rmSync(path.join(made.data, 'demo_alpha', '@prose.json'));
+  const rec = recorder();
+  assert.equal(await runRemove(['remove', 'demo', '--registry', made.registry], made.io(rec)), 0, rec.err.join('\n'));
+  for (const id of ['alpha', 'beta', 'gone']) assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `empty bucket demo_${id} removed`);
+});
+
+test('article buckets as orphans: prune on a live article lists nothing; a deleted article is a whole-bucket orphan in status / check / prune', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const live = recorder();
+  assert.equal(await runPrune(['prune', 'demo_alpha', '--dry-run', '--registry', made.registry], { ...live.io, env: made.env }), 0, live.err.join('\n'));
+  assert.deepEqual(live.out, ['页 demo_alpha 没有孤儿账本。']);
+  const liveReal = recorder();
+  assert.equal(await runPrune(['prune', 'demo_alpha', '--registry', made.registry], { ...liveReal.io, env: made.env }), 0);
+  assert.ok(fs.existsSync(path.join(made.data, 'demo_alpha', '@canvas.json')) && fs.existsSync(path.join(made.data, 'demo_alpha', '@prose.json')), 'live ledgers survive prune');
+
+  // 文章目录改名（beta → beta2）：旧页 id 不再是页，整桶皆孤儿。
+  fs.renameSync(path.join(made.content, 'articles', 'beta'), path.join(made.content, 'articles', 'beta2'));
+  for (const pageId of ['demo_gone', 'demo_beta']) {
+    const status = recorder();
+    assert.equal(await runStatus(['status', '--page', pageId, '--registry', made.registry], { ...status.io, env: made.env }), 0, status.err.join('\n'));
+    assert.equal(status.out[0], `页 ${pageId} 不在 registry 与本地页面清单里；桶里 1 本账本全是孤儿：`);
+    const check = recorder();
+    assert.equal(await runCheck(['check', pageId, '--registry', made.registry], { ...check.io, env: made.env }), 0, check.err.join('\n'));
+    assert.deepEqual(check.out, status.out);
+  }
+  const dry = recorder();
+  assert.equal(await runPrune(['prune', 'demo_gone', '--dry-run', '--registry', made.registry], { ...dry.io, env: made.env }), 0);
+  assert.deepEqual(dry.out, [`${path.join(made.data, 'demo_gone', '@canvas.json')}（页已不存在，整桶孤儿）`, '--dry-run：1 本孤儿账本待删（ppnt prune demo_gone 落盘）。']);
+});
+
+test('<project>_<article>#n resolves without --page in locate / mark / reply / check', async (t) => {
+  const made = makeArticleWithComments(t);
+  const loc = recorder();
+  assert.equal(await runLocate(['locate', 't-proj_notes#2', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
+  assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
+  // 基页是别的页时，跨页行按它自己的页上下文定位。
+  const other = recorder();
+  assert.equal(await runLocate(['locate', 't-proj_notes#2', '--page', 't-page', '--registry', made.registry], { ...other.io, env: made.env }), 0, other.err.join('\n'));
+  assert.deepEqual(other.out, loc.out);
+
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (opts.method === 'POST') return { status: 200, json: { revision: 3, annotation: { status: 'open' } } };
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const mk = recorder();
+  assert.equal(await runMark(['mark', 't-proj_notes#1', 'check', '--registry', made.registry], { ...mk.io, env: made.env, requestFn }), 0, mk.err.join('\n'));
+  assert.deepEqual(calls.find((call) => call.method === 'POST').body.entry, 't-proj_notes');
+  calls.length = 0;
+  const rp = recorder();
+  assert.equal(await runReply(['reply', 't-proj_notes#2', '好', '--registry', made.registry], { ...rp.io, env: made.env, requestFn }), 0, rp.err.join('\n'));
+  assert.equal(calls.find((call) => call.method === 'POST').url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
+
+  const ck = recorder();
+  assert.equal(await runCheck(['check', 't-proj_notes#2', '--registry', made.registry, '--json'], { ...ck.io, env: made.env }), 0, ck.err.join('\n'));
+  const report = JSON.parse(ck.out.join('\n'));
+  assert.equal(report.counts.total, 1);
+  assert.equal(report.groups.find((group) => group.kind === 'prose').rows[0].n, 2);
+  const miss = recorder();
+  assert.equal(await runCheck(['check', 't-proj_notes#9', '--registry', made.registry], { ...miss.io, env: made.env }), 1);
+  assert.ok(miss.err.includes('错误：t-proj_notes 没有 #9'), miss.err.join('\n'));
+});

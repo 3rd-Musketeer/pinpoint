@@ -30,6 +30,12 @@ const NUM_REF_RE = /^#([1-9][0-9]*)$/;
 const CROSS_NUM_REF_RE = /^([a-z0-9][a-z0-9-]*(?:_[a-z0-9][a-z0-9-]*)?)#([1-9][0-9]*)$/;
 const RANGE_REF_RE = /^#([1-9][0-9]*)-#?([1-9][0-9]*)$/;
 
+/** `<页>#n` 跨页引用 → { pageId, n }；别的形状返回 null。CLI 没给基页时用它的页当基页。 */
+export function parseCrossRef(token) {
+  const m = String(token || '').trim().match(CROSS_NUM_REF_RE);
+  return m ? { pageId: m[1], n: Number(m[2]) } : null;
+}
+
 /**
  * board + 本页标注 → 解析一枚引用。返回 pick 之一：
  *   { kind: 'annotation', row }            一条标注

@@ -160,8 +160,9 @@ annotate client 只落在登记过的目标上，其余一切 URL 打开的是�
   hash31(pathname).toString(36)`（`src/shared/annotate-page-key.js`），所以同名
   文件在不同目录各有各的账本。`#n` 按桶（= 页）单调编号。
 - **孤儿（orphan）**：一本账本对应的表面已不存在（文档文件删了、页不在
-  registry 与 manifest 里了）。`check` / `status --page` 单独列出，清理只经
-  `ppnt prune <页>`。
+  registry 与 manifest 里了；文章页是文章目录删了、改名了或 project 不再登记）。
+  `check` / `status --page` 单独列出，清理只经 `ppnt prune <页>`。“这个页 id 还是不是页”
+  只有一处判定：`orphans.js` 的 `pageIdIsLive`。
 - 文章页（pp3）：桶 = 文章页 id `<project>_<article>`；画布是 `@canvas.json`，正文评论是固定名 `@prose.json`，同一套 `#n`。
 浏览器 `localStorage` 只是缓存，不是权威。
 

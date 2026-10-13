@@ -92,6 +92,9 @@ add —— 把评审目标登记进 pinpoint registry（文件留在原地，CLI
                    ② 标注桶 ~/.pinpoint/<旧 id>/ 改名成 <新 id>/（标注不孤儿化）
                    ③ dir 条目目录下 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀
                    ④ 服务重载
+                   project 条目：③ 换成改写 project.json 的 id；另把每个文章桶
+                   <旧 id>_<文章>/ 改名成 <新 id>_<文章>/（任何一个目标已存在就整单
+                   不动），文章画布按新页 id 重编
                    把两个条目合并成一个 = rename + move（先把其中一个改成目标 id
                    之外的名字，再 move 到同一个落点）。
 
@@ -103,6 +106,7 @@ remove —— 把一个条目从登记表里删掉。只删登记：源文件 / 
   · 标注桶 ~/.pinpoint/<id>/ 里还有标注行——先在工作台处理，或用
     \`pinpoint prune <id>\`（--dry-run 先看清单）清掉孤儿账本。
   桶不存在或只剩空账本 / _seq.json 时放行，并顺手删掉这个空桶。
+  project 条目的每个文章桶 <id>_<文章>/ 守同一条：有标注行就拒绝，空桶一起删。
 
 选项（remove）：
   --registry 路径  同上
@@ -135,11 +139,12 @@ check / locate / shot / mark / reply —— pp2 的标注面。引用语法几�
   B3 / B 是按 board 顺序派生的显示编号，调序就变；帧 id / 段 id 不变。
   写进 README、交接稿这类留存文字时用 id，编号只在当场对话里用。
 
-  pinpoint check <页> [--frame B3|帧 id] [--status open|check|done|close|all]
+  pinpoint check <页>[#n] [--frame B3|帧 id] [--status open|check|done|close|all]
                   [--mode excerpt|image|both] [--group-by frame|component] [--json]
                                        默认 open、按帧分组；excerpt 给最小完整元素 + 父链
                                        面包屑 + 兄弟折叠（约 300 token）；image 走服务渲染器
-                                       1x 截图到 <dataRoot>/check/<页>/<屏>.png（服务要在跑）
+                                       1x 截图到 <dataRoot>/check/<页>/<屏>.png（服务要在跑）；
+                                       <页>#n 只看这一条（缺省 --status all）
   pinpoint locate <引用…>              每条一行：#n → 源文件:行 · 组件（共用 n 帧）；
                                        存量 HTML 页给 dist 路径 + selector
   pinpoint shot <引用…> [--scale 1] [--marks]
@@ -154,9 +159,10 @@ check / locate / shot / mark / reply —— pp2 的标注面。引用语法几�
                                        agent 消息，走服务回复端点（带 baseRevision），状态不动；
                                        要改状态另用 mark。画布标注没有线程，reply 拒绝
   文章页的页 id 是 <project>_<article>（如 browser-use_payment-confirm）：
-  check 它列画布标注与正文评论（引文、节、线程、源文件行）；mark / reply 用 --page 它，
+  check 它列画布标注与正文评论（引文、节、线程、源文件行）；locate / mark / reply 用 --page 它，
   或写跨页引用 browser-use_payment-confirm#3
-  --page <页>                          locate / shot / mark / reply 的基页（缺省 registry 第一个可编译页）
+  --page <页>                          locate / shot / mark / reply 的基页（缺省取引用里第一个
+                                       <页>#n 的页，再缺省 registry 第一个可编译页）
   --registry 路径                      同 add
 
 list —— 把口头说的页对上页 id。每页两行：id · 标题 · 类型（编译页 / 文档页 / 网页 /

@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { buildCheckReport, formatCheckMarkdown, loadPageContext, locateLine } from '../../src/server/lib/ann-query.js';
-import { expandRefs, expandStatus, REF_STATUSES } from '../../src/server/lib/ann-refs.js';
+import { expandRefs, expandStatus, parseCrossRef, REF_STATUSES } from '../../src/server/lib/ann-refs.js';
 import { listPageIds } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
@@ -10,16 +10,19 @@ import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
 import { DEFAULT_ORIGIN, REPO_ROOT, ioOf } from './core.js';
 import { resolveRegistryPath } from './registry.js';
 import { guardParse } from './args.js';
-import { loadAnnotateContext } from './list.js';
+import { loadAnnotateContext, pageIdKnown, printBucketOrphanStatus } from './list.js';
 
 const CHECK_STATUSES = new Set(['open', 'check', 'done', 'close', 'all']);
 const CHECK_MODES = new Set(['excerpt', 'image', 'both']);
 const GROUP_BYS = new Set(['frame', 'component']);
 
-/** locate / shot / mark 的基页：--page 优先，缺省取 registry 第一个可编译页。 */
+/** locate / shot / mark / reply 的基页：--page 优先；没给时引用里第一个 `<页>#n` 的页
+    （文章页 `<project>_<article>#3` 也一样）；都没有取 registry 第一个可编译页。 */
 function pageRefFor(parsed, { env, err }) {
   if (parsed.target) return parsed.target;
   if (parsed.flags.page) return parsed.flags.page;
+  const cross = (parsed.refs || []).map(parseCrossRef).find(Boolean);
+  if (cross) return cross.pageId;
   const registryPath = resolveRegistryPath(parsed.flags, env);
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
   const first = listPageIds({ registry, root: REPO_ROOT })[0];
@@ -27,12 +30,21 @@ function pageRefFor(parsed, { env, err }) {
   return first || null;
 }
 
+/** `<页>#n` 跨页引用的行读取器（mark / reply 用；locate 另带每页上下文）。 */
+function crossPageRowsFor(parsed, env) {
+  const registryPath = resolveRegistryPath(parsed.flags, env);
+  return (pageRef) => {
+    const other = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
+    return other ? [...other.frameRows, ...other.docRows] : [];
+  };
+}
+
 export async function runCheck(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   const { env, out, err } = ioOf(io);
-  const status = parsed.flags.status || 'open';
+  const status = parsed.flags.status || (parseCrossRef(parsed.target) ? 'all' : 'open');
   if (!CHECK_STATUSES.has(status)) {
     err(`错误：--status 只支持 ${[...CHECK_STATUSES].join(' / ')}，收到：${status}`);
     return 1;
@@ -47,8 +59,27 @@ export async function runCheck(argv, io = {}) {
     err(`错误：--group-by 只支持 frame / component，收到：${groupBy}`);
     return 1;
   }
-  const context = loadAnnotateContext(parsed.target, parsed, { env, err });
-  if (!context) return 1;
+  // `check <页>#n`：只看这一条（任何状态），页取 `#` 前面那段。
+  const cross = parseCrossRef(parsed.target);
+  const pageRef = cross ? cross.pageId : parsed.target;
+  // 找不到页的报错先攒着：页不在了但桶还在（删了的页、删了或改了名的文章）时，
+  // 和 status --page 一样把整桶列成孤儿，而不是只说找不到页。
+  const pending = [];
+  const context = loadAnnotateContext(pageRef, parsed, { env, err: (line) => pending.push(line) });
+  if (!context) {
+    if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return 0;
+    for (const line of pending) err(line);
+    return 1;
+  }
+  if (cross) {
+    const keep = (row) => Number(row.n) === cross.n;
+    if (![...context.frameRows, ...context.docRows].some(keep)) {
+      err(`错误：${pageRef} 没有 #${cross.n}`);
+      return 1;
+    }
+    context.frameRows = context.frameRows.filter(keep);
+    context.docRows = context.docRows.filter(keep);
+  }
   const report = buildCheckReport(context, { frame: parsed.flags.frame || null, status, groupBy, mode });
   if (report.error) {
     err(`错误：${report.error}`);
@@ -101,7 +132,17 @@ export async function runLocate(argv, io = {}) {
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
   if (!context) return 1;
   const rows = [...context.frameRows, ...context.docRows];
-  const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows: null };
+  // 别页的行按它自己的页上下文定位（源文件、板、文章都跟着页走）。
+  const contexts = new Map([[context.pageId, context]]);
+  const contextOf = (pageRef) => {
+    if (!contexts.has(pageRef)) contexts.set(pageRef, loadAnnotateContext(pageRef, parsed, { env, err: () => {} }));
+    return contexts.get(pageRef);
+  };
+  const crossPageRows = (pageRef) => {
+    const other = contextOf(pageRef);
+    return other ? [...other.frameRows, ...other.docRows] : [];
+  };
+  const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows };
   const { picks, errors } = expandRefs(parsed.refs, refCtx);
   if (parsed.flags.status) {
     if (!REF_STATUSES.includes(parsed.flags.status)) {
@@ -116,7 +157,7 @@ export async function runLocate(argv, io = {}) {
     const key = `${row.__bucket}|${row.__ledger}|${row.id || row.n}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out(locateLine(row, context).text);
+    out(locateLine(row, (row.__bucket && contextOf(row.__bucket)) || context).text);
   };
   for (const pick of picks) {
     if (pick.kind === 'annotation') printRow(pick.row);
@@ -308,11 +349,7 @@ export async function runMark(argv, io = {}) {
   }
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
   if (!context) return 1;
-  const registryPath = resolveRegistryPath(parsed.flags, env);
-  const crossPageRows = (pageRef) => {
-    const other = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
-    return other ? [...other.frameRows, ...other.docRows] : [];
-  };
+  const crossPageRows = crossPageRowsFor(parsed, env);
   const rows = [...context.frameRows, ...context.docRows];
   const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows });
   if (parsed.flags.status) {
@@ -379,11 +416,7 @@ export async function runReply(argv, io = {}) {
   }
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
   if (!context) return 1;
-  const registryPath = resolveRegistryPath(parsed.flags, env);
-  const crossPageRows = (pageRef) => {
-    const other = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
-    return other ? [...other.frameRows, ...other.docRows] : [];
-  };
+  const crossPageRows = crossPageRowsFor(parsed, env);
   const rows = [...context.frameRows, ...context.docRows];
   const { picks, errors } = expandRefs(parsed.refs, { rows, board: context.board, pageId: context.pageId, crossPageRows });
   for (const error of errors) err(error);

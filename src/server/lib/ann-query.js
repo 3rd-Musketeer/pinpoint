@@ -26,7 +26,7 @@ import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
 import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
-import { resolveArticlePage } from './projects.js';
+import { parseFrontmatter } from './projects.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
 import { isProseRow } from '../../shared/prose-thread.js';
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
@@ -98,15 +98,18 @@ export function collectPageRows({ root, pageId, skipLedgers = [] }) {
     摘出去，单独挂在上下文上，清理只经 prune。 */
 /** 一篇 article 的页（`<project>_<article>`）：上下文带上文章的源文件与地址，正文评论的
     源码定位与 check 抬头用。不是文章页返回 null。 */
-function articleInfo(registry, pageId) {
-  const hit = resolveArticlePage(registry, pageId);
-  if (!hit) return null;
+function articleInfo(target) {
+  if (!target || target.kind !== 'article') return null;
+  let title = target.articleId;
+  try {
+    title = parseFrontmatter(fs.readFileSync(target.articleFile, 'utf8')).data.title || title;
+  } catch { /* 读不到：用 id（与 listProjects 的缺省相同） */ }
   return {
-    projectId: hit.projectId,
-    articleId: hit.articleId,
-    title: hit.article.title,
-    file: hit.article.file,
-    url: `/${hit.projectId}/${hit.articleId}/`,
+    projectId: target.projectId,
+    articleId: target.articleId,
+    title,
+    file: target.articleFile,
+    url: `/${target.projectId}/${target.articleId}/`,
   };
 }
 
@@ -129,7 +132,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
       .map((row) => normalizeAnnotation(row)))
     .filter(Boolean)
     .map((row) => ({ ...row, __bucket: pageId, __ledger: orphanLedgerOf(row, orphanLedgers, path.join(dataRootValue, pageId)) }));
-  return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows, article: articleInfo(registry, pageId) };
+  return { pageId, target, board, refs: boardRefs(board || {}), frameRows, docRows, orphanLedgers, orphanRows, article: articleInfo(target) };
 }
 
 /**
@@ -145,17 +148,9 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   const dataRootValue = dataRootDir || dataRoot();
   const target = resolvePageTarget(pageRef, { registry, root: repoRoot });
   if (!target) {
+    // 文章页 `<project>_<article>` 不走这里：index.mdx 在盘上时 resolvePageTarget 已返回
+    // kind 'article' 的目标（没编译过也是），不在盘上就不是页。
     const entry = registry.resolve(String(pageRef || ''));
-    // pp3：文章页 `<project>_<article>` 还没有编译出的画布时，仍有正文评论可读、可 mark、
-    // 可回复 —— 和 doc 页一样走无板上下文。
-    const article = !entry ? resolveArticlePage(registry, pageRef) : null;
-    if (article) {
-      const articleTarget = { entryId: article.pageId, pageDir: article.article.dir, urlBase: `/${article.projectId}/${article.articleId}/`, kind: 'article', docOnly: true };
-      return {
-        ...contextWithRows({ registry, repoRoot, dataRootValue, pageId: article.pageId, target: articleTarget, board: null, isManifestPage: false }),
-        docOnly: true,
-      };
-    }
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
     const docTarget = {
       entryId: entry.id,
