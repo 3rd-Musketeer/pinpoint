@@ -5,6 +5,11 @@ pinpoint 是一个本地视觉反馈服务：kit（`content/kits/ios/`，第一�
 常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务 workbench、annotate API、
 登记进来的仓外目录（`/sites/<id>/`）和 client bundle（`/annotate.js`）。
 
+pp3（2026-10-13 起）主体是 **article**：project → article → section → 画布组件。一篇 article 是
+`<project 根>/docs/pinpoint/articles/<id>/` 下的 `index.mdx` 加本篇的帧，正文经 Astro 站点同源代理在
+`/<project>/<article>/`，画布由正文派生，页 id `<project>_<article>`。新工作写成 article，存量 page 照旧维护。
+目录、写法与查错见 [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)，为什么这样定见 ADR 0042。
+
 pp2（2026-09-22 起）页是**源码**：`<screenId>.jsx` 帧 + `components/<Name>.jsx` 页内组件 +
 `board.json`；`ppnt build` 把源码编译成 dist（`~/.pinpoint/dist/<entry>/`），画布、标注、
 导出、mention 只认 dist。机制细节见 [`docs/board-schema.md`](docs/board-schema.md)。
@@ -94,11 +99,12 @@ agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工
 
 | 要做什么 | 打开 |
 |---|---|
-| 加帧 / 加组件 / 改 board / 做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
-| 读标注 → 改稿 → 写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
+| 写 article、加帧 / 加组件、写 concept、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
+| 读画布标注与正文评论 → 改稿 → 回复、写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | board、帧、组件、编译、交互的唯一机制权威 | [`docs/board-schema.md`](docs/board-schema.md) |
 | registry 条目形状、注入契约、CLI（add / move / rename / folder）、代理 | [`docs/registry.md`](docs/registry.md) |
-| project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects` | [`docs/projects.md`](docs/projects.md) |
+| project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects`、文章的画布与页 id | [`docs/projects.md`](docs/projects.md) |
+| 文章站点：`Section` / `Canvas` 写法、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 标注字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 

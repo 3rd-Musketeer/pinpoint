@@ -37,8 +37,10 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
 搬进 kit，没有自动提升机制。
 
 **kit**：`content/kits/ios/` = `ios-kit.css` + `ios-kit.js` + `jsx/`（系统组件的 JSX 印章）。
-帧经 `import { Nav } from 'pinpoint/kit'` 引用；组件清单在 `content/kits/ios/jsx/index.js`，
-props 在各文件首行注释。
+帧经 `import { Nav } from 'pinpoint/kit'` 引用，这是引 kit 印章唯一的规范写法（页和文章都一样）；组件清单在
+`content/kits/ios/jsx/index.js`，props 在各文件首行注释。文章（pp3）的帧里 `./components/<Name>.jsx` 按本篇
+`components/` → project `docs/pinpoint/components/` 查找，两处都没有时编译器还会落到 kit 的同名印章
+（`page-compiler.js` 的 `articleComponentsPlugin`）；这一步是兜底，引 kit 仍写 `pinpoint/kit`。
 
 ## board 字段
 

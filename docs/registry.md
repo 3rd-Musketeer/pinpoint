@@ -263,3 +263,34 @@ git 里是 cba03bb 的父提交。在自己的 Chrome 标签页里标注站点�
 文档导出接受 `sites/<entry-id>/…` 形式的 src，并保证不含注入的 client：管线请求 `?annotate=off`、
 在渲染浏览器里 abort 掉 `**/annotate.js`、并用 `stripAnnotateBootstrap` 从导出的 HTML 里
 删掉注入片段（连 `__pinpointEntry` 标记一起）。
+
+## 隔离运行（测试 / 不碰 owner 的服务）
+
+owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是 `~/.pinpoint/`。agent 要试写一篇文章、跑一轮冒烟，又不想动这两样时，另起一个服务，所有路径和地址都用环境变量指到别处。
+
+不要用 `pinpoint start` 或 `just dev` 起第二个服务。它们走 `npm run dev`，也就是 `portless run --name pinpoint`，注册的是和 owner 同一条 `pinpoint.localhost` 路由，会和常驻服务撞上；常驻服务健康时，`pinpoint start` 还会报错退出、什么也不起。直接起 vite（`npm run dev:app`），不经 portless。
+
+| 变量 | 管什么 | 缺省 |
+| --- | --- | --- |
+| `PINPOINT_DATA_DIR` | 数据根：标注桶、dist、截图、日志（服务和 CLI 都认） | `~/.pinpoint` |
+| `PINPOINT_REGISTRY` | 登记表文件（服务、站点、CLI 都认；CLI 的 `--registry` 优先） | `~/.pinpoint/registry.json` |
+| `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`check --mode image`、`shot`、`mark`、`reply` | `https://pinpoint.localhost` |
+| `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
+| `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |
+| `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选 | `site/.astro-cache` |
+
+在 pinpoint 仓库里（要有 `node_modules`）起服务。下面的命令里，`<数据目录>` 是一个空的临时目录，端口换成空闲的：
+
+```shell
+PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json PORT=5750 PINPOINT_SITE_PORT=5755 npm run dev:app
+```
+
+另开一个终端，CLI 带上同一组变量，再加 `PINPOINT_ORIGIN`：
+
+```shell
+PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json PINPOINT_ORIGIN=http://127.0.0.1:5750 pinpoint add <project 根> --project
+```
+
+之后的 `pinpoint list`、`ppnt build`、`ppnt shot`、`ppnt check` 都带同样的前缀。文章在 `http://127.0.0.1:5750/<project>/<article>/`，画布在 `http://127.0.0.1:5750/?page=<project>_<article>`。
+
+停服务在它的终端按 Ctrl-C，站点进程组跟着停。不要按命令行 `pkill`：这个服务和 owner 的常驻服务命令行一样。e2e 的固件就是这样隔离的（`playwright.config.js` 的 webServer `env`）。在 feat worktree 里想用 owner 真实数据的一份副本亲手试，用 `just preview`，见 AGENTS.md“分支与推送”。
