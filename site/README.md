@@ -1,6 +1,6 @@
 # site/：article 站点（Astro）
 
-pp3 的文章层。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 `tasks/2026-10-13-pp3/briefs/common.md` §1）。这里只放站点代码。
+pp3 的文章层。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 [`docs/projects.md`](../docs/projects.md)“目录”）。这里只放站点代码。
 
 ## 跑起来
 
