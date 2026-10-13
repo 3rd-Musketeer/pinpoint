@@ -17,33 +17,20 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
+import { isReservedSegment, RESERVED_TOP_SEGMENTS } from './article-routes.js';
 
 /** project 根下的内容目录（相对路径）。 */
 export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
 
 /**
  * project id 是站点 URL 的第一段（/<project>/<article>/），不能是服务已占用的首段。
- * 来源：common.md 定的七个（api sites workbench kits assets annotate _astro）；
- * 服务路由（annotate-api: health registry events annotations images image save；
- * content-routes: previews lib）；vite 直接按仓库根服务静态文件，所以仓库根的
- * 顶层目录也都是首段（src content node_modules bin docs e2e scripts skills
- * site tasks prototypes；projects.test.js 守着它与仓库根同步）；Astro 的 _image。
- * 与包 M0-C 的 article-routes.js RESERVED_TOP_SEGMENTS 对齐（本表是它的超集，
- * 多 node_modules），合并后改为从那里 import，只留一份。
+ * 唯一的表在 article-routes.js（RESERVED_TOP_SEGMENTS + test-results* /
+ * playwright-report* 前缀）：服务路由与登记校验用同一份。
  */
-export const RESERVED_PROJECT_IDS = new Set([
-  'api', 'sites', 'workbench', 'kits', 'assets', 'annotate', '_astro', '_image',
-  'health', 'registry', 'events', 'annotations', 'images', 'image', 'save',
-  'previews', 'lib',
-  'src', 'content', 'node_modules', 'bin', 'docs', 'e2e', 'scripts', 'skills', 'site', 'tasks', 'prototypes',
-]);
-/** e2e 产物目录（test-results-<端口>/ 等）同样被 vite 服务，按前缀拒。 */
-export const RESERVED_PROJECT_PREFIXES = ['test-results', 'playwright-report'];
+export const RESERVED_PROJECT_IDS = new Set(RESERVED_TOP_SEGMENTS);
 
 /** id 是不是保留的 URL 首段（整名或前缀）。 */
-export function isReservedProjectId(id) {
-  return RESERVED_PROJECT_IDS.has(id) || RESERVED_PROJECT_PREFIXES.some((prefix) => String(id).startsWith(prefix));
-}
+export const isReservedProjectId = (id) => isReservedSegment(String(id));
 
 /** project 内占用的 URL 第二段：/<project>/concepts/<名字>/。 */
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);

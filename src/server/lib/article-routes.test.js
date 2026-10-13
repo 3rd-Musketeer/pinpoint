@@ -75,13 +75,13 @@ test('isProjectId：读 resolveProject 或 projects；两样都没有（包 A �
   assert.equal(isProjectId({ projects: [] }, ''), false);
 });
 
-test('保留首段：服务实际占用的路由都在表里，且都符合 id 规则', () => {
+test('保留首段：服务实际占用的路由都在表里；不符合 id 规则的只有 Astro 内部段与 node_modules', () => {
   for (const name of ['health', 'registry', 'events', 'annotations', 'save', 'image', 'images', 'api', 'sites',
-    'kits', 'previews', 'lib', 'src', 'site', 'workbench', 'assets', 'annotate']) {
+    'kits', 'previews', 'lib', 'src', 'site', 'workbench', 'assets', 'annotate', '_astro', '_image', 'node_modules']) {
     assert.equal(isReservedSegment(name), true, name);
   }
   assert.equal(new Set(RESERVED_TOP_SEGMENTS).size, RESERVED_TOP_SEGMENTS.length);
-  for (const name of RESERVED_TOP_SEGMENTS) assert.match(name, /^[a-z0-9][a-z0-9-]*$/);
+  assert.deepEqual(RESERVED_TOP_SEGMENTS.filter((name) => !/^[a-z0-9][a-z0-9-]*$/.test(name)).sort(), ['_astro', '_image', 'node_modules']);
   assert.equal(isReservedSegment('playwright-report-5440'), true);
   assert.equal(isReservedSegment('browser-use'), false);
 });

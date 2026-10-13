@@ -101,20 +101,20 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 
 - `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
-- `RESERVED_PROJECT_IDS`、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
+- `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
 
 HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 每条前缀 `<project id>: `。
 
 ## 保留名
 
-project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<名字>/`、`/<project>/llms.txt`），不能占服务已用的首段。清单是 `projects.js` 的 `RESERVED_PROJECT_IDS`：
+project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由和登记校验用同一份；`projects.js` 的 `RESERVED_PROJECT_IDS`、`isReservedProjectId` 只是它的转出口。清单包括：
 
 - 2026-10-13 定的 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；
-- vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及按前缀拒绝的 `test-results*`、`playwright-report*`（`RESERVED_PROJECT_PREFIXES`）。`projects.test.js` 检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
+- vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及 e2e 产物目录前缀。`projects.test.js` 与 `article-routes.test.js` 都检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
 - Astro 的 `_image`。
 
-判断用 `isReservedProjectId(id)`。服务代理侧（`src/server/lib/article-routes.js` 的 `RESERVED_TOP_SEGMENTS`）有同一份清单，两边合入后只留一份。
+article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二段），只在 `projects.js` 里。
 
 ## 固件
 

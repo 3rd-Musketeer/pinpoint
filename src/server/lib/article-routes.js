@@ -22,26 +22,29 @@ import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 export const ASTRO_DEV_BASE = '/_astro/';
 
 /**
- * 服务已经占用、或保留给 pp3 的 URL 首段。project id 不能取这些名字（包 A 的
- * 登记校验拒绝它们；这里的路由也绝不把它们交给站点，双保险）。
- * 只列符合 id 规则（小写字母、数字、中划线）的名字：带 . _ @ 的首段
- * （index.html、annotate.js、_astro、@vite、node_modules）本来就不可能是 id。
+ * 服务已经占用、或保留给 pp3 的 URL 首段：唯一的一份表。project id 不能取这些
+ * 名字（projects.js 的 `isReservedProjectId` 就是这里的 `isReservedSegment`，
+ * 登记校验与站点读取都用它）；这里的路由也绝不把它们交给站点，双保险。
+ * 带 _ 的几个（_astro、_image、node_modules）本来就不符合 id 规则，
+ * 也列进来，让“哪些首段被占用”只有这一处答案。
  */
 export const RESERVED_TOP_SEGMENTS = Object.freeze([
   // annotate-api
   'health', 'registry', 'events', 'annotations', 'save', 'image', 'images',
-  // frame / export / diagnostics API（/api/…）与登记目录（/sites/<id>/）
+  // frame / export / diagnostics / projects API（/api/…）与登记目录（/sites/<id>/）
   'api', 'sites',
   // content-routes 的 URL 投影
   'kits', 'previews', 'lib',
   // vite 按仓库根静态服务的顶层目录（主 clone 里还有 owner 本地的 tasks、prototypes）
-  'bin', 'content', 'docs', 'e2e', 'scripts', 'skills', 'src', 'site', 'tasks', 'prototypes',
+  'bin', 'content', 'docs', 'e2e', 'scripts', 'skills', 'src', 'site', 'tasks', 'prototypes', 'node_modules',
   // common.md §4 预留（kits 已在上面）
   'workbench', 'assets', 'annotate',
+  // Astro 开发服务器的内部路径（见文件头）
+  '_astro', '_image',
 ]);
 
 // e2e 产物目录（test-results-<端口>、playwright-report-<端口>）落在仓库根，也被 vite 服务。
-const RESERVED_SEGMENT_PATTERNS = Object.freeze([/^test-results(?:-|$)/, /^playwright-report(?:-|$)/]);
+export const RESERVED_SEGMENT_PATTERNS = Object.freeze([/^test-results(?:-|$)/, /^playwright-report(?:-|$)/]);
 
 const RESERVED_SET = new Set(RESERVED_TOP_SEGMENTS);
 
@@ -50,8 +53,8 @@ export function isReservedSegment(segment) {
 }
 
 /**
- * `id` 是不是登记过的 project。读包 A 的 registry 接口：`resolveProject(id)`，
- * 或 `projects` 列表；两样都没有（A 还没合入）就当没有 project。
+ * `id` 是不是登记过的 project。读 registry 的 `resolveProject(id)`（loadRegistry
+ * 的结果与 live store 都有），退回 `projects` 列表；两样都没有就当没有 project。
  */
 export function isProjectId(registry, id) {
   if (!registry || typeof id !== 'string' || !id) return false;
