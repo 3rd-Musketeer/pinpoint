@@ -119,8 +119,11 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   expect(captured[0].targets[0].selector).toContain('div.ios-screen:nth-of-type(1)');
 
   // 2 ─ 存量行模拟：磁盘上摘掉 ppId（决定 #15 之前的行就长这样），重载水合。
+  //    外部写入照真的来：revision 加一。工作台离开页面时会补发还没落盘的写
+  //    （lastRect 防抖），revision 对不上就 409，不会把这里摘掉的 ppId 写回去。
   const onDisk = readLedger();
   delete onDisk.annotations[0].targets[0].ppId;
+  onDisk.revision = (Number(onDisk.revision) || 0) + 1;
   fs.writeFileSync(LEDGER, JSON.stringify(onDisk));
   await openBoard(page);
   await expect(page.locator('#ann-box')).toBeHidden();
