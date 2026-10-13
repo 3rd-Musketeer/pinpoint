@@ -13,6 +13,7 @@ import exportPageHtmlApi from './src/server/export-page-html-api.js';
 import previewHmr from './src/server/preview-hmr.js';
 import previewInject from './src/server/preview-inject.js';
 import contentRoutes from './src/server/content-routes.js';
+import articleProxy from './src/server/article-proxy.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
@@ -30,8 +31,11 @@ registryStore.reload = () => {
   return snapshot;
 };
 
+// pp3：/<project>/… 文章同源代理到按需拉起的 Astro 开发服务器（站点状态进 /health）。
+const articles = articleProxy({ registry: registryStore, root: ROOT });
+
 export default defineConfig({
-  plugins: [react(), tailwindcss(), annotateApi({ registry: registryStore, root: ROOT }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
+  plugins: [react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,
