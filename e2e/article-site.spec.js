@@ -47,9 +47,9 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、[[ ]] popup、�
     consoleErrors.length = 0;
   });
 
-  await test.step('页面资源都在 /_astro/ 下且都成功；样式生效；标注客户端以 project id 为桶', async () => {
-    await page.waitForFunction(() => window.pinpoint);
-    expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-project');
+  await test.step('页面资源都在 /_astro/ 下且都成功；样式生效；标注客户端以文章页 id 为桶、只跑正文评论', async () => {
+    await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
+    expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-project_commit-confirm');
     const scripts = sameOrigin.filter((r) => r.type === 'script' && r.path.startsWith('/_astro/'));
     expect(scripts.length).toBeGreaterThan(0);
     // 文章 HTML、Astro 内部资源、标注客户端与它的接口：此外不该有同源请求，也不该有失败。
