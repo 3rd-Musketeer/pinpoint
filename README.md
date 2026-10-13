@@ -56,6 +56,15 @@ first thing to run when the site does not open — it checks the portless route,
 health endpoints, and whether the running service is the repo you are standing in;
 `pinpoint start` / `stop` / `restart` drive that same service.
 
+Articles (pp3) are served on the same origin at `/<project>/<article>/`. The service starts the
+Astro dev server on the first article request (`npm run site:dev`, port 4530) and proxies to it;
+until it is ready the page shows “站点启动中” and refreshes itself. Knobs: `PINPOINT_SITE_PORT`
+(default 4530), `PINPOINT_SITE_CMD` (shell command, `{port}` is substituted). The site's vite must
+take its base from `PINPOINT_SITE_VITE_BASE` (the service sets `/_astro/`), because pinpoint's own
+vite already owns `/@vite/`, `/@fs/` and the root HMR socket. Its log is
+`~/.pinpoint/logs/site-dev.log`; `pinpoint status` shows its state. Routing rules and reserved
+first segments: [`docs/design.md`](docs/design.md) “服务路由”.
+
 Then tell your agent:
 
 > 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 搭一页，跑 `ppnt build` 编译
@@ -126,6 +135,7 @@ src/                         pinpoint itself — the disk layout moves, the serv
   src/server/                Vite plugins: annotate/sites/export APIs, page compiler, preview-hmr,
                              preview-inject, content-routes (URL → disk mapping);
                              lib/site-proxy.js = same-origin proxy for url entries;
+                             article-proxy.js = /<project>/… → on-demand Astro dev server (pp3);
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
                              slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
