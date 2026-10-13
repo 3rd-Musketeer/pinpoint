@@ -188,7 +188,8 @@ prune —— 孤儿账本清理（storage-unify：桶 = 页）。孤儿 = 表面
   PINPOINT_REGISTRY   同 --registry（--registry 优先）
   PINPOINT_ORIGIN     服务地址（默认 ${DEFAULT_ORIGIN}）；写入后 CLI 会
                       GET /health 探活，可达则 POST /registry/reload 即时生效；
-                      check --mode image / shot / mark 也走它
+                      check --mode image / shot / mark 也走它；设了它，status
+                      只体检这一个服务，不读 portless 路由
   PORTLESS_ROUTES     portless 路由表位置（默认 ~/.portless/routes.json），status 读它`;
 
 /** 参数解析（纯函数）。add 返回 { command, target, flags }，move 返回 { command, id, target, flags }，

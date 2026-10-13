@@ -1,6 +1,13 @@
+import { execFile } from 'node:child_process';
+import fs from 'node:fs';
+import path from 'node:path';
+import { promisify } from 'node:util';
+import { fileURLToPath } from 'node:url';
+
 import { expect, test } from '@playwright/test';
 
-import { E2E_SITES_DIR } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { countColorPixels } from './png-probe.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // pp2 切片 1：页是「源码 → 编译 → dist」。e2e-jsx 不进共享 registry 固件
@@ -10,6 +17,8 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // /sites/ 出 dist 与缺源码 500 的 HTTP 层在 src/server/sites-api.test.js
 // （已编译态下沉用例 + frame-doc.test.js 的「源码不存在」）。
 const SITE_DIR = `${E2E_SITES_DIR}/jsx-site`;
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+const execFileP = promisify(execFile);
 
 test.beforeEach(async ({ request }) => {
   appendRegistryEntry({ id: 'e2e-jsx', title: 'E2E JSX', kind: 'dir', path: SITE_DIR, board: 'ios' });
@@ -50,4 +59,17 @@ test('.jsx 帧编译后出现在工作台画布，DOM 带 data-pp-id', async ({ 
   await expect(badgeNew.locator('[data-pp-comp="Badge"]')).toHaveCount(1);
   await expect(badgeNew.locator('.wb-screen-dim')).toHaveCount(0);
   await expect(page.locator('#wb-board-panel [data-screen="badge-hot"] .e2e-badge')).toHaveText('热');
+  // 板级 assets.css 在画布上生效（洋红底来自 page.css）。
+  await expect(badgeNew.locator('.e2e-badge')).toHaveCSS('background-color', 'rgb(255, 0, 170)');
+});
+
+// ppnt shot 的帧图 / 节图与画布同一套样式：assets.css 注入的 <style>@import</style>
+// 在板级装载时被提到 .wb-library 开头（hoist-imports.js），帧快照里已经没有它。
+test('ppnt shot B1 B：存量页的帧图 / 节图带上 board assets.css', async ({ page }) => {
+  const env = { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL };
+  await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), 'shot', 'B1', 'B', '--page', 'e2e-jsx'], { cwd: ROOT, env });
+  for (const name of ['badge-new', 'badge-wall']) {
+    const png = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', 'e2e-jsx', `${name}.png`));
+    expect(await countColorPixels(page.context(), png, [255, 0, 170]), name).toBeGreaterThan(100);
+  }
 });

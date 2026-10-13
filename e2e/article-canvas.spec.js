@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { countColorPixels } from './png-probe.js';
 
 // pp3 M1：每篇文章的画布 = 一个由 index.mdx 派生的页（docs/projects.md「文章的画布」）。
 // 固件：常驻 project e2e-project（e2e/project-site/）的 commit-confirm：四个 Section，
@@ -123,6 +124,17 @@ test('文章画布：/api/frame、工作台 ?page=&section=、不进 Pages、ppn
     expect(stdout).toContain(out);
     const png = fs.readFileSync(out);
     expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
+  });
+
+  await test.step('ppnt shot C1 C：帧图 / 节图带上 article.css（确认卡的蓝边画进了 PNG）', async () => {
+    // 板级装载把帧里的 <style>@import</style> 提到 .wb-library 开头（hoist-imports.js），
+    // 帧 / 节的快照里就没有它了：出图要和画布同一套样式。C1 是裸组件帧，蓝色只可能来自
+    // article.css 给 .e2e-confirm-card 的 2px 边。
+    await ppnt(['shot', 'C1', 'C', '--page', PAGE_ID]);
+    for (const name of ['card-plain', 'variants']) {
+      const png = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', PAGE_ID, `${name}.png`));
+      expect(await countColorPixels(page.context(), png, [10, 132, 255]), name).toBeGreaterThan(100);
+    }
   });
 
   expect(pageErrors).toEqual([]);

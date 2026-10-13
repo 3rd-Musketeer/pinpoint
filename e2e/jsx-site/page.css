@@ -1,0 +1,2 @@
+/* 板级 assets.css（board.json assets.css）：e2e 用它验证 ppnt shot 的帧图带上页级样式。 */
+.e2e-badge { display: inline-block; padding: 8px 14px; background: rgb(255, 0, 170); color: #fff; }
