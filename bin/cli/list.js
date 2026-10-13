@@ -6,6 +6,7 @@ import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.j
 import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
+import { formatProjectError } from '../../src/shared/project-errors.js';
 import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { pageIdIsLive } from '../../src/server/lib/page-resolve.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
@@ -268,7 +269,7 @@ export function formatProjectDetail(project) {
     lines.push(`    ${concept.file}`);
   }
   lines.push('', project.errors.length ? `布局错误（${project.errors.length}）` : '布局错误：无');
-  for (const problem of project.errors) lines.push(`  ✗ ${problem}`);
+  for (const problem of project.errors) lines.push(`  ✗ ${formatProjectError(problem)}`);
   return lines;
 }
 

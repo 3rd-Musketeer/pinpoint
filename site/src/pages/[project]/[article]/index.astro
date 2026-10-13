@@ -7,7 +7,8 @@ import CanvasOverlay from '../../../components/CanvasOverlay.astro';
 import Ref from '../../../components/Ref.astro';
 import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
 import { articleCanvas } from '../../../lib/projects-source.js';
-import { bannerErrors, canvasHref } from '../../../lib/canvas-card.js';
+import { canvasHref } from '../../../lib/canvas-card.js';
+import { bannerErrors } from '../../../lib/site-errors.js';
 
 export async function getStaticPaths() {
   const site = await loadSite();
@@ -49,7 +50,7 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   toc={sections}
   rail={true}
   drawer={drawer}
-  errors={bannerErrors(p.errors, a.id, canvas)}
+  errors={bannerErrors(p.id, p.layoutErrors, a.id, canvas)}
   canvasHref={canvasView}
 >
   <div class="prose">

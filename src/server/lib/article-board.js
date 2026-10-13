@@ -15,8 +15,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
+import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { articlePageId } from '../../shared/project-ids.js';
+import { isArticleError } from '../../shared/project-errors.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { findProject } from './projects.js';
@@ -71,14 +72,14 @@ export function deriveArticleBoard(target) {
  * 站点卡片（M1-F）读的画布结构：articleCanvas(projectId, articleId, { registry? })
  *   → { pageId, project, article,
  *       sections: [{ id, title, letter, shell?, frames: [{ id, ref, shell?, missing? }] }],
- *       errors: [{ message, line?, section?, frame? }] }
+ *       errors: [{ code, message, path?, line?, section?, frame? }] }
  * - letter 是这一节在正文里的字母（所有 Section 一起数，纯文字的节也占），画布编号
  *   （工作台、ppnt、ref）用同一个字母（派生 board 的 section.letter，见 board-refs.js）。
  * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。帧文件写了
  *   `export const shell = "…"` 的帧带 shell（这一帧的实际 shell，盖过节的 shell）。
  * - errors：画布写法的错误带 section（节 id）、frame；不属于某一节的（frontmatter、
- *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。message 与
- *   listProjects 里这篇的布局错误同一句（去掉 articles/<文章>/index.mdx： 前缀）。
+ *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。都是 listProjects 里
+ *   这篇的布局错误（path 在 articles/<文章> 下的那些），对象相同。
  * - registry 缺省读 loadRegistry()（PINPOINT_REGISTRY 或 ~/.pinpoint/registry.json）。
  *   project 没登记或文章不在时 sections 为空、errors 说明原因。
  */
@@ -88,17 +89,14 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   try {
     pageId = articlePageId(projectId, articleId);
   } catch (error) {
-    return { pageId, project: projectId, article: articleId, sections: [], errors: [{ message: error.message }] };
+    return { pageId, project: projectId, article: articleId, sections: [], errors: [{ code: 'article_id_invalid', message: error.message }] };
   }
   const base = { pageId, project: projectId, article: articleId, sections: [] };
   const project = findProject(reg, projectId);
-  if (!project) return { ...base, errors: [{ message: `project 没登记：${projectId}` }] };
-  const prefix = `articles/${articleId}`;
-  const own = project.errors
-    .filter((problem) => problem.startsWith(`${prefix}/`) || problem.startsWith(`${prefix}：`))
-    .map((problem) => problem.replace(new RegExp(`^${prefix}(?:/index\\.mdx)?：`), ''));
+  if (!project) return { ...base, errors: [{ code: 'project_not_registered', message: `project 没登记：${projectId}` }] };
+  const own = project.errors.filter((error) => isArticleError(error, articleId));
   const target = resolveArticleTarget(reg, pageId);
-  if (!target) return { ...base, errors: (own.length ? own : [`文章不存在：${prefix}/index.mdx`]).map((message) => ({ message })) };
+  if (!target) return { ...base, errors: own.length ? own : [{ code: 'article_missing', message: `文章不存在：articles/${articleId}/index.mdx` }] };
   const derived = deriveArticleBoard(target);
   const refs = boardRefs(derived.board);
   const missing = new Set(derived.sections.flatMap((section) => section.frames)
@@ -115,8 +113,9 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
       ...(missing.has(id) ? { missing: true } : {}),
     })),
   }));
-  const canvasMessages = new Set(derived.errors.map((e) => e.message));
-  const errors = [...derived.errors, ...own.filter((message) => !canvasMessages.has(message)).map((message) => ({ message }))];
+  // listProjects 里这篇的画布错误与 derived.errors 是同一次解析的结果：用 derived 的，其余（frontmatter、
+  // 页 id 撞名）照搬。
+  const errors = [...derived.errors, ...own.filter((error) => !CANVAS_ERROR_CODES.has(error.code))];
   return { ...base, sections, errors };
 }
 

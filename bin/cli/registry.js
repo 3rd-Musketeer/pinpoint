@@ -8,6 +8,7 @@ import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../
 import { resolvePage } from '../../src/server/lib/page-resolve.js';
 import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
+import { formatProjectError } from '../../src/shared/project-errors.js';
 import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegistryEntry, updateRegistryEntry } from '../../src/server/lib/registry-store.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
@@ -150,7 +151,7 @@ export function resolveProjectRoot(target, cwd = process.cwd()) {
   }
   if (!stat.isDirectory()) throw new CliError(`--project 需要 project 根目录（含 ${PROJECT_CONTENT_DIR}/project.json）：${root}`);
   const meta = readProjectJson(root);
-  if (meta.errors.length) throw new CliError(`${meta.errors.join('；')}（project 根：${root}）`);
+  if (meta.errors.length) throw new CliError(`${meta.errors.map(formatProjectError).join('；')}（project 根：${root}）`);
   return { root, json: meta.json };
 }
 
@@ -434,7 +435,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   let sitePrefixFiles = [];
   if (before.kind === 'project') {
     const meta = readProjectJson(before.path);
-    if (!meta.json) throw new CliError(`${meta.errors.join('；')}；先修好 project.json 再改 id`);
+    if (!meta.json) throw new CliError(`${meta.errors.map(formatProjectError).join('；')}；先修好 project.json 再改 id`);
     if (meta.json.id !== before.id) {
       throw new CliError(`project.json 的 id 是 "${meta.json.id}"，与登记的 ${before.id} 不一致；先让两边一致再改 id`);
     }

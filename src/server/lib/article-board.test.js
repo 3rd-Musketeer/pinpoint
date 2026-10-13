@@ -8,6 +8,7 @@ import { articleCanvas, articlePageRows, deriveArticleBoard } from './article-bo
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, resolvePageTarget } from './page-compiler.js';
 import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
+import { formatProjectError } from '../../shared/project-errors.js';
 import { findProject, listProjects } from './projects.js';
 import { planPageRecompile } from './recompile-plan.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from './registry.js';
@@ -184,13 +185,17 @@ test('articleCanvas：节字母 = 正文字母（纯文字的节也占），帧�
     { section: undefined, frame: undefined, line: undefined },
   ]);
   assert.match(bad.errors[3].message, /frontmatter 第 2 行/);
-  // 同一份错误也进 project 的布局错误（pinpoint list <project>、站点错误条），带文件前缀。
+  // 同一份错误也进 project 的布局错误（pinpoint list <project>、站点错误条），带上文件的 path；
+  // 显示时拼成 `articles/bad/index.mdx：…`。
   const projectErrors = findProject(registry, 'demo').errors;
   assert.equal(projectErrors.length, 4);
-  for (const error of bad.errors) assert.ok(projectErrors.includes(`articles/bad/index.mdx：${error.message}`), error.message);
+  for (const error of bad.errors) {
+    assert.ok(projectErrors.some((e) => e.path === 'articles/bad/index.mdx' && e.code === error.code && e.message === error.message), error.message);
+    assert.ok(projectErrors.map(formatProjectError).includes(`articles/bad/index.mdx：${error.message}`), error.message);
+  }
   assert.deepEqual(canvas('demo', 'flow').errors, []);
-  assert.deepEqual(canvas('demo', 'ghost').errors, [{ message: '文章不存在：articles/ghost/index.mdx' }]);
-  assert.deepEqual(canvas('nope', 'flow').errors, [{ message: 'project 没登记：nope' }]);
+  assert.deepEqual(canvas('demo', 'ghost').errors, [{ code: 'article_missing', message: '文章不存在：articles/ghost/index.mdx' }]);
+  assert.deepEqual(canvas('nope', 'flow').errors, [{ code: 'project_not_registered', message: 'project 没登记：nope' }]);
 });
 
 test('画布页 id 撞上既有页 → project 的布局错误', (t) => {
@@ -198,7 +203,8 @@ test('画布页 id 撞上既有页 → project 的布局错误', (t) => {
   // 条目 id 按规则不会含 _；这里绕过登记校验直接塞一条，验证检查确实在跑。
   const withClash = { ...registry, entries: [{ id: 'demo_flow', kind: 'dir', path: '/x' }] };
   const [project] = listProjects(withClash);
-  assert.deepEqual(project.errors, ['articles/flow：画布页 id "demo_flow" 与registry 条目 "demo_flow"撞名，画布打不开（改文章 id 或那个页的 id）']);
+  assert.deepEqual(project.errors, [{ code: 'page_id_collision', message: '画布页 id "demo_flow" 与registry 条目 "demo_flow"撞名，画布打不开（改文章 id 或那个页的 id）', path: 'articles/flow' }]);
+  assert.deepEqual(project.errors.map(formatProjectError), ['articles/flow：画布页 id "demo_flow" 与registry 条目 "demo_flow"撞名，画布打不开（改文章 id 或那个页的 id）']);
   assert.deepEqual(listProjects(registry)[0].errors, []);
 });
 
@@ -232,5 +238,6 @@ test('帧级 shell：export const shell 落到那一屏、盖过节的 shell；�
   assert.deepEqual(canvas.sections[0].frames[1], { id: 'ask-sent', ref: 'B2' });
   assert.deepEqual(canvas.errors.map(({ section, frame: f }) => ({ section, frame: f })), [{ section: 'ask', frame: 'ask-sent' }]);
   assert.match(canvas.errors[0].message, /帧 "ask-sent" 的 shell 只能是 app \/ lock \/ doc \/ comp："tablet"（ask-sent\.jsx 第 1 行）/);
-  assert.deepEqual(findProject(registry, 'demo').errors, [`articles/flow/index.mdx：${canvas.errors[0].message}`]);
+  assert.deepEqual(findProject(registry, 'demo').errors, [{ ...canvas.errors[0], path: 'articles/flow/index.mdx' }]);
+  assert.deepEqual(findProject(registry, 'demo').errors.map(formatProjectError), [`articles/flow/index.mdx：${canvas.errors[0].message}`]);
 });

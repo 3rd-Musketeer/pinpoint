@@ -137,7 +137,7 @@ test('GET /api/projects/<project>/articles/<article>/canvas → articleCanvas；
   });
   assert.equal((await fetch(`${origin}/api/projects/nope/articles/flow/canvas`)).status, 404);
   const ghost = await (await fetch(`${origin}/api/projects/demo/articles/ghost/canvas`)).json();
-  assert.deepEqual(ghost.errors, [{ message: '文章不存在：articles/ghost/index.mdx' }]);
+  assert.deepEqual(ghost.errors, [{ code: 'article_missing', message: '文章不存在：articles/ghost/index.mdx' }]);
 });
 
 test('文章页注入的桶：登记的文章 → 画布页 id；project 首页、概念页、llms.txt、不存在的文章不注入', (t) => {

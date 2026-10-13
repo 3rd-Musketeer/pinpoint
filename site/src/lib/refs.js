@@ -59,18 +59,19 @@ export function extractRefs(text) {
 
 /**
  * Namespace check for one project: article ids and concept names share it.
- * → list of error strings (empty when clean).
+ * → list of layout errors `{ code, message }` (empty when clean), the shape
+ * listProjects uses (src/shared/project-errors.js).
  */
 export function namespaceErrors(project) {
   const seen = new Map();
   const errors = [];
   const add = (name, what) => {
     const key = refKey(name);
-    if (seen.has(key)) errors.push(`project "${project.id}": name "${name}" is used by ${seen.get(key)} and ${what} — article ids and concept names share one namespace`);
+    if (seen.has(key)) errors.push({ code: 'name_collision', message: `name "${name}" is used by ${seen.get(key)} and ${what} — article ids and concept names share one namespace` });
     else seen.set(key, what);
   };
   for (const a of project.articles || []) {
-    if (RESERVED_ARTICLE_IDS.has(a.id)) errors.push(`project "${project.id}": article id "concepts" is reserved (it is the concept route segment)`);
+    if (RESERVED_ARTICLE_IDS.has(a.id)) errors.push({ code: 'article_id_reserved', message: 'article id "concepts" is reserved (it is the concept route segment)' });
     add(a.id, `article ${a.file}`);
   }
   for (const c of project.concepts || []) add(c.name, `concept ${c.file}`);

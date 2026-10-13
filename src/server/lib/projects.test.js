@@ -7,8 +7,12 @@ import { fileURLToPath } from 'node:url';
 
 import { articlePageId, isReservedProjectId, parseArticlePageId, RESERVED_TOP_SEGMENTS } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { formatProjectError } from '../../shared/project-errors.js';
 import { findProject, listProjects, readProjectJson } from './projects.js';
 import { loadRegistry, projectEntry } from './registry.js';
+
+/** 布局错误按显示的样子比（formatProjectError），字面与对象化之前一样。 */
+const lines = (errors) => errors.map(formatProjectError);
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const SITE = path.join(REPO, 'e2e', 'project-site');
@@ -80,7 +84,7 @@ test('collision fixture: article id and concept name share one case-insensitive 
   assert.equal(project.articles.length, 1, 'both sides stay listed; the error is reported, not thrown');
   assert.equal(project.concepts.length, 1);
   assert.equal(project.errors.length, 1);
-  assert.match(project.errors[0], /撞名 \[\[confirm-card\]\]：article "confirm-card"、concept "Confirm-Card"（concepts\/confirm\.md）/);
+  assert.match(formatProjectError(project.errors[0]), /撞名 \[\[confirm-card\]\]：article "confirm-card"、concept "Confirm-Card"（concepts\/confirm\.md）/);
 });
 
 test('defaults: article title falls back to id, concept name to file name', (t) => {
@@ -106,8 +110,8 @@ test('layout errors are listed, never thrown', async (t) => {
       { id: 'empty', kind: 'project', path: empty },
     ]);
     const [gone, bare] = listProjects(registry);
-    assert.match(gone.errors[0], /根目录不存在/);
-    assert.match(bare.errors[0], /缺 docs\/pinpoint\/ 目录/);
+    assert.match(formatProjectError(gone.errors[0]), /根目录不存在/);
+    assert.match(formatProjectError(bare.errors[0]), /缺 docs\/pinpoint\/ 目录/);
     assert.deepEqual([gone.articles, bare.concepts], [[], []]);
   });
 
@@ -120,10 +124,10 @@ test('layout errors are listed, never thrown', async (t) => {
       { id: 'broken', kind: 'project', path: broken },
       { id: 'mine', kind: 'project', path: other },
     ]));
-    assert.match(a.errors[0], /缺 docs\/pinpoint\/project\.json/);
+    assert.match(formatProjectError(a.errors[0]), /缺 docs\/pinpoint\/project\.json/);
     assert.equal(a.articles.length, 1, 'articles still read without project.json');
-    assert.match(b.errors[0], /不是合法 JSON/);
-    assert.deepEqual(c.errors, ['project.json 的 id "other" 与登记的 id "mine" 不一致（改 id 用 pinpoint rename）']);
+    assert.match(formatProjectError(b.errors[0]), /不是合法 JSON/);
+    assert.deepEqual(lines(c.errors), ['project.json 的 id "other" 与登记的 id "mine" 不一致（改 id 用 pinpoint rename）']);
   });
 
   await t.test('bad article dirs, reserved article id, duplicate concept names, bad frontmatter', (t) => {
@@ -142,7 +146,7 @@ test('layout errors are listed, never thrown', async (t) => {
     assert.deepEqual(project.articles.map((a) => a.id), ['ok']);
     assert.equal(project.articles[0].title, 'OK');
     assert.deepEqual(project.concepts.map((c) => c.slug), ['one', 'two']);
-    assert.deepEqual(project.errors, [
+    assert.deepEqual(lines(project.errors), [
       'articles/Bad_Id：文章 id 必须匹配 /^[a-z0-9][a-z0-9-]*$/',
       'articles/concepts：文章 id 是保留名（/<project>/concepts/ 已被占用）',
       'articles/no-index：缺 index.mdx',
@@ -152,18 +156,29 @@ test('layout errors are listed, never thrown', async (t) => {
       'concepts/readme.txt：concepts/ 下只放 <名字>.md',
       '撞名 [[same]]：concept "same"（concepts/one.md）、concept "Same"（concepts/two.md）（article id 与 concept name 共用一个命名空间）',
     ]);
+    // 对象本身：path 相对 docs/pinpoint/，project 级的（撞名）没有 path；code 分种类。
+    assert.deepEqual(project.errors.map(({ code, path: where }) => [code, where]), [
+      ['article_id_invalid', 'articles/Bad_Id'],
+      ['article_id_reserved', 'articles/concepts'],
+      ['article_index_missing', 'articles/no-index'],
+      ['frontmatter', 'articles/ok/index.mdx'],
+      ['frontmatter', 'articles/ok/index.mdx'],
+      ['article_not_dir', 'articles/stray.md'],
+      ['concept_not_md', 'concepts/readme.txt'],
+      ['name_collision', undefined],
+    ]);
   });
 
   await t.test('concept status must be one of the three states', (t) => {
     const root = makeProject(t, { 'project.json': '{"id":"st"}', 'concepts/a.md': '---\nstatus: done\n---\n', 'concepts/b.md': '---\nstatus: 已固定\n---\n' });
     const project = findProject(registryWith(t, [{ id: 'st', kind: 'project', path: root }]), 'st');
     assert.deepEqual(project.concepts.map((c) => c.status), [undefined, '已固定']);
-    assert.deepEqual(project.errors, ['concepts/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
+    assert.deepEqual(lines(project.errors), ['concepts/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
   });
 
   await t.test('reserved project ids are rejected', (t) => {
     const root = makeProject(t, { 'project.json': '{"id":"api"}' });
-    assert.match(readProjectJson(root).errors[0], /保留名.*\/api\//);
+    assert.match(formatProjectError(readProjectJson(root).errors[0]), /保留名.*\/api\//);
     const project = findProject(registryWith(t, [{ id: 'api', kind: 'project', path: root }]), 'api');
     assert.equal(project.errors.length, 1, 'one message, not one per check');
   });

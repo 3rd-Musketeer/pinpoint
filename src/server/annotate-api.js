@@ -12,6 +12,7 @@ import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 import { listProjects } from './lib/projects.js';
+import { formatProjectError } from '../shared/project-errors.js';
 import { articlePageRows } from './lib/article-board.js';
 import {
   ANNOTATE_BUNDLE_URL_RE,
@@ -261,7 +262,7 @@ export function createAnnotateHandler(options = {}) {
     const projects = listProjects(snapshot);
     return {
       count: projects.length,
-      errors: projects.flatMap((project) => project.errors.map((problem) => `${project.id}: ${problem}`)),
+      errors: projects.flatMap((project) => project.errors.map((problem) => `${project.id}: ${formatProjectError(problem)}`)),
     };
   }
 

@@ -11,7 +11,7 @@ const PROJECTS = [
       { id: 'notes', title: '笔记', pageId: 'demo_notes', canvasSections: 0 },
     ],
   },
-  { id: 'empty', title: '', errors: ['缺 docs/pinpoint/ 目录'], articles: [] },
+  { id: 'empty', title: '', errors: [{ code: 'project_dir_missing', message: '缺 docs/pinpoint/ 目录' }], articles: [] },
 ];
 
 test('articleGroups：project → 文章两层，照登记与文章顺序；没有文章的 project 也出组', () => {
@@ -43,8 +43,10 @@ test('articleGroups：坏输入不抛', () => {
 
 test('projectErrorTooltip：前三条逐行，多的折成一句；没有错误为空', () => {
   assert.equal(projectErrorTooltip([]), '');
-  assert.equal(projectErrorTooltip(['a', 'b']), '布局错误 2 条：\na\nb');
-  assert.equal(projectErrorTooltip(['a', 'b', 'c', 'd', 'e']),
+  // /api/projects 的错误是对象（src/shared/project-errors.js）：有 path 的拼成 `<path>：<message>`。
+  const e = (message, path) => ({ code: 'x', message, ...(path ? { path } : {}) });
+  assert.equal(projectErrorTooltip([e('a', 'articles/x/index.mdx'), e('b')]), '布局错误 2 条：\narticles/x/index.mdx：a\nb');
+  assert.equal(projectErrorTooltip(['a', 'b', 'c', 'd', 'e'].map((m) => e(m))),
     '布局错误 5 条：\na\nb\nc\n…还有 2 条（ppnt list <project> 看全部）');
 });
 

@@ -35,6 +35,7 @@ import {
   SECTION_ID_PATTERN as SECTION_ID,
 } from '../../shared/project-ids.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from './projects.js';
+import { formatProjectError } from '../../shared/project-errors.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const KITS_DIR = path.join(REPO_ROOT, 'content', 'kits');
@@ -248,7 +249,7 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const rootAbs = path.resolve(cwd, projectRoot);
   const meta = readProjectJson(rootAbs);
   if (meta.errors.length) {
-    throw new MigrateError(`${rootAbs} 不是可用的 project：${meta.errors.join('；')}。先建 ${toPosix(path.join(PROJECT_CONTENT_DIR, 'project.json'))}（见 docs/projects.md），再迁移`);
+    throw new MigrateError(`${rootAbs} 不是可用的 project：${meta.errors.map(formatProjectError).join('；')}。先建 ${toPosix(path.join(PROJECT_CONTENT_DIR, 'project.json'))}（见 docs/projects.md），再迁移`);
   }
   const projectId = meta.json.id;
   const article = articleId || pageId;

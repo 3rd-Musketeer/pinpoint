@@ -2,6 +2,8 @@
 // 输入是 GET /api/projects（listProjects 的形状）和工作台清单认得的画布页 id
 // （manifest.articles）；输出是 project → 文章 两层，Sidebar 只照着画。
 
+import { formatProjectError } from '../../shared/project-errors.js';
+
 /** 布局错误 tooltip 列几条；多出来的写“还有 N 条”。 */
 export var ARTICLE_ERROR_TOOLTIP_MAX = 3;
 
@@ -12,7 +14,7 @@ export function articleReadUrl(projectId, articleId) {
 
 /** project 错误的 tooltip：前几条逐行，多的折成一句。没有错误返回 ''。 */
 export function projectErrorTooltip(errors, max) {
-  var list = Array.isArray(errors) ? errors.filter(Boolean).map(String) : [];
+  var list = Array.isArray(errors) ? errors.filter(Boolean).map(formatProjectError) : [];
   if (!list.length) return '';
   max = max || ARTICLE_ERROR_TOOLTIP_MAX;
   var lines = ['布局错误 ' + list.length + ' 条：'].concat(list.slice(0, max));
