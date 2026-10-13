@@ -87,7 +87,7 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
 
   const page = await fetch(`${origin}/demo/a/?q=1`);
   assert.equal(page.headers.get('x-up'), '/_astro/demo/a/?q=1');
-  assert.match(await page.text(), /<h1>a<\/h1><script>window\.__pinpointEntry='demo\.a';window\.__pinpointProse=\{"project":"demo","article":"a"\}<\/script>/);
+  assert.match(await page.text(), /<h1>a<\/h1><script>window\.__pinpointEntry='demo_a';window\.__pinpointProse=\{"project":"demo","article":"a"\}<\/script>/);
 
   // project 首页、概念页不是文章页：不注入（没有评论面，也没有桶）。
   for (const p of ['/demo/', '/demo/concepts/x/']) {
@@ -100,7 +100,7 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
 
   const gz = await fetch(`${origin}/demo/gz/`);
   assert.equal(gz.headers.get('content-encoding'), null);
-  assert.match(await gz.text(), /^<html><body>gz<script>window\.__pinpointEntry='demo\.gz'/);
+  assert.match(await gz.text(), /^<html><body>gz<script>window\.__pinpointEntry='demo_gz'/);
 
   const head = await fetch(`${origin}/demo/a/`, { method: 'HEAD' });
   assert.equal(head.status, 200);

@@ -36,18 +36,19 @@ export const isReservedProjectId = (id) => isReservedSegment(String(id));
 export const RESERVED_ARTICLE_IDS = new Set(['concepts']);
 
 /**
- * 一篇 article 的页 id：`<project id>.<article id>`。它是这篇的标注桶（画布标注与
- * 正文评论共用，common-m1.md §2），也是 `?page=` 与 `ppnt check` 的页引用。
- * `.` 不在 ENTRY_ID_PATTERN 里，所以它不会和任何登记条目 id 撞，拆回来也只有一种拆法。
+ * 一篇 article 的页 id：`<project id>_<article id>`（与包 M1-E 同名同规则，集成时只换 import）。
+ * 它是这篇的标注桶（画布标注与正文评论共用，common-m1.md §2），也是 `?page=` 与
+ * `ppnt check` 的页引用。`_` 不在 ENTRY_ID_PATTERN 里，所以它不会和任何登记条目 id 撞，
+ * 拆回来也只有一种拆法。
  */
 export function articlePageId(projectId, articleId) {
-  return `${projectId}.${articleId}`;
+  return `${projectId}_${articleId}`;
 }
 
 /** articlePageId 的反函数：不是这个形状返回 null（不读盘）。 */
 export function parseArticlePageId(pageId) {
   const text = String(pageId ?? '');
-  const at = text.indexOf('.');
+  const at = text.indexOf('_');
   if (at <= 0) return null;
   const projectId = text.slice(0, at);
   const articleId = text.slice(at + 1);
