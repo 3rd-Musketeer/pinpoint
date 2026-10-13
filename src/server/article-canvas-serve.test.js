@@ -184,3 +184,65 @@ test('watch：project 内容目录进 watcher；帧变更重编并通知画布�
   await plugin.handleHotUpdate({ file: shared, server });
   assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow' } }]);
 });
+
+test('projects:update：文章增删、标题、project 标题、布局错误变了才发；只改正文与帧不发（M4 左栏）', async (t) => {
+  const { registry, article, content, dir } = fixture(t);
+  const plugin = previewHmr({ registry, distRoot: path.join(dir, 'dist') });
+  const server = fakeServer();
+  await plugin.configureServer(server);
+  const projectEvents = () => server.sent.filter((m) => m.event === 'projects:update');
+  const UPDATE = { type: 'custom', event: 'projects:update', data: { project: 'demo' } };
+
+  server.sent.length = 0;
+  const frame = path.join(article, 'ask-open.jsx');
+  fs.writeFileSync(frame, fs.readFileSync(frame, 'utf8').replace('提问', '再问'));
+  await plugin.handleHotUpdate({ file: frame, server });
+  const mdx = path.join(article, 'index.mdx');
+  fs.appendFileSync(mdx, '\n多一段正文。\n');
+  await plugin.handleHotUpdate({ file: mdx, server });
+  assert.deepEqual(projectEvents(), [], '帧内容与正文不改列表');
+
+  // 新文章（没有画布）：列表多一行。Vite 6 的新建不走 handleHotUpdate，走 watcher 的 add。
+  const added = path.join(content, 'articles', 'notes', 'index.mdx');
+  write(added, '---\ntitle: 笔记\n---\n\n纯文字。\n');
+  await plugin.onProjectFileAddOrRemove(server, added, false);
+  assert.deepEqual(projectEvents(), [UPDATE]);
+
+  // 新文章带画布：新建时就编，画布页收到 preview:update。
+  server.sent.length = 0;
+  const flowDir = path.join(content, 'articles', 'board');
+  write(path.join(flowDir, 'one.jsx'), 'export default function One() {\n  return <div className="ios-app">一</div>;\n}\n');
+  write(path.join(flowDir, 'index.mdx'), '---\ntitle: 画布\n---\n\n<Section id="s" title="节">\n\n<Canvas frames={["one"]} />\n\n</Section>\n');
+  await plugin.onProjectFileAddOrRemove(server, path.join(flowDir, 'index.mdx'), false);
+  assert.deepEqual(server.sent, [UPDATE, { type: 'custom', event: 'preview:update', data: { id: 'demo_board' } }]);
+  assert.match(fs.readFileSync(path.join(dir, 'dist', 'demo_board', 'one.html'), 'utf8'), /一/);
+  // project 外的文件不管。
+  server.sent.length = 0;
+  assert.deepEqual(await plugin.onProjectFileAddOrRemove(server, path.join(dir, 'page', 'x.jsx'), false), []);
+  assert.deepEqual(server.sent, []);
+
+  // 文章标题变了。
+  server.sent.length = 0;
+  fs.writeFileSync(added, fs.readFileSync(added, 'utf8').replace('笔记', '随记'));
+  await plugin.handleHotUpdate({ file: added, server });
+  assert.deepEqual(projectEvents(), [UPDATE]);
+
+  // project.json 的标题。
+  server.sent.length = 0;
+  const meta = path.join(content, 'project.json');
+  fs.writeFileSync(meta, JSON.stringify({ id: 'demo', title: 'Demo 2' }));
+  await plugin.handleHotUpdate({ file: meta, server });
+  assert.deepEqual(projectEvents(), [UPDATE]);
+
+  // 删掉帧文件 → 布局错误变了（缺帧）。
+  server.sent.length = 0;
+  fs.rmSync(frame);
+  await plugin.handleHotUpdate({ file: frame, server });
+  assert.deepEqual(projectEvents(), [UPDATE]);
+
+  // 删文章（watcher 的 unlink）。
+  server.sent.length = 0;
+  fs.rmSync(path.dirname(added), { recursive: true });
+  await plugin.onProjectFileAddOrRemove(server, added, true);
+  assert.deepEqual(server.sent, [UPDATE]);
+});

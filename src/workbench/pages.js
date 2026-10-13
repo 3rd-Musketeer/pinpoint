@@ -171,6 +171,9 @@ export function resolveActivePage(preferredId, modeHint) {
   var ids = {};
   pages.forEach(function (page) { ids[page.id] = true; });
   if (preferredId && ids[preferredId]) return preferredId;
+  // pp3 M4：上次停在文章画布（左栏「文章」组）——画布页在 manifest.articles 里。
+  var manifest = wbGet().pageManifest;
+  if (preferredId && manifest && (manifest.articles || []).some(function (row) { return row.id === preferredId; })) return preferredId;
   if (modeHint) {
     for (var i = 0; i < pages.length; i++) {
       if (modeForPage(wbGet().pageManifest, pages[i].id) === modeHint) return pages[i].id;
@@ -609,6 +612,29 @@ export function loadPageManifest() {
         wbSet({ pageManifest: manifest });
         return manifest;
       });
+    });
+}
+
+/* ---- 左栏「文章」组（pp3 M4）：GET /api/projects ------------------------------
+   每次请求服务都重读盘。触发：左栏挂载、registry:update（project 登记 / 移除）、
+   projects:update（文章增删、标题、布局错误变了，preview-hmr 发）。并发的两次读
+   只认最后一次的结果。 */
+var projectsSeq = 0;
+
+export function loadProjects() {
+  var seq = ++projectsSeq;
+  return fetch('/api/projects', { cache: 'no-store' })
+    .then(function (response) {
+      if (!response.ok) throw new Error('GET /api/projects ' + response.status);
+      return response.json();
+    })
+    .then(function (projects) {
+      if (seq !== projectsSeq) return;
+      wbSet({ projects: Array.isArray(projects) ? projects : [], projectsError: null });
+    })
+    .catch(function (error) {
+      if (seq !== projectsSeq) return;
+      wbSet({ projectsError: String(error && error.message ? error.message : error) });
     });
 }
 

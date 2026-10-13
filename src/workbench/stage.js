@@ -53,6 +53,7 @@ import {
   applyPageViewport,
   initPages,
   loadPageManifest,
+  loadProjects,
   resolveActivePage,
   retryPageManifest,
   revealFrame,
@@ -692,6 +693,14 @@ if (import.meta.hot) {
       loadBoard(boardPanel, wbGet().activePageId);
     }
   });
+  // pp3 M4：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
+  // 左栏「文章」组重读 /api/projects；新文章的画布页要进 manifest.articles 才点得开，
+  // 所以清单也重拉一次（只刷左栏，不重摆当前板：板的变化另有 preview:update）。
+  import.meta.hot.on('projects:update', function () {
+    loadProjects();
+    queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+    loadPageManifest();
+  });
   // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
   // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages。
   // 阶段 8：attach 条目在板装载时合并进目标页 —— manifest 重拉后重摆当前板，
@@ -708,6 +717,8 @@ if (import.meta.hot) {
       loadPageManifest();
       return;
     }
+    // project 条目增删也走这条（pinpoint add --project / remove → POST /registry/reload）。
+    loadProjects();
     loadPageManifest().then(function () {
       if (!boardPanel || !wbGet().activePageId) return;
       snapshotPageViewport(wbGet().activePageId);

@@ -173,6 +173,42 @@
     margin:4px 8px 0; font:var(--wb-t-body) var(--wb-font); color:var(--wb-danger);
   }
 
+  /* 左栏「文章」组与「页面」组（pp3 M4，app/ArticlesSection.jsx）。「页面」组上沿一条
+     结构缝把两组分开。 */
+  .wb-group[data-section="page-group"] { margin-top:6px; border-top:1px solid var(--wb-seam); }
+  /* 组头（文章 / 页面）比组内的段头（最近）高一级：同一档字，转正色。 */
+  .wb-section-head.wb-group-head { color:var(--wb-fg); }
+  .wb-article-row { position:relative; }
+  /* 文章行的标题对到 project 标题那一列，与夹内的页同一缩进。 */
+  .wb-row.wb-article { padding-left:24px; }
+  .wb-row.on .wb-article-kind { color:var(--wb-fg); }
+  /* 行尾“阅读正文”钮：常态透明、不占标题宽度（ADR 0024 的行宽规则）；行 hover 或键盘焦点
+     进行时才现，此时标题让出右端 30px 再省略。用 opacity 不用 display，钮一直在 tab 序里。 */
+  .wb-article-read {
+    position:absolute; right:4px; top:50%; transform:translateY(-50%);
+    width:22px; height:22px; display:flex; align-items:center; justify-content:center;
+    border-radius:var(--wb-r-1); color:var(--wb-muted); opacity:0;
+    transition:opacity var(--wb-dur) var(--wb-ease), background-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-article-row:hover > .wb-article-read,
+  .wb-article-row:focus-within > .wb-article-read { opacity:1; }
+  .wb-article-read:hover { background:var(--wb-hover); color:var(--wb-fg); }
+  .wb-article-read:focus-visible { outline:2px solid var(--wb-accent); outline-offset:-2px; }
+  .wb-article-row:hover > .wb-row.wb-article,
+  .wb-article-row:focus-within > .wb-row.wb-article { padding-right:30px; }
+  /* 指针停在阅读钮上时行仍是 hover 态（钮是行的兄弟，不在 .wb-row 里）。 */
+  .wb-article-row:hover > .wb-row:not(.on) { background:var(--wb-hover); }
+  .wb-project-err {
+    flex:none; display:inline-flex; align-items:center; gap:3px;
+    font:var(--wb-w-semibold) 11px/1 var(--wb-font-mono); color:var(--wb-danger);
+    font-variant-numeric:tabular-nums; cursor:help;
+  }
+  .wb-article-empty {
+    margin:0; padding:4px 8px 6px 45px;
+    font:var(--wb-t-body) var(--wb-font); color:var(--wb-faint);
+  }
+  .wb-article-empty--top { padding-left:8px; }
+
   [contenteditable] { cursor:text; border-radius:var(--wb-r-1); transition:background var(--wb-dur) var(--wb-ease), box-shadow var(--wb-dur) var(--wb-ease); }
   [contenteditable]:hover { background:color-mix(in srgb,var(--wb-accent) 6%,transparent); }
   [contenteditable]:focus { background:color-mix(in srgb,var(--wb-accent) 8%,transparent); box-shadow:0 0 0 2px color-mix(in srgb,var(--wb-accent) 28%,transparent); }

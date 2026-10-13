@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 
 import { listArticleTargets } from './lib/article-board.js';
 import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
-import { articlePageId, PROJECT_CONTENT_DIR } from './lib/projects.js';
+import { articlePageId, findProject, PROJECT_CONTENT_DIR } from './lib/projects.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
@@ -54,7 +54,41 @@ export default function previewHmr(options = {}) {
       .map((entry) => ({ id: entry.id, dir: path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR) }));
   }
 
+  // pp3 M4：工作台左栏的「文章」组读 /api/projects。project 里看得见的那一层（标题、
+  // 文章增删与标题、摘要、画布节数、布局错误）变了才发 projects:update；只改正文、
+  // 帧内容这类不改列表的变更不发。digest 按 project id 缓存，syncWatcher 时补齐。
+  const projectDigests = new Map();
+
+  function projectDigest(id) {
+    const project = findProject(registry, id);
+    if (!project) return null;
+    return JSON.stringify({
+      title: project.title,
+      errors: project.errors,
+      articles: project.articles.map((a) => [a.id, a.title, a.summary || '', a.pageId || '', a.canvasSections]),
+    });
+  }
+
+  function seedProjectDigests() {
+    const ids = new Set(projectDirs().map((project) => project.id));
+    for (const id of [...projectDigests.keys()]) if (!ids.has(id)) projectDigests.delete(id);
+    for (const id of ids) if (!projectDigests.has(id)) projectDigests.set(id, projectDigest(id));
+  }
+
+  /** 变更文件落在某个 project 的内容目录里、且列表那一层变了 → 发 projects:update。 */
+  function notifyProjectChange(server, file) {
+    const owner = projectDirs().find((project) => file === project.dir || file.startsWith(project.dir + path.sep));
+    if (!owner) return;
+    const next = projectDigest(owner.id);
+    const prev = projectDigests.get(owner.id);
+    projectDigests.set(owner.id, next);
+    if (prev !== undefined && prev !== next) {
+      server.ws.send({ type: 'custom', event: 'projects:update', data: { project: owner.id } });
+    }
+  }
+
   function syncWatcher() {
+    seedProjectDigests();
     if (!watcher) return;
     const paths = [...registryTargets().map((entry) => entry.path), ...projectDirs().map((project) => project.dir)];
     for (const target of paths) {
@@ -151,6 +185,25 @@ export default function previewHmr(options = {}) {
     return state.promise;
   }
 
+  function recompileArticles(server, targets, file) {
+    const rel = file.replace(/\\/g, '/');
+    return Promise.all(targets.map((target) => recompile(target, [file]).then((result) => {
+      if (!(result && result.noop)) notify(server, target, rel);
+    }))).then(() => []);
+  }
+
+  // Vite 6 只对“改了”的文件调 handleHotUpdate；新建、删除走 hotUpdate 钩子，这个插件
+  // 没有用它。project 目录里的新建 / 删除（加一篇文章、删一篇文章、新帧文件）在这里接住：
+  // 列表那一层照样比对 digest，新建的源文件照样重编它那一篇（M4 实测：新文章不这样
+  // 接就既不进左栏、画布也不编）。
+  function onProjectFileAddOrRemove(server, file, removed) {
+    if (!projectDirs().some((project) => file.startsWith(project.dir + path.sep))) return Promise.resolve([]);
+    notifyProjectChange(server, file);
+    if (removed || !isWatchedSource(file, { distRoot: distRoot || defaultDistRoot() })) return Promise.resolve([]);
+    const targets = articleTargetsFor(file);
+    return targets.length ? recompileArticles(server, targets, file) : Promise.resolve([]);
+  }
+
   function templateTarget(pageId) {
     return resolvePageTarget(pageId, { registry: null, root: templateRoot });
   }
@@ -168,6 +221,10 @@ export default function previewHmr(options = {}) {
     async configureServer(server) {
       watcher = server.watcher;
       syncWatcher();
+      if (watcher && typeof watcher.on === 'function') {
+        watcher.on('add', (file) => { onProjectFileAddOrRemove(server, file, false); });
+        watcher.on('unlink', (file) => { onProjectFileAddOrRemove(server, file, true); });
+      }
       // 启动全量编译（probe）：总耗时 + 每页耗时都打进日志。
       const started = performance.now();
       const results = await buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) });
@@ -179,6 +236,8 @@ export default function previewHmr(options = {}) {
       }
     },
     syncWatcher,
+    /** 测试口：同 watcher 的 add / unlink。 */
+    onProjectFileAddOrRemove,
     handleHotUpdate({ file, server }) {
       const rel = file.replace(/\\/g, '/');
       if (/\/previews\/_index\.json$/.test(rel)) {
@@ -208,13 +267,10 @@ export default function previewHmr(options = {}) {
           return [];
         });
       }
+      notifyProjectChange(server, file);
       // 文章画布（pp3 M1）：帧、组件、正文、article.css / .js 变更 → 重编 → 该画布页重摆。
       const articleTargets = isSource ? articleTargetsFor(file) : [];
-      if (articleTargets.length) {
-        return Promise.all(articleTargets.map((target) => recompile(target, [file]).then((result) => {
-          if (!(result && result.noop)) notify(server, target, rel);
-        }))).then(() => []);
-      }
+      if (articleTargets.length) return recompileArticles(server, articleTargets, file);
       // registry dir/file 条目（仓外）：板、屏、sidecar 变更 → 重编译 → 该条目页重摆
       if (isSource) {
         const owner = ownerFor(file);
