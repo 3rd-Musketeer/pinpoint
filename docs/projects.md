@@ -99,6 +99,7 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 
 同一模块还导出这几个，站点需要时直接用：
 
+- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`resolveArticlePage(registry, id)` 在 project 登记了、文章目录在盘上时返回 `{ pageId, projectId, articleId, project, article }`。
 - `parseFrontmatter(text)` → `{ data, body, errors }`：上面那套 frontmatter 子集。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
 - `RESERVED_PROJECT_IDS`（转出 article-routes.js 的表）、`RESERVED_ARTICLE_IDS`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。
@@ -121,4 +122,6 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 - `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。
 - `e2e/project-collide/`：project `e2e-collide`，article `confirm-card` 与 concept `Confirm-Card` 撞名，读取时恰好一条布局错误。
 
-两个固件都没有登记进 e2e 的共享 registry 固件。
+- `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。
+
+`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不是页，不进 Pages）；`e2e-collide` 不登记。
