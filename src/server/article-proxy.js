@@ -24,7 +24,7 @@ import { dataRoot } from './lib/annotate-data-dir.js';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { resolveArticleTarget } from './lib/article-board.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
-import { originDecision, ownOrigins } from './lib/proxy-origin.js';
+import { listenOrigins, originDecision, originsGetter } from './lib/proxy-origin.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { articlePageId } from './lib/projects.js';
 import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
@@ -189,13 +189,6 @@ function forward(req, res, route, devServer, registry, origin) {
   req.pipe(up);
 }
 
-/** origins 选项 → 取集合的函数：Set 原样用，函数每次调，缺省只认 https://pinpoint.localhost 与环境变量。 */
-function originsGetter(origins) {
-  if (typeof origins === 'function') return origins;
-  const fixed = origins instanceof Set ? origins : ownOrigins();
-  return () => fixed;
-}
-
 function decide(req, devServer, own, upgrade) {
   return originDecision({
     origin: req.headers.origin,
@@ -293,14 +286,7 @@ export default function articleProxy(options = {}) {
     logFile: path.join(dataRoot(), 'logs', 'site-dev.log'),
   });
   let viteServer = null;
-  let cached = null;
-  const listenOrigins = () => {
-    if (cached) return cached;
-    const address = viteServer && viteServer.httpServer && viteServer.httpServer.address();
-    if (address && typeof address === 'object') return (cached = ownOrigins({ port: address.port }));
-    return ownOrigins({ port: viteServer && viteServer.config.server.port });
-  };
-  const origins = options.origins || listenOrigins;
+  const origins = options.origins || listenOrigins(() => viteServer);
   const handleArticle = createArticleHandler({ registry: options.registry, isProject: options.isProject, devServer, origins });
   const handleUpgrade = createArticleUpgradeHandler({ devServer, origins });
   return {

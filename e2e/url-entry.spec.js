@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_DATA_DIR, E2E_UPSTREAM_ORIGIN } from './env.js';
+import { E2E_DATA_DIR, E2E_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
 
 // 阶段 4：registry `url` 条目经同源路径前缀代理（/sites/<id>/ → 目标 origin）
 // 以 doc 壳内嵌进 workbench —— 绝对路径资源/API 由「HTML 重写 + 运行时重基
@@ -80,6 +80,24 @@ test('url entry renders live through the proxy and annotates into the entry buck
     return ['GET /assets/app.js', 'GET /api/data', 'GET /api/xhr', 'POST /api/echo']
       .every((h) => hits.includes(h));
   }).toBe(true);
+
+  // 来源（docs/design.md「服务路由」）：上面 iframe 里的 POST 与 websocket 是 pinpoint 自己的来源，照常；
+  // 别的网页（本轮的上游固件，另一个 localhost 端口）连不上 /sites/ 的 websocket，写请求 403。
+  // 落在 /__hits（JSON，不带 CSP）：上游首页的 CSP 本身就挡 websocket，测不出代理。
+  const other = await page.context().newPage();
+  await other.goto(`${E2E_UPSTREAM_ORIGIN}/__hits`);
+  const outcome = await other.evaluate((url) => new Promise((resolve) => {
+    const ws = new WebSocket(url);
+    ws.onopen = () => { ws.close(); resolve('open'); };
+    ws.onerror = () => resolve('error');
+  }), `ws://127.0.0.1:${E2E_PORT}/sites/e2e-proxy/ws`);
+  expect(outcome).toBe('error');
+  await other.close();
+  const foreignPost = await page.request.post('/sites/e2e-proxy/api/echo', {
+    headers: { origin: 'https://evil.example', 'content-type': 'application/json' },
+    data: JSON.stringify({ ping: 2 }),
+  });
+  expect(foreignPost.status()).toBe(403);
 
   // ── 桥驱动标注（原独立用例并入：同一次开页同一条 Page，先把收起的侧栏点回来）──
   await page.locator('#wbside-toggle').click();

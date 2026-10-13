@@ -4,7 +4,8 @@
  * 集成部分起两个真实 server：一个 node:http 上游 fixture（绝对路径 HTML 页 +
  * /assets/*.js + /api/* JSON + 302 + cookie + SSE + WS echo），一个挂了
  * createSitesHandler + createSiteUpgradeHandler 的 pinpoint 侧 server，
- * 用真实 fetch / 全局 WebSocket 打穿整条链路。
+ * 用真实 fetch / 全局 WebSocket 打穿整条链路。pinpoint 侧的来源集合按它实际监听的
+ * 端口算（lib/proxy-origin.js listenOrigins，与 vite 插件同一份）。
  */
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -24,6 +25,7 @@ import {
   rewriteProxySetCookie,
 } from './lib/site-proxy.js';
 import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
+import { listenOrigins } from './lib/proxy-origin.js';
 
 // 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
 await ensureAnnotateBundle();
@@ -138,6 +140,17 @@ test('rewriteProxyReferer: prefixed referer maps back onto the target origin', (
     'https://pinpoint.localhost/index.html',
     'workbench 自身的 referer 不动',
   );
+  const own = new Set(['https://pinpoint.localhost']);
+  assert.equal(
+    rewriteProxyReferer('https://pinpoint.localhost/sites/app/page', PREFIX, TARGET, own),
+    'https://app.localhost/page',
+    '自己的来源：照常改写',
+  );
+  assert.equal(
+    rewriteProxyReferer('https://evil.example/sites/app/page', PREFIX, TARGET, own),
+    'https://evil.example/sites/app/page',
+    '别的来源仿冒前缀路径：不改写',
+  );
 });
 
 test('rewriteProxySetCookie: Domain dropped, Path rebased in place (or added) under the prefix', () => {
@@ -239,7 +252,7 @@ function wsEcho(socket) {
   });
 }
 
-function startUpstream(t, hits) {
+function startUpstream(t, hits, upgrades = []) {
   const server = http.createServer((req, res) => {
     const { pathname, query } = parseReqUrl(req);
     const search = query.toString() ? `?${query}` : '';
@@ -274,6 +287,15 @@ function startUpstream(t, hits) {
       req.on('end', () => {
         res.writeHead(200, { 'Content-Type': 'application/json' });
         res.end(JSON.stringify({ echo: JSON.parse(Buffer.concat(chunks).toString()) }));
+      });
+      return;
+    }
+    if (pathname === '/api/whoami') {
+      // 任何方法：回上游看到的 Origin / Referer（来源规则的断言靠它）。
+      req.resume();
+      req.on('end', () => {
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ method: req.method, origin: req.headers.origin ?? null, referer: req.headers.referer ?? null }));
       });
       return;
     }
@@ -312,6 +334,7 @@ function startUpstream(t, hits) {
     res.end('upstream 404');
   });
   server.on('upgrade', (req, socket) => {
+    upgrades.push({ url: req.url, origin: req.headers.origin ?? null });
     if (!req.url.startsWith('/ws')) {
       socket.destroy();
       return;
@@ -339,8 +362,10 @@ function startProxySide(t, upstreamOrigin) {
   const registry = {
     resolve: (id) => (id === 'app' ? { id: 'app', title: 'App', kind: 'url', url: upstreamOrigin } : null),
   };
-  const handleSites = createSitesHandler({ registry });
-  const server = http.createServer((req, res) => {
+  let server = null;
+  const origins = listenOrigins(() => ({ httpServer: server, config: { server: {} } }));
+  const handleSites = createSitesHandler({ registry, origins });
+  server = http.createServer((req, res) => {
     handleSites(req, res, (req.url || '').split('?')[0]).then((handled) => {
       if (!handled) {
         res.statusCode = 404;
@@ -348,7 +373,7 @@ function startProxySide(t, upstreamOrigin) {
       }
     });
   });
-  server.on('upgrade', createSiteUpgradeHandler({ registry }));
+  server.on('upgrade', createSiteUpgradeHandler({ registry, origins }));
   return new Promise((resolve) => {
     server.listen(0, '127.0.0.1', () => {
       t.after(() => new Promise((done) => server.close(done)));
@@ -359,11 +384,41 @@ function startProxySide(t, upstreamOrigin) {
 
 async function withPair(t, run) {
   const hits = [];
-  const upstream = await startUpstream(t, hits);
+  const upgrades = [];
+  const upstream = await startUpstream(t, hits, upgrades);
   const upstreamOrigin = `http://127.0.0.1:${upstream.address().port}`;
   const proxy = await startProxySide(t, upstreamOrigin);
   const base = `http://127.0.0.1:${proxy.address().port}`;
-  await run(base, hits);
+  await run(base, hits, { upgrades, upstreamOrigin, port: proxy.address().port });
+}
+
+/** 裸 websocket 握手（能自己写 Origin 头）→ { status, frame }：升级成功时 frame 是回显的第一帧。 */
+function rawUpgrade(port, pathname, origin) {
+  return new Promise((resolve, reject) => {
+    const headers = {
+      connection: 'Upgrade', upgrade: 'websocket', 'sec-websocket-version': '13',
+      'sec-websocket-key': crypto.randomBytes(16).toString('base64'),
+    };
+    if (origin) headers.origin = origin;
+    const req = http.request({ host: '127.0.0.1', port, path: pathname, headers });
+    req.on('upgrade', (res, socket) => {
+      // 客户端帧必须带掩码：掩码全 0，载荷原样。
+      const payload = Buffer.from('hi');
+      socket.write(Buffer.concat([Buffer.from([0x81, 0x80 | payload.length, 0, 0, 0, 0]), payload]));
+      socket.once('data', (data) => {
+        // 发 close 帧让上游回显端先关（两头都是 half-open 的 http socket，光断客户端会挂住 server.close）。
+        socket.end(Buffer.from([0x88, 0x80, 0, 0, 0, 0]));
+        resolve({ status: res.statusCode, frame: data.subarray(2).toString() });
+      });
+    });
+    req.on('response', (res) => {
+      let body = '';
+      res.on('data', (chunk) => { body += chunk; });
+      res.on('end', () => resolve({ status: res.statusCode, body }));
+    });
+    req.on('error', reject);
+    req.end();
+  });
 }
 
 test('proxy: HTML rewritten + bootstrap first + annotate injected; annotate=off keeps only mechanics', async (t) => {
@@ -502,5 +557,48 @@ test('proxy: bootstrap 虚拟化把 annotate 参数从 search 剥掉，其余 qu
     // 只由删过 annotate 的剩余参数拼出。
     assert.match(bootstrap, /__qs\.delete\('annotate'\)/, 'annotate 参数被剥掉');
     assert.match(bootstrap, /history\.replaceState\([^\n]*__q\?'\?'\+__q:''/, 'search 只留剩余参数');
+  });
+});
+
+test('proxy 来源：自己的来源 POST / websocket 照常、Origin 改写成目标；别的来源写请求与 websocket 403、上游收不到；别的来源 GET 不带 Origin', async (t) => {
+  await withPair(t, async (base, hits, { upgrades, upstreamOrigin, port }) => {
+    const whoami = `${base}/sites/app/api/whoami`;
+    for (const own of [base, `http://localhost:${port}`, 'https://pinpoint.localhost']) {
+      const post = await fetch(whoami, { method: 'POST', headers: { origin: own, referer: `${own}/sites/app/form` }, body: 'x' });
+      assert.equal(post.status, 200, own);
+      assert.deepEqual(await post.json(), { method: 'POST', origin: upstreamOrigin, referer: `${upstreamOrigin}/form` }, own);
+      const ws = await rawUpgrade(port, '/sites/app/ws', own);
+      assert.equal(ws.status, 101, own);
+      assert.equal(ws.frame, 'ws-echo:hi');
+      assert.equal(upgrades.at(-1).origin, upstreamOrigin, '上游看到的 websocket Origin 是它自己');
+    }
+
+    const before = { hits: hits.length, upgrades: upgrades.length };
+    // 别的来源：普通跨站、伪装成 pinpoint 端口的 DNS rebinding、Origin: null（沙箱 iframe、data: 页）。
+    for (const foreign of ['https://evil.example', `http://evil.example:${port}`, 'null']) {
+      for (const method of ['POST', 'PUT', 'DELETE', 'PATCH']) {
+        const res = await fetch(whoami, { method, headers: { origin: foreign }, body: 'x' });
+        assert.equal(res.status, 403, `${method} ${foreign}`);
+        assert.equal((await res.json()).error, 'forbidden');
+      }
+      const ws = await rawUpgrade(port, '/sites/app/ws', foreign);
+      assert.equal(ws.status, 403, foreign);
+      assert.match(ws.body, /forbidden: websocket from foreign origin/);
+    }
+    assert.deepEqual({ hits: hits.length, upgrades: upgrades.length }, before, '被拒的请求一条也没到上游');
+
+    const get = await fetch(whoami, { headers: { origin: 'https://evil.example', referer: 'https://evil.example/sites/app/x' } });
+    assert.equal(get.status, 200);
+    assert.deepEqual(await get.json(), { method: 'GET', origin: null, referer: 'https://evil.example/sites/app/x' },
+      '别的来源的 GET：不带 Origin，仿冒前缀的 Referer 也不改写');
+    const head = await fetch(whoami, { method: 'HEAD', headers: { origin: 'https://evil.example' } });
+    assert.equal(head.status, 200);
+
+    // 没有 Origin（命令行工具、普通导航）：照常，不加 Origin。
+    const bare = await fetch(whoami, { method: 'POST', body: 'x' });
+    assert.deepEqual(await bare.json(), { method: 'POST', origin: null, referer: null });
+    const bareWs = await rawUpgrade(port, '/sites/app/ws');
+    assert.equal(bareWs.status, 101);
+    assert.equal(upgrades.at(-1).origin, null);
   });
 });
