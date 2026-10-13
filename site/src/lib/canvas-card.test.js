@@ -3,11 +3,17 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
-import { canvasFromMdx } from './canvas-stub.js';
+import { fileURLToPath } from 'node:url';
+import { bannerErrors, canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
+import { articleCanvas, articlePageId } from './canvas-source.js';
+import { loadRegistry } from '../../../src/server/lib/registry.js';
+import { listProjects } from '../../../src/server/lib/projects.js';
+
+const FIX = fileURLToPath(new URL('../../fixtures/projects/', import.meta.url));
+const REPO = fileURLToPath(new URL('../../../', import.meta.url));
 
 const canvas = {
-  pageId: 'demo--payments',
+  pageId: 'demo_payments',
   sections: [
     { id: 'flow', title: '付款前的确认', letter: 'B', frames: [{ id: 'ask', ref: 'B1' }, { id: 'confirm', ref: 'B2', title: '确认' }] },
     { id: 'mech', title: '底层', letter: 'C', shell: 'comp', frames: [{ id: 'pay-button', ref: 'C1' }] },
@@ -18,10 +24,10 @@ const canvas = {
 test('card model: this section only, urls, meta, errors by section', () => {
   const m = cardModel(canvas, 'flow');
   assert.deepEqual(m.frames.map((f) => [f.ref, f.title, f.src]), [
-    ['B1', 'ask', '/api/frame?page=demo--payments&screen=ask&annotate=off'],
-    ['B2', '确认', '/api/frame?page=demo--payments&screen=confirm&annotate=off'],
+    ['B1', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off'],
+    ['B2', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off'],
   ]);
-  assert.equal(m.href, '/?page=demo--payments&section=flow');
+  assert.equal(m.href, '/?page=demo_payments&section=flow');
   assert.equal(m.meta, 'B1–B2 · 2 帧');
   assert.equal(m.box.mode, 'phone');
   assert.deepEqual(m.errors, []);
@@ -31,7 +37,9 @@ test('card model: this section only, urls, meta, errors by section', () => {
   assert.deepEqual(c.errors, ['跨页']);
   assert.deepEqual(looseErrors(canvas), ['没有归属的错误']);
   assert.match(cardModel(canvas, 'nope').errors[0], /画布里没有这一节/);
-  assert.match(cardModel(canvas, undefined).errors[0], /要写在 <Section> 里/);
+  // Canvas outside any Section: articleCanvas reports it page-level (banner), the card renders nothing.
+  assert.equal(cardModel(canvas, undefined).stray, true);
+  assert.deepEqual(cardModel(canvas, undefined).errors, []);
   assert.equal(canvasHref('a b'), '/?page=a%20b');
   assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off');
   assert.equal(shellBox('app').mode, 'phone');
@@ -52,24 +60,46 @@ test('open count: open rows on this section\'s frames of this page', () => {
   assert.equal(openCount(null, 'p', ['ask']), 0);
 });
 
-test('stub: sections with a Canvas, refs, shell, cross-page and missing frames', (t) => {
+test('real articleCanvas: each error shown once (card or banner), missing frame keeps its tile', (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-site-canvas-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  for (const f of ['a', 'b', 'c']) fs.writeFileSync(path.join(dir, `${f}.jsx`), 'export default () => null;');
-  const src = [
-    '<Canvas frames={["a"]} />',
-    '<Section id="intro" title="开头">\n\n文字\n\n</Section>',
-    '<Section id="flow" title="流程">\n\n<Canvas frames={["a", "page/x", "gone", "b"]} />\n\n</Section>',
-    '<Section id="lib">\n\n<Canvas shell="comp" frames={["c"]} />\n\n<Canvas frames={["a"]} />\n\n</Section>',
-    '<Section id="bad">\n\n<Canvas frames={list} />\n\n</Section>',
-  ].join('\n\n');
-  const r = canvasFromMdx(src, dir);
-  assert.deepEqual(r.sections, [
-    { id: 'flow', title: '流程', letter: 'B', frames: [{ id: 'a', ref: 'B1' }, { id: 'b', ref: 'B2' }] },
-    { id: 'lib', title: 'lib', letter: 'C', shell: 'comp', frames: [{ id: 'c', ref: 'C1' }] },
-    { id: 'bad', title: 'bad', letter: 'D', frames: [] },
+  const file = path.join(dir, 'registry.json');
+  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: ['broken', 'demo'].map((id) => ({ id, kind: 'project', path: path.join(FIX, id) })) }));
+  const registry = loadRegistry({ path: file, root: REPO, log: () => {} });
+
+  const ok = articleCanvas('demo', 'payments', { registry });
+  assert.equal(ok.pageId, articlePageId('demo', 'payments'));
+  assert.equal(ok.pageId, 'demo_payments');
+  assert.deepEqual(ok.errors, []);
+  assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
+    ['B1', 'ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off'],
+    ['B2', 'confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off'],
   ]);
-  assert.deepEqual(r.errors.map((e) => `${e.section}:${e.frame || ''}`), ['flow:page/x', 'flow:gone', 'lib:', 'bad:']);
-  assert.match(r.errors[0].message, /先把帧迁进本篇目录/);
-  assert.match(r.errors[1].message, /没有 gone\.jsx/);
+  assert.equal(cardModel(ok, 'mech').shell, 'comp');
+
+  const canvas = articleCanvas('broken', 'broken-canvas', { registry });
+  const bad = cardModel(canvas, 'bad');
+  // The cross-page ref is not on the canvas; the missing frame is, numbered, with no preview.
+  assert.deepEqual(bad.frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
+    ['A1', 'ask', false, '/api/frame?page=broken_broken-canvas&screen=ask&annotate=off'],
+    ['A2', 'gone', true, ''],
+  ]);
+  assert.equal(bad.errors.length, 2);
+  assert.match(bad.errors[0], /^第 13 行：.*引用了别的页的帧 "browser-e2e-flow\/ask".*先把帧迁进本篇目录/);
+  assert.match(bad.errors[1], /^第 13 行：.*帧 "gone" 没有源文件（本篇目录下缺 gone\.jsx）$/);
+  assert.equal(cardModel(canvas, undefined).stray, true);
+
+  // Banner: listProjects repeats all three with the article prefix; only the page-level one is shown, once.
+  const [project] = listProjects(registry).filter((p) => p.id === 'broken');
+  assert.equal(project.errors.length, 3);
+  const banner = bannerErrors([...project.errors, 'articles/other/index.mdx：别篇的错', 'project.json 的 title 必须是字符串'], 'broken-canvas', canvas);
+  assert.deepEqual(banner, [
+    'articles/other/index.mdx：别篇的错',
+    'project.json 的 title 必须是字符串',
+    '第 7 行：<Canvas> 必须写在 <Section> 里（画布按节排开）',
+  ]);
+  const shown = [...banner, ...bad.errors];
+  for (const e of project.errors) {
+    assert.equal(shown.filter((x) => e.endsWith(x)).length, 1, `shown once: ${e}`);
+  }
 });

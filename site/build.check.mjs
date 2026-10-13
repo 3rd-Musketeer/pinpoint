@@ -1,7 +1,7 @@
 // Site build test (npm run test:site): builds the fixture projects with a temp
 // registry and checks routes, [[ ]] resolution (incl. empty and cross-project
 // refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
-// links, error box), and that a namespace collision fails the build.
+// links), and that a namespace collision or a canvas error fails the build.
 // Not in the default `npm test`: two real Astro builds take ~10 s.
 import test from 'node:test';
 import assert from 'node:assert/strict';
@@ -42,13 +42,12 @@ const iframesOf = (html) => [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m)
 const linksOf = (html) => [...html.matchAll(/<a class="(?:btn|cc-hit)"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
 
 test('fixture site builds every route and resolves [[ ]]', (t) => {
-  const b = build(t, ['demo', 'other', 'broken']);
+  const b = build(t, ['demo', 'other']);
   assert.equal(b.status, 0, b.log);
 
   for (const rel of [
     'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
     'other/index.html', 'other/intro/index.html', 'other/concepts/payee/index.html', 'other/llms.txt',
-    'broken/broken-canvas/index.html',
   ]) assert.ok(fs.existsSync(path.join(b.out, rel)), `missing route ${rel}`);
 
   const article = b.read('demo/payments/index.html');
@@ -89,7 +88,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2']);
   assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:343px"/);
   assert.match(flow.html, /data-pp-badge hidden>/); // badge filled only from the live annotation ledger
-  assert.doesNotMatch(flow.html, /data-pp-canvas-errors/);
+  assert.doesNotMatch(article, /data-pp-canvas-errors|data-pp-missing|class="errors"/); // the fixture's canvas is clean
   // A non-phone shell is not sized as a 393×852 phone.
   assert.match(mech.html, /data-shell="comp"/);
   assert.match(mech.html, /class="cc-box natural"/);
@@ -98,19 +97,6 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   // Top bar: the article's canvas view.
   assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
   assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas/); // no Canvas, no canvas view
-
-  // Error state: cross-page ref and missing frame are listed in the card, the valid frame still shows; a Canvas outside a Section says so.
-  const broken = b.read('broken/broken-canvas/index.html');
-  const [stray, bad] = cardsOf(broken);
-  assert.equal(stray.section, '');
-  assert.match(stray.html, /data-pp-canvas-errors><b>[^<]+<\/b><ul><li>&lt;Canvas&gt; 要写在 &lt;Section&gt; 里/);
-  assert.equal(bad.section, 'bad');
-  assert.deepEqual([...bad.html.matchAll(/<li>([^<]+)<\/li>/g)].map((m) => m[1]), [
-    '帧 &quot;browser-e2e-flow/ask&quot; 引用了别的页；先把帧迁进本篇目录',
-    '找不到帧 &quot;gone&quot;：本篇目录下没有 gone.jsx',
-  ]);
-  assert.match(bad.html, /role="alert" data-pp-canvas-errors/);
-  assert.deepEqual(iframesOf(bad.html), [q(`/api/frame?page=${encodeURIComponent(articlePageId('broken', 'broken-canvas'))}&screen=ask&annotate=off`)]);
 
   const home = b.read('demo/index.html');
   assert.deepEqual([...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['付款授权', '撤回窗口', '支付页识别']);
@@ -129,6 +115,17 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(llms, /- \*\*确认卡\*\*（已固定）：对外动作执行前/);
   assert.match(llms, /## 文章：浏览器任务里的付款（\[\[payments\]\]）\n\n开头一段：这篇引用 \[\[确认卡\]\]/);
   assert.match(llms, /- 付款授权：浏览器任务里的付款、基础篇/);
+});
+
+// A canvas error is a project error (docs/projects.md「文章的画布 · 错误」), and
+// project errors fail the production build. Which error lands in the card and
+// which in the banner is covered in src/lib/canvas-card.test.js.
+test('canvas errors fail the build, each with its line', (t) => {
+  const b = build(t, ['broken']);
+  assert.notEqual(b.status, 0);
+  assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 7 行：<Canvas> 必须写在 <Section> 里/);
+  assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 13 行：.*引用了别的页的帧 "browser-e2e-flow\/ask".*先把帧迁进本篇目录/);
+  assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 13 行：.*帧 "gone" 没有源文件/);
 });
 
 test('an article id that equals a concept name fails the build', (t) => {

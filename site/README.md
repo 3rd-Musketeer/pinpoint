@@ -35,7 +35,7 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 下面两个组件不用 import，站点自动提供：
 
 - `<Section id="flow" title="付款前的确认">…</Section>`：一节。`id` 必填，字母数字 `_` `-`，文中唯一，就是 DOM id（`#flow`）和画布的 section id；字母引用号 A、B … 按出现顺序自动编，目录从这里来。不能嵌套。
-- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布卡片，写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx`，不能写 `<page>/<screen>`。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。卡片显示节字母、节标题、帧号范围与帧数，每帧一个懒加载 iframe（`/api/frame?page=<画布页>&screen=<帧>&annotate=off`），卡片里不能点、不能标注；点帧或“打开画布 →”到画布页并定位到这一节（`/?page=<画布页>&section=<节 id>`）。该节有未处理（open）的画布标注时头部显示条数，读不到标注就不显示。缺帧、跨页引用这类错误在卡片里列出。有画布节的文章，顶栏多一个“画布视图”。
+- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布卡片，写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx`，不能写 `<page>/<screen>`。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。卡片显示节字母、节标题、帧号范围与帧数，每帧一个懒加载 iframe（`/api/frame?page=<画布页>&screen=<帧>&annotate=off`），卡片里不能点、不能标注；点帧或“打开画布 →”到画布页并定位到这一节（`/?page=<画布页>&section=<节 id>`）。该节有未处理（open）的画布标注时头部显示条数，读不到标注就不显示。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置和编号，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”。
 
 ## `[[ ]]` 引用
 
@@ -57,5 +57,5 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编字母。
 - `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
-- `src/lib/canvas-source.js`：唯一取文章画布（`articleCanvas`、`articlePageId`）的地方。包 E 合入前由 `canvas-stub.js` 从 MDX 读出同形状的数据，合入后改这一行 import。
+- `src/lib/canvas-source.js`：唯一取文章画布（`articleCanvas`、`articlePageId`）的地方，转出服务端 `src/server/lib/projects.js` 的实现（契约见 `docs/projects.md`「文章的画布」）。
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸、读未处理标注数。

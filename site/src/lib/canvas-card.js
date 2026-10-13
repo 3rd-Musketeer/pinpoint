@@ -32,11 +32,11 @@ export function shellBox(shell) {
   return { mode: 'natural', ...(NATURAL[shell] || NATURAL.comp) };
 }
 
-/** Errors from articleCanvas: strings (no section) or { section | sectionId, frame?, message }. */
+/** articleCanvas errors → { section, frame?, message }; no `section` = a page-level error. */
 export function normalizeErrors(errors) {
   return (errors || []).map((e) => (typeof e === 'string'
     ? { section: null, message: e }
-    : { section: e.section ?? e.sectionId ?? null, frame: e.frame, message: String(e.message ?? e.error ?? e) }));
+    : { section: e.section ?? null, frame: e.frame, message: String(e.message ?? e) }));
 }
 
 /** Errors that belong to no section: the article page shows them at the top. */
@@ -45,18 +45,38 @@ export function looseErrors(canvas) {
 }
 
 /**
- * → { pageId, sectionId, letter, title, shell, box, frames: [{ id, ref, title, src }], href, meta, errors: [message] }
- * `sectionId` is the enclosing <Section> (the remark pass injects it).
+ * The article page's error banner, each canvas error shown once. listProjects
+ * repeats every error of this article in `projectErrors` (prefixed
+ * `articles/<article>/…：`), and articleCanvas returns the same ones without the
+ * prefix: section errors go to that section's card, the rest (looseErrors) to
+ * the banner. So this article's prefixed lines are dropped here; errors of
+ * other articles and of the project itself stay.
+ */
+export function bannerErrors(projectErrors, articleId, canvas) {
+  const prefix = `articles/${articleId}`;
+  const mine = (e) => e.startsWith(`${prefix}/`) || e.startsWith(`${prefix}：`);
+  return [...(projectErrors || []).filter((e) => !mine(e)), ...looseErrors(canvas)];
+}
+
+/**
+ * → { pageId, sectionId, letter, title, shell, box, frames: [{ id, ref, title, src, missing }], href, meta, errors: [message] }
+ * `sectionId` is the enclosing <Section> (the remark pass injects it). A Canvas
+ * outside any Section has none: articleCanvas reports that as a page-level
+ * error (banner), so the model is `stray` and the card renders nothing.
+ * A frame with no source file keeps its place and number (`missing`): the card
+ * shows a placeholder tile instead of a preview, like the canvas does.
  */
 export function cardModel(canvas, sectionId) {
   const pageId = canvas?.pageId || '';
   if (!sectionId) {
-    return { pageId, sectionId: '', letter: '', title: '', frames: [], href: '', meta: '', box: shellBox(), errors: ['<Canvas> 要写在 <Section> 里，卡片才知道显示哪一节'] };
+    return { pageId, stray: true, sectionId: '', letter: '', title: '', frames: [], href: '', meta: '', box: shellBox(), errors: [] };
   }
   const section = (canvas?.sections || []).find((s) => s.id === sectionId);
   const errors = normalizeErrors(canvas?.errors).filter((e) => e.section === sectionId).map((e) => e.message);
   if (!section && !errors.length) errors.push(`画布里没有这一节（section "${sectionId}"）`);
-  const frames = (section?.frames || []).map((f) => ({ id: f.id, ref: f.ref || '', title: f.title || f.id, src: frameSrc(pageId, f.id) }));
+  const frames = (section?.frames || []).map((f) => ({
+    id: f.id, ref: f.ref || '', title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
+  }));
   const refs = frames.map((f) => f.ref).filter(Boolean);
   const range = refs.length > 1 ? `${refs[0]}–${refs[refs.length - 1]}` : refs[0] || '';
   return {

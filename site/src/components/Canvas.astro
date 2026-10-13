@@ -3,6 +3,8 @@
 // 只显示所在 Section 那一行的帧；数据来自文章页放进 Astro.locals.ppCanvas 的 articleCanvas()（lib/canvas-source.js），
 // 不信本组件自己的 props：section 由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
 // 卡片不可交互：iframe tabindex -1、pointer-events none，点帧或“打开画布”都是顶层跳转到画布并定位到这一节。
+// 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
+// 缺源文件的帧照占位置和编号，显示占位格“缺帧 <id>”，和画布上那一格的错误面板对应。
 import { cardModel } from '../lib/canvas-card.js';
 
 interface Props { section?: string; frames?: unknown; shell?: string }
@@ -12,6 +14,7 @@ const { box } = m;
 const boxStyle = `width:${Math.round(box.width * box.scale)}px;height:${Math.round(box.height * box.scale)}px`;
 const frameStyle = `width:${box.width}px;height:${box.height}px;transform:scale(${box.scale})`;
 ---
+{!m.stray && (
 <div
   class="canvas-card"
   data-pp-canvas
@@ -40,15 +43,22 @@ const frameStyle = `width:${box.width}px;height:${box.height}px;transform:scale(
       {m.frames.map((f) => (
         <figure class="cc-frame" data-screen={f.id}>
           <figcaption class="cap"><b>{f.ref}</b>{f.title}</figcaption>
-          <div class:list={['cc-box', box.mode]} data-scale={box.scale} data-fit-width={box.fitWidth} style={boxStyle}>
-            <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={`${f.ref} ${f.title}`} style={frameStyle}></iframe>
-          </div>
+          {f.missing ? (
+            <div class:list={['cc-box', box.mode, 'missing']} data-pp-missing style={boxStyle}>
+              <div class="ph"><b>{f.ref}</b>缺帧 {f.id}</div>
+            </div>
+          ) : (
+            <div class:list={['cc-box', box.mode]} data-scale={box.scale} data-fit-width={box.fitWidth} style={boxStyle}>
+              <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={`${f.ref} ${f.title}`} style={frameStyle}></iframe>
+            </div>
+          )}
           <a class="cc-hit" href={m.href} target="_top" aria-label={`在画布中打开 ${f.ref} ${f.title}`}></a>
         </figure>
       ))}
     </div>
   )}
 </div>
+)}
 
 <script>
   import { initCanvasCards } from '../lib/canvas-card-client.js';

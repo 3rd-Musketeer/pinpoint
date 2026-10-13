@@ -103,6 +103,9 @@ pre code { background:none; padding:0; }
 .cc-box iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; pointer-events:none; background:#fff; }
 .cc-box.natural iframe { background:transparent; }
 .cc-box .ph { position:absolute; inset:0; display:grid; place-items:center; padding:12px; text-align:center; color:var(--muted); font-size:12px; background:var(--soft-2); }
+.cc-box.missing { background:var(--soft); box-shadow:none; border:1.5px dashed var(--err); }
+.cc-box.missing .ph { background:transparent; color:var(--err); align-content:center; gap:4px; }
+.cc-box.missing .ph b { color:var(--ink-2); }
 .cc-hit { position:absolute; inset:0; border-radius:12px; }
 .cc-hit:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cc-frame:hover .cc-box { outline:2px solid var(--accent); outline-offset:3px; }
