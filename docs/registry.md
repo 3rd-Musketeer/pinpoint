@@ -220,11 +220,12 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 ### 3 · url 条目 → 两条并存的路径，落进同一个桶
 
 **同源代理内嵌** — `src/server/lib/site-proxy.js` 把登记的 origin 代理在
-`/sites/<entry-id>/` 下。所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
+`/sites/<entry-id>/` 下。来自 pinpoint 自己来源的请求，所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
 于是活的应用在 workbench 的 doc 壳 iframe 里同源渲染，侧栏经既有的 ann-bridge 直接驱动它的
-annotate 实例。
+annotate 实例。别的来源的写请求和 websocket 回 403，GET / HEAD 不带 Origin 转发；规则与文章代理同一份
+`src/server/lib/proxy-origin.js`，见 [`docs/design.md`](design.md)“服务路由（pp3 文章）”。
 
-响应手术：`Set-Cookie` 重基（去掉 Domain，Path 加/补前缀）、3xx 的 `Location`（以及请求的
+响应手术：`Set-Cookie` 重基（去掉 Domain，Path 加/补前缀）、3xx 的 `Location`（以及来自 pinpoint 自己来源的请求
 `Referer`）在前缀与目标 origin 之间改写、CSP / CSP-Report-Only / X-Frame-Options / COOP / COEP
 整体剥离——页面必须能进 iframe 并跑内联 bootstrap，安全边界由登记表白名单承担
 （上游 TLS 校验关闭：localhost 开发 origin 用的是私有信任的 CA）。HTML 响应里根绝对的
@@ -242,7 +243,7 @@ HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventS
 bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
 （`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——
 不虚拟化就会掉进它们的 catch-all。副作用是好的：标注账本因此落在应用路径（`/`、`/global`、…），
-与应用在自己 origin 上直接注入 annotate client 时的账本逐字节同 key。前缀下的 WS upgrade 在 vite 的
+与应用在自己 origin 上直接注入 annotate client 时的账本逐字节同 key。前缀下的 WS upgrade（自己的来源）在 vite 的
 httpServer `'upgrade'` 上转发到目标 origin（通用兜底；SSE 走普通 HTTP 转发）。
 
 url 条目出现在 Pages 里（永远 doc 壳）：`/sites/<id>/board.json` 永远是合成的单屏板
