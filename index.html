@@ -392,15 +392,17 @@
   }
   .wb-strip > * { flex:none; white-space:nowrap; }
   .wb-strip-div { width:1px; height:17px; flex:none; background:var(--wb-seam); }
-  /* 页 tab 切换条（ADR 0041）：与横条平行的第二条胶囊，居中叠在它正上方（间距 6px），
-     同一档层级 --wb-z-strip。高 --wb-tabbar-h = 32，比横条矮一档；只在多 tab 页出现。
-     容器 .wb-tabbar-root 铺满 .wb 但不吃事件；条自己吃。文档形态里也在（tab 属于页，不属于形态）。 */
-  .wb { --wb-tabbar-h:32px; }
+  /* 页 tab 条（ADR 0041，2026-10-10 追加大纲入口）：与横条平行的第二条胶囊，居中叠在它
+     正上方（间距 6px），同一档层级 --wb-z-strip。高 --wb-tabbar-h = 32。有画布的页都渲染：
+     不足 2 个 tab 时条上只有大纲钮，≥ 2 个时每个标题旁一个大纲钮。纯文档 / 网页页不渲染。
+     容器 .wb-tabbar-root 铺满 .wb 但不吃事件；条自己吃。大纲浮层 Portal 到 body（条有
+     overflow-x，浮层不能做它的子元素），向上弹，层级 --wb-z-float，皮肤 .wb-glass。 */
+  .wb { --wb-tabbar-h:32px; --wb-tabbar-gap:6px; }
   .wb-tabbar-root { position:absolute; inset:0; pointer-events:none; z-index:var(--wb-z-strip); }
   .wb-tabbar {
     position:absolute; pointer-events:auto;
     left:50%; transform:translateX(-50%);
-    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 6px);
+    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + var(--wb-tabbar-gap));
     height:var(--wb-tabbar-h); max-width:calc(100% - var(--wb-chrome-gap) * 2);
     box-sizing:border-box; display:flex; align-items:center; gap:2px; padding:0 4px;
     border-radius:999px; overflow-x:auto; scrollbar-width:none;
@@ -408,6 +410,23 @@
   }
   .wb-tabbar::-webkit-scrollbar { display:none; }
   .wb-tabbar > * { flex:none; }
+  .wb-tab-slot { display:inline-flex; align-items:center; gap:1px; }
+  .wb-outline-trigger {
+    display:inline-flex; align-items:center; justify-content:center;
+    width:22px; height:22px; flex:none; padding:0; border:0; border-radius:999px;
+    background:transparent; color:var(--wb-faint); cursor:pointer;
+  }
+  .wb-outline-trigger:hover,
+  .wb-outline-trigger[aria-expanded="true"] { background:var(--wb-hover); color:var(--wb-fg); }
+  /* 大纲浮层：宽不超过 320，最高 60vh，内部滚动。定位由 OutlinePopover 按触发钮向上摆，
+     矮视口时再把 max-height 收到按钮上方的空间里。 */
+  .wb-outline-pop {
+    position:fixed; z-index:var(--wb-z-float);
+    box-sizing:border-box; width:320px; max-width:calc(100vw - 24px); max-height:60vh;
+    overflow:auto; border-radius:var(--wb-r-glass); padding:6px; color:var(--wb-fg);
+  }
+  .wb-outline-pop:focus { outline:none; }
+  .wb-outline-empty { margin:8px 10px; font-size:12px; color:var(--wb-faint); }
   /* 按需浮层的停靠槽（弹出的标注列表 / detail 面板）：横条右端正上方。
      容器本身不吃事件，只有里面的卡片吃。 */
   #wbdock {
@@ -965,7 +984,7 @@
   <div class="wb-strip wb-glass" id="wbstrip" data-ann-ui></div>
 
   <!-- React 挂载点：页 tab 切换条（app/TabBar.jsx，ADR 0041）——叠在横条正上方、与它平行；
-       ≥ 2 个 tab 才渲染里面的 #wbtabbar。本容器不吃事件、没有盒子。 -->
+       有画布的页渲染 #wbtabbar（不足 2 个 tab 时只有大纲钮）。本容器不吃事件、没有盒子。 -->
   <div class="wb-tabbar-root" id="wbtabbar-root"></div>
 </div>
 

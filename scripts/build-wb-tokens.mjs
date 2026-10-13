@@ -105,7 +105,7 @@ export function buildWbTokensCss() {
   --wb-z-marks-active:50;   /* #ann-overlay 抬升态（选中气泡 / flash）：压过面板、停靠槽、HUD，不压横条（ADR 0031 “列表不盖被定位气泡”）；输入框不在这一档，见 --wb-z-composer */
   --wb-z-strip:60;          /* .wb-strip 底部横条：shell 浮层里最上 */
   --wb-z-composer:70;       /* #ann-chrome：写标注的输入框及其 lasso / tip：外壳里最高，压过横条；只有 body 上的 portal 浮层与 top layer 在它之上 */
-  --wb-z-float:100;         /* Portal 到 body 的浮层：tooltip / row-menu / PageSortMenu */
+  --wb-z-float:100;         /* Portal 到 body 的浮层：tooltip / row-menu / PageSortMenu / 大纲浮层 #wboutline-pop */
   --wb-z-float-2:110;       /* 从浮层里再开的菜单（AnnPopover more-menu） */
   --wb-z-cap:30;            /* 画布内子阶梯（.wb-library 是 transform 上下文，只和帧内容比）：.wb-screen-cap.has-frame-menu */
   --wb-z-frame-menu:50;     /* 画布内子阶梯：frame ⋯ 菜单面板 */

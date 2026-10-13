@@ -37,6 +37,6 @@ flushSync(function () {
 flushSync(function () {
   createRoot(document.getElementById('wbstrip')).render(h(Strip));
 });
-// 页 tab 切换条（ADR 0041）：叠在横条正上方；单 tab / 存量页什么都不渲染。
+// 页 tab 条（ADR 0041）：叠在横条正上方。有画布就渲染（不足 2 个 tab 时只有大纲钮）。
 createRoot(document.getElementById('wbtabbar-root')).render(h(TabBar));
 wireCanvasHud();

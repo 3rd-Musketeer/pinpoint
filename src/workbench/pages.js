@@ -182,11 +182,11 @@ export function resolveActivePage(preferredId, modeHint) {
 /* ---- 条目（2026-08-16f 阶段 6）：一个 board 的可选单元 --------------------
    条目 = （有 app/lock 屏则有一个画布条目）+ 每个 doc 屏一个文档条目
    （lib/board-entries.js）。stage 形态（画布 / 文档阅读器）、屏显隐、缩放与
-   视口存档全部从选中条目派生；侧栏的「内容」区由 Sidebar 的 Contents 组件渲染
-   （读 activeBoard/activeEntryId；阶段 7 的产物/草稿分组 + frame 树），这里只
-   保留切换动作与装载后的条目解析。 */
+   视口存档全部从选中条目派生。产物/草稿分组与 frame 树画在页 tab 条的大纲浮层里
+   （app/OutlinePopover.jsx，读 fullBoard 再按 tab 切片）。这里只保留切换动作与
+   装载后的条目解析。 */
 
-/** 当前页的条目数组（板未装载 / 换页途中 → []）。Sidebar 消费。
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。
     阶段 7：registry 条目的 kind 经 manifest page（registrySitePages 透传
     page.kind）在这里落到条目上 —— url 页的 doc 条目带 web 标记（「网页」tag）。 */
 export function entriesOfActiveBoard() {
@@ -199,8 +199,9 @@ export function entriesOfActiveBoard() {
 
 /* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
    loadBoard（stage.js）只把活动 tab 的 section 挂上画布；activeBoard.board 因此就是
-   「活动 tab 的视图」（大纲、引用号、导航、minimap、条目都只看它），activeBoard.fullBoard
-   留着全部 tab（跨 tab 定位、引用号表）。活动 tab 是页的本机偏好 prefs.activeTabByPage。
+   「活动 tab 的视图」（引用号、导航、minimap、条目都只看它）。大纲浮层是例外：它按
+   被点的那个 tab 读 fullBoard。activeBoard.fullBoard 留着全部 tab（跨 tab 定位、引用号表、
+   大纲浮层）。活动 tab 是页的本机偏好 prefs.activeTabByPage。
    存量 board（只有 sections）没有 tab：这些函数恒返回空 / false，行为同从前。 */
 
 function tabPrefs() {
@@ -230,7 +231,7 @@ export function activeTabId() {
   return (active && active.tabId) || '';
 }
 
-/** 切换条要显示的 tab 列表：≥ 2 个才有，否则 []（单 tab 与存量页不出条）。 */
+/** 条上要列标题的 tab：≥ 2 个才有，否则 []。条本身出不出看有没有画布条目（TabBar）。 */
 export function tabsOfActiveBoard() {
   var active = activeBoardOfPage();
   var tabs = active ? boardTabList(active.fullBoard || active.board) : [];
@@ -454,7 +455,7 @@ export function setActiveEntry(entryId, options) {
   scheduleAnnSnap();
 }
 
-/* board 装载/页面切换后调用：条目行渲染由 Sidebar 的 Contents 组件从 store 派生，
+/* board 装载/页面切换后调用：条目行由大纲浮层从 store 派生，
    这里负责把当前条目定下来 —— prefs.activeEntryIdByPage 记忆优先，非法/缺失落默认
    条目（画布优先）。 */
 export function syncEntries() {

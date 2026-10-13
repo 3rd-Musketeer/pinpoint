@@ -8,14 +8,15 @@ import { fileURLToPath } from 'node:url';
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { openOutline } from './open-workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
-// 页 tab（ADR 0041）：同一页里 tab 只是 section 的视图分组。固件 tabs-site 有两个 tab
-// （comps 组件：btn-wall 两帧 + chip-wall 一帧；flow 交互：onboard 两帧），
-// tabs-one-site 只有一个 tab，e2e-ios 是不带 tab 的存量页。
-// 覆盖：条只在 ≥ 2 个 tab 时出现、叠在底部横条正上方；切换只挂当前 tab 的 section；
-// 序号按 tab 从 A 重来；活动 tab 刷新后保持；focusFrame 指到别的 tab 的帧时先切 tab；
-// 分享导出带全部 tab、有能用的切换条；ppnt list --frames / check --frame <tab>:A1。
+// 页 tab（ADR 0041，2026-10-10 大纲入口）：同一页里 tab 只是 section 的视图分组。
+// 固件 tabs-site 有两个 tab（comps 组件：btn-wall 两帧 + chip-wall 一帧；flow 交互：
+// onboard 两帧），tabs-one-site 只有一个 tab，e2e-ios 是不带 tab 的存量画布页。
+// 工作台：有画布就渲染 #wbtabbar；不到 2 个 tab 时不列标题，只有大纲钮。
+// 分享导出仍是单 tab 不出条。切换只挂当前 tab 的 section；序号按 tab 从 A 重来；
+// 活动 tab 刷新后保持；focusFrame 指到别的 tab 的帧时先切 tab。
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TABS_DIR = path.join(E2E_SITES_DIR, 'tabs-site');
@@ -56,16 +57,19 @@ test.afterEach(async ({ request }) => {
   await restoreRegistryFixture(request);
 });
 
-test('tab 条：存量页与单 tab 页没有；两个 tab 的页叠在横条正上方，切换只挂当前 tab，序号按 tab 从 A 重来，活动 tab 刷新后保持', async ({ page }) => {
+test('tab 条：有画布就出现，不到两个 tab 时只有大纲钮；两个 tab 的页叠在横条正上方，切换只挂当前 tab，序号按 tab 从 A 重来，活动 tab 刷新后保持', async ({ page }) => {
   test.setTimeout(90_000);
 
-  // 存量页（无 tabs）：条整个不存在
+  // 存量画布页：条在，不列 tab 标题，只有大纲钮
   await openBoard(page, 'page=e2e-ios');
-  await expect(page.locator('#wbtabbar')).toHaveCount(0);
+  await expect(page.locator('#wbtabbar')).toHaveCount(1);
+  await expect(page.locator('#wbtabbar [role="tab"]')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '大纲', exact: true })).toBeVisible();
 
-  // 单 tab 页：同样没有条，画布正常
+  // 单 tab 页：同样只有大纲钮，画布正常
   await openBoard(page, 'page=e2e-tabs-one');
-  await expect(page.locator('#wbtabbar')).toHaveCount(0);
+  await expect(page.locator('#wbtabbar')).toHaveCount(1);
+  await expect(page.locator('#wbtabbar [role="tab"]')).toHaveCount(0);
   await expect(visibleScreens(page)).toHaveCount(1);
 
   // 两个 tab 的页
@@ -165,6 +169,90 @@ test('分享导出带全部 tab，切换条能用；单 tab 页导出没有条',
   await page.goto(`file://${await exportTo('e2e-tabs-one')}`);
   await expect(page.locator('#wbtabbar')).toHaveCount(0);
   await expect(page.locator('#section-solo')).toBeVisible();
+});
+
+test('大纲在页 tab 条上：左栏没有大纲页签；单 tab 打开整页；第二个 tab 的浮层只含该 tab 的帧，点帧切过去并聚焦；Esc 与点外面关闭', async ({ page }) => {
+  test.setTimeout(90_000);
+
+  await openBoard(page, 'page=e2e-tabs-one');
+  await expect(page.getByRole('tab', { name: '大纲', exact: true })).toHaveCount(0);
+  await openOutline(page);
+  await expect(page.locator('#wboutline [data-ol-frame="solo-a"]')).toBeVisible();
+  await expect(page.locator('#wboutline .ol')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+
+  await openBoard(page, 'page=e2e-tabs');
+  await expect(page.locator('#wbtabbar [role="tab"]')).toHaveText(['组件', '交互']);
+  await openOutline(page, '交互');
+  await expect(page.locator('#wboutline [data-ol-frame="ob-welcome"]')).toBeVisible();
+  await expect(page.locator('#wboutline [data-ol-frame="ob-done"]')).toBeVisible();
+  await expect(page.locator('#wboutline [data-ol-frame="btn-default"]')).toHaveCount(0);
+  await expect(page.locator('#wboutline-pop')).toHaveCount(1);
+  await page.locator('#wboutline [data-ol-frame="ob-done"]').click();
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+  await expect(page.locator('#wbtabbar [role="tab"][aria-selected="true"]')).toHaveText('交互');
+  await expect(page.locator('#wb-board-panel [data-screen="ob-done"]')).toBeVisible();
+  await expect(page.locator('#wb-board-panel [data-screen="ob-done"]')).toHaveClass(/wb-sel/);
+
+  await openOutline(page, '组件');
+  await expect(page.getByRole('button', { name: '交互的大纲', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.locator('#wboutline [data-ol-frame="btn-default"]')).toBeVisible();
+  await expect(page.locator('#wboutline [data-ol-frame="ob-welcome"]')).toHaveCount(0);
+  await page.locator('.wb-wordmark').click();
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+
+  await openOutline(page, '组件');
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+
+  // 同一时刻只开一个：开着「组件」的浮层再点「交互」的钮，换成交互的，不叠两层。
+  await openOutline(page, '组件');
+  await page.getByRole('button', { name: '交互的大纲', exact: true }).click();
+  await expect(page.locator('#wboutline-pop')).toHaveCount(1);
+  await expect(page.getByRole('button', { name: '组件的大纲', exact: true })).toHaveAttribute('aria-expanded', 'false');
+  await expect(page.getByRole('button', { name: '交互的大纲', exact: true })).toHaveAttribute('aria-expanded', 'true');
+  await expect(page.locator('#wboutline [data-ol-frame="ob-welcome"]')).toBeVisible();
+
+  // 几何与层级：宽不超 320，高不超视口 60%，z-index 压过条（--wb-z-strip），在条正上方。
+  const geo = await page.evaluate(() => {
+    const pop = document.getElementById('wboutline-pop').getBoundingClientRect();
+    const bar = document.getElementById('wbtabbar').getBoundingClientRect();
+    return {
+      width: pop.width, height: pop.height, vh: window.innerHeight,
+      gap: bar.top - pop.bottom,
+      z: Number(getComputedStyle(document.getElementById('wboutline-pop')).zIndex),
+      strip: Number(getComputedStyle(document.getElementById('wbtabbar-root')).zIndex),
+    };
+  });
+  expect(geo.width).toBeLessThanOrEqual(320);
+  expect(geo.height).toBeLessThanOrEqual(geo.vh * 0.6 + 1);
+  expect(geo.gap).toBeGreaterThanOrEqual(0);
+  expect(geo.z).toBeGreaterThan(geo.strip);
+
+  // 键盘：Tab 从触发钮走进浮层里的大纲行；Esc 关闭并把焦点还给触发钮。
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+  await page.getByRole('button', { name: '交互的大纲', exact: true }).focus();
+  await page.keyboard.press('Enter');
+  await expect(page.locator('#wboutline-pop')).toBeVisible();
+  await page.keyboard.press('Tab');
+  await expect(page.locator('#wboutline-pop :focus')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+  await expect(page.getByRole('button', { name: '交互的大纲', exact: true })).toBeFocused();
+});
+
+test('旧偏好 sidebarTab=outline 打开后落在页面页签，不崩', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    localStorage.setItem('pinpoint-wb', JSON.stringify({ sidebarTab: 'outline' }));
+  });
+  await openBoard(page, 'page=e2e-ios');
+  await expect(page.getByRole('tab', { name: '大纲', exact: true })).toHaveCount(0);
+  await expect(page.getByRole('tab', { name: '页面', exact: true })).toHaveAttribute('aria-selected', 'true');
+  await expect(page.locator('#wbpages')).toBeVisible();
+  await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).sidebarTab)).toBe('pages');
 });
 
 test('ppnt：list --frames 按 tab 分组，check --frame <tab>:A1 可用，裸 A1 歧义时报错', async () => {

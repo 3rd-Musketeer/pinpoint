@@ -47,3 +47,24 @@ test('deep link carries the page tab only when given (ADR 0041)', () => {
   assert.equal(deepLinkQuery('ui', 'ios', '@canvas', 'flow'), 'page=ui&mode=ios&entry=%40canvas&tab=flow');
   assert.equal(deepLinkQuery('ui', 'ios', null, null), 'page=ui&mode=ios');
 });
+
+test('deep link carries the landing section only when given (2026-10-13)', () => {
+  assert.deepEqual(
+    parseDeepLink('?page=browser-e2e-flow&section=browser'),
+    { pageId: 'browser-e2e-flow', mode: null, entry: null, section: 'browser' },
+  );
+  assert.deepEqual(
+    parseDeepLink('?page=ui&tab=comps&section=onboard'),
+    { pageId: 'ui', mode: null, entry: null, tab: 'comps', section: 'onboard' },
+  );
+  assert.equal('section' in parseDeepLink('?page=ui'), false);
+  assert.equal('section' in parseDeepLink('?page=ui&section='), false);
+  assert.equal(deepLinkQuery('browser-e2e-flow', null, null, null, 'browser'), 'page=browser-e2e-flow&section=browser');
+  assert.equal(deepLinkQuery('ui', 'ios', null, 'flow', 'on board'), 'page=ui&mode=ios&tab=flow&section=on+board');
+  assert.equal(deepLinkQuery('ui', 'ios', null, null, null), 'page=ui&mode=ios');
+  assert.equal(deepLinkQuery('', 'ios', null, null, 'browser'), '');
+  assert.deepEqual(
+    parseDeepLink('?' + deepLinkQuery('ui', null, null, null, 'on board')),
+    { pageId: 'ui', mode: null, entry: null, section: 'on board' },
+  );
+});

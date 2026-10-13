@@ -91,7 +91,7 @@ props 在各文件首行注释。
 
 - `tabs` 与顶层 `sections` 二选一。tab 的 `id` 在页内唯一、是 id 的样子；每个 tab 至少一个 section。
 - tab 只是 section 的视图分组：共用 `components/`、资源和标注账本；section id、screen id 在整页内唯一（跨 tab 也不许重复）。
-- 编号按 tab 各自从 A 重来；多 tab 页的位置引用写 `<tab>:B3`，id 仍是裸的。不足 2 个 tab 的页没有切换条、引用不带前缀。
+- 编号按 tab 各自从 A 重来；多 tab 页的位置引用写 `<tab>:B3`，id 仍是裸的。不足 2 个 tab 时引用不带前缀。工作台只要页上有画布条目就渲染 `#wbtabbar`（不到 2 个 tab 时条上只有大纲钮）；分享页导出仍是不足 2 个 tab 不出条。
 - 工作台只挂活动 tab 的 section；`ppnt build` 与导出覆盖所有 tab。
 
 ## comp section（variants 墙）
@@ -159,7 +159,7 @@ client 把空挂载点水合成 `/api/frame` 的 iframe，标注绑定对象不�
 层级：**page → entries → canvas → [tab →] section → frame**（tab 见上，可选）；screen 是 frame 里的内容（`screenId` = frame id）。
 条目派生在 `src/workbench/lib/board-entries.js`：app / lock / comp 屏合成一个 canvas 条目（id
 `@canvas`），每个 doc 屏各成一个 document 条目。舞台形态跟选中的条目走，选择持久化在
-`prefs.activeEntryIdByPage`，深链 `?page=<id>&entry=<screenId>`。A1 引用体系、frame 树、截图清单
+`prefs.activeEntryIdByPage`，深链 `?page=<id>&entry=<screenId>`；`&section=<sectionId>` 落到画布条目里的那个 section（多 tab 页先切 tab，参数表见 [`design.md`](design.md)“地址栏参数”）。A1 引用体系、frame 树、截图清单
 只覆盖 canvas 条目下的屏。
 
 ## 导出与截图

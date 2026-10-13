@@ -49,6 +49,7 @@ export function parseDeepLink(search) {
   var mode = legacyMode(params.get('mode'));
   var entry = params.get('entry');
   var tab = params.get('tab');
+  var section = params.get('section');
   var link = {
     pageId: pageId || null,
     mode: DEEP_LINK_MODES[mode] ? mode : null,
@@ -57,16 +58,21 @@ export function parseDeepLink(search) {
   // 页 tab（ADR 0041）：?tab= 直达多 tab 页的某个 tab；未知 tab id 由 resolveTabId 落第一个。
   // 没给就没有这个键，存量深链的解析结果形状不变。
   if (tab) link.tab = tab;
+  // 落点 section（2026-10-13）：?section= 打开页的画布条目并定位到这个 section（多 tab 页先切到它所在的 tab）。
+  // 一次性落点指令，不是状态：落地后 url-sync 不回写它（地址栏随后只剩 page/entry/tab）。同样没给就没有这个键。
+  if (section) link.section = section;
   return link;
 }
 
-/** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode / entryId 非法或为空时省略。 */
-export function deepLinkQuery(pageId, mode, entryId, tabId) {
+/** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode / entryId / tabId / sectionId 非法或为空时省略。
+    sectionId 只给链接生成方用（如文章页的“打开画布”）；url-sync 镜像的是状态，从不传它。 */
+export function deepLinkQuery(pageId, mode, entryId, tabId, sectionId) {
   if (!pageId) return '';
   var params = new URLSearchParams();
   params.set('page', pageId);
   if (DEEP_LINK_MODES[mode]) params.set('mode', mode);
   if (entryId) params.set('entry', entryId);
   if (tabId) params.set('tab', tabId);
+  if (sectionId) params.set('section', sectionId);
   return params.toString();
 }

@@ -3,6 +3,7 @@ import { scrollStageTo } from './scroll-motion.js';
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
+import { boardHasCanvas } from './lib/board-entries.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
@@ -267,7 +268,22 @@ export function chromeInsets() {
     var tr = el.getBoundingClientRect();
     if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + 12);
   });
+  // 条是 React 画的，首访聚焦的 rAF 经常早于它提交。有画布就按同一套 CSS 预留
+  //（条高 --wb-tabbar-h，叠在横条上方 --wb-tabbar-gap），免得帧落在条底下。
+  if (!document.getElementById('wbtabbar')) out.bottom += reservedTabBarLift();
   return out;
+}
+
+function reservedTabBarLift() {
+  var active = wbGet().activeBoard;
+  var full = active && (active.fullBoard || active.board);
+  if (!full || !boardHasCanvas(full)) return 0;
+  var host = stage.closest('.wb') || stage;
+  var cs = getComputedStyle(host);
+  var tabH = parseFloat(cs.getPropertyValue('--wb-tabbar-h'));
+  var gap = parseFloat(cs.getPropertyValue('--wb-tabbar-gap'));
+  if (!(tabH > 1)) return 0;
+  return (gap > 0 ? gap : 6) + tabH;
 }
 
 function stageViewportMetrics() {
@@ -480,11 +496,18 @@ export function stepSectionNavigator(delta) {
 }
 
 function jumpSectionNavigatorToGroup(groupId) {
+  focusBoardSection(groupId);
+}
+
+/** 定位到当前 tab 里的某个 section（导航器点 section 的同一原语）；量不到 = false。
+    options.smooth === false 即时到位（?section= 落点用）。 */
+export function focusBoardSection(groupId, options) {
   var section = findBoardSection(refreshBoardNavigationModel(), groupId);
-  if (!section || !stage) return;
+  if (!section || !stage) return false;
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
-  focusStageOnRect(section);
+  focusStageOnRect(section, options);
+  return true;
 }
 
 function jumpSectionNavigatorToScreen(groupId, screenId) {

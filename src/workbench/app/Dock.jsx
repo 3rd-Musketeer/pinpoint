@@ -15,6 +15,8 @@ export function Dock() {
       // Radix 的 dismiss 监听不 stopPropagation，且在 document 捕获段先于冒泡段把菜单摘掉；
       // 本监听挂捕获段、先于它注册，这里查到菜单还在，才分得清「关菜单」与「关列表」。
       if (document.querySelector('.wb-ann-more-menu')) return;
+      // 大纲浮层开着时这一下 Esc 只关浮层（它自己的监听在后面）。不要顺手清掉画布选中。
+      if (document.getElementById('wboutline-pop')) return;
       var s = wbGet();
       if (s.annListOpen) {
         event.preventDefault();

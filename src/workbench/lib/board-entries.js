@@ -17,6 +17,8 @@
 // 源被删 = 合并不发生、条目随之消失，不留死行。
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
+import { boardForTab, boardTabList, flattenTabs } from './board-tabs.js';
+
 /* 画布条目 id 用 '@canvas'：screen id 契约是 /^[a-zA-Z0-9_-]+$/（preview-contracts
    ID_PATTERN），'@' 永不可能与 doc 屏 id 撞车，混合板条目 id 因此天然唯一。 */
 export var CANVAS_ENTRY_ID = '@canvas';
@@ -54,6 +56,33 @@ export function boardEntries(board) {
     entries.push({ id: CANVAS_ENTRY_ID, kind: 'canvas', role: 'product', title: '画布' });
   }
   return entries.concat(docEntries);
+}
+
+/** 大纲浮层要画的那一截（2026-10-10）。
+ *  指定了 tabId：view 只留这个 tab 的 section，帧号在 tab 内从 A 重计。
+ *  tabId 空：没有 tab 的存量页，view 是整页；有 tab 时落到第一个 tab 的 section。
+ *  单 tab 页那一个钮不传 tabId，第一个 tab 就是整页。
+ *  文档 / 网页 / 草稿只出现在第一个 tab 的浮层里（与「doc 条目归第一个 tab」一致）；
+ *  其它 tab 只留画布条目。 */
+export function outlineSlice(board, tabId) {
+  var flat = flattenTabs(board);
+  var tabs = boardTabList(flat);
+  var firstId = tabs.length ? tabs[0].id : '';
+  var scoped = tabId || '';
+  var showDocs = !tabs.length || !scoped || scoped === firstId;
+  var view = tabs.length ? boardForTab(flat, scoped || firstId) : flat;
+  var entries = boardEntries(showDocs ? flat : view);
+  if (!showDocs) entries = entries.filter(function (e) { return e && e.kind === 'canvas'; });
+  return { view: view, entries: entries, showDocs: showDocs, firstTabId: firstId };
+}
+
+/** 页上有没有画布条目。有则工作台渲染 #wbtabbar（哪怕不到两个 tab）；纯 doc / url 页不渲染。 */
+export function boardHasCanvas(board) {
+  var entries = boardEntries(flattenTabs(board));
+  for (var i = 0; i < entries.length; i++) {
+    if (entries[i] && entries[i].kind === 'canvas') return true;
+  }
+  return false;
 }
 
 /** 默认条目 = 画布条目（有画布时），否则第一个文档条目；空板 → null。 */

@@ -50,7 +50,7 @@ test('flattenTabs: 幂等；存量 board（只有 sections）原样返回同一�
   assert.equal(isMultiTab(legacy), false);
 });
 
-test('isMultiTab: 一个 tab 不算多 tab（切换条不出现，位置号不带前缀）', () => {
+test('isMultiTab: 一个 tab 不算多 tab（位置号不带前缀；分享页不出切换条）', () => {
   const one = { tabs: [{ id: 'only', sections: [sec('a', ['x'])] }] };
   assert.equal(boardTabList(one).length, 1);
   assert.equal(isMultiTab(one), false);
