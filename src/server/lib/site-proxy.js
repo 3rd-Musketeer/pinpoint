@@ -43,6 +43,14 @@ import { parseReqUrl } from './req-url.js';
  *    then a raw bidirectional pipe). Non-/sites/ sockets are never touched —
  *    vite HMR keeps its own listener.
  *
+ * Origin (lib/proxy-origin.js, same rule as the article proxy): a pinpoint
+ * origin (the workbench, its iframes) is rewritten to the target origin so the
+ * app's CSRF / websocket origin checks pass; any other origin gets 403 for
+ * websocket upgrades and non-GET/HEAD requests (the upstream is never
+ * contacted), and GET/HEAD are forwarded without Origin. No Origin (CLI,
+ * plain navigations) passes unchanged. Referer is only rebased onto the target
+ * when it comes from a pinpoint origin.
+ *
  * SSRF boundary: only registry-resolved url entries are proxied, and the
  * upstream request reuses the entry's own origin. Upstream TLS verification
  * is off (rejectUnauthorized: false) because local dev origins commonly use
@@ -56,6 +64,7 @@ import { fileURLToPath } from 'node:url';
 import zlib from 'node:zlib';
 
 import { injectAnnotateClient } from './annotate-snippet.js';
+import { normalizeOrigin, originDecision, originsGetter } from './proxy-origin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REBASE_LIB_PATH = path.join(__dirname, '..', '..', 'shared', 'proxy-rebase.js');
@@ -146,12 +155,15 @@ export function rewriteProxyLocation(value, prefix, targetOrigin) {
 /**
  * Referer: the page's own URL carries our prefix; strip it and point at the
  * target origin so upstream CSRF/referer checks see the app's true shape.
- * Referers outside the prefix (the workbench itself) pass through unchanged.
+ * Referers outside the prefix (the workbench itself) pass through unchanged;
+ * with `own` (a set of pinpoint origins) a referer from any other origin does
+ * too — a foreign page under a look-alike path must not pass as the app.
  */
-export function rewriteProxyReferer(value, prefix, targetOrigin) {
+export function rewriteProxyReferer(value, prefix, targetOrigin, own) {
   try {
     const u = new URL(value);
     if (u.pathname !== prefix && !u.pathname.startsWith(prefix + '/')) return value;
+    if (own && !own.has(normalizeOrigin(u.origin))) return value;
     const rest = u.pathname.slice(prefix.length) || '/';
     return targetOrigin + rest + u.search + u.hash;
   } catch {
@@ -328,12 +340,20 @@ function collectBody(stream) {
   });
 }
 
+function sendJson(res, status, body) {
+  res.statusCode = status;
+  res.setHeader('Content-Type', 'application/json; charset=utf-8');
+  res.setHeader('Cache-Control', 'no-store');
+  res.end(JSON.stringify(body));
+}
+
 /**
  * Proxy one request for a resolved `url` entry. `req.url` keeps its original
  * percent-encoding on the wire (decode+re-encode would corrupt %2F & co), so
  * the prefix is stripped textually — entry ids are [a-z0-9-], never encoded.
+ * options.origins: pinpoint's own origins (Set or getter, see proxy-origin.js).
  */
-export function proxySiteRequest(req, res, entry) {
+export function proxySiteRequest(req, res, entry, options = {}) {
   const prefix = `/sites/${entry.id}`;
   const annotate = parseReqUrl(req).query.get('annotate') !== 'off';
   let target;
@@ -345,6 +365,14 @@ export function proxySiteRequest(req, res, entry) {
     res.end(JSON.stringify({ error: 'bad_gateway', entry: entry.id }));
     return;
   }
+  const own = originsGetter(options.origins)();
+  const verdict = originDecision({
+    origin: req.headers.origin, method: req.method, own, upstreamOrigin: target.origin,
+  });
+  if (!verdict.allow) {
+    sendJson(res, verdict.status, { error: 'forbidden', reason: verdict.reason });
+    return;
+  }
   const isTls = target.protocol === 'https:';
   const lib = isTls ? https : http;
   const tail = req.url.slice(prefix.length) || '/';
@@ -352,14 +380,14 @@ export function proxySiteRequest(req, res, entry) {
 
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
-    if (REQUEST_HEADER_SKIP.has(name)) continue;
+    if (REQUEST_HEADER_SKIP.has(name) || name === 'origin') continue;
     headers[name] = value;
   }
   headers.host = target.host;
   headers['accept-encoding'] = 'identity';
-  if (headers.origin) headers.origin = target.origin;
+  if (verdict.origin) headers.origin = verdict.origin;
   if (typeof headers.referer === 'string') {
-    headers.referer = rewriteProxyReferer(headers.referer, prefix, target.origin);
+    headers.referer = rewriteProxyReferer(headers.referer, prefix, target.origin, own);
   }
 
   const up = lib.request({
@@ -439,14 +467,21 @@ export function proxySiteRequest(req, res, entry) {
 /* WebSocket forwarding                                                */
 /* ------------------------------------------------------------------ */
 
-/** Forward one `/sites/<id>/…` upgrade to the entry's target origin. */
-export function proxySiteUpgrade(req, socket, head, entry) {
+/** Forward one `/sites/<id>/…` upgrade to the entry's target origin (options as proxySiteRequest). */
+export function proxySiteUpgrade(req, socket, head, entry, options = {}) {
   const prefix = `/sites/${entry.id}`;
   let target;
   try {
     target = new URL(entry.url);
   } catch {
     socket.destroy();
+    return;
+  }
+  const own = originsGetter(options.origins)();
+  const verdict = originDecision({ origin: req.headers.origin, upgrade: true, own, upstreamOrigin: target.origin });
+  if (!verdict.allow) {
+    socket.end('HTTP/1.1 403 Forbidden\r\nContent-Type: text/plain; charset=utf-8\r\nConnection: close\r\n\r\n'
+      + `forbidden: ${verdict.reason}\n`);
     return;
   }
   const isTls = target.protocol === 'https:';
@@ -456,11 +491,11 @@ export function proxySiteUpgrade(req, socket, head, entry) {
 
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
-    if (UPGRADE_HEADER_SKIP.has(name)) continue;
+    if (UPGRADE_HEADER_SKIP.has(name) || name === 'origin') continue;
     headers[name] = value;
   }
   headers.host = target.host;
-  if (headers.origin) headers.origin = target.origin;
+  if (verdict.origin) headers.origin = verdict.origin;
 
   const up = lib.request({
     hostname: target.hostname,
@@ -497,9 +532,9 @@ export function proxySiteUpgrade(req, socket, head, entry) {
 /**
  * httpServer 'upgrade' listener: only `/sites/<id>/…` paths resolving to a
  * url entry are handled; every other socket is left untouched (vite HMR has
- * its own listener on the same event).
+ * its own listener on the same event). origins as proxySiteRequest.
  */
-export function createSiteUpgradeHandler({ registry } = {}) {
+export function createSiteUpgradeHandler({ registry, origins } = {}) {
   return function handleSiteUpgrade(req, socket, head) {
     const urlPath = parseReqUrl(req).pathname;
     if (!urlPath.startsWith('/sites/')) return;
@@ -514,6 +549,6 @@ export function createSiteUpgradeHandler({ registry } = {}) {
     }
     const entry = id && registry && registry.resolve(id);
     if (!entry || entry.kind !== 'url') return;
-    proxySiteUpgrade(req, socket, head, entry);
+    proxySiteUpgrade(req, socket, head, entry, { origins });
   };
 }

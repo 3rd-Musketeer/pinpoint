@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { DEFAULT_PINPOINT_ORIGIN, normalizeOrigin, originDecision, ownOrigins } from './proxy-origin.js';
+import { DEFAULT_PINPOINT_ORIGIN, listenOrigins, normalizeOrigin, originDecision, originsGetter, ownOrigins } from './proxy-origin.js';
 
 const UPSTREAM = 'http://127.0.0.1:4530';
 
@@ -51,4 +51,23 @@ test('originDecision：自己的来源改写成站点地址；没有 Origin 放�
   }
   // upgrade 不看方法：别的来源的 GET upgrade 也拒。
   assert.equal(at('https://evil.example', { upgrade: true, method: 'GET' }).allow, false);
+});
+
+test('originsGetter / listenOrigins：Set 原样、函数照调；监听上之后按实际端口算并缓存，没监听时退回 config 端口', () => {
+  const fixed = new Set(['https://a.example']);
+  assert.equal(originsGetter(fixed)(), fixed);
+  const fn = () => fixed;
+  assert.equal(originsGetter(fn), fn);
+  assert.ok(originsGetter(undefined)().has(DEFAULT_PINPOINT_ORIGIN));
+
+  let address = null;
+  const server = { httpServer: { address: () => address }, config: { server: { port: 5199 } } };
+  const get = listenOrigins(() => server);
+  assert.ok(get().has('http://127.0.0.1:5199'), '没监听：config.server.port');
+  address = { port: 6123 };
+  const listening = get();
+  assert.ok(listening.has('http://127.0.0.1:6123') && !listening.has('http://127.0.0.1:5199'), '监听上：实际端口');
+  address = { port: 7000 };
+  assert.equal(get(), listening, '缓存');
+  assert.ok(listenOrigins(() => null)().has(DEFAULT_PINPOINT_ORIGIN), 'vite server 还没有：只剩缺省来源');
 });

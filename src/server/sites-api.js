@@ -10,7 +10,9 @@ import { parseReqUrl } from './lib/req-url.js';
  *   origin (server/lib/site-proxy.js) — HTML/CSS rewritten onto the prefix,
  *   rebase bootstrap + annotate client injected into HTML, WS upgrades
  *   forwarded (createSiteUpgradeHandler). All methods pass through (the app
- *   behind the proxy has its own API); dir/file stay GET/HEAD-only.
+ *   behind the proxy has its own API) for pinpoint's own origins; a foreign
+ *   Origin gets 403 on writes and websockets (lib/proxy-origin.js, option
+ *   `origins`); dir/file stay GET/HEAD-only.
  *
  * The registry is the whitelist: only registered entries are served. For a
  * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
@@ -39,6 +41,7 @@ import {
   serveBoardJsonWithDist,
   serveDistScreenResponse,
 } from './lib/page-compiler.js';
+import { listenOrigins } from './lib/proxy-origin.js';
 import { loadRegistry } from './lib/registry.js';
 import { createSiteUpgradeHandler, proxySiteRequest } from './lib/site-proxy.js';
 import { synthesizeBoard } from './lib/synth-board.js';
@@ -246,7 +249,7 @@ export function createSitesHandler(options = {}) {
         && sendSynthesizedBoard(req, res, entry)) {
         return true;
       }
-      proxySiteRequest(req, res, entry);
+      proxySiteRequest(req, res, entry, { origins: options.origins });
       return true;
     }
 
@@ -324,11 +327,15 @@ export function createSitesHandler(options = {}) {
 
 export default function sitesApi(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
-  const handleSites = createSitesHandler({ ...options, registry });
-  const handleUpgrade = createSiteUpgradeHandler({ registry });
+  let viteServer = null;
+  // pinpoint 自己的来源缺省按服务实际监听的端口算（与文章代理同一份，lib/proxy-origin.js）。
+  const origins = options.origins || listenOrigins(() => viteServer);
+  const handleSites = createSitesHandler({ ...options, registry, origins });
+  const handleUpgrade = createSiteUpgradeHandler({ registry, origins });
   return {
     name: 'sites-api',
     configureServer(server) {
+      viteServer = server;
       server.middlewares.use(async (req, res, next) => {
         const urlPath = parseReqUrl(req).pathname;
         if (await handleSites(req, res, urlPath)) return;
