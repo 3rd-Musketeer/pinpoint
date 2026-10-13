@@ -41,12 +41,11 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   await navBtn.click();
 
   // dir 条目默认 doc 壳：每屏一个 iframe 文档（保留文档自己注入的 annotate
-  // 客户端），侧栏「内容」区出产物条目行；board.json 里残留的 shell:"web" 归一到 doc。
-  await page.getByRole('tab', { name: '大纲', exact: true }).click();
-  const entries = page.locator('#wbcontents [data-group="product"] [data-entry]');
-  await expect(entries).toHaveCount(2);
-  await expect(entries.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
-  await expect(entries.locator('.wb-entry-tag')).toHaveText(['文档', '文档']);
+  // 客户端）。纯文档页没有画布，大纲条不渲染；两条都是文档，类型落在横条的类型标上。
+  // board.json 里残留的 shell:"web" 归一到 doc。条目顺序 Cards → Doc。
+  await expect(page.locator('#wbtabbar')).toHaveCount(0);
+  await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
+  await expect(page.locator('#wbentry-position')).toHaveText('1 / 2');
   const cardsFrame = page.locator('#wb-board-panel [data-screen="cards"] iframe.wb-doc-frame');
   await expect(cardsFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/cards\.html$/);
   await expect(
@@ -54,7 +53,9 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
   ).toHaveText('E2E dir-site cards');
 
   // 条目切换：第二屏（doc.html）成为当前文档。
-  await page.locator('#wbcontents [data-entry="doc"]').click();
+  await page.locator('#wbentry-next').click();
+  await expect(page.locator('#wbentry-position')).toHaveText('2 / 2');
+  await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
   const docFrame = page.locator('#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame');
   await expect(docFrame).toHaveAttribute('src', /\/sites\/e2e-dir\/doc\.html$/);
   await expect(

@@ -23,7 +23,7 @@ board 里的一组屏，有 `id` / `title` / `layout`。`section.id` 会写进 D
 **tab（页内 tab）**
 page 里 section 的视图分组，`board.json` 写 `tabs: [{id, title, sections}]`（与顶层 `sections` 二选一，ADR 0041）。
 tab 不是独立的 board：共用 `components/`、资源和标注，section / screen id 整页唯一；编号按 tab 各自从 A 重来，
-多 tab 页的位置引用写 `flow:B3`。工作台底部横条上方的切换条只在 ≥ 2 个 tab 时出现。
+多 tab 页的位置引用写 `flow:B3`。工作台里，页上有画布条目就在底部横条上方渲染 `#wbtabbar`：≥ 2 个 tab 时列出标题，每个标题旁一个大纲钮；不到 2 个时条上只有大纲钮。纯 doc / url 页不渲染这条。分享页仍是不足 2 个 tab 不出条。
 要避开：把 tab 说成“页”或“board”；给 tab 套版本、playground 之类的语义。
 
 **screen（屏）**
@@ -72,7 +72,7 @@ canvas = 迭代态：手机机壳、可缩放平移的图纸面。doc = 表达�
 “frame”——它不在画布上，没有引用号。
 
 **产物与草稿**
-左栏“内容”区的两组。产物 = 交付物（画布 / 文档 / 网页，条目上带类型 tag）；
+大纲浮层里的两组（页 tab 条上的钮打开；有画布的页才有这条，文档条目在多 tab 页里只出现在第一个 tab 的浮层）。产物 = 交付物（画布 / 文档 / 网页，条目上带类型 tag）；
 草稿 = 过程里派生出来的整页 HTML（screen 上 `role: "draft"`）。两者没有机制耦合——
 选中一版之后回灌是 agent 改代码的动作，pinpoint 不提供这个功能。
 
@@ -96,7 +96,7 @@ variant 用 props 表达，variants 墙是 board.json 里 `shell: "comp"` 的 se
 dist = `ppnt build` 编出来的静态 HTML 帧，住 `~/.pinpoint/dist/<entry>/`，不进 git，不放回页目录。
 标注、导出、mention、`/sites/` 下的屏 HTML 只认 dist；看 dist 走 `ppnt render`。
 页级资源在 board.json 的 `assets`，由编译器注入每帧。
-要避开：拿“产物”单说 dist——左栏的“产物”仍是交付物（见上），说编译结果就说 dist。
+要避开：拿“产物”单说 dist——大纲浮层里的“产物”仍是交付物（见上），说编译结果就说 dist。
 
 **标注状态（status）· pp2**
 一条标注四态：open（owner 写下）→ check（agent 看了、不改）/ done（agent 改完）→ close（owner 单击确认，可撤销）。

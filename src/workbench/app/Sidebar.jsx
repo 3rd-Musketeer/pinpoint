@@ -1,7 +1,8 @@
 // 侧栏整树（P1b cut2，goal-20260810-workbench-react-rebuild）— head（连接状态 +
-// 折叠钮）、Pages 段（单一页面列表）、「内容」区（产物/草稿条目 + frame 树）、
-// 设置视图壳、footer。原 index.html 静态标记 + pages.js/boot-prefs.js 手工 DOM
-// 同步的 React 形态；DOM id / class / 文案与原实现逐一对应（e2e 选择器即契约）。
+// 折叠钮）、Pages 段（单一页面列表）、设置视图壳。2026-10-10 起大纲不在左栏，
+// 画在页 tab 条的浮层里（app/OutlinePopover.jsx）。原 index.html 静态标记 +
+// pages.js/boot-prefs.js 手工 DOM 同步的 React 形态；DOM id / class / 文案与
+// 原实现逐一对应（e2e 选择器即契约）。
 // 状态全部来自 app/store.js；交互回调仍调 pages.js / boot-prefs.js 的命令式动作
 // （页面装载、条目切换、偏好保存的命令式副作用留在那些模块，本文件只做渲染与转发）。
 //
@@ -50,30 +51,22 @@
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
+//
+// 2026-10-10：大纲离开左栏。产物 / 草稿条目和 frame 树改由页 tab 条上的浮层打开
+// （app/OutlinePopover.jsx）。左栏 icon tab 只剩「页面 / 已归档」。
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
 import { PageSortMenu } from './PageSortMenu.jsx';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
-  entriesOfActiveBoard,
   pageGrouping,
   retryPageManifest,
   refreshRegistry,
-  setActiveEntry,
   setActivePage,
   showSettings,
   showTabs,
   sidebarPages
 } from '../pages.js';
-import { flashBoardFrame, focusWorkbenchFrame } from '../board-nav.js';
-import {
-  CANVAS_ENTRY_ID,
-  ENTRY_TAG_LABELS,
-  contentsModel,
-  entryTag,
-  resolveEntry
-} from '../lib/board-entries.js';
-import { boardRefs } from '../lib/board-refs.js';
 import {
   PAGE_SORT_LABELS,
   formatRelativeTime,
@@ -99,33 +92,7 @@ import { Button } from './ui/button.jsx';
 import { Input } from './ui/input.jsx';
 import { ScrollArea } from './ui/scroll-area.jsx';
 
-// 页面行（Pages 段）与内容区条目行共用同一套行语言；页面行多 accent 边条与
-// 行容器 group-hover 联动（行 hover 即行态，不只按钮本身）。
-// 行的选中态（2026-09-04 字阶裁决）：accent 10% 底 + 600 字重，正色不退灰。
-// hover 是 --wb-hover 4%（shadcn 桥的 accent 就指它，基础类里的 hover:bg-accent
-// 已经是这一档）。
-var ROW_ON =
-  'bg-[var(--wb-sel)] font-semibold text-foreground ' +
-  'hover:bg-[var(--wb-sel)] hover:text-foreground group-hover:bg-[var(--wb-sel)] group-hover:text-foreground';
-// 行的常态排印：13/500 正色（旧值 12.5 muted —— 裁决把列表行提到正色一档）
-var ROW_TEXT = 'text-[13px] font-medium text-foreground';
-
-// 「内容」区组头（产物 / 草稿）：比段头低一档的 mono eyebrow
-// （对齐基准 previews/hierarchy-demo 的 .t-sub）。
-var GROUP_HEAD =
-  'wb-entry-group-head px-[var(--wb-pad)] pb-[3px] pt-[9px] font-[var(--wb-font-mono)] ' +
-  'text-[9px] font-semibold tracking-[0.1em] text-[color:var(--wb-faint)]';
-
-// 产物条目的类型 tag（阶段 7，Page 壳标 pill 的下移）：mono 9px 小字 + accent
-// 淡底扁平块，无描边；左栏 < 230 紧凑断点整 tag 隐藏（#wbside.compact 规则在
-// index.html）。data-tag = canvas/doc/web 是 e2e 契约。
-var ENTRY_TAG =
-  'wb-entry-tag inline-flex h-[15px] flex-none items-center justify-center rounded ' +
-  'bg-[color:color-mix(in_srgb,var(--wb-accent)_9%,transparent)] px-[5px] ' +
-  'font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] ' +
-  'text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]';
-
-// 段头（最近 / 页面 / 内容）：11 mono semibold 淡色 eyebrow（C1）。几何与色在
+// 段头（最近 / 页面）：11 mono semibold 淡色 eyebrow（C1）。几何与色在
 // index.html 的 .wb-section-head 里，这里只挂类名。
 var SECTION_HEAD = 'wb-section-head';
 
@@ -458,196 +425,6 @@ function PagesSection(props) {
   );
 }
 
-/* frame 树（decisions 2026-08-15c 大纲的收编，2026-08-16f 阶段 7）：当前页画布条目
-   的 section → frame 树，行 = mono 引用号 + 屏名 + 计数徽标（红 = 含失效锚点）。
-   延伸线几何（.ol-*）在 index.html；点击复用 board-nav 的 frame 定位（与标注卡
-   goToMark 同一导航源），机身闪 focus 环。选中态（store.focusFrameKey）由树点击
-   与标注卡点击双向写入。树是画布语汇：只覆盖画布屏（boardRefs 滤掉 doc 屏，
-   引用号与图注/导出树同源）。 */
-function FrameTree(props) {
-  var snap = useWorkbenchStore(function (s) { return s.annSnap; });
-  var focusKey = useWorkbenchStore(function (s) { return s.focusFrameKey; });
-  var focusSection = useWorkbenchStore(function (s) { return s.focusSectionId; });
-  var refs = props.refs;
-
-  // 徽标计数：annSnap 行带 section/screenId（ann-bridge 增量），按帧归并
-  var counts = {};
-  var warns = {};
-  ((snap && snap.rows) || []).forEach(function (r) {
-    if (!r.screenId) return;
-    var k = r.group + '\0' + r.screenId;
-    counts[k] = (counts[k] || 0) + 1;
-    if (r.broken) warns[k] = true;
-  });
-
-  function onPick(sectionId, screenId) {
-    wbSet({ focusFrameKey: sectionId + '\0' + screenId, focusSectionId: null, focusAnnN: null });
-    focusWorkbenchFrame(sectionId, screenId);
-    flashBoardFrame(sectionId, screenId);
-  }
-
-  // section 行点击 = 选中 section+ 定位到
-  // 该组第一帧（与 frame 行同一套定位原语）
-  function onPickSection(sec) {
-    wbSet({ focusSectionId: sec.id, focusFrameKey: null, focusAnnN: null });
-    var first = sec.frames && sec.frames[0];
-    if (first) focusWorkbenchFrame(sec.id, first.id);
-  }
-
-  return (
-    <nav className="wb-outline mx-[var(--wb-pad)]" id="wboutline" aria-label="大纲">
-      {refs.outline.map(function (sec) {
-        return (
-          <div className="ol" key={sec.id} data-ol-section={sec.id}>
-            <button type="button"
-              className={cn('ol-sec', focusSection === sec.id && 'on')}
-              data-state={focusSection === sec.id ? 'on' : undefined}
-              title={sec.letter + ' ' + sec.title}
-              onClick={function () { onPickSection(sec); }}>
-              <span className="ol-L">{sec.letter}</span>
-              <span className="ol-sec-t min-w-0 flex-1 truncate">{sec.title}</span>
-            </button>
-            {sec.frames.map(function (f) {
-              var k = sec.id + '\0' + f.id;
-              var n = counts[k] || 0;
-              var on = focusKey === k;
-              return (
-                <RowMenu key={f.id} items={[
-                  { kind: 'copy', label: '复制 @frame', text: '@frame:' + props.pageId + '/' + f.id,
-                    attr: { 'data-copy-frame': props.pageId + '/' + f.id } }
-                ]}>
-                <button type="button"
-                  className={cn('ol-row', on && 'on')}
-                  data-ol-frame={f.id} data-state={on ? 'on' : undefined}
-                  title={f.ref + ' ' + f.title}
-                  onClick={function () { onPick(sec.id, f.id); }}>
-                  <span className="spine" aria-hidden="true"></span>
-                  <span className="no">{f.ref}</span>
-                  <span className="nm">{f.title}</span>
-                  {n ? <span className={cn('ol-n', warns[k] && 'warn')}>{n}</span> : null}
-                </button>
-                </RowMenu>
-              );
-            })}
-          </div>
-        );
-      })}
-    </nav>
-  );
-}
-
-/* 条目行（2026-08-16f 阶段 7）：产物行 = 标题 + 类型 tag（data-tag），草稿行 =
-   纯标题（草稿恒为整页 HTML，无 tag）。2026-08-17 起行级动作进右键菜单
-   （hover icon 钮退役）：doc 条目 = 复制 @frame；画布条目 = 复制 @page
-   （画布即页面的默认视图，@frame 语法不覆盖它）。
-   pp2 切片 3：「导出…」菜单项随文档导出对话框一并退役 —— 用户面只剩
-   横条「导出」的离线可交互 HTML。 */
-function EntryRow(props) {
-  var entry = props.entry;
-  var on = !!props.on;
-  // 草稿行不打类型 tag（草稿恒为整页 HTML，无类型维度）
-  var tagKey = entry.role === 'draft' ? null : entryTag(entry);
-  var menuItems = entry.kind === 'doc'
-    ? [
-        { kind: 'copy', label: '复制 @frame', text: '@frame:' + props.pageId + '/' + entry.id,
-          attr: { 'data-copy-frame': props.pageId + '/' + entry.id } }
-      ]
-    : [
-        { kind: 'copy', label: '复制 @page', text: '@page:' + props.pageId,
-          attr: { 'data-copy-page': props.pageId } }
-      ];
-  return (
-    <RowMenu items={menuItems}>
-    <div className="wb-entry-row group flex min-w-0 items-stretch gap-0.5">
-      <button type="button"
-        data-entry={entry.id} data-state={on ? 'on' : undefined}
-        className={cn(
-          'wb-entry flex flex-1 min-w-0 cursor-pointer items-center gap-1.5 rounded-md border-0 bg-transparent px-[var(--wb-pad)] py-1.5 text-left font-sans transition-[color,background-color] duration-150 hover:bg-accent group-hover:bg-accent',
-          ROW_TEXT,
-          on && 'on ' + ROW_ON
-        )}
-        onClick={function () { setActiveEntry(entry.id); }}>
-        <span className="wb-entry-t min-w-0 flex-1 truncate">{entry.title}</span>
-        {tagKey ? (
-          <span className={ENTRY_TAG} data-tag={tagKey}>{ENTRY_TAG_LABELS[tagKey]}</span>
-        ) : null}
-      </button>
-    </div>
-    </RowMenu>
-  );
-}
-
-/* 「内容」区（2026-08-16f 阶段 7，decisions 08-16f / ROADMAP 阶段 7，对齐基准
-   previews/hierarchy-demo）：左栏第二层，回答「这件事里我在看哪一份」。
-   产物组（画布条目 + 文档/网页条目，各带类型 tag）+ 草稿组（role=draft 条目）；
-   画布条目选中时其 frame 树（旧大纲）挂在画布行下。坍缩规则由
-   lib/board-entries.js contentsModel 纯函数给出（单条目不显示目录）：
-   - 纯画布页：无条目行，frame 树直接挂区头下（旧大纲体验）；
-   - 纯单 doc 屏页：整区不出现；
-   - 混合页 / 多文档页 / 单网页条目页：组头 + 条目行全出。 */
-function Contents() {
-  var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  var active = useWorkbenchStore(function (s) { return s.activeBoard; });
-  var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
-  // 板未装载 / 换页途中不出内容区
-  if (!active || active.pageId !== activePageId) return null;
-  var entries = entriesOfActiveBoard();
-  var model = contentsModel(entries);
-  // frame 树 = 画布语汇，只覆盖画布屏（boardRefs 滤掉 doc 屏，引用号与
-  // 图注/导出树同源）；展开时机 = 画布条目选中（阅读器态下定位无意义）。
-  var refs = model.tree ? boardRefs(active.board) : null;
-  var hasTree = !!(refs && refs.outline.length);
-  var current = resolveEntry(entries, activeEntryId);
-  var treeOpen = hasTree && !!current && current.kind === 'canvas';
-  // 空板 / 坍缩（contentsModel）/ 纯画布但树为空 → 整区不出现
-  if (model.hidden || (!model.productRows.length && !model.drafts.length && !hasTree)) return null;
-
-  var productRows = model.productRows.map(function (entry) {
-    var rows = [
-      <EntryRow key={entry.id} entry={entry} pageId={activePageId}
-        on={!!current && current.id === entry.id} />
-    ];
-    // 画布条目展开（选中）时 frame 树挂在其行下（收编旧大纲；不再是独立 section）
-    if (entry.id === CANVAS_ENTRY_ID && treeOpen) {
-      rows.push(
-        <div key="canvas-tree" className="wb-entry-tree ms-[7px]">
-          <FrameTree refs={refs} pageId={activePageId} />
-        </div>
-      );
-    }
-    return rows;
-  });
-
-  return (
-    <section className="wb-section" data-section="contents">
-
-      <nav className="wb-contents flex flex-col gap-px pb-1 pt-0.5" id="wbcontents" aria-label="内容">
-        {model.productRows.length ? (
-          <div className="wb-entry-group flex flex-col gap-px" data-group="product">
-            <div className={GROUP_HEAD}>产物</div>
-            {productRows}
-          </div>
-        ) : null}
-        {!model.productRows.length && treeOpen ? (
-          // 纯画布页：条目行坍缩，frame 树直接挂区头下
-          <FrameTree refs={refs} pageId={activePageId} />
-        ) : null}
-        {model.drafts.length ? (
-          <div className="wb-entry-group flex flex-col gap-px" data-group="draft">
-            <div className={GROUP_HEAD}>草稿</div>
-            {model.drafts.map(function (entry) {
-              return (
-                <EntryRow key={entry.id} entry={entry} pageId={activePageId}
-                  on={!!current && current.id === entry.id} />
-              );
-            })}
-          </div>
-        ) : null}
-      </nav>
-    </section>
-  );
-}
-
 /* 分组层的交互状态与三条写接口的调用点（ADR 0032）。折叠是本地先动、后台再写
    （折叠一个夹不该等一次网络往返）；其余动作一律「写成功了才变」——登记表是
    事实源，乐观更新会让一次被拒的写看起来成功了。 */
@@ -866,7 +643,14 @@ export function Sidebar() {
     events.addEventListener('annotations', refresh);
     return function () { clearTimeout(timer); events.close(); };
   }, []);
-  var [sidebarTab, setSidebarTab] = useState('pages');
+  // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。
+  // 平时的点击不写偏好，和删页签之前一样。
+  var [sidebarTab, setSidebarTab] = useState(function () {
+    return readPrefs().sidebarTab === 'archived' ? 'archived' : 'pages';
+  });
+  useEffect(function () {
+    if (readPrefs().sidebarTab === 'outline') savePrefs({ sidebarTab: 'pages' });
+  }, []);
   var [pagePreferences, setPagePreferences] = useState(function () {
     var stored = readPrefs().pagePreferences || {};
     return { pinned: stored.pinned || {}, archived: stored.archived || {} };
@@ -921,7 +705,7 @@ export function Sidebar() {
       {infoPage && <PageInfo page={infoPage} onClose={function () { setInfoPage(null); }} />}
       {!settingsOpen && <div className="wb-side-toolbar">
         <div className="wb-side-tabs" role="tablist" aria-label="侧栏视图">
-          {[['pages', '页面', 'files'], ['outline', '大纲', 'section-nav'], ['archived', '已归档', 'archive']].map(function ([tab, label, icon], index, tabs) {
+          {[['pages', '页面', 'files'], ['archived', '已归档', 'archive']].map(function ([tab, label, icon], index, tabs) {
             return <button key={tab} id={'wb-tab-' + tab} role="tab" type="button"
               aria-label={label} title={label} aria-controls={'wb-panel-' + tab}
               aria-selected={sidebarTab === tab} tabIndex={sidebarTab === tab ? 0 : -1}
@@ -961,7 +745,6 @@ export function Sidebar() {
             }} />
           </div>}
           </PagePreferences.Provider>
-          <div role="tabpanel" id="wb-panel-outline" aria-labelledby="wb-tab-outline" hidden={sidebarTab !== 'outline'}><Contents /></div>
         </ScrollArea>
         <div className="wb-settings-view" id="wbsettings" hidden={!settingsOpen}>
           <SettingsView />

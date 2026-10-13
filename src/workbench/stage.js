@@ -142,7 +142,7 @@ async function loadBoard(panel, pageId, loadOptions) {
     // 阶段 8：registry attach 条目（pinpoint add --page）合并成合成 doc 屏，
     // 下游（条目派生 / 屏显隐 / 导出 / 标注分桶）全部复用 doc 屏既有管线。
     board = withAttachedScreens(board, wbGet().pageManifest && wbGet().pageManifest.attached, pageId);
-    // 页 tab（ADR 0041）：只挂活动 tab 的 section（画布 / 大纲 / 引用号 / 导航随之只看这个 tab，
+    // 页 tab（ADR 0041）：只挂活动 tab 的 section（画布 / 引用号 / 导航随之只看这个 tab，
     // 也只拉这个 tab 的屏）。活动 tab：显式指定 > 正在看的（同页重载，如 HMR）> 本机偏好 > 第一个。
     // fullBoard 留着全部 tab，跨 tab 定位与引用号表靠它。存量 board 没有 tab：board === fullBoard。
     var fullBoard = board;

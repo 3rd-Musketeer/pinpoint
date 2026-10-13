@@ -25,12 +25,13 @@ test.afterEach(async ({ request }) => {
   await resetFolders(request);
 });
 
-test('三个 icon tab 支持名称提示和键盘切换；预览设置里的主题切的是被预览页面', async ({ page }) => {
+test('两个 icon tab 支持名称提示和键盘切换；预览设置里的主题切的是被预览页面', async ({ page }) => {
   await openWorkbench(page);
   const tabs = page.getByRole('tablist', { name: '侧栏视图' });
-  await expect(tabs.getByRole('tab')).toHaveCount(3);
+  await expect(tabs.getByRole('tab')).toHaveCount(2);
   await expect(page.locator('#wbsearch')).toHaveCount(0);
-  for (const name of ['页面', '大纲', '已归档']) {
+  await expect(tabs.getByRole('tab', { name: '大纲', exact: true })).toHaveCount(0);
+  for (const name of ['页面', '已归档']) {
     const tab = tabs.getByRole('tab', { name, exact: true });
     await expect(tab).toHaveAttribute('title', name);
     await expect(tab).toHaveText('');
@@ -300,7 +301,8 @@ test('最近与 Pages 共用右键菜单：查看信息显示真实来源，归�
   await expect(pinnedRow).toHaveCount(0);
   await page.getByRole('tab', { name: '页面', exact: true }).click();
   await expect(page.locator('.wb-pinned-pages [data-vpage="e2e-dir-ios"]')).toBeVisible();
-  await page.getByRole('tab', { name: '大纲', exact: true }).click();
+  // 切到别的面板，页面面板里的行随之不可见（原先切「大纲」页签验的就是这条）
+  await page.getByRole('tab', { name: '已归档', exact: true }).click();
   await expect(pinnedRow).not.toBeVisible();
   await page.getByRole('tab', { name: '页面', exact: true }).click();
   await expect(pinnedRow).toBeVisible();

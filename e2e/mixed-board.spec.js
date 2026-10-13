@@ -1,11 +1,11 @@
 import { expect, test } from '@playwright/test';
-import { openWorkbench } from './open-workbench.js';
+import { openOutline, openWorkbench } from './open-workbench.js';
 
 // 阶段 6（2026-08-16f 产物与草稿模型）：混合板 = 一个 Page 的 board.json 里同时有
 // app/lock 屏（画布条目）与 doc 屏（文档/草稿条目）。stage 形态由选中条目派生：
 // 画布条目 → 画布（只摆 app/lock 屏）；文档条目 → 既有 doc 阅读器管线。
-// 阶段 7：左栏第二层 = 「内容」区（#wbcontents）—— 产物组（画布条目带 frame 树；
-// 文档条目带类型 tag）+ 草稿组（纯标题行）；doc 导出挪到条目行的 hover icon 钮。
+// 阶段 7 的「内容」区（#wbcontents）现在在页 tab 条的大纲浮层里：产物组（画布条目带
+// frame 树；文档条目带类型 tag）+ 草稿组（纯标题行）。e2e-mixed 有画布，条上只有大纲钮。
 // 固件 = e2e/mixed-site（registry dir 条目 e2e-mixed，board:'ios' 页级缺省壳）：
 // 原型 section（home/detail 两个 app 屏）+ 文稿 section（spec 产物文档 +
 // draft-variants 草稿文档，role:"draft"）。
@@ -15,7 +15,7 @@ import { openWorkbench } from './open-workbench.js';
 async function openMixed(page) {
   await openWorkbench(page);
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await page.getByRole('tab', {name:'大纲',exact:true}).click();
+  await openOutline(page);
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
 }
 
@@ -49,8 +49,9 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
   await expect(page.locator('#wbcontents .wb-entry-row:has([data-entry="@canvas"]) + .wb-entry-tree #wboutline')).toHaveCount(1);
   await expect(page.locator('#wboutline [data-ol-frame] .nm')).toHaveText(['首页', '详情']);
 
-  // ── 阅读器切换：选中产物文档条目 → doc iframe 1:1 铺满，画布 chrome 退场，树收起。
+  // ── 阅读器切换：选中产物文档条目 → 浮层关掉，doc iframe 1:1 铺满，画布 chrome 退场，树收起。
   await page.locator('#wbcontents [data-entry="spec"]').click();
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
   expect(await stageForm(page)).toBe('html');
   const specFrame = page.locator('#wb-board-panel [data-screen="spec"] .wb-doc-frame');
   await expect(specFrame).toBeVisible();
@@ -60,6 +61,7 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
   // 文档形态：横条中段（画布工具）收起，横条本体留着（2026-09-04 外壳重设计）
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
   await expect(page.locator('#wbstrip')).toBeVisible();
+  await openOutline(page);
   await expect(page.locator('#wboutline')).toHaveCount(0);
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toHaveAttribute('data-state', 'on');
 
@@ -82,16 +84,19 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
   expect(await stageForm(page)).toBe('html');
   await expect(page.frameLocator('#wb-board-panel [data-screen="draft-variants"] .wb-doc-frame').locator('#draft-title'))
     .toHaveText('E2E mixed draft');
+  await openOutline(page);
   await expect(page.locator('#wbcontents [data-entry="draft-variants"]')).toHaveAttribute('data-state', 'on');
 
   // 点「画布」行回画布：两帧回来、树回来、阅读器退场、URL 收掉 entry（默认条目不写）。
-  await page.getByRole('tab', {name:'大纲',exact:true}).click();
+  await openOutline(page);
   await page.locator('#wbcontents [data-entry="@canvas"]').click();
   expect(await stageForm(page)).toBe('ios');
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wb-board-panel [data-screen="detail"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wb-board-panel .wb-doc-frame:visible')).toHaveCount(0);
   await expect(page.locator('#wbcanvas-tools')).toBeVisible();
+  await expect(page.locator('#wboutline-pop')).toBeHidden();
+  await openOutline(page);
   await expect(page.locator('#wboutline')).toBeVisible();
   await expect.poll(() => page.url()).not.toContain('entry=');
 

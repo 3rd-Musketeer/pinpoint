@@ -7,11 +7,13 @@ import {
   ENTRY_TAG_LABELS,
   attachedEntrySrc,
   boardEntries,
+  boardHasCanvas,
   contentsModel,
   defaultEntryId,
   entryById,
   entryForm,
   entryTag,
+  outlineSlice,
   resolveEntry,
   withAttachedScreens,
   withEntryWeb,
@@ -239,4 +241,44 @@ test('attach 屏经 boardEntries 派生成 doc 条目（带 attached 标记）�
   const model = contentsModel(entries);
   assert.deepEqual(model.drafts.map((e) => e.id), ['draft-variants', 'live-draft']);
   assert.deepEqual(model.productRows.map((e) => e.id), [CANVAS_ENTRY_ID, 'spec', 'notes']);
+});
+
+test('outlineSlice：按 tab 切画布 section，文档只留在第一个 tab；无 tab 是整棵树', () => {
+  const tabbed = {
+    tabs: [
+      { id: 'comps', title: '组件', sections: [{
+        id: 'btn', title: '按钮', layout: 'row',
+        screens: [
+          { id: 'btn-a', title: '默认', shell: 'app' },
+          { id: 'spec', title: '说明', shell: 'doc' },
+        ],
+      }] },
+      { id: 'flow', title: '交互', sections: [{
+        id: 'onboard', title: '引导', layout: 'row',
+        screens: [
+          { id: 'ob', title: '欢迎', shell: 'app' },
+          { id: 'note', title: '笔记', shell: 'doc' },
+        ],
+      }] },
+    ],
+  };
+  const first = outlineSlice(tabbed, 'comps');
+  assert.deepEqual(first.entries.map((e) => e.id), [CANVAS_ENTRY_ID, 'spec', 'note']);
+  assert.deepEqual(first.view.sections.map((s) => s.id), ['btn']);
+  assert.equal(first.showDocs, true);
+  const second = outlineSlice(tabbed, 'flow');
+  assert.deepEqual(second.entries.map((e) => e.id), [CANVAS_ENTRY_ID]);
+  assert.deepEqual(second.view.sections.map((s) => s.id), ['onboard']);
+  assert.equal(second.showDocs, false);
+  const whole = outlineSlice(tabbed, '');
+  assert.deepEqual(whole.view.sections.map((s) => s.id), ['btn']);
+  assert.equal(whole.showDocs, true);
+  const legacy = outlineSlice(mixedBoard(), '');
+  assert.deepEqual(legacy.entries.map((e) => e.id), [CANVAS_ENTRY_ID, 'spec', 'draft-variants']);
+  assert.deepEqual(legacy.view.sections.map((s) => s.id), ['proto', 'writeup']);
+  assert.equal(boardHasCanvas(tabbed), true);
+  assert.equal(boardHasCanvas(mixedBoard()), true);
+  assert.equal(boardHasCanvas({
+    sections: [{ id: 'd', screens: [{ id: 'v1', shell: 'doc' }] }],
+  }), false);
 });

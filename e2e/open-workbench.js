@@ -12,3 +12,14 @@ export async function openWorkbenchWithPages(page) {
   await openWorkbench(page);
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"]')).toBeVisible();
 }
+
+/** 打开页 tab 条上的大纲浮层。tabTitle 空 = 不到两个 tab 时那一个「大纲」钮。
+ *  已经由这个钮开着时不再点（再点会把它关掉）。 */
+export async function openOutline(page, tabTitle) {
+  const name = tabTitle ? tabTitle + '的大纲' : '大纲';
+  const pop = page.locator('#wboutline-pop');
+  const button = page.getByRole('button', { name, exact: true });
+  if (await pop.isVisible() && (await button.getAttribute('aria-expanded')) === 'true') return;
+  await button.click();
+  await expect(pop).toBeVisible();
+}

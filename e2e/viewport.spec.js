@@ -30,8 +30,9 @@ const FILL = 0.9;
 async function openDirDoc(page) {
   await openWorkbench(page);
   await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  await page.locator('#wbcontents [data-entry="doc"]').click();
+  // 纯文档页没有画布，条不渲染；条目顺序是 Cards → Doc，步进一次到 doc。
+  await expect(page.locator('#wbtabbar')).toHaveCount(0);
+  await page.locator('#wbentry-next').click();
   await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
 }
 

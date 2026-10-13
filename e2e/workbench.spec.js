@@ -8,6 +8,7 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
 import { maybeThrottle } from './cpu-throttle.js';
+import { openOutline } from './open-workbench.js';
 import { FEATURES } from '../src/workbench/features.js';
 
 test.use({ reducedMotion: 'reduce' });
@@ -138,27 +139,6 @@ function hitKindAt(page, point) {
   }, point);
 }
 
-/* 定位断言（2026-09-04 外壳重设计）：画布满铺整个视口，左栏玻璃面板与底部横条
-   压在它上面 —— 「居中」是在**可用区**里居中，不是在 stage 视口里。可用区由两块
-   chrome 的实际 bounding box 算出来（与 board-nav 的 chromeInsets 同一口径），
-   所以这条断言同时守住「选中的 frame 不会藏在 chrome 底下」。 */
-async function chromeInsets(page) {
-  return page.evaluate(() => {
-    const stage = document.querySelector('#wbstage');
-    const stageRect = stage.getBoundingClientRect();
-    const side = document.querySelector('#wbside');
-    const strip = document.querySelector('#wbstrip');
-    const sideRect = side ? side.getBoundingClientRect() : null;
-    const stripRect = strip ? strip.getBoundingClientRect() : null;
-    return {
-      left: sideRect && sideRect.width > 1 ? Math.max(0, sideRect.right - stageRect.left + 12) : 0,
-      right: 0,
-      top: 0,
-      bottom: stripRect && stripRect.height > 1 ? Math.max(0, stageRect.bottom - stripRect.top + 12) : 0,
-    };
-  });
-}
-
 /* 列表固定展开；实际标注目标可见且不被列表遮挡。 */
 async function expectLocatedTarget(page) {
   await expect(page.locator('#ann-box')).toBeVisible();
@@ -174,6 +154,10 @@ async function expectLocatedTarget(page) {
   })).toBe(true);
 }
 
+/* 定位断言（2026-09-04 外壳重设计，2026-10-10 大纲条）：居中是在可用区里，不是
+   在 stage 视口里。底边取横条与页 tab 条里更高的那条，与 board-nav 的 chromeInsets
+   同一口径。有画布的页现在都渲染 tab 条，只量横条会把落点判偏大约半个条高。
+   纯 doc / url 页没有这条，底边仍是横条。 */
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');
@@ -183,13 +167,16 @@ async function expectFocusedTarget(page, selector) {
     const targetRect = target.getBoundingClientRect();
     if (targetRect.width < 1 || targetRect.height < 1) return Infinity;
     const side = document.querySelector('#wbside');
-    const strip = document.querySelector('#wbstrip');
     const sideRect = side ? side.getBoundingClientRect() : null;
-    const stripRect = strip ? strip.getBoundingClientRect() : null;
     const insetLeft = sideRect && sideRect.width > 1
       ? Math.max(0, sideRect.right - stageRect.left + 12) : 0;
-    const insetBottom = stripRect && stripRect.height > 1
-      ? Math.max(0, stageRect.bottom - stripRect.top + 12) : 0;
+    let insetBottom = 0;
+    for (const id of ['wbstrip', 'wbtabbar']) {
+      const el = document.getElementById(id);
+      if (!el) continue;
+      const rect = el.getBoundingClientRect();
+      if (rect.height > 1) insetBottom = Math.max(insetBottom, stageRect.bottom - rect.top + 12);
+    }
     const usableW = Math.max(1, stage.clientWidth - insetLeft);
     const usableH = Math.max(1, stage.clientHeight - insetBottom);
     const inset = 24;
@@ -281,7 +268,7 @@ test('HTML board: doc / canvas 形态随选中条目切换，contents 区按形�
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect(page.locator('#wbcanvas-tools')).toBeVisible();
   await expect(page.locator('#wbpages .wb-page-kind')).toHaveCount(await page.locator('#wbpages .wb-page').count());
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await expect(page.locator('#wbcontents')).toBeVisible();
   await expect(page.locator('#wbcontents [data-entry]')).toHaveCount(0);
   await expect(page.locator('#wboutline [data-ol-frame]')).not.toHaveCount(0);
@@ -296,7 +283,7 @@ test('sidebar rows expose locator copy / rename via right-click menu (2026-08-17
   await openWorkbench(page);
   await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   const readClip = () => page.evaluate(() => navigator.clipboard.readText());
 
@@ -326,21 +313,21 @@ test('sidebar rows expose locator copy / rename via right-click menu (2026-08-17
   await page.keyboard.press('Escape');
 
   // 产物 doc 条目：复制 @frame 后菜单仍开着（doc 导出对话框已随 pp2 切片 3 退役）
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await page.locator('#wbcontents [data-entry="spec"]').click({ button: 'right' });
   await page.locator('[data-copy-frame="e2e-mixed/spec"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/spec');
   await page.keyboard.press('Escape');
 
   // 画布条目：复制 @page（画布 = 页面默认视图，@frame 语法不覆盖它）
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await page.locator('#wbcontents [data-entry="@canvas"]').click({ button: 'right' });
   await page.locator('[data-copy-page="e2e-mixed"]').click();
   await expect.poll(readClip).toBe('@page:e2e-mixed');
   await page.keyboard.press('Escape');
 
   // frame 树行：复制 @frame
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await page.locator('#wboutline [data-ol-frame="home"]').click({ button: 'right' });
   await page.locator('[data-copy-frame="e2e-mixed/home"]').click();
   await expect.poll(readClip).toBe('@frame:e2e-mixed/home');
@@ -1278,12 +1265,12 @@ test('画布点选模型：三种选中入口、原型内部不动选中、空�
     const section = page.locator('[data-ann-section="brew-flow"].wb-lib-item');
     await section.locator(':scope > .wb-lib-cap').click();
     await expect(section).toHaveClass(/wb-sel/);
-    await page.getByRole('tab', { name: '大纲', exact: true }).click();
+    await openOutline(page);
     await page.locator('[data-ol-section="brew-flow"] > .ol-sec').click();
     await expect(section).toHaveClass(/wb-sel/);
 
     // frame 树行 = 第三种选中入口
-    await page.getByRole('tab', {name:'大纲', exact:true}).click();
+    await openOutline(page);
     await page.locator('#wboutline [data-ol-frame="recipe"]').click();
     const selected = page.locator('#wb-board-panel [data-screen="recipe"]');
     await expect(selected).toHaveClass(/wb-sel/);
@@ -1714,7 +1701,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await expect(recipe.locator('.wb-screen-dim')).toHaveText('402 × 874');
   await expect(page.locator('#lib-brew-flow .wb-lib-cap .wb-cap-ref')).toHaveText('B');
 
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   // 大纲：section → frame 树，引用号纯派生自 board 顺序
   const outline = page.locator('#wboutline');
   await expect(outline.locator('.ol')).toHaveCount(6);
@@ -1726,7 +1713,9 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   await outline.locator('[data-ol-frame="msg-reply"]').click();
   await expect(page.locator('[data-screen="msg-reply"] .ios-stage')).toHaveClass(/wb-frame-flash/);
   await expectFocusedTarget(page, '[data-screen="msg-reply"] .ios-stage');
-  await expect(outline.locator('[data-ol-frame="msg-reply"]')).toHaveClass(/on/);
+  // 点帧关掉浮层；行上的选中态要重新打开才能看见
+  await openOutline(page);
+  await expect(page.locator('#wboutline [data-ol-frame="msg-reply"]')).toHaveClass(/on/);
 
   // 干净起点（共享落盘文档，前面的用例可能留标注）
   await page.evaluate(() => window.pinpoint.clear());
@@ -1738,7 +1727,8 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
   await saveAnnotation(page, cells.nth(0), 'outline sync mark');
-  await expect(outline.locator('[data-ol-frame="settings"] .ol-n')).toHaveText('1');
+  await openOutline(page);
+  await expect(page.locator('#wboutline [data-ol-frame="settings"] .ol-n')).toHaveText('1');
   // 计数钉在横条右端（H2 的入口）；列表不常驻，点它才开
   await expect(page.locator('#wbann-count')).toHaveText('1');
   await expect(page.locator('#wbann-pop')).toHaveCount(0);
@@ -1748,12 +1738,16 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   // 行 cap = 引用号 + 屏名（H2「A1 Today」的形；分组 eyebrow 随右栏退役）
   await expect(page.locator('#wbann-list .wb-ann-cap')).toHaveText(['F1 settings']);
 
-  // 标注行 → 定位 + 焦点双向同步：行 on、大纲行 on、画布聚焦到 owning frame
+  // 标注行 → 定位 + 焦点双向同步：行 on、大纲行 on、画布聚焦到 owning frame。
+  // 停靠的标注框盖住底部条（输入框是外壳里最高的一层，横条也一样被盖住）。
+  // 大纲钮现在在这条上，框开着点不到。关掉框再开大纲：选中记在 focusFrameKey，不随框走。
   await page.locator('#wbstage').evaluate((stage) => stage.scrollTo({ top: 0, left: 0 }));
   await page.locator('#wbann-list .wb-ann-item-main').click();
   await expectLocatedTarget(page);
-  await expect(outline.locator('[data-ol-frame="settings"]')).toHaveClass(/on/);
   await page.locator('#ann-close').click();
+  await expect(page.locator('#ann-box')).toBeHidden();
+  await openOutline(page);
+  await expect(page.locator('#wboutline [data-ol-frame="settings"]')).toHaveClass(/on/);
   await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveClass(/wb-ann-item--on/);
   await expect(page.locator('#wbann-list [data-ann-go]')).toHaveCount(0);
@@ -2137,7 +2131,7 @@ test('文档形态的横条有条目步进：‹ n / N › 在本板条目间前
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
   // 画布条目选中时没有条目步进（画布有自己的帧导航）
   await expect(page.locator('#wbentry-nav')).toHaveCount(0);
-  await page.getByRole('tab', { name: '大纲', exact: true }).click();
+  await openOutline(page);
   await page.locator('#wbcontents [data-entry="spec"]').click();
 
   // 混合板三个条目：画布 → 设计说明 → 气泡三手感；选中第二个
@@ -2148,6 +2142,7 @@ test('文档形态的横条有条目步进：‹ n / N › 在本板条目间前
   await expect(page.locator('#wbentry-position')).toHaveText('3 / 3');
   await expect(page.locator('#wbentry-next')).toBeDisabled();
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('draft-variants');
+  await openOutline(page);
   await expect(page.locator('#wbcontents [data-entry="draft-variants"]')).toHaveAttribute('data-state', 'on');
   await page.locator('#wbentry-prev').click();
   await page.locator('#wbentry-prev').click();
@@ -2427,27 +2422,25 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   await page.locator('#wbann-interact').click();
 
-  // 左栏：混合板页（产物条目带 tag），默认 250 与紧凑 200 两档——
-  // Page 行、内容区条目行全部在栏内（2026-08-17 行尾钮随右键菜单退役）
+  // 页面行留在左栏，250 与紧凑 200 两档都在栏内。
+  // 条目行搬进大纲浮层（Portal，宽 320），溢出改对浮层量，不再对 #wbside。
   await page.getByRole('tab', {name:'页面', exact:true}).click();
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
+  await openOutline(page);
   await expect(page.locator('#wbcontents [data-entry="spec"]')).toBeVisible();
   expect(await sideWidth(page)).toBe(250);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
+  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wboutline-pop')).toEqual([]);
 
+  await page.keyboard.press('Escape');
   await dragSideSplitter(page, -120);
   expect(await sideWidth(page)).toBe(200);
   await expect(page.locator('#wbside')).toHaveClass(/compact/);
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
   expect(await withinContainerViolations(page, '.wb-page-row', '#wbside')).toEqual([]);
   expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
-  await page.getByRole('tab', {name:'大纲', exact:true}).click();
-  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wbside')).toEqual([]);
+  await openOutline(page);
+  expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wboutline-pop')).toEqual([]);
 });
 
 // 2026-09-28 满载 flake：Section Navigator 的条目只在板装载那一帧按几何建一次，那一帧

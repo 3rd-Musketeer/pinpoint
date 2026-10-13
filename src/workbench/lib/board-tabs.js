@@ -41,7 +41,8 @@ export function boardTabList(board) {
     : [];
 }
 
-/** 有 ≥ 2 个 tab 才算多 tab 页：切换条出现、位置号带 tab 前缀。单 tab 与存量 board 行为同今天。 */
+/** 有 ≥ 2 个 tab 才算多 tab 页：位置号带 tab 前缀，分享页才出切换条。
+ *  工作台的 #wbtabbar 另按「有没有画布条目」决定出不出（TabBar.jsx），不看这个函数。 */
 export function isMultiTab(board) {
   return boardTabList(board).length >= 2;
 }
@@ -57,7 +58,7 @@ export function resolveTabId(board, wanted) {
 }
 
 /**
- * 只留某个 tab 的 sections（工作台只挂活动 tab，画布 / 大纲 / 引用号 / 导航随之都只看这个 tab）。
+ * 只留某个 tab 的 sections（工作台画布只挂活动 tab；大纲浮层用它取出被点的那个 tab）。
  * 没有 tabs 的 board 原样返回；返回值保留完整的 tabs 元数据并带 activeTabId。
  */
 export function boardForTab(board, tabId) {

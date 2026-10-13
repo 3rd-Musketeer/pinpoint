@@ -56,19 +56,17 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     await expect(page.locator('.wb-page[data-vpage="' + ATTACHED_ID + '"]')).toHaveCount(0);
     await expect(page.locator('.wb-page[data-vpage="e2e-dir"]')).toHaveCount(1);
 
-    // 目标页「内容」区：产物组仍是 e2e-dir 自己的两条，草稿组出 attach 条目（纯标题无 tag）。
+    // e2e-dir 是纯文档页，没有画布，大纲条不渲染。三条条目的顺序是
+    // Cards → Doc → 挂靠草稿；默认落在 Cards，步进两次到达草稿。
     await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
-    await page.getByRole('tab', { name: '大纲', exact: true }).click();
-    const products = page.locator('#wbcontents [data-group="product"] [data-entry]');
-    await expect(products.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
-    await expect(page.locator('#wbcontents .wb-entry-group-head')).toHaveText(['产物', '草稿']);
-    const draftRow = page.locator('#wbcontents [data-group="draft"] [data-entry="' + ATTACHED_ID + '"]');
-    await expect(draftRow).toHaveCount(1);
-    await expect(draftRow.locator('.wb-entry-t')).toHaveText('E2E 归属草稿');
-    await expect(draftRow.locator('.wb-entry-tag')).toHaveCount(0);
+    await expect(page.locator('#wbtabbar')).toHaveCount(0);
+    await expect(page.locator('#wbentry-position')).toHaveText('1 / 3');
+    await page.locator('#wbentry-next').click();
+    await page.locator('#wbentry-next').click();
+    await expect(page.locator('#wbentry-position')).toHaveText('3 / 3');
+    await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe(ATTACHED_ID);
 
-    // 点条目进阅读器：合成 doc 屏 iframe 从 /sites/<attachedId>/ 加载。
-    await draftRow.click();
+    // 合成 doc 屏 iframe 从 /sites/<attachedId>/ 加载。
     const frame = page.locator(FRAME);
     await expect(frame).toHaveAttribute('src', /^sites\/e2e-cli-draft\/Button%20Draft\.html$/);
     await expect(page.frameLocator(FRAME).locator('#draft-title')).toHaveText('E2E attached draft');
@@ -114,12 +112,12 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
     await expect(page.locator('#wbann-list')).toContainText('attached draft mark');
     await page.locator('#wbann-count').click();
 
-    // 悬空处理：删掉 attach 条目（恢复固件 + reload），侧栏草稿组消失、不留死行。
+    // 悬空处理：删掉 attach 条目（恢复固件 + reload），合成屏消失，选中回到默认的 Cards。
     restoreRegistry();
     await page.request.post('/registry/reload');
-    await expect(page.locator('#wbcontents [data-entry="' + ATTACHED_ID + '"]')).toHaveCount(0);
-    await expect(page.locator('#wbcontents [data-group="draft"]')).toHaveCount(0);
-    await expect(products.locator('.wb-entry-t')).toHaveText(['Cards', 'Doc']);
+    await expect(page.locator('#wb-board-panel [data-screen="' + ATTACHED_ID + '"]')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('cards');
+    await expect(page.locator('#wbentry-position')).toHaveText('1 / 2');
   } finally {
     restoreRegistry();
     fs.rmSync(tmp, { recursive: true, force: true });
