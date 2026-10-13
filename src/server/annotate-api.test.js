@@ -38,6 +38,19 @@ async function call(handler, method, url, body, headers) {
   return { handled, res, json };
 }
 
+test('a route that throws answers 500 instead of rejecting (the service stays up)', async (t) => {
+  const { dataRoot, registry } = withFixture(t);
+  const broken = { save() { throw Object.assign(new Error('rename failed'), { code: 'ENOENT' }); } };
+  const handler = createAnnotateHandler({ dataRoot, registry, stores: new Map([['pinpoint', broken]]) });
+  const errors = [];
+  t.mock.method(console, 'error', (...args) => errors.push(args));
+  const { handled, res, json } = await call(handler, 'POST', '/save', { page: 'index', entry: 'pinpoint', baseRevision: 0, annotations: [] });
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 500);
+  assert.deepEqual(json, { error: 'internal_error', detail: 'rename failed' });
+  assert.equal(errors.length, 1);
+});
+
 test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown ids', (t) => {
   const { registry } = withFixture(t);
   assert.deepEqual(resolveRequestEntry(registry, undefined), { entry: 'pinpoint' });

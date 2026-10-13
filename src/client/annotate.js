@@ -1022,16 +1022,11 @@ import { startProseComments } from './prose-comments.js';
       +1 那份接上；快照先到，它直接落盘、在途那次 409。快照是整份 marks，重复
       落盘内容相同。页面没走（只是切到后台）时，在途应答回来照旧：本地更新就重发，
       409 按远端 revision 重发，结果一致。换账本时交给 outbox、还没发出去的快照
-      也在这里发。 */
+      也在这里发。还在防抖里的 lastRect 不发：它是锚点几何的缓存，不是 owner 的改动，
+      丢一次无害；离开时补发它只会在关页之后多一次写盘。 */
   var leaveSentVersion = 0;
   function flushOnLeave() {
     if (!SERVER) return;
-    if (lastRectPersistTimer) {
-      clearTimeout(lastRectPersistTimer);
-      lastRectPersistTimer = null;
-      mutationVersion++;
-      writeLocalCache();
-    }
     Object.keys(outboxUnsent).forEach(function (key) {
       var pending = outboxUnsent[key];
       delete outboxUnsent[key];

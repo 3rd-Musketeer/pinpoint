@@ -634,7 +634,16 @@ export function createAnnotateHandler(options = {}) {
     const query = parseReqUrl(req).query;
     const route = routes.find((r) => r.methods.includes(req.method) && pathMatches(r.match, urlPath));
     if (!route) return false;
-    return route.run({ req, res, urlPath, query });
+    // 路由里抛出的错（比如写账本时桶目录正被删掉，rename 报 ENOENT）只让这一个请求 500，
+    // 不能变成 unhandled rejection 把整个服务带走。
+    try {
+      return await route.run({ req, res, urlPath, query });
+    } catch (error) {
+      console.error(`[annotate-api] ${req.method} ${urlPath} failed:`, error);
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal_error', detail: String((error && error.message) || error) });
+      else res.end();
+      return true;
+    }
   };
 }
 

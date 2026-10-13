@@ -70,7 +70,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 每次 `/save` 在请求体不超过 30000 字节时带 `keepalive`，关页或导航走之后在途的保存照样送达；更大的请求体走普通 fetch，
 离开时可能丢。`pagehide` 与 `visibilitychange` 转 hidden 时，没落盘的写立刻发出：没有在途保存就照常同步；
 有在途保存、之后又改过，就把整份快照按 `revision` 和 `revision + 1` 各发一次，在途那次先到还是后到，盘上都是最后一版。
-换账本时排进 outbox、还没发出去的快照也在这时发。
+换账本时排进 outbox、还没发出去的快照也在这时发。还在防抖里的 lastRect（锚点几何缓存，不是 owner 的改动）不发。
 
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
