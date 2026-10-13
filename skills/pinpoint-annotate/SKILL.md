@@ -17,6 +17,7 @@ description: 读取 Pinpoint 的画布标注和文章正文评论、判断改帧
 - **画布标注**：owner 在画布视图（`/?page=<project>_<article>`）上钉在帧或元素上的标注，和存量 page 的标注一样。
 - **正文评论**：owner 在文章页（`/<project>/<article>/`）上选中一段正文写的评论。它带引文（选中的文字和前后文）、
   节 id 和一个线程（owner 与 agent 的来回）。
+  要在 UI 上照人的做法发一条（测试时）：在文章页用鼠标拖选一段正文，点浮出的“评论”，在右栏的输入框里写，点“发送”。
 
 `ppnt check <project>_<article>` 一次列出这两种，正文评论单独成一组。
 
@@ -89,6 +90,7 @@ ppnt reply '#3' "<回复>" --page <project>_<article>
 - 看了但不改，包括只在线程里回复、没改文件 → `check`。
 - 改完 → `done`。
 - 服务端按 `baseRevision` 校验：冲突或非法转换逐条报 409，不影响其余条目，按提示重读再写。
+- 文章右栏和画布列表的 pending 段数的是 open、check、done 三态：它们都在等 owner 验收。只有 owner 点了完成的 close 进 closed 段。
 - CLI 不接受 `open` / `close`：owner 编辑正文、目标，或在评论线程里回复时，条目自动回 open；close 只有 owner 在
   工作台或文章右栏做。
 
