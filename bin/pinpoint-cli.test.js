@@ -334,6 +334,20 @@ test('runAdd: reachable server gets POST /registry/reload; matching path confirm
   assert.ok(rec.out.some((line) => /服务已重载（registry 共 2 条）/.test(line)));
 });
 
+test('runAdd: the reload line counts project entries too', async (t) => {
+  // reload 的 entries 只数 page，project 另计（2026-10-13 fresh-reader：文件里 2 条，CLI 说共 1 条）。
+  const dir = withTempDir(t);
+  const site = makeSite(dir);
+  const rec = recorder();
+  const file = path.join(dir, 'registry.json');
+  const requestFn = (url) => Promise.resolve(url.endsWith('/health')
+    ? { status: 200, json: { ok: true } }
+    : { status: 200, json: { ok: true, path: file, entries: 1, projects: 1, errors: [], warnings: [] } });
+  const code = await runAdd(['add', site, '--registry', file], { ...rec.io, cwd: dir, env: { PINPOINT_ORIGIN: 'https://pinpoint.localhost' }, requestFn });
+  assert.equal(code, 0);
+  assert.ok(rec.out.some((line) => /服务已重载（registry 共 2 条，其中 project 1 个）/.test(line)), rec.out.join('\n'));
+});
+
 test('runAdd: a different registry path on the server is called out', async (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir);
