@@ -296,6 +296,15 @@ initPreviewMount({
 });
 initBoard();
 
+function followSession(signal) {
+  var session = mountManager.current;
+  if (!session) return Promise.resolve(false);
+  return session[signal].then(function (ok) {
+    var now = mountManager.current;
+    return now && now !== session ? followSession(signal) : ok;
+  });
+}
+
 window.workbench = {
   switchPage: switchPage,
   setActivePage: setActivePage,
@@ -305,11 +314,13 @@ window.workbench = {
   // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
   focusSection: function (sectionId) { return focusSection(sectionId); },
   whenScrollSettled: whenStageScrollSettled,
-  // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。false =
-  // 会话已被下一次装载替换或取消 —— 等待方应重取再等（waitForFunction 轮询）。
-  whenBoardSettled: function () {
-    return mountManager.current ? mountManager.current.boardSettled : Promise.resolve(false);
-  },
+  // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。等的期间会话被
+  // 下一次装载替换，就接着等新的那个；false = 还没有会话（板在路上），或会话被取消、
+  // 挂载后处理失败 —— 等待方重取再等。注意 page.waitForFunction 把返回的 Promise 当真值
+  // 收下、不看它解析成什么，e2e 要用 expect.poll(...).toBe(true) 才真在等 true。
+  whenBoardSettled: function () { return followSession('boardSettled'); },
+  // 预览脚本（内联 + sidecar）是否已挂完：点原型里的交互之前等它。语义同上。
+  whenPreviewsSettled: function () { return followSession('previewsSettled'); },
   // 当前挂载会话代号（只读）：每次整板重装 begin() 递增。分组类 registry 写
   // 只刷左栏、不重装板，代号不变 —— e2e 拿它作「板没重装」的正向信号，
   // 不用再靠固定等待猜「没发生重装」。

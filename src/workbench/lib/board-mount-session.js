@@ -15,6 +15,10 @@ export class BoardMountSession {
     // 仍是当前会话 → true；会话被替换 / 取消 → false。测试与外部调用方靠它等
     // 「板真正挂好」，不用猜 shell 就绪等于板就绪。
     this.boardSettled = new Promise((resolve) => { this._settleBoard = resolve; });
+    // 预览脚本完成标记：内联脚本已执行、sidecar 已 import 并 mount（或各自失败）→ true；
+    // 会话被替换 / 取消、挂载后处理抛错 → false。几何批不等它（sidecar 慢不拖住
+    // navigator），要点原型交互的调用方等它。
+    this.previewsSettled = new Promise((resolve) => { this._settlePreviews = resolve; });
   }
 
   isUsable(root) {
@@ -23,6 +27,10 @@ export class BoardMountSession {
 
   settleBoard(ok) {
     this._settleBoard(!!ok);
+  }
+
+  settlePreviews(ok) {
+    this._settlePreviews(!!ok);
   }
 
   defer(callback, delay = 0) {
@@ -70,6 +78,7 @@ export class BoardMountSession {
     }
     this.pendingTasks.clear();
     this.settleBoard(false);
+    this.settlePreviews(false);
     const list = this.disposers.splice(0, this.disposers.length);
     for (const disposer of list) {
       try { disposer(); } catch (error) { console.error('[preview-script] unmount', error); }

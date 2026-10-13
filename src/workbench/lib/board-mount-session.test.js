@@ -52,3 +52,24 @@ test('a disposer for a detached root runs immediately', () => {
 
   assert.deepEqual(disposed, ['detached']);
 });
+
+test('previewsSettled：自己落定之前被替换的会话落 false，不会一直挂着', async () => {
+  const manager = new BoardMountManager();
+  const first = manager.begin('library');
+  manager.begin('library');
+  assert.equal(await first.previewsSettled, false);
+  assert.equal(await first.boardSettled, false);
+});
+
+test('previewsSettled 与 boardSettled 各落各的：几何先好、脚本后好', async () => {
+  const manager = new BoardMountManager();
+  const session = manager.begin('library');
+  session.settleBoard(true);
+  assert.equal(await session.boardSettled, true);
+  let previews = null;
+  session.previewsSettled.then((ok) => { previews = ok; });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.equal(previews, null, '脚本还在挂时不落定');
+  session.settlePreviews(true);
+  assert.equal(await session.previewsSettled, true);
+});

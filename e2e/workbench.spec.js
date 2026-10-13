@@ -38,7 +38,14 @@ async function openWorkbench(page) {
   // shell 就绪 ≠ 板就绪：navigator / 首访聚焦 / minimap 在挂载会话的几何批里
   // 才落定（全量负载下这段与 sidecar 导入解耦前能拖过 5s 断言窗口——
   // workbench.spec.js:1146 全量 flake 的根因）。等只读完成标记，不猜时序。
-  await page.waitForFunction(() => window.workbench.whenBoardSettled().then((ok) => ok === true));
+  // 要 expect.poll 等到 true：waitForFunction 把返回的 Promise 当真值收下，解析成
+  // false（挂载失败）也照样放行，之前就这样把一块没挂好的板当成了就绪。
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 25_000 }).toBe(true);
+}
+
+/** 原型里的交互（内联脚本、sidecar）都挂上了：点原型内部之前等它。 */
+async function waitPreviewsSettled(page) {
+  await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled()), { timeout: 15_000 }).toBe(true);
 }
 
 async function saveAnnotation(page, target, comment) {
@@ -1276,8 +1283,9 @@ test('画布点选模型：三种选中入口、原型内部不动选中、空�
     // data-preview-script 驱动比例 chip（1:15 → 1:16）。
     const ratio = page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio]');
     await expect(ratio).toHaveText('1:15');
-    // 预览脚本排在挂载几何批之后异步跑：看到静态的 1:15 时监听可能还没挂上。内联
-    // 脚本在置 data-preview-bound 之后同步执行（preview-mount.js），这个标记就是“已挂上”。
+    // 看到静态的 1:15 不等于监听已挂上；form B 的 sidecar 是网络 import，更晚。
+    // 等会话的预览完成标记（内联脚本已执行、sidecar 已 mount）再点。
+    await waitPreviewsSettled(page);
     await expect(page.locator('#wb-board-panel [data-screen="recipe"] script[data-preview-script]'))
       .toHaveAttribute('data-preview-bound', '1');
     await page.locator('#wb-board-panel [data-screen="recipe"] [data-ratio-cycle]').click();
@@ -1498,6 +1506,32 @@ test('挂载几何批不等预览脚本：sidecar 永远在途 navigator 照常�
   await page.goto('/index.html?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
   expect(await page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
+});
+
+test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑上、菜单与 navigator 都在（2026-10-14 flake 根因）', async ({ page }) => {
+  // stage.js 与 app/main.jsx 是两个模块图。板的 fetch 先到、main.jsx 还在加载时，挂载后处理
+  // 曾在 initExportCore / wireCanvasHud 之前跑：wireExportControls 抛 TypeError，内联脚本与
+  // sidecar 一条没绑、navigator 不出，就绪标记落 false，而 openWorkbench 的 waitForFunction
+  // 把 false 当成了就绪（workbench.spec 画布点选用例「1:15 → 1:16」与 data-preview-bound 两次偶发）。
+  // 这里把 main.jsx 压后 1.5s，稳定造出“板先到”。
+  const errors = [];
+  page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+  await page.route('**/src/workbench/app/main.jsx', async (route) => {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    await route.fallback();
+  });
+  await openWorkbench(page);
+  await waitPreviewsSettled(page);
+  const panel = page.locator('#wb-board-panel');
+  await expect(panel.locator('[data-screen="recipe"] script[data-preview-script]')).toHaveAttribute('data-preview-bound', '1');
+  await expect(panel.locator('[data-screen] .wb-frame-menu-shell')).toHaveCount(11);
+  await expect(page.locator('#wbsection-nav .wb-section-nav-item').first()).toBeAttached();
+  await panel.locator('[data-screen="recipe"] [data-ratio-cycle]').click();
+  await expect(panel.locator('[data-screen="recipe"] [data-ratio]')).toHaveText('1:16');
+  const timerRoot = panel.locator('[data-screen="timer"] [data-preview-mount]');
+  await panel.locator('[data-screen="timer"] [data-timer-toggle]').click();
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
+  expect(errors.filter((text) => text.includes('[board-mount]'))).toEqual([]);
 });
 
 test('queued annotation saves survive own SSE, sync to another window, and clear through save', async ({ browser }) => {

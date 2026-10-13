@@ -23,7 +23,8 @@ test.beforeAll(async ({ browser }) => {
   // at HTML insertion time races that legitimate first focus.
   await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
   // shell 就绪 ≠ 板就绪：navigator / 首访聚焦在挂载会话的几何批里才落定。
-  await page.waitForFunction(() => window.workbench.whenBoardSettled().then((ok) => ok === true), { timeout: 60_000 });
+  // expect.poll 才真在等 true（waitForFunction 把 Promise 当真值收下，false 也放行）。
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 60_000 }).toBe(true);
   await page.evaluate(() => window.workbench.whenScrollSettled());
 });
 
