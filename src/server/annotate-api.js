@@ -22,6 +22,7 @@ const SRC = path.resolve(__dirname, '..');
 const ROOT = path.resolve(SRC, '..');
 // pp2 状态机端点：/annotations/<page>/<id|#n>/status
 const STATUS_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/status$/;
+const REPLY_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/reply$/;
 
 /** @type {Set<import('node:http').ServerResponse>} */
 const sseClients = new Set();
@@ -504,6 +505,31 @@ export function createAnnotateHandler(options = {}) {
         }
         broadcastAnnotations(result.doc, entryId);
         sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+        return true;
+      },
+    },
+    // pp3 M2：ppnt reply 的后端 —— 往正文评论的线程追加一条 agent 消息，状态不动。
+    {
+      methods: ['POST'],
+      match: REPLY_ROUTE,
+      run: async ({ req, res, urlPath }) => {
+        const parts = urlPath.match(REPLY_ROUTE);
+        const parsed = await readEntryBody(req, res);
+        if (!parsed) return true;
+        const { body, entryId } = parsed;
+        const rawId = decodeURIComponent(parts[2]);
+        const result = storeFor(entryId).appendMessage({
+          page: decodeURIComponent(parts[1]),
+          id: /^[1-9][0-9]*$/.test(rawId) ? Number(rawId) : rawId,
+          text: body.text,
+          baseRevision: body.baseRevision,
+        });
+        if (result.status !== 200) {
+          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          return true;
+        }
+        broadcastAnnotations(result.doc, entryId);
+        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation, message: result.message });
         return true;
       },
     },
