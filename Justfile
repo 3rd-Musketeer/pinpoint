@@ -32,7 +32,7 @@ preview:
     export PINPOINT_DATA_DIR="$data" PINPOINT_REGISTRY="$data/registry.json"
     exec npm run dev
 
-# Run the canonical local verification suite.
+# Run the canonical local verification suite: unit tests, the site build check, e2e.
 check:
     npm run check
 

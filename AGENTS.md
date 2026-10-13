@@ -32,7 +32,7 @@ brew install just         # 每台机器一次
 npm install -g portless   # 每台机器一次
 npm install               # 第一次
 just dev                  # https://pinpoint.localhost/index.html
-just check                # 契约测试 + 两组 Chromium e2e（第一次先 npx playwright install chromium）
+just check                # 契约测试 + 站点构建检查（test:site）+ 两组 Chromium e2e（第一次先 npx playwright install chromium）
 ```
 
 `Justfile` 是工作流的唯一事实源，`package.json` 的 scripts 是它的实现原语。

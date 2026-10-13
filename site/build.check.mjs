@@ -2,7 +2,8 @@
 // registry and checks routes, [[ ]] resolution (incl. empty and cross-project
 // refs), sections/TOC, llms.txt, the section canvas cards (frame iframes, canvas
 // links, the section overlay's markup hooks), and that a namespace collision or a canvas error fails the build.
-// Not in the default `npm test`: two real Astro builds take ~10 s.
+// Not in the default `npm test` (three real Astro builds take ~5 s); `npm run check`
+// (and so `just check` / `just ship`) runs it between the unit tests and e2e.
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

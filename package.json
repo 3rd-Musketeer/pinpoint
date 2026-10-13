@@ -16,7 +16,7 @@
     "build:tokens": "node scripts/build-wb-tokens.mjs",
     "test": "node --test",
     "test:e2e": "node scripts/e2e-parallel.mjs",
-    "check": "npm test && npm run test:e2e",
+    "check": "npm test && npm run test:site && npm run test:e2e",
     "test:e2e:serial": "playwright test",
     "test:e2e:parallel": "node scripts/e2e-parallel.mjs",
     "site:dev": "cd site && astro dev",

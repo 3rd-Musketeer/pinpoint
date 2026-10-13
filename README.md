@@ -77,7 +77,7 @@ Then tell your agent:
 
 > 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 写一篇 article，跑 `ppnt build` 编译
 
-Verify changes with `just check` (or `npm run check`). Install the matching browser on the first run:
+Verify changes with `just check` (or `npm run check`): unit tests, the site build check (`npm run test:site`), then e2e. Install the matching browser on the first run:
 
 ```bash
 npx playwright install chromium
