@@ -42,6 +42,10 @@ export function writeRegistryFixture() {
       { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mixed-site'), board: 'ios' },
       // doc-library 的替代固件：单 doc 屏页（「内容」区坍缩断言依赖单屏形态）。
       { id: 'e2e-doc', title: 'E2E Doc', kind: 'dir', path: path.join(E2E_SITES_DIR, 'doc-site') },
+      // pp3：project 条目（e2e/article-site.spec.js）。不是页：loadRegistry 把它放进
+      // registry.projects，Pages / GET /registry / 桶清单都看不到它，所以能常驻。
+      // 直接指仓内固件（站点只读不写）。
+      { id: 'e2e-project', kind: 'project', path: path.join(ROOT, 'e2e', 'project-site') },
       // 页 tab 固件（e2e/tabs-site/ 两个 tab、e2e/tabs-one-site/ 一个 tab）同样不常驻：
       // tabs.spec.js 自己登记、自己清理。
       // pp2 切片 1 的 .jsx 帧固件（e2e/jsx-site/）不在共享固件里常驻 —— 多一条页会

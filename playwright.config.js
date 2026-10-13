@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_UPSTREAM_ORIGIN } from './e2e/env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_SITE_CACHE, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './e2e/env.js';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -36,6 +36,11 @@ export default defineConfig({
       PINPOINT_DATA_DIR: E2E_DATA_DIR,
       PINPOINT_REGISTRY: E2E_REGISTRY,
       PREVIEW_TEMPLATE_ONLY: '1',
+      // pp3：文章请求到来时服务拉起真 Astro 站点（缺省命令带 --ignore-lock）。
+      // 端口、缓存按轮隔离；不继承外面设的 PINPOINT_SITE_CMD，测的就是缺省命令。
+      PINPOINT_SITE_PORT: String(E2E_SITE_PORT),
+      PINPOINT_SITE_CACHE: E2E_SITE_CACHE,
+      PINPOINT_SITE_CMD: '',
     },
   }],
 });
