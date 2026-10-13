@@ -22,6 +22,12 @@ page-local components + `board.json`. `ppnt build` compiles it to dist under `~/
 the canvas, annotations, exports and mentions only ever see the compiled output. Existing `.html`
 frames keep working as-is.
 
+Since pp3 (2026-10-13) the primary object is the **article**: project → article → section → canvas
+component. An article is `index.mdx` plus its own frames under `<project root>/docs/pinpoint/articles/<id>/`,
+read at `/<project>/<article>/`; its canvas is derived from the MDX and opens as page
+`<project>_<article>`. New work goes into articles; existing pages keep working
+([ADR 0042](docs/adr/0042-pp3-article-as-primary-object.md)).
+
 ## 问题 → 文档
 
 | 你要什么 | 读哪里 |
@@ -29,14 +35,16 @@ frames keep working as-is.
 | 这些词是什么意思（page / board / entry / frame / 桶 / 账本） | [`CONTEXT.md`](CONTEXT.md) |
 | agent 开工读什么、验收命令、坑与约定 | [`AGENTS.md`](AGENTS.md) |
 | `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
+| project 与 article 的目录、`add --project`、文章画布与页 id | [`docs/projects.md`](docs/projects.md) |
+| 文章站点：`Section` / `Canvas`、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | registry 条目形状与分组层、`pinpoint add` / `move` / `rename` / `folder`、三条注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注字段、账本与桶、控制面、workbench 偏好、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查案例库 | [`docs/debugging.md`](docs/debugging.md) |
 | 五阶段收敛计划当时怎么切的（历史） | [`docs/2026-08-16-roadmap.md`](docs/2026-08-16-roadmap.md) |
-| 加页 / 加屏 / 加组件的做法 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
-| 标注 → 读标注 → 修改的做法 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
+| 写文章、加帧、加组件的做法（含存量页） | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
+| 画布标注与正文评论 → 读 → 修改 → 回复的做法 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 变更历史 | `git log`（本仓不维护 changelog） |
 
 ## Quickstart
@@ -67,7 +75,7 @@ first segments: [`docs/design.md`](docs/design.md) “服务路由”.
 
 Then tell your agent:
 
-> 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 搭一页，跑 `ppnt build` 编译
+> 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 写一篇 article，跑 `ppnt build` 编译
 
 Verify changes with `just check` (or `npm run check`). Install the matching browser on the first run:
 
@@ -106,10 +114,12 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH):
 
 ```bash
-ppnt list [words…]             # page list: id · title · kind · counts · folder + source path; fuzzy match on words
+ppnt list [words…]             # pages and projects: id · title · kind · counts · source path; fuzzy match on words
+ppnt list <project>            # a project's articles (with canvas page ids), concepts and layout errors
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <dir|file|url>        # register an entry (files stay where they are) — see docs/registry.md
+ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
 ppnt move <id> <target>        # re-point an entry, keep its id and annotations
 ppnt rename <old> <new>        # rename id + annotation bucket + /sites/ prefix in one shot
 ppnt folder list|add|rename|rm|move   # the one level of page grouping in the sidebar
@@ -119,6 +129,7 @@ ppnt check <page>              # read annotations: statuses, intents, code excer
 ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (contract, slice 4)
 ppnt shot <ref…> [--marks]     # PNG of frames/sections/page, --marks bakes the #n pins (contract)
 ppnt mark <ref…> done|check    # write annotation status (contract)
+ppnt reply <ref> <text>        # reply in a prose comment's thread on an article (status unchanged)
 ```
 
 ## Repository layout
@@ -178,6 +189,10 @@ Mark up a preview — Figma-style — and have your agent read marks and revise.
 3. Hover a pin on the canvas to read its comment card, or open “这页的标注” from the count
    button at the right end of the bottom strip and click 定位 to focus the owning frame. Review the
    change and click 关闭 on the done row (one click, toast with 5 s undo). Closed rows collapse away.
+
+On an article (`/<project>/<article>/`), select prose text to comment instead; prose comments land in the
+same bucket and queue as that article's canvas annotations (page id `<project>_<article>`), and the agent
+answers in the thread with `ppnt reply`.
 
 Short locators for chat: `#12` · `plugins#12` · `B3` · `@frame:<page>/<screen>` · `@a:<id>`.
 Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
