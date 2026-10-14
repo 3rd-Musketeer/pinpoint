@@ -15,6 +15,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
     index.mdx                  # 正文，frontmatter 写 title、summary
     <帧 id>.jsx
     components/<Name>.jsx      # 本篇专用
+    figures/<图 id>.jsx        # 正文里的图，可带同名 .js、.css（见“图”）
     assets/
   concepts/<名字>.md           # frontmatter 写 name、status、boundary
   components/<Name>.jsx        # project 内共用；跨 project 进 kit
@@ -238,9 +239,122 @@ export default function ConfirmBare() {
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
+- `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
 - 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 - `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
+
+## 图
+
+图是正文里的一张示意图或一段可交互演示，用 `<Figure>` 写进正文，占满正文栏宽。它不是帧：不进画布视图，没有编号，不能做画布标注（owner 2026-10-14 定：演示先放正文，之后要标注再讨论放画布）。图由 agent 自己画，写成 JSX 和 SVG，pinpoint 不提供图表 DSL（owner 2026-10-14 定：给 agent 一块画布，agent 自己画 SVG）。
+
+### 写法
+
+```mdx
+<Figure src="figures/message-flow.jsx" caption="消息怎么走：点“下一步”一条一条看" />
+```
+
+- 写在正文任何地方，节里节外都行。属性只有 `src` 和 `caption`，都只认字面量字符串。`caption` 可省，显示在图下面。
+- `src` 只能写成 `figures/<图 id>.jsx`，图 id 的规则和帧 id 相同，是文件名。同一个图在一篇文章里只放一次。
+- 图的文件都在文章目录的 `figures/` 下：
+
+| 文件 | 必须 | 是什么 |
+| --- | --- | --- |
+| `figures/<图 id>.jsx` | 是 | 图本身：默认导出一个返回 JSX 的函数，编译成静态 HTML |
+| `figures/<图 id>.js` | 否 | sidecar，在浏览器里跑：`export default function mount(root) { … }`，`root` 是图的根元素，返回 `unmount` |
+| `figures/<图 id>.css` | 否 | 这个图的样式，只在图页里生效 |
+
+- `.jsx` 和帧守同一套规则：lint 四禁（`preact/hooks`、`onX` 属性、`fetch(`、顶层只许 `import`、`export default` 和函数声明），数据写在函数体里。组件写 `../components/<Name>.jsx`，查找序和帧一样（本篇、project、kit）；用了 `pinpoint/kit` 的图会加载 `ios-kit.css`。
+- 交互和动画放进 sidecar。sidecar 不经编译器打包，只在编译时检查语法；它可以 `import` 同目录的模块和 `pinpoint/figure`。
+
+### 画图的约定
+
+一个最小的图：
+
+```jsx
+import { textWidth } from 'pinpoint/figure';
+
+export default function Lanes() {
+  const actors = ['用户', 'agent', '网站'];
+  return (
+    <div class="fig-scroll">
+      <svg viewBox="0 0 640 120" role="img" aria-label="三个角色">
+        {actors.map((name, i) => {
+          const x = 110 + i * 210;
+          const w = textWidth(name, 13) + 28;
+          return (
+            <g class="lane">
+              <rect x={x - w / 2} y="8" width={w} height="28" rx="14" />
+              <text x={x} y="27" text-anchor="middle">{name}</text>
+            </g>
+          );
+        })}
+      </svg>
+    </div>
+  );
+}
+```
+
+```css
+.lane rect { fill: var(--fig-panel); stroke: var(--fig-hair); }
+.lane text { font-size: 13px; font-weight: 600; }
+```
+
+- `viewBox` 宽 640 左右（正文栏约 720 px，图页有 20 px 内边距），SVG 宽度 100%，按栏宽缩放。字号按 `viewBox` 单位写，正文 12.5–13，标题 13–14。
+- 窄屏上 SVG 跟着缩，字会小到看不清：外面包一层 `<div class="fig-scroll">`，SVG 保持最小宽度（缺省 560，用 `--fig-min-width` 改），窄屏上横向滚动。
+- 中文字宽约等于字号，其余字符约 0.58 个字号。给文字留框、居中时用 `textWidth(text, fontSize)` 算，它在编译期运行。
+- 颜色只用调色板变量，不写死色值，深浅色就会跟着文章页切换。箭头的 `marker` 每种颜色定义一个，id 加上图自己的前缀，避免和别的图重名。
+- 图页给 `svg text` 设了 `fill: var(--fig-ink)`，权重为 0，图里任何选择器都能盖过它。
+
+调色板（`content/kits/figure/figure.css`，值与 `site/src/styles/site.css` 的 token 相同，单测守）：
+
+| 变量 | 用在 |
+| --- | --- |
+| `--fig-bg` | 图的底色，和文章页底色相同 |
+| `--fig-panel` | 浅底块、节点底色 |
+| `--fig-ink` / `--fig-ink-2` | 主要文字和线条 / 次要文字、普通箭头 |
+| `--fig-muted` | 注释、轴、不重要的字 |
+| `--fig-hair` | 细线、边框、生命线 |
+| `--fig-accent` / `--fig-accent-soft` | 强调：当前一步、主角 / 强调色的浅底 |
+| `--fig-err` | 出错 |
+| `--fig-font` | 字体栈（含中文） |
+
+### 逐步演示：`steps()`
+
+`pinpoint/figure`（`content/kits/figure/figure.js`，不依赖任何库）的 `steps(root, options)` 给图加上“上一步 / 播放 / 下一步”：
+
+- `.jsx` 里给每一步的元素写 `data-step="n"`（从 1 数，同一步可以有多个元素），说明写在其中一个元素的 `data-note` 上；这一步里带 `data-travel` 的 `line` / `path` 上会有一个圆点走一趟。
+- sidecar 写 `export default function mount(root) { return steps(root, { autoplay: 2200 }); }`。`autoplay` 是滚到眼前时自动播一遍、每步停多久（毫秒），`interval` 是点“播放”后每步停多久，`labels` 换控件上的字。
+- 第 0 步是全貌，所有元素照常显示，没有 JS 时图也是这个样子。第 n 步时根元素带 class `fig-stepping`，每个 `[data-step]` 带 `is-past`、`is-now` 或 `is-future`：后面的步隐藏，前面的步变淡，`is-now` 的样子由图自己写（比如 `.is-now line { stroke: var(--fig-accent); }`）。
+- 系统开了“减少动态效果”时不走圆点，也不自动播放。根元素的 `data-step` 是当前步，测试和截图读它。
+
+样例：`e2e/project-site/docs/pinpoint/articles/commit-confirm/figures/`（`message-flow` 是逐步演示，`wait-sequence` 是静态时序图）。
+
+### 图页与站点
+
+- 图页 `/api/frame?page=<页 id>&figure=<图 id>&embed=figure[&theme=light|dark]`：没有机壳、图注和标注客户端，`<html data-pp-embed="figure">`，`<base>` 是 `/sites/<页 id>/`，import map 把 `pinpoint/figure` 指到 `/kits/figure/figure.js`。`figure` 与 `embed=figure` 必须一起写，图只属于文章。源码比编译记录新就先重编。
+- 图页把根元素的高度用 `postMessage` 报给文章页（`{ source: 'pp-figure', type: 'size' | 'error' | 'ready' }`），sidecar 跑完后 `<html>` 带 `data-figure-ready`。深浅色跟着外层文章页的 `<html data-theme>`，单独打开时用 `theme` 参数或系统设置。
+- 文章页上每个图是一个懒加载的同源 iframe（`Figure.astro`，`site/src/lib/figure-client.js`），iframe 内容高度等于图的高度，没有滚动条，图里可以点、可以操作。根元素 `<figure data-pp-figure="<图 id>" data-pp-nocomment>`，`data-state` 是 `loading`、`ready` 或 `error`。图和图注里选字不出正文评论。
+- 站点给每个 `<Figure>` 注入序号 `n`（正文顺序，写坏的也占），`articleCanvas` 的 `figures` 按同一个序号给出 `{ index, id?, caption?, section?, line?, missing?, errors }`，两边都用 `src/shared/article-structure.js` 的 `articleFigures` 数。
+- 编译产物在 `<dist>/<页 id>/figures/<图 id>.html` 和 `<图 id>.json`（编译记录，含全部输入的 mtime），不进 `build.json`。`ppnt build <页 id>` 整页编译时一起编图，逐个报 `ok 图 <图 id>`；只编挑中的屏时不碰图。
+
+### 图的错误
+
+| 种类（`code`） | 什么时候 | 在哪里看到 |
+| --- | --- | --- |
+| `figure_src`、`figure_caption`、`figure_prop`、`figure_duplicate`、`figure_missing` | `src` 写错、属性不是字面量或不认识、同一个图放了两次、源文件不在 | `listProjects` 的布局错误（带 `line`、所在的 `section`，认得出时带 `figure`）；文章页上显示在图的位置，不进画布卡片和页顶错误条；生产构建失败 |
+| `figure_compile` | `.jsx` 编不过或 lint 不过，sidecar 有语法错误 | 图页回 500，图的位置写原因（文件与行）；`ppnt build`；`pinpoint list <project>` |
+| `figure_runtime` | sidecar 在浏览器里抛错 | 图的位置写原因（sidecar 的行号）；图页把这一版第一次出的错报给服务（`POST /api/figure-error`），`pinpoint list <project>` 列出，重编后清掉 |
+
+`pinpoint list <project>` 会先把过期的图重编，再列编译错误和记下的运行错误。
+
+### 自查
+
+```shell
+ppnt shot --figure message-flow --page e2e-project_commit-confirm
+```
+
+图页按正文栏宽 760 px 打开，浅色、深色各拍一张（`<数据根>/shot/<页 id>/figure-<图 id>.png` 和 `…-dark.png`），关掉动画、不自动播放。图编不过、在浏览器里报错或控制台有错误时，命令打出原因并退 1。
 
 ## 从存量页迁移
 
@@ -304,7 +418,8 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 
 ## 固件
 
-- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。
+- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。`commit-confirm` 还有两个图：第一节前的静态时序图 `wait-sequence`，第一节 `why` 里的逐步演示 `message-flow`（带 sidecar 和样式）。
+- `site/fixtures/projects/demo/`：`payments` 有两个图（节外的静态时序图 `pay-sequence`，`overview` 节里的 `message-flow`）；`site/fixtures/projects/broken/` 有一个源文件不在的图。
 - `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 concept `Confirm-Card`（`concepts/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。

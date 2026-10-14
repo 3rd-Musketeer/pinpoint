@@ -1,7 +1,7 @@
 /*
  * 图的调色板与基础样式（docs/projects.md“图”）。图页（/api/frame?…&embed=figure）总是带这一份。
  * 图里只用 --fig-* 变量，不写死颜色：浅色、深色跟着文章页切换，变量值与 site/src/styles/site.css 的
- * token 相同（figure-palette.test.js 守）。
+ * token 相同（site/src/lib/figure.test.js 守）。
  *
  *   --fig-bg        页面底色（图和正文融在一起）      --fig-panel     浅底块、节点底色
  *   --fig-ink       正文字、主要线条                  --fig-ink-2     次要文字、普通箭头

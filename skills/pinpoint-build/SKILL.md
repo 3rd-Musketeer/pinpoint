@@ -31,6 +31,7 @@ project 是一组相关的文章和 concept，id 是网址的第一段 `/<projec
     index.mdx                  # 正文
     <帧 id>.jsx                # 帧
     components/<Name>.jsx      # 本篇专用组件
+    figures/<图 id>.jsx        # 正文里的图；可选同名 .js（交互）、.css
     article.css                # 可选，注入本篇每一帧
     article.js                 # 可选，注入本篇每一帧
     assets/                    # 图片等资源
@@ -64,13 +65,22 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 ```
 
 - frontmatter 每行一条单行的 `key: value`：`title`（缺省用 article id）、`summary`、`order`（project 首页上的排序，可省）。多行值、列表、`|` 或 `>` 开头的值都是布局错误。
-- `Section` 和 `Canvas` 由站点提供，不用 import。
+- `Section`、`Canvas`、`Figure` 由站点提供，不用 import。
 - `Section` 的 `id` 必填，在本篇内唯一。它同时是网页里的锚点和画布视图里这一行的 id。Section 不能嵌套；`##` 小标题不是节。
 - 两套号按同一个顺序数。文章页显示节号 1、2、3；画布视图、`ppnt` 和标注用编号：节字母 A、B、C 加节内帧序号，如 `C2` 是第 3 节的第 2 帧。全部 Section 一起数，纯文字的节也占一个号和一个字母，所以第一节是纯文字时，画布视图从 B 开始。正文里不写字母编号。
 - `Canvas` 写在 Section 里，一节最多一个。`frames` 写字面量数组，每一项是本篇目录下某个 `<帧 id>.jsx` 的 id。没有 Canvas 的节不进画布。
 - `frames` 不能引别的文章或存量页的帧（`"<页 id>/<帧 id>"` 会报错）。要用别处的帧，把帧文件和它 import 的组件复制进本篇目录。
 - `Canvas` 可以带字面量 `shell`：`app`（缺省，手机壳）、`lock`、`doc`、`comp`（裸组件，不带机壳）。它管这一节的所有帧。
 - 同一个界面要比较几种做法：在同一节里多放几帧并排，选定以后删掉落选的帧。没有专门的变体机制。
+
+### 图（`<Figure>`）
+
+要在正文里讲清一件事怎么运转（时序、数据流、状态怎么变），用图；要给界面画样子、让 owner 标注，用帧和 Canvas。图不进画布视图，不能做画布标注。
+
+- 写法：`<Figure src="figures/message-flow.jsx" caption="消息怎么走" />`，节里节外都能写。`src` 只能是 `figures/<图 id>.jsx`，两个属性都写字面量字符串，同一个图在一篇里只用一次。
+- 文件放在 `articles/<article>/figures/`：`<图 id>.jsx` 像帧一样默认导出一个返回 JSX 的函数，守同样的 lint 四禁，通常画一张内联 SVG；要逐步演示、能点，加同名 `<图 id>.js`，导出 `mount(root)`，里面调 `import { steps } from 'pinpoint/figure'`；样式写同名 `<图 id>.css`。
+- 颜色只用调色板变量 `--fig-bg`、`--fig-panel`、`--fig-ink`、`--fig-ink-2`、`--fig-muted`、`--fig-hair`、`--fig-accent`、`--fig-accent-soft`、`--fig-err`，深浅色才会跟着文章页切换。SVG 的 `viewBox` 约定、中文字宽（`textWidth`）、`steps()` 的标记写法见 [`docs/projects.md`](../../docs/projects.md)“图”，起手照抄那里的模板或 e2e 固件 `e2e/project-site/docs/pinpoint/articles/commit-confirm/figures/`。
+- 自查：`ppnt shot --figure <图 id> --page <project>_<article>` 拍浅色、深色各一张 PNG，并报图的运行错误；`ppnt build <页 id>` 逐图报 ok 或编译错误；`pinpoint list <project>` 列出缺文件、属性写错、编译失败和运行时报错的图。
 
 ## 4. 帧和组件
 
@@ -127,7 +137,7 @@ boundary: 一句话说清它管什么、不管什么。
 
 1. `pinpoint list <project>` 的布局错误是“无”。
 2. `ppnt build <project>_<article>` 每帧都是 ok。
-3. 改过的帧都用 `ppnt shot` 看过图。
+3. 改过的帧都用 `ppnt shot` 看过图；改过的图用 `ppnt shot --figure` 看过浅色和深色。
 4. 汇报改了哪些文件、还有什么没解决。评审和关闭标注是 owner 的事。
 
 `~/.pinpoint/dist/` 是编译产物，不要手改，重编就会覆盖。

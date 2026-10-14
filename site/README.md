@@ -34,10 +34,11 @@ article id `concepts` 保留给概念路由，用了构建报错。
 
 frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和列表里的一句话）、`order`（列表次序，可省）。
 
-下面两个组件不用 import，站点自动提供：
+下面三个组件不用 import，站点自动提供：
 
 - `<Section id="flow" title="付款前的确认">…</Section>`：一节。`id` 必填，字母数字 `_` `-`，文中唯一，就是 DOM id（`#flow`）和画布视图里这一行的 id。节号 1、2 … 按出现顺序自动编，目录和节标题前的号码从这里来。画布上同一节是字母（第 n 节 = 第 n 个字母，A、B …），字母只出现在画布、`ppnt` 和标注里，文章页不显示。不能嵌套。
 - `<Canvas frames={["ask", "confirm"]} />`：这一节的画布组件，在文章页上显示成一张画布卡片。写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx`，不能写 `<页 id>/<帧 id>`。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。一张卡片里所有帧同一个缩放（手机机壳 438 px 显示成 158 px），组件帧和旁边的手机按真实比例比。卡片头显示节号、节标题与帧数，图注只有帧 id，每帧一个懒加载 iframe（`/api/frame?page=<页 id>&screen=<帧 id>&annotate=off&embed=card`），卡片里的缩略图不能点、不能标注。点帧在文章上打开这一节的画布浮层（见下），不跳转；“打开画布 →”到画布视图并定位到这一节（`/?page=<页 id>&section=<节 id>`）。该节有未处理（open）的画布标注时头部显示条数，读不到标注就不显示。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”。卡片根节点是 `[data-pp-canvas]`，节 id 在 `data-pp-section`（`data-section` 只属于 `<Section>`）。
+- `<Figure src="figures/message-flow.jsx" caption="…" />`：正文里的图，静态示意图和可交互演示都用它，节里节外都能写。源文件在文章目录的 `figures/` 下，pinpoint 像编帧一样编它；文章页上是一个占满正文栏宽的懒加载 iframe（`/api/frame?page=<页 id>&figure=<图 id>&embed=figure`），高度跟着图的内容，没有滚动条，可以点、可以操作，深浅色跟着文章页切换。图注在图下面。图的错误显示在图的位置，不进画布卡片和页顶错误条；它们也是 project 错误，生产构建会失败。图和图注里选字不出评论。写法、调色板、逐步演示与错误见 `docs/projects.md`“图”。
 
 ## `[[ ]]` 引用
 
@@ -84,5 +85,6 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
 - `src/lib/site-errors.js`：布局错误在站点上怎么显示。错误从 `listProjects` 到内容集合一路是对象（`src/shared/project-errors.js`），这里拼成 `project "<id>": …` 一行；文章页的错误条按 `path` 分出这篇自己的错误。
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage` / `data-pp-device`）、读未处理标注数。
+- `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、缩放、上一节 / 下一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
 - `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、概念抽屉。

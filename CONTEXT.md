@@ -25,12 +25,16 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：“区”“段”“group”；拿 section 指 `##` 小标题（小标题不是节，不占节号）。CLI 帮助里写作“段”（`段 B`、`段 id`）。
 
 **section 组件** · 站点提供的 MDX 组件，写在 `<Section>` 里，不用 import
-放进一节里的非文字内容。现在只有画布组件 `<Canvas>`；图和可交互演示以后也按 section 组件加。
+放进一节里的非文字内容：画布组件 `<Canvas>` 和图 `<Figure>`。图也能写在节外。
 要避开：不加“section”只说“组件”——单说“组件”指帧用的 JSX 组件，见“组件”。
 
 **画布组件（`<Canvas>`）** · `index.mdx`：`<Canvas frames={["a", "b"]} shell="app" />`
 一节里的帧清单：列出这一节有哪些帧、什么顺序、套什么机壳（`shell`：`app` 手机、`lock` 锁屏、`doc` 整份文档、`comp` 裸组件）。一节最多一个。画布视图里一行的成员和顺序只写在这里。
 要避开：拿 Canvas 指整个画布视图。
+
+**图（`<Figure>`）** · `index.mdx`：`<Figure src="figures/<图 id>.jsx" caption="…" />`；源文件 `articles/<article>/figures/<图 id>.jsx`（可选同名 `.js`、`.css`）
+正文里的一张示意图或一个可交互演示，由 agent 自己画（通常是内联 SVG），讲一件事怎么运转。文章页上它占满正文栏宽，是一个同源 iframe（`/api/frame?page=<页 id>&figure=<图 id>&embed=figure`），高度跟着内容，可以点，深浅色跟着文章页。颜色只用调色板 `--fig-*`；逐步演示用 `pinpoint/figure` 的 `steps()`。图不是帧：不进画布视图，没有编号，不能做画布标注，图里和图注里也不出正文评论。图的错误（缺文件、属性写错、编译失败、运行时报错）显示在图的位置，`pinpoint list <project>` 也列出它们。
+要避开：拿“帧”或“画布”指图；单说“图”指画布卡片里的帧缩略图或 `ppnt shot` 的截图。
 
 **帧（frame）** · `articles/<article>/<帧 id>.jsx`
 画布上的一格，也是装这一格内容的源文件。帧 id 就是文件名（不带扩展名），不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
