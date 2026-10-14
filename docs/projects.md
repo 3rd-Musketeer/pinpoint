@@ -1,12 +1,12 @@
 # project：目录、登记与读取
 
-project 是 pp3 的顶层：一个 project 下面有多篇 article（设计文档）和多个 concept（wiki 词条）。
+project 是文章模型的顶层：一个 project 下面有多篇 article（设计文档）和多个 concept（wiki 词条）。
 一个 project 在 registry 里登记成一条 `kind: "project"` 的条目，`path` 是 project 根目录，
 内容住在根目录下的 `docs/pinpoint/`。article 与 concept 的定义见 [`CONTEXT.md`](../CONTEXT.md)。
 
 ## 目录
 
-目录结构是定死的（2026-10-13 grilling）：
+目录结构是定死的：
 
 ```text
 <project 根>/docs/pinpoint/
@@ -20,7 +20,7 @@ project 是 pp3 的顶层：一个 project 下面有多篇 article（设计文�
   components/<Name>.jsx        # project 内共用；跨 project 进 kit
 ```
 
-- `project.json` 必须有。`id` 与 page id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题。
+- `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题。
 - article id 就是 `articles/` 下的目录名，同一个模式。`concepts` 不能当 article id，`/<project>/concepts/` 已被概念页占用。
 - 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
 - `concepts/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`，同时记一条布局错误。以 `.` 开头的名字忽略。
@@ -83,7 +83,7 @@ project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`�
 
 ### 文章目录改名
 
-`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 不再是页，它的桶整桶皆孤儿（`ppnt status --page <project>_a` 与 `ppnt check <project>_a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
+`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt status --page <project>_a` 与 `ppnt check <project>_a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
 
 ```shell
 mv ~/.pinpoint/<project>_a ~/.pinpoint/<project>_b      # 桶；PINPOINT_DATA_DIR 设了就换成它
@@ -93,7 +93,7 @@ ppnt build <project>_b
 
 手工挪时，桶里行上的 `pageId` 和 `@prose.json` 的 `path` 还是旧值（project rename 会改写它们，手工挪不会）。不要这些标注的话，直接 `ppnt prune <project>_a`。
 
-project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但不是页：不出现在工作台的 Pages、`GET /registry` 的 `entries`、`/sites/`、`--page` 挂靠目标和左栏文件夹里。
+project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries`、`/sites/`、`--page` 挂靠目标和左栏文件夹里。
 
 ## 读取
 
@@ -117,13 +117,13 @@ project 条目与 page 条目共用 registry 的 id 命名空间（同一个 `en
 ```
 
 - article 按 id、concept 按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
-- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和概念的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`concepts/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“文章的画布”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
+- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和概念的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`concepts/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“画布视图”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
-同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取，不再各抄一份：
+同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取：
 
-- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“文章的画布”。一个页 id 现在是不是一页（文章画布页要 project 登记了、`index.mdx` 在盘上）只问 `src/server/lib/page-resolve.js`：`resolvePage(registry, id, { manifestIds })` 答它是登记条目、模板页、文章画布页还是不是页，`pageIdIsLive` 是它的布尔版。服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告、`/sites/<id>/`、`/api/frame` 都用它。
+- `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“画布视图”。一个页 id 现在指不指得到东西（文章要 project 登记了、`index.mdx` 在盘上）只问 `src/server/lib/page-resolve.js`：`resolvePage(registry, id, { manifestIds })` 答它是登记条目、模板页、文章还是什么都不是，`pageIdIsLive` 是它的布尔版。服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告、`/sites/<id>/`、`/api/frame` 都用它。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
 - `RESERVED_TOP_SEGMENTS`、`isReservedProjectId`、`RESERVED_ARTICLE_IDS`：保留名，见下面“保留名”。
 - `SECTION_ID_PATTERN`、`FRAME_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
@@ -133,9 +133,9 @@ frontmatter 子集的解析器 `parseFrontmatter(text)` → `{ data, body, error
 
 HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 是给 `pinpoint status` 显示的字符串，每条是 `<project id>: ` 加 `formatProjectError` 的结果。
 
-## 文章的画布
+## 画布视图
 
-每篇 article 的画布是一个由正文派生的页。正文里怎么写见 `site/README.md` 与 `skills/pinpoint-build`，这里只记机制。
+每篇 article 的画布视图由正文派生：带 `<Canvas>` 的节按顺序各成一行，工作台用这篇的页 id 打开它。正文里怎么写见 `site/README.md` 与 `skills/pinpoint-build`，这里只记机制。
 
 ### 写法
 
@@ -179,34 +179,34 @@ export default function ConfirmBare() {
 - 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
 - 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
 - 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
-- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / check / locate / mark / shot / list --frames / status --page`、编号（`boardRefs`）都按普通页工作。
+- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / check / locate / mark / shot / list --frames / status --page`、编号（`boardRefs`）都和存量页一样工作。
 - dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
 - watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
 
-### 不进 Pages
+### 不进“页面”组
 
-画布页属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的页表里；左栏另有“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
+画布视图属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的存量页表里；左栏“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
 
 ### 工作台左栏
 
-2026-10-13 起，工作台左栏“页面”tab 分两组：上面“文章”，下面“页面”。“页面”组就是原来的置顶、最近、文件夹与散页，存量页迁成文章之后撤掉。
+工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近、文件夹与散页。存量页都转成文章以后，“页面”组撤掉（owner 2026-10-13 定）。
 
 - “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
-- 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的画布页）：点行在工作台打开画布页 `<project>_<article>`，和 `/?page=` 是同一个页，选中态与页面行一样。没有画布的文章：点行在新标签页打开正文。
+- 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的页 id）：点行在工作台打开画布视图 `<project>_<article>`，和 `/?page=` 是同一个，选中态与页面行一样。没有画布的文章：点行在新标签页打开文章页。
 - 行尾“阅读”钮（tooltip“阅读正文”）在新标签页打开 `/<project>/<article>/`。常态不显示，行 hover 或键盘焦点进到行时出现。右键菜单有“阅读正文”，有画布的再加“复制 @page”。
 - project 有布局错误时，标题行尾显示错误个数，tooltip 列前三条。
-- 文章不归档、不置顶、不进文件夹、不能拖。文章画布不进“最近”，“最近”只算 Pages 列表里的页。
-- 实时更新：`registry:update`（登记或移除 project）和 `projects:update` 都让左栏重读 `/api/projects`。`projects:update` 由 `preview-hmr` 发，载荷 `{ project }`：project 目录里有文件新建、修改或删除，并且列表那一层变了（project 标题、文章增删、文章标题与摘要、`canvasSections`、布局错误）。只改正文或帧内容不发。Vite 6 对新建和删除不调 `handleHotUpdate`，所以 `preview-hmr` 另外监听 watcher 的 `add` / `unlink`：新建的文章或帧在这里重编，画布页收到 `preview:update`。
+- 文章不归档、不置顶、不进文件夹、不能拖。画布视图不进“最近”，“最近”只算“页面”组里的存量页。
+- 实时更新：`registry:update`（登记或移除 project）和 `projects:update` 都让左栏重读 `/api/projects`。`projects:update` 由 `preview-hmr` 发，载荷 `{ project }`：project 目录里有文件新建、修改或删除，并且列表那一层变了（project 标题、文章增删、文章标题与摘要、`canvasSections`、布局错误）。只改正文或帧内容不发。Vite 6 对新建和删除不调 `handleHotUpdate`，所以 `preview-hmr` 另外监听 watcher 的 `add` / `unlink`：新建的文章或帧在这里重编，画布视图收到 `preview:update`。
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是画布页 id。文章目录删了、改名了，或 project 不再登记，这个页 id 就不再是页，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt check <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认画布页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt check <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 
 下面这些写法都记进这个 project 的 `errors`，格式是 `articles/<文章>/index.mdx：第 N 行：…`。`pinpoint list <project>` 和站点错误条会显示它们，读取本身不抛错。
 
-- 跨页引用 `"<page>/<screen>"`：提示先把帧迁进本篇目录。
+- 跨页引用 `"<页 id>/<帧 id>"`：提示先把帧复制进本篇目录。
 - 帧文件不存在：帧仍进画布，工作台上那一格出错误面板。
 - 一节两个 `<Canvas>`：只用第一个。
 - 重复的节 id：第二个不进画布。
@@ -244,7 +244,7 @@ export default function ConfirmBare() {
 
 ## 从存量页迁移
 
-一个存量页（registry 的 dir 条目或模板页）迁成一篇 article，里面每个 board section 是一节，节里一个画布（2026-10-13 owner 定：存量 page = 一篇 article）。`pinpoint migrate` 把页的源码复制进 project，写出只有结构的正文，再逐帧和旧页对比。先看计划：
+一个存量页（registry 的 dir 条目或模板页）转成一篇 article，里面每个 board section 是一节，节里一个画布组件（owner 2026-10-13 定：一个存量页对应一篇文章）。`pinpoint migrate` 把存量页的源码复制进 project，写出只有结构的正文，再逐帧和旧页对比。先看计划：
 
 ```shell
 pinpoint migrate <页 id> --project <project 根> --dry-run
@@ -257,7 +257,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 ```
 
 - project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出。project 不登记也能迁，登记了才能在服务里打开画布和正文。
-- 文章 id 缺省用页 id，画布页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
+- 文章 id 缺省用存量页的 id，新文章的页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
 - 旧页的文件和登记都不动。标注不迁：旧页的标注留在旧页的桶里，新文章用新桶 `<project>_<article>`，命令输出里也写明这一点。
 - 新桶 `<project>_<article>` 在数据目录里已经有标注行（删掉或改了名的文章留下的孤儿桶）时拒绝，`--dry-run` 也一样：迁完这个 id 又是活页，旧行会挂到新文章上。换 `--article`，或先 `ppnt prune <project>_<article>`。
 
@@ -275,7 +275,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 | `assets.js` | `article.js`。只有一份就是改名；几份照原路径复制，`article.js` 依次 import 它们 |
 | 引用到的静态文件（图片、字体、音视频、pdf） | 复制到 `assets/<原相对路径>`（原本就在 `assets/` 下的不再套一层） |
 
-地址改写：页地址 `/sites/<页>/x`（模板页是 `/previews/<页>/x`）换成 `/sites/<画布页>/…`，静态文件指到 `assets/x`，迁走的源文件指到新名字（页级 css 指到 `article.css`）。css 里的相对 `url()` 按 css 自己的位置重算。帧和组件里写的相对静态文件路径在运行时按页地址解析，所以按页根算，改成 `./assets/x`。拼出来的地址（`` `/sites/<页>/icons/${name}.svg` ``）找不到单个文件，就把 `icons/` 整个目录复制到 `assets/icons/`。
+地址改写：页地址 `/sites/<页>/x`（模板页是 `/previews/<页>/x`）换成 `/sites/<新页 id>/…`，静态文件指到 `assets/x`，迁走的源文件指到新名字（页级 css 指到 `article.css`）。css 里的相对 `url()` 按 css 自己的位置重算。帧和组件里写的相对静态文件路径在运行时按页地址解析，所以按页根算，改成 `./assets/x`。拼出来的地址（`` `/sites/<页>/icons/${name}.svg` ``）找不到单个文件，就把 `icons/` 整个目录复制到 `assets/icons/`。
 
 帧标题、section 的 `layout: "column"`、screen 的 `role` 不带过来，输出里各记一条“注意”。
 
@@ -285,7 +285,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ### 校验
 
-写完之后从新的 `index.mdx` 派生 board（和服务同一条路），逐帧编译到临时目录，与旧页的渲染逐行比，打一张表：编号 · 帧 · 来源（复制 / comp 生成）· shell · 编译 · 与旧页。最后一列是“相同”、“只差地址”或“差 n 行”。“只差地址”指把旧页 HTML 里的旧地址换成新地址，再去掉几份资源合并后重复的注入行，两边逐字相同。有帧编不过、或某帧的 shell 和旧页不同，退 1，文件照样写，修好后跑 `ppnt build <画布页>`。
+写完之后从新的 `index.mdx` 派生 board（和服务同一条路），逐帧编译到临时目录，与旧页的渲染逐行比，打一张表：编号 · 帧 · 来源（复制 / comp 生成）· shell · 编译 · 与旧页。最后一列是“相同”、“只差地址”或“差 n 行”。“只差地址”指把旧页 HTML 里的旧地址换成新地址，再去掉几份资源合并后重复的注入行，两边逐字相同。有帧编不过、或某帧的 shell 和旧页不同，退 1，文件照样写，修好后跑 `ppnt build <新页 id>`。
 
 编译只写临时目录，不写数据目录的 dist。project 登记后，服务的 watcher 会自己编这篇。
 
@@ -295,7 +295,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
 
-- 2026-10-13 定的 `api sites workbench kits assets annotate _astro`；
+- 服务自己的前缀 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；
 - vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及 e2e 产物目录前缀。`projects.test.js` 与 `article-routes.test.js` 都检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
 - Astro 的 `_image`。
@@ -309,4 +309,4 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。
 
-`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不是页，不进 Pages）；`clash` 不登记。
+`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不进“页面”组）；`clash` 不登记。

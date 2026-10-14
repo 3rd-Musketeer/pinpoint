@@ -1,17 +1,18 @@
 # 标注：路由、账本、控制面
 
-标注是人 → agent 的反馈回路，也是这个仓存在的理由。本文说一条标注长什么样、它落到哪个文件、
-以及读到一条标注之后该去改哪个源文件。词的定义见 [`CONTEXT.md`](../CONTEXT.md)；
+标注是人 → agent 的反馈回路，也是这个仓存在的理由。反馈有两种：画布标注（owner 在画布视图或存量页上钉在元素上）和
+正文评论（owner 在文章页上选中正文写下）。一个页 id 一个桶，两种排在同一个队列里：一套 `#n`、一个状态机。
+本文说一条标注长什么样、它落到哪个文件、以及读到一条标注之后该去改哪个源文件；“标注”在字段名和本文里泛指队列里的每一条。词的定义见 [`CONTEXT.md`](../CONTEXT.md)；
 标注 → 读 → 改的操作流程见 [`skills/pinpoint-annotate/SKILL.md`](../skills/pinpoint-annotate/SKILL.md)。
 
 ## 一条标注的字段
 
 | 字段 | 含义 |
 |---|---|
-| `entry` | 页 id —— 这份文档住在哪个页桶（桶 = 页，ADR 0036；兜底 `pinpoint`） |
-| `pageId` | workbench 的页 = `data-vpage`（`library`、`components`，或自定义） |
-| `section` | board 的 section `id`（遗留名：`group`） |
-| `screenId` | frame / 屏文件的 id |
+| `entry` | 页 id —— 这一条住在哪个桶（一个页 id 一个桶，ADR 0036；兜底 `pinpoint`）。文章是 `<project>_<article>` |
+| `pageId` | 画布所属的页 id，DOM 上是 `data-vpage` |
+| `section` | 节 id：画布视图的一行，或存量页 board 的 section（遗留名：`group`） |
+| `screenId` | 帧 id（帧源文件名） |
 | `content` | 标注正文（遗留名：`comment`） |
 | `n` | 对外序号：按桶（= 页）单调取号（桶目录下 `_seq.json` 的 `next`），页内跨账本唯一、永不复用；旧标注首次读到时按创建顺序补号写回。列表、跳转、`/status` 端点都用它 |
 | `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
@@ -32,13 +33,14 @@
 
 锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
 实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt check` / `locate` 直接按它取锚点
-（多命中按文本择近），不再拿 cssPath 反查；没有 `ppId` 的存量标注仍走 cssPath 链。
+（多命中按文本择近）；没有 `ppId` 的标注（存量页的 `.html` 帧）走 cssPath 链。
 
-- 锚点带 `data-pp-comp` → 改 `<页>/components/<Name>.jsx`，所有引用它的帧一起变。
-- 锚点只带 `data-pp-id` → 改该帧的源文件 `<页>/<screenId>.jsx`。
+- 锚点带 `data-pp-comp` → 改组件文件（文章：本篇或 project 的 `components/<Name>.jsx`；存量页：`<存量页目录>/components/<Name>.jsx`），所有引用它的帧一起变。
+- 锚点只带 `data-pp-id` → 改该帧的源文件 `<帧 id>.jsx`（在文章目录或存量页目录里）。
+- 正文评论 → 改 `index.mdx` 里被评的那段，或这一节画布组件里的帧。
 - `/sites/<entry-id>/` 下做的标注 → 改登记目录里磁盘上的那个文件（服务本身是只读的）。
 
-overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`goToMark` 需要时先切页，
+标注层（`#ann-overlay`）是 stage 作用域的；画布与侧栏只显示当前页 id 的标注。`goToMark` 需要时先切页，
 再经 `src/workbench/lib/board-navigation.js` 聚焦到所属 frame；只有没有 `screenId` 的遗留标注
 才回落到把裸锚点居中。
 
@@ -48,10 +50,9 @@ overlay 是 stage 作用域的；画布与侧栏只显示当前页的标注。`g
 
 ## 账本与桶
 
-**桶 = 页**（2026-09-23 起，ADR 0036）：一个页一个桶 `~/.pinpoint/<pageId>/*.json`
-（**磁盘就是事实源**），形状是 `annotations[]`。pageId = 这条内容在 Pages 列表里属于
-哪一行：registry 条目 id（挂靠条目 `entry.page` 用宿主页 id）、`content/previews/_index.json`
-的模板页用自己的 id。`pinpoint` 桶只是“不属于任何页”的兜底（SPA fallback 页等），不是页。
+**一个页 id 一个桶**（ADR 0036）：`~/.pinpoint/<页 id>/*.json`（**磁盘就是事实源**），形状是
+`annotations[]`。页 id：文章是 `<project>_<article>`；存量页是 registry 条目 id（挂靠条目
+`entry.page` 用宿主存量页的 id），`content/previews/_index.json` 的模板页用自己的 id。`pinpoint` 桶只是“不属于任何页”的兜底（SPA fallback 页等），不是页。
 registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。数据根的确切路径从
 `GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
 
@@ -60,7 +61,8 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
   同一本）；mention 帧也写这本（桶 = 被引用帧所属的页），与画布双向实时同步。
 - **文档、直开页、url 条目**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。
-- 工作台切活动页 = 换桶重新 hydrate；`#n` 按页（桶）编号，一页一套序列。
+- 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。
+- 工作台切活动页 = 换桶重新 hydrate；`#n` 按桶编号，一个页 id 一套序列。
 
 `POST /save` 要带 `baseRevision`（整数 ≥ 0；不匹配返回 `409 revision_conflict` 并附磁盘上的文档）；
 清空走同一条保存队列、传 `annotations: []`（没有 `/clear` 路由）。显式传一个未登记的 `entry` 是
@@ -70,15 +72,15 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 每次 `/save` 在请求体不超过 30000 字节时带 `keepalive`，关页或导航走之后在途的保存照样送达；更大的请求体走普通 fetch，
 离开时可能丢。`pagehide` 与 `visibilitychange` 转 hidden 时，没落盘的写立刻发出：没有在途保存就照常同步；
 有在途保存、之后又改过，就把整份快照按 `revision` 和 `revision + 1` 各发一次，在途那次先到还是后到，盘上都是最后一版。
-换账本时排进 outbox、还没发出去的快照也在这时发。还在防抖里的 lastRect（锚点几何缓存，不是 owner 的改动）不发。
+换账本时排进 outbox、尚未发出的快照也在这时发。还在防抖里的 lastRect（锚点几何缓存，不是 owner 的改动）不发。
 
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
 `GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
 按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
 
-**孤儿**（storage-unify）：一本账本对应的表面已不存在（文档文件删了、条目移走了、
-页不在 registry 与 manifest 里了 = 整桶皆孤儿）。`ppnt status --page` 与 `check`
+**孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、存量页不在 registry 与
+manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt status --page` 与 `check`
 把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
 面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。
 
@@ -90,15 +92,15 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 
 桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、url 代理、`/api/frame`）
 注入的 `window.__pinpointEntry` = 页 id；工作台画布实例没有标记，桶 = 活动页 id
-（切页 = 换桶）；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
-存量账本（previews 直开页与 mention 帧旧落 pinpoint 桶、画布账本按工作台 pathname
-分本）由 `scripts/migrate-ledgers.mjs` 一次性迁到页桶 —— 迁移是这次模型切换的一部分。
+（切页 = 换桶）；文章页注入的是这篇的页 id；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
+旧格式的账本（落在 pinpoint 桶的 previews 直开页与 mention 帧、按工作台 pathname 分本的画布账本）
+用 `scripts/migrate-ledgers.mjs` 迁到对应的页 id 桶。
 
-## 正文评论（pp3 · 2026-10-13）
+## 正文评论
 
-article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布上的标注是同一个队列：
+文章页（`/<project>/<article>/`）上，owner 选中正文文字点“评论”，评论进右栏线程。它和这篇画布视图上的画布标注是同一个队列：
 
-- 桶 = 文章页 id `<project>_<article>`（`src/shared/project-ids.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
+- 桶 = 这篇的页 id `<project>_<article>`（`src/shared/project-ids.js` 的 `articlePageId`），账本固定名 `@prose.json`，与画布的 `@canvas.json` 同桶，`#n` 是同一套序列，状态机相同。
 - 一行的形状：`{ id, n, type: "prose", status, content, quote: { exact, prefix, suffix, start? }, section, path, created_at, messages: [{ who: "owner" | "agent", text, at }] }`。`content` 是 owner 的第一句，之后的来回在 `messages`。
 - 锚点是 W3C TextQuote 式（`src/shared/text-quote.js`）：选中文字 + 前后各 32 字，`section` 和 `start`（选中时在规范化文本里的位置）只是提示。正文先抽成规范化文本：两个 CJK 字之间的空白（软换行、块边界）算没有，其余空白连成一个空格。源文件改了折行，中文引文照样定位。存下的引文定位前按同一条规则规范化，旧数据里“换行存成空格”的引文也能定位。每次加载都重新定位：逐字找 `exact`，多处时按前后文吻合度挑，同分看节，再同分取离 `start` 最近的一处。`exact` 一处都找不到就在右栏标“失效”，显示存下的引文，不画高亮。不做模糊匹配。画布卡片（`[data-pp-canvas]`）、脚本、错误条不进文本，选区落在那里不出“评论”。
 - 注入：`article-proxy` 只给文章页注入，带 `window.__pinpointProse`；客户端见到它只跑正文评论（`src/client/prose-comments.js`），不起画布标注的工具条、侧栏和元素标注。project 首页、概念页不注入。
@@ -111,8 +113,7 @@ article 页（`/<project>/<article>/`）上，owner 选中正文文字点“评�
 
 在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。
 
-工具条带一个**“打开 workbench”**入口（2026-09-04）：`/sites/` 页面在 workbench 之外，
-之前只能靠记住 URL 走回去。工具条的钮（`#ann-workbench`）在新标签页开
+工具条带一个**“打开 workbench”**入口：`/sites/` 页面在工作台之外，工具条的钮（`#ann-workbench`）在新标签页开
 `<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
 frame 里隐藏——那里已经在 workbench 里，同“只留一个控制面”的规矩。
 
@@ -121,8 +122,6 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
 工作台列表同款（open / check / done 行 hover 出完成勾，close 行 hover 出“重新打开”），
 失效锚点带标记；打开状态作为 localStorage 的浏览偏好保存，默认关闭；
 凡是存在 `window.workbench` 或文档跑在 frame 里的地方一律抑制——和工具条同一条“只留一个控制面”的规矩。
-
-（浏览器扩展与它的 Chrome Side Panel 控制面已于 pp2 切片 3 退役。）
 
 ## workbench 偏好
 
@@ -161,8 +160,8 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
 全局样式、无法限定范围的选择器变化、页面替换和显式 `pinpoint.render()` 保留全量刷新。
 
 锚点解析按页面与 frame 缓存，同一刷新共享有效性结果。纯几何更新不通知评论列表；正文保存与
-远端账本更新复用几何未变的节点和行模型，只测量新增或目标已改变的标注。保存请求仍包含完整
-账本及原有 revision，缓存不写入持久化数据。文档页面沿用原来的视口定位；未卸载原型 HTML。
+远端账本更新复用几何未变的节点和行模型，只测量新增或目标已改变的标注。保存请求包含完整
+账本和 revision，缓存不写入持久化数据。文档形态按自己的视口定位，原型 HTML 保持挂载。
 
 `e2e/canvas-pan.spec.js` 覆盖平移手势、连续缩放、草稿、内部滚动、区域、跨 frame 多目标、
 箭头、锚点失效恢复、全局样式和单条保存，以及 1000 条模拟标注。回归门槛约束目标读取、
@@ -190,10 +189,9 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 ## 导出
 
-用户面只剩一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
-原生 dialog；ADR 0033）。图片 picker、zip 打包（`/api/export-zip`）、文档导出三模式都在 pp2 切片 3 退役。
-服务端帧图片渲染器（`/api/export-image`）保留给 agent：`ppnt shot`
-与 `ppnt check --mode image` 走它，不再是用户面入口。不要把截图逻辑加进单个屏的片段里。
+用户面只有一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
+原生 dialog；ADR 0033）。文章本身用文章页的链接分享。服务端帧图片渲染器（`/api/export-image`）给 agent 用：
+`ppnt shot` 与 `ppnt check --mode image` 走它。不要把截图逻辑加进单个帧里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。
 
@@ -203,7 +201,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 面板默认收起、帧竖排按屏宽适配、单指滚动。没有标注面：它是分享面，不是工作面。运行时在
 `src/client/share-runtime.js`，内联进导出文件，不依赖服务。
 
-## 标注状态机（pp2，2026-09-22 起）
+## 标注状态机
 
 每条标注带 `status`：`open`（缺省）→ `check` / `done`（升档）→ `close`。owner 完成单击可从
 `open` / `check` / `done` 任一态直接入 `close`。`close` 不删，账本里留着。
@@ -228,13 +226,12 @@ UI 随状态走：颜色即状态 —— 画布钉子与列表行首序号圆共
 close 灰，白字共用，不做角标；列表行另出 check / done / close 文字灰标。
 旧账本里可能还有 `note` 字段（2026-09 以前 agent 写的备注），原样留在盘上，界面与 CLI 都不读（ADR 0038）。列表顶部有两段状态筛选（2026-09-24 owner 定）：pending = open / check / done，
 都在等 owner 验收；closed = owner 确认做完的。两段各带计数，0 计数弱化但可点，落空显示
-“没有 <段名> 的标注”。默认 pending；选择按页记 localStorage，刷新保留，09-23 五段时期存下的
-旧值读成 pending。画布钉子跟随筛选：pending 不画 close 钉，closed 只画灰钉。行点“完成”后
+“没有 <段名> 的标注”。默认 pending；选择按页记 localStorage，刷新保留，认不出的旧值读成 pending。画布钉子跟随筛选：pending 不画 close 钉，closed 只画灰钉。行点“完成”后
 离开 pending 视图，撤销后回来。工作台右下角计数、弹层标题计数、注入侧栏标题计数都只数
 pending。
 锚点失效不是免死牌：幽灵框照样会被 `clearInvalid()` 清掉。
 
-composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；顶部拖动与 indicator 控件退役，底栏 + 菜单提供改文案/移动。
+composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标仍在本条 `targets`。`changeTo` 只表示修改文案的意图，可包含多个目标，不应把整段用户指令直接用作替换文本。移动保留实际目的地和箭头。正文自动增高最多十行，附图通过粘贴加入；底栏 + 菜单提供改文案/移动。
 
 标注框没有保存和取消（2026-09-24 owner 定）。正文输入停 600 ms 自动存一次；Esc、右上角 X、Enter 结束这一条，都先存再关，⇧Enter 换行。框开着时点别的钉子、点列表行、切页、退出标注模式，也都先存再走。只在内容和上次存的不一样时写账本：打开再关掉不改状态，一改就按状态机回 `open`。新建的写了内容才落账本、拿到 `#n`，空着关掉就丢；已有的清空正文不存，保留原文，删除走框里的垃圾桶。框开着时 hover 别的元素照常出高亮框，点下去给这条加目标（多目标），不开新标注。
 

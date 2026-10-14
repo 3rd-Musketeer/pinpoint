@@ -1,50 +1,57 @@
 # pinpoint
 
-**A local visual feedback service for high-fidelity UIUX prototypes — your agent builds and revises
-them, you review the real thing in a browser and hand feedback back through annotations.**
+**A local service for design articles with live UI prototypes in them — your agent writes the
+article and its frames, you read it in a browser and hand feedback back through comments and
+annotations.**
 
-pinpoint runs as one persistent local service (`https://pinpoint.localhost`) with three layers:
+## The model
 
-- 🧰 **Kits** — accumulated design specs. `content/kits/ios/` (`ios-kit.css` + `ios-kit.js` + `jsx/`
-  component stamps; HIG-accurate, CJK-safe, zero runtime deps) is the first kit, not the product.
-- 🖥️ **Workbench / canvas** — a Figma-like multi-page viewer for comparing prototype variants side
-  by side. A page holds two forms: **canvas** (phone artboards, the iterating form) and **doc**
-  (a whole standalone document in a full-viewport iframe, the presenting form).
-- ✏️ **Annotation** — the core layer and the human→agent feedback loop. Marks made in the browser
-  land on disk for the agent to read and act on. One client, injected only into what you registered.
+A **project** holds **articles** (design documents written in MDX, readable by anyone with the
+link) and **concepts** (wiki-style definitions). An article is made of **sections**; a section can
+hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` file per UI state). Each article has two views:
 
-Also: 🤖 **agent-native** ([`AGENTS.md`](AGENTS.md) + in-repo skills teach any coding agent the
-contracts), 🖼️ **offline interactive HTML export** (one self-contained file per page), 🔁 **HMR**
-(source change → recompile → the open board refreshes in place).
+- 📄 **Article page** — `https://pinpoint.localhost/<project>/<article>/`. Prose, a table of contents
+  numbered 1, 2, 3, and one canvas card per section with frames. Click a frame to open the canvas
+  overlay (frames are interactive there); “打开画布 →” jumps to the canvas view. `[[name]]` links to
+  another article or a concept; a link whose target does not exist yet (an empty ref) is allowed and
+  shows the concepts still missing.
+- 🖼️ **Canvas view** — the workbench at `/?page=<project>_<article>`. Every section with a canvas
+  becomes one row of frames, referenced as A1, B3 (section letter + frame number; the nth section is
+  the nth letter). It is generated from `index.mdx`; you never write it by hand.
 
-Since pp2 (2026-09-22) a page is **source**: `<screenId>.jsx` frames + `components/<Name>.jsx`
-page-local components + `board.json`. `ppnt build` compiles it to dist under `~/.pinpoint/dist/<entry>/`;
-the canvas, annotations, exports and mentions only ever see the compiled output. Existing `.html`
-frames keep working as-is.
+Feedback lands in **one queue per article**: prose comments (select text on the article page) and
+canvas annotations (pin elements on the canvas view) share one bucket, one `#n` sequence and one
+status machine (`open` → `check` / `done` → `close`). The agent reads them with `ppnt check`, edits,
+replies in comment threads with `ppnt reply`, and marks status with `ppnt mark`.
 
-Since pp3 (2026-10-13) the primary object is the **article**: project → article → section → canvas
-component. An article is `index.mdx` plus its own frames under `<project root>/docs/pinpoint/articles/<id>/`,
-read at `/<project>/<article>/`; its canvas is derived from the MDX and opens as page
-`<project>_<article>`. New work goes into articles; existing pages keep working
-([ADR 0042](docs/adr/0042-pp3-article-as-primary-object.md)).
+Underneath: 🧰 **kits** (`content/kits/ios/`: `ios-kit.css` + `ios-kit.js` + `jsx/` component stamps;
+HIG-accurate, CJK-safe, zero runtime deps), a compiler that turns frames into static HTML under
+`~/.pinpoint/dist/<page id>/` (HMR on every save), and an annotation client injected only into what
+you registered. Every word above has one definition in [`CONTEXT.md`](CONTEXT.md); the design
+decision is [ADR 0042](docs/adr/0042-pp3-article-as-primary-object.md).
+
+**Legacy pages** are prototype pages from before articles: a `board.json` plus frames (or an HTML
+file, or a live URL), registered with `pinpoint add` and listed in the workbench's “页面” group.
+They keep working; `pinpoint migrate` turns one into an article. See the last section of
+[`CONTEXT.md`](CONTEXT.md).
 
 ## 问题 → 文档
 
 | 你要什么 | 读哪里 |
 |---|---|
-| 这些词是什么意思（page / board / entry / frame / 桶 / 账本） | [`CONTEXT.md`](CONTEXT.md) |
+| 这些词是什么意思（project / 文章 / section / 帧 / 画布视图 / 页 id / 桶） | [`CONTEXT.md`](CONTEXT.md) |
 | agent 开工读什么、验收命令、坑与约定 | [`AGENTS.md`](AGENTS.md) |
-| `board.json` 的字段、条目派生、交互 frame、编辑面 | [`docs/board-schema.md`](docs/board-schema.md) |
-| project 与 article 的目录、`add --project`、文章画布与页 id | [`docs/projects.md`](docs/projects.md) |
-| 文章站点：`Section` / `Canvas`、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
-| registry 条目形状与分组层、`pinpoint add` / `move` / `rename` / `folder`、三条注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
-| 标注字段、账本与桶、控制面、workbench 偏好、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
+| 写文章、加帧、加组件、写 concept 的做法（含存量页） | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
+| 处理画布标注与正文评论：读 → 修改 → 回复 → 写状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
+| project 与文章的目录、`add --project`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
+| 文章站点：`Section` / `Canvas`、`[[ ]]`、画布浮层、路由、`llms.txt` | [`site/README.md`](site/README.md) |
+| 帧、组件、编译、交互；存量页的 `board.json` 字段 | [`docs/board-schema.md`](docs/board-schema.md) |
+| registry 条目形状与文件夹、`pinpoint add` / `move` / `rename` / `folder`、注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
+| 标注与评论的字段、桶与账本、状态机、控制面、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查案例库 | [`docs/debugging.md`](docs/debugging.md) |
 | 五阶段收敛计划当时怎么切的（历史） | [`docs/2026-08-16-roadmap.md`](docs/2026-08-16-roadmap.md) |
-| 写文章、加帧、加组件的做法（含存量页） | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
-| 画布标注与正文评论 → 读 → 修改 → 回复的做法 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 变更历史 | `git log`（本仓不维护 changelog） |
 
 ## Quickstart
@@ -64,7 +71,7 @@ first thing to run when the site does not open — it checks the portless route,
 health endpoints, and whether the running service is the repo you are standing in;
 `pinpoint start` / `stop` / `restart` drive that same service.
 
-Articles (pp3) are served on the same origin at `/<project>/<article>/`. The service starts the
+Article pages are served on the same origin at `/<project>/<article>/`. The service starts the
 Astro dev server on the first article request (`npm run site:dev`, port 4530) and proxies to it;
 until it is ready the page shows “站点启动中” and refreshes itself. Knobs: `PINPOINT_SITE_PORT`
 (default 4530), `PINPOINT_SITE_CMD` (shell command, `{port}` is substituted). The site's vite must
@@ -88,7 +95,7 @@ the proxy fixture and workbench server and stops them on exit; an occupied port 
 instead of silently reusing another service. Use a distinct `E2E_PORT` for a separate run;
 the upstream defaults to that port + 10.
 
-`just check` now uses the same two-group E2E runner as `just e2e-parallel`. It runs two independent groups, each with one worker and its own server,
+`just check` uses the same two-group E2E runner as `just e2e-parallel`. It runs two independent groups, each with one worker and its own server,
 registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
 (default 5299), +10, +20 and +30; choose a base whose four ports are free. New spec files
 are included automatically. Any group failure fails the command, and Ctrl+C stops both.
@@ -111,26 +118,28 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 
 ## CLI (`ppnt` = `pinpoint`)
 
-One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH):
+One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH). An article's
+page id is `<project>_<article>`; every `<page id>` below also accepts a legacy page's id.
 
 ```bash
-ppnt list [words…]             # pages and projects: id · title · kind · counts · source path; fuzzy match on words
-ppnt list <project>            # a project's articles (with canvas page ids), concepts and layout errors
+ppnt list [words…]             # projects and legacy pages: id · title · kind · counts · source path; fuzzy match on words
+ppnt list <project>            # a project's articles (each with its page id), concepts and layout errors
+ppnt list <page id> --frames   # canvas numbers (A1) ↔ frame ids ↔ source files
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
-ppnt add <dir|file|url>        # register an entry (files stay where they are) — see docs/registry.md
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
+ppnt add <dir|file|url>        # register a legacy page source (files stay where they are) — see docs/registry.md
 ppnt move <id> <target>        # re-point an entry, keep its id and annotations
-ppnt rename <old> <new>        # rename id + annotation bucket + /sites/ prefix in one shot
-ppnt folder list|add|rename|rm|move   # the one level of page grouping in the sidebar
-ppnt migrate <page> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
-ppnt build <page> [--watch]    # compile source → dist (~/.pinpoint/dist/<entry>/)
-ppnt render <page>/<screen>    # compile one frame to stdout, no dist write
-ppnt check <page>              # read annotations: statuses, intents, code excerpts (contract, slice 4)
-ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (contract, slice 4)
-ppnt shot <ref…> [--marks]     # PNG of frames/sections/page, --marks bakes the #n pins (contract)
-ppnt mark <ref…> done|check    # write annotation status (contract)
-ppnt reply <ref> <text>        # reply in a prose comment's thread on an article (status unchanged)
+ppnt rename <old> <new>        # rename id + annotation bucket(s) + /sites/ prefix in one shot
+ppnt folder list|add|rename|rm|move   # the one level of grouping in the sidebar's “页面” group
+ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
+ppnt build <page id> [--watch] # compile frames → dist (~/.pinpoint/dist/<page id>/)
+ppnt render <page id>/<frame id>  # compile one frame to stdout, no dist write
+ppnt check <page id>           # read the queue: canvas annotations and prose comments, statuses, intents (edit text / move / reference image), code excerpts
+ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (refs need --page <page id> or a <page id>#12 prefix)
+ppnt shot <ref…> [--marks]     # PNG of frames/sections/the whole canvas, --marks bakes the #n pins
+ppnt mark <ref…> done|check    # write annotation status
+ppnt reply <ref> <text>        # reply in a prose comment's thread (status unchanged)
 ```
 
 ## Repository layout
@@ -138,89 +147,90 @@ ppnt reply <ref> <text>        # reply in a prose comment's thread on an article
 ```text
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
-docs/                        Rules and runbooks: board-schema, registry, annotation, design; adr/ = decisions
+docs/                        Rules and runbooks: projects, board-schema, registry, annotation, design; adr/ = decisions
 index.html                   WORKBENCH shell — full-bleed canvas + floating glass panel + bottom strip
+site/                        Article site (Astro): article pages, concept pages, [[ ]] refs, llms.txt
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
   src/workbench/             Board loader, dist screens, preview-script mount (A+B), HMR client
-  src/client/annotate.js     The annotation client (served as /annotate.js)
+  src/client/annotate.js     The canvas annotation client (served as /annotate.js)
+  src/client/prose-comments.js  The prose comment client on article pages
   src/server/                Vite plugins: annotate/sites/export APIs, page compiler, preview-hmr,
                              preview-inject, content-routes (URL → disk mapping);
+                             lib/projects.js = project / article reader;
+                             lib/article-board.js = canvas view derived from index.mdx;
+                             article-proxy.js = /<project>/… → on-demand Astro dev server;
                              lib/site-proxy.js = same-origin proxy for url entries;
-                             article-proxy.js = /<project>/… → on-demand Astro dev server (pp3);
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
-                             slug, clip, bubble, ann-row) + proxy-rebase.js + ann-list.css
+                             slug, clip, bubble, ann-row, project ids, text quote) + proxy-rebase.js + ann-list.css
 
 content/                     what the service serves
   content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
   content/kits/ios/ios-kit.js    iOS kit runtime — auto-fit, tabs/sheet/segmented, live clock
   content/kits/ios/jsx/          Kit component stamps (JSX), imported from 'pinpoint/kit'
-  content/previews/              Template pages only — each a source dir: board.json + <screen>.jsx
+  content/previews/              Template legacy pages only — each a source dir: board.json + <frame>.jsx
                                  + components/ (+ assets); manifest _index.json — URL /previews/…
 
 bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render; logic + tests in
                              bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 scripts/                     wb-token generator + offline-export verifier + e2e runner
-e2e/                         Playwright workbench / registry tests + page fixtures (e2e/jsx-site …)
+e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/prose-site, e2e/jsx-site …)
 
-~/.pinpoint/dist/<entry>/    Compiled screens (pp2 dist) — generated, not in git, not in the page dir
+~/.pinpoint/dist/<page id>/  Compiled frames — generated, not in git, not in the source dir
 ```
 
-Your own pages do **not** live in this repo. Register any directory, single HTML file, or live URL
-with `pinpoint add`, and it shows up as a workbench page served from `/sites/<entry-id>/` — the files
-stay where they are. Moved the source? `pinpoint move <id> <new path>` re-points the entry and keeps
-the id, so the annotations in `~/.pinpoint/<id>/` stay attached. Renaming the entry itself is
-`pinpoint rename <old id> <new id>` — it moves the registry entry, the annotation bucket, and the
-`/sites/<id>/` prefix written into the entry's own files in one shot; for a project entry it moves
-every `<project>_<article>` bucket instead ([`docs/projects.md`](docs/projects.md)). See
-[`docs/registry.md`](docs/registry.md).
+Your articles do **not** live in this repo. A project lives in its own repository or topic under
+`<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
+frames, `concepts/`, shared `components/`); `pinpoint add <root> --project` registers it once, and
+new articles show up without re-registering. Legacy page sources register the same way with
+`pinpoint add <dir|file|url>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
+re-points an entry and keeps its id, so its annotations stay attached; `pinpoint rename <old id> <new id>`
+renames the id together with its buckets — for a project, every `<project>_<article>` bucket
+([`docs/projects.md`](docs/projects.md), [`docs/registry.md`](docs/registry.md)).
 
-## Annotation review loop
+## Feedback loop
 
-Mark up a preview — Figma-style — and have your agent read marks and revise.
+1. On the article page, select prose and click “评论”; the comment opens a thread in the right
+   rail. On the canvas view, press **A** to switch 交互 → **标注**, click / lasso elements and
+   write in the bottom composer (pills reference targets, paste reference images, draw move-arrows).
+2. Say “标好了，你看一下” — the agent runs `ppnt check <page id>` (both kinds in one list, no
+   browser), edits the frame, component or `index.mdx`, runs `ppnt build`, answers prose comments
+   with `ppnt reply`, and writes `ppnt mark … done` (or `check` when it looked but changed nothing).
+3. Review: hover a pin on the canvas, or open the annotation list from the count button at the right
+   end of the bottom strip; on the article page, read the thread in the right rail. Click 完成 to
+   close an item (one click, 5 s undo). Closed items collapse away.
 
-1. Press **A** to switch 交互 → **标注**; click / lasso elements, write comments in the bottom
-   composer (pills reference targets; `[indicator N]` inlines them), paste reference images,
-   draw move-arrows.
-2. Say“标好了，你看一下”— the agent runs `ppnt check <page>` (statuses, intents, code excerpts,
-   no browser), edits the routed source file, `ppnt build`, then writes `ppnt mark … done`.
-   Annotations live in per-entry buckets under `~/.pinpoint/<entry-id>/` (disk is the SSOT;
-   revisioned, SSE-synced). Four states: `open` (yours) → `check` / `done` (agent) → `close` (yours).
-3. Hover a pin on the canvas to read its comment card, or open “这页的标注” from the count
-   button at the right end of the bottom strip and click 定位 to focus the owning frame. Review the
-   change and click 关闭 on the done row (one click, toast with 5 s undo). Closed rows collapse away.
+Everything for one article lives in one bucket, `~/.pinpoint/<project>_<article>/` (disk is the
+SSOT; revisioned, SSE-synced): canvas annotations in `@canvas.json`, prose comments in
+`@prose.json`.
 
-On an article (`/<project>/<article>/`), select prose text to comment instead; prose comments land in the
-same bucket and queue as that article's canvas annotations (page id `<project>_<article>`), and the agent
-answers in the thread with `ppnt reply`.
-
-Short locators for chat: `#12` · `plugins#12` · `B3` · `@frame:<page>/<screen>` · `@a:<id>`.
+Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@a:<id>`.
 Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
-The annotation layer never touches a page you didn't register — **登记过才注入**. Everything else —
+The annotation client never touches a page you didn't register — **登记过才注入**. Everything else —
 `file://`, a self-started server, an unregistered origin — opens the identical bytes with zero
 annotation surface, and exported artifacts never contain the injected client.
 
 ## Export an offline interactive HTML
 
-The strip's **导出** button writes one self-contained `<page>__interactive.html`
-(`POST /api/export-page-html`, ADR 0033) — the single user-facing export (pp2). It
+The strip's **导出** button writes one self-contained `<page id>__interactive.html`
+(`POST /api/export-page-html`, ADR 0033) — the single user-facing export. It
 opens as the same shell you use in the workbench: the full-bleed grid canvas, the
 floating glass panel with the outline, and the bottom strip (panel toggle, page
 title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ +
 wheel zooms around the cursor, Space + drag or middle-drag pans. On narrow screens
 (≤ 760px) the panel starts collapsed and frames stack vertically at screen width.
-No annotation surface.
+No annotation surface. Sharing an article itself is by link to the article page.
 
 HTTPS static dependencies are scanned first and frozen byte-exact only after
 per-resource approval; pages without remote resources download immediately.
 
 Frame images are the agent side: `ppnt shot` (with `--marks` baking the `#n` pins)
 and `ppnt check --mode image` reuse the same server-side renderer
-(`POST /api/export-image`) — screens never implement their own screenshotting.
+(`POST /api/export-image`) — frames never implement their own screenshotting.
 
 ## One phone, no workbench
 
@@ -252,7 +262,7 @@ Use the minimal skeleton:
 </div>
 ```
 
-Standalone pages need the full shell; workbench screens do **not** — the loader owns chrome.
+Standalone pages need the full shell; frames do **not** — the loader owns chrome.
 
 ## Knobs (iOS kit)
 
@@ -314,8 +324,8 @@ just ship     # on main: clean + non-divergent guard, full check, push origin/ma
 `just ship` refuses a dirty or divergent `main` and never force-pushes. The full contract is in
 [`AGENTS.md`](AGENTS.md).
 
-Clone per project. `content/previews/` holds **template content only** (pp2 removed the old tracked
-example pages; instance content always registers via `pinpoint add` and lives outside this repo).
+Clone per project. `content/previews/` holds **template content only**; instance content
+(projects, legacy pages) registers via `pinpoint add` and lives outside this repo.
 Framework files stay untouched, so pulling template updates is a clean overwrite of
 `content/kits/ios/` / `src/` / `index.html`.
 
@@ -324,7 +334,3 @@ Framework files stay untouched, so pulling template updates is a clean overwrite
 The annotation system is a heavily extended fork of
 [xueweijia/html-prototype-annotate](https://github.com/xueweijia/html-prototype-annotate)
 (section/page routing, disk SSOT + SSE, target composer, indicators).
-
-## “去 Manus 配置” 移出产品页（2026-09-10 晚，owner 问“正式的 web 里会有吗”）
-
-不会有。它只是原型里跳到 Manus 设置页模拟的入口，用来演示 “把 key 填进应用” 这一步；正式 Web 无法深链进第三方设置页。已从保存 key 页删除，保存页只剩 “我已保存”。模拟页改由评审工具栏的 “模拟 Manus 配置” 打开。

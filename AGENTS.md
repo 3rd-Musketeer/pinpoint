@@ -1,23 +1,23 @@
 # pinpoint — Agent Guide
 
-pinpoint 是一个本地视觉反馈服务：kit（`content/kits/ios/`，第一份设计规范）+ workbench 画布
-（多方案原型对比）+ 标注层（人 → agent 的反馈回路，也是这个项目的核心）。
-常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务 workbench、annotate API、
-登记进来的仓外目录（`/sites/<id>/`）和 client bundle（`/annotate.js`）。
+pinpoint 是一个本地服务：agent 把设计写成文章（article），文章里嵌着可以实时渲染的界面帧；owner 和其他读者在浏览器里读，
+owner 用正文评论和画布标注把反馈交回 agent。常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务文章站点、
+工作台、标注 API、登记进来的仓外内容（`/sites/<id>/`）和标注客户端（`/annotate.js`）。
 
-pp3（2026-10-13 起）主体是 **article**：project → article → section → 画布组件。一篇 article 是
-`<project 根>/docs/pinpoint/articles/<id>/` 下的 `index.mdx` 加本篇的帧，正文经 Astro 站点同源代理在
-`/<project>/<article>/`，画布由正文派生，页 id `<project>_<article>`。新工作写成 article，存量 page 照旧维护。
-目录、写法与查错见 [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)，为什么这样定见 ADR 0042。
+模型从上到下：project → 文章 → section（节）→ 节里的画布组件 → 帧。一篇文章是 `<project 根>/docs/pinpoint/articles/<id>/`
+下的 `index.mdx` 加本篇的帧（`<帧 id>.jsx`）和组件；读者在文章页 `/<project>/<article>/` 读它，集中修改在画布视图
+`/?page=<project>_<article>`（所有带画布的节按行排开，由正文自动生成）。`<project>_<article>` 是这篇文章的页 id：
+`ppnt` 的页参数、画布视图的地址和标注桶都用它，正文评论和画布标注进同一个队列。帧是源码，`ppnt build` 把它编译成
+dist（`~/.pinpoint/dist/<页 id>/`），画布、卡片、标注和截图只读 dist。
 
-pp2（2026-09-22 起）页是**源码**：`<screenId>.jsx` 帧 + `components/<Name>.jsx` 页内组件 +
-`board.json`；`ppnt build` 把源码编译成 dist（`~/.pinpoint/dist/<entry>/`），画布、标注、
-导出、mention 只认 dist。机制细节见 [`docs/board-schema.md`](docs/board-schema.md)。
+存量页（带 `board.json` 的原型页）照常可看、可改、可标注；新工作写成文章，存量页可以用 `pinpoint migrate` 转成文章。
+写法与查错见 [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md)，帧与编译机制见
+[`docs/board-schema.md`](docs/board-schema.md)，为什么这样定见 ADR 0042。
 
 ## 开工读序
 
-1. [`CONTEXT.md`](CONTEXT.md) —— 词汇表。page / board / entry / frame / 桶 / 账本这些词在这里各有一条定义，
-   `entry` 有两个意思，读代码前先看清楚。
+1. [`CONTEXT.md`](CONTEXT.md) —— 词汇表。project / 文章 / section / 帧 / 画布视图 / 页 id / 桶这些词在这里各有一条定义；
+   代码和 CLI 里的 `page`、`screen`、`entry` 对应哪个词也写在那里，读代码前先看清楚。
 2. 本文的“坑与约定”一节 —— agent 猜不到、猜错了会白干的东西。
 3. 下面的技能路由表 —— 按你要碰的面打开对应文档，不要通读全部。
 
@@ -43,7 +43,7 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 5299（共占 5299~5329）。一个端口一套固件，registry、标注数据根、`test-results-<port>/` 全从
 这一个数推导（`e2e/env.js`）。在别人也在跑 e2e 的机器上换基准跑自己的那一轮：
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
-完全不像并发冲突。单跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5870~5900：组端口 +10 / +20 / +30 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
+完全不像并发冲突。单独跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5870~5900：组端口 +10 / +20 / +30 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
 
 **高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 10 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。重跑会清空该组产物目录，首跑的截图、trace 与报告先复制到 `test-results-<端口>-first-run/`、`playwright-report-<端口>-first-run/`，查重跑过了的偶发失败从这里读。
 
@@ -51,9 +51,9 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 
 **功能分支上只跑单测和相关的 spec，不跑全量。** 全量两组约 2 分钟、机器满载时时序用例会偶挂，
 每个分支各跑一遍再回基点对照，时间都花在这里。分支上：`npm test` + 改动涉及的 spec（新写的与
-断言被改的）。全量两组只在合入 dev 后跑一次，几个分支攒一起跑；那一轮挂了才单跑定位。
+断言被改的）。全量两组在合入 main 之后跑一次，几个分支攒一起跑；那一轮挂了才单独跑定位。
 
-**回归测试先写单测，只有必须靠浏览器才验证得了的行为才写 e2e。** 纯逻辑（筛选、排序、解析、状态机、服务端响应）落在对应源文件的 `*.test.js`；e2e 只守 iframe 标注桥、几何与层级遮挡、手势、跨窗口同步、代理注入这类单测够不着的行为。同一个决定或同一块功能的断言合进一条用例、用 `test.step` 分段，不为每条批注各开一次页面。等待只等可观察信号（`expect.poll`、事件），不写固定 sleep。2026-09-24 按这条口径把 e2e 从 159 条精简到 95 条，审计记录在 `tasks/done/2026-09-24-e2e-audit/`。
+**回归测试先写单测，只有必须靠浏览器才验证得了的行为才写 e2e。** 纯逻辑（筛选、排序、解析、状态机、服务端响应）落在对应源文件的 `*.test.js`；e2e 只守 iframe 标注桥、几何与层级遮挡、手势、跨窗口同步、代理注入这类单测够不着的行为。同一个决定或同一块功能的断言合进一条用例、用 `test.step` 分段，不为每条标注各开一次页面。等待只等可观察信号（`expect.poll`、事件），不写固定 sleep。
 
 **站点打不开，第一件事是 `pinpoint status`**——不要先猜、也不要先 `ps`：
 
@@ -69,10 +69,10 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 `pinpoint restart`）。案例见 [`docs/debugging.md`](docs/debugging.md)。
 
 **`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、
-`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页迁成文章）、`build` / `render`（编译）、
-`check` / `locate` / `shot` / `mark` / `reply` / `status --page`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论，
-pp2 切片 4 契约，落地前以 `bin/pinpoint-cli.js` 为准）。改完页源码跑 `ppnt build <页>`
-（或 `--watch` 挂着）——dist 落后于源码或某屏没编过时，那个 frame 出错误面板，
+`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
+`check` / `locate` / `shot` / `mark` / `reply` / `status --page`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论），
+参数以 `bin/pinpoint-cli.js` 为准。页参数写页 id：文章是 `<project>_<article>`，存量页是它自己的 id。改完帧跑 `ppnt build <页 id>`
+（或 `--watch` 挂着）——dist 落后于源码或某帧没编过时，那一帧出错误面板，
 重编即修，不要手改 `~/.pinpoint/dist/` 下的任何文件。标注四态 open / check / done / close：
 agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工作台编辑时
 自动回，`close` 只有 owner 在工作台做），
@@ -103,17 +103,17 @@ agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工
 |---|---|
 | 写 article、加帧 / 加组件、写 concept、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 读画布标注与正文评论 → 改稿 → 回复、写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
-| board、帧、组件、编译、交互的唯一机制权威 | [`docs/board-schema.md`](docs/board-schema.md) |
+| 帧、组件、编译、交互的唯一机制权威（含存量页的 board） | [`docs/board-schema.md`](docs/board-schema.md) |
 | registry 条目形状、注入契约、CLI（add / move / rename / folder）、代理 | [`docs/registry.md`](docs/registry.md) |
-| project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects`、文章的画布与页 id | [`docs/projects.md`](docs/projects.md) |
-| 文章站点：`Section` / `Canvas` 写法、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
-| 标注字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |
+| project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
+| 文章站点：`Section` / `Canvas` 写法、画布卡片与画布浮层、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
+| 画布标注与正文评论的字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
-
-`skills/pinpoint-build` 与 `skills/pinpoint-annotate` 是实现的一部分，不是事后补的说明：别的仓的 agent 只读这两个 skill，照着它们写帧、读标注、调 `ppnt`。改实现（CLI 命令与参数、board 形状、标注状态机、帧与组件写法）的同一个提交里，逐段检查这两个 skill 要不要同步改；退役或改名一个机制时，删掉 skill 里对它的描述。skill 落后于实现，别的 agent 就会照旧用法做（2026-09-17：frame notes 退役后仍有 agent 写 `frame-notes.md`）。
 | 一个决定为什么是这样 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查（先查案例库再动手） | [`docs/debugging.md`](docs/debugging.md) |
 | token / class 词汇表 / knobs | [`README.md`](README.md) |
+
+`skills/pinpoint-build` 与 `skills/pinpoint-annotate` 是实现的一部分，不是事后补的说明：别的仓的 agent 只读这两个 skill，照着它们写文章、读标注、调 `ppnt`。改实现（CLI 命令与参数、文章与 board 的写法、标注状态机、帧与组件写法）的同一个提交里，逐段检查这两个 skill 要不要同步改；删掉或改名一个机制时，同时删掉 skill 里对它的描述。skill 落后于实现，别的 agent 就会照着过时的写法做。
 
 ## 坑与约定
 
@@ -128,7 +128,7 @@ board-schema“iOS 帧的硬约束”。
 （变量在 `ios-kit.css`）；不要写死 px，也不要拿占位 div 顶。
 
 **URL 是契约，磁盘位置不是** —— 代码住 `src/`（client / server / workbench / shared），被服务的
-内容住 `content/`，但服务的 URL 一个没变：`/kits/…` `/previews/…` `/sites/…` `/annotate.js` 照旧，
+内容住 `content/`；对外的 URL（`/kits/…` `/previews/…` `/sites/…` `/annotate.js`）是契约，
 映射在 `src/server/content-routes.js`。搬动 `content/` 下的东西先想清楚哪个 URL 会跟着变——仓外的
 页面按 URL 引 kit，它们不在这个仓里、改不到。反方向同样成立：`src/shared/` 与 `src/client/lib/`
 在 serve 时被内联进 `/annotate.js`，改它们就是改 client——保持纯函数、不碰 DOM。

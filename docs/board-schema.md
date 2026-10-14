@@ -1,13 +1,14 @@
-# board.json 契约与编译机制
+# 帧、编译与 board.json
 
-一个页一份 `board.json`。本文是 pp2 机制的**唯一权威**：board 字段、源码与 dist、帧与组件、
-交互、派生与边界——别的文档只链接这里，不复述。做法见
+本文是帧与组件、源码与 dist、编译、交互的**唯一机制权威**，文章和存量页共用——别的文档只链接这里，不复述。
+`board.json` 的字段只属于存量页：文章没有手写的 board，画布视图的 board 由 `index.mdx` 派生（[`projects.md`](projects.md)“画布视图”）。
+下文的“页”“页目录”指存量页和它的目录；文章的帧、组件、`article.css` 住文章目录，规则相同。做法见
 [`skills/pinpoint-build/SKILL.md`](../skills/pinpoint-build/SKILL.md)；词见 [`CONTEXT.md`](../CONTEXT.md)。
 活的参照：`e2e/jsx-site/`（帧 + components/ + comp 墙 + kit）、`e2e/ios-site/`（多 section 全壳型）。
 
 ## 源码与 dist
 
-- 页目录 = 源码：`<screenId>.jsx`（或存量 `.html`）、`components/<Name>.jsx`、页级 css / js、`board.json`。
+- 源目录 = 源码：`<帧 id>.jsx`（存量页也可以是 `.html`）、`components/<Name>.jsx`、页级 css / js（文章是 `article.css` / `article.js`）、存量页的 `board.json`。
 - 每屏按 `<screenId>.jsx` → `<screenId>.html` 找源码；都没有该屏报“源码不存在”，其余照编。
 - `ppnt build <页>` 编出 `~/.pinpoint/dist/<entry>/<screenId>.html` 与 `build.json`
   （`builtAt` / `sources` / `errors`）。dist 不进 git、不放回页目录，重编即得。
@@ -37,8 +38,8 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
 搬进 kit，没有自动提升机制。
 
 **kit**：`content/kits/ios/` = `ios-kit.css` + `ios-kit.js` + `jsx/`（系统组件的 JSX 印章）。
-帧经 `import { Nav } from 'pinpoint/kit'` 引用，这是引 kit 印章唯一的规范写法（页和文章都一样）；组件清单在
-`content/kits/ios/jsx/index.js`，props 在各文件首行注释。文章（pp3）的帧里 `./components/<Name>.jsx` 按本篇
+帧经 `import { Nav } from 'pinpoint/kit'` 引用，这是引 kit 印章唯一的规范写法（文章和存量页都一样）；组件清单在
+`content/kits/ios/jsx/index.js`，props 在各文件首行注释。文章的帧里 `./components/<Name>.jsx` 按本篇
 `components/` → project `docs/pinpoint/components/` 查找，两处都没有时编译器还会落到 kit 的同名印章
 （`page-compiler.js` 的 `articleComponentsPlugin`）；这一步是兜底，引 kit 仍写 `pinpoint/kit`。
 
@@ -74,7 +75,7 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
   （`<id>.jsx` / `<id>.html`）和标注锚点（`@frame:<页>/<id>`），改名会断标注。所以 id 用描述内容的
   短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）：仿编号的 id 一调序就和编号对不上，
   `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
-- **section `letter`** 只出现在文章画布由正文派生的 board 里（[`projects.md`](projects.md)“文章的画布”）。它是这一节在正文里的字母，`boardRefs` 用它代替按顺序数出来的字母，画布编号因此和文章节标题一致。手写 board 不写这个字段。
+- **section `letter`** 只出现在画布视图由正文派生的 board 里（[`projects.md`](projects.md)“画布视图”）。它是这一节在正文里的字母，`boardRefs` 用它代替按顺序数出来的字母，编号因此和文章节号对得上（第 n 节 = 第 n 个字母）。手写 board 不写这个字段。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
 ### 页内 tab（ADR 0041）
