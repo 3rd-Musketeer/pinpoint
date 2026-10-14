@@ -194,6 +194,27 @@ test('new article：写一节的 index.mdx、打印网址；check 直接通过�
   assert.equal(shape.code, 2);
 });
 
+test('new article：同名页 id 的桶里已有旧标注（删掉的文章留下的孤儿）就拒绝，指路换 id 或 prune；空桶照常建（xreview H）', async (t) => {
+  const made = fixture(t, { annotations: false });
+  const bucket = path.join(made.env.PINPOINT_DATA_DIR, 'e2e-project_reused');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@prose.json'), JSON.stringify({ page: '@prose', path: '/e2e-project/reused/', revision: 1, annotations: [
+    { id: 'p1', n: 1, type: 'prose', status: 'open', content: '旧文章的评论', quote: { exact: '旧' } },
+  ] }));
+  const file = path.join(made.root, 'docs', 'pinpoint', 'articles', 'reused', 'index.mdx');
+  const refused = await runIn(made, ['new', 'article', 'e2e-project/reused']);
+  assert.equal(refused.code, 1);
+  assert.match(refused.err.join('\n'), /标注桶 .*e2e-project_reused 里已有 1 行标注/);
+  assert.match(refused.err.join('\n'), /ppnt prune e2e-project_reused/);
+  assert.equal(fs.existsSync(file), false, '没写 index.mdx');
+
+  // 桶里只剩空账本（处理完、清空了）：不拦。
+  fs.writeFileSync(path.join(bucket, '@prose.json'), JSON.stringify({ page: '@prose', revision: 2, annotations: [] }));
+  const created = await runIn(made, ['new', 'article', 'e2e-project/reused']);
+  assert.equal(created.code, 0, created.err.join('\n'));
+  assert.ok(fs.existsSync(file));
+});
+
 test('frontmatterValue：子集认不出的写法加引号', () => {
   assert.equal(frontmatterValue('付款确认'), '付款确认');
   assert.equal(frontmatterValue('a: b'), "'a: b'");

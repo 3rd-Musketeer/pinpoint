@@ -343,10 +343,10 @@ export function createAnnotationStore(options) {
         a.status = 'open';
         delete a.n;
       } else {
-        // 沿用旧号（review R3）：重存既有标注缺 n 时绝不重新取号 —— #n 是对外
-        // 引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）不该
-        // 因为没带 n 就把既有引用烧悬空。
-        if (Number.isInteger(before.n) && !Number.isInteger(a.n)) a.n = before.n;
+        // 沿用旧号（review R3、xreview M）：既有标注的号一律用盘上的，客户端缺 n 或带了别的 n
+        // 都不算 —— #n 是对外引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）
+        // 不该因为没带 n 或改了 n 就把既有引用烧悬空。
+        if (Number.isInteger(before.n)) a.n = before.n;
         const edited = a.content !== before.content
           || targetsFingerprint(a) !== targetsFingerprint(before)
           || ownerThreadFingerprint(a) !== ownerThreadFingerprint(before);

@@ -93,6 +93,20 @@ export function readBucketLedgers(bucketPath) {
   return out;
 }
 
+/**
+ * 一个页 id 要变成一篇新文章之前（`ppnt new article`、`ppnt migrate`）查它的桶：桶里已有标注行，
+ * 说明这个 id 以前是一篇文章（删了、改了名）；新文章一建，这个 id 又是活页（page-resolve.js 的
+ * pageIdIsLive），旧行会静默挂到新文章上。返回拒绝的原因（一句话，带换 id 的写法和 prune 命令），
+ * 桶不在或只剩空账本时返回 null。读不出的账本不算行。
+ */
+export function staleBucketProblem(dataRoot, pageId, { renameHint }) {
+  const bucket = path.join(dataRoot, pageId);
+  const rows = readBucketLedgers(bucket)
+    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
+  if (!rows) return null;
+  return `标注桶 ${bucket} 里已有 ${rows} 行标注（旧文章留下的孤儿）；建成新文章它们会挂上去。${renameHint}，或先 \`ppnt prune ${pageId}\` 清掉`;
+}
+
 /** 一页的孤儿账本文件名列表。 */
 export function collectPageOrphans({ pageId, dataRoot, entries, isManifestPage = false, previewsRoot }) {
   const spaces = pageSurfaceSpaces({ pageId, entries, isManifestPage, previewsRoot });

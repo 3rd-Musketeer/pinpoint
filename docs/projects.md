@@ -89,7 +89,7 @@ project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`�
 - 扫数据根下所有 `<旧 id>_<文章>/`，按盘上的桶扫，不按现有文章扫，所以文章已删的孤儿桶也一起带走。带 `_` 的模板页 id 不算。
 - 预检：任何一个 `<新 id>_<文章>/` 已存在，或撞上模板页 id，就整单拒绝，登记表、`project.json`、桶都不动。
 - 每个桶一次 `rename`，单桶原子，逐行打印搬了什么。搬完改写桶里账本的旧地址：行上的 `pageId`，`@prose.json` 的 `path`（`/<旧 id>/<文章>/` 换成 `/<新 id>/<文章>/`）。
-- 按页 id 存的派生物：`shot/`、`check/` 里的图跟着搬；`dist/`、`render/` 里的 HTML 写死了 `/sites/<旧页 id>/`，删掉。有 dist 的文章按新页 id 重编一次，和 `ppnt build <页>` 用同一个编译器。
+- 按页 id 存的派生物：`shot/`、`check/` 里的图跟着搬；`dist/`、`render/` 里的 HTML 写死了 `/sites/<旧页 id>/`，删掉。有 dist 的文章按新页 id 重编一次，和 `ppnt build <页>` 用同一个编译器。派生物都能再生，搬不动或删不掉时只在 stderr 警告并点名留在旧名下的目录，桶和 `project.json` 照常做完。
 - 源文件不改。`docs/pinpoint/` 下写死了 `/sites/<旧 id>_` 的文件（帧里引用资源的绝对地址）逐个列在警告里，作者自己改成新地址或相对路径。
 - 工作台在浏览器里记的偏好（上次打开的页、tab）是 localStorage，不在服务端，rename 碰不到；旧页 id 的那几条自然失效。
 
@@ -411,7 +411,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 - project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出（先 `ppnt new project <根>`）。project 不登记也能迁，登记了才能在服务里打开画布和正文。
 - 文章 id 缺省用存量页的 id，新文章的页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
 - 旧页的文件和登记都不动。标注不迁：旧页的标注留在旧页的桶里，新文章用新桶 `<project>_<article>`，命令输出里也写明这一点。
-- 新桶 `<project>_<article>` 在数据目录里已经有标注行（删掉或改了名的文章留下的孤儿桶）时拒绝，`--dry-run` 也一样：迁完这个 id 又是活页，旧行会挂到新文章上。换 `--article`，或先 `ppnt prune <project>_<article>`。
+- 新桶 `<project>_<article>` 在数据目录里已经有标注行（删掉或改了名的文章留下的孤儿桶）时拒绝，`--dry-run` 也一样：迁完这个 id 又是活页，旧行会挂到新文章上。换 `--article`，或先 `ppnt prune <project>_<article>`。`ppnt new article` 做同一条检查（`src/server/lib/orphans.js` 的 `staleBucketProblem`）。
 
 ### 怎么对应
 

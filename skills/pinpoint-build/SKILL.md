@@ -27,7 +27,7 @@ ppnt new article browser-use/payment-confirm --title 付款确认
 
 它写出 `articles/payment-confirm/index.mdx`：frontmatter 带 title，正文是一节 `<Section id="overview">`，并打印文章页网址。这一节可以直接改成你的第一节，帧放进它或新加的节都行（节和画布的写法见第 3 节，帧见第 4 节）。不用再登记，服务、站点和 CLI 每次都重读磁盘。
 
-project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
+project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。文章 id 以前用过、它的桶里还留着旧标注（文章删了或改了名）时 `new article` 也报错退出，不接旧标注：换一个 id；要不要 `ppnt prune` 清掉旧标注由 owner 定。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
 
 ## 2. 目录（定死）
 
