@@ -26,7 +26,6 @@ const durations = {
   'dir-entry.spec.js': 1.5,
   'export-picker.spec.js': 1.2,
   'figure.spec.js': 3,
-  'grouping-refresh.spec.js': 0.8,
   'html-frames.spec.js': 6,
   'integration-canvas.spec.js': 3.2,
   'mention.spec.js': 1.3,

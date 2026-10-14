@@ -24,7 +24,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 部分被取代（note 退役） | ADR 0038 |
 | [0034](0034-named-z-scale-and-stacking-rules.md) | 2026-09-17 | 外壳层级：命名阶梯 `--wb-z-*` + `.wb` 隔离 / `.wb-stage-wrap` 不成上下文两条规则 + 测试守 | 现行 | — |
 | [0033](0033-offline-export-uses-live-shell.md) | 2026-09-15 | 离线分享 HTML 用 workbench 的外壳：满铺画布 + 浮动面板 + 底部横条 + 窄屏适配 | 现行 | — |
-| [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 现行 | — |
+| [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 已退役（2026-10-14 删除） | — |
 | [0031](0031-shell-glass-panel-bottom-strip-on-demand-list.md) | 2026-09-04 | 外壳重设计：满铺画布 + 浮动玻璃面板 + 底部单条 + 按需标注列表 | 现行 | — |
 | [0030](0030-layout-src-content-and-url-contract.md) | 2026-09-04 | 目录重排：src/ 与 content/ 两轴，服务 URL 是契约 | 现行 | — |
 | [0029](0029-pages-mtime-and-sort.md) | 2026-08-17 | Pages 时间显示 + 排序；“最近更新”= 仅内容改动 | 现行 | — |

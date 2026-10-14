@@ -69,7 +69,7 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 `pinpoint restart`）。案例见 [`docs/debugging.md`](docs/debugging.md)。
 
 **`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、`dev --sandbox`（隔离服务）、
-`new project` / `new article`（脚手架）、`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
+`new project` / `new article`（脚手架）、`add` / `move` / `rename` / `remove`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
 `show` / `check` / `open`（一篇文章的节和帧、`--uses` 查组件用在哪 / 验证 / 网址）、`comments` / `locate` / `shot` / `mark` / `reply`（读标注 / 定位 / 截图 / 写状态，`--note` 同时回复 / 只回复）。
 每个命令都认 `--json`，退出码 0 成功、1 有问题、2 用法错或找不到目标。每个命令的选项是 `ppnt <命令> --help`，共用约定见 [`docs/registry.md`](docs/registry.md)“CLI”。第一个参数是目标：文章写 `<project>/<article>`，
 存量页写它的 id。改完跑 `ppnt check <project>/<article>`，存量页跑 `ppnt build <页 id>`
@@ -105,7 +105,7 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
 | 写 article、加帧 / 加组件、写 concept、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 读画布标注与正文评论 → 改稿 → 回复、写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 帧、组件、编译、交互的唯一机制权威（含存量页的 board） | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、注入契约、CLI（add / move / rename / folder）、代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、注入契约、CLI（add / move / rename / remove）、代理 | [`docs/registry.md`](docs/registry.md) |
 | project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas` 写法、画布卡片与画布浮层、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 画布标注与正文评论的字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |

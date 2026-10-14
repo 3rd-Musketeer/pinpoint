@@ -1,16 +1,5 @@
-// 左栏 Pages 的分组模型（2026-09-04 切片 ②，ADR 0032）：纯函数，Sidebar 消费。
-// 回答三件事，每件一个函数，互不缠绕：
-//  1. 搜索框打进来的字过滤谁（标题或 id 命中即留，段与段之间同一条规则）；
-//  2. 页归哪个夹（registry 条目看自己的 folder 字段，模板页看顶层 pageFolders）；
-//  3. 「最近」段那五条本地记录怎么进出。
-// （模板页已于 pp2 切片 3 全数退役，「模板显隐开关」随之一并删除。）
-//
-// 顺序规则（ADR 0032）：文件夹在前、散页在后，夹按 folders[] 数组序。夹内与散页
-// 区都沿用 Pages 的三档排序（lib/page-sort.js），**手动 order 只在夹内、且排序档
-// 是「默认」时生效**——另外两档按时间和名字排，手动顺序在那里没有落脚的位置；
-// 散页区永远不吃 order（一个页拖出夹之后它残留的 order 不该影响散页的书写顺序）。
-import { sortPages } from './page-sort.js';
-import { FOLDER_ID_PATTERN, slugify } from '../../shared/registry-ids.js';
+// 左栏「页面」组的列表模型：纯函数，Sidebar 消费。搜索过滤、行首类型图标、显示名。
+// 排序走 lib/page-sort.js 的三档。
 
 /** 列表全集（模板显隐曾是这里唯一的过滤；退役后是全量返回）。 */
 export function visiblePages(pages) {
@@ -27,80 +16,6 @@ function matchesQuery(page, query) {
 
 export function filterPages(pages, query) {
   return pages.filter(function (page) { return matchesQuery(page, query); });
-}
-
-/** 页归哪个夹：registry 条目自带 folder 字段，模板页只能靠顶层 pageFolders。 */
-export function folderOfPage(page, pageFolders) {
-  if (page && typeof page.folder === 'string') return page.folder;
-  var mapped = pageFolders && pageFolders[page.id];
-  return typeof mapped === 'string' ? mapped : null;
-}
-
-/** 手动次序：同上两条落点；没有次序的页返回 null（排到有次序的后面）。 */
-export function orderOfPage(page, pageOrder) {
-  if (page && Number.isFinite(page.order)) return page.order;
-  var mapped = pageOrder && pageOrder[page.id];
-  return Number.isFinite(mapped) ? mapped : null;
-}
-
-// 夹内排序：「默认」档 = 手动 order 升序（无 order 的按原相对顺序沉底，
-// Array.prototype.sort 稳定）；其余两档交给 sortPages，order 不参与。
-function sortInFolder(pages, sort, pageOrder) {
-  if (sort !== 'default') return sortPages(pages, sort);
-  var list = pages.slice();
-  list.sort(function (a, b) {
-    var oa = orderOfPage(a, pageOrder);
-    var ob = orderOfPage(b, pageOrder);
-    return (oa == null ? Infinity : oa) - (ob == null ? Infinity : ob);
-  });
-  return list;
-}
-
-/**
- * 分组：{ folders: [{id, name, collapsed, pages}], loose: [...] }。
- * 指着不存在的夹的页落回散页区（读侧宽容，与服务端同一条规矩：分组从不决定
- * 一个页存不存在）。
- */
-export function groupPages(input) {
-  input = input || {};
-  var pages = input.pages || [];
-  var folders = input.folders || [];
-  var pageFolders = input.pageFolders || {};
-  var pageOrder = input.pageOrder || {};
-  var sort = input.sort;
-
-  var buckets = {};
-  folders.forEach(function (folder) { buckets[folder.id] = []; });
-  var loose = [];
-  pages.forEach(function (page) {
-    var id = folderOfPage(page, pageFolders);
-    if (id && buckets[id]) buckets[id].push(page);
-    else loose.push(page);
-  });
-
-  return {
-    folders: folders.map(function (folder) {
-      return {
-        id: folder.id,
-        name: folder.name || folder.id,
-        collapsed: !!folder.collapsed,
-        pages: sortInFolder(buckets[folder.id], sort, pageOrder)
-      };
-    }),
-    loose: sortPages(loose, sort)
-  };
-}
-
-/** 新夹的 id：名称能派生 slug 就用 slug，派生不出（中文名）或撞车就 folder-N。 */
-export function nextFolderId(existingIds, name) {
-  var taken = {};
-  (existingIds || []).forEach(function (id) { taken[id] = true; });
-  var slug = slugify(name);
-  if (FOLDER_ID_PATTERN.test(slug) && !taken[slug]) return slug;
-  for (var n = 1; ; n++) {
-    var candidate = 'folder-' + n;
-    if (!taken[candidate]) return candidate;
-  }
 }
 
 /* 页面类型 → 图标（owner 2026-09-05 定的映射，与横条类型标同一套词，见

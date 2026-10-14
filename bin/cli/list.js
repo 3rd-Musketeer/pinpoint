@@ -10,7 +10,6 @@ import { formatProjectError } from '../../src/shared/project-errors.js';
 import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { pageIdIsLive } from '../../src/server/lib/page-resolve.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
-import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
 
 import { REPO_ROOT, ioOf } from './core.js';
@@ -155,13 +154,10 @@ function manifestPagesOf(root) {
 export function pageListRows({ registryPath, env = process.env, root = REPO_ROOT } = {}) {
   // project 条目（pp3）不是页：单独列在 projectListRows。
   const entries = existingEntriesFor(registryPath).filter((entry) => entry && entry.kind !== 'project');
-  const grouping = fs.existsSync(registryPath) ? listRegistryGrouping(registryPath) : { folders: [], pageFolders: {} };
   const bucketRoot = dataRoot(env);
   return buildPageList({
     entries,
     manifestPages: manifestPagesOf(root),
-    folders: grouping.folders,
-    pageFolders: grouping.pageFolders,
     hasBoard: (entry) => typeof entry.path === 'string' && fs.existsSync(path.join(path.resolve(entry.path), 'board.json')),
     countsFor: (id) => statusCountsOf(path.join(bucketRoot, id)),
   });
@@ -263,7 +259,6 @@ function projectMatchRow(project) {
   return {
     id: project.id,
     title: project.title,
-    folder: '',
     path: project.root,
     attached: project.articles.flatMap((article) => [article.id, article.title]),
   };
@@ -350,7 +345,7 @@ export async function runList(argv, io = {}) {
         articles: project.articles.map((article) => ({ address: `${project.id}/${article.id}`, title: article.title })),
         errors: project.errors.length,
       })),
-      pages: rows.map((row) => ({ id: row.id, title: row.title || '', kind: row.kind || '', folder: row.folder || '', path: row.path || row.url || '', counts: row.counts || null })),
+      pages: rows.map((row) => ({ id: row.id, title: row.title || '', kind: row.kind || '', path: row.path || row.url || '', counts: row.counts || null })),
     }, null, 2));
     return rows.length || projectRows.length ? 0 : 1;
   }

@@ -39,7 +39,7 @@ ${ADDRESS}
 
 登记与存量页
   add <project 根> --project            登记一个 project
-  add / move / rename / remove / folder / migrate / prune   存量页的登记、迁移与清理
+  add / move / rename / remove / migrate / prune   存量页的登记、迁移与清理
 
 每个命令都认 --json（stdout 只出一个 JSON）。退出码：0 成功 · 1 有问题（验证错误、引用没命中、服务没答）· 2 用法错或找不到目标。
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
@@ -269,7 +269,7 @@ ${REGISTRY_FLAG}`,
     text: `用法：ppnt list [关键词…]
 
 把口头说法对上地址：列 project（下面每篇文章一行 <project>/<article>）和存量页（id · 标题 · 类型 ·
-open / check / done 计数 · 文件夹，次行源路径）。关键词在 id、标题、路径上宽松匹配，多个词要同时对上，
+open / check / done 计数，次行源路径）。关键词在 id、标题、路径上宽松匹配，多个词要同时对上，
 英文复数自动去 s，连字符与空格互通；也匹配文章的 id 和标题。
   ppnt list <project>                 同 ppnt show <project>
   ppnt list <页 id> --frames          编号 · 帧 id · 源文件 · 标题（同 ppnt show <存量页 id>）
@@ -338,18 +338,6 @@ ${REGISTRY_FLAG}`,
 
 从登记表删掉一个条目，源文件和网址不动，重新 add 就恢复。三种情况拒绝：id 不存在；还有条目挂着它；
 标注桶里还有标注行（先处理，或 ppnt prune）。桶是空的就顺手删掉。project 的每篇文章的桶守同一条。
-${REGISTRY_FLAG}`,
-  },
-  folder: {
-    usage: 'ppnt folder <list|add|rename|rm|move> …',
-    text: `用法：ppnt folder <子命令>
-
-工作台左栏“页面”组里的一层分组（不嵌套；文章不进文件夹）：
-  ppnt folder list                     列出文件夹：id · 名称 · 页数 · 是否折叠
-  ppnt folder add <名称> [--id xxx]     建一个夹（中文名派生不出 id，用 --id）
-  ppnt folder rename <id> <新名称>       只改显示名
-  ppnt folder rm <id>                   删夹；夹里的页不删，变成散页
-  ppnt folder move <页 id> <夹 id>       把页放进夹；夹 id 写 none = 移出来
 ${REGISTRY_FLAG}`,
   },
   migrate: {

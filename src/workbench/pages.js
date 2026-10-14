@@ -140,13 +140,6 @@ export function sidebarPages() {
   return manifestPages();
 }
 
-/** 登记表的分组层（folders / pageFolders / pageOrder）——左栏分组的唯一来源。 */
-export function pageGrouping() {
-  var manifest = wbGet().pageManifest;
-  var grouping = manifest && manifest.grouping;
-  return grouping || { folders: [], pageFolders: {}, pageOrder: {} };
-}
-
 function defaultPageId() {
   var pages = manifestPages();
   if (!pages.length) return '';
@@ -498,13 +491,9 @@ export function syncEntries(options) {
   setActiveEntry(wanted || defaultEntryId(entries), { scrollTop: false, save: !!(options.fresh && options.save) });
 }
 
-/** 分组层写完之后的当场生效（lib/folder-api.js 三条 PUT 的收尾）：应答就是重载
-    后的完整 /registry 载荷，直接灌回 registry-sites 缓存再重建 manifest，左栏
-    当场重排。HMR 的 registry:update 随后照样会到 —— 那条广播带 scope=grouping
-    （审计 B2），stage.js 只重拉清单刷新左栏，不再重摆当前板。 */
-export function refreshRegistry(payload) {
-  if (payload) queryClient.setQueryData(['registry-sites'], registryToPages(payload));
-  else queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+/** 标注变动后重拉 /registry（左栏的计数与时间跟着刷新），再重建 manifest。 */
+export function refreshRegistry() {
+  queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
   return loadPageManifest();
 }
 
@@ -544,22 +533,15 @@ function registrySitePages() {
         .then(registryToPages);
     }
   }).catch(function () {
-    return { pages: [], attached: [], articles: [], grouping: { folders: [], pageFolders: {}, pageOrder: {} } };
+    return { pages: [], attached: [], articles: [] };
   });
 }
 
-/** GET /registry（也是三条 PUT 的应答）→ Pages 消费的形状。纯变换，无副作用。 */
+/** GET /registry → Pages 消费的形状。纯变换，无副作用。 */
 function registryToPages(data) {
   var entries = (data && data.entries) || [];
   var attached = [];
   var pages = [];
-  // 2026-09-04 分组层（ADR 0032）：条目自己的 folder / order 跟着页走，顶层三段
-  // 整份透传 —— 模板页没有条目可以写字段，归属只能记在 pageFolders / pageOrder。
-  var grouping = {
-    folders: (data && data.folders) || [],
-    pageFolders: (data && data.pageFolders) || {},
-    pageOrder: (data && data.pageOrder) || {}
-  };
   entries.forEach(function (entry) {
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
     if (entry.page) { attached.push(entry); return; }
@@ -580,8 +562,6 @@ function registryToPages(data) {
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
       // url 条目无此字段 → null，排序沉底、行内不显示时间）。
       mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
-      folder: typeof entry.folder === 'string' ? entry.folder : null,
-      order: Number.isFinite(entry.order) ? entry.order : null,
       site: true
     });
   });
@@ -601,7 +581,7 @@ function registryToPages(data) {
       site: true
     };
   });
-  return { pages: pages, attached: attached, articles: articles, grouping: grouping, pageTimes: data.pageTimes || {} };
+  return { pages: pages, attached: attached, articles: articles, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -633,7 +613,6 @@ export function loadPageManifest() {
         manifest.attached = sitePages.attached;
         // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
         manifest.articles = (sitePages.articles || []).filter(function (page) { return !known[page.id]; });
-        manifest.grouping = sitePages.grouping;
         wbSet({ pageManifest: manifest });
         return manifest;
       });

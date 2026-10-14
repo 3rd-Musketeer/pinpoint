@@ -10,7 +10,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
 一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
-要避开：拿 project 指存量页、文件夹或 board。
+要避开：拿 project 指存量页或 board。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
 一篇设计文档，写成 MDX，形态像 blog post，任何人拿到链接就能读。文章是 owner 与 agent 对齐设计的权威：task 和 ADR 是它的投影，实现时改了机制就回来改文章。一篇文章的帧、组件、样式和资源都放在自己的目录里。
@@ -105,7 +105,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：去 `mark` 孤儿条目。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
-看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、文件夹）。
+看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、全部页）。
 要避开：“Pages”单指工作台（Pages 列表只是“页面”组）。
 
 ## 资产与服务
@@ -119,7 +119,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：拿“产物”单说 dist（存量页的大纲里“产物”另有所指，见存量页一节）。
 
 **registry（登记表）** · `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；读 `src/server/lib/registry.js`，写 `src/server/lib/registry-store.js`
-声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / move / rename / remove / folder` 和工作台左栏的拖放。
+声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / move / rename / remove`。
 要避开：手改 registry 文件。
 
 **登记过才注入** · 注入片段 `src/server/lib/annotate-snippet.js`
@@ -187,10 +187,6 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 **产物与草稿** · 大纲浮层里的两组；屏上 `role: "draft"`
 存量页大纲里的分组：产物是交付物（画布、文档、网页，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
 要避开：拿“产物”说 dist。
-
-**文件夹** · registry 顶层 `folders[]` 与条目的 `folder` 字段
-“页面”组里 owner 手动建的一层分组，存量页靠拖放入夹，不嵌套。文章不进文件夹。
-要避开：拿 project 当文件夹；“归档”（那是浏览器偏好，不是文件夹）。
 
 **mention 与 embed** · 文档里写 `<div data-pinpoint-frame="<页 id>/<帧 id>"></div>`
 存量页的文档条目引用一个活帧（mention），客户端把它变成指向 `/api/frame` 的 iframe（embed）。帧上的标注在画布和文档两边都看得到。

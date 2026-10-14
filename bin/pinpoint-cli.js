@@ -20,7 +20,6 @@
 import { USAGE, helpFor, reportUsageError } from './cli/args.js';
 import { ioOf } from './cli/core.js';
 import { runAdd, runMove, runPrune, runRename, runRemove } from './cli/registry.js';
-import { runFolder } from './cli/folders.js';
 import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
 import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
@@ -78,16 +77,6 @@ export {
   planRemove,
   runRemove,
 } from './cli/registry.js';
-export {
-  buildFolderAdd,
-  buildFolderRename,
-  buildFolderRemove,
-  buildFolderMove,
-  folderRows,
-  formatFolderList,
-  planFolder,
-  runFolder,
-} from './cli/folders.js';
 export {
   portlessRoutesPath,
   parseRoutes,
@@ -211,7 +200,6 @@ function dispatch(argv, io) {
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
     case 'remove': return runRemove(argv, io);
-    case 'folder': return runFolder(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);

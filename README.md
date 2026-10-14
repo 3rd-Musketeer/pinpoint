@@ -46,7 +46,7 @@ They keep working; `pinpoint migrate` turns one into an article. See the last se
 | project 与文章的目录、`add --project`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas`、`[[ ]]`、画布浮层、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 帧、组件、编译、交互；存量页的 `board.json` 字段 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状与文件夹、`pinpoint add` / `move` / `rename` / `folder`、注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、`pinpoint add` / `move` / `rename` / `remove`、注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
 | 标注与评论的字段、桶与账本、状态机、控制面、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
@@ -144,7 +144,6 @@ ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/
 ppnt add <dir|file|url>        # register a legacy page source (files stay where they are) — see docs/registry.md
 ppnt move <id> <target>        # re-point an entry, keep its id and annotations
 ppnt rename <old> <new>        # rename id + annotation bucket(s) + /sites/ prefix in one shot
-ppnt folder list|add|rename|rm|move   # the one level of grouping in the sidebar's “页面” group
 ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
 ```
 

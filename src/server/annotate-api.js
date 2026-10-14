@@ -36,7 +36,7 @@ let heartbeatTimer = null;
 // are involved, so a plain `*` preflight contract covers every route.
 function cors(res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
 }
 
@@ -184,11 +184,8 @@ export function createAnnotateHandler(options = {}) {
   const serviceRoot = options.root || ROOT;
   const registry = options.registry || loadRegistry({ root: ROOT });
   const stores = options.stores || new Map();
-  // After a grouping write or POST /registry/reload — the vite plugin wires
-  // this to an HMR `registry:update` event so open workbenches refresh their
-  // Pages. scope 告诉前端这次动了什么：'grouping' = 只动分组 / 顺序 / 折叠
-  // （左栏重拉清单即可，别重装画板），'entries' = 条目本身可能变了（照旧整板
-  // 重摆）。
+  // After POST /registry/reload — the vite plugin wires this to an HMR
+  // `registry:update` event so open workbenches refresh their Pages.
   const onRegistryReload = options.onRegistryReload || (() => {});
   // pp3：文章站点开发服务器的状态（article-proxy 的 devServer.snapshot），
   // /health 带出去给 `pinpoint status`；没接站点时不出这个字段。
@@ -203,8 +200,7 @@ export function createAnnotateHandler(options = {}) {
     return stores.get(entryId);
   }
 
-  // GET /registry 的完整载荷，也是三个文件夹写接口的应答（写完立刻把重载后的
-  // 登记表整份还回去，调用方不必再打一次 GET）。
+  // GET /registry 的完整载荷。
   function registryPayload() {
     const localIds = manifestPageIds(serviceRoot);
     const pageTimes = collectPageTimes({ entries: registry.entries, root: serviceRoot, dataRoot: root, localIds });
@@ -229,12 +225,6 @@ export function createAnnotateHandler(options = {}) {
       entries: registry.entries.map((entry) => {
         return { ...entry, ...pageTimes[entry.id] };
       }),
-      // 分组层（2026-09-04）：folders = owner 建的一层夹；pageFolders /
-      // pageOrder 只装「不是 registry 条目」的 manifest 页（条目自己的归属
-      // 与手动次序写在条目的 folder / order 字段上）。
-      folders: registry.folders || [],
-      pageFolders: registry.pageFolders || {},
-      pageOrder: registry.pageOrder || {},
       // pp3：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
       articles,
       errors: registry.errors,
@@ -242,8 +232,8 @@ export function createAnnotateHandler(options = {}) {
     };
   }
 
-  // /health 与 reload 应答里的 registry 摘要：这里的 entries / folders /
-  // pageFolders 都是**数量**（完整清单走 GET /registry）。
+  // /health 与 reload 应答里的 registry 摘要：entries / projects 都是**数量**
+  // （完整清单走 GET /registry）。
   function registrySummary(snapshot) {
     return {
       ok: snapshot.ok,
@@ -251,8 +241,6 @@ export function createAnnotateHandler(options = {}) {
       entries: snapshot.entries.length,
       // kind "project" 的条目（pp3）不在 entries 里，单独计数。
       projects: (snapshot.projects || []).length,
-      folders: (snapshot.folders || []).length,
-      pageFolders: Object.keys(snapshot.pageFolders || {}).length,
       errors: snapshot.errors,
       warnings: snapshot.warnings,
     };
@@ -266,56 +254,11 @@ export function createAnnotateHandler(options = {}) {
     };
   }
 
-  // 文件夹写接口认识的 id：registry 条目 + 本地 manifest 页（Component
-  // Library 等模板页不在登记表里，但一样能拖进夹）。
+  // 本地 manifest 页 id（模板页不在登记表里，但也是页桶）。
   function knownPageIds() {
     return manifestPageIds(serviceRoot);
   }
 
-  /**
-   * PUT /registry/folders · /registry/entries/:id/folder · /registry/order。
-   * 三条都是「校验 → 一次原子写 → reload → 广播 registry:update → 还回完整
-   * /registry 载荷」。任何未知 id / 未知文件夹都是 400，登记表一个字节不动。
-   * 子路径不是这三条时，读完请求体才放行给后面的中间件（annotate-routes.test.js 钉住）。
-   */
-  async function handleRegistryWrite(req, res, urlPath) {
-    if (typeof registry.setFolders !== 'function') {
-      sendJson(res, 409, { error: 'registry_not_writable' });
-      return true;
-    }
-    let body;
-    try {
-      body = JSON.parse(await readBody(req));
-    } catch {
-      sendJson(res, 400, { error: 'bad_json' });
-      return true;
-    }
-    if (!body || typeof body !== 'object' || Array.isArray(body)) {
-      sendJson(res, 400, { error: 'bad_request', message: '请求体必须是对象' });
-      return true;
-    }
-    const attach = urlPath.match(/^\/registry\/entries\/([^/]+)\/folder$/);
-    try {
-      if (urlPath === '/registry/folders') {
-        registry.setFolders(body.folders);
-      } else if (urlPath === '/registry/order') {
-        registry.setOrder(body.ids, { pageIds: knownPageIds() });
-      } else if (attach) {
-        const id = decodeURIComponent(attach[1]);
-        registry.setEntryFolder(id, { folder: body.folder ?? null, order: body.order }, { pageIds: knownPageIds() });
-      } else {
-        return false;
-      }
-    } catch (error) {
-      sendJson(res, 400, { error: 'bad_request', message: error.message });
-      return true;
-    }
-    // 审计 B2（2026-09-24）：三条写接口都只动分组与顺序，条目本身没变 —— 广播
-    // 带 grouping 标记，前端只刷左栏，不再整板重装（文档页 iframe 会闪）。
-    onRegistryReload(registrySummary(registry), 'grouping');
-    sendJson(res, 200, registryPayload());
-    return true;
-  }
 
   // Shared entry gate: resolve the request's target entry or answer the loud
   // 400. Returns the entry id, or null after sending the rejection.
@@ -437,12 +380,6 @@ export function createAnnotateHandler(options = {}) {
       match: '/registry',
       run: ({ res }) => { sendJson(res, 200, registryPayload()); return true; },
     },
-    // 分组层的写接口（workbench 的文件夹操作；CLI 仍是文件直写 + reload）。
-    {
-      methods: ['PUT'],
-      match: (urlPath) => urlPath.startsWith('/registry/'),
-      run: ({ req, res, urlPath }) => handleRegistryWrite(req, res, urlPath),
-    },
     {
       methods: ['GET'],
       match: '/events',
@@ -559,8 +496,7 @@ export function createAnnotateHandler(options = {}) {
         }
         const next = registry.reload();
         const summary = registrySummary(next);
-        // CLI 写文件后的 reload：条目可能增删改名，照旧按条目级广播。
-        onRegistryReload(summary, 'entries');
+        onRegistryReload(summary);
         sendJson(res, 200, summary);
         return true;
       },
@@ -653,12 +589,10 @@ export function createAnnotateHandler(options = {}) {
 export default function annotateApi(options = {}) {
   let httpServer = null;
   let viteServer = null;
-  const onRegistryReload = options.onRegistryReload || ((summary, scope) => {
+  const onRegistryReload = options.onRegistryReload || ((summary) => {
     // Tell open workbenches the registry changed; stage.js invalidates its
     // registry-sites query and re-pulls the page manifest off this event.
-    // scope（grouping / entries）跟着进载荷 —— 前端据它决定只刷左栏还是整板重摆
-    // （审计 B2：分组写接口的整板重装是纯浪费）。
-    if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: { ...summary, scope: scope || 'entries' } });
+    if (viteServer) viteServer.ws.send({ type: 'custom', event: 'registry:update', data: summary });
   });
   const handleAnnotate = createAnnotateHandler({ ...options, onRegistryReload });
   return {

@@ -42,12 +42,9 @@
 //  - head 第一眼是产品名与搜索，不是「已连接」：wordmark + 连接小点（状态只剩
 //    颜色与 tooltip）+ 齿轮，下面一格搜索框（⌘K 聚焦，打字即筛，Esc 清空）。
 //  - 「最近」段（本地记录五条）在「页面」段之上，行尾是打开时刻的相对时间。
-//  - 「页面」段 = 文件夹在前、散页在后（lib/page-groups.js 的纯函数给模型，
-//    ADR 0032）；夹可折叠、可改名、可删（删夹不删页）；页靠拖放入夹，夹内在
-//    「默认」档可拖排序。三条写接口在 lib/folder-api.js。
+//  - 「页面」段按排序菜单的档位列出全部页（lib/page-sort.js）。
 //  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首一个类型图标
-//    （画布 / 文档 / 网页，映射在 lib/page-groups.js），文件夹行带 chevron + 夹图标；
-//    行尾 11 mono。
+//    （画布 / 文档 / 网页，映射在 lib/page-groups.js）；行尾 11 mono。
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
@@ -56,13 +53,12 @@
 // （app/OutlinePopover.jsx）。左栏 icon tab 只剩「页面 / 已归档」。
 //
 // 2026-10-13（pp3，owner 选 A）：「页面」tab 顶上加一组「文章」（app/ArticlesSection.jsx，
-// project → 文章）；原来的置顶、最近、文件夹与散页原样搬进下面的「页面」组。
+// project → 文章）；原来的置顶、最近与页面列表原样搬进下面的「页面」组。
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
 import { PageSortMenu } from './PageSortMenu.jsx';
 import { useWorkbenchStore, wbSet } from './store.js';
 import {
-  pageGrouping,
   retryPageManifest,
   refreshRegistry,
   setActivePage,
@@ -75,17 +71,15 @@ import {
   formatRelativeTime,
   pageTime,
   activityRows,
-  normalizePageSort
+  normalizePageSort,
+  sortPages
 } from '../lib/page-sort.js';
 import {
-  groupPages,
-  nextFolderId,
   PAGE_KIND_ICONS,
   pageDisplayTitle,
   pageKindKey,
   visiblePages
 } from '../lib/page-groups.js';
-import { putFolders, putPageFolder, putPageOrder } from '../lib/folder-api.js';
 import { readPrefs, savePrefs } from '../lib/prefs.js';
 import { SettingsView } from './SettingsView.jsx';
 import { ArticlesSection } from './ArticlesSection.jsx';
@@ -99,9 +93,6 @@ import { ScrollArea } from './ui/scroll-area.jsx';
 // 段头（最近 / 页面）：11 mono semibold 淡色 eyebrow（C1）。几何与色在
 // index.html 的 .wb-section-head 里，这里只挂类名。
 var SECTION_HEAD = 'wb-section-head';
-
-// 拖放载荷的 MIME：只认自家的，外面拖进来的文件不会被当成一次入夹。
-var DND_TYPE = 'application/x-pinpoint-page';
 
 /* head（2026-09-04 外壳重设计）：收起钮搬去底部横条（#wbside-toggle 在
    app/Strip.jsx，收起去哪、从哪展开是同一个点，G1b）。切片 ② 起第一眼是
@@ -146,7 +137,6 @@ function PageRow(props) {
   var inputRef = useRef(null);
   var doneRef = useRef(false);
   var title = pageDisplayTitle(page, customName === undefined ? null : { [page.id]: customName });
-  var dnd = props.dnd;
   // 2026-08-17：行尾 hover copy 钮退役，复制 / 重命名进右键菜单（row-menu）。
   // 2026-09-04：行尾 11 mono 元数据。行首类型图标的来历见 lib/page-groups.js。
 
@@ -201,30 +191,7 @@ function PageRow(props) {
       onSelect: function () { doneRef.current = false; setRenaming(true); },
       attr: { 'data-rename-page': page.id }
     });
-    // 入夹 / 出夹的键盘可达路径（拖放之外的第二条）：菜单里逐个夹列出来。
-    menuItems.push({
-      kind: 'action', label: '新建文件夹并放入', icon: 'folder-plus',
-      onSelect: function () { dnd.createFolderWith(page.id); },
-      attr: { 'data-new-folder-with': page.id }
-    });
-    dnd.folders.forEach(function (folder) {
-      if (folder.id === props.folderId) return;
-      menuItems.push({
-        kind: 'action', label: '移到「' + folder.name + '」', icon: 'folder',
-        onSelect: function () { dnd.movePage(page.id, folder.id); },
-        attr: { 'data-move-to-folder': folder.id }
-      });
-    });
-    if (props.folderId) {
-      menuItems.push({
-        kind: 'action', label: '移出文件夹', icon: 'folder',
-        onSelect: function () { dnd.movePage(page.id, null); },
-        attr: { 'data-move-out': page.id }
-      });
-    }
   }
-
-  var dropHint = dnd.dropHintFor(page.id);
 
   return (
     <RowMenu items={menuItems}>
@@ -234,14 +201,7 @@ function PageRow(props) {
         data-recent-page={props.recent ? page.id : undefined} data-page-system={system ? '1' : undefined}
         data-page-default={page.title}
         data-state={active ? 'on' : undefined}
-        data-drop-hint={dropHint || undefined}
-        draggable={!system && !renaming}
-        onDragStart={function (e) { dnd.onDragStart(e, page.id, props.folderId || null); }}
-        onDragEnd={function () { dnd.onDragEnd(); }}
-        onDragOver={function (e) { dnd.onPageDragOver(e, page.id, props.folderId || null); }}
-        onDragLeave={function () { dnd.onDragLeave(); }}
-        onDrop={function (e) { dnd.onPageDrop(e, page.id, props.folderId || null); }}
-        className={cn('wb-row wb-page', props.recent && 'wb-recent', props.indent && 'ind', active && 'on', renaming && 'renaming')}
+        className={cn('wb-row wb-page', props.recent && 'wb-recent', active && 'on', renaming && 'renaming')}
         onClick={function () {
           if (renaming) return;
           showTabs();
@@ -283,74 +243,6 @@ function PageRow(props) {
   );
 }
 
-/* 文件夹行（ADR 0032）：chevron + 夹图标 + 名称，整行是折叠钮，也是入夹的落点。
-   右键 = 重命名（行内编辑，与页面行同一套）/ 删除文件夹（删夹不删页）。 */
-function FolderRow(props) {
-  var folder = props.folder;
-  var dnd = props.dnd;
-  var renaming = dnd.renamingFolderId === folder.id;
-  var inputRef = useRef(null);
-  var doneRef = useRef(false);
-
-  useEffect(function () {
-    if (renaming && inputRef.current) {
-      doneRef.current = false;
-      inputRef.current.scrollIntoView({ block: 'center', inline: 'nearest' });
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [renaming]);
-
-  function finishRename(commit, value) {
-    if (doneRef.current) return;
-    doneRef.current = true;
-    var next = String(value == null ? '' : value).trim();
-    dnd.finishFolderRename(folder.id, commit && next ? next : null);
-  }
-
-  return (
-    <RowMenu items={[
-      { kind: 'action', label: '重命名', icon: 'pencil',
-        onSelect: function () { dnd.startFolderRename(folder.id); },
-        attr: { 'data-rename-folder': folder.id } },
-      { kind: 'action', label: '删除文件夹', icon: 'trash',
-        onSelect: function () { dnd.removeFolder(folder.id); },
-        attr: { 'data-remove-folder': folder.id } },
-      { kind: 'action', label: '新建文件夹', icon: 'folder-plus',
-        onSelect: function () { dnd.createFolderWith(null); },
-        attr: { 'data-new-folder': '1' } }
-    ]}>
-    <div className="wb-folder-row group">
-      <button type="button"
-        className={cn('wb-row wb-folder', dnd.dropFolderId === folder.id && 'drop')}
-        data-folder={folder.id}
-        data-state={props.collapsed ? 'collapsed' : 'open'}
-        aria-expanded={!props.collapsed}
-        onDragOver={function (e) { dnd.onFolderDragOver(e, folder.id); }}
-        onDragLeave={function () { dnd.onDragLeave(); }}
-        onDrop={function (e) { dnd.onFolderDrop(e, folder.id); }}
-        onClick={function () { if (!renaming) dnd.toggleFolder(folder.id); }}>
-        <WbIcon name={props.collapsed ? 'chevron-right' : 'chevron-down'} size={12} className="wb-row-chv" />
-        <WbIcon name="folder" size={14} className="wb-row-glyph" />
-        {renaming ? (
-          <Input ref={inputRef} type="text" aria-label="重命名文件夹"
-            className="wb-folder-rename h-auto flex-1 rounded-md border-0 bg-transparent px-1 py-0 text-[13px] font-semibold text-foreground shadow-[inset_0_0_0_1.5px_color-mix(in_srgb,var(--wb-accent)_55%,transparent)]"
-            defaultValue={folder.name}
-            onClick={function (e) { e.stopPropagation(); }}
-            onKeyDown={function (e) {
-              if (e.key === 'Enter') { e.preventDefault(); e.target.blur(); finishRename(true, e.target.value); }
-              else if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finishRename(false, e.target.value); }
-            }}
-            onBlur={function (e) { finishRename(true, e.target.value); }} />
-        ) : (
-          <span className="wb-row-t wb-folder-t">{folder.name}</span>
-        )}
-      </button>
-    </div>
-    </RowMenu>
-  );
-}
-
 /* 最近取添加、内容修改、标注变动三个时间的最大值，最多五条。 */
 function RecentSection(props) {
   var rows = props.rows;
@@ -361,8 +253,7 @@ function RecentSection(props) {
       <nav className="wb-side-nav" id="wbrecent" aria-label="最近变动">
         {rows.map(function (row) {
           return (
-            <PageRow key={row.page.id} page={row.page} recent now={props.now}
-              dnd={props.dnd} folderId={props.pageFolders[row.page.id]} />
+            <PageRow key={row.page.id} page={row.page} recent now={props.now} />
           );
         })}
       </nav>
@@ -370,14 +261,11 @@ function RecentSection(props) {
   );
 }
 
-/* Pages 段（2026-08-17g 排序钮 + 2026-09-04 分组层）：
-   段头右侧是排序菜单（持久化 prefs.pageSort，data-page-sort 是 e2e 契约）。
-   段身 = 文件夹在前、散页在后；散页区整块是「拖出来」的落点。 */
+/* Pages 段（2026-08-17g 排序钮）：段头右侧是排序菜单（持久化 prefs.pageSort，
+   data-page-sort 是 e2e 契约），段身按当前档位排好的页。 */
 function PagesSection(props) {
   useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 sidebarPages
   var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
-  var dnd = props.dnd;
-  var model = props.model;
 
   return (
     <section className="wb-section" data-section="pages">
@@ -386,32 +274,9 @@ function PagesSection(props) {
         <PageSortMenu sort={props.sort} onChange={props.onSortChange} />
       </div>
       <nav className="wb-side-nav wb-pages" id="wbpages">
-        {model.folders.map(function (folder) {
-          var collapsed = dnd.isCollapsed(folder);
-          return (
-            <Fragment key={folder.id}>
-              <FolderRow folder={folder} collapsed={collapsed} dnd={dnd} />
-              {collapsed ? null : folder.pages.map(function (page) {
-                return (
-                  <PageRow key={page.id} page={page} indent folderId={folder.id}
-                    dnd={dnd} now={props.now} />
-                );
-              })}
-            </Fragment>
-          );
+        {props.pages.map(function (page) {
+          return <PageRow key={page.id} page={page} now={props.now} />;
         })}
-        <div className="wb-loose"
-          onDragOver={function (e) { dnd.onLooseDragOver(e); }}
-          onDragLeave={function () { dnd.onDragLeave(); }}
-          onDrop={function (e) { dnd.onLooseDrop(e); }}
-          data-drop-hint={dnd.looseDrop ? 'into' : undefined}>
-          {model.loose.map(function (page) {
-            return <PageRow key={page.id} page={page} dnd={dnd} now={props.now} />;
-          })}
-        </div>
-        {dnd.error ? (
-          <p className="wb-folder-error" role="alert">{dnd.error}</p>
-        ) : null}
         {manifestError ? (
           <div className="wb-page-error" style={{ margin: '6px 10px' }}>
             <p title={manifestError}
@@ -427,212 +292,6 @@ function PagesSection(props) {
       </nav>
     </section>
   );
-}
-
-/* 分组层的交互状态与三条写接口的调用点（ADR 0032）。折叠是本地先动、后台再写
-   （折叠一个夹不该等一次网络往返）；其余动作一律「写成功了才变」——登记表是
-   事实源，乐观更新会让一次被拒的写看起来成功了。 */
-function useFolderActions(folders, model, sort) {
-  var [collapsedLocal, setCollapsedLocal] = useState({});
-  var [renamingFolderId, setRenamingFolderId] = useState(null);
-  // 拖动中的页存在 ref 里，不存 state：dragstart 与第一个 dragover 之间可能还没
-  // 有过一次渲染，读 state 会读到 null，那一下拖放就被当成「没在拖」丢掉。
-  var draggingRef = useRef(null);
-  var [dropFolderId, setDropFolderId] = useState(null);
-  var [dropPage, setDropPage] = useState(null);
-  var [looseDrop, setLooseDrop] = useState(false);
-  var [error, setError] = useState(null);
-
-  function fail(e) {
-    setError(String(e && e.message ? e.message : e));
-  }
-  function run(promise) {
-    setError(null);
-    return promise.catch(fail);
-  }
-
-  function resolvedCollapsed(folder, local) {
-    var v = local[folder.id];
-    return v === undefined ? !!folder.collapsed : v;
-  }
-
-  /** 整表写入的载荷；local 是折叠态的本地覆盖（缺省用当前的）。 */
-  function foldersPayload(local) {
-    local = local || collapsedLocal;
-    return folders.map(function (folder) {
-      var out = { id: folder.id };
-      if (folder.name && folder.name !== folder.id) out.name = folder.name;
-      if (resolvedCollapsed(folder, local)) out.collapsed = true;
-      return out;
-    });
-  }
-
-  function clearDrop() {
-    setDropFolderId(null);
-    setDropPage(null);
-    setLooseDrop(false);
-  }
-
-  var actions = {
-    folders: model.folders,
-    renamingFolderId: renamingFolderId,
-    dropFolderId: dropFolderId,
-    looseDrop: looseDrop,
-    error: error,
-
-    isCollapsed: function (folder) { return resolvedCollapsed(folder, collapsedLocal); },
-
-    toggleFolder: function (id) {
-      var folder = folders.find(function (f) { return f.id === id; });
-      if (!folder) return;
-      var merged = Object.assign({}, collapsedLocal);
-      merged[id] = !resolvedCollapsed(folder, collapsedLocal);
-      setCollapsedLocal(merged);
-      // 写完（成功登记表已更新、失败则回到登记表的值）本地覆盖都该退场，
-      // 否则一次被拒的写会让这个夹永远与登记表不一致。
-      run(putFolders(foldersPayload(merged))).then(function () {
-        setCollapsedLocal(function (prev) {
-          var next = Object.assign({}, prev);
-          delete next[id];
-          return next;
-        });
-      });
-    },
-
-    createFolderWith: function (pageId) {
-      var name = '新建文件夹';
-      var id = nextFolderId(folders.map(function (f) { return f.id; }), name);
-      run(putFolders(foldersPayload().concat([{ id: id, name: name }])).then(function () {
-        setRenamingFolderId(id);
-        if (pageId) return putPageFolder(pageId, id);
-        return null;
-      }));
-    },
-
-    startFolderRename: function (id) { setRenamingFolderId(id); },
-
-    finishFolderRename: function (id, name) {
-      setRenamingFolderId(null);
-      if (!name) return;
-      run(putFolders(foldersPayload().map(function (f) {
-        return f.id === id ? Object.assign({}, f, { name: name }) : f;
-      })));
-    },
-
-    removeFolder: function (id) {
-      // 删夹不删页：里面的页退回散页区，服务端在同一次原子写里释放。
-      run(putFolders(foldersPayload().filter(function (f) { return f.id !== id; })));
-    },
-
-    movePage: function (pageId, folderId) {
-      run(putPageFolder(pageId, folderId));
-    },
-
-    /* ---- 拖放 ---- */
-    onDragStart: function (e, pageId, folderId) {
-      draggingRef.current = { id: pageId, folder: folderId };
-      if (!e.dataTransfer) return;
-      e.dataTransfer.effectAllowed = 'move';
-      e.dataTransfer.setData(DND_TYPE, pageId);
-      e.dataTransfer.setData('text/plain', pageId);
-    },
-    onDragEnd: function () { draggingRef.current = null; clearDrop(); },
-    onDragLeave: function () { clearDrop(); },
-
-    onFolderDragOver: function (e, folderId) {
-      if (!draggingRef.current) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      setDropFolderId(folderId);
-      setDropPage(null);
-      setLooseDrop(false);
-    },
-    onFolderDrop: function (e, folderId) {
-      var drag = draggingRef.current;
-      if (!drag) return;
-      e.preventDefault();
-      e.stopPropagation();
-      draggingRef.current = null;
-      clearDrop();
-      if (drag.folder === folderId) return;
-      actions.movePage(drag.id, folderId);
-    },
-
-    /* 夹内的页行既是入夹落点，也是「默认」档下的重排落点：同夹同档 = 排序，
-       否则 = 入夹（拖到别人夹里的某一行上，意思显然是进那个夹）。 */
-    onPageDragOver: function (e, pageId, folderId) {
-      var drag = draggingRef.current;
-      if (!drag || drag.id === pageId) return;
-      e.preventDefault();
-      e.stopPropagation();
-      e.dataTransfer.dropEffect = 'move';
-      if (folderId && drag.folder === folderId && sort === 'default') {
-        var box = e.currentTarget.getBoundingClientRect();
-        var before = e.clientY < box.top + box.height / 2;
-        // dragover 连续触发；落点没变就别换对象，整栏免得跟着每次指针移动重渲染。
-        setDropPage(function (prev) {
-          return prev && prev.id === pageId && prev.before === before ? prev : { id: pageId, before: before };
-        });
-        setDropFolderId(null);
-      } else if (folderId) {
-        setDropFolderId(folderId);
-        setDropPage(null);
-      } else {
-        setDropPage(null);
-        setDropFolderId(null);
-        setLooseDrop(true);
-      }
-    },
-    onPageDrop: function (e, pageId, folderId) {
-      var drag = draggingRef.current;
-      if (!drag || drag.id === pageId) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var hint = dropPage;
-      draggingRef.current = null;
-      clearDrop();
-      if (folderId && drag.folder === folderId && sort === 'default') {
-        var group = model.folders.filter(function (f) { return f.id === folderId; })[0];
-        if (!group) return;
-        var ids = group.pages.map(function (p) { return p.id; }).filter(function (id) { return id !== drag.id; });
-        var at = ids.indexOf(pageId);
-        if (at < 0) return;
-        ids.splice(hint && hint.before ? at : at + 1, 0, drag.id);
-        actions.reorderPages(ids);
-        return;
-      }
-      if (folderId) {
-        if (drag.folder !== folderId) actions.movePage(drag.id, folderId);
-        return;
-      }
-      if (drag.folder) actions.movePage(drag.id, null);
-    },
-    reorderPages: function (ids) { run(putPageOrder(ids)); },
-
-    onLooseDragOver: function (e) {
-      var drag = draggingRef.current;
-      if (!drag || !drag.folder) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'move';
-      setLooseDrop(true);
-      setDropFolderId(null);
-    },
-    onLooseDrop: function (e) {
-      var drag = draggingRef.current;
-      if (!drag) return;
-      e.preventDefault();
-      draggingRef.current = null;
-      clearDrop();
-      if (drag.folder) actions.movePage(drag.id, null);
-    },
-
-    dropHintFor: function (pageId) {
-      if (!dropPage || dropPage.id !== pageId) return null;
-      return dropPage.before ? 'before' : 'after';
-    }
-  };
-  return actions;
 }
 
 export function Sidebar() {
@@ -679,27 +338,17 @@ export function Sidebar() {
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 
-  // 分组模型只在清单 / 当前页 / 排序变了才重算 —— 拖放中的落点态
-  // 与每分钟的时间 tick 都会让整栏重渲染，别让它们顺带重排一遍。
+  // 列表只在清单 / 当前页 / 排序变了才重算 —— 每分钟的时间 tick 会让整栏
+  // 重渲染，别让它顺带重排一遍。
   var derived = useMemo(function () {
-    var grouping = pageGrouping();
     var pages = visiblePages(sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] })));
     return {
-      grouping: grouping,
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
       pinned: pages.filter(function (page) { return !pagePreferences.archived[page.id] && pagePreferences.pinned[page.id]; }),
       archived: pages.filter(function (page) { return pagePreferences.archived[page.id]; }),
-      model: groupPages({
-        pages: pages.filter(function (page) { return !pagePreferences.archived[page.id] && !pagePreferences.pinned[page.id]; }),
-        folders: grouping.folders,
-        pageFolders: grouping.pageFolders,
-        pageOrder: grouping.pageOrder,
-        sort: sort
-      })
+      listed: sortPages(pages.filter(function (page) { return !pagePreferences.archived[page.id] && !pagePreferences.pinned[page.id]; }), sort)
     };
   }, [manifest, activePageId, sort, pagePreferences]);
-  var model = derived.model;
-  var dnd = useFolderActions(derived.grouping.folders, model, sort);
   // 最近与页面共用归档、置顶筛选。
   var recent = activityRows(visiblePages(derived.pages));
 
@@ -726,27 +375,23 @@ export function Sidebar() {
               }} onClick={function () { setSidebarTab(tab); }}><WbIcon name={icon} size={18} /></button>;
           })}
         </div>
-        {sidebarTab === 'pages' && <Button type="button" variant="tool" size="icon" className="wb-new-folder" data-new-folder="1"
-          aria-label="新建文件夹" title="新建文件夹" onClick={function () { dnd.createFolderWith(null); }}>
-          <WbIcon name="folder-plus" size={16} />
-        </Button>}
       </div>}
       <div className="wb-side-body">
         <ScrollArea className="wb-side-scroll min-h-0 flex-1" id="wbside-scroll" hidden={settingsOpen}>
           <PagePreferences.Provider value={{ value: pagePreferences, toggle: togglePagePreference, showInfo: setInfoPage, sort: sort }}>
           {sidebarTab === 'archived' ? <div role="tabpanel" id="wb-panel-archived" aria-labelledby="wb-tab-archived"><nav aria-label="已归档页面">
-            {derived.archived.map(function (page) { return <PageRow key={page.id} page={page} dnd={dnd} now={now} />; })}
+            {derived.archived.map(function (page) { return <PageRow key={page.id} page={page} now={now} />; })}
             {!derived.archived.length && <p className="wb-row">没有归档页面</p>}
           </nav></div> : <div role="tabpanel" id="wb-panel-pages" aria-labelledby="wb-tab-pages" hidden={sidebarTab !== 'pages'}>
           <ArticlesSection />
-          {/* 「页面」组（pp3）：原来的置顶、最近、文件夹与散页原样搬进来，等存量页迁成文章后撤掉。 */}
+          {/* 「页面」组（pp3）：原来的置顶、最近与页面列表原样搬进来，等存量页迁成文章后撤掉。 */}
           <section className="wb-group" data-section="page-group" aria-labelledby="wb-page-group-head">
           <div className={SECTION_HEAD + ' wb-group-head'} id="wb-page-group-head">页面</div>
           {derived.pinned.length > 0 && <nav className="wb-pinned-pages" aria-label="置顶页面">
-            {derived.pinned.map(function (page) { return <PageRow key={page.id} page={page} folderId={derived.grouping.pageFolders[page.id]} dnd={dnd} now={now} />; })}
+            {derived.pinned.map(function (page) { return <PageRow key={page.id} page={page} now={now} />; })}
           </nav>}
-          <RecentSection dnd={dnd} pageFolders={derived.grouping.pageFolders} rows={recent.filter(function (row) { return !pagePreferences.pinned[row.page.id]; })} now={now} />
-          <PagesSection model={model} dnd={dnd} sort={sort} now={now}
+          <RecentSection rows={recent.filter(function (row) { return !pagePreferences.pinned[row.page.id]; })} now={now} />
+          <PagesSection pages={derived.listed} sort={sort} now={now}
             onSortChange={function (next) {
               savePrefs({ pageSort: next });
               setSort(next);

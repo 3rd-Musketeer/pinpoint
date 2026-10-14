@@ -171,8 +171,8 @@ function buildProjectEntry(target, flags, { cwd, existingIds, findExisting }) {
   return { id: json.id, title, kind: 'project', path: root };
 }
 
-/** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端的
-    文件夹写接口用的是同一份）。缺省读本 CLI 所在仓库。 */
+/** 本地 manifest 页 id 列表（实现在 src/server/lib/page-manifest.js，服务端
+    用的是同一份）。缺省读本 CLI 所在仓库。 */
 export function manifestPageIds(root = REPO_ROOT) {
   return libManifestPageIds(root);
 }
@@ -907,9 +907,3 @@ export async function runRemove(argv, io = {}) {
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;
 }
-
-/* ============================== folder（分组） ==============================
-   2026-09-04 裁决 5a：owner 自己建夹、把页拖进去，一层不嵌套。拖放在 workbench
-   里做（走服务端的三个 PUT），CLI 是同一份登记表的另一个入口——建夹 / 改名 /
-   删夹 / 归属，都是「全部校验 → 一次原子写 → 重载服务」，与 rename 同一套姿态。
-   删夹永远不删页：夹里的页丢掉归属变成散页。 */

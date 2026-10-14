@@ -65,12 +65,12 @@ const runIn = (made, argv, extra = {}) => {
 
 test('--json：每个命令 stdout 都是一个 JSON；没有原生 JSON 的命令包进信封，用法错也是', async (t) => {
   const made = fixture(t);
-  const folders = await runIn(made, ['folder', 'list', '--json']);
-  assert.equal(folders.code, 0, folders.err.join('\n'));
-  const envelope = JSON.parse(folders.out.join('\n'));
+  const prune = await runIn(made, ['prune', 'e2e-project/commit-confirm', '--dry-run', '--json']);
+  assert.equal(prune.code, 0, prune.err.join('\n'));
+  const envelope = JSON.parse(prune.out.join('\n'));
   assert.equal(envelope.ok, true);
   assert.equal(envelope.exit, 0);
-  assert.equal(envelope.command, 'folder');
+  assert.equal(envelope.command, 'prune');
   assert.ok(Array.isArray(envelope.output));
 
   const usage = await runIn(made, ['shot', 'e2e-project/commit-confirm', '--bogus', '--json']);
