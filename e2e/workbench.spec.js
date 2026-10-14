@@ -1743,6 +1743,112 @@ test('a save queued behind an in-flight one reaches the disk when the page is le
   await page.unroute('**/save');
 });
 
+// 保存撞上 409 时合并盘上的版本，不拿本地旧快照盖回去。agent 经状态端点（ppnt mark 的后端）
+// 写的 check / done 和回复，在浏览器的 base 之后落盘；浏览器这时存的改动以旧 revision 为底、
+// 撞 409。2026-10-14 之前的画布客户端在 409 后要么直接换成盘上那版（owner 刚改的丢了），
+// 要么拿整份本地快照重发（盘上 done、快照里 open，服务端判非法转换，owner 的改动同样丢）。
+// 三种时序：保存扣在路上时 agent 写了别的一条；agent 写的正是 owner 在改的那条（按状态机回
+// open，回复还在）；保存已落盘、应答扣住，agent 的写经 SSE 先到被延后，owner 又改了一次。
+test('a save that hits 409 keeps the status and reply the agent just wrote, and the owner edit lands', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  const input = page.locator('#ann-input');
+  const file = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
+  const text = (content) => String(content || '').replace(/\[@t:[^\]]*\]\s*/g, '');
+  const diskRows = async () => {
+    const doc = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{}'));
+    return (doc.annotations || []).map(a => ({
+      n: a.n, status: a.status, content: text(a.content),
+      replies: (a.messages || []).filter(m => m.who === 'agent').map(m => m.text),
+    }));
+  };
+  const clientRows = () => page.evaluate(() => window.pinpoint.marks.map(m => ({ n: m.n, status: m.status || 'open' })));
+  // ppnt mark <页> #n <状态> --note：先回复、再写状态，各自带现读的 baseRevision。
+  const agentMark = async (n, status, note) => {
+    const read = async () => (await (await page.request.get('/annotations/%40canvas?entry=e2e-ios')).json()).revision;
+    const reply = await page.request.post(`/annotations/%40canvas/${n}/reply`, { data: { entry: 'e2e-ios', baseRevision: await read(), text: note } });
+    expect(reply.status()).toBe(200);
+    const marked = await page.request.post(`/annotations/%40canvas/${n}/status`, { data: { entry: 'e2e-ios', baseRevision: await read(), status } });
+    expect(marked.status()).toBe(200);
+  };
+  const edit = async (n, value) => {
+    await page.evaluate((want) => window.pinpoint.openMark(want), n);
+    await input.fill(value);
+    await page.keyboard.press('Escape');
+    await expect(input).toHaveCount(0);
+  };
+  const holdSaves = async (mode) => {
+    const gate = {};
+    gate.reached = new Promise((resolve) => { gate.arrive = resolve; });
+    gate.open = new Promise((resolve) => { gate.release = resolve; });
+    let saves = 0;
+    await page.route('**/save', async (route) => {
+      if (++saves > 1) return route.continue();
+      if (mode === 'response') {
+        // 请求照常落盘，应答扣住：客户端这段时间一直在 syncing。
+        const response = await route.fetch();
+        gate.arrive();
+        await gate.open;
+        return route.fulfill({ response });
+      }
+      gate.arrive();
+      await gate.open;
+      return route.continue();
+    });
+    return gate;
+  };
+
+  await saveAnnotation(page, cells.nth(0), '第一条');
+  await saveAnnotation(page, cells.nth(1), '第二条');
+  await expect.poll(async () => (await diskRows()).map(r => [r.n, r.content])).toEqual([[1, '第一条'], [2, '第二条']]);
+
+  await test.step('保存扣在路上时 agent 把另一条写成 done：409 后两边都在', async () => {
+    const gate = await holdSaves('request');
+    await edit(2, '第二条改过');
+    await gate.reached;
+    await agentMark(1, 'done', '第一条改好了');
+    gate.release();
+    await expect.poll(diskRows).toEqual([
+      { n: 1, status: 'done', content: '第一条', replies: ['第一条改好了'] },
+      { n: 2, status: 'open', content: '第二条改过', replies: [] },
+    ]);
+    await expect.poll(clientRows).toEqual([{ n: 1, status: 'done' }, { n: 2, status: 'open' }]);
+    await page.unroute('**/save');
+  });
+
+  await test.step('agent 写的正是 owner 在改的那条：按状态机回 open，改动落盘，回复还在', async () => {
+    const gate = await holdSaves('request');
+    await edit(2, '第二条又改');
+    await gate.reached;
+    await agentMark(2, 'check', '第二条看一下');
+    gate.release();
+    await expect.poll(diskRows).toEqual([
+      { n: 1, status: 'done', content: '第一条', replies: ['第一条改好了'] },
+      { n: 2, status: 'open', content: '第二条又改', replies: ['第二条看一下'] },
+    ]);
+    await expect.poll(clientRows).toEqual([{ n: 1, status: 'done' }, { n: 2, status: 'open' }]);
+    await page.unroute('**/save');
+  });
+
+  await test.step('应答扣住时 agent 写了、SSE 先到被延后，owner 又改了一条：两边都在', async () => {
+    const gate = await holdSaves('response');
+    await edit(1, '第一条改过');
+    await gate.reached;
+    await expect.poll(async () => (await diskRows())[0].content).toBe('第一条改过');
+    await agentMark(2, 'check', '第二条改好了');
+    await edit(1, '第一条再改');
+    gate.release();
+    await expect.poll(diskRows).toEqual([
+      { n: 1, status: 'open', content: '第一条再改', replies: ['第一条改好了'] },
+      { n: 2, status: 'check', content: '第二条又改', replies: ['第二条看一下', '第二条改好了'] },
+    ]);
+    await expect.poll(clientRows).toEqual([{ n: 1, status: 'open' }, { n: 2, status: 'check' }]);
+    await page.unroute('**/save');
+  });
+});
+
 test('多选跨 frame：每个目标的草稿框落在它自己的 frame 里', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
