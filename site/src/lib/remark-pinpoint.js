@@ -11,6 +11,9 @@
  *   `num` (author-written values are replaced), so the card knows which canvas
  *   row it shows and which number to print. A Canvas outside any Section gets
  *   nothing; the card renders the error.
+ * - <Figure> anywhere in the body → gets `n` (0, 1 …, every <Figure> in
+ *   document order, broken ones too): the same index articleCanvas gives its
+ *   `figures`, so the figure finds its source, caption and errors.
  *
  * The article shows numbers; the canvas, `ppnt` and annotation refs keep the
  * section letters (A1 is the canvas contract). Both come from the same walk
@@ -23,7 +26,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
-import { articleStructure, jsxAttribute } from '../../../src/shared/article-structure.js';
+import { articleFigures, articleStructure, jsxAttribute } from '../../../src/shared/article-structure.js';
 import { SECTION_ID_PATTERN as SECTION_ID } from '../../../src/shared/project-ids.js';
 import { REF_RE, rawRefHtml } from './refs.js';
 
@@ -113,6 +116,7 @@ export function remarkPinpoint() {
     if (!from) return; // not project content: leave untouched
     const fail = (msg) => { throw new Error(`${filePath}: ${msg}`); };
     const sections = isMdx ? markSections(tree, fail) : [];
+    if (isMdx) for (const figure of articleFigures(tree)) setAttr(figure.node, 'n', String(figure.index));
 
     // `[[ ]]` in text → <Ref> (MDX) or a placeholder span (.md).
     const walk = (node) => {

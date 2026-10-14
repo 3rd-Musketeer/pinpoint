@@ -121,6 +121,23 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(mech.html, /class="cc-box natural"/);
   assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
   assert.deepEqual(linksOf(mech.html), [q(`/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
+  // Figures in the prose (<Figure>): one lazy same-origin iframe each (embed=figure, no canvas card), caption below,
+  // excluded from prose comments; one before the first Section, one inside it. They are not frames: the cards above are unchanged.
+  const figures = [...article.matchAll(/<figure class="pp-fig" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]
+    .map((m) => ({ id: m[1], state: m[2], html: m[3], at: m.index }));
+  assert.deepEqual(figures.map((f) => [f.id, f.state]), [['pay-sequence', 'loading'], ['message-flow', 'loading']]);
+  assert.deepEqual(figures.map((f) => iframesOf(f.html)), ['pay-sequence', 'message-flow'].map((f) => [q(`/api/frame?page=${encodeURIComponent(page)}&figure=${f}&embed=figure`)]));
+  for (const f of figures) {
+    const tag = f.html.match(/<iframe [^>]*>/)[0];
+    assert.match(tag, /loading="lazy"/);
+    assert.match(tag, /scrolling="no"/);
+    assert.doesNotMatch(tag, /tabindex|aria-hidden/); // a figure is interactive, unlike the inert card thumbnails
+  }
+  assert.match(figures[0].html, /title="付款前 agent 停在哪里"[\s\S]*<figcaption>付款前 agent 停在哪里<\/figcaption>/);
+  assert.match(figures[1].html, /<figcaption>消息怎么走：点“下一步”一条一条看<\/figcaption>/);
+  const firstSection = article.indexOf('<section class="sec" id="overview"');
+  assert.ok(figures[0].at < firstSection && figures[1].at > firstSection && figures[1].at < article.indexOf('<section class="sec" id="flow"'));
+  assert.doesNotMatch(article, /data-pp-figure-errors/);
   // The section overlay: one empty shell per article with a canvas, outside #article, excluded from prose comments.
   const ov = article.match(/<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">[\s\S]*?<\/dialog>/);
   assert.ok(ov, 'overlay shell');
@@ -161,12 +178,13 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
 // A canvas error is a project error (docs/projects.md「画布视图 · 错误」), and
 // project errors fail the production build. Which error lands in the card and
 // which in the banner is covered in src/lib/canvas-card.test.js.
-test('canvas errors fail the build, each with its line', (t) => {
+test('canvas and figure errors fail the build, each with its line', (t) => {
   const b = build(t, ['broken']);
   assert.notEqual(b.status, 0);
   assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 7 行：<Canvas> 必须写在 <Section> 里/);
   assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 13 行：.*引用了别的页的帧 "browser-e2e-flow\/ask".*先把帧迁进本篇目录/);
   assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 13 行：.*帧 "gone" 没有源文件/);
+  assert.match(b.log, /project "broken": articles\/broken-canvas\/index\.mdx：第 15 行：<Figure> 图 "gone" 没有源文件（文章目录下缺 figures\/gone\.jsx）/);
 });
 
 test('an article id that equals a concept name fails the build', (t) => {

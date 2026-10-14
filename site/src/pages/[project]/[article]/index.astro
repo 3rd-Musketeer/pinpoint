@@ -4,6 +4,7 @@ import Base from '../../../layouts/Base.astro';
 import Section from '../../../components/Section.astro';
 import Canvas from '../../../components/Canvas.astro';
 import CanvasOverlay from '../../../components/CanvasOverlay.astro';
+import Figure from '../../../components/Figure.astro';
 import Ref from '../../../components/Ref.astro';
 import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
 import { articleCanvas } from '../../../lib/projects-source.js';
@@ -25,6 +26,7 @@ const a = p.articles.find((x) => x.id === articleId);
 const { Content, remarkPluginFrontmatter } = await render(a.entry);
 const sections = remarkPluginFrontmatter.sections || [];
 // 这篇的画布（自动生成的页）：卡片从 locals 里取本节的帧；顶栏“画布视图”只在有画布节时出现。
+// 正文里的图（<Figure>）也从这里取（canvas.figures，按 remark 注入的序号）。
 const canvas = await articleCanvas(p.id, a.id);
 Astro.locals.ppCanvas = canvas;
 const canvasView = canvas.pageId && canvas.sections.length ? canvasHref(canvas.pageId) : undefined;
@@ -59,7 +61,7 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
     {a.summary && <p class="lede">{a.summary}</p>}
   </div>
   <div class="article-body">
-    <Content components={{ Section, Canvas, Ref }} />
+    <Content components={{ Section, Canvas, Figure, Ref }} />
   </div>
   {canvasView && <CanvasOverlay slot="overlay" />}
 </Base>

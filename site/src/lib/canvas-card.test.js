@@ -117,8 +117,10 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
 
   // Banner: the project's errors repeat all three under articles/broken-canvas; only the page-level one is shown, once.
   // Errors of other articles and of the project itself are listed as `project "<id>": <line>`.
+  // The figure with no source file: its error stays with the figure (not on the card above, not in the banner).
+  assert.deepEqual(canvas.figures.map((f) => [f.index, f.id, f.section, f.missing, f.errors.map((e) => e.code)]), [[0, 'gone', 'bad', true, ['figure_missing']]]);
   const [project] = listProjects(registry).filter((p) => p.id === 'broken');
-  assert.equal(project.errors.length, 3);
+  assert.equal(project.errors.length, 4);
   const projectErrors = [
     ...project.errors,
     { code: 'frontmatter', message: '别篇的错', path: 'articles/other/index.mdx' },
@@ -134,7 +136,8 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
     '第 7 行：<Canvas> 必须写在 <Section> 里（画布按节排开）',
   ]);
   assert.deepEqual(bannerErrors('broken', project.errors, 'broken-canvas', canvas), ['第 7 行：<Canvas> 必须写在 <Section> 里（画布按节排开）']);
-  const shown = [...banner, ...bad.errors];
+  // Shown once across the page: banner, the section's card, the figure (figure.js figureModel).
+  const shown = [...banner, ...bad.errors, ...canvas.figures.flatMap((f) => f.errors.map((e) => e.message))];
   for (const e of project.errors) {
     assert.equal(shown.filter((x) => x === e.message).length, 1, `shown once: ${e.message}`);
   }

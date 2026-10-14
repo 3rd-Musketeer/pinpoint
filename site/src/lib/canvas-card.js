@@ -38,9 +38,14 @@ export function shellBox(shell) {
   return { mode: 'natural', ...(NATURAL[shell] || NATURAL.comp) };
 }
 
-/** articleCanvas errors → { section, frame?, message }; no `section` = a page-level error. */
+/**
+ * articleCanvas errors → { section, frame?, message }; no `section` = a page-level error.
+ * A figure's errors (code figure_…) are left out: the figure shows them in its own place (figure.js).
+ */
 export function normalizeErrors(errors) {
-  return (errors || []).map((e) => ({ section: e.section ?? null, frame: e.frame, message: String(e.message ?? '') }));
+  return (errors || [])
+    .filter((e) => !/^figure_/.test(String(e?.code || '')))
+    .map((e) => ({ section: e.section ?? null, frame: e.frame, message: String(e.message ?? '') }));
 }
 
 /** Errors that belong to no section: the article page shows them at the top. */

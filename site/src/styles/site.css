@@ -92,6 +92,14 @@ th { background:var(--soft); font-weight:600; }
 .pop .used { margin-top:10px; color:var(--muted); font-size:12.5px; }
 .pop .go { display:inline-block; margin-top:10px; color:var(--accent); font-weight:600; text-decoration:none; }
 
+/* 正文里的图（Figure.astro）：同源 iframe 占满正文栏宽，高度由图页报上来（figure-client.js），没有滚动条。
+   底色就是页面底色，图和正文融在一起；细线框把可操作的区域圈出来。 */
+.pp-fig { margin:26px 0 22px; max-width:100%; min-width:0; }
+.pp-fig iframe { display:block; width:100%; border:1px solid var(--hair); border-radius:14px; background:var(--bg); }
+.pp-fig figcaption { margin-top:8px; font-size:14px; line-height:1.55; color:var(--muted); }
+.pp-fig-errors { border:1px solid var(--err); color:var(--err); background:var(--bg); border-radius:12px; padding:10px 14px; font-size:13.5px; line-height:1.55; }
+.pp-fig-errors ul { margin:4px 0 0; padding-left:1.2em; }
+
 /* 画布卡片（Canvas.astro）：一节的帧排成一行，横向在卡片里滚动；只读，点帧 / 打开画布到画布页 */
 .canvas-card { margin:26px 0 10px; max-width:100%; min-width:0; border:1px solid var(--hair); border-radius:18px; overflow:hidden; background:var(--soft); }
 .cc-head { display:flex; flex-wrap:wrap; align-items:center; gap:6px 10px; padding:12px 16px; background:var(--bg); border-bottom:1px solid var(--hair); font-size:14px; }

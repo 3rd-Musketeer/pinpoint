@@ -1,0 +1,7 @@
+.ps-actor line { stroke:var(--fig-hair); stroke-width:1.5; }
+.ps-actor rect { fill:var(--fig-panel); stroke:var(--fig-hair); }
+.ps-actor text { font-size:13px; font-weight:600; }
+.ps-msg line { stroke:var(--fig-ink-2); stroke-width:1.5; }
+.ps-msg text { font-size:12.5px; }
+.ps-stop { fill:var(--fig-accent-soft); stroke:var(--fig-accent); }
+.ps-stop-text { fill:var(--fig-accent); font-weight:700; font-size:14px; }
