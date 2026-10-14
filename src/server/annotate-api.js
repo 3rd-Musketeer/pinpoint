@@ -384,10 +384,11 @@ export function createAnnotateHandler(options = {}) {
       match: '/annotations',
       run: ({ res }) => {
         // Debug aggregate: flatten every bucket into [{entry, page, ...}]. 桶 = 页：
-        // registry 条目 + manifest 模板页都是页桶，都在列。
+        // registry 条目、manifest 模板页、文章画布页都是页桶，都在列。
         const docs = [];
         const seen = new Set();
-        for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds()]) {
+        const articleIds = listArticleTargets(registry).map((target) => target.entryId);
+        for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds(), ...articleIds]) {
           if (seen.has(id)) continue;
           seen.add(id);
           for (const doc of Object.values(storeFor(id).listDocs())) {

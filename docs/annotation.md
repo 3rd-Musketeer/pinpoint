@@ -102,7 +102,7 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
-`GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
+`GET /annotations`（不带 page）是调试用的聚合，把每个页桶（登记条目、模板页、文章画布页）摊平成 `[{entry, ...doc}]`；
 按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
 
 **孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、文章的 HTML 帧移出了 Canvas
