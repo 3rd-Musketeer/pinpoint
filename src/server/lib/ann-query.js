@@ -518,7 +518,15 @@ export function checkRowModel(row, context) {
     bucket: row.__bucket,
     ledger: row.__ledger,
     docPath: row.__docPath || '',
+    // 线程里的回复（ppnt reply、mark --note 写的 agent 消息）；正文评论另在 proseRowModel 里给全线程。
+    messages: threadReplies(row),
   };
+}
+
+/** 一行的线程消息（content 之后的来回）：[{ who, text, at }]。 */
+function threadReplies(row) {
+  return (Array.isArray(row.messages) ? row.messages : []).filter((m) => m && typeof m.text === 'string')
+    .map((m) => ({ who: m.who === 'agent' ? 'agent' : 'owner', text: m.text, at: m.at || '' }));
 }
 
 /**
@@ -701,8 +709,7 @@ export function proseRowModel(row, context, source = null) {
     intent: '正文评论',
     section: row.section || '',
     quote: exact,
-    messages: (Array.isArray(row.messages) ? row.messages : []).filter((m) => m && typeof m.text === 'string')
-      .map((m) => ({ who: m.who === 'agent' ? 'agent' : 'owner', text: m.text, at: m.at || '' })),
+    messages: threadReplies(row),
     file: context.article ? context.article.file : null,
     line,
   };
@@ -761,6 +768,7 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
       if (row.excerpt && row.excerpt.length) {
         for (const line of row.excerpt) lines.push(`  ${line}`);
       }
+      for (const m of row.messages || []) lines.push(`  ${m.who}${m.at ? `（${shortTime(m.at)}）` : ''}：${m.text}`);
     }
   }
   if (!report.groups.length) lines.push('', '（该过滤条件下没有标注）');

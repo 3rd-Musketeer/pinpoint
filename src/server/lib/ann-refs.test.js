@@ -94,10 +94,11 @@ describe('expandRefs', () => {
     assert.deepEqual(errors, []);
   });
 
-  test('空帧 / 坏引用逐条报错，不炸整批', () => {
-    const { picks, errors } = expandRefs(['A2', '#1', 'Z9', '#40'], { ...CTX, rows: [ROWS[0], ROWS[3]] });
+  test('坏引用逐条报错、不炸整批；对上了但没有标注的帧单列在 empty，不算错误', () => {
+    const { picks, errors, empty } = expandRefs(['A2', '#1', 'Z9', '#40'], { ...CTX, rows: [ROWS[0], ROWS[3]] });
     assert.equal(picks.length, 1);
-    assert.equal(errors.length, 3);
+    assert.equal(errors.length, 2);
+    assert.deepEqual(empty, ['A2：该帧暂无标注']);
   });
 
   test('整页引用在非 shot 语义下报错', () => {

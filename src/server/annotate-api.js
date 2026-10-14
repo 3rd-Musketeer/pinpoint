@@ -519,7 +519,7 @@ export function createAnnotateHandler(options = {}) {
         return true;
       },
     },
-    // pp3 M2：ppnt reply 的后端 —— 往正文评论的线程追加一条 agent 消息，状态不动。
+    // ppnt reply 的后端 —— 往任何一条标注的线程追加一条 agent 消息，状态不动。
     {
       methods: ['POST'],
       match: REPLY_ROUTE,

@@ -93,6 +93,22 @@ export function annMarkBroken(mark, resolvesTarget, elementTargets) {
 }
 
 /**
+ * 线程里正文之后的消息（agent 经 ppnt reply / mark --note 写的回复）：[{ who, text, at }]。
+ * 任何一种标注都可能有（docs/annotation.md“线程”）；没有时 []。
+ */
+export function annRowReplies(mark) {
+  const messages = mark && Array.isArray(mark.messages) ? mark.messages : [];
+  return messages
+    .filter((m) => m && typeof m.text === 'string' && m.text.trim())
+    .map((m) => ({ who: m.who === 'agent' ? 'agent' : 'owner', text: m.text, at: m.at || '' }));
+}
+
+/** 回复的作者名：agent / owner。 */
+export function annReplyAuthor(who) {
+  return who === 'agent' ? 'agent' : 'owner';
+}
+
+/**
  * Row model shared by both sidebars. `context.preview` is the already
  * display-converted content line (caller-side, see annRowPreview);
  * `context.broken` is the already-evaluated anchor state (see annMarkBroken);
@@ -107,5 +123,7 @@ export function annRowModel(mark, context = {}) {
     tags: annRowTags(mark),
     // pp2 状态机：四态随行（消费端自行决定怎么摆）。
     status: (mark && mark.status) || 'open',
+    // 线程回复（agent 改完说了什么）：列表行在正文下面逐条列出。
+    replies: annRowReplies(mark),
   };
 }

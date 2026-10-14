@@ -20,7 +20,8 @@ import { articlePageId } from '../../src/shared/project-ids.js';
 import { formatProjectError, isArticleError } from '../../src/shared/project-errors.js';
 
 import { DEFAULT_ORIGIN, ioOf } from './core.js';
-import { guardParse, USAGE_EXIT } from './args.js';
+import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
+import { componentUses, formatUses } from './uses.js';
 import { resolveAddress } from './address.js';
 import { addressContext, printCandidates } from './targets.js';
 import { listFrames, loadAnnotateContext } from './list.js';
@@ -178,6 +179,12 @@ export async function showTarget(token, parsed, { env, out, err }) {
   const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
   const hit = resolveAddress(token, ctx);
   const contextOf = (address) => loadAnnotateContext(address, parsed, { env, err: () => {} });
+  if (parsed.flags.uses && hit && (hit.kind === 'project' || hit.kind === 'article')) {
+    return showUses(hit, parsed, { ctx, env, out, contextOf });
+  }
+  if (parsed.flags.uses && hit && hit.kind === 'page') {
+    return reportUsageError('show', `--uses 查 project 和文章里的组件；${token} 是存量页`, err);
+  }
   if (hit && hit.kind === 'project') {
     const project = await withFigureErrors(ctx.registry, findProject(ctx.registry, hit.projectId), env);
     const model = projectModel({ registry: ctx.registry, project, contextOf, origin });
@@ -207,6 +214,22 @@ export async function showTarget(token, parsed, { env, out, err }) {
   err(`错误：找不到 ${token}：show 的目标是 <project>、<project>/<article> 或存量页 id（按口头说法找用 ppnt list <关键词>）`);
   printCandidates(ctx, err);
   return USAGE_EXIT;
+}
+
+/** show --uses：project 查全部文章，文章只查这一篇。一个都没用到退 1。 */
+async function showUses(hit, parsed, { ctx, env, out, contextOf }) {
+  const project = findProject(ctx.registry, hit.projectId);
+  const articles = hit.kind === 'article' ? project.articles.filter((article) => article.id === hit.articleId) : project.articles;
+  const targets = [];
+  for (const article of articles) {
+    const target = resolveArticleTarget(ctx.registry, articlePageId(project.id, article.id));
+    if (target) targets.push({ address: `${project.id}/${article.id}`, target, context: contextOf(`${project.id}/${article.id}`) });
+  }
+  const model = await componentUses({ component: parsed.flags.uses, targets, projectRoot: project.root, distRoot: path.join(dataRoot(env), 'dist') });
+  const found = model.frames.length + model.figures.length > 0;
+  if (parsed.flags.json) out(JSON.stringify({ target: hit.address, ...model }, null, 2));
+  else for (const line of formatUses(model, hit.address)) out(line);
+  return found ? 0 : 1;
 }
 
 export async function runShow(argv, io = {}) {

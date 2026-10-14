@@ -167,6 +167,8 @@ export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];
 export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
   const picks = [];
   const errors = [];
+  // 引用对上了帧、节或区间，只是上面没有标注：不是错误（locate 退 0），单独列给调用方。
+  const empty = [];
   const seen = new Set();
   const pushAnnotation = (row, via) => {
     const key = `${row.__bucket || ''}|${row.__ledger || ''}|${row.id || row.n}`;
@@ -176,7 +178,7 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
   };
   const pushFrameAnnotations = (screenId, via) => {
     const rows = (ctx.rows || []).filter((a) => a.screenId === screenId);
-    if (!rows.length) errors.push(`${via}：该帧暂无标注`);
+    if (!rows.length) empty.push(`${via}：该帧暂无标注`);
     for (const row of rows) pushAnnotation(row, via);
   };
   for (const token of tokens) {
@@ -190,7 +192,7 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
       continue;
     }
     if (pick.kind === 'range') {
-      if (!pick.rows.length) errors.push(`${token}：区间内没有标注`);
+      if (!pick.rows.length) empty.push(`${token}：区间内没有标注`);
       for (const row of pick.rows) pushAnnotation(row, token);
       continue;
     }
@@ -207,7 +209,7 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
       const screenIds = pick.frames.map((frame) => frame.id);
       // 这一节的帧上的标注，加上落在这一节的正文评论（row.section = 节 id）。
       const rows = (ctx.rows || []).filter((a) => screenIds.includes(a.screenId) || (a.type === 'prose' && a.section === pick.sectionId));
-      if (!rows.length) errors.push(`${token}：该节暂无标注`);
+      if (!rows.length) empty.push(`${token}：该节暂无标注`);
       for (const row of rows) pushAnnotation(row, token);
       continue;
     }
@@ -219,7 +221,7 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
       picks.push({ kind: 'page', pageId: pick.pageId || ctx.pageId || '', via: token });
     }
   }
-  return { picks, errors };
+  return { picks, errors, empty };
 }
 
 /** --status 展开：all = 全部；否则该状态的行。 */

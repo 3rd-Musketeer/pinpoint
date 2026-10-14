@@ -27,6 +27,9 @@ import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './
 import { runShow } from './cli/show.js';
 import { runList } from './cli/list.js';
 import { runMigrate } from './cli/migrate.js';
+import { runNew } from './cli/new.js';
+import { runOpen } from './cli/open.js';
+import { runDev } from './cli/sandbox.js';
 
 // 原有导出面保持不变：测试与 bin/pinpoint.mjs 仍从这里 import。
 export {
@@ -118,7 +121,12 @@ export {
   runMark,
   runReply,
 } from './cli/annotate.js';
-export { formatPlan, formatVerify, runMigrate } from './cli/migrate.js';
+export { formatPlan, formatVerify, migrateNextSteps, runMigrate } from './cli/migrate.js';
+export { planNewProject, planNewArticle, articleScaffold, runNew } from './cli/new.js';
+export { openUrls, runOpen } from './cli/open.js';
+export { pickSandboxPorts, sandboxEnv, OWNER_PORTS, runDev } from './cli/sandbox.js';
+export { componentUses } from './cli/uses.js';
+export { ensureDist } from './cli/dist.js';
 export {
   pageListRows,
   projectListRows,
@@ -127,8 +135,55 @@ export {
   runList,
 } from './cli/list.js';
 
-export async function run(argv, io = {}) {
+/**
+ * 每个命令都认 --json（docs/registry.md“CLI”）：stdout 只出一个 JSON 文档，人读的提示照旧走 stderr。
+ * NATIVE_JSON 里的命令自己排 JSON；其余命令的文字输出包进同一个信封
+ * { ok, exit, command, error?, output: [行], stderr: [行] }。原生命令出错没打 JSON 时也给信封，
+ * 所以带 --json 的调用永远能 JSON.parse(stdout)。dev 是常驻命令，自己处理 --json。
+ */
+export const NATIVE_JSON = new Set(['show', 'check', 'comments', 'list', 'locate', 'shot', 'mark', 'reply', 'build', 'status', 'new', 'open']);
+const SELF_JSON = new Set(['dev']);
+
+function jsonEnvelope(command, code, output, stderr) {
+  const firstError = stderr.find((line) => /^错误：/.test(line)) || (code ? stderr[0] : undefined);
+  return {
+    ok: code === 0,
+    exit: code,
+    command: command || null,
+    ...(code && firstError ? { error: String(firstError).replace(/^错误：/, '') } : {}),
+    output,
+    stderr,
+  };
+}
+
+async function runAsJson(argv, io) {
   const { out, err } = ioOf(io);
+  const command = argv[0];
+  const native = NATIVE_JSON.has(command);
+  const output = [];
+  const stderr = [];
+  const captured = {
+    ...io,
+    out: (line) => output.push(String(line)),
+    err: (line) => {
+      stderr.push(String(line));
+      err(line);
+    },
+  };
+  const code = await dispatch(native ? argv : argv.filter((arg) => arg !== '--json'), captured);
+  if (native && output.length) {
+    try {
+      JSON.parse(output.join('\n'));
+      out(output.join('\n'));
+      return code;
+    } catch { /* 原生命令这次打的不是 JSON（不该发生）：包进信封 */ }
+  }
+  out(JSON.stringify(jsonEnvelope(command, code, output, stderr), null, 2));
+  return code;
+}
+
+export async function run(argv, io = {}) {
+  const { out } = ioOf(io);
   if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
     out(USAGE);
     return 0;
@@ -138,9 +193,19 @@ export async function run(argv, io = {}) {
     out(helpFor(argv[1]));
     return 0;
   }
+  const wantsHelp = argv.includes('-h') || argv.includes('--help');
+  if (argv.includes('--json') && !wantsHelp && !SELF_JSON.has(argv[0])) return runAsJson(argv, io);
+  return dispatch(argv, io);
+}
+
+function dispatch(argv, io) {
+  const { err } = ioOf(io);
   switch (argv[0]) {
     case 'list': return runList(argv, io);
     case 'show': return runShow(argv, io);
+    case 'new': return runNew(argv, io);
+    case 'open': return runOpen(argv, io);
+    case 'dev': return runDev(argv, io);
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);

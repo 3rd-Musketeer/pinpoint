@@ -257,6 +257,9 @@ export async function renderFigureShots({ origin, pageId, figureId, outBase, sca
   return results;
 }
 
+/** 文章页正文结尾的标记（site/src/pages/[project]/[article]/index.astro）。 */
+export const ARTICLE_END_SELECTOR = '[data-pp-article-end]';
+
 /** PNG 头里的宽高（IHDR 紧跟签名）。 */
 function pngSize(buffer) {
   if (!buffer || buffer.length < 24) return { width: 0, height: 0 };
@@ -321,7 +324,8 @@ async function settleArticlePage(page, scope = null) {
 /**
  * 文章页截图（ppnt shot <project>/<article> [§n]）。jobs = [{ kind: 'article' | 'article-section',
  * url, sectionId?, out, label, scale }]。先等服务、再等文章页就绪（见 waitArticleReady），
- * 截整页或 <section data-section="<节 id>"> 那一块。返回 [{ out, label, width, height }]。
+ * 截整页或 <section data-section="<节 id>"> 那一块。返回 [{ out, label, width, height, truncated? }]：
+ * 页面里没有正文结尾标记（ARTICLE_END_SELECTOR）时 truncated = true。
  */
 export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env = process.env }) {
   if (!(await serviceUp(origin))) throw new Error(serviceDownMessage(origin, env));
@@ -360,7 +364,9 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
         buffer = await page.screenshot({ path: job.out, fullPage: true });
       }
       const size = pngSize(buffer);
-      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height });
+      // 站点在正文结尾放了 [data-pp-article-end]：没有它，说明正文渲染中途出错、响应断在半篇。
+      const truncated = !(await page.locator(ARTICLE_END_SELECTOR).count());
+      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height, ...(truncated ? { truncated: true } : {}) });
     }
     await context.close();
 

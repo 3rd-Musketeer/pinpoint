@@ -37,6 +37,8 @@ export function bubbleCss() {
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
     '.ann-bubble-empty{color:var(--wb-faint,#8d8d8d);font-style:italic;}',
+    '.ann-bubble-reply{margin-top:5px;padding-top:5px;border-top:1px solid var(--wb-seam,rgba(0,0,0,.08));white-space:pre-wrap;word-break:break-word;}',
+    '.ann-bubble-who{font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:10.5px;color:var(--wb-accent,#5b7fa6);margin-right:5px;}',
   ].join('');
 }
 
@@ -49,10 +51,14 @@ export function bubbleInnerHtml(m) {
   var body = content
     ? '<div class="ann-bubble-body">' + escHtml(content) + '</div>'
     : '<div class="ann-bubble-body ann-bubble-empty">（无正文）</div>';
+  // 线程回复（m.replies = [{ who, text }]）：正文下面逐条，agent 改完说了什么 owner 在卡上就能读到。
+  var replies = (m && Array.isArray(m.replies) ? m.replies : []).map(function (r) {
+    return '<div class="ann-bubble-reply" data-who="' + escHtml(r.who) + '"><span class="ann-bubble-who">' + escHtml(r.who) + '</span>' + escHtml(r.text) + '</div>';
+  }).join('');
   return '<div class="ann-bubble-cap">'
     + '<span class="ann-bubble-n">' + escHtml(n) + '</span>'
     + (cap ? '<span class="ann-bubble-ref">' + escHtml(cap) + '</span>' : '')
-    + '</div>' + body;
+    + '</div>' + body + replies;
 }
 
 /** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node. */

@@ -10,6 +10,7 @@ import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
 import fs from 'node:fs';
 
 import { articleOutline } from '../../src/server/lib/article-canvas.js';
+import { deriveArticleBoard } from '../../src/server/lib/article-board.js';
 import { findProject } from '../../src/server/lib/projects.js';
 
 import { DEFAULT_ORIGIN, REPO_ROOT, ioOf } from './core.js';
@@ -19,6 +20,7 @@ import { loadAnnotateContext, pageIdKnown, printBucketOrphanStatus, reportMissin
 import { displayAddress, letterNumber, normalizeRefToken, parseAddress, resolveAddress, sectionNumberOf, toPageRef } from './address.js';
 import { addressContext, pickTarget, printCandidates } from './targets.js';
 import { runValidate } from './validate.js';
+import { ensureDist, ensureDistNote } from './dist.js';
 
 const CHECK_STATUSES = new Set(['open', 'check', 'done', 'close', 'all']);
 const CHECK_MODES = new Set(['excerpt', 'image', 'both']);
@@ -60,17 +62,17 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   const status = parsed.flags.status || (parseAddress(token) && parseAddress(token).n ? 'all' : 'open');
   if (!CHECK_STATUSES.has(status)) {
     err(`错误：--status 只支持 ${[...CHECK_STATUSES].join(' / ')}，收到：${status}`);
-    return { code: 1, rows: 0 };
+    return { code: USAGE_EXIT, rows: 0 };
   }
   const mode = parsed.flags.mode || 'excerpt';
   if (!CHECK_MODES.has(mode)) {
     err(`错误：--mode 只支持 excerpt / image / both，收到：${mode}`);
-    return { code: 1, rows: 0 };
+    return { code: USAGE_EXIT, rows: 0 };
   }
   const groupBy = parsed.flags['group-by'] || 'frame';
   if (!GROUP_BYS.has(groupBy)) {
     err(`错误：--group-by 只支持 frame / component，收到：${groupBy}`);
-    return { code: 1, rows: 0 };
+    return { code: USAGE_EXIT, rows: 0 };
   }
   // `<目标>#n`：只看这一条（任何状态），页取 `#` 前面那段。
   const cross = parseCrossRef(toPageRef(token));
@@ -82,7 +84,12 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   if (!context) {
     if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return { code: 0, rows: 0 };
     for (const line of pending) err(line);
-    return { code: 1, rows: 0 };
+    return { code: USAGE_EXIT, rows: 0 };
+  }
+  // 源码摘录和截图读 dist：画布标注要摘录、dist 不在或落后时先编（不用先 ppnt build）。
+  if (context.frameRows.length && !context.docOnly) {
+    const note = ensureDistNote(await ensureDist(context.target, { distRoot: path.join(dataRoot(env), 'dist') }), context.address);
+    if (note) err(note);
   }
   if (cross) {
     const keep = (row) => Number(row.n) === cross.n;
@@ -236,7 +243,7 @@ function articleSectionOf(token, outline) {
 /**
  * locate / mark 的引用预处理：`<project>/<article>#3` 换成页 id 形，`§2` 换成字母；
  * 指到纯文字节（画布上没有这一行）的节引用直接展开成这一节的正文评论。
- * → { tokens（交给 expandRefs）, picks（已展开的）, errors }
+ * → { tokens（交给 expandRefs）, picks（已展开的）, errors, empty（对上了但没有评论的节）}
  */
 function prepareRefs(refs, context) {
   const outline = outlineOf(context);
@@ -244,6 +251,7 @@ function prepareRefs(refs, context) {
   const tokens = [];
   const picks = [];
   const errors = [];
+  const empty = [];
   for (const ref of refs) {
     const section = outline.length ? articleSectionOf(ref, outline) : null;
     if (section && section.missing) {
@@ -252,13 +260,13 @@ function prepareRefs(refs, context) {
     }
     if (section && section.id && !onCanvas.has(section.id)) {
       const rows = [...context.frameRows, ...context.docRows].filter((row) => row.type === 'prose' && row.section === section.id);
-      if (!rows.length) errors.push(`${ref}：${section.letter}（§${section.n} ${section.id}）暂无评论`);
+      if (!rows.length) empty.push(`${ref}：${section.letter}（§${section.n} ${section.id}）暂无评论`);
       for (const row of rows) picks.push({ kind: 'annotation', row, via: ref });
       continue;
     }
     tokens.push(normalizeRefToken(ref));
   }
-  return { tokens, picks, errors };
+  return { tokens, picks, errors, empty };
 }
 
 /** locate / shot / mark / reply 的目标与上下文；失败时已报错，返回 { code }。 */
@@ -266,7 +274,7 @@ function targetContext(parsed, { env, err }, command) {
   const picked = pickTarget(parsed, { env, err, command, usage: HELP[command].usage });
   if (picked.error) return { code: USAGE_EXIT };
   const context = loadAnnotateContext(picked.pageRef, parsed, { env, err });
-  if (!context) return { code: 1 };
+  if (!context) return { code: USAGE_EXIT };
   return { context, refs: picked.refs };
 }
 
@@ -275,9 +283,20 @@ export async function runLocate(argv, io = {}) {
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   const { env, out, err } = ioOf(io);
+  if (parsed.flags.status && !REF_STATUSES.includes(parsed.flags.status)) {
+    return reportUsageError('locate', `--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`, err);
+  }
   const got = targetContext(parsed, { env, err }, 'locate');
   if (!got.context) return got.code;
   const { context } = got;
+  if (!got.refs.length && !parsed.flags.status) {
+    return reportUsageError('locate', 'locate 要至少一个引用（#n、B3、§2、帧 id …）或 --status', err);
+  }
+  // 源码定位读 dist：不在或落后时先编。
+  if (context.frameRows.length && !context.docOnly) {
+    const note = ensureDistNote(await ensureDist(context.target, { distRoot: path.join(dataRoot(env), 'dist') }), context.address);
+    if (note) err(note);
+  }
   const rows = [...context.frameRows, ...context.docRows];
   // 别页的行按它自己的页上下文定位（源文件、板、文章都跟着页走）。
   const contexts = new Map([[context.pageId, context]]);
@@ -291,31 +310,43 @@ export async function runLocate(argv, io = {}) {
   };
   const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows };
   const prepared = prepareRefs(got.refs, context);
-  const { picks, errors } = expandRefs(prepared.tokens, refCtx);
+  const { picks, errors, empty } = expandRefs(prepared.tokens, refCtx);
   picks.unshift(...prepared.picks);
   errors.unshift(...prepared.errors);
-  if (!got.refs.length && !parsed.flags.status) {
-    return reportUsageError('locate', 'locate 要至少一个引用（#n、B3、§2、帧 id …）或 --status', err);
-  }
+  empty.unshift(...prepared.empty);
   if (parsed.flags.status) {
-    if (!REF_STATUSES.includes(parsed.flags.status)) {
-      err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
-      return 1;
-    }
     for (const row of expandStatus(parsed.flags.status, rows)) picks.push({ kind: 'annotation', row, via: `--status ${parsed.flags.status}` });
   }
-  for (const error of errors) err(error);
+  for (const error of errors) err(`错误：${error}`);
   const seen = new Set();
-  const printRow = (row) => {
+  const located = [];
+  const addRow = (row) => {
     const key = `${row.__bucket}|${row.__ledger}|${row.id || row.n}`;
     if (seen.has(key)) return;
     seen.add(key);
-    out(locateLine(row, (row.__bucket && contextOf(row.__bucket)) || context).text);
+    const line = locateLine(row, (row.__bucket && contextOf(row.__bucket)) || context);
+    const where = line.text.match(/→ ([^\s（]+?\.(?:jsx|mdx|html|js|css)):(\d+)/);
+    located.push({
+      n: row.n,
+      type: row.type === 'prose' ? 'prose' : 'canvas',
+      status: row.status || 'open',
+      ...(row.screenId ? { frame: row.screenId } : {}),
+      ...(row.section ? { section: row.section } : {}),
+      ...(where ? { file: where[1], line: Number(where[2]) } : {}),
+      text: line.text,
+    });
   };
   for (const pick of picks) {
-    if (pick.kind === 'annotation') printRow(pick.row);
-    else if (pick.kind === 'frame') for (const row of rows.filter((row) => row.screenId === pick.screenId)) printRow(row);
-    else if (pick.kind === 'section') for (const row of rows.filter((row) => pick.frames.some((frame) => frame.id === row.screenId))) printRow(row);
+    if (pick.kind === 'annotation') addRow(pick.row);
+    else if (pick.kind === 'frame') for (const row of rows.filter((row) => row.screenId === pick.screenId)) addRow(row);
+    else if (pick.kind === 'section') for (const row of rows.filter((row) => pick.frames.some((frame) => frame.id === row.screenId))) addRow(row);
+  }
+  if (parsed.flags.json) {
+    out(JSON.stringify({ target: context.address, rows: located, empty, errors }, null, 2));
+  } else {
+    for (const row of located) out(row.text);
+    // 帧或节上没有标注：如实说一句，不算失败。
+    for (const line of empty) out(line);
   }
   return errors.length ? 1 : 0;
 }
@@ -424,7 +455,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
  * 目标照 shot 的规则解析（第一个参数，或 --page）；图不和帧、节的引用混用。
  * 图编译失败、在浏览器里运行出错时打出原因、退 1。
  */
-async function shotFigure(context, refs, { env, out, err, scale, figureId }) {
+async function shotFigure(context, refs, { env, out, err, scale, figureId, json = false }) {
   if (refs.length) {
     return reportUsageError('shot', `--figure 只拍一个图，不和引用（${refs.join(' ')}）一起用：ppnt shot <project>/<article> --figure <图 id>`, err);
   }
@@ -450,11 +481,17 @@ async function shotFigure(context, refs, { env, out, err, scale, figureId }) {
   }
   let failed = false;
   for (const result of results) {
-    out(`图 ${figureId} · ${result.theme === 'light' ? '浅色' : '深色'} → ${result.out} · ${result.width}×${result.height}`);
+    if (!json) out(`图 ${figureId} · ${result.theme === 'light' ? '浅色' : '深色'} → ${result.out} · ${result.width}×${result.height}`);
     for (const message of result.errors) {
       failed = true;
       err(`  出错：${message}`);
     }
+  }
+  if (json) {
+    out(JSON.stringify({
+      target: context.address,
+      shots: results.map((result) => ({ kind: 'figure', figure: figureId, theme: result.theme, out: result.out, width: result.width, height: result.height, errors: result.errors })),
+    }, null, 2));
   }
   return failed ? 1 : 0;
 }
@@ -497,6 +534,20 @@ export function planArticleShots(refs, { context, outline, origin, dataRootDir, 
   return { articleJobs, canvasTokens, errors };
 }
 
+/** 截到的文章页没有正文结尾时的那句话。 */
+export function truncatedWarning(address) {
+  return `文章页在正文中途断了（页面里没有正文结尾标记），正文多半渲染出错；跑 ppnt check ${address} 看是哪一行`;
+}
+
+/** 正文里图的 id（读不出正文时 []）。 */
+function figureIdsOf(context) {
+  try {
+    return deriveArticleBoard(context.target).figures.map((figure) => figure.id).filter(Boolean);
+  } catch {
+    return [];
+  }
+}
+
 export async function runShot(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
@@ -513,7 +564,7 @@ export async function runShot(argv, io = {}) {
   const got = targetContext(parsed, { env, err }, 'shot');
   if (!got.context) return got.code;
   const { context } = got;
-  if (parsed.flags.figure) return shotFigure(context, got.refs, { env, out, err, scale, figureId: parsed.flags.figure });
+  if (parsed.flags.figure) return shotFigure(context, got.refs, { env, out, err, scale, figureId: parsed.flags.figure, json: !!parsed.flags.json });
   const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
   const rows = [...context.frameRows, ...context.docRows];
   let refs = got.refs;
@@ -535,6 +586,12 @@ export async function runShot(argv, io = {}) {
   const expanded = expandRefs(refs, { rows, board: context.board, pageId: context.pageId, pageIds, crossPageRows: null }, { shotRefs: true });
   const picks = expanded.picks;
   errors.push(...expanded.errors);
+  // 写成引用的图 id：图不在画布上，指向 --figure（不把位置参数当图，帧、节和图可以同名）。
+  if (context.article && expanded.errors.length) {
+    for (const id of figureIdsOf(context)) {
+      if (refs.includes(id)) errors.push(`${id} 是正文里的图，不在画布上：ppnt shot ${context.address} --figure ${id}`);
+    }
+  }
   if (parsed.flags.status) {
     if (!REF_STATUSES.includes(parsed.flags.status)) {
       return reportUsageError('shot', `--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`, err);
@@ -570,19 +627,30 @@ export async function runShot(argv, io = {}) {
     if (!byPage.has(job.pageId)) byPage.set(job.pageId, []);
     byPage.get(job.pageId).push(job);
   }
-  const print = (result) => out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
+  const shots = [];
+  const print = (result, kind) => {
+    shots.push({ kind, label: result.label || '', out: result.out, width: result.width, height: result.height, ...(result.truncated ? { truncated: true } : {}) });
+    if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
+  };
+  const warnings = [];
   try {
     if (articleJobs.length) {
-      for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result);
+      for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result, 'article');
     }
     for (const [pageId, group] of byPage) {
-      for (const result of await renderer.renderShots({ origin, pageId, jobs: group, env })) print(result);
+      for (const result of await renderer.renderShots({ origin, pageId, jobs: group, env })) print(result, 'canvas');
     }
   } catch (error) {
     err(`错误：${error.message}`);
     return 1;
   }
-  return errors.length || plan.problems.length ? 1 : 0;
+  // 文章页没渲染到正文结尾（站点在正文结尾放了 data-pp-article-end）：图是截了，但正文多半渲染出错。
+  if (shots.some((shot) => shot.truncated)) {
+    warnings.push(truncatedWarning(context.address));
+    err(`注意：${warnings[warnings.length - 1]}`);
+  }
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, shots, warnings, errors: [...errors, ...plan.problems] }, null, 2));
+  return errors.length || plan.problems.length || warnings.length ? 1 : 0;
 }
 
 export async function runMark(argv, io = {}) {
@@ -591,16 +659,17 @@ export async function runMark(argv, io = {}) {
   if (parsed.help) return 0;
   const { env, out, err, requestFn } = ioOf(io);
   if (parsed.statusWord === 'close') {
-    err('close 只在工作台（owner 单击验收，带 toast 撤销）；ppnt mark 不接受 close。');
-    return 1;
+    return reportUsageError('mark', 'close 只在工作台（owner 单击验收，带 toast 撤销）；ppnt mark 不接受 close。', err);
   }
   if (parsed.statusWord === 'open') {
-    err('open 由工作台编辑触发，mark 不写；ppnt mark 只写 check / done。');
-    return 1;
+    return reportUsageError('mark', 'open 由工作台编辑触发，mark 不写；ppnt mark 只写 check / done。', err);
   }
   if (!['done', 'check'].includes(parsed.statusWord)) {
-    err(`错误：状态只支持 done | check，收到：${parsed.statusWord}`);
-    return 1;
+    return reportUsageError('mark', `状态只支持 done | check，收到：${parsed.statusWord}`, err);
+  }
+  if (parsed.flags.note !== undefined && !String(parsed.flags.note).trim()) return reportUsageError('mark', '--note 的内容是空的', err);
+  if (parsed.flags.status && !REF_STATUSES.includes(parsed.flags.status)) {
+    return reportUsageError('mark', `--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`, err);
   }
   const got = targetContext(parsed, { env, err }, 'mark');
   if (!got.context) return got.code;
@@ -609,20 +678,18 @@ export async function runMark(argv, io = {}) {
   const crossPageRows = crossPageRowsFor(parsed, env);
   const rows = [...context.frameRows, ...context.docRows];
   const prepared = prepareRefs(got.refs, context);
-  const { picks, errors } = expandRefs(prepared.tokens, { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  const { picks, errors, empty } = expandRefs(prepared.tokens, { rows, board: context.board, pageId: context.pageId, crossPageRows });
   picks.unshift(...prepared.picks);
   errors.unshift(...prepared.errors);
+  empty.unshift(...prepared.empty);
   if (parsed.flags.status) {
-    if (!REF_STATUSES.includes(parsed.flags.status)) {
-      err(`错误：--status 只支持 ${REF_STATUSES.join(' / ')}，收到：${parsed.flags.status}`);
-      return 1;
-    }
     for (const row of expandStatus(parsed.flags.status, rows)) picks.push({ kind: 'annotation', row, via: `--status ${parsed.flags.status}` });
   }
-  for (const error of errors) err(error);
+  for (const error of errors) err(`错误：${error}`);
+  for (const line of empty) err(line);
   const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
   if (!annotationPicks.length) {
-    err('没有命中的标注。');
+    err('错误：没有命中的标注。');
     return 1;
   }
   const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
@@ -634,34 +701,55 @@ export async function runMark(argv, io = {}) {
     return 1;
   }
   let failed = 0;
+  const results = [];
+  const say = (line) => { if (!parsed.flags.json) out(line); };
+  const note = parsed.flags.note ? String(parsed.flags.note).trim() : '';
   for (const pick of annotationPicks) {
     const row = pick.row;
     // storage-unify：#n 只在本页桶里解析（桶名恒等于页），不再需要桶名消歧。
     const label = `#${row.n}`;
-    try {
-      const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
-      const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
-      const res = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}/${row.n}/status`, {
-        method: 'POST',
-        body: {
-          entry: row.__bucket,
-          baseRevision,
-          status: parsed.statusWord,
-        },
-      });
-      if (res.status === 200) {
-        out(`${label} → ${parsed.statusWord}`);
-      } else {
+    // --note：先在线程里回一句（状态不动），再写状态；回复失败就不写状态，免得 owner 看到状态却没有说明。
+    if (note) {
+      const replied = await postAnnotation(origin, row, 'reply', { text: note }, requestFn);
+      if (!replied.ok) {
         failed += 1;
-        const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
-        out(`${label} ✗ ${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`);
+        say(`${label} ✗ 回复没写进去：${replied.reason}（状态没改）`);
+        results.push({ n: row.n, ok: false, error: `reply ${replied.reason}` });
+        continue;
       }
-    } catch (error) {
+    }
+    const res = await postAnnotation(origin, row, 'status', { status: parsed.statusWord }, requestFn);
+    if (res.ok) {
+      say(`${label} → ${parsed.statusWord}${note ? `，线程里回了：${note}` : ''}`);
+      results.push({ n: row.n, ok: true, status: parsed.statusWord, ...(note ? { note } : {}) });
+    } else {
       failed += 1;
-      out(`${label} ✗ ${error.message}`);
+      say(`${label} ✗ ${res.reason}${note ? '（回复已写进线程，状态没改）' : ''}`);
+      results.push({ n: row.n, ok: false, error: res.reason, ...(note ? { note } : {}) });
     }
   }
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, status: parsed.statusWord, results, errors, empty }, null, 2));
   return failed || errors.length ? 1 : 0;
+}
+
+/**
+ * 写一条标注：action 'status' | 'reply'，带上现读的 baseRevision。
+ * → { ok: true, json } | { ok: false, reason }。
+ */
+async function postAnnotation(origin, row, action, body, requestFn) {
+  try {
+    const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
+    const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
+    const res = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}/${row.n}/${action}`, {
+      method: 'POST',
+      body: { entry: row.__bucket, baseRevision, ...body },
+    });
+    if (res.status === 200) return { ok: true, json: res.json };
+    const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
+    return { ok: false, reason: `${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`.trim() };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
 }
 
 export async function runReply(argv, io = {}) {
@@ -670,10 +758,7 @@ export async function runReply(argv, io = {}) {
   if (parsed.help) return 0;
   const { env, out, err, requestFn } = ioOf(io);
   const text = String(parsed.text || '').trim();
-  if (!text) {
-    err('错误：回复内容是空的。');
-    return 1;
-  }
+  if (!text) return reportUsageError('reply', '回复内容是空的。', err);
   const got = targetContext(parsed.target ? { ...parsed, flags: { ...parsed.flags, page: parsed.flags.page || parsed.target } } : parsed, { env, err }, 'reply');
   if (!got.context) return got.code;
   const { context } = got;
@@ -683,14 +768,10 @@ export async function runReply(argv, io = {}) {
   for (const error of errors) err(error);
   const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
   if (annotationPicks.length !== 1) {
-    if (!errors.length) err(annotationPicks.length ? 'reply 一次只回一条评论，引用命中了多条。' : '没有命中的评论。');
+    if (!errors.length) err(annotationPicks.length ? '错误：reply 一次只回一条，引用命中了多条（回复并改状态用 ppnt mark … --note）。' : '错误：没有命中的标注。');
     return 1;
   }
   const row = annotationPicks[0].row;
-  if (row.type !== 'prose') {
-    err(`#${row.n} 是画布标注，没有线程；reply 只用于正文评论。要写状态用 ppnt mark。`);
-    return 1;
-  }
   const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
   try {
     const health = await requestFn(`${origin}/health`);
@@ -699,23 +780,14 @@ export async function runReply(argv, io = {}) {
     err(`错误：${serviceDown(origin, env, 'reply 走服务端点')}`);
     return 1;
   }
-  try {
-    const doc = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}?entry=${encodeURIComponent(row.__bucket)}`);
-    const baseRevision = doc.json && Number.isFinite(Number(doc.json.revision)) ? Number(doc.json.revision) : null;
-    const res = await requestFn(`${origin}/annotations/${encodeURIComponent(row.__ledger)}/${row.n}/reply`, {
-      method: 'POST',
-      body: { entry: row.__bucket, baseRevision, text },
-    });
-    if (res.status !== 200) {
-      const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
-      out(`#${row.n} ✗ ${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`);
-      return 1;
-    }
-    const status = res.json && res.json.annotation ? res.json.annotation.status : row.status;
-    out(`#${row.n} ← agent：${text}（状态仍是 ${status || 'open'}）`);
-    return 0;
-  } catch (error) {
-    out(`#${row.n} ✗ ${error.message}`);
+  const res = await postAnnotation(origin, row, 'reply', { text }, requestFn);
+  if (!res.ok) {
+    if (parsed.flags.json) out(JSON.stringify({ target: context.address, n: row.n, ok: false, error: res.reason }, null, 2));
+    else out(`#${row.n} ✗ ${res.reason}`);
     return 1;
   }
+  const status = res.json && res.json.annotation ? res.json.annotation.status : row.status;
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, n: row.n, ok: true, status: status || 'open', text }, null, 2));
+  else out(`#${row.n} ← agent：${text}（状态仍是 ${status || 'open'}）`);
+  return 0;
 }

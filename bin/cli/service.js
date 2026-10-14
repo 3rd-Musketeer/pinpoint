@@ -269,13 +269,19 @@ export async function runStatus(argv, io = {}) {
   if (parsed.flags.page) return printPageStatus(parsed, { env, out, err: ioOf(io).err });
   if (env.PINPOINT_ORIGIN) {
     const report = await collectOriginStatus(io);
-    out(`pinpoint status · ${report.origin}（PINPOINT_ORIGIN；没看 portless 路由）`);
-    for (const line of formatStatus(report)) out(line);
+    if (parsed.flags.json) out(JSON.stringify(report, null, 2));
+    else {
+      out(`pinpoint status · ${report.origin}（PINPOINT_ORIGIN；没看 portless 路由）`);
+      for (const line of formatStatus(report)) out(line);
+    }
     return report.ok ? 0 : 1;
   }
   const report = await collectStatus(io);
-  out('pinpoint status');
-  for (const line of formatStatus(report)) out(line);
+  if (parsed.flags.json) out(JSON.stringify(report, null, 2));
+  else {
+    out('pinpoint status');
+    for (const line of formatStatus(report)) out(line);
+  }
   return report.ok ? 0 : 1;
 }
 

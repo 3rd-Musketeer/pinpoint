@@ -5,8 +5,8 @@ export { HELP, USAGE, helpFor };
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure']);
-const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
+const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
 // --project <根目录>；add 的 --project 仍是开关）。folder / locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
@@ -16,22 +16,28 @@ const COMMANDS = {
   rename: { positional: 2, flags: new Set(['registry']) },
   remove: { positional: 1, flags: new Set(['registry']) },
   folder: { positional: null, flags: new Set(['registry', 'id']) },
-  status: { positional: 0, flags: new Set(['page', 'registry']) },
+  status: { positional: 0, flags: new Set(['page', 'registry', 'json']) },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
   restart: { positional: 0, flags: new Set() },
-  build: { positional: 1, flags: new Set(['registry', 'screen', 'frame', 'watch']) },
+  build: { positional: 1, flags: new Set(['registry', 'screen', 'frame', 'watch', 'json']) },
   render: { positional: 1, flags: new Set(['registry', 'full']) },
-  show: { positional: 1, flags: new Set(['registry', 'json']) },
+  show: { positional: 1, flags: new Set(['registry', 'json', 'uses']) },
   // check 是验证；--frame / --status / --mode / --group-by 只为过渡期的旧用法（列标注队列）留着。
   check: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
   comments: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
-  locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
-  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page', 'canvas', 'timeout', 'figure']) },
-  mark: { positional: null, flags: new Set(['registry', 'status', 'page']) },
-  reply: { positional: null, flags: new Set(['registry', 'page']) },
+  locate: { positional: null, flags: new Set(['registry', 'status', 'page', 'json']) },
+  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page', 'canvas', 'timeout', 'figure', 'json']) },
+  mark: { positional: null, flags: new Set(['registry', 'status', 'page', 'json', 'note']) },
+  reply: { positional: null, flags: new Set(['registry', 'page', 'json']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
   migrate: { positional: 1, flags: new Set(['registry', 'project', 'article', 'dry-run']), valueFlags: new Set(['project']) },
+  // new project <根> / new article <project>/<article>：脚手架，不覆盖已有文件。
+  new: { positional: 2, flags: new Set(['registry', 'id', 'title', 'json']) },
+  // open <目标> [§2 | 节 id | 概念名]：打印或打开网址。
+  open: { positional: null, flags: new Set(['registry', 'print', 'json']) },
+  // dev --sandbox [<目录>]：隔离服务，前台常驻。
+  dev: { positional: null, flags: new Set(['sandbox', 'port', 'site-port', 'json']) },
 };
 
 // `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
@@ -43,6 +49,9 @@ const FOLDER_SUBCOMMANDS = {
   rm: { positional: 1, flags: new Set(['registry']) },
   move: { positional: 2, flags: new Set(['registry']) },
 };
+/** `ppnt new` 能建的两种东西。 */
+export const NEW_KINDS = ['project', 'article'];
+
 /** `pinpoint folder move <id> none` = 拖出文件夹（散页）。 */
 export const NO_FOLDER = 'none';
 
@@ -105,6 +114,19 @@ export function parseArgs(argv) {
   if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
   if (command === 'remove') return { command, id: positional[0], flags };
   if (['build', 'render', 'check', 'comments', 'show', 'prune', 'migrate'].includes(command)) return { command, target: positional[0], flags };
+  if (command === 'new') {
+    if (!NEW_KINDS.includes(positional[0])) fail(`new 的第一个参数是 ${NEW_KINDS.join(' 或 ')}，收到：${positional[0]}`);
+    return { command, kind: positional[0], target: positional[1], flags };
+  }
+  if (command === 'open') {
+    if (positional.length < 1 || positional.length > 2) fail(positional.length ? `open 最多两个参数（目标和一个引用），收到 ${positional.length} 个` : 'open 需要一个目标（<project> 或 <project>/<article>）');
+    return { command, target: positional[0], ref: positional[1] || null, flags };
+  }
+  if (command === 'dev') {
+    if (!flags.sandbox) fail('dev 只有隔离模式：ppnt dev --sandbox [<目录>]（常驻服务用 ppnt start）');
+    if (positional.length > 1) fail(`dev --sandbox 最多一个目录，收到 ${positional.length} 个`);
+    return { command, dir: positional[0] || null, flags };
+  }
   if (command === 'locate' || command === 'shot') {
     // shot --figure <图 id> 只要目标（第一个参数或 --page），不要引用；缺目标由 runShot 报并列候选。
     if (!positional.length && !flags.page && !(command === 'shot' && flags.figure)) fail(`${command} 至少要一个目标或引用（<project>/<article>、#n、B3、§2、帧 id …）`);
@@ -170,6 +192,9 @@ function positionalProblem(command, want, got) {
   }
   if (command === 'migrate') {
     return got === 0 ? 'migrate 需要一个存量页 id' : `migrate 只接受一个存量页，收到 ${got} 个`;
+  }
+  if (command === 'new') {
+    return got < 2 ? 'new 需要两个参数：ppnt new project <目录> 或 ppnt new article <project>/<article>' : `new 只接受两个参数，收到 ${got} 个`;
   }
   if (command === 'prune') {
     return got === 0 ? 'prune 需要一个目标（<project>/<article>、页 id 或桶名）' : `prune 只接受一个目标，收到 ${got} 个`;

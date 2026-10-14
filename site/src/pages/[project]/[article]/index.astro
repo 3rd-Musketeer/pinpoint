@@ -62,6 +62,8 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   </div>
   <div class="article-body">
     <Content components={{ Section, Canvas, Figure, Ref }} />
+    {/* 正文结尾标记：正文渲染中途抛错时响应停在这之前，ppnt shot 靠它发现截到的是半篇（docs/registry.md“CLI”）。 */}
+    <div data-pp-article-end hidden></div>
   </div>
   {canvasView && <CanvasOverlay slot="overlay" />}
 </Base>
