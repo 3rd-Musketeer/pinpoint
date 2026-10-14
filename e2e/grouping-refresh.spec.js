@@ -3,7 +3,7 @@ import fs from 'node:fs';
 import { E2E_REGISTRY } from './env.js';
 
 import { expect, test } from '@playwright/test';
-import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
+import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';
 
 // 分组类 registry 写不整板重装（2026-09-24 审计 B2）：拖页入夹 / 折叠 / 改名 /
 // 排序只动分组与顺序，服务端广播带 scope=grouping，工作台只重拉清单刷新左栏 ——

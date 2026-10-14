@@ -1,32 +1,22 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { E2E_SITES_DIR } from './env.js';
+import { ROOT, ppntResult } from './lib/cli.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // pp3：`ppnt migrate` 把模板页 example 迁进一个 project（e2e/project-site 的本轮副本，
 // project id 改成 e2e-migrate），服务不重启就能经 /api/frame 打开迁过来的帧。
 // 不经过 Astro：只验画布这一侧（正文渲染由 test:site 管）。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT_DIR = path.join(E2E_SITES_DIR, 'migrate-site');
 const PAGE_ID = 'e2e-migrate_example';
 
+/** 失败时 stderr 并进 stdout：断言只看 stdout 一处。 */
 async function ppnt(args) {
-  try {
-    const { stdout } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-    });
-    return { code: 0, stdout };
-  } catch (error) {
-    return { code: error.code ?? 1, stdout: `${error.stdout ?? ''}\n${error.stderr ?? ''}` };
-  }
+  const res = await ppntResult(args);
+  return res.code === 0 ? { code: 0, stdout: res.stdout } : { code: res.code, stdout: `${res.stdout}\n${res.stderr}` };
 }
 
 test.afterEach(async ({ request }) => {

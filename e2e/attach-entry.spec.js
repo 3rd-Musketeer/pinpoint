@@ -1,13 +1,13 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { ppnt } from './lib/cli.js';
+import { ledgerNames } from './lib/ledger.js';
+import { openWorkbench } from './lib/workbench.js';
 import { writeRegistryFixture } from './registry-fixture.js';
 
 // 阶段 8（2026-08-16f 产物与草稿模型收官）：CLI 归属 —— `pinpoint add <path>
@@ -17,19 +17,11 @@ import { writeRegistryFixture } from './registry-fixture.js';
 // registry 条目 id）。storage-unify：标注落宿主页的桶（e2e-dir），挂靠条目自己
 // 没有桶 —— 账本仍按 /sites/<挂靠 id>/ 路径分。
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ATTACHED_ID = 'e2e-cli-draft';
 const HOST_PAGE = 'e2e-dir';
 const BUCKET = path.join(E2E_DATA_DIR, HOST_PAGE);
-const execFileP = promisify(execFile);
 
 const FRAME = '#wb-board-panel [data-screen="' + ATTACHED_ID + '"] iframe.wb-doc-frame';
-
-function bucketDocs() {
-  if (!fs.existsSync(BUCKET)) return [];
-  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
-}
 
 function restoreRegistry() {
   writeRegistryFixture();
@@ -43,14 +35,13 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
   const file = path.join(tmp, 'Button Draft.html');
   fs.writeFileSync(file, '<!doctype html><html><body><h1 id="draft-title">E2E attached draft</h1></body></html>');
   try {
-    await execFileP('node', [
-      path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', file,
+    await ppnt([
+      'add', file,
       '--id', ATTACHED_ID, '--title', 'E2E 归属草稿', '--page', 'e2e-dir', '--draft',
       '--registry', E2E_REGISTRY,
-    ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
+    ]);
 
-    await page.goto('/index.html');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await openWorkbench(page);
 
     // Pages 不新增行：attach 条目没有自己的页面行。
     await expect(page.locator('.wb-page[data-vpage="' + ATTACHED_ID + '"]')).toHaveCount(0);
@@ -98,7 +89,7 @@ test('pinpoint add --page --draft：attach 条目进目标页草稿组，全链�
       return true;
     }`)).toBe(true);
     // 宿主页桶里，这本账本的 path 指向挂靠条目的 /sites/ URL（页面 key 按路径分）。
-    const minePaths = () => bucketDocs().filter((name) => {
+    const minePaths = () => ledgerNames(BUCKET).filter((name) => {
       const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
       return doc.path === '/sites/e2e-cli-draft/Button Draft.html';
     });

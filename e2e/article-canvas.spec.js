@@ -1,12 +1,10 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_DATA_DIR } from './env.js';
+import { ppnt } from './lib/cli.js';
 import { countColorPixels } from './png-probe.js';
 
 // pp3：每篇文章的画布 = 一个由 index.mdx 派生的页（docs/projects.md「画布视图」）。
@@ -15,17 +13,7 @@ import { countColorPixels } from './png-probe.js';
 // 与 mixed（mixed-phone 手机帧 + mixed-bare：帧文件自己 export const shell = "comp"），
 // 帧用到本篇组件、project 共用组件和 kit，本篇有 article.css。
 // 不经过 Astro：画布页只靠 pinpoint 服务与编译器。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE_ID = 'e2e-project_commit-confirm';
-
-async function ppnt(args) {
-  const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-    cwd: ROOT,
-    env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-  });
-  return { stdout, stderr };
-}
 
 test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt shot', async ({ page }) => {
   test.setTimeout(90_000);

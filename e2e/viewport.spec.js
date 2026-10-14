@@ -5,7 +5,8 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
-import { openWorkbench } from './open-workbench.js';
+import { annotate } from './lib/annotate.js';
+import { openWorkbench, stageForm } from './lib/workbench.js';
 
 // 视口（2026-09-05，lib/viewport.js）：文档条目怎么被看 —— 窗口｜手机。owner 裁决：
 // 「doc 本身就是要展示的终态，而 prototype app 有多屏，所以 doc 可以只展示 html 本身，
@@ -37,10 +38,6 @@ async function openDirDoc(page) {
   await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
 }
 
-function stageForm(page) {
-  return page.locator('#wbroot').evaluate((el) => el.getAttribute('data-page-mode'));
-}
-
 function rootViewport(page) {
   return page.locator('#wbroot').evaluate((el) => el.getAttribute('data-viewport'));
 }
@@ -65,17 +62,6 @@ async function expectPhoneFit(page, shellSelector) {
   expect(Math.abs((shell.x + shell.width / 2) - (stage.x + stage.width / 2))).toBeLessThan(1);
   expect(Math.abs((shell.y + shell.height / 2) - (stage.y + usableH / 2))).toBeLessThan(1);
   return shell;
-}
-
-/** 在 iframe 里的标注客户端上点选元素、写内容、保存（同 ann-sidebar.spec 的 annotate）。 */
-async function annotateInFrame(page, frameSelector, targetSelector, text) {
-  const doc = page.frameLocator(frameSelector);
-  await doc.locator(targetSelector).click();
-  const box = doc.locator('#ann-box');
-  await expect(box).toBeVisible();
-  await box.locator('#ann-input').fill(text);
-  await box.locator('#ann-close').click();
-  await expect(box).toBeHidden();
 }
 
 test.afterEach(async ({ page }) => {
@@ -267,7 +253,7 @@ test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素�
   // 窗口视口：横条「标注」驱动的是 iframe 里那个实例；在 #doc-target 上标一条。
   await page.locator('#wbann-toggle').click();
   await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
-  await annotateInFrame(page, DOC_FRAME, '#doc-target', 'window mark');
+  await annotate(page.frameLocator(DOC_FRAME), '#doc-target', 'window mark');
   await expect(page.locator('#wbann-count')).toHaveText('1');
   await expect(page.frameLocator(DOC_FRAME).locator('.ann-badge')).toHaveCount(1);
 
@@ -296,7 +282,7 @@ test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素�
   // 手机视口里再标一条（第二个目标），保存到同一个桶。
   await page.locator('#wbann-toggle').click();
   await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
-  await annotateInFrame(page, DOC_FRAME, '#doc-target-2', 'phone mark');
+  await annotate(page.frameLocator(DOC_FRAME), '#doc-target-2', 'phone mark');
   await expect(page.locator('#wbann-count')).toHaveText('2');
   await expect(phoneDoc.locator('.ann-badge')).toHaveCount(2);
 
@@ -316,8 +302,7 @@ test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素�
 // （整份文档）。窗口视口里 iframe 盖满舞台，父实例碰不到东西，所以只在手机里出事。
 test('手机视口标注：父实例停在交互态、A 键驱动文档实例，标出来的是点中的元素不是整页', async ({ page }) => {
   await test.step('画布页上开的标注不跟到文档条目上', async () => {
-    await page.goto('/index.html?page=e2e-ios');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await openWorkbench(page, 'page=e2e-ios');
     await expect(page.locator('#wb-board-panel .wb-lib-item').first()).toBeVisible();
     await page.locator('#wbann-toggle').click();
     await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
@@ -354,7 +339,7 @@ test('手机视口标注：父实例停在交互态、A 键驱动文档实例，
   });
 
   await test.step('点中的元素：账本行的目标与 rect 就是它（iframe 自己的 CSS px），不是整页', async () => {
-    await annotateInFrame(page, DOC_FRAME, '#doc-target', 'phone pick');
+    await annotate(page.frameLocator(DOC_FRAME), '#doc-target', 'phone pick');
     await expect(page.locator('#wbann-count')).toHaveText('1');
     const el = await doc.locator('#doc-target').evaluate((node) => {
       const r = node.getBoundingClientRect();

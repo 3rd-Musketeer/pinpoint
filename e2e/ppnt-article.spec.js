@@ -1,38 +1,22 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { ROOT, ppntResult } from './lib/cli.js';
 
 // ppnt 说文章模型（pp3）：文章页截图要真站点（Astro 开发服务器，服务按需拉起）和真浏览器，
 // check 的正文渲染检查要和站点对同一份正文给出同一个结论。全部走 CLI 子进程。
 // 站点：在 e2e-parallel 的 SITE_SPECS 里，和别的拉起站点的 spec 同组；单独跑这一个文件时站点是冷的，
 // shot 自己等过“站点启动中”（503）。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ARTICLE = 'e2e-project/commit-confirm';
 const SHOT_DIR = path.join(E2E_DATA_DIR, 'shot', 'e2e-project_commit-confirm');
 const BROKEN_ID = 'e2e-ppnt-broken';
 const BROKEN_ROOT = path.join(E2E_SITES_DIR, 'ppnt-broken');
 const NEW_ID = 'e2e-ppnt-new';
 const NEW_ROOT = path.join(E2E_SITES_DIR, 'ppnt-new');
-
-async function ppnt(args) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-      timeout: 150_000,
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
+const ppnt = (args) => ppntResult(args, { timeout: 150_000 });
 
 function pngSize(file) {
   const buffer = fs.readFileSync(file);

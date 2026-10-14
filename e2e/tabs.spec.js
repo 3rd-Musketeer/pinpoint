@@ -1,14 +1,12 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
-import { openOutline } from './open-workbench.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
+import { ppnt } from './lib/cli.js';
+import { openOutline } from './lib/workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 页 tab（ADR 0041，2026-10-10 大纲入口）：同一页里 tab 只是 section 的视图分组。
@@ -18,25 +16,10 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // 工作台：≥ 2 个 tab 就渲染 #wbtabbar（纯文档页也算）；不到 2 个 tab 时有画布才渲染，不列标题，只有大纲钮。
 // 分享导出仍是单 tab 不出条。切换只挂当前 tab 的 section；序号按 tab 从 A 重来；
 // 活动 tab 刷新后保持；focusFrame 指到别的 tab 的帧时先切 tab。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TABS_DIR = path.join(E2E_SITES_DIR, 'tabs-site');
 const ONE_DIR = path.join(E2E_SITES_DIR, 'tabs-one-site');
 const DOC_DIR = path.join(E2E_SITES_DIR, 'tabs-doc-site');
 const DIST_ENTRIES = ['e2e-tabs', 'e2e-tabs-one'].map((id) => path.join(E2E_DATA_DIR, 'dist', id));
-
-async function ppnt(args, { expectFail = false } = {}) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    if (!expectFail) throw error;
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
 
 async function openBoard(page, query) {
   await page.goto(`/index.html?${query}`);

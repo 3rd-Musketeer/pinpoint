@@ -5,6 +5,9 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { waitForSave } from './lib/annotate.js';
+import { clearBuckets } from './lib/ledger.js';
+import { openWorkbenchConnected } from './lib/workbench.js';
 
 // storage-unify 的核心不变量：一页一个桶。两页各标一条 → 各自的 @canvas 各自
 // 编号（两个 #1，#n 按页）；清空只作用当前页的账本，另一页的标注原样；
@@ -17,15 +20,10 @@ const CANVAS_PAGES = ['e2e-ios', 'e2e-mixed'];
 
 // 开头和收尾都清：别的 spec 留在这两页桶里的行不算进本 spec 的 #n；收尾先等关页时
 // 的写落盘（ledger-settle.js），否则它在删桶之后把 @canvas.json 写回来。
-function clearBuckets() {
-  for (const vpage of CANVAS_PAGES) {
-    fs.rmSync(path.join(E2E_DATA_DIR, vpage), { recursive: true, force: true });
-  }
-}
-test.beforeEach(clearBuckets);
+test.beforeEach(() => clearBuckets(CANVAS_PAGES));
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
-  clearBuckets();
+  clearBuckets(CANVAS_PAGES);
 });
 
 function canvasFile(vpage) {
@@ -54,7 +52,7 @@ async function annotateOn(page, vpage, selector, text) {
   await expect(page.locator('#ann-box')).toBeVisible();
   await page.locator('#ann-input').fill(text);
   await Promise.all([
-    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
   await expect(page.locator('#ann-box')).toBeHidden();
@@ -65,8 +63,7 @@ async function annotateOn(page, vpage, selector, text) {
 
 test('一页一桶：两页各自标注各自编号，清空当前页不动另一页', async ({ page }) => {
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
+  await openWorkbenchConnected(page);
 
   await annotateOn(page, 'e2e-ios', '[data-screen="settings"] .ios-cell', 'iOS 页的标注');
   await annotateOn(page, 'e2e-mixed', '[data-screen="home"] h1', 'mixed 页的标注');

@@ -1,13 +1,13 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { waitForSave } from './lib/annotate.js';
+import { ROOT, ppnt } from './lib/cli.js';
+import { openWorkbenchConnected } from './lib/workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 决定 #15：编译页标注锚到 data-pp-id。固件 anchor-site 的被标注元素住在
@@ -19,8 +19,6 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // 自然补回（迁移）→ 重构重编重载，标注仍锚原元素、画布无幽灵框。
 // 存量行的兜底两拍原是独立用例（2026-09-23 cli-legacy-anchor），与摘 ppId 之后的
 // 状态完全重合，合并后少一次建标注 + 一次开板。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_SRC = path.join(ROOT, 'e2e', 'anchor-site');
 const SITE_DIR = path.join(E2E_SITES_DIR, 'anchor-site');
 const LEDGER = path.join(E2E_DATA_DIR, 'e2e-anchor', '@canvas.json');
@@ -44,36 +42,16 @@ const RESTRUCTURED_FRAME = [
   '',
 ].join('\n');
 
-async function ppnt(args, { expectFail = false } = {}) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    if (!expectFail) throw error;
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
-
 function readLedger() {
   return JSON.parse(fs.readFileSync(LEDGER, 'utf8'));
 }
 
-const waitForSave = (page) => page.waitForResponse((r) =>
-  new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok());
-
 async function openBoard(page) {
-  await page.goto('/index.html?page=e2e-anchor');
-  await page.waitForFunction(() => window.workbench && window.pinpoint && window.pinpoint.getState().connected);
+  await openWorkbenchConnected(page, 'page=e2e-anchor');
 }
 
 async function ppntBuild() {
-  const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), 'build', 'e2e-anchor'], {
-    cwd: ROOT,
-    env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY },
-  });
+  const { stdout, stderr } = await ppnt(['build', 'e2e-anchor']);
   if (!stdout.includes('anchor')) throw new Error(`ppnt build 没编 anchor 屏：${stdout}${stderr}`);
 }
 

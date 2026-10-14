@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openWorkbench } from './lib/workbench.js';
 
 const cellSelector = '[data-screen="settings"] .ios-cell';
 
@@ -22,8 +23,7 @@ async function openCanvas(page, count = 0) {
     revision += 1;
     await route.fulfill({ json: { ok: true, revision } });
   });
-  await page.goto('/index.html?page=e2e-ios');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, 'page=e2e-ios');
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
   await page.waitForFunction(expected => window.pinpoint.getState().countAll === expected, Array.isArray(count) ? count.length : count);
@@ -576,8 +576,7 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
     await route.fulfill({ json: { ok: true, revision: ledger.revision } });
   });
   await page.route('**/annotations/**', route => route.fulfill({ json: ledger }));
-  await page.goto('/index.html?page=e2e-ios');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, 'page=e2e-ios');
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
   await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);

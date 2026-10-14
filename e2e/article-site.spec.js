@@ -1,9 +1,10 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
+import { ROOT } from './lib/cli.js';
+import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
@@ -17,7 +18,6 @@ const ARTICLE = '/e2e-project/commit-confirm/';
 // 这篇的画布页 id（docs/projects.md「画布视图」）：正文的画布卡片与“打开画布”都指向它。
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PROJECT_ROOT = path.join(ROOT, 'e2e', 'project-site');
 
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
@@ -67,7 +67,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
   });
 
   await test.step('页面资源都在 /_astro/ 下且都成功；样式生效；标注客户端以文章页 id 为桶、只跑正文评论', async () => {
-    await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
+    await proseSettled(page);
     expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-project_commit-confirm');
     const scripts = sameOrigin.filter((r) => r.type === 'script' && r.path.startsWith('/_astro/'));
     expect(scripts.length).toBeGreaterThan(0);

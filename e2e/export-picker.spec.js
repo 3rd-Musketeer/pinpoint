@@ -1,7 +1,7 @@
 import fs from 'node:fs/promises';
 
 import { expect, test } from '@playwright/test';
-import { openWorkbench } from './open-workbench.js';
+import { openWorkbench } from './lib/workbench.js';
 
 // 导出（pp2 切片 3 收敛）：用户面只剩「导出整个画布为离线可交互 HTML」
 // （/api/export-page-html，ADR 0033）。横条「导出」钮直接开这个对话框；

@@ -1,19 +1,15 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
+import { ppnt } from './lib/cli.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // ppnt CLI 四命令的端到端（切片 4）：不开浏览器工具做验证，全部走 CLI 子进程。
 // 链路：seed 账本 → check --mode both（markdown + 服务渲染的 1x 截图）→
 // mark done（真端点，带 baseRevision）→ status --page（计数移动 + dist 状态）。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // storage-unify：e2e-ios 的画布账本 = 页桶里的 @canvas.json。
 const LEDGER = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
 // home.jsx 的真实产物链：segmented 的「日」按钮（button.on 是 classList[0] 形态）。
@@ -40,25 +36,6 @@ function seedLedger() {
       },
     ],
   }));
-}
-
-async function ppnt(args, { expectFail = false } = {}) {
-  try {
-    // process.execPath：playwright worker 的 PATH 不一定带 node。
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: {
-        ...process.env,
-        PINPOINT_DATA_DIR: E2E_DATA_DIR,
-        PINPOINT_REGISTRY: E2E_REGISTRY,
-        PINPOINT_ORIGIN: E2E_BASE_URL,
-      },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    if (!expectFail) throw error;
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
 }
 
 test.afterEach(() => {

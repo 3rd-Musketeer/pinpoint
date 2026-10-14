@@ -9,7 +9,8 @@ import { expect, test } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { maybeThrottle } from './cpu-throttle.js';
-import { openOutline } from './open-workbench.js';
+import { annotate, waitForSave } from './lib/annotate.js';
+import { openOutline } from './lib/workbench.js';
 import { FEATURES } from '../src/workbench/features.js';
 
 test.use({ reducedMotion: 'reduce' });
@@ -46,14 +47,6 @@ async function openWorkbench(page) {
 /** 原型里的交互（内联脚本、sidecar）都挂上了：点原型内部之前等它。 */
 async function waitPreviewsSettled(page) {
   await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled()), { timeout: 15_000 }).toBe(true);
-}
-
-async function saveAnnotation(page, target, comment) {
-  await target.click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  await box.locator('#ann-input').fill(comment);
-  await box.locator('#ann-close').click();
 }
 
 // 「这页的标注」弹出列表（2026-09-04 评审板 H2，取代常驻右栏）：横条右端的计数
@@ -1326,7 +1319,7 @@ test('画布点选模型：三种选中入口、原型内部不动选中、空�
     await page.evaluate(() => window.pinpoint.setMode(true));
     const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
     await cells.nth(0).scrollIntoViewIfNeeded();
-    await saveAnnotation(page, cells.nth(0), 'dock slot mark');
+    await annotate(page, cells.nth(0), 'dock slot mark');
 
     await page.locator('#wbann-interact').click();
     const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="brew-flow"]');
@@ -1566,9 +1559,9 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
 
   await writer.evaluate(() => window.pinpoint.setMode(true));
   const cells = writer.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await saveAnnotation(writer, cells.nth(0), 'first queued mark');
+  await annotate(writer, cells.nth(0), 'first queued mark');
   await firstSaveStarted;
-  await saveAnnotation(writer, cells.nth(1), 'second queued mark');
+  await annotate(writer, cells.nth(1), 'second queued mark');
   releaseFirstSave();
 
   await expect.poll(() => writer.evaluate(() => window.pinpoint.marks.length)).toBe(2);
@@ -1599,7 +1592,7 @@ test('canvas multi-target pills preserve text; closing the card or switching pag
   await expect(input.locator('[data-target-ref]')).toHaveCount(2);
   // #n 由服务端发：等保存应答回来再读，openMark 拿的才是最终号。
   await Promise.all([
-    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
   const saved = await page.evaluate(() => window.pinpoint.marks[0]);
@@ -1647,7 +1640,7 @@ test('edits made while a save is in flight survive a page switch and back', asyn
   await cells.nth(0).click();
   await input.fill('第一稿');
   await Promise.all([
-    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
   expect(await diskContents()).toBe('第一稿');
@@ -1703,7 +1696,7 @@ test('a save queued behind an in-flight one reaches the disk when the page is le
   await cells.nth(0).click();
   await input.fill('第一稿');
   await Promise.all([
-    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
   expect(await diskContents()).toBe('第一稿');
@@ -1800,8 +1793,8 @@ test('a save that hits 409 keeps the status and reply the agent just wrote, and 
     return gate;
   };
 
-  await saveAnnotation(page, cells.nth(0), '第一条');
-  await saveAnnotation(page, cells.nth(1), '第二条');
+  await annotate(page, cells.nth(0), '第一条');
+  await annotate(page, cells.nth(1), '第二条');
   await expect.poll(async () => (await diskRows()).map(r => [r.n, r.content])).toEqual([[1, '第一条'], [2, '第二条']]);
 
   await test.step('保存扣在路上时 agent 把另一条写成 done：409 后两边都在', async () => {
@@ -1890,7 +1883,7 @@ test('frame scroll updates mark geometry and hides marks outside the phone clip'
 
   const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await cell.scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cell, '跟着滚');
+  await annotate(page, cell, '跟着滚');
 
   const badge = page.locator('.ann-badge').first();
   const frame = page.locator('.ann-target').first();
@@ -1994,7 +1987,7 @@ test('sheet captions, outline tree, and right annotation panel (2026-08-15 侧�
   // 在 settings（F1）上落一条标注 → 大纲徽标计数 + 右栏按 frame 分组（eyebrow = 引用号 + 屏名）
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'outline sync mark');
+  await annotate(page, cells.nth(0), 'outline sync mark');
   await openOutline(page);
   await expect(page.locator('#wboutline [data-ol-frame="settings"] .ol-n')).toHaveText('1');
   // 计数钉在横条右端（H2 的入口）；列表不常驻，点它才开
@@ -2064,7 +2057,7 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
   // B 放在另一帧：同帧相邻的钉子会被 A 的框压住，点不到
   const other = page.locator('#wb-board-panel [data-screen="msg-reply"] .ios-stage');
   await other.scrollIntoViewIfNeeded();
-  await saveAnnotation(page, other, 'pin switch B');
+  await annotate(page, other, 'pin switch B');
   const [nA, nB] = await page.evaluate(() => window.pinpoint.marks.slice(-2).map((m) => m.n));
   // 画布离屏的钉子会隐藏：点钉子前先把它的目标滚进可视区
   const clickBadge = async (n, target) => {
@@ -2130,7 +2123,7 @@ test('帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM', async 
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await cell.scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cell, 'pulse once');
+  await annotate(page, cell, 'pulse once');
   await page.evaluate(() => window.pinpoint.setMode(false));
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
   const fire = (prop) => page.evaluate(async (prop) => {
@@ -2161,7 +2154,7 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'close loop mark');
+  await annotate(page, cells.nth(0), 'close loop mark');
   const n = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
 
   await openAnnList(page);
@@ -2213,7 +2206,7 @@ test('pp2 面板状态筛选与清空：完成→撤销→closed 可见→清空
     // 再打一条 open 行（列表开着点画布会收列表：先收、打完再开）。
     await closeAnnList(page);
     await cells.nth(1).scrollIntoViewIfNeeded();
-    await saveAnnotation(page, cells.nth(1), '清空带走的 open 行');
+    await annotate(page, cells.nth(1), '清空带走的 open 行');
     await openAnnList(page);
 
     // 文案换成清空未关闭；确认态的计数只数未关闭（此刻 1 open + 1 close）
@@ -2433,7 +2426,7 @@ test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0),
+  await annotate(page, cells.nth(0),
     Array.from({ length: 12 }, (_, i) => 'line ' + (i + 1)).join('\n'));
 
   await test.step('钉子和命中框画在底部横条之下，横条永远在最上（2026-09-17）', async () => {
@@ -2586,9 +2579,9 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出', async ({ page
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'pin contrast mark');
+  await annotate(page, cells.nth(0), 'pin contrast mark');
   await cells.nth(1).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(1), 'second mark');
+  await annotate(page, cells.nth(1), 'second mark');
   const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
 
   const badges = page.locator('#ann-marks .ann-badge');
@@ -2681,7 +2674,7 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
   await cells.nth(0).scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cells.nth(0), 'geometry guard mark');
+  await annotate(page, cells.nth(0), 'geometry guard mark');
   await openAnnList(page);
   await expect(page.locator('#wbann-list .wb-ann-item')).toHaveCount(1);
   expect(await withinContainerViolations(page, '#wbann-list .wb-ann-item', '#wbann-pop')).toEqual([]);
@@ -2759,7 +2752,7 @@ test('列表点“完成”：画布钉子当场消失，撤销后回来并恢�
   await page.evaluate(() => window.pinpoint.setMode(true));
   const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
   await cell.scrollIntoViewIfNeeded();
-  await saveAnnotation(page, cell, '完成后钉子应当消失');
+  await annotate(page, cell, '完成后钉子应当消失');
   const badge = page.locator('#ann-marks .ann-badge');
   await expect(badge).toHaveCount(1);
   await expect(badge.first()).toBeVisible();

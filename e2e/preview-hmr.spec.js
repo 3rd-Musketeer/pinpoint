@@ -1,10 +1,11 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
+import { ROOT } from './lib/cli.js';
+import { openWorkbenchConnected } from './lib/workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 审计 B1 的端到端：dev server 里 preview-hmr 盯着登记过的 dir 条目，改一屏
@@ -12,7 +13,6 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // 两屏都重编都更新。这里守的是「画面到达」这一层；「只重编该屏」的产物判据
 // （没点名的屏 dist 不重写）在 src/server/preview-hmr.test.js 有逐字对应的单测。
 // e2e-hmr 不进共享 registry 固件（pp2-build.spec.js 同理由），自己登记自己清理。
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SITE_SRC = path.join(ROOT, 'e2e', 'hmr-site');
 const SITE_DIR = path.join(E2E_SITES_DIR, 'hmr-site');
 const DIST_ENTRY = path.join(E2E_DATA_DIR, 'dist', 'e2e-hmr');
@@ -50,8 +50,7 @@ test.afterEach(async ({ request }) => {
 });
 
 async function openBoard(page) {
-  await page.goto('/index.html?page=e2e-hmr');
-  await page.waitForFunction(() => window.workbench && window.pinpoint && window.pinpoint.getState().connected);
+  await openWorkbenchConnected(page, 'page=e2e-hmr');
 }
 
 test('改一屏或改共享组件：画板收到 preview:update 后重摆出新内容', async ({ page }) => {
