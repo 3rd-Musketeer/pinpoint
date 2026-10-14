@@ -1,12 +1,10 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
+import { ppntResult, ROOT } from './lib/cli.js';
 import { countColorPixels } from './png-probe.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
@@ -17,8 +15,6 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // 文章固件 e2e/html-site/docs/pinpoint/articles/docs-only/（project e2e-html 常驻共享 registry，只读）；
 // 存量页固件是 tabs-doc-site 的一份副本，id 只给本 spec 用，删掉一屏造出孤儿账本。
 // 这些都只走 CLI 和服务的 /sites/、/annotations/，不拉起文章站点。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ARTICLE = 'e2e-html/docs-only';
 const ARTICLE_PAGE_ID = 'e2e-html_docs-only';
 const ARTICLE_BUCKET = path.join(E2E_DATA_DIR, ARTICLE_PAGE_ID);
@@ -27,18 +23,8 @@ const DOC_PAGE_ID = 'e2e-orphan-doc';
 const DOC_SITE = path.join(E2E_SITES_DIR, 'orphan-doc-site');
 const DOC_BUCKET = path.join(E2E_DATA_DIR, DOC_PAGE_ID);
 
-async function ppnt(args) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-      timeout: 150_000,
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
+// 退出码由用例自己断言：失败也返回 { code, stdout, stderr }。截图要起浏览器，给足时间。
+const ppnt = (args) => ppntResult(args, { timeout: 150_000 });
 
 function writeLedger(bucket, name, doc) {
   fs.mkdirSync(bucket, { recursive: true });

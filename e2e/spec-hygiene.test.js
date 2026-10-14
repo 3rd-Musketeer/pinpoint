@@ -30,3 +30,11 @@ test('固定等待：waitForTimeout 只出现在标了“静默窗口”的行�
   }
   assert.deepEqual(offenders, [], '等可观察信号（expect.poll、事件、页面里的计数），不写固定 sleep');
 });
+
+test('ppnt 子进程只在 e2e/lib/cli.js 里起：它总带 PINPOINT_ORIGIN，不会落到常驻服务', () => {
+  const offenders = e2eSources()
+    .filter((file) => rel(file) !== 'lib/cli.js')
+    .filter((file) => /['"`](?:bin\/)?pinpoint\.mjs['"`]/.test(fs.readFileSync(file, 'utf8')))
+    .map(rel);
+  assert.deepEqual(offenders, [], '用 e2e/lib/cli.js 的 ppnt / ppntResult');
+});
