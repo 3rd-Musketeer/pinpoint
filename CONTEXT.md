@@ -60,7 +60,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
 要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。代码里的 `entry` 还指 board 条目和 registry 条目，在存量页一节。
 
-**节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
+**节号与编号** · 节号由 remark 步骤 `src/shared/remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
 - 节号是文章页上的 1、2、3：目录、节标题、画布卡片和浮层头部用它。
 - 编号是画布视图、`ppnt` 和标注里的字母加数字：节字母 A、B、C，帧在节内从 1 数，拼成 A1、B3。
@@ -72,7 +72,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 一个词的定义，像 wiki 词条：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。
 要避开：把 concept 叫文章的一种——它没有节和画布。
 
-**`[[ ]]` 引用与空 ref** · 站点 `site/src/lib/refs.js`；比较键 `refKey`
+**`[[ ]]` 引用与空 ref** · `src/shared/refs.js`；比较键 `refKey`
 `[[名字]]` 在正文里指向本 project 的一篇文章（按 article id）或一个 concept（按 `name`）；两者共用一个命名空间，不分大小写，撞名是布局错误。`[[名字|显示文字]]` 换显示的字，`[[project:名字]]` 指别的 project。指向的东西还不存在时是空 ref：合法，显示成虚线，project 首页列出全部空 ref，用来梳理还缺哪些概念和机制。鼠标停在引用上弹出卡片：文章显示标题和摘要，concept 显示定义和状态，空 ref 的卡片说明目标不存在。
 要避开：把空 ref 当错误去删。
 

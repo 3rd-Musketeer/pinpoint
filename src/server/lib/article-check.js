@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { extractRefs, parseRefBody } from '../../../site/src/lib/refs.js';
+import { parseRefBody, refsWithLines } from '../../shared/refs.js';
 import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
 import { articleOutline, resolveRootFrame } from './article-canvas.js';
@@ -86,29 +86,15 @@ function refResolver(projects) {
   };
 }
 
-/** 一份正文里的空 ref，带行号：跳过 frontmatter、围栏代码和行内代码（与站点的 remark 步骤同口径）。 */
+/** 一份正文里的空 ref，带行号：跳过 frontmatter；代码怎么跳与站点同一份（src/shared/refs.js refsWithLines）。 */
 export function emptyRefsIn(text, { from, resolve }) {
-  const source = String(text || '').replace(/^﻿/, '');
+  const source = String(text || '').replace(/^\uFEFF/, '');
   const { body } = parseFrontmatter(source);
   const skip = body === source ? 0 : source.slice(0, source.length - body.length).split('\n').length - 1;
-  const lines = source.split('\n');
   const found = [];
-  let fence = null;
-  for (let i = skip; i < lines.length; i++) {
-    const line = lines[i];
-    const opener = line.match(/^\s*(`{3,}|~{3,})/);
-    if (fence) {
-      if (opener && opener[1][0] === fence[0] && opener[1].length >= fence.length) fence = null;
-      continue;
-    }
-    if (opener) {
-      fence = opener[1];
-      continue;
-    }
-    for (const raw of extractRefs(line.replace(/`[^`\n]*`/g, ''))) {
-      const hit = resolve(raw, from);
-      if (!hit.found) found.push({ line: i + 1, name: hit.projectId === from ? hit.name : `${hit.projectId}:${hit.name}`, raw });
-    }
+  for (const { line, raw } of refsWithLines(body)) {
+    const hit = resolve(raw, from);
+    if (!hit.found) found.push({ line: line + skip, name: hit.projectId === from ? hit.name : `${hit.projectId}:${hit.name}`, raw });
   }
   return found;
 }

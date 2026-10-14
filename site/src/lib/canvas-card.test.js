@@ -4,11 +4,12 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, cardModel, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
+import { CARD_SCALE, canvasHref, cardModel, DOC_WIDTHS, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
 import { listProjects } from '../../../src/server/lib/projects.js';
+import { HTML_FRAME_WIDTHS } from '../../../src/shared/project-ids.js';
 
 const FIX = fileURLToPath(new URL('../../fixtures/projects/', import.meta.url));
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
@@ -154,4 +155,9 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   for (const e of project.errors) {
     assert.equal(shown.filter((x) => x === e.message).length, 1, `shown once: ${e.message}`);
   }
+});
+
+test('卡片宽度和服务端的宽度表是同一组数', () => {
+  assert.equal(DOC_WIDTHS.phone.width, HTML_FRAME_WIDTHS.phone);
+  assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
 });

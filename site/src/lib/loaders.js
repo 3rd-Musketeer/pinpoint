@@ -14,7 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { loadProjects } from './projects-source.js';
-import { namespaceErrors } from './refs.js';
+import { namespaceErrors } from '../../../src/shared/refs.js';
 import { projectErrorLine } from './site-errors.js';
 
 const posix = (p) => p.split(path.sep).join('/');

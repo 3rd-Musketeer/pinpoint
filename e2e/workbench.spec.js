@@ -885,7 +885,7 @@ async function scrollRequests(page, where) {
 async function waitGutterQuiet(page) {
   await expect.poll(async () => {
     const a = await page.evaluate(() => window.__wbGutter.requests + ':' + window.__wbGutter.renders);
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(1500); // 静默窗口：计数器 1.5s 不动才算静
     const b = await page.evaluate(() => window.__wbGutter.requests + ':' + window.__wbGutter.renders);
     return a === b ? 'quiet' : 'busy';
   }, { timeout: 15000 }).toBe('quiet');
@@ -2795,16 +2795,21 @@ test('Section Navigator：板装载那一帧量不出几何，之后排好版能
   });
 
   await test.step('重试用完之后才排好版：下一次重量几何（resize）补上', async () => {
+    const generation = await page.evaluate(() => window.workbench.mountGeneration());
     await page.evaluate(() => {
       const style = document.createElement('style');
       style.id = 'e2e-hide-board';
       style.textContent = '#wb-board-panel .wb-lib-item{display:none!important}';
       document.head.appendChild(style);
-      window.workbench.setActivePage('e2e-ios');
+      // 已在 e2e-ios：不带 force 是空操作，板不重装，逐帧重量根本不会开始。
+      window.workbench.setActivePage('e2e-ios', { force: true });
     });
     await page.setViewportSize({ width: 1200, height: 800 });
     await expect(navWrap).toBeHidden();
-    await page.waitForTimeout(1000); // 逐帧重量的次数用完
+    // 板重装、几何批落定（逐帧重量从这里起），再等逐帧重量的次数用完。
+    await expect.poll(() => page.evaluate(() => window.workbench.mountGeneration())).toBeGreaterThan(generation);
+    await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 25_000 }).toBe(true);
+    await expect.poll(() => page.evaluate(() => window.workbench.sectionNavRetrying())).toBe(false);
     await page.evaluate(() => document.getElementById('e2e-hide-board').remove());
     await page.setViewportSize({ width: 1280, height: 800 });
     await expect(navWrap).toBeVisible();

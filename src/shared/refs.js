@@ -12,7 +12,7 @@
  * listProjects uses for its namespace check, so what collides there is what
  * resolves here.
  */
-import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from '../../../src/shared/project-ids.js';
+import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from './project-ids.js';
 export { refKey };
 
 export const REF_RE = /\[\[([^\[\]\n]+?)\]\]/g;
@@ -45,16 +45,47 @@ export function resolveRef(raw, from, projects) {
   return { kind: item.kind, project, name, label: shown, item };
 }
 
-/** Drop fenced code and inline code so a scan agrees with the remark pass (which skips code nodes). */
-export function stripCode(text) {
-  return String(text || '')
-    .replace(/^(`{3,}|~{3,})[^\n]*\n[\s\S]*?^\1[^\n]*$/gm, '')
-    .replace(/`[^`\n]*`/g, '');
+const FENCE_RE = /^\s*(`{3,}|~{3,})(.*)$/;
+// A code span: a run of n backticks up to the next run of exactly n (CommonMark), on one line.
+const CODE_SPAN_RE = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g;
+
+/**
+ * The lines of a markdown / MDX source with code blanked out (line count kept), so a
+ * text scan agrees with the remark pass, which skips code and inlineCode nodes. The one
+ * implementation of "skip code" for the site's ref index and `ppnt check`'s empty refs:
+ * - fenced block: opens on ``` or ~~~ (3 or more, any indent; a backtick fence's info
+ *   string has no backtick); closes on a line of the same character, at least as long,
+ *   with nothing after it; a fence never closed runs to the end of the text.
+ * - code span: a run of backticks up to the next run of the same length, on one line.
+ */
+export function codeFreeLines(text) {
+  let fence = null;
+  return String(text || '').split('\n').map((line) => {
+    const m = line.match(FENCE_RE);
+    if (fence) {
+      if (m && m[1][0] === fence[0] && m[1].length >= fence.length && !m[2].trim()) fence = null;
+      return '';
+    }
+    if (m && !(m[1][0] === '`' && m[2].includes('`'))) {
+      fence = m[1];
+      return '';
+    }
+    return line.replace(CODE_SPAN_RE, '');
+  });
+}
+
+/** `[[ ]]` bodies with their 1-based line, code excluded, in order. */
+export function refsWithLines(text) {
+  const out = [];
+  codeFreeLines(text).forEach((line, i) => {
+    for (const m of line.matchAll(REF_RE)) out.push({ line: i + 1, raw: m[1] });
+  });
+  return out;
 }
 
 /** All `[[ ]]` bodies in a markdown/MDX source, code excluded, in order. */
 export function extractRefs(text) {
-  return [...stripCode(text).matchAll(REF_RE)].map((m) => m[1]);
+  return refsWithLines(text).map((ref) => ref.raw);
 }
 
 /**

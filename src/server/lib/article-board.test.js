@@ -3,15 +3,19 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import { articleCanvas, articlePageRows, deriveArticleBoard } from './article-board.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
-import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, resolvePageTarget } from './page-compiler.js';
+import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, renumberPpIds, resolvePageTarget } from './page-compiler.js';
 import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
 import { formatProjectError } from '../../shared/project-errors.js';
 import { findProject, listProjects } from './projects.js';
 import { planPageRecompile } from './recompile-plan.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from './registry.js';
+
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
+const insideRepo = (file) => file === REPO || file.startsWith(REPO + path.sep);
 
 function write(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
@@ -107,7 +111,7 @@ test('deriveArticleBoard：只含有 Canvas 的节，帧是 screen，article.css
 });
 
 test('编译：dist 出帧与派生 board，源目录不多任何文件；组件按 本篇 > project > kit 解析', async (t) => {
-  const { registry, article, distRoot } = fixture(t);
+  const { registry, article, content, distRoot } = fixture(t);
   const before = fs.readdirSync(article).sort();
   const target = resolvePageTarget('demo_flow', { registry });
   const result = await compilePage(target, { distRoot });
@@ -123,10 +127,22 @@ test('编译：dist 出帧与派生 board，源目录不多任何文件；组件
   assert.match(html, /data-pp-id="ask-open\.jsx:7@1"/);
   // os.tmpdir() 在 macOS 经过 symlink（/var → /private/var）：组件的 data-pp-id 仍相对文章目录。
   assert.match(html, /class="article-card" data-pp-id="components\/Card\.jsx:2@1"/);
-  assert.match(html, /class="project-shared" data-pp-id="\.\.\/\.\.\/components\/Shared\.jsx:2@1"/);
+  // 本篇目录外的组件按 renumberPpIds 的规则：落在 pinpoint 仓内写成仓相对，仓外相对文章目录。
+  // fixture 在 os.tmpdir() 下，TMPDIR 可能指到仓内（如 .tmp/），期望跟着 fixture 的位置走。
+  const shared = path.join(content, 'components', 'Shared.jsx');
+  const sharedId = insideRepo(shared) ? path.relative(REPO, shared).split(path.sep).join('/') : '../../components/Shared.jsx';
+  assert.ok(html.includes(`class="project-shared" data-pp-id="${sharedId}:2@1"`), html);
   const distBoard = JSON.parse(fs.readFileSync(path.join(distRoot, 'demo_flow', 'board.json'), 'utf8'));
   assert.deepEqual(distBoard, deriveArticleBoard(target).board);
   assert.deepEqual(await renderScreenHtml(target, 'ask-sent'), { ok: true, html: '<style>@import url("/sites/demo_flow/article.css");</style>\n<div class="ios-app" data-pp-id="ask-sent.jsx:2@1" data-pp-comp="AskSent">已发送</div>' });
+});
+
+test('renumberPpIds：页外文件落在 pinpoint 仓内写成仓相对，仓外保持相对页目录', () => {
+  const html = '<div data-pp-id="../../components/Shared.jsx:2@9"></div>';
+  const inRepo = path.join(REPO, '.tmp', 'proj', 'docs', 'pinpoint', 'articles', 'flow');
+  const outside = path.join(path.parse(REPO).root, 'pp-not-the-repo', 'docs', 'pinpoint', 'articles', 'flow');
+  assert.equal(renumberPpIds(html, { pageDir: inRepo }), '<div data-pp-id=".tmp/proj/docs/pinpoint/components/Shared.jsx:2@1"></div>');
+  assert.equal(renumberPpIds(html, { pageDir: outside }), '<div data-pp-id="../../components/Shared.jsx:2@1"></div>');
 });
 
 test('dist 状态与增量：改正文不算画布变（noop），改节或帧才重编', async (t) => {

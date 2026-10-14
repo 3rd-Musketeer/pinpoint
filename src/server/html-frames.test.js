@@ -19,8 +19,7 @@ import { listProjects } from './lib/projects.js';
 import { loadRegistry } from './lib/registry.js';
 import { createSitesHandler } from './sites-api.js';
 import { mockReq, mockRes } from './test-harness.js';
-import { HTML_FRAME_WIDTHS, rootFrameSrc } from '../shared/project-ids.js';
-import { DOC_WIDTHS } from '../../site/src/lib/canvas-card.js';
+import { rootFrameSrc } from '../shared/project-ids.js';
 
 await ensureAnnotateBundle();
 
@@ -340,11 +339,6 @@ test('html-frame-assets：只收相对路径，顺着 CSS、内嵌 HTML 和 JS �
   assert.deepEqual(found.missing.map((f) => [path.relative(root, f.from), f.url]), [['shared/frames/app.js', './more.js']]);
   const narrow = collectHtmlFrameAssets(path.join(root, 'shared', 'cat.html'), { root: path.join(root, 'shared') });
   assert.deepEqual(narrow.outside.map((f) => f.url), ['../tokens.css']);
-});
-
-test('卡片宽度和服务端的宽度表是同一组数', () => {
-  assert.equal(DOC_WIDTHS.phone.width, HTML_FRAME_WIDTHS.phone);
-  assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
 });
 
 /** 在 fixture 上加两个 source：skill（相对 project 根，在根外面）和 bad（目录不在）。 */

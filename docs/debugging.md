@@ -19,6 +19,26 @@
 
 ---
 
+## 2026-10-14 离开页面的 keepalive 快照在满载下“没到”（卡在 Playwright 拦截层）
+
+现象：`prose-comments.spec.js`“离开页面”那步在全量两组下首跑偶挂，重跑即过。盘上只有
+“离开前的回复一”，等了 10 秒没有回复二。
+误判路径：先以为离开时 `route.continue()` 抛错、快照被导航取消没发出去。加日志后排除：
+挂的那几次快照根本没进路由回调；服务端也收到了它（200，`after` 接上了），只是到得晚，
+时间正好在用例 `finally` 里 `page.unroute` 之后约 25 ms。
+根因：页面离开时（pagehide）发的 keepalive 请求仍被这一页的请求拦截暂停，但满载下 Playwright
+没把它派给 `page.route` 的回调，它就一直停在拦截层，直到 unroute 关掉拦截才放出去。产品里没有
+拦截层，keepalive 在 `fetch()` 时就进了网络栈，不受影响。
+修复：这一步不再用 `page.route` 扣保存。在 init script 里包一层 `fetch`，让第一次保存照常
+到服务端、只把应答扣在页面里，离开时页面上没有拦截。
+识别特征：离开页面（导航、关页）之后才发的请求“没到”或“晚到”，而用例在离开时还挂着
+`page.route`；服务端日志里那次请求落在 unroute 之后。
+防回归：`prose-comments.spec.js` 的写法本身。`workbench.spec.js`“a save queued behind an in-flight
+one…”要按难的顺序放行快照，离开时仍靠 `page.route` 扣住它，同一机制可能偶挂（截至 2026-10-14
+没在满载下复现过它）。
+
+---
+
 ## 2026-09-28 Section Navigator 偶发整段消失（满载时板装载那一帧量不出几何）
 
 现象：`workbench.spec.js` 的 ADR 0034 层级用例在 `just ship` 全量跑里挂过一次，重跑即过。

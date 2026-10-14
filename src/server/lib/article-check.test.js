@@ -4,9 +4,13 @@ import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
+import { compile } from '@mdx-js/mdx';
+
 import { checkProject, emptyRefsIn, projectEmptyRefs } from './article-check.js';
 import { articleOutline } from './article-canvas.js';
 import { loadRegistry } from './registry.js';
+import { extractRefs } from '../../shared/refs.js';
+import { remarkPinpoint } from '../../shared/remark-pinpoint.js';
 
 const GOOD_FRAME = 'export default function F() {\n  return <div className="ios-app">好</div>;\n}\n';
 const LINT_FRAME = 'export default function F() {\n  return <div className="ios-app"><button onClick={() => 1}>x</button></div>;\n}\n';
@@ -78,6 +82,36 @@ test('checkProject：只查一篇时别篇和概念的问题不算；查整个 p
   assert.ok(all.diagnostics.some((row) => row.code === 'empty_ref' && row.file.endsWith('term.md') && row.line === 5));
   assert.equal(all.frames, 3);
   assert.equal(await checkProject(registry, 'nope'), null);
+});
+
+// 站点列的空 ref（extractRefs）、ppnt check 报的空 ref（emptyRefsIn）和站点真正渲染成引用的
+// （remark 步骤，跳过 code / inlineCode 节点）必须是同一组：代码怎么算只有一份实现。
+test('空 ref 的扫描与 remark 步骤同口径：围栏没关、缩进围栏、带字的“结束行”、双反引号行内代码', async () => {
+  const samples = {
+    unclosed: '前 [[一]]\n\n```\n[[二]]\n',
+    indented: '- 列表\n\n  ```\n  [[二]]\n  ```\n\n[[三]]\n',
+    longerCloser: '````\n[[二]]\n`````\n\n[[三]]\n',
+    otherChar: '~~~\n[[二]]\n```\n[[三]]\n~~~\n\n[[四]]\n',
+    infoOnCloser: '```\n[[二]]\n``` js\n[[三]]\n```\n\n[[四]]\n',
+    doubleTick: '有 ``a [[二]] `b`` 和 [[三]]\n',
+    tickInsideSingle: '有 `a``[[二]]` 和 [[三]]\n',
+  };
+  const remarkRefs = async (value) => {
+    const out = String(await compile({ value, path: '/x/docs/pinpoint/articles/a/index.mdx' }, {
+      remarkPlugins: [[remarkPinpoint, { projectIdFor: () => 'p' }]],
+    }));
+    return [...out.matchAll(/raw: "([^"]*)"/g)].map((m) => m[1]);
+  };
+  const resolve = (raw) => ({ name: raw, projectId: 'p', found: false });
+  const mismatches = [];
+  for (const [name, text] of Object.entries(samples)) {
+    const truth = JSON.stringify(await remarkRefs(text));
+    const site = JSON.stringify(extractRefs(text));
+    const check = JSON.stringify(emptyRefsIn(text, { from: 'p', resolve }).map((ref) => ref.raw));
+    if (site !== truth) mismatches.push(`${name} · extractRefs ${site}，remark ${truth}`);
+    if (check !== truth) mismatches.push(`${name} · emptyRefsIn ${check}，remark ${truth}`);
+  }
+  assert.deepEqual(mismatches, []);
 });
 
 test('emptyRefsIn / projectEmptyRefs：跳过 frontmatter 与代码；按名字合并来源', (t) => {

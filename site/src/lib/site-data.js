@@ -3,7 +3,7 @@
  * from the content collections (cheap; keeps dev reloads honest).
  */
 import { getCollection } from 'astro:content';
-import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from './refs.js';
+import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from '../../../src/shared/refs.js';
 import { projectErrorLine } from './site-errors.js';
 
 /** Concept status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */

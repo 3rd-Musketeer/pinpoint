@@ -4,6 +4,7 @@
  *   loadProjects()                       → which projects are registered, read from disk
  *   articleCanvas(projectId, articleId)  → { pageId, sections: [{ id, title, letter, shell?, frames: [{ id, ref, missing? }] }], errors: [{ code, message, path?, line?, section?, frame? }] }
  *   articlePageId(projectId, articleId)  → `<project>_<article>`, the canvas page id (= annotation bucket)
+ *   projectIdForFile(file)               → the project id of a content file (astro.config.mjs hands it to remark-pinpoint)
  *
  * The registry path is resolved the way the pinpoint service does it:
  * PINPOINT_REGISTRY, else ~/.pinpoint/registry.json. Reading goes through the
@@ -11,8 +12,8 @@
  * `articleCanvas` (src/server/lib/article-board.js) that the service and the
  * CLI use, so titles, summaries, concept name / slug / status / boundary, the
  * canvas and the layout errors are identical everywhere. Nothing else in the
- * site imports service code; pure rules (ids, refKey, section letters) come
- * from src/shared/.
+ * site imports service code; pure rules (ids, refKey, section letters, the
+ * remark pass, `[[ ]]` refs) come from src/shared/.
  */
 import { fileURLToPath } from 'node:url';
 import { defaultRegistryPath, loadRegistry } from '../../../src/server/lib/registry.js';
@@ -20,6 +21,7 @@ import { listProjects } from '../../../src/server/lib/projects.js';
 import { projectErrorLine } from './site-errors.js';
 
 export { articleCanvas } from '../../../src/server/lib/article-board.js';
+export { projectIdForFile } from '../../../src/server/lib/projects.js';
 export { articlePageId } from '../../../src/shared/project-ids.js';
 
 const REPO_ROOT = fileURLToPath(new URL('../../../', import.meta.url));

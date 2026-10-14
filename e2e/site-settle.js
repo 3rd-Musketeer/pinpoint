@@ -9,7 +9,7 @@ export async function waitNoReload(page, quietMs = 800) {
   try {
     for (let seen = -1; seen !== navs;) {
       seen = navs;
-      await page.waitForTimeout(quietMs);
+      await page.waitForTimeout(quietMs); // 静默窗口：quietMs 内主框架不再导航
       await page.waitForLoadState('load');
     }
   } finally {

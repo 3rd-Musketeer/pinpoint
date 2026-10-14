@@ -5,8 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 // @mdx-js/mdx is what @astrojs/mdx compiles with; it arrives through that dependency.
 import { compile } from '@mdx-js/mdx';
-import { remarkPinpoint, projectIdFor } from './remark-pinpoint.js';
-import { parseArticleCanvas } from '../../../src/server/lib/article-canvas.js';
+import { remarkPinpoint } from './remark-pinpoint.js';
+import { parseArticleCanvas } from '../server/lib/article-canvas.js';
+import { projectIdForFile } from '../server/lib/projects.js';
 
 function project(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-site-remark-'));
@@ -17,11 +18,15 @@ function project(t) {
   return path.join(dir, 'articles', 'a', 'index.mdx');
 }
 
-const run = (value, file) => compile({ value, path: file }, { remarkPlugins: [remarkPinpoint] }).then(String);
+const run = (value, file) => compile({ value, path: file }, { remarkPlugins: [[remarkPinpoint, { projectIdFor: projectIdForFile }]] }).then(String);
+
+test('the pass needs projectIdFor: the caller supplies the fs side', () => {
+  assert.throws(() => remarkPinpoint(), /projectIdFor/);
+});
 
 test('sections get numbers in order and refs become <Ref raw from>', async (t) => {
   const file = project(t);
-  assert.equal(projectIdFor(file), 'demo');
+  assert.equal(projectIdForFile(file), 'demo');
   const out = await run('前言 [[确认卡]] 和 `[[代码]]`。\n\n<Section id="one" title="一">\n\n文字 [[other:x|标签]]\n\n</Section>\n\n<Section id="two">\n\nb\n\n</Section>\n', file);
   assert.match(out, /num: "1"/);
   assert.match(out, /num: "2"/);

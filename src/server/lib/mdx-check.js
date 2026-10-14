@@ -25,8 +25,9 @@ import * as devRuntime from 'preact/jsx-dev-runtime';
 import * as runtime from 'preact/jsx-runtime';
 import renderToString from 'preact-render-to-string';
 
-import { remarkPinpoint } from '../../../site/src/lib/remark-pinpoint.js';
+import { remarkPinpoint } from '../../shared/remark-pinpoint.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { projectIdForFile } from './projects.js';
 
 /** 站点给正文提供的组件（不用 import）。改 index.astro 的 components 时同步这里。 */
 export const SITE_MDX_COMPONENTS = Object.freeze(['Section', 'Canvas', 'Figure', 'Ref']);
@@ -83,7 +84,7 @@ export async function checkMdxRender(text, { file } = {}) {
     compiled = await compile({ path: file, value: blankFrontmatter(text) }, {
       outputFormat: 'function-body',
       development: true,
-      remarkPlugins: [remarkGfm, remarkPinpoint],
+      remarkPlugins: [remarkGfm, [remarkPinpoint, { projectIdFor: projectIdForFile }]],
       SourceMapGenerator,
     });
   } catch (error) {

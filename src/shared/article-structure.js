@@ -3,7 +3,7 @@
  * 在 mdast 里在哪、属于哪一节、第几节。只走树，不解析、不校验，各方自己报错：
  *
  * - 服务端的文章画布（src/server/lib/article-canvas.js）：派生 board、画布错误；
- * - 站点的 remark 步骤（site/src/lib/remark-pinpoint.js）：节标题的字母、给 Canvas 注入 section；
+ * - 站点的 remark 步骤（src/shared/remark-pinpoint.js）：节标题的字母、给 Canvas 注入 section；
  * - ann-query：正文评论的引文落在哪一节（经 article-canvas.js 的 articleSectionSpans）。
  *
  * 三处用同一个走法，节怎么数、字母怎么编不会分叉。<Figure>（正文里的图）也在这里数：articleFigures

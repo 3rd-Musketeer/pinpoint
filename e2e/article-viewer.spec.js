@@ -1,5 +1,6 @@
 import { expect, test } from '@playwright/test';
 
+import { POP_CLOSE_MS } from '../site/src/lib/client.js';
 import { E2E_BASE_URL } from './env.js';
 import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
@@ -110,13 +111,17 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
   });
 
   await test.step('浮层里选字不出正文“评论”', async () => {
+    // 等正文评论客户端判过这次选区（松开鼠标就判，selection().checks 加一），再看它没给“评论”。
+    await proseSettled(page);
+    const before = await page.evaluate(() => window.pinpointProse.selection().checks);
     const t = await page.locator('[data-ov-title]').boundingBox();
     await page.mouse.move(t.x + 1, t.y + t.height / 2);
     await page.mouse.down();
     await page.mouse.move(t.x + t.width - 1, t.y + t.height / 2, { steps: 6 });
     await page.mouse.up();
     await expect.poll(() => page.evaluate(() => String(window.getSelection()))).toBe('确认卡');
-    await page.waitForTimeout(500);
+    await expect.poll(() => page.evaluate(() => window.pinpointProse.selection().checks)).toBeGreaterThan(before);
+    expect(await page.evaluate(() => window.pinpointProse.selection().offered)).toBe(false);
     await expect(page.locator('.pp-selbtn')).toHaveCount(0);
     await page.evaluate(() => window.getSelection().removeAllRanges());
   });
@@ -245,8 +250,12 @@ test('[[ ]] popup：悬停打开、移进 popup 不关、离开后关；点有�
     await expect(pop).toBeVisible();
     await expect(pop.locator('.k')).toHaveText('confirm-card收敛中');
     const b = await pop.boundingBox();
+    // 先停在 ref 与 popup 之间的空隙（popup 在 ref 下方 8px）：移出 ref，排上一次 POP_CLOSE_MS 的关闭；
+    // 再移进 popup，它要把这次关闭取消。页面里排一个同样时长的定时器：它晚于那次关闭排上，
+    // 回调时那次关闭若没取消就已经执行了。
+    await page.mouse.move(b.x + b.width / 2, b.y - 4);
     await page.mouse.move(b.x + b.width / 2, b.y + b.height / 2, { steps: 4 });
-    await page.waitForTimeout(500);
+    await page.evaluate((ms) => new Promise((resolve) => setTimeout(resolve, ms)), POP_CLOSE_MS);
     await expect(pop).toBeVisible();
     await page.mouse.move(b.x + b.width / 2, b.y + b.height + 160, { steps: 4 });
     await expect(pop).toHaveCount(0);

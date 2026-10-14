@@ -82,8 +82,8 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
 - `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts。
 - `src/pages/[project]/[article]/index.astro`：文章页。正文末尾的 `<div data-pp-article-end hidden>` 是正文结束标记：`ppnt shot` 截到的页面里没有它，就判定正文中途断了（渲染出错），提示跑 `ppnt check`。
-- `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编节号，给 `<Canvas>` 注入所在节的 id 和节号。哪一节、第几节由 `src/shared/article-structure.js` 决定，服务端派生画布视图用的是同一个走法：文章第 n 节就是画布视图上的第 n 个字母，节号和编号对得上。
-- `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
+- 仓库 `src/shared/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编节号，给 `<Canvas>` 注入所在节的 id 和节号。哪一节、第几节由 `src/shared/article-structure.js` 决定，服务端派生画布视图用的是同一个走法：文章第 n 节就是画布视图上的第 n 个字母，节号和编号对得上。`ppnt check` 编正文用的是同一个步骤；它不读盘，文件属于哪个 project 由调用方给（`astro.config.mjs` 传 `projectIdForFile`，经 `projects-source.js`）。
+- 仓库 `src/shared/refs.js`：解析、跳过代码（围栏与行内代码，和 remark 步骤同口径；`ppnt check` 报空 ref 用同一份）、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。站点和 `ppnt check` 都从这里取。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
 - `src/lib/site-errors.js`：布局错误在站点上怎么显示。错误从 `listProjects` 到内容集合一路是对象（`src/shared/project-errors.js`），这里拼成 `project "<id>": …` 一行；文章页的错误条按 `path` 分出这篇自己的错误。
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage` / `data-pp-device`）、读未处理标注数。
