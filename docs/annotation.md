@@ -105,8 +105,10 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 `GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
 按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
 
-**孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、存量页不在 registry 与
-manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt comments`
+**孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、文章的 HTML 帧移出了 Canvas
+或源文件删了、存量页不在 registry 与 manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。
+文章桶里 `@canvas.json`、`@prose.json` 恒活，其余账本按本篇、`@root`、`@source` 现有 HTML 帧的地址判
+（`src/server/lib/orphans.js`）。`ppnt comments`
 把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
 面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。孤儿行照样能回复、写状态：
 `ppnt mark` / `reply` 的 `#n`、`#a-#b`、`@a:<id>`、`<页>#n` 也指得到它们（状态和线程端点按账本加序号找行，

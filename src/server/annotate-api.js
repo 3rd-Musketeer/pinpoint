@@ -1,6 +1,6 @@
 import { collectPageTimes } from './lib/page-times.js';
 import { collectOrphanCounts } from './lib/orphans.js';
-import { pageIdIsLive } from './lib/page-resolve.js';
+import { listArticleTargets, pageIdIsLive } from './lib/page-resolve.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -195,7 +195,7 @@ export function createAnnotateHandler(options = {}) {
     // 清理只经 ppnt prune）。
     const articles = articlePageRows(registry);
     const orphanCounts = collectOrphanCounts({
-      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleIds: articles.map((row) => row.id),
+      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleTargets: listArticleTargets(registry),
     });
     for (const [id, count] of Object.entries(orphanCounts)) {
       if (pageTimes[id]) pageTimes[id].orphans = count;

@@ -593,6 +593,7 @@ export async function runPrune(argv, io = {}) {
         entries: registry.entries,
         isManifestPage: page.kind === 'template',
         previewsRoot: path.join(REPO_ROOT, 'content', 'previews'),
+        article: page.kind === 'article' ? page.target : null,
       })
     : collectBucketOrphans(pageId, root);
   if (!names.length) {

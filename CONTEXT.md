@@ -104,8 +104,8 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里有 `@canvas.json`（画布标注）和 `@prose.json`（正文评论），有 HTML 帧时每个页面路径另有一本（文档页标注）；存量页的文档条目同样按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
-**孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
-表面已经不存在的账本：文章目录删了或改了名、project 不再登记、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
+**孤儿** · 页在不在看 `src/server/lib/page-resolve.js` 的 `pageIdIsLive`，活页桶里的账本看 `src/server/lib/orphans.js`
+表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas 或源文件删了、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
 要避开：去 `mark` 孤儿条目。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`

@@ -2422,6 +2422,29 @@ test('remove a project: article buckets follow the bucket rule (rows refuse, emp
   for (const id of ['alpha', 'beta', 'gone']) assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `empty bucket demo_${id} removed`);
 });
 
+test('live article: prune clears ledgers of HTML frames that are gone, keeps live frames and fixed ledgers; comments counts only live rows (D)', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const article = path.join(made.content, 'articles', 'alpha');
+  fs.writeFileSync(path.join(article, 'index.mdx'), '---\ntitle: alpha\n---\n\n<Section id="s" title="S">\n\n正文 alpha。\n\n<Canvas frames={["page"]} />\n\n</Section>\n');
+  fs.writeFileSync(path.join(article, 'page.html'), '<!doctype html><p>page</p>');
+  const ledger = (name, docPath, n, content) => fs.writeFileSync(path.join(made.data, 'demo_alpha', name), JSON.stringify({
+    page: name.replace(/\.json$/, ''), path: docPath, revision: 1,
+    annotations: [{ id: `r${n}`, n, type: 'element', status: 'open', content }],
+  }));
+  ledger('page.html_a1.json', '/sites/demo_alpha/page.html', 5, '活帧上的标注');
+  ledger('removed.html_b2.json', '/sites/demo_alpha/removed.html', 6, '删掉的帧上的标注');
+  const dry = recorder();
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--dry-run', '--registry', made.registry], { ...dry.io, env: made.env }), 0, dry.err.join('\n'));
+  assert.deepEqual(dry.out, [path.join(made.data, 'demo_alpha', 'removed.html_b2.json'), '--dry-run：1 本孤儿账本待删（ppnt prune demo_alpha 落盘）。']);
+  const comments = recorder();
+  assert.equal(await runComments(['comments', 'demo/alpha', '--registry', made.registry], { ...comments.io, env: made.env }), 0, comments.err.join('\n'));
+  assert.ok(comments.out.some((line) => /^共 \d+ 条（全量 3）/.test(line)), comments.out.join('\n'));
+  assert.ok(comments.out.some((line) => line.startsWith('## 孤儿标注')), comments.out.join('\n'));
+  const real = recorder();
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--registry', made.registry], { ...real.io, env: made.env }), 0, real.err.join('\n'));
+  assert.deepEqual(fs.readdirSync(path.join(made.data, 'demo_alpha')).sort(), ['@canvas.json', '@prose.json', 'page.html_a1.json']);
+});
+
 test('article buckets as orphans: prune on a live article lists nothing; a deleted article is a whole-bucket orphan in comments / prune, and check says the article is gone', async (t) => {
   const made = makeProjectWithBuckets(t);
   const live = recorder();

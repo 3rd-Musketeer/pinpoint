@@ -163,6 +163,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
     entries: registry.entries,
     isManifestPage,
     previewsRoot: path.join(repoRoot, 'content', 'previews'),
+    article: target && target.kind === 'article' ? target : null,
   });
   const collected = collectPageRows({
     root: dataRootValue,

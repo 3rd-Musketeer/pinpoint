@@ -10,24 +10,28 @@
  *
  * 表面（一个页的可标注 URL 空间，按页收集）：
  * - 页自己的 registry 条目：`/sites/<条目 id>/` —— dir = 目录下现存文件；file = 登记文件现存；
- *   url = 条目还在登记表里就算活着（上游死活不便宜探，不判）；
  * - manifest 模板页：`/previews/<页 id>/` —— 页目录下现存文件 + board.json 屏
  *   （屏 HTML 从 dist 出，源文件可以只有 .jsx，不能按 .html 是否在盘上判死）；
- * - `@canvas.json` 恒活：页在，画布表面就在。
+ * - 文章页：`/sites/<页 id>/` —— 只有现有 HTML 帧的地址（本篇、`@root`、`@source` 三种，
+ *   article-board.js 的 articleHtmlFramePaths：帧还在 Canvas 里、源文件解析得到）。
+ *   文章目录里别的文件服务时不注入标注客户端，不会有账本；
+ * - `@canvas.json`、`@prose.json` 恒活：页在，画布与正文表面就在。
  * 不判（宁漏报不误删）：无 path 的存量账本、`/sites/` `/previews/` 形态之外的
- * 未知空间。页本身不在 registry 与 manifest 里 = 整桶皆孤儿（CLI 侧按桶判）。
+ * 未知空间、读不出正文的文章。页本身不在 registry 与 manifest 里 = 整桶皆孤儿（CLI 侧按桶判）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { articleHtmlFramePaths } from './article-board.js';
 import { boardScreenIds } from './page-compiler.js';
-import { CANVAS_LEDGER } from '../../shared/project-ids.js';
+import { CANVAS_LEDGER, PROSE_LEDGER } from '../../shared/project-ids.js';
 
 // “这个页 id 现在是不是一页”在 page-resolve.js（pageIdIsLive / resolvePage）。
 
 /** 一个页的表面空间列表。entries 是 registry 条目；isManifestPage
-    = 该 id 在 content/previews/_index.json 里。 */
-export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false, previewsRoot }) {
+    = 该 id 在 content/previews/_index.json 里；article = 文章页的编译目标（page-resolve.js 的
+    resolveArticleTarget，kind 'article'），给了就按它的 HTML 帧收表面。 */
+export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false, previewsRoot, article = null }) {
   const spaces = [];
   for (const entry of entries) {
     if (!entry) continue;
@@ -40,6 +44,13 @@ export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false
     }
   }
   if (isManifestPage) spaces.push({ prefix: `/previews/${pageId}/`, kind: 'preview', root: path.join(previewsRoot, pageId) });
+  if (article && article.kind === 'article' && article.entryId === pageId) {
+    let paths = null;
+    try {
+      paths = new Set(articleHtmlFramePaths(article).keys());
+    } catch { /* 正文读不出：表面未知，这一页的账本都不判 */ }
+    spaces.push({ prefix: `/sites/${pageId}/`, kind: 'article', paths });
+  }
   return spaces;
 }
 
@@ -47,7 +58,7 @@ export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false
     pageSurfaceSpaces 的返回。保守取向：path 缺失（存量）或落在 /sites/ 与
     /previews/ 形态之外的未知空间都不判孤儿。 */
 export function ledgerIsOrphan({ name, doc }, spaces) {
-  if (name === `${CANVAS_LEDGER}.json`) return false;
+  if (name === `${CANVAS_LEDGER}.json` || name === `${PROSE_LEDGER}.json`) return false;
   const p = String((doc && doc.path) || '');
   if (!p) return false;
   const space = spaces.find((s) => p === s.prefix.slice(0, -1) || p.startsWith(s.prefix));
@@ -55,10 +66,11 @@ export function ledgerIsOrphan({ name, doc }, spaces) {
     // 不在本页的空间里：仍可能判两种（头注的 2、3）——路径指向 /sites/<id>/
     // 这个形态的表面，而表面只属于登记表里的条目。条目是别页 = 错放；
     // 条目不在登记表 = 表面已消失（条目移走）。两种都
-    // 不归本页。/sites/ /previews/ 之外的未知空间照旧不判。
-    return /^\/sites\/[a-z0-9][a-z0-9-]*(\/|$)/.test(p);
+    // 不归本页。/sites/ /previews/ 之外的未知空间照旧不判。页 id 的形状含文章页的 `_`。
+    return /^\/sites\/[A-Za-z0-9_-]+(\/|$)/.test(p);
   }
   if (space.kind === 'file') return !fs.existsSync(space.file);
+  if (space.kind === 'article') return space.paths ? !space.paths.has(p) : false;
   // doc.path 是 decode 后的 pathname（客户端写入侧已解），这里不再二次 decode：
   // 再解一次遇到字面 %（如 50%.html）会抛异常，反而把活账本判成孤儿。
   const rel = p.slice(space.prefix.length);
@@ -93,9 +105,9 @@ export function readBucketLedgers(bucketPath) {
   return out;
 }
 
-/** 一页的孤儿账本文件名列表。 */
-export function collectPageOrphans({ pageId, dataRoot, entries, isManifestPage = false, previewsRoot }) {
-  const spaces = pageSurfaceSpaces({ pageId, entries, isManifestPage, previewsRoot });
+/** 一页的孤儿账本文件名列表。文章页要给 article（它的编译目标），否则本篇的 HTML 帧账本无从判。 */
+export function collectPageOrphans({ pageId, dataRoot, entries, isManifestPage = false, previewsRoot, article = null }) {
+  const spaces = pageSurfaceSpaces({ pageId, entries, isManifestPage, previewsRoot, article });
   return readBucketLedgers(path.join(dataRoot, pageId))
     .filter((ledger) => ledgerIsOrphan(ledger, spaces))
     .map((ledger) => ledger.name);
@@ -108,10 +120,11 @@ export function collectBucketOrphans(pageId, dataRoot) {
 
 /** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数（K7）；
     一本孤儿账本可能装着几十行。
-    articleIds = 活的文章画布页 id（它们不在 entries 里，桶照样要数）。 */
-export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleIds = [] }) {
+    articleTargets = 活的文章画布页的编译目标（它们不在 entries 里，桶照样要数，HTML 帧账本按它判）。 */
+export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleTargets = [] }) {
   const previewsRoot = path.join(root, 'content', 'previews');
-  const ids = new Set([...localIds, ...articleIds]);
+  const articles = new Map(articleTargets.map((target) => [target.entryId, target]));
+  const ids = new Set([...localIds, ...articles.keys()]);
   for (const entry of entries) if (entry.id !== 'pinpoint' && entry.kind !== 'project') ids.add(entry.id);
   const out = {};
   for (const pageId of ids) {
@@ -121,6 +134,7 @@ export function collectOrphanCounts({ entries, dataRoot, localIds, root, article
       entries,
       isManifestPage: localIds.includes(pageId),
       previewsRoot,
+      article: articles.get(pageId) || null,
     }));
     out[pageId] = readBucketLedgers(path.join(dataRoot, pageId))
       .filter((ledger) => orphanLedgers.has(ledger.name))
