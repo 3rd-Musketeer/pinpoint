@@ -280,6 +280,13 @@ test('HTML 帧：同名复制，相对引用的文件照原路径一起复制；
   assert.equal(blocked.problems.length, 1);
   assert.match(blocked.problems[0], /帧 v2 引用了页目录外的文件 "\.\.\/shared\.css"（v2\.html 第 2 行/);
 
+  // 隐藏文件：在页目录里，但迁成文章后服务不出（lib/servable-file.js），同样拦下，提示改名。
+  write(path.join(page, '.theme.css'), 'body {}\n');
+  write(path.join(page, 'v2.html'), '<!doctype html>\n<link rel="stylesheet" href=".theme.css">\n');
+  const hidden = await planPageMigration({ pageId: 'hp', projectRoot: root, articleId: 'pages-3', registry });
+  assert.equal(hidden.problems.length, 1);
+  assert.match(hidden.problems[0], /帧 v2 引用的 "\.theme\.css" 是 \. 开头的隐藏文件或 index\.mdx.*（v2\.html 第 2 行.*先改名/);
+
   // 手机壳里的 HTML 片段帧：<Canvas> 写明 shell="app"（HTML 帧缺省是 doc）。
   const ios = path.join(dir, 'ios');
   write(path.join(ios, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'frag' }] }] }));
@@ -399,13 +406,14 @@ test('越界拦下：assets.js / assets.css 的 ..、symlink 指到页目录外�
   assert.throws(() => writeMigration(linkPlan), /不写/);
   fs.rmSync(path.join(page, 'link.jsx'));
 
-  // HTML 帧的资源目录是指到页目录外的 symlink：collectHtmlFrameAssets 的文本检查看不出来，realpath 拦下。
+  // HTML 帧的资源目录是指到页目录外的 symlink：文本路径在页内，collectHtmlFrameAssets 按服务的出文件规则
+  // （lib/servable-file.js，含 realpath）判成页目录外，提示里带真实位置。
   write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'doc' }] }] }));
   write(path.join(page, 'doc.html'), '<!doctype html><link rel="stylesheet" href="mirror/c.css">\n');
   write(path.join(dir, 'elsewhere', 'c.css'), 'body {}\n');
   fs.symlinkSync(path.join(dir, 'elsewhere'), path.join(page, 'mirror'));
   const htmlPlan = await planPageMigration({ pageId: 'legacy-page', projectRoot: root, articleId: 'html-out', registry: reg });
-  assert.match(htmlPlan.problems.join('\n'), /mirror\/c\.css 的真实位置在页目录外/);
+  assert.match(htmlPlan.problems.join('\n'), /帧 doc 引用了页目录外的文件 "mirror\/c\.css"（doc\.html 第 1 行 → .*mirror\/c\.css，真实位置 .*elsewhere\/c\.css）/);
 });
 
 test('writeMigration：写之前先核对全部目标都在文章目录内，越界一个都不写；已有文件不覆盖（xreview B）', async (t) => {

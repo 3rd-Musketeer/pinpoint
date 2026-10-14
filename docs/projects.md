@@ -434,7 +434,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ### 拦下
 
-下面这些情况一个文件都不写，逐条列出后退 1：帧没有源文件、HTML 帧引用了页目录外的文件（列出文件和行）、HTML 帧在旧页的壳和整节最终的 `<Canvas shell>` 不同（HTML 帧不能单帧写 shell，没写 `<Canvas shell>` 时是 doc，所以同一节里 doc 和 app 的 HTML 帧也拦）、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
+下面这些情况一个文件都不写，逐条列出后退 1：帧没有源文件、HTML 帧引用了页目录外的文件、`.` 开头的隐藏文件或 `index.mdx`（都是服务不出的文件，规则同“HTML 帧”一节；列出文件和行）、HTML 帧在旧页的壳和整节最终的 `<Canvas shell>` 不同（HTML 帧不能单帧写 shell，没写 `<Canvas shell>` 时是 doc，所以同一节里 doc 和 app 的 HTML 帧也拦）、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
 
 所有要复制的文件都要在页目录内，帧、组件、依赖、`assets.css`、`assets.js`、HTML 帧的资源和搬进 `assets/` 的静态文件都一样。路径带 `..` 越出页目录，或者是 symlink、真实位置在页目录外，都拦下。要写的每个路径也都要在新文章目录内。写的时候先核对全部目标，再逐个写，已有的文件不覆盖。
 

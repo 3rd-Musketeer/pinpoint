@@ -449,8 +449,19 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
           frame.html = true;
           queueSource(html, 'frame');
           const assets = collectHtmlFrameAssets(path.join(pageDir, html), { root: pageDir });
+          // outside 与服务出文件同一条规则（lib/servable-file.js）：越出页目录（含 symlink 指出去）是 outside，
+          // . 开头的隐藏文件、index.mdx 是 denied——搬进文章目录后服务也不出，一样拦下。
           for (const row of assets.outside) {
-            problems.push(`帧 ${id} 引用了页目录外的文件 ${JSON.stringify(row.url)}（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行 → ${row.file}）：先把它挪进页目录`);
+            // symlink 指出去时文本路径还在页内，补上真实位置（只是 /var → /private/var 这类根目录别名不算）。
+            let moved = '';
+            try {
+              const real = fs.realpathSync(row.file);
+              if (path.relative(fs.realpathSync(pageDir), real) !== path.relative(pageDir, row.file)) moved = `，真实位置 ${real}`;
+            } catch { /* 显示用 */ }
+            const at = `（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行 → ${row.file}${moved}）`;
+            problems.push(row.reason === 'denied'
+              ? `帧 ${id} 引用的 ${JSON.stringify(row.url)} 是 . 开头的隐藏文件或 index.mdx（或符号链接指向它们）${at}：迁成文章后服务不出，先改名`
+              : `帧 ${id} 引用了页目录外的文件 ${JSON.stringify(row.url)}${at}：先把它挪进页目录`);
           }
           for (const row of assets.missing) {
             warnings.push(`帧 ${id} 引用的 ${JSON.stringify(row.url)} 不在盘上（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行）：照原样复制，引用还是断的`);
