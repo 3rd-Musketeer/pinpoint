@@ -121,7 +121,7 @@ export function Strip() {
       ) : null}
       {readHref ? (
         <Button asChild variant="tool"
-          className="wb-strip-read h-7 gap-[5px] px-2 text-[12px] font-semibold">
+          className="wb-strip-read h-7 gap-[5px] px-2 text-[12px] font-semibold no-underline">
           <a id="wbread-article" href={readHref}
             data-read-section={readSection ? readSection.id : undefined}
             title={readSection ? '阅读正文，定位到“' + (readSection.title || readSection.id) + '”' : '阅读正文'}>

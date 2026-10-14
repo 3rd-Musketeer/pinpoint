@@ -79,6 +79,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await expect(read).toHaveText('阅读正文');
     await expect(read).toHaveAttribute('href', '/e2e-project/commit-confirm/#variants');
     await expect(read).not.toHaveAttribute('target', /.+/);
+    await expect(read).toHaveCSS('text-decoration-line', 'none'); // 是工具钮，不是正文链接
     const box = await read.boundingBox();
     const strip = await page.locator('#wbstrip').boundingBox();
     expect(box.y >= strip.y && box.y + box.height <= strip.y + strip.height).toBe(true);
