@@ -27,7 +27,6 @@ const durations = {
   'figure.spec.js': 3,
   'html-frames.spec.js': 6,
   'integration-canvas.spec.js': 3.2,
-  'mention.spec.js': 1.3,
   'mixed-board.spec.js': 1.2,
   'page-bucket.spec.js': 1.5,
   'page-migrate.spec.js': 0.4,

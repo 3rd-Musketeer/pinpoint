@@ -53,7 +53,7 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 节 id、`index.mdx` 里的落脚行和整个线程；引文中间夹着 markdown 记号时，落脚行可能只给到文件和节。
 
 `--frame B3` 收窄到一帧，`--group-by component` 按组件分组（组头给共用帧数），`--status all` 看 check / done / close，
-`--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注（含 mention 帧）在 `@canvas.json`，正文评论在 `@prose.json`，
+`--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注在 `@canvas.json`，正文评论在 `@prose.json`，
 存量页的文档按路径各有一本。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了、那一屏从 board 删了、页没了），
 不计入计数。还没关的孤儿照样要回：`ppnt mark <目标> '#n' check|done --note "<回复>"` 和 `ppnt reply` 用 `#n` 或 `@a:<id>` 都指得到它们，
 比如说明那一屏已经删了、意见落到了哪里。`--status open` 这类批量写法不会带上孤儿。清理孤儿账本归 owner 走 `ppnt prune`。`comments` 只读，无副作用；不要为读标注重启服务。

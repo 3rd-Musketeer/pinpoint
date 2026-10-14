@@ -201,7 +201,6 @@ test('manifest navigation survives rapid page switches and persists the winner',
 
   // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
   // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
-  // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
   // 阶段 6：e2e-mixed 固件（混合板：画布 + 两个文档条目）追加在尾。
   // 阶段 7：Page 去类型化 —— 行只剩标题，壳标 pill 撤除（类型信息下移到
   // 「内容」区产物条目的 tag）。
@@ -215,7 +214,6 @@ test('manifest navigation survives rapid page switches and persists the winner',
     'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
-    'E2E Mention Doc',
     'E2E Mixed',
     'E2E Doc',
   ]);

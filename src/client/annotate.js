@@ -8,9 +8,8 @@
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar).
- * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
- * frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入 __pinpointFrame），锚点按
- * frame 内路径归一（src/shared/frame-anchor.js），模式开关向 frame iframe 级联。 */
+ * /api/frame 嵌入帧：frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入
+ * __pinpointFrame），锚点按 frame 内路径归一（src/shared/frame-anchor.js）。 */
 
 // SSOT 共享库（src/shared、src/client/lib）走真正的 ES 模块，由
 // src/server/lib/annotate-bundle.js 用 esbuild 打成单个自包含 IIFE 再 serve
@@ -1450,23 +1449,9 @@ import { startProseComments } from './prose-comments.js';
   function toggleMode() {
     mode = !mode;
     if (!mode) { clearHover(); closeComposer(); }
-    propagateModeToFrames();
     notify();
   }
   btnToggle.addEventListener('click', toggleMode);
-
-  // 文档里的标注/交互开关对嵌入 frame 同样生效（阶段 5）：doc 实例切换时把
-  // 模式推进每个 mention 水合出的 frame iframe（同源直调；frame 内 annotate
-  // 实例各自独立）。frame 实例启动时也会反向领养父级当前模式（见 boot）。
-  function propagateModeToFrames() {
-    var frames = document.querySelectorAll('iframe[data-pinpoint-frame-iframe]');
-    for (var i = 0; i < frames.length; i++) {
-      try {
-        var w = frames[i].contentWindow;
-        if (w && w.pinpoint && typeof w.pinpoint.setMode === 'function') w.pinpoint.setMode(mode);
-      } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
-    }
-  }
 
   function setRenderComments(on) {
     on = !!on;
@@ -3332,7 +3317,7 @@ import { startProseComments } from './prose-comments.js';
   var lastRectPersistTimer = null;
 
   /** lastRect 的坐标系与记录端一致才可消费（§2b）：同一条标注会在画布与注入
-      frame（mention）两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
+      frame 两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
       边只能拿错坐标画框。旧记录没有 space：按当前端解释（保持既有行为），
       下一次活锚点测量就会写成带 space 的新记录。 */
   function lastRectSpaceOk(lr) {
@@ -4490,87 +4475,6 @@ import { startProseComments } from './prose-comments.js';
     }
   }
 
-  // ---------- 阶段 5：doc mention 活 frame 水合 ----------
-  // doc 页正文里的 <div data-pinpoint-frame="<pageId>/<screenId>"></div> 挂载点
-  // 水合为活 frame（iframe → /api/frame 渲染端点；frame 内是完整自包含文档：
-  // fragment + 机壳 + ios-kit + annotate 注入 —— 样式隔离白得，标注实例独立）。
-  // 已含子节点的挂载点跳过：那是导出烤图（<img>）或已水合的重复扫描。
-  var MENTION_VALUE_RE = /^([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)$/;
-
-  function autosizeMentionFrame(iframe) {
-    function measure() {
-      try {
-        var doc = iframe.contentDocument;
-        if (!doc || !doc.documentElement) return;
-        var h = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
-        if (h > 0) iframe.style.height = Math.ceil(h) + 'px';
-      } catch (e) { /* 同源防御 */ }
-    }
-    iframe.addEventListener('load', function () {
-      measure();
-      setTimeout(measure, 300);   // 字体/侧car 脚本落定
-      setTimeout(measure, 1200);
-    });
-  }
-
-  function hydrateMentionFrames(root) {
-    if (FRAME) return; // frame 嵌入页自身不再向下水合（mention 是 doc 特性）
-    var scope = root && root.querySelectorAll ? root : document;
-    var mounts = scope.querySelectorAll('[data-pinpoint-frame]');
-    if (!mounts.length) return;
-    for (var i = 0; i < mounts.length; i++) {
-      (function (mount) {
-        if (mount.getAttribute('data-pinpoint-hydrated') === '1') return;
-        if (mount.firstElementChild) return;
-        var m = String(mount.getAttribute('data-pinpoint-frame') || '').trim().match(MENTION_VALUE_RE);
-        if (!m) {
-          mount.setAttribute('data-pinpoint-frame-error', 'bad-ref');
-          return;
-        }
-        // 帧账本 = 被引用帧所属页的 @canvas（storage-unify），端点按 page+screen
-        // 解析归属，不再需要顶层工作台的 pathname。
-        var iframe = document.createElement('iframe');
-        iframe.setAttribute('data-pinpoint-frame-iframe', '');
-        iframe.setAttribute('title', '@frame:' + m[1] + '/' + m[2]);
-        iframe.setAttribute('scrolling', 'no');
-        iframe.src = '/api/frame?page=' + encodeURIComponent(m[1]) +
-          '&screen=' + encodeURIComponent(m[2]);
-        iframe.style.cssText = 'width:100%;border:0;display:block;background:transparent;overflow:hidden';
-        autosizeMentionFrame(iframe);
-        mount.appendChild(iframe);
-        mount.setAttribute('data-pinpoint-hydrated', '1');
-      })(mounts[i]);
-    }
-  }
-
-  function bootMentionHydration() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function () { hydrateMentionFrames(document); });
-    } else {
-      hydrateMentionFrames(document);
-    }
-  }
-
-  // /api/frame 嵌入帧启动时领养父级（doc 页）当前模式；父级异步注入尚未就绪时
-  // 有界重试（父级之后的切换由 propagateModeToFrames 推进来）。
-  function adoptParentMode() {
-    if (!FRAME) return;
-    var tries = 0;
-    var timer = setInterval(function () {
-      tries++;
-      var done = false;
-      try {
-        var p = window.parent;
-        if (p && p !== window && p.pinpoint && typeof p.pinpoint.getState === 'function') {
-          var st = p.pinpoint.getState();
-          if (st && !!st.mode !== mode) toggleMode();
-          done = true;
-        }
-      } catch (e) { done = true; /* 跨域父级：放弃领养，保持交互 */ }
-      if (done || tries > 40) clearInterval(timer);
-    }, 100);
-  }
-
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
   if (CANVAS_MODE) {
     // 画布实例：活动页定了才有桶（storage-unify）。SSE 先连（连接指示与事件流
@@ -4578,7 +4482,6 @@ import { startProseComments } from './prose-comments.js';
     renderAll();
     notify();
     watchWorkbenchPages();
-    bootMentionHydration();
   } else {
     hydrateFromDisk().then(function (online) {
       renderAll();
@@ -4592,8 +4495,6 @@ import { startProseComments } from './prose-comments.js';
       } else {
         setServerOnline(false);
       }
-      bootMentionHydration();
-      adoptParentMode();
     });
   }
 })();

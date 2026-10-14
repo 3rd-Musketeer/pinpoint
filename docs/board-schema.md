@@ -163,14 +163,10 @@ tabs / sheet / segmented / clock。
 元素写 `goto="<screenId>"`（或编号），编译成产物上的 `data-goto` 属性——帧间 flow 边的数据层；
 画线与播放模式未做，运行时尚不消费。
 
-## doc 屏与 mention
+## doc 屏
 
 `shell: "doc"` 的屏是**完整独立文档**，走 iframe 1:1 铺满舞台（内联会丢它的 `body{}` 规则、漏 CSS
-进 workbench），无画布、无缩放、无 frame 标题；条目派生见下。文档可用
-`<div data-pinpoint-frame="<pageId>/<screenId>"></div>` mention 一个活 frame——doc 的 annotate
-client 把空挂载点水合成 `/api/frame` 的 iframe，标注绑定对象不绑视图，画布与文档同一份账本、
-实时同步。anchor 解析把含 stage 段的选择器归一成 frame 内 `:scope` 链
-（`src/shared/frame-anchor.js`），frame 在板上换位置锚点自愈。
+进 workbench），无画布、无缩放、无 frame 标题；条目派生见下。
 
 ## 从 board 派生出来的东西
 

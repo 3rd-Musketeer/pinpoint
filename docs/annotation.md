@@ -68,7 +68,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 
 账本 = 桶内的一个表面：
 - **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
-  同一本）；mention 帧也写这本（桶 = 被引用帧所属的页），与画布双向实时同步。
+  同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
 - **文档、直开页、url 条目**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。
 - 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。

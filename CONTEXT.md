@@ -188,10 +188,6 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 存量页大纲里的分组：产物是交付物（画布、文档、网页，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
 要避开：拿“产物”说 dist。
 
-**mention 与 embed** · 文档里写 `<div data-pinpoint-frame="<页 id>/<帧 id>"></div>`
-存量页的文档条目引用一个活帧（mention），客户端把它变成指向 `/api/frame` 的 iframe（embed）。帧上的标注在画布和文档两边都看得到。
-要避开：把 mention 说成截图或副本。
-
 **REV** · 无实现（ADR 0013）
 按字母递增的页面版次加更改栏，是一项设计储备，没有实现。
 要避开：把 REV 当现有功能。

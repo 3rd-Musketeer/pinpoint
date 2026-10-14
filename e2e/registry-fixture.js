@@ -35,8 +35,6 @@ export function writeRegistryFixture() {
       { id: 'e2e-proxy', title: 'E2E Proxy App', kind: 'url', url: E2E_UPSTREAM_ORIGIN },
       { id: 'e2e-dir', title: 'E2E Dir', kind: 'dir', path: path.join(E2E_SITES_DIR, 'dir-site') },
       { id: 'e2e-dir-ios', title: 'E2E Dir iOS', kind: 'dir', path: path.join(E2E_SITES_DIR, 'dir-site-ios'), board: 'ios' },
-      // 阶段 5：mention 文档固件（doc 壳，正文里 mention library 的两个活 frame）。
-      { id: 'e2e-mention', title: 'E2E Mention Doc', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mention-site') },
       // 阶段 6：混合板固件（board:'ios' 页级缺省壳；board.json 里 2 个 app 屏 +
       // 1 个 product doc 屏 + 1 个 draft doc 屏）—— 画布条目 + 两个文档条目。
       { id: 'e2e-mixed', title: 'E2E Mixed', kind: 'dir', path: path.join(E2E_SITES_DIR, 'mixed-site'), board: 'ios' },
@@ -63,15 +61,15 @@ export function writeRegistryFixture() {
 
 export function copySiteFixtures() {
   fs.rmSync(E2E_SITES_DIR, {recursive:true, force:true});
-  for (const name of ['dir-site', 'dir-site-ios', 'mention-site', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site', 'tabs-site', 'tabs-one-site', 'tabs-doc-site', 'prose-site']) {
+  for (const name of ['dir-site', 'dir-site-ios', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site', 'tabs-site', 'tabs-one-site', 'tabs-doc-site', 'prose-site']) {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
 }
 
 // 临时登记条目：pp-id-anchor / preview-hmr / pp2-build 三个 spec 各自往 registry
 // 追加一条 dir 条目、用完恢复 —— 多一条页会撞翻断言整份 Pages 清单的 spec
-// （workbench.spec.js 两处 toHaveText([...]) 与 sidebar-content.spec.js 的
-// toHaveCount(9)），所以不进上面的共享固件。三个 spec 的登记 / 恢复共用这一对。
+// （workbench.spec.js 两处 toHaveText([...]) 与 page-sort.spec.js 的 DEFAULT_ORDER），
+// 所以不进上面的共享固件。三个 spec 的登记 / 恢复共用这一对。
 export function appendRegistryEntry(entry) {
   const doc = JSON.parse(fs.readFileSync(E2E_REGISTRY, 'utf8'));
   doc.entries.push(entry);

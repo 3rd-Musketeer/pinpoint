@@ -14,7 +14,6 @@ import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';
 // （2026-09-24 实测，pp-id-anchor 连挂）。本用例的断言也用不到它的时间。
 const FIXTURE_MTIMES = [
   ['dir-site', Date.parse('2026-01-01T00:00:00Z')],
-  ['mention-site', Date.parse('2026-02-01T00:00:00Z')],
   ['dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
   ['doc-site', Date.parse('2026-05-01T00:00:00Z')],
   ['mixed-site', Date.now()],
@@ -57,7 +56,7 @@ function pageOrder(page) {
 // 范例页回归后（_index.json 重新有页）：清单 = manifest 行（范例页）+ 全部
 // registry 行，书写顺序（_index 在前）。
 const DEFAULT_ORDER = [
-  'example', 'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-doc',
+  'example', 'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mixed', 'e2e-doc',
 ];
 
 // 期望顺序直接用产品的比较器算（sortPages），不再在用例里重写一遍 ——

@@ -15,7 +15,7 @@ import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
   // storage-unify：workbench 用例的标注落进 e2e-ios 桶（桶 = 页），不清的话
-  // 同组后跑的 mention.spec 会在自己的计数断言上多出别人的行。
+  // 同组后跑的用例会在自己的计数断言上多出别人的行。
   clearBuckets(['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']);
 });
 
