@@ -18,7 +18,7 @@ export function visiblePages(pages) {
 }
 
 /** 搜索命中：标题或 id 的大小写无关子串。空查询 = 全留。 */
-export function matchesQuery(page, query) {
+function matchesQuery(page, query) {
   var q = String(query == null ? '' : query).trim().toLowerCase();
   if (!q) return true;
   var title = String(page.title || '').toLowerCase();
