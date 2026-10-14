@@ -85,11 +85,12 @@ test('parseArgs: happy path with spaced and =inline flags', () => {
   });
 });
 
-test('parseArgs: shot --figure takes the figure id; refs become optional (the page is --page or the one positional)', () => {
-  assert.deepEqual(parseArgs(['shot', '--figure', 'message-flow', '--page', 'demo_flow']), { command: 'shot', refs: [], flags: { figure: 'message-flow', page: 'demo_flow' } });
+test('parseArgs: shot --figure takes the figure id; refs become optional (the page is the one positional)', () => {
+  assert.deepEqual(parseArgs(['shot', '--figure', 'message-flow']), { command: 'shot', refs: [], flags: { figure: 'message-flow' } });
   assert.deepEqual(parseArgs(['shot', 'demo_flow', '--figure=message-flow']), { command: 'shot', refs: ['demo_flow'], flags: { figure: 'message-flow' } });
   assert.throws(() => parseArgs(['shot']), /shot 至少要一个目标或引用/);
   assert.throws(() => parseArgs(['locate', '--figure', 'x', 'B1']), /不适用于 locate/);
+  assert.throws(() => parseArgs(['shot', '--figure', 'message-flow', '--page', 'demo_flow']), /选项 --page 不适用于 shot/);
 });
 
 test('parseArgs: usage errors are loud', () => {
@@ -1510,8 +1511,8 @@ test('run: 未知命令退 2 并指向命令一览；无参数打命令一览', 
 
 test('parseArgs: build / render 的选项与位置参数', () => {
   assert.deepEqual(parseArgs(['build', 'plugins']), { command: 'build', target: 'plugins', flags: {} });
-  assert.deepEqual(parseArgs(['build', 'plugins', '--screen', 's1-home', '--watch']), {
-    command: 'build', target: 'plugins', flags: { screen: 's1-home', watch: true },
+  assert.deepEqual(parseArgs(['build', 'plugins', '--frame', 's1-home', '--watch']), {
+    command: 'build', target: 'plugins', flags: { frame: 's1-home', watch: true },
   });
   assert.deepEqual(parseArgs(['render', 'library/home', '--full']), {
     command: 'render', target: 'library/home', flags: { full: true },
@@ -1520,7 +1521,8 @@ test('parseArgs: build / render 的选项与位置参数', () => {
   assert.throws(() => parseArgs(['render']), /render 需要一帧/);
   assert.throws(() => parseArgs(['build', 'x', '--full']), /选项 --full 不适用于 build/);
   assert.throws(() => parseArgs(['render', 'x/y', '--watch']), /选项 --watch 不适用于 render/);
-  assert.throws(() => parseArgs(['build', 'x', '--screen']), /选项 --screen 缺少值/);
+  assert.throws(() => parseArgs(['build', 'x', '--frame']), /选项 --frame 缺少值/);
+  assert.throws(() => parseArgs(['build', 'x', '--screen', 's1-home']), /未知选项：--screen/);
 });
 
 test('planRenderOutput：限内原文，超限截断 + 落盘计划，--full 不截断', () => {
@@ -1655,7 +1657,7 @@ test('startPageWatch：多个文件的改动都编出来；只改一屏时没改
   assert.equal(fs.statSync(path.join(distEntry, 'c.html')).mtimeMs, cBefore, '没改的屏不重编');
 });
 
-test('runBuild：只编部分帧时写明「增量 M/N 帧」，整页照旧打帧数；--frame 与旧写法 --screen 同义', async (t) => {
+test('runBuild：只编部分帧时写明「增量 M/N 帧」，整页照旧打帧数', async (t) => {
   const made = makeCompiledPage(t, {
     screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }],
     files: { 'a.html': '<div class="ios-app">a</div>\n', 'b.html': '<div class="ios-app">b</div>\n' },
@@ -1664,7 +1666,7 @@ test('runBuild：只编部分帧时写明「增量 M/N 帧」，整页照旧打�
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...full.io, env: made.env }), 0);
   assert.match(full.out.at(-1), /^完成 t-page {2}共 [\d.]+ms（2 帧）$/);
   const one = recorder();
-  assert.equal(await runBuild(['build', 't-page', '--screen', 'b', '--registry', made.registry], { ...one.io, env: made.env }), 0);
+  assert.equal(await runBuild(['build', 't-page', '--frame', 'b', '--registry', made.registry], { ...one.io, env: made.env }), 0);
   assert.match(one.out.at(-1), /^完成 t-page {2}共 [\d.]+ms（增量 1\/2 帧）$/);
   const viaFrame = recorder();
   assert.equal(await runBuild(['build', 't-page', '--frame', 'a', '--registry', made.registry], { ...viaFrame.io, env: made.env }), 0);
@@ -1753,7 +1755,7 @@ test('runRender：限内打全文，超限截断并落 spill 文件，--full 不
   assert.equal(fs.existsSync(path.join(failing.env.PINPOINT_DATA_DIR, 'dist')), false);
 });
 
-/* ---- pp2 切片 4：check / locate / mark / status --page ---- */
+/* ---- pp2 切片 4：comments / locate / mark ---- */
 
 import {
   planShotJobs,
@@ -1800,11 +1802,19 @@ async function makeAnnotatedPage(t) {
   return made;
 }
 
-test('parseArgs：check / locate / shot / mark 的形状与用法错误', () => {
-  assert.deepEqual(parseArgs(['check', 'p', '--frame', 'B3', '--status', 'done', '--mode', 'both', '--group-by', 'component', '--json']), {
-    command: 'check', target: 'p',
+test('parseArgs：check / comments / locate / shot / mark 的形状与用法错误', () => {
+  assert.deepEqual(parseArgs(['comments', 'p', '--frame', 'B3', '--status', 'done', '--mode', 'both', '--group-by', 'component', '--json']), {
+    command: 'comments', target: 'p',
     flags: { frame: 'B3', status: 'done', mode: 'both', 'group-by': 'component', json: true },
   });
+  assert.deepEqual(parseArgs(['check', 'p', '--json']), { command: 'check', target: 'p', flags: { json: true } });
+  for (const flag of ['--frame', '--status', '--mode', '--group-by']) {
+    assert.throws(() => parseArgs(['check', 'p', flag, 'x']), new RegExp(`选项 ${flag} 不适用于 check`));
+  }
+  for (const command of ['locate', 'mark', 'reply']) {
+    assert.throws(() => parseArgs([command, '#1', 'done', '--page', 'p']), new RegExp(`选项 --page 不适用于 ${command}`));
+  }
+  assert.throws(() => parseArgs(['status', '--page', 'p']), /选项 --page 不适用于 status/);
   assert.deepEqual(parseArgs(['locate', '#1', 'B3']), { command: 'locate', refs: ['#1', 'B3'], flags: {} });
   assert.deepEqual(parseArgs(['locate', 'p/a', '#1']), { command: 'locate', refs: ['p/a', '#1'], flags: {} });
   assert.deepEqual(parseArgs(['shot', 'p/a', '--canvas', '--timeout', '30']), { command: 'shot', refs: ['p/a'], flags: { canvas: true, timeout: '30' } });
@@ -1824,10 +1834,10 @@ test('parseArgs：check / locate / shot / mark 的形状与用法错误', () => 
   assert.throws(() => parseArgs(['check', 'p', '--watch', '--registry', 'r']), /--watch 不适用于 check/);
 });
 
-test('runCheck：默认 open 按帧分组，摘录指到源码行；--json 结构化', async (t) => {
+test('runComments：默认 open 按帧分组，摘录指到源码行；--json 结构化', async (t) => {
   const made = await makeAnnotatedPage(t);
   const rec = recorder();
-  const code = await runCheck(['check', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  const code = await runComments(['comments', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => line.includes('# demo-page') || line.includes('# t-page')), rec.out[0]);
   assert.ok(rec.out.some((line) => line.includes('[#1]') && line.includes('这段要改') && line.includes('open')), rec.out.join('\n'));
@@ -1835,61 +1845,57 @@ test('runCheck：默认 open 按帧分组，摘录指到源码行；--json 结�
   assert.ok(!rec.out.some((line) => line.includes('[#2]')), '默认只看 open');
 
   const all = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'all'], { ...all.io, env: made.env }), 0);
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry, '--status', 'all'], { ...all.io, env: made.env }), 0);
   assert.ok(all.out.some((line) => line.includes('[#2]') && line.includes('done')));
 
   const json = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--json'], { ...json.io, env: made.env }), 0);
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry, '--json'], { ...json.io, env: made.env }), 0);
   const parsed = JSON.parse(json.out.join('\n'));
   assert.equal(parsed.groups[0].rows[0].file, 'home.jsx');
   assert.equal(parsed.groups[0].rows[0].line, 4);
 });
 
-test('runCheck：未知帧 / 坏状态码非零退出并报因', async (t) => {
+test('runComments：未知帧 / 坏状态码非零退出并报因', async (t) => {
   const made = await makeAnnotatedPage(t);
   const ghost = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--frame', 'Z9'], { ...ghost.io, env: made.env }), 1);
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry, '--frame', 'Z9'], { ...ghost.io, env: made.env }), 1);
   assert.ok(ghost.err.some((line) => /没有帧 Z9/.test(line)));
   const bad = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'nope'], { ...bad.io, env: made.env }), 2);
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry, '--status', 'nope'], { ...bad.io, env: made.env }), 2);
   assert.ok(bad.err.some((line) => /--status/.test(line)));
 });
 
 test('runLocate：#n → 源文件:行；未编页给 selector', async (t) => {
   const made = await makeAnnotatedPage(t);
   const rec = recorder();
-  // --page 显式钉基页：缺省基页是「第一个可编译页」，范例页入 manifest 后按
-  // 字典序排在临时 registry 的 t-page 前面，不钉会解析到别人的页上。
-  const code = await runLocate(['locate', '#1', '--page', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  const code = await runLocate(['locate', 't-page', '#1', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => /#1 → home\.jsx:4/.test(line)), rec.out.join('\n'));
   const range = recorder();
-  assert.equal(await runLocate(['locate', '#1-#2', '--page', 't-page', '--registry', made.registry], { ...range.io, env: made.env }), 0);
+  assert.equal(await runLocate(['locate', 't-page', '#1-#2', '--registry', made.registry], { ...range.io, env: made.env }), 0);
   assert.ok(range.out.some((line) => /#2 → home\.jsx:5/.test(line)), range.out.join('\n'));
 });
 
 test('runMark：走状态端点带 baseRevision，逐条打印；close / open 拒收；服务不在跑报 ppnt start', async (t) => {
   const made = await makeAnnotatedPage(t);
-  // 目标用旧写法 --page 给（新写法是第一个位置参数，另有用例）。
-  const page = ['--page', 't-page'];
   const close = recorder();
-  assert.equal(await runMark(['mark', '#1', 'close', ...page, '--registry', made.registry], { ...close.io, env: made.env }), 2);
+  assert.equal(await runMark(['mark', 't-page', '#1', 'close', '--registry', made.registry], { ...close.io, env: made.env }), 2);
   assert.ok(close.err.some((line) => /close 只在工作台/.test(line)));
   // open 只由 owner 在工作台编辑触发，mark 不写——传 open 指名道姓报因。
   const open = recorder();
-  assert.equal(await runMark(['mark', '#1', 'open', ...page, '--registry', made.registry], { ...open.io, env: made.env }), 2);
+  assert.equal(await runMark(['mark', 't-page', '#1', 'open', '--registry', made.registry], { ...open.io, env: made.env }), 2);
   assert.ok(open.err.some((line) => /open 由工作台编辑触发，mark 不写/.test(line)));
 
   // 服务不在跑（requestFn 抛错 = 探活失败）。
   const down = recorder();
-  assert.equal(await runMark(['mark', '#1', 'done', ...page, '--registry', made.registry], {
+  assert.equal(await runMark(['mark', 't-page', '#1', 'done', '--registry', made.registry], {
     ...down.io,
     env: { ...made.env, PINPOINT_ORIGIN: 'http://127.0.0.1:1' },
   }), 1);
   // 设了 PINPOINT_ORIGIN 是隔离运行：不能 ppnt start，提示去起那个服务。
   assert.ok(down.err.some((line) => /PINPOINT_ORIGIN=http:\/\/127\.0\.0\.1:1 那个服务没答/.test(line)), down.err.join('\n'));
   const downDefault = recorder();
-  assert.equal(await runMark(['mark', '#1', 'done', ...page, '--registry', made.registry], {
+  assert.equal(await runMark(['mark', 't-page', '#1', 'done', '--registry', made.registry], {
     ...downDefault.io,
     env: made.env,
     requestFn: () => Promise.reject(new Error('down')),
@@ -1907,7 +1913,7 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
   const rec = recorder();
-  const code = await runMark(['mark', '#1', 'done', ...page, '--registry', made.registry], {
+  const code = await runMark(['mark', 't-page', '#1', 'done', '--registry', made.registry], {
     ...rec.io, env: made.env, requestFn,
   });
   assert.equal(code, 0, rec.err.join('\n'));
@@ -1927,24 +1933,24 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     }
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
-  const code2 = await runMark(['mark', '#1-#2', 'done', ...page, '--registry', made.registry], { ...mixed.io, env: made.env, requestFn: mixedFn });
+  const code2 = await runMark(['mark', 't-page', '#1-#2', 'done', '--registry', made.registry], { ...mixed.io, env: made.env, requestFn: mixedFn });
   assert.equal(code2, 0);
   assert.equal(mixed.out.filter((line) => line.includes('→ done')).length, 2, mixed.out.join('\n'));
 });
 
-test('runStatus --page：各状态计数 + dist 过期状态', async (t) => {
+test('runComments：抬头给各状态计数；dist 落后于源码时先重编并在 stderr 说明', async (t) => {
   const made = await makeAnnotatedPage(t);
   const rec = recorder();
-  const code = await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  const code = await runComments(['comments', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
-  assert.ok(rec.out.some((line) => /open 1 · check 0 · done 1 · close 0 · 共 2/.test(line)), rec.out.join('\n'));
-  assert.ok(rec.out.some((line) => line.includes('dist ') && line.includes('最新')), rec.out.join('\n'));
-  // 源码比产物新 → 过期。
+  assert.ok(rec.out.some((line) => /^共 1 条（全量 2） · open 1 · check 0 · done 1 · close 0$/.test(line)), rec.out.join('\n'));
+  assert.ok(!rec.err.some((line) => line.includes('dist 不在或落后于源码')), 'dist 最新时不重编');
+  // 源码比产物新 → 过期，先编再列。
   const future = new Date(Date.now() + 5000);
   fs.utimesSync(path.join(made.page, 'home.jsx'), future, future);
   const stale = recorder();
-  assert.equal(await runStatus(['status', '--page', 't-page', '--registry', made.registry], { ...stale.io, env: made.env }), 0);
-  assert.ok(stale.out.some((line) => line.includes('已过期')), stale.out.join('\n'));
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry], { ...stale.io, env: made.env }), 0);
+  assert.ok(stale.err.some((line) => line.includes('dist 不在或落后于源码，先编了 t-page')), stale.err.join('\n'));
 });
 
 /* ---- shot：页引用（<页>）作业规划 ---- */
@@ -2030,7 +2036,7 @@ test('planShotJobs：非基页装载失败 → problem 逐条报，不炸整批'
   assert.match(plan.problems[0], /找不到页：ghost/);
 });
 
-test('runStatus --page：整桶孤儿的页直接报孤儿，不先打「找不到页」（K8）', async (t) => {
+test('runComments：整桶孤儿的页直接报孤儿，不先打「找不到页」（K8）', async (t) => {
   const made = await makeAnnotatedPage(t);
   const bucket = path.join(made.env.PINPOINT_DATA_DIR, 'ghost-page');
   fs.mkdirSync(bucket, { recursive: true });
@@ -2040,19 +2046,19 @@ test('runStatus --page：整桶孤儿的页直接报孤儿，不先打「找不�
   }));
 
   const rec = recorder();
-  const code = await runStatus(['status', '--page', 'ghost-page', '--registry', made.registry], { ...rec.io, env: made.env });
+  const code = await runComments(['comments', 'ghost-page', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => /^ghost-page 不在 registry 与本地页面清单里（.*）；桶里 1 本账本全是孤儿/.test(line)), rec.out.join('\n'));
   assert.ok(rec.err.length === 0, '不先打「找不到页」错误');
 
-  // 桶也不在：没有报告可给，原样报错退 1。
+  // 桶也不在：没有报告可给，原样报错，按找不到目标退 2。
   const bare = recorder();
-  const code2 = await runStatus(['status', '--page', 'no-bucket', '--registry', made.registry], { ...bare.io, env: made.env });
-  assert.equal(code2, 1);
+  const code2 = await runComments(['comments', 'no-bucket', '--registry', made.registry], { ...bare.io, env: made.env });
+  assert.equal(code2, 2);
   assert.ok(bare.err.some((line) => /找不到 no-bucket/.test(line)), bare.err.join('\n'));
 });
 
-test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname、status 给计数、mark 能写', async (t) => {
+test('无 board.json 的 dir 条目是 doc 页：comments 列账本行带 pathname、给计数，mark 能写', async (t) => {
   const dir = withTempDir(t);
   const site = path.join(dir, 'handbook');
   fs.mkdirSync(site, { recursive: true });
@@ -2077,22 +2083,18 @@ test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname�
     annotations: [{ id: 'd2', n: 2, type: 'element', status: 'done', content: '指南页意见' }],
   }));
 
-  // check：每行带账本对应的 pathname；摘录位置明说不是编译页，退 0。
+  // comments：每行带账本对应的 pathname；摘录位置明说不是编译页，退 0。
   const rec = recorder();
-  const code = await runCheck(['check', 't-handbook', '--registry', registry, '--status', 'all'], { ...rec.io, env });
+  const code = await runComments(['comments', 't-handbook', '--registry', registry, '--status', 'all'], { ...rec.io, env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => line.includes('[#1]') && line.includes('首页意见') && line.includes('/sites/t-handbook/index.html')), rec.out.join('\n'));
   assert.ok(rec.out.some((line) => line.includes('[#2]') && line.includes('/sites/t-handbook/guide.html')), rec.out.join('\n'));
   assert.ok(rec.out.some((line) => line.includes('这页不是编译页，没有源码摘录')), rec.out.join('\n'));
   assert.ok(!rec.out.some((line) => /home\.jsx|dist\//.test(line)), 'doc 页没有源码 / dist 摘录');
 
-  // status --page：计数 + 不是编译页的明说；不再误报「整桶孤儿」。
-  const st = recorder();
-  const code2 = await runStatus(['status', '--page', 't-handbook', '--registry', registry], { ...st.io, env });
-  assert.equal(code2, 0, st.err.join('\n'));
-  assert.ok(st.out.some((line) => /open 1 · check 0 · done 1 · close 0 · 共 2/.test(line)), st.out.join('\n'));
-  assert.ok(st.out.some((line) => line.includes('这页不是编译页')), st.out.join('\n'));
-  assert.ok(!st.out.some((line) => line.includes('全是孤儿')), st.out.join('\n'));
+  // 抬头给计数；不误报「整桶孤儿」。
+  assert.ok(rec.out.some((line) => /^共 2 条 · open 1 · check 0 · done 1 · close 0$/.test(line)), rec.out.join('\n'));
+  assert.ok(!rec.out.some((line) => line.includes('全是孤儿')), rec.out.join('\n'));
 
   // mark：#1 → done 走服务端点（mock），桶 = 页。
   const calls = [];
@@ -2102,7 +2104,7 @@ test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname�
     return { status: 200, json: { revision: 3, annotations: [] } };
   };
   const mk = recorder();
-  const code3 = await runMark(['mark', '#1', 'done', '--page', 't-handbook', '--registry', registry], { ...mk.io, env, requestFn });
+  const code3 = await runMark(['mark', 't-handbook', '#1', 'done', '--registry', registry], { ...mk.io, env, requestFn });
   assert.equal(code3, 0, mk.err.join('\n'));
   assert.ok(mk.out.some((line) => line.includes('#1 → done')), mk.out.join('\n'));
   const post = calls.find((call) => call.method === 'POST');
@@ -2110,7 +2112,7 @@ test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname�
   assert.equal(post.body.entry, 't-handbook');
 });
 
-test('runStatus --page：页在 registry 里但加载失败（url 条目）原样报错，不再吞成整桶孤儿', async (t) => {
+test('runComments：页在 registry 里但加载失败（url 条目）原样报错，不吞成整桶孤儿', async (t) => {
   const dir = withTempDir(t);
   const registry = path.join(dir, 'registry.json');
   fs.writeFileSync(registry, JSON.stringify({
@@ -2125,8 +2127,8 @@ test('runStatus --page：页在 registry 里但加载失败（url 条目）原�
     annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
   }));
   const rec = recorder();
-  const code = await runStatus(['status', '--page', 't-live', '--registry', registry], { ...rec.io, env });
-  assert.equal(code, 1);
+  const code = await runComments(['comments', 't-live', '--registry', registry], { ...rec.io, env });
+  assert.equal(code, 2);
   assert.ok(rec.err.some((line) => /找不到 t-live 的页：它是网址条目/.test(line)), rec.err.join('\n'));
   assert.ok(!rec.out.some((line) => line.includes('全是孤儿')), `活页的账本不该被报成孤儿：\n${rec.out.join('\n')}`);
 });
@@ -2241,7 +2243,7 @@ test('存量单 board 的 list --frames 不出 tab 行（输出与从前相同�
   assert.match(text, /共 1 节 1 帧/);
 });
 
-test('check --frame <tab>:A1 只出那个 tab 的帧；裸 A1 在两个 tab 里都有 → 报候选；标题带 tab 前缀', async (t) => {
+test('comments --frame <tab>:A1 只出那个 tab 的帧；裸 A1 在两个 tab 里都有 → 报候选；标题带 tab 前缀', async (t) => {
   const made = makeTabbedPage(t);
   const build = recorder();
   assert.equal(await runBuild(['build', 't-page', '--registry', made.registry], { ...build.io, env: made.env }), 0, build.err.join('\n'));
@@ -2255,23 +2257,23 @@ test('check --frame <tab>:A1 只出那个 tab 的帧；裸 A1 在两个 tab 里�
     ],
   }));
   const flow = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--frame', 'flow:A1', '--registry', made.registry], { ...flow.io, env: made.env }), 0, flow.err.join('\n'));
+  assert.equal(await runComments(['comments', 't-page', '--frame', 'flow:A1', '--registry', made.registry], { ...flow.io, env: made.env }), 0, flow.err.join('\n'));
   const text = flow.out.join('\n');
   assert.match(text, /## flow:A1 · ob-1 · 屏 ob-1/);
   assert.match(text, /引导这里/);
   assert.doesNotMatch(text, /按钮这里/);
 
   const ambiguous = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--frame', 'A1', '--registry', made.registry], { ...ambiguous.io, env: made.env }), 1);
+  assert.equal(await runComments(['comments', 't-page', '--frame', 'A1', '--registry', made.registry], { ...ambiguous.io, env: made.env }), 1);
   assert.ok(ambiguous.err.some((line) => /A1 在多个 tab 里有，写 comps:A1 或 flow:A1/.test(line)), ambiguous.err.join('\n'));
 
   const all = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry], { ...all.io, env: made.env }), 0);
+  assert.equal(await runComments(['comments', 't-page', '--registry', made.registry], { ...all.io, env: made.env }), 0);
   assert.match(all.out.join('\n'), /## comps:A1 · btn-a/);
 
   // 帧 id 裸写在多 tab 页上照旧可用
   const bare = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--frame', 'btn-a', '--registry', made.registry], { ...bare.io, env: made.env }), 0, bare.err.join('\n'));
+  assert.equal(await runComments(['comments', 't-page', '--frame', 'btn-a', '--registry', made.registry], { ...bare.io, env: made.env }), 0, bare.err.join('\n'));
   assert.match(bare.out.join('\n'), /按钮这里/);
 });
 
@@ -2558,11 +2560,11 @@ test('comments <project>/<article>：正文评论单独成组 —— 引文、�
   assert.match(text, /  agent（10-13 \d\d:00）：改成了全称/);
   assert.ok(text.includes('[#1] 画布上的意见'), text);
 
-  // 过渡期：旧写法 check <页 id> 照旧列出同样的东西，另在 stderr 打一行指向 comments。
-  const legacy = recorder();
-  assert.equal(await runCheck(['check', 't-proj_notes', '--registry', made.registry], { ...legacy.io, env: made.env }), 0);
-  assert.deepEqual(legacy.out, rec.out);
-  assert.deepEqual(legacy.err, ['提示：check 现在是验证；列标注和评论改用 `ppnt comments t-proj/notes`（这次照旧列出）。']);
+  // check 只做验证：同一个目标不列标注队列。
+  const validate = recorder();
+  assert.equal(await runCheck(['check', 't-proj_notes', '--registry', made.registry], { ...validate.io, env: made.env }), 0, validate.err.join('\n'));
+  assert.deepEqual(validate.out, ['check t-proj/notes', '通过：0 个错误 · 0 个警告 · 0 条提示（查了 1 篇文章、0 帧）']);
+  assert.deepEqual(validate.err, []);
 
   const json = recorder();
   assert.equal(await runComments(['comments', 't-proj_notes', '--registry', made.registry, '--json'], { ...json.io, env: made.env }), 0);
@@ -2605,7 +2607,7 @@ test('reply：正文评论追加 agent 消息走回复端点（带 baseRevision�
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
   const ok = recorder();
-  assert.equal(await runReply(['reply', '#2', '改好了，见', 'B4', '--page', 't-proj_notes', '--registry', made.registry], { ...ok.io, env: made.env, requestFn }), 0, ok.err.join('\n'));
+  assert.equal(await runReply(['reply', 't-proj_notes', '#2', '改好了，见', 'B4', '--registry', made.registry], { ...ok.io, env: made.env, requestFn }), 0, ok.err.join('\n'));
   assert.deepEqual(ok.out, ['#2 ← agent：改好了，见 B4（状态仍是 open）']);
   const post = calls.find((call) => call.method === 'POST');
   assert.equal(post.url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
@@ -2622,17 +2624,18 @@ test('reply：正文评论追加 agent 消息走回复端点（带 baseRevision�
   // 画布标注也有线程：reply 照样走回复端点。
   const canvas = recorder();
   calls.length = 0;
-  assert.equal(await runReply(['reply', '#1', '改好了', '--page', 't-proj_notes', '--registry', made.registry], { ...canvas.io, env: made.env, requestFn }), 0, canvas.err.join('\n'));
+  assert.equal(await runReply(['reply', 't-proj_notes', '#1', '改好了', '--registry', made.registry], { ...canvas.io, env: made.env, requestFn }), 0, canvas.err.join('\n'));
   assert.equal(calls.find((call) => call.method === 'POST').url, 'http://127.0.0.1:1/annotations/%40canvas/1/reply');
 
   assert.throws(() => parseArgs(['reply', '#2']), /reply 需要引用与回复内容/);
-  assert.deepEqual(parseArgs(['reply', '#2', 'a', 'b', '--page', 'p_a']), { command: 'reply', refs: ['#2'], text: 'a b', flags: { page: 'p_a' } });
+  assert.deepEqual(parseArgs(['reply', 'p_a', '#2', 'a', 'b']), { command: 'reply', target: 'p_a', refs: ['#2'], text: 'a b', flags: {} });
+  assert.throws(() => parseArgs(['reply', '#2', 'a', 'b', '--page', 'p_a']), /选项 --page 不适用于 reply/);
   const blank = recorder();
-  assert.equal(await runReply(['reply', '#2', '  ', '--page', 't-proj_notes', '--registry', made.registry], { ...blank.io, env: made.env, requestFn }), 2);
+  assert.equal(await runReply(['reply', 't-proj_notes', '#2', '  ', '--registry', made.registry], { ...blank.io, env: made.env, requestFn }), 2);
   assert.ok(blank.err.some((line) => line.includes('回复内容是空的')));
 
   const down = recorder();
-  assert.equal(await runReply(['reply', '#2', 'x', '--page', 't-proj_notes', '--registry', made.registry], { ...down.io, env: made.env, requestFn: offline }), 1);
+  assert.equal(await runReply(['reply', 't-proj_notes', '#2', 'x', '--registry', made.registry], { ...down.io, env: made.env, requestFn: offline }), 1);
   assert.ok(down.err.some((line) => line.includes('reply 走服务端点')), down.err.join('\n'));
 });
 
@@ -2645,14 +2648,14 @@ test('mark / locate 在文章页上作用于正文评论：状态端点走 @pros
     return { status: 200, json: { revision: 2, annotations: [] } };
   };
   const mk = recorder();
-  assert.equal(await runMark(['mark', '#2', 'check', '--page', 't-proj_notes', '--registry', made.registry], { ...mk.io, env: made.env, requestFn }), 0, mk.err.join('\n'));
+  assert.equal(await runMark(['mark', 't-proj_notes', '#2', 'check', '--registry', made.registry], { ...mk.io, env: made.env, requestFn }), 0, mk.err.join('\n'));
   assert.deepEqual(mk.out, ['#2 → check']);
   const post = calls.find((call) => call.method === 'POST');
   assert.equal(post.url, 'http://127.0.0.1:1/annotations/%40prose/2/status');
   assert.equal(post.body.entry, 't-proj_notes');
 
   const loc = recorder();
-  assert.equal(await runLocate(['locate', '#2', '--page', 't-proj_notes', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
+  assert.equal(await runLocate(['locate', 't-proj_notes', '#2', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
   assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
 });
 
@@ -2711,9 +2714,9 @@ test('rename a project moves every <old>_<article> bucket, rewrites ledger addre
   assert.ok(rec.err.includes(`    ${path.join(made.content, 'articles', 'alpha', 'hero.jsx')}`), rec.err.join('\n'));
   assert.match(fs.readFileSync(path.join(made.content, 'articles', 'alpha', 'hero.jsx'), 'utf8'), /\/sites\/demo_alpha\//, 'author files are not rewritten');
 
-  // 搬过去的文章桶照常是活页：check 读得到画布标注与正文评论。
+  // 搬过去的文章桶照常是活页：comments 读得到画布标注与正文评论。
   const check = recorder();
-  assert.equal(await runCheck(['check', 'demo2_alpha', '--registry', made.registry, '--status', 'all', '--json'], { ...check.io, env: made.env }), 0, check.err.join('\n'));
+  assert.equal(await runComments(['comments', 'demo2_alpha', '--registry', made.registry, '--status', 'all', '--json'], { ...check.io, env: made.env }), 0, check.err.join('\n'));
   assert.equal(JSON.parse(check.out.join('\n')).counts.total, 2);
 });
 
@@ -2743,7 +2746,7 @@ test('remove a project: article buckets follow the bucket rule (rows refuse, emp
   for (const id of ['alpha', 'beta', 'gone']) assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `empty bucket demo_${id} removed`);
 });
 
-test('article buckets as orphans: prune on a live article lists nothing; a deleted article is a whole-bucket orphan in status / check / prune', async (t) => {
+test('article buckets as orphans: prune on a live article lists nothing; a deleted article is a whole-bucket orphan in comments / prune, and check says the article is gone', async (t) => {
   const made = makeProjectWithBuckets(t);
   const live = recorder();
   assert.equal(await runPrune(['prune', 'demo_alpha', '--dry-run', '--registry', made.registry], { ...live.io, env: made.env }), 0, live.err.join('\n'));
@@ -2756,25 +2759,27 @@ test('article buckets as orphans: prune on a live article lists nothing; a delet
   fs.renameSync(path.join(made.content, 'articles', 'beta'), path.join(made.content, 'articles', 'beta2'));
   for (const pageId of ['demo_gone', 'demo_beta']) {
     const status = recorder();
-    assert.equal(await runStatus(['status', '--page', pageId, '--registry', made.registry], { ...status.io, env: made.env }), 0, status.err.join('\n'));
+    assert.equal(await runComments(['comments', pageId, '--registry', made.registry], { ...status.io, env: made.env }), 0, status.err.join('\n'));
     assert.equal(status.out[0], `${pageId.replace('_', '/')} 不在 registry 与本地页面清单里（文章删了、改名了，或页不在了）；桶里 1 本账本全是孤儿：`);
     const check = recorder();
-    assert.equal(await runCheck(['check', pageId, '--registry', made.registry], { ...check.io, env: made.env }), 0, check.err.join('\n'));
-    assert.deepEqual(check.out, status.out);
+    // check 只验证：文章不在了就是找不到目标，退 2 并列这个 project 的文章。
+    assert.equal(await runCheck(['check', pageId, '--registry', made.registry], { ...check.io, env: made.env }), 2);
+    assert.deepEqual(check.out, []);
+    assert.equal(check.err[0], `错误：找不到文章 ${pageId.replace('_', '/')}：project demo 里没有 articles/${pageId.split('_')[1]}/index.mdx`);
   }
   const dry = recorder();
   assert.equal(await runPrune(['prune', 'demo_gone', '--dry-run', '--registry', made.registry], { ...dry.io, env: made.env }), 0);
   assert.deepEqual(dry.out, [`${path.join(made.data, 'demo_gone', '@canvas.json')}（页已不存在，整桶孤儿）`, '--dry-run：1 本孤儿账本待删（ppnt prune demo_gone 落盘）。']);
 });
 
-test('<project>_<article>#n resolves without --page in locate / mark / reply / check', async (t) => {
+test('<project>_<article>#n resolves without a separate target in locate / mark / reply / comments', async (t) => {
   const made = makeArticleWithComments(t);
   const loc = recorder();
   assert.equal(await runLocate(['locate', 't-proj_notes#2', '--registry', made.registry], { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
   assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
   // 基页是别的页时，跨页行按它自己的页上下文定位。
   const other = recorder();
-  assert.equal(await runLocate(['locate', 't-proj_notes#2', '--page', 't-page', '--registry', made.registry], { ...other.io, env: made.env }), 0, other.err.join('\n'));
+  assert.equal(await runLocate(['locate', 't-page', 't-proj_notes#2', '--registry', made.registry], { ...other.io, env: made.env }), 0, other.err.join('\n'));
   assert.deepEqual(other.out, loc.out);
 
   const calls = [];
@@ -2792,12 +2797,12 @@ test('<project>_<article>#n resolves without --page in locate / mark / reply / c
   assert.equal(calls.find((call) => call.method === 'POST').url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
 
   const ck = recorder();
-  assert.equal(await runCheck(['check', 't-proj_notes#2', '--registry', made.registry, '--json'], { ...ck.io, env: made.env }), 0, ck.err.join('\n'));
+  assert.equal(await runComments(['comments', 't-proj_notes#2', '--registry', made.registry, '--json'], { ...ck.io, env: made.env }), 0, ck.err.join('\n'));
   const report = JSON.parse(ck.out.join('\n'));
   assert.equal(report.counts.total, 1);
   assert.equal(report.groups.find((group) => group.kind === 'prose').rows[0].n, 2);
   const miss = recorder();
-  assert.equal(await runCheck(['check', 't-proj_notes#9', '--registry', made.registry], { ...miss.io, env: made.env }), 1);
+  assert.equal(await runComments(['comments', 't-proj_notes#9', '--registry', made.registry], { ...miss.io, env: made.env }), 1);
   assert.ok(miss.err.includes('错误：t-proj/notes 没有 #9'), miss.err.join('\n'));
 });
 
@@ -2864,15 +2869,17 @@ test('@frame:<页 id>/<帧 id> 自带页：不写目标时它就是目标；和�
   assert.ok(other.err.includes(`${frame} 是 e2e-project/commit-confirm 上的帧，这次的目标是 legacy：目标写 e2e-project/commit-confirm，或不写目标、只写 ${frame}`), other.err.join('\n'));
 });
 
-test('目标是第一个参数：斜杠形、网址、页 id、--page、<project>/<article>#n 指同一篇；输出打斜杠形', async (t) => {
+test('目标是第一个参数：斜杠形、网址、页 id、@page:、<project>/<article>#n、@section: 指同一篇；输出打斜杠形', async (t) => {
   const made = makeFixtureCopy(t);
   const expected = [`#2 → ${made.file}:15（正文评论，节 why）`];
   for (const argv of [
     ['locate', 'e2e-project/commit-confirm', '#2'],
     ['locate', 'http://127.0.0.1:1/e2e-project/commit-confirm/', '#2'],
     ['locate', 'e2e-project_commit-confirm', '#2'],
-    ['locate', '#2', '--page', 'e2e-project/commit-confirm'],
+    ['locate', '@page:e2e-project_commit-confirm', '#2'],
     ['locate', 'e2e-project/commit-confirm#2'],
+    ['locate', '@section:e2e-project_commit-confirm/why'],
+    ['locate', 'e2e-project/commit-confirm', '@section:e2e-project_commit-confirm/why'],
     ['locate', 'e2e-project/commit-confirm', '§1'],
     ['locate', 'e2e-project/commit-confirm', 'why'],
   ]) {
@@ -2900,8 +2907,14 @@ test('目标是第一个参数：斜杠形、网址、页 id、--page、<project
   assert.equal(calls.find((call) => call.method === 'POST').url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
 
   const st = recorder();
-  assert.equal(await run(withRegistry(made, 'status', '--page', 'e2e-project/commit-confirm'), { ...st.io, env: made.env }), 0, st.err.join('\n'));
-  assert.equal(st.out[0], '文章 e2e-project/commit-confirm');
+  assert.equal(await run(withRegistry(made, 'comments', 'e2e-project/commit-confirm'), { ...st.io, env: made.env }), 0, st.err.join('\n'));
+  assert.equal(st.out[0], '# e2e-project/commit-confirm · 标注队列（open）');
+  const viaIndicator = recorder();
+  assert.equal(await run(withRegistry(made, 'comments', '@page:e2e-project_commit-confirm'), { ...viaIndicator.io, env: made.env }), 0, viaIndicator.err.join('\n'));
+  assert.deepEqual(viaIndicator.out, st.out);
+  const otherSection = recorder();
+  assert.equal(await run(withRegistry(made, 'locate', 'e2e-project/commit-confirm', '@section:other_x/why'), { ...otherSection.io, env: made.env }), 1);
+  assert.ok(otherSection.err.includes('错误：@section:other_x/why 是 other/x 上的节，这次的目标是 e2e-project/commit-confirm：目标写 other/x，或不写目标、只写 @section:other_x/why'), otherSection.err.join('\n'));
   const build = recorder();
   assert.equal(await run(withRegistry(made, 'build', 'e2e-project/commit-confirm', '--frame', 'card-plain'), { ...build.io, env: made.env }), 0, build.err.join('\n'));
   assert.match(build.out.at(-1), /^完成 e2e-project\/commit-confirm {2}共 [\d.]+ms（增量 1\/5 帧）$/);
@@ -3033,12 +3046,12 @@ test('图：check 编正文里的图、诊断带 code / 文件 / 行 / figure；
   assert.deepEqual(model.errors.filter((error) => error.code === 'figure_compile').map((error) => error.figure).sort(), ['message-flow', 'wait-sequence']);
 });
 
-test('shot --figure：目标照 shot 的规则（第一个参数或 --page），不和引用同用，存量页没有图', async (t) => {
+test('shot --figure：目标照 shot 的规则（第一个参数），不和引用同用，存量页没有图', async (t) => {
   const made = makeFixtureCopy(t);
   // 目标解析过了才去找服务：服务没在跑就报服务那一句，退 1。
   for (const argv of [
     ['shot', 'e2e-project/commit-confirm', '--figure', 'message-flow'],
-    ['shot', '--figure', 'message-flow', '--page', 'e2e-project_commit-confirm'],
+    ['shot', 'e2e-project_commit-confirm', '--figure', 'message-flow'],
   ]) {
     const rec = recorder();
     assert.equal(await run(withRegistry(made, ...argv), { ...rec.io, env: made.env }), 1, argv.join(' '));
@@ -3055,18 +3068,22 @@ test('shot --figure：目标照 shot 的规则（第一个参数或 --page），
   assert.ok(help.out.join('\n').includes('--figure <图 id>'), help.out.join('\n'));
 });
 
-test('过渡期：check 带 --status / #n 时照旧列标注队列，stderr 一行指向 comments', async (t) => {
+test('check 只验证：--status 是用法错、<目标>#n 不列标注；comments 先编 dist 再列', async (t) => {
   const made = makeFixtureCopy(t);
   const viaFlag = recorder();
-  assert.equal(await runCheck(withRegistry(made, 'check', 'e2e-project/commit-confirm', '--status', 'all'), { ...viaFlag.io, env: made.env }), 0, viaFlag.err.join('\n'));
-  assert.equal(viaFlag.err[0], '提示：check 现在是验证；列标注和评论改用 `ppnt comments e2e-project/commit-confirm`（这次照旧列出）。');
+  assert.equal(await runCheck(withRegistry(made, 'check', 'e2e-project/commit-confirm', '--status', 'all'), { ...viaFlag.io, env: made.env }), 2);
+  assert.equal(viaFlag.err[0], '错误：选项 --status 不适用于 check');
+  assert.deepEqual(viaFlag.out, []);
   // 没有 dist：先编再摘录（stderr 一行），不再要求先 ppnt build。
-  assert.deepEqual(viaFlag.err.slice(1), ['dist 不在或落后于源码，先编了 e2e-project/commit-confirm（5 帧）']);
   const comments = recorder();
   assert.equal(await runComments(withRegistry(made, 'comments', 'e2e-project/commit-confirm', '--status', 'all'), { ...comments.io, env: made.env }), 0);
-  assert.deepEqual(viaFlag.out, comments.out);
+  assert.deepEqual(comments.err, ['dist 不在或落后于源码，先编了 e2e-project/commit-confirm（5 帧）']);
+  const checkOne = recorder();
+  assert.equal(await runCheck(withRegistry(made, 'check', 'e2e-project/commit-confirm#2'), { ...checkOne.io, env: made.env }), 0, checkOne.err.join('\n'));
+  assert.equal(checkOne.out[0], 'check e2e-project/commit-confirm');
+  assert.ok(!checkOne.out.some((line) => line.includes('[#2]')), checkOne.out.join('\n'));
   const one = recorder();
-  assert.equal(await runCheck(withRegistry(made, 'check', 'e2e-project/commit-confirm#2'), { ...one.io, env: made.env }), 0);
+  assert.equal(await runComments(withRegistry(made, 'comments', 'e2e-project/commit-confirm#2'), { ...one.io, env: made.env }), 0);
   assert.ok(one.out.includes('[#2] 说清楚 · 正文评论 · open · 节 §1 why'), one.out.join('\n'));
 });
 

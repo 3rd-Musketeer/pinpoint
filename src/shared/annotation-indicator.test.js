@@ -2,12 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  annotationMatchesIndicator,
-  formatAnnotationIndicator,
-  formatFrameIndicator,
-  formatPageIndicator,
-  formatSectionIndicator,
-  indicatorForAnnotation,
   isClearableMark,
   isLegalMarkTransition,
   isLegalTransition,
@@ -16,17 +10,9 @@ import {
   normalizeAnnotation,
   normalizeDoc,
   parseIndicator,
-  removeTargetContentRef,
   targetContentToDisplay,
   targetContentToStorage,
 } from './annotation-indicator.js';
-
-test('formats short hierarchical indicators', () => {
-  assert.equal(formatPageIndicator('demo-app'), '@page:demo-app');
-  assert.equal(formatSectionIndicator('demo-app', 'inbox'), '@section:demo-app/inbox');
-  assert.equal(formatFrameIndicator('demo-app', 'today'), '@frame:demo-app/today');
-  assert.equal(formatAnnotationIndicator('ab12cd'), '@a:ab12cd');
-});
 
 test('parses indicators and rejects junk', () => {
   assert.deepEqual(parseIndicator('@page:library'), { kind: 'page', pageId: 'library' });
@@ -43,81 +29,6 @@ test('parses indicators and rejects junk', () => {
   assert.deepEqual(parseIndicator('@a:ab12cd'), { kind: 'annotation', id: 'ab12cd' });
   assert.equal(parseIndicator('@m:ab12cd'), null);
   assert.equal(parseIndicator('page:library'), null);
-});
-
-test('scope match filters annotations', () => {
-  const a = {
-    id: 'ab12cd',
-    pageId: 'demo-app',
-    section: 'inbox',
-    screenId: 'today',
-  };
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@a:ab12cd')), true);
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@page:demo-app')), true);
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@section:demo-app/inbox')), true);
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@frame:demo-app/today')), true);
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@section:demo-app/other')), false);
-  assert.equal(annotationMatchesIndicator(a, parseIndicator('@page:library')), false);
-});
-
-test('scope match rejects annotations missing pageId (no soft match)', () => {
-  const legacy = { id: 'zz99aa', section: 'inbox', screenId: 'today' };
-  assert.equal(annotationMatchesIndicator(legacy, parseIndicator('@a:zz99aa')), true);
-  assert.equal(annotationMatchesIndicator(legacy, parseIndicator('@page:demo-app')), false);
-  assert.equal(annotationMatchesIndicator(legacy, parseIndicator('@section:demo-app/inbox')), false);
-  assert.equal(annotationMatchesIndicator(legacy, parseIndicator('@frame:demo-app/today')), false);
-});
-
-test('indicatorForAnnotation prefers kind then @a; unsaved falls back to scope', () => {
-  assert.equal(
-    indicatorForAnnotation({ indicatorKind: 'page', pageId: 'library' }),
-    '@page:library',
-  );
-  assert.equal(
-    indicatorForAnnotation({
-      indicatorKind: 'section',
-      pageId: 'library',
-      section: 'feed',
-    }),
-    '@section:library/feed',
-  );
-  assert.equal(
-    indicatorForAnnotation({
-      indicatorKind: 'frame',
-      pageId: 'library',
-      screenId: 'onboard',
-    }),
-    '@frame:library/onboard',
-  );
-  assert.equal(
-    indicatorForAnnotation({ id: 'ab12cd', pageId: 'library', screenId: 'onboard' }),
-    '@a:ab12cd',
-  );
-  assert.equal(
-    indicatorForAnnotation(
-      { id: 'ab12cd', pageId: 'library', section: 'feed', screenId: 'onboard' },
-      '',
-      { persisted: false },
-    ),
-    '@section:library/feed',
-  );
-  assert.equal(
-    indicatorForAnnotation(
-      { id: 'ab12cd', pageId: 'library', screenId: 'onboard' },
-      '',
-      { persisted: false },
-    ),
-    '@frame:library/onboard',
-  );
-});
-
-test('normalizeAnnotation drops retired response data', () => {
-  const annotation = normalizeAnnotation({
-    id: 'ab12cd',
-    content: '原标注',
-    reply: { content: '  已修改  ', author: 'agent' },
-  });
-  assert.equal(annotation.reply, undefined);
 });
 
 test('isLegalTransition：owner 三态入 close，close 撤销回原态；升档只经 mark 端点', () => {
@@ -223,15 +134,6 @@ test('target content converts display indicators without disturbing annotation m
     'Use [indicator 1], align [indicator 4], keep [@a:ab12cd], and inspect [missing indicator i9].',
   );
   assert.equal(targetContentToStorage(display, targets), stored);
-});
-
-test('removing a target strips only its inline references and never renumbers survivors', () => {
-  const content = '[indicator 1] reference; align [indicator 4] and [indicator 4].';
-  assert.equal(
-    removeTargetContentRef(content, 'i4'),
-    '[indicator 1] reference; align and.',
-  );
-  assert.equal(nextTargetRef([{ ref: 'i1' }, { ref: 'i4' }]), 'i5');
 });
 
 test('isClearableMark: 清空只带走未关闭的行，close 是执行历史留下来（决定 #11）', () => {

@@ -17,6 +17,20 @@ test('HUD export：离线可交互 HTML 全形态 + 远程资源逐项批准后�
   await page.locator('.wb-page[data-vpage="e2e-dir-ios"]').click();
   await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-dir-ios');
 
+  await test.step('导出钮只在离线导出能导的页上出：文章画布页、模板页、非 ios 条目都没有', async () => {
+    await expect(page.locator('#wbexport-open')).toBeVisible();
+    for (const id of ['e2e-project_commit-confirm', 'example', 'e2e-dir']) {
+      await page.evaluate((pageId) => window.workbench.setActivePage(pageId), id);
+      await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe(id);
+      // 文章画布页和模板页是画布形态：缩放组照常在，只是没有导出钮。
+      if (id !== 'e2e-dir') await expect(page.locator('#wbzoom-label'), id).toBeVisible();
+      await expect(page.locator('#wbexport-open'), id).toHaveCount(0);
+    }
+    await page.evaluate(() => window.workbench.setActivePage('e2e-dir-ios'));
+    await expect.poll(() => page.evaluate(() => window.workbench.activePageId())).toBe('e2e-dir-ios');
+    await expect(page.locator('#wbexport-open')).toBeVisible();
+  });
+
   // pp2 切片 3：对话框不再给格式选择，打开就是可交互 HTML。
   await page.locator('#wbexport-open').click();
   const dialog = picker(page);

@@ -12,6 +12,8 @@
  *   <节 id>      裸节 id，与 B 同义
  *   <page>       整页（仅 shot；任意登记页 id，不限基页）
  *   @frame:p/s   机器帧语法（annotation-indicator 的 parseIndicator）
+ *   @section:p/s 机器节语法，与节 id 同义
+ *   @page:p      机器页语法，与 <page> 同义（工作台“复制 @page”给的就是它）
  *   @a:<id>      标注内部 id
  *   --status s   按状态展开（open|check|done|close|all）
  *
@@ -138,24 +140,32 @@ export function resolveRef(token, ctx = {}) {
   // 能写编号的地方都能写 id，精确指代时不必拼 @frame:p/s。页 id 同名时页优先（上一步）。
   const byId = outlineFrames(refs).find((frame) => frame.id === raw);
   if (byId) return { kind: 'frame', screenId: byId.id, ref: qualified(byId.tabId, byId.ref), title: byId.title, ...(byId.tabId ? { tabId: byId.tabId } : {}) };
+  const sectionPick = (section) => ({
+    kind: 'section',
+    sectionId: section.id,
+    ref: qualified(section.tabId, section.letter),
+    title: section.title,
+    frames: section.frames,
+    ...(section.tabId ? { tabId: section.tabId } : {}),
+  });
   const sectionById = refs.outline.find((section) => section.id === raw);
-  if (sectionById) {
-    return {
-      kind: 'section',
-      sectionId: sectionById.id,
-      ref: qualified(sectionById.tabId, sectionById.letter),
-      title: sectionById.title,
-      frames: sectionById.frames,
-      ...(sectionById.tabId ? { tabId: sectionById.tabId } : {}),
-    };
-  }
+  if (sectionById) return sectionPick(sectionById);
   const indicator = parseIndicator(raw);
+  // @frame / @section 自带页：和这次的目标不是一页时照实说，不拿帧 id、节 id 去目标页上找（找不到会报
+  // “画布上没有帧”，碰巧同名还会拍错页）。
+  const otherPage = (what) => ({ kind: 'unknown', token, message: `${raw} 是 ${addressOf(indicator.pageId)} 上的${what}，这次的目标是 ${addressOf(pageId)}：目标写 ${addressOf(indicator.pageId)}，或不写目标、只写 ${raw}` });
+  if (indicator && indicator.kind === 'page') {
+    if (indicator.pageId === pageId || (ctx.pageIds || []).includes(indicator.pageId)) return { kind: 'page', pageId: indicator.pageId };
+    return { kind: 'unknown', token, message: `没有页 ${addressOf(indicator.pageId)}：${raw}` };
+  }
+  if (indicator && indicator.kind === 'section') {
+    if (pageId && indicator.pageId !== pageId) return otherPage('节');
+    const section = refs.outline.find((row) => row.id === indicator.sectionId);
+    if (!section) return { kind: 'unknown', token, message: `画布上没有节 ${indicator.sectionId}` };
+    return sectionPick(section);
+  }
   if (indicator && indicator.kind === 'frame') {
-    // @frame 自带页：和这次的目标不是一页时照实说，不拿帧 id 去目标页上找（找不到会报“画布上没有帧”，
-    // 碰巧同名还会拍错页）。
-    if (pageId && indicator.pageId !== pageId) {
-      return { kind: 'unknown', token, message: `${raw} 是 ${addressOf(indicator.pageId)} 上的帧，这次的目标是 ${addressOf(pageId)}：目标写 ${addressOf(indicator.pageId)}，或不写目标、只写 ${raw}` };
-    }
+    if (pageId && indicator.pageId !== pageId) return otherPage('帧');
     const hit = outlineFrames(refs).find((frame) => frame.id === indicator.screenId);
     if (!hit) return { kind: 'unknown', token, message: `画布上没有帧 ${indicator.screenId}` };
     return { kind: 'frame', screenId: hit.id, ref: qualified(hit.tabId, hit.ref), title: hit.title, ...(hit.tabId ? { tabId: hit.tabId } : {}) };
@@ -165,7 +175,7 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、<project>/<article>#n、#3-#7、B3、B、§2、<tab>:B3、帧 id、节 id、页 id、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、<project>/<article>#n、#3-#7、B3、B、§2、<tab>:B3、帧 id、节 id、页 id、@frame:p/s、@section:p/s、@page:p、@a:id）` };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];

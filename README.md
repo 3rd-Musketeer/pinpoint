@@ -137,7 +137,7 @@ ppnt mark <target> <ref…> done|check  # write annotation status
 ppnt reply <project>/<article>#<n> <text>  # reply in a prose comment's thread (status unchanged)
 ppnt build <target> [--watch]  # compile frames → dist (~/.pinpoint/dist/<page id>/)
 ppnt render <target>/<frame id>  # compile one frame to stdout, no dist write
-ppnt status [--page <target>]  # service checkup: route · pid · both health endpoints · root · registry; --page reports one page's counts and dist freshness
+ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt prune <target>            # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
@@ -213,7 +213,7 @@ Everything for one article lives in one bucket, `~/.pinpoint/<project>_<article>
 SSOT; revisioned, SSE-synced): canvas annotations in `@canvas.json`, prose comments in
 `@prose.json`.
 
-Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@a:<id>`.
+Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@section:<page id>/<section id>` · `@page:<page id>` (a target) · `@a:<id>`.
 Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.
@@ -224,7 +224,9 @@ annotation surface, and exported artifacts never contain the injected client.
 ## Export an offline interactive HTML
 
 The strip's **导出** button writes one self-contained `<page id>__interactive.html`
-(`POST /api/export-page-html`, ADR 0033) — the single user-facing export. It
+(`POST /api/export-page-html`, ADR 0033) — the single user-facing export. The
+button shows only on pages the export can build: registry dir entries with
+`board: "ios"` (`src/shared/offline-export-scope.js`). It
 opens as the same shell you use in the workbench: the full-bleed grid canvas, the
 floating glass panel with the outline, and the bottom strip (panel toggle, page
 title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ +

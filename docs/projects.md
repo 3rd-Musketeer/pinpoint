@@ -95,7 +95,7 @@ project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`�
 
 ### 文章目录改名
 
-`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt status --page <project>/a` 与 `ppnt comments <project>/a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
+`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt comments <project>/a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
 
 ```shell
 mv ~/.pinpoint/<project>_a ~/.pinpoint/<project>_b      # 桶；PINPOINT_DATA_DIR 设了就换成它
@@ -216,7 +216,7 @@ export default function ConfirmBare() {
 - 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
 - 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
 - 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
-- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / comments / locate / mark / shot / show / status --page`、编号（`boardRefs`）都和存量页一样工作。
+- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / comments / locate / mark / shot / show`、编号（`boardRefs`）都和存量页一样工作。
 - dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
 - watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
 
@@ -237,7 +237,7 @@ export default function ConfirmBare() {
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 
@@ -392,7 +392,7 @@ export default function Lanes() {
 ppnt shot e2e-project/commit-confirm --figure message-flow
 ```
 
-图页按正文栏宽 760 px 打开，浅色、深色各拍一张（`<数据根>/shot/<页 id>/figure-<图 id>.png` 和 `…-dark.png`），关掉动画、不自动播放。图编不过、在浏览器里报错或控制台有错误时，命令打出原因并退 1。目标照 `shot` 的规则写（`--page <页 id>` 也认），`--figure` 不和帧、节的引用同用。
+图页按正文栏宽 760 px 打开，浅色、深色各拍一张（`<数据根>/shot/<页 id>/figure-<图 id>.png` 和 `…-dark.png`），关掉动画、不自动播放。图编不过、在浏览器里报错或控制台有错误时，命令打出原因并退 1。目标照 `shot` 的规则写（第一个参数），`--figure` 不和帧、节的引用同用。
 
 ## 从存量页迁移
 

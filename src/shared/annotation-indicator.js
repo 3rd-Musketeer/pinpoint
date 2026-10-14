@@ -16,13 +16,11 @@
  * 两条路各有自己的合法转换表。
  */
 
-/** 四态。缺省 open；存量 result 字段读时归一成 done（显式迁移脚本之外的读侧自愈）。 */
+/** 四态。缺省 open。 */
 export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
 
-export function normalizeStatus(value, raw) {
-  if (ANNOTATION_STATUSES.includes(value)) return value;
-  if (raw && raw.result) return 'done';
-  return 'open';
+function normalizeStatus(value) {
+  return ANNOTATION_STATUSES.includes(value) ? value : 'open';
 }
 
 /** /save 整写的合法转换：owner 完成（open / check / done → close，工作台单击）、
@@ -116,35 +114,6 @@ export function targetContentToStorage(text, targets) {
     });
 }
 
-export function removeTargetContentRef(text, ref) {
-  const number = targetRefNumber(ref);
-  if (!number) return String(text || '');
-  const escapedRef = String(ref).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return String(text || '')
-    .replace(new RegExp(`\\[@t:${escapedRef}\\]`, 'gi'), '')
-    .replace(new RegExp(`\\[indicator\\s+${number}\\]`, 'gi'), '')
-    .replace(new RegExp(`\\[missing indicator\\s+${escapedRef}\\]`, 'gi'), '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\s+([,.;:!?，。；：！？])/g, '$1')
-    .trimStart();
-}
-
-export function formatPageIndicator(pageId) {
-  return `@page:${String(pageId || '').trim()}`;
-}
-
-export function formatSectionIndicator(pageId, sectionId) {
-  return `@section:${String(pageId || '').trim()}/${String(sectionId || '').trim()}`;
-}
-
-export function formatFrameIndicator(pageId, screenId) {
-  return `@frame:${String(pageId || '').trim()}/${String(screenId || '').trim()}`;
-}
-
-export function formatAnnotationIndicator(id) {
-  return `@a:${String(id || '').trim()}`;
-}
-
 /**
  * @returns {{ kind: 'page'|'section'|'frame'|'annotation', pageId?: string, sectionId?: string, screenId?: string, id?: string } | null}
  */
@@ -161,26 +130,6 @@ export function parseIndicator(text) {
   return null;
 }
 
-/** True when annotation `a` falls under parsed indicator `ind`.
- * Scope kinds (@page/@section/@frame) require a.pageId === ind.pageId.
- * Annotations missing pageId never match a scope indicator (no cross-page soft match).
- */
-export function annotationMatchesIndicator(a, ind) {
-  if (!a || !ind) return false;
-  if (ind.kind === 'annotation') return !!ind.id && a.id === ind.id;
-
-  if (!ind.pageId || !a.pageId || a.pageId !== ind.pageId) return false;
-  if (ind.kind === 'page') return true;
-  if (ind.kind === 'section') {
-    const section = a.section;
-    return !!ind.sectionId && section === ind.sectionId;
-  }
-  if (ind.kind === 'frame') {
-    return !!ind.screenId && a.screenId === ind.screenId;
-  }
-  return false;
-}
-
 /**
  * Normalize one annotation for disk / API。只认现行字段：磁盘上的账本没有旧字段
  * （comment / group / groupLabel、[@m:] mention），这里不做读侧升级。
@@ -189,15 +138,12 @@ export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const a = { ...raw };
 
-  // pp2 状态机：status 归一（存量 result → done 并摘字段）；n / lastRect 透传（存量 note 字段原样留在盘上，界面与 CLI 都不读）。
-  a.status = normalizeStatus(a.status, a);
-  if (a.result) delete a.result;
+  // pp2 状态机：status 归一，缺省 open；n / lastRect 透传。
+  a.status = normalizeStatus(a.status);
 
   if (Array.isArray(a.mentions)) {
     a.mentions = a.mentions.map((id) => String(id));
   }
-
-  delete a.reply;
 
   if (a.type === 'element' || a.selector || (Array.isArray(a.targets) && a.targets.length)) {
     const targets = normalizeTargetRefs(a.targets, a.selector, a.text);
@@ -212,7 +158,7 @@ export function normalizeAnnotation(raw) {
   return a;
 }
 
-/** Pick annotations array from a doc（legacy marks 键已由迁移脚本迁净）。 */
+/** Pick annotations array from a doc. */
 export function annotationsFromDoc(doc) {
   if (!doc || typeof doc !== 'object') return [];
   return Array.isArray(doc.annotations) ? doc.annotations : [];
@@ -228,38 +174,4 @@ export function normalizeDoc(doc, pageSlug) {
     revision: doc && Number.isInteger(doc.revision) && doc.revision >= 0 ? doc.revision : 0,
     annotations,
   };
-}
-
-/**
- * Best indicator to copy for an open annotation box.
- * Uses optional indicatorKind: 'page' | 'section' | 'frame' | 'annotation'.
- * When `persisted` is false, never emit `@a:` (unsaved id is not on disk yet) —
- * fall back to the best available scope indicator.
- */
-export function indicatorForAnnotation(a, fallbackPageId, opts) {
-  if (!a) return '';
-  const pageId = a.pageId || fallbackPageId || '';
-  const kind = a.indicatorKind || 'annotation';
-  const section = a.section;
-  const persisted = !opts || opts.persisted !== false;
-
-  function scopeFallback() {
-    if (pageId && section) return formatSectionIndicator(pageId, section);
-    if (pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-    if (pageId) return formatPageIndicator(pageId);
-    return '';
-  }
-
-  if (!persisted) {
-    if (kind === 'page' && pageId) return formatPageIndicator(pageId);
-    if (kind === 'section' && pageId && section) return formatSectionIndicator(pageId, section);
-    if (kind === 'frame' && pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-    return scopeFallback();
-  }
-
-  if (kind === 'page' && pageId) return formatPageIndicator(pageId);
-  if (kind === 'section' && pageId && section) return formatSectionIndicator(pageId, section);
-  if (kind === 'frame' && pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-  if (a.id) return formatAnnotationIndicator(a.id);
-  return '';
 }

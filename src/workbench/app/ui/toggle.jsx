@@ -1,8 +1,7 @@
 // Vendored from shadcn/ui registry new-york-v4/toggle（V0）。适配同 button.jsx：
-// TSX→JSX；@radix-ui/react-toggle per-package；focus ring 剥离（走全局 catch-all）；
+// TSX→JSX；只留 toggleVariants（toggle-group 用）；focus ring 剥离（走全局 catch-all）；
 // 密度收紧 h-9→h-7 档；色值经桥类名。
 import { cva } from 'class-variance-authority';
-import * as TogglePrimitive from '@radix-ui/react-toggle';
 
 import { cn } from '../lib/utils.js';
 
@@ -26,15 +25,5 @@ const toggleVariants = cva(
     },
   }
 );
-
-export function Toggle({ className, variant, size, ...props }) {
-  return (
-    <TogglePrimitive.Root
-      data-slot="toggle"
-      className={cn(toggleVariants({ variant, size, className }))}
-      {...props}
-    />
-  );
-}
 
 export { toggleVariants };

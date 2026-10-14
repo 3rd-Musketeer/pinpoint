@@ -653,7 +653,7 @@ export function readBuildJson(distRoot, entryId) {
 
 /**
  * 编译一整页 → 写 dist（writeDist=false 时只算不写，ppnt render 用）。
- * onlyScreen（CLI --screen，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
+ * onlyScreen（CLI --frame，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
  * 都走「只编挑中的屏 + 合并既有 build.json」的路径，其余屏的产物与记录原样保留。
  * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], figures: [{ id, ok, ms, error? }], partial, totalScreens, error? }；
  * figures 是文章正文里的图（整页编译时才有，见 compileArticleFigures）；
@@ -782,13 +782,6 @@ export function readFigureRecord(distRoot, entryId, id) {
   } catch {
     return null;
   }
-}
-
-/** 错误文本里第一个 `<file>:<行>` 的行号（file 是文章目录相对路径）；没有返回 null。 */
-export function errorLineIn(message, file) {
-  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const m = String(message || '').match(new RegExp(`${escaped}:(\\d+)`));
-  return m ? Number(m[1]) : null;
 }
 
 /**

@@ -124,7 +124,7 @@ test('ppId 锚：建标注带 ppId 与机壳 selector，摘掉后双端兜底仍
   });
   expect(pin.hit).toBe(true);
   expect(pin.onBlurb).toBe(true);
-  const locate = await ppnt(['locate', '#1', '--page', 'e2e-anchor']);
+  const locate = await ppnt(['locate', 'e2e-anchor', '#1']);
   expect(locate.stdout).toContain('#1 → components/Blurb.jsx:2');
 
   // 4 ─ 迁移：owner 编辑保存自然补回 ppId（只打开再关不写账本，要真改一笔）。

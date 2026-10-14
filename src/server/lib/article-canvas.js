@@ -39,7 +39,6 @@ const processor = unified().use(remarkParse).use(remarkMdx);
 /** 图的错误种类：src 写错、caption 不是字面量、不认识的属性、同一个图用了两次、源文件不在。
     站点把它们显示在图的位置，不进画布卡片和页顶错误条（isFigureError）。 */
 const FIGURE_ERROR_CODES_LIST = ['figure_src', 'figure_caption', 'figure_prop', 'figure_duplicate', 'figure_missing'];
-export const FIGURE_ERROR_CODES = Object.freeze(new Set(FIGURE_ERROR_CODES_LIST));
 /** <Figure> 认的属性。 */
 const FIGURE_PROPS = new Set(['src', 'caption']);
 

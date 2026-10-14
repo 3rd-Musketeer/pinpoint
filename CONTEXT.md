@@ -38,7 +38,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **帧（frame）** · `articles/<article>/<帧 id>.jsx` 或 `.html`
 画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件，卡片和浮层按手机或桌面宽度显示它。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
-要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`ppnt build --frame` 的别名 `--screen`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
+要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`docs/pinpoint/components/<Name>.jsx`（project 共用）、`content/kits/ios/jsx/`（kit）
 帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时先找本篇、再找 project；kit 的组件写 `pinpoint/kit`。
@@ -58,7 +58,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
 工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
-要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page`（目标的旧写法）、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
+要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
 
 **节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
@@ -101,7 +101,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
-表面已经不存在的账本：文章目录删了或改了名、project 不再登记、存量页的文件删了或页不在了。`ppnt comments` 和 `ppnt status --page` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
+表面已经不存在的账本：文章目录删了或改了名、project 不再登记、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
 要避开：去 `mark` 孤儿条目。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`

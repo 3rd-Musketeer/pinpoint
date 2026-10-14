@@ -10,6 +10,7 @@ import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
 import fs from 'node:fs';
 
 import { articleOutline } from '../../src/server/lib/article-canvas.js';
+import { parseIndicator } from '../../src/shared/annotation-indicator.js';
 import { deriveArticleBoard } from '../../src/server/lib/article-board.js';
 import { findProject } from '../../src/server/lib/projects.js';
 
@@ -67,7 +68,7 @@ function sectionNumbersOf(context) {
 }
 
 /**
- * 一个页 id 的标注队列（comments 的本体，也是过渡期旧 check 的行为）。token 是目标写法，可带 #n。
+ * 一个页 id 的标注队列（comments 的本体）。token 是目标写法，可带 #n。
  * printed = 实际打出了几条（project 级 comments 用它跳过空文章）。返回 { code, rows }。
  */
 async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false } = {}) {
@@ -90,7 +91,7 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   const cross = parseCrossRef(toPageRef(token));
   const pageRef = cross ? cross.pageId : String(toPageRef(token));
   // 找不到页的报错先攒着：页不在了但桶还在（删了的页、删了或改了名的文章）时，
-  // 和 status --page 一样把整桶列成孤儿，而不是只说找不到页。
+  // 把整桶列成孤儿，而不是只说找不到页。
   const pending = [];
   const context = loadAnnotateContext(pageRef, parsed, { env, err: (line) => pending.push(line) });
   if (!context) {
@@ -203,35 +204,14 @@ async function commentsFor(token, parsed, { env, out, err }) {
   return result.code;
 }
 
-/** 过渡期：这些写法是旧的 `check`（列标注队列），照旧列出，另打一行指向 comments。 */
-function isLegacyCheck(parsed, env) {
-  if (['frame', 'status', 'mode', 'group-by'].some((name) => parsed.flags[name] !== undefined)) return true;
-  const token = String(parsed.target || '');
-  const address = parseAddress(token);
-  if (address && address.n) return true;
-  if (token.includes('/')) return false;
-  // 页 id 形 <project>_<article>（不管文章还在不在）是旧写法。
-  if (address && address.kind === 'article') return true;
-  const hit = resolveAddress(token, addressContext(parsed.flags, env));
-  if (hit && hit.kind === 'page') return true;
-  // 不是页也不是 project，但桶还在（删掉的页）：旧 check 报整桶孤儿。
-  return !hit && fs.existsSync(path.join(dataRoot(env), String(toPageRef(token))));
-}
-
 /**
- * `ppnt check <project>[/<article>]`：验证（validate.js）。过渡期里旧用法（见 isLegacyCheck）照旧列
- * 标注队列，并在 stderr 打一行提示，stdout 不变（--json 照样能解析）。
+ * `ppnt check <project>[/<article>]`：验证（validate.js）。读标注用 comments。
  */
 export async function runCheck(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   const { cwd, env, out, err } = ioOf(io);
-  if (isLegacyCheck(parsed, env)) {
-    const shown = displayAddress(String(toPageRef(parsed.target)).replace(/#\d+$/, ''));
-    err(`提示：check 现在是验证；列标注和评论改用 \`ppnt comments ${shown}\`（这次照旧列出）。`);
-    return commentsFor(parsed.target, parsed, { env, out, err });
-  }
   return runValidate(parsed, { env, out, err, cwd });
 }
 
@@ -245,8 +225,12 @@ function outlineOf(context) {
   }
 }
 
-/** 一枚节引用（§2、字母、节 id）对上文章的哪一节；不是节引用返回 null。 */
-function articleSectionOf(token, outline) {
+/** 一枚节引用（§2、字母、节 id、本篇的 @section:<页 id>/<节 id>）对上文章的哪一节；不是节引用返回 null。 */
+function articleSectionOf(token, outline, pageId) {
+  const indicator = parseIndicator(token);
+  if (indicator && indicator.kind === 'section') {
+    return indicator.pageId === pageId ? outline.find((row) => row.id === indicator.sectionId) || null : null;
+  }
   const raw = String(token || '').trim();
   const n = sectionNumberOf(raw);
   if (n) return outline.find((row) => row.n === n) || { missing: true, n };
@@ -266,7 +250,7 @@ function prepareRefs(refs, context) {
   const errors = [];
   const empty = [];
   for (const ref of refs) {
-    const section = outline.length ? articleSectionOf(ref, outline) : null;
+    const section = outline.length ? articleSectionOf(ref, outline, context.pageId) : null;
     if (section && section.missing) {
       errors.push(`${ref}：这篇文章只有 ${outline.length} 节`);
       continue;
@@ -508,7 +492,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
 
 /**
  * `ppnt shot <project>/<article> --figure <图 id>`：拍正文里的一个图，浅色、深色各一张（renderFigureShots）。
- * 目标照 shot 的规则解析（第一个参数，或 --page）；图不和帧、节的引用混用。
+ * 目标照 shot 的规则解析（第一个参数）；图不和帧、节的引用混用。
  * 图编译失败、在浏览器里运行出错时打出原因、退 1。
  */
 async function shotFigure(context, refs, { env, out, err, scale, figureId, json = false }) {
@@ -566,7 +550,7 @@ export function planArticleShots(refs, { context, outline, origin, dataRootDir, 
   const onCanvas = new Set((context.refs.outline || []).map((section) => section.id));
   for (const ref of refs) {
     const n = sectionNumberOf(ref);
-    const section = articleSectionOf(ref, outline);
+    const section = articleSectionOf(ref, outline, context.pageId);
     if (section && section.missing) {
       errors.push(`${ref}：这篇文章只有 ${outline.length} 节`);
       continue;
@@ -839,7 +823,7 @@ export async function runReply(argv, io = {}) {
   const { env, out, err, requestFn } = ioOf(io);
   const text = String(parsed.text || '').trim();
   if (!text) return reportUsageError('reply', '回复内容是空的。', err);
-  const got = targetContext(parsed.target ? { ...parsed, flags: { ...parsed.flags, page: parsed.flags.page || parsed.target } } : parsed, { env, err }, 'reply');
+  const got = targetContext(parsed, { env, err }, 'reply');
   if (!got.context) return got.code;
   const { context } = got;
   const crossPageRows = crossPageRowsFor(parsed, env);

@@ -63,7 +63,7 @@ function previewManifestPages() {
   return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
-/** 壳归一（web→doc 与缺省壳的唯一定义在 preview-contracts.legacyShell）。 */
+/** 缺省壳（唯一定义在 preview-contracts.legacyShell）。 */
 function normalizeShell(shell, mode) {
   return legacyShell(shell, mode === 'html' ? 'doc' : 'app');
 }
@@ -330,11 +330,6 @@ export function neutralizePreviewScripts(html) {
         ` data-preview-src="${String(v).replace(/"/g, '&quot;')}"`);
     return `<script type="text/x-pinpoint-preview"${cleaned}>`;
   });
-}
-
-/** 导出快照里脚本一律摘除（与画布 cleanExportClone 同约）。 */
-export function stripScripts(html) {
-  return String(html).replace(/<script\b[\s\S]*?<\/script>/gi, '');
 }
 
 /** index.html 的内联 <style> 块（机壳/图注/画布样式）—— frame 页与导出渲染共用。 */

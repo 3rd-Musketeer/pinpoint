@@ -8,8 +8,8 @@ import { ppnt } from './lib/cli.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // ppnt CLI 四命令的端到端（切片 4）：不开浏览器工具做验证，全部走 CLI 子进程。
-// 链路：seed 账本 → check --mode both（markdown + 服务渲染的 1x 截图）→
-// mark done（真端点，带 baseRevision）→ status --page（计数移动 + dist 状态）。
+// 链路：seed 账本 → comments --mode both（markdown + 服务渲染的 1x 截图）→
+// mark done（真端点，带 baseRevision）→ comments（计数移动 + dist 最新）。
 // storage-unify：e2e-ios 的画布账本 = 页桶里的 @canvas.json。
 const LEDGER = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
 // home.jsx 的真实产物链：segmented 的「日」按钮（button.on 是 classList[0] 形态）。
@@ -44,11 +44,11 @@ test.afterEach(() => {
   fs.rmSync(LEDGER, { force: true });
 });
 
-test('ppnt check --mode both → mark done → status --page 全链（CLI 子进程）', async ({ request }) => {
+test('ppnt comments --mode both → mark done → comments 计数 全链（CLI 子进程）', async ({ request }) => {
   seedLedger();
   // globalSetup 在服务启动编译之后清空数据根（账本重置），dist 被一并抹掉、
   // 由首次访问懒编译补回：先用一次 GET 把 e2e-ios 编译回盘，CLI 的只读面
-  // （check 摘录 / status --page）才有 dist 可读。
+  // （comments 摘录）才有 dist 可读。
   const warm = await request.get('/sites/e2e-ios/home.html');
   if (warm.status() !== 200) throw new Error(`暖编译失败：${warm.status()} ${await warm.text()}`);
   const homeDist = path.join(E2E_DATA_DIR, 'dist', 'e2e-ios', 'home.html');
@@ -58,10 +58,10 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
     await new Promise((resolve) => setTimeout(resolve, 300));
   }
 
-  // 1. check --mode both：markdown 清单 + 源码摘录 + 服务渲染的 1x 截图。
-  const check = await ppnt(['check', 'e2e-ios', '--mode', 'both', '--status', 'open']);
+  // 1. comments --mode both：markdown 清单 + 源码摘录 + 服务渲染的 1x 截图。
+  const check = await ppnt(['comments', 'e2e-ios', '--mode', 'both', '--status', 'open']);
   const shotPath = path.join(E2E_DATA_DIR, 'check', 'e2e-ios', 'home.png');
-  if (check.code !== 0) throw new Error(`check 退出 ${check.code}：${check.stderr}`);
+  if (check.code !== 0) throw new Error(`comments 退出 ${check.code}：${check.stderr}`);
   const lines = check.stdout.split('\n');
   const row1 = lines.find((line) => line.includes('[#1]'));
   if (!row1) throw new Error(`清单缺 #1：\n${check.stdout}`);
@@ -74,30 +74,30 @@ test('ppnt check --mode both → mark done → status --page 全链（CLI 子进
   if (png.length < 2000 || png[0] !== 0x89 || png[1] !== 0x50) throw new Error(`截图不像 PNG：${png.length} 字节`);
 
   // 2. locate：#1 给源文件:行。
-  const locate = await ppnt(['locate', '#1', '--page', 'e2e-ios']);
+  const locate = await ppnt(['locate', 'e2e-ios', '#1']);
   if (!locate.stdout.includes('#1 → home.jsx:')) throw new Error(`locate 输出不对：\n${locate.stdout}`);
 
   // 3. mark（真端点 + baseRevision）；done → done 的非法转换打 409 原因不中断。
-  const mark = await ppnt(['mark', '#2', 'check', '--page', 'e2e-ios']);
+  const mark = await ppnt(['mark', 'e2e-ios', '#2', 'check']);
   if (!mark.stdout.includes('#2 → check')) throw new Error(`mark 输出不对：\n${mark.stdout}`);
-  const done = await ppnt(['mark', '#2', 'done', '--page', 'e2e-ios']);
+  const done = await ppnt(['mark', 'e2e-ios', '#2', 'done']);
   if (!done.stdout.includes('#2 → done')) throw new Error(`done 输出不对：\n${done.stdout}`);
-  const again = await ppnt(['mark', '#2', 'done', '--page', 'e2e-ios'], { expectFail: true });
+  const again = await ppnt(['mark', 'e2e-ios', '#2', 'done'], { expectFail: true });
   if (!again.stdout.includes('409') || !again.stdout.includes('illegal_transition')) {
     throw new Error(`done → done 应打 409 原因：\n${again.stdout}`);
   }
-  const close = await ppnt(['mark', '#2', 'close', '--page', 'e2e-ios'], { expectFail: true });
+  const close = await ppnt(['mark', 'e2e-ios', '#2', 'close'], { expectFail: true });
   if (!close.stderr.includes('close 只在工作台')) throw new Error(`close 应拒收：\n${close.stderr}`);
 
-  // 4. status --page：计数移动到位，dist 最新。
-  const status = await ppnt(['status', '--page', 'e2e-ios']);
-  if (!status.stdout.includes('open 1 · check 0 · done 1 · close 0 · 共 2')) {
+  // 4. comments 抬头：计数移动到位；dist 最新，不重编。
+  const status = await ppnt(['comments', 'e2e-ios', '--status', 'all']);
+  if (!status.stdout.includes('共 2 条 · open 1 · check 0 · done 1 · close 0')) {
     throw new Error(`状态计数不对：\n${status.stdout}`);
   }
-  if (!status.stdout.includes('最新')) throw new Error(`dist 应为最新：\n${status.stdout}`);
+  if (status.stderr.includes('dist 不在或落后于源码')) throw new Error(`dist 应为最新：\n${status.stderr}`);
 
   // 5. shot --marks：帧图带序号钉，落在 <dataRoot>/shot/ 下。
-  const shot = await ppnt(['shot', 'A1', '--marks', '--page', 'e2e-ios']);
+  const shot = await ppnt(['shot', 'e2e-ios', 'A1', '--marks']);
   const framePng = path.join(E2E_DATA_DIR, 'shot', 'e2e-ios', 'home.png');
   if (!shot.stdout.includes(framePng)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
   if (!fs.existsSync(framePng) || fs.readFileSync(framePng).length < 2000) throw new Error('帧图没落盘');
@@ -120,7 +120,7 @@ test('shot 把运行时 canvas 的位图烤进 PNG', async ({ page, request }) =
   try {
     const out = path.join(E2E_DATA_DIR, 'shot', 'e2e-canvas', 'dots.png');
     fs.rmSync(out, { force: true });
-    const shot = await ppnt(['shot', '@frame:e2e-canvas/dots', '--page', 'e2e-canvas']);
+    const shot = await ppnt(['shot', 'e2e-canvas', '@frame:e2e-canvas/dots']);
     if (shot.code !== 0) throw new Error(`shot 退出 ${shot.code}：${shot.stderr}`);
     if (!shot.stdout.includes(out)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
 

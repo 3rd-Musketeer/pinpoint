@@ -9,7 +9,6 @@ import {
   assignRegistryOrder,
   createRegistryStore,
   listRegistryEntries,
-  listRegistryIds,
   setEntryFolder,
   updateRegistryEntry,
   validateFolderList,
@@ -131,14 +130,6 @@ test('addRegistryEntry: file entries keep their absolute path and board', (t) =>
   const entry = addRegistryEntry(file, { id: 'report', title: 'Report', kind: 'file', path: page, board: 'ios' });
   assert.ok(entry.addedAt > 0);
   assert.deepEqual(entry, { addedAt: entry.addedAt, id: 'report', kind: 'file', title: 'Report', path: page, board: 'ios' });
-});
-
-test('listRegistryIds: missing file is empty, malformed throws', (t) => {
-  const dir = withTempDir(t);
-  assert.deepEqual(listRegistryIds(path.join(dir, 'registry.json')), []);
-  const file = path.join(dir, 'registry.json');
-  fs.writeFileSync(file, '{ nope');
-  assert.throws(() => listRegistryIds(file), /JSON/);
 });
 
 test('listRegistryEntries: whole entries, missing file is empty, malformed throws', (t) => {

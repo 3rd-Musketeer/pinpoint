@@ -1,10 +1,11 @@
 /**
  * ppnt 的目标与引用地址（docs/registry.md“CLI”，CONTEXT.md“引用地址”）。
  *
- * 目标（命令的第一个位置参数，`--page` 是它的别名）：
+ * 目标（命令的第一个位置参数）：
  *   <project>/<article>       一篇文章（输出一律打这个斜杠形）
  *   <project>_<article>       同一篇文章的页 id（旧写法，照认）
  *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/?page=<页 id>
+ *   @page:<页 id>             工作台“复制 @page”给的写法，同页 id
  *   <project>                 一个 project（show / check / comments 用）
  *   <页 id>                   存量页
  * 标注：<project>/<article>#3（= <project>_<article>#3）。
@@ -22,6 +23,7 @@ const ID = ENTRY_ID_PATTERN.source.slice(1, -1);
 const SLASH_ARTICLE_RE = new RegExp(`^(${ID})/(${ID})/?$`);
 const SECTION_NUMBER_RE = /^§([1-9][0-9]*)$/;
 const NUM_SUFFIX_RE = /^(.*)#([1-9][0-9]*)$/;
+const PAGE_INDICATOR_PREFIX = '@page:';
 // 引用的样子：#n、#3-#7、@frame: / @a:、§2、字母编号 B / B3、<tab>:B3。这些不会是目标。
 const REF_SHAPE_RE = /^(?:#|@|§)|^[A-Z]+(?:[1-9][0-9]*)?$|^[a-zA-Z0-9_-]+:[A-Z]+(?:[1-9][0-9]*)?$/;
 
@@ -46,7 +48,7 @@ function parseUrlish(token) {
 
 /**
  * 字面解析（不读盘）→
- *   { kind: 'article', project, article, pageId, n? }   斜杠形、页 id 形、文章网址
+ *   { kind: 'article', project, article, pageId, n? }   斜杠形、页 id 形（含 @page:）、文章网址
  *   { kind: 'id', id, n? }                               一个 id：project、存量页，或模板页 id
  *   null                                                  不是目标的样子
  */
@@ -60,6 +62,12 @@ export function parseAddress(token) {
     n = Number(numbered[2]);
   }
   const withN = (value) => (n ? { ...value, n } : value);
+  if (raw.startsWith(PAGE_INDICATOR_PREFIX)) {
+    const pageId = raw.slice(PAGE_INDICATOR_PREFIX.length);
+    if (!PAGE_ID_PATTERN.test(pageId)) return null;
+    const ids = parseArticlePageId(pageId);
+    return withN(ids ? { kind: 'article', project: ids.projectId, article: ids.articleId, pageId } : { kind: 'id', id: pageId });
+  }
   const urlish = parseUrlish(raw);
   if (urlish) {
     if (urlish.pageId) {

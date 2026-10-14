@@ -12,9 +12,9 @@ test('parseDeepLink reads ?page=&mode= and rejects invalid values', () => {
   assert.deepEqual(parseDeepLink('?page=a&page=b'), { pageId: 'a', mode: null, entry: null });
 });
 
-test('parseDeepLink normalizes the retired web mode to html (2026-08-16 阶段 2)', () => {
-  assert.deepEqual(parseDeepLink('?page=library&mode=web'), { pageId: 'library', mode: 'html', entry: null });
-  assert.deepEqual(parseDeepLink('?mode=web'), { pageId: null, mode: 'html', entry: null });
+test('parseDeepLink only knows ios and html modes', () => {
+  assert.deepEqual(parseDeepLink('?page=library&mode=html'), { pageId: 'library', mode: 'html', entry: null });
+  assert.deepEqual(parseDeepLink('?mode=web'), { pageId: null, mode: null, entry: null });
 });
 
 test('deep link carries the entry id (2026-08-16f 阶段 6)', () => {

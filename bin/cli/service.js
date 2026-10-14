@@ -6,7 +6,6 @@ import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 
 import { DEFAULT_ORIGIN, PORTLESS_HOSTNAME, REPO_ROOT, ioOf, displayWidth, padWide } from './core.js';
 import { guardParse } from './args.js';
-import { printPageStatus } from './list.js';
 
 /** portless 路由表位置（PORTLESS_ROUTES 覆盖，给测试与非默认安装用）。 */
 export function portlessRoutesPath(env = process.env) {
@@ -266,7 +265,6 @@ export async function runStatus(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
-  if (parsed.flags.page) return printPageStatus(parsed, { env, out, err: ioOf(io).err });
   if (env.PINPOINT_ORIGIN) {
     const report = await collectOriginStatus(io);
     if (parsed.flags.json) out(JSON.stringify(report, null, 2));

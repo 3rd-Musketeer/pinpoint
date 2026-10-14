@@ -25,6 +25,8 @@ import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
 import { setCanvasZoom, zoomCanvasAt } from '../boot-prefs.js';
 import { clampCanvasZoom, currentCanvasZoom, formatZoomLabel } from '../lib/canvas-zoom.js';
+import { pageEntry } from '../lib/page-url.js';
+import { offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 import { WbIcon } from './WbIcon.jsx';
@@ -81,6 +83,13 @@ export function CanvasHud() {
   var sectionNavVisible = useWorkbenchStore(function (s) { return s.sectionNavVisible; });
   var position = useWorkbenchStore(function (s) { return s.sectionNavPosition; });
   var current = useWorkbenchStore(function (s) { return s.sectionNavCurrent; });
+  // 导出钮只在离线导出能导的页上出（offline-export-scope.js，构建器同一口径）：文章画布页、
+  // 模板页（没有 site，不是登记条目）、非 ios 的条目都不出。manifest 页的 mode 由 entryBoardMode
+  // 派生，dir 条目只有 board 是 ios 时才是 'ios'，所以这里拿 mode 当 board。
+  var exportable = useWorkbenchStore(function (s) {
+    var page = pageEntry(s.pageManifest, s.activePageId);
+    return !!(page && page.site && offlineExportSupported(page.id, { kind: page.kind, board: page.mode }));
+  });
   var navLabel = (sectionNavOpen ? '关闭' : '打开') + ' Section Navigator'
     + (current ? '，当前 ' + current + '，' + position : '');
   return (
@@ -148,7 +157,7 @@ export function CanvasHud() {
           className="wb-hud-btn wb-hud-recenter h-7 px-2.5 text-[12px] font-semibold"
           onClick={function () { recenterBoard(); }}>回中</Button>
         {/* 导出单入口（decisions 2026-08-15d）：开 picker 对话框，本体在 ExportPicker.jsx */}
-        <Button type="button" variant="tool" id="wbexport-open" title="导出图片"
+        {exportable ? <Button type="button" variant="tool" id="wbexport-open" title="导出图片"
           className="wb-hud-btn wb-hud-export h-7 gap-[5px] px-2 text-[12px] font-semibold"
           onClick={function (e) {
             e.preventDefault();
@@ -157,7 +166,7 @@ export function CanvasHud() {
           }}>
           <WbIcon name="export-image" size={14} className="size-3.5" />
           导出
-        </Button>
+        </Button> : null}
       </div>
     </Fragment>
   );

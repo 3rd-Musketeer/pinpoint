@@ -131,7 +131,7 @@ test('collectOrphanCounts：按已知页计数（口径 = 行数，K7）；未�
   const counts = collectOrphanCounts({ entries, dataRoot, localIds: ['tpl-page'], root });
   assert.deepEqual(counts, { 'tpl-page': 0, 'site-a': 0, 'live-url': 0 });
   assert.deepEqual(collectBucketOrphans('ghost-page', dataRoot).sort(), ['@canvas.json', 'doc~1.json']);
-  // 孤儿计数的口径是行数：一本孤儿账本装 3 行就计 3，与 status --page 一致。
+  // 孤儿计数的口径是行数：一本孤儿账本装 3 行就计 3。
   writeLedger(path.join(dataRoot, 'site-a'), 'gone~9.json', {
     page: 'gone~9', path: '/sites/site-a/gone.html',
     annotations: [{ id: 'x1' }, { id: 'x2' }, { id: 'x3' }],

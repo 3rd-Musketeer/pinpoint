@@ -14,7 +14,7 @@ import { waitNoReload } from './site-settle.js';
 // notes：两节，“确认卡写清收款方”在两节里各出现一次，第一节有一张画布卡片（帧 pay-card）。
 // 改正文要动副本，不动仓内固件；用例结束把副本还原。
 //
-// 一个用例走完（Astro 冷启动只发生一次）：选字 → 评论 → 刷新仍在 → ppnt check 看得到 →
+// 一个用例走完（Astro 冷启动只发生一次）：选字 → 评论 → 刷新仍在 → ppnt comments 看得到 →
 // ppnt reply / mark 在右栏实时出现 → owner 回复回 open → 保存被拒时原文退回 → bfcache 返回、
 // SSE 断线后右栏照样同步 → 改折行仍定位 → 改正文后重新定位 → 引文没了标失效。
 
@@ -27,7 +27,7 @@ const LEDGER = path.join(E2E_DATA_DIR, PAGE_ID, '@prose.json');
 test.beforeEach(() => fs.rmSync(LEDGER, { force: true }));
 test.afterEach(async ({ page }) => { await closeSettled(page); });
 
-test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark → 改正文重新定位，引文没了标失效', async ({ page }) => {
+test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / mark → 改正文重新定位，引文没了标失效', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const original = fs.readFileSync(SOURCE, 'utf8');
@@ -116,20 +116,20 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
     });
 
     // CLI 的输出格式（引文、节、源文件行、reply / mark 的回显）由 bin/pinpoint-cli.test.js 的
-    // 「check <project>_<article>：正文评论单独成组」与 reply / mark 用例钉住（2026-10-13 测试
+    // 「comments <project>/<article>：正文评论单独成组」与 reply / mark 用例钉住（2026-10-13 测试
     // 清理）；这里只证明 CLI 读到的是浏览器刚写的账本、写回的东西实时出现在右栏。
-    await test.step('ppnt check <文章页 id>：读到浏览器写的两条正文评论', async () => {
-      const { stdout: out } = await ppnt(['check', PAGE_ID]);
+    await test.step('ppnt comments <文章页 id>：读到浏览器写的两条正文评论', async () => {
+      const { stdout: out } = await ppnt(['comments', PAGE_ID]);
       expect(out).toContain(`[#${first}] 收款方要写全称`);
       expect(out).toContain(`[#${second}] 这句太长`);
     });
 
     await test.step('ppnt reply：agent 的回复实时出现在线程里，状态不变；ppnt mark check 改状态', async () => {
-      await ppnt(['reply', `#${first}`, '已改成收款方全称', '--page', PAGE_ID]);
+      await ppnt(['reply', PAGE_ID, `#${first}`, '已改成收款方全称']);
       await expect(thread(first).locator('.msg .who')).toHaveText(['你', 'agent']);
       await expect(thread(first).locator('.msg .text').nth(1)).toHaveText('已改成收款方全称');
       await expect(thread(first)).toHaveAttribute('data-status', 'open');
-      await ppnt(['mark', `${PAGE_ID}#${first}`, 'check', '--page', PAGE_ID]);
+      await ppnt(['mark', `${PAGE_ID}#${first}`, 'check']);
       await expect(thread(first)).toHaveAttribute('data-status', 'check');
       await expect(thread(first).locator('.pp-st')).toHaveText('check');
     });
@@ -174,11 +174,11 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
 
     await test.step('从画布按“返回”（bfcache：pagehide → pageshow persisted）：漏掉的回复补上，之后的回复照常实时出现', async () => {
       await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pagehide', { persisted: true })));
-      await ppnt(['reply', `#${first}`, '离开期间的回复', '--page', PAGE_ID]);
+      await ppnt(['reply', PAGE_ID, `#${first}`, '离开期间的回复']);
       await page.evaluate(() => window.dispatchEvent(new PageTransitionEvent('pageshow', { persisted: true })));
       await expect(thread(first).locator('.msg .text').last()).toHaveText('离开期间的回复');
       await expect.poll(() => page.evaluate(() => window.__ppEventSources.filter((es) => es.readyState === 1).length)).toBe(1);
-      await ppnt(['reply', `#${first}`, '回来之后的回复', '--page', PAGE_ID]);
+      await ppnt(['reply', PAGE_ID, `#${first}`, '回来之后的回复']);
       await expect(thread(first).locator('.msg .text').last()).toHaveText('回来之后的回复');
     });
 
@@ -188,9 +188,9 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
         es.close();
         es.dispatchEvent(new Event('error'));
       });
-      await ppnt(['reply', `#${first}`, '断线期间的回复', '--page', PAGE_ID]);
+      await ppnt(['reply', PAGE_ID, `#${first}`, '断线期间的回复']);
       await expect(thread(first).locator('.msg .text').last()).toHaveText('断线期间的回复', { timeout: 10_000 });
-      await ppnt(['reply', `#${first}`, '重连之后的回复', '--page', PAGE_ID]);
+      await ppnt(['reply', PAGE_ID, `#${first}`, '重连之后的回复']);
       await expect(thread(first).locator('.msg .text').last()).toHaveText('重连之后的回复');
       await proseSettled(page);
     });
@@ -244,7 +244,7 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
         await thread(second).locator('textarea').fill('第二条的回复');
         await thread(second).getByRole('button', { name: '发送' }).click();
         await started;
-        await ppnt(['mark', `${PAGE_ID}#${first}`, 'done', '--note', '第一条改好了', '--page', PAGE_ID]);
+        await ppnt(['mark', `${PAGE_ID}#${first}`, 'done', '--note', '第一条改好了']);
         releaseHeld();
         await proseSettled(page);
         expect(saves, '扣住的那次撞 409，重放后再存一次').toBe(2);

@@ -69,7 +69,6 @@ test('boardRefs: doc 帧不占编号，board.json 原文（shell 只写在 secti
     sections: [
       { id: 'mech', shell: 'doc', screens: [{ id: 'm1' }] },
       { id: 'flow', screens: [{ id: 'a' }, { id: 'note', shell: 'doc' }, { id: 'b' }] },
-      { id: 'legacy', screens: [{ id: 'w', shell: 'web' }] },
     ],
   });
   assert.deepEqual(bySection, { flow: 'A' });

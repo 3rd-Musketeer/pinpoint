@@ -139,11 +139,6 @@ function readRegistryDoc(registryPath) {
   return doc;
 }
 
-/** Existing entry ids for id-derivation / collision checks (CLI). Throws on a malformed file. */
-export function listRegistryIds(registryPath) {
-  return readRegistryDoc(registryPath).entries.map((entry) => entry && entry.id);
-}
-
 /**
  * Existing entries as written on disk (CLI): id collision messages name the
  * path the id already points at, and `pinpoint move` needs the whole entry to

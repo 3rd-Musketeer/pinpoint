@@ -7,18 +7,12 @@
  * 纯函数、DOM-free。
  */
 
-/** True if the fragment already includes phone chrome (legacy full-shell files). */
-export function looksPhoneWrapped(html) {
-  return /\bios-stage\b/.test(html) || /\bios-device\b/.test(html);
-}
-
 /**
  * Wrap screen body in shared phone chrome.
  * Agent writes only in-screen content; loader owns stage/device/bezel/statusbar/home.
  * shell: "app" (default) | "lock"
  */
 export function wrapPhoneShell(bodyHtml, shell) {
-  if (looksPhoneWrapped(bodyHtml)) return bodyHtml;
   var screenClass = shell === 'lock' ? 'ios-screen ios-lock' : 'ios-screen';
   return (
     '<div class="ios-stage">' +
@@ -40,7 +34,6 @@ export function wrapPhoneShell(bodyHtml, shell) {
 
 /** Component Library: light board, no phone chrome. Still uses .ios-root for tokens/theme. */
 export function wrapCompStage(bodyHtml) {
-  if (looksPhoneWrapped(bodyHtml)) return bodyHtml;
   return (
     '<div class="wb-comp-stage">' +
       '<div class="ios-root" data-theme="light">' +

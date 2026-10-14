@@ -8,7 +8,7 @@
  * 保持干净；?annotate=off 单请求豁免（导出管线）；已带手工注入段的页面跳过
  * （客户端 __pinpoint 防双载是第二道网）。
  * storage-unify：注入带 entry 标记 = 该 previews 页自己的 id（桶 = 页），与
- * /sites/ 完全同形；存量账本（旧落缺省 pinpoint 桶）由迁移脚本搬到页桶。
+ * /sites/ 完全同形。
  */
 import fs from 'node:fs';
 import path from 'node:path';

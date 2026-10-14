@@ -57,22 +57,6 @@ export function isVisibleEnough(r, minPx) {
 }
 
 /**
- * Clamp a point into rect (inclusive left/top, exclusive of overflowing past right/bottom by keeping inside).
- * @param {number} x
- * @param {number} y
- * @param {[number,number,number,number]} r
- * @returns {[number, number]}
- */
-export function clampPointToRect(x, y, r) {
-  const maxX = r[0] + Math.max(0, r[2] - 1);
-  const maxY = r[1] + Math.max(0, r[3] - 1);
-  return [
-    Math.min(Math.max(x, r[0]), maxX),
-    Math.min(Math.max(y, r[1]), maxY),
-  ];
-}
-
-/**
  * Preferred badge anchor: top-right of clipped frame, clamped inside.
  * @param {[number,number,number,number]} local clipped overlay/viewport rect
  * @param {number} [badgeHalf] half badge size (default 11 for 22px badge)

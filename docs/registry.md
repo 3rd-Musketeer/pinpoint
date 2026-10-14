@@ -30,7 +30,7 @@
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表）。
 - `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。URL 页的内容修改时间未知。
-- 标注账本的 `page_updated_at` 保留逐页时间，新增、修改和删除标注都会更新；无变化或冲突拒绝的保存不更新。旧单页账本可使用保存时间，旧混合账本无法准确归属时留空。
+- `annotatedAt` 取这个页的桶里各账本 `updated_at` 的最近一次：新增、修改和删除标注都会更新；无变化或冲突拒绝的保存不更新。
 
 ## 分组层（文件夹）
 
@@ -272,13 +272,13 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 ### 目标和引用
 
-命令的第一个位置参数是目标，`--page <目标>` 是它的旧写法，照认。目标有这几种写法：
+命令的第一个位置参数是目标。目标有这几种写法：
 
-- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/?page=<页 id>`）和页 id `<project>_<article>` 都认，输出一律打斜杠形。
+- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/?page=<页 id>`）、页 id `<project>_<article>` 和工作台“复制 @page”给的 `@page:<页 id>` 都认，输出一律打斜杠形。
 - 一个 project：`<project>`。`show`、`check`、`comments` 接受它，`locate`、`mark`、`reply`、`build`、`shot` 不接受（标注和帧都在文章里）。
-- 存量页：它的 id。
+- 存量页：它的 id，或 `@page:<页 id>`。
 
-目标后面跟引用。节写 `§2`（文章页上的节号）、字母 `B` 或节 id；第 n 节就是第 n 个字母，纯文字的节也占一个，所以 `§2` 和 `B` 同义。帧写 `B1` 或帧 id。一条标注写 `#3`，或带上文章写 `<project>/<article>#3`。工作台“复制 @frame”给的 `@frame:<页 id>/<帧 id>` 也指一帧。带文章的标注引用和 `@frame:` 自己就是目标，这时可以不写第一个参数；写了目标而 `@frame:` 的页不是它，报错并说出 `@frame:` 指的是哪一篇，不去目标上找同名的帧。
+目标后面跟引用。节写 `§2`（文章页上的节号）、字母 `B` 或节 id；第 n 节就是第 n 个字母，纯文字的节也占一个，所以 `§2` 和 `B` 同义。帧写 `B1` 或帧 id。一条标注写 `#3`，或带上文章写 `<project>/<article>#3`。工作台“复制 @frame”给的 `@frame:<页 id>/<帧 id>` 也指一帧，`@section:<页 id>/<节 id>` 指一节（纯文字的节也算）。带文章的标注引用、`@frame:` 和 `@section:` 自己就是目标，这时可以不写第一个参数；写了目标而 `@frame:` 或 `@section:` 的页不是它，报错并说出它指的是哪一篇，不去目标上找同名的帧或节。`shot` 里写在目标后面的 `@page:<页 id>` 是整页引用，同写页 id。
 
 解析在 `bin/cli/address.js`：`parseAddress` 只看字面，`resolveAddress` 再对照 registry 和磁盘判断它是文章、project、存量页，还是不在的文章。像引用的写法（`#3`、`B1`、`§2`、`@a:…`）不会被当成目标。
 
@@ -325,7 +325,7 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 站点那一头，正文渲染出错时文章页的状态码不可靠：Astro 开发服务器边渲染边发，多数时候 200 已经发出，响应停在正文开头（`<div class="article-body">` 之后什么都没有）；少数时候是 500。所以查正文错误用 `check`，不用状态码。
 
-带 `--status`、`--frame`、`--mode`、`--group-by`，写成 `<目标>#n`，或目标写成页 id（`<project>_<article>`、存量页 id）时，`check` 列标注队列（同 `comments`），并在 stderr 打一行提示改用 `comments`。
+`check` 不读标注，读标注队列用 `comments`。目标是存量页时退 2，提示存量页用 `ppnt build <页 id>` 编译、用 `ppnt comments <页 id>` 读标注。
 
 ### `ppnt comments <目标>`：标注队列
 
@@ -343,8 +343,8 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 - 只写文章：文章页整页（1440 宽，按页面高度截全），存 `<数据目录>/shot/<页 id>/article.png`。
 - `§2`：文章页上第 2 节的 `<section>`，存 `article-<节 id>.png`。纯文字的节写字母或节 id 也截文章页。
-- `B1`、`B`、帧 id、节 id：画布视图上的帧或节，同以前。HTML 帧（文档条目）按自己的地址截 402 宽整页，存 `<帧 id>.png`。存量页不写引用就是整个画布。
-- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧各截一张整页（同上），画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
+- `B1`、`B`、帧 id、节 id：画布视图上的帧或节。HTML 帧（文档条目）按自己的地址截 402 宽整页，存 `<帧 id>.png`。存量页不写引用就是整个画布。
+- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧按自己的地址各截一张 402 宽整页，画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
 - `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
 
 文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。

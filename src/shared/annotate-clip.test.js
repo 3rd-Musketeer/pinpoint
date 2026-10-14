@@ -5,7 +5,6 @@ import {
   CLIP_MIN_PX,
   MARK_BOX_PAD_PX,
   badgePositionForRect,
-  clampPointToRect,
   clipByRects,
   expandRect,
   intersectRects,
@@ -50,11 +49,6 @@ test('isVisibleEnough respects CLIP_MIN_PX', () => {
   assert.equal(isVisibleEnough([0, 0, CLIP_MIN_PX, CLIP_MIN_PX]), true);
   assert.equal(isVisibleEnough([0, 0, CLIP_MIN_PX - 1, 10]), false);
   assert.equal(isVisibleEnough(null), false);
-});
-
-test('clampPointToRect keeps point inside', () => {
-  assert.deepEqual(clampPointToRect(-5, 50, [0, 0, 100, 100]), [0, 50]);
-  assert.deepEqual(clampPointToRect(150, 150, [0, 0, 100, 100]), [99, 99]);
 });
 
 test('badgePositionForRect stays near clipped frame', () => {

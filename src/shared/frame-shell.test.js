@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
-  looksPhoneWrapped,
   wrapCompStage,
   wrapFragmentForLibrary,
   wrapPhoneShell,
@@ -17,10 +16,8 @@ test('wrapPhoneShell wraps bare fragments in phone chrome with a stable stage ch
   assert.ok(out.includes('<div class="ios-home"></div>'));
 });
 
-test('wrapPhoneShell lock shell and already-wrapped pass-through', () => {
+test('wrapPhoneShell lock shell', () => {
   assert.ok(wrapPhoneShell('<div class="ios-app">x</div>', 'lock').includes('ios-screen ios-lock'));
-  const wrapped = '<div class="ios-stage"><div class="ios-root">y</div></div>';
-  assert.equal(wrapPhoneShell(wrapped, 'app'), wrapped);
 });
 
 test('wrapCompStage wraps without phone chrome', () => {
@@ -28,12 +25,6 @@ test('wrapCompStage wraps without phone chrome', () => {
   assert.ok(out.startsWith('<div class="wb-comp-stage">'));
   assert.ok(out.includes('<div class="ios-root" data-theme="light">'));
   assert.ok(!/ios-device/.test(out));
-});
-
-test('looksPhoneWrapped detects existing chrome', () => {
-  assert.ok(looksPhoneWrapped('<div class="ios-stage"></div>'));
-  assert.ok(looksPhoneWrapped('<div class="ios-device"></div>'));
-  assert.ok(!looksPhoneWrapped('<div class="ios-app"></div>'));
 });
 
 test('wrapFragmentForLibrary wraps bare html and passes fragments through', () => {

@@ -224,7 +224,7 @@ test('listDocs 跳过 _seq.json：聚合视图不多出 _seq 空文档（R6）',
   assert.deepEqual(Object.keys(docs), ['a.html.json']);
 });
 
-/* ---- storage-unify：@canvas 账本名 / page_updated_at 停写 ---- */
+/* ---- storage-unify：@canvas 账本名 / 账本只有现行键 ---- */
 
 test('@canvas 账本：文件名原样（不过 slug），doc.page 保持 @canvas', (t) => {
   const { dataDir, store } = withStore(t);
@@ -246,26 +246,14 @@ test('图片路径不再 slug：@canvas 前缀的图片名按原样命中', (t) 
   assert.equal(store.imagePath(image.file), path.join(dataDir, 'images', image.file));
 });
 
-test('page_updated_at 停写：保存与状态写入只透传存量映射，不新增条目', (t) => {
+test('账本只写现行键：保存与状态写入都不出 page_updated_at（页时间取 updated_at）', (t) => {
   const { dataDir, store } = withStore(t);
-  // page key 'index.html~1b' 的账本文件名是 slug 后的 index.html_1b.json。
-  const legacy = {
-    page: 'index.html~1b', path: '/index.html', revision: 2,
-    page_updated_at: { 'old-page': 111 },
-    annotations: [{ id: 'a1', n: 1, pageId: 'old-page', status: 'open', content: '存量' }],
-  };
-  fs.writeFileSync(path.join(dataDir, 'index.html_1b.json'), JSON.stringify(legacy));
-  const saved = store.save({ page: 'index.html~1b', baseRevision: 2, path: '/index.html', annotations: [...legacy.annotations, { id: 'a2', content: '新' }] });
-  assert.equal(saved.status, 200);
-  const onDisk = JSON.parse(fs.readFileSync(path.join(dataDir, 'index.html_1b.json'), 'utf8'));
-  assert.deepEqual(onDisk.page_updated_at, { 'old-page': 111 }, '映射原样保留');
-  const marked = store.setStatus({ page: 'index.html~1b', baseRevision: 3, id: 'a2', status: 'check' });
-  assert.equal(marked.status, 200);
-  const after = JSON.parse(fs.readFileSync(path.join(dataDir, 'index.html_1b.json'), 'utf8'));
-  assert.deepEqual(after.page_updated_at, { 'old-page': 111 }, '状态写入也不动映射');
-  // 全新账本从零保存：没有映射就一个也不写。
+  const file = path.join(dataDir, 'fresh.html.json');
   store.save({ page: 'fresh.html', baseRevision: 0, annotations: [{ id: 'f1', content: '新账本' }] });
-  assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, 'fresh.html.json'), 'utf8')).page_updated_at, undefined);
+  assert.deepEqual(Object.keys(JSON.parse(fs.readFileSync(file, 'utf8'))).sort(), ['annotations', 'page', 'path', 'revision', 'updated_at']);
+  const marked = store.setStatus({ page: 'fresh.html', baseRevision: 1, id: 'f1', status: 'check' });
+  assert.equal(marked.status, 200);
+  assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).page_updated_at, undefined);
 });
 
 test('R14：/save 无编辑的 → open 拒绝；编辑回 open 与 close 撤销照常放行', (t) => {

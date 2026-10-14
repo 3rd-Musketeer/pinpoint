@@ -45,8 +45,8 @@ ${ADDRESS}
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
 
 const REGISTRY_FLAG = '  --registry <路径>    用哪份登记表（缺省 PINPOINT_REGISTRY，再缺省 ~/.pinpoint/registry.json）';
-const TARGET_NOTE = `  目标是第一个参数：<project>/<article> 或存量页 id；--page <目标> 是旧写法，照认。
-  不写目标、引用里也没有 <project>/<article>#n 或 @frame:<页 id>/<帧 id> 时报错并列出候选，不猜。`;
+const TARGET_NOTE = `  目标是第一个参数：<project>/<article>、存量页 id，或 @page:<页 id>。
+  不写目标、引用里也没有 <project>/<article>#n、@frame:<页 id>/<帧 id> 或 @section:<页 id>/<节 id> 时报错并列出候选，不猜。`;
 
 /** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
 export const HELP = {
@@ -86,8 +86,7 @@ ${REGISTRY_FLAG}
   --json               结构化输出：{ target, ok, counts, articles, frames, figures, diagnostics: [{ severity, code, file, line, message, article?, section?, frame?, figure? }] }
 ${REGISTRY_FLAG}
 
-过渡期：带 --status / --frame / --mode / --group-by、写成 <目标>#n、或目标是页 id（<project>_<article>、
-存量页 id）时，照旧列标注队列，并提示改用 ppnt comments。`,
+读标注和正文评论用 ppnt comments。`,
   },
   comments: {
     usage: 'ppnt comments <目标> [--status open|check|done|close|all] [--frame <帧>] [--mode excerpt|image|both] [--group-by frame|component] [--json]',
@@ -118,7 +117,7 @@ ${REGISTRY_FLAG}
 编译帧到 dist（<数据目录>/dist/<页 id>/），每帧打 ok 或错误与耗时。文章的画布由 index.mdx 现派生。
 ${TARGET_NOTE.split('\n')[0]}
 
-  --frame <帧 id>      只编一帧（其余帧的记录保留）；--screen 是旧写法
+  --frame <帧 id>      只编一帧（其余帧的记录保留）
   --watch              编完后盯目录，改动自动重编（Ctrl-C 退出）
   --json               结构化输出：{ target, ok, ms, partial, frames, figures }；不和 --watch 同用
 ${REGISTRY_FLAG}
@@ -222,7 +221,8 @@ ${REGISTRY_FLAG}`,
 
 每条标注一行：#n → 源文件:行 · 组件（共用 n 帧）。正文评论落到 index.mdx 里引文所在的行；
 存量页的 HTML 帧给 dist 路径 + selector。
-引用：#12、#3-#7、B3（这一帧的全部标注）、B 或 §2（这一节）、帧 id、节 id、<project>/<article>#12、@a:<id>。
+引用：#12、#3-#7、B3（这一帧的全部标注）、B 或 §2（这一节）、帧 id、节 id、<project>/<article>#12、
+@frame:<页 id>/<帧 id>、@section:<页 id>/<节 id>、@a:<id>。
 ${TARGET_NOTE}
 
   --status <状态>      加上这个状态的全部标注（open | check | done | close | all）
@@ -279,11 +279,10 @@ open / check / done 计数 · 文件夹，次行源路径）。关键词在 id�
 ${REGISTRY_FLAG}`,
   },
   status: {
-    usage: 'ppnt status [--page <目标>]',
-    text: `用法：ppnt status [--page <目标>]
+    usage: 'ppnt status',
+    text: `用法：ppnt status
 
 服务体检：路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry · project · 文章站点；全绿才退 0。
-  --page <目标>        改报这一页的各状态计数、孤儿与 dist 是否过期（ppnt comments 的抬头有同样的计数）
   --json               结构化输出：体检的每一项和总结论
 ${REGISTRY_FLAG}
 
