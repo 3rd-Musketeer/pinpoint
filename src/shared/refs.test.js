@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { parseRefBody, resolveRef, extractRefs, namespaceErrors, refHtml, rawRefHtml, RAW_REF_RE, unesc } from './refs.js';
+import { parseRefBody, resolveRef, extractRefs, refsWithLines, namespaceErrors, refHtml, rawRefHtml, RAW_REF_RE, unesc } from './refs.js';
 
 const index = new Map([
   ['demo', { names: new Map([['确认卡', { kind: 'concept' }], ['payments', { kind: 'article' }]]) }],
@@ -32,6 +32,8 @@ test('[[ ]] names compare like the listProjects namespace check (case, surroundi
 test('extractRefs skips fenced and inline code, like the remark pass', () => {
   const src = 'a [[一]] `[[不算]]` b\n\n```js\nconst x = "[[也不算]]";\n```\n\n[[二|标签]]';
   assert.deepEqual(extractRefs(src), ['一', '二|标签']);
+  // 代码挖掉了，行号不变（ppnt check 报空 ref 的行号靠它）。
+  assert.deepEqual(refsWithLines(src), [{ line: 1, raw: '一' }, { line: 7, raw: '二|标签' }]);
 });
 
 test('article ids and concept names share one namespace per project', () => {
