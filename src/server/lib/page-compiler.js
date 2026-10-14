@@ -716,7 +716,7 @@ export async function compilePage(target, options = {}) {
     // 文章画布的 board 是派生物：写进编译产物，从不写回源目录（common-m1.md §2）。
     if (target.kind === 'article') fs.writeFileSync(path.join(outDir, 'board.json'), `${JSON.stringify(board, null, 2)}\n`);
     // 失败屏的旧产物必须删掉（review R1）：否则改坏一帧后 serve 拿改坏前的
-    // 画面顶班，错误面板、stale、mention 全部零信号。删了文件还不够 —— 读取侧
+    // 画面顶班，错误面板、stale、嵌入帧全部零信号。删了文件还不够 —— 读取侧
     // （readDistScreen）也改成 errors 优先，旧状态下的孤儿文件同样不能顶班。
     for (const screen of screens) {
       if (screen.ok) continue;

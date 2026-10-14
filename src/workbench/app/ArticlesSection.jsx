@@ -6,7 +6,7 @@
 //   选中态跟页面行一样从 activePageId 派生；没有画布 → 点了在新标签页打开正文。
 // - 行尾“阅读正文”钮：常态不出、不占标题宽度，hover / 键盘焦点进行时才现，在新标签页
 //   打开 `/<project>/<article>/`。这是 ADR 0024（行尾不挂 hover 钮）的一处例外，owner 点名要的。
-// - 不做归档、置顶、文件夹、拖放；文章画布也不进「最近」（最近只算 Pages 的页）。
+// - 不做归档、置顶、拖放；文章画布也不进「最近」（最近只算 Pages 的页）。
 // 数据：store.projects（pages.js loadProjects ← GET /api/projects），画布页是否认得看
 // manifest.articles。模型是 lib/article-groups.js 的纯函数。
 import { Fragment, useEffect, useMemo, useState } from 'react';

@@ -7,7 +7,7 @@ import { parseReqUrl } from './lib/req-url.js';
  *   图页、图的位置写错误原因。figure 与 embed=figure 必须一起写。
  * POST /api/figure-error { page, figure, builtAt, message, line? }：图页报上来的运行错误，记在这一版的
  *   编译记录上（pinpoint list 列出），只收同源请求。
- * 阶段 5：文档 mention 的活 frame 渲染端点。
+ * 单帧渲染端点（嵌入帧）：
  * fragment 屏 → 完整自包含 HTML（机壳 + ios-kit + frame-boot + annotate 注入，
  * 注入带 __pinpointFrame —— frame 内标注与画布同账本：storage-unify 起帧账本
  * 恒为所属页桶的 @canvas，不再跟顶层工作台 pathname 走，ledger 参数退役）；

@@ -80,7 +80,7 @@ export function boardHasCanvas(board) {
 }
 
 /** 工作台渲染不渲染 #wbtabbar（2026-10-14）：有 ≥ 2 个 tab 就渲染，条目是什么类型都一样；
- *  不到 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。单 tab 的纯文档页和 url 页不渲染。 */
+ *  不到 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。单 tab 的纯文档页不渲染。 */
 export function boardShowsTabBar(board) {
   return boardTabList(board).length >= 2 || boardHasCanvas(board);
 }

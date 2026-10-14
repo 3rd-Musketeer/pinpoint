@@ -1,5 +1,5 @@
 /**
- * Frame-scoped anchor normalization (阶段 5 文档 mention 活 frame + 标注双向透传).
+ * Frame-scoped anchor normalization（画布、/api/frame 嵌入页与导出快照共用一套锚点）.
  *
  * 锚点事实（src/client/annotate.js cssPath）：标注 selector 是「所在文档的绝对 CSS
  * 路径」，`tag.cls:nth-of-type(n)` 段链向上走到 body，遇 id 短路。画布上它穿过

@@ -21,7 +21,7 @@ test('bucket = page: the ledger\'s updated_at is the page time; saves move it', 
   assert.deepEqual(annotationPageTimes(dir, 'demo-page'), { 'demo-page': 2000 }, '桶内取最近一次保存');
 });
 
-test('bucket = page: renamed bucket and mixed host+attach bucket both get annotatedAt (K3)', (t) => {
+test('bucket = page: renamed bucket and a bucket holding rows of two pageIds both get annotatedAt (K3)', (t) => {
   // rename 后：行上 pageId 还是旧 id，桶已改名 —— 时间记给桶，页时间不断档；
   // 旧 id 不再造时间。
   const renamed = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-renamed-'));
@@ -32,7 +32,7 @@ test('bucket = page: renamed bucket and mixed host+attach bucket both get annota
   }));
   assert.deepEqual(annotationPageTimes(renamed, 'fresh-page'), { 'fresh-page': Date.parse('2026-03-01T00:00:00.000Z') });
 
-  // 宿主 + 挂靠混合桶：两种 pageId 的行同住一个桶，宿主页拿得到时间。
+  // 混合桶：两种 pageId 的行同住一个桶（老数据），时间一律记给桶。
   const mixed = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-mixed-'));
   t.after(() => fs.rmSync(mixed, { recursive: true, force: true }));
   fs.writeFileSync(path.join(mixed, '@canvas.json'), JSON.stringify({
@@ -40,8 +40,8 @@ test('bucket = page: renamed bucket and mixed host+attach bucket both get annota
     annotations: [{ id: 'h1', n: 1, pageId: 'host', status: 'open', content: '宿主行' }],
   }));
   fs.writeFileSync(path.join(mixed, 'doc~1.json'), JSON.stringify({
-    page: 'doc~1', path: '/sites/attach-x/doc.html', revision: 1, updated_at: '2026-03-03T00:00:00.000Z',
-    annotations: [{ id: 'a1', n: 2, pageId: 'attach-x', status: 'open', content: '挂靠条目的文档行' }],
+    page: 'doc~1', path: '/sites/other-x/doc.html', revision: 1, updated_at: '2026-03-03T00:00:00.000Z',
+    annotations: [{ id: 'a1', n: 2, pageId: 'other-x', status: 'open', content: '另一个 pageId 的文档行' }],
   }));
   assert.deepEqual(annotationPageTimes(mixed, 'host'), { host: Date.parse('2026-03-03T00:00:00.000Z') }, '桶内取最近一次保存');
 });

@@ -224,7 +224,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 - 只写文章：文章页整页（1440 宽，按页面高度截全），存 `<数据目录>/shot/<页 id>/article.png`。
 - `§2`：文章页上第 2 节的 `<section>`，存 `article-<节 id>.png`。纯文字的节写字母或节 id 也截文章页。
 - `B1`、`B`、帧 id、节 id：画布视图上的帧或节。HTML 帧（文档条目）按自己的地址截 402 宽整页，存 `<帧 id>.png`。存量页不写引用就是整个画布。
-- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧各截一张整页（同上），画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
+- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧按自己的地址各截一张 402 宽整页，画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
 - `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
 
 文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。

@@ -113,7 +113,7 @@ function siteSrcToAbsPath(src, registry) {
 }
 
 /**
- * 解析 mention 目标。返回两类之一：
+ * 解析嵌入帧目标。返回两类之一：
  *   { kind: 'doc', url, pageId, screenId, title }                       — 端点 302
  *   { kind: 'fragment', pageId, screenId, title, shell, section, sectionLabel,
  *     ref, entry, baseUrl, fragmentPath }                                — 端点组装
@@ -247,7 +247,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
   // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页，
-  // 账本固定 @canvas —— 画布实例与 mention 实例读写
+  // 账本固定 @canvas —— 画布实例与嵌入帧实例读写
   // 同一本账，双向实时同步靠的就是这个同桶同账本。
   if (entry.kind === 'dir' && diskBoard && !src) {
     const pageDir = path.resolve(entry.path);

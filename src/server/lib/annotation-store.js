@@ -15,7 +15,7 @@ export { annotationSlug };
 
 export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
 
-/** 画布账本的固定名（storage-unify）：一页的画布 + mention 帧标注住
+/** 画布账本的固定名（storage-unify）：一页的画布 + 嵌入帧标注住
  *  `<pageId>/@canvas.json`。`@` 不在 annotationSlug 的保字符集里，所以这个
  * 名字走专用通道（ledgerKey），绝不过 slug —— 过了会变成 `_canvas.json`，
  * 客户端（PAGE='@canvas'）与服务端各写一个文件。

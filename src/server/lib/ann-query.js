@@ -3,7 +3,7 @@
  * storage-unify 起读模型换成桶 = 页）。
  *
  * 数据从哪来（读侧，无副作用）：
- * - 帧标注：本页桶里的 @canvas 账本（画布与 mention frame 共用这一本），
+ * - 帧标注：本页桶里的 @canvas 账本（画布与 /api/frame 嵌入帧共用这一本），
  *   行带 pageId / screenId；
  * - 文档标注：同一桶里按路径分的其余账本（/sites/<id>/ 与 /previews/ 直开页）；
  * - 正文评论（pp3）：article 页桶里的 @prose 账本，行 type 'prose'（引文 +
