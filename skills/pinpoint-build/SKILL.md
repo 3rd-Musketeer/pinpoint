@@ -5,7 +5,7 @@ description: 在 pinpoint 里写 article（设计文档）：建 project、写 i
 
 # pinpoint-build
 
-新工作都写成 article（文章）：一个 project 下有多篇文章，一篇文章由 section（节）组成，一节里可以放一个画布组件 `<Canvas>`，画布里列出这一节的帧。正文里还可以放图 `<Figure>`：帧画界面的样子，进画布视图、给 owner 标注；图讲一件事怎么运转，只在正文里。每篇文章有两个看法：读者看的文章页 `/<project>/<article>/`，和把所有带画布的节按行排开、集中修改用的画布视图。本 skill 讲文件放在哪、怎么写、怎么查错；文章内容怎么写不归本 skill 管。
+新工作都写成 article（文章）：一个 project 下有多篇文章，一篇文章由 section（节）组成，一节里可以放一个画布组件 `<Canvas>`，画布里列出这一节的帧。正文里还可以放图 `<Figure>`：帧画界面的样子，进画布视图、给 owner 标注；图讲一件事怎么运转，只在正文里。每篇文章有两个看法：读者看的文章页 `/<project>/<article>/`，和把所有带画布的节按行排开、集中修改用的画布视图。本 skill 讲文件放在哪、怎么写、怎么查错，以及画哪些帧（第 3 节“画哪些帧”）；正文的文字怎么写不归本 skill 管。
 
 读标注、处理正文评论走 [`pinpoint-annotate`](../pinpoint-annotate/SKILL.md)。命令里 `ppnt` 和 `pinpoint` 是同一个入口。机制的权威：project、画布视图、页 id 与错误在 [`docs/projects.md`](../../docs/projects.md)；帧、组件、编译在 [`docs/board-schema.md`](../../docs/board-schema.md)；`Section`、`Canvas`、`[[ ]]` 的站点写法在 [`site/README.md`](../../site/README.md)；词的意思在 [`CONTEXT.md`](../../CONTEXT.md)。
 
@@ -76,11 +76,18 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 - `Section`、`Canvas`、`Figure` 由站点提供，不用 import。
 - `Section` 的 `id` 必填，在本篇内唯一。它同时是网页里的锚点和画布视图里这一行的 id。Section 不能嵌套；`##` 小标题不是节。
 - 两套号按同一个顺序数。文章页显示节号 1、2、3；画布视图、`ppnt` 和标注用编号：节字母 A、B、C 加节内帧序号，如 `C2` 是第 3 节的第 2 帧。全部 Section 一起数，纯文字的节也占一个号和一个字母，所以第一节是纯文字时，画布视图从 B 开始。正文里不写字母编号。
-- `Canvas` 写在 Section 里，一节最多一个。`frames` 写字面量数组，每一项是本篇目录下某个 `<帧 id>.jsx` 的 id。没有 Canvas 的节不进画布。
+- `Canvas` 写在 Section 里，一节最多一个。`frames` 写字面量数组，每一项是本篇目录下一个帧的 id（`<帧 id>.jsx` 或 `<帧 id>.html`），或 HTML 帧的 `{ id, src }`（见本节最后一条）。没有 Canvas 的节不进画布。
 - `frames` 不能引别的文章或存量页的帧（`"<页 id>/<帧 id>"` 会报错）。要用别处的帧，把帧文件和它 import 的组件复制进本篇目录。
 - `Canvas` 可以带字面量 `shell`：`app`（缺省，手机壳）、`lock`、`doc`、`comp`（裸组件，不带机壳）。它管这一节的所有帧。
-- 同一个界面要比较几种做法：在同一节里多放几帧并排，选定以后删掉落选的帧。没有专门的变体机制。
 - 生成出来的整份网页也能当帧（HTML 帧）：本篇目录下的 `<帧 id>.html` 直接写 id；页面在 project 根下别处，写 `{ id: "catalog", src: "<相对 project 根的路径>" }`；在 project 根外面（比如另一个仓里的示例页），先在 `project.json` 的 `sources` 里给那个目录起个名字（`"sources": { "skill": "<目录>" }`），再写 `src: "skill:preview.html"`。文件都留在原处，不复制。页面里的相对资源照原样取，断了的 `ppnt check` 会报。卡片和浮层按手机 402 和桌面 1280 两种宽度看，页面里不用放宽度切换；画布视图里它是文档条目，owner 标注页面里的元素。规则见 docs/projects.md“HTML 帧”。
+
+### 画哪些帧
+
+- 一个界面状态画一帧。
+- 同一个界面要比较几种做法：在同一节里多放几帧并排，选定以后删掉落选的帧。没有专门的变体机制。
+- 画“现状”（产品今天长什么样）用真机截图，不凭记忆重画：截图放进 `assets/`，用一帧显示它，这一帧写 `export const shell = "comp";`，截图自带状态栏，不再套机壳。
+- 边界情况（corner case）先在对话里列出分歧和选项，和 owner 对齐；owner 定了以后每条画一帧。
+- 容易搞错的情况要画对比：正确和容易做错的两种各占一节，上下两行并排，同一步放在同一列，两行只有落点（这一步最后停在哪里）不同。
 
 ### 图（`<Figure>`）
 
@@ -93,10 +100,10 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 
 ## 4. 帧和组件
 
-帧的写法和存量页相同，全文在 board-schema。写文章时要守的是这些：
+JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成的整份页面，不编译，下面这些只管 JSX 帧和组件：
 
 - 一帧是一个 `<帧 id>.jsx`，默认导出一个返回 JSX 的函数。文件顶层只允许 `import`、`function` 声明、`export default`，再加可选的一行 `export const shell = "comp";`。
-- lint 四禁，违反了 `ppnt build` 直接失败并报文件与行：帧和组件里 `import preact/hooks`、`onX` 事件属性、`fetch(`，以及帧文件顶层的其他语句。一个状态画一帧。
+- lint 四禁，违反了 `ppnt build` 直接失败并报文件与行：帧和组件里 `import preact/hooks`、`onX` 事件属性、`fetch(`，以及帧文件顶层的其他语句。
 - iOS 帧：根元素是 `.ios-app`（锁屏是 `.ios-lockscreen`），正文写在里面；机壳、状态栏、home 条由 loader 提供，帧里不写。`.ios-sheet`、`.ios-tabbar`、`.ios-sheet-backdrop` 与 `.ios-app` 同级，不放进 `.ios-app`。自定义顶栏和底栏的 inset 用 `--ios-safe-top` / `--ios-safe-bottom`，不写死像素。原因和症状见 board-schema“iOS 帧的硬约束”，画打开的 sheet 要写的 `open` 和 sheet 的内部结构也在那一节。
 - 一节里混着手机帧和裸组件帧时，在组件帧的文件顶层写 `export const shell = "comp";`。它只管这一帧，盖过 `<Canvas shell>`。不写的话，这一帧会被套进手机壳，工作台上显示 `ContractError … expected an ios-app` 的错误面板。
 - 文章没有 board.json，也就没有 board 里的 `comp` + `props` 条目。要展示组件的某个状态，就写一帧只渲染这个组件（`return <CardState state="approve" />;`），再加上帧级 shell。
@@ -160,5 +167,5 @@ boundary: 一句话说清它管什么、不管什么。
 
 - 帧和组件的写法与第 4 节相同。存量页的组件在 `<存量页目录>/components/`，没有 project 这一层；页级资源登记在 board.json 的 `assets`。
 - 新帧要登记进 board.json 的 `sections[].screens`。存量页没有 `check`：改完跑 `ppnt build <页 id>` 到全绿，`ppnt show <页 id>` 看编号对照，`ppnt shot <页 id> B1` 截图。
-- board 的字段、`shell: "comp"` 的组件墙、goto 见 board-schema；页内 tab 见 ADR 0041，多 tab 页上位置引用写 `flow:B3`；组件页与交互页的分法见 ADR 0040。
+- board 的字段、`shell: "comp"` 的组件墙、goto 见 board-schema；页内 tab 见 ADR 0041，多 tab 页上位置引用写 `flow:B3`。
 - 往 tracked 目录里放实例内容之前，先读 board-schema“模板与实例”：实例页住你自己的目录，经 `pinpoint add` 登记。

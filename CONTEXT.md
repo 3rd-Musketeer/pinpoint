@@ -6,7 +6,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 ## 文章模型
 
-从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件，画布组件列出这一节的帧。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
+从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
 一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
@@ -77,16 +77,20 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：把空 ref 当错误去删。
 
 **画布标注** · 画布视图上的标注客户端 `src/client/annotate.js`；账本 `@canvas.json`
-owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置；HTML 帧没有编译这一步，锚点是元素的 CSS 路径加元素文字，`ppnt comments` 照样给出源文件和行。每条标注都有线程：agent 改完用 `ppnt mark … done --note "<改了什么>"` 一步回复并写状态，owner 在工作台的标注列表和标注框里看到。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
+owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置。HTML 帧上的标注是文档页标注，见下一条。每条标注都有线程：agent 改完用 `ppnt mark … done --note "<改了什么>"` 一步回复并写状态，owner 在工作台的标注列表和标注框里看到。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
 要避开：“批注”；把正文评论也叫画布标注。
+
+**文档页标注** · 同一个标注客户端；账本按页面路径分本（`<文件>~<hash>.json`，规则在 `src/shared/annotate-page-key.js`）
+钉在一整份 HTML 页面里的元素上的标注：文章的 HTML 帧在画布视图里是文档条目，owner 选中它、按 A 标注；存量页的文档条目（`shell: "doc"` 的屏、HTML 文件页）也是这样。HTML 帧不编译，没有 `data-pp-id`，锚点是元素的 CSS 路径加元素文字；`ppnt comments` 把它归到所在的帧下面，摘录给出那份 HTML 源文件和行。改它就改那份 HTML：本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件。线程、`#n` 和状态机与画布标注相同。
+要避开：以为它只属于存量页；去找 dist 里的产物改（HTML 帧没有 dist）。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`
 owner 在文章页上选中一段正文写下的评论，出现在右边评论栏。锚点是引文（选中文字加前后文），正文改了以后每次按引文重新定位，找不到就标“失效”：这是显示标记，不是状态，失效的评论照常回复、写状态。每条评论是一个线程：owner 的第一句加之后 owner 与 agent 的来回；agent 用 `ppnt reply` 回复，回复不改状态。
-要避开：把“失效”说成已解决；“文档标注”（那是存量页上按路径分本的账本）。
+要避开：把“失效”说成已解决；把正文评论叫“文档页标注”（那是钉在 HTML 页面元素上的标注）。
 
-**标注队列** · 一个桶里的全部画布标注和正文评论
-同一篇文章的画布标注和正文评论排在一个队列里：一套 `#n` 序号、一个状态机，`ppnt comments <project>/<article>` 一次列出两种。CLI 和字段名里“标注”泛指队列里的每一条；只说其中一种时写“画布标注”或“正文评论”。
-要避开：以为两种各有各的序号。
+**标注队列** · 一个桶里的全部条目
+同一篇文章的画布标注、文档页标注和正文评论排在一个队列里：一套 `#n` 序号、一个状态机，`ppnt comments <project>/<article>` 一次列出全部。CLI 和字段名里“标注”泛指队列里的每一条；只说其中一种时写“画布标注”“文档页标注”或“正文评论”。
+要避开：以为每种各有各的序号。
 
 **标注状态** · 状态色 `src/shared/ann-status.js`；转换校验在服务端
 每一条有四态：open（owner 写下）→ check（agent 看了、不改）或 done（agent 改完）→ close（owner 点完成，可撤销）。agent 只经 `ppnt mark` 写 check / done；owner 编辑正文、目标，或在线程里回复，条目自动回 open；close 只由 owner 点。pending 指 open、check、done 三态，都在等 owner 验收。
@@ -97,7 +101,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把锚点后缀写成 `#`。
 
 **桶与账本** · 桶 `~/.pinpoint/<页 id>/`（数据根可由 `PINPOINT_DATA_DIR` 覆盖）；账本文件名规则 `src/shared/annotate-page-key.js`
-桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里固定两本，`@canvas.json`（画布标注）和 `@prose.json`（正文评论）；存量页的文档和网页按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
+桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里有 `@canvas.json`（画布标注）和 `@prose.json`（正文评论），有 HTML 帧时每个页面路径另有一本（文档页标注）；存量页的文档条目同样按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
@@ -115,7 +119,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把 kit 当成产品本身。
 
 **源码与 dist** · dist 在 `~/.pinpoint/dist/<页 id>/`；编译器 `src/server/lib/page-compiler.js`
-源码是作者写的帧、组件、样式（以及存量页的 `board.json` 和 `.html` 帧）。dist 是 `ppnt build` 编出的静态 HTML 帧，不进 git，不放回源目录。画布、标注、截图、卡片只读 dist；dist 落后时重编，不手改。
+源码是作者写的帧、组件、图和样式（以及存量页的 `board.json` 和 `.html` 片段帧）。JSX 帧、图和存量页的片段帧由 `ppnt build` 编成 dist 里的静态 HTML，不进 git，不放回源目录；画布、卡片、画布标注和截图读 dist，dist 落后时重编，不手改。文章的 HTML 帧不编译，服务直接给源文件。
 要避开：拿“产物”单说 dist（存量页的大纲里“产物”另有所指，见存量页一节）。
 
 **registry（登记表）** · `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；读 `src/server/lib/registry.js`，写 `src/server/lib/registry-store.js`
@@ -123,7 +127,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：手改 registry 文件。
 
 **登记过才注入** · 注入片段 `src/server/lib/annotate-snippet.js`
-标注客户端是服务注入到网页里的一段脚本，画布标注的工具和正文评论栏都由它提供。它只注入登记过的目标：文章页（只跑正文评论）、画布视图、`/sites/` 下的存量页。其余 URL 返回逐字节相同、没有标注面的页面；`?annotate=off` 让单次请求不带客户端（卡片、浮层、导出走这条）。
+标注客户端是服务注入到网页里的一段脚本，画布标注的工具和正文评论栏都由它提供。它只注入登记过的目标：文章页（只跑正文评论）、画布视图（含其中的 HTML 帧）、`/sites/` 下的存量页。其余 URL 返回逐字节相同、没有标注面的页面；`?annotate=off` 让单次请求不带客户端（卡片、浮层、导出走这条）。
 要避开：往没登记的页面手工插 `/annotate.js`。
 
 **`/sites/<页 id>/`** · `src/server/sites-api.js`、url 条目代理 `src/server/lib/site-proxy.js`
@@ -195,7 +199,3 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 **mention 与 embed** · 文档里写 `<div data-pinpoint-frame="<页 id>/<帧 id>"></div>`
 存量页的文档条目引用一个活帧（mention），客户端把它变成指向 `/api/frame` 的 iframe（embed）。帧上的标注在画布和文档两边都看得到。
 要避开：把 mention 说成截图或副本。
-
-**REV** · 无实现（ADR 0013）
-按字母递增的页面版次加更改栏，是一项设计储备，没有实现。
-要避开：把 REV 当现有功能。
