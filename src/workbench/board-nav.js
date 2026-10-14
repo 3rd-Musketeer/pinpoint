@@ -473,6 +473,11 @@ export function rebuildSectionNavigator(panel) {
   setMinimapOpen(wbGet().minimapOpen);
 }
 
+/** 逐帧重量还在进行（e2e 等“重试用完”用的可观察信号，见 window.workbench）。 */
+export function sectionNavRetrying() {
+  return sectionNavRetryRaf !== 0;
+}
+
 /** 板里有 section 却量不出几何：下一帧再量，量到了（或板换掉、次数用完）就停。
  *  量到时 updateMinimapAvailability 会顺手把导航条目补上。 */
 function retryUnmeasuredBoard(panel, framesLeft) {

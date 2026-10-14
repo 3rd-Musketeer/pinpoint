@@ -20,6 +20,7 @@ import {
   focusWorkbenchFrame,
   isTypingTarget,
   resetBoardNavOnLoadFailure,
+  sectionNavRetrying,
   selectBoardFrame,
   selectBoardSection,
   setFrameRevealer,
@@ -322,6 +323,8 @@ window.workbench = {
   // 只刷左栏、不重装板，代号不变 —— e2e 拿它作「板没重装」的正向信号，
   // 不用再靠固定等待猜「没发生重装」。
   mountGeneration: function () { return mountManager.generation; },
+  // Section Navigator 在板装载后量不出几何时逐帧重量（board-nav.js）；true = 还在重量。
+  sectionNavRetrying: sectionNavRetrying,
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },
