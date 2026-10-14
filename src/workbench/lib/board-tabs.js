@@ -99,9 +99,3 @@ export function tabIdOfSection(board, sectionId) {
   }
   return '';
 }
-
-/** 位置号（A / B3）在多 tab 页上带 tab 前缀：`flow:B3`；单 tab / 存量页原样。 */
-export function qualifyRef(board, tabId, ref) {
-  if (!ref || !tabId || !isMultiTab(board)) return ref || '';
-  return tabId + ':' + ref;
-}

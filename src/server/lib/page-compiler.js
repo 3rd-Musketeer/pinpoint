@@ -784,13 +784,6 @@ export function readFigureRecord(distRoot, entryId, id) {
   }
 }
 
-/** 错误文本里第一个 `<file>:<行>` 的行号（file 是文章目录相对路径）；没有返回 null。 */
-export function errorLineIn(message, file) {
-  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const m = String(message || '').match(new RegExp(`${escaped}:(\\d+)`));
-  return m ? Number(m[1]) : null;
-}
-
 /**
  * 编译一个图（不落盘）：figures/<id>.jsx 按帧的同一套规则编（esbuild + lint 四禁 + 渲染成 HTML，
  * 组件和 pinpoint/kit 照帧的解析序；图里写 ../components/X.jsx），sidecar figures/<id>.js 在

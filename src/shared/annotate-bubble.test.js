@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert';
-import { bubbleCss, bubbleInnerHtml, bubbleHtml } from './annotate-bubble.js';
+import { bubbleCss, bubbleInnerHtml } from './annotate-bubble.js';
 
 test('bubbleCss returns a non-empty CSS string with the bubble rules', () => {
   const css = bubbleCss();
@@ -30,10 +30,4 @@ test('bubbleInnerHtml puts the cap in a mono eyebrow, and skips it when absent',
 test('bubbleInnerHtml shows an empty placeholder for no content', () => {
   const noContent = bubbleInnerHtml({ n: 3, content: '' });
   assert.ok(noContent.includes('ann-bubble-empty'));
-});
-
-test('bubbleHtml wraps the inner markup with a data-n bubble div', () => {
-  const full = bubbleHtml({ n: 7, content: 'x' });
-  assert.ok(full.startsWith('<div class="ann-bubble" data-n="7">'));
-  assert.ok(full.endsWith('</div>'));
 });

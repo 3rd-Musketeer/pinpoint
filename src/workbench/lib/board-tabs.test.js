@@ -7,7 +7,6 @@ import {
   flattenTabs,
   hasRawTabs,
   isMultiTab,
-  qualifyRef,
   resolveTabId,
   tabIdOfScreen,
   tabIdOfSection,
@@ -55,9 +54,6 @@ test('isMultiTab: 一个 tab 不算多 tab（位置号不带前缀；分享页�
   assert.equal(boardTabList(one).length, 1);
   assert.equal(isMultiTab(one), false);
   assert.equal(isMultiTab(TABBED), true);
-  assert.equal(qualifyRef(one, 'only', 'A1'), 'A1');
-  assert.equal(qualifyRef(TABBED, 'flow', 'A1'), 'flow:A1');
-  assert.equal(qualifyRef({ sections: [] }, '', 'A1'), 'A1');
 });
 
 test('resolveTabId / boardForTab: 非法或缺省落第一个 tab，视图只留活动 tab 的 section', () => {

@@ -60,11 +60,3 @@ export function bubbleInnerHtml(m) {
     + (cap ? '<span class="ann-bubble-ref">' + escHtml(cap) + '</span>' : '')
     + '</div>' + body + replies;
 }
-
-/** Full bubble wrapper as a string (export use). Live uses bubbleInnerHtml on its own node. */
-export function bubbleHtml(m) {
-  var n = (m && m.n) != null ? m.n : '';
-  return '<div class="ann-bubble" data-n="' + escHtml(n) + '">'
-    + bubbleInnerHtml(m)
-    + '</div>';
-}

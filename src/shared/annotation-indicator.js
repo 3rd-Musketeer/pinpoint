@@ -116,35 +116,6 @@ export function targetContentToStorage(text, targets) {
     });
 }
 
-export function removeTargetContentRef(text, ref) {
-  const number = targetRefNumber(ref);
-  if (!number) return String(text || '');
-  const escapedRef = String(ref).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return String(text || '')
-    .replace(new RegExp(`\\[@t:${escapedRef}\\]`, 'gi'), '')
-    .replace(new RegExp(`\\[indicator\\s+${number}\\]`, 'gi'), '')
-    .replace(new RegExp(`\\[missing indicator\\s+${escapedRef}\\]`, 'gi'), '')
-    .replace(/[ \t]{2,}/g, ' ')
-    .replace(/\s+([,.;:!?，。；：！？])/g, '$1')
-    .trimStart();
-}
-
-export function formatPageIndicator(pageId) {
-  return `@page:${String(pageId || '').trim()}`;
-}
-
-export function formatSectionIndicator(pageId, sectionId) {
-  return `@section:${String(pageId || '').trim()}/${String(sectionId || '').trim()}`;
-}
-
-export function formatFrameIndicator(pageId, screenId) {
-  return `@frame:${String(pageId || '').trim()}/${String(screenId || '').trim()}`;
-}
-
-export function formatAnnotationIndicator(id) {
-  return `@a:${String(id || '').trim()}`;
-}
-
 /**
  * @returns {{ kind: 'page'|'section'|'frame'|'annotation', pageId?: string, sectionId?: string, screenId?: string, id?: string } | null}
  */
@@ -159,26 +130,6 @@ export function parseIndicator(text) {
   m = raw.match(new RegExp(`^@a:(${ID_RE})$`));
   if (m) return { kind: 'annotation', id: m[1] };
   return null;
-}
-
-/** True when annotation `a` falls under parsed indicator `ind`.
- * Scope kinds (@page/@section/@frame) require a.pageId === ind.pageId.
- * Annotations missing pageId never match a scope indicator (no cross-page soft match).
- */
-export function annotationMatchesIndicator(a, ind) {
-  if (!a || !ind) return false;
-  if (ind.kind === 'annotation') return !!ind.id && a.id === ind.id;
-
-  if (!ind.pageId || !a.pageId || a.pageId !== ind.pageId) return false;
-  if (ind.kind === 'page') return true;
-  if (ind.kind === 'section') {
-    const section = a.section;
-    return !!ind.sectionId && section === ind.sectionId;
-  }
-  if (ind.kind === 'frame') {
-    return !!ind.screenId && a.screenId === ind.screenId;
-  }
-  return false;
 }
 
 /**
@@ -228,38 +179,4 @@ export function normalizeDoc(doc, pageSlug) {
     revision: doc && Number.isInteger(doc.revision) && doc.revision >= 0 ? doc.revision : 0,
     annotations,
   };
-}
-
-/**
- * Best indicator to copy for an open annotation box.
- * Uses optional indicatorKind: 'page' | 'section' | 'frame' | 'annotation'.
- * When `persisted` is false, never emit `@a:` (unsaved id is not on disk yet) —
- * fall back to the best available scope indicator.
- */
-export function indicatorForAnnotation(a, fallbackPageId, opts) {
-  if (!a) return '';
-  const pageId = a.pageId || fallbackPageId || '';
-  const kind = a.indicatorKind || 'annotation';
-  const section = a.section;
-  const persisted = !opts || opts.persisted !== false;
-
-  function scopeFallback() {
-    if (pageId && section) return formatSectionIndicator(pageId, section);
-    if (pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-    if (pageId) return formatPageIndicator(pageId);
-    return '';
-  }
-
-  if (!persisted) {
-    if (kind === 'page' && pageId) return formatPageIndicator(pageId);
-    if (kind === 'section' && pageId && section) return formatSectionIndicator(pageId, section);
-    if (kind === 'frame' && pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-    return scopeFallback();
-  }
-
-  if (kind === 'page' && pageId) return formatPageIndicator(pageId);
-  if (kind === 'section' && pageId && section) return formatSectionIndicator(pageId, section);
-  if (kind === 'frame' && pageId && a.screenId) return formatFrameIndicator(pageId, a.screenId);
-  if (a.id) return formatAnnotationIndicator(a.id);
-  return '';
 }

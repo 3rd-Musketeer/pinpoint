@@ -13,7 +13,6 @@ import {
   frameTokens,
   neutralizePreviewScripts,
   resolveFrameTarget,
-  stripScripts,
 } from './frame-doc.js';
 import { ensureAnnotateBundle } from './annotate-bundle.js';
 
@@ -125,10 +124,6 @@ test('neutralizePreviewScripts makes preview scripts inert and keeps contract at
   // 非预览脚本不动
   const keep = neutralizePreviewScripts('<script>window.a=1</script>');
   assert.equal(keep, '<script>window.a=1</script>');
-});
-
-test('stripScripts removes all script tags', () => {
-  assert.equal(stripScripts('<div>a</div><script>x()</script><script type="module">y()</script>'), '<div>a</div>');
 });
 
 test('framePageHtml: self-contained document with identity injection and inert preview scripts', async () => {

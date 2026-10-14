@@ -38,9 +38,9 @@ check:
 
 # Run all browser stories in two isolated groups.
 e2e-parallel:
-    npm run test:e2e:parallel
+    npm run test:e2e
 
-# Run browser stories serially, including isolated performance measurements.
+# Run all browser stories in one group with one server, one spec after another.
 e2e-serial:
     npm run test:e2e:serial
 

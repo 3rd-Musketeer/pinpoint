@@ -5,11 +5,6 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import {
-  formatPageIndicator,
-  formatSectionIndicator,
-  formatFrameIndicator,
-  formatAnnotationIndicator,
-  indicatorForAnnotation,
   nextTargetRef,
   normalizeAnnotation,
   targetContentToDisplay,
@@ -100,14 +95,6 @@ test('minified artifact parses as a script and hashes deterministically', async 
 test('inlined lib output matches direct lib import on fixtures', () => {
   // Guards drift: if someone edits the lib, the bundled copy tracks it (same
   // file), so this asserts the fixture expectations stay identical to the lib.
-  assert.equal(formatPageIndicator('demo-app'), '@page:demo-app');
-  assert.equal(formatSectionIndicator('demo-app', 'inbox'), '@section:demo-app/inbox');
-  assert.equal(formatFrameIndicator('demo-app', 'today'), '@frame:demo-app/today');
-  assert.equal(formatAnnotationIndicator('ab12cd'), '@a:ab12cd');
-  assert.equal(
-    indicatorForAnnotation({ id: 'ab12cd', pageId: 'p', section: 's' }, 'p', { persisted: true }),
-    '@a:ab12cd',
-  );
   assert.deepEqual(normalizeAnnotation({ content: 'hi', section: 'g' }), { content: 'hi', section: 'g', status: 'open' });
   const targets = [{ ref: 'i1', selector: '#one', text: 'One' }, { ref: 'i3', selector: '#three', text: 'Three' }];
   assert.equal(targetContentToDisplay('[@a:ab12cd] [@t:i3]', targets), '[@a:ab12cd] [indicator 3]');

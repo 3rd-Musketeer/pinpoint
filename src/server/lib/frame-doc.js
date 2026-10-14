@@ -332,11 +332,6 @@ export function neutralizePreviewScripts(html) {
   });
 }
 
-/** 导出快照里脚本一律摘除（与画布 cleanExportClone 同约）。 */
-export function stripScripts(html) {
-  return String(html).replace(/<script\b[\s\S]*?<\/script>/gi, '');
-}
-
 /** index.html 的内联 <style> 块（机壳/图注/画布样式）—— frame 页与导出渲染共用。 */
 export function readWorkbenchInlineStyles() {
   const index = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');

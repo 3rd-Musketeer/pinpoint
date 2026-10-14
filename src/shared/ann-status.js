@@ -26,12 +26,6 @@ export var ANN_STATUS_COLORS = {
   close: '#858e99',  // 灰
 };
 
-/** Status → CSS variable name carrying the color. Unknown / missing status
- * falls back to open (same default as annRowModel). */
-export function annStatusVar(status) {
-  return '--ann-st-' + (ANN_STATUS_COLORS[status] ? status : 'open');
-}
-
 /* ---- 状态筛选（owner 2026-09-24 改为两段）：pending = open / check / done，
    都在等 owner 验收；closed = owner 确认做完的。取代 09-23 的全部 · open ·
    check · done · closed 五段。行模型（annRowModel）的 status 是 'close'，

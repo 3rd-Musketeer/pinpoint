@@ -7,7 +7,6 @@ import { fileURLToPath } from 'node:url';
 import {
   ANN_STATUS_COLORS,
   ANN_FILTERS,
-  annStatusVar,
   annStatusLabel,
   filterIncludesStatus,
   annFilterCounts,
@@ -33,15 +32,6 @@ function luminance(hex) {
 function whiteContrast(hex) {
   return 1.05 / (luminance(hex) + 0.05);
 }
-
-test('status → color variable mapping (unknown falls back to open)', () => {
-  assert.equal(annStatusVar('open'), '--ann-st-open');
-  assert.equal(annStatusVar('check'), '--ann-st-check');
-  assert.equal(annStatusVar('done'), '--ann-st-done');
-  assert.equal(annStatusVar('close'), '--ann-st-close');
-  assert.equal(annStatusVar(undefined), '--ann-st-open');
-  assert.equal(annStatusVar('bogus'), '--ann-st-open');
-});
 
 test('status colors are value-identical at all three CSS definition sites', () => {
   // SSOT = 本模块；两个定义端：client [data-ann-ui] 基规则（annotate-css.js）、

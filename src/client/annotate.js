@@ -274,26 +274,6 @@ import { startProseComments } from './prose-comments.js';
     return Array.isArray(doc.annotations) ? doc.annotations : null;
   }
 
-  function copyText(text) {
-    if (!text) return Promise.reject(new Error('empty'));
-    if (navigator.clipboard && navigator.clipboard.writeText) {
-      return navigator.clipboard.writeText(text);
-    }
-    return new Promise(function (resolve, reject) {
-      var ta = document.createElement('textarea');
-      ta.value = text;
-      ta.setAttribute('data-ann-ui', '');
-      ta.style.cssText = 'position:fixed;left:-9999px;top:0';
-      document.body.appendChild(ta);
-      ta.select();
-      try {
-        if (!document.execCommand('copy')) reject(new Error('copy failed'));
-        else resolve();
-      } catch (err) { reject(err); }
-      ta.remove();
-    });
-  }
-
   // ---------- 工具 ----------
   function isUI(el) { return !!(el && el.closest && el.closest('[data-ann-ui]')); }
 

@@ -103,11 +103,6 @@ export function annRowReplies(mark) {
     .map((m) => ({ who: m.who === 'agent' ? 'agent' : 'owner', text: m.text, at: m.at || '' }));
 }
 
-/** 回复的作者名：agent / owner。 */
-export function annReplyAuthor(who) {
-  return who === 'agent' ? 'agent' : 'owner';
-}
-
 /**
  * Row model shared by both sidebars. `context.preview` is the already
  * display-converted content line (caller-side, see annRowPreview);
