@@ -41,6 +41,35 @@ export function annotateApi() {
   return (docWin && docWin.pinpoint) || window.pinpoint;
 }
 
+/* 文档条目选中时，父窗口实例必须停在交互态（2026-10-14 owner：「我在手机视图下标注，
+   出来的是整个页面」）。它还在标注态时（画布页上开的标注没关就切过来，或焦点在工作台
+   上按了 A），窗口视口里 iframe 盖满舞台、它碰不到任何东西；手机视口里舞台露在手机屏
+   四周，它的命中落到 .wb-lib-item（整节 = 整个舞台的框）或 .ios-screen 里的 iframe
+   元素（整份文档），标出来的就是整页。横条按钮读的是 iframe 实例，看不出父实例开着。
+   所以：快照每次同步都把父实例拨回交互态；A 键在文档条目上改驱动 iframe 实例，与横条
+   「标注」按钮驱动同一个。 */
+function parkParentAnnotate() {
+  var parent = window.pinpoint;
+  if (!parent || typeof parent.getState !== 'function' || typeof parent.setMode !== 'function') return;
+  if (!activeDocFrameEl()) return;
+  if (parent.getState().mode) parent.setMode(false);
+}
+
+function isTypingTarget(t) {
+  return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable));
+}
+
+// window 捕获阶段先于父实例挂在 document 上的 A 键监听（src/client/annotate.js）。
+function routeAnnotateKey(e) {
+  if (e.key !== 'a' && e.key !== 'A') return;
+  if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+  if (isTypingTarget(e.target) || !activeDocFrameEl()) return;
+  e.preventDefault();
+  e.stopImmediatePropagation();
+  var docWin = activeDocWindow();
+  if (docWin && typeof docWin.pinpoint.toggle === 'function') docWin.pinpoint.toggle();
+}
+
 /* ---- 标注状态快照（annSnap）------------------------------------------------
    React 标注列表（app/AnnPopover.jsx）只读 store 里的 annSnap：annotate 实例
    状态 + pageMarks 行模型在这里汇成一份纯数据，onUpdate 突发经 rAF 合并。
@@ -63,6 +92,7 @@ var annRowCache = new Map();
 var annRowOwner = null;
 
 export function syncAnnSnap() {
+  parkParentAnnotate();
   var ann = annotateApi();
   if (!ann || typeof ann.getState !== 'function') {
     annRowCache.clear(); annRowOwner = null;
@@ -137,7 +167,12 @@ export function scheduleAnnSnap() {
 
 /* 父窗口的 annotate.js 异步加载；轮询到它出现后订阅一次并产出首份快照。
    iframe 实例的绑定见 watchDocAnnotate / bindDocAnnotate。 */
+var annotateKeyRouted = false;
 export function startAnnBridge() {
+  if (!annotateKeyRouted) {
+    annotateKeyRouted = true;
+    window.addEventListener('keydown', routeAnnotateKey, true);
+  }
   if (!window.pinpoint) { setTimeout(startAnnBridge, 100); return; }
   if (typeof window.pinpoint.onUpdate === 'function') window.pinpoint.onUpdate(scheduleAnnSnap);
   scheduleAnnSnap();
