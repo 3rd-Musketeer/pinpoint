@@ -216,6 +216,19 @@ test('#n：重存既有标注缺 n 时沿用旧号，永不重新取号（R3）'
   assert.deepEqual(next.doc.annotations.map((a) => a.n), [1, 2]);
 });
 
+test('#n：重存既有标注带了别的 n 时忽略，沿用盘上的号（xreview M）', (t) => {
+  const { dataDir, store } = withStore(t);
+
+  store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '甲' }, { id: 'c2', content: '乙' }] });
+  // 直 POST /save 的写方把 c2 的号改成 99、把 c1 改成别人的 2：盘上照旧 1、2，#2 的引用不悬空。
+  const resave = store.save({ page: '@canvas', baseRevision: 1, annotations: [{ id: 'c1', n: 2, content: '甲' }, { id: 'c2', n: 99, content: '乙' }] });
+  assert.equal(resave.status, 200);
+  assert.deepEqual(resave.doc.annotations.map((a) => [a.id, a.n]), [['c1', 1], ['c2', 2]]);
+  const disk = JSON.parse(fs.readFileSync(path.join(dataDir, '@canvas.json'), 'utf8'));
+  assert.deepEqual(disk.annotations.map((a) => a.n), [1, 2]);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, '_seq.json'), 'utf8')).next, 3, '_seq 不动');
+});
+
 test('listDocs 跳过 _seq.json：聚合视图不多出 _seq 空文档（R6）', (t) => {
   const { dataDir, store } = withStore(t);
   store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
