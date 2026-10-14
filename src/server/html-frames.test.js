@@ -163,6 +163,21 @@ test('服务：HTML 帧从源文件出并注入标注客户端，@root 只出 pr
   }
 });
 
+test('服务：三条出文件的分支同一套规则，文章目录里 . 开头的段和指出去的 symlink 都 404', async (t) => {
+  const { dir, root, article, registry, pageId } = fixture(t);
+  write(path.join(article, '.env'), 'SECRET=article\n');
+  write(path.join(article, '.cache', 'x.css'), '.x {}\n');
+  write(path.join(dir, 'outside.css'), '.outside {}\n');
+  fs.symlinkSync(path.join(dir, 'outside.css'), path.join(article, 'escape.css'));
+  fs.symlinkSync(path.join(article, '.env'), path.join(article, 'alias.txt'));
+  fs.symlinkSync(path.join(root, '.env'), path.join(root, 'shared', 'alias.txt'));
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['.env', '.cache/x.css', 'escape.css', 'alias.txt', '@root/shared/alias.txt', '@root/.env']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  assert.equal((await get(handler, `/sites/${pageId}/page.css`)).statusCode, 200);
+});
+
 test('服务：这篇没有 project 根下的帧时 @root 不开', async (t) => {
   const { article, registry, pageId } = fixture(t);
   const mdx = path.join(article, 'index.mdx');

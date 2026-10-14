@@ -26,6 +26,7 @@ import { fileURLToPath } from 'node:url';
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolvePage } from './lib/page-resolve.js';
+import { resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
   screenIdFromRel,
@@ -119,13 +120,9 @@ function resolveFileWithin(base, rel) {
   return stat.isFile() ? real : null;
 }
 
-/**
- * project 根或 source 目录下的静态文件（HTML 帧引用的资源）：和 resolveFileWithin 同样的包含检查
- * （文本 + realpath），另外拒绝任何 `.` 开头的段（.git、.env 这类隐藏文件不经服务出）。
- */
-function resolveRootStatic(base, rel) {
-  if (!base || rel.split('/').some((seg) => seg.startsWith('.'))) return null;
-  return resolveFileWithin(path.resolve(base), rel);
+/** 文章的三条出文件分支（文章目录、@root、@source）共用 resolveServableFile（lib/servable-file.js）。 */
+function servable(base, rel) {
+  return resolveServableFile(base, rel).real || null;
 }
 
 /**
@@ -172,7 +169,7 @@ export function createSitesHandler(options = {}) {
    * 文章画布页：board.json 是从 index.mdx 现派生的板（附 dist 状态），JSX 帧从 dist 出、
    * HTML 帧从源文件出（标注桶 = 画布页 id），其余（article.css / article.js / assets/ /
    * 组件和 HTML 帧引用的资源）从文章目录只读静态出；project 根下的 HTML 帧和它引用的文件在
-   * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。
+   * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。三处出文件都经 resolveServableFile。
    */
   async function serveArticlePage(req, res, target, rel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -210,7 +207,7 @@ export function createSitesHandler(options = {}) {
         return true;
       }
       const frame = rootScreens.find((screen) => frameSrcFromUrlPath(target, screen.src) === src);
-      const file = frame ? articleHtmlFrameFile(target, frame) : resolveRootStatic(base, relPath);
+      const file = frame ? articleHtmlFrameFile(target, frame) : servable(base, relPath);
       if (!file) {
         sendJson(res, 404, { error: 'not found' });
         return true;
@@ -225,7 +222,7 @@ export function createSitesHandler(options = {}) {
       if (htmlFile) return sendFile(req, res, htmlFile, inject);
       return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
-    const file = rel ? resolveFileWithin(target.pageDir, rel) : null;
+    const file = rel ? servable(target.pageDir, rel) : null;
     if (!file || path.basename(file) === 'index.mdx') {
       sendJson(res, 404, { error: 'not found' });
       return true;
