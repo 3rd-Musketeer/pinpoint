@@ -439,3 +439,37 @@ test('writeMigration：写之前先核对全部目标都在文章目录内，越
   assert.throws(() => writeMigration(twice), (error) => error.code === 'EEXIST');
   assert.equal(fs.readFileSync(path.join(articleDir, 'a.txt'), 'utf8'), 'FIRST\n');
 });
+
+test('节的最终 Canvas shell 和任一帧的原壳冲突就在写入前拦下；JSX 帧按最终 shell 补帧级 shell（xreview I）', async (t) => {
+  const dir = tmpDir(t, 'shells');
+  const root = projectRoot(dir);
+  const page = path.join(dir, 'mixed');
+  const registry = { entries: [{ id: 'mixed', kind: 'dir', board: 'ios', path: page }] };
+  write(path.join(page, 'doc.html'), '<!doctype html><p>doc</p>\n');
+  write(path.join(page, 'phone.html'), '<div class="ios-app">phone</div>\n');
+
+  // 同一节里 doc 的 HTML 帧和 app 的 HTML 帧：两种顺序都拦，一个文件都不写。
+  for (const [i, screens] of [[{ id: 'doc', shell: 'doc' }, { id: 'phone', shell: 'app' }], [{ id: 'phone', shell: 'app' }, { id: 'doc', shell: 'doc' }]].entries()) {
+    write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens }] }));
+    const plan = await planPageMigration({ pageId: 'mixed', projectRoot: root, articleId: `mixed-${i}`, registry });
+    assert.match(plan.problems.join('\n'), /section s 里的 HTML 帧 doc 在旧页是 doc，迁过去会按 app 显示/, `顺序 ${i}`);
+    assert.throws(() => writeMigration(plan), /不写/);
+    assert.equal(fs.existsSync(plan.articleDir), false);
+  }
+
+  // 节是 lock、HTML 帧单屏写 doc：Canvas 只能写一个 shell，同样拦下。
+  write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 'l', title: 'L', layout: 'row', shell: 'lock', screens: [{ id: 'doc', shell: 'doc' }] }] }));
+  const lockPlan = await planPageMigration({ pageId: 'mixed', projectRoot: root, articleId: 'lock-doc', registry });
+  assert.match(lockPlan.problems.join('\n'), /HTML 帧 doc 在旧页是 doc，迁过去会按 lock 显示/);
+
+  // JSX 帧排在决定节 shell 的 HTML 帧前面：按整节最终 shell 补帧级 shell，校验每帧 shell 与旧页一致。
+  write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 'm', title: 'M', layout: 'row', screens: [{ id: 'first' }, { id: 'phone', shell: 'lock' }] }] }));
+  write(path.join(page, 'first.jsx'), 'export default function First() { return <div class="ios-app">first</div>; }\n');
+  const plan = await planPageMigration({ pageId: 'mixed', projectRoot: root, articleId: 'order', registry });
+  assert.deepEqual(plan.problems, []);
+  assert.match(plan.files.get('index.mdx').content, /<Canvas frames=\{\["first", "phone"\]\} shell="lock" \/>/);
+  writeMigration(plan);
+  const report = await verifyMigration(plan);
+  assert.deepEqual(report.rows.map((row) => [row.frame, row.shell, row.legacyShell]), [['first', 'app', 'app'], ['phone', 'lock', 'lock']]);
+  assert.equal(report.ok, true, JSON.stringify(report));
+});

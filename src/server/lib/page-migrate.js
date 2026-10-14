@@ -363,7 +363,6 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const sections = [];
   const seenFrames = new Map();
   const htmlAssets = new Set(); // HTML 帧相对引用的文件（相对页目录），按原路径复制
-  const htmlShell = {}; // 节 id → 这一节 HTML 帧在旧页上的壳（不是 doc 时）
   const shellAppends = new Map(); // 帧 rel → shell（复制时在文件末尾补一行 export const shell）
   let titled = 0;
   let columnSections = 0;
@@ -384,6 +383,17 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
       ...(sectionShell !== 'app' ? { canvasShell: sectionShell } : {}),
       frames: [],
     };
+    // 先定整节最终的 <Canvas shell>（xreview I）。HTML 帧不能单帧写 shell，跟着 <Canvas shell> 走，没写时是 doc；
+    // 旧页上不是 doc 的 HTML 帧把节的 shell 定成它的壳。下面 JSX / comp 帧按这个最终值决定要不要写帧级 shell，
+    // 节末再核对每个 HTML 帧的原壳。
+    const htmlFrameShell = (raw) => {
+      const screen = typeof raw === 'string' ? { id: raw } : raw;
+      if (!screen || typeof screen.id !== 'string' || !FRAME_ID.test(screen.id) || (typeof screen.comp === 'string' && screen.comp)) return null;
+      if (isFile(path.join(pageDir, `${screen.id}.jsx`)) || !isFile(path.join(pageDir, `${screen.id}.html`))) return null;
+      return legacyShell(screen.shell || section.shell, pageShell);
+    };
+    const htmlNonDoc = (section.screens || []).map(htmlFrameShell).find((shell) => shell && shell !== 'doc');
+    if (htmlNonDoc) out.canvasShell = htmlNonDoc;
     for (const raw of section.screens || []) {
       const screen = typeof raw === 'string' ? { id: raw } : raw;
       if (!screen || typeof screen.id !== 'string' || !FRAME_ID.test(screen.id)) {
@@ -446,14 +456,6 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
             warnings.push(`帧 ${id} 引用的 ${JSON.stringify(row.url)} 不在盘上（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行）：照原样复制，引用还是断的`);
           }
           for (const row of assets.files) htmlAssets.add(toPosix(path.relative(pageDir, row.file)));
-          // 文章里 HTML 帧没写 <Canvas shell> 时是 doc；旧页按别的壳显示时，把这一节的 shell 写明。
-          if (shell !== 'doc') {
-            if (htmlShell[section.id] && htmlShell[section.id] !== shell) {
-              problems.push(`section ${section.id} 里的 HTML 帧壳不一样（${htmlShell[section.id]} 与 ${id} 的 ${shell}）：HTML 帧不能单帧写 shell，先把它们分到不同的 section`);
-            }
-            htmlShell[section.id] = shell;
-            out.canvasShell = shell;
-          }
           out.frames.push(frame);
           continue;
         }
@@ -486,6 +488,13 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
     }
     // 全是 HTML 帧的 doc 节：HTML 帧缺省就是 doc，<Canvas> 不必写 shell。
     if (out.canvasShell === 'doc' && out.frames.length && out.frames.every((frame) => frame.html)) delete out.canvasShell;
+    // HTML 帧在文章里的壳 = <Canvas shell>，没写是 doc。和旧页的壳不同就拦下，写入前报（xreview I）。
+    for (const frame of out.frames) {
+      const after = out.canvasShell || 'doc';
+      if (frame.html && after !== frame.legacyShell) {
+        problems.push(`section ${section.id} 里的 HTML 帧 ${frame.id} 在旧页是 ${frame.legacyShell}，迁过去会按 ${after} 显示：HTML 帧不能单帧写 shell，跟着整节的 <Canvas shell> 走，先把壳不同的帧分到不同的 section`);
+      }
+    }
     if (!out.frames.length) warnings.push(`section ${section.id} 没有可迁的帧：正文里留这一节，不放画布`);
     sections.push(out);
   }
