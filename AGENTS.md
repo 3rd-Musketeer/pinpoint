@@ -43,9 +43,9 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 5299（共占 5299~5329）。一个端口一套固件，registry、标注数据根、`test-results-<port>/` 全从
 这一个数推导（`e2e/env.js`）。在别人也在跑 e2e 的机器上换基准跑自己的那一轮：
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
-完全不像并发冲突。单独跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5875~5900：组端口 +5 / +20 / +25 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
+完全不像并发冲突。单独跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5875~5900：组端口 +5 / +20 / +25 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。7000 被 macOS 的隔空播放接收器占着，端口段也别跨过它。
 
-**高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 10 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。重跑会清空该组产物目录，首跑的截图、trace 与报告先复制到 `test-results-<端口>-first-run/`、`playwright-report-<端口>-first-run/`，查重跑过了的偶发失败从这里读。
+**高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 10 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。重跑会清空该组产物目录，首跑的截图、trace 与报告先复制到 `test-results-<端口>-first-run/`、`playwright-report-<端口>-first-run/`，查重跑过了的偶发失败从这里读。重跑过了只说明这一轮能上线，不说明是偶挂。pp3 期间被当成偶挂的首跑失败，查下去多数是产品 bug（切页丢编辑、关页保存写回已删的桶、代理复用正在关闭的连接答 503）。同一条用例第二次在首跑挂，就读 first-run 的 trace 查根因。
 
 **分组与删桶。** 两组按 `scripts/e2e-parallel.mjs` 的时长表配平，会拉起文章站点（Astro）的 spec 固定在同一组；每轮首跑的每文件时长写进 `.tmp/e2e-durations.json`，表偏了照它改。用例里删标注桶之前先 `await closeSettled(page)`（`e2e/ledger-settle.js`）：关页时客户端还会发一次保存，删桶和它撞上会把数据写回来，或让服务 rename 报 ENOENT 整个退出。
 
