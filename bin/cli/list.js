@@ -3,12 +3,12 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.js';
-import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
+import { distStatus, figureDistErrors, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
 import { formatProjectError } from '../../src/shared/project-errors.js';
 import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { pageIdIsLive } from '../../src/server/lib/page-resolve.js';
+import { pageIdIsLive, resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
@@ -289,6 +289,13 @@ export async function runList(argv, io = {}) {
   // 恰好是一个 project 的 id：列它的文章、概念与布局错误。
   const exact = words.length === 1 ? projects.find((project) => project.id === words[0]) : null;
   if (exact) {
+    // 正文里的图：编译错误和浏览器里记下的运行错误（docs/projects.md“图”）。过期的图在这里先重编。
+    const registry = loadRegistry({ root: REPO_ROOT, path: registryPath, log: () => {} });
+    const distRoot = path.join(dataRoot(env), 'dist');
+    for (const article of exact.articles) {
+      const target = article.pageId ? resolveArticleTarget(registry, article.pageId) : null;
+      if (target) exact.errors.push(...await figureDistErrors(target, { distRoot }));
+    }
     for (const line of formatProjectDetail(exact)) out(line);
     return exact.errors.length ? 1 : 0;
   }

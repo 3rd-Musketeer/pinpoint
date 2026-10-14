@@ -83,6 +83,13 @@ test('parseArgs: happy path with spaced and =inline flags', () => {
   });
 });
 
+test('parseArgs: shot --figure takes the figure id; refs become optional (the page is --page or the one positional)', () => {
+  assert.deepEqual(parseArgs(['shot', '--figure', 'message-flow', '--page', 'demo_flow']), { command: 'shot', refs: [], flags: { figure: 'message-flow', page: 'demo_flow' } });
+  assert.deepEqual(parseArgs(['shot', 'demo_flow', '--figure=message-flow']), { command: 'shot', refs: ['demo_flow'], flags: { figure: 'message-flow' } });
+  assert.throws(() => parseArgs(['shot']), /shot 至少要一个引用/);
+  assert.throws(() => parseArgs(['locate', '--figure', 'x', 'B1']), /不适用于 locate/);
+});
+
 test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs([]), /缺少命令/);
   assert.throws(() => parseArgs(['destroy', '/x']), /未知命令/);

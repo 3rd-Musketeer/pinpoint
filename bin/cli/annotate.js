@@ -263,6 +263,44 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   return { jobs, problems };
 }
 
+/**
+ * `ppnt shot --figure <图 id> --page <文章页 id>`：拍正文里的一个图，浅色、深色各一张（renderFigureShots）。
+ * 页也可以写成唯一的位置参数。图编译失败、在浏览器里运行出错时打出原因、退 1。
+ */
+async function shotFigure(parsed, { env, out, err, scale }) {
+  const refs = parsed.refs || [];
+  const pageId = parsed.flags.page || (refs.length === 1 ? refs[0] : '');
+  if (!pageId || refs.length > 1 || (parsed.flags.page && refs.length)) {
+    err('错误：shot --figure 拍一个图：ppnt shot --figure <图 id> --page <文章页 id>（不和帧、段的引用混用）');
+    return 1;
+  }
+  const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
+  let renderFigureShots;
+  try {
+    ({ renderFigureShots } = await import('../ppnt-shot.js'));
+  } catch (error) {
+    err(`错误：渲染器加载失败：${error.message}`);
+    return 1;
+  }
+  const figureId = parsed.flags.figure;
+  let results;
+  try {
+    results = await renderFigureShots({ origin, pageId, figureId, scale, outBase: path.join(dataRoot(env), 'shot', pageId, `figure-${figureId}`) });
+  } catch (error) {
+    err(`错误：${error.message}`);
+    return 1;
+  }
+  let failed = false;
+  for (const result of results) {
+    out(`图 ${figureId} · ${result.theme === 'light' ? '浅色' : '深色'} → ${result.out} · ${result.width}×${result.height}`);
+    for (const message of result.errors) {
+      failed = true;
+      err(`  出错：${message}`);
+    }
+  }
+  return failed ? 1 : 0;
+}
+
 export async function runShot(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
@@ -273,6 +311,7 @@ export async function runShot(argv, io = {}) {
     err(`错误：--scale 只支持 1 或 2，收到：${parsed.flags.scale || '(空)'}`);
     return 1;
   }
+  if (parsed.flags.figure) return shotFigure(parsed, { env, out, err, scale });
   const context = loadAnnotateContext(pageRefFor(parsed, { env, err }), parsed, { env, err });
   if (!context) return 1;
   const rows = [...context.frameRows, ...context.docRows];
