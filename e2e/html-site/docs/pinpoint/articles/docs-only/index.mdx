@@ -1,0 +1,14 @@
+---
+title: 只有 HTML 帧
+summary: 画布那一行是空的，帧都是文档条目；第一帧里嵌着懒加载的 iframe 和图片。
+---
+
+# 只有 HTML 帧
+
+<Section id="pages" title="页面">
+
+两份 HTML 页面：一份很长、视口外嵌着懒加载的 iframe（里面又嵌一层）和图片，一份很短。
+
+<Canvas frames={["lazy-page", "short-page"]} />
+
+</Section>

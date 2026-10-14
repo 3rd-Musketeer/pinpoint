@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>懒加载</title>
+<style>
+  body { margin: 0; font: 16px/1.5 system-ui, sans-serif; background: #fff; }
+  .spacer { height: 3000px; padding: 16px; }
+  iframe { display: block; width: 360px; height: 900px; border: 0; margin: 16px; }
+  img { display: block; margin: 16px; }
+</style>
+</head>
+<body>
+<h1>懒加载的嵌套内容</h1>
+<div class="spacer">下面在第一屏之外。</div>
+<!-- 第一层：视口外的懒加载 iframe，里面整块涂成 rgb(0, 160, 80)，并在它自己的视口外再嵌一层。 -->
+<iframe id="outer" src="nested/outer.html" loading="lazy" title="外层"></iframe>
+<div class="spacer">再往下。</div>
+<!-- 视口外的懒加载图片：整块 rgb(30, 90, 220)。 -->
+<img id="lazy-img" src="nested/block.svg" loading="lazy" width="300" height="200" alt="色块">
+</body>
+</html>
