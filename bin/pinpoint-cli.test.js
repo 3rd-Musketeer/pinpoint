@@ -2474,7 +2474,7 @@ test('classifyStatus: project layout errors are a warning row, not a failure', (
   assert.equal(report.diagnosis, '服务在跑，但有告警（见上）。');
 });
 
-/* ---- pp3 M2：文章页的正文评论 ---- */
+/* ---- pp3：文章页的正文评论 ---- */
 
 /** 一个 project（一篇文章）+ 它的文章桶里一本 @prose 账本（一条正文评论）+ 一本 @canvas。 */
 function makeArticleWithComments(t) {
@@ -2627,7 +2627,7 @@ test('mark / locate 在文章页上作用于正文评论：状态端点走 @pros
   assert.deepEqual(loc.out, [`#2 → ${made.file}:7（正文评论，节 how）`]);
 });
 
-/* ---- pp3 M4：rename / remove / prune / 孤儿 对文章桶 ---- */
+/* ---- pp3：rename / remove / prune / 孤儿 对文章桶 ---- */
 
 /** project `demo`（两篇文章 alpha、beta）+ 两个文章桶（各一本 @canvas、alpha 另有 @prose）
     + 一个已删文章的桶 demo_gone + alpha 的 dist / shot 缓存。 */
