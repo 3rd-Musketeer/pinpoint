@@ -21,33 +21,16 @@
  * section n here is letter sectionLetter(n - 1) there, so the TOC, the
  * headings and the cards cannot drift from the canvas rows.
  *
- * The current project id comes from <root>/docs/pinpoint/project.json above
- * the file, so the pass needs no registry.
+ * The current project id comes from the caller's `projectIdFor(file)`
+ * (src/server/lib/projects.js projectIdForFile reads <root>/docs/pinpoint/project.json
+ * above the file), so the pass needs no registry and stays free of fs: the site
+ * (astro.config.mjs) and `ppnt check` (src/server/lib/mdx-check.js) pass the same one.
  */
-import fs from 'node:fs';
-import path from 'node:path';
-import { articleFigures, articleStructure, jsxAttribute } from '../../../src/shared/article-structure.js';
-import { SECTION_ID_PATTERN as SECTION_ID } from '../../../src/shared/project-ids.js';
+import { articleFigures, articleStructure, jsxAttribute } from './article-structure.js';
+import { SECTION_ID_PATTERN as SECTION_ID } from './project-ids.js';
 import { REF_RE, rawRefHtml } from './refs.js';
 
 const SKIP = new Set(['code', 'inlineCode', 'link', 'linkReference', 'definition', 'html', 'mdxJsxAttribute', 'mdxFlowExpression', 'mdxTextExpression', 'mdxjsEsm']);
-
-const projectIdCache = new Map();
-export function projectIdFor(file) {
-  const parts = path.resolve(file).split(path.sep);
-  for (let i = parts.length - 2; i > 0; i--) {
-    if (parts[i] === 'pinpoint' && parts[i - 1] === 'docs') {
-      const dir = parts.slice(0, i + 1).join(path.sep);
-      if (!projectIdCache.has(dir)) {
-        let id = null;
-        try { id = JSON.parse(fs.readFileSync(path.join(dir, 'project.json'), 'utf8')).id || null; } catch { /* not a project */ }
-        projectIdCache.set(dir, id);
-      }
-      return projectIdCache.get(dir);
-    }
-  }
-  return null;
-}
 
 function attr(node, name) {
   const a = jsxAttribute(node, name);
@@ -108,7 +91,10 @@ function splitText(value, from, isMdx) {
   return out;
 }
 
-export function remarkPinpoint() {
+/** options.projectIdFor(file) → the project id of a content file, or null (not project content). */
+export function remarkPinpoint(options = {}) {
+  const { projectIdFor } = options;
+  if (typeof projectIdFor !== 'function') throw new TypeError('remarkPinpoint needs { projectIdFor(file) } (src/server/lib/projects.js projectIdForFile)');
   return (tree, file) => {
     const filePath = file.path || file.history?.[0] || '';
     const isMdx = filePath.endsWith('.mdx');

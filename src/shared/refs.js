@@ -12,7 +12,7 @@
  * listProjects uses for its namespace check, so what collides there is what
  * resolves here.
  */
-import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from '../../../src/shared/project-ids.js';
+import { refKey, RESERVED_ARTICLE_IDS, sectionLetter } from './project-ids.js';
 export { refKey };
 
 export const REF_RE = /\[\[([^\[\]\n]+?)\]\]/g;

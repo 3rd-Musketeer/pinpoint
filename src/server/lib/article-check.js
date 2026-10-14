@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { extractRefs, parseRefBody } from '../../../site/src/lib/refs.js';
+import { extractRefs, parseRefBody } from '../../shared/refs.js';
 import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
 import { articleOutline, resolveRootFrame } from './article-canvas.js';

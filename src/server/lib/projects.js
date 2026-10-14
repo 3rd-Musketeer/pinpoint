@@ -242,6 +242,28 @@ export function listProjects(registry) {
   return projectEntries(registry).map((entry) => checkPageIdCollisions(readProject(entry), registry));
 }
 
+const projectIdCache = new Map();
+/**
+ * 一个内容文件所在 project 的 id：往上找 `docs/pinpoint/`，读那里 project.json 的 id；不在
+ * project 里（或读不出）是 null。不查登记表。站点和 `ppnt check` 把它交给 remark 步骤
+ * （src/shared/remark-pinpoint.js）；结果按目录缓存，进程内改 project.json 的 id 要重启才认。
+ */
+export function projectIdForFile(file) {
+  const parts = path.resolve(file).split(path.sep);
+  for (let i = parts.length - 2; i > 0; i--) {
+    if (parts[i] === 'pinpoint' && parts[i - 1] === 'docs') {
+      const dir = parts.slice(0, i + 1).join(path.sep);
+      if (!projectIdCache.has(dir)) {
+        let id = null;
+        try { id = JSON.parse(fs.readFileSync(path.join(dir, 'project.json'), 'utf8')).id || null; } catch { /* not a project */ }
+        projectIdCache.set(dir, id);
+      }
+      return projectIdCache.get(dir);
+    }
+  }
+  return null;
+}
+
 /** 按 id 找一个 project；没登记返回 null。 */
 export function findProject(registry, id) {
   const entry = projectEntry(registry, id);
