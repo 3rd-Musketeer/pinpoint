@@ -4,15 +4,18 @@
  *
  * new project：<目录>/docs/pinpoint/project.json（{ id, title }）+ 空的 articles/、concepts/，再登记
  *   （和 `ppnt add <目录> --project` 同一条路）。project.json 已经在就沿用它，只补登记，所以重跑是幂等的。
- * new article：articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>。index.mdx 已经在就拒绝。
+ * new article：articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>。index.mdx 已经在，
+ *   或这篇的页 id 的桶里已有旧标注（删掉的文章留下的孤儿），就拒绝。
  */
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
+import { staleBucketProblem } from '../../src/server/lib/orphans.js';
 import { addRegistryEntry } from '../../src/server/lib/registry-store.js';
 import { defaultEntries, projectEntry } from '../../src/server/lib/registry.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
-import { isReservedProjectId, RESERVED_ARTICLE_IDS } from '../../src/shared/project-ids.js';
+import { articlePageId, isReservedProjectId, RESERVED_ARTICLE_IDS } from '../../src/shared/project-ids.js';
 import { ENTRY_ID_PATTERN } from '../../src/shared/registry-ids.js';
 import { formatProjectError } from '../../src/shared/project-errors.js';
 
@@ -195,6 +198,12 @@ async function newArticle(parsed, { env, out, err }) {
     if (!(error instanceof CliError)) throw error;
     err(`错误：${error.message}`);
     return error.exit || 1;
+  }
+  // 这个页 id 的桶里还有旧文章的标注：建了就静默接过去。与 migrate 同一条（orphans.js）。
+  const stale = staleBucketProblem(dataRoot(env), articlePageId(plan.projectId, plan.articleId), { renameHint: '换一个文章 id' });
+  if (stale) {
+    err(`错误：${stale}`);
+    return 1;
   }
   try {
     writeIfAbsent(plan.file, plan.content);

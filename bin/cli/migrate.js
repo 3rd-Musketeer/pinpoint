@@ -6,7 +6,7 @@
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
-import { readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { readBucketLedgers, staleBucketProblem } from '../../src/server/lib/orphans.js';
 import { loadRegistry, projectEntry } from '../../src/server/lib/registry.js';
 import { MigrateError, planPageMigration, verifyMigration, writeMigration } from '../../src/server/lib/page-migrate.js';
 
@@ -131,13 +131,10 @@ export async function runMigrate(argv, io = {}) {
     return 1;
   }
   for (const line of formatPlan(plan)) out(line);
-  // 新画布页 id 的桶已经有标注行（删掉或改了名的文章留下的孤儿桶）：迁完这个 id 又是活页
-  // （page-resolve.js 的 pageIdIsLive），旧行会静默挂到新文章上。与 rename 撞桶同一条：拒绝。
-  const bucket = path.join(dataRoot(env), plan.articlePageId);
-  const staleRows = readBucketLedgers(bucket)
-    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
-  if (staleRows > 0) {
-    err(`错误：标注桶 ${bucket} 里已有 ${staleRows} 行标注（旧文章留下的孤儿）；迁过去它们会挂到新文章上。换 --article，或先 \`ppnt prune ${plan.articlePageId}\` 清掉`);
+  // 新画布页 id 的桶已经有标注行（删掉或改了名的文章留下的孤儿桶）：拒绝，与 new article 同一条（orphans.js）。
+  const stale = staleBucketProblem(dataRoot(env), plan.articlePageId, { renameHint: '换 --article' });
+  if (stale) {
+    err(`错误：${stale}`);
     return 1;
   }
   if (plan.problems.length) {

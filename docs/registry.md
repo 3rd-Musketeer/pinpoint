@@ -177,7 +177,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 | 码 | 什么时候 |
 | --- | --- |
 | 0 | 成功。`locate` 指到的帧或节上没有标注也是 0，并打一行说明 |
-| 1 | 有问题：验证错误（`check`）、截到半篇文章（`shot`）、引用没命中（没有 `#99`、没有这一帧）、服务没在跑、标注写入冲突、要写的文件已经在（`new article`） |
+| 1 | 有问题：验证错误（`check`）、截到半篇文章（`shot`）、引用没命中（没有 `#99`、没有这一帧）、服务没在跑、标注写入冲突、要写的文件已经在或这篇的桶里已有旧标注（`new article`） |
 | 2 | 用法错（不认的选项、缺参数、状态词写错）或找不到目标 |
 
 找不到目标退 2 而不是 1：它和写错参数一样，是命令行本身要改，脚本据此区分“命令写错了”和“命令跑了、结果有问题”。
@@ -187,7 +187,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 脚手架（`bin/cli/new.js`），两个都不覆盖已有文件。
 
 - `new project <目录> [--id <id>] [--title <标题>]`：写 `<目录>/docs/pinpoint/project.json`（`{ id, title }`），建空的 `articles/`、`concepts/`，再登记（同 `ppnt add <目录> --project`）并让服务重读。id 缺省取目录名。`project.json` 已经在就沿用它、只补登记，所以重跑是幂等的；id 是保留名或已登记在别的目录时退 2，什么都不写。
-- `new article <project>/<article> [--title <标题>]`：写 `articles/<article>/index.mdx`，frontmatter 是 title，正文是一节 `<Section id="overview">`，节里一行注释说明帧怎么加。`index.mdx` 已经在就退 1；project 没登记退 2，提示先 `new project`。
+- `new article <project>/<article> [--title <标题>]`：写 `articles/<article>/index.mdx`，frontmatter 是 title，正文是一节 `<Section id="overview">`，节里一行注释说明帧怎么加。`index.mdx` 已经在就退 1；这篇的页 id `<project>_<article>` 的桶里已有标注行（删掉或改了名的文章留下的孤儿）也退 1、什么都不写，因为建成后旧行会挂到新文章上，提示换文章 id 或先 `ppnt prune <project>_<article>`，和 `migrate` 同一条检查；project 没登记退 2，提示先 `new project`。
 
 两个命令最后都打网址和下一步命令。
 
