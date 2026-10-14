@@ -52,6 +52,7 @@ import {
 import { FRAME_STAGE_SELECTOR, frameInternalSelector, queryFrameScope } from '../shared/frame-anchor.js';
 import { ppIdAttrSelector, pickByTargetText } from '../shared/ann-ppid.js';
 import { CANVAS_LEDGER } from '../shared/project-ids.js';
+import { rebaseAnnotations } from '../shared/ledger-rebase.js';
 import { startProseComments } from './prose-comments.js';
 
 (function () {
@@ -126,6 +127,7 @@ import { startProseComments } from './prose-comments.js';
   var currentPathname = LEDGER_PATHNAME;
   var marks = [];      // in-memory annotations: {n, id, type, pageId?, section?, sectionLabel?, screenId?, selector?, content, …}
   var revision = 0;    // disk document revision (SSOT concurrency)
+  var baseMarks = [];  // 本窗口最后确认的盘上版本（revision 那一版的行）：保存撞 409 时按它三方合并（rebaseOnto）
   var syncing = false;
   var mutationVersion = 0;
   var syncedMutationVersion = 0;
@@ -894,6 +896,7 @@ import { startProseComments } from './prose-comments.js';
     marks = list.map(function (item) { return normalizeAnnotation(Object.assign({}, item)); });
     ensureAllMarkIds();
     revision = rev;
+    setBase(list);
     syncedMutationVersion = mutationVersion;
     writeLocalCache();
     structureDirty = true;
@@ -936,6 +939,33 @@ import { startProseComments } from './prose-comments.js';
     notify();
   }
 
+  /** 记下盘上那一版的行（深拷贝：marks 的行会被就地改）。 */
+  function setBase(list) {
+    baseMarks = (Array.isArray(list) ? list : []).map(function (item) {
+      return normalizeAnnotation(JSON.parse(JSON.stringify(item)));
+    });
+  }
+
+  /** 本窗口有没落盘的改动、盘上又有了更新的一版（409 带回的、或保存在途时经 SSE 先到的）：
+      把本窗口的改动接到那一版上（src/shared/ledger-rebase.js），agent 写的状态与回复、
+      别处的改动都留下，然后以那一版的 revision 为底再存。不重发整份旧快照：那样会把
+      agent 刚写的状态盖回去，服务端判非法转换，owner 这一边的改动也跟着丢。 */
+  function rebaseOnto(doc) {
+    var list = docAnnotations(doc);
+    var rev = Number(doc && doc.revision);
+    if (!list || !Number.isFinite(rev)) return false;
+    var server = list.map(function (item) { return normalizeAnnotation(Object.assign({}, item)); });
+    marks = rebaseAnnotations(marks, baseMarks, server).map(normalizeAnnotation);
+    ensureAllMarkIds();
+    revision = rev;
+    setBase(list);
+    writeLocalCache();
+    structureDirty = true;
+    renderLedgerChange();
+    notify();
+    return true;
+  }
+
   function deferRemoteDoc(doc) {
     var rev = Number(doc && doc.revision);
     if (!Number.isFinite(rev)) return;
@@ -948,10 +978,7 @@ import { startProseComments } from './prose-comments.js';
     deferredRemoteDoc = null;
     var rev = Number(doc.revision);
     if (!Number.isFinite(rev) || rev <= revision) return false;
-    if (mutationVersion > sentVersion) {
-      revision = rev;
-      return true;
-    }
+    if (mutationVersion > sentVersion) return rebaseOnto(doc);
     applyRemoteDoc(doc, '已从其他窗口更新');
     return false;
   }
@@ -973,6 +1000,7 @@ import { startProseComments } from './prose-comments.js';
         if (res.ok) {
           if (res.data && Number.isFinite(Number(res.data.revision))) {
             revision = Number(res.data.revision);
+            if (Array.isArray(res.data.annotations)) setBase(res.data.annotations);
           }
           syncedMutationVersion = Math.max(syncedMutationVersion, sentVersion);
           adoptServerNumbers(res.data);
@@ -985,7 +1013,10 @@ import { startProseComments } from './prose-comments.js';
         }
         if (res.status === 409 && res.data) {
           deferredRemoteDoc = null;
-          if (mutationVersion > sentVersion) {
+          // 盘上比本窗口的底新（agent 写了状态或回复、另一个窗口存过）：接到盘上那版再存。
+          if (res.data.error === 'revision_conflict' && rebaseOnto(res.data)) {
+            requestSync();
+          } else if (mutationVersion > sentVersion) {
             revision = Number(res.data.revision) || 0;
             requestSync();
           } else {
@@ -1031,7 +1062,7 @@ import { startProseComments } from './prose-comments.js';
       在途那次 409。两份请求走各自的连接，到达顺序不定，这样谁先到盘上都是快照
       （2026-10-14 之前按 revision 和 revision + 1 各发一份：+1 那份抢在在途那次
       之前到、本底那份落在它之后时，最后一稿丢了）。页面没走（只是切到后台）时，
-      在途应答回来照旧：本地更新就重发，409 按远端 revision 重发，结果一致。换账本时交给 outbox、还没发出去的快照
+      在途应答回来照旧：本地更新就重发，409 接到盘上那版再重发，结果一致。换账本时交给 outbox、还没发出去的快照
       也在这里发。还在防抖里的 lastRect 不发：它是锚点几何的缓存，不是 owner 的改动，
       丢一次无害；离开时补发它只会在关页之后多一次写盘。 */
   var leaveSentVersion = 0;
@@ -1058,8 +1089,8 @@ import { startProseComments } from './prose-comments.js';
   /** 换账本时旧账本还有没落盘的写（在途 /save 之后又改过、上次保存失败、
       lastRect 的 debounce 还没到点）：快照交给按账本排队的 outbox 写完，
       不跟着 epoch 一起作废。outbox 先等在途那次的应答拿到新 revision，
-      再把快照发出去；409 说明别处刚写过，快照是本窗口最新的意图，按
-      服务端 revision 重发（与 requestSync 里「本地更新则重发」同一条规则）。
+      再把快照发出去；revision 冲突说明别处刚写过，快照接到盘上那版再按
+      服务端 revision 重发（与 requestSync 的 rebaseOnto 同一条规则）。
       切回这本账本的 hydrate 先等它的 outbox 排空，读到的才是写完的盘。 */
   function handOffUnsyncedWrites() {
     if (!SERVER) return;
@@ -1074,6 +1105,7 @@ import { startProseComments } from './prose-comments.js';
     var covered = syncing ? inflightVersion : syncedMutationVersion;
     var snapshotVersion = mutationVersion;
     var baseRevision = revision;
+    var base = baseMarks;
     var body = saveBody(revision);
     var key = ledgerOutboxKey(ENTRY, PAGE);
     // 离开页面时这份快照还没发：在途那次可能先到也可能后到，快照带 after 接在它之后（同 flushOnLeave）。
@@ -1084,14 +1116,21 @@ import { startProseComments } from './prose-comments.js';
       .then(function (res) {
         var rev = baseRevision;
         if (res && res.data && Number.isFinite(Number(res.data.revision))) rev = Number(res.data.revision);
-        // 在途那次已带着最新状态：成功就完事；撞 409 与 requestSync 同口径（远端为准）。
-        if (res && (res.ok || res.status === 409) && snapshotVersion <= covered) {
+        var conflict = res && res.status === 409 && res.data && res.data.error === 'revision_conflict' && Array.isArray(res.data.annotations);
+        // 在途那次已带着最新状态：成功就完事。撞 revision 冲突与 requestSync 同口径：接到盘上那版再存。
+        if (res && (res.ok || (res.status === 409 && !conflict)) && snapshotVersion <= covered) {
           if (outboxUnsent[key] === unsent) delete outboxUnsent[key];
           return null;
         }
+        if (res && res.ok && res.data && Array.isArray(res.data.annotations)) base = res.data.annotations;
+        if (conflict) rebaseSnapshot(res.data.annotations);
         return sendSnapshot(rev, 3);
       })
       .catch(function () { return null; });
+    function rebaseSnapshot(server) {
+      body.annotations = rebaseAnnotations(body.annotations, base, server);
+      base = server;
+    }
     function sendSnapshot(rev, triesLeft) {
       if (outboxUnsent[key] === unsent) delete outboxUnsent[key];
       body.baseRevision = rev;
@@ -1100,6 +1139,8 @@ import { startProseComments } from './prose-comments.js';
       return postSave(body).then(function (res) {
         if (res.ok) return res;
         if (res.status === 409 && res.data && triesLeft > 1) {
+          // 同 requestSync：接到盘上那版再存，不拿旧快照盖掉 agent 刚写的状态与回复。
+          if (res.data.error === 'revision_conflict' && Array.isArray(res.data.annotations)) rebaseSnapshot(res.data.annotations);
           return sendSnapshot(Number(res.data.revision) || 0, triesLeft - 1);
         }
         return res;
@@ -1136,6 +1177,7 @@ import { startProseComments } from './prose-comments.js';
           marks = diskMarks.map(function (item) { return normalizeAnnotation(Object.assign({}, item)); });
           ensureAllMarkIds();
           revision = diskRev;
+          setBase(diskMarks);
           writeLocalCache();
           return true;
         }
@@ -1143,6 +1185,7 @@ import { startProseComments } from './prose-comments.js';
         marks = readLocalMarks();
         ensureAllMarkIds();
         revision = 0;
+        baseMarks = [];
         if (marks.length) {
           // Push cache up once so disk becomes SSOT for other browsers.
           mutationVersion++;
@@ -4323,6 +4366,7 @@ import { startProseComments } from './prose-comments.js';
     syncing = false; // 旧响应已被 epoch 拦下不会污染；放行新账本立即 persist
     // 3. 同一帧清掉旧账本渲染——hydrate 是异步的，绝不能让旧 selector 在新 DOM 上短暂命中
     marks = [];
+    baseMarks = [];
     structureDirty = true;
     renderAll();
     // 4. 重算账本（闭包 var 重赋值即全局生效）

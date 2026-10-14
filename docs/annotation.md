@@ -78,6 +78,18 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 清空走同一条保存队列、传 `annotations: []`（没有 `/clear` 路由）。显式传一个未登记的 `entry` 是
 响亮的 `400 unknown_entry`——配错永远不会静默落进错误的桶。
 
+保存撞上 `409 revision_conflict` 时，两个客户端都把本窗口的改动接到盘上的最新版再存，agent 在这之间经状态端点和回复端点写的
+check / done 与回复都留在盘上，owner 的改动也落盘。正文评论客户端重放没落盘的操作（见下文“正文评论”）。画布客户端
+（`annotate.js`）按行做三方合并（`src/shared/ledger-rebase.js`），三方是本窗口现在的行、本窗口最后确认的盘上版本（水合、
+保存应答、远端同步时记下）和 409 带回的盘上版本：
+
+- owner 在本窗口改过的字段用本窗口的，没改过的用盘上的；`lastRect` 只跟本窗口的几何走。
+- `status` 在本窗口改过（关闭、重新打开）用本窗口的，否则用盘上的。owner 改了正文或目标的那一条，服务端照状态机回 `open`。
+- `messages` 用盘上的全部；`n` 用盘上的。
+- owner 在本窗口删掉的行保持删除，别处新加的行留下，本窗口新建、盘上没有的行接在最后。
+
+保存在途时经 SSE 先到的更新版本、换账本时交给 outbox 的快照，都按同一条规则合并后再存。
+
 离开页面不丢写（画布 `annotate.js` 与正文 `prose-comments.js` 同一套，`src/client/lib/save-request.js`）：
 每次 `/save` 在请求体不超过 30000 字节时带 `keepalive`，关页或导航走之后在途的保存照样送达；更大的请求体走普通 fetch，
 离开时可能丢。`pagehide` 与 `visibilitychange` 转 hidden 时，没落盘的写立刻发出：没有在途保存就照常同步；
