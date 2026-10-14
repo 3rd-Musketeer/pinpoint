@@ -14,7 +14,6 @@ import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';
 // （2026-09-24 实测，pp-id-anchor 连挂）。本用例的断言也用不到它的时间。
 const FIXTURE_MTIMES = [
   ['dir-site', Date.parse('2026-01-01T00:00:00Z')],
-  ['mention-site', Date.parse('2026-02-01T00:00:00Z')],
   ['dir-site-ios', Date.parse('2026-03-01T00:00:00Z')],
   ['doc-site', Date.parse('2026-05-01T00:00:00Z')],
   ['mixed-site', Date.now()],
@@ -57,7 +56,7 @@ function pageOrder(page) {
 // 范例页回归后（_index.json 重新有页）：清单 = manifest 行（范例页）+ 全部
 // registry 行，书写顺序（_index 在前）。
 const DEFAULT_ORDER = [
-  'example', 'e2e-ios', 'e2e-site', 'e2e-proxy', 'e2e-dir', 'e2e-dir-ios', 'e2e-mention', 'e2e-mixed', 'e2e-doc',
+  'example', 'e2e-ios', 'e2e-dir', 'e2e-dir-ios', 'e2e-mixed', 'e2e-doc',
 ];
 
 // 期望顺序直接用产品的比较器算（sortPages），不再在用例里重写一遍 ——
@@ -66,10 +65,9 @@ test('Pages 排序：时间渲染、菜单形态、依据接线与持久化', as
   await openWorkbench(page);
 
   // 行内时间：mtime = now 的固件渲染「刚刚」；2026-01-01 的渲染「1-1」（同年
-  // 超 7 天，M-D 不补零）；url 条目无 mtime，不出时间元素。
+  // 超 7 天，M-D 不补零）。
   await expect(page.locator('#wbpages [data-vpage="e2e-mixed"] .wb-page-time')).toHaveText('刚刚');
   await expect(page.locator('#wbpages [data-vpage="e2e-dir"] .wb-page-time')).toHaveText('1-1');
-  await expect(page.locator('#wbpages [data-vpage="e2e-site"] .wb-page-time')).toHaveCount(0);
 
   const button = page.locator('.wb-page-sort');
   const menu = page.getByRole('menu', { name: /^Pages 排序：/ });

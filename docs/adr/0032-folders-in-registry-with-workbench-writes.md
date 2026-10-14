@@ -1,6 +1,6 @@
 # 0032 · Pages 分组 = 手动文件夹，登记表因此有了第二个写入口
 
-Status: 现行 · Date: 2026-09-04 · Scope: `src/server/lib/registry.js`、`src/server/lib/registry-store.js`、`src/server/annotate-api.js`（registry 路由）、`bin/`、`docs/registry.md`、`src/workbench/app/Sidebar.jsx`
+Status: 已退役（2026-10-14 删除：文件夹、手动排序与三条 PUT 写接口整体删掉，老登记表里的键读时跳过） · Date: 2026-09-04 · Scope: `src/server/lib/registry.js`、`src/server/lib/registry-store.js`、`src/server/annotate-api.js`（registry 路由）、`bin/`、`docs/registry.md`、`src/workbench/app/Sidebar.jsx`
 
 **Decided**（owner 2026-09-04 原话：“要不还是我自己手动建文件夹吧，然后支持拖放就行，这样最简单”）:
 

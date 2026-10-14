@@ -92,7 +92,7 @@ test('bundleHtmlAssets automatically inlines static assets from another register
   assert.deepEqual(bundled.remoteResources, []);
 });
 
-test('bundleHtmlAssets still blocks resources owned by a registered online page', async (t) => {
+test('bundleHtmlAssets: 资源所属条目不是 dir / file（老登记表里的 url 条目）按找不到所属页拒绝', async (t) => {
   const root = fixtureDir(t);
   fs.writeFileSync(path.join(root, 'screen.html'), '<div></div>');
   const registry = {
@@ -111,7 +111,7 @@ test('bundleHtmlAssets still blocks resources owned by a registered online page'
       pinpointRoot: root,
       registry,
     }),
-    (error) => error instanceof OfflinePageExportError && error.code === 'runtime_network',
+    (error) => error instanceof OfflinePageExportError && error.code === 'asset_owner_missing',
   );
 });
 

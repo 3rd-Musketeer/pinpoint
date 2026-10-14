@@ -178,7 +178,7 @@ export function targetCandidates({ registry, manifestIds = [], articlesOf }) {
     for (const articleId of articlesOf(entry)) rows.push({ address: `${entry.id}/${articleId}`, kind: 'article' });
   }
   for (const entry of (registry && registry.entries) || []) {
-    if (entry && entry.kind !== 'url' && entry.kind !== 'project' && !entry.page) rows.push({ address: entry.id, kind: 'page' });
+    if (entry && entry.kind !== 'project') rows.push({ address: entry.id, kind: 'page' });
   }
   for (const id of manifestIds) if (!rows.some((row) => row.address === id)) rows.push({ address: id, kind: 'page' });
   return rows;

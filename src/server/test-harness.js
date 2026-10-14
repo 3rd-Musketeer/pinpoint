@@ -17,7 +17,7 @@ export function mockReq(method, url, body) {
   req.method = method;
   req.url = url;
   req.headers = {};
-  req.pipe = () => {}; // url 条目的代理分支把请求体 pipe 给上游
+  req.pipe = () => {}; // 代理分支把请求体 pipe 给上游
   if (body !== undefined) {
     const payload = typeof body === 'string' ? body : JSON.stringify(body);
     queueMicrotask(() => {

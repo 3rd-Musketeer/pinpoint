@@ -1,7 +1,7 @@
-// 多个 spec 共用的标注客户端 helper：开带标注客户端的页、写一条标注、等保存、等 SPA 换路由落定。
+// 多个 spec 共用的标注客户端 helper：开带标注客户端的页、写一条标注、等保存。
 import { expect } from '@playwright/test';
 
-/** 打开一个注入了标注客户端的页面（站点页、SPA 固件），等 window.pinpoint 出现。 */
+/** 打开一个注入了标注客户端的页面（站点页），等 window.pinpoint 出现。 */
 export async function openAnnotated(page, url) {
   await page.goto(url);
   await page.waitForFunction(() => window.pinpoint);
@@ -23,12 +23,3 @@ export function waitForSave(page) {
   return page.waitForResponse((r) => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok());
 }
 
-/** SPA 换路由后等标注客户端换完账本：路径到位、epoch 比 prevEpoch 新、routing 结束，
- *  才算切换加 hydrate 完成。getState() 没有 epoch 的客户端只等路径变（后面的断言仍会以真实原因失败）。 */
-export async function waitRouteSettled(page, pathname, prevEpoch) {
-  await page.waitForFunction(([path, epoch]) => {
-    const st = window.pinpoint && window.pinpoint.getState ? window.pinpoint.getState() : {};
-    if (typeof st.epoch !== 'number') return location.pathname === path;
-    return location.pathname === path && st.epoch > epoch && !st.routing;
-  }, [pathname, prevEpoch]);
-}

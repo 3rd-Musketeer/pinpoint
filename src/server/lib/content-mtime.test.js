@@ -20,7 +20,7 @@ function setMtime(p, ms) {
   fs.utimesSync(p, date, date);
 }
 
-test('file 条目 = 文件自身 mtime；路径缺失 / url 条目 → null', () => {
+test('file 条目 = 文件自身 mtime；路径缺失 / 其它 kind → null', () => {
   withTmpDir((dir) => {
     const file = path.join(dir, 'a.html');
     fs.writeFileSync(file, '<html></html>');
@@ -28,7 +28,7 @@ test('file 条目 = 文件自身 mtime；路径缺失 / url 条目 → null', ()
     assert.equal(contentMtimeMs({ kind: 'file', path: file }), expected);
   });
   assert.equal(contentMtimeMs({ kind: 'file', path: '/nonexistent/x.html' }), null);
-  assert.equal(contentMtimeMs({ kind: 'url', url: 'https://example.com' }), null);
+  assert.equal(contentMtimeMs({ kind: 'project', path: '/nonexistent' }), null);
   assert.equal(contentMtimeMs(null), null);
 });
 

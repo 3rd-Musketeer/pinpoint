@@ -5,17 +5,16 @@ export { HELP, USAGE, helpFor };
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
-const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
+const BOOLEAN_FLAGS = new Set(['watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
-// --project <根目录>；add 的 --project 仍是开关）。folder / locate / shot / mark 的位置参数
+// --project <根目录>；add 的 --project 仍是开关）。locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
-  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft', 'project']) },
+  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'project']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
   remove: { positional: 1, flags: new Set(['registry']) },
-  folder: { positional: null, flags: new Set(['registry', 'id']) },
   status: { positional: 0, flags: new Set(['registry', 'json']) },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
@@ -39,20 +38,8 @@ const COMMANDS = {
   dev: { positional: null, flags: new Set(['sandbox', 'port', 'site-port', 'json']) },
 };
 
-// `pinpoint folder <子命令>`（2026-09-04 裁决 5a）：owner 手建的一层分组，
-// workbench 的拖放走服务端写接口，CLI 是同一份登记表的另一个入口。
-const FOLDER_SUBCOMMANDS = {
-  list: { positional: 0, flags: new Set(['registry']) },
-  add: { positional: 1, flags: new Set(['registry', 'id']) },
-  rename: { positional: 2, flags: new Set(['registry']) },
-  rm: { positional: 1, flags: new Set(['registry']) },
-  move: { positional: 2, flags: new Set(['registry']) },
-};
 /** `ppnt new` 能建的两种东西。 */
 export const NEW_KINDS = ['project', 'article'];
-
-/** `pinpoint folder move <id> none` = 拖出文件夹（散页）。 */
-export const NO_FOLDER = 'none';
 
 /** 参数解析（纯函数）。add 返回 { command, target, flags }，move 返回 { command, id, target, flags }，
     服务命令返回 { command, flags }；非法输入抛 CliError。 */
@@ -81,7 +68,7 @@ export function parseArgs(argv) {
     const name = inline > 0 ? arg.slice(2, inline) : arg.slice(2);
     const takesValue = !!(spec.valueFlags && spec.valueFlags.has(name));
     if (BOOLEAN_FLAGS.has(name) && !takesValue) {
-      // 布尔开关：不吃下一个 token，也不许 --draft=xxx 带值。
+      // 布尔开关：不吃下一个 token，也不许 --watch=xxx 带值。
       if (inline > 0) fail(`选项 --${name} 是开关，不带值`);
       if (!spec.flags.has(name)) fail(`选项 --${name} 不适用于 ${command}`);
       flags[name] = true;
@@ -96,14 +83,6 @@ export function parseArgs(argv) {
       fail(`选项 --${name} 缺少值`);
     }
     flags[name] = value;
-  }
-  if (command === 'folder') {
-    try {
-      return parseFolderArgs(positional, flags);
-    } catch (error) {
-      error.command = 'folder';
-      throw error;
-    }
   }
   if (spec.positional !== null && positional.length !== spec.positional) {
     fail(positionalProblem(command, spec.positional, positional.length));
@@ -146,30 +125,13 @@ export function parseArgs(argv) {
   return { command, flags };
 }
 
-/** folder 的子命令层：第一个位置参数是子命令，其余按子命令的固定个数校验。 */
-function parseFolderArgs(positional, flags) {
-  const [sub, ...args] = positional;
-  if (!sub) {
-    throw new CliError(`folder 需要一个子命令（${Object.keys(FOLDER_SUBCOMMANDS).join(' / ')}）`);
-  }
-  const spec = FOLDER_SUBCOMMANDS[sub];
-  if (!spec) throw new CliError(`未知子命令：folder ${sub}（可用：${Object.keys(FOLDER_SUBCOMMANDS).join(' / ')}）`);
-  for (const name of Object.keys(flags)) {
-    if (!spec.flags.has(name)) throw new CliError(`选项 --${name} 不适用于 folder ${sub}`);
-  }
-  if (args.length !== spec.positional) {
-    throw new CliError(`folder ${sub} 需要 ${spec.positional} 个参数，收到 ${args.length} 个`);
-  }
-  return { command: 'folder', sub, args, flags };
-}
-
 function positionalProblem(command, want, got) {
   if (command === 'add') {
     return got === 0 ? 'add 需要一个目标（目录 / 文件 / URL）' : `add 只接受一个目标，收到 ${got} 个`;
   }
   if (command === 'move') {
     return got < 2
-      ? 'move 需要两个参数：<id> <新目录|新文件|新URL>'
+      ? 'move 需要两个参数：<id> <新目录|新文件>'
       : `move 只接受两个参数，收到 ${got} 个`;
   }
   if (command === 'rename') {

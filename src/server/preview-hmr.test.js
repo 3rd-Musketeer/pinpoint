@@ -24,7 +24,6 @@ const ENTRIES = [
   { id: 'pinpoint', kind: 'dir', path: ROOT },
   { id: 'ext-page', kind: 'dir', path: EXT },
   { id: 'ext-file', kind: 'file', path: path.join(EXT, '..', 'single.html') },
-  { id: 'ext-url', kind: 'url', url: 'https://example.localhost' },
 ];
 
 test('registry dir/file 条目变更 → preview:update（2026-08-17e；pp2 起 .css 也触发）', async (t) => {
@@ -130,7 +129,7 @@ test('deps 可能出现的 json / ts / tsx / mjs / cjs 也触发重编；dist、
   }
 });
 
-test('syncWatcher 只挂仓外条目，仓库自身与 url 条目跳过', async (t) => {
+test('syncWatcher 只挂仓外条目，仓库自身跳过', async (t) => {
   const { server } = await setup(t, ENTRIES);
   assert.deepEqual(server.added, [EXT, path.join(EXT, '..', 'single.html')]);
 });

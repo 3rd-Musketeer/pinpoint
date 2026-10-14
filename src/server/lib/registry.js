@@ -6,30 +6,33 @@
  * log, fall back / skip, and expose the failure on the result (/health reads
  * it back out).
  *
- * Since 2026-09-04 the document also carries owner-made grouping (裁决 5a):
- * top-level `folders[]`, `pageFolders{}` (manifest pages that are not registry
- * entries) and `pageOrder{}` (manual order for those pages). Grouping never
- * decides whether a page exists — a broken folder reference downgrades the
- * page to loose (warning), it never drops the entry.
+ * Keys and entry kinds from retired features (RETIRED_TOP_KEYS /
+ * RETIRED_ENTRY_KEYS / RETIRED_KINDS) may still sit in an older file: they are
+ * skipped with a warning and the rest of the registry loads as usual.
  */
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN } from '../../shared/registry-ids.js';
+import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../../shared/registry-ids.js';
 
-export { ENTRY_ID_PATTERN, FOLDER_ID_PATTERN, PAGE_ID_PATTERN };
-const KINDS = new Set(['dir', 'file', 'url', 'project']);
+export { ENTRY_ID_PATTERN, PAGE_ID_PATTERN };
+const KINDS = new Set(['dir', 'file', 'project']);
 // pp3（2026-10-13）：kind "project" 的 path 是 project 根目录，内容在
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
 // entries 的每个消费者（Pages、/sites/、标注桶、编译）都按 page 理解它——
 // 而是单独放在 projects 里，由 src/server/lib/projects.js 读。
-// 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
-// （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
-const ROLES = new Set(['product', 'draft']);
+// 2026-10-14 删掉的功能留在老登记表里的键：读的时候跳过并 warn，服务照常起。
+// 文件夹与手动排序（ADR 0032）：顶层 folders / pageFolders / pageOrder，条目上的 folder / order。
+// 登记表级挂靠（ADR 0021 阶段 8）：条目上的 page / role；带 page 的条目照常自成一页。
+// url 条目与站点代理（ADR 0019）：kind "url" 的整条条目跳过；别的条目上的 url 字段同样跳过，
+// 所以老 url 条目能经 move 重指到本地目录或文件。
+export const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
+export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role', 'url'];
+export const RETIRED_KINDS = ['url'];
 
 /**
  * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：
- * 页条目（dir / file / url）走 resolve(id)，kind "project" 的条目在 projects 里，两者 id 不重。
+ * 页条目（dir / file）走 resolve(id)，kind "project" 的条目在 projects 里，两者 id 不重。
  * 只带 entries、没有 resolve 的视图（测试与 CLI 拼的）按 entries 找。
  */
 export function registryEntry(registry, id) {
@@ -60,25 +63,8 @@ function validateEntry(raw, seen) {
     return `entry id must match ${ENTRY_ID_PATTERN}: ${JSON.stringify(raw.id)}`;
   }
   if (seen.has(raw.id)) return `duplicate entry id "${raw.id}"`;
-  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", "url", or "project"`;
-  if ((raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') && typeof raw.path !== 'string') {
-    return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
-  }
-  if (raw.kind === 'url' && typeof raw.url !== 'string') {
-    return `entry "${raw.id}" kind "url" requires a url`;
-  }
-  // 阶段 8：page 归属（attach 到既有 Page 的「内容」区，不再自成 Pages 行）。
-  // url 条目恒为独立页（代理内嵌的网页产物），与 page 互斥。
-  if (raw.page !== undefined) {
-    if (typeof raw.page !== 'string' || !PAGE_ID_PATTERN.test(raw.page)) {
-      return `entry "${raw.id}" page must match ${PAGE_ID_PATTERN}`;
-    }
-    if (raw.kind === 'url') return `entry "${raw.id}" kind "url" cannot attach to a page`;
-    if (raw.kind === 'project') return `entry "${raw.id}" kind "project" cannot attach to a page`;
-  }
-  if (raw.role !== undefined && !ROLES.has(raw.role)) {
-    return `entry "${raw.id}" role must be "product" or "draft"`;
-  }
+  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", or "project"`;
+  if (typeof raw.path !== 'string') return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
   return null;
 }
 
@@ -87,37 +73,12 @@ function normalizeEntry(raw) {
     id: raw.id,
     title: typeof raw.title === 'string' ? raw.title : raw.id,
     kind: raw.kind,
+    path: raw.path,
   };
-  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') entry.path = raw.path;
-  else entry.url = raw.url;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (raw.kind === 'project') return entry;
   if (typeof raw.board === 'string') entry.board = raw.board;
-  if (typeof raw.page === 'string') entry.page = raw.page;
-  if (typeof raw.role === 'string') entry.role = raw.role;
   return entry;
-}
-
-/** 一条 folders[] 记录的宽容校验。返回错误说明或 null（该条被跳过）。 */
-function validateFolder(raw, seen) {
-  if (!raw || typeof raw !== 'object') return 'folder is not an object';
-  if (typeof raw.id !== 'string' || !FOLDER_ID_PATTERN.test(raw.id)) {
-    return `folder id must match ${FOLDER_ID_PATTERN}: ${JSON.stringify(raw && raw.id)}`;
-  }
-  // 同 id 的第二个夹是错误，但只毙这一条：另一个夹与所有页都不受影响。
-  if (seen.has(raw.id)) return `duplicate folder id "${raw.id}"`;
-  if (raw.name !== undefined && typeof raw.name !== 'string') {
-    return `folder "${raw.id}" name must be a string`;
-  }
-  return null;
-}
-
-export function normalizeFolder(raw) {
-  // name 自由文本，缺省等于 id（与条目的 title 同一条惯例）。
-  const folder = { id: raw.id, name: typeof raw.name === 'string' && raw.name ? raw.name : raw.id };
-  if (raw.collapsed === true) folder.collapsed = true;
-  if (Number.isFinite(raw.order)) folder.order = raw.order;
-  return folder;
 }
 
 /** PINPOINT_REGISTRY 是唯一的环境变量入口（HTML_ANNOTATE_REGISTRY 别名已删）。 */
@@ -132,7 +93,7 @@ export function loadRegistry(options = {}) {
   const errors = [];
   const warnings = [];
 
-  function finish(entries, grouping = {}, projects = []) {
+  function finish(entries, projects = []) {
     const byId = new Map(entries.map((entry) => [entry.id, entry]));
     return {
       ok: errors.length === 0,
@@ -140,11 +101,6 @@ export function loadRegistry(options = {}) {
       entries,
       // kind "project" 的条目（pp3）：与 entries 共用 id 命名空间，但不是 page。
       projects,
-      // 分组层（2026-09-04）：folders 是 owner 手建的一层夹；pageFolders /
-      // pageOrder 装的是「不是 registry 条目」的 manifest 页的归属与手动次序。
-      folders: grouping.folders || [],
-      pageFolders: grouping.pageFolders || {},
-      pageOrder: grouping.pageOrder || {},
       errors,
       warnings,
       resolve: (id) => byId.get(id) || null,
@@ -174,31 +130,18 @@ export function loadRegistry(options = {}) {
     log(`[registry] warning: ${message}`);
   }
 
-  // 文件夹先解析：条目的 folder 字段要拿它查引用。
-  const folders = [];
-  const folderIds = new Set();
-  if (parsed.folders !== undefined) {
-    if (!Array.isArray(parsed.folders)) {
-      errors.push('registry folders must be an array');
-      log('[registry] folders is not an array — ignoring the whole grouping list');
-    } else {
-      for (const raw of parsed.folders) {
-        const problem = validateFolder(raw, folderIds);
-        if (problem) {
-          errors.push(problem);
-          log(`[registry] skipping folder: ${problem}`);
-          continue;
-        }
-        folderIds.add(raw.id);
-        folders.push(normalizeFolder(raw));
-      }
-    }
+  for (const key of RETIRED_TOP_KEYS) {
+    if (parsed[key] !== undefined) warn(`"${key}" belongs to a retired feature — ignored`);
   }
 
   const seen = new Set();
   const entries = [];
   const projects = [];
   for (const raw of parsed.entries) {
+    if (raw && typeof raw === 'object' && RETIRED_KINDS.includes(raw.kind)) {
+      warn(`entry "${raw.id}" kind "${raw.kind}" belongs to a retired feature — skipped`);
+      continue;
+    }
     const problem = validateEntry(raw, seen);
     if (problem) {
       errors.push(problem);
@@ -220,68 +163,11 @@ export function loadRegistry(options = {}) {
       warnings.push(`entry "${entry.id}" path does not exist: ${entry.path}`);
       log(`[registry] warning: ${warnings[warnings.length - 1]}`);
     }
-    // 归属与手动次序都不决定「这个页存不存在」：坏引用只让它变成散页，
-    // 绝不把条目本身毙掉（丢一行 Pages 远比丢一层分组难查）。
-    if (raw.folder !== undefined) {
-      if (typeof raw.folder !== 'string' || !folderIds.has(raw.folder)) {
-        warn(`entry "${entry.id}" folder does not exist: ${JSON.stringify(raw.folder)} — treated as loose`);
-      } else {
-        entry.folder = raw.folder;
-      }
-    }
-    if (raw.order !== undefined) {
-      if (Number.isFinite(raw.order)) entry.order = raw.order;
-      else warn(`entry "${entry.id}" order must be a number: ${JSON.stringify(raw.order)} — ignored`);
+    for (const key of RETIRED_ENTRY_KEYS) {
+      if (raw[key] !== undefined) warn(`entry "${entry.id}" field "${key}" belongs to a retired feature — ignored`);
     }
     entries.push(entry);
   }
 
-  // manifest 页（不是 registry 条目的那些，Component Library 等）的归属与次序。
-  const pageFolders = readPageMap(parsed.pageFolders, 'pageFolders', {
-    errors, warn, entryIds: seen,
-    accept: (value, id) => {
-      if (typeof value !== 'string' || !folderIds.has(value)) {
-        warn(`pageFolders "${id}" folder does not exist: ${JSON.stringify(value)} — treated as loose`);
-        return undefined;
-      }
-      return value;
-    },
-  });
-  const pageOrder = readPageMap(parsed.pageOrder, 'pageOrder', {
-    errors, warn, entryIds: seen,
-    accept: (value, id) => {
-      if (Number.isFinite(value)) return value;
-      warn(`pageOrder "${id}" must be a number: ${JSON.stringify(value)} — ignored`);
-      return undefined;
-    },
-  });
-
-  return finish(entries, { folders, pageFolders, pageOrder }, projects);
-}
-
-/**
- * `{<pageId>: value}` 形状的宽容读取（pageFolders / pageOrder 共用）。
- * 键必须是页 id；键撞上 registry 条目 id 时那条映射是死数据（条目自己的
- * folder / order 字段才是它的归属），响亮地 warn 掉而不是静默留着。
- */
-function readPageMap(raw, name, { errors, warn, entryIds, accept }) {
-  const out = {};
-  if (raw === undefined) return out;
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    errors.push(`registry ${name} must be an object`);
-    return out;
-  }
-  for (const [id, value] of Object.entries(raw)) {
-    if (!PAGE_ID_PATTERN.test(id)) {
-      warn(`${name} key must match ${PAGE_ID_PATTERN}: ${JSON.stringify(id)} — ignored`);
-      continue;
-    }
-    if (entryIds.has(id)) {
-      warn(`${name} "${id}" is a registry entry — its own field wins, the mapping is ignored`);
-      continue;
-    }
-    const accepted = accept(value, id);
-    if (accepted !== undefined) out[id] = accepted;
-  }
-  return out;
+  return finish(entries, projects);
 }

@@ -20,7 +20,7 @@ import { openWorkbench, stageForm } from './lib/workbench.js';
 //     导出，也没有状态栏 / 岛 / home 条；机壳跟设置走；
 //   · 偏好按页记在 prefs.viewportByPage，跨 reload 保持；
 //   · 标注锚点是元素选择器，窗口里标的在手机里照样在，反过来也一样。
-// 固件 = e2e-dir（dir 条目，doc 壳，cards / doc 两屏）与 e2e-proxy（url 条目）。
+// 固件 = e2e-dir（dir 条目，doc 壳，cards / doc 两屏）与 e2e-doc（dir 条目，单 doc 屏）。
 
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-dir');
 const DOC_FRAME = '#wb-board-panel [data-screen="doc"] iframe.wb-doc-frame';
@@ -194,10 +194,9 @@ test('机壳「有」时手机屏带 iPhone 机身（仍无状态栏 / 岛 / hom
     .toBe(Math.round(shell.height));
 });
 
-test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；url 条目在手机视口里照走同源代理', async ({ page }) => {
+test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；手机视口不改文档 src', async ({ page }) => {
   // 偏好写入 / 删除的规则在 viewport.test.js（withViewportPref）已守，这里守
-  // 集成行为：reload 保持、别的页不受影响、回窗口删 key。代理链路本身由
-  // url-entry.spec 守，这里守「手机视口不改 src」。两条合一条（原独立两案）。
+  // 集成行为：reload 保持、别的页不受影响、回窗口删 key、手机视口不改 src。
   await openDirDoc(page);
   await setViewport(page, 'phone');
   await expect.poll(() => page.evaluate(
@@ -214,33 +213,31 @@ test('视口偏好按页记在 prefs.viewportByPage 跨 reload 保持；url 条�
   // 条目记忆也带回来：还是 doc，不是默认的 cards。
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('doc');
 
-  // 切到另一页（url 条目）：仍是窗口 —— 偏好按页记，互不沾染。
-  const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
-  await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
-  await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
+  // 切到另一页：仍是窗口 —— 偏好按页记，互不沾染。
+  const FRAME = '#wb-board-panel [data-screen="report"] iframe.wb-doc-frame';
+  await page.locator('.wb-page[data-vpage="e2e-doc"]').click();
+  await expect(page.frameLocator(FRAME).locator('h1')).toHaveText('Sample Report');
   expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wbviewport [data-viewport="window"]')).toHaveAttribute('aria-pressed', 'true');
 
-  // url 条目切手机：src 不变，活应用在手机屏里跑。
+  // 切手机：src 不变，同一份文档在手机屏里跑。
+  const src = await page.locator(FRAME).getAttribute('src');
   await setViewport(page, 'phone');
-  await expect(page.locator(FRAME)).toHaveAttribute('src', /^sites\/e2e-proxy\/$/);
-  await expect(page.frameLocator(FRAME).locator('#title')).toHaveText('E2E proxy upstream');
-  await expect(page.frameLocator(FRAME).locator('#api-result')).toHaveText('api-via-proxy');
+  await expect(page.locator(FRAME)).toHaveAttribute('src', src);
+  await expect(page.frameLocator(FRAME).locator('h1')).toHaveText('Sample Report');
   expect(await layoutSize(page, FRAME)).toEqual([402, 874]);
-  await expectPhoneFit(page, '#wb-board-panel [data-screen="index"] .wb-phone-doc');
-  await expect(page.locator('#wbstrip-kind')).toHaveText('网页');
+  await expectPhoneFit(page, '#wb-board-panel [data-screen="report"] .wb-phone-doc');
+  await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
 
   // 两页各切回窗口，key 删净（默认值不积灰）。
   await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
   await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
   await setViewport(page, 'window');
-  await page.locator('.wb-page[data-vpage="e2e-proxy"]').click();
+  await page.locator('.wb-page[data-vpage="e2e-doc"]').click();
   await setViewport(page, 'window');
   await expect.poll(() => page.evaluate(
     () => JSON.parse(localStorage.getItem('pinpoint-wb')).viewportByPage
   )).toEqual({});
-  // e2e-proxy 桶清掉，别影响 url-entry.spec 的断言。
-  fs.rmSync(path.join(E2E_DATA_DIR, 'e2e-proxy'), { recursive: true, force: true });
 });
 
 test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素上，手机里标的回窗口也在', async ({ page }) => {

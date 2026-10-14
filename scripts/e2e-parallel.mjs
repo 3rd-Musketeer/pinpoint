@@ -18,7 +18,6 @@ const durations = {
   'article-canvas.spec.js': 2.7,
   'article-site.spec.js': 4.1,
   'article-viewer.spec.js': 6.2,
-  'attach-entry.spec.js': 1.5,
   'bundle-cache.spec.js': 0.1,
   'canvas-diagnostics.spec.js': 2.9,
   'canvas-pan.spec.js': 19.2,
@@ -26,10 +25,8 @@ const durations = {
   'dir-entry.spec.js': 1.5,
   'export-picker.spec.js': 1.2,
   'figure.spec.js': 3,
-  'grouping-refresh.spec.js': 0.8,
   'html-frames.spec.js': 6,
   'integration-canvas.spec.js': 3.2,
-  'mention.spec.js': 1.3,
   'mixed-board.spec.js': 1.2,
   'page-bucket.spec.js': 1.5,
   'page-migrate.spec.js': 0.4,
@@ -47,9 +44,7 @@ const durations = {
   'section-deeplink.spec.js': 3.3,
   'section-scroll.spec.js': 3,
   'sidebar-content.spec.js': 7.7,
-  'spa-ledger.spec.js': 1,
   'tabs.spec.js': 3.7,
-  'url-entry.spec.js': 1.1,
   'viewport.spec.js': 4,
   'workbench.spec.js': 38.2,
 };
@@ -117,7 +112,7 @@ function runGroup(index, args) {
     const groupStarted = Date.now();
     const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...args, '--workers=1'], {
       cwd: root, stdio: 'inherit', env: {...process.env, E2E_PORT: String(groupPort),
-        E2E_UPSTREAM_PORT: String(groupPort + 10), PLAYWRIGHT_HTML_OPEN: 'never',
+        PLAYWRIGHT_HTML_OPEN: 'never',
         PW_TEST_REPORTER: 'json', PLAYWRIGHT_JSON_OUTPUT_FILE: resultsFile(index)},
     });
     children.push(child);

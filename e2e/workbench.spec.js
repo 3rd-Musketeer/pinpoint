@@ -200,8 +200,6 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await openWorkbench(page);
 
   // Pages 单一列表（2026-08-16 阶段 2）：系统行 + 模板页 + registry 条目同列。
-  // 阶段 4：url 条目也进列表（E2E Site / E2E Proxy App，恒 doc 壳）。
-  // 阶段 5：e2e-mention 固件（doc 壳 mention 文档）追加在尾。
   // 阶段 6：e2e-mixed 固件（混合板：画布 + 两个文档条目）追加在尾。
   // 阶段 7：Page 去类型化 —— 行只剩标题，壳标 pill 撤除（类型信息下移到
   // 「内容」区产物条目的 tag）。
@@ -211,11 +209,8 @@ test('manifest navigation survives rapid page switches and persists the winner',
   await expect(page.locator('#wbpages .wb-page-t')).toHaveText([
     '范例：冲一杯',
     'E2E iOS',
-    'E2E Site',
-    'E2E Proxy App',
     'E2E Dir',
     'E2E Dir iOS',
-    'E2E Mention Doc',
     'E2E Mixed',
     'E2E Doc',
   ]);
@@ -260,7 +255,7 @@ test('HTML board: doc / canvas 形态随选中条目切换，contents 区按形�
   await expect(page.locator('#wb-board-panel .wb-doc-frame')).toHaveCount(1);
   await expect(page.frameLocator('#wb-board-panel .wb-doc-frame').locator('h1')).toHaveText('Sample Report');
 
-  // 阶段 7 坍缩：纯单 doc 屏页（无画布、无草稿、非网页）整个「内容」区不出现。
+  // 阶段 7 坍缩：纯单 doc 屏页（无画布、无草稿）整个「内容」区不出现。
   await expect(page.locator('#wbcontents')).toHaveCount(0);
 
   // 纯画布页：「内容」区在、frame 树在，但条目行坍缩（无多余「画布」行）；

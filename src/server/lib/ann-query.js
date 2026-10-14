@@ -186,7 +186,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
  * 编译页落空时的回落：registry 里没有 board.json 的 dir / file 条目也是页
  * （storage-unify 的桶就是页，每个 pathname 一本文档账本）—— 没有板、没有
  * dist，check / status / mark 照常，摘录与截图这类编译面由调用方按 docOnly
- * 明说不可用。url 条目不认（页清单只收 dir / file），维持「找不到页」。
+ * 明说不可用。
  */
 export function loadPageContext({ pageRef, registryPath = null, root = null, dataRootDir = null }) {
   const repoRoot = root || REPO_ROOT;

@@ -1,6 +1,6 @@
 # 0019 · live 代理画中画：同源路径前缀代理 + 运行时重基（阶段 4/5 落地）
 
-Status: 现行（已落地） · Date: 2026-08-16 · Scope: `src/server/lib/site-proxy.js`、`src/shared/proxy-rebase.js`
+Status: 已退役（2026-10-14 删除：url 条目、/sites/ 同源代理、运行时重基与 SPA 换账本整体删掉，老登记表里的 url 条目读时跳过；proxy-origin.js 留给文章站点代理） · Date: 2026-08-16 · Scope: `src/server/lib/site-proxy.js`、`src/shared/proxy-rebase.js`
 
 **Decided**:
 

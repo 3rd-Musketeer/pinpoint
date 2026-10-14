@@ -16,8 +16,7 @@ import {
   boardShowsTabBar,
   defaultEntryId,
   entryForm,
-  resolveEntry,
-  withEntryWeb
+  resolveEntry
 } from './lib/board-entries.js';
 import {
   VIEWPORT_PHONE,
@@ -140,13 +139,6 @@ export function sidebarPages() {
   return manifestPages();
 }
 
-/** 登记表的分组层（folders / pageFolders / pageOrder）——左栏分组的唯一来源。 */
-export function pageGrouping() {
-  var manifest = wbGet().pageManifest;
-  var grouping = manifest && manifest.grouping;
-  return grouping || { folders: [], pageFolders: {}, pageOrder: {} };
-}
-
 function defaultPageId() {
   var pages = manifestPages();
   if (!pages.length) return '';
@@ -190,15 +182,12 @@ export function resolveActivePage(preferredId, modeHint) {
    （app/OutlinePopover.jsx，读 fullBoard 再按 tab 切片）。这里只保留切换动作与
    装载后的条目解析。 */
 
-/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。
-    阶段 7：registry 条目的 kind 经 manifest page（registrySitePages 透传
-    page.kind）在这里落到条目上 —— url 页的 doc 条目带 web 标记（「网页」tag）。 */
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。 */
 export function entriesOfActiveBoard() {
   var s = wbGet();
   var active = s.activeBoard;
   if (!active || active.pageId !== s.activePageId) return [];
-  var page = pageEntry(s.pageManifest, active.pageId);
-  return withEntryWeb(boardEntries(active.board), page && page.kind);
+  return boardEntries(active.board);
 }
 
 /* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
@@ -498,13 +487,9 @@ export function syncEntries(options) {
   setActiveEntry(wanted || defaultEntryId(entries), { scrollTop: false, save: !!(options.fresh && options.save) });
 }
 
-/** 分组层写完之后的当场生效（lib/folder-api.js 三条 PUT 的收尾）：应答就是重载
-    后的完整 /registry 载荷，直接灌回 registry-sites 缓存再重建 manifest，左栏
-    当场重排。HMR 的 registry:update 随后照样会到 —— 那条广播带 scope=grouping
-    （审计 B2），stage.js 只重拉清单刷新左栏，不再重摆当前板。 */
-export function refreshRegistry(payload) {
-  if (payload) queryClient.setQueryData(['registry-sites'], registryToPages(payload));
-  else queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
+/** 标注变动后重拉 /registry（左栏的计数与时间跟着刷新），再重建 manifest。 */
+export function refreshRegistry() {
+  queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
   return loadPageManifest();
 }
 
@@ -526,12 +511,7 @@ export function retryPageManifest() {
     The default 'pinpoint' entry is the workbench itself — its pages are the
     _index pages, so it is not listed again. A dead annotate API must not break
     the workbench: previews-only then. Entries without their own board.json are
-    still readable: the service synthesizes a doc board (lib/synth-board.js).
-    阶段 4：url 条目也进 Pages（恒 doc 壳）—— 经同源代理嵌进阅读器，
-    与扩展注入并存（两条路径共用同一个 entry 标注桶）。
-    阶段 8：带 page 字段的条目（pinpoint add --page）不进 Pages —— 它归属
-    既有 Page 的「内容」区，这里分流入 attached 列表（stage.js loadBoard 经
-    withAttachedScreens 合并成目标页的合成 doc 屏）。返回 { pages, attached }。 */
+    still readable: the service synthesizes a doc board (lib/synth-board.js). */
 function registrySitePages() {
   return queryClient.fetchQuery({
     queryKey: ['registry-sites'],
@@ -544,44 +524,30 @@ function registrySitePages() {
         .then(registryToPages);
     }
   }).catch(function () {
-    return { pages: [], attached: [], articles: [], grouping: { folders: [], pageFolders: {}, pageOrder: {} } };
+    return { pages: [], articles: [] };
   });
 }
 
-/** GET /registry（也是三条 PUT 的应答）→ Pages 消费的形状。纯变换，无副作用。 */
+/** GET /registry → Pages 消费的形状。纯变换，无副作用。 */
 function registryToPages(data) {
   var entries = (data && data.entries) || [];
-  var attached = [];
   var pages = [];
-  // 2026-09-04 分组层（ADR 0032）：条目自己的 folder / order 跟着页走，顶层三段
-  // 整份透传 —— 模板页没有条目可以写字段，归属只能记在 pageFolders / pageOrder。
-  var grouping = {
-    folders: (data && data.folders) || [],
-    pageFolders: (data && data.pageFolders) || {},
-    pageOrder: (data && data.pageOrder) || {}
-  };
   entries.forEach(function (entry) {
-    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
-    if (entry.page) { attached.push(entry); return; }
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file') || entry.id === 'pinpoint') return;
     pages.push({
       id: entry.id,
       title: entry.title || entry.id,
       // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
       // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
       // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
-      // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
       mode: entryBoardMode(entry),
-      // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
-      // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
-      // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。
+      // registry kind 透传到 manifest 页（dir / file；文章页是 article）。
       kind: entry.kind,
       addedAt: entry.addedAt || null,
       annotatedAt: entry.annotatedAt || null,
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
-      // url 条目无此字段 → null，排序沉底、行内不显示时间）。
+      // 缺字段 → null，排序沉底、行内不显示时间）。
       mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
-      folder: typeof entry.folder === 'string' ? entry.folder : null,
-      order: Number.isFinite(entry.order) ? entry.order : null,
       site: true
     });
   });
@@ -601,7 +567,7 @@ function registryToPages(data) {
       site: true
     };
   });
-  return { pages: pages, attached: attached, articles: articles, grouping: grouping, pageTimes: data.pageTimes || {} };
+  return { pages: pages, articles: articles, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -625,15 +591,10 @@ export function loadPageManifest() {
           if (known[page.id]) return; // a previews page with the same id wins
           manifest.pages.push(page);
         });
-        // 阶段 8：attach 条目（registry 带 page 字段）随 manifest 走——
-        // stage.js loadBoard 经 withAttachedScreens 把归属本页的条目合并成
-        // 合成 doc 屏；目标页不存在时条目自然悬空（不合并、不出行、不报错）。
         manifest.pages = manifest.pages.map(page => ({ ...page, ...sitePages.pageTimes[page.id] }));
         manifest.pageTimes = sitePages.pageTimes;
-        manifest.attached = sitePages.attached;
         // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
         manifest.articles = (sitePages.articles || []).filter(function (page) { return !known[page.id]; });
-        manifest.grouping = sitePages.grouping;
         wbSet({ pageManifest: manifest });
         return manifest;
       });

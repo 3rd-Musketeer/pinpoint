@@ -6,27 +6,18 @@ import { parseReqUrl } from './lib/req-url.js';
  * - `file` entries: exactly the one registered file, under both
  *   `/sites/<id>/` and `/sites/<id>/<basename>`; everything else 404s, so
  *   sibling files in the same directory stay unreachable.
- * - `url` entries (阶段 4): same-origin path-prefix proxy to the registered
- *   origin (server/lib/site-proxy.js) — HTML/CSS rewritten onto the prefix,
- *   rebase bootstrap + annotate client injected into HTML, WS upgrades
- *   forwarded (createSiteUpgradeHandler). All methods pass through (the app
- *   behind the proxy has its own API) for pinpoint's own origins; a foreign
- *   Origin gets 403 on writes and websockets (lib/proxy-origin.js, option
- *   `origins`); dir/file stay GET/HEAD-only.
+ * - Both are GET/HEAD-only.
  *
  * The registry is the whitelist: only registered entries are served. For a
  * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
  * stay inside the entry directory. Entries without their own board.json get a
- * synthesized doc board at `/sites/<id>/board.json` (see lib/synth-board.js —
- * for url entries the synthesized board always wins, shadowing any upstream
- * board.json), so every registered site page opens readable in the workbench.
+ * synthesized doc board at `/sites/<id>/board.json` (see lib/synth-board.js),
+ * so every registered site page opens readable in the workbench.
  * HTML responses (GET, without
  * ?annotate=off) get the annotate client injected — "登记过才注入": opening
  * the same content via file:// or a self-started server serves the identical
  * bytes with zero annotation surface. ?annotate=off opts a single request out
- * (export paths and the workbench's inline fragment loader use it; on url
- * entries it drops only the annotate client — the rebase bootstrap stays,
- * see lib/site-proxy.js).
+ * (export paths and the workbench's inline fragment loader use it).
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -41,9 +32,7 @@ import {
   serveBoardJsonWithDist,
   serveDistScreenResponse,
 } from './lib/page-compiler.js';
-import { listenOrigins } from './lib/proxy-origin.js';
 import { loadRegistry } from './lib/registry.js';
-import { createSiteUpgradeHandler, proxySiteRequest } from './lib/site-proxy.js';
 import { synthesizeBoard } from './lib/synth-board.js';
 import { parseFrameSrc } from '../shared/project-ids.js';
 
@@ -161,14 +150,8 @@ function resolveRegisteredFile(entry, rel) {
 export function createSitesHandler(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
 
-  /** 桶 = 页：条目的标注桶 id（挂靠条目 → 宿主页 id，其余 → 自己的 id）。 */
-  function pageBucketOf(entry) {
-    return entry.page || entry.id;
-  }
-
   // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
-  // 一版本；url 单屏代理页）——磁盘文件永远优先（dir 分支只在 resolve 落空后
-  // 走到），url 条目无磁盘概念、合成板直接遮蔽上游自己的 board.json。合成的
+  // 一版本）——磁盘文件永远优先（dir 分支只在 resolve 落空后走到）。合成的
   // 是 JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
   function sendSynthesizedBoard(req, res, entry) {
     const board = synthesizeBoard(entry);
@@ -289,16 +272,6 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    // kind "url"（阶段 4）：同源路径前缀代理，方法/头/body 全透传。
-    if (entry.kind === 'url') {
-      if (rel === 'board.json' && (req.method === 'GET' || req.method === 'HEAD')
-        && sendSynthesizedBoard(req, res, entry)) {
-        return true;
-      }
-      proxySiteRequest(req, res, entry, { origins: options.origins });
-      return true;
-    }
-
     if (entry.kind !== 'dir' && entry.kind !== 'file') {
       sendJson(res, 404, { error: 'not found' });
       return true;
@@ -330,8 +303,8 @@ export function createSitesHandler(options = {}) {
             urlBase: `/sites/${entry.id}/`,
             kind: 'dir',
           }, screenId, {
-            // storage-unify：注入的 entry = 这条内容属于哪一页（挂靠条目给宿主页 id）。
-            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, pageBucketOf(entry)),
+            // storage-unify：注入的 entry = 这条内容属于哪一页。
+            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id),
           });
         }
       }
@@ -357,7 +330,7 @@ export function createSitesHandler(options = {}) {
     const isHtml = mimeFor(file) === 'text/html';
     let body = fs.readFileSync(file);
     if (isHtml && query.get('annotate') !== 'off') {
-      body = Buffer.from(injectAnnotateClient(body.toString('utf8'), pageBucketOf(entry)), 'utf8');
+      body = Buffer.from(injectAnnotateClient(body.toString('utf8'), entry.id), 'utf8');
     }
     res.statusCode = 200;
     res.setHeader('Content-Type', contentType(file));
@@ -373,24 +346,15 @@ export function createSitesHandler(options = {}) {
 
 export default function sitesApi(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
-  let viteServer = null;
-  // pinpoint 自己的来源缺省按服务实际监听的端口算（与文章代理同一份，lib/proxy-origin.js）。
-  const origins = options.origins || listenOrigins(() => viteServer);
-  const handleSites = createSitesHandler({ ...options, registry, origins });
-  const handleUpgrade = createSiteUpgradeHandler({ registry, origins });
+  const handleSites = createSitesHandler({ ...options, registry });
   return {
     name: 'sites-api',
     configureServer(server) {
-      viteServer = server;
       server.middlewares.use(async (req, res, next) => {
         const urlPath = parseReqUrl(req).pathname;
         if (await handleSites(req, res, urlPath)) return;
         next();
       });
-      // WS 兜底：/sites/<id>/ 的 upgrade 转发到 url 条目的目标 origin（路径
-      // 去前缀回写）。非 /sites/ 路径与 dir/file 条目不碰 socket —— vite HMR
-      // 等其它 upgrade listener 照常工作。
-      if (server.httpServer) server.httpServer.on('upgrade', handleUpgrade);
     },
   };
 }

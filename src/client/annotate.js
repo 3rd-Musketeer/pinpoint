@@ -8,9 +8,8 @@
  * Disk shape: annotations[] with content / section / sectionLabel / screenId / pageId.
  * Indicators: @page: @section: @frame: @a:; local target refs in content use [@t:iN].
  * Overlay mounts inside .wb-stage-wrap (not over the sidebar).
- * 阶段 5：doc 页 data-pinpoint-frame 挂载点水合为活 frame iframe（/api/frame），
- * frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入 __pinpointFrame），锚点按
- * frame 内路径归一（src/shared/frame-anchor.js），模式开关向 frame iframe 级联。 */
+ * /api/frame 嵌入帧：frame 内标注与画布同账本（桶 = 帧所属页、账本 @canvas，注入
+ * __pinpointFrame），锚点按 frame 内路径归一（src/shared/frame-anchor.js）。 */
 
 // SSOT 共享库（src/shared、src/client/lib）走真正的 ES 模块，由
 // src/server/lib/annotate-bundle.js 用 esbuild 打成单个自包含 IIFE 再 serve
@@ -122,9 +121,8 @@ import { startProseComments } from './prose-comments.js';
 
   /** 状态筛选的 LS 槽：跟账本同键（= 按页），后缀区分标注数据本体。 */
   function statusFilterKey() { return LS_KEY + ':stfilter'; }
-  // 当前账本对应的 pathname；SPA pushState 改 URL 不刷新页面，路由切换时上面三个 key 一起重算。
-  // （frame 嵌入页不导航，账本恒定 —— 路由监听在 FRAME 模式下不安装。）
-  var currentPathname = LEDGER_PATHNAME;
+  // 页面自己改 URL（pushState）不换账本：账本在加载时按 pathname 定下；
+  // 只有画布实例切活动页时上面三个 key 重算（switchLedgerTo）。
   var marks = [];      // in-memory annotations: {n, id, type, pageId?, section?, sectionLabel?, screenId?, selector?, content, …}
   var revision = 0;    // disk document revision (SSOT concurrency)
   var baseMarks = [];  // 本窗口最后确认的盘上版本（revision 那一版的行）：保存撞 409 时按它三方合并（rebaseOnto）
@@ -1260,7 +1258,7 @@ import { startProseComments } from './prose-comments.js';
   overlay.appendChild(hoverLayer);
   overlay.appendChild(chromeLayer);
   bubblesLayer.style.display = renderComments ? '' : 'none';
-  // SPA 路由可能重建挂载点，switchLedgerTo 复用这套逻辑重挂。
+  // switchLedgerTo 换账本时挂载点掉出文档，复用这套逻辑重挂。
   function mountOverlay(modal) {
     // 三种挂法。workbench：overlay 与 chrome 都直接挂在 .wb-stage-wrap 里按 --wb-z 阶梯排
     //（钉子在面板 / 横条之下，输入框在横条之上；两者同一父级 inset:0，坐标一致）。
@@ -1403,23 +1401,9 @@ import { startProseComments } from './prose-comments.js';
   function toggleMode() {
     mode = !mode;
     if (!mode) { clearHover(); closeComposer(); }
-    propagateModeToFrames();
     notify();
   }
   btnToggle.addEventListener('click', toggleMode);
-
-  // 文档里的标注/交互开关对嵌入 frame 同样生效（阶段 5）：doc 实例切换时把
-  // 模式推进每个 mention 水合出的 frame iframe（同源直调；frame 内 annotate
-  // 实例各自独立）。frame 实例启动时也会反向领养父级当前模式（见 boot）。
-  function propagateModeToFrames() {
-    var frames = document.querySelectorAll('iframe[data-pinpoint-frame-iframe]');
-    for (var i = 0; i < frames.length; i++) {
-      try {
-        var w = frames[i].contentWindow;
-        if (w && w.pinpoint && typeof w.pinpoint.setMode === 'function') w.pinpoint.setMode(mode);
-      } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
-    }
-  }
 
   function setRenderComments(on) {
     on = !!on;
@@ -1554,7 +1538,7 @@ import { startProseComments } from './prose-comments.js';
   btnClear.addEventListener('click', doClear);
 
   // ---------- 标注面板（#ann-sidebar）----------
-  // 没有 workbench 的页面（/sites/ 注入、SPA）的标注控制面：顶部
+  // 没有 workbench 的页面（/sites/ 注入）的标注控制面：顶部
   // 「交互 | 标注」segmented 切 mode，下面当前账本按 n 列出，点击跳转
   // （goToMark），行尾动作与工作台弹层同款（完成勾 / close 行「重新打开」）。
   // 入口 = 工具条「列表」按钮、S 键。
@@ -2713,7 +2697,7 @@ import { startProseComments } from './prose-comments.js';
       renderTargets: function () {}
     };
     activeComposer = composer;
-    composer.save = save; // SPA 切账本收尾用：把打开中的草稿存回旧账本
+    composer.save = save; // 切账本收尾用：把打开中的草稿存回旧账本
     var composerMaxWidth = parseFloat(getComputedStyle(box).maxWidth) || box.offsetWidth;
 
     // Use the selected DOM geometry, including every visible selected target.
@@ -3285,7 +3269,7 @@ import { startProseComments } from './prose-comments.js';
   var lastRectPersistTimer = null;
 
   /** lastRect 的坐标系与记录端一致才可消费（§2b）：同一条标注会在画布与注入
-      frame（mention）两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
+      frame 两边先后被测量，后写的覆盖先写的 —— 不带 space 的话另一
       边只能拿错坐标画框。旧记录没有 space：按当前端解释（保持既有行为），
       下一次活锚点测量就会写成带 space 的新记录。 */
   function lastRectSpaceOk(lr) {
@@ -4214,7 +4198,7 @@ import { startProseComments } from './prose-comments.js';
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,
-      epoch: syncEpoch,          // SPA 账本世代（路由切换 +1）
+      epoch: syncEpoch,          // 账本世代（换账本 +1）
       routing: ledgerSwitching   // 账本切换未落地（hydrate 在途）
     };
   }
@@ -4265,14 +4249,10 @@ import { startProseComments } from './prose-comments.js';
 
   syncModeClass();
 
-  // ---------- 账本切换（SPA 路由 + 画布切页共用） ----------
-  // SPA 用 pushState/replaceState 改 URL 不刷新页面，本脚本只跑过一次；pathname 一变，
-  // 标注必须改记到新 pathname 的账本（PAGE/PAGE_KEY/LS_KEY 重算），否则静默记到旧页面名下。
-  // storage-unify 加了第二种切换源：工作台画布切活动页 = 换桶（ENTRY = 新页 id、
-  // 账本 @canvas）并重新 hydrate。两种切换共用同一条 switchLedgerTo 管线：
-  // 会话收尾 → 旧账本未落盘的写交 outbox → epoch 护栏 → 清渲染 → 重算 key →
-  // hydrate（先等目标账本的 outbox 排空）→ 落定放行。
-  // hash-only 变化不触发：key 公式只含 pathname（已接受的边界）。
+  // ---------- 账本切换（画布切页） ----------
+  // 工作台画布切活动页 = 换桶（ENTRY = 新页 id、账本 @canvas）并重新 hydrate，
+  // 走 switchLedgerTo 管线：会话收尾 → 旧账本未落盘的写交 outbox → epoch 护栏 →
+  // 清渲染 → 重算 key → hydrate（先等目标账本的 outbox 排空）→ 落定放行。
 
   function finishSessionForLedgerSwitch(pristineBoot) {
     // 打开中的草稿：有实质内容先走现有 save() 存回旧账本（save → persist → POST 带
@@ -4295,7 +4275,7 @@ import { startProseComments } from './prose-comments.js';
     hideGhost();
   }
 
-  /** 换账本的统一入口：next = { entry, ledgerPathname, page, currentPathname }。
+  /** 换账本的统一入口：next = { entry, ledgerPathname, page }。
       切换途中再来的请求 coalesce 到最新一个；目标与当前同账本则不动。 */
   function requestSwitch(next) {
     if (!next) return;
@@ -4329,12 +4309,11 @@ import { startProseComments } from './prose-comments.js';
     LS_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER_PATHNAME;
     // 筛选按页记忆：换账本即换槽（画布实例切活动页时弹层筛选跟着换页）。
     statusFilter = readAnnFilter(localStorage, statusFilterKey());
-    currentPathname = next.currentPathname;
     revision = 0;
     mutationVersion = 0;
     syncedMutationVersion = 0;
     syncError = false;
-    // 5. SPA 路由可能重建挂载点：掉出文档则按原逻辑重挂（data-ann-viewport 两种
+    // 5. 挂载点掉出文档则按原逻辑重挂（data-ann-viewport 两种
     //    模式的定位差异与 _originCache 失效由 mountOverlay 处理）
     if (!overlay.isConnected || !chromeLayer.isConnected) mountOverlay();
     if (!toolbar.isConnected) document.body.appendChild(toolbar);
@@ -4363,16 +4342,6 @@ import { startProseComments } from './prose-comments.js';
     return new Promise(function (resolve) { settleWaiters.push(resolve); });
   }
 
-  function onRouteChange(newPathname) {
-    if (!newPathname || newPathname === currentPathname) return;
-    requestSwitch({
-      entry: ENTRY,
-      ledgerPathname: newPathname,
-      page: pageKeyFromPathname(newPathname),
-      currentPathname: newPathname,
-    });
-  }
-
   // ---------- 画布切页换桶（storage-unify） ----------
   // 工作台的活动页由 stage.js 持有；这里经 window.workbench.onPageChange 订阅
   // （boot 早于订阅时直接读 activePageId 兜底）。活动页一定 → 桶一定，
@@ -4381,7 +4350,7 @@ import { startProseComments } from './prose-comments.js';
   // 永不 hydrate），且占位期保存的行没有归属（保存已被拦下，见 save 的占位判断）。
 
   function canvasSwitchFor(pageId) {
-    return { entry: pageId, ledgerPathname: CANVAS_PAGE, page: CANVAS_PAGE, currentPathname: CANVAS_PAGE };
+    return { entry: pageId, ledgerPathname: CANVAS_PAGE, page: CANVAS_PAGE };
   }
 
   function watchWorkbenchPages() {
@@ -4404,125 +4373,6 @@ import { startProseComments } from './prose-comments.js';
     }, 25);
   }
 
-  // 层 1：路由信号。首选 Navigation API（只关心 same-document 导航，比较新旧
-  // pathname）；没有 window.navigation 时降级为 patch pushState/replaceState
-  // （调原实现后再检查）+ popstate。与已有的 popstate → scheduleContentRender
-  // 监听共存——popstate 现在多一个账本切换语义。
-  // /api/frame 嵌入帧不导航（账本恒定 = 所属页的 @canvas），不装路由监听；
-  // 工作台画布实例同样不装 —— 它的 pathname 恒定（/ 或 /index.html），而
-  // url-sync 的深链回写会不停 replaceState，装了会把画布账本切回按 pathname
-  // 分的旧形态（实测：切页换桶后一发 replaceState 就切走）。画布实例的账本
-  // 只跟活动页走（watchWorkbenchPages）。
-  if (!FRAME && !CANVAS_MODE) {
-    if (window.navigation && typeof window.navigation.addEventListener === 'function') {
-      window.navigation.addEventListener('navigate', function (event) {
-        try {
-          var dest = event && event.destination;
-          // 跨文档导航会真刷新、脚本随之重跑，无需切账本
-          if (!dest || dest.sameDocument === false || !dest.url) return;
-          var nextPathname = new URL(dest.url, location.href).pathname;
-          if (nextPathname !== currentPathname) onRouteChange(nextPathname);
-        } catch (e) { /* ignore */ }
-      });
-    } else {
-      ['pushState', 'replaceState'].forEach(function (method) {
-        var orig = history[method];
-        if (typeof orig !== 'function') return;
-        history[method] = function () {
-          var out = orig.apply(this, arguments);
-          try {
-            if (location.pathname !== currentPathname) onRouteChange(location.pathname);
-          } catch (e) { /* ignore */ }
-          return out;
-        };
-      });
-      addEventListener('popstate', function () {
-        if (location.pathname !== currentPathname) onRouteChange(location.pathname);
-      });
-    }
-  }
-
-  // ---------- 阶段 5：doc mention 活 frame 水合 ----------
-  // doc 页正文里的 <div data-pinpoint-frame="<pageId>/<screenId>"></div> 挂载点
-  // 水合为活 frame（iframe → /api/frame 渲染端点；frame 内是完整自包含文档：
-  // fragment + 机壳 + ios-kit + annotate 注入 —— 样式隔离白得，标注实例独立）。
-  // 已含子节点的挂载点跳过：那是导出烤图（<img>）或已水合的重复扫描。
-  var MENTION_VALUE_RE = /^([A-Za-z0-9._-]+)\/([A-Za-z0-9._/-]+)$/;
-
-  function autosizeMentionFrame(iframe) {
-    function measure() {
-      try {
-        var doc = iframe.contentDocument;
-        if (!doc || !doc.documentElement) return;
-        var h = Math.max(doc.documentElement.scrollHeight, doc.body ? doc.body.scrollHeight : 0);
-        if (h > 0) iframe.style.height = Math.ceil(h) + 'px';
-      } catch (e) { /* 同源防御 */ }
-    }
-    iframe.addEventListener('load', function () {
-      measure();
-      setTimeout(measure, 300);   // 字体/侧car 脚本落定
-      setTimeout(measure, 1200);
-    });
-  }
-
-  function hydrateMentionFrames(root) {
-    if (FRAME) return; // frame 嵌入页自身不再向下水合（mention 是 doc 特性）
-    var scope = root && root.querySelectorAll ? root : document;
-    var mounts = scope.querySelectorAll('[data-pinpoint-frame]');
-    if (!mounts.length) return;
-    for (var i = 0; i < mounts.length; i++) {
-      (function (mount) {
-        if (mount.getAttribute('data-pinpoint-hydrated') === '1') return;
-        if (mount.firstElementChild) return;
-        var m = String(mount.getAttribute('data-pinpoint-frame') || '').trim().match(MENTION_VALUE_RE);
-        if (!m) {
-          mount.setAttribute('data-pinpoint-frame-error', 'bad-ref');
-          return;
-        }
-        // 帧账本 = 被引用帧所属页的 @canvas（storage-unify），端点按 page+screen
-        // 解析归属，不再需要顶层工作台的 pathname。
-        var iframe = document.createElement('iframe');
-        iframe.setAttribute('data-pinpoint-frame-iframe', '');
-        iframe.setAttribute('title', '@frame:' + m[1] + '/' + m[2]);
-        iframe.setAttribute('scrolling', 'no');
-        iframe.src = '/api/frame?page=' + encodeURIComponent(m[1]) +
-          '&screen=' + encodeURIComponent(m[2]);
-        iframe.style.cssText = 'width:100%;border:0;display:block;background:transparent;overflow:hidden';
-        autosizeMentionFrame(iframe);
-        mount.appendChild(iframe);
-        mount.setAttribute('data-pinpoint-hydrated', '1');
-      })(mounts[i]);
-    }
-  }
-
-  function bootMentionHydration() {
-    if (document.readyState === 'loading') {
-      document.addEventListener('DOMContentLoaded', function () { hydrateMentionFrames(document); });
-    } else {
-      hydrateMentionFrames(document);
-    }
-  }
-
-  // /api/frame 嵌入帧启动时领养父级（doc 页）当前模式；父级异步注入尚未就绪时
-  // 有界重试（父级之后的切换由 propagateModeToFrames 推进来）。
-  function adoptParentMode() {
-    if (!FRAME) return;
-    var tries = 0;
-    var timer = setInterval(function () {
-      tries++;
-      var done = false;
-      try {
-        var p = window.parent;
-        if (p && p !== window && p.pinpoint && typeof p.pinpoint.getState === 'function') {
-          var st = p.pinpoint.getState();
-          if (st && !!st.mode !== mode) toggleMode();
-          done = true;
-        }
-      } catch (e) { done = true; /* 跨域父级：放弃领养，保持交互 */ }
-      if (done || tries > 40) clearInterval(timer);
-    }, 100);
-  }
-
   // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------
   if (CANVAS_MODE) {
     // 画布实例：活动页定了才有桶（storage-unify）。SSE 先连（连接指示与事件流
@@ -4530,7 +4380,6 @@ import { startProseComments } from './prose-comments.js';
     renderAll();
     notify();
     watchWorkbenchPages();
-    bootMentionHydration();
   } else {
     hydrateFromDisk().then(function (online) {
       renderAll();
@@ -4544,8 +4393,6 @@ import { startProseComments } from './prose-comments.js';
       } else {
         setServerOnline(false);
       }
-      bootMentionHydration();
-      adoptParentMode();
     });
   }
 })();

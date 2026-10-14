@@ -39,7 +39,7 @@ ${ADDRESS}
 
 登记与存量页
   add <project 根> --project            登记一个 project
-  add / move / rename / remove / folder / migrate / prune   存量页的登记、迁移与清理
+  add / move / rename / remove / migrate / prune   存量页的登记、迁移与清理
 
 每个命令都认 --json（stdout 只出一个 JSON）。退出码：0 成功 · 1 有问题（验证错误、引用没命中、服务没答）· 2 用法错或找不到目标。
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
@@ -269,7 +269,7 @@ ${REGISTRY_FLAG}`,
     text: `用法：ppnt list [关键词…]
 
 把口头说法对上地址：列 project（下面每篇文章一行 <project>/<article>）和存量页（id · 标题 · 类型 ·
-open / check / done 计数 · 文件夹，次行源路径）。关键词在 id、标题、路径上宽松匹配，多个词要同时对上，
+open / check / done 计数，次行源路径）。关键词在 id、标题、路径上宽松匹配，多个词要同时对上，
 英文复数自动去 s，连字符与空格互通；也匹配文章的 id 和标题。
   ppnt list <project>                 同 ppnt show <project>
   ppnt list <页 id> --frames          编号 · 帧 id · 源文件 · 标题（同 ppnt show <存量页 id>）
@@ -297,27 +297,24 @@ ${REGISTRY_FLAG}
   stop: { usage: 'ppnt stop', text: '用法：ppnt stop\n\n停常驻服务：只给 portless 记下的那个进程发 SIGTERM。' },
   restart: { usage: 'ppnt restart', text: '用法：ppnt restart\n\n停 + 起。服务跨过一次仓库目录搬迁后（status 报服务 root 不对）用它。' },
   add: {
-    usage: 'ppnt add <project 根> --project | ppnt add <目录|文件.html|http(s)://URL> [--title X] [--board ios|html] [--id xxx] [--page <页 id>] [--draft]',
+    usage: 'ppnt add <project 根> --project | ppnt add <目录|文件.html> [--title X] [--board ios|html] [--id xxx]',
     text: `用法：ppnt add <project 根> --project
-      ppnt add <目录|文件.html|http(s)://URL> [选项]
+      ppnt add <目录|文件.html> [选项]
 
-登记进 registry（文件留在原地，只登记路径或网址），服务在跑就让它重读登记表。
-  目录 + --project     project：读 <根>/docs/pinpoint/project.json，id 与标题都取它；不能和 --title / --board / --page / --draft 同用
+登记进 registry（文件留在原地，只登记路径），服务在跑就让它重读登记表。
+  目录 + --project     project：读 <根>/docs/pinpoint/project.json，id 与标题都取它；不能和 --title / --board 同用
   目录                 存量页（kind dir），服务在 /sites/<id>/ 下只读托管并注入标注
   单个 .html           kind file，只托管这个文件
-  http(s)://URL        kind url，同源代理内嵌，并往响应里注入标注
 
   --project            见上
-  --title X            显示名（缺省目录名 / 文件名 / hostname）
+  --title X            显示名（缺省目录名 / 文件名）
   --board ios|html     工作台的壳（缺省 html；只对目录生效）
   --id xxx             本条目自己的 id（缺省由名称派生；撞了已有 id 就报错）
-  --page <页 id>       把本条目挂到已有的存量页上（并进那一页的内容区），不是给本条目起 id——起 id 用 --id
-  --draft              配合 --page：挂进草稿组
 ${REGISTRY_FLAG}`,
   },
   move: {
-    usage: 'ppnt move <id> <新目录|新文件|新URL>',
-    text: `用法：ppnt move <id> <新目录|新文件|新URL>
+    usage: 'ppnt move <id> <新目录|新文件>',
+    text: `用法：ppnt move <id> <新目录|新文件>
 
 把已登记的条目指到新路径，id 和标题不变，标注照旧对得上。project：新根目录里 project.json 的 id 必须不变。
 ${REGISTRY_FLAG}`,
@@ -326,7 +323,7 @@ ${REGISTRY_FLAG}`,
     usage: 'ppnt rename <旧 id> <新 id>',
     text: `用法：ppnt rename <旧 id> <新 id>
 
-给条目改 id，四件事都能做才动手：登记表换 id（含挂在它上面的条目）、标注桶改名、
+给条目改 id，四件事都能做才动手：登记表换 id、标注桶改名、
 目录条目里的 /sites/<旧 id>/ 换成新前缀、服务重读。project：改写 project.json 的 id，
 每篇文章的桶 <旧 id>_<文章> 改名成 <新 id>_<文章>（任何一个目标已存在就整单不动），画布视图按新页 id 重编。
 ${REGISTRY_FLAG}`,
@@ -335,20 +332,8 @@ ${REGISTRY_FLAG}`,
     usage: 'ppnt remove <id>',
     text: `用法：ppnt remove <id>
 
-从登记表删掉一个条目，源文件和网址不动，重新 add 就恢复。三种情况拒绝：id 不存在；还有条目挂着它；
+从登记表删掉一个条目，源文件不动，重新 add 就恢复。两种情况拒绝：id 不存在；
 标注桶里还有标注行（先处理，或 ppnt prune）。桶是空的就顺手删掉。project 的每篇文章的桶守同一条。
-${REGISTRY_FLAG}`,
-  },
-  folder: {
-    usage: 'ppnt folder <list|add|rename|rm|move> …',
-    text: `用法：ppnt folder <子命令>
-
-工作台左栏“页面”组里的一层分组（不嵌套；文章不进文件夹）：
-  ppnt folder list                     列出文件夹：id · 名称 · 页数 · 是否折叠
-  ppnt folder add <名称> [--id xxx]     建一个夹（中文名派生不出 id，用 --id）
-  ppnt folder rename <id> <新名称>       只改显示名
-  ppnt folder rm <id>                   删夹；夹里的页不删，变成散页
-  ppnt folder move <页 id> <夹 id>       把页放进夹；夹 id 写 none = 移出来
 ${REGISTRY_FLAG}`,
   },
   migrate: {

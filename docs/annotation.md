@@ -61,15 +61,15 @@
 ## 账本与桶
 
 **一个页 id 一个桶**（ADR 0036）：`~/.pinpoint/<页 id>/*.json`（**磁盘就是事实源**），形状是
-`annotations[]`。页 id：文章是 `<project>_<article>`；存量页是 registry 条目 id（挂靠条目
-`entry.page` 用宿主存量页的 id），`content/previews/_index.json` 的模板页用自己的 id。`pinpoint` 桶只是“不属于任何页”的兜底（SPA fallback 页等），不是页。
+`annotations[]`。页 id：文章是 `<project>_<article>`；存量页是 registry 条目 id，
+`content/previews/_index.json` 的模板页用自己的 id。`pinpoint` 桶只是“不属于任何页”的兜底（SPA fallback 页等），不是页。
 registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。数据根的确切路径从
 `GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
 
 账本 = 桶内的一个表面：
 - **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
-  同一本）；mention 帧也写这本（桶 = 被引用帧所属的页），与画布双向实时同步。
-- **文档、直开页、url 条目**仍是一个 pathname 一本，命名规则见
+  同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
+- **文档、直开页**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。
 - 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。
 - 工作台切活动页 = 换桶重新 hydrate；`#n` 按桶编号，一个页 id 一套序列。
@@ -113,11 +113,10 @@ manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤�
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录
-各有各的账本。SPA 换路由时账本（entry / page / localStorage key）不重载就重新定位——
-优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
-只改 hash 不重新定位，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一条路由上。
+各有各的账本。账本在页面加载时按 pathname 定下，页面自己 `pushState` 改地址不换账本；
+只有工作台画布实例切活动页时换账本，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一页上。
 
-桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、url 代理、`/api/frame`）
+桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、`/api/frame`）
 注入的 `window.__pinpointEntry` = 页 id；工作台画布实例没有标记，桶 = 活动页 id
 （切页 = 换桶）；文章页注入的是这篇的页 id；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
 
@@ -262,6 +261,6 @@ composer 默认将目标作为正文内 pill，磁盘仍存 `[@t:iN]`，目标�
 
 `clearInvalid()` 仅作用当前页，要求所有目标都无法解析且所属 frame 已加载。隐藏目标仍存在，保留；缺失/加载中的 frame 保留。该保守判定不是任意外部 SPA 加载状态的识别器。
 
-页面置顶和归档属于 viewer 偏好，存于 `pinpoint-wb.pagePreferences`，不同浏览器不同步。归档不改 registry、源文件或标注，恢复保留原置顶及文件夹归属。
+页面置顶和归档属于 viewer 偏好，存于 `pinpoint-wb.pagePreferences`，不同浏览器不同步。归档不改 registry、源文件或标注，恢复保留原置顶。
 
 composer 会避让可见的 Pinpoint 面板，而非透明的全屏停靠容器。原生 modal 的 inert 约束通过把 overlay 挂入当前 modal 处理，不能仅靠 z-index；modal 关闭后恢复挂载。图片粘贴、正文中间插入目标和原生弹窗输入均有用户故事 E2E。

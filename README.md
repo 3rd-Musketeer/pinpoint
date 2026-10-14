@@ -31,7 +31,7 @@ you registered. Every word above has one definition in [`CONTEXT.md`](CONTEXT.md
 decision is [ADR 0042](docs/adr/0042-pp3-article-as-primary-object.md).
 
 **Legacy pages** are prototype pages from before articles: a `board.json` plus frames (or an HTML
-file, or a live URL), registered with `pinpoint add` and listed in the workbench's “页面” group.
+file), registered with `pinpoint add` and listed in the workbench's “页面” group.
 They keep working; `pinpoint migrate` turns one into an article. See the last section of
 [`CONTEXT.md`](CONTEXT.md).
 
@@ -46,7 +46,7 @@ They keep working; `pinpoint migrate` turns one into an article. See the last se
 | project 与文章的目录、`add --project`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas`、`[[ ]]`、画布浮层、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 帧、组件、编译、交互；存量页的 `board.json` 字段 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状与文件夹、`pinpoint add` / `move` / `rename` / `folder`、注入路径、url 代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、`pinpoint add` / `move` / `rename` / `remove`、注入路径 | [`docs/registry.md`](docs/registry.md) |
 | 标注与评论的字段、桶与账本、状态机、控制面、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
@@ -90,10 +90,10 @@ Verify changes with `just check` (or `npm run check`): unit tests, the site buil
 npx playwright install chromium
 ```
 
-E2E startup checks full Chromium and headless shell before testing. Playwright owns both
-the proxy fixture and workbench server and stops them on exit; an occupied port fails
+E2E startup checks full Chromium and headless shell before testing. Playwright writes the
+fixtures, starts the workbench server and stops it on exit; an occupied port fails
 instead of silently reusing another service. Use a distinct `E2E_PORT` for a separate run;
-the upstream defaults to that port + 10.
+the article site defaults to that port + 5.
 
 `just check` uses the same two-group E2E runner as `just e2e-parallel`. It runs two independent groups, each with one worker and its own server,
 registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
@@ -141,10 +141,9 @@ ppnt status                    # service checkup: route · pid · both health en
 ppnt prune <target>            # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
-ppnt add <dir|file|url>        # register a legacy page source (files stay where they are) — see docs/registry.md
+ppnt add <dir|file>            # register a legacy page source (files stay where they are) — see docs/registry.md
 ppnt move <id> <target>        # re-point an entry, keep its id and annotations
 ppnt rename <old> <new>        # rename id + annotation bucket(s) + /sites/ prefix in one shot
-ppnt folder list|add|rename|rm|move   # the one level of grouping in the sidebar's “页面” group
 ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
 ```
 
@@ -166,10 +165,9 @@ src/                         pinpoint itself — the disk layout moves, the serv
                              lib/projects.js = project / article reader;
                              lib/article-board.js = canvas view derived from index.mdx;
                              article-proxy.js = /<project>/… → on-demand Astro dev server;
-                             lib/site-proxy.js = same-origin proxy for url entries;
                              lib/annotate-snippet.js = injection SSOT
   src/shared/                Node-tested isomorphic libs inlined into /annotate.js (page key, indicator,
-                             slug, clip, bubble, ann-row, project ids, text quote) + proxy-rebase.js + ann-list.css
+                             slug, clip, bubble, ann-row, project ids, text quote) + ann-list.css
 
 content/                     what the service serves
   content/kits/ios/ios-kit.css   iOS kit: variables + chrome styles + primitive CSS
@@ -192,7 +190,7 @@ Your articles do **not** live in this repo. A project lives in its own repositor
 `<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
 frames, `concepts/`, shared `components/`); `pinpoint add <root> --project` registers it once, and
 new articles show up without re-registering. Legacy page sources register the same way with
-`pinpoint add <dir|file|url>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
+`pinpoint add <dir|file>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
 re-points an entry and keeps its id, so its annotations stay attached; `pinpoint rename <old id> <new id>`
 renames the id together with its buckets — for a project, every `<project>_<article>` bucket
 ([`docs/projects.md`](docs/projects.md), [`docs/registry.md`](docs/registry.md)).

@@ -214,12 +214,11 @@ test('registry: project entries live in projects, not entries; page consumers ne
     { id: 'pinpoint', kind: 'dir', path: REPO },
     { id: 'e2e-project', kind: 'project', path: SITE },
     { id: 'e2e-project', kind: 'dir', path: REPO },
-    { id: 'att', kind: 'project', path: SITE, page: 'pinpoint' },
   ]);
   assert.deepEqual(registry.entries.map((e) => e.id), ['pinpoint']);
   assert.deepEqual(registry.projects, [{ id: 'e2e-project', title: 'e2e-project', kind: 'project', path: SITE }]);
   assert.equal(registry.resolve('e2e-project'), null);
   assert.equal(projectEntry(registry, 'e2e-project').path, SITE);
-  assert.deepEqual(registry.errors, ['duplicate entry id "e2e-project"', 'entry "att" kind "project" cannot attach to a page']);
+  assert.deepEqual(registry.errors, ['duplicate entry id "e2e-project"']);
 });
 

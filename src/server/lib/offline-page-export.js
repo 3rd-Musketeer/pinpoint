@@ -131,7 +131,7 @@ function assetContext(options) {
         file = path.resolve(ownerRoot, rest);
       } else {
         const owner = registry && typeof registry.resolve === 'function' ? registry.resolve(ownerId) : null;
-        if (!owner) {
+        if (!owner || (owner.kind !== 'dir' && owner.kind !== 'file')) {
           throw new OfflinePageExportError(
             'asset_owner_missing',
             `找不到资源所属的页面：${ownerId}`,
@@ -151,12 +151,6 @@ function assetContext(options) {
               { ref, ownerId },
             );
           }
-        } else {
-          throw new OfflinePageExportError(
-            'runtime_network',
-            `资源来自在线网页，当前无法保存为离线文件：${ref}`,
-            { ref, ownerId },
-          );
         }
       }
       if (!inside(ownerRoot, file)) {

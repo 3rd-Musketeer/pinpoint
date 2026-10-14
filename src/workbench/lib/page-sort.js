@@ -8,7 +8,7 @@ export var PAGE_SORT_GROUPS = [
 ];
 export var PAGE_SORTS = PAGE_SORT_GROUPS.flat();
 export var PAGE_SORT_LABELS = {
-  default: '手动排序',
+  default: '登记顺序',
   name: '名称（A–Z）',
   'name-desc': '名称（Z–A）',
   added: '添加时间（从新到旧）',

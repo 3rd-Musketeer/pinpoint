@@ -31,9 +31,6 @@ const STORE_BRANCH = {
   writeImage: 'image:write',
 };
 const REGISTRY_BRANCH = {
-  setFolders: 'registry:folders',
-  setOrder: 'registry:order',
-  setEntryFolder: 'registry:entry-folder',
   reload: 'registry:reload',
 };
 
@@ -54,7 +51,7 @@ function withFixture(t, { writable = false } = {}) {
   const registryFile = path.join(dir, 'registry.json');
   writeRegistryFile(registryFile, {
     version: 1,
-    entries: [{ id: 'web', title: 'web', kind: 'url', url: 'https://web.localhost' }],
+    entries: [{ id: 'web', title: 'web', kind: 'dir', path: dir }],
   });
   const registry = writable
     ? createRegistryStore({ path: registryFile, root: dir, log: () => {} })
@@ -97,14 +94,12 @@ function branchOf({ handled, res, json, calls }) {
     if (branch) return branch;
   }
   const type = String(res.headers['Content-Type'] || '');
-  if (res.statusCode === 204 && !res.chunks.length) return 'options';
   if (type.startsWith('application/javascript')) {
     return String(res.headers['Cache-Control']).includes('immutable') ? 'client:hash' : 'client';
   }
   if (type.startsWith('text/event-stream')) return 'events';
   if (json && json.ok === true && 'dataRoot' in json) return 'health';
   if (json && 'pageTimes' in json && 'articles' in json) return 'registry:read';
-  if (json && json.error === 'registry_not_writable') return 'registry:write';
   if (json && json.error === 'registry_not_reloadable') return 'registry:reload';
   return `unidentified ${res.statusCode} ${res.text.slice(0, 80)}`;
 }
@@ -122,7 +117,7 @@ async function assertRoutes(fx, cases) {
     const result = await call(fx, method, url, body);
     assert.equal(branchOf(result), expected, label);
     if (expected === 'next') assertUntouched(result.res, label);
-    else assert.equal(result.res.headers['Access-Control-Allow-Origin'], '*', `${label}: cors`);
+    else assert.equal(result.res.headers['Access-Control-Allow-Origin'], undefined, `${label}: 同源接口，不带 CORS 头`);
     if (check) check(result, label);
   }
 }
@@ -133,11 +128,11 @@ const argsOf = (name) => (result) => result.calls.find((c) => c.name === name).a
 test('route priority: every request shape lands on one branch or falls through (static registry)', async (t) => {
   const fx = withFixture(t);
   await assertRoutes(fx, [
-    // OPTIONS 先于整张路由表：任何路径都答 204，包括没有路由的路径。
-    ['OPTIONS', '/health', undefined, 'options'],
-    ['OPTIONS', '/save', undefined, 'options'],
-    ['OPTIONS', '/annotations/index.html/1/status', undefined, 'options'],
-    ['OPTIONS', '/anything/at/all', undefined, 'options'],
+    // 接口只给同源页面用：OPTIONS 不是任何路由的方法，原样交给下一个中间件。
+    ['OPTIONS', '/health', undefined, 'next'],
+    ['OPTIONS', '/save', undefined, 'next'],
+    ['OPTIONS', '/annotations/index.html/1/status', undefined, 'next'],
+    ['OPTIONS', '/anything/at/all', undefined, 'next'],
 
     // 标注客户端：老地址与哈希地址，GET 与 HEAD 都认；只有它认 HEAD。
     ['GET', '/annotate.js', undefined, 'client'],
@@ -153,27 +148,19 @@ test('route priority: every request shape lands on one branch or falls through (
     ['GET', '/health/', undefined, 'next'],
     ['POST', '/health', {}, 'next'],
 
-    // /registry：GET 全等读；PUT 认整个 /registry/ 前缀（静态登记表一律 409，不看子路径，
-    // 连 /registry/reload 也归写接口）；POST 只认 /registry/reload。
+    // /registry：GET 全等读；POST 只认 /registry/reload；PUT 一律交出去。
     ['GET', '/registry', undefined, 'registry:read'],
     ['HEAD', '/registry', undefined, 'next'],
     ['POST', '/registry', {}, 'next'],
     ['PUT', '/registry', {}, 'next'],
-    ['PUT', '/registry/folders', {}, 'registry:write'],
-    ['PUT', '/registry/order', {}, 'registry:write'],
-    ['PUT', '/registry/entries/web/folder', {}, 'registry:write'],
-    ['PUT', '/registry/reload', {}, 'registry:write'],
-    ['PUT', '/registry/', {}, 'registry:write'],
-    ['PUT', '/registry/unknown', {}, 'registry:write'],
-    ['PUT', '/registry/folders', 'not json', 'registry:write'],
+    ['PUT', '/registry/reload', {}, 'next'],
+    ['PUT', '/registry/', {}, 'next'],
+    ['PUT', '/registry/unknown', {}, 'next'],
     ['GET', '/registry/', undefined, 'next'],
-    ['GET', '/registry/folders', undefined, 'next'],
     ['GET', '/registry/reload', undefined, 'next'],
-    ['GET', '/registry/entries/web/folder', undefined, 'next'],
     ['POST', '/registry/reload', {}, 'registry:reload'],
     ['POST', '/registry/reload/', {}, 'next'],
-    ['POST', '/registry/folders', {}, 'next'],
-    ['DELETE', '/registry/folders', {}, 'next'],
+    ['DELETE', '/registry/reload', {}, 'next'],
 
     ['GET', '/events', undefined, 'events'],
     ['HEAD', '/events', undefined, 'next'],
@@ -270,37 +257,12 @@ test('route priority: entry gate and JSON parse answer before any store call', a
   }
 });
 
-test('route priority: PUT /registry/* on a writable registry — parse, then shape, then sub-path', async (t) => {
+test('route priority: a writable registry answers POST /registry/reload; PUT stays with the next middleware', async (t) => {
   const fx = withFixture(t, { writable: true });
-  // 子路径分派在读完请求体之后：坏请求体在任何子路径上都是 400，没有子路径的才交出去。
-  const bad = await call(fx, 'PUT', '/registry/unknown', 'not json');
-  assert.deepEqual([bad.handled, bad.res.statusCode, bad.json], [true, 400, { error: 'bad_json' }]);
-  const array = await call(fx, 'PUT', '/registry/unknown', []);
-  assert.deepEqual([array.handled, array.res.statusCode, array.json],
-    [true, 400, { error: 'bad_request', message: '请求体必须是对象' }]);
-  const nul = await call(fx, 'PUT', '/registry/folders', null);
-  assert.deepEqual([nul.res.statusCode, nul.json.error], [400, 'bad_request']);
-
   await assertRoutes(fx, [
     ['PUT', '/registry/unknown', {}, 'next'],
     ['PUT', '/registry/', {}, 'next'],
     ['PUT', '/registry/reload', {}, 'next'],
-    ['PUT', '/registry/entries/web', {}, 'next'],
-    ['PUT', '/registry/entries/web/folder/x', {}, 'next'],
-    ['PUT', '/registry/entries/a/b/folder', {}, 'next'],
-    ['PUT', '/registry/folders', { folders: [] }, 'registry:folders'],
-    ['PUT', '/registry/order', { ids: ['web'] }, 'registry:order'],
-    ['PUT', '/registry/entries/web/folder', { folder: null }, 'registry:entry-folder',
-      (r) => assert.deepEqual(r.calls[0].args.slice(0, 2), ['web', { folder: null, order: undefined }])],
-    ['PUT', '/registry/entries/%E7%BD%91/folder', {}, 'registry:entry-folder',
-      (r) => assert.equal(r.calls[0].args[0], '网')],
     ['POST', '/registry/reload', {}, 'registry:reload'],
   ]);
-
-  // 写入方法抛错（未知 id、未知文件夹）= 400 bad_request，带原因。
-  const unknownId = await call(fx, 'PUT', '/registry/entries/ghost/folder', { folder: null });
-  assert.equal(branchOf(unknownId), 'registry:entry-folder');
-  assert.equal(unknownId.res.statusCode, 400);
-  assert.equal(unknownId.json.error, 'bad_request');
-  assert.equal(typeof unknownId.json.message, 'string');
 });

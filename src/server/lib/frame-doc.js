@@ -1,17 +1,17 @@
 /**
- * /api/frame 渲染端点的组装库（阶段 5：文档 mention 活 frame）。
+ * /api/frame 渲染端点的组装库（阶段 5 起：把一个活 frame 单独出成文档）。
  *
- * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file·url
+ * 解析 pageId + screenId → frame 目标（previews 模板页 / registry dir·file
  * 条目），然后：
  * - fragment 屏（ios app/lock、comp）→ 组装完整自包含 HTML 文档（fragment +
  *   机壳 + ios-kit + frame-boot + annotate 注入），机壳与画布装载共享
  *   src/shared/frame-shell.js —— 两端 stage 以下 DOM 链逐字节同构，锚点归一才成立；
- * - doc 壳屏（完整文档 / 合成板 / url 条目）→ 不重包装，由端点 302 到该屏
+ * - doc 壳屏（完整文档 / 合成板）→ 不重包装，由端点 302 到该屏
  *   自己的 URL（同文档同 pathname → 标注天然落同一个按路径分的账本）。
  *
  * pp2（2026-09-22 review 1-4）：页内 board 屏（previews 页与有板 dir 条目、无 src
  * 的屏）改从 dist 出（target.distTarget，unbuilt 懒编译，编译失败 500）——.jsx 屏
- * 从此可以被 mention；kit 组件屏与 src 屏（外链 / 合成板）仍磁盘直读。
+ * 从此也能经 /api/frame 单独打开；kit 组件屏与 src 屏（外链 / 合成板）仍磁盘直读。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -246,8 +246,8 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
-  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页
-  // （挂靠条目给宿主页 id），账本固定 @canvas —— 画布实例与 mention 实例读写
+  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页，
+  // 账本固定 @canvas —— 画布实例与 mention 实例读写
   // 同一本账，双向实时同步靠的就是这个同桶同账本。
   if (entry.kind === 'dir' && diskBoard && !src) {
     const pageDir = path.resolve(entry.path);
@@ -260,7 +260,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       section: hit.section,
       sectionLabel: hit.sectionLabel,
       ref: hit.ref,
-      entry: entry.page || entry.id,
+      entry: entry.id,
       baseUrl,
       distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
     };
@@ -280,7 +280,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: entry.page || entry.id,
+    entry: entry.id,
     baseUrl,
     fragmentPath,
   };

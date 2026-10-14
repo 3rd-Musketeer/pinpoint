@@ -1,19 +1,12 @@
 import os from 'node:os';
 import path from 'node:path';
 
-// The e2e webServer origin. The extension content script matches the page
-// origin against registry url entries exactly, so the fixture registry must
-// name this precise origin (see e2e/global-setup.js).
+// The e2e webServer origin.
 export const E2E_PORT = Number(process.env.E2E_PORT || 5299);
 export const E2E_BASE_URL = `http://127.0.0.1:${E2E_PORT}`;
 
-// 阶段 4：url 条目代理的上游 fixture origin（e2e/proxy-upstream.js，
-// 独立 webServer 启动；registry 与上游共享这个端口）。
-export const E2E_UPSTREAM_PORT = Number(process.env.E2E_UPSTREAM_PORT || E2E_PORT + 10);
-export const E2E_UPSTREAM_ORIGIN = `http://127.0.0.1:${E2E_UPSTREAM_PORT}`;
-
 // pp3：服务按需拉起的文章站点（真 Astro 开发服务器）的端口。每轮 e2e 一个，
-// 落在本组端口段里（e2e-parallel 每组占 20 个端口，+0 服务、+10 上游）；不能用
+// 落在本组端口段里（e2e-parallel 每组占 20 个端口，+0 服务）；不能用
 // 缺省 4530——那里若有 owner 自己的站点在答，服务会直接当 external 用它。
 export const E2E_SITE_PORT = Number(process.env.E2E_SITE_PORT || E2E_PORT + 5);
 

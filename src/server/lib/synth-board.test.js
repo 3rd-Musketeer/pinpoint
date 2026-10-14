@@ -6,7 +6,6 @@ import {
   synthesizeBoard,
   synthesizeDirBoard,
   synthesizeFileBoard,
-  synthesizeUrlBoard,
 } from './synth-board.js';
 
 function fileEntry(extra = {}) {
@@ -71,21 +70,7 @@ test('synthesizeBoard dispatches by kind', () => {
   assert.ok(synthesizeBoard(fileEntry()));
   assert.ok(synthesizeBoard(dirEntry(), listDirOf(['x.html'])));
   assert.equal(synthesizeBoard(null), null);
-});
-
-test('synthesizeUrlBoard: one doc screen whose src is the proxied root', () => {
-  const board = synthesizeBoard({ id: 'web', title: 'Web', kind: 'url', url: 'https://web.localhost' });
-  assert.deepEqual(board, {
-    sections: [{
-      id: 'main',
-      title: 'Web',
-      layout: 'column',
-      shell: 'doc',
-      screens: [{ id: 'index', title: 'Web', src: 'sites/web/' }],
-    }],
-  });
-  assert.equal(synthesizeUrlBoard(null), null);
-  assert.equal(synthesizeUrlBoard(dirEntry()), null, 'kind 不符');
+  assert.equal(synthesizeBoard({ id: 'web', kind: 'url', url: 'https://web.localhost' }), null, '退役的 kind 不合成');
 });
 
 test('siteFileSrc percent-encodes the filename', () => {

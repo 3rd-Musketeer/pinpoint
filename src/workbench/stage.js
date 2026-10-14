@@ -26,7 +26,7 @@ import {
   syncBoardSelection
 } from './board-nav.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
-import { CANVAS_ENTRY_ID, withAttachedScreens } from './lib/board-entries.js';
+import { CANVAS_ENTRY_ID } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import {
@@ -141,9 +141,6 @@ async function loadBoard(panel, pageId, loadOptions) {
       pageId: pageId,
       defaultShell: defaultShellForPage(wbGet().pageManifest, pageId)
     });
-    // 阶段 8：registry attach 条目（pinpoint add --page）合并成合成 doc 屏，
-    // 下游（条目派生 / 屏显隐 / 导出 / 标注分桶）全部复用 doc 屏既有管线。
-    board = withAttachedScreens(board, wbGet().pageManifest && wbGet().pageManifest.attached, pageId);
     // 页 tab（ADR 0041）：只挂活动 tab 的 section（画布 / 引用号 / 导航随之只看这个 tab，
     // 也只拉这个 tab 的屏）。活动 tab：显式指定 > 正在看的（同页重载，如 HMR）> 本机偏好 > 第一个。
     // fullBoard 留着全部 tab，跨 tab 定位与引用号表靠它。存量 board 没有 tab：board === fullBoard。
@@ -720,21 +717,10 @@ if (import.meta.hot) {
     loadPageManifest();
   });
   // POST /registry/reload（pinpoint add 后由 CLI 触发）：失效 registry-sites
-  // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages。
-  // 阶段 8：attach 条目在板装载时合并进目标页 —— manifest 重拉后重摆当前板，
-  // add/remove --page 条目即时反映到「内容」区（目标页不是当前页时，下次切页
-  // 自然合并，无需全量重载）。
-  // 审计 B2（2026-09-24）：分组类广播（拖页入夹 / 折叠 / 改名 / 排序，服务端
-  // 带 scope=grouping）只动分组与顺序，重拉清单让左栏重排就够了 —— 整板重装
-  // 会把文档页 iframe 全部重载，一次拖放闪一场。条目类（scope=entries，CLI
-  // add / rename 等）照旧整板重摆：attach 条目要重新合并进 board。选中态按
-  // pageId 派生，页挪进哪个夹行都跟得对。
-  import.meta.hot.on('registry:update', function (data) {
+  // 查询并重拉页面清单，新登记的 dir 条目不用手动刷新就出现在 Pages；
+  // 当前板随后重摆（条目可能改了路径或 id）。
+  import.meta.hot.on('registry:update', function () {
     queryClient.invalidateQueries({ queryKey: ['registry-sites'] });
-    if (data && data.scope === 'grouping') {
-      loadPageManifest();
-      return;
-    }
     // project 条目增删也走这条（pinpoint add --project / remove → POST /registry/reload）。
     loadProjects();
     loadPageManifest().then(function () {

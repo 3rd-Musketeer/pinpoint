@@ -2,13 +2,12 @@
  * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
- * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址——挂靠条目的
- * 桶是宿主页的桶（storage-unify），换路径不会孤儿化）；
+ * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址，换路径不会孤儿化）；
  * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）；
- * 从登记表删掉条目用 `pinpoint remove`（只删登记，源文件 / URL 不动；桶里还有
- * 标注行或有条目挂着它时拒绝，空桶顺手删掉）。
- * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
- * 文件留在原地，CLI 只登记路径/URL。
+ * 从登记表删掉条目用 `pinpoint remove`（只删登记，源文件不动；桶里还有
+ * 标注行时拒绝，空桶顺手删掉）。
+ * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/。
+ * 文件留在原地，CLI 只登记路径。
  *
  * 服务侧：`status` / `start` / `stop` / `restart` 管的是这个 app 的 portless 注册
  * （`portless run --name pinpoint npm run dev:app`）与它那棵进程树。portless 的
@@ -20,7 +19,6 @@
 import { USAGE, helpFor, reportUsageError } from './cli/args.js';
 import { ioOf } from './cli/core.js';
 import { runAdd, runMove, runPrune, runRename, runRemove } from './cli/registry.js';
-import { runFolder } from './cli/folders.js';
 import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
 import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
@@ -78,16 +76,6 @@ export {
   planRemove,
   runRemove,
 } from './cli/registry.js';
-export {
-  buildFolderAdd,
-  buildFolderRename,
-  buildFolderRemove,
-  buildFolderMove,
-  folderRows,
-  formatFolderList,
-  planFolder,
-  runFolder,
-} from './cli/folders.js';
 export {
   portlessRoutesPath,
   parseRoutes,
@@ -211,7 +199,6 @@ function dispatch(argv, io) {
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
     case 'remove': return runRemove(argv, io);
-    case 'folder': return runFolder(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);
     case 'stop': return runStop(argv, io);

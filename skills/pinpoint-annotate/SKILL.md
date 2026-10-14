@@ -42,7 +42,7 @@ description: 读取 Pinpoint 的画布标注、文档页标注和文章正文评
 ## 0. 先确定地址
 
 owner 常用口头说法指一篇文章或一个存量页（“付款那篇文章”“routines 原型”），不给地址。先跑
-`ppnt list <关键词>`：按 id、标题、源路径、文件夹宽松匹配（英文复数自动去 s），列出 project（下面每篇文章一行
+`ppnt list <关键词>`：按 id、标题、源路径宽松匹配（英文复数自动去 s），列出 project（下面每篇文章一行
 `<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
 只匹配到一个就用它；匹配到多个或一个都没有，把候选列给 owner 问，不要猜。每个命令的第一个参数都是这个地址；
 没写或写错时命令报错并列出候选，不会替你挑一篇。
@@ -53,7 +53,7 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 节 id、`index.mdx` 里的落脚行和整个线程；引文中间夹着 markdown 记号时，落脚行可能只给到文件和节。
 
 `--frame B3` 收窄到一帧，`--group-by component` 按组件分组（组头给共用帧数），`--status all` 看 check / done / close，
-`--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注（含 mention 帧）在 `@canvas.json`，正文评论在 `@prose.json`，
+`--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注在 `@canvas.json`，正文评论在 `@prose.json`，
 存量页的文档按路径各有一本。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了、那一屏从 board 删了、页没了），
 不计入计数。还没关的孤儿照样要回：`ppnt mark <目标> '#n' check|done --note "<回复>"` 和 `ppnt reply` 用 `#n` 或 `@a:<id>` 都指得到它们，
 比如说明那一屏已经删了、意见落到了哪里。`--status open` 这类批量写法不会带上孤儿。清理孤儿账本归 owner 走 `ppnt prune`。`comments` 只读，无副作用；不要为读标注重启服务。

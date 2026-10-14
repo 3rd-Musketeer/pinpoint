@@ -1,7 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { closeSettled } from './ledger-settle.js';
-import { annotate, openAnnotated, waitRouteSettled } from './lib/annotate.js';
+import { annotate, openAnnotated } from './lib/annotate.js';
 import { clearBuckets } from './lib/ledger.js';
 import { openWorkbench } from './lib/workbench.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
@@ -15,8 +15,8 @@ import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
   // storage-unify：workbench 用例的标注落进 e2e-ios 桶（桶 = 页），不清的话
-  // 同组后跑的 mention.spec 会在自己的计数断言上多出别人的行。
-  clearBuckets(['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']);
+  // 同组后跑的用例会在自己的计数断言上多出别人的行。
+  clearBuckets(['e2e-dir', 'e2e-ios', 'pinpoint']);
 });
 
 async function closeComposer(page) {
@@ -197,37 +197,23 @@ test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完�
   await expect(page.locator('.ann-badge')).toHaveCount(1);
 });
 
-test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => {
-  await openAnnotated(page, '/e2e/spa-fixture.html');
-
-  let epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
-  await page.locator('#to-a').click();
-  await waitRouteSettled(page, '/e2e-spa/route-a', epoch);
+test('页面自己 pushState 改路径不换账本：侧栏仍列加载时那一本', async ({ page }) => {
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await annotate(page, '#route-a-el', 'route-a ann');
-  await page.evaluate(() => window.pinpoint.setMode(false));
+  await annotate(page, '#doc-target', 'before push');
+  const epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
 
-  epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
-  await page.locator('#to-b').click();
-  await waitRouteSettled(page, '/e2e-spa/route-b', epoch);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await annotate(page, '#route-b-el', 'route-b ann');
+  await page.evaluate(() => history.pushState({}, '', '/sites/e2e-dir/elsewhere'));
+  await annotate(page, '#doc-target-2', 'after push');
   await page.evaluate(() => window.pinpoint.setMode(false));
+  expect(await page.evaluate(() => window.pinpoint.getState().epoch)).toBe(epoch);
 
   await page.keyboard.press('s');
   const sidebar = page.locator('#ann-sidebar');
   await expect(sidebar).toBeVisible();
-  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
-  await expect(sidebar).toContainText('route-b ann');
-  await expect(sidebar).not.toContainText('route-a ann');
-
-  // 账本切换后列表自动换成新账本（侧边栏保持打开）。
-  epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
-  await page.locator('#to-a').click();
-  await waitRouteSettled(page, '/e2e-spa/route-a', epoch);
-  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
-  await expect(sidebar).toContainText('route-a ann');
-  await expect(sidebar).not.toContainText('route-b ann');
+  await expect(sidebar.locator('.wb-ann-item')).toHaveCount(2);
+  await expect(sidebar).toContainText('before push');
+  await expect(sidebar).toContainText('after push');
 });
 
 test('workbench page: no sidebar entry, the workbench annotation list stays the control surface', async ({ page }) => {

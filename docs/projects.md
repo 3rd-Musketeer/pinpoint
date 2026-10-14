@@ -69,7 +69,7 @@ pinpoint add <project 根> --project
 
 - id 只取 `project.json` 的 `id`。`--id` 可以写，但必须与它相同；要换 id 先改 `project.json`，或用 `pinpoint rename`。
 - 标题只有一个来源：`project.json` 的 `title`。登记表里的 `title` 是登记时抄下的副本（`project.json` 没写 title 时用目录名），读取时 `project.json` 的 `title` 优先。所以 `--project` 不接受 `--title`。
-- `--project` 不能与 `--title`、`--board`、`--page`、`--draft` 同用：project 不是页，没有壳，也不挂到别的页上。
+- `--project` 不能与 `--title`、`--board` 同用：project 不是页，没有壳。
 - 登记前检查 `project.json` 存在、id 合法、不是保留名、不撞既有条目 id；不过关就退非零，registry 不动。article 层面的问题（撞名、缺 `index.mdx`）不拦登记，在读取时报。
 
 | 命令 | 对 project 条目做什么 |
@@ -105,7 +105,7 @@ ppnt build <project>_b
 
 手工挪时，桶里行上的 `pageId` 和 `@prose.json` 的 `path` 还是旧值（project rename 会改写它们，手工挪不会）。不要这些标注的话，直接 `ppnt prune <project>_a`。
 
-project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries`、`/sites/`、`--page` 挂靠目标和左栏文件夹里。
+project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries` 和 `/sites/` 里。
 
 ## 读取
 
@@ -226,13 +226,13 @@ export default function ConfirmBare() {
 
 ### 工作台左栏
 
-工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近、文件夹与散页。存量页都转成文章以后，“页面”组撤掉（owner 2026-10-13 定）。
+工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近与全部页。存量页都转成文章以后，“页面”组撤掉（owner 2026-10-13 定）。
 
 - “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
 - 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的页 id）：点行在工作台打开画布视图 `<project>_<article>`，和 `/?page=` 是同一个，选中态与页面行一样。没有画布的文章：点行在新标签页打开文章页。
 - 行尾“阅读”钮（tooltip“阅读正文”）在新标签页打开 `/<project>/<article>/`。常态不显示，行 hover 或键盘焦点进到行时出现。右键菜单有“阅读正文”，有画布的再加“复制 @page”。
 - project 有布局错误时，标题行尾显示错误个数，tooltip 列前三条。
-- 文章不归档、不置顶、不进文件夹、不能拖。画布视图不进“最近”，“最近”只算“页面”组里的存量页。
+- 文章不归档、不置顶。画布视图不进“最近”，“最近”只算“页面”组里的存量页。
 - 实时更新：`registry:update`（登记或移除 project）和 `projects:update` 都让左栏重读 `/api/projects`。`projects:update` 由 `preview-hmr` 发，载荷 `{ project }`：project 目录里有文件新建、修改或删除，并且列表那一层变了（project 标题、文章增删、文章标题与摘要、`canvasSections`、布局错误）。只改正文或帧内容不发。Vite 6 对新建和删除不调 `handleHotUpdate`，所以 `preview-hmr` 另外监听 watcher 的 `add` / `unlink`：新建的文章或帧在这里重编，画布视图收到 `preview:update`。
 
 ### 标注桶

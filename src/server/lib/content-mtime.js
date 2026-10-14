@@ -8,7 +8,7 @@
  *   捕获「删了最后一个文件」这类不产生新文件 mtime 的变化）；跳过 dot 名
  *   与 node_modules，symlink 不跟随（/sites/ 防泄漏契约本就不接受逃逸
  *   symlink）；visit 上限防误注册巨型目录时拖慢 /registry；
- * - url 条目 / 路径缺失 → null（客户端不显示时间、排序沉底）。
+ * - 其它 kind / 路径缺失 → null（客户端不显示时间、排序沉底）。
  */
 import fs from 'node:fs';
 import path from 'node:path';

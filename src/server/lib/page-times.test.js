@@ -46,7 +46,7 @@ test('bucket = page: renamed bucket and mixed host+attach bucket both get annota
   assert.deepEqual(annotationPageTimes(mixed, 'host'), { host: Date.parse('2026-03-03T00:00:00.000Z') }, '桶内取最近一次保存');
 });
 
-test('collectPageTimes: page buckets + attached fold', (t) => {
+test('collectPageTimes: each page reads its own bucket', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-collect-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dataRoot = path.join(root, 'data');
@@ -55,18 +55,12 @@ test('collectPageTimes: page buckets + attached fold', (t) => {
   fs.writeFileSync(path.join(dataRoot, 'site-a', 'doc~1.json'), JSON.stringify({
     page: 'doc~1', revision: 1, updated_at: '2026-02-01T00:00:00.000Z', annotations: [{ id: 'd1', content: 'x' }],
   }));
-  // 挂靠条目的旧桶：并进宿主页。
-  fs.mkdirSync(path.join(dataRoot, 'attach-draft'), { recursive: true });
-  fs.writeFileSync(path.join(dataRoot, 'attach-draft', 'draft~1.json'), JSON.stringify({
-    page: 'draft~1', revision: 1, updated_at: '2026-02-03T00:00:00.000Z', annotations: [{ id: 'a1', content: 'x' }],
-  }));
   const entries = [
     { id: 'pinpoint', kind: 'dir', path: root },
     { id: 'site-a', kind: 'dir', path: path.join(root, 'site-a') },
-    { id: 'attach-draft', kind: 'file', path: path.join(root, 'd.html'), page: 'site-a' },
   ];
   const times = collectPageTimes({ entries, root, dataRoot, localIds: ['template-p'] });
-  assert.equal(times['site-a'].annotatedAt, Date.parse('2026-02-03T00:00:00.000Z'), '宿主页取自己桶与挂靠旧桶的最大值');
+  assert.equal(times['site-a'].annotatedAt, Date.parse('2026-02-01T00:00:00.000Z'), '页读自己的桶');
 });
 
 test('new registration records addition once and move preserves it; legacy is unknown', (t) => {
@@ -74,9 +68,13 @@ test('new registration records addition once and move preserves it; legacy is un
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'registry.json');
   const start = Date.now();
-  const entry = addRegistryEntry(file, { id: 'site', kind: 'url', url: 'https://example.com' });
+  const before = path.join(dir, 'before');
+  const after = path.join(dir, 'after');
+  fs.mkdirSync(before);
+  fs.mkdirSync(after);
+  const entry = addRegistryEntry(file, { id: 'site', kind: 'dir', path: before });
   assert.ok(entry.addedAt >= start);
-  const moved = updateRegistryEntry(file, { id: entry.id, kind: 'url', url: 'https://example.org' });
+  const moved = updateRegistryEntry(file, { id: entry.id, kind: 'dir', path: after });
   assert.equal(moved.addedAt, entry.addedAt);
   const r = loadRegistry({ root: dir, path: file, log: () => {} });
   assert.equal(r.entries[0].addedAt, entry.addedAt);

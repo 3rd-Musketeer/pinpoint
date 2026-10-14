@@ -1,6 +1,6 @@
 import { defineConfig } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_SITE_CACHE, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './e2e/env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR, E2E_PORT, E2E_REGISTRY, E2E_RUN_SLOT, E2E_SITE_CACHE, E2E_SITE_PORT } from './e2e/env.js';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
@@ -23,12 +23,8 @@ export default defineConfig({
     trace: 'retain-on-failure',
   },
   webServer: [{
-    command: 'node e2e/start-proxy.mjs',
-    url: E2E_UPSTREAM_ORIGIN + '/__hits',
-    reuseExistingServer: false,
-    gracefulShutdown: { signal: 'SIGTERM', timeout: 3000 },
-  }, {
-    command: `npm run dev:app -- --port ${E2E_PORT}`,
+    // 固件（登记表与站点副本）先写好：服务启动时就读登记表（e2e/prepare-fixtures.mjs）。
+    command: `node e2e/prepare-fixtures.mjs && npm run dev:app -- --port ${E2E_PORT}`,
     url: `${E2E_BASE_URL}/health`,
     reuseExistingServer: false,
     gracefulShutdown: { signal: 'SIGTERM', timeout: 3000 },

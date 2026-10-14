@@ -10,7 +10,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
 一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
-要避开：拿 project 指存量页、文件夹或 board。
+要避开：拿 project 指存量页或 board。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
 一篇设计文档，写成 MDX，形态像 blog post，任何人拿到链接就能读。文章是 owner 与 agent 对齐设计的权威：task 和 ADR 是它的投影，实现时改了机制就回来改文章。一篇文章的帧、组件、样式和资源都放在自己的目录里。
@@ -58,7 +58,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
 工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
-要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
+要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。代码里的 `entry` 还指 board 条目和 registry 条目，在存量页一节。
 
 **节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
@@ -97,7 +97,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把锚点后缀写成 `#`。
 
 **桶与账本** · 桶 `~/.pinpoint/<页 id>/`（数据根可由 `PINPOINT_DATA_DIR` 覆盖）；账本文件名规则 `src/shared/annotate-page-key.js`
-桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里固定两本，`@canvas.json`（画布标注）和 `@prose.json`（正文评论）；存量页的文档和网页按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
+桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里固定两本，`@canvas.json`（画布标注）和 `@prose.json`（正文评论）；存量页的文档按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
@@ -105,7 +105,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：去 `mark` 孤儿条目。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
-看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、文件夹）。
+看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、全部页）。
 要避开：“Pages”单指工作台（Pages 列表只是“页面”组）。
 
 ## 资产与服务
@@ -119,15 +119,15 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：拿“产物”单说 dist（存量页的大纲里“产物”另有所指，见存量页一节）。
 
 **registry（登记表）** · `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；读 `src/server/lib/registry.js`，写 `src/server/lib/registry-store.js`
-声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / move / rename / remove / folder` 和工作台左栏的拖放。
+声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / move / rename / remove`。
 要避开：手改 registry 文件。
 
 **登记过才注入** · 注入片段 `src/server/lib/annotate-snippet.js`
 标注客户端是服务注入到网页里的一段脚本，画布标注的工具和正文评论栏都由它提供。它只注入登记过的目标：文章页（只跑正文评论）、画布视图、`/sites/` 下的存量页。其余 URL 返回逐字节相同、没有标注面的页面；`?annotate=off` 让单次请求不带客户端（卡片、浮层、导出走这条）。
 要避开：往没登记的页面手工插 `/annotate.js`。
 
-**`/sites/<页 id>/`** · `src/server/sites-api.js`、url 条目代理 `src/server/lib/site-proxy.js`
-服务上按页 id 划分的地址空间：文章的帧资源在 `/sites/<project>_<article>/assets/…`，存量页的目录、文件或代理的网站也在这里。
+**`/sites/<页 id>/`** · `src/server/sites-api.js`
+服务上按页 id 划分的地址空间：文章的帧资源在 `/sites/<project>_<article>/assets/…`，存量页的目录和文件也在这里。
 要避开：拿 site 指用户自己的网站（那个说目标应用）；把 `/sites/` 和文章站点 `site/` 混为一谈。
 
 **template 与 instance（模板与实例）** · 实例目录靠 `.git/info/exclude` 挡在 git 外
@@ -148,8 +148,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 
 存量页是文章模型之外、今天仍在用的原型页：一个带 `board.json` 的帧目录（或一个 HTML 文件、一个网址），经 registry 登记，在工作台左栏的“页面”组里，不带参数的 `ppnt list` 里类型不是 project 的条目都是。新工作写成文章；存量页照常能看、能改、能标注，要转成文章时跑 `pinpoint migrate <页 id> --project <根>`：每个 board section 成为一节，节里一个画布组件，旧页和它的标注留在原处（做法见 `docs/projects.md`“从存量页迁移”）。下面这些词只在存量页上遇到。
 
-**存量页** · `content/previews/_index.json`（模板页）或 registry 的 dir / file / url 条目
-工作台“页面”组里的一行，页 id 是它自己的 id。一个存量页可以同时有画布和文档、网页。代码、CLI 帮助和 `docs/board-schema.md` 里单说的“页”（`<页>`、Pages、`pageId`）多半指存量页或页 id。
+**存量页** · `content/previews/_index.json`（模板页）或 registry 的 dir / file 条目
+工作台“页面”组里的一行，页 id 是它自己的 id。一个存量页可以同时有画布和文档。代码、CLI 帮助和 `docs/board-schema.md` 里单说的“页”（`<页>`、Pages、`pageId`）多半指存量页或页 id。
 要避开：“册”；单说“页”而不说明是存量页还是画布视图。
 
 **board** · 存量页目录里的 `board.json`；契约 `src/workbench/lib/preview-contracts.js`，字段见 `docs/board-schema.md`
@@ -173,8 +173,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：和 registry 条目混用；代码里两者都叫 entry，`board-entries.js` 里的是这一个。
 
 **registry 条目** · `~/.pinpoint/registry.json` 的 `entries[]`
-登记表里的一条：`{id, title?, kind: "dir" | "file" | "url", path? | url?, board?, page?, role?}`。带 `page` 的条目不自成一行，而是挂到那个存量页的内容区（`role: "draft"` 进草稿组）。
-要避开：和 board 条目混用；拿 `--page` 当“给本条目起 id”（那是 `--id`）。
+登记表里的一条：`{id, title?, kind: "dir" | "file" | "url", path? | url?, board?}`，每一条是“页面”组里的一行存量页，页 id 就是它的 `id`（`pinpoint add --id` 指定）。
+要避开：和 board 条目混用。
 
 **画布形态与文档形态** · 舞台按选中的条目切换
 画布形态是手机机壳排在可缩放平移的画布上；文档形态是整份 HTML 在 iframe 里 1:1 铺满舞台，没有缩放和帧标题。一个存量页可以两种都有。
@@ -185,16 +185,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：拿视口指 `pageViewports`（那是每页画布的滚动与缩放存档）；把手机视口说成帧。
 
 **产物与草稿** · 大纲浮层里的两组；屏上 `role: "draft"`
-存量页大纲里的分组：产物是交付物（画布、文档、网页，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
+存量页大纲里的分组：产物是交付物（画布、文档，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
 要避开：拿“产物”说 dist。
-
-**文件夹** · registry 顶层 `folders[]` 与条目的 `folder` 字段
-“页面”组里 owner 手动建的一层分组，存量页靠拖放入夹，不嵌套。文章不进文件夹。
-要避开：拿 project 当文件夹；“归档”（那是浏览器偏好，不是文件夹）。
-
-**mention 与 embed** · 文档里写 `<div data-pinpoint-frame="<页 id>/<帧 id>"></div>`
-存量页的文档条目引用一个活帧（mention），客户端把它变成指向 `/api/frame` 的 iframe（embed）。帧上的标注在画布和文档两边都看得到。
-要避开：把 mention 说成截图或副本。
 
 **REV** · 无实现（ADR 0013）
 按字母递增的页面版次加更改栏，是一项设计储备，没有实现。
