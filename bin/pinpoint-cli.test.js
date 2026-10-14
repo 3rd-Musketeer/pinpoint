@@ -2396,6 +2396,24 @@ test('rename a project moves every <old>_<article> bucket, rewrites ledger addre
   assert.equal(JSON.parse(check.out.join('\n')).counts.total, 2);
 });
 
+test('rename a project: a cache move that fails only warns and names what stayed behind; buckets and project.json still finish (xreview L)', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const shot = path.join(made.data, 'shot');
+  const rec = recorder();
+  fs.chmodSync(shot, 0o555); // shot/ 不可写：shot/demo_alpha 搬不动
+  let code;
+  try {
+    code = await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec));
+  } finally {
+    fs.chmodSync(shot, 0o755); // 先恢复，临时目录才删得掉
+  }
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.err.some((line) => line.includes(`shot/demo_alpha`) && line.includes('没搬')), rec.err.join('\n'));
+  assert.ok(fs.existsSync(path.join(shot, 'demo_alpha', 'x.png')), 'the cache stays under the old id');
+  for (const id of ['alpha', 'beta', 'gone']) assert.ok(fs.existsSync(path.join(made.data, `demo2_${id}`, '@canvas.json')), `bucket demo2_${id} moved`);
+  assert.equal(JSON.parse(fs.readFileSync(path.join(made.content, 'project.json'), 'utf8')).id, 'demo2');
+});
+
 test('rename a project refuses up front when any target article bucket exists', async (t) => {
   const made = makeProjectWithBuckets(t);
   fs.mkdirSync(path.join(made.data, 'demo2_beta'), { recursive: true });

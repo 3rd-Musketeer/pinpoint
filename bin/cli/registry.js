@@ -688,20 +688,29 @@ export async function runRename(argv, io = {}) {
         err(`  文章桶 ${move.toId} 已搬，但账本里的旧地址没改完：${error.message}`);
       }
       out(`  文章桶：${move.from} → ${move.to}${rewritten.length ? `（账本改写：${rewritten.join('、')}）` : ''}`);
+      // 缓存都能再生：搬不动、删不掉只警告并点名，不打断后面的桶和 project.json。
       for (const dir of PAGE_CACHE_MOVE) {
         const from = path.join(plan.dataRoot, dir, move.fromId);
         if (!fs.existsSync(from)) continue;
         const to = path.join(plan.dataRoot, dir, move.toId);
-        fs.rmSync(to, { recursive: true, force: true });
-        fs.renameSync(from, to);
-        out(`    ${dir}/${move.fromId} → ${dir}/${move.toId}`);
+        try {
+          fs.rmSync(to, { recursive: true, force: true });
+          fs.renameSync(from, to);
+          out(`    ${dir}/${move.fromId} → ${dir}/${move.toId}`);
+        } catch (error) {
+          err(`    注意：缓存 ${dir}/${move.fromId} 没搬，还在旧名下（${from}）；可以删掉，下次 ppnt ${dir} 重新生成：${error.message}`);
+        }
       }
       move.hadDist = fs.existsSync(path.join(plan.dataRoot, 'dist', move.fromId));
       for (const dir of PAGE_CACHE_DROP) {
         const stale = path.join(plan.dataRoot, dir, move.fromId);
         if (!fs.existsSync(stale)) continue;
-        fs.rmSync(stale, { recursive: true, force: true });
-        out(`    ${dir}/${move.fromId} 已删（产物写死了旧的 /sites/ 地址）`);
+        try {
+          fs.rmSync(stale, { recursive: true, force: true });
+          out(`    ${dir}/${move.fromId} 已删（产物写死了旧的 /sites/ 地址）`);
+        } catch (error) {
+          err(`    注意：缓存 ${dir}/${move.fromId} 没删掉（${stale}），它写死了旧的 /sites/ 地址，可以手动删：${error.message}`);
+        }
       }
     }
   }
