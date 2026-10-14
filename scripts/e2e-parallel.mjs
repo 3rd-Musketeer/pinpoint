@@ -27,6 +27,7 @@ const durations = {
   'export-picker.spec.js': 1.2,
   'figure.spec.js': 3,
   'grouping-refresh.spec.js': 0.8,
+  'html-frames.spec.js': 6,
   'integration-canvas.spec.js': 3.2,
   'mention.spec.js': 1.3,
   'mixed-board.spec.js': 1.2,
@@ -58,7 +59,7 @@ const durations = {
 // 之后每个站点进程有了自己的 Astro root（site/.astro-cache/<端口>/，astro.config.mjs），不再共用
 // 内容库；同组仍省一次冷启动。
 // article-site 要看到“站点还没拉起过”，按文件名它在这一组里排第一个。
-const SITE_SPECS = ['article-site.spec.js', 'article-viewer.spec.js', 'figure.spec.js', 'ppnt-article.spec.js', 'prose-comments.spec.js', 'sidebar-content.spec.js'];
+const SITE_SPECS = ['article-site.spec.js', 'article-viewer.spec.js', 'figure.spec.js', 'html-frames.spec.js', 'ppnt-article.spec.js', 'prose-comments.spec.js', 'sidebar-content.spec.js'];
 // 按表贪心分两组：时长降序，依次放进当前总时长更短的那组；SITE_SPECS 合成一块一起放
 // （2026-09-24 之前是手排 first 集合，workbench 长出来后第一组独大约 73%）。
 function splitGroups(files) {

@@ -14,6 +14,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
   articles/<article id>/
     index.mdx                  # 正文，frontmatter 写 title、summary
     <帧 id>.jsx
+    <帧 id>.html               # HTML 帧，它引用的相对资源放在旁边（见“HTML 帧”）
     components/<Name>.jsx      # 本篇专用
     figures/<图 id>.jsx        # 正文里的图，可带同名 .js、.css（见“图”）
     assets/
@@ -170,10 +171,27 @@ export default function ConfirmBare() {
 }
 ```
 
-- 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
-- `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
+- 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`，或 `<帧 id>.html`（见下面“HTML 帧”）。
+- `frames` 只认字面量数组，每一项只认字面量字符串，或 `{ id, src }` 字面量对象（HTML 帧）；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
 - 帧级 shell：一节里混着手机帧和组件帧时，组件帧的文件在顶层写一行 `export const shell = "comp";`。取值和 `<Canvas shell>` 一样，只认这一行的字面量字符串。它只管这一帧，盖过 `<Canvas shell>`。服务静态读这一行（`readFrameShell`），不执行帧文件。编译器的帧 lint 放行这一行。
 - 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。哪个节点属于哪一节、第几节、节字母，由 `src/shared/article-structure.js` 的 `articleStructure(tree)` 走一遍 mdast 得出；站点的 remark 步骤（节号、给 `<Canvas>` 注入 `section`）和 `ppnt comments` / `locate` 判断正文评论的引文落在哪一节（`articleSectionSpans`）用的是同一个走法，所以三处数出来的节对得上。
+
+### HTML 帧
+
+帧也可以是一整份 HTML 页面，用来在画布上放生成出来的网页：一个页面的几个版本、同一份 brief 在几个模型上的产出、几张 demo 页、一份叠着 A–F 几种做法的文件。
+
+```mdx
+<Canvas frames={["landing", { id: "catalog", src: "skill/preview.html" }]} />
+```
+
+- 字符串 `"landing"`：本篇目录下有 `landing.jsx` 就是 JSX 帧，否则是 `landing.html`。两个文件都在是错误 `frame_source`。
+- `{ id, src }`：project 根下别处的一个 HTML 文件，`src` 相对 project 根，帧 id 由 `id` 给。文件留在原处，不复制，画布显示的就是那份文件。对象只认 `id`、`src` 两个键，值只认字面量字符串。`src` 以 `/` 开头、含 `..` 或 `.` 段、含 `\`、不以 `.html` 或 `.htm` 结尾、解析（含符号链接）后在 project 根外面，都是错误 `frame_src`；文件不在是 `frame_missing`，这一帧照进画布。
+- 节没写 `shell` 时，HTML 帧套 `doc` 机壳；写了就用节的（存量的 HTML 片段帧放进手机壳就是这样）。JSX 帧和 HTML 帧可以在同一节，帧 id 在一篇里唯一。
+- 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<src>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。`@root/` 只在这篇有 project 根下的帧时开放，只服务 project 根下的文件，`.` 开头的段 404。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
+- 宽度：卡片和浮层按手机 390 或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（390 × 844 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
+- 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素，锚点是 CSS 路径加元素文字，和文档标注一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
+- 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 390 宽截整页，`--marks` 在元素上标出标注号。
+- `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；指到范围外面，是错误 `html_asset_outside`。范围是本篇目录（本篇的帧）或 project 根（project 根下的帧）。
 
 ### 页 id
 
@@ -219,6 +237,7 @@ export default function ConfirmBare() {
 
 - 跨页引用 `"<页 id>/<帧 id>"`：提示先把帧复制进本篇目录。
 - 帧文件不存在：帧仍进画布，工作台上那一格出错误面板。
+- HTML 帧写坏：`frame_source`（同一个 id 两种文件都有）、`frame_src`（`src` 不合规则或在 project 根外面），见“HTML 帧”。
 - 一节两个 `<Canvas>`：只用第一个。
 - 重复的节 id：第二个不进画布。
 - 其他都是错误：`frames` 或 `shell` 不是字面量、`shell` 取值不对、`frames` 为空、帧 id 不合法、同一帧出现在两节、`<Canvas>` 写在 Section 外、Section 嵌套、MDX 本身写坏。
@@ -247,6 +266,7 @@ export default function ConfirmBare() {
 
 - `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲和 `ppnt` 的 `B1` 对得上。文章页不显示字母：目录、节标题和卡片用节号，第 n 个字母就是第 n 节（上例 `confirm` 在文章上是 2），卡片和浮层的图注只有帧 id。
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
+- HTML 帧带 `"shell": "doc"`（节写了 `shell` 时用节的），project 根下的再带 `src`（相对 project 根）。卡片按 `doc` 量尺寸，宽度见“HTML 帧”。
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
@@ -392,6 +412,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 | board 的一个 section | 一个 `<Section id title>`，里面一行占位注释 `{/* 正文 */}` 和一个 `<Canvas frames>`。section 的 shell（含 html 页的缺省 doc）写成 `<Canvas shell>`。没有帧的 section 只留 `<Section>` |
 | 页 tab | 每个 tab 第一节前加一行 `## <tab 标题>`。二级标题不占节字母，节字母全文统一排（A、B、C…），旧页是每个 tab 各从 A 起 |
 | `<帧>.jsx`、sidecar `<帧>.js` | 同名复制 |
+| `<帧>.html` | 同名复制，页面引用的相对资源（css、js、图片，css 和 js 里再引用的）照原相对路径复制，表里记为“资源”；引用的文件不在盘上，记一条“注意” |
 | 单屏 shell（和节的不同） | 复制的帧文件末尾补一行 `export const shell = "…";`。补在末尾，前面的行号不变，`data-pp-id` 和旧页一致 |
 | comp 屏（`comp` + `props`） | 生成 `<帧>.jsx`：import 那个组件（页内 `./components/<Name>.jsx`，没有就从 `pinpoint/kit`），props 写成属性。节是 comp 墙、或这一屏是 comp 时，文件里写 `export const shell = "comp";` |
 | 帧 import 的组件和其他文件 | 按编译器的依赖记录（传递）照原相对路径复制，相对 import 不用改；没被用到的组件不复制 |
@@ -405,7 +426,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ### 拦下
 
-下面这些情况一个文件都不写，逐条列出后退 1：`.html` 帧（文章只认 `.jsx`）、帧没有源文件、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
+下面这些情况一个文件都不写，逐条列出后退 1：帧没有源文件、HTML 帧引用了页目录外的文件（列出文件和行）、同一节的 HTML 帧 shell 不同、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
 
 ### 校验
 
@@ -434,6 +455,7 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 - `site/fixtures/projects/demo/`：`payments` 有两个图（节外的静态时序图 `pay-sequence`，`overview` 节里的 `message-flow`）；`site/fixtures/projects/broken/` 有一个源文件不在的图。
 - `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 concept `Confirm-Card`（`concepts/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 
+- `e2e/html-site/`：project `e2e-html`，一篇 `pages`：一节放本篇的 `long-page.html`（很长）和 project 根下的 `shared/catalog.html`（`{ id, src }`），一节放手机 JSX 帧。HTML 帧的 e2e 用它。
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。
 
-`e2e-project` 与 `e2e-prose` 常驻 e2e 的共享 registry 固件（project 不进“页面”组）；`clash` 不登记。
+`e2e-project`、`e2e-prose` 与 `e2e-html` 常驻 e2e 的共享 registry 固件（project 不进“页面”组）；`clash` 不登记。

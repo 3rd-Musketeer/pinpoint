@@ -36,8 +36,8 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 正文里的一张示意图或一个可交互演示，由 agent 自己画（通常是内联 SVG），讲一件事怎么运转。文章页上它占满正文栏宽，是一个同源 iframe（`/api/frame?page=<页 id>&figure=<图 id>&embed=figure`），高度跟着内容，可以点，深浅色跟着文章页。颜色只用调色板 `--fig-*`；逐步演示用 `pinpoint/figure` 的 `steps()`。图不是帧：不进画布视图，没有编号，不能做画布标注，图里和图注里也不出正文评论。图的错误（缺文件、属性写错、编译失败、运行时报错）显示在图的位置，`ppnt show <project>` 也列出它们。
 要避开：拿“帧”或“画布”指图；单说“图”指画布卡片里的帧缩略图或 `ppnt shot` 的截图。
 
-**帧（frame）** · `articles/<article>/<帧 id>.jsx`
-画布上的一格，也是装这一格内容的源文件。帧 id 就是文件名（不带扩展名），不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
+**帧（frame）** · `articles/<article>/<帧 id>.jsx` 或 `.html`
+画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处的文件，卡片和浮层按手机或桌面宽度显示它。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
 要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`ppnt build --frame` 的别名 `--screen`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`docs/pinpoint/components/<Name>.jsx`（project 共用）、`content/kits/ios/jsx/`（kit）
@@ -77,7 +77,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：把空 ref 当错误去删。
 
 **画布标注** · 画布视图上的标注客户端 `src/client/annotate.js`；账本 `@canvas.json`
-owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置。每条标注都有线程：agent 改完用 `ppnt mark … done --note "<改了什么>"` 一步回复并写状态，owner 在工作台的标注列表和标注框里看到。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
+owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置；HTML 帧没有编译这一步，锚点是元素的 CSS 路径加元素文字，`ppnt comments` 照样给出源文件和行。每条标注都有线程：agent 改完用 `ppnt mark … done --note "<改了什么>"` 一步回复并写状态，owner 在工作台的标注列表和标注框里看到。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
 要避开：“批注”；把正文评论也叫画布标注。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`

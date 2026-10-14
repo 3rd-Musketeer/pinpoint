@@ -37,6 +37,7 @@ project 是一组相关的文章和 concept，id 是网址的第一段 `/<projec
   articles/<article id>/
     index.mdx                  # 正文
     <帧 id>.jsx                # 帧
+    <帧 id>.html               # 或整份网页当帧（HTML 帧）
     components/<Name>.jsx      # 本篇专用组件
     figures/<图 id>.jsx        # 正文里的图；可选同名 .js（交互）、.css
     article.css                # 可选，注入本篇每一帧
@@ -79,6 +80,7 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 - `frames` 不能引别的文章或存量页的帧（`"<页 id>/<帧 id>"` 会报错）。要用别处的帧，把帧文件和它 import 的组件复制进本篇目录。
 - `Canvas` 可以带字面量 `shell`：`app`（缺省，手机壳）、`lock`、`doc`、`comp`（裸组件，不带机壳）。它管这一节的所有帧。
 - 同一个界面要比较几种做法：在同一节里多放几帧并排，选定以后删掉落选的帧。没有专门的变体机制。
+- 生成出来的整份网页也能当帧（HTML 帧）：本篇目录下的 `<帧 id>.html` 直接写 id；页面在 project 根下别处（比如另一个仓里的示例页），写 `{ id: "catalog", src: "<相对 project 根的路径>" }`，文件留在原处，不复制。页面里的相对资源照原样取，断了的 `ppnt check` 会报。卡片和浮层按手机 390 和桌面 1280 两种宽度看，页面里不用放宽度切换；画布视图里它是文档条目，owner 标注页面里的元素。规则见 docs/projects.md“HTML 帧”。
 
 ### 图（`<Figure>`）
 

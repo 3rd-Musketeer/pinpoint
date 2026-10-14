@@ -351,7 +351,13 @@ export function setActiveViewport(viewport) {
   if (viewport === s.viewport) return Promise.resolve();
   savePrefs(withViewportPref(readPrefs(), pageId, viewport));
   wbSet({ viewport: viewport });
-  return pagesDeps.loadBoard(panel, pageId);
+  // 重装后留在同一个条目上：深链（?entry=，不写记忆）打开的文档条目，记忆里可能还是画布
+  // （文章画布页的 HTML 帧就是这样打开的）。
+  var entryId = s.activeEntryId;
+  return pagesDeps.loadBoard(panel, pageId).then(function () {
+    var now = wbGet();
+    if (entryId && now.activePageId === pageId && now.activeEntryId !== entryId) setActiveEntry(entryId, { save: false, scrollTop: false });
+  });
 }
 
 /* 手机屏的缩放（2026-09-05）：iframe 的布局尺寸恒为 402 × 874（页面按真实手机排版），

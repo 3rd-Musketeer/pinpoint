@@ -806,6 +806,11 @@
   [data-page-mode="html"] .wb-screen--doc {
     flex:1; min-width:0; min-height:0; width:100%; height:auto; margin:0;
   }
+  /* 文章画布的节是 row 布局（.wb-sec-row 把屏摊成 display:contents 占网格）。文档形态里
+     显示的那一块屏（HTML 帧）照常是一个盒子、按列排，和 column 布局的文档一样：窗口视口铺满，
+     手机视口量得到尺寸、能居中。 */
+  [data-page-mode="html"] .wb-sec-row { flex-direction:column; }
+  [data-page-mode="html"] .wb-sec-row .wb-screen:not([data-doc-hidden]) { display:flex; }
   [data-page-mode="html"] .wb-doc-stage {
     width:100%; height:100%; border-radius:0; box-shadow:none;
   }

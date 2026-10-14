@@ -49,6 +49,9 @@ export function writeRegistryFixture() {
       // pp3：正文评论固件（e2e/prose-comments.spec.js）。指向本轮的副本，spec 要改
       // 正文验证重新定位；同样不是页，常驻不影响 Pages 清单。
       { id: 'e2e-prose', kind: 'project', path: path.join(E2E_SITES_DIR, 'prose-site') },
+      // HTML 帧固件（e2e/html-frames.spec.js）：只读不写，直接指仓内固件。常驻，因为已经在跑的站点
+      // 中途读到新登记的 project 时，重渲染会撞上内容库更新到一半（UnknownContentCollectionError）。
+      { id: 'e2e-html', kind: 'project', path: path.join(ROOT, 'e2e', 'html-site') },
       // 页 tab 固件（e2e/tabs-site/ 两个 tab、e2e/tabs-one-site/ 一个 tab、e2e/tabs-doc-site/
       // 三个纯文档 tab）同样不常驻：
       // tabs.spec.js 自己登记、自己清理。
