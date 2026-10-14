@@ -1671,13 +1671,30 @@ test('edits made while a save is in flight survive a page switch and back', asyn
   })).toBe('第三稿');
 });
 
-// 离开页面不丢写：上一次保存还扣在路上时又改了一稿，随即整页离开（导航走）。
-// 离开时没落盘的写经 keepalive 发出去；两份请求走各自的连接，谁先到都得落成最后一稿。
-// 快照先到的那一种顺序简单（它按 baseRevision 落盘，在途那次 409）；这里扣住两份、
-// 按难的顺序放行：在途那次先落盘，快照后到，靠 after 接上（服务端规则的各种顺序在
+// 离开页面不丢写：上一次保存还在途时又改了一稿，随即整页离开（导航走）。
+// 离开时没落盘的写经 keepalive 发出去，和在途那次谁先到都得落成最后一稿。
+// 快照先到的那一种顺序简单（它按 baseRevision 落盘，在途那次 409）；这里走难的顺序：
+// 在途那次先落盘、应答扣在页面里，快照后到，靠 after 接上（服务端规则的各种顺序在
 // annotation-store.test.js）。2026-10-14 之前快照按 revision / revision + 1 各发一份，
 // 满载下 +1 那份抢先、本底那份落在在途那次之后，盘上停在第二稿。
+// 在途靠页面里包的 fetch 扣应答，不用 page.route 在请求段扣：离开时发的 keepalive 快照在满载下
+// 会停在 Playwright 的拦截层，unroute 时才放出去（同 prose-comments.spec，见 docs/debugging.md）。
 test('a save queued behind an in-flight one reaches the disk when the page is left', async ({ page }) => {
+  // 布上 window.__ppSaveHold 之后，下一次 /save 照常发出，应答扣在页面里；hold.answered
+  // 说明服务端已经回了，hold.release() 放行。其余请求原样走。
+  await page.addInitScript(() => {
+    const nativeFetch = window.fetch;
+    window.__ppSaveHold = null;
+    window.fetch = function (input, init) {
+      const sent = nativeFetch(input, init);
+      const hold = window.__ppSaveHold;
+      const url = typeof input === 'string' ? input : String((input && input.url) || '');
+      if (!hold || hold.taken || !/\/save$/.test(url)) return sent;
+      hold.taken = true;
+      const gate = new Promise((resolve) => { hold.release = resolve; });
+      return sent.then((res) => { hold.answered = true; return gate.then(() => res); });
+    };
+  });
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -1696,39 +1713,29 @@ test('a save queued behind an in-flight one reaches the disk when the page is le
   ]);
   expect(await diskContents()).toBe('第一稿');
 
-  // 第 1 次保存（第二稿，在途那次）与第 2 次（离开时的快照）都扣住，各自等放行。
-  const gates = [0, 1].map(() => {
-    const gate = {};
-    gate.reached = new Promise((resolve) => { gate.arrive = resolve; });
-    gate.open = new Promise((resolve) => { gate.release = resolve; });
-    return gate;
-  });
-  let saves = 0;
-  await page.route('**/save', async (route) => {
-    const gate = gates[saves++];
-    if (gate) { gate.arrive(); await gate.open; }
-    await route.continue().catch(() => {}); // 离开后被浏览器取消的请求 continue 会抛
-  });
   const id = await page.evaluate(() => window.pinpoint.marks[0].id);
   const openById = () => page.evaluate((want) => {
     window.pinpoint.openMark(window.pinpoint.marks.find(m => m.id === want).n);
   }, id);
-  await openById();
-  await input.fill('第二稿');
-  await page.keyboard.press('Escape');
-  await expect(input).toHaveCount(0);
-  await gates[0].reached;
-  await openById();
-  await input.fill('第三稿');
-  await page.keyboard.press('Escape');
-  await expect(input).toHaveCount(0);
-  await page.goto('/health');
-  await gates[1].reached;
-  gates[0].release();
-  await expect.poll(diskContents, { timeout: 10_000 }).toBe('第二稿');
-  gates[1].release();
-  await expect.poll(diskContents, { timeout: 10_000 }).toBe('第三稿');
-  await page.unroute('**/save');
+  await page.evaluate(() => { window.__ppSaveHold = { taken: false, answered: false }; });
+  try {
+    await openById();
+    await input.fill('第二稿');
+    await page.keyboard.press('Escape');
+    await expect(input).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.__ppSaveHold.answered)).toBe(true);
+    expect(await diskContents(), '在途那次已落盘，页面还当它在途').toBe('第二稿');
+    await openById();
+    await input.fill('第三稿');
+    await page.keyboard.press('Escape');
+    await expect(input).toHaveCount(0);
+    expect(await page.evaluate(() => window.pinpoint.getState().syncing), '第三稿排在在途保存后面').toBe(true);
+    await page.goto('/health');
+    await expect.poll(diskContents, { timeout: 10_000 }).toBe('第三稿');
+  } finally {
+    // 没走到离开那一步就挂了：放掉扣着的应答，收尾的 closeSettled 才等得到。
+    await page.evaluate(() => window.__ppSaveHold && window.__ppSaveHold.release && window.__ppSaveHold.release()).catch(() => {});
+  }
 });
 
 // 保存撞上 409 时合并盘上的版本，不拿本地旧快照盖回去。agent 经状态端点（ppnt mark 的后端）
