@@ -24,10 +24,15 @@ function bucketDocs(bucket) {
     .map((name) => JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8')));
 }
 
-test.afterEach(async ({ page }) => {
-  await closeSettled(page);
+function clearBuckets() {
   fs.rmSync(CANVAS_BUCKET, { recursive: true, force: true });
   fs.rmSync(DOC_BUCKET, { recursive: true, force: true });
+}
+// 开头也清：e2e-ios 是好几个 spec 共用的桶，本用例数的是自己写进去的行。
+test.beforeEach(clearBuckets);
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
+  clearBuckets();
 });
 
 // 嵌套 iframe 里的 composer 保存按钮可能落在可视区外（frame 页比视口高）——

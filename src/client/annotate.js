@@ -4195,6 +4195,7 @@ import { startProseComments } from './prose-comments.js';
       revision: revision,
       syncing: syncing,
       outbox: Object.keys(ledgerOutbox).length, // 换账本交给 outbox、还没写完的旧账本快照
+      lastRectPending: lastRectPersistTimer !== null, // 防抖里、到点才发的 lastRect 写（关页时不补发）
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,
