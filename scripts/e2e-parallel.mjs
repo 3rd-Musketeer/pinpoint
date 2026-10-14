@@ -38,6 +38,7 @@ const durations = {
   'pp2-build.spec.js': 2,
   'ppnt-article.spec.js': 8,
   'ppnt-cli.spec.js': 4.9,
+  'ppnt-html-shots.spec.js': 1.5,
   'preview-hmr.spec.js': 0.6,
   'prose-comments.spec.js': 7,
   'prose-text-index.spec.js': 0.3,

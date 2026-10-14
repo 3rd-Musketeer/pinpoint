@@ -343,12 +343,15 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 - 只写文章：文章页整页（1440 宽，按页面高度截全），存 `<数据目录>/shot/<页 id>/article.png`。
 - `§2`：文章页上第 2 节的 `<section>`，存 `article-<节 id>.png`。纯文字的节写字母或节 id 也截文章页。
-- `B1`、`B`、帧 id、节 id：画布视图上的帧或节，同以前。`--canvas` 截整个画布视图。存量页不写引用就是整个画布。
+- `B1`、`B`、帧 id、节 id：画布视图上的帧或节，同以前。HTML 帧（文档条目）按自己的地址截 402 宽整页，存 `<帧 id>.png`。存量页不写引用就是整个画布。
+- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧各截一张整页（同上），画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
 - `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
 
 文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。
 
 截文章页前命令轮询文章网址：503（站点启动中）就等，刚登记时的 404 最多等 10 秒，502（站点起不来）直接报错并带上原因，200 才截；等的上限是 `--timeout` 秒，缺省 60。打开后等图片、画布卡片里的 iframe 和字体加载完再截。每张图打印一行 `引用 → 路径 · 宽×高`。
+
+就绪规则（`bin/ppnt-shot.js` 的 `settleLazyContent`，文章页、文章页上的一节、HTML 帧共用）：顶层文档和每一层嵌套 iframe 里 `loading="lazy"` 的图片和 iframe 都改成立即加载，逐层等它们加载完（同源的轮询 iframe 自己的文档，跨源的等 Playwright 的帧 load），最多嵌 4 层；HTML 帧整页截图前还把页面从上到下滚一遍，让按 IntersectionObserver 懒加载的页面开始取图。整个过程上限 15 秒，到时还没加载完的照常截，stderr 打一行“注意”列出它们，退 1；`--json` 的这一张带 `pending`。
 
 ### `ppnt open <目标> [§2 | 节 id | 概念名]`
 

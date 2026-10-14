@@ -106,7 +106,7 @@ dist 不在或落后于源码时先编一次（stderr 打一行说明），不�
   --json               结构化输出
 ${REGISTRY_FLAG}
 
-表面已经不存在的账本列在末尾的“孤儿标注”组，不计数，清理走 ppnt prune。
+表面已经不存在的账本列在末尾的“孤儿标注”组，不计数；ppnt mark / reply 照样用 #n、@a:<id> 回它们，清理走 ppnt prune。
 
 例：ppnt comments browser-use/payment-confirm
     ppnt comments browser-use --status all`,
@@ -143,25 +143,27 @@ ${REGISTRY_FLAG}`,
   ppnt shot <project>/<article>        文章页整页（文章页的样子：正文、画布卡片、评论栏）
   ppnt shot <project>/<article> §2     文章页上的第 2 节
   ppnt shot <project>/<article> B1     画布视图上的一帧；B 是一整节；帧 id、节 id 同义
-  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）
+  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）；文章的 HTML 帧不在画布那一行，各截一张整页
   ppnt shot <project>/<article> --figure <图 id>  正文里的一个图（<Figure>），浅色、深色各一张，760 宽
   ppnt shot <存量页 id> [B1 …]          存量页：不写引用是整个画布
 纯文字的节没有画布，写它的字母或节 id 时截文章页上的那一节。
 产物在 <数据目录>/shot/<页 id>/：文章页 article.png、article-<节 id>.png；画布 <帧 id|节 id|页 id>.png；
 图 figure-<图 id>.png 与 figure-<图 id>-dark.png。
 
-  --canvas             画布视图整页
+  --canvas             画布视图整页；文章的 HTML 帧（文档条目）各按自己的地址截 402 宽整页，全是 HTML 帧时不出画布图，打一行“说明：”
   --figure <图 id>     正文里的一个图（figures/<图 id>.jsx），不和引用同用；图编译失败或在浏览器里运行出错时打出原因、退 1
   --marks              把 open 标注的 #n 序号钉烤进画布截图
   --status <状态>      加上这个状态的标注所在的帧
   --scale 1|2          像素倍数（缺省 1）
   --timeout <秒>       等文章站点就绪的上限（缺省 60）
-  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated? }], warnings, errors }
+  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated?, pending? }], notes, warnings, errors }
 ${REGISTRY_FLAG}
 ${TARGET_NOTE}
 
 文章页截到一半（正文渲染出错，页面里没有正文结束标记）：图照样存下，stderr 打一行“注意”，退 1；
-ppnt check <project>/<article> 给出错在哪一行。`,
+ppnt check <project>/<article> 给出错在哪一行。
+截之前等页面里（含嵌套 iframe 里）懒加载的 iframe 和图片加载完，上限 15 秒；到时还没加载完的照常截，
+stderr 打一行“注意”列出它们，退 1。`,
   },
   new: {
     usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article <project>/<article> [--title <标题>]',

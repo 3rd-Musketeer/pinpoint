@@ -3113,3 +3113,120 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
   assert.equal(await run(['list', '--bogus'], { ...listBogus.io, env: {} }), 2, '未知选项不当关键词');
   assert.equal(listBogus.err[0], '错误：未知选项：--bogus');
 });
+
+/* ---- 2026-10-14 HTML 页面三处修复：孤儿标注可写、--canvas 逐帧、懒加载未完的提示 ---- */
+
+import { pendingWarning } from './pinpoint-cli.js';
+
+/** 存量 doc 页，一屏连文件一起删了：它的账本成了孤儿（lib/orphans.js 第 1 种）。 */
+function orphanDocPage(t) {
+  const dir = withTempDir(t);
+  const site = path.join(dir, 'site');
+  fs.mkdirSync(site, { recursive: true });
+  fs.writeFileSync(path.join(site, 'live.html'), '<h1>live</h1>\n');
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 't-orphans', title: 'O', kind: 'dir', path: site, board: 'html' }] }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' };
+  const bucket = path.join(env.PINPOINT_DATA_DIR, 't-orphans');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'live.html_aaa111.json'), JSON.stringify({
+    page: 'live.html_aaa111', path: '/sites/t-orphans/live.html', revision: 2,
+    annotations: [{ id: 'live01', n: 1, type: 'element', status: 'open', content: '活页意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'gone.html_bbb222.json'), JSON.stringify({
+    page: 'gone.html_bbb222', path: '/sites/t-orphans/gone.html', revision: 7,
+    annotations: [
+      { id: 'gone02', n: 2, type: 'element', status: 'check', content: '删掉那屏的意见' },
+      { id: 'gone03', n: 3, type: 'element', status: 'open', content: '删掉那屏的另一条' },
+    ],
+  }));
+  const calls = [];
+  const requestFn = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method || 'GET', body: opts.body });
+    if (url.endsWith('/health')) return { status: 200, json: { ok: true } };
+    if (opts.method === 'POST') return { status: 200, json: { revision: 8, annotation: { status: opts.body.status || 'open' } } };
+    return { status: 200, json: { revision: url.includes('gone.html') ? 7 : 2, annotations: [] } };
+  };
+  return { registry, env, calls, requestFn };
+}
+
+test('mark / reply：comments 列出的孤儿标注也能用 #n、@a:id、<页>#n 指到，写回它自己的账本', async (t) => {
+  const made = orphanDocPage(t);
+  const listed = recorder();
+  assert.equal(await runComments(['comments', 't-orphans', '--status', 'all', '--registry', made.registry], { ...listed.io, env: made.env }), 0, listed.err.join('\n'));
+  const orphanPart = listed.out.slice(listed.out.findIndex((line) => line.includes('孤儿标注'))).join('\n');
+  assert.match(orphanPart, /\[#2\][^\n]*删掉那屏的意见/);
+
+  const mk = recorder();
+  const code = await runMark(['mark', 't-orphans', '#2', 'check', '--note', '改好了', '--registry', made.registry], { ...mk.io, env: made.env, requestFn: made.requestFn });
+  assert.equal(code, 0, mk.err.join('\n'));
+  const posts = made.calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(posts.map((call) => call.url.replace(/^.*\/annotations\//, '')), ['gone.html_bbb222/2/reply', 'gone.html_bbb222/2/status']);
+  assert.equal(posts[0].body.entry, 't-orphans');
+  assert.equal(posts[0].body.baseRevision, 7);
+
+  made.calls.length = 0;
+  const rp = recorder();
+  assert.equal(await runReply(['reply', 't-orphans', '@a:gone03', '看过了', '--registry', made.registry], { ...rp.io, env: made.env, requestFn: made.requestFn }), 0, rp.err.join('\n'));
+  assert.match(made.calls.find((call) => call.method === 'POST').url, /\/annotations\/gone\.html_bbb222\/3\/reply$/);
+
+  made.calls.length = 0;
+  const cross = recorder();
+  assert.equal(await runMark(['mark', 't-orphans#3', 'done', '--registry', made.registry], { ...cross.io, env: made.env, requestFn: made.requestFn }), 0, cross.err.join('\n'));
+  assert.match(made.calls.find((call) => call.method === 'POST').url, /\/gone\.html_bbb222\/3\/status$/);
+
+  // comments <页>#n 也认孤儿。
+  const one = recorder();
+  assert.equal(await runComments(['comments', 't-orphans#2', '--registry', made.registry], { ...one.io, env: made.env }), 0, one.err.join('\n'));
+  assert.ok(one.out.some((line) => line.includes('[#2]')), one.out.join('\n'));
+});
+
+test('mark --status：批量展开只走活的行，孤儿不会被顺手改掉', async (t) => {
+  const made = orphanDocPage(t);
+  const mk = recorder();
+  assert.equal(await runMark(['mark', 't-orphans', 'check', '--status', 'open', '--registry', made.registry], { ...mk.io, env: made.env, requestFn: made.requestFn }), 0, mk.err.join('\n'));
+  const posted = made.calls.filter((call) => call.method === 'POST').map((call) => call.url.replace(/^.*\/annotations\//, ''));
+  assert.deepEqual(posted, ['live.html_aaa111/1/status']);
+});
+
+test('planShotJobs：文章的画布视图整页 —— 全是 HTML 帧时逐帧截、不出画布图；混着 JSX 帧时两样都出，notes 说明', () => {
+  const docsOnly = {
+    pageId: 'd_a',
+    article: { projectId: 'd', articleId: 'a' },
+    target: { urlBase: '/sites/d_a/' },
+    board: { sections: [{ id: 'pages', letter: 'A', screens: [{ id: 'long', shell: 'doc' }, { id: 'cat', shell: 'doc', src: 'x/cat.html' }] }] },
+    refs: { outline: [{ id: 'pages', letter: 'A', frames: [{ id: 'long', ref: 'A1' }, { id: 'cat', ref: 'A2' }] }] },
+    frameRows: [{ n: 1, screenId: 'long', status: 'open' }],
+  };
+  const only = planShotJobs([{ kind: 'page', pageId: 'd_a' }], { basePageId: 'd_a', baseContext: docsOnly, scale: 1, withMarks: true, dataRootDir: '/data' });
+  assert.deepEqual(only.jobs.map((job) => [job.kind, job.screenId, job.url, job.label]), [
+    ['doc', 'long', '/sites/d_a/long.html', 'A1 · long'],
+    ['doc', 'cat', '/x/cat.html', 'A2 · cat'],
+  ]);
+  assert.deepEqual(only.jobs[0].marks.map((row) => row.n), [1]);
+  assert.equal(only.notes.length, 1);
+  assert.match(only.notes[0], /d\/a 的 2 帧都是 HTML 帧（文档条目）.*不出画布视图图/);
+
+  const mixed = {
+    ...docsOnly,
+    board: { sections: [...docsOnly.board.sections, { id: 'app', letter: 'B', screens: [{ id: 'phone' }] }] },
+    refs: { outline: [...docsOnly.refs.outline, { id: 'app', letter: 'B', frames: [{ id: 'phone', ref: 'B1' }] }] },
+  };
+  // --canvas 再加一个指同一帧的引用：同一帧只拍一次。
+  const both = planShotJobs([{ kind: 'page', pageId: 'd_a' }, { kind: 'frame', screenId: 'long' }], { basePageId: 'd_a', baseContext: mixed, scale: 1, withMarks: false, dataRootDir: '/data' });
+  assert.deepEqual(both.jobs.map((job) => [job.kind, job.screenId || job.pageId]), [['doc', 'long'], ['doc', 'cat'], ['page', 'd_a']]);
+  assert.match(both.notes[0], /2 个 HTML 帧是文档条目.*画布视图那张图只含 1 个 JSX 帧/);
+
+  // 存量页的整页引用不变：一张画布图，没有 notes。
+  const legacy = planShotJobs([{ kind: 'page', pageId: 'demo' }], { basePageId: 'demo', baseContext: { pageId: 'demo', frameRows: [], refs: { outline: [] } }, scale: 1, withMarks: false, dataRootDir: '/data' });
+  assert.deepEqual(legacy.jobs.map((job) => job.kind), ['page']);
+  assert.deepEqual(legacy.notes, []);
+});
+
+test('pendingWarning：列出没加载完的 iframe / 图片，多于 5 个时只列前 5 个并给总数', () => {
+  const one = pendingWarning({ label: 'A1 · cat', pending: ['iframe preview-frames/t.html'] });
+  assert.match(one, /^A1 · cat 截图时还有 1 个 iframe \/ 图片没加载完.*iframe preview-frames\/t\.html$/);
+  const many = pendingWarning({ out: '/x.png', pending: Array.from({ length: 7 }, (_, i) => `img ${i}.png`) });
+  assert.match(many, /^\/x\.png 截图时还有 7 个/);
+  assert.ok(many.includes('img 4.png') && !many.includes('img 5.png') && many.endsWith('等 7 个'), many);
+});

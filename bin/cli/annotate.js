@@ -25,6 +25,8 @@ import { ensureDist, ensureDistNote } from './dist.js';
 const CHECK_STATUSES = new Set(['open', 'check', 'done', 'close', 'all']);
 const CHECK_MODES = new Set(['excerpt', 'image', 'both']);
 const GROUP_BYS = new Set(['frame', 'component']);
+/** 文档帧截图的宽度说明（与 ppnt-shot.js 的 DOC_SHOT_WIDTH 同一个数；这里不 import 渲染器，免得拉起 playwright）。 */
+const DOC_SHOT_WIDTH_NOTE = '402 宽';
 
 /** 服务没答时的那句话：隔离运行（设了 PINPOINT_ORIGIN）不能 `ppnt start`。 */
 function serviceDown(origin, env, what) {
@@ -33,12 +35,22 @@ function serviceDown(origin, env, what) {
     : `pinpoint 服务未在跑（${origin}）；${what}，先 \`ppnt start\`。`;
 }
 
+/**
+ * 引用（#n、#a-#b、@a:id、<页>#n）能指到的全部行：帧行、文档行，加上孤儿账本里的行。
+ * comments 把孤儿单独列出来，agent 照着它回复、写状态，所以这些行也要能被 #n 指到；
+ * 服务端点按账本 + 序号找行，不看画布，孤儿账本照样能写。--status 批量展开和帧 / 节展开
+ * 只走活的行，孤儿不会被一句 `--status open` 顺手改掉。
+ */
+function addressableRows(context) {
+  return [...context.frameRows, ...context.docRows, ...(context.orphanRows || [])];
+}
+
 /** `<页>#n` 跨页引用的行读取器（mark / reply 用；locate 另带每页上下文）。 */
 function crossPageRowsFor(parsed, env) {
   const registryPath = resolveRegistryPath(parsed.flags, env);
   return (pageRef) => {
     const other = loadPageContext({ pageRef: String(toPageRef(pageRef)), registryPath, dataRootDir: dataRoot(env) });
-    return other ? [...other.frameRows, ...other.docRows] : [];
+    return other ? addressableRows(other) : [];
   };
 }
 
@@ -93,12 +105,13 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   }
   if (cross) {
     const keep = (row) => Number(row.n) === cross.n;
-    if (![...context.frameRows, ...context.docRows].some(keep)) {
+    if (!addressableRows(context).some(keep)) {
       err(`错误：${context.address} 没有 #${cross.n}`);
       return { code: 1, rows: 0 };
     }
     context.frameRows = context.frameRows.filter(keep);
     context.docRows = context.docRows.filter(keep);
+    context.orphanRows = (context.orphanRows || []).filter(keep);
   }
   const frameRef = parsed.flags.frame ? normalizeRefToken(parsed.flags.frame) : null;
   const report = buildCheckReport(context, { frame: frameRef, status, groupBy, mode });
@@ -306,9 +319,9 @@ export async function runLocate(argv, io = {}) {
   };
   const crossPageRows = (pageRef) => {
     const other = contextOf(pageRef);
-    return other ? [...other.frameRows, ...other.docRows] : [];
+    return other ? addressableRows(other) : [];
   };
-  const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows };
+  const refCtx = { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows };
   const prepared = prepareRefs(got.refs, context);
   const { picks, errors, empty } = expandRefs(prepared.tokens, refCtx);
   picks.unshift(...prepared.picks);
@@ -361,6 +374,7 @@ export async function runLocate(argv, io = {}) {
 export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks, contextFor, dataRootDir }) {
   const jobs = [];
   const problems = [];
+  const notes = [];
   const contexts = new Map([[basePageId, baseContext]]);
   const contextOf = (pageId) => {
     if (!contexts.has(pageId)) contexts.set(pageId, contextFor ? contextFor(pageId) : null);
@@ -380,26 +394,31 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (frame.tabId) tabOfFrame.set(frame.id, frame.tabId);
   const withTab = (tabId) => (tabId ? { tabId } : {});
   // 文章的文档帧（HTML 帧）不在画布上：直接打开它自己的地址，按手机宽度拍整页（ppnt-shot 的 renderDocShots）。
-  const docUrlOf = (screenId) => (baseContext.article && baseContext.board && baseContext.target
-    ? docFrameUrl(baseContext.board, baseContext.target.urlBase, screenId)
+  const docUrlOf = (screenId, ctx = baseContext) => (ctx.article && ctx.board && ctx.target
+    ? docFrameUrl(ctx.board, ctx.target.urlBase, screenId)
     : null);
+  const docJob = (screenId, ctx, label) => {
+    const key = `${ctx.pageId}|${screenId}`;
+    if (seenScreens.has(key)) return;
+    seenScreens.add(key);
+    jobs.push({
+      kind: 'doc',
+      pageId: ctx.pageId,
+      screenId,
+      url: docUrlOf(screenId, ctx),
+      scale,
+      label,
+      out: path.join(shotDirOf(ctx.pageId), `${screenId}.png`),
+      marks: withMarks ? openRows(ctx).filter((row) => row.screenId === screenId) : [],
+    });
+  };
   const frameJob = (screenId) => {
-    if (seenScreens.has(screenId)) return;
-    seenScreens.add(screenId);
-    const docUrl = docUrlOf(screenId);
-    if (docUrl) {
-      jobs.push({
-        kind: 'doc',
-        pageId: basePageId,
-        screenId,
-        url: docUrl,
-        scale,
-        label: [frameRefOf(screenId), screenId].filter(Boolean).join(' · '),
-        out: path.join(shotDirOf(basePageId), `${screenId}.png`),
-        marks: withMarks ? openRows(baseContext).filter((row) => row.screenId === screenId) : [],
-      });
+    if (docUrlOf(screenId)) {
+      docJob(screenId, baseContext, [frameRefOf(screenId), screenId].filter(Boolean).join(' · '));
       return;
     }
+    if (seenScreens.has(screenId)) return;
+    seenScreens.add(screenId);
     jobs.push({
       kind: 'frame',
       pageId: basePageId,
@@ -459,6 +478,21 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
         }
         continue;
       }
+      // 文章的画布视图整页：HTML 帧（文档条目）不在画布那一行，画布视图一次只显示其中一份，
+      // 整页图里只有一条窄边。所以每个文档条目按自己的地址各拍一张整页，画布那一行只在
+      // 有 JSX 帧时才拍；全是文档条目时不出画布图，notes 里说清楚为什么。
+      if (pageContext.article) {
+        const frames = pageContext.refs ? outlineFrames(pageContext.refs) : [];
+        const docFrames = frames.filter((frame) => docUrlOf(frame.id, pageContext));
+        if (docFrames.length) {
+          for (const frame of docFrames) docJob(frame.id, pageContext, [frame.ref, frame.id].filter(Boolean).join(' · '));
+          const canvasCount = frames.length - docFrames.length;
+          notes.push(canvasCount
+            ? `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 个 HTML 帧是文档条目，不在画布那一行：各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）；画布视图那张图只含 ${canvasCount} 个 JSX 帧。`
+            : `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 帧都是 HTML 帧（文档条目），画布那一行是空的，不出画布视图图；每帧各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）。`);
+          if (!canvasCount) continue;
+        }
+      }
       jobs.push({
         kind: 'page',
         pageId: pageContext.pageId,
@@ -469,7 +503,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
       });
     }
   }
-  return { jobs, problems };
+  return { jobs, problems, notes };
 }
 
 /**
@@ -561,6 +595,13 @@ export function truncatedWarning(address) {
   return `文章页在正文中途断了（页面里没有正文结尾标记），正文多半渲染出错；跑 ppnt check ${address} 看是哪一行`;
 }
 
+/** 截图时还有懒加载的 iframe / 图片没加载完（等到上限）时的那句话。 */
+export function pendingWarning(result) {
+  const shown = result.pending.slice(0, 5).join('；');
+  const more = result.pending.length > 5 ? ` 等 ${result.pending.length} 个` : '';
+  return `${result.label || result.out} 截图时还有 ${result.pending.length} 个 iframe / 图片没加载完（等了 15 秒），图里这些位置可能是空的：${shown}${more}`;
+}
+
 /** 正文里图的 id（读不出正文时 []）。 */
 function figureIdsOf(context) {
   try {
@@ -632,6 +673,7 @@ export async function runShot(argv, io = {}) {
     dataRootDir: dataRoot(env),
   });
   for (const problem of plan.problems) err(problem);
+  if (!parsed.flags.json) for (const note of plan.notes) out(`说明：${note}`);
   const jobs = plan.jobs;
   if (!jobs.length && !articleJobs.length) {
     err('没有可拍的目标（引用都未命中）。');
@@ -651,17 +693,29 @@ export async function runShot(argv, io = {}) {
     byPage.get(job.pageId).push(job);
   }
   const shots = [];
-  const print = (result, kind) => {
-    shots.push({ kind, label: result.label || '', out: result.out, width: result.width, height: result.height, ...(result.truncated ? { truncated: true } : {}) });
-    if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
-  };
   const warnings = [];
+  const print = (result, kind) => {
+    shots.push({
+      kind,
+      label: result.label || '',
+      out: result.out,
+      width: result.width,
+      height: result.height,
+      ...(result.truncated ? { truncated: true } : {}),
+      ...(result.pending ? { pending: result.pending } : {}),
+    });
+    if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
+    if (result.pending) {
+      warnings.push(pendingWarning(result));
+      err(`注意：${warnings[warnings.length - 1]}`);
+    }
+  };
   try {
     if (articleJobs.length) {
       for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result, 'article');
     }
     if (docJobs.length) {
-      for (const result of await renderer.renderDocShots({ origin, jobs: docJobs, env })) print(result);
+      for (const result of await renderer.renderDocShots({ origin, jobs: docJobs, env })) print(result, 'doc');
     }
     for (const [pageId, group] of byPage) {
       for (const result of await renderer.renderShots({ origin, pageId, jobs: group, env })) print(result, 'canvas');
@@ -675,7 +729,7 @@ export async function runShot(argv, io = {}) {
     warnings.push(truncatedWarning(context.address));
     err(`注意：${warnings[warnings.length - 1]}`);
   }
-  if (parsed.flags.json) out(JSON.stringify({ target: context.address, shots, warnings, errors: [...errors, ...plan.problems] }, null, 2));
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, shots, notes: plan.notes, warnings, errors: [...errors, ...plan.problems] }, null, 2));
   return errors.length || plan.problems.length || warnings.length ? 1 : 0;
 }
 
@@ -704,7 +758,7 @@ export async function runMark(argv, io = {}) {
   const crossPageRows = crossPageRowsFor(parsed, env);
   const rows = [...context.frameRows, ...context.docRows];
   const prepared = prepareRefs(got.refs, context);
-  const { picks, errors, empty } = expandRefs(prepared.tokens, { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  const { picks, errors, empty } = expandRefs(prepared.tokens, { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows });
   picks.unshift(...prepared.picks);
   errors.unshift(...prepared.errors);
   empty.unshift(...prepared.empty);
@@ -789,8 +843,7 @@ export async function runReply(argv, io = {}) {
   if (!got.context) return got.code;
   const { context } = got;
   const crossPageRows = crossPageRowsFor(parsed, env);
-  const rows = [...context.frameRows, ...context.docRows];
-  const { picks, errors } = expandRefs(got.refs.map(normalizeRefToken), { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  const { picks, errors } = expandRefs(got.refs.map(normalizeRefToken), { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows });
   for (const error of errors) err(error);
   const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
   if (annotationPicks.length !== 1) {

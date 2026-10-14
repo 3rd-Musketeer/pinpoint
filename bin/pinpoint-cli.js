@@ -116,6 +116,7 @@ export {
   runComments,
   runLocate,
   planArticleShots,
+  pendingWarning,
   planShotJobs,
   runShot,
   runMark,

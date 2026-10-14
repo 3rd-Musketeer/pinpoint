@@ -107,7 +107,9 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 **孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、存量页不在 registry 与
 manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt status --page` 与 `comments`
 把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
-面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。
+面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。孤儿行照样能回复、写状态：
+`ppnt mark` / `reply` 的 `#n`、`#a-#b`、`@a:<id>`、`<页>#n` 也指得到它们（状态和线程端点按账本加序号找行，
+不看画布）；`--status` 批量展开和帧、节展开只走活的行。
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录
