@@ -370,7 +370,7 @@ export function excerptForRow(row, context) {
   const { target, distHtmlFor, readFile = () => null } = context;
   const screenId = row.screenId || '';
   const distHtml = distHtmlFor(screenId);
-  if (!distHtml) return { lines: [`（摘录不可用：帧 ${screenId || '?'} 无 dist 产物，先 ppnt build）`], file: null, line: 0, comp: null };
+  if (!distHtml) return { lines: [`（摘录不可用：帧 ${screenId || '?'} 还没编进 dist，先跑 ppnt build <目标>，再读一次）`], file: null, line: 0, comp: null };
   const anchor = anchorNode(row, distHtml);
   if (anchor.error) return { lines: [`（摘录不可用：${anchor.error}）`], file: null, line: 0, comp: null };
   const { node, html } = anchor;

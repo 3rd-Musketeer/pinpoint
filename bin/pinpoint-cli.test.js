@@ -2326,7 +2326,7 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
   assert.ok(addedAt > 0);
   assert.deepEqual(entry, { id: 'e2e-project', kind: 'project', title: 'E2E Project', path: FIXTURE_PROJECT });
   assert.ok(rec.out.includes('已登记 e2e-project（project）：' + FIXTURE_PROJECT));
-  assert.ok(rec.out.includes('文章与概念：`pinpoint list e2e-project`'));
+  assert.ok(rec.out.includes('文章与概念：`ppnt show e2e-project`；验证：`ppnt check e2e-project`'));
 
   const refusals = [
     [['add', FIXTURE_PROJECT, '--project'], /id 已存在：e2e-project/],

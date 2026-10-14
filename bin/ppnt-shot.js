@@ -299,7 +299,15 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
       if (job.kind === 'article-section') {
         const selector = `section[data-section="${job.sectionId.replace(/"/g, '\\"')}"]`;
         const section = page.locator(selector);
-        if (!(await section.count())) throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）`);
+        if (!(await section.count())) {
+          // 刚改过 index.mdx 时站点可能还在重编，拿到的是旧页或没渲染完的页：等一会儿、重载一次再判。
+          await waitArticleReady(context.request, job.url, { timeoutMs });
+          await page.goto(job.url, { waitUntil: 'load' });
+          await page.locator(selector).first().waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {});
+        }
+        if (!(await section.count())) {
+          throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）：正文可能没渲染完，ppnt check 看有没有正文渲染错误`);
+        }
         await section.scrollIntoViewIfNeeded();
         await settleArticlePage(page, selector);
         buffer = await section.screenshot({ path: job.out });
