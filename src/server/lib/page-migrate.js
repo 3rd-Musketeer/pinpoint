@@ -81,6 +81,34 @@ function isFile(file) {
   }
 }
 
+function within(base, p) {
+  return p === base || p.startsWith(base + path.sep);
+}
+
+/**
+ * 页内相对路径越没越出页目录（xreview B）：文本上带 `..` 或绝对路径，或者 realpath（symlink 的真实落点）
+ * 不在页目录的 realpath 里。在页内返回 null，越界返回接在路径后面的说明。文件不在盘上时只看文本，
+ * “不存在”由调用方另报。
+ */
+function pageEscape(pageReal, pageDir, rel) {
+  const norm = posix.normalize(toPosix(rel));
+  if (posix.isAbsolute(norm) || norm === '..' || norm.startsWith('../')) return ' 在页目录外';
+  let real;
+  try {
+    real = fs.realpathSync(path.join(pageDir, norm));
+  } catch {
+    return null;
+  }
+  return within(pageReal, real) ? null : ` 的真实位置在页目录外（${real}）`;
+}
+
+/** 文章目录内的相对路径越没越出文章目录：越界返回 true。 */
+function articleEscape(articleDir, rel) {
+  const base = path.resolve(articleDir);
+  const to = path.resolve(base, rel);
+  return to === base || !within(base, to);
+}
+
 /** 相对 url：没有协议、不以 / # 开头、不是 data:。 */
 function isRelativeUrl(url) {
   return !!url && !/^(?:[a-z][a-z0-9+.-]*:|\/|#)/i.test(url);
@@ -277,6 +305,7 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const legacy = legacyMeta(target, registry, root);
   const pageShell = legacy.mode === 'html' ? 'doc' : 'app';
   const pageDir = target.pageDir;
+  const pageReal = fs.realpathSync(pageDir);
   const compiled = await compileToTemp(target);
 
   const problems = [];
@@ -334,7 +363,6 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const sections = [];
   const seenFrames = new Map();
   const htmlAssets = new Set(); // HTML 帧相对引用的文件（相对页目录），按原路径复制
-  const htmlShell = {}; // 节 id → 这一节 HTML 帧在旧页上的壳（不是 doc 时）
   const shellAppends = new Map(); // 帧 rel → shell（复制时在文件末尾补一行 export const shell）
   let titled = 0;
   let columnSections = 0;
@@ -355,6 +383,17 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
       ...(sectionShell !== 'app' ? { canvasShell: sectionShell } : {}),
       frames: [],
     };
+    // 先定整节最终的 <Canvas shell>（xreview I）。HTML 帧不能单帧写 shell，跟着 <Canvas shell> 走，没写时是 doc；
+    // 旧页上不是 doc 的 HTML 帧把节的 shell 定成它的壳。下面 JSX / comp 帧按这个最终值决定要不要写帧级 shell，
+    // 节末再核对每个 HTML 帧的原壳。
+    const htmlFrameShell = (raw) => {
+      const screen = typeof raw === 'string' ? { id: raw } : raw;
+      if (!screen || typeof screen.id !== 'string' || !FRAME_ID.test(screen.id) || (typeof screen.comp === 'string' && screen.comp)) return null;
+      if (isFile(path.join(pageDir, `${screen.id}.jsx`)) || !isFile(path.join(pageDir, `${screen.id}.html`))) return null;
+      return legacyShell(screen.shell || section.shell, pageShell);
+    };
+    const htmlNonDoc = (section.screens || []).map(htmlFrameShell).find((shell) => shell && shell !== 'doc');
+    if (htmlNonDoc) out.canvasShell = htmlNonDoc;
     for (const raw of section.screens || []) {
       const screen = typeof raw === 'string' ? { id: raw } : raw;
       if (!screen || typeof screen.id !== 'string' || !FRAME_ID.test(screen.id)) {
@@ -417,14 +456,6 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
             warnings.push(`帧 ${id} 引用的 ${JSON.stringify(row.url)} 不在盘上（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行）：照原样复制，引用还是断的`);
           }
           for (const row of assets.files) htmlAssets.add(toPosix(path.relative(pageDir, row.file)));
-          // 文章里 HTML 帧没写 <Canvas shell> 时是 doc；旧页按别的壳显示时，把这一节的 shell 写明。
-          if (shell !== 'doc') {
-            if (htmlShell[section.id] && htmlShell[section.id] !== shell) {
-              problems.push(`section ${section.id} 里的 HTML 帧壳不一样（${htmlShell[section.id]} 与 ${id} 的 ${shell}）：HTML 帧不能单帧写 shell，先把它们分到不同的 section`);
-            }
-            htmlShell[section.id] = shell;
-            out.canvasShell = shell;
-          }
           out.frames.push(frame);
           continue;
         }
@@ -457,6 +488,13 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
     }
     // 全是 HTML 帧的 doc 节：HTML 帧缺省就是 doc，<Canvas> 不必写 shell。
     if (out.canvasShell === 'doc' && out.frames.length && out.frames.every((frame) => frame.html)) delete out.canvasShell;
+    // HTML 帧在文章里的壳 = <Canvas shell>，没写是 doc。和旧页的壳不同就拦下，写入前报（xreview I）。
+    for (const frame of out.frames) {
+      const after = out.canvasShell || 'doc';
+      if (frame.html && after !== frame.legacyShell) {
+        problems.push(`section ${section.id} 里的 HTML 帧 ${frame.id} 在旧页是 ${frame.legacyShell}，迁过去会按 ${after} 显示：HTML 帧不能单帧写 shell，跟着整节的 <Canvas shell> 走，先把壳不同的帧分到不同的 section`);
+      }
+    }
     if (!out.frames.length) warnings.push(`section ${section.id} 没有可迁的帧：正文里留这一节，不放画布`);
     sections.push(out);
   }
@@ -468,22 +506,26 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   const assets = board.assets && typeof board.assets === 'object' ? board.assets : {};
   const cssList = [...new Set((Array.isArray(assets.css) ? assets.css : []).filter((x) => typeof x === 'string' && x))];
   const jsList = [...new Set((Array.isArray(assets.js) ? assets.js : []).filter((x) => typeof x === 'string' && x))];
-  for (const rel of cssList) {
-    if (!isFile(path.join(pageDir, rel))) problems.push(`board.assets.css 里的 ${rel} 不存在`);
-    else relMap.set(posix.normalize(rel), ARTICLE_ASSET_FILES.css);
-  }
+  // 页级资源也走包含检查：越出页目录的既不读也不写（xreview B）。
+  const pageAsset = (rel, field) => {
+    const escape = pageEscape(pageReal, pageDir, rel);
+    if (escape) problems.push(`board.assets.${field} 里的 ${rel}${escape}：先把它挪进页目录`);
+    else if (!isFile(path.join(pageDir, rel))) problems.push(`board.assets.${field} 里的 ${rel} 不存在`);
+    else return true;
+    return false;
+  };
+  const cssOk = cssList.filter((rel) => pageAsset(rel, 'css'));
+  for (const rel of cssOk) relMap.set(posix.normalize(rel), ARTICLE_ASSET_FILES.css);
+  const jsOk = jsList.filter((rel) => pageAsset(rel, 'js'));
   let jsMode = null;
-  if (jsList.length === 1 && !jsList[0].includes('/') && isFile(path.join(pageDir, jsList[0]))) {
+  if (jsList.length === 1 && jsOk.length === 1 && !jsList[0].includes('/')) {
     jsMode = 'rename';
     relMap.set(jsList[0], ARTICLE_ASSET_FILES.js);
   } else if (jsList.length) {
     jsMode = 'imports';
-    for (const rel of jsList) {
-      if (!isFile(path.join(pageDir, rel))) problems.push(`board.assets.js 里的 ${rel} 不存在`);
-      else {
-        queueSource(posix.normalize(rel), 'js');
-        scanDeps(posix.normalize(rel), `board.assets.js ${rel}`);
-      }
+    for (const rel of jsOk) {
+      queueSource(posix.normalize(rel), 'js');
+      scanDeps(posix.normalize(rel), `board.assets.js ${rel}`);
     }
     if (jsList.length > 1) warnings.push(`board.assets.js 有 ${jsList.length} 个文件：原样复制，article.js 依次 import 它们`);
   }
@@ -582,6 +624,11 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
 
   // 复制源文件（文本做改写；没改到的保持原样复制）。
   for (const [rel, kind] of sourceFiles) {
+    const escape = pageEscape(pageReal, pageDir, rel);
+    if (escape) {
+      problems.push(`要复制的 ${rel}${escape}：先把它挪进页目录`);
+      continue;
+    }
     const from = path.join(pageDir, rel);
     const to = relMap.get(rel);
     if (!TEXT_EXTS.has(posix.extname(rel).toLowerCase())) {
@@ -597,8 +644,8 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
     addFile(to, next === text ? { kind, from } : { kind, content: next, rewritten: true });
   }
   // article.css
-  if (cssList.length) {
-    const parts = cssList.filter((rel) => isFile(path.join(pageDir, rel))).map((rel) => ({
+  if (cssOk.length) {
+    const parts = cssOk.map((rel) => ({
       rel,
       text: rewrite(fs.readFileSync(path.join(pageDir, rel), 'utf8'), posix.normalize(rel), { css: true }),
     }));
@@ -633,6 +680,16 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   for (const dir of dynamicDirs) warnings.push(`拼出来的资源地址只能整目录搬：${dir}`);
   for (const ref of missingRefs) warnings.push(`引用了页里不存在的文件 ${ref}：只换了地址前缀`);
 
+  // 最后一道：计划里每份要复制的源文件都在页目录内（文本 + realpath），每个目标都在文章目录内。
+  // 资源搬运（staticTarget / staticDir / article.css）在这里一并核对（xreview B）。
+  for (const [rel, spec] of files) {
+    if (articleEscape(articleDir, rel)) problems.push(`要写到 ${rel}：越出文章目录`);
+    if (!spec.from) continue;
+    const escape = pageEscape(pageReal, pageDir, path.relative(pageDir, spec.from));
+    const message = `要复制的 ${toPosix(path.relative(pageDir, spec.from))}${escape}：先把它挪进页目录`;
+    if (escape && !problems.includes(message)) problems.push(message);
+  }
+
   const plan = {
     pageId,
     legacy: { kind: target.kind, dir: pageDir, title: legacy.title, urlBase: target.urlBase, html: compiled.html, errors: compiled.build.errors || {} },
@@ -651,9 +708,14 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
   return plan;
 }
 
-/** 按计划写文件。文章目录在写之前已存在就抛错（不覆盖）。 */
+/**
+ * 按计划写文件。先核对全部目标都在文章目录内，有一个越界就一个都不写；
+ * 文章目录在写之前已存在就抛错；每个文件用不覆盖的方式写（已有就 EEXIST）。
+ */
 export function writeMigration(plan) {
   if (plan.problems.length) throw new MigrateError(`计划里有 ${plan.problems.length} 个问题，不写`);
+  const outside = [...plan.files.keys()].filter((rel) => articleEscape(plan.articleDir, rel));
+  if (outside.length) throw new MigrateError(`计划里的 ${outside.join('、')} 越出文章目录 ${plan.articleDir}，不写`);
   fs.mkdirSync(path.dirname(plan.articleDir), { recursive: true });
   try {
     fs.mkdirSync(plan.articleDir); // 不带 recursive：已存在就 EEXIST
@@ -665,8 +727,8 @@ export function writeMigration(plan) {
   for (const [rel, spec] of [...plan.files].sort(([a], [b]) => a.localeCompare(b))) {
     const to = path.join(plan.articleDir, rel);
     fs.mkdirSync(path.dirname(to), { recursive: true });
-    if (spec.content !== undefined) fs.writeFileSync(to, spec.content);
-    else fs.copyFileSync(spec.from, to);
+    if (spec.content !== undefined) fs.writeFileSync(to, spec.content, { flag: 'wx' });
+    else fs.copyFileSync(spec.from, to, fs.constants.COPYFILE_EXCL);
     written.push(rel);
   }
   return written;

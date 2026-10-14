@@ -417,11 +417,11 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 | 存量页 | 文章 |
 | --- | --- |
-| board 的一个 section | 一个 `<Section id title>`，里面一行占位注释 `{/* 正文 */}` 和一个 `<Canvas frames>`。section 的 shell（含 html 页的缺省 doc）写成 `<Canvas shell>`。没有帧的 section 只留 `<Section>` |
+| board 的一个 section | 一个 `<Section id title>`，里面一行占位注释 `{/* 正文 */}` 和一个 `<Canvas frames>`。section 的 shell（含 html 页的缺省 doc）写成 `<Canvas shell>`；节里有旧页上不是 doc 的 HTML 帧时，`<Canvas shell>` 用这个 HTML 帧的壳。没有帧的 section 只留 `<Section>` |
 | 页 tab | 每个 tab 第一节前加一行 `## <tab 标题>`。二级标题不占节字母，节字母全文统一排（A、B、C…），旧页是每个 tab 各从 A 起 |
 | `<帧>.jsx`、sidecar `<帧>.js` | 同名复制 |
 | `<帧>.html` | 同名复制，页面引用的相对资源（css、js、图片，css 和 js 里再引用的）照原相对路径复制，表里记为“资源”；引用的文件不在盘上，记一条“注意” |
-| 单屏 shell（和节的不同） | 复制的帧文件末尾补一行 `export const shell = "…";`。补在末尾，前面的行号不变，`data-pp-id` 和旧页一致 |
+| 单屏 shell（和整节最终的 `<Canvas shell>` 不同） | 复制的帧文件末尾补一行 `export const shell = "…";`。补在末尾，前面的行号不变，`data-pp-id` 和旧页一致 |
 | comp 屏（`comp` + `props`） | 生成 `<帧>.jsx`：import 那个组件（页内 `./components/<Name>.jsx`，没有就从 `pinpoint/kit`），props 写成属性。节是 comp 墙、或这一屏是 comp 时，文件里写 `export const shell = "comp";` |
 | 帧 import 的组件和其他文件 | 按编译器的依赖记录（传递）照原相对路径复制，相对 import 不用改；没被用到的组件不复制 |
 | `assets.css` | `article.css`。只有一份就是改名；几份按顺序拼起来，`@import` 提到最前 |
@@ -434,7 +434,9 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ### 拦下
 
-下面这些情况一个文件都不写，逐条列出后退 1：帧没有源文件、HTML 帧引用了页目录外的文件（列出文件和行）、同一节的 HTML 帧 shell 不同、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
+下面这些情况一个文件都不写，逐条列出后退 1：帧没有源文件、HTML 帧引用了页目录外的文件（列出文件和行）、HTML 帧在旧页的壳和整节最终的 `<Canvas shell>` 不同（HTML 帧不能单帧写 shell，没写 `<Canvas shell>` 时是 doc，所以同一节里 doc 和 app 的 HTML 帧也拦）、帧或组件 import 了页目录外的文件（kit 除外）、comp 屏的组件在页内和 kit 都找不到、同一帧出现在两节、section 或帧的 id 不合文章的规则、两份文件要写到同一个路径。
+
+所有要复制的文件都要在页目录内，帧、组件、依赖、`assets.css`、`assets.js`、HTML 帧的资源和搬进 `assets/` 的静态文件都一样。路径带 `..` 越出页目录，或者是 symlink、真实位置在页目录外，都拦下。要写的每个路径也都要在新文章目录内。写的时候先核对全部目标，再逐个写，已有的文件不覆盖。
 
 ### 校验
 
