@@ -4,14 +4,12 @@
  *
  * 判三种（头注承诺与行为一致）：
  * 1. 本页表面死了：dir 条目目录下文档文件删了、file 条目的登记文件删了；
- * 2. 路径指向别页的条目空间：挂靠条目改挂别页（或本就属于别页），账本错放
- *    在本页桶里 —— 表面活着，但不归本页；
+ * 2. 路径指向别页的条目空间：账本错放在本页桶里 —— 表面活着，但不归本页；
  * 3. 路径指向登记表里已不存在的条目（url 条目移走等）：`/sites/<id>/…` 这个
  *    表面在任何页都查不到了。
  *
  * 表面（一个页的可标注 URL 空间，按页收集）：
- * - registry 条目（页自己的条目 + 挂靠到本页的条目，`entry.page || entry.id`
- *   归属）：`/sites/<条目 id>/` —— dir = 目录下现存文件；file = 登记文件现存；
+ * - 页自己的 registry 条目：`/sites/<条目 id>/` —— dir = 目录下现存文件；file = 登记文件现存；
  *   url = 条目还在登记表里就算活着（上游死活不便宜探，不判）；
  * - manifest 模板页：`/previews/<页 id>/` —— 页目录下现存文件 + board.json 屏
  *   （屏 HTML 从 dist 出，源文件可以只有 .jsx，不能按 .html 是否在盘上判死）；
@@ -27,14 +25,13 @@ import { CANVAS_LEDGER } from '../../shared/project-ids.js';
 
 // “这个页 id 现在是不是一页”在 page-resolve.js（pageIdIsLive / resolvePage）。
 
-/** 一个页的表面空间列表。entries 是 registry 条目（含挂靠）；isManifestPage
+/** 一个页的表面空间列表。entries 是 registry 条目；isManifestPage
     = 该 id 在 content/previews/_index.json 里。 */
 export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false, previewsRoot }) {
   const spaces = [];
   for (const entry of entries) {
     if (!entry) continue;
-    const owner = entry.page || entry.id;
-    if (owner !== pageId) continue;
+    if (entry.id !== pageId) continue;
     const prefix = `/sites/${entry.id}/`;
     if (entry.kind === 'dir' && typeof entry.path === 'string') {
       spaces.push({ prefix, kind: 'dir', root: path.resolve(entry.path) });
@@ -58,8 +55,8 @@ export function ledgerIsOrphan({ name, doc }, spaces) {
   const space = spaces.find((s) => p === s.prefix.slice(0, -1) || p.startsWith(s.prefix));
   if (!space) {
     // 不在本页的空间里：仍可能判两种（头注的 2、3）——路径指向 /sites/<id>/
-    // 这个形态的表面，而表面只属于登记表里的条目。条目挂在别页 = 错放
-    // （改挂别页）；条目不在登记表 = 表面已消失（url 条目移走）。两种都
+    // 这个形态的表面，而表面只属于登记表里的条目。条目是别页 = 错放；
+    // 条目不在登记表 = 表面已消失（url 条目移走）。两种都
     // 不归本页。/sites/ /previews/ 之外的未知空间照旧不判。
     return /^\/sites\/[a-z0-9][a-z0-9-]*(\/|$)/.test(p);
   }
@@ -118,7 +115,7 @@ export function collectBucketOrphans(pageId, dataRoot) {
 export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleIds = [] }) {
   const previewsRoot = path.join(root, 'content', 'previews');
   const ids = new Set([...localIds, ...articleIds]);
-  for (const entry of entries) if (entry.id !== 'pinpoint' && !entry.page && entry.kind !== 'project') ids.add(entry.id);
+  for (const entry of entries) if (entry.id !== 'pinpoint' && entry.kind !== 'project') ids.add(entry.id);
   const out = {};
   for (const pageId of ids) {
     const orphanLedgers = new Set(collectPageOrphans({

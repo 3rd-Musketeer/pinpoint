@@ -246,8 +246,8 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
-  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页
-  // （挂靠条目给宿主页 id），账本固定 @canvas —— 画布实例与 mention 实例读写
+  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页，
+  // 账本固定 @canvas —— 画布实例与 mention 实例读写
   // 同一本账，双向实时同步靠的就是这个同桶同账本。
   if (entry.kind === 'dir' && diskBoard && !src) {
     const pageDir = path.resolve(entry.path);
@@ -260,7 +260,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
       section: hit.section,
       sectionLabel: hit.sectionLabel,
       ref: hit.ref,
-      entry: entry.page || entry.id,
+      entry: entry.id,
       baseUrl,
       distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
     };
@@ -280,7 +280,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: entry.page || entry.id,
+    entry: entry.id,
     baseUrl,
     fragmentPath,
   };

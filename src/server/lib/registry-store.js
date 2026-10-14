@@ -20,16 +20,14 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN, RETIRED_ENTRY_KEYS } from './registry.js';
+import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, RETIRED_ENTRY_KEYS } from './registry.js';
 import { isReservedProjectId } from '../../shared/project-ids.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'url', 'project']);
-// project 条目（pp3）只带这些字段：没有壳、不挂靠、不进左栏分组。
+// project 条目（pp3）只带这些字段：没有壳。
 const PROJECT_KEYS = new Set(['id', 'title', 'kind', 'path', 'addedAt']);
-const WRITE_ROLES = new Set(['product', 'draft']);
-// 写入白名单（2026-08-16f 阶段 8 起含 page/role）：
-// 未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
-const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'page', 'role', 'addedAt']);
+// 写入白名单：未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
+const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'addedAt']);
 
 /** 改写一条已有条目前去掉已退役功能的字段（registry.js RETIRED_ENTRY_KEYS）：老登记表照样能 move / rename。 */
 function withoutRetiredKeys(entry) {
@@ -94,18 +92,6 @@ export function validateNewEntry(raw, existingIds) {
   if (raw.board !== undefined && typeof raw.board !== 'string') {
     return `条目 "${raw.id}" 的 board 必须是字符串`;
   }
-  // 阶段 8：page 归属（作为目标 Page 的 doc 条目进「内容」区，不再自成 Pages
-  // 行）。url 条目恒为独立页（网页产物），与 page 互斥；目标页可解析性
-  // （本地 manifest 页或另一 registry 条目）由 CLI 在写入前校验。
-  if (raw.page !== undefined) {
-    if (typeof raw.page !== 'string' || !PAGE_ID_PATTERN.test(raw.page)) {
-      return `条目 "${raw.id}" 的 page 必须匹配 ${PAGE_ID_PATTERN}`;
-    }
-    if (raw.kind === 'url') return `条目 "${raw.id}" 是 url 条目，不能归属页面（url 恒为独立页）`;
-  }
-  if (raw.role !== undefined && !WRITE_ROLES.has(raw.role)) {
-    return `条目 "${raw.id}" 的 role 必须是 product / draft`;
-  }
   return null;
 }
 
@@ -116,8 +102,6 @@ function normalizeNewEntry(raw) {
   else entry.url = raw.url;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (typeof raw.board === 'string') entry.board = raw.board;
-  if (typeof raw.page === 'string') entry.page = raw.page;
-  if (typeof raw.role === 'string') entry.role = raw.role;
   return entry;
 }
 
@@ -143,7 +127,7 @@ export function listRegistryIds(registryPath) {
 /**
  * Existing entries as written on disk (CLI): id collision messages name the
  * path the id already points at, and `pinpoint move` needs the whole entry to
- * carry title / page / role across a re-point. Throws on a malformed file.
+ * carry title / board across a re-point. Throws on a malformed file.
  */
 export function listRegistryEntries(registryPath) {
   return readRegistryDoc(registryPath).entries.filter((entry) => entry && typeof entry === 'object');
@@ -180,12 +164,9 @@ function replaceEntry(entries, index, raw) {
 
 /**
  * Rename one entry's id in place (the `pinpoint rename` path): the entry keeps
- * its position, kind, path and title, and every other entry whose `page`
- * attaches to the old id follows along — an attach pointing at a vanished page
- * would silently drop that entry out of the workbench. Same strict validation
- * and same atomic rewrite as a write. Throws when the old id is unknown or the
- * new id is taken/invalid; the on-disk file is untouched in that case.
- * Returns { entry, attached } — attached = ids whose `page` field was rewritten.
+ * its position, kind, path and title. Same strict validation and same atomic
+ * rewrite as a write. Throws when the old id is unknown or the new id is
+ * taken/invalid; the on-disk file is untouched in that case. Returns { entry }.
  */
 export function renameRegistryEntry(registryPath, oldId, newId) {
   const doc = readRegistryDoc(registryPath);
@@ -194,25 +175,16 @@ export function renameRegistryEntry(registryPath, oldId, newId) {
   const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
   const problem = validateNewEntry(withoutRetiredKeys({ ...doc.entries[index], id: newId }), otherIds);
   if (problem) throw new Error(problem);
-  const attached = [];
-  const entries = doc.entries.map((entry, i) => {
-    if (i === index) return normalizeNewEntry(withoutRetiredKeys({ ...entry, id: newId }));
-    if (entry && entry.page === oldId) {
-      attached.push(entry.id);
-      return { ...entry, page: newId };
-    }
-    return entry;
-  });
+  const entries = doc.entries.map((entry, i) => (i === index ? normalizeNewEntry(withoutRetiredKeys({ ...entry, id: newId })) : entry));
   writeRegistryFile(registryPath, { ...doc, entries });
-  return { entry: entries[index], attached };
+  return { entry: entries[index] };
 }
 
 /**
  * Drop one entry from the registry file (the `pinpoint remove` path): the
  * entry disappears, every other entry keeps its position. Same strict read
  * and same atomic rewrite as every other write; guards against losing
- * annotations live in the CLI's preflight (attached entries, non-empty
- * bucket) — this layer only refuses an unknown id. Returns the removed entry.
+ * annotations live in the CLI's preflight (non-empty bucket) — this layer only refuses an unknown id. Returns the removed entry.
  */
 export function removeRegistryEntry(registryPath, id) {
   const doc = readRegistryDoc(registryPath);

@@ -80,36 +80,15 @@ test('addRegistryEntry: strict validation rejects and leaves the file untouched'
     [{ id: 'proto', kind: 'url', url: 'ftp://x.localhost' }, /http/],
     [{ id: 'badurl', kind: 'url', url: '://nope' }, /不合法/],
     [{ id: 'bb', kind: 'dir', path: site, board: 42 }, /board/],
-    // 阶段 8：page/role 字段校验 + 未知字段响亮拒绝
-    [{ id: 'p1', kind: 'dir', path: site, page: 42 }, /page 必须匹配/],
-    [{ id: 'p2', kind: 'dir', path: site, page: 'bad page!' }, /page 必须匹配/],
-    [{ id: 'p3', kind: 'url', url: 'https://x.localhost', page: 'library' }, /url 条目.*不能归属页面/],
-    [{ id: 'r1', kind: 'dir', path: site, role: 'wip' }, /role 必须是 product \/ draft/],
+    // 未知字段响亮拒绝；已删功能的字段（page / role）也是未知字段
+    [{ id: 'p1', kind: 'dir', path: site, page: 'library' }, /未知字段：page/],
+    [{ id: 'r1', kind: 'dir', path: site, role: 'draft' }, /未知字段：role/],
     [{ id: 'u1', kind: 'dir', path: site, stage: 'x' }, /未知字段：stage/],
   ];
   for (const [raw, pattern] of cases) {
     assert.throws(() => addRegistryEntry(file, raw), pattern, JSON.stringify(raw));
   }
   assert.equal(fs.readFileSync(file, 'utf8'), before, 'failed adds never touch the file');
-});
-
-test('addRegistryEntry: page/role 合法组合落盘并原样透传', (t) => {
-  const dir = withTempDir(t);
-  const file = path.join(dir, 'registry.json');
-  const page = path.join(dir, 'draft.html');
-  fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
-  const entry = addRegistryEntry(file, { id: 'draft', kind: 'file', path: page, page: 'library', role: 'draft' });
-  assert.ok(entry.addedAt > 0);
-  assert.deepEqual(entry, { addedAt: entry.addedAt, id: 'draft', kind: 'file', title: 'draft', path: page, page: 'library', role: 'draft' });
-  // 缺省不带 page/role 的条目字段面不变（不写死数据）
-  const plain = addRegistryEntry(file, { id: 'plain', kind: 'file', path: page });
-  assert.ok(plain.addedAt > 0);
-  assert.deepEqual(plain, { addedAt: plain.addedAt, id: 'plain', kind: 'file', title: 'plain', path: page });
-  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
-  assert.equal(doc.entries[0].page, 'library');
-  assert.equal(doc.entries[0].role, 'draft');
-  assert.equal('page' in doc.entries[1], false);
-  assert.equal('role' in doc.entries[1], false);
 });
 
 test('addRegistryEntry: a malformed existing file is an error, never clobbered', (t) => {
@@ -239,7 +218,7 @@ test('createRegistryStore: reload surfaces a malformed file as errors, not a cra
 
 /* ---- 已退役功能留下的字段（2026-10-14） ---- */
 
-test('老登记表里条目带退役字段（folder / order）：move 与 rename 照常写，写出的条目不再带它们', (t) => {
+test('老登记表里条目带退役字段（folder / order / page / role）：move 与 rename 照常写，写出的条目不再带它们', (t) => {
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');
   const before = makeSite(dir, 'before');
@@ -247,12 +226,12 @@ test('老登记表里条目带退役字段（folder / order）：move 与 rename
   writeRegistryFile(file, {
     version: 1,
     folders: [{ id: 'shipped', name: '已上线' }],
-    entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped', order: 0 }],
+    entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped', order: 0, page: 'home', role: 'draft' }],
   });
-  const moved = updateRegistryEntry(file, { id: 'alpha', kind: 'dir', path: after, folder: 'shipped', order: 0 });
+  const moved = updateRegistryEntry(file, { id: 'alpha', kind: 'dir', path: after, folder: 'shipped', order: 0, page: 'home', role: 'draft' });
   assert.deepEqual(moved, { id: 'alpha', kind: 'dir', title: 'alpha', path: after });
 
-  writeRegistryFile(file, { version: 1, entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped' }] });
+  writeRegistryFile(file, { version: 1, entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped', page: 'home' }] });
   const renamed = renameRegistryEntry(file, 'alpha', 'beta');
   assert.deepEqual(renamed.entry, { id: 'beta', kind: 'dir', title: 'beta', path: before });
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries, [renamed.entry]);

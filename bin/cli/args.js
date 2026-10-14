@@ -6,12 +6,12 @@ export { HELP, USAGE, helpFor };
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
 const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
-const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
+const BOOLEAN_FLAGS = new Set(['watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
 // --project <根目录>；add 的 --project 仍是开关）。locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
-  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'page', 'draft', 'project']) },
+  add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'project']) },
   move: { positional: 2, flags: new Set(['registry']) },
   rename: { positional: 2, flags: new Set(['registry']) },
   remove: { positional: 1, flags: new Set(['registry']) },
@@ -69,7 +69,7 @@ export function parseArgs(argv) {
     const name = inline > 0 ? arg.slice(2, inline) : arg.slice(2);
     const takesValue = !!(spec.valueFlags && spec.valueFlags.has(name));
     if (BOOLEAN_FLAGS.has(name) && !takesValue) {
-      // 布尔开关：不吃下一个 token，也不许 --draft=xxx 带值。
+      // 布尔开关：不吃下一个 token，也不许 --watch=xxx 带值。
       if (inline > 0) fail(`选项 --${name} 是开关，不带值`);
       if (!spec.flags.has(name)) fail(`选项 --${name} 不适用于 ${command}`);
       flags[name] = true;

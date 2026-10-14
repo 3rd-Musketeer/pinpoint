@@ -91,7 +91,7 @@ test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs(['status', '--title', 'T']), /不适用于 status/);
   assert.throws(() => parseArgs(['move', 'x']), /move 需要两个参数/);
   assert.throws(() => parseArgs(['move', 'x', '/a', '/b']), /只接受两个参数/);
-  assert.throws(() => parseArgs(['move', 'x', '/a', '--draft']), /不适用于 move/);
+  assert.throws(() => parseArgs(['move', 'x', '/a', '--title', 'T']), /不适用于 move/);
   assert.throws(() => parseArgs(['add']), /需要一个目标/);
   assert.throws(() => parseArgs(['add', '/a', '/b']), /只接受一个目标/);
   assert.throws(() => parseArgs(['add', '/a', '--wat', '1']), /未知选项/);
@@ -100,20 +100,9 @@ test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs(['add', '/a', '--id=']), /缺少值/);
 });
 
-test('parseArgs: 阶段 8 的 --page（值选项）与 --draft（布尔开关）', () => {
-  assert.deepEqual(parseArgs(['add', '/tmp/x', '--page', 'weekly-review', '--draft']), {
-    command: 'add',
-    target: '/tmp/x',
-    flags: { page: 'weekly-review', draft: true },
-  });
-  assert.deepEqual(parseArgs(['add', '/tmp/x', '--page=library']).flags, { page: 'library' });
-  // 布尔开关不吃下一个 token（positional 仍是目标），也不许带 =值
-  assert.deepEqual(parseArgs(['add', '--draft', '/tmp/x']), {
-    command: 'add', target: '/tmp/x', flags: { draft: true },
-  });
-  assert.throws(() => parseArgs(['add', '/x', '--draft=yes']), /开关，不带值/);
-  assert.throws(() => parseArgs(['add', '/x', '--page']), /缺少值/);
-  assert.throws(() => parseArgs(['add', '/x', '--page', '--draft']), /缺少值/);
+test('parseArgs: add 不收 --page 与 --draft（登记表级挂靠已删）', () => {
+  assert.throws(() => parseArgs(['add', '/tmp/x', '--page', 'weekly-review']), /不适用于 add/);
+  assert.throws(() => parseArgs(['add', '/tmp/x', '--draft']), /未知选项：--draft/);
 });
 
 test('parseArgs: -h/--help short-circuits', () => {
@@ -208,46 +197,6 @@ test('buildEntry: a name that cannot slugify needs an explicit --id', (t) => {
   const site = makeSite(dir, '看板');
   assert.throws(() => buildEntry(site, {}, { cwd: dir }), /--id 显式指定/);
   assert.equal(buildEntry(site, { id: 'kanban' }, { cwd: dir }).id, 'kanban');
-});
-
-/* ---- 阶段 8：--page / --draft ---- */
-
-test('buildEntry: --page 归属既有页（本地 manifest 页或另一 registry 条目），--draft 落 role', (t) => {
-  const dir = withTempDir(t);
-  const page = path.join(dir, 'Variant.html');
-  fs.writeFileSync(page, '<!doctype html><html><body>v</body></html>');
-  // 本地 manifest 页
-  assert.deepEqual(
-    buildEntry(page, { page: 'weekly-review', draft: true }, { cwd: dir, pageIds: ['weekly-review'] }),
-    { id: 'variant', title: 'Variant.html', kind: 'file', path: page, page: 'weekly-review', role: 'draft' },
-  );
-  // 另一 registry 条目（经 takenIds）；不带 --draft 不落 role 字段
-  const product = buildEntry(page, { page: 'e2e-dir' }, { cwd: dir, takenIds: ['e2e-dir'] });
-  assert.equal(product.page, 'e2e-dir');
-  assert.equal('role' in product, false);
-});
-
-test('buildEntry: --page 的互斥与可解析性守卫', (t) => {
-  const dir = withTempDir(t);
-  const site = makeSite(dir);
-  const page = path.join(dir, 'v.html');
-  fs.writeFileSync(page, '<!doctype html><html><body>v</body></html>');
-  // url 条目恒为独立页
-  assert.throws(
-    () => buildEntry('https://x.localhost', { page: 'library' }, { cwd: dir, pageIds: ['library'] }),
-    /url 条目恒为独立页/,
-  );
-  // --draft 必须搭配 --page
-  assert.throws(() => buildEntry(page, { draft: true }, { cwd: dir }), /--draft 需要搭配 --page/);
-  // 不可解析的目标页响亮拒绝（不静默写坏 registry）
-  assert.throws(
-    () => buildEntry(page, { page: 'ghost-page' }, { cwd: dir, pageIds: ['library'], takenIds: ['e2e-dir'] }),
-    /目标页不可解析：ghost-page/,
-  );
-  // 非法 page id 形状
-  assert.throws(() => buildEntry(page, { page: 'bad page!' }, { cwd: dir }), /--page 必须匹配/);
-  // dir 条目同样可归属
-  assert.equal(buildEntry(site, { page: 'library' }, { cwd: dir, pageIds: ['library'] }).page, 'library');
 });
 
 test('manifestPageIds: 读真实仓库 manifest（与 _index.json 的 pages 一致）', () => {
@@ -388,33 +337,6 @@ test('runAdd: store-level write failure exits 1', async (t) => {
   assert.equal(fs.readFileSync(file, 'utf8'), '{ broken');
 });
 
-test('runAdd: --page --draft 写入归属字段并提示分组', async (t) => {
-  const dir = withTempDir(t);
-  const page = path.join(dir, 'Draft.html');
-  fs.writeFileSync(page, '<!doctype html><html><body>d</body></html>');
-  const rec = recorder();
-  // 目标页 = 已登记的 registry 条目（模板页退役后 --page 只认登记表与空 manifest，
-  // CLI 读真实仓库 manifest 解析，空 manifest 不报错）。
-  const file = path.join(dir, 'registry.json');
-  fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [{ id: 'target-page', kind: 'dir', path: dir }] }));
-  const requestFn = () => Promise.reject(new Error('down'));
-  const code = await runAdd(['add', page, '--page', 'target-page', '--draft', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
-  assert.equal(code, 0);
-  const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
-  const entry = doc.entries.find((e) => e.id === 'draft');
-  assert.equal(entry.page, 'target-page');
-  assert.equal(entry.role, 'draft');
-  assert.ok(rec.out.some((line) => /归属 Page「target-page」.*草稿组/.test(line)));
-  // 不可解析页整单失败，registry 不动（换个文件，避开 id 查重先报错）
-  const other = path.join(dir, 'Draft2.html');
-  fs.writeFileSync(other, '<!doctype html><html><body>d2</body></html>');
-  const before = fs.readFileSync(file, 'utf8');
-  const bad = await runAdd(['add', other, '--page', 'nope', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
-  assert.equal(bad, 1);
-  assert.ok(rec.err.some((line) => /目标页不可解析/.test(line)));
-  assert.equal(fs.readFileSync(file, 'utf8'), before);
-});
-
 test('requestJson: real HTTP round-trip against a loopback server, timeout on a hung one', async (t) => {
   const server = http.createServer((req, res) => {
     if (req.url === '/hang') return; // never answer
@@ -483,14 +405,14 @@ test('buildMove: dir → file 丢掉 board，dir → url 换字段', (t) => {
     { id: 'app', title: 'App', kind: 'url', url: 'https://app.localhost/x' });
 });
 
-test('buildMove: 未知 id / 不存在的目标 / 挂了页的条目改 url，都响亮拒绝', (t) => {
+test('buildMove: 未知 id / 不存在的目标都响亮拒绝；老条目上已删功能的字段不带过去', (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir);
-  const entries = [{ id: 'app', kind: 'dir', path: '/gone' }, { id: 'draft', kind: 'file', path: '/gone.html', page: 'library' }];
+  const entries = [{ id: 'app', kind: 'dir', path: '/gone' }, { id: 'draft', kind: 'file', path: '/gone.html', page: 'library', role: 'draft' }];
   assert.throws(() => buildMove('ghost', site, { cwd: dir, entries }), /条目不存在：ghost（现有：app、draft）/);
   assert.throws(() => buildMove('app', path.join(dir, 'nope'), { cwd: dir, entries }), /路径不存在/);
   assert.throws(() => buildMove('app', path.join(dir, 'x.txt'), { cwd: dir, entries }), /路径不存在/);
-  assert.throws(() => buildMove('draft', 'https://x.localhost', { cwd: dir, entries }), /url 条目恒为独立页/);
+  assert.deepEqual(buildMove('draft', site, { cwd: dir, entries }).after, { id: 'draft', kind: 'dir', path: site });
 });
 
 test('runMove: 原地改路径、保留 id 与位置，并 reload 服务', async (t) => {
@@ -595,16 +517,14 @@ test('rewriteSitePrefixUnder: 只碰 html/css/js，跳过 node_modules 与逃逸
   assert.equal(fs.readFileSync(outside, 'utf8'), '"/sites/old/x.js"', '逃出条目目录的 symlink 不归它管');
 });
 
-test('buildRename: 只换 id，落点与归属原样；挂在旧 id 上的条目跟着改', (t) => {
+test('buildRename: 只换 id，落点与标题原样', (t) => {
   const entries = [
     { id: 'old', title: '我的应用', kind: 'dir', path: '/x', board: 'ios' },
-    { id: 'note', kind: 'file', path: '/n.html', page: 'old', role: 'draft' },
-    { id: 'other', kind: 'file', path: '/o.html', page: 'library' },
+    { id: 'other', kind: 'file', path: '/o.html' },
   ];
-  const { before, after, attached } = buildRename('old', 'fresh', { entries });
+  const { before, after } = buildRename('old', 'fresh', { entries });
   assert.equal(before.id, 'old');
   assert.deepEqual(after, { id: 'fresh', title: '我的应用', kind: 'dir', path: '/x', board: 'ios' });
-  assert.deepEqual(attached, ['note']);
 });
 
 test('buildRename: 未知 id / 非法新 id / 同名 / 撞 id 都响亮拒绝', () => {
@@ -626,7 +546,7 @@ test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服�
   const file = registryWith(dir, [
     { id: 'pinpoint', kind: 'dir', path: dir },
     { id: 'old', title: '我的应用', kind: 'dir', path: site, board: 'ios' },
-    { id: 'note', kind: 'file', path: path.join(site, 'index.html'), page: 'old' },
+    { id: 'note', kind: 'file', path: path.join(site, 'index.html') },
   ]);
   const rec = recorder();
   const calls = [];
@@ -642,7 +562,7 @@ test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服�
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual(doc.entries.map((e) => e.id), ['pinpoint', 'fresh', 'note'], '位置不变');
   assert.deepEqual(doc.entries[1], { id: 'fresh', kind: 'dir', title: '我的应用', path: site, board: 'ios' });
-  assert.equal(doc.entries[2].page, 'fresh', '挂靠条目跟着改');
+  assert.deepEqual(doc.entries[2], { id: 'note', kind: 'file', path: path.join(site, 'index.html') }, '别的条目一个字节不动');
 
   assert.ok(!fs.existsSync(path.join(dataRoot, 'old')), '旧桶已改名');
   assert.equal(fs.readFileSync(path.join(dataRoot, 'fresh', 'page.json'), 'utf8'), '{"annotations":[]}');
@@ -800,7 +720,7 @@ test('parseArgs: remove 需要恰一个条目 id，只收 --registry', () => {
   });
   assert.throws(() => parseArgs(['remove']), /remove 需要一个条目 id/);
   assert.throws(() => parseArgs(['remove', 'a', 'b']), /只接受一个条目 id/);
-  assert.throws(() => parseArgs(['remove', 'a', '--draft']), /不适用于 remove/);
+  assert.throws(() => parseArgs(['remove', 'a', '--title', 'T']), /不适用于 remove/);
 });
 
 test('runRemove: 正常删——登记行消失、其余原位、源文件不动、reload 服务', async (t) => {
@@ -839,23 +759,6 @@ test('runRemove: id 不存在退非零，registry 不动，并列出现有条目
   assert.equal(await runRemove(['remove', 'ghost', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
   assert.ok(rec.err.some((line) => /条目不存在：ghost（现有：app）/.test(line)), rec.err.join('\n'));
   assert.ok(!rec.err.some((line) => /^用法：/.test(line)), '目标不成立不刷 usage，答案在错误行里');
-  assert.equal(fs.readFileSync(file, 'utf8'), before);
-});
-
-test('runRemove: 有条目挂靠时拒绝，并点名挂靠条目', async (t) => {
-  const dir = withTempDir(t);
-  const file = registryWith(dir, [
-    { id: 'app', kind: 'dir', path: dir },
-    { id: 'note', kind: 'file', path: '/n.html', page: 'app' },
-    { id: 'memo', kind: 'file', path: '/m.html', page: 'app' },
-    { id: 'other', kind: 'file', path: '/o.html', page: 'elsewhere' },
-  ]);
-  const before = fs.readFileSync(file, 'utf8');
-  const rec = recorder();
-  const requestFn = () => Promise.reject(new Error('down'));
-  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
-  assert.equal(await runRemove(['remove', 'app', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
-  assert.ok(rec.err.some((line) => /还被 2 条挂靠（note、memo/.test(line) && /remove 掉/.test(line)), rec.err.join('\n'));
   assert.equal(fs.readFileSync(file, 'utf8'), before);
 });
 
@@ -2144,7 +2047,6 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
     [['add', FIXTURE_COLLIDE, '--project', '--id', 'other'], /--id other 与 project.json 的 id "clash" 不同/],
     [['add', FIXTURE_COLLIDE, '--project', '--board', 'ios'], /--project 不能和 --board 同用/],
     [['add', FIXTURE_COLLIDE, '--project', '--title', 'X'], /--project 不接受 --title/],
-    [['add', FIXTURE_COLLIDE, '--project', '--page', 'pinpoint'], /--project 不能和 --page 同用/],
     [['add', makeProjectRoot(dir, 'nojson', null), '--project'], /缺 docs\/pinpoint\/project\.json/],
     [['add', makeProjectRoot(dir, 'reserved', { id: 'api' }), '--project'], /保留名（服务已占用 \/api\/）/],
     [['add', makeProjectRoot(dir, 'badid', { id: 'Bad Id' }), '--project'], /project\.json 的 id 必须匹配/],
@@ -2156,9 +2058,6 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
     assert.match(bad.err.join('\n'), pattern);
   }
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).entries.length, 2, 'refusals leave the registry untouched');
-
-  // project 不是页，不能当 --page 的挂靠目标。
-  assert.throws(() => buildEntry(makeSite(dir, 'att'), { page: 'e2e-project' }, { cwd: dir, takenEntries: doc.entries, pageIds: [] }), /--page 目标页不可解析：e2e-project/);
 });
 
 test('runMove / runRename / runRemove on a project entry', async (t) => {

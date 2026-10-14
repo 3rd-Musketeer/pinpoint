@@ -2,11 +2,10 @@
  * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
- * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址——挂靠条目的
- * 桶是宿主页的桶（storage-unify），换路径不会孤儿化）；
+ * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址，换路径不会孤儿化）；
  * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）；
  * 从登记表删掉条目用 `pinpoint remove`（只删登记，源文件 / URL 不动；桶里还有
- * 标注行或有条目挂着它时拒绝，空桶顺手删掉）。
+ * 标注行时拒绝，空桶顺手删掉）。
  * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/；活的应用登记 URL。
  * 文件留在原地，CLI 只登记路径/URL。
  *

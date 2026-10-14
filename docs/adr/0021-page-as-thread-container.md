@@ -1,6 +1,6 @@
 # 0021 · 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级
 
-Status: 现行（方向已定，实现见 docs/2026-08-16-roadmap.md 阶段 6–8） · Date: 2026-08-16 · Scope: `src/workbench/lib/board-entries.js`、`src/workbench/app/Sidebar.jsx`
+Status: 部分退役（2026-10-14 删除登记表级挂靠：registry 条目的 page / role 与 `add --page` / `--draft`；屏级 `role:"draft"` 的产物 / 草稿分组现行） · Date: 2026-08-16 · Scope: `src/workbench/lib/board-entries.js`、`src/workbench/app/Sidebar.jsx`
 
 Supersedes: ADR 0017（五阶段地图的 Pages 壳标语义）
 

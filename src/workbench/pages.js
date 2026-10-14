@@ -517,10 +517,7 @@ export function retryPageManifest() {
     the workbench: previews-only then. Entries without their own board.json are
     still readable: the service synthesizes a doc board (lib/synth-board.js).
     阶段 4：url 条目也进 Pages（恒 doc 壳）—— 经同源代理嵌进阅读器，
-    与扩展注入并存（两条路径共用同一个 entry 标注桶）。
-    阶段 8：带 page 字段的条目（pinpoint add --page）不进 Pages —— 它归属
-    既有 Page 的「内容」区，这里分流入 attached 列表（stage.js loadBoard 经
-    withAttachedScreens 合并成目标页的合成 doc 屏）。返回 { pages, attached }。 */
+    与扩展注入并存（两条路径共用同一个 entry 标注桶）。 */
 function registrySitePages() {
   return queryClient.fetchQuery({
     queryKey: ['registry-sites'],
@@ -533,18 +530,16 @@ function registrySitePages() {
         .then(registryToPages);
     }
   }).catch(function () {
-    return { pages: [], attached: [], articles: [] };
+    return { pages: [], articles: [] };
   });
 }
 
 /** GET /registry → Pages 消费的形状。纯变换，无副作用。 */
 function registryToPages(data) {
   var entries = (data && data.entries) || [];
-  var attached = [];
   var pages = [];
   entries.forEach(function (entry) {
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
-    if (entry.page) { attached.push(entry); return; }
     pages.push({
       id: entry.id,
       title: entry.title || entry.id,
@@ -581,7 +576,7 @@ function registryToPages(data) {
       site: true
     };
   });
-  return { pages: pages, attached: attached, articles: articles, pageTimes: data.pageTimes || {} };
+  return { pages: pages, articles: articles, pageTimes: data.pageTimes || {} };
 }
 
 export function loadPageManifest() {
@@ -605,12 +600,8 @@ export function loadPageManifest() {
           if (known[page.id]) return; // a previews page with the same id wins
           manifest.pages.push(page);
         });
-        // 阶段 8：attach 条目（registry 带 page 字段）随 manifest 走——
-        // stage.js loadBoard 经 withAttachedScreens 把归属本页的条目合并成
-        // 合成 doc 屏；目标页不存在时条目自然悬空（不合并、不出行、不报错）。
         manifest.pages = manifest.pages.map(page => ({ ...page, ...sitePages.pageTimes[page.id] }));
         manifest.pageTimes = sitePages.pageTimes;
-        manifest.attached = sitePages.attached;
         // 同 id 的模板页 / 登记页优先（服务端已把撞名记成 project 错误）。
         manifest.articles = (sitePages.articles || []).filter(function (page) { return !known[page.id]; });
         wbSet({ pageManifest: manifest });

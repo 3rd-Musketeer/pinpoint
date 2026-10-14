@@ -24,16 +24,9 @@ const KIND_LABEL = {
  * @param {(pageId) => object} input.countsFor 该页桶的 { open, check, done, close }
  */
 export function buildPageList({ entries = [], manifestPages = [], hasBoard = () => false, countsFor = () => null }) {
-  const attachedTo = new Map();
-  for (const entry of entries) {
-    if (entry && entry.page) {
-      if (!attachedTo.has(entry.page)) attachedTo.set(entry.page, []);
-      attachedTo.get(entry.page).push(entry.id);
-    }
-  }
   const rows = [];
   for (const entry of entries) {
-    if (!entry || !entry.id || entry.page) continue; // 挂靠条目随宿主页列出
+    if (!entry || !entry.id) continue;
     let kind = 'doc';
     if (entry.kind === 'url') kind = 'url';
     else if (entry.kind === 'file') kind = 'file';
@@ -43,7 +36,6 @@ export function buildPageList({ entries = [], manifestPages = [], hasBoard = () 
       title: entry.title || '',
       kind,
       path: entry.path || entry.url || '',
-      attached: attachedTo.get(entry.id) || [],
       counts: countsFor(entry.id) || null,
       template: false,
     });
@@ -56,7 +48,6 @@ export function buildPageList({ entries = [], manifestPages = [], hasBoard = () 
       title: page.title || '',
       kind: 'compiled',
       path: `content/previews/${page.id}`,
-      attached: attachedTo.get(page.id) || [],
       counts: countsFor(page.id) || null,
       template: true,
     });
@@ -88,7 +79,8 @@ export function scorePage(row, query) {
     { text: norm(row.id), weight: 4 },
     { text: norm(row.title), weight: 3 },
     { text: norm(row.path), weight: 1 },
-    { text: norm((row.attached || []).join(' ')), weight: 1 },
+    // aliases：别的叫法（project 行带上它每篇文章的 id 与标题）。
+    { text: norm((row.aliases || []).join(' ')), weight: 1 },
   ];
   let total = 0;
   for (const token of tokens) {
@@ -149,6 +141,5 @@ export function formatPageRow(row) {
   if (c && (c.open || c.check || c.done)) bits.push(`open ${c.open} · check ${c.check} · done ${c.done}`);
   const lines = [bits.join('  ·  ')];
   if (row.path) lines.push(`    ${row.path}`);
-  if (row.attached && row.attached.length) lines.push(`    挂靠：${row.attached.join('、')}`);
   return lines;
 }

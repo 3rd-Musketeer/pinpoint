@@ -58,7 +58,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
 工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
-要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page`（目标的旧写法）、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
+要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page`（目标的旧写法）、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。代码里的 `entry` 还指 board 条目和 registry 条目，在存量页一节。
 
 **节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
@@ -173,8 +173,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：和 registry 条目混用；代码里两者都叫 entry，`board-entries.js` 里的是这一个。
 
 **registry 条目** · `~/.pinpoint/registry.json` 的 `entries[]`
-登记表里的一条：`{id, title?, kind: "dir" | "file" | "url", path? | url?, board?, page?, role?}`。带 `page` 的条目不自成一行，而是挂到那个存量页的内容区（`role: "draft"` 进草稿组）。
-要避开：和 board 条目混用；拿 `--page` 当“给本条目起 id”（那是 `--id`）。
+登记表里的一条：`{id, title?, kind: "dir" | "file" | "url", path? | url?, board?}`，每一条是“页面”组里的一行存量页，页 id 就是它的 `id`（`pinpoint add --id` 指定）。
+要避开：和 board 条目混用。
 
 **画布形态与文档形态** · 舞台按选中的条目切换
 画布形态是手机机壳排在可缩放平移的画布上；文档形态是整份 HTML 在 iframe 里 1:1 铺满舞台，没有缩放和帧标题。一个存量页可以两种都有。

@@ -10,7 +10,7 @@
 
 `src/server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
 形状 `{"version":1,"entries":[...]}`。存量页的条目
-`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?, page?, role?}`。
+`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?}`，每一条自成“页面”组的一行。
 `kind: "project"` 的条目只有 `{id, title?, kind, path}`，`path` 是 project 根目录；
 它与其他条目共用 id 命名空间，但没有自己的页 id 和桶，`loadRegistry` 把它放进 `projects` 而不是 `entries`。
 目录、登记与读取见 [`docs/projects.md`](projects.md)。
@@ -18,16 +18,14 @@
 - `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
 - `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
   file 条目永远在阅读器里打开，不带板。
-- `page` + `role`（`"product"` 默认 | `"draft"`）是挂靠字段：带 `page` 的条目**不**自己成为“页面”组的一行，
-  而是并进目标存量页的“内容”区（`role:"draft"` 时进草稿组）。url 条目永远是独立页，
-  所以对它写 `page` 是非法的（会被显著跳过）。
 - 条目的 `kind` 一路透传到 workbench 的 page manifest 和 board 条目上，所以 url 条目的
   document 条目在“内容”区带“网页”类型 tag。
 - 文件缺失时用默认的只含 pinpoint 一条的登记表（`{id:"pinpoint", kind:"dir", path:<仓库根>}`）。
   JSON 坏了或顶层形状不对就回落到默认并记下 error；单条非法只跳过那一条；
   dir / file 路径不存在是 warning，不是删除。
-- 老登记表里已删功能的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order`）
-  读的时候跳过，每个键记一条 warning，其余条目照常加载；`move` / `rename` 写回时不再带这些字段。
+- 老登记表里已删功能的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order` /
+  `page` / `role`）读的时候跳过，每个键记一条 warning，其余条目照常加载（带 `page` 的老条目照常自成一页）；
+  `move` / `rename` 写回时不再带这些字段。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表）。
 - `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。URL 页的内容修改时间未知。
@@ -40,7 +38,7 @@
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
 
 ```bash
-pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx] [--page pageId] [--draft]
+pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx]
 pinpoint add    <project 根> --project
 pinpoint move   <id> <dir|file.html|http(s)-url>
 pinpoint rename <旧 id> <新 id>
@@ -50,27 +48,19 @@ pinpoint list   [关键词…]
 
 `list` 只读：每页一行 id · 标题 · 类型 · 标注计数，次行源路径；project 下面每篇文章一行 `<project>/<article>`。带关键词时在 id、标题、路径上宽松匹配（英文复数自动去 s），也匹配文章的 id 和标题，给 agent 把 owner 的口头说法对上地址。
 
-`add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
-而不是在“页面”组新增一行——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
-对 url 目标会被拒绝；`--draft` 必须搭配 `--page`，把条目放进草稿组。
-
-**`--page` 是“挂到既有页 `<id>`”，不是“指定本条目的 id”。** 本条目自己的 id 用 `--id`。
-反例：`pinpoint add ./v2 --id weekly-review-v2` 是让这个条目自己叫 weekly-review-v2；
-`pinpoint add ./v2 --page weekly-review` 是把它塞进 weekly-review 那一页的“内容”区、
-自己不成“页面”组的一行。
+`add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。本条目自己的 id 用 `--id`，
+缺省由目录名、文件名或 hostname 派生。
 
 `move` 原地改一个既有条目的落点（dir / file / url 三种目标，校验方式与 `add` 一致：路径必须存在、
-单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按页 id 寻址（条目自成存量页时桶是 `~/.pinpoint/<id>/`，挂靠条目（带 `page` 字段）用宿主存量页的桶），
+单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按页 id 寻址（`~/.pinpoint/<id>/`），
 所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
-（改成 file / url 时丢掉，那两种壳是定死的）；挂在某页上的条目不能改指 url（url 恒为独立页），
-会被响亮拒绝。未知 id、目标不存在都整单失败，registry 一个字节不动。
+（改成 file / url 时丢掉，那两种壳是定死的）。未知 id、目标不存在都整单失败，registry 一个字节不动。
 
 `rename` 换的是 id 本身。id 同时是三个地方的地址——登记表里的条目 id、标注桶
 `~/.pinpoint/<id>/`、以及页面资源的 URL 前缀 `/sites/<id>/`——手改其中一个另外两个就错位，
 所以 `rename` 一次改齐，并且**四件事都能做才动手**（预检不过时 registry 一个字节不动）：
 
-1. **登记表**：条目换 id，位置、kind、落点、title 全部保留；其它条目的 `page` 字段指着旧 id 的
-   跟着改（挂靠指向一个不存在的页，那个条目会静默从 workbench 里消失）。新 id 已存在就整单失败。
+1. **登记表**：条目换 id，位置、kind、落点、title 全部保留。新 id 已存在就整单失败。
 2. **标注桶**：`~/.pinpoint/<旧 id>/` 改名成 `~/.pinpoint/<新 id>/`。旧桶不存在就跳过；
    新桶已存在是硬冲突（两个桶不会自动合并），响亮拒绝。
 3. **资源前缀**（只有 dir 条目有）：条目目录下所有 `*.html` / `*.css` / `*.js` 里的
@@ -87,8 +77,8 @@ project 条目没有自己的桶，`rename` 与 `remove` 对它按每篇文章�
 [`docs/projects.md`](projects.md)“rename 与文章桶”。
 
 `remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件 / URL 留在原地，
-重新 `add` 同一个目标即恢复登记。三种情况拒绝动手（registry 一个字节不动）：id 不存在；
-还有条目挂着它（`page` 等于它，先把那些条目 remove 掉）；标注桶 `~/.pinpoint/<id>/` 里
+重新 `add` 同一个目标即恢复登记。两种情况拒绝动手（registry 一个字节不动）：id 不存在；
+标注桶 `~/.pinpoint/<id>/` 里
 还有标注行（先在工作台处理，或 `pinpoint prune <id>` 清掉孤儿账本）。桶不存在或只剩
 空账本 / `_seq.json` 时放行，并顺手删掉这个空桶。
 
@@ -99,12 +89,11 @@ CLI 打印“id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id
 写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
 `renameRegistryEntry` / `removeRegistryEntry`
 共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
-url 是 http(s)、page/role 合法、未知字段拒写）、tmp+rename、2 空格 JSON。
+url 是 http(s)、未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
 （在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
 服务 `/health` 有响应时会自己调它，所以新条目不重启就能 serve、注入、分桶；
-已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板，
-挂靠条目会立刻出现或消失）。静态快照会答 `409 registry_not_reloadable`。
+已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板）。静态快照会答 `409 registry_not_reloadable`。
 
 `add`、`move`、`rename`、`remove` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
@@ -138,8 +127,7 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
 目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
 `<script>window.__pinpointEntry='<页桶 id>'</script><script src="/annotate.<hash>.js"></script>`
-——值是条目的标注桶 id，即 `entry.page || entry.id`：条目自成页时是自己的 id，
-挂靠条目是宿主存量页的 id（一个页 id 一个桶）。
+——值是条目的标注桶 id，也就是条目自己的 id（一个页 id 一个桶）。
 （没有 `</body>` 就追加在末尾）；`?annotate=off` 给出磁盘上的原始字节——
 workbench 的内联片段加载器与导出渲染走的就是它。
 

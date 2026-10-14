@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
-import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
+import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN, RETIRED_ENTRY_KEYS } from '../../src/server/lib/registry.js';
 import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { resolvePage } from '../../src/server/lib/page-resolve.js';
 import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
@@ -67,11 +67,10 @@ function idTakenError(id, existing) {
 
 /**
  * 由目标构造 registry 条目（纯函数 + fs 探测；不写盘）。
- * takenEntries：现有条目（供 id 查重与「已存在，指向哪」的提示，同时是可归属的
- * registry 页面名单）；takenIds 是它的 id 投影，测试可只给 id；
- * pageIds：本地 manifest 页 id 名单（缺省读仓库 content/previews/_index[.local].json）。
+ * takenEntries：现有条目（供 id 查重与「已存在，指向哪」的提示）；takenIds 是它的
+ * id 投影，测试可只给 id。
  */
-export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntries = [], takenIds, pageIds } = {}) {
+export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntries = [], takenIds } = {}) {
   const existingIds = takenIds || takenEntries.map((entry) => entry && entry.id);
   const findExisting = (id) => takenEntries.find((entry) => entry && entry.id === id) || null;
   if (flags.project) return buildProjectEntry(target, flags, { cwd, existingIds, findExisting });
@@ -105,34 +104,11 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
   }
   if (kind === 'dir') board = flags.board || 'html';
 
-  // 阶段 8（产物与草稿模型）：--page 把条目挂到既有页 —— 不再自成 Pages
-  // 行，作为目标页「内容」区的 doc 条目出现；--draft 落草稿组（缺省产物组）。
-  if (flags.draft && !flags.page) {
-    throw new CliError('--draft 需要搭配 --page（草稿归属某个 Page 的草稿组）');
-  }
-  let page;
-  if (flags.page !== undefined) {
-    if (kind === 'url') {
-      throw new CliError('url 条目恒为独立页（经代理内嵌的网页产物），--page 只适用于目录 / 文件');
-    }
-    if (!PAGE_ID_PATTERN.test(flags.page)) {
-      throw new CliError(`--page 必须匹配 ${PAGE_ID_PATTERN}：${flags.page}`);
-    }
-    // project 条目不是页，不能当挂靠目标。
-    const projectIds = new Set(takenEntries.filter((entry) => entry && entry.kind === 'project').map((entry) => entry.id));
-    const resolvable = new Set([...(pageIds || manifestPageIds()), ...existingIds.filter((id) => !projectIds.has(id))]);
-    if (!resolvable.has(flags.page)) {
-      throw new CliError(`--page 目标页不可解析：${flags.page}（既不是本地 manifest 页，也不是已登记的 registry 条目；不会静默写坏 registry）`);
-    }
-    page = flags.page;
-  }
 
   const entry = { id, title: flags.title || resolved.baseName, kind };
   if (kind === 'url') entry.url = resolved.url;
   else entry.path = resolved.absPath;
   if (board) entry.board = board;
-  if (page) entry.page = page;
-  if (flags.draft) entry.role = 'draft';
   return entry;
 }
 
@@ -157,9 +133,7 @@ export function resolveProjectRoot(target, cwd = process.cwd()) {
 }
 
 function buildProjectEntry(target, flags, { cwd, existingIds, findExisting }) {
-  for (const name of ['board', 'page', 'draft']) {
-    if (flags[name] !== undefined) throw new CliError(`--project 不能和 --${name} 同用（project 不是页，没有壳也不挂靠）`);
-  }
+  if (flags.board !== undefined) throw new CliError('--project 不能和 --board 同用（project 不是页，没有壳）');
   // 标题只有一个来源：project.json 的 title（读取时它优先），--title 写进登记表也会被盖掉。
   if (flags.title !== undefined) throw new CliError('--project 不接受 --title：标题写在 docs/pinpoint/project.json 的 title 里');
   const { root, json } = resolveProjectRoot(target, cwd);
@@ -178,8 +152,8 @@ export function manifestPageIds(root = REPO_ROOT) {
 }
 
 /**
- * move 的新条目（纯函数 + fs 探测；不写盘）：只换 kind 与落点，id / title /
- * page / role 原样带走——标注桶按页寻址（桶 = 页），换路径不该动标注归属。
+ * move 的新条目（纯函数 + fs 探测；不写盘）：只换 kind 与落点，id / title
+ * 原样带走——标注桶按页寻址（桶 = 页），换路径不该动标注归属。
  */
 export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}) {
   const before = entries.find((entry) => entry && entry.id === id);
@@ -197,6 +171,7 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   }
   const resolved = resolveTarget(target, cwd);
   const after = { ...before, kind: resolved.kind };
+  for (const key of RETIRED_ENTRY_KEYS) delete after[key];
   if (resolved.kind === 'url') {
     after.url = resolved.url;
     delete after.path;
@@ -206,9 +181,6 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   }
   // board 只对 dir 条目有意义（file 恒 doc 阅读器，url 恒合成单屏板）。
   if (resolved.kind !== 'dir') delete after.board;
-  if (resolved.kind === 'url' && after.page) {
-    throw new CliError(`条目 ${id} 挂在页面「${after.page}」上，不能改指 url（url 条目恒为独立页）；先改归属再 move`);
-  }
   return { before, after };
 }
 
@@ -380,9 +352,8 @@ function rewriteMovedBucket(bucket, move) {
 }
 
 /**
- * rename 的新条目（纯函数）：只换 id，kind / 落点 / title / 归属原样带走；
- * 挂在旧 id 上的条目（page 字段）跟着改，否则它们会指向一个不存在的页。
- * 返回 { before, after, attached }（attached = 要改 page 字段的条目 id）。
+ * rename 的新条目（纯函数）：只换 id，kind / 落点 / title 原样带走。
+ * 返回 { before, after }。
  */
 export function buildRename(oldId, newId, { entries = [] } = {}) {
   const before = entries.find((entry) => entry && entry.id === oldId);
@@ -400,11 +371,7 @@ export function buildRename(oldId, newId, { entries = [] } = {}) {
       `id 已存在：${newId}，指向 ${entryTargetDesc(clash)}；把两个条目并成一个 = 先 rename 再 \`pinpoint move\``,
     );
   }
-  const after = { ...before, id: newId };
-  const attached = entries
-    .filter((entry) => entry && entry.id !== oldId && entry.page === oldId)
-    .map((entry) => entry.id);
-  return { before, after, attached };
+  return { before, after: { ...before, id: newId } };
 }
 
 /** parse + 构造 + 四件事的预检（不写盘、不联网）：任何一件做不了就整单不动手。 */
@@ -412,7 +379,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   const parsed = parseArgs(argv);
   if (parsed.help) return parsed;
   const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
-  const { before, after, attached } = buildRename(parsed.id, parsed.newId, {
+  const { before, after } = buildRename(parsed.id, parsed.newId, {
     entries: existingEntriesFor(registryPath),
   });
 
@@ -465,7 +432,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
     rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
   }
 
-  return { ...parsed, registryPath, dataRoot: root, before, after, attached, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson, articleMoves, sitePrefixFiles };
+  return { ...parsed, registryPath, dataRoot: root, before, after, bucketFrom, bucketTo, bucketExists, rewriteDir, rewritePreview, projectJson, articleMoves, sitePrefixFiles };
 }
 
 /** --registry > PINPOINT_REGISTRY > 默认；相对路径按 cwd 解析。 */
@@ -549,7 +516,7 @@ export async function runAdd(argv, io = {}) {
   try {
     plan = planAdd(argv, { cwd, env });
   } catch (error) {
-    // 参数形状没问题，是目标本身不成立（路径不存在、id 撞车、目标页不可解析…）
+    // 参数形状没问题，是目标本身不成立（路径不存在、id 撞车…）
     // 或 registry 文件已损坏。这些不该再刷一屏 usage，答案在错误行里。
     err(`${error instanceof CliError ? '错误' : '登记失败'}：${error.message}`);
     return 1;
@@ -564,9 +531,6 @@ export async function runAdd(argv, io = {}) {
   }
   out(`已登记 ${entry.id}（${entry.kind}）：${entryTargetDesc(entry)}`);
   if (entry.kind === 'project') out(`文章与概念：\`ppnt show ${entry.id}\`；验证：\`ppnt check ${entry.id}\``);
-  if (entry.page) {
-    out(`归属 Page「${entry.page}」的「内容」区${entry.role === 'draft' ? '草稿组' : '产物组'}；不新增 Pages 行。`);
-  }
   out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;
@@ -702,9 +666,7 @@ export async function runRename(argv, io = {}) {
     return 1;
   }
   out(`已改 id：${plan.before.id} → ${renamed.entry.id}（${renamed.entry.kind}）：${entryTargetDesc(renamed.entry)}`);
-  out(renamed.attached.length
-    ? `  登记表：条目已改名；挂在它上面的 ${renamed.attached.length} 条也跟着改（${renamed.attached.join('、')}）`
-    : '  登记表：条目已改名');
+  out('  登记表：条目已改名');
 
   // ② 标注桶
   if (plan.bucketExists) {
@@ -811,10 +773,10 @@ export async function runRename(argv, io = {}) {
 
 /* ---------------------------- remove（删条目） ----------------------------
    删条目与 rename 相反：id 从三处地址里退场——登记表去掉一行，/sites/<id>/
-   前缀不再有人应答，标注桶只在空的时候才允许跟着删。所以动手前要把「还有
-   什么挂在 id 上」数清楚：挂靠条目、桶里的标注行，数不平就整单不动。 */
+   前缀不再有人应答，标注桶只在空的时候才允许跟着删。所以动手前要把桶里的
+   标注行数清楚，有行就整单不动。 */
 
-/** parse + 定位既有条目 + 预检挂靠与标注桶（不写盘、不联网）。 */
+/** parse + 定位既有条目 + 预检标注桶（不写盘、不联网）。 */
 export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}) {
   const parsed = parseArgs(argv);
   if (parsed.help) return parsed;
@@ -825,17 +787,6 @@ export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}
   if (!before) {
     const known = entries.map((entry) => entry && entry.id).filter(Boolean).join('、');
     throw new CliError(`条目不存在：${id}${known ? `（现有：${known}）` : ''}`);
-  }
-  // 挂靠条目的 page 字段指着它：删掉宿主，那些条目会在 workbench 里静默消失
-  //（rename 换 id 时必须带上它们，是同一个原因的反向）。
-  const attached = entries
-    .filter((entry) => entry && entry.page === id)
-    .map((entry) => entry.id);
-  if (attached.length) {
-    throw new CliError(
-      `条目 ${id} 还被 ${attached.length} 条挂靠（${attached.join('、')} 的 page 字段指着它）；` +
-      `先把它们 remove 掉（重新 add 时用 --page 挂到别的页），再 remove ${id}`,
-    );
   }
   // 桶里有标注行就拒绝：删登记随时可以重新 add 找回，删行找不回来。
   const root = dataRoot(env);
@@ -863,7 +814,7 @@ export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}
 }
 
 /**
- * 执行一次 remove：预检（id 存在、无挂靠、桶里没有标注行）→ 从登记表去掉条目
+ * 执行一次 remove：预检（id 存在、桶里没有标注行）→ 从登记表去掉条目
  * → 空桶顺手删 → 探活服务 → 可达则 reload。只删登记，条目指向的源文件 / URL
  * 原地不动，重新 `pinpoint add` 同一个目标即恢复登记。
  */

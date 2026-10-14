@@ -18,7 +18,6 @@ const durations = {
   'article-canvas.spec.js': 2.7,
   'article-site.spec.js': 4.1,
   'article-viewer.spec.js': 6.2,
-  'attach-entry.spec.js': 1.5,
   'bundle-cache.spec.js': 0.1,
   'canvas-diagnostics.spec.js': 2.9,
   'canvas-pan.spec.js': 19.2,

@@ -260,7 +260,7 @@ function projectMatchRow(project) {
     id: project.id,
     title: project.title,
     path: project.root,
-    attached: project.articles.flatMap((article) => [article.id, article.title]),
+    aliases: project.articles.flatMap((article) => [article.id, article.title]),
   };
 }
 

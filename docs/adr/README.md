@@ -35,7 +35,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0024](0024-row-actions-context-menu.md) | 2026-08-17 | 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文 | 现行 | — |
 | [0023](0023-layout-assertions-and-vendored-contracts.md) | 2026-08-17 | 布局断言比几何不靠点击 + vendored 组件内部契约成文 | 现行 | — |
 | [0022](0022-doc-mode-grilling.md) | 2026-08-16 | 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务） | 现行（arc 缓期） | — |
-| [0021](0021-page-as-thread-container.md) | 2026-08-16 | 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级 | 现行（方向已定，实现见 docs/2026-08-16-roadmap.md 阶段 6–8） | — |
+| [0021](0021-page-as-thread-container.md) | 2026-08-16 | 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级 | 部分退役（登记表级挂靠 2026-10-14 删除；屏级产物 / 草稿现行） | — |
 | [0020](0020-doc-frame-mention.md) | 2026-08-16 | 文档模式 mention 活 frame + 标注双向透传（阶段 5/5 落地） | 现行（已落地） | — |
 | [0019](0019-live-site-proxy.md) | 2026-08-16 | live 代理画中画：同源路径前缀代理 + 运行时重基（阶段 4/5 落地） | 现行（已落地） | — |
 | [0018](0018-cli-registry-entry.md) | 2026-08-16 | CLI 注册入口：pinpoint add + 合成板 + registry 热重载 | 现行（已落地；0035 补充命令名与扩面） | — |

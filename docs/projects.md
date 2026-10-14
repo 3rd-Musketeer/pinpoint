@@ -69,7 +69,7 @@ pinpoint add <project 根> --project
 
 - id 只取 `project.json` 的 `id`。`--id` 可以写，但必须与它相同；要换 id 先改 `project.json`，或用 `pinpoint rename`。
 - 标题只有一个来源：`project.json` 的 `title`。登记表里的 `title` 是登记时抄下的副本（`project.json` 没写 title 时用目录名），读取时 `project.json` 的 `title` 优先。所以 `--project` 不接受 `--title`。
-- `--project` 不能与 `--title`、`--board`、`--page`、`--draft` 同用：project 不是页，没有壳，也不挂到别的页上。
+- `--project` 不能与 `--title`、`--board` 同用：project 不是页，没有壳。
 - 登记前检查 `project.json` 存在、id 合法、不是保留名、不撞既有条目 id；不过关就退非零，registry 不动。article 层面的问题（撞名、缺 `index.mdx`）不拦登记，在读取时报。
 
 | 命令 | 对 project 条目做什么 |
@@ -105,7 +105,7 @@ ppnt build <project>_b
 
 手工挪时，桶里行上的 `pageId` 和 `@prose.json` 的 `path` 还是旧值（project rename 会改写它们，手工挪不会）。不要这些标注的话，直接 `ppnt prune <project>_a`。
 
-project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries`、`/sites/` 和 `--page` 挂靠目标里。
+project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries` 和 `/sites/` 里。
 
 ## 读取
 

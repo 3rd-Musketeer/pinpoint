@@ -41,8 +41,7 @@ export function collectPageTimes({ entries, root, dataRoot, localIds }) {
   for (const id of localIds) out[id] = { addedAt: null, mtime: contentMtimeMs({ kind: 'dir', path: path.join(root, 'content/previews', id) }), annotatedAt: null };
   for (const entry of entries) if (entry.id !== 'pinpoint') out[entry.id] = { addedAt: entry.addedAt || null, mtime: contentMtimeMs(entry), annotatedAt: null };
   // 桶 = 页：每个页读自己的桶。pinpoint 桶仍读（存量画布账本的 page_updated_at
-  // 映射 / 单页行还在那里，迁移前页时间不能断）；挂靠条目（entry.page）的旧桶
-  // 也读，随后并进宿主页 —— 都是读侧兼容，迁移后这两个来源自然为空。
+  // 映射 / 单页行还在那里，迁移前页时间不能断）—— 读侧兼容，迁移后这个来源自然为空。
   const readIds = new Set([...Object.keys(out)]);
   for (const entry of entries) if (entry.id !== 'pinpoint') readIds.add(entry.id);
   for (const id of readIds) {
@@ -51,8 +50,5 @@ export function collectPageTimes({ entries, root, dataRoot, localIds }) {
   }
   const legacyPinpoint = annotationPageTimes(path.join(dataRoot, 'pinpoint'), null);
   for (const [hit, at] of Object.entries(legacyPinpoint)) if (out[hit]) out[hit].annotatedAt = Math.max(out[hit].annotatedAt || 0, at);
-  for (const entry of entries) if (entry.page && out[entry.page] && out[entry.id]) {
-    for (const key of ['mtime', 'annotatedAt']) out[entry.page][key] = Math.max(out[entry.page][key] || 0, out[entry.id][key] || 0) || null;
-  }
   return out;
 }

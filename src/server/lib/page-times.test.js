@@ -71,7 +71,7 @@ test('legacy ledgers: page_updated_at mappings and single-pageId rows still coun
   });
 });
 
-test('collectPageTimes: page buckets + legacy pinpoint mappings + attached fold', (t) => {
+test('collectPageTimes: page buckets + legacy pinpoint mappings', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-collect-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dataRoot = path.join(root, 'data');
@@ -86,18 +86,12 @@ test('collectPageTimes: page buckets + legacy pinpoint mappings + attached fold'
     page: 'index~z', revision: 1, updated_at: '2026-02-02T00:00:00.000Z',
     page_updated_at: { 'template-p': 500 }, annotations: [],
   }));
-  // 挂靠条目的旧桶：并进宿主页。
-  fs.mkdirSync(path.join(dataRoot, 'attach-draft'), { recursive: true });
-  fs.writeFileSync(path.join(dataRoot, 'attach-draft', 'draft~1.json'), JSON.stringify({
-    page: 'draft~1', revision: 1, updated_at: '2026-02-03T00:00:00.000Z', annotations: [{ id: 'a1', content: 'x' }],
-  }));
   const entries = [
     { id: 'pinpoint', kind: 'dir', path: root },
     { id: 'site-a', kind: 'dir', path: path.join(root, 'site-a') },
-    { id: 'attach-draft', kind: 'file', path: path.join(root, 'd.html'), page: 'site-a' },
   ];
   const times = collectPageTimes({ entries, root, dataRoot, localIds: ['template-p'] });
-  assert.equal(times['site-a'].annotatedAt, Date.parse('2026-02-03T00:00:00.000Z'), '宿主页取自己桶与挂靠旧桶的最大值');
+  assert.equal(times['site-a'].annotatedAt, Date.parse('2026-02-01T00:00:00.000Z'), '页读自己的桶');
   assert.equal(times['template-p'].annotatedAt, 500, '存量映射照读');
 });
 

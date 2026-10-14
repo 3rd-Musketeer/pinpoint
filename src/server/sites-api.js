@@ -161,11 +161,6 @@ function resolveRegisteredFile(entry, rel) {
 export function createSitesHandler(options = {}) {
   const registry = options.registry || loadRegistry({ root: ROOT });
 
-  /** 桶 = 页：条目的标注桶 id（挂靠条目 → 宿主页 id，其余 → 自己的 id）。 */
-  function pageBucketOf(entry) {
-    return entry.page || entry.id;
-  }
-
   // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
   // 一版本；url 单屏代理页）——磁盘文件永远优先（dir 分支只在 resolve 落空后
   // 走到），url 条目无磁盘概念、合成板直接遮蔽上游自己的 board.json。合成的
@@ -330,8 +325,8 @@ export function createSitesHandler(options = {}) {
             urlBase: `/sites/${entry.id}/`,
             kind: 'dir',
           }, screenId, {
-            // storage-unify：注入的 entry = 这条内容属于哪一页（挂靠条目给宿主页 id）。
-            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, pageBucketOf(entry)),
+            // storage-unify：注入的 entry = 这条内容属于哪一页。
+            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id),
           });
         }
       }
@@ -357,7 +352,7 @@ export function createSitesHandler(options = {}) {
     const isHtml = mimeFor(file) === 'text/html';
     let body = fs.readFileSync(file);
     if (isHtml && query.get('annotate') !== 'off') {
-      body = Buffer.from(injectAnnotateClient(body.toString('utf8'), pageBucketOf(entry)), 'utf8');
+      body = Buffer.from(injectAnnotateClient(body.toString('utf8'), entry.id), 'utf8');
     }
     res.statusCode = 200;
     res.setHeader('Content-Type', contentType(file));

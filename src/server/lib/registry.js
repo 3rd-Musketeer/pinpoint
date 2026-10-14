@@ -21,13 +21,11 @@ const KINDS = new Set(['dir', 'file', 'url', 'project']);
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
 // entries 的每个消费者（Pages、/sites/、标注桶、编译）都按 page 理解它——
 // 而是单独放在 projects 里，由 src/server/lib/projects.js 读。
-// 条目级角色（阶段 8）：缺省 product；draft = 草稿，只在带 page 归属时有意义
-// （落目标页「内容」区草稿组）。无 page 的 role 不生效但也不拒（宽容读）。
-const ROLES = new Set(['product', 'draft']);
 // 2026-10-14 删掉的功能留在老登记表里的键：读的时候跳过并 warn，服务照常起。
 // 文件夹与手动排序（ADR 0032）：顶层 folders / pageFolders / pageOrder，条目上的 folder / order。
+// 登记表级挂靠（ADR 0021 阶段 8）：条目上的 page / role；带 page 的条目照常自成一页。
 export const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
-export const RETIRED_ENTRY_KEYS = ['folder', 'order'];
+export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role'];
 
 /**
  * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：
@@ -69,18 +67,6 @@ function validateEntry(raw, seen) {
   if (raw.kind === 'url' && typeof raw.url !== 'string') {
     return `entry "${raw.id}" kind "url" requires a url`;
   }
-  // 阶段 8：page 归属（attach 到既有 Page 的「内容」区，不再自成 Pages 行）。
-  // url 条目恒为独立页（代理内嵌的网页产物），与 page 互斥。
-  if (raw.page !== undefined) {
-    if (typeof raw.page !== 'string' || !PAGE_ID_PATTERN.test(raw.page)) {
-      return `entry "${raw.id}" page must match ${PAGE_ID_PATTERN}`;
-    }
-    if (raw.kind === 'url') return `entry "${raw.id}" kind "url" cannot attach to a page`;
-    if (raw.kind === 'project') return `entry "${raw.id}" kind "project" cannot attach to a page`;
-  }
-  if (raw.role !== undefined && !ROLES.has(raw.role)) {
-    return `entry "${raw.id}" role must be "product" or "draft"`;
-  }
   return null;
 }
 
@@ -95,8 +81,6 @@ function normalizeEntry(raw) {
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (raw.kind === 'project') return entry;
   if (typeof raw.board === 'string') entry.board = raw.board;
-  if (typeof raw.page === 'string') entry.page = raw.page;
-  if (typeof raw.role === 'string') entry.role = raw.role;
   return entry;
 }
 
