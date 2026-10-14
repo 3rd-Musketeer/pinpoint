@@ -1,0 +1,10 @@
+/* 只用调色板变量（/kits/figure/figure.css），深浅色自动跟着文章页。 */
+.mf { --fig-min-width: 600px; }
+.mf svg text { font-size:12.5px; }
+.mf-actor rect { fill:var(--fig-panel); stroke:var(--fig-hair); }
+.mf-actor.accent rect { fill:var(--fig-accent-soft); stroke:var(--fig-accent); }
+.mf-actor text { font-size:13px; font-weight:600; }
+.mf-life { stroke:var(--fig-hair); stroke-width:1.5; }
+.mf-msg line { stroke:var(--fig-ink-2); stroke-width:1.5; marker-end:url(#mf-arrow); }
+.mf-msg.is-now line { stroke:var(--fig-accent); marker-end:url(#mf-arrow-now); }
+.mf-msg.is-now text { font-weight:600; fill:var(--fig-accent); }

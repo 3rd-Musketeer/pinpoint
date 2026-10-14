@@ -78,8 +78,11 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
       || /^\/annotate(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'));
     expect(unexpected).toEqual([]);
     // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
-    await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual(
-      ['card-plain', 'confirm-done', 'confirm-sheet', 'mixed-bare', 'mixed-phone'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off&embed=card`));
+    // 正文里的图（<Figure>）也是 /api/frame：embed=figure（figure.spec.js 测它们的行为）。
+    await expect.poll(() => [...new Set(sameOrigin.filter((r) => r.path === '/api/frame').map((r) => r.search))].sort()).toEqual([
+      ...['card-plain', 'confirm-done', 'confirm-sheet', 'mixed-bare', 'mixed-phone'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off&embed=card`),
+      ...['message-flow', 'wait-sequence'].map((f) => `?page=${CANVAS_PAGE}&figure=${f}&embed=figure`),
+    ].sort());
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
