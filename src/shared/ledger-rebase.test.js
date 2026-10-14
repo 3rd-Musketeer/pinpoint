@@ -82,3 +82,62 @@ test('和服务端一起：旧底的保存 409，接到盘上那版再存，agen
   assert.equal(saved2.status, 200);
   assert.deepEqual(saved2.doc.annotations.map((r) => [r.n, r.status, r.content]), [[1, 'done', '第一条'], [2, 'open', '第二条又改']]);
 });
+
+/* ---- 按字段合并（xreview A）：同一条上两个窗口各改一个字段，两边都留下 ---- */
+
+const target = (selector, text, extra = {}) => ({ ref: 'i1', selector, text, ...extra });
+const aimed = (id, n, content, selector, text, extra = {}) => ({
+  id, n, type: 'element', status: 'open', content, targets: [target(selector, text)], selector, text, ...extra,
+});
+
+test('本窗口只改正文、另一窗口改了目标：正文用本地的，目标（含顶层 selector / text）用盘上的', () => {
+  const base = [aimed('a', 1, '一', '#old', '旧')];
+  const local = [aimed('a', 1, '一改过', '#old', '旧')];
+  const server = [aimed('a', 1, '一', '#new', '新')];
+  assert.deepEqual(rebaseAnnotations(local, base, server), [aimed('a', 1, '一改过', '#new', '新')]);
+});
+
+test('本窗口只改目标、另一窗口改了正文与附图：目标用本地的，正文与附图用盘上的', () => {
+  const base = [aimed('a', 1, '一', '#old', '旧')];
+  const local = [aimed('a', 1, '一', '#mine', '我的')];
+  const server = [aimed('a', 1, '一（别处改）', '#old', '旧', { images: [{ file: 'x.png' }] })];
+  assert.deepEqual(rebaseAnnotations(local, base, server), [aimed('a', 1, '一（别处改）', '#mine', '我的', { images: [{ file: 'x.png' }] })]);
+});
+
+test('目标与它所在的节、帧是一组：两边都改了目标时整组用本地的，不拼出一半本地一半盘上', () => {
+  const base = [aimed('a', 1, '一', '#old', '旧', { screenId: 'home', section: 's1' })];
+  const local = [aimed('a', 1, '一', '#mine', '我的', { screenId: 'home', section: 's1' })];
+  const server = [aimed('a', 1, '一', '#theirs', '别处', { screenId: 'detail', section: 's2' })];
+  assert.deepEqual(rebaseAnnotations(local, base, server), [aimed('a', 1, '一', '#mine', '我的', { screenId: 'home', section: 's1' })]);
+});
+
+test('本窗口删掉的字段（附图清空）算改过：结果里也没有它；盘上新加、本窗口没碰的字段留下', () => {
+  const base = [row('a', 1, '一', { images: [{ file: 'x.png' }] })];
+  const local = [row('a', 1, '一')];
+  const server = [row('a', 1, '一', { images: [{ file: 'x.png' }], changeTo: true })];
+  assert.deepEqual(rebaseAnnotations(local, base, server), [row('a', 1, '一', { changeTo: true })]);
+});
+
+test('只给目标补了 ppId 不算改目标：另一窗口改的目标留下', () => {
+  const base = [aimed('a', 1, '一', '#old', '旧')];
+  const local = [{ ...aimed('a', 1, '一改过', '#old', '旧'), targets: [target('#old', '旧', { ppId: 'Nav.jsx:3' })] }];
+  const server = [aimed('a', 1, '一', '#new', '新')];
+  assert.deepEqual(rebaseAnnotations(local, base, server), [aimed('a', 1, '一改过', '#new', '新')]);
+});
+
+test('和服务端一起：两个窗口从同一版起，一个改正文、一个改目标，409 后接上再存，盘上两边都在', (t) => {
+  const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-rebase-'));
+  t.after(() => fs.rmSync(dataDir, { recursive: true, force: true }));
+  const store = createAnnotationStore({ dataDir, now: () => new Date('2026-10-14T00:00:00.000Z') });
+  const page = '@canvas';
+  const first = store.save({ page, baseRevision: 0, annotations: [aimed('a', 0, '一', '#old', '旧')] });
+  const base = first.doc.annotations;
+  const other = store.save({ page, baseRevision: first.doc.revision, annotations: base.map((r) => ({ ...r, targets: [target('#new', '新')], selector: '#new', text: '新' })) });
+  assert.equal(other.status, 200);
+  const local = base.map((r) => ({ ...r, content: '一改过' }));
+  const stale = store.save({ page, baseRevision: first.doc.revision, annotations: local });
+  assert.equal(stale.status, 409);
+  const saved = store.save({ page, baseRevision: stale.doc.revision, annotations: rebaseAnnotations(local, base, stale.doc.annotations) });
+  assert.equal(saved.status, 200);
+  assert.deepEqual(saved.doc.annotations.map((r) => [r.n, r.content, r.selector, r.targets.map((x) => x.selector)]), [[1, '一改过', '#new', ['#new']]]);
+});

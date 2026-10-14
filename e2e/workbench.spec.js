@@ -1837,6 +1837,78 @@ test('a save that hits 409 keeps the status and reply the agent just wrote, and 
   });
 });
 
+// 409 后按字段合并（src/shared/ledger-rebase.js）：另一个窗口改了这一条的目标，本窗口改了正文，
+// 两边都落盘。另一个窗口用直 POST /save 代替：它和浏览器走同一个保存端点、同一个 baseRevision 规则。
+// 两条路径各走一遍：保存撞 409 后在本页接上再存（requestSync）；保存还在路上时切页，交给 outbox 接上再存。
+// 2026-10-14 之前按整行合并：本窗口改过正文，整行用本地版，另一个窗口改的目标被盖回旧值。
+test('a 409 rebase keeps the target another window changed while this window edited the text', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+  const input = page.locator('#ann-input');
+  const file = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
+  const text = (content) => String(content || '').replace(/\[@t:[^\]]*\]\s*/g, '');
+  const diskRows = async () => {
+    const doc = JSON.parse(await fs.readFile(file, 'utf8').catch(() => '{}'));
+    return (doc.annotations || []).map(a => ({ n: a.n, content: text(a.content), selector: a.selector, targets: (a.targets || []).map(t => t.selector) }));
+  };
+  const edit = async (n, value) => {
+    await page.evaluate((want) => window.pinpoint.openMark(want), n);
+    await input.fill(value);
+    await page.keyboard.press('Escape');
+    await expect(input).toHaveCount(0);
+  };
+  // 另一个窗口：读盘上那版，把 #n 的目标换成 selector，按当前 revision 存。
+  const otherWindowRetargets = async (n, selector) => {
+    const doc = await (await page.request.get('/annotations/%40canvas?entry=e2e-ios')).json();
+    const annotations = doc.annotations.map(a => (a.n === n ? { ...a, targets: [{ ref: 'i1', selector, text: '另一个窗口' }], selector, text: '另一个窗口' } : a));
+    const res = await page.request.post('/save', { data: { page: '@canvas', entry: 'e2e-ios', path: doc.path, baseRevision: doc.revision, annotations } });
+    expect(res.status()).toBe(200);
+  };
+  const holdFirstSave = async () => {
+    const gate = {};
+    gate.reached = new Promise((resolve) => { gate.arrive = resolve; });
+    gate.open = new Promise((resolve) => { gate.release = resolve; });
+    let saves = 0;
+    await page.route('**/save', async (route) => {
+      if (++saves === 1) { gate.arrive(); await gate.open; }
+      return route.continue();
+    });
+    return gate;
+  };
+
+  await annotate(page, cells.nth(0), '第一条');
+  await annotate(page, cells.nth(1), '第二条');
+  await expect.poll(async () => (await diskRows()).map(r => [r.n, r.content])).toEqual([[1, '第一条'], [2, '第二条']]);
+  const [first, second] = await diskRows();
+  expect(first.selector).not.toBe(second.selector);
+
+  await test.step('保存撞 409，在本页接上再存：正文用本窗口的，目标用另一个窗口的', async () => {
+    const gate = await holdFirstSave();
+    await edit(1, '第一条改过');
+    await gate.reached;
+    await otherWindowRetargets(1, second.selector);
+    gate.release();
+    await expect.poll(async () => (await diskRows())[0]).toEqual({ n: 1, content: '第一条改过', selector: second.selector, targets: [second.selector] });
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks[0].selector)).toBe(second.selector);
+    await page.unroute('**/save');
+  });
+
+  await test.step('保存在路上时切页，outbox 接上再存：正文用本窗口的，目标用另一个窗口的', async () => {
+    const gate = await holdFirstSave();
+    await edit(2, '第二条改过');
+    await gate.reached;
+    await otherWindowRetargets(2, first.selector);
+    await page.evaluate(() => window.workbench.setActivePage('e2e-doc'));
+    gate.release();
+    await expect.poll(async () => (await diskRows())[1]).toEqual({ n: 2, content: '第二条改过', selector: first.selector, targets: [first.selector] });
+    await page.unroute('**/save');
+    await page.evaluate(() => window.workbench.setActivePage('e2e-ios'));
+    await expect.poll(() => page.evaluate(() => (window.pinpoint.entry === 'e2e-ios' ? window.pinpoint.marks.map(m => m.selector) : []))).toEqual([second.selector, first.selector]);
+  });
+});
+
 test('多选跨 frame：每个目标的草稿框落在它自己的 frame 里', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
