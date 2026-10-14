@@ -1,4 +1,5 @@
 import { expect, test } from '@playwright/test';
+import { openWorkbench } from './lib/workbench.js';
 
 // comp 段的画布网格（2026-09-23 comp 布局修复）：row 段是三行网格、.wb-screen
 // display:contents，comp 屏不出尺寸行 —— 每屏只有两格，隐式按列填充会从第二屏
@@ -7,8 +8,7 @@ import { expect, test } from '@playwright/test';
 // （同列 → 同 x、间距一致），三张卡从左到右、顶端对齐。
 
 test('comp 段三张卡：图注各在其卡正上方，卡从左到右顶端对齐', async ({ page }) => {
-  await page.goto('/index.html?page=example');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, 'page=example');
   const section = page.locator('#wb-board-panel .wb-lib-item[data-ann-section="bean-card"]');
   await expect(section).toBeVisible();
   await expect(section.locator('.wb-comp-stage')).toHaveCount(3);

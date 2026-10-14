@@ -3,6 +3,8 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { waitForSave } from './lib/annotate.js';
+import { openWorkbench } from './lib/workbench.js';
 
 // storage-unify：画布账本 = 活动页桶的 @canvas.json（e2e-ios）。
 const ledger = path.join(E2E_DATA_DIR, 'e2e-ios', '@canvas.json');
@@ -20,7 +22,7 @@ test.afterEach(async ({ page }) => {
 
 async function saveMark(page) {
   await Promise.all([
-    page.waitForResponse(response => new URL(response.url()).pathname === '/save' && response.request().method() === 'POST' && response.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
 }
@@ -35,8 +37,7 @@ for (const zoom of ['0.75', '1.17']) {
       Object.assign(prefs, { sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: zoom } } });
       localStorage.setItem('pinpoint-wb', JSON.stringify(prefs));
     }, zoom);
-    await page.goto('/index.html?page=e2e-ios&mode=ios');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await openWorkbench(page, 'page=e2e-ios&mode=ios');
     await expect(page.locator('[data-screen="settings"] .ios-cell').first()).toBeVisible();
     await page.evaluate(() => window.pinpoint.clear());
     await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);

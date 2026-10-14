@@ -2,27 +2,23 @@ import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { openAnnotated } from './lib/annotate.js';
+import { ppnt } from './lib/cli.js';
+import { ledgerNames } from './lib/ledger.js';
+import { openWorkbench } from './lib/workbench.js';
 import { writeRegistryFixture } from './registry-fixture.js';
 
 // Registry `dir` entries are served read-only under /sites/<id>/ with the
 // annotate client injected, and aggregate into the workbench as pages.
 
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-dir');
 const execFileP = promisify(execFile);
-
-function bucketDocs() {
-  if (!fs.existsSync(BUCKET)) return [];
-  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
-}
 
 async function rawStatus(url) {
   const { stdout } = await execFileP('curl', ['-s', '--path-as-is', '-o', '/dev/null', '-w', '%{http_code}', url]);
@@ -35,8 +31,7 @@ test.afterEach(async ({ page }) => {
 });
 
 test('registry dir entry appears as a workbench page and renders from /sites/', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page);
 
   const navBtn = page.locator('.wb-page[data-vpage="e2e-dir"]');
   await expect(navBtn).toBeVisible();
@@ -87,8 +82,7 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
 });
 
 test('/sites/<id>/ HTML injects the annotate client and saves into the entry bucket', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-dir');
   expect(await page.evaluate(() => !!window.__pinpoint)).toBe(true);
 
@@ -99,8 +93,8 @@ test('/sites/<id>/ HTML injects the annotate client and saves into the entry buc
   await box.locator('#ann-input').fill('dir entry mark');
   await box.locator('#ann-close').click();
 
-  await expect.poll(() => bucketDocs().length).toBe(1);
-  const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
+  await expect.poll(() => ledgerNames(BUCKET).length).toBe(1);
+  const doc = JSON.parse(fs.readFileSync(path.join(BUCKET, ledgerNames(BUCKET)[0]), 'utf8'));
   expect(doc.path).toBe('/sites/e2e-dir/doc.html');
   expect(doc.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('dir entry mark'));
 });
@@ -123,17 +117,10 @@ test('pinpoint add (CLI)：dir 条目 reload 后进 Pages，单文件条目开�
   try {
     // 两次真实 CLI add：dir（自带 board.json）与 file（无板 → 服务合成单屏 doc 板）。
     // CLI 自己探活并 POST /registry/reload，工作台经 HMR registry:update 重拉 Pages。
-    await execFileP('node', [
-      path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', site,
-      '--id', 'e2e-cli-add', '--title', 'E2E CLI Add', '--registry', E2E_REGISTRY,
-    ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
-    await execFileP('node', [
-      path.join(ROOT, 'bin', 'pinpoint.mjs'), 'add', file,
-      '--id', 'e2e-cli-file', '--registry', E2E_REGISTRY,
-    ], { env: { ...process.env, PINPOINT_ORIGIN: E2E_BASE_URL } });
+    await ppnt(['add', site, '--id', 'e2e-cli-add', '--title', 'E2E CLI Add', '--registry', E2E_REGISTRY]);
+    await ppnt(['add', file, '--id', 'e2e-cli-file', '--registry', E2E_REGISTRY]);
 
-    await page.goto('/index.html');
-    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await openWorkbench(page);
 
     // dir 行：单屏 index → iframe 从 /sites/e2e-cli-add/ 渲染。
     const dirBtn = page.locator('.wb-page[data-vpage="e2e-cli-add"]');

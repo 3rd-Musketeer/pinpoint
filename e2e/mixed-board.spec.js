@@ -1,5 +1,5 @@
 import { expect, test } from '@playwright/test';
-import { openOutline, openWorkbench } from './open-workbench.js';
+import { openOutline, openWorkbench, stageForm } from './lib/workbench.js';
 
 // 阶段 6（2026-08-16f 产物与草稿模型）：混合板 = 一个 Page 的 board.json 里同时有
 // app/lock 屏（画布条目）与 doc 屏（文档/草稿条目）。stage 形态由选中条目派生：
@@ -17,10 +17,6 @@ async function openMixed(page) {
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
   await openOutline(page);
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
-}
-
-function stageForm(page) {
-  return page.locator('#wbroot').evaluate((el) => el.getAttribute('data-page-mode'));
 }
 
 test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆与深链', async ({ page }) => {
@@ -108,15 +104,13 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
 
   // ── 深链：?entry= 直达文档条目；未知条目 id → 选中解析落默认条目（画布），
   //     URL 被重写为真实值。
-  await page.goto('/index.html?page=e2e-mixed&entry=spec');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, 'page=e2e-mixed&entry=spec');
   expect(await stageForm(page)).toBe('html');
   await expect(page.frameLocator('#wb-board-panel [data-screen="spec"] .wb-doc-frame').locator('#spec-title'))
     .toHaveText('E2E mixed spec');
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('spec');
 
-  await page.goto('/index.html?page=e2e-mixed&entry=nope');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, 'page=e2e-mixed&entry=nope');
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('@canvas');
   await expect.poll(() => page.url()).not.toContain('entry=');

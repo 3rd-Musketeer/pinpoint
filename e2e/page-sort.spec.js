@@ -5,7 +5,7 @@ import { E2E_SITES_DIR } from './env.js';
 import { expect, test } from '@playwright/test';
 
 import { sortPages } from '../src/workbench/lib/page-sort.js';
-import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
+import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';
 
 // Each server owns a copy; sorting never changes source fixture timestamps.
 

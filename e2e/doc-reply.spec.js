@@ -1,45 +1,25 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { ROOT, ppntResult as ppnt } from './lib/cli.js';
+import { ledgerDocs } from './lib/ledger.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // 文档页标注的线程（2026-10-14 owner：改完只能写 check，说不了改了什么）。
 // 存量 html 页（kind dir、board html、条目全是 HTML 文档，锚点是 cssPath + 引文）上标一条，
 // agent 用 ppnt mark … --note 一步回复并写状态，回复出现在工作台的标注列表和标注卡里，
 // owner 之后再编辑这条，回复也不丢。固件是 tabs-doc-site 的一份副本，id 只给本 spec 用。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE_ID = 'e2e-doc-reply';
 const SITE = path.join(E2E_SITES_DIR, 'doc-reply-site');
 const BUCKET = path.join(E2E_DATA_DIR, PAGE_ID);
 const DOC_FRAME = '#wb-board-panel iframe.wb-doc-frame[src$="/v1.html"]';
 const NOTE = '标题缩成了“文档一”，见第一版';
 
-async function ppnt(args) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
-
-function ledgerRows() {
-  if (!fs.existsSync(BUCKET)) return [];
-  return fs.readdirSync(BUCKET)
-    .filter((name) => name.endsWith('.json') && name !== '_seq.json')
-    .flatMap((name) => JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8')).annotations || []);
-}
+const ledgerRows = () => ledgerDocs(BUCKET).flatMap((doc) => doc.annotations || []);
 
 test.beforeEach(async ({ request }) => {
   fs.rmSync(SITE, { recursive: true, force: true });

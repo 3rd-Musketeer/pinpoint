@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL } from './env.js';
+import { dragSelect, proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3：正文里的图（<Figure>，docs/projects.md“图”）。固件：常驻 project e2e-project 的 commit-confirm
@@ -26,35 +27,6 @@ const fit = (page, id) => figure(page, id).locator('iframe').evaluate((iframe) =
   };
 });
 
-/** 在 scope 里找 needle 的第一处，用真鼠标从第一个字拖到最后一个字（同 prose-comments.spec.js）。 */
-async function dragSelect(page, scope, needle) {
-  const box = await page.evaluate(([sel, text]) => {
-    const el = document.querySelector(sel);
-    const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-    for (let node = walker.nextNode(); node; node = walker.nextNode()) {
-      const at = node.data.indexOf(text);
-      if (at < 0) continue;
-      node.parentElement.scrollIntoView({ block: 'center' });
-      const first = document.createRange();
-      first.setStart(node, at);
-      first.setEnd(node, at + 1);
-      const last = document.createRange();
-      last.setStart(node, at + text.length - 1);
-      last.setEnd(node, at + text.length);
-      const a = first.getBoundingClientRect();
-      const b = last.getBoundingClientRect();
-      return { x1: a.left + 1, y1: a.top + a.height / 2, x2: b.right - 1, y2: b.top + b.height / 2 };
-    }
-    return null;
-  }, [scope, needle]);
-  expect(box, `${scope} 里有“${needle}”`).not.toBeNull();
-  await page.mouse.move(box.x1, box.y1);
-  await page.mouse.down();
-  await page.mouse.move(box.x2, box.y2, { steps: 6 });
-  await page.mouse.up();
-  await expect.poll(() => page.evaluate(() => String(window.getSelection()))).toBe(needle);
-}
-
 test('正文里的图：同源 iframe 渲染、高度随内容、iframe 里能逐步点、跟着切深浅色、选字不出评论', async ({ page }) => {
   test.setTimeout(180_000);
   // 减少动态效果：演示不自动播放、圆点不走，状态只随点击变。
@@ -74,7 +46,7 @@ test('正文里的图：同源 iframe 渲染、高度随内容、iframe 里能�
   await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
   await waitNoReload(page);
   consoleErrors.length = 0; // 冷启动时的 503 记成 Failed to load resource
-  await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
+  await proseSettled(page);
 
   await test.step('两个图都渲染出来：图页 200，iframe 占满正文栏宽，高度等于图的内容，没有滚动余量', async () => {
     for (const id of ['wait-sequence', 'message-flow']) {

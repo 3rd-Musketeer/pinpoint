@@ -3,7 +3,7 @@ import path from 'node:path';
 import { expect, test } from '@playwright/test';
 
 import { E2E_SITES_DIR } from './env.js';
-import { openOutline } from './open-workbench.js';
+import { openOutline } from './lib/workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 // ?section=<id> 落点（2026-10-13）：打开页的画布条目，即时定位并选中这个 section；多 tab 页

@@ -1,4 +1,3 @@
-import fs from 'node:fs';
 import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
@@ -6,7 +5,8 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
-import { openWorkbench } from './open-workbench.js';
+import { clearBuckets, ledgerDocs } from './lib/ledger.js';
+import { openWorkbench } from './lib/workbench.js';
 
 // 阶段 5：doc 页正文 mention 画布 frame（data-pinpoint-frame）→ 水合为活 DOM；
 // storage-unify：frame 内标注与画布同账本 = 被引用帧所属页（e2e-ios）桶里的
@@ -17,22 +17,11 @@ import { openWorkbench } from './open-workbench.js';
 const CANVAS_BUCKET = path.join(E2E_DATA_DIR, 'e2e-ios');
 const DOC_BUCKET = path.join(E2E_DATA_DIR, 'e2e-mention');
 
-function bucketDocs(bucket) {
-  if (!fs.existsSync(bucket)) return [];
-  // _seq.json 是桶级计数器不是账本，不计进名单（M1）。
-  return fs.readdirSync(bucket).filter((name) => name.endsWith('.json') && name !== '_seq.json')
-    .map((name) => JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8')));
-}
-
-function clearBuckets() {
-  fs.rmSync(CANVAS_BUCKET, { recursive: true, force: true });
-  fs.rmSync(DOC_BUCKET, { recursive: true, force: true });
-}
 // 开头也清：e2e-ios 是好几个 spec 共用的桶，本用例数的是自己写进去的行。
-test.beforeEach(clearBuckets);
+test.beforeEach(() => clearBuckets(['e2e-ios', 'e2e-mention']));
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
-  clearBuckets();
+  clearBuckets(['e2e-ios', 'e2e-mention']);
 });
 
 // 嵌套 iframe 里的 composer 保存按钮可能落在可视区外（frame 页比视口高）——
@@ -96,11 +85,11 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
 
   // 5) 落在被引用帧所属页的画布账本（e2e-ios 桶的 @canvas），行带 pageId+screenId+section
   await expect.poll(() => {
-    const docs = bucketDocs(CANVAS_BUCKET);
+    const docs = ledgerDocs(CANVAS_BUCKET);
     const canvas = docs.find((d) => d.path === '@canvas');
     return canvas ? canvas.annotations.length : 0;
   }).toBe(1);
-  const canvasDoc = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
+  const canvasDoc = ledgerDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
   const row = canvasDoc.annotations[0];
   expect(row.pageId).toBe('e2e-ios');
   expect(row.screenId).toBe('recipe');
@@ -135,12 +124,12 @@ test('doc mention hydrates live frames; mode cascades; annotations sync both way
   await docFrame2.locator('#intro').click();
   await expect(docFrame2.locator('#ann-box')).toBeVisible();
   await saveComposerIn(page, {}, '标文档正文');
-  await expect.poll(() => bucketDocs(DOC_BUCKET).length).toBe(1);
-  const docLedger = bucketDocs(DOC_BUCKET)[0];
+  await expect.poll(() => ledgerDocs(DOC_BUCKET).length).toBe(1);
+  const docLedger = ledgerDocs(DOC_BUCKET)[0];
   expect(docLedger.path).toBe('/sites/e2e-mention/index.html');
   expect(docLedger.annotations[0].content).toContain('标文档正文');
   // 画布账本不被文档正文标注污染
-  const canvasAfter = bucketDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
+  const canvasAfter = ledgerDocs(CANVAS_BUCKET).find((d) => d.path === '@canvas');
   expect(canvasAfter.annotations.length).toBe(2);
   expect(canvasAfter.annotations.every((a) => !a.content.includes('标文档正文'))).toBe(true);
 });

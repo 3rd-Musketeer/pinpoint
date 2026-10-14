@@ -3,6 +3,8 @@ import path from 'node:path';
 import { test, expect } from '@playwright/test';
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { waitForSave } from './lib/annotate.js';
+import { openWorkbenchConnected } from './lib/workbench.js';
 
 // storage-unify：工作台画布的标注住活动页的桶（e2e-ios），账本固定 @canvas.json，
 // 不再跟工作台 pathname（/ 与 /index.html）走。
@@ -14,13 +16,12 @@ async function open(page) {
     Object.assign(p, { sideCollapsed: true, pageViewports: { 'e2e-ios': { canvasZoom: '1.17' } } });
     localStorage.setItem('pinpoint-wb', JSON.stringify(p));
   });
-  await page.goto('/index.html?page=e2e-ios&mode=ios');
-  await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
+  await openWorkbenchConnected(page, 'page=e2e-ios&mode=ios');
 }
 async function save(page, content) {
   await page.locator('#ann-input').fill(content);
   await Promise.all([
-    page.waitForResponse(r => new URL(r.url()).pathname === '/save' && r.request().method() === 'POST' && r.ok()),
+    waitForSave(page),
     page.locator('#ann-close').click(),
   ]);
   await expect(page.locator('#ann-box')).toBeHidden();

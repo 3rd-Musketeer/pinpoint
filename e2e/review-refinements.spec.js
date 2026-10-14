@@ -4,6 +4,7 @@ import path from 'node:path';
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { maybeThrottle } from './cpu-throttle.js';
+import { openAnnotated } from './lib/annotate.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // These stories deliberately create and invalidate DOM targets. Their ledger
@@ -13,8 +14,7 @@ test.beforeEach(async ({ page }) => { await maybeThrottle(page); });
 test.afterEach(async ({ page }) => { await closeSettled(page); });
 
 test('composer follows the selected DOM and docks only when adjacent space runs out', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.addStyleTag({content:'body{min-height:2000px} h1{position:absolute;left:240px;top:300px;width:180px;height:100px;margin:0}'});
   await page.evaluate(() => window.pinpoint.setMode(true));
   const target = page.locator('h1').first();
@@ -41,8 +41,7 @@ test('composer follows the selected DOM and docks only when adjacent space runs 
 
 test('reviewer mixes target pills and Chinese text, chooses an intent and reopens the saved annotation', async ({ page }) => {
   const errors=[]; page.on('pageerror', error=>errors.push(error.message));
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator('#doc-title').click();
   const input=page.getByRole('textbox',{name:'写标注'});
@@ -82,8 +81,7 @@ test('reviewer mixes target pills and Chinese text, chooses an intent and reopen
 });
 
 test('reviewer writes a long correction and adds a real move arrow without losing the draft', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(() => window.pinpoint.setMode(true));
   await page.locator('#doc-title').click();
   const input=page.getByRole('textbox',{name:'写标注'});
@@ -113,8 +111,7 @@ test('reviewer writes a long correction and adds a real move arrow without losin
 });
 
 test('composer 压得过被审页面自己的浮层：z-index 极值弹层与原生 dialog top layer', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   const input=page.getByRole('textbox',{name:'写标注'});
 
   // 机制一：页面自带 z-index 极值的全屏弹层压不住 composer 的发送钮。
@@ -158,8 +155,7 @@ test('composer 压得过被审页面自己的浮层：z-index 极值弹层与原
 
 
 test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑完', async ({ page }) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(()=>{
     window.pinpoint.setMode(true);
     ['stale','hidden','replaced'].forEach(id=>{
@@ -255,8 +251,7 @@ test('clearInvalid 只清目标 wholly 失效的标注：判定矩阵一条跑�
 });
 
 test('reviewer inserts a second pill mid-line, pastes an image, and removes it after reload', async ({page}) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(()=>window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(()=>window.pinpoint.setMode(true));
   await page.locator('#doc-title').click();
   const input=page.getByRole('textbox',{name:'写标注'});
@@ -289,7 +284,7 @@ test('reviewer inserts a second pill mid-line, pastes an image, and removes it a
 });
 
 test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；失效不等于已解决', async ({page}) => {
-  await page.goto('/sites/e2e-dir/doc.html');await page.waitForFunction(()=>window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(()=>window.pinpoint.setMode(true));await page.locator('#doc-target-2').click();
   await page.getByRole('textbox',{name:'写标注'}).fill('这个目标会走');await page.locator('#ann-close').click();
   await expect.poll(()=>page.evaluate(()=>window.pinpoint.getState().syncing)).toBe(false);
@@ -325,8 +320,7 @@ test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；�
 
 
 test('annotation number stays visible while editing and follows the target after scrolling', async ({page}) => {
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(()=>window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.addStyleTag({content:'body{min-height:2000px} h1{position:absolute;left:240px;top:300px;width:180px;height:100px;margin:0}'});
   await page.evaluate(()=>window.pinpoint.setMode(true));
   await page.locator('#doc-title').click({position:{x:10,y:10}});

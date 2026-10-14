@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 import { E2E_SITES_DIR } from './env.js';
-import { openWorkbenchWithPages as openWorkbench } from './open-workbench.js';
+import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
 

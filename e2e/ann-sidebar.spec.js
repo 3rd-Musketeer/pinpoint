@@ -1,10 +1,9 @@
-import fs from 'node:fs';
-import path from 'node:path';
-
 import { expect, test } from '@playwright/test';
 
-import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { annotate, openAnnotated, waitRouteSettled } from './lib/annotate.js';
+import { clearBuckets } from './lib/ledger.js';
+import { openWorkbench } from './lib/workbench.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // 标注列表面板（#ann-sidebar）：/sites/ 注入页、SPA 页这些没有 workbench 的页面，
@@ -17,20 +16,8 @@ test.afterEach(async ({ page }) => {
   await closeSettled(page);
   // storage-unify：workbench 用例的标注落进 e2e-ios 桶（桶 = 页），不清的话
   // 同组后跑的 mention.spec 会在自己的计数断言上多出别人的行。
-  for (const entry of ['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']) {
-    fs.rmSync(path.join(E2E_DATA_DIR, entry), { recursive: true, force: true });
-  }
+  clearBuckets(['e2e-dir', 'e2e-site', 'e2e-ios', 'pinpoint']);
 });
-
-/** 在标注模式下点选元素、写内容、保存（驱动方式同 spa-ledger.spec.js）。 */
-async function annotate(page, selector, text) {
-  await page.locator(selector).click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  await box.locator('#ann-input').fill(text);
-  await box.locator('#ann-close').click();
-  await expect(box).toBeHidden();
-}
 
 async function closeComposer(page) {
   const box = page.locator('#ann-box');
@@ -48,21 +35,12 @@ function inViewport(page, selector) {
   }, selector);
 }
 
-async function waitRouteSettled(page, pathname, prevEpoch) {
-  await page.waitForFunction(([path, epoch]) => {
-    const st = window.pinpoint && window.pinpoint.getState ? window.pinpoint.getState() : {};
-    if (typeof st.epoch !== 'number') return location.pathname === path;
-    return location.pathname === path && st.epoch > epoch && !st.routing;
-  }, [pathname, prevEpoch]);
-}
-
 test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the target', async ({ page }) => {
   // 合并自 review-refinements「the injected sidebar opens annotations…」的一条：
   // 整条跑完（含 reload）页面不得抛未捕获异常。
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(() => window.pinpoint.setMode(true));
 
   // 工具条入口（/sites/ 注入页工具条默认隐藏，先显式调出）：除了「列表」，
@@ -156,8 +134,7 @@ test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完�
   // 与 workbench.spec 的面板筛选全流程同一条链，跑在注入侧栏上：行尾完成勾
   // 单击即 close，toast 撤销回关前原态；「已关闭 N」折叠段由状态筛选取代 ——
   // 两段筛选（2026-09-24）：pending = open / check / done，closed 只看关闭行，close 行可重开。
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.evaluate(() => window.pinpoint.setMode(true));
   await annotate(page, '#doc-target', '走完侧栏关闭流程的意见');
   const n = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
@@ -221,8 +198,7 @@ test('pp2 侧栏状态筛选：open 行点完成 → 撤销回 open → 再完�
 });
 
 test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => {
-  await page.goto('/e2e/spa-fixture.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/e2e/spa-fixture.html');
 
   let epoch = await page.evaluate(() => window.pinpoint.getState().epoch);
   await page.locator('#to-a').click();
@@ -255,8 +231,7 @@ test('SPA: the sidebar follows the active pathname ledger', async ({ page }) => 
 });
 
 test('workbench page: no sidebar entry, the workbench annotation list stays the control surface', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page);
 
   // S 键与 API 都被抑制，#ann-sidebar 从不创建。
   await page.keyboard.press('s');
@@ -291,8 +266,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   // owner 2026-09-23：颜色即状态 + filter 切换查看。这条把三件事串起来 ——
   // 分段筛选驱动列表行数、画布钉子跟着筛选出没、钉色随状态（琥珀 check /
   // 灰 closed），筛选选择按页记 LS，刷新后原样回来。
-  await page.goto('/sites/e2e-dir/doc.html');
-  await page.waitForFunction(() => window.pinpoint);
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
   // fixture 只有三个锚点目标，第四个动态补
   await page.evaluate(() => {
     const el = document.createElement('p');

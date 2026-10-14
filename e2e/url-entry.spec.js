@@ -5,6 +5,8 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_DATA_DIR, E2E_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { ledgerNames } from './lib/ledger.js';
+import { openWorkbench } from './lib/workbench.js';
 
 // 阶段 4：registry `url` 条目经同源路径前缀代理（/sites/<id>/ → 目标 origin）
 // 以 doc 壳内嵌进 workbench —— 绝对路径资源/API 由「HTML 重写 + 运行时重基
@@ -17,20 +19,13 @@ import { closeSettled } from './ledger-settle.js';
 const BUCKET = path.join(E2E_DATA_DIR, 'e2e-proxy');
 const FRAME = '#wb-board-panel [data-screen="index"] iframe.wb-doc-frame';
 
-function bucketDocs() {
-  if (!fs.existsSync(BUCKET)) return [];
-  // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，不计进名单。
-  return fs.readdirSync(BUCKET).filter((name) => name.endsWith('.json') && name !== '_seq.json');
-}
-
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
   fs.rmSync(BUCKET, { recursive: true, force: true });
 });
 
 test('url entry renders live through the proxy and annotates into the entry bucket', async ({ page }) => {
-  await page.goto('/index.html');
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page);
 
   // Pages 单一列表：url 条目与 dir/file/模板页同列。单网页页没有画布，大纲条不渲染；
   // 类型标在横条上，仍是「网页」。
@@ -137,8 +132,8 @@ test('url entry renders live through the proxy and annotates into the entry buck
 
   // bucket = entry id：与扩展注入同一个桶；URL 虚拟化后账本 path = 应用路径
   // （'/'），与扩展在目标 origin 上注入出的账本逐字节同 key。
-  await expect.poll(() => bucketDocs().length).toBe(1);
-  const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, bucketDocs()[0]), 'utf8'));
+  await expect.poll(() => ledgerNames(BUCKET).length).toBe(1);
+  const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, ledgerNames(BUCKET)[0]), 'utf8'));
   expect(ledger.path).toBe('/');
   expect(ledger.annotations.map((a) => a.content)).toContainEqual(expect.stringContaining('url entry mark'));
 

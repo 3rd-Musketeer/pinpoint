@@ -1,13 +1,12 @@
-import { execFile } from 'node:child_process';
 import fs from 'node:fs';
 import path from 'node:path';
-import { promisify } from 'node:util';
-import { fileURLToPath } from 'node:url';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
+import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { ppntResult } from './lib/cli.js';
+import { openWorkbench } from './lib/workbench.js';
 import { waitNoReload } from './site-settle.js';
 
 // HTML 帧（docs/projects.md“HTML 帧”）：文章画布上放整份 HTML 页面。
@@ -17,25 +16,11 @@ import { waitNoReload } from './site-settle.js';
 // kit 在 project.json 的 sources 里指 e2e/html-source/）；C 节一帧手机 JSX（phone-card）。
 // project e2e-html 常驻在共享 registry 固件里（e2e/registry-fixture.js），指仓内固件，spec 只读不写。
 // 站点：在 e2e-parallel 的 SITE_SPECS 里，和别的拉起站点的 spec 同组。
-const execFileP = promisify(execFile);
-const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const PAGE_ID = 'e2e-html_pages';
 const ARTICLE_URL = '/e2e-html/pages/';
 const BUCKET = path.join(E2E_DATA_DIR, PAGE_ID);
 const DOC_FRAME = '#wb-board-panel [data-screen="long-page"] iframe.wb-doc-frame';
-
-async function ppnt(args) {
-  try {
-    const { stdout, stderr } = await execFileP(process.execPath, [path.join(ROOT, 'bin', 'pinpoint.mjs'), ...args], {
-      cwd: ROOT,
-      env: { ...process.env, PINPOINT_DATA_DIR: E2E_DATA_DIR, PINPOINT_REGISTRY: E2E_REGISTRY, PINPOINT_ORIGIN: E2E_BASE_URL },
-      timeout: 150_000,
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    return { code: error.code ?? 1, stdout: error.stdout ?? '', stderr: error.stderr ?? '' };
-  }
-}
+const ppnt = (args) => ppntResult(args, { timeout: 150_000 });
 
 const card = (page) => page.locator('[data-pp-canvas][data-pp-section="pages"]');
 const cardFrame = (page, id) => card(page).locator(`.cc-frame[data-screen="${id}"] iframe`);
@@ -154,8 +139,7 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
 test('画布视图：HTML 帧是文档条目，手机视口里标注 y > 5000 处的元素；ppnt comments 带编号列出，ppnt shot 拍得到', async ({ page }) => {
   test.setTimeout(180_000);
   fs.rmSync(BUCKET, { recursive: true, force: true });
-  await page.goto(`/index.html?page=${PAGE_ID}&entry=long-page`);
-  await page.waitForFunction(() => window.workbench && window.pinpoint);
+  await openWorkbench(page, `page=${PAGE_ID}&entry=long-page`);
   const doc = page.frameLocator(DOC_FRAME);
   await expect(doc.locator('#top-title')).toHaveText('长页面');
 

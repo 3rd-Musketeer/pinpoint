@@ -1,6 +1,7 @@
 import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL } from './env.js';
+import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 
 // pp3：正文里的画布浮层与 [[ ]] 悬停 popup（site/README.md「画布浮层」「[[ ]] 引用」）。
@@ -54,7 +55,7 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
 
   await openArticle(page);
   consoleErrors.length = 0; // 冷启动那几次 503 记成 Failed to load resource
-  await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
+  await proseSettled(page);
 
   await test.step('卡片缩略图仍不可交互；点卡片里的 confirm-done → 浮层，不导航', async () => {
     const thumb = page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] iframe');
@@ -283,7 +284,7 @@ test('[[ ]] popup：悬停打开、移进 popup 不关、离开后关；点有�
   });
 
   await test.step('写评论时悬停 ref 再按 Esc：只关 popup，草稿和已打的字都在；焦点在草稿框里再按 Esc 才取消草稿', async () => {
-    await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
+    await proseSettled(page);
     const box = await page.evaluate((text) => {
       const el = document.querySelector('#why');
       const walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
