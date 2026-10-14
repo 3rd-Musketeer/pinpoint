@@ -1,6 +1,6 @@
 # 0038 · 编号是显示编号、id 是身份；标注 note 退役
 
-Status: 现行 · Date: 2026-09-28 · Supersedes-in-part: 0035（状态机里 check / done 带 note 的半边） · Scope: `src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/ann-query.js`、`bin/pinpoint-cli.js`、两个 skill
+Status: 部分被取代（编号与 id 之分、`note` 字段退役现行；`check` 列标注和“`mark` 不收 `--note`”由 0043 改掉：`check` 是验证，`mark --note` 先在线程里回复再写状态） · Date: 2026-09-28 · Superseded-in-part-by: 0043 · Supersedes-in-part: 0035（状态机里 check / done 带 note 的半边） · Scope: `src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/ann-query.js`、`bin/pinpoint-cli.js`、`bin/cli/`、两个 skill
 
 **起因**：routine-creator 验收时 agent 说“C1、C1b 是帧的源文件名，画布上对应 D1、D2”。帧 id 被起成编号的样子
 （`c1b-detail-time`），之后分区调序、段内插帧，两套编号对不上。同一页 #11 的 note 写着“D2 定时型同步删”，

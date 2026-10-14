@@ -1,6 +1,6 @@
 # 0041 · 页内 tab：page → tab → section
 
-Status: 现行 · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`src/workbench/lib/board-entries.js`（`boardShowsTabBar`、`outlineSlice`）、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
+Status: 现行（只管存量页；文章没有 tab，转成文章时每个 tab 变成一个 `##` 小标题，见 0042 与 docs/projects.md“从存量页迁移”） · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`src/workbench/lib/board-entries.js`（`boardShowsTabBar`、`outlineSlice`）、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
 
 **起因**：0040 把“组件页”和“交互页”分成两种页，底层一样。同一个原型常常既要一面组件墙，也要正式流程，
 有时还要一块试验场；拆成几个独立的页就得重复登记、`components/` 和资源各复制一份，标注也散在几个账本里。

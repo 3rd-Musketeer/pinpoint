@@ -1,8 +1,8 @@
 # 0026 · title 规矩 + section note + 选中模型（note 收编右栏 detail 面板）
 
-Status: 现行 · Date: 2026-08-17 · Scope: `src/workbench/app/DetailPanel.jsx`、`src/server/lib/frame-note-store.js`、`src/workbench/lib/preview-contracts.js`
+Status: 部分被取代（section / frame 说明和详情面板 2026-09-08 退役；title 规矩与画布点选现行） · Date: 2026-08-17 · Scope: `src/workbench/lib/preview-contracts.js`
 
-2026-09-08 更新：frame / section 说明及其详情面板、API 均已退役；本文对应部分仅保留历史。title 和画布选择规则仍有效。当前数据契约见 [board schema](../board-schema.md)，清理见 [迁移说明](../board-note-retirement.md)。
+2026-09-08 更新：frame / section 说明及其详情面板、API 均已退役；本文对应部分仅保留历史。title 和画布选择规则仍有效。当前数据契约见 [board schema](../board-schema.md)，清理记录在 owner 本机的 `.archive/2026-09-08-board-note-cleanup/`，不进 git。
 
 Supersedes: ADR 0015（note 导出永随语义）
 
