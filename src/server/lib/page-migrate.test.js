@@ -279,7 +279,8 @@ test('CLI: migrate takes --project <root> (add keeps --project as a switch); --d
   assert.equal(await run(['migrate', 'legacy-page', '--project', root, '--article', 'moved'], io), 0, lines.join('\n'));
   assert.ok(lines.some((l) => /^A2\s+lock-note\s+复制\s+lock\s+ok\s+只差地址$/.test(l)), lines.join('\n'));
   assert.ok(lines.some((l) => /旧页的标注留在旧页（桶 legacy-page）/.test(l)));
-  assert.ok(lines.some((l) => /project demo 还没登记/.test(l)));
+  assert.ok(lines.some((l) => /登记 project（登记了才能在服务里打开文章页和画布视图）：ppnt add .* --project/.test(l)), lines.join('\n'));
+  assert.ok(lines.some((l) => /^ {2}\d\. 补正文：.*index\.mdx 里每节的/.test(l)), '结尾给下一步');
   assert.ok(lines.some((l) => /^通过：4 帧/.test(l)));
   assert.equal(fs.existsSync(path.join(dir, 'data')), false, '迁移不写数据目录');
 

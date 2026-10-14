@@ -11,7 +11,7 @@ import { loadRegistry, projectEntry } from '../../src/server/lib/registry.js';
 import { MigrateError, planPageMigration, verifyMigration, writeMigration } from '../../src/server/lib/page-migrate.js';
 
 import { REPO_ROOT, displayWidth, ioOf, padWide } from './core.js';
-import { guardParse } from './args.js';
+import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { resolveRegistryPath } from './registry.js';
 import { reportPageSuggestions } from './list.js';
 
@@ -80,14 +80,34 @@ export function formatVerify(report) {
   return out;
 }
 
+/**
+ * migrate 结尾的下一步（纯函数）：登记、修错、验证、对比截图、补正文、处理旧页的标注、撤旧页。
+ * dryRun 只给“去掉 --dry-run 再跑”。
+ */
+export function migrateNextSteps({ plan, dryRun = false, registered = true, legacyOpen = 0, ok = true }) {
+  const address = `${plan.project.id}/${plan.articleId}`;
+  if (dryRun) return ['下一步：计划没问题就去掉 --dry-run 再跑一次，文件才会写。'];
+  const steps = [];
+  if (!registered) steps.push(`登记 project（登记了才能在服务里打开文章页和画布视图）：ppnt add ${plan.project.root} --project`);
+  steps.push(ok ? `验证整篇：ppnt check ${address}` : `修好编不过的帧，再验证：ppnt check ${address}`);
+  steps.push(`和旧页对比：ppnt shot ${address} --canvas，再 ppnt shot ${plan.pageId}，两张图并排看`);
+  steps.push(`补正文：${path.join(plan.articleDir, 'index.mdx')} 里每节的 {/* 正文 */} 占位换成文字，然后 ppnt shot ${address} 看文章页`);
+  steps.push(legacyOpen
+    ? `旧页还有 ${legacyOpen} 条没关的标注，留在旧页：ppnt comments ${plan.pageId} 逐条处理，或请 owner 在工作台关掉`
+    : '旧页没有没关的标注');
+  steps.push(plan.legacy.kind === 'template'
+    ? `撤旧页要 owner 定：它是模板页（content/previews/${plan.pageId}/），撤掉要改 pinpoint 仓库`
+    : `撤旧页要 owner 定：标注都处理完后 ppnt remove ${plan.pageId}（只撤登记，源文件不动）`);
+  return ['下一步：', ...steps.map((step, i) => `  ${i + 1}. ${step}`)];
+}
+
 export async function runMigrate(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   const { cwd, env, out, err } = ioOf(io);
   if (!parsed.flags.project) {
-    err('错误：migrate 需要 --project <project 根目录>（目录里要有 docs/pinpoint/project.json）');
-    return 1;
+    return reportUsageError('migrate', 'migrate 需要 --project <project 根目录>（目录里要有 docs/pinpoint/project.json；没有就先 ppnt new project <根>）', err);
   }
   const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath, log: () => {} });
@@ -104,7 +124,10 @@ export async function runMigrate(argv, io = {}) {
   } catch (error) {
     if (!(error instanceof MigrateError)) throw error;
     err(`错误：${error.message}`);
-    if (/^找不到页/.test(error.message)) reportPageSuggestions(parsed.target, { registryPath, env, err });
+    if (/^找不到页/.test(error.message)) {
+      reportPageSuggestions(parsed.target, { registryPath, env, err });
+      return USAGE_EXIT;
+    }
     return 1;
   }
   for (const line of formatPlan(plan)) out(line);
@@ -122,6 +145,9 @@ export async function runMigrate(argv, io = {}) {
     for (const problem of plan.problems) err(`  - ${problem}`);
     return 1;
   }
+  const legacyOpen = readBucketLedgers(path.join(dataRoot(env), plan.pageId))
+    .flatMap((ledger) => (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations : []))
+    .filter((row) => row && (row.status || 'open') !== 'close').length;
   const keep = `旧页不动：文件不改、登记不撤；旧页的标注留在旧页（桶 ${plan.pageId}），不迁到新文章（新桶 ${plan.articlePageId}）。`;
   if (parsed.flags['dry-run']) {
     out('会写这些文件（--dry-run，没写）：');
@@ -129,6 +155,7 @@ export async function runMigrate(argv, io = {}) {
     out('index.mdx：');
     for (const line of plan.files.get('index.mdx').content.trimEnd().split('\n')) out(`  ${line}`);
     out(keep);
+    for (const line of migrateNextSteps({ plan, dryRun: true })) out(line);
     return 0;
   }
   let written;
@@ -145,14 +172,14 @@ export async function runMigrate(argv, io = {}) {
   for (const line of formatVerify(report)) out(line);
   out(keep);
   const registered = projectEntry(registry, plan.project.id);
-  if (!registered) out(`project ${plan.project.id} 还没登记：pinpoint add ${plan.project.root} --project，之后画布在 /?page=${plan.articlePageId}`);
-  else if (path.resolve(registered.path) !== plan.project.root) out(`注意 登记的 project ${plan.project.id} 指向 ${registered.path}，不是 ${plan.project.root}`);
-  else out(`画布 /?page=${plan.articlePageId} · 正文 /${plan.project.id}/${plan.articleId}/（正文只有节和画布，要补写）`);
+  if (registered && path.resolve(registered.path) !== plan.project.root) out(`注意 登记的 project ${plan.project.id} 指向 ${registered.path}，不是 ${plan.project.root}`);
+  else if (registered) out(`画布 /?page=${plan.articlePageId} · 正文 /${plan.project.id}/${plan.articleId}/`);
   if (!report.ok) {
     const failed = report.rows.filter((row) => row.compile !== 'ok' || row.shell !== row.legacyShell).length;
-    err(`有失败：${failed} 帧编不过或 shell 和旧页不同，正文 ${report.errors.length} 条画布错误。文件已写，修好后 ppnt build ${plan.articlePageId}`);
-    return 1;
+    err(`有失败：${failed} 帧编不过或 shell 和旧页不同，正文 ${report.errors.length} 条画布错误。文件已写，修好后 ppnt check ${plan.project.id}/${plan.articleId}`);
+  } else {
+    out(`通过：${report.rows.length} 帧都编过，shell 和旧页一致`);
   }
-  out(`通过：${report.rows.length} 帧都编过，shell 和旧页一致`);
-  return 0;
+  for (const line of migrateNextSteps({ plan, registered: Boolean(registered), legacyOpen, ok: report.ok })) out(line);
+  return report.ok ? 0 : 1;
 }

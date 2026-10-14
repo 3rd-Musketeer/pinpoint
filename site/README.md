@@ -17,7 +17,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 
 每个站点进程的 Astro root 是 `site/.astro-cache/<端口>/`（build 是 `site/.astro-cache/build/`），代码照旧从 `site/src` 读。Astro 把 dev 的内容库（`.astro/data-store.json`）和生成的类型固定放在 root 下；同一个 checkout 起两个站点（e2e 两组、隔离运行、owner 的服务）时，各自的端口各自一份，不会读到别的 registry 的内容。
 
-开发服务器启动时把站点目录、仓库的 `node_modules` 和各 project 的 `docs/pinpoint/` 加进 Vite `fs.allow`，project 根下的其他文件和仓库源码不经 `/@fs/` 服务；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载。
+开发服务器启动时把站点目录、仓库的 `node_modules` 和各 project 的 `docs/pinpoint/` 加进 Vite `fs.allow`，project 根下的其他文件和仓库源码不经 `/@fs/` 服务；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载；registry 重载后 loader 把新登记的 project 目录也加进监听（`src/lib/loaders.js` 的 `watchAll`），所以站点起来之后才登记的 project，新建的文章同样一秒内可读。
 
 ## 路由
 
@@ -80,6 +80,7 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 
 - `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
 - `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts。
+- `src/pages/[project]/[article]/index.astro`：文章页。正文末尾的 `<div data-pp-article-end hidden>` 是正文结束标记：`ppnt shot` 截到的页面里没有它，就判定正文中途断了（渲染出错），提示跑 `ppnt check`。
 - `src/lib/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编节号，给 `<Canvas>` 注入所在节的 id 和节号。哪一节、第几节由 `src/shared/article-structure.js` 决定，服务端派生画布视图用的是同一个走法：文章第 n 节就是画布视图上的第 n 个字母，节号和编号对得上。
 - `src/lib/refs.js`：解析、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。

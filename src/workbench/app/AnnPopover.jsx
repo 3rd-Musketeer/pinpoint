@@ -31,6 +31,9 @@ function AnnRow(props) {
           <span className="wb-ann-body">
             <span className="wb-ann-cap">{r.cap}</span>
             <span className="wb-ann-text">{r.preview}</span>
+            {(r.replies || []).map(function (reply, i) {
+              return <span key={i} className="wb-ann-reply" data-who={reply.who}>{reply.who + '：' + reply.text}</span>;
+            })}
             {r.status !== 'open'
               ? <span className="wb-ann-status-tag">{r.status}</span>
               : null}

@@ -14,6 +14,7 @@ const all = readdirSync(new URL('../e2e/', import.meta.url)).filter(name => name
 // 没有的新 spec 按表内平均时长计，下面会提示补登记。
 const durations = {
   'ann-sidebar.spec.js': 3.6,
+  'doc-reply.spec.js': 0.5,
   'article-canvas.spec.js': 2.7,
   'article-site.spec.js': 4.1,
   'article-viewer.spec.js': 6.2,

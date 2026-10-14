@@ -18,6 +18,7 @@
 | `status` | `open` / `check` / `done` / `close`，缺省 `open`；转换规则见下文“标注状态机” |
 | `lastRect` | 锚点最后一次解析成功的矩形 `{ x, y, w, h, screenId? }`；锚点失效且仍有它时画幽灵框。客户端记录、随下一次保存合并落盘 |
 | `path` | 壳页面，通常是 `index.html` |
+| `messages` | 线程：`[{ who: "owner" \| "agent", text, at }]`，见下面“线程” |
 
 元素标注一律写 `targets: [{ ref, selector, text, ppId? }]`；稳定 ref 是 `i1`、`i2`、…，删除后永不重编号。
 顶层的 `selector` / `text` 是第一个 target 的兼容镜像。`ppId`（决定 #15）是编译页锚点的
@@ -28,6 +29,15 @@
 账本不因此整体重写，补 `ppId` 不算目标变更、不会把 check / done 顶回 open）。
 `[@t:iN]` 只在那一条标注内解析，
 永远不进 `mentions[]`；`[@a:id]` 保持它的跨标注含义。
+
+## 线程
+
+每条标注都有线程，不分种类：画布标注、存量页的文档标注（`board: "html"` 的 HTML 文档，锚点是 cssPath + 引文）、正文评论都一样。`content` 是 owner 的第一句，之后的来回追加在 `messages`。
+
+- 写入：`POST /annotations/<账本>/<id|n>/reply`，body 带 `entry`、`baseRevision`、`text`，在线程末尾追加一条 `who: "agent"` 的消息，状态不动（`src/server/lib/annotation-store.js` 的 `appendMessage`）。CLI 是 `ppnt reply`，和写状态合成一步是 `ppnt mark … --note`。
+- 保存不丢回复：owner 在标注框里改正文时，客户端整本保存的快照可能早于 agent 的回复。`save` 把盘上已有、快照里没有的 agent 消息合并回去（`keepAgentMessages`），所以 owner 改完这一条，状态按状态机回 `open`，agent 的回复还在。
+- 显示：工作台的标注列表（`src/workbench/app/AnnPopover.jsx`）和注入侧栏在每一行下面列出回复（“agent：…”），标注框在输入框下面列出整个线程（`#ann-thread`），画布上的气泡也带回复；文章页的右栏是正文评论的线程。SSE 推来改动后不刷新就出现。
+- 读：`ppnt comments` 在每条下面列出回复，`--json` 里是 `messages`。
 
 ## 读到标注去改哪里
 
@@ -107,7 +117,7 @@ manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤�
 - 右栏：pending / closed 两段筛选（与画布列表同一口径），每条线程是序号钉（状态色）+ 状态字 + 引文 + 消息（“你” / agent，时间）+ 回复框，行尾“完成”（→ close）或“重新打开”（→ open）。点高亮聚焦线程，点线程定位高亮。
 - 写入：客户端把改动记成操作（新建、回复、改状态），存盘撞上 409 时重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。其他拒绝时，新评论退回草稿，回复退回输入框，右栏写出原因。owner 回复或改了引文算 owner 编辑，服务端把状态回 open。
 - 同步：SSE 断了自己重连，连上后重新水合，补上断线期间的改动。页面进 bfcache 时关掉 SSE；从画布按“返回”回来（`pageshow` 且 `persisted`）时重开并重新水合。离开页面时排着的操作立刻发出（见上面“离开页面不丢写”）；重放时 owner 的同一条回复（原文与 `at` 相同）不追加第二遍。
-- agent：`ppnt comments <project>/<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <project>/<article>#<n> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（body 带 `entry`、`baseRevision`、`text`），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；改状态照旧 `ppnt mark`。
+- agent：`ppnt comments <project>/<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <project>/<article>#<n> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（见上面“线程”），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；回复并改状态用 `ppnt mark … --note`。
 
 ## 控制面
 

@@ -37,8 +37,9 @@ import {
   isVisibleEnough,
 } from '../shared/annotate-clip.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
+import { escHtml } from '../workbench/lib/esc-html.js';
 import { annotateCss } from './annotate-css.js';
-import { annMarkBroken, annRowCap, annRowModel, annRowPreview } from '../shared/ann-row.js';
+import { annMarkBroken, annRowCap, annRowModel, annRowPreview, annRowReplies } from '../shared/ann-row.js';
 import {
   ANN_FILTERS,
   annFilterCounts,
@@ -217,7 +218,8 @@ import { startProseComments } from './prose-comments.js';
       // 眉标 = 这条标注指着什么，与侧栏行的 cap 同一份口径（annRowCap）——
       // 2026-09-04 评审板 H1 起卡片头不再是琥珀序号 chip + 「评论」。
       cap: annRowCap(m),
-      content: contentToDisplay(m.content != null ? m.content : '', m.targets || [])
+      content: contentToDisplay(m.content != null ? m.content : '', m.targets || []),
+      replies: annRowReplies(m)
     };
   }
 
@@ -1658,7 +1660,7 @@ import { startProseComments } from './prose-comments.js';
     }
     // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
     var sig = rows.map(function (r) {
-      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status;
+      return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + JSON.stringify(r.replies || []);
     }).join('~') + '|f:' + statusFilter;
     var pendingCount = rows.filter(function (r) { return filterIncludesStatus('pending', r.status); }).length;
     sidebarCount.textContent = pendingCount ? '(' + pendingCount + ')' : '';
@@ -1716,6 +1718,13 @@ import { startProseComments } from './prose-comments.js';
       text.textContent = r.preview;
       body.appendChild(text);
     }
+    (r.replies || []).forEach(function (reply) {
+      var line = document.createElement('span');
+      line.className = 'wb-ann-reply';
+      line.setAttribute('data-who', reply.who);
+      line.textContent = reply.who + '：' + reply.text;
+      body.appendChild(line);
+    });
     // 文字状态标（check / done / close；open 不出标）。
     if (r.status !== 'open') {
       var stTag = document.createElement('span');
@@ -2303,6 +2312,15 @@ import { startProseComments } from './prose-comments.js';
   }
 
   // 输入框的静态骨架：只依赖行本身、锚点是否失效、是否新建，不碰任何状态。
+  /** 线程回复（agent 经 ppnt reply / mark --note 写的）：编辑框下面逐条，只读。 */
+  function composerThreadHtml(replies) {
+    if (!replies.length) return '';
+    return '<div id="ann-thread">' + replies.map(function (r) {
+      return '<div class="ann-reply" data-who="' + escHtml(r.who) + '"><span class="who">' + escHtml(r.who) + '</span>'
+        + '<span class="text">' + escHtml(r.text) + '</span></div>';
+    }).join('') + '</div>';
+  }
+
   function composerBoxHtml(m, broken, isNew) {
     var brokenInfo = broken
       ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
@@ -2311,6 +2329,7 @@ import { startProseComments } from './prose-comments.js';
       brokenInfo +
       '<div id="ann-imgs"></div>' +
       '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
+      composerThreadHtml(isNew ? [] : annRowReplies(m)) +
       '<div class="acts"><div class="ann-tools">' +
       '<button type="button" id="ann-plus" aria-label="标注操作" aria-expanded="false">+</button>' +
       '<div id="ann-mode-pills"></div>' +

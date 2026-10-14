@@ -78,6 +78,13 @@
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }
+/* 线程回复（agent 经 ppnt reply / mark --note 写的）：正文下面一行一条，作者名打头。 */
+#wbann-list .wb-ann-reply,
+#ann-sidebar .wb-ann-reply {
+  font-size:11.5px; line-height:1.4; color:var(--wb-muted, #6b6b70);
+  display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
+  overflow:hidden; word-break:break-word;
+}
 #wbann-list .wb-ann-item--broken .wb-ann-text,
 #ann-sidebar .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted, #6b6b70); }
 #wbann-list .wb-ann-broken-tag,

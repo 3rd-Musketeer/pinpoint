@@ -322,6 +322,7 @@ export async function runList(argv, io = {}) {
       continue;
     }
     if (arg === '--frames') { flags.frames = true; continue; }
+    if (arg === '--json') { flags.json = true; continue; }
     // 未知选项是用法错，不当关键词去匹配（从前 list --json 会去找叫 --json 的页）。
     if (arg.startsWith('--')) return reportUsageError('list', `未知选项：${arg}`, err);
     words.push(arg);
@@ -338,6 +339,21 @@ export async function runList(argv, io = {}) {
   }
   const rows = matchPages(pageListRows({ registryPath, env }), query);
   const projectRows = projects.filter((project) => scorePage(projectMatchRow(project), query) > 0);
+  if (flags.json) {
+    out(JSON.stringify({
+      query,
+      registry: registryPath,
+      projects: projectRows.map((project) => ({
+        id: project.id,
+        title: project.title,
+        root: project.root,
+        articles: project.articles.map((article) => ({ address: `${project.id}/${article.id}`, title: article.title })),
+        errors: project.errors.length,
+      })),
+      pages: rows.map((row) => ({ id: row.id, title: row.title || '', kind: row.kind || '', folder: row.folder || '', path: row.path || row.url || '', counts: row.counts || null })),
+    }, null, 2));
+    return rows.length || projectRows.length ? 0 : 1;
+  }
   if (!rows.length && !projectRows.length) {
     out(`没有匹配“${query}”的页。不带关键词跑 \`pinpoint list\` 看全部。`);
     return 1;

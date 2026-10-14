@@ -9,7 +9,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件，画布组件列出这一节的帧。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
-一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `pinpoint add <根> --project` 登记一次，之后加文章不用再登记。
+一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
 要避开：拿 project 指存量页、文件夹或 board。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
@@ -77,7 +77,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：把空 ref 当错误去删。
 
 **画布标注** · 画布视图上的标注客户端 `src/client/annotate.js`；账本 `@canvas.json`
-owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置。画布标注没有线程：agent 改完写状态，要解释就在对话里说。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
+owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置。每条标注都有线程：agent 改完用 `ppnt mark … done --note "<改了什么>"` 一步回复并写状态，owner 在工作台的标注列表和标注框里看到。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
 要避开：“批注”；把正文评论也叫画布标注。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`

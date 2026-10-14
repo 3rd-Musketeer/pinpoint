@@ -1586,7 +1586,7 @@ test('runBuild：整页编译打印每屏 ok 与耗时，失败屏非零退出',
 
   const ghost = recorder();
   const code3 = await runBuild(['build', 'ghost', '--registry', registry], { ...ghost.io, env });
-  assert.equal(code3, 1);
+  assert.equal(code3, 2, '找不到目标是用法错');
   assert.ok(ghost.err.some((line) => /找不到 ghost/.test(line)), ghost.err.join('\n'));
   assert.ok(ghost.err.some((line) => /t-page/.test(line)), '报错列出可用 id');
 });
@@ -1816,7 +1816,8 @@ test('parseArgs：check / locate / shot / mark 的形状与用法错误', () => 
   assert.deepEqual(parseArgs(['mark', '#1', '#3-#5', 'done']), {
     command: 'mark', refs: ['#1', '#3-#5'], statusWord: 'done', flags: {},
   });
-  assert.throws(() => parseArgs(['mark', '#1', 'done', '--note', 'x']), /未知选项：--note/);
+  assert.deepEqual(parseArgs(['mark', 'p/a', '#1', 'done', '--note', '改好了']).flags, { note: '改好了' }, 'mark --note 带回复');
+  assert.throws(() => parseArgs(['mark', '#1', 'done', '--note']), /--note 缺少值/);
   assert.throws(() => parseArgs(['locate']), /至少要一个目标或引用/);
   assert.throws(() => parseArgs(['mark', '#1']), /mark 需要目标、引用与状态/);
   assert.throws(() => parseArgs(['show', 'p', '--frames']), /--frames 不适用于 show/);
@@ -1850,7 +1851,7 @@ test('runCheck：未知帧 / 坏状态码非零退出并报因', async (t) => {
   assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--frame', 'Z9'], { ...ghost.io, env: made.env }), 1);
   assert.ok(ghost.err.some((line) => /没有帧 Z9/.test(line)));
   const bad = recorder();
-  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'nope'], { ...bad.io, env: made.env }), 1);
+  assert.equal(await runCheck(['check', 't-page', '--registry', made.registry, '--status', 'nope'], { ...bad.io, env: made.env }), 2);
   assert.ok(bad.err.some((line) => /--status/.test(line)));
 });
 
@@ -1872,11 +1873,11 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
   // 目标用旧写法 --page 给（新写法是第一个位置参数，另有用例）。
   const page = ['--page', 't-page'];
   const close = recorder();
-  assert.equal(await runMark(['mark', '#1', 'close', ...page, '--registry', made.registry], { ...close.io, env: made.env }), 1);
+  assert.equal(await runMark(['mark', '#1', 'close', ...page, '--registry', made.registry], { ...close.io, env: made.env }), 2);
   assert.ok(close.err.some((line) => /close 只在工作台/.test(line)));
   // open 只由 owner 在工作台编辑触发，mark 不写——传 open 指名道姓报因。
   const open = recorder();
-  assert.equal(await runMark(['mark', '#1', 'open', ...page, '--registry', made.registry], { ...open.io, env: made.env }), 1);
+  assert.equal(await runMark(['mark', '#1', 'open', ...page, '--registry', made.registry], { ...open.io, env: made.env }), 2);
   assert.ok(open.err.some((line) => /open 由工作台编辑触发，mark 不写/.test(line)));
 
   // 服务不在跑（requestFn 抛错 = 探活失败）。
@@ -2547,7 +2548,7 @@ test('comments <project>/<article>：正文评论单独成组 —— 引文、�
 
   // 没有的文章：说清是哪一层没有，并列出这个 project 的文章。
   const miss = recorder();
-  assert.equal(await runComments(['comments', 't-proj/ghost', '--registry', made.registry], { ...miss.io, env: made.env }), 1);
+  assert.equal(await runComments(['comments', 't-proj/ghost', '--registry', made.registry], { ...miss.io, env: made.env }), 2);
   assert.ok(miss.err.includes('错误：找不到文章 t-proj/ghost：project t-proj 里没有 articles/ghost/index.mdx'), miss.err.join('\n'));
   assert.ok(miss.err.includes('  t-proj/notes'), miss.err.join('\n'));
 });
@@ -2589,14 +2590,16 @@ test('reply：正文评论追加 agent 消息走回复端点（带 baseRevision�
   assert.equal(crossPost.url, 'http://127.0.0.1:1/annotations/%40prose/2/reply');
   assert.equal(crossPost.body.entry, 't-proj_notes');
 
+  // 画布标注也有线程：reply 照样走回复端点。
   const canvas = recorder();
-  assert.equal(await runReply(['reply', '#1', 'x', '--page', 't-proj_notes', '--registry', made.registry], { ...canvas.io, env: made.env, requestFn }), 1);
-  assert.ok(canvas.err.some((line) => line.includes('#1 是画布标注，没有线程')), canvas.err.join('\n'));
+  calls.length = 0;
+  assert.equal(await runReply(['reply', '#1', '改好了', '--page', 't-proj_notes', '--registry', made.registry], { ...canvas.io, env: made.env, requestFn }), 0, canvas.err.join('\n'));
+  assert.equal(calls.find((call) => call.method === 'POST').url, 'http://127.0.0.1:1/annotations/%40canvas/1/reply');
 
   assert.throws(() => parseArgs(['reply', '#2']), /reply 需要引用与回复内容/);
   assert.deepEqual(parseArgs(['reply', '#2', 'a', 'b', '--page', 'p_a']), { command: 'reply', refs: ['#2'], text: 'a b', flags: { page: 'p_a' } });
   const blank = recorder();
-  assert.equal(await runReply(['reply', '#2', '  ', '--page', 't-proj_notes', '--registry', made.registry], { ...blank.io, env: made.env, requestFn }), 1);
+  assert.equal(await runReply(['reply', '#2', '  ', '--page', 't-proj_notes', '--registry', made.registry], { ...blank.io, env: made.env, requestFn }), 2);
   assert.ok(blank.err.some((line) => line.includes('回复内容是空的')));
 
   const down = recorder();
@@ -2832,7 +2835,7 @@ test('目标是第一个参数：斜杠形、网址、页 id、--page、<project
   }
   const tooFar = recorder();
   assert.equal(await run(withRegistry(made, 'locate', 'e2e-project/commit-confirm', '§9'), { ...tooFar.io, env: made.env }), 1);
-  assert.ok(tooFar.err.includes('§9：这篇文章只有 4 节'), tooFar.err.join('\n'));
+  assert.ok(tooFar.err.includes('错误：§9：这篇文章只有 4 节'), tooFar.err.join('\n'));
 
   const calls = [];
   const requestFn = async (urlString, opts = {}) => {
@@ -3009,7 +3012,9 @@ test('过渡期：check 带 --status / #n 时照旧列标注队列，stderr 一�
   const made = makeFixtureCopy(t);
   const viaFlag = recorder();
   assert.equal(await runCheck(withRegistry(made, 'check', 'e2e-project/commit-confirm', '--status', 'all'), { ...viaFlag.io, env: made.env }), 0, viaFlag.err.join('\n'));
-  assert.deepEqual(viaFlag.err, ['提示：check 现在是验证；列标注和评论改用 `ppnt comments e2e-project/commit-confirm`（这次照旧列出）。']);
+  assert.equal(viaFlag.err[0], '提示：check 现在是验证；列标注和评论改用 `ppnt comments e2e-project/commit-confirm`（这次照旧列出）。');
+  // 没有 dist：先编再摘录（stderr 一行），不再要求先 ppnt build。
+  assert.deepEqual(viaFlag.err.slice(1), ['dist 不在或落后于源码，先编了 e2e-project/commit-confirm（5 帧）']);
   const comments = recorder();
   assert.equal(await runComments(withRegistry(made, 'comments', 'e2e-project/commit-confirm', '--status', 'all'), { ...comments.io, env: made.env }), 0);
   assert.deepEqual(viaFlag.out, comments.out);
@@ -3057,7 +3062,7 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
   const wrong = recorder();
   assert.equal(await run(['shot', 'p/a', '--bogus'], { ...wrong.io, env: {} }), 2);
   assert.deepEqual(wrong.err, ['错误：未知选项：--bogus', `用法：${(await import('./pinpoint-cli.js')).HELP.shot.usage}`, '选项与例子：ppnt shot --help']);
-  const listJson = recorder();
-  assert.equal(await run(['list', '--json'], { ...listJson.io, env: {} }), 2, '未知选项不当关键词');
-  assert.equal(listJson.err[0], '错误：未知选项：--json');
+  const listBogus = recorder();
+  assert.equal(await run(['list', '--bogus'], { ...listBogus.io, env: {} }), 2, '未知选项不当关键词');
+  assert.equal(listBogus.err[0], '错误：未知选项：--bogus');
 });

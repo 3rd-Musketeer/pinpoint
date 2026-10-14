@@ -13,8 +13,15 @@ export const USAGE = `用法：ppnt <命令> [参数]（ppnt 和 pinpoint 是同
 
 ${ADDRESS}
 
+开始
+  new project <目录>                    建 project：写 docs/pinpoint/project.json 和空目录，并登记
+  new article <project>/<article>      建一篇文章：写只有一节的 index.mdx，打印网址
+  dev --sandbox [<目录>]                起一个隔离服务（临时数据目录、登记表、端口），打印要 export 的变量
+
 文章
   show <project>[/<article>]           一篇文章的节（§n · 字母 · 节 id · 帧 · open 数 · 网址），或一个 project 的文章、概念、空 ref
+  show <project>[/<article>] --uses <组件>  用到这个组件的帧和图
+  open <目标> [§2 | 概念名] [--print]    打开或打印网址：文章页、画布视图、概念页、project 首页
   check <project>[/<article>]          验证：布局错误、全部帧的编译与 lint、正文渲染错误、空 ref；有错退 1
   build <目标> [--frame <帧>] [--watch]  编译帧到 dist
   render <目标>/<帧 id>                 编译一帧打到 stdout，不落 dist
@@ -24,8 +31,8 @@ ${ADDRESS}
 评论与标注
   comments <目标>                       读标注队列：画布标注和正文评论（目标可以是整个 project）
   locate <目标> <引用…>                  标注 → 源文件:行 · 组件
-  reply <project>/<article>#<n> "<回复>" 在正文评论的线程里回一句（不改状态）
-  mark <目标> <引用…> done|check         写状态
+  mark <目标> <引用…> done|check [--note "<回复>"]  写状态；--note 同时在线程里回一句
+  reply <目标> <引用…> "<回复>"           只在线程里回一句（不改状态）
 
 服务
   status | start | stop | restart      体检、起停常驻服务
@@ -34,6 +41,7 @@ ${ADDRESS}
   add <project 根> --project            登记一个 project
   add / move / rename / remove / folder / migrate / prune   存量页的登记、迁移与清理
 
+每个命令都认 --json（stdout 只出一个 JSON）。退出码：0 成功 · 1 有问题（验证错误、引用没命中、服务没答）· 2 用法错或找不到目标。
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
 
 const REGISTRY_FLAG = '  --registry <路径>    用哪份登记表（缺省 PINPOINT_REGISTRY，再缺省 ~/.pinpoint/registry.json）';
@@ -43,8 +51,8 @@ const TARGET_NOTE = `  目标是第一个参数：<project>/<article> 或存量�
 /** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
 export const HELP = {
   show: {
-    usage: 'ppnt show <project>[/<article>] [--json]',
-    text: `用法：ppnt show <project>[/<article>] [--json]
+    usage: 'ppnt show <project>[/<article>] [--uses <组件>] [--json]',
+    text: `用法：ppnt show <project>[/<article>] [--uses <组件>] [--json]
 
 一篇文章：每节一行 §n · 字母 · 节 id · 标题 · 帧数 · open 数（画布标注 + 正文评论），
   下面是这一节的帧（编号 · 帧 id · 源文件）和网址（文章页锚点、画布视图）。纯文字的节也列，
@@ -53,10 +61,14 @@ export const HELP = {
 布局错误里也列正文里的图（<Figure>）编不过、在浏览器里运行出错的那些；过期的图先重编。
 存量页：编号 · 帧 id · 源文件（同 list <页 id> --frames）。
 
+  --uses <组件>        只列用到这个组件的帧（编号 · 帧 id）和图，改了组件后照这张单子截图。
+                       组件写名字（ConfirmCard）或文件（components/ConfirmCard.jsx）；帧和图会先编到最新。
+                       一个都没用到时退 1
   --json               结构化输出
 ${REGISTRY_FLAG}
 
-例：ppnt show browser-use/payment-confirm`,
+例：ppnt show browser-use/payment-confirm
+    ppnt show browser-use --uses ConfirmCard`,
   },
   check: {
     usage: 'ppnt check <project>[/<article>] [--json]',
@@ -82,7 +94,8 @@ ${REGISTRY_FLAG}
     text: `用法：ppnt comments <目标>[#n] [选项]
 
 读标注队列（只读）：画布标注按帧分组，给序号、编号、正文、意图、源码摘录；正文评论单独一组，
-给引文、节、index.mdx 里的落脚行和整个线程。抬头是各状态的计数。
+给引文、节、index.mdx 里的落脚行和整个线程；agent 的回复列在每一条下面。抬头是各状态的计数。
+dist 不在或落后于源码时先编一次（stderr 打一行说明），不用先 build。
 目标可以是一篇文章、一个存量页，也可以是整个 project（逐篇列出有条目的文章）。
 <目标>#n 只看这一条（缺省 --status all）。
 
@@ -107,6 +120,7 @@ ${TARGET_NOTE.split('\n')[0]}
 
   --frame <帧 id>      只编一帧（其余帧的记录保留）；--screen 是旧写法
   --watch              编完后盯目录，改动自动重编（Ctrl-C 退出）
+  --json               结构化输出：{ target, ok, ms, partial, frames, figures }；不和 --watch 同用
 ${REGISTRY_FLAG}
 
 改完一篇文章要看全部问题（含正文渲染错误），用 ppnt check。`,
@@ -142,8 +156,63 @@ ${REGISTRY_FLAG}`,
   --status <状态>      加上这个状态的标注所在的帧
   --scale 1|2          像素倍数（缺省 1）
   --timeout <秒>       等文章站点就绪的上限（缺省 60）
+  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated? }], warnings, errors }
 ${REGISTRY_FLAG}
-${TARGET_NOTE}`,
+${TARGET_NOTE}
+
+文章页截到一半（正文渲染出错，页面里没有正文结束标记）：图照样存下，stderr 打一行“注意”，退 1；
+ppnt check <project>/<article> 给出错在哪一行。`,
+  },
+  new: {
+    usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article <project>/<article> [--title <标题>]',
+    text: `用法：ppnt new project <目录> [--id <id>] [--title <标题>]
+      ppnt new article <project>/<article> [--title <标题>]
+
+new project：在 <目录>/docs/pinpoint/ 下写 project.json，建空的 articles/ 和 concepts/，再登记（同 ppnt add <目录> --project）。
+  id 缺省取目录名（小写、连字符）。project.json 已经在就不改它，只补登记。
+new article：在 project 里建 articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>，
+  打印文章页网址和下一步。project 要先登记；index.mdx 已经在就拒绝，不覆盖。
+两个命令都不覆盖已有文件，打印写了哪些、跳过了哪些。
+
+  --id <id>            project id（只用于 new project）
+  --title <标题>        project 或文章的标题（缺省用 id）
+  --json               结构化输出：{ kind, address, files, skipped, registered, urls, next }
+${REGISTRY_FLAG}
+
+例：ppnt new project ~/work/browser-use --title "Browser Use"
+    ppnt new article browser-use/payment-confirm --title 付款确认`,
+  },
+  open: {
+    usage: 'ppnt open <目标> [§2 | 节 id | 概念名] [--print] [--json]',
+    text: `用法：ppnt open <目标> [§2 | 节 id | 概念名] [--print] [--json]
+
+打开或打印网址（地址按 PINPOINT_ORIGIN，缺省 ${DEFAULT_ORIGIN}）：
+  ppnt open <project>/<article>          文章页、画布视图（没有带画布的节时不打）
+  ppnt open <project>/<article> §2       文章页上那一节的锚点，和画布视图里那一节（纯文字的节只有锚点）
+  ppnt open <project>                    project 首页、llms.txt、每篇文章、每个概念页
+  ppnt open <project> <概念名>            那个概念页
+不带 --print 时用系统浏览器打开第一个网址，其余照样打印。
+
+  --print              只打印，不打开浏览器
+  --json               结构化输出：{ target, urls: [{ kind, label, url }] }
+${REGISTRY_FLAG}`,
+  },
+  dev: {
+    usage: 'ppnt dev --sandbox [<目录>] [--port <端口>] [--site-port <端口>]',
+    text: `用法：ppnt dev --sandbox [<目录>] [--port <端口>] [--site-port <端口>]
+
+起一个和 owner 的常驻服务完全分开的服务，前台常驻，Ctrl-C（或 kill 它打印的 pid）停服务和文章站点。
+  数据目录      <目录>（缺省新建一个临时目录），标注、dist、截图都写这里
+  登记表        <目录>/registry.json
+  端口          --port，缺省从 6400 起找一个空的；文章站点 --site-port，缺省端口 + 5
+  起法          在 pinpoint 仓库里跑 npm run dev:app（直接起 vite，不经 portless，不碰 pinpoint.localhost）
+就绪后打印一行要 export 的变量，同时写进 <目录>/env.sh。另一个终端里先 source 它，之后的 ppnt 命令都对着这个服务：
+  source <目录>/env.sh && ppnt new project /tmp/demo
+不接受 owner 的端口（4134、站点 4530、5199）和 ~/.pinpoint。
+
+  --port <端口>         服务端口
+  --site-port <端口>    文章站点端口
+  --json               就绪时 stdout 打一行 JSON：{ dataDir, registry, origin, port, sitePort, pid, envFile }`,
   },
   locate: {
     usage: 'ppnt locate <目标> <引用…> [--status <状态>]',
@@ -155,31 +224,42 @@ ${TARGET_NOTE}`,
 ${TARGET_NOTE}
 
   --status <状态>      加上这个状态的全部标注（open | check | done | close | all）
+  --json               结构化输出：{ target, rows: [{ n, type, status, frame?, section?, file?, line?, text }], empty, errors }
 ${REGISTRY_FLAG}
+
+引用指到的帧或节上没有标注：打一行说明，退 0。引用没命中（没有这条、这一帧）：退 1。
 
 例：ppnt locate browser-use/payment-confirm '#3' B1`,
   },
   mark: {
-    usage: 'ppnt mark <目标> <引用…> done|check',
-    text: `用法：ppnt mark <目标> <引用…> done|check
+    usage: 'ppnt mark <目标> <引用…> done|check [--note "<回复>"]',
+    text: `用法：ppnt mark <目标> <引用…> done|check [--note "<回复>"]
 
 写状态，走服务的状态端点（带 baseRevision），逐条打印结果；冲突或非法转换打 409 原因，不中断其他条。
 看了但不改 → check；改完 → done。open 由 owner 编辑时自动回，close 只有 owner 在工作台或文章右栏做。
+--note 先在这条标注的线程里回一句（改了什么、为什么没改），再写状态；回复失败时状态不写。
+画布标注、存量页的文档标注、正文评论都有线程，owner 在工作台标注列表、标注卡和文章右栏里看到。
 引用同 locate。
 ${TARGET_NOTE}
 
+  --note <回复>        同时回一句
   --status <状态>      加上这个状态的全部标注
+  --json               结构化输出：{ target, status, results: [{ n, ok, note?, error? }], errors, empty }
 ${REGISTRY_FLAG}
 
-例：ppnt mark browser-use/payment-confirm '#3' '#4' done`,
+例：ppnt mark browser-use/payment-confirm '#3' '#4' done
+    ppnt mark hosted-pages '#7' check --note "标题已经缩短，见 v2"`,
   },
   reply: {
-    usage: 'ppnt reply <project>/<article>#<n> "<回复>"',
-    text: `用法：ppnt reply <project>/<article>#<n> "<回复>"
-      ppnt reply <project>/<article> '#<n>' "<回复>"
+    usage: 'ppnt reply <目标>#<n> "<回复>"',
+    text: `用法：ppnt reply <目标>#<n> "<回复>"
+      ppnt reply <目标> '#<n>' "<回复>"
 
-在一条正文评论的线程末尾追加一条 agent 消息，走服务的回复端点（带 baseRevision），状态不动；
-要改状态另用 mark。画布标注没有线程，reply 会拒绝。zsh 里单独的 #n 要加引号。
+在一条标注的线程末尾追加一条 agent 消息，走服务的回复端点（带 baseRevision），状态不动。
+画布标注、存量页的文档标注、正文评论都可以回。要同时改状态用 mark … --note。zsh 里单独的 #n 要加引号。
+${TARGET_NOTE.split('\n')[0]}
+
+  --json               结构化输出：{ target, n, ok, status?, text?, error? }
 ${REGISTRY_FLAG}`,
   },
   list: {
@@ -193,6 +273,7 @@ open / check / done 计数 · 文件夹，次行源路径）。关键词在 id�
   ppnt list <页 id> --frames          编号 · 帧 id · 源文件 · 标题（同 ppnt show <存量页 id>）
 
   --frames             见上
+  --json               结构化输出：{ query, registry, projects, pages }
 ${REGISTRY_FLAG}`,
   },
   status: {
@@ -201,6 +282,7 @@ ${REGISTRY_FLAG}`,
 
 服务体检：路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry · project · 文章站点；全绿才退 0。
   --page <目标>        改报这一页的各状态计数、孤儿与 dist 是否过期（ppnt comments 的抬头有同样的计数）
+  --json               结构化输出：体检的每一项和总结论
 ${REGISTRY_FLAG}
 
 环境变量：

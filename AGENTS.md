@@ -68,14 +68,14 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 长命 vite 抱着启动时解析出的绝对路径，目录一搬会静默落回全部默认配置，表面还活着，必须
 `pinpoint restart`）。案例见 [`docs/debugging.md`](docs/debugging.md)。
 
-**`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、
-`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
-`show` / `check`（一篇文章的节和帧 / 验证）、`comments` / `locate` / `shot` / `mark` / `reply`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论），
-每个命令的选项是 `ppnt <命令> --help`，共用约定见 [`docs/registry.md`](docs/registry.md)“CLI”。第一个参数是目标：文章写 `<project>/<article>`，
+**`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、`dev --sandbox`（隔离服务）、
+`new project` / `new article`（脚手架）、`add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
+`show` / `check` / `open`（一篇文章的节和帧、`--uses` 查组件用在哪 / 验证 / 网址）、`comments` / `locate` / `shot` / `mark` / `reply`（读标注 / 定位 / 截图 / 写状态，`--note` 同时回复 / 只回复）。
+每个命令都认 `--json`，退出码 0 成功、1 有问题、2 用法错或找不到目标。每个命令的选项是 `ppnt <命令> --help`，共用约定见 [`docs/registry.md`](docs/registry.md)“CLI”。第一个参数是目标：文章写 `<project>/<article>`，
 存量页写它的 id。改完跑 `ppnt check <project>/<article>`，存量页跑 `ppnt build <页 id>`
 （或 `--watch` 挂着）——dist 落后于源码或某帧没编过时，那一帧出错误面板，
 重编即修，不要手改 `~/.pinpoint/dist/` 下的任何文件。标注四态 open / check / done / close：
-agent 只经 `ppnt mark <目标> <引用…> check|done` 写状态（`open` 由 owner 在工作台编辑时
+agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写状态（`open` 由 owner 在工作台编辑时
 自动回，`close` 只有 owner 在工作台做），
 字段与转换规则见 [`docs/annotation.md`](docs/annotation.md)。
 

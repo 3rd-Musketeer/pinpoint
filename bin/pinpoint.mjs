@@ -36,12 +36,26 @@ function spawnService({ cwd, logFile }) {
   return child;
 }
 
+/** 用系统浏览器打开一个网址（ppnt open 不带 --print）。 */
+function openUrl(url) {
+  const command = process.platform === 'darwin' ? 'open' : process.platform === 'win32' ? 'explorer' : 'xdg-open';
+  return new Promise((resolve, reject) => {
+    const child = spawn(command, [url], { stdio: 'ignore', detached: true });
+    child.once('error', reject);
+    child.once('spawn', () => {
+      child.unref();
+      resolve();
+    });
+  });
+}
+
 const code = await run(process.argv.slice(2), {
   cwd: process.cwd(),
   env: process.env,
   pidAlive,
   killPid: (pid, signal) => process.kill(pid, signal),
   spawnService,
+  openUrl,
   sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
 });
 process.exit(code);

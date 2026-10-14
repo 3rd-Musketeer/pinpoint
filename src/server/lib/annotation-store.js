@@ -54,6 +54,24 @@ function ownerThreadFingerprint(annotation) {
   return JSON.stringify([quote, owner]);
 }
 
+/**
+ * 盘上有、这次保存的行里没有的 agent 消息补回去（按 who + text + at 认同一条），保持盘上的先后。
+ * 没有要补的返回 null。
+ */
+export function keepAgentMessages(diskMessages, incoming) {
+  const disk = Array.isArray(diskMessages) ? diskMessages : [];
+  const next = Array.isArray(incoming) ? incoming.slice() : [];
+  const same = (a, b) => a && b && a.who === b.who && a.text === b.text && a.at === b.at;
+  const missing = disk.filter((m) => m && m.who === 'agent' && !next.some((n) => same(n, m)));
+  if (!missing.length) return null;
+  const out = [];
+  for (const m of disk) {
+    if (next.some((n) => same(n, m)) || missing.includes(m)) out.push(next.find((n) => same(n, m)) || m);
+  }
+  for (const m of next) if (!out.some((o) => same(o, m))) out.push(m);
+  return out;
+}
+
 /** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt rename` 把它挪走了）。
     这次写什么都没落盘：临时文件已清掉，旧账本（若还在）原样。路由回 503 bucket_gone。 */
 export class BucketGoneError extends Error {
@@ -332,6 +350,9 @@ export function createAnnotationStore(options) {
         } else if (!isLegalTransition(before.status, a.status)) {
           return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${a.status}（check / done 只经 /status 端点）`, doc: disk };
         }
+        // agent 的回复只经 /reply 写：客户端带来的快照比盘上旧、少了这几条时照留（不丢 agent 的话）。
+        const merged = keepAgentMessages(before.messages, a.messages);
+        if (merged) a.messages = merged;
       }
       annotations.push(a);
     }
@@ -392,7 +413,8 @@ export function createAnnotationStore(options) {
     return { status: 200, doc, annotation: annotations[index] };
   }
 
-  /** ppnt reply 的后端：往一条正文评论的线程末尾追加一条 agent 消息，状态不动。 */
+  /** ppnt reply 的后端：往一条标注的线程末尾追加一条 agent 消息，状态不动。任何一种标注都有线程：
+      正文评论、画布标注、文档页标注（docs/annotation.md“线程”）。 */
   function appendMessage(input) {
     const safePage = ledgerKey(input.page ?? 'index');
     if (!Number.isInteger(input.baseRevision) || input.baseRevision < 0) {
@@ -409,9 +431,6 @@ export function createAnnotationStore(options) {
     const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
     if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
     const before = disk.annotations[index];
-    if (before.type !== 'prose') {
-      return { status: 400, error: 'not_a_thread', detail: `#${before.n} 不是正文评论，没有线程`, doc: disk };
-    }
     const message = { who, text, at: now().toISOString() };
     const annotations = disk.annotations.slice();
     annotations[index] = { ...before, messages: [...(Array.isArray(before.messages) ? before.messages : []), message] };

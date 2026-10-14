@@ -9,7 +9,7 @@ import { refLikeFrameIds, refLikeTitles } from '../../src/workbench/lib/board-re
 
 import { REPO_ROOT, ioOf } from './core.js';
 import { resolveRegistryPath } from './registry.js';
-import { guardParse, reportUsageError } from './args.js';
+import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { reportMissingTarget } from './list.js';
 import { displayAddress, toPageRef } from './address.js';
 
@@ -120,11 +120,24 @@ export async function runBuild(argv, io = {}) {
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
   const { env, out, err } = ioOf(io);
+  if (parsed.flags.json && parsed.flags.watch) return reportUsageError('build', '--json 和 --watch 不能同用（--watch 一直输出）', err);
   const target = pageTargetOrReport(parsed.target, parsed.flags, { env, err });
-  if (!target) return 1;
+  if (!target) return USAGE_EXIT;
   const distRoot = path.join(dataRoot(env), 'dist');
   // --frame 是现在的写法，--screen 是旧写法（同义）。
   const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.frame || parsed.flags.screen || null });
+  if (parsed.flags.json) {
+    out(JSON.stringify({
+      target: displayAddress(first.entryId),
+      ok: first.ok,
+      ms: first.ms,
+      partial: first.partial,
+      frames: first.screens,
+      figures: first.figures || [],
+      ...(first.error ? { error: first.error } : {}),
+    }, null, 2));
+    return first.ok ? 0 : 1;
+  }
   printBuildResult(first, { out, err });
   const refLike = refLikeIdNotice(target);
   if (refLike) out(refLike);
@@ -160,7 +173,7 @@ export async function runRender(argv, io = {}) {
   const pageRef = String(toPageRef(ref.slice(0, slash)));
   const screenId = ref.slice(slash + 1);
   const target = pageTargetOrReport(pageRef, parsed.flags, { env, err });
-  if (!target) return 1;
+  if (!target) return USAGE_EXIT;
   const result = await renderScreenHtml(target, screenId);
   if (!result.ok) {
     err(`编译失败：${result.error}`);

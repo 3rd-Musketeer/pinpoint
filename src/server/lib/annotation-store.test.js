@@ -365,8 +365,27 @@ test('appendMessage：agent 回复追加到线程末尾，状态不动；只认�
   assert.deepEqual(ok.annotation.messages, [{ who: 'agent', text: '改了，见 B4', at: '2026-07-10T00:00:00.000Z' }]);
   assert.equal(ok.annotation.status, 'check', '回复不改状态');
 
-  store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布' }] });
-  assert.equal(store.appendMessage({ page: '@canvas', id: 'c1', text: 'x', baseRevision: 1 }).error, 'not_a_thread');
+  // 画布标注、文档页标注也有线程：agent 改完在这里说明改了什么。
+  store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布', status: 'open' }] });
+  const canvas = store.appendMessage({ page: '@canvas', id: 'c1', text: '标题改成了冲煮日志', baseRevision: 1 });
+  assert.equal(canvas.status, 200);
+  assert.deepEqual(canvas.annotation.messages.map((m) => [m.who, m.text]), [['agent', '标题改成了冲煮日志']]);
+  store.save({ page: 'docs-guide', baseRevision: 0, annotations: [{ id: 'd1', type: 'element', selector: 'h1', text: '指南', content: '标题太长' }] });
+  assert.equal(store.appendMessage({ page: 'docs-guide', id: 'd1', text: '缩成了四个字', baseRevision: 1 }).status, 200);
+});
+
+test('/save 留住 agent 的回复：客户端快照比盘上旧、少了回复时照留，不算编辑', (t) => {
+  const { store } = withStore(t);
+  const row = { id: 'd1', type: 'element', selector: 'h1', text: '指南', content: '标题太长', status: 'open' };
+  store.save({ page: 'docs-guide', baseRevision: 0, annotations: [row] });
+  store.setStatus({ page: 'docs-guide', id: 'd1', status: 'check', baseRevision: 1 });
+  store.appendMessage({ page: 'docs-guide', id: 'd1', text: '缩成了四个字', baseRevision: 2 });
+  // 工作台拿的是回复之前的快照（没有 messages），改了个无关字段后整份存回来。
+  const saved = store.save({ page: 'docs-guide', baseRevision: 3, annotations: [{ ...row, status: 'check', lastRect: { x: 1 } }] });
+  assert.equal(saved.status, 200);
+  const after = saved.doc.annotations[0];
+  assert.deepEqual(after.messages.map((m) => [m.who, m.text]), [['agent', '缩成了四个字']]);
+  assert.equal(after.status, 'check', '补回 agent 的回复不算 owner 编辑');
 });
 
 test('/save 正文评论：owner 回复或改引文回 open；agent 消息原样回存不算编辑', (t) => {

@@ -53,6 +53,15 @@ Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到
 
 ## 登记
 
+新 project 用脚手架，它写 `project.json`、建空的 `articles/` 和 `concepts/`，再登记：
+
+```shell
+ppnt new project <project 根> [--id <id>] [--title <标题>]
+ppnt new article <project>/<article> [--title <标题>]   # 写 articles/<article>/index.mdx：frontmatter + 一节
+```
+
+两个命令都不覆盖已有文件，细节见 [`docs/registry.md`](registry.md)“CLI”。已经有 `project.json` 的 project 直接登记：
+
 ```shell
 pinpoint add <project 根> --project
 ```
@@ -371,7 +380,7 @@ pinpoint migrate <页 id> --project <project 根> --dry-run
 pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 ```
 
-- project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出。project 不登记也能迁，登记了才能在服务里打开画布和正文。
+- project 根下要已有 `docs/pinpoint/project.json`，没有就报错退出（先 `ppnt new project <根>`）。project 不登记也能迁，登记了才能在服务里打开画布和正文。
 - 文章 id 缺省用存量页的 id，新文章的页 id 是 `<project>_<article>`。`articles/<文章 id>/` 已存在就拒绝，不覆盖。
 - 旧页的文件和登记都不动。标注不迁：旧页的标注留在旧页的桶里，新文章用新桶 `<project>_<article>`，命令输出里也写明这一点。
 - 新桶 `<project>_<article>` 在数据目录里已经有标注行（删掉或改了名的文章留下的孤儿桶）时拒绝，`--dry-run` 也一样：迁完这个 id 又是活页，旧行会挂到新文章上。换 `--article`，或先 `ppnt prune <project>_<article>`。
@@ -403,6 +412,8 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 写完之后从新的 `index.mdx` 派生 board（和服务同一条路），逐帧编译到临时目录，与旧页的渲染逐行比，打一张表：编号 · 帧 · 来源（复制 / comp 生成）· shell · 编译 · 与旧页。最后一列是“相同”、“只差地址”或“差 n 行”。“只差地址”指把旧页 HTML 里的旧地址换成新地址，再去掉几份资源合并后重复的注入行，两边逐字相同。有帧编不过、或某帧的 shell 和旧页不同，退 1，文件照样写，修好后跑 `ppnt build <新页 id>`。
 
 编译只写临时目录，不写数据目录的 dist。project 登记后，服务的 watcher 会自己编这篇。
+
+命令最后列出下一步，按顺序编号：project 没登记时先登记；`ppnt check` 验证整篇；`ppnt shot <新地址> --canvas` 和 `ppnt shot <旧页 id>` 对比；把每节的 `{/* 正文 */}` 换成文字；旧页还有几条没关的标注、怎么处理；撤旧页由 owner 定（dir 条目是 `ppnt remove <旧页 id>`，模板页要改 pinpoint 仓库）。`--dry-run` 只提示去掉它再跑；有帧编不过时，第二步换成“修好再验证”。
 
 实现在 `src/server/lib/page-migrate.js`（`planPageMigration`、`writeMigration`、`verifyMigration`），命令在 `bin/cli/migrate.js`。
 
