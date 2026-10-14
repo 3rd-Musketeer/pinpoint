@@ -21,14 +21,21 @@ const posix = (p) => p.split(path.sep).join('/');
 
 function watchAll(ctx, source, reload) {
   if (!ctx.watcher) return;
-  const targets = [source.registryPath, ...source.projects.map((p) => p.dir)];
-  ctx.watcher.add(targets);
+  // 盯的目录跟着登记表走：每次重读后按新的 project 清单重算，登记之后才有的 project
+  // （ppnt new project / add --project）里新建的文章也能读到。
+  let targets = [];
+  const track = (next) => {
+    if (!next) return;
+    targets = [next.registryPath, ...next.projects.map((p) => p.dir)];
+    ctx.watcher.add(targets);
+  };
+  track(source);
   const hit = (changed) => targets.some((t) => changed === t || changed.startsWith(t + path.sep));
   let timer = null;
   const onChange = (changed) => {
     if (!hit(changed)) return;
     clearTimeout(timer);
-    timer = setTimeout(() => reload().catch((e) => ctx.logger.error(e.message)), 50);
+    timer = setTimeout(() => reload().then(track).catch((e) => ctx.logger.error(e.message)), 50);
   };
   ctx.watcher.on('change', onChange);
   ctx.watcher.on('add', onChange);

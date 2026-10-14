@@ -288,6 +288,7 @@ export async function waitArticleReady(request, url, { timeoutMs, pollMs = 500 }
       const reason = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
       throw new Error(`文章站点起不来（502）：${reason}`);
     }
+    if (status === 500) throw new Error(`文章页 ${url} 返回 500：正文多半渲染出错，跑 ppnt check 看是哪一行`);
     if (status && status !== 503 && !(status === 404 && Date.now() - started < 10000)) {
       throw new Error(`文章页 ${url} 返回 ${status}`);
     }

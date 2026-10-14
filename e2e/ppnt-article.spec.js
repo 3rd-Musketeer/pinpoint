@@ -18,6 +18,8 @@ const ARTICLE = 'e2e-project/commit-confirm';
 const SHOT_DIR = path.join(E2E_DATA_DIR, 'shot', 'e2e-project_commit-confirm');
 const BROKEN_ID = 'e2e-ppnt-broken';
 const BROKEN_ROOT = path.join(E2E_SITES_DIR, 'ppnt-broken');
+const NEW_ID = 'e2e-ppnt-new';
+const NEW_ROOT = path.join(E2E_SITES_DIR, 'ppnt-new');
 
 async function ppnt(args) {
   try {
@@ -41,8 +43,9 @@ function pngSize(file) {
 test.afterEach(async () => {
   // 登记的坏 project 一定撤掉：同组后面的 spec 会数工作台左栏的文章。
   const registry = JSON.parse(fs.readFileSync(E2E_REGISTRY, 'utf8'));
-  if (registry.entries.some((entry) => entry.id === BROKEN_ID)) await ppnt(['remove', BROKEN_ID]);
+  for (const id of [BROKEN_ID, NEW_ID]) if (registry.entries.some((entry) => entry.id === id)) await ppnt(['remove', id]);
   fs.rmSync(BROKEN_ROOT, { recursive: true, force: true });
+  fs.rmSync(NEW_ROOT, { recursive: true, force: true });
 });
 
 test('ppnt shot <project>/<article>：等站点就绪后截文章页整页、§2 那一节；编号照旧截画布', async () => {
@@ -124,10 +127,36 @@ test('ppnt check 抓到正文渲染错误（<Foo />），站点渲染同一篇�
     }
   });
 
+  await test.step('shot 截到半篇：退 1，提示正文渲染出错、指向 ppnt check', async () => {
+    const res = await ppnt(['shot', `${BROKEN_ID}/commit-confirm`, '--timeout', '150']);
+    expect(res.code, res.stdout + res.stderr).toBe(1);
+    // 200 断在正文开头：截了图并警告；500：直接报错。两种都指向 check。
+    expect(res.stderr).toMatch(/正文中途断了|返回 500/);
+    expect(res.stderr).toContain('ppnt check');
+  });
+
   await test.step('修好：check 退 0，站点渲染出整篇', async () => {
     fs.writeFileSync(index, good);
     const res = await ppnt(['check', `${BROKEN_ID}/commit-confirm`]);
     expect(res.code, res.stdout + res.stderr).toBe(0);
     await expect.poll(async () => (await articleStatus()).text.includes(BODY_TEXT), { timeout: 30_000 }).toBe(true);
   });
+});
+
+test('ppnt new project / new article：脚手架登记后，check 通过，shot 截出整篇（有正文结尾，不警告）', async () => {
+  test.setTimeout(240_000);
+  const made = await ppnt(['new', 'project', NEW_ROOT, '--id', NEW_ID, '--title', 'ppnt 脚手架', '--json']);
+  expect(made.code, made.stderr).toBe(0);
+  expect(JSON.parse(made.stdout).registered).toBe('now');
+  const article = await ppnt(['new', 'article', `${NEW_ID}/hello`, '--title', '你好']);
+  expect(article.code, article.stderr).toBe(0);
+  expect(article.stdout).toContain(`文章页：${E2E_BASE_URL}/${NEW_ID}/hello/`);
+  const check = await ppnt(['check', `${NEW_ID}/hello`]);
+  expect(check.code, check.stdout + check.stderr).toBe(0);
+  const shot = await ppnt(['shot', `${NEW_ID}/hello`, '--timeout', '150', '--json']);
+  expect(shot.code, shot.stdout + shot.stderr).toBe(0);
+  const report = JSON.parse(shot.stdout);
+  expect(report.warnings).toEqual([]);
+  expect(report.shots.map((row) => [row.kind, Boolean(row.truncated)])).toEqual([['article', false]]);
+  expect(pngSize(report.shots[0].out).width).toBe(1440);
 });
