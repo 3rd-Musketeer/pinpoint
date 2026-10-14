@@ -21,7 +21,7 @@
  * 并重新水合。 */
 
 import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
-import { onPageLeave, postSave } from './lib/save-request.js';
+import { newSaveId, onPageLeave, postSave } from './lib/save-request.js';
 import {
   applyProseOps,
   authorLabel,
@@ -203,6 +203,7 @@ export function startProseComments(options) {
   var rows = [];          // base + ops：界面看到的
   var hydrated = false;
   var inflight = false;
+  var inflightSaveId = '';  // 在途保存的 saveId：离开页面时的那份带 after 接在它之后
   var conflicts = 0;
   var remoteStash = null;
   var retryTimer = 0;
@@ -250,8 +251,10 @@ export function startProseComments(options) {
       path: PATH,
       updated_at: new Date().toISOString(),
       baseRevision: revision,
+      saveId: newSaveId(),
       annotations: applyProseOps(base, ops),
     };
+    inflightSaveId = body.saveId;
     // keepalive（够小时）：在途的保存在关页、导航走之后照样送达（lib/save-request.js）。
     postSave(SERVER, body)
       .then(function (res) {
@@ -318,8 +321,9 @@ export function startProseComments(options) {
   }
 
   /** 离开页面（关标签、导航走、切到后台）：排着的操作现在就发，不等应答。没有在途保存
-      → 照常 flush。有在途保存 → base + 全部操作按 revision 和 revision + 1 各发一次：
-      在途那次先到，+1 那份接上；这份先到，它直接落盘、在途那次 409。页面没走时，在途
+      → 照常 flush。有在途保存 → base + 全部操作以 revision 为底发一次，带 after = 在途那次
+      的 saveId：在途那次先到，服务端认出盘上那版是它写的，这份接上；这份先到，它直接落盘、
+      在途那次 409。谁先到盘上都是这份（与画布 annotate.js 同一套）。页面没走时，在途
       应答回来照旧，剩下的操作 409 后重放到盘上的新版；reply 按 at 去重，不会回两遍。 */
   var leaveSentOps = null;
   function flushOnLeave() {
@@ -327,17 +331,16 @@ export function startProseComments(options) {
     if (!inflight) { clearTimeout(retryTimer); flush(); return; }
     if (leaveSentOps === ops[ops.length - 1]) return;
     leaveSentOps = ops[ops.length - 1];
-    var annotations = applyProseOps(base, ops);
-    [revision, revision + 1].forEach(function (rev) {
-      postSave(SERVER, {
-        page: LEDGER,
-        entry: ENTRY,
-        path: PATH,
-        updated_at: new Date().toISOString(),
-        baseRevision: rev,
-        annotations: annotations,
-      }).catch(function () {});
-    });
+    postSave(SERVER, {
+      page: LEDGER,
+      entry: ENTRY,
+      path: PATH,
+      updated_at: new Date().toISOString(),
+      baseRevision: revision,
+      saveId: newSaveId(),
+      after: inflightSaveId,
+      annotations: applyProseOps(base, ops),
+    }).catch(function () {});
   }
 
   function enqueue(op) {

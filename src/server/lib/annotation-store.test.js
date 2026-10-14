@@ -35,6 +35,36 @@ test('save requires a valid base revision and rejects stale writers', (t) => {
   assert.deepEqual(stale.doc.annotations, [{ n: 1, status: 'open' }]);
 });
 
+test('离开页面的快照（after = 在途那次的 saveId）：在途那次先到还是后到，盘上都是快照', (t) => {
+  const { store } = withStore(t);
+  const page = 'index.html';
+  const row = (content) => [{ id: 'a1', content }];
+  assert.equal(store.save({ page, baseRevision: 0, saveId: 's0', annotations: row('一稿') }).status, 200);
+
+  // 在途那次（s1，以 rev 1 为底）先到，快照（以 rev 1 为底、接在 s1 之后）后到：接上。
+  assert.equal(store.save({ page, baseRevision: 1, saveId: 's1', annotations: row('二稿') }).status, 200);
+  const after = store.save({ page, baseRevision: 1, saveId: 's2', after: 's1', annotations: row('三稿') });
+  assert.equal(after.status, 200);
+  assert.equal(after.doc.revision, 3);
+  assert.equal(store.readDoc(page).annotations[0].content, '三稿');
+
+  // 反过来：快照先到按 baseRevision 落盘，在途那次随后 409。
+  const snapshot = store.save({ page, baseRevision: 3, saveId: 's4', after: 's3', annotations: row('五稿') });
+  assert.equal(snapshot.status, 200);
+  assert.equal(store.save({ page, baseRevision: 3, saveId: 's3', annotations: row('四稿') }).status, 409);
+  assert.equal(store.readDoc(page).annotations[0].content, '五稿');
+
+  // 盘上那一版不是 after 写的（别的窗口），或者差了不止一版：照旧 409。
+  assert.equal(store.save({ page, baseRevision: 5, saveId: 'w', annotations: row('别的窗口') }).status, 409);
+  assert.equal(store.save({ page, baseRevision: 4, saveId: 'w', annotations: row('别的窗口') }).status, 200);
+  assert.equal(store.save({ page, baseRevision: 4, after: 's4', annotations: row('晚到的快照') }).status, 409);
+  assert.equal(store.save({ page, baseRevision: 3, after: 'w', annotations: row('差两版') }).status, 409);
+  // 不带 saveId 的写（CLI、agent 直 POST）之后，谁也接不上它。
+  assert.equal(store.save({ page, baseRevision: 5, annotations: row('CLI') }).status, 200);
+  assert.equal(store.save({ page, baseRevision: 5, after: 'w', annotations: row('x') }).status, 409);
+  assert.equal(store.readDoc(page).annotations[0].content, 'CLI');
+});
+
 test('save atomically replaces the document without leaving temp files', (t) => {
   const { dataDir, store } = withStore(t);
 

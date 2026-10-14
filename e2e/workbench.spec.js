@@ -1675,8 +1675,11 @@ test('edits made while a save is in flight survive a page switch and back', asyn
 });
 
 // 离开页面不丢写：上一次保存还扣在路上时又改了一稿，随即整页离开（导航走）。
-// 离开时没落盘的写要经 keepalive 发出去；在途那次可能先到也可能后到，盘上最后
-// 都得是最后一稿。扣住的那次在离开之后才放行，时序因此是确定的。
+// 离开时没落盘的写经 keepalive 发出去；两份请求走各自的连接，谁先到都得落成最后一稿。
+// 快照先到的那一种顺序简单（它按 baseRevision 落盘，在途那次 409）；这里扣住两份、
+// 按难的顺序放行：在途那次先落盘，快照后到，靠 after 接上（服务端规则的各种顺序在
+// annotation-store.test.js）。2026-10-14 之前快照按 revision / revision + 1 各发一份，
+// 满载下 +1 那份抢先、本底那份落在在途那次之后，盘上停在第二稿。
 test('a save queued behind an in-flight one reaches the disk when the page is left', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.clear());
@@ -1696,13 +1699,17 @@ test('a save queued behind an in-flight one reaches the disk when the page is le
   ]);
   expect(await diskContents()).toBe('第一稿');
 
-  let releaseHeld;
-  const held = new Promise((resolve) => { releaseHeld = resolve; });
-  let heldStarted;
-  const started = new Promise((resolve) => { heldStarted = resolve; });
+  // 第 1 次保存（第二稿，在途那次）与第 2 次（离开时的快照）都扣住，各自等放行。
+  const gates = [0, 1].map(() => {
+    const gate = {};
+    gate.reached = new Promise((resolve) => { gate.arrive = resolve; });
+    gate.open = new Promise((resolve) => { gate.release = resolve; });
+    return gate;
+  });
   let saves = 0;
   await page.route('**/save', async (route) => {
-    if (++saves === 1) { heldStarted(); await held; }
+    const gate = gates[saves++];
+    if (gate) { gate.arrive(); await gate.open; }
     await route.continue().catch(() => {}); // 离开后被浏览器取消的请求 continue 会抛
   });
   const id = await page.evaluate(() => window.pinpoint.marks[0].id);
@@ -1713,13 +1720,16 @@ test('a save queued behind an in-flight one reaches the disk when the page is le
   await input.fill('第二稿');
   await page.keyboard.press('Escape');
   await expect(input).toHaveCount(0);
-  await started;
+  await gates[0].reached;
   await openById();
   await input.fill('第三稿');
   await page.keyboard.press('Escape');
   await expect(input).toHaveCount(0);
   await page.goto('/health');
-  releaseHeld();
+  await gates[1].reached;
+  gates[0].release();
+  await expect.poll(diskContents, { timeout: 10_000 }).toBe('第二稿');
+  gates[1].release();
   await expect.poll(diskContents, { timeout: 10_000 }).toBe('第三稿');
   await page.unroute('**/save');
 });
