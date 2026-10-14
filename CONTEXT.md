@@ -105,8 +105,8 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 页在不在看 `src/server/lib/page-resolve.js` 的 `pageIdIsLive`，活页桶里的账本看 `src/server/lib/orphans.js`
-表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas 或源文件删了、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
-要避开：去 `mark` 孤儿条目。
+表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas 或源文件删了、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数。桶目录在盘上就能读写：pending 的孤儿照样用 `ppnt mark` / `reply` 回，整桶孤儿也一样。清理只经 `ppnt prune <页 id>`，由 owner 决定。
+要避开：以为孤儿只能删、不能回；agent 替 owner 去 prune。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
 看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、全部页）。

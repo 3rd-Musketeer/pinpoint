@@ -462,3 +462,35 @@ test('article bucket: prose comments save to <project>_<article>/@prose.json; /r
   assert.equal(ghost.res.statusCode, 400);
   assert.equal(ghost.json.error, 'unknown_entry');
 });
+
+test('整桶孤儿：桶目录在盘上就能读、写状态、回复；桶不在或 id 不合页 id 形状照旧 400（E）', async (t) => {
+  const { dataRoot, registry, handler } = withFixture(t);
+  // 页已不在（文章删了、条目撤登记，或集成后被跳过的老 url 条目）：桶还在盘上。
+  const bucket = path.join(dataRoot, 'gone-page');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'app_x1.json'), JSON.stringify({
+    page: 'app_x1', path: '/sites/gone-page/app', revision: 2,
+    annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
+  }));
+  assert.deepEqual(resolveRequestEntry(registry, 'gone-page', [], { dataRoot }), { entry: 'gone-page' });
+  assert.deepEqual(resolveRequestEntry(registry, 'no-bucket', [], { dataRoot }), { entry: 'no-bucket', unknown: true });
+  // 桶检查只认页 id 形状：`..` 之类不拿去拼路径。
+  fs.mkdirSync(path.join(path.dirname(dataRoot), 'outside'), { recursive: true });
+  assert.deepEqual(resolveRequestEntry(registry, '../outside', [], { dataRoot }), { entry: '../outside', unknown: true });
+
+  const read = await call(handler, 'GET', '/annotations/app_x1?entry=gone-page');
+  assert.equal(read.res.statusCode, 200);
+  assert.equal(read.json.revision, 2);
+  const reply = await call(handler, 'POST', '/annotations/app_x1/1/reply', { entry: 'gone-page', baseRevision: 2, text: '那一页已经撤了' });
+  assert.equal(reply.res.statusCode, 200, JSON.stringify(reply.json));
+  const status = await call(handler, 'POST', '/annotations/app_x1/1/status', { entry: 'gone-page', baseRevision: 3, status: 'done' });
+  assert.equal(status.res.statusCode, 200, JSON.stringify(status.json));
+  const disk = JSON.parse(fs.readFileSync(path.join(bucket, 'app_x1.json'), 'utf8'));
+  assert.equal(disk.annotations[0].status, 'done');
+  assert.deepEqual(disk.annotations[0].messages.map((m) => [m.who, m.text]), [['agent', '那一页已经撤了']]);
+
+  const ghost = await call(handler, 'POST', '/annotations/app_x1/1/status', { entry: 'no-bucket', baseRevision: 0, status: 'done' });
+  assert.equal(ghost.res.statusCode, 400);
+  assert.equal(ghost.json.error, 'unknown_entry');
+  assert.ok(!fs.existsSync(path.join(dataRoot, 'no-bucket')));
+});

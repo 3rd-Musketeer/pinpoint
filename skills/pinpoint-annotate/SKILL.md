@@ -54,8 +54,9 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 
 `--frame B3` 收窄到一帧，`--group-by component` 按组件分组（组头给共用帧数），`--status all` 看 check / done / close，
 `--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注在 `@canvas.json`，正文评论在 `@prose.json`，
-文档页标注按页面路径各有一本（`<文件>~<hash>.json`，文章的每个 HTML 帧一本）。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了、那一屏从 board 删了、页没了），
-不计入计数。还没关的孤儿照样要回：`ppnt mark <目标> '#n' check|done --note "<回复>"` 和 `ppnt reply` 用 `#n` 或 `@a:<id>` 都指得到它们，
+文档页标注按页面路径各有一本（`<文件>~<hash>.json`，文章的每个 HTML 帧一本）。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了、那一屏从 board 删了、HTML 帧移出了 Canvas），
+不计入计数。页本身不在了（文章删了或改了名、条目撤了登记）而桶还在时，`comments <页 id>` 开头说“桶里 N 本账本全是孤儿”，下面照样列出行。
+还没关的孤儿照样要回：`ppnt mark <目标> '#n' check|done --note "<回复>"` 和 `ppnt reply` 用 `#n` 或 `@a:<id>` 都指得到它们，整桶孤儿的目标写它的页 id（或 `<project>/<article>`），
 比如说明那一屏已经删了、意见落到了哪里。`--status open` 这类批量写法不会带上孤儿。清理孤儿账本归 owner 走 `ppnt prune`。`comments` 只读，无副作用；不要为读标注重启服务。
 
 JSX 帧的源码摘录读 dist。dist 不在或落后于源码时，`comments` 和 `locate` 先编一次，在 stderr 打一行说明，摘录照常出来。HTML 帧不编译，摘录直接取那份 HTML 源文件。

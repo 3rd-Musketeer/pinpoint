@@ -5,7 +5,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
+import { bucketDir, bucketOnDisk, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { etagMatches } from './lib/etag.js';
 import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
@@ -155,11 +155,15 @@ function handleSse(req, res) {
 // 共用，common-m1.md §2），project 登记了、文章的 index.mdx 在盘上才算
 // （page-resolve.js）；project id 本身不是桶。判定在 page-resolve.js 的 pageIdIsLive，
 // prune 与孤儿报告用同一处。
-export function resolveRequestEntry(registry, raw, localIds = []) {
+// 页已不在、桶目录还在盘上（整桶孤儿：文章删了、条目撤了登记）也放行：孤儿照样能读、回复、
+// 写状态，清理只经 prune（docs/annotation.md“孤儿”）。不新建这种桶，见 storeFor 的 mayCreateBucket。
+export function resolveRequestEntry(registry, raw, localIds = [], { dataRoot: root = null } = {}) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
-  const known = id === DEFAULT_ENTRY || pageIdIsLive(registry, id, { manifestIds: localIds });
+  const known = id === DEFAULT_ENTRY || pageIdIsLive(registry, id, { manifestIds: localIds })
+    || (root !== null && bucketOnDisk(root, id));
   return known ? { entry: id } : { entry: id, unknown: true };
 }
+
 
 export function createAnnotateHandler(options = {}) {
   const root = options.dataRoot || dataRoot();
@@ -250,7 +254,7 @@ export function createAnnotateHandler(options = {}) {
   // Shared entry gate: resolve the request's target entry or answer the loud
   // 400. Returns the entry id, or null after sending the rejection.
   function entryOrReject(res, raw) {
-    const target = resolveRequestEntry(registry, raw, knownPageIds());
+    const target = resolveRequestEntry(registry, raw, knownPageIds(), { dataRoot: root });
     if (target.unknown) {
       sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
       return null;

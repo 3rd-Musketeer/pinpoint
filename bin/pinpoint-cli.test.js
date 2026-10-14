@@ -1813,6 +1813,40 @@ test('runComments：老登记表里的 url 条目读时跳过，它的桶整桶�
   assert.ok(rec.out.some((line) => line.includes('全是孤儿')), rec.out.join('\n'));
 });
 
+test('整桶孤儿照样能 mark / reply：老 url 条目的桶、删掉的文章的桶，目标解析认盘上的桶，comments 列出行（E）', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  // 集成后老登记表里的 url 条目读时被跳过：它的桶留在盘上，整桶是孤儿。
+  const bucket = path.join(made.data, 't-live');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'app_x1.json'), JSON.stringify({
+    page: 'app~x1', path: '/sites/t-live/app', revision: 2,
+    annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
+  }));
+  const comments = recorder();
+  assert.equal(await runComments(['comments', 't-live', '--registry', made.registry], { ...comments.io, env: made.env }), 0, comments.err.join('\n'));
+  assert.ok(comments.out[0].includes('全是孤儿'), comments.out.join('\n'));
+  assert.ok(comments.out.some((line) => line.includes('[#1]') && line.includes('线上页意见')), comments.out.join('\n'));
+
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (opts.method === 'POST') return { status: 200, json: { revision: 3, annotation: { status: 'done' } } };
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const mark = recorder();
+  assert.equal(await runMark(['mark', 't-live', '#1', 'done', '--note', '那一页撤了', '--registry', made.registry], { ...mark.io, env: made.env, requestFn }), 0, mark.err.join('\n'));
+  const posts = calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(posts.map((call) => call.url.replace(/^.*?\/annotations\//, '')), ['app_x1/1/reply', 'app_x1/1/status']);
+  assert.ok(posts.every((call) => call.body.entry === 't-live'));
+
+  calls.length = 0;
+  const reply = recorder();
+  assert.equal(await runReply(['reply', 'demo/gone#4', '文章已经删了', '--registry', made.registry], { ...reply.io, env: made.env, requestFn }), 0, reply.err.join('\n'));
+  const post = calls.find((call) => call.method === 'POST');
+  assert.match(post.url, /\/annotations\/%40canvas\/4\/reply$/);
+  assert.equal(post.body.entry, 'demo_gone');
+});
+
 /* ---- list ---- */
 
 test('runList: 关键词对上口头说法，计数读页桶，找不到时给出路', async (t) => {

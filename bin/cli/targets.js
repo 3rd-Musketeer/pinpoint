@@ -4,6 +4,7 @@
  * `@frame:<页 id>/<帧 id>`、`@section:<页 id>/<节 id>`。还是没有就报错并列候选，不猜
  * （从前缺目标时取 registry 第一页，`locate B1` 会静默落到别的页上）。
  */
+import { bucketOnDisk, dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { projectArticleTargets } from '../../src/server/lib/page-resolve.js';
 
@@ -56,7 +57,8 @@ export function pickTarget(parsed, { env, err, command, usage }) {
   let token = parsed.target || null;
   if (!token && refs.length && !looksLikeRef(refs[0]) && !String(refs[0]).includes('#')) {
     const hit = resolveAddress(refs[0], ctx);
-    if (hit || parseAddress(refs[0])?.kind === 'article') token = refs.shift();
+    // 页已不在、桶还在盘上（整桶孤儿）的页 id 也是目标：孤儿照样能 mark / reply。
+    if (hit || parseAddress(refs[0])?.kind === 'article' || bucketOnDisk(dataRoot(env), String(toPageRef(refs[0])))) token = refs.shift();
   }
   // `@page:<页 id>`（工作台“复制 @page”给的）写在第一个就是目标，和写页 id 一样。
   if (!token && refs.length && parseIndicator(refs[0])?.kind === 'page') token = refs.shift();
