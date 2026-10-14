@@ -12,12 +12,17 @@
  *
  * collectHtmlFrameAssets(file, { root }) 从一个 HTML 帧出发顺着引用走：HTML 帧本身、iframe / frame 里的
  * HTML、CSS、JS 继续往下扫，其他文件（图片、字体、下载文件、`<a href>` 指的页面）只记不扫。
- *   → { files: [{ file, from, line, url }], missing: [{ from, line, url, file }], outside: [{ from, line, url, file }] }
- * files 是找到的文件（不含起点），missing 是不在盘上的，outside 是解析到 root 外面的（root 缺省不限）。
+ *   → { files: [{ file, from, line, url }], missing: [{ from, line, url, file }], outside: [{ from, line, url, file, reason }] }
+ * files 是找到的文件（不含起点），missing 是不在盘上的，outside 是服务出不来的（root 缺省不限）。给了 root 时，
+ * 每个引用按 /sites/ 出文件的同一条规则判（lib/servable-file.js 的 resolveServableFile）：outside 的 reason 是
+ * 'outside'（按文本或按真实路径在 root 外面，含指出去的 symlink）或 'denied'（`.` 开头的段，含 symlink 的真实落点）；
+ * 指向目录的引用按服务的做法落到它的 index.html。
  * 每个 from 是引用它的那个文件，line 是那一行（1 起）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { resolveServableFile } from './servable-file.js';
 
 const SKIP_URL = /^(?:$|#|\/|[a-z][a-z0-9+.-]*:)/i;
 const TEMPLATE = /\$\{|\{\{|\}\}|<%/;
@@ -138,11 +143,16 @@ export function collectHtmlFrameAssets(start, { root = null } = {}) {
     for (const ref of refs) {
       const rel = localRef(ref.url);
       if (rel === null) continue;
-      const abs = path.resolve(path.dirname(from), rel);
+      let abs = path.resolve(path.dirname(from), rel);
       const row = { from, line: lineAt(text, ref.index), url: ref.url, file: abs };
-      if (base && !within(base, abs)) {
-        outside.push(row);
-        continue;
+      if (base) {
+        const found = within(base, abs) ? resolveServableFile(base, path.relative(base, abs)) : { reason: 'outside' };
+        if (found.reason === 'outside' || found.reason === 'denied') {
+          outside.push({ ...row, reason: found.reason });
+          continue;
+        }
+        if (found.file) abs = found.file;
+        row.file = abs;
       }
       if (seen.has(abs)) continue;
       seen.add(abs);

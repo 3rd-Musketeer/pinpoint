@@ -79,7 +79,7 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 - `Canvas` 写在 Section 里，一节最多一个。`frames` 写字面量数组，每一项是本篇目录下一个帧的 id（`<帧 id>.jsx` 或 `<帧 id>.html`），或 HTML 帧的 `{ id, src }`（见本节最后一条）。没有 Canvas 的节不进画布。
 - `frames` 不能引别的文章或存量页的帧（`"<页 id>/<帧 id>"` 会报错）。要用别处的帧，把帧文件和它 import 的组件复制进本篇目录。
 - `Canvas` 可以带字面量 `shell`：`app`（缺省，手机壳）、`lock`、`doc`、`comp`（裸组件，不带机壳）。它管这一节的所有帧。
-- 生成出来的整份网页也能当帧（HTML 帧）：本篇目录下的 `<帧 id>.html` 直接写 id；页面在 project 根下别处，写 `{ id: "catalog", src: "<相对 project 根的路径>" }`；在 project 根外面（比如另一个仓里的示例页），先在 `project.json` 的 `sources` 里给那个目录起个名字（`"sources": { "skill": "<目录>" }`），再写 `src: "skill:preview.html"`。文件都留在原处，不复制。页面里的相对资源照原样取，断了的 `ppnt check` 会报。卡片和浮层缺省按手机宽 402 排页面，卡片头和浮层头的“手机 / 桌面”开关切到桌面宽 1280，页面里不用放宽度切换。节没写 `shell` 时 HTML 帧套 `doc` 机壳，写了就用节的；JSX 帧和 HTML 帧可以在同一节，HTML 帧照样占一个编号（如 `B2`）。画布视图里 HTML 帧是文档条目，不在画布那一行，owner 选中它、标注页面里的元素；`ppnt shot <project>/<article> B2` 按 402 宽截它的整页。规则见 docs/projects.md“HTML 帧”。
+- 生成出来的整份网页也能当帧（HTML 帧）：本篇目录下的 `<帧 id>.html` 直接写 id；页面在 project 根下别处，写 `{ id: "catalog", src: "<相对 project 根的路径>" }`；在 project 根外面（比如另一个仓里的示例页），先在 `project.json` 的 `sources` 里给那个目录起个名字（`"sources": { "skill": "<目录>" }`），再写 `src: "skill:preview.html"`。文件都留在原处，不复制。页面里的相对资源照原样取，断了的 `ppnt check` 会报。页面和资源要真的在那个目录里：符号链接指到外面、`.` 开头的文件，服务都不出，check 报错。卡片和浮层缺省按手机宽 402 排页面，卡片头和浮层头的“手机 / 桌面”开关切到桌面宽 1280，页面里不用放宽度切换。节没写 `shell` 时 HTML 帧套 `doc` 机壳，写了就用节的；JSX 帧和 HTML 帧可以在同一节，HTML 帧照样占一个编号（如 `B2`）。画布视图里 HTML 帧是文档条目，不在画布那一行，owner 选中它、标注页面里的元素；`ppnt shot <project>/<article> B2` 按 402 宽截它的整页。规则见 docs/projects.md“HTML 帧”。
 
 ### 画哪些帧
 

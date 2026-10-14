@@ -199,7 +199,7 @@ export default function ConfirmBare() {
 - 宽度：卡片和浮层按手机 402（画布视图手机屏的宽度）或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（402 × 874 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
 - 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素（文档页标注），锚点是 CSS 路径加元素文字，和存量页的文档条目一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
 - 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 402 宽截整页，先等页面里懒加载的 iframe 和图片加载完，`--marks` 在元素上标出标注号。`ppnt shot <project>/<article> --canvas` 给每个 HTML 帧各截一张，见 [`docs/registry.md`](registry.md)“`ppnt shot`”。
-- `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；指到范围外面，是错误 `html_asset_outside`。范围是这一帧所在的目录：本篇目录、project 根，或那个 source 目录。
+- `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；服务出不来，是错误 `html_asset_outside`：指到范围外面、符号链接指出去、`.` 开头的文件。范围是这一帧所在的目录：本篇目录、project 根，或那个 source 目录。check 和服务用同一个函数判，check 不报的文件，服务一定出得来。
 
 ### 页 id
 

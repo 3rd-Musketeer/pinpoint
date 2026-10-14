@@ -278,6 +278,24 @@ test('ppnt check：HTML 帧引用的文件不在盘上是警告，越出可服�
   assert.deepEqual(result.diagnostics.map((d) => [d.severity, d.code, d.line]), [['error', 'html_asset_outside', 10]]);
 });
 
+test('ppnt check 与服务同一条规则：指出范围的 symlink、. 开头的文件，check 报错、服务 404', async (t) => {
+  const { dir, root, registry, pageId } = fixture(t);
+  write(path.join(dir, 'outside.css'), '.outside {}\n');
+  fs.symlinkSync(path.join(dir, 'outside.css'), path.join(root, 'shared', 'escape.css'));
+  write(path.join(root, 'shared', '.hidden.css'), '.h {}\n');
+  write(path.join(root, 'shared', 'cat.html'), PAGE('目录', '\n<link rel="stylesheet" href="escape.css">\n<link rel="stylesheet" href=".hidden.css">'));
+  const found = collectHtmlFrameAssets(path.join(root, 'shared', 'cat.html'), { root });
+  assert.deepEqual(found.outside.map((row) => [row.url, row.reason]), [['escape.css', 'outside'], ['.hidden.css', 'denied']]);
+  assert.deepEqual(found.files.map((row) => path.relative(root, row.file)).sort(), ['shared/img/bg.svg', 'shared/page.css', 'tokens.css']);
+  const result = await checkProject(registry, 'demo', { articleId: 'pages' });
+  const rows = result.diagnostics.filter((d) => d.frame === 'cat');
+  assert.deepEqual(rows.map((d) => [d.severity, d.code, d.line]), [['error', 'html_asset_outside', 10], ['error', 'html_asset_outside', 11]]);
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['@root/shared/escape.css', '@root/shared/.hidden.css']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+});
+
 test('html-frame-assets：只收相对路径，顺着 CSS、内嵌 HTML 和 JS 走', (t) => {
   const { root } = fixture(t);
   assert.equal(localRef('https://x/y.png'), null);
