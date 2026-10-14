@@ -163,6 +163,62 @@ test('服务：HTML 帧从源文件出并注入标注客户端，@root 只出 pr
   }
 });
 
+test('服务：三条出文件的分支同一套规则，文章目录里 . 开头的段和指出去的 symlink 都 404', async (t) => {
+  const { dir, root, article, registry, pageId } = fixture(t);
+  write(path.join(article, '.env'), 'SECRET=article\n');
+  write(path.join(article, '.cache', 'x.css'), '.x {}\n');
+  write(path.join(dir, 'outside.css'), '.outside {}\n');
+  fs.symlinkSync(path.join(dir, 'outside.css'), path.join(article, 'escape.css'));
+  fs.symlinkSync(path.join(article, '.env'), path.join(article, 'alias.txt'));
+  fs.symlinkSync(path.join(root, '.env'), path.join(root, 'shared', 'alias.txt'));
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['.env', '.cache/x.css', 'escape.css', 'alias.txt', '@root/shared/alias.txt', '@root/.env']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  assert.equal((await get(handler, `/sites/${pageId}/page.css`)).statusCode, 200);
+});
+
+test('本篇的 HTML 帧是指出文章目录的 symlink：布局错误 frame_src，不进画布，服务 404', async (t) => {
+  const { dir, article, registry, pageId } = fixture(t);
+  write(path.join(dir, 'outside.html'), PAGE('外面的 sentinel'));
+  fs.symlinkSync(path.join(dir, 'outside.html'), path.join(article, 'escape.html'));
+  fs.appendFileSync(path.join(article, 'index.mdx'), '<Section id="esc" title="越界">\n\n<Canvas frames={["escape"]} />\n\n</Section>\n');
+  const handler = createSitesHandler({ registry });
+  const res = await get(handler, `/sites/${pageId}/escape.html?annotate=off`);
+  assert.equal(res.statusCode, 404);
+  assert.doesNotMatch(String(res.text || res.body || ''), /sentinel/);
+  const target = resolveArticleTarget(registry, pageId);
+  const { board, errors } = deriveArticleBoard(target);
+  assert.deepEqual(errors.map((e) => [e.code, e.frame]), [['frame_src', 'escape']]);
+  assert.match(errors[0].message, /文章目录外面/);
+  assert.equal(board.sections.some((s) => s.screens.some((screen) => screen.id === 'escape')), false);
+  assert.equal(articleHtmlFrameFile(target, { id: 'escape' }), null);
+  assert.deepEqual(listProjects(registry)[0].errors.map((e) => [e.code, e.path, e.frame]), [['frame_src', 'articles/pages/index.mdx', 'escape']]);
+});
+
+test('服务：index.mdx 在文章目录和 @root 下都不出（含指向它的 symlink）', async (t) => {
+  const { article, registry, pageId } = fixture(t);
+  fs.symlinkSync(path.join(article, 'index.mdx'), path.join(article, 'source.txt'));
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['index.mdx', 'source.txt', '@root/docs/pinpoint/articles/pages/index.mdx', '@root/docs/pinpoint/articles/pages/source.txt']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  assert.equal((await get(handler, `/sites/${pageId}/@root/docs/pinpoint/articles/pages/page.css`)).statusCode, 200);
+});
+
+test('服务：文章的 /sites/ 也拒绝 cross-site 请求', async (t) => {
+  const { registry, pageId } = fixture(t);
+  const handler = createSitesHandler({ registry });
+  for (const url of [`/sites/${pageId}/long.html`, `/sites/${pageId}/page.css`, `/sites/${pageId}/@root/shared/cat.html`, `/sites/${pageId}/board.json`]) {
+    const req = mockReq('GET', url);
+    req.headers['sec-fetch-site'] = 'cross-site';
+    const res = mockRes();
+    await handler(req, res, url);
+    assert.equal(res.statusCode, 403, url);
+    assert.equal((await get(handler, url)).statusCode, 200, url);
+  }
+});
+
 test('服务：这篇没有 project 根下的帧时 @root 不开', async (t) => {
   const { article, registry, pageId } = fixture(t);
   const mdx = path.join(article, 'index.mdx');
@@ -247,6 +303,24 @@ test('ppnt check：HTML 帧引用的文件不在盘上是警告，越出可服�
   assert.deepEqual(result.diagnostics.map((d) => [d.severity, d.code, d.line]), [['error', 'html_asset_outside', 10]]);
 });
 
+test('ppnt check 与服务同一条规则：指出范围的 symlink、. 开头的文件，check 报错、服务 404', async (t) => {
+  const { dir, root, registry, pageId } = fixture(t);
+  write(path.join(dir, 'outside.css'), '.outside {}\n');
+  fs.symlinkSync(path.join(dir, 'outside.css'), path.join(root, 'shared', 'escape.css'));
+  write(path.join(root, 'shared', '.hidden.css'), '.h {}\n');
+  write(path.join(root, 'shared', 'cat.html'), PAGE('目录', '\n<link rel="stylesheet" href="escape.css">\n<link rel="stylesheet" href=".hidden.css">'));
+  const found = collectHtmlFrameAssets(path.join(root, 'shared', 'cat.html'), { root });
+  assert.deepEqual(found.outside.map((row) => [row.url, row.reason]), [['escape.css', 'outside'], ['.hidden.css', 'denied']]);
+  assert.deepEqual(found.files.map((row) => path.relative(root, row.file)).sort(), ['shared/img/bg.svg', 'shared/page.css', 'tokens.css']);
+  const result = await checkProject(registry, 'demo', { articleId: 'pages' });
+  const rows = result.diagnostics.filter((d) => d.frame === 'cat');
+  assert.deepEqual(rows.map((d) => [d.severity, d.code, d.line]), [['error', 'html_asset_outside', 10], ['error', 'html_asset_outside', 11]]);
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['@root/shared/escape.css', '@root/shared/.hidden.css']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+});
+
 test('html-frame-assets：只收相对路径，顺着 CSS、内嵌 HTML 和 JS 走', (t) => {
   const { root } = fixture(t);
   assert.equal(localRef('https://x/y.png'), null);
@@ -324,6 +398,23 @@ test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开
   const report = await checkProject(fx.registry, 'demo', { articleId: 'pages' });
   const htmlRows = report.diagnostics.filter((row) => row.code.startsWith('html_asset'));
   assert.deepEqual(htmlRows.map((row) => [row.code, row.frame]), [['html_asset_missing', 'long']]);
+});
+
+test('服务：缺文件的 { id, src } 帧不打开它的目录（source 与 project 根）', async (t) => {
+  const fx = withSources(t, { skill: '../skill-repo/skill' });
+  write(path.join(fx.article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="pages" title="页面">', '',
+    '<Canvas frames={["long", { id: "ghost", src: "skill:missing.html" }, { id: "gone", src: "shared/nope.html" }]} />', '',
+    '</Section>', '',
+  ].join('\n'));
+  const handler = createSitesHandler({ registry: fx.registry });
+  for (const bad of ['@source/skill/page.css', '@source/skill/preview.html', '@root/tokens.css', '@root/shared/cat.html']) {
+    assert.equal((await get(handler, `/sites/${fx.pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  // 补上文件，目录就开了。
+  write(path.join(fx.skill, 'missing.html'), PAGE('补上'));
+  assert.equal((await get(handler, `/sites/${fx.pageId}/@source/skill/page.css`)).statusCode, 200);
 });
 
 test('sources：没登记的名字、根外路径是正文错误；值写坏、目录不在是 project 错误，ppnt check 指 project.json', async (t) => {

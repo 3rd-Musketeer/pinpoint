@@ -25,6 +25,7 @@ import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
 import { articleOutline, resolveRootFrame } from './article-canvas.js';
 import { collectHtmlFrameAssets } from './html-frame-assets.js';
+import { resolveServableFile } from './servable-file.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { checkMdxRender } from './mdx-check.js';
 import { deriveArticleBoard } from './article-board.js';
@@ -122,11 +123,11 @@ function htmlFrameFile(target, frame, src) {
     return found.file ? { file: found.file, root: found.base } : null;
   }
   if (isFile(path.join(target.pageDir, `${frame}.jsx`))) return null;
-  const file = path.join(target.pageDir, `${frame}.html`);
-  return isFile(file) ? { file, root: target.pageDir } : null;
+  const file = resolveServableFile(target.pageDir, `${frame}.html`, { index: false }).file;
+  return file ? { file, root: target.pageDir } : null;
 }
 
-/** HTML 帧引用的本地文件：越出可服务范围是错误，不在盘上是警告（docs/projects.md“HTML 帧”）。 */
+/** HTML 帧引用的本地文件：服务出不来（越出范围、symlink 指出去、隐藏文件）是错误，不在盘上是警告（docs/projects.md“HTML 帧”）。 */
 function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
   const { missing, outside } = collectHtmlFrameAssets(file, { root });
   const where = (row) => ({ file: row.from, line: row.line, article: address, ...(section ? { section } : {}), frame });
@@ -134,7 +135,9 @@ function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
     ...outside.map((row) => ({
       severity: 'error',
       code: 'html_asset_outside',
-      message: `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，在 ${root} 外面，服务不出这个文件`,
+      message: row.reason === 'denied'
+        ? `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，是 . 开头的隐藏文件或文章正文 index.mdx（或符号链接指向它们），服务不出这个文件`
+        : `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，在 ${root} 外面（含符号链接指出去），服务不出这个文件`,
       ...where(row),
     })),
     ...missing.map((row) => ({

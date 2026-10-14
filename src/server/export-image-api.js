@@ -100,7 +100,11 @@ export function createExportRenderer(options = {}) {
     });
     const page = await context.newPage();
     try {
-      await page.setContent(shellHtml(request, origin), { waitUntil: 'load' });
+      // 渲染页从服务自己的来源打开（路由在浏览器里应答，不经服务）：setContent 的 about:blank 是不透明来源，
+      // 页里取 /sites/ 的样式和帧会被标成 cross-site，sites-api 拒绝这类请求。
+      const shellUrl = `${origin}/__pinpoint-export-shell`;
+      await page.route(shellUrl, (route) => route.fulfill({ status: 200, contentType: 'text/html; charset=utf-8', body: shellHtml(request, origin) }));
+      await page.goto(shellUrl, { waitUntil: 'load' });
       await waitForAssets(page);
       const box = await page.locator('#wb-export-root').boundingBox();
       if (!box || box.width < 1 || box.height < 1) throw new Error('export target has no visible bounds');

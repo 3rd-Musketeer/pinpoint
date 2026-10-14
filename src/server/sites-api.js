@@ -7,6 +7,8 @@ import { parseReqUrl } from './lib/req-url.js';
  *   `/sites/<id>/` and `/sites/<id>/<basename>`; everything else 404s, so
  *   sibling files in the same directory stay unreachable.
  * - Both are GET/HEAD-only.
+ * - Requests the browser marks `Sec-Fetch-Site: cross-site` get 403 (another site's page embedding or
+ *   fetching our content); same-origin, same-site, none and a missing header pass.
  *
  * The registry is the whitelist: only registered entries are served. For a
  * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
@@ -26,6 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolvePage } from './lib/page-resolve.js';
+import { resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
   screenIdFromRel,
@@ -119,13 +122,9 @@ function resolveFileWithin(base, rel) {
   return stat.isFile() ? real : null;
 }
 
-/**
- * project 根或 source 目录下的静态文件（HTML 帧引用的资源）：和 resolveFileWithin 同样的包含检查
- * （文本 + realpath），另外拒绝任何 `.` 开头的段（.git、.env 这类隐藏文件不经服务出）。
- */
-function resolveRootStatic(base, rel) {
-  if (!base || rel.split('/').some((seg) => seg.startsWith('.'))) return null;
-  return resolveFileWithin(path.resolve(base), rel);
+/** 文章的三条出文件分支（文章目录、@root、@source）共用 resolveServableFile（lib/servable-file.js）。 */
+function servable(base, rel) {
+  return resolveServableFile(base, rel).real || null;
 }
 
 /**
@@ -172,7 +171,7 @@ export function createSitesHandler(options = {}) {
    * 文章画布页：board.json 是从 index.mdx 现派生的板（附 dist 状态），JSX 帧从 dist 出、
    * HTML 帧从源文件出（标注桶 = 画布页 id），其余（article.css / article.js / assets/ /
    * 组件和 HTML 帧引用的资源）从文章目录只读静态出；project 根下的 HTML 帧和它引用的文件在
-   * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。
+   * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。三处出文件都经 resolveServableFile。
    */
   async function serveArticlePage(req, res, target, rel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -194,12 +193,12 @@ export function createSitesHandler(options = {}) {
     const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
     const screens = (board.sections || []).flatMap((section) => section.screens || []);
     // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
-    // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧住在里面时开放；帧本身注入标注客户端，
-    // 其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
+    // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧真的住在里面时开放（帧文件解析得到；
+    // 缺文件的 { id, src } 帧不算）；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
     const src = frameSrcFromUrlPath(target, rel);
     if (src !== null) {
       const { source, path: relPath } = parseFrameSrc(src);
-      const rootScreens = screens.filter((screen) => screen.src);
+      const rootScreens = screens.filter((screen) => screen.src && articleHtmlFrameFile(target, screen));
       const open = rootScreens.some((screen) => {
         const used = frameSrcFromUrlPath(target, screen.src);
         return used !== null && parseFrameSrc(used).source === source;
@@ -210,7 +209,7 @@ export function createSitesHandler(options = {}) {
         return true;
       }
       const frame = rootScreens.find((screen) => frameSrcFromUrlPath(target, screen.src) === src);
-      const file = frame ? articleHtmlFrameFile(target, frame) : resolveRootStatic(base, relPath);
+      const file = frame ? articleHtmlFrameFile(target, frame) : servable(base, relPath);
       if (!file) {
         sendJson(res, 404, { error: 'not found' });
         return true;
@@ -225,8 +224,8 @@ export function createSitesHandler(options = {}) {
       if (htmlFile) return sendFile(req, res, htmlFile, inject);
       return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
-    const file = rel ? resolveFileWithin(target.pageDir, rel) : null;
-    if (!file || path.basename(file) === 'index.mdx') {
+    const file = rel ? servable(target.pageDir, rel) : null;
+    if (!file) {
       sendJson(res, 404, { error: 'not found' });
       return true;
     }
@@ -247,6 +246,14 @@ export function createSitesHandler(options = {}) {
 
   return async function handleSites(req, res, urlPath) {
     if (!urlPath.startsWith('/sites/')) return false;
+
+    // 别的站点的网页不能拿 /sites/ 的内容（iframe、<script>、fetch 都算）：浏览器标了 cross-site 的请求 403。
+    // same-origin（工作台、画布视图、文章页的卡片）、same-site、none（地址栏、书签）和没有这个头的
+    // （命令行工具、ppnt shot 的直接导航）照常出。
+    if (String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') {
+      sendJson(res, 403, { error: 'cross_site', message: '/sites/ 不给别的站点的页面用' });
+      return true;
+    }
 
     const rest = urlPath.slice('/sites/'.length);
     const slash = rest.indexOf('/');
