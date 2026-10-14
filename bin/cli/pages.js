@@ -9,20 +9,17 @@ import { refLikeFrameIds, refLikeTitles } from '../../src/workbench/lib/board-re
 
 import { REPO_ROOT, ioOf } from './core.js';
 import { resolveRegistryPath } from './registry.js';
-import { guardParse } from './args.js';
-import { reportPageSuggestions } from './list.js';
+import { guardParse, reportUsageError } from './args.js';
+import { reportMissingTarget } from './list.js';
+import { displayAddress, toPageRef } from './address.js';
 
 /** 解析 <页> 为编译目标；找不到时报错并列出可用 id。返回 null 表示已报错。 */
-function pageTargetOrReport(pageRef, flags, { env, err }) {
+function pageTargetOrReport(token, flags, { env, err }) {
   const registryPath = resolveRegistryPath(flags, env);
   const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
-  const target = resolvePageTarget(pageRef, { registry, root: REPO_ROOT });
+  const target = resolvePageTarget(String(toPageRef(token)), { registry, root: REPO_ROOT });
   if (!target) {
-    err(`错误：找不到页：${pageRef}`);
-    if (!reportPageSuggestions(pageRef, { registryPath, env, err })) {
-      const ids = listPageIds({ registry, root: REPO_ROOT });
-      err(`可用页 id：${ids.join('、') || '（无）'}`);
-    }
+    reportMissingTarget(token, { registryPath, env, err });
     return null;
   }
   return target;
@@ -65,12 +62,12 @@ function printBuildResult(result, { out, err }, plan = null) {
     if (row.ok) out(`ok   ${row.id}  ${row.ms}ms`);
     else err(`错误 ${row.id}  ${row.error}`);
   }
-  if (result.error) err(`错误 ${result.entryId}  ${result.error}`);
-  // 增量拍只列点名的屏：写成「增量 M/N 屏」，免得读成整页只有 M 屏。
+  if (result.error) err(`错误 ${displayAddress(result.entryId)}  ${result.error}`);
+  // 增量拍只列点名的帧：写成「增量 M/N 帧」，免得读成整页只有 M 帧。
   const count = result.partial
-    ? `增量 ${result.screens.length}/${result.totalScreens} 屏`
-    : `${result.screens.length} 屏`;
-  out(`${result.ok ? '完成' : '有失败'} ${result.entryId}  共 ${result.ms}ms（${count}）`);
+    ? `增量 ${result.screens.length}/${result.totalScreens} 帧`
+    : `${result.screens.length} 帧`;
+  out(`${result.ok ? '完成' : '有失败'} ${displayAddress(result.entryId)}  共 ${result.ms}ms（${count}）`);
 }
 
 /**
@@ -120,7 +117,8 @@ export async function runBuild(argv, io = {}) {
   const target = pageTargetOrReport(parsed.target, parsed.flags, { env, err });
   if (!target) return 1;
   const distRoot = path.join(dataRoot(env), 'dist');
-  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.screen || null });
+  // --frame 是现在的写法，--screen 是旧写法（同义）。
+  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.frame || parsed.flags.screen || null });
   printBuildResult(first, { out, err });
   const refLike = refLikeIdNotice(target);
   if (refLike) out(refLike);
@@ -148,12 +146,12 @@ export async function runRender(argv, io = {}) {
   if (parsed.help) return 0;
   const { env, out, err } = ioOf(io);
   const ref = parsed.target;
-  const slash = ref.indexOf('/');
+  // 最后一段是帧 id，前面是目标（<project>/<article>、页 id 或文章网址）。
+  const slash = ref.lastIndexOf('/');
   if (slash <= 0 || slash === ref.length - 1) {
-    err(`错误：render 参数形如 <页>/<屏>，收到：${ref}`);
-    return 1;
+    return reportUsageError('render', `render 参数形如 <目标>/<帧 id>，收到：${ref}`, err);
   }
-  const pageRef = ref.slice(0, slash);
+  const pageRef = String(toPageRef(ref.slice(0, slash)));
   const screenId = ref.slice(slash + 1);
   const target = pageTargetOrReport(pageRef, parsed.flags, { env, err });
   if (!target) return 1;

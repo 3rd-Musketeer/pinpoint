@@ -541,7 +541,7 @@ export function buildCheckReport(context, options = {}) {
     const hit = resolveRef(options.frame, { rows: [], refs: context.refs, pageId: context.pageId });
     // 歧义 / 未知 tab 的报错带候选，原样给出；其余沿用从前那一句。
     if (hit.kind === 'unknown' && /tab/.test(hit.message)) return { error: hit.message };
-    if (hit.kind !== 'frame') return { error: `图纸上没有帧 ${options.frame}` };
+    if (hit.kind !== 'frame') return { error: `画布上没有帧 ${options.frame}` };
     rows = rows.filter((row) => row.screenId === hit.screenId);
   }
 
@@ -726,9 +726,11 @@ export function countByStatus(rows) {
 /** check 的 markdown（一组行）。 */
 export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
   const lines = [];
-  lines.push(`# ${report.page} · 标注清单（${report.status}）`);
+  // address：CLI 给的显示地址（文章是 <project>/<article>），缺省用页 id。
+  lines.push(`# ${report.address || report.page} · 标注队列（${report.status}）`);
   const total = report.groups.reduce((sum, group) => sum + group.rows.length, 0);
-  lines.push(`共 ${total} 条${report.status === 'all' ? '' : `（全量 ${report.counts.total}）`}`);
+  const c = report.counts;
+  lines.push(`共 ${total} 条${report.status === 'all' ? '' : `（全量 ${c.total}）`} · open ${c.open} · check ${c.check} · done ${c.done} · close ${c.close}`);
   if (report.article) lines.push(`文章：${report.article.url} · ${report.article.file}`);
   if (report.docOnly) lines.push(report.article ? '这篇文章还没有编译的画布帧，只有正文评论。' : '这页不是编译页，没有源码摘录。');
   if (imagePaths && report.groups.some((group) => group.kind === 'frame')) {
@@ -744,7 +746,9 @@ export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
     lines.push(`## ${group.title}${group.detail ? ` · ${group.detail}` : ''}`);
     for (const row of group.rows) {
       if (row.kind === 'prose') {
-        lines.push([`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`, row.section ? `· 节 ${row.section}` : ''].filter(Boolean).join(' '));
+        // sectionNumbers：CLI 给的节 id → 节号（文章页上的 §n），owner 说“第 2 节”时对得上。
+        const num = row.section && report.sectionNumbers ? report.sectionNumbers[row.section] : null;
+        lines.push([`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`, row.section ? `· 节 ${num ? `§${num} ` : ''}${row.section}` : ''].filter(Boolean).join(' '));
         lines.push(`  引文：「${row.quote}」`);
         if (row.file) lines.push(`  源文件：${row.line ? `${row.file}:${row.line}` : `${row.file}（没有逐字匹配的行${row.section ? `，按节 ${row.section} 找` : ''}）`}`);
         for (const m of row.messages) lines.push(`  ${m.who}${m.at ? `（${shortTime(m.at)}）` : ''}：${m.text}`);

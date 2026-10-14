@@ -14,21 +14,23 @@ import { listRegistryGrouping } from '../../src/server/lib/registry-store.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
 
 import { REPO_ROOT, ioOf } from './core.js';
+import { displayAddress, parseAddress, resolveAddress, toPageRef } from './address.js';
+import { HELP, reportUsageError } from './args.js';
+import { addressContext, printCandidates } from './targets.js';
 import { manifestPageIds, resolveRegistryPath, existingEntriesFor } from './registry.js';
 
 /** 装配查询上下文（dist 读取器注入；找不到页时已报错，返回 null）。 */
-export function loadAnnotateContext(pageRef, parsed, { env, err }) {
-  if (!pageRef) return null;
+export function loadAnnotateContext(token, parsed, { env, err }) {
+  if (!token) return null;
+  // 斜杠形、文章网址都换成页 id（只看字面：删掉的文章也能这样写，报孤儿用）。
+  const pageRef = String(toPageRef(token));
   const registryPath = resolveRegistryPath(parsed.flags, env);
   const context = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
   if (!context) {
-    err(`错误：找不到页：${pageRef}`);
-    if (!reportPageSuggestions(pageRef, { registryPath, env, err })) {
-      const registry = loadRegistry({ root: REPO_ROOT, path: registryPath });
-      err(`可用页 id：${listPageIds({ registry, root: REPO_ROOT }).join('、') || '（无）'}`);
-    }
+    reportMissingTarget(token, { registryPath, env, err });
     return null;
   }
+  context.address = displayAddress(context.pageId);
   const distRoot = path.join(dataRoot(env), 'dist');
   context.distHtmlFor = (screenId) => {
     const read = readDistScreen(context.target.entryId, screenId, { distRoot });
@@ -44,12 +46,41 @@ export function loadAnnotateContext(pageRef, parsed, { env, err }) {
   return context;
 }
 
+/**
+ * 找不到目标时的报错：文章地址说清是 project 没登记还是文章不在，并列出那个 project 的文章；
+ * 其余按口头说法给最接近的页，再不行列全部候选。
+ */
+export function reportMissingTarget(token, { registryPath, env, err }) {
+  const parsedAddress = parseAddress(token);
+  const ctx = addressContext({ registry: registryPath }, env);
+  if (parsedAddress && parsedAddress.kind === 'article') {
+    const address = `${parsedAddress.project}/${parsedAddress.article}`;
+    const hit = resolveAddress(address, ctx);
+    if (hit && hit.kind === 'missing-article' && hit.projectKnown) {
+      err(`错误：找不到文章 ${address}：project ${parsedAddress.project} 里没有 articles/${parsedAddress.article}/index.mdx`);
+      printCandidates(ctx, err, { onlyProject: parsedAddress.project, heading: `${parsedAddress.project} 的文章` });
+    } else {
+      err(`错误：找不到文章 ${address}：project ${parsedAddress.project} 没登记（ppnt add <project 根> --project）`);
+      printCandidates(ctx, err);
+    }
+    return;
+  }
+  const pageRef = String(toPageRef(token));
+  const entry = (ctx.registry.entries || []).find((row) => row && row.id === pageRef);
+  if (entry && entry.kind === 'url') {
+    err(`错误：找不到 ${pageRef} 的页：它是网址条目（kind url），没有本地源文件，CLI 读不了它`);
+    return;
+  }
+  err(`错误：找不到 ${pageRef}`);
+  if (!reportPageSuggestions(pageRef, { registryPath, env, err })) printCandidates(ctx, err);
+}
+
 /** status --page <页>：各状态计数 + dist 是否过期 + 孤儿账本（只读，不依赖服务）。 */
 export function printPageStatus(parsed, { env, out, err }) {
   // 找不到页的报错先攒着：整桶孤儿的页（删页后残留）有专门的报告，先打一行
   // 「错误：找不到页 + 可用页清单」全是噪音（K8）；真没桶再原样报错。
   const errors = [];
-  const pageRef = parsed.flags.page;
+  const pageRef = String(toPageRef(parsed.flags.page));
   const context = loadAnnotateContext(pageRef, parsed, { env, err: (m) => errors.push(m) });
   if (!context) {
     // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
@@ -60,7 +91,7 @@ export function printPageStatus(parsed, { env, out, err }) {
     return 1;
   }
   const counts = countByStatus([...context.frameRows, ...context.docRows]);
-  out(`页 ${context.pageId}`);
+  out(`${context.address === context.pageId ? '页' : '文章'} ${context.address}`);
   out(`  open ${counts.open} · check ${counts.check} · done ${counts.done} · close ${counts.close} · 共 ${counts.total}`);
   if (context.docOnly) {
     out('  这页不是编译页（registry 条目没有 board.json），没有 dist 与源码摘录');
@@ -73,7 +104,7 @@ export function printPageStatus(parsed, { env, out, err }) {
     out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
   }
   const orphanCount = (context.orphanRows || []).length;
-  if (orphanCount) out(`  孤儿 ${orphanCount} 条 · ${(context.orphanLedgers || []).join('、')}（表面已不存在，ppnt prune ${context.pageId} 清理）`);
+  if (orphanCount) out(`  孤儿 ${orphanCount} 条 · ${(context.orphanLedgers || []).join('、')}（表面已不存在，ppnt prune ${context.address} 清理）`);
   return 0;
 }
 
@@ -82,9 +113,10 @@ export function printBucketOrphanStatus(pageRef, { env, out }) {
   if (!pageRef) return false;
   const names = collectBucketOrphans(String(pageRef), dataRoot(env));
   if (!names.length) return false;
-  out(`页 ${pageRef} 不在 registry 与本地页面清单里；桶里 ${names.length} 本账本全是孤儿：`);
+  const shown = displayAddress(pageRef);
+  out(`${shown} 不在 registry 与本地页面清单里（文章删了、改名了，或页不在了）；桶里 ${names.length} 本账本全是孤儿：`);
   for (const name of names) out(`  ${name}`);
-  out(`清理：ppnt prune ${pageRef}（--dry-run 先看清单）`);
+  out(`清理：ppnt prune ${shown}（--dry-run 先看清单）`);
   return true;
 }
 
@@ -160,15 +192,16 @@ function frameSourceOf(pageDir, screen) {
  * 顺序派生、调序就变；id 是帧的身份，也是源文件名。编号与 check / shot 同一份
  * boardRefs，doc 帧不上画布、不占编号。
  */
-function listFrames(words, { registryPath, env, out, err }) {
+export function listFrames(words, { registryPath, env, out, err }) {
   if (words.length !== 1) {
-    err('错误：list --frames 需要且只要一个页 id：ppnt list <页> --frames');
-    return 1;
+    err('错误：list --frames 需要且只要一个目标：ppnt list <目标> --frames');
+    return 2;
   }
-  const context = loadPageContext({ pageRef: words[0], registryPath, dataRootDir: dataRoot(env) });
+  const pageRef = String(toPageRef(words[0]));
+  const context = loadPageContext({ pageRef, registryPath, dataRootDir: dataRoot(env) });
   if (!context || !context.board) {
-    err(`错误：${words[0]} 不是带 board.json 的编译页（list --frames 只列画布帧）`);
-    if (!context) reportPageSuggestions(words[0], { registryPath, env, err });
+    err(`错误：${words[0]} 没有画布帧（list --frames 只列画布帧）`);
+    if (!context) reportPageSuggestions(pageRef, { registryPath, env, err });
     return 1;
   }
   const rawScreens = new Map();
@@ -194,7 +227,7 @@ function listFrames(words, { registryPath, env, out, err }) {
   const refWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => shownRef(frame).length)));
   const idWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.id.length)));
   const sourceWidth = Math.max(2, ...rows.flatMap((row) => row.frames.map((frame) => frame.source.length)));
-  out(`# ${context.pageId} · 画布帧（编号随 board 顺序变；id 不变，留存文字里用 id）`);
+  out(`# ${displayAddress(context.pageId)} · 画布帧（编号随画布顺序变；id 不变，留存文字里用 id）`);
   if (pageDir) out(`页目录：${pageDir}`);
   if (multiTab) out(`tab：${tabs.map((tab) => tab.id).join('、')}（编号按 tab 各自从 A 起，写 <tab>:B3）`);
   let lastTab = null;
@@ -213,7 +246,7 @@ function listFrames(words, { registryPath, env, out, err }) {
   }
   const frameCount = rows.reduce((sum, row) => sum + row.frames.length, 0);
   out('');
-  out(`共 ${multiTab ? `${tabs.length} 个 tab ` : ''}${rows.length} 段 ${frameCount} 帧`);
+  out(`共 ${multiTab ? `${tabs.length} 个 tab ` : ''}${rows.length} 节 ${frameCount} 帧`);
   return 0;
 }
 
@@ -246,7 +279,7 @@ function countLabel(project) {
 export function formatProjectRow(project) {
   const lines = [[project.id, project.title, 'project', countLabel(project)].filter(Boolean).join('  ·  ')];
   lines.push(`    ${project.root}`);
-  for (const article of project.articles) lines.push(`    article  ${article.id}  ·  ${article.title}`);
+  for (const article of project.articles) lines.push(`    ${project.id}/${article.id}  ·  ${article.title}`);
   return lines;
 }
 
@@ -258,7 +291,7 @@ export function formatProjectDetail(project) {
   for (const article of project.articles) {
     lines.push(`  ${article.id}  ·  ${article.title}${article.summary ? `  ·  ${article.summary}` : ''}`);
     lines.push(`    ${article.file}`);
-    // 画布页 id：ppnt build / check / shot / list --frames 和 /?page= 用它。
+    // 页 id：/?page= 和标注桶用它；CLI 输出打斜杠形。
     if (article.pageId) lines.push(`    画布 ${article.pageId}`);
   }
   lines.push('', `概念（${project.concepts.length}）`);
@@ -274,23 +307,34 @@ export function formatProjectDetail(project) {
 }
 
 export async function runList(argv, io = {}) {
-  const { cwd, env, out } = ioOf(io);
+  const { cwd, env, out, err } = ioOf(io);
   const words = [];
   const flags = {};
   for (let i = 1; i < argv.length; i++) {
-    if (argv[i] === '--registry') { flags.registry = argv[++i]; continue; }
-    if (argv[i] === '--frames') { flags.frames = true; continue; }
-    words.push(argv[i]);
+    const arg = argv[i];
+    if (arg === '-h' || arg === '--help') {
+      out(HELP.list.text);
+      return 0;
+    }
+    if (arg === '--registry' || arg.startsWith('--registry=')) {
+      flags.registry = arg.includes('=') ? arg.slice(arg.indexOf('=') + 1) : argv[++i];
+      if (!flags.registry) return reportUsageError('list', '选项 --registry 缺少值', err);
+      continue;
+    }
+    if (arg === '--frames') { flags.frames = true; continue; }
+    // 未知选项是用法错，不当关键词去匹配（从前 list --json 会去找叫 --json 的页）。
+    if (arg.startsWith('--')) return reportUsageError('list', `未知选项：${arg}`, err);
+    words.push(arg);
   }
   const registryPath = resolveRegistryPath(flags, env, cwd);
-  if (flags.frames) return listFrames(words, { registryPath, env, out, err: ioOf(io).err });
+  if (flags.frames) return listFrames(words, { registryPath, env, out, err });
   const query = words.join(' ');
   const projects = projectListRows({ registryPath });
-  // 恰好是一个 project 的 id：列它的文章、概念与布局错误。
+  // 恰好是一个 project 的 id：同 show <project>。
   const exact = words.length === 1 ? projects.find((project) => project.id === words[0]) : null;
   if (exact) {
-    for (const line of formatProjectDetail(exact)) out(line);
-    return exact.errors.length ? 1 : 0;
+    const { showTarget } = await import('./show.js');
+    return showTarget(exact.id, { flags }, { env, out, err });
   }
   const rows = matchPages(pageListRows({ registryPath, env }), query);
   const projectRows = projects.filter((project) => scorePage(projectMatchRow(project), query) > 0);

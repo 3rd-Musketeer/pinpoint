@@ -137,7 +137,7 @@ function healthRows(health, repoRoot) {
       rows.push({
         label: 'project',
         state: problems.length ? 'warn' : 'ok',
-        detail: `${projects.count} 个，${problems.length} 个布局错误${problems.length ? '（`pinpoint list <project>` 看详情）' : ''}`,
+        detail: `${projects.count} 个，${problems.length} 个布局错误${problems.length ? '（`ppnt check <project>` 看详情）' : ''}`,
       });
       for (const line of problems) rows.push({ label: '', state: 'note', detail: line });
     }

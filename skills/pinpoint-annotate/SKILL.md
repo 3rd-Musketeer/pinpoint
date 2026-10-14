@@ -1,55 +1,57 @@
 ---
 name: pinpoint-annotate
-description: 读取 Pinpoint 的画布标注和文章正文评论、判断改帧、改组件还是改正文、改完编译截图、在评论线程里回复、写回状态，全程不需要浏览器工具。用户要求查看或处理标注、评论，或给出 #12、B3、plugins#12、@frame、@a 引用时使用。
+description: 读取 Pinpoint 的画布标注和文章正文评论、判断改帧、改组件还是改正文、改完编译截图、在评论线程里回复、写回状态，全程不需要浏览器工具。用户要求查看或处理标注、评论，或给出 #12、B3、§2、browser-use/payment-confirm#12、@frame、@a 引用时使用。
 ---
 
 # 处理标注和正文评论
 
-`ppnt check` 读 → 判断改哪里 → 改、`ppnt build`、`ppnt shot` 看 → 正文评论用 `ppnt reply` 回一句 → `ppnt mark` 写状态。
+`ppnt comments` 读 → 判断改哪里 → 改、`ppnt check` 验、`ppnt shot` 看 → 正文评论用 `ppnt reply` 回一句 → `ppnt mark` 写状态。
 总入口 [`AGENTS.md`](../../AGENTS.md)；写文章、改存量页见 [`pinpoint-build`](../pinpoint-build/SKILL.md)；
 字段、账本与状态机的权威是 [`docs/annotation.md`](../../docs/annotation.md)。
 
-## 一个页 id，一个队列
+## 一篇文章，一个队列
 
-每个页 id 有一个标注桶，桶里的条目排成一个队列：共用一套 `#n` 序号（永不复用）和同一个状态机。一篇 article（文章）的页 id 是
-`<project>_<article>`（如 `browser-use_payment-confirm`），它的桶里有两种条目：
+每篇 article（文章）有一个标注桶，桶里的条目排成一个队列：共用一套 `#n` 序号（永不复用）和同一个状态机。命令里文章写成
+`<project>/<article>`（如 `browser-use/payment-confirm`），文章网址和页 id `<project>_<article>` 也认；存量页写它的 id。
+文章的桶里有两种条目：
 
 - **画布标注**：owner 在画布视图（`/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在帧或元素上的标注。存量页上的标注也是这一种。
 - **正文评论**：owner 在文章页（`/<project>/<article>/`，读者读文章的网页）上选中一段正文写的评论。它带引文（选中的文字和前后文）、
   节 id 和一个线程（owner 与 agent 的来回）。文章页上的画布卡片和画布浮层不收标注。
   要在 UI 上照人的做法发一条（测试时）：在文章页用鼠标拖选一段正文，点浮出的“评论”，在右栏的输入框里写，点“发送”。
 
-`ppnt check <project>_<article>` 一次列出这两种，正文评论单独成一组。
+`ppnt comments <project>/<article>` 一次列出这两种，正文评论单独成一组。
 
-引用写法：`#12`（本桶序号）、`plugins#12`（跨桶，`<页 id>#12`）、`B3`（编号 = 该帧全部标注）、
-`B`（整节）、裸帧 id / 节 id（与 `B3` / `B` 同义）、`@frame:<页 id>/<帧 id>`、`@a:<id>`（兼容写法）。
-多条用空格分隔，区间 `#3-#7`。
+引用写法：`#12`（本桶序号）、`browser-use/payment-confirm#12`（带上文章，跨桶也用它；`<页 id>#12` 同义）、
+`B3`（编号 = 该帧全部标注）、`B` 或 `§2`（整节）、裸帧 id / 节 id（与 `B3` / `B` 同义）、`@frame:<页 id>/<帧 id>`、
+`@a:<id>`（兼容写法）。多条用空格分隔，区间 `#3-#7`。
 
-`B3` 这类编号是节字母加节内帧序号，按画布顺序现算，调序、插帧、删帧后就指向别的帧。文章页上 owner 看到的是节号 1、2、3：第 n 节就是第 n 个字母，owner 说“第 2 节”对应 `B`。帧 id 不变，也是源文件名。
+`B3` 这类编号是节字母加节内帧序号，按画布顺序现算，调序、插帧、删帧后就指向别的帧。文章页上 owner 看到的是节号 1、2、3：第 n 节就是第 n 个字母，纯文字的节也占，owner 说“第 2 节”就写 `§2`，等于 `B`。帧 id 不变，也是源文件名。
 所以对 owner 当场说话用编号；写进 README、交接稿、验收记录这类留存文字时写 id，或写成
-“D2（c1b-detail-time）”。编号与 id、源文件的对照用 `ppnt list <页 id> --frames` 查，`check` 的帧标题也
-同时给两者。
+“D2（c1b-detail-time）”。节号、字母、节 id、帧和源文件的对照用 `ppnt show <project>/<article>` 查，`comments` 的帧标题也
+同时给编号和 id。
 
 多 tab 的存量页（`board.json` 写了 `tabs`，ADR 0041）：编号按 tab 各自从 A 重来，位置引用写 `<tab>:B3` / `<tab>:B`
-（如 `flow:B3`）。裸 `B3` 只在一个 tab 里存在时能用，几个 tab 里都有就报错并列出候选。帧 id、段 id 仍是裸的。
-`ppnt list <页 id> --frames` 按 tab 分组列出；`ppnt shot` 整页每个 tab 出一张（`<页 id>--<tab>.png`），指定引用就只出它所在的 tab。
+（如 `flow:B3`）。裸 `B3` 只在一个 tab 里存在时能用，几个 tab 里都有就报错并列出候选。帧 id、节 id 仍是裸的。
+`ppnt show <页 id>` 按 tab 分组列出；`ppnt shot <页 id>` 每个 tab 出一张（`<页 id>--<tab>.png`），指定引用就只出它所在的 tab。
 
-## 0. 先确定页 id
+## 0. 先确定地址
 
-owner 常用口头说法指一篇文章或一个存量页（“付款那篇文章”“routines 原型”），不给页 id。先跑
-`ppnt list <关键词>`：按 id、标题、源路径、文件夹宽松匹配（英文复数自动去 s），列出 project 和存量页，
-关键词也匹配文章的 id 和标题。匹配到文章时它只列出所属的 project，页 id 要再跑 `pinpoint list <project>`，每篇文章下面一行“画布 <页 id>”。
-只匹配到一个就用它；匹配到多个或一个都没有，把候选列给 owner 问，不要猜。其他命令找不到页 id 时也会列出最接近的候选。
+owner 常用口头说法指一篇文章或一个存量页（“付款那篇文章”“routines 原型”），不给地址。先跑
+`ppnt list <关键词>`：按 id、标题、源路径、文件夹宽松匹配（英文复数自动去 s），列出 project（下面每篇文章一行
+`<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
+只匹配到一个就用它；匹配到多个或一个都没有，把候选列给 owner 问，不要猜。每个命令的第一个参数都是这个地址；
+没写或写错时命令报错并列出候选，不会替你挑一篇。
 
-## 1. `ppnt check <页 id>` 读
+## 1. `ppnt comments <project>/<article>` 读
 
 默认列出 open 状态的条目。画布标注按帧分组：序号、帧号、正文、意图、源码摘录。正文评论另成一组：序号、引文、
 节 id、`index.mdx` 里的落脚行和整个线程；引文中间夹着 markdown 记号时，落脚行可能只给到文件和节。
 
 `--frame B3` 收窄到一帧，`--group-by component` 按组件分组（组头给共用帧数），`--status all` 看 check / done / close，
-`--json` 给结构化输出。桶在 `~/.pinpoint/<页 id>/`：画布标注（含 mention 帧）在 `@canvas.json`，正文评论在 `@prose.json`，
+`--json` 给结构化输出。`<project>/<article>#3` 只列这一条；写 `<project>` 逐篇列出整个 project 里有条目的文章。桶在 `~/.pinpoint/<页 id>/`：画布标注（含 mention 帧）在 `@canvas.json`，正文评论在 `@prose.json`，
 存量页的文档按路径各有一本。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了 / 页没了），
-不计入计数、不要去 mark 它们，清理归 owner 走 `ppnt prune`。`check` 只读，无副作用；不要为读标注重启服务。
+不计入计数、不要去 mark 它们，清理归 owner 走 `ppnt prune`。`comments` 只读，无副作用；不要为读标注重启服务。
 
 画布标注的锚点在 `.jsx` 帧上是 `data-pp-id`（形如 `Nav.jsx:18@2`，源文件：行 + 同行第几个实例；组件锚点
 给帧实例与组件定义两段）；存量页的 `.html` 帧是 cssPath + 文本摘录。锚点已失效的标注仍保留原正文，
@@ -68,9 +70,10 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 
 ## 3. 改、编译、看图
 
-改源码（不碰 `~/.pinpoint/dist/`；kit 只在确要改所有文章和存量页时动）→ `ppnt build <页 id>` 到全绿 →
-`ppnt shot <帧> --page <页 id>`（或 `ppnt check <页 id> --mode image`）对照看效果。lint / 编译错误指到文件与行，
-规则见 build skill 的“lint 四禁”。改了文章的 `index.mdx`，再跑一次 `pinpoint list <project>`，布局错误要是“无”。
+改源码（不碰 `~/.pinpoint/dist/`；kit 只在确要改所有文章和存量页时动）→ `ppnt check <project>/<article>` 退 0
+（布局、全部帧的 lint 与编译、正文渲染，每条错误指到文件与行，lint 规则见 build skill 的“lint 四禁”）→
+`ppnt shot <project>/<article> B1` 看改过的帧，`ppnt shot <project>/<article> §2` 看文章页上改过的那一节
+（或 `ppnt comments <project>/<article> --mode image`）对照看效果。存量页没有 `check`，用 `ppnt build <页 id>` 到全绿。
 改不动或没道理的条目留着不动，原因在最后的汇报里说。
 
 正文改了以后，每条评论按引文重新定位。被评的那句改写掉了，右栏会把那条评论标成“失效”，显示原来的引文。
@@ -79,13 +82,13 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 ## 4. 回复正文评论
 
 ```shell
-ppnt reply '#3' "<回复>" --page <project>_<article>
+ppnt reply browser-use/payment-confirm#3 "<回复>"
 ```
 
-文章的条目带 `--page <project>_<article>`，或写成 `<project>_<article>#3`：没给 `--page` 时，`locate`、`mark`、`reply`
-取第一个这种引用的页 id 当基准，`ppnt check <project>_<article>#3` 只列这一条。回复是线程里的一条 agent 消息，owner 不用刷新就能在右栏看到，它不改状态。回复里写清你改了什么、在哪里能看到。一次只回一条；画布标注没有线程，对它 `reply` 会报错退出，状态改用 `ppnt mark`。
+`locate`、`mark` 的第一个参数是文章地址，后面跟引用：`ppnt mark browser-use/payment-confirm '#3' '#4' done`；
+引用里已经带了 `<project>/<article>#n` 时可以不写目标。zsh 里单独的 `#3` 要加引号。回复是线程里的一条 agent 消息，owner 不用刷新就能在右栏看到，它不改状态。回复里写清你改了什么、在哪里能看到。一次只回一条；画布标注没有线程，对它 `reply` 会报错退出，状态改用 `ppnt mark`。
 
-## 5. `ppnt mark <ref…> done|check`
+## 5. `ppnt mark <project>/<article> <引用…> done|check`
 
 - 看了但不改，包括只在线程里回复、没改文件 → `check`。
 - 改完 → `done`。

@@ -66,8 +66,9 @@ pinpoint add <project 根> --project
 | `pinpoint move <id> <新根>` | 换根目录。新根的 `project.json` id 必须仍是 `<id>`，否则拒绝 |
 | `pinpoint rename <旧 id> <新 id>` | 登记表、`project.json` 的 `id`、每个文章桶一起改，见下面“rename 与文章桶”；新 id 是保留名时拒绝 |
 | `pinpoint remove <id>` | 只删登记，project 目录不动。每个文章桶 `<id>_<文章>/` 守其他条目的桶规则：有一个桶里有标注行就整单拒绝（列出哪些桶几行），全空就跟着删 |
-| `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · 概念数 · 布局错误数，次行根目录，下面每篇文章缩进一行。关键词也匹配文章 id 与标题 |
-| `pinpoint list <project id>` | 列这个 project 的文章（标题、摘要、文件）、概念（name、status、boundary、文件）和布局错误；有布局错误时退 1 |
+| `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · 概念数 · 布局错误数，次行根目录，下面每篇文章缩进一行 `<project>/<article>`。关键词也匹配文章 id 与标题 |
+| `pinpoint show <project id>` | 列这个 project 的文章（地址、标题、节数、帧数、open 数、网址）、概念（name、status、boundary）、空 ref 和布局错误；有布局错误时退 1。`pinpoint list <project id>` 同义 |
+| `pinpoint check <project id>` | 验证整个 project：布局错误、每篇文章全部帧的编译与 lint、正文渲染错误、空 ref，一条一行带文件和行号；有错误退 1。见 [`docs/registry.md`](registry.md)“CLI” |
 | `pinpoint status` | `project` 一行：个数与布局错误数，有错误时是“注意”，逐条列在下面，不算失败 |
 
 ### rename 与文章桶
@@ -83,7 +84,7 @@ project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`�
 
 ### 文章目录改名
 
-`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt status --page <project>_a` 与 `ppnt check <project>_a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
+`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt status --page <project>/a` 与 `ppnt comments <project>/a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
 
 ```shell
 mv ~/.pinpoint/<project>_a ~/.pinpoint/<project>_b      # 桶；PINPOINT_DATA_DIR 设了就换成它
@@ -162,7 +163,7 @@ export default function ConfirmBare() {
 - 一节最多一个 `<Canvas>`；没有 Canvas 的节不进画布。帧 id = 本篇目录下的 `<帧 id>.jsx`。
 - `frames` 只认字面量数组，每一项只认字面量字符串；`shell` 可选，只认字面量字符串，取值同 board 的 section `shell`（`app` 缺省 / `lock` / `doc` / `comp`）。
 - 帧级 shell：一节里混着手机帧和组件帧时，组件帧的文件在顶层写一行 `export const shell = "comp";`。取值和 `<Canvas shell>` 一样，只认这一行的字面量字符串。它只管这一帧，盖过 `<Canvas shell>`。服务静态读这一行（`readFrameShell`），不执行帧文件。编译器的帧 lint 放行这一行。
-- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。哪个节点属于哪一节、第几节、节字母，由 `src/shared/article-structure.js` 的 `articleStructure(tree)` 走一遍 mdast 得出；站点的 remark 步骤（节号、给 `<Canvas>` 注入 `section`）和 `ppnt check` / `locate` 判断正文评论的引文落在哪一节（`articleSectionSpans`）用的是同一个走法，所以三处数出来的节对得上。
+- 解析用站点同一套 MDX 解析器（`unified` + `remark-parse` + `remark-mdx`），只读结构，不渲染正文。实现在 `src/server/lib/article-canvas.js`。哪个节点属于哪一节、第几节、节字母，由 `src/shared/article-structure.js` 的 `articleStructure(tree)` 走一遍 mdast 得出；站点的 remark 步骤（节号、给 `<Canvas>` 注入 `section`）和 `ppnt comments` / `locate` 判断正文评论的引文落在哪一节（`articleSectionSpans`）用的是同一个走法，所以三处数出来的节对得上。
 
 ### 页 id
 
@@ -171,7 +172,7 @@ export default function ConfirmBare() {
 - project id 与 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`，没有 `_`。所以拆分无歧义，两篇文章不会得到同一个页 id；registry 条目 id 也不含 `_`，不会撞。
 - 结果匹配 `PAGE_ID_PATTERN`（`^[a-zA-Z0-9_-]+$`），所以 `?page=`、标注桶、`/sites/<id>/`、`ppnt` 都认它。`parseArticlePageId(id)` 拆回 `{ projectId, articleId }`。
 - 唯一可能撞的是 `content/previews/_index.json` 里带 `_` 的模板页。读取时逐篇检查，撞了记一条布局错误，模板页优先。
-- `listProjects` 的每篇 article 多一个字段 `pageId`；`pinpoint list <project>` 在每篇文章下打一行“画布 <页 id>”。
+- `listProjects` 的每篇 article 多一个字段 `pageId`；`pinpoint show <project>/<article>` 打出它（“页 id”一行）。CLI 的目标写斜杠形 `<project>/<article>`，页 id 也认。
 
 ### board 从哪来
 
@@ -179,7 +180,7 @@ export default function ConfirmBare() {
 - 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
 - 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
 - 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
-- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / check / locate / mark / shot / list --frames / status --page`、编号（`boardRefs`）都和存量页一样工作。
+- 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / comments / locate / mark / shot / show / status --page`、编号（`boardRefs`）都和存量页一样工作。
 - dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
 - watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
 
@@ -200,11 +201,11 @@ export default function ConfirmBare() {
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt check <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt status --page <页 id>` 与 `ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本，`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 
-下面这些写法都记进这个 project 的 `errors`，格式是 `articles/<文章>/index.mdx：第 N 行：…`。`pinpoint list <project>` 和站点错误条会显示它们，读取本身不抛错。
+下面这些写法都记进这个 project 的 `errors`，格式是 `articles/<文章>/index.mdx：第 N 行：…`。`pinpoint show <project>`、`pinpoint check <project>` 和站点错误条会显示它们，读取本身不抛错。
 
 - 跨页引用 `"<页 id>/<帧 id>"`：提示先把帧复制进本篇目录。
 - 帧文件不存在：帧仍进画布，工作台上那一格出错误面板。

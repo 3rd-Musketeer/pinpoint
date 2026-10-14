@@ -1,0 +1,292 @@
+/**
+ * ppnt 的帮助文字：`ppnt --help` 是命令一览（USAGE），`ppnt <命令> --help` 是这个命令自己的
+ * 用法与选项（HELP[命令].text）。用错选项时只打 HELP[命令].usage 这一行，不刷整份帮助。
+ * 用词以 CONTEXT.md 为准：文章、节、帧、编号、页 id、画布视图、存量页。
+ */
+import { DEFAULT_ORIGIN } from './core.js';
+
+const ADDRESS = `地址：文章写 <project>/<article>（也认文章网址和页 id <project>_<article>），输出一律是斜杠形；
+      存量页写它的 id。节写 §2（文章页节号）、节 id 或字母 B；帧写 B1 或帧 id；
+      标注写 <project>/<article>#3。第 n 节就是第 n 个字母，纯文字的节也占一个。`;
+
+export const USAGE = `用法：ppnt <命令> [参数]（ppnt 和 pinpoint 是同一个入口）
+
+${ADDRESS}
+
+文章
+  show <project>[/<article>]           一篇文章的节（§n · 字母 · 节 id · 帧 · open 数 · 网址），或一个 project 的文章、概念、空 ref
+  check <project>[/<article>]          验证：布局错误、全部帧的编译与 lint、正文渲染错误、空 ref；有错退 1
+  build <目标> [--frame <帧>] [--watch]  编译帧到 dist
+  render <目标>/<帧 id>                 编译一帧打到 stdout，不落 dist
+  shot <目标> [§2 | B | B1 | 帧 id …]   截图：只写目标截文章页整页，§2 截文章页的那一节，编号和帧 id 截画布视图
+  list [关键词…]                        按口头说法找 project、文章和存量页
+
+评论与标注
+  comments <目标>                       读标注队列：画布标注和正文评论（目标可以是整个 project）
+  locate <目标> <引用…>                  标注 → 源文件:行 · 组件
+  reply <project>/<article>#<n> "<回复>" 在正文评论的线程里回一句（不改状态）
+  mark <目标> <引用…> done|check         写状态
+
+服务
+  status | start | stop | restart      体检、起停常驻服务
+
+登记与存量页
+  add <project 根> --project            登记一个 project
+  add / move / rename / remove / folder / migrate / prune   存量页的登记、迁移与清理
+
+每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
+
+const REGISTRY_FLAG = '  --registry <路径>    用哪份登记表（缺省 PINPOINT_REGISTRY，再缺省 ~/.pinpoint/registry.json）';
+const TARGET_NOTE = `  目标是第一个参数：<project>/<article> 或存量页 id；--page <目标> 是旧写法，照认。
+  不写目标、引用里也没有 <project>/<article>#n 时报错并列出候选，不猜。`;
+
+/** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
+export const HELP = {
+  show: {
+    usage: 'ppnt show <project>[/<article>] [--json]',
+    text: `用法：ppnt show <project>[/<article>] [--json]
+
+一篇文章：每节一行 §n · 字母 · 节 id · 标题 · 帧数 · open 数（画布标注 + 正文评论），
+  下面是这一节的帧（编号 · 帧 id · 源文件）和网址（文章页锚点、画布视图）。纯文字的节也列，
+  所以 owner 说“第 2 节”时在这里对上字母和节 id。
+一个 project：文章（斜杠地址、节数、帧数、open 数）、概念、空 ref、布局错误；有布局错误退 1。
+存量页：编号 · 帧 id · 源文件（同 list <页 id> --frames）。
+
+  --json               结构化输出
+${REGISTRY_FLAG}
+
+例：ppnt show browser-use/payment-confirm`,
+  },
+  check: {
+    usage: 'ppnt check <project>[/<article>] [--json]',
+    text: `用法：ppnt check <project>[/<article>] [--json]
+
+汇报前的验证，一条命令看全：
+  - 布局错误（project.json、目录、frontmatter、<Section> / <Canvas> 的写法、缺帧）；
+  - 正文里每个 <Canvas> 列的帧都编一遍，报 lint 与编译错误，被布局错误挡在画布外的节也编；
+  - 正文渲染错误：没定义的组件 <Foo />、没定义的变量 {x} 这类打开文章页才出的错；
+  - 空 ref（提示级，合法）。
+每条诊断一行：文件:行  级别  code  说明。不写 dist，不需要服务在跑。
+退出码：0 通过（只有提示）· 1 有错误 · 2 用法错或找不到目标。
+
+  --json               结构化输出：{ target, ok, counts, articles, frames, diagnostics: [{ severity, code, file, line, message, article?, section?, frame? }] }
+${REGISTRY_FLAG}
+
+过渡期：带 --status / --frame / --mode / --group-by、写成 <目标>#n、或目标是页 id（<project>_<article>、
+存量页 id）时，照旧列标注队列，并提示改用 ppnt comments。`,
+  },
+  comments: {
+    usage: 'ppnt comments <目标> [--status open|check|done|close|all] [--frame <帧>] [--mode excerpt|image|both] [--group-by frame|component] [--json]',
+    text: `用法：ppnt comments <目标>[#n] [选项]
+
+读标注队列（只读）：画布标注按帧分组，给序号、编号、正文、意图、源码摘录；正文评论单独一组，
+给引文、节、index.mdx 里的落脚行和整个线程。抬头是各状态的计数。
+目标可以是一篇文章、一个存量页，也可以是整个 project（逐篇列出有条目的文章）。
+<目标>#n 只看这一条（缺省 --status all）。
+
+  --status <状态>      open（缺省）| check | done | close | all
+  --frame <帧>         只看一帧：B3、帧 id（多 tab 的存量页写 <tab>:B3）
+  --mode <形式>        excerpt（缺省，最小完整元素 + 父链 + 兄弟折叠）| image（服务渲染 1x 截图，服务要在跑）| both
+  --group-by <分组>    frame（缺省）| component（组头给组件共用的帧数）
+  --json               结构化输出
+${REGISTRY_FLAG}
+
+表面已经不存在的账本列在末尾的“孤儿标注”组，不计数，清理走 ppnt prune。
+
+例：ppnt comments browser-use/payment-confirm
+    ppnt comments browser-use --status all`,
+  },
+  build: {
+    usage: 'ppnt build <目标> [--frame <帧 id>] [--watch]',
+    text: `用法：ppnt build <目标> [--frame <帧 id>] [--watch]
+
+编译帧到 dist（<数据目录>/dist/<页 id>/），每帧打 ok 或错误与耗时。文章的画布由 index.mdx 现派生。
+${TARGET_NOTE.split('\n')[0]}
+
+  --frame <帧 id>      只编一帧（其余帧的记录保留）；--screen 是旧写法
+  --watch              编完后盯目录，改动自动重编（Ctrl-C 退出）
+${REGISTRY_FLAG}
+
+改完一篇文章要看全部问题（含正文渲染错误），用 ppnt check。`,
+  },
+  render: {
+    usage: 'ppnt render <目标>/<帧 id> [--full]',
+    text: `用法：ppnt render <目标>/<帧 id> [--full]
+
+编译一帧打到 stdout，不落 dist。超 8000 字符截断，全文写 <数据目录>/render/<页 id>/<帧 id>.html 并打出路径。
+例：ppnt render browser-use/payment-confirm/submit-confirm
+
+  --full               不截断
+${REGISTRY_FLAG}`,
+  },
+  shot: {
+    usage: 'ppnt shot <目标> [§2 | B | B1 | 帧 id | #n …] [--canvas] [--marks] [--scale 1|2] [--timeout <秒>]',
+    text: `用法：ppnt shot <目标> [引用…] [选项]
+
+截图（PNG，打印“引用 → 路径 · 宽×高”）。服务要在跑；文章站点在启动时（503“站点启动中”）命令自己等。
+  ppnt shot <project>/<article>        文章页整页（文章页的样子：正文、画布卡片、评论栏）
+  ppnt shot <project>/<article> §2     文章页上的第 2 节
+  ppnt shot <project>/<article> B1     画布视图上的一帧；B 是一整节；帧 id、节 id 同义
+  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）
+  ppnt shot <存量页 id> [B1 …]          存量页：不写引用是整个画布
+纯文字的节没有画布，写它的字母或节 id 时截文章页上的那一节。
+产物在 <数据目录>/shot/<页 id>/：文章页 article.png、article-<节 id>.png；画布 <帧 id|节 id|页 id>.png。
+
+  --canvas             画布视图整页
+  --marks              把 open 标注的 #n 序号钉烤进画布截图
+  --status <状态>      加上这个状态的标注所在的帧
+  --scale 1|2          像素倍数（缺省 1）
+  --timeout <秒>       等文章站点就绪的上限（缺省 60）
+${REGISTRY_FLAG}
+${TARGET_NOTE}`,
+  },
+  locate: {
+    usage: 'ppnt locate <目标> <引用…> [--status <状态>]',
+    text: `用法：ppnt locate <目标> <引用…> [--status <状态>]
+
+每条标注一行：#n → 源文件:行 · 组件（共用 n 帧）。正文评论落到 index.mdx 里引文所在的行；
+存量页的 HTML 帧给 dist 路径 + selector。
+引用：#12、#3-#7、B3（这一帧的全部标注）、B 或 §2（这一节）、帧 id、节 id、<project>/<article>#12、@a:<id>。
+${TARGET_NOTE}
+
+  --status <状态>      加上这个状态的全部标注（open | check | done | close | all）
+${REGISTRY_FLAG}
+
+例：ppnt locate browser-use/payment-confirm '#3' B1`,
+  },
+  mark: {
+    usage: 'ppnt mark <目标> <引用…> done|check',
+    text: `用法：ppnt mark <目标> <引用…> done|check
+
+写状态，走服务的状态端点（带 baseRevision），逐条打印结果；冲突或非法转换打 409 原因，不中断其他条。
+看了但不改 → check；改完 → done。open 由 owner 编辑时自动回，close 只有 owner 在工作台或文章右栏做。
+引用同 locate。
+${TARGET_NOTE}
+
+  --status <状态>      加上这个状态的全部标注
+${REGISTRY_FLAG}
+
+例：ppnt mark browser-use/payment-confirm '#3' '#4' done`,
+  },
+  reply: {
+    usage: 'ppnt reply <project>/<article>#<n> "<回复>"',
+    text: `用法：ppnt reply <project>/<article>#<n> "<回复>"
+      ppnt reply <project>/<article> '#<n>' "<回复>"
+
+在一条正文评论的线程末尾追加一条 agent 消息，走服务的回复端点（带 baseRevision），状态不动；
+要改状态另用 mark。画布标注没有线程，reply 会拒绝。zsh 里单独的 #n 要加引号。
+${REGISTRY_FLAG}`,
+  },
+  list: {
+    usage: 'ppnt list [关键词…]',
+    text: `用法：ppnt list [关键词…]
+
+把口头说法对上地址：列 project（下面每篇文章一行 <project>/<article>）和存量页（id · 标题 · 类型 ·
+open / check / done 计数 · 文件夹，次行源路径）。关键词在 id、标题、路径上宽松匹配，多个词要同时对上，
+英文复数自动去 s，连字符与空格互通；也匹配文章的 id 和标题。
+  ppnt list <project>                 同 ppnt show <project>
+  ppnt list <页 id> --frames          编号 · 帧 id · 源文件 · 标题（同 ppnt show <存量页 id>）
+
+  --frames             见上
+${REGISTRY_FLAG}`,
+  },
+  status: {
+    usage: 'ppnt status [--page <目标>]',
+    text: `用法：ppnt status [--page <目标>]
+
+服务体检：路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry · project · 文章站点；全绿才退 0。
+  --page <目标>        改报这一页的各状态计数、孤儿与 dist 是否过期（ppnt comments 的抬头有同样的计数）
+${REGISTRY_FLAG}
+
+环境变量：
+  PINPOINT_REGISTRY    同 --registry（--registry 优先）
+  PINPOINT_DATA_DIR    数据目录：标注桶、dist、截图、日志（缺省 ~/.pinpoint）
+  PINPOINT_ORIGIN      服务地址（缺省 ${DEFAULT_ORIGIN}）。登记后 CLI 探活并让服务重读登记表；
+                       shot、mark、reply、comments --mode image 也走它；设了它，status 只体检这一个服务
+  PORTLESS_ROUTES      portless 路由表位置（缺省 ~/.portless/routes.json），status 读它`,
+  },
+  start: { usage: 'ppnt start', text: '用法：ppnt start\n\n起常驻服务（https://pinpoint.localhost）。已经健康就拒绝；日志在 <数据目录>/logs/service.log。\n要隔离运行（测试、冒烟）不要用它，见 docs/registry.md“隔离运行”。' },
+  stop: { usage: 'ppnt stop', text: '用法：ppnt stop\n\n停常驻服务：只给 portless 记下的那个进程发 SIGTERM。' },
+  restart: { usage: 'ppnt restart', text: '用法：ppnt restart\n\n停 + 起。服务跨过一次仓库目录搬迁后（status 报服务 root 不对）用它。' },
+  add: {
+    usage: 'ppnt add <project 根> --project | ppnt add <目录|文件.html|http(s)://URL> [--title X] [--board ios|html] [--id xxx] [--page <页 id>] [--draft]',
+    text: `用法：ppnt add <project 根> --project
+      ppnt add <目录|文件.html|http(s)://URL> [选项]
+
+登记进 registry（文件留在原地，只登记路径或网址），服务在跑就让它重读登记表。
+  目录 + --project     project：读 <根>/docs/pinpoint/project.json，id 与标题都取它；不能和 --title / --board / --page / --draft 同用
+  目录                 存量页（kind dir），服务在 /sites/<id>/ 下只读托管并注入标注
+  单个 .html           kind file，只托管这个文件
+  http(s)://URL        kind url，同源代理内嵌，并往响应里注入标注
+
+  --project            见上
+  --title X            显示名（缺省目录名 / 文件名 / hostname）
+  --board ios|html     工作台的壳（缺省 html；只对目录生效）
+  --id xxx             本条目自己的 id（缺省由名称派生；撞了已有 id 就报错）
+  --page <页 id>       把本条目挂到已有的存量页上（并进那一页的内容区），不是给本条目起 id——起 id 用 --id
+  --draft              配合 --page：挂进草稿组
+${REGISTRY_FLAG}`,
+  },
+  move: {
+    usage: 'ppnt move <id> <新目录|新文件|新URL>',
+    text: `用法：ppnt move <id> <新目录|新文件|新URL>
+
+把已登记的条目指到新路径，id 和标题不变，标注照旧对得上。project：新根目录里 project.json 的 id 必须不变。
+${REGISTRY_FLAG}`,
+  },
+  rename: {
+    usage: 'ppnt rename <旧 id> <新 id>',
+    text: `用法：ppnt rename <旧 id> <新 id>
+
+给条目改 id，四件事都能做才动手：登记表换 id（含挂在它上面的条目）、标注桶改名、
+目录条目里的 /sites/<旧 id>/ 换成新前缀、服务重读。project：改写 project.json 的 id，
+每篇文章的桶 <旧 id>_<文章> 改名成 <新 id>_<文章>（任何一个目标已存在就整单不动），画布视图按新页 id 重编。
+${REGISTRY_FLAG}`,
+  },
+  remove: {
+    usage: 'ppnt remove <id>',
+    text: `用法：ppnt remove <id>
+
+从登记表删掉一个条目，源文件和网址不动，重新 add 就恢复。三种情况拒绝：id 不存在；还有条目挂着它；
+标注桶里还有标注行（先处理，或 ppnt prune）。桶是空的就顺手删掉。project 的每篇文章的桶守同一条。
+${REGISTRY_FLAG}`,
+  },
+  folder: {
+    usage: 'ppnt folder <list|add|rename|rm|move> …',
+    text: `用法：ppnt folder <子命令>
+
+工作台左栏“页面”组里的一层分组（不嵌套；文章不进文件夹）：
+  ppnt folder list                     列出文件夹：id · 名称 · 页数 · 是否折叠
+  ppnt folder add <名称> [--id xxx]     建一个夹（中文名派生不出 id，用 --id）
+  ppnt folder rename <id> <新名称>       只改显示名
+  ppnt folder rm <id>                   删夹；夹里的页不删，变成散页
+  ppnt folder move <页 id> <夹 id>       把页放进夹；夹 id 写 none = 移出来
+${REGISTRY_FLAG}`,
+  },
+  migrate: {
+    usage: 'ppnt migrate <存量页 id> --project <根> [--article <id>] [--dry-run]',
+    text: `用法：ppnt migrate <存量页 id> --project <根> [--article <id>] [--dry-run]
+
+把存量页迁成 project 里的一篇文章（docs/projects.md“从存量页迁移”）：每个 board section 成为一节
+（<Section> + <Canvas>，tab 摊平成二级标题），帧、组件、sidecar、资源照原相对路径复制。写完逐帧编译，
+和旧页的渲染逐行比；有帧编不过或 shell 不一致退 1。旧页的文件、登记和标注都不动。
+
+  --project <根>       project 根目录，要已有 docs/pinpoint/project.json
+  --article <id>       文章 id（缺省 = 页 id）；目录已存在就拒绝
+  --dry-run            只打印计划与 index.mdx，不写文件
+${REGISTRY_FLAG}`,
+  },
+  prune: {
+    usage: 'ppnt prune <目标> [--dry-run]',
+    text: `用法：ppnt prune <目标> [--dry-run]
+
+删掉这个桶里的孤儿账本（表面已经不存在：文件删了、文章删了或改名了、页不在了）。直接删除、不备份，
+由 owner 决定；--dry-run 只列不删。目标写 <project>/<article>、页 id 或桶名。
+${REGISTRY_FLAG}`,
+  },
+};
+
+/** 一个命令的全文帮助；未知命令给命令一览。 */
+export function helpFor(command) {
+  return HELP[command] ? HELP[command].text : USAGE;
+}

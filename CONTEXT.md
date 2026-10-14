@@ -34,7 +34,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **帧（frame）** · `articles/<article>/<帧 id>.jsx`
 画布上的一格，也是装这一格内容的源文件。帧 id 就是文件名（不带扩展名），不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
-要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码和 CLI 里同一个东西叫 screen：`screenId`、`ppnt render <页>/<屏>`、`--screen`、`/api/frame?screen=`、`@frame:<页 id>/<帧 id>`。
+要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`ppnt build --frame` 的别名 `--screen`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`docs/pinpoint/components/<Name>.jsx`（project 共用）、`content/kits/ios/jsx/`（kit）
 帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时先找本篇、再找 project；kit 的组件写 `pinpoint/kit`。
@@ -53,16 +53,16 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：“画布页”“文章画布页”“文章画布”（指同一个东西，统一说画布视图）；拿“页”单指它；单说“画布”而不说明是画布组件、画布卡片还是画布视图。
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
-工作台、`ppnt`、标注桶共用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开，这篇的画布标注和正文评论都进它的桶，`ppnt build / check / shot / mark / reply` 的页参数都写它。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
-要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page` 和 `<页>` 参数、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
+工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
+要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page`（目标的旧写法）、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
 
 **节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
 - 节号是文章页上的 1、2、3：目录、节标题、画布卡片和浮层头部用它。
 - 编号是画布视图、`ppnt` 和标注里的字母加数字：节字母 A、B、C，帧在节内从 1 数，拼成 A1、B3。
 
-第 n 节就是第 n 个字母：全部节一起数，纯文字的节也占一个号和一个字母（这个字母在画布视图里没有对应的行），所以第一节是纯文字时，画布视图从 B 开始，B2 是文章第 2 节的第 2 帧。两套号都随增删、调序变化，所以当场对话用号，留存的文字（README、交接稿、验收记录）写 id：节 id、帧 id，或“D2（c1b-detail-time）”。对照用 `ppnt list <页 id> --frames`。
-要避开：把 id 起成编号的样子（`c1b-detail`）；在文章正文里写字母编号；“图纸号”“引用号”“canvas ref”（都指编号）。CLI 的 `<引用>` 参数比编号宽，`#12`、帧 id 也算，见“引用地址”。
+第 n 节就是第 n 个字母：全部节一起数，纯文字的节也占一个号和一个字母（这个字母在画布视图里没有对应的行），所以第一节是纯文字时，画布视图从 B 开始，B2 是文章第 2 节的第 2 帧。两套号都随增删、调序变化，所以当场对话用号，留存的文字（README、交接稿、验收记录）写 id：节 id、帧 id，或“D2（c1b-detail-time）”。对照用 `ppnt show <project>/<article>`：每节一行节号、字母、节 id，下面是帧的编号和帧 id。
+要避开：把 id 起成编号的样子（`c1b-detail`）；在文章正文里写字母编号；“图纸号”“引用号”“canvas ref”（都指编号）。CLI 的 `<引用>` 参数比编号宽，`#12`、`§2`、帧 id 也算，见“引用地址”。
 
 **concept（概念）** · `<project 根>/docs/pinpoint/concepts/<slug>.md`；概念页 `/<project>/concepts/<slug>/`
 一个词的定义，像 wiki 词条：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。
@@ -73,7 +73,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：把空 ref 当错误去删。
 
 **画布标注** · 画布视图上的标注客户端 `src/client/annotate.js`；账本 `@canvas.json`
-owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt check` 能直接给出源码位置。画布标注没有线程：agent 改完写状态，要解释就在对话里说。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
+owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素（这些元素是这条标注的目标），hover 时元素高亮，写下的标注钉在元素上；标注可以带意图（改文案、移动、参考图）。锚点是编译产物里的 `data-pp-id`（源文件:行），所以 `ppnt comments` 和 `ppnt locate` 能直接给出源码位置。画布标注没有线程：agent 改完写状态，要解释就在对话里说。画布标注只在画布视图里做；文章页的卡片和浮层上不做。
 要避开：“批注”；把正文评论也叫画布标注。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`
@@ -81,7 +81,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把“失效”说成已解决；“文档标注”（那是存量页上按路径分本的账本）。
 
 **标注队列** · 一个桶里的全部画布标注和正文评论
-同一篇文章的画布标注和正文评论排在一个队列里：一套 `#n` 序号、一个状态机，`ppnt check <页 id>` 一次列出两种。CLI 和字段名里“标注”泛指队列里的每一条；只说其中一种时写“画布标注”或“正文评论”。
+同一篇文章的画布标注和正文评论排在一个队列里：一套 `#n` 序号、一个状态机，`ppnt comments <project>/<article>` 一次列出两种。CLI 和字段名里“标注”泛指队列里的每一条；只说其中一种时写“画布标注”或“正文评论”。
 要避开：以为两种各有各的序号。
 
 **标注状态** · 状态色 `src/shared/ann-status.js`；转换校验在服务端
@@ -97,7 +97,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
-表面已经不存在的账本：文章目录删了或改了名、project 不再登记、存量页的文件删了或页不在了。`ppnt check` 和 `ppnt status --page` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
+表面已经不存在的账本：文章目录删了或改了名、project 不再登记、存量页的文件删了或页不在了。`ppnt comments` 和 `ppnt status --page` 把它们单独列出，不计数；清理只经 `ppnt prune <页 id>`，由 owner 决定。
 要避开：去 `mark` 孤儿条目。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
@@ -132,10 +132,10 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 
 ## 引用地址
 
-人和 agent 在对话里互指用这些短地址，`ppnt` 都认。编号和 `#12` 只在一个页 id 里有意义：命令里写 `--page <页 id>`，或把第一个引用写成 `<页 id>#12`，其余引用以它为准。
+人和 agent 在对话里互指用这些短地址，`ppnt` 都认。一篇文章写 `<project>/<article>`（文章网址和页 id 也认），这是 `ppnt` 命令的第一个参数；编号和 `#12` 只在一篇文章（或一个存量页）里有意义，所以写在它后面。把第一个引用写成 `<project>/<article>#12` 时可以不写第一个参数，其余引用以它为准。命令不猜目标：没写或写错就报错并列出候选。
 
-- `#12`（本桶标注序号）、`<页 id>#12`（跨桶）、`@a:<id>`（标注内部 id）。
-- `B3`（编号，一帧）、`B`（一节）、裸帧 id、裸节 id。多 tab 的存量页写 `<tab>:B3`。
+- `#12`（本桶标注序号）、`<project>/<article>#12`（带上文章，跨桶也用它；`<页 id>#12` 同义）、`@a:<id>`（标注内部 id）。
+- `B3`（编号，一帧）、`B` 或 `§2`（一节，`§n` 是文章页上的节号）、裸帧 id、裸节 id。多 tab 的存量页写 `<tab>:B3`。
 - `@frame:<页 id>/<帧 id>`、`@section:<页 id>/<节 id>`、`@page:<页 id>`。
 
 标注正文里指自己的目标用 `[@t:iN]`（第 N 个目标），它只在那一条标注内解析，不算对别的标注的引用（`mentions[]`）。

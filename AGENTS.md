@@ -6,8 +6,8 @@ owner 用正文评论和画布标注把反馈交回 agent。常驻服务跑在 `
 
 模型从上到下：project → 文章 → section（节）→ 节里的画布组件 → 帧。一篇文章是 `<project 根>/docs/pinpoint/articles/<id>/`
 下的 `index.mdx` 加本篇的帧（`<帧 id>.jsx`）和组件；读者在文章页 `/<project>/<article>/` 读它，集中修改在画布视图
-`/?page=<project>_<article>`（所有带画布的节按行排开，由正文自动生成）。`<project>_<article>` 是这篇文章的页 id：
-`ppnt` 的页参数、画布视图的地址和标注桶都用它，正文评论和画布标注进同一个队列。帧是源码，`ppnt build` 把它编译成
+`/?page=<project>_<article>`（所有带画布的节按行排开，由正文自动生成）。`ppnt` 里这篇文章写成 `<project>/<article>`；
+`<project>_<article>` 是它的页 id，画布视图的地址和标注桶用它，正文评论和画布标注进同一个队列。帧是源码，`ppnt build` 把它编译成
 dist（`~/.pinpoint/dist/<页 id>/`），画布、卡片、标注和截图只读 dist。
 
 存量页（带 `board.json` 的原型页）照常可看、可改、可标注；新工作写成文章，存量页可以用 `pinpoint migrate` 转成文章。
@@ -70,11 +70,12 @@ status 一次答两种真实故障：进程没了、进程还在但已失效（�
 
 **`ppnt` = `pinpoint`**，命令一览：`status` / `start` / `stop` / `restart`（服务）、
 `add` / `move` / `rename` / `folder`（registry）、`migrate`（存量页转成文章）、`build` / `render`（编译）、
-`check` / `locate` / `shot` / `mark` / `reply` / `status --page`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论），
-参数以 `bin/pinpoint-cli.js` 为准。页参数写页 id：文章是 `<project>_<article>`，存量页是它自己的 id。改完帧跑 `ppnt build <页 id>`
+`show` / `check`（一篇文章的节和帧 / 验证）、`comments` / `locate` / `shot` / `mark` / `reply`（读标注 / 定位 / 截图 / 写状态 / 回复正文评论），
+每个命令的选项是 `ppnt <命令> --help`，共用约定见 [`docs/registry.md`](docs/registry.md)“CLI”。第一个参数是目标：文章写 `<project>/<article>`，
+存量页写它的 id。改完跑 `ppnt check <project>/<article>`，存量页跑 `ppnt build <页 id>`
 （或 `--watch` 挂着）——dist 落后于源码或某帧没编过时，那一帧出错误面板，
 重编即修，不要手改 `~/.pinpoint/dist/` 下的任何文件。标注四态 open / check / done / close：
-agent 只经 `ppnt mark <ref…> check|done` 写状态（`open` 由 owner 在工作台编辑时
+agent 只经 `ppnt mark <目标> <引用…> check|done` 写状态（`open` 由 owner 在工作台编辑时
 自动回，`close` 只有 owner 在工作台做），
 字段与转换规则见 [`docs/annotation.md`](docs/annotation.md)。
 

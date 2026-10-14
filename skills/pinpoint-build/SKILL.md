@@ -11,7 +11,7 @@ description: 在 pinpoint 里写 article（设计文档）：建 project、写 i
 
 ## 1. 放进哪个 project
 
-先跑 `ppnt list <关键词>`。它列出 project 和存量页，关键词也匹配文章的 id 和标题。
+先跑 `ppnt list <关键词>`。它列出 project（下面每篇文章一行 `<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
 
 - 主题已经有 project：在它的 `docs/pinpoint/articles/` 下新建一个目录，就是一篇新 article。不用再登记，服务、站点和 CLI 每次都重读磁盘。
 - 还没有：在这个主题自己的根目录（它所属的仓库或 topic）下建 `docs/pinpoint/project.json`，内容是 `{ "id": "browser-use", "title": "Areta browser use" }`，再登记：
@@ -42,7 +42,7 @@ project 是一组相关的文章和 concept，id 是网址的第一段 `/<projec
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`concepts/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式和资源只有文章这一级：没有 project 级的 css 和 `assets/`。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
-- 已有的文章目录不改名：目录名是页 id 的后半段，改名后旧页 id 下的标注和评论整桶成孤儿。确要改名，按 [`docs/projects.md`](../../docs/projects.md)“文章目录改名”手工挪桶。换 project id 用 `pinpoint rename <旧 id> <新 id>`，它连每篇文章的桶一起搬。
+- 已有的文章目录不改名：目录名是文章地址和页 id 的后半段，改名后旧页 id 下的标注和评论整桶成孤儿。确要改名，按 [`docs/projects.md`](../../docs/projects.md)“文章目录改名”手工挪桶。换 project id 用 `pinpoint rename <旧 id> <新 id>`，它连每篇文章的桶一起搬。
 
 ## 3. 写 index.mdx
 
@@ -108,35 +108,35 @@ boundary: 一句话说清它管什么、不管什么。
 
 ## 6. 看结果、查错
 
-每篇文章有一个页 id：`<project>_<article>`（例如 `browser-use_payment-confirm`）。`ppnt` 命令里的页参数（`--page`、`<页>`）都写它，画布视图用它打开，标注和评论进它的桶。画布视图每次从 `index.mdx` 自动生成，不要写 board.json。
+命令的第一个参数是地址：一篇文章写 `<project>/<article>`（例如 `browser-use/payment-confirm`），一个 project 写 `<project>`。文章网址也认。画布视图每次从 `index.mdx` 自动生成，不要写 board.json。
 
-- `pinpoint list <project>`：列文章（每篇下面一行“画布 <页 id>”，这一行写的就是页 id）、概念和布局错误，有错误时退 1。画布写法的错误（跨页引帧、缺帧、Canvas 写在节外、shell 写错）也在这里。
-- `ppnt list <project>_<article> --frames`：编号、帧 id、源文件的对照。
-- `ppnt build <project>_<article>`：编译这篇的全部帧，逐帧报 ok 或 lint、编译错误。
-- `ppnt shot C2 --page <project>_<article>`：一帧的 PNG，命令会打印文件路径；写 `C` 截整节。改了组件或 `article.css`，把用到它的帧都截一遍。
-- 文章页 `https://pinpoint.localhost/<project>/<article>/`：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。
-- 画布视图 `https://pinpoint.localhost/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。
-- project 首页 `https://pinpoint.localhost/<project>/`：文章列表、概念和全部空 ref。写完 `[[ ]]` 想确认哪些还是空 ref，看这一页。
+- `ppnt check <project>/<article>`：汇报前的验证，一条命令看全。布局错误（frontmatter、`<Section>` / `<Canvas>` 写法、跨页引帧、缺帧）、每一帧的 lint 与编译错误、正文渲染错误（没定义的组件 `<Foo />`、没定义的变量）各一行，形如 `文件:行  错误  code  说明`；空 ref 是提示。有错误退 1，只有提示退 0。写 `ppnt check <project>` 查整个 project，`--json` 给结构化输出。
+- `ppnt show <project>/<article>`：每节一行 §n、字母、节 id、标题、帧数和 open 数，下面是帧（编号、帧 id、源文件）和网址。owner 说“第 2 节”“B1”时在这里对上。`ppnt show <project>` 列文章、概念、空 ref 和布局错误。
+- `ppnt shot <project>/<article>`：文章页整页的 PNG，命令打印文件路径和尺寸。`ppnt shot <project>/<article> §2` 截文章页上的第 2 节；`B1`、`C` 或帧 id 截画布视图上的一帧、一节；`--canvas` 截整个画布视图。改了组件或 `article.css`，把用到它的帧都截一遍。服务要在跑；文章站点还在启动（503）时命令自己等，最多 `--timeout` 秒（缺省 60）。
+- `ppnt build <project>/<article>`：编译这篇的全部帧到 dist，逐帧报 ok 或错误。`check` 已经编过一遍，`build` 用于要更新 dist 或 `--watch` 时。
+- 文章页 `https://pinpoint.localhost/<project>/<article>/`：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。正文渲染出错时文章页可能只显示到正文开头，状态码仍是 200，所以查错看 `ppnt check`，不看状态码。
+- 画布视图 `https://pinpoint.localhost/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。
+- project 首页 `https://pinpoint.localhost/<project>/`：文章列表、概念和全部空 ref。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和概念，就是别的 agent 读到的样子。
 - 站点打不开，先跑 `pinpoint status`。
 - 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：另起一个服务，用 `PINPOINT_DATA_DIR`、`PINPOINT_REGISTRY`、`PINPOINT_ORIGIN`、`PORT`、`PINPOINT_SITE_PORT` 指到别处，做法见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。不要用 `pinpoint start` 起第二个服务：它经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
+- 每个命令的选项和例子：`ppnt <命令> --help`。
 
 文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和这一节 open 状态的画布标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧，在文章页上打开这一节的画布浮层，里面的帧可以操作，但不能标注；点卡片头的“打开画布 →”，进画布视图并定位到这一节。画布标注只在画布视图里做；在文章页上选中正文写的是正文评论。两种进同一个队列，处理见 pinpoint-annotate。
 
 改完的检查，都过了才汇报：
 
-1. `pinpoint list <project>` 的布局错误是“无”。
-2. `ppnt build <project>_<article>` 每帧都是 ok。
-3. 改过的帧都用 `ppnt shot` 看过图。
-4. 汇报改了哪些文件、还有什么没解决。评审和关闭标注是 owner 的事。
+1. `ppnt check <project>/<article>` 退 0。
+2. 改过的帧和节都用 `ppnt shot` 看过图；改了正文，`ppnt shot <project>/<article>` 看一遍文章页。
+3. 汇报改了哪些文件、还有什么没解决。评审和关闭标注是 owner 的事。
 
 `~/.pinpoint/dist/` 是编译产物，不要手改，重编就会覆盖。
 
 ## 7. 存量页
 
-存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件、网址），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的页 id 就是它自己的 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
+存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件、网址），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的地址就是它的 id，也是页 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
 
 - 帧和组件的写法与第 4 节相同。存量页的组件在 `<存量页目录>/components/`，没有 project 这一层；页级资源登记在 board.json 的 `assets`。
-- 新帧要登记进 board.json 的 `sections[].screens`，改完跑 `ppnt build <页 id>`，查错和截图同第 6 节。
+- 新帧要登记进 board.json 的 `sections[].screens`。存量页没有 `check`：改完跑 `ppnt build <页 id>` 到全绿，`ppnt show <页 id>` 看编号对照，`ppnt shot <页 id> B1` 截图。
 - board 的字段、`shell: "comp"` 的组件墙、goto 见 board-schema；页内 tab 见 ADR 0041，多 tab 页上位置引用写 `flow:B3`；组件页与交互页的分法见 ADR 0040。
 - 往 tracked 目录里放实例内容之前，先读 board-schema“模板与实例”：实例页住你自己的目录，经 `pinpoint add` 登记。

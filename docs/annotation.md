@@ -32,7 +32,7 @@
 ## 读到标注去改哪里
 
 锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
-实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt check` / `locate` 直接按它取锚点
+实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt comments` / `locate` 直接按它取锚点
 （多命中按文本择近）；没有 `ppId` 的标注（存量页的 `.html` 帧）走 cssPath 链。
 
 - 锚点带 `data-pp-comp` → 改组件文件（文章：本篇或 project 的 `components/<Name>.jsx`；存量页：`<存量页目录>/components/<Name>.jsx`），所有引用它的帧一起变。
@@ -80,7 +80,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
 
 **孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、存量页不在 registry 与
-manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt status --page` 与 `check`
+manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt status --page` 与 `comments`
 把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
 面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。
 
@@ -107,7 +107,7 @@ manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤�
 - 右栏：pending / closed 两段筛选（与画布列表同一口径），每条线程是序号钉（状态色）+ 状态字 + 引文 + 消息（“你” / agent，时间）+ 回复框，行尾“完成”（→ close）或“重新打开”（→ open）。点高亮聚焦线程，点线程定位高亮。
 - 写入：客户端把改动记成操作（新建、回复、改状态），存盘撞上 409 时重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉。其他拒绝时，新评论退回草稿，回复退回输入框，右栏写出原因。owner 回复或改了引文算 owner 编辑，服务端把状态回 open。
 - 同步：SSE 断了自己重连，连上后重新水合，补上断线期间的改动。页面进 bfcache 时关掉 SSE；从画布按“返回”回来（`pageshow` 且 `persisted`）时重开并重新水合。离开页面时排着的操作立刻发出（见上面“离开页面不丢写”）；重放时 owner 的同一条回复（原文与 `at` 相同）不追加第二遍。
-- agent：`ppnt check <project>_<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <ref> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（body 带 `entry`、`baseRevision`、`text`），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；改状态照旧 `ppnt mark`。
+- agent：`ppnt comments <project>/<article>` 把正文评论单独成组（引文、节、`index.mdx` 里的落脚行、线程）；`ppnt reply <project>/<article>#<n> "<回复>"` 走 `POST /annotations/@prose/<id|n>/reply`（body 带 `entry`、`baseRevision`、`text`），在线程末尾追加 agent 消息，状态不动，经 SSE 实时出现在右栏；改状态照旧 `ppnt mark`。
 
 ## 控制面
 
@@ -191,7 +191,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 用户面只有一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
 原生 dialog；ADR 0033）。文章本身用文章页的链接分享。服务端帧图片渲染器（`/api/export-image`）给 agent 用：
-`ppnt shot` 与 `ppnt check --mode image` 走它。不要把截图逻辑加进单个帧里。
+`ppnt shot` 的画布截图与 `ppnt comments --mode image` 走它。文章页截图（`ppnt shot <project>/<article>`、`§2`）不经它：CLI 用 Playwright 打开文章页，等站点就绪、图片和画布卡片加载完再截。不要把截图逻辑加进单个帧里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。
 

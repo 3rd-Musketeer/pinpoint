@@ -4,12 +4,12 @@
  *   #12          本页标注序号（registry entry 内单调、跨账本唯一）
  *   <entry>#12   跨页标注（plugins#12；文章页 browser-use_payment-confirm#3）
  *   #3-#7        区间（含端点）
- *   B3           图纸号 → 该帧全部标注（shot 里指帧本身）
- *   B            段字母 → 整段（section）
- *   flow:B3      多 tab 页（ADR 0041）上的图纸号带 tab 前缀；编号按 tab 各自从 A 起，
+ *   B3           编号 → 该帧全部标注（shot 里指帧本身）
+ *   B            节字母 → 整节（section；节里的正文评论也算）
+ *   flow:B3      多 tab 页（ADR 0041）上的编号带 tab 前缀；编号按 tab 各自从 A 起，
  *   flow:B       裸 B3 / B 在多个 tab 里都有时报歧义并列出候选，只在一个 tab 里有才放行
  *   <帧 id>      裸帧 id，与 B3 同义（B3 是按位置派生的显示编号，id 不变）
- *   <段 id>      裸段 id，与 B 同义
+ *   <节 id>      裸节 id，与 B 同义
  *   <page>       整页（仅 shot；任意登记页 id，不限基页）
  *   @frame:p/s   机器帧语法（annotation-indicator 的 parseIndicator）
  *   @a:<id>      标注内部 id
@@ -101,7 +101,7 @@ export function resolveRef(token, ctx = {}) {
   const asFrame = positionRef.match(FRAME_REF_RE);
   if (asFrame) {
     const hits = outlineFrames(refs).filter((frame) => frame.ref === positionRef && (!tabPart || frame.tabId === tabPart));
-    if (!hits.length) return { kind: 'unknown', token, message: `图纸上没有帧 ${raw}` };
+    if (!hits.length) return { kind: 'unknown', token, message: `画布上没有帧 ${raw}` };
     if (hits.length > 1) {
       return { kind: 'unknown', token, message: `${raw} 在多个 tab 里有，写 ${hits.map((frame) => `${frame.tabId}:${positionRef}`).join(' 或 ')}` };
     }
@@ -110,7 +110,7 @@ export function resolveRef(token, ctx = {}) {
   }
   if (!asFrame && positionRef.match(SECTION_REF_RE)) {
     const outlineHits = refs.outline.filter((section) => section.letter === positionRef && (!tabPart || section.tabId === tabPart));
-    if (!outlineHits.length) return { kind: 'unknown', token, message: `图纸上没有段 ${raw}` };
+    if (!outlineHits.length) return { kind: 'unknown', token, message: `画布上没有节 ${raw}` };
     if (outlineHits.length > 1) {
       return { kind: 'unknown', token, message: `${raw} 在多个 tab 里有，写 ${outlineHits.map((section) => `${section.tabId}:${positionRef}`).join(' 或 ')}` };
     }
@@ -146,7 +146,7 @@ export function resolveRef(token, ctx = {}) {
   const indicator = parseIndicator(raw);
   if (indicator && indicator.kind === 'frame') {
     const hit = outlineFrames(refs).find((frame) => frame.id === indicator.screenId);
-    if (!hit) return { kind: 'unknown', token, message: `图纸上没有帧 ${indicator.screenId}` };
+    if (!hit) return { kind: 'unknown', token, message: `画布上没有帧 ${indicator.screenId}` };
     return { kind: 'frame', screenId: hit.id, ref: qualified(hit.tabId, hit.ref), title: hit.title, ...(hit.tabId ? { tabId: hit.tabId } : {}) };
   }
   if (indicator && indicator.kind === 'annotation') {
@@ -154,7 +154,7 @@ export function resolveRef(token, ctx = {}) {
     if (!row) return { kind: 'unknown', token, message: `没有 @a:${indicator.id}` };
     return { kind: 'annotation', row };
   }
-  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、entry#n、#3-#7、B3、B、<tab>:B3、帧 id、段 id、页 id、@frame:p/s、@a:id）` };
+  return { kind: 'unknown', token, message: `认不出引用：${raw}（可用：#n、<project>/<article>#n、#3-#7、B3、B、§2、<tab>:B3、帧 id、节 id、页 id、@frame:p/s、@a:id）` };
 }
 
 export const REF_STATUSES = ['open', 'check', 'done', 'close', 'all'];
@@ -205,8 +205,9 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
         continue;
       }
       const screenIds = pick.frames.map((frame) => frame.id);
-      const rows = (ctx.rows || []).filter((a) => screenIds.includes(a.screenId));
-      if (!rows.length) errors.push(`${token}：该段暂无标注`);
+      // 这一节的帧上的标注，加上落在这一节的正文评论（row.section = 节 id）。
+      const rows = (ctx.rows || []).filter((a) => screenIds.includes(a.screenId) || (a.type === 'prose' && a.section === pick.sectionId));
+      if (!rows.length) errors.push(`${token}：该节暂无标注`);
       for (const row of rows) pushAnnotation(row, token);
       continue;
     }

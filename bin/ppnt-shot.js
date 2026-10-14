@@ -16,21 +16,30 @@ import { frameInternalSelector } from '../src/shared/frame-anchor.js';
 export const PIN_CSS = 'position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#0a84ff;color:#fff;font:700 11px/18px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);';
 
 /**
- * 渲染一组图。jobs = [{ kind:'frame'|'section'|'page', screenId?, sectionId?,
+ * 渲染一组画布视图上的图。jobs = [{ kind:'frame'|'section'|'page', screenId?, sectionId?,
  * out, scale, marks }]；marks 是账本行（带 targets）。锚点解析走页面里
  * window.pinpoint.resolveMarkTarget（决定 #15：ppId 优先，cssPath 兜底），
  * 帧内相对链作旧路兜底。返回 [{ out, width, height }]；
  * 服务不在跑 / 渲染失败抛错；锚点解析不到的钉安静跳过（失效 ≠ 不能出图）。
  */
-export async function renderShots({ origin, pageId, jobs }) {
-  let up = false;
+/** 服务不在跑时的那句话：隔离运行（设了 PINPOINT_ORIGIN）不能 `ppnt start`，要去起那个服务。 */
+export function serviceDownMessage(origin, env = process.env) {
+  return env.PINPOINT_ORIGIN
+    ? `截图要 pinpoint 服务在跑：PINPOINT_ORIGIN=${origin} 那个服务没答，先把它起起来（docs/registry.md“隔离运行”）。`
+    : `截图要 pinpoint 服务在跑（${origin}），先 \`ppnt start\`。`;
+}
+
+async function serviceUp(origin) {
   try {
     const response = await fetch(`${origin}/health`);
-    up = response.ok;
+    return response.ok;
   } catch {
-    up = false;
+    return false;
   }
-  if (!up) throw new Error(`渲染需要 pinpoint 服务在跑（${origin}），先 \`ppnt start\`。`);
+}
+
+export async function renderShots({ origin, pageId, jobs, env = process.env }) {
+  if (!(await serviceUp(origin))) throw new Error(serviceDownMessage(origin, env));
   const prepared = jobs.map((job) => ({
     ...job,
     marks: (job.marks || []).map((mark) => {
@@ -202,4 +211,108 @@ async function buildSnapshot(page, job) {
       html: hoisted + clone.outerHTML,
     };
   }, { job, pinCss: PIN_CSS });
+}
+
+/** PNG 头里的宽高（IHDR 紧跟签名）。 */
+function pngSize(buffer) {
+  if (!buffer || buffer.length < 24) return { width: 0, height: 0 };
+  return { width: buffer.readUInt32BE(16), height: buffer.readUInt32BE(20) };
+}
+
+/**
+ * 等文章页能读：200 就绪；503 是“站点启动中”页（服务按需拉起 Astro，几秒），继续等；
+ * 404 在刚登记的文章上可能短暂出现，最多等 10 秒；502 是站点起不来，直接报（带页面里的原因）。
+ */
+export async function waitArticleReady(request, url, { timeoutMs, pollMs = 500 }) {
+  const started = Date.now();
+  let last = '';
+  for (;;) {
+    let status = 0;
+    let text = '';
+    try {
+      const response = await request.get(url, { failOnStatusCode: false, timeout: 15000 });
+      status = response.status();
+      if (status !== 200) text = await response.text();
+    } catch (error) {
+      last = error.message;
+    }
+    if (status === 200) return;
+    if (status === 502) {
+      const reason = text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 400);
+      throw new Error(`文章站点起不来（502）：${reason}`);
+    }
+    if (status && status !== 503 && !(status === 404 && Date.now() - started < 10000)) {
+      throw new Error(`文章页 ${url} 返回 ${status}`);
+    }
+    if (status) last = `HTTP ${status}${status === 503 ? '（站点启动中）' : ''}`;
+    if (Date.now() - started > timeoutMs) throw new Error(`等文章页就绪超时（${Math.round(timeoutMs / 1000)} 秒，最后一次 ${last || '没有响应'}）：${url}；ppnt status 看文章站点那一行，--timeout 可以放宽`);
+    await new Promise((resolve) => setTimeout(resolve, pollMs));
+  }
+}
+
+/** 文章页上的画布卡片是懒加载 iframe：整页截图前改成立即加载，等它们都 load 完（单个最多 15 秒）。 */
+async function settleArticlePage(page, scope = null) {
+  await page.evaluate(async (selector) => {
+    const root = selector ? document.querySelector(selector) : document;
+    const frames = [...(root || document).querySelectorAll('iframe')];
+    await Promise.all(frames.map((frame) => new Promise((resolve) => {
+      const done = () => resolve();
+      let loaded = false;
+      try { loaded = frame.contentDocument && frame.contentDocument.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank'; } catch { loaded = true; }
+      if (loaded) return done();
+      frame.addEventListener('load', done, { once: true });
+      if (frame.loading === 'lazy') {
+        frame.loading = 'eager';
+        // 改 loading 不一定触发加载：重设 src 让它马上开始。
+        const src = frame.getAttribute('src');
+        if (src) frame.setAttribute('src', src);
+      }
+      setTimeout(done, 15000);
+    })));
+    if (document.fonts && document.fonts.ready) await document.fonts.ready;
+  }, scope);
+  await waitForQuiet(page);
+}
+
+/**
+ * 文章页截图（ppnt shot <project>/<article> [§n]）。jobs = [{ kind: 'article' | 'article-section',
+ * url, sectionId?, out, label, scale }]。先等服务、再等文章页就绪（见 waitArticleReady），
+ * 截整页或 <section data-section="<节 id>"> 那一块。返回 [{ out, label, width, height }]。
+ */
+export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env = process.env }) {
+  if (!(await serviceUp(origin))) throw new Error(serviceDownMessage(origin, env));
+  const browser = await chromium.launch({ headless: true });
+  const results = [];
+  try {
+    const scale = (jobs[0] && jobs[0].scale) || 1;
+    const context = await browser.newContext({ viewport: { width: 1440, height: 900 }, deviceScaleFactor: scale, ignoreHTTPSErrors: true });
+    const page = await context.newPage();
+    let loadedUrl = null;
+    for (const job of jobs) {
+      if (loadedUrl !== job.url) {
+        await waitArticleReady(context.request, job.url, { timeoutMs });
+        await page.goto(job.url, { waitUntil: 'load' });
+        loadedUrl = job.url;
+      }
+      fs.mkdirSync(path.dirname(job.out), { recursive: true });
+      let buffer;
+      if (job.kind === 'article-section') {
+        const selector = `section[data-section="${job.sectionId.replace(/"/g, '\\"')}"]`;
+        const section = page.locator(selector);
+        if (!(await section.count())) throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）`);
+        await section.scrollIntoViewIfNeeded();
+        await settleArticlePage(page, selector);
+        buffer = await section.screenshot({ path: job.out });
+      } else {
+        await settleArticlePage(page);
+        buffer = await page.screenshot({ path: job.out, fullPage: true });
+      }
+      const size = pngSize(buffer);
+      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height });
+    }
+    await context.close();
+  } finally {
+    await browser.close();
+  }
+  return results;
 }

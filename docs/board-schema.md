@@ -26,7 +26,7 @@
 **`.jsx` 帧**：默认导出一个返回 JSX 的函数；顶层只许 `import`、`function` 声明、`export default`。
 内核 Preact，esbuild 转译后 `renderToString` 出静态 HTML 片段。编译期给每个宿主元素打
 `data-pp-id="<文件>:<行>@<n>"`（同一 `文件:行` 按文档顺序从 1 编号，永不复用；后缀用 `@`，`#` 只属于标注序号），给组件根元素打
-`data-pp-comp="<Name>"`（只打用户命名的组件）——它们是标注锚点与 `ppnt check` / `locate` 的地址。
+`data-pp-comp="<Name>"`（只打用户命名的组件）——它们是标注锚点与 `ppnt comments` / `locate` 的地址。
 存量 `.html` 帧原样编译，锚点仍是 cssPath + 文本摘录。
 
 **lint 四禁**（编译失败，报文件与行，帧与组件都查）：`import preact/hooks`、`onX` 事件属性、
@@ -74,7 +74,7 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
   不占编号，调序、插帧、删帧后就变。`section.id` 与 screen `id` 是不变的身份：帧 id 同时是源文件名
   （`<id>.jsx` / `<id>.html`）和标注锚点（`@frame:<页>/<id>`），改名会断标注。所以 id 用描述内容的
   短词（`detail-noop-run`），不写成编号的样子（`c1b-detail`）：仿编号的 id 一调序就和编号对不上，
-  `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt list <页> --frames` 查。
+  `ppnt build` 会提示。编号 ↔ id 的对照用 `ppnt show <目标>` 查。
 - **section `letter`** 只出现在画布视图由正文派生的 board 里（[`projects.md`](projects.md)“画布视图”）。它是这一节在正文里的字母，`boardRefs` 用它代替按顺序数出来的字母，编号因此和文章节号对得上（第 n 节 = 第 n 个字母）。手写 board 不写这个字段。
 - **screen `role`**（`"product"` 默认 | `"draft"`）把 doc 屏标成产物还是草稿，只影响条目派生。
 
@@ -160,7 +160,7 @@ tabs / sheet / segmented / clock。
 
 ## goto
 
-元素写 `goto="<screenId>"`（或图纸号），编译成产物上的 `data-goto` 属性——帧间 flow 边的数据层；
+元素写 `goto="<screenId>"`（或编号），编译成产物上的 `data-goto` 属性——帧间 flow 边的数据层；
 画线与播放模式未做，运行时尚不消费。
 
 ## doc 屏与 mention
@@ -183,7 +183,7 @@ client 把空挂载点水合成 `/api/frame` 的 iframe，标注绑定对象不�
 ## 导出与截图
 
 用户面只有一个：整个画布导出为离线可交互 HTML（横条“导出”钮，ADR 0033）。
-帧与 section 的图片归 agent 面：`ppnt shot`（`--marks` 烤序号钉）与 `check --mode image` 走同一条
+帧与 section 的图片归 agent 面：`ppnt shot`（`--marks` 烤序号钉）与 `comments --mode image` 走同一条
 服务端渲染链（`/api/export-image`），屏里不写截图逻辑。图注（引用号 + 屏名 + 尺寸）永随图。
 
 ## 模板与实例
