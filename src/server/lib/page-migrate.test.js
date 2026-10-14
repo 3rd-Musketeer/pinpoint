@@ -355,3 +355,87 @@ test('CLI: migrate refuses when the new canvas page id already has a bucket with
   lines.length = 0;
   assert.equal(await run(['migrate', 'legacy-page', '--project', root, '--article', 'fresh', '--dry-run'], io), 0, lines.join('\n'));
 });
+
+test('越界拦下：assets.js / assets.css 的 ..、symlink 指到页目录外的帧和 HTML 资源，整单不写（xreview B）', async (t) => {
+  const dir = tmpDir(t, 'escape');
+  const root = projectRoot(dir);
+  const page = path.join(dir, 'legacy');
+  const outsideJs = path.join(dir, 'outside.js');
+  write(outsideJs, 'console.log("outside");\n');
+  write(path.join(page, 'board.json'), JSON.stringify({
+    assets: { js: ['../outside.js'] },
+    sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'home' }] }],
+  }));
+  write(path.join(page, 'home.jsx'), 'export default function Home() { return <div class="ios-app">x</div>; }\n');
+  // 新文章目录的兄弟文件：越界写会覆盖它。
+  const sibling = path.join(root, 'docs', 'pinpoint', 'articles', 'outside.js');
+  write(sibling, 'SIBLING\n');
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 'legacy-page', kind: 'dir', board: 'ios', path: page }] }));
+  const lines = [];
+  const io = { out: (l) => lines.push(l), err: (l) => lines.push(`ERR ${l}`), env: { ...process.env, PINPOINT_REGISTRY: registry, PINPOINT_DATA_DIR: path.join(dir, 'data') } };
+  assert.equal(await run(['migrate', 'legacy-page', '--project', root, '--article', 'unsafe-cli'], io), 1, lines.join('\n'));
+  assert.equal(fs.readFileSync(sibling, 'utf8'), 'SIBLING\n', '文章目录外的已有文件不被覆盖');
+  assert.equal(fs.existsSync(path.join(root, 'docs', 'pinpoint', 'articles', 'unsafe-cli')), false, '整单不写');
+  assert.ok(lines.some((l) => /board\.assets\.js 里的 \.\.\/outside\.js 在页目录外/.test(l)), lines.join('\n'));
+
+  const reg = { entries: [{ id: 'legacy-page', kind: 'dir', board: 'ios', path: page }] };
+  // assets.css 同一套：读页目录外的 css 也拦。
+  write(path.join(dir, 'outside.css'), '.x { color: red; }\n');
+  write(path.join(page, 'board.json'), JSON.stringify({
+    assets: { css: ['../outside.css'] },
+    sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'home' }] }],
+  }));
+  const cssPlan = await planPageMigration({ pageId: 'legacy-page', projectRoot: root, articleId: 'css-out', registry: reg });
+  assert.match(cssPlan.problems.join('\n'), /board\.assets\.css 里的 \.\.\/outside\.css 在页目录外/);
+  assert.equal(cssPlan.files.has('article.css'), false);
+
+  // 帧文件本身是 symlink，真实落点在页目录外：文本路径在页内，realpath 不在。
+  write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'home' }, { id: 'link' }] }] }));
+  write(path.join(dir, 'secret.jsx'), 'export default function Secret() { return <b>secret</b>; }\n');
+  fs.symlinkSync(path.join(dir, 'secret.jsx'), path.join(page, 'link.jsx'));
+  const linkPlan = await planPageMigration({ pageId: 'legacy-page', projectRoot: root, articleId: 'link-out', registry: reg });
+  assert.match(linkPlan.problems.join('\n'), /link\.jsx 的真实位置在页目录外/);
+  assert.throws(() => writeMigration(linkPlan), /不写/);
+  fs.rmSync(path.join(page, 'link.jsx'));
+
+  // HTML 帧的资源目录是指到页目录外的 symlink：collectHtmlFrameAssets 的文本检查看不出来，realpath 拦下。
+  write(path.join(page, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'doc' }] }] }));
+  write(path.join(page, 'doc.html'), '<!doctype html><link rel="stylesheet" href="mirror/c.css">\n');
+  write(path.join(dir, 'elsewhere', 'c.css'), 'body {}\n');
+  fs.symlinkSync(path.join(dir, 'elsewhere'), path.join(page, 'mirror'));
+  const htmlPlan = await planPageMigration({ pageId: 'legacy-page', projectRoot: root, articleId: 'html-out', registry: reg });
+  assert.match(htmlPlan.problems.join('\n'), /mirror\/c\.css 的真实位置在页目录外/);
+});
+
+test('writeMigration：写之前先核对全部目标都在文章目录内，越界一个都不写；已有文件不覆盖（xreview B）', async (t) => {
+  const dir = tmpDir(t, 'write-guard');
+  const articleDir = path.join(dir, 'articles', 'a');
+  const src = path.join(dir, 'src.txt');
+  write(src, 'SRC\n');
+  const victim = path.join(dir, 'articles', 'victim.txt');
+  write(victim, 'VICTIM\n');
+  const plan = {
+    articleDir,
+    problems: [],
+    files: new Map([
+      ['index.mdx', { kind: '正文', content: '---\n---\n' }],
+      ['../victim.txt', { kind: '资源', from: src }],
+    ]),
+  };
+  assert.throws(() => writeMigration(plan), (error) => error instanceof MigrateError && /越出文章目录/.test(error.message));
+  assert.equal(fs.readFileSync(victim, 'utf8'), 'VICTIM\n');
+  assert.equal(fs.existsSync(articleDir), false, '核对在建目录之前');
+
+  // 两个键落到同一个文件：按键排序先写 ./a.txt，后一份不覆盖它，报 EEXIST。
+  const twice = {
+    articleDir,
+    problems: [],
+    files: new Map([
+      ['a.txt', { kind: '资源', from: src }],
+      ['./a.txt', { kind: '资源', content: 'FIRST\n' }],
+    ]),
+  };
+  assert.throws(() => writeMigration(twice), (error) => error.code === 'EEXIST');
+  assert.equal(fs.readFileSync(path.join(articleDir, 'a.txt'), 'utf8'), 'FIRST\n');
+});
