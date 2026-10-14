@@ -298,28 +298,124 @@ export async function waitArticleReady(request, url, { timeoutMs, pollMs = 500 }
   }
 }
 
-/** 文章页上的画布卡片是懒加载 iframe：整页截图前改成立即加载，等它们都 load 完（单个最多 15 秒）。 */
-async function settleArticlePage(page, scope = null) {
-  await page.evaluate(async (selector) => {
-    const root = selector ? document.querySelector(selector) : document;
-    const frames = [...(root || document).querySelectorAll('iframe')];
-    await Promise.all(frames.map((frame) => new Promise((resolve) => {
-      const done = () => resolve();
-      let loaded = false;
-      try { loaded = frame.contentDocument && frame.contentDocument.readyState === 'complete' && frame.contentDocument.URL !== 'about:blank'; } catch { loaded = true; }
-      if (loaded) return done();
-      frame.addEventListener('load', done, { once: true });
-      if (frame.loading === 'lazy') {
-        frame.loading = 'eager';
-        // 改 loading 不一定触发加载：重设 src 让它马上开始。
-        const src = frame.getAttribute('src');
-        if (src) frame.setAttribute('src', src);
+/**
+ * 在一个文档里把懒加载的图片和 iframe 改成立即加载，等它们 load（或 error）完，最多等到 deadline。
+ * 在页面里跑（frame.evaluate），只看这一层文档；嵌在里面的 iframe 由 settleLazyContent 逐层再跑一遍。
+ * scope 是选择器时只管它里面的元素。返回到时还没加载完的元素（`img <src>` / `iframe <src>`）。
+ */
+export async function settleDocumentInPage({ deadline, scope }) {
+  const root = scope ? document.querySelector(scope) : document;
+  if (!root) return [];
+  const describe = (el) => `${el.tagName.toLowerCase()} ${el.getAttribute('src') || el.currentSrc || ''}`.trim().slice(0, 200);
+  const images = [];
+  for (const img of root.querySelectorAll('img')) {
+    if (img.loading === 'lazy') img.loading = 'eager';
+    // 懒加载还没开始的图 complete 是 false；改成 eager 后马上开始取。
+    if (img.getAttribute('src') || img.getAttribute('srcset')) images.push(img);
+  }
+  const frames = [];
+  for (const frame of root.querySelectorAll('iframe')) {
+    const src = frame.getAttribute('src');
+    if (!src && !frame.hasAttribute('srcdoc')) continue;
+    if (frame.loading === 'lazy') {
+      frame.loading = 'eager';
+      // 改 loading 不一定触发加载：还停在初始 about:blank 时重设 src 让它马上开始。
+      let blank = false;
+      try { blank = !frame.contentDocument || frame.contentDocument.URL === 'about:blank'; } catch { blank = false; }
+      if (blank && src) frame.setAttribute('src', src);
+    }
+    frames.push(frame);
+  }
+  // 同源 iframe 轮询它自己的文档（Chromium 里懒加载改 eager 后 iframe 元素上的 load 事件不一定派发）；
+  // 跨源的读不到，交给调用方按 Playwright 的 frame 等 load。
+  const frameReady = (frame) => {
+    try {
+      const doc = frame.contentDocument;
+      return !doc || (doc.URL !== 'about:blank' && doc.readyState === 'complete');
+    } catch {
+      return true;
+    }
+  };
+  const imageReady = (img) => img.complete;
+  for (;;) {
+    const pending = [...images.filter((img) => !imageReady(img)), ...frames.filter((frame) => !frameReady(frame))];
+    if (!pending.length) break;
+    if (Date.now() >= deadline) return pending.map(describe);
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  if (document.fonts && document.fonts.ready && Date.now() < deadline) {
+    await Promise.race([document.fonts.ready, new Promise((resolve) => setTimeout(resolve, Math.max(0, deadline - Date.now())))]);
+  }
+  return [];
+}
+
+/** 整页从上到下滚一遍再回顶（按 IntersectionObserver 懒加载的页面靠这个开始取图），最多 80 屏。 */
+async function scrollThrough(frame, deadline) {
+  await frame.evaluate(async ({ deadline }) => {
+    const el = document.scrollingElement || document.documentElement;
+    const step = Math.max(200, window.innerHeight);
+    const frameTick = () => new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 30)));
+    for (let y = 0, i = 0; y < el.scrollHeight && i < 80 && Date.now() < deadline; y += step, i += 1) {
+      window.scrollTo(0, y);
+      await frameTick();
+    }
+    window.scrollTo(0, 0);
+    await frameTick();
+  }, { deadline }).catch(() => {});
+}
+
+/**
+ * 截图前的就绪规则（HTML 帧、文章页、画布卡片共用）：顶层文档和每一层嵌套 iframe 里的懒加载图片、
+ * iframe 都改成立即加载，逐层等它们 load 完；可选先把顶层整页滚一遍。整个过程以 timeoutMs 为上限，
+ * 到时还没加载完的照常截，返回它们的描述（调用方打一行“注意”）。scope 只限定顶层文档里的范围。
+ * → { pending: string[] }
+ */
+export async function settleLazyContent(page, { timeoutMs = 15000, scope = null, scroll = false } = {}) {
+  const deadline = Date.now() + timeoutMs;
+  const pending = [];
+  const settleFrame = async (frame, frameScope) => {
+    try {
+      pending.push(...await frame.evaluate(settleDocumentInPage, { deadline, scope: frameScope }));
+    } catch (error) {
+      // 帧在等的途中导航或卸载了：不算失败，下一轮按新的帧列表再来。
+      if (!/detached|destroyed|closed/i.test(String(error && error.message))) throw error;
+    }
+  };
+  await settleFrame(page.mainFrame(), scope);
+  if (scroll) {
+    await scrollThrough(page.mainFrame(), deadline);
+    await settleFrame(page.mainFrame(), scope);
+  }
+  // 嵌套的 iframe 逐层处理：上一层放开了懒加载，这一层才有文档可等。层数有上限，防自引用的页。
+  const settled = new Set([page.mainFrame()]);
+  let layer = [page.mainFrame()];
+  for (let depth = 0; depth < 4 && layer.length && Date.now() < deadline; depth += 1) {
+    const next = [];
+    for (const parent of layer) {
+      for (const child of parent.childFrames()) {
+        if (settled.has(child)) continue;
+        if (parent === page.mainFrame() && scope) {
+          const inside = await child.frameElement().then((el) => el.evaluate((node, sel) => !!node.closest(sel), scope)).catch(() => false);
+          if (!inside) continue;
+        }
+        settled.add(child);
+        next.push(child);
       }
-      setTimeout(done, 15000);
-    })));
-    if (document.fonts && document.fonts.ready) await document.fonts.ready;
-  }, scope);
+    }
+    for (const child of next) {
+      // 跨源的帧在页面里读不到 readyState，这里按 Playwright 的帧再等一次 load（同源的已经等过，立即返回）。
+      await child.waitForLoadState('load', { timeout: Math.max(1, deadline - Date.now()) }).catch(() => {});
+      await settleFrame(child, null);
+    }
+    layer = next;
+  }
   await waitForQuiet(page);
+  return { pending: [...new Set(pending)] };
+}
+
+/** 文章页上的画布卡片是懒加载 iframe，卡片里的 HTML 帧又可能嵌着懒加载的 iframe：整页截图前都放开、等完。 */
+async function settleArticlePage(page, scope = null) {
+  return settleLazyContent(page, { scope });
 }
 
 /** 页面在 evaluate / 截图途中自己导航了（503 页的自动刷新、站点重编后的整页重载）。 */
@@ -354,6 +450,7 @@ async function shootArticleJob(page, request, job, { timeoutMs, reload }) {
 async function shootLoadedArticle(page, request, job, { timeoutMs }) {
   fs.mkdirSync(path.dirname(job.out), { recursive: true });
   let buffer;
+  let pending = [];
   if (job.kind === 'article-section') {
     const selector = `section[data-section="${job.sectionId.replace(/"/g, '\\"')}"]`;
     const section = page.locator(selector);
@@ -367,16 +464,23 @@ async function shootLoadedArticle(page, request, job, { timeoutMs }) {
       throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）：正文可能没渲染完，ppnt check 看有没有正文渲染错误`);
     }
     await section.scrollIntoViewIfNeeded();
-    await settleArticlePage(page, selector);
+    ({ pending } = await settleArticlePage(page, selector));
     buffer = await section.screenshot({ path: job.out });
   } else {
-    await settleArticlePage(page);
+    ({ pending } = await settleArticlePage(page));
     buffer = await page.screenshot({ path: job.out, fullPage: true });
   }
   const size = pngSize(buffer);
   // 站点在正文结尾放了 [data-pp-article-end]：没有它，说明正文渲染中途出错、响应断在半篇。
   const truncated = !(await page.locator(ARTICLE_END_SELECTOR).count());
-  return { out: job.out, label: job.label || '', width: size.width, height: size.height, ...(truncated ? { truncated: true } : {}) };
+  return {
+    out: job.out,
+    label: job.label || '',
+    width: size.width,
+    height: size.height,
+    ...(truncated ? { truncated: true } : {}),
+    ...(pending.length ? { pending } : {}),
+  };
 }
 
 /**
@@ -411,7 +515,8 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
  * 文章的文档帧（HTML 帧，docs/projects.md“HTML 帧”）：不在画布上，直接打开它自己的地址（`?annotate=off`），
  * 按手机宽度 402（画布视图的手机屏宽）拍整页。jobs = [{ url, out, label, scale, marks }]；marks 是账本行，钉按行上第一个目标的
  * 选择器（文档标注的锚点就是整页的选择器加文字）落在元素左上角，找不到的安静跳过。
- * 返回 [{ out, label, width, height }]。
+ * 截之前按 settleLazyContent 等懒加载的 iframe 和图片（含嵌套）加载完。
+ * 返回 [{ out, label, width, height, pending? }]：pending 是到时仍没加载完的元素。
  */
 export const DOC_SHOT_WIDTH = 402;
 export async function renderDocShots({ origin, jobs, env = process.env }) {
@@ -426,8 +531,8 @@ export async function renderDocShots({ origin, jobs, env = process.env }) {
       url.searchParams.set('annotate', 'off');
       const response = await page.goto(url.href, { waitUntil: 'load' });
       if (!response || !response.ok()) throw new Error(`文档帧 ${job.label || job.url} 打不开（${response ? response.status() : '没有响应'}）：${url.href}`);
-      await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
-      await waitForQuiet(page);
+      // 页面里嵌的 iframe、图片常是懒加载的（视口外不取），整页截图不会替它们滚到视口里：先放开、等完。
+      const { pending } = await settleLazyContent(page, { scroll: true });
       const pins = (job.marks || []).map((mark) => {
         const target = Array.isArray(mark.targets) && mark.targets[0] ? mark.targets[0] : null;
         return { n: mark.n, selector: target ? target.selector : mark.selector, text: target ? target.text || '' : mark.text || '' };
@@ -452,7 +557,7 @@ export async function renderDocShots({ origin, jobs, env = process.env }) {
       fs.mkdirSync(path.dirname(job.out), { recursive: true });
       const buffer = await page.screenshot({ path: job.out, fullPage: true });
       const size = pngSize(buffer);
-      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height });
+      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height, ...(pending.length ? { pending } : {}) });
       await context.close();
     }
   } finally {

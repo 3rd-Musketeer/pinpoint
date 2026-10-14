@@ -595,6 +595,13 @@ export function truncatedWarning(address) {
   return `文章页在正文中途断了（页面里没有正文结尾标记），正文多半渲染出错；跑 ppnt check ${address} 看是哪一行`;
 }
 
+/** 截图时还有懒加载的 iframe / 图片没加载完（等到上限）时的那句话。 */
+export function pendingWarning(result) {
+  const shown = result.pending.slice(0, 5).join('；');
+  const more = result.pending.length > 5 ? ` 等 ${result.pending.length} 个` : '';
+  return `${result.label || result.out} 截图时还有 ${result.pending.length} 个 iframe / 图片没加载完（等了 15 秒），图里这些位置可能是空的：${shown}${more}`;
+}
+
 /** 正文里图的 id（读不出正文时 []）。 */
 function figureIdsOf(context) {
   try {
@@ -686,11 +693,23 @@ export async function runShot(argv, io = {}) {
     byPage.get(job.pageId).push(job);
   }
   const shots = [];
-  const print = (result, kind) => {
-    shots.push({ kind, label: result.label || '', out: result.out, width: result.width, height: result.height, ...(result.truncated ? { truncated: true } : {}) });
-    if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
-  };
   const warnings = [];
+  const print = (result, kind) => {
+    shots.push({
+      kind,
+      label: result.label || '',
+      out: result.out,
+      width: result.width,
+      height: result.height,
+      ...(result.truncated ? { truncated: true } : {}),
+      ...(result.pending ? { pending: result.pending } : {}),
+    });
+    if (!parsed.flags.json) out(`${result.label ? `${result.label} → ` : ''}${result.out} · ${result.width}×${result.height}`);
+    if (result.pending) {
+      warnings.push(pendingWarning(result));
+      err(`注意：${warnings[warnings.length - 1]}`);
+    }
+  };
   try {
     if (articleJobs.length) {
       for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result, 'article');

@@ -3096,7 +3096,9 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
   assert.equal(listBogus.err[0], '错误：未知选项：--bogus');
 });
 
-/* ---- 2026-10-14 孤儿标注：comments 列得出，mark / reply 就指得到 ---- */
+/* ---- 2026-10-14 HTML 页面三处修复：孤儿标注可写、--canvas 逐帧、懒加载未完的提示 ---- */
+
+import { pendingWarning } from './pinpoint-cli.js';
 
 /** 存量 doc 页，一屏连文件一起删了：它的账本成了孤儿（lib/orphans.js 第 1 种）。 */
 function orphanDocPage(t) {
@@ -3201,4 +3203,12 @@ test('planShotJobs：文章的画布视图整页 —— 全是 HTML 帧时逐帧
   const legacy = planShotJobs([{ kind: 'page', pageId: 'demo' }], { basePageId: 'demo', baseContext: { pageId: 'demo', frameRows: [], refs: { outline: [] } }, scale: 1, withMarks: false, dataRootDir: '/data' });
   assert.deepEqual(legacy.jobs.map((job) => job.kind), ['page']);
   assert.deepEqual(legacy.notes, []);
+});
+
+test('pendingWarning：列出没加载完的 iframe / 图片，多于 5 个时只列前 5 个并给总数', () => {
+  const one = pendingWarning({ label: 'A1 · cat', pending: ['iframe preview-frames/t.html'] });
+  assert.match(one, /^A1 · cat 截图时还有 1 个 iframe \/ 图片没加载完.*iframe preview-frames\/t\.html$/);
+  const many = pendingWarning({ out: '/x.png', pending: Array.from({ length: 7 }, (_, i) => `img ${i}.png`) });
+  assert.match(many, /^\/x\.png 截图时还有 7 个/);
+  assert.ok(many.includes('img 4.png') && !many.includes('img 5.png') && many.endsWith('等 7 个'), many);
 });

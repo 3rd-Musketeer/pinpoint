@@ -143,7 +143,7 @@ ${REGISTRY_FLAG}`,
   ppnt shot <project>/<article>        文章页整页（文章页的样子：正文、画布卡片、评论栏）
   ppnt shot <project>/<article> §2     文章页上的第 2 节
   ppnt shot <project>/<article> B1     画布视图上的一帧；B 是一整节；帧 id、节 id 同义
-  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）
+  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）；文章的 HTML 帧不在画布那一行，各截一张整页
   ppnt shot <project>/<article> --figure <图 id>  正文里的一个图（<Figure>），浅色、深色各一张，760 宽
   ppnt shot <存量页 id> [B1 …]          存量页：不写引用是整个画布
 纯文字的节没有画布，写它的字母或节 id 时截文章页上的那一节。
@@ -161,7 +161,9 @@ ${REGISTRY_FLAG}
 ${TARGET_NOTE}
 
 文章页截到一半（正文渲染出错，页面里没有正文结束标记）：图照样存下，stderr 打一行“注意”，退 1；
-ppnt check <project>/<article> 给出错在哪一行。`,
+ppnt check <project>/<article> 给出错在哪一行。
+截之前等页面里（含嵌套 iframe 里）懒加载的 iframe 和图片加载完，上限 15 秒；到时还没加载完的照常截，
+stderr 打一行“注意”列出它们，退 1。`,
   },
   new: {
     usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article <project>/<article> [--title <标题>]',
