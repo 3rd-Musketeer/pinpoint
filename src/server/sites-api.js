@@ -223,7 +223,7 @@ export function createSitesHandler(options = {}) {
       return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
     const file = rel ? servable(target.pageDir, rel) : null;
-    if (!file || path.basename(file) === 'index.mdx') {
+    if (!file) {
       sendJson(res, 404, { error: 'not found' });
       return true;
     }

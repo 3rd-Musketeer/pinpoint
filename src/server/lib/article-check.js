@@ -136,7 +136,7 @@ function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
       severity: 'error',
       code: 'html_asset_outside',
       message: row.reason === 'denied'
-        ? `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，是 . 开头的隐藏文件（或符号链接指向它），服务不出这个文件`
+        ? `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，是 . 开头的隐藏文件或文章正文 index.mdx（或符号链接指向它们），服务不出这个文件`
         : `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，在 ${root} 外面（含符号链接指出去），服务不出这个文件`,
       ...where(row),
     })),

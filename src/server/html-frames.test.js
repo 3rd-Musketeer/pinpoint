@@ -196,6 +196,16 @@ test('本篇的 HTML 帧是指出文章目录的 symlink：布局错误 frame_sr
   assert.deepEqual(listProjects(registry)[0].errors.map((e) => [e.code, e.path, e.frame]), [['frame_src', 'articles/pages/index.mdx', 'escape']]);
 });
 
+test('服务：index.mdx 在文章目录和 @root 下都不出（含指向它的 symlink）', async (t) => {
+  const { article, registry, pageId } = fixture(t);
+  fs.symlinkSync(path.join(article, 'index.mdx'), path.join(article, 'source.txt'));
+  const handler = createSitesHandler({ registry });
+  for (const bad of ['index.mdx', 'source.txt', '@root/docs/pinpoint/articles/pages/index.mdx', '@root/docs/pinpoint/articles/pages/source.txt']) {
+    assert.equal((await get(handler, `/sites/${pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  assert.equal((await get(handler, `/sites/${pageId}/@root/docs/pinpoint/articles/pages/page.css`)).statusCode, 200);
+});
+
 test('服务：这篇没有 project 根下的帧时 @root 不开', async (t) => {
   const { article, registry, pageId } = fixture(t);
   const mdx = path.join(article, 'index.mdx');

@@ -8,12 +8,16 @@
  * - 文本检查：含 NUL、按文本解析后在 base 外面 → outside；任何一段以 `.` 开头（.env、.git/）→ denied。
  * - 真实路径（跟 symlink）必须在 base 的真实路径下，否则 outside；真实路径相对 base 的段同样不能以 `.` 开头
  *   （symlink 指向同目录的 .env 也不出）→ denied。
+ * - 文章正文 `index.mdx`（文件名，按文本或真实路径）不出 → denied：文章目录和 @root 一个口径。
  * - 目录回落到它的 index.html，同样检查；{ index: false } 时目录算 missing（帧必须是文件本身）。
  * - 不在盘上、不是文件 → missing。
  * file 是按文本拼出的绝对路径（显示、写进 build.json 用），real 是真实路径。
  */
 import fs from 'node:fs';
 import path from 'node:path';
+
+/** 不经 /sites/ 出的文件名：文章正文源（读者读渲染后的文章页）。 */
+const NOT_SERVED = new Set(['index.mdx']);
 
 function within(base, p) {
   return p === base || p.startsWith(base + path.sep);
@@ -61,5 +65,7 @@ export function resolveServableFile(base, rel, { index = true } = {}) {
     if (deniedRelative(realRoot, real)) return { reason: 'denied' };
     stat = fs.statSync(real);
   }
-  return stat.isFile() ? { file, real } : { reason: 'missing' };
+  if (!stat.isFile()) return { reason: 'missing' };
+  if (NOT_SERVED.has(path.basename(file)) || NOT_SERVED.has(path.basename(real))) return { reason: 'denied' };
+  return { file, real };
 }

@@ -15,7 +15,7 @@
  *   → { files: [{ file, from, line, url }], missing: [{ from, line, url, file }], outside: [{ from, line, url, file, reason }] }
  * files 是找到的文件（不含起点），missing 是不在盘上的，outside 是服务出不来的（root 缺省不限）。给了 root 时，
  * 每个引用按 /sites/ 出文件的同一条规则判（lib/servable-file.js 的 resolveServableFile）：outside 的 reason 是
- * 'outside'（按文本或按真实路径在 root 外面，含指出去的 symlink）或 'denied'（`.` 开头的段，含 symlink 的真实落点）；
+ * 'outside'（按文本或按真实路径在 root 外面，含指出去的 symlink）或 'denied'（`.` 开头的段、文章正文 index.mdx，含 symlink 的真实落点）；
  * 指向目录的引用按服务的做法落到它的 index.html。
  * 每个 from 是引用它的那个文件，line 是那一行（1 起）。
  */
