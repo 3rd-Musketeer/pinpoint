@@ -157,7 +157,7 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：以为存量页的 section 有节号（存量页只有字母编号）。
 
 **页内 tab** · `board.json` 的 `tabs: [{id, title, sections}]`（ADR 0041）
-把一个存量页的 section 分成几组视图（如“组件”“交互”）。各 tab 共用组件、资源和标注，id 整页唯一；编号按 tab 各自从 A 数，位置引用写 `flow:B3`。工作台在横条上方用 tab 条切换。转成文章时每个 tab 变成一个 `##` 小标题，节字母改成全文统一排，所以编号会变，帧 id 不变。
+把一个存量页的 section 分成几组视图（如“组件”“交互”）。各 tab 共用组件、资源和标注，id 整页唯一；编号按 tab 各自从 A 数，位置引用写 `flow:B3`。工作台在横条上方用 tab 条切换，≥ 2 个 tab 就有这条，tab 里全是文档也一样；切到一个 tab 打开它的第一个条目，横条的 n / N 只数这个 tab 的条目。转成文章时每个 tab 变成一个 `##` 小标题，节字母改成全文统一排，所以编号会变，帧 id 不变。
 要避开：把 tab 说成独立的页或 board。
 
 **comp 屏与组件墙** · `board.json` 里 `shell: "comp"` 的 section，屏条目写 `comp` + `props`

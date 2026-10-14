@@ -13,6 +13,7 @@ import { queryClient } from './app/query-client.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import {
   boardEntries,
+  boardShowsTabBar,
   defaultEntryId,
   entryForm,
   resolveEntry,
@@ -234,7 +235,7 @@ export function activeTabId() {
   return (active && active.tabId) || '';
 }
 
-/** 条上要列标题的 tab：≥ 2 个才有，否则 []。条本身出不出看有没有画布条目（TabBar）。 */
+/** 条上要列标题的 tab：≥ 2 个才有，否则 []。 */
 export function tabsOfActiveBoard() {
   var active = activeBoardOfPage();
   var tabs = active ? boardTabList(active.fullBoard || active.board) : [];
@@ -250,6 +251,8 @@ export function screenOffTab(screenId) {
 }
 
 /** 切活动 tab：存档当前 tab 的视口 → 记偏好 → 只重挂新 tab 的 section（屏 HTML 走查询缓存）。
+    新 tab 打开它的默认条目（有画布是画布，纯文档 tab 是第一篇，2026-10-14），不沿用上一个 tab 记的条目；
+    options.save === false 时这个条目也不写偏好。
     返回 Promise<boolean>：切好（或本来就在这个 tab）= true；存量页 / 板未就绪 = false。 */
 export function setActiveTab(tabId, options) {
   options = options || {};
@@ -265,7 +268,11 @@ export function setActiveTab(tabId, options) {
   snapshotPageViewport(active.pageId);
   if (options.save !== false) saveTabPref(active.pageId, id);
   wbSet({ focusFrameKey: null, focusSectionId: null, focusAnnN: null });
-  return pagesDeps.loadBoard(panel, active.pageId, { tabId: id }).then(function () {
+  return pagesDeps.loadBoard(panel, active.pageId, {
+    tabId: id,
+    freshEntry: true,
+    saveEntry: options.save !== false
+  }).then(function () {
     var mount = pagesDeps.mountManager.current;
     return mount && mount.boardSettled ? mount.boardSettled : true;
   }).then(function () {
@@ -364,11 +371,20 @@ function phoneShellEl() {
   return panel ? panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-phone-doc') : null;
 }
 
+/* 底部被 chrome 占掉的那一带：横条，加上叠在它上面的页 tab 条（该出就算，2026-10-14）。
+   按板判断而不是查 DOM：条是 React 画的，这里跑的时候它可能还没提交。 */
 function stripBandPx() {
   var css = getComputedStyle(document.documentElement);
   var gap = parseFloat(css.getPropertyValue('--wb-chrome-gap')) || 0;
   var strip = parseFloat(css.getPropertyValue('--wb-strip-h')) || 0;
-  return gap * 2 + strip;
+  var band = gap * 2 + strip;
+  var active = activeBoardOfPage();
+  if (active && boardShowsTabBar(active.fullBoard || active.board) && wbRoot) {
+    var wb = getComputedStyle(wbRoot);
+    band += (parseFloat(wb.getPropertyValue('--wb-tabbar-h')) || 0)
+      + (parseFloat(wb.getPropertyValue('--wb-tabbar-gap')) || 0);
+  }
+  return band;
 }
 
 function writePhoneScale(shell) {
@@ -460,8 +476,10 @@ export function setActiveEntry(entryId, options) {
 
 /* board 装载/页面切换后调用：条目行由大纲浮层从 store 派生，
    这里负责把当前条目定下来 —— prefs.activeEntryIdByPage 记忆优先，非法/缺失落默认
-   条目（画布优先）。 */
-export function syncEntries() {
+   条目（画布优先）。切 tab 时（options.fresh）不看记忆，直接落默认条目；
+   options.save 为真就把它写进记忆，刷新后还是这一篇。 */
+export function syncEntries(options) {
+  options = options || {};
   var active = wbGet().activeBoard;
   if (!active || active.pageId !== wbGet().activePageId) return;
   var entries = boardEntries(active.board);
@@ -470,7 +488,8 @@ export function syncEntries() {
     applyPageFormFallback(active.pageId);
     return;
   }
-  setActiveEntry(entryPrefFor(active.pageId) || defaultEntryId(entries), { scrollTop: false, save: false });
+  var wanted = options.fresh ? null : entryPrefFor(active.pageId);
+  setActiveEntry(wanted || defaultEntryId(entries), { scrollTop: false, save: !!(options.fresh && options.save) });
 }
 
 /** 分组层写完之后的当场生效（lib/folder-api.js 三条 PUT 的收尾）：应答就是重载

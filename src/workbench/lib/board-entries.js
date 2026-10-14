@@ -62,27 +62,44 @@ export function boardEntries(board) {
  *  指定了 tabId：view 只留这个 tab 的 section，帧号在 tab 内从 A 重计。
  *  tabId 空：没有 tab 的存量页，view 是整页；有 tab 时落到第一个 tab 的 section。
  *  单 tab 页那一个钮不传 tabId，第一个 tab 就是整页。
- *  文档 / 网页 / 草稿只出现在第一个 tab 的浮层里（与「doc 条目归第一个 tab」一致）；
- *  其它 tab 只留画布条目。 */
+ *  有画布的页：文档 / 网页 / 草稿只出现在第一个 tab 的浮层里（与「doc 条目归第一个 tab」一致），
+ *  其它 tab 只留画布条目。
+ *  纯文档的多 tab 页（2026-10-14）：没有帧可列，每个 tab 的浮层列这个 tab 自己的文档条目。 */
 export function outlineSlice(board, tabId) {
   var flat = flattenTabs(board);
   var tabs = boardTabList(flat);
   var firstId = tabs.length ? tabs[0].id : '';
   var scoped = tabId || '';
-  var showDocs = !tabs.length || !scoped || scoped === firstId;
   var view = tabs.length ? boardForTab(flat, scoped || firstId) : flat;
+  if (tabs.length && !boardHasCanvas(flat)) {
+    return { view: view, entries: boardEntries(view), showDocs: true, firstTabId: firstId };
+  }
+  var showDocs = !tabs.length || !scoped || scoped === firstId;
   var entries = boardEntries(showDocs ? flat : view);
   if (!showDocs) entries = entries.filter(function (e) { return e && e.kind === 'canvas'; });
   return { view: view, entries: entries, showDocs: showDocs, firstTabId: firstId };
 }
 
-/** 页上有没有画布条目。有则工作台渲染 #wbtabbar（哪怕不到两个 tab）；纯 doc / url 页不渲染。 */
+/** 页上有没有画布条目。 */
 export function boardHasCanvas(board) {
   var entries = boardEntries(flattenTabs(board));
   for (var i = 0; i < entries.length; i++) {
     if (entries[i] && entries[i].kind === 'canvas') return true;
   }
   return false;
+}
+
+/** 工作台渲染不渲染 #wbtabbar（2026-10-14）：有 ≥ 2 个 tab 就渲染，条目是什么类型都一样；
+ *  不到 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。单 tab 的纯文档页和 url 页不渲染。 */
+export function boardShowsTabBar(board) {
+  return boardTabList(board).length >= 2 || boardHasCanvas(board);
+}
+
+/** 条上这个 tab 要不要大纲钮（2026-10-14）。有画布的页每个 tab 都要。
+ *  纯文档页的浮层只列这个 tab 的文档，不到 2 篇时没什么可选，不出钮；切换靠 tab 标题。 */
+export function tabHasOutline(board, tabId) {
+  if (boardHasCanvas(board)) return true;
+  return outlineSlice(board, tabId).entries.length >= 2;
 }
 
 /** 默认条目 = 画布条目（有画布时），否则第一个文档条目；空板 → null。 */

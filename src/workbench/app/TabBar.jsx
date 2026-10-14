@@ -1,10 +1,11 @@
-// 页 tab 条（ADR 0041，2026-10-10 追加大纲入口）。挂 #wbtabbar-root，叠在底部横条正上方。
-// 有画布条目就渲染：≥ 2 个 tab 时每个标题钮旁一个大纲钮；不到 2 个时不列标题，只留一个
-// 大纲钮（aria-label「大纲」）。纯 doc / url 页不渲染。分享页仍按「≥ 2 个 tab 才出条」，
-// 不走这里。浮层在 OutlinePopover.jsx，Portal 到 body，避免被条的 overflow 裁掉。
+// 页 tab 条（ADR 0041，2026-10-10 追加大纲入口，2026-10-14 纯文档页也出）。挂 #wbtabbar-root，
+// 叠在底部横条正上方。≥ 2 个 tab 就渲染，条目类型不论：每个标题钮旁一个大纲钮（纯文档页上
+// 不到 2 篇文档的 tab 不带钮，见 tabHasOutline）。不到 2 个 tab 时只有带画布的页渲染，不列标题，
+// 只留一个大纲钮（aria-label「大纲」）。分享页也是「≥ 2 个 tab 才出条」，但不走这里。
+// 浮层在 OutlinePopover.jsx，Portal 到 body，避免被条的 overflow 裁掉。
 import { useWorkbenchStore } from './store.js';
 import { setActiveTab } from '../pages.js';
-import { boardHasCanvas } from '../lib/board-entries.js';
+import { boardShowsTabBar, tabHasOutline } from '../lib/board-entries.js';
 import { boardTabList } from '../lib/board-tabs.js';
 import { OutlineButton } from './OutlinePopover.jsx';
 import { cn } from './lib/utils.js';
@@ -20,7 +21,7 @@ export function TabBar() {
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   if (!active || active.pageId !== activePageId) return null;
   var full = active.fullBoard || active.board;
-  if (!boardHasCanvas(full)) return null;
+  if (!boardShowsTabBar(full)) return null;
   var tabs = boardTabList(full);
   var multi = tabs.length >= 2;
   var activeId = active.tabId || '';
@@ -36,7 +37,7 @@ export function TabBar() {
               aria-selected={on ? 'true' : 'false'} title={tab.title}
               className={cn(TAB_ITEM, on && TAB_ON)}
               onClick={function () { setActiveTab(tab.id); }}>{tab.title}</button>
-            <OutlineButton tabId={tab.id} label={tab.title + '的大纲'} />
+            {tabHasOutline(full, tab.id) ? <OutlineButton tabId={tab.id} label={tab.title + '的大纲'} /> : null}
           </span>
         );
       }) : <OutlineButton label="大纲" />}

@@ -1,6 +1,6 @@
 # 0041 · 页内 tab：page → tab → section
 
-Status: 现行 · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
+Status: 现行 · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`src/workbench/lib/board-entries.js`（`boardShowsTabBar`、`outlineSlice`）、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
 
 **起因**：0040 把“组件页”和“交互页”分成两种页，底层一样。同一个原型常常既要一面组件墙，也要正式流程，
 有时还要一块试验场；拆成几个独立的页就得重复登记、`components/` 和资源各复制一份，标注也散在几个账本里。
@@ -52,3 +52,14 @@ tab。
 - 页上有画布条目，`#wbtabbar` 就渲染。≥ 2 个 tab 时每个标题钮旁一个大纲钮（aria-label 为“<标题>的大纲”）；不到 2 个 tab（含存量页）不列标题，条上只有一个大纲钮（aria-label“大纲”）。纯 doc / url 页不渲染这条，条目切换仍走横条的 ‹ n / N ›。
 - 浮层不用菜单：菜单会把 Tab 圈在菜单项里，大纲行是普通按钮，Tab 要能走进去。它 Portal 到 body（条有 `overflow-x`，玻璃的 `backdrop-filter` 也会把 fixed 后代收成包含块），`.wb-glass`，层级 `--wb-z-float`，宽不超过 320，最大高度 60vh，向上弹，内部滚动。里面是那个 tab 的 section 与帧（`outlineSlice`）。文档 / 网页 / 草稿只出现在第一个 tab 的浮层里；单 tab 页的浮层是整棵树。点一帧走 `focusFrame`（跨 tab 会自己切），然后关浮层；点 section 走 `window.workbench.focusSection`，与 `?section=` 落点同一条路（跨 tab 先切、选中画布条目、即时定位并选中，2026-10-13），然后关浮层；点文档 / 网页 / 草稿条目也先关浮层再切条目（浮层留着只会盖在新内容上）。Esc 或点外面关闭，同一时刻只开一个。右键菜单开在浮层上时，点菜单或按 Esc 先交给菜单，浮层留着。
 - `isMultiTab` 的意思不变：≥ 2 才给位置号加 tab 前缀，分享页才出条。工作台的条出不出，看的是有没有画布条目。
+
+## 2026-10-14 追加：纯文档的多 tab 页也出条
+
+起因：一个 5 个 tab、每个 section 都是 `shell: "doc"` 的页，工作台打开第一个 tab 的文档，没有 tab 条，owner 找不到也切不了别的 tab（`?tab=` 深链能切，切换本身没坏）。上一节“页上有画布条目才渲染”把这种页漏了。
+
+- `#wbtabbar` 的规则改成：≥ 2 个 tab 就渲染，不论条目类型；不到 2 个 tab 时只有带画布的页渲染（只有大纲钮）。单 tab 的纯 doc 页和 url 页仍不渲染。判断写在 `boardShowsTabBar`。
+- 纯文档的多 tab 页没有帧，大纲钮的浮层列这个 tab 自己的文档条目，点一篇就打开它；不到 2 篇文档的 tab 不带大纲钮，没有可选的东西，切换靠标题钮。有画布的页的浮层规则不变。
+- 切 tab 打开那个 tab 的默认条目（有画布是画布，否则第一篇文档）并记进条目偏好，刷新后还在这个 tab 的这一篇；横条的 ‹ n / N › 本来就只数活动 tab 的条目。
+- 手机视口的文档屏减掉横条加 tab 条的那一带再居中、再缩放，不压到条底下。窗口视口按 owner 2026-09-05 的决定不变：文档 1:1 铺满，chrome 浮在上面。
+- 分享页本来就是 ≥ 2 个 tab 才出条。导出只含画布，全是文档的 tab 不进导出，纯文档页导出不出条，两边规则一致，不用改。
+- 不做：纯文档 tab 上隐藏大纲钮、只靠横条步进。横条只显示 n / N，看不到文档标题，浮层是唯一能按标题挑一篇的地方。

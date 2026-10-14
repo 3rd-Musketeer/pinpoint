@@ -3,7 +3,7 @@ import { scrollStageTo } from './scroll-motion.js';
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
 import { wbGet, wbSet } from './app/store.js';
-import { boardHasCanvas } from './lib/board-entries.js';
+import { boardShowsTabBar } from './lib/board-entries.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
@@ -268,7 +268,7 @@ export function chromeInsets() {
     var tr = el.getBoundingClientRect();
     if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + 12);
   });
-  // 条是 React 画的，首访聚焦的 rAF 经常早于它提交。有画布就按同一套 CSS 预留
+  // 条是 React 画的，首访聚焦的 rAF 经常早于它提交。条该出（boardShowsTabBar）就按同一套 CSS 预留
   //（条高 --wb-tabbar-h，叠在横条上方 --wb-tabbar-gap），免得帧落在条底下。
   if (!document.getElementById('wbtabbar')) out.bottom += reservedTabBarLift();
   return out;
@@ -277,7 +277,7 @@ export function chromeInsets() {
 function reservedTabBarLift() {
   var active = wbGet().activeBoard;
   var full = active && (active.fullBoard || active.board);
-  if (!full || !boardHasCanvas(full)) return 0;
+  if (!full || !boardShowsTabBar(full)) return 0;
   var host = stage.closest('.wb') || stage;
   var cs = getComputedStyle(host);
   var tabH = parseFloat(cs.getPropertyValue('--wb-tabbar-h'));

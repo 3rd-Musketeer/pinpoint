@@ -1,0 +1,16 @@
+{
+  "tabs": [
+    { "id": "versions", "title": "版本", "sections": [
+      { "id": "vers", "title": "版本", "layout": "column", "shell": "doc",
+        "screens": [{ "id": "v1", "title": "第一版" }, { "id": "v2", "title": "第二版" }] }
+    ] },
+    { "id": "compare", "title": "对比", "sections": [
+      { "id": "cmp", "title": "对比", "layout": "column", "shell": "doc",
+        "screens": [{ "id": "a", "title": "方案 A" }, { "id": "b", "title": "方案 B" }, { "id": "c", "title": "方案 C" }] }
+    ] },
+    { "id": "single", "title": "单篇", "sections": [
+      { "id": "one", "title": "单篇", "layout": "column", "shell": "doc",
+        "screens": [{ "id": "solo", "title": "唯一一篇" }] }
+    ] }
+  ]
+}

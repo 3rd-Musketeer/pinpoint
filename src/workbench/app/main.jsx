@@ -38,7 +38,7 @@ flushSync(function () {
 flushSync(function () {
   createRoot(document.getElementById('wbstrip')).render(h(Strip));
 });
-// 页 tab 条（ADR 0041）：叠在横条正上方。有画布就渲染（不足 2 个 tab 时只有大纲钮）。
+// 页 tab 条（ADR 0041）：叠在横条正上方。≥ 2 个 tab 就渲染；单 tab 的画布页也渲染，只有大纲钮。
 createRoot(document.getElementById('wbtabbar-root')).render(h(TabBar));
 wireCanvasHud();
 // 板的挂载后处理在等这一步（lib/chrome-ready.js 有原因）：上面的注入全部落定后才放行。

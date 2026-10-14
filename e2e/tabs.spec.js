@@ -13,14 +13,16 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 
 // 页 tab（ADR 0041，2026-10-10 大纲入口）：同一页里 tab 只是 section 的视图分组。
 // 固件 tabs-site 有两个 tab（comps 组件：btn-wall 两帧 + chip-wall 一帧；flow 交互：
-// onboard 两帧），tabs-one-site 只有一个 tab，e2e-ios 是不带 tab 的存量画布页。
-// 工作台：有画布就渲染 #wbtabbar；不到 2 个 tab 时不列标题，只有大纲钮。
+// onboard 两帧），tabs-one-site 只有一个 tab，e2e-ios 是不带 tab 的存量画布页，
+// tabs-doc-site 是三个 tab 全是文档的页（版本 2 篇、对比 3 篇、单篇 1 篇）。
+// 工作台：≥ 2 个 tab 就渲染 #wbtabbar（纯文档页也算）；不到 2 个 tab 时有画布才渲染，不列标题，只有大纲钮。
 // 分享导出仍是单 tab 不出条。切换只挂当前 tab 的 section；序号按 tab 从 A 重来；
 // 活动 tab 刷新后保持；focusFrame 指到别的 tab 的帧时先切 tab。
 const execFileP = promisify(execFile);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TABS_DIR = path.join(E2E_SITES_DIR, 'tabs-site');
 const ONE_DIR = path.join(E2E_SITES_DIR, 'tabs-one-site');
+const DOC_DIR = path.join(E2E_SITES_DIR, 'tabs-doc-site');
 const DIST_ENTRIES = ['e2e-tabs', 'e2e-tabs-one'].map((id) => path.join(E2E_DATA_DIR, 'dist', id));
 
 async function ppnt(args, { expectFail = false } = {}) {
@@ -49,6 +51,7 @@ const barBox = async (page, id) => page.locator(id).boundingBox();
 test.beforeEach(async ({ request }) => {
   appendRegistryEntry({ id: 'e2e-tabs', title: 'E2E Tabs', kind: 'dir', path: TABS_DIR, board: 'ios' });
   appendRegistryEntry({ id: 'e2e-tabs-one', title: 'E2E Tabs One', kind: 'dir', path: ONE_DIR, board: 'ios' });
+  appendRegistryEntry({ id: 'e2e-tabs-doc', title: 'E2E Tabs Doc', kind: 'dir', path: DOC_DIR });
   await request.post('/registry/reload');
 });
 
@@ -107,6 +110,84 @@ test('tab 条：有画布就出现，不到两个 tab 时只有大纲钮；两�
   await page.waitForFunction(() => window.workbench && window.workbench.activeTabId);
   await expect(page.locator('#wbtabbar [role="tab"][aria-selected="true"]')).toHaveText('交互');
   await expect(visibleScreens(page)).toHaveCount(2);
+});
+
+test('纯文档的多 tab 页：条照出且不压横条；切 tab 打开该 tab 第一篇，n / N 只数该 tab；刷新留在原 tab 原篇；手机视口的屏不压条', async ({ page }) => {
+  test.setTimeout(90_000);
+  const shown = page.locator('#wb-board-panel .wb-screen[data-screen]:not([data-doc-hidden])');
+  const position = page.locator('#wbentry-position');
+  const bar = page.locator('#wbtabbar');
+  const selected = bar.locator('[role="tab"][aria-selected="true"]');
+
+  await test.step('条在，三个 tab 标题，起始在第一个 tab 的第一篇', async () => {
+    await openBoard(page, 'page=e2e-tabs-doc');
+    await expect(bar).toBeVisible();
+    await expect(bar.locator('[role="tab"]')).toHaveText(['版本', '对比', '单篇']);
+    await expect(selected).toHaveText('版本');
+    await expect(shown).toHaveCount(1);
+    await expect(shown).toHaveAttribute('data-screen', 'v1');
+    await expect(position).toHaveText('1 / 2');
+    const tabBox = await barBox(page, '#wbtabbar');
+    const stripBox = await barBox(page, '#wbstrip');
+    expect(tabBox.y + tabBox.height).toBeLessThanOrEqual(stripBox.y + 0.5);
+  });
+
+  await test.step('大纲钮：两篇以上的 tab 有，单篇的 tab 没有；浮层只列这个 tab 的文档', async () => {
+    await expect(page.getByRole('button', { name: '版本的大纲', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '对比的大纲', exact: true })).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '单篇的大纲', exact: true })).toHaveCount(0);
+    await openOutline(page, '对比');
+    await expect(page.locator('#wboutline-pop [data-entry]')).toHaveCount(3);
+    await expect(page.locator('#wboutline-pop [data-entry="v1"]')).toHaveCount(0);
+    // 点另一个 tab 的文档：切过去并打开这一篇
+    await page.locator('#wboutline-pop [data-entry="c"]').click();
+    await expect(page.locator('#wboutline-pop')).toBeHidden();
+    await expect(selected).toHaveText('对比');
+    await expect(shown).toHaveAttribute('data-screen', 'c');
+    await expect(position).toHaveText('3 / 3');
+  });
+
+  await test.step('切 tab 打开该 tab 第一篇，计数只数该 tab', async () => {
+    await bar.locator('[role="tab"][data-tab="versions"]').click();
+    await expect(selected).toHaveText('版本');
+    await expect(shown).toHaveAttribute('data-screen', 'v1');
+    await expect(position).toHaveText('1 / 2');
+    await bar.locator('[role="tab"][data-tab="compare"]').click();
+    await expect(selected).toHaveText('对比');
+    await expect(shown).toHaveAttribute('data-screen', 'a');
+    await expect(position).toHaveText('1 / 3');
+    await expect(page).toHaveURL(/[?&]tab=compare(&|$)/);
+    await page.locator('#wbentry-next').click();
+    await expect(shown).toHaveAttribute('data-screen', 'b');
+    await expect(position).toHaveText('2 / 3');
+    // 单篇 tab：只有一篇，横条不出 ‹ n / N ›
+    await bar.locator('[role="tab"][data-tab="single"]').click();
+    await expect(selected).toHaveText('单篇');
+    await expect(shown).toHaveAttribute('data-screen', 'solo');
+    await expect(page.locator('#wbentry-nav')).toHaveCount(0);
+    await bar.locator('[role="tab"][data-tab="compare"]').click();
+    await page.locator('#wbentry-next').click();
+    await expect(position).toHaveText('2 / 3');
+  });
+
+  await test.step('刷新：留在对比 tab 的第二篇', async () => {
+    await page.goto('/index.html?page=e2e-tabs-doc');
+    await page.waitForFunction(() => window.workbench && window.workbench.activeTabId);
+    await expect(selected).toHaveText('对比');
+    await expect(shown).toHaveAttribute('data-screen', 'b');
+    await expect(position).toHaveText('2 / 3');
+  });
+
+  await test.step('手机视口：手机屏整块在条的上方', async () => {
+    await page.locator('#wbviewport [data-viewport="phone"]').click();
+    await expect(page.locator('#wbroot')).toHaveAttribute('data-viewport', 'phone');
+    await expect(bar).toBeVisible();
+    await expect.poll(async () => {
+      const phone = await page.locator('#wb-board-panel .wb-screen:not([data-doc-hidden]) .wb-phone-doc').boundingBox();
+      const tabBox = await barBox(page, '#wbtabbar');
+      return phone && tabBox ? Math.round(tabBox.y - (phone.y + phone.height)) : -1;
+    }).toBeGreaterThanOrEqual(0);
+  });
 });
 
 test('focusFrame 指到别的 tab 的帧时先切 tab 再定位', async ({ page }) => {
