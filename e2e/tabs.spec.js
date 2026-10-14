@@ -319,7 +319,7 @@ test('旧偏好 sidebarTab=outline 打开后落在页面页签，不崩', async 
   await expect.poll(() => page.evaluate(() => JSON.parse(localStorage.getItem('pinpoint-wb')).sidebarTab)).toBe('pages');
 });
 
-test('ppnt：list --frames 按 tab 分组，check --frame <tab>:A1 可用，裸 A1 歧义时报错', async () => {
+test('ppnt：list --frames 按 tab 分组，comments --frame <tab>:A1 可用，裸 A1 歧义时报错', async () => {
   test.setTimeout(60_000);
   await ppnt(['build', 'e2e-tabs']);
 
@@ -330,14 +330,14 @@ test('ppnt：list --frames 按 tab 分组，check --frame <tab>:A1 可用，裸 
   expect(list.stdout).toMatch(/2 个 tab/);
 
   // flow:A1 解析成 ob-welcome（账本里还没有标注，所以是 0 条而不是报错）
-  const checked = await ppnt(['check', 'e2e-tabs', '--frame', 'flow:A1']);
+  const checked = await ppnt(['comments', 'e2e-tabs', '--frame', 'flow:A1']);
   expect(checked.stdout).toContain('共 0 条');
-  const unknownTab = await ppnt(['check', 'e2e-tabs', '--frame', 'nope:A1'], { expectFail: true });
+  const unknownTab = await ppnt(['comments', 'e2e-tabs', '--frame', 'nope:A1'], { expectFail: true });
   expect(unknownTab.code).not.toBe(0);
   expect(unknownTab.stdout + unknownTab.stderr).toContain('这页没有 tab');
 
   // 裸 A1 在两个 tab 里都有：给出带 tab 的候选，不猜
-  const ambiguous = await ppnt(['check', 'e2e-tabs', '--frame', 'A1'], { expectFail: true });
+  const ambiguous = await ppnt(['comments', 'e2e-tabs', '--frame', 'A1'], { expectFail: true });
   expect(ambiguous.code).not.toBe(0);
   expect(ambiguous.stdout + ambiguous.stderr).toContain('comps:A1');
   expect(ambiguous.stdout + ambiguous.stderr).toContain('flow:A1');

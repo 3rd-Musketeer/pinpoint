@@ -112,8 +112,8 @@ export function collectBucketOrphans(pageId, dataRoot) {
   return readBucketLedgers(path.join(dataRoot, pageId)).map((ledger) => ledger.name);
 }
 
-/** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数，与
-    status --page 的「孤儿 N 条」一致（K7）；一本孤儿账本可能装着几十行。
+/** 每个已知页的孤儿行数（GET /registry 的页信息用）。口径 = 行数（K7）；
+    一本孤儿账本可能装着几十行。
     articleIds = 活的文章画布页 id（它们不在 entries 里，桶照样要数）。 */
 export function collectOrphanCounts({ entries, dataRoot, localIds, root, articleIds = [] }) {
   const previewsRoot = path.join(root, 'content', 'previews');

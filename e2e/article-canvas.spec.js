@@ -69,9 +69,9 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await expect(page.locator('#wbpages [data-vpage="e2e-project_takeover"]')).toHaveCount(0);
   });
 
-  await test.step('ppnt shot B2 --page <画布页>：帧图落盘', async () => {
+  await test.step('ppnt shot <画布页> B2：帧图落盘', async () => {
     const out = path.join(E2E_DATA_DIR, 'shot', PAGE_ID, 'confirm-done.png');
-    const { stdout } = await ppnt(['shot', 'B2', '--page', PAGE_ID]);
+    const { stdout } = await ppnt(['shot', PAGE_ID, 'B2']);
     expect(stdout).toContain(out);
     const png = fs.readFileSync(out);
     expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
@@ -81,7 +81,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     // 板级装载把帧里的 <style>@import</style> 提到 .wb-library 开头（hoist-imports.js），
     // 帧 / 节的快照里就没有它了：出图要和画布同一套样式。C1 是裸组件帧，蓝色只可能来自
     // article.css 给 .e2e-confirm-card 的 2px 边。
-    await ppnt(['shot', 'C1', 'C', '--page', PAGE_ID]);
+    await ppnt(['shot', PAGE_ID, 'C1', 'C']);
     for (const name of ['card-plain', 'variants']) {
       const png = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', PAGE_ID, `${name}.png`));
       expect(await countColorPixels(page.context(), png, [10, 132, 255]), name).toBeGreaterThan(100);

@@ -2,8 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
-import { countByStatus, loadPageContext } from '../../src/server/lib/ann-query.js';
-import { distStatus, listPageIds, readDistScreen, readTargetBoard } from '../../src/server/lib/page-compiler.js';
+import { loadPageContext } from '../../src/server/lib/ann-query.js';
+import { listPageIds, readDistScreen } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
 import { formatProjectError } from '../../src/shared/project-errors.js';
@@ -73,39 +73,6 @@ export function reportMissingTarget(token, { registryPath, env, err }) {
   }
   err(`错误：找不到 ${pageRef}`);
   if (!reportPageSuggestions(pageRef, { registryPath, env, err })) printCandidates(ctx, err);
-}
-
-/** status --page <页>：各状态计数 + dist 是否过期 + 孤儿账本（只读，不依赖服务）。 */
-export function printPageStatus(parsed, { env, out, err }) {
-  // 找不到页的报错先攒着：整桶孤儿的页（删页后残留）有专门的报告，先打一行
-  // 「错误：找不到页 + 可用页清单」全是噪音（K8）；真没桶再原样报错。
-  const errors = [];
-  const pageRef = String(toPageRef(parsed.flags.page));
-  const context = loadAnnotateContext(pageRef, parsed, { env, err: (m) => errors.push(m) });
-  if (!context) {
-    // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
-    // 报告而不是裸报错，不然删页后的残留账本没有入口可见。报告只给两处都不在
-    // 的桶：页已知而加载失败的（url 条目等）原样报错，不把活页的账本吞成孤儿。
-    if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return 0;
-    for (const line of errors) err(line);
-    return 1;
-  }
-  const counts = countByStatus([...context.frameRows, ...context.docRows]);
-  out(`${context.address === context.pageId ? '页' : '文章'} ${context.address}`);
-  out(`  open ${counts.open} · check ${counts.check} · done ${counts.done} · close ${counts.close} · 共 ${counts.total}`);
-  if (context.docOnly) {
-    out('  这页不是编译页（registry 条目没有 board.json），没有 dist 与源码摘录');
-  } else {
-    const dist = distStatus(context.target.entryId, context.target.pageDir, {
-      distRoot: path.join(dataRoot(env), 'dist'),
-      // 文章画布：板是现派生的，比对 dist 里那份，不看 index.mdx 的 mtime。
-      ...(context.target.kind === 'article' ? { board: readTargetBoard(context.target) } : {}),
-    });
-    out(`  dist ${dist.builtAt ? new Date(dist.builtAt).toISOString() : '未编译'}${dist.stale ? ' · 已过期（源码比产物新，跑 ppnt build）' : ' · 最新'}`);
-  }
-  const orphanCount = (context.orphanRows || []).length;
-  if (orphanCount) out(`  孤儿 ${orphanCount} 条 · ${(context.orphanLedgers || []).join('、')}（表面已不存在，ppnt prune ${context.address} 清理）`);
-  return 0;
 }
 
 /** 页消失后的整桶孤儿报告；桶也不在时返回 false（调用方走原报错）。 */

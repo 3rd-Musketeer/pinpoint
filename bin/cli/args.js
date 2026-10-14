@@ -5,7 +5,7 @@ export { HELP, USAGE, helpFor };
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
 const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
 // --project <根目录>；add 的 --project 仍是开关）。folder / locate / shot / mark 的位置参数
@@ -16,20 +16,19 @@ const COMMANDS = {
   rename: { positional: 2, flags: new Set(['registry']) },
   remove: { positional: 1, flags: new Set(['registry']) },
   folder: { positional: null, flags: new Set(['registry', 'id']) },
-  status: { positional: 0, flags: new Set(['page', 'registry', 'json']) },
+  status: { positional: 0, flags: new Set(['registry', 'json']) },
   start: { positional: 0, flags: new Set() },
   stop: { positional: 0, flags: new Set() },
   restart: { positional: 0, flags: new Set() },
-  build: { positional: 1, flags: new Set(['registry', 'screen', 'frame', 'watch', 'json']) },
+  build: { positional: 1, flags: new Set(['registry', 'frame', 'watch', 'json']) },
   render: { positional: 1, flags: new Set(['registry', 'full']) },
   show: { positional: 1, flags: new Set(['registry', 'json', 'uses']) },
-  // check 是验证；--frame / --status / --mode / --group-by 只为过渡期的旧用法（列标注队列）留着。
-  check: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
+  check: { positional: 1, flags: new Set(['registry', 'json']) },
   comments: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
-  locate: { positional: null, flags: new Set(['registry', 'status', 'page', 'json']) },
-  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page', 'canvas', 'timeout', 'figure', 'json']) },
-  mark: { positional: null, flags: new Set(['registry', 'status', 'page', 'json', 'note']) },
-  reply: { positional: null, flags: new Set(['registry', 'page', 'json']) },
+  locate: { positional: null, flags: new Set(['registry', 'status', 'json']) },
+  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'canvas', 'timeout', 'figure', 'json']) },
+  mark: { positional: null, flags: new Set(['registry', 'status', 'json', 'note']) },
+  reply: { positional: null, flags: new Set(['registry', 'json']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
   migrate: { positional: 1, flags: new Set(['registry', 'project', 'article', 'dry-run']), valueFlags: new Set(['project']) },
   // new project <根> / new article <project>/<article>：脚手架，不覆盖已有文件。
@@ -128,8 +127,8 @@ export function parseArgs(argv) {
     return { command, dir: positional[0] || null, flags };
   }
   if (command === 'locate' || command === 'shot') {
-    // shot --figure <图 id> 只要目标（第一个参数或 --page），不要引用；缺目标由 runShot 报并列候选。
-    if (!positional.length && !flags.page && !(command === 'shot' && flags.figure)) fail(`${command} 至少要一个目标或引用（<project>/<article>、#n、B3、§2、帧 id …）`);
+    // shot --figure <图 id> 只要目标（第一个参数），不要引用；缺目标由 runShot 报并列候选。
+    if (!positional.length && !(command === 'shot' && flags.figure)) fail(`${command} 至少要一个目标或引用（<project>/<article>、#n、B3、§2、帧 id …）`);
     return { command, refs: positional, flags };
   }
   if (command === 'reply') {

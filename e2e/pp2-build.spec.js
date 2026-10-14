@@ -62,7 +62,7 @@ test('.jsx 帧编译后出现在工作台画布，DOM 带 data-pp-id', async ({ 
 // ppnt shot 的帧图 / 节图与画布同一套样式：assets.css 注入的 <style>@import</style>
 // 在板级装载时被提到 .wb-library 开头（hoist-imports.js），帧快照里已经没有它。
 test('ppnt shot B1 B：存量页的帧图 / 节图带上 board assets.css', async ({ page }) => {
-  await ppnt(['shot', 'B1', 'B', '--page', 'e2e-jsx']);
+  await ppnt(['shot', 'e2e-jsx', 'B1', 'B']);
   for (const name of ['badge-new', 'badge-wall']) {
     const png = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', 'e2e-jsx', `${name}.png`));
     expect(await countColorPixels(page.context(), png, [255, 0, 170]), name).toBeGreaterThan(100);

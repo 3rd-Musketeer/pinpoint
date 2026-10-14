@@ -653,7 +653,7 @@ export function readBuildJson(distRoot, entryId) {
 
 /**
  * 编译一整页 → 写 dist（writeDist=false 时只算不写，ppnt render 用）。
- * onlyScreen（CLI --screen，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
+ * onlyScreen（CLI --frame，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
  * 都走「只编挑中的屏 + 合并既有 build.json」的路径，其余屏的产物与记录原样保留。
  * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], figures: [{ id, ok, ms, error? }], partial, totalScreens, error? }；
  * figures 是文章正文里的图（整页编译时才有，见 compileArticleFigures）；

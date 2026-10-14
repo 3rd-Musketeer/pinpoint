@@ -137,7 +137,7 @@ ppnt mark <target> <ref…> done|check  # write annotation status
 ppnt reply <project>/<article>#<n> <text>  # reply in a prose comment's thread (status unchanged)
 ppnt build <target> [--watch]  # compile frames → dist (~/.pinpoint/dist/<page id>/)
 ppnt render <target>/<frame id>  # compile one frame to stdout, no dist write
-ppnt status [--page <target>]  # service checkup: route · pid · both health endpoints · root · registry; --page reports one page's counts and dist freshness
+ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt prune <target>            # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md

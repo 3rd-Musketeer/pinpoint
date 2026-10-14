@@ -124,8 +124,7 @@ export async function runBuild(argv, io = {}) {
   const target = pageTargetOrReport(parsed.target, parsed.flags, { env, err });
   if (!target) return USAGE_EXIT;
   const distRoot = path.join(dataRoot(env), 'dist');
-  // --frame 是现在的写法，--screen 是旧写法（同义）。
-  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.frame || parsed.flags.screen || null });
+  const first = await compilePage(target, { distRoot, onlyScreen: parsed.flags.frame || null });
   if (parsed.flags.json) {
     out(JSON.stringify({
       target: displayAddress(first.entryId),

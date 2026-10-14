@@ -1,6 +1,6 @@
 /**
- * 命令怎么拿到目标（docs/registry.md“CLI”）：第一个位置参数是目标，`--page` 是它的别名；
- * 都没写时看引用里有没有自带页的写法：`<project>/<article>#3`、`@frame:<页 id>/<帧 id>`。还是没有就报错并列候选，不猜
+ * 命令怎么拿到目标（docs/registry.md“CLI”）：第一个位置参数是目标；
+ * 没写时看引用里有没有自带页的写法：`<project>/<article>#3`、`@frame:<页 id>/<帧 id>`。还是没有就报错并列候选，不猜
  * （从前缺目标时取 registry 第一页，`locate B1` 会静默落到别的页上）。
  */
 import { loadRegistry } from '../../src/server/lib/registry.js';
@@ -44,14 +44,15 @@ export function printCandidates(ctx, err, { onlyProject = null, heading = '可�
 
 /**
  * locate / shot / mark / reply 取目标：
- *   --page > 第一个位置参数（解析得到页、文章或 project 时）> 引用里第一个 `<目标>#n` 或 `@frame:<页 id>/<帧 id>`。
+ *   parsed.target（reply 的参数解析已经分出来的目标）> 第一个位置参数（解析得到页、文章或 project 时）
+ *   > 引用里第一个 `<目标>#n` 或 `@frame:<页 id>/<帧 id>`。
  * 返回 { pageRef, address, refs }（refs 去掉了被当成目标的那一个；pageRef 是页 id），
  * 或 { error: true }（已经打了错误和候选）。
  */
 export function pickTarget(parsed, { env, err, command, usage }) {
   const ctx = addressContext(parsed.flags, env);
   const refs = [...(parsed.refs || [])];
-  let token = parsed.flags.page || null;
+  let token = parsed.target || null;
   if (!token && refs.length && !looksLikeRef(refs[0]) && !String(refs[0]).includes('#')) {
     const hit = resolveAddress(refs[0], ctx);
     if (hit || parseAddress(refs[0])?.kind === 'article') token = refs.shift();

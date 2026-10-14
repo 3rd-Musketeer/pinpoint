@@ -464,7 +464,7 @@ describe('缺源码与 build.json', () => {
     assert.equal(readDistScreen('never-built', 'x', { distRoot: path.join(tmp, 'dist') }).kind, 'unbuilt');
   });
 
-  test('--screen 单屏编译合并既有 build.json', async () => {
+  test('--frame 单屏编译合并既有 build.json', async () => {
     const board = {
       sections: [{
         id: 'main', title: 'Main', layout: 'row',

@@ -1,7 +1,7 @@
 /**
  * ppnt 的目标与引用地址（docs/registry.md“CLI”，CONTEXT.md“引用地址”）。
  *
- * 目标（命令的第一个位置参数，`--page` 是它的别名）：
+ * 目标（命令的第一个位置参数）：
  *   <project>/<article>       一篇文章（输出一律打这个斜杠形）
  *   <project>_<article>       同一篇文章的页 id（旧写法，照认）
  *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/?page=<页 id>
