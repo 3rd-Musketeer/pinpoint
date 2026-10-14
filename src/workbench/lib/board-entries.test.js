@@ -8,6 +8,7 @@ import {
   attachedEntrySrc,
   boardEntries,
   boardHasCanvas,
+  boardShowsTabBar,
   contentsModel,
   defaultEntryId,
   entryById,
@@ -15,6 +16,7 @@ import {
   entryTag,
   outlineSlice,
   resolveEntry,
+  tabHasOutline,
   withAttachedScreens,
   withEntryWeb,
 } from './board-entries.js';
@@ -281,4 +283,37 @@ test('outlineSlice：按 tab 切画布 section，文档只留在第一个 tab；
   assert.equal(boardHasCanvas({
     sections: [{ id: 'd', screens: [{ id: 'v1', shell: 'doc' }] }],
   }), false);
+});
+
+test('纯文档的多 tab 页：条照出；每个 tab 的浮层只列自己的文档，不到 2 篇的 tab 不带大纲钮', () => {
+  const docTabs = {
+    tabs: [
+      { id: 'versions', title: '版本', sections: [{
+        id: 'vers', title: '版本', shell: 'doc',
+        screens: [{ id: 'v1', title: 'V1', shell: 'doc' }, { id: 'v2', title: 'V2', shell: 'doc' }],
+      }] },
+      { id: 'compare', title: '对比', sections: [{
+        id: 'cmp', title: '对比', shell: 'doc',
+        screens: [{ id: 'a', title: 'A', shell: 'doc' }, { id: 'b', title: 'B', shell: 'doc' }, { id: 'c', title: 'C', shell: 'doc' }],
+      }] },
+      { id: 'solo', title: '单篇', sections: [{
+        id: 'one', title: '单篇', shell: 'doc', screens: [{ id: 's1', title: 'S1', shell: 'doc' }],
+      }] },
+    ],
+  };
+  assert.equal(boardHasCanvas(docTabs), false);
+  assert.equal(boardShowsTabBar(docTabs), true);
+  assert.deepEqual(outlineSlice(docTabs, 'versions').entries.map((e) => e.id), ['v1', 'v2']);
+  assert.deepEqual(outlineSlice(docTabs, 'compare').entries.map((e) => e.id), ['a', 'b', 'c']);
+  assert.deepEqual(outlineSlice(docTabs, '').entries.map((e) => e.id), ['v1', 'v2']);
+  assert.equal(tabHasOutline(docTabs, 'versions'), true);
+  assert.equal(tabHasOutline(docTabs, 'solo'), false);
+
+  // 单 tab 的纯文档页、没有 tab 的纯文档页：不出条
+  const oneTab = { tabs: [docTabs.tabs[1]] };
+  assert.equal(boardShowsTabBar(oneTab), false);
+  assert.equal(boardShowsTabBar({ sections: [{ id: 'd', screens: [{ id: 'v1', shell: 'doc' }] }] }), false);
+  // 有画布的页：不论几个 tab 都出，每个 tab 都带大纲钮
+  assert.equal(boardShowsTabBar(mixedBoard()), true);
+  assert.equal(tabHasOutline(mixedBoard(), ''), true);
 });

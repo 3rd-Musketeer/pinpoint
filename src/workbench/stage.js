@@ -176,7 +176,7 @@ async function loadBoard(panel, pageId, loadOptions) {
     var viewport = applyPageViewport(pageId);
     panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
     wbSet({ activeBoard: { pageId: pageId, board: board, fullBoard: fullBoard, tabId: tabId } });
-    syncEntries();
+    syncEntries({ fresh: !!loadOptions.freshEntry, save: !!loadOptions.saveEntry });
     watchDocAnnotate();
     return afterMount(panel, session);
   } catch (e) {

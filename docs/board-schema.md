@@ -95,7 +95,7 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
 
 - `tabs` 与顶层 `sections` 二选一。tab 的 `id` 在页内唯一、是 id 的样子；每个 tab 至少一个 section。
 - tab 只是 section 的视图分组：共用 `components/`、资源和标注账本；section id、screen id 在整页内唯一（跨 tab 也不许重复）。
-- 编号按 tab 各自从 A 重来；多 tab 页的位置引用写 `<tab>:B3`，id 仍是裸的。不足 2 个 tab 时引用不带前缀。工作台只要页上有画布条目就渲染 `#wbtabbar`（不到 2 个 tab 时条上只有大纲钮）；分享页导出仍是不足 2 个 tab 不出条。
+- 编号按 tab 各自从 A 重来；多 tab 页的位置引用写 `<tab>:B3`，id 仍是裸的。不足 2 个 tab 时引用不带前缀。工作台的 `#wbtabbar`：≥ 2 个 tab 就渲染，tab 里全是文档也一样；不到 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。分享页导出也是 ≥ 2 个 tab 才出条，但导出只含画布，全是文档的 tab 不进导出，所以纯文档页导出不出条。
 - 工作台只挂活动 tab 的 section；`ppnt build` 与导出覆盖所有 tab。
 
 ## comp section（variants 墙）
