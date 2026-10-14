@@ -16,7 +16,7 @@ description: 读取 Pinpoint 的画布标注、文档页标注和文章正文评
 文章的桶里有三种条目：
 
 - **画布标注**：owner 在画布视图（`/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在 JSX 帧或其中元素上的标注，锚点是编译时打的 `data-pp-id`。存量页画布上的标注也是这一种。
-- **文档页标注**：钉在一整份 HTML 页面里的元素上的标注。文章的 HTML 帧（`<Canvas frames>` 里的 `.html` 帧或 `{ id, src }`）在画布视图里是文档条目，owner 在那里标注；存量页的文档条目（`board: "html"` 的页、`shell: "doc"` 的条目）也是这一种。锚点是 CSS 路径加元素文字。
+- **文档页标注**：钉在一整份 HTML 页面里的元素上的标注。文章的 HTML 帧（`<Canvas frames>` 里的 `.html` 帧或 `{ id, src }`）在画布视图里是文档条目，owner 在那里标注；存量页的文档条目（`shell: "doc"` 的屏、登记的 HTML 文件页）也是这一种。锚点是 CSS 路径加元素文字。
 - **正文评论**：owner 在文章页（`/<project>/<article>/`，读者读文章的网页）上选中一段正文写的评论。它带引文（选中的文字和前后文）、
   节 id。文章页上的画布卡片和画布浮层不收标注。
   要在 UI 上照人的做法发一条（测试时）：在文章页用鼠标拖选一段正文，点浮出的“评论”，在右栏的输入框里写，点“发送”。
@@ -61,7 +61,7 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 JSX 帧的源码摘录读 dist。dist 不在或落后于源码时，`comments` 和 `locate` 先编一次，在 stderr 打一行说明，摘录照常出来。HTML 帧不编译，摘录直接取那份 HTML 源文件。
 
 画布标注的锚点在 `.jsx` 帧上是 `data-pp-id`（形如 `Nav.jsx:18@2`，源文件：行 + 同行第几个实例；组件锚点
-给帧实例与组件定义两段）。文档页标注（文章的 HTML 帧、存量页的 `.html` 帧和文档条目）的锚点是 cssPath + 文本摘录，`comments` 把它归到所在的帧下面（`## B1 · <帧 id>`）。锚点已失效的标注仍保留原正文，
+给帧实例与组件定义两段）。文档页标注（文章的 HTML 帧、存量页的文档条目）的锚点是 cssPath + 文本摘录，`comments` 把它归到所在的帧下面（`## B1 · <帧 id>`）。存量页画布上的 `.html` 片段帧也编进 dist，但没有 `data-pp-id`，它上面的画布标注同样用 cssPath + 文本摘录。锚点已失效的标注仍保留原正文，
 画布上留 lastRect 幽灵框。失效不等于已解决，照常处理。
 
 ## 2. 判断改哪里
@@ -69,7 +69,7 @@ JSX 帧的源码摘录读 dist。dist 不在或落后于源码时，`comments` �
 - 画布标注的锚点落在组件（`data-pp-comp`）且共用多帧 → 改组件文件，所有引用帧一起变。文章的组件在
   `articles/<article>/components/` 或 project 的 `docs/pinpoint/components/`，存量页在 `<存量页目录>/components/`。
 - 画布标注只影响一帧 → 改那一帧的 `<帧 id>.jsx`（存量页的 `.html` 帧就是那个片段文件）。
-- 文档页标注 → 改那份 HTML 页面：文章本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件（相对 project 根，或 `project.json` 的 `sources` 登记的目录），`comments` 的摘录给出路径和行；存量页的文档条目改它登记目录里的那个文件。HTML 帧没有 dist，改完不用编译。
+- 文档页标注 → 改那份 HTML 页面：文章本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件（相对 project 根，或 `project.json` 的 `sources` 登记的目录），`comments` 的摘录给出路径和行；存量页的文档条目改它登记目录里的那个文件。HTML 帧没有 dist，改完不用编译。文件在别的仓里（`sources` 登记的目录）时，提交照那个仓的规矩做。
 - 正文评论 → 改 `index.mdx` 里被评的那段，或者这一节 `<Canvas>` 里的帧。
 - 意图字段：`changeTo` 是改文案（结合目标 pill 与上下文，多目标逐个处理，不要把整段指令当替换
   文本）；`move` 是移动，结合 `to_selector` / `to_point` 理解位置；`images` 是参考图，读实际图片。

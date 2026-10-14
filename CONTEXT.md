@@ -37,7 +37,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：拿“帧”或“画布”指图；单说“图”指画布卡片里的帧缩略图或 `ppnt shot` 的截图。
 
 **帧（frame）** · `articles/<article>/<帧 id>.jsx` 或 `.html`
-画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件，卡片和浮层按手机或桌面宽度显示它。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
+画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件。卡片和浮层缺省按手机宽 402 排这个页面，卡片头和浮层头的“手机 / 桌面”开关切到桌面宽 1280；画布视图里它是一个文档条目，不在画布那一行。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
 要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`ppnt build --frame` 的别名 `--screen`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`docs/pinpoint/components/<Name>.jsx`（project 共用）、`content/kits/ios/jsx/`（kit）
@@ -85,7 +85,7 @@ owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素�
 要避开：以为它只属于存量页；去找 dist 里的产物改（HTML 帧没有 dist）。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`
-owner 在文章页上选中一段正文写下的评论，出现在右边评论栏。锚点是引文（选中文字加前后文），正文改了以后每次按引文重新定位，找不到就标“失效”：这是显示标记，不是状态，失效的评论照常回复、写状态。每条评论是一个线程：owner 的第一句加之后 owner 与 agent 的来回；agent 用 `ppnt reply` 回复，回复不改状态。
+owner 在文章页上选中一段正文写下的评论，出现在右边评论栏。锚点是引文（选中文字加前后文），正文改了以后每次按引文重新定位，找不到就标“失效”：这是显示标记，不是状态，失效的评论照常回复、写状态。每条评论是一个线程：owner 的第一句加之后 owner 与 agent 的来回；agent 改完用 `ppnt mark … done --note "<回复>"` 一步回复并写状态，只回复不改状态用 `ppnt reply`。
 要避开：把“失效”说成已解决；把正文评论叫“文档页标注”（那是钉在 HTML 页面元素上的标注）。
 
 **标注队列** · 一个桶里的全部条目
