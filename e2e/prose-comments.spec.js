@@ -272,6 +272,38 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt check / reply / mark
       await expect(thread(first).locator('.msg .text').last()).toHaveText('离开前的回复二');
     });
 
+    await test.step('保存扣在路上时 agent 把另一条写成 done：409 后重放，agent 的状态与回复、owner 的回复都落盘', async () => {
+      let releaseHeld;
+      const held = new Promise((resolve) => { releaseHeld = resolve; });
+      let heldStarted;
+      const started = new Promise((resolve) => { heldStarted = resolve; });
+      let saves = 0;
+      await page.route('**/save', async (route) => {
+        if (++saves === 1) { heldStarted(); await held; }
+        await route.continue();
+      });
+      try {
+        await thread(second).click();
+        await thread(second).locator('textarea').fill('第二条的回复');
+        await thread(second).getByRole('button', { name: '发送' }).click();
+        await started;
+        await ppnt(['mark', `${PAGE_ID}#${first}`, 'done', '--note', '第一条改好了', '--page', PAGE_ID]);
+        releaseHeld();
+        await settled(page);
+        expect(saves, '扣住的那次撞 409，重放后再存一次').toBe(2);
+        const rows = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations;
+        const brief = (n) => {
+          const row = rows.find((a) => a.n === n);
+          return [row.status, row.messages.at(-1).who, row.messages.at(-1).text];
+        };
+        expect(brief(first)).toEqual(['done', 'agent', '第一条改好了']);
+        expect(brief(second)).toEqual(['open', 'owner', '第二条的回复']);
+        await expect(thread(first)).toHaveAttribute('data-status', 'done');
+      } finally {
+        await page.unroute('**/save');
+      }
+    });
+
     await test.step('完成 → closed 段里，高亮跟着筛选；重新打开回 pending', async () => {
       await thread(second).getByRole('button', { name: '完成' }).click();
       await expect(thread(second)).toHaveCount(0);
