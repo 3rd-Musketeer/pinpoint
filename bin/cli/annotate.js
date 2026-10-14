@@ -25,6 +25,8 @@ import { ensureDist, ensureDistNote } from './dist.js';
 const CHECK_STATUSES = new Set(['open', 'check', 'done', 'close', 'all']);
 const CHECK_MODES = new Set(['excerpt', 'image', 'both']);
 const GROUP_BYS = new Set(['frame', 'component']);
+/** 文档帧截图的宽度说明（与 ppnt-shot.js 的 DOC_SHOT_WIDTH 同一个数；这里不 import 渲染器，免得拉起 playwright）。 */
+const DOC_SHOT_WIDTH_NOTE = '402 宽';
 
 /** 服务没答时的那句话：隔离运行（设了 PINPOINT_ORIGIN）不能 `ppnt start`。 */
 function serviceDown(origin, env, what) {
@@ -372,6 +374,7 @@ export async function runLocate(argv, io = {}) {
 export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks, contextFor, dataRootDir }) {
   const jobs = [];
   const problems = [];
+  const notes = [];
   const contexts = new Map([[basePageId, baseContext]]);
   const contextOf = (pageId) => {
     if (!contexts.has(pageId)) contexts.set(pageId, contextFor ? contextFor(pageId) : null);
@@ -391,26 +394,31 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (frame.tabId) tabOfFrame.set(frame.id, frame.tabId);
   const withTab = (tabId) => (tabId ? { tabId } : {});
   // 文章的文档帧（HTML 帧）不在画布上：直接打开它自己的地址，按手机宽度拍整页（ppnt-shot 的 renderDocShots）。
-  const docUrlOf = (screenId) => (baseContext.article && baseContext.board && baseContext.target
-    ? docFrameUrl(baseContext.board, baseContext.target.urlBase, screenId)
+  const docUrlOf = (screenId, ctx = baseContext) => (ctx.article && ctx.board && ctx.target
+    ? docFrameUrl(ctx.board, ctx.target.urlBase, screenId)
     : null);
+  const docJob = (screenId, ctx, label) => {
+    const key = `${ctx.pageId}|${screenId}`;
+    if (seenScreens.has(key)) return;
+    seenScreens.add(key);
+    jobs.push({
+      kind: 'doc',
+      pageId: ctx.pageId,
+      screenId,
+      url: docUrlOf(screenId, ctx),
+      scale,
+      label,
+      out: path.join(shotDirOf(ctx.pageId), `${screenId}.png`),
+      marks: withMarks ? openRows(ctx).filter((row) => row.screenId === screenId) : [],
+    });
+  };
   const frameJob = (screenId) => {
-    if (seenScreens.has(screenId)) return;
-    seenScreens.add(screenId);
-    const docUrl = docUrlOf(screenId);
-    if (docUrl) {
-      jobs.push({
-        kind: 'doc',
-        pageId: basePageId,
-        screenId,
-        url: docUrl,
-        scale,
-        label: [frameRefOf(screenId), screenId].filter(Boolean).join(' · '),
-        out: path.join(shotDirOf(basePageId), `${screenId}.png`),
-        marks: withMarks ? openRows(baseContext).filter((row) => row.screenId === screenId) : [],
-      });
+    if (docUrlOf(screenId)) {
+      docJob(screenId, baseContext, [frameRefOf(screenId), screenId].filter(Boolean).join(' · '));
       return;
     }
+    if (seenScreens.has(screenId)) return;
+    seenScreens.add(screenId);
     jobs.push({
       kind: 'frame',
       pageId: basePageId,
@@ -470,6 +478,21 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
         }
         continue;
       }
+      // 文章的画布视图整页：HTML 帧（文档条目）不在画布那一行，画布视图一次只显示其中一份，
+      // 整页图里只有一条窄边。所以每个文档条目按自己的地址各拍一张整页，画布那一行只在
+      // 有 JSX 帧时才拍；全是文档条目时不出画布图，notes 里说清楚为什么。
+      if (pageContext.article) {
+        const frames = pageContext.refs ? outlineFrames(pageContext.refs) : [];
+        const docFrames = frames.filter((frame) => docUrlOf(frame.id, pageContext));
+        if (docFrames.length) {
+          for (const frame of docFrames) docJob(frame.id, pageContext, [frame.ref, frame.id].filter(Boolean).join(' · '));
+          const canvasCount = frames.length - docFrames.length;
+          notes.push(canvasCount
+            ? `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 个 HTML 帧是文档条目，不在画布那一行：各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）；画布视图那张图只含 ${canvasCount} 个 JSX 帧。`
+            : `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 帧都是 HTML 帧（文档条目），画布那一行是空的，不出画布视图图；每帧各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）。`);
+          if (!canvasCount) continue;
+        }
+      }
       jobs.push({
         kind: 'page',
         pageId: pageContext.pageId,
@@ -480,7 +503,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
       });
     }
   }
-  return { jobs, problems };
+  return { jobs, problems, notes };
 }
 
 /**
@@ -643,6 +666,7 @@ export async function runShot(argv, io = {}) {
     dataRootDir: dataRoot(env),
   });
   for (const problem of plan.problems) err(problem);
+  if (!parsed.flags.json) for (const note of plan.notes) out(`说明：${note}`);
   const jobs = plan.jobs;
   if (!jobs.length && !articleJobs.length) {
     err('没有可拍的目标（引用都未命中）。');
@@ -672,7 +696,7 @@ export async function runShot(argv, io = {}) {
       for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result, 'article');
     }
     if (docJobs.length) {
-      for (const result of await renderer.renderDocShots({ origin, jobs: docJobs, env })) print(result);
+      for (const result of await renderer.renderDocShots({ origin, jobs: docJobs, env })) print(result, 'doc');
     }
     for (const [pageId, group] of byPage) {
       for (const result of await renderer.renderShots({ origin, pageId, jobs: group, env })) print(result, 'canvas');
@@ -686,7 +710,7 @@ export async function runShot(argv, io = {}) {
     warnings.push(truncatedWarning(context.address));
     err(`注意：${warnings[warnings.length - 1]}`);
   }
-  if (parsed.flags.json) out(JSON.stringify({ target: context.address, shots, warnings, errors: [...errors, ...plan.problems] }, null, 2));
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, shots, notes: plan.notes, warnings, errors: [...errors, ...plan.problems] }, null, 2));
   return errors.length || plan.problems.length || warnings.length ? 1 : 0;
 }
 

@@ -3168,3 +3168,37 @@ test('mark --status：批量展开只走活的行，孤儿不会被顺手改掉'
   const posted = made.calls.filter((call) => call.method === 'POST').map((call) => call.url.replace(/^.*\/annotations\//, ''));
   assert.deepEqual(posted, ['live.html_aaa111/1/status']);
 });
+
+test('planShotJobs：文章的画布视图整页 —— 全是 HTML 帧时逐帧截、不出画布图；混着 JSX 帧时两样都出，notes 说明', () => {
+  const docsOnly = {
+    pageId: 'd_a',
+    article: { projectId: 'd', articleId: 'a' },
+    target: { urlBase: '/sites/d_a/' },
+    board: { sections: [{ id: 'pages', letter: 'A', screens: [{ id: 'long', shell: 'doc' }, { id: 'cat', shell: 'doc', src: 'x/cat.html' }] }] },
+    refs: { outline: [{ id: 'pages', letter: 'A', frames: [{ id: 'long', ref: 'A1' }, { id: 'cat', ref: 'A2' }] }] },
+    frameRows: [{ n: 1, screenId: 'long', status: 'open' }],
+  };
+  const only = planShotJobs([{ kind: 'page', pageId: 'd_a' }], { basePageId: 'd_a', baseContext: docsOnly, scale: 1, withMarks: true, dataRootDir: '/data' });
+  assert.deepEqual(only.jobs.map((job) => [job.kind, job.screenId, job.url, job.label]), [
+    ['doc', 'long', '/sites/d_a/long.html', 'A1 · long'],
+    ['doc', 'cat', '/x/cat.html', 'A2 · cat'],
+  ]);
+  assert.deepEqual(only.jobs[0].marks.map((row) => row.n), [1]);
+  assert.equal(only.notes.length, 1);
+  assert.match(only.notes[0], /d\/a 的 2 帧都是 HTML 帧（文档条目）.*不出画布视图图/);
+
+  const mixed = {
+    ...docsOnly,
+    board: { sections: [...docsOnly.board.sections, { id: 'app', letter: 'B', screens: [{ id: 'phone' }] }] },
+    refs: { outline: [...docsOnly.refs.outline, { id: 'app', letter: 'B', frames: [{ id: 'phone', ref: 'B1' }] }] },
+  };
+  // --canvas 再加一个指同一帧的引用：同一帧只拍一次。
+  const both = planShotJobs([{ kind: 'page', pageId: 'd_a' }, { kind: 'frame', screenId: 'long' }], { basePageId: 'd_a', baseContext: mixed, scale: 1, withMarks: false, dataRootDir: '/data' });
+  assert.deepEqual(both.jobs.map((job) => [job.kind, job.screenId || job.pageId]), [['doc', 'long'], ['doc', 'cat'], ['page', 'd_a']]);
+  assert.match(both.notes[0], /2 个 HTML 帧是文档条目.*画布视图那张图只含 1 个 JSX 帧/);
+
+  // 存量页的整页引用不变：一张画布图，没有 notes。
+  const legacy = planShotJobs([{ kind: 'page', pageId: 'demo' }], { basePageId: 'demo', baseContext: { pageId: 'demo', frameRows: [], refs: { outline: [] } }, scale: 1, withMarks: false, dataRootDir: '/data' });
+  assert.deepEqual(legacy.jobs.map((job) => job.kind), ['page']);
+  assert.deepEqual(legacy.notes, []);
+});

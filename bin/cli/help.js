@@ -150,13 +150,13 @@ ${REGISTRY_FLAG}`,
 产物在 <数据目录>/shot/<页 id>/：文章页 article.png、article-<节 id>.png；画布 <帧 id|节 id|页 id>.png；
 图 figure-<图 id>.png 与 figure-<图 id>-dark.png。
 
-  --canvas             画布视图整页
+  --canvas             画布视图整页；文章的 HTML 帧（文档条目）各按自己的地址截 402 宽整页，全是 HTML 帧时不出画布图，打一行“说明：”
   --figure <图 id>     正文里的一个图（figures/<图 id>.jsx），不和引用同用；图编译失败或在浏览器里运行出错时打出原因、退 1
   --marks              把 open 标注的 #n 序号钉烤进画布截图
   --status <状态>      加上这个状态的标注所在的帧
   --scale 1|2          像素倍数（缺省 1）
   --timeout <秒>       等文章站点就绪的上限（缺省 60）
-  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated? }], warnings, errors }
+  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated?, pending? }], notes, warnings, errors }
 ${REGISTRY_FLAG}
 ${TARGET_NOTE}
 
