@@ -67,7 +67,7 @@ popup：article 显示标题、摘要、读全文；concept 显示定义、状�
 - 打开期间：焦点困在浮层里（首尾哨兵把 Tab 绕回来），页面不滚动（`html.pp-ov-lock`）。← / → 或按钮在有画布的节之间走（纯文字的节跳过），焦点在帧的编辑框里时左右键留给帧。
 - 手机宽度（≤ 600 px）：整屏 sheet，帧按宽度缩，横向滑动、一帧一停。
 - 浮层是 `document.body` 下的 `<dialog data-pp-overlay data-pp-nocomment>`，不在 `#article` 里；在浮层里选字不出正文“评论”。
-- 浮层里不做标注（在 BACKLOG）。
+- 浮层里不做标注。
 
 ## 弹层与 Esc
 

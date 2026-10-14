@@ -150,7 +150,7 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 
 ## 存量页（页 / board）
 
-存量页是文章模型之外、今天仍在用的原型页：一个带 `board.json` 的帧目录（或一个 HTML 文件、一个网址），经 registry 登记，在工作台左栏的“页面”组里，不带参数的 `ppnt list` 里类型不是 project 的条目都是。新工作写成文章；存量页照常能看、能改、能标注，要转成文章时跑 `pinpoint migrate <页 id> --project <根>`：每个 board section 成为一节，节里一个画布组件，旧页和它的标注留在原处（做法见 `docs/projects.md`“从存量页迁移”）。下面这些词只在存量页上遇到。
+存量页是文章模型之外的原型页，和文章并列，是工作台的常规入口：一个带 `board.json` 的帧目录（或一个 HTML 文件、一个网址），经 registry 登记，在工作台左栏的“页面”组里，不带参数的 `ppnt list` 里类型不是 project 的条目都是。新工作写成文章；存量页照常能看、能改、能标注，需要时转成文章，跑 `pinpoint migrate <页 id> --project <根>`：每个 board section 成为一节，节里一个画布组件，旧页和它的标注留在原处（做法见 `docs/projects.md`“从存量页迁移”）。下面这些词只在存量页上遇到。
 
 **存量页** · `content/previews/_index.json`（模板页）或 registry 的 dir / file / url 条目
 工作台“页面”组里的一行，页 id 是它自己的 id。一个存量页可以同时有画布和文档、网页。代码、CLI 帮助和 `docs/board-schema.md` 里单说的“页”（`<页>`、Pages、`pageId`）多半指存量页或页 id。
