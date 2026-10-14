@@ -224,7 +224,9 @@ annotation surface, and exported artifacts never contain the injected client.
 ## Export an offline interactive HTML
 
 The strip's **导出** button writes one self-contained `<page id>__interactive.html`
-(`POST /api/export-page-html`, ADR 0033) — the single user-facing export. It
+(`POST /api/export-page-html`, ADR 0033) — the single user-facing export. The
+button shows only on pages the export can build: registry dir entries with
+`board: "ios"` (`src/shared/offline-export-scope.js`). It
 opens as the same shell you use in the workbench: the full-bleed grid canvas, the
 floating glass panel with the outline, and the bottom strip (panel toggle, page
 title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ +

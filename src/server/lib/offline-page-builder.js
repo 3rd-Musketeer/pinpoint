@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
+import { OFFLINE_EXPORT_PAGE_ID, offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { readBoardRaw } from './board-file.js';
 import { escHtml } from '../../workbench/lib/esc-html.js';
 import { validateBoard } from '../../workbench/lib/preview-contracts.js';
@@ -20,7 +21,6 @@ import {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
-const PAGE_ID_RE = /^[a-z0-9][a-z0-9-]*$/;
 
 function readText(relative) {
   return fs.readFileSync(path.join(ROOT, relative), 'utf8');
@@ -36,12 +36,12 @@ function readInlineScript(relative) {
 }
 
 function resolvePage(pageId, registry) {
-  if (!PAGE_ID_RE.test(String(pageId || ''))) {
+  if (!OFFLINE_EXPORT_PAGE_ID.test(String(pageId || ''))) {
     throw new OfflinePageExportError('bad_page', `invalid page id: ${pageId}`);
   }
   const entry = registry && typeof registry.resolve === 'function' ? registry.resolve(pageId) : null;
   if (!entry) throw new OfflinePageExportError('unknown_page', `unknown registry page: ${pageId}`);
-  if (entry.kind !== 'dir' || entry.board !== 'ios') {
+  if (!offlineExportSupported(pageId, entry)) {
     throw new OfflinePageExportError('unsupported_page', `${pageId}: offline HTML V1 supports registry dir entries with board "ios" only`);
   }
   const root = path.resolve(entry.path);

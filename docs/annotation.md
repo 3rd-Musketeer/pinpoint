@@ -215,7 +215,8 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 ## 导出
 
 用户面只有一种导出：横条“导出”钮把整个画布导出为离线可交互 HTML（`src/workbench/app/ExportPicker.jsx`，
-原生 dialog；ADR 0033）。文章本身用文章页的链接分享。服务端帧图片渲染器（`/api/export-image`）给 agent 用：
+原生 dialog；ADR 0033）。能导的只有 registry 里 `board: "ios"` 的 dir 条目，钮也只在这些页上出；文章画布页、模板页、
+文档页和网页条目上没有这个钮（口径在 `src/shared/offline-export-scope.js`，构建器同用）。文章本身用文章页的链接分享。服务端帧图片渲染器（`/api/export-image`）给 agent 用：
 `ppnt shot` 的画布截图与 `ppnt comments --mode image` 走它。文章页截图（`ppnt shot <project>/<article>`、`§2`）不经它：CLI 用 Playwright 打开文章页，等站点就绪、图片和画布卡片加载完再截。不要把截图逻辑加进单个帧里。
 
 可交互 HTML 导出（`POST /api/export-page-html`）只内联 `data-preview-script` 脚本，脚本里不能有 `import` / `fetch` / `XMLHttpRequest` / `WebSocket`，否则整页导出拒绝；要用图标库就把用到的节点内联进脚本（Pinpoint `plugins` 页的 `pk.js` 是样例（源目录由 registry 解析））。
