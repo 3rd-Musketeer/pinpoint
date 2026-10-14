@@ -25,6 +25,7 @@ import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
 import { articleOutline, resolveRootFrame } from './article-canvas.js';
 import { collectHtmlFrameAssets } from './html-frame-assets.js';
+import { resolveServableFile } from './servable-file.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { checkMdxRender } from './mdx-check.js';
 import { deriveArticleBoard } from './article-board.js';
@@ -122,8 +123,8 @@ function htmlFrameFile(target, frame, src) {
     return found.file ? { file: found.file, root: found.base } : null;
   }
   if (isFile(path.join(target.pageDir, `${frame}.jsx`))) return null;
-  const file = path.join(target.pageDir, `${frame}.html`);
-  return isFile(file) ? { file, root: target.pageDir } : null;
+  const file = resolveServableFile(target.pageDir, `${frame}.html`, { index: false }).file;
+  return file ? { file, root: target.pageDir } : null;
 }
 
 /** HTML 帧引用的本地文件：越出可服务范围是错误，不在盘上是警告（docs/projects.md“HTML 帧”）。 */

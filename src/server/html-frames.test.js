@@ -178,6 +178,24 @@ test('服务：三条出文件的分支同一套规则，文章目录里 . 开�
   assert.equal((await get(handler, `/sites/${pageId}/page.css`)).statusCode, 200);
 });
 
+test('本篇的 HTML 帧是指出文章目录的 symlink：布局错误 frame_src，不进画布，服务 404', async (t) => {
+  const { dir, article, registry, pageId } = fixture(t);
+  write(path.join(dir, 'outside.html'), PAGE('外面的 sentinel'));
+  fs.symlinkSync(path.join(dir, 'outside.html'), path.join(article, 'escape.html'));
+  fs.appendFileSync(path.join(article, 'index.mdx'), '<Section id="esc" title="越界">\n\n<Canvas frames={["escape"]} />\n\n</Section>\n');
+  const handler = createSitesHandler({ registry });
+  const res = await get(handler, `/sites/${pageId}/escape.html?annotate=off`);
+  assert.equal(res.statusCode, 404);
+  assert.doesNotMatch(String(res.text || res.body || ''), /sentinel/);
+  const target = resolveArticleTarget(registry, pageId);
+  const { board, errors } = deriveArticleBoard(target);
+  assert.deepEqual(errors.map((e) => [e.code, e.frame]), [['frame_src', 'escape']]);
+  assert.match(errors[0].message, /文章目录外面/);
+  assert.equal(board.sections.some((s) => s.screens.some((screen) => screen.id === 'escape')), false);
+  assert.equal(articleHtmlFrameFile(target, { id: 'escape' }), null);
+  assert.deepEqual(listProjects(registry)[0].errors.map((e) => [e.code, e.path, e.frame]), [['frame_src', 'articles/pages/index.mdx', 'escape']]);
+});
+
 test('服务：这篇没有 project 根下的帧时 @root 不开', async (t) => {
   const { article, registry, pageId } = fixture(t);
   const mdx = path.join(article, 'index.mdx');

@@ -193,7 +193,7 @@ export default function ConfirmBare() {
   - `"examples/brochure.html"`：相对 project 根。
   - `"skill:preview.html"`：`<source 名>:<路径>`，路径相对 `project.json` 里 `sources.skill` 登记的目录。用来引用 project 根外面的文件，比如另一个仓里的示例页。
 - `sources`（`project.json`，可选）：`{ "<名字>": "<目录>" }`。名字匹配 `^[a-z0-9][a-z0-9-]*$`，不能叫 `root`；目录写绝对路径或相对 project 根。值不是字符串、名字不合规则、目录不在，都是 project 错误 `project_sources`（没有 `path`，`ppnt check` 指 `project.json`），这个名字不能用。
-- `src` 的路径以 `/` 开头、含 `..` 或 `.` 段、含 `\`、不以 `.html` 或 `.htm` 结尾、用了没登记的 source 名、解析（含符号链接）后在 project 根或那个 source 目录外面，都是错误 `frame_src`；文件不在是 `frame_missing`，这一帧照进画布。相对 project 根的路径不能以 `<名字>:` 开头，那是 source 写法。
+- `src` 的路径以 `/` 开头、含 `..` 或 `.` 段、含 `\`、不以 `.html` 或 `.htm` 结尾、用了没登记的 source 名、解析（含符号链接）后在 project 根或那个 source 目录外面，都是错误 `frame_src`；本篇目录下的 `<帧 id>.html` 是符号链接、真实落点在文章目录外面或是隐藏文件，也是 `frame_src`。这两种帧不进画布，服务也不出。文件不在是 `frame_missing`，这一帧照进画布。相对 project 根的路径不能以 `<名字>:` 开头，那是 source 写法。
 - 节没写 `shell` 时，HTML 帧套 `doc` 机壳；写了就用节的（存量的 HTML 片段帧放进手机壳就是这样）。JSX 帧和 HTML 帧可以在同一节，帧 id 在一篇里唯一。
 - 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<路径>`，source 下的帧是 `/sites/<页 id>/@source/<名字>/<路径>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。文章目录、project 根、source 目录三处出文件用同一条规则（`src/server/lib/servable-file.js`）：路径按文本和按真实路径（跟符号链接）都要在那个目录里；任何一段以 `.` 开头就 404，符号链接的真实落点也算。project 根和 source 目录只在这篇有帧住在里面时开放，workspace 里别的文件不出。Astro 的 `fs.allow` 不变，这些文件不经站点出。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
 - 宽度：卡片和浮层按手机 402（画布视图手机屏的宽度）或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（402 × 874 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。

@@ -33,6 +33,7 @@ import remarkMdx from 'remark-mdx';
 import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
 import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID, parseFrameSrc } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { resolveServableFile } from './servable-file.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
 
@@ -105,7 +106,10 @@ export function frameFileReaders(articleDir, { projectRoot = path.resolve(articl
     frameSource: (frame) => {
       const found = [];
       if (isFile(jsx(frame))) found.push({ kind: 'jsx', file: jsx(frame) });
-      if (isFile(html(frame))) found.push({ kind: 'html', file: html(frame) });
+      // HTML 帧按文章目录的出文件规则判（lib/servable-file.js）：指到目录外面的 symlink 算写坏了。
+      const page = resolveServableFile(articleDir, `${frame}.html`, { index: false });
+      if (page.file) found.push({ kind: 'html', file: page.file });
+      else if (page.reason !== 'missing') found.push({ kind: 'html', file: html(frame), error: `${frame}.html 解析到文章目录外面或隐藏文件，服务不出（符号链接要指向文章目录里的文件）` });
       if (!found.length) return null;
       return found.length > 1 ? { ...found[0], both: true } : found[0];
     },
@@ -142,28 +146,16 @@ export function resolveRootFrame(projectRoot, src, sources = {}) {
   }
   const where = source ? `source ${source}` : 'project 根';
   const root = path.resolve(source ? sources[source] : projectRoot);
-  const abs = path.resolve(root, ...segments);
-  let realRoot;
-  let real;
-  try {
-    realRoot = fs.realpathSync(root);
-  } catch {
-    return { error: `${where}不存在：${root}`, missing: true };
+  if (!fs.existsSync(root)) return { error: `${where}不存在：${root}`, missing: true };
+  // 包含检查与 /sites/ 出文件同一个函数（lib/servable-file.js）：文本、真实路径（跟 symlink）、隐藏段。
+  const found = resolveServableFile(root, segments.join('/'), { index: false });
+  if (found.reason === 'missing') return { error: `src 指的文件不存在：${value}（${where} ${root}）`, missing: true };
+  if (found.reason) {
+    let real = '';
+    try { real = fs.realpathSync(path.resolve(root, ...segments)); } catch { /* 显示用 */ }
+    return { error: `src 指到了${where}外面或隐藏文件：${value}（实际是 ${real}，${where} ${root}）` };
   }
-  try {
-    real = fs.realpathSync(abs);
-  } catch {
-    return { error: `src 指的文件不存在：${value}（${where} ${root}）`, missing: true };
-  }
-  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
-    return { error: `src 指到了${where}外面：${value}（实际是 ${real}，${where} ${realRoot}）` };
-  }
-  try {
-    if (!fs.statSync(real).isFile()) return { error: `src 不是一个文件：${value}`, missing: true };
-  } catch {
-    return { error: `src 指的文件不存在：${value}`, missing: true };
-  }
-  return { file: abs, base: root };
+  return { file: found.file, base: root };
 }
 
 /** 字符串属性：undefined = 没写；{ value } = 字面量；{ error } = 别的写法。 */
@@ -400,6 +392,10 @@ export function parseArticleCanvas(text, {
         continue;
       }
       const source = frameSource(frame);
+      if (source && source.error && !source.both) {
+        report('frame_src', canvas, `${where} 帧 "${frame}" 的 ${source.error}`, { section: id.value, frame });
+        continue;
+      }
       if (!source) {
         report('frame_missing', canvas, `${where} 帧 "${frame}" 没有源文件（本篇目录下缺 ${frame}.jsx 或 ${frame}.html）`, { section: id.value, frame });
       } else if (source.both) {

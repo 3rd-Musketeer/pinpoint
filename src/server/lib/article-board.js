@@ -22,6 +22,7 @@ import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { findProject } from './projects.js';
 import { loadRegistry } from './registry.js';
+import { resolveServableFile } from './servable-file.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -162,7 +163,8 @@ export function articlePageRows(registry) {
  * 文章画布上一帧的 HTML 源文件（绝对路径），不是 HTML 帧返回 null（docs/projects.md“HTML 帧”）：
  * - screen 带 src（`sites/<页 id>/@root/<路径>` 或 `sites/<页 id>/@source/<名>/<路径>`）：project 根或
  *   那个 source 目录下的文件，越出目录或不在盘上时 null；
- * - 否则本篇目录下的 `<帧 id>.html`，同名的 `.jsx` 在时算 JSX 帧（编译器同一个顺序）。
+ * - 否则本篇目录下的 `<帧 id>.html`，同名的 `.jsx` 在时算 JSX 帧（编译器同一个顺序）；按文章目录的出文件规则
+ *   （lib/servable-file.js）判，指出文章目录的 symlink 返回 null。
  * screen 是派生 board 里的屏（{ id, shell?, src? }）。
  */
 export function articleHtmlFrameFile(target, screen) {
@@ -174,8 +176,7 @@ export function articleHtmlFrameFile(target, screen) {
     return found.file || null;
   }
   if (isFile(path.join(target.pageDir, `${screen.id}.jsx`))) return null;
-  const file = path.join(target.pageDir, `${screen.id}.html`);
-  return isFile(file) ? file : null;
+  return resolveServableFile(target.pageDir, `${screen.id}.html`, { index: false }).file || null;
 }
 
 /**
