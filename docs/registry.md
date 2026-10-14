@@ -2,7 +2,7 @@
 
 **登记过才注入。** annotate client 只落在登记过的目标上，其余一切打开的是逐字节相同、
 零标注面的页面。登记表装两类东西：project（文章的家，目录与读取见 [`docs/projects.md`](projects.md)）和存量页的来源
-（目录、单个 HTML 文件、网址）。本文是这条契约的完整形状：登记表长什么样、怎么写、client 有哪几条投递路径。
+（目录、单个 HTML 文件）。本文是这条契约的完整形状：登记表长什么样、怎么写、client 有哪几条投递路径。
 词的定义见 [`CONTEXT.md`](../CONTEXT.md)；登记 project 的步骤见
 [`skills/pinpoint-build/SKILL.md`](../skills/pinpoint-build/SKILL.md) 第 1 节。
 
@@ -10,7 +10,7 @@
 
 `src/server/lib/registry.js` 读 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖路径）。
 形状 `{"version":1,"entries":[...]}`。存量页的条目
-`{id, title?, kind: "dir"|"file"|"url", path? | url?, board?}`，每一条自成“页面”组的一行。
+`{id, title?, kind: "dir"|"file", path, board?}`，每一条自成“页面”组的一行。
 `kind: "project"` 的条目只有 `{id, title?, kind, path}`，`path` 是 project 根目录；
 它与其他条目共用 id 命名空间，但没有自己的页 id 和桶，`loadRegistry` 把它放进 `projects` 而不是 `entries`。
 目录、登记与读取见 [`docs/projects.md`](projects.md)。
@@ -18,17 +18,16 @@
 - `id` 必须匹配 `^[a-z0-9][a-z0-9-]*$` 且唯一；`title` 缺省等于 id。
 - `board`（`ios`/`html`）只给 dir 条目的默认壳播种（缺省与遗留值 `web` 都归一成 `html`）；
   file 条目永远在阅读器里打开，不带板。
-- 条目的 `kind` 一路透传到 workbench 的 page manifest 和 board 条目上，所以 url 条目的
-  document 条目在“内容”区带“网页”类型 tag。
 - 文件缺失时用默认的只含 pinpoint 一条的登记表（`{id:"pinpoint", kind:"dir", path:<仓库根>}`）。
   JSON 坏了或顶层形状不对就回落到默认并记下 error；单条非法只跳过那一条；
   dir / file 路径不存在是 warning，不是删除。
 - 老登记表里已删功能的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order` /
-  `page` / `role`）读的时候跳过，每个键记一条 warning，其余条目照常加载（带 `page` 的老条目照常自成一页）；
-  `move` / `rename` 写回时不再带这些字段。
+  `page` / `role` / `url`）读的时候跳过，每个键记一条 warning，其余条目照常加载（带 `page` 的老条目照常自成一页）；
+  `move` / `rename` 写回时不再带这些字段。`kind: "url"` 的老条目整条跳过、记一条 warning；
+  它留在文件里，`move <id> <目录|文件>` 把它重指成本地条目，`remove <id>` 把它删掉。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表）。
-- `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。URL 页的内容修改时间未知。
+- `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。
 - 标注账本的 `page_updated_at` 保留逐页时间，新增、修改和删除标注都会更新；无变化或冲突拒绝的保存不更新。旧单页账本可使用保存时间，旧混合账本无法准确归属时留空。
 
 ## 写入走 CLI
@@ -38,9 +37,9 @@
 `bin/pinpoint.mjs`（`npm link` 一次把 `pinpoint` 放上 PATH）：
 
 ```bash
-pinpoint add    <dir|file.html|http(s)-url> [--title X] [--board ios|html] [--id xxx]
+pinpoint add    <dir|file.html> [--title X] [--board ios|html] [--id xxx]
 pinpoint add    <project 根> --project
-pinpoint move   <id> <dir|file.html|http(s)-url>
+pinpoint move   <id> <dir|file.html>
 pinpoint rename <旧 id> <新 id>
 pinpoint remove <id>
 pinpoint list   [关键词…]
@@ -49,12 +48,12 @@ pinpoint list   [关键词…]
 `list` 只读：每页一行 id · 标题 · 类型 · 标注计数，次行源路径；project 下面每篇文章一行 `<project>/<article>`。带关键词时在 id、标题、路径上宽松匹配（英文复数自动去 s），也匹配文章的 id 和标题，给 agent 把 owner 的口头说法对上地址。
 
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。本条目自己的 id 用 `--id`，
-缺省由目录名、文件名或 hostname 派生。
+缺省由目录名或文件名派生。
 
-`move` 原地改一个既有条目的落点（dir / file / url 三种目标，校验方式与 `add` 一致：路径必须存在、
-单文件必须是 .html、URL 必须 http(s)），**id 与 title 原样保留**——标注桶按页 id 寻址（`~/.pinpoint/<id>/`），
+`move` 原地改一个既有条目的落点（dir / file 两种目标，校验方式与 `add` 一致：路径必须存在、
+单文件必须是 .html），**id 与 title 原样保留**——标注桶按页 id 寻址（`~/.pinpoint/<id>/`），
 所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
-（改成 file / url 时丢掉，那两种壳是定死的）。未知 id、目标不存在都整单失败，registry 一个字节不动。
+（改成 file 时丢掉，file 的壳是定死的）。未知 id、目标不存在都整单失败，registry 一个字节不动。
 
 `rename` 换的是 id 本身。id 同时是三个地方的地址——登记表里的条目 id、标注桶
 `~/.pinpoint/<id>/`、以及页面资源的 URL 前缀 `/sites/<id>/`——手改其中一个另外两个就错位，
@@ -65,7 +64,7 @@ pinpoint list   [关键词…]
    新桶已存在是硬冲突（两个桶不会自动合并），响亮拒绝。
 3. **资源前缀**（只有 dir 条目有）：条目目录下所有 `*.html` / `*.css` / `*.js` 里的
    `/sites/<旧 id>/` 换成 `/sites/<新 id>/`，跳过 `node_modules` 与逃出条目目录的 symlink，
-   打印改了几个文件、分别是哪些。file / url 条目没有目录可扫，这一步跳过。
+   打印改了几个文件、分别是哪些。file 条目没有目录可扫，这一步跳过。
    相对路径不用改——`src/workbench/lib/sidecar-css.js` 装配 fragment 时按 `pageBaseUrl` 重写。
 4. **重载**：与 `add` / `move` 同一条即时生效路径。
 
@@ -76,7 +75,7 @@ pinpoint list   [关键词…]
 project 条目没有自己的桶，`rename` 与 `remove` 对它按每篇文章的桶 `<id>_<文章>/` 做，见
 [`docs/projects.md`](projects.md)“rename 与文章桶”。
 
-`remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件 / URL 留在原地，
+`remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件留在原地，
 重新 `add` 同一个目标即恢复登记。两种情况拒绝动手（registry 一个字节不动）：id 不存在；
 标注桶 `~/.pinpoint/<id>/` 里
 还有标注行（先在工作台处理，或 `pinpoint prune <id>` 清掉孤儿账本）。桶不存在或只剩
@@ -89,7 +88,7 @@ CLI 打印“id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id
 写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
 `renameRegistryEntry` / `removeRegistryEntry`
 共用同一条原子写）：严格校验（id 唯一、kind 合法、dir/file 路径存在、
-url 是 http(s)、未知字段拒写）、tmp+rename、2 空格 JSON。
+未知字段拒写）、tmp+rename、2 空格 JSON。
 这个 store 同时是服务端的活视图：annotate / sites / export 三处插件共享同一个实例
 （在 `vite.config.js` 里接线），`POST /registry/reload` 原地换快照——CLI 在 add 成功后、
 服务 `/health` 有响应时会自己调它，所以新条目不重启就能 serve、注入、分桶；
@@ -101,7 +100,7 @@ url 是 http(s)、未知字段拒写）、tmp+rename、2 空格 JSON。
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的
 “起服务与验收”。
 
-## 三条投递路径
+## 两条投递路径
 
 这一节讲存量页和 workbench 的投递；文章页的注入走 `src/server/article-proxy.js`，只跑正文评论，见 [`docs/projects.md`](projects.md)“标注桶”。
 
@@ -109,6 +108,7 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 共享库 + minify + 预压缩）成自包含 IIFE 后按内容哈希 serve 在 `/annotate.<hash>.js`
 （`Cache-Control: immutable`，pinpoint 生成的注入点都引用它）；老地址 `/annotate.js` 发同一份
 产物（ETag + no-cache），留给内容页里的手写标签。
+每条投递路径都和服务同源，所以 annotate API 不带 CORS 头，`OPTIONS` 交给下一个中间件。
 
 ### 1 · workbench 自己的页面
 
@@ -140,48 +140,6 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 磁盘上的 `board.json` 永远优先。`ios` 板的 dir、以及没有任何顶层 HTML 的 dir 不合成（404）。
 合成板里屏的 `src` 做 percent-encode，好让 iframe URL、`location.pathname`、
 导出管线算标注 page key 的那个 hash 三者逐字节一致。
-
-### 3 · url 条目 → 两条并存的路径，落进同一个桶
-
-**同源代理内嵌** — `src/server/lib/site-proxy.js` 把登记的 origin 代理在
-`/sites/<entry-id>/` 下。来自 pinpoint 自己来源的请求，所有方法 / 头 / body 透传（dir 与 file 仍只接 GET/HEAD），
-于是活的应用在 workbench 的 doc 壳 iframe 里同源渲染，侧栏经既有的 ann-bridge 直接驱动它的
-annotate 实例。别的来源的写请求和 websocket 回 403，GET / HEAD 不带 Origin 转发；规则与文章代理同一份
-`src/server/lib/proxy-origin.js`，见 [`docs/design.md`](design.md)“服务路由（文章站点）”。
-
-响应手术：`Set-Cookie` 重基（去掉 Domain，Path 加/补前缀）、3xx 的 `Location`（以及来自 pinpoint 自己来源的请求
-`Referer`）在前缀与目标 origin 之间改写、CSP / CSP-Report-Only / X-Frame-Options / COOP / COEP
-整体剥离——页面必须能进 iframe 并跑内联 bootstrap，安全边界由登记表白名单承担
-（上游 TLS 校验关闭：localhost 开发 origin 用的是私有信任的 CA）。HTML 响应里根绝对的
-`src` / `href` / `action` / `poster` / `formaction` / `srcset` / `imagesrcset` / `xlink:href`、
-`<object data>`、`<meta refresh>`、`<style>` 正文和 `style="…"` 属性都改写到前缀上；
-CSS 响应改写 `url(/…)` 与 `@import "/…"`。
-
-HTML 改写够不着的地方——JS 里的 `fetch('/api/…')`、XHR、`EventSource`、`WebSocket`、`sendBeacon`——
-由一段**重基 bootstrap** 兜底：作为 `<head>` 的第一个脚本注入（`proxyBootstrapSnippet`，内联
-`src/shared/proxy-rebase.js`），给这五个 API 打补丁，把根绝对（以及指向自身 / 目标 origin 的绝对）URL
-重基到前缀上，按名字豁免 annotate client 自己的端点（`REBASE_EXEMPT_*`：`/annotate.js`（老地址）
-与哈希地址 `/annotate.<hash>.js`（严格形状，与 annotate-bundle 的产物地址正则同形）、
-`/save`、`/image`、`/annotations[…]`、`/images/…`、`/events`、`/sites/…`）。
-
-bootstrap 还会**虚拟化 URL**：在任何页面脚本跑之前 `history.replaceState` 回不带前缀的应用路径
-（`virtualAppPath`）。因为 SPA 路由直接读 `location.pathname`——那是原生 getter，补丁拦不住——
-不虚拟化就会掉进它们的 catch-all。副作用是好的：标注账本因此落在应用路径（`/`、`/global`、…），
-与应用在自己 origin 上直接注入 annotate client 时的账本逐字节同 key。前缀下的 WS upgrade（自己的来源）在 vite 的
-httpServer `'upgrade'` 上转发到目标 origin（通用兜底；SSE 走普通 HTTP 转发）。
-
-url 条目出现在“页面”组里（永远 doc 壳）：`/sites/<id>/board.json` 永远是合成的单屏板
-（`src = sites/<id>/`），盖住上游任何同名文件。`?annotate=off` 只去掉 annotate client，
-bootstrap 与 URL 改写留着——它们是代理机制的一部分，没有它们页面能渲染但所有运行时调用都打错 origin。
-
-已知盲区：DOM 里赋值的 URL（`img.src = '/x.png'`，属性赋值没有补丁拦得住）、不带引号的属性、
-协议相对（`//…`）URL、目标路由与豁免名单撞名、与 workbench 共享的 storage（localStorage /
-indexedDB，同源内嵌即同一 storage 分区），以及虚拟化的两个坑——`location.reload()` 重载的是虚拟
-URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`location.href = '/x'`）会跳出代理
-（被 router 拦截的 SPA 链接没问题）。
-
-所有 annotate API 路由对跨源请求答 `Access-Control-Allow-Origin: *`（不带凭证）并处理 `OPTIONS` 预检，
-应用在自己 origin 上直接注入 annotate client 时靠它访问 API。
 
 ## 导出的纯净性
 

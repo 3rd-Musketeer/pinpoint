@@ -9,6 +9,7 @@ import {
   createRegistryStore,
   listRegistryEntries,
   listRegistryIds,
+  removeRegistryEntry,
   renameRegistryEntry,
   updateRegistryEntry,
   validateNewEntry,
@@ -31,7 +32,7 @@ function makeSite(dir, name = 'site') {
 test('writeRegistryFile: creates parent dirs, 2-space JSON, trailing newline, no tmp left', (t) => {
   const dir = withTempDir(t);
   const file = path.join(dir, 'nested', 'registry.json');
-  writeRegistryFile(file, { version: 1, entries: [{ id: 'a', kind: 'url', url: 'https://a.localhost' }] });
+  writeRegistryFile(file, { version: 1, entries: [{ id: 'a', kind: 'dir', path: dir }] });
   const raw = fs.readFileSync(file, 'utf8');
   assert.equal(raw, JSON.stringify(JSON.parse(raw), null, 2) + '\n');
   assert.deepEqual(fs.readdirSync(path.dirname(file)), ['registry.json'], 'tmp sibling is renamed away');
@@ -54,10 +55,11 @@ test('addRegistryEntry: preserves the existing document shape and appends', (t) 
   fs.writeFileSync(file, JSON.stringify({ version: 1, comment: 'hand-written', entries: [
     { id: 'old', title: 'Old', kind: 'url', url: 'https://old.localhost' },
   ] }));
-  addRegistryEntry(file, { id: 'new', title: 'New', kind: 'url', url: 'https://new.localhost' });
+  addRegistryEntry(file, { id: 'new', title: 'New', kind: 'dir', path: makeSite(dir) });
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.equal(doc.comment, 'hand-written', 'unknown top-level fields survive');
   assert.deepEqual(doc.entries.map((e) => e.id), ['old', 'new']);
+  assert.deepEqual(doc.entries[0], { id: 'old', title: 'Old', kind: 'url', url: 'https://old.localhost' }, '已退役的老条目原样留在文件里');
 });
 
 test('addRegistryEntry: strict validation rejects and leaves the file untouched', (t) => {
@@ -70,15 +72,17 @@ test('addRegistryEntry: strict validation rejects and leaves the file untouched'
   const before = fs.readFileSync(file, 'utf8');
 
   const cases = [
-    [{ id: 'Bad Id', kind: 'url', url: 'https://x.localhost' }, /id 必须匹配/],
-    [{ id: 'taken', kind: 'url', url: 'https://x.localhost' }, /已存在/],
+    [{ id: 'Bad Id', kind: 'dir', path: site }, /id 必须匹配/],
+    [{ id: 'taken', kind: 'dir', path: site }, /已存在/],
     [{ id: 'k', kind: 'git', path: site }, /kind/],
     [{ id: 'rel', kind: 'dir', path: 'relative/dir' }, /绝对路径/],
     [{ id: 'ghost', kind: 'dir', path: path.join(dir, 'nope') }, /不存在/],
     [{ id: 'notdir', kind: 'dir', path: page }, /不是目录/],
     [{ id: 'notfile', kind: 'file', path: site }, /不是文件/],
-    [{ id: 'proto', kind: 'url', url: 'ftp://x.localhost' }, /http/],
-    [{ id: 'badurl', kind: 'url', url: '://nope' }, /不合法/],
+    // url 条目已退役（2026-10-14）：kind "url" 与 url 字段都写不进去
+    [{ id: 'web', kind: 'url', url: 'https://x.localhost' }, /未知字段：url/],
+    [{ id: 'web', kind: 'url' }, /kind 必须是 dir \/ file \/ project/],
+    [{ id: 'u2', kind: 'dir', path: site, url: 'https://x.localhost' }, /未知字段：url/],
     [{ id: 'bb', kind: 'dir', path: site, board: 42 }, /board/],
     // 未知字段响亮拒绝；已删功能的字段（page / role）也是未知字段
     [{ id: 'p1', kind: 'dir', path: site, page: 'library' }, /未知字段：page/],
@@ -95,7 +99,7 @@ test('addRegistryEntry: a malformed existing file is an error, never clobbered',
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');
   fs.writeFileSync(file, '{ not json');
-  assert.throws(() => addRegistryEntry(file, { id: 'x', kind: 'url', url: 'https://x.localhost' }), /不是合法 JSON/);
+  assert.throws(() => addRegistryEntry(file, { id: 'x', kind: 'dir', path: dir }), /不是合法 JSON/);
   assert.equal(fs.readFileSync(file, 'utf8'), '{ not json');
 });
 
@@ -162,7 +166,8 @@ test('validateNewEntry accepts a well-formed entry (null = no problem)', (t) => 
   const dir = withTempDir(t);
   const site = makeSite(dir);
   assert.equal(validateNewEntry({ id: 'ok', kind: 'dir', path: site }, new Set()), null);
-  assert.equal(validateNewEntry({ id: 'ok', kind: 'url', url: 'http://127.0.0.1:3000' }, new Set()), null);
+  const page = path.join(site, 'index.html');
+  assert.equal(validateNewEntry({ id: 'ok', kind: 'file', path: page }, new Set()), null);
   assert.equal(validateNewEntry(null, new Set()), '条目必须是对象');
 });
 
@@ -181,13 +186,13 @@ test('createRegistryStore: getters delegate to the snapshot; reload picks up ext
 
   writeRegistryFile(file, { version: 1, entries: [
     { id: 'one', kind: 'dir', path: site },
-    { id: 'two', kind: 'url', url: 'https://two.localhost' },
+    { id: 'two', kind: 'file', path: path.join(site, 'index.html') },
   ] });
   assert.equal(store.entries.length, 1, 'snapshot is stable until reload');
   const next = store.reload();
   assert.equal(next.entries.length, 2);
   assert.equal(store.entries.length, 2);
-  assert.equal(store.resolve('two').url, 'https://two.localhost');
+  assert.equal(store.resolve('two').path, path.join(site, 'index.html'));
 });
 
 test('createRegistryStore: add() writes the file and reloads in one step', (t) => {
@@ -235,4 +240,29 @@ test('老登记表里条目带退役字段（folder / order / page / role）：m
   const renamed = renameRegistryEntry(file, 'alpha', 'beta');
   assert.deepEqual(renamed.entry, { id: 'beta', kind: 'dir', title: 'beta', path: before });
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries, [renamed.entry]);
+});
+
+test('老登记表里残留的 url 条目：remove 照常删；保持 kind url 的 rename / move 拒写并保持文件不动，重指到本地目录照常写', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const site = makeSite(dir);
+  writeRegistryFile(file, { version: 1, entries: [
+    { id: 'a', kind: 'dir', path: site },
+    { id: 'web', title: 'Web', kind: 'url', url: 'http://127.0.0.1:5173' },
+  ] });
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.throws(() => renameRegistryEntry(file, 'web', 'web2'), /kind 必须是 dir \/ file \/ project/);
+  assert.throws(() => updateRegistryEntry(file, { id: 'web', kind: 'url', url: 'http://127.0.0.1:5174' }), /kind 必须是 dir \/ file \/ project/);
+  assert.equal(fs.readFileSync(file, 'utf8'), raw);
+
+  const moved = updateRegistryEntry(file, { id: 'web', title: 'Web', kind: 'dir', path: site, url: 'http://127.0.0.1:5173' });
+  assert.deepEqual(moved, { id: 'web', kind: 'dir', title: 'Web', path: site }, 'url 字段随 move 去掉');
+  assert.equal(removeRegistryEntry(file, 'web').kind, 'dir');
+  writeRegistryFile(file, { version: 1, entries: [
+    { id: 'a', kind: 'dir', path: site },
+    { id: 'web', title: 'Web', kind: 'url', url: 'http://127.0.0.1:5173' },
+  ] });
+  const removed = removeRegistryEntry(file, 'web');
+  assert.equal(removed.kind, 'url');
+  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries.map((e) => e.id), ['a']);
 });

@@ -6,9 +6,9 @@
  * log, fall back / skip, and expose the failure on the result (/health reads
  * it back out).
  *
- * Keys from retired features (RETIRED_TOP_KEYS / RETIRED_ENTRY_KEYS) may still
- * sit in an older file: they are skipped with a warning and the rest of the
- * registry loads as usual.
+ * Keys and entry kinds from retired features (RETIRED_TOP_KEYS /
+ * RETIRED_ENTRY_KEYS / RETIRED_KINDS) may still sit in an older file: they are
+ * skipped with a warning and the rest of the registry loads as usual.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -16,7 +16,7 @@ import path from 'node:path';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../../shared/registry-ids.js';
 
 export { ENTRY_ID_PATTERN, PAGE_ID_PATTERN };
-const KINDS = new Set(['dir', 'file', 'url', 'project']);
+const KINDS = new Set(['dir', 'file', 'project']);
 // pp3（2026-10-13）：kind "project" 的 path 是 project 根目录，内容在
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
 // entries 的每个消费者（Pages、/sites/、标注桶、编译）都按 page 理解它——
@@ -24,12 +24,15 @@ const KINDS = new Set(['dir', 'file', 'url', 'project']);
 // 2026-10-14 删掉的功能留在老登记表里的键：读的时候跳过并 warn，服务照常起。
 // 文件夹与手动排序（ADR 0032）：顶层 folders / pageFolders / pageOrder，条目上的 folder / order。
 // 登记表级挂靠（ADR 0021 阶段 8）：条目上的 page / role；带 page 的条目照常自成一页。
+// url 条目与站点代理（ADR 0019）：kind "url" 的整条条目跳过；别的条目上的 url 字段同样跳过，
+// 所以老 url 条目能经 move 重指到本地目录或文件。
 export const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
-export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role'];
+export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role', 'url'];
+export const RETIRED_KINDS = ['url'];
 
 /**
  * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：
- * 页条目（dir / file / url）走 resolve(id)，kind "project" 的条目在 projects 里，两者 id 不重。
+ * 页条目（dir / file）走 resolve(id)，kind "project" 的条目在 projects 里，两者 id 不重。
  * 只带 entries、没有 resolve 的视图（测试与 CLI 拼的）按 entries 找。
  */
 export function registryEntry(registry, id) {
@@ -60,13 +63,8 @@ function validateEntry(raw, seen) {
     return `entry id must match ${ENTRY_ID_PATTERN}: ${JSON.stringify(raw.id)}`;
   }
   if (seen.has(raw.id)) return `duplicate entry id "${raw.id}"`;
-  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", "url", or "project"`;
-  if ((raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') && typeof raw.path !== 'string') {
-    return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
-  }
-  if (raw.kind === 'url' && typeof raw.url !== 'string') {
-    return `entry "${raw.id}" kind "url" requires a url`;
-  }
+  if (!KINDS.has(raw.kind)) return `entry "${raw.id}" kind must be "dir", "file", or "project"`;
+  if (typeof raw.path !== 'string') return `entry "${raw.id}" kind "${raw.kind}" requires a path`;
   return null;
 }
 
@@ -75,9 +73,8 @@ function normalizeEntry(raw) {
     id: raw.id,
     title: typeof raw.title === 'string' ? raw.title : raw.id,
     kind: raw.kind,
+    path: raw.path,
   };
-  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') entry.path = raw.path;
-  else entry.url = raw.url;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (raw.kind === 'project') return entry;
   if (typeof raw.board === 'string') entry.board = raw.board;
@@ -141,6 +138,10 @@ export function loadRegistry(options = {}) {
   const entries = [];
   const projects = [];
   for (const raw of parsed.entries) {
+    if (raw && typeof raw === 'object' && RETIRED_KINDS.includes(raw.kind)) {
+      warn(`entry "${raw.id}" kind "${raw.kind}" belongs to a retired feature — skipped`);
+      continue;
+    }
     const problem = validateEntry(raw, seen);
     if (problem) {
       errors.push(problem);

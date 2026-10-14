@@ -12,7 +12,6 @@
 const KIND_LABEL = {
   compiled: '编译页',
   doc: '文档页',
-  url: '网页',
   file: '单文件',
 };
 
@@ -28,14 +27,13 @@ export function buildPageList({ entries = [], manifestPages = [], hasBoard = () 
   for (const entry of entries) {
     if (!entry || !entry.id) continue;
     let kind = 'doc';
-    if (entry.kind === 'url') kind = 'url';
-    else if (entry.kind === 'file') kind = 'file';
+    if (entry.kind === 'file') kind = 'file';
     else if (entry.kind === 'dir' && hasBoard(entry)) kind = 'compiled';
     rows.push({
       id: entry.id,
       title: entry.title || '',
       kind,
-      path: entry.path || entry.url || '',
+      path: entry.path || '',
       counts: countsFor(entry.id) || null,
       template: false,
     });

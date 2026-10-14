@@ -20,7 +20,7 @@
 // 2026-08-16f 阶段 7（产物与草稿模型，decisions 08-16f，ROADMAP 阶段 7）：
 //  - Page 去类型化：Page 行只剩标题 + hover copy 钮（壳标 pill / data-page-mode
 //    随本阶段删除）；类型信息下移到产物条目的 tag。
-//  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档/网页条目，各带
+//  - 左栏第二层 = 「内容」区（Contents）：产物组（画布条目 + 文档条目，各带
 //    mono 类型 tag）+ 草稿组（role=draft 条目，纯标题行，无 tag——草稿恒为整页
 //    HTML）。DocVersions 层级退役：多屏 doc 拆成扁平条目。
 //  - 画布条目的 frame 树收编旧大纲组件（不再是独立 section）：选中画布条目时树
@@ -28,7 +28,7 @@
 //    frame + 机身 flash 环、计数徽标、失效红、与标注卡焦点双向同步）全部保留，
 //    延伸线几何 CSS 仍在 index.html（.wb-outline 系）。
 //  - 坍缩规则（lib/board-entries.js contentsModel）：纯单 doc 屏页整区不出现；
-//    单网页条目页仍出行（tag 是类型信息的唯一落点）；混合页条目行全出。
+//    混合页条目行全出。
 // 2026-08-17 行级动作收编右键菜单（owner 决定）：Pages 行 / 条目行 / frame
 // 树行的 locator 复制、页面重命名统一进 app/row-menu.jsx 的右键
 // 菜单；行尾 hover 钮（copy / 导出 icon）退役，行宽全部还给标题，窄栏也不再
@@ -44,7 +44,7 @@
 //  - 「最近」段（本地记录五条）在「页面」段之上，行尾是打开时刻的相对时间。
 //  - 「页面」段按排序菜单的档位列出全部页（lib/page-sort.js）。
 //  - 行语言统一成 .wb-row（几何与皮肤在 index.html）：页面行行首一个类型图标
-//    （画布 / 文档 / 网页，映射在 lib/page-groups.js）；行尾 11 mono。
+//    （画布 / 文档，映射在 lib/page-groups.js）；行尾 11 mono。
 //  - 模板页（Component Library / Example Library / Example HTML）默认不显示，
 //    开关在预览设置；当前页是模板页时它照旧显示，否则选中态没有落点。
 //  - footer 的预览 Light/Dark 搬进预览设置（改名「预览主题」），footer 随之取消。
@@ -227,7 +227,7 @@ function PageRow(props) {
         )}
         {/* 2026-08-17g：内容 mtime 的行内相对时间（mono 小字，视觉语言同
             条目 tag 但无底色；完整时间进 hover title）。无 mtime 的页
-            （url 条目 / 本地示例页）不出此元素——行尾那一格就留空，标题
+            （本地示例页）不出此元素——行尾那一格就留空，标题
             不许借位（2026-09-04 切片 ② 第 10 条）；紧凑断点整枚隐藏
             （index.html #wbside.compact 规则）。 */}
         {!renaming && time ? (

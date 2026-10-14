@@ -51,7 +51,7 @@ function withFixture(t, { writable = false } = {}) {
   const registryFile = path.join(dir, 'registry.json');
   writeRegistryFile(registryFile, {
     version: 1,
-    entries: [{ id: 'web', title: 'web', kind: 'url', url: 'https://web.localhost' }],
+    entries: [{ id: 'web', title: 'web', kind: 'dir', path: dir }],
   });
   const registry = writable
     ? createRegistryStore({ path: registryFile, root: dir, log: () => {} })
@@ -94,7 +94,6 @@ function branchOf({ handled, res, json, calls }) {
     if (branch) return branch;
   }
   const type = String(res.headers['Content-Type'] || '');
-  if (res.statusCode === 204 && !res.chunks.length) return 'options';
   if (type.startsWith('application/javascript')) {
     return String(res.headers['Cache-Control']).includes('immutable') ? 'client:hash' : 'client';
   }
@@ -118,7 +117,7 @@ async function assertRoutes(fx, cases) {
     const result = await call(fx, method, url, body);
     assert.equal(branchOf(result), expected, label);
     if (expected === 'next') assertUntouched(result.res, label);
-    else assert.equal(result.res.headers['Access-Control-Allow-Origin'], '*', `${label}: cors`);
+    else assert.equal(result.res.headers['Access-Control-Allow-Origin'], undefined, `${label}: 同源接口，不带 CORS 头`);
     if (check) check(result, label);
   }
 }
@@ -129,11 +128,11 @@ const argsOf = (name) => (result) => result.calls.find((c) => c.name === name).a
 test('route priority: every request shape lands on one branch or falls through (static registry)', async (t) => {
   const fx = withFixture(t);
   await assertRoutes(fx, [
-    // OPTIONS 先于整张路由表：任何路径都答 204，包括没有路由的路径。
-    ['OPTIONS', '/health', undefined, 'options'],
-    ['OPTIONS', '/save', undefined, 'options'],
-    ['OPTIONS', '/annotations/index.html/1/status', undefined, 'options'],
-    ['OPTIONS', '/anything/at/all', undefined, 'options'],
+    // 接口只给同源页面用：OPTIONS 不是任何路由的方法，原样交给下一个中间件。
+    ['OPTIONS', '/health', undefined, 'next'],
+    ['OPTIONS', '/save', undefined, 'next'],
+    ['OPTIONS', '/annotations/index.html/1/status', undefined, 'next'],
+    ['OPTIONS', '/anything/at/all', undefined, 'next'],
 
     // 标注客户端：老地址与哈希地址，GET 与 HEAD 都认；只有它认 HEAD。
     ['GET', '/annotate.js', undefined, 'client'],

@@ -72,7 +72,7 @@ test('最近按三种变动时间排序，打开页面不会更新顺序', async
 });
 
 // 页面行行首的类型图标（owner 2026-09-05 下午定的映射：画布 smartphone / 文档
-// file-text / 网页 globe，每一行都有——上午撤掉是因为只给了两种、目录条目没有）。
+// file-text，每一行都有）。
 // 横条的类型标用同一个图标，两处一致。
 
 
@@ -83,13 +83,13 @@ test('最近与 Pages 共用右键菜单：查看信息显示真实来源，归�
   const dialog = page.getByRole('dialog', { name: '查看信息' });
   const registry = await (await request.get('/registry')).json();
   const directory = registry.entries.find(entry => entry.id === 'e2e-dir');
-  const urlEntry = registry.entries.find(entry => entry.kind === 'url' && !entry.page);
+  const ios = registry.entries.find(entry => entry.id === 'e2e-ios');
 
-  // 查看信息区分真实来源：目录给路径、URL 给地址；类型文案、id、在视口内、
-  // 复制写剪贴板并变「已复制」、Esc 关闭（目录与 URL 各走一遍）。
+  // 查看信息显示真实来源：各页给自己的路径；类型文案、id、在视口内、
+  // 复制写剪贴板并变「已复制」、Esc 关闭（两个目录条目各走一遍）。
   for (const [id, source, kind] of [
     ['e2e-dir', directory.path, '本地目录'],
-    [urlEntry.id, urlEntry.url, 'URL 网页']
+    ['e2e-ios', ios.path, '本地目录']
   ]) {
     await page.locator('#wbpages [data-vpage="' + id + '"]').click({ button: 'right' });
     await expect(menu).toBeVisible();

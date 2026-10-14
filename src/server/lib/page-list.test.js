@@ -9,14 +9,14 @@ const ENTRIES = [
   { id: 'areta-ost-handbook', title: 'Areta OST Handbook', kind: 'dir', path: '/w/handbook/dist-pinpoint' },
   { id: 'goal-weekly', title: 'Goal 周报卡', kind: 'dir', path: '/w/goal/prototype' },
   { id: 'weekly-review', title: '周报 · 手改终版素材', kind: 'dir', path: '/w/wr/prototype' },
-  { id: 'my-todos', title: 'my-todos', kind: 'url', url: 'https://todos.localhost/' },
+  { id: 'my-todos', title: 'my-todos', kind: 'dir', path: '/w/todos/app' },
   { id: 'todos-sheet', title: 'sheet', kind: 'file', path: '/w/todos/sheet.html' },
 ];
 
 const ROWS = buildPageList({
   entries: ENTRIES,
   manifestPages: [{ id: 'example', title: '范例：冲一杯' }, { id: 'routine-creator', title: 'dup' }],
-  hasBoard: (entry) => entry.id !== 'areta-ost-handbook',
+  hasBoard: (entry) => entry.id !== 'areta-ost-handbook' && entry.id !== 'my-todos',
   countsFor: (id) => (id === 'areta-ost-ui' ? { open: 0, check: 1, done: 0, close: 1 } : null),
 });
 
@@ -25,8 +25,8 @@ test('buildPageList: registry pages + template pages, one row each', () => {
   const byId = Object.fromEntries(ROWS.map((r) => [r.id, r]));
   assert.equal(byId['areta-ost-handbook'].kind, 'doc'); // dir without board.json
   assert.equal(byId['areta-ost-ui'].kind, 'compiled');
-  assert.equal(byId['my-todos'].kind, 'url');
-  assert.equal(byId['my-todos'].path, 'https://todos.localhost/');
+  assert.equal(byId['my-todos'].kind, 'doc');
+  assert.equal(byId['my-todos'].path, '/w/todos/app');
   assert.equal(byId['todos-sheet'].kind, 'file');
   assert.equal(byId.example.template, true);
   assert.equal(byId['routine-creator'].title, 'Routine 创建'); // registry wins over a same-id template

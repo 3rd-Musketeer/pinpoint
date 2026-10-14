@@ -39,8 +39,6 @@ export function annotateBundleSources() {
 }
 
 // 哈希地址的形状与 hashJs 的截断长度绑死（SSOT 在这里）：/annotate.<hash>.js。
-// proxy-rebase.js 的豁免判定要同一形状，但它不能 import 本模块（内联进
-// bootstrap），那边自带一份同形正则，proxy-rebase.test.js 钉住两处一致。
 const HASH_RE = '[0-9a-f]{10}';
 export const ANNOTATE_BUNDLE_URL_RE = new RegExp(`^\\/annotate\\.(${HASH_RE})\\.js$`);
 

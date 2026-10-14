@@ -2,7 +2,7 @@ import path from 'node:path';
 
 import { expect, test } from '@playwright/test';
 
-import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
+import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT } from './env.js';
 import { ROOT } from './lib/cli.js';
 import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
@@ -93,12 +93,12 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
       && s.frames.some((f) => f.includes('"connected"')))).toBe(true);
     expect(sockets.filter((s) => s.url.includes(`:${E2E_SITE_PORT}/`))).toEqual([]);
 
-    // 别的来源（本轮的上游固件，另一个 localhost 端口）拿着正确的 token 也连不上：代理回 403。
-    // 落在 /__hits（JSON，不带 CSP）：上游首页的 CSP 本身就挡 websocket，测不出代理。
+    // 别的来源（Astro 站点自己的直连端口，另一个 localhost 端口）拿着正确的 token 也连不上：
+    // 代理回 403。落在 vite 客户端脚本上（纯文本，不带 CSP），页面自己不开 websocket。
     const client = await (await request.get('/_astro/@vite/client')).text();
     const token = client.match(/wsToken = "([^"]+)"/)[1];
     const other = await page.context().newPage();
-    await other.goto(`${E2E_UPSTREAM_ORIGIN}/__hits`);
+    await other.goto(`http://127.0.0.1:${E2E_SITE_PORT}/_astro/@vite/client`);
     const outcome = await other.evaluate((url) => new Promise((resolve) => {
       const ws = new WebSocket(url, 'vite-hmr');
       ws.onopen = () => { ws.close(); resolve('open'); };

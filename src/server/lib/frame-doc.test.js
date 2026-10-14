@@ -34,7 +34,6 @@ const registry = {
     if (id === 'e2e-dir-ios') return { id, title: 'E2E Dir iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'dir-site-ios'), board: 'ios' };
     if (id === 'e2e-ios') return { id, title: 'E2E iOS', kind: 'dir', path: path.join(ROOT, 'e2e', 'ios-site'), board: 'ios' };
     if (id === 'e2e-jsx') return { id, title: 'E2E JSX', kind: 'dir', path: path.join(ROOT, 'e2e', 'jsx-site'), board: 'ios' };
-    if (id === 'e2e-url') return { id, title: 'E2E Url', kind: 'url', url: 'https://example.localhost' };
     return null;
   },
 };
@@ -72,12 +71,6 @@ test('resolveFrameTarget: legacy shell "web" normalizes to doc redirect', () => 
   const target = resolveFrameTarget('e2e-dir', 'cards', { registry });
   assert.equal(target.kind, 'doc');
   assert.equal(target.url, '/sites/e2e-dir/cards.html');
-});
-
-test('resolveFrameTarget: url entry synthesizes a single doc screen', () => {
-  const target = resolveFrameTarget('e2e-url', 'index', { registry });
-  assert.equal(target.kind, 'doc');
-  assert.equal(target.url, '/sites/e2e-url/');
 });
 
 test('resolveFrameTarget: unknown page / screen are loud', () => {

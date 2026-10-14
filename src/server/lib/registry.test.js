@@ -68,9 +68,9 @@ test('entries with invalid ids are skipped and reported', (t) => {
   const file = writeRegistry(dir, {
     version: 1,
     entries: [
-      { id: 'Bad Id', title: 'x', kind: 'url', url: 'https://x.localhost' },
-      { id: '-leading-dash', title: 'x', kind: 'url', url: 'https://x.localhost' },
-      { id: 'ok-entry', title: 'ok', kind: 'url', url: 'https://ok.localhost' },
+      { id: 'Bad Id', title: 'x', kind: 'dir', path: dir },
+      { id: '-leading-dash', title: 'x', kind: 'dir', path: dir },
+      { id: 'ok-entry', title: 'ok', kind: 'dir', path: dir },
     ],
   });
   const { registry, logs } = quietLoad({ path: file });
@@ -86,8 +86,8 @@ test('duplicate ids keep the first entry and skip later ones', (t) => {
   const file = writeRegistry(dir, {
     version: 1,
     entries: [
-      { id: 'dup', title: 'first', kind: 'url', url: 'https://one.localhost' },
-      { id: 'dup', title: 'second', kind: 'url', url: 'https://two.localhost' },
+      { id: 'dup', title: 'first', kind: 'dir', path: dir },
+      { id: 'dup', title: 'second', kind: 'dir', path: dir },
     ],
   });
   const { registry } = quietLoad({ path: file });
@@ -99,23 +99,21 @@ test('duplicate ids keep the first entry and skip later ones', (t) => {
   assert.equal(registry.entries[0].title, 'first');
 });
 
-test('kind validation: dir requires path, url requires url, unknown kinds are skipped', (t) => {
+test('kind validation: dir requires path, unknown kinds are skipped', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {
     version: 1,
     entries: [
       { id: 'dir-no-path', title: 'x', kind: 'dir' },
-      { id: 'url-no-url', title: 'x', kind: 'url' },
       { id: 'weird', title: 'x', kind: 'git', path: '/tmp' },
       { id: 'good-dir', title: 'x', kind: 'dir', path: dir },
-      { id: 'good-url', title: 'x', kind: 'url', url: 'https://x.localhost' },
     ],
   });
   const { registry } = quietLoad({ path: file });
 
   assert.equal(registry.ok, false);
-  assert.equal(registry.errors.length, 3);
-  assert.deepEqual(registry.entries.map((e) => e.id), ['good-dir', 'good-url']);
+  assert.equal(registry.errors.length, 2);
+  assert.deepEqual(registry.entries.map((e) => e.id), ['good-dir']);
 });
 
 test('kind "file": requires a path, keeps it, and warns instead of dropping when missing', (t) => {
@@ -161,14 +159,14 @@ test('resolve returns the entry by id and null for unknown ids', (t) => {
   const file = writeRegistry(dir, {
     version: 1,
     entries: [
-      { id: 'alpha', title: 'A', kind: 'url', url: 'https://a.localhost', board: 'web' },
+      { id: 'alpha', title: 'A', kind: 'dir', path: dir, board: 'web' },
       { id: 'beta', title: 'B', kind: 'dir', path: dir },
     ],
   });
   const { registry } = quietLoad({ path: file });
 
   assert.equal(registry.ok, true);
-  assert.equal(registry.resolve('alpha').url, 'https://a.localhost');
+  assert.equal(registry.resolve('alpha').path, dir);
   assert.equal(registry.resolve('alpha').board, 'web');
   assert.equal(registry.resolve('beta').kind, 'dir');
   assert.equal(registry.resolve('missing'), null);
@@ -209,11 +207,40 @@ test('退役的键：顶层 folders / pageFolders / pageOrder 与条目的 folde
   assert.equal(logs.length, 7, '每条 warning 都进日志');
 });
 
+test('退役的 url 条目：整条跳过并 warn，不算 error；同 id 的后续条目照常读，与其它退役键并存也不崩', (t) => {
+  const dir = withTempDir(t);
+  const file = writeRegistry(dir, {
+    version: 1,
+    folders: [{ id: 'shipped', name: '已上线' }],
+    entries: [
+      { id: 'my-app', title: 'My App', kind: 'url', url: 'http://127.0.0.1:5173', folder: 'shipped' },
+      { id: 'no-url', kind: 'url' },
+      { id: 'alpha', kind: 'dir', path: dir },
+      { id: 'my-app', title: 'My App (dir)', kind: 'dir', path: dir },
+    ],
+  });
+  const { registry, logs } = quietLoad({ path: file });
+
+  assert.equal(registry.ok, true, '退役的 kind 不是 error');
+  assert.deepEqual(registry.errors, []);
+  assert.deepEqual(registry.entries, [
+    { id: 'alpha', title: 'alpha', kind: 'dir', path: dir },
+    { id: 'my-app', title: 'My App (dir)', kind: 'dir', path: dir },
+  ]);
+  assert.equal(registry.resolve('my-app').kind, 'dir');
+  assert.deepEqual(registry.warnings, [
+    '"folders" belongs to a retired feature — ignored',
+    'entry "my-app" kind "url" belongs to a retired feature — skipped',
+    'entry "no-url" kind "url" belongs to a retired feature — skipped',
+  ]);
+  assert.equal(logs.length, 3, '每条 warning 都进日志');
+});
+
 test('PINPOINT_REGISTRY overrides the default registry path', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {
     version: 1,
-    entries: [{ id: 'env-entry', title: 'x', kind: 'url', url: 'https://env.localhost' }],
+    entries: [{ id: 'env-entry', title: 'x', kind: 'dir', path: dir }],
   });
   const previous = process.env.PINPOINT_REGISTRY;
   process.env.PINPOINT_REGISTRY = file;

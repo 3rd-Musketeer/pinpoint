@@ -156,7 +156,7 @@ boundary: 一句话说清它管什么、不管什么。
 
 ## 7. 存量页
 
-存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件、网址），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的地址就是它的 id，也是页 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，命令最后列出下一步（登记、验证、对比截图、补正文、处理旧页的标注），见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
+存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的地址就是它的 id，也是页 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，命令最后列出下一步（登记、验证、对比截图、补正文、处理旧页的标注），见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
 
 - 帧和组件的写法与第 4 节相同。存量页的组件在 `<存量页目录>/components/`，没有 project 这一层；页级资源登记在 board.json 的 `assets`。
 - 新帧要登记进 board.json 的 `sections[].screens`。存量页没有 `check`：改完跑 `ppnt build <页 id>` 到全绿，`ppnt show <页 id>` 看编号对照，`ppnt shot <页 id> B1` 截图。

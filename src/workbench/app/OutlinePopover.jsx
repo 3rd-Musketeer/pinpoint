@@ -22,12 +22,10 @@ import {
   contentsModel,
   entryTag,
   outlineSlice,
-  resolveEntry,
-  withEntryWeb
+  resolveEntry
 } from '../lib/board-entries.js';
 import { tabIdOfScreen } from '../lib/board-tabs.js';
 import { boardRefs } from '../lib/board-refs.js';
-import { pageEntry } from '../lib/page-url.js';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
 import { cn } from './lib/utils.js';
@@ -207,19 +205,17 @@ function EntryRow(props) {
 
 /* 浮层里的内容树。选中态按当前挂着的板解析，不按这份切片：某个 tab 把文档行藏掉之后，
    不能因为选中的文档不在列表里就回落成画布、把树打开。
-   第一个 tab（以及整页那一个钮）带文档 / 网页 / 草稿，树仍只在画布条目选中时展开。
+   第一个 tab（以及整页那一个钮）带文档 / 草稿，树仍只在画布条目选中时展开。
    其它 tab 只画该 tab 的帧，不看当前选的是不是画布。点帧、section 或条目都先关浮层再导航：
    条目一切就是换了一屏，浮层留着只会盖在新内容上。 */
 function OutlineContents(props) {
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var active = useWorkbenchStore(function (s) { return s.activeBoard; });
   var activeEntryId = useWorkbenchStore(function (s) { return s.activeEntryId; });
-  var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
   if (!active || active.pageId !== activePageId) return null;
   var full = active.fullBoard || active.board;
   var slice = outlineSlice(full, props.tabId || '');
-  var page = pageEntry(manifest, activePageId);
-  var entries = withEntryWeb(slice.entries, page && page.kind);
+  var entries = slice.entries;
   var model = contentsModel(entries);
   var refs = boardRefs(slice.view);
   var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.some(function (f) { return !f.doc; }); }));

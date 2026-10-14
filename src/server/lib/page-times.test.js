@@ -100,9 +100,13 @@ test('new registration records addition once and move preserves it; legacy is un
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   const file = path.join(dir, 'registry.json');
   const start = Date.now();
-  const entry = addRegistryEntry(file, { id: 'site', kind: 'url', url: 'https://example.com' });
+  const before = path.join(dir, 'before');
+  const after = path.join(dir, 'after');
+  fs.mkdirSync(before);
+  fs.mkdirSync(after);
+  const entry = addRegistryEntry(file, { id: 'site', kind: 'dir', path: before });
   assert.ok(entry.addedAt >= start);
-  const moved = updateRegistryEntry(file, { id: entry.id, kind: 'url', url: 'https://example.org' });
+  const moved = updateRegistryEntry(file, { id: entry.id, kind: 'dir', path: after });
   assert.equal(moved.addedAt, entry.addedAt);
   const r = loadRegistry({ root: dir, path: file, log: () => {} });
   assert.equal(r.entries[0].addedAt, entry.addedAt);

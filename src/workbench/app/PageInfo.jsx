@@ -19,13 +19,12 @@ export function PageInfo({ page, onClose }) {
     Promise.all([read('/registry'), read('/health')]).then(([registry, health]) => {
       const entry = registry.entries.find(item => item.id === page.id);
       if (page.site && !entry) throw new Error('这个页面已不在登记表中');
-      const source = entry ? (entry.path || entry.url) : health.root + '/content/previews/' + page.id;
+      const source = entry ? entry.path : health.root + '/content/previews/' + page.id;
       const board = (entry ? '/sites/' : '/previews/') + encodeURIComponent(page.id) + '/board.json';
       setInfo({
         source,
-        kind: entry ? ({ dir: '本地目录', file: '本地 HTML 文件', url: 'URL 网页' })[entry.kind] :
+        kind: entry ? ({ dir: '本地目录', file: '本地 HTML 文件' })[entry.kind] :
           '内置示例',
-        sourceLabel: entry?.kind === 'url' ? '源 URL' : '源路径',
         registeredTitle: entry?.title || page.title,
         board: new URL(board, location.origin).href,
         registry: entry ? registry.path : null,
@@ -34,7 +33,7 @@ export function PageInfo({ page, onClose }) {
         annotatedAt: registry.pageTimes?.[page.id]?.annotatedAt || null,
         // storage-unify：孤儿 = 表面已不存在的账本（文件删了 / 页没了），清理走 ppnt prune。
         orphans: registry.pageTimes?.[page.id]?.orphans || 0,
-        generated: entry?.kind === 'url' || entry?.kind === 'file'
+        generated: entry?.kind === 'file'
       });
     }).catch(err => { if (!controller.signal.aborted) setError(err.message); });
     return () => controller.abort();
@@ -53,7 +52,7 @@ export function PageInfo({ page, onClose }) {
         <p className="wb-page-info-name">{page.title}</p>
         {error ? <p role="alert">{error}</p> : !info ? <p role="status">正在读取…</p> : <>
           <section className="wb-page-info-source">
-            <div><span>{info.sourceLabel}</span><Button variant="tool" onClick={async () => {
+            <div><span>源路径</span><Button variant="tool" onClick={async () => {
               try { await navigator.clipboard.writeText(info.source); setCopied(true); }
               catch { setError('复制失败，请选中路径手动复制'); }
             }}>{copied ? '已复制' : '复制'}</Button></div>

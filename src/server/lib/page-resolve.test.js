@@ -7,7 +7,7 @@ import test from 'node:test';
 import { listArticleTargets, pageIdIsLive, projectArticleTargets, resolveArticleTarget, resolvePage } from './page-resolve.js';
 import { loadRegistry, projectEntries, projectEntry, registryEntry } from './registry.js';
 
-/** 临时 registry：一个 dir 条目、一个 url 条目、一个 project（文章 notes、flow，flow 没有 index.mdx）。 */
+/** 临时 registry：一个 dir 条目、一个老登记表里残留的 url 条目、一个 project（文章 notes、flow，flow 没有 index.mdx）。 */
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-page-resolve-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -41,11 +41,12 @@ test('pageIdIsLive：条目、模板页、盘上有 index.mdx 的文章画布页
     { id: 'web', kind: 'url', url: 'https://example.com/' },
     { id: 'demo', kind: 'project', path: proj },
   ] }));
-  const registry = loadRegistry({ root, path: file });
+  const registry = loadRegistry({ root, path: file, log: () => {} });
   const live = (id) => pageIdIsLive(registry, id, { manifestIds: ['tpl'] });
+  // web 是老登记表里残留的 url 条目：读时跳过，不是页。
   assert.deepEqual(
     ['site', 'web', 'tpl', 'demo_notes', 'demo', 'demo_gone', 'other_notes', '', null].map(live),
-    [true, true, true, true, false, false, false, false, false],
+    [true, false, true, true, false, false, false, false, false],
   );
 });
 
@@ -54,7 +55,7 @@ test('resolvePage：条目、模板页、文章画布页各一种；project id �
   const { registry, proj } = fixture(t);
   const kinds = (id) => (resolvePage(registry, id, { manifestIds: ['tpl', 'demo_notes-x'] }) || { kind: null }).kind;
   assert.deepEqual(['site', 'web', 'tpl', 'demo_notes', 'demo', 'demo_flow', 'nope'].map(kinds),
-    ['entry', 'entry', 'template', 'article', null, null, null]);
+    ['entry', null, 'template', 'article', null, null, null]);
   const article = resolvePage(registry, 'demo_notes');
   assert.equal(article.target.articleFile, path.join(proj, 'docs', 'pinpoint', 'articles', 'notes', 'index.mdx'));
   assert.equal(article.target.urlBase, '/sites/demo_notes/');

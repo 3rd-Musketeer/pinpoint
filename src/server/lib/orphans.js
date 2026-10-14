@@ -5,7 +5,7 @@
  * 判三种（头注承诺与行为一致）：
  * 1. 本页表面死了：dir 条目目录下文档文件删了、file 条目的登记文件删了；
  * 2. 路径指向别页的条目空间：账本错放在本页桶里 —— 表面活着，但不归本页；
- * 3. 路径指向登记表里已不存在的条目（url 条目移走等）：`/sites/<id>/…` 这个
+ * 3. 路径指向登记表里已不存在的条目（条目移走）：`/sites/<id>/…` 这个
  *    表面在任何页都查不到了。
  *
  * 表面（一个页的可标注 URL 空间，按页收集）：
@@ -37,8 +37,6 @@ export function pageSurfaceSpaces({ pageId, entries = [], isManifestPage = false
       spaces.push({ prefix, kind: 'dir', root: path.resolve(entry.path) });
     } else if (entry.kind === 'file' && typeof entry.path === 'string') {
       spaces.push({ prefix, kind: 'file', file: entry.path });
-    } else if (entry.kind === 'url') {
-      spaces.push({ prefix, kind: 'url' });
     }
   }
   if (isManifestPage) spaces.push({ prefix: `/previews/${pageId}/`, kind: 'preview', root: path.join(previewsRoot, pageId) });
@@ -56,11 +54,10 @@ export function ledgerIsOrphan({ name, doc }, spaces) {
   if (!space) {
     // 不在本页的空间里：仍可能判两种（头注的 2、3）——路径指向 /sites/<id>/
     // 这个形态的表面，而表面只属于登记表里的条目。条目是别页 = 错放；
-    // 条目不在登记表 = 表面已消失（url 条目移走）。两种都
+    // 条目不在登记表 = 表面已消失（条目移走）。两种都
     // 不归本页。/sites/ /previews/ 之外的未知空间照旧不判。
     return /^\/sites\/[a-z0-9][a-z0-9-]*(\/|$)/.test(p);
   }
-  if (space.kind === 'url') return false;
   if (space.kind === 'file') return !fs.existsSync(space.file);
   // doc.path 是 decode 后的 pathname（客户端写入侧已解），这里不再二次 decode：
   // 再解一次遇到字面 %（如 50%.html）会抛异常，反而把活账本判成孤儿。

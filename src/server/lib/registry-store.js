@@ -23,11 +23,11 @@ import path from 'node:path';
 import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, RETIRED_ENTRY_KEYS } from './registry.js';
 import { isReservedProjectId } from '../../shared/project-ids.js';
 
-const WRITE_KINDS = new Set(['dir', 'file', 'url', 'project']);
+const WRITE_KINDS = new Set(['dir', 'file', 'project']);
 // project 条目（pp3）只带这些字段：没有壳。
 const PROJECT_KEYS = new Set(['id', 'title', 'kind', 'path', 'addedAt']);
 // 写入白名单：未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
-const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'url', 'board', 'addedAt']);
+const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'board', 'addedAt']);
 
 /** 改写一条已有条目前去掉已退役功能的字段（registry.js RETIRED_ENTRY_KEYS）：老登记表照样能 move / rename。 */
 function withoutRetiredKeys(entry) {
@@ -55,7 +55,7 @@ export function validateNewEntry(raw, existingIds) {
     return `条目 id 必须匹配 ${ENTRY_ID_PATTERN}（小写字母/数字/中划线，字母或数字开头）：${JSON.stringify(raw.id)}`;
   }
   if (existingIds.has(raw.id)) return `条目 id 已存在：${raw.id}`;
-  if (!WRITE_KINDS.has(raw.kind)) return `条目 "${raw.id}" 的 kind 必须是 dir / file / url / project`;
+  if (!WRITE_KINDS.has(raw.kind)) return `条目 "${raw.id}" 的 kind 必须是 dir / file / project`;
   if (raw.kind === 'project') {
     for (const key of Object.keys(raw)) {
       if (!PROJECT_KEYS.has(key)) return `project 条目 "${raw.id}" 不能带字段：${key}`;
@@ -63,31 +63,17 @@ export function validateNewEntry(raw, existingIds) {
     // project id 是站点 URL 的第一段（/<project>/<article>/），不能占服务已有的首段。
     if (isReservedProjectId(raw.id)) return `project id 是保留名（服务已占用 /${raw.id}/）：${raw.id}`;
   }
-  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') {
-    if (typeof raw.path !== 'string' || !path.isAbsolute(raw.path)) {
-      return `条目 "${raw.id}" 需要绝对路径 path`;
-    }
-    let stat;
-    try {
-      stat = fs.statSync(raw.path);
-    } catch {
-      return `条目 "${raw.id}" 的路径不存在：${raw.path}`;
-    }
-    if ((raw.kind === 'dir' || raw.kind === 'project') && !stat.isDirectory()) return `条目 "${raw.id}" 的路径不是目录：${raw.path}`;
-    if (raw.kind === 'file' && !stat.isFile()) return `条目 "${raw.id}" 的路径不是文件：${raw.path}`;
+  if (typeof raw.path !== 'string' || !path.isAbsolute(raw.path)) {
+    return `条目 "${raw.id}" 需要绝对路径 path`;
   }
-  if (raw.kind === 'url') {
-    if (typeof raw.url !== 'string') return `条目 "${raw.id}" 需要 url`;
-    let parsed;
-    try {
-      parsed = new URL(raw.url);
-    } catch {
-      return `条目 "${raw.id}" 的 url 不合法：${raw.url}`;
-    }
-    if (parsed.protocol !== 'http:' && parsed.protocol !== 'https:') {
-      return `条目 "${raw.id}" 的 url 只支持 http(s)：${raw.url}`;
-    }
+  let stat;
+  try {
+    stat = fs.statSync(raw.path);
+  } catch {
+    return `条目 "${raw.id}" 的路径不存在：${raw.path}`;
   }
+  if ((raw.kind === 'dir' || raw.kind === 'project') && !stat.isDirectory()) return `条目 "${raw.id}" 的路径不是目录：${raw.path}`;
+  if (raw.kind === 'file' && !stat.isFile()) return `条目 "${raw.id}" 的路径不是文件：${raw.path}`;
   if (raw.addedAt !== undefined && (!Number.isFinite(raw.addedAt) || raw.addedAt <= 0)) return 'addedAt 必须是正数时间戳';
   if (raw.board !== undefined && typeof raw.board !== 'string') {
     return `条目 "${raw.id}" 的 board 必须是字符串`;
@@ -98,8 +84,7 @@ export function validateNewEntry(raw, existingIds) {
 function normalizeNewEntry(raw) {
   const entry = { id: raw.id, kind: raw.kind };
   entry.title = typeof raw.title === 'string' && raw.title ? raw.title : raw.id;
-  if (raw.kind === 'dir' || raw.kind === 'file' || raw.kind === 'project') entry.path = raw.path;
-  else entry.url = raw.url;
+  entry.path = raw.path;
   if (Number.isFinite(raw.addedAt) && raw.addedAt > 0) entry.addedAt = raw.addedAt;
   if (typeof raw.board === 'string') entry.board = raw.board;
   return entry;

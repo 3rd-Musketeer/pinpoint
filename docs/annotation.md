@@ -69,7 +69,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 账本 = 桶内的一个表面：
 - **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
   同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
-- **文档、直开页、url 条目**仍是一个 pathname 一本，命名规则见
+- **文档、直开页**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。
 - 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。
 - 工作台切活动页 = 换桶重新 hydrate；`#n` 按桶编号，一个页 id 一套序列。
@@ -113,11 +113,10 @@ manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤�
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录
-各有各的账本。SPA 换路由时账本（entry / page / localStorage key）不重载就重新定位——
-优先 Navigation API 的 `navigate` 事件，回落到打过补丁的 `pushState`/`replaceState` + `popstate`；
-只改 hash 不重新定位，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一条路由上。
+各有各的账本。账本在页面加载时按 pathname 定下，页面自己 `pushState` 改地址不换账本；
+只有工作台画布实例切活动页时换账本，切换前发出的同步 / 水合响应按 epoch 丢弃，所以标注不会落到上一页上。
 
-桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、url 代理、`/api/frame`）
+桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、`/api/frame`）
 注入的 `window.__pinpointEntry` = 页 id；工作台画布实例没有标记，桶 = 活动页 id
 （切页 = 换桶）；文章页注入的是这篇的页 id；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
 

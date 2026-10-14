@@ -97,7 +97,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把锚点后缀写成 `#`。
 
 **桶与账本** · 桶 `~/.pinpoint/<页 id>/`（数据根可由 `PINPOINT_DATA_DIR` 覆盖）；账本文件名规则 `src/shared/annotate-page-key.js`
-桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里固定两本，`@canvas.json`（画布标注）和 `@prose.json`（正文评论）；存量页的文档和网页按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
+桶是一个页 id 的全部标注，一个页 id 一个目录，磁盘是事实源，浏览器 localStorage 只是缓存。账本是桶里的一个文件：文章的桶里固定两本，`@canvas.json`（画布标注）和 `@prose.json`（正文评论）；存量页的文档按路径各有一本。`pinpoint` 桶收不属于任何页 id 的标注，它不是页。
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 判定在 `src/server/lib/page-resolve.js` 的 `resolvePage` / `pageIdIsLive`
@@ -126,8 +126,8 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 标注客户端是服务注入到网页里的一段脚本，画布标注的工具和正文评论栏都由它提供。它只注入登记过的目标：文章页（只跑正文评论）、画布视图、`/sites/` 下的存量页。其余 URL 返回逐字节相同、没有标注面的页面；`?annotate=off` 让单次请求不带客户端（卡片、浮层、导出走这条）。
 要避开：往没登记的页面手工插 `/annotate.js`。
 
-**`/sites/<页 id>/`** · `src/server/sites-api.js`、url 条目代理 `src/server/lib/site-proxy.js`
-服务上按页 id 划分的地址空间：文章的帧资源在 `/sites/<project>_<article>/assets/…`，存量页的目录、文件或代理的网站也在这里。
+**`/sites/<页 id>/`** · `src/server/sites-api.js`
+服务上按页 id 划分的地址空间：文章的帧资源在 `/sites/<project>_<article>/assets/…`，存量页的目录和文件也在这里。
 要避开：拿 site 指用户自己的网站（那个说目标应用）；把 `/sites/` 和文章站点 `site/` 混为一谈。
 
 **template 与 instance（模板与实例）** · 实例目录靠 `.git/info/exclude` 挡在 git 外
@@ -148,8 +148,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 
 存量页是文章模型之外、今天仍在用的原型页：一个带 `board.json` 的帧目录（或一个 HTML 文件、一个网址），经 registry 登记，在工作台左栏的“页面”组里，不带参数的 `ppnt list` 里类型不是 project 的条目都是。新工作写成文章；存量页照常能看、能改、能标注，要转成文章时跑 `pinpoint migrate <页 id> --project <根>`：每个 board section 成为一节，节里一个画布组件，旧页和它的标注留在原处（做法见 `docs/projects.md`“从存量页迁移”）。下面这些词只在存量页上遇到。
 
-**存量页** · `content/previews/_index.json`（模板页）或 registry 的 dir / file / url 条目
-工作台“页面”组里的一行，页 id 是它自己的 id。一个存量页可以同时有画布和文档、网页。代码、CLI 帮助和 `docs/board-schema.md` 里单说的“页”（`<页>`、Pages、`pageId`）多半指存量页或页 id。
+**存量页** · `content/previews/_index.json`（模板页）或 registry 的 dir / file 条目
+工作台“页面”组里的一行，页 id 是它自己的 id。一个存量页可以同时有画布和文档。代码、CLI 帮助和 `docs/board-schema.md` 里单说的“页”（`<页>`、Pages、`pageId`）多半指存量页或页 id。
 要避开：“册”；单说“页”而不说明是存量页还是画布视图。
 
 **board** · 存量页目录里的 `board.json`；契约 `src/workbench/lib/preview-contracts.js`，字段见 `docs/board-schema.md`
@@ -185,7 +185,7 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：拿视口指 `pageViewports`（那是每页画布的滚动与缩放存档）；把手机视口说成帧。
 
 **产物与草稿** · 大纲浮层里的两组；屏上 `role: "draft"`
-存量页大纲里的分组：产物是交付物（画布、文档、网页，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
+存量页大纲里的分组：产物是交付物（画布、文档，带类型标），草稿是过程里派生出来的整页 HTML。两组没有机制耦合。
 要避开：拿“产物”说 dist。
 
 **REV** · 无实现（ADR 0013）

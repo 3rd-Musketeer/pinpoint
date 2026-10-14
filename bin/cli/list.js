@@ -65,11 +65,6 @@ export function reportMissingTarget(token, { registryPath, env, err }) {
     return;
   }
   const pageRef = String(toPageRef(token));
-  const entry = (ctx.registry.entries || []).find((row) => row && row.id === pageRef);
-  if (entry && entry.kind === 'url') {
-    err(`错误：找不到 ${pageRef} 的页：它是网址条目（kind url），没有本地源文件，CLI 读不了它`);
-    return;
-  }
   err(`错误：找不到 ${pageRef}`);
   if (!reportPageSuggestions(pageRef, { registryPath, env, err })) printCandidates(ctx, err);
 }
@@ -84,7 +79,7 @@ export function printPageStatus(parsed, { env, out, err }) {
   if (!context) {
     // 页不在 registry 与 manifest 里，但桶还在：整桶皆孤儿（storage-unify）——
     // 报告而不是裸报错，不然删页后的残留账本没有入口可见。报告只给两处都不在
-    // 的桶：页已知而加载失败的（url 条目等）原样报错，不把活页的账本吞成孤儿。
+    // 的桶：页已知而加载失败的原样报错，不把活页的账本吞成孤儿。
     if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return 0;
     for (const line of errors) err(line);
     return 1;
@@ -345,7 +340,7 @@ export async function runList(argv, io = {}) {
         articles: project.articles.map((article) => ({ address: `${project.id}/${article.id}`, title: article.title })),
         errors: project.errors.length,
       })),
-      pages: rows.map((row) => ({ id: row.id, title: row.title || '', kind: row.kind || '', path: row.path || row.url || '', counts: row.counts || null })),
+      pages: rows.map((row) => ({ id: row.id, title: row.title || '', kind: row.kind || '', path: row.path || '', counts: row.counts || null })),
     }, null, 2));
     return rows.length || projectRows.length ? 0 : 1;
   }

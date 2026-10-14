@@ -298,25 +298,24 @@ ${REGISTRY_FLAG}
   stop: { usage: 'ppnt stop', text: '用法：ppnt stop\n\n停常驻服务：只给 portless 记下的那个进程发 SIGTERM。' },
   restart: { usage: 'ppnt restart', text: '用法：ppnt restart\n\n停 + 起。服务跨过一次仓库目录搬迁后（status 报服务 root 不对）用它。' },
   add: {
-    usage: 'ppnt add <project 根> --project | ppnt add <目录|文件.html|http(s)://URL> [--title X] [--board ios|html] [--id xxx]',
+    usage: 'ppnt add <project 根> --project | ppnt add <目录|文件.html> [--title X] [--board ios|html] [--id xxx]',
     text: `用法：ppnt add <project 根> --project
-      ppnt add <目录|文件.html|http(s)://URL> [选项]
+      ppnt add <目录|文件.html> [选项]
 
-登记进 registry（文件留在原地，只登记路径或网址），服务在跑就让它重读登记表。
+登记进 registry（文件留在原地，只登记路径），服务在跑就让它重读登记表。
   目录 + --project     project：读 <根>/docs/pinpoint/project.json，id 与标题都取它；不能和 --title / --board 同用
   目录                 存量页（kind dir），服务在 /sites/<id>/ 下只读托管并注入标注
   单个 .html           kind file，只托管这个文件
-  http(s)://URL        kind url，同源代理内嵌，并往响应里注入标注
 
   --project            见上
-  --title X            显示名（缺省目录名 / 文件名 / hostname）
+  --title X            显示名（缺省目录名 / 文件名）
   --board ios|html     工作台的壳（缺省 html；只对目录生效）
   --id xxx             本条目自己的 id（缺省由名称派生；撞了已有 id 就报错）
 ${REGISTRY_FLAG}`,
   },
   move: {
-    usage: 'ppnt move <id> <新目录|新文件|新URL>',
-    text: `用法：ppnt move <id> <新目录|新文件|新URL>
+    usage: 'ppnt move <id> <新目录|新文件>',
+    text: `用法：ppnt move <id> <新目录|新文件>
 
 把已登记的条目指到新路径，id 和标题不变，标注照旧对得上。project：新根目录里 project.json 的 id 必须不变。
 ${REGISTRY_FLAG}`,
@@ -334,7 +333,7 @@ ${REGISTRY_FLAG}`,
     usage: 'ppnt remove <id>',
     text: `用法：ppnt remove <id>
 
-从登记表删掉一个条目，源文件和网址不动，重新 add 就恢复。两种情况拒绝：id 不存在；
+从登记表删掉一个条目，源文件不动，重新 add 就恢复。两种情况拒绝：id 不存在；
 标注桶里还有标注行（先处理，或 ppnt prune）。桶是空的就顺手删掉。project 的每篇文章的桶守同一条。
 ${REGISTRY_FLAG}`,
   },

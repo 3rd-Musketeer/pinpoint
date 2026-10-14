@@ -146,15 +146,15 @@ test('buildEntry: non-html single files and missing paths are rejected', (t) => 
   assert.throws(() => buildEntry(path.join(dir, 'ghost'), {}, { cwd: dir }), /路径不存在/);
 });
 
-test('buildEntry: http(s) URLs become url entries keyed off the hostname, board dropped', (t) => {
+test('buildEntry: http(s) 网址不登记，报错指向本地目录或 .html 文件', (t) => {
   const dir = withTempDir(t);
-  const entry = buildEntry('https://my-todos.localhost/app?q=1', { board: 'ios' }, { cwd: dir });
-  assert.deepEqual(entry, {
-    id: 'my-todos-localhost',
-    title: 'my-todos.localhost',
-    kind: 'url',
-    url: 'https://my-todos.localhost/app?q=1',
-  });
+  for (const target of ['https://my-todos.localhost/app?q=1', 'http://127.0.0.1:5173/']) {
+    assert.throws(() => buildEntry(target, {}, { cwd: dir }), (error) => {
+      assert.ok(error instanceof CliError);
+      assert.match(error.message, /登记的目标是本地目录或 \.html 文件/);
+      return true;
+    }, target);
+  }
 });
 
 test('buildEntry: --id validation — pattern enforced, duplicates error instead of overwriting', (t) => {
@@ -394,15 +394,18 @@ test('buildMove: 换落点，id / title / 归属原样带走', (t) => {
   assert.deepEqual(after, { id: 'app', title: '我的应用', kind: 'dir', path: next, board: 'ios' });
 });
 
-test('buildMove: dir → file 丢掉 board，dir → url 换字段', (t) => {
+test('buildMove: dir → file 丢掉 board；网址目标拒绝；老 url 条目能重指到本地目录', (t) => {
   const dir = withTempDir(t);
+  const site = makeSite(dir);
   const page = path.join(dir, 'one.html');
   fs.writeFileSync(page, '<!doctype html><html><body>1</body></html>');
   const before = { id: 'app', title: 'App', kind: 'dir', path: '/gone', board: 'ios' };
   assert.deepEqual(buildMove('app', page, { cwd: dir, entries: [before] }).after,
     { id: 'app', title: 'App', kind: 'file', path: page });
-  assert.deepEqual(buildMove('app', 'https://app.localhost/x', { cwd: dir, entries: [before] }).after,
-    { id: 'app', title: 'App', kind: 'url', url: 'https://app.localhost/x' });
+  assert.throws(() => buildMove('app', 'https://app.localhost/x', { cwd: dir, entries: [before] }), /登记的目标是本地目录或 \.html 文件/);
+  const legacy = { id: 'web', title: 'Web', kind: 'url', url: 'https://app.localhost/x' };
+  assert.deepEqual(buildMove('web', site, { cwd: dir, entries: [legacy] }).after,
+    { id: 'web', title: 'Web', kind: 'dir', path: site });
 });
 
 test('buildMove: 未知 id / 不存在的目标都响亮拒绝；老条目上已删功能的字段不带过去', (t) => {
@@ -440,7 +443,7 @@ test('runMove: 原地改路径、保留 id 与位置，并 reload 服务', async
   assert.ok(rec.out.some((line) => /服务已重载/.test(line)));
 });
 
-test('runMove: file 与 url 目标', async (t) => {
+test('runMove: file 目标；网址目标退非零、registry 不动', async (t) => {
   const dir = withTempDir(t);
   const page = path.join(dir, 'r.html');
   fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
@@ -450,10 +453,11 @@ test('runMove: file 与 url 目标', async (t) => {
   assert.equal(await runMove(['move', 'app', page, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[0],
     { id: 'app', kind: 'file', title: 'App', path: page });
-  assert.equal(await runMove(['move', 'app', 'https://app.localhost/', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 0);
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[0],
-    { id: 'app', kind: 'url', title: 'App', url: 'https://app.localhost/' });
   assert.ok(rec.err.some((line) => /服务未在跑/.test(line)));
+  const before = fs.readFileSync(file, 'utf8');
+  assert.equal(await runMove(['move', 'app', 'https://app.localhost/', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
+  assert.ok(rec.err.some((line) => /登记的目标是本地目录或 \.html 文件/.test(line)));
+  assert.equal(fs.readFileSync(file, 'utf8'), before);
 });
 
 test('runMove: 未知 id 与不存在的目标退非零，registry 不动', async (t) => {
@@ -666,7 +670,7 @@ test('runPrune：页不在 registry 与 manifest 里 = 整桶皆孤儿', async (
   assert.ok(!fs.existsSync(path.join(bucket, '@canvas.json')), '整桶清空');
 });
 
-test('runRename: 没有标注桶 / file 与 url 条目跳过资源前缀', async (t) => {
+test('runRename: 没有标注桶 / file 条目跳过资源前缀', async (t) => {
   const dir = withTempDir(t);
   const page = path.join(dir, 'r.html');
   fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
@@ -1787,7 +1791,7 @@ test('无 board.json 的 dir 条目是 doc 页：check 列账本行带 pathname�
   assert.equal(post.body.entry, 't-handbook');
 });
 
-test('runStatus --page：页在 registry 里但加载失败（url 条目）原样报错，不再吞成整桶孤儿', async (t) => {
+test('runStatus --page：老登记表里的 url 条目读时跳过，它的桶整桶报孤儿', async (t) => {
   const dir = withTempDir(t);
   const registry = path.join(dir, 'registry.json');
   fs.writeFileSync(registry, JSON.stringify({
@@ -1803,9 +1807,8 @@ test('runStatus --page：页在 registry 里但加载失败（url 条目）原�
   }));
   const rec = recorder();
   const code = await runStatus(['status', '--page', 't-live', '--registry', registry], { ...rec.io, env });
-  assert.equal(code, 1);
-  assert.ok(rec.err.some((line) => /找不到 t-live 的页：它是网址条目/.test(line)), rec.err.join('\n'));
-  assert.ok(!rec.out.some((line) => line.includes('全是孤儿')), `活页的账本不该被报成孤儿：\n${rec.out.join('\n')}`);
+  assert.equal(code, 0, rec.err.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('全是孤儿')), rec.out.join('\n'));
 });
 
 /* ---- list ---- */

@@ -85,6 +85,7 @@ function fixtureRegistry(t) {
   const file = path.join(dir, 'registry.json');
   fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [
     { id: 'legacy', kind: 'dir', path: path.join(dir, 'page') },
+    // 老登记表里残留的 url 条目：读时跳过，不进候选。
     { id: 'site', kind: 'url', url: 'https://example.com' },
     { id: 'demo', kind: 'project', path: root },
   ] }));
@@ -110,7 +111,7 @@ test('resolveAddress：文章、project、存量页、不在的文章、什么�
   assert.equal(resolveAddress('B3', ctx), null);
 });
 
-test('targetCandidates：文章打斜杠形，存量页打 id；网址条目和 project 自己不算目标', (t) => {
+test('targetCandidates：文章打斜杠形，存量页打 id；残留的 url 条目和 project 自己不算目标', (t) => {
   const registry = fixtureRegistry(t);
   const rows = targetCandidates({ registry, manifestIds: ['example'], articlesOf: () => ['notes'] });
   assert.deepEqual(rows.map((row) => row.address), ['demo/notes', 'legacy', 'example']);

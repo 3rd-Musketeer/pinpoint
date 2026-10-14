@@ -1,10 +1,10 @@
 /**
  * 代理的来源判定（纯函数）：一个经 pinpoint 转发的请求，按 Origin 头放行、改写还是拒绝。
- * 两处代理共用：文章站点（article-proxy.js）与 url 条目的 /sites/<id>/（lib/site-proxy.js）。
+ * 文章站点代理（article-proxy.js）用它。
  *
  * 浏览器对 websocket 不做同源限制，挡跨站连接全靠服务端看 Origin；Astro 的 vite
- * 只在“有 Origin 时要 token”，不看 Origin 是谁；url 条目背后的应用多半按 Origin 挡
- * CSRF。代理若把一切 Origin 都改写成上游自己的地址，等于替任何网页过了来源检查。所以：
+ * 只在“有 Origin 时要 token”，不看 Origin 是谁。代理若把一切 Origin 都改写成上游
+ * 自己的地址，等于替任何网页过了来源检查。所以：
  *
  *   没有 Origin           放行，不加 Origin（命令行工具、同源 GET 导航）
  *   pinpoint 自己的来源    放行，Origin 改写成上游自己的地址（Host 也改了，上游的
@@ -45,7 +45,7 @@ export function ownOrigins({ env = process.env, port } = {}) {
  *   method   HTTP 方法；upgrade 为真时不看
  *   upgrade  是不是 websocket upgrade
  *   own      ownOrigins() 的集合
- *   upstreamOrigin  上游自己的来源（文章站点 http://127.0.0.1:<站点端口>；url 条目的目标 origin）
+ *   upstreamOrigin  上游自己的来源（文章站点 http://127.0.0.1:<站点端口>）
  * → { allow: true, origin: string|undefined }   origin = 转发给站点的 Origin 头，undefined 不带
  *   { allow: false, status: 403, reason }
  */

@@ -39,11 +39,11 @@ just check                # 契约测试 + 站点构建检查（test:site）+ �
 Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显式绕过代理的兜底
 （`http://127.0.0.1:5199`）；不要给这个 app 配常驻的 Portless alias。
 
-**e2e 两组并行，靠 `E2E_PORT` 分家。** 组端口 = 基准与基准 + 20，代理上游各 +10，默认基准
+**e2e 两组并行，靠 `E2E_PORT` 分家。** 组端口 = 基准与基准 + 20，文章站点各 +5，默认基准
 5299（共占 5299~5329）。一个端口一套固件，registry、标注数据根、`test-results-<port>/` 全从
 这一个数推导（`e2e/env.js`）。在别人也在跑 e2e 的机器上换基准跑自己的那一轮：
 `E2E_PORT=5399 npm run test:e2e`——共用产物目录时两边会同时写同一个 trace zip，报出来的错
-完全不像并发冲突。单独跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5870~5900：组端口 +10 / +20 / +30 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
+完全不像并发冲突。单独跑一条 spec 用 `npm run test:e2e:serial -- e2e/<file>`。基准别选 5875~5900：组端口 +5 / +20 / +25 会撞上 macOS 屏幕共享占的 5900，webServer 起不来，JSON 报告只剩“webServer was not able to start”和 0 条用例。
 
 **高负载降单组，失败用例重跑一次。** 机器 1 分钟 load ≥ 10 时 `test:e2e` 只起一组（慢一倍，但不再随机超时），`E2E_SINGLE_GROUP_LOAD` 改阈值，`E2E_GROUPS=1|2` 强制组数。跑完后每个挂了的组用 `--last-failed` 把失败用例重跑一次，重跑仍挂才算挂。所以输出里看到“rerunning failed tests once”不等于通过，要看最后的 rerun exit code。重跑会清空该组产物目录，首跑的截图、trace 与报告先复制到 `test-results-<端口>-first-run/`、`playwright-report-<端口>-first-run/`，查重跑过了的偶发失败从这里读。
 
@@ -105,7 +105,7 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
 | 写 article、加帧 / 加组件、写 concept、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 读画布标注与正文评论 → 改稿 → 回复、写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 帧、组件、编译、交互的唯一机制权威（含存量页的 board） | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、注入契约、CLI（add / move / rename / remove）、代理 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、注入契约、CLI（add / move / rename / remove） | [`docs/registry.md`](docs/registry.md) |
 | project 目录（`docs/pinpoint/`）、`add --project`、`listProjects` / `/api/projects`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas` 写法、画布卡片与画布浮层、`[[ ]]`、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 画布标注与正文评论的字段、账本与桶、状态机、控制面 | [`docs/annotation.md`](docs/annotation.md) |

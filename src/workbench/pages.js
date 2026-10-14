@@ -16,8 +16,7 @@ import {
   boardShowsTabBar,
   defaultEntryId,
   entryForm,
-  resolveEntry,
-  withEntryWeb
+  resolveEntry
 } from './lib/board-entries.js';
 import {
   VIEWPORT_PHONE,
@@ -183,15 +182,12 @@ export function resolveActivePage(preferredId, modeHint) {
    （app/OutlinePopover.jsx，读 fullBoard 再按 tab 切片）。这里只保留切换动作与
    装载后的条目解析。 */
 
-/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。
-    阶段 7：registry 条目的 kind 经 manifest page（registrySitePages 透传
-    page.kind）在这里落到条目上 —— url 页的 doc 条目带 web 标记（「网页」tag）。 */
+/** 当前页的条目数组（板未装载 / 换页途中 → []）。横条的类型标与条目步进消费。 */
 export function entriesOfActiveBoard() {
   var s = wbGet();
   var active = s.activeBoard;
   if (!active || active.pageId !== s.activePageId) return [];
-  var page = pageEntry(s.pageManifest, active.pageId);
-  return withEntryWeb(boardEntries(active.board), page && page.kind);
+  return boardEntries(active.board);
 }
 
 /* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
@@ -515,9 +511,7 @@ export function retryPageManifest() {
     The default 'pinpoint' entry is the workbench itself — its pages are the
     _index pages, so it is not listed again. A dead annotate API must not break
     the workbench: previews-only then. Entries without their own board.json are
-    still readable: the service synthesizes a doc board (lib/synth-board.js).
-    阶段 4：url 条目也进 Pages（恒 doc 壳）—— 经同源代理嵌进阅读器，
-    与扩展注入并存（两条路径共用同一个 entry 标注桶）。 */
+    still readable: the service synthesizes a doc board (lib/synth-board.js). */
 function registrySitePages() {
   return queryClient.fetchQuery({
     queryKey: ['registry-sites'],
@@ -539,23 +533,20 @@ function registryToPages(data) {
   var entries = (data && data.entries) || [];
   var pages = [];
   entries.forEach(function (entry) {
-    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file' && entry.kind !== 'url') || entry.id === 'pinpoint') return;
+    if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file') || entry.id === 'pinpoint') return;
     pages.push({
       id: entry.id,
       title: entry.title || entry.id,
       // 2026-08-16 阶段 2：dir 条目默认 doc 壳（文档阅读器）；
       // 只有显式 board:'ios' 上机壳，残留 'web'/缺省/未知一律落 html。
       // file 条目（阶段 3）恒 doc 壳：单个完整 HTML 文档只有阅读器语义。
-      // url 条目（阶段 4）恒 doc 壳：活应用经代理嵌进文档阅读器。
       mode: entryBoardMode(entry),
-      // 2026-08-16f 阶段 7：registry kind 透传到 manifest 页 ——
-      // entriesOfActiveBoard 据此给 url 页的条目打 web 标记（「网页」tag）；
-      // 也是横条类型标与页面行类型图标（画布 / 网页 / 文档）的来源。
+      // registry kind 透传到 manifest 页（dir / file；文章页是 article）。
       kind: entry.kind,
       addedAt: entry.addedAt || null,
       annotatedAt: entry.annotatedAt || null,
       // 2026-08-17g：内容 mtime（ms epoch，server 侧 content-mtime 算出；
-      // url 条目无此字段 → null，排序沉底、行内不显示时间）。
+      // 缺字段 → null，排序沉底、行内不显示时间）。
       mtime: typeof entry.mtime === 'number' ? entry.mtime : null,
       site: true
     });

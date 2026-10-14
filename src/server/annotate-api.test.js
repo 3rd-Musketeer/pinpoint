@@ -19,7 +19,7 @@ function withFixture(t) {
     version: 1,
     entries: [
       { id: 'pinpoint', title: 'pinpoint workbench', kind: 'dir', path: dir },
-      { id: 'web', title: 'web', kind: 'url', url: 'https://web.localhost' },
+      { id: 'web', title: 'web', kind: 'dir', path: dir },
     ],
   }));
   const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
@@ -247,21 +247,13 @@ test('SSE broadcasts carry the entry of the saved bucket', async (t) => {
   sseReq.emit('close');
 });
 
-test('OPTIONS preflight allows cross-origin GET/POST with Content-Type', async (t) => {
+test('接口只给同源页面：OPTIONS 交给下一个中间件，响应不带 CORS 头', async (t) => {
   const { handler } = withFixture(t);
   for (const route of ['/save', '/image', '/annotations/x', '/events', '/registry']) {
     const { handled, res } = await call(handler, 'OPTIONS', route);
-    assert.equal(handled, true, route);
-    assert.equal(res.statusCode, 204, route);
-    assert.equal(res.headers['Access-Control-Allow-Origin'], '*', route);
-    assert.ok(res.headers['Access-Control-Allow-Methods'].includes('GET'), route);
-    assert.ok(res.headers['Access-Control-Allow-Methods'].includes('POST'), route);
-    assert.ok(res.headers['Access-Control-Allow-Headers'].includes('Content-Type'), route);
+    assert.equal(handled, false, route);
+    assert.equal(res.statusCode, 0, route);
   }
-});
-
-test('every API response carries Access-Control-Allow-Origin *', async (t) => {
-  const { handler } = withFixture(t);
   const checks = [
     await call(handler, 'GET', '/health'),
     await call(handler, 'GET', '/registry'),
@@ -273,8 +265,9 @@ test('every API response carries Access-Control-Allow-Origin *', async (t) => {
     }),
     await call(handler, 'POST', '/image', { entry: 'web', data: 'data:image/png;base64,aGk=' }),
   ];
-  for (const { res } of checks) {
-    assert.equal(res.headers['Access-Control-Allow-Origin'], '*');
+  for (const { handled, res } of checks) {
+    assert.equal(handled, true);
+    assert.equal(res.headers['Access-Control-Allow-Origin'], undefined);
   }
 });
 

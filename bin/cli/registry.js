@@ -19,17 +19,11 @@ function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);
 }
 
-/** 一个目标（目录 / .html 文件 / http(s) URL）解析成 registry 的 kind + 落点。
+/** 一个目标（目录 / .html 文件）解析成 registry 的 kind + 落点。
     add 与 move 共用同一套校验：路径必须真的存在，单文件必须是 html。 */
 export function resolveTarget(target, cwd = process.cwd()) {
   if (isHttpUrl(target)) {
-    let parsed;
-    try {
-      parsed = new URL(target);
-    } catch {
-      throw new CliError(`URL 不合法：${target}`);
-    }
-    return { kind: 'url', url: target, baseName: parsed.hostname, idSeed: parsed.hostname };
+    throw new CliError(`登记的目标是本地目录或 .html 文件；网址请先存成本地 HTML 再登记：${target}`);
   }
   const absPath = path.resolve(cwd, target);
   let stat;
@@ -55,7 +49,8 @@ export function resolveTarget(target, cwd = process.cwd()) {
 
 /** 条目的登记落点，用于报错与打印。 */
 export function entryTargetDesc(entry) {
-  return entry && (entry.kind === 'url' ? entry.url : entry.path);
+  // 老登记表里残留的 url 条目只有 url（remove / 撞 id 提示时会打印它）。
+  return entry && (entry.path || entry.url);
 }
 
 function idTakenError(id, existing) {
@@ -105,9 +100,7 @@ export function buildEntry(target, flags = {}, { cwd = process.cwd(), takenEntri
   if (kind === 'dir') board = flags.board || 'html';
 
 
-  const entry = { id, title: flags.title || resolved.baseName, kind };
-  if (kind === 'url') entry.url = resolved.url;
-  else entry.path = resolved.absPath;
+  const entry = { id, title: flags.title || resolved.baseName, kind, path: resolved.absPath };
   if (board) entry.board = board;
   return entry;
 }
@@ -172,14 +165,8 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   const resolved = resolveTarget(target, cwd);
   const after = { ...before, kind: resolved.kind };
   for (const key of RETIRED_ENTRY_KEYS) delete after[key];
-  if (resolved.kind === 'url') {
-    after.url = resolved.url;
-    delete after.path;
-  } else {
-    after.path = resolved.absPath;
-    delete after.url;
-  }
-  // board 只对 dir 条目有意义（file 恒 doc 阅读器，url 恒合成单屏板）。
+  after.path = resolved.absPath;
+  // board 只对 dir 条目有意义（file 恒 doc 阅读器）。
   if (resolved.kind !== 'dir') delete after.board;
   return { before, after };
 }
@@ -572,7 +559,7 @@ export async function runMove(argv, io = {}) {
 
 /**
  * prune <页> [--dry-run]（storage-unify）：删除该页桶里的孤儿账本。
- * 孤儿 = 表面已不存在（文档文件没了 / url 条目移走 / 页不在 registry 与
+ * 孤儿 = 表面已不存在（文档文件没了 / 条目移走 / 页不在 registry 与
  * manifest 里 = 整桶皆孤儿）。owner 裁决：孤儿不备份，直接删；--dry-run 先看
  * 清单。账本自己的图片（images/<账本 key>-*）一并清掉。
  */
@@ -840,7 +827,7 @@ export async function runRemove(argv, io = {}) {
     return 1;
   }
   out(`已从登记表删除 ${removed.id}（${removed.kind}）：${entryTargetDesc(removed)}`);
-  out(`  源文件 / URL 不动：${entryTargetDesc(removed)} 还在原地，重新 \`pinpoint add\` 即恢复登记。`);
+  out(`  源文件不动：${entryTargetDesc(removed)} 还在原地，重新 \`pinpoint add\` 即恢复登记。`);
   // 删桶时服务可能正好在往里写（一次保存的临时文件刚建出来）：rmSync 遇到 ENOTEMPTY
   // 重试几次，不让 CLI 在登记表已改之后抛栈退出。那次保存自己会回 503 bucket_gone。
   const rmBucket = { recursive: true, force: true, maxRetries: 3 };

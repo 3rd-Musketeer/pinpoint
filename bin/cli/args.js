@@ -132,7 +132,7 @@ function positionalProblem(command, want, got) {
   }
   if (command === 'move') {
     return got < 2
-      ? 'move 需要两个参数：<id> <新目录|新文件|新URL>'
+      ? 'move 需要两个参数：<id> <新目录|新文件>'
       : `move 只接受两个参数，收到 ${got} 个`;
   }
   if (command === 'rename') {

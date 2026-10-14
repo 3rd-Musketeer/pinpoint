@@ -31,24 +31,13 @@ const REPLY_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/reply$/;
 const sseClients = new Set();
 let heartbeatTimer = null;
 
-// Cross-origin prototype pages call this API (e.g. from
-// https://my-todos.localhost to https://pinpoint.localhost). No credentials
-// are involved, so a plain `*` preflight contract covers every route.
-function cors(res) {
-  res.setHeader('Access-Control-Allow-Origin', '*');
-  res.setHeader('Access-Control-Allow-Methods', 'GET, POST');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
-}
-
 function sendJson(res, code, body) {
-  cors(res);
   res.statusCode = code;
   res.setHeader('Content-Type', 'application/json; charset=utf-8');
   res.end(JSON.stringify(body));
 }
 
 function sendBytes(res, code, data, contentType) {
-  cors(res);
   res.statusCode = code;
   res.setHeader(
     'Content-Type',
@@ -144,7 +133,6 @@ function broadcastAnnotations(doc, entryId) {
 }
 
 function handleSse(req, res) {
-  cors(res);
   res.writeHead(200, {
     'Content-Type': 'text/event-stream; charset=utf-8',
     'Cache-Control': 'no-cache, no-transform',
@@ -219,8 +207,8 @@ export function createAnnotateHandler(options = {}) {
       pageTimes,
       ok: registry.ok,
       path: registry.path,
-      // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；url 条目与缺失
-      // 路径无此字段）—— workbench Pages 的「最近更新」排序与行内时间显示
+      // 2026-08-17g：dir/file 条目附内容 mtime（ms epoch；缺失路径无此
+      // 字段）—— workbench Pages 的「最近更新」排序与行内时间显示
       // 的唯一来源。语义 = 内容文件改动，与标注活动无关。
       entries: registry.entries.map((entry) => {
         return { ...entry, ...pageTimes[entry.id] };
@@ -272,7 +260,6 @@ export function createAnnotateHandler(options = {}) {
   }
 
   async function serveAnnotateClient(req, res, urlPath) {
-    cors(res);
     res.setHeader('Vary', 'Accept-Encoding');
     let artifact = null;
     const hashMatch = urlPath !== '/annotate.js' ? urlPath.match(ANNOTATE_BUNDLE_URL_RE) : null;
@@ -563,12 +550,6 @@ export function createAnnotateHandler(options = {}) {
   }
 
   return async function handleAnnotate(req, res, urlPath) {
-    if (req.method === 'OPTIONS') {
-      cors(res);
-      res.statusCode = 204;
-      res.end();
-      return true;
-    }
     // urlPath has the query stripped by the caller; req.url keeps it.
     const query = parseReqUrl(req).query;
     const route = routes.find((r) => r.methods.includes(req.method) && pathMatches(r.match, urlPath));
