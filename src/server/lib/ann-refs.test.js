@@ -59,6 +59,25 @@ describe('resolveRef', () => {
     assert.equal(resolveRef('@frame:other/login', { ...CTX, pageId: '' }).screenId, 'login');
   });
 
+  test('@section:p/s 同节 id、@page:p 同页 id；@section 的页不是目标时照实说', () => {
+    const section = resolveRef('@section:demo/flow', CTX);
+    assert.equal(section.kind, 'section');
+    assert.equal(section.sectionId, 'flow');
+    assert.equal(section.ref, 'B');
+    assert.deepEqual(section.frames.map((f) => f.id), ['login']);
+    assert.equal(resolveRef('@section:demo/ghost', CTX).message, '画布上没有节 ghost');
+    const other = resolveRef('@section:other/flow', CTX);
+    assert.equal(other.kind, 'unknown');
+    assert.equal(other.message, '@section:other/flow 是 other 上的节，这次的目标是 demo：目标写 other，或不写目标、只写 @section:other/flow');
+    assert.deepEqual(resolveRef('@page:demo', CTX), { kind: 'page', pageId: 'demo' });
+    assert.deepEqual(resolveRef('@page:plugins', { ...CTX, pageIds: ['plugins'] }), { kind: 'page', pageId: 'plugins' });
+    assert.equal(resolveRef('@page:ghost', CTX).message, '没有页 ghost：@page:ghost');
+    // mark / locate 展开 @section 成这一节的标注；@page 只在 shot 里有意义。
+    assert.deepEqual(expandRefs(['@section:demo/flow'], CTX).picks.map((p) => p.row.id), ['a4']);
+    assert.deepEqual(expandRefs(['@page:demo'], CTX).errors, ['@page:demo：整页引用只在 shot 里可用']);
+    assert.deepEqual(expandRefs(['@page:demo'], CTX, { shotRefs: true }).picks, [{ kind: 'page', pageId: 'demo', via: '@page:demo' }]);
+  });
+
   test('B 段字母 → 整段；<page> → 整页', () => {
     const b = resolveRef('B', CTX);
     assert.equal(b.kind, 'section');

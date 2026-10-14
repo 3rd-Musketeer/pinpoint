@@ -2869,14 +2869,17 @@ test('@frame:<页 id>/<帧 id> 自带页：不写目标时它就是目标；和�
   assert.ok(other.err.includes(`${frame} 是 e2e-project/commit-confirm 上的帧，这次的目标是 legacy：目标写 e2e-project/commit-confirm，或不写目标、只写 ${frame}`), other.err.join('\n'));
 });
 
-test('目标是第一个参数：斜杠形、网址、页 id、<project>/<article>#n 指同一篇；输出打斜杠形', async (t) => {
+test('目标是第一个参数：斜杠形、网址、页 id、@page:、<project>/<article>#n、@section: 指同一篇；输出打斜杠形', async (t) => {
   const made = makeFixtureCopy(t);
   const expected = [`#2 → ${made.file}:15（正文评论，节 why）`];
   for (const argv of [
     ['locate', 'e2e-project/commit-confirm', '#2'],
     ['locate', 'http://127.0.0.1:1/e2e-project/commit-confirm/', '#2'],
     ['locate', 'e2e-project_commit-confirm', '#2'],
+    ['locate', '@page:e2e-project_commit-confirm', '#2'],
     ['locate', 'e2e-project/commit-confirm#2'],
+    ['locate', '@section:e2e-project_commit-confirm/why'],
+    ['locate', 'e2e-project/commit-confirm', '@section:e2e-project_commit-confirm/why'],
     ['locate', 'e2e-project/commit-confirm', '§1'],
     ['locate', 'e2e-project/commit-confirm', 'why'],
   ]) {
@@ -2906,6 +2909,12 @@ test('目标是第一个参数：斜杠形、网址、页 id、<project>/<articl
   const st = recorder();
   assert.equal(await run(withRegistry(made, 'comments', 'e2e-project/commit-confirm'), { ...st.io, env: made.env }), 0, st.err.join('\n'));
   assert.equal(st.out[0], '# e2e-project/commit-confirm · 标注队列（open）');
+  const viaIndicator = recorder();
+  assert.equal(await run(withRegistry(made, 'comments', '@page:e2e-project_commit-confirm'), { ...viaIndicator.io, env: made.env }), 0, viaIndicator.err.join('\n'));
+  assert.deepEqual(viaIndicator.out, st.out);
+  const otherSection = recorder();
+  assert.equal(await run(withRegistry(made, 'locate', 'e2e-project/commit-confirm', '@section:other_x/why'), { ...otherSection.io, env: made.env }), 1);
+  assert.ok(otherSection.err.includes('错误：@section:other_x/why 是 other/x 上的节，这次的目标是 e2e-project/commit-confirm：目标写 other/x，或不写目标、只写 @section:other_x/why'), otherSection.err.join('\n'));
   const build = recorder();
   assert.equal(await run(withRegistry(made, 'build', 'e2e-project/commit-confirm', '--frame', 'card-plain'), { ...build.io, env: made.env }), 0, build.err.join('\n'));
   assert.match(build.out.at(-1), /^完成 e2e-project\/commit-confirm {2}共 [\d.]+ms（增量 1\/5 帧）$/);

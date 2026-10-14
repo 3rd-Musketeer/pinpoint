@@ -29,6 +29,7 @@ test('parseAddress：斜杠形、页 id 形、文章网址都是同一篇文章�
     'http://127.0.0.1:5750/browser-use/payment-confirm/#overlay=confirm',
     '/browser-use/payment-confirm/',
     'https://pinpoint.localhost/?page=browser-use_payment-confirm&section=confirm',
+    '@page:browser-use_payment-confirm',
   ]) {
     assert.deepEqual(parseAddress(token), article, token);
   }
@@ -36,6 +37,10 @@ test('parseAddress：斜杠形、页 id 形、文章网址都是同一篇文章�
   assert.deepEqual(parseAddress('browser-use_payment-confirm#3'), { ...article, n: 3 });
   assert.deepEqual(parseAddress('routine-creator'), { kind: 'id', id: 'routine-creator' });
   assert.deepEqual(parseAddress('routine-creator#12'), { kind: 'id', id: 'routine-creator', n: 12 });
+  // 工作台“复制 @page”给的写法：@page:<页 id> 同页 id。
+  assert.deepEqual(parseAddress('@page:routine-creator'), { kind: 'id', id: 'routine-creator' });
+  assert.deepEqual(parseAddress('@page:browser-use_payment-confirm#3'), { ...article, n: 3 });
+  assert.equal(parseAddress('@page:bad page'), null);
   assert.deepEqual(parseAddress('https://pinpoint.localhost/browser-use/'), { kind: 'id', id: 'browser-use' });
   // concepts 是概念页的路由段，不是文章。
   assert.equal(parseAddress('https://pinpoint.localhost/browser-use/concepts/x/'), null);
@@ -54,6 +59,7 @@ test('toPageRef / displayAddress：只看字面，往返一致', () => {
   assert.equal(toPageRef('p/a#3'), 'p_a#3');
   assert.equal(toPageRef('https://pinpoint.localhost/p/a/'), 'p_a');
   assert.equal(toPageRef('legacy'), 'legacy');
+  assert.equal(toPageRef('@page:p_a'), 'p_a');
   assert.equal(toPageRef('#3'), '#3', '不是目标的样子原样返回');
   assert.equal(displayAddress('p_a'), 'p/a');
   assert.equal(displayAddress('legacy'), 'legacy');

@@ -213,7 +213,7 @@ Everything for one article lives in one bucket, `~/.pinpoint/<project>_<article>
 SSOT; revisioned, SSE-synced): canvas annotations in `@canvas.json`, prose comments in
 `@prose.json`.
 
-Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@a:<id>`.
+Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@section:<page id>/<section id>` · `@page:<page id>` (a target) · `@a:<id>`.
 Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
 
 Annotations are per-machine (solo human + agent loop), not a multiplayer comment system.

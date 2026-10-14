@@ -274,11 +274,11 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 命令的第一个位置参数是目标。目标有这几种写法：
 
-- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/?page=<页 id>`）和页 id `<project>_<article>` 都认，输出一律打斜杠形。
+- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/?page=<页 id>`）、页 id `<project>_<article>` 和工作台“复制 @page”给的 `@page:<页 id>` 都认，输出一律打斜杠形。
 - 一个 project：`<project>`。`show`、`check`、`comments` 接受它，`locate`、`mark`、`reply`、`build`、`shot` 不接受（标注和帧都在文章里）。
-- 存量页：它的 id。
+- 存量页：它的 id，或 `@page:<页 id>`。
 
-目标后面跟引用。节写 `§2`（文章页上的节号）、字母 `B` 或节 id；第 n 节就是第 n 个字母，纯文字的节也占一个，所以 `§2` 和 `B` 同义。帧写 `B1` 或帧 id。一条标注写 `#3`，或带上文章写 `<project>/<article>#3`。工作台“复制 @frame”给的 `@frame:<页 id>/<帧 id>` 也指一帧。带文章的标注引用和 `@frame:` 自己就是目标，这时可以不写第一个参数；写了目标而 `@frame:` 的页不是它，报错并说出 `@frame:` 指的是哪一篇，不去目标上找同名的帧。
+目标后面跟引用。节写 `§2`（文章页上的节号）、字母 `B` 或节 id；第 n 节就是第 n 个字母，纯文字的节也占一个，所以 `§2` 和 `B` 同义。帧写 `B1` 或帧 id。一条标注写 `#3`，或带上文章写 `<project>/<article>#3`。工作台“复制 @frame”给的 `@frame:<页 id>/<帧 id>` 也指一帧，`@section:<页 id>/<节 id>` 指一节（纯文字的节也算）。带文章的标注引用、`@frame:` 和 `@section:` 自己就是目标，这时可以不写第一个参数；写了目标而 `@frame:` 或 `@section:` 的页不是它，报错并说出它指的是哪一篇，不去目标上找同名的帧或节。`shot` 里写在目标后面的 `@page:<页 id>` 是整页引用，同写页 id。
 
 解析在 `bin/cli/address.js`：`parseAddress` 只看字面，`resolveAddress` 再对照 registry 和磁盘判断它是文章、project、存量页，还是不在的文章。像引用的写法（`#3`、`B1`、`§2`、`@a:…`）不会被当成目标。
 

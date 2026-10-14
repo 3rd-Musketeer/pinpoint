@@ -45,8 +45,8 @@ ${ADDRESS}
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
 
 const REGISTRY_FLAG = '  --registry <路径>    用哪份登记表（缺省 PINPOINT_REGISTRY，再缺省 ~/.pinpoint/registry.json）';
-const TARGET_NOTE = `  目标是第一个参数：<project>/<article> 或存量页 id。
-  不写目标、引用里也没有 <project>/<article>#n 或 @frame:<页 id>/<帧 id> 时报错并列出候选，不猜。`;
+const TARGET_NOTE = `  目标是第一个参数：<project>/<article>、存量页 id，或 @page:<页 id>。
+  不写目标、引用里也没有 <project>/<article>#n、@frame:<页 id>/<帧 id> 或 @section:<页 id>/<节 id> 时报错并列出候选，不猜。`;
 
 /** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
 export const HELP = {
@@ -221,7 +221,8 @@ ${REGISTRY_FLAG}`,
 
 每条标注一行：#n → 源文件:行 · 组件（共用 n 帧）。正文评论落到 index.mdx 里引文所在的行；
 存量页的 HTML 帧给 dist 路径 + selector。
-引用：#12、#3-#7、B3（这一帧的全部标注）、B 或 §2（这一节）、帧 id、节 id、<project>/<article>#12、@a:<id>。
+引用：#12、#3-#7、B3（这一帧的全部标注）、B 或 §2（这一节）、帧 id、节 id、<project>/<article>#12、
+@frame:<页 id>/<帧 id>、@section:<页 id>/<节 id>、@a:<id>。
 ${TARGET_NOTE}
 
   --status <状态>      加上这个状态的全部标注（open | check | done | close | all）

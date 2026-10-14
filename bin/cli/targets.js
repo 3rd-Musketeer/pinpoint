@@ -1,6 +1,7 @@
 /**
  * 命令怎么拿到目标（docs/registry.md“CLI”）：第一个位置参数是目标；
- * 没写时看引用里有没有自带页的写法：`<project>/<article>#3`、`@frame:<页 id>/<帧 id>`。还是没有就报错并列候选，不猜
+ * 没写时看引用里有没有自带页的写法：第一个引用是 `@page:<页 id>` 时它就是目标；其余看 `<project>/<article>#3`、
+ * `@frame:<页 id>/<帧 id>`、`@section:<页 id>/<节 id>`。还是没有就报错并列候选，不猜
  * （从前缺目标时取 registry 第一页，`locate B1` 会静默落到别的页上）。
  */
 import { loadRegistry } from '../../src/server/lib/registry.js';
@@ -45,7 +46,7 @@ export function printCandidates(ctx, err, { onlyProject = null, heading = '可�
 /**
  * locate / shot / mark / reply 取目标：
  *   parsed.target（reply 的参数解析已经分出来的目标）> 第一个位置参数（解析得到页、文章或 project 时）
- *   > 引用里第一个 `<目标>#n` 或 `@frame:<页 id>/<帧 id>`。
+ *   > 第一个引用是 `@page:<页 id>` 时取它 > 引用里第一个 `<目标>#n`、`@frame:<页 id>/<帧 id>` 或 `@section:<页 id>/<节 id>`。
  * 返回 { pageRef, address, refs }（refs 去掉了被当成目标的那一个；pageRef 是页 id），
  * 或 { error: true }（已经打了错误和候选）。
  */
@@ -57,13 +58,15 @@ export function pickTarget(parsed, { env, err, command, usage }) {
     const hit = resolveAddress(refs[0], ctx);
     if (hit || parseAddress(refs[0])?.kind === 'article') token = refs.shift();
   }
+  // `@page:<页 id>`（工作台“复制 @page”给的）写在第一个就是目标，和写页 id 一样。
+  if (!token && refs.length && parseIndicator(refs[0])?.kind === 'page') token = refs.shift();
   if (!token) {
-    // 自带页的引用：`<目标>#n` 和 `@frame:<页 id>/<帧 id>`（工作台“复制 @frame”给的就是它）。
+    // 自带页的引用：`<目标>#n`、`@frame:<页 id>/<帧 id>`（工作台“复制 @frame”给的）和 `@section:<页 id>/<节 id>`。
     const pageOf = (ref) => {
       const cross = parseCrossRef(toPageRef(ref));
       if (cross) return cross.pageId;
       const indicator = parseIndicator(ref);
-      return indicator && indicator.kind === 'frame' ? indicator.pageId : null;
+      return indicator && (indicator.kind === 'frame' || indicator.kind === 'section') ? indicator.pageId : null;
     };
     token = refs.map(pageOf).find(Boolean) || null;
   }

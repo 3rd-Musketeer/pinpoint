@@ -10,6 +10,7 @@ import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
 import fs from 'node:fs';
 
 import { articleOutline } from '../../src/server/lib/article-canvas.js';
+import { parseIndicator } from '../../src/shared/annotation-indicator.js';
 import { deriveArticleBoard } from '../../src/server/lib/article-board.js';
 import { findProject } from '../../src/server/lib/projects.js';
 
@@ -224,8 +225,12 @@ function outlineOf(context) {
   }
 }
 
-/** 一枚节引用（§2、字母、节 id）对上文章的哪一节；不是节引用返回 null。 */
-function articleSectionOf(token, outline) {
+/** 一枚节引用（§2、字母、节 id、本篇的 @section:<页 id>/<节 id>）对上文章的哪一节；不是节引用返回 null。 */
+function articleSectionOf(token, outline, pageId) {
+  const indicator = parseIndicator(token);
+  if (indicator && indicator.kind === 'section') {
+    return indicator.pageId === pageId ? outline.find((row) => row.id === indicator.sectionId) || null : null;
+  }
   const raw = String(token || '').trim();
   const n = sectionNumberOf(raw);
   if (n) return outline.find((row) => row.n === n) || { missing: true, n };
@@ -245,7 +250,7 @@ function prepareRefs(refs, context) {
   const errors = [];
   const empty = [];
   for (const ref of refs) {
-    const section = outline.length ? articleSectionOf(ref, outline) : null;
+    const section = outline.length ? articleSectionOf(ref, outline, context.pageId) : null;
     if (section && section.missing) {
       errors.push(`${ref}：这篇文章只有 ${outline.length} 节`);
       continue;
@@ -545,7 +550,7 @@ export function planArticleShots(refs, { context, outline, origin, dataRootDir, 
   const onCanvas = new Set((context.refs.outline || []).map((section) => section.id));
   for (const ref of refs) {
     const n = sectionNumberOf(ref);
-    const section = articleSectionOf(ref, outline);
+    const section = articleSectionOf(ref, outline, context.pageId);
     if (section && section.missing) {
       errors.push(`${ref}：这篇文章只有 ${outline.length} 节`);
       continue;
