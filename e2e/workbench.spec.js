@@ -1217,6 +1217,15 @@ test('?page= 指向不存在的页 → 显式面板；登记后「重试」原�
     return a.left >= side.right && a.right <= b.right + 1 && a.top >= b.top - 1 && a.bottom <= strip.top;
   })).toBe(true);
 
+  // 面板停着时来了一次 registry:update（CLI add / rename 都会发）：那个 id 还没登记，
+  // 面板重画、还是「页面不存在」，不能被拿坏 id 装板换成「加载失败」。等旧面板节点被换掉
+  // 就是广播处理完了。
+  await panel.evaluate((el) => { el.dataset.beforeReload = '1'; });
+  expect((await page.request.post('/registry/reload')).ok()).toBe(true);
+  await expect(page.locator('#wb-board-panel .wb-screen-err[data-before-reload]')).toHaveCount(0);
+  await expect(panel.locator('.wb-screen-err-title')).toHaveText('页面不存在');
+  await expect(panel.locator('[data-err-retry="page"]')).toBeVisible();
+
   // 登记表恢复后「重试」直接打开该页
   hidden = false;
   await panel.locator('[data-err-retry]').click();
