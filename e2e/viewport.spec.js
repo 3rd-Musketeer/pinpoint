@@ -309,3 +309,75 @@ test('标注跨视口：窗口里标的在手机里钉在缩过的同一元素�
   // 账本落在 e2e-dir 桶（与 /sites/ 直开同一个）。
   expect(fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json') && n !== '_seq.json').length).toBe(1); // _seq.json 是桶级计数器不是账本（M1）
 });
+
+// 2026-10-14 owner：「我在手机视图下标注，出来的是整个页面」。文档条目的标注归 iframe 里
+// 那个实例；父窗口（工作台）实例若还开着标注（画布页上开的没关就切过来，或焦点在工作台上
+// 按了 A），手机视口里舞台露在手机屏四周，它的命中落到整节（框 = 整个舞台）或 iframe 元素
+// （整份文档）。窗口视口里 iframe 盖满舞台，父实例碰不到东西，所以只在手机里出事。
+test('手机视口标注：父实例停在交互态、A 键驱动文档实例，标出来的是点中的元素不是整页', async ({ page }) => {
+  await test.step('画布页上开的标注不跟到文档条目上', async () => {
+    await page.goto('/index.html?page=e2e-ios');
+    await page.waitForFunction(() => window.workbench && window.pinpoint);
+    await expect(page.locator('#wb-board-panel .wb-lib-item').first()).toBeVisible();
+    await page.locator('#wbann-toggle').click();
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => window.pinpoint.getState().mode)).toBe(true);
+    await page.locator('.wb-page[data-vpage="e2e-dir"]').click();
+    await page.locator('#wbentry-next').click();
+    await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
+    await setViewport(page, 'phone');
+    await expect(page.frameLocator(DOC_FRAME).locator('#doc-title')).toHaveText('E2E dir-site doc');
+    await expect.poll(() => page.evaluate(() => window.pinpoint.getState().mode)).toBe(false);
+  });
+
+  const doc = page.frameLocator(DOC_FRAME);
+  await test.step('焦点在工作台上按 A：开的是文档实例（横条跟着亮），父实例不动', async () => {
+    await page.locator(`#wbviewport [data-viewport="phone"]`).focus();
+    await page.waitForFunction((sel) => {
+      const f = document.querySelector(sel);
+      return !!(f && f.contentWindow && f.contentWindow.pinpoint);
+    }, DOC_FRAME);
+    await page.keyboard.press('a');
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+    expect(await page.evaluate(() => window.pinpoint.getState().mode)).toBe(false);
+  });
+
+  await test.step('手机屏外的舞台不可标：没有整舞台的高亮框，点了也不开输入框', async () => {
+    const frameBox = await page.locator(DOC_FRAME).boundingBox();
+    const outside = { x: frameBox.x - 40, y: frameBox.y + frameBox.height / 2 };
+    await page.mouse.move(outside.x, outside.y);
+    await page.mouse.move(outside.x + 4, outside.y + 4);
+    await expect(page.locator('.ann-hover-ghost:not([hidden])')).toHaveCount(0);
+    await page.mouse.click(outside.x, outside.y);
+    await expect(page.locator('#ann-box')).toHaveCount(0);
+    expect(await page.evaluate(() => (window.pinpoint.pageMarks || []).length)).toBe(0);
+  });
+
+  await test.step('点中的元素：账本行的目标与 rect 就是它（iframe 自己的 CSS px），不是整页', async () => {
+    await annotateInFrame(page, DOC_FRAME, '#doc-target', 'phone pick');
+    await expect(page.locator('#wbann-count')).toHaveText('1');
+    const el = await doc.locator('#doc-target').evaluate((node) => {
+      const r = node.getBoundingClientRect();
+      return { x: r.left + scrollX, y: r.top + scrollY, w: r.width, h: r.height, docW: document.documentElement.clientWidth, docH: document.documentElement.scrollHeight };
+    });
+    expect(el.docW).toBe(402);
+    let row = null;
+    await expect.poll(() => {
+      const files = fs.existsSync(BUCKET) ? fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json') && n !== '_seq.json') : [];
+      const rows = files.flatMap((n) => JSON.parse(fs.readFileSync(path.join(BUCKET, n), 'utf8')).annotations || []);
+      row = rows.find((m) => /phone pick/.test(m.content || '')) || null;
+      return !!row;
+    }).toBe(true);
+    expect(row.type).toBe('element');
+    expect(row.targets[0].selector).toMatch(/#doc-target$|p:nth-of-type\(1\)$/);
+    expect(row.targets[0].text).toContain('A standalone document');
+    const [x, y, w, h] = row.rect;
+    expect(Math.abs(x - el.x)).toBeLessThan(2);
+    expect(Math.abs(y - el.y)).toBeLessThan(2);
+    expect(Math.abs(w - el.w)).toBeLessThan(2);
+    expect(Math.abs(h - el.h)).toBeLessThan(2);
+    expect(h).toBeLessThan(el.docH / 4);
+    // 工作台自己的账本里没有任何一条（整节 / 整个 iframe 那种）。
+    expect(await page.evaluate(() => (window.pinpoint.pageMarks || []).length)).toBe(0);
+  });
+});
