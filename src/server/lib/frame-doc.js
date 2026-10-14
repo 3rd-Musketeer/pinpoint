@@ -457,3 +457,142 @@ ${inject}
 </body>
 </html>`;
 }
+
+/* ---- 图：正文里的 <Figure>（docs/projects.md“图”） ---- */
+
+const FIGURE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+/** 页 id + 图 id → { target（文章的编译目标）, pageId, figureId }。图只属于文章；源文件不在就 404。 */
+export function resolveFigureTarget(pageId, figureId, options = {}) {
+  if (!ENTRY_OR_ARTICLE_ID_PATTERN.test(String(pageId || ''))) {
+    throw new FrameDocError('bad_request', `invalid page id "${pageId}"`);
+  }
+  if (!FIGURE_ID_RE.test(String(figureId || ''))) {
+    throw new FrameDocError('bad_request', `invalid figure id "${figureId}"`);
+  }
+  const page = resolvePage(options.registry || null, pageId);
+  if (!page || page.kind !== 'article') throw new FrameDocError('unknown_page', `not an article page: ${pageId}（图只在文章里）`);
+  const file = path.join(page.target.pageDir, 'figures', `${figureId}.jsx`);
+  if (!fs.existsSync(file)) throw new FrameDocError('unknown_screen', `figure not found: ${pageId}/figures/${figureId}.jsx`);
+  return { target: page.target, pageId, figureId };
+}
+
+const jsonInScript = (value) => JSON.stringify(value).replace(/</g, '\\u003c');
+
+/**
+ * 图页的启动脚本（内联 module）：把图的高度报给文章页（postMessage，文章页据此定 iframe 高度，
+ * 没有滚动条）；跑 sidecar 的 mount(root)；捕获运行错误，写在图的位置、报给文章页、
+ * 记到服务（POST /api/figure-error，只记这一版的第一次）。全部做完在 <html> 上打 data-figure-ready。
+ */
+function figureBootSource(info) {
+  return `
+const info = ${jsonInScript(info)};
+const root = document.querySelector('[data-pp-figure-root]');
+const post = (msg) => { try { if (parent !== window) parent.postMessage({ source: 'pp-figure', page: info.page, figure: info.id, ...msg }, location.origin); } catch {} };
+const size = () => post({ type: 'size', height: Math.ceil(root.getBoundingClientRect().height) });
+new ResizeObserver(size).observe(root);
+size();
+if (document.documentElement.dataset.figureError) post({ type: 'error', message: document.documentElement.dataset.figureError });
+const where = (stack) => {
+  const m = String(stack || '').match(new RegExp('figures/' + info.id + '\\\\.js(?:\\\\?[^:\\\\s]*)?:(\\\\d+)'));
+  return m ? Number(m[1]) : null;
+};
+let failed = false;
+const fail = (message, stack) => {
+  const line = where(stack);
+  const box = document.createElement('div');
+  box.className = 'fig-error';
+  box.setAttribute('role', 'alert');
+  box.innerHTML = '<b>这个图运行出错</b>';
+  box.append(String(message) + (line ? '（figures/' + info.id + '.js 第 ' + line + ' 行）' : ''));
+  root.prepend(box);
+  document.documentElement.dataset.figureError = String(message);
+  post({ type: 'error', message: String(message), line });
+  if (failed || !info.builtAt) return;
+  failed = true;
+  fetch('/api/figure-error', { method: 'POST', headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ page: info.page, figure: info.id, builtAt: info.builtAt, message: String(message), line }) }).catch(() => {});
+};
+addEventListener('error', (e) => fail(e.message || 'Error', (e.error && e.error.stack) || (e.filename + ':' + e.lineno)));
+addEventListener('unhandledrejection', (e) => fail((e.reason && e.reason.message) || String(e.reason), e.reason && e.reason.stack));
+if (info.script) {
+  try {
+    const mod = await import(info.script);
+    const mount = typeof mod.default === 'function' ? mod.default : mod.mount;
+    if (typeof mount !== 'function') fail('figures/' + info.id + '.js 没有导出 mount(root)（写 export default function mount(root) { … }）');
+    else await mount(root);
+  } catch (error) {
+    fail((error && error.message) || String(error), error && error.stack);
+  }
+}
+document.documentElement.dataset.figureReady = '1';
+size();
+post({ type: 'ready' });
+`;
+}
+
+function figureHead({ pageId, figureId, theme, links = [] }) {
+  return `<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<base href="/sites/${escHtml(pageId)}/">
+<title>${escHtml(figureId)}</title>
+<script type="importmap">{"imports":{"pinpoint/figure":"/kits/figure/figure.js"}}</script>
+<link rel="stylesheet" href="/kits/figure/figure.css">
+${links.join('\n')}
+<script>
+/* 深浅色跟着文章页：读外层 <html data-theme>，外层切换时跟着切；没有外层（单独打开、截图）时用 ?theme= 或系统设置。 */
+(function () {
+  var d = document.documentElement;
+  if (parent === window) return;
+  function sync() {
+    try {
+      var t = parent.document.documentElement.getAttribute('data-theme');
+      if (t === 'light' || t === 'dark') d.setAttribute('data-theme', t); else d.removeAttribute('data-theme');
+    } catch (e) {}
+  }
+  sync();
+  try { new parent.MutationObserver(sync).observe(parent.document.documentElement, { attributes: true, attributeFilter: ['data-theme'] }); } catch (e) {}
+})();
+</script>`;
+}
+
+const themeAttr = (theme) => (theme === 'light' || theme === 'dark' ? ` data-theme="${theme}"` : '');
+
+/**
+ * 图页（/api/frame?page=<页>&figure=<图>&embed=figure）：没有机壳、没有图注、不注入标注客户端。
+ * loaded 是 loadFigure 的结果（page-compiler.js）。编译失败时出同一个外壳，图的位置写错误原因
+ * （调用方回 500）。opts.theme：light / dark，单独打开时用（嵌在文章页里时跟外层走）。
+ */
+export function figurePageHtml(resolved, loaded, opts = {}) {
+  const { pageId, figureId } = resolved;
+  const record = loaded.record || {};
+  const version = (file) => {
+    const source = (record.sources || []).find((row) => row.file === file);
+    return source ? `?v=${Math.round(source.mtimeMs)}` : '';
+  };
+  const links = [];
+  if (loaded.ok && record.usesKit) links.push('<link rel="stylesheet" href="/kits/ios/ios-kit.css">');
+  if (loaded.ok && record.css) links.push(`<link rel="stylesheet" href="figures/${escHtml(figureId)}.css${version(`figures/${figureId}.css`)}">`);
+  const info = {
+    page: pageId,
+    id: figureId,
+    builtAt: loaded.ok ? record.builtAt || 0 : 0,
+    // ./ 开头：import() 里不带 ./ 的相对路径算裸说明符，会去查 import map。
+    script: loaded.ok && record.script ? `./figures/${figureId}.js${version(`figures/${figureId}.js`)}` : null,
+  };
+  const body = loaded.ok
+    ? loaded.html
+    : `<div class="fig-error" role="alert"><b>这个图编译失败</b>${escHtml(loaded.error || '')}</div>`;
+  return `<!doctype html>
+<html lang="zh-CN" data-annotate="off" data-pp-embed="figure"${themeAttr(opts.theme)}${loaded.ok ? '' : ` data-figure-error="${escHtml(loaded.error || '')}"`}>
+<head>
+${figureHead({ pageId, figureId, theme: opts.theme, links })}
+</head>
+<body>
+<div class="pp-figure" data-pp-figure-root="${escHtml(figureId)}">
+${body}
+</div>
+<script type="module">${figureBootSource(info).replace(/<\/script/gi, '<\\/script')}</script>
+</body>
+</html>`;
+}
