@@ -193,12 +193,12 @@ export function createSitesHandler(options = {}) {
     const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
     const screens = (board.sections || []).flatMap((section) => section.screens || []);
     // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
-    // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧住在里面时开放；帧本身注入标注客户端，
-    // 其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
+    // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧真的住在里面时开放（帧文件解析得到；
+    // 缺文件的 { id, src } 帧不算）；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
     const src = frameSrcFromUrlPath(target, rel);
     if (src !== null) {
       const { source, path: relPath } = parseFrameSrc(src);
-      const rootScreens = screens.filter((screen) => screen.src);
+      const rootScreens = screens.filter((screen) => screen.src && articleHtmlFrameFile(target, screen));
       const open = rootScreens.some((screen) => {
         const used = frameSrcFromUrlPath(target, screen.src);
         return used !== null && parseFrameSrc(used).source === source;

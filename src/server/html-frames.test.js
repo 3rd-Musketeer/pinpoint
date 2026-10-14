@@ -398,6 +398,23 @@ test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开
   assert.deepEqual(htmlRows.map((row) => [row.code, row.frame]), [['html_asset_missing', 'long']]);
 });
 
+test('服务：缺文件的 { id, src } 帧不打开它的目录（source 与 project 根）', async (t) => {
+  const fx = withSources(t, { skill: '../skill-repo/skill' });
+  write(path.join(fx.article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="pages" title="页面">', '',
+    '<Canvas frames={["long", { id: "ghost", src: "skill:missing.html" }, { id: "gone", src: "shared/nope.html" }]} />', '',
+    '</Section>', '',
+  ].join('\n'));
+  const handler = createSitesHandler({ registry: fx.registry });
+  for (const bad of ['@source/skill/page.css', '@source/skill/preview.html', '@root/tokens.css', '@root/shared/cat.html']) {
+    assert.equal((await get(handler, `/sites/${fx.pageId}/${bad}`)).statusCode, 404, bad);
+  }
+  // 补上文件，目录就开了。
+  write(path.join(fx.skill, 'missing.html'), PAGE('补上'));
+  assert.equal((await get(handler, `/sites/${fx.pageId}/@source/skill/page.css`)).statusCode, 200);
+});
+
 test('sources：没登记的名字、根外路径是正文错误；值写坏、目录不在是 project 错误，ppnt check 指 project.json', async (t) => {
   const fx = withSources(t, { skill: '../skill-repo/skill', gone: '../nowhere', 'Bad Name': '.', root: '.', num: 3 });
   write(path.join(fx.article, 'index.mdx'), [
