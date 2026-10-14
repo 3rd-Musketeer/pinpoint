@@ -1,0 +1,2 @@
+body { margin: 0; padding: 20px; font: 15px/1.5 system-ui, sans-serif; background: rgb(250, 247, 240); }
+.cat-chip { display: inline-flex; gap: 6px; align-items: center; padding: 4px 10px; border: 1px solid #ccc; border-radius: 8px; }

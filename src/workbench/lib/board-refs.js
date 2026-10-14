@@ -13,7 +13,8 @@ export { isSectionLetter, sectionLetter };
 
 /**
  * board.sections → { outline, bySection, byFrame, tabs }：
- * - outline: [{ id, title, letter, tabId?, frames: [{ id, title, ref, tabId? }] }]（引用序，大纲/图注直接消费）；
+ * - outline: [{ id, title, letter, tabId?, frames: [{ id, title, ref, tabId?, doc? }] }]（引用序，大纲/图注直接消费；
+ *   doc 只出现在文章画布上，标出文档帧）；
  * - bySection: sectionId → letter；
  * - byFrame: sectionId + '\0' + screenId → ref（同一 screen 重复挂载取首次出现）；
  * - tabs?: [{ id, title }]（ADR 0041 页 tab；存量 board 没有这个键，结果形状同从前）。
@@ -31,10 +32,13 @@ export function boardRefs(rawBoard) {
   var sections = (board && board.sections) || [];
   sections.forEach(function (sec) {
     if (!sec || sec.id === '_empty') return;
-    // doc 帧不上画布、不占编号（画布视图的口径，各消费端直接喂 board 即可）。这里自己过滤，服务端拿
+    // 存量页：doc 帧不上画布、不占编号（画布视图的口径，各消费端直接喂 board 即可）。这里自己过滤，服务端拿
     // board.json 原文直接调也能和画布对上：原文的 shell 可能只写在 section 上。
+    // 文章画布（节带正文字母）：编号跟正文走，第 n 节的第 k 帧就是 <字母>k，文档帧（HTML 帧）也占号，
+    // 带 doc: true，画布上的消费端（大纲的帧树）据此跳过它们（docs/projects.md“HTML 帧”）。
+    var article = isSectionLetter(sec.letter);
     var screens = (sec.screens || []).map(screenOf).filter(function (sc) {
-      return legacyShell(sc.shell || sec.shell) !== 'doc';
+      return article || legacyShell(sc.shell || sec.shell) !== 'doc';
     });
     if (!screens.length) return;
     var tabKey = sec.tabId || '';
@@ -49,6 +53,7 @@ export function boardRefs(rawBoard) {
       var key = sec.id + '\0' + sc.id;
       if (!byFrame[key]) byFrame[key] = ref;
       var frame = { id: sc.id, title: sc.title || sc.id, ref: ref };
+      if (article && legacyShell(sc.shell || sec.shell) === 'doc') frame.doc = true;
       if (tabKey) frame.tabId = tabKey;
       return frame;
     });

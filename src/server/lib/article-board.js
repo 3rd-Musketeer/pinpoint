@@ -15,8 +15,8 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas } from './article-canvas.js';
-import { articlePageId } from '../../shared/project-ids.js';
+import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas, resolveRootFrame } from './article-canvas.js';
+import { PROJECT_ROOT_SEGMENT, articlePageId, rootFrameSrc } from '../../shared/project-ids.js';
 import { isArticleError, isFigureError } from '../../shared/project-errors.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
@@ -45,7 +45,7 @@ function isFile(file) {
 export function deriveArticleBoard(target) {
   const text = fs.readFileSync(target.articleFile, 'utf8');
   const fm = parseFrontmatter(text);
-  const parsed = parseArticleCanvas(text, frameFileReaders(target.pageDir));
+  const parsed = parseArticleCanvas(text, frameFileReaders(target.pageDir, { projectRoot: target.projectRoot }));
   const assets = {};
   if (isFile(path.join(target.pageDir, ARTICLE_ASSET_FILES.css))) assets.css = [ARTICLE_ASSET_FILES.css];
   if (isFile(path.join(target.pageDir, ARTICLE_ASSET_FILES.js))) assets.js = [ARTICLE_ASSET_FILES.js];
@@ -61,7 +61,12 @@ export function deriveArticleBoard(target) {
       letter: section.articleLetter,
       ...(section.shell ? { shell: section.shell } : {}),
       // 帧文件的 `export const shell = "…"` 落在这一屏上，盖过节的 shell（board 的 shell 可下放到单屏）。
-      screens: section.frames.map((id) => (section.frameShells && section.frameShells[id] ? { id, shell: section.frameShells[id] } : { id })),
+      // project 根下的 HTML 帧带 src（/sites/<页 id>/@root/<路径>）：工作台、/api/frame 和截图都按它打开这一帧。
+      screens: section.frames.map((id) => ({
+        id,
+        ...(section.frameShells && section.frameShells[id] ? { shell: section.frameShells[id] } : {}),
+        ...(section.frameSrc && section.frameSrc[id] ? { src: rootFrameSrc(target.entryId, section.frameSrc[id]) } : {}),
+      })),
     })),
   };
   if (assets.css || assets.js) board.assets = assets;
@@ -103,8 +108,8 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   if (!target) return { ...base, errors: own.length ? own : [{ code: 'article_missing', message: `文章不存在：articles/${articleId}/index.mdx` }] };
   const derived = deriveArticleBoard(target);
   const refs = boardRefs(derived.board);
-  const missing = new Set(derived.sections.flatMap((section) => section.frames)
-    .filter((id) => !isFile(path.join(target.pageDir, `${id}.jsx`))));
+  const missingIds = new Set(derived.errors.filter((error) => error.code === 'frame_missing' && error.frame).map((error) => error.frame));
+  const missing = new Set(derived.sections.flatMap((section) => section.frames).filter((id) => missingIds.has(id)));
   const sections = derived.sections.map((section) => ({
     id: section.id,
     title: section.title,
@@ -114,6 +119,7 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
       id,
       ref: refs.byFrame[`${section.id}\0${id}`] || '',
       ...(section.frameShells && section.frameShells[id] ? { shell: section.frameShells[id] } : {}),
+      ...(section.frameSrc && section.frameSrc[id] ? { src: section.frameSrc[id] } : {}),
       ...(missing.has(id) ? { missing: true } : {}),
     })),
   }));
@@ -150,6 +156,42 @@ export function articlePageRows(registry) {
       url: `/${target.projectId}/${target.articleId}/`,
     };
   });
+}
+
+/**
+ * 文章画布上一帧的 HTML 源文件（绝对路径），不是 HTML 帧返回 null（docs/projects.md“HTML 帧”）：
+ * - screen 带 src（`sites/<页 id>/@root/<路径>`）：project 根下的那个文件，越出根或不在盘上时 null；
+ * - 否则本篇目录下的 `<帧 id>.html`，同名的 `.jsx` 在时算 JSX 帧（编译器同一个顺序）。
+ * screen 是派生 board 里的屏（{ id, shell?, src? }）。
+ */
+export function articleHtmlFrameFile(target, screen) {
+  if (!target || target.kind !== 'article' || !screen) return null;
+  if (typeof screen.src === 'string' && screen.src) {
+    const rel = rootRelFromUrlPath(target, screen.src);
+    if (rel === null) return null;
+    const found = resolveRootFrame(target.projectRoot, rel);
+    return found.file || null;
+  }
+  if (isFile(path.join(target.pageDir, `${screen.id}.jsx`))) return null;
+  const file = path.join(target.pageDir, `${screen.id}.html`);
+  return isFile(file) ? file : null;
+}
+
+/**
+ * `/sites/<页 id>/@root/<路径>`（开头的 `/` 可有可无）或 `/sites/<页 id>/` 之后的 rel（`@root/<路径>`）
+ * → 解码后相对 project 根的路径；不是这个形状返回 null。
+ */
+export function rootRelFromUrlPath(target, urlPath) {
+  let rest = String(urlPath || '').replace(/^\//, '');
+  const base = target.urlBase.replace(/^\//, '');
+  if (rest.startsWith(base)) rest = rest.slice(base.length);
+  const prefix = `${PROJECT_ROOT_SEGMENT}/`;
+  if (!rest.startsWith(prefix)) return null;
+  try {
+    return rest.slice(prefix.length).split('/').map(decodeURIComponent).join('/');
+  } catch {
+    return null;
+  }
 }
 
 /** 文章组件的解析序：本篇 components/ > project components/ > pinpoint/kit（common-m1.md §1）。 */

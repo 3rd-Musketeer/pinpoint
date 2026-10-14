@@ -25,6 +25,7 @@ import { COMP_NAME_PATTERN, entryBoardMode, legacyShell } from '../../workbench/
 import { ARTICLE_ASSET_FILES, deriveArticleBoard } from './article-board.js';
 import { resolveArticleTarget } from './page-resolve.js';
 import { readFrameShell } from './article-canvas.js';
+import { collectHtmlFrameAssets } from './html-frame-assets.js';
 import { compilePage, readBuildJson, readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { manifestPageIds } from './page-manifest.js';
 import {
@@ -238,7 +239,7 @@ function isKitFile(abs) {
 }
 
 /**
- * 迁移计划（只读）。拦截问题（.html 帧、缺源文件、页外依赖、id 撞…）进 problems，
+ * 迁移计划（只读）。拦截问题（缺源文件、页外依赖、HTML 帧引用页目录外的文件、id 撞…）进 problems，
  * 有一条 CLI 就不写；警告进 warnings，照写。参数错误、目标已存在等直接抛 MigrateError。
  */
 export async function planPageMigration({ pageId, projectRoot, articleId = null, registry = null, root = REPO_ROOT, cwd = process.cwd() }) {
@@ -332,6 +333,8 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
 
   const sections = [];
   const seenFrames = new Map();
+  const htmlAssets = new Set(); // HTML 帧相对引用的文件（相对页目录），按原路径复制
+  const htmlShell = {}; // 节 id → 这一节 HTML 帧在旧页上的壳（不是 doc 时）
   const shellAppends = new Map(); // 帧 rel → shell（复制时在文件末尾补一行 export const shell）
   let titled = 0;
   let columnSections = 0;
@@ -400,10 +403,33 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
         addFile(`${id}.jsx`, { kind: 'comp 帧', content: compFrameSource({ id, comp: screen.comp, props, importPath, named, shell: frameShell }) });
       } else {
         const jsx = `${id}.jsx`;
+        if (!isFile(path.join(pageDir, jsx)) && isFile(path.join(pageDir, `${id}.html`))) {
+          // HTML 帧（docs/projects.md“HTML 帧”）：同名复制进文章目录；它相对引用的文件按原相对路径一起复制，
+          // 引用不用改。引用越出页目录的拦下，引用的文件不在盘上的记一条注意。
+          const html = `${id}.html`;
+          frame.html = true;
+          queueSource(html, 'frame');
+          const assets = collectHtmlFrameAssets(path.join(pageDir, html), { root: pageDir });
+          for (const row of assets.outside) {
+            problems.push(`帧 ${id} 引用了页目录外的文件 ${JSON.stringify(row.url)}（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行 → ${row.file}）：先把它挪进页目录`);
+          }
+          for (const row of assets.missing) {
+            warnings.push(`帧 ${id} 引用的 ${JSON.stringify(row.url)} 不在盘上（${toPosix(path.relative(pageDir, row.from))} 第 ${row.line} 行）：照原样复制，引用还是断的`);
+          }
+          for (const row of assets.files) htmlAssets.add(toPosix(path.relative(pageDir, row.file)));
+          // 文章里 HTML 帧没写 <Canvas shell> 时是 doc；旧页按别的壳显示时，把这一节的 shell 写明。
+          if (shell !== 'doc') {
+            if (htmlShell[section.id] && htmlShell[section.id] !== shell) {
+              problems.push(`section ${section.id} 里的 HTML 帧壳不一样（${htmlShell[section.id]} 与 ${id} 的 ${shell}）：HTML 帧不能单帧写 shell，先把它们分到不同的 section`);
+            }
+            htmlShell[section.id] = shell;
+            out.canvasShell = shell;
+          }
+          out.frames.push(frame);
+          continue;
+        }
         if (!isFile(path.join(pageDir, jsx))) {
-          problems.push(isFile(path.join(pageDir, `${id}.html`))
-            ? `帧 ${id} 是 .html：文章只认 .jsx 帧，先把它改写成 ${jsx} 再迁`
-            : `帧 ${id} 没有源文件（页目录里既没有 ${jsx} 也没有 ${id}.html）`);
+          problems.push(`帧 ${id} 没有源文件（页目录里既没有 ${jsx} 也没有 ${id}.html）`);
           continue;
         }
         queueSource(jsx, 'frame');
@@ -429,6 +455,8 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
       }
       out.frames.push(frame);
     }
+    // 全是 HTML 帧的 doc 节：HTML 帧缺省就是 doc，<Canvas> 不必写 shell。
+    if (out.canvasShell === 'doc' && out.frames.length && out.frames.every((frame) => frame.html)) delete out.canvasShell;
     if (!out.frames.length) warnings.push(`section ${section.id} 没有可迁的帧：正文里留这一节，不放画布`);
     sections.push(out);
   }
@@ -458,6 +486,9 @@ export async function planPageMigration({ pageId, projectRoot, articleId = null,
       }
     }
     if (jsList.length > 1) warnings.push(`board.assets.js 有 ${jsList.length} 个文件：原样复制，article.js 依次 import 它们`);
+  }
+  for (const rel of htmlAssets) {
+    if (!sourceFiles.has(rel)) queueSource(rel, '资源');
   }
   for (const [rel] of sourceFiles) {
     if (!relMap.has(rel)) relMap.set(rel, rel);

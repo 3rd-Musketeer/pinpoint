@@ -11,7 +11,8 @@ import { parseReqUrl } from './lib/req-url.js';
  * fragment 屏 → 完整自包含 HTML（机壳 + ios-kit + frame-boot + annotate 注入，
  * 注入带 __pinpointFrame —— frame 内标注与画布同账本：storage-unify 起帧账本
  * 恒为所属页桶的 @canvas，不再跟顶层工作台 pathname 走，ledger 参数退役）；
- * doc 壳屏 → 302 到该屏自己的 URL（同 pathname = 同账本，透传自然成立）。
+ * doc 壳屏 → 302 到该屏自己的 URL（同 pathname = 同账本，透传自然成立）；annotate=off 与 embed=card
+ * 时地址带上 annotate=off（文章的 HTML 帧在卡片和浮层里就是这样打开的）。
  * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, resolveFrameTarget } from './lib/frame-doc.js';
@@ -137,8 +138,10 @@ export default function frameApi(options = {}) {
         try {
           const target = resolveFrameTarget(pageId, screenId, { registry });
           if (target.kind === 'doc') {
+            // 文档帧跳到它自己的地址；卡片、浮层（embed=card）和 annotate=off 带上 annotate=off，文档里不出标注面。
+            const quiet = (!annotate || embed) && !/^https?:\/\//i.test(target.url);
             res.statusCode = 302;
-            res.setHeader('Location', target.url);
+            res.setHeader('Location', quiet ? `${target.url}${target.url.includes('?') ? '&' : '?'}annotate=off` : target.url);
             res.end();
             return;
           }

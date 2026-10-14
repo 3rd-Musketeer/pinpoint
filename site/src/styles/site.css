@@ -123,6 +123,12 @@ th { background:var(--soft); font-weight:600; }
 .cc-box.natural { border-radius:12px; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.08); }
 .cc-box iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; pointer-events:none; background:#fff; }
 .cc-box.natural iframe { background:transparent; }
+.cc-box.doc { border-radius:12px; background:#fff; box-shadow:0 1px 6px rgba(0,0,0,.08); }
+/* 页面宽度切换（卡片头与浮层头）：槽式两段，灰槽 + 白面选中。 */
+.pp-seg { display:inline-flex; gap:2px; padding:2px; border-radius:999px; background:var(--soft-2); }
+.pp-seg button { appearance:none; border:0; background:transparent; color:var(--muted); font:inherit; font-size:12.5px; font-weight:500; padding:3px 10px; border-radius:999px; cursor:pointer; }
+.pp-seg button[aria-pressed="true"] { background:var(--bg); color:var(--ink); box-shadow:0 0 0 1px var(--hair); }
+.pp-seg button:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
 .cc-box .ph { position:absolute; inset:0; display:grid; place-items:center; padding:12px; text-align:center; color:var(--muted); font-size:12px; background:var(--soft-2); }
 .cc-box.missing { background:var(--soft); box-shadow:none; border:1.5px dashed var(--err); }
 .cc-box.missing .ph { background:transparent; color:var(--err); align-content:center; }
@@ -167,7 +173,8 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-shell.phone { border-radius:var(--ov-r); }
 .ov-box.phone { background:var(--soft); }
 .ov-box.phone iframe { background:var(--soft); }
-.ov-box.natural { background:#fff; }
+.ov-box.natural, .ov-box.doc { background:#fff; }
+.ov-shell.doc { box-shadow:0 1px 8px rgba(0,0,0,.10); }
 .ov-box iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; background:transparent;
                  /* 帧页不声明 color-scheme（normal）；iframe 元素若继承站点的 light / dark，两边不一致，浏览器就给帧铺不透明底色。 */
                  color-scheme:normal; }

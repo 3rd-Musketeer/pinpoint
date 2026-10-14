@@ -76,6 +76,17 @@ test('boardRefs: doc 帧不占编号，board.json 原文（shell 只写在 secti
   assert.deepEqual(byFrame, { 'flow\0a': 'A1', 'flow\0b': 'A2' });
 });
 
+test('boardRefs: 文章画布（节带正文字母）上文档帧也占号，带 doc 标记', () => {
+  const refs = boardRefs({
+    sections: [
+      { id: 'pages', letter: 'B', screens: [{ id: 'long', shell: 'doc' }, { id: 'cat', shell: 'doc', src: 'sites/p/@root/x.html' }, { id: 'jsx' }] },
+      { id: 'docs', letter: 'C', shell: 'doc', screens: [{ id: 'spec' }] },
+    ],
+  });
+  assert.deepEqual(refs.byFrame, { 'pages\0long': 'B1', 'pages\0cat': 'B2', 'pages\0jsx': 'B3', 'docs\0spec': 'C1' });
+  assert.deepEqual(refs.outline.map((s) => s.frames.map((f) => [f.ref, !!f.doc])), [[['B1', true], ['B2', true], ['B3', false]], [['C1', true]]]);
+});
+
 test('refLikeFrameIds: 只挑形如编号的帧 id，按 board 序去重', () => {
   const ids = refLikeFrameIds({
     sections: [

@@ -3,7 +3,7 @@
 // 地址：#overlay=<节 id>[&frame=<帧 id>]。点帧时 pushState 一条，后退就关；直接带这个 hash 打开页面也会打开浮层，
 // 这时关闭只把 hash 换掉（replaceState），不后退离开文章。换节用 replaceState，不多压历史。
 import { shellBox } from './canvas-card.js';
-import { failNote, measureStage, placeFrame } from './canvas-card-client.js';
+import { docFrameFailed, failNote, measureStage, placeFrame, setCardDocWidth } from './canvas-card-client.js';
 import { installLayerKeys, layers } from './layers.js';
 import { naturalBox, neighborSection, overlayHash, overlayScale, parseOverlayHash } from './canvas-overlay.js';
 
@@ -19,7 +19,7 @@ export function initCanvasOverlay() {
   const el = {
     num: $('[data-ov-num]'), title: $('[data-ov-title]'), meta: $('[data-ov-meta]'),
     prev: $('[data-ov-prev]'), next: $('[data-ov-next]'), canvas: $('[data-ov-canvas]'), close: $('[data-ov-close]'),
-    strip: $('[data-ov-strip]'),
+    strip: $('[data-ov-strip]'), width: $('[data-ov-width]'),
   };
   const ids = cards.map((c) => c.dataset.ppSection);
   const cardOf = (id) => cards.find((c) => c.dataset.ppSection === id) || null;
@@ -46,6 +46,17 @@ export function initCanvasOverlay() {
     state.scale = scale;
     for (const f of state.frames) {
       f.fig.style.setProperty('--ov-w', `${Math.round((f.m ? f.m.width : f.natural.width) * scale)}px`);
+      if (f.natural.height === null) {
+        // 文档帧（HTML 帧）：页面宽度不变，盒子占满可用高度，iframe 的视口高 = 可用高 / 缩放，页面在 iframe 里滚动。
+        f.box.style.width = `${Math.round(f.natural.width * scale)}px`;
+        f.box.style.height = `${Math.round(availHeight)}px`;
+        if (f.iframe) {
+          f.iframe.style.width = `${f.natural.width}px`;
+          f.iframe.style.height = `${Math.round(availHeight / scale)}px`;
+          f.iframe.style.transform = `scale(${scale})`;
+        }
+        continue;
+      }
       if (f.m && f.iframe) {
         placeFrame(f.iframe, f.box, f.m, scale);
         if (f.m.radius) f.fig.style.setProperty('--ov-r', `${(f.m.radius * scale).toFixed(1)}px`);
@@ -69,7 +80,31 @@ export function initCanvasOverlay() {
     s.scrollLeft = Math.max(0, fig.offsetLeft - (s.clientWidth - fig.offsetWidth) / 2);
   }
 
+  // 焦点在帧里时按键进不了本文档：Esc 和左右键转发过来（编辑框里的左右键留给帧）。
+  function forwardKeys(iframe) {
+    try {
+      iframe.contentWindow.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' || ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest?.(EDITABLE))) onKey(e);
+      });
+    } catch { /* cross-origin */ }
+  }
+
+  // 文档帧没有机壳可量：只看有没有打开（JSON 错误页算失败），按键照样转发。
+  function watchDocFrame(f) {
+    const { iframe, box } = f;
+    iframe.addEventListener('load', () => {
+      const failed = docFrameFailed(iframe);
+      if (failed) failNote(box, failed.detail);
+      else box.dataset.fitted = '1';
+      forwardKeys(iframe);
+    });
+  }
+
   function watchFrame(f) {
+    if (f.natural.height === null) {
+      watchDocFrame(f);
+      return;
+    }
     const { iframe, box } = f;
     let ro = null;
     const measure = () => {
@@ -93,12 +128,7 @@ export function initCanvasOverlay() {
     };
     const onLoad = () => {
       measure(); setTimeout(measure, 300); setTimeout(measure, 1200);
-      // 焦点在帧里时按键进不了本文档：Esc 和左右键转发过来（编辑框里的左右键留给帧）。
-      try {
-        iframe.contentWindow.addEventListener('keydown', (e) => {
-          if (e.key === 'Escape' || ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && !e.target.closest?.(EDITABLE))) onKey(e);
-        });
-      } catch { /* cross-origin */ }
+      forwardKeys(iframe);
     };
     iframe.addEventListener('load', onLoad);
   }
@@ -126,6 +156,10 @@ export function initCanvasOverlay() {
     el.prev.title = el.prev.getAttribute('aria-label');
     el.next.title = el.next.getAttribute('aria-label');
 
+    // 页面宽度切换：这一节有文档帧才出现，状态就是卡片的 data-doc-width。
+    el.width.hidden = !d.docWidth;
+    syncWidthButtons(d.docWidth);
+
     el.strip.replaceChildren();
     state.frames = framesOf(card).map((info) => {
       const fig = document.createElement('figure');
@@ -138,7 +172,7 @@ export function initCanvasOverlay() {
       const id = document.createElement('b');
       id.textContent = info.id;
       cap.append(id);
-      const sb = shellBox(info.shell);
+      const sb = shellBox(info.shell, card.dataset.docWidth);
       const box = document.createElement('div');
       box.className = `ov-box ${sb.mode}${info.missing ? ' missing' : ''}`;
       // 外壳管阴影和高亮，盒子管裁切（手机帧用 clip-path，会把盒子自己的阴影也裁掉）。
@@ -155,7 +189,8 @@ export function initCanvasOverlay() {
       } else {
         const iframe = document.createElement('iframe');
         iframe.title = info.title;
-        iframe.setAttribute('scrolling', 'no');
+        // 文档帧在浮层里整页可滚；机壳帧量好尺寸，不滚。
+        if (sb.mode !== 'doc') iframe.setAttribute('scrolling', 'no');
         iframe.src = info.src;
         box.append(iframe);
         f.iframe = iframe;
@@ -174,6 +209,24 @@ export function initCanvasOverlay() {
       const t = setTimeout(() => focus.fig.classList.remove('flash'), FLASH_MS);
       state.cleanups.push(() => clearTimeout(t));
     }
+  }
+
+  function syncWidthButtons(key) {
+    for (const button of el.width.querySelectorAll('[data-width]')) {
+      button.setAttribute('aria-pressed', button.dataset.width === key ? 'true' : 'false');
+    }
+  }
+
+  // 换宽度：只改文档帧的宽度、重排，不重载 iframe（页面里的滚动位置和交互状态留着）。
+  function applyDocWidth(key) {
+    if (!state) return;
+    syncWidthButtons(key);
+    for (const f of state.frames) {
+      if (f.natural.height !== null || f.info.shell !== 'doc') continue;
+      f.natural = naturalBox(shellBox('doc', key));
+    }
+    layout();
+    if (state.focusFig) centerOn(state.focusFig);
   }
 
   // ---- 打开 / 关闭 ----
@@ -278,6 +331,15 @@ export function initCanvasOverlay() {
   dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
   el.close.addEventListener('click', () => close());
   el.prev.addEventListener('click', () => go(-1));
+  el.width.addEventListener('click', (e) => {
+    const button = e.target.closest?.('[data-width]');
+    const card = state && cardOf(state.section);
+    if (button && card) setCardDocWidth(card, button.dataset.width);
+  });
+  // 卡片的宽度改了（浮层头的切换，或卡片头的切换）：浮层开着这一节时跟着换。
+  document.addEventListener('pp:doc-width', (e) => {
+    if (state && e.target === cardOf(state.section)) applyDocWidth(e.detail.width);
+  });
   el.next.addEventListener('click', () => go(1));
   const userScroll = () => { if (state) state.userScrolled = true; };
   for (const type of ['wheel', 'touchstart', 'pointerdown']) el.strip.addEventListener(type, userScroll, { passive: true });
@@ -304,5 +366,5 @@ export function initCanvasOverlay() {
   if (initial) open(initial.section, { frame: initial.frame, pushed: false });
 
   // e2e / 调试用的只读状态。
-  window.pinpointOverlay = { state: () => (state ? { section: state.section, scale: state.scale, frames: state.frames.map((f) => f.info.id) } : null) };
+  window.pinpointOverlay = { state: () => (state ? { section: state.section, scale: state.scale, frames: state.frames.map((f) => f.info.id), docWidth: cardOf(state.section)?.dataset.docWidth || '' } : null) };
 }

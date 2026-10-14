@@ -5,11 +5,12 @@
 // 卡片根节点用 data-pp-section（不用 data-section：那是 Section 的，查 [data-section] 每节只该命中一个）。
 // 不信本组件自己的 props：section 和 num（节号）由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
 // 文章只显示数字：卡片头是节号 + 节标题，图注只有帧 id；画布字母（B、B1）留给工作台、ppnt 和标注，不进文章页。
+// 文档帧（HTML 帧，shell doc）按 pinpoint 定的宽度显示（手机 390 / 桌面 1280，卡片头切换，缺省手机），卡片只露第一屏。
 // 卡片不可交互：iframe tabindex -1、pointer-events none。点帧打开画布浮层（CanvasOverlay.astro，地址 #overlay=<节>&frame=<帧>），
 // 浮层里的帧可交互；“打开画布”是顶层跳转到画布并定位到这一节。浮层读的是这里的 data-*。
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
 // 缺源文件的帧照占位置，显示占位格“缺帧 <id>”，和画布上那一格的错误面板对应。
-import { cardModel } from '../lib/canvas-card.js';
+import { DOC_WIDTHS, cardModel } from '../lib/canvas-card.js';
 import { overlayHash } from '../lib/canvas-overlay.js';
 
 interface Props { section?: string; num?: string; frames?: unknown; shell?: string }
@@ -30,6 +31,7 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
   data-meta={m.meta || undefined}
   data-href={m.href || undefined}
   data-shell={m.shell || undefined}
+  data-doc-width={m.docWidth || undefined}
   data-frames={m.frames.map((f) => f.id).join(' ')}
 >
   <div class="cc-head">
@@ -39,6 +41,13 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
     {m.frames.length > 0 && <span class="meta">{m.meta}</span>}
     <span class="sp"></span>
     <span class="cc-badge" data-pp-badge hidden></span>
+    {m.docWidth && (
+      <span class="pp-seg" role="group" aria-label="页面宽度" data-pp-width>
+        {Object.entries(DOC_WIDTHS).map(([key, view]) => (
+          <button type="button" data-width={key} aria-pressed={key === m.docWidth ? 'true' : 'false'} title={`按${view.label}宽度看（${view.width} px）`}>{view.label}</button>
+        ))}
+      </span>
+    )}
     {m.href && <a class="btn" data-pp-open href={m.href} target="_top">打开画布 →</a>}
   </div>
   {m.errors.length > 0 && (

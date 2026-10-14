@@ -25,6 +25,7 @@ import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
 import { articleSectionSpans } from './article-canvas.js';
+import { articleHtmlFrameFile } from './article-board.js';
 import { resolvePage } from './page-resolve.js';
 import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
 import { loadRegistry } from './registry.js';
@@ -97,6 +98,45 @@ export function collectPageRows({ root, pageId, skipLedgers = [] }) {
   return { frameRows, docRows };
 }
 
+/**
+ * 文章画布上文档帧（shell doc，多半是 HTML 帧）的表面路径 → 帧 id。路径就是帧在服务上的地址（解码后的
+ * pathname）：没有 src 的是 `<urlBase><帧 id>.html`，有 src 的是 `/<src>`（project 根下的 HTML 帧）。
+ * 文档帧上的标注按路径记在各自的账本里（和存量页的文档一样，锚点是元素选择器加文字），读的时候靠它对回帧。
+ */
+export function docFramePaths(board, urlBase) {
+  const out = new Map();
+  for (const section of (board && board.sections) || []) {
+    for (const raw of section.screens || []) {
+      const screen = typeof raw === 'string' ? { id: raw } : raw;
+      if (!screen || (screen.shell || section.shell) !== 'doc') continue;
+      let p = screen.src ? `/${String(screen.src).replace(/^\//, '')}` : `${urlBase}${screen.id}.html`;
+      try { p = decodeURI(p); } catch { /* 保持原样 */ }
+      if (!out.has(p)) out.set(p, screen.id);
+    }
+  }
+  return out;
+}
+
+/** 文章画布上一个文档帧的地址（`/sites/…`，未编码前的路径）；不是文档帧返回 null。 */
+export function docFrameUrl(board, urlBase, screenId) {
+  for (const [p, id] of docFramePaths(board, urlBase)) if (id === screenId) return p;
+  return null;
+}
+
+/** 文章：文档帧账本里的行挪进帧行，带上 screenId（ppnt comments 按帧分组、给编号；mark 仍写回原账本）。 */
+function attachDocFrameRows({ frameRows, docRows }, board, urlBase) {
+  const paths = docFramePaths(board, urlBase);
+  if (!paths.size) return { frameRows, docRows };
+  const moved = [];
+  const rest = [];
+  for (const row of docRows) {
+    const screenId = paths.get(row.__docPath);
+    if (screenId && row.type !== 'prose') moved.push({ ...row, screenId, __docFrame: true });
+    else rest.push(row);
+  }
+  return { frameRows: [...frameRows, ...moved], docRows: rest };
+}
+
 /** 孤儿账本 + 本页标注行的装配（编译页与 doc 页共用）：孤儿从帧/文档行里
     摘出去，单独挂在上下文上，清理只经 prune。 */
 /** 一篇 article 的页（`<project>_<article>`）：上下文带上文章的源文件与地址，正文评论的
@@ -124,11 +164,14 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
     isManifestPage,
     previewsRoot: path.join(repoRoot, 'content', 'previews'),
   });
-  const { frameRows, docRows } = collectPageRows({
+  const collected = collectPageRows({
     root: dataRootValue,
     pageId,
     skipLedgers: orphanLedgers.map((name) => name.replace(/\.json$/, '')),
   });
+  const { frameRows, docRows } = target && target.kind === 'article' && board
+    ? attachDocFrameRows(collected, board, target.urlBase)
+    : collected;
   const orphanRows = readBucketLedgers(path.join(dataRootValue, pageId))
     .filter((ledger) => orphanLedgers.includes(ledger.name))
     .flatMap((ledger) => (Array.isArray(ledger.doc.annotations) ? ledger.doc.annotations : [])
@@ -427,16 +470,36 @@ export function excerptForRow(row, context) {
       }
     }
   } else {
-    // 存量 HTML：outerHTML 摘自 dist，行号指 dist 文件。
-    const distRel = `dist/${target.entryId}/${screenId}.html`;
-    segments.push({ file: distRel, lines: foldHtmlElement(node, html, lineOfNode(node, html)) });
-    file = distRel;
+    // 存量 HTML：outerHTML 摘自 dist，行号指 dist 文件。文章的 HTML 帧原样进 dist，行号与源文件相同，
+    // 直接指源文件（本篇目录下的写相对文章目录的路径，project 根下的写绝对路径）。
+    const htmlSource = htmlFrameSourceOf(context, screenId);
+    const shown = htmlSource || `dist/${target.entryId}/${screenId}.html`;
+    line = lineOfNode(node, html);
+    segments.push({ file: shown, lines: foldHtmlElement(node, html, line) });
+    file = shown;
   }
   const hints = siblingHints(node, html)
     .map((hint) => `sib|${hint.where === 'before' ? '↖ ' : '↘ '}${hint.text}`);
   const rendered = renderExcerpt({ breadcrumb, segments });
   const withHints = [...hints.filter((hint) => hint.startsWith('sib|↖')), ...rendered, ...hints.filter((hint) => hint.startsWith('sib|↘'))];
   return { lines: budgetClip(withHints).map((line) => line.replace(/^sib\|/, '')), file, line, comp, anchor: true };
+}
+
+/** 文章画布上一个 HTML 帧的源文件（显示用），不是 HTML 帧返回 null。 */
+function htmlFrameSourceOf(context, screenId) {
+  const { target, board } = context;
+  if (!target || target.kind !== 'article' || !board) return null;
+  for (const section of board.sections || []) {
+    for (const raw of section.screens || []) {
+      const screen = typeof raw === 'string' ? { id: raw } : raw;
+      if (!screen || screen.id !== screenId) continue;
+      const abs = articleHtmlFrameFile(target, screen);
+      if (!abs) return null;
+      const rel = path.relative(target.pageDir, abs);
+      return rel.startsWith('..') ? abs : rel.split(path.sep).join('/');
+    }
+  }
+  return null;
 }
 
 function lineOfNode(node, html) {

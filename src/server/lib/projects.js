@@ -130,7 +130,7 @@ function readArticles(dir, errors, projectId) {
     const fm = parseFrontmatter(text);
     for (const message of fm.errors) errors.push(problem('frontmatter', message, { path: indexPath }));
     // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误，原样带上节、帧、行。
-    const canvas = parseArticleCanvas(text, frameFileReaders(articleDir));
+    const canvas = parseArticleCanvas(text, frameFileReaders(articleDir, { projectRoot: path.resolve(dir, '..', '..') }));
     for (const error of canvas.errors) errors.push({ ...error, path: indexPath });
     // canvasSections：画布上有几节（带 Canvas 且列了帧的节）。0 = 这篇没有画布，
     // 工作台左栏点它直接打开正文（docs/projects.md“工作台左栏”）。

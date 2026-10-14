@@ -129,6 +129,9 @@ function FrameTree(props) {
   return (
     <nav className="wb-outline mx-[var(--wb-pad)]" id="wboutline" aria-label="大纲">
       {refs.outline.map(function (sec) {
+        // 文章画布上的文档帧（HTML 帧）不在画布上，按“文档”条目在上面列出；帧树只列画布上的帧。
+        var frames = sec.frames.filter(function (f) { return !f.doc; });
+        if (!frames.length) return null;
         return (
           <div className="ol" key={sec.id} data-ol-section={sec.id}>
             <button type="button"
@@ -139,7 +142,7 @@ function FrameTree(props) {
               <span className="ol-L">{sec.letter}</span>
               <span className="ol-sec-t min-w-0 flex-1 truncate">{sec.title}</span>
             </button>
-            {sec.frames.map(function (f) {
+            {frames.map(function (f) {
               var k = sec.id + '\0' + f.id;
               var n = counts[k] || 0;
               var on = focusKey === k;
@@ -219,7 +222,7 @@ function OutlineContents(props) {
   var entries = withEntryWeb(slice.entries, page && page.kind);
   var model = contentsModel(entries);
   var refs = boardRefs(slice.view);
-  var hasTree = !!(refs && refs.outline.length);
+  var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.some(function (f) { return !f.doc; }); }));
   var current = resolveEntry(entriesOfActiveBoard(), activeEntryId);
   var treeOpen = hasTree && (!slice.showDocs || (!!current && current.kind === 'canvas'));
   if (!hasTree && (model.hidden || (!model.productRows.length && !model.drafts.length))) {

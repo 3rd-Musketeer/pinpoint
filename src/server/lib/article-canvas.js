@@ -3,15 +3,17 @@
  *
  * 只解析不渲染：用站点同一套 MDX 解析（unified + remark-parse + remark-mdx，
  * @astrojs/mdx 也是它），读顶层的 <Section id title> 和节里的
- * <Canvas frames={["帧 id", …]} shell="…" />。frames 只认字面量数组、元素只认字面量
- * 字符串；shell 只认字面量字符串。其他写法都是错误，不猜。
+ * <Canvas frames={["帧 id", …]} shell="…" />。frames 只认字面量数组，每一项是字面量字符串，或
+ * `{ id: "帧 id", src: "相对 project 根的路径.html" }`（project 根下的 HTML 帧）；shell 只认字面量字符串。
+ * 其他写法都是错误，不猜。
  *
- * 纯函数（帧文件存不存在、帧级 shell 由调用方的 frameExists / frameShell 回答；
- * 读盘的那一对由 frameFileReaders(文章目录) 给）：
- *   parseArticleCanvas(text, { frameExists, frameShell }) → { sections, errors }
- *   sections = [{ id, title, articleLetter, shell?, frameShells?, frames: [帧 id…] }]，
+ * 纯函数（帧的源文件、帧级 shell、project 根下的文件由调用方的 frameSource / frameShell / rootFrame 回答；
+ * 读盘的那一组由 frameFileReaders(文章目录) 给）：
+ *   parseArticleCanvas(text, { frameSource, frameShell, rootFrame }) → { sections, errors }
+ *   sections = [{ id, title, articleLetter, shell?, frameShells?, frameSrc?, frames: [帧 id…] }]，
  *   按正文顺序，只含有 Canvas 且至少一帧可用的节。frameShells = { 帧 id: shell }，只含
- *   帧文件里写了 `export const shell = "…"` 的帧（盖过这一节的 shell）。
+ *   帧文件里写了 `export const shell = "…"` 的帧（盖过这一节的 shell），和没写 <Canvas shell> 的节里的
+ *   HTML 帧（doc）。frameSrc = { 帧 id: src }，只含 project 根下的 HTML 帧。
  *   errors = [{ code, message, line?, section?, frame?, figure? }]：message 以“第 N 行：”开头；属于某
  *   一节的带 section（节 id），属于某一帧的再带 frame。code 是错误的种类（不显示），
  *   listProjects 再给它加上 path（src/shared/project-errors.js）。
@@ -29,7 +31,7 @@ import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
 import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
-import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
+import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
@@ -46,7 +48,7 @@ const FIGURE_PROPS = new Set(['src', 'caption']);
 export const CANVAS_ERROR_CODES = Object.freeze(new Set([
   'mdx_parse', 'section_nested', 'canvas_outside_section', 'section_id', 'section_duplicate', 'section_title',
   'canvas_multiple', 'canvas_shell', 'canvas_frames', 'canvas_empty',
-  'frame_cross_page', 'frame_id', 'frame_duplicate', 'frame_missing', 'frame_shell',
+  'frame_cross_page', 'frame_id', 'frame_duplicate', 'frame_missing', 'frame_shell', 'frame_source', 'frame_src',
   ...FIGURE_ERROR_CODES_LIST,
 ]));
 
@@ -80,34 +82,81 @@ export function readFrameShell(text) {
   return found;
 }
 
-/** 读盘的 frameExists / frameShell / figureExists：帧 = 文章目录下的 <帧 id>.jsx，图 = figures/<图 id>.jsx。 */
-export function frameFileReaders(articleDir) {
-  const file = (frame) => path.join(articleDir, `${frame}.jsx`);
+/**
+ * 读盘的 frameSource / frameShell / rootFrame / figureExists：
+ * - 帧 = 文章目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`（HTML 帧，docs/projects.md“HTML 帧”）；
+ * - rootFrame(src) 答 project 根下的 HTML 帧（`{ id, src }` 写法）：src 相对 project 根，解析后（含 symlink）
+ *   必须仍在根下，且是一个文件；
+ * - 图 = figures/<图 id>.jsx。
+ * projectRoot 缺省是文章目录往上四层（<根>/docs/pinpoint/articles/<文章>）。
+ */
+export function frameFileReaders(articleDir, { projectRoot = path.resolve(articleDir, '..', '..', '..', '..') } = {}) {
+  const isFile = (file) => {
+    try {
+      return fs.statSync(file).isFile();
+    } catch {
+      return false;
+    }
+  };
+  const jsx = (frame) => path.join(articleDir, `${frame}.jsx`);
+  const html = (frame) => path.join(articleDir, `${frame}.html`);
   return {
-    figureExists: (figure) => {
-      try {
-        return fs.statSync(path.join(articleDir, FIGURE_DIR, `${figure}.jsx`)).isFile();
-      } catch {
-        return false;
-      }
-    },
-    frameExists: (frame) => {
-      try {
-        return fs.statSync(file(frame)).isFile();
-      } catch {
-        return false;
-      }
+    figureExists: (figure) => isFile(path.join(articleDir, FIGURE_DIR, `${figure}.jsx`)),
+    frameSource: (frame) => {
+      const found = [];
+      if (isFile(jsx(frame))) found.push({ kind: 'jsx', file: jsx(frame) });
+      if (isFile(html(frame))) found.push({ kind: 'html', file: html(frame) });
+      if (!found.length) return null;
+      return found.length > 1 ? { ...found[0], both: true } : found[0];
     },
     frameShell: (frame) => {
       let text;
       try {
-        text = fs.readFileSync(file(frame), 'utf8');
+        text = fs.readFileSync(jsx(frame), 'utf8');
       } catch {
         return undefined;
       }
       return readFrameShell(text);
     },
+    rootFrame: (src) => resolveRootFrame(projectRoot, src),
   };
+}
+
+/**
+ * project 根下的 HTML 帧文件：→ { file } | { error, missing? }。src 只认相对 project 根的路径，
+ * 不能有 `..`、`.` 开头的段（隐藏文件）、反斜杠，要以 .html / .htm 结尾；解析后的真实路径（跟 symlink）
+ * 必须在 project 根的真实路径下。
+ */
+export function resolveRootFrame(projectRoot, src) {
+  const value = String(src || '');
+  const segments = value.split('/');
+  if (!HTML_FRAME_SRC_PATTERN.test(value) || value.includes('\\') || value.includes('\0')
+    || segments.some((seg) => !seg || seg === '..' || seg.startsWith('.'))) {
+    return { error: `src 要写成相对 project 根的 HTML 文件路径（如 "skill/preview.html"，不能以 / 开头，不能有 ..、隐藏目录，以 .html 结尾）：${JSON.stringify(value)}` };
+  }
+  const root = path.resolve(projectRoot);
+  const abs = path.resolve(root, ...segments);
+  let realRoot;
+  let real;
+  try {
+    realRoot = fs.realpathSync(root);
+  } catch {
+    return { error: `project 根不存在：${root}`, missing: true };
+  }
+  try {
+    real = fs.realpathSync(abs);
+  } catch {
+    return { error: `src 指的文件不存在：${value}（project 根 ${root}）`, missing: true };
+  }
+  if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
+    return { error: `src 指到了 project 根外面：${value}（实际是 ${real}，project 根 ${realRoot}）` };
+  }
+  try {
+    if (!fs.statSync(real).isFile()) return { error: `src 不是一个文件：${value}`, missing: true };
+  } catch {
+    return { error: `src 指的文件不存在：${value}`, missing: true };
+  }
+  return { file: abs };
 }
 
 /** 字符串属性：undefined = 没写；{ value } = 字面量；{ error } = 别的写法。 */
@@ -117,7 +166,27 @@ function literalString(node, name) {
   return { error: `${name} 必须是字面量字符串（写成 ${name}="…"）` };
 }
 
-/** frames={[...]} → { frames } 或 { error }。只认字面量数组 + 字面量字符串。 */
+/** 对象写法 `{ id: "…", src: "…" }` 的属性：只认 id、src 两个键，值都是字面量字符串。→ { id, src } 或 { error }。 */
+function literalFrameObject(expression) {
+  const out = {};
+  for (const prop of expression.properties) {
+    const key = prop.type === 'Property' && !prop.computed && prop.key
+      ? (prop.key.type === 'Identifier' ? prop.key.name : prop.key.value)
+      : null;
+    if (key !== 'id' && key !== 'src') return { error: 'frames 里的对象只写 id 和 src 两项（写成 { id: "帧 id", src: "相对 project 根的路径.html" }）' };
+    if (!prop.value || prop.value.type !== 'Literal' || typeof prop.value.value !== 'string') {
+      return { error: `frames 里对象的 ${key} 必须是字面量字符串` };
+    }
+    out[key] = prop.value.value;
+  }
+  if (typeof out.id !== 'string' || typeof out.src !== 'string') return { error: 'frames 里的对象要同时写 id 和 src（{ id: "帧 id", src: "相对 project 根的路径.html" }）' };
+  return out;
+}
+
+/**
+ * frames={[...]} → { frames: [{ id, src? }] } 或 { error }。只认字面量数组；每一项是字面量字符串（"帧 id"，
+ * 本篇目录下的帧），或 `{ id, src }`（project 根下的 HTML 帧，docs/projects.md“HTML 帧”）。
+ */
 function literalFrames(node) {
   const attr = jsxAttribute(node, 'frames');
   if (!attr) return { error: '缺 frames（写成 frames={["帧 id", …]}）' };
@@ -129,10 +198,16 @@ function literalFrames(node) {
   }
   const frames = [];
   for (const element of expression.elements) {
-    if (!element || element.type !== 'Literal' || typeof element.value !== 'string') {
-      return { error: 'frames 的每一项必须是字面量字符串（"帧 id"）' };
+    if (element && element.type === 'ObjectExpression') {
+      const item = literalFrameObject(element);
+      if (item.error) return item;
+      frames.push(item);
+      continue;
     }
-    frames.push(element.value);
+    if (!element || element.type !== 'Literal' || typeof element.value !== 'string') {
+      return { error: 'frames 的每一项必须是字面量字符串（"帧 id"），或 { id: "帧 id", src: "相对 project 根的路径.html" }' };
+    }
+    frames.push({ id: element.value });
   }
   return { frames };
 }
@@ -171,7 +246,8 @@ export function articleSectionSpans(text) {
 
 /**
  * 正文的全部节，宽松读（`ppnt show` 列节、`ppnt check` 找全部帧用）：
- *   articleOutline(text) → [{ n, letter, id, title, line, frames: [帧 id…], canvas }]
+ *   articleOutline(text) → [{ n, letter, id, title, line, frames: [帧 id…], sources?, canvas }]
+ * sources = { 帧 id: src }，只含写成 `{ id, src }` 的帧（project 根下的 HTML 帧，src 相对 project 根）。
  * n 是文章页的节号（1 起），letter 是画布编号的节字母，两者按同一顺序数（纯文字的节也占）。
  * 和 parseArticleCanvas 不同，这里不因写法错误丢掉节：shell 写错、帧 id 不合法的节照样列出它
  * 字面上写的帧（frames 只收字面量字符串），所以被布局错误挡在画布外的帧也能拿去编译。
@@ -186,9 +262,14 @@ export function articleOutline(text) {
     const id = literalAttribute(item.node, 'id');
     const title = literalAttribute(item.node, 'title');
     const frames = [];
+    const sources = {};
     for (const canvas of item.canvases) {
       const listed = literalFrames(canvas);
-      for (const frame of listed.frames || []) if (!frames.includes(frame)) frames.push(frame);
+      for (const frame of listed.frames || []) {
+        if (frames.includes(frame.id)) continue;
+        frames.push(frame.id);
+        if (frame.src !== undefined) sources[frame.id] = frame.src;
+      }
     }
     const idValue = id && 'value' in id ? id.value : null;
     rows.push({
@@ -198,6 +279,7 @@ export function articleOutline(text) {
       title: title && 'value' in title ? title.value : idValue,
       line: item.node.position ? item.node.position.start.line + lineOffset : null,
       frames,
+      ...(Object.keys(sources).length ? { sources } : {}),
       canvas: item.canvases.length > 0,
     });
   }
@@ -205,7 +287,13 @@ export function articleOutline(text) {
 }
 
 /** 正文 → 画布结构。text 是整份 index.mdx（含 frontmatter）。 */
-export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined, figureExists = () => true } = {}) {
+export function parseArticleCanvas(text, {
+  frameExists = () => true,
+  frameSource = (frame) => (frameExists(frame) ? { kind: 'jsx' } : null),
+  frameShell = () => undefined,
+  rootFrame = () => ({ file: '' }),
+  figureExists = () => true,
+} = {}) {
   const errors = [];
   const parsed = parseBody(text);
   const { lineOffset } = parsed;
@@ -268,13 +356,15 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     }
     const frames = [];
     const frameShells = {};
-    for (const frame of parsed.frames) {
-      if (frame.includes('/')) {
+    const frameSrc = {};
+    for (const item of parsed.frames) {
+      const frame = item.id;
+      if (item.src === undefined && frame.includes('/')) {
         report('frame_cross_page', canvas, `${where} 引用了别的页的帧 "${frame}"：不支持跨页引用，先把帧迁进本篇目录（articles/<文章>/<帧 id>.jsx），再写 "${frame.slice(frame.lastIndexOf('/') + 1)}"`, { section: id.value, frame });
         continue;
       }
       if (!FRAME_ID.test(frame)) {
-        report('frame_id', canvas, `${where} 帧 id 不合法 "${frame}"（必须匹配 ${FRAME_ID}，即本篇目录下 <帧 id>.jsx 的文件名）`, { section: id.value, frame });
+        report('frame_id', canvas, `${where} 帧 id 不合法 "${frame}"（必须匹配 ${FRAME_ID}，即本篇目录下 <帧 id>.jsx 或 <帧 id>.html 的文件名）`, { section: id.value, frame });
         continue;
       }
       if (seenFrames.has(frame)) {
@@ -282,9 +372,35 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
         continue;
       }
       seenFrames.set(frame, id.value);
-      if (!frameExists(frame)) {
-        report('frame_missing', canvas, `${where} 帧 "${frame}" 没有源文件（本篇目录下缺 ${frame}.jsx）`, { section: id.value, frame });
-      } else {
+      // HTML 帧（本篇目录下的 <帧 id>.html，或 project 根下的 { id, src }）缺省是整份文档：没写 <Canvas shell> 时用 doc。
+      const htmlShell = () => {
+        if (!shell) frameShells[frame] = 'doc';
+      };
+      if (item.src !== undefined) {
+        const local = frameSource(frame);
+        if (local) {
+          report('frame_source', canvas, `${where} 帧 id "${frame}" 和本篇目录下的 ${frame}.${local.kind} 重名（帧 id 在一篇文章里唯一，换一个 id）`, { section: id.value, frame });
+          continue;
+        }
+        const found = rootFrame(item.src);
+        if (found.error) {
+          report(found.missing ? 'frame_missing' : 'frame_src', canvas, `${where} 帧 "${frame}" 的 ${found.error}`, { section: id.value, frame });
+          if (!found.missing) continue;
+        }
+        frameSrc[frame] = item.src;
+        htmlShell();
+        frames.push(frame);
+        continue;
+      }
+      const source = frameSource(frame);
+      if (!source) {
+        report('frame_missing', canvas, `${where} 帧 "${frame}" 没有源文件（本篇目录下缺 ${frame}.jsx 或 ${frame}.html）`, { section: id.value, frame });
+      } else if (source.both) {
+        report('frame_source', canvas, `${where} 帧 "${frame}" 同时有 ${frame}.jsx 和 ${frame}.html（留一个；现在用的是 ${frame}.jsx）`, { section: id.value, frame });
+      }
+      if (source && source.kind === 'html' && !source.both) {
+        htmlShell();
+      } else if (source) {
         // 帧级 shell：写坏了照样进画布（用这一节的 shell），错误带节和帧。
         const own = frameShell(frame);
         const inFile = own && own.line ? `（${frame}.jsx 第 ${own.line} 行）` : '';
@@ -305,6 +421,7 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     const section = { id: id.value, title: (title && title.value) || id.value, articleLetter, frames };
     if (shell) section.shell = shell.value;
     if (Object.keys(frameShells).length) section.frameShells = frameShells;
+    if (Object.keys(frameSrc).length) section.frameSrc = frameSrc;
     sections.push(section);
   };
 

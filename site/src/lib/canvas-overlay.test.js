@@ -48,12 +48,25 @@ test('neighbor section: previous / next among sections with a canvas', () => {
   assert.equal(neighborSection(ids, 'ghost', 1), '');
 });
 
-test('natural box before measuring: phone = workbench phone chrome, others = card box', async () => {
+test('natural box before measuring: phone = workbench phone chrome, document = page width × full height, others = card box', async () => {
   const { shellBox } = await import('./canvas-card.js');
   const { naturalBox, PHONE_STAGE } = await import('./canvas-overlay.js');
   assert.deepEqual(naturalBox(shellBox()), PHONE_STAGE);
   assert.deepEqual(naturalBox(shellBox('comp')), { width: 480, height: 320 });
-  assert.deepEqual(naturalBox(shellBox('doc')), { width: 1280, height: 900 });
+  // HTML 帧：缺省手机宽度，高度不定（浮层里占满可用高，页面在帧里滚动）。
+  assert.deepEqual(naturalBox(shellBox('doc')), { width: 390, height: null });
+  assert.deepEqual(naturalBox(shellBox('doc', 'desktop')), { width: 1280, height: null });
+  assert.deepEqual(naturalBox(shellBox('doc', 'nonsense')), { width: 390, height: null });
+});
+
+test('overlayScale: a document frame binds only by width', async () => {
+  const { overlayScale } = await import('./canvas-overlay.js');
+  // 三个手机宽度的页面并排：宽度装得下就是真实大小，不管多高。
+  assert.equal(overlayScale({ boxes: [{ width: 390, height: null }, { width: 390, height: null }], availWidth: 1300, availHeight: 700 }), 1);
+  // 桌面宽度放进 1000 宽的浮层：按宽度缩。
+  assert.equal(overlayScale({ boxes: [{ width: 1280, height: null }], availWidth: 1000, availHeight: 700 }), 1000 / 1280);
+  // 和手机帧同节：手机帧的高度照样约束缩放。
+  assert.equal(overlayScale({ boxes: [{ width: 402, height: 874 }, { width: 390, height: null }], availWidth: 2000, availHeight: 437 }), 0.5);
 });
 
 test('layer stack: Esc closes only the top layer and marks the event handled', async () => {

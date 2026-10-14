@@ -1984,6 +1984,35 @@ test('planShotJobs：页引用不必是基页 —— 非基页装载自己的上
   assert.deepEqual(frameJob.marks.map((row) => row.screenId), ['home']);
 });
 
+test('planShotJobs：文章的文档帧（HTML 帧）按自己的地址拍，节里全是文档帧时不拍节图', () => {
+  const board = { sections: [
+    { id: 'pages', letter: 'B', screens: [{ id: 'long', shell: 'doc' }, { id: 'cat', shell: 'doc', src: 'sites/d_a/@root/x/cat.html' }] },
+    { id: 'app', letter: 'C', screens: [{ id: 'phone' }] },
+  ] };
+  const base = {
+    pageId: 'd_a',
+    article: { projectId: 'd', articleId: 'a' },
+    target: { urlBase: '/sites/d_a/' },
+    board,
+    refs: { outline: [{ id: 'pages', frames: [{ id: 'long', ref: 'B1' }, { id: 'cat', ref: 'B2' }] }, { id: 'app', frames: [{ id: 'phone', ref: 'C1' }] }] },
+    frameRows: [{ n: 1, screenId: 'long', status: 'open' }],
+  };
+  const plan = planShotJobs(
+    [
+      { kind: 'section', sectionId: 'pages', ref: 'B', frames: [{ id: 'long' }, { id: 'cat' }] },
+      { kind: 'frame', screenId: 'phone', via: 'C1' },
+    ],
+    { basePageId: 'd_a', baseContext: base, scale: 1, withMarks: true, dataRootDir: '/data' },
+  );
+  assert.deepEqual(plan.jobs.map((job) => [job.kind, job.screenId || job.sectionId, job.url || '', job.label]), [
+    ['doc', 'long', '/sites/d_a/long.html', 'B1 · long'],
+    ['doc', 'cat', '/sites/d_a/@root/x/cat.html', 'B2 · cat'],
+    ['frame', 'phone', '', 'C1 · phone'],
+  ]);
+  assert.deepEqual(plan.jobs[0].marks.map((row) => row.n), [1]);
+  assert.equal(plan.jobs[1].out, path.join('/data', 'shot', 'd_a', 'cat.png'));
+});
+
 test('planShotJobs：非基页装载失败 → problem 逐条报，不炸整批', () => {
   const plan = planShotJobs(
     [{ kind: 'page', pageId: 'ghost' }, { kind: 'frame', screenId: 'home', via: 'A1' }],

@@ -33,11 +33,10 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
-import { deriveArticleBoard } from './lib/article-board.js';
+import { articleHtmlFrameFile, deriveArticleBoard, rootRelFromUrlPath } from './lib/article-board.js';
 import { resolvePage } from './lib/page-resolve.js';
 import {
   boardScreenIds,
-  screenEntriesFromBoard,
   screenIdFromRel,
   serveBoardJsonWithDist,
   serveDistScreenResponse,
@@ -131,6 +130,15 @@ function resolveFileWithin(base, rel) {
 }
 
 /**
+ * project 根下的静态文件（HTML 帧引用的资源）：和 resolveFileWithin 同样的包含检查（文本 + realpath），
+ * 另外拒绝任何 `.` 开头的段（.git、.env 这类隐藏文件不经服务出）。
+ */
+function resolveRootStatic(projectRoot, rel) {
+  if (!projectRoot || rel.split('/').some((seg) => seg.startsWith('.'))) return null;
+  return resolveFileWithin(path.resolve(projectRoot), rel);
+}
+
+/**
  * Resolve a registered single file (`file` entry) for the request path, or
  * null. Exactly two spellings reach the file: `/sites/<id>/` (empty rel) and
  * `/sites/<id>/<basename>`. The equality check is the whole guard — any
@@ -177,9 +185,10 @@ export function createSitesHandler(options = {}) {
   }
 
   /**
-   * 文章画布页：board.json 是从 index.mdx 现派生的板（附 dist 状态），屏从 dist 出
-   * （标注桶 = 画布页 id），其余（article.css / article.js / assets/ / 组件引用的资源）
-   * 从文章目录只读静态出。
+   * 文章画布页：board.json 是从 index.mdx 现派生的板（附 dist 状态），JSX 帧从 dist 出、
+   * HTML 帧从源文件出（标注桶 = 画布页 id），其余（article.css / article.js / assets/ /
+   * 组件和 HTML 帧引用的资源）从文章目录只读静态出；project 根下的 HTML 帧和它引用的文件在
+   * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。
    */
   async function serveArticlePage(req, res, target, rel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
@@ -197,22 +206,50 @@ export function createSitesHandler(options = {}) {
       return true;
     }
     if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
+    const query = parseReqUrl(req).query;
+    const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
+    const screens = (board.sections || []).flatMap((section) => section.screens || []);
+    // project 根下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>。只在这篇有 project 根下的
+    // HTML 帧时开放；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
+    const rootRel = rootRelFromUrlPath(target, rel);
+    if (rootRel !== null) {
+      const rootScreens = screens.filter((screen) => screen.src);
+      if (!rootScreens.length) {
+        sendJson(res, 404, { error: 'not found' });
+        return true;
+      }
+      const frame = rootScreens.find((screen) => rootRelFromUrlPath(target, screen.src) === rootRel);
+      const file = frame ? articleHtmlFrameFile(target, frame) : resolveRootStatic(target.projectRoot, rootRel);
+      if (!file) {
+        sendJson(res, 404, { error: 'not found' });
+        return true;
+      }
+      return sendFile(req, res, file, frame ? inject : null);
+    }
     const screenId = screenIdFromRel(rel);
-    if (screenId && screenEntriesFromBoard(board).some((entry) => entry.id === screenId)) {
-      const query = parseReqUrl(req).query;
-      return serveDistScreenResponse(req, res, target, screenId, {
-        inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId),
-      });
+    const screen = screenId ? screens.find((entry) => entry.id === screenId && !entry.src) : null;
+    if (screen) {
+      // HTML 帧从源文件直接出（文档不经编译，改了就是新的）；JSX 帧从 dist 出。
+      const htmlFile = articleHtmlFrameFile(target, screen);
+      if (htmlFile) return sendFile(req, res, htmlFile, inject);
+      return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
     const file = rel ? resolveFileWithin(target.pageDir, rel) : null;
     if (!file || path.basename(file) === 'index.mdx') {
       sendJson(res, 404, { error: 'not found' });
       return true;
     }
-    const body = fs.readFileSync(file);
+    return sendFile(req, res, file, null);
+  }
+
+  /** 读盘出一个文件；inject 给了且是 HTML 时注入标注客户端。 */
+  function sendFile(req, res, file, inject) {
+    let body = fs.readFileSync(file);
+    if (inject && mimeFor(file) === 'text/html') body = Buffer.from(inject(body.toString('utf8')), 'utf8');
     res.statusCode = 200;
     res.setHeader('Content-Type', contentType(file));
     res.setHeader('Content-Length', String(body.length));
+    res.setHeader('Cache-Control', 'no-cache');
     res.end(req.method === 'HEAD' ? undefined : body);
     return true;
   }

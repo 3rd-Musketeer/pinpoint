@@ -7,7 +7,8 @@
  * 诊断 = { severity: 'error' | 'warning' | 'info', code, file, line, message, article?, section?, frame?, figure? }：
  * - 布局错误：listProjects 读出的那些（code 原样，path 换成绝对路径，message 去掉“第 N 行：”前缀，行号在 line）。
  * - 帧：正文里每个 <Canvas> 字面上列的帧都编一遍（articleOutline，被布局错误挡在画布外的节也算），
- *   lint 与编译错误带帧文件和行（frameDiagnostics），不落 dist。
+ *   lint 与编译错误带帧文件和行（frameDiagnostics），不落 dist。HTML 帧不编译，查它引用的本地文件：
+ *   解析到可服务范围外是错误（html_asset_outside），不在盘上是警告（html_asset_missing），带引用所在的文件和行。
  * - 图：正文里每个源文件在的 <Figure> 也编一遍（compileFigure，同帧的 lint 与编译规则），诊断带图文件和行
  *   与 figure（图 id），不落 dist。图的写法错误（src、缺文件）已是布局错误；浏览器里的运行错误要打开过
  *   图才有，check 不跑图，看 ppnt show <project>。
@@ -22,7 +23,8 @@ import path from 'node:path';
 import { extractRefs, parseRefBody } from '../../../site/src/lib/refs.js';
 import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
-import { articleOutline } from './article-canvas.js';
+import { articleOutline, resolveRootFrame } from './article-canvas.js';
+import { collectHtmlFrameAssets } from './html-frame-assets.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { checkMdxRender } from './mdx-check.js';
 import { deriveArticleBoard } from './article-board.js';
@@ -110,6 +112,39 @@ export function emptyRefsIn(text, { from, resolve }) {
   return found;
 }
 
+/** 正文里一帧的 HTML 源文件：→ { file, root } | null（不是 HTML 帧，或文件不在：缺帧是布局错误）。
+    root 是这一帧能引用到的范围：本篇目录下的帧是文章目录（服务在 /sites/<页 id>/ 下出它），
+    project 根下的帧是 project 根（/sites/<页 id>/@root/ 下）。 */
+function htmlFrameFile(target, frame, src) {
+  if (src !== undefined) {
+    const found = resolveRootFrame(target.projectRoot, src);
+    return found.file ? { file: found.file, root: target.projectRoot } : null;
+  }
+  if (isFile(path.join(target.pageDir, `${frame}.jsx`))) return null;
+  const file = path.join(target.pageDir, `${frame}.html`);
+  return isFile(file) ? { file, root: target.pageDir } : null;
+}
+
+/** HTML 帧引用的本地文件：越出可服务范围是错误，不在盘上是警告（docs/projects.md“HTML 帧”）。 */
+function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
+  const { missing, outside } = collectHtmlFrameAssets(file, { root });
+  const where = (row) => ({ file: row.from, line: row.line, article: address, ...(section ? { section } : {}), frame });
+  return [
+    ...outside.map((row) => ({
+      severity: 'error',
+      code: 'html_asset_outside',
+      message: `引用的 ${JSON.stringify(row.url)} 解析到 ${row.file}，在 ${root} 外面，服务不出这个文件`,
+      ...where(row),
+    })),
+    ...missing.map((row) => ({
+      severity: 'warning',
+      code: 'html_asset_missing',
+      message: `引用的 ${JSON.stringify(row.url)} 不在盘上（${row.file}）`,
+      ...where(row),
+    })),
+  ];
+}
+
 /** 一篇文章：帧、正文渲染、空 ref 的诊断（布局错误另由 checkProject 给）。 */
 async function checkArticle({ registry, project, article, resolve, layoutErrors, frameCache }) {
   const address = `${project.id}/${article.id}`;
@@ -121,6 +156,12 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
   let frames = 0;
   for (const section of outline) {
     for (const frame of section.frames) {
+      const html = target ? htmlFrameFile(target, frame, section.sources && section.sources[frame]) : null;
+      if (html) {
+        frames += 1;
+        diagnostics.push(...htmlFrameDiagnostics(html, { address, section: section.id, frame }));
+        continue;
+      }
       if (!target || !isFile(path.join(target.pageDir, `${frame}.jsx`))) continue; // 缺帧是布局错误
       frames += 1;
       const result = await frameDiagnostics(target, frame);

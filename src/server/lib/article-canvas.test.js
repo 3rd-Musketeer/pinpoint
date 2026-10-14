@@ -37,7 +37,7 @@ test('错误：跨页引用、缺帧文件、一节两个 Canvas、重复节 id�
   ]);
   assert.match(errors[0].message, /^第 9 行：.*一节最多一个/);
   assert.match(errors[1].message, /^第 7 行：.*别的页的帧 "other-page\/ask".*先把帧迁进本篇目录.*"ask"/);
-  assert.match(errors[2].message, /^第 7 行：.*帧 "ghost" 没有源文件（本篇目录下缺 ghost\.jsx）/);
+  assert.match(errors[2].message, /^第 7 行：.*帧 "ghost" 没有源文件（本篇目录下缺 ghost\.jsx 或 ghost\.html）/);
   assert.match(errors[3].message, /^第 13 行：重复的 <Section id="a">/);
   // 缺文件的帧仍进画布（工作台出错误面板）；跨页的、重复节、第二个 Canvas 不进。
   assert.deepEqual(sections, [{ id: 'a', title: 'A', articleLetter: 'A', frames: ['here', 'ghost'] }]);

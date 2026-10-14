@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>组件目录</title>
+<link rel="stylesheet" href="catalog.css">
+</head>
+<body>
+  <h1 class="cat-title">组件目录</h1>
+  <p class="cat-chip"><img src="img/dot.svg" alt="" width="12" height="12"> 地址卡</p>
+  <button class="cat-btn" type="button">点我</button>
+  <p class="cat-out">未点</p>
+  <script>
+    document.querySelector('.cat-btn').addEventListener('click', () => { document.querySelector('.cat-out').textContent = '已点'; });
+  </script>
+</body>
+</html>

@@ -38,7 +38,8 @@ function isFile(file) {
 }
 
 /**
- * 文章画布的编译目标，与普通 dir 页同形：pageDir = 文章目录，帧是 `<帧 id>.jsx`。
+ * 文章画布的编译目标，与普通 dir 页同形：pageDir = 文章目录，帧是 `<帧 id>.jsx` 或 `<帧 id>.html`；
+ * projectRoot 是 project 根（project 根下的 HTML 帧从这里找，docs/projects.md“HTML 帧”）。
  * 文章目录或 index.mdx 不在时 null。
  */
 function articleTarget(entry, articleId, pageId) {
@@ -54,6 +55,7 @@ function articleTarget(entry, articleId, pageId) {
     kind: 'article',
     projectId: entry.id,
     articleId,
+    projectRoot: path.resolve(entry.path),
     projectDir,
     articleFile,
   };

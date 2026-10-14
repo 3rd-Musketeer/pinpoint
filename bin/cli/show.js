@@ -11,7 +11,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { countByStatus } from '../../src/server/lib/ann-query.js';
-import { articleOutline } from '../../src/server/lib/article-canvas.js';
+import { articleOutline, resolveRootFrame } from '../../src/server/lib/article-canvas.js';
 import { projectEmptyRefs } from '../../src/server/lib/article-check.js';
 import { figureDistErrors } from '../../src/server/lib/page-compiler.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
@@ -36,6 +36,14 @@ function readText(file) {
   }
 }
 
+/** 帧的源文件（显示用）：本篇目录下的 `<帧 id>.jsx` / `.html` 写文件名，project 根下的 HTML 帧写
+    `<src>（project 根）`；不在盘上是 null。 */
+function frameFileShown(project, article, id, src) {
+  if (src !== undefined) return resolveRootFrame(project.root, src).file ? `${src}（project 根）` : null;
+  for (const name of [`${id}.jsx`, `${id}.html`]) if (fs.existsSync(path.join(article.dir, name))) return name;
+  return null;
+}
+
 /** 一篇文章的模型（--json 原样输出，文字输出由 formatArticle 排）。 */
 export function articleModel({ project, article, context, origin }) {
   const outline = articleOutline(readText(article.file));
@@ -49,8 +57,7 @@ export function articleModel({ project, article, context, origin }) {
     const frameIds = onCanvas ? onCanvas.frames.map((frame) => frame.id) : row.frames;
     const frames = frameIds.map((id) => {
       const shown = onCanvas ? onCanvas.frames.find((frame) => frame.id === id) : null;
-      const file = path.join(article.dir, `${id}.jsx`);
-      return { ref: shown ? shown.ref : '', id, file: fs.existsSync(file) ? path.relative(article.dir, file) : null };
+      return { ref: shown ? shown.ref : '', id, file: frameFileShown(project, article, id, row.sources && row.sources[id]) };
     });
     const open = rows.filter((entry) => isOpen(entry)
       && ((entry.screenId && frameIds.includes(entry.screenId)) || (entry.type === 'prose' && row.id && entry.section === row.id))).length;

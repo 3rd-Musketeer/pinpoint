@@ -235,13 +235,58 @@ test('blocking problems and refusals: no project, html frame, missing source, ou
   await assert.rejects(planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'proj'), articleId: 'concepts', registry }), /文章 id 不可用/);
 
   const plan = await planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'proj'), registry });
-  assert.equal(plan.problems.length, 4, plan.problems.join('\n'));
-  assert.match(plan.problems.join('\n'), /old 是 \.html/);
+  assert.equal(plan.problems.length, 3, plan.problems.join('\n'));
   assert.match(plan.problems.join('\n'), /gone 没有源文件/);
   assert.match(plan.problems.join('\n'), /页目录外的文件/);
   assert.match(plan.problems.join('\n'), /组件 Nope 找不到/);
   assert.throws(() => writeMigration(plan), /不写/);
   assert.equal(fs.existsSync(plan.articleDir), false);
+});
+
+test('HTML 帧：同名复制，相对引用的文件照原路径一起复制；越出页目录的拦下', async (t) => {
+  const dir = tmpDir(t, 'html');
+  const page = path.join(dir, 'hp');
+  write(path.join(page, 'board.json'), JSON.stringify({ tabs: [
+    { id: 'v', title: '版本', sections: [{ id: 'ces', title: 'CES', layout: 'column', shell: 'doc', screens: [{ id: 'v1', title: '一' }, { id: 'v2' }] }] },
+    { id: 'c', title: '组件', sections: [{ id: 'comps', title: '组件', layout: 'column', shell: 'doc', screens: [{ id: 'cat' }] }] },
+  ] }));
+  write(path.join(page, 'v1.html'), '<!doctype html><p>v1</p>\n<a href="data.xlsx">表</a>\n');
+  write(path.join(page, 'v2.html'), '<!doctype html><p>v2</p>\n');
+  write(path.join(page, 'cat.html'), '<!doctype html><link rel="stylesheet" href="mirror/c.css"><iframe src="mirror/f/inner.html"></iframe>\n');
+  write(path.join(page, 'mirror', 'c.css'), 'body { background: url(img/bg.png); }\n');
+  write(path.join(page, 'mirror', 'img', 'bg.png'), 'png');
+  write(path.join(page, 'mirror', 'f', 'inner.html'), '<!doctype html><script src="../run.js"></script>\n');
+  write(path.join(page, 'mirror', 'run.js'), 'console.log(1);\n');
+  write(path.join(page, 'unused.css'), 'x\n');
+  const registry = { entries: [{ id: 'hp', kind: 'dir', board: 'html', path: page }] };
+  const root = projectRoot(dir);
+  const plan = await planPageMigration({ pageId: 'hp', projectRoot: root, articleId: 'pages', registry });
+  assert.deepEqual(plan.problems, []);
+  assert.deepEqual([...plan.files.keys()].sort(), ['cat.html', 'index.mdx', 'mirror/c.css', 'mirror/f/inner.html', 'mirror/img/bg.png', 'mirror/run.js', 'v1.html', 'v2.html']);
+  assert.match(plan.warnings.join('\n'), /帧 v1 引用的 "data\.xlsx" 不在盘上（v1\.html 第 2 行）/);
+  // 全是 HTML 帧的 doc 节不写 shell（HTML 帧缺省就是 doc）。
+  const mdx = plan.files.get('index.mdx').content;
+  assert.match(mdx, /<Canvas frames=\{\["v1", "v2"\]\} \/>/);
+  assert.match(mdx, /<Canvas frames=\{\["cat"\]\} \/>/);
+  writeMigration(plan);
+  assert.equal(fs.readFileSync(path.join(plan.articleDir, 'cat.html'), 'utf8'), fs.readFileSync(path.join(page, 'cat.html'), 'utf8'));
+  const report = await verifyMigration(plan);
+  assert.ok(report.ok, JSON.stringify(report));
+  assert.deepEqual(report.rows.map((row) => [row.ref, row.frame, row.shell, row.diff]), [['A1', 'v1', 'doc', 'same'], ['A2', 'v2', 'doc', 'same'], ['B1', 'cat', 'doc', 'same']]);
+
+  // 页目录外的引用：拦下，逐条列出文件和行。
+  write(path.join(page, 'v2.html'), '<!doctype html>\n<link rel="stylesheet" href="../shared.css">\n');
+  const blocked = await planPageMigration({ pageId: 'hp', projectRoot: root, articleId: 'pages-2', registry });
+  assert.equal(blocked.problems.length, 1);
+  assert.match(blocked.problems[0], /帧 v2 引用了页目录外的文件 "\.\.\/shared\.css"（v2\.html 第 2 行/);
+
+  // 手机壳里的 HTML 片段帧：<Canvas> 写明 shell="app"（HTML 帧缺省是 doc）。
+  const ios = path.join(dir, 'ios');
+  write(path.join(ios, 'board.json'), JSON.stringify({ sections: [{ id: 's', title: 'S', layout: 'row', screens: [{ id: 'frag' }] }] }));
+  write(path.join(ios, 'frag.html'), '<div class="ios-app">x</div>\n');
+  const iosPlan = await planPageMigration({ pageId: 'ios', projectRoot: root, registry: { entries: [{ id: 'ios', kind: 'dir', board: 'ios', path: ios }] } });
+  assert.deepEqual(iosPlan.problems, []);
+  assert.match(iosPlan.files.get('index.mdx').content, /<Canvas frames=\{\["frag"\]\} shell="app" \/>/);
 });
 
 test('compFrameSource: default-export component, name clash, odd props', () => {

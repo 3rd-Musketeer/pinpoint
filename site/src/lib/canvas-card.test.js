@@ -68,6 +68,19 @@ test('card model: each frame sized by its own shell (frame over section)', () =>
   assert.deepEqual(cardModel(mixed, 'wall').frames.map((f) => [f.id, f.shell, f.box.mode]), [['w1', 'comp', 'natural'], ['phone', 'app', 'phone']]);
 });
 
+test('card model: document frames (HTML 帧) take the page width, the card gets a width switch', () => {
+  const pages = { pageId: 'p', sections: [
+    { id: 'pages', letter: 'B', frames: [{ id: 'long', ref: 'B1', shell: 'doc' }, { id: 'phone', ref: 'B2' }] },
+    { id: 'app', letter: 'C', frames: [{ id: 'x', ref: 'C1' }] },
+  ] };
+  const card = cardModel(pages, 'pages');
+  assert.equal(card.docWidth, 'phone');
+  assert.deepEqual(card.frames.map((f) => [f.id, f.box.mode, f.box.width, f.box.height]), [['long', 'doc', 390, 844], ['phone', 'phone', 438, 910]]);
+  assert.equal(cardModel(pages, 'app').docWidth, '');
+  assert.deepEqual(shellBox('doc', 'desktop'), { mode: 'doc', width: 1280, height: 800, scale: CARD_SCALE });
+  assert.deepEqual(shellBox('doc', 'watch'), shellBox('doc', 'phone'));
+});
+
 test('open count: open rows on this section\'s frames of this page', () => {
   const doc = { annotations: [
     { screenId: 'ask', pageId: 'p', status: 'open' },
@@ -112,7 +125,7 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   ]);
   assert.equal(bad.errors.length, 2);
   assert.match(bad.errors[0], /^第 13 行：.*引用了别的页的帧 "browser-e2e-flow\/ask".*先把帧迁进本篇目录/);
-  assert.match(bad.errors[1], /^第 13 行：.*帧 "gone" 没有源文件（本篇目录下缺 gone\.jsx）$/);
+  assert.match(bad.errors[1], /^第 13 行：.*帧 "gone" 没有源文件（本篇目录下缺 gone\.jsx 或 gone\.html）$/);
   assert.equal(cardModel(canvas, undefined).stray, true);
 
   // Banner: the project's errors repeat all three under articles/broken-canvas; only the page-level one is shown, once.

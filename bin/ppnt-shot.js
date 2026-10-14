@@ -406,3 +406,57 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
   }
   return results;
 }
+
+/**
+ * 文章的文档帧（HTML 帧，docs/projects.md“HTML 帧”）：不在画布上，直接打开它自己的地址（`?annotate=off`），
+ * 按手机宽度 390 拍整页。jobs = [{ url, out, label, scale, marks }]；marks 是账本行，钉按行上第一个目标的
+ * 选择器（文档标注的锚点就是整页的选择器加文字）落在元素左上角，找不到的安静跳过。
+ * 返回 [{ out, label, width, height }]。
+ */
+export const DOC_SHOT_WIDTH = 390;
+export async function renderDocShots({ origin, jobs, env = process.env }) {
+  if (!(await serviceUp(origin))) throw new Error(serviceDownMessage(origin, env));
+  const browser = await chromium.launch({ headless: true });
+  const results = [];
+  try {
+    for (const job of jobs) {
+      const context = await browser.newContext({ viewport: { width: DOC_SHOT_WIDTH, height: 844 }, deviceScaleFactor: job.scale || 1, ignoreHTTPSErrors: true });
+      const page = await context.newPage();
+      const url = new URL(job.url.split('/').map(encodeURIComponent).join('/'), origin);
+      url.searchParams.set('annotate', 'off');
+      const response = await page.goto(url.href, { waitUntil: 'load' });
+      if (!response || !response.ok()) throw new Error(`文档帧 ${job.label || job.url} 打不开（${response ? response.status() : '没有响应'}）：${url.href}`);
+      await page.evaluate(async () => { if (document.fonts && document.fonts.ready) await document.fonts.ready; });
+      await waitForQuiet(page);
+      const pins = (job.marks || []).map((mark) => {
+        const target = Array.isArray(mark.targets) && mark.targets[0] ? mark.targets[0] : null;
+        return { n: mark.n, selector: target ? target.selector : mark.selector, text: target ? target.text || '' : mark.text || '' };
+      }).filter((pin) => pin.selector);
+      if (pins.length) {
+        await page.evaluate(({ pins, pinCss }) => {
+          const layer = document.createElement('div');
+          layer.style.cssText = 'position:absolute;left:0;top:0;width:0;height:0;z-index:2147483647;pointer-events:none';
+          for (const pin of pins) {
+            let el = null;
+            try { el = document.querySelector(pin.selector); } catch { el = null; }
+            if (!el) continue;
+            const r = el.getBoundingClientRect();
+            const dot = document.createElement('span');
+            dot.style.cssText = `${pinCss}left:${Math.max(0, r.left + scrollX - 9)}px;top:${Math.max(0, r.top + scrollY - 9)}px`;
+            dot.textContent = `#${pin.n}`;
+            layer.appendChild(dot);
+          }
+          document.body.appendChild(layer);
+        }, { pins, pinCss: PIN_CSS });
+      }
+      fs.mkdirSync(path.dirname(job.out), { recursive: true });
+      const buffer = await page.screenshot({ path: job.out, fullPage: true });
+      const size = pngSize(buffer);
+      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height });
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
+  return results;
+}

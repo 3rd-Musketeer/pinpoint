@@ -1,7 +1,7 @@
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
-import { buildCheckReport, formatCheckMarkdown, loadPageContext, locateLine } from '../../src/server/lib/ann-query.js';
+import { buildCheckReport, docFrameUrl, formatCheckMarkdown, loadPageContext, locateLine } from '../../src/server/lib/ann-query.js';
 import { expandRefs, expandStatus, parseCrossRef, REF_STATUSES } from '../../src/server/lib/ann-refs.js';
 import { listPageIds } from '../../src/server/lib/page-compiler.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
@@ -379,9 +379,27 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   const tabOfFrame = new Map();
   if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (frame.tabId) tabOfFrame.set(frame.id, frame.tabId);
   const withTab = (tabId) => (tabId ? { tabId } : {});
+  // 文章的文档帧（HTML 帧）不在画布上：直接打开它自己的地址，按手机宽度拍整页（ppnt-shot 的 renderDocShots）。
+  const docUrlOf = (screenId) => (baseContext.article && baseContext.board && baseContext.target
+    ? docFrameUrl(baseContext.board, baseContext.target.urlBase, screenId)
+    : null);
   const frameJob = (screenId) => {
     if (seenScreens.has(screenId)) return;
     seenScreens.add(screenId);
+    const docUrl = docUrlOf(screenId);
+    if (docUrl) {
+      jobs.push({
+        kind: 'doc',
+        pageId: basePageId,
+        screenId,
+        url: docUrl,
+        scale,
+        label: [frameRefOf(screenId), screenId].filter(Boolean).join(' · '),
+        out: path.join(shotDirOf(basePageId), `${screenId}.png`),
+        marks: withMarks ? openRows(baseContext).filter((row) => row.screenId === screenId) : [],
+      });
+      return;
+    }
     jobs.push({
       kind: 'frame',
       pageId: basePageId,
@@ -399,6 +417,10 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
     if (pick.kind === 'frame') frameJob(pick.screenId);
     else if (pick.kind === 'annotation' && pick.row.screenId) frameJob(pick.row.screenId);
     else if (pick.kind === 'section') {
+      // 文章：节里的文档帧各拍一张；节里没有画布上的帧时不拍节图。
+      const docFrames = pick.frames.filter((frame) => docUrlOf(frame.id));
+      for (const frame of docFrames) frameJob(frame.id);
+      if (docFrames.length && docFrames.length === pick.frames.length) continue;
       jobs.push({
         kind: 'section',
         pageId: basePageId,
@@ -623,7 +645,8 @@ export async function runShot(argv, io = {}) {
     return 1;
   }
   const byPage = new Map();
-  for (const job of jobs) {
+  const docJobs = jobs.filter((job) => job.kind === 'doc');
+  for (const job of jobs.filter((row) => row.kind !== 'doc')) {
     if (!byPage.has(job.pageId)) byPage.set(job.pageId, []);
     byPage.get(job.pageId).push(job);
   }
@@ -636,6 +659,9 @@ export async function runShot(argv, io = {}) {
   try {
     if (articleJobs.length) {
       for (const result of await renderer.renderArticleShots({ origin, jobs: articleJobs, timeoutMs: timeoutSec * 1000, env })) print(result, 'article');
+    }
+    if (docJobs.length) {
+      for (const result of await renderer.renderDocShots({ origin, jobs: docJobs, env })) print(result);
     }
     for (const [pageId, group] of byPage) {
       for (const result of await renderer.renderShots({ origin, pageId, jobs: group, env })) print(result, 'canvas');

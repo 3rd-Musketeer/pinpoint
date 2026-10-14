@@ -30,25 +30,32 @@ export function parseOverlayHash(hash) {
  * One scale for every frame in the overlay, so sizes stay comparable: the
  * largest that fits every frame's natural box into the available height (and
  * width, which only binds on a phone or for wide doc frames), never above
- * `max` (1 = the frame's real size). `boxes` are natural sizes in CSS px.
+ * `max` (1 = the frame's real size). `boxes` are natural sizes in CSS px; a box with
+ * `height: null` (a document frame) fills the height, so only its width counts.
  */
 export function overlayScale({ boxes, availWidth, availHeight, max = 1 }) {
-  const list = (boxes || []).filter((b) => b && b.width > 0 && b.height > 0);
+  const list = (boxes || []).filter((b) => b && b.width > 0 && (b.height > 0 || b.height === null));
   if (!list.length || !(availWidth > 0) || !(availHeight > 0)) return max;
-  const tallest = Math.max(...list.map((b) => b.height));
+  // height: null = a document frame: it fills the available height and scrolls inside, so only its width binds.
+  const heights = list.filter((b) => b.height > 0).map((b) => b.height);
+  const tallest = heights.length ? Math.max(...heights) : 0;
   const widest = Math.max(...list.map((b) => b.width));
-  return Math.min(max, availHeight / tallest, availWidth / widest);
+  return Math.min(max, tallest ? availHeight / tallest : max, availWidth / widest);
 }
 
 /**
  * A frame's natural box before it is measured, from its card box (shellBox):
  * a phone is the device body inside the workbench's iPhone chrome (402 × 874,
  * .ios-device inside the 438 × 910 stage of index.html), which is what the
- * overlay shows and clips to; other shells take the card's starting box.
+ * overlay shows and clips to; a document frame (shell doc) keeps the page width the card is set to
+ * and fills the height (`height: null`); other shells take the card's starting box.
  */
 export const PHONE_STAGE = { width: 402, height: 874 };
 export function naturalBox(cardBox) {
-  return cardBox.mode === 'phone' ? { ...PHONE_STAGE } : { width: cardBox.width, height: cardBox.height };
+  if (cardBox.mode === 'phone') return { ...PHONE_STAGE };
+  // A document frame (HTML 帧) keeps its page width and takes the overlay's full height (height: null, see overlayScale).
+  if (cardBox.mode === 'doc') return { width: cardBox.width, height: null };
+  return { width: cardBox.width, height: cardBox.height };
 }
 
 /** The section before / after `current` in `ids` (sections that have a canvas, article order); '' at either end. */

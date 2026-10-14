@@ -7,7 +7,8 @@
  * - .jsx 帧：esbuild（jsx automatic + jsxDev + 我们的 pp-jsx-runtime）转 cjs bundle，
  *   new Function 就地求值后 renderToString 成 HTML 片段；相对 import 走 esbuild
  *   默认解析。
- * - .html 帧：原样保留。
+ * - .html 帧：原样保留。文章的 HTML 帧（本篇目录下的 <帧 id>.html，或 project 根下 src 指的文件）
+ *   也原样进 dist，不注入 assets。
  * - board.json 顶层 assets: { css?: [], js?: [] } 注入每帧：css 在帧开头
  *   `<style>@import …`，js 在帧末尾 `<script type="module" data-preview-script …>`；
  *   存量帧手写了同 URL 行的不重复注入。
@@ -29,7 +30,7 @@ import { h } from 'preact';
 import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
-import { articleComponentCandidates, deriveArticleBoard } from './article-board.js';
+import { articleComponentCandidates, articleHtmlFrameFile, deriveArticleBoard } from './article-board.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
@@ -486,6 +487,8 @@ export function screenEntriesFromBoard(rawBoard) {
       if (seen.has(raw.id)) continue;
       seen.add(raw.id);
       const entry = { id: raw.id };
+      // 文章画布上 project 根下的 HTML 帧（docs/projects.md“HTML 帧”）：src 指到源文件。
+      if (typeof raw.src === 'string' && raw.src) entry.src = raw.src;
       // comp section 的 variants 墙（pp2 切片 2）：comp = 组件名，props 只允许 JSON 值
       // （board.json 本身是 JSON，天然满足；非对象的 props 按空对象处理）。
       if (typeof raw.comp === 'string' && raw.comp) {
@@ -516,7 +519,17 @@ async function compileScreen(target, entry, options = {}) {
   let result;
   let source = null;
   const sourceRecord = (file) => ({ file, mtimeMs: fs.statSync(path.join(target.pageDir, file)).mtimeMs });
-  if (entry.comp) {
+  // 文章的 HTML 帧（本篇目录下的 <帧 id>.html 或 project 根下的 src）：整份文档原样进 dist，
+  // 不注入 article.css / article.js（注在 <!doctype> 前面会把文档打进怪异模式）。
+  const articleHtml = target.kind === 'article' ? articleHtmlFrameFile(target, entry) : null;
+  if (target.kind === 'article' && entry.src && !articleHtml) {
+    result = { ok: false, error: `${screenId}: 源码不存在（${entry.src}）` };
+  } else if (articleHtml) {
+    const rel = path.relative(target.pageDir, articleHtml).split(path.sep).join('/');
+    source = { file: rel, mtimeMs: fs.statSync(articleHtml).mtimeMs };
+    result = compileHtmlScreen(target, screenId, rel);
+    if (result.ok) result.document = true;
+  } else if (entry.comp) {
     const found = await compileCompScreen(target, entry, options);
     result = found.result;
     source = found.source;
@@ -531,7 +544,7 @@ async function compileScreen(target, entry, options = {}) {
   }
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
   if (result.ok && result.deps && source) source = { ...source, deps: result.deps };
-  if (result.ok) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
+  if (result.ok && !result.document) result.html = injectAssets(result.html, options.assets || {}, target.urlBase);
   return {
     ...result,
     ms: Math.round((performance.now() - started) * 10) / 10,

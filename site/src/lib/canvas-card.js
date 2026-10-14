@@ -31,10 +31,27 @@ export const CARD_SCALE = 158 / 438;
 export const PHONE = { width: 438, height: 910, scale: CARD_SCALE };
 const NATURAL = {
   comp: { width: 480, height: 320, scale: CARD_SCALE },
-  doc: { width: 1280, height: 900, scale: CARD_SCALE },
 };
-export function shellBox(shell) {
+
+/**
+ * Document frames (shell "doc": HTML frames, docs/projects.md「HTML 帧」) are shown as a page at a
+ * width pinpoint picks, not measured: 手机 390 or 桌面 1280 (owner 2026-10-14; the values match
+ * HTML_FRAME_WIDTHS in src/shared/project-ids.js, a unit test checks). `height` is the first screen:
+ * the card shows only that much, the overlay lets the page scroll inside the frame.
+ */
+export const DOC_WIDTHS = Object.freeze({
+  phone: Object.freeze({ width: 390, height: 844, label: '手机' }),
+  desktop: Object.freeze({ width: 1280, height: 800, label: '桌面' }),
+});
+export const DEFAULT_DOC_WIDTH = 'phone';
+export const docWidthKey = (key) => (Object.hasOwn(DOC_WIDTHS, key) ? key : DEFAULT_DOC_WIDTH);
+
+export function shellBox(shell, docWidth = DEFAULT_DOC_WIDTH) {
   if (!shell || shell === 'app' || shell === 'lock') return { mode: 'phone', ...PHONE };
+  if (shell === 'doc') {
+    const view = DOC_WIDTHS[docWidthKey(docWidth)];
+    return { mode: 'doc', width: view.width, height: view.height, scale: CARD_SCALE };
+  }
   return { mode: 'natural', ...(NATURAL[shell] || NATURAL.comp) };
 }
 
@@ -54,7 +71,8 @@ export function looseErrors(canvas) {
 }
 
 /**
- * → { pageId, sectionId, num, title, shell, box, frames: [{ id, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * → { pageId, sectionId, docWidth, num, title, shell, box, frames: [{ id, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * `docWidth` is '' unless a frame is a document (shell doc); then it is the width the card starts at.
  * `num` is the section's number in the article (1, 2 …; remark-pinpoint
  * injects it next to `section`). The article shows numbers only: the canvas
  * letters (`letter`, frame `ref` like B1) stay in articleCanvas for the
@@ -87,6 +105,8 @@ export function cardModel(canvas, sectionId, num = '') {
   return {
     pageId,
     sectionId,
+    // 有文档帧（HTML 帧）的卡片头带“手机 / 桌面”切换，缺省手机（DOC_WIDTHS）。
+    docWidth: frames.some((f) => f.shell === 'doc') ? DEFAULT_DOC_WIDTH : '',
     num: num ? String(num) : '',
     title: section?.title || sectionId,
     shell: section?.shell || '',
