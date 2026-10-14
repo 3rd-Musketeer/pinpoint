@@ -332,7 +332,7 @@ test('owner 关闭：open / check / done 三态经 /save 入 close，撤销回�
   }
 });
 
-test('@prose 账本（pp3 M2）：文件名原样；与 @canvas 同桶共用 #n', (t) => {
+test('@prose 账本（pp3）：文件名原样；与 @canvas 同桶共用 #n', (t) => {
   const { dataDir, store } = withStore(t);
   store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'c1', content: '画布' }] });
   const saved = store.save({

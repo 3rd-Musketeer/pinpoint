@@ -182,9 +182,8 @@ export function annotationMatchesIndicator(a, ind) {
 }
 
 /**
- * Normalize one annotation for disk / API。旧字段（comment / group /
- * groupLabel、[@m:] mention）的读侧升级已随迁移脚本（scripts/
- * migrate-ledgers.mjs）删除 —— 磁盘形态由脚本一次性迁净。
+ * Normalize one annotation for disk / API。只认现行字段：磁盘上的账本没有旧字段
+ * （comment / group / groupLabel、[@m:] mention），这里不做读侧升级。
  */
 export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;

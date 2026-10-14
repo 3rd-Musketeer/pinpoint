@@ -2,7 +2,7 @@
  * GET /api/projects        → listProjects(registry)（数组，docs/projects.md）
  * GET /api/projects/<id>   → findProject(registry, id)，没登记 404
  * GET /api/projects/<id>/articles/<article>/canvas → articleCanvas(registry, id, article)
- *   （pp3 M1：文章画布的节、帧、编号与这篇的布局错误；project 没登记 404）
+ *   （pp3：文章画布的节、帧、编号与这篇的布局错误；project 没登记 404）
  * pp3：Astro 站点与工作台读登记的 project 用它；布局错误在每个 project 的
  * errors 里，不是 HTTP 错误。每次请求都重读盘，文章增删不用 reload。
  */

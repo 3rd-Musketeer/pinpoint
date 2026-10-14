@@ -321,7 +321,7 @@ test('最近与 Pages 共用右键菜单：查看信息显示真实来源，归�
   await page.screenshot({ path: test.info().outputPath('navigation.png') });
 });
 
-// pp3 M4：「页面」tab 顶上的「文章」组（owner 2026-10-13 选 A）。固件是常驻的 e2e-project
+// pp3：「页面」tab 顶上的「文章」组（owner 2026-10-13 选 A）。固件是常驻的 e2e-project
 // （commit-confirm 有画布、takeover 没有）；实时更新用本轮临时登记的 e2e-live。
 test('文章组：在页面组之上；点文章开画布并高亮，阅读钮开正文，没画布的文章点了开正文；登记与新文章不刷新就出现', async ({ page, request, context }) => {
   test.setTimeout(60_000);

@@ -34,7 +34,7 @@ const IGNORED_PATH = /(?:^|\/)(?:node_modules|\.git)\/|(?:^|\/)build\.json$/;
  */
 export function isWatchedSource(file, { distRoot = null } = {}) {
   const rel = String(file || '').replace(/\\/g, '/');
-  // 文章画布（pp3 M1）：board 由 index.mdx 派生，正文也要盯。
+  // 文章画布（pp3）：board 由 index.mdx 派生，正文也要盯。
   if ((!WATCHED_SOURCE.test(rel) && !ARTICLE_BOARD_SOURCE.test(rel)) || IGNORED_PATH.test(rel)) return false;
   if (distRoot && path.isAbsolute(String(file))) {
     const inDist = path.relative(path.resolve(distRoot), path.resolve(String(file)));

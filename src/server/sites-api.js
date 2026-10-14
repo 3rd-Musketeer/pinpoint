@@ -235,7 +235,7 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    // /sites/<id>/ 只服务登记条目与文章画布页（pp3 M1，<project>_<article>）；模板页不在这里。
+    // /sites/<id>/ 只服务登记条目与文章画布页（pp3，<project>_<article>）；模板页不在这里。
     const page = resolvePage(registry, id);
     if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel);
     const entry = page && page.kind === 'entry' ? page.entry : null;

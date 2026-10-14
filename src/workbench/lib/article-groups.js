@@ -1,4 +1,4 @@
-// 左栏「文章」组的模型（pp3 M4，docs/design.md「左栏结构」）：纯函数，不碰 DOM。
+// 左栏「文章」组的模型（pp3，docs/design.md「左栏结构」）：纯函数，不碰 DOM。
 // 输入是 GET /api/projects（listProjects 的形状）和工作台清单认得的画布页 id
 // （manifest.articles）；输出是 project → 文章 两层，Sidebar 只照着画。
 

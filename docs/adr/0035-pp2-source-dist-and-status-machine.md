@@ -2,7 +2,7 @@
 
 Status: 现行（note 那半边已退役） · Date: 2026-09-22 · Superseded-in-part-by: 0038 · Supersedes: 0028（组件归属半边）、0015（导出 picker）、0017（“Component Library 作系统行保留”一句）、0009（扩展整体） · Scope: `src/server/lib/page-compiler.js`、`src/server/lib/pp-jsx-runtime.js`、`content/kits/ios/jsx/`、`bin/pinpoint-cli.js`、`src/client/annotate.js`（状态机与幽灵框）、`docs/board-schema.md`
 
-**Decided**（2026-09-22，owner 对话定稿；决定全表与切片执行记录在 `tasks/done/2026-09-22-pp2/`）：
+**Decided**（2026-09-22，owner 对话定稿；决定全表与切片执行记录在 owner 本机的 `tasks/done/2026-09-22-pp2/`，不进 git）：
 
 - **源码 / dist 分层**：页目录是源码——`<screenId>.jsx`、`components/<Name>.jsx`、页级 css / js、
   `board.json`（存量 `.html` 也是源码）；`ppnt build` 编成静态 HTML 产物，住 `~/.pinpoint/dist/<entry>/`，
@@ -37,7 +37,7 @@ Status: 现行（note 那半边已退役） · Date: 2026-09-22 · Superseded-in
 **Why**（证据 + owner 原话）：
 
 - 重复的量：areta-chat 源码行级逐字重复 63%、plugins 88%；plugins 35% 的 HTML 是四个壳块的
-  逐字复制（`tasks/done/2026-09-22-pp2/dup-analysis.py` 实测）。kit include 组件 34 页里只有 6 页用过，
+  逐字复制（owner 本机 `tasks/done/2026-09-22-pp2/dup-analysis.py` 实测，不进 git）。kit include 组件 34 页里只有 6 页用过，
   2026-09-07 停用业务组件之后为 0——集中式组件库没有长出使用。
 - 复用的起点：“应该先从本地复用、局部复用开始；当我们真的发现需要跨不同 Page 复用时，再去开启
   Global 复用页面”——反转 0028 的 kit 集中模型。

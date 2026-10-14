@@ -189,7 +189,7 @@ html.pp-ov-lock { overflow:hidden; }
   .ov-frame { scroll-snap-align:center; }
 }
 
-/* 正文评论（pp3 M2）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
+/* 正文评论（pp3）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
    生成（src/client/prose-comments.js）。 */
 .btn.pri { background:var(--ink); color:var(--bg); border-color:var(--ink); }
 .btn.pri:hover { background:var(--ink-2); }

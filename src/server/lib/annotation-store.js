@@ -19,7 +19,7 @@ export { normalizeAnnotation, normalizeDoc, annotationsFromDoc };
  *  `<pageId>/@canvas.json`。`@` 不在 annotationSlug 的保字符集里，所以这个
  * 名字走专用通道（ledgerKey），绝不过 slug —— 过了会变成 `_canvas.json`，
  * 客户端（PAGE='@canvas'）与服务端各写一个文件。
- *  正文评论账本（pp3 M2）：一篇 article 的正文评论住在这篇的桶
+ *  正文评论账本（pp3）：一篇 article 的正文评论住在这篇的桶
  *  `<articlePageId>/@prose.json`，和画布的 `@canvas.json` 同桶、同一套 #n，同样不过 slug。
  *  两个名字定义在 src/shared/project-ids.js。 */
 export { CANVAS_LEDGER, PROSE_LEDGER };
@@ -222,8 +222,8 @@ export function createAnnotationStore(options) {
     };
   }
 
-  // Shape returned to the API：新写与广播只带 annotations（旧 marks 键由
-  // scripts/migrate-ledgers.mjs 一次性迁净）。
+  // Shape returned to the API：新写与广播只带 annotations（磁盘上的账本只有
+  // annotations 键）。
   function asDoc(doc) {
     const annotations = Array.isArray(doc.annotations) ? doc.annotations : [];
     return {

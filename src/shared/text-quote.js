@@ -1,5 +1,5 @@
 /**
- * 正文评论的锚点（pp3 M2）：W3C TextQuote 式 —— 选中文字本身（exact）加前后各
+ * 正文评论的锚点（pp3）：W3C TextQuote 式 —— 选中文字本身（exact）加前后各
  * 一小段上下文（prefix / suffix），另带 section id 与选中时的位置 start 作提示。
  * 纯函数、不碰 DOM：客户端先把正文抽成一条“规范化文本”（normalizeWhitespace，见
  * src/client/prose-comments.js 的 buildTextIndex），这里只在那条文本上取引文与

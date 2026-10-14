@@ -1,4 +1,4 @@
-// pp3 M1：文章画布页在服务各处都按普通页工作——/sites/<页 id>/、/api/frame、
+// pp3：文章画布页在服务各处都按普通页工作——/sites/<页 id>/、/api/frame、
 // 标注桶、/registry 清单（不进 Pages）、/api/projects/…/canvas、文章页注入的桶、watch。
 import assert from 'node:assert/strict';
 import fs from 'node:fs';

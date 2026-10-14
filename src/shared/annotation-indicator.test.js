@@ -151,7 +151,7 @@ test('isLegalMarkTransition：mark 端点仍只收 open / check → check / done
   assert.equal(isLegalMarkTransition('close', 'open'), false);
 });
 
-test('normalizeDoc 只认 annotations（旧 marks 键由 migrate-ledgers.mjs 迁净）', () => {
+test('normalizeDoc 只认 annotations（磁盘上的账本没有旧 marks 键）', () => {
   const doc = normalizeDoc({
     page: 'index.html',
     revision: 3,

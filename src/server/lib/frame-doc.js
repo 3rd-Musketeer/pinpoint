@@ -194,7 +194,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
 
   // 2)、3) 经 resolvePage 判定；模板页在上面按清单先认了（要清单里的 mode）。
   const page = resolvePage(registry, pageId);
-  // 2) 文章画布（pp3 M1）：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
+  // 2) 文章画布（pp3）：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
   const article = page && page.kind === 'article' ? page.target : null;
   if (article) {
     let board;

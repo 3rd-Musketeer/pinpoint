@@ -10,7 +10,7 @@ import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.j
 import { closeSettled } from './ledger-settle.js';
 import { waitNoReload } from './site-settle.js';
 
-// pp3 M2：文章正文选中文字评论（src/client/prose-comments.js）。固件 = registry 常驻的
+// pp3：文章正文选中文字评论（src/client/prose-comments.js）。固件 = registry 常驻的
 // project e2e-prose → 本轮的副本 <sites>/prose-site/（registry-fixture.js 复制），一篇
 // notes：两节，“确认卡写清收款方”在两节里各出现一次，第一节有一张画布卡片（帧 pay-card）。
 // 改正文要动副本，不动仓内固件；用例结束把副本还原。

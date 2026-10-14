@@ -70,7 +70,7 @@
 
 根因：`goToMark → switchPage → scrollToGroup` 调用 `scrollIntoView`，会滚动祖先中的 `.wb-zoom-wrap`。它用 `overflow:hidden` 裁掉 transform 缩放前的布局溢出，但 hidden 仍创建可程序滚动的容器；缩小时内部存在可滚动空间。定位下方 section 会留下内部 scrollTop，上方内容移出裁剪边界，外层 `#wbstage` 滚回无法消除内部偏移。DOM 和账本都没有删除。
 
-修复：`fix/sections-disappear` 将 `.wb-zoom-wrap` 改为 `overflow:clip`，保留裁剪但禁止内部滚动；画布滚动仍由 `#wbstage` 承担。该分支尚未合并、发布。
+修复：`.wb-zoom-wrap` 改为 `overflow:clip`（`index.html`），保留裁剪但禁止内部滚动；画布滚动仍由 `#wbstage` 承担。
 
 识别特征：定位后内容持续空白，但 DOM、几何和小地图仍在时，检查**所有祖先的 scrollTop / scrollLeft**，尤其没有滚动条的 `overflow:hidden` 层；不能只检查 display / visibility。回归必须检查返回原位置后的几何与命中结果。
 

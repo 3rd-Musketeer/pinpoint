@@ -48,14 +48,14 @@ export default function previewHmr(options = {}) {
     ));
   }
 
-  // pp3 M1：登记的 project 的内容目录（文章画布的帧、正文、组件都在下面）。
+  // pp3：登记的 project 的内容目录（文章画布的帧、正文、组件都在下面）。
   function projectDirs() {
     return projectEntries(registry)
       .filter((entry) => entry && typeof entry.path === 'string')
       .map((entry) => ({ id: entry.id, dir: path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR) }));
   }
 
-  // pp3 M4：工作台左栏的「文章」组读 /api/projects。project 里看得见的那一层（标题、
+  // pp3：工作台左栏的「文章」组读 /api/projects。project 里看得见的那一层（标题、
   // 文章增删与标题、摘要、画布节数、布局错误）变了才发 projects:update；只改正文、
   // 帧内容这类不改列表的变更不发。digest 按 project id 缓存，syncWatcher 时补齐。
   const projectDigests = new Map();
@@ -269,7 +269,7 @@ export default function previewHmr(options = {}) {
         });
       }
       notifyProjectChange(server, file);
-      // 文章画布（pp3 M1）：帧、组件、正文、article.css / .js 变更 → 重编 → 该画布页重摆。
+      // 文章画布（pp3）：帧、组件、正文、article.css / .js 变更 → 重编 → 该画布页重摆。
       const articleTargets = isSource ? articleTargetsFor(file) : [];
       if (articleTargets.length) return recompileArticles(server, articleTargets, file);
       // registry dir/file 条目（仓外）：板、屏、sidecar 变更 → 重编译 → 该条目页重摆

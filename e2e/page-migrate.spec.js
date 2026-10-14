@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
 import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.js';
 
-// pp3 M4：`ppnt migrate` 把模板页 example 迁进一个 project（e2e/project-site 的本轮副本，
+// pp3：`ppnt migrate` 把模板页 example 迁进一个 project（e2e/project-site 的本轮副本，
 // project id 改成 e2e-migrate），服务不重启就能经 /api/frame 打开迁过来的帧。
 // 不经过 Astro：只验画布这一侧（正文渲染由 test:site 管）。
 const execFileP = promisify(execFile);

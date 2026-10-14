@@ -235,7 +235,7 @@ export function createAnnotateHandler(options = {}) {
       folders: registry.folders || [],
       pageFolders: registry.pageFolders || {},
       pageOrder: registry.pageOrder || {},
-      // pp3 M1：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
+      // pp3：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
       articles,
       errors: registry.errors,
       warnings: registry.warnings,
