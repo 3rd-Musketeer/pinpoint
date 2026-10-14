@@ -13,14 +13,21 @@ description: 在 pinpoint 里写 article（设计文档）：建 project、写 i
 
 先跑 `ppnt list <关键词>`。它列出 project（下面每篇文章一行 `<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
 
-- 主题已经有 project：在它的 `docs/pinpoint/articles/` 下新建一个目录，就是一篇新 article。不用再登记，服务、站点和 CLI 每次都重读磁盘。
-- 还没有：在这个主题自己的根目录（它所属的仓库或 topic）下建 `docs/pinpoint/project.json`，内容是 `{ "id": "browser-use", "title": "Areta browser use" }`，再登记：
+- 还没有：在这个主题自己的根目录（它所属的仓库或 topic）下建 project，命令写 `project.json`、建空的 `articles/` 和 `concepts/`，再登记：
 
 ```shell
-pinpoint add <project 根目录> --project
+ppnt new project <project 根目录> --title "Areta browser use"     # id 缺省取目录名，--id 指定
 ```
 
-project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。登记时 id 只取 `project.json`，`--project` 不能和 `--title`、`--page`（把条目挂到存量页上的选项）同用；id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有条目时，登记退非零，registry 不动。
+- 建一篇文章（主题已有 project 时直接从这一步开始）：
+
+```shell
+ppnt new article browser-use/payment-confirm --title 付款确认
+```
+
+它写出 `articles/payment-confirm/index.mdx`：frontmatter 带 title，正文是一节 `<Section id="overview">`，并打印文章页网址。不用再登记，服务、站点和 CLI 每次都重读磁盘。
+
+project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
 
 ## 2. 目录（定死）
 
@@ -122,14 +129,17 @@ boundary: 一句话说清它管什么、不管什么。
 
 - `ppnt check <project>/<article>`：汇报前的验证，一条命令看全。布局错误（frontmatter、`<Section>` / `<Canvas>` / `<Figure>` 写法、跨页引帧、缺帧）、每一帧和每个图的 lint 与编译错误、正文渲染错误（没定义的组件 `<Foo />`、没定义的变量）各一行，形如 `文件:行  错误  code  说明`；空 ref 是提示。有错误退 1，只有提示退 0。写 `ppnt check <project>` 查整个 project，`--json` 给结构化输出。
 - `ppnt show <project>/<article>`：每节一行 §n、字母、节 id、标题、帧数和 open 数，下面是帧（编号、帧 id、源文件）和网址。owner 说“第 2 节”“B1”时在这里对上。`ppnt show <project>` 列文章、概念、空 ref 和布局错误。
-- `ppnt shot <project>/<article>`：文章页整页的 PNG，命令打印文件路径和尺寸。`ppnt shot <project>/<article> §2` 截文章页上的第 2 节；`B1`、`C` 或帧 id 截画布视图上的一帧、一节；`--canvas` 截整个画布视图；`--figure <图 id>` 截正文里的一个图，浅色、深色各一张。改了组件或 `article.css`，把用到它的帧都截一遍。服务要在跑；文章站点还在启动（503）时命令自己等，最多 `--timeout` 秒（缺省 60）。
+- `ppnt shot <project>/<article>`：文章页整页的 PNG，命令打印文件路径和尺寸。`ppnt shot <project>/<article> §2` 截文章页上的第 2 节；`B1`、`C` 或帧 id 截画布视图上的一帧、一节；`--canvas` 截整个画布视图；`--figure <图 id>` 截正文里的一个图，浅色、深色各一张。服务要在跑；文章站点还在启动（503）时命令自己等，最多 `--timeout` 秒（缺省 60）。截到的文章页在正文中途断了（正文渲染出错）时，图照样存下，命令打一行“注意”指向 `ppnt check`，退 1。
+- `ppnt show <project> --uses <组件>`：用到这个组件的帧和图，最后给出每篇的截图命令。改了组件，照它截一遍；改了 `article.css`，截这篇的全部帧（`ppnt shot <project>/<article> --canvas`）。
+- `ppnt open <project>/<article> --print`：打印文章页和画布视图的网址；后面加 `§2` 给那一节，写 `<project>` 给首页、`llms.txt`、每篇文章和每个概念页。不带 `--print` 时用浏览器打开。
 - `ppnt build <project>/<article>`：编译这篇的全部帧和图到 dist，逐帧、逐图报 ok 或错误。`check` 已经编过一遍，`build` 用于要更新 dist 或 `--watch` 时。
-- 文章页 `https://pinpoint.localhost/<project>/<article>/`：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。正文渲染出错时文章页可能只显示到正文开头，状态码仍是 200，所以查错看 `ppnt check`，不看状态码。
+- 文章页 `https://pinpoint.localhost/<project>/<article>/`（隔离服务换成它的地址，`ppnt open` 打印的就是对的）：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。正文渲染出错时文章页可能只显示到正文开头，状态码仍是 200，所以查错看 `ppnt check`，不看状态码。
 - 画布视图 `https://pinpoint.localhost/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。
 - project 首页 `https://pinpoint.localhost/<project>/`：文章列表、概念和全部空 ref。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和概念，就是别的 agent 读到的样子。
 - 站点打不开，先跑 `pinpoint status`。
-- 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：另起一个服务，用 `PINPOINT_DATA_DIR`、`PINPOINT_REGISTRY`、`PINPOINT_ORIGIN`、`PORT`、`PINPOINT_SITE_PORT` 指到别处，做法见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。不要用 `pinpoint start` 起第二个服务：它经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
+- 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：`ppnt dev --sandbox [<目录>]` 起一个隔离服务，前台常驻（agent 放到后台跑），数据目录、登记表、端口都是自己的。就绪后它打印一行 `source <目录>/env.sh`；在别的 shell 里先执行这一行，之后的 `ppnt` 都对着这个服务。停它用 Ctrl-C 或 `kill` 它打印的 pid。细节见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。第二个服务只用这条路起：`pinpoint start` 经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
+- 每个命令都认 `--json`，stdout 只有一个 JSON。退出码：0 成功；1 有问题（验证错误、截到半篇、引用没命中、服务没答）；2 用法错或找不到目标。
 - 每个命令的选项和例子：`ppnt <命令> --help`。
 
 文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和这一节 open 状态的画布标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧，在文章页上打开这一节的画布浮层，里面的帧可以操作，但不能标注；点卡片头的“打开画布 →”，进画布视图并定位到这一节。画布标注只在画布视图里做；在文章页上选中正文写的是正文评论。两种进同一个队列，处理见 pinpoint-annotate。
@@ -144,7 +154,7 @@ boundary: 一句话说清它管什么、不管什么。
 
 ## 7. 存量页
 
-存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件、网址），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的地址就是它的 id，也是页 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
+存量页是文章模型之外的原型页：一个带 `board.json` 的帧目录（或登记的 HTML 文件、网址），在工作台左栏“页面”组里，`ppnt list` 里类型不是 project 的条目就是。它的地址就是它的 id，也是页 id。新工作写成文章，不新建存量页。要把存量页转成文章：`pinpoint migrate <页 id> --project <根>`，每个 board section 成为一节，旧页和它的标注留在原处，命令最后列出下一步（登记、验证、对比截图、补正文、处理旧页的标注），见 [`docs/projects.md`](../../docs/projects.md)“从存量页迁移”。改存量页时：
 
 - 帧和组件的写法与第 4 节相同。存量页的组件在 `<存量页目录>/components/`，没有 project 这一层；页级资源登记在 board.json 的 `assets`。
 - 新帧要登记进 board.json 的 `sections[].screens`。存量页没有 `check`：改完跑 `ppnt build <页 id>` 到全绿，`ppnt show <页 id>` 看编号对照，`ppnt shot <页 id> B1` 截图。

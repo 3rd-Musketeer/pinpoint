@@ -1,11 +1,11 @@
 ---
 name: pinpoint-annotate
-description: 读取 Pinpoint 的画布标注和文章正文评论、判断改帧、改组件还是改正文、改完编译截图、在评论线程里回复、写回状态，全程不需要浏览器工具。用户要求查看或处理标注、评论，或给出 #12、B3、§2、browser-use/payment-confirm#12、@frame、@a 引用时使用。
+description: 读取 Pinpoint 的画布标注、文档页标注和文章正文评论、判断改帧、改组件还是改正文、改完验证截图、在标注的线程里回复、写回状态，全程不需要浏览器工具。用户要求查看或处理标注、评论，或给出 #12、B3、§2、browser-use/payment-confirm#12、@frame、@a 引用时使用。
 ---
 
 # 处理标注和正文评论
 
-`ppnt comments` 读 → 判断改哪里 → 改、`ppnt check` 验、`ppnt shot` 看 → 正文评论用 `ppnt reply` 回一句 → `ppnt mark` 写状态。
+`ppnt comments` 读 → 判断改哪里 → 改、`ppnt check` 验、`ppnt shot` 看 → `ppnt mark <目标> <引用> done --note "<改了什么>"` 一步回复并写状态。
 总入口 [`AGENTS.md`](../../AGENTS.md)；写文章、改存量页见 [`pinpoint-build`](../pinpoint-build/SKILL.md)；
 字段、账本与状态机的权威是 [`docs/annotation.md`](../../docs/annotation.md)。
 
@@ -15,12 +15,16 @@ description: 读取 Pinpoint 的画布标注和文章正文评论、判断改帧
 `<project>/<article>`（如 `browser-use/payment-confirm`），文章网址和页 id `<project>_<article>` 也认；存量页写它的 id。
 文章的桶里有两种条目：
 
-- **画布标注**：owner 在画布视图（`/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在帧或元素上的标注。存量页上的标注也是这一种。
+- **画布标注**：owner 在画布视图（`/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在帧或元素上的标注。存量页画布上的标注也是这一种。
+- **文档页标注**：存量页里整份 HTML 文档条目（`board: "html"` 的页、`shell: "doc"` 的条目）上的标注，锚点是 cssPath 加元素文字。
 - **正文评论**：owner 在文章页（`/<project>/<article>/`，读者读文章的网页）上选中一段正文写的评论。它带引文（选中的文字和前后文）、
-  节 id 和一个线程（owner 与 agent 的来回）。文章页上的画布卡片和画布浮层不收标注。
+  节 id。文章页上的画布卡片和画布浮层不收标注。
   要在 UI 上照人的做法发一条（测试时）：在文章页用鼠标拖选一段正文，点浮出的“评论”，在右栏的输入框里写，点“发送”。
 
-`ppnt comments <project>/<article>` 一次列出这两种，正文评论单独成一组。
+三种条目都有一个线程：owner 写的正文在前，之后是 owner 与 agent 的来回。agent 的回复 owner 不用刷新就能看到，
+正文评论在文章页右栏，画布标注和文档页标注在工作台的标注列表和标注卡里。
+
+`ppnt comments <project>/<article>` 一次列出这个桶里的全部条目，正文评论单独成一组，每条下面列出线程里已有的回复。
 
 引用写法：`#12`（本桶序号）、`browser-use/payment-confirm#12`（带上文章，跨桶也用它；`<页 id>#12` 同义）、
 `B3`（编号 = 该帧全部标注）、`B` 或 `§2`（整节）、裸帧 id / 节 id（与 `B3` / `B` 同义）、`@frame:<页 id>/<帧 id>`、
@@ -53,7 +57,7 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 存量页的文档按路径各有一本。清单末尾可能出现“孤儿标注”组：表面已不存在的账本（文件删了 / 页没了），
 不计入计数、不要去 mark 它们，清理归 owner 走 `ppnt prune`。`comments` 只读，无副作用；不要为读标注重启服务。
 
-源码摘录读 dist（`check` 只验证，不写 dist）：画布标注下面写“还没编进 dist”时，先跑 `ppnt build <project>/<article>` 再读。
+源码摘录读 dist。dist 不在或落后于源码时，`comments` 和 `locate` 先编一次，在 stderr 打一行说明，摘录照常出来。
 
 画布标注的锚点在 `.jsx` 帧上是 `data-pp-id`（形如 `Nav.jsx:18@2`，源文件：行 + 同行第几个实例；组件锚点
 给帧实例与组件定义两段）；存量页的 `.html` 帧是 cssPath + 文本摘录。锚点已失效的标注仍保留原正文，
@@ -67,8 +71,8 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 - 正文评论 → 改 `index.mdx` 里被评的那段，或者这一节 `<Canvas>` 里的帧。
 - 意图字段：`changeTo` 是改文案（结合目标 pill 与上下文，多目标逐个处理，不要把整段指令当替换
   文本）；`move` 是移动，结合 `to_selector` / `to_point` 理解位置；`images` 是参考图，读实际图片。
-- 不改代码就能回答的问题（设计取向、取舍）：画布标注直接在对话里回答；正文评论用 `ppnt reply` 回在线程里。
-  这两种都把条目留给 owner 处置。
+- 不改代码就能回答的问题（设计取向、取舍）：用 `ppnt mark <目标> <引用> check --note "<回答>"` 回在线程里，
+  条目留给 owner 处置。
 
 ## 3. 改、编译、看图
 
@@ -81,23 +85,25 @@ owner 常用口头说法指一篇文章或一个存量页（“付款那篇文�
 正文改了以后，每条评论按引文重新定位。被评的那句改写掉了，右栏会把那条评论标成“失效”，显示原来的引文。
 按评论改写后出现“失效”是预期的，不用为它保留原句；照常回复、写状态。
 
-## 4. 回复正文评论
+## 4. 回复并写状态
 
 ```shell
-ppnt reply browser-use/payment-confirm#3 "<回复>"
+ppnt mark browser-use/payment-confirm '#3' done --note "按钮文案改成“确认付款”，见 B1"
+ppnt mark hosted-pages '#2' check --note "这处保留：两个版本的标题长度一致"
 ```
 
-`locate`、`mark` 的第一个参数是文章地址，后面跟引用：`ppnt mark browser-use/payment-confirm '#3' '#4' done`；
-引用里已经带了 `<project>/<article>#n` 时可以不写目标。zsh 里单独的 `#3` 要加引号。回复是线程里的一条 agent 消息，owner 不用刷新就能在右栏看到，它不改状态。回复里写清你改了什么、在哪里能看到。一次只回一条；画布标注没有线程，对它 `reply` 会报错退出，状态改用 `ppnt mark`。
+`mark` 的第一个参数是目标（文章地址或存量页 id），后面跟引用和状态；引用里已经带了 `<project>/<article>#n` 时可以不写目标。
+zsh 里单独的 `#3` 要加引号。
 
-## 5. `ppnt mark <project>/<article> <引用…> done|check`
-
-- 看了但不改，包括只在线程里回复、没改文件 → `check`。
-- 改完 → `done`。
+- `--note "<文字>"` 先把这句话写进线程，再写状态。回复里写清改了什么、在哪里能看到；回复没写进去时状态也不改，命令逐条打印结果。
+- 看了但不改，包括只回答、没改文件 → `check`。改完 → `done`。
+- 只回一句、状态不动：`ppnt reply browser-use/payment-confirm#3 "<回复>"`，一次回一条，三种条目都可以。
 - 服务端按 `baseRevision` 校验：冲突或非法转换逐条报 409，不影响其余条目，按提示重读再写。
 - 文章右栏和画布列表的 pending 段数的是 open、check、done 三态：它们都在等 owner 验收。只有 owner 点了完成的 close 进 closed 段。
-- CLI 不接受 `open` / `close`：owner 编辑正文、目标，或在评论线程里回复时，条目自动回 open；close 只有 owner 在
+- CLI 只写 check 和 done：owner 编辑正文、目标，或在线程里回复时，条目自动回 open；close 只有 owner 在
   工作台或文章右栏做。
+
+每个命令都认 `--json`（stdout 只有一个 JSON）。退出码：0 成功；1 有问题（引用没命中、某条没写进去、服务没答）；2 用法错或找不到目标。
 
 最后在对话里汇报：每条标注和评论做了什么（done / check / 未动 + 原因）。清理与关闭留给 owner。
 登记、移动源路径、注入与代理问题见 [`docs/registry.md`](../../docs/registry.md)。

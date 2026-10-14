@@ -268,7 +268,7 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 ## CLI
 
-`ppnt` 和 `pinpoint` 是同一个入口（`bin/pinpoint.mjs`），命令一览是 `ppnt --help`，每个命令的选项和例子是 `ppnt <命令> --help`。这一节写所有命令共用的约定：怎么写目标、找不到目标时怎么办、退出码，以及 `check`、`comments`、`show`、`shot` 这几个读文章的命令各给什么。
+`ppnt` 和 `pinpoint` 是同一个入口（`bin/pinpoint.mjs`），命令一览是 `ppnt --help`，每个命令的选项和例子是 `ppnt <命令> --help`。这一节写所有命令共用的约定：怎么写目标、找不到目标时怎么办、`--json` 和退出码，以及 `new`、`check`、`comments`、`show`、`shot`、`open`、`mark` 各给什么。
 
 ### 目标和引用
 
@@ -288,7 +288,28 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 - `<project>/<article>` 的 project 登记了、这篇不在：报“project X 里没有 articles/Y/index.mdx”，只列这个 project 的文章。
 - 写了命令不认的选项、选项缺值、参数个数不对：打一行错误、一行用法，再指向 `ppnt <命令> --help`，退 2。`list` 的关键词里出现 `--x` 也算写错，不当关键词。
 
-退出码：0 成功；1 运行时失败（有验证错误、服务没在跑、标注写入冲突）；2 用法错或找不到目标。
+### `--json` 和退出码
+
+每个命令都认 `--json`，这时 stdout 只有一个 JSON 对象，提示和错误照常写 stderr。`show`、`check`、`comments`、`list`、`locate`、`shot`、`mark`、`reply`、`build`、`status`、`new`、`open` 各有自己的结构（见各自的 `--help`）；其余命令（`add`、`move`、`migrate` 等）给统一的外壳 `{ ok, exit, command, error?, output, stderr }`，`output` 和 `stderr` 是原本要打的行。`dev --json` 在服务就绪时打一行 JSON。`--help` 不受 `--json` 影响。
+
+退出码在所有命令上一致（`bin/pinpoint-cli.js`）：
+
+| 码 | 什么时候 |
+| --- | --- |
+| 0 | 成功。`locate` 指到的帧或节上没有标注也是 0，并打一行说明 |
+| 1 | 有问题：验证错误（`check`）、截到半篇文章（`shot`）、引用没命中（没有 `#99`、没有这一帧）、服务没在跑、标注写入冲突、要写的文件已经在（`new article`） |
+| 2 | 用法错（不认的选项、缺参数、状态词写错）或找不到目标 |
+
+找不到目标退 2 而不是 1：它和写错参数一样，是命令行本身要改，脚本据此区分“命令写错了”和“命令跑了、结果有问题”。
+
+### `ppnt new project <目录>` / `ppnt new article <project>/<article>`
+
+脚手架（`bin/cli/new.js`），两个都不覆盖已有文件。
+
+- `new project <目录> [--id <id>] [--title <标题>]`：写 `<目录>/docs/pinpoint/project.json`（`{ id, title }`），建空的 `articles/`、`concepts/`，再登记（同 `ppnt add <目录> --project`）并让服务重读。id 缺省取目录名。`project.json` 已经在就沿用它、只补登记，所以重跑是幂等的；id 是保留名或已登记在别的目录时退 2，什么都不写。
+- `new article <project>/<article> [--title <标题>]`：写 `articles/<article>/index.mdx`，frontmatter 是 title，正文是一节 `<Section id="overview">`，节里一行注释说明帧怎么加。`index.mdx` 已经在就退 1；project 没登记退 2，提示先 `new project`。
+
+两个命令最后都打网址和下一步命令。
 
 ### `ppnt check <project>[/<article>]`：验证
 
@@ -308,11 +329,15 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 
 ### `ppnt comments <目标>`：标注队列
 
-画布标注和正文评论，字段和分组见 [`docs/annotation.md`](annotation.md)。目标是一篇文章、一个存量页，或整个 project（逐篇列出有条目的文章，`--frame` 不能和 project 同用）。抬头是各状态的计数，所以单独看计数不用别的命令。选项：`--status`、`--frame`、`--mode excerpt|image|both`、`--group-by frame|component`、`--json`。
+画布标注和正文评论，字段和分组见 [`docs/annotation.md`](annotation.md)。目标是一篇文章、一个存量页，或整个 project（逐篇列出有条目的文章，`--frame` 不能和 project 同用）。抬头是各状态的计数，所以单独看计数不用别的命令。每条标注下面列出线程里的 agent 回复。选项：`--status`、`--frame`、`--mode excerpt|image|both`、`--group-by frame|component`、`--json`。
+
+`comments`、`comments --mode image`、`locate` 要读 dist（编译产物，源码摘录和组件归属都在里面）。dist 不在或落后于源码时，命令先编一次（`bin/cli/dist.js` 的 `ensureDist`，同 `ppnt build`），stderr 打一行“dist 不在或落后于源码，先编了 …”，再照常输出；不用先手动 `build`。
 
 ### `ppnt show <project>[/<article>]`
 
 只读盘，只有正文里的图过期时先重编它（写 dist）。一篇文章：每节一行 §n、字母、节 id、标题、帧数（或“纯文字”）、open 数，下面是帧（编号、帧 id、源文件）和网址（文章页锚点、画布视图），最后是这篇的布局错误。一个 project：文章（斜杠地址、节数、帧数、open 数、网址）、概念、空 ref（带出处的文件和行）、布局错误，有布局错误退 1。两种的布局错误里都有图的编译错误和浏览器里记下的运行错误（`figure_compile`、`figure_runtime`）。存量页的 id 给编号、帧 id、源文件的对照。`--json` 给同一份数据。
+
+`--uses <组件>`（`bin/cli/uses.js`）：目标是 project 或一篇文章，列出用到这个组件的帧和图，最后给出每篇要跑的 `ppnt shot` 命令。判定看编译产物 HTML 里的 `data-pp-comp="<组件>"`，加上帧和图的依赖文件名；dist 过期时先编。哪里都没用到时退 1。改完共享组件后照这份清单截图。
 
 ### `ppnt shot <目标> [引用…]`
 
@@ -321,11 +346,34 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 - `B1`、`B`、帧 id、节 id：画布视图上的帧或节，同以前。`--canvas` 截整个画布视图。存量页不写引用就是整个画布。
 - `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
 
+文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。
+
 截文章页前命令轮询文章网址：503（站点启动中）就等，刚登记时的 404 最多等 10 秒，502（站点起不来）直接报错并带上原因，200 才截；等的上限是 `--timeout` 秒，缺省 60。打开后等图片、画布卡片里的 iframe 和字体加载完再截。每张图打印一行 `引用 → 路径 · 宽×高`。
+
+### `ppnt open <目标> [§2 | 节 id | 概念名]`
+
+打一篇文章、一节、一个 project 或一个概念页的网址（`bin/cli/open.js`），不带 `--print` 时再用系统浏览器打开第一个。文章给文章页和画布视图（纯文字的文章没有画布视图）；`§2` 或节 id 给文章页锚点和 `/?page=<页 id>&section=<节 id>`；project 给首页、`llms.txt`、每篇文章和每个概念页。网址前缀是 `PINPOINT_ORIGIN`，所以在隔离服务下打出的就是隔离服务的地址。存量页退 2，并打出它在工作台里的网址。
+
+### `ppnt mark … --note` 和 `ppnt reply`
+
+每条标注都有线程：画布标注、存量页的文档标注、正文评论都一样（[`docs/annotation.md`](annotation.md)“线程”）。`ppnt mark <目标> <引用…> done|check --note "<回复>"` 对命中的每一条先走回复端点、再走状态端点；回复失败时那一条的状态不写。`ppnt reply <目标> '#n' "<回复>"` 只回一条、不改状态，引用命中多条时报错。
 
 ## 隔离运行（测试 / 不碰 owner 的服务）
 
 owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是 `~/.pinpoint/`。agent 要试写一篇文章、跑一轮冒烟，又不想动这两样时，另起一个服务，所有路径和地址都用环境变量指到别处。
+
+一条命令起（`bin/cli/sandbox.js`）：
+
+```shell
+ppnt dev --sandbox [<数据目录>] [--port <端口>] [--site-port <端口>]
+```
+
+- 数据目录缺省新建一个临时目录；登记表是 `<数据目录>/registry.json`，日志在 `<数据目录>/logs/service.log`。数据目录落在 `~/.pinpoint` 里时退 2。
+- 端口缺省从 6400 起找一对空的（服务端口和它 +5 的站点端口）；写了 `--port` 就只验它。owner 的 4134、4530、5199 一律不接受。
+- 起法是下面的 `npm run dev:app`，不经 portless。就绪（`/health` 答 200）后打印地址，并把 CLI 要的三个变量写进 `<数据目录>/env.sh`；在别的 shell 里 `source` 它，之后的 `ppnt` 都对着这个服务。
+- 命令前台常驻。Ctrl-C，或 `kill` 它打印的 pid，会给服务的进程组发 SIGTERM，服务和文章站点一起停。
+
+它做的事等于下面的手动步骤。
 
 不要用 `pinpoint start` 或 `just dev` 起第二个服务。它们走 `npm run dev`，也就是 `portless run --name pinpoint`，注册的是和 owner 同一条 `pinpoint.localhost` 路由，会和常驻服务撞上；常驻服务健康时，`pinpoint start` 还会报错退出、什么也不起。直接起 vite（`npm run dev:app`），不经 portless。
 

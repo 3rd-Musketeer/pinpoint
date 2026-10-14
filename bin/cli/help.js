@@ -31,8 +31,8 @@ ${ADDRESS}
 评论与标注
   comments <目标>                       读标注队列：画布标注和正文评论（目标可以是整个 project）
   locate <目标> <引用…>                  标注 → 源文件:行 · 组件
-  reply <project>/<article>#<n> "<回复>" 在正文评论的线程里回一句（不改状态）
-  mark <目标> <引用…> done|check         写状态
+  mark <目标> <引用…> done|check [--note "<回复>"]  写状态；--note 同时在线程里回一句
+  reply <目标> <引用…> "<回复>"           只在线程里回一句（不改状态）
 
 服务
   status | start | stop | restart      体检、起停常驻服务
@@ -94,7 +94,8 @@ ${REGISTRY_FLAG}
     text: `用法：ppnt comments <目标>[#n] [选项]
 
 读标注队列（只读）：画布标注按帧分组，给序号、编号、正文、意图、源码摘录；正文评论单独一组，
-给引文、节、index.mdx 里的落脚行和整个线程。抬头是各状态的计数。
+给引文、节、index.mdx 里的落脚行和整个线程；agent 的回复列在每一条下面。抬头是各状态的计数。
+dist 不在或落后于源码时先编一次（stderr 打一行说明），不用先 build。
 目标可以是一篇文章、一个存量页，也可以是整个 project（逐篇列出有条目的文章）。
 <目标>#n 只看这一条（缺省 --status all）。
 
@@ -119,6 +120,7 @@ ${TARGET_NOTE.split('\n')[0]}
 
   --frame <帧 id>      只编一帧（其余帧的记录保留）；--screen 是旧写法
   --watch              编完后盯目录，改动自动重编（Ctrl-C 退出）
+  --json               结构化输出：{ target, ok, ms, partial, frames, figures }；不和 --watch 同用
 ${REGISTRY_FLAG}
 
 改完一篇文章要看全部问题（含正文渲染错误），用 ppnt check。`,
@@ -154,8 +156,12 @@ ${REGISTRY_FLAG}`,
   --status <状态>      加上这个状态的标注所在的帧
   --scale 1|2          像素倍数（缺省 1）
   --timeout <秒>       等文章站点就绪的上限（缺省 60）
+  --json               结构化输出：{ target, shots: [{ kind, label, out, width, height, truncated? }], warnings, errors }
 ${REGISTRY_FLAG}
-${TARGET_NOTE}`,
+${TARGET_NOTE}
+
+文章页截到一半（正文渲染出错，页面里没有正文结束标记）：图照样存下，stderr 打一行“注意”，退 1；
+ppnt check <project>/<article> 给出错在哪一行。`,
   },
   new: {
     usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article <project>/<article> [--title <标题>]',
@@ -218,31 +224,42 @@ ${REGISTRY_FLAG}`,
 ${TARGET_NOTE}
 
   --status <状态>      加上这个状态的全部标注（open | check | done | close | all）
+  --json               结构化输出：{ target, rows: [{ n, type, status, frame?, section?, file?, line?, text }], empty, errors }
 ${REGISTRY_FLAG}
+
+引用指到的帧或节上没有标注：打一行说明，退 0。引用没命中（没有这条、这一帧）：退 1。
 
 例：ppnt locate browser-use/payment-confirm '#3' B1`,
   },
   mark: {
-    usage: 'ppnt mark <目标> <引用…> done|check',
-    text: `用法：ppnt mark <目标> <引用…> done|check
+    usage: 'ppnt mark <目标> <引用…> done|check [--note "<回复>"]',
+    text: `用法：ppnt mark <目标> <引用…> done|check [--note "<回复>"]
 
 写状态，走服务的状态端点（带 baseRevision），逐条打印结果；冲突或非法转换打 409 原因，不中断其他条。
 看了但不改 → check；改完 → done。open 由 owner 编辑时自动回，close 只有 owner 在工作台或文章右栏做。
+--note 先在这条标注的线程里回一句（改了什么、为什么没改），再写状态；回复失败时状态不写。
+画布标注、存量页的文档标注、正文评论都有线程，owner 在工作台标注列表、标注卡和文章右栏里看到。
 引用同 locate。
 ${TARGET_NOTE}
 
+  --note <回复>        同时回一句
   --status <状态>      加上这个状态的全部标注
+  --json               结构化输出：{ target, status, results: [{ n, ok, note?, error? }], errors, empty }
 ${REGISTRY_FLAG}
 
-例：ppnt mark browser-use/payment-confirm '#3' '#4' done`,
+例：ppnt mark browser-use/payment-confirm '#3' '#4' done
+    ppnt mark hosted-pages '#7' check --note "标题已经缩短，见 v2"`,
   },
   reply: {
-    usage: 'ppnt reply <project>/<article>#<n> "<回复>"',
-    text: `用法：ppnt reply <project>/<article>#<n> "<回复>"
-      ppnt reply <project>/<article> '#<n>' "<回复>"
+    usage: 'ppnt reply <目标>#<n> "<回复>"',
+    text: `用法：ppnt reply <目标>#<n> "<回复>"
+      ppnt reply <目标> '#<n>' "<回复>"
 
-在一条正文评论的线程末尾追加一条 agent 消息，走服务的回复端点（带 baseRevision），状态不动；
-要改状态另用 mark。画布标注没有线程，reply 会拒绝。zsh 里单独的 #n 要加引号。
+在一条标注的线程末尾追加一条 agent 消息，走服务的回复端点（带 baseRevision），状态不动。
+画布标注、存量页的文档标注、正文评论都可以回。要同时改状态用 mark … --note。zsh 里单独的 #n 要加引号。
+${TARGET_NOTE.split('\n')[0]}
+
+  --json               结构化输出：{ target, n, ok, status?, text?, error? }
 ${REGISTRY_FLAG}`,
   },
   list: {
@@ -256,6 +273,7 @@ open / check / done 计数 · 文件夹，次行源路径）。关键词在 id�
   ppnt list <页 id> --frames          编号 · 帧 id · 源文件 · 标题（同 ppnt show <存量页 id>）
 
   --frames             见上
+  --json               结构化输出：{ query, registry, projects, pages }
 ${REGISTRY_FLAG}`,
   },
   status: {
@@ -264,6 +282,7 @@ ${REGISTRY_FLAG}`,
 
 服务体检：路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry · project · 文章站点；全绿才退 0。
   --page <目标>        改报这一页的各状态计数、孤儿与 dist 是否过期（ppnt comments 的抬头有同样的计数）
+  --json               结构化输出：体检的每一项和总结论
 ${REGISTRY_FLAG}
 
 环境变量：
