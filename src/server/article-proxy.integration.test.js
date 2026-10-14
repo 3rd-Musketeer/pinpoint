@@ -140,10 +140,10 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     assert.match(body, /<title>站点启动中<\/title>/);
     assert.match(body, /<meta http-equiv="refresh" content="1">/);
     assert.match(body, /data-site-state="starting"/);
-    // 非导航请求（脚本、样式）拿纯文本 503，不是 HTML 页。
+    // 非导航请求（脚本、样式）没有自动刷新：它们等站点就绪再转发，不拿 503。
     const asset = await fetch(`${origin}/_astro/assets/site.css`);
-    assert.equal(asset.status, 503);
-    assert.match(asset.headers.get('content-type'), /^text\/plain/);
+    assert.equal(asset.status, 200);
+    assert.equal(devServer.snapshot().state, 'ready');
     await asset.text();
   });
 

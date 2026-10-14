@@ -8,8 +8,14 @@
  *   __pinpointProse，客户端只跑正文评论。project 首页、概念页不注入（没有评论面）。
  *   ?annotate=off 单请求不注入。非 HTML 原样透传。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
- *   启动中」页（503），其他请求拿 503 纯文本；站点起不来（failed）时那张页写
- *   原因和日志尾巴。
+ *   启动中」页（503）；站点起不来（failed）时那张页写原因和日志尾巴。页面里的
+ *   GET / HEAD 子资源（脚本、样式、图片）先等站点就绪（至多 RESOURCE_WAIT_MS），
+ *   就绪了照常转发，等不到才回 503 纯文本：它们没有自动刷新，一个 503 就是页面上
+ *   缺一块。
+ * - 连上游复用 keep-alive 连接（upstreamAgent）。复用的空闲连接恰好被上游关掉时
+ *   请求报 ECONNRESET，这不说明站点没了：GET / HEAD 换一条新连接重发一次，别的
+ *   方法不走复用连接。只有新连接也连不上（ECONNREFUSED / ECONNRESET）才算站点
+ *   不可达（2026-10-14：高负载下文章页的 /_astro/ 资源因此成批 503）。
  * - websocket：/_astro/ 下的 upgrade（Astro 的 vite HMR）原样转发；pinpoint 自己
  *   的 HMR 在 / 上，不碰。
  * - 来源（lib/proxy-origin.js）：Origin 是 pinpoint 自己的来源才改写成站点地址；
@@ -34,6 +40,16 @@ const HOP_BY_HOP = new Set([
   'te', 'trailer', 'transfer-encoding', 'upgrade',
 ]);
 const UPGRADE_SKIP = new Set(['keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding']);
+
+/** 子资源等站点就绪的上限：Astro 重新监听一般一两秒，满载机器上更久。 */
+export const RESOURCE_WAIT_MS = 15_000;
+
+// 上游连接池只给 GET / HEAD 用：它们能在复用连接被关掉时安全重发。
+const upstreamAgent = new http.Agent({ keepAlive: true });
+
+function isIdempotent(req) {
+  return req.method === 'GET' || req.method === 'HEAD';
+}
 
 function escapeHtml(text) {
   return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
@@ -72,6 +88,23 @@ pre{overflow:auto;font-size:12px;padding:12px;border-radius:6px;background:color
 function wantsDocument(req) {
   const accept = String(req.headers.accept || '');
   return (req.method === 'GET' || req.method === 'HEAD') && accept.includes('text/html');
+}
+
+/** 站点在起 / 在重启时等它就绪的请求：GET / HEAD 子资源。导航有自动刷新的启动中页，写请求不重放。 */
+function waitsForSite(req) {
+  return isIdempotent(req) && !wantsDocument(req);
+}
+
+/** 等站点就绪，至多 waitMs；返回这时是否就绪。 */
+async function siteReadyWithin(devServer, waitMs) {
+  let timer;
+  const timeout = new Promise((resolve) => { timer = setTimeout(resolve, waitMs); });
+  try {
+    await Promise.race([devServer.whenReady(), timeout]);
+  } finally {
+    clearTimeout(timer);
+  }
+  return devServer.snapshot().state === 'ready';
 }
 
 function sendWaitResponse(req, res, devServer) {
@@ -122,7 +155,11 @@ function sendForbidden(res, reason) {
   res.end(`forbidden: ${reason}\n`);
 }
 
-function forward(req, res, route, devServer, registry, origin) {
+/**
+ * attempt：0 = 第一次；1 = 复用连接被重置后换新连接重发；2 = 等站点重新就绪后重发。
+ * 重发只发生在 GET / HEAD 上（没有请求体要重放）。
+ */
+function forward(req, res, route, devServer, registry, origin, attempt = 0, waitMs = RESOURCE_WAIT_MS) {
   const port = devServer.port;
   const headers = {};
   for (const [name, value] of Object.entries(req.headers)) {
@@ -135,7 +172,9 @@ function forward(req, res, route, devServer, registry, origin) {
   const entry = route.kind === 'article' ? annotationBucketFor(route, registry) : null;
   const inject = Boolean(entry) && parseReqUrl(req).query.get('annotate') !== 'off';
 
-  const up = http.request({ host: '127.0.0.1', port, method: req.method, path: route.upstream, headers }, (upRes) => {
+  // 写请求的体只能读一遍，不能重发：它们每次开新连接，碰不上被关掉的空闲连接。
+  const agent = isIdempotent(req) && attempt === 0 ? upstreamAgent : false;
+  const up = http.request({ host: '127.0.0.1', port, method: req.method, path: route.upstream, headers, agent }, (upRes) => {
     const outHeaders = {};
     for (const [name, value] of Object.entries(upRes.headers)) {
       if (HOP_BY_HOP.has(name) || value === undefined) continue;
@@ -173,20 +212,41 @@ function forward(req, res, route, devServer, registry, origin) {
       res.destroy();
       return;
     }
+    if (res.destroyed) return;
+    if (error && error.code === 'ECONNRESET' && up.reusedSocket && attempt === 0) {
+      forward(req, res, route, devServer, registry, origin, 1, waitMs);
+      return;
+    }
     if (error && (error.code === 'ECONNREFUSED' || error.code === 'ECONNRESET')) {
       devServer.noteUnreachable();
       devServer.ensure();
-      sendWaitResponse(req, res, devServer);
+      if (attempt >= 2 || !waitsForSite(req)) {
+        sendWaitResponse(req, res, devServer);
+        return;
+      }
+      forwardWhenReady(req, res, route, devServer, registry, origin, waitMs);
       return;
     }
     res.statusCode = 502;
     res.setHeader('Content-Type', 'application/json; charset=utf-8');
     res.end(JSON.stringify({ error: 'bad_gateway', upstream: `127.0.0.1:${port}`, message: error.message }));
   });
-  res.on('close', () => {
+  const onClose = () => {
     if (!res.writableEnded) up.destroy();
+  };
+  res.on('close', onClose);
+  up.on('close', () => res.off('close', onClose));
+  if (attempt === 0) req.pipe(up);
+  else up.end();
+}
+
+/** 子资源：等站点就绪（至多 waitMs）再转发，等不到回 503。 */
+function forwardWhenReady(req, res, route, devServer, registry, origin, waitMs) {
+  siteReadyWithin(devServer, waitMs).then((ready) => {
+    if (res.destroyed) return;
+    if (ready) forward(req, res, route, devServer, registry, origin, 2, waitMs);
+    else sendWaitResponse(req, res, devServer);
   });
-  req.pipe(up);
 }
 
 function decide(req, devServer, own, upgrade) {
@@ -205,8 +265,9 @@ function decide(req, devServer, own, upgrade) {
  *   isProject  直接给 project 判定函数（测试用；缺省读 registry）
  *   devServer  createSiteDevServer() 的实例
  *   origins    pinpoint 自己的来源：Set，或返回 Set 的函数（见 lib/proxy-origin.js）
+ *   resourceWaitMs  子资源等站点就绪的上限（缺省 RESOURCE_WAIT_MS；测试调小）
  */
-export function createArticleHandler({ registry, isProject, devServer, origins }) {
+export function createArticleHandler({ registry, isProject, devServer, origins, resourceWaitMs = RESOURCE_WAIT_MS }) {
   const projectCheck = isProject || ((id) => isProjectId(registry, id));
   const own = originsGetter(origins);
   return function handleArticle(req, res) {
@@ -219,10 +280,14 @@ export function createArticleHandler({ registry, isProject, devServer, origins }
     }
     const snapshot = devServer.ensure();
     if (snapshot.state !== 'ready') {
-      sendWaitResponse(req, res, devServer);
+      if (!waitsForSite(req)) {
+        sendWaitResponse(req, res, devServer);
+        return true;
+      }
+      forwardWhenReady(req, res, route, devServer, registry, verdict.origin, resourceWaitMs);
       return true;
     }
-    forward(req, res, route, devServer, registry, verdict.origin);
+    forward(req, res, route, devServer, registry, verdict.origin, 0, resourceWaitMs);
     return true;
   };
 }
