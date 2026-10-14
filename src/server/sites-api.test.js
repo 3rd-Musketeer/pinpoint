@@ -74,6 +74,25 @@ async function call(handler, method, url) {
   return { handled, res };
 }
 
+test('Sec-Fetch-Site: cross-site 的请求 403；same-origin、same-site、none 和缺头照常出', async (t) => {
+  const { handler } = withFixture(t);
+  const withSite = async (url, site) => {
+    const req = mockReq('GET', url);
+    if (site !== undefined) req.headers['sec-fetch-site'] = site;
+    const res = mockRes();
+    await handler(req, res, url.split('?')[0]);
+    return res;
+  };
+  for (const url of ['/sites/site/index.html', '/sites/site/app.js', '/sites/single/']) {
+    const blocked = await withSite(url, 'cross-site');
+    assert.equal(blocked.statusCode, 403, url);
+    assert.equal(blocked.json.error, 'cross_site');
+    for (const site of ['same-origin', 'same-site', 'none', undefined]) {
+      assert.equal((await withSite(url, site)).statusCode, 200, `${url} ${site}`);
+    }
+  }
+});
+
 test('non-/sites paths fall through', async (t) => {
   const { handler } = withFixture(t);
   const { handled } = await call(handler, 'GET', '/previews/x/board.json');

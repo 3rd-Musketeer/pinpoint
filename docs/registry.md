@@ -123,7 +123,8 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 ### 2 · dir 与 file 条目 → `/sites/`
 
 `src/server/sites-api.js` 把登记目录只读地服务在 `/sites/<entry-id>/<path…>`（只接 GET/HEAD，
-其余 405）。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
+其余 405）。浏览器标了 `Sec-Fetch-Site: cross-site` 的请求（别的站点的网页用 iframe、脚本或 fetch 取）一律 403，
+文章的 `/sites/<页 id>/` 也一样；same-origin、same-site、`none`（地址栏）和没有这个头的请求（命令行工具）照常出。登记表就是白名单：未知 id 404；`..` 按文本拒绝，symlink 逃逸按 realpath 包含判定；
 目录回落到 `index.html`。HTML 的 GET 响应在 `</body>` 前注入
 `<script>window.__pinpointEntry='<页桶 id>'</script><script src="/annotate.<hash>.js"></script>`
 ——值是条目的标注桶 id，也就是条目自己的 id（一个页 id 一个桶）。

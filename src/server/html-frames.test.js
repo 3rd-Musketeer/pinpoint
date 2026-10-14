@@ -206,6 +206,19 @@ test('服务：index.mdx 在文章目录和 @root 下都不出（含指向它的
   assert.equal((await get(handler, `/sites/${pageId}/@root/docs/pinpoint/articles/pages/page.css`)).statusCode, 200);
 });
 
+test('服务：文章的 /sites/ 也拒绝 cross-site 请求', async (t) => {
+  const { registry, pageId } = fixture(t);
+  const handler = createSitesHandler({ registry });
+  for (const url of [`/sites/${pageId}/long.html`, `/sites/${pageId}/page.css`, `/sites/${pageId}/@root/shared/cat.html`, `/sites/${pageId}/board.json`]) {
+    const req = mockReq('GET', url);
+    req.headers['sec-fetch-site'] = 'cross-site';
+    const res = mockRes();
+    await handler(req, res, url);
+    assert.equal(res.statusCode, 403, url);
+    assert.equal((await get(handler, url)).statusCode, 200, url);
+  }
+});
+
 test('服务：这篇没有 project 根下的帧时 @root 不开', async (t) => {
   const { article, registry, pageId } = fixture(t);
   const mdx = path.join(article, 'index.mdx');

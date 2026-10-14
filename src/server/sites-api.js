@@ -7,6 +7,8 @@ import { parseReqUrl } from './lib/req-url.js';
  *   `/sites/<id>/` and `/sites/<id>/<basename>`; everything else 404s, so
  *   sibling files in the same directory stay unreachable.
  * - Both are GET/HEAD-only.
+ * - Requests the browser marks `Sec-Fetch-Site: cross-site` get 403 (another site's page embedding or
+ *   fetching our content); same-origin, same-site, none and a missing header pass.
  *
  * The registry is the whitelist: only registered entries are served. For a
  * `dir` entry every resolved path (textual and real, i.e. symlink-safe) must
@@ -244,6 +246,14 @@ export function createSitesHandler(options = {}) {
 
   return async function handleSites(req, res, urlPath) {
     if (!urlPath.startsWith('/sites/')) return false;
+
+    // 别的站点的网页不能拿 /sites/ 的内容（iframe、<script>、fetch 都算）：浏览器标了 cross-site 的请求 403。
+    // same-origin（工作台、画布视图、文章页的卡片）、same-site、none（地址栏、书签）和没有这个头的
+    // （命令行工具、ppnt shot 的直接导航）照常出。
+    if (String(req.headers['sec-fetch-site'] || '').toLowerCase() === 'cross-site') {
+      sendJson(res, 403, { error: 'cross_site', message: '/sites/ 不给别的站点的页面用' });
+      return true;
+    }
 
     const rest = urlPath.slice('/sites/'.length);
     const slash = rest.indexOf('/');
