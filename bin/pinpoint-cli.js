@@ -17,13 +17,14 @@
  * 进程原语（发信号、spawn、sleep）由 bin/pinpoint.mjs 注入 io，本文件只做判定，
  * 所以两种真实故障形态（进程死了 / 进程活着但配置错）都能拿构造输入单测。
  */
-import { USAGE } from './cli/args.js';
+import { USAGE, helpFor, reportUsageError } from './cli/args.js';
 import { ioOf } from './cli/core.js';
 import { runAdd, runMove, runPrune, runRename, runRemove } from './cli/registry.js';
 import { runFolder } from './cli/folders.js';
 import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
-import { runCheck, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
+import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
+import { runShow } from './cli/show.js';
 import { runList } from './cli/list.js';
 import { runMigrate } from './cli/migrate.js';
 
@@ -38,8 +39,21 @@ export {
 } from './cli/core.js';
 export {
   USAGE,
+  HELP,
+  helpFor,
   parseArgs,
 } from './cli/args.js';
+export {
+  parseAddress,
+  resolveAddress,
+  displayAddress,
+  toPageRef,
+  normalizeRefToken,
+  letterNumber,
+  looksLikeRef,
+} from './cli/address.js';
+export { runShow, articleModel, projectModel } from './cli/show.js';
+export { formatDiagnostic, countDiagnostics } from './cli/validate.js';
 export {
   resolveTarget,
   resolveProjectRoot,
@@ -96,7 +110,9 @@ export {
 } from './cli/pages.js';
 export {
   runCheck,
+  runComments,
   runLocate,
+  planArticleShots,
   planShotJobs,
   runShot,
   runMark,
@@ -113,12 +129,18 @@ export {
 
 export async function run(argv, io = {}) {
   const { out, err } = ioOf(io);
-  if (argv.includes('-h') || argv.includes('--help') || argv.length === 0) {
+  if (argv.length === 0 || argv[0] === '-h' || argv[0] === '--help') {
     out(USAGE);
+    return 0;
+  }
+  // ppnt help <命令> = ppnt <命令> --help
+  if (argv[0] === 'help') {
+    out(helpFor(argv[1]));
     return 0;
   }
   switch (argv[0]) {
     case 'list': return runList(argv, io);
+    case 'show': return runShow(argv, io);
     case 'add': return runAdd(argv, io);
     case 'move': return runMove(argv, io);
     case 'rename': return runRename(argv, io);
@@ -131,6 +153,7 @@ export async function run(argv, io = {}) {
     case 'build': return runBuild(argv, io);
     case 'render': return runRender(argv, io);
     case 'check': return runCheck(argv, io);
+    case 'comments': return runComments(argv, io);
     case 'locate': return runLocate(argv, io);
     case 'shot': return runShot(argv, io);
     case 'mark': return runMark(argv, io);
@@ -138,8 +161,6 @@ export async function run(argv, io = {}) {
     case 'prune': return runPrune(argv, io);
     case 'migrate': return runMigrate(argv, io);
     default:
-      err(`错误：未知命令：${argv[0]}`);
-      err(USAGE);
-      return 1;
+      return reportUsageError(argv[0], `未知命令：${argv[0]}`, err);
   }
 }

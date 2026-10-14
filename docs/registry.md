@@ -97,7 +97,7 @@ pinpoint list   [关键词…]
 pinpoint folder list | add <名称> [--id xxx] | rename <id> <新名称> | rm <id> | move <页 id> <夹 id|none>
 ```
 
-`list` 只读：每页一行 id · 标题 · 类型 · 标注计数 · 文件夹，次行源路径；带关键词时在 id、标题、路径、文件夹名上宽松匹配（英文复数自动去 s），给 agent 把 owner 的口头说法对上页 id。
+`list` 只读：每页一行 id · 标题 · 类型 · 标注计数 · 文件夹，次行源路径；project 下面每篇文章一行 `<project>/<article>`。带关键词时在 id、标题、路径、文件夹名上宽松匹配（英文复数自动去 s），也匹配文章的 id 和标题，给 agent 把 owner 的口头说法对上地址。
 
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。`--page` 把条目挂到一个既有页上
 而不是在“页面”组新增一行——目标必须能解析（本地 manifest 页或另一个 registry 条目 id，写之前就查），
@@ -266,6 +266,63 @@ URL（内嵌 iframe 刷新会去加载不带前缀的路径）、硬导航（`lo
 在渲染浏览器里 abort 掉 `**/annotate.js`、并用 `stripAnnotateBootstrap` 从导出的 HTML 里
 删掉注入片段（连 `__pinpointEntry` 标记一起）。
 
+## CLI
+
+`ppnt` 和 `pinpoint` 是同一个入口（`bin/pinpoint.mjs`），命令一览是 `ppnt --help`，每个命令的选项和例子是 `ppnt <命令> --help`。这一节写所有命令共用的约定：怎么写目标、找不到目标时怎么办、退出码，以及 `check`、`comments`、`show`、`shot` 这几个读文章的命令各给什么。
+
+### 目标和引用
+
+命令的第一个位置参数是目标，`--page <目标>` 是它的旧写法，照认。目标有这几种写法：
+
+- 一篇文章：`<project>/<article>`（如 `browser-use/payment-confirm`）。文章网址（`https://pinpoint.localhost/<project>/<article>/`、带 `#锚点` 的也行）、画布视图网址（`/?page=<页 id>`）和页 id `<project>_<article>` 都认，输出一律打斜杠形。
+- 一个 project：`<project>`。`show`、`check`、`comments` 接受它，`locate`、`mark`、`reply`、`build`、`shot` 不接受（标注和帧都在文章里）。
+- 存量页：它的 id。
+
+目标后面跟引用。节写 `§2`（文章页上的节号）、字母 `B` 或节 id；第 n 节就是第 n 个字母，纯文字的节也占一个，所以 `§2` 和 `B` 同义。帧写 `B1` 或帧 id。一条标注写 `#3`，或带上文章写 `<project>/<article>#3`；带文章的引用自己就是目标，这时可以不写第一个参数。
+
+解析在 `bin/cli/address.js`：`parseAddress` 只看字面，`resolveAddress` 再对照 registry 和磁盘判断它是文章、project、存量页，还是不在的文章。像引用的写法（`#3`、`B1`、`§2`、`@a:…`）不会被当成目标。
+
+### 找不到目标、写错参数
+
+- 没写目标，或目标指不到任何东西：命令报错，列出最多 15 个候选地址（文章打斜杠形，存量页打 id），退 2。不会取 registry 的第一页代替。
+- `<project>/<article>` 的 project 登记了、这篇不在：报“project X 里没有 articles/Y/index.mdx”，只列这个 project 的文章。
+- 写了命令不认的选项、选项缺值、参数个数不对：打一行错误、一行用法，再指向 `ppnt <命令> --help`，退 2。`list` 的关键词里出现 `--x` 也算写错，不当关键词。
+
+退出码：0 成功；1 运行时失败（有验证错误、服务没在跑、标注写入冲突）；2 用法错或找不到目标。
+
+### `ppnt check <project>[/<article>]`：验证
+
+汇报前跑一次，看全这篇（或整个 project）的问题。不写 dist，不需要服务在跑（`src/server/lib/article-check.js` 的 `checkProject`）。
+
+- 布局错误：`listProjects` 读出的 `errors`，code 定义在 `src/shared/project-errors.js`，各种写法见 [`docs/projects.md`](projects.md)“读取”和“画布视图”。
+- 帧：正文里每个 `<Canvas>` 列的帧都编一遍，包括因布局错误不进画布视图的节。code 是 `lint_hooks`、`lint_event_attr`、`lint_fetch`、`lint_top_level`（lint 四禁）、`compile`（esbuild）、`frame_export`、`frame_render`。几帧共用的组件出错只报一次。
+- 图：正文里每个源文件在的 `<Figure>` 也编一遍，规则和 code 同帧，另有 `figure_export`、`figure_render`；诊断带 `figure`（图 id）。图的写法错误已在布局错误里；运行错误要在浏览器里跑过图才有，`check` 不跑，看 `ppnt show <project>`。
+- 正文渲染（`src/server/lib/mdx-check.js`）：用站点同一套 MDX 编译和 remark 步骤把正文编成函数再渲染一次。`mdx_component_missing` 是没定义的组件（`<Foo />`），`mdx_render` 是渲染时抛的错（没定义的变量 `{x}`），`mdx_compile` 是编不过；行号指 `index.mdx`。正文里有 `import` 时跳过渲染，报一条 `mdx_import` 警告。站点给 MDX 的组件只有 `Section`、`Canvas`、`Figure`、`Ref`，与 `site/src/pages/[project]/[article]/index.astro` 对齐，单测守着这一点。
+- 空 ref：提示级，code `empty_ref`。
+
+每条诊断一行 `文件:行  级别  code  说明（节 · 帧）`，最后一行是计数。有错误退 1，只有警告和提示退 0。`--json` 输出 `{ target, ok, counts, articles, frames, figures, diagnostics: [{ severity, code, file, line, message, article?, section?, frame?, figure? }] }`，`file` 是绝对路径。
+
+站点那一头，正文渲染出错时文章页的状态码不可靠：Astro 开发服务器边渲染边发，多数时候 200 已经发出，响应停在正文开头（`<div class="article-body">` 之后什么都没有）；少数时候是 500。所以查正文错误用 `check`，不用状态码。
+
+带 `--status`、`--frame`、`--mode`、`--group-by`，写成 `<目标>#n`，或目标写成页 id（`<project>_<article>`、存量页 id）时，`check` 列标注队列（同 `comments`），并在 stderr 打一行提示改用 `comments`。
+
+### `ppnt comments <目标>`：标注队列
+
+画布标注和正文评论，字段和分组见 [`docs/annotation.md`](annotation.md)。目标是一篇文章、一个存量页，或整个 project（逐篇列出有条目的文章，`--frame` 不能和 project 同用）。抬头是各状态的计数，所以单独看计数不用别的命令。选项：`--status`、`--frame`、`--mode excerpt|image|both`、`--group-by frame|component`、`--json`。
+
+### `ppnt show <project>[/<article>]`
+
+只读盘，只有正文里的图过期时先重编它（写 dist）。一篇文章：每节一行 §n、字母、节 id、标题、帧数（或“纯文字”）、open 数，下面是帧（编号、帧 id、源文件）和网址（文章页锚点、画布视图），最后是这篇的布局错误。一个 project：文章（斜杠地址、节数、帧数、open 数、网址）、概念、空 ref（带出处的文件和行）、布局错误，有布局错误退 1。两种的布局错误里都有图的编译错误和浏览器里记下的运行错误（`figure_compile`、`figure_runtime`）。存量页的 id 给编号、帧 id、源文件的对照。`--json` 给同一份数据。
+
+### `ppnt shot <目标> [引用…]`
+
+- 只写文章：文章页整页（1440 宽，按页面高度截全），存 `<数据目录>/shot/<页 id>/article.png`。
+- `§2`：文章页上第 2 节的 `<section>`，存 `article-<节 id>.png`。纯文字的节写字母或节 id 也截文章页。
+- `B1`、`B`、帧 id、节 id：画布视图上的帧或节，同以前。`--canvas` 截整个画布视图。存量页不写引用就是整个画布。
+- `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
+
+截文章页前命令轮询文章网址：503（站点启动中）就等，刚登记时的 404 最多等 10 秒，502（站点起不来）直接报错并带上原因，200 才截；等的上限是 `--timeout` 秒，缺省 60。打开后等图片、画布卡片里的 iframe 和字体加载完再截。每张图打印一行 `引用 → 路径 · 宽×高`。
+
 ## 隔离运行（测试 / 不碰 owner 的服务）
 
 owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是 `~/.pinpoint/`。agent 要试写一篇文章、跑一轮冒烟，又不想动这两样时，另起一个服务，所有路径和地址都用环境变量指到别处。
@@ -276,7 +333,7 @@ owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是
 | --- | --- | --- |
 | `PINPOINT_DATA_DIR` | 数据根：标注桶、dist、截图、日志（服务和 CLI 都认） | `~/.pinpoint` |
 | `PINPOINT_REGISTRY` | 登记表文件（服务、站点、CLI 都认；CLI 的 `--registry` 优先） | `~/.pinpoint/registry.json` |
-| `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`check --mode image`、`shot`、`mark`、`reply`；设了它，`pinpoint status` 只探这个地址，不看 portless 路由 | `https://pinpoint.localhost` |
+| `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`comments --mode image`、`shot`、`mark`、`reply`；设了它，`pinpoint status` 只探这个地址，不看 portless 路由 | `https://pinpoint.localhost` |
 | `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
 | `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |
 | `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选。站点的内容库按 `PINPOINT_SITE_PORT` 分在 `site/.astro-cache/<端口>/`，不用为隔离再设它 | `site/.astro-cache/<端口>` |
@@ -293,7 +350,7 @@ PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json 
 PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json PINPOINT_ORIGIN=http://127.0.0.1:5750 pinpoint add <project 根> --project
 ```
 
-之后的 `pinpoint list`、`ppnt build`、`ppnt shot`、`ppnt check` 都带同样的前缀。文章在 `http://127.0.0.1:5750/<project>/<article>/`，画布在 `http://127.0.0.1:5750/?page=<project>_<article>`。
+之后的 `ppnt list`、`ppnt check`、`ppnt shot`、`ppnt comments` 都带同样的前缀。文章在 `http://127.0.0.1:5750/<project>/<article>/`，画布在 `http://127.0.0.1:5750/?page=<project>_<article>`。
 
 在 pinpoint 自己的 feat worktree 里，`pinpoint` / `ppnt` 换成 `node bin/pinpoint.mjs`：全局装的 `pinpoint` 指向 canonical clone，跑的是那里的 CLI 代码。
 

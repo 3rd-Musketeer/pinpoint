@@ -21,7 +21,7 @@ hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` f
 
 Feedback lands in **one queue per article**: prose comments (select text on the article page) and
 canvas annotations (pin elements on the canvas view) share one bucket, one `#n` sequence and one
-status machine (`open` → `check` / `done` → `close`). The agent reads them with `ppnt check`, edits,
+status machine (`open` → `check` / `done` → `close`). The agent reads them with `ppnt comments`, edits,
 replies in comment threads with `ppnt reply`, and marks status with `ppnt mark`.
 
 Underneath: 🧰 **kits** (`content/kits/ios/`: `ios-kit.css` + `ios-kit.js` + `jsx/` component stamps;
@@ -118,16 +118,27 @@ Requires Node ≥ 24 and [just](https://just.systems/).
 
 ## CLI (`ppnt` = `pinpoint`)
 
-One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH). An article's
-page id is `<project>_<article>`; every `<page id>` below also accepts a legacy page's id.
+One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH). The first argument
+is the target: an article is `<project>/<article>` (its URL and its page id `<project>_<article>` work
+too; output always uses the slash form), a legacy page is its id. Sections are `§2`, a letter `B` or a
+section id; frames are `B1` or a frame id; one item is `<project>/<article>#3`. A missing or unknown
+target is an error that lists candidates (exit 2). `ppnt <command> --help` gives options and examples;
+conventions and exit codes are in [`docs/registry.md`](docs/registry.md) “CLI”.
 
 ```bash
-ppnt list [words…]             # projects and legacy pages: id · title · kind · counts · source path; words also match article ids and titles
-ppnt list <project>            # a project's articles (each with its page id), concepts and layout errors
-ppnt list <page id> --frames   # canvas numbers (A1) ↔ frame ids ↔ source files
-ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
-ppnt status --page <page id>   # per-status counts, orphans and dist freshness for one page id
-ppnt prune <page id>           # delete orphan ledgers in that bucket (owner's call)
+ppnt list [words…]             # projects (each article as <project>/<article>) and legacy pages; words also match article ids and titles
+ppnt show <project>            # a project's articles, concepts, empty refs and layout errors
+ppnt show <project>/<article>  # per section: §n · letter · section id · title · frames · open count · URLs
+ppnt check <project>[/<article>]  # validate before reporting: layout errors, every frame's lint/compile, MDX render errors, empty refs; exit 1 on errors
+ppnt comments <target>         # read the queue: canvas annotations and prose comments, statuses, intents, code excerpts (a project lists every article)
+ppnt locate <target> <ref…>    # resolve #12 / B3 / §2 to source file, line, component
+ppnt shot <target> [ref…]      # article page PNG (whole page, or §2 for one section); B1 / B / --canvas shoot the canvas view; waits while the site starts
+ppnt mark <target> <ref…> done|check  # write annotation status
+ppnt reply <project>/<article>#<n> <text>  # reply in a prose comment's thread (status unchanged)
+ppnt build <target> [--watch]  # compile frames → dist (~/.pinpoint/dist/<page id>/)
+ppnt render <target>/<frame id>  # compile one frame to stdout, no dist write
+ppnt status [--page <target>]  # service checkup: route · pid · both health endpoints · root · registry; --page reports one page's counts and dist freshness
+ppnt prune <target>            # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
 ppnt add <dir|file|url>        # register a legacy page source (files stay where they are) — see docs/registry.md
@@ -135,13 +146,6 @@ ppnt move <id> <target>        # re-point an entry, keep its id and annotations
 ppnt rename <old> <new>        # rename id + annotation bucket(s) + /sites/ prefix in one shot
 ppnt folder list|add|rename|rm|move   # the one level of grouping in the sidebar's “页面” group
 ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
-ppnt build <page id> [--watch] # compile frames → dist (~/.pinpoint/dist/<page id>/)
-ppnt render <page id>/<frame id>  # compile one frame to stdout, no dist write
-ppnt check <page id>           # read the queue: canvas annotations and prose comments, statuses, intents (edit text / move / reference image), code excerpts
-ppnt locate <ref…>             # resolve #12 / B3 to source file, line, component (refs need --page <page id> or a <page id>#12 prefix)
-ppnt shot <ref…> [--marks]     # PNG of frames/sections/the whole canvas, --marks bakes the #n pins
-ppnt mark <ref…> done|check    # write annotation status
-ppnt reply <ref> <text>        # reply in a prose comment's thread (status unchanged)
 ```
 
 ## Repository layout
@@ -174,8 +178,9 @@ content/                     what the service serves
   content/previews/              Template legacy pages only — each a source dir: board.json + <frame>.jsx
                                  + components/ (+ assets); manifest _index.json — URL /previews/…
 
-bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render; logic + tests in
-                             bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
+bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render, article checks; commands in
+                             bin/cli/ (address.js = targets and refs, help.js = per-command help),
+                             dispatch + tests in bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 scripts/                     wb-token generator + offline-export verifier + e2e runner
 e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/prose-site, e2e/jsx-site …)
@@ -197,8 +202,8 @@ renames the id together with its buckets — for a project, every `<project>_<ar
 1. On the article page, select prose and click “评论”; the comment opens a thread in the right
    rail. On the canvas view, press **A** to switch 交互 → **标注**, click / lasso elements and
    write in the bottom composer (pills reference targets, paste reference images, draw move-arrows).
-2. Say “标好了，你看一下” — the agent runs `ppnt check <page id>` (both kinds in one list, no
-   browser), edits the frame, component or `index.mdx`, runs `ppnt build`, answers prose comments
+2. Say “标好了，你看一下” — the agent runs `ppnt comments <project>/<article>` (both kinds in one
+   list, no browser), edits the frame, component or `index.mdx`, runs `ppnt check`, answers prose comments
    with `ppnt reply`, and writes `ppnt mark … done` (or `check` when it looked but changed nothing).
 3. Review: hover a pin on the canvas, or open the annotation list from the count button at the right
    end of the bottom strip; on the article page, read the thread in the right rail. Click 完成 to
@@ -231,7 +236,7 @@ HTTPS static dependencies are scanned first and frozen byte-exact only after
 per-resource approval; pages without remote resources download immediately.
 
 Frame images are the agent side: `ppnt shot` (with `--marks` baking the `#n` pins)
-and `ppnt check --mode image` reuse the same server-side renderer
+and `ppnt comments --mode image` reuse the same server-side renderer
 (`POST /api/export-image`) — frames never implement their own screenshotting.
 
 ## One phone, no workbench

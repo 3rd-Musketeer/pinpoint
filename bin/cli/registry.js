@@ -13,6 +13,7 @@ import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegis
 
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
 import { BOARDS, parseArgs, guardParse } from './args.js';
+import { toPageRef } from './address.js';
 
 function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);
@@ -562,7 +563,7 @@ export async function runAdd(argv, io = {}) {
     return 1;
   }
   out(`已登记 ${entry.id}（${entry.kind}）：${entryTargetDesc(entry)}`);
-  if (entry.kind === 'project') out(`文章与概念：\`pinpoint list ${entry.id}\``);
+  if (entry.kind === 'project') out(`文章与概念：\`ppnt show ${entry.id}\`；验证：\`ppnt check ${entry.id}\``);
   if (entry.page) {
     out(`归属 Page「${entry.page}」的「内容」区${entry.role === 'draft' ? '草稿组' : '产物组'}；不新增 Pages 行。`);
   }
@@ -616,7 +617,8 @@ export async function runPrune(argv, io = {}) {
   const parsed = guardParse(argv, io);
   if (typeof parsed === 'number') return parsed;
   if (parsed.help) return 0;
-  const pageId = String(parsed.target || '');
+  // <project>/<article> 只看字面换成页 id：删掉的文章的桶也能这样写。
+  const pageId = String(toPageRef(parsed.target || ''));
   if (!PAGE_ID_PATTERN.test(pageId)) {
     err(`错误：页 id 不合法：${pageId}`);
     return 1;

@@ -168,7 +168,7 @@ REV 是设计储备，没有实现：当前迭代节奏下“这条标注针对�
 
 - 单入口：底部横条的“导出”钮 → 原生 dialog（`ExportPicker.jsx`），导出整个画布为离线可交互 HTML（`<页 id>__interactive.html`，ADR 0033）。先扫描 HTTPS 静态依赖，逐项批准后冻结；没有远程资源就直接下载。
 - 可交互 HTML 不另做版式，就是这份外壳：满铺画布 + 浮动玻璃面板（大纲）+ 底部横条（面板开关 · 页名 · ‹ n/N › · 缩放 · 回中），平移 / 缩放 / 定位语义与画布相同；窄屏面板收起、帧竖排。分享面没有标注、Section Navigator、minimap 与拖宽。
-- 帧和 section 的图片归 agent：`ppnt shot` 与 `ppnt check --mode image` 走服务端渲染（`/api/export-image`），图注（编号 + 帧名 + 尺寸）永随图。
+- 帧和 section 的图片归 agent：`ppnt shot` 的画布截图与 `ppnt comments --mode image` 走服务端渲染（`/api/export-image`），图注（编号 + 帧名 + 尺寸）永随图；`ppnt shot <project>/<article>` 截的是文章页本身。
 - 文章用文章页的链接分享，不走导出。
 
 ## 组件惯用式

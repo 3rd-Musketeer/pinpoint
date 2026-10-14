@@ -183,8 +183,8 @@ describe('resolveRef：多 tab 页（ADR 0041）', () => {
 
   test('未知 tab、tab 里没有那个号都带原文报错；存量页写前缀也报清楚', () => {
     assert.match(resolveRef('nope:A1', TCTX).message, /没有 tab "nope"（有：comps、flow）/);
-    assert.match(resolveRef('flow:A9', TCTX).message, /图纸上没有帧 flow:A9/);
-    assert.match(resolveRef('flow:Z', TCTX).message, /图纸上没有段 flow:Z/);
+    assert.match(resolveRef('flow:A9', TCTX).message, /画布上没有帧 flow:A9/);
+    assert.match(resolveRef('flow:Z', TCTX).message, /画布上没有节 flow:Z/);
     assert.match(resolveRef('flow:A1', CTX).message, /这页没有 tab/);
   });
 

@@ -448,7 +448,7 @@ describe('buildCheckReport', () => {
     const gone = report.groups.flatMap((group) => group.rows).find((row) => row.n === 5);
     assert.ok(gone.excerpt[0].includes('解析不到'), gone.excerpt[0]);
     const unbuilt = report.groups.flatMap((group) => group.rows).find((row) => row.n === 6);
-    assert.ok(unbuilt.excerpt[0].includes('无 dist'), unbuilt.excerpt[0]);
+    assert.ok(unbuilt.excerpt[0].includes('还没编进 dist'), unbuilt.excerpt[0]);
   });
 });
 

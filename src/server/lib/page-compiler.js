@@ -197,15 +197,17 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
     const trimmed = line.trim();
     const atTop = depthB === 0 && depthP === 0 && depthK === 0;
 
+    // code：错误种类（ppnt check 的诊断带它）；text：不带文件前缀的那句话；message：带 `文件:行:` 前缀，编译失败时原样拼进错误。
+    const report = (code, text) => errors.push({ code, line: i + 1, text, message: `${file}:${i + 1}: ${text}` });
     if (/\bfrom\s*['"]preact\/hooks['"]/.test(trimmed)) {
-      errors.push({ line: i + 1, message: `${file}:${i + 1}: 禁止 import preact/hooks（组件是印章：无状态无副作用）` });
+      report('lint_hooks', '禁止 import preact/hooks（组件是印章：无状态无副作用）');
     }
     const onMatch = line.match(/\s(on[A-Z][A-Za-z0-9]*)\s*=/);
     if (onMatch) {
-      errors.push({ line: i + 1, message: `${file}:${i + 1}: 禁止事件属性 ${onMatch[1]}（状态即帧，交互走 sidecar）` });
+      report('lint_event_attr', `禁止事件属性 ${onMatch[1]}（状态即帧，交互走 sidecar）`);
     }
     if (/\bfetch\s*\(/.test(line)) {
-      errors.push({ line: i + 1, message: `${file}:${i + 1}: 禁止 fetch（编译期渲染，没有数据请求）` });
+      report('lint_fetch', '禁止 fetch（编译期渲染，没有数据请求）');
     }
 
     if (!mode && atTop && trimmed
@@ -213,7 +215,7 @@ export function lintStampSource(text, file = '<source>', { entry = false } = {})
       && !exportOk.test(trimmed)
       && !functionOk.test(trimmed)
       && !/^\/\//.test(trimmed) && !/^\/\*/.test(trimmed) && !/^\*/.test(trimmed) && !/^\*\//.test(trimmed)) {
-      errors.push({ line: i + 1, message: `${file}:${i + 1}: 顶层只允许 import、${exportLabel}${entry ? ' 和函数声明' : ''}（组件是印章，没有顶层逻辑）` });
+      report('lint_top_level', `顶层只允许 import、${exportLabel}${entry ? ' 和函数声明' : ''}（组件是印章，没有顶层逻辑）`);
     }
     if (!mode && atTop) {
       if (/^import\b/.test(trimmed)) mode = 'import';
@@ -341,6 +343,18 @@ function evaluateFrameBundle(code) {
   return mod.exports;
 }
 
+/** esbuild 失败 → 诊断对象 [{ code: 'compile', file, line, message }]（file 按 absWorkingDir 解析成绝对路径）。 */
+function buildFailureDiagnostics(error, cwd) {
+  const rows = (error && error.errors) || [];
+  if (!rows.length) return [{ code: 'compile', file: null, line: null, message: String((error && error.message) || error) }];
+  return rows.map((row) => ({
+    code: 'compile',
+    file: row.location ? path.resolve(cwd, row.location.file) : null,
+    line: row.location ? row.location.line : null,
+    message: row.text,
+  }));
+}
+
 function formatBuildFailure(error) {
   const rows = (error && error.errors) || [];
   if (!rows.length) return String((error && error.message) || error);
@@ -392,7 +406,7 @@ async function compileJsxScreen(target, screenId, file) {
       plugins: pluginsFor(target),
     });
   } catch (error) {
-    return { ok: false, error: formatBuildFailure(error) };
+    return { ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir) };
   }
   const lintErrors = [];
   for (const input of Object.keys(built.metafile.inputs)) {
@@ -403,15 +417,22 @@ async function compileJsxScreen(target, screenId, file) {
     } catch {
       continue;
     }
-    lintErrors.push(...lintStampSource(text, input, { entry: input === file }));
+    lintErrors.push(...lintStampSource(text, input, { entry: input === file })
+      .map((row) => ({ ...row, file: path.resolve(target.pageDir, input) })));
   }
   if (lintErrors.length) {
-    return { ok: false, error: lintErrors.map((row) => row.message).join('\n') };
+    return {
+      ok: false,
+      error: lintErrors.map((row) => row.message).join('\n'),
+      diagnostics: lintErrors.map((row) => ({ code: row.code, file: row.file, line: row.line, message: row.text })),
+    };
   }
+  const entryFile = path.resolve(target.pageDir, file);
   try {
     const mod = evaluateFrameBundle(built.outputFiles[0].text);
     if (!mod || typeof mod.default !== 'function') {
-      return { ok: false, error: `${file}: 帧文件必须默认导出一个返回 JSX 的函数` };
+      const message = '帧文件必须默认导出一个返回 JSX 的函数';
+      return { ok: false, error: `${file}: ${message}`, diagnostics: [{ code: 'frame_export', file: entryFile, line: null, message }] };
     }
     return {
       ok: true,
@@ -419,7 +440,8 @@ async function compileJsxScreen(target, screenId, file) {
       deps: depRecordsFromInputs(target, built.metafile.inputs, [file]),
     };
   } catch (error) {
-    return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
+    const message = String((error && error.message) || error);
+    return { ok: false, error: `${file}: ${message}`, diagnostics: [{ code: 'frame_render', file: entryFile, line: null, message }] };
   }
 }
 
@@ -760,8 +782,10 @@ export function errorLineIn(message, file) {
  * 编译一个图（不落盘）：figures/<id>.jsx 按帧的同一套规则编（esbuild + lint 四禁 + 渲染成 HTML，
  * 组件和 pinpoint/kit 照帧的解析序；图里写 ../components/X.jsx），sidecar figures/<id>.js 在
  * 编译期只查语法（运行在浏览器里，见 frame-doc.js 的 figurePageHtml）。
- * → { ok, html?, error?, sources: [{ file, mtimeMs }], script, css, usesKit, ms }
+ * → { ok, html?, error?, diagnostics?, sources: [{ file, mtimeMs }], script, css, usesKit, ms }
  *   sources 是判断要不要重编的全部输入（图、它 import 的文件、sidecar、样式），路径相对文章目录。
+ *   失败时 diagnostics 是 ppnt check 用的 [{ code, file（绝对路径）, line, message }]，code 同帧
+ *   （compile、lint_*），只有默认导出和渲染两种是 figure_export / figure_render。
  */
 export async function compileFigure(target, id) {
   const started = performance.now();
@@ -770,8 +794,14 @@ export async function compileFigure(target, id) {
   const script = isFileSync(abs(files.js));
   const css = isFileSync(abs(files.css));
   const finish = (row) => ({ script, css, usesKit: false, sources: [], ...row, ms: Math.round((performance.now() - started) * 10) / 10 });
-  if (!FIGURE_ID_RE.test(String(id || ''))) return finish({ ok: false, error: `图 id 不合法：${JSON.stringify(id)}` });
-  if (!isFileSync(abs(files.jsx))) return finish({ ok: false, error: `${files.jsx}: 源文件不存在` });
+  const one = (code, file, message) => [{ code, file, line: null, message }];
+  if (!FIGURE_ID_RE.test(String(id || ''))) {
+    const message = `图 id 不合法：${JSON.stringify(id)}`;
+    return finish({ ok: false, error: message, diagnostics: one('figure_src', null, message) });
+  }
+  if (!isFileSync(abs(files.jsx))) {
+    return finish({ ok: false, error: `${files.jsx}: 源文件不存在`, diagnostics: one('figure_missing', abs(files.jsx), '源文件不存在') });
+  }
   const record = (rel) => ({ file: rel, mtimeMs: fs.statSync(abs(rel)).mtimeMs });
   const sources = [record(files.jsx)];
   if (script) sources.push(record(files.js));
@@ -794,7 +824,7 @@ export async function compileFigure(target, id) {
       plugins: pluginsFor(target),
     });
   } catch (error) {
-    return finish({ ok: false, error: formatBuildFailure(error), sources });
+    return finish({ ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir), sources });
   }
   const deps = depRecordsFromInputs(target, built.metafile.inputs, [files.jsx]);
   sources.push(...deps);
@@ -807,9 +837,17 @@ export async function compileFigure(target, id) {
     } catch {
       continue;
     }
-    lintErrors.push(...lintStampSource(text, input, { entry: input === files.jsx }));
+    lintErrors.push(...lintStampSource(text, input, { entry: input === files.jsx })
+      .map((row) => ({ ...row, file: path.resolve(target.pageDir, input) })));
   }
-  if (lintErrors.length) return finish({ ok: false, error: lintErrors.map((row) => row.message).join('\n'), sources });
+  if (lintErrors.length) {
+    return finish({
+      ok: false,
+      error: lintErrors.map((row) => row.message).join('\n'),
+      diagnostics: lintErrors.map((row) => ({ code: row.code, file: row.file, line: row.line, message: row.text })),
+      sources,
+    });
+  }
   const kitDir = fs.realpathSync(KIT_JSX);
   const usesKit = Object.keys(built.metafile.inputs).some((input) => {
     const file = path.resolve(target.pageDir, input);
@@ -819,17 +857,19 @@ export async function compileFigure(target, id) {
   try {
     const mod = evaluateFrameBundle(built.outputFiles[0].text);
     if (!mod || typeof mod.default !== 'function') {
-      return finish({ ok: false, error: `${files.jsx}: 图文件必须默认导出一个返回 JSX 的函数`, sources, usesKit });
+      const message = '图文件必须默认导出一个返回 JSX 的函数';
+      return finish({ ok: false, error: `${files.jsx}: ${message}`, diagnostics: one('figure_export', abs(files.jsx), message), sources, usesKit });
     }
     html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
   } catch (error) {
-    return finish({ ok: false, error: `${files.jsx}: ${String((error && error.message) || error)}`, sources, usesKit });
+    const message = String((error && error.message) || error);
+    return finish({ ok: false, error: `${files.jsx}: ${message}`, diagnostics: one('figure_render', abs(files.jsx), message), sources, usesKit });
   }
   if (script) {
     try {
       await esbuild.transform(fs.readFileSync(abs(files.js), 'utf8'), { loader: 'js', format: 'esm', sourcefile: files.js, logLevel: 'silent' });
     } catch (error) {
-      return finish({ ok: false, error: formatBuildFailure(error), sources, usesKit });
+      return finish({ ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir), sources, usesKit });
     }
   }
   return finish({ ok: true, html, sources, usesKit });
@@ -944,6 +984,21 @@ export async function figureDistErrors(target, { distRoot = defaultDistRoot(), c
     }
   }
   return errors;
+}
+
+/**
+ * 编译一帧、不落 dist，只要诊断（ppnt check）：→ { ok, diagnostics: [{ code, file, line, message }] }。
+ * 帧不必在板上（被布局错误挡在画布外的帧也能编）；板读不到时按没有资源的单帧编。
+ */
+export async function frameDiagnostics(target, screenId) {
+  let assets = {};
+  try {
+    const board = readTargetBoard(target);
+    if (board.assets && typeof board.assets === 'object') assets = board.assets;
+  } catch { /* 板坏：照样编这一帧，板的错误由调用方另报 */ }
+  const row = await compileScreen(target, { id: screenId }, { assets });
+  if (row.ok) return { ok: true, diagnostics: [] };
+  return { ok: false, diagnostics: row.diagnostics || [{ code: 'compile', file: null, line: null, message: row.error }] };
 }
 
 /** 编译单屏但不落 dist（ppnt render）。 */

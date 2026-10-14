@@ -37,7 +37,7 @@ export function formatPlan(plan) {
   lines.push(`  新文章 ${plan.articleDir}`);
   const counts = [
     `${plan.sections.length} 节`,
-    `${frames.length} 帧（复制 ${frames.length - comp}，comp 屏生成 ${comp}）`,
+    `${frames.length} 帧（复制 ${frames.length - comp}，comp 生成 ${comp}）`,
     `组件 ${kinds.component || 0}`,
     ...(kinds.dep ? [`其他依赖 ${kinds.dep}`] : []),
     ...(kinds.sidecar ? [`sidecar ${kinds.sidecar}`] : []),
