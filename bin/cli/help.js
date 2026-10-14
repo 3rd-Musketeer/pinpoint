@@ -46,7 +46,7 @@ ${ADDRESS}
 
 const REGISTRY_FLAG = '  --registry <路径>    用哪份登记表（缺省 PINPOINT_REGISTRY，再缺省 ~/.pinpoint/registry.json）';
 const TARGET_NOTE = `  目标是第一个参数：<project>/<article> 或存量页 id；--page <目标> 是旧写法，照认。
-  不写目标、引用里也没有 <project>/<article>#n 时报错并列出候选，不猜。`;
+  不写目标、引用里也没有 <project>/<article>#n 或 @frame:<页 id>/<帧 id> 时报错并列出候选，不猜。`;
 
 /** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
 export const HELP = {
