@@ -276,6 +276,7 @@ export function createAnnotateHandler(options = {}) {
    * PUT /registry/folders · /registry/entries/:id/folder · /registry/order。
    * 三条都是「校验 → 一次原子写 → reload → 广播 registry:update → 还回完整
    * /registry 载荷」。任何未知 id / 未知文件夹都是 400，登记表一个字节不动。
+   * 子路径不是这三条时，读完请求体才放行给后面的中间件（annotate-routes.test.js 钉住）。
    */
   async function handleRegistryWrite(req, res, urlPath) {
     if (typeof registry.setFolders !== 'function') {
