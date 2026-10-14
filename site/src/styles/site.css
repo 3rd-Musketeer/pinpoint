@@ -95,7 +95,7 @@ th { background:var(--soft); font-weight:600; }
 /* 正文里的图（Figure.astro）：同源 iframe 占满正文栏宽，高度由图页报上来（figure-client.js），没有滚动条。
    底色就是页面底色，图和正文融在一起；细线框把可操作的区域圈出来。 */
 .pp-fig { margin:26px 0 22px; max-width:100%; min-width:0; }
-.pp-fig iframe { display:block; width:100%; border:1px solid var(--hair); border-radius:14px; background:var(--bg); }
+.pp-fig iframe { display:block; box-sizing:content-box; width:calc(100% - 2px); border:1px solid var(--hair); border-radius:14px; background:var(--bg); }
 .pp-fig figcaption { margin-top:8px; font-size:14px; line-height:1.55; color:var(--muted); }
 .pp-fig-errors { border:1px solid var(--err); color:var(--err); background:var(--bg); border-radius:12px; padding:10px 14px; font-size:13.5px; line-height:1.55; }
 .pp-fig-errors ul { margin:4px 0 0; padding-left:1.2em; }
