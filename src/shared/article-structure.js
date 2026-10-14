@@ -1,5 +1,5 @@
 /**
- * 文章正文（index.mdx）的节与画布结构（docs/projects.md“文章的画布”）：<Section> 与 <Canvas>
+ * 文章正文（index.mdx）的节与画布结构（docs/projects.md“画布视图”）：<Section> 与 <Canvas>
  * 在 mdast 里在哪、属于哪一节、第几节。只走树，不解析、不校验，各方自己报错：
  *
  * - 服务端的文章画布（src/server/lib/article-canvas.js）：派生 board、画布错误；

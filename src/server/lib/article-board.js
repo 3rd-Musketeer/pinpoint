@@ -1,5 +1,5 @@
 /**
- * pp3 M1：每篇 article 的画布 = 一个由正文派生的页（docs/projects.md「文章的画布」）。
+ * 每篇 article 的画布 = 一个由正文派生的页（docs/projects.md「画布视图」）。
  *
  * - 页 id = articlePageId(project, article)（src/shared/project-ids.js），`?page=`、标注桶、
  *   /sites/<id>/、ppnt 都用它。

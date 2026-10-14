@@ -1,5 +1,5 @@
 /**
- * 一个页 id 是什么（CONTEXT.md page 词条，docs/projects.md“文章的画布”）：唯一的判定处。
+ * 一个页 id 是什么（CONTEXT.md page 词条，docs/projects.md“画布视图”）：唯一的判定处。
  *
  *   resolvePage(registry, id, { manifestIds }) →
  *     { kind: 'entry', id, entry }       registry 条目（dir / file / url）

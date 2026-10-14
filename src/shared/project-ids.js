@@ -13,7 +13,7 @@ import { ENTRY_ID_PATTERN } from './registry-ids.js';
 const ID = ENTRY_ID_PATTERN.source.slice(1, -1); // [a-z0-9][a-z0-9-]*
 
 /**
- * 文章画布的页 id（docs/projects.md“文章的画布”）：`<project id>_<article id>`。
+ * 文章画布的页 id（docs/projects.md“画布视图”）：`<project id>_<article id>`。
  * project id 与 article id 都匹配 ENTRY_ID_PATTERN（没有 `_`），所以拆分无歧义，
  * 也不会和 registry 条目撞（条目 id 不含 `_`）；仍匹配 PAGE_ID_PATTERN。唯一可能撞的
  * 是 content/previews/_index.json 里带 `_` 的模板页，读取时检查并记错误。

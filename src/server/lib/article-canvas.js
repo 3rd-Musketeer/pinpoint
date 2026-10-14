@@ -1,5 +1,5 @@
 /**
- * pp3 M1：从文章正文（index.mdx）读出画布结构（docs/projects.md「文章的画布」）。
+ * 从文章正文（index.mdx）读出画布结构（docs/projects.md「画布视图」）。
  *
  * 只解析不渲染：用站点同一套 MDX 解析（unified + remark-parse + remark-mdx，
  * @astrojs/mdx 也是它），读顶层的 <Section id title> 和节里的

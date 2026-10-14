@@ -14,7 +14,7 @@ import { waitNoReload } from './site-settle.js';
 // 一个用例走完：冷启动那一下只发生一次，拆成多个用例就只有第一个看得到「启动中」。
 
 const ARTICLE = '/e2e-project/commit-confirm/';
-// 这篇的画布页 id（docs/projects.md「文章的画布」）：正文的画布卡片与“打开画布”都指向它。
+// 这篇的画布页 id（docs/projects.md「画布视图」）：正文的画布卡片与“打开画布”都指向它。
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');

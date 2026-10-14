@@ -9,7 +9,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY } from './env.js';
 import { countColorPixels } from './png-probe.js';
 
-// pp3 M1：每篇文章的画布 = 一个由 index.mdx 派生的页（docs/projects.md「文章的画布」）。
+// pp3 M1：每篇文章的画布 = 一个由 index.mdx 派生的页（docs/projects.md「画布视图」）。
 // 固件：常驻 project e2e-project（e2e/project-site/）的 commit-confirm：四个 Section，
 // 有 Canvas 的三节 confirm（confirm-sheet、confirm-done）、variants（card-plain，shell comp）
 // 与 mixed（mixed-phone 手机帧 + mixed-bare：帧文件自己 export const shell = "comp"），

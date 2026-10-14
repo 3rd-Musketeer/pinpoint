@@ -158,7 +158,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(llms, /- 撤回窗口：概念 确认卡/);
 });
 
-// A canvas error is a project error (docs/projects.md「文章的画布 · 错误」), and
+// A canvas error is a project error (docs/projects.md「画布视图 · 错误」), and
 // project errors fail the production build. Which error lands in the card and
 // which in the banner is covered in src/lib/canvas-card.test.js.
 test('canvas errors fail the build, each with its line', (t) => {
