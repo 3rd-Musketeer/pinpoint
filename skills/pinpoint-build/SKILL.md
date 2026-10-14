@@ -66,7 +66,7 @@ summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
 - frontmatter 每行一条单行的 `key: value`：`title`（缺省用 article id）、`summary`、`order`（project 首页上的排序，可省）。多行值、列表、`|` 或 `>` 开头的值都是布局错误。
 - `Section` 和 `Canvas` 由站点提供，不用 import。
 - `Section` 的 `id` 必填，在本篇内唯一。它同时是网页里的锚点和画布的 section id。Section 不能嵌套。
-- 节字母 A、B… 按正文里全部 Section 的顺序编，纯文字的节也占一个字母，所以第一节是纯文字时，画布上的编号从 B 开始，画布里没有 A。这样卡片、画布图注和 `ppnt` 里的 `C2` 与正文的节对得上。
+- 画布上的节字母 A、B… 按正文里全部 Section 的顺序编，纯文字的节也占一个字母，所以第一节是纯文字时，画布上的编号从 B 开始，画布里没有 A。画布图注、`ppnt` 和标注里的 `C2` 指第 3 节。文章页显示的是节号 1、2、3…（第 n 个字母就是第 n 节），不显示字母。
 - `Canvas` 写在 Section 里，一节最多一个。`frames` 写字面量数组，每一项是本篇目录下某个 `<帧 id>.jsx` 的 id。没有 Canvas 的节不进画布。
 - `frames` 不能引别的页的帧（`"<page>/<screen>"` 会报错）。要用别处的帧，把帧文件和它 import 的组件复制进本篇目录。
 - `Canvas` 可以带字面量 `shell`：`app`（缺省，手机壳）、`lock`、`doc`、`comp`（裸组件，不带机壳）。它管这一节的所有帧。
@@ -121,7 +121,7 @@ boundary: 一句话说清它管什么、不管什么。
 - 站点打不开，先跑 `pinpoint status`。
 - 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：另起一个服务，用 `PINPOINT_DATA_DIR`、`PINPOINT_REGISTRY`、`PINPOINT_ORIGIN`、`PORT`、`PINPOINT_SITE_PORT` 指到别处，做法见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。不要用 `pinpoint start` 起第二个服务：它经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
 
-文章页上，每个有 Canvas 的节显示成一张卡片：头部是节字母、节标题、帧数和未处理标注数。点卡片里的帧，打开这一节的 overlay，里面的帧可以交互；点卡片头的“打开画布”，进画布视图并定位到这一节。标注只在画布视图里做，正文上选中文字是评论。
+文章页上，每个有 Canvas 的节显示成一张卡片：头部是节号、节标题、帧数和未处理标注数，图注只有帧 id。点卡片里的帧，打开这一节的 overlay，里面的帧可以交互；点卡片头的“打开画布”，进画布视图并定位到这一节。标注只在画布视图里做，正文上选中文字是评论。
 
 改完的检查，都过了才汇报：
 

@@ -69,9 +69,12 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   // Popup data per kind: article → title + summary; concept → definition, status, used-by.
   assert.match(article, /data-kind="article"[^>]*data-href="\/demo\/basics\/" data-title="基础篇" data-summary="没有 section 的短文。"/);
   assert.match(article, /data-kind="concept" data-name="确认卡"[^>]*data-status="已固定"[^>]*data-def="对外动作执行前[^"]*"[^>]*data-used="[^"]*基础篇/);
-  // Sections: stable ids, letters, TOC.
-  assert.deepEqual([...article.matchAll(/<section class="sec" id="([^"]+)"[^>]*data-letter="([A-Z])"/g)].map((m) => `${m[2]}:${m[1]}`), ['A:overview', 'B:flow', 'C:mech']);
-  assert.deepEqual([...article.matchAll(/<a href="#([^"]+)"><span class="n">([A-Z])<\/span>/g)].map((m) => `${m[2]}:${m[1]}`), ['A:overview', 'B:flow', 'C:mech']);
+  // Sections: stable ids, numbers (heading marker and TOC), no canvas letters on the article page.
+  assert.deepEqual([...article.matchAll(/<section class="sec" id="([^"]+)"[^>]*data-num="(\d+)"/g)].map((m) => `${m[2]}:${m[1]}`), ['1:overview', '2:flow', '3:mech']);
+  assert.deepEqual([...article.matchAll(/<div class="sechead"><span class="ref">(\d+)<\/span><h2>/g)].map((m) => m[1]), ['1', '2', '3']);
+  assert.deepEqual([...article.matchAll(/<a href="#([^"]+)"><span class="n">(\d+)<\/span>/g)].map((m) => `${m[2]}:${m[1]}`), ['1:overview', '2:flow', '3:mech']);
+  assert.doesNotMatch(article, /data-letter=|data-ref=|data-ov-letter/);
+  assert.doesNotMatch(article, /<span class="(?:ref|n)">[A-Z]+<\/span>|<b>[A-Z]+\d+<\/b>|\b[A-Z]\d+–[A-Z]\d+\b/);
 
   // Canvas cards: one per Section with a <Canvas>, only that section's frames; lazy, inert iframes; links open the canvas at the section.
   const page = articlePageId('demo', 'payments');
@@ -79,7 +82,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   const cards = cardsOf(article);
   assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm confirm-card'], [page, 'mech', 'pay-button']]);
   const [flow, mech] = cards;
-  assert.match(flow.html, /<span class="ref">B<\/span><span class="t">付款前的确认<\/span><span class="meta">B1–B3 · 3 帧<\/span>/);
+  assert.match(flow.html, /<span class="ref">2<\/span><span class="t">付款前的确认<\/span><span class="meta">3 帧<\/span>/);
   assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm', 'confirm-card'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off&embed=card`)));
   for (const tag of flow.html.match(/<iframe [^>]*>/g)) {
     assert.match(tag, /loading="lazy"/);
@@ -94,10 +97,11 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.doesNotMatch(article, /class="canvas-card"[^>]*\sdata-section=/);
   assert.equal((article.match(/\sdata-section="flow"/g) || []).length, 1);
   assert.doesNotMatch(flow.html, /class="cc-hit"[^>]*target=/);
-  // What the overlay reads from the card: section letter / title / meta / canvas link, and per frame ref, title, src.
-  assert.match(flow.html, new RegExp(`data-pp-section="flow" data-letter="B" data-title="付款前的确认" data-meta="B1–B3 · 3 帧" data-href="${escRe(open)}"`));
-  assert.match(flow.html, new RegExp(`<figure class="cc-frame" data-screen="ask" data-ref="B1" data-title="ask" data-src="${escRe(q(`/api/frame?page=${encodeURIComponent(page)}&screen=ask&annotate=off&embed=card`))}">`));
-  assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap"><b>([A-Z]\d+)<\/b>/g)].map((m) => m[1]), ['B1', 'B2', 'B3']);
+  // What the overlay reads from the card: section number / title / meta / canvas link, and per frame id, title, src.
+  assert.match(flow.html, new RegExp(`data-pp-section="flow" data-num="2" data-title="付款前的确认" data-meta="3 帧" data-href="${escRe(open)}"`));
+  assert.match(flow.html, new RegExp(`<figure class="cc-frame" data-screen="ask" data-title="ask" data-src="${escRe(q(`/api/frame?page=${encodeURIComponent(page)}&screen=ask&annotate=off&embed=card`))}">`));
+  // Frame captions: the frame id only.
+  assert.deepEqual([...flow.html.matchAll(/<figcaption class="cap">(.*?)<\/figcaption>/g)].map((m) => m[1]), ['<b>ask</b>', '<b>confirm</b>', '<b>confirm-card</b>']);
   assert.match(flow.html, /class="cc-box phone"[^>]*style="width:158px;height:328px"/);
   // Mixed shells in one card: the phone frames are phones, confirm-card (its own `export const shell = "comp"`) is a bare component box.
   const boxes = [...flow.html.matchAll(/<figure class="cc-frame" data-screen="([^"]+)"( data-shell="([^"]*)")?[^>]*>[\s\S]*?class="cc-box (\w+)" data-scale="([^"]*)"[^>]*style="([^"]*)"/g)]
@@ -120,7 +124,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   // The section overlay: one empty shell per article with a canvas, outside #article, excluded from prose comments.
   const ov = article.match(/<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">[\s\S]*?<\/dialog>/);
   assert.ok(ov, 'overlay shell');
-  for (const hook of ['data-ov-letter', 'id="pp-ov-title" data-ov-title', 'data-ov-meta', 'data-ov-prev aria-label="上一节"', 'data-ov-next aria-label="下一节"',
+  for (const hook of ['data-ov-num', 'id="pp-ov-title" data-ov-title', 'data-ov-meta', 'data-ov-prev aria-label="上一节"', 'data-ov-next aria-label="下一节"',
     'data-ov-canvas href="/" target="_top">打开画布 →', 'data-ov-close aria-label="关闭"', 'class="ov-strip" data-ov-strip tabindex="-1" autofocus']) {
     assert.ok(ov[0].includes(hook), `overlay hook ${hook}`);
   }

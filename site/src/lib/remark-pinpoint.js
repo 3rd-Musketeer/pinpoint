@@ -4,16 +4,19 @@
  * - `[[...]]` in text → <Ref raw from /> in MDX (resolved at render time, so a
  *   concept added later resolves without touching the article), or a
  *   placeholder span in .md that the concept page resolves (rawRefHtml).
- * - <Section id title> in MDX → gets `letter` (A, B …) in document order;
+ * - <Section id title> in MDX → gets `num` (1, 2 …) in document order;
  *   the list lands in frontmatter `sections` for the TOC. Missing / bad /
  *   duplicate ids and nested sections fail the build with the file path.
- * - <Canvas> inside a Section → gets `section="<that id>"` (an author-written
- *   `section` is replaced), so the card knows which canvas row it shows.
- *   A Canvas outside any Section gets nothing; the card renders the error.
+ * - <Canvas> inside a Section → gets `section="<that id>"` and that section's
+ *   `num` (author-written values are replaced), so the card knows which canvas
+ *   row it shows and which number to print. A Canvas outside any Section gets
+ *   nothing; the card renders the error.
  *
- * Which Section a node belongs to and its letter come from the same walk the
- * service derives the canvas with (src/shared/article-structure.js), so the
- * heading letter and the canvas numbering cannot drift apart.
+ * The article shows numbers; the canvas, `ppnt` and annotation refs keep the
+ * section letters (A1 is the canvas contract). Both come from the same walk
+ * the service derives the canvas with (src/shared/article-structure.js):
+ * section n here is letter sectionLetter(n - 1) there, so the TOC, the
+ * headings and the cards cannot drift from the canvas rows.
  *
  * The current project id comes from <root>/docs/pinpoint/project.json above
  * the file, so the pass needs no registry.
@@ -54,7 +57,7 @@ const setAttr = (node, name, value) => {
   if (value !== undefined) node.attributes.push({ type: 'mdxJsxAttribute', name, value });
 };
 
-/** <Section> letters and the Canvas → section link (MDX only). → the TOC list. */
+/** <Section> numbers and the Canvas → section link (MDX only). → the TOC list. */
 function markSections(tree, fail) {
   const sections = [];
   for (const item of articleStructure(tree)) {
@@ -68,9 +71,13 @@ function markSections(tree, fail) {
     if (title === null) fail(`<Section id="${id}"> title must be a literal string`);
     if (sections.some((s) => s.id === id)) fail(`duplicate <Section id="${id}">`);
     if (item.nested.length) fail('<Section> cannot be nested inside another <Section>');
-    sections.push({ id, title: title || id, letter: item.letter });
-    setAttr(item.node, 'letter', item.letter);
-    for (const canvas of item.canvases) setAttr(canvas, 'section', id);
+    const num = String(item.index + 1);
+    sections.push({ id, title: title || id, num });
+    setAttr(item.node, 'num', num);
+    for (const canvas of item.canvases) {
+      setAttr(canvas, 'section', id);
+      setAttr(canvas, 'num', num);
+    }
   }
   return sections;
 }

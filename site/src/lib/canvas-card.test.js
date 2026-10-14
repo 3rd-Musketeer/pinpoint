@@ -23,17 +23,22 @@ const canvas = {
 };
 
 test('card model: this section only, urls, meta, errors by section', () => {
-  const m = cardModel(canvas, 'flow');
-  assert.deepEqual(m.frames.map((f) => [f.ref, f.title, f.src]), [
-    ['B1', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
-    ['B2', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
+  const m = cardModel(canvas, 'flow', '2');
+  assert.deepEqual(m.frames.map((f) => [f.id, f.title, f.src]), [
+    ['ask', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
+    ['confirm', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
   ]);
   assert.equal(m.href, '/?page=demo_payments&section=flow');
-  assert.equal(m.meta, 'B1–B2 · 2 帧');
+  // The article shows numbers: the section's number, no canvas letter, no frame refs (B1 …).
+  assert.equal(m.num, '2');
+  assert.equal(m.meta, '2 帧');
+  assert.equal('letter' in m, false);
+  assert.equal(m.frames.some((f) => 'ref' in f), false);
   assert.equal(m.box.mode, 'phone');
   assert.deepEqual(m.errors, []);
   const c = cardModel(canvas, 'mech');
-  assert.equal(c.meta, 'C1 · 1 帧');
+  assert.equal(c.meta, '1 帧');
+  assert.equal(c.num, '');
   assert.equal(c.box.mode, 'natural');
   assert.deepEqual(c.errors, ['跨页']);
   assert.deepEqual(looseErrors(canvas), ['没有归属的错误']);
@@ -87,21 +92,23 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
   assert.equal(ok.pageId, articlePageId('demo', 'payments'));
   assert.equal(ok.pageId, 'demo_payments');
   assert.deepEqual(ok.errors, []);
-  assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
-    ['B1', 'ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
-    ['B2', 'confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
-    ['B3', 'confirm-card', false, '/api/frame?page=demo_payments&screen=confirm-card&annotate=off&embed=card'],
+  assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.id, f.missing, f.src]), [
+    ['ask', false, '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
+    ['confirm', false, '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
+    ['confirm-card', false, '/api/frame?page=demo_payments&screen=confirm-card&annotate=off&embed=card'],
   ]);
+  // articleCanvas itself keeps the canvas letters (workbench, ppnt, annotations); only the card model drops them.
+  assert.deepEqual(ok.sections.map((s) => [s.id, s.letter]), [['flow', 'B'], ['mech', 'C']]);
   // confirm-card.jsx says `export const shell = "comp"`: that frame alone is a bare component in a phone section.
   assert.deepEqual(cardModel(ok, 'flow').frames.map((f) => [f.id, f.shell, f.box.mode]), [['ask', '', 'phone'], ['confirm', '', 'phone'], ['confirm-card', 'comp', 'natural']]);
   assert.equal(cardModel(ok, 'mech').shell, 'comp');
 
   const canvas = articleCanvas('broken', 'broken-canvas', { registry });
   const bad = cardModel(canvas, 'bad');
-  // The cross-page ref is not on the canvas; the missing frame is, numbered, with no preview.
-  assert.deepEqual(bad.frames.map((f) => [f.ref, f.id, f.missing, f.src]), [
-    ['A1', 'ask', false, '/api/frame?page=broken_broken-canvas&screen=ask&annotate=off&embed=card'],
-    ['A2', 'gone', true, ''],
+  // The cross-page ref is not on the canvas; the missing frame is, in its place, with no preview.
+  assert.deepEqual(bad.frames.map((f) => [f.id, f.missing, f.src]), [
+    ['ask', false, '/api/frame?page=broken_broken-canvas&screen=ask&annotate=off&embed=card'],
+    ['gone', true, ''],
   ]);
   assert.equal(bad.errors.length, 2);
   assert.match(bad.errors[0], /^第 13 行：.*引用了别的页的帧 "browser-e2e-flow\/ask".*先把帧迁进本篇目录/);

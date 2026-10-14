@@ -1,19 +1,19 @@
-/* Article 站点样式。token 与布局照 tasks/2026-10-13-pp3/preview/index.html（owner 认可的样子）。 */
+/* Article 站点样式。 */
 :root {
   --bg:#ffffff; --ink:#111111; --ink-2:#454545; --muted:#767676; --hair:#e6e6e6; --soft:#f5f5f5; --soft-2:#ececec;
-  --accent:#0e8f6c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12); --shadow-sm:0 6px 18px rgba(0,0,0,.10); --scrim:rgba(17,17,17,.56);
+  --accent:#0e8f6c; --accent-ink:#0b7a5c; --accent-soft:#dff3e6; --warn:#c76a12; --err:#c0392b; --hl:#fbf0d3; --hl-on:#f6dd9a; --shadow:0 12px 40px rgba(0,0,0,.12); --shadow-sm:0 6px 18px rgba(0,0,0,.10); --scrim:rgba(17,17,17,.56);
   color-scheme: light;
 }
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-    --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
+    --accent:#3ec49b; --accent-ink:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
     color-scheme: dark;
   }
 }
 :root[data-theme="dark"] {
   --bg:#0f0f0f; --ink:#f1f1f1; --ink-2:#c9c9c9; --muted:#9a9a9a; --hair:#262626; --soft:#191919; --soft-2:#222222;
-  --accent:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
+  --accent:#3ec49b; --accent-ink:#3ec49b; --accent-soft:#1e3d2d; --warn:#f0a050; --err:#ff7b6b; --hl:#3f3418; --hl-on:#5c4a1c; --shadow:0 12px 40px rgba(0,0,0,.5); --shadow-sm:0 6px 18px rgba(0,0,0,.45); --scrim:rgba(0,0,0,.72);
   color-scheme: dark;
 }
 * { box-sizing:border-box; }
@@ -71,9 +71,19 @@ table { border-collapse:collapse; margin:0 0 18px; font-size:15px; display:block
 th, td { border:1px solid var(--hair); padding:8px 12px; text-align:left; vertical-align:top; }
 th { background:var(--soft); font-weight:600; }
 
-/* [[ ]]：已有页 = 实线下划；空 ref = 虚线 + 灰 */
-.cref { border-bottom:1.5px solid var(--accent); cursor:pointer; color:var(--ink); text-decoration:none; }
-.cref.empty { border-bottom:1.5px dashed var(--muted); color:var(--ink-2); }
+/* [[ ]] 芯片：已有页 = accent 字、600、box-shadow 当下划线、6px 实心圆点；空 ref = 灰字、虚线、空心圆点。
+   字色用 --accent-ink：亮色 #0b7a5c 对页面底色 5.3:1（--accent #0e8f6c 只有 4.1:1），悬停底色上 4.6:1。
+   圆点是 ref 自己左内边距里的背景图，不用 inline-block 的 ::before：原子行内盒前后都能断行，中文里圆点会和第一个字分到两行。
+   背景按 slice 铺，ref 折行时圆点只在第一段开头。悬停只加 background-color，正文评论的高亮（mark.pp-hl）照常盖在字上。 */
+.cref { color:var(--accent-ink); font-weight:600; text-decoration:none; cursor:pointer;
+        box-shadow:0 1.5px 0 var(--accent-ink); border-radius:2px; padding:0 1px 0 11px;
+        background-image:radial-gradient(circle at 4px 50%, currentColor 2.6px, transparent 3.1px); background-repeat:no-repeat;
+        transition:background-color .12s; }
+.cref:hover, .cref:focus-visible { background-color:color-mix(in srgb, var(--accent) 12%, transparent); border-radius:4px; }
+.cref:focus-visible { outline:2px solid var(--accent-ink); outline-offset:2px; }
+.cref.empty { color:var(--muted); box-shadow:none; border-bottom:1.5px dashed var(--muted); border-radius:0;
+              background-image:radial-gradient(circle at 4px 50%, transparent 1.6px, currentColor 2px, currentColor 2.6px, transparent 3.1px); }
+.cref.empty:hover, .cref.empty:focus-visible { background-color:color-mix(in srgb, var(--muted) 12%, transparent); }
 .pop { position:absolute; z-index:40; width:300px; background:var(--bg); border:1px solid var(--hair); border-radius:14px; box-shadow:var(--shadow);
        padding:16px 18px; font-size:14px; line-height:1.6; }
 .pop .k { font-weight:600; margin-bottom:2px; }
@@ -107,8 +117,7 @@ th { background:var(--soft); font-weight:600; }
 .cc-box.natural iframe { background:transparent; }
 .cc-box .ph { position:absolute; inset:0; display:grid; place-items:center; padding:12px; text-align:center; color:var(--muted); font-size:12px; background:var(--soft-2); }
 .cc-box.missing { background:var(--soft); box-shadow:none; border:1.5px dashed var(--err); }
-.cc-box.missing .ph { background:transparent; color:var(--err); align-content:center; gap:4px; }
-.cc-box.missing .ph b { color:var(--ink-2); }
+.cc-box.missing .ph { background:transparent; color:var(--err); align-content:center; }
 .cc-hit { position:absolute; inset:0; border-radius:12px; }
 .cc-hit:focus-visible { outline:2px solid var(--accent); outline-offset:3px; }
 .cc-frame:hover .cc-box { outline:2px solid var(--accent); outline-offset:3px; }
@@ -138,9 +147,7 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-frame:last-child { margin-right:auto; }
 .ov-frame .cap { display:flex; align-items:baseline; gap:6px; width:var(--ov-w, auto); margin-bottom:8px; font-size:12.5px; line-height:1.4; color:var(--muted);
                  white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ov-frame .cap b { font-family:ui-monospace,"SF Mono",Menlo,monospace; color:var(--accent); font-weight:600; }
-.ov-frame .cap code { background:none; padding:0; font-size:12px; color:var(--ink-2); }
-.ov-frame .cap span { overflow:hidden; text-overflow:ellipsis; }
+.ov-frame .cap b { font-family:ui-monospace,"SF Mono",Menlo,monospace; color:var(--accent); font-weight:600; overflow:hidden; text-overflow:ellipsis; }
 .ov-shell { border-radius:12px; transition:box-shadow .2s; }
 .ov-shell.natural { box-shadow:0 1px 8px rgba(0,0,0,.10); }
 .ov-shell.phone { box-shadow:0 0 0 1px var(--hair), 0 14px 32px -10px rgba(0,0,0,.30); }
@@ -159,7 +166,6 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-box .ph { position:absolute; inset:0; display:grid; place-items:center; align-content:center; gap:4px; padding:12px; text-align:center; color:var(--muted); font-size:13px; background:var(--soft-2); }
 .ov-box.missing { background:var(--soft); border:1.5px dashed var(--err); clip-path:none; }
 .ov-box.missing .ph { background:transparent; color:var(--err); }
-.ov-box.missing .ph b { color:var(--ink-2); }
 .ov-frame.flash .ov-shell { box-shadow:0 0 0 3px var(--accent), 0 14px 32px -10px rgba(0,0,0,.30); }
 @media (prefers-reduced-motion: reduce) { .ov-shell { transition:none; } }
 @media (max-width:600px) {
@@ -176,7 +182,7 @@ html.pp-ov-lock { overflow:hidden; }
 }
 
 /* 正文评论（pp3 M2）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
-   生成（src/client/prose-comments.js），样子照 tasks/2026-10-13-pp3/preview/index.html。 */
+   生成（src/client/prose-comments.js）。 */
 .btn.pri { background:var(--ink); color:var(--bg); border-color:var(--ink); }
 .btn.pri:hover { background:var(--ink-2); }
 mark.pp-hl { background:var(--hl); color:inherit; border-radius:3px; cursor:pointer; padding:0; }

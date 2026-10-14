@@ -3,11 +3,10 @@
 // 评论栏的内容由 pinpoint 注入的标注客户端填（src/client/prose-comments.js，[data-pp-rail]）；
 // 没有注入（站点单独跑、以后的公开链接）时只留这句说明。
 // overlay 槽：文章页放画布浮层（CanvasOverlay.astro），在 #article 之外。
-// 样子照 tasks/2026-10-13-pp3/preview/index.html。
 import '../styles/site.css';
 
 interface Crumb { label: string; href?: string }
-interface TocItem { id: string; title: string; letter: string }
+interface TocItem { id: string; title: string; num: string }
 interface DrawerItem { label: string; href?: string; count: number }
 interface Props {
   title: string;
@@ -63,7 +62,7 @@ const llms = `/${encodeURIComponent(project)}/llms.txt`;
         <nav class="toc" aria-label="目录">
           <div class="label">目录</div>
           <ol id="toc">
-            {toc.map((s) => <li><a href={`#${s.id}`}><span class="n">{s.letter}</span>{s.title}</a></li>)}
+            {toc.map((s) => <li><a href={`#${s.id}`}><span class="n">{s.num}</span>{s.title}</a></li>)}
           </ol>
         </nav>
       )}

@@ -49,20 +49,25 @@ export function looseErrors(canvas) {
 }
 
 /**
- * → { pageId, sectionId, letter, title, shell, box, frames: [{ id, ref, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * → { pageId, sectionId, num, title, shell, box, frames: [{ id, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * `num` is the section's number in the article (1, 2 …; remark-pinpoint
+ * injects it next to `section`). The article shows numbers only: the canvas
+ * letters (`letter`, frame `ref` like B1) stay in articleCanvas for the
+ * workbench and are left out here, so a reader never sees a letter that does
+ * not match the TOC.
  * `shell` / `box` on the card are the section's; each frame has its own: a
  * frame file's `export const shell = "…"` (articleCanvas frame `shell`) wins
  * over the section's, so one card can hold phones and bare components.
  * `sectionId` is the enclosing <Section> (the remark pass injects it). A Canvas
  * outside any Section has none: articleCanvas reports that as a page-level
  * error (banner), so the model is `stray` and the card renders nothing.
- * A frame with no source file keeps its place and number (`missing`): the card
- * shows a placeholder tile instead of a preview, like the canvas does.
+ * A frame with no source file keeps its place (`missing`): the card shows a
+ * placeholder tile instead of a preview, like the canvas does.
  */
-export function cardModel(canvas, sectionId) {
+export function cardModel(canvas, sectionId, num = '') {
   const pageId = canvas?.pageId || '';
   if (!sectionId) {
-    return { pageId, stray: true, sectionId: '', letter: '', title: '', frames: [], href: '', meta: '', box: shellBox(), errors: [] };
+    return { pageId, stray: true, sectionId: '', num: '', title: '', frames: [], href: '', meta: '', box: shellBox(), errors: [] };
   }
   const section = (canvas?.sections || []).find((s) => s.id === sectionId);
   const errors = normalizeErrors(canvas?.errors).filter((e) => e.section === sectionId).map((e) => e.message);
@@ -70,22 +75,20 @@ export function cardModel(canvas, sectionId) {
   const frames = (section?.frames || []).map((f) => {
     const shell = f.shell || section?.shell || '';
     return {
-      id: f.id, ref: f.ref || '', title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
+      id: f.id, title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
       shell, box: shellBox(shell),
     };
   });
-  const refs = frames.map((f) => f.ref).filter(Boolean);
-  const range = refs.length > 1 ? `${refs[0]}–${refs[refs.length - 1]}` : refs[0] || '';
   return {
     pageId,
     sectionId,
-    letter: section?.letter || '',
+    num: num ? String(num) : '',
     title: section?.title || sectionId,
     shell: section?.shell || '',
     box: shellBox(section?.shell),
     frames,
     href: pageId ? canvasHref(pageId, sectionId) : '',
-    meta: [range, `${frames.length} 帧`].filter(Boolean).join(' · '),
+    meta: `${frames.length} 帧`,
     errors,
   };
 }

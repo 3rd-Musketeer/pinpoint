@@ -5,8 +5,9 @@ import { waitNoReload } from './site-settle.js';
 
 // pp3：正文里的画布浮层与 [[ ]] 悬停 popup（site/README.md「画布浮层」「[[ ]] 引用」）。
 // 固件：常驻 project e2e-project 的 commit-confirm（e2e/project-site/）。有画布的三节：
-// B confirm（confirm-sheet 带一个能点的按钮、confirm-done）、C variants（card-plain，comp）、
-// D mixed（手机帧 + 帧级 comp）。纯文字的 A why 不进浮层的上一节 / 下一节。
+// 2 confirm（confirm-sheet 带一个能点的按钮、confirm-done）、3 variants（card-plain，comp）、
+// 4 mixed（手机帧 + 帧级 comp）。纯文字的 1 why 不进浮层的上一节 / 下一节。
+// 文章页只显示节号；画布上同样这几节是字母 B、C、D（A 是 why），只在画布、ppnt、标注里出现。
 //
 // 文件名排在 article-site 后面：那个 spec 要看站点冷启动（idle → 503 → 文章），同组时得先跑它。
 // 单独成组时这里也可能撞上冷启动，所以第一次打开文章等得久一些。
@@ -55,7 +56,7 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
   consoleErrors.length = 0; // 冷启动那几次 503 记成 Failed to load resource
   await page.waitForFunction(() => window.pinpointProse && window.pinpointProse.settled());
 
-  await test.step('卡片缩略图仍不可交互；点卡片里的 B2 → 浮层，不导航', async () => {
+  await test.step('卡片缩略图仍不可交互；点卡片里的 confirm-done → 浮层，不导航', async () => {
     const thumb = page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] iframe');
     await expect(thumb).toHaveCSS('pointer-events', 'none');
     await expect(thumb).toHaveAttribute('tabindex', '-1');
@@ -69,19 +70,19 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
     await expect(page.locator('html')).toHaveCSS('overflow', 'hidden');
   });
 
-  await test.step('头部：节字母、标题、帧数、打开画布；两帧并排，图注是编号 + id，点的那一帧高亮', async () => {
+  await test.step('头部：节号、标题、帧数、打开画布；两帧并排，图注只有帧 id，点的那一帧高亮', async () => {
     const ov = overlay(page);
-    await expect(ov.locator('[data-ov-letter]')).toHaveText('B');
+    await expect(ov.locator('[data-ov-num]')).toHaveText('2');
     await expect(ov.locator('[data-ov-title]')).toHaveText('确认卡');
-    await expect(ov.locator('[data-ov-meta]')).toHaveText('B1–B2 · 2 帧');
+    await expect(ov.locator('[data-ov-meta]')).toHaveText('2 帧');
     await expect(ov.locator('[data-ov-canvas]')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}&section=confirm`);
-    await expect(ov.locator('.ov-frame .cap')).toHaveText(['B1confirm-sheet', 'B2confirm-done']);
+    await expect(ov.locator('.ov-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done']);
     await expect(ov.locator('.ov-frame[data-screen="confirm-done"]')).toHaveClass(/\bflash\b/);
     await expect(ov.locator('.ov-frame iframe')).toHaveCount(2);
     expect(await ov.locator('.ov-frame iframe').evaluateAll((els) => els.map((el) => new URL(el.src).search))).toEqual(
       ['confirm-sheet', 'confirm-done'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off&embed=card`));
     await expect(ov.locator('.ov-box[data-fitted="1"]')).toHaveCount(2);
-    await expect(ov.locator('[data-ov-prev]')).toBeDisabled(); // A 是纯文字，B 是第一个有画布的节
+    await expect(ov.locator('[data-ov-prev]')).toBeDisabled(); // 1 是纯文字，2 是第一个有画布的节
     await expect(ov.locator('[data-ov-next]')).toBeEnabled();
   });
 
@@ -146,7 +147,7 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
     await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
     await page.goForward();
     await expect(overlay(page)).toHaveAttribute('open', '');
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('C');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
     await overlay(page).locator('[data-ov-close]').click();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     await expect.poll(() => hashOf(page)).toBe('');
@@ -173,26 +174,26 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
 
   await test.step('换节：→ / ← 与按钮，只在有画布的节之间走，hash 跟着换', async () => {
     await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('C');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
     await page.keyboard.press('ArrowRight');
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('D');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
     await expect(overlay(page).locator('[data-ov-title]')).toHaveText('手机和裸卡片');
-    await expect(overlay(page).locator('.ov-frame .cap b')).toHaveText(['D1', 'D2']);
+    await expect(overlay(page).locator('.ov-frame .cap')).toHaveText(['mixed-phone', 'mixed-bare']);
     expect(hashOf(page)).toBe('#overlay=mixed');
     await expect(overlay(page).locator('[data-ov-next]')).toBeDisabled();
     await page.keyboard.press('ArrowRight');
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('D');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
     // 混排：手机帧与裸组件同一缩放（裸组件比手机矮，不被当成手机）。
     await expect(overlay(page).locator('.ov-box[data-fitted="1"]')).toHaveCount(2);
     const scale = Number(await page.locator('[data-ov-strip]').getAttribute('data-scale'));
     for (const s of await frameScales(page)) expect(s).toBeCloseTo(scale, 2);
     await expect(overlay(page).locator('[data-screen="mixed-bare"] .ov-box')).toHaveClass(/\bnatural\b/);
     await overlay(page).locator('[data-ov-prev]').click();
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('C');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
     await page.keyboard.press('ArrowLeft');
-    await expect(overlay(page).locator('[data-ov-letter]')).toHaveText('B');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('2');
     expect(hashOf(page)).toBe('#overlay=confirm');
-    // 换过节：关闭后焦点落在当前节（B）卡片的帧上。
+    // 换过节：关闭后焦点落在当前节（2 confirm）卡片的帧上。
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     await expect.poll(() => hashOf(page)).toBe('');
@@ -324,4 +325,46 @@ test('[[ ]] popup：悬停打开、移进 popup 不关、离开后关；点有�
   });
 
   expect(pageErrors).toEqual([]);
+});
+
+test('文章页只显示节号，不出画布字母；画布接口仍带 letter / ref', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openArticle(page);
+  const FRAME_REF = /\b[A-Z]{1,3}\d+\b/; // 画布帧号 B1、AA2……
+
+  await test.step('目录、节标题、卡片头是 1、2、3…；图注只有帧 id；页面上没有字母编号', async () => {
+    await expect(page.locator('#toc .n')).toHaveText(['1', '2', '3', '4']);
+    await expect(page.locator('#article .sechead .ref')).toHaveText(['1', '2', '3', '4']);
+    await expect(page.locator('[data-pp-canvas] .cc-head .ref')).toHaveText(['2', '3', '4']);
+    await expect(page.locator('[data-pp-canvas] .cc-head .meta')).toHaveText(['2 帧', '1 帧', '2 帧']);
+    await expect(page.locator('[data-pp-canvas] .cc-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']);
+    await expect(page.locator('[data-letter], [data-ref], [data-ov-letter]')).toHaveCount(0);
+    expect(await page.locator('body').innerText()).not.toMatch(FRAME_REF);
+    // 卡片的“打开画布”仍按节 id 定位到画布上的那一节（画布那边是字母 B）。
+    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}&section=confirm`);
+  });
+
+  await test.step('浮层：头部节号、上一节 / 下一节的提示、图注都不出字母', async () => {
+    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
+    await expect(overlay(page).locator('[data-ov-prev]')).toHaveAttribute('aria-label', '上一节：2 确认卡');
+    await expect(overlay(page).locator('[data-ov-next]')).toHaveAttribute('aria-label', '下一节：4 手机和裸卡片');
+    await expect(overlay(page).locator('.ov-frame .cap')).toHaveText(['card-plain']);
+    expect(await overlay(page).innerText()).not.toMatch(FRAME_REF);
+    await page.keyboard.press('Escape');
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+  });
+
+  await test.step('GET /api/projects/<project>/articles/<article>/canvas 仍带画布字母（A1 是画布契约）', async () => {
+    const res = await request.get('/api/projects/e2e-project/articles/commit-confirm/canvas');
+    expect(res.status()).toBe(200);
+    const canvas = await res.json();
+    expect(canvas.sections.map((s) => [s.id, s.letter, s.frames.map((f) => f.ref)])).toEqual([
+      ['confirm', 'B', ['B1', 'B2']],
+      ['variants', 'C', ['C1']],
+      ['mixed', 'D', ['D1', 'D2']],
+    ]);
+  });
 });

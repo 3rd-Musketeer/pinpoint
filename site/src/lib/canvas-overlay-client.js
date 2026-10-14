@@ -17,7 +17,7 @@ export function initCanvasOverlay() {
   if (!dlg || !cards.length) return;
   const $ = (sel) => dlg.querySelector(sel);
   const el = {
-    letter: $('[data-ov-letter]'), title: $('[data-ov-title]'), meta: $('[data-ov-meta]'),
+    num: $('[data-ov-num]'), title: $('[data-ov-title]'), meta: $('[data-ov-meta]'),
     prev: $('[data-ov-prev]'), next: $('[data-ov-next]'), canvas: $('[data-ov-canvas]'), close: $('[data-ov-close]'),
     strip: $('[data-ov-strip]'),
   };
@@ -29,7 +29,7 @@ export function initCanvasOverlay() {
   let pendingRefocus = null;
 
   const framesOf = (card) => [...card.querySelectorAll('.cc-frame')].map((fig) => ({
-    id: fig.dataset.screen, ref: fig.dataset.ref || '', title: fig.dataset.title || fig.dataset.screen,
+    id: fig.dataset.screen, title: fig.dataset.title || fig.dataset.screen,
     src: fig.dataset.src || '', shell: fig.dataset.shell || '', missing: fig.hasAttribute('data-missing'),
   }));
 
@@ -111,14 +111,14 @@ export function initCanvasOverlay() {
     state.section = sectionId;
     state.userScrolled = false;
     const d = card.dataset;
-    el.letter.textContent = d.letter || '';
+    el.num.textContent = d.num || '';
     el.title.textContent = d.title || sectionId;
     el.meta.textContent = d.meta || '';
     el.canvas.href = d.href || '/';
     dlg.dataset.ppSection = sectionId;
     const prev = neighborSection(ids, sectionId, -1);
     const next = neighborSection(ids, sectionId, 1);
-    const label = (id) => { const c = cardOf(id); return c ? `${c.dataset.letter || ''} ${c.dataset.title || id}`.trim() : ''; };
+    const label = (id) => { const c = cardOf(id); return c ? `${c.dataset.num || ''} ${c.dataset.title || id}`.trim() : ''; };
     el.prev.disabled = !prev;
     el.next.disabled = !next;
     el.prev.setAttribute('aria-label', prev ? `上一节：${label(prev)}` : '上一节');
@@ -132,18 +132,12 @@ export function initCanvasOverlay() {
       fig.className = 'ov-frame';
       fig.dataset.screen = info.id;
       if (info.shell) fig.dataset.shell = info.shell;
+      // 图注只有帧 id（文章页不出画布字母 B1，和卡片一样）。
       const cap = document.createElement('figcaption');
       cap.className = 'cap';
-      const ref = document.createElement('b');
-      ref.textContent = info.ref;
-      const id = document.createElement('code');
+      const id = document.createElement('b');
       id.textContent = info.id;
-      cap.append(ref, id);
-      if (info.title && info.title !== info.id) {
-        const t = document.createElement('span');
-        t.textContent = info.title;
-        cap.append(t);
-      }
+      cap.append(id);
       const sb = shellBox(info.shell);
       const box = document.createElement('div');
       box.className = `ov-box ${sb.mode}${info.missing ? ' missing' : ''}`;
@@ -156,13 +150,11 @@ export function initCanvasOverlay() {
       if (info.missing) {
         const ph = document.createElement('div');
         ph.className = 'ph';
-        ph.innerHTML = '<b></b>缺帧 ';
-        ph.firstChild.textContent = info.ref;
-        ph.append(info.id);
+        ph.textContent = `缺帧 ${info.id}`;
         box.append(ph);
       } else {
         const iframe = document.createElement('iframe');
-        iframe.title = `${info.ref} ${info.title}`.trim();
+        iframe.title = info.title;
         iframe.setAttribute('scrolling', 'no');
         iframe.src = info.src;
         box.append(iframe);

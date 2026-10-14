@@ -131,7 +131,7 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(page.locator('.pop .k')).toHaveText('用户接手文章');
   });
 
-  // 卡片的 data 属性、B1… 编号、“打开画布”与顶栏的链接是构建产物，由 site/build.check.mjs
+  // 卡片的 data 属性、节号、“打开画布”与顶栏的链接是构建产物，由 site/build.check.mjs
   // 的卡片断言钉住；链接打开后落到那一节由 article-canvas.spec.js 的 ?page=&section= 测
   // （2026-10-13 测试清理）。这里只留运行时才看得到的：帧加载后量过、尺寸、iframe 里的内容。
   await test.step('画布卡片：有 Canvas 的三节各一张，帧真渲染、加载后量过尺寸', async () => {

@@ -19,25 +19,27 @@ function project(t) {
 
 const run = (value, file) => compile({ value, path: file }, { remarkPlugins: [remarkPinpoint] }).then(String);
 
-test('sections get letters in order and refs become <Ref raw from>', async (t) => {
+test('sections get numbers in order and refs become <Ref raw from>', async (t) => {
   const file = project(t);
   assert.equal(projectIdFor(file), 'demo');
   const out = await run('前言 [[确认卡]] 和 `[[代码]]`。\n\n<Section id="one" title="一">\n\n文字 [[other:x|标签]]\n\n</Section>\n\n<Section id="two">\n\nb\n\n</Section>\n', file);
-  assert.match(out, /letter: "A"/);
-  assert.match(out, /letter: "B"/);
+  assert.match(out, /num: "1"/);
+  assert.match(out, /num: "2"/);
+  assert.doesNotMatch(out, /letter:/);
   assert.match(out, /raw: "确认卡"/);
   assert.match(out, /raw: "other:x\|标签"/);
   assert.match(out, /from: "demo"/);
   assert.doesNotMatch(out, /raw: "代码"/);
 });
 
-test('a Canvas gets the id of its Section; one outside a Section gets none', async (t) => {
+test('a Canvas gets the id and number of its Section; one outside a Section gets neither', async (t) => {
   const file = project(t);
   const out = await run('<Canvas frames={["x"]} section="wrong" />\n\n<Section id="flow">\n\n<Canvas frames={["a"]} />\n\n</Section>\n', file);
   const calls = [...out.matchAll(/_jsx\(Canvas, \{([\s\S]*?)\}\)/g)].map((m) => m[1]);
   assert.equal(calls.length, 2, out);
-  assert.doesNotMatch(calls[0], /section:/);
+  assert.doesNotMatch(calls[0], /section:|num:/);
   assert.match(calls[1], /section: "flow"/);
+  assert.match(calls[1], /num: "1"/);
 });
 
 test('bad sections fail with the file path', async (t) => {
@@ -52,7 +54,7 @@ test('files outside a project are left alone', async () => {
   assert.doesNotMatch(out, /raw: "x"/);
 });
 
-test('heading letters agree with the canvas the service derives from the same text', async (t) => {
+test('heading numbers agree with the canvas letters the service derives from the same text', async (t) => {
   const file = project(t);
   const text = [
     '---', 'title: T', '---', '',
@@ -61,12 +63,15 @@ test('heading letters agree with the canvas the service derives from the same te
     '<Section id="mech" title="底层">', '', '<Canvas frames={["b"]} shell="comp" />', '', '</Section>', '',
   ].join('\n');
   const out = await run(text, file);
-  const letters = [...out.matchAll(/letter: "([A-Z]+)"/g)].map((m) => m[1]);
+  const nums = [...out.matchAll(/_jsx\(Section, \{[\s\S]*?num: "(\d+)"/g)].map((m) => m[1]);
   const canvas = parseArticleCanvas(text);
   assert.deepEqual(canvas.errors, []);
-  assert.deepEqual(letters, ['A', 'B', 'C']);
+  assert.deepEqual(nums, ['1', '2', '3']);
+  // Section n in the article is letter n on the canvas: the prose-only `why` takes 1 / A, so the canvas starts at B.
   assert.deepEqual(canvas.sections.map((s) => [s.id, s.articleLetter]), [['flow', 'B'], ['mech', 'C']]);
   const calls = [...out.matchAll(/_jsx\(Canvas, \{([\s\S]*?)\}\)/g)].map((m) => m[1]);
   assert.match(calls[0], /section: "flow"/);
+  assert.match(calls[0], /num: "2"/);
   assert.match(calls[1], /section: "mech"/);
+  assert.match(calls[1], /num: "3"/);
 });
