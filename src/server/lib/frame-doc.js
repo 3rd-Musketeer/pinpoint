@@ -63,7 +63,7 @@ function previewManifestPages() {
   return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
-/** 壳归一（web→doc 与缺省壳的唯一定义在 preview-contracts.legacyShell）。 */
+/** 缺省壳（唯一定义在 preview-contracts.legacyShell）。 */
 function normalizeShell(shell, mode) {
   return legacyShell(shell, mode === 'html' ? 'doc' : 'app');
 }

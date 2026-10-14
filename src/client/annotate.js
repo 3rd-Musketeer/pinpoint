@@ -823,33 +823,6 @@ import { startProseComments } from './prose-comments.js';
     return m;
   }
 
-  // 修复 2026-09-30 之前的跨 frame 多选：那时整条标注只记第一个目标的 screenId，
-  // 其余目标被塞进同一个 frame 解析。目标的绝对 selector 里仍带着它真正所在的
-  // frame（.wb-screen:nth-of-type），按当前板文档解析回去、文本对得上才补 screenId。
-  // 解析不到或文本对不上的不猜。返回补了几个目标；调用方负责 persist。
-  function repairTargetScreens() {
-    var fixed = 0;
-    marks.forEach(function (m) {
-      if (m.type !== 'element' || !markOnActivePage(m)) return;
-      var targets = markElementTargets(m);
-      if (targets.length < 2) return;
-      var changed = false;
-      targets.forEach(function (t) {
-        if (t.screenId) return;
-        var el = null;
-        try { el = document.querySelector(t.selector); } catch (e) { el = null; }
-        var sid = el ? screenIdOf(el) : '';
-        if (!sid) return;
-        var text = excerpt(el), want = t.text || '';
-        if (want && text !== want && text.indexOf(want) < 0 && want.indexOf(text) < 0) return;
-        t.screenId = sid; changed = true; fixed++;
-      });
-      if (changed) { m.targets = targets; normalizeElementTargets(m); }
-    });
-    if (fixed) { clearAnchorCache(); persist(); renderAll(); }
-    return fixed;
-  }
-
   // ---------- 持久化（磁盘 SSOT；LS 仅缓存）----------
   function readLocalMarks() {
     try {
@@ -4277,7 +4250,6 @@ import { startProseComments } from './prose-comments.js';
     closeAnnotation: closeAnnotation,
     reopenAnnotation: reopenAnnotation,
     setStatusFilter: setStatusFilter,
-    repairTargetScreens: repairTargetScreens,
     getState: getState,
     resolveMarkAnchor: resolveMarkAnchor,
     resolveMarkTarget: resolveMarkTarget,

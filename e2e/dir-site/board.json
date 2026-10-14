@@ -5,7 +5,7 @@
       "title": "Main",
       "layout": "column",
       "screens": [
-        { "id": "cards", "title": "Cards", "shell": "web" },
+        { "id": "cards", "title": "Cards", "shell": "doc" },
         { "id": "doc", "title": "Doc", "shell": "doc" }
       ]
     }

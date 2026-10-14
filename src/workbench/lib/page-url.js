@@ -1,6 +1,5 @@
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true).
     pp3：文章画布页在 manifest.articles 里（不进左栏 Pages），这里一并认得。 */
-import { legacyMode } from './preview-contracts.js';
 export function pageEntry(manifest, pageId) {
   if (!manifest) return null;
   var lists = [manifest.pages, manifest.articles];
@@ -40,7 +39,6 @@ export function defaultShellForPage(manifest, pageId) {
 /* ---- URL 深链（goal-20260810-workbench-react-rebuild P3）----
    workbench 的 ?page=&mode=&entry= 解析与生成，纯函数；效果侧在 url-sync.js（写）
    与 stage.js resolveBootPageId（读，URL 优先于 prefs）。不引 router。
-   2026-08-16 阶段 2：web 模式退役 —— 残留 ?mode=web 深链归一到 html（doc 阅读器）。
    2026-08-16f 阶段 6：深链收到条目级 —— ?entry= 直达板内条目（画布条目 id 见
    lib/board-entries.js CANVAS_ENTRY_ID，文档条目 id = doc 屏 screenId）；
    entry 只在 page 有效时生效，未知条目 id 由选中解析落默认条目（URL 随后被
@@ -52,7 +50,7 @@ var DEEP_LINK_MODES = { ios: true, html: true };
 export function parseDeepLink(search) {
   var params = new URLSearchParams(search || '');
   var pageId = params.get('page');
-  var mode = legacyMode(params.get('mode'));
+  var mode = params.get('mode');
   var entry = params.get('entry');
   var tab = params.get('tab');
   var section = params.get('section');

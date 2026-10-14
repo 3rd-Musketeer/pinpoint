@@ -46,32 +46,7 @@ test('bucket = page: renamed bucket and mixed host+attach bucket both get annota
   assert.deepEqual(annotationPageTimes(mixed, 'host'), { host: Date.parse('2026-03-03T00:00:00.000Z') }, '桶内取最近一次保存');
 });
 
-test('legacy ledgers: page_updated_at mappings and single-pageId rows still count', (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-legacy-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  // 旧画布账本（多页混合 + 逐页映射）：映射照读。
-  fs.writeFileSync(path.join(dir, 'index~z.json'), JSON.stringify({
-    page: 'index~z', path: '/index.html', revision: 1, updated_at: '2026-01-02T00:00:00.000Z',
-    page_updated_at: { 'page-a': 100, 'page-b': 200 },
-    annotations: [],
-  }));
-  // 单页行（无映射）：updated_at 记给那个页。
-  fs.writeFileSync(path.join(dir, 'index~1b.json'), JSON.stringify({
-    page: 'index~1b', path: '/', revision: 1, updated_at: '2026-01-03T00:00:00.000Z',
-    annotations: [{ id: 'r1', pageId: 'page-a', content: '行' }],
-  }));
-  // 多页混合且无映射：归因不了，不造时间。
-  fs.writeFileSync(path.join(dir, 'mix.json'), JSON.stringify({
-    page: 'mix', revision: 1, updated_at: '2026-01-04T00:00:00.000Z',
-    annotations: [{ id: 'm1', pageId: 'page-a' }, { id: 'm2', pageId: 'page-b' }],
-  }));
-  assert.deepEqual(annotationPageTimes(dir, null), {
-    'page-a': Date.parse('2026-01-03T00:00:00.000Z'),
-    'page-b': 200,
-  });
-});
-
-test('collectPageTimes: page buckets + legacy pinpoint mappings + attached fold', (t) => {
+test('collectPageTimes: page buckets + attached fold', (t) => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'page-times-collect-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dataRoot = path.join(root, 'data');
@@ -79,12 +54,6 @@ test('collectPageTimes: page buckets + legacy pinpoint mappings + attached fold'
   fs.mkdirSync(path.join(dataRoot, 'site-a'), { recursive: true });
   fs.writeFileSync(path.join(dataRoot, 'site-a', 'doc~1.json'), JSON.stringify({
     page: 'doc~1', revision: 1, updated_at: '2026-02-01T00:00:00.000Z', annotations: [{ id: 'd1', content: 'x' }],
-  }));
-  // 存量 pinpoint 桶：page_updated_at 映射喂模板页。
-  fs.mkdirSync(path.join(dataRoot, 'pinpoint'), { recursive: true });
-  fs.writeFileSync(path.join(dataRoot, 'pinpoint', 'index~z.json'), JSON.stringify({
-    page: 'index~z', revision: 1, updated_at: '2026-02-02T00:00:00.000Z',
-    page_updated_at: { 'template-p': 500 }, annotations: [],
   }));
   // 挂靠条目的旧桶：并进宿主页。
   fs.mkdirSync(path.join(dataRoot, 'attach-draft'), { recursive: true });
@@ -98,7 +67,6 @@ test('collectPageTimes: page buckets + legacy pinpoint mappings + attached fold'
   ];
   const times = collectPageTimes({ entries, root, dataRoot, localIds: ['template-p'] });
   assert.equal(times['site-a'].annotatedAt, Date.parse('2026-02-03T00:00:00.000Z'), '宿主页取自己桶与挂靠旧桶的最大值');
-  assert.equal(times['template-p'].annotatedAt, 500, '存量映射照读');
 });
 
 test('new registration records addition once and move preserves it; legacy is unknown', (t) => {

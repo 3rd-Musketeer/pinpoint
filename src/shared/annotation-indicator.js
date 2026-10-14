@@ -16,13 +16,11 @@
  * 两条路各有自己的合法转换表。
  */
 
-/** 四态。缺省 open；存量 result 字段读时归一成 done（显式迁移脚本之外的读侧自愈）。 */
+/** 四态。缺省 open。 */
 export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
 
-export function normalizeStatus(value, raw) {
-  if (ANNOTATION_STATUSES.includes(value)) return value;
-  if (raw && raw.result) return 'done';
-  return 'open';
+function normalizeStatus(value) {
+  return ANNOTATION_STATUSES.includes(value) ? value : 'open';
 }
 
 /** /save 整写的合法转换：owner 完成（open / check / done → close，工作台单击）、
@@ -140,15 +138,12 @@ export function normalizeAnnotation(raw) {
   if (!raw || typeof raw !== 'object') return raw;
   const a = { ...raw };
 
-  // pp2 状态机：status 归一（存量 result → done 并摘字段）；n / lastRect 透传（存量 note 字段原样留在盘上，界面与 CLI 都不读）。
-  a.status = normalizeStatus(a.status, a);
-  if (a.result) delete a.result;
+  // pp2 状态机：status 归一，缺省 open；n / lastRect 透传。
+  a.status = normalizeStatus(a.status);
 
   if (Array.isArray(a.mentions)) {
     a.mentions = a.mentions.map((id) => String(id));
   }
-
-  delete a.reply;
 
   if (a.type === 'element' || a.selector || (Array.isArray(a.targets) && a.targets.length)) {
     const targets = normalizeTargetRefs(a.targets, a.selector, a.text);
@@ -163,7 +158,7 @@ export function normalizeAnnotation(raw) {
   return a;
 }
 
-/** Pick annotations array from a doc（legacy marks 键已由迁移脚本迁净）。 */
+/** Pick annotations array from a doc. */
 export function annotationsFromDoc(doc) {
   if (!doc || typeof doc !== 'object') return [];
   return Array.isArray(doc.annotations) ? doc.annotations : [];

@@ -230,8 +230,7 @@ CSS 侧没有 `onerror` 可听，所以装载后对 `/` 开头的同源 url 探�
 
 每条标注带 `status`：`open`（缺省）→ `check` / `done`（升档）→ `close`。owner 完成单击可从
 `open` / `check` / `done` 任一态直接入 `close`。`close` 不删，账本里留着。
-存量 `result` 字段读侧归一成 `done` 并摘掉；显式迁移走 `scripts/migrate-annotation-status.mjs`
-（默认 dry-run，`--apply` 前整根备份），不在启动时自动迁。
+缺 `status` 或值不认识的标注读作 `open`。
 
 转换规则（服务端校验，非法转换 `409 illegal_transition`）：
 

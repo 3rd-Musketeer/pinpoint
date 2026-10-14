@@ -68,7 +68,7 @@ test('resolveFrameTarget: registry ios dir entry 的页内屏改从 dist 出', (
   assert.equal(target.distTarget.kind, 'dir');
 });
 
-test('resolveFrameTarget: legacy shell "web" normalizes to doc redirect', () => {
+test('resolveFrameTarget: doc shell screen redirects to its page', () => {
   const target = resolveFrameTarget('e2e-dir', 'cards', { registry });
   assert.equal(target.kind, 'doc');
   assert.equal(target.url, '/sites/e2e-dir/cards.html');

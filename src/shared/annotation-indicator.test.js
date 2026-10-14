@@ -31,15 +31,6 @@ test('parses indicators and rejects junk', () => {
   assert.equal(parseIndicator('page:library'), null);
 });
 
-test('normalizeAnnotation drops retired response data', () => {
-  const annotation = normalizeAnnotation({
-    id: 'ab12cd',
-    content: '原标注',
-    reply: { content: '  已修改  ', author: 'agent' },
-  });
-  assert.equal(annotation.reply, undefined);
-});
-
 test('isLegalTransition：owner 三态入 close，close 撤销回原态；升档只经 mark 端点', () => {
   // owner 完成：open / check / done 任一态单击入 close（2026-09-23 放开）。
   assert.equal(isLegalTransition('open', 'close'), true);

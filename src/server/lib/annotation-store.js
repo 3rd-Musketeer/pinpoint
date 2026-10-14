@@ -234,7 +234,6 @@ export function createAnnotationStore(options) {
       page: doc.page,
       path: doc.path || '',
       updated_at: doc.updated_at || null,
-      page_updated_at: doc.page_updated_at,
       revision: doc.revision,
       annotations,
     };
@@ -258,14 +257,11 @@ export function createAnnotationStore(options) {
           path: normalized.path,
           updated_at: normalized.updated_at,
           revision,
-          // 补号回写同样透传存量映射（见 save 的说明）。
-          page_updated_at: raw.page_updated_at,
           annotations: numbered.annotations,
         });
       }
       return asDoc({
         ...normalized,
-        page_updated_at: raw.page_updated_at,
         revision,
         annotations: numbered.annotations,
       });
@@ -283,7 +279,6 @@ export function createAnnotationStore(options) {
       path: doc.path || '',
       updated_at: doc.updated_at || now().toISOString(),
       revision: doc.revision,
-      page_updated_at: doc.page_updated_at,
       annotations,
     };
     writeFileAtomic(jsonPathFor(safePage), JSON.stringify(output, null, 1));
@@ -367,13 +362,9 @@ export function createAnnotationStore(options) {
       }
       annotations.push(a);
     }
-    // page_updated_at（逐页时间映射）停写（storage-unify）：桶 = 页之后这本账本
-    // 整体就属于这一个页，读侧直接取 updated_at；存量映射原样透传 —— 读侧兼容
-    // 旧账本（page-times 还认它），但不再新增条目。
     let doc;
     try {
       doc = writeDoc(safePage, {
-        page_updated_at: disk.page_updated_at,
         path: input.path || disk.path || '',
         updated_at: input.updated_at || now().toISOString(),
         revision: disk.revision + 1,
@@ -416,8 +407,6 @@ export function createAnnotationStore(options) {
         path: disk.path || '',
         updated_at: now().toISOString(),
         revision: disk.revision + 1,
-        // 状态写入也透传存量映射（见 save 的说明）。
-        page_updated_at: disk.page_updated_at,
         annotations,
       });
     } catch (error) {
@@ -453,7 +442,6 @@ export function createAnnotationStore(options) {
         path: disk.path || '',
         updated_at: message.at,
         revision: disk.revision + 1,
-        page_updated_at: disk.page_updated_at,
         annotations,
       });
     } catch (error) {

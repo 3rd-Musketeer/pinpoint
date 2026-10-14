@@ -38,7 +38,7 @@ test('screen fragment contract applies the ios wrapper check to every inlined sh
     (error) => error instanceof ContractError && error.message.includes('ios-app'),
   );
   assert.throws(
-    () => validateScreenFragment('<article class="report"><h1>Weekly</h1></article>', 'screen(legacy/report)', { shell: 'web' }),
+    () => validateScreenFragment('<article class="report"><h1>Weekly</h1></article>', 'screen(legacy/report)', { shell: 'app' }),
     (error) => error instanceof ContractError && error.message.includes('ios-app'),
   );
 });
@@ -58,23 +58,16 @@ test('page manifest owns ordered titles, modes, and a listed default page', () =
   assert.equal(manifest.defaultPage, 'library');
 });
 
-test('page manifest normalizes the retired web mode and rejects unknown ones', () => {
-  const manifest = validatePageManifest({
-    defaultPage: 'doc-library',
-    pages: [
-      { id: 'doc-library', title: 'Example HTML', mode: 'html' },
-      { id: 'legacy-web', title: 'Legacy Web', mode: 'web' },
-    ],
-  });
-  assert.deepEqual(manifest.pages.map((page) => page.mode), ['html', 'html']);
-
-  assert.throws(
-    () => validatePageManifest({
-      defaultPage: 'x',
-      pages: [{ id: 'x', title: 'X', mode: 'print' }],
-    }),
-    /pages\[0\].mode.*expected "ios" or "html"/,
-  );
+test('page manifest rejects modes other than ios and html', () => {
+  for (const mode of ['print', 'web']) {
+    assert.throws(
+      () => validatePageManifest({
+        defaultPage: 'x',
+        pages: [{ id: 'x', title: 'X', mode }],
+      }),
+      /pages\[0\].mode.*expected "ios" or "html"/,
+    );
+  }
 });
 
 test('doc shell survives board validation and inherits from its section', () => {
@@ -147,18 +140,18 @@ test('checked-in preview boards satisfy the manifest contract', () => {
   }
 });
 
-test('board normalizes legacy web shell screens to doc (2026-08-16 阶段 2)', () => {
-  const board = validateBoard({
-    sections: [{
-      id: 'site',
-      title: 'Site',
-      layout: 'row',
-      shell: 'web',
-      screens: [{ id: 'hero', title: 'Hero', shell: 'web' }],
-    }],
-  }, { pageId: 'legacy-web', defaultShell: 'web' });
-  assert.equal(board.sections[0].shell, 'doc');
-  assert.equal(board.sections[0].screens[0].shell, 'doc');
+test('board rejects shells outside app / lock / doc / comp', () => {
+  assert.throws(
+    () => validateBoard({
+      sections: [{
+        id: 'site',
+        title: 'Site',
+        layout: 'row',
+        screens: [{ id: 'hero', title: 'Hero', shell: 'web' }],
+      }],
+    }, { pageId: 'legacy-web' }),
+    /expected "app", "lock", "doc", or "comp"/,
+  );
 });
 
 test('screen role: 默认 product、收 draft、非法值报错（2026-08-16f 阶段 6）', () => {

@@ -196,8 +196,7 @@ export function createAnnotateHandler(options = {}) {
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
-      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页 —— 不再对 pinpoint 特判
-      // null（那层逐页映射 page_updated_at 已随桶 = 页退役，见 annotation-store）。
+      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页。
       stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
     }
     return stores.get(entryId);
