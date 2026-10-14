@@ -149,6 +149,41 @@ export function articleSectionSpans(text) {
   return spans;
 }
 
+/**
+ * 正文的全部节，宽松读（`ppnt show` 列节、`ppnt check` 找全部帧用）：
+ *   articleOutline(text) → [{ n, letter, id, title, line, frames: [帧 id…], canvas }]
+ * n 是文章页的节号（1 起），letter 是画布编号的节字母，两者按同一顺序数（纯文字的节也占）。
+ * 和 parseArticleCanvas 不同，这里不因写法错误丢掉节：shell 写错、帧 id 不合法的节照样列出它
+ * 字面上写的帧（frames 只收字面量字符串），所以被布局错误挡在画布外的帧也能拿去编译。
+ * id / title 不是字面量时是 null；canvas = 这一节有没有 <Canvas>。MDX 解析不了时是 []。
+ */
+export function articleOutline(text) {
+  const { tree, lineOffset } = parseBody(text);
+  if (!tree) return [];
+  const rows = [];
+  for (const item of articleStructure(tree)) {
+    if (item.kind !== 'section') continue;
+    const id = literalAttribute(item.node, 'id');
+    const title = literalAttribute(item.node, 'title');
+    const frames = [];
+    for (const canvas of item.canvases) {
+      const listed = literalFrames(canvas);
+      for (const frame of listed.frames || []) if (!frames.includes(frame)) frames.push(frame);
+    }
+    const idValue = id && 'value' in id ? id.value : null;
+    rows.push({
+      n: item.index + 1,
+      letter: item.letter,
+      id: idValue,
+      title: title && 'value' in title ? title.value : idValue,
+      line: item.node.position ? item.node.position.start.line + lineOffset : null,
+      frames,
+      canvas: item.canvases.length > 0,
+    });
+  }
+  return rows;
+}
+
 /** 正文 → 画布结构。text 是整份 index.mdx（含 frontmatter）。 */
 export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined } = {}) {
   const errors = [];
