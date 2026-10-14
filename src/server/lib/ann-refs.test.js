@@ -48,6 +48,17 @@ describe('resolveRef', () => {
     assert.equal(resolveRef('Z9', CTX).kind, 'unknown');
   });
 
+  test('@frame 的页和目标不是一页：照实说，不拿帧 id 去目标页上找', () => {
+    // login 在 demo 上也有：不能因为同名就拍 demo 的那一帧。
+    const other = resolveRef('@frame:other/login', CTX);
+    assert.equal(other.kind, 'unknown');
+    assert.equal(other.message, '@frame:other/login 是 other 上的帧，这次的目标是 demo：目标写 other，或不写目标、只写 @frame:other/login');
+    const article = resolveRef('@frame:proj_notes/login', CTX);
+    assert.match(article.message, /是 proj\/notes 上的帧/);
+    // 没有基页（纯解析的调用方）时照旧按帧 id 找。
+    assert.equal(resolveRef('@frame:other/login', { ...CTX, pageId: '' }).screenId, 'login');
+  });
+
   test('B 段字母 → 整段；<page> → 整页', () => {
     const b = resolveRef('B', CTX);
     assert.equal(b.kind, 'section');

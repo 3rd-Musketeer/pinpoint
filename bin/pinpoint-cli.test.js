@@ -2846,6 +2846,24 @@ test('缺目标不再猜 registry 第一页：locate / mark / shot / reply 都�
   assert.deepEqual(project.err.slice(0, 2), ['错误：e2e-project 是 project；标注和评论在文章里，写 e2e-project/<article>。', 'e2e-project 的文章：']);
 });
 
+test('@frame:<页 id>/<帧 id> 自带页：不写目标时它就是目标；和目标不是一页时说清楚', async (t) => {
+  // 从前缺目标时取 registry 第一页，@frame 里的页被丢掉，报“图纸上没有帧”（TODO 里那条）。
+  const made = makeFixtureCopy(t);
+  const frame = '@frame:e2e-project_commit-confirm/confirm-sheet';
+  const loc = recorder();
+  assert.equal(await run(withRegistry(made, 'locate', frame), { ...loc.io, env: made.env }), 0, loc.err.join('\n'));
+  assert.match(loc.out[0], /^#1 /, loc.out.join('\n'));
+  // shot 也从 @frame 取目标，一直走到渲染（测试里服务不在跑）。
+  const shot = recorder();
+  assert.equal(await run(withRegistry(made, 'shot', frame), { ...shot.io, env: made.env }), 1);
+  assert.ok(!shot.err.some((line) => /缺目标|没有帧/.test(line)), shot.err.join('\n'));
+  assert.match(shot.err.join('\n'), /截图要 pinpoint 服务在跑/);
+  // 目标写了别的页：说出 @frame 指的是哪一页，不报“画布上没有帧”。
+  const other = recorder();
+  assert.equal(await run(withRegistry(made, 'shot', 'legacy', frame), { ...other.io, env: made.env }), 1);
+  assert.ok(other.err.includes(`${frame} 是 e2e-project/commit-confirm 上的帧，这次的目标是 legacy：目标写 e2e-project/commit-confirm，或不写目标、只写 ${frame}`), other.err.join('\n'));
+});
+
 test('目标是第一个参数：斜杠形、网址、页 id、--page、<project>/<article>#n 指同一篇；输出打斜杠形', async (t) => {
   const made = makeFixtureCopy(t);
   const expected = [`#2 → ${made.file}:15（正文评论，节 why）`];
