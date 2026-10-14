@@ -2,7 +2,7 @@ import { DEFAULT_ORIGIN, CliError, ioOf } from './core.js';
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'page', 'screen', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'figure']);
 const BOOLEAN_FLAGS = new Set(['draft', 'watch', 'full', 'json', 'marks', 'dry-run', 'project']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
 // --project <根目录>；add 的 --project 仍是开关）。folder / locate / shot / mark 的位置参数
@@ -21,7 +21,7 @@ const COMMANDS = {
   render: { positional: 1, flags: new Set(['registry', 'full']) },
   check: { positional: 1, flags: new Set(['registry', 'frame', 'status', 'mode', 'group-by', 'json']) },
   locate: { positional: null, flags: new Set(['registry', 'status', 'page']) },
-  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page']) },
+  shot: { positional: null, flags: new Set(['registry', 'status', 'scale', 'marks', 'page', 'figure']) },
   mark: { positional: null, flags: new Set(['registry', 'status', 'page']) },
   reply: { positional: null, flags: new Set(['registry', 'page']) },
   prune: { positional: 1, flags: new Set(['registry', 'dry-run']) },
@@ -55,6 +55,7 @@ export const USAGE = `用法：
   pinpoint check <页> [选项]                           标注清单（只读）：序号 / 正文 / 意图 / 源码摘录 / 状态
   pinpoint locate <引用…> [--page <页>]                标注定位：#n → 源文件:行 · 组件（共用 n 帧）
   pinpoint shot <引用…> [--marks] [--scale 1]          出图：帧 B3 / 段 B / 整页 <页>，--marks 烤 #n 序号钉
+  pinpoint shot --figure <图 id> --page <文章页 id>    拍正文里的一个图（浅色、深色各一张），报运行错误
   pinpoint mark <引用…> done|check                     写状态（open 由编辑触发、close 只在工作台）；逐条打印结果
   pinpoint reply <引用> <回复>                          在一条正文评论的线程里回一句（agent 消息，不改状态）
   pinpoint status [--page <页>]                        服务体检；--page 改报该页各状态计数与 dist 是否过期
@@ -154,6 +155,9 @@ check / locate / shot / mark / reply —— pp2 的标注面。引用语法几�
   pinpoint shot <引用…> [--scale 1] [--marks]
                                        PNG 到 <dataRoot>/shot/<页>/<帧 id|段 id|页>.png，打印“编号 · id → 路径”；
                                        --marks 烤 #n 序号钉（清单由 check 给）
+  pinpoint shot --figure <图 id> --page <文章页 id> [--scale 1]
+                                       正文里的图：PNG 到 <dataRoot>/shot/<页>/figure-<图 id>.png 与 …-dark.png（760 宽）；
+                                       图编译失败或在浏览器里运行出错时打出原因、退 1
   pinpoint mark <引用…> done|check
                                        走服务状态端点（带 baseRevision）；冲突 / 非法转换
                                        打 409 原因，不中断其他条；open 由 owner 编辑触发、
@@ -253,6 +257,8 @@ export function parseArgs(argv) {
   if (command === 'remove') return { command, id: positional[0], flags };
   if (command === 'build' || command === 'render' || command === 'check' || command === 'prune' || command === 'migrate') return { command, target: positional[0], flags };
   if (command === 'locate' || command === 'shot') {
+    // shot --figure <图 id>：拍正文里的一个图，页取 --page 或唯一的位置参数（runShot 的 figure 分支）。
+    if (command === 'shot' && flags.figure) return { command, refs: positional, flags };
     if (!positional.length) throw new CliError(`${command} 至少要一个引用（#n / entry#n / B3 / B / 帧 id / 段 id / 页 / @frame:p/s / @a:id）`);
     return { command, refs: positional, flags };
   }

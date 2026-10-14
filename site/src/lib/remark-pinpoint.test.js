@@ -75,3 +75,14 @@ test('heading numbers agree with the canvas letters the service derives from the
   assert.match(calls[1], /section: "mech"/);
   assert.match(calls[1], /num: "3"/);
 });
+
+test('every <Figure> gets its index n in document order (inside and outside Sections; author values replaced)', async (t) => {
+  const file = project(t);
+  const source = '<Figure src="figures/a.jsx" n="7" />\n\n<Section id="s">\n\n<Figure src="figures/b.jsx" />\n\n> <Figure caption="坏的" />\n\n</Section>\n';
+  const out = await run(source, file);
+  const calls = [...out.matchAll(/_jsx\(Figure, \{([\s\S]*?)\}\)/g)].map((m) => m[1]);
+  assert.equal(calls.length, 3, out);
+  assert.deepEqual(calls.map((c) => c.match(/n: "(\d+)"/)[1]), ['0', '1', '2']);
+  // The same order the service reads (articleCanvas figures), so the page finds each figure's source and errors.
+  assert.deepEqual(parseArticleCanvas(source).figures.map((f) => f.index), [0, 1, 2]);
+});

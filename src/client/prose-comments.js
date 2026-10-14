@@ -10,7 +10,7 @@
  * 正文被抽成一条规范化文本（buildTextIndex：块元素边界算一处空白，再交给
  * normalizeWhitespace —— 两个 CJK 字之间的空白算没有，其余连成一个空格），每次重画
  * 都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
- * 画布卡片（[data-pp-canvas]）、脚本、错误条不进文本，选区落在那里不出“评论”。
+ * 画布卡片（[data-pp-canvas]）、正文里的图（[data-pp-figure]）、脚本、错误条不进文本，选区落在那里不出“评论”。
  *
  * 写入是操作队列（src/shared/prose-thread.js applyProseOps）：保存撞上 409 时把
  * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉；别的拒绝
@@ -41,7 +41,7 @@ import {
   writeAnnFilter,
 } from '../shared/ann-status.js';
 
-var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-nocomment],.errors';
+var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-figure],[data-pp-nocomment],.errors';
 var BLOCK_TAGS = /^(P|H[1-6]|LI|UL|OL|DL|DT|DD|DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|BLOCKQUOTE|PRE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|FIGURE|FIGCAPTION|HR|BR)$/;
 var MARK_CLASS = 'pp-hl';
 var MAX_CONFLICT_RETRIES = 5;

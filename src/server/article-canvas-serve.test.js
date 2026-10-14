@@ -147,6 +147,7 @@ test('GET /api/projects/<project>/articles/<article>/canvas → articleCanvas；
   assert.deepEqual(await ok.json(), {
     pageId: 'demo_flow', project: 'demo', article: 'flow',
     sections: [{ id: 'ask', title: '提问', letter: 'A', frames: [{ id: 'ask-open', ref: 'A1' }] }],
+    figures: [],
     errors: [],
   });
   assert.equal((await fetch(`${origin}/api/projects/nope/articles/flow/canvas`)).status, 404);

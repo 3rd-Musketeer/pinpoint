@@ -43,6 +43,9 @@ const ROOT = path.resolve(__dirname, '..', '..', '..');
 // pinpoint/kit 的落点（pp2 切片 2）：kit 的 10 个系统组件的 JSX 印章住这里。
 const KIT_JSX = path.join(ROOT, 'content', 'kits', 'ios', 'jsx');
 const KIT_JSX_INDEX = path.join(KIT_JSX, 'index.js');
+// 图的小运行时（docs/projects.md“图”）：图的 .jsx 和 sidecar 都写 `import … from 'pinpoint/figure'`。
+// 编译期由 figureHelperPlugin 指到这个文件；浏览器里由图页的 import map 指到 /kits/figure/figure.js。
+export const FIGURE_HELPER = path.join(ROOT, 'content', 'kits', 'figure', 'figure.js');
 
 export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
@@ -270,7 +273,8 @@ function kitJsxPlugin() {
 /**
  * 文章画布的组件解析（common-m1.md §1）：本篇帧里写 `./components/<Name>.jsx`，
  * 本篇 components/ 没有就落到 project 的 docs/pinpoint/components/，再落到
- * pinpoint/kit 的同名印章。只接本篇目录顶层文件（帧）发出的这种 import。
+ * pinpoint/kit 的同名印章。只接本篇目录顶层文件（帧）发出的这种 import，和
+ * figures/ 下的图发出的 `../components/<Name>.jsx`。
  */
 function articleComponentsPlugin(target) {
   return {
@@ -281,9 +285,12 @@ function articleComponentsPlugin(target) {
         try { return fs.realpathSync(dir); } catch { return path.resolve(dir); }
       };
       const pageDir = real(target.pageDir);
-      build.onResolve({ filter: /^\.\/components\/[A-Za-z_$][A-Za-z0-9_$]*(?:\.jsx)?$/ }, (args) => {
-        if (real(args.resolveDir) !== pageDir) return undefined;
-        const name = args.path.replace(/^\.\/components\//, '').replace(/\.jsx$/, '');
+      const figureDir = path.join(pageDir, 'figures');
+      build.onResolve({ filter: /^\.\.?\/components\/[A-Za-z_$][A-Za-z0-9_$]*(?:\.jsx)?$/ }, (args) => {
+        const from = real(args.resolveDir);
+        const up = args.path.startsWith('../');
+        if (up ? from !== figureDir : from !== pageDir) return undefined;
+        const name = args.path.replace(/^\.\.?\/components\//, '').replace(/\.jsx$/, '');
         const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
         // 也取 realpath：project 根经过 symlink（macOS 的 /var、/tmp）时，esbuild 按真实
         // 工作目录算 jsxDEV 的文件名，给它非真实路径会得到一长串 ../ 的 data-pp-id。
@@ -293,8 +300,17 @@ function articleComponentsPlugin(target) {
   };
 }
 
+function figureHelperPlugin() {
+  return {
+    name: 'pp3-figure-helper',
+    setup(build) {
+      build.onResolve({ filter: /^pinpoint\/figure$/ }, () => ({ path: FIGURE_HELPER }));
+    },
+  };
+}
+
 function pluginsFor(target) {
-  return target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin()] : [kitJsxPlugin()];
+  return target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
 }
 
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
@@ -604,7 +620,8 @@ export function readBuildJson(distRoot, entryId) {
  * 编译一整页 → 写 dist（writeDist=false 时只算不写，ppnt render 用）。
  * onlyScreen（CLI --screen，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
  * 都走「只编挑中的屏 + 合并既有 build.json」的路径，其余屏的产物与记录原样保留。
- * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], partial, totalScreens, error? }；
+ * 返回 { entryId, ok, builtAt, ms, screens: [{ id, ok, ms, error? }], figures: [{ id, ok, ms, error? }], partial, totalScreens, error? }；
+ * figures 是文章正文里的图（整页编译时才有，见 compileArticleFigures）；
  * partial = 只编了挑中的屏，totalScreens = 板上的屏数（CLI 打「增量 M/N 屏」用）。
  */
 export async function compilePage(target, options = {}) {
@@ -648,6 +665,11 @@ export async function compilePage(target, options = {}) {
     if (row.ok) htmls[entry.id] = row.html;
     else errors[entry.id] = row.error;
   }
+  // 正文里的图（docs/projects.md“图”）：整页编译时一起编，各自落 <dist>/<页>/figures/，不进 build.json，
+  // 增量编译（只编挑中的屏）不碰图。图也会在 /api/frame 被请求时按需重编（loadFigure）。
+  const figures = target.kind === 'article' && !onlyScreens
+    ? await compileArticleFigures(target, { distRoot, writeDist })
+    : [];
   // 浮点历元毫秒：与 stat 的 mtimeMs（亚毫秒浮点）同精度，stale 比较才不吃截断亏。
   const builtAt = performance.timeOrigin + performance.now();
   if (writeDist) {
@@ -686,13 +708,242 @@ export async function compilePage(target, options = {}) {
   }
   return {
     entryId: target.entryId,
-    ok: screens.every((row) => row.ok),
+    ok: screens.every((row) => row.ok) && figures.every((row) => row.ok),
     builtAt,
     ms: Math.round((performance.now() - started) * 10) / 10,
     screens,
+    figures,
     partial: Boolean(onlyScreens),
     totalScreens: ids.length,
   };
+}
+
+/* ---- 图：正文里的 <Figure>（docs/projects.md“图”） ---- */
+
+/** 图的源文件（相对文章目录）：图本身，和可选的 sidecar 脚本、样式。 */
+export function figureFiles(id) {
+  return { jsx: `figures/${id}.jsx`, js: `figures/${id}.js`, css: `figures/${id}.css` };
+}
+
+const FIGURE_ID_RE = /^[a-zA-Z0-9_-]+$/;
+
+function figureDistPaths(distRoot, entryId, id) {
+  const dir = path.join(distRoot, entryId, 'figures');
+  return { dir, html: path.join(dir, `${id}.html`), record: path.join(dir, `${id}.json`) };
+}
+
+function isFileSync(file) {
+  try {
+    return fs.statSync(file).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/** 图的编译记录 <dist>/<页>/figures/<图>.json；没有或坏了返回 null。 */
+export function readFigureRecord(distRoot, entryId, id) {
+  try {
+    return JSON.parse(fs.readFileSync(figureDistPaths(distRoot, entryId, id).record, 'utf8'));
+  } catch {
+    return null;
+  }
+}
+
+/** 错误文本里第一个 `<file>:<行>` 的行号（file 是文章目录相对路径）；没有返回 null。 */
+export function errorLineIn(message, file) {
+  const escaped = file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = String(message || '').match(new RegExp(`${escaped}:(\\d+)`));
+  return m ? Number(m[1]) : null;
+}
+
+/**
+ * 编译一个图（不落盘）：figures/<id>.jsx 按帧的同一套规则编（esbuild + lint 四禁 + 渲染成 HTML，
+ * 组件和 pinpoint/kit 照帧的解析序；图里写 ../components/X.jsx），sidecar figures/<id>.js 在
+ * 编译期只查语法（运行在浏览器里，见 frame-doc.js 的 figurePageHtml）。
+ * → { ok, html?, error?, sources: [{ file, mtimeMs }], script, css, usesKit, ms }
+ *   sources 是判断要不要重编的全部输入（图、它 import 的文件、sidecar、样式），路径相对文章目录。
+ */
+export async function compileFigure(target, id) {
+  const started = performance.now();
+  const files = figureFiles(id);
+  const abs = (rel) => path.join(target.pageDir, rel);
+  const script = isFileSync(abs(files.js));
+  const css = isFileSync(abs(files.css));
+  const finish = (row) => ({ script, css, usesKit: false, sources: [], ...row, ms: Math.round((performance.now() - started) * 10) / 10 });
+  if (!FIGURE_ID_RE.test(String(id || ''))) return finish({ ok: false, error: `图 id 不合法：${JSON.stringify(id)}` });
+  if (!isFileSync(abs(files.jsx))) return finish({ ok: false, error: `${files.jsx}: 源文件不存在` });
+  const record = (rel) => ({ file: rel, mtimeMs: fs.statSync(abs(rel)).mtimeMs });
+  const sources = [record(files.jsx)];
+  if (script) sources.push(record(files.js));
+  if (css) sources.push(record(files.css));
+  let built;
+  try {
+    built = await esbuild.build({
+      entryPoints: [files.jsx],
+      absWorkingDir: target.pageDir,
+      bundle: true,
+      write: false,
+      format: 'cjs',
+      platform: 'neutral',
+      jsx: 'automatic',
+      jsxDev: true,
+      jsxImportSource: 'pp-jsx-runtime',
+      external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
+      metafile: true,
+      logLevel: 'silent',
+      plugins: pluginsFor(target),
+    });
+  } catch (error) {
+    return finish({ ok: false, error: formatBuildFailure(error), sources });
+  }
+  const deps = depRecordsFromInputs(target, built.metafile.inputs, [files.jsx]);
+  sources.push(...deps);
+  const lintErrors = [];
+  for (const input of Object.keys(built.metafile.inputs)) {
+    if (!/\.jsx$/.test(input)) continue;
+    let text;
+    try {
+      text = fs.readFileSync(path.join(target.pageDir, input), 'utf8');
+    } catch {
+      continue;
+    }
+    lintErrors.push(...lintStampSource(text, input, { entry: input === files.jsx }));
+  }
+  if (lintErrors.length) return finish({ ok: false, error: lintErrors.map((row) => row.message).join('\n'), sources });
+  const kitDir = fs.realpathSync(KIT_JSX);
+  const usesKit = Object.keys(built.metafile.inputs).some((input) => {
+    const file = path.resolve(target.pageDir, input);
+    return file === kitDir || file.startsWith(kitDir + path.sep) || file.startsWith(KIT_JSX + path.sep);
+  });
+  let html;
+  try {
+    const mod = evaluateFrameBundle(built.outputFiles[0].text);
+    if (!mod || typeof mod.default !== 'function') {
+      return finish({ ok: false, error: `${files.jsx}: 图文件必须默认导出一个返回 JSX 的函数`, sources, usesKit });
+    }
+    html = renumberPpIds(renderToString(h(__ppWrapComponent(mod.default), {})), { pageDir: target.pageDir });
+  } catch (error) {
+    return finish({ ok: false, error: `${files.jsx}: ${String((error && error.message) || error)}`, sources, usesKit });
+  }
+  if (script) {
+    try {
+      await esbuild.transform(fs.readFileSync(abs(files.js), 'utf8'), { loader: 'js', format: 'esm', sourcefile: files.js, logLevel: 'silent' });
+    } catch (error) {
+      return finish({ ok: false, error: formatBuildFailure(error), sources, usesKit });
+    }
+  }
+  return finish({ ok: true, html, sources, usesKit });
+}
+
+/** 落盘：<dist>/<页>/figures/<图>.html（失败时删掉旧的）+ <图>.json（编译记录）。返回记录。 */
+function writeFigure(distRoot, entryId, id, result) {
+  const paths = figureDistPaths(distRoot, entryId, id);
+  fs.mkdirSync(paths.dir, { recursive: true });
+  if (result.ok) fs.writeFileSync(paths.html, result.html);
+  else if (fs.existsSync(paths.html)) fs.unlinkSync(paths.html);
+  const record = {
+    builtAt: performance.timeOrigin + performance.now(),
+    ok: result.ok,
+    ...(result.ok ? {} : { error: result.error }),
+    sources: result.sources,
+    script: result.script,
+    css: result.css,
+    usesKit: result.usesKit,
+  };
+  fs.writeFileSync(paths.record, `${JSON.stringify(record, null, 2)}\n`);
+  return record;
+}
+
+/** 记录还代表盘上的源码吗：每个输入的 mtime 没变，sidecar 与样式没有新增或删掉。 */
+export function figureRecordFresh(target, id, record) {
+  if (!record || typeof record.builtAt !== 'number' || !Array.isArray(record.sources)) return false;
+  const files = figureFiles(id);
+  if (Boolean(record.script) !== isFileSync(path.join(target.pageDir, files.js))) return false;
+  if (Boolean(record.css) !== isFileSync(path.join(target.pageDir, files.css))) return false;
+  return record.sources.every((source) => {
+    try {
+      return fs.statSync(path.join(target.pageDir, source.file)).mtimeMs === source.mtimeMs;
+    } catch {
+      return false;
+    }
+  });
+}
+
+/**
+ * 读一个图的编译结果，记录过期或没有就先编（/api/frame 与 ppnt 共用）。
+ * → { ok: true, html, record } | { ok: false, error, record }
+ */
+export async function loadFigure(target, id, { distRoot = defaultDistRoot() } = {}) {
+  let record = readFigureRecord(distRoot, target.entryId, id);
+  const paths = figureDistPaths(distRoot, target.entryId, id);
+  if (!figureRecordFresh(target, id, record) || (record.ok && !fs.existsSync(paths.html))) {
+    record = writeFigure(distRoot, target.entryId, id, await compileFigure(target, id));
+  }
+  if (!record.ok) return { ok: false, error: record.error || '编译失败', record };
+  return { ok: true, html: fs.readFileSync(paths.html, 'utf8'), record };
+}
+
+/** 本篇正文里的图（认得出 id、源文件在的）全部重编。→ [{ id, ok, ms, error? }] */
+export async function compileArticleFigures(target, { distRoot = defaultDistRoot(), writeDist = true } = {}) {
+  let figures = [];
+  try {
+    figures = deriveArticleBoard(target).figures;
+  } catch {
+    return [];
+  }
+  const rows = [];
+  for (const figure of figures) {
+    if (!figure.id || !isFileSync(path.join(target.pageDir, figureFiles(figure.id).jsx))) continue;
+    const result = await compileFigure(target, figure.id);
+    if (writeDist) writeFigure(distRoot, target.entryId, figure.id, result);
+    rows.push({ id: figure.id, ok: result.ok, ms: result.ms, ...(result.ok ? {} : { error: result.error }) });
+  }
+  return rows;
+}
+
+/**
+ * 浏览器里跑图时出的错（图页的启动脚本报上来，POST /api/figure-error）：只记在“这一版”上——
+ * builtAt 对得上当前记录才写，重编会换掉记录，旧的运行错误跟着消失。→ 写了没有。
+ */
+export function recordFigureRuntimeError(distRoot, entryId, id, { builtAt, message, line = null }) {
+  const record = readFigureRecord(distRoot, entryId, id);
+  if (!record || record.builtAt !== builtAt || !record.ok) return false;
+  if (record.runtimeError) return true; // 只留这一版第一次出的错
+  record.runtimeError = { message: String(message || '').slice(0, 2000), ...(Number.isInteger(line) && line > 0 ? { line } : {}) };
+  fs.writeFileSync(figureDistPaths(distRoot, entryId, id).record, `${JSON.stringify(record, null, 2)}\n`);
+  return true;
+}
+
+/**
+ * 本篇图的编译错误与运行错误，写成 project 错误对象（docs/projects.md“图”的错误一节），
+ * `pinpoint list <project>` 用。compile: true 时过期的图先重编（和 /api/frame 同一条路），
+ * 否则只读已有记录。静态的写法错误（src、缺文件）不在这里，listProjects 已经有了。
+ */
+export async function figureDistErrors(target, { distRoot = defaultDistRoot(), compile = true } = {}) {
+  let figures = [];
+  try {
+    figures = deriveArticleBoard(target).figures;
+  } catch {
+    return [];
+  }
+  const errors = [];
+  const where = `articles/${target.articleId}/index.mdx`;
+  for (const figure of figures) {
+    if (!figure.id || !isFileSync(path.join(target.pageDir, figureFiles(figure.id).jsx))) continue;
+    const loaded = compile
+      ? await loadFigure(target, figure.id, { distRoot })
+      : (() => { const record = readFigureRecord(distRoot, target.entryId, figure.id); return { ok: !record || record.ok, error: record && record.error, record }; })();
+    const at = figure.line ? `第 ${figure.line} 行：` : '';
+    const base = { path: where, figure: figure.id, ...(figure.line ? { line: figure.line } : {}), ...(figure.section ? { section: figure.section } : {}) };
+    if (!loaded.ok) {
+      errors.push({ code: 'figure_compile', message: `${at}<Figure> 图 "${figure.id}" 编译失败：${loaded.error}`, ...base });
+    } else if (loaded.record && loaded.record.runtimeError) {
+      const run = loaded.record.runtimeError;
+      const inFile = run.line ? `（${figureFiles(figure.id).js} 第 ${run.line} 行）` : '';
+      errors.push({ code: 'figure_runtime', message: `${at}<Figure> 图 "${figure.id}" 在浏览器里运行出错：${run.message}${inFile}`, ...base });
+    }
+  }
+  return errors;
 }
 
 /** 编译单屏但不落 dist（ppnt render）。 */

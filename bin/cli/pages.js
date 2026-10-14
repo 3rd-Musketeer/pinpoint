@@ -65,11 +65,17 @@ function printBuildResult(result, { out, err }, plan = null) {
     if (row.ok) out(`ok   ${row.id}  ${row.ms}ms`);
     else err(`错误 ${row.id}  ${row.error}`);
   }
+  // 正文里的图（docs/projects.md“图”）：整页编译时一起编，行首写“图”。
+  const figures = result.figures || [];
+  for (const row of figures) {
+    if (row.ok) out(`ok   图 ${row.id}  ${row.ms}ms`);
+    else err(`错误 图 ${row.id}  ${row.error}`);
+  }
   if (result.error) err(`错误 ${result.entryId}  ${result.error}`);
   // 增量拍只列点名的屏：写成「增量 M/N 屏」，免得读成整页只有 M 屏。
-  const count = result.partial
+  const count = (result.partial
     ? `增量 ${result.screens.length}/${result.totalScreens} 屏`
-    : `${result.screens.length} 屏`;
+    : `${result.screens.length} 屏`) + (figures.length ? ` · ${figures.length} 图` : '');
   out(`${result.ok ? '完成' : '有失败'} ${result.entryId}  共 ${result.ms}ms（${count}）`);
 }
 

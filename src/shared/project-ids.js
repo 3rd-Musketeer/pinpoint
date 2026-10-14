@@ -86,6 +86,13 @@ export function refKey(name) {
 export const SECTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 export const FRAME_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
+/**
+ * 正文里的图（<Figure src="figures/<图 id>.jsx">，docs/projects.md“图”）：源文件在文章目录的 figures/ 下，
+ * 图 id 是文件名，规则同帧 id。src 只认这一种写法。
+ */
+export const FIGURE_DIR = 'figures';
+export const FIGURE_SRC_PATTERN = /^figures\/([a-zA-Z0-9_-]+)\.jsx$/;
+
 /** board / <Canvas shell> / 帧级 shell 的取值（docs/board-schema.md）。 */
 export const CANVAS_SHELLS = Object.freeze(['app', 'lock', 'doc', 'comp']);
 

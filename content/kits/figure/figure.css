@@ -1,0 +1,63 @@
+/*
+ * 图的调色板与基础样式（docs/projects.md“图”）。图页（/api/frame?…&embed=figure）总是带这一份。
+ * 图里只用 --fig-* 变量，不写死颜色：浅色、深色跟着文章页切换，变量值与 site/src/styles/site.css 的
+ * token 相同（site/src/lib/figure.test.js 守）。
+ *
+ *   --fig-bg        页面底色（图和正文融在一起）      --fig-panel     浅底块、节点底色
+ *   --fig-ink       正文字、主要线条                  --fig-ink-2     次要文字、普通箭头
+ *   --fig-muted     注释、轴、不重要的字              --fig-hair      细线、边框、生命线
+ *   --fig-accent    强调：当前一步、主角               --fig-accent-soft  强调色的浅底
+ *   --fig-err       出错
+ *   --fig-font      字体栈（含中文）
+ */
+:root {
+  --fig-bg:#ffffff; --fig-panel:#f5f5f5; --fig-ink:#111111; --fig-ink-2:#454545; --fig-muted:#767676; --fig-hair:#e6e6e6;
+  --fig-accent:#0e8f6c; --fig-accent-soft:#dff3e6; --fig-err:#c0392b;
+  --fig-font:-apple-system,"Helvetica Neue","PingFang SC","Noto Sans SC",Arial,sans-serif;
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --fig-bg:#0f0f0f; --fig-panel:#191919; --fig-ink:#f1f1f1; --fig-ink-2:#c9c9c9; --fig-muted:#9a9a9a; --fig-hair:#262626;
+    --fig-accent:#3ec49b; --fig-accent-soft:#1e3d2d; --fig-err:#ff7b6b;
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --fig-bg:#0f0f0f; --fig-panel:#191919; --fig-ink:#f1f1f1; --fig-ink-2:#c9c9c9; --fig-muted:#9a9a9a; --fig-hair:#262626;
+  --fig-accent:#3ec49b; --fig-accent-soft:#1e3d2d; --fig-err:#ff7b6b;
+  color-scheme: dark;
+}
+
+html, body { margin:0; padding:0; background:var(--fig-bg); color:var(--fig-ink); overflow:hidden; }
+body { font-family:var(--fig-font); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; }
+* { box-sizing:border-box; }
+
+/* 图的根（sidecar 的 mount(root) 拿到的就是它）。高度随内容，图页把高度报给文章页。 */
+.pp-figure { padding:20px; }
+/* :where() 不加权重：图自己写的任何选择器都能盖过这几条。 */
+:where(.pp-figure svg) { display:block; width:100%; height:auto; overflow:visible; font-family:var(--fig-font); }
+:where(.pp-figure svg text) { fill:var(--fig-ink); }
+
+/* 宽图在窄屏上横向滚动，而不是把字缩到看不清：<div class="fig-scroll"><svg …/></div>。 */
+.fig-scroll { overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin; }
+.fig-scroll > svg { min-width:var(--fig-min-width, 560px); }
+
+/* steps()：逐步演示的状态和控件。is-now 的样子由图自己写（比如 .is-now line { stroke:var(--fig-accent) }）。 */
+.pp-figure [data-step] { transition:opacity .3s; }
+.fig-stepping [data-step].is-future { opacity:0; }
+.fig-stepping [data-step].is-past { opacity:.4; }
+@media (prefers-reduced-motion: reduce) { .pp-figure [data-step] { transition:none; } }
+.fig-steps { display:flex; align-items:center; gap:8px; margin-top:12px; font-size:14px; }
+.fig-steps button { appearance:none; border:1px solid var(--fig-hair); background:var(--fig-bg); color:var(--fig-ink); font:inherit;
+                    border-radius:999px; padding:3px 12px; cursor:pointer; }
+.fig-steps button:hover:not(:disabled) { background:var(--fig-panel); }
+.fig-steps button:disabled { color:var(--fig-muted); cursor:default; }
+.fig-steps button:focus-visible { outline:2px solid var(--fig-accent); outline-offset:2px; }
+.fig-count { margin-left:auto; color:var(--fig-muted); font-variant-numeric:tabular-nums; }
+.fig-note { min-height:1.6em; margin-top:6px; color:var(--fig-ink-2); font-size:14.5px; }
+
+/* 图出错（编译失败或运行时报错）时，图页在图的位置写明原因。 */
+.fig-error { border:1px solid var(--fig-err); color:var(--fig-err); border-radius:12px; padding:10px 14px; margin-bottom:12px;
+             font-size:13.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
+.fig-error b { display:block; margin-bottom:2px; }

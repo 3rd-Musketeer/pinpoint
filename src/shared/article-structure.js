@@ -6,7 +6,8 @@
  * - 站点的 remark 步骤（site/src/lib/remark-pinpoint.js）：节标题的字母、给 Canvas 注入 section；
  * - ann-query：正文评论的引文落在哪一节（经 article-canvas.js 的 articleSectionSpans）。
  *
- * 三处用同一个走法，节怎么数、字母怎么编不会分叉。树是 remark-parse + remark-mdx 的 mdast
+ * 三处用同一个走法，节怎么数、字母怎么编不会分叉。<Figure>（正文里的图）也在这里数：articleFigures
+ * 给出全部 <Figure> 的正文顺序，服务端的解析和站点的 remark 步骤按同一个序号对上同一个图。树是 remark-parse + remark-mdx 的 mdast
  * （@astrojs/mdx 用的也是它），节点带 position。叶子模块：只 import 同为叶子的 project-ids.js。
  */
 import { sectionLetter } from './project-ids.js';
@@ -66,4 +67,24 @@ export function articleStructure(tree) {
   };
   visit(tree);
   return items;
+}
+
+/**
+ * 正文里全部 <Figure>，按正文顺序：[{ node, index, section }]。index 从 0 数，写坏的也占；
+ * section 是它所在的 <Section> 节点（套着的取最外层，和 articleStructure 一致），写在节外的是 null。
+ * 图可以写在节里，也可以写在节外（开头的导语）。
+ */
+export function articleFigures(tree) {
+  const figures = [];
+  const visit = (node, section) => {
+    for (const child of (node && node.children) || []) {
+      if (isJsxElement(child, 'Figure')) {
+        figures.push({ node: child, index: figures.length, section });
+        continue;
+      }
+      visit(child, section || (isJsxElement(child, 'Section') ? child : null));
+    }
+  };
+  visit(tree, null);
+  return figures;
 }

@@ -1,0 +1,28 @@
+---
+// <Figure src="figures/<图 id>.jsx" caption="…" />：正文里的图（docs/projects.md“图”）。静态图和可交互演示
+// 都是它：图的源文件在文章目录的 figures/ 下，pinpoint 像编帧一样编它，这里用一个同源 iframe
+// （/api/frame?…&embed=figure）占满正文栏宽，高度跟着内容（figure-client.js），可以点、可以操作。
+// 不信本组件自己的 props：n（第几个 <Figure>）由 remark-pinpoint 注入，src / caption 的解析与校验在
+// articleCanvas（figures），错误显示在图的位置，不进画布卡片和页顶错误条。
+// data-pp-nocomment：图里（含图注）选字不出正文“评论”（src/client/prose-comments.js 的 SKIP_SELECTOR）。
+import { FIGURE_MIN_HEIGHT, figureModel } from '../lib/figure.js';
+
+interface Props { n?: string; src?: string; caption?: string }
+const m = figureModel(Astro.locals.ppCanvas, Astro.props.n);
+---
+<figure class="pp-fig" data-pp-figure={m.id || ''} data-pp-nocomment data-state={m.errors.length ? 'error' : 'loading'}>
+  {m.errors.length > 0 ? (
+    <div class="pp-fig-errors" role="alert" data-pp-figure-errors>
+      <b>这个图有错误</b>
+      <ul>{m.errors.map((e) => <li>{e}</li>)}</ul>
+    </div>
+  ) : (
+    <iframe src={m.src} loading="lazy" scrolling="no" title={m.title} style={`height:${FIGURE_MIN_HEIGHT}px`}></iframe>
+  )}
+  {m.caption && <figcaption>{m.caption}</figcaption>}
+</figure>
+
+<script>
+  import { initFigures } from '../lib/figure-client.js';
+  initFigures();
+</script>

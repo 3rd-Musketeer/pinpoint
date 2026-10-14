@@ -203,3 +203,53 @@ async function buildSnapshot(page, job) {
     };
   }, { job, pinCss: PIN_CSS });
 }
+
+/**
+ * 拍正文里的一个图（ppnt shot --figure，docs/projects.md“图”）：直接打开图页
+ * /api/frame?page=&figure=&embed=figure&theme=，浅色、深色各拍一张图的根元素，正文栏宽 760。
+ * 等图页的启动脚本做完（html[data-figure-ready]）再拍；页面报错、控制台报错、图页写下的错误
+ * 都收进 errors。返回 [{ theme, out, width, height, errors }]。服务不在跑时抛错。
+ */
+export async function renderFigureShots({ origin, pageId, figureId, outBase, scale = 1, width = 760 }) {
+  let up = false;
+  try {
+    up = (await fetch(`${origin}/health`)).ok;
+  } catch {
+    up = false;
+  }
+  if (!up) throw new Error(`渲染需要 pinpoint 服务在跑（${origin}），先 \`ppnt start\`。`);
+  const browser = await chromium.launch({ headless: true });
+  const results = [];
+  try {
+    for (const theme of ['light', 'dark']) {
+      const context = await browser.newContext({ viewport: { width, height: 800 }, deviceScaleFactor: scale, colorScheme: theme, reducedMotion: 'reduce' });
+      const page = await context.newPage();
+      const errors = [];
+      page.on('pageerror', (error) => errors.push(String(error.message || error)));
+      page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
+      const url = `${origin}/api/frame?page=${encodeURIComponent(pageId)}&figure=${encodeURIComponent(figureId)}&embed=figure&theme=${theme}`;
+      const response = await page.goto(url, { waitUntil: 'load' });
+      const root = page.locator('[data-pp-figure-root]');
+      if (!(await root.count())) {
+        const body = await response.text();
+        let detail = body;
+        try { detail = JSON.parse(body).message || body; } catch { /* not JSON */ }
+        await context.close();
+        throw new Error(`图页打不开（${response.status()}）：${detail}`);
+      }
+      await page.waitForSelector('html[data-figure-ready]', { timeout: 10_000 }).catch(() => errors.push('图页 10 秒内没有跑完启动脚本'));
+      await waitForQuiet(page);
+      const figureError = await page.evaluate(() => document.documentElement.dataset.figureError || '');
+      if (figureError && !errors.includes(figureError)) errors.unshift(figureError);
+      const out = theme === 'light' ? `${outBase}.png` : `${outBase}-dark.png`;
+      fs.mkdirSync(path.dirname(out), { recursive: true });
+      await root.screenshot({ path: out });
+      const box = await root.boundingBox();
+      results.push({ theme, out, width: Math.round(box.width * scale), height: Math.round(box.height * scale), errors: [...new Set(errors)] });
+      await context.close();
+    }
+  } finally {
+    await browser.close();
+  }
+  return results;
+}
