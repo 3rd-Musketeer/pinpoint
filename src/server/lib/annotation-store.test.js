@@ -484,3 +484,21 @@ test('别的写错误照样抛（不被当成 bucket_gone 吞掉），临时文�
   t.mock.restoreAll();
   assert.deepEqual(fs.readdirSync(dataDir).filter((name) => name.includes('.tmp-')), []);
 });
+
+test('页已不 live 的桶不新建：桶目录不在、mayCreateBucket 说不行时，save / status / 图片都不写，答 bucket_gone（O）', (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-store-gone-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const dataDir = path.join(root, 'gone-page');
+  const store = createAnnotationStore({ dataDir, mayCreateBucket: () => false });
+  const saved = store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'a', content: '迟到的保存' }] });
+  assert.equal(saved.status, 503);
+  assert.equal(saved.error, 'bucket_gone');
+  assert.throws(() => store.writeImage('@canvas', 'png', Buffer.from('x')), { code: 'bucket_gone' });
+  assert.ok(!fs.existsSync(dataDir), '桶没有被重建');
+  // 桶目录在盘上（整桶孤儿）照样能写；活页的桶不在时照常新建。
+  fs.mkdirSync(dataDir);
+  assert.equal(store.save({ page: '@canvas', baseRevision: 0, annotations: [{ id: 'a', content: '孤儿照样能写' }] }).status, 200);
+  const live = createAnnotationStore({ dataDir: path.join(root, 'live-page'), mayCreateBucket: () => true });
+  assert.equal(live.save({ page: '@canvas', baseRevision: 0, annotations: [] }).status, 200);
+  assert.ok(fs.existsSync(path.join(root, 'live-page', '@canvas.json')));
+});

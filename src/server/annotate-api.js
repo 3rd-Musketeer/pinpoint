@@ -8,7 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { bucketDir, bucketOnDisk, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { etagMatches } from './lib/etag.js';
-import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
+import { BucketGoneError, ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 import { listProjects } from './lib/projects.js';
@@ -185,8 +185,12 @@ export function createAnnotateHandler(options = {}) {
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
-      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页。
-      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
+      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页。桶目录不在时只给 live 的页新建：
+      // 整桶孤儿在盘上照样能写，被 prune 删掉以后迟到的写不把它重建出来（503 bucket_gone）。
+      stores.set(entryId, createAnnotationStore({
+        dataDir: bucketDir(root, entryId),
+        mayCreateBucket: () => entryId === DEFAULT_ENTRY || pageIdIsLive(registry, entryId, { manifestIds: knownPageIds() }),
+      }));
     }
     return stores.get(entryId);
   }
@@ -539,7 +543,14 @@ export function createAnnotateHandler(options = {}) {
           return true;
         }
         const extension = ['jpeg', 'jpg', 'webp', 'gif'].includes(match[1]) ? match[1] : 'png';
-        const image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
+        let image;
+        try {
+          image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
+        } catch (error) {
+          if (!(error instanceof BucketGoneError)) throw error;
+          sendJson(res, 503, { error: error.code, detail: error.message });
+          return true;
+        }
         sendJson(res, 200, image);
         return true;
       },

@@ -105,7 +105,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：把标注写进仓库——桶在本机数据目录，不进 git。
 
 **孤儿** · 页在不在看 `src/server/lib/page-resolve.js` 的 `pageIdIsLive`，活页桶里的账本看 `src/server/lib/orphans.js`
-表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas 或源文件删了、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数。桶目录在盘上就能读写：pending 的孤儿照样用 `ppnt mark` / `reply` 回，整桶孤儿也一样。清理只经 `ppnt prune <页 id>`，由 owner 决定。
+表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas 或源文件删了、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数。桶目录在盘上就能读写：pending 的孤儿照样用 `ppnt mark` / `reply` 回，整桶孤儿也一样；任何写入都不新建页已不在的桶。清理只经 `ppnt prune <页 id>`，由 owner 决定，页已不在时连桶目录一起删。
 要避开：以为孤儿只能删、不能回；agent 替 owner 去 prune。
 
 **工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`

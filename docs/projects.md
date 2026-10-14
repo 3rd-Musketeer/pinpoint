@@ -237,7 +237,7 @@ export default function ConfirmBare() {
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理。文章还在时 `prune` 只删桶里表面已死的账本：HTML 帧移出了 Canvas 或源文件不在了，它那本文档页标注账本就是孤儿；`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理（连桶目录一起删）。文章还在时 `prune` 只删桶里表面已死的账本：HTML 帧移出了 Canvas 或源文件不在了，它那本文档页标注账本就是孤儿；`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 

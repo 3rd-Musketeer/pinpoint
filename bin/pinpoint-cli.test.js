@@ -2505,6 +2505,21 @@ test('article buckets as orphans: prune on a live article lists nothing; a delet
   assert.deepEqual(dry.out, [`${path.join(made.data, 'demo_gone', '@canvas.json')}（页已不存在，整桶孤儿）`, '--dry-run：1 本孤儿账本待删（ppnt prune demo_gone 落盘）。']);
 });
 
+test('prune 整桶孤儿连桶目录一起删（_seq.json、图片也走），迟到的写不会把它当成还在的桶（O）', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const bucket = path.join(made.data, 'demo_gone');
+  fs.writeFileSync(path.join(bucket, '_seq.json'), JSON.stringify({ next: 5 }));
+  fs.mkdirSync(path.join(bucket, 'images'));
+  fs.writeFileSync(path.join(bucket, 'images', '@canvas-1-1.png'), 'png');
+  const rec = recorder();
+  assert.equal(await runPrune(['prune', 'demo/gone', '--registry', made.registry], { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
+  assert.ok(!fs.existsSync(bucket), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('桶目录也删了')), rec.out.join('\n'));
+  // 活页的 prune 只删孤儿账本，桶留着。
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--registry', made.registry], { ...recorder().io, env: made.env }), 0);
+  assert.ok(fs.existsSync(path.join(made.data, 'demo_alpha', '@canvas.json')));
+});
+
 test('<project>_<article>#n resolves without a separate target in locate / mark / reply / comments', async (t) => {
   const made = makeArticleWithComments(t);
   const loc = recorder();

@@ -597,7 +597,14 @@ export async function runPrune(argv, io = {}) {
       })
     : collectBucketOrphans(pageId, root);
   if (!names.length) {
-    out(known ? `页 ${pageId} 没有孤儿账本。` : `桶 ${pageId} 不在任何页里，但也没有账本。`);
+    if (known) {
+      out(`页 ${pageId} 没有孤儿账本。`);
+    } else if (parsed.flags['dry-run']) {
+      out(`桶 ${pageId} 不在任何页里，也没有账本；--dry-run：桶目录待删（ppnt prune ${pageId} 落盘）。`);
+    } else {
+      fs.rmSync(bucket, { recursive: true, force: true });
+      out(`桶 ${pageId} 不在任何页里，也没有账本；桶目录删了：${bucket}`);
+    }
     return 0;
   }
   for (const name of names) out(`${path.join(bucket, name)}${known ? '' : '（页已不存在，整桶孤儿）'}`);
@@ -621,6 +628,13 @@ export async function runPrune(argv, io = {}) {
         }
       }
     }
+  }
+  // 页已不在：账本删完，桶里只剩 _seq.json、图片之类，整个桶目录一起删。桶目录在盘上就能写
+  // （docs/annotation.md“孤儿”），留着空目录，迟到的保存会把行写回来；目录没了，服务不新建页已不在的桶。
+  if (!known) {
+    fs.rmSync(bucket, { recursive: true, force: true });
+    out(`已删除 ${names.length} 本孤儿账本，页已不在，桶目录也删了：${bucket}`);
+    return 0;
   }
   out(`已删除 ${names.length} 本孤儿账本${images ? ` 与 ${images} 个孤儿图片` : ''}。`);
   return 0;

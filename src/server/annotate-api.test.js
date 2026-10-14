@@ -494,3 +494,33 @@ test('整桶孤儿：桶目录在盘上就能读、写状态、回复；桶不�
   assert.equal(ghost.json.error, 'unknown_entry');
   assert.ok(!fs.existsSync(path.join(dataRoot, 'no-bucket')));
 });
+
+test('桶被 prune 掉以后迟到的保存不把它写回来：页已不在就 503 bucket_gone，桶不重建（O）', async (t) => {
+  const { dataRoot, handler } = withFixture(t);
+  const bucket = path.join(dataRoot, 'gone-page');
+  fs.mkdirSync(bucket, { recursive: true });
+  // 入口校验时桶还在（整桶孤儿放行）；读账本那一刻 prune 把整个桶删了。
+  const originalExists = fs.existsSync;
+  t.mock.method(fs, 'existsSync', (p) => {
+    if (String(p) === path.join(bucket, '@canvas.json')) fs.rmSync(bucket, { recursive: true, force: true });
+    return originalExists(p);
+  });
+  const { res, json } = await call(handler, 'POST', '/save', { page: '@canvas', entry: 'gone-page', baseRevision: 0, annotations: [{ content: '关页补发' }] });
+  t.mock.restoreAll();
+  assert.equal(res.statusCode, 503, JSON.stringify(json));
+  assert.equal(json.error, 'bucket_gone');
+  assert.ok(!fs.existsSync(bucket), '桶没有被重建');
+  // 图片同一条：桶不在、页也不在，不新建。
+  fs.mkdirSync(bucket, { recursive: true });
+  const originalStat = fs.statSync;
+  let gate = false;
+  t.mock.method(fs, 'statSync', (p, ...rest) => {
+    const out = originalStat(p, ...rest);
+    if (!gate && String(p) === bucket) { gate = true; fs.rmSync(bucket, { recursive: true, force: true }); }
+    return out;
+  });
+  const image = await call(handler, 'POST', '/image', { page: '@canvas', entry: 'gone-page', data: 'data:image/png;base64,eA==' });
+  t.mock.restoreAll();
+  assert.equal(image.res.statusCode, 503, JSON.stringify(image.json));
+  assert.ok(!fs.existsSync(bucket), '图片也不重建桶');
+});
