@@ -38,11 +38,25 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
   let second = 0;
 
   // 记下页面开的每个 EventSource，断线用例要拿到它关掉。
+  // 再包一层 fetch：离开页面那步要一次“请求已到服务端、应答还没回页面”的在途保存。
+  // 布上 window.__ppSaveHold 之后，下一次 /save 照常发出，应答扣在页面里，hold.answered
+  // 说明服务端已经回了；hold.release() 放行。其余请求原样走。
   await page.addInitScript(() => {
     const Native = window.EventSource;
     window.__ppEventSources = [];
     window.EventSource = class extends Native {
       constructor(...args) { super(...args); window.__ppEventSources.push(this); }
+    };
+    const nativeFetch = window.fetch;
+    window.__ppSaveHold = null;
+    window.fetch = function (input, init) {
+      const sent = nativeFetch(input, init);
+      const hold = window.__ppSaveHold;
+      const url = typeof input === 'string' ? input : String((input && input.url) || '');
+      if (!hold || hold.taken || !/\/save$/.test(url)) return sent;
+      hold.taken = true;
+      const gate = new Promise((resolve) => { hold.release = resolve; });
+      return sent.then((res) => { hold.answered = true; return gate.then(() => res); });
     };
   });
 
@@ -196,33 +210,31 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
     });
 
     await test.step('离开页面：在途保存后面还排着一条回复时整页离开，两条回复都落盘、各一次', async () => {
-      let releaseHeld;
-      const held = new Promise((resolve) => { releaseHeld = resolve; });
-      let heldStarted;
-      const started = new Promise((resolve) => { heldStarted = resolve; });
-      let saves = 0;
-      await page.route('**/save', async (route) => {
-        if (++saves === 1) { heldStarted(); await held; }
-        await route.continue().catch(() => {}); // 离开后被浏览器取消的请求 continue 会抛
-      });
+      // 在途 = 第一次保存已在服务端落盘、应答扣在页面里（见开头的 fetch 包装）。不用 page.route
+      // 扣：离开时发的 keepalive 快照在满载下会停在 Playwright 的拦截层，不进路由回调，unroute
+      // 时才放出去，断言等不到（2026-10-14 满载复现，见 docs/debugging.md）。这里离开时没有拦截，
+      // 快照和产品里一样直接上网络。
+      const texts = () => {
+        const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.n === first);
+        return row.messages.map((m) => m.text).filter((t) => t.startsWith('离开前的回复'));
+      };
+      await page.evaluate(() => { window.__ppSaveHold = { taken: false, answered: false }; });
       try {
         await thread(first).click();
         await thread(first).locator('textarea').fill('离开前的回复一');
         await thread(first).getByRole('button', { name: '发送' }).click();
-        await started;
+        await expect.poll(() => page.evaluate(() => window.__ppSaveHold.answered)).toBe(true);
+        expect(texts(), '第一次保存已落盘，页面还当它在途').toEqual(['离开前的回复一']);
         await thread(first).click();
         await thread(first).locator('textarea').fill('离开前的回复二');
         await thread(first).getByRole('button', { name: '发送' }).click();
         await expect(thread(first).locator('.msg .text').last()).toHaveText('离开前的回复二');
+        expect(await page.evaluate(() => window.pinpointProse.settled()), '回复二排在在途保存后面').toBe(false);
         await page.goto('/health');
-        releaseHeld();
-        const texts = () => {
-          const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.n === first);
-          return row.messages.map((m) => m.text).filter((t) => t.startsWith('离开前的回复'));
-        };
         await expect.poll(texts, { timeout: 10_000 }).toEqual(['离开前的回复一', '离开前的回复二']);
       } finally {
-        await page.unroute('**/save');
+        // 没走到离开那一步就挂了：放掉扣着的应答，收尾的 closeSettled 才等得到。
+        await page.evaluate(() => window.__ppSaveHold && window.__ppSaveHold.release && window.__ppSaveHold.release()).catch(() => {});
       }
       await page.goto(ARTICLE);
       await proseSettled(page);
