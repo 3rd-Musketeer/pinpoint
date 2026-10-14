@@ -17,7 +17,7 @@ import { findProject } from '../../src/server/lib/projects.js';
 import { DEFAULT_ORIGIN, REPO_ROOT, ioOf } from './core.js';
 import { resolveRegistryPath } from './registry.js';
 import { guardParse, reportUsageError, USAGE_EXIT, HELP } from './args.js';
-import { loadAnnotateContext, pageIdKnown, printBucketOrphanStatus, reportMissingTarget } from './list.js';
+import { loadAnnotateContext } from './list.js';
 import { displayAddress, letterNumber, normalizeRefToken, parseAddress, resolveAddress, sectionNumberOf, toPageRef } from './address.js';
 import { addressContext, pickTarget, printCandidates } from './targets.js';
 import { runValidate } from './validate.js';
@@ -90,15 +90,10 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   // `<目标>#n`：只看这一条（任何状态），页取 `#` 前面那段。
   const cross = parseCrossRef(toPageRef(token));
   const pageRef = cross ? cross.pageId : String(toPageRef(token));
-  // 找不到页的报错先攒着：页不在了但桶还在（删了的页、删了或改了名的文章）时，
-  // 把整桶列成孤儿，而不是只说找不到页。
-  const pending = [];
-  const context = loadAnnotateContext(pageRef, parsed, { env, err: (line) => pending.push(line) });
-  if (!context) {
-    if (!pageIdKnown(pageRef, parsed, { env }) && printBucketOrphanStatus(pageRef, { env, out })) return { code: 0, rows: 0 };
-    for (const line of pending) err(line);
-    return { code: USAGE_EXIT, rows: 0 };
-  }
+  // 页不在了但桶还在（删了的页、删了或改了名的文章）时，context 是整桶孤儿（bucketOrphan），
+  // 报告把整桶列成孤儿；桶也不在才是找不到目标。
+  const context = loadAnnotateContext(pageRef, parsed, { env, err });
+  if (!context) return { code: USAGE_EXIT, rows: 0 };
   // 源码摘录和截图读 dist：画布标注要摘录、dist 不在或落后时先编（不用先 ppnt build）。
   if (context.frameRows.length && !context.docOnly) {
     const note = ensureDistNote(await ensureDist(context.target, { distRoot: path.join(dataRoot(env), 'dist') }), context.address);

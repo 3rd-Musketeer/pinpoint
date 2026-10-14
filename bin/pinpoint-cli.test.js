@@ -1813,6 +1813,40 @@ test('runComments：老登记表里的 url 条目读时跳过，它的桶整桶�
   assert.ok(rec.out.some((line) => line.includes('全是孤儿')), rec.out.join('\n'));
 });
 
+test('整桶孤儿照样能 mark / reply：老 url 条目的桶、删掉的文章的桶，目标解析认盘上的桶，comments 列出行（E）', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  // 集成后老登记表里的 url 条目读时被跳过：它的桶留在盘上，整桶是孤儿。
+  const bucket = path.join(made.data, 't-live');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'app_x1.json'), JSON.stringify({
+    page: 'app~x1', path: '/sites/t-live/app', revision: 2,
+    annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
+  }));
+  const comments = recorder();
+  assert.equal(await runComments(['comments', 't-live', '--registry', made.registry], { ...comments.io, env: made.env }), 0, comments.err.join('\n'));
+  assert.ok(comments.out[0].includes('全是孤儿'), comments.out.join('\n'));
+  assert.ok(comments.out.some((line) => line.includes('[#1]') && line.includes('线上页意见')), comments.out.join('\n'));
+
+  const calls = [];
+  const requestFn = async (urlString, opts = {}) => {
+    calls.push({ url: urlString, method: opts.method || 'GET', body: opts.body });
+    if (opts.method === 'POST') return { status: 200, json: { revision: 3, annotation: { status: 'done' } } };
+    return { status: 200, json: { revision: 2, annotations: [] } };
+  };
+  const mark = recorder();
+  assert.equal(await runMark(['mark', 't-live', '#1', 'done', '--note', '那一页撤了', '--registry', made.registry], { ...mark.io, env: made.env, requestFn }), 0, mark.err.join('\n'));
+  const posts = calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(posts.map((call) => call.url.replace(/^.*?\/annotations\//, '')), ['app_x1/1/reply', 'app_x1/1/status']);
+  assert.ok(posts.every((call) => call.body.entry === 't-live'));
+
+  calls.length = 0;
+  const reply = recorder();
+  assert.equal(await runReply(['reply', 'demo/gone#4', '文章已经删了', '--registry', made.registry], { ...reply.io, env: made.env, requestFn }), 0, reply.err.join('\n'));
+  const post = calls.find((call) => call.method === 'POST');
+  assert.match(post.url, /\/annotations\/%40canvas\/4\/reply$/);
+  assert.equal(post.body.entry, 'demo_gone');
+});
+
 /* ---- list ---- */
 
 test('runList: 关键词对上口头说法，计数读页桶，找不到时给出路', async (t) => {
@@ -2440,6 +2474,29 @@ test('remove a project: article buckets follow the bucket rule (rows refuse, emp
   for (const id of ['alpha', 'beta', 'gone']) assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `empty bucket demo_${id} removed`);
 });
 
+test('live article: prune clears ledgers of HTML frames that are gone, keeps live frames and fixed ledgers; comments counts only live rows (D)', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const article = path.join(made.content, 'articles', 'alpha');
+  fs.writeFileSync(path.join(article, 'index.mdx'), '---\ntitle: alpha\n---\n\n<Section id="s" title="S">\n\n正文 alpha。\n\n<Canvas frames={["page"]} />\n\n</Section>\n');
+  fs.writeFileSync(path.join(article, 'page.html'), '<!doctype html><p>page</p>');
+  const ledger = (name, docPath, n, content) => fs.writeFileSync(path.join(made.data, 'demo_alpha', name), JSON.stringify({
+    page: name.replace(/\.json$/, ''), path: docPath, revision: 1,
+    annotations: [{ id: `r${n}`, n, type: 'element', status: 'open', content }],
+  }));
+  ledger('page.html_a1.json', '/sites/demo_alpha/page.html', 5, '活帧上的标注');
+  ledger('removed.html_b2.json', '/sites/demo_alpha/removed.html', 6, '删掉的帧上的标注');
+  const dry = recorder();
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--dry-run', '--registry', made.registry], { ...dry.io, env: made.env }), 0, dry.err.join('\n'));
+  assert.deepEqual(dry.out, [path.join(made.data, 'demo_alpha', 'removed.html_b2.json'), '--dry-run：1 本孤儿账本待删（ppnt prune demo_alpha 落盘）。']);
+  const comments = recorder();
+  assert.equal(await runComments(['comments', 'demo/alpha', '--registry', made.registry], { ...comments.io, env: made.env }), 0, comments.err.join('\n'));
+  assert.ok(comments.out.some((line) => /^共 \d+ 条（全量 3）/.test(line)), comments.out.join('\n'));
+  assert.ok(comments.out.some((line) => line.startsWith('## 孤儿标注')), comments.out.join('\n'));
+  const real = recorder();
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--registry', made.registry], { ...real.io, env: made.env }), 0, real.err.join('\n'));
+  assert.deepEqual(fs.readdirSync(path.join(made.data, 'demo_alpha')).sort(), ['@canvas.json', '@prose.json', 'page.html_a1.json']);
+});
+
 test('article buckets as orphans: prune on a live article lists nothing; a deleted article is a whole-bucket orphan in comments / prune, and check says the article is gone', async (t) => {
   const made = makeProjectWithBuckets(t);
   const live = recorder();
@@ -2464,6 +2521,21 @@ test('article buckets as orphans: prune on a live article lists nothing; a delet
   const dry = recorder();
   assert.equal(await runPrune(['prune', 'demo_gone', '--dry-run', '--registry', made.registry], { ...dry.io, env: made.env }), 0);
   assert.deepEqual(dry.out, [`${path.join(made.data, 'demo_gone', '@canvas.json')}（页已不存在，整桶孤儿）`, '--dry-run：1 本孤儿账本待删（ppnt prune demo_gone 落盘）。']);
+});
+
+test('prune 整桶孤儿连桶目录一起删（_seq.json、图片也走），迟到的写不会把它当成还在的桶（O）', async (t) => {
+  const made = makeProjectWithBuckets(t);
+  const bucket = path.join(made.data, 'demo_gone');
+  fs.writeFileSync(path.join(bucket, '_seq.json'), JSON.stringify({ next: 5 }));
+  fs.mkdirSync(path.join(bucket, 'images'));
+  fs.writeFileSync(path.join(bucket, 'images', '@canvas-1-1.png'), 'png');
+  const rec = recorder();
+  assert.equal(await runPrune(['prune', 'demo/gone', '--registry', made.registry], { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
+  assert.ok(!fs.existsSync(bucket), rec.out.join('\n'));
+  assert.ok(rec.out.some((line) => line.includes('桶目录也删了')), rec.out.join('\n'));
+  // 活页的 prune 只删孤儿账本，桶留着。
+  assert.equal(await runPrune(['prune', 'demo/alpha', '--registry', made.registry], { ...recorder().io, env: made.env }), 0);
+  assert.ok(fs.existsSync(path.join(made.data, 'demo_alpha', '@canvas.json')));
 });
 
 test('<project>_<article>#n resolves without a separate target in locate / mark / reply / comments', async (t) => {

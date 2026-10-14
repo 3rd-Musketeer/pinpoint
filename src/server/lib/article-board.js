@@ -179,6 +179,26 @@ export function articleHtmlFrameFile(target, screen) {
 }
 
 /**
+ * 文章画布上现有的 HTML 帧在服务上的地址（解码后的 pathname，标注客户端记进账本 path 的那个形状）→ 帧 id。
+ * 本篇的写成 `/sites/<页 id>/<帧 id>.html`，`{ id, src }` 的写成 `/sites/<页 id>/@root/<路径>` 或
+ * `/sites/<页 id>/@source/<名>/<路径>`。帧要还在正文的 Canvas 里、源文件也解析得到才算：这张表是文章页的
+ * 文档页标注表面（孤儿判定，src/server/lib/orphans.js）。board 缺省从 index.mdx 现派生。
+ */
+export function articleHtmlFramePaths(target, board = null) {
+  const out = new Map();
+  const derived = board || deriveArticleBoard(target).board;
+  for (const section of (derived && derived.sections) || []) {
+    for (const screen of section.screens || []) {
+      if (!screen || typeof screen !== 'object' || !articleHtmlFrameFile(target, screen)) continue;
+      let p = screen.src ? `/${String(screen.src).replace(/^\//, '')}` : `${target.urlBase}${screen.id}.html`;
+      try { p = decodeURIComponent(p); } catch { /* 保持原样 */ }
+      if (!out.has(p)) out.set(p, screen.id);
+    }
+  }
+  return out;
+}
+
+/**
  * 服务地址 → 帧的 src 写法（解码后）：`@root/<路径>` → `<路径>`，`@source/<名>/<路径>` → `<名>:<路径>`。
  * urlPath 可以是 `/sites/<页 id>/…`（开头的 `/` 可有可无），也可以是 `/sites/<页 id>/` 之后的 rel。
  * 不是这两种形状返回 null。

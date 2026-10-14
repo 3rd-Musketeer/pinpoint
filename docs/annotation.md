@@ -102,15 +102,24 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
-`GET /annotations`（不带 page）是调试用的聚合，把每个页桶摊平成 `[{entry, ...doc}]`；
+`GET /annotations`（不带 page）是调试用的聚合，把每个页桶（登记条目、模板页、文章画布页）摊平成 `[{entry, ...doc}]`；
 按页读要带 `?entry=<页 id>`，`GET /images/<name>` 也是。
 
-**孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、存量页不在 registry 与
-manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。`ppnt comments`
+**孤儿**：一本账本对应的表面已不存在（文档文件删了、条目移走了、文章的 HTML 帧移出了 Canvas
+或源文件删了、存量页不在 registry 与 manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤儿）。
+文章桶里 `@canvas.json`、`@prose.json` 恒活，其余账本按本篇、`@root`、`@source` 现有 HTML 帧的地址判
+（`src/server/lib/orphans.js`）。`ppnt comments`
 把孤儿单独列出、不计入 open 等计数；`GET /registry` 的页信息给每页孤儿数（页信息
-面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。孤儿行照样能回复、写状态：
-`ppnt mark` / `reply` 的 `#n`、`#a-#b`、`@a:<id>`、`<页>#n` 也指得到它们（状态和线程端点按账本加序号找行，
-不看画布）；`--status` 批量展开和帧、节展开只走活的行。
+面板显示）；清理只经 `ppnt prune <页> [--dry-run]`，直接删除、不备份。页还在时只删孤儿账本；
+页已不在时连桶目录一起删（`_seq.json`、图片也走）。
+
+孤儿的读写只看一条规则：桶目录在盘上就能读写。活页桶里的孤儿账本和整桶孤儿（页已不在、桶还在，
+比如集成后读时被跳过的老 url 条目的桶）一样：`ppnt comments <页 id>` 列出它们的行，`ppnt mark` / `reply`
+的 `#n`、`#a-#b`、`@a:<id>`、`<页>#n` 都指得到（状态和线程端点按账本加序号找行，不看画布；服务收请求时
+页不在但桶在也放行，`resolveRequestEntry`），CLI 的目标解析也认盘上的桶；`--status` 批量展开和帧、节展开只走活的行。
+反过来，任何写入都不新建页已不在的桶：桶目录不在、页也不在时，`/save`、`/status`、`/reply`、`/image`
+答 `503 bucket_gone`（`annotation-store.js` 的 `mayCreateBucket`），prune、remove、rename 删掉或挪走的桶
+不会被迟到的保存重建出来。
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录

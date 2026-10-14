@@ -4,11 +4,10 @@ import path from 'node:path';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { loadPageContext } from '../../src/server/lib/ann-query.js';
 import { listPageIds, readDistScreen } from '../../src/server/lib/page-compiler.js';
-import { loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
+import { loadRegistry } from '../../src/server/lib/registry.js';
 import { listProjects } from '../../src/server/lib/projects.js';
 import { formatProjectError } from '../../src/shared/project-errors.js';
-import { collectBucketOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
-import { pageIdIsLive } from '../../src/server/lib/page-resolve.js';
+import { readBucketLedgers } from '../../src/server/lib/orphans.js';
 import { buildPageList, formatPageRow, matchPages, scorePage, suggestPages } from '../../src/server/lib/page-list.js';
 import { screenOf } from '../../src/workbench/lib/board-refs.js';
 
@@ -32,6 +31,7 @@ export function loadAnnotateContext(token, parsed, { env, err }) {
   context.address = displayAddress(context.pageId);
   const distRoot = path.join(dataRoot(env), 'dist');
   context.distHtmlFor = (screenId) => {
+    if (!context.target) return null;
     const read = readDistScreen(context.target.entryId, screenId, { distRoot });
     return read.kind === 'ok' ? read.html : null;
   };
@@ -67,25 +67,6 @@ export function reportMissingTarget(token, { registryPath, env, err }) {
   const pageRef = String(toPageRef(token));
   err(`错误：找不到 ${pageRef}`);
   if (!reportPageSuggestions(pageRef, { registryPath, env, err })) printCandidates(ctx, err);
-}
-
-/** 页消失后的整桶孤儿报告；桶也不在时返回 false（调用方走原报错）。 */
-export function printBucketOrphanStatus(pageRef, { env, out }) {
-  if (!pageRef) return false;
-  const names = collectBucketOrphans(String(pageRef), dataRoot(env));
-  if (!names.length) return false;
-  const shown = displayAddress(pageRef);
-  out(`${shown} 不在 registry 与本地页面清单里（文章删了、改名了，或页不在了）；桶里 ${names.length} 本账本全是孤儿：`);
-  for (const name of names) out(`  ${name}`);
-  out(`清理：ppnt prune ${shown}（--dry-run 先看清单）`);
-  return true;
-}
-
-/** 页 id 现在是不是一页（registry 条目、模板页、文章画布页；整桶孤儿报告只给不是页的桶）。 */
-export function pageIdKnown(pageRef, parsed, { env }) {
-  if (!pageRef || !PAGE_ID_PATTERN.test(String(pageRef))) return false;
-  const registry = loadRegistry({ root: REPO_ROOT, path: resolveRegistryPath(parsed.flags, env) });
-  return pageIdIsLive(registry, pageRef, { manifestIds: manifestPageIds(REPO_ROOT) });
 }
 
 /** 命令分发。bin/pinpoint.mjs 只做进程原语与这一次调用。 */

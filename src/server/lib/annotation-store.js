@@ -72,11 +72,12 @@ export function keepAgentMessages(diskMessages, incoming) {
   return out;
 }
 
-/** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt rename` 把它挪走了）。
-    这次写什么都没落盘：临时文件已清掉，旧账本（若还在）原样。路由回 503 bucket_gone。 */
+/** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt rename` 把它挪走了），或者桶不在、
+    页也已不 live（不新建这种桶）。这次写什么都没落盘：临时文件已清掉，旧账本（若还在）原样。
+    路由回 503 bucket_gone。 */
 export class BucketGoneError extends Error {
-  constructor(dataDir, cause) {
-    super(`标注桶 ${dataDir} 在写入途中被删除或移走，这次没写`);
+  constructor(dataDir, cause, message = `标注桶 ${dataDir} 在写入途中被删除或移走，这次没写`) {
+    super(message);
     this.name = 'BucketGoneError';
     this.code = 'bucket_gone';
     this.cause = cause;
@@ -98,6 +99,9 @@ function processAlive(pid) {
 export function createAnnotationStore(options) {
   const dataDir = options.dataDir;
   const now = options.now || (() => new Date());
+  // 桶目录不在时能不能新建：页还 live 才能（docs/annotation.md“孤儿”：任何写入都不新建页面已不
+  // live 的桶）。服务按 pageIdIsLive 接线；缺省 true（单测与只认 live 页的调用方）。
+  const mayCreateBucket = options.mayCreateBucket || (() => true);
   let tempSequence = 0;
   // 每本账本最后一次 /save 写出的 { revision, saveId }（只在内存里）：离开页面时的快照带
   // after = 在途那次的 saveId，在途那次先落盘时快照照样接上（见 save 的 after）。服务重启后
@@ -146,11 +150,21 @@ export function createAnnotationStore(options) {
     }
   }
 
+  /** 桶目录在就直接写；不在时只给 live 的页新建，否则抛 BucketGoneError（prune 刚删掉的整桶孤儿
+      不会被迟到的保存重建出来）。 */
+  function ensureBucket() {
+    if (fs.existsSync(dataDir)) return;
+    if (!mayCreateBucket()) {
+      throw new BucketGoneError(dataDir, null, `标注桶 ${dataDir} 不在了，它的页也已不在；不新建这个桶，这次没写`);
+    }
+    fs.mkdirSync(dataDir, { recursive: true });
+  }
+
   /** 原子写：同目录临时文件 → fsync → rename。读者只会看到旧文件或新文件，不会读到半份。
       桶目录在这期间被删 / 被挪走（ENOENT）时清掉临时文件、抛 BucketGoneError；
       别的错清掉临时文件后原样抛。 */
   function writeFileAtomic(destination, text) {
-    fs.mkdirSync(dataDir, { recursive: true });
+    ensureBucket();
     sweepStaleTemps();
     const temp = `${destination}.tmp-${process.pid}-${++tempSequence}`;
     let fd;
@@ -480,6 +494,7 @@ export function createAnnotationStore(options) {
   function writeImage(page, extension, bytes) {
     const safePage = ledgerKey(page);
     const imagesDir = path.join(dataDir, 'images');
+    ensureBucket();
     fs.mkdirSync(imagesDir, { recursive: true });
     const name = `${safePage}-${now().getTime()}-${++tempSequence}.${extension}`;
     const file = path.join(imagesDir, name);

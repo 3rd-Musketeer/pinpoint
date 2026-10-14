@@ -11,6 +11,8 @@ import {
   ledgerIsOrphan,
   pageSurfaceSpaces,
 } from './orphans.js';
+import { resolveArticleTarget } from './page-resolve.js';
+import { loadRegistry } from './registry.js';
 
 function withFixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-orphans-'));
@@ -136,3 +138,56 @@ test('ledgerIsOrphan：子目录索引页与字面 % 文件名都不是孤儿（
   assert.equal(ledgerIsOrphan({ name: 'gone.json', doc: { path: '/sites/site-a/sub/gone.html' } }, spaces), true, '子目录里的文件真没了照判');
 });
 
+
+/** 一个登记了的 project，文章 notes 有本篇、@root、@source 三种 HTML 帧和一个 JSX 帧。 */
+function withArticle(t) {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-orphans-article-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const root = path.join(dir, 'proj');
+  const content = path.join(root, 'docs', 'pinpoint');
+  const article = path.join(content, 'articles', 'notes');
+  const write = (file, text) => {
+    fs.mkdirSync(path.dirname(file), { recursive: true });
+    fs.writeFileSync(file, text);
+  };
+  write(path.join(content, 'project.json'), JSON.stringify({ id: 'proj', title: 'P', sources: { kit: '../kit' } }));
+  write(path.join(article, 'index.mdx'), '---\ntitle: N\n---\n\n<Section id="a" title="A">\n\n'
+    + '<Canvas frames={["live", "card", { id: "cat", src: "shared/cat.html" }, { id: "wid", src: "kit:w.html" }]} />\n\n</Section>\n');
+  write(path.join(article, 'live.html'), '<!doctype html><p>live</p>');
+  write(path.join(article, 'dropped.html'), '<!doctype html><p>不在 Canvas 里了</p>');
+  write(path.join(article, 'card.jsx'), 'export default () => <p>card</p>;\n');
+  write(path.join(root, 'shared', 'cat.html'), '<!doctype html><p>cat</p>');
+  write(path.join(dir, 'kit', 'w.html'), '<!doctype html><p>w</p>');
+  write(path.join(dir, 'registry.json'), JSON.stringify({ version: 1, entries: [{ id: 'proj', kind: 'project', path: root }] }));
+  const registry = loadRegistry({ path: path.join(dir, 'registry.json'), root: dir, log: () => {} });
+  const dataRoot = path.join(dir, 'data');
+  return { dir, root, article, registry, dataRoot, target: resolveArticleTarget(registry, 'proj_notes') };
+}
+
+test('文章页：本篇、@root、@source 的活 HTML 帧不是孤儿；删掉的帧、移出 Canvas 的帧、别篇的路径是（D）', (t) => {
+  const { article, registry, dataRoot, target } = withArticle(t);
+  assert.ok(target, '文章是活页');
+  const bucket = path.join(dataRoot, 'proj_notes');
+  writeLedger(bucket, '@canvas.json', { page: '@canvas', path: '@canvas', annotations: [] });
+  writeLedger(bucket, '@prose.json', { page: '@prose', path: '/proj/notes/', annotations: [] });
+  writeLedger(bucket, 'live.html~1.json', { page: 'live.html~1', path: '/sites/proj_notes/live.html', annotations: [] });
+  writeLedger(bucket, 'cat.html~2.json', { page: 'cat.html~2', path: '/sites/proj_notes/@root/shared/cat.html', annotations: [] });
+  writeLedger(bucket, 'w.html~3.json', { page: 'w.html~3', path: '/sites/proj_notes/@source/kit/w.html', annotations: [] });
+  // 帧文件删了（Canvas 里也没有它）：Codex F6 的复现形态。
+  writeLedger(bucket, 'removed.html~4.json', { page: 'removed.html~4', path: '/sites/proj_notes/removed.html', annotations: [] });
+  // 文件还在盘上、帧已经从 Canvas 移走：画布视图里没有这个文档条目了。
+  writeLedger(bucket, 'dropped.html~5.json', { page: 'dropped.html~5', path: '/sites/proj_notes/dropped.html', annotations: [] });
+  // 别篇文章的地址错放在本桶。
+  writeLedger(bucket, 'x.html~6.json', { page: 'x.html~6', path: '/sites/proj_other/x.html', annotations: [] });
+  const orphans = () => collectPageOrphans({ pageId: 'proj_notes', dataRoot, entries: registry.entries, article: target }).sort();
+  assert.deepEqual(orphans(), ['dropped.html~5.json', 'removed.html~4.json', 'x.html~6.json']);
+
+  // 活帧的源文件删了：这一帧在画布上是错误面板，它的账本跟着成孤儿。
+  fs.rmSync(path.join(article, 'live.html'));
+  assert.deepEqual(orphans(), ['dropped.html~5.json', 'live.html~1.json', 'removed.html~4.json', 'x.html~6.json']);
+
+  // /registry 的计数口径同一张表（行数）。
+  writeLedger(bucket, 'removed.html~4.json', { page: 'removed.html~4', path: '/sites/proj_notes/removed.html', annotations: [{ id: 'r1' }, { id: 'r2' }] });
+  const counts = collectOrphanCounts({ entries: registry.entries, dataRoot, localIds: [], root: dataRoot, articleTargets: [target] });
+  assert.equal(counts.proj_notes, 2);
+});

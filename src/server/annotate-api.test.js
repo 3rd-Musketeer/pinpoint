@@ -462,3 +462,85 @@ test('article bucket: prose comments save to <project>_<article>/@prose.json; /r
   assert.equal(ghost.res.statusCode, 400);
   assert.equal(ghost.json.error, 'unknown_entry');
 });
+
+test('整桶孤儿：桶目录在盘上就能读、写状态、回复；桶不在或 id 不合页 id 形状照旧 400（E）', async (t) => {
+  const { dataRoot, registry, handler } = withFixture(t);
+  // 页已不在（文章删了、条目撤登记，或集成后被跳过的老 url 条目）：桶还在盘上。
+  const bucket = path.join(dataRoot, 'gone-page');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'app_x1.json'), JSON.stringify({
+    page: 'app_x1', path: '/sites/gone-page/app', revision: 2,
+    annotations: [{ id: 'u1', n: 1, type: 'element', status: 'open', content: '线上页意见' }],
+  }));
+  assert.deepEqual(resolveRequestEntry(registry, 'gone-page', [], { dataRoot }), { entry: 'gone-page' });
+  assert.deepEqual(resolveRequestEntry(registry, 'no-bucket', [], { dataRoot }), { entry: 'no-bucket', unknown: true });
+  // 桶检查只认页 id 形状：`..` 之类不拿去拼路径。
+  fs.mkdirSync(path.join(path.dirname(dataRoot), 'outside'), { recursive: true });
+  assert.deepEqual(resolveRequestEntry(registry, '../outside', [], { dataRoot }), { entry: '../outside', unknown: true });
+
+  const read = await call(handler, 'GET', '/annotations/app_x1?entry=gone-page');
+  assert.equal(read.res.statusCode, 200);
+  assert.equal(read.json.revision, 2);
+  const reply = await call(handler, 'POST', '/annotations/app_x1/1/reply', { entry: 'gone-page', baseRevision: 2, text: '那一页已经撤了' });
+  assert.equal(reply.res.statusCode, 200, JSON.stringify(reply.json));
+  const status = await call(handler, 'POST', '/annotations/app_x1/1/status', { entry: 'gone-page', baseRevision: 3, status: 'done' });
+  assert.equal(status.res.statusCode, 200, JSON.stringify(status.json));
+  const disk = JSON.parse(fs.readFileSync(path.join(bucket, 'app_x1.json'), 'utf8'));
+  assert.equal(disk.annotations[0].status, 'done');
+  assert.deepEqual(disk.annotations[0].messages.map((m) => [m.who, m.text]), [['agent', '那一页已经撤了']]);
+
+  const ghost = await call(handler, 'POST', '/annotations/app_x1/1/status', { entry: 'no-bucket', baseRevision: 0, status: 'done' });
+  assert.equal(ghost.res.statusCode, 400);
+  assert.equal(ghost.json.error, 'unknown_entry');
+  assert.ok(!fs.existsSync(path.join(dataRoot, 'no-bucket')));
+});
+
+test('桶被 prune 掉以后迟到的保存不把它写回来：页已不在就 503 bucket_gone，桶不重建（O）', async (t) => {
+  const { dataRoot, handler } = withFixture(t);
+  const bucket = path.join(dataRoot, 'gone-page');
+  fs.mkdirSync(bucket, { recursive: true });
+  // 入口校验时桶还在（整桶孤儿放行）；读账本那一刻 prune 把整个桶删了。
+  const originalExists = fs.existsSync;
+  t.mock.method(fs, 'existsSync', (p) => {
+    if (String(p) === path.join(bucket, '@canvas.json')) fs.rmSync(bucket, { recursive: true, force: true });
+    return originalExists(p);
+  });
+  const { res, json } = await call(handler, 'POST', '/save', { page: '@canvas', entry: 'gone-page', baseRevision: 0, annotations: [{ content: '关页补发' }] });
+  t.mock.restoreAll();
+  assert.equal(res.statusCode, 503, JSON.stringify(json));
+  assert.equal(json.error, 'bucket_gone');
+  assert.ok(!fs.existsSync(bucket), '桶没有被重建');
+  // 图片同一条：桶不在、页也不在，不新建。
+  fs.mkdirSync(bucket, { recursive: true });
+  const originalStat = fs.statSync;
+  let gate = false;
+  t.mock.method(fs, 'statSync', (p, ...rest) => {
+    const out = originalStat(p, ...rest);
+    if (!gate && String(p) === bucket) { gate = true; fs.rmSync(bucket, { recursive: true, force: true }); }
+    return out;
+  });
+  const image = await call(handler, 'POST', '/image', { page: '@canvas', entry: 'gone-page', data: 'data:image/png;base64,eA==' });
+  t.mock.restoreAll();
+  assert.equal(image.res.statusCode, 503, JSON.stringify(image.json));
+  assert.ok(!fs.existsSync(bucket), '图片也不重建桶');
+});
+
+test('GET /annotations 的聚合也摊平文章桶（Q）', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-agg-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const dataRoot = path.join(dir, 'data');
+  const registryFile = path.join(dir, 'registry.json');
+  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'e2e', 'project-site');
+  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'e2e-project', kind: 'project', path: projectRoot }] }));
+  const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
+  const handler = createAnnotateHandler({ dataRoot, registry });
+  const entry = 'e2e-project_commit-confirm';
+  const saved = await call(handler, 'POST', '/save', {
+    page: '@prose', entry, path: '/e2e-project/commit-confirm/', baseRevision: 0,
+    annotations: [{ id: 'p1', type: 'prose', content: '这句改短', quote: { exact: '先弹' }, messages: [] }],
+  });
+  assert.equal(saved.res.statusCode, 200);
+  const { json } = await call(handler, 'GET', '/annotations');
+  const rows = json.filter((doc) => doc.entry === entry);
+  assert.deepEqual(rows.map((doc) => [doc.page, doc.annotations.length]), [['@prose', 1]]);
+});

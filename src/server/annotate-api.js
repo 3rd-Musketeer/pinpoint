@@ -1,14 +1,14 @@
 import { collectPageTimes } from './lib/page-times.js';
 import { collectOrphanCounts } from './lib/orphans.js';
-import { pageIdIsLive } from './lib/page-resolve.js';
+import { listArticleTargets, pageIdIsLive } from './lib/page-resolve.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { bucketDir, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
+import { bucketDir, bucketOnDisk, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { etagMatches } from './lib/etag.js';
-import { ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
+import { BucketGoneError, ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
 import { manifestPageIds } from './lib/page-manifest.js';
 import { loadRegistry } from './lib/registry.js';
 import { listProjects } from './lib/projects.js';
@@ -155,11 +155,15 @@ function handleSse(req, res) {
 // 共用，common-m1.md §2），project 登记了、文章的 index.mdx 在盘上才算
 // （page-resolve.js）；project id 本身不是桶。判定在 page-resolve.js 的 pageIdIsLive，
 // prune 与孤儿报告用同一处。
-export function resolveRequestEntry(registry, raw, localIds = []) {
+// 页已不在、桶目录还在盘上（整桶孤儿：文章删了、条目撤了登记）也放行：孤儿照样能读、回复、
+// 写状态，清理只经 prune（docs/annotation.md“孤儿”）。不新建这种桶，见 storeFor 的 mayCreateBucket。
+export function resolveRequestEntry(registry, raw, localIds = [], { dataRoot: root = null } = {}) {
   const id = raw === undefined || raw === null || raw === '' ? DEFAULT_ENTRY : String(raw);
-  const known = id === DEFAULT_ENTRY || pageIdIsLive(registry, id, { manifestIds: localIds });
+  const known = id === DEFAULT_ENTRY || pageIdIsLive(registry, id, { manifestIds: localIds })
+    || (root !== null && bucketOnDisk(root, id));
   return known ? { entry: id } : { entry: id, unknown: true };
 }
+
 
 export function createAnnotateHandler(options = {}) {
   const root = options.dataRoot || dataRoot();
@@ -181,8 +185,12 @@ export function createAnnotateHandler(options = {}) {
 
   function storeFor(entryId) {
     if (!stores.has(entryId)) {
-      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页。
-      stores.set(entryId, createAnnotationStore({ dataDir: bucketDir(root, entryId) }));
+      // 桶 = 页：桶 id 就是页 id，账本整体属于这个页。桶目录不在时只给 live 的页新建：
+      // 整桶孤儿在盘上照样能写，被 prune 删掉以后迟到的写不把它重建出来（503 bucket_gone）。
+      stores.set(entryId, createAnnotationStore({
+        dataDir: bucketDir(root, entryId),
+        mayCreateBucket: () => entryId === DEFAULT_ENTRY || pageIdIsLive(registry, entryId, { manifestIds: knownPageIds() }),
+      }));
     }
     return stores.get(entryId);
   }
@@ -195,7 +203,7 @@ export function createAnnotateHandler(options = {}) {
     // 清理只经 ppnt prune）。
     const articles = articlePageRows(registry);
     const orphanCounts = collectOrphanCounts({
-      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleIds: articles.map((row) => row.id),
+      entries: registry.entries, dataRoot: root, localIds, root: serviceRoot, articleTargets: listArticleTargets(registry),
     });
     for (const [id, count] of Object.entries(orphanCounts)) {
       if (pageTimes[id]) pageTimes[id].orphans = count;
@@ -250,7 +258,7 @@ export function createAnnotateHandler(options = {}) {
   // Shared entry gate: resolve the request's target entry or answer the loud
   // 400. Returns the entry id, or null after sending the rejection.
   function entryOrReject(res, raw) {
-    const target = resolveRequestEntry(registry, raw, knownPageIds());
+    const target = resolveRequestEntry(registry, raw, knownPageIds(), { dataRoot: root });
     if (target.unknown) {
       sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
       return null;
@@ -376,10 +384,11 @@ export function createAnnotateHandler(options = {}) {
       match: '/annotations',
       run: ({ res }) => {
         // Debug aggregate: flatten every bucket into [{entry, page, ...}]. 桶 = 页：
-        // registry 条目 + manifest 模板页都是页桶，都在列。
+        // registry 条目、manifest 模板页、文章画布页都是页桶，都在列。
         const docs = [];
         const seen = new Set();
-        for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds()]) {
+        const articleIds = listArticleTargets(registry).map((target) => target.entryId);
+        for (const id of [...registry.entries.map((entry) => entry.id), ...knownPageIds(), ...articleIds]) {
           if (seen.has(id)) continue;
           seen.add(id);
           for (const doc of Object.values(storeFor(id).listDocs())) {
@@ -535,7 +544,14 @@ export function createAnnotateHandler(options = {}) {
           return true;
         }
         const extension = ['jpeg', 'jpg', 'webp', 'gif'].includes(match[1]) ? match[1] : 'png';
-        const image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
+        let image;
+        try {
+          image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
+        } catch (error) {
+          if (!(error instanceof BucketGoneError)) throw error;
+          sendJson(res, 503, { error: error.code, detail: error.message });
+          return true;
+        }
         sendJson(res, 200, image);
         return true;
       },

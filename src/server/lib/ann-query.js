@@ -20,7 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { dataRoot } from './annotate-data-dir.js';
+import { bucketOnDisk, dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
 import { manifestPageIds } from './page-manifest.js';
@@ -163,6 +163,7 @@ function contextWithRows({ registry, repoRoot, dataRootValue, pageId, target, bo
     entries: registry.entries,
     isManifestPage,
     previewsRoot: path.join(repoRoot, 'content', 'previews'),
+    article: target && target.kind === 'article' ? target : null,
   });
   const collected = collectPageRows({
     root: dataRootValue,
@@ -196,8 +197,10 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
   if (!target) {
     // 文章页 `<project>_<article>` 不走这里：index.mdx 在盘上时 resolvePageTarget 已返回
     // kind 'article' 的目标（没编译过也是），不在盘上就不是页。
-    const page = resolvePage(registry, pageRef);
-    const entry = page && page.kind === 'entry' ? page.entry : null;
+    const page = resolvePage(registry, pageRef, { manifestIds: manifestPageIds(repoRoot) });
+    // 页已不在、桶还在盘上：整桶孤儿，照样能列、能 mark / reply（docs/annotation.md“孤儿”）。
+    if (!page) return bucketOrphanContext(dataRootValue, pageRef);
+    const entry = page.kind === 'entry' ? page.entry : null;
     if (!entry || (entry.kind !== 'dir' && entry.kind !== 'file')) return null;
     const docTarget = {
       entryId: entry.id,
@@ -224,6 +227,38 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
     board,
     isManifestPage: (resolvePage(registry, target.entryId, { manifestIds: manifestPageIds(repoRoot) }) || {}).kind === 'template',
   });
+}
+
+/**
+ * 页已不在（文章删了或改了名、project 或条目撤了登记）而桶目录还在盘上：整桶皆孤儿。
+ * 全部行进 orphanRows，带上各自的账本：不计数，`#n`、`@a:<id>`、`<页>#n` 照样指得到，mark / reply
+ * 按账本加序号写回。没有板，也没有编译面。桶不在（或 id 不合页 id 形状）时 null。
+ */
+export function bucketOrphanContext(dataRootValue, pageId) {
+  if (!bucketOnDisk(dataRootValue, pageId)) return null;
+  const ledgers = readBucketLedgers(path.join(dataRootValue, String(pageId)));
+  const orphanRows = ledgers.flatMap(({ name, doc }) => (Array.isArray(doc && doc.annotations) ? doc.annotations : [])
+    .map((row) => normalizeAnnotation(row))
+    .filter((row) => row && typeof row === 'object')
+    .map((row) => ({
+      ...row,
+      __bucket: String(pageId),
+      __ledger: name.replace(/\.json$/, ''),
+      __docPath: typeof doc.path === 'string' ? doc.path : '',
+    })));
+  return {
+    pageId: String(pageId),
+    target: null,
+    board: null,
+    refs: boardRefs({}),
+    frameRows: [],
+    docRows: [],
+    orphanLedgers: ledgers.map((ledger) => ledger.name),
+    orphanRows,
+    article: null,
+    docOnly: true,
+    bucketOrphan: true,
+  };
 }
 
 function orphanLedgerOf(row, orphanLedgers, bucketPath) {
@@ -707,6 +742,7 @@ export function buildCheckReport(context, options = {}) {
     status,
     groupBy,
     docOnly: !!context.docOnly,
+    ...(context.bucketOrphan ? { bucketOrphan: { ledgers: context.orphanLedgers || [] } } : {}),
     ...(context.article ? { article: context.article } : {}),
     groups,
     counts: countByStatus([...context.frameRows, ...context.docRows]),
@@ -797,6 +833,22 @@ export function countByStatus(rows) {
 export function formatCheckMarkdown(report, { imagePaths = null } = {}) {
   const lines = [];
   // address：CLI 给的显示地址（文章是 <project>/<article>），缺省用页 id。
+  if (report.bucketOrphan) {
+    // 整桶孤儿：页已不在，只有孤儿组；行照样能回复、写状态，清理由 owner 走 prune。
+    const shown = report.address || report.page;
+    const ledgers = report.bucketOrphan.ledgers;
+    lines.push(`${shown} 不在 registry 与本地页面清单里（文章删了、改名了，或页不在了）；桶里 ${ledgers.length} 本账本全是孤儿：`);
+    for (const name of ledgers) lines.push(`  ${name}`);
+    lines.push(`还没关的照样回：ppnt mark ${shown} '#n' check|done --note "<回复>"、ppnt reply；清理：ppnt prune ${shown}（--dry-run 先看清单）`);
+    for (const group of report.groups) {
+      lines.push('', `## ${group.title}`);
+      for (const row of group.rows) {
+        lines.push([`[#${displayN(row)}]`, row.content, `· ${row.intent}`, `· ${row.status}`, row.docPath ? `· ${row.docPath}` : ''].filter(Boolean).join(' '));
+        for (const m of row.messages || []) lines.push(`  ${m.who}${m.at ? `（${shortTime(m.at)}）` : ''}：${m.text}`);
+      }
+    }
+    return lines;
+  }
   lines.push(`# ${report.address || report.page} · 标注队列（${report.status}）`);
   const total = report.groups.reduce((sum, group) => sum + group.rows.length, 0);
   const c = report.counts;

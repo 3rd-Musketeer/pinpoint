@@ -219,7 +219,9 @@ test('标注队列：文档帧账本里的行按路径对回帧，带编号；ma
   const registryPath = path.join(dir, 'registry.json');
   const context = loadPageContext({ pageRef: pageId, registryPath, root: dir, dataRootDir: path.join(dir, 'data') });
   assert.deepEqual(context.frameRows.map((r) => [r.n, r.screenId, r.__ledger]).sort(), [[1, 'long', 'long.html~x'], [2, 'cat', 'cat.html~y']]);
-  assert.deepEqual(context.docRows.map((r) => r.n), [3]);
+  // 不是任何 HTML 帧的路径：文章页上没有这个表面，账本是孤儿（不计数，prune 清得掉）。
+  assert.deepEqual(context.docRows.map((r) => r.n), []);
+  assert.deepEqual(context.orphanRows.map((r) => r.n), [3]);
   const distHtmlFor = (id) => {
     try { return fs.readFileSync(path.join(dir, 'data', 'dist', pageId, `${id}.html`), 'utf8'); } catch { return null; }
   };
