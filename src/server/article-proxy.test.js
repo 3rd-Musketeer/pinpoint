@@ -15,6 +15,7 @@ function fakeDevServer(snapshot, extra = {}) {
     ensure() { this.ensured++; return snapshot; },
     snapshot: () => snapshot,
     noteUnreachable() {},
+    whenReady() { return Promise.resolve(snapshot); },
     logTail: () => ['line 1', '<b>line 2</b>'],
     ...extra,
   };
@@ -68,10 +69,16 @@ test('站点没就绪：导航给启动中页（503，自动刷新），failed �
   assert.match(res2.text, /content="5"/);
 });
 
-test('来源：别的网页发来的写请求与 websocket upgrade 回 403，不拉起站点；自己的来源与没有 Origin 照常', () => {
+/** mockRes 写完（等站点的子资源是异步回的）。 */
+async function ended(res) {
+  for (let i = 0; i < 200 && !res.writableEnded; i++) await new Promise((resolve) => setTimeout(resolve, 5));
+  return res;
+}
+
+test('来源：别的网页发来的写请求与 websocket upgrade 回 403，不拉起站点；自己的来源与没有 Origin 照常', async () => {
   const dev = fakeDevServer({ state: 'starting', port: 4530, command: 'x' });
   const origins = new Set(['https://pinpoint.localhost']);
-  const handle = createArticleHandler({ isProject, devServer: dev, origins });
+  const handle = createArticleHandler({ isProject, devServer: dev, origins, resourceWaitMs: 50 });
   const post = mockReq('POST', '/demo/a/');
   post.headers.origin = 'https://evil.example';
   const res = mockRes();
@@ -90,7 +97,7 @@ test('来源：别的网页发来的写请求与 websocket upgrade 回 403，不
   getFromElsewhere.headers.origin = 'https://evil.example';
   const got = mockRes();
   handle(getFromElsewhere, got);
-  assert.equal(got.statusCode, 503, '别的来源的 GET 放行（不转发 Origin，见集成测试）');
+  assert.equal((await ended(got)).statusCode, 503, '别的来源的 GET 放行（不转发 Origin，见集成测试）；站点一直没就绪，等满时限回 503');
 
   const upgrade = createArticleUpgradeHandler({ devServer: dev, origins });
   const written = [];
@@ -154,4 +161,71 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
   const head = await fetch(`${origin}/demo/a/`, { method: 'HEAD' });
   assert.equal(head.status, 200);
   assert.equal(head.headers.get('content-length'), null);
+});
+
+/** 起一个本机 http 服务，t.after 关掉；返回端口。 */
+async function listen(t, server) {
+  await new Promise((resolve) => server.listen(0, '127.0.0.1', resolve));
+  t.after(() => server.close());
+  return server.address().port;
+}
+
+test('上游关掉了复用的空闲连接：GET 换新连接重发一次，不当成站点没了', async (t) => {
+  // 上游在同一条 keep-alive 连接上的第二个请求到来时直接断开：和它恰好关掉空闲连接、
+  // 代理同时在这条连接上发请求是同一个结果（ECONNRESET，reusedSocket = true）。
+  const seen = new WeakMap();
+  const upstream = http.createServer((req, res) => {
+    const count = (seen.get(req.socket) || 0) + 1;
+    seen.set(req.socket, count);
+    if (count > 1) { req.socket.destroy(); return; }
+    res.writeHead(200, { 'Content-Type': 'text/javascript' });
+    res.end(`// ${req.url}`);
+  });
+  const port = await listen(t, upstream);
+  let unreachable = 0;
+  const dev = fakeDevServer({ state: 'ready', port }, { noteUnreachable() { unreachable++; } });
+  const handle = createArticleHandler({ isProject, devServer: dev });
+  const origin = `http://127.0.0.1:${await listen(t, http.createServer((req, res) => {
+    if (!handle(req, res)) { res.statusCode = 404; res.end('next'); }
+  }))}`;
+
+  for (const name of ['a.js', 'b.js', 'c.js']) {
+    const res = await fetch(`${origin}/_astro/${name}`);
+    assert.equal(res.status, 200, name);
+    assert.equal(await res.text(), `// /_astro/${name}`);
+  }
+  assert.equal(unreachable, 0);
+});
+
+test('站点在重启：子资源等它就绪再转发，导航照旧给启动中页；等不到回 503', async (t) => {
+  const upstream = http.createServer((req, res) => {
+    res.writeHead(200, { 'Content-Type': 'text/css' });
+    res.end('body{}');
+  });
+  const port = await listen(t, upstream);
+  const snapshot = { state: 'starting', port, command: 'x' };
+  let release;
+  const ready = new Promise((resolve) => { release = resolve; });
+  const dev = fakeDevServer(snapshot, { whenReady: () => ready });
+  const handle = createArticleHandler({ isProject, devServer: dev, resourceWaitMs: 5000 });
+  const origin = `http://127.0.0.1:${await listen(t, http.createServer((req, res) => {
+    if (!handle(req, res)) { res.statusCode = 404; res.end('next'); }
+  }))}`;
+
+  const nav = await fetch(`${origin}/demo/a/`, { headers: { accept: 'text/html' } });
+  assert.equal(nav.status, 503);
+  const css = fetch(`${origin}/_astro/site.css`);
+  await new Promise((resolve) => setTimeout(resolve, 50));
+  snapshot.state = 'ready';
+  release(snapshot);
+  const got = await css;
+  assert.equal(got.status, 200);
+  assert.equal(await got.text(), 'body{}');
+
+  const stuck = fakeDevServer({ state: 'restarting', port, command: 'x' }, { whenReady: () => new Promise(() => {}) });
+  const res = mockRes();
+  createArticleHandler({ isProject, devServer: stuck, resourceWaitMs: 30 })(mockReq('GET', '/_astro/x.js'), res);
+  assert.equal(res.writableEnded, false, '等的时候不回');
+  assert.equal((await ended(res)).statusCode, 503);
+  assert.match(res.text, /starting/);
 });

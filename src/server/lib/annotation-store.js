@@ -99,6 +99,10 @@ export function createAnnotationStore(options) {
   const dataDir = options.dataDir;
   const now = options.now || (() => new Date());
   let tempSequence = 0;
+  // 每本账本最后一次 /save 写出的 { revision, saveId }（只在内存里）：离开页面时的快照带
+  // after = 在途那次的 saveId，在途那次先落盘时快照照样接上（见 save 的 after）。服务重启后
+  // 记录没了，快照按普通 baseRevision 判，最坏回到 409。
+  const lastSave = new Map();
 
   function jsonPathFor(page) {
     return path.join(dataDir, `${ledgerKey(page)}.json`);
@@ -319,7 +323,14 @@ export function createAnnotationStore(options) {
       return { status: 400, error: 'invalid_base_revision', doc: readDoc(safePage) };
     }
     const disk = readDoc(safePage);
-    if (disk.revision !== input.baseRevision) {
+    // after：客户端离开页面时，上一次保存还在路上，又改过一版。这份快照以 baseRevision 为底，
+    // 声明“我接在 saveId = after 那次保存之后”。盘上正好是那次保存写出的下一版时照样落盘；
+    // 快照先到时它按 baseRevision 落盘，在途那次随后 409。两份请求谁先到，盘上都是快照。
+    const previous = lastSave.get(safePage);
+    const followsInflight = typeof input.after === 'string' && input.after !== ''
+      && previous && previous.saveId === input.after
+      && previous.revision === disk.revision && disk.revision === input.baseRevision + 1;
+    if (disk.revision !== input.baseRevision && !followsInflight) {
       return { status: 409, error: 'revision_conflict', doc: disk };
     }
     const list = Array.isArray(input.annotations) ? input.annotations : [];
@@ -371,6 +382,8 @@ export function createAnnotationStore(options) {
     } catch (error) {
       return bucketGone(safePage, error);
     }
+    if (typeof input.saveId === 'string' && input.saveId) lastSave.set(safePage, { revision: doc.revision, saveId: input.saveId });
+    else lastSave.delete(safePage);
     collectUnusedImages(safePage, annotations);
     return { status: 200, doc };
   }

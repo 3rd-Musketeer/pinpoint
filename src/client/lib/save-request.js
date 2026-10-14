@@ -16,6 +16,15 @@ export function byteLength(text) {
   return text.length * 3;
 }
 
+/**
+ * One id per POST /save. A snapshot sent while leaving the page names the save
+ * still in flight as `after`, so the server accepts it whichever of the two
+ * arrives first (annotation-store `save`, docs/annotation.md).
+ */
+export function newSaveId() {
+  return Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+}
+
 /** Request options for one save body (a JSON string). */
 export function saveInit(text) {
   const init = { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: text };

@@ -691,6 +691,16 @@ stage.addEventListener('wheel', function (e) {
   useWorkbenchStore.subscribe(function () { syncBoardSelection(); });
 })();
 
+/** 按当前活动页重摆板（HMR 广播用）。停在「页面不存在」面板时不装板：activePageId 是那个
+    坏 id，拿它装板只会把面板换成「加载失败」，坏的是哪个 id 也跟着看不见了（2026-10-14，
+    ?page= 失效用例满载下偶发）。登记表变了的那条路另外处理（registry:update）。 */
+function reloadActiveBoard() {
+  var state = wbGet();
+  if (!boardPanel || !state.activePageId || state.missingPageId) return;
+  snapshotPageViewport(state.activePageId);
+  loadBoard(boardPanel, state.activePageId);
+}
+
 if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
@@ -699,10 +709,7 @@ if (import.meta.hot) {
     // board/screen；pp2 起屏内容就是 dist，客户端没有 include 缓存可失效。
     queryClient.invalidateQueries({ queryKey: ['board', id] });
     queryClient.invalidateQueries({ queryKey: ['screen', id] });
-    if (id === wbGet().activePageId) {
-      snapshotPageViewport(wbGet().activePageId);
-      loadBoard(boardPanel, wbGet().activePageId);
-    }
+    if (id === wbGet().activePageId) reloadActiveBoard();
   });
   // pp3：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
   // 左栏「文章」组重读 /api/projects；新文章的画布页要进 manifest.articles 才点得开，
@@ -731,9 +738,14 @@ if (import.meta.hot) {
     // project 条目增删也走这条（pinpoint add --project / remove → POST /registry/reload）。
     loadProjects();
     loadPageManifest().then(function () {
-      if (!boardPanel || !wbGet().activePageId) return;
-      snapshotPageViewport(wbGet().activePageId);
-      loadBoard(boardPanel, wbGet().activePageId);
+      var missing = wbGet().missingPageId;
+      if (!missing) {
+        reloadActiveBoard();
+        return;
+      }
+      // 停在「页面不存在」面板：那个 id 登记上了就直接打开，还没有就重画同一张面板。
+      if (deepLinkPageExists(missing)) setActivePage(missing, { force: true });
+      else showMissingPage(missing);
     });
   });
 }

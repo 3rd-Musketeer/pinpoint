@@ -577,6 +577,8 @@ export function createAnnotateHandler(options = {}) {
           path: body.path,
           updated_at: body.updated_at,
           baseRevision: body.baseRevision,
+          saveId: body.saveId,
+          after: body.after,
           annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
         });
         if (result.status !== 200) {

@@ -25,7 +25,7 @@ import {
   targetContentToStorage,
 } from '../shared/annotation-indicator.js';
 import { pickContained } from './lib/annotate-hit-test.js';
-import { onPageLeave, postSave as postSaveTo } from './lib/save-request.js';
+import { newSaveId, onPageLeave, postSave as postSaveTo } from './lib/save-request.js';
 import { annotationSlug } from '../shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
 import {
@@ -137,6 +137,7 @@ import { startProseComments } from './prose-comments.js';
   var settleWaiters = [];     // whenSettled 的等待者：hydrate 落地后一次性放行
   var inflightSync = null;    // 在途 /save：Promise<{ok,status,data}|null>，换账本时交给 outbox 接着等
   var inflightVersion = 0;    // 在途 /save 带的 mutationVersion
+  var inflightSaveId = '';    // 在途 /save 的 saveId：离开页面时的快照用 after 声明接在它之后
   var ledgerOutbox = Object.create(null); // 账本键 → 换账本时没落盘的写（Promise，永不 reject）
   var eventSource = null;
   var serverOnline = false;   // SSE OPEN liveness only (not hydrate/POST success)
@@ -962,6 +963,7 @@ import { startProseComments } from './prose-comments.js';
     inflightVersion = sentVersion;
     var sentEpoch = syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
     var body = saveBody(revision);
+    inflightSaveId = body.saveId;
     var sent = postSave(body);
     inflightSync = sent.catch(function () { return null; });
     sent
@@ -1007,23 +1009,29 @@ import { startProseComments } from './prose-comments.js';
     return postSaveTo(SERVER, body);
   }
 
-  function saveBody(baseRevision) {
-    return {
+  /** 每次 /save 一个 saveId；after = 这份快照接在哪次在途保存之后（离开页面时用，见 flushOnLeave）。 */
+  function saveBody(baseRevision, after) {
+    var body = {
       page: PAGE,
       entry: ENTRY,
       path: decodeURIComponent(LEDGER_PATHNAME),
       updated_at: new Date().toISOString(),
       baseRevision: baseRevision,
+      saveId: newSaveId(),
       annotations: marks.slice()
     };
+    if (after) body.after = after;
+    return body;
   }
 
   /** 离开页面（关标签、导航走、切到后台）：还没落盘的写现在就发，不等应答。
       没有在途保存 → 走 requestSync（页面还在的话应答照常处理）。有在途保存、
-      它之后又改过 → 整份快照按 revision 和 revision + 1 各发一次：在途那次先到，
-      +1 那份接上；快照先到，它直接落盘、在途那次 409。快照是整份 marks，重复
-      落盘内容相同。页面没走（只是切到后台）时，在途应答回来照旧：本地更新就重发，
-      409 按远端 revision 重发，结果一致。换账本时交给 outbox、还没发出去的快照
+      它之后又改过 → 整份快照以 revision 为底发一次，带 after = 在途那次的 saveId：
+      在途那次先到，服务端认出盘上那版是它写的，快照接上；快照先到，它直接落盘、
+      在途那次 409。两份请求走各自的连接，到达顺序不定，这样谁先到盘上都是快照
+      （2026-10-14 之前按 revision 和 revision + 1 各发一份：+1 那份抢在在途那次
+      之前到、本底那份落在它之后时，最后一稿丢了）。页面没走（只是切到后台）时，
+      在途应答回来照旧：本地更新就重发，409 按远端 revision 重发，结果一致。换账本时交给 outbox、还没发出去的快照
       也在这里发。还在防抖里的 lastRect 不发：它是锚点几何的缓存，不是 owner 的改动，
       丢一次无害；离开时补发它只会在关页之后多一次写盘。 */
   var leaveSentVersion = 0;
@@ -1032,17 +1040,15 @@ import { startProseComments } from './prose-comments.js';
     Object.keys(outboxUnsent).forEach(function (key) {
       var pending = outboxUnsent[key];
       delete outboxUnsent[key];
-      pending.revisions.forEach(function (rev) {
-        postSave(Object.assign({}, pending.body, { baseRevision: rev })).catch(function () {});
-      });
+      var leaving = Object.assign({}, pending.body, { saveId: newSaveId() });
+      if (pending.after) leaving.after = pending.after;
+      postSave(leaving).catch(function () {});
     });
     if (mutationVersion <= syncedMutationVersion) return;
     if (!syncing) { requestSync(); return; }
     if (inflightVersion >= mutationVersion || leaveSentVersion >= mutationVersion) return;
     leaveSentVersion = mutationVersion;
-    [revision, revision + 1].forEach(function (rev) {
-      postSave(saveBody(rev)).catch(function () {});
-    });
+    postSave(saveBody(revision, inflightSaveId)).catch(function () {});
   }
   // 换账本交给 outbox、还没发出的快照（离开页面时由 flushOnLeave 直接发）。
   var outboxUnsent = {};
@@ -1070,8 +1076,8 @@ import { startProseComments } from './prose-comments.js';
     var baseRevision = revision;
     var body = saveBody(revision);
     var key = ledgerOutboxKey(ENTRY, PAGE);
-    // 离开页面时这份快照还没发：在途那次可能先到也可能后到，两个 revision 各发一次。
-    var unsent = { body: body, revisions: inflight ? [baseRevision, baseRevision + 1] : [baseRevision] };
+    // 离开页面时这份快照还没发：在途那次可能先到也可能后到，快照带 after 接在它之后（同 flushOnLeave）。
+    var unsent = { body: body, after: inflight ? inflightSaveId : '' };
     outboxUnsent[key] = unsent;
     var job = Promise.resolve(ledgerOutbox[key])
       .then(function () { return inflight; })
@@ -1089,6 +1095,7 @@ import { startProseComments } from './prose-comments.js';
     function sendSnapshot(rev, triesLeft) {
       if (outboxUnsent[key] === unsent) delete outboxUnsent[key];
       body.baseRevision = rev;
+      body.saveId = newSaveId();
       body.updated_at = new Date().toISOString();
       return postSave(body).then(function (res) {
         if (res.ok) return res;
@@ -4207,6 +4214,7 @@ import { startProseComments } from './prose-comments.js';
       revision: revision,
       syncing: syncing,
       outbox: Object.keys(ledgerOutbox).length, // 换账本交给 outbox、还没写完的旧账本快照
+      lastRectPending: lastRectPersistTimer !== null, // 防抖里、到点才发的 lastRect 写（关页时不补发）
       countHidden: hidden,
       countVisible: live,
       countAll: marks.length,

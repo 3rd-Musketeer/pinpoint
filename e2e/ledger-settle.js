@@ -10,6 +10,11 @@
 // closeSettled：每个 frame 里先等在途保存和换账本 outbox 里的写回来，再在页面里派发一次 pagehide，让客户端
 // 现在就发离开时要发的写，等它回来，最后关页。真正关页时再触发的 pagehide 就没有可发的了。
 //
+// lastRect（锚点几何缓存）在几何变了 600ms 后才写，离开页面时也不补发：closeSettled 若不等它，
+// 它会在关页前一刻发出、和用例随后的删桶同时到达服务端。服务端读完旧账本、还没 rename 时桶被删，
+// 账本就带着上一条用例的行被写回来（mention.spec 期望 1 行实际 3 行，2026-10-14 trace 里
+// 新用例 hydrate 读到的是上一条用例 reload 后那次 lastRect 写出的 rev 5）。所以它也算在途的写。
+//
 // 尽力而为：用例自己扣着不放的保存（page.route 拦住 /save）等不回来，5s 后照常关页，
 // 关页时浏览器取消它；还没建出执行上下文的 frame（懒加载的 iframe）跳过。
 export async function closeSettled(page) {
@@ -22,8 +27,12 @@ export async function closeSettled(page) {
       const ann = window.pinpoint && typeof window.pinpoint.getState === 'function' ? window.pinpoint : null;
       const prose = window.pinpointProse && typeof window.pinpointProse.settled === 'function' ? window.pinpointProse : null;
       if (!ann && !prose) return;
-      // 画布：在途保存（syncing）和换账本交给 outbox、还没写完的旧账本快照（outbox）都要等完。
-      const idle = () => (!ann || (!ann.getState().syncing && !ann.getState().outbox)) && (!prose || prose.settled());
+      // 画布：在途保存（syncing）、换账本交给 outbox 还没写完的旧账本快照（outbox）、
+      // 防抖里还没到点的 lastRect 写（lastRectPending）都要等完。
+      const idle = () => {
+        const st = ann && ann.getState();
+        return (!st || (!st.syncing && !st.outbox && !st.lastRectPending)) && (!prose || prose.settled());
+      };
       const waitIdle = async () => {
         for (const until = Date.now() + 5000; !idle();) {
           if (Date.now() > until) return false;
