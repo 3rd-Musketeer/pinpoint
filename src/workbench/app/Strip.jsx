@@ -17,10 +17,11 @@ import { Fragment, useEffect } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
-import { entriesOfActiveBoard, setActiveEntry, setActiveViewport, sidebarPages } from '../pages.js';
+import { entriesOfActiveBoard, setActiveEntry, setActiveViewport } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
 import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
 import { articleCanvasReadUrl } from '../lib/article-groups.js';
+import { pageEntry } from '../lib/page-url.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { CanvasHud } from './CanvasHud.jsx';
 import { cn } from './lib/utils.js';
@@ -45,7 +46,7 @@ export function Strip() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var listOpen = useWorkbenchStore(function (s) { return s.annListOpen; });
   var viewport = useWorkbenchStore(function (s) { return s.viewport; });
-  var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，Pages 取值走 sidebarPages
+  var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });   // 页名、阅读正文都从清单取
   var activeBoard = useWorkbenchStore(function (s) { return s.activeBoard; });  // 类型标跟着板走
   var activeGroup = useWorkbenchStore(function (s) { return s.activeGroup; });  // 阅读正文的落点跟着当前节走
 
@@ -67,7 +68,8 @@ export function Strip() {
     return function () { ro.disconnect(); };
   }, []);
 
-  var title = pageDisplayTitle(sidebarPages().find(function (p) { return p.id === activePageId; }), pageNames);
+  // 页名：存量页在 manifest.pages，文章画布页在 manifest.articles（不进左栏 Pages），pageEntry 两份都认。
+  var title = pageDisplayTitle(pageEntry(manifest, activePageId), pageNames);
   var entries = entriesOfActiveBoard();
   var entry = resolveEntry(entries, activeEntryId);
   var kindKey = entry ? entryTag(entry) : null;

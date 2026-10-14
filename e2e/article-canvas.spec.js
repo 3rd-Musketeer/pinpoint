@@ -69,6 +69,12 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await expect(page.locator('#wbpages [data-vpage="e2e-project_takeover"]')).toHaveCount(0);
   });
 
+  await test.step('横条页名：画布视图显示文章标题（画布页在清单 manifest.articles 里，不在 Pages）', async () => {
+    await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
+  });
+
   await test.step('横条“阅读正文”：落点跟着当前节走，同一标签页到正文那一节，后退回画布；存量页不出', async () => {
     // 地址怎么拼在单测（lib/article-groups.test.js articleCanvasReadUrl）；这里守钮在横条上、
     // 跟着画布当前节换锚点、点了是同标签页导航。正文页本身是站点（Astro）出的，这个 spec 不拉
