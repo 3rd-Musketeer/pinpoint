@@ -224,6 +224,8 @@ export default function ConfirmBare() {
 
 画布视图属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的存量页表里；左栏“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
 
+画布视图的底部横条在页名后面多一个“阅读正文”，同一标签页回到文章页，后退回画布，与文章页顶栏的“画布视图”对称。画布当前所在的节（`?section=` 落点、大纲点的节，或滚动后视口中间的节）是这块板上的节时，地址带锚点 `/<project>/<article>/#<节 id>`，否则落到文章顶部；正文里 `<Section>` 的 id 就是 DOM id，所以锚点对得上。只有清单 `articles` 里的页出这个钮，存量页不出。地址由 `src/workbench/lib/article-groups.js` 的 `articleCanvasReadUrl` 算。
+
 ### 工作台左栏
 
 工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近与全部页。存量页是和文章并列的入口，两组长期并存（owner 2026-10-14 定）。

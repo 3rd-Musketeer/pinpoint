@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { articleGroups, articleReadUrl, articleRowTooltip, projectErrorTooltip } from './article-groups.js';
+import { articleCanvasReadUrl, articleGroups, articleReadUrl, articleRowTooltip, projectErrorTooltip } from './article-groups.js';
 
 const PROJECTS = [
   {
@@ -55,4 +55,21 @@ test('articleReadUrl / articleRowTooltip', () => {
   const [demo] = articleGroups(PROJECTS, ['demo_flow']);
   assert.equal(articleRowTooltip(demo, demo.articles[0]), '流程\n一句摘要\ndemo / flow');
   assert.equal(articleRowTooltip(demo, demo.articles[1]), '笔记\ndemo / notes · 没有画布，点开正文');
+});
+
+test('articleCanvasReadUrl：文章画布页回正文；当前节在板上就带锚点，否则落到顶部；存量页没有', () => {
+  const row = { id: 'demo_flow', kind: 'article', project: 'demo', article: 'flow', url: '/demo/flow/' };
+  const board = { sections: [{ id: 'ask' }, { id: 'confirm', tabId: 't2' }] };
+  assert.equal(articleCanvasReadUrl(row, board, 'confirm'), '/demo/flow/#confirm');
+  assert.equal(articleCanvasReadUrl(row, board, 'ask'), '/demo/flow/#ask');
+  // 拿不到当前节（板没装好、上一页留下的节、store 的初值）：文章顶部。
+  assert.equal(articleCanvasReadUrl(row, board, 'lock'), '/demo/flow/');
+  assert.equal(articleCanvasReadUrl(row, null, 'ask'), '/demo/flow/');
+  assert.equal(articleCanvasReadUrl(row, board, ''), '/demo/flow/');
+  // 行里只有 url（老清单）也能回去。
+  assert.equal(articleCanvasReadUrl({ kind: 'article', url: '/demo/flow/' }, board, 'ask'), '/demo/flow/#ask');
+  // 存量页 / 模板页 / 没有这一行：不出钮。
+  assert.equal(articleCanvasReadUrl({ id: 'e2e-mixed', kind: 'dir' }, board, 'ask'), null);
+  assert.equal(articleCanvasReadUrl(null, board, 'ask'), null);
+  assert.equal(articleCanvasReadUrl({ kind: 'article' }, board, 'ask'), null);
 });

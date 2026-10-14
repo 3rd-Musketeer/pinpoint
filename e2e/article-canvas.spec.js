@@ -69,6 +69,42 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await expect(page.locator('#wbpages [data-vpage="e2e-project_takeover"]')).toHaveCount(0);
   });
 
+  await test.step('横条“阅读正文”：落点跟着当前节走，同一标签页到正文那一节，后退回画布；存量页不出', async () => {
+    // 地址怎么拼在单测（lib/article-groups.test.js articleCanvasReadUrl）；这里守钮在横条上、
+    // 跟着画布当前节换锚点、点了是同标签页导航。正文页本身是站点（Astro）出的，这个 spec 不拉
+    // 站点，所以文章地址用 page.route 接住，只看导航到了哪里。
+    await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    const read = page.locator('#wbstrip #wbread-article');
+    await expect(read).toHaveText('阅读正文');
+    await expect(read).toHaveAttribute('href', '/e2e-project/commit-confirm/#variants');
+    await expect(read).not.toHaveAttribute('target', /.+/);
+    const box = await read.boundingBox();
+    const strip = await page.locator('#wbstrip').boundingBox();
+    expect(box.y >= strip.y && box.y + box.height <= strip.y + strip.height).toBe(true);
+
+    await expect.poll(() => page.evaluate(() => window.workbench.focusSection('mixed'))).toBe(true);
+    await expect(read).toHaveAttribute('href', '/e2e-project/commit-confirm/#mixed');
+
+    await page.route('**/e2e-project/commit-confirm/', (route) => route.fulfill({
+      contentType: 'text/html; charset=utf-8',
+      body: '<!doctype html><title>正文</title><section id="mixed">混排</section>',
+    }));
+    await read.click();
+    await expect.poll(() => new URL(page.url()).pathname).toBe('/e2e-project/commit-confirm/');
+    expect(new URL(page.url()).hash).toBe('#mixed');
+    await page.unroute('**/e2e-project/commit-confirm/');
+    await page.goBack();
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+
+    await page.goto('/index.html?page=e2e-ios');
+    await page.waitForFunction(() => window.workbench && window.workbench.activePageId() === 'e2e-ios');
+    await expect(page.locator('#wbstrip-title')).not.toHaveText('');
+    await expect(page.locator('#wbread-article')).toHaveCount(0);
+    // 留在这一页进下一步：预览脚本挂完再走，免得页面关闭时动态 import 半路断掉报 console 错误。
+    await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled())).toBe(true);
+  });
+
   await test.step('ppnt shot <画布页> B2：帧图落盘', async () => {
     const out = path.join(E2E_DATA_DIR, 'shot', PAGE_ID, 'confirm-done.png');
     const { stdout } = await ppnt(['shot', PAGE_ID, 'B2']);

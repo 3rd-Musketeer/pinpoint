@@ -1,6 +1,6 @@
 // 底部横条（2026-09-04 外壳重设计，评审板 G1）—— 收纳的唯一去处，挂 #wbstrip。
 // 顶部什么都不放；屏幕上只剩画布、左栏玻璃面板和这一条。从左到右一条读下来：
-//   在哪一页（Pages 开关 + 页名 + 类型标）
+//   在哪一页（Pages 开关 + 页名 + 类型标；文章画布页再带“阅读正文”）
 //   → 怎么看这份文档（窗口｜手机 两段，#wbviewport，只在文档条目选中时出现；
 //     2026-09-05 视口，lib/viewport.js）
 //   → 在哪一帧（‹ 1 / 6 › + map）→ 画布怎么看（缩放 · 回中 · 导出）——这两段是
@@ -20,6 +20,7 @@ import { toggleSideCollapsed } from '../boot-prefs.js';
 import { entriesOfActiveBoard, setActiveEntry, setActiveViewport, sidebarPages } from '../pages.js';
 import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
 import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
+import { articleCanvasReadUrl } from '../lib/article-groups.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { CanvasHud } from './CanvasHud.jsx';
 import { cn } from './lib/utils.js';
@@ -44,8 +45,9 @@ export function Strip() {
   var snap = useWorkbenchStore(function (s) { return s.annSnap; });
   var listOpen = useWorkbenchStore(function (s) { return s.annListOpen; });
   var viewport = useWorkbenchStore(function (s) { return s.viewport; });
-  useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，取值走 sidebarPages
-  useWorkbenchStore(function (s) { return s.activeBoard; });    // 同上：类型标跟着板走
+  var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });   // 订阅重渲染，Pages 取值走 sidebarPages
+  var activeBoard = useWorkbenchStore(function (s) { return s.activeBoard; });  // 类型标跟着板走
+  var activeGroup = useWorkbenchStore(function (s) { return s.activeGroup; });  // 阅读正文的落点跟着当前节走
 
   // 横条宽度回写（弹出列表与 dock 的对齐锚）：内容变宽（页名长、类型标出现）
   // 与窗口变化都要跟上，所以用 ResizeObserver 而不是一次量测。
@@ -78,6 +80,14 @@ export function Strip() {
     if (next) setActiveEntry(next.id);
   }
   var hasViewport = entryHasViewport(entry);
+  // 文章画布页回正文（与正文顶栏的“画布视图”对称，同一标签页，后退回画布）。存量页不出：
+  // 只认清单 manifest.articles 里的行（同 id 的模板页 / 登记页优先，那时它不在这份清单里）。
+  var articleRow = ((manifest && manifest.articles) || []).find(function (row) { return row.id === activePageId; });
+  var boardOfPage = activeBoard && activeBoard.pageId === activePageId ? (activeBoard.fullBoard || activeBoard.board) : null;
+  var readHref = articleCanvasReadUrl(articleRow, boardOfPage, activeGroup);
+  var readSection = readHref && readHref.indexOf('#') >= 0
+    ? ((boardOfPage && boardOfPage.sections) || []).find(function (section) { return section && section.id === activeGroup; })
+    : null;
   var mode = !!(snap && snap.available && snap.mode);
   // 计数 = pending（open / check / done，等 owner 验收的；owner 2026-09-24）。
   // closed 不计：它是 owner 已确认的，列表里切到 closed 段看。
@@ -108,6 +118,17 @@ export function Strip() {
           id="wbstrip-kind" data-kind={kindKey}>
           <WbIcon name={PAGE_KIND_ICONS[kindKey]} size={11} className="size-[11px]" aria-hidden="true" />
           {ENTRY_TAG_LABELS[kindKey]}</span>
+      ) : null}
+      {readHref ? (
+        <Button asChild variant="tool"
+          className="wb-strip-read h-7 gap-[5px] px-2 text-[12px] font-semibold">
+          <a id="wbread-article" href={readHref}
+            data-read-section={readSection ? readSection.id : undefined}
+            title={readSection ? '阅读正文，定位到“' + (readSection.title || readSection.id) + '”' : '阅读正文'}>
+            <WbIcon name="book-open" size={14} className="size-3.5" aria-hidden="true" />
+            阅读正文
+          </a>
+        </Button>
       ) : null}
 
       {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 缩成一块

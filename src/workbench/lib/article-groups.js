@@ -12,6 +12,22 @@ export function articleReadUrl(projectId, articleId) {
   return '/' + encodeURIComponent(projectId) + '/' + encodeURIComponent(articleId) + '/';
 }
 
+/**
+ * 画布视图回正文的地址（横条的“阅读正文”）：row 是清单 manifest.articles 里这一页的那一行
+ * （kind 'article'，带 project / article）；不是文章画布页（存量页、模板页）返回 null。
+ * sectionId 是画布当前所在的节（store.activeGroup）：它是这块板上的节，就拼成正文的锚点
+ * `#<节 id>`（文章页上 <Section id> 就是 DOM id，site/README.md）；不是就落到文章顶部。
+ * board 取全部 tab（fullBoard），节 id 全页唯一。
+ */
+export function articleCanvasReadUrl(row, board, sectionId) {
+  if (!row || row.kind !== 'article') return null;
+  var base = row.project && row.article ? articleReadUrl(row.project, row.article) : row.url;
+  if (!base) return null;
+  var sections = (board && Array.isArray(board.sections)) ? board.sections : [];
+  var known = !!sectionId && sections.some(function (section) { return section && section.id === sectionId; });
+  return known ? base + '#' + encodeURIComponent(sectionId) : base;
+}
+
 /** project 错误的 tooltip：前几条逐行，多的折成一句。没有错误返回 ''。 */
 export function projectErrorTooltip(errors, max) {
   var list = Array.isArray(errors) ? errors.filter(Boolean).map(formatProjectError) : [];
