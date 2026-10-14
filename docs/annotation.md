@@ -1,7 +1,7 @@
 # 标注：路由、账本、控制面
 
-标注是人 → agent 的反馈回路，也是这个仓存在的理由。反馈有两种：画布标注（owner 在画布视图或存量页上钉在元素上）和
-正文评论（owner 在文章页上选中正文写下）。一个页 id 一个桶，两种排在同一个队列里：一套 `#n`、一个状态机。
+标注是人 → agent 的反馈回路，也是这个仓存在的理由。反馈有三种：画布标注（owner 在画布视图或存量页的画布上钉在 JSX 帧的元素上）、文档页标注（钉在一整份 HTML 页面的元素上：
+文章的 HTML 帧、存量页的文档条目）和正文评论（owner 在文章页上选中正文写下）。一个页 id 一个桶，三种排在同一个队列里：一套 `#n`、一个状态机。
 本文说一条标注长什么样、它落到哪个文件、以及读到一条标注之后该去改哪个源文件；“标注”在字段名和本文里泛指队列里的每一条。词的定义见 [`CONTEXT.md`](../CONTEXT.md)；
 标注 → 读 → 改的操作流程见 [`skills/pinpoint-annotate/SKILL.md`](../skills/pinpoint-annotate/SKILL.md)。
 
@@ -32,7 +32,7 @@
 
 ## 线程
 
-每条标注都有线程，不分种类：画布标注、存量页的文档标注（`board: "html"` 的 HTML 文档，锚点是 cssPath + 引文）、正文评论都一样。`content` 是 owner 的第一句，之后的来回追加在 `messages`。
+每条标注都有线程，不分种类：画布标注、文档页标注（文章的 HTML 帧和存量页的 HTML 文档，锚点是 cssPath + 引文）、正文评论都一样。`content` 是 owner 的第一句，之后的来回追加在 `messages`。
 
 - 写入：`POST /annotations/<账本>/<id|n>/reply`，body 带 `entry`、`baseRevision`、`text`，在线程末尾追加一条 `who: "agent"` 的消息，状态不动（`src/server/lib/annotation-store.js` 的 `appendMessage`）。CLI 是 `ppnt reply`，和写状态合成一步是 `ppnt mark … --note`。
 - 保存不丢回复：owner 在标注框里改正文时，客户端整本保存的快照可能早于 agent 的回复。`save` 把盘上已有、快照里没有的 agent 消息合并回去（`keepAgentMessages`），所以 owner 改完这一条，状态按状态机回 `open`，agent 的回复还在。
@@ -43,10 +43,11 @@
 
 锚点定位看编译产物里的两个属性：`data-pp-id`（形如 `Nav.jsx:18@2`，源文件:行 + 同行第几个
 实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt comments` / `locate` 直接按它取锚点
-（多命中按文本择近）；没有 `ppId` 的标注（存量页的 `.html` 帧）走 cssPath 链。
+（多命中按文本择近）；没有 `ppId` 的标注（文章的 HTML 帧、存量页的 `.html` 帧和文档条目）走 cssPath 链。
 
 - 锚点带 `data-pp-comp` → 改组件文件（文章：本篇或 project 的 `components/<Name>.jsx`；存量页：`<存量页目录>/components/<Name>.jsx`），所有引用它的帧一起变。
 - 锚点只带 `data-pp-id` → 改该帧的源文件 `<帧 id>.jsx`（在文章目录或存量页目录里）。
+- 文章 HTML 帧上的文档页标注 → 改那份 HTML：本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件（相对 project 根，或 `project.json` 的 `sources` 登记的目录）。
 - 正文评论 → 改 `index.mdx` 里被评的那段，或这一节画布组件里的帧。
 - `/sites/<entry-id>/` 下做的标注 → 改登记目录里磁盘上的那个文件（服务本身是只读的）。
 
@@ -70,7 +71,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 - **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
   同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
 - **文档、直开页**仍是一个 pathname 一本，命名规则见
-  `src/shared/annotate-page-key.js`。
+  `src/shared/annotate-page-key.js`。文章的每个 HTML 帧也按它的页面路径各一本（`<文件>~<hash>.json`）。
 - 文章的桶里还有正文评论的固定账本 `@prose.json`，见下文“正文评论”。
 - 工作台切活动页 = 换桶重新 hydrate；`#n` 按桶编号，一个页 id 一套序列。
 

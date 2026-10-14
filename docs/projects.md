@@ -12,7 +12,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 <project 根>/docs/pinpoint/
   project.json                 # { "id": "browser-use", "title": "…", "sources": {…} }
   articles/<article id>/
-    index.mdx                  # 正文，frontmatter 写 title、summary
+    index.mdx                  # 正文，frontmatter 写 title、summary、order
     <帧 id>.jsx
     <帧 id>.html               # HTML 帧，它引用的相对资源放在旁边（见“HTML 帧”）
     components/<Name>.jsx      # 本篇专用
@@ -34,7 +34,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 
 | 文件 | 字段 | 缺省 |
 | --- | --- | --- |
-| `articles/<id>/index.mdx` | `title`、`summary`（可选） | `title` 缺省用 article id |
+| `articles/<id>/index.mdx` | `title`、`summary`（可选）、`order`（project 首页上的排序，可选） | `title` 缺省用 article id；没写 `order` 的排在后面，同序按 article id |
 | `concepts/<名字>.md` | `name`、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界） | `name` 缺省用文件名 |
 
 每个值是单行字符串，可以用单引号或双引号包起来，不带引号时 ` #` 之后算注释。下面这些写法都记一条布局错误，该键不进结果、字段按缺省处理：
@@ -46,7 +46,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 
 `status` 只能是 `占位`、`收敛中`、`已固定` 三者之一，写了别的值记一条错误、`status` 不出现。其他键照常解析，读取模块不使用。
 
-Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到同一个标题，站点的 title、summary、name、status、boundary 必须取 `listProjects` 的结果（或调用同一个 `parseFrontmatter`），不另读 Astro 解析出的 frontmatter。frontmatter 只写上面的子集时，两边解析结果相同。
+Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到同一个标题，站点的 title、summary、name、status、boundary 必须取 `listProjects` 的结果（或调用同一个 `parseFrontmatter`），不另读 Astro 解析出的 frontmatter。frontmatter 只写上面的子集时，两边解析结果相同。例外是 `order`：它只用于 project 首页的文章排序，站点直接读 Astro 解析出的值（`site/src/lib/site-data.js`）。
 
 ## 命名空间
 
@@ -197,7 +197,7 @@ export default function ConfirmBare() {
 - 节没写 `shell` 时，HTML 帧套 `doc` 机壳；写了就用节的（存量的 HTML 片段帧放进手机壳就是这样）。JSX 帧和 HTML 帧可以在同一节，帧 id 在一篇里唯一。
 - 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<路径>`，source 下的帧是 `/sites/<页 id>/@source/<名字>/<路径>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。服务只出 project 根和登记的 source 目录下的文件，workspace 里别的文件不出；一个目录只在这篇有帧住在里面时开放，`.` 开头的段 404。Astro 的 `fs.allow` 不变，这些文件不经站点出。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
 - 宽度：卡片和浮层按手机 402（画布视图手机屏的宽度）或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（402 × 874 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
-- 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素，锚点是 CSS 路径加元素文字，和文档标注一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
+- 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素（文档页标注），锚点是 CSS 路径加元素文字，和存量页的文档条目一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
 - 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 402 宽截整页，先等页面里懒加载的 iframe 和图片加载完，`--marks` 在元素上标出标注号。`ppnt shot <project>/<article> --canvas` 给每个 HTML 帧各截一张，见 [`docs/registry.md`](registry.md)“`ppnt shot`”。
 - `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；指到范围外面，是错误 `html_asset_outside`。范围是这一帧所在的目录：本篇目录、project 根，或那个 source 目录。
 
@@ -226,7 +226,7 @@ export default function ConfirmBare() {
 
 ### 工作台左栏
 
-工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近与全部页。存量页都转成文章以后，“页面”组撤掉（owner 2026-10-13 定）。
+工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近与全部页。存量页是和文章并列的入口，两组长期并存（owner 2026-10-14 定）。
 
 - “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
 - 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的页 id）：点行在工作台打开画布视图 `<project>_<article>`，和 `/?page=` 是同一个，选中态与页面行一样。没有画布的文章：点行在新标签页打开文章页。

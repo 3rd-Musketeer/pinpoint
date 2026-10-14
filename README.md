@@ -8,7 +8,8 @@ annotations.**
 
 A **project** holds **articles** (design documents written in MDX, readable by anyone with the
 link) and **concepts** (wiki-style definitions). An article is made of **sections**; a section can
-hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` file per UI state). Every article has an article page; an article with at least one canvas also has a canvas view:
+hold a **canvas component** (`<Canvas>`) that lists its **frames** (a `.jsx` file per UI state, or a
+whole `.html` page) and **figures** (`<Figure>`, diagrams the agent draws in SVG). Every article has an article page; an article with at least one canvas also has a canvas view:
 
 - 📄 **Article page** — `https://pinpoint.localhost/<project>/<article>/`. Prose, a table of contents
   numbered 1, 2, 3, and one canvas card per section with frames. Click a frame to open the canvas
@@ -20,19 +21,21 @@ hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` f
   the nth letter). It is generated from `index.mdx`; you never write it by hand.
 
 Feedback lands in **one queue per article**: prose comments (select text on the article page) and
-canvas annotations (pin elements on the canvas view) share one bucket, one `#n` sequence and one
-status machine (`open` → `check` / `done` → `close`). The agent reads them with `ppnt comments`, edits,
-replies in comment threads with `ppnt reply`, and marks status with `ppnt mark`.
+annotations on the canvas view (pinned to elements of a JSX frame or of an HTML frame) share one
+bucket, one `#n` sequence and one status machine (`open` → `check` / `done` → `close`). The agent
+reads them with `ppnt comments`, edits, then replies in the thread and sets the status in one step
+with `ppnt mark … done --note "<what changed>"`; `ppnt reply` replies without touching the status.
 
 Underneath: 🧰 **kits** (`content/kits/ios/`: `ios-kit.css` + `ios-kit.js` + `jsx/` component stamps;
-HIG-accurate, CJK-safe, zero runtime deps), a compiler that turns frames into static HTML under
-`~/.pinpoint/dist/<page id>/` (HMR on every save), and an annotation client injected only into what
+HIG-accurate, CJK-safe, zero runtime deps), a compiler that turns JSX frames and figures into static
+HTML under `~/.pinpoint/dist/<page id>/` (HMR on every save; HTML frames are served as they are), and an annotation client injected only into what
 you registered. Every word above has one definition in [`CONTEXT.md`](CONTEXT.md); the design
 decision is [ADR 0042](docs/adr/0042-pp3-article-as-primary-object.md).
 
 **Legacy pages** are prototype pages from before articles: a `board.json` plus frames (or an HTML
 file), registered with `pinpoint add` and listed in the workbench's “页面” group.
-They keep working; `pinpoint migrate` turns one into an article. See the last section of
+They are a normal entry point next to articles: view, edit and annotate them as before, and run
+`pinpoint migrate` when one should become an article. See the last section of
 [`CONTEXT.md`](CONTEXT.md).
 
 ## 问题 → 文档
@@ -51,7 +54,6 @@ They keep working; `pinpoint migrate` turns one into an article. See the last se
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
 | 怪现象排查案例库 | [`docs/debugging.md`](docs/debugging.md) |
-| 五阶段收敛计划当时怎么切的（历史） | [`docs/2026-08-16-roadmap.md`](docs/2026-08-16-roadmap.md) |
 | 变更历史 | `git log`（本仓不维护 changelog） |
 
 ## Quickstart
@@ -82,7 +84,7 @@ first segments: [`docs/design.md`](docs/design.md) “服务路由”.
 
 Then tell your agent:
 
-> 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 写一篇 article，跑 `ppnt build` 编译
+> 读一下 AGENTS.md，然后按 pinpoint-build 的流程给 XXX 写一篇 article，跑 `ppnt check` 验证
 
 Verify changes with `just check` (or `npm run check`): unit tests, the site build check (`npm run test:site`), then e2e. Install the matching browser on the first run:
 
@@ -129,12 +131,12 @@ conventions and exit codes are in [`docs/registry.md`](docs/registry.md) “CLI�
 ppnt list [words…]             # projects (each article as <project>/<article>) and legacy pages; words also match article ids and titles
 ppnt show <project>            # a project's articles, concepts, empty refs and layout errors
 ppnt show <project>/<article>  # per section: §n · letter · section id · title · frames · open count · URLs
-ppnt check <project>[/<article>]  # validate before reporting: layout errors, every frame's lint/compile, MDX render errors, empty refs; exit 1 on errors
-ppnt comments <target>         # read the queue: canvas annotations and prose comments, statuses, intents, code excerpts (a project lists every article)
+ppnt check <project>[/<article>]  # validate before reporting: layout errors, every frame's and figure's lint/compile, MDX render errors, empty refs; exit 1 on errors
+ppnt comments <target>         # read the queue: canvas annotations, HTML-frame annotations and prose comments, statuses, intents, code excerpts (a project lists every article)
 ppnt locate <target> <ref…>    # resolve #12 / B3 / §2 to source file, line, component
 ppnt shot <target> [ref…]      # article page PNG (whole page, or §2 for one section); B1 / B / --canvas shoot the canvas view; waits while the site starts
-ppnt mark <target> <ref…> done|check  # write annotation status
-ppnt reply <project>/<article>#<n> <text>  # reply in a prose comment's thread (status unchanged)
+ppnt mark <target> <ref…> done|check [--note <reply>]  # reply in each thread (with --note), then write the status
+ppnt reply <project>/<article>#<n> <text>  # reply in one item's thread (status unchanged)
 ppnt build <target> [--watch]  # compile frames → dist (~/.pinpoint/dist/<page id>/)
 ppnt render <target>/<frame id>  # compile one frame to stdout, no dist write
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
@@ -201,15 +203,15 @@ renames the id together with its buckets — for a project, every `<project>_<ar
    rail. On the canvas view, press **A** to switch 交互 → **标注**, click / lasso elements and
    write in the bottom composer (pills reference targets, paste reference images, draw move-arrows).
 2. Say “标好了，你看一下” — the agent runs `ppnt comments <project>/<article>` (both kinds in one
-   list, no browser), edits the frame, component or `index.mdx`, runs `ppnt check`, answers prose comments
-   with `ppnt reply`, and writes `ppnt mark … done` (or `check` when it looked but changed nothing).
+   list, no browser), edits the frame, component or `index.mdx`, runs `ppnt check`, and answers each
+   item with `ppnt mark … done --note "<what changed>"` (or `check` when it looked but changed nothing).
 3. Review: hover a pin on the canvas, or open the annotation list from the count button at the right
    end of the bottom strip; on the article page, read the thread in the right rail. Click 完成 to
    close an item (one click, 5 s undo). Closed items collapse away.
 
 Everything for one article lives in one bucket, `~/.pinpoint/<project>_<article>/` (disk is the
 SSOT; revisioned, SSE-synced): canvas annotations in `@canvas.json`, prose comments in
-`@prose.json`.
+`@prose.json`, plus one ledger per HTML frame page for the annotations made on it.
 
 Short locators for chat: `#12` · `<page id>#12` · `B3` · `@frame:<page id>/<frame id>` · `@section:<page id>/<section id>` · `@page:<page id>` (a target) · `@a:<id>`.
 Full schema, states and routing: [`docs/annotation.md`](docs/annotation.md).
@@ -230,7 +232,9 @@ floating glass panel with the outline, and the bottom strip (panel toggle, page
 title, `‹ n / N ›` frame navigation, zoom readout, 回中). Wheel scrolls, ctrl/⌘ +
 wheel zooms around the cursor, Space + drag or middle-drag pans. On narrow screens
 (≤ 760px) the panel starts collapsed and frames stack vertically at screen width.
-No annotation surface. Sharing an article itself is by link to the article page.
+No annotation surface. The export packages canvas frames; the button sits in the canvas tools, so
+document entries (HTML frames, doc screens) don't show it. Sharing an article itself is by link to
+the article page.
 
 HTTPS static dependencies are scanned first and frozen byte-exact only after
 per-resource approval; pages without remote resources download immediately.

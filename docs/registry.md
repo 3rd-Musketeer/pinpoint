@@ -114,8 +114,7 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 annotate 客户端（serve 时字面量被换成
 当前哈希地址；退出方式：`<html data-annotate="off">`）。
-独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`——
-见 `content/previews/doc-library/sample-report.html`。
+独立文档抄同一段尾部脚本，并在不是被嵌入时调 `pinpoint.setFloatingToolbar(true)`。
 
 还有一层（ADR 0027）：`src/server/preview-inject.js` 给任何含 `<!doctype` 的 `content/previews/**.html`
 响应自动注入 client（`?annotate=off` 豁免，片段没有 doctype 天然放行）。previews 的注入
@@ -143,9 +142,9 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 ## 导出的纯净性
 
-文档导出接受 `sites/<entry-id>/…` 形式的 src，并保证不含注入的 client：管线请求 `?annotate=off`、
-在渲染浏览器里 abort 掉 `**/annotate.js`、并用 `stripAnnotateBootstrap` 从导出的 HTML 里
-删掉注入片段（连 `__pinpointEntry` 标记一起）。
+导出的文件里没有标注 client。离线可交互 HTML（`src/server/lib/offline-page-builder.js` 拼帧，`offline-page-export.js` 出外壳）直接读源文件和 dist，
+不经服务的注入；拼出的页面和图片导出的渲染页（`src/server/export-image-api.js`）都在 `<html>` 上写
+`data-annotate="off"`，`ios-kit.js` 见到它就不自注入 client。
 
 ## CLI
 
@@ -206,13 +205,13 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 站点那一头，正文渲染出错时文章页的状态码不可靠：Astro 开发服务器边渲染边发，多数时候 200 已经发出，响应停在正文开头（`<div class="article-body">` 之后什么都没有）；少数时候是 500。所以查正文错误用 `check`，不用状态码。
 
-`check` 不读标注，读标注队列用 `comments`。目标是存量页时退 2，提示存量页用 `ppnt build <页 id>` 编译、用 `ppnt comments <页 id>` 读标注。
+`check` 只做验证；读标注用 `comments`。目标是存量页时退 2，提示存量页用 `ppnt build <页 id>` 编译、用 `ppnt comments <页 id>` 读标注。
 
 ### `ppnt comments <目标>`：标注队列
 
-画布标注和正文评论，字段和分组见 [`docs/annotation.md`](annotation.md)。目标是一篇文章、一个存量页，或整个 project（逐篇列出有条目的文章，`--frame` 不能和 project 同用）。抬头是各状态的计数，所以单独看计数不用别的命令。每条标注下面列出线程里的 agent 回复。选项：`--status`、`--frame`、`--mode excerpt|image|both`、`--group-by frame|component`、`--json`。
+画布标注、文档页标注和正文评论，字段和分组见 [`docs/annotation.md`](annotation.md)。目标是一篇文章、一个存量页，或整个 project（逐篇列出有条目的文章，`--frame` 不能和 project 同用）。抬头是各状态的计数，所以单独看计数不用别的命令。每条标注下面列出线程里的 agent 回复。选项：`--status`、`--frame`、`--mode excerpt|image|both`、`--group-by frame|component`、`--json`。
 
-`comments`、`comments --mode image`、`locate` 要读 dist（编译产物，源码摘录和组件归属都在里面）。dist 不在或落后于源码时，命令先编一次（`bin/cli/dist.js` 的 `ensureDist`，同 `ppnt build`），stderr 打一行“dist 不在或落后于源码，先编了 …”，再照常输出；不用先手动 `build`。
+`comments`、`comments --mode image`、`locate` 要读 dist（编译产物，源码摘录和组件归属都在里面；HTML 帧的摘录直接读源文件）。dist 不在或落后于源码时，命令先编一次（`bin/cli/dist.js` 的 `ensureDist`，同 `ppnt build`），stderr 打一行“dist 不在或落后于源码，先编了 …”，再照常输出；不用先手动 `build`。
 
 ### `ppnt show <project>[/<article>]`
 
@@ -225,7 +224,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 - 只写文章：文章页整页（1440 宽，按页面高度截全），存 `<数据目录>/shot/<页 id>/article.png`。
 - `§2`：文章页上第 2 节的 `<section>`，存 `article-<节 id>.png`。纯文字的节写字母或节 id 也截文章页。
 - `B1`、`B`、帧 id、节 id：画布视图上的帧或节。HTML 帧（文档条目）按自己的地址截 402 宽整页，存 `<帧 id>.png`。存量页不写引用就是整个画布。
-- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧按自己的地址各截一张 402 宽整页，画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
+- `--canvas`：整个画布视图。文章的 HTML 帧是文档条目，不在画布那一行，画布视图一次只显示其中一份，整页图里只剩一条窄边；所以文章写 `--canvas` 时每个 HTML 帧各截一张整页（同上），画布视图那张图只在这篇有 JSX 帧时才截。stdout 先打一行“说明：”讲截了什么、为什么没有画布图，`--json` 放在 `notes` 里。
 - `--figure <图 id>`：正文里的一个图，浅色、深色各一张（`figure-<图 id>.png`、`figure-<图 id>-dark.png`），不和引用同用；图编不过或在浏览器里运行出错时打出原因、退 1（[`docs/projects.md`](projects.md)“图”）。
 
 文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。
@@ -240,7 +239,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 ### `ppnt mark … --note` 和 `ppnt reply`
 
-每条标注都有线程：画布标注、存量页的文档标注、正文评论都一样（[`docs/annotation.md`](annotation.md)“线程”）。`ppnt mark <目标> <引用…> done|check --note "<回复>"` 对命中的每一条先走回复端点、再走状态端点；回复失败时那一条的状态不写。`ppnt reply <目标> '#n' "<回复>"` 只回一条、不改状态，引用命中多条时报错。
+每条标注都有线程：画布标注、文档页标注（HTML 帧和存量页的文档条目）、正文评论都一样（[`docs/annotation.md`](annotation.md)“线程”）。`ppnt mark <目标> <引用…> done|check --note "<回复>"` 对命中的每一条先走回复端点、再走状态端点；回复失败时那一条的状态不写。`ppnt reply <目标> '#n' "<回复>"` 只回一条、不改状态，引用命中多条时报错。
 
 ## 隔离运行（测试 / 不碰 owner 的服务）
 

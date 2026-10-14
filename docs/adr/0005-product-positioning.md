@@ -1,6 +1,6 @@
 # 0005 · Product positioning: UIUX 原型交付与对齐工具
 
-Status: 现行 · Date: 2026-08-07 · Scope: 全仓
+Status: 部分被取代（主体是任何人都能读的设计文章，见 0042；“url 类由浏览器扩展注入”一条随扩展退役，见 0035；kit / 工作台 / 标注三层分工现行） · Date: 2026-08-07 · Superseded-in-part-by: 0035、0042 · Scope: 全仓
 
 **Decided**（owner 产品思想，后续设计的准绳）: 这个项目的核心不是 "iOS HTML preview"，而是**帮助 owner deliver 高保真 UIUX 原型——把 UIUX 设计想清楚，并设计出符合 owner 审美的方案**。三个层各自服务这个目标：
 

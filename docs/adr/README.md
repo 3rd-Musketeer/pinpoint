@@ -14,14 +14,15 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
-| [0042](0042-pp3-article-as-primary-object.md) | 2026-10-13 | pp3：article 是主体（project → article → section → 组件）；Astro 站点同源代理，board 由 MDX 派生，画布页 id 与桶 `<project>_<article>`，正文评论进同一队列；第一版只做本机，版本进 BACKLOG | 现行 | — |
-| [0041](0041-page-tabs.md) | 2026-10-10 | 页内 tab：page → tab → section，tab 只是 section 的视图分组；编号按 tab 重来，多 tab 页引用写 `<tab>:B3` | 现行 | — |
-| [0040](0040-component-page-vs-flow-page.md) | 2026-10-10 | 组件页与交互页：变体放 section 里的普通帧，选定后复制进交互页；整屏变体组退役 | 现行 | — |
+| [0043](0043-pp3-cli-html-frames-figures.md) | 2026-10-14 | pp3 第二天：`check` 是验证、`comments` 是标注队列；`mark --note` 先回复再写状态；帧可以是整份 HTML（`{ id, src }`、`project.json` 的 `sources`）；手机宽度统一 402；图由 agent 画 SVG；文章页用节号、画布用字母 | 现行 | — |
+| [0042](0042-pp3-article-as-primary-object.md) | 2026-10-13 | pp3：article 是主体（project → article → section → 组件）；Astro 站点同源代理，board 由 MDX 派生，画布页 id 与桶 `<project>_<article>`，正文评论进同一队列；第一版只做本机，版本进 BACKLOG | 现行（0043 补充 HTML 帧、`check` / `comments`、`mark --note`、图与节号） | — |
+| [0041](0041-page-tabs.md) | 2026-10-10 | 页内 tab：page → tab → section，tab 只是 section 的视图分组；编号按 tab 重来，多 tab 页引用写 `<tab>:B3` | 现行（只管存量页；文章没有 tab） | — |
+| [0040](0040-component-page-vs-flow-page.md) | 2026-10-10 | 组件页与交互页：变体放 section 里的普通帧，选定后复制进交互页；整屏变体组退役 | 部分被取代（文章里几种做法放同一节、选定删落选；组件页与交互页之分只用于存量页） | ADR 0042 |
 | [0039](0039-variant-groups.md) | 2026-10-10 | 变体组：同一个关键帧的几种画法，整组一个位置号、变体派生 a/b/c；变体仍是独立屏，标注挂变体 | Superseded by ADR 0040（2026-10-10 退役） | ADR 0040 |
-| [0038](0038-display-ref-vs-id-and-note-retired.md) | 2026-09-28 | 编号是显示编号、id 是身份；标注 note 退役 | 现行 | — |
+| [0038](0038-display-ref-vs-id-and-note-retired.md) | 2026-09-28 | 编号是显示编号、id 是身份；标注 note 退役 | 部分被取代（编号与 id、`note` 字段退役现行；`check` 列标注与 `mark` 不收 `--note` 由 0043 改掉） | ADR 0043 |
 | [0037](0037-single-main-branch.md) | 2026-09-26 | 单分支 main：dev / release worktree / publish 退役，`just ship` 推 main，功能按需开 worktree | 现行 | — |
 | [0036](0036-storage-unify-bucket-per-page.md) | 2026-09-23 | 存储统一：桶 = 页（`@canvas` 账本取代 pinpoint 共享画布账本）；孤儿显式化与 `ppnt prune` | 现行 | — |
-| [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 部分被取代（note 退役） | ADR 0038 |
+| [0035](0035-pp2-source-dist-and-status-machine.md) | 2026-09-22 | pp2：源码 / dist 分层 + 页内组件印章 + 标注状态机（open / check / done / close）+ `ppnt` CLI 扩面 | 部分被取代（note 退役；`check` 只读列标注由 0043 改为验证） | ADR 0038、ADR 0043 |
 | [0034](0034-named-z-scale-and-stacking-rules.md) | 2026-09-17 | 外壳层级：命名阶梯 `--wb-z-*` + `.wb` 隔离 / `.wb-stage-wrap` 不成上下文两条规则 + 测试守 | 现行 | — |
 | [0033](0033-offline-export-uses-live-shell.md) | 2026-09-15 | 离线分享 HTML 用 workbench 的外壳：满铺画布 + 浮动面板 + 底部横条 + 窄屏适配 | 现行 | — |
 | [0032](0032-folders-in-registry-with-workbench-writes.md) | 2026-09-04 | Pages 分组 = 手动文件夹，登记表因此有了第二个写入口 | 已退役（2026-10-14 删除） | — |
@@ -30,16 +31,16 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0029](0029-pages-mtime-and-sort.md) | 2026-08-17 | Pages 时间显示 + 排序；“最近更新”= 仅内容改动 | 现行 | — |
 | [0028](0028-areta-chat-eval-repoint-and-component-ownership.md) | 2026-08-17 | areta-chat-eval 条目重指 + 组件归属边界成文 | 部分被取代（条目重指仍现行；组件归属归 pp2 印章模型） | ADR 0035 |
 | [0027](0027-serve-injects-and-instances-leave-previews.md) | 2026-08-17 | 注入契约统一 + registry 补全 + 实例迁出 previews/ | 现行 | — |
-| [0026](0026-title-rule-section-note-detail-panel.md) | 2026-08-17 | title 规矩 + section note + 选中模型（note 收编右栏 detail 面板） | 现行 | — |
+| [0026](0026-title-rule-section-note-detail-panel.md) | 2026-08-17 | title 规矩 + section note + 选中模型（note 收编右栏 detail 面板） | 部分被取代（section / frame 说明和详情面板 2026-09-08 退役；title 规矩与画布点选现行） | — |
 | [0025](0025-canvas-zoom-rebaseline.md) | 2026-08-17 | 画布缩放基准重定标（旧 50% 成为新 100%） | 现行 | — |
 | [0024](0024-row-actions-context-menu.md) | 2026-08-17 | 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文 | 现行 | — |
 | [0023](0023-layout-assertions-and-vendored-contracts.md) | 2026-08-17 | 布局断言比几何不靠点击 + vendored 组件内部契约成文 | 现行 | — |
-| [0022](0022-doc-mode-grilling.md) | 2026-08-16 | 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务） | 现行（arc 缓期） | — |
-| [0021](0021-page-as-thread-container.md) | 2026-08-16 | 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级 | 部分退役（登记表级挂靠 2026-10-14 删除；屏级产物 / 草稿现行） | — |
+| [0022](0022-doc-mode-grilling.md) | 2026-08-16 | 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务） | 已被取代（arc 就是 pp3；选区批注由正文评论实现） | ADR 0042 |
+| [0021](0021-page-as-thread-container.md) | 2026-08-16 | 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级 | 部分被取代（主体是文章；线程容器、产物 / 草稿只在存量页上）；部分退役（登记表级挂靠 2026-10-14 删除；屏级产物 / 草稿现行） | ADR 0042 |
 | [0020](0020-doc-frame-mention.md) | 2026-08-16 | 文档模式 mention 活 frame + 标注双向透传（阶段 5/5 落地） | 已退役（2026-10-14 删除；`/api/frame` 现行） | — |
 | [0019](0019-live-site-proxy.md) | 2026-08-16 | live 代理画中画：同源路径前缀代理 + 运行时重基（阶段 4/5 落地） | 已退役（2026-10-14 删除） | — |
 | [0018](0018-cli-registry-entry.md) | 2026-08-16 | CLI 注册入口：pinpoint add + 合成板 + registry 热重载 | 现行（已落地；0035 补充命令名与扩面） | — |
-| [0017](0017-five-phase-roadmap.md) | 2026-08-16 | 五阶段 ROADMAP：Web 退役 + Pages 统一 + CLI / 代理 / 文档 mention 方向 | 部分被取代（阶段地图仍现行；“Component Library 作系统行保留”作废） | ADR 0035 |
+| [0017](0017-five-phase-roadmap.md) | 2026-08-16 | 五阶段 ROADMAP：Web 退役 + Pages 统一 + CLI / 代理 / 文档 mention 方向 | 已被取代（历史记录） | ADR 0035、ADR 0042 |
 | [0016](0016-sidebar-width-v2.md) | 2026-08-16 | 侧栏宽度策略（V2 拍定并落地） | 现行（已落地） | — |
 | [0015](0015-export-picker.md) | 2026-08-15 | 导出 picker 收敛：任意多选 + 预览 + 选项减重 | 已退役（picker 随 pp2 导出削减删除；批注烘图由 0035 `shot --marks` 落地） | ADR 0035 |
 | [0014](0014-outline-extension-lines.md) | 2026-08-15 | 左栏大纲 + 延伸线结构 | 现行 | — |
@@ -51,8 +52,8 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0008](0008-design-anchor-flat-linear-light.md) | 2026-08-11 | 设计语言锚：扁平 / Linear 风 / light theme（owner 审美准则） | 部分被取代（准则本体仍现行） | ADR 0010、ADR 0031 |
 | [0007](0007-workbench-react-rebuild.md) | 2026-08-10 | workbench 技术栈重构（react-rebuild milestone 收官） | 现行 | — |
 | [0006](0006-pinpoint-service-closeout.md) | 2026-08-10 | pinpoint 服务化 milestone 收尾（closeout） | 现行 | — |
-| [0005](0005-product-positioning.md) | 2026-08-07 | Product positioning: UIUX 原型交付与对齐工具 | 现行 | — |
+| [0005](0005-product-positioning.md) | 2026-08-07 | Product positioning: UIUX 原型交付与对齐工具 | 部分被取代（主体是任何人能读的设计文章；扩展注入一条随扩展退役；三层分工现行） | ADR 0035、ADR 0042 |
 | [0004](0004-branch-model-main-dev.md) | 2026-07-21 | Branch model: main = public template, dev = daily | 已被取代 | ADR 0037 |
-| [0003](0003-per-project-annotation-dir.md) | 2026-07-21 | Per-project annotation dir | 部分被取代（桶按条目分的半边归 0036 桶 = 页） | ADR 0036 |
+| [0003](0003-per-project-annotation-dir.md) | 2026-07-21 | Per-project annotation dir | 已被取代（数据根 `~/.pinpoint/`，桶 = 页 id） | ADR 0036 |
 | [0002](0002-template-split-and-exclude.md) | 2026-07-21 | Template split + release workflow | 部分被修订（实例内容排除仍现行；发布流程退役） | ADR 0012、ADR 0037 |
 | [0001](0001-topic-source-delivery-semantics.md) | 2026-07-20 | Separate topic, source, and delivery semantics | 现行（产品 SSOT 已归档到 workspace 的 .archive/2026-08-13-topic-subs/） | — |

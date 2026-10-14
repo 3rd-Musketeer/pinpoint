@@ -8,7 +8,7 @@
 
 ## 源码与 dist
 
-- 源目录 = 源码：`<帧 id>.jsx`（存量页也可以是 `.html`）、`components/<Name>.jsx`、页级 css / js（文章是 `article.css` / `article.js`）、存量页的 `board.json`。
+- 源目录 = 源码：`<帧 id>.jsx`（存量页也可以是 `.html` 片段；文章的 `.html` 是整份页面，不编译，见 [`projects.md`](projects.md)“HTML 帧”）、`components/<Name>.jsx`、页级 css / js（文章是 `article.css` / `article.js`）、存量页的 `board.json`。
 - 每屏按 `<screenId>.jsx` → `<screenId>.html` 找源码；都没有该屏报“源码不存在”，其余照编。
 - `ppnt build <页>` 编出 `~/.pinpoint/dist/<entry>/<screenId>.html` 与 `build.json`
   （`builtAt` / `sources` / `errors`）。dist 不进 git、不放回页目录，重编即得。
@@ -27,7 +27,7 @@
 内核 Preact，esbuild 转译后 `renderToString` 出静态 HTML 片段。编译期给每个宿主元素打
 `data-pp-id="<文件>:<行>@<n>"`（同一 `文件:行` 按文档顺序从 1 编号，永不复用；后缀用 `@`，`#` 只属于标注序号），给组件根元素打
 `data-pp-comp="<Name>"`（只打用户命名的组件）——它们是标注锚点与 `ppnt comments` / `locate` 的地址。
-存量 `.html` 帧原样编译，锚点仍是 cssPath + 文本摘录。
+存量页的 `.html` 片段帧原样编译，锚点仍是 cssPath + 文本摘录。文章的 HTML 帧是整份页面，不进 dist，服务直接给源文件，见 [`projects.md`](projects.md)“HTML 帧”。
 
 **lint 四禁**（编译失败，报文件与行，帧与组件都查）：`import preact/hooks`、`onX` 事件属性、
 `fetch(`、帧文件顶层的其它语句。组件是印章：输入 props 和 children 输出 HTML，没有状态、事件、
@@ -186,7 +186,7 @@ tabs / sheet / segmented / clock。
 
 进 git 的只有模板：框架代码 + kit + `content/previews/` 的示例页（页 id / 标题 / 顺序在
 `content/previews/_index.json`，可为空）。owner 在这台机器上的东西靠 `.git/info/exclude` 挡在
-git 之外，清单：`prototypes/`（经 registry 登记进 Pages）、`tasks/`、`BACKLOG.md`、`TODO.md`、
+git 之外，清单：`prototypes/`（经 registry 登记，出现在工作台左栏的“页面”组）、`tasks/`、`BACKLOG.md`、`TODO.md`、
 `.archive/`。exclude 不进共享的 `.gitignore`。实例页不住 `content/previews/`——它们住各自
 owning topic 的 `prototypes/`（或磁盘任何地方），经 `pinpoint add` 进 registry。往 tracked 文件里
 夹带实例内容（页面、组件、机器本地的 registry 内容）是这个仓最容易犯也最难回收的错。
@@ -196,9 +196,9 @@ owning topic 的 `prototypes/`（或磁盘任何地方），经 `pinpoint add` �
 
 | 可以改 | 不要改 |
 |---|---|
-| `<page>/<screenId>.jsx`（帧）与存量 `.html` | 手机机壳 / bezel / 状态栏（归 loader） |
-| `<page>/components/<Name>.jsx`（页内组件） | 把组件 HTML 复制粘贴进帧里 |
-| `<page>/board.json`（含 `assets`） | `ios-kit.js` 里的产品手势 |
+| `<page>/<screenId>.jsx`（帧）与存量 `.html`；文章是 `articles/<article>/<帧 id>.jsx` 与 HTML 帧 | 手机机壳 / bezel / 状态栏（归 loader） |
+| `<page>/components/<Name>.jsx`（页内组件）；文章是 `articles/<article>/components/` 与 project 的 `docs/pinpoint/components/` | 把组件 HTML 复制粘贴进帧里 |
+| `<page>/board.json`（含 `assets`）；文章是 `index.mdx` 与 `article.css` / `article.js` | `ios-kit.js` 里的产品手势 |
 | `<page>/<screenId>.js`（sidecar `mount(root)`） | 图注 font-size、屏里手写引用号 |
 | `content/kits/ios/jsx/`（手动升 kit 时） | 为“修一条标注”去动 `ios-kit.css` 或 loader |
 | 经 `pinpoint add` 登记 registry 条目 | 往 tracked 文件里夹带实例内容 |

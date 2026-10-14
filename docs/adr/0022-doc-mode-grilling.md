@@ -1,6 +1,6 @@
 # 0022 · 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务）
 
-Status: 现行（arc 缓期） · Date: 2026-08-16 · Scope: `src/workbench/`、`BACKLOG.md`
+Status: 已被取代（暂缓的“下一轮深化 arc”就是 pp3；文本选区批注由正文评论实现，见 0042） · Date: 2026-08-16 · Superseded-by: 0042 · Scope: `src/workbench/`、`BACKLOG.md`
 
 Relates-to: ADR 0017、ADR 0020（重申两者已落地的语义）
 

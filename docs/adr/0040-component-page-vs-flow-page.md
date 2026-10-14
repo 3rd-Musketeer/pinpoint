@@ -1,6 +1,6 @@
 # 0040 · 组件页与交互页：变体放 section，不放进帧里
 
-Status: 现行 · Date: 2026-10-10 · Scope: `skills/pinpoint-build/SKILL.md`、`docs/board-schema.md`（变体组一节已删）
+Status: 部分被取代（文章里同一界面的几种做法放在同一节，选定后删掉落选的帧，见 0042；组件页与交互页之分只用于存量页） · Date: 2026-10-10 · Superseded-in-part-by: 0042 · Scope: `skills/pinpoint-build/SKILL.md`、`docs/board-schema.md`（变体组一节已删）
 Supersedes: [0039](0039-variant-groups.md)
 
 2026-10-10 补注：组件页与交互页不再拆成两个独立的页，而是同一个页里的两个 tab（组件 tab + 交互 tab），
