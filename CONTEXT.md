@@ -54,7 +54,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
 工作台、`ppnt`、标注桶共用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开，这篇的画布标注和正文评论都进它的桶，`ppnt build / check / shot / mark / reply` 的页参数都写它。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
-要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page` 和 `<页>` 参数、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）。
+要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`ppnt` 的 `--page` 和 `<页>` 参数、`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。`pinpoint add --page` 是另一件事：把一条 registry 条目挂到一个存量页上（见存量页一节的 registry 条目）；代码里的 `entry` 还指 board 条目和 registry 条目，也在存量页一节。
 
 **节号与编号** · 节号由站点 `remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
 两套给人看的号，按同一个顺序数：
@@ -77,7 +77,7 @@ owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素�
 要避开：“批注”；把正文评论也叫画布标注。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`
-owner 在文章页上选中一段正文写下的评论，出现在右边评论栏。锚点是引文（选中文字加前后文），正文改了以后每次按引文重新定位，找不到就标“失效”。每条评论是一个线程：owner 的第一句加之后 owner 与 agent 的来回；agent 用 `ppnt reply` 回复，回复不改状态。
+owner 在文章页上选中一段正文写下的评论，出现在右边评论栏。锚点是引文（选中文字加前后文），正文改了以后每次按引文重新定位，找不到就标“失效”：这是显示标记，不是状态，失效的评论照常回复、写状态。每条评论是一个线程：owner 的第一句加之后 owner 与 agent 的来回；agent 用 `ppnt reply` 回复，回复不改状态。
 要避开：把“失效”说成已解决；“文档标注”（那是存量页上按路径分本的账本）。
 
 **标注队列** · 一个桶里的全部画布标注和正文评论

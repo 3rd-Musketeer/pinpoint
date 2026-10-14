@@ -8,13 +8,13 @@ annotations.**
 
 A **project** holds **articles** (design documents written in MDX, readable by anyone with the
 link) and **concepts** (wiki-style definitions). An article is made of **sections**; a section can
-hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` file per UI state). Each article has two views:
+hold a **canvas component** (`<Canvas>`) that lists its **frames** (one `.jsx` file per UI state). Every article has an article page; an article with at least one canvas also has a canvas view:
 
 - 📄 **Article page** — `https://pinpoint.localhost/<project>/<article>/`. Prose, a table of contents
   numbered 1, 2, 3, and one canvas card per section with frames. Click a frame to open the canvas
   overlay (frames are interactive there); “打开画布 →” jumps to the canvas view. `[[name]]` links to
   another article or a concept; a link whose target does not exist yet (an empty ref) is allowed and
-  shows the concepts still missing.
+  shows the concepts or articles still missing.
 - 🖼️ **Canvas view** — the workbench at `/?page=<project>_<article>`. Every section with a canvas
   becomes one row of frames, referenced as A1, B3 (section letter + frame number; the nth section is
   the nth letter). It is generated from `index.mdx`; you never write it by hand.
@@ -122,10 +122,12 @@ One entry (`bin/pinpoint.mjs`; `npm link` once to put both names on your PATH). 
 page id is `<project>_<article>`; every `<page id>` below also accepts a legacy page's id.
 
 ```bash
-ppnt list [words…]             # projects and legacy pages: id · title · kind · counts · source path; fuzzy match on words
+ppnt list [words…]             # projects and legacy pages: id · title · kind · counts · source path; words also match article ids and titles
 ppnt list <project>            # a project's articles (each with its page id), concepts and layout errors
 ppnt list <page id> --frames   # canvas numbers (A1) ↔ frame ids ↔ source files
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
+ppnt status --page <page id>   # per-status counts, orphans and dist freshness for one page id
+ppnt prune <page id>           # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
 ppnt add <dir|file|url>        # register a legacy page source (files stay where they are) — see docs/registry.md

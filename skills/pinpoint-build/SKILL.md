@@ -20,7 +20,7 @@ description: 在 pinpoint 里写 article（设计文档）：建 project、写 i
 pinpoint add <project 根目录> --project
 ```
 
-project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。登记时 id 只取 `project.json`，`--project` 不能和 `--title`、`--page`（把条目挂到存量页上的选项）同用；id 是保留名或撞了已有条目时，登记退非零，registry 不动。
+project 是一组相关的文章和 concept，id 是网址的第一段 `/<project>/`。登记时 id 只取 `project.json`，`--project` 不能和 `--title`、`--page`（把条目挂到存量页上的选项）同用；id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有条目时，登记退非零，registry 不动。
 
 ## 2. 目录（定死）
 
@@ -121,7 +121,7 @@ boundary: 一句话说清它管什么、不管什么。
 - 站点打不开，先跑 `pinpoint status`。
 - 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：另起一个服务，用 `PINPOINT_DATA_DIR`、`PINPOINT_REGISTRY`、`PINPOINT_ORIGIN`、`PORT`、`PINPOINT_SITE_PORT` 指到别处，做法见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。不要用 `pinpoint start` 起第二个服务：它经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
 
-文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和未处理标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧，在文章页上打开这一节的画布浮层，里面的帧可以操作，但不能标注；点卡片头的“打开画布 →”，进画布视图并定位到这一节。画布标注只在画布视图里做；在文章页上选中正文写的是正文评论。两种进同一个队列，处理见 pinpoint-annotate。
+文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和这一节 open 状态的画布标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧，在文章页上打开这一节的画布浮层，里面的帧可以操作，但不能标注；点卡片头的“打开画布 →”，进画布视图并定位到这一节。画布标注只在画布视图里做；在文章页上选中正文写的是正文评论。两种进同一个队列，处理见 pinpoint-annotate。
 
 改完的检查，都过了才汇报：
 
