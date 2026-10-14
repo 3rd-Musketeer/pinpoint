@@ -93,8 +93,6 @@ manifest 里了、文章目录删了或 project 的登记删了 = 整桶皆孤�
 桶归属由 client 这样决定：注入方（`/sites/`、`/previews/`、url 代理、`/api/frame`）
 注入的 `window.__pinpointEntry` = 页 id；工作台画布实例没有标记，桶 = 活动页 id
 （切页 = 换桶）；文章页注入的是这篇的页 id；都没有的兜底是 `'pinpoint'`。API 调用打的是脚本被加载的那个 origin。
-旧格式的账本（落在 pinpoint 桶的 previews 直开页与 mention 帧、按工作台 pathname 分本的画布账本）
-用 `scripts/migrate-ledgers.mjs` 迁到对应的页 id 桶。
 
 ## 正文评论
 

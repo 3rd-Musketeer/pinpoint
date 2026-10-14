@@ -8,13 +8,12 @@
  * 失败显式 500 带原因，注入面不吞错。
  *
  * storage-unify：entryId 一律是「这条内容属于哪一页」的页 id（挂靠条目给
- * 宿主页 id），不再有落缺省 pinpoint 桶的注入方。存量 previews 账本（旧落
- * pinpoint 桶）由 scripts/migrate-ledgers.mjs 一次性迁到页桶。
+ * 宿主页 id），注入方都落页桶，不落缺省 pinpoint 桶。
  */
 import { annotateClientSrc } from './annotate-bundle.js';
 
 /**
- * options.prose（pp3 M2，文章页）：`{ project, article }`。客户端见到
+ * options.prose（pp3，文章页）：`{ project, article }`。客户端见到
  * `window.__pinpointProse` 就只跑正文评论（选中文字 → 右栏线程），不起画布
  * 标注的工具条与侧栏；桶 = entryId（文章页 id），账本固定 @prose。
  */

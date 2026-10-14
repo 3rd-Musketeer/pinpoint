@@ -1,8 +1,8 @@
 # 0036 · 存储统一：桶 = 页，取代 pinpoint 共享画布账本；孤儿与 prune
 
-Status: 现行 · Date: 2026-09-23 · Supersedes: 0003（桶按条目分的半边——桶按页分后条目只是页的来源之一）、0020（mention 帧写死 pinpoint 桶的半边） · Scope: `src/server/lib/annotation-store.js`、`src/server/annotate-api.js`、`src/server/lib/orphans.js`、`src/server/lib/page-times.js`、`src/server/lib/ann-query.js`、`src/client/annotate.js`、`src/workbench/stage.js`、`bin/pinpoint-cli.js`、`scripts/migrate-ledgers.mjs`、`docs/annotation.md`
+Status: 现行（“存量迁移”一条的脚本已完成迁移，2026-10-04 删除） · Date: 2026-09-23 · Supersedes: 0003（桶按条目分的半边——桶按页分后条目只是页的来源之一）、0020（mention 帧写死 pinpoint 桶的半边） · Scope: `src/server/lib/annotation-store.js`、`src/server/annotate-api.js`、`src/server/lib/orphans.js`、`src/server/lib/page-times.js`、`src/server/lib/ann-query.js`、`src/client/annotate.js`、`src/workbench/stage.js`、`bin/pinpoint-cli.js`、`docs/annotation.md`
 
-**Decided**（2026-09-23 owner 决定「对标注存储做统一」；勘查地图在 `tasks/done/2026-09-22-pp2/reviews/storage-map.md`）：
+**Decided**（2026-09-23 owner 决定“对标注存储做统一”；勘查地图在 owner 本机的 `tasks/done/2026-09-22-pp2/reviews/storage-map.md`，不进 git）：
 
 - **桶 = 页。** `~/.pinpoint/<pageId>/`：pageId = 这条内容在 Pages 列表里属于哪一行
   （registry 条目 id；挂靠条目 `entry.page` 用宿主页 id；manifest 模板页用自己的 id）。
