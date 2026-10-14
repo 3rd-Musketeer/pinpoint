@@ -2769,7 +2769,7 @@ test('<project>_<article>#n resolves without --page in locate / mark / reply / c
   assert.ok(miss.err.includes('错误：t-proj/notes 没有 #9'), miss.err.join('\n'));
 });
 
-/* ---- pp3 r3：CLI 说文章模型（research/cli.md P0） ---- */
+/* ---- pp3：CLI 说文章模型 ---- */
 
 import { planArticleShots } from './pinpoint-cli.js';
 
