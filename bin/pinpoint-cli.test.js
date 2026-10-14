@@ -3095,3 +3095,76 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
   assert.equal(await run(['list', '--bogus'], { ...listBogus.io, env: {} }), 2, '未知选项不当关键词');
   assert.equal(listBogus.err[0], '错误：未知选项：--bogus');
 });
+
+/* ---- 2026-10-14 孤儿标注：comments 列得出，mark / reply 就指得到 ---- */
+
+/** 存量 doc 页，一屏连文件一起删了：它的账本成了孤儿（lib/orphans.js 第 1 种）。 */
+function orphanDocPage(t) {
+  const dir = withTempDir(t);
+  const site = path.join(dir, 'site');
+  fs.mkdirSync(site, { recursive: true });
+  fs.writeFileSync(path.join(site, 'live.html'), '<h1>live</h1>\n');
+  const registry = path.join(dir, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 't-orphans', title: 'O', kind: 'dir', path: site, board: 'html' }] }));
+  const env = { PINPOINT_DATA_DIR: path.join(dir, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' };
+  const bucket = path.join(env.PINPOINT_DATA_DIR, 't-orphans');
+  fs.mkdirSync(bucket, { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'live.html_aaa111.json'), JSON.stringify({
+    page: 'live.html_aaa111', path: '/sites/t-orphans/live.html', revision: 2,
+    annotations: [{ id: 'live01', n: 1, type: 'element', status: 'open', content: '活页意见' }],
+  }));
+  fs.writeFileSync(path.join(bucket, 'gone.html_bbb222.json'), JSON.stringify({
+    page: 'gone.html_bbb222', path: '/sites/t-orphans/gone.html', revision: 7,
+    annotations: [
+      { id: 'gone02', n: 2, type: 'element', status: 'check', content: '删掉那屏的意见' },
+      { id: 'gone03', n: 3, type: 'element', status: 'open', content: '删掉那屏的另一条' },
+    ],
+  }));
+  const calls = [];
+  const requestFn = async (url, opts = {}) => {
+    calls.push({ url, method: opts.method || 'GET', body: opts.body });
+    if (url.endsWith('/health')) return { status: 200, json: { ok: true } };
+    if (opts.method === 'POST') return { status: 200, json: { revision: 8, annotation: { status: opts.body.status || 'open' } } };
+    return { status: 200, json: { revision: url.includes('gone.html') ? 7 : 2, annotations: [] } };
+  };
+  return { registry, env, calls, requestFn };
+}
+
+test('mark / reply：comments 列出的孤儿标注也能用 #n、@a:id、<页>#n 指到，写回它自己的账本', async (t) => {
+  const made = orphanDocPage(t);
+  const listed = recorder();
+  assert.equal(await runComments(['comments', 't-orphans', '--status', 'all', '--registry', made.registry], { ...listed.io, env: made.env }), 0, listed.err.join('\n'));
+  const orphanPart = listed.out.slice(listed.out.findIndex((line) => line.includes('孤儿标注'))).join('\n');
+  assert.match(orphanPart, /\[#2\][^\n]*删掉那屏的意见/);
+
+  const mk = recorder();
+  const code = await runMark(['mark', 't-orphans', '#2', 'check', '--note', '改好了', '--registry', made.registry], { ...mk.io, env: made.env, requestFn: made.requestFn });
+  assert.equal(code, 0, mk.err.join('\n'));
+  const posts = made.calls.filter((call) => call.method === 'POST');
+  assert.deepEqual(posts.map((call) => call.url.replace(/^.*\/annotations\//, '')), ['gone.html_bbb222/2/reply', 'gone.html_bbb222/2/status']);
+  assert.equal(posts[0].body.entry, 't-orphans');
+  assert.equal(posts[0].body.baseRevision, 7);
+
+  made.calls.length = 0;
+  const rp = recorder();
+  assert.equal(await runReply(['reply', 't-orphans', '@a:gone03', '看过了', '--registry', made.registry], { ...rp.io, env: made.env, requestFn: made.requestFn }), 0, rp.err.join('\n'));
+  assert.match(made.calls.find((call) => call.method === 'POST').url, /\/annotations\/gone\.html_bbb222\/3\/reply$/);
+
+  made.calls.length = 0;
+  const cross = recorder();
+  assert.equal(await runMark(['mark', 't-orphans#3', 'done', '--registry', made.registry], { ...cross.io, env: made.env, requestFn: made.requestFn }), 0, cross.err.join('\n'));
+  assert.match(made.calls.find((call) => call.method === 'POST').url, /\/gone\.html_bbb222\/3\/status$/);
+
+  // comments <页>#n 也认孤儿。
+  const one = recorder();
+  assert.equal(await runComments(['comments', 't-orphans#2', '--registry', made.registry], { ...one.io, env: made.env }), 0, one.err.join('\n'));
+  assert.ok(one.out.some((line) => line.includes('[#2]')), one.out.join('\n'));
+});
+
+test('mark --status：批量展开只走活的行，孤儿不会被顺手改掉', async (t) => {
+  const made = orphanDocPage(t);
+  const mk = recorder();
+  assert.equal(await runMark(['mark', 't-orphans', 'check', '--status', 'open', '--registry', made.registry], { ...mk.io, env: made.env, requestFn: made.requestFn }), 0, mk.err.join('\n'));
+  const posted = made.calls.filter((call) => call.method === 'POST').map((call) => call.url.replace(/^.*\/annotations\//, ''));
+  assert.deepEqual(posted, ['live.html_aaa111/1/status']);
+});

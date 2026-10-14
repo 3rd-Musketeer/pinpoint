@@ -106,7 +106,7 @@ dist 不在或落后于源码时先编一次（stderr 打一行说明），不�
   --json               结构化输出
 ${REGISTRY_FLAG}
 
-表面已经不存在的账本列在末尾的“孤儿标注”组，不计数，清理走 ppnt prune。
+表面已经不存在的账本列在末尾的“孤儿标注”组，不计数；ppnt mark / reply 照样用 #n、@a:<id> 回它们，清理走 ppnt prune。
 
 例：ppnt comments browser-use/payment-confirm
     ppnt comments browser-use --status all`,

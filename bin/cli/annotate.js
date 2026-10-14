@@ -33,12 +33,22 @@ function serviceDown(origin, env, what) {
     : `pinpoint 服务未在跑（${origin}）；${what}，先 \`ppnt start\`。`;
 }
 
+/**
+ * 引用（#n、#a-#b、@a:id、<页>#n）能指到的全部行：帧行、文档行，加上孤儿账本里的行。
+ * comments 把孤儿单独列出来，agent 照着它回复、写状态，所以这些行也要能被 #n 指到；
+ * 服务端点按账本 + 序号找行，不看画布，孤儿账本照样能写。--status 批量展开和帧 / 节展开
+ * 只走活的行，孤儿不会被一句 `--status open` 顺手改掉。
+ */
+function addressableRows(context) {
+  return [...context.frameRows, ...context.docRows, ...(context.orphanRows || [])];
+}
+
 /** `<页>#n` 跨页引用的行读取器（mark / reply 用；locate 另带每页上下文）。 */
 function crossPageRowsFor(parsed, env) {
   const registryPath = resolveRegistryPath(parsed.flags, env);
   return (pageRef) => {
     const other = loadPageContext({ pageRef: String(toPageRef(pageRef)), registryPath, dataRootDir: dataRoot(env) });
-    return other ? [...other.frameRows, ...other.docRows] : [];
+    return other ? addressableRows(other) : [];
   };
 }
 
@@ -93,12 +103,13 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   }
   if (cross) {
     const keep = (row) => Number(row.n) === cross.n;
-    if (![...context.frameRows, ...context.docRows].some(keep)) {
+    if (!addressableRows(context).some(keep)) {
       err(`错误：${context.address} 没有 #${cross.n}`);
       return { code: 1, rows: 0 };
     }
     context.frameRows = context.frameRows.filter(keep);
     context.docRows = context.docRows.filter(keep);
+    context.orphanRows = (context.orphanRows || []).filter(keep);
   }
   const frameRef = parsed.flags.frame ? normalizeRefToken(parsed.flags.frame) : null;
   const report = buildCheckReport(context, { frame: frameRef, status, groupBy, mode });
@@ -306,9 +317,9 @@ export async function runLocate(argv, io = {}) {
   };
   const crossPageRows = (pageRef) => {
     const other = contextOf(pageRef);
-    return other ? [...other.frameRows, ...other.docRows] : [];
+    return other ? addressableRows(other) : [];
   };
-  const refCtx = { rows, board: context.board, pageId: context.pageId, crossPageRows };
+  const refCtx = { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows };
   const prepared = prepareRefs(got.refs, context);
   const { picks, errors, empty } = expandRefs(prepared.tokens, refCtx);
   picks.unshift(...prepared.picks);
@@ -704,7 +715,7 @@ export async function runMark(argv, io = {}) {
   const crossPageRows = crossPageRowsFor(parsed, env);
   const rows = [...context.frameRows, ...context.docRows];
   const prepared = prepareRefs(got.refs, context);
-  const { picks, errors, empty } = expandRefs(prepared.tokens, { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  const { picks, errors, empty } = expandRefs(prepared.tokens, { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows });
   picks.unshift(...prepared.picks);
   errors.unshift(...prepared.errors);
   empty.unshift(...prepared.empty);
@@ -789,8 +800,7 @@ export async function runReply(argv, io = {}) {
   if (!got.context) return got.code;
   const { context } = got;
   const crossPageRows = crossPageRowsFor(parsed, env);
-  const rows = [...context.frameRows, ...context.docRows];
-  const { picks, errors } = expandRefs(got.refs.map(normalizeRefToken), { rows, board: context.board, pageId: context.pageId, crossPageRows });
+  const { picks, errors } = expandRefs(got.refs.map(normalizeRefToken), { rows: addressableRows(context), board: context.board, pageId: context.pageId, crossPageRows });
   for (const error of errors) err(error);
   const annotationPicks = picks.filter((pick) => pick.kind === 'annotation');
   if (annotationPicks.length !== 1) {
