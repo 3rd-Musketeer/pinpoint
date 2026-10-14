@@ -10,7 +10,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 
 ```text
 <project 根>/docs/pinpoint/
-  project.json                 # { "id": "browser-use", "title": "…" }
+  project.json                 # { "id": "browser-use", "title": "…", "sources": {…} }
   articles/<article id>/
     index.mdx                  # 正文，frontmatter 写 title、summary
     <帧 id>.jsx
@@ -22,7 +22,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
   components/<Name>.jsx        # project 内共用；跨 project 进 kit
 ```
 
-- `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题。
+- `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
 - article id 就是 `articles/` 下的目录名，同一个模式。`concepts` 不能当 article id，`/<project>/concepts/` 已被概念页占用。
 - 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
 - `concepts/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`，同时记一条布局错误。以 `.` 开头的名字忽略。
@@ -181,17 +181,25 @@ export default function ConfirmBare() {
 帧也可以是一整份 HTML 页面，用来在画布上放生成出来的网页：一个页面的几个版本、同一份 brief 在几个模型上的产出、几张 demo 页、一份叠着 A–F 几种做法的文件。
 
 ```mdx
-<Canvas frames={["landing", { id: "catalog", src: "skill/preview.html" }]} />
+<Canvas frames={["landing", { id: "brochure", src: "examples/brochure.html" }, { id: "catalog", src: "skill:preview.html" }]} />
+```
+
+```json
+{ "id": "hosted", "title": "Hosted pages", "sources": { "skill": "../areta-pages/skill" } }
 ```
 
 - 字符串 `"landing"`：本篇目录下有 `landing.jsx` 就是 JSX 帧，否则是 `landing.html`。两个文件都在是错误 `frame_source`。
-- `{ id, src }`：project 根下别处的一个 HTML 文件，`src` 相对 project 根，帧 id 由 `id` 给。文件留在原处，不复制，画布显示的就是那份文件。对象只认 `id`、`src` 两个键，值只认字面量字符串。`src` 以 `/` 开头、含 `..` 或 `.` 段、含 `\`、不以 `.html` 或 `.htm` 结尾、解析（含符号链接）后在 project 根外面，都是错误 `frame_src`；文件不在是 `frame_missing`，这一帧照进画布。
+- `{ id, src }`：别处的一个 HTML 文件，帧 id 由 `id` 给。文件留在原处，不复制，画布显示的就是那份文件。对象只认 `id`、`src` 两个键，值只认字面量字符串。`src` 有两种写法：
+  - `"examples/brochure.html"`：相对 project 根。
+  - `"skill:preview.html"`：`<source 名>:<路径>`，路径相对 `project.json` 里 `sources.skill` 登记的目录。用来引用 project 根外面的文件，比如另一个仓里的示例页。
+- `sources`（`project.json`，可选）：`{ "<名字>": "<目录>" }`。名字匹配 `^[a-z0-9][a-z0-9-]*$`，不能叫 `root`；目录写绝对路径或相对 project 根。值不是字符串、名字不合规则、目录不在，都是 project 错误 `project_sources`（没有 `path`，`ppnt check` 指 `project.json`），这个名字不能用。
+- `src` 的路径以 `/` 开头、含 `..` 或 `.` 段、含 `\`、不以 `.html` 或 `.htm` 结尾、用了没登记的 source 名、解析（含符号链接）后在 project 根或那个 source 目录外面，都是错误 `frame_src`；文件不在是 `frame_missing`，这一帧照进画布。相对 project 根的路径不能以 `<名字>:` 开头，那是 source 写法。
 - 节没写 `shell` 时，HTML 帧套 `doc` 机壳；写了就用节的（存量的 HTML 片段帧放进手机壳就是这样）。JSX 帧和 HTML 帧可以在同一节，帧 id 在一篇里唯一。
-- 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<src>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。`@root/` 只在这篇有 project 根下的帧时开放，只服务 project 根下的文件，`.` 开头的段 404。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
-- 宽度：卡片和浮层按手机 390 或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（390 × 844 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
+- 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<路径>`，source 下的帧是 `/sites/<页 id>/@source/<名字>/<路径>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。服务只出 project 根和登记的 source 目录下的文件，workspace 里别的文件不出；一个目录只在这篇有帧住在里面时开放，`.` 开头的段 404。Astro 的 `fs.allow` 不变，这些文件不经站点出。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
+- 宽度：卡片和浮层按手机 402（画布视图手机屏的宽度）或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（402 × 874 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
 - 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素，锚点是 CSS 路径加元素文字，和文档标注一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
-- 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 390 宽截整页，`--marks` 在元素上标出标注号。
-- `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；指到范围外面，是错误 `html_asset_outside`。范围是本篇目录（本篇的帧）或 project 根（project 根下的帧）。
+- 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 402 宽截整页，`--marks` 在元素上标出标注号。
+- `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；指到范围外面，是错误 `html_asset_outside`。范围是这一帧所在的目录：本篇目录、project 根，或那个 source 目录。
 
 ### 页 id
 
@@ -237,7 +245,7 @@ export default function ConfirmBare() {
 
 - 跨页引用 `"<页 id>/<帧 id>"`：提示先把帧复制进本篇目录。
 - 帧文件不存在：帧仍进画布，工作台上那一格出错误面板。
-- HTML 帧写坏：`frame_source`（同一个 id 两种文件都有）、`frame_src`（`src` 不合规则或在 project 根外面），见“HTML 帧”。
+- HTML 帧写坏：`frame_source`（同一个 id 两种文件都有）、`frame_src`（`src` 不合规则、source 没登记，或在可服务的目录外面），见“HTML 帧”。`project.json` 的 `sources` 写坏是 project 自己的错误 `project_sources`。
 - 一节两个 `<Canvas>`：只用第一个。
 - 重复的节 id：第二个不进画布。
 - 其他都是错误：`frames` 或 `shell` 不是字面量、`shell` 取值不对、`frames` 为空、帧 id 不合法、同一帧出现在两节、`<Canvas>` 写在 Section 外、Section 嵌套、MDX 本身写坏。
@@ -266,7 +274,7 @@ export default function ConfirmBare() {
 
 - `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲和 `ppnt` 的 `B1` 对得上。文章页不显示字母：目录、节标题和卡片用节号，第 n 个字母就是第 n 节（上例 `confirm` 在文章上是 2），卡片和浮层的图注只有帧 id。
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
-- HTML 帧带 `"shell": "doc"`（节写了 `shell` 时用节的），project 根下的再带 `src`（相对 project 根）。卡片按 `doc` 量尺寸，宽度见“HTML 帧”。
+- HTML 帧带 `"shell": "doc"`（节写了 `shell` 时用节的），`{ id, src }` 写法的再带 `src`（正文里的原样，`shared/x.html` 或 `skill:preview.html`）。卡片按 `doc` 量尺寸，宽度见“HTML 帧”。
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
@@ -455,7 +463,7 @@ article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二
 - `site/fixtures/projects/demo/`：`payments` 有两个图（节外的静态时序图 `pay-sequence`，`overview` 节里的 `message-flow`）；`site/fixtures/projects/broken/` 有一个源文件不在的图。
 - `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 concept `Confirm-Card`（`concepts/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 
-- `e2e/html-site/`：project `e2e-html`，一篇 `pages`：一节放本篇的 `long-page.html`（很长）和 project 根下的 `shared/catalog.html`（`{ id, src }`），一节放手机 JSX 帧。HTML 帧的 e2e 用它。
+- `e2e/html-site/`：project `e2e-html`，一篇 `pages`：一节放本篇的 `long-page.html`（很长）、project 根下的 `shared/catalog.html` 和 source `kit`（`e2e/html-source/`）下的 `widget.html`，一节放手机 JSX 帧。HTML 帧的 e2e 用它。
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。
 
 `e2e-project`、`e2e-prose` 与 `e2e-html` 常驻 e2e 的共享 registry 固件（project 不进“页面”组）；`clash` 不登记。

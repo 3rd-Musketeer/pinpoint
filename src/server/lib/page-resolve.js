@@ -24,6 +24,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { loadProjectSources } from './project-sources.js';
 import { projectEntries, projectEntry, registryEntry } from './registry.js';
 
 /** project 根下的内容目录（相对路径）。 */
@@ -39,7 +40,8 @@ function isFile(file) {
 
 /**
  * 文章画布的编译目标，与普通 dir 页同形：pageDir = 文章目录，帧是 `<帧 id>.jsx` 或 `<帧 id>.html`；
- * projectRoot 是 project 根（project 根下的 HTML 帧从这里找，docs/projects.md“HTML 帧”）。
+ * projectRoot 是 project 根，sources 是 project.json 登记的 source 目录 { 名: 绝对目录 }
+ * （`{ id, src }` 写法的 HTML 帧从这两处找，docs/projects.md“HTML 帧”）。
  * 文章目录或 index.mdx 不在时 null。
  */
 function articleTarget(entry, articleId, pageId) {
@@ -56,6 +58,7 @@ function articleTarget(entry, articleId, pageId) {
     projectId: entry.id,
     articleId,
     projectRoot: path.resolve(entry.path),
+    sources: loadProjectSources(path.resolve(entry.path)).sources,
     projectDir,
     articleFile,
   };

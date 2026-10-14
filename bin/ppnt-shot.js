@@ -409,18 +409,18 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
 
 /**
  * 文章的文档帧（HTML 帧，docs/projects.md“HTML 帧”）：不在画布上，直接打开它自己的地址（`?annotate=off`），
- * 按手机宽度 390 拍整页。jobs = [{ url, out, label, scale, marks }]；marks 是账本行，钉按行上第一个目标的
+ * 按手机宽度 402（画布视图的手机屏宽）拍整页。jobs = [{ url, out, label, scale, marks }]；marks 是账本行，钉按行上第一个目标的
  * 选择器（文档标注的锚点就是整页的选择器加文字）落在元素左上角，找不到的安静跳过。
  * 返回 [{ out, label, width, height }]。
  */
-export const DOC_SHOT_WIDTH = 390;
+export const DOC_SHOT_WIDTH = 402;
 export async function renderDocShots({ origin, jobs, env = process.env }) {
   if (!(await serviceUp(origin))) throw new Error(serviceDownMessage(origin, env));
   const browser = await chromium.launch({ headless: true });
   const results = [];
   try {
     for (const job of jobs) {
-      const context = await browser.newContext({ viewport: { width: DOC_SHOT_WIDTH, height: 844 }, deviceScaleFactor: job.scale || 1, ignoreHTTPSErrors: true });
+      const context = await browser.newContext({ viewport: { width: DOC_SHOT_WIDTH, height: 874 }, deviceScaleFactor: job.scale || 1, ignoreHTTPSErrors: true });
       const page = await context.newPage();
       const url = new URL(job.url.split('/').map(encodeURIComponent).join('/'), origin);
       url.searchParams.set('annotate', 'off');

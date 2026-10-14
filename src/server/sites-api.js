@@ -33,7 +33,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
-import { articleHtmlFrameFile, deriveArticleBoard, rootRelFromUrlPath } from './lib/article-board.js';
+import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolvePage } from './lib/page-resolve.js';
 import {
   boardScreenIds,
@@ -45,6 +45,7 @@ import { listenOrigins } from './lib/proxy-origin.js';
 import { loadRegistry } from './lib/registry.js';
 import { createSiteUpgradeHandler, proxySiteRequest } from './lib/site-proxy.js';
 import { synthesizeBoard } from './lib/synth-board.js';
+import { parseFrameSrc } from '../shared/project-ids.js';
 
 export { annotateSnippet, injectAnnotateClient };
 
@@ -130,12 +131,12 @@ function resolveFileWithin(base, rel) {
 }
 
 /**
- * project 根下的静态文件（HTML 帧引用的资源）：和 resolveFileWithin 同样的包含检查（文本 + realpath），
- * 另外拒绝任何 `.` 开头的段（.git、.env 这类隐藏文件不经服务出）。
+ * project 根或 source 目录下的静态文件（HTML 帧引用的资源）：和 resolveFileWithin 同样的包含检查
+ * （文本 + realpath），另外拒绝任何 `.` 开头的段（.git、.env 这类隐藏文件不经服务出）。
  */
-function resolveRootStatic(projectRoot, rel) {
-  if (!projectRoot || rel.split('/').some((seg) => seg.startsWith('.'))) return null;
-  return resolveFileWithin(path.resolve(projectRoot), rel);
+function resolveRootStatic(base, rel) {
+  if (!base || rel.split('/').some((seg) => seg.startsWith('.'))) return null;
+  return resolveFileWithin(path.resolve(base), rel);
 }
 
 /**
@@ -209,17 +210,24 @@ export function createSitesHandler(options = {}) {
     const query = parseReqUrl(req).query;
     const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
     const screens = (board.sections || []).flatMap((section) => section.screens || []);
-    // project 根下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>。只在这篇有 project 根下的
-    // HTML 帧时开放；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
-    const rootRel = rootRelFromUrlPath(target, rel);
-    if (rootRel !== null) {
+    // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
+    // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧住在里面时开放；帧本身注入标注客户端，
+    // 其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
+    const src = frameSrcFromUrlPath(target, rel);
+    if (src !== null) {
+      const { source, path: relPath } = parseFrameSrc(src);
       const rootScreens = screens.filter((screen) => screen.src);
-      if (!rootScreens.length) {
+      const open = rootScreens.some((screen) => {
+        const used = frameSrcFromUrlPath(target, screen.src);
+        return used !== null && parseFrameSrc(used).source === source;
+      });
+      const base = source ? (target.sources || {})[source] : target.projectRoot;
+      if (!open || !base) {
         sendJson(res, 404, { error: 'not found' });
         return true;
       }
-      const frame = rootScreens.find((screen) => rootRelFromUrlPath(target, screen.src) === rootRel);
-      const file = frame ? articleHtmlFrameFile(target, frame) : resolveRootStatic(target.projectRoot, rootRel);
+      const frame = rootScreens.find((screen) => frameSrcFromUrlPath(target, screen.src) === src);
+      const file = frame ? articleHtmlFrameFile(target, frame) : resolveRootStatic(base, relPath);
       if (!file) {
         sendJson(res, 404, { error: 'not found' });
         return true;

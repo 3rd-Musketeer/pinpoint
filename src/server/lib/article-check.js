@@ -114,11 +114,12 @@ export function emptyRefsIn(text, { from, resolve }) {
 
 /** 正文里一帧的 HTML 源文件：→ { file, root } | null（不是 HTML 帧，或文件不在：缺帧是布局错误）。
     root 是这一帧能引用到的范围：本篇目录下的帧是文章目录（服务在 /sites/<页 id>/ 下出它），
-    project 根下的帧是 project 根（/sites/<页 id>/@root/ 下）。 */
+    project 根下的帧是 project 根（/sites/<页 id>/@root/ 下），source 下的帧是那个 source 目录
+    （/sites/<页 id>/@source/<名>/ 下）。 */
 function htmlFrameFile(target, frame, src) {
   if (src !== undefined) {
-    const found = resolveRootFrame(target.projectRoot, src);
-    return found.file ? { file: found.file, root: target.projectRoot } : null;
+    const found = resolveRootFrame(target.projectRoot, src, target.sources);
+    return found.file ? { file: found.file, root: found.base } : null;
   }
   if (isFile(path.join(target.pageDir, `${frame}.jsx`))) return null;
   const file = path.join(target.pageDir, `${frame}.html`);

@@ -270,3 +270,81 @@ test('卡片宽度和服务端的宽度表是同一组数', () => {
   assert.equal(DOC_WIDTHS.phone.width, HTML_FRAME_WIDTHS.phone);
   assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
 });
+
+/** 在 fixture 上加两个 source：skill（相对 project 根，在根外面）和 bad（目录不在）。 */
+function withSources(t, sources) {
+  const fx = fixture(t);
+  const skill = path.join(fx.dir, 'skill-repo', 'skill');
+  write(path.join(skill, 'preview.html'), PAGE('组件', '\n<img src="img/dot.svg">'));
+  write(path.join(skill, 'page.css'), 'body { color: red; }\n');
+  write(path.join(skill, 'img', 'dot.svg'), '<svg xmlns="http://www.w3.org/2000/svg"/>');
+  write(path.join(skill, '.git', 'config'), '[core]\n');
+  write(path.join(fx.dir, 'skill-repo', 'secret.html'), PAGE('仓里别处'));
+  write(path.join(fx.content, 'project.json'), JSON.stringify({ id: 'demo', sources }));
+  write(path.join(fx.article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '', // 1-4
+    '<Section id="pages" title="页面">', '', // 5-6
+    '<Canvas frames={["long", { id: "skill-preview", src: "skill:preview.html" }]} />', '', // 7-8
+    '</Section>', '',
+  ].join('\n'));
+  return { ...fx, skill };
+}
+
+test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开这个目录，check 按它算范围', async (t) => {
+  const fx = withSources(t, { skill: '../skill-repo/skill' });
+  const [project] = listProjects(fx.registry);
+  assert.deepEqual(project.errors, []);
+  assert.deepEqual(project.sources, { skill: fx.skill });
+  const target = resolveArticleTarget(fx.registry, fx.pageId);
+  const { board } = deriveArticleBoard(target);
+  assert.deepEqual(board.sections[0].screens.map((s) => [s.id, s.shell, s.src]), [
+    ['long', 'doc', undefined],
+    ['skill-preview', 'doc', 'sites/demo_pages/@source/skill/preview.html'],
+  ]);
+  assert.equal(articleHtmlFrameFile(target, board.sections[0].screens[1]), path.join(fx.skill, 'preview.html'));
+  const canvas = articleCanvas('demo', 'pages', { registry: fx.registry });
+  assert.equal(canvas.sections[0].frames[1].src, 'skill:preview.html');
+
+  const handler = createSitesHandler({ registry: fx.registry });
+  const frame = await get(handler, '/sites/demo_pages/@source/skill/preview.html');
+  assert.equal(frame.statusCode, 200);
+  assert.match(String(frame.body), /组件/);
+  assert.match(String(frame.body), /pinpoint/); // 注入了标注客户端
+  assert.equal((await get(handler, '/sites/demo_pages/@source/skill/page.css')).statusCode, 200);
+  assert.equal((await get(handler, '/sites/demo_pages/@source/skill/img/dot.svg')).statusCode, 200);
+  // 目录外、隐藏文件、没登记的名字、这篇没用到的 project 根：都 404。
+  assert.equal((await get(handler, '/sites/demo_pages/@source/skill/../secret.html')).statusCode, 404);
+  assert.equal((await get(handler, '/sites/demo_pages/@source/skill/%2e%2e/secret.html')).statusCode, 404);
+  assert.equal((await get(handler, '/sites/demo_pages/@source/skill/.git/config')).statusCode, 404);
+  assert.equal((await get(handler, '/sites/demo_pages/@source/other/preview.html')).statusCode, 404);
+  assert.equal((await get(handler, '/sites/demo_pages/@root/shared/cat.html')).statusCode, 404);
+
+  const report = await checkProject(fx.registry, 'demo', { articleId: 'pages' });
+  const htmlRows = report.diagnostics.filter((row) => row.code.startsWith('html_asset'));
+  assert.deepEqual(htmlRows.map((row) => [row.code, row.frame]), [['html_asset_missing', 'long']]);
+});
+
+test('sources：没登记的名字、根外路径是正文错误；值写坏、目录不在是 project 错误，ppnt check 指 project.json', async (t) => {
+  const fx = withSources(t, { skill: '../skill-repo/skill', gone: '../nowhere', 'Bad Name': '.', root: '.', num: 3 });
+  write(path.join(fx.article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="pages" title="页面">', '',
+    '<Canvas frames={[{ id: "a", src: "nope:preview.html" }, { id: "b", src: "skill:../secret.html" }, { id: "c", src: "skill:missing.html" }]} />', '',
+    '</Section>', '',
+  ].join('\n'));
+  const [project] = listProjects(fx.registry);
+  const sourceErrors = project.errors.filter((error) => error.code === 'project_sources');
+  assert.equal(sourceErrors.length, 4);
+  assert.ok(sourceErrors.every((error) => error.path === undefined));
+  assert.match(sourceErrors.map((error) => error.message).join('\n'), /"gone" 指的目录不存在/);
+  assert.deepEqual(project.sources, { skill: fx.skill });
+  const canvasErrors = project.errors.filter((error) => error.path === 'articles/pages/index.mdx');
+  assert.deepEqual(canvasErrors.map((error) => [error.code, error.frame, error.line]), [
+    ['frame_src', 'a', 7], ['frame_src', 'b', 7], ['frame_missing', 'c', 7],
+  ]);
+  assert.match(canvasErrors[0].message, /source "nope" 没有在 project.json 的 sources 里登记/);
+  const report = await checkProject(fx.registry, 'demo', { articleId: 'pages' });
+  const rows = report.diagnostics.filter((row) => row.code === 'project_sources');
+  assert.equal(rows.length, 4);
+  assert.ok(rows.every((row) => row.severity === 'error' && row.file === path.join(fx.content, 'project.json')));
+});

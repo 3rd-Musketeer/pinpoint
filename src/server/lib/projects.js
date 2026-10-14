@@ -2,7 +2,7 @@
  * pp3 project 读取（docs/projects.md）：registry 里 kind "project" 的条目指向
  * project 根目录，内容住在 <root>/docs/pinpoint/：
  *
- *   project.json                  { "id", "title" }
+ *   project.json                  { "id", "title", "sources"? }
  *   articles/<article>/index.mdx  frontmatter: title, summary?
  *   concepts/<名字>.md            frontmatter: name, status, boundary
  *
@@ -23,6 +23,7 @@ import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { parseFrontmatter } from './frontmatter.js';
+import { readProjectSources } from './project-sources.js';
 import { manifestPageIds } from './page-manifest.js';
 import { PROJECT_CONTENT_DIR } from './page-resolve.js';
 import { projectEntries, projectEntry } from './registry.js';
@@ -102,7 +103,7 @@ export function readProjectJson(root) {
   return { json, file, errors };
 }
 
-function readArticles(dir, errors, projectId) {
+function readArticles(dir, errors, projectId, sources = {}) {
   const articlesDir = path.join(dir, 'articles');
   const articles = [];
   for (const item of visibleChildren(articlesDir)) {
@@ -130,7 +131,7 @@ function readArticles(dir, errors, projectId) {
     const fm = parseFrontmatter(text);
     for (const message of fm.errors) errors.push(problem('frontmatter', message, { path: indexPath }));
     // 画布写法的错误（跨页引用、缺帧文件、一节两个 Canvas、重复节 id…）也是布局错误，原样带上节、帧、行。
-    const canvas = parseArticleCanvas(text, frameFileReaders(articleDir, { projectRoot: path.resolve(dir, '..', '..') }));
+    const canvas = parseArticleCanvas(text, frameFileReaders(articleDir, { projectRoot: path.resolve(dir, '..', '..'), sources }));
     for (const error of canvas.errors) errors.push({ ...error, path: indexPath });
     // canvasSections：画布上有几节（带 Canvas 且列了帧的节）。0 = 这篇没有画布，
     // 工作台左栏点它直接打开正文（docs/projects.md“工作台左栏”）。
@@ -186,7 +187,7 @@ export function readProject(entry) {
   const root = entry.path;
   const dir = path.join(root, PROJECT_CONTENT_DIR);
   const errors = [];
-  const project = { id: entry.id, title: entry.title || entry.id, root, dir, articles: [], concepts: [], errors };
+  const project = { id: entry.id, title: entry.title || entry.id, root, dir, sources: {}, articles: [], concepts: [], errors };
   if (isReservedProjectId(entry.id)) errors.push(reservedProjectId(entry.id));
   if (!isDir(root)) {
     errors.push(problem('project_root_missing', `project 根目录不存在：${root}`));
@@ -204,8 +205,12 @@ export function readProject(entry) {
       errors.push(problem('project_id_mismatch', `project.json 的 id "${meta.json.id}" 与登记的 id "${entry.id}" 不一致（改 id 用 pinpoint rename）`));
     }
     if (typeof meta.json.title === 'string' && meta.json.title) project.title = meta.json.title;
+    // HTML 帧可以引用的 project 根外目录（docs/projects.md“HTML 帧”）。
+    const declared = readProjectSources(root, meta.json);
+    project.sources = declared.sources;
+    errors.push(...declared.errors);
   }
-  project.articles = readArticles(dir, errors, entry.id);
+  project.articles = readArticles(dir, errors, entry.id, project.sources);
   project.concepts = readConcepts(dir, errors);
   project.concepts.sort((a, b) => a.name.localeCompare(b.name));
   checkNamespace(project.articles, project.concepts, errors);

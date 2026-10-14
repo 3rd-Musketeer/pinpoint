@@ -5,7 +5,7 @@
 // 卡片根节点用 data-pp-section（不用 data-section：那是 Section 的，查 [data-section] 每节只该命中一个）。
 // 不信本组件自己的 props：section 和 num（节号）由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
 // 文章只显示数字：卡片头是节号 + 节标题，图注只有帧 id；画布字母（B、B1）留给工作台、ppnt 和标注，不进文章页。
-// 文档帧（HTML 帧，shell doc）按 pinpoint 定的宽度显示（手机 390 / 桌面 1280，卡片头切换，缺省手机），卡片只露第一屏。
+// 文档帧（HTML 帧，shell doc）按 pinpoint 定的宽度显示（手机 402 / 桌面 1280，卡片头切换，缺省手机），卡片只露第一屏。
 // 卡片不可交互：iframe tabindex -1、pointer-events none。点帧打开画布浮层（CanvasOverlay.astro，地址 #overlay=<节>&frame=<帧>），
 // 浮层里的帧可交互；“打开画布”是顶层跳转到画布并定位到这一节。浮层读的是这里的 data-*。
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。

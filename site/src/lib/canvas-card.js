@@ -35,12 +35,12 @@ const NATURAL = {
 
 /**
  * Document frames (shell "doc": HTML frames, docs/projects.md「HTML 帧」) are shown as a page at a
- * width pinpoint picks, not measured: 手机 390 or 桌面 1280 (owner 2026-10-14; the values match
+ * width pinpoint picks, not measured: 手机 402 (the canvas view's phone screen) or 桌面 1280 (owner 2026-10-14; the values match
  * HTML_FRAME_WIDTHS in src/shared/project-ids.js, a unit test checks). `height` is the first screen:
  * the card shows only that much, the overlay lets the page scroll inside the frame.
  */
 export const DOC_WIDTHS = Object.freeze({
-  phone: Object.freeze({ width: 390, height: 844, label: '手机' }),
+  phone: Object.freeze({ width: 402, height: 874, label: '手机' }),
   desktop: Object.freeze({ width: 1280, height: 800, label: '桌面' }),
 });
 export const DEFAULT_DOC_WIDTH = 'phone';

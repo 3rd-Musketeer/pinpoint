@@ -31,7 +31,7 @@ import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
 import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
-import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
+import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID, parseFrameSrc } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
@@ -85,12 +85,13 @@ export function readFrameShell(text) {
 /**
  * 读盘的 frameSource / frameShell / rootFrame / figureExists：
  * - 帧 = 文章目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`（HTML 帧，docs/projects.md“HTML 帧”）；
- * - rootFrame(src) 答 project 根下的 HTML 帧（`{ id, src }` 写法）：src 相对 project 根，解析后（含 symlink）
- *   必须仍在根下，且是一个文件；
+ * - rootFrame(src) 答 `{ id, src }` 写法的 HTML 帧：src 相对 project 根，或 `<source 名>:<路径>` 相对
+ *   project.json 登记的 source 目录（sources = { 名: 绝对目录 }）；解析后（含 symlink）必须仍在那个目录下，
+ *   且是一个文件；
  * - 图 = figures/<图 id>.jsx。
  * projectRoot 缺省是文章目录往上四层（<根>/docs/pinpoint/articles/<文章>）。
  */
-export function frameFileReaders(articleDir, { projectRoot = path.resolve(articleDir, '..', '..', '..', '..') } = {}) {
+export function frameFileReaders(articleDir, { projectRoot = path.resolve(articleDir, '..', '..', '..', '..'), sources = {} } = {}) {
   const isFile = (file) => {
     try {
       return fs.statSync(file).isFile();
@@ -118,45 +119,52 @@ export function frameFileReaders(articleDir, { projectRoot = path.resolve(articl
       }
       return readFrameShell(text);
     },
-    rootFrame: (src) => resolveRootFrame(projectRoot, src),
+    rootFrame: (src) => resolveRootFrame(projectRoot, src, sources),
   };
 }
 
 /**
- * project 根下的 HTML 帧文件：→ { file } | { error, missing? }。src 只认相对 project 根的路径，
- * 不能有 `..`、`.` 开头的段（隐藏文件）、反斜杠，要以 .html / .htm 结尾；解析后的真实路径（跟 symlink）
- * 必须在 project 根的真实路径下。
+ * `{ id, src }` 写法的 HTML 帧文件：→ { file, base } | { error, missing? }。base 是这一帧所在的可服务目录
+ * （project 根或那个 source 目录）。src 是相对 project 根的路径，或 `<source 名>:<路径>`（相对 sources[名]）；
+ * 路径不能以 / 开头，不能有 `..`、`.` 开头的段（隐藏文件）、反斜杠，要以 .html / .htm 结尾；解析后的真实路径
+ * （跟 symlink）必须在 base 的真实路径下。
  */
-export function resolveRootFrame(projectRoot, src) {
+export function resolveRootFrame(projectRoot, src, sources = {}) {
   const value = String(src || '');
-  const segments = value.split('/');
-  if (!HTML_FRAME_SRC_PATTERN.test(value) || value.includes('\\') || value.includes('\0')
+  const { source, path: rel } = parseFrameSrc(value);
+  const segments = rel.split('/');
+  if (!HTML_FRAME_SRC_PATTERN.test(rel) || rel.includes('\\') || rel.includes('\0')
     || segments.some((seg) => !seg || seg === '..' || seg.startsWith('.'))) {
-    return { error: `src 要写成相对 project 根的 HTML 文件路径（如 "skill/preview.html"，不能以 / 开头，不能有 ..、隐藏目录，以 .html 结尾）：${JSON.stringify(value)}` };
+    return { error: `src 要写成相对 project 根的 HTML 文件路径（"skill/preview.html"），或 "<source 名>:<路径>"（"skill:preview.html"，source 在 project.json 的 sources 里登记）；路径不能以 / 开头，不能有 ..、隐藏目录，以 .html 结尾：${JSON.stringify(value)}` };
   }
-  const root = path.resolve(projectRoot);
+  if (source && !Object.prototype.hasOwnProperty.call(sources || {}, source)) {
+    const known = Object.keys(sources || {});
+    return { error: `src ${JSON.stringify(value)} 用的 source "${source}" 没有在 project.json 的 sources 里登记（已登记：${known.length ? known.join('、') : '无'}）` };
+  }
+  const where = source ? `source ${source}` : 'project 根';
+  const root = path.resolve(source ? sources[source] : projectRoot);
   const abs = path.resolve(root, ...segments);
   let realRoot;
   let real;
   try {
     realRoot = fs.realpathSync(root);
   } catch {
-    return { error: `project 根不存在：${root}`, missing: true };
+    return { error: `${where}不存在：${root}`, missing: true };
   }
   try {
     real = fs.realpathSync(abs);
   } catch {
-    return { error: `src 指的文件不存在：${value}（project 根 ${root}）`, missing: true };
+    return { error: `src 指的文件不存在：${value}（${where} ${root}）`, missing: true };
   }
   if (real !== realRoot && !real.startsWith(realRoot + path.sep)) {
-    return { error: `src 指到了 project 根外面：${value}（实际是 ${real}，project 根 ${realRoot}）` };
+    return { error: `src 指到了${where}外面：${value}（实际是 ${real}，${where} ${realRoot}）` };
   }
   try {
     if (!fs.statSync(real).isFile()) return { error: `src 不是一个文件：${value}`, missing: true };
   } catch {
     return { error: `src 指的文件不存在：${value}`, missing: true };
   }
-  return { file: abs };
+  return { file: abs, base: root };
 }
 
 /** 字符串属性：undefined = 没写；{ value } = 字面量；{ error } = 别的写法。 */

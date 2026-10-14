@@ -94,21 +94,41 @@ export const FIGURE_DIR = 'figures';
 export const FIGURE_SRC_PATTERN = /^figures\/([a-zA-Z0-9_-]+)\.jsx$/;
 
 /**
- * HTML 帧（docs/projects.md“HTML 帧”）。帧可以是文章目录下的 `<帧 id>.html`，也可以指 project 根下别处的
- * 一个 HTML 文件：`<Canvas frames={[{ id: "catalog", src: "skill/preview.html" }]}>`，src 相对 project 根。
- * 后一种在服务上的地址是 `/sites/<页 id>/@root/<src>`：地址的目录就是文件所在的目录，文件里写的相对资源
- * 照原样解析。`@` 不会出现在帧 id 和文件名规则里，和文章目录下的文件不会撞。
+ * HTML 帧（docs/projects.md“HTML 帧”）。帧可以是文章目录下的 `<帧 id>.html`，也可以指 project 根或某个
+ * 登记的 source 目录下的一个 HTML 文件：
+ *   `{ id: "catalog", src: "shared/catalog.html" }`   src 相对 project 根；
+ *   `{ id: "catalog", src: "skill:preview.html" }`    `<source 名>:<路径>`，路径相对 project.json 里
+ *                                                      `sources.skill` 指的目录。
+ * 服务地址：project 根下是 `/sites/<页 id>/@root/<路径>`，source 下是 `/sites/<页 id>/@source/<名>/<路径>`。
+ * 地址的目录就是文件所在的目录，文件里写的相对资源照原样解析。`@` 不会出现在帧 id 和文件名规则里，
+ * 和文章目录下的文件不会撞。
  */
 export const PROJECT_ROOT_SEGMENT = '@root';
+export const PROJECT_SOURCE_SEGMENT = '@source';
 export const HTML_FRAME_SRC_PATTERN = /^[^/\\].*\.html?$/i;
+/** project.json `sources` 的名字：和 project id 同一个模式（小写字母、数字、-）。 */
+export const SOURCE_NAME_PATTERN = ENTRY_ID_PATTERN;
 
-/** project 根下一个 HTML 帧的服务地址（不带开头的 `/`，和合成板的 screen src 同一种写法）。 */
-export function rootFrameSrc(pageId, src) {
-  return `sites/${pageId}/${PROJECT_ROOT_SEGMENT}/${String(src).split('/').map(encodeURIComponent).join('/')}`;
+/** HTML 帧的 src → { source, path }：`skill:preview.html` → { source: 'skill', path: 'preview.html' }，
+    不带 `<名>:` 前缀的 source 为 null（相对 project 根）。 */
+export function parseFrameSrc(src) {
+  const value = String(src == null ? '' : src);
+  const match = value.match(/^([a-z0-9][a-z0-9-]*):(.*)$/);
+  return match ? { source: match[1], path: match[2] } : { source: null, path: value };
 }
 
-/** 卡片和浮层里 HTML 帧的两种宽度（owner 2026-10-14：手机 390、桌面 1280，缺省手机）。 */
-export const HTML_FRAME_WIDTHS = Object.freeze({ phone: 390, desktop: 1280 });
+const encodePath = (rel) => String(rel).split('/').map(encodeURIComponent).join('/');
+
+/** HTML 帧的服务地址（不带开头的 `/`，和合成板的 screen src 同一种写法）。 */
+export function rootFrameSrc(pageId, src) {
+  const { source, path } = parseFrameSrc(src);
+  return source
+    ? `sites/${pageId}/${PROJECT_SOURCE_SEGMENT}/${source}/${encodePath(path)}`
+    : `sites/${pageId}/${PROJECT_ROOT_SEGMENT}/${encodePath(path)}`;
+}
+
+/** 卡片和浮层里 HTML 帧的两种宽度（owner 2026-10-14：手机 402，即画布视图的手机屏宽；桌面 1280；缺省手机）。 */
+export const HTML_FRAME_WIDTHS = Object.freeze({ phone: 402, desktop: 1280 });
 
 /** board / <Canvas shell> / 帧级 shell 的取值（docs/board-schema.md）。 */
 export const CANVAS_SHELLS = Object.freeze(['app', 'lock', 'doc', 'comp']);

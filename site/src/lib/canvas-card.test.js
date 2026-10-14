@@ -75,7 +75,7 @@ test('card model: document frames (HTML 帧) take the page width, the card gets 
   ] };
   const card = cardModel(pages, 'pages');
   assert.equal(card.docWidth, 'phone');
-  assert.deepEqual(card.frames.map((f) => [f.id, f.box.mode, f.box.width, f.box.height]), [['long', 'doc', 390, 844], ['phone', 'phone', 438, 910]]);
+  assert.deepEqual(card.frames.map((f) => [f.id, f.box.mode, f.box.width, f.box.height]), [['long', 'doc', 402, 874], ['phone', 'phone', 438, 910]]);
   assert.equal(cardModel(pages, 'app').docWidth, '');
   assert.deepEqual(shellBox('doc', 'desktop'), { mode: 'doc', width: 1280, height: 800, scale: CARD_SCALE });
   assert.deepEqual(shellBox('doc', 'watch'), shellBox('doc', 'phone'));

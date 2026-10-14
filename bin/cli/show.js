@@ -16,7 +16,7 @@ import { projectEmptyRefs } from '../../src/server/lib/article-check.js';
 import { figureDistErrors } from '../../src/server/lib/page-compiler.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { findProject } from '../../src/server/lib/projects.js';
-import { articlePageId } from '../../src/shared/project-ids.js';
+import { articlePageId, parseFrameSrc } from '../../src/shared/project-ids.js';
 import { formatProjectError, isArticleError } from '../../src/shared/project-errors.js';
 
 import { DEFAULT_ORIGIN, ioOf } from './core.js';
@@ -36,10 +36,14 @@ function readText(file) {
   }
 }
 
-/** 帧的源文件（显示用）：本篇目录下的 `<帧 id>.jsx` / `.html` 写文件名，project 根下的 HTML 帧写
-    `<src>（project 根）`；不在盘上是 null。 */
+/** 帧的源文件（显示用）：本篇目录下的 `<帧 id>.jsx` / `.html` 写文件名，`{ id, src }` 的 HTML 帧写
+    `<src>（project 根）` 或 `<src>（source <名>）`；不在盘上是 null。 */
 function frameFileShown(project, article, id, src) {
-  if (src !== undefined) return resolveRootFrame(project.root, src).file ? `${src}（project 根）` : null;
+  if (src !== undefined) {
+    if (!resolveRootFrame(project.root, src, project.sources).file) return null;
+    const source = parseFrameSrc(src).source;
+    return `${src}（${source ? `source ${source}` : 'project 根'}）`;
+  }
   for (const name of [`${id}.jsx`, `${id}.html`]) if (fs.existsSync(path.join(article.dir, name))) return name;
   return null;
 }

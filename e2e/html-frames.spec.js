@@ -11,9 +11,10 @@ import { closeSettled } from './ledger-settle.js';
 import { waitNoReload } from './site-settle.js';
 
 // HTML 帧（docs/projects.md“HTML 帧”）：文章画布上放整份 HTML 页面。
-// 固件 e2e/html-site/（project e2e-html，文章 pages）：B 节两帧 HTML——本篇目录下的 long-page.html（很长，
-// #deep-pill 在 y > 5000 处，宽窄屏各显示一行探针）和 project 根下的 shared/catalog.html（{ id, src } 写法，
-// 样式和图片按它自己的目录取，里面有一个能点的按钮）；C 节一帧手机 JSX（phone-card）。
+// 固件 e2e/html-site/（project e2e-html，文章 pages）：B 节三帧 HTML——本篇目录下的 long-page.html（很长，
+// #deep-pill 在 y > 5000 处，宽窄屏各显示一行探针）、project 根下的 shared/catalog.html（{ id, src } 写法，
+// 样式和图片按它自己的目录取，里面有一个能点的按钮）、source kit 下的 widget.html（kit:widget.html，
+// kit 在 project.json 的 sources 里指 e2e/html-source/）；C 节一帧手机 JSX（phone-card）。
 // project e2e-html 常驻在共享 registry 固件里（e2e/registry-fixture.js），指仓内固件，spec 只读不写。
 // 站点：在 e2e-parallel 的 SITE_SPECS 里，和别的拉起站点的 spec 同组。
 const execFileP = promisify(execFile);
@@ -63,13 +64,13 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
   await expect(page.locator('#article .prose h1')).toHaveText('生成的页面', { timeout: 150_000 });
   await waitNoReload(page);
 
-  await test.step('卡片：两帧 HTML 都是 390 宽的页面、只露第一屏，卡片头有“手机 / 桌面”，缺省手机', async () => {
+  await test.step('卡片：HTML 帧都是 402 宽的页面、只露第一屏，卡片头有“手机 / 桌面”，缺省手机', async () => {
     await expect(card(page).locator('[data-pp-width] [aria-pressed="true"]')).toHaveText('手机');
-    for (const id of ['long-page', 'catalog']) {
+    for (const id of ['long-page', 'catalog', 'widget']) {
       const frame = cardFrame(page, id);
       await expect(frame).toHaveAttribute('scrolling', 'no');
       await expect(frame).toHaveCSS('pointer-events', 'none');
-      await expect.poll(() => innerWidth(frame)).toBe(390);
+      await expect.poll(() => innerWidth(frame)).toBe(402);
       await expect(card(page).locator(`.cc-frame[data-screen="${id}"] .cc-box`)).toHaveAttribute('data-fitted', '1');
     }
     const long = page.frameLocator('[data-pp-section="pages"] .cc-frame[data-screen="long-page"] iframe');
@@ -81,9 +82,15 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
     const cat = page.frameLocator('[data-pp-section="pages"] .cc-frame[data-screen="catalog"] iframe');
     await expect(cat.locator('body')).toHaveCSS('background-color', 'rgb(250, 247, 240)');
     await expect.poll(() => cat.locator('.cat-chip img').evaluate((img) => img.naturalWidth)).toBeGreaterThan(0);
-    // 卡片里只露第一屏：盒子高 = 844 × 卡片缩放。
+    // project.json 登记的 source 下的帧（kit:widget.html）：地址在 @source/kit/ 下，样式按它自己的目录取。
+    await expect(cardFrame(page, 'widget')).toHaveAttribute('src', /annotate=off/);
+    const widget = page.frameLocator('[data-pp-section="pages"] .cc-frame[data-screen="widget"] iframe');
+    await expect(widget.locator('#widget-title')).toHaveText('小组件');
+    await expect(widget.locator('body')).toHaveCSS('background-color', 'rgb(236, 244, 250)');
+    expect(await cardFrame(page, 'widget').evaluate((el) => el.contentWindow.location.pathname)).toBe('/sites/e2e-html_pages/@source/kit/widget.html');
+    // 卡片里只露第一屏：盒子高 = 874 × 卡片缩放。
     const box = await card(page).locator('.cc-frame[data-screen="long-page"] .cc-box').boundingBox();
-    expect(Math.abs(box.height / box.width - 844 / 390)).toBeLessThan(0.02);
+    expect(Math.abs(box.height / box.width - 874 / 402)).toBeLessThan(0.02);
     // 同一张卡片外的手机 JSX 帧照旧。
     await expect(page.locator('[data-pp-section="app"] .cc-frame[data-screen="phone-card"] .cc-box')).toHaveClass(/\bphone\b/);
   });
@@ -95,17 +102,17 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
     const long = page.frameLocator('[data-pp-section="pages"] .cc-frame[data-screen="long-page"] iframe');
     await expect(long.locator('#width-probe-wide')).toBeVisible();
     await card(page).locator('[data-pp-width] [data-width="phone"]').click();
-    await expect.poll(() => innerWidth(cardFrame(page, 'long-page'))).toBe(390);
+    await expect.poll(() => innerWidth(cardFrame(page, 'long-page'))).toBe(402);
   });
 
-  await test.step('浮层：两帧并排、真实大小、占满高度；页面在帧里整页滚到底', async () => {
+  await test.step('浮层：几帧并排、真实大小、占满高度；页面在帧里整页滚到底', async () => {
     await card(page).locator('.cc-frame[data-screen="long-page"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(overlay(page).locator('[data-ov-width]')).toBeVisible();
     await expect(overlay(page).locator('[data-ov-width] [aria-pressed="true"]')).toHaveText('手机');
     const frame = ovFrame(page, 'long-page');
     await expect(frame).not.toHaveAttribute('scrolling', 'no');
-    await expect.poll(() => innerWidth(frame)).toBe(390);
+    await expect.poll(() => innerWidth(frame)).toBe(402);
     expect(await page.evaluate(() => window.pinpointOverlay.state().scale)).toBe(1);
     const strip = await overlay(page).locator('[data-ov-strip]').boundingBox();
     const shown = await frame.boundingBox();
@@ -214,13 +221,13 @@ test('画布视图：HTML 帧是文档条目，手机视口里标注 y > 5000 �
     expect(res.stdout).toMatch(/long-page\.html\n\s+\d+> .*id="deep-pill"/);
   });
 
-  await test.step('ppnt shot B1 --marks：390 宽的整页，比 5000 高', async () => {
+  await test.step('ppnt shot B1 --marks：402 宽的整页，比 5000 高', async () => {
     const res = await ppnt(['shot', 'e2e-html/pages', 'B1', '--marks']);
     expect(res.code, res.stderr).toBe(0);
     const out = path.join(E2E_DATA_DIR, 'shot', PAGE_ID, 'long-page.png');
-    expect(res.stdout).toContain(`B1 · long-page → ${out} · 390×`);
+    expect(res.stdout).toContain(`B1 · long-page → ${out} · 402×`);
     const buffer = fs.readFileSync(out);
-    expect(buffer.readUInt32BE(16)).toBe(390);
+    expect(buffer.readUInt32BE(16)).toBe(402);
     expect(buffer.readUInt32BE(20)).toBeGreaterThan(5000);
   });
 });

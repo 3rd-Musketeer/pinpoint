@@ -1,1 +1,1 @@
-{ "id": "e2e-html", "title": "E2E HTML 帧" }
+{ "id": "e2e-html", "title": "E2E HTML 帧", "sources": { "kit": "../html-source" } }
