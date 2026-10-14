@@ -8,7 +8,7 @@ import { expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_DATA_DIR, E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
 
-// ppnt 说文章模型（pp3 r3）：文章页截图要真站点（Astro 开发服务器，服务按需拉起）和真浏览器，
+// ppnt 说文章模型（pp3）：文章页截图要真站点（Astro 开发服务器，服务按需拉起）和真浏览器，
 // check 的正文渲染检查要和站点对同一份正文给出同一个结论。全部走 CLI 子进程。
 // 站点：在 e2e-parallel 的 SITE_SPECS 里，和别的拉起站点的 spec 同组；单独跑这一个文件时站点是冷的，
 // shot 自己等过“站点启动中”（503）。

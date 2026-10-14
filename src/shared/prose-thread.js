@@ -1,5 +1,5 @@
 /**
- * 正文评论的行与线程（pp3 M2）。纯数据、不碰 DOM：注入客户端与 node 测试共用。
+ * 正文评论的行与线程（pp3）。纯数据、不碰 DOM：注入客户端与 node 测试共用。
  *
  * 一条正文评论是 @prose 账本里的一行（与画布标注同桶、同一套 #n 与状态机）：
  *   { id, n, type: 'prose', status, content, quote: { exact, prefix, suffix, start? },

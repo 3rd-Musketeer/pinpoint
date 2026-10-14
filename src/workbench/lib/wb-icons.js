@@ -41,7 +41,7 @@ export var ICONS = {
   search: Search,
   folder: Folder,
   'folder-plus': FolderPlus,
-  // 左栏「文章」组（pp3 M4）：project 标题行、文章行、行尾“阅读正文”钮、布局错误标。
+  // 左栏「文章」组（pp3）：project 标题行、文章行、行尾“阅读正文”钮、布局错误标。
   library: Library,
   newspaper: Newspaper,
   'book-open': BookOpen,

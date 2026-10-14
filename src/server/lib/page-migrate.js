@@ -1,5 +1,5 @@
 /**
- * pp3 M4：把一个存量页迁成一篇 article（docs/projects.md「从存量页迁移」）。
+ * pp3：把一个存量页迁成一篇 article（docs/projects.md「从存量页迁移」）。
  * owner 定的口径：存量 page = 一篇 article；board 的每个 section 成为正文的一节，
  * 节里一个 <Canvas>。
  *

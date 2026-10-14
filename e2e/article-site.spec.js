@@ -6,7 +6,7 @@ import { expect, test } from '@playwright/test';
 import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT, E2E_UPSTREAM_ORIGIN } from './env.js';
 import { waitNoReload } from './site-settle.js';
 
-// pp3 M0：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
+// pp3：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
 // 固件：registry 里常驻的 project 条目 e2e-project → e2e/project-site/（两篇文章、
 // 两个概念、一个空 ref [[risk-score]]）。站点是真 Astro 开发服务器，由服务在第一个
 // 文章请求时按需拉起（端口 E2E_SITE_PORT，playwright.config 设）。

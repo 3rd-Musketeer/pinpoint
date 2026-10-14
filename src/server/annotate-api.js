@@ -235,7 +235,7 @@ export function createAnnotateHandler(options = {}) {
       folders: registry.folders || [],
       pageFolders: registry.pageFolders || {},
       pageOrder: registry.pageOrder || {},
-      // pp3 M1：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
+      // pp3：文章画布页。工作台只用它认 `?page=<id>`，不列进左栏 Pages。
       articles,
       errors: registry.errors,
       warnings: registry.warnings,
@@ -519,7 +519,7 @@ export function createAnnotateHandler(options = {}) {
         return true;
       },
     },
-    // pp3 M2：ppnt reply 的后端 —— 往正文评论的线程追加一条 agent 消息，状态不动。
+    // pp3：ppnt reply 的后端 —— 往正文评论的线程追加一条 agent 消息，状态不动。
     {
       methods: ['POST'],
       match: REPLY_ROUTE,

@@ -1,4 +1,4 @@
-// 左栏「文章」组（pp3 M4，owner 2026-10-13 选 A）：Pages 面板顶上一组，按
+// 左栏「文章」组（pp3，owner 2026-10-13 选 A）：Pages 面板顶上一组，按
 // project → 文章列出；下面是原来的「页面」组，原样可用。
 // - project 标题行 = chevron + 标题（project.json 的 title）+ 布局错误标（个数，tooltip
 //   列前几条）；整行是折叠钮，折叠是本机偏好 prefs.articleProjectsCollapsed。

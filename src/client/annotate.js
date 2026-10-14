@@ -63,7 +63,7 @@ import { startProseComments } from './prose-comments.js';
     if (src) { try { return new URL(src).origin; } catch (e) {} }
     return '';
   })();
-  // pp3 M2：文章页（article-proxy 注入 __pinpointProse）只跑正文评论 —— 选中文字
+  // pp3：文章页（article-proxy 注入 __pinpointProse）只跑正文评论 —— 选中文字
   // → 右栏线程，桶 = 文章页 id、账本 @prose（src/client/prose-comments.js）。画布
   // 标注的工具条、侧栏、元素标注都不在文章页上起：画布标注只在画布页做。
   if (window.__pinpointProse && window.__pinpointEntry) {

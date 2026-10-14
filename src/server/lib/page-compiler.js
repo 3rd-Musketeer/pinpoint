@@ -52,7 +52,7 @@ export function defaultDistRoot(env = process.env) {
 }
 
 /** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页目录
-    （content/previews/<id>/board.json），再次文章画布（pp3 M1：kind 'article'，board 由
+    （content/previews/<id>/board.json），再次文章画布（pp3：kind 'article'，board 由
     index.mdx 派生，见 article-board.js）。页是什么的判定在 page-resolve.js，这里只加
     “有 board 可编”这一条。 */
 export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}) {

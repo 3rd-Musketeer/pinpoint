@@ -172,7 +172,7 @@ export function resolveActivePage(preferredId, modeHint) {
   var ids = {};
   pages.forEach(function (page) { ids[page.id] = true; });
   if (preferredId && ids[preferredId]) return preferredId;
-  // pp3 M4：上次停在文章画布（左栏「文章」组）——画布页在 manifest.articles 里。
+  // pp3：上次停在文章画布（左栏「文章」组）——画布页在 manifest.articles 里。
   var manifest = wbGet().pageManifest;
   if (preferredId && manifest && (manifest.articles || []).some(function (row) { return row.id === preferredId; })) return preferredId;
   if (modeHint) {
@@ -579,7 +579,7 @@ function registryToPages(data) {
       site: true
     });
   });
-  // pp3 M1：文章画布页（<project>_<article>）。它们属于文章，不进左栏 Pages；
+  // pp3：文章画布页（<project>_<article>）。它们属于文章，不进左栏 Pages；
   // 清单另放一份 manifest.articles，pageEntry 认得它，`?page=<id>` 才能打开。
   var articles = ((data && data.articles) || []).filter(function (row) {
     return row && typeof row.id === 'string';
@@ -634,7 +634,7 @@ export function loadPageManifest() {
     });
 }
 
-/* ---- 左栏「文章」组（pp3 M4）：GET /api/projects ------------------------------
+/* ---- 左栏「文章」组（pp3）：GET /api/projects ------------------------------
    每次请求服务都重读盘。触发：左栏挂载、registry:update（project 登记 / 移除）、
    projects:update（文章增删、标题、布局错误变了，preview-hmr 发）。并发的两次读
    只认最后一次的结果。 */

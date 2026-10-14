@@ -6,7 +6,7 @@
  * - 帧标注：本页桶里的 @canvas 账本（画布与 mention frame 共用这一本），
  *   行带 pageId / screenId；
  * - 文档标注：同一桶里按路径分的其余账本（/sites/<id>/ 与 /previews/ 直开页）；
- * - 正文评论（pp3 M2）：article 页桶里的 @prose 账本，行 type 'prose'（引文 +
+ * - 正文评论（pp3）：article 页桶里的 @prose 账本，行 type 'prose'（引文 +
  *   section + 线程）。它们随文档行一起进计数、mark、locate，check 单独成组；
  * - 孤儿账本：表面已不存在的账本（lib/orphans.js 判定），check / status 单独
  *   列出、不计入计数，清理只经 prune；

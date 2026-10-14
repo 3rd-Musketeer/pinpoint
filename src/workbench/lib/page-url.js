@@ -1,5 +1,5 @@
 /** Manifest entry for a page (registry-sourced "site" pages carry site:true).
-    pp3 M1：文章画布页在 manifest.articles 里（不进左栏 Pages），这里一并认得。 */
+    pp3：文章画布页在 manifest.articles 里（不进左栏 Pages），这里一并认得。 */
 import { legacyMode } from './preview-contracts.js';
 export function pageEntry(manifest, pageId) {
   if (!manifest) return null;

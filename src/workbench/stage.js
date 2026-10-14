@@ -704,7 +704,7 @@ if (import.meta.hot) {
       loadBoard(boardPanel, wbGet().activePageId);
     }
   });
-  // pp3 M4：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
+  // pp3：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
   // 左栏「文章」组重读 /api/projects；新文章的画布页要进 manifest.articles 才点得开，
   // 所以清单也重拉一次（只刷左栏，不重摆当前板：板的变化另有 preview:update）。
   import.meta.hot.on('projects:update', function () {
