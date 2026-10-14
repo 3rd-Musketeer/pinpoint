@@ -322,6 +322,63 @@ async function settleArticlePage(page, scope = null) {
   await waitForQuiet(page);
 }
 
+/** 页面在 evaluate / 截图途中自己导航了（503 页的自动刷新、站点重编后的整页重载）。 */
+export function isNavigationRace(error) {
+  return /Execution context was destroyed|frame was detached|Target page, context or browser has been closed|navigation/i.test(String(error && error.message));
+}
+
+/**
+ * 打开文章页并截一张，页面中途导航时重新等就绪、重开再截，最多 3 次。
+ * 第一次读一篇刚写的文章时，站点可能在页面打开后重编并整页重载，截图会撞上这次导航。
+ */
+async function shootArticleJob(page, request, job, { timeoutMs, reload }) {
+  for (let attempt = 1; ; attempt += 1) {
+    try {
+      if (reload || attempt > 1) {
+        await waitArticleReady(request, job.url, { timeoutMs });
+        const response = await page.goto(job.url, { waitUntil: 'load' });
+        if (response && response.status() === 503) {
+          // 就绪探测和打开之间站点又在重启：等它重新答 200。
+          await waitArticleReady(request, job.url, { timeoutMs });
+          await page.goto(job.url, { waitUntil: 'load' });
+        }
+      }
+      return await shootLoadedArticle(page, request, job, { timeoutMs });
+    } catch (error) {
+      if (attempt >= 3 || !isNavigationRace(error)) throw error;
+      await page.waitForLoadState('load').catch(() => {});
+    }
+  }
+}
+
+async function shootLoadedArticle(page, request, job, { timeoutMs }) {
+  fs.mkdirSync(path.dirname(job.out), { recursive: true });
+  let buffer;
+  if (job.kind === 'article-section') {
+    const selector = `section[data-section="${job.sectionId.replace(/"/g, '\\"')}"]`;
+    const section = page.locator(selector);
+    if (!(await section.count())) {
+      // 刚改过 index.mdx 时站点可能还在重编，拿到的是旧页或没渲染完的页：等一会儿、重载一次再判。
+      await waitArticleReady(request, job.url, { timeoutMs });
+      await page.goto(job.url, { waitUntil: 'load' });
+      await page.locator(selector).first().waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {});
+    }
+    if (!(await section.count())) {
+      throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）：正文可能没渲染完，ppnt check 看有没有正文渲染错误`);
+    }
+    await section.scrollIntoViewIfNeeded();
+    await settleArticlePage(page, selector);
+    buffer = await section.screenshot({ path: job.out });
+  } else {
+    await settleArticlePage(page);
+    buffer = await page.screenshot({ path: job.out, fullPage: true });
+  }
+  const size = pngSize(buffer);
+  // 站点在正文结尾放了 [data-pp-article-end]：没有它，说明正文渲染中途出错、响应断在半篇。
+  const truncated = !(await page.locator(ARTICLE_END_SELECTOR).count());
+  return { out: job.out, label: job.label || '', width: size.width, height: size.height, ...(truncated ? { truncated: true } : {}) };
+}
+
 /**
  * 文章页截图（ppnt shot <project>/<article> [§n]）。jobs = [{ kind: 'article' | 'article-section',
  * url, sectionId?, out, label, scale }]。先等服务、再等文章页就绪（见 waitArticleReady），
@@ -338,36 +395,9 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
     const page = await context.newPage();
     let loadedUrl = null;
     for (const job of jobs) {
-      if (loadedUrl !== job.url) {
-        await waitArticleReady(context.request, job.url, { timeoutMs });
-        await page.goto(job.url, { waitUntil: 'load' });
-        loadedUrl = job.url;
-      }
-      fs.mkdirSync(path.dirname(job.out), { recursive: true });
-      let buffer;
-      if (job.kind === 'article-section') {
-        const selector = `section[data-section="${job.sectionId.replace(/"/g, '\\"')}"]`;
-        const section = page.locator(selector);
-        if (!(await section.count())) {
-          // 刚改过 index.mdx 时站点可能还在重编，拿到的是旧页或没渲染完的页：等一会儿、重载一次再判。
-          await waitArticleReady(context.request, job.url, { timeoutMs });
-          await page.goto(job.url, { waitUntil: 'load' });
-          await page.locator(selector).first().waitFor({ state: 'attached', timeout: 10_000 }).catch(() => {});
-        }
-        if (!(await section.count())) {
-          throw new Error(`文章页上没有节 ${job.sectionId}（${job.url}）：正文可能没渲染完，ppnt check 看有没有正文渲染错误`);
-        }
-        await section.scrollIntoViewIfNeeded();
-        await settleArticlePage(page, selector);
-        buffer = await section.screenshot({ path: job.out });
-      } else {
-        await settleArticlePage(page);
-        buffer = await page.screenshot({ path: job.out, fullPage: true });
-      }
-      const size = pngSize(buffer);
-      // 站点在正文结尾放了 [data-pp-article-end]：没有它，说明正文渲染中途出错、响应断在半篇。
-      const truncated = !(await page.locator(ARTICLE_END_SELECTOR).count());
-      results.push({ out: job.out, label: job.label || '', width: size.width, height: size.height, ...(truncated ? { truncated: true } : {}) });
+      const reload = loadedUrl !== job.url;
+      results.push(await shootArticleJob(page, context.request, job, { timeoutMs, reload }));
+      loadedUrl = job.url;
     }
     await context.close();
 

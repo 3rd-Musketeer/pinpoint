@@ -4,7 +4,7 @@ import test from 'node:test';
 
 import { request } from '@playwright/test';
 
-import { serviceDownMessage, waitArticleReady } from './ppnt-shot.js';
+import { isNavigationRace, serviceDownMessage, waitArticleReady } from './ppnt-shot.js';
 
 /** 按脚本依次回状态码的本地服务；脚本用完后一直回最后一个。 */
 async function scripted(t, statuses, body = '') {
@@ -46,4 +46,11 @@ test('waitArticleReady：一直 503 到超时，报最后一次的状态和放�
 test('serviceDownMessage：隔离运行（设了 PINPOINT_ORIGIN）不叫人 ppnt start', () => {
   assert.match(serviceDownMessage('http://127.0.0.1:6510', { PINPOINT_ORIGIN: 'http://127.0.0.1:6510' }), /PINPOINT_ORIGIN=http:\/\/127\.0\.0\.1:6510 那个服务没答/);
   assert.match(serviceDownMessage('https://pinpoint.localhost', {}), /先 `ppnt start`/);
+});
+
+test('isNavigationRace：页面中途导航的错误重试，其余错误照抛', () => {
+  assert.equal(isNavigationRace(new Error('page.evaluate: Execution context was destroyed, most likely because of a navigation')), true);
+  assert.equal(isNavigationRace(new Error('locator.screenshot: frame was detached')), true);
+  assert.equal(isNavigationRace(new Error('文章页 http://x/a/b/ 返回 500：正文多半渲染出错，跑 ppnt check 看是哪一行')), false);
+  assert.equal(isNavigationRace(null), false);
 });

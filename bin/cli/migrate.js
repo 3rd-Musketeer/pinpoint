@@ -173,6 +173,7 @@ export async function runMigrate(argv, io = {}) {
   out(keep);
   const registered = projectEntry(registry, plan.project.id);
   if (registered && path.resolve(registered.path) !== plan.project.root) out(`注意 登记的 project ${plan.project.id} 指向 ${registered.path}，不是 ${plan.project.root}`);
+  else if (registered) out(`画布 /?page=${plan.articlePageId} · 正文 /${plan.project.id}/${plan.articleId}/`);
   if (!report.ok) {
     const failed = report.rows.filter((row) => row.compile !== 'ok' || row.shell !== row.legacyShell).length;
     err(`有失败：${failed} 帧编不过或 shell 和旧页不同，正文 ${report.errors.length} 条画布错误。文件已写，修好后 ppnt check ${plan.project.id}/${plan.articleId}`);
