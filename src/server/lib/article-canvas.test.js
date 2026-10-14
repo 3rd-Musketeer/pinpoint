@@ -75,7 +75,7 @@ test('MDX 写坏了：一条错误、没有节，不抛', () => {
 });
 
 test('没有 Section 的文章：空画布、没有错误', () => {
-  assert.deepEqual(parseArticleCanvas(`${FM}# 只有正文\n\n一段话。\n`), { sections: [], errors: [] });
+  assert.deepEqual(parseArticleCanvas(`${FM}# 只有正文\n\n一段话。\n`), { sections: [], figures: [], errors: [] });
 });
 
 test('帧级 shell：帧文件的 export const shell 只认顶层字面量字符串，静态读', () => {
@@ -120,4 +120,66 @@ test('articleSectionSpans：每节占的行对到整份文件（含 frontmatter�
     { id: 'how', startLine: 13, endLine: 15 },
   ]);
   assert.deepEqual(articleSectionSpans('<Section id="s">\n\n<Canvas frames={["a"] />\n'), []);
+});
+
+test('<Figure>：节里节外都认，按正文顺序编号；id 取 figures/<id>.jsx，带节与行，不进画布', () => {
+  const text = `${FM}<Figure src="figures/intro.jsx" caption="开头的图" />\n\n`
+    + '<Section id="flow" title="流程">\n\n正文\n\n<Figure src="figures/flow.jsx" />\n\n<Canvas frames={["a"]} />\n\n</Section>\n\n'
+    + '<Section id="tail">\n\n> <Figure src="figures/quoted.jsx" caption="引用块里" />\n\n</Section>\n';
+  const { sections, figures, errors } = parseArticleCanvas(text);
+  assert.deepEqual(errors, []);
+  assert.deepEqual(figures, [
+    { index: 0, line: 5, id: 'intro', caption: '开头的图' },
+    { index: 1, line: 11, section: 'flow', id: 'flow' },
+    { index: 2, line: 19, section: 'tail', id: 'quoted', caption: '引用块里' },
+  ]);
+  // 图不是帧：画布只有 Canvas 列的帧。
+  assert.deepEqual(sections.map((s) => s.frames), [['a']]);
+});
+
+test('<Figure> 的写法错误：code 以 figure_ 开头，带行、节、认得出的图 id；写坏的图照样占一个序号', () => {
+  const lines = [
+    '<Section id="s" title="S">',
+    '',
+    '<Figure caption="没有 src" />',
+    '',
+    '<Figure src={name} />',
+    '',
+    '<Figure src="flow.jsx" />',
+    '',
+    '<Figure src="figures/a.jsx" caption={title} />',
+    '',
+    '<Figure src="figures/b.jsx" height="300" />',
+    '',
+    '<Figure {...props} src="figures/c.jsx" />',
+    '',
+    '<Figure src="figures/b.jsx" />',
+    '',
+    '<Figure src="figures/ghost.jsx" />',
+    '',
+    '</Section>',
+    '',
+  ];
+  const { figures, errors } = parseArticleCanvas(`${FM}${lines.join('\n')}`, { figureExists: (id) => id !== 'ghost' });
+  const at = (n) => n + 4; // frontmatter 3 行 + 空行
+  assert.deepEqual(errors.map((e) => [e.code, e.line, e.section, e.figure]), [
+    ['figure_src', at(3), 's', undefined],
+    ['figure_src', at(5), 's', undefined],
+    ['figure_src', at(7), 's', undefined],
+    ['figure_caption', at(9), 's', undefined],
+    ['figure_prop', at(11), 's', undefined],
+    ['figure_prop', at(13), 's', undefined],
+    ['figure_duplicate', at(15), 's', 'b'],
+    ['figure_missing', at(17), 's', 'ghost'],
+  ]);
+  for (const e of errors) assert.match(e.message, new RegExp(`^第 ${e.line} 行：<Figure>`));
+  assert.match(errors[0].message, /缺 src（写成 src="figures\/<图 id>\.jsx"）/);
+  assert.match(errors[1].message, /src 必须是字面量字符串/);
+  assert.match(errors[2].message, /src 只能写成 "figures\/<图 id>\.jsx".*"flow\.jsx"/);
+  assert.match(errors[4].message, /不认识属性 height（只有 src 和 caption）/);
+  assert.match(errors[5].message, /不能用展开属性/);
+  assert.match(errors[6].message, /图 "b" 在第 \d+ 行已经用过/);
+  assert.match(errors[7].message, /缺 figures\/ghost\.jsx/);
+  // 每个 <Figure> 一项（站点按序号对上）；认得出的才有 id，重复的那个没有。
+  assert.deepEqual(figures.map((f) => [f.index, f.id || null]), [[0, null], [1, null], [2, null], [3, 'a'], [4, 'b'], [5, 'c'], [6, null], [7, 'ghost']]);
 });

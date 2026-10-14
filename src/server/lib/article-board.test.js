@@ -165,6 +165,7 @@ test('articleCanvas：节字母 = 正文字母（纯文字的节也占），帧�
       { id: 'ask', title: '提问', letter: 'B', frames: [{ id: 'ask-open', ref: 'B1' }, { id: 'ask-sent', ref: 'B2' }] },
       { id: 'wall', title: '组件墙', letter: 'C', shell: 'comp', frames: [{ id: 'wall', ref: 'C1' }] },
     ],
+    figures: [],
     errors: [],
   });
   // 工作台与 ppnt 用同一套编号：编译后 ppnt 的 boardRefs 也是 B1 / C1。

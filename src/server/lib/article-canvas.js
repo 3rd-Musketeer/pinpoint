@@ -12,9 +12,14 @@
  *   sections = [{ id, title, articleLetter, shell?, frameShells?, frames: [帧 id…] }]，
  *   按正文顺序，只含有 Canvas 且至少一帧可用的节。frameShells = { 帧 id: shell }，只含
  *   帧文件里写了 `export const shell = "…"` 的帧（盖过这一节的 shell）。
- *   errors = [{ code, message, line?, section?, frame? }]：message 以“第 N 行：”开头；属于某
+ *   errors = [{ code, message, line?, section?, frame?, figure? }]：message 以“第 N 行：”开头；属于某
  *   一节的带 section（节 id），属于某一帧的再带 frame。code 是错误的种类（不显示），
  *   listProjects 再给它加上 path（src/shared/project-errors.js）。
+ *
+ * 正文里的图（<Figure src="figures/<图 id>.jsx" caption="…" />，docs/projects.md“图”）也在这里读：
+ *   figures = [{ index, line, section?, id?, caption? }]，按正文顺序，每个 <Figure> 一项，写坏的也在
+ *   （没有 id）：站点按 index 把它对到页面上的那个图，错误就显示在图的位置。图的错误 code 以
+ *   figure_ 开头，带 line，属于某一节的带 section，认得出 id 的带 figure。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -23,11 +28,18 @@ import { unified } from 'unified';
 import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
-import { articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
-import { CANVAS_SHELLS, FRAME_ID_PATTERN as FRAME_ID, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
+import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
+import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, SECTION_ID_PATTERN as SECTION_ID } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
+
+/** 图的错误种类：src 写错、caption 不是字面量、不认识的属性、同一个图用了两次、源文件不在。
+    站点把它们显示在图的位置，不进画布卡片和页顶错误条（isFigureError）。 */
+const FIGURE_ERROR_CODES_LIST = ['figure_src', 'figure_caption', 'figure_prop', 'figure_duplicate', 'figure_missing'];
+export const FIGURE_ERROR_CODES = Object.freeze(new Set(FIGURE_ERROR_CODES_LIST));
+/** <Figure> 认的属性。 */
+const FIGURE_PROPS = new Set(['src', 'caption']);
 
 /** parseArticleCanvas 报的错误种类（error.code）。listProjects 把它们和 frontmatter 等错误放在一起，
     articleCanvas 靠它分出哪些是画布错误。 */
@@ -35,6 +47,7 @@ export const CANVAS_ERROR_CODES = Object.freeze(new Set([
   'mdx_parse', 'section_nested', 'canvas_outside_section', 'section_id', 'section_duplicate', 'section_title',
   'canvas_multiple', 'canvas_shell', 'canvas_frames', 'canvas_empty',
   'frame_cross_page', 'frame_id', 'frame_duplicate', 'frame_missing', 'frame_shell',
+  ...FIGURE_ERROR_CODES_LIST,
 ]));
 
 const FRAME_SHELL_DECL = /^export\s+(?:(?:const|let|var)\s+shell\b|\{[^}]*\bshell\b)/;
@@ -67,10 +80,17 @@ export function readFrameShell(text) {
   return found;
 }
 
-/** 读盘的 frameExists / frameShell：帧 = 文章目录下的 <帧 id>.jsx。 */
+/** 读盘的 frameExists / frameShell / figureExists：帧 = 文章目录下的 <帧 id>.jsx，图 = figures/<图 id>.jsx。 */
 export function frameFileReaders(articleDir) {
   const file = (frame) => path.join(articleDir, `${frame}.jsx`);
   return {
+    figureExists: (figure) => {
+      try {
+        return fs.statSync(path.join(articleDir, FIGURE_DIR, `${figure}.jsx`)).isFile();
+      } catch {
+        return false;
+      }
+    },
     frameExists: (frame) => {
       try {
         return fs.statSync(file(frame)).isFile();
@@ -150,7 +170,7 @@ export function articleSectionSpans(text) {
 }
 
 /** 正文 → 画布结构。text 是整份 index.mdx（含 frontmatter）。 */
-export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined } = {}) {
+export function parseArticleCanvas(text, { frameExists = () => true, frameShell = () => undefined, figureExists = () => true } = {}) {
   const errors = [];
   const parsed = parseBody(text);
   const { lineOffset } = parsed;
@@ -167,6 +187,7 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     const line = error && error.line ? `第 ${error.line + lineOffset} 行：` : '';
     return {
       sections: [],
+      figures: [],
       errors: [{ code: 'mdx_parse', message: `MDX 解析失败，画布读不出来：${line}${(error && (error.reason || error.message)) || error}`, ...(error && error.line ? { line: error.line + lineOffset } : {}) }],
     };
   }
@@ -256,5 +277,54 @@ export function parseArticleCanvas(text, { frameExists = () => true, frameShell 
     if (item.kind === 'stray-canvas') report('canvas_outside_section', item.node, `${at(item.node)}：<Canvas> 必须写在 <Section> 里（画布按节排开）`);
     else handleSection(item);
   }
-  return { sections, errors };
+  const figures = parseFigures(tree, { at, lineOf, report, figureExists });
+  return { sections, figures, errors };
+}
+
+/** <Figure> 的写法检查。→ figures（每个 <Figure> 一项，见文件头）；错误经 report 记下。 */
+function parseFigures(tree, { at, lineOf, report, figureExists }) {
+  const figures = [];
+  const seen = new Map(); // 图 id → 第一次出现的行
+  for (const { node, index, section: sectionNode } of articleFigures(tree)) {
+    const sectionId = sectionNode ? literalAttribute(sectionNode, 'id') : undefined;
+    const section = sectionId && 'value' in sectionId && SECTION_ID.test(sectionId.value) ? sectionId.value : null;
+    const line = lineOf(node);
+    const figure = { index, ...(line ? { line } : {}), ...(section ? { section } : {}) };
+    figures.push(figure);
+    const where = `${at(node)}：<Figure>`;
+    const extra = (more = {}) => ({ ...(section ? { section } : {}), ...more });
+    for (const attr of node.attributes || []) {
+      if (attr.type !== 'mdxJsxAttribute') {
+        report('figure_prop', node, `${where} 不能用展开属性（{...x}），只写 src 和 caption`, extra());
+      } else if (!FIGURE_PROPS.has(attr.name)) {
+        report('figure_prop', node, `${where} 不认识属性 ${attr.name}（只有 src 和 caption）`, extra());
+      }
+    }
+    const caption = literalString(node, 'caption');
+    if (caption && caption.error) report('figure_caption', node, `${where} 的 ${caption.error}`, extra());
+    else if (caption) figure.caption = caption.value;
+    const src = literalString(node, 'src');
+    if (!src) {
+      report('figure_src', node, `${where} 缺 src（写成 src="figures/<图 id>.jsx"）`, extra());
+      continue;
+    }
+    if (src.error) {
+      report('figure_src', node, `${where} 的 ${src.error}`, extra());
+      continue;
+    }
+    const match = src.value.match(FIGURE_SRC_PATTERN);
+    if (!match) {
+      report('figure_src', node, `${where} 的 src 只能写成 "figures/<图 id>.jsx"（图 id 匹配 ${FRAME_ID}）：${JSON.stringify(src.value)}`, extra());
+      continue;
+    }
+    const id = match[1];
+    if (seen.has(id)) {
+      report('figure_duplicate', node, `${where} 图 "${id}" 在第 ${seen.get(id)} 行已经用过（一个图在一篇文章里只放一次）`, extra({ figure: id }));
+      continue;
+    }
+    seen.set(id, line);
+    figure.id = id;
+    if (!figureExists(id)) report('figure_missing', node, `${where} 图 "${id}" 没有源文件（文章目录下缺 ${FIGURE_DIR}/${id}.jsx）`, extra({ figure: id }));
+  }
+  return figures;
 }

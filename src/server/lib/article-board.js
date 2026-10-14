@@ -17,7 +17,7 @@ import { fileURLToPath } from 'node:url';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { CANVAS_ERROR_CODES, frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { articlePageId } from '../../shared/project-ids.js';
-import { isArticleError } from '../../shared/project-errors.js';
+import { isArticleError, isFigureError } from '../../shared/project-errors.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { findProject } from './projects.js';
@@ -65,7 +65,7 @@ export function deriveArticleBoard(target) {
     })),
   };
   if (assets.css || assets.js) board.assets = assets;
-  return { board, sections: parsed.sections, errors: parsed.errors };
+  return { board, sections: parsed.sections, figures: parsed.figures || [], errors: parsed.errors };
 }
 
 /**
@@ -80,6 +80,10 @@ export function deriveArticleBoard(target) {
  * - errors：画布写法的错误带 section（节 id）、frame；不属于某一节的（frontmatter、
  *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。都是 listProjects 里
  *   这篇的布局错误（path 在 articles/<文章> 下的那些），对象相同。
+ * - figures：正文里每个 <Figure> 一项，按正文顺序（docs/projects.md“图”）：
+ *   [{ index, id?, caption?, section?, line?, missing?, errors: [错误对象] }]。index 是第几个 <Figure>
+ *   （站点的 remark 步骤给每个 <Figure> 注入同一个序号）；src 写坏的图没有 id；源文件不在的带
+ *   missing。errors 是这个图自己的错误（也都在顶层 errors 里，code 以 figure_ 开头）。
  * - registry 缺省读 loadRegistry()（PINPOINT_REGISTRY 或 ~/.pinpoint/registry.json）。
  *   project 没登记或文章不在时 sections 为空、errors 说明原因。
  */
@@ -91,7 +95,7 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   } catch (error) {
     return { pageId, project: projectId, article: articleId, sections: [], errors: [{ code: 'article_id_invalid', message: error.message }] };
   }
-  const base = { pageId, project: projectId, article: articleId, sections: [] };
+  const base = { pageId, project: projectId, article: articleId, sections: [], figures: [] };
   const project = findProject(reg, projectId);
   if (!project) return { ...base, errors: [{ code: 'project_not_registered', message: `project 没登记：${projectId}` }] };
   const own = project.errors.filter((error) => isArticleError(error, articleId));
@@ -116,7 +120,16 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   // listProjects 里这篇的画布错误与 derived.errors 是同一次解析的结果：用 derived 的，其余（frontmatter、
   // 页 id 撞名）照搬。
   const errors = [...derived.errors, ...own.filter((error) => !CANVAS_ERROR_CODES.has(error.code))];
-  return { ...base, sections, errors };
+  const figureErrors = derived.errors.filter(isFigureError);
+  const figures = derived.figures.map((figure) => {
+    const mine = figureErrors.filter((error) => error.line === figure.line);
+    return {
+      ...figure,
+      ...(mine.some((error) => error.code === 'figure_missing') ? { missing: true } : {}),
+      errors: mine,
+    };
+  });
+  return { ...base, sections, figures, errors };
 }
 
 /**
