@@ -25,6 +25,7 @@ import { ENTRY_ID_PATTERN } from '../../src/shared/registry-ids.js';
 import { CliError, REPO_ROOT, ioOf } from './core.js';
 import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { parseAddress } from './address.js';
+import { htmlPathnames, planMovedBucket } from './bucket-move.js';
 import {
   ARTICLE_SOURCE_EXTS,
   manifestPageIds,
@@ -169,7 +170,14 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
       throw fail(`这篇的 HTML 帧在 project ${to.project} 里找不到，搬过去就是坏帧：\n${lines.join('\n')}\n先在 ${path.join(toProject.dir, 'project.json')} 的 sources 里登记同名目录、或把文件放到 ${toProject.root} 下同样的位置，再搬`);
     }
   }
+  const bucketMove = {
+    fromId, toId, fromProject: from.project, toProject: to.project,
+    fromArticle: from.article, toArticle: to.article,
+    htmlPathnames: htmlPathnames(from.project, from.article, registry),
+  };
+  planMovedBucket(bucketFrom, bucketMove);
   return {
+    bucketMove,
     from,
     to,
     fromProject,
@@ -263,11 +271,7 @@ async function moveArticle(classified, parsed, io) {
     }
     let ledgers = [];
     try {
-      ledgers = rewriteMovedBucket(plan.bucketTo, {
-        fromId: plan.fromId, toId: plan.toId,
-        fromProject: plan.from.project, toProject: plan.to.project,
-        fromArticle: plan.from.article, toArticle: plan.to.article,
-      });
+      ledgers = rewriteMovedBucket(plan.bucketTo, plan.bucketMove);
     } catch (error) {
       err(`  标注桶已搬，但账本里的旧地址没改完：${error.message}`);
     }

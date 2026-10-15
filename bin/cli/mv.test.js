@@ -11,6 +11,10 @@ import test from 'node:test';
 
 import { REPO_ROOT } from './core.js';
 import { classifyMv } from './mv.js';
+import { articleCanvas } from '../../src/server/lib/article-board.js';
+import { loadRegistry } from '../../src/server/lib/registry.js';
+import { pageKeyFromPathname } from '../../src/shared/annotate-page-key.js';
+import { annotationSlug } from '../../src/shared/annotation-slug.js';
 import { run } from '../pinpoint-cli.js';
 
 function tempDir(t) {
@@ -269,4 +273,89 @@ test('D5：跨设备搬迁保留篇内、篇外与断链的 symlink 原文', asy
   assert.equal(fs.readlinkSync(path.join(to, 'outside.html')), '../outside.html');
   assert.equal(fs.readlinkSync(path.join(to, 'broken.html')), 'missing.html');
   assert.ok(!fs.existsSync(from));
+});
+
+for (const [kind, destination] of [['article', 'e2e-html/renamed'], ['project', 'renamed'], ['cross', 'other/pages']]) {
+  test(`C1/D1：${kind} 搬迁后 HTML 三种路径的标注与附件可读，prune 保留有效反馈`, async (t) => {
+    const made = fixture(t);
+    if (kind === 'cross') {
+      const other = path.join(made.dir, 'other');
+      fs.cpSync(made.html, other, { recursive: true });
+      fs.rmSync(articleDir(other, 'pages'), { recursive: true });
+      const meta = path.join(other, 'docs/pinpoint/project.json');
+      fs.writeFileSync(meta, JSON.stringify({ ...readJson(meta), id: 'other' }));
+      const reg = readJson(made.registry);
+      reg.entries.push({ id: 'other', kind: 'project', path: other });
+      fs.writeFileSync(made.registry, JSON.stringify(reg));
+    }
+    // 空格、字面百分号、中文分别经过浏览器 pathname 编码，不能拿 decoded path 直接算 hash。
+    const mdx = path.join(articleDir(made.html, 'pages'), 'index.mdx');
+    fs.appendFileSync(mdx, '\n<Section id="encoded" title="编码"><Canvas frames={[{ id: "space", src: "shared/a b.html" }, { id: "percent", src: "shared/a%20b.html" }, { id: "unicode", src: "shared/中文.html" }]} /></Section>\n');
+    for (const name of ['a b.html', 'a%20b.html', '中文.html']) {
+      fs.writeFileSync(path.join(made.html, 'shared', name), '<p>正文</p>');
+      if (kind === 'cross') fs.writeFileSync(path.join(made.dir, 'other/shared', name), '<p>正文</p>');
+    }
+    const registry = loadRegistry({ root: REPO_ROOT, path: made.registry });
+    const urls = [...new Set(articleCanvas('e2e-html', 'pages', { registry }).sections.flatMap((section) => section.frames.map((frame) => frame.url).filter(Boolean)))];
+    assert.equal(urls.length, 6);
+    const bucket = path.join(made.data, 'e2e-html_pages');
+    fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+    fs.writeFileSync(path.join(bucket, '_seq.json'), '{"next":7}');
+    for (const [i, url] of urls.entries()) {
+      const key = annotationSlug(pageKeyFromPathname(url));
+      fs.writeFileSync(path.join(bucket, `${key}.json`), JSON.stringify({ page: key, path: decodeURIComponent(url), revision: 3, annotations: [
+        { id: `html-${i}`, n: i + 1, status: 'open', content: '保留反馈', images: [{ file: `${key}-pic.png` }], messages: [{ who: 'owner', text: '保留线程' }] },
+      ] }));
+      fs.writeFileSync(path.join(bucket, 'images', `${key}-pic.png`), `image-${i}`);
+    }
+    const res = await runIn(made, ['mv', kind === 'project' ? 'e2e-html' : 'e2e-html/pages', destination]);
+    assert.equal(res.code, 0, res.err.join('\n'));
+    const address = kind === 'project' ? 'renamed/pages' : destination;
+    const newId = address.replace('/', '_');
+    const movedBucket = path.join(made.data, newId);
+    for (const [i, url] of urls.entries()) {
+      const oldKey = annotationSlug(pageKeyFromPathname(url));
+      const newUrl = url.replace('/sites/e2e-html_pages/', `/sites/${newId}/`);
+      const newKey = annotationSlug(pageKeyFromPathname(newUrl));
+      const doc = readJson(path.join(movedBucket, `${newKey}.json`));
+      assert.equal(doc.path, decodeURIComponent(newUrl));
+      assert.equal(doc.page, newKey);
+      assert.deepEqual([doc.annotations[0].id, doc.annotations[0].n, doc.revision], [`html-${i}`, i + 1, 3]);
+      assert.equal(doc.annotations[0].messages[0].text, '保留线程');
+      assert.equal(doc.annotations[0].images[0].file, `${newKey}-pic.png`);
+      assert.equal(fs.readFileSync(path.join(movedBucket, 'images', `${newKey}-pic.png`), 'utf8'), `image-${i}`);
+      assert.ok(!fs.existsSync(path.join(movedBucket, `${oldKey}.json`)));
+    }
+    assert.equal(fs.readFileSync(path.join(movedBucket, '_seq.json'), 'utf8'), '{"next":7}');
+    const comments = await runIn(made, ['comments', address, '--status', 'all', '--json']);
+    assert.equal(JSON.parse(comments.out.join('\n')).counts.total, 6);
+    const prune = await runIn(made, ['prune', address, '--dry-run']);
+    assert.equal(prune.code, 0, prune.err.join('\n'));
+    assert.match(prune.out.join('\n'), /没有孤儿账本/);
+    await runIn(made, ['prune', address]);
+    assert.equal(fs.readdirSync(movedBucket).filter((name) => name.endsWith('.json')).length, 7);
+  });
+}
+
+test('C1/D1：新账本或附件名冲突在搬目录之前拒绝，不覆盖原反馈', async (t) => {
+  for (const conflict of ['ledger', 'image']) {
+    const made = fixture(t);
+    const fromId = 'e2e-project_commit-confirm';
+    const toId = 'e2e-project_renamed';
+    const oldKey = annotationSlug(pageKeyFromPathname(`/sites/${fromId}/home.html`));
+    const newKey = annotationSlug(pageKeyFromPathname(`/sites/${toId}/home.html`));
+    const bucket = path.join(made.data, fromId);
+    fs.writeFileSync(path.join(articleDir(made.proj, 'commit-confirm'), 'home.html'), '<p>正文</p>');
+    fs.writeFileSync(path.join(bucket, `${oldKey}.json`), JSON.stringify({ page: oldKey, path: `/sites/${fromId}/home.html`, annotations: [{ id: 'h' }] }));
+    fs.mkdirSync(path.join(bucket, 'images'));
+    fs.writeFileSync(path.join(bucket, 'images', `${oldKey}-pic.png`), '原图');
+    const target = conflict === 'ledger' ? path.join(bucket, `${newKey}.json`) : path.join(bucket, 'images', `${newKey}-pic.png`);
+    fs.writeFileSync(target, '目标已有内容');
+    const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed']);
+    assert.equal(res.code, 1, res.err.join('\n'));
+    assert.ok(fs.existsSync(articleDir(made.proj, 'commit-confirm')));
+    assert.ok(!fs.existsSync(articleDir(made.proj, 'renamed')));
+    assert.equal(fs.readFileSync(target, 'utf8'), '目标已有内容');
+    assert.ok(fs.existsSync(path.join(bucket, `${oldKey}.json`)));
+  }
 });

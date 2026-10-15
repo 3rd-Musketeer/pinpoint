@@ -14,6 +14,8 @@ import { addRegistryEntry, listRegistryEntries, removeRegistryEntry, renameRegis
 import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
 import { BOARDS, parseArgs, guardParse } from './args.js';
 import { toPageRef } from './address.js';
+import { htmlPathnames, planMovedBucket, rewriteMovedBucket } from './bucket-move.js';
+export { rewriteMovedBucket } from './bucket-move.js';
 
 function isHttpUrl(target) {
   return /^https?:\/\//i.test(target);
@@ -305,41 +307,6 @@ export const PAGE_CACHE_DROP = ['dist', 'render'];
 export const PAGE_CACHE_MOVE = ['check', 'shot'];
 
 /**
- * 搬完的文章桶里，账本还记着旧地址：行上的 `pageId`（画布标注按它对 @page / @frame
- * 指示符）、`@prose.json` 的 `path`（`/<project>/<article>/`）。逐本改写，每本写临时
- * 文件再 rename，单本是原子的。返回改写的账本名。
- * move = { fromId, toId, fromProject, toProject, articleId } 或另给 fromArticle / toArticle（`ppnt mv` 改文章 id）。
- */
-export function rewriteMovedBucket(bucket, move) {
-  const changed = [];
-  const fromPath = `/${move.fromProject}/${move.fromArticle || move.articleId}/`;
-  const toPath = `/${move.toProject}/${move.toArticle || move.articleId}/`;
-  for (const { name, doc } of readBucketLedgers(bucket)) {
-    if (!doc || typeof doc !== 'object') continue;
-    let dirty = false;
-    const next = { ...doc };
-    if (typeof doc.path === 'string' && (doc.path === fromPath.slice(0, -1) || doc.path.startsWith(fromPath))) {
-      next.path = toPath + doc.path.slice(fromPath.length);
-      dirty = true;
-    }
-    if (Array.isArray(doc.annotations)) {
-      next.annotations = doc.annotations.map((row) => {
-        if (!row || row.pageId !== move.fromId) return row;
-        dirty = true;
-        return { ...row, pageId: move.toId };
-      });
-    }
-    if (!dirty) continue;
-    const file = path.join(bucket, name);
-    const tmp = `${file}.rename-${process.pid}.tmp`;
-    fs.writeFileSync(tmp, JSON.stringify(next, null, 2) + '\n');
-    fs.renameSync(tmp, file);
-    changed.push(name);
-  }
-  return changed;
-}
-
-/**
  * rename 的新条目（纯函数）：只换 id，kind / 落点 / title 原样带走。
  * 返回 { before, after }。
  */
@@ -400,7 +367,11 @@ export function planRename(parsed, { cwd = process.cwd(), env = process.env } = 
     articleMoves = articleBucketIds(root, before.id, { manifestIds }).map((fromId) => {
       const { articleId } = parseArticlePageId(fromId);
       const toId = articlePageId(after.id, articleId);
-      return { fromId, toId, articleId, fromProject: before.id, toProject: after.id, from: path.join(root, fromId), to: path.join(root, toId) };
+      const move = { fromId, toId, articleId, fromProject: before.id, toProject: after.id, from: path.join(root, fromId), to: path.join(root, toId),
+        htmlPathnames: htmlPathnames(before.id, articleId, loadRegistry({ root: REPO_ROOT, path: registryPath })),
+      };
+      planMovedBucket(move.from, move);
+      return move;
     });
     const taken = articleMoves.filter((move) => fs.existsSync(move.to) || manifestIds.includes(move.toId));
     if (taken.length) {

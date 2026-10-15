@@ -25,7 +25,7 @@ ppnt new article quick-idea --title 一个想法     # 建出 notes/quick-idea
 ppnt new article browser-use/payment-confirm --title 付款确认
 ```
 
-要归类时再搬，用 `ppnt mv`。它连标注桶一起搬，页 id 和画布视图地址跟着换成新的，先加 `--dry-run` 看计划：
+要归类时再搬，用 `ppnt mv`。它连标注桶一起搬，HTML 帧的文档页标注和附件也按新地址迁移，页 id 和画布视图地址跟着换成新的，先加 `--dry-run` 看计划：
 
 ```shell
 ppnt mv notes/quick-idea browser-use/                 # 搬进已有的 project，保留文章 id
