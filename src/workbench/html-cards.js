@@ -4,11 +4,10 @@
 import { htmlCardCountText, htmlFrameLedgerKey, htmlFramePending, ledgerMatches } from './lib/html-card-counts.js';
 
 var current = { pageId: '', keys: new Map() };   // 账本名 → [卡片的计数节点]
-var lastCounts = new Map();                        // pageId + '\0' + 账本名 → 条数（重装板时先画上次的数）
+var lastCounts = new Map();                        // pageId + '\0' + 账本名 → { revision, count }
 
 function paint(key, n) {
   var nodes = current.keys.get(key) || [];
-  lastCounts.set(current.pageId + '\0' + key, n);
   nodes.forEach(function (node) {
     var text = htmlCardCountText(n);
     node.textContent = text;
@@ -16,6 +15,16 @@ function paint(key, n) {
     var card = node.closest('.wb-screen[data-html-card]');
     if (card) card.setAttribute('data-ann-count', String(n));
   });
+}
+
+function accept(key, doc) {
+  var id = current.pageId + '\0' + key;
+  var previous = lastCounts.get(id);
+  var revision = Number(doc.revision) || 0;
+  if (previous && revision < previous.revision) return;
+  var count = htmlFramePending(doc);
+  lastCounts.set(id, { revision: revision, count: count });
+  paint(key, count);
 }
 
 function readLedger(pageId, key) {
@@ -40,9 +49,9 @@ export function syncHtmlCardCounts(panel, pageId) {
   var mine = current;
   current.keys.forEach(function (_, key) {
     var cached = lastCounts.get(pageId + '\0' + key);
-    if (cached != null) paint(key, cached);
+    if (cached) paint(key, cached.count);
     readLedger(pageId, key).then(function (doc) {
-      if (current === mine) paint(key, htmlFramePending(doc));
+      if (current === mine) accept(key, doc);
     }).catch(function () { /* 读不到：留着上次的数，下一次推送再画 */ });
   });
 }
@@ -51,6 +60,6 @@ window.addEventListener('wb:annotations', function (e) {
   var doc = e.detail;
   if (!doc || doc.entry !== current.pageId) return;
   current.keys.forEach(function (_, key) {
-    if (ledgerMatches(doc.page, key)) paint(key, htmlFramePending(doc));
+    if (ledgerMatches(doc.page, key)) accept(key, doc);
   });
 });
