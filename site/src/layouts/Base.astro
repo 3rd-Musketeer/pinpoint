@@ -4,6 +4,7 @@
 // 评论栏的内容由 pinpoint 注入的标注客户端填（src/client/prose-comments.js，[data-pp-rail]）；
 // 没有注入（站点单独跑、以后的公开链接）时只留这句说明。
 // overlay 槽：文章页放画布浮层（CanvasOverlay.astro），在 #article 之外。
+import '../styles/tokens.css';
 import '../styles/site.css';
 
 interface Crumb { label: string; href?: string }

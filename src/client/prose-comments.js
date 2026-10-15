@@ -505,10 +505,11 @@ export function startProseComments(options) {
   // ---------- 右栏 ----------
   function statusChip(row) {
     var st = row.status || 'open';
-    var color = ANN_STATUS_COLORS[st] || ANN_STATUS_COLORS.open;
+    var known = Object.prototype.hasOwnProperty.call(ANN_STATUS_COLORS, st) ? st : 'open';
     var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
     var word = st === 'open' ? '' : '<span class="pp-st">' + esc(st) + '</span>';
-    return '<span class="pp-n" style="background:' + color + '">' + esc(n) + '</span>' + word;
+    // 钉子颜色归站点样式（.pp-n[data-st]，--pp-status-*，亮暗都对）。
+    return '<span class="pp-n" data-st="' + known + '">' + esc(n) + '</span>' + word;
   }
 
   function quoteHtml(exact) {
@@ -527,10 +528,9 @@ export function startProseComments(options) {
   // 已关闭的线程留在原位收成一行：序号钉 + “已关闭” + 引文开头，点开成完整卡片，再点收回。
   function collapsedHtml(row) {
     var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
-    var color = ANN_STATUS_COLORS.close;
     return '<div class="pp-thread pp-closed" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="close">'
       + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'
-      + '<span class="pp-n" style="background:' + color + '">' + esc(n) + '</span>'
+      + '<span class="pp-n" data-st="close">' + esc(n) + '</span>'
       + '<span class="pp-closed-word">已关闭</span>'
       + '<span class="pp-closed-peek">' + esc(String((row.quote && row.quote.exact) || '')) + '</span>'
       + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
