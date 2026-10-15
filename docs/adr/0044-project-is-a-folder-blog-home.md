@@ -1,6 +1,6 @@
 # 0044 · project 退为一批文章的容器；`/` 是 blog 首页，工作台挪到 `/workbench/`
 
-Status: 现行 · Date: 2026-10-15 · Revises-in-part: 0042（project 是文章模型的顶层、读者面前显示 project 标题；工作台在 `/`） · Scope: `site/src/pages/index.astro`、`site/src/pages/[project]/[article]/index.astro`、`site/src/layouts/Base.astro`、`site/src/lib/canvas-card.js`、`src/shared/article-feed.js`、`src/shared/workbench-url.js`、`src/server/lib/workbench-routes.js`、`src/server/workbench-routes.js`、`src/server/lib/article-routes.js`、`src/server/lib/projects.js`、`src/server/lib/article-check.js`、`index.html`、`bin/cli/`、两个 skill
+Status: 现行（默认 project、wiki 改名由 0045 补充） · Date: 2026-10-15 · Revised-in-part-by: 0045 · Revises-in-part: 0042（project 是文章模型的顶层、读者面前显示 project 标题；工作台在 `/`） · Scope: `site/src/pages/index.astro`、`site/src/pages/[project]/[article]/index.astro`、`site/src/layouts/Base.astro`、`site/src/lib/canvas-card.js`、`src/shared/article-feed.js`、`src/shared/workbench-url.js`、`src/server/lib/workbench-routes.js`、`src/server/workbench-routes.js`、`src/server/lib/article-routes.js`、`src/server/lib/projects.js`、`src/server/lib/article-check.js`、`index.html`、`bin/cli/`、两个 skill
 
 **起因**：0042 把 project 定成文章模型的顶层，文章页顶栏和大标题上方都写着 project 标题。agent 给 project 起的 title 常常是一句描述，和文章标题挤在一起，读者看到两遍主题。owner 2026-10-15：“我想 KISS，project 这个概念我提的有点早了，其实他就是 folder，用来管理一批 article，真正重要且承载信息的应该是 article”。
 
