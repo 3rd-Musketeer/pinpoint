@@ -200,3 +200,26 @@ test('mv 用法：参数不够、目标写成文章以外的路径形状退 2；
   const envelope = JSON.parse(json.out.join('\n'));
   assert.deepEqual([envelope.ok, envelope.command], [true, 'mv']);
 });
+
+test('D2：目标桶无法证明为空时拒绝搬迁，保留源文章和两桶原字节', async (t) => {
+  for (const [name, content] of [
+    ['@canvas.json', '{"annotations":[{"id":"recoverable"}]'],
+    ['@canvas.json', '{"annotations":{}}'],
+    ['unknown.bin', '保留附件'],
+    ['_seq.json', '{bad'],
+  ]) {
+    const made = fixture(t);
+    const target = path.join(made.data, 'e2e-project_reused');
+    fs.mkdirSync(target);
+    fs.writeFileSync(path.join(target, name), content);
+    const source = path.join(made.data, 'e2e-project_commit-confirm', '@canvas.json');
+    const before = fs.readFileSync(source, 'utf8');
+    const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/reused']);
+    assert.equal(res.code, 1, `${name}: ${res.err.join('\n')}`);
+    assert.ok(fs.existsSync(articleDir(made.proj, 'commit-confirm')));
+    assert.ok(!fs.existsSync(articleDir(made.proj, 'reused')));
+    assert.equal(fs.readFileSync(source, 'utf8'), before);
+    assert.equal(fs.readFileSync(path.join(target, name), 'utf8'), content);
+    assert.match(res.err.join('\n'), /无法确认.*为空/);
+  }
+});
