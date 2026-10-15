@@ -3,6 +3,7 @@ import mdx from '@astrojs/mdx';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { remarkPinpoint } from '../src/shared/remark-pinpoint.js';
+import { rehypeTableScroll } from './src/lib/rehype-table-scroll.js';
 import { loadProjects, projectIdForFile } from './src/lib/projects-source.js';
 
 // 内容来自 registry 里登记的 project（仓外绝对路径），站点只放代码（common.md §5）。
@@ -61,7 +62,7 @@ export default defineConfig({
   server: { host: '127.0.0.1', port },
   devToolbar: { enabled: false },
   integrations: [mdx()],
-  markdown: { remarkPlugins: [[remarkPinpoint, { projectIdFor: projectIdForFile }]] },
+  markdown: { remarkPlugins: [[remarkPinpoint, { projectIdFor: projectIdForFile }]], rehypePlugins: [rehypeTableScroll] },
   // pinpoint 服务自己是 vite，占着 /@vite/ /@fs/ /@id/ /node_modules/ 和根路径的 HMR socket；
   // 代理时它设 PINPOINT_SITE_VITE_BASE=/_astro/，把 Astro dev 的内部路径挪到 /_astro/ 下（站点 base 仍是 /）。
   vite: {

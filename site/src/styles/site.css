@@ -1,8 +1,7 @@
 /* Article 站点样式。颜色、字体、阴影、圆角、字号都取 tokens.css 的 --pp-*（scripts/tokens/source.mjs 生成，ADR 0046），
    本文件不写颜色字面量；帧内容（iframe 里的屏）是被评审的内容，底色照帧自己的。 */
-/* 层：base（元素默认与非文章页的排版）< prose（正文排版：vendor/tailwind-typography.css + 下面的适配）< 不分层的组件。
-   组件规则不分层，所以芯片、画布卡片、评论栏、目录总是用站点自己的样式。 */
-@layer base, prose;
+/* 层（顺序在 layers.css）：base（元素默认与非文章页的排版）< prose（正文排版：vendor/tailwind-typography.css + 下面的适配，
+   本文件在 vendor 之后引入，同权重时适配赢）< 不分层的组件。组件规则不分层，所以芯片、画布卡片、评论栏、目录总是用站点自己的样式。 */
 
 @layer base {
   * { box-sizing:border-box; }
@@ -110,6 +109,26 @@ main { min-width:0; }
   .pp-prose code { font-family:var(--pp-font-mono); font-size:.875em; font-weight:500; background:var(--pp-fill); padding:.1em .35em; border-radius:var(--pp-r-1); }
   .pp-prose pre code { background:none; padding:0; font-weight:inherit; border-radius:0; }
   .pp-prose pre { font-family:var(--pp-font-mono); }
+  /* 表格（宽块）：渲染时包一层 .pp-table-scroll（lib/rehype-table-scroll.js）。外层不受 40em 行宽限制，
+     最宽到正文栏（与画布卡片同宽，上限 --pp-prose-wide）；表格按内容取宽（max-content），窄表不硬撑满，
+     宽表先用满正文栏，单元格到最小宽度还放不下才横向滚动，左右两侧的阴影提示还有内容。
+     列宽自适应：表头和首列（维度列）不折行、首列滚动时钉在左边；其余单元格最小 8em（约 8 个汉字一行），
+     最宽 17em 后折行；整列是数字的列右对齐。字号、表头字重、分隔线、内边距取 Tailwind Typography 的表格规则。 */
+  .pp-prose .pp-table-scroll { max-width:min(100%, var(--pp-prose-wide)); margin:1.5em 0 1.75em; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin;
+    background:
+      linear-gradient(to right, var(--pp-bg) 40%, transparent) left / 32px 100% no-repeat local,
+      linear-gradient(to left, var(--pp-bg) 40%, transparent) right / 32px 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) left / 14px 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) right / 14px 100% no-repeat scroll; }
+  .pp-prose .pp-table-scroll > table { table-layout:auto; width:max-content; max-width:100%; margin:0; font-size:.875em; line-height:1.7; }
+  .pp-prose .pp-table-scroll :is(th, td) { min-width:8em; max-width:17em; padding:.5714em .8em; vertical-align:top; text-align:left; background:none; }
+  .pp-prose .pp-table-scroll th { white-space:nowrap; font-weight:600; color:var(--pp-text); }
+  .pp-prose .pp-table-scroll thead { border-bottom:1px solid var(--pp-border-strong); }
+  .pp-prose .pp-table-scroll tbody tr { border-bottom:1px solid var(--pp-border); }
+  .pp-prose .pp-table-scroll tbody tr:last-child { border-bottom:0; }
+  .pp-prose .pp-table-scroll :is(th, td):first-child { position:sticky; left:0; z-index:1; min-width:0; max-width:none; white-space:nowrap;
+    padding-left:0; padding-right:1.1em; background:var(--pp-bg); font-weight:600; color:var(--pp-text); box-shadow:inset -1px 0 0 var(--pp-border); }
+  .pp-prose .pp-table-scroll :is(th, td).num { text-align:right; font-variant-numeric:tabular-nums; }
   /* 链接（[[ ]] 芯片和按钮除外）：强调字色，下划线淡一档。 */
   .pp-prose a:not(.cref):not(.btn) { color:var(--pp-accent-text); text-decoration-color:color-mix(in srgb, var(--pp-accent-text) 45%, transparent); text-underline-offset:3px; }
   .pp-prose a:not(.cref):not(.btn):hover { text-decoration-color:var(--pp-accent-solid); background:var(--pp-accent-soft); border-radius:3px; }

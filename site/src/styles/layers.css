@@ -1,0 +1,3 @@
+/* 层的先后：base（元素默认）< prose（正文排版，vendor/tailwind-typography.css 与 site.css 的适配）< 不分层的组件。
+   这一行要最先出现，Base.astro 第一个引入本文件。 */
+@layer base, prose;
