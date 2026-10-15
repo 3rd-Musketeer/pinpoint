@@ -1,30 +1,14 @@
 /**
- * Annotation status palette — the SSOT of the four status colors. Three CSS
- * sites consume the same `--ann-st-*` custom properties and must stay
- * value-identical:
- *   - canvas pin (.ann-badge, [data-ann-ui] base rule in src/client/annotate.js)
- *   - workbench popover row number (#wbann-pop rule in index.html)
- *   - injected sidebar row number (#ann-sidebar, same [data-ann-ui] rule; the
- *     shared row rules in src/shared/ann-list.css only reference the variables)
- * Three-way drift turns red in src/shared/ann-status.test.js — same trick as
- * the #ann-sidebar pin check in annotate-inline.test.js.
+ * 标注四态的钉子底色（亮色）。值由 scripts/build-tokens.mjs 从 token 源生成进 ./ann-tokens.js；
+ * CSS 侧消费 --ann-st-* 变量：注入端钉在 [data-ann-ui] 上（src/client/annotate-css.js），
+ * 工作台在 src/workbench/wb-tokens.css，src/shared/ann-list.css 只消费。两端同一份源。
+ * 白字对比度在 ann-status.test.js 里断言（≥ 3:1）。
  *
- * Pure data + tiny mappers, DOM-free like every shared/ module: node-tested
- * directly, imported by the workbench, inlined into the served /annotate.js
- * (INLINED_LIBS in src/server/annotate-api.js).
+ * 纯数据 + 小映射，不碰 DOM（src/shared 的约定）：内联进 /annotate.js。
  */
+import { ANN_STATUS_LIGHT } from './ann-tokens.js';
 
-/** Status → pin / row-number background. White glyph on every value; the
- * computed WCAG ratios are asserted in ann-status.test.js. open / done clear
- * the AA large-text bar (3:1); check / close sit just below — check is the
- * owner-picked amber (2026-09-23, 等 owner 看), close is deliberate
- * de-emphasis. Both are recorded, not hidden. */
-export var ANN_STATUS_COLORS = {
-  open: '#5b7fa6',   // = --wb-accent，现状蓝灰
-  check: '#b87c14',  // 琥珀
-  done: '#2f9e63',   // 绿
-  close: '#858e99',  // 灰
-};
+export var ANN_STATUS_COLORS = ANN_STATUS_LIGHT;
 
 /* ---- 状态筛选（owner 2026-09-24 改为两段）：pending = open / check / done，
    都在等 owner 验收；closed = owner 确认做完的。取代 09-23 的全部 · open ·

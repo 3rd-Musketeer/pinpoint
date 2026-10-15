@@ -23,22 +23,22 @@
 import { escHtml } from '../workbench/lib/esc-html.js';
 export function bubbleCss() {
   return [
-    '.ann-bubble{position:absolute;width:186px;background:var(--wb-surface,#fff);',
+    '.ann-bubble{position:absolute;width:186px;background:var(--wb-surface,#ffffff);',
     'border:0;border-radius:var(--wb-r-3,8px);padding:7px 9px 8px;box-sizing:border-box;',
     'box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1));',
-    'font:11px/1.45 var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC",system-ui,sans-serif);',
-    'color:var(--wb-fg,#1c2024);pointer-events:auto;z-index:3;overflow:hidden;}',
+    'font:11px/1.45 var(--wb-font,-apple-system,BlinkMacSystemFont,"SF Pro Text","PingFang SC","Noto Sans SC",system-ui,sans-serif);',
+    'color:var(--wb-fg,#202020);pointer-events:auto;z-index:3;overflow:hidden;}',
     '.ann-bubble[hidden]{display:none;}',
     '.ann-bubble-cap{display:flex;align-items:baseline;gap:5px;margin-bottom:3px;',
-    'font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);',
-    'font-size:11px;line-height:1.3;color:var(--wb-muted,#6b6b70);}',
+    'font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace);',
+    'font-size:11px;line-height:1.3;color:var(--wb-muted,#646464);}',
     '.ann-bubble-n{flex:none;font-weight:var(--wb-w-semibold,600);letter-spacing:.04em;',
-    'color:var(--wb-accent,#5b7fa6);}',
+    'color:var(--wb-accent,#008564);}',
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
     '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
-    '.ann-bubble-empty{color:var(--wb-faint,#8d8d8d);font-style:italic;}',
-    '.ann-bubble-reply{margin-top:5px;padding-top:5px;border-top:1px solid var(--wb-seam,rgba(0,0,0,.08));white-space:pre-wrap;word-break:break-word;}',
-    '.ann-bubble-who{font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,monospace);font-size:10.5px;color:var(--wb-accent,#5b7fa6);margin-right:5px;}',
+    '.ann-bubble-empty{color:var(--wb-faint,#646464);font-style:italic;}',
+    '.ann-bubble-reply{margin-top:5px;padding-top:5px;border-top:1px solid var(--wb-seam,#cecece);white-space:pre-wrap;word-break:break-word;}',
+    '.ann-bubble-who{font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace);font-size:10.5px;color:var(--wb-accent,#008564);margin-right:5px;}',
   ].join('');
 }
 

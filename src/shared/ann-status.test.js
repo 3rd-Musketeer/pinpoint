@@ -14,6 +14,7 @@ import {
   readAnnFilter,
   writeAnnFilter,
 } from './ann-status.js';
+import { ANN_TOKENS_DARK, ANN_UI_LIGHT } from './ann-tokens.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
@@ -33,30 +34,29 @@ function whiteContrast(hex) {
   return 1.05 / (luminance(hex) + 0.05);
 }
 
-test('status colors are value-identical at all three CSS definition sites', () => {
-  // SSOT = 本模块；两个定义端：client [data-ann-ui] 基规则（annotate-css.js）、
-  // workbench #wbann-pop（index.html）。ann-list.css 只消费不定义。
-  const annotate = fs.readFileSync(path.join(SRC, 'client', 'annotate-css.js'), 'utf8');
-  const indexHtml = fs.readFileSync(path.join(ROOT, 'index.html'), 'utf8');
+test('status colors are value-identical at every CSS site (one token source)', () => {
+  // 源 = scripts/tokens/source.mjs → ann-tokens.js（本模块的值）；定义端：client [data-ann-ui] 基规则
+  //（annotate-css.js 拼进 ANN_UI_LIGHT）、workbench wb-tokens.css；ann-list.css 只消费，兜底同值。
+  const client = fs.readFileSync(path.join(SRC, 'client', 'annotate-css.js'), 'utf8');
+  assert.match(client, /'\[data-ann-ui\]\{font-family:[^\n]*' \+ ANN_UI_LIGHT \+ '\}'/, '[data-ann-ui] 基规则拼进 ANN_UI_LIGHT');
+  const base = ANN_UI_LIGHT;
+  const tokens = fs.readFileSync(path.join(SRC, 'workbench', 'wb-tokens.css'), 'utf8');
   const listCss = fs.readFileSync(path.join(SRC, 'shared', 'ann-list.css'), 'utf8');
   for (const [status, hex] of Object.entries(ANN_STATUS_COLORS)) {
     const name = '--ann-st-' + status;
-    const clientMatches = annotate.match(new RegExp(name + ':(' + hex + ')'));
-    assert.ok(clientMatches, `annotate-css.js [data-ann-ui] pins ${name}:${hex}`);
-    const wbMatches = indexHtml.match(new RegExp(name + ':(' + hex + ')'));
-    assert.ok(wbMatches, `index.html #wbann-pop pins ${name}:${hex}`);
+    assert.ok(base.includes(name + ':' + hex + ';'), `[data-ann-ui] pins ${name}:${hex}`);
+    assert.match(tokens, new RegExp('^  ' + name + ':' + hex + ';', 'm'), `wb-tokens.css defines ${name}:${hex}`);
     assert.match(listCss, new RegExp('var\\(' + name + ',\\s*' + hex + '\\)'), `ann-list.css consumes ${name} with the same fallback`);
   }
-  // 画布钉子的三态只许换 --ann-st 一跳（点亮环跟着同色 mix）。
+  // 画布钉子的三态只许换 --ann-st 一跳（点亮环跟着同色 mix），数字色跟着换。
   for (const status of ['check', 'done', 'close']) {
-    assert.match(annotate, new RegExp('\\.ann-badge--' + status + '\\{--ann-st:var\\(--ann-st-' + status));
+    assert.match(client, new RegExp('\\.ann-badge--' + status + '\\{--ann-st:var\\(--ann-st-' + status + ',[^)]+\\);--ann-st-ink:var\\(--ann-st-' + status + '-fg'));
   }
 });
 
 test('white-on-status contrast ratios (WCAG AA large-text bar = 3:1)', () => {
-  // 2026-09-23：四色白字都要过 3:1（钉子与序号圆是白字小圆）。算出来的值：
-  // open 4.17 · check 3.54 · done 3.39 · close 3.32。首版 check #c98a1b 2.94、
-  // close #9aa3ae 2.55 没过线，已各压暗一档。
+  // 亮色四态都是白字小圆，都要过 3:1。2026-10-15 候选 2 的值：
+  // open #1f5f8f 6.79 · check #b85a14 4.66 · done #7a4fd0 5.45 · close #8d8d8d 3.32。
   for (const status of ['open', 'check', 'done', 'close']) {
     assert.ok(whiteContrast(ANN_STATUS_COLORS[status]) >= 3, status + ' ≥ 3:1');
   }
@@ -120,4 +120,14 @@ test('annFilter storage helpers: roundtrip, legacy values, throwing storage', ()
   const throwing = { getItem() { throw new Error('blocked'); }, setItem() { throw new Error('quota'); }, removeItem() { throw new Error('blocked'); } };
   assert.equal(readAnnFilter(throwing, 'k'), 'pending', 'throwing read → pending');
   assert.doesNotThrow(() => writeAnnFilter(throwing, 'k', 'closed'), 'throwing write is swallowed');
+});
+
+test('dark status pins: number color on status color ≥ 4.5:1', () => {
+  // 暗色四态换成提亮的底色，数字色跟着换（--ann-st-*-fg）：小字要过 4.5:1。
+  const contrast = (a, b) => { const [x, y] = [luminance(a), luminance(b)].sort((p, q) => q - p); return (x + 0.05) / (y + 0.05); };
+  for (const status of ['open', 'check', 'done', 'close']) {
+    const bg = ANN_TOKENS_DARK['--ann-st-' + status];
+    const fg = ANN_TOKENS_DARK['--ann-st-' + status + '-fg'];
+    assert.ok(contrast(bg, fg) >= 4.5, `${status} dark ${fg} on ${bg}`);
+  }
 });

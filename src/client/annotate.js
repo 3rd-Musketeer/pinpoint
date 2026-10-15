@@ -2310,7 +2310,7 @@ import { startProseComments } from './prose-comments.js';
 
   function composerBoxHtml(m, broken, isNew) {
     var brokenInfo = broken
-      ? '<div class="t" style="color:var(--wb-danger,#b84230);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
+      ? '<div class="t" style="color:var(--wb-danger,#c0392b);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
       : '';
     return '<button type="button" id="ann-close" aria-label="关闭标注" title="关闭（Esc）">' + annIcon('x') + '</button>' +
       brokenInfo +

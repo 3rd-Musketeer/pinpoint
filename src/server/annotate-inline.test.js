@@ -11,6 +11,7 @@ import {
   targetContentToStorage,
 } from '../shared/annotation-indicator.js';
 import { buildAnnotateBundle } from './lib/annotate-bundle.js';
+import { ANN_SIDEBAR_PINS } from '../shared/ann-tokens.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SRC = path.resolve(__dirname, '..');
@@ -64,11 +65,12 @@ test('build carries the shared list CSS payload for both consumer scopes', () =>
 test('client #ann-sidebar pins cover every --wb-* the shared CSS consumes', () => {
   const consumed = new Set([...CSS.matchAll(/var\((--wb-[a-z0-9-]+)/gi)].map((m) => m[1]));
   assert.ok(consumed.size > 0, 'shared CSS consumes --wb-* tokens');
-  const pinsRule = unminified.js.match(/#ann-sidebar\{[^}]*\}/);
-  assert.ok(pinsRule, '#ann-sidebar pins rule present in served bundle');
+  // 钉值串由 token 源生成（src/shared/ann-tokens.js），annotate-css.js 把它拼进 #ann-sidebar 规则；
+  // 包里要有这一串原文（esbuild 把常量内联进包）。
+  assert.ok(unminified.js.includes(ANN_SIDEBAR_PINS), '#ann-sidebar pins string present in served bundle');
   for (const name of consumed) {
     assert.ok(
-      pinsRule[0].includes(name + ':'),
+      ANN_SIDEBAR_PINS.includes(name + ':'),
       `#ann-sidebar pins ${name} (consumed by src/shared/ann-list.css)`,
     );
   }

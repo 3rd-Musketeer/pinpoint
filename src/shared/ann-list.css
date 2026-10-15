@@ -28,10 +28,10 @@
 #wbann-list .wb-ann-item,
 #ann-sidebar .wb-ann-item {
   width:100%; margin-bottom:2px; border-radius:var(--wb-r-2, 6px);
-  transition:background var(--wb-dur, .2s) var(--wb-ease, cubic-bezier(.25,0,0,1));
+  transition:background var(--wb-dur, .2s) var(--wb-ease, cubic-bezier(.25, 0, 0, 1));
 }
 #wbann-list .wb-ann-item:hover,
-#ann-sidebar .wb-ann-item:hover { background:var(--wb-hover, rgba(0,0,0,.04)); }
+#ann-sidebar .wb-ann-item:hover { background:var(--wb-hover, color-mix(in srgb, #202020 5%, transparent)); }
 #wbann-list .wb-ann-item--broken,
 #ann-sidebar .wb-ann-item--broken { opacity:.72; }
 
@@ -41,26 +41,26 @@
   padding:7px 4px 7px 8px; border:0; background:transparent; cursor:pointer;
   text-align:left; font:inherit; color:inherit;
 }
-/* 行首序号圆 = 画布钉子同款状态色（--ann-st-* 板，SSOT = src/shared/ann-status.js；
- * 定义端：client [data-ann-ui] 基规则 + workbench index.html #wbann-pop）。
+/* 行首序号圆 = 画布钉子同款状态色（--ann-st-* 底色、--ann-st-*-fg 数字色；值来自 token 源，
+ * 定义端：client [data-ann-ui] 基规则（src/shared/ann-tokens.js）+ workbench wb-tokens.css）。
  * open 是基值，check / done / close 由行上的 data-ann-status 切换。 */
 #wbann-list .wb-ann-num,
 #ann-sidebar .wb-ann-num {
   flex:none; height:18px; margin-top:1px; border-radius:50%;
-  background:var(--ann-st-open, #5b7fa6); color:#fff; font-size:10px; font-weight:var(--wb-w-bold, 700);
+  background:var(--ann-st-open, #1f5f8f); color:var(--ann-st-open-fg, #ffffff); font-size:10px; font-weight:var(--wb-w-bold, 700);
   display:flex; align-items:center; justify-content:center;
 }
 #wbann-list .wb-ann-item[data-ann-status="check"] .wb-ann-num,
-#ann-sidebar .wb-ann-item[data-ann-status="check"] .wb-ann-num { background:var(--ann-st-check, #b87c14); }
+#ann-sidebar .wb-ann-item[data-ann-status="check"] .wb-ann-num { background:var(--ann-st-check, #b85a14); color:var(--ann-st-check-fg, #ffffff); }
 #wbann-list .wb-ann-item[data-ann-status="done"] .wb-ann-num,
-#ann-sidebar .wb-ann-item[data-ann-status="done"] .wb-ann-num { background:var(--ann-st-done, #2f9e63); }
+#ann-sidebar .wb-ann-item[data-ann-status="done"] .wb-ann-num { background:var(--ann-st-done, #7a4fd0); color:var(--ann-st-done-fg, #ffffff); }
 #wbann-list .wb-ann-item[data-ann-status="close"] .wb-ann-num,
-#ann-sidebar .wb-ann-item[data-ann-status="close"] .wb-ann-num { background:var(--ann-st-close, #858e99); }
+#ann-sidebar .wb-ann-item[data-ann-status="close"] .wb-ann-num { background:var(--ann-st-close, #8d8d8d); color:var(--ann-st-close-fg, #ffffff); }
 /* 锚点失效仍压过状态色：序号圆转空心灰（client）/ 红（workbench 皮肤）。
  * 双类名让权重与上面的 [data-ann-status] 规则相同，靠源码序赢。 */
 #wbann-list .wb-ann-item.wb-ann-item--broken .wb-ann-num,
 #ann-sidebar .wb-ann-item.wb-ann-item--broken .wb-ann-num {
-  background:transparent; color:var(--wb-faint, #8d8d8d);
+  background:transparent; color:var(--wb-faint, #646464);
 }
 #wbann-list .wb-ann-body,
 #ann-sidebar .wb-ann-body {
@@ -68,48 +68,48 @@
 }
 #wbann-list .wb-ann-cap,
 #ann-sidebar .wb-ann-cap {
-  font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
+  font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, "PingFang SC", monospace);
+  font-size:10px; color:var(--wb-faint, #646464); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 #wbann-list .wb-ann-text,
 #ann-sidebar .wb-ann-text {
-  font-size:12px; line-height:1.4; color:var(--wb-fg, #1c2024);
+  font-size:12px; line-height:1.4; color:var(--wb-fg, #202020);
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }
 /* 线程回复（agent 经 ppnt reply / mark --note 写的）：正文下面一行一条，作者名打头。 */
 #wbann-list .wb-ann-reply,
 #ann-sidebar .wb-ann-reply {
-  font-size:11.5px; line-height:1.4; color:var(--wb-muted, #6b6b70);
+  font-size:11.5px; line-height:1.4; color:var(--wb-muted, #646464);
   display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }
 #wbann-list .wb-ann-item--broken .wb-ann-text,
-#ann-sidebar .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted, #6b6b70); }
+#ann-sidebar .wb-ann-item--broken .wb-ann-text { color:var(--wb-muted, #646464); }
 #wbann-list .wb-ann-broken-tag,
 #ann-sidebar .wb-ann-broken-tag {
-  font-size:10px; font-weight:var(--wb-w-semibold, 600); letter-spacing:.02em; line-height:1.3; color:var(--wb-danger, #b84230);
+  font-size:10px; font-weight:var(--wb-w-semibold, 600); letter-spacing:.02em; line-height:1.3; color:var(--wb-danger, #c0392b);
 }
 #wbann-list .wb-ann-tags,
 #ann-sidebar .wb-ann-tags {
-  font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-  font-size:10px; color:var(--wb-faint, #8d8d8d); line-height:1.3;
+  font-family:var(--wb-font-mono, ui-monospace, SFMono-Regular, Menlo, "PingFang SC", monospace);
+  font-size:10px; color:var(--wb-faint, #646464); line-height:1.3;
   white-space:nowrap; overflow:hidden; text-overflow:ellipsis;
 }
 
 #wbann-list .wb-ann-empty,
 #ann-sidebar .wb-ann-empty {
   padding:20px 12px 18px; border-radius:var(--wb-r-2, 6px);
-  background:color-mix(in srgb, var(--wb-surface, #fff) 45%, transparent); text-align:center;
+  background:color-mix(in srgb, var(--wb-surface, #ffffff) 45%, transparent); text-align:center;
 }
 #wbann-list .wb-ann-empty-title,
 #ann-sidebar .wb-ann-empty-title {
-  font-size:12px; font-weight:var(--wb-w-medium, 500); color:var(--wb-muted, #6b6b70);
+  font-size:12px; font-weight:var(--wb-w-medium, 500); color:var(--wb-muted, #646464);
 }
 #wbann-list .wb-ann-empty-hint,
 #ann-sidebar .wb-ann-empty-hint {
-  margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint, #8d8d8d);
+  margin:0; font-size:11px; line-height:1.4; color:var(--wb-faint, #646464);
 }
 
 /* pp2 状态机行件（2026-09-22；2026-09-23 筛选取代 close 收起组）：状态灰标 /
@@ -117,19 +117,19 @@
 #wbann-list .wb-ann-status-tag,
 #ann-sidebar .wb-ann-status-tag {
   align-self:flex-start; font-size:10px; line-height:14px; padding:0 4px; border-radius:4px;
-  color:var(--wb-faint, #8d8d8d); background:var(--wb-fill, rgba(0,0,0,.045)); font-variant-numeric:tabular-nums;
+  color:var(--wb-faint, #646464); background:var(--wb-fill, color-mix(in srgb, #202020 6%, transparent)); font-variant-numeric:tabular-nums;
 }
 /* 筛选落空（该状态没有行）的一行空态。 */
 #wbann-list .wb-ann-filter-empty,
 #ann-sidebar .wb-ann-filter-empty {
   padding:14px 10px; text-align:center;
-  font-size:11.5px; line-height:1.4; color:var(--wb-faint, #8d8d8d);
+  font-size:11.5px; line-height:1.4; color:var(--wb-faint, #646464);
 }
 /* close 行的「重新打开」文字钮，两个消费者同款。 */
 #ann-sidebar .wb-ann-reopen,
 #wbann-list .wb-ann-reopen {
   flex:none; border:0; border-radius:var(--wb-r-2,6px); padding:2px 6px; cursor:pointer;
-  background:transparent; color:var(--wb-muted, #6b6b70); font:var(--wb-w-medium,500) 11px/1.4 system-ui;
+  background:transparent; color:var(--wb-muted, #646464); font:var(--wb-w-medium,500) 11px/1.4 system-ui;
 }
 #ann-sidebar .wb-ann-reopen:hover,
-#wbann-list .wb-ann-reopen:hover { background:var(--wb-hover, rgba(0,0,0,.06)); color:var(--wb-fg, #1c2024); }
+#wbann-list .wb-ann-reopen:hover { background:var(--wb-hover, color-mix(in srgb, #202020 5%, transparent)); color:var(--wb-fg, #202020); }

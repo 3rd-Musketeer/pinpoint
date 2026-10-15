@@ -28,6 +28,11 @@
   --wb-on-accent:#fff; /* 色块（accent / danger / 状态色）上的字 —— 与 --wb-surface 分开：暗色下 surface 变深，色块上的字仍是白 */
   --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */
   --wb-sel:#d6f0e4; /* 列表选中行底：语义 selection（green 4）；hover 走 --wb-hover */
+  /* 标注四态：钉子与列表行首序号圆的底色 / 数字色（候选 2，owner 2026-10-15） */
+  --ann-st-open:#1f5f8f; --ann-st-open-fg:#ffffff;
+  --ann-st-check:#b85a14; --ann-st-check-fg:#ffffff;
+  --ann-st-done:#7a4fd0; --ann-st-done-fg:#ffffff;
+  --ann-st-close:#8d8d8d; --ann-st-close-fg:#ffffff;
 
   /* ── 圆角阶梯（散装 14 档归并；999px/50% 是功能形状，不进阶梯） ── */
   --wb-r-1:4px;   /* 槽内小按钮、内联编辑底、迷你屏幕钮（吸收 2px —— 3px 宽条上渲染恒等） */
@@ -141,6 +146,10 @@
     --wb-glass:rgba(34,34,34,.88);
     --wb-glass-hi:rgba(255,255,255,.06);
     --wb-sel:#123a2f;
+    --ann-st-open:#5b9fd6; --ann-st-open-fg:#202020;
+    --ann-st-check:#d9782a; --ann-st-check-fg:#202020;
+    --ann-st-done:#8a5ae0; --ann-st-done-fg:#ffffff;
+    --ann-st-close:#8a8a8a; --ann-st-close-fg:#202020;
     --wb-sh-1:0 1px 2px rgba(0,0,0,.4), 0 0 0 0.5px rgba(255,255,255,.06);
     --wb-sh-2:0 1px 2px rgba(0,0,0,.4), 0 8px 24px rgba(0,0,0,.45);
     --wb-sh-3:0 1px 2px rgba(0,0,0,.4), 0 14px 38px rgba(0,0,0,.55);

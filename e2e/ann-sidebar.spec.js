@@ -297,7 +297,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(closeRow).toHaveCount(0);
 
   // done 行的「完成」勾关的是「关前原态」不是 open：关 → toast 撤销 →
-  // status 回 done，序号圆保持 done 绿（与画布钉子同组变量）。
+  // status 回 done，序号圆保持 done 紫（与画布钉子同组变量）。
   const doneRow = sidebar.locator('.wb-ann-item[data-ann-n="' + nDone + '"]');
   await doneRow.hover();
   await doneRow.getByRole('button', { name: '完成 #' + nDone, exact: true }).click();
@@ -308,7 +308,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await toast.locator('button').click();
   await expect.poll(() => page.evaluate((n) => window.pinpoint.marks.find((m) => m.n === n).status, nDone)).toBe('done');
   await expect(doneRow).toHaveCount(1);
-  await expect(doneRow.locator('.wb-ann-num')).toHaveCSS('background-color', 'rgb(47, 158, 99)');
+  await expect(doneRow.locator('.wb-ann-num')).toHaveCSS('background-color', 'rgb(122, 79, 208)');
   await expect(toast).toBeHidden();
   // 撤销触发的 save 回包落定、revision 归位后再做下一步写状态动作。
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
@@ -320,8 +320,8 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(filters.locator('[data-ann-filter="closed"]')).toHaveText('closed 1');
   const pins = page.locator('.ann-badge');
   await expect(pins).toHaveCount(3);
-  // pending 里三种状态各自保留状态色（琥珀 = check）
-  await expect(page.locator('.ann-badge.ann-badge--check')).toHaveCSS('background-color', 'rgb(184, 124, 20)');
+  // pending 里三种状态各自保留状态色（橙 = check）
+  await expect(page.locator('.ann-badge.ann-badge--check')).toHaveCSS('background-color', 'rgb(184, 90, 20)');
   // done 行出文字状态标
   await expect(doneRow.locator('.wb-ann-status-tag')).toHaveText('done');
 
@@ -332,7 +332,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(rows.first().locator('.wb-ann-status-tag')).toHaveText('close');
   await expect(rows.first().getByRole('button', { name: '重新打开标注 ' + nClose, exact: true })).toBeVisible();
   await expect(pins).toHaveCount(1);
-  await expect(pins).toHaveCSS('background-color', 'rgb(133, 142, 153)');
+  await expect(pins).toHaveCSS('background-color', 'rgb(141, 141, 141)');
 
   // 刷新：筛选按页记在 LS，closed 视图与灰钉原样回来
   await page.reload();
@@ -342,7 +342,7 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   await expect(sidebar.locator('.wb-ann-item')).toHaveCount(1);
   await expect(sidebar.locator('.wb-ann-status-tag')).toHaveText('close');
   await expect(page.locator('.ann-badge')).toHaveCount(1);
-  await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(133, 142, 153)');
+  await expect(page.locator('.ann-badge')).toHaveCSS('background-color', 'rgb(141, 141, 141)');
 
   // owner 在 UI 里编辑正文 → 状态自动回 open。水合完成再开（否则 openMark
   // 扑空），且起始态必须是 done：reload 若丢了状态，行还在、编辑照常能开，
