@@ -39,6 +39,6 @@ body { font-family:var(--fig-font); font-size:15px; line-height:1.6; -webkit-fon
 .fig-note { min-height:1.6em; margin-top:6px; color:var(--fig-ink-2); font-size:14.5px; }
 
 /* 图出错（编译失败或运行时报错）时，图页在图的位置写明原因。 */
-.fig-error { border:1px solid var(--fig-err); color:var(--fig-err); border-radius:12px; padding:10px 14px; margin-bottom:12px;
+.fig-error { border:1px solid var(--fig-err); color:var(--fig-err); border-radius:8px; padding:10px 14px; margin-bottom:12px;
              font-size:13.5px; line-height:1.55; white-space:pre-wrap; word-break:break-word; }
 .fig-error b { display:block; margin-bottom:2px; }
