@@ -245,7 +245,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 文章页里正文的末尾有一个 `<div data-pp-article-end hidden>`（`site/src/pages/[project]/[article]/index.astro`）。截到的页面里没有它，说明正文中途断了（正文渲染出错，见上面 `check` 一节）：图照样存下，stderr 打一行“注意”指向 `ppnt check <project>/<article>`，退 1；`--json` 的这一张带 `truncated: true`。
 
-截文章页前命令轮询文章网址：503（站点启动中）就等，刚登记时的 404 最多等 10 秒，502（站点起不来）直接报错并带上原因，200 才截；等的上限是 `--timeout` 秒，缺省 60。打开后等图片、画布卡片里的 iframe 和字体加载完再截。每张图打印一行 `引用 → 路径 · 宽×高`。
+截文章页前命令轮询文章网址：503（站点启动中，或刚写好的文章还在同步）就等，刚登记时的 404 最多等 10 秒，502（站点起不来）直接报错并带上原因，200 才截；等的上限是 `--timeout` 秒，缺省 60。打开后等图片、画布卡片里的 iframe 和字体加载完再截。每张图打印一行 `引用 → 路径 · 宽×高`。
 
 就绪规则（`bin/ppnt-shot.js` 的 `settleLazyContent`，文章页、文章页上的一节、HTML 帧共用）：顶层文档和每一层嵌套 iframe 里 `loading="lazy"` 的图片和 iframe 都改成立即加载，逐层等它们加载完（同源的轮询 iframe 自己的文档，跨源的等 Playwright 的帧 load），最多嵌 4 层；HTML 帧整页截图前还把页面从上到下滚一遍，让按 IntersectionObserver 懒加载的页面开始取图。整个过程上限 15 秒，到时还没加载完的照常截，stderr 打一行“注意”列出它们，退 1；`--json` 的这一张带 `pending`。
 
@@ -302,6 +302,6 @@ PINPOINT_DATA_DIR=<数据目录> PINPOINT_REGISTRY=<数据目录>/registry.json 
 
 在 pinpoint 自己的 feat worktree 里，`pinpoint` / `ppnt` 换成 `node bin/pinpoint.mjs`：全局装的 `pinpoint` 指向 canonical clone，跑的是那里的 CLI 代码。
 
-文章站点按需拉起：服务起来后第一次请求文章，站点进程才 spawn，就绪前文章页返回 503 和“站点启动中”页（浏览器里会自己刷新），通常几秒。页面里的脚本、样式这类 GET 子资源不拿 503：站点在起或在重启时，它们等站点就绪再转发，最多等 15 秒。代理复用到上游刚关掉的空闲连接（ECONNRESET）时换新连接重发，不把它当成站点没了。服务重启（包括 vite 因为 `src/server/` 下的文件改动自动重启）会连站点一起重启，又是这样几秒。脚本里读文章页要轮询到 200。`pinpoint add --project` 登记新 project 不重启站点，新文章一秒内可读（2026-10-13 隔离运行实测）。
+文章站点按需拉起：服务起来后第一次请求文章，站点进程才 spawn，就绪前文章页返回 503 和“站点启动中”页（浏览器里会自己刷新），通常几秒。页面里的脚本、样式这类 GET 子资源不拿 503：站点在起或在重启时，它们等站点就绪再转发，最多等 15 秒。代理复用到上游刚关掉的空闲连接（ECONNRESET）时换新连接重发，不把它当成站点没了。服务重启（包括 vite 因为 `src/server/` 下的文件改动自动重启）会连站点一起重启，又是这样几秒。脚本里读文章页要轮询到 200。`pinpoint add --project` 登记新 project 不重启站点，新文章一秒内可读（2026-10-13 隔离运行实测）。刚写好的文章在读到之前先是 404，接着可能有零点几秒是 503“内容同步中”（站点的内容库已经有它、渲染模块还没登记，见 `site/src/lib/render-article.js`），再到 200。
 
 停服务在它的终端按 Ctrl-C，站点进程组跟着停。不要按命令行 `pkill`：这个服务和 owner 的常驻服务命令行一样。e2e 的固件就是这样隔离的（`playwright.config.js` 的 webServer `env`）。在 feat worktree 里想用 owner 真实数据的一份副本亲手试，用 `just preview`，见 AGENTS.md“分支与推送”。

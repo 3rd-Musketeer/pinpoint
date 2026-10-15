@@ -19,23 +19,47 @@ import { projectErrorLine } from './site-errors.js';
 
 const posix = (p) => p.split(path.sep).join('/');
 
-function watchAll(ctx, source, reload) {
+export function watchAll(ctx, source, reload) {
   if (!ctx.watcher) return;
   // 盯的目录跟着登记表走：每次重读后按新的 project 清单重算，登记之后才有的 project
-  // （ppnt new project / add --project）里新建的文章也能读到。
+  // （ppnt new project / add --project）里新建的文章也能读到。返回这次有没有新加的目录。
   let targets = [];
   const track = (next) => {
-    if (!next) return;
+    if (!next) return false;
+    const before = new Set(targets);
     targets = [next.registryPath, ...next.projects.map((p) => p.dir)];
     ctx.watcher.add(targets);
+    return targets.some((t) => !before.has(t));
   };
   track(source);
   const hit = (changed) => targets.some((t) => changed === t || changed.startsWith(t + path.sep));
+  // 重读一次只跑一个，跑的时候来的事件攒成跑完后再读一遍（2026-10-15，docs/debugging.md）：
+  // - 交叠的两次重读里，读盘早的那次后结束会把监听清单换回旧的，新 project 的事件被 hit() 丢掉；
+  // - 新目录加进监听之前就写进去的文件不会再来事件，所以加了新目录就再读一遍盘。
   let timer = null;
+  let running = false;
+  let again = false;
+  const run = async () => {
+    if (running) {
+      again = true;
+      return;
+    }
+    running = true;
+    try {
+      do {
+        again = false;
+        if (track(await reload())) again = true;
+      } while (again);
+    } catch (e) {
+      ctx.logger.error(e.message);
+    } finally {
+      running = false;
+    }
+  };
   const onChange = (changed) => {
     if (!hit(changed)) return;
     clearTimeout(timer);
-    timer = setTimeout(() => reload().then(track).catch((e) => ctx.logger.error(e.message)), 50);
+    timer = setTimeout(run, 50);
   };
   ctx.watcher.on('change', onChange);
   ctx.watcher.on('add', onChange);

@@ -268,7 +268,7 @@ function pngSize(buffer) {
 }
 
 /**
- * 等文章页能读：200 就绪；503 是“站点启动中”页（服务按需拉起 Astro，几秒），继续等；
+ * 等文章页能读：200 就绪；503 是“站点启动中”页（服务按需拉起 Astro，几秒）或刚写好的文章“内容同步中”，继续等；
  * 404 在刚登记的文章上可能短暂出现，最多等 10 秒；502 是站点起不来，直接报（带页面里的原因）。
  */
 export async function waitArticleReady(request, url, { timeoutMs, pollMs = 500 }) {

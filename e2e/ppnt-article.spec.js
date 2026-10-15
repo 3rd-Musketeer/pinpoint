@@ -127,11 +127,40 @@ test('ppnt check 抓到正文渲染错误（<Foo />），站点渲染同一篇�
   });
 });
 
-test('ppnt new project / new article：脚手架登记后，check 通过，shot 截出整篇（有正文结尾，不警告）', async () => {
+/**
+ * 刚写好的文章：从写好起紧跟着轮询文章页，直到 200。返回状态码的变化序列（去掉连续重复）。
+ * 合法的过渡只有 404（站点还没读到）和 503（站点启动中 / 内容同步中）。
+ */
+async function statusesUntilReady(request, url) {
+  const seen = [];
+  const deadline = Date.now() + 60_000;
+  for (;;) {
+    const status = (await request.get(url, { headers: { accept: 'text/html' } })).status();
+    if (seen.at(-1) !== status) seen.push(status);
+    if (status === 200 || Date.now() > deadline) return seen;
+    await new Promise((resolve) => setTimeout(resolve, 20));
+  }
+}
+
+test('ppnt new project / new article：脚手架登记后，check 通过，shot 截出整篇（有正文结尾，不警告）', async ({ request }) => {
   test.setTimeout(240_000);
   const made = await ppnt(['new', 'project', NEW_ROOT, '--id', NEW_ID, '--title', 'ppnt 脚手架', '--json']);
   expect(made.code, made.stderr).toBe(0);
   expect(JSON.parse(made.stdout).registered).toBe('now');
+
+  // 2026-10-15：站点已在跑时新建文章，内容库先于渲染模块表刷新，有一小段时间文章页是 500；满载时
+  // 读盘交叠的重读还会把新 project 挤出监听清单，新文章一直 404（docs/debugging.md）。
+  // 紧跟着写好的那一刻轮询，每篇都要在 60 秒内 200，中间不许出现 500。连建几篇，让那段时间几乎必中。
+  await test.step('站点在跑时连建 4 篇：每篇只经过 404 / 503 就到 200，没有 500', async () => {
+    await expect.poll(async () => (await request.get(`/e2e-project/commit-confirm/`)).status(), { timeout: 150_000 }).toBe(200);
+    for (const id of ['warm-a', 'warm-b', 'warm-c', 'warm-d']) {
+      const made = await ppnt(['new', 'article', `${NEW_ID}/${id}`, '--title', id]);
+      expect(made.code, made.stderr).toBe(0);
+      const seen = await statusesUntilReady(request, `/${NEW_ID}/${id}/`);
+      expect(seen.filter((status) => ![404, 503].includes(status)), `${id}：${seen.join(' → ')}`).toEqual([200]);
+    }
+  });
+
   const article = await ppnt(['new', 'article', `${NEW_ID}/hello`, '--title', '你好']);
   expect(article.code, article.stderr).toBe(0);
   expect(article.stdout).toContain(`文章页：${E2E_BASE_URL}/${NEW_ID}/hello/`);

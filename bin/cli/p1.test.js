@@ -145,7 +145,7 @@ test('new project：写 project.json 和空目录、登记；重跑不覆盖，�
   assert.ok(!fs.existsSync(path.join(root, 'docs', 'pinpoint', 'concepts')));
   const registry = JSON.parse(fs.readFileSync(made.registry, 'utf8'));
   assert.ok(registry.entries.some((entry) => entry.id === 'browser-use' && entry.kind === 'project' && entry.path === root));
-  assert.ok(first.out.includes('首页：http://127.0.0.1:1/browser-use/'), first.out.join('\n'));
+  assert.ok(first.out.includes('project 首页：http://127.0.0.1:1/browser-use/'), first.out.join('\n'));
   assert.ok(first.out.some((line) => line.includes('ppnt new article browser-use/<article>')));
 
   fs.writeFileSync(path.join(root, 'docs', 'pinpoint', 'project.json'), JSON.stringify({ id: 'browser-use', title: '手改过的标题' }));
@@ -284,6 +284,9 @@ test('open --print：文章页与画布视图、一节、project 全貌、wiki �
   assert.deepEqual(prose.out, ['A（§1 why）文章页  http://127.0.0.1:1/e2e-project/commit-confirm/#why'], '纯文字的节只有锚点');
   const project = await runIn(made, ['open', 'e2e-project', '--print']);
   assert.ok(project.out.includes('e2e-project 首页  http://127.0.0.1:1/e2e-project/'));
+  // list <project>（= show <project>）：“首页”单指 / 的 blog 首页，这里写 project 首页（CONTEXT.md）。
+  const listed = await runIn(made, ['list', 'e2e-project']);
+  assert.ok(listed.out.some((line) => line.startsWith('project 首页：http://127.0.0.1:1/e2e-project/')), listed.out.join('\n'));
   assert.ok(project.out.includes('llms.txt  http://127.0.0.1:1/e2e-project/llms.txt'));
   assert.ok(project.out.some((line) => line.endsWith('/e2e-project/wiki/confirm-card/')));
   const concept = await runIn(made, ['open', 'e2e-project', 'confirm-card', '--print']);

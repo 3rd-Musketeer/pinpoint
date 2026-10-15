@@ -19,6 +19,36 @@
 
 ---
 
+## 2026-10-15 刚建的文章，站点在跑时文章页 500 或一直 404（满载下首跑才挂）
+
+现象：`ppnt-article.spec.js`“ppnt new project / new article…”在 4 次 `just ship` 的首跑里都挂了，重跑都过。
+`ppnt shot` 报“文章页 … 返回 500：正文多半渲染出错”，有一次是“返回 404”。同一轮里 `<Foo />` 那条也报过
+“文章页一直 404”。都发生在 load 7 到 27 的时候。站点日志被重跑清掉了，first-run 的 JSON 报告里只有这几句。
+误判路径：先怀疑服务登记新 project 后重启站点，和 shot 抢时间。实际服务不重启站点。用 CPU 压力加
+`--repeat-each` 跑了 100 多轮，没有复现。之后在 `site/src/lib/loaders.js` 里打点，记录每次重读的起止、
+监听清单和每个文件事件的 HIT / miss，并给 articles 加载器每篇注入 150 ms 延迟，模拟满载，每轮都能复现 404。
+另写了一个脚本：对隔离服务用 CLI 建文章，然后每 25 ms 读一次文章页。没有负载时 15 轮里 11 轮出现
+`404 → 500 → 200`，500 持续约 100 ms，响应标题是 `UnknownContentCollectionError`。
+用例平时能过，是因为 shot 在 `ppnt check` 之后才发第一次请求，通常已经过了这段时间；满载时这段时间变长。
+根因：有两个独立的竞态。
+1. 500：Astro 开发服务器写完内容库（`data-store.json`）后立即让它失效，但渲染模块表
+   （`.astro/content-modules.mjs`，即 `astro:content-module-imports`）只靠文件 watcher 刷新。在这两步之间，
+   新文章已经出现在 `getStaticPaths` 里，`render(entry)` 却找不到它的模块。Astro 的 `renderEntry` 写成
+   `return render(...)`，try 接不住这个错误，所以页面直接 500。
+2. 一直 404：`watchAll` 的重读可以交叠。读盘早、在新 project 登记前开始的那次重读后结束，它的 `track()`
+   把监听清单换回没有新 project 的那份，新文章的 add 事件就被 `hit()` 丢掉。另外，在新目录加进监听之前
+   就写进去的文件，也不会再有事件。
+修复：`site/src/lib/render-article.js` 认出“内容库已有这篇、模块表里还没有”，文章页回 503“内容同步中”，
+带 Retry-After 并自动刷新；shot 和浏览器都已经把 503 当成“再等等”。`watchAll` 改成同一时间只跑一次重读，
+跑的过程中来的事件攒到跑完再读一遍；加进新目录后也再读一遍盘。
+识别特征：新建或刚登记的文章，第一次请求是 500 / `UnknownContentCollectionError`，再刷新就好；
+或者新文章一直 404，改一下任何文件就出来了。只在站点已经在跑的时候出现，冷启动时不会。
+防回归：`site/src/lib/loaders.test.js` 用假 watcher 复现两种 404 时序，在 main 上两条都挂。
+`site/src/lib/render-article.test.js` 测 503 的判定。`e2e/ppnt-article.spec.js` 的这条用例在站点运行中连建 4 篇
+并紧跟着轮询，不许出现 500，在 main 上 3/3 挂。
+
+---
+
 ## 2026-10-14 离开页面的 keepalive 快照在满载下“没到”（卡在 Playwright 拦截层）
 
 现象：`prose-comments.spec.js`“离开页面”那步在全量两组下首跑偶挂，重跑即过。盘上只有

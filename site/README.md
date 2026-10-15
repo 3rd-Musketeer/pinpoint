@@ -17,7 +17,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 
 每个站点进程的 Astro root 是 `site/.astro-cache/<端口>/`（build 是 `site/.astro-cache/build/`），代码照旧从 `site/src` 读。Astro 把 dev 的内容库（`.astro/data-store.json`）和生成的类型固定放在 root 下；同一个 checkout 起两个站点（e2e 两组、隔离运行、owner 的服务）时，各自的端口各自一份，不会读到别的 registry 的内容。
 
-开发服务器启动时把站点目录、仓库的 `node_modules` 和各 project 的 `docs/pinpoint/` 加进 Vite `fs.allow`，project 根下的其他文件和仓库源码不经 `/@fs/` 服务；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载；registry 重载后 loader 把新登记的 project 目录也加进监听（`src/lib/loaders.js` 的 `watchAll`），所以站点起来之后才登记的 project，新建的文章同样一秒内可读。
+开发服务器启动时把站点目录、仓库的 `node_modules` 和各 project 的 `docs/pinpoint/` 加进 Vite `fs.allow`，project 根下的其他文件和仓库源码不经 `/@fs/` 服务；之后新登记的 project 要重启 dev 才能加载其中的静态资源。内容文件和 registry 改了会自动重载；registry 重载后 loader 把新登记的 project 目录也加进监听（`src/lib/loaders.js` 的 `watchAll`），所以站点起来之后才登记的 project，新建的文章同样一秒内可读。重读一次只跑一个，跑的时候来的改动攒到跑完再读一遍；加进新目录后也再读一遍，接住加进监听之前就写好的文件。刚写好的文章可能先有零点几秒是 503“内容同步中”：Astro 的内容库写盘后立即生效，渲染模块表（`.astro/content-modules.mjs`）只靠文件 watcher 刷新，这段时间里 `render()` 会抛错，文章页认出这种情况回 503 并自动刷新（`src/lib/render-article.js`）。
 
 ## 路由
 

@@ -201,7 +201,7 @@ async function newProject(parsed, io) {
   for (const file of written) out(`  写了 ${file}`);
   for (const file of plan.skipped) out(`  已经在，没动 ${file}`);
   out(registeredNow ? `  登记了（registry：${registryPath}）` : '  已经登记过');
-  out(`首页：${model.urls.home}`);
+  out(`project 首页：${model.urls.home}`);
   out('下一步：');
   for (const line of next) out(`  ${line}`);
   return 0;

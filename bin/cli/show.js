@@ -152,7 +152,7 @@ export function projectModel({ registry, project, contextOf, origin }) {
 }
 
 export function formatProject(model) {
-  const lines = [`# ${model.id} · ${model.title}`, `根目录：${model.root}`, `首页：${model.url}  ·  llms.txt：${model.llms}`, ''];
+  const lines = [`# ${model.id} · ${model.title}`, `根目录：${model.root}`, `project 首页：${model.url}  ·  llms.txt：${model.llms}`, ''];
   lines.push(`文章（${model.articles.length}）`);
   if (!model.articles.length) lines.push('  （无）');
   for (const article of model.articles) {
