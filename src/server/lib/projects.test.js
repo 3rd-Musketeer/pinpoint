@@ -59,6 +59,7 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
       dir: path.join(project.dir, 'articles', 'commit-confirm'),
       file: path.join(project.dir, 'articles', 'commit-confirm', 'index.mdx'),
       canvasSections: 3,
+      mtimeMs: fs.statSync(path.join(project.dir, 'articles', 'commit-confirm', 'index.mdx')).mtimeMs,
     },
     {
       id: 'takeover',
@@ -67,6 +68,7 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
       dir: path.join(project.dir, 'articles', 'takeover'),
       file: path.join(project.dir, 'articles', 'takeover', 'index.mdx'),
       canvasSections: 0,
+      mtimeMs: fs.statSync(path.join(project.dir, 'articles', 'takeover', 'index.mdx')).mtimeMs,
     },
   ]);
   assert.deepEqual(project.concepts, [
@@ -75,6 +77,22 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
   ]);
   assert.equal(findProject(registry, 'e2e-project').title, 'E2E Project');
   assert.equal(findProject(registry, 'nope'), null);
+});
+
+test('article date：合法的 YYYY-MM-DD 进 date；写错的不报错、不进 date；mtimeMs 是 index.mdx 的修改时间', (t) => {
+  const root = makeProject(t, {
+    'project.json': '{"id":"dated"}',
+    'articles/a/index.mdx': '---\ntitle: A\ndate: 2026-10-01\n---\n',
+    'articles/b/index.mdx': '---\ntitle: B\ndate: 下周\n---\n',
+  });
+  const when = new Date(2026, 9, 9, 10, 0);
+  fs.utimesSync(path.join(root, 'docs', 'pinpoint', 'articles', 'b', 'index.mdx'), when, when);
+  const project = findProject(registryWith(t, [{ id: 'dated', kind: 'project', path: root }]), 'dated');
+  assert.deepEqual(project.errors, []);
+  const [a, b] = project.articles;
+  assert.equal(a.date, '2026-10-01');
+  assert.equal(b.date, undefined);
+  assert.equal(b.mtimeMs, when.getTime());
 });
 
 test('collision fixture: article id and concept name share one case-insensitive namespace', (t) => {

@@ -3,7 +3,7 @@
  * project 根目录，内容住在 <root>/docs/pinpoint/：
  *
  *   project.json                  { "id", "title", "sources"? }
- *   articles/<article>/index.mdx  frontmatter: title, summary?
+ *   articles/<article>/index.mdx  frontmatter: title, summary?, date?（YYYY-MM-DD，首页排序用）
  *   concepts/<名字>.md            frontmatter: name, status, boundary
  *
  * listProjects / findProject 是 Astro 站点（内容集合）、服务（/api/projects）
@@ -20,6 +20,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
+import { parseArticleDate } from '../../shared/article-feed.js';
 import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { parseFrontmatter } from './frontmatter.js';
@@ -34,6 +35,14 @@ export { PROJECT_CONTENT_DIR };
 
 /** concept 的 status 只有三档（CONTEXT.md concept 词条）。 */
 export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
+
+function fileMtimeMs(file) {
+  try {
+    return fs.statSync(file).mtimeMs;
+  } catch {
+    return 0;
+  }
+}
 
 function readText(file) {
   try {
@@ -139,6 +148,10 @@ function readArticles(dir, errors, projectId, sources = {}) {
     const article = { id: item.name, title: fm.data.title || item.name, dir: articleDir, file, canvasSections };
     if (projectId && ENTRY_ID_PATTERN.test(projectId)) article.pageId = articlePageId(projectId, item.name);
     if (fm.data.summary) article.summary = fm.data.summary;
+    // 首页按最近修改时间排（src/shared/article-feed.js）：合法的 date 优先，否则用 index.mdx 的修改时间。
+    // 写错的 date 不报错，按没写处理。
+    if (parseArticleDate(fm.data.date) != null) article.date = fm.data.date.trim();
+    article.mtimeMs = fileMtimeMs(file);
     articles.push(article);
   }
   return articles;
@@ -235,7 +248,7 @@ function checkPageIdCollisions(project, registry, root = REPO_ROOT) {
 
 /**
  * 登记的全部 project，按登记顺序：
- * [{ id, title, root, dir, articles: [{ id, title, summary?, pageId, dir, file }],
+ * [{ id, title, root, dir, articles: [{ id, title, summary?, date?, mtimeMs, pageId, dir, file }],
  *    concepts: [{ name, slug, status?, boundary?, file }], errors: [{ code, message, path?, … }] }]
  */
 export function listProjects(registry) {
