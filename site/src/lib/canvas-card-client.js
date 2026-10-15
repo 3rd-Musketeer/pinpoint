@@ -1,7 +1,7 @@
 // 浏览器端：画布卡片的帧尺寸与未处理标注数。卡片的数据全在 [data-pp-canvas] 的 data-* 上（Canvas.astro）。
 import { badgeText, docWidthKey, pageLedgerName, pendingCount, shellBox } from './canvas-card.js';
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
-import { readLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
+import { latestLedgerDocument, readLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
 // 帧 iframe 是 /api/frame?…&embed=card：服务端不出图注，机壳带 data-pp-stage（phone / comp / doc），手机机身带 data-pp-device
 // （src/server/lib/frame-doc.js markEmbedStage，契约在 docs/projects.md「给站点卡片的接口」）。这里只认 data-pp-stage，
@@ -146,7 +146,7 @@ function byPage(cards) {
 
 // HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在它自己的账本里（canvas-card.js pageLedgerName），
 // 一起读进来、记到那一帧上，卡片头的数含它们。
-async function refreshBadges(cards, refresh = false) {
+export async function refreshBadges(cards, refresh = false) {
   await Promise.all([...byPage(cards)].map(async ([page, list]) => {
     const aliases = new Map();
     for (const fig of list.flatMap((card) => [...card.querySelectorAll('.cc-frame[data-doc-url]')])) {
@@ -155,8 +155,10 @@ async function refreshBadges(cards, refresh = false) {
       aliases.get(key).ids.push(fig.dataset.screen);
     }
     const pages = [...aliases.values()];
-    const read = (name) => readLedgerDocument('', page, name, refresh).catch(() => null);
-    const [doc, ...docs] = await Promise.all([read('@canvas'), ...pages.map((p) => read(pageLedgerName(p.url)))]);
+    const names = ['@canvas', ...pages.map((p) => pageLedgerName(p.url))];
+    await Promise.all(names.map((name) => readLedgerDocument('', page, name, refresh).catch(() => null)));
+    // 批次只负责等读取完成。某本先解析后还可能收到 SSE，绘制必须同步合并此刻的最新状态。
+    const [doc, ...docs] = names.map((name) => latestLedgerDocument('', page, name));
     if (!doc && !docs.some(Boolean)) { paintBadges(list, page, null); return; }
     const annotations = [...((doc && doc.annotations) || []), ...docs.flatMap((d, i) => ledgerFrameRows(d, pages[i].ids))];
     paintBadges(list, page, { annotations });

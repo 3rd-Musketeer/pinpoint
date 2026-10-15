@@ -86,6 +86,44 @@ test('共享 HTML 页：首读、SSE、关闭重读、close/reopen 的两个节�
   await expect(badges).toHaveText(['1 条标注', '1 条标注']);
 });
 
+test('邻接乱序：一账本已解析后收到 SSE，另一账本迟到不能清空卡片计数', async ({ page, request }, testInfo) => {
+  test.setTimeout(180_000);
+  await open(page, '/e2e-html/pages/');
+  let release;
+  const gate = new Promise((resolve) => { release = resolve; });
+  let captured;
+  const held = new Promise((resolve) => { captured = resolve; });
+  let intercepted = false;
+  await page.route('**/annotations/**', async (route) => {
+    if (intercepted || !decodeURIComponent(route.request().url()).includes('/annotations/long-page.html')) return route.continue();
+    intercepted = true;
+    const response = await route.fetch();
+    captured();
+    await gate;
+    await route.fulfill({ response });
+  });
+  try {
+    const canvasRead = page.waitForResponse((r) => decodeURIComponent(r.url()).includes('/annotations/@canvas?'));
+    await page.evaluate(() => document.dispatchEvent(new Event('pp:canvas-overlay-closed')));
+    await Promise.all([held, canvasRead]);
+    await seed(request, HTML, '@canvas', { id: 'neighbor-new', screenId: 'phone-card', status: 'open', content: '较新的画布标注' });
+    await expect(page.getByText('较新的画布标注', { exact: true })).toBeVisible();
+    const badge = page.locator('[data-pp-section="app"] [data-pp-badge]');
+    await expect(badge).toHaveText('1 条标注');
+    const response = page.waitForResponse((r) => decodeURIComponent(r.url()).includes('/annotations/long-page.html'));
+    release();
+    await (await response).finished();
+    await proseSettled(page);
+    await expect(badge).toHaveText('1 条标注');
+    await expect(badge).toBeVisible();
+    expect(await page.evaluate(() => window.pinpointProse.canvasRows().map((row) => row.id))).toEqual(['neighbor-new']);
+    await badge.scrollIntoViewIfNeeded();
+    await page.screenshot({ path: testInfo.outputPath('neighbor-latest-badge.png') });
+  } finally {
+    release();
+  }
+});
+
 test('真实 IME：SSE 到达时保留新评论和回复的组字节点、草稿及光标，确认后只发送汉字', async ({ page, context, request }, testInfo) => {
   test.setTimeout(180_000);
   await open(page, '/e2e-prose/notes/');

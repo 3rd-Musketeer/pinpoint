@@ -18,6 +18,11 @@ export function rememberLedgerDocument(server, entry, name, doc) {
   return accept(book(server, entry, name).state, doc);
 }
 
+/** 同步读取当前快照。多本账本一起等待后，须在绘制当下重取，Promise 解析时的对象可能已落后于 SSE。 */
+export function latestLedgerDocument(server, entry, name) {
+  return book(server, entry, name).state.doc || null;
+}
+
 /** 首读共用在途请求或结果；重连、返回文章与关浮层显式 refresh，重新向磁盘取一版。
  * refresh 不复用更早发出的请求，免得断线前的旧请求漏掉断线期间的改动。 */
 export function readLedgerDocument(server, entry, name, refresh = false) {

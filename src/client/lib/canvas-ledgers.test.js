@@ -6,6 +6,20 @@ import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
 import { pendingCount } from '../../../site/src/lib/canvas-card.js';
 
+test('右栏逐本水合：邻接账本迟到时，合并行仍保留另一账本已收到的 SSE 新版', () => {
+  const url = '/sites/p_neighbor/long.html';
+  const html = pageKeyFromPathname(url);
+  for (const first of ['@canvas', html]) {
+    const books = createCanvasLedgers({ entry: 'p_neighbor', pages: [{ id: 'long', url }] });
+    const delayed = first === '@canvas' ? html : '@canvas';
+    books.accept(first, { revision: 0, annotations: [] });
+    books.remote({ page: first, revision: 2, annotations: [{ id: 'new', content: '新版', ...(first === '@canvas' ? { screenId: 'phone' } : {}) }] });
+    books.accept(delayed, { revision: 0, annotations: [] });
+    assert.deepEqual(books.rows().map((row) => [row.id, row.content]), [['new', '新版']]);
+    assert.equal(books.settled(), true);
+  }
+});
+
 test('共享 HTML 账本在每个别名上计数，同节只计一次，右栏与状态写入只有一份', () => {
   const log = [];
   const url = '/sites/p_a/shared.html';

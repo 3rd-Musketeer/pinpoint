@@ -2,6 +2,33 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
 
+test('工作台逐本计数：邻接 HTML 账本迟到，不重画另一账本的 SSE 新版', async (t) => {
+  const events = new EventTarget();
+  globalThis.window = events;
+  globalThis.document = { baseURI: 'http://example.test/' };
+  t.after(() => { delete globalThis.window; delete globalThis.document; });
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', () => new Promise((resolve) => requests.push(resolve)));
+  const { syncHtmlCardCounts } = await import('./html-cards.js?neighbor');
+  const nodes = [{ textContent: '' }, { textContent: '' }];
+  const urls = ['/sites/p_neighbor/early.html', '/sites/p_neighbor/late.html'];
+  const cards = urls.map((url, i) => {
+    const card = { setAttribute() {}, querySelector: (sel) => sel === 'iframe.wb-html-card-frame' ? { getAttribute: () => url } : nodes[i] };
+    Object.assign(nodes[i], { closest: () => card, toggleAttribute() {} });
+    return card;
+  });
+  syncHtmlCardCounts({ querySelectorAll: () => cards }, 'p_neighbor');
+  requests[0]({ ok: true, json: async () => ({ revision: 0, annotations: [] }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  const event = new Event('wb:annotations');
+  event.detail = { entry: 'p_neighbor', page: pageKeyFromPathname(urls[0]), revision: 2, annotations: [{ id: 'new' }] };
+  events.dispatchEvent(event);
+  assert.equal(nodes[0].textContent, '1 条标注');
+  requests[1]({ ok: true, json: async () => ({ revision: 0, annotations: [] }) });
+  await new Promise((resolve) => setImmediate(resolve));
+  assert.deepEqual(nodes.map((node) => node.textContent), ['1 条标注', '']);
+});
+
 test('HTML 卡片收到 SSE 后，迟到的旧 GET 和重装板都不能清空新版计数', async (t) => {
   const events = new EventTarget();
   globalThis.window = events;
