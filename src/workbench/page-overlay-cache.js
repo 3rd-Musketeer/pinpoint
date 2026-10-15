@@ -1,3 +1,5 @@
+import { frameReadyToUnload } from './frame-save.js';
+
 // 页面浮层保留最近两份文档；标注保存未完成时暂缓淘汰。
 export var MAX_PAGE_OVERLAYS = 2;
 var seen = new WeakMap();
@@ -12,17 +14,6 @@ function hidden(frame) {
   return !!frame.closest('[data-page-screen][data-doc-hidden]');
 }
 
-function saved(frame) {
-  var api;
-  try { api = frame.contentWindow && frame.contentWindow.pinpoint; } catch (e) { return false; }
-  // 页面还在加载时不能把它当成已保存；之后的重试会再读一次。
-  if (!api || typeof api.getState !== 'function') return false;
-  // closeComposer 会提交草稿，沿用用户关标注框时的保存流程。
-  if (api.hasActiveDraft()) api.cancelDraft();
-  var s = api.getState();
-  return !s.routing && !s.syncing && !s.outbox && !s.lastRectPending && !s.syncError && !api.hasActiveDraft();
-}
-
 function trim(panel) {
   if (retries.has(panel)) { clearTimeout(retries.get(panel)); retries.delete(panel); }
   if (!panel.isConnected) return;
@@ -33,7 +24,7 @@ function trim(panel) {
   // 每次重试都重读可见状态与 LRU，迟到的保存不会卸掉重新打开的文档。
   for (var frame of candidates) {
     if (extra <= 0) break;
-    if (!saved(frame)) break;
+    if (!frameReadyToUnload(frame)) break;
     frame.removeAttribute('src');
     try { frame.contentWindow.location.replace('about:blank'); } catch (e) { /* 已卸载 */ }
     seen.delete(frame);

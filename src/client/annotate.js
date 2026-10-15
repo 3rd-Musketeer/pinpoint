@@ -947,6 +947,7 @@ import { startProseComments } from './prose-comments.js';
   function requestSync() {
     if (!SERVER || syncing || mutationVersion <= syncedMutationVersion) return;
     syncing = true;
+    notify();
     var sentVersion = mutationVersion;
     inflightVersion = sentVersion;
     var sentEpoch = syncEpoch; // 路由切换后本响应作废（数据属于旧 pathname 的账本）
@@ -966,10 +967,11 @@ import { startProseComments } from './prose-comments.js';
           syncedMutationVersion = Math.max(syncedMutationVersion, sentVersion);
           adoptServerNumbers(res.data);
           var shouldRetry = settleDeferredRemote(sentVersion);
-          if (syncError) { syncError = false; notify(); }
+          syncError = false;
           setStatus('已同步');
           setTimeout(function () { setStatus(''); }, 1500);
           if (shouldRetry || mutationVersion > syncedMutationVersion) requestSync();
+          notify();
           return;
         }
         if (res.status === 409 && res.data) {
@@ -985,13 +987,16 @@ import { startProseComments } from './prose-comments.js';
           }
           return;
         }
+        syncError = true;
+        notify();
         setStatus('同步失败', true);
       })
       .catch(function () {
         if (sentEpoch !== syncEpoch) return; // 同上：切账本后的失败回调一并丢弃
         syncing = false;
         // POST failed — SSE may still be open, so don't flip connected.
-        if (!syncError) { syncError = true; notify(); }
+        syncError = true;
+        notify();
         setStatus('同步失败', true);
       });
   }
@@ -4255,6 +4260,7 @@ import { startProseComments } from './prose-comments.js';
       countInvalid: pageMarks.filter(function (mark) { return canClearInvalid(mark, invalidScopes); }).length,
       revision: revision,
       syncing: syncing,
+      unsynced: mutationVersion > syncedMutationVersion, // 请求结束不等于改动已落盘
       outbox: Object.keys(ledgerOutbox).length, // 换账本交给 outbox、还没写完的旧账本快照
       lastRectPending: lastRectPersistTimer !== null, // 防抖里、到点才发的 lastRect 写（关页时不补发）
       countHidden: hidden,
@@ -4297,6 +4303,7 @@ import { startProseComments } from './prose-comments.js';
     reopenAnnotation: reopenAnnotation,
     setStatusFilter: setStatusFilter,
     getState: getState,
+    retrySync: requestSync,
     resolveMarkAnchor: resolveMarkAnchor,
     resolveMarkTarget: resolveMarkTarget,
     isMarkBroken: isMarkBroken,

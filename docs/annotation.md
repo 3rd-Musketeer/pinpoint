@@ -100,6 +100,8 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 服务重启丢了这份记录时，快照按普通 `baseRevision` 判，最坏回到 409。
 换账本时排进 outbox、尚未发出的快照也在这时发。还在防抖里的 lastRect（锚点几何缓存，不是 owner 的改动）不发。
 
+标注客户端的 `getState().unsynced` 表示当前账本仍有未确认落盘的修改，计算依据是 `mutationVersion > syncedMutationVersion`。HTTP 保存失败与网络异常都会设置 `syncError`，请求结束只会清除 `syncing`。恢复服务后可调用 `pinpoint.retrySync()` 重试当前新稿，成功应答后才清除未同步状态。页面浮层与活卡片回收前均提交草稿并检查这三个状态，同时等待水合、outbox 与几何缓存；未落盘的实例保留，允许暂时超过回收上限。
+
 浏览器的 `localStorage` 缓存不是权威。启动时 client 从磁盘水合；`GET /events`（SSE，
 `event: annotations`，payload 带 `entry` / `page` / `revision`）让已打开的浏览器近实时同步。
 `GET /annotations`（不带 page）是调试用的聚合，把每个页桶（登记条目、模板页、文章画布页）摊平成 `[{entry, ...doc}]`；

@@ -7,6 +7,7 @@
 //    空格（按住拖画布）与中键按下在卡片的 window 里拦截，转给工作台，画布照常缩放、平移。
 // 3. 标注模式同步：横条“标注”驱动的是画布的标注客户端（window.pinpoint），它让开卡片（data-ann-ui）；卡片里那一页
 //    自己的客户端跟着进出标注模式，在卡片里直接标，标注进那一页的账本。卡片里按 A / Esc 切了模式，画布跟着切。
+import { frameReadyToUnload } from './frame-save.js';
 import { annotationEscapeIsTaken } from './escape-layers.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
 
@@ -17,6 +18,12 @@ var cardApis = new Map();                                          // frame → 
 var parentSubscribed = false;
 var parentMode = false;
 var LOAD_TIMEOUT_MS = 4000;
+var pumpRaf = 0;
+
+function schedulePump() {
+  if (pumpRaf) return;
+  pumpRaf = requestAnimationFrame(function () { pumpRaf = 0; pump(); });
+}
 
 function stageEl() { return document.getElementById('wbstage'); }
 
@@ -93,7 +100,7 @@ function finishLoad(frame) {
 
 function unloadFrame(frame) {
   var c = state.cards.get(frame);
-  if (!c) return;
+  if (!c || !frameReadyToUnload(frame)) return;
   clearTimeout(c.timer);
   c.loading = false;
   c.live = false;
@@ -241,11 +248,13 @@ function bindCardAnnotate(frame, win, tries) {
   if (!state.cards.has(frame)) return;
   ensureParentSubscription();
   cardApis.set(frame, api);
+  schedulePump();
   var parent = parentApi();
   setCardMode(frame, api, !!(parent && parent.getState().mode));
   if (typeof api.onUpdate === 'function') {
     api.onUpdate(function () {
       if (cardApis.get(frame) !== api) return;
+      schedulePump();
       var p = parentApi();
       if (!p) return;
       var on = !!api.getState().mode;

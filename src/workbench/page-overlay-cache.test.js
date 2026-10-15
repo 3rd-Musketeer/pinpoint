@@ -4,7 +4,7 @@ import { touchPageOverlayFrame } from './page-overlay-cache.js';
 
 function fixture() {
   const frames = ['a', 'b', 'c'].map(id => {
-    const state = { syncing: false };
+    const state = { syncing: false, unsynced: false };
     const frame = {
       id, loaded: false, hidden: true, draft: false, state, unloaded: false,
       closest() { return this.hidden; },
