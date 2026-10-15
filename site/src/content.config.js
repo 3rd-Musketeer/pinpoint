@@ -16,13 +16,17 @@ const projects = defineCollection({
   }),
 });
 
-// article frontmatter: title（缺省用 id）、summary（popup 与列表里的一句话）、order（列表次序，可省）。
+// article frontmatter: title（缺省用 id）、summary（popup 与列表里的一句话）、order（project 首页的次序，可省）、
+// date（blog 首页的时间，可省，缺省用 index.mdx 的修改时间）。
 const articles = defineCollection({
   loader: articlesLoader(),
   schema: z.looseObject({
     title: z.string(),
     summary: z.string().optional(),
     order: z.number().optional(),
+    // 首页的时间：listProjects 读出的合法 date（YYYY-MM-DD）与 index.mdx 的修改时间。
+    date: z.string().optional(),
+    mtimeMs: z.number(),
     project: z.string(),
     article: z.string(),
     file: z.string(),

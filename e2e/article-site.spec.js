@@ -179,6 +179,41 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     expect((await llms.text()).startsWith('# E2E Project\n')).toBe(true);
   });
 
+  await test.step('文章页顶栏（ADR 0044）：标签页标题只有文章标题；左边是回首页的“全部文章”，不显示 project 标题；project 是标题下的小标签', async () => {
+    await page.goto(ARTICLE);
+    await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
+    await expect(page).toHaveTitle('提交前确认');
+    const crumb = page.locator('[data-pp-crumb]');
+    await expect(crumb.getByRole('link', { name: '全部文章' })).toHaveAttribute('href', '/');
+    await expect(crumb).not.toContainText('E2E Project');
+    await expect(page.locator('#article .prose .label')).toHaveCount(0);
+    await expect(page.locator('#article [data-pp-project-tag]')).toHaveText('E2E Project');
+    await expect(page.locator('#article [data-pp-project-tag]')).toHaveAttribute('href', '/e2e-project/');
+  });
+
+  await test.step('“画布视图”打开 /workbench/?page=<页 id>，画布装好', async () => {
+    await page.locator('#btn-canvas').click();
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, CANVAS_PAGE);
+    expect(new URL(page.url()).pathname).toBe('/workbench/');
+    expect(new URL(page.url()).searchParams.get('page')).toBe(CANVAS_PAGE);
+    await expect(page.locator('#wb-board-panel [data-screen="confirm-sheet"]')).toBeVisible();
+  });
+
+  await test.step('blog 首页 /：列出登记 project 的文章（标题、summary、project 标签、日期），标签进那个 project 的文章列表', async () => {
+    await page.goto('/');
+    await expect(page.locator('#article .prose h1')).toHaveText('全部文章');
+    const item = page.locator('[data-pp-feed-item="e2e-project/commit-confirm"]');
+    await expect(item.locator('.feed-title')).toHaveText('提交前确认');
+    await expect(item.locator('.feed-title')).toHaveAttribute('href', ARTICLE);
+    await expect(item.locator('.feed-summary')).toHaveText('付款与提交前，agent 停下来请用户确认。');
+    await expect(item.locator('time')).toHaveAttribute('datetime', /^\d{4}-\d{2}-\d{2}$/);
+    await expect(page.locator('[data-pp-feed-item="e2e-project/takeover"]')).toHaveCount(1);
+    expect(await page.evaluate(() => window.__pinpointEntry)).toBeUndefined();
+    await item.locator('[data-pp-project-tag]').click();
+    await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/`);
+    await expect(page.locator('#article .prose h1')).toHaveText('E2E Project');
+  });
+
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });

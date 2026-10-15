@@ -34,7 +34,7 @@ export async function loadSite() {
   for (const a of articleEntries) {
     const p = projects.get(a.data.project);
     if (!p) continue;
-    const item = { kind: 'article', entry: a, id: a.data.article, title: a.data.title, summary: a.data.summary || '', href: articleHref(p.id, a.data.article) };
+    const item = { kind: 'article', entry: a, id: a.data.article, title: a.data.title, summary: a.data.summary || '', date: a.data.date, mtimeMs: a.data.mtimeMs, href: articleHref(p.id, a.data.article) };
     p.articles.push(item);
     if (!p.names.has(refKey(item.id))) p.names.set(refKey(item.id), item);
   }

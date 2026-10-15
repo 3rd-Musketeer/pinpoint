@@ -265,3 +265,18 @@ mark.pp-hl.draft { background:var(--hl-on); }
 .errors { border:1px solid var(--err); color:var(--err); border-radius:12px; padding:12px 16px; margin-bottom:28px; font-size:14px; }
 .errors ul { margin:6px 0 0; }
 footer.foot { margin-top:96px; font-size:13.5px; color:var(--muted); }
+
+/* blog 首页（/）与文章页标题下的 project 小标签：project 只是一批文章的文件夹，标签低调（ADR 0044）。 */
+.meta { display:flex; flex-wrap:wrap; align-items:center; gap:6px 12px; margin:0; font-size:13px; color:var(--muted); }
+.meta time { font-variant-numeric:tabular-nums; }
+.proj-tag { display:inline-block; font-size:12px; line-height:1.6; padding:0 8px; border:1px solid var(--hair); border-radius:999px; color:var(--muted); text-decoration:none; }
+.proj-tag:hover { color:var(--ink); background:var(--soft); }
+.prose > .meta { margin-top:-4px; }
+.feed { list-style:none; margin:40px 0 0; padding:0; }
+.feed-item { padding:22px 0; border-top:1px solid var(--hair); }
+.feed-item:first-child { border-top:0; padding-top:0; }
+.feed-title { font-size:21px; line-height:1.35; font-weight:600; text-decoration:none; }
+.feed-title:hover { color:var(--accent-ink); }
+.feed-summary { margin:6px 0 10px; color:var(--ink-2); }
+.feed-item .meta { margin-top:8px; }
+.feed-summary + .meta { margin-top:0; }

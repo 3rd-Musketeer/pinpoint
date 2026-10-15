@@ -1,0 +1,29 @@
+---
+// blog 首页（/）：所有登记 project 的全部文章，按最近修改时间倒序（规则在 src/shared/article-feed.js，
+// 写在 docs/projects.md“首页”）。每条：标题、summary、所属 project 的小标签（进 /<project>/）、日期。
+import Base from '../layouts/Base.astro';
+import { loadSite, assertBuildClean, projectHref } from '../lib/site-data.js';
+import { articleFeed } from '../../../src/shared/article-feed.js';
+
+const site = await loadSite();
+assertBuildClean(site);
+const feed = articleFeed([...site.projects.values()]);
+---
+<Base title="全部文章" crumbs={[{ label: '全部文章' }]} errors={site.errors}>
+  <div class="prose">
+    <h1>全部文章</h1>
+    <p class="lede">{site.projects.size === 0 ? '还没有登记的 project。' : `${feed.length} 篇，最近改过的在前。`}</p>
+  </div>
+  <ol class="feed prose" data-pp-feed>
+    {feed.map(({ project, article, time }) => (
+      <li class="feed-item" data-pp-feed-item={`${project.id}/${article.id}`}>
+        <a class="feed-title" href={article.href}>{article.title}</a>
+        {article.summary && <p class="feed-summary">{article.summary}</p>}
+        <p class="meta">
+          <a class="proj-tag" data-pp-project-tag href={projectHref(project.id)}>{project.title}</a>
+          {time.day && <time datetime={time.day}>{time.day}</time>}
+        </p>
+      </li>
+    ))}
+  </ol>
+</Base>

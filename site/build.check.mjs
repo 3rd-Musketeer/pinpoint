@@ -45,11 +45,14 @@ const iframesOf = (html) => [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m)
 const linksOf = (html) => [...html.matchAll(/<a class="(?:btn|cc-hit)"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
 
 test('fixture site builds every route and resolves [[ ]]', (t) => {
+  // 首页时间：payments 写了 date 2026-10-01，intro 写了 2026-10-10，basics 没写、用 index.mdx 的修改时间（钉成现在）。
+  const now = new Date();
+  fs.utimesSync(path.join(FIX, 'demo', 'docs', 'pinpoint', 'articles', 'basics', 'index.mdx'), now, now);
   const b = build(t, ['demo', 'other']);
   assert.equal(b.status, 0, b.log);
 
   for (const rel of [
-    'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
+    'index.html', 'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
     'other/index.html', 'other/intro/index.html', 'other/concepts/payee/index.html', 'other/llms.txt',
   ]) assert.ok(fs.existsSync(path.join(b.out, rel)), `missing route ${rel}`);
 
@@ -151,6 +154,33 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   // Top bar: the article's canvas view.
   assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/workbench/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
   assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas|data-pp-overlay/); // no Canvas, no canvas view, no overlay
+
+  // Article page header (ADR 0044): the tab title is the article title alone; the top bar starts at 全部文章 (/)
+  // and no longer names the project; the project is a small tag under the title, linking to its folder.
+  assert.match(article, /<title>浏览器任务里的付款<\/title>/);
+  const crumb = article.match(/<div class="crumb" data-pp-crumb>([\s\S]*?)<\/div>/)[1];
+  assert.match(crumb, /<a href="\/">全部文章<\/a>/);
+  assert.match(crumb, /<b>浏览器任务里的付款<\/b>/);
+  assert.doesNotMatch(crumb, /Demo 项目/);
+  assert.doesNotMatch(article, /<div class="label">Demo 项目<\/div>/);
+  assert.match(article, /<a class="proj-tag" data-pp-project-tag href="\/demo\/">Demo 项目<\/a>/);
+
+  // Blog home (/): every article of every project, newest first; title, summary, project tag, date.
+  const blog = b.read('index.html');
+  assert.match(blog, /<title>全部文章<\/title>/);
+  assert.deepEqual([...blog.matchAll(/data-pp-feed-item="([^"]+)"/g)].map((m) => m[1]), ['demo/basics', 'other/intro', 'demo/payments']);
+  const item = (id) => blog.match(new RegExp(`data-pp-feed-item="${escRe(id)}">([\\s\\S]*?)</li>`))[1];
+  assert.match(item('demo/payments'), /<a class="feed-title" href="\/demo\/payments\/">浏览器任务里的付款<\/a>/);
+  assert.match(item('demo/payments'), /<p class="feed-summary">走到付款这一步时/);
+  assert.match(item('demo/payments'), /<a class="proj-tag" data-pp-project-tag href="\/demo\/">Demo 项目<\/a>/);
+  assert.match(item('demo/payments'), /<time datetime="2026-10-01">2026-10-01<\/time>/);
+  assert.match(item('other/intro'), /href="\/other\/">Other 项目<\/a>/);
+  assert.doesNotMatch(item('other/intro'), /feed-summary/);
+  const pad = (n) => String(n).padStart(2, '0');
+  const today = `${now.getFullYear()}-${pad(now.getMonth() + 1)}-${pad(now.getDate())}`;
+  assert.match(item('demo/basics'), new RegExp(`<time datetime="${today}">`));
+  assert.match(blog, /id="btn-workbench" href="\/workbench\/"/);
+  assert.doesNotMatch(blog, /llms\.txt/);
 
   const home = b.read('demo/index.html');
   assert.deepEqual([...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['付款授权', '撤回窗口', '支付页识别']);

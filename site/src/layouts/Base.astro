@@ -1,5 +1,6 @@
 ---
-// 站点外壳：顶栏（project 面包屑 + 画布视图 + 概念 + 深浅色）、左目录、正文、右评论栏、概念抽屉。
+// 站点外壳：顶栏（回首页的“全部文章” + 面包屑 + 画布视图 + 概念 + 深浅色）、左目录、正文、右评论栏、概念抽屉。
+// 首页（/，全部文章）不传 project，顶栏左边只有“全部文章”，右边多一个“工作台”（ADR 0044）。
 // 评论栏的内容由 pinpoint 注入的标注客户端填（src/client/prose-comments.js，[data-pp-rail]）；
 // 没有注入（站点单独跑、以后的公开链接）时只留这句说明。
 // overlay 槽：文章页放画布浮层（CanvasOverlay.astro），在 #article 之外。
@@ -11,7 +12,8 @@ interface DrawerItem { label: string; href?: string; count: number }
 interface Props {
   title: string;
   description?: string;
-  project: string;
+  /** 所属 project（llms.txt 链接用）；首页不传。 */
+  project?: string;
   crumbs: Crumb[];
   toc?: TocItem[];
   rail?: boolean;
@@ -22,7 +24,9 @@ interface Props {
 }
 const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref } = Astro.props;
 const layoutClass = toc ? (rail ? 'layout' : 'layout no-rail') : 'layout single';
-const llms = `/${encodeURIComponent(project)}/llms.txt`;
+const llms = project ? `/${encodeURIComponent(project)}/llms.txt` : undefined;
+// 顶栏左边永远从“全部文章”（/）起；首页自己就是它，不再链接。
+const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumbs] : crumbs;
 ---
 <!doctype html>
 <html lang="zh-CN">
@@ -31,18 +35,18 @@ const llms = `/${encodeURIComponent(project)}/llms.txt`;
     <meta name="viewport" content="width=device-width,initial-scale=1" />
     <title>{title}</title>
     {description && <meta name="description" content={description} />}
-    <link rel="alternate" type="text/plain" href={llms} title="Agent 视图" />
+    {llms && <link rel="alternate" type="text/plain" href={llms} title="Agent 视图" />}
     <script is:inline>
       try { var t = localStorage.getItem('pp-site-theme'); if (t === 'light' || t === 'dark') document.documentElement.setAttribute('data-theme', t); } catch (e) {}
     </script>
   </head>
   <body>
     <header class="top">
-      <div class="crumb">
-        {crumbs.map((c, i) => (
+      <div class="crumb" data-pp-crumb>
+        {trail.map((c, i) => (
           <>
             {i > 0 && <span>/</span>}
-            {i === crumbs.length - 1 ? <b>{c.label}</b> : c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}
+            {i === trail.length - 1 ? <b>{c.label}</b> : c.href ? <a href={c.href}>{c.label}</a> : <span>{c.label}</span>}
           </>
         ))}
       </div>
@@ -53,7 +57,7 @@ const llms = `/${encodeURIComponent(project)}/llms.txt`;
           概念{drawer.empty.length > 0 && <span> · {drawer.empty.length} 个空 ref</span>}
         </button>
       )}
-      <a class="btn hide-sm" href={llms}>llms.txt</a>
+      {llms ? <a class="btn hide-sm" href={llms}>llms.txt</a> : <a class="btn" id="btn-workbench" href="/workbench/" target="_top">工作台</a>}
       <button class="btn" id="btn-theme" type="button" aria-label="切换深浅色">◐</button>
     </header>
 

@@ -45,10 +45,10 @@ const group = (refs) => {
 const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: group(a.refs.filter((r) => r.kind === 'empty')) };
 ---
 <Base
-  title={`${a.title} · ${p.title}`}
+  title={a.title}
   description={a.summary}
   project={p.id}
-  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: a.title }]}
+  crumbs={[{ label: a.title }]}
   toc={sections}
   rail={true}
   drawer={drawer}
@@ -56,9 +56,10 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   canvasHref={canvasView}
 >
   <div class="prose">
-    <div class="label">{p.title}</div>
     <h1>{a.title}</h1>
     {a.summary && <p class="lede">{a.summary}</p>}
+    {/* project 只是装这篇文章的文件夹（ADR 0044）：读者面前不显示 project 标题那一行，只留一个小标签进文件夹。 */}
+    <p class="meta"><a class="proj-tag" data-pp-project-tag href={projectHref(p.id)}>{p.title}</a></p>
   </div>
   <div class="article-body">
     <Content components={{ Section, Canvas, Figure, Ref }} />

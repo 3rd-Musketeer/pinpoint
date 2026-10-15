@@ -83,7 +83,8 @@ export function articlesLoader() {
             const parsed = await ctx.parseData({
               id,
               // title / summary come from listProjects (one frontmatter parser for site, service and CLI; docs/projects.md).
-              data: { ...data, title: a.title, summary: a.summary, project: p.id, article: a.id, file: a.file },
+              // date / mtimeMs 给首页排序（src/shared/article-feed.js）。
+              data: { ...data, title: a.title, summary: a.summary, date: a.date, mtimeMs: a.mtimeMs, project: p.id, article: a.id, file: a.file },
               filePath: a.file,
             });
             ctx.store.set({
