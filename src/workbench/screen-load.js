@@ -101,7 +101,7 @@ function htmlCardHtml(url, title, viewport) {
 }
 
 function pageOverlayFrameHtml(url, title) {
-  return '<iframe class="wb-doc-frame" data-src="' + escHtml(url) + '"' +
+  return '<iframe class="wb-doc-frame" data-pp-parent-events data-src="' + escHtml(url) + '"' +
     ' title="' + escHtml(title || url) + '"></iframe>';
 }
 
