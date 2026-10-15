@@ -331,31 +331,58 @@ test('annotation number stays visible while editing and follows the target after
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
   await expect(page.locator('#ann-box')).toBeVisible();
-  const badgeDocTop=()=>page.evaluate(()=>{
-    const badge=document.querySelector('.ann-badge');
-    return badge ? badge.getBoundingClientRect().top + window.scrollY : null;
-  });
-  // 滚动事件驱动的 overlay 重绘排在自己的 rAF 上，与测试发起的 rAF 之间的先后
-  // 没有契约：负载下基准若在重绘落地前取，会拿到差一个滚动量的陈旧位置
-  // （实测差 143px）。所以基线取「跨帧不再变化」的文档坐标（视口 y + scrollY，
-  // 滚动不变量），等首测量 settle，不加固定等待。
-  const settledDocTop=async()=>{
-    let prev=await badgeDocTop();
-    for(let i=0;i<20&&prev!==null;i++){
-      await page.evaluate(()=>new Promise(resolve=>requestAnimationFrame(resolve)));
-      const cur=await badgeDocTop();
-      if(cur===prev) return cur;
-      prev=cur;
-    }
-    return prev;
-  };
   const badge=page.locator('.ann-badge');
   await expect(badge).toHaveCount(1);
   await expect(badge).toHaveText(String(mark.n));
-  const before=await settledDocTop();
-  await page.evaluate(()=>window.scrollTo({top:100, behavior:'instant'}));
-  await expect.poll(badgeDocTop).toBe(before);
-  await expect(badge).toBeVisible();
+  const placement = () => page.evaluate(() => {
+    const target = document.querySelector('#doc-title').getBoundingClientRect();
+    const frame = document.querySelector('#ann-hover-layer .ann-draft-target').getBoundingClientRect();
+    const pin = document.querySelector('.ann-badge').getBoundingClientRect();
+    const overlay = document.querySelector('#ann-overlay').getBoundingClientRect();
+    const half = pin.width / 2;
+    const clamp = (n, lo, hi) => Math.max(lo, Math.min(n, hi));
+    return {
+      scrollY: window.scrollY,
+      // 框必须跟随真实 DOM；钉子跟随框的右上角，到视口边缘时收在 4px 内。
+      followsTarget: frame.left === target.left - 4 && frame.top === target.top - 4,
+      actual: [pin.left, pin.top],
+      expected: [clamp(frame.right - half, overlay.left + 4, overlay.right - pin.width - 4),
+        clamp(frame.top - half, overlay.top + 4, overlay.bottom - pin.height - 4)],
+      inside: pin.left >= overlay.left + 4 && pin.top >= overlay.top + 4
+        && pin.right <= overlay.right - 4 && pin.bottom <= overlay.bottom - 4,
+    };
+  });
+  const expectPlacement = async (scrollY) => {
+    await expect.poll(async () => {
+      const p = await placement();
+      return {
+        atRequestedScroll: p.scrollY === scrollY,
+        followsTarget: p.followsTarget,
+        coordinatesMatch: p.actual[0] === p.expected[0] && p.actual[1] === p.expected[1],
+        inside: p.inside,
+      };
+    }).toEqual({ atRequestedScroll: true, followsTarget: true, coordinatesMatch: true, inside: true });
+  };
+  const scrollTo = (top) => page.evaluate(async (top) => {
+    if (window.scrollY === top) return;
+    const ended = new Promise(resolve => document.addEventListener('scrollend', resolve, {once:true}));
+    window.scrollTo({top, behavior:'instant'});
+    await ended;
+  }, top);
+  // 本例验证编辑态的滚动几何；移开输入焦点，避免浏览器为光标滚动页面。
+  await page.locator('#ann-input').blur();
+  await test.step('目标在视口内：钉子跟随目标框', async () => {
+    await scrollTo(100);
+    await expectPlacement(100);
+    const p = await placement();
+    expect(p.actual[1]).toBeGreaterThan(4);
+  });
+  await test.step('目标部分越过上沿：钉子按框收边且完整可见', async () => {
+    await scrollTo(326);
+    await expectPlacement(326);
+    expect((await badge.boundingBox()).y).toBe(4);
+    await page.screenshot({path:test.info().outputPath('badge-clamped.png')});
+  });
   await page.locator('#ann-close').click();
   await expect(badge).toHaveCount(1);
   expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
