@@ -15,6 +15,8 @@ import { DEFAULT_ORIGIN, REPO_ROOT, CliError, slugify, ioOf } from './core.js';
 import { BOARDS, parseArgs, guardParse } from './args.js';
 import { toPageRef } from './address.js';
 import { htmlPathnames, planMovedBucket, rewriteMovedBucket } from './bucket-move.js';
+import { beginMoveRecovery } from './move-recovery.js';
+
 export { rewriteMovedBucket } from './bucket-move.js';
 
 function isHttpUrl(target) {
@@ -644,95 +646,75 @@ export async function renameEntry(parsed, io = {}) {
     return 0;
   }
 
-  // ① 登记表
+  let recovery;
   let renamed;
   try {
-    renamed = renameRegistryEntry(plan.registryPath, plan.before.id, plan.after.id);
+    recovery = beginMoveRecovery(plan.dataRoot, [
+      plan.registryPath, plan.projectJson,
+      ...(plan.bucketExists ? [plan.bucketFrom, plan.bucketTo] : []),
+      ...plan.articleMoves.flatMap((move) => [move.from, move.to]),
+      ...plan.rewritePreview.map((file) => path.join(plan.rewriteDir, file)),
+    ]);
+    renamed = recovery.step('登记表改名', () => renameRegistryEntry(plan.registryPath, plan.before.id, plan.after.id));
+    if (plan.bucketExists) recovery.step('标注桶改名', () => fs.renameSync(plan.bucketFrom, plan.bucketTo));
+    for (const move of plan.articleMoves) {
+      recovery.step(`文章桶 ${move.fromId} 改名`, () => fs.renameSync(move.from, move.to));
+      move.rewritten = recovery.step(`文章桶 ${move.toId} 账本与附件地址`, () => rewriteMovedBucket(move.to, move));
+    }
+    if (plan.projectJson) {
+      recovery.step('project.json', () => {
+        const json = JSON.parse(fs.readFileSync(plan.projectJson, 'utf8'));
+        fs.writeFileSync(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
+      });
+    } else if (plan.rewriteDir) {
+      recovery.step('资源前缀', () => rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id));
+    }
+    recovery.commit(err);
   } catch (error) {
-    err(`改 id 失败：${error.message}`);
+    if (recovery) return recovery.rollback(error, err);
+    err(`改 id 备份失败，关键数据未改：${error.message}`);
     return 1;
   }
   out(`已改 id：${plan.before.id} → ${renamed.entry.id}（${renamed.entry.kind}）：${entryTargetDesc(renamed.entry)}`);
   out('  登记表：条目已改名');
-
-  // ② 标注桶
-  if (plan.bucketExists) {
-    try {
-      fs.renameSync(plan.bucketFrom, plan.bucketTo);
-      out(`  标注桶：${plan.bucketFrom} → ${plan.bucketTo}`);
-    } catch (error) {
-      err(`  标注桶改名失败（登记表已改，标注还在旧桶）：${error.message}`);
-      return 1;
-    }
-  } else if (plan.before.kind !== 'project') {
-    out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
-  }
-
-  // ②' 文章桶（project）：每个桶一次 renameSync，单桶原子；中途失败时点名已搬与未搬的。
-  if (plan.before.kind === 'project') {
-    if (!plan.articleMoves.length) out(`  文章桶：没有 ${plan.before.id}_<文章> 桶要搬`);
-    const moved = [];
-    for (const move of plan.articleMoves) {
-      try {
-        fs.renameSync(move.from, move.to);
-      } catch (error) {
-        const left = plan.articleMoves.filter((item) => !moved.includes(item)).map((item) => item.fromId);
-        err(`  文章桶改名失败（登记表已改；已搬 ${moved.map((item) => item.toId).join('、') || '无'}，还在旧名下：${left.join('、')}）：${error.message}`);
-        return 1;
-      }
-      moved.push(move);
-      let rewritten = [];
-      try {
-        rewritten = rewriteMovedBucket(move.to, move);
-      } catch (error) {
-        err(`  文章桶 ${move.toId} 已搬，但账本里的旧地址没改完：${error.message}`);
-      }
-      out(`  文章桶：${move.from} → ${move.to}${rewritten.length ? `（账本改写：${rewritten.join('、')}）` : ''}`);
-      // 缓存都能再生：搬不动、删不掉只警告并点名，不打断后面的桶和 project.json。
-      for (const dir of PAGE_CACHE_MOVE) {
-        const from = path.join(plan.dataRoot, dir, move.fromId);
-        if (!fs.existsSync(from)) continue;
-        const to = path.join(plan.dataRoot, dir, move.toId);
-        try {
-          fs.rmSync(to, { recursive: true, force: true });
-          fs.renameSync(from, to);
-          out(`    ${dir}/${move.fromId} → ${dir}/${move.toId}`);
-        } catch (error) {
-          err(`    注意：缓存 ${dir}/${move.fromId} 没搬，还在旧名下（${from}）；可以删掉，下次 ppnt ${dir} 重新生成：${error.message}`);
-        }
-      }
-      move.hadDist = fs.existsSync(path.join(plan.dataRoot, 'dist', move.fromId));
-      for (const dir of PAGE_CACHE_DROP) {
-        const stale = path.join(plan.dataRoot, dir, move.fromId);
-        if (!fs.existsSync(stale)) continue;
-        try {
-          fs.rmSync(stale, { recursive: true, force: true });
-          out(`    ${dir}/${move.fromId} 已删（产物写死了旧的 /sites/ 地址）`);
-        } catch (error) {
-          err(`    注意：缓存 ${dir}/${move.fromId} 没删掉（${stale}），它写死了旧的 /sites/ 地址，可以手动删：${error.message}`);
-        }
-      }
-    }
-  }
-
-  // ③ 资源前缀（project：改写 project.json 的 id）
-  if (plan.projectJson) {
-    try {
-      const json = JSON.parse(fs.readFileSync(plan.projectJson, 'utf8'));
-      fs.writeFileSync(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
-      out(`  project.json：id ${plan.before.id} → ${plan.after.id}（${plan.projectJson}）`);
-    } catch (error) {
-      err(`  project.json 改写失败（登记表已改，project.json 还是旧 id）：${error.message}`);
-      return 1;
-    }
-  } else if (plan.rewriteDir) {
-    const changed = rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id);
-    out(changed.length
-      ? `  资源前缀：${changed.length} 个文件里的 /sites/${plan.before.id}/ 已换成 /sites/${plan.after.id}/`
+  if (plan.bucketExists) out(`  标注桶：${plan.bucketFrom} → ${plan.bucketTo}`);
+  else if (plan.before.kind !== 'project') out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+  if (plan.projectJson) out(`  project.json：id ${plan.before.id} → ${plan.after.id}（${plan.projectJson}）`);
+  if (plan.rewriteDir) {
+    out(plan.rewritePreview.length
+      ? `  资源前缀：${plan.rewritePreview.length} 个文件里的 /sites/${plan.before.id}/ 已换成 /sites/${plan.after.id}/`
       : `  资源前缀：没有文件写着 /sites/${plan.before.id}/`);
-    for (const file of changed) out(`    ${file}`);
-  } else {
+    for (const file of plan.rewritePreview) out(`    ${file}`);
+  } else if (!plan.projectJson) {
     out(`  资源前缀：${plan.before.kind} 条目没有目录可扫，跳过`);
+  }
+
+  // 关键数据已提交，缓存能再生：失败只警告，不影响迁移结果。
+  for (const move of plan.articleMoves) {
+    out(`  文章桶：${move.from} → ${move.to}${move.rewritten.length ? `（账本改写：${move.rewritten.join('、')}）` : ''}`);
+    for (const dir of PAGE_CACHE_MOVE) {
+      const from = path.join(plan.dataRoot, dir, move.fromId);
+      if (!fs.existsSync(from)) continue;
+      const to = path.join(plan.dataRoot, dir, move.toId);
+      try {
+        fs.rmSync(to, { recursive: true, force: true });
+        fs.renameSync(from, to);
+        out(`    ${dir}/${move.fromId} → ${dir}/${move.toId}`);
+      } catch (error) {
+        err(`    注意：缓存 ${dir}/${move.fromId} 没搬，还在旧名下（${from}）；可以删掉，下次 ppnt ${dir} 重新生成：${error.message}`);
+      }
+    }
+    move.hadDist = fs.existsSync(path.join(plan.dataRoot, 'dist', move.fromId));
+    for (const dir of PAGE_CACHE_DROP) {
+      const stale = path.join(plan.dataRoot, dir, move.fromId);
+      if (!fs.existsSync(stale)) continue;
+      try {
+        fs.rmSync(stale, { recursive: true, force: true });
+        out(`    ${dir}/${move.fromId} 已删（产物写死了旧的 /sites/ 地址）`);
+      } catch (error) {
+        err(`    注意：缓存 ${dir}/${move.fromId} 没删掉（${stale}），它写死了旧的 /sites/ 地址，可以手动删：${error.message}`);
+      }
+    }
   }
 
   // project 的源文件 rename 不改：写死了 /sites/<旧 id>_<文章>/ 的文件列出来让作者改。

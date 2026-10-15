@@ -34,6 +34,8 @@ ppnt mv notes/quick-idea browser-use/payment-retry    # 搬过去并改 id
 
 `[[ ]]` 不会自动改，命令逐条列出指向它的引用。规则只有一条：同一个 project 里写 `[[名字]]`，跨 project 写 `[[<project id>:名字]]`。所以留在 `notes` 里指向它的要改成 `[[browser-use:quick-idea]]`，它自己指向 `notes` 里别的文章的也要加上 `notes:`。
 
+搬迁失败返回非零；提示“已回滚”后可重试原命令。若提示“回滚未完成”，先保留现有目录，按 stderr 给出的 `manifest.json` 中 `target` / `backup` 恢复关键数据，再重试。
+
 目标 project 还没有时，先在主题的根目录（它所属的仓库或 topic，例如 `topics/browser-use/`）建一个。命令在 `<根>/docs/pinpoint/` 下写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记；然后照上面搬：
 
 ```shell

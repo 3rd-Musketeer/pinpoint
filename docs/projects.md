@@ -91,10 +91,12 @@ project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`�
 
 - 扫数据根下所有 `<旧 id>_<文章>/`，按盘上的桶扫，不按现有文章扫，所以文章已删的孤儿桶也一起带走。带 `_` 的模板页 id 不算。
 - 预检：任何一个 `<新 id>_<文章>/` 已存在，或撞上模板页 id，就整单拒绝，登记表、`project.json`、桶都不动。
-- 每个桶一次 `rename`，单桶原子，逐行打印搬了什么。搬完改写桶里账本的旧地址：行上的 `pageId`，`@prose.json` 的 `path`（`/<旧 id>/<文章>/` 换成 `/<新 id>/<文章>/`）。
+- 改写桶里账本的旧地址：行上的 `pageId`、`@prose.json` 的正文路径、HTML 帧的 `/sites/` 路径。HTML 账本按新 URL 重算文件名和 `page`，附件文件名及引用一起迁移；目标名冲突时预检报错。
 - 按页 id 存的派生物：`shot/`、`check/` 里的图跟着搬；`dist/`、`render/` 里的 HTML 写死了 `/sites/<旧页 id>/`，删掉。有 dist 的文章按新页 id 重编一次，和 `ppnt build <页>` 用同一个编译器。派生物都能再生，搬不动或删不掉时只在 stderr 警告并点名留在旧名下的目录，桶和 `project.json` 照常做完。
 - 源文件不改。`docs/pinpoint/` 下写死了 `/sites/<旧 id>_` 的文件（帧里引用资源的绝对地址）逐个列在警告里，作者自己改成新地址或相对路径。
 - 工作台在浏览器里记的偏好（上次打开的页、tab）是 localStorage，不在服务端，`mv` 碰不到；旧页 id 的那几条自然失效。
+
+文章搬迁和改 registry 条目 id 都会先备份关键数据，再执行写入。步骤失败时返回 1，打印失败步骤和已完成步骤，并回滚文章、登记表、`project.json` 与标注桶；成功回滚后可重试原命令。回滚也失败时，stderr 给出数据根下 `.mv-recovery-*/manifest.json` 的路径，清单记录原位置 `target` 和恢复副本 `backup`，保留现有目录和副本后按清单恢复。正常完成后清理副本，再处理缓存和重编。恢复只处理命令捕获到的错误，进程中断后按保留的清单恢复。
 
 ### `ppnt mv` 搬文章
 
@@ -110,7 +112,7 @@ ppnt mv browser-use/a browser-use/b --dry-run        # 只列计划
 
 - 预检，任何一条不过就一个字节不动：源文章的 `index.mdx` 在；目标 project 登记了；目标文章 id 合法、不是保留名；目标目录 `articles/<b>/` 不在；目标桶 `<p2>_<b>/` 里没有标注行（有就是别的文章留下的孤儿，提示换 id 或 `ppnt prune`）；目标页 id 不撞模板页。
 - 换 project 时还查 HTML 帧：`{ id, src }` 写法的帧在原 project 里找得到、在新 project 里找不到（`<source 名>:` 没在新 `project.json` 的 `sources` 里登记，或相对 project 根的文件在新根下不在），就拒绝并逐帧列出原因。先在新 project 登记 source 或放好文件，再搬。没有跳过这一步的开关：搬过去就是坏帧。
-- 做的事：文章目录整个搬到 `<p2 根>/docs/pinpoint/articles/<b>/`（跨卷时复制再删）；目录里写死的 `/sites/<p>_<a>/` 换成 `/sites/<p2>_<b>/`（`.jsx`、`.js`、`.css`、`.mdx`、`.md`、`.html`、`.json`）；桶 `<p>_<a>/` 改名成 `<p2>_<b>/`（目标桶在而没有标注行时先删掉它），账本里行上的 `pageId` 与 `@prose.json` 的 `path` 改写，和 project 改 id 用同一个函数；`shot/`、`check/` 缓存跟着搬，`dist/`、`render/` 删掉，有 dist 的按新页 id 重编。
+- 做的事：文章目录整个搬到 `<p2 根>/docs/pinpoint/articles/<b>/`（跨卷时先复制到目标卷的临时目录，保留相对 symlink，复制完整后发布目标再删源）；目录里写死的 `/sites/<p>_<a>/` 换成 `/sites/<p2>_<b>/`（`.jsx`、`.js`、`.css`、`.mdx`、`.md`、`.html`、`.json`）；桶 `<p>_<a>/` 改名成 `<p2>_<b>/`（严格读过全部文件、确认空桶后才替换；坏 JSON、异常结构或未知文件使预检失败），账本的 `pageId`、正文路径、HTML 帧路径与账本名、附件一起改写，和 project 改 id 用同一个函数；`shot/`、`check/` 缓存跟着搬，`dist/`、`render/` 删掉，有 dist 的按新页 id 重编。
 - 不做的事：别的文章和 wiki 词条里指向它的 `[[a]]`、`[[p:a]]` 不改，逐条列在 stderr（文件:行）。
 - 服务不用重启：project 目录在 watcher 里，搬完的文章一会儿就出现在新地址。
 

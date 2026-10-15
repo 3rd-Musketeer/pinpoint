@@ -239,7 +239,7 @@ test('D4：跨设备复制中途失败不发布半篇文章，源完整且可以
     return rename(a, b);
   });
   t.mock.method(fs, 'cpSync', (a, b, opts) => {
-    if (a !== from) return copy(a, b, opts);
+    if (a !== from || !b.includes('.ppnt-mv-')) return copy(a, b, opts);
     fs.mkdirSync(b, { recursive: true });
     fs.copyFileSync(path.join(a, 'index.mdx'), path.join(b, 'index.mdx'));
     throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
@@ -358,4 +358,100 @@ test('C1/D1：新账本或附件名冲突在搬目录之前拒绝，不覆盖原
     assert.equal(fs.readFileSync(target, 'utf8'), '目标已有内容');
     assert.ok(fs.existsSync(path.join(bucket, `${oldKey}.json`)));
   }
+});
+
+for (const scenario of ['article-directory', 'article-bucket', 'article-ledger', 'article-source', 'project-registry', 'project-bucket', 'project-ledger', 'project-json']) {
+  test(`D3：${scenario} 写入失败返回非零、恢复数据，原命令可以重试`, async (t) => {
+    const made = fixture(t);
+    const project = scenario.startsWith('project');
+    const fromDir = articleDir(made.proj, 'commit-confirm');
+    const toDir = articleDir(made.proj, 'renamed');
+    const fromBucket = path.join(made.data, 'e2e-project_commit-confirm');
+    const toBucket = path.join(made.data, project ? 'renamed_commit-confirm' : 'e2e-project_renamed');
+    const projectJson = path.join(made.proj, 'docs/pinpoint/project.json');
+    const source = path.join(fromDir, 'components/Hero.jsx');
+    fs.writeFileSync(source, 'export const url = "/sites/e2e-project_commit-confirm/x";');
+    const before = [made.registry, projectJson, path.join(fromBucket, '@canvas.json'), path.join(fromBucket, '@prose.json'), source].map((file) => [file, fs.readFileSync(file, 'utf8')]);
+    const rename = fs.renameSync;
+    const write = fs.writeFileSync;
+    let injected = false;
+    const deny = () => { injected = true; throw Object.assign(new Error(`injected ${scenario}`), { code: 'EACCES' }); };
+    t.mock.method(fs, 'renameSync', (a, b) => {
+      if (!injected && ((scenario === 'article-directory' && a === fromDir && b === toDir)
+        || (scenario.endsWith('bucket') && a === fromBucket && b === toBucket)
+        || (scenario === 'project-registry' && b === made.registry))) deny();
+      return rename(a, b);
+    });
+    t.mock.method(fs, 'writeFileSync', (file, ...args) => {
+      const name = String(file);
+      if (!injected && ((scenario.endsWith('ledger') && name.startsWith(toBucket + path.sep) && name.includes('@prose.json.rename-'))
+        || (scenario === 'article-source' && name.endsWith('/renamed/components/Hero.jsx'))
+        || (scenario === 'project-json' && name === projectJson))) deny();
+      return write(file, ...args);
+    });
+    const args = project ? ['mv', 'e2e-project', 'renamed'] : ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed'];
+    const res = await runIn(made, args);
+    assert.ok(injected, '必须进入目标失败步骤');
+    assert.equal(res.code, 1, res.err.join('\n'));
+    for (const [file, content] of before) assert.equal(fs.readFileSync(file, 'utf8'), content, file);
+    assert.ok(!fs.existsSync(toBucket));
+    assert.ok(!fs.existsSync(toDir));
+    assert.match(res.err.join('\n'), /已回滚/);
+    t.mock.restoreAll();
+    const retry = await runIn(made, args);
+    assert.equal(retry.code, 0, retry.err.join('\n'));
+  });
+}
+
+test('D3：回滚也失败时保留恢复清单、原始备份和已搬目标，明确返回 1', async (t) => {
+  const made = fixture(t);
+  const fromBucket = path.join(made.data, 'e2e-project_commit-confirm');
+  const toBucket = path.join(made.data, 'e2e-project_renamed');
+  const copy = fs.cpSync;
+  const write = fs.writeFileSync;
+  t.mock.method(fs, 'writeFileSync', (file, ...args) => {
+    if (String(file).startsWith(toBucket + path.sep) && String(file).includes('.rename-')) throw new Error('账本写入失败');
+    return write(file, ...args);
+  });
+  t.mock.method(fs, 'cpSync', (a, b, options) => {
+    if (a.includes('.mv-recovery-') && b.includes('.ppnt-restore-')) throw new Error('恢复磁盘仍不可写');
+    return copy(a, b, options);
+  });
+  const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed']);
+  assert.equal(res.code, 1);
+  assert.match(res.err.join('\n'), /回滚未完成.*manifest.json/);
+  const recovery = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
+  const manifest = readJson(path.join(made.data, recovery, 'manifest.json'));
+  assert.equal(manifest.status, 'rollback-failed');
+  const snapshot = manifest.snapshots.find((item) => item.target === fromBucket);
+  assert.equal(readJson(path.join(snapshot.backup, '@canvas.json')).annotations[0].id, 'c1');
+  assert.ok(fs.existsSync(toBucket));
+  assert.ok(fs.existsSync(articleDir(made.proj, 'renamed')));
+});
+
+test('D3/D4：跨设备发布后删源中断，能从备份恢复完整文章并移除新目标', async (t) => {
+  const made = fixture(t);
+  const from = articleDir(made.proj, 'commit-confirm');
+  const to = articleDir(made.html, 'commit-confirm');
+  const rename = fs.renameSync;
+  const remove = fs.rmSync;
+  let injected = false;
+  t.mock.method(fs, 'renameSync', (a, b) => {
+    if (a === from && b === to) throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+    return rename(a, b);
+  });
+  t.mock.method(fs, 'rmSync', (file, options) => {
+    if (!injected && file === from) {
+      injected = true;
+      fs.unlinkSync(path.join(from, 'index.mdx'));
+      throw new Error('删源中断');
+    }
+    return remove(file, options);
+  });
+  const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/']);
+  assert.equal(res.code, 1);
+  assert.ok(injected);
+  assert.match(res.err.join('\n'), /已回滚/);
+  assert.ok(fs.existsSync(path.join(from, 'index.mdx')));
+  assert.ok(!fs.existsSync(to));
 });

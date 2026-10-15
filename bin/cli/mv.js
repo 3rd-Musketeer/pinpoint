@@ -26,6 +26,7 @@ import { CliError, REPO_ROOT, ioOf } from './core.js';
 import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { parseAddress } from './address.js';
 import { htmlPathnames, planMovedBucket } from './bucket-move.js';
+import { beginMoveRecovery } from './move-recovery.js';
 import {
   ARTICLE_SOURCE_EXTS,
   manifestPageIds,
@@ -249,35 +250,31 @@ async function moveArticle(classified, parsed, io) {
     return 0;
   }
 
+  let recovery;
   try {
-    moveDir(plan.fromDir, plan.toDir);
-  } catch (error) {
-    err(`错误：搬目录失败：${error.message}；源目录 ${plan.fromDir}（${fs.existsSync(plan.fromDir) ? '存在，删除中断时可能不完整' : '不存在'}），目标目录 ${plan.toDir}（${fs.existsSync(plan.toDir) ? '存在' : '不存在'}）；标注桶尚未搬迁`);
-    return 1;
-  }
-  out(`已搬 ${head}`);
-  out(`  目录：${plan.fromDir} → ${plan.toDir}`);
-  const rewritten = rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS });
-  for (const file of rewritten) out(`  /sites/${plan.fromId}/ 换成 /sites/${plan.toId}/：${file}`);
-
-  if (plan.bucketExists) {
-    try {
-      // 目标桶在、但没有标注行（预检过）：只剩空账本或 _seq.json，先删掉再改名。
-      if (fs.existsSync(plan.bucketTo)) fs.rmSync(plan.bucketTo, { recursive: true, force: true });
-      fs.renameSync(plan.bucketFrom, plan.bucketTo);
-    } catch (error) {
-      err(`  标注桶改名失败（目录已搬，标注还在 ${plan.bucketFrom}）：${error.message}`);
-      return 1;
-    }
+    recovery = beginMoveRecovery(plan.root, [plan.fromDir, plan.toDir, plan.bucketFrom, plan.bucketTo]);
+    recovery.step('文章目录', () => moveDir(plan.fromDir, plan.toDir));
+    const rewritten = recovery.step('文章资源地址', () => rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS }));
     let ledgers = [];
-    try {
-      ledgers = rewriteMovedBucket(plan.bucketTo, plan.bucketMove);
-    } catch (error) {
-      err(`  标注桶已搬，但账本里的旧地址没改完：${error.message}`);
+    if (plan.bucketExists) {
+      recovery.step('标注桶改名', () => {
+        // 预检已严格确认目标桶为空；回滚副本保留它原有的空账本与序号。
+        if (fs.existsSync(plan.bucketTo)) fs.rmSync(plan.bucketTo, { recursive: true, force: true });
+        fs.renameSync(plan.bucketFrom, plan.bucketTo);
+      });
+      ledgers = recovery.step('账本与附件地址', () => rewriteMovedBucket(plan.bucketTo, plan.bucketMove));
     }
-    out(`  标注桶：${plan.bucketFrom} → ${plan.bucketTo}${ledgers.length ? `（账本改写：${ledgers.join('、')}）` : ''}`);
-  } else {
-    out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+    recovery.commit(err);
+    out(`已搬 ${head}`);
+    out(`  目录：${plan.fromDir} → ${plan.toDir}`);
+    for (const file of rewritten) out(`  /sites/${plan.fromId}/ 换成 /sites/${plan.toId}/：${file}`);
+    out(plan.bucketExists
+      ? `  标注桶：${plan.bucketFrom} → ${plan.bucketTo}${ledgers.length ? `（账本改写：${ledgers.join('、')}）` : ''}`
+      : `  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+  } catch (error) {
+    if (recovery) return recovery.rollback(error, err);
+    err(`搬迁备份失败，关键数据未改：${error.message}`);
+    return 1;
   }
 
   // 缓存都能再生：搬不动、删不掉只警告。
