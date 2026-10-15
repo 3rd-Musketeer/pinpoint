@@ -12,7 +12,12 @@
  * 都重新定位；定位不到的线程留在右栏，标“失效”，显示存下的引文。
  * 画布卡片（[data-pp-canvas]）、正文里的图（[data-pp-figure]）、脚本、错误条不进文本，选区落在那里不出“评论”。
  *
- * 写入是操作队列（src/shared/prose-thread.js applyProseOps）：保存撞上 409 时把
+ * 右栏里还穿插这篇的画布标注（同桶的 @canvas 账本）：按帧归到所在的画布卡片，排在卡片的位置；
+ * 这里只改它们的状态（完成 / 重新打开），点卡片在文章上开画布浮层并定位到那颗钉子
+ * （site/src/lib/canvas-overlay-client.js 接住 a[data-pp-canvas-link]）。每拿到一版画布账本就发
+ * pp:canvas-ledger，画布卡片头的标注数跟着变（site/src/lib/canvas-card-client.js）。
+ *
+ * 写入是操作队列（src/client/lib/ops-ledger.js，两本账本各一个）：保存撞上 409 时把
  * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉；别的拒绝
  * 把新评论退回草稿、回复退回输入框，右栏写出原因。
  *
@@ -21,10 +26,12 @@
  * 并重新水合。 */
 
 import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
-import { newSaveId, onPageLeave, postSave } from './lib/save-request.js';
+import { onPageLeave } from './lib/save-request.js';
+import { createOpsLedger } from './lib/ops-ledger.js';
 import {
-  applyProseOps,
   authorLabel,
+  canvasContentText,
+  canvasRailItems,
   formatWhen,
   isProseClosed,
   isProseRow,
@@ -35,6 +42,7 @@ import {
   threadMessages,
 } from '../shared/prose-thread.js';
 import { ANN_STATUS_COLORS } from '../shared/ann-status.js';
+import { CANVAS_LEDGER } from '../shared/project-ids.js';
 
 var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-figure],[data-pp-nocomment],.errors';
 var BLOCK_TAGS = /^(P|H[1-6]|LI|UL|OL|DL|DT|DD|DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|BLOCKQUOTE|PRE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|FIGURE|FIGCAPTION|HR|BR)$/;
@@ -51,12 +59,15 @@ function esc(text) {
 export function buildTextIndex(root) {
   var raw = '';
   var entries = [];
+  var cards = [];
   function walk(el) {
     for (var child = el.firstChild; child; child = child.nextSibling) {
       if (child.nodeType === 3) {
         entries.push({ node: child, at: raw.length });
         raw += child.data;
       } else if (child.nodeType === 1) {
+        // 画布卡片不进文本，但记下它在文本里的位置：右栏把这一节的画布标注排在这里。
+        if (child.matches('[data-pp-canvas]')) cards.push({ el: child, at: raw.length });
         if (child.matches(SKIP_SELECTOR)) continue;
         var block = BLOCK_TAGS.test(child.tagName);
         if (block) raw += ' ';
@@ -72,7 +83,11 @@ export function buildTextIndex(root) {
     var map = norm.map.slice(e.at, e.at + len + 1);
     return { node: e.node, start: map[0], end: map[len], map: map };
   });
-  return { text: norm.text, nodes: nodes };
+  return {
+    text: norm.text,
+    nodes: nodes,
+    cards: cards.map(function (c) { return { el: c.el, offset: norm.map[Math.min(c.at, norm.map.length - 1)] }; }),
+  };
 }
 
 function sectionOfNode(node) {
@@ -189,24 +204,15 @@ export function startProseComments(options) {
   var LEDGER = PROSE_LEDGER;
   var PATH = (function () { try { return decodeURIComponent(location.pathname); } catch (e) { return location.pathname; } })();
 
-  var base = [];          // 磁盘上最新一版的行（服务端发过号）
-  var revision = 0;
-  var ops = [];           // 还没落盘的操作
-  var rows = [];          // base + ops：界面看到的
-  var hydrated = false;
-  var inflight = false;
-  var inflightSaveId = '';  // 在途保存的 saveId：离开页面时的那份带 after 接在它之后
-  var conflicts = 0;
-  var remoteStash = null;
-  var retryTimer = 0;
+  var rows = [];          // 正文评论：盘上 + 还没落盘的操作，界面看到的
   var connection = 'connecting'; // connecting | online | offline
-  var syncError = '';
   var expanded = new Set(); // 展开了的已关闭线程 id（不记盘：每次打开文章都收着）
   var replyOpen = new Set(); // 展开了回复框的线程 id
   var replyText = {};     // 线程 id -> 回复框里的字（框收起后草稿也留着）
   var focusedId = null;
   var draft = null;       // { quote, section, start, end }
   var anchors = new Map(); // id -> { start, end } | null（null = 失效）
+  var cardOffsets = new Map(); // 画布卡片的节 id -> 它在规范化文本里的位置（右栏排画布标注用）
   var paintSig = '';
   var painting = false;
   var selBtn = null;
@@ -215,83 +221,30 @@ export function startProseComments(options) {
   var lastOffered = false;
 
   // ---------- 同步 ----------
-  function proseOnly(list) {
-    return (Array.isArray(list) ? list : []).filter(isProseRow);
-  }
+  // 两本账本，同一个桶：@prose 是正文评论；@canvas 是这篇画布上的标注，右栏按卡片位置穿插进来、
+  // 只在这里改状态（完成 / 重新打开），别的都在画布上改。正文里没有画布卡片就不读 @canvas。
+  var hasCanvas = !!root.querySelector('[data-pp-canvas]');
+  var prose = createOpsLedger({
+    server: SERVER, entry: ENTRY, ledger: LEDGER, maxConflicts: MAX_CONFLICT_RETRIES,
+    path: function () { return PATH; },
+    onChange: recompute,
+    onRejected: function (list) { return restoreRejected(list); },
+  });
+  var canvas = hasCanvas ? createOpsLedger({
+    server: SERVER, entry: ENTRY, ledger: CANVAS_LEDGER, maxConflicts: MAX_CONFLICT_RETRIES,
+    // 画布账本的 path 是工作台写的，这里只改状态，原样带回去。
+    path: function (disk) { return disk; },
+    onChange: function () { announceCanvas(); renderRail(); },
+  }) : null;
 
   function recompute() {
-    rows = proseOnly(applyProseOps(base, ops));
+    rows = prose.rows().filter(isProseRow);
     render();
   }
 
-  function adopt(doc) {
-    base = Array.isArray(doc.annotations) ? doc.annotations : [];
-    var rev = Number(doc.revision);
-    revision = Number.isFinite(rev) ? rev : 0;
-  }
-
-  function scheduleRetry(ms) {
-    clearTimeout(retryTimer);
-    retryTimer = setTimeout(flush, ms);
-  }
-
-  function flush() {
-    if (inflight || !ops.length || !hydrated) return;
-    inflight = true;
-    var sent = ops.length;
-    var body = {
-      page: LEDGER,
-      entry: ENTRY,
-      path: PATH,
-      updated_at: new Date().toISOString(),
-      baseRevision: revision,
-      saveId: newSaveId(),
-      annotations: applyProseOps(base, ops),
-    };
-    inflightSaveId = body.saveId;
-    // keepalive（够小时）：在途的保存在关页、导航走之后照样送达（lib/save-request.js）。
-    postSave(SERVER, body)
-      .then(function (res) {
-        inflight = false;
-        if (res.ok) {
-          base = Array.isArray(res.data.annotations) ? res.data.annotations : body.annotations;
-          revision = Number(res.data.revision) || revision + 1;
-          ops.splice(0, sent);
-          conflicts = 0;
-          syncError = '';
-        } else if (res.status === 409 && res.data && Array.isArray(res.data.annotations)) {
-          // 磁盘上有更新的一版（agent 回复、另一个标签页）：操作留着，重放到新版上再存。
-          adopt(res.data);
-          conflicts += 1;
-        } else {
-          // 服务拒了这批操作（非法转换等）：从队列里拿掉、回到磁盘上的样子，但 owner 写的
-          // 字不丢 —— 新评论退回草稿，回复退回那条线程的输入框。
-          var rejected = ops.splice(0, sent);
-          var restored = restoreRejected(rejected);
-          syncError = '保存被拒：' + ((res.data && (res.data.detail || res.data.error)) || res.status)
-            + (restored ? '。原文已放回输入框' : '');
-          if (res.data && Array.isArray(res.data.annotations)) adopt(res.data);
-        }
-        if (remoteStash && Number(remoteStash.revision) > revision) adopt(remoteStash);
-        remoteStash = null;
-        recompute();
-        if (ops.length) {
-          if (conflicts > MAX_CONFLICT_RETRIES) {
-            syncError = '保存一直冲突，稍后重试';
-            conflicts = 0;
-            render();
-            scheduleRetry(3000);
-          } else {
-            flush();
-          }
-        }
-      })
-      .catch(function () {
-        inflight = false;
-        syncError = '同步失败，稍后重试';
-        render();
-        scheduleRetry(3000);
-      });
+  // 画布卡片头的标注数跟着这本账本走（site/src/lib/canvas-card-client.js 听这个事件）。
+  function announceCanvas() {
+    document.dispatchEvent(new CustomEvent('pp:canvas-ledger', { detail: { entry: ENTRY, doc: { annotations: canvas.rows() } } }));
   }
 
   // 被拒的操作里 owner 写的字：新评论 → 草稿（已有草稿时不顶掉它），回复 → 输入框。
@@ -315,53 +268,30 @@ export function startProseComments(options) {
     return restored;
   }
 
-  /** 离开页面（关标签、导航走、切到后台）：排着的操作现在就发，不等应答。没有在途保存
-      → 照常 flush。有在途保存 → base + 全部操作以 revision 为底发一次，带 after = 在途那次
-      的 saveId：在途那次先到，服务端认出盘上那版是它写的，这份接上；这份先到，它直接落盘、
-      在途那次 409。谁先到盘上都是这份（与画布 annotate.js 同一套）。页面没走时，在途
-      应答回来照旧，剩下的操作 409 后重放到盘上的新版；reply 按 at 去重，不会回两遍。 */
-  var leaveSentOps = null;
   function flushOnLeave() {
-    if (!hydrated || !ops.length) return;
-    if (!inflight) { clearTimeout(retryTimer); flush(); return; }
-    if (leaveSentOps === ops[ops.length - 1]) return;
-    leaveSentOps = ops[ops.length - 1];
-    postSave(SERVER, {
-      page: LEDGER,
-      entry: ENTRY,
-      path: PATH,
-      updated_at: new Date().toISOString(),
-      baseRevision: revision,
-      saveId: newSaveId(),
-      after: inflightSaveId,
-      annotations: applyProseOps(base, ops),
-    }).catch(function () {});
+    prose.flushOnLeave();
+    if (canvas) canvas.flushOnLeave();
   }
 
   function enqueue(op) {
-    ops.push(op);
-    recompute();
-    flush();
+    prose.enqueue(op);
   }
 
-  function hydrate() {
-    return fetch(SERVER + '/annotations/' + encodeURIComponent(LEDGER) + '?entry=' + encodeURIComponent(ENTRY))
+  function readLedger(name) {
+    return fetch(SERVER + '/annotations/' + encodeURIComponent(name) + '?entry=' + encodeURIComponent(ENTRY))
       .then(function (r) {
         if (!r.ok) throw new Error(String(r.status));
         return r.json();
-      })
+      });
+  }
+
+  function hydrate() {
+    // 画布账本读不到（还没人标过时它也在：服务给空账本）不影响正文评论，下次重连再读。
+    if (canvas) readLedger(CANVAS_LEDGER).then(function (doc) { canvas.accept(doc); }).catch(function () {});
+    return readLedger(LEDGER)
       .then(function (doc) {
-        hydrated = true;
         connection = 'online';
-        if (inflight) {
-          // 保存还在路上：这一版交给保存回来时一起处理（与 SSE 推来的同一条路）。
-          if (!remoteStash || Number(doc.revision) > Number(remoteStash.revision)) remoteStash = doc;
-          render();
-          return;
-        }
-        adopt(doc);
-        recompute();
-        flush();
+        prose.accept(doc);
       })
       .catch(function () {
         connection = 'offline';
@@ -392,7 +322,7 @@ export function startProseComments(options) {
         // 断线期间推的事件都丢了：从磁盘补一次。
         eventsBroken = false;
         hydrate();
-      } else if (connection === 'offline' && hydrated) {
+      } else if (connection === 'offline' && prose.hydrated()) {
         connection = 'online';
         render();
       }
@@ -410,15 +340,9 @@ export function startProseComments(options) {
       if (es !== events) return;
       var doc;
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
-      if (!doc || doc.entry !== ENTRY || doc.page !== LEDGER) return;
-      var rev = Number(doc.revision);
-      if (!Number.isFinite(rev) || rev <= revision) return;
-      if (inflight) {
-        if (!remoteStash || rev > Number(remoteStash.revision)) remoteStash = doc;
-        return;
-      }
-      adopt(doc);
-      recompute();
+      if (!doc || doc.entry !== ENTRY) return;
+      if (doc.page === LEDGER) prose.remote(doc);
+      else if (canvas && doc.page === CANVAS_LEDGER) canvas.remote(doc);
     });
   }
 
@@ -461,6 +385,11 @@ export function startProseComments(options) {
     var index = buildTextIndex(root);
     var sectionAt = sectionAtFor(index);
     anchors = new Map();
+    cardOffsets = new Map();
+    index.cards.forEach(function (c) {
+      var section = c.el.getAttribute('data-pp-section');
+      if (section && !cardOffsets.has(section)) cardOffsets.set(section, c.offset);
+    });
     var items = [];
     rows.forEach(function (r) {
       var hit = r.quote ? locateQuote(index.text, r.quote, { section: r.section, sectionAt: sectionAt }) : null;
@@ -563,6 +492,61 @@ export function startProseComments(options) {
       + '</div>';
   }
 
+  // 画布标注（@canvas）在右栏里的卡片：标明是画布标注和帧名，有截图放缩略图；点了在文章上开画布浮层、
+  // 定位到这颗钉子（a[data-pp-canvas-link]，site/src/lib/canvas-overlay-client.js 接住）。四态与已关闭
+  // 原地收起同正文评论；这里只改状态，回复和改正文在画布上。线程 id 带 c: 前缀，和正文评论分开。
+  function canvasCards() {
+    return Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas]'), function (card) {
+      return {
+        section: card.getAttribute('data-pp-section') || '',
+        page: card.getAttribute('data-page') || '',
+        frames: Array.prototype.map.call(card.querySelectorAll('.cc-frame[data-screen]'), function (fig) {
+          return { id: fig.getAttribute('data-screen'), title: fig.getAttribute('data-title') || fig.getAttribute('data-screen') };
+        }),
+      };
+    });
+  }
+
+  function canvasHref(item) {
+    var q = new URLSearchParams({ canvas: item.section });
+    if (Number.isInteger(item.row.n)) q.set('ann', String(item.row.n));
+    else q.set('frame', item.frameId);
+    return '#' + q.toString();
+  }
+
+  function canvasThreadHtml(item) {
+    var row = item.row;
+    var key = 'c:' + row.id;
+    var text = canvasContentText(row);
+    var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
+    var attrs = ' data-kind="canvas" data-id="' + esc(key) + '" data-n="' + esc(row.n) + '" data-section="' + esc(item.section) + '" data-frame="' + esc(item.frameId) + '"';
+    if (isProseClosed(row) && !expanded.has(key)) {
+      return '<div class="pp-thread pp-closed pp-canvas-ann"' + attrs + ' data-status="close">'
+        + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'
+        + '<span class="pp-n" data-st="close">' + esc(n) + '</span>'
+        + '<span class="pp-closed-word">已关闭</span>'
+        + '<span class="pp-kind">画布</span>'
+        + '<span class="pp-closed-peek">' + esc(text) + '</span>'
+        + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
+    }
+    var closed = isProseClosed(row);
+    var act = closed
+      ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
+      : '<button class="pp-act" type="button" data-act="close">完成</button>';
+    var image = Array.isArray(row.images) && row.images[0] && row.images[0].file
+      ? '<img class="pp-canvas-shot" alt="" loading="lazy" src="' + esc(SERVER + '/images/' + encodeURIComponent(row.images[0].file) + '?entry=' + encodeURIComponent(ENTRY)) + '">'
+      : '';
+    return '<div class="pp-thread pp-canvas-ann"' + attrs + ' data-status="' + esc(row.status || 'open') + '">'
+      + '<div class="pp-meta">' + statusChip(row) + '<span class="pp-kind">画布标注</span>'
+      + '<span class="sp"></span>' + act
+      + (closed ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
+      + '</div>'
+      + '<a class="pp-canvas-open" data-pp-canvas-link href="' + esc(canvasHref(item)) + '" title="在画布上打开这条标注">'
+      + image + '<span class="pp-canvas-frame">帧<b>' + esc(item.frameTitle) + '</b></span></a>'
+      + messagesHtml({ content: text, created_at: row.created_at || '', messages: row.messages })
+      + '</div>';
+  }
+
   function draftHtml() {
     return '<div class="pp-thread draft on" data-id="__draft">'
       + quoteHtml(draft.quote.exact)
@@ -594,13 +578,20 @@ export function startProseComments(options) {
         else delete replyText[key];
       }
     }
-    var ordered = railOrder(rows, orderKey);
+    // 一列：正文评论按引文位置，画布标注按所属卡片的位置（排在紧跟卡片的那段正文之前），同位按 #n。
+    var canvasItems = canvas ? canvasRailItems(canvas.rows(), canvasCards()) : [];
+    var entries = rows.map(function (row) { return { kind: 'prose', row: row, n: row.n, key: orderKey(row) }; })
+      .concat(canvasItems.map(function (item) {
+        var at = cardOffsets.has(item.section) ? cardOffsets.get(item.section) - 0.5 : Infinity;
+        return { kind: 'canvas', item: item, n: item.row.n, key: at };
+      }));
+    var ordered = railOrder(entries, function (e) { return e.key; });
     var list = '';
     var draftPlaced = false;
     var draftKey = draft ? draft.start : Infinity;
-    ordered.forEach(function (row) {
-      if (draft && !draftPlaced && orderKey(row) > draftKey) { list += draftHtml(); draftPlaced = true; }
-      list += threadHtml(row);
+    ordered.forEach(function (e) {
+      if (draft && !draftPlaced && e.key > draftKey) { list += draftHtml(); draftPlaced = true; }
+      list += e.kind === 'canvas' ? canvasThreadHtml(e.item) : threadHtml(e.row);
     });
     if (draft && !draftPlaced) list += draftHtml();
     var empty = !ordered.length && !draft
@@ -608,7 +599,7 @@ export function startProseComments(options) {
       : '';
     var note = connection === 'offline'
       ? '未连接 pinpoint 服务，评论暂时存不下。'
-      : (syncError || '');
+      : (prose.error() || (canvas && canvas.error()) || '');
     rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div></div>'
       + '<div class="pp-threads">' + list + '</div>' + empty
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
@@ -779,6 +770,10 @@ export function startProseComments(options) {
 
   function setStatus(id, status) {
     expanded.delete(id); // 点完成就地收起；重新打开后下次再关也从收着开始
+    if (id.indexOf('c:') === 0) {
+      if (canvas) canvas.enqueue({ op: 'status', id: id.slice(2), status: status });
+      return;
+    }
     enqueue({ op: 'status', id: id, status: status });
   }
 
@@ -868,6 +863,12 @@ export function startProseComments(options) {
       else if (what === 'reopen') setStatus(id, 'open');
       return;
     }
+    // 画布标注：点卡片（链接以外的地方也算）就在文章上开画布、定位到这颗钉子，与点链接同一条路。
+    if (thread.getAttribute('data-kind') === 'canvas') {
+      var link = thread.querySelector('a[data-pp-canvas-link]');
+      if (link && !e.target.closest('a')) link.click();
+      return;
+    }
     if (id !== '__draft' && id !== focusedId && !e.target.closest('textarea')) focusThread(id, { scroll: false, reveal: true });
   });
 
@@ -893,7 +894,9 @@ export function startProseComments(options) {
     ledger: LEDGER,
     rows: function () { return rows.slice(); },
     /** 没有在途保存、没有排队的操作、已经从磁盘水合过。 */
-    settled: function () { return hydrated && !inflight && !ops.length; },
+    settled: function () { return prose.settled() && (!canvas || canvas.settled()); },
+    /** 右栏里穿插的画布标注（@canvas 的行，含还没落盘的状态改动）。 */
+    canvasRows: function () { return canvas ? canvas.rows() : []; },
     /** 选区判定的次数与最近一次是否给了“评论”钮。 */
     selection: function () { return { checks: selectionChecks, offered: lastOffered }; },
   };

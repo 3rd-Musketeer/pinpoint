@@ -92,15 +92,16 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
     assert.match(tag, /tabindex="-1"/);
   }
   const open = q(`/workbench/?page=${encodeURIComponent(page)}&section=flow`);
-  // 打开画布 goes to the canvas; each frame opens the section overlay on the article (#overlay=<section>&frame=<frame>), no navigation.
-  assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#overlay=flow&frame=${f}`))]);
+  // 打开画布 links to the canvas view (the overlay script opens it over the article; a modifier click follows the link);
+  // each frame opens the canvas overlay on that frame (#canvas=<section>&frame=<frame>), no navigation.
+  assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#canvas=flow&frame=${f}`))]);
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
-  assert.equal((flow.html.match(/<a class="cc-hit" data-pp-frame-open href="#overlay=/g) || []).length, 3);
+  assert.equal((flow.html.match(/<a class="cc-hit" data-pp-frame-open href="#canvas=/g) || []).length, 3);
   // data-section belongs to <Section> only (one hit per section); the card carries data-pp-section.
   assert.doesNotMatch(article, /class="canvas-card not-prose"[^>]*\sdata-section=/);
   assert.equal((article.match(/\sdata-section="flow"/g) || []).length, 1);
   assert.doesNotMatch(flow.html, /class="cc-hit"[^>]*target=/);
-  // What the overlay reads from the card: section number / title / meta / canvas link, and per frame id, title, src.
+  // What the overlay header and the rail read from the card: section number / title / page, and per frame id, title, src.
   assert.match(flow.html, new RegExp(`data-pp-section="flow" data-num="2" data-title="付款前的确认" data-meta="3 帧" data-href="${escRe(open)}"`));
   assert.match(flow.html, new RegExp(`<figure class="cc-frame" data-screen="ask" data-title="ask" data-src="${escRe(q(`/api/frame?page=${encodeURIComponent(page)}&screen=ask&annotate=off&embed=card`))}">`));
   // Frame captions: the frame id only.
@@ -123,7 +124,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(mech.html, /data-shell="comp"/);
   assert.match(mech.html, /class="cc-box natural"/);
   assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
-  assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
+  assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#canvas=mech&amp;frame=pay-button']);
   // Figures in the prose (<Figure>): one lazy same-origin iframe each (embed=figure, no canvas card), caption below,
   // excluded from prose comments; one before the first Section, one inside it. They are not frames: the cards above are unchanged.
   const figures = [...article.matchAll(/<figure class="pp-fig not-prose" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]
@@ -141,14 +142,14 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   const firstSection = article.indexOf('<section class="sec" id="overview"');
   assert.ok(figures[0].at < firstSection && figures[1].at > firstSection && figures[1].at < article.indexOf('<section class="sec" id="flow"'));
   assert.doesNotMatch(article, /data-pp-figure-errors/);
-  // The section overlay: one empty shell per article with a canvas, outside #article, excluded from prose comments.
+  // The canvas overlay: one empty shell per article with a canvas, outside #article, excluded from prose comments.
   const ov = article.match(/<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">[\s\S]*?<\/dialog>/);
   assert.ok(ov, 'overlay shell');
-  for (const hook of ['data-ov-num', 'id="pp-ov-title" data-ov-title', 'data-ov-meta', 'data-ov-prev aria-label="上一节"', 'data-ov-next aria-label="下一节"',
-    'data-ov-canvas href="/workbench/" target="_top">打开画布 →', 'data-ov-close aria-label="关闭"', 'class="ov-strip" data-ov-strip tabindex="-1" autofocus']) {
+  for (const hook of ['data-ov-num', 'id="pp-ov-title" data-ov-title', 'data-ov-canvas href="/workbench/" target="_top"', '>整页打开<',
+    'data-ov-close aria-label="关闭画布，回到正文"', 'class="ov-body" data-ov-body']) {
     assert.ok(ov[0].includes(hook), `overlay hook ${hook}`);
   }
-  assert.doesNotMatch(ov[0], /<iframe/); // frames are created when it opens
+  assert.doesNotMatch(ov[0], /<iframe/); // the embedded workbench is created when it first opens
   assert.ok(article.indexOf('<dialog class="pp-ov"') > article.indexOf('</main>'), 'overlay is outside #article');
   assert.equal((article.match(/<dialog /g) || []).length, 1);
   // Top bar: the article's canvas view.

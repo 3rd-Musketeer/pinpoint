@@ -123,9 +123,15 @@ export function cardModel(canvas, sectionId, num = '') {
   };
 }
 
-/** Open (unhandled) canvas annotations on these frames; rows without status count as open. */
-export function openCount(doc, pageId, frameIds) {
+/**
+ * Canvas annotations on these frames still waiting for the owner (open / check / done; close is done with):
+ * the count on the section's card. Rows without status count as open. Same rule as the workbench strip count.
+ */
+export function pendingCount(doc, pageId, frameIds) {
   const ids = new Set(frameIds);
-  return (doc?.annotations || []).filter((a) => a && (a.status || 'open') === 'open'
+  return (doc?.annotations || []).filter((a) => a && (a.status || 'open') !== 'close'
     && ids.has(a.screenId) && (!a.pageId || a.pageId === pageId)).length;
 }
+
+/** The card badge text for `n` pending annotations ('' = no badge). */
+export const badgeText = (n) => (n > 0 ? `${n} 条标注` : '');

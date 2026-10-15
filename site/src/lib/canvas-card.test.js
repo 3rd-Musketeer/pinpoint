@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
+import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pendingCount, badgeText, shellBox } from './canvas-card.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
@@ -86,17 +86,21 @@ test('card model: document frames (HTML 帧) take the page width, the card gets 
   assert.deepEqual(shellBox('doc', 'watch'), shellBox('doc', 'phone'));
 });
 
-test('open count: open rows on this section\'s frames of this page', () => {
+test('pending count: open / check / done rows on this section\'s frames of this page (close is done with)', () => {
   const doc = { annotations: [
     { screenId: 'ask', pageId: 'p', status: 'open' },
     { screenId: 'ask' }, // no status = open, no pageId = this bucket
     { screenId: 'ask', pageId: 'p', status: 'check' },
+    { screenId: 'confirm', pageId: 'p', status: 'done' },
     { screenId: 'ask', pageId: 'p', status: 'close' },
     { screenId: 'confirm', pageId: 'other', status: 'open' },
     { screenId: 'elsewhere', pageId: 'p', status: 'open' },
   ] };
-  assert.equal(openCount(doc, 'p', ['ask', 'confirm']), 2);
-  assert.equal(openCount(null, 'p', ['ask']), 0);
+  assert.equal(pendingCount(doc, 'p', ['ask', 'confirm']), 4);
+  assert.equal(pendingCount(doc, 'p', ['confirm']), 1);
+  assert.equal(pendingCount(null, 'p', ['ask']), 0);
+  assert.equal(badgeText(4), '4 条标注');
+  assert.equal(badgeText(0), '');
 });
 
 test('real articleCanvas: each error shown once (card or banner), missing frame keeps its tile', (t) => {

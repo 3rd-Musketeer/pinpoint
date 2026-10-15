@@ -25,9 +25,6 @@ const ppnt = (args) => ppntResult(args, { timeout: 150_000 });
 const card = (page) => page.locator('[data-pp-canvas][data-pp-section="pages"]');
 const cardFrame = (page, id) => card(page).locator(`.cc-frame[data-screen="${id}"] iframe`);
 const overlay = (page) => page.locator('dialog[data-pp-overlay]');
-const ovFrame = (page, id) => overlay(page).locator(`.ov-frame[data-screen="${id}"] iframe`);
-/** iframe 的布局宽度（缩放之前的 CSS px，就是页面看到的视口宽）。 */
-const layoutWidth = (locator) => locator.evaluate((el) => el.offsetWidth);
 const innerWidth = (locator) => locator.evaluate((el) => el.contentWindow.innerWidth);
 
 test.afterAll(() => {
@@ -38,7 +35,7 @@ test.afterEach(async ({ page }) => {
   await closeSettled(page);
 });
 
-test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；浮层里整页可滚、可交互、可换宽度', async ({ page, request }) => {
+test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；点帧开整张画布', async ({ page, request }) => {
   test.setTimeout(240_000);
   // 站点冷启动时先回 503，等它就绪。
   await expect.poll(async () => (await request.get(ARTICLE_URL)).status(), { timeout: 150_000, intervals: [500] }).toBe(200);
@@ -90,47 +87,19 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
     await expect.poll(() => innerWidth(cardFrame(page, 'long-page'))).toBe(402);
   });
 
-  await test.step('浮层：几帧并排、真实大小、占满高度；页面在帧里整页滚到底', async () => {
+  await test.step('点卡片里的 HTML 帧：文章上开整张画布（嵌入版工作台），落到这一节；卡片的宽度切换不进浮层', async () => {
     await card(page).locator('.cc-frame[data-screen="long-page"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
-    await expect(overlay(page).locator('[data-ov-width]')).toBeVisible();
-    await expect(overlay(page).locator('[data-ov-width] [aria-pressed="true"]')).toHaveText('手机');
-    const frame = ovFrame(page, 'long-page');
-    await expect(frame).not.toHaveAttribute('scrolling', 'no');
-    await expect.poll(() => innerWidth(frame)).toBe(402);
-    expect(await page.evaluate(() => window.pinpointOverlay.state().scale)).toBe(1);
-    const strip = await overlay(page).locator('[data-ov-strip]').boundingBox();
-    const shown = await frame.boundingBox();
-    expect(shown.height).toBeGreaterThan(strip.height * 0.6);
-    const catBox = await ovFrame(page, 'catalog').boundingBox();
-    expect(Math.abs(catBox.y - shown.y)).toBeLessThan(2); // 并排
-    const deep = await frame.evaluate((el) => {
-      const pill = el.contentDocument.querySelector('#deep-pill');
-      pill.scrollIntoView();
-      return { scrollY: el.contentWindow.scrollY, top: pill.getBoundingClientRect().top, height: el.contentWindow.innerHeight };
-    });
-    expect(deep.scrollY).toBeGreaterThan(4000);
-    expect(deep.top).toBeGreaterThanOrEqual(0);
-    expect(deep.top).toBeLessThan(deep.height);
-  });
-
-  await test.step('浮层里的帧可以点；浮层头切桌面，卡片跟着换，iframe 不重载', async () => {
-    const cat = page.frameLocator('[data-pp-overlay] .ov-frame[data-screen="catalog"] iframe');
-    await cat.locator('.cat-btn').click();
-    await expect(cat.locator('.cat-out')).toHaveText('已点');
-    await overlay(page).locator('[data-ov-width] [data-width="desktop"]').click();
-    await expect(overlay(page).locator('[data-ov-width] [aria-pressed="true"]')).toHaveText('桌面');
-    await expect.poll(() => innerWidth(ovFrame(page, 'long-page'))).toBe(1280);
-    await expect(cat.locator('.cat-out')).toHaveText('已点');
-    // 页面按 1280 排；浮层放得下就真实大小，放不下按宽度缩，横向滚到别的帧。
-    const scale = await page.evaluate(() => window.pinpointOverlay.state().scale);
-    expect(scale).toBeLessThanOrEqual(1);
-    expect(await layoutWidth(ovFrame(page, 'long-page'))).toBe(1280);
-    expect(Math.abs((await ovFrame(page, 'long-page').boundingBox()).width - 1280 * scale)).toBeLessThan(2);
-    await expect(card(page)).toHaveAttribute('data-doc-width', 'desktop');
+    expect(decodeURIComponent(new URL(page.url()).hash)).toBe('#canvas=pages&frame=long-page');
+    await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${PAGE_ID}&section=pages&embed=overlay`);
+    await expect(overlay(page).locator('[data-ov-width], .ov-frame')).toHaveCount(0);
+    const canvas = page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
+    await expect(canvas.locator('#wb-board-panel [data-screen="long-page"]')).toHaveCount(1);
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('section');
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
-    await expect.poll(() => innerWidth(cardFrame(page, 'long-page'))).toBe(1280);
+    // 卡片的宽度照旧是卡片自己的。
+    await expect(card(page)).toHaveAttribute('data-doc-width', 'phone');
   });
 
   expect(pageErrors).toEqual([]);

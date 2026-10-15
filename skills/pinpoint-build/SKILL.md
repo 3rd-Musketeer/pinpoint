@@ -155,7 +155,7 @@ boundary: 一句话说清它管什么、不管什么。
 - `ppnt open <project>/<article> --print`：打印文章页和画布视图的网址；后面加 `§2` 给那一节，写 `<project>` 给 project 首页、`llms.txt`、每篇文章和每个 wiki 词条页。不带 `--print` 时用浏览器打开。
 - `ppnt build <project>/<article>`：编译这篇的全部帧和图到 dist，逐帧、逐图报 ok 或错误。`check` 已经编过一遍，`build` 用于要更新 dist 或 `--watch` 时。
 - 文章页 `https://pinpoint.localhost/<project>/<article>/`（隔离服务换成它的地址，`ppnt open` 打印的就是对的）：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。刚写好的文章先是 404，可能再有零点几秒是 503“内容同步中”，同样等到 200。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。正文渲染出错时文章页可能只显示到正文开头，状态码仍是 200，所以查错看 `ppnt check`，不看状态码。
-- 画布视图 `https://pinpoint.localhost/workbench/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。画布视图底部横条的“阅读正文”回到文章页的当前节。
+- 画布视图 `https://pinpoint.localhost/workbench/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。这样直接打开的画布视图左上角有“← 文章标题”，回到文章页的当前节。
 - 首页 `https://pinpoint.localhost/`：所有 project 的全部文章，最近改过的在前（frontmatter 写了 `date: YYYY-MM-DD` 用它，否则用 `index.mdx` 的修改时间）。工作台在 `https://pinpoint.localhost/workbench/`。
 - project 首页 `https://pinpoint.localhost/<project>/`：这个 project 的文章列表、wiki 词条和全部空 ref；`/<project>/wiki/` 只列 wiki 词条。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和 wiki 词条，就是别的 agent 读到的样子。
@@ -164,7 +164,7 @@ boundary: 一句话说清它管什么、不管什么。
 - 每个命令都认 `--json`，stdout 只有一个 JSON。退出码：0 成功；1 有问题（验证错误、截到半篇、引用没命中、服务没答）；2 用法错或找不到目标。
 - 每个命令的选项和例子：`ppnt <命令> --help`。
 
-文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和这一节 open 状态的画布标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧，在文章页上打开这一节的画布浮层，里面的帧可以操作，但不能标注；点卡片头的“打开画布 →”，进画布视图并定位到这一节。画布标注只在画布视图里做；在文章页上选中正文写的是正文评论。两种进同一个队列，处理见 pinpoint-annotate。
+文章页上，每个有 Canvas 的节显示成一张画布卡片：头部是节号、节标题、帧数和这一节待验收（open / check / done）的画布标注数，图注只有帧 id，缩略图不能操作。点卡片里的帧、卡片头的“打开画布 →”或顶栏的“画布视图”，都在文章页上打开画布浮层：里面是整张画布视图，能操作、能标注，定位到那一帧或那一节，关掉回到正文原位，地址带 `#canvas=<节 id>`。画布标注在画布视图（或这个浮层）里做；在文章页上选中正文写的是正文评论。两种进同一个队列，文章右栏把画布标注按所属卡片的位置穿插在正文评论之间，处理见 pinpoint-annotate。
 
 改完的检查，都过了才汇报：
 

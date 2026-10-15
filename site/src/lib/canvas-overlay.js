@@ -1,66 +1,66 @@
 /**
- * Section overlay (lightbox) over the article: pure parts, no DOM. The browser
- * script (canvas-overlay-client.js) opens it from a card's frame; node --test
- * covers the hash contract and the scale rule. Contract: site/README.md
- * 「画布浮层」.
+ * 画布浮层（文章上开整张画布）：纯函数，不碰 DOM。浏览器端是 canvas-overlay-client.js，
+ * node --test 守地址契约。契约在 site/README.md「画布浮层」。
  */
+import { canvasHref } from './canvas-card.js';
 
 /**
- * The overlay's URL hash: `#overlay=<section id>`, optionally `&frame=<frame id>`
- * (the frame to scroll to and highlight). Parsed with URLSearchParams, so ids
- * are percent-encoded when needed.
+ * 浮层的地址 hash：`#canvas=<节 id>`，可选 `&frame=<帧 id>`（定位到这一帧）、`&ann=<#n>`
+ * （定位到这颗钉子并打开它）。按 URLSearchParams 拼，id 需要时百分号编码。
  */
-export function overlayHash(sectionId, frameId) {
-  const q = new URLSearchParams({ overlay: sectionId });
-  if (frameId) q.set('frame', frameId);
+export function canvasHash(sectionId, { frame = '', ann = '' } = {}) {
+  const q = new URLSearchParams({ canvas: sectionId });
+  if (frame) q.set('frame', frame);
+  if (ann !== '' && ann != null) q.set('ann', String(ann));
   return `#${q.toString()}`;
 }
 
-/** `#overlay=<section>[&frame=<frame>]` → { section, frame }; anything else (TOC `#flow`, empty) → null. */
-export function parseOverlayHash(hash) {
+/**
+ * `#canvas=<节>[&frame=<帧>][&ann=<n>]` → { section, frame, ann }（ann 是正整数或 null）；
+ * 旧地址 `#overlay=<节>[&frame=<帧>]`（2026-10-15 之前的本节浮层，分享出去的链接）照样认。
+ * 其他 hash（目录锚点 `#flow`、空）→ null。
+ */
+export function parseCanvasHash(hash) {
   const raw = String(hash || '').replace(/^#/, '');
-  if (!raw.startsWith('overlay=')) return null;
+  const key = raw.startsWith('canvas=') ? 'canvas' : raw.startsWith('overlay=') ? 'overlay' : '';
+  if (!key) return null;
   const q = new URLSearchParams(raw);
-  const section = q.get('overlay') || '';
+  const section = q.get(key) || '';
   if (!section) return null;
-  return { section, frame: q.get('frame') || '' };
+  const n = Number(q.get('ann'));
+  return { section, frame: q.get('frame') || '', ann: Number.isInteger(n) && n > 0 ? n : null };
 }
 
 /**
- * One scale for every frame in the overlay, so sizes stay comparable: the
- * largest that fits every frame's natural box into the available height (and
- * width, which only binds on a phone or for wide doc frames), never above
- * `max` (1 = the frame's real size). `boxes` are natural sizes in CSS px; a box with
- * `height: null` (a document frame) fills the height, so only its width counts.
+ * 浮层里的工作台：画布视图的地址加 `embed=overlay`（src/workbench/lib/page-url.js isEmbedded）。
+ * 嵌入版不出左栏和“← 文章标题”，Esc 交回文章页（src/workbench/embed.js）。
  */
-export function overlayScale({ boxes, availWidth, availHeight, max = 1 }) {
-  const list = (boxes || []).filter((b) => b && b.width > 0 && (b.height > 0 || b.height === null));
-  if (!list.length || !(availWidth > 0) || !(availHeight > 0)) return max;
-  // height: null = a document frame: it fills the available height and scrolls inside, so only its width binds.
-  const heights = list.filter((b) => b.height > 0).map((b) => b.height);
-  const tallest = heights.length ? Math.max(...heights) : 0;
-  const widest = Math.max(...list.map((b) => b.width));
-  return Math.min(max, tallest ? availHeight / tallest : max, availWidth / widest);
+export function embedCanvasSrc(pageId, sectionId) {
+  return `${canvasHref(pageId, sectionId)}&embed=overlay`;
+}
+
+/** 工作台嵌入版发来的消息（src/workbench/embed.js EMBED_MESSAGE_SOURCE）；别的消息 → null。 */
+export function embedMessage(data) {
+  if (!data || typeof data !== 'object' || data.source !== 'pinpoint-workbench') return null;
+  if (data.type === 'close') return { type: 'close' };
+  if (data.type === 'section' && typeof data.section === 'string' && data.section) return { type: 'section', section: data.section };
+  return null;
 }
 
 /**
- * A frame's natural box before it is measured, from its card box (shellBox):
- * a phone is the device body inside the workbench's iPhone chrome (402 × 874,
- * .ios-device inside the 438 × 910 stage of index.html), which is what the
- * overlay shows and clips to; a document frame (shell doc) keeps the page width the card is set to
- * and fills the height (`height: null`); other shells take the card's starting box.
+ * 顶栏“画布视图”从哪一节打开：读者正在读的那一节（目录高亮的那一节）有画布就是它，
+ * 否则是它后面第一个有画布的节，再没有就是最后一个有画布的节。`ids` 是有画布的节（文章顺序），
+ * `order` 是全部节（文章顺序）。
  */
-export const PHONE_STAGE = { width: 402, height: 874 };
-export function naturalBox(cardBox) {
-  if (cardBox.mode === 'phone') return { ...PHONE_STAGE };
-  // A document frame (HTML 帧) keeps its page width and takes the overlay's full height (height: null, see overlayScale).
-  if (cardBox.mode === 'doc') return { width: cardBox.width, height: null };
-  return { width: cardBox.width, height: cardBox.height };
-}
-
-/** The section before / after `current` in `ids` (sections that have a canvas, article order); '' at either end. */
-export function neighborSection(ids, current, step) {
-  const i = (ids || []).indexOf(current);
-  if (i < 0) return '';
-  return ids[i + step] || '';
+export function entrySection(ids, order, current) {
+  const list = ids || [];
+  if (!list.length) return '';
+  if (list.includes(current)) return current;
+  const all = order || [];
+  const at = all.indexOf(current);
+  if (at >= 0) {
+    for (let i = at + 1; i < all.length; i += 1) if (list.includes(all[i])) return all[i];
+    return list[list.length - 1];
+  }
+  return list[0];
 }

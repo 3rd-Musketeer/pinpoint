@@ -1,14 +1,21 @@
+import fs from 'node:fs';
+import path from 'node:path';
+
 import { expect, test } from '@playwright/test';
 
 import { POP_CLOSE_MS } from '../site/src/lib/client.js';
-import { E2E_BASE_URL } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
+import { annotate } from './lib/annotate.js';
+import { ppnt } from './lib/cli.js';
 import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
+import { closeSettled } from './ledger-settle.js';
 
-// pp3：正文里的画布浮层与 [[ ]] 悬停 popup（site/README.md「画布浮层」「[[ ]] 引用」）。
+// pp3：正文里的画布浮层（文章上开整张画布）、右栏里穿插的画布标注与 [[ ]] 悬停 popup
+// （site/README.md「画布浮层」「[[ ]] 引用」，docs/annotation.md「正文评论」）。
 // 固件：常驻 project e2e-project 的 commit-confirm（e2e/project-site/）。有画布的三节：
 // 2 confirm（confirm-sheet 带一个能点的按钮、confirm-done）、3 variants（card-plain，comp）、
-// 4 mixed（手机帧 + 帧级 comp）。纯文字的 1 why 不进浮层的上一节 / 下一节。
+// 4 mixed（手机帧 + 帧级 comp）。1 why 是纯文字。
 // 文章页只显示节号；画布上同样这几节是字母 B、C、D（A 是 why），只在画布、ppnt、标注里出现。
 //
 // 文件名排在 article-site 后面：那个 spec 要看站点冷启动（idle → 503 → 文章），同组时得先跑它。
@@ -16,11 +23,11 @@ import { waitNoReload } from './site-settle.js';
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
-// 浮层里手机帧量的是机身，组件帧量组件台（canvas-card-client.js measureStage device）。
-const STAGE = '.ios-device, .wb-comp-stage, .wb-doc-stage';
 
 const overlay = (page) => page.locator('dialog[data-pp-overlay]');
+const canvasFrame = (page) => page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
 const hashOf = (page) => decodeURIComponent(new URL(page.url()).hash);
+const scrollOf = (page) => page.evaluate(() => [window.scrollX, window.scrollY]);
 const activeInfo = (page) => page.evaluate(() => {
   const a = document.activeElement;
   return {
@@ -28,16 +35,24 @@ const activeInfo = (page) => page.evaluate(() => {
     tag: a?.tagName || '',
     frame: a?.closest?.('.cc-frame')?.dataset.screen || '',
     hit: !!a?.matches?.('.cc-hit'),
+    id: a?.id || '',
   };
 });
 
-/** 每一帧的 box 宽 ÷ 帧里机身 / 组件台的原始宽：浮层里所有帧应当是同一个数（= strip 的 data-scale）。 */
-const frameScales = (page) => page.locator('[data-pp-overlay] .ov-box').evaluateAll((boxes, sel) => boxes.map((box) => {
-  const iframe = box.querySelector('iframe');
-  const stage = iframe?.contentDocument?.querySelector(sel);
-  if (!stage) return null;
-  return box.getBoundingClientRect().width / stage.getBoundingClientRect().width;
-}), STAGE);
+/** 浮层里的工作台装好、板落定。 */
+async function canvasReady(page) {
+  const frame = page.frame({ url: /\/workbench\/\?.*embed=overlay/ });
+  await expect.poll(() => page.evaluate(() => {
+    const w = window.pinpointOverlay?.frame()?.contentWindow;
+    return !!(w && w.workbench && w.workbench.activePageId() === 'e2e-project_commit-confirm');
+  }), { timeout: 60_000 }).toBe(true);
+  const wb = page.frames().find((f) => /\/workbench\/\?.*embed=overlay/.test(f.url())) || frame;
+  await expect.poll(() => wb.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
+  return wb;
+}
+
+/** 浮层停在了哪一节、最后一次定位落到了哪里。 */
+const overlayState = (page) => page.evaluate(() => window.pinpointOverlay?.state() || null);
 
 async function openArticle(page, url = ARTICLE) {
   await page.goto(url);
@@ -46,8 +61,8 @@ async function openArticle(page, url = ARTICLE) {
   await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
 }
 
-test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦点 / hash / 后退 / 换节、手机全屏', async ({ page }) => {
-  test.setTimeout(180_000);
+test('画布浮层：从文章进画布不跳页，整张画布可交互 / 标注 / 缩放，关掉回原位；hash、后退、刷新、换节', async ({ page }) => {
+  test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
@@ -57,61 +72,60 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
   await openArticle(page);
   consoleErrors.length = 0; // 冷启动那几次 503 记成 Failed to load resource
   await proseSettled(page);
+  let before = null;
 
-  await test.step('卡片缩略图仍不可交互；点卡片里的 confirm-done → 浮层，不导航', async () => {
+  await test.step('卡片缩略图仍不可交互；点卡片里的 confirm-done → 文章上开整张画布，不导航，定位到这一帧', async () => {
     const thumb = page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] iframe');
     await expect(thumb).toHaveCSS('pointer-events', 'none');
     await expect(thumb).toHaveAttribute('tabindex', '-1');
     await page.evaluate(() => { window.__sameDoc = true; });
+    await page.locator('[data-pp-canvas][data-pp-section="confirm"]').scrollIntoViewIfNeeded();
+    before = await scrollOf(page);
+    expect(before[1]).toBeGreaterThan(100);
     await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-done"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
-    expect(hashOf(page)).toBe('#overlay=confirm&frame=confirm-done');
+    expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done');
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
     await expect(page.locator('html')).toHaveClass(/\bpp-ov-lock\b/);
-    await expect(page.locator('html')).toHaveCSS('overflow', 'hidden');
+    // 里面是嵌入版工作台：整张画布（四节都在），落在这一节。
+    const src = await overlay(page).locator('iframe.ov-canvas').getAttribute('src');
+    expect(src).toBe(`/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay`);
+    const wb = await canvasReady(page);
+    await expect(canvasFrame(page).locator('#wb-board-panel [data-screen]')).toHaveCount(5);
+    await expect(canvasFrame(page).locator('#wbside')).toBeHidden();
+    await expect(canvasFrame(page).locator('#wbback')).toHaveCount(0);
+    await expect.poll(() => overlayState(page).then((st) => st && st.landing)).toBe('section');
+    await expect.poll(() => wb.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();
+    // 点的那一帧在画布可见区里。
+    const panel = await overlay(page).locator('.ov-body').boundingBox();
+    const done = await canvasFrame(page).locator('#wb-board-panel [data-screen="confirm-done"] .e2e-project-banner').boundingBox();
+    expect(done.x).toBeGreaterThanOrEqual(panel.x);
+    expect(done.x + done.width).toBeLessThanOrEqual(panel.x + panel.width);
+    expect(done.y).toBeGreaterThanOrEqual(panel.y);
   });
 
-  await test.step('头部：节号、标题、帧数、打开画布；两帧并排，图注只有帧 id，点的那一帧高亮', async () => {
+  await test.step('头部：节号、标题、整页打开；页面上的正文不动', async () => {
     const ov = overlay(page);
     await expect(ov.locator('[data-ov-num]')).toHaveText('2');
     await expect(ov.locator('[data-ov-title]')).toHaveText('确认卡');
-    await expect(ov.locator('[data-ov-meta]')).toHaveText('2 帧');
     await expect(ov.locator('[data-ov-canvas]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
-    await expect(ov.locator('.ov-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done']);
-    await expect(ov.locator('.ov-frame[data-screen="confirm-done"]')).toHaveClass(/\bflash\b/);
-    await expect(ov.locator('.ov-frame iframe')).toHaveCount(2);
-    expect(await ov.locator('.ov-frame iframe').evaluateAll((els) => els.map((el) => new URL(el.src).search))).toEqual(
-      ['confirm-sheet', 'confirm-done'].map((f) => `?page=${CANVAS_PAGE}&screen=${f}&annotate=off&embed=card`));
-    await expect(ov.locator('.ov-box[data-fitted="1"]')).toHaveCount(2);
-    await expect(ov.locator('[data-ov-prev]')).toBeDisabled(); // 1 是纯文字，2 是第一个有画布的节
-    await expect(ov.locator('[data-ov-next]')).toBeEnabled();
+    expect(await scrollOf(page)).toEqual(before);
   });
 
-  await test.step('尺寸：手机按真实比例，按视口高度放到最大、不超过真实大小，两帧同一缩放', async () => {
-    const scale = Number(await page.locator('[data-ov-strip]').getAttribute('data-scale'));
-    expect(scale).toBeGreaterThan(0.5);
-    expect(scale).toBeLessThanOrEqual(1);
-    const boxes = await page.locator('[data-pp-overlay] .ov-box').evaluateAll((els) => els.map((el) => el.getBoundingClientRect()));
-    const strip = await page.locator('[data-ov-strip]').boundingBox();
-    for (const b of boxes) {
-      expect(b.width / b.height).toBeCloseTo(402 / 874, 2); // 机身 .ios-device
-      expect(b.bottom).toBeLessThanOrEqual(strip.y + strip.height); // 不用竖向滚动
-    }
-    for (const s of await frameScales(page)) expect(s).toBeCloseTo(scale, 2);
-  });
-
-  await test.step('帧可交互：点帧里的按钮，帧里的字变了', async () => {
-    const frame = page.frameLocator('[data-pp-overlay] [data-screen="confirm-sheet"] iframe');
-    await expect(frame.locator('.e2e-tap-out')).toHaveText('未确认');
-    await frame.locator('.e2e-tap').click();
-    await expect(frame.locator('.e2e-tap-out')).toHaveText('已确认');
-    // 卡片里的同一帧没有跟着变（浮层是新开的 iframe）。
-    await expect(page.frameLocator('[data-pp-canvas] [data-screen="confirm-sheet"] iframe').locator('.e2e-tap-out')).toHaveText('未确认');
+  await test.step('画布可交互、可缩放、可进标注模式', async () => {
+    const f = canvasFrame(page);
+    await expect(f.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-tap-out')).toHaveText('未确认');
+    await f.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-tap').click();
+    await expect(f.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-tap-out')).toHaveText('已确认');
+    const zoom = await f.locator('#wbzoom-label').innerText();
+    await f.locator('#wbzoom-in').click();
+    await expect(f.locator('#wbzoom-label')).not.toHaveText(zoom);
+    await f.locator('#wbann-toggle').click();
+    await expect(f.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
   });
 
   await test.step('浮层里选字不出正文“评论”', async () => {
-    // 等正文评论客户端判过这次选区（松开鼠标就判，selection().checks 加一），再看它没给“评论”。
     await proseSettled(page);
     const before = await page.evaluate(() => window.pinpointProse.selection().checks);
     const t = await page.locator('[data-ov-title]').boundingBox();
@@ -126,38 +140,44 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
     await page.evaluate(() => window.getSelection().removeAllRanges());
   });
 
-  await test.step('焦点困在浮层里（含帧里的按钮）；Esc（焦点在帧里也行）关闭，焦点回到点的那一帧', async () => {
-    for (let i = 0; i < 10; i += 1) {
-      await page.keyboard.press('Tab');
-      expect((await activeInfo(page)).inOverlay, `Tab ${i + 1}`).toBe(true);
-    }
-    // 把焦点放进帧里的按钮，再按 Esc：帧把 Esc 转给文章页。
-    await page.frameLocator('[data-pp-overlay] [data-screen="confirm-sheet"] iframe').locator('.e2e-tap').focus();
+  await test.step('画布里的 Esc：先退出标注模式（浮层还开着），再按一下才关浮层；关了回原滚动位置，焦点回到点的那一帧', async () => {
+    const f = canvasFrame(page);
+    await f.locator('#wbstrip-title').click(); // 焦点进画布
     expect((await activeInfo(page)).tag).toBe('IFRAME');
+    await page.keyboard.press('Escape');
+    await expect(f.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'false');
+    await expect(overlay(page)).toHaveAttribute('open', '');
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     await expect.poll(() => hashOf(page)).toBe('');
+    await expect.poll(() => scrollOf(page)).toEqual(before);
     expect(await activeInfo(page)).toMatchObject({ inOverlay: false, hit: true, frame: 'confirm-done' });
     await expect(page.locator('html')).not.toHaveClass(/\bpp-ov-lock\b/);
-    await expect(page.locator('[data-pp-overlay] iframe')).toHaveCount(0);
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
   });
 
-  await test.step('后退关浮层、前进再打开；关闭按钮；点暗色区域关闭', async () => {
-    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
+  await test.step('卡片“打开画布”：同一个浮层，再开不重装工作台，直接定位到那一节；后退关、前进开；关闭按钮；点暗色区域', async () => {
+    const generation = await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration());
+    await page.locator('[data-pp-canvas][data-pp-section="variants"]').scrollIntoViewIfNeeded();
+    const at = await scrollOf(page);
+    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-open]').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
-    expect(hashOf(page)).toBe('#overlay=variants&frame=card-plain');
+    expect(hashOf(page)).toBe('#canvas=variants');
+    expect(new URL(page.url()).pathname).toBe(ARTICLE);
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
+    await expect(canvasFrame(page).locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration())).toBe(generation);
     await page.goBack();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(hashOf(page)).toBe('');
-    await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
+    await expect.poll(() => scrollOf(page)).toEqual(at);
     await page.goForward();
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
     await overlay(page).locator('[data-ov-close]').click();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     await expect.poll(() => hashOf(page)).toBe('');
-    expect(new URL(page.url()).pathname).toBe(ARTICLE);
+    await expect.poll(() => scrollOf(page)).toEqual(at);
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
 
     await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
@@ -167,70 +187,69 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
     await expect.poll(() => hashOf(page)).toBe('');
   });
 
-  await test.step('直接带 #overlay= 打开文章：浮层打开；关闭只去掉 hash，留在文章上', async () => {
+  await test.step('画布里换节：头部和 #canvas= 跟着换，不多压历史', async () => {
+    await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]').click();
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    const wb = await canvasReady(page);
+    const length = await page.evaluate(() => history.length);
+    await expect.poll(() => wb.evaluate(() => window.workbench.focusSection('mixed'))).toBe(true);
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
+    await expect(overlay(page).locator('[data-ov-title]')).toHaveText('手机和裸卡片');
+    await expect.poll(() => hashOf(page)).toBe('#canvas=mixed');
+    await expect(overlay(page).locator('[data-ov-canvas]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=mixed`);
+    expect(await page.evaluate(() => history.length)).toBe(length);
+    await page.keyboard.press('Escape');
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+  });
+
+  await test.step('顶栏“画布视图”：从正在读的那一节开，关掉正文一点没挪', async () => {
+    await page.evaluate(() => document.getElementById('mixed').scrollIntoView({ block: 'start' }));
+    const at = await scrollOf(page);
+    await page.locator('#btn-canvas').click();
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    expect(hashOf(page)).toBe('#canvas=mixed');
+    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
+    await expect(canvasFrame(page).locator('.wb-lib-item[data-ann-section="mixed"]')).toHaveClass(/\bwb-sel\b/);
+    await page.keyboard.press('Escape');
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await expect.poll(() => scrollOf(page)).toEqual(at);
+    expect(await activeInfo(page)).toMatchObject({ id: 'btn-canvas' });
+  });
+
+  await test.step('直接带 #canvas= 打开（刷新、分享）：浮层打开；关闭只去掉 hash，留在文章上；旧的 #overlay= 照样开', async () => {
     await page.goto('/e2e-project/');
-    await openArticle(page, `${ARTICLE}#overlay=variants`);
+    await openArticle(page, `${ARTICLE}#canvas=variants`);
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(overlay(page).locator('[data-ov-title]')).toHaveText('卡片做法');
+    await canvasReady(page);
+    await expect(canvasFrame(page).locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
     await overlay(page).locator('[data-ov-close]').click();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(page.url()).toBe(`${E2E_BASE_URL}${ARTICLE}`);
-    expect((await activeInfo(page)).frame).toBe('card-plain');
-  });
 
-  await test.step('换节：→ / ← 与按钮，只在有画布的节之间走，hash 跟着换', async () => {
-    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
-    await page.keyboard.press('ArrowRight');
+    await page.goto('/e2e-project/');
+    await openArticle(page, `${ARTICLE}#overlay=mixed&frame=mixed-bare`);
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    expect(hashOf(page)).toBe('#canvas=mixed&frame=mixed-bare');
     await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
-    await expect(overlay(page).locator('[data-ov-title]')).toHaveText('手机和裸卡片');
-    await expect(overlay(page).locator('.ov-frame .cap')).toHaveText(['mixed-phone', 'mixed-bare']);
-    expect(hashOf(page)).toBe('#overlay=mixed');
-    await expect(overlay(page).locator('[data-ov-next]')).toBeDisabled();
-    await page.keyboard.press('ArrowRight');
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('4');
-    // 混排：手机帧与裸组件同一缩放（裸组件比手机矮，不被当成手机）。
-    await expect(overlay(page).locator('.ov-box[data-fitted="1"]')).toHaveCount(2);
-    const scale = Number(await page.locator('[data-ov-strip]').getAttribute('data-scale'));
-    for (const s of await frameScales(page)) expect(s).toBeCloseTo(scale, 2);
-    await expect(overlay(page).locator('[data-screen="mixed-bare"] .ov-box')).toHaveClass(/\bnatural\b/);
-    await overlay(page).locator('[data-ov-prev]').click();
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
-    await page.keyboard.press('ArrowLeft');
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('2');
-    expect(hashOf(page)).toBe('#overlay=confirm');
-    // 换过节：关闭后焦点落在当前节（2 confirm）卡片的帧上。
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
-    await expect.poll(() => hashOf(page)).toBe('');
-    expect(await activeInfo(page)).toMatchObject({ hit: true, frame: 'confirm-sheet' });
-    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"]')).toBeInViewport();
   });
 
-  await test.step('390 宽：整屏 sheet，帧按宽度缩，横向滑，页面不横向溢出', async () => {
+  await test.step('390 宽：整屏 sheet，页面不横向溢出', async () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator('[data-pp-canvas][data-pp-section="confirm"]').scrollIntoViewIfNeeded();
     await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
-    await expect(overlay(page).locator('.ov-box[data-fitted="1"]')).toHaveCount(2);
     const panel = await overlay(page).locator('.ov-panel').boundingBox();
     expect([panel.x, panel.y, panel.width, panel.height]).toEqual([0, 0, 390, 844]);
-    const geo = await page.evaluate(() => {
-      const strip = document.querySelector('[data-ov-strip]');
-      return {
-        docW: document.documentElement.scrollWidth,
-        stripScroll: strip.scrollWidth > strip.clientWidth,
-        boxes: [...document.querySelectorAll('[data-pp-overlay] .ov-box')].map((b) => b.getBoundingClientRect().width),
-      };
-    });
-    expect(geo.docW).toBeLessThanOrEqual(390);
-    expect(geo.stripScroll).toBe(true);
-    for (const w of geo.boxes) expect(w).toBeLessThanOrEqual(390 - 32);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     await page.setViewportSize({ width: 1440, height: 900 });
   });
 
+  await closeSettled(page);
   expect(pageErrors).toEqual([]);
   expect(consoleErrors).toEqual([]);
 });
@@ -355,14 +374,11 @@ test('文章页只显示节号，不出画布字母；画布接口仍带 letter 
     await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
   });
 
-  await test.step('浮层：头部节号、上一节 / 下一节的提示、图注都不出字母', async () => {
+  await test.step('浮层头只有节号，不出字母（字母是画布里的，属于工作台）', async () => {
     await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
-    await expect(overlay(page).locator('[data-ov-prev]')).toHaveAttribute('aria-label', '上一节：2 确认卡');
-    await expect(overlay(page).locator('[data-ov-next]')).toHaveAttribute('aria-label', '下一节：4 手机和裸卡片');
-    await expect(overlay(page).locator('.ov-frame .cap')).toHaveText(['card-plain']);
-    expect(await overlay(page).innerText()).not.toMatch(FRAME_REF);
+    expect(await overlay(page).locator('.ov-head').innerText()).not.toMatch(FRAME_REF);
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
   });
@@ -377,4 +393,150 @@ test('文章页只显示节号，不出画布字母；画布接口仍带 letter 
       ['mixed', 'D', ['D1', 'D2']],
     ]);
   });
+});
+
+test('右栏：画布标注按位置穿插在正文评论之间，四态、原地收起，点了开画布定位到钉子；卡片头显示本节标注数', async ({ page, request }) => {
+  test.setTimeout(240_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const pageErrors = [];
+  page.on('pageerror', (error) => pageErrors.push(String(error)));
+  const bucket = path.join(E2E_DATA_DIR, CANVAS_PAGE);
+  const canvasLedger = path.join(bucket, '@canvas.json');
+  const proseLedger = path.join(bucket, '@prose.json');
+  const clear = () => { for (const f of [canvasLedger, proseLedger]) fs.rmSync(f, { force: true }); };
+  const diskRows = () => (fs.existsSync(canvasLedger) ? JSON.parse(fs.readFileSync(canvasLedger, 'utf8')).annotations : []);
+  const rail = page.locator('#rail .pp-threads');
+  const kinds = () => rail.locator('> .pp-thread').evaluateAll((els) => els.map((el) => `${el.dataset.kind || 'prose'}:${el.dataset.n}`));
+  clear();
+
+  // 两条正文评论：一条在第 1 节（画布卡片之前），一条在第 4 节的正文里（第 2、3 节的卡片之后）。
+  const proseRow = (id, exact, section) => ({
+    id, type: 'prose', status: 'open', content: `评论 ${id}`, quote: { exact, prefix: '', suffix: '' },
+    section, path: ARTICLE, created_at: new Date().toISOString(), messages: [],
+  });
+  const saved = await request.post('/save', { data: {
+    page: '@prose', entry: CANVAS_PAGE, path: ARTICLE, baseRevision: 0,
+    annotations: [proseRow('p-why', '不可撤销的动作之前', 'why'), proseRow('p-mixed', '同一节里既有手机帧', 'mixed')],
+  } });
+  expect(saved.ok()).toBe(true);
+  const proseN = Object.fromEntries((await saved.json()).annotations.map((r) => [r.id, r.n]));
+
+  // 一条带截图的画布标注，钉在第 3 节 card-plain 上（截图直接放进桶的 images/，行里引用它）。
+  fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(bucket, 'images', 'e2e-rail-shot.png'), Buffer.from(
+    'iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSF+FAP0lBHHc0sQUAAAAAElFTkSuQmCC', 'base64'));
+  const seeded = await request.post('/save', { data: {
+    page: '@canvas', entry: CANVAS_PAGE, path: '/workbench/', baseRevision: 0,
+    annotations: [{
+      id: 'c-plain', pageId: CANVAS_PAGE, section: 'variants', screenId: 'card-plain', status: 'open',
+      content: '[@t:i1] 太挤', targets: [{ ref: 'i1', selector: '.e2e-confirm-card', text: '确认卡' }],
+      selector: '.e2e-confirm-card', text: '确认卡', images: [{ file: 'e2e-rail-shot.png' }],
+    }],
+  } });
+  expect(seeded.ok()).toBe(true);
+  const plainN = (await seeded.json()).annotations[0].n;
+
+  try {
+    await openArticle(page);
+    await proseSettled(page);
+
+    await test.step('一列：第 1 节的评论 → 第 3 节卡片位置的画布标注 → 第 4 节的评论；卡片标明画布标注、帧名、截图', async () => {
+      await expect.poll(kinds).toEqual([`prose:${proseN['p-why']}`, `canvas:${plainN}`, `prose:${proseN['p-mixed']}`]);
+      const card = rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"]`);
+      await expect(card.locator('.pp-kind')).toHaveText('画布标注');
+      await expect(card.locator('.pp-canvas-frame')).toHaveText('帧card-plain');
+      await expect(card.locator('.msg .text')).toHaveText('“确认卡” 太挤');
+      await expect(card.locator('.pp-n')).toHaveText(`#${plainN}`);
+      await expect(card.locator('img.pp-canvas-shot')).toHaveJSProperty('naturalWidth', 2);
+      await expect(card.locator('a[data-pp-canvas-link]')).toHaveAttribute('href', `#canvas=variants&ann=${plainN}`);
+    });
+
+    await test.step('卡片头的标注数：有标注的节显示，没有的不显示', async () => {
+      await expect(page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-badge]')).toHaveText('1 条标注');
+      await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-badge]')).toBeHidden();
+    });
+
+    let doneN = 0;
+    await test.step('在浮层里标一条：右栏实时出现在第 2 节卡片的位置，那张卡片的标注数跟着变', async () => {
+      await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]').click();
+      await expect(overlay(page)).toHaveAttribute('open', '');
+      const wb = await canvasReady(page);
+      const f = canvasFrame(page);
+      await f.locator('#wbann-toggle').click();
+      await expect(f.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+      await annotate(f, '#wb-board-panel [data-screen="confirm-done"] .e2e-project-banner', '横幅换成成功色');
+      await expect.poll(() => wb.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+      await expect.poll(() => diskRows().filter((r) => r.screenId === 'confirm-done').length).toBe(1);
+      doneN = diskRows().find((r) => r.screenId === 'confirm-done').n;
+      await expect.poll(kinds).toEqual([`prose:${proseN['p-why']}`, `canvas:${doneN}`, `canvas:${plainN}`, `prose:${proseN['p-mixed']}`]);
+      await expect(rail.locator(`.pp-thread[data-n="${doneN}"] .pp-canvas-frame`)).toHaveText('帧confirm-done');
+      await expect(rail.locator(`.pp-thread[data-n="${doneN}"] img`)).toHaveCount(0); // 没截图就不放
+      await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-badge]')).toHaveText('1 条标注');
+      await page.keyboard.press('Escape'); // 退出标注模式
+      await page.keyboard.press('Escape'); // 关浮层
+      await expect(overlay(page)).not.toHaveAttribute('open', '');
+    });
+
+    await test.step('ppnt mark check --note：右栏的状态与 agent 回复实时跟上', async () => {
+      await ppnt(['mark', 'e2e-project/commit-confirm', `#${plainN}`, 'check', '--note', '间距放大了']);
+      const card = rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"]`);
+      await expect(card.locator('.pp-n')).toHaveAttribute('data-st', 'check');
+      await expect(card.locator('.pp-st')).toHaveText('check');
+      await expect(card.locator('.msg[data-who="agent"] .text')).toHaveText('间距放大了');
+      await expect(page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-badge]')).toHaveText('1 条标注');
+    });
+
+    await test.step('点右栏的画布标注：开画布浮层，定位到那颗钉子并打开它', async () => {
+      const at = await scrollOf(page);
+      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .msg .text`).first().click();
+      await expect(overlay(page)).toHaveAttribute('open', '');
+      expect(hashOf(page)).toBe(`#canvas=variants&ann=${plainN}`);
+      await expect.poll(() => overlayState(page).then((st) => st && st.landing), { timeout: 30_000 }).toBe(`ann:${plainN}`);
+      await expect(canvasFrame(page).locator('#ann-box')).toBeVisible();
+      await expect(canvasFrame(page).locator('#ann-input')).toContainText('太挤');
+      await page.keyboard.press('Escape'); // 先关标注框
+      await expect(canvasFrame(page).locator('#ann-box')).toBeHidden();
+      await expect(overlay(page)).toHaveAttribute('open', '');
+      await page.keyboard.press('Escape');
+      await expect(overlay(page)).not.toHaveAttribute('open', '');
+      await expect.poll(() => scrollOf(page)).toEqual(at);
+    });
+
+    await test.step('完成：原地收成一行（仍在两条评论之间），盘上 close，卡片头不再计它；展开、重新打开', async () => {
+      const card = rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"]`);
+      await card.getByRole('button', { name: '完成' }).click();
+      await expect(card).toHaveClass(/\bpp-closed\b/);
+      await expect(card.locator('.pp-closed-word')).toHaveText('已关闭');
+      await expect(card.locator('.pp-closed-peek')).toHaveText('“确认卡” 太挤');
+      await expect.poll(kinds).toEqual([`prose:${proseN['p-why']}`, `canvas:${doneN}`, `canvas:${plainN}`, `prose:${proseN['p-mixed']}`]);
+      await expect.poll(() => diskRows().find((r) => r.n === plainN).status).toBe('close');
+      await expect(page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-badge]')).toBeHidden();
+      // agent 的回复和行上的其他字段原样留着。
+      const row = diskRows().find((r) => r.n === plainN);
+      expect(row.messages.map((m) => m.text)).toEqual(['间距放大了']);
+      expect(row.images).toEqual([{ file: 'e2e-rail-shot.png' }]);
+
+      await card.locator('[data-act="expand"]').click();
+      await expect(card.getByRole('button', { name: '重新打开' })).toBeVisible();
+      await card.getByRole('button', { name: '重新打开' }).click();
+      await expect(card.locator('.pp-n')).toHaveAttribute('data-st', 'open');
+      await expect.poll(() => diskRows().find((r) => r.n === plainN).status).toBe('open');
+      await expect(page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-badge]')).toHaveText('1 条标注');
+    });
+
+    await test.step('刷新：右栏照样穿插，已关闭的收着', async () => {
+      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${doneN}"]`).getByRole('button', { name: '完成' }).click();
+      await proseSettled(page);
+      await page.reload();
+      await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
+      await proseSettled(page);
+      await expect.poll(kinds).toEqual([`prose:${proseN['p-why']}`, `canvas:${doneN}`, `canvas:${plainN}`, `prose:${proseN['p-mixed']}`]);
+      await expect(rail.locator(`.pp-thread[data-n="${doneN}"]`)).toHaveClass(/\bpp-closed\b/);
+      await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-badge]')).toBeHidden();
+    });
+  } finally {
+    await closeSettled(page);
+    clear();
+  }
+  expect(pageErrors).toEqual([]);
 });

@@ -4,6 +4,8 @@ import test from 'node:test';
 import {
   applyProseOps,
   authorLabel,
+  canvasContentText,
+  canvasRailItems,
   formatWhen,
   isProseClosed,
   isProseRow,
@@ -111,4 +113,38 @@ test('isSendKey：Enter 发送；Shift+Enter、组字中（isComposing / keyCode
   assert.equal(isSendKey({ key: 'Enter', keyCode: 229 }), false);
   assert.equal(isSendKey({ key: 'a' }), false);
   assert.equal(isSendKey(null), false);
+});
+
+test('canvasRailItems：画布标注按帧归到本篇的卡片；别的页、不在卡片上的、正文评论不进', () => {
+  const cards = [
+    { section: 'confirm', page: 'demo_flow', frames: [{ id: 'sheet', title: '确认单' }, { id: 'done' }] },
+    { section: 'mixed', page: 'demo_flow', frames: [{ id: 'bare', title: 'bare' }] },
+  ];
+  const rows = [
+    { id: 'a', n: 4, screenId: 'done', section: 'confirm', pageId: 'demo_flow', status: 'check' },
+    { id: 'b', n: 5, screenId: 'bare' }, // 没有 pageId = 这个桶
+    { id: 'c', n: 6, screenId: 'gone', pageId: 'demo_flow' },
+    { id: 'd', n: 7, screenId: 'sheet', pageId: 'other_page' },
+    { id: 'e', n: 8, type: 'prose', screenId: 'sheet' },
+    null,
+  ];
+  assert.deepEqual(canvasRailItems(rows, cards).map((x) => [x.row.id, x.section, x.frameId, x.frameTitle, x.card]), [
+    ['a', 'confirm', 'done', 'done', 0],
+    ['b', 'mixed', 'bare', 'bare', 1],
+  ]);
+  assert.deepEqual(canvasRailItems(rows, []), []);
+  assert.deepEqual(canvasRailItems(null, cards), []);
+});
+
+test('railOrder：画布标注按卡片位置与正文评论合成一列', () => {
+  const prose = [{ id: 'p1', n: 1, at: 10 }, { id: 'p2', n: 2, at: 80 }, { id: 'p3', n: 3, at: Infinity }];
+  const canvas = [{ id: 'c9', n: 9, at: 49.5 }, { id: 'c4', n: 4, at: 49.5 }];
+  assert.deepEqual(railOrder([...prose, ...canvas], (r) => r.at).map((r) => r.id), ['p1', 'c4', 'c9', 'p2', 'p3']);
+});
+
+test('canvasContentText：目标记号换成元素文字，找不到的去掉', () => {
+  const row = { content: '把 [@t:i1] 改成主按钮，[@t:i2] 删掉 [@t:i3]', targets: [{ ref: 'i1', text: '确认支付' }, { ref: 'i2', text: '一段很长很长很长很长很长很长很长很长很长很长的说明文字' }] };
+  assert.equal(canvasContentText(row), '把 “确认支付” 改成主按钮，“一段很长很长很长很长很长很长很长很长很长很长的…” 删掉');
+  assert.equal(canvasContentText({ content: '整页太挤' }), '整页太挤');
+  assert.equal(canvasContentText(null), '');
 });

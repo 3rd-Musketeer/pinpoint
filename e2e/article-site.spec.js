@@ -236,12 +236,17 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(page.locator('#article [data-pp-project-tag]')).toHaveAttribute('href', '/e2e-project/');
   });
 
-  await test.step('“画布视图”打开 /workbench/?page=<页 id>，画布装好', async () => {
+  await test.step('“画布视图”在文章上开整张画布（不跳页），画布装好；链接本身仍指 /workbench/?page=<页 id>（新标签页打开用）', async () => {
+    await expect(page.locator('#btn-canvas')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}`);
     await page.locator('#btn-canvas').click();
-    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, CANVAS_PAGE);
-    expect(new URL(page.url()).pathname).toBe('/workbench/');
-    expect(new URL(page.url()).searchParams.get('page')).toBe(CANVAS_PAGE);
-    await expect(page.locator('#wb-board-panel [data-screen="confirm-sheet"]')).toBeVisible();
+    await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
+    expect(new URL(page.url()).pathname).toBe(ARTICLE);
+    // 页面停在顶上：正在读的第 1 节没有画布，从它后面第一个有画布的节开。
+    expect(new URL(page.url()).hash).toBe('#canvas=confirm');
+    const canvas = page.frameLocator('dialog[data-pp-overlay] iframe.ov-canvas');
+    await expect(canvas.locator('#wb-board-panel [data-screen="confirm-sheet"]')).toBeVisible({ timeout: 60_000 });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('dialog[data-pp-overlay]')).not.toHaveAttribute('open', '');
   });
 
   await test.step('blog 首页 /：列出登记 project 的文章（标题、summary、project 标签、日期），标签进那个 project 的文章列表', async () => {

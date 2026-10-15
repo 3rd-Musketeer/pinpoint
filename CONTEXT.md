@@ -41,23 +41,23 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 要避开：拿“帧”或“画布”指图；单说“图”指画布卡片里的帧缩略图或 `ppnt shot` 的截图。
 
 **帧（frame）** · `articles/<article>/<帧 id>.jsx` 或 `.html`
-画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件。卡片和浮层缺省按手机宽 402 排这个页面，卡片头和浮层头的“手机 / 桌面”开关切到桌面宽 1280；画布视图里它是一个文档条目，不在画布那一行。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
-要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
+画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件。卡片缺省按手机宽 402 排这个页面，卡片头的“手机 / 桌面”开关切到桌面宽 1280；画布视图里它是一个文档条目，不在画布那一行。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
+要避开：拿 frame 指 iframe（卡片里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`content/kits/ios/jsx/`（kit）
 帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时找本篇；kit 的组件写 `pinpoint/kit`。跨文章复用的组件放进 kit。没有 project 级的组件：project 里有 `docs/pinpoint/components/` 目录时，它不参与编译，`ppnt check` 报布局错误 `project_components_dir`（ADR 0045）。
 要避开：拿“组件”指 section 组件或工作台自己的 React 组件（后者说“工作台组件”）。
 
 **画布卡片** · 站点 `site/src/components/Canvas.astro`，DOM 根 `[data-pp-canvas]`
-画布组件在文章页上的样子：每个有画布组件的节一张卡片，头部是节号、节标题、帧数和这一节 open 状态的画布标注数，下面是这一节的帧缩略图。缩略图不能操作、不能标注。点一帧打开画布浮层；点卡片头的“打开画布 →”进画布视图，并定位到这一节。
+画布组件在文章页上的样子：每个有画布组件的节一张卡片，头部是节号、节标题、帧数和这一节待验收（open / check / done）的画布标注数，下面是这一节的帧缩略图。缩略图不能操作、不能标注。点一帧、点卡片头的“打开画布 →”都打开画布浮层，定位到这一帧 / 这一节。
 要避开：把卡片说成“嵌入的画布”或“截图”——卡片里的帧是实时渲染的，但只是看。
 
-**画布浮层** · 站点 `CanvasOverlay.astro`；地址 `#overlay=<节 id>[&frame=<帧 id>]`
-在文章页上看一节帧的浮层，像看大图：这一节的帧按同一缩放并排，帧可以点、可以操作，左右键在有画布的节之间切换（纯文字的节跳过），Esc 关闭，不离开文章页。浮层里不做标注。
+**画布浮层** · 站点 `CanvasOverlay.astro`；地址 `#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]`
+在文章页上打开的整张画布视图：里面是一份嵌入版工作台（`?embed=overlay`，没有左栏），能交互、标注、平移、缩放，Esc 或关闭按钮回到正文原来的滚动位置，不离开文章页。顶栏“画布视图”、卡片、右栏的画布标注都打开它。
 要避开：单说 overlay（board-schema 里 overlay 指 iOS 的 sheet、tabbar，标注客户端里 `#ann-overlay` 是钉子层）。
 
 **画布视图** · 工作台 `/workbench/?page=<页 id>`，加 `&section=<节 id>` 落到那一节；board 由 `src/server/lib/article-board.js` 的 `deriveArticleBoard` 从正文派生
-一篇文章的全部带画布的节按行排开的那张大画布，一行一节，用来集中修改和做画布标注。它由 `index.mdx` 自动生成，作者不写 board.json。文章页顶栏的“画布视图”、卡片的“打开画布 →”、工作台左栏的文章行都打开它。没有画布节的文章没有画布视图。
+一篇文章的全部带画布的节按行排开的那张大画布，一行一节，用来集中修改和做画布标注。它由 `index.mdx` 自动生成，作者不写 board.json。工作台左栏的文章行打开它；文章页顶栏的“画布视图”和卡片的“打开画布 →”在文章上以画布浮层打开它，修饰键点才在新标签页整页打开。直接打开时左上角有“← 文章标题”回正文。没有画布节的文章没有画布视图。
 要避开：“画布页”“文章画布页”“文章画布”（指同一个东西，统一说画布视图）；拿“页”单指它；单说“画布”而不说明是画布组件、画布卡片还是画布视图。
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`

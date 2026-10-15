@@ -219,8 +219,8 @@ main { min-width:0; }
 .cc-hit:focus-visible { outline:2px solid var(--pp-focus-ring); outline-offset:3px; }
 .cc-frame:hover .cc-box { outline:2px solid var(--pp-focus-ring); outline-offset:3px; }
 
-/* 画布浮层（CanvasOverlay.astro + canvas-overlay-client.js）：点卡片里的帧打开，一节的帧并排、同一缩放、可交互。
-   dialog 铺满视口，自己的背景就是暗色遮罩（不靠 ::backdrop 继承变量），面板照卡片的样子放大。 */
+/* 画布浮层（CanvasOverlay.astro + canvas-overlay-client.js）：在文章上开整张画布（嵌入版工作台，可标注、平移、缩放）。
+   dialog 铺满视口，自己的背景就是暗色遮罩（不靠 ::backdrop 继承变量），面板四周露 24px 遮罩，关掉回到正文原位。 */
 html.pp-ov-lock { overflow:hidden; }
 .pp-ov { position:fixed; inset:0; width:100%; height:100%; max-width:none; max-height:none; margin:0; padding:24px; border:0;
          background:var(--pp-scrim); color:var(--pp-text); overflow:hidden; }
@@ -233,50 +233,19 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-head .kind { font-size:var(--pp-fs-xs); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--pp-text-muted); }
 .ov-head .ref { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); color:var(--pp-accent-text); font-weight:600; }
 .ov-head .t { margin:0; font-size:var(--pp-fs-sm); line-height:1.4; letter-spacing:0; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-.ov-head .meta { color:var(--pp-text-muted); font-size:var(--pp-fs-xs); white-space:nowrap; }
 .ov-head .sp { flex:1; }
-.ov-nav { display:inline-flex; gap:4px; }
 .btn.ov-ic { width:32px; height:32px; padding:0; display:inline-grid; place-items:center; font-size:var(--pp-fs-lg); line-height:1; }
-.ov-strip { position:relative; flex:1; min-height:0; display:flex; align-items:center; gap:28px; padding:24px 28px; overflow-x:auto; overflow-y:hidden;
-            overscroll-behavior:contain; scrollbar-width:thin; outline:none; }
-.ov-frame { position:relative; flex:none; margin:0; }
-.ov-frame:first-child { margin-left:auto; }
-.ov-frame:last-child { margin-right:auto; }
-.ov-frame .cap { display:flex; align-items:baseline; gap:6px; width:var(--ov-w, auto); margin-bottom:8px; font-size:var(--pp-fs-xs); line-height:1.4; color:var(--pp-text-muted);
-                 white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
-.ov-frame .cap b { font-family:var(--pp-font-mono); color:var(--pp-accent-text); font-weight:600; overflow:hidden; text-overflow:ellipsis; }
-.ov-shell { border-radius:var(--pp-r-3); transition:box-shadow .2s; }
-.ov-shell.natural { box-shadow:0 1px 8px rgba(0,0,0,.10); }
-.ov-shell.phone { box-shadow:0 0 0 1px var(--pp-border), 0 14px 32px -10px rgba(0,0,0,.30); }
-.ov-box { position:relative; overflow:hidden; border-radius:inherit; background:var(--pp-fill); }
-/* 手机帧：盒子就是机身（.ios-device），圆角 --ov-r 由脚本按机身圆角 × 缩放写上。
-   帧里带 backdrop-filter 的导航栏在缩放后的 iframe 里会越出圆角裁切（Chromium，overflow 和 clip-path 都裁不住），
-   画出的是 iframe 底色的模糊：底色取面板色，越出的那一块就看不见。 */
-.ov-frame { --ov-r:calc(55px * var(--ov-s, 1)); }
-.ov-shell.phone { border-radius:var(--ov-r); }
-.ov-box.phone { background:var(--pp-surface); }
-.ov-box.phone iframe { background:var(--pp-surface); }
-.ov-box.natural, .ov-box.doc { background:#fff; }
-.ov-shell.doc { box-shadow:0 1px 8px rgba(0,0,0,.10); }
-.ov-box iframe { position:absolute; left:0; top:0; border:0; transform-origin:0 0; background:transparent;
-                 /* 帧页不声明 color-scheme（normal）；iframe 元素若继承站点的 light / dark，两边不一致，浏览器就给帧铺不透明底色。 */
-                 color-scheme:normal; }
-.ov-box .ph { position:absolute; inset:0; display:grid; place-items:center; align-content:center; gap:4px; padding:12px; text-align:center; color:var(--pp-text-muted); font-size:var(--pp-fs-ui); background:var(--pp-fill); }
-.ov-box.missing { background:var(--pp-surface); border:1.5px dashed var(--pp-danger); clip-path:none; }
-.ov-box.missing .ph { background:transparent; color:var(--pp-danger); }
-.ov-frame.flash .ov-shell { box-shadow:0 0 0 3px var(--pp-accent-solid), 0 14px 32px -10px rgba(0,0,0,.30); }
-@media (prefers-reduced-motion: reduce) { .ov-shell { transition:none; } }
+.ov-body { position:relative; flex:1; min-height:0; background:var(--pp-surface); }
+/* 工作台自己管深浅色（跟系统），iframe 不继承站点的 color-scheme，免得浏览器给它铺一层不透明底色。 */
+.ov-canvas { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; color-scheme:normal; }
 @media (max-width:600px) {
-  /* 手机：整屏的 sheet，帧按宽度缩，横向滑动，一帧一停。 */
+  /* 手机：整屏的 sheet。 */
   .pp-ov { padding:0; }
   .ov-panel { border:0; border-radius:0; }
-  .ov-head { flex-wrap:wrap; padding:8px 8px 8px 12px; }
+  .ov-head { padding:8px 8px 8px 12px; }
   .ov-head .kind { display:none; }
   .ov-head .t { flex:1 1 0; }
-  .ov-head .meta { order:3; flex-basis:100%; display:none; }
   .ov-head .sp { display:none; }
-  .ov-strip { gap:16px; padding:16px; scroll-snap-type:x mandatory; }
-  .ov-frame { scroll-snap-align:center; }
 }
 
 /* 正文评论（pp3）：高亮、浮动“评论”钮、右栏线程。DOM 由注入的标注客户端
@@ -334,6 +303,15 @@ mark.pp-hl.draft { background:var(--pp-highlight-on); }
 .pp-chev { flex:none; display:inline-block; width:6px; height:6px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:translateY(-2px) rotate(45deg); }
 .pp-chev.up { transform:translateY(1px) rotate(-135deg); }
 .pp-fold { line-height:1; padding:4px 6px; }
+/* 画布标注（@canvas）穿插在右栏里：排在所属节画布卡片的位置。标明“画布标注”和帧名，有截图放缩略图；
+   整张卡点了在文章上开画布浮层、定位到这颗钉子。四态、已关闭原地收起同正文评论。 */
+.pp-kind { color:var(--pp-text-muted); font-size:var(--pp-fs-xs); font-weight:600; letter-spacing:.04em; flex:none; }
+.pp-canvas-open { display:flex; align-items:center; gap:8px; margin:0 0 8px; color:var(--pp-text-muted); font-size:var(--pp-fs-xs); text-decoration:none; min-width:0; }
+.pp-canvas-open:hover .pp-canvas-frame b { text-decoration:underline; }
+.pp-canvas-open:focus-visible { outline:2px solid var(--pp-focus-ring); outline-offset:2px; border-radius:var(--pp-r-1); }
+.pp-canvas-frame { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.pp-canvas-frame b { margin-left:6px; font-family:var(--pp-font-mono); font-weight:600; color:var(--pp-accent-text); }
+.pp-canvas-shot { flex:none; width:56px; height:40px; object-fit:cover; border-radius:var(--pp-r-1); border:1px solid var(--pp-border); background:var(--pp-fill); }
 .pp-rail-note { color:var(--pp-warning); font-size:var(--pp-fs-xs); margin:0; }
 .pp-rail-note:empty { display:none; }
 

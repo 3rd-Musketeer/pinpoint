@@ -1,10 +1,9 @@
 ---
-// 画布浮层（lightbox）：点正文卡片里的帧，在文章上面打开这一节的全部帧，帧可交互（site/README.md「画布浮层」）。
-// 一篇文章一个，空壳；内容由 lib/canvas-overlay-client.js 按卡片的 data-* 填。
+// 画布浮层：在文章上开整张画布（可标注、平移、缩放），关掉回到原来的滚动位置（site/README.md「画布浮层」）。
+// 一篇文章一个，空壳；里面是一份嵌入版工作台（/workbench/?page=<页 id>&section=<节>&embed=overlay），
+// 由 lib/canvas-overlay-client.js 在第一次打开时装上，之后关了也留着，再开直接定位。
 // 首尾的 data-ov-guard 把 Tab 绕回浮层里（modal dialog 自己会把焦点放出到浏览器界面）。
 // data-pp-nocomment：浮层里选字不出正文“评论”（src/client/prose-comments.js 的 SKIP_SELECTOR）。
-// data-ov-width：这一节有文档帧（HTML 帧）时出现的“手机 / 桌面”切换，和卡片头的是同一个状态（卡片的 data-doc-width）。
-import { DOC_WIDTHS } from '../lib/canvas-card.js';
 ---
 <dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">
   <span class="ov-guard" tabindex="0" data-ov-guard="start"></span>
@@ -13,21 +12,11 @@ import { DOC_WIDTHS } from '../lib/canvas-card.js';
       <span class="kind">画布</span>
       <span class="ref" data-ov-num></span>
       <h2 class="t" id="pp-ov-title" data-ov-title></h2>
-      <span class="meta" data-ov-meta></span>
       <span class="sp"></span>
-      <span class="pp-seg" role="group" aria-label="页面宽度" data-ov-width hidden>
-        {Object.entries(DOC_WIDTHS).map(([key, view]) => (
-          <button type="button" data-width={key} aria-pressed="false" title={`按${view.label}宽度看（${view.width} px）`}>{view.label}</button>
-        ))}
-      </span>
-      <span class="ov-nav">
-        <button class="btn ov-ic" type="button" data-ov-prev aria-label="上一节">‹</button>
-        <button class="btn ov-ic" type="button" data-ov-next aria-label="下一节">›</button>
-      </span>
-      <a class="btn" data-ov-canvas href="/workbench/" target="_top">打开画布 →</a>
-      <button class="btn ov-ic" type="button" data-ov-close aria-label="关闭">×</button>
+      <a class="btn" data-ov-canvas href="/workbench/" target="_top" title="离开正文，整页打开画布视图">整页打开</a>
+      <button class="btn ov-ic" type="button" data-ov-close aria-label="关闭画布，回到正文">×</button>
     </header>
-    <div class="ov-strip" data-ov-strip tabindex="-1" autofocus></div>
+    <div class="ov-body" data-ov-body></div>
   </div>
   <span class="ov-guard" tabindex="0" data-ov-guard="end"></span>
 </dialog>

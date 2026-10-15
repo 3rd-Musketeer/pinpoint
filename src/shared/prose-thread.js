@@ -132,3 +132,39 @@ export function isSendKey(e) {
   if (e.shiftKey || e.isComposing || e.keyCode === 229) return false;
   return true;
 }
+
+/**
+ * 右栏里穿插的画布标注（2026-10-15）：@canvas 账本里落在本篇画布卡片上的行。
+ * `cards` 是正文里的画布卡片，文章顺序：[{ section, page, frames: [{ id, title }] }]。
+ * 一行按帧 id（screenId）归到它所在的那张卡片；不在任何卡片上的（帧删了、别的页的行）不进右栏。
+ * → [{ row, section, frameId, frameTitle, card }]，card 是卡片在文章里的序号，排序键由调用方按它取。
+ */
+export function canvasRailItems(rows, cards) {
+  const byFrame = new Map();
+  (cards || []).forEach((card, index) => {
+    for (const f of card.frames || []) {
+      if (f && f.id && !byFrame.has(f.id)) byFrame.set(f.id, { card: index, section: card.section, page: card.page || '', title: f.title || f.id });
+    }
+  });
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    if (!row || isProseRow(row)) return false;
+    const at = byFrame.get(row.screenId);
+    return Boolean(at && (!row.pageId || !at.page || row.pageId === at.page));
+  }).map((row) => {
+    const at = byFrame.get(row.screenId);
+    return { row, section: at.section, frameId: row.screenId, frameTitle: at.title, card: at.card };
+  });
+}
+
+/**
+ * 画布标注正文里的目标记号 `[@t:iN]` 换成它指着的元素文字（“…”），找不到就去掉；
+ * 右栏只读不改，存盘的正文不动。
+ */
+export function canvasContentText(row) {
+  const targets = Array.isArray(row && row.targets) ? row.targets : [];
+  return String((row && row.content) || '').replace(/\[@t:(i[1-9][0-9]*)\]/g, (_, ref) => {
+    const t = targets.find((x) => x && x.ref === ref);
+    const text = t && typeof t.text === 'string' ? t.text.trim() : '';
+    return text ? `“${text.length > 24 ? `${text.slice(0, 23)}…` : text}”` : '';
+  }).replace(/[ \t]{2,}/g, ' ').trim();
+}
