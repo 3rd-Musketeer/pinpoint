@@ -3,6 +3,7 @@
  * renders from it, the browser script (canvas-card-client.js) counts badges
  * with it, node --test covers it.
  */
+import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 
 /**
  * Frame preview inside the card and the overlay: same-origin render endpoint,
@@ -50,7 +51,7 @@ export const pageLedgerUrl = (pageId, docUrl) =>
  * a copy so they count and group like canvas rows. Rows that already name a frame are kept as they are.
  */
 export function rowsOnFrame(doc, frameId) {
-  return (doc?.annotations || []).map((a) => (a && !a.screenId ? { ...a, screenId: frameId } : a));
+  return ledgerFrameRows(doc, [frameId]);
 }
 
 /**
@@ -162,7 +163,7 @@ export function cardModel(canvas, sectionId, num = '') {
 export function pendingCount(doc, pageId, frameIds) {
   const ids = new Set(frameIds);
   return (doc?.annotations || []).filter((a) => a && (a.status || 'open') !== 'close'
-    && ids.has(a.screenId) && (!a.pageId || a.pageId === pageId)).length;
+    && (a.screenIds || [a.screenId]).some((id) => ids.has(id)) && (!a.pageId || a.pageId === pageId)).length;
 }
 
 /** The card badge text for `n` pending annotations ('' = no badge). */

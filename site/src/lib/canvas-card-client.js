@@ -1,5 +1,6 @@
 // 浏览器端：画布卡片的帧尺寸与未处理标注数。卡片的数据全在 [data-pp-canvas] 的 data-* 上（Canvas.astro）。
-import { badgeText, canvasLedgerUrl, docWidthKey, pageLedgerUrl, pendingCount, rowsOnFrame, shellBox } from './canvas-card.js';
+import { badgeText, canvasLedgerUrl, docWidthKey, pageLedgerName, pageLedgerUrl, pendingCount, shellBox } from './canvas-card.js';
+import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 
 // 帧 iframe 是 /api/frame?…&embed=card：服务端不出图注，机壳带 data-pp-stage（phone / comp / doc），手机机身带 data-pp-device
 // （src/server/lib/frame-doc.js markEmbedStage，契约在 docs/projects.md「给站点卡片的接口」）。这里只认 data-pp-stage，
@@ -154,11 +155,16 @@ async function readJson(url) {
 // 一起读进来、记到那一帧上，卡片头的数含它们。
 async function refreshBadges(cards) {
   await Promise.all([...byPage(cards)].map(async ([page, list]) => {
-    const pages = list.flatMap((card) => [...card.querySelectorAll('.cc-frame[data-doc-url]')])
-      .map((fig) => ({ id: fig.dataset.screen, url: fig.dataset.docUrl }));
+    const aliases = new Map();
+    for (const fig of list.flatMap((card) => [...card.querySelectorAll('.cc-frame[data-doc-url]')])) {
+      const key = pageLedgerName(fig.dataset.docUrl);
+      if (!aliases.has(key)) aliases.set(key, { url: fig.dataset.docUrl, ids: [] });
+      aliases.get(key).ids.push(fig.dataset.screen);
+    }
+    const pages = [...aliases.values()];
     const [doc, ...docs] = await Promise.all([readJson(canvasLedgerUrl(page)), ...pages.map((p) => readJson(pageLedgerUrl(page, p.url)))]);
     if (!doc && !docs.some(Boolean)) { paintBadges(list, page, null); return; }
-    const annotations = [...((doc && doc.annotations) || []), ...docs.flatMap((d, i) => (d ? rowsOnFrame(d, pages[i].id) : []))];
+    const annotations = [...((doc && doc.annotations) || []), ...docs.flatMap((d, i) => ledgerFrameRows(d, pages[i].ids))];
     paintBadges(list, page, { annotations });
   }));
 }

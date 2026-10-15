@@ -31,7 +31,7 @@ const instanceRoot = path.join(siteRoot, '.astro-cache', process.argv.includes('
 // 仓库代码（src/server/lib、src/workbench/lib）走模块加载，不受 fs.allow 限制。
 // 启动时定好，之后新登记的 project 要重启 dev 才能读到它的资源。
 function devFsAllow() {
-  return [siteRoot, path.join(repoRoot, 'node_modules'), ...projects.map((p) => p.dir)];
+  return [siteRoot, path.join(repoRoot, 'node_modules'), path.join(repoRoot, 'src/shared/ledger-frames.js'), ...projects.map((p) => p.dir)];
 }
 
 // Vite 带 base 时只认 base 下的请求，页面 URL（/<project>/…）会被它拒掉。把 base 外的请求补上前缀交回去，

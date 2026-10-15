@@ -9,6 +9,7 @@ import { createOpsLedger } from './ops-ledger.js';
 import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
 import { CANVAS_LEDGER } from '../../shared/project-ids.js';
+import { ledgerFrameRows } from '../../shared/ledger-frames.js';
 
 /**
  * options：server、entry、maxConflicts、onChange 同 createOpsLedger；
@@ -20,19 +21,24 @@ export function createCanvasLedgers(options) {
   var books = [];
   var seen = {};
   function add(name, frame) {
-    if (!name || seen[name]) return;
-    seen[name] = true;
-    books.push({
+    if (!name) return;
+    if (seen[name]) {
+      if (frame && !seen[name].frames.includes(frame)) seen[name].frames.push(frame);
+      return;
+    }
+    var book = {
       name: name,
       slug: annotationSlug(name),
-      frame: frame || '',
+      frames: frame ? [frame] : [],
       ops: make({
         server: options.server, entry: options.entry, ledger: name, maxConflicts: options.maxConflicts,
         // 画布与页面的账本都是工作台写的，这里只改状态，path 原样带回去。
         path: function (disk) { return disk; },
         onChange: options.onChange,
       }),
-    });
+    };
+    seen[name] = book;
+    books.push(book);
   }
   add(CANVAS_LEDGER, '');
   (options.pages || []).forEach(function (page) {
@@ -54,9 +60,7 @@ export function createCanvasLedgers(options) {
     rows: function () {
       var out = [];
       books.forEach(function (b) {
-        b.ops.rows().forEach(function (row) {
-          out.push(b.frame && row && !row.screenId ? Object.assign({}, row, { screenId: b.frame }) : row);
-        });
+        out.push.apply(out, ledgerFrameRows({ annotations: b.ops.rows() }, b.frames));
       });
       return out;
     },

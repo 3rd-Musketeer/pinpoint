@@ -4,6 +4,29 @@ import assert from 'node:assert/strict';
 import { createCanvasLedgers } from './canvas-ledgers.js';
 import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
+import { pendingCount } from '../../../site/src/lib/canvas-card.js';
+
+test('共享 HTML 账本在每个别名上计数，同节只计一次，右栏与状态写入只有一份', () => {
+  const log = [];
+  const url = '/sites/p_a/shared.html';
+  const key = pageKeyFromPathname(url);
+  const books = createCanvasLedgers({ entry: 'p_a', make: fakeMake(log), pages: [{ id: 'a', url }, { id: 'b', url }] });
+  const check = (n) => {
+    const doc = { annotations: books.rows() };
+    assert.equal(pendingCount(doc, 'p_a', ['a']), n);
+    assert.equal(pendingCount(doc, 'p_a', ['b']), n);
+    assert.equal(pendingCount(doc, 'p_a', ['a', 'b']), n);
+    assert.equal(books.rows().length, 1);
+  };
+  books.accept(key, { revision: 1, annotations: [{ id: 'h', status: 'open' }] });
+  check(1);
+  for (const [revision, status] of [[2, 'done'], [3, 'close'], [4, 'open']]) {
+    books.remote({ page: annotationSlug(key), revision, annotations: [{ id: 'h', status }] });
+    check(status === 'close' ? 0 : 1);
+  }
+  books.enqueue({ op: 'status', id: 'h', status: 'close' });
+  assert.deepEqual(log.filter((x) => x[0] === 'enqueue'), [['enqueue', key, 'h', 'close']]);
+});
 
 // 假账本：记下收到的东西，rows 就是最近一次 accept / remote 的行。
 function fakeMake(log) {
