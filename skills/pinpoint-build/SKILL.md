@@ -1,39 +1,46 @@
 ---
 name: pinpoint-build
-description: 在 pinpoint 里写 article（设计文档）：建 project、写 index.mdx 的 section 与画布、写帧和组件、写 wiki 词条；也覆盖改存量页的帧与 board.json。用户说“写一篇文章”“加一节”“把这几帧放进文章”“加个 wiki 词条”“搭个原型”“加一屏”“改 board”时，先读本 skill 再动手：目录是定死的，帧的写法有几条硬约束，跳过容易白干。
+description: 在 pinpoint 里写 article（设计文档）：建文章（缺省进 notes，要归类时 ppnt mv）、写 index.mdx 的 section 与画布、写帧和组件、写 wiki 词条；也覆盖改存量页的帧与 board.json。用户说“写一篇文章”“加一节”“把这几帧放进文章”“加个 wiki 词条”“搭个原型”“加一屏”“改 board”时，先读本 skill 再动手：目录是定死的，帧的写法有几条硬约束，跳过容易白干。
 ---
 
 # pinpoint-build
 
-新工作都写成 article（文章）：一个 project 下有多篇文章，一篇文章由 section（节）组成，一节里可以放一个画布组件 `<Canvas>`，画布里列出这一节的帧。正文里还可以放图 `<Figure>`：帧画界面的样子，进画布视图、给 owner 标注；图讲一件事怎么运转，只在正文里。每篇文章有两个看法：读者看的文章页 `/<project>/<article>/`，和把所有带画布的节按行排开、集中修改用的画布视图。本 skill 讲文件放在哪、怎么写、怎么查错，以及画哪些帧（第 3 节“画哪些帧”）；正文的文字怎么写不归本 skill 管。
+新工作都写成 article（文章）。文章是主体；project 只是装一批文章的容器，读者只在文章标题下看到它的小标签。一篇文章由 section（节）组成，一节里可以放一个画布组件 `<Canvas>`，画布里列出这一节的帧。正文里还可以放图 `<Figure>`：帧画界面的样子，进画布视图、给 owner 标注；图讲一件事怎么运转，只在正文里。每篇文章有两个看法：读者看的文章页 `/<project>/<article>/`，和把所有带画布的节按行排开、集中修改用的画布视图。本 skill 讲文件放在哪、怎么写、怎么查错，以及画哪些帧（第 3 节“画哪些帧”）；正文的文字怎么写不归本 skill 管。
 
 读标注、处理正文评论走 [`pinpoint-annotate`](../pinpoint-annotate/SKILL.md)。命令里 `ppnt` 和 `pinpoint` 是同一个入口。机制的权威：project、画布视图、页 id 与错误在 [`docs/projects.md`](../../docs/projects.md)；帧、组件、编译在 [`docs/board-schema.md`](../../docs/board-schema.md)；`Section`、`Canvas`、`[[ ]]` 的站点写法在 [`site/README.md`](../../site/README.md)；词的意思在 [`CONTEXT.md`](../../CONTEXT.md)。
 
-## 1. 放进哪个 project
+## 1. 建一篇文章
 
-先跑 `ppnt list <关键词>`。它列出 project（下面每篇文章一行 `<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
-
-- 没有合适的 project、也不值得为它建一个（随手记一篇、还不知道归哪）：不写 project，文章进默认 project `notes`。`notes` 还没有时命令先建好并登记它：
+不用先想放哪个 project。随手写一篇，直接建，文章进默认 project `notes`：
 
 ```shell
 ppnt new article quick-idea --title 一个想法     # 建出 notes/quick-idea
 ```
 
-- 主题有自己的家、还没有 project：在这个主题的根目录（它所属的仓库或 topic）下建 project，命令写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
+它写出 `articles/quick-idea/index.mdx`：frontmatter 带 title，正文是一节 `<Section id="overview">`，并打印文章页网址和下一步。这一节可以直接改成你的第一节，帧放进它或新加的节都行（节和画布的写法见第 3 节，帧见第 4 节）。之后命令里这篇写成 `notes/quick-idea`，文章页是 `/notes/quick-idea/`。不用再登记，服务、站点和 CLI 每次都重读磁盘。`notes` 是一个普通 project，根目录在 owner 机器上是 `~/workspace/mori-ws/notes/`，文章在 `<根>/docs/pinpoint/articles/` 下；`ppnt list notes` 的“根目录”一行打印它。`notes` 还没登记时命令先建好并登记它，输出第一行说明建在哪。
 
-```shell
-ppnt new project <project 根目录> --title "Areta browser use"     # id 缺省取目录名，--id 指定
-```
-
-- 建一篇文章（主题已有 project 时直接从这一步开始）：
+主题已经有自己的 project（`ppnt list <关键词>` 列出 project 和下面每篇文章 `<project>/<article>`），就直接建在那里：
 
 ```shell
 ppnt new article browser-use/payment-confirm --title 付款确认
 ```
 
-它写出 `articles/payment-confirm/index.mdx`：frontmatter 带 title，正文是一节 `<Section id="overview">`，并打印文章页网址。这一节可以直接改成你的第一节，帧放进它或新加的节都行（节和画布的写法见第 3 节，帧见第 4 节）。不用再登记，服务、站点和 CLI 每次都重读磁盘。
+要归类时再搬，用 `ppnt mv`。它连标注桶一起搬，页 id 和画布视图地址跟着换成新的，先加 `--dry-run` 看计划：
 
-project 是装一批相关文章和 wiki 词条的文件夹，id 是网址的第一段 `/<project>/`。project 的 title 只写一个短名字，例如 Vault、Areta browser use，不写成一句描述：读者在 blog 首页和文章标题下看到的是它的小标签。title 带冒号（全角或半角）或超过 24 个字符时，`ppnt check` 给一条提示。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。文章 id 以前用过、它的桶里还留着旧标注（文章删了或改了名）时 `new article` 也报错退出，不接旧标注：换一个 id；要不要 `ppnt prune` 清掉旧标注由 owner 定。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
+```shell
+ppnt mv notes/quick-idea browser-use/                 # 搬进已有的 project，保留文章 id
+ppnt mv notes/quick-idea browser-use/payment-retry    # 搬过去并改 id
+```
+
+`[[ ]]` 不会自动改，命令逐条列出指向它的引用。规则只有一条：同一个 project 里写 `[[名字]]`，跨 project 写 `[[<project id>:名字]]`。所以留在 `notes` 里指向它的要改成 `[[browser-use:quick-idea]]`，它自己指向 `notes` 里别的文章的也要加上 `notes:`。
+
+目标 project 还没有时，先在主题的根目录（它所属的仓库或 topic，例如 `topics/browser-use/`）建一个。命令在 `<根>/docs/pinpoint/` 下写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记；然后照上面搬：
+
+```shell
+ppnt new project <project 根目录> --title "Areta browser use"     # id 缺省取目录名，--id 指定
+```
+
+project 的 title 只写一个短名字，例如 Vault、Areta browser use，不写成一句描述：读者在首页和文章标题下看到的是它的小标签。title 带冒号（全角或半角）或超过 24 个字符时，`ppnt check` 给一条提示。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。文章 id 以前用过、它的桶里还留着旧标注（文章删了或改了名）时 `new article` 也报错退出，不接旧标注：换一个 id；要不要 `ppnt prune` 清掉旧标注由 owner 定。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
 
 ## 2. 目录（定死）
 
@@ -56,14 +63,14 @@ project 是装一批相关文章和 wiki 词条的文件夹，id 是网址的第
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`wiki/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式、资源和组件只有文章这一级：没有 project 级的 css、`assets/` 和 `components/`。几篇文章都要用的组件放进 kit。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
-- 文章目录不要手动改名或挪走：目录名是文章地址和页 id 的后半段，手动改了，旧页 id 下的标注和评论整桶成孤儿。改文章 id、换 project 用 `ppnt mv <project>/<a> <project2>/<b>`（目标写 `<project2>/` 保留 id），它连标注桶一起搬，先加 `--dry-run` 看计划；别的文章里的 `[[a]]` 它只列出来，要自己改。换 project id 用 `ppnt mv <旧 id> <新 id>`，换 project 根目录用 `ppnt mv <id> <新路径>`。
+- 文章目录不要手动改名或挪走：目录名是文章地址和页 id 的后半段，手动改了，旧页 id 下的标注和评论整桶成孤儿。改文章 id、换 project 用 `ppnt mv <project>/<a> <project2>/<b>`（目标写 `<project2>/` 保留 id），见第 1 节；别的文章里的 `[[a]]` 它只列出来，要自己改。换 project id 用 `ppnt mv <旧 id> <新 id>`，换 project 根目录用 `ppnt mv <id> <新路径>`。
 
 ## 3. 写 index.mdx
 
 ```mdx
 ---
 title: 浏览器任务里的付款和提交前确认
-summary: 一句话导语，project 首页和 [[ ]] 弹出卡片里显示它。
+summary: 一句话导语，首页、project 首页和 [[ ]] 弹出卡片里显示它。
 ---
 
 开头的正文……
@@ -112,7 +119,7 @@ JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成�
 - iOS 帧：根元素是 `.ios-app`（锁屏是 `.ios-lockscreen`），正文写在里面；机壳、状态栏、home 条由 loader 提供，帧里不写。`.ios-sheet`、`.ios-tabbar`、`.ios-sheet-backdrop` 与 `.ios-app` 同级，不放进 `.ios-app`。自定义顶栏和底栏的 inset 用 `--ios-safe-top` / `--ios-safe-bottom`，不写死像素。原因和症状见 board-schema“iOS 帧的硬约束”，画打开的 sheet 要写的 `open` 和 sheet 的内部结构也在那一节。
 - 一节里混着手机帧和裸组件帧时，在组件帧的文件顶层写 `export const shell = "comp";`。它只管这一帧，盖过 `<Canvas shell>`。不写的话，这一帧会被套进手机壳，工作台上显示 `ContractError … expected an ios-app` 的错误面板。
 - 文章没有 board.json，也就没有 board 里的 `comp` + `props` 条目。要展示组件的某个状态，就写一帧只渲染这个组件（`return <CardState state="approve" />;`），再加上帧级 shell。
-- 组件是印章：输入 props 和 children，输出 HTML，没有状态、事件和副作用。kit 的系统组件一律写 `import { Nav } from 'pinpoint/kit'`。本篇的组件放在本篇 `components/`，写 `import { X } from './components/X.jsx'`；本篇没有时编译器会落到 kit 的同名印章，这只是兜底，不要靠它引 kit。没有 project 级的组件：几篇文章都要用的组件手动把文件搬进 kit（`content/kits/ios/jsx/`，每个文件首行注释写了 props），搬完删掉各篇里的副本，因为本篇的同名文件优先。project 的 `docs/pinpoint/components/` 不参与编译，`ppnt check` 报 `project_components_dir`。
+- 组件是印章：输入 props 和 children，输出 HTML，没有状态、事件和副作用。kit 的系统组件一律写 `import { Nav } from 'pinpoint/kit'`。本篇的组件放在本篇 `components/`，写 `import { X } from './components/X.jsx'`；本篇没有时编译器会落到 kit 的同名印章，这只是兜底，不要靠它引 kit。没有 project 级的组件：几篇文章都要用的组件手动把文件搬进 kit（pinpoint 仓库的 `content/kits/ios/jsx/`，每个文件首行注释写了 props，并在同目录的 `index.js` 里导出），帧里改写 `import { X } from 'pinpoint/kit'`，搬完删掉各篇里的副本，因为本篇的同名文件优先。kit 在 pinpoint 仓库里，搬进去就是改那个仓库，照它的 `AGENTS.md` 提交。project 的 `docs/pinpoint/components/` 不参与编译，`ppnt check` 报 `project_components_dir`。
 - 本篇的样式写进 `article.css`，不要每帧各写一份。每一帧（包括 `comp`）都包在 kit 的 `.ios-root` 里，kit 用 `.ios-root button` 清掉了按钮的颜色、底色和边框，它比单个类名优先；自己的按钮样式写成 `.ios-root .<类名>`，或用 kit 的按钮印章。从别的文章复制组件时，一起复制它用到的那部分 `article.css`；组件里写死的 `/sites/<别的页 id>/assets/…` 路径也要改成本篇的。
 - 资源放 `assets/`，帧里写绝对路径 `/sites/<project>_<article>/assets/<文件>`。不写 `./assets/…`：工作台把帧内联进自己的页面，相对路径会解析到别处，图片加载失败。
 - 屏内交互用内联 `<script data-preview-script>` 或同名 sidecar `<帧 id>.js`（导出 `mount(root)`），写法见 board-schema“交互 frame”。
@@ -121,9 +128,9 @@ JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成�
 ## 5. `[[ ]]` 和 wiki 词条
 
 - `[[名字]]` 指向本 project 的 article（按 id）或 wiki 词条（按 `name`）。两者共用一个命名空间，比较时不分大小写，撞名是布局错误。
-- `[[名字|显示文字]]` 换显示的文字；`[[project:名字]]` 指别的 project 里的 article 或 wiki 词条。
+- `[[名字|显示文字]]` 换显示的文字；`[[project:名字]]` 指别的 project 里的 article 或 wiki 词条，`project` 写 project id，`名字` 和不带前缀时一样按 article id 或 wiki 词条的 `name` 解析（如 `[[vault:确认卡]]`）。
 - 找不到目标的是空 ref，合法：页面上显示成虚线，project 首页和文章的 wiki 抽屉会列出全部空 ref。还没定义的词可以先写成 `[[ ]]`，之后再补 wiki 词条。
-- wiki 词条是一个词的定义，一个文件一个，放在 `wiki/` 下：
+- wiki 词条是一个词的定义，一个文件一个，放在 `wiki/` 下。文件名是网址的一段，用短的英文小写加连字符（`wiki/confirm-card.md`），显示名写进 `name`：
 
 ```markdown
 ---
@@ -135,7 +142,7 @@ boundary: 一句话说清它管什么、不管什么。
 定义正文。正文里也能写 [[ ]]。
 ```
 
-- `name` 缺省用文件名，是 `[[ ]]` 的解析键；文件名（去掉 `.md`）是网址 `/<project>/wiki/<文件名>/`。旧的 `concepts/` 目录不再读，`ppnt check` 报 `wiki_dir_renamed`，把目录改名成 `wiki/` 即可。`status` 只能是 `占位`、`收敛中`、`已固定` 之一。`boundary` 缺省取正文第一段。每个值都是单行。
+- `name` 缺省用文件名，是 `[[ ]]` 的解析键；文件名（去掉 `.md`）是网址 `/<project>/wiki/<文件名>/`。词条只从 `wiki/` 读：project 里有 `concepts/` 目录时 `ppnt check` 报 `wiki_dir_renamed`，把目录改名成 `wiki/` 即可。`status` 只能是 `占位`、`收敛中`、`已固定` 之一。`boundary` 缺省取正文第一段。每个值都是单行。
 
 ## 6. 看结果、查错
 
@@ -145,10 +152,10 @@ boundary: 一句话说清它管什么、不管什么。
 - `ppnt show <project>/<article>`：每节一行 §n、字母、节 id、标题、帧数和 open 数，下面是帧（编号、帧 id、源文件）和网址。owner 说“第 2 节”“B1”时在这里对上。`ppnt show <project>` 列文章、wiki 词条、空 ref 和布局错误。
 - `ppnt shot <project>/<article>`：文章页整页的 PNG，命令打印文件路径和尺寸。`ppnt shot <project>/<article> §2` 截文章页上的第 2 节；`B1`、`C` 或帧 id 截画布视图上的一帧、一节；`--canvas` 截整个画布视图，文章里的 HTML 帧不在画布那一行，各按自己的地址截一张整页（402 宽），全是 HTML 帧时不出画布图，命令打一行“说明：”；HTML 帧里懒加载的 iframe 和图片会等它们加载完再截，15 秒还没加载完时打一行“注意”列出它们、退 1；`--figure <图 id>` 截正文里的一个图，浅色、深色各一张。服务要在跑；文章站点还在启动（503）时命令自己等，最多 `--timeout` 秒（缺省 60）。截到的文章页在正文中途断了（正文渲染出错）时，图照样存下，命令打一行“注意”指向 `ppnt check`，退 1。
 - `ppnt show <project> --uses <组件>`：用到这个组件的帧和图，最后给出每篇的截图命令。改了组件，照它截一遍；改了 `article.css`，截这篇的全部帧（`ppnt shot <project>/<article> --canvas`）。
-- `ppnt open <project>/<article> --print`：打印文章页和画布视图的网址；后面加 `§2` 给那一节，写 `<project>` 给首页、`llms.txt`、每篇文章和每个 wiki 词条页。不带 `--print` 时用浏览器打开。
+- `ppnt open <project>/<article> --print`：打印文章页和画布视图的网址；后面加 `§2` 给那一节，写 `<project>` 给 project 首页、`llms.txt`、每篇文章和每个 wiki 词条页。不带 `--print` 时用浏览器打开。
 - `ppnt build <project>/<article>`：编译这篇的全部帧和图到 dist，逐帧、逐图报 ok 或错误。`check` 已经编过一遍，`build` 用于要更新 dist 或 `--watch` 时。
 - 文章页 `https://pinpoint.localhost/<project>/<article>/`（隔离服务换成它的地址，`ppnt open` 打印的就是对的）：第一次打开显示“站点启动中”，就绪后自己刷新。用脚本或 `curl` 读文章页时，这几秒返回的是 503，等到 200 再读；服务重启后也一样。页级错误在页顶错误条，属于某一节的错误在那一节的卡片里，缺源文件的帧显示“缺帧 <id>”占位格。正文渲染出错时文章页可能只显示到正文开头，状态码仍是 200，所以查错看 `ppnt check`，不看状态码。
-- 画布视图 `https://pinpoint.localhost/workbench/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。旧地址 `/?page=…` 会跳到这里。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。画布视图底部横条的“阅读正文”回到文章页的当前节。
+- 画布视图 `https://pinpoint.localhost/workbench/?page=<project>_<article>`，加 `&section=<节 id>` 落到那一节。`?page=` 后面是页 id：文章地址的斜杠换成下划线，标注和评论也按它分桶。工作台左栏“文章”组按 project 列出每篇文章，点它也进画布视图；没有画布的文章点了在新标签页打开文章页。画布视图底部横条的“阅读正文”回到文章页的当前节。
 - 首页 `https://pinpoint.localhost/`：所有 project 的全部文章，最近改过的在前（frontmatter 写了 `date: YYYY-MM-DD` 用它，否则用 `index.mdx` 的修改时间）。工作台在 `https://pinpoint.localhost/workbench/`。
 - project 首页 `https://pinpoint.localhost/<project>/`：这个 project 的文章列表、wiki 词条和全部空 ref；`/<project>/wiki/` 只列 wiki 词条。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和 wiki 词条，就是别的 agent 读到的样子。

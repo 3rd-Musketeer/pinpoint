@@ -6,10 +6,10 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 ## 文章模型
 
-从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
+文章是主体，project 是装一批文章的容器。一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
-装一批相关文章和 wiki 词条的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/wiki/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。不想先挑 project 时写 `ppnt new article <article>`，文章进默认 project `notes`（owner 机器上在 `~/workspace/mori-ws/notes/`；没登记时命令先建好它，位置见 `docs/registry.md`“默认 project `notes`”，ADR 0045）。
+装一批相关文章和 wiki 词条的容器：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个 project 的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/wiki/<slug>/`、`/<project>/llms.txt`。写文章不用先挑 project：`ppnt new article <article>` 把文章建进默认 project `notes`（owner 机器上在 `~/workspace/mori-ws/notes/`；没登记时命令先建好它，位置见 `docs/registry.md`“默认 project `notes`”，ADR 0045），要归类时 `ppnt mv notes/<article> <project>/` 连标注一起搬。主题已有 project 时直接 `ppnt new article <project>/<article>`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章不用再登记。
 要避开：拿 project 指存量页或 board；把 project 当成文章的上级主题去写导语或描述。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
@@ -22,7 +22,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 
 **首页（全部文章）** · 网址 `/`；`site/src/pages/index.astro`，排序 `src/shared/article-feed.js`
 blog 式的文章列表：所有登记 project 的全部文章，最近改过的在前（frontmatter 写了 `date` 用它，否则用 `index.mdx` 的修改时间）。每条是标题、summary、所属 project 的小标签和日期。顶栏的“工作台”进工作台。
-要避开：拿“首页”单指 project 首页 `/<project>/`（那是一个文件夹里的文章列表，说“project 首页”）。
+要避开：拿“首页”单指 project 首页 `/<project>/`（那是一个 project 的文章列表，说“project 首页”）。
 
 **section（节）** · `index.mdx` 里的 `<Section id title>`；结构由 `src/shared/article-structure.js` 的 `articleStructure` 数出
 文章正文的一节。带画布组件的节同时是画布视图里的一行，两者是同一个东西：同一个 id，同一个顺序。`id` 在本篇内唯一，也是网页锚点和画布视图的定位参数 `&section=<id>`。纯文字的节只出现在文章页，不进画布视图。
@@ -45,7 +45,7 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
 **组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`content/kits/ios/jsx/`（kit）
-帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时找本篇；kit 的组件写 `pinpoint/kit`。跨文章复用的组件放进 kit。没有 project 级的组件：2026-10-15 删掉了 `docs/pinpoint/components/`，盘上还有这个目录时 `ppnt check` 报布局错误 `project_components_dir`（ADR 0045）。
+帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时找本篇；kit 的组件写 `pinpoint/kit`。跨文章复用的组件放进 kit。没有 project 级的组件：project 里有 `docs/pinpoint/components/` 目录时，它不参与编译，`ppnt check` 报布局错误 `project_components_dir`（ADR 0045）。
 要避开：拿“组件”指 section 组件或工作台自己的 React 组件（后者说“工作台组件”）。
 
 **画布卡片** · 站点 `site/src/components/Canvas.astro`，DOM 根 `[data-pp-canvas]`
@@ -73,7 +73,7 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 要避开：把 id 起成编号的样子（`c1b-detail`）；在文章正文里写字母编号；“图纸号”“引用号”“canvas ref”（都指编号）。CLI 的 `<引用>` 参数比编号宽，`#12`、`§2`、帧 id 也算，见“引用地址”。
 
 **wiki 词条** · `<project 根>/docs/pinpoint/wiki/<slug>.md`；词条页 `/<project>/wiki/<slug>/`，词条列表 `/<project>/wiki/`
-一个词的定义：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。界面上一个 project 的全部词条合称 wiki（project 首页的“wiki”、文章页顶栏的“wiki”抽屉、`ppnt list` 的“N 条 wiki”）。2026-10-15 之前叫 concept（概念），目录是 `concepts/`，旧地址 `/<project>/concepts/<slug>/` 301 到新地址；盘上还有 `concepts/` 目录时 `ppnt check` 报布局错误 `wiki_dir_renamed`（ADR 0045）。代码里仍叫 concept：`project.concepts`、`kind: 'concept'`、`CONCEPT_STATUSES`、内容集合 `concepts`。
+一个词的定义：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。界面上一个 project 的全部词条合称 wiki（project 首页的“wiki”、文章页顶栏的“wiki”抽屉、`ppnt list` 的“N 条 wiki”）。词条只从 `wiki/` 读：project 里有 `concepts/` 目录时 `ppnt check` 报布局错误 `wiki_dir_renamed`；地址 `/<project>/concepts/<slug>/` 301 到 `/<project>/wiki/<slug>/`（ADR 0045）。代码里仍叫 concept：`project.concepts`、`kind: 'concept'`、`CONCEPT_STATUSES`、内容集合 `concepts`。
 要避开：把 wiki 词条叫文章的一种（它没有节和画布）；在界面和文档里再说“概念”“concept 页”。
 
 **`[[ ]]` 引用与空 ref** · `src/shared/refs.js`；比较键 `refKey`
@@ -119,7 +119,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 ## 资产与服务
 
 **kit** · `content/kits/ios/`（`ios-kit.css`、`ios-kit.js`、`jsx/`）
-积累下来的设计规范：tokens、基础样式、系统组件的 JSX 印章。帧写 `import { Nav } from 'pinpoint/kit'` 引用。跨 project 复用的组件手动搬进这里。现在只有 iOS 一份。
+积累下来的设计规范：tokens、基础样式、系统组件的 JSX 印章。帧写 `import { Nav } from 'pinpoint/kit'` 引用。跨文章复用的组件手动搬进这里。现在只有 iOS 一份。
 要避开：把 kit 当成产品本身。
 
 **源码与 dist** · dist 在 `~/.pinpoint/dist/<页 id>/`；编译器 `src/server/lib/page-compiler.js`
@@ -127,7 +127,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：拿“产物”单说 dist（存量页的大纲里“产物”另有所指，见存量页一节）。
 
 **registry（登记表）** · `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；读 `src/server/lib/registry.js`，写 `src/server/lib/registry-store.js`
-声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / mv / remove`。
+声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / mv / remove`。
 要避开：手改 registry 文件。
 
 **登记过才注入** · 注入片段 `src/server/lib/annotate-snippet.js`
@@ -181,7 +181,7 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：和 registry 条目混用；代码里两者都叫 entry，`board-entries.js` 里的是这一个。
 
 **registry 条目** · `~/.pinpoint/registry.json` 的 `entries[]`
-登记表里的一条：`{id, title?, kind: "dir" | "file" | "url", path? | url?, board?}`，每一条是“页面”组里的一行存量页，页 id 就是它的 `id`（`pinpoint add --id` 指定）。
+登记表里的一条：`{id, title?, kind: "dir" | "file", path, board?}`，每一条是“页面”组里的一行存量页，页 id 就是它的 `id`（`pinpoint add --id` 指定）。
 要避开：和 board 条目混用。
 
 **画布形态与文档形态** · 舞台按选中的条目切换

@@ -14,8 +14,8 @@ export const USAGE = `用法：ppnt <命令> [参数]（ppnt 和 pinpoint 是同
 ${ADDRESS}
 
 开始
-  new project <目录>                    建 project：写 docs/pinpoint/project.json 和空目录，并登记
   new article [<project>/]<article>    建一篇文章：写只有一节的 index.mdx，打印网址；不写 project 进默认的 notes
+  new project <目录>                    建 project：写 docs/pinpoint/project.json 和空目录，并登记（文章要归类时用 mv 搬进来）
   dev --sandbox [<目录>]                起一个隔离服务（临时数据目录、登记表、端口），打印要 export 的变量
 
 文章
@@ -183,9 +183,10 @@ new article：在 project 里建 articles/<article>/index.mdx，frontmatter 写 
   --json               结构化输出：{ kind, address, files, skipped, registered, urls, next }
 ${REGISTRY_FLAG}
 
-例：ppnt new project ~/work/browser-use --title "Browser Use"
+例：ppnt new article quick-idea                         # 进默认 project：notes/quick-idea
     ppnt new article browser-use/payment-confirm --title 付款确认
-    ppnt new article quick-idea                         # 进默认 project：notes/quick-idea`,
+    ppnt new project ~/work/browser-use --title "Browser Use"
+    ppnt mv notes/quick-idea browser-use/              # 之后归类：搬进 browser-use，保留 id`,
   },
   open: {
     usage: 'ppnt open <目标> [§2 | 节 id | wiki 词条名] [--print] [--json]',

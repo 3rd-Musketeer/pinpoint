@@ -3,7 +3,7 @@
 **登记过才注入。** annotate client 只落在登记过的目标上，其余一切打开的是逐字节相同、
 零标注面的页面。登记表装两类东西：project（文章的家，目录与读取见 [`docs/projects.md`](projects.md)）和存量页的来源
 （目录、单个 HTML 文件）。本文是这条契约的完整形状：登记表长什么样、怎么写、client 有哪几条投递路径。
-词的定义见 [`CONTEXT.md`](../CONTEXT.md)；登记 project 的步骤见
+词的定义见 [`CONTEXT.md`](../CONTEXT.md)；建文章、建 project 和登记的步骤见
 [`skills/pinpoint-build/SKILL.md`](../skills/pinpoint-build/SKILL.md) 第 1 节。
 
 ## 登记表
@@ -251,7 +251,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 ### `ppnt open <目标> [§2 | 节 id | wiki 词条名]`
 
-打一篇文章、一节、一个 project 或一个 wiki 词条页的网址（`bin/cli/open.js`），不带 `--print` 时再用系统浏览器打开第一个。文章给文章页和画布视图（纯文字的文章没有画布视图）；`§2` 或节 id 给文章页锚点和 `/?page=<页 id>&section=<节 id>`；project 给首页、`llms.txt`、每篇文章和每个 wiki 词条页。网址前缀是 `PINPOINT_ORIGIN`，所以在隔离服务下打出的就是隔离服务的地址。存量页退 2，并打出它在工作台里的网址。
+打一篇文章、一节、一个 project 或一个 wiki 词条页的网址（`bin/cli/open.js`），不带 `--print` 时再用系统浏览器打开第一个。文章给文章页和画布视图（纯文字的文章没有画布视图）；`§2` 或节 id 给文章页锚点和 `/workbench/?page=<页 id>&section=<节 id>`；project 给 project 首页、`llms.txt`、每篇文章和每个 wiki 词条页。网址前缀是 `PINPOINT_ORIGIN`，所以在隔离服务下打出的就是隔离服务的地址。存量页退 2，并打出它在工作台里的网址。
 
 ### `ppnt mark … --note` 和 `ppnt reply`
 

@@ -1,7 +1,7 @@
 # project：目录、登记与读取
 
-project 是文章模型的顶层：一个 project 下面有多篇 article（设计文档）和多条 wiki 词条（代码里叫 concept）。
-project 只是装一批文章的容器，承载信息的是文章（ADR 0044）：读者面前不显示 project 标题，`title` 只写短名字。
+project 是装一批 article（设计文档）和 wiki 词条（代码里叫 concept）的容器，承载信息的是文章（ADR 0044）：
+读者面前不显示 project 标题，`title` 只写短名字。
 一个 project 在 registry 里登记成一条 `kind: "project"` 的条目，`path` 是 project 根目录，
 内容住在根目录下的 `docs/pinpoint/`。article 与 wiki 词条的定义见 [`CONTEXT.md`](../CONTEXT.md)。
 
@@ -26,7 +26,7 @@ project 只是装一批文章的容器，承载信息的是文章（ADR 0044）�
 - article id 就是 `articles/` 下的目录名，同一个模式。`wiki` 和 `concepts` 不能当 article id：`/<project>/wiki/` 是 wiki 页，`/<project>/concepts/` 是它的旧地址（301 到 `/<project>/wiki/`）。
 - 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `wiki` 或 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
 - `wiki/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`（读取结果里 wiki 词条的字段名），同时记一条布局错误 `wiki_not_md`。以 `.` 开头的名字忽略。
-- 旧的 `concepts/` 目录（2026-10-15 之前的名字）不读，记一条布局错误 `wiki_dir_renamed`，提示改名成 `wiki/`（ADR 0045）。
+- wiki 词条只从 `wiki/` 读。project 里有 `concepts/` 目录时记一条布局错误 `wiki_dir_renamed`，提示改名成 `wiki/`（ADR 0045）。
 - wiki 词条有两个名字：`name`（frontmatter，缺省用文件名）是显示名，也是 `[[ ]]` 的解析键；`slug`（文件名去掉 `.md`）是 URL 段，词条页是 `/<project>/wiki/<slug>/`，`/<project>/wiki/` 列出这个 project 的全部词条。
 
 ## frontmatter
@@ -55,12 +55,12 @@ Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到
 
 ## 登记
 
-新 project 用脚手架，它写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
+写文章不用先建 project：不写 project 的文章进默认 project `notes`，要归类时用 `ppnt mv` 搬（见下面“`ppnt mv` 搬文章”）。新 project 用脚手架，它写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
 
 ```shell
-ppnt new project <project 根> [--id <id>] [--title <标题>]
-ppnt new article <project>/<article> [--title <标题>]   # 写 articles/<article>/index.mdx：frontmatter + 一节
 ppnt new article <article>                             # 不写 project：进默认 project notes，没登记就先建好并登记
+ppnt new article <project>/<article> [--title <标题>]   # 写 articles/<article>/index.mdx：frontmatter + 一节
+ppnt new project <project 根> [--id <id>] [--title <标题>]
 ```
 
 两个命令都不覆盖已有文件，细节见 [`docs/registry.md`](registry.md)“CLI”；默认 project `notes` 在哪、怎么改，见那里的“默认 project `notes`”。已经有 `project.json` 的 project 直接登记：
@@ -161,7 +161,7 @@ HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/
 
 - 列出所有登记 project 的全部文章，按最近修改时间倒序。一篇文章的时间：frontmatter 写了合法的 `date`（`YYYY-MM-DD`，按当天本地零点）就用它，否则用 `index.mdx` 的修改时间。时间相同按 project id、再按 article id。
 - 每条：文章标题（进文章页）、summary（没写就不出）、所属 project 的短名小标签（进 `/<project>/`，那个 project 的文章列表）、日期（`YYYY-MM-DD`，本地时区）。
-- project 首页 `/<project>/` 保留，是“这个文件夹里的文章”，仍按 `order` 排。
+- project 首页 `/<project>/` 列这个 project 的文章，按 `order` 排。
 - 顶栏右边的“工作台”进 `/workbench/`。首页不注入标注客户端。
 
 ## 画布视图
@@ -241,7 +241,7 @@ export default function ConfirmBare() {
 
 ### 不进“页面”组
 
-画布视图属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的存量页表里；左栏“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
+画布视图属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的存量页表里；左栏“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/workbench/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
 
 画布视图的底部横条在页名后面多一个“阅读正文”，同一标签页回到文章页，后退回画布，与文章页顶栏的“画布视图”对称。画布当前所在的节（`?section=` 落点、大纲点的节，或滚动后视口中间的节）是这块板上的节时，地址带锚点 `/<project>/<article>/#<节 id>`，否则落到文章顶部；正文里 `<Section>` 的 id 就是 DOM id，所以锚点对得上。只有清单 `articles` 里的页出这个钮，存量页不出。地址由 `src/workbench/lib/article-groups.js` 的 `articleCanvasReadUrl` 算。
 
@@ -471,7 +471,7 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ## 保留名
 
-project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、wiki `/<project>/wiki/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
+project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、project 首页 `/<project>/`、wiki `/<project>/wiki/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
 
 - 服务自己的前缀 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；

@@ -173,7 +173,7 @@ tabs / sheet / segmented / clock。
 层级：**page → entries → canvas → [tab →] section → frame**（tab 见上，可选）；screen 是 frame 里的内容（`screenId` = frame id）。
 条目派生在 `src/workbench/lib/board-entries.js`：app / lock / comp 屏合成一个 canvas 条目（id
 `@canvas`），每个 doc 屏各成一个 document 条目。舞台形态跟选中的条目走，选择持久化在
-`prefs.activeEntryIdByPage`，深链 `?page=<id>&entry=<screenId>`；`&section=<sectionId>` 落到画布条目里的那个 section（多 tab 页先切 tab，参数表见 [`design.md`](design.md)“地址栏参数”）。A1 引用体系、frame 树、截图清单
+`prefs.activeEntryIdByPage`，深链 `/workbench/?page=<id>&entry=<screenId>`；`&section=<sectionId>` 落到画布条目里的那个 section（多 tab 页先切 tab，参数表见 [`design.md`](design.md)“地址栏参数”）。A1 引用体系、frame 树、截图清单
 只覆盖 canvas 条目下的屏。
 
 ## 导出与截图

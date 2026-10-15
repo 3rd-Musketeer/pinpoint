@@ -45,7 +45,7 @@
 实例）与 `data-pp-comp`（组件名）。带 `ppId` 的标注，`ppnt comments` / `locate` 直接按它取锚点
 （多命中按文本择近）；没有 `ppId` 的标注（文章的 HTML 帧、存量页的 `.html` 帧和文档条目）走 cssPath 链。
 
-- 锚点带 `data-pp-comp` → 改组件文件（文章：本篇或 project 的 `components/<Name>.jsx`；存量页：`<存量页目录>/components/<Name>.jsx`），所有引用它的帧一起变。
+- 锚点带 `data-pp-comp` → 改组件文件（文章：本篇的 `components/<Name>.jsx`，kit 的在 `content/kits/ios/jsx/`；存量页：`<存量页目录>/components/<Name>.jsx`），所有引用它的帧一起变。
 - 锚点只带 `data-pp-id` → 改该帧的源文件 `<帧 id>.jsx`（在文章目录或存量页目录里）。
 - 文章 HTML 帧上的文档页标注 → 改那份 HTML：本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件（相对 project 根，或 `project.json` 的 `sources` 登记的目录）。
 - 正文评论 → 改 `index.mdx` 里被评的那段，或这一节画布组件里的帧。
@@ -119,7 +119,7 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 页不在但桶在也放行，`resolveRequestEntry`），CLI 的目标解析也认盘上的桶；`--status` 批量展开和帧、节展开只走活的行。
 反过来，任何写入都不新建页已不在的桶：桶目录不在、页也不在时，请求在入口答 `400 unknown_entry`；
 请求放行之后桶才被删掉或挪走的（迟到的保存），`/save`、`/status`、`/reply`、`/image` 答 `503 bucket_gone`
-（`annotation-store.js` 的 `mayCreateBucket`）。所以 prune、remove、rename 删掉或挪走的桶不会被重建出来。
+（`annotation-store.js` 的 `mayCreateBucket`）。所以 prune、remove、mv 删掉或挪走的桶不会被重建出来。
 
 页面 key 的公式在 `src/shared/annotate-page-key.js`：
 `decodeURIComponent(filename) + '~' + hash31(pathname).toString(36)`，所以同名文件在不同目录

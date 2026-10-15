@@ -6,8 +6,9 @@ annotations.**
 
 ## The model
 
-A **project** holds **articles** (design documents written in MDX, readable by anyone with the
-link) and **wiki entries** (short definitions of terms). An article is made of **sections**; a section can
+The unit is the **article**: a design document written in MDX, readable by anyone with the link. A
+**project** is a thin container for a batch of articles and their **wiki entries** (short definitions
+of terms); readers see it only as a small tag under the article title. An article is made of **sections**; a section can
 hold a **canvas component** (`<Canvas>`) that lists its **frames** (a `.jsx` file per UI state, or a
 whole `.html` page) and **figures** (`<Figure>`, diagrams the agent draws in SVG). Every article has an article page; an article with at least one canvas also has a canvas view:
 
@@ -99,7 +100,7 @@ the article site defaults to that port + 5.
 
 `just check` uses the same two-group E2E runner as `just e2e-parallel`. It runs two independent groups, each with one worker and its own server,
 registry, annotation storage, copied site fixtures and reports. It reserves `E2E_PORT`
-(default 5299), +10, +20 and +30; choose a base whose four ports are free. New spec files
+(default 5299), +5, +20 and +25 (each group's port and its article site); choose a base whose four ports are free. New spec files
 are included automatically. Any group failure fails the command, and Ctrl+C stops both.
 When the 1-minute load average is 10 or higher it runs one group instead of two, and each
 failed group reruns its failed tests once; only a failure on that rerun counts (details in
@@ -143,9 +144,10 @@ ppnt render <target>/<frame id>  # compile one frame to stdout, no dist write
 ppnt status                    # service checkup: route · pid · both health endpoints · root · registry
 ppnt prune <target>            # delete orphan ledgers in that bucket (owner's call)
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
-ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
+ppnt new project <root>        # create a project skeleton under <root>/docs/pinpoint/ and register it
+ppnt add <root> --project      # register a hand-written project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
 ppnt add <dir|file>            # register a legacy page source (files stay where they are) — see docs/registry.md
-ppnt mv <project>/<a> <project2>/<b>  # move or rename an article, its annotation bucket included
+ppnt mv <project>/<a> <project2>/  # file an article under another project (or <project2>/<b> to rename it too), annotation bucket included
 ppnt mv <id> <new id>          # rename a project or page id + annotation bucket(s) + /sites/ prefix in one shot
 ppnt mv <id> <path>            # re-point an entry (path starts with /, . or ~), keep its id and annotations
 ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
@@ -157,7 +159,7 @@ ppnt migrate <page id> --project <root>  # copy a legacy page into an article, t
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: projects, board-schema, registry, annotation, design; adr/ = decisions
-index.html                   WORKBENCH shell, served at /workbench/ (old / and /index.html URLs redirect there) — full-bleed canvas + floating glass panel + bottom strip
+index.html                   WORKBENCH shell, served at /workbench/ (/?page=… and /index.html redirect there) — full-bleed canvas + floating glass panel + bottom strip
 site/                        Article site (Astro): article pages, wiki pages, [[ ]] refs, llms.txt
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
@@ -190,10 +192,12 @@ e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/
 ~/.pinpoint/dist/<page id>/  Compiled frames — generated, not in git, not in the source dir
 ```
 
-Your articles do **not** live in this repo. A project lives in its own repository or topic under
-`<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
-frames and components, `wiki/`); `pinpoint add <root> --project` registers it once, and
-new articles show up without re-registering. Legacy page sources register the same way with
+Your articles do **not** live in this repo. `ppnt new article <id>` drops an article into the
+default project `notes` without asking where it belongs; `ppnt mv notes/<id> <project>/` files it
+later. A project lives in its own repository or topic under `<project root>/docs/pinpoint/`
+(`project.json`, `articles/<id>/index.mdx` plus that article's frames and components, `wiki/`);
+`ppnt new project <root>` creates and registers it once, and new articles show up without
+re-registering. Legacy page sources register the same way with
 `pinpoint add <dir|file>` and are served from `/sites/<id>/`. `ppnt mv <id> <new path>`
 re-points an entry and keeps its id, so its annotations stay attached; `ppnt mv <old id> <new id>`
 renames the id together with its buckets — for a project, every `<project>_<article>` bucket
