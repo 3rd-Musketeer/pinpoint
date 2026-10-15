@@ -38,6 +38,7 @@ import {
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { escHtml } from '../workbench/lib/esc-html.js';
 import { annotateCss } from './annotate-css.js';
+import { installOverlayScrollbars } from './overlay-scrollbar.js';
 import { annMarkBroken, annRowCap, annRowModel, annRowPreview, annRowReplies } from '../shared/ann-row.js';
 import {
   ANN_FILTERS,
@@ -1245,6 +1246,9 @@ import { startProseComments } from './prose-comments.js';
   var style = document.createElement('style');
   style.textContent = annotateCss();
   document.head.appendChild(style);
+  // 注入 UI 里的滚动区（侧栏列表、输入框、线程、提及）用隐藏式浮条；只认 [data-ann-ui]，宿主页面自己的滚动不碰。
+  // 工作台与文章站点已经整页装过，这里是空操作。
+  installOverlayScrollbars(document, { scope: '[data-ann-ui]' });
 
   var overlay = document.createElement('div');
   overlay.id = 'ann-overlay'; overlay.setAttribute('data-ann-ui', '');

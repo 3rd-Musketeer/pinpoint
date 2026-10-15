@@ -75,6 +75,8 @@ export function buildWbTokensCss() {
   --wb-paper:#fff; /* 帧内容的纸面（文章画布 HTML 卡片的底与底部淡出）：被评审的页面是白纸，不跟随亮暗 */
   --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */
   --wb-sel:${L('selection')}; /* 列表选中行底：语义 selection（green 4）；hover 走 --wb-hover */
+  --wb-scrollbar:${L('scrollbar')}; /* 隐藏式滚动条的浮条（src/client/overlay-scrollbar.css）：语义 scrollbar（gray 8） */
+  --wb-scrollbar-hover:${L('scrollbar-hover')}; /* 浮条（指针在条上、拖动中）：gray 9 */
   /* 标注四态：钉子与列表行首序号圆的底色 / 数字色（候选 2，owner 2026-10-15） */
 ${statusDecl('light')}
 
@@ -190,6 +192,8 @@ ${statusDecl('light')}
     --wb-glass:rgba(34,34,34,.88);
     --wb-glass-hi:rgba(255,255,255,.06);
     --wb-sel:${D('selection')};
+    --wb-scrollbar:${D('scrollbar')};
+    --wb-scrollbar-hover:${D('scrollbar-hover')};
 ${statusDecl('dark', '    ')}
     --wb-sh-1:${SHADOW[1].dark};
     --wb-sh-2:${SHADOW[2].dark};
@@ -214,6 +218,7 @@ const wbColor = (mode) => {
     '--wb-hover': mix(v('text'), 5), '--wb-fill': mix(v('text'), 6),
     '--wb-accent': v('accent-solid-strong'), '--wb-danger': v('danger'), '--wb-ok': v('success'), '--wb-ok-soft': v('accent-soft'),
     '--wb-on-accent': '#fff',
+    '--wb-scrollbar': v('scrollbar'), '--wb-scrollbar-hover': v('scrollbar-hover'),
     '--wb-glass': mode === 'light' ? 'rgba(255,255,255,.88)' : 'rgba(34,34,34,.88)',
     '--wb-glass-hi': mode === 'light' ? 'rgba(255,255,255,.6)' : 'rgba(255,255,255,.06)',
     ...Object.fromEntries(Object.entries(STATUS).flatMap(([k, s]) => [[`--ann-st-${k}`, s.bg[mode]], [`--ann-st-${k}-fg`, s.fg[mode]]])),

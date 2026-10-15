@@ -29,6 +29,8 @@
   --wb-paper:#fff; /* 帧内容的纸面（文章画布 HTML 卡片的底与底部淡出）：被评审的页面是白纸，不跟随亮暗 */
   --wb-glass-blur:blur(20px) saturate(1.2); /* F2 的滤镜档；backdrop-filter 与 -webkit- 前缀共用本值 */
   --wb-sel:#d6f0e4; /* 列表选中行底：语义 selection（green 4）；hover 走 --wb-hover */
+  --wb-scrollbar:#bbbbbb; /* 隐藏式滚动条的浮条（src/client/overlay-scrollbar.css）：语义 scrollbar（gray 8） */
+  --wb-scrollbar-hover:#8d8d8d; /* 浮条（指针在条上、拖动中）：gray 9 */
   /* 标注四态：钉子与列表行首序号圆的底色 / 数字色（候选 2，owner 2026-10-15） */
   --ann-st-open:#1f5f8f; --ann-st-open-fg:#ffffff;
   --ann-st-check:#b85a14; --ann-st-check-fg:#ffffff;
@@ -147,6 +149,8 @@
     --wb-glass:rgba(34,34,34,.88);
     --wb-glass-hi:rgba(255,255,255,.06);
     --wb-sel:#123a2f;
+    --wb-scrollbar:#606060;
+    --wb-scrollbar-hover:#6e6e6e;
     --ann-st-open:#5b9fd6; --ann-st-open-fg:#202020;
     --ann-st-check:#d9782a; --ann-st-check-fg:#202020;
     --ann-st-done:#8a5ae0; --ann-st-done-fg:#ffffff;

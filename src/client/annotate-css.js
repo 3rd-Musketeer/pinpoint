@@ -3,6 +3,7 @@
  * --wb-z 阶梯（layering.test.js 扫这份文件）。规则顺序有意义（暗色块在钉子规则之后等），别重排。 */
 import { bubbleCss } from '../shared/annotate-bubble.js';
 import ANN_LIST_CSS from '../shared/ann-list.css';
+import OVERLAY_SCROLLBAR_CSS from './overlay-scrollbar.css';
 import { ANN_TOKENS_LIGHT, ANN_UI_LIGHT, ANN_UI_DARK, ANN_SIDEBAR_PINS } from '../shared/ann-tokens.js';
 
 export function annotateCss() {
@@ -128,7 +129,8 @@ export function annotateCss() {
     '#ann-tip{position:absolute;z-index:2;max-width:min(280px,calc(100% - 24px));background:var(--wb-fg,#202020);color:var(--wb-surface,#ffffff);font-size:12px;line-height:1.4;padding:7px 12px;border-radius:var(--wb-r-2,6px);pointer-events:none;word-break:break-word;}',
     // composer：V4 收编浮层白面语言（白面 + 发丝 + sh-3 + r-4），摘掉 backdrop blur 与重阴影。
     '#ann-box{position:absolute;z-index:5;left:24px;right:24px;bottom:72px;top:auto;width:auto;max-width:460px;max-height:calc(100vh - 24px);margin:0 auto;overflow:auto;background:var(--wb-surface,#ffffff);color:var(--wb-fg,#202020);border:1px solid var(--wb-seam,#cecece);border-radius:26px;box-shadow:0 2px 8px rgba(0,0,0,.06);padding:20px;pointer-events:auto;}',
-    '[data-ann-ui],[data-ann-ui] *{scrollbar-width:none}[data-ann-ui]::-webkit-scrollbar,[data-ann-ui] *::-webkit-scrollbar{display:none}',
+    // 滚动条：[data-ann-ui] 子树藏原生条、悬停浮条（overlay-scrollbar.css，与站点、工作台同一份）；文档已 link 它就不再内联。
+    document.querySelector('link[href$="/client/overlay-scrollbar.css"]') ? '' : OVERLAY_SCROLLBAR_CSS,
     '#ann-box{cursor:grab}#ann-box.ann-dragging{cursor:grabbing;user-select:none}#ann-box button{cursor:pointer}#ann-input{cursor:text}',
     '#ann-input{display:block;min-height:24px;max-height:min(240px,calc(100vh - 150px));overflow:auto;white-space:pre-wrap;overflow-wrap:anywhere;outline:none;line-height:24px;font-size:15px;padding:0;margin-top:0;border:0;border-radius:0;background:transparent;box-shadow:none}',
     '#ann-box #ann-input:hover,#ann-box #ann-input:focus{background:transparent;box-shadow:none;outline:none}',

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="zh-CN" data-lock-font="helvetica">
+<html lang="zh-CN" data-lock-font="helvetica" data-pp-scrollbars>
 <head>
 <meta charset="utf-8">
 <!-- 工作台住在 /workbench/（ADR 0044），壳页仍是仓库根这份文件。板与清单里的地址是相对站点根写的
@@ -12,6 +12,8 @@
 <link rel="stylesheet" href="/src/workbench/wb-tokens.css">
 <!-- Shared annotation-list rows (also inlined into /annotate.js for the client sidebar) -->
 <link rel="stylesheet" href="/src/shared/ann-list.css">
+<!-- 隐藏式滚动条（docs/design.md“滚动条”）：html[data-pp-scrollbars] 整页藏原生条，浮条由 overlay-scrollbar.js 画 -->
+<link rel="stylesheet" href="/src/client/overlay-scrollbar.css">
 <style>
   /* ── workbench shell (dev chrome — not iOS). Pages section lists workbench pages;
      Example Library loads from content/previews/library/board.json + sibling screen HTML.
@@ -440,10 +442,9 @@
     bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + var(--wb-tabbar-gap));
     height:var(--wb-tabbar-h); max-width:calc(100% - var(--wb-chrome-gap) * 2);
     box-sizing:border-box; display:flex; align-items:center; gap:2px; padding:0 4px;
-    border-radius:999px; overflow-x:auto; scrollbar-width:none;
+    border-radius:999px; overflow-x:auto;
     font-size:12px; color:var(--wb-fg);
   }
-  .wb-tabbar::-webkit-scrollbar { display:none; }
   .wb-tabbar > * { flex:none; }
   .wb-tab-slot { display:inline-flex; align-items:center; gap:1px; }
   .wb-outline-trigger {
@@ -1015,9 +1016,7 @@
   .wb-pk-st { flex:1; min-width:0; font-size:10.5px; color:var(--wb-faint); }
   .wb-pk-st.is-error { color:var(--wb-danger); }
 
-/* Review refinements: chrome scroll surfaces stay scrollable without painted bars. */
-#wbside *, #wbdock *, #wbcanvas-dock *, .wb-ann-more-menu, .wb-export-dialog * { scrollbar-width:none; }
-#wbside *::-webkit-scrollbar, #wbdock *::-webkit-scrollbar, #wbcanvas-dock *::-webkit-scrollbar, .wb-export-dialog *::-webkit-scrollbar { display:none; }
+/* 滚动条：原生条整页藏掉、悬停浮条（src/client/overlay-scrollbar.css / .js）。Radix ScrollArea 自带的条也不出，左栏同用浮条。 */
 #wbside [data-slot="scroll-area-scrollbar"] { display:none; }
 .wb-side-toolbar {display:flex;align-items:center;justify-content:space-between;margin:4px 12px 8px;gap:8px}
 .wb-side-tabs {display:flex;gap:4px}
@@ -1049,7 +1048,7 @@
 
 <div class="wb" id="wbroot">
   <div class="wb-stage-wrap">
-    <main class="wb-stage" id="wbstage"></main>
+    <main class="wb-stage" id="wbstage" data-pp-scrollbar="scroll"></main>
     <!-- React 挂载点：dock（section-nav + minimap）由 app/CanvasHud.jsx 渲染 -->
     <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui></div>
     <!-- React 挂载点：按需浮层槽（标注弹出列表 / detail 面板，app/Dock.jsx） -->

@@ -1,0 +1,17 @@
+/* 隐藏式滚动条（docs/design.md“滚动条”）：原生滚动条在 pinpoint 自己的面上一律不画、不占宽，
+   悬停或滚动时由 overlay-scrollbar.js 浮出一条 6px 灰条。这是全仓唯一一处藏原生滚动条的规则。
+   - 整页：<html data-pp-scrollbars>（文章站点 Base.astro、工作台 index.html），文档根也在内；
+   - 注入端：[data-ann-ui] 子树（标注客户端在别人页面上的 UI），页面自己的滚动不碰。
+   三家浏览器：Chrome 121+ 与 Firefox 认 scrollbar-width:none，Safari 认 ::-webkit-scrollbar{display:none}；
+   两条都写，哪家都是 0 宽、仍可滚。:where 把权重压到 0，不和组件规则抢。 */
+:where(html[data-pp-scrollbars], html[data-pp-scrollbars] *, [data-ann-ui], [data-ann-ui] *) { scrollbar-width:none; }
+:where(html[data-pp-scrollbars], html[data-pp-scrollbars] *, [data-ann-ui], [data-ann-ui] *)::-webkit-scrollbar { display:none; width:0; height:0; }
+
+/* 浮条：一份文档一横一竖两根，position:fixed，几何由脚本写。颜色取站点的 --pp-scrollbar，
+   工作台与注入端的 --wb-scrollbar（同一份 token 源，scripts/tokens/source.mjs）。 */
+.pp-osb { position:fixed; top:0; left:0; z-index:2147483647; box-sizing:border-box; margin:0; padding:0;
+  border-radius:999px; background:var(--pp-scrollbar, var(--wb-scrollbar, #bbbbbb));
+  opacity:0; visibility:hidden; pointer-events:none; cursor:default;
+  transition:opacity .2s cubic-bezier(.25,0,0,1), visibility 0s linear .2s, background-color .15s; }
+.pp-osb[data-on] { opacity:1; visibility:visible; pointer-events:auto; transition:opacity .12s cubic-bezier(.25,0,0,1), visibility 0s, background-color .15s; }
+.pp-osb:hover, .pp-osb[data-drag] { background:var(--pp-scrollbar-hover, var(--wb-scrollbar-hover, #8d8d8d)); }

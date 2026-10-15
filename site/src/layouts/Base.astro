@@ -8,6 +8,7 @@ import '../styles/layers.css';
 import '../styles/tokens.css';
 import '../styles/vendor/tailwind-typography.css';
 import '../styles/site.css';
+import '../../../src/client/overlay-scrollbar.css';
 
 interface Crumb { label: string; href?: string }
 interface TocItem { id: string; title: string; num: string }
@@ -34,7 +35,7 @@ const llms = project ? `/${encodeURIComponent(project)}/llms.txt` : undefined;
 const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumbs] : crumbs;
 ---
 <!doctype html>
-<html lang="zh-CN">
+<html lang="zh-CN" data-pp-scrollbars>
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width,initial-scale=1" />

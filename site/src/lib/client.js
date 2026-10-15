@@ -1,6 +1,7 @@
 // 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 抽屉。数据全在 .cref 的 data-* 上（refs.js refHtml）。
 
 import { installLayerKeys, layers } from './layers.js';
+import { installOverlayScrollbars } from '../../../src/client/overlay-scrollbar.js';
 
 // [[ ]] popup 的时序（site/README.md「[[ ]] 引用」）：悬停 120 ms 打开，指针移进 popup 不关，离开两者 200 ms 后关。
 export const POP_OPEN_MS = 120;
@@ -33,6 +34,7 @@ function popHtml(el) {
 
 export function initSite() {
   const root = document.documentElement;
+  installOverlayScrollbars(document);
 
   document.getElementById('btn-theme')?.addEventListener('click', () => {
     const cur = root.getAttribute('data-theme');

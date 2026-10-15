@@ -25,6 +25,7 @@ const durations = {
   'dir-entry.spec.js': 1.5,
   'export-picker.spec.js': 1.2,
   'figure.spec.js': 3,
+  'hidden-scrollbars.spec.js': 2,
   'html-frames.spec.js': 6,
   'integration-canvas.spec.js': 3.2,
   'mixed-board.spec.js': 1.2,
