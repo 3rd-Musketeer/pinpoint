@@ -97,7 +97,7 @@ test('正文里的图：同源 iframe 渲染、高度随内容、iframe 里能�
     await page.locator('#btn-theme').click();
     await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect(inner(page, 'message-flow').locator('html')).toHaveAttribute('data-theme', 'dark');
-    await expect.poll(bg).toBe('rgb(15, 15, 15)');
+    await expect.poll(bg).toBe('rgb(17, 17, 17)');
     await expect(inner(page, 'wait-sequence').locator('html')).toHaveAttribute('data-theme', 'dark');
     await page.locator('#btn-theme').click();
     await expect(inner(page, 'message-flow').locator('html')).toHaveAttribute('data-theme', 'light');

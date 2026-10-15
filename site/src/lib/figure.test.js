@@ -36,22 +36,17 @@ test('figure model: n → this figure; errors replace the iframe; src is the emb
   assert.equal(figureSrc('p', 'a&b'), '/api/frame?page=p&figure=a%26b&embed=figure');
 });
 
-test('figure palette: figure.css carries the site tokens (same values, light and dark)', () => {
+test('figure palette: figure.css only consumes --fig-*, figure-palette.css defines every one (light and dark)', () => {
   const read = (rel) => fs.readFileSync(fileURLToPath(new URL(rel, import.meta.url)), 'utf8');
-  const site = read('../styles/site.css');
   const figure = read('../../../content/kits/figure/figure.css');
-  const blocks = (css, selector) => [...css.matchAll(new RegExp(`${selector}\\s*\\{([^}]*)\\}`, 'g'))].map((m) => m[1]);
-  const vars = (block) => Object.fromEntries([...block.matchAll(/--([\w-]+)\s*:\s*([^;]+);/g)].map((m) => [m[1], m[2].trim()]));
-  const pairs = { bg: 'bg', panel: 'soft', ink: 'ink', 'ink-2': 'ink-2', muted: 'muted', hair: 'hair', accent: 'accent', 'accent-soft': 'accent-soft', err: 'err' };
-  const check = (selector) => {
-    const s = blocks(site, selector).map(vars);
-    const f = blocks(figure, selector).map(vars);
-    assert.ok(s.length && s.length === f.length, selector);
-    s.forEach((siteVars, i) => {
-      for (const [fig, tok] of Object.entries(pairs)) assert.equal(f[i][`fig-${fig}`], siteVars[tok], `${selector} --fig-${fig} = --${tok}`);
-    });
-  };
-  check(':root');
-  check(':root:not\\(\\[data-theme="light"\\]\\)');
-  check(':root\\[data-theme="dark"\\]');
+  const palette = read('../../../content/kits/figure/figure-palette.css');
+  // 颜色只在生成的调色板里（新鲜度见 scripts/build-tokens.test.js）；figure.css 不写颜色字面量。
+  assert.doesNotMatch(figure.replace(/\/\*[\s\S]*?\*\//g, ''), /#[0-9a-f]{3,6}\b|rgba?\(/i);
+  const used = new Set([...figure.matchAll(/var\((--fig-[\w-]+)\)/g)].map((m) => m[1]));
+  const segments = palette.split(/@media|:root\[data-theme="dark"\]/);
+  assert.equal(segments.length, 3, 'light / system dark / data-theme dark');
+  for (const name of used) {
+    assert.ok(segments[0].includes(name + ':'), `light defines ${name}`);
+    if (name !== '--fig-font') for (const seg of segments.slice(1)) assert.ok(seg.includes(name + ':'), `dark defines ${name}`);
+  }
 });

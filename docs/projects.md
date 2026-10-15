@@ -365,13 +365,13 @@ export default function Lanes() {
 - 颜色只用调色板变量，不写死色值，深浅色就会跟着文章页切换。箭头的 `marker` 每种颜色定义一个，id 加上图自己的前缀，避免和别的图重名。
 - 图页给 `svg text` 设了 `fill: var(--fig-ink)`，权重为 0，图里任何选择器都能盖过它。
 
-调色板（`content/kits/figure/figure.css`，值与 `site/src/styles/site.css` 的 token 相同，单测守）：
+调色板（`content/kits/figure/figure-palette.css`，`scripts/build-tokens.mjs` 从 token 源生成，与文章站点的 `--pp-*` 同源；图页在 `figure.css` 之前引入）：
 
 | 变量 | 用在 |
 | --- | --- |
 | `--fig-bg` | 图的底色，和文章页底色相同 |
 | `--fig-panel` | 浅底块、节点底色 |
-| `--fig-ink` / `--fig-ink-2` | 主要文字和线条 / 次要文字、普通箭头 |
+| `--fig-ink` / `--fig-ink-2` | 主要文字和线条 / 次要文字、普通箭头（`--fig-ink-2` 与 `--fig-muted` 同为次要字色 gray 11） |
 | `--fig-muted` | 注释、轴、不重要的字 |
 | `--fig-hair` | 细线、边框、生命线 |
 | `--fig-accent` / `--fig-accent-soft` | 强调：当前一步、主角 / 强调色的浅底 |

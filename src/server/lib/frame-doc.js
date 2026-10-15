@@ -532,6 +532,7 @@ function figureHead({ pageId, figureId, theme, links = [] }) {
 <base href="/sites/${escHtml(pageId)}/">
 <title>${escHtml(figureId)}</title>
 <script type="importmap">{"imports":{"pinpoint/figure":"/kits/figure/figure.js"}}</script>
+<link rel="stylesheet" href="/kits/figure/figure-palette.css">
 <link rel="stylesheet" href="/kits/figure/figure.css">
 ${links.join('\n')}
 <script>

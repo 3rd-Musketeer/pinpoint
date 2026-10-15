@@ -1,7 +1,7 @@
 /*
  * 图的调色板与基础样式（docs/projects.md“图”）。图页（/api/frame?…&embed=figure）总是带这一份。
- * 图里只用 --fig-* 变量，不写死颜色：浅色、深色跟着文章页切换，变量值与 site/src/styles/site.css 的
- * token 相同（site/src/lib/figure.test.js 守）。
+ * 图里只用 --fig-* 变量，不写死颜色：浅色、深色跟着文章页切换。变量定义在 figure-palette.css
+ *（scripts/build-tokens.mjs 从 token 源生成，与站点的 --pp-* 同源），图页在本文件之前引入它。
  *
  *   --fig-bg        页面底色（图和正文融在一起）      --fig-panel     浅底块、节点底色
  *   --fig-ink       正文字、主要线条                  --fig-ink-2     次要文字、普通箭头
@@ -10,25 +10,6 @@
  *   --fig-err       出错
  *   --fig-font      字体栈（含中文）
  */
-:root {
-  --fig-bg:#ffffff; --fig-panel:#f5f5f5; --fig-ink:#111111; --fig-ink-2:#454545; --fig-muted:#767676; --fig-hair:#e6e6e6;
-  --fig-accent:#0e8f6c; --fig-accent-soft:#dff3e6; --fig-err:#c0392b;
-  --fig-font:-apple-system,"Helvetica Neue","PingFang SC","Noto Sans SC",Arial,sans-serif;
-  color-scheme: light;
-}
-@media (prefers-color-scheme: dark) {
-  :root:not([data-theme="light"]) {
-    --fig-bg:#0f0f0f; --fig-panel:#191919; --fig-ink:#f1f1f1; --fig-ink-2:#c9c9c9; --fig-muted:#9a9a9a; --fig-hair:#262626;
-    --fig-accent:#3ec49b; --fig-accent-soft:#1e3d2d; --fig-err:#ff7b6b;
-    color-scheme: dark;
-  }
-}
-:root[data-theme="dark"] {
-  --fig-bg:#0f0f0f; --fig-panel:#191919; --fig-ink:#f1f1f1; --fig-ink-2:#c9c9c9; --fig-muted:#9a9a9a; --fig-hair:#262626;
-  --fig-accent:#3ec49b; --fig-accent-soft:#1e3d2d; --fig-err:#ff7b6b;
-  color-scheme: dark;
-}
-
 html, body { margin:0; padding:0; background:var(--fig-bg); color:var(--fig-ink); overflow:hidden; }
 body { font-family:var(--fig-font); font-size:15px; line-height:1.6; -webkit-font-smoothing:antialiased; }
 * { box-sizing:border-box; }
