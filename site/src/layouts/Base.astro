@@ -6,6 +6,7 @@
 // overlay 槽：文章页放画布浮层（CanvasOverlay.astro），在 #article 之外。
 import '../styles/tokens.css';
 import '../styles/site.css';
+import '../styles/vendor/tailwind-typography.css';
 
 interface Crumb { label: string; href?: string }
 interface TocItem { id: string; title: string; num: string }
@@ -22,8 +23,10 @@ interface Props {
   errors?: string[];
   /** 文章的画布视图（/workbench/?page=<articlePageId>）；没有画布节的文章不传。 */
   canvasHref?: string;
+  /** 正文排版（pp-prose）：文章页与 wiki 词条页打开，首页和 project 首页不用。 */
+  prose?: boolean;
 }
-const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref } = Astro.props;
+const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref, prose = false } = Astro.props;
 const layoutClass = toc ? (rail ? 'layout' : 'layout no-rail') : 'layout single';
 const llms = project ? `/${encodeURIComponent(project)}/llms.txt` : undefined;
 // 顶栏左边永远从“全部文章”（/）起；首页自己就是它，不再链接。
@@ -71,9 +74,9 @@ const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumb
           </ol>
         </nav>
       )}
-      <main id="article">
+      <main id="article" class={prose ? 'pp-prose' : undefined}>
         {errors.length > 0 && (
-          <div class="errors" role="alert">
+          <div class="errors not-prose" role="alert">
             <b>内容错误（构建会失败）</b>
             <ul>{errors.map((e) => <li>{e}</li>)}</ul>
           </div>

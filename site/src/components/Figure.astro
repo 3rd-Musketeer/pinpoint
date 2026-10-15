@@ -10,7 +10,7 @@ import { FIGURE_MIN_HEIGHT, figureModel } from '../lib/figure.js';
 interface Props { n?: string; src?: string; caption?: string }
 const m = figureModel(Astro.locals.ppCanvas, Astro.props.n);
 ---
-<figure class="pp-fig" data-pp-figure={m.id || ''} data-pp-nocomment data-state={m.errors.length ? 'error' : 'loading'}>
+<figure class="pp-fig not-prose" data-pp-figure={m.id || ''} data-pp-nocomment data-state={m.errors.length ? 'error' : 'loading'}>
   {m.errors.length > 0 ? (
     <div class="pp-fig-errors" role="alert" data-pp-figure-errors>
       <b>这个图有错误</b>

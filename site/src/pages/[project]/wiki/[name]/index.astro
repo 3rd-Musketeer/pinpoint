@@ -16,7 +16,7 @@ const c = p.concepts.find((x) => x.slug === slug);
 const body = resolveRawRefs(c.entry.rendered?.html, site);
 ---
 <Base title={`${c.name} · ${p.title}`} description={c.definition} project={p.id}
-  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: 'wiki', href: wikiHref(p.id) }, { label: c.name }]} errors={p.errors}>
+  crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: 'wiki', href: wikiHref(p.id) }, { label: c.name }]} errors={p.errors} prose>
   <div class="prose">
     <div class="label">wiki 词条<span class={`st-chip${c.fixed ? ' ok' : ''}`}>{c.status}</span></div>
     <h1>{c.name}</h1>

@@ -39,7 +39,7 @@ const refs = (html) => [...html.matchAll(/<(?:a|span) class="cref( empty)?"[^>]*
 
 const escRe = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 /** Canvas cards in document order: each card runs to the next card, section or </main>. */
-const cardsOf = (html) => [...html.matchAll(/<div class="canvas-card" data-pp-canvas data-page="([^"]*)" data-pp-section(?:="([^"]*)")?[^>]*?data-frames(?:="([^"]*)")?>([\s\S]*?)(?=<div class="canvas-card"|<\/section>|<\/main>)/g)]
+const cardsOf = (html) => [...html.matchAll(/<div class="canvas-card not-prose" data-pp-canvas data-page="([^"]*)" data-pp-section(?:="([^"]*)")?[^>]*?data-frames(?:="([^"]*)")?>([\s\S]*?)(?=<div class="canvas-card not-prose"|<\/section>|<\/main>)/g)]
   .map((m) => ({ page: m[1], section: m[2] || '', frames: m[3] || '', html: m[0] }));
 const iframesOf = (html) => [...html.matchAll(/<iframe src="([^"]+)"/g)].map((m) => m[1]);
 const linksOf = (html) => [...html.matchAll(/<a class="(?:btn|cc-hit)"[^>]*href="([^"]+)"/g)].map((m) => m[1]);
@@ -97,7 +97,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
   assert.equal((flow.html.match(/<a class="cc-hit" data-pp-frame-open href="#overlay=/g) || []).length, 3);
   // data-section belongs to <Section> only (one hit per section); the card carries data-pp-section.
-  assert.doesNotMatch(article, /class="canvas-card"[^>]*\sdata-section=/);
+  assert.doesNotMatch(article, /class="canvas-card not-prose"[^>]*\sdata-section=/);
   assert.equal((article.match(/\sdata-section="flow"/g) || []).length, 1);
   assert.doesNotMatch(flow.html, /class="cc-hit"[^>]*target=/);
   // What the overlay reads from the card: section number / title / meta / canvas link, and per frame id, title, src.
@@ -126,7 +126,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
   // Figures in the prose (<Figure>): one lazy same-origin iframe each (embed=figure, no canvas card), caption below,
   // excluded from prose comments; one before the first Section, one inside it. They are not frames: the cards above are unchanged.
-  const figures = [...article.matchAll(/<figure class="pp-fig" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]
+  const figures = [...article.matchAll(/<figure class="pp-fig not-prose" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]
     .map((m) => ({ id: m[1], state: m[2], html: m[3], at: m.index }));
   assert.deepEqual(figures.map((f) => [f.id, f.state]), [['pay-sequence', 'loading'], ['message-flow', 'loading']]);
   assert.deepEqual(figures.map((f) => iframesOf(f.html)), ['pay-sequence', 'message-flow'].map((f) => [q(`/api/frame?page=${encodeURIComponent(page)}&figure=${f}&embed=figure`)]));

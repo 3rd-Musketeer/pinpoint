@@ -1,10 +1,34 @@
 /* Article 站点样式。颜色、字体、阴影、圆角、字号都取 tokens.css 的 --pp-*（scripts/tokens/source.mjs 生成，ADR 0046），
    本文件不写颜色字面量；帧内容（iframe 里的屏）是被评审的内容，底色照帧自己的。 */
-* { box-sizing:border-box; }
-body { margin:0; background:var(--pp-bg); color:var(--pp-text); font-family:var(--pp-font);
-       font-size:var(--pp-fs-base); line-height:1.7; -webkit-font-smoothing:antialiased; }
-a { color:inherit; }
-::selection { background:var(--pp-selection); }
+/* 层：base（元素默认与非文章页的排版）< prose（正文排版：vendor/tailwind-typography.css + 下面的适配）< 不分层的组件。
+   组件规则不分层，所以芯片、画布卡片、评论栏、目录总是用站点自己的样式。 */
+@layer base, prose;
+
+@layer base {
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--pp-bg); color:var(--pp-text); font-family:var(--pp-font);
+         font-size:var(--pp-fs-base); line-height:1.7; -webkit-font-smoothing:antialiased; }
+  a { color:inherit; }
+  ::selection { background:var(--pp-selection); }
+  .prose, .article-body > :where(p, ul, ol, h2, h3, h4, blockquote, pre, table, hr),
+  .sec-body > :where(p, ul, ol, h3, h4, blockquote, pre, table, hr) { max-width:720px; }
+  h1 { font-size:var(--pp-fs-4xl); line-height:1.15; letter-spacing:-.02em; font-weight:600; margin:0 0 14px; }
+  .lede { font-size:var(--pp-fs-lg); color:var(--pp-text); }
+  section.sec { margin-top:80px; scroll-margin-top:72px; }
+  .sechead { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
+  .sechead .ref { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); color:var(--pp-accent-text); font-weight:600; }
+  h2 { font-size:var(--pp-fs-2xl); line-height:1.25; letter-spacing:-.015em; font-weight:600; margin:0; }
+  h3 { font-size:var(--pp-fs-lg); line-height:1.35; font-weight:600; margin:28px 0 8px; }
+  p { margin:0 0 14px; }
+  ul, ol { margin:0 0 14px; padding-left:1.4em; }
+  blockquote { margin:0 0 14px; padding-left:14px; border-left:3px solid var(--pp-border); color:var(--pp-text); }
+  code { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); background:var(--pp-surface); padding:1px 5px; border-radius:4px; }
+  pre { background:var(--pp-surface); border-radius:10px; padding:12px 14px; overflow:auto; font-size:var(--pp-fs-ui); line-height:1.55; }
+  pre code { background:none; padding:0; }
+  table { border-collapse:collapse; margin:0 0 18px; font-size:var(--pp-fs-sm); }
+  th, td { border:1px solid var(--pp-border); padding:8px 12px; text-align:left; vertical-align:top; }
+  th { background:var(--pp-surface); font-weight:600; }
+}
 
 /* 顶栏：project 面包屑 + 操作 */
 .top { position:sticky; top:0; z-index:20; display:flex; align-items:center; gap:12px; padding:10px 20px;
@@ -38,24 +62,65 @@ a { color:inherit; }
 .toc .n { color:var(--pp-text-muted); margin-right:6px; font-variant-numeric:tabular-nums; }
 
 main { min-width:0; }
-.prose, .article-body > :where(p, ul, ol, h2, h3, h4, blockquote, pre, table, hr),
-.sec-body > :where(p, ul, ol, h3, h4, blockquote, pre, table, hr) { max-width:720px; }
-h1 { font-size:var(--pp-fs-4xl); line-height:1.15; letter-spacing:-.02em; font-weight:600; margin:0 0 14px; }
-.lede { font-size:var(--pp-fs-lg); color:var(--pp-text); }
-section.sec { margin-top:80px; scroll-margin-top:72px; }
-.sechead { display:flex; align-items:baseline; gap:12px; margin-bottom:8px; }
-.sechead .ref { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); color:var(--pp-accent-text); font-weight:600; }
-h2 { font-size:var(--pp-fs-2xl); line-height:1.25; letter-spacing:-.015em; font-weight:600; margin:0; }
-h3 { font-size:var(--pp-fs-lg); line-height:1.35; font-weight:600; margin:28px 0 8px; }
-p { margin:0 0 14px; }
-ul, ol { margin:0 0 14px; padding-left:1.4em; }
-blockquote { margin:0 0 14px; padding-left:14px; border-left:3px solid var(--pp-border); color:var(--pp-text); }
-code { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); background:var(--pp-surface); padding:1px 5px; border-radius:4px; }
-pre { background:var(--pp-surface); border-radius:10px; padding:12px 14px; overflow:auto; font-size:var(--pp-fs-ui); line-height:1.55; }
-pre code { background:none; padding:0; }
-table { border-collapse:collapse; margin:0 0 18px; font-size:var(--pp-fs-sm); display:block; overflow-x:auto; }
-th, td { border:1px solid var(--pp-border); padding:8px 12px; text-align:left; vertical-align:top; }
-th { background:var(--pp-surface); font-weight:600; }
+
+/* ---------- 正文排版（第 7 套：Tailwind Typography 的尺度与间距 + 中文细节，ADR 0046） ----------
+   文章页和 wiki 页的 <main> 带 pp-prose；规则来自 vendor/tailwind-typography.css（@layer prose），
+   这里把它的颜色接到 --pp-*，字号、行高、行宽接到 --pp-prose-*。画布卡片与图带 not-prose，不吃正文规则。 */
+@layer prose {
+  .pp-prose {
+    max-width:none; font-size:var(--pp-prose-size); line-height:var(--pp-prose-lh);
+    text-autospace:normal;            /* 中西文之间自动加 1/8em 间距（源文已有空格的地方不再加） */
+    text-spacing-trim:normal;         /* 相邻全角标点挤压、行首开括号半宽 */
+    word-break:normal; line-break:strict; overflow-wrap:anywhere;
+    --tw-prose-body:var(--pp-text); --tw-prose-headings:var(--pp-text); --tw-prose-lead:var(--pp-text); --tw-prose-links:var(--pp-accent-text);
+    --tw-prose-bold:var(--pp-text); --tw-prose-counters:var(--pp-text-muted); --tw-prose-bullets:color-mix(in srgb, var(--pp-text-muted) 55%, var(--pp-bg));
+    --tw-prose-hr:var(--pp-border); --tw-prose-quotes:var(--pp-text); --tw-prose-quote-borders:var(--pp-border-strong); --tw-prose-captions:var(--pp-text-muted);
+    --tw-prose-code:var(--pp-text); --tw-prose-pre-code:var(--pp-text); --tw-prose-pre-bg:var(--pp-surface);
+    --tw-prose-th-borders:var(--pp-border-strong); --tw-prose-td-borders:var(--pp-border);
+  }
+  /* Tailwind 站点都带 preflight（边框默认 0 solid）；prose 的表格线、分隔线依赖它。 */
+  .pp-prose :where(*, ::before, ::after) { border:0 solid; }
+  .pp-prose :where(table) { border-collapse:collapse; text-indent:0; }
+  /* 行宽：文字块 40em（约 40 个汉字）；画布卡片、图和表格占满正文栏。 */
+  .pp-prose :is(.prose, .article-body > :where(p, ul, ol, h2, h3, h4, blockquote, pre, hr),
+    .sec-body > :where(p, ul, ol, h3, h4, blockquote, pre, hr)) { max-width:var(--pp-prose-measure); }
+  /* 标题区：h1 32px；lede 只比正文大 1px；project 标签和正文之间一条细线。 */
+  .pp-prose > .prose:has(> h1) { padding-bottom:28px; margin-bottom:8px; border-bottom:1px solid var(--pp-border); }
+  .pp-prose > .prose > h1 { font-size:var(--pp-prose-h1); line-height:1.35; font-weight:600; margin:0 0 .5em; }
+  .pp-prose > .prose > .lede { font-size:1.0625em; line-height:var(--pp-prose-lh); margin:0; color:var(--pp-text); }
+  /* 节：节间距交给 h2 的上边距；节号与 h2 同字号、同基线，用强调字色。 */
+  .pp-prose section.sec { margin-top:0; }
+  .pp-prose .sechead { display:flex; align-items:baseline; gap:.5em; margin:0; }
+  .pp-prose .sechead > h2 { flex:1; min-width:0; }
+  .pp-prose .sechead > .ref { font-family:inherit; font-size:var(--pp-prose-h2); font-weight:600; line-height:1; color:var(--pp-accent-text); font-variant-numeric:tabular-nums; }
+  .pp-prose .sec-body > :first-child { margin-top:0; }
+  /* 中文标题用 600（苹方上 700 / 800 都是 Semibold），字距 0。 */
+  .pp-prose :where(h1, h2, h3, h4) { letter-spacing:0; text-wrap:balance; }
+  .pp-prose :where(p, li) { text-wrap:pretty; }
+  .pp-prose h2 { font-size:var(--pp-prose-h2); font-weight:600; line-height:1.45; margin:2.4em 0 .7em; }
+  .pp-prose h3 { font-size:var(--pp-prose-h3); font-weight:600; line-height:1.5; margin:1.8em 0 .5em; }
+  .pp-prose p { margin:0 0 var(--pp-prose-gap); }
+  .pp-prose :where(ul, ol) { margin:0 0 var(--pp-prose-gap); }
+  .pp-prose li { margin:.3em 0; }
+  /* 引用块：中文不用斜体，也不加英文引号。 */
+  .pp-prose blockquote { font-style:normal; font-weight:inherit; }
+  .pp-prose blockquote p:first-of-type::before, .pp-prose blockquote p:last-of-type::after { content:none; }
+  /* 行内代码：去掉 Tailwind 默认加的反引号，换成浅底。 */
+  .pp-prose code::before, .pp-prose code::after { content:none; }
+  .pp-prose code { font-family:var(--pp-font-mono); font-size:.875em; font-weight:500; background:var(--pp-fill); padding:.1em .35em; border-radius:var(--pp-r-1); }
+  .pp-prose pre code { background:none; padding:0; font-weight:inherit; border-radius:0; }
+  .pp-prose pre { font-family:var(--pp-font-mono); }
+  /* 链接（[[ ]] 芯片和按钮除外）：强调字色，下划线淡一档。 */
+  .pp-prose a:not(.cref):not(.btn) { color:var(--pp-accent-text); text-decoration-color:color-mix(in srgb, var(--pp-accent-text) 45%, transparent); text-underline-offset:3px; }
+  .pp-prose a:not(.cref):not(.btn):hover { text-decoration-color:var(--pp-accent-solid); background:var(--pp-accent-soft); border-radius:3px; }
+}
+/* 盖过不分层的组件规则的几条（组件规则本来就赢过 prose 层）。 */
+.pp-prose > .prose > .meta { margin:16px 0 0; }
+.pp-prose :is(.canvas-card, .pp-fig) { margin:1.75em 0; }
+/* 目录：行距收紧、编号悬挂，长标题换行时和标题文字对齐。 */
+.toc { line-height:1.45; }
+.toc li a { display:flex; gap:6px; padding:5px 8px; text-wrap:pretty; }
+.toc .n { flex:none; min-width:1.4em; margin:0; }
 
 /* [[ ]] 芯片：已有页 = accent 字、600、box-shadow 当下划线、6px 实心圆点；空 ref = 灰字、虚线、空心圆点。
    字色用 --accent-ink：亮色 #0b7a5c 对页面底色 5.3:1（--accent #0e8f6c 只有 4.1:1），悬停底色上 4.6:1。
@@ -270,7 +335,6 @@ footer.foot { margin-top:96px; font-size:var(--pp-fs-sm); color:var(--pp-text-mu
 .meta time { font-variant-numeric:tabular-nums; }
 .proj-tag { display:inline-block; font-size:var(--pp-fs-xs); line-height:1.6; padding:0 8px; border:1px solid var(--pp-border); border-radius:999px; color:var(--pp-text-muted); text-decoration:none; }
 .proj-tag:hover { color:var(--pp-text); background:var(--pp-surface); }
-.prose > .meta { margin-top:-4px; }
 .feed { list-style:none; margin:40px 0 0; padding:0; }
 .feed-item { padding:22px 0; border-top:1px solid var(--pp-border); }
 .feed-item:first-child { border-top:0; padding-top:0; }
