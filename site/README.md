@@ -85,7 +85,7 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - 颜色、字体、字号、圆角、正文尺度都是 `--pp-*`，来自生成的 `src/styles/tokens.css`（源 `scripts/tokens/source.mjs`，`npm run build:tokens`）；`site.css` 不写颜色字面量。值与写法的正典是 `docs/design.md`“色彩”“字体与排印”和“组件惯用式”的圆角一条。
 - 引入顺序（`Base.astro`）：`layers.css`（声明 `@layer base, prose`）→ `tokens.css` → `vendor/tailwind-typography.css`（Tailwind Typography 0.5.20，MIT，原样入库）→ `site.css`。组件规则不分层，总能盖过正文规则。
 - 文章页、wiki 词条页的 `<main>` 带 `pp-prose`；画布卡片、图、页顶错误条带 `not-prose`。新组件放进正文里时也加 `not-prose`。
-- 表格：渲染时 `src/lib/rehype-table-scroll.js`（`astro.config.mjs` 的 `rehypePlugins`）给每个 `<table>` 包一层 `.pp-table-scroll`。表格是宽块：不受 40em 行宽限制，最宽到正文栏（与画布卡片对齐）；按内容取宽，窄表不撑满，宽表放不下才横向滚动；表头和首列不折行、首列 sticky，其余单元格最小 8em；整列是数字的列加 `.num` 右对齐。
+- 表格：渲染时 `src/lib/rehype-table-scroll.js`（`astro.config.mjs` 的 `rehypePlugins`）给每个 `<table>` 包一层 `.pp-table-scroll`。表格是宽块：不受 40em 行宽限制，最宽到正文栏（与画布卡片对齐）；按内容取宽，窄表不撑满，宽表放不下才横向滚动；表头和首列不折行、首列 sticky；有长格的列加 `.wrap`（文字区最窄 9em、宽裕时 12em），其余列不折行；整列是数字的列加 `.num` 右对齐。
 
 ## 代码地图
 

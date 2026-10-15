@@ -111,18 +111,20 @@ main { min-width:0; }
   .pp-prose pre code { background:none; padding:0; font-weight:inherit; border-radius:0; }
   .pp-prose pre { font-family:var(--pp-font-mono); }
   /* 表格（宽块）：渲染时包一层 .pp-table-scroll（lib/rehype-table-scroll.js）。外层不受 40em 行宽限制，
-     最宽到正文栏（与画布卡片同宽，上限 --pp-prose-wide）；表格按内容取宽（max-content），窄表不硬撑满，
-     宽表先用满正文栏，单元格到最小宽度还放不下才横向滚动，左右两侧的阴影提示还有内容。
-     列宽自适应：表头和首列（维度列）不折行、首列滚动时钉在左边；其余单元格最小 8em（约 8 个汉字一行），
-     最宽 17em 后折行；整列是数字的列右对齐。字号、表头字重、分隔线、内边距取 Tailwind Typography 的表格规则。 */
+     最宽到正文栏（目录栏与评论栏之间，与画布卡片同宽，上限 --pp-prose-wide）；表格按内容取宽（auto），窄表不硬撑满，
+     宽表先用满正文栏、长格列收到最窄还放不下才横向滚动，左右两侧的阴影提示还有内容。
+     列宽自适应：表头和首列（维度列）不折行、首列滚动时钉在左边；有长格的列（.wrap，rehype 按字数标）最窄 9em
+     （约 9 个汉字一行）、宽裕时 12em，其余列不折行；整列是数字的列右对齐。
+     字号、表头字重、分隔线、内边距取 Tailwind Typography 的表格规则。 */
   .pp-prose .pp-table-scroll { max-width:min(100%, var(--pp-prose-wide)); margin:1.5em 0 1.75em; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin;
     background:
       linear-gradient(to right, var(--pp-bg) 40%, transparent) left / 32px 100% no-repeat local,
       linear-gradient(to left, var(--pp-bg) 40%, transparent) right / 32px 100% no-repeat local,
       radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) left / 14px 100% no-repeat scroll,
       radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) right / 14px 100% no-repeat scroll; }
-  .pp-prose .pp-table-scroll > table { table-layout:auto; width:max-content; max-width:100%; margin:0; font-size:.875em; line-height:1.7; }
-  .pp-prose .pp-table-scroll :is(th, td) { min-width:8em; max-width:17em; padding:.5714em .8em; vertical-align:top; text-align:left; background:none; }
+  .pp-prose .pp-table-scroll > table { table-layout:auto; width:auto; max-width:none; margin:0; font-size:.875em; line-height:1.7; }
+  .pp-prose .pp-table-scroll :is(th, td) { padding:.5714em .8em; vertical-align:top; text-align:left; background:none; white-space:nowrap; }
+  .pp-prose .pp-table-scroll td.wrap { white-space:normal; width:13.6em; min-width:10.6em; } /* 含左右内边距 1.6em：文字区最窄 9em、宽裕时 12em */
   .pp-prose .pp-table-scroll th { white-space:nowrap; font-weight:600; color:var(--pp-text); }
   .pp-prose .pp-table-scroll thead { border-bottom:1px solid var(--pp-border-strong); }
   .pp-prose .pp-table-scroll tbody tr { border-bottom:1px solid var(--pp-border); }
