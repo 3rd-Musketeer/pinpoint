@@ -1,6 +1,6 @@
 import fs from 'node:fs/promises';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import { openWorkbench } from './lib/workbench.js';
 
 // 导出（pp2 切片 3 收敛）：用户面只剩「导出整个画布为离线可交互 HTML」

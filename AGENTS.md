@@ -118,7 +118,7 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
 
 ## 坑与约定
 
-以下六条 agent 猜不到、猜错了会白干。正文（机制全文）都在
+以下七条 agent 猜不到、猜错了会白干。正文（机制全文）都在
 [`docs/board-schema.md`](docs/board-schema.md) 与各链接里，这里只留指针。
 
 **overlay 与 `.ios-app` 同级（iOS）** —— `.ios-sheet` / `.ios-sheet-backdrop` / `.ios-tabbar` 是
@@ -145,3 +145,10 @@ edit freely”只说对一半：包装层是仓内的，Radix Primitive 的内�
 **层级（z-index）走 `--wb-z-*` 阶梯** —— 外壳里带 z-index 的元素一律从阶梯挑档，不写数字；
 `.wb` 是隔离的堆叠上下文，`.wb-stage-wrap` 永远不能成为堆叠上下文。阶梯表与两条结构规则在
 [`docs/design.md`](docs/design.md)“层级”，`src/workbench/layering.test.js` 守，来龙去脉见 ADR 0034。
+
+**每个 vite 实例一份依赖缓存** —— 服务的 `cacheDir` 缺省是本 checkout 的 `.tmp/vite`，e2e 每组设
+`PINPOINT_VITE_CACHE` 到自己的固件目录，`ppnt dev --sandbox` 设到自己的数据目录（`src/server/lib/vite-deps.js`）。
+不要改回 `node_modules/.vite`：worktree 的 `node_modules` 软链到主 clone，共用时一个实例重建 `deps/`
+会让另一个实例的页面加载两份 React（`Invalid hook call`，[`docs/debugging.md`](docs/debugging.md) 2026-10-15）。
+同一个 checkout 再起一个服务时也给它单独的 `PINPOINT_VITE_CACHE`。工作台加了新的第三方依赖，
+同时登记进 `WORKBENCH_DEPS`（`vite-deps.test.js` 守）；e2e 用例的 `test` / `expect` 从 `e2e/lib/fixtures.js` 取。

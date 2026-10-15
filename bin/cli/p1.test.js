@@ -407,7 +407,7 @@ test('dev --sandbox：不接受 ~/.pinpoint；env.sh 只有 CLI 的三个变量'
   assert.equal(insideOwnerData('/home/u/.pinpoint/x', '/home/u'), true);
   assert.equal(insideOwnerData('/home/u/.pinpoint-sandbox', '/home/u'), false);
   const vars = sandboxEnv({ dataDir: "/tmp/it's", port: 6850, sitePort: 6855 });
-  assert.deepEqual(vars, { PINPOINT_DATA_DIR: "/tmp/it's", PINPOINT_REGISTRY: "/tmp/it's/registry.json", PINPOINT_ORIGIN: 'http://127.0.0.1:6850', PORT: '6850', PINPOINT_SITE_PORT: '6855' });
+  assert.deepEqual(vars, { PINPOINT_DATA_DIR: "/tmp/it's", PINPOINT_REGISTRY: "/tmp/it's/registry.json", PINPOINT_ORIGIN: 'http://127.0.0.1:6850', PORT: '6850', PINPOINT_SITE_PORT: '6855', PINPOINT_VITE_CACHE: "/tmp/it's/vite-cache" });
   assert.equal(envFileText(vars), "export PINPOINT_DATA_DIR='/tmp/it'\\''s'\nexport PINPOINT_REGISTRY='/tmp/it'\\''s/registry.json'\nexport PINPOINT_ORIGIN='http://127.0.0.1:6850'\n");
 
   const home = tempDir(t);

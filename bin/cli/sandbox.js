@@ -85,6 +85,8 @@ export function sandboxEnv({ dataDir, port, sitePort }) {
     PINPOINT_ORIGIN: `http://127.0.0.1:${port}`,
     PORT: String(port),
     PINPOINT_SITE_PORT: String(sitePort),
+    // vite 依赖缓存也放进隔离目录：和常驻服务同一个 checkout，共用 .tmp/vite 时一方重建会换掉另一方在用的 chunk。
+    PINPOINT_VITE_CACHE: path.join(dataDir, 'vite-cache'),
   };
 }
 

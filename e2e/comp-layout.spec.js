@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import { openWorkbench } from './lib/workbench.js';
 
 // comp 段的画布网格（2026-09-23 comp 布局修复）：row 段是三行网格、.wb-screen

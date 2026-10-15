@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT } from './env.js';
 import { ROOT } from './lib/cli.js';

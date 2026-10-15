@@ -19,6 +19,30 @@
 
 ---
 
+## 2026-10-15 工作台空白，页面报 Invalid hook call（多个 vite 实例共用一份依赖缓存）
+
+现象：`de11beb` 那次 ship 首跑挂了 66 条 e2e，页面报错都是 `Invalid hook call` 或
+`Cannot read properties of null (reading 'useState')`，重跑大多能过。owner 的常驻服务刚重启、还没打开页面时，
+工作台也会整页空白，控制台是同样的报错。
+误判路径：报错像组件里 hook 写错，或像用例时序问题；但挂的用例分散在各个 spec，没有共同的改动。
+trace 里同一个 React chunk 按两个不同的 `?v=` 各加载了一次，页面里有两份 React。隔离复现时，
+两个 root 不同的 vite 实例先后启动就能复现。
+根因：`vite.config.js` 没设 `cacheDir`，缓存落在缺省的 `node_modules/.vite`；worktree 和 `just preview`
+的 `node_modules` 软链到主 clone，所以常驻服务、各轮 e2e、各 worktree 的 e2e 与预览共用一份 `deps/`。
+vite 的依赖 hash 含 root，root 或依赖集不同的实例启动时重新预构建，整体覆盖 `deps/`，chunk 名也变。
+另一个已启动、还没转换过页面的实例随后读到别人的 chunk，一页里就加载了两份 React。
+修复：每个实例一份缓存（`src/server/lib/vite-deps.js`）。缺省是本 checkout 真实路径下的 `.tmp/vite`；
+`PINPOINT_VITE_CACHE` 覆盖它，e2e 每组设到自己的固件目录（`e2e/env.js` 的 `E2E_VITE_CACHE`），
+`ppnt dev --sandbox` 设到自己的数据目录。`optimizeDeps.include` 列全工作台的第三方依赖，启动时一次预构建齐。
+识别特征：页面里出现 `Invalid hook call`、`reading 'useState'` 这类 React 报错，而且分散在不相干的用例或页面上；
+network 里同一个 deps 文件带两个不同的 `?v=`。e2e 的失败信息里会多一行“环境：vite 依赖缓存被覆盖”
+（`e2e/lib/fixtures.js`）。先查报错的那个服务的 `cacheDir` 有没有和别的实例共用。
+防回归：`src/server/lib/vite-deps.test.js` 断言 `cacheDir` 不在 `node_modules` 下、受 `PINPOINT_VITE_CACHE`
+覆盖、`optimizeDeps.include` 和源码里的裸 import 对得上；`e2e/env.test.js` 断言两组 e2e 的缓存目录不同、
+真传给了 webServer；`e2e/spec-hygiene.test.js` 守用例都从 `e2e/lib/fixtures.js` 取 `test`。
+
+---
+
 ## 2026-10-15 帧 hover 不重建钉子的用例满载首跑挂 moved 4（量的窗口里落进了上一步排的重建）
 
 现象：`workbench.spec.js`“帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM”在 3 次全量首跑都挂，

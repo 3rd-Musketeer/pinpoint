@@ -285,6 +285,7 @@ ppnt dev --sandbox [<数据目录>] [--port <端口>] [--site-port <端口>]
 | `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
 | `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |
 | `PINPOINT_SITE_CACHE` | Astro 的缓存目录，可选。站点的内容库按 `PINPOINT_SITE_PORT` 分在 `site/.astro-cache/<端口>/`，不用为隔离再设它 | `site/.astro-cache/<端口>` |
+| `PINPOINT_VITE_CACHE` | 服务（vite）的依赖预构建缓存目录，可选。缺省在本 checkout 的 `.tmp/vite`，同一个 checkout 起第二个服务时设成自己的目录（`ppnt dev --sandbox` 自动设），不要让两个实例共用一份 | `<仓库>/.tmp/vite` |
 
 在 pinpoint 仓库里（要有 `node_modules`）起服务。下面的命令里，`<数据目录>` 是一个空的临时目录，端口换成空闲的：
 

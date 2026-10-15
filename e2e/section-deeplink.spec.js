@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { E2E_SITES_DIR } from './env.js';
 import { openOutline } from './lib/workbench.js';

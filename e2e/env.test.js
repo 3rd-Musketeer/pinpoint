@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { execFileSync } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
@@ -66,4 +67,26 @@ test('默认端口 5299，站点端口跟着主端口走', async () => {
 
   const shifted = await loadEnv(5399);
   assert.equal(shifted.E2E_SITE_PORT, 5404);
+});
+
+// playwright.config.js 经它自己 import 的 env.js 读 E2E_PORT，模块缓存绕不开，每个端口起一个子进程读。
+function webServerEnv(port) {
+  const script = `const c = (await import(${JSON.stringify(new URL('../playwright.config.js', import.meta.url).href)})).default;
+process.stdout.write(JSON.stringify(c.webServer[0].env.PINPOINT_VITE_CACHE ?? null));`;
+  const out = execFileSync(process.execPath, ['--input-type=module', '-e', script], { env: { ...process.env, E2E_PORT: String(port) }, encoding: 'utf8' });
+  return JSON.parse(out);
+}
+
+test('服务的 vite 缓存按轮分家：同一次 ship 的两组各用自己固件目录下的 deps/，不在 node_modules 下', async () => {
+  const a = await loadEnv(5399);
+  const b = await loadEnv(5419);
+  assert.notEqual(a.E2E_VITE_CACHE, b.E2E_VITE_CACHE);
+  for (const env of [a, b]) {
+    assert.equal(path.dirname(env.E2E_VITE_CACHE), env.E2E_FIXTURE_DIR);
+    assert.equal(env.E2E_VITE_CACHE.split(path.sep).includes('node_modules'), false);
+  }
+
+  // 真传给了 webServer：vite.config.js 认的是 PINPOINT_VITE_CACHE。
+  assert.equal(webServerEnv(5399), a.E2E_VITE_CACHE);
+  assert.equal(webServerEnv(5419), b.E2E_VITE_CACHE);
 });

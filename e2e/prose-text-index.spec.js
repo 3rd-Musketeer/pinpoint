@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 // 正文评论的文本索引与高亮（src/client/prose-comments.js 的 buildTextIndex、rangeToOffsets、
 // paintSegments、unpaint）在真 DOM 上的单测。prose-comments.spec.js 走完整条链路，但被评的

@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import { openWorkbench } from './lib/workbench.js';
 
 const cellSelector = '[data-screen="settings"] .ios-cell';

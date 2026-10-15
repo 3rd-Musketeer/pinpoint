@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL } from './env.js';
 import { openWorkbenchWithPages } from './lib/workbench.js';

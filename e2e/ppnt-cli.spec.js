@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { test } from '@playwright/test';
+import { test } from './lib/fixtures.js';
 
 import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 import { ppnt } from './lib/cli.js';

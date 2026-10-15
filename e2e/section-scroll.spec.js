@@ -1,6 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { waitForSave } from './lib/annotate.js';

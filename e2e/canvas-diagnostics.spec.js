@@ -1,4 +1,4 @@
-import {test,expect} from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import fs from 'node:fs/promises';
 import { E2E_DATA_DIR } from './env.js';
 test('canvas diagnostics survive reload and export bounded metadata without page content',async({page})=>{

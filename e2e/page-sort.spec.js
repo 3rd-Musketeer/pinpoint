@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { E2E_SITES_DIR } from './env.js';
 
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { sortPages } from '../src/workbench/lib/page-sort.js';
 import { openWorkbenchWithPages as openWorkbench } from './lib/workbench.js';

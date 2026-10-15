@@ -17,6 +17,7 @@ import contentRoutes from './src/server/content-routes.js';
 import articleProxy from './src/server/article-proxy.js';
 import workbenchRoutes from './src/server/workbench-routes.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
+import { WORKBENCH_DEPS, viteCacheDir } from './src/server/lib/vite-deps.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 
@@ -37,6 +38,10 @@ registryStore.reload = () => {
 const articles = articleProxy({ registry: registryStore, root: ROOT });
 
 export default defineConfig({
+  // 每个实例自己的依赖缓存，不共用 node_modules/.vite（src/server/lib/vite-deps.js 写了为什么）。
+  cacheDir: viteCacheDir({ root: ROOT }),
+  // 工作台的第三方依赖启动时一次预构建齐，不等运行时发现新依赖再重建 deps/、换 chunk 名。
+  optimizeDeps: { include: WORKBENCH_DEPS },
   // workbenchRoutes 排最前：旧地址先 302 到 /workbench/，不带参数的 / 才轮到文章代理（blog 首页，ADR 0044）。
   plugins: [workbenchRoutes(), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
   server: {

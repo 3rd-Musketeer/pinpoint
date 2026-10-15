@@ -31,3 +31,8 @@ export const E2E_SITES_DIR = path.join(E2E_FIXTURE_DIR, 'sites');
 // 站点的 Astro 缓存（content layer 数据、vite 依赖预构建）按轮分家：两组并行时
 // 两个 Astro 进程读的是不同 registry，共用 site/.astro-cache 会互相覆盖。
 export const E2E_SITE_CACHE = path.join(E2E_FIXTURE_DIR, 'site-cache');
+
+// 服务（vite）的依赖预构建缓存也按轮分家（vite.config.js 读 PINPOINT_VITE_CACHE）：同一次 ship 的两组、
+// 别的 worktree 的 e2e、owner 的常驻服务各用各的 deps/。共用时一个实例重建会覆盖另一个已在用的 chunk，
+// 页面里出现多份 React（Invalid hook call，2026-10-15 查清）。
+export const E2E_VITE_CACHE = path.join(E2E_FIXTURE_DIR, 'vite-cache');

@@ -64,3 +64,14 @@ test('CLI 子进程只经 e2e/lib/cli.js 起：它总带 PINPOINT_ORIGIN，不�
   }
   assert.deepEqual(offenders, [], 'spec 用 e2e/lib/cli.js 的 ppnt / ppntResult；固件脚本要么也用它，要么显式带 PINPOINT_ORIGIN');
 });
+
+test('用例的 test / expect 从 e2e/lib/fixtures.js 取：它在失败信息里标出“环境：vite 依赖缓存被覆盖”', () => {
+  const offenders = [];
+  for (const name of fs.readdirSync(E2E).filter((n) => n.endsWith('.spec.js'))) {
+    const text = fs.readFileSync(path.join(E2E, name), 'utf8');
+    for (const m of text.matchAll(/import\s*\{([^}]*)\}\s*from\s*['"]@playwright\/test['"]/g)) {
+      if (m[1].split(',').map((s) => s.trim()).some((s) => s === 'test' || s === 'expect')) offenders.push(name);
+    }
+  }
+  assert.deepEqual(offenders, [], "改成 import { expect, test } from './lib/fixtures.js'");
+});

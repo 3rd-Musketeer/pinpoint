@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { closeSettled } from './ledger-settle.js';
 import { annotate, openAnnotated } from './lib/annotate.js';

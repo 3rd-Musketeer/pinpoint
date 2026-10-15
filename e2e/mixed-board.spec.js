@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 import { openOutline, openWorkbench, stageForm } from './lib/workbench.js';
 
 // 阶段 6（2026-08-16f 产物与草稿模型）：混合板 = 一个 Page 的 board.json 里同时有

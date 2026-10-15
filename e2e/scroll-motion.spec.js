@@ -1,4 +1,4 @@
-import { test, expect } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 import { maybeThrottle } from './cpu-throttle.js';
 

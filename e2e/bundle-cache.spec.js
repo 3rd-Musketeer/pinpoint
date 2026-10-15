@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test';
+import { expect, test } from './lib/fixtures.js';
 
 // 审计 B3 的缓存契约在真浏览器里走一遍（perf-bundle）：注入页引用构建产物的
 // 内容哈希地址，immutable 永久缓存 —— 第二次打开同一页哈希地址零网络传输
