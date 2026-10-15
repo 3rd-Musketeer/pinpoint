@@ -213,11 +213,6 @@ mark.pp-hl.draft { background:var(--hl-on); }
 .empty-rail { color:var(--muted); font-size:13.5px; }
 .pp-rail-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
 .pp-rail-head .label { margin:0; }
-.pp-seg { display:flex; gap:2px; background:var(--soft); border-radius:999px; padding:2px; }
-.pp-seg button { appearance:none; border:0; background:none; color:var(--ink-2); font:inherit; font-size:12px; padding:3px 10px; border-radius:999px; cursor:pointer; }
-.pp-seg button[aria-selected="true"] { background:var(--bg); color:var(--ink); box-shadow:0 1px 2px rgba(0,0,0,.08); }
-.pp-seg button.zero { color:var(--muted); }
-.pp-seg .c { font-variant-numeric:tabular-nums; color:var(--muted); }
 .pp-thread { border:1px solid var(--hair); border-radius:14px; padding:12px 14px; margin-bottom:14px; background:var(--bg); font-size:14px; line-height:1.55; cursor:pointer; transition:box-shadow .15s; }
 .pp-thread.on { cursor:default; box-shadow:var(--shadow-sm); border-color:color-mix(in srgb, var(--accent) 50%, var(--hair)); }
 .pp-thread .q { font-size:12.5px; color:var(--muted); border-left:3px solid var(--hl-on); padding-left:8px; margin-bottom:8px; overflow-wrap:anywhere; }
@@ -238,6 +233,25 @@ mark.pp-hl.draft { background:var(--hl-on); }
 .pp-thread textarea { display:block; width:100%; margin-top:10px; font:inherit; font-size:14px; color:var(--ink); background:var(--soft); border:1px solid var(--hair);
                       border-radius:10px; padding:8px 10px; resize:vertical; min-height:60px; }
 .pp-thread .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
+/* 回复框默认收着：线程底下只有一个“回复”，点了才展开输入框。 */
+.pp-foot { display:flex; align-items:center; gap:6px; margin:6px 0 -4px -6px; }
+.pp-draft-tag { color:var(--muted); font-size:11.5px; }
+.pp-act:focus-visible, .pp-stack-head:focus-visible { outline:2px solid var(--accent); outline-offset:1px; }
+/* 已关闭的那一摞：收着时一张卡 + 下面露出两道边（只有一条时一道），点开成正常列表。 */
+.pp-stack { position:relative; margin:4px 0 24px; }
+.pp-stack-head { appearance:none; position:relative; z-index:2; display:flex; align-items:center; gap:8px; width:100%; min-width:0; text-align:left;
+                 font:inherit; font-size:13px; color:var(--ink-2); background:var(--bg); border:1px solid var(--hair); border-radius:14px; padding:9px 14px; cursor:pointer; }
+.pp-stack-head:hover { color:var(--ink); }
+.pp-stack:not(.open)::before, .pp-stack:not(.open)::after { content:""; position:absolute; left:8px; right:8px; bottom:-5px; height:20px; z-index:1;
+                 border:1px solid var(--hair); border-top:0; border-radius:0 0 14px 14px; background:var(--soft); }
+.pp-stack:not(.open)::after { left:16px; right:16px; bottom:-10px; z-index:0; }
+.pp-stack[data-count="1"]::after { display:none; }
+.pp-stack-label { flex:none; font-weight:500; }
+.pp-stack-label .c { font-variant-numeric:tabular-nums; color:var(--muted); font-weight:400; }
+.pp-stack-peek { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; color:var(--muted); font-size:12.5px; }
+.pp-stack-chev { flex:none; margin-left:auto; width:7px; height:7px; border-right:1.5px solid currentColor; border-bottom:1.5px solid currentColor; transform:translateY(-2px) rotate(45deg); }
+.pp-stack.open .pp-stack-head { border-color:transparent; background:none; padding:4px 2px; margin-bottom:8px; }
+.pp-stack.open .pp-stack-chev { transform:translateY(2px) rotate(-135deg); }
 .pp-rail-note { color:var(--warn); font-size:12.5px; margin:0; }
 .pp-rail-note:empty { display:none; }
 

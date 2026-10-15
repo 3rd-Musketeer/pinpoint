@@ -26,20 +26,15 @@ import {
   applyProseOps,
   authorLabel,
   formatWhen,
+  isProseClosed,
   isProseRow,
+  isSendKey,
   newProseRow,
   PROSE_LEDGER,
+  railGroups,
   threadMessages,
 } from '../shared/prose-thread.js';
-import {
-  ANN_FILTERS,
-  ANN_STATUS_COLORS,
-  annFilterCounts,
-  annStatusLabel,
-  filterIncludesStatus,
-  readAnnFilter,
-  writeAnnFilter,
-} from '../shared/ann-status.js';
+import { ANN_STATUS_COLORS } from '../shared/ann-status.js';
 
 var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-figure],[data-pp-nocomment],.errors';
 var BLOCK_TAGS = /^(P|H[1-6]|LI|UL|OL|DL|DT|DD|DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|BLOCKQUOTE|PRE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|FIGURE|FIGCAPTION|HR|BR)$/;
@@ -193,9 +188,6 @@ export function startProseComments(options) {
 
   var LEDGER = PROSE_LEDGER;
   var PATH = (function () { try { return decodeURIComponent(location.pathname); } catch (e) { return location.pathname; } })();
-  var FILTER_KEY = 'pinpoint:' + ENTRY + ':' + LEDGER + ':stfilter';
-  // 筛选记忆只是浏览偏好：隐私模式下 localStorage 访问本身会抛，读写都退回默认。
-  var prefs = (function () { try { return window.localStorage; } catch (e) { return null; } })();
 
   var base = [];          // 磁盘上最新一版的行（服务端发过号）
   var revision = 0;
@@ -209,7 +201,9 @@ export function startProseComments(options) {
   var retryTimer = 0;
   var connection = 'connecting'; // connecting | online | offline
   var syncError = '';
-  var filter = readAnnFilter(prefs, FILTER_KEY);
+  var stackOpen = false;  // 已关闭的那一摞是否展开（不记盘：每次打开文章都收着）
+  var replyOpen = new Set(); // 展开了回复框的线程 id
+  var replyText = {};     // 线程 id -> 回复框里的字（框收起后草稿也留着）
   var focusedId = null;
   var draft = null;       // { quote, section, start, end }
   var anchors = new Map(); // id -> { start, end } | null（null = 失效）
@@ -313,6 +307,7 @@ export function startProseComments(options) {
         restored = true;
       } else if (op.op === 'reply' && op.text) {
         restoreText[op.id] = restoreText[op.id] ? restoreText[op.id] + '\n' + op.text : op.text;
+        replyOpen.add(op.id);
         if (focusedId !== '__draft') focusedId = op.id;
         restored = true;
       }
@@ -446,8 +441,9 @@ export function startProseComments(options) {
   });
 
   // ---------- 锚点与高亮 ----------
+  // 已关闭的线程只在那一摞展开时画高亮：收着时正文里只剩还要处理的。
   function visible(row) {
-    return filterIncludesStatus(filter, row.status || 'open');
+    return stackOpen || !isProseClosed(row);
   }
 
   function paint() {
@@ -536,23 +532,26 @@ export function startProseComments(options) {
       ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
       : '<button class="pp-act" type="button" data-act="close">完成</button>';
     var focused = row.id === focusedId;
+    // 回复框默认不出现：点“回复”才展开，发送后收起。框收起时留着的草稿在按钮上标出来。
+    var reply = replyOpen.has(row.id)
+      ? '<div class="pp-reply"><textarea data-reply="' + esc(row.id) + '" rows="2" placeholder="回复…" aria-label="回复 #' + esc(row.n) + '"></textarea>'
+        + '<div class="acts"><button class="btn pri" type="button" data-act="reply">发送</button></div></div>'
+      : '<div class="pp-foot"><button class="pp-act" type="button" data-act="open-reply">回复</button>'
+        + (replyText[row.id] ? '<span class="pp-draft-tag">有草稿</span>' : '') + '</div>';
     return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
       + '<div class="pp-meta">' + statusChip(row)
       + (stale ? '<span class="pp-stale" title="正文里找不到这段引文了">失效</span>' : '')
       + '<span class="sp"></span>' + act + '</div>'
       + quoteHtml(row.quote && row.quote.exact)
       + messagesHtml(row)
-      + (focused
-        ? '<div class="pp-reply"><textarea data-reply="' + esc(row.id) + '" rows="2" placeholder="回复…"></textarea>'
-          + '<div class="acts"><button class="btn pri" type="button" data-act="reply">发送</button></div></div>'
-        : '')
+      + reply
       + '</div>';
   }
 
   function draftHtml() {
     return '<div class="pp-thread draft on" data-id="__draft">'
       + quoteHtml(draft.quote.exact)
-      + '<textarea data-reply="__draft" rows="3" placeholder="写评论…"></textarea>'
+      + '<textarea data-reply="__draft" rows="3" placeholder="写评论…" aria-label="写评论"></textarea>'
       + '<div class="acts"><button class="btn" type="button" data-act="cancel-draft">取消</button>'
       + '<button class="btn pri" type="button" data-act="send-draft">发送</button></div></div>';
   }
@@ -562,45 +561,55 @@ export function startProseComments(options) {
     return a ? a.start : Infinity;
   }
 
+  // 已关闭的那一摞：收着时是一张露出两道边的卡（“已关闭 N” + 最上面那条的引文），
+  // 点开成正常列表，栏头再点收回。
+  function stackHtml(closed) {
+    if (!closed.length) return '';
+    var head = '<button type="button" class="pp-stack-head" data-act="toggle-stack" aria-expanded="' + stackOpen + '">'
+      + '<span class="pp-stack-label">已关闭 <span class="c">' + closed.length + '</span></span>'
+      + (stackOpen ? '' : '<span class="pp-stack-peek">' + esc(String((closed[0].quote && closed[0].quote.exact) || '')) + '</span>')
+      + '<span class="pp-stack-chev" aria-hidden="true"></span></button>';
+    if (!stackOpen) return '<div class="pp-stack" data-count="' + closed.length + '">' + head + '</div>';
+    return '<div class="pp-stack open" data-count="' + closed.length + '">' + head
+      + '<div class="pp-stack-list">' + closed.map(threadHtml).join('') + '</div></div>';
+  }
+
   function renderRail() {
     // 重画前记下输入框的内容与光标，重画后放回（SSE 推来 agent 回复时正在打字）。
     var keep = {};
     var active = document.activeElement;
     var areas = rail.querySelectorAll('textarea[data-reply]');
     for (var i = 0; i < areas.length; i++) {
-      keep[areas[i].getAttribute('data-reply')] = {
+      var key = areas[i].getAttribute('data-reply');
+      keep[key] = {
         value: areas[i].value,
         focus: areas[i] === active,
         start: areas[i].selectionStart,
         end: areas[i].selectionEnd,
       };
+      if (key !== '__draft') {
+        if (areas[i].value) replyText[key] = areas[i].value;
+        else delete replyText[key];
+      }
     }
-    var counts = annFilterCounts(rows);
-    var shown = rows.filter(visible).slice().sort(function (a, b) {
-      var d = orderKey(a) - orderKey(b);
-      if (d !== 0 && !Number.isNaN(d)) return d;
-      return (a.n || Infinity) - (b.n || Infinity);
-    });
-    var seg = '<div class="pp-seg" role="tablist">' + ANN_FILTERS.map(function (f) {
-      return '<button type="button" role="tab" data-filter="' + f + '" aria-selected="' + (f === filter) + '"' + (counts[f] ? '' : ' class="zero"') + '>'
-        + esc(annStatusLabel(f)) + ' <span class="c">' + counts[f] + '</span></button>';
-    }).join('') + '</div>';
+    var groups = railGroups(rows, orderKey);
     var list = '';
     var draftPlaced = false;
     var draftKey = draft ? draft.start : Infinity;
-    shown.forEach(function (row) {
+    groups.open.forEach(function (row) {
       if (draft && !draftPlaced && orderKey(row) > draftKey) { list += draftHtml(); draftPlaced = true; }
       list += threadHtml(row);
     });
     if (draft && !draftPlaced) list += draftHtml();
-    var empty = !shown.length && !draft
-      ? '<p class="empty-rail">' + (filter === 'closed' ? '没有 closed 的评论。' : '选中正文里的一段文字，点“评论”。') + '</p>'
+    var empty = !groups.open.length && !draft
+      ? '<p class="empty-rail">选中正文里的一段文字，点“评论”。</p>'
       : '';
     var note = connection === 'offline'
       ? '未连接 pinpoint 服务，评论暂时存不下。'
       : (syncError || '');
-    rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div>' + seg + '</div>'
+    rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div></div>'
       + '<div class="pp-threads">' + list + '</div>' + empty
+      + stackHtml(groups.closed)
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
     Object.keys(keep).forEach(function (id) {
       var area = railArea(id);
@@ -610,6 +619,11 @@ export function startProseComments(options) {
         area.focus();
         try { area.setSelectionRange(keep[id].start, keep[id].end); } catch (e) { /* */ }
       }
+    });
+    // 刚展开的回复框：放回框收起前留下的草稿。
+    replyOpen.forEach(function (id) {
+      var area = railArea(id);
+      if (area && !area.value && replyText[id]) area.value = replyText[id];
     });
     Object.keys(restoreText).forEach(function (id) {
       var area = railArea(id);
@@ -712,10 +726,7 @@ export function startProseComments(options) {
     var row = newProseRow({ id: id, content: text, quote: draft.quote, section: draft.section, path: PATH, at: new Date().toISOString() });
     draft = null;
     focusedId = id;
-    if (filter !== 'pending') { filter = 'pending'; writeAnnFilter(prefs, FILTER_KEY, filter); }
     enqueue({ op: 'create', row: row });
-    var t = rail.querySelector('.pp-thread[data-id="' + id + '"] textarea');
-    if (t) t.focus();
   }
 
   function cancelDraft() {
@@ -725,11 +736,41 @@ export function startProseComments(options) {
   }
 
   function sendReply(id) {
-    var area = rail.querySelector('textarea[data-reply="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+    var area = railArea(id);
     var text = area ? area.value.trim() : '';
     if (!text) { if (area) area.focus(); return; }
     area.value = '';
+    delete replyText[id];
+    replyOpen.delete(id);
     enqueue({ op: 'reply', id: id, text: text, at: new Date().toISOString() });
+  }
+
+  function openReply(id) {
+    replyOpen.add(id);
+    focusedId = id;
+    renderRail();
+    syncFocusClasses();
+    var area = railArea(id);
+    if (area) {
+      area.focus();
+      try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
+    }
+  }
+
+  /** 收起回复框；框里的字留在 replyText，下次点“回复”放回。 */
+  function closeReply(id) {
+    var area = railArea(id);
+    if (area) {
+      if (area.value) replyText[id] = area.value;
+      else delete replyText[id];
+    }
+    replyOpen.delete(id);
+  }
+
+  function toggleStack() {
+    stackOpen = !stackOpen;
+    if (!stackOpen && focusedId && rows.some(function (r) { return r.id === focusedId && isProseClosed(r); })) focusedId = null;
+    render();
   }
 
   function setStatus(id, status) {
@@ -753,10 +794,38 @@ export function startProseComments(options) {
   document.addEventListener('mousedown', function (e) {
     if (selBtn && !(e.target.closest && e.target.closest('.pp-selbtn'))) hideSelBtn();
   });
+  // 点那张卡外面：空着的回复框收起，写了字的留着（字不丢，也不打断）。用 click 而不是
+  // mousedown：mousedown 时重画右栏会换掉正要点的按钮，这一下 click 就落空了。右栏自己的
+  // click 先跑完（可能已重画），这里按被点的元素所在线程判断，元素已脱离文档也认得出。
+  document.addEventListener('click', function (e) {
+    if (!replyOpen.size) return;
+    var hit = e.target && e.target.closest ? e.target.closest('.pp-thread') : null;
+    var hitId = hit ? hit.getAttribute('data-id') : null;
+    var changed = false;
+    replyOpen.forEach(function (id) {
+      if (id === hitId) return;
+      var area = railArea(id);
+      if (area && area.value.trim()) return;
+      closeReply(id);
+      changed = true;
+    });
+    if (changed) renderRail();
+  });
   // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
   // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.defaultPrevented) return;
+    // 焦点在回复框里：Esc 只收起这个框，写了一半的字留作草稿。
+    var replyArea = document.activeElement && document.activeElement.closest
+      && document.activeElement.closest('textarea[data-reply]:not([data-reply="__draft"])');
+    if (replyArea && rail.contains(replyArea)) {
+      var replyId = replyArea.getAttribute('data-reply');
+      closeReply(replyId);
+      renderRail();
+      var again = rail.querySelector('.pp-thread[data-id="' + (window.CSS && CSS.escape ? CSS.escape(replyId) : replyId) + '"] [data-act="open-reply"]');
+      if (again) again.focus();
+      return;
+    }
     if (draft) {
       var active = document.activeElement;
       if (active && active.matches && active.matches('textarea[data-reply="__draft"]')) cancelDraft();
@@ -778,13 +847,7 @@ export function startProseComments(options) {
   });
 
   rail.addEventListener('click', function (e) {
-    var filterBtn = e.target.closest('[data-filter]');
-    if (filterBtn) {
-      filter = filterBtn.getAttribute('data-filter') === 'closed' ? 'closed' : 'pending';
-      writeAnnFilter(prefs, FILTER_KEY, filter);
-      render();
-      return;
-    }
+    if (e.target.closest('[data-act="toggle-stack"]')) { toggleStack(); return; }
     var thread = e.target.closest('.pp-thread');
     if (!thread) return;
     var id = thread.getAttribute('data-id');
@@ -794,6 +857,7 @@ export function startProseComments(options) {
       if (what === 'send-draft') sendDraft();
       else if (what === 'cancel-draft') cancelDraft();
       else if (what === 'reply') sendReply(id);
+      else if (what === 'open-reply') openReply(id);
       else if (what === 'close') setStatus(id, 'close');
       else if (what === 'reopen') setStatus(id, 'open');
       return;
@@ -804,7 +868,8 @@ export function startProseComments(options) {
   rail.addEventListener('keydown', function (e) {
     var area = e.target.closest && e.target.closest('textarea[data-reply]');
     if (!area) return;
-    if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
+    // Enter 发送，Shift+Enter 换行；输入法组字中的 Enter 留给输入法（isSendKey）。
+    if (isSendKey(e)) {
       e.preventDefault();
       var id = area.getAttribute('data-reply');
       if (id === '__draft') sendDraft();

@@ -15,8 +15,9 @@ import { waitNoReload } from './site-settle.js';
 // 改正文要动副本，不动仓内固件；用例结束把副本还原。
 //
 // 一个用例走完（Astro 冷启动只发生一次）：选字 → 评论 → 刷新仍在 → ppnt comments 看得到 →
-// ppnt reply / mark 在右栏实时出现 → owner 回复回 open → 保存被拒时原文退回 → bfcache 返回、
-// SSE 断线后右栏照样同步 → 改折行仍定位 → 改正文后重新定位 → 引文没了标失效。
+// ppnt reply / mark 在右栏实时出现 → owner 点“回复”回一句（Enter 发送、发完收框）回 open →
+// 回复框的收起与草稿 → 保存被拒时原文退回 → bfcache 返回、SSE 断线后右栏照样同步 → 完成的进
+// “已关闭”那一摞 → 改折行仍定位 → 改正文后重新定位 → 引文没了标失效。
 
 const ARTICLE = '/e2e-prose/notes/';
 const PAGE_ID = 'e2e-prose_notes';
@@ -34,6 +35,12 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
   const thread = (n) => page.locator(`.pp-thread[data-n="${n}"]`);
+  const replyBtn = (n) => thread(n).getByRole('button', { name: '回复', exact: true });
+  // 回复框默认不出现：点线程上的“回复”才展开，并且焦点就在框里。
+  const openReply = async (n) => {
+    await replyBtn(n).click();
+    await expect(thread(n).locator('textarea')).toBeFocused();
+  };
   let first = 0;
   let second = 0;
 
@@ -98,11 +105,24 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
       await proseSettled(page);
     });
 
-    await test.step('再评一条第一节的“始终知道钱什么时候会被扣”（后面改正文时删掉它）', async () => {
+    await test.step('再评一条第一节的“始终知道钱什么时候会被扣”（后面改正文时删掉它）：组字中的 Enter 不发，Shift+Enter 换行，Enter 发送', async () => {
       await dragSelect(page, '#why', '始终知道钱什么时候会被扣');
       await page.locator('.pp-selbtn').click();
-      await page.locator('.pp-thread.draft textarea').fill('这句太长');
-      await page.keyboard.press('ControlOrMeta+Enter');
+      const area = page.locator('.pp-thread.draft textarea');
+      await area.fill('这句');
+      // 输入法组字中按 Enter 是确认候选词：真键盘造不出组字态，直接派一个 isComposing 的 keydown。
+      const composingSent = await area.evaluate((el) => {
+        const ev = new KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true, cancelable: true });
+        el.dispatchEvent(ev);
+        return ev.defaultPrevented;
+      });
+      expect(composingSent, '组字中的 Enter 不被拦下发送').toBe(false);
+      await expect(page.locator('.pp-thread.draft')).toHaveCount(1);
+      await area.press('Shift+Enter');
+      await area.pressSequentially('太长');
+      await expect(area).toHaveValue('这句\n太长');
+      await area.fill('这句太长');
+      await area.press('Enter');
       await expect(page.locator('.pp-thread.draft')).toHaveCount(0);
       await proseSettled(page);
       second = Number(await page.locator('.pp-thread').first().getAttribute('data-n'));
@@ -148,15 +168,44 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
       await expect(thread(first).locator('.pp-st')).toHaveText('check');
     });
 
-    await test.step('owner 在线程里回一句：消息接在 agent 后面，状态回 open', async () => {
+    await test.step('owner 点“回复”回一句（Enter 发送）：消息接在 agent 后面，状态回 open，回复框收起', async () => {
       await thread(first).click();
+      await expect(thread(first)).toHaveClass(/\bon\b/);
+      await expect(thread(first).locator('textarea'), '聚焦线程不展开回复框').toHaveCount(0);
+      await openReply(first);
       await thread(first).locator('textarea').fill('再短一点');
-      await thread(first).getByRole('button', { name: '发送' }).click();
+      await thread(first).locator('textarea').press('Enter');
       await expect(thread(first).locator('.msg .who')).toHaveText(['你', 'agent', '你']);
+      await expect(thread(first).locator('textarea')).toHaveCount(0);
+      await expect(replyBtn(first)).toBeVisible();
       await expect(thread(first)).toHaveAttribute('data-status', 'open');
       await proseSettled(page);
       const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.n === first);
       expect([row.status, row.messages.map((m) => m.who)]).toEqual(['open', ['agent', 'owner']]);
+    });
+
+    await test.step('回复框的收起：点卡外面空框收起；Esc 收起但留草稿，再点“回复”放回；有字时点外面不收', async () => {
+      await openReply(second);
+      await page.locator('#article .prose h1').click();
+      await expect(thread(second).locator('textarea')).toHaveCount(0);
+      await openReply(second);
+      await thread(second).locator('textarea').fill('写到一半');
+      await page.keyboard.press('Escape');
+      await expect(thread(second).locator('textarea')).toHaveCount(0);
+      await expect(thread(second).locator('.pp-draft-tag')).toHaveText('有草稿');
+      await expect(replyBtn(second)).toBeFocused();
+      await openReply(second);
+      await expect(thread(second).locator('textarea')).toHaveValue('写到一半');
+      await page.locator('#article .prose h1').click();
+      await expect(thread(second).locator('textarea')).toHaveValue('写到一半');
+      // 另一条展开时，这条有字的照样留着。
+      await openReply(first);
+      await expect(thread(second).locator('textarea')).toHaveValue('写到一半');
+      await thread(second).locator('textarea').fill('');
+      await page.locator('#article .prose h1').click();
+      await expect(page.locator('.pp-reply')).toHaveCount(0);
+      await expect(page.locator('.pp-draft-tag')).toHaveCount(0);
+      expect(JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.n === second).messages, '收框不写账本').toEqual([]);
     });
 
     await test.step('保存被拒（非 409）：新评论的原文退回草稿、回复的原文退回输入框，右栏给出原因', async () => {
@@ -173,16 +222,18 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
         await page.locator('.pp-thread.draft').getByRole('button', { name: '取消' }).click();
         await expect(page.locator('.pp-thread.draft')).toHaveCount(0);
 
-        await thread(first).click();
+        await openReply(first);
         await thread(first).locator('textarea').fill('被拒的回复');
         await thread(first).getByRole('button', { name: '发送' }).click();
         await expect(page.locator('.pp-rail-note')).toContainText('测试拒绝');
-        await expect(thread(first).locator('textarea')).toHaveValue('被拒的回复');
+        await expect(thread(first).locator('textarea'), '被拒的回复退回重新展开的框').toHaveValue('被拒的回复');
         await expect(thread(first).locator('.msg .who')).toHaveText(['你', 'agent', '你']);
       } finally {
         await page.unroute('**/save');
       }
       await thread(first).locator('textarea').fill('');
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.pp-reply')).toHaveCount(0);
       await proseSettled(page);
     });
 
@@ -220,12 +271,12 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
       };
       await page.evaluate(() => { window.__ppSaveHold = { taken: false, answered: false }; });
       try {
-        await thread(first).click();
+        await openReply(first);
         await thread(first).locator('textarea').fill('离开前的回复一');
         await thread(first).getByRole('button', { name: '发送' }).click();
         await expect.poll(() => page.evaluate(() => window.__ppSaveHold.answered)).toBe(true);
         expect(texts(), '第一次保存已落盘，页面还当它在途').toEqual(['离开前的回复一']);
-        await thread(first).click();
+        await openReply(first);
         await thread(first).locator('textarea').fill('离开前的回复二');
         await thread(first).getByRole('button', { name: '发送' }).click();
         await expect(thread(first).locator('.msg .text').last()).toHaveText('离开前的回复二');
@@ -252,7 +303,7 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
         await route.continue();
       });
       try {
-        await thread(second).click();
+        await openReply(second);
         await thread(second).locator('textarea').fill('第二条的回复');
         await thread(second).getByRole('button', { name: '发送' }).click();
         await started;
@@ -273,17 +324,33 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
       }
     });
 
-    await test.step('完成 → closed 段里，高亮跟着筛选；重新打开回 pending', async () => {
+    await test.step('完成 → 进“已关闭”那一摞（收着，高亮也收起）；展开看得到、再点收回；重新打开回到列表', async () => {
+      const stack = page.locator('.pp-stack');
+      await expect(stack).toHaveCount(0);
       await thread(second).getByRole('button', { name: '完成' }).click();
       await expect(thread(second)).toHaveCount(0);
       await expect(page.locator('#why mark.pp-hl')).toHaveCount(0);
-      await page.locator('[data-filter="closed"]').click();
+      await expect(stack.locator('.pp-stack-label')).toHaveText('已关闭 1');
+      await expect(stack.locator('.pp-stack-peek')).toHaveText('始终知道钱什么时候会被扣');
+      // 一列：未关闭的在上，那一摞在下。
+      const below = await page.evaluate(() => {
+        const last = [...document.querySelectorAll('.pp-threads > .pp-thread')].at(-1).getBoundingClientRect();
+        return document.querySelector('.pp-stack').getBoundingClientRect().top >= last.bottom;
+      });
+      expect(below, '那一摞在未关闭线程的下面').toBe(true);
+      const head = stack.locator('.pp-stack-head');
+      await head.click();
+      await expect(head).toHaveAttribute('aria-expanded', 'true');
       await expect(thread(second)).toHaveAttribute('data-status', 'close');
       await expect(page.locator('#why mark.pp-hl')).toHaveText('始终知道钱什么时候会被扣');
-      await thread(second).getByRole('button', { name: '重新打开' }).click();
+      await head.click();
       await expect(thread(second)).toHaveCount(0);
-      await page.locator('[data-filter="pending"]').click();
-      await expect(thread(second)).toHaveAttribute('data-status', 'open');
+      await expect(page.locator('#why mark.pp-hl')).toHaveCount(0);
+      await head.click();
+      await thread(second).getByRole('button', { name: '重新打开' }).click();
+      await expect(stack).toHaveCount(0);
+      await expect(page.locator('.pp-threads > .pp-thread[data-n="' + second + '"]')).toHaveAttribute('data-status', 'open');
+      await expect(page.locator('#why mark.pp-hl')).toHaveText('始终知道钱什么时候会被扣');
       await proseSettled(page);
     });
 

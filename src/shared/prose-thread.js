@@ -103,3 +103,37 @@ export function formatWhen(iso, now = new Date()) {
   if (sameDay) return hm;
   return `${at.getMonth() + 1}月${at.getDate()}日 ${hm}`;
 }
+
+/** 已关闭 = owner 点了完成（close）。open / check / done 都还在等 owner 验收，不算。 */
+export function isProseClosed(row) {
+  return ((row && row.status) || 'open') === 'close';
+}
+
+/**
+ * 右栏一列的分组：未关闭的在上，已关闭的在下（右栏把它们叠成一摞）。两组各按
+ * orderKey(row)（正文里的位置，定位不到给 Infinity）排，同位或都定位不到时按 #n，
+ * 还没发号的排最后。不改传入数组。
+ */
+export function railGroups(rows, orderKey = () => Infinity) {
+  const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
+  const sorted = list.slice().sort((a, b) => {
+    const d = orderKey(a) - orderKey(b);
+    if (d !== 0 && !Number.isNaN(d)) return d;
+    return (Number.isInteger(a.n) ? a.n : Infinity) - (Number.isInteger(b.n) ? b.n : Infinity) || 0;
+  });
+  return {
+    open: sorted.filter((row) => !isProseClosed(row)),
+    closed: sorted.filter(isProseClosed),
+  };
+}
+
+/**
+ * 输入框里这次按键是不是“发送”：Enter 发送，Shift+Enter 换行。输入法组字中按的
+ * Enter 是确认候选词，不发送（isComposing；Safari 组字结束那一下 keyCode 是 229）。
+ * 参数是 KeyboardEvent 或同形状的普通对象。
+ */
+export function isSendKey(e) {
+  if (!e || e.key !== 'Enter') return false;
+  if (e.shiftKey || e.isComposing || e.keyCode === 229) return false;
+  return true;
+}

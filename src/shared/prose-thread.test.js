@@ -1,7 +1,17 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { applyProseOps, authorLabel, formatWhen, isProseRow, newProseRow, threadMessages } from './prose-thread.js';
+import {
+  applyProseOps,
+  authorLabel,
+  formatWhen,
+  isProseClosed,
+  isProseRow,
+  isSendKey,
+  newProseRow,
+  railGroups,
+  threadMessages,
+} from './prose-thread.js';
 
 const quote = { exact: '扣给谁', prefix: '会被扣、', suffix: '。' };
 
@@ -68,4 +78,40 @@ test('formatWhen：刚刚 / 分钟前 / 当天时分 / 月日时分；坏值为�
   assert.equal(formatWhen(new Date(2026, 8, 2, 18, 0).toISOString(), now), '9月2日 18:00');
   assert.equal(formatWhen('', now), '');
   assert.equal(formatWhen('nope', now), '');
+});
+
+test('railGroups：未关闭在上、close 在下；各按正文位置排，同位或失效按 #n，没发号的最后', () => {
+  const pos = { a: 30, b: 10, c: Infinity, d: 5, e: 10, f: Infinity };
+  const rows = [
+    { id: 'a', n: 1, status: 'open' },
+    { id: 'b', n: 4, status: 'done' },
+    { id: 'c', n: 2, status: 'check' },
+    { id: 'd', n: 3, status: 'close' },
+    { id: 'e', n: 2, status: 'open' },
+    { id: 'f', status: 'open' },
+    { id: 'g', n: 6 },
+  ];
+  pos.g = Infinity;
+  const before = rows.slice();
+  const { open, closed } = railGroups(rows, (row) => pos[row.id]);
+  assert.deepEqual(open.map((r) => r.id), ['e', 'b', 'a', 'c', 'g', 'f']);
+  assert.deepEqual(closed.map((r) => r.id), ['d']);
+  assert.deepEqual(rows, before);
+  assert.deepEqual(railGroups(null), { open: [], closed: [] });
+});
+
+test('isProseClosed：只有 close 算关闭，done / check / 没写状态都不算', () => {
+  assert.equal(isProseClosed({ status: 'close' }), true);
+  for (const status of ['open', 'check', 'done', undefined]) assert.equal(isProseClosed({ status }), false);
+  assert.equal(isProseClosed(null), false);
+});
+
+test('isSendKey：Enter 发送；Shift+Enter、组字中（isComposing / keyCode 229）、别的键不发送', () => {
+  assert.equal(isSendKey({ key: 'Enter' }), true);
+  assert.equal(isSendKey({ key: 'Enter', metaKey: true }), true);
+  assert.equal(isSendKey({ key: 'Enter', shiftKey: true }), false);
+  assert.equal(isSendKey({ key: 'Enter', isComposing: true }), false);
+  assert.equal(isSendKey({ key: 'Enter', keyCode: 229 }), false);
+  assert.equal(isSendKey({ key: 'a' }), false);
+  assert.equal(isSendKey(null), false);
 });
