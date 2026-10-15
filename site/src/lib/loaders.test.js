@@ -2,7 +2,12 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { EventEmitter } from 'node:events';
 
-import { watchAll } from './loaders.js';
+import fs from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+import mdx from '@astrojs/mdx';
+import { articlesLoader, watchAll } from './loaders.js';
 
 // watchAll 是站点内容重读的唯一入口：登记表或 project 目录一变就重读。这里用假 watcher 和假“磁盘”
 // 摆出 2026-10-15 满载下的两种时序（docs/debugging.md 同日案例）：
@@ -40,6 +45,75 @@ const tick = (ms = 0) => new Promise((resolve) => setTimeout(resolve, ms));
 /** 等事件的 50ms 去抖过去，重读开始。 */
 const settle = () => tick(120);
 const latest = (runs) => runs.at(-1);
+
+test('articlesLoader：异步重读保留快照，坏 YAML 只影响本篇，修复和删除都能更新', async (t) => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-loader-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const oldRegistry = process.env.PINPOINT_REGISTRY;
+  t.after(() => { if (oldRegistry === undefined) delete process.env.PINPOINT_REGISTRY; else process.env.PINPOINT_REGISTRY = oldRegistry; });
+  const dir = path.join(root, 'docs/pinpoint');
+  fs.mkdirSync(dir, { recursive: true });
+  fs.writeFileSync(path.join(dir, 'project.json'), JSON.stringify({ id: 'loader', title: 'loader' }));
+  const files = ['a', 'b'].map((id) => {
+    const folder = path.join(dir, 'articles', id);
+    fs.mkdirSync(folder, { recursive: true });
+    const file = path.join(folder, 'index.mdx');
+    fs.writeFileSync(file, `---\ntitle: ${id}\n---\n正文 ${id}`);
+    return file;
+  });
+  const registry = path.join(root, 'registry.json');
+  fs.writeFileSync(registry, JSON.stringify({ version: 1, entries: [{ id: 'loader', kind: 'project', path: root }] }));
+  process.env.PINPOINT_REGISTRY = registry;
+  let parser;
+  await mdx().hooks['astro:config:setup']({ config: {}, updateConfig() {}, addPageExtension() {}, addContentEntryType(type) { parser = type; }, addRenderer() {} });
+  const entries = new Map();
+  const errors = [];
+  let committed = () => {};
+  const watcher = new EventEmitter();
+  watcher.add = () => {};
+  let gate;
+  let entered;
+  const ctx = {
+    config: { root: pathToFileURL(root + '/') }, watcher,
+    entryTypes: new Map([['.mdx', { getEntryInfo: async (input) => { if (gate) { entered(); await gate; } return parser.getEntryInfo(input); } }]]),
+    store: { clear: () => { entries.clear(); queueMicrotask(() => committed()); }, set: (entry) => entries.set(entry.id, entry) },
+    parseData: async ({ data }) => data, generateDigest: (text) => text,
+    logger: { error: (message) => errors.push(message), warn: (message) => errors.push(message) },
+  };
+  await articlesLoader().load(ctx);
+  const reload = (event, file) => new Promise((resolve) => { committed = resolve; watcher.emit(event, file); });
+  let release;
+  gate = new Promise((resolve) => { release = resolve; });
+  const started = new Promise((resolve) => { entered = resolve; });
+  const finished = reload('change', files[0]);
+  await started;
+  // 读取尚未完成时，下游仍能取到上一份完整内容，而不是空集合。
+  const during = [...entries.keys()];
+  gate = null;
+  release();
+  await finished;
+  assert.deepEqual(during, ['loader/a', 'loader/b']);
+
+  fs.writeFileSync(files[0], '---\ntitle: [\n---\n正文 a');
+  await reload('change', files[0]);
+  assert.equal(entries.get('loader/b')?.data.title, 'b');
+  assert.match(entries.get('loader/a')?.data.loadError || '', /articles[/\\]a[/\\]index.mdx/);
+  assert.equal(entries.get('loader/a').deferredRender, undefined, '坏文件不能交给 Astro 编译');
+  assert.ok(errors.some((message) => message.includes(files[0])));
+
+  // 冷启动也能载入健康文章，不依赖旧快照。
+  entries.clear();
+  await articlesLoader().load({ ...ctx, watcher: undefined });
+  assert.equal(entries.get('loader/b')?.data.title, 'b');
+
+  fs.writeFileSync(files[0], '---\ntitle: 恢复\n---\n修好的正文');
+  await reload('change', files[0]);
+  assert.equal(entries.get('loader/a')?.data.title, '恢复');
+  assert.equal(entries.get('loader/a')?.data.loadError, undefined);
+  fs.rmSync(path.dirname(files[0]), { recursive: true });
+  await reload('unlink', files[0]);
+  assert.deepEqual([...entries.keys()], ['loader/b']);
+});
 /** 把挂着的重读从新到旧放行，直到不再有新的重读：交叠时新的先结束、旧的后结束（满载下观察到的顺序）。 */
 async function drain(runs) {
   for (let round = 0; round < 20; round++) {

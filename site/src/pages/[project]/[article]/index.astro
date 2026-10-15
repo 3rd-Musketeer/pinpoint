@@ -25,13 +25,14 @@ Astro.locals.ppSite = site;
 const p = site.projects.get(projectId);
 const a = p.articles.find((x) => x.id === articleId);
 // 刚写好的文章：内容库有了、渲染模块还没登记时回 503“内容同步中”（lib/render-article.js）。
-const body = await renderArticle(a.entry, {
+const loadError = a.entry.data.loadError;
+const body = loadError ? null : await renderArticle(a.entry, {
   render,
   moduleImports: async () => (await import('astro:content-module-imports')).default,
 });
-if (body.syncing) return syncingResponse(a.title);
-const { Content, remarkPluginFrontmatter } = body.rendered;
-const sections = remarkPluginFrontmatter.sections || [];
+if (body?.syncing) return syncingResponse(a.title);
+const { Content, remarkPluginFrontmatter } = body?.rendered || {};
+const sections = remarkPluginFrontmatter?.sections || [];
 // 这篇的画布（自动生成的页）：卡片从 locals 里取本节的帧；顶栏“画布视图”只在有画布节时出现。
 // 正文里的图（<Figure>）也从这里取（canvas.figures，按 remark 注入的序号）。
 const canvas = await articleCanvas(p.id, a.id);
@@ -59,7 +60,7 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
   toc={sections}
   rail={true}
   drawer={drawer}
-  errors={bannerErrors(p.id, p.layoutErrors, a.id, canvas)}
+  errors={[...bannerErrors(p.id, p.layoutErrors, a.id, canvas), ...(loadError ? [loadError] : [])]}
   canvasHref={canvasView}
   prose
 >
@@ -70,7 +71,7 @@ const drawer = { have: group(a.refs.filter((r) => r.kind !== 'empty')), empty: g
     <p class="meta"><a class="proj-tag" data-pp-project-tag href={projectHref(p.id)}>{p.title}</a></p>
   </div>
   <div class="article-body">
-    <Content components={{ Section, Canvas, Figure, Ref }} />
+    {Content && <Content components={{ Section, Canvas, Figure, Ref }} />}
     {/* 正文结尾标记：正文渲染中途抛错时响应停在这之前，ppnt shot 靠它发现截到的是半篇（docs/registry.md“CLI”）。 */}
     <div data-pp-article-end hidden></div>
   </div>
