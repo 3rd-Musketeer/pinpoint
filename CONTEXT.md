@@ -44,8 +44,8 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 画布上的一格，也是装这一格内容的源文件。帧通常是一个 JSX 文件；也可以是一整份 HTML 页面（HTML 帧），放在本篇目录下，或用 `{ id, src }` 指向 project 根下别处、或 `project.json` 的 `sources` 登记的目录下的文件。卡片和浮层缺省按手机宽 402 排这个页面，卡片头和浮层头的“手机 / 桌面”开关切到桌面宽 1280；画布视图里它是一个文档条目，不在画布那一行。帧 id 就是文件名（不带扩展名），HTML 帧用 `{ id, src }` 写时是 `id`，不变；它同时是标注的锚点，所以已有的帧不改名。一个界面状态画一帧；同一个界面的几种做法就在同一节里并排放几帧，选定后删掉落选的。
 要避开：拿 frame 指 iframe（卡片和浮层里的 iframe 只是显示手段）；“屏”。代码里同一个东西叫 screen：`screenId`、`/api/frame?screen=`；`@frame:<页 id>/<帧 id>` 是帧的引用写法。
 
-**组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`docs/pinpoint/components/<Name>.jsx`（project 共用）、`content/kits/ios/jsx/`（kit）
-帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时先找本篇、再找 project；kit 的组件写 `pinpoint/kit`。
+**组件** · `articles/<article>/components/<Name>.jsx`（本篇）、`content/kits/ios/jsx/`（kit）
+帧 import 的 JSX 函数：输入 props 和 children，输出 HTML，没有状态、事件和副作用（文档里也叫“印章”）。帧写 `./components/X.jsx` 时找本篇；kit 的组件写 `pinpoint/kit`。跨文章复用的组件放进 kit。没有 project 级的组件：2026-10-15 删掉了 `docs/pinpoint/components/`，盘上还有这个目录时 `ppnt check` 报布局错误 `project_components_dir`（ADR 0045）。
 要避开：拿“组件”指 section 组件或工作台自己的 React 组件（后者说“工作台组件”）。
 
 **画布卡片** · 站点 `site/src/components/Canvas.astro`，DOM 根 `[data-pp-canvas]`

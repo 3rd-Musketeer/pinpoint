@@ -190,7 +190,7 @@ e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/
 
 Your articles do **not** live in this repo. A project lives in its own repository or topic under
 `<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
-frames, `wiki/`, shared `components/`); `pinpoint add <root> --project` registers it once, and
+frames and components, `wiki/`); `pinpoint add <root> --project` registers it once, and
 new articles show up without re-registering. Legacy page sources register the same way with
 `pinpoint add <dir|file>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
 re-points an entry and keeps its id, so its annotations stay attached; `pinpoint rename <old id> <new id>`

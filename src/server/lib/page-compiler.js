@@ -274,9 +274,8 @@ function kitJsxPlugin() {
 }
 
 /**
- * 文章画布的组件解析（common-m1.md §1）：本篇帧里写 `./components/<Name>.jsx`，
- * 本篇 components/ 没有就落到 project 的 docs/pinpoint/components/，再落到
- * pinpoint/kit 的同名印章。只接本篇目录顶层文件（帧）发出的这种 import，和
+ * 文章画布的组件解析：本篇帧里写 `./components/<Name>.jsx`，本篇 components/ 没有就
+ * 落到 pinpoint/kit 的同名印章。没有 project 这一层（ADR 0045）。只接本篇目录顶层文件（帧）发出的这种 import，和
  * figures/ 下的图发出的 `../components/<Name>.jsx`。
  */
 function articleComponentsPlugin(target) {
@@ -295,7 +294,7 @@ function articleComponentsPlugin(target) {
         if (up ? from !== figureDir : from !== pageDir) return undefined;
         const name = args.path.replace(/^\.\.?\/components\//, '').replace(/\.jsx$/, '');
         const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
-        // 也取 realpath：project 根经过 symlink（macOS 的 /var、/tmp）时，esbuild 按真实
+        // 也取 realpath：文章目录经过 symlink（macOS 的 /var、/tmp）时，esbuild 按真实
         // 工作目录算 jsxDEV 的文件名，给它非真实路径会得到一长串 ../ 的 data-pp-id。
         return hit ? { path: real(hit) } : undefined;
       });

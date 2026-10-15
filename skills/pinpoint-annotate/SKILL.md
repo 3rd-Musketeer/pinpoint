@@ -68,7 +68,7 @@ JSX 帧的源码摘录读 dist。dist 不在或落后于源码时，`comments` �
 ## 2. 判断改哪里
 
 - 画布标注的锚点落在组件（`data-pp-comp`）且共用多帧 → 改组件文件，所有引用帧一起变。文章的组件在
-  `articles/<article>/components/` 或 project 的 `docs/pinpoint/components/`，存量页在 `<存量页目录>/components/`。
+  `articles/<article>/components/`，kit 的在 pinpoint 仓的 `content/kits/ios/jsx/`，存量页在 `<存量页目录>/components/`。
 - 画布标注只影响一帧 → 改那一帧的 `<帧 id>.jsx`（存量页的 `.html` 帧就是那个片段文件）。
 - 文档页标注 → 改那份 HTML 页面：文章本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件（相对 project 根，或 `project.json` 的 `sources` 登记的目录），`comments` 的摘录给出路径和行；存量页的文档条目改它登记目录里的那个文件。HTML 帧没有 dist，改完不用编译。文件在别的仓里（`sources` 登记的目录）时，提交照那个仓的规矩做。
 - 正文评论 → 改 `index.mdx` 里被评的那段，或者这一节 `<Canvas>` 里的帧。

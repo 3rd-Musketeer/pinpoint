@@ -15,14 +15,13 @@ import { planPageRecompile } from './recompile-plan.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from './registry.js';
 
 const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
-const insideRepo = (file) => file === REPO || file.startsWith(REPO + path.sep);
 
 function write(file, text) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   fs.writeFileSync(file, text);
 }
 
-/** 临时 project：一篇 flow 文章（两节画布 + 一节纯正文）、article.css、三层组件。 */
+/** 临时 project：一篇 flow 文章（两节画布 + 一节纯正文）、article.css、本篇组件与 kit 组件。 */
 function fixture(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-article-board-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
@@ -36,13 +35,11 @@ function fixture(t) {
     '<Section id="ask" title="提问">', '', '<Canvas frames={["ask-open", "ask-sent"]} />', '', '</Section>', '',
     '<Section id="wall" title="组件墙">', '', '<Canvas frames={["wall"]} shell="comp" />', '', '</Section>', '',
   ].join('\n'));
-  // 组件解析序：本篇 components/ > project components/ > kit。Card 两处都有，取本篇的。
+  // 组件解析序：本篇 components/ > kit（ADR 0045 起没有 project 这一层）。
   write(path.join(article, 'components', 'Card.jsx'), 'export function Card() {\n  return <div className="article-card">本篇</div>;\n}\n');
-  write(path.join(content, 'components', 'Card.jsx'), 'export function Card() {\n  return <div className="project-card">project</div>;\n}\n');
-  write(path.join(content, 'components', 'Shared.jsx'), 'export function Shared() {\n  return <div className="project-shared">共用</div>;\n}\n');
   write(path.join(article, 'ask-open.jsx'), [
     "import { Card } from './components/Card.jsx';",
-    "import { Shared } from './components/Shared.jsx';",
+    '// 组件只在本篇 components/ 和 kit 里找。',
     "import { Nav } from './components/Nav.jsx';",
     '',
     'export default function AskOpen() {',
@@ -50,7 +47,6 @@ function fixture(t) {
     '    <div className="ios-app">',
     '      <Nav title="提问" size="compact" />',
     '      <Card />',
-    '      <Shared />',
     '    </div>',
     '  );',
     '}',
@@ -110,8 +106,8 @@ test('deriveArticleBoard：只含有 Canvas 的节，帧是 screen，article.css
   assert.deepEqual(deriveArticleBoard(resolveArticleTarget(registry, 'demo_flow')).board.assets, { css: ['article.css'], js: ['article.js'] });
 });
 
-test('编译：dist 出帧与派生 board，源目录不多任何文件；组件按 本篇 > project > kit 解析', async (t) => {
-  const { registry, article, content, distRoot } = fixture(t);
+test('编译：dist 出帧与派生 board，源目录不多任何文件；组件按 本篇 > kit 解析', async (t) => {
+  const { registry, article, distRoot } = fixture(t);
   const before = fs.readdirSync(article).sort();
   const target = resolvePageTarget('demo_flow', { registry });
   const result = await compilePage(target, { distRoot });
@@ -122,19 +118,31 @@ test('编译：dist 出帧与派生 board，源目录不多任何文件；组件
   assert.match(html, /^<style>@import url\("\/sites\/demo_flow\/article\.css"\);<\/style>/);
   assert.match(html, /class="article-card"[^>]*>本篇</);
   assert.doesNotMatch(html, /project-card/);
-  assert.match(html, /class="project-shared"[^>]*data-pp-comp="Shared">共用</);
   assert.match(html, /data-pp-id="content\/kits\/ios\/jsx\/Nav\.jsx:\d+@1" data-pp-comp="Nav"/);
   assert.match(html, /data-pp-id="ask-open\.jsx:7@1"/);
   // os.tmpdir() 在 macOS 经过 symlink（/var → /private/var）：组件的 data-pp-id 仍相对文章目录。
   assert.match(html, /class="article-card" data-pp-id="components\/Card\.jsx:2@1"/);
-  // 本篇目录外的组件按 renumberPpIds 的规则：落在 pinpoint 仓内写成仓相对，仓外相对文章目录。
-  // fixture 在 os.tmpdir() 下，TMPDIR 可能指到仓内（如 .tmp/），期望跟着 fixture 的位置走。
-  const shared = path.join(content, 'components', 'Shared.jsx');
-  const sharedId = insideRepo(shared) ? path.relative(REPO, shared).split(path.sep).join('/') : '../../components/Shared.jsx';
-  assert.ok(html.includes(`class="project-shared" data-pp-id="${sharedId}:2@1"`), html);
   const distBoard = JSON.parse(fs.readFileSync(path.join(distRoot, 'demo_flow', 'board.json'), 'utf8'));
   assert.deepEqual(distBoard, deriveArticleBoard(target).board);
   assert.deepEqual(await renderScreenHtml(target, 'ask-sent'), { ok: true, html: '<style>@import url("/sites/demo_flow/article.css");</style>\n<div class="ios-app" data-pp-id="ask-sent.jsx:2@1" data-pp-comp="AskSent">已发送</div>' });
+});
+
+test('project 级 components/ 不再参与解析：只在那里的组件编不过，同名的本篇组件照用；读取时记一条布局错误（ADR 0045）', async (t) => {
+  const { registry, article, content, distRoot } = fixture(t);
+  write(path.join(content, 'components', 'Card.jsx'), 'export function Card() {\n  return <div className="project-card">project</div>;\n}\n');
+  write(path.join(content, 'components', 'Shared.jsx'), 'export function Shared() {\n  return <div className="project-shared">共用</div>;\n}\n');
+  write(path.join(article, 'ask-sent.jsx'), "import { Shared } from './components/Shared.jsx';\n\nexport default function AskSent() {\n  return <div className=\"ios-app\"><Shared /></div>;\n}\n");
+  const target = resolvePageTarget('demo_flow', { registry });
+  const result = await compilePage(target, { distRoot });
+  const byId = Object.fromEntries(result.screens.map((row) => [row.id, row]));
+  assert.equal(byId['ask-open'].ok, true);
+  assert.doesNotMatch(readDistScreen('demo_flow', 'ask-open', { distRoot }).html, /project-card/);
+  assert.equal(byId['ask-sent'].ok, false, '只在 project components/ 里的组件找不到');
+  const project = findProject(registry, 'demo');
+  const layout = project.errors.filter((error) => error.code === 'project_components_dir');
+  assert.equal(layout.length, 1);
+  assert.equal(layout[0].path, 'components');
+  assert.match(formatProjectError(layout[0]), /^components：project 级 components\/ 已删掉.*挪进用到它的文章的 components\/.*kit/);
 });
 
 test('renumberPpIds：页外文件落在 pinpoint 仓内写成仓相对，仓外保持相对页目录', () => {

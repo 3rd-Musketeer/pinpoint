@@ -16,11 +16,11 @@ import path from 'node:path';
 import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
-import { PROJECT_CONTENT_DIR, projectArticleTargets } from './lib/page-resolve.js';
+import { PROJECT_CONTENT_DIR } from './lib/page-resolve.js';
 import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
 import { articlePageId } from '../shared/project-ids.js';
 import { findProject } from './lib/projects.js';
-import { projectEntries, projectEntry } from './lib/registry.js';
+import { projectEntries } from './lib/registry.js';
 import { isWatchedSource, planPageRecompile } from './lib/recompile-plan.js';
 import { templateOnly } from './template-only.js';
 
@@ -99,8 +99,8 @@ export default function previewHmr(options = {}) {
     }
   }
 
-  // 变更文件 → 受影响的文章画布目标：articles/<文章>/ 下的文件归那一篇；
-  // project 的 components/ 是所有文章共用的组件，归这个 project 的每一篇。
+  // 变更文件 → 受影响的文章画布目标：articles/<文章>/ 下的文件归那一篇。
+  // project 级 components/ 不参与编译（ADR 0045），别的文件都不归任何一篇。
   function articleTargetsFor(file) {
     for (const project of projectDirs()) {
       if (!file.startsWith(project.dir + path.sep)) continue;
@@ -110,9 +110,6 @@ export default function previewHmr(options = {}) {
         try { pageId = articlePageId(project.id, parts[1]); } catch { return []; }
         const target = resolvePageTarget(pageId, { registry, root: ROOT });
         return target ? [target] : [];
-      }
-      if (parts[0] === 'components') {
-        return projectArticleTargets(projectEntry(registry, project.id));
       }
       return [];
     }

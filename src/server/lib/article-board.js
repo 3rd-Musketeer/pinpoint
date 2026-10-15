@@ -223,11 +223,10 @@ export function frameSrcFromUrlPath(target, urlPath) {
   return null;
 }
 
-/** 文章组件的解析序：本篇 components/ > project components/ > pinpoint/kit（common-m1.md §1）。 */
+/** 文章组件的解析序：本篇 components/ > pinpoint/kit。没有 project 这一层（ADR 0045）。 */
 export function articleComponentCandidates(target, name, kitJsxDir) {
   return [
     path.join(target.pageDir, 'components', `${name}.jsx`),
-    path.join(target.projectDir, 'components', `${name}.jsx`),
     path.join(kitJsxDir, `${name}.jsx`),
   ];
 }

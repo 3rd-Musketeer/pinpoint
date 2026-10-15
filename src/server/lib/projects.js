@@ -228,6 +228,10 @@ export function readProject(entry) {
     project.sources = declared.sources;
     errors.push(...declared.errors);
   }
+  // project 级 components/ 已删掉（ADR 0045）：组件只在本篇和 kit 里找，留着的目录不参与编译。
+  if (isDir(path.join(dir, 'components'))) {
+    errors.push(problem('project_components_dir', 'project 级 components/ 已删掉，这里的组件不参与编译：挪进用到它的文章的 components/，几篇共用的放进 kit（content/kits/ios/jsx/）', { path: 'components' }));
+  }
   project.articles = readArticles(dir, errors, entry.id, project.sources);
   project.concepts = readConcepts(dir, errors);
   project.concepts.sort((a, b) => a.name.localeCompare(b.name));

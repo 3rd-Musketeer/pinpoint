@@ -192,12 +192,12 @@ test('watch：project 内容目录进 watcher；帧变更重编并通知画布�
   assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow' } }]);
   assert.equal(JSON.parse(fs.readFileSync(path.join(distRoot, 'demo_flow', 'board.json'), 'utf8')).sections[0].title, '发问');
 
-  // project 共用组件：归这个 project 的每一篇。
+  // project 级 components/ 不再参与编译（ADR 0045）：改它不重编任何一篇。
   server.sent.length = 0;
   const shared = path.join(content, 'components', 'Shared.jsx');
   write(shared, 'export function Shared() {\n  return <i>s</i>;\n}\n');
   await plugin.handleHotUpdate({ file: shared, server });
-  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow' } }]);
+  assert.deepEqual(server.sent.filter((m) => m.event === 'preview:update'), []);
 });
 
 test('projects:update：文章增删、标题、project 标题、布局错误变了才发；只改正文与帧不发（M4 左栏）', async (t) => {

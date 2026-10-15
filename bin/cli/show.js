@@ -237,7 +237,7 @@ async function showUses(hit, parsed, { ctx, env, out, contextOf }) {
     const target = resolveArticleTarget(ctx.registry, articlePageId(project.id, article.id));
     if (target) targets.push({ address: `${project.id}/${article.id}`, target, context: contextOf(`${project.id}/${article.id}`) });
   }
-  const model = await componentUses({ component: parsed.flags.uses, targets, projectRoot: project.root, distRoot: path.join(dataRoot(env), 'dist') });
+  const model = await componentUses({ component: parsed.flags.uses, targets, distRoot: path.join(dataRoot(env), 'dist') });
   const found = model.frames.length + model.figures.length > 0;
   if (parsed.flags.json) out(JSON.stringify({ target: hit.address, ...model }, null, 2));
   else for (const line of formatUses(model, hit.address)) out(line);

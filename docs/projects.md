@@ -20,7 +20,6 @@ project 只是装一批文章的容器，承载信息的是文章（ADR 0044）�
     figures/<图 id>.jsx        # 正文里的图，可带同名 .js、.css（见“图”）
     assets/
   wiki/<名字>.md               # wiki 词条，frontmatter 写 name、status、boundary
-  components/<Name>.jsx        # project 内共用；跨 project 进 kit
 ```
 
 - `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题；它是一个短名字（Vault、Areta browser use），不写成一句描述。带全角或半角冒号、或超过 24 个字符时 `ppnt check` 给一条提示（`project_title_long`，不是错误）。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
@@ -227,10 +226,10 @@ export default function ConfirmBare() {
 - board 每次从 `index.mdx` 现派生（`src/server/lib/article-board.js` 的 `deriveArticleBoard`）。按 Section 顺序，只含有 Canvas 的节。每节是 `{ id, title, layout: "row", letter, shell?, screens: [{ id, shell? }] }`。screen 的 `shell` 来自帧文件的 `export const shell`。`letter` 是正文里的节字母，见下面“给站点卡片的接口”。顶层带 `title`（文章 title）和 `article: { project, id, url }`。
 - 本篇的 `article.css`、`article.js` 存在就进 `assets`，和手写 board 的 `assets` 一样注入每帧。
 - 编译时派生的 board 写进 `<dist>/<页 id>/board.json`，从不写回文章目录。
-- 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 project 的 `docs/pinpoint/components/X.jsx`，再没有就用 `pinpoint/kit` 的同名印章。
+- 组件：帧里写 `import { X } from './components/X.jsx'`。本篇 `components/X.jsx` 没有就用 `pinpoint/kit` 的同名印章。没有 project 级的组件（ADR 0045）：`docs/pinpoint/components/` 不参与编译，盘上还有这个目录时记一条布局错误 `project_components_dir`，提示挪进用到它的文章或 kit。
 - 编译目标 `resolvePageTarget(<页 id>, { registry })` 返回 `kind: "article"`，`pageDir` 是文章目录，`urlBase` 是 `/sites/<页 id>/`。之后编译、`/sites/<页 id>/`（board.json、帧、资源）、`/api/frame`、工作台、`ppnt build / comments / locate / mark / shot / show`、编号（`boardRefs`）都和存量页一样工作。
 - dist 是否过期：比对现派生的 board 与 dist 里那份，不看 `index.mdx` 的 mtime，因为改正文不等于改画布。
-- watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。project `components/` 变更时，这个 project 的每一篇都重编。`ppnt build <页 id> --watch` 只盯文章目录。
+- watch：服务把每个登记 project 的 `docs/pinpoint/` 加进 watcher。`articles/<文章>/` 下的帧、组件、`article.css` / `article.js` 变更会重编这篇并通知工作台。帧里的 `export const shell` 改了，派生 board 就变了，这篇整页重编。`index.mdx` 变更时先比对派生 board：没变就不编、不通知，变了就整页重编。`ppnt build <页 id> --watch` 只盯文章目录。
 
 ### 不进“页面”组
 
@@ -316,7 +315,7 @@ export default function ConfirmBare() {
 | `figures/<图 id>.js` | 否 | sidecar，在浏览器里跑：`export default function mount(root) { … }`，`root` 是图的根元素，返回 `unmount` |
 | `figures/<图 id>.css` | 否 | 这个图的样式，只在图页里生效 |
 
-- `.jsx` 和帧守同一套规则：lint 四禁（`preact/hooks`、`onX` 属性、`fetch(`、顶层只许 `import`、`export default` 和函数声明），数据写在函数体里。组件写 `../components/<Name>.jsx`，查找序和帧一样（本篇、project、kit）；用了 `pinpoint/kit` 的图会加载 `ios-kit.css`。
+- `.jsx` 和帧守同一套规则：lint 四禁（`preact/hooks`、`onX` 属性、`fetch(`、顶层只许 `import`、`export default` 和函数声明），数据写在函数体里。组件写 `../components/<Name>.jsx`，查找序和帧一样（本篇、kit）；用了 `pinpoint/kit` 的图会加载 `ios-kit.css`。
 - 交互和动画放进 sidecar。sidecar 不经编译器打包，只在编译时检查语法；它可以 `import` 同目录的模块和 `pinpoint/figure`。
 
 ### 画图的约定
@@ -475,7 +474,7 @@ article id `wiki` 与 `concepts` 保留（`RESERVED_ARTICLE_IDS`：`wiki` 是 wi
 
 ## 固件
 
-- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两条 wiki 词条（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、词条和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。`commit-confirm` 还有两个图：第一节前的静态时序图 `wait-sequence`，第一节 `why` 里的逐步演示 `message-flow`（带 sidecar 和样式）。
+- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两条 wiki 词条（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、词条和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、`Banner` 和 kit 的 `Nav`，本篇有 `article.css`。`commit-confirm` 还有两个图：第一节前的静态时序图 `wait-sequence`，第一节 `why` 里的逐步演示 `message-flow`（带 sidecar 和样式）。
 - `site/fixtures/projects/demo/`：`payments` 有两个图（节外的静态时序图 `pay-sequence`，`overview` 节里的 `message-flow`）；`site/fixtures/projects/broken/` 有一个源文件不在的图。
 - `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 wiki 词条 `Confirm-Card`（`wiki/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 

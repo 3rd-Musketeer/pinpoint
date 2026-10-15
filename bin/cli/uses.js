@@ -10,7 +10,6 @@ import path from 'node:path';
 
 import { deriveArticleBoard } from '../../src/server/lib/article-board.js';
 import { loadFigure, readBuildJson, readDistScreen } from '../../src/server/lib/page-compiler.js';
-import { PROJECT_CONTENT_DIR } from '../../src/server/lib/projects.js';
 import { outlineFrames } from '../../src/workbench/lib/board-refs.js';
 
 import { REPO_ROOT } from './core.js';
@@ -33,11 +32,10 @@ function importsComponent(depFiles, name) {
   return depFiles.some((file) => componentName(file) === name);
 }
 
-/** 组件定义在哪：本篇 components/、project 的 components/、kit。 */
-function definitionsOf(name, { projectRoot, articleDirs }) {
+/** 组件定义在哪：本篇 components/、kit。 */
+function definitionsOf(name, { articleDirs }) {
   const files = [];
   for (const dir of articleDirs) files.push(path.join(dir, 'components', `${name}.jsx`));
-  files.push(path.join(projectRoot, PROJECT_CONTENT_DIR, 'components', `${name}.jsx`));
   files.push(path.join(KIT_JSX, `${name}.jsx`));
   return [...new Set(files)].filter((file) => fs.existsSync(file));
 }
@@ -46,7 +44,7 @@ function definitionsOf(name, { projectRoot, articleDirs }) {
  * targets：[{ address, target, context }]（context 是 loadAnnotateContext 的结果，取编号用）。
  * → { component, definedIn, frames: [{ address, ref, id, instances, file }], figures: [{ address, id, instances, file }], compiled: [地址] }
  */
-export async function componentUses({ component, targets, projectRoot, distRoot }) {
+export async function componentUses({ component, targets, distRoot }) {
   const name = componentName(component);
   const frames = [];
   const figures = [];
@@ -82,7 +80,7 @@ export async function componentUses({ component, targets, projectRoot, distRoot 
   }
   return {
     component: name,
-    definedIn: definitionsOf(name, { projectRoot, articleDirs: targets.map((row) => row.target.pageDir) }),
+    definedIn: definitionsOf(name, { articleDirs: targets.map((row) => row.target.pageDir) }),
     frames,
     figures,
     compiled,
@@ -92,7 +90,7 @@ export async function componentUses({ component, targets, projectRoot, distRoot 
 /** 文字输出：定义、帧、图，最后是每篇一条截图命令。 */
 export function formatUses(model, scope) {
   const lines = [`# ${model.component} 的用处（${scope}）`];
-  lines.push(model.definedIn.length ? `定义：${model.definedIn.join('、')}` : '定义：没在本篇、project 的 components/ 和 kit 里找到同名文件（照编译产物里的组件名找用处）');
+  lines.push(model.definedIn.length ? `定义：${model.definedIn.join('、')}` : '定义：没在本篇 components/ 和 kit 里找到同名文件（照编译产物里的组件名找用处）');
   lines.push('', `帧（${model.frames.length}）`);
   if (!model.frames.length) lines.push('  （无）');
   for (const row of model.frames) lines.push(`  ${row.address}  ${(row.ref || '—').padEnd(4)} ${row.id}${row.instances ? `  ${row.instances} 处` : '  import 了它'}`);

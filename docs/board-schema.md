@@ -40,8 +40,8 @@ import；variant 用 props 表达，不用一 variant 一文件。同名时页�
 **kit**：`content/kits/ios/` = `ios-kit.css` + `ios-kit.js` + `jsx/`（系统组件的 JSX 印章）。
 帧经 `import { Nav } from 'pinpoint/kit'` 引用，这是引 kit 印章唯一的规范写法（文章和存量页都一样）；组件清单在
 `content/kits/ios/jsx/index.js`，props 在各文件首行注释。文章的帧里 `./components/<Name>.jsx` 按本篇
-`components/` → project `docs/pinpoint/components/` 查找，两处都没有时编译器还会落到 kit 的同名印章
-（`page-compiler.js` 的 `articleComponentsPlugin`）；这一步是兜底，引 kit 仍写 `pinpoint/kit`。
+`components/` 查找，没有时编译器还会落到 kit 的同名印章（`page-compiler.js` 的 `articleComponentsPlugin`）；
+这一步是兜底，引 kit 仍写 `pinpoint/kit`。没有 project 级的组件（ADR 0045），跨文章复用的组件放进 kit。
 
 ## board 字段
 
@@ -197,7 +197,7 @@ owning topic 的 `prototypes/`（或磁盘任何地方），经 `pinpoint add` �
 | 可以改 | 不要改 |
 |---|---|
 | `<page>/<screenId>.jsx`（帧）与存量 `.html`；文章是 `articles/<article>/<帧 id>.jsx` 与 HTML 帧 | 手机机壳 / bezel / 状态栏（归 loader） |
-| `<page>/components/<Name>.jsx`（页内组件）；文章是 `articles/<article>/components/` 与 project 的 `docs/pinpoint/components/` | 把组件 HTML 复制粘贴进帧里 |
+| `<page>/components/<Name>.jsx`（页内组件）；文章是 `articles/<article>/components/` | 把组件 HTML 复制粘贴进帧里 |
 | `<page>/board.json`（含 `assets`）；文章是 `index.mdx` 与 `article.css` / `article.js` | `ios-kit.js` 里的产品手势 |
 | `<page>/<screenId>.js`（sidecar `mount(root)`） | 图注 font-size、屏里手写引用号 |
 | `content/kits/ios/jsx/`（手动升 kit 时） | 为“修一条标注”去动 `ios-kit.css` 或 loader |

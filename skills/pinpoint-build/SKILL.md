@@ -44,12 +44,11 @@ project 是装一批相关文章和 wiki 词条的文件夹，id 是网址的第
     article.js                 # 可选，注入本篇每一帧
     assets/                    # 图片等资源
   wiki/<名字>.md               # wiki 词条
-  components/<Name>.jsx        # project 内几篇共用的组件
 ```
 
 - project id 和 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`。article id 不能叫 `wiki` 或 `concepts`。
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`wiki/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
-- 样式和资源只有文章这一级：没有 project 级的 css 和 `assets/`。
+- 样式、资源和组件只有文章这一级：没有 project 级的 css、`assets/` 和 `components/`。几篇文章都要用的组件放进 kit。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
 - 已有的文章目录不改名：目录名是文章地址和页 id 的后半段，改名后旧页 id 下的标注和评论整桶成孤儿。确要改名，按 [`docs/projects.md`](../../docs/projects.md)“文章目录改名”手工挪桶。换 project id 用 `pinpoint rename <旧 id> <新 id>`，它连每篇文章的桶一起搬。
 
@@ -107,7 +106,7 @@ JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成�
 - iOS 帧：根元素是 `.ios-app`（锁屏是 `.ios-lockscreen`），正文写在里面；机壳、状态栏、home 条由 loader 提供，帧里不写。`.ios-sheet`、`.ios-tabbar`、`.ios-sheet-backdrop` 与 `.ios-app` 同级，不放进 `.ios-app`。自定义顶栏和底栏的 inset 用 `--ios-safe-top` / `--ios-safe-bottom`，不写死像素。原因和症状见 board-schema“iOS 帧的硬约束”，画打开的 sheet 要写的 `open` 和 sheet 的内部结构也在那一节。
 - 一节里混着手机帧和裸组件帧时，在组件帧的文件顶层写 `export const shell = "comp";`。它只管这一帧，盖过 `<Canvas shell>`。不写的话，这一帧会被套进手机壳，工作台上显示 `ContractError … expected an ios-app` 的错误面板。
 - 文章没有 board.json，也就没有 board 里的 `comp` + `props` 条目。要展示组件的某个状态，就写一帧只渲染这个组件（`return <CardState state="approve" />;`），再加上帧级 shell。
-- 组件是印章：输入 props 和 children，输出 HTML，没有状态、事件和副作用。kit 的系统组件一律写 `import { Nav } from 'pinpoint/kit'`。本篇和 project 的组件写 `import { X } from './components/X.jsx'`，查找顺序是本篇 `components/X.jsx`、project 的 `docs/pinpoint/components/X.jsx`；两处都没有时编译器会落到 kit 的同名印章，这只是兜底，不要靠它引 kit。只有本篇用就放本篇，几篇共用就放 project；跨 project 复用要手动把文件搬进 kit（`content/kits/ios/jsx/`，每个文件首行注释写了 props）。把组件挪到 project 时删掉各篇里的副本，因为本篇的同名文件优先。
+- 组件是印章：输入 props 和 children，输出 HTML，没有状态、事件和副作用。kit 的系统组件一律写 `import { Nav } from 'pinpoint/kit'`。本篇的组件放在本篇 `components/`，写 `import { X } from './components/X.jsx'`；本篇没有时编译器会落到 kit 的同名印章，这只是兜底，不要靠它引 kit。没有 project 级的组件：几篇文章都要用的组件手动把文件搬进 kit（`content/kits/ios/jsx/`，每个文件首行注释写了 props），搬完删掉各篇里的副本，因为本篇的同名文件优先。project 的 `docs/pinpoint/components/` 不参与编译，`ppnt check` 报 `project_components_dir`。
 - 本篇的样式写进 `article.css`，不要每帧各写一份。每一帧（包括 `comp`）都包在 kit 的 `.ios-root` 里，kit 用 `.ios-root button` 清掉了按钮的颜色、底色和边框，它比单个类名优先；自己的按钮样式写成 `.ios-root .<类名>`，或用 kit 的按钮印章。从别的文章复制组件时，一起复制它用到的那部分 `article.css`；组件里写死的 `/sites/<别的页 id>/assets/…` 路径也要改成本篇的。
 - 资源放 `assets/`，帧里写绝对路径 `/sites/<project>_<article>/assets/<文件>`。不写 `./assets/…`：工作台把帧内联进自己的页面，相对路径会解析到别处，图片加载失败。
 - 屏内交互用内联 `<script data-preview-script>` 或同名 sidecar `<帧 id>.js`（导出 `mount(root)`），写法见 board-schema“交互 frame”。

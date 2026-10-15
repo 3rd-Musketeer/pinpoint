@@ -47,14 +47,14 @@ function fixture(t) {
   write(path.join(article, 'figures', 'steps.js'), "import { steps } from 'pinpoint/figure';\n\nexport default function mount(root) {\n  return steps(root);\n}\n");
   write(path.join(article, 'figures', 'steps.css'), '.x { fill: var(--fig-accent); }\n');
   write(path.join(article, 'figures', 'still.jsx'), 'export default function Still() {\n  return <svg viewBox="0 0 10 10"><text>静</text></svg>;\n}\n');
-  // ../components/Label.jsx：本篇没有，落到 project 的 components/。
-  write(path.join(content, 'components', 'Label.jsx'), 'export function Label({ text }) {\n  return <text className="label">{text}</text>;\n}\n');
+  // ../components/Label.jsx：图在 figures/ 下，它指的是本篇的 components/。
+  write(path.join(article, 'components', 'Label.jsx'), 'export function Label({ text }) {\n  return <text className="label">{text}</text>;\n}\n');
   const registry = { entries: [], projects: [{ id: 'demo', kind: 'project', path: root }] };
   const target = resolveArticleTarget(registry, 'demo_flow');
   return { dir, article, target, distRoot: path.join(dir, 'dist') };
 }
 
-test('compileFigure：和帧同一套编译（pinpoint/figure、../components/ 落到 project），记下全部输入', async (t) => {
+test('compileFigure：和帧同一套编译（pinpoint/figure、../components/ 指本篇组件），记下全部输入', async (t) => {
   const { target } = fixture(t);
   const result = await compileFigure(target, 'steps');
   assert.equal(result.ok, true, result.error);
@@ -105,9 +105,9 @@ test('loadFigure：没编过就编；源码、sidecar、依赖变了或新加了
   assert.equal(broken.ok, false);
   assert.match(broken.error, /figures\/still\.jsx:2: 禁止事件属性 onLoad/);
   assert.ok(!fs.existsSync(path.join(distRoot, 'demo_flow', 'figures', 'still.html')));
-  // 改 project 的组件（依赖）也重编。
+  // 改本篇的组件（依赖）也重编。
   await loadFigure(target, 'steps', { distRoot });
-  const label = path.join(path.dirname(path.dirname(article)), 'components', 'Label.jsx');
+  const label = path.join(article, 'components', 'Label.jsx');
   fs.utimesSync(label, later, later);
   assert.equal(figureRecordFresh(target, 'steps', readFigureRecord(distRoot, 'demo_flow', 'steps')), false);
 });
