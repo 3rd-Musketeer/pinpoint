@@ -28,7 +28,7 @@ import { fileURLToPath } from 'node:url';
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolvePage } from './lib/page-resolve.js';
-import { resolveServableFile } from './lib/servable-file.js';
+import { resolveContainedFile, resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
   screenIdFromRel,
@@ -82,44 +82,13 @@ function sendJson(res, code, body) {
   res.end(JSON.stringify(body));
 }
 
-/** Containment check: `p` is `base` itself or lives under it. */
-function within(base, p) {
-  return p === base || p.startsWith(base + path.sep);
-}
-
 /**
  * Resolve `rel` inside `base` to an existing regular file, or null.
  * `..` traversal is rejected textually; symlink escapes are rejected by
  * realpath containment. Directories fall through to their index.html.
  */
 function resolveFileWithin(base, rel) {
-  if (rel.includes('\0')) return null;
-  const abs = path.resolve(base, rel);
-  if (!within(base, abs)) return null;
-  let realBase;
-  try {
-    realBase = fs.realpathSync(base);
-  } catch {
-    return null; // entry dir missing — 404, registry warning already logged it
-  }
-  let real;
-  try {
-    real = fs.realpathSync(abs);
-  } catch {
-    return null;
-  }
-  if (!within(realBase, real)) return null;
-  let stat = fs.statSync(real);
-  if (stat.isDirectory()) {
-    try {
-      real = fs.realpathSync(path.join(real, 'index.html'));
-    } catch {
-      return null;
-    }
-    if (!within(realBase, real)) return null;
-    stat = fs.statSync(real);
-  }
-  return stat.isFile() ? real : null;
+  return resolveContainedFile(base, rel).real || null;
 }
 
 /** 文章的三条出文件分支（文章目录、@root、@source）共用 resolveServableFile（lib/servable-file.js）。 */
@@ -137,13 +106,7 @@ function servable(base, rel) {
 function resolveRegisteredFile(entry, rel) {
   if (rel.includes('\0')) return null;
   if (rel !== '' && rel !== path.basename(entry.path)) return null;
-  let real;
-  try {
-    real = fs.realpathSync(entry.path);
-  } catch {
-    return null; // registered file missing — 404, registry warning already logged it
-  }
-  return fs.statSync(real).isFile() ? real : null;
+  return resolveContainedFile(entry.path, '', { index: false }).real || null;
 }
 
 export function createSitesHandler(options = {}) {

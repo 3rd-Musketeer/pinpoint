@@ -55,24 +55,32 @@ export function resolveContainedPath(base, rel) {
   return { file, real, realRoot };
 }
 
-export function resolveServableFile(base, rel, { index = true } = {}) {
+/** 存量页与模板帧的文件解析；文章额外的隐藏段和正文限制见 resolveServableFile。 */
+export function resolveContainedFile(base, rel, { index = true } = {}) {
   const value = String(rel == null ? '' : rel);
   const resolved = resolveContainedPath(base, value);
   if (resolved.reason) return resolved;
-  if (hiddenSegment(value)) return { reason: 'denied' };
-  const { realRoot } = resolved;
   let { file, real } = resolved;
-  if (deniedRelative(realRoot, real)) return { reason: 'denied' };
   let stat = fs.statSync(real);
   if (stat.isDirectory()) {
     if (!index) return { reason: 'missing' };
     const child = resolveContainedPath(base, path.join(value, 'index.html'));
     if (child.reason) return child;
     ({ file, real } = child);
-    if (deniedRelative(realRoot, real)) return { reason: 'denied' };
     stat = fs.statSync(real);
   }
   if (!stat.isFile()) return { reason: 'missing' };
-  if (NOT_SERVED.has(path.basename(file)) || NOT_SERVED.has(path.basename(real))) return { reason: 'denied' };
   return { file, real };
+}
+
+export function resolveServableFile(base, rel, options = {}) {
+  const initial = resolveContainedPath(base, rel);
+  if (initial.reason) return initial;
+  if (hiddenSegment(String(rel ?? '')) || deniedRelative(initial.realRoot, initial.real)) return { reason: 'denied' };
+  const resolved = resolveContainedFile(base, rel, options);
+  if (resolved.reason) return resolved;
+  const { file, real } = resolved;
+  if (deniedRelative(initial.realRoot, real)) return { reason: 'denied' };
+  if (NOT_SERVED.has(path.basename(file)) || NOT_SERVED.has(path.basename(real))) return { reason: 'denied' };
+  return resolved;
 }

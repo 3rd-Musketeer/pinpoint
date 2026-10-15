@@ -15,6 +15,8 @@ import {
   resolveFrameTarget,
 } from './frame-doc.js';
 import { ensureAnnotateBundle } from './annotate-bundle.js';
+import frameApi from '../frame-api.js';
+import { mockReq, mockRes } from '../test-harness.js';
 
 // 注入断言盯的是构建产物的哈希地址（审计 B3）—— 先把产物编出来。
 await ensureAnnotateBundle();
@@ -36,6 +38,72 @@ const registry = {
     return null;
   },
 };
+
+test('存量 src 帧：真实文件须留在被引用条目的登记根内，API 不返回越界正文', async (t) => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-frame-boundary-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  const legacy = path.join(dir, 'legacy');
+  const other = path.join(dir, 'other');
+  fs.mkdirSync(legacy);
+  fs.mkdirSync(other);
+  fs.writeFileSync(path.join(dir, 'private.txt'), 'UNREGISTERED_SECRET_C');
+  fs.writeFileSync(path.join(other, 'safe.html'), '<p>跨登记条目可读</p>');
+  fs.symlinkSync(path.join(dir, 'private.txt'), path.join(legacy, 'link.html'));
+  fs.symlinkSync(path.join(other, 'safe.html'), path.join(legacy, 'cross.html'));
+  fs.symlinkSync(other, path.join(dir, 'alias'));
+  fs.writeFileSync(path.join(legacy, 'board.json'), JSON.stringify({ sections: [{ id: 's', shell: 'app', screens: [
+    { id: 'leak', src: 'sites/legacy/link.html' },
+    { id: 'cross-link', src: 'sites/legacy/cross.html' },
+    { id: 'safe', src: 'sites/other/safe.html' },
+    { id: 'alias', src: 'sites/alias/safe.html' },
+    { id: 'exact', src: 'sites/exact/link.html' },
+    { id: 'sibling', src: 'sites/exact/board.json' },
+  ] }] }));
+  const entries = [
+    { id: 'legacy', kind: 'dir', path: legacy },
+    { id: 'other', kind: 'dir', path: other },
+    { id: 'alias', kind: 'dir', path: path.join(dir, 'alias') },
+    { id: 'exact', kind: 'file', path: path.join(legacy, 'link.html') },
+  ];
+  const localRegistry = { entries, resolve: (id) => entries.find((entry) => entry.id === id) };
+  let middleware;
+  frameApi({ registry: localRegistry }).configureServer({ middlewares: { use: (fn) => { middleware = fn; } } });
+  for (const screen of ['leak', 'cross-link', 'sibling']) {
+    const res = mockRes();
+    await middleware(mockReq('GET', `/api/frame?page=legacy&screen=${screen}&annotate=off`), res, () => {});
+    assert.equal(res.statusCode, 404, screen);
+    assert.ok(!res.text.includes('UNREGISTERED_SECRET_C'));
+    assert.throws(() => resolveFrameTarget('legacy', screen, { registry: localRegistry }), FrameDocError);
+  }
+  for (const screen of ['safe', 'alias', 'exact']) {
+    const html = await framePageHtml(resolveFrameTarget('legacy', screen, { registry: localRegistry }), { annotate: false });
+    assert.ok(html.includes(screen === 'exact' ? 'UNREGISTERED_SECRET_C' : '跨登记条目可读'));
+  }
+});
+
+test('模板 src 帧：根内文件可读，symlink 指出 previews 根时拒绝', (t) => {
+  const dir = fs.mkdtempSync(path.join(ROOT, 'content/previews/.boundary-'));
+  const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-template-outside-'));
+  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
+  t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
+  fs.writeFileSync(path.join(dir, 'safe.html'), '<p>模板正文</p>');
+  fs.writeFileSync(path.join(outside, 'private.html'), 'UNREGISTERED_SECRET_C');
+  fs.symlinkSync(path.join(outside, 'private.html'), path.join(dir, 'link.html'));
+  const pageId = 'boundary-template';
+  const readFile = fs.readFileSync;
+  // 只替换模板清单与板定义，不改仓内模板；帧文件仍走真实磁盘和 realpath。
+  t.mock.method(fs, 'readFileSync', (file, ...args) => {
+    if (file === path.join(ROOT, 'content/previews/_index.json')) return JSON.stringify({ pages: [{ id: pageId }] });
+    if (file === path.join(ROOT, 'content/previews', pageId, 'board.json')) return JSON.stringify({ sections: [{ id: 's', shell: 'app', screens: [
+      { id: 'safe', src: `previews/${path.basename(dir)}/safe.html` },
+      { id: 'leak', src: `previews/${path.basename(dir)}/link.html` },
+    ] }] });
+    return readFile(file, ...args);
+  });
+  const safe = resolveFrameTarget(pageId, 'safe');
+  assert.equal(fs.readFileSync(safe.fragmentPath, 'utf8'), '<p>模板正文</p>');
+  assert.throws(() => resolveFrameTarget(pageId, 'leak'), (error) => error instanceof FrameDocError && error.code === 'unknown_screen');
+});
 
 test('resolveFrameTarget: registry ios 固件的 fragment 屏 → fragment target with canvas identity', () => {
   const target = resolveFrameTarget('e2e-ios', 'recipe', { registry });

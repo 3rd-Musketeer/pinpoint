@@ -33,6 +33,7 @@ import { registryEntry } from './registry.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { ENTRY_OR_ARTICLE_ID_PATTERN } from '../../shared/project-ids.js';
 import { synthesizeBoard } from './synth-board.js';
+import { resolveContainedFile } from './servable-file.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -102,14 +103,15 @@ function siteSrcToAbsPath(src, registry) {
   }
   if (entry.kind === 'file') {
     if (rest !== path.basename(entry.path)) throw new FrameDocError('unknown_screen', `file not found: ${src}`);
-    return path.resolve(entry.path);
+    return containedFrameFile(entry.path, '');
   }
-  const base = path.resolve(entry.path);
-  const abs = path.resolve(base, rest);
-  if (abs !== base && !abs.startsWith(base + path.sep)) {
-    throw new FrameDocError('bad_request', 'path traversal is not allowed');
-  }
-  return abs;
+  return containedFrameFile(entry.path, rest);
+}
+
+function containedFrameFile(base, rel) {
+  const found = resolveContainedFile(base, rel, { index: false });
+  if (!found.real) throw new FrameDocError('unknown_screen', 'frame file is missing or outside its registered root');
+  return found.real;
 }
 
 /**
@@ -168,11 +170,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     if (src.startsWith('sites/')) {
       fragmentPath = siteSrcToAbsPath(src, registry);
     } else {
-      const abs = path.resolve(CONTENT_ROOT, src);
-      if (abs !== PREVIEWS_ROOT && !abs.startsWith(PREVIEWS_ROOT + path.sep)) {
-        throw new FrameDocError('bad_request', 'screen src must resolve under previews/');
-      }
-      fragmentPath = abs;
+      fragmentPath = containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src)));
     }
     if (!fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
       throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
@@ -267,7 +265,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   }
   const fragmentPath = src
     ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
-    : path.join(path.resolve(entry.path), `${screenId}.html`);
+    : containedFrameFile(entry.kind === 'file' ? entry.path : path.resolve(entry.path), entry.kind === 'file' ? '' : `${screenId}.html`);
   if (!fragmentPath || !fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
     throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
   }
