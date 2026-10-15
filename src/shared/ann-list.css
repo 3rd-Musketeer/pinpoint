@@ -8,7 +8,7 @@
  * consumers' renderers.
  *
  * var(--wb-*, fallback): the workbench theme custom properties are generated
- * into src/workbench/wb-tokens.css (scripts/build-wb-tokens.mjs); the client pins
+ * into src/workbench/wb-tokens.css (scripts/build-tokens.mjs); the client pins
  * the same values on #ann-sidebar, so both sidebars compute identically and
  * host-page custom properties cannot leak into the injected UI. Fallbacks
  * mirror the current token values; src/server/annotate-inline.test.js asserts the

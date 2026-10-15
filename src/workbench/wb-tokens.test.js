@@ -1,4 +1,4 @@
-// wb-tokens.css 鲜度守卫：磁盘文件必须是 scripts/build-wb-tokens.mjs 的当前
+// wb-tokens.css 鲜度守卫：磁盘文件必须是 scripts/build-tokens.mjs 的当前
 // 输出（token 只改生成器，手改产物会被本测试拦下）。
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
@@ -6,7 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import test from 'node:test';
 
-import { buildWbTokensCss } from '../../scripts/build-wb-tokens.mjs';
+import { buildWbTokensCss } from '../../scripts/build-tokens.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 

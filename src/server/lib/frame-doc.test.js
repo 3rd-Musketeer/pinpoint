@@ -170,7 +170,7 @@ test('markEmbedStage: first stage only, comp kind, attributes added without touc
 test('frameTokens extracts canvas geometry + color tokens from the real files', () => {
   const tokens = frameTokens();
   assert.equal(tokens['--wb-phone-w'], '438px');
-  assert.equal(tokens['--wb-accent'], '#5b7fa6');
+  assert.equal(tokens['--wb-accent'], '#008564');
   assert.ok(tokens['--wb-cap-screen']);
   assert.ok(tokens['--wb-fg']);
 });

@@ -15,7 +15,7 @@
 /* shadcn 语义变量 → --wb-* 的桥消费侧：bg-primary / text-muted-foreground /
  * border-border / rounded-md 这类类名在这里解析到 wb-tokens.css 的桥变量。
  * inline = 直接把 var(--xxx) 织进 utility，桥变量本身只在 wb-tokens.css 定义
- * （生成物：scripts/build-wb-tokens.mjs —— token 桥是唯一映射点）。 */
+ * （生成物：scripts/build-tokens.mjs —— token 桥是唯一映射点）。 */
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
