@@ -9,7 +9,10 @@ var CSS =
   'html::-webkit-scrollbar{display:none !important;width:0 !important;height:0 !important}';
 
 function isPhoneDocFrame(el) {
-  return !!(el && el.tagName === 'IFRAME' && el.classList.contains('wb-doc-frame') && el.closest('.wb-phone-doc'));
+  return !!(el && el.tagName === 'IFRAME' && (
+    (el.classList.contains('wb-doc-frame') && el.closest('.wb-phone-doc')) ||
+    (el.classList.contains('wb-html-card-frame') && el.closest('[data-card-viewport="phone"]'))
+  ));
 }
 
 /** 往手机屏 iframe 的文档里放一次样式；跨域、还没有文档、已放过的跳过。 */
