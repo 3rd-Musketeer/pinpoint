@@ -1,8 +1,8 @@
-// 文章画布的页面浮层（2026-10-15 一篇文章一张画布）：画布上一个 HTML 帧是一张卡片，双击打开
-// 这一页的完整页面（pages.js openPageOverlay：这一帧的文档条目），Esc 或左上角“← 画布”关掉，
-// 回到双击前的画布位置。这里只管手势与按键：
-// - 单击卡片选中这一帧（同点图注），双击打开；卡片带 data-ann-ui，画布标注客户端让开它，
-//   所以标注模式下双击照样打开（标注在浮层里做）。
+// 文章画布的页面浮层（2026-10-15 一篇文章一张画布）：画布上一个 HTML 帧是一张活的卡片（live-cards.js），
+// 图注行的“全页”钮打开这一页的完整页面（pages.js openPageOverlay：这一帧的文档条目），Esc 或左上角“← 画布”关掉，
+// 回到打开前的位置。这里只管入口与按键：
+// - “全页”（[data-html-card-open]）：交互、标注两种模式下都开。卡片里面是页面自己的交互，双击留给页面
+//   （owner 2026-10-15 要在画布上直接滚动、点按比对），所以入口不再是双击卡片。钮带 data-ann-ui，画布标注客户端让开它。
 // - Esc：这一下不归某一层（标注框、提及、画箭头、标注模式、标注列表、大纲、菜单、对话框）就关浮层。
 //   焦点常在页面的 iframe 里，按键到不了工作台：iframe 的文档装好后在它的 window 上挂同一对监听。
 //   “归不归某一层”在捕获段判：那一层在冒泡段关掉自己后就看不出来了（embed.js 同一个做法）。
@@ -10,7 +10,6 @@
 import { wbGet } from './app/store.js';
 import { annotateApi } from './ann-bridge.js';
 import { closePageOverlay, isPageOverlayOpen, openPageOverlay } from './pages.js';
-import { selectBoardFrame } from './board-nav.js';
 import { embedSolo, requestEmbedClose } from './embed.js';
 
 var CARD_SELECTOR = '.wb-screen[data-html-card]';
@@ -75,19 +74,14 @@ export function startPageOverlay(stage) {
   if (!stage) return;
   stage.addEventListener('click', function (e) {
     if (e.button !== 0) return;
-    var hit = htmlCardOf(e.target);
-    if (!hit || !hit.screenId || !hit.sectionId) return;
-    var api = annotateApi();
-    if (api && typeof api.getState === 'function' && api.getState().mode) return;
-    selectBoardFrame(hit.sectionId, hit.screenId);
-  });
-  stage.addEventListener('dblclick', function (e) {
-    if (e.button !== 0) return;
-    var hit = htmlCardOf(e.target);
+    var btn = e.target.closest && e.target.closest('[data-html-card-open]');
+    if (!btn) return;
+    var hit = htmlCardOf(btn);
     if (!hit || !hit.screenId) return;
     e.preventDefault();
+    e.stopPropagation();
     openPageOverlay(hit.screenId);
-  });
+  }, true);
   wireEscape(window);
   // 浮层的 iframe 是按需装的（data-src → src），load 冒不上来，在捕获段接。
   stage.addEventListener('load', function (e) {

@@ -30,7 +30,8 @@ export function syncHtmlCardCounts(panel, pageId) {
   panel.querySelectorAll('.wb-screen[data-html-card]').forEach(function (card) {
     var frame = card.querySelector('iframe.wb-html-card-frame');
     var node = card.querySelector('[data-html-card-count]');
-    var key = frame ? htmlFrameLedgerKey(frame.getAttribute('src'), location.href) : '';
+    // 相对地址按文档的 <base href="/"> 解析，和 iframe 自己一样（按 location.href 会多出 /workbench/，{ id, src } 帧的账本名就对不上）。
+    var key = frame ? htmlFrameLedgerKey(frame.getAttribute('data-src'), document.baseURI) : '';
     if (!key || !node) return;
     card.setAttribute('data-ledger', key);
     if (!current.keys.has(key)) current.keys.set(key, []);

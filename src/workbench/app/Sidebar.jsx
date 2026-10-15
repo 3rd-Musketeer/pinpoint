@@ -54,6 +54,7 @@
 //
 // 2026-10-13（pp3，owner 选 A）：「页面」tab 顶上加一组「文章」（app/ArticlesSection.jsx，
 // project → 文章）；原来的置顶、最近与页面列表原样搬进下面的「页面」组。
+import { emitServerEvent, setServerEventsOnline } from '../server-events.js';
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
 import { PageSortMenu } from './PageSortMenu.jsx';
@@ -303,14 +304,18 @@ export function Sidebar() {
       clearTimeout(timer);
       timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
     }
+    // 连接状态与推送也转给画布上活的 HTML 卡片里的标注客户端（server-events.js），它们不各开一条。
+    events.onopen = function () { setServerEventsOnline(true); };
+    events.onerror = function () { if (events.readyState !== EventSource.OPEN) setServerEventsOnline(false); };
     events.addEventListener('annotations', function (ev) {
       refresh();
+      emitServerEvent('annotations', ev.data);
       // 同一条推送转给工作台里别的订阅方（html-cards.js：文章画布上 HTML 卡片的标注数），不另开连接。
       var doc = null;
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
       window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
     });
-    return function () { clearTimeout(timer); events.close(); };
+    return function () { clearTimeout(timer); events.close(); setServerEventsOnline(false); };
   }, []);
   // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。
   // 平时的点击不写偏好，和删页签之前一样。

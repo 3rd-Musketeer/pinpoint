@@ -80,30 +80,23 @@ export function docScreenUrl(pageId, screen) {
   return sc.src || pageBaseUrl(wbGet().pageManifest, pageId) + sc.id + '.html';
 }
 
-function withQuery(url, pair) {
-  var hash = '';
-  var at = url.indexOf('#');
-  if (at >= 0) { hash = url.slice(at); url = url.slice(0, at); }
-  return url + (url.indexOf('?') >= 0 ? '&' : '?') + pair + hash;
-}
-
-/* ---- 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布）--------------------------
+/* ---- 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布；同日改成活的）----------------
    文章画布上一个 HTML 帧摆成两样东西，都在它那一节里：
-   · 卡片（.wb-screen--html-card，带 data-screen）：画布上的那一帧。白底卡片按帧宽（窗口 1280 /
-     手机 402，lib/viewport.js htmlCardSize）装着这一页的第一屏，底部淡出；iframe 是只读预览
-     （annotate=off、tabindex -1、pointer-events none），拖、滚、缩放都落到画布上。卡片带 data-ann-ui：
-     画布上的标注客户端让开它，这一页的标注在页面浮层里做。
-   · 页面浮层（.wb-screen--doc / --phone-doc，带 data-page-screen，平时 data-doc-hidden）：双击卡片
-     打开的完整页面，就是存量页的文档条目那一套（窗口 1:1 铺满 / 手机屏居中，可滚动、交互、标注）。
-     iframe 先不给 src（data-src），第一次打开才装：11 个 HTML 帧不必一上来装两遍。
+   · 卡片（.wb-screen--html-card，带 data-screen）：画布上的那一帧，一个固定尺寸的浏览器窗口（窗口 1280 × 800 /
+     手机 402 × 874，lib/viewport.js htmlCardSize）。交互模式下里面能滚、能点、能悬停，和 iOS 帧一样可操作；
+     标注模式下这一页自己的标注客户端在卡片里标（live-cards.js 把模式同步过去）。iframe 先只写 data-src，
+     进了舞台视野才装（live-cards.js 懒加载）。卡片带 data-ann-ui：画布上的标注客户端让开它。
+     图注行的“全页”钮（data-html-card-open）打开页面浮层。
+   · 页面浮层（.wb-screen--doc / --phone-doc，带 data-page-screen，平时 data-doc-hidden）：“全页”打开的完整页面，
+     就是存量页的文档条目那一套（窗口 1:1 铺满 / 手机屏居中，可滚动、交互、标注）。iframe 同样只写 data-src，
+     第一次打开才装。
    卡片上的标注数由 html-card-counts.js 写进 [data-html-card-count]。 */
 function htmlCardHtml(url, title, viewport) {
   var size = htmlCardSize(viewport);
   return '<div class="wb-html-card" data-ann-ui data-card-viewport="' + escHtml(viewport) + '"' +
     ' style="--wb-card-w:' + size.width + 'px;--wb-card-h:' + size.height + 'px">' +
-      '<iframe class="wb-html-card-frame" src="' + escHtml(withQuery(url, 'annotate=off')) + '"' +
-        ' title="' + escHtml(title || url) + '" tabindex="-1" aria-hidden="true" scrolling="no" loading="lazy"></iframe>' +
-      '<span class="wb-html-card-fade" aria-hidden="true"></span>' +
+      '<iframe class="wb-html-card-frame" data-src="' + escHtml(url) + '"' +
+        ' title="' + escHtml(title || url) + '"></iframe>' +
     '</div>';
 }
 
@@ -291,11 +284,12 @@ function htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, viewport) {
   var capHtml = '<div class="wb-screen-cap">' +
     (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
     '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
+    '<button type="button" class="wb-cap-open" data-html-card-open data-ann-ui title="打开完整页面">全页</button>' +
     '<span class="wb-cap-count" data-html-card-count hidden></span>' +
     '</div>';
   var size = htmlCardSize(viewport);
   var card = '<div class="wb-screen wb-screen--html-card" data-screen="' + escHtml(sc.id) + '" data-html-card' +
-    ' title="双击打开页面" style="--wb-phone-w:' + size.width + 'px' + colAttr + '">' +
+    ' style="--wb-phone-w:' + size.width + 'px' + colAttr + '">' +
     capHtml + htmlCardHtml(url, title, viewport) +
     '</div>';
   var page = '<div class="' + screenClassForShell(pageId, 'doc', viewport) + '" data-page-screen="' + escHtml(sc.id) + '" data-doc-hidden>' +

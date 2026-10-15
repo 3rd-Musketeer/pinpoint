@@ -5,7 +5,7 @@
 import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
 
-/** 卡片 / 页面浮层的 iframe 地址 → 那一页的账本名。base 是解析相对地址的基准（location.href）。 */
+/** 卡片 / 页面浮层的 iframe 地址 → 那一页的账本名。base 是解析相对地址的基准（document.baseURI，和 iframe 解析 src 同一个基准）。 */
 export function htmlFrameLedgerKey(src, base) {
   if (!src) return '';
   var pathname;

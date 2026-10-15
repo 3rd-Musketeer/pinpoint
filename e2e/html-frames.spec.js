@@ -214,7 +214,7 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
   expect(pageErrors).toEqual([]);
 });
 
-test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击开页面浮层，手机视口里标注 y > 5000 处的元素，卡片显示本页标注数', async ({ page }) => {
+test('画布视图：一篇文章一张画布，HTML 帧是活的白底卡片；“全页”开页面浮层，手机视口里标注 y > 5000 处的元素，卡片显示本页标注数', async ({ page }) => {
   test.setTimeout(180_000);
   fs.rmSync(BUCKET, { recursive: true, force: true });
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -223,22 +223,27 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
   const stage = page.locator('#wbstage');
   const scrollOf = () => stage.evaluate((el) => [Math.round(el.scrollLeft), Math.round(el.scrollTop)]);
 
-  await test.step('一张画布：画布条目，没有文档条目的步进和视口两段；四张 HTML 卡片按窗口宽 1280 装第一屏，C 节手机帧和卡片混排，预览不接指针、不带标注客户端', async () => {
+  await test.step('一张画布：画布条目，没有文档条目的步进和视口两段；四张 HTML 卡片是 1280 × 800 的窗口，正常加载、带标注客户端，C 节手机帧和卡片混排', async () => {
     expect(await page.evaluate(() => window.workbench.activeEntryId())).toBe('@canvas');
     expect(await stageForm(page)).toBe('ios');
     await expect(page.locator('#wbentry-nav')).toHaveCount(0);
     await expect(page.locator('#wbviewport')).toHaveCount(0);
     for (const id of ['long-page', 'catalog', 'widget', 'catalog-2']) {
       const frame = page.locator(`${CARD(id)} iframe.wb-html-card-frame`);
-      await expect(frame).toHaveCSS('pointer-events', 'none');
-      await expect(frame).toHaveAttribute('src', /annotate=off/);
+      await expect(frame).toHaveCSS('pointer-events', 'auto');
+      await expect(frame).toHaveAttribute('data-live', 'on');
+      await expect(frame).not.toHaveAttribute('src', /annotate=off/);
       await expect.poll(() => innerWidth(frame)).toBe(1280);
       const box = await page.locator(`${CARD(id)} .wb-html-card`).boundingBox();
       expect(Math.abs(box.height / box.width - 800 / 1280)).toBeLessThan(0.01);
       // 卡片在画布上看得见（不是收起的文档条目）。
       expect(box.width).toBeGreaterThan(100);
     }
-    expect(await page.locator(`${CARD('long-page')} iframe`).evaluate((el) => !!el.contentWindow.pinpoint)).toBe(false);
+    // 活的页面：带标注客户端，不出底部淡出；客户端借工作台的 SSE，不自己开连接。
+    await expect.poll(() => page.locator(`${CARD('long-page')} iframe`).evaluate((el) => !!el.contentWindow.pinpoint)).toBe(true);
+    await expect(page.locator('.wb-html-card-fade')).toHaveCount(0);
+    expect(await page.locator(`${CARD('long-page')} iframe`).evaluate((el) => el.hasAttribute('data-pp-parent-events'))).toBe(true);
+    await expect.poll(() => page.locator(`${CARD('long-page')} iframe`).evaluate((el) => el.contentWindow.pinpoint.getState().connected)).toBe(true);
     await expect(page.frameLocator(`${CARD('long-page')} iframe`).locator('#width-probe-wide')).toBeVisible();
     // 页面浮层先不装：iframe 只有 data-src。
     await expect(page.locator(PAGE_FRAME)).not.toHaveAttribute('src', /./);
@@ -258,26 +263,62 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
     await expect(page.locator('#wboutline-pop')).toHaveCount(0);
   });
 
-  await test.step('在卡片上拖：平移画布，不打开页面；单击选中这一帧', async () => {
+  await test.step('交互模式：卡片里滚轮滚页面、画布不动；卡片外滚轮平移画布；卡片里能点；捏合与空格拖照旧归画布；点图注选中', async () => {
+    const long = page.locator(`${CARD('long-page')} iframe.wb-html-card-frame`);
     const box = await page.locator(`${CARD('long-page')} .wb-html-card`).boundingBox();
     const before = await scrollOf();
     await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.wheel(0, 600);
+    await expect.poll(() => long.evaluate((el) => el.contentWindow.scrollY)).toBeGreaterThan(100);
+    await page.waitForTimeout(300); // 静默窗口：滚轮停下后画布不跟着动
+    expect(await scrollOf()).toEqual(before);
+
+    // 卡片外（节标题那一行的空白）滚轮：平移画布。
+    const cap = await page.locator('#lib-pages .wb-lib-cap').boundingBox();
+    await page.mouse.move(cap.x + cap.width + 40, cap.y + cap.height / 2);
+    await page.mouse.wheel(0, 300);
+    await expect.poll(async () => (await scrollOf())[1]).toBeGreaterThan(before[1] + 100);
+
+    // 卡片里能点：按钮的脚本照常跑。
+    const cat = page.frameLocator(`${CARD('catalog')} iframe`);
+    await cat.locator('.cat-btn').click();
+    await expect(cat.locator('.cat-out')).toHaveText('已点');
+
+    // 捏合（ctrl + 滚轮）落在卡片上：画布缩放，页面自己不缩。
+    const zoomOf = () => page.evaluate(() => parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--wb-board-zoom')) || 1);
+    const z0 = await zoomOf();
+    // 卡片在画布上可能伸出视口右缘，点位取卡片左上角附近。
+    const catBox = await page.locator(`${CARD('catalog')} .wb-html-card`).boundingBox();
+    await page.mouse.move(catBox.x + 60, catBox.y + 60);
+    await page.keyboard.down('Control');
+    await page.mouse.wheel(0, -100);
+    await page.keyboard.up('Control');
+    await expect.poll(zoomOf).toBeGreaterThan(z0);
+    expect(await page.locator(`${CARD('catalog')} iframe`).evaluate((el) => el.contentWindow.visualViewport.scale)).toBe(1);
+
+    // 焦点在卡片里（刚点过按钮）按住空格拖：平移画布。
+    const s0 = await scrollOf();
+    const cb = await page.locator(`${CARD('catalog')} .wb-html-card`).boundingBox();
+    await page.keyboard.down(' ');
+    await expect(stage).toHaveClass(/\bwb-space-held\b/);
+    await page.mouse.move(cb.x + 200, cb.y + 120);
     await page.mouse.down();
-    await page.mouse.move(box.x + box.width / 2 - 150, box.y + box.height / 2 - 60, { steps: 6 });
+    await page.mouse.move(cb.x + 60, cb.y + 70, { steps: 6 });
     await page.mouse.up();
-    const after = await scrollOf();
-    expect(after[0] - before[0]).toBeGreaterThan(120);
-    expect(after[1] - before[1]).toBeGreaterThan(40);
+    await page.keyboard.up(' ');
+    const s1 = await scrollOf();
+    expect(s1[0] - s0[0]).toBeGreaterThan(100);
     expect(await page.evaluate(() => window.workbench.activeEntryId())).toBe('@canvas');
-    const card = await page.locator(`${CARD('long-page')} .wb-html-card`).boundingBox();
-    await page.mouse.click(card.x + 40, card.y + 40);
+
+    // 点图注选中这一帧（卡片里面是页面，点了不动选中）。
+    await page.locator(`${CARD('long-page')} .wb-cap-ref`).click();
     await expect(page.locator(CARD('long-page'))).toHaveClass(/\bwb-sel\b/);
   });
 
   let canvasAt = null;
-  await test.step('双击卡片：开这一页的完整页面（文档形态铺满舞台），左上角“← 画布”；Esc 关，回到双击前的位置', async () => {
+  await test.step('点图注行的“全页”：开这一页的完整页面（文档形态铺满舞台），左上角“← 画布”；Esc 关，回到打开前的位置', async () => {
     canvasAt = await scrollOf();
-    await page.locator(`${CARD('long-page')} .wb-html-card`).dblclick({ position: { x: 40, y: 40 } });
+    await page.locator(`${CARD('long-page')} [data-html-card-open]`).click();
     await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
     expect(await stageForm(page)).toBe('html');
     await expect(page.locator('#wbpage-close')).toBeVisible();
@@ -300,7 +341,7 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
   });
 
   await test.step('页面浮层里横条也有大纲钮：点另一帧，关页面浮层回画布并聚焦到那一帧', async () => {
-    await page.locator(`${CARD('long-page')} .wb-html-card`).dblclick({ position: { x: 40, y: 40 } });
+    await page.locator(`${CARD('long-page')} [data-html-card-open]`).click();
     await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
     await expect(page.locator('#wbtabbar')).toHaveCount(0);
     await expect(page.locator('#wbstrip #wbstrip-outline')).toHaveCount(1);
@@ -322,7 +363,7 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
   });
 
   await test.step('页面浮层切手机：同一份页面装进手机屏、居中；回画布后这张卡片按手机宽 402 摆', async () => {
-    await page.locator(`${CARD('long-page')} .wb-html-card`).dblclick({ position: { x: 40, y: 40 } });
+    await page.locator(`${CARD('long-page')} [data-html-card-open]`).click();
     await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
     await expect(page.frameLocator(PAGE_FRAME).locator('html')).toHaveCount(1);
     expect(await page.frameLocator(PAGE_FRAME).locator('html').evaluate((el) => getComputedStyle(el).scrollbarWidth)).toBe('auto');
@@ -348,7 +389,7 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
   });
 
   await test.step('在页面浮层里标注深处的标签（y > 5000）：账本落在这篇的桶、按路径分本；焦点在页面里按 Esc 先退标注模式再关浮层，卡片出“1 条标注”', async () => {
-    await page.locator(`${CARD('long-page')} .wb-html-card`).dblclick({ position: { x: 40, y: 40 } });
+    await page.locator(`${CARD('long-page')} [data-html-card-open]`).click();
     await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
     await page.waitForFunction((sel) => {
       const f = document.querySelector(sel);
@@ -419,7 +460,81 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
   });
 });
 
-test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那一页的预览并定位到钉子；浮层里的画布双击照样开页面，Esc 一层层关', async ({ page, request }) => {
+test('画布视图：标注模式下直接在卡片里标，标注进那一页的账本，卡片里按 Esc 退标注模式；视野外的 HTML 卡片先不装、进了视野才装', async ({ page }) => {
+  test.setTimeout(120_000);
+  fs.rmSync(BUCKET, { recursive: true, force: true });
+  const live = (id) => page.locator(`${CARD(id)} iframe.wb-html-card-frame`);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkbench(page, `page=${PAGE_ID}`);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
+
+  await test.step('横条“标注”：卡片里那一页的客户端一起进标注模式；点卡片里的元素出标注框，存进那一页的账本，卡片计上', async () => {
+    await expect(live('long-page')).toHaveAttribute('data-live', 'on');
+    await page.waitForFunction((sel) => !!document.querySelector(sel)?.contentWindow?.pinpoint, `${CARD('long-page')} iframe`);
+    await page.locator('#wbann-toggle').click();
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await expect.poll(() => live('long-page').evaluate((el) => el.contentWindow.pinpoint.getState().mode)).toBe(true);
+    const doc = page.frameLocator(`${CARD('long-page')} iframe`);
+    await doc.locator('#top-title').click();
+    const box = doc.locator('#ann-box');
+    await expect(box).toBeVisible();
+    await box.locator('#ann-input').fill('标题换成宋体');
+    await box.locator('#ann-close').click();
+    await expect(box).toBeHidden();
+    let row = null;
+    await expect.poll(() => {
+      const files = fs.existsSync(BUCKET) ? fs.readdirSync(BUCKET).filter((n) => n.endsWith('.json') && n !== '_seq.json') : [];
+      for (const name of files) {
+        const ledger = JSON.parse(fs.readFileSync(path.join(BUCKET, name), 'utf8'));
+        const hit = (ledger.annotations || []).find((a) => /标题换成宋体/.test(a.content || ''));
+        if (hit) row = { ...hit, path: ledger.path };
+      }
+      return !!row;
+    }).toBe(true);
+    expect(row.path).toBe(`/sites/${PAGE_ID}/long-page.html`);
+    expect(row.targets[0].selector).toMatch(/#top-title$/);
+    await expect(page.locator(`${CARD('long-page')} [data-html-card-count]`)).toHaveText('1 条标注');
+    // 画布自己的账本里没有它。
+    expect(await page.evaluate(() => window.pinpoint.getState().count)).toBe(0);
+  });
+
+  await test.step('焦点在卡片里按 Esc：卡片退出标注模式，横条跟着回交互；卡片里照常能点', async () => {
+    await live('long-page').evaluate((el) => el.contentWindow.document.body.focus());
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'false');
+    expect(await live('long-page').evaluate((el) => el.contentWindow.pinpoint.getState().mode)).toBe(false);
+    const cat = page.frameLocator(`${CARD('catalog')} iframe`);
+    await cat.locator('.cat-btn').click();
+    await expect(cat.locator('.cat-out')).toHaveText('已点');
+  });
+
+  await test.step('小窗口：视野（四周各留半个舞台）外的卡片只有 data-src；聚焦过去才装', async () => {
+    await page.setViewportSize({ width: 640, height: 480 });
+    await openWorkbench(page, `page=${PAGE_ID}`);
+    await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
+    const far = [];
+    const stage = await page.locator('#wbstage').boundingBox();
+    for (const id of ['long-page', 'catalog', 'widget', 'catalog-2']) {
+      const box = await page.locator(`${CARD(id)} .wb-html-card`).boundingBox();
+      const outside = box.x > stage.x + stage.width * 1.5 || box.y > stage.y + stage.height * 1.5 ||
+        box.x + box.width < stage.x - stage.width * 0.5 || box.y + box.height < stage.y - stage.height * 0.5;
+      if (outside) far.push(id);
+    }
+    expect(far.length).toBeGreaterThan(0);
+    for (const id of far) {
+      await expect(live(id)).not.toHaveAttribute('src', /./);
+      await expect(live(id)).toHaveAttribute('data-src', /\.html$/);
+    }
+    const target = far[far.length - 1];
+    const section = target === 'catalog-2' ? 'app' : 'pages';
+    await page.evaluate(([sec, id]) => window.workbench.focusFrame(sec, id), [section, target]);
+    await expect(live(target)).toHaveAttribute('data-live', 'on');
+    await expect(page.frameLocator(`${CARD(target)} iframe`).locator('body')).not.toBeEmpty();
+  });
+  await closeSettled(page);
+});
+
+test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那一页的预览并定位到钉子；浮层里的画布点“全页”照样开页面，Esc 一层层关', async ({ page, request }) => {
   test.setTimeout(240_000);
   fs.rmSync(BUCKET, { recursive: true, force: true });
   await expect.poll(async () => (await request.get(ARTICLE_URL)).status(), { timeout: 150_000, intervals: [500] }).toBe(200);
@@ -472,7 +587,7 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那
       await expect(overlay(page)).not.toHaveAttribute('open', '');
     });
 
-    await test.step('浮层里的画布：双击 HTML 卡片开页面浮层（嵌入版也有“← 画布”），浮层头报卡片所在的节；Esc 回画布、再 Esc 回文章', async () => {
+    await test.step('浮层里的画布：点 HTML 卡片的“全页”开页面浮层（嵌入版也有“← 画布”），浮层头报卡片所在的节；Esc 回画布、再 Esc 回文章', async () => {
       await card(page).locator('[data-pp-open]').click();
       await expect(overlay(page)).toHaveAttribute('open', '');
       await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('section');
@@ -480,8 +595,8 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那
       await expect.poll(() => wb.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
       const canvas = page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
       // C 节的卡片：页面浮层盖住画布后，藏起来的视口不再决定“当前节”，浮层头停在卡片所在的 C 节。
-      await canvas.locator('.wb-screen[data-html-card][data-screen="catalog-2"] .wb-html-card').scrollIntoViewIfNeeded();
-      await canvas.locator('.wb-screen[data-html-card][data-screen="catalog-2"] .wb-html-card').dblclick({ position: { x: 40, y: 40 } });
+      await canvas.locator('.wb-screen[data-html-card][data-screen="catalog-2"] [data-html-card-open]').scrollIntoViewIfNeeded();
+      await canvas.locator('.wb-screen[data-html-card][data-screen="catalog-2"] [data-html-card-open]').click();
       await expect.poll(embedEntry).toBe('catalog-2');
       await expect(canvas.locator('#wbpage-close')).toBeVisible();
       await expect(canvas.frameLocator('[data-page-screen="catalog-2"] iframe.wb-doc-frame').locator('body')).toHaveCSS('background-color', 'rgb(250, 247, 240)');

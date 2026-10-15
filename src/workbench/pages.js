@@ -476,10 +476,10 @@ function loadPageOverlayFrame(node) {
 }
 
 /* ---- 文章画布的页面浮层（2026-10-15 一篇文章一张画布）----------------------------
-   文章画布上一个 HTML 帧是一张卡片；双击它打开这一页的完整页面：就是这一帧的文档条目
+   文章画布上一个 HTML 帧是一张活的卡片；图注行的“全页”打开这一页的完整页面：就是这一帧的文档条目
    （isPageOverlayEntry），窗口视口 1:1 铺满、手机视口一块手机屏居中，可滚动、交互、标注。
    打开前存档画布视口（setActiveEntry 离开画布形态时本来就存），关掉回画布条目、恢复存档 ——
-   回到双击前的位置与缩放。打开不写条目记忆（刷新回画布），地址栏照常镜像 ?entry=。 */
+   回到打开前的位置与缩放。打开不写条目记忆（刷新回画布），地址栏照常镜像 ?entry=。 */
 export function openPageOverlay(screenId) {
   var active = activeBoardOfPage();
   if (!active || !screenId) return false;

@@ -737,15 +737,16 @@
   }
   .wb-doc-surface { position:relative; width:100%; background:#fff; }
   /* 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布；screen-load htmlCardHtml）：白底卡片
-     （同组件画布的画板：--wb-r-board + --wb-sh-board），按帧宽装这一页的第一屏 —— 窗口 1280 × 800、
-     手机 402 × 874，尺寸写在 --wb-card-w / --wb-card-h 上；底部一段淡出，读作“下面还有”。
-     iframe 只是预览，不接指针：拖、滚轮、缩放都落到画布上，与画布平移不抢手势；双击卡片开页面浮层。
-     图注那一行末尾是这一页待验收的标注数（.wb-cap-count，html-card-counts.js 写）。 */
+     （同组件画布的画板：--wb-r-board + --wb-sh-board），是一个固定尺寸的浏览器窗口 —— 窗口 1280 × 800、
+     手机 402 × 874，尺寸写在 --wb-card-w / --wb-card-h 上。iframe 是活的页面（live-cards.js）：交互模式下
+     里面能滚、能点、能悬停，同 iOS 帧；窗口里能滚，所以不再画底部淡出。捏合与空格由 live-cards.js 转回画布。
+     图注那一行：屏名后面是“全页”钮（.wb-cap-open，开页面浮层），末尾是这一页待验收的标注数
+     （.wb-cap-count，html-card-counts.js 写）。 */
   .wb-screen--html-card { width:var(--wb-phone-w); cursor:default; }
   .wb-html-card {
     position:relative; flex:none;
     width:var(--wb-card-w, 1280px); height:var(--wb-card-h, 800px);
-    border-radius:var(--wb-r-board); overflow:hidden; user-select:none;
+    border-radius:var(--wb-r-board); overflow:hidden;
     background:var(--wb-paper); box-shadow:var(--wb-sh-board);
     outline:2px solid transparent; outline-offset:0;
     transition:outline-color var(--wb-dur) var(--wb-ease);
@@ -759,13 +760,17 @@
   }
   .wb-html-card-frame {
     display:block; width:100%; height:100%; border:0;
-    background:var(--wb-paper); pointer-events:none;
+    background:var(--wb-paper);
   }
-  .wb-html-card-fade {
-    position:absolute; left:0; right:0; bottom:0; height:22%;
-    background:linear-gradient(to bottom, color-mix(in srgb, var(--wb-paper) 0%, transparent), var(--wb-paper));
-    pointer-events:none;
+  .wb-cap-open {
+    flex:none; align-self:center;
+    padding:.2em .7em; border:0; border-radius:999px; cursor:pointer;
+    font-family:var(--wb-font); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-medium); line-height:1.2;
+    background:var(--wb-fill); color:var(--wb-muted);
+    transition:background-color var(--wb-dur) var(--wb-ease), color var(--wb-dur) var(--wb-ease);
   }
+  .wb-cap-open:hover { background:color-mix(in srgb, var(--wb-accent) 12%, var(--wb-surface)); color:var(--wb-accent); }
+  .wb-cap-open:focus-visible { outline:2px solid var(--wb-accent); outline-offset:2px; }
   .wb-cap-count {
     flex:none; align-self:center;
     padding:.2em .6em; border-radius:999px;

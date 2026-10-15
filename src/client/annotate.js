@@ -1171,12 +1171,49 @@ import { startProseComments } from './prose-comments.js';
     notify();
   }
 
-  function connectEvents() {
-    if (!SERVER || typeof EventSource === 'undefined') return;
-    if (eventSource) {
-      try { eventSource.close(); } catch (e) { /* */ }
-      eventSource = null;
+  // 嵌在工作台画布上的 HTML 卡片（iframe 带 data-pp-parent-events，src/workbench/server-events.js）：
+  // 不自己开 /events，订阅工作台那一条。一张画布十几张卡片各开一条，HTTP/1.1 同源 6 条就堵死了。
+  var parentEventsOff = null;
+  function parentEventsHub() {
+    try {
+      var host = window.frameElement;
+      if (!host || !host.hasAttribute('data-pp-parent-events')) return null;
+      var wb = window.parent && window.parent.workbench;
+      return wb && typeof wb.subscribeEvents === 'function' ? wb : null;
+    } catch (e) {
+      return null;
     }
+  }
+
+  function onAnnotationsEvent(data) {
+    var doc;
+    try { doc = JSON.parse(data); } catch (err) { return; }
+    if (!doc) return;
+    // Payloads without entry predate bucketing; they belong to 'pinpoint'.
+    if ((doc.entry || 'pinpoint') !== ENTRY) return;
+    if (doc.page !== PAGE && doc.page !== PAGE_KEY) return;
+    var rev = Number(doc.revision);
+    if (!Number.isFinite(rev) || rev <= revision) return;
+    if (syncing || mutationVersion > syncedMutationVersion) {
+      deferRemoteDoc(doc);
+      return;
+    }
+    applyRemoteDoc(doc, '已从其他窗口更新');
+  }
+
+  function connectEvents() {
+    if (!SERVER) return;
+    closeEvents();
+    var hub = parentEventsHub();
+    if (hub) {
+      parentEventsOff = hub.subscribeEvents(function (msg) {
+        if (!msg) return;
+        if (msg.type === 'status') setServerOnline(msg.online);
+        else if (msg.type === 'annotations') onAnnotationsEvent(msg.data);
+      });
+      return;
+    }
+    if (typeof EventSource === 'undefined') return;
     try {
       eventSource = new EventSource(SERVER + '/events');
     } catch (e) {
@@ -1188,24 +1225,14 @@ import { startProseComments } from './prose-comments.js';
       // Browser auto-reconnects while CONNECTING; only mark offline when closed or reconnecting.
       if (!eventSource || eventSource.readyState !== EventSource.OPEN) setServerOnline(false);
     };
-    eventSource.addEventListener('annotations', function (ev) {
-      var doc;
-      try { doc = JSON.parse(ev.data); } catch (err) { return; }
-      if (!doc) return;
-      // Payloads without entry predate bucketing; they belong to 'pinpoint'.
-      if ((doc.entry || 'pinpoint') !== ENTRY) return;
-      if (doc.page !== PAGE && doc.page !== PAGE_KEY) return;
-      var rev = Number(doc.revision);
-      if (!Number.isFinite(rev) || rev <= revision) return;
-      if (syncing || mutationVersion > syncedMutationVersion) {
-        deferRemoteDoc(doc);
-        return;
-      }
-      applyRemoteDoc(doc, '已从其他窗口更新');
-    });
+    eventSource.addEventListener('annotations', function (ev) { onAnnotationsEvent(ev.data); });
   }
 
   function closeEvents() {
+    if (parentEventsOff) {
+      try { parentEventsOff(); } catch (e) { /* 工作台已经不在 */ }
+      parentEventsOff = null;
+    }
     if (!eventSource) return;
     try { eventSource.close(); } catch (e) { /* */ }
     eventSource = null;
@@ -1224,7 +1251,7 @@ import { startProseComments } from './prose-comments.js';
   onPageLeave(flushOnLeave);
   window.addEventListener('pagehide', closeEvents);
   window.addEventListener('pageshow', function (event) {
-    if (event.persisted && !eventSource) connectEvents();
+    if (event.persisted && !eventSource && !parentEventsOff) connectEvents();
   });
 
   // ---------- UI 骨架 ----------

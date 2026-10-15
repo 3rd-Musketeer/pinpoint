@@ -78,6 +78,8 @@ import { embedSolo, setEmbedSolo, startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from './phone-doc-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
+import { startLiveCards, syncLiveCards } from './live-cards.js';
+import { subscribeServerEvents } from './server-events.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
@@ -184,6 +186,7 @@ async function loadBoard(panel, pageId, loadOptions) {
     wbSet({ activeBoard: { pageId: pageId, board: board, fullBoard: fullBoard, tabId: tabId } });
     syncEntries({ fresh: !!loadOptions.freshEntry, save: !!loadOptions.saveEntry });
     syncHtmlCardCounts(panel, pageId);
+    syncLiveCards(panel);
     watchDocAnnotate();
     return afterMount(panel, session);
   } catch (e) {
@@ -291,6 +294,7 @@ function initBoard() {
 
 startEmbedBridge();
 startPageOverlay(stage);
+startLiveCards(stage);
 startPhoneDocScrollbar(stage);
 setFrameRevealer(revealFrame);
 initBootPrefs({
@@ -359,6 +363,8 @@ window.workbench = {
   setSolo: function (sectionId, screenId) { return setEmbedSolo(sectionId, screenId); },
   solo: function () { return embedSolo(); },
   annotateApi: function () { return annotateApi(); },
+  // 画布上活的 HTML 卡片里的标注客户端借工作台的 SSE（server-events.js；卡片 iframe 带 data-pp-parent-events）。
+  subscribeEvents: function (fn) { return subscribeServerEvents(fn); },
   // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
   // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。
   hasPage: function (pageId) { return deepLinkPageExists(pageId); },
@@ -607,8 +613,8 @@ stage.addEventListener('wheel', function (e) {
     var overBadge = explicit && e.target.closest('.ann-badge');
     if (!stage.contains(e.target) && !overBadge) return;
     if (activeBoardMode() === 'html' || isTypingTarget(e.target)) return;
-    // 文章画布的 HTML 卡片带 data-ann-ui（标注客户端让开它），但它是画布上的一帧：拖它照常平移画布。
-    if (e.target.closest('[data-ann-ui]') && !overBadge && !e.target.closest('.wb-html-card')) return;
+    // 文章画布的 HTML 卡片（data-ann-ui）是活的页面：在它上面按下归页面，和 iOS 帧一样不起平移。
+    if (e.target.closest('[data-ann-ui]') && !overBadge) return;
     if (!explicit && annotateBlocksPan()) return;
 
     // Middle button always pans.

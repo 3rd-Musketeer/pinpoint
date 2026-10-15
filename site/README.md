@@ -76,7 +76,7 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 - 打开期间：焦点困在浮层里（首尾哨兵把 Tab 绕回来，画布 iframe 是其中一站），页面不滚动（`html.pp-ov-lock`）。
 - 手机宽度（≤ 600 px）：整屏 sheet。
 - 浮层是 `document.body` 下的 `<dialog data-pp-overlay data-pp-nocomment>`，不在 `#article` 里；在浮层头选字不出正文“评论”。
-- 浮层里的画布双击 HTML 卡片同样开页面浮层（`docs/design.md`“文章画布”），Esc 先回画布，再一下回文章。页面浮层开着时，头部和 `#canvas=` 停在那张卡片所在的节（盖在下面的画布视口不算数）。
+- 浮层里的画布点 HTML 卡片的“全页”同样开页面浮层（`docs/design.md`“文章画布”），Esc 先回画布，再一下回文章。页面浮层开着时，头部和 `#canvas=` 停在那张卡片所在的节（盖在下面的画布视口不算数）。
 - 浮层里做的标注进这篇的 `@canvas` 账本，HTML 帧页面里做的进那一页的账本；右栏和卡片头的标注数经 SSE 跟着出现。
 
 ## 弹层与 Esc

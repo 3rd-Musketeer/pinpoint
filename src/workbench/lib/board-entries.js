@@ -22,14 +22,14 @@ function screenShellOf(sc) {
 }
 
 /** 文章画布（2026-10-15 一篇文章一张画布）：board 由正文派生（validateBoard 留下 article: true）。
- *  这种板上 HTML 帧（doc 屏）也摆在画布上，是一张白底卡片；双击卡片开完整页面浮层。
+ *  这种板上 HTML 帧（doc 屏）也摆在画布上，是一张活的白底卡片；图注行的“全页”开完整页面浮层。
  *  存量页（手写 board.json）不受影响：doc 屏照旧是文档条目（ADR 0042）。 */
 export function isArticleBoard(board) {
   return !!(board && board.article);
 }
 
 /** 条目是不是文章画布上一张 HTML 卡片的页面浮层：它不进大纲的条目行、横条不数它，
- *  只由双击卡片 / 右栏标注 / 深链打开，关掉回画布原位。 */
+ *  只由“全页” / 右栏标注 / 深链打开，关掉回画布原位。 */
 export function isPageOverlayEntry(entry) {
   return !!(entry && entry.kind === 'doc' && entry.overlay);
 }
