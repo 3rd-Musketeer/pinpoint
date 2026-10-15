@@ -15,7 +15,7 @@ description: 读取 Pinpoint 的画布标注、文档页标注和文章正文评
 `<project>/<article>`（如 `browser-use/payment-confirm`），文章网址和页 id `<project>_<article>` 也认；存量页写它的 id。
 文章的桶里有三种条目：
 
-- **画布标注**：owner 在画布视图（`/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在 JSX 帧或其中元素上的标注，锚点是编译时打的 `data-pp-id`。存量页画布上的标注也是这一种。
+- **画布标注**：owner 在画布视图（`/workbench/?page=<project>_<article>`，这篇所有带画布的节按行排开）上钉在 JSX 帧或其中元素上的标注，锚点是编译时打的 `data-pp-id`。存量页画布上的标注也是这一种。
 - **文档页标注**：钉在一整份 HTML 页面里的元素上的标注。文章的 HTML 帧（`<Canvas frames>` 里的 `.html` 帧或 `{ id, src }`）在画布视图里是文档条目，owner 在那里标注；存量页的文档条目（`shell: "doc"` 的屏、登记的 HTML 文件页）也是这一种。锚点是 CSS 路径加元素文字。
 - **正文评论**：owner 在文章页（`/<project>/<article>/`，读者读文章的网页）上选中一段正文写的评论。它带引文（选中的文字和前后文）、
   节 id。文章页上的画布卡片和画布浮层不收标注。

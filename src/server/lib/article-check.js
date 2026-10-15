@@ -15,6 +15,7 @@
  * - 正文渲染：checkMdxRender（没定义的组件、变量这类打开文章页才出的错）。正文连 MDX 都解析不了时
  *   已有一条 mdx_parse 布局错误，不再渲染。
  * - 空 ref：info 级（合法，只是提示还有哪些词没定义）。
+ * - project 的 title 像一句描述（带冒号或超过 24 个字符）：info 级（ADR 0044：project 只是装一批文章的文件夹，title 只写名字）。
  * 有 error 级诊断就是没通过。
  */
 import fs from 'node:fs';
@@ -243,6 +244,33 @@ export function projectEmptyRefs(registry, projectId) {
     .sort((a, b) => b.sources.length - a.sources.length || a.name.localeCompare(b.name, 'zh'));
 }
 
+/** project title 的上限（字符数，按码位数）；超过或带冒号时 check 给一条提示（ADR 0044）。 */
+export const PROJECT_TITLE_MAX = 24;
+
+/** project title 像不像一句描述：→ 原因列表（空 = 没问题）。 */
+export function projectTitleIssues(title) {
+  const text = String(title == null ? '' : title);
+  const issues = [];
+  if (/[:：]/.test(text)) issues.push('带冒号');
+  if ([...text].length > PROJECT_TITLE_MAX) issues.push(`超过 ${PROJECT_TITLE_MAX} 个字符`);
+  return issues;
+}
+
+function projectTitleDiagnostic(project) {
+  const issues = projectTitleIssues(project.title);
+  if (!issues.length) return null;
+  const file = path.join(project.dir, 'project.json');
+  const lines = (readText(file) || '').split('\n');
+  const at = lines.findIndex((line) => /"title"\s*:/.test(line));
+  return {
+    severity: 'info',
+    code: 'project_title_long',
+    file,
+    line: at >= 0 ? at + 1 : null,
+    message: `project 的 title 只写名字（例如 Vault、Areta browser use），不写成一句描述。现在是“${project.title}”（${issues.join('、')}）`,
+  };
+}
+
 const SEVERITY_ORDER = { error: 0, warning: 1, info: 2 };
 
 /** 见文件头。articleId 给了只查这一篇（project 自己的错误也算，它们会让整站构建失败）。 */
@@ -257,6 +285,8 @@ export async function checkProject(registry, projectId, { articleId = null } = {
     if (articleId && error.path && !isArticleError(error, articleId)) continue;
     diagnostics.push(layoutDiagnostic(project, error));
   }
+  const titleHint = projectTitleDiagnostic(project);
+  if (titleHint) diagnostics.push(titleHint);
   const resolve = refResolver(projects);
   const frameCache = new Set();
   let frames = 0;

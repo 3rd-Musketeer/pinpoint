@@ -6,7 +6,7 @@ import test from 'node:test';
 
 import { compile } from '@mdx-js/mdx';
 
-import { checkProject, emptyRefsIn, projectEmptyRefs } from './article-check.js';
+import { checkProject, emptyRefsIn, projectEmptyRefs, projectTitleIssues } from './article-check.js';
 import { articleOutline } from './article-canvas.js';
 import { loadRegistry } from './registry.js';
 import { extractRefs } from '../../shared/refs.js';
@@ -82,6 +82,27 @@ test('checkProject：只查一篇时别篇和概念的问题不算；查整个 p
   assert.ok(all.diagnostics.some((row) => row.code === 'empty_ref' && row.file.endsWith('term.md') && row.line === 5));
   assert.equal(all.frames, 3);
   assert.equal(await checkProject(registry, 'nope'), null);
+});
+
+test('project title 只写名字：带冒号或超过 24 个字符给一条提示（info，不是错误）', async (t) => {
+  assert.deepEqual(projectTitleIssues('Vault'), []);
+  assert.deepEqual(projectTitleIssues('Areta browser use'), []);
+  assert.deepEqual(projectTitleIssues('一二三四五六七八九十一二三四五六七八九十一二三四'), [], '正好 24 个字符');
+  assert.deepEqual(projectTitleIssues('Vault：本地优先的笔记库'), ['带冒号']);
+  assert.deepEqual(projectTitleIssues('Vault: notes'), ['带冒号']);
+  assert.deepEqual(projectTitleIssues('Areta browser use for long running tasks'), ['超过 24 个字符']);
+
+  const { registry, content } = fixture(t);
+  assert.ok(!(await checkProject(registry, 'demo')).diagnostics.some((row) => row.code === 'project_title_long'));
+  fs.writeFileSync(path.join(content, 'project.json'), '{\n  "id": "demo",\n  "title": "Demo：浏览器任务里怎样让用户在付款之前自己确认最后一步"\n}\n');
+  for (const result of [await checkProject(registry, 'demo'), await checkProject(registry, 'demo', { articleId: 'clean' })]) {
+    const hint = result.diagnostics.find((row) => row.code === 'project_title_long');
+    assert.equal(hint.severity, 'info');
+    assert.equal(hint.file, path.join(content, 'project.json'));
+    assert.equal(hint.line, 3);
+    assert.match(hint.message, /只写名字.*（带冒号、超过 24 个字符）$/);
+  }
+  assert.deepEqual((await checkProject(registry, 'demo', { articleId: 'clean' })).diagnostics.map((row) => row.severity), ['info'], '提示不让 check 失败');
 });
 
 // 站点列的空 ref（extractRefs）、ppnt check 报的空 ref（emptyRefsIn）和站点真正渲染成引用的
