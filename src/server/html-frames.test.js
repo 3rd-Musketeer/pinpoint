@@ -385,6 +385,31 @@ function withSources(t, sources) {
   return { ...fx, skill };
 }
 
+test('服务：@root 与 @source 的 URL 只解码一次，保留字面百分号文件名', async (t) => {
+  for (const source of [false, true]) await t.test(source ? '@source' : '@root', async (t) => {
+    const fx = withSources(t, { skill: '../skill-repo/skill' });
+    const base = source ? fx.skill : fx.root;
+    const names = ['a%20b.html', 'a b.html', '中文.html', '50%.html', 'a%2Fb.html', '%2e%2e.html', 'nested/page.html'];
+    const frames = names.map((name, i) => ({ id: `f${i}`, src: `${source ? 'skill:' : ''}shared/${name}` }));
+    for (const [i, name] of names.entries()) write(path.join(base, 'shared', name), PAGE(`文件${i}:${name}`));
+    write(path.join(fx.article, 'index.mdx'), `<Section id="s" title="S">\n<Canvas frames={${JSON.stringify(frames)}} />\n</Section>`);
+    write(path.join(base, 'shared', 'asset%20name.css'), '/* 字面资源 */');
+    const handler = createSitesHandler({ registry: fx.registry });
+    for (const [i, frame] of frames.entries()) {
+      const url = '/' + rootFrameSrc(fx.pageId, frame.src);
+      const res = await get(handler, url + '?annotate=off');
+      assert.equal(res.statusCode, 200, url);
+      assert.equal(res.text, PAGE(`文件${i}:${names[i]}`), url);
+    }
+    const prefix = `/sites/${fx.pageId}/${source ? '@source/skill' : '@root'}/`;
+    assert.equal((await get(handler, `${prefix}shared/asset%2520name.css`)).text, '/* 字面资源 */');
+    assert.equal((await get(handler, `${prefix}shared%2Fnested%2Fpage.html?annotate=off`)).text, PAGE('文件6:nested/page.html'));
+    for (const bad of ['%2e%2e/outside.html', 'shared%2F..%2F..%2Foutside.html', '%2egit/config', 'bad%name.html']) {
+      assert.equal((await get(handler, prefix + bad)).statusCode, 404, bad);
+    }
+  });
+});
+
 test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开这个目录，check 按它算范围', async (t) => {
   const fx = withSources(t, { skill: '../skill-repo/skill' });
   const [project] = listProjects(fx.registry);

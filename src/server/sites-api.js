@@ -136,7 +136,7 @@ export function createSitesHandler(options = {}) {
    * 组件和 HTML 帧引用的资源）从文章目录只读静态出；project 根下的 HTML 帧和它引用的文件在
    * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。三处出文件都经 resolveServableFile。
    */
-  async function serveArticlePage(req, res, target, rel) {
+  async function serveArticlePage(req, res, target, rel, rawRel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       res.statusCode = 405;
       res.setHeader('Allow', 'GET, HEAD');
@@ -158,7 +158,8 @@ export function createSitesHandler(options = {}) {
     // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
     // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧真的住在里面时开放（帧文件解析得到；
     // 缺文件的 { id, src } 帧不算）；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。
-    const src = frameSrcFromUrlPath(target, rel);
+    // URL 解析函数接编码路径；rel 已在入口解码，只用于其余本地路径分支。
+    const src = frameSrcFromUrlPath(target, rawRel);
     if (src !== null) {
       const { source, path: relPath } = parseFrameSrc(src);
       const rootScreens = screens.filter((screen) => screen.src && articleHtmlFrameFile(target, screen));
@@ -235,7 +236,7 @@ export function createSitesHandler(options = {}) {
 
     // /sites/<id>/ 只服务登记条目与文章画布页（pp3，<project>_<article>）；模板页不在这里。
     const page = resolvePage(registry, id);
-    if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel);
+    if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel, rawPath);
     const entry = page && page.kind === 'entry' ? page.entry : null;
     if (!entry) {
       sendJson(res, 404, { error: 'not found' });
