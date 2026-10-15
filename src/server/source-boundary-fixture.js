@@ -17,7 +17,7 @@ function write(file, text) {
   fs.writeFileSync(file, text);
 }
 
-export async function fixture(t, { article = false, template = false, alias = false, files, board } = {}) {
+export async function fixture(t, { article = false, template = false, alias = false, previewAlias = false, files, board } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-source-boundary-'));
   const data = path.join(root, 'data');
   const previous = process.env.PINPOINT_DATA_DIR;
@@ -41,7 +41,9 @@ export async function fixture(t, { article = false, template = false, alias = fa
   frameApi({ registry }).configureServer({ middlewares: { use(fn) { frame = fn; } } });
   let content;
   contentRoutes().configureServer({ config: { root }, middlewares: { use(fn) { content = fn; } } });
-  const preview = createPreviewInjectHandler({ root: path.join(root, 'content') });
+  const previewRoot = path.join(root, previewAlias ? 'content-alias' : 'content');
+  if (previewAlias) fs.symlinkSync(path.join(root, 'content'), previewRoot);
+  const preview = createPreviewInjectHandler({ root: previewRoot });
   const server = http.createServer(async (req, res) => {
     try {
       const url = new URL(req.url, 'http://localhost');
@@ -63,8 +65,8 @@ export async function fixture(t, { article = false, template = false, alias = fa
     else process.env.PINPOINT_DATA_DIR = previous;
     fs.rmSync(root, { recursive: true, force: true });
   });
-  const get = async (url) => {
-    const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`);
+  const get = async (url, options) => {
+    const res = await fetch(`http://127.0.0.1:${server.address().port}${url}`, options);
     return { status: res.status, text: await res.text() };
   };
   const replace = (rel, text) => {

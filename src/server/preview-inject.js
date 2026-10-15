@@ -16,6 +16,7 @@ import { fileURLToPath } from 'node:url';
 
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { boardScreenIds } from './lib/page-compiler.js';
+import { resolveContainedFile } from './lib/servable-file.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const CONTENT_ROOT = path.resolve(__dirname, '..', '..', 'content');
@@ -31,19 +32,33 @@ export function createPreviewInjectHandler(options = {}) {
     if (/(?:^|&)annotate=off(?:&|$)/.test(query || '')) return false;
     const match = urlPath.match(ROUTE);
     if (!match) return false;
+    let rel;
+    try { rel = decodeURIComponent(match[1]); } catch { return false; }
+    if (!path.resolve(previewsRoot, rel).startsWith(path.resolve(previewsRoot) + path.sep)) return false;
+    const found = resolveContainedFile(previewsRoot, rel, { index: false });
+    if (found.reason === 'outside') {
+      res.statusCode = 404;
+      res.end('not found');
+      return true;
+    }
     // pp2：board 屏让给 content-routes 从 dist 出（doctype 的注入也在那边做），
     // 这里只管非屏的整文档 html（index.html 之类）。entry = 路径第一段（页 id）。
-    const screenRef = match[1].match(SCREEN_RE);
-    const pageId = screenRef ? screenRef[1] : match[1].split('/')[0];
+    const screenRef = rel.match(SCREEN_RE);
+    const pageId = screenRef ? screenRef[1] : rel.split('/')[0];
+    // 不可读的板不能走非板文档注入分支。
+    if (resolveContainedFile(previewsRoot, `${pageId}/board.json`, { index: false }).reason === 'outside') {
+      res.statusCode = 404;
+      res.end('not found');
+      return true;
+    }
     if (screenRef) {
       const ids = boardScreenIds(path.join(previewsRoot, screenRef[1]));
       if (ids && ids.has(screenRef[2])) return false;
     }
-    const file = path.join(previewsRoot, match[1]);
-    if (!file.startsWith(previewsRoot + path.sep)) return false;
+    if (!found.file) return false;
     let html;
     try {
-      html = fs.readFileSync(file, 'utf8');
+      html = fs.readFileSync(found.file, 'utf8');
     } catch {
       return false;
     }

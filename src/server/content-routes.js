@@ -10,7 +10,7 @@
  *
  * 前缀匹配走「原样 pathname 与解码归一后的 pathname 都落在前缀里」的双判据：
  * `/previews/%2e%2e/%2e%2e/package.json` 归一后是 `/package.json`，不再被投影到
- * content/ 下，原样透传（由 vite 的 fs 规则处置）。改写只换前缀、不改写余下的
+ * content/ 下。纯改写函数保留原 URL；中间件对这种越界请求答 404，不交给 Vite 回落。改写只换前缀、不改写余下的
  * 百分号编码，路径里的 `%` 与空格照旧交给 vite 解码。
  *
  * 缺文件答真 404（2026-09-04）：投影完就先看磁盘。以前投影完直接 next()，
@@ -25,6 +25,7 @@ import path from 'node:path';
 import { injectAnnotateClient } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
 import { etagMatches } from './lib/etag.js';
+import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
 import {
   boardScreenIds,
   serveBoardJsonWithDist,
@@ -103,7 +104,12 @@ export default function contentRoutes() {
       const exists = (diskPath) => {
         let stat;
         try {
-          stat = fs.statSync(path.join(root, diskPath));
+          const prefix = PREFIXES.find(([, to]) => diskPath === to.slice(0, -1) || diskPath.startsWith(to));
+          if (!prefix) return null;
+          const base = path.join(root, prefix[1]);
+          const found = resolveContainedPath(base, diskPath.slice(prefix[1].length));
+          if (!found.file) return null;
+          stat = fs.statSync(found.file);
         } catch {
           return null;
         }
@@ -115,6 +121,23 @@ export default function contentRoutes() {
         const parts = req.url.split('?');
         const urlPath = parts[0];
         const query = parts[1] || '';
+        const normalized = normalizedPathname(urlPath);
+        const mapped = PREFIXES.find(([from]) => urlPath.startsWith(from));
+        if (mapped && !normalized?.startsWith(mapped[0])) {
+          res.statusCode = 404;
+          res.end('not found');
+          return;
+        }
+        if (urlPath.startsWith('/previews/') && normalized?.startsWith('/previews/')) {
+          const rel = normalized.slice('/previews/'.length);
+          const pageId = rel.split('/')[0];
+          if (resolveContainedPath(previewsRoot, rel).reason === 'outside'
+            || resolveContainedFile(previewsRoot, `${pageId}/board.json`, { index: false }).reason === 'outside') {
+            res.statusCode = 404;
+            res.end('not found');
+            return;
+          }
+        }
 
         // 工作台自身的 annotate 加载处（ios-kit 自注入）换到构建产物的哈希
         // 地址 —— kit 源文件保持老地址字面量，serve 时在这里精确替换。
@@ -133,7 +156,8 @@ export default function contentRoutes() {
           }
           let kitSource;
           try {
-            kitSource = fs.readFileSync(kitFile, 'utf8');
+            const found = resolveContainedFile(path.join(root, 'content', 'kits'), 'ios/ios-kit.js', { index: false });
+            if (found.file) kitSource = fs.readFileSync(found.file, 'utf8');
           } catch (error) {
             warnKitOnce(`ios-kit.js 读不到，回落磁盘投影 404：${error.code || error.message}`);
           }
