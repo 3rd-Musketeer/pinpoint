@@ -1204,11 +1204,30 @@ import { startProseComments } from './prose-comments.js';
   function connectEvents() {
     if (!SERVER) return;
     closeEvents();
+    // 服务端不重放 SSE：首次在线由 hydrate 负责，断线后恢复要补读当前账本。
+    // 补读沿用 SSE 的 revision / defer / rebase 路径，不能用 hydrate 覆盖本地未保存的改动。
+    var statusSeen = false;
+    function eventsStatus(on) {
+      var reconnect = statusSeen && on && !serverOnline;
+      statusSeen = true;
+      setServerOnline(on);
+      if (!reconnect) return;
+      var epoch = syncEpoch;
+      var entry = ENTRY;
+      var page = PAGE;
+      fetch(SERVER + '/annotations/' + encodeURIComponent(page) + '?entry=' + encodeURIComponent(entry))
+        .then(function (res) { if (!res.ok) throw new Error(String(res.status)); return res.json(); })
+        .then(function (doc) {
+          if (epoch !== syncEpoch || ledgerSwitching) return;
+          onAnnotationsEvent(JSON.stringify(Object.assign({}, doc, { entry: entry, page: page })));
+        })
+        .catch(function () { /* 下次重连再补读；保留当前账本和未保存的改动。 */ });
+    }
     var hub = parentEventsHub();
     if (hub) {
       parentEventsOff = hub.subscribeEvents(function (msg) {
         if (!msg) return;
-        if (msg.type === 'status') setServerOnline(msg.online);
+        if (msg.type === 'status') eventsStatus(msg.online);
         else if (msg.type === 'annotations') onAnnotationsEvent(msg.data);
       });
       return;
@@ -1220,10 +1239,10 @@ import { startProseComments } from './prose-comments.js';
       setServerOnline(false);
       return;
     }
-    eventSource.onopen = function () { setServerOnline(true); };
+    eventSource.onopen = function () { eventsStatus(true); };
     eventSource.onerror = function () {
       // Browser auto-reconnects while CONNECTING; only mark offline when closed or reconnecting.
-      if (!eventSource || eventSource.readyState !== EventSource.OPEN) setServerOnline(false);
+      if (!eventSource || eventSource.readyState !== EventSource.OPEN) eventsStatus(false);
     };
     eventSource.addEventListener('annotations', function (ev) { onAnnotationsEvent(ev.data); });
   }
