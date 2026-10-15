@@ -615,7 +615,11 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);
-  await page.locator(cellSelector).evaluateAll(els => els.forEach(el => el.remove()));
+  // 账本先于帧就绪（loadBoard 全部帧到齐才写 panel）：先等目标格子装上，删除要真的命中，
+  // 否则删的是空集合，帧随后装上、锚点复活，幽灵框被实线框替掉（2026-10-15 首跑失败根因）。
+  await expect(page.locator(cellSelector).first()).toBeVisible();
+  const removed = await page.locator(cellSelector).evaluateAll(els => { els.forEach(el => el.remove()); return els.length; });
+  expect(removed).toBeGreaterThan(0);
   await expect(ghost).toHaveCount(1);
   await expect.poll(error).toBeLessThan(8);
   // §2b space 标记：画布端只消费 canvas 尺子的记录。注入 frame 后写的 doc 尺
