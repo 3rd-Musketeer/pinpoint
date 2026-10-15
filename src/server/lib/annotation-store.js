@@ -310,19 +310,20 @@ export function createAnnotationStore(options) {
     return files;
   }
 
-  function collectUnusedImages(page, annotations) {
+  function collectUnusedImages(page, before, annotations) {
     const safePage = ledgerKey(page);
     const imagesDir = path.join(dataDir, 'images');
     const keep = referencedImages(annotations);
-    // 账本已经写成，这里只是顺手清图：桶在这期间被删（ENOENT）就没有图可清。
-    try {
-      for (const name of fs.readdirSync(imagesDir)) {
-        if (!name.startsWith(`${safePage}-`) || keep.has(name)) continue;
+    // 仅回收从已保存标注中移除的附件；未入账的上传可能仍在另一编辑框的草稿中。
+    for (const name of referencedImages(before)) {
+      if (!name.startsWith(`${safePage}-`) || keep.has(name)) continue;
+      try {
         const file = path.join(imagesDir, name);
         if (fs.statSync(file).isFile()) fs.unlinkSync(file);
+      } catch (error) {
+        // 图片或整个桶已被删时继续检查其余旧附件。
+        if (!error || error.code !== 'ENOENT') throw error;
       }
-    } catch (error) {
-      if (!error || error.code !== 'ENOENT') throw error;
     }
   }
 
@@ -389,7 +390,7 @@ export function createAnnotationStore(options) {
     }
     if (typeof input.saveId === 'string' && input.saveId) lastSave.set(safePage, { revision: doc.revision, saveId: input.saveId });
     else lastSave.delete(safePage);
-    collectUnusedImages(safePage, annotations);
+    collectUnusedImages(safePage, disk.annotations, annotations);
     return { status: 200, doc };
   }
 

@@ -91,12 +91,38 @@ test('save removes only unreferenced images owned by the page', (t) => {
   store.save({
     page: 'index.html',
     baseRevision: 0,
-    annotations: [{ n: 1, images: [{ file: 'index.html-keep.png' }] }],
+    annotations: [{ id: 'a1', images: [{ file: 'index.html-missing.png' }, { file: 'index.html-keep.png' }, { file: 'index.html-drop.png' }] }],
+  });
+  store.save({
+    page: 'index.html',
+    baseRevision: 1,
+    annotations: [{ id: 'a1', images: [{ file: 'index.html-keep.png' }] }],
   });
 
   assert.equal(fs.existsSync(path.join(imagesDir, 'index.html-keep.png')), true);
   assert.equal(fs.existsSync(path.join(imagesDir, 'index.html-drop.png')), false);
   assert.equal(fs.existsSync(path.join(imagesDir, 'other-keep.png')), true);
+});
+
+test('同账本另一编辑框保存时保留刚上传的草稿图片，最终引用仍可读', (t) => {
+  const { dataDir, store } = withStore(t);
+  const page = '@canvas';
+  const row = { id: 'a1', content: '第一条' };
+  assert.equal(store.save({ page, baseRevision: 0, annotations: [row] }).status, 200);
+  const bytes = Buffer.from('草稿图片原始内容');
+  const image = store.writeImage(page, 'png', bytes);
+  // 另一窗口保存已有行，新上传的图片尚未出现在任何账本快照中。
+  assert.equal(store.save({ page, baseRevision: 1, annotations: [{ ...row, content: '另一窗口修改' }] }).status, 200);
+  assert.equal(fs.existsSync(image.path), true);
+  // 进程重启也不依赖内存里的上传记录。
+  const reopened = createAnnotationStore({ dataDir });
+  const saved = reopened.save({ page, baseRevision: 2, annotations: [
+    ...reopened.readDoc(page).annotations,
+    { id: 'a2', content: '带图标注', images: [{ file: image.file }] },
+  ] });
+  assert.equal(saved.status, 200);
+  assert.equal(saved.doc.annotations[1].images[0].file, image.file);
+  assert.deepEqual(fs.readFileSync(reopened.imagePath(image.file)), bytes);
 });
 
 
