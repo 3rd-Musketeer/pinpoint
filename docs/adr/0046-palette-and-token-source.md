@@ -4,7 +4,7 @@ Status: 现行 · Date: 2026-10-15 · Supersedes: 0010（accent 值、语义红 
 
 **起因**：截至 2026-10-15，pinpoint 自己的界面有四份 token 值：工作台生成器、注入端钉值、文章站点、图 kit。工作台和注入端是钢灰蓝 `#5b7fa6` 加 Radix slate，站点和图 kit 是绿 `#0e8f6c` 加纯灰。读者从文章点进画布视图，强调色、灰的色温、圆角都会变。站点字号写死了 15 种，正文排版看着别扭（owner：“现在正文的间距、字号规范、布局与排版，依旧看起来怪怪的”）。owner：“看起来需要定一下我们的 palette？当个事儿办”。
 
-**Decided**（owner 2026-10-15 在 palette probe 的浮动调色板上选定并导出，原文 `tasks/2026-10-15-palette/probe/chosen.json`；加实现时自定的部分）：
+**Decided**（owner 2026-10-15 在 palette probe 的浮动调色板上选定并导出，原文 `tasks/done/2026-10-15-palette/probe/chosen.json`；加实现时自定的部分）：
 
 - **强调色全站一个：绿 A 青绿 `#0e8f6c`**，工作台也换绿，取代 0010 / 0011 的钢灰蓝。owner 看过 6 套橙色方案之后说：“感觉还是绿色好”。12 档色阶以 `#0e8f6c` 为第 9 档；色块用 green 9，实底压白字（主按钮、钉子、“标注”段）用 green 10 `#008564`，正文里的强调字用 green 11 `#007658`。工作台的 `--wb-accent` 取 green 10。
 - **中性色用纯灰（Radix gray 12 档）**，工作台也从 slate 换过来。owner：“纯灰色吧，看起来更加温暖”。
