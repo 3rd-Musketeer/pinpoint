@@ -19,6 +19,29 @@
 
 ---
 
+## 2026-10-15 帧 hover 不重建钉子的用例满载首跑挂 moved 4（量的窗口里落进了上一步排的重建）
+
+现象：`workbench.spec.js`“帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM”在 3 次全量首跑都挂，
+重跑都过、单跑也过，都在 load 很高的时候。断言收到 `{ moved: 4, same: true }`：钉子被移出又插回 4 次，
+还是原来那个节点。
+误判路径：先以为 transitionend 的过滤（只改绘制的过渡不重画）在满载下漏了。CDP CPU 节流 6 倍、20 倍各跑
+10 次都没复现：节流把整个渲染进程一起放慢，rAF 顺序不变。改成两组全量 e2e 并行 + CPU 压力 + 这条
+`--repeat-each=60`，挂了 8 次。用例里临时包一层 `appendChild` 和 `requestAnimationFrame`，记下每次挪动钉子时
+正在跑的 rAF 是谁排的：4 次挪动来自两次 `renderAll`，一次是 `setMode(false)` → `closeComposer` 排的
+`requestAnimationFrame(renderAll)`，一次是模式 class 变化 → MutationObserver → `scheduleViewUpdate`。两个都在
+派发 transitionend 之前约 14 ms 排好，transitionend 自己没有排任何重建。
+根因：用例的测量窗口（派发事件后等两帧）和它上一步 `setMode(false)` 排下的整层重建重叠。整层重建
+（`resetCanvasView` + `prepareCanvasView`）每次把钉子移出分组再插回，算 2 次。平时这一帧在用例下一次
+evaluate 之前就跑完了；满载时浏览器还没出帧，这两次重建就落进窗口里。不是产品问题：重建是退出标注模式
+这个离散操作排的，hover 过渡什么都没触发。
+修复：用例在派发 transitionend 之前先 `expect.poll` 等钉子层连续两帧没有节点进出，再量。断言不变。
+识别特征：“某个操作不该触发 X”的用例在满载下首跑挂，数到的 X 正好是前一步操作理应触发的量（这里一次
+整层重建 = 2 次挪动）。先确认测量窗口开始时上一步排的 rAF / 重建跑完没有。
+防回归：用例本身。对照试过两种改坏：让 transitionend 触发整层重建，3/3 挂（moved 2）；只去掉“只改绘制”
+的过滤不挂，因为帧内局部刷新 `refreshFrameContent` 不挪钉子，这个过滤现在只省开销。
+
+---
+
 ## 2026-10-15 刚建的文章，站点在跑时文章页 500 或一直 404（满载下首跑才挂）
 
 现象：`ppnt-article.spec.js`“ppnt new project / new article…”在 4 次 `just ship` 的首跑里都挂了，重跑都过。

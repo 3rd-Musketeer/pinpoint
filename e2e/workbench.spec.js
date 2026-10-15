@@ -2192,6 +2192,7 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
 // 2026-09-24 owner：hover 钉子“脉冲出现两次，第一次点击无效”。根因：指针进帧时
 // 工作台帧 hover 的描边色 / 暗层透明度过渡跑完，transitionend 触发整层重建，
 // 钉子被移出再插回 DOM。只动绘制的过渡不得重建钉子。
+// 量之前要等钉子层静下来：见 docs/debugging.md 2026-10-15“帧 hover … moved 4”。
 test('帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM', async ({ page }) => {
   await openWorkbench(page);
   await page.evaluate(() => window.pinpoint.setMode(true));
@@ -2200,6 +2201,18 @@ test('帧 hover 的描边色 / 透明度过渡跑完不重建钉子 DOM', async 
   await annotate(page, cell, 'pulse once');
   await page.evaluate(() => window.pinpoint.setMode(false));
   await expect(page.locator('#ann-marks .ann-badge')).toHaveCount(1);
+  // 退出标注模式本身就排了整层重建（关框的 rAF renderAll、模式 class 变化触发的
+  // 内容重画），重建会把钉子移出分组再插回。满载时这两帧还没跑，就落进下面量
+  // transitionend 的窗口，数成 moved 4（2026-10-15 三次首跑）。先等钉子层连续两帧
+  // 没有任何节点进出，再派发过渡事件。
+  await expect.poll(() => page.evaluate(async () => {
+    let changed = 0;
+    const mo = new MutationObserver((rs) => { changed += rs.length; });
+    mo.observe(document.getElementById('ann-marks'), { childList: true, subtree: true });
+    await new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+    mo.disconnect();
+    return changed;
+  })).toBe(0);
   const fire = (prop) => page.evaluate(async (prop) => {
     const badge = document.querySelector('#ann-marks .ann-badge');
     let moved = 0;
