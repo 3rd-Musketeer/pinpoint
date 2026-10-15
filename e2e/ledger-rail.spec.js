@@ -24,7 +24,32 @@ async function seed(request, entry, ledger, row) {
 test.beforeEach(() => {
   for (const id of [PROSE, HTML]) fs.rmSync(path.join(E2E_DATA_DIR, id), { recursive: true, force: true });
 });
-test.afterEach(async ({ page }) => { await closeSettled(page); });
+test.afterEach(async ({ page }) => {
+  await closeSettled(page);
+  for (const id of [PROSE, HTML]) fs.rmSync(path.join(E2E_DATA_DIR, id), { recursive: true, force: true });
+});
+
+test('文章卡片和右栏共用每本账本的一次首读，未注入评论客户端时卡片独立读', async ({ page }, testInfo) => {
+  test.setTimeout(180_000);
+  const requests = [];
+  // Astro 冷启动会整页 HMR reload；首读按一次文档生命周期计数，导航后另算。
+  page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) requests.length = 0; });
+  page.on('request', (r) => { if (new URL(r.url()).pathname.startsWith('/annotations/')) requests.push(r.url()); });
+  await open(page, '/e2e-html/pages/');
+  const counts = () => Object.fromEntries([...new Set(requests)].map((url) => [new URL(url).pathname, requests.filter((r) => r === url).length]));
+  await testInfo.attach('ledger-requests', { body: JSON.stringify(counts(), null, 2), contentType: 'application/json' });
+  const timing = await page.evaluate(() => ({ navigation: performance.getEntriesByType('navigation').map((n) => ({ domInteractive: n.domInteractive, domContentLoaded: n.domContentLoadedEventEnd })),
+    resources: performance.getEntriesByType('resource').filter((r) => /annotate\.|annotations\/|canvas-card/.test(r.name)).map((r) => ({ name: r.name, start: r.startTime, end: r.responseEnd, bytes: r.encodedBodySize })) }));
+  await testInfo.attach('article-load-timing', { body: JSON.stringify(timing, null, 2), contentType: 'application/json' });
+  expect(Object.values(counts())).toEqual(Array(Object.keys(counts()).length).fill(1));
+  expect(Object.keys(counts())).toHaveLength(5); // @prose、@canvas、三个不同 HTML 账本。
+  requests.length = 0;
+  await page.goto('/e2e-html/pages/?annotate=off');
+  await expect(page.locator('[data-pp-article-end]')).toBeAttached();
+  await expect.poll(() => requests.length).toBe(4);
+  expect(Object.values(counts())).toEqual([1, 1, 1, 1]);
+  expect(await page.evaluate(() => !!window.pinpointProse)).toBe(false);
+});
 
 test('共享 HTML 页：首读、SSE、关闭重读、close/reopen 的两个节计数一致，右栏只写一次', async ({ page, request }) => {
   test.setTimeout(180_000);

@@ -29,6 +29,8 @@ import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-
 import { onPageLeave } from './lib/save-request.js';
 import { createOpsLedger } from './lib/ops-ledger.js';
 import { createCanvasLedgers } from './lib/canvas-ledgers.js';
+import { readLedgerDocument, rememberLedgerDocument } from './lib/ledger-reader.js';
+import { annotationSlug } from '../shared/annotation-slug.js';
 import {
   authorLabel,
   canvasContentText,
@@ -282,22 +284,17 @@ export function startProseComments(options) {
     prose.enqueue(op);
   }
 
-  function readLedger(name) {
-    return fetch(SERVER + '/annotations/' + encodeURIComponent(name) + '?entry=' + encodeURIComponent(ENTRY))
-      .then(function (r) {
-        if (!r.ok) throw new Error(String(r.status));
-        return r.json();
-      });
-  }
-
+  var hydrateStarted = false;
   function hydrate() {
+    var refresh = hydrateStarted;
+    hydrateStarted = true;
     // 画布账本读不到（还没人标过时它也在：服务给空账本）不影响正文评论，下次重连再读。
     if (canvas) {
       canvas.names().forEach(function (name) {
-        readLedger(name).then(function (doc) { canvas.accept(name, doc); }).catch(function () {});
+        readLedgerDocument(SERVER, ENTRY, name, refresh).then(function (doc) { canvas.accept(name, doc); }).catch(function () {});
       });
     }
-    return readLedger(LEDGER)
+    return readLedgerDocument(SERVER, ENTRY, LEDGER, refresh)
       .then(function (doc) {
         connection = 'online';
         prose.accept(doc);
@@ -350,8 +347,15 @@ export function startProseComments(options) {
       var doc;
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
       if (!doc || doc.entry !== ENTRY) return;
-      if (doc.page === LEDGER) prose.remote(doc);
-      else if (canvas) canvas.remote(doc);
+      if (doc.page === LEDGER) {
+        rememberLedgerDocument(SERVER, ENTRY, LEDGER, doc);
+        prose.remote(doc);
+      } else if (canvas) {
+        canvas.names().forEach(function (name) {
+          if (doc.page === name || doc.page === annotationSlug(name)) rememberLedgerDocument(SERVER, ENTRY, name, doc);
+        });
+        canvas.remote(doc);
+      }
     });
   }
 
