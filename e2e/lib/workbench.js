@@ -2,7 +2,7 @@
 // workbench.spec.js 的 openWorkbench 还等板就绪（whenBoardSettled），是它自己的，不在这里。
 import { expect } from '@playwright/test';
 
-const workbenchUrl = (query) => (query ? `/index.html?${query}` : '/index.html');
+const workbenchUrl = (query) => (query ? `/workbench/?${query}` : '/workbench/');
 
 /** 打开工作台，等 workbench 与 pinpoint 两个全局就绪。query 是 `?` 后面那段（如 `page=e2e-ios`），空 = 默认页。 */
 export async function openWorkbench(page, query = '') {

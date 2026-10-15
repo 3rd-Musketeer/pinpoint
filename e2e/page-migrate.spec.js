@@ -38,7 +38,7 @@ test('ppnt migrate：模板页迁成文章，/api/frame 打开迁过来的帧', 
     expect(run.code, run.stdout).toBe(0);
     expect(run.stdout).toContain('通过：9 帧都编过');
     expect(run.stdout).toContain('旧页的标注留在旧页（桶 example）');
-    expect(run.stdout).toContain(`画布 /?page=${PAGE_ID}`);
+    expect(run.stdout).toContain(`画布 /workbench/?page=${PAGE_ID}`);
     expect(fs.readdirSync(template).sort()).toEqual(before);
     // 再跑一次：目录已在，拒绝。
     const again = await ppnt(['migrate', 'example', '--project', PROJECT_DIR]);

@@ -50,7 +50,7 @@ test('/sites/ page: sidebar lists ledger marks and clicking a row jumps to the t
   await expect(entry).toBeVisible();
   await expect(entry).toHaveText('打开 workbench');
   const [opened] = await Promise.all([page.waitForEvent('popup'), entry.click()]);
-  expect(new URL(opened.url()).pathname).toBe('/index.html');
+  expect(new URL(opened.url()).pathname).toBe('/workbench/');
   await opened.close();
 
   // 第一条写到一半 toggle 侧栏：composer 草稿不丢，保存照常落账。

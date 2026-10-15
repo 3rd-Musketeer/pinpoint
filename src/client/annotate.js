@@ -104,7 +104,7 @@ import { startProseComments } from './prose-comments.js';
     if (document.getElementById('wb-board-panel')) return true;
     if (window.workbench && typeof window.workbench.activePageId === 'function') return true;
     var p = location.pathname.replace(/\/+$/, '') || '/';
-    return p === '/' || p === '/index.html';
+    return p === '/workbench' || p === '/workbench/index.html' || p === '/' || p === '/index.html';
   })();
   var LEDGER_PATHNAME =
     FRAME || CANVAS_MODE
@@ -1859,7 +1859,7 @@ import { startProseComments } from './prose-comments.js';
 
   if (btnList) btnList.addEventListener('click', function () { toggleSidebar(); });
   if (btnWorkbench) btnWorkbench.addEventListener('click', function () {
-    window.open((SERVER || location.origin) + '/index.html', '_blank', 'noopener');
+    window.open((SERVER || location.origin) + '/workbench/', '_blank', 'noopener');
   });
   updateListeners.push(renderSidebar);
   (function () {

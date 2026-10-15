@@ -4,7 +4,7 @@
  * 目标（命令的第一个位置参数）：
  *   <project>/<article>       一篇文章（输出一律打这个斜杠形）
  *   <project>_<article>       同一篇文章的页 id（旧写法，照认）
- *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/?page=<页 id>
+ *   文章网址                   https://pinpoint.localhost/<project>/<article>/…、/<project>/<article>/、/workbench/?page=<页 id>（旧的 /?page= 照认）
  *   @page:<页 id>             工作台“复制 @page”给的写法，同页 id
  *   <project>                 一个 project（show / check / comments 用）
  *   <页 id>                   存量页
@@ -24,6 +24,8 @@ const SLASH_ARTICLE_RE = new RegExp(`^(${ID})/(${ID})/?$`);
 const SECTION_NUMBER_RE = /^§([1-9][0-9]*)$/;
 const NUM_SUFFIX_RE = /^(.*)#([1-9][0-9]*)$/;
 const PAGE_INDICATOR_PREFIX = '@page:';
+// 工作台地址：现行 /workbench/，旧写法 / 与 /index.html 照认（ADR 0044）。
+const WORKBENCH_PATHNAMES = new Set(['/workbench/', '/workbench/index.html', '/', '/index.html']);
 // 引用的样子：#n、#3-#7、@frame: / @a:、§2、字母编号 B / B3、<tab>:B3。这些不会是目标。
 const REF_SHAPE_RE = /^(?:#|@|§)|^[A-Z]+(?:[1-9][0-9]*)?$|^[a-zA-Z0-9_-]+:[A-Z]+(?:[1-9][0-9]*)?$/;
 
@@ -37,7 +39,7 @@ function parseUrlish(token) {
   }
   if (!url) return null;
   const page = url.searchParams.get('page');
-  if ((url.pathname === '/' || url.pathname === '/index.html') && page && PAGE_ID_PATTERN.test(page)) return { pageId: page };
+  if (WORKBENCH_PATHNAMES.has(url.pathname) && page && PAGE_ID_PATTERN.test(page)) return { pageId: page };
   const parts = url.pathname.split('/').filter(Boolean);
   if (parts.length >= 2 && ENTRY_ID_PATTERN.test(parts[0]) && ENTRY_ID_PATTERN.test(parts[1]) && parts[1] !== 'concepts') {
     return { project: parts[0], article: parts[1] };

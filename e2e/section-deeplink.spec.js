@@ -38,7 +38,7 @@ const boardZoom = (page) => page.locator('.wb-library').evaluate((el) => el.styl
 
 /** 落地完成的可观察信号：url-sync 在落点之后才启动，第一次写地址栏就把 section 去掉。 */
 async function openAndLand(page, query) {
-  await page.goto(`/index.html?${query}`);
+  await page.goto(`/workbench/?${query}`);
   await page.waitForFunction(() => window.workbench && window.workbench.activePageId());
   await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
 }

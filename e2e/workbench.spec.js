@@ -34,7 +34,7 @@ async function openWorkbench(page) {
   // 深链显式钉 e2e-ios：无 ?page= 时工作台落 manifest.defaultPage（范例页），
   // 而本文件的画布 / 标注用例标的从来是 e2e-ios 的板——钉死基页，让用例不依赖
   // 默认页是哪一页。
-  await page.goto('/index.html?page=e2e-ios');
+  await page.goto('/workbench/?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
   // shell 就绪 ≠ 板就绪：navigator / 首访聚焦 / minimap 在挂载会话的几何批里
   // 才落定（全量负载下这段与 sidecar 导入解耦前能拖过 5s 断言窗口——
@@ -1184,7 +1184,7 @@ test('?page= 指向不存在的页 → 显式面板；登记后「重试」原�
     await route.fulfill({ response, json: doc });
   });
 
-  await page.goto('/index.html?page=e2e-doc');
+  await page.goto('/workbench/?page=e2e-doc');
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   const panel = page.locator('#wb-board-panel .wb-screen-err');
   // 标题 / 出处 / 原因三行；地址栏不被规范化：坏的是哪个 id 必须一直看得见
@@ -1500,7 +1500,7 @@ test('挂载几何批不等预览脚本：sidecar 永远在途 navigator 照常�
   // 30s 测试预算全烧在等待上。现在几何批只依赖 loadBoard 已插入的板 DOM。
   // 这里把 sidecar 永久挂起（route 不应答），navigator 必须照常出现。
   await page.route('**/e2e-ios/timer.js*', () => {});
-  await page.goto('/index.html?page=e2e-ios');
+  await page.goto('/workbench/?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
   expect(await page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
 });

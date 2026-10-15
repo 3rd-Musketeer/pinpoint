@@ -124,7 +124,7 @@ test('shot 把运行时 canvas 的位图烤进 PNG', async ({ page, request }) =
     if (shot.code !== 0) throw new Error(`shot 退出 ${shot.code}：${shot.stderr}`);
     if (!shot.stdout.includes(out)) throw new Error(`shot 没打路径：\n${shot.stdout}`);
 
-    await page.goto('/index.html');
+    await page.goto('/workbench/');
     const b64 = fs.readFileSync(out).toString('base64');
     const hasFuchsia = await page.evaluate(async (data) => {
       const img = new Image();

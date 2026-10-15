@@ -229,7 +229,7 @@ export function formatProjectDetail(project) {
   for (const article of project.articles) {
     lines.push(`  ${article.id}  ·  ${article.title}${article.summary ? `  ·  ${article.summary}` : ''}`);
     lines.push(`    ${article.file}`);
-    // 页 id：/?page= 和标注桶用它；CLI 输出打斜杠形。
+    // 页 id：/workbench/?page= 和标注桶用它；CLI 输出打斜杠形。
     if (article.pageId) lines.push(`    画布 ${article.pageId}`);
   }
   lines.push('', `概念（${project.concepts.length}）`);

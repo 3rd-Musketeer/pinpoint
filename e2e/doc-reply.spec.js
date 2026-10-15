@@ -39,7 +39,7 @@ test.afterEach(async ({ page, request }) => {
 test('文档页标注：mark --note 一步回复并写 check，回复出现在工作台列表和标注卡里，owner 再编辑也不丢', async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await page.goto(`/index.html?page=${PAGE_ID}`);
+  await page.goto(`/workbench/?page=${PAGE_ID}`);
   await page.waitForFunction(() => window.workbench);
   const doc = page.frameLocator(DOC_FRAME);
   await expect(doc.locator('#doc-title')).toHaveText('文档 v1');

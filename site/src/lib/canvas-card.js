@@ -12,9 +12,14 @@
 export const frameSrc = (pageId, frameId) =>
   `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off&embed=card`;
 
-/** Workbench canvas view of the article; with a section id it scrolls to that row (M0-D). */
+/**
+ * Workbench canvas view of the article; with a section id it scrolls to that row (M0-D).
+ * The workbench lives at /workbench/ (ADR 0044). Browser scripts can't import repo source, so this
+ * literal mirrors src/shared/workbench-url.js (canvas-card.test.js checks they agree).
+ */
+export const WORKBENCH_PATH = '/workbench/';
 export const canvasHref = (pageId, sectionId) =>
-  `/?page=${encodeURIComponent(pageId)}${sectionId ? `&section=${encodeURIComponent(sectionId)}` : ''}`;
+  `${WORKBENCH_PATH}?page=${encodeURIComponent(pageId)}${sectionId ? `&section=${encodeURIComponent(sectionId)}` : ''}`;
 
 /** The read-only annotation endpoint for a bucket's canvas ledger (src/server/annotate-api.js). */
 export const canvasLedgerUrl = (pageId) => `/annotations/%40canvas?entry=${encodeURIComponent(pageId)}`;

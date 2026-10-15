@@ -2695,11 +2695,11 @@ test('show <project>/<article>：每节 §n · 字母 · 节 id · 帧 · open �
   assert.equal(await runShow(withRegistry(made, 'show', 'e2e-project/commit-confirm'), { ...rec.io, env: made.env }), 0, rec.err.join('\n'));
   const text = rec.out.join('\n');
   assert.ok(text.startsWith('# e2e-project/commit-confirm · 提交前确认\n'), text);
-  assert.ok(text.includes('画布视图：http://127.0.0.1:1/?page=e2e-project_commit-confirm'), text);
+  assert.ok(text.includes('画布视图：http://127.0.0.1:1/workbench/?page=e2e-project_commit-confirm'), text);
   assert.ok(text.includes('标注队列：open 2 · check 0 · done 0 · close 0（ppnt comments e2e-project/commit-confirm）'), text);
   assert.ok(text.includes('§1  A  why · 为什么要停下来 · 纯文字 · open 1\n      http://127.0.0.1:1/e2e-project/commit-confirm/#why'), text);
   assert.ok(text.includes('§2  B  confirm · 确认卡 · 2 帧 · open 1\n      B1   confirm-sheet  confirm-sheet.jsx\n      B2   confirm-done  confirm-done.jsx'), text);
-  assert.ok(text.includes('http://127.0.0.1:1/e2e-project/commit-confirm/#confirm  ·  画布 http://127.0.0.1:1/?page=e2e-project_commit-confirm&section=confirm'), text);
+  assert.ok(text.includes('http://127.0.0.1:1/e2e-project/commit-confirm/#confirm  ·  画布 http://127.0.0.1:1/workbench/?page=e2e-project_commit-confirm&section=confirm'), text);
   assert.ok(text.endsWith('布局错误：无'), text);
 
   const json = recorder();

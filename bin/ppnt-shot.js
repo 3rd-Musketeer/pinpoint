@@ -12,6 +12,7 @@ import path from 'node:path';
 import { chromium } from '@playwright/test';
 
 import { frameInternalSelector } from '../src/shared/frame-anchor.js';
+import { WORKBENCH_PATH } from '../src/shared/workbench-url.js';
 
 export const PIN_CSS = 'position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#0a84ff;color:#fff;font:700 11px/18px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);';
 
@@ -62,7 +63,7 @@ export async function renderShots({ origin, pageId, jobs, env = process.env }) {
       ignoreHTTPSErrors: true,
     });
     const page = await context.newPage();
-    await page.goto(`${origin}/index.html`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${origin}${WORKBENCH_PATH}`, { waitUntil: 'domcontentloaded' });
     await page.waitForFunction(() => window.workbench);
     await page.evaluate((id) => window.workbench.setActivePage(id), pageId);
     await page.waitForFunction((id) => window.workbench.activePageId() === id && document.querySelector('#wb-board-panel .wb-lib-item'), pageId);

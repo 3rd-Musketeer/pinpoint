@@ -133,7 +133,7 @@ test('pinpoint add (CLI)：dir 条目 reload 后进 Pages，单文件条目开�
     ).toHaveText('E2E CLI-added site');
 
     // file 行：合成板 src = sites/<id>/<percent-encoded 文件名>（契约规范形，
-    // 无前导斜杠；iframe 从 /index.html 相对解析到 /sites/…）。
+    // 无前导斜杠；工作台在 /workbench/，壳页的 <base href="/"> 让 iframe 相对解析到 /sites/…）。
     const fileBtn = page.locator('.wb-page[data-vpage="e2e-cli-file"]');
     await expect(fileBtn).toBeVisible();
     await fileBtn.click();

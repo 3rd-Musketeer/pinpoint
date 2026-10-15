@@ -230,12 +230,12 @@ test('open --print：文章页与画布视图、一节、project 全貌、概念
   assert.equal(article.code, 0, article.err.join('\n'));
   assert.deepEqual(article.out, [
     'e2e-project/commit-confirm 文章页  http://127.0.0.1:1/e2e-project/commit-confirm/',
-    'e2e-project/commit-confirm 画布视图  http://127.0.0.1:1/?page=e2e-project_commit-confirm',
+    'e2e-project/commit-confirm 画布视图  http://127.0.0.1:1/workbench/?page=e2e-project_commit-confirm',
   ]);
   const section = await runIn(made, ['open', 'e2e-project/commit-confirm', '§2', '--json']);
   assert.deepEqual(JSON.parse(section.out.join('\n')).urls.map((row) => row.url), [
     'http://127.0.0.1:1/e2e-project/commit-confirm/#confirm',
-    'http://127.0.0.1:1/?page=e2e-project_commit-confirm&section=confirm',
+    'http://127.0.0.1:1/workbench/?page=e2e-project_commit-confirm&section=confirm',
   ]);
   const prose = await runIn(made, ['open', 'e2e-project/commit-confirm', 'why', '--print']);
   assert.deepEqual(prose.out, ['A（§1 why）文章页  http://127.0.0.1:1/e2e-project/commit-confirm/#why'], '纯文字的节只有锚点');

@@ -13,6 +13,7 @@ import { DEFAULT_ORIGIN, ioOf } from './core.js';
 import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { resolveAddress, sectionNumberOf } from './address.js';
 import { addressContext, printCandidates } from './targets.js';
+import { canvasViewHref } from '../../src/shared/workbench-url.js';
 
 function readText(file) {
   try {
@@ -43,7 +44,7 @@ export function openUrls(hit, ref, { registry, origin }) {
     ];
     for (const article of project.articles) {
       urls.push({ kind: 'article', label: `${project.id}/${article.id} 文章页`, url: `${base}/${project.id}/${article.id}/` });
-      if (article.canvasSections) urls.push({ kind: 'canvas', label: `${project.id}/${article.id} 画布视图`, url: `${base}/?page=${article.pageId}` });
+      if (article.canvasSections) urls.push({ kind: 'canvas', label: `${project.id}/${article.id} 画布视图`, url: `${base}${canvasViewHref(article.pageId)}` });
     }
     for (const concept of project.concepts) urls.push({ kind: 'concept', label: `概念 ${concept.name}`, url: conceptUrl(concept) });
     return { urls };
@@ -54,7 +55,7 @@ export function openUrls(hit, ref, { registry, origin }) {
   const pageId = articlePageId(project.id, article.id);
   if (!ref) {
     const urls = [{ kind: 'article', label: `${hit.address} 文章页`, url: articleUrl }];
-    if (article.canvasSections) urls.push({ kind: 'canvas', label: `${hit.address} 画布视图`, url: `${base}/?page=${pageId}` });
+    if (article.canvasSections) urls.push({ kind: 'canvas', label: `${hit.address} 画布视图`, url: `${base}${canvasViewHref(pageId)}` });
     return { urls };
   }
   const outline = articleOutline(readText(article.file));
@@ -63,7 +64,7 @@ export function openUrls(hit, ref, { registry, origin }) {
   if (section && section.id) {
     const urls = [{ kind: 'section', label: `${section.letter}（§${section.n} ${section.id}）文章页`, url: `${articleUrl}#${section.id}` }];
     if (section.canvas && section.frames.length && article.canvasSections) {
-      urls.push({ kind: 'canvas', label: `${section.letter}（§${section.n} ${section.id}）画布视图`, url: `${base}/?page=${pageId}&section=${section.id}` });
+      urls.push({ kind: 'canvas', label: `${section.letter}（§${section.n} ${section.id}）画布视图`, url: `${base}${canvasViewHref(pageId, section.id)}` });
     }
     return { urls };
   }
@@ -86,7 +87,7 @@ export async function runOpen(argv, io = {}) {
     return USAGE_EXIT;
   }
   if (hit.kind === 'page') {
-    return reportUsageError('open', `${parsed.target} 是存量页：它在工作台里打开，${(env.PINPOINT_ORIGIN || DEFAULT_ORIGIN).replace(/\/+$/, '')}/?page=${hit.pageId}`, err);
+    return reportUsageError('open', `${parsed.target} 是存量页：它在工作台里打开，${(env.PINPOINT_ORIGIN || DEFAULT_ORIGIN).replace(/\/+$/, '')}${canvasViewHref(hit.pageId)}`, err);
   }
   const result = openUrls(hit, parsed.ref, { registry: ctx.registry, origin: env.PINPOINT_ORIGIN || DEFAULT_ORIGIN });
   if (result.error) {

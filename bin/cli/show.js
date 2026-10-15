@@ -25,6 +25,7 @@ import { componentUses, formatUses } from './uses.js';
 import { resolveAddress } from './address.js';
 import { addressContext, printCandidates } from './targets.js';
 import { listFrames, loadAnnotateContext } from './list.js';
+import { canvasViewHref } from '../../src/shared/workbench-url.js';
 
 const isOpen = (row) => (row.status || 'open') === 'open';
 
@@ -55,7 +56,7 @@ export function articleModel({ project, article, context, origin }) {
   const rows = [...context.frameRows, ...context.docRows];
   const pageId = context.pageId;
   const articleUrl = `${origin}/${project.id}/${article.id}/`;
-  const canvasUrl = canvasSections.size ? `${origin}/?page=${pageId}` : null;
+  const canvasUrl = canvasSections.size ? `${origin}${canvasViewHref(pageId)}` : null;
   const sections = outline.map((row) => {
     const onCanvas = row.id ? canvasSections.get(row.id) : null;
     const frameIds = onCanvas ? onCanvas.frames.map((frame) => frame.id) : row.frames;
@@ -77,7 +78,7 @@ export function articleModel({ project, article, context, origin }) {
       frames,
       open,
       url: row.id ? `${articleUrl}#${row.id}` : articleUrl,
-      canvasUrl: onCanvas ? `${origin}/?page=${pageId}&section=${row.id}` : null,
+      canvasUrl: onCanvas ? `${origin}${canvasViewHref(pageId, row.id)}` : null,
     };
   });
   return {
@@ -98,7 +99,7 @@ export function formatArticle(model) {
   lines.push(`文件：${model.file}`);
   lines.push(`文章页：${model.url}`);
   lines.push(model.canvasUrl ? `画布视图：${model.canvasUrl}` : '画布视图：无（没有带画布的节）');
-  lines.push(`页 id：${model.pageId}（画布视图的 ?page= 和数据目录里的桶用它）`);
+  lines.push(`页 id：${model.pageId}（画布视图 /workbench/?page= 和数据目录里的桶用它）`);
   const c = model.counts;
   lines.push(`标注队列：open ${c.open} · check ${c.check} · done ${c.done} · close ${c.close}（ppnt comments ${model.address}）`);
   lines.push('');

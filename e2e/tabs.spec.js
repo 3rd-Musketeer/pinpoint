@@ -22,7 +22,7 @@ const DOC_DIR = path.join(E2E_SITES_DIR, 'tabs-doc-site');
 const DIST_ENTRIES = ['e2e-tabs', 'e2e-tabs-one'].map((id) => path.join(E2E_DATA_DIR, 'dist', id));
 
 async function openBoard(page, query) {
-  await page.goto(`/index.html?${query}`);
+  await page.goto(`/workbench/?${query}`);
   await page.waitForFunction(() => window.workbench && window.workbench.activeTabId);
   // 画布挂完：至少一个帧在 DOM 里
   await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeAttached();
@@ -154,7 +154,7 @@ test('纯文档的多 tab 页：条照出且不压横条；切 tab 打开该 tab
   });
 
   await test.step('刷新：留在对比 tab 的第二篇', async () => {
-    await page.goto('/index.html?page=e2e-tabs-doc');
+    await page.goto('/workbench/?page=e2e-tabs-doc');
     await page.waitForFunction(() => window.workbench && window.workbench.activeTabId);
     await expect(selected).toHaveText('对比');
     await expect(shown).toHaveAttribute('data-screen', 'b');

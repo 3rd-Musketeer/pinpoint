@@ -144,7 +144,7 @@ export function initCanvasOverlay() {
     el.num.textContent = d.num || '';
     el.title.textContent = d.title || sectionId;
     el.meta.textContent = d.meta || '';
-    el.canvas.href = d.href || '/';
+    el.canvas.href = d.href || '/workbench/';
     dlg.dataset.ppSection = sectionId;
     const prev = neighborSection(ids, sectionId, -1);
     const next = neighborSection(ids, sectionId, 1);

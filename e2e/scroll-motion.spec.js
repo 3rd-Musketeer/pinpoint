@@ -17,7 +17,7 @@ test.beforeAll(async ({ browser }) => {
   const context = await browser.newContext();
   page = await context.newPage();
   await maybeThrottle(page);
-  await page.goto('/index.html?page=e2e-ios&mode=ios');
+  await page.goto('/workbench/?page=e2e-ios&mode=ios');
   // afterMount wires navigation and applies the initial viewport in the geometry
   // batch (board DOM in; independent of preview-script imports). Starting a spring
   // at HTML insertion time races that legitimate first focus.

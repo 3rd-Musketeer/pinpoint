@@ -363,7 +363,7 @@ test('annotation number stays visible while editing and follows the target after
 
 test('annotation jumps center the annotation frame, and typing never moves the canvas', async ({page}) => {
   await page.setViewportSize({width:1500,height:1000});
-  await page.goto('/index.html?page=e2e-dir-ios');
+  await page.goto('/workbench/?page=e2e-dir-ios');
   await page.waitForFunction(()=>window.pinpoint?.getState().connected && document.querySelector('#wbsection-nav .wb-section-nav-item'));
   await page.evaluate(()=>window.workbench.whenScrollSettled());
   await page.evaluate(()=>window.pinpoint.setMode(true));

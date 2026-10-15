@@ -4,12 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, cardModel, DOC_WIDTHS, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
+import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, openCount, shellBox } from './canvas-card.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
 import { listProjects } from '../../../src/server/lib/projects.js';
 import { HTML_FRAME_WIDTHS } from '../../../src/shared/project-ids.js';
+import { canvasViewHref, WORKBENCH_PATH as SHARED_WORKBENCH_PATH } from '../../../src/shared/workbench-url.js';
 
 const FIX = fileURLToPath(new URL('../../fixtures/projects/', import.meta.url));
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
@@ -29,7 +30,7 @@ test('card model: this section only, urls, meta, errors by section', () => {
     ['ask', 'ask', '/api/frame?page=demo_payments&screen=ask&annotate=off&embed=card'],
     ['confirm', '确认', '/api/frame?page=demo_payments&screen=confirm&annotate=off&embed=card'],
   ]);
-  assert.equal(m.href, '/?page=demo_payments&section=flow');
+  assert.equal(m.href, '/workbench/?page=demo_payments&section=flow');
   // The article shows numbers: the section's number, no canvas letter, no frame refs (B1 …).
   assert.equal(m.num, '2');
   assert.equal(m.meta, '2 帧');
@@ -47,7 +48,10 @@ test('card model: this section only, urls, meta, errors by section', () => {
   // Canvas outside any Section: articleCanvas reports it page-level (banner), the card renders nothing.
   assert.equal(cardModel(canvas, undefined).stray, true);
   assert.deepEqual(cardModel(canvas, undefined).errors, []);
-  assert.equal(canvasHref('a b'), '/?page=a%20b');
+  assert.equal(canvasHref('a b'), '/workbench/?page=a%20b');
+  // 站点浏览器端不能 import 仓库源码：字面量与 src/shared/workbench-url.js 对账。
+  assert.equal(WORKBENCH_PATH, SHARED_WORKBENCH_PATH);
+  assert.equal(canvasHref('demo_pay', 'flow'), canvasViewHref('demo_pay', 'flow'));
   assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off&embed=card');
   assert.equal(shellBox('app').mode, 'phone');
   assert.equal(shellBox('lock').mode, 'phone');

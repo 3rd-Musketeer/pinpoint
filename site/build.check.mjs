@@ -88,7 +88,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
     assert.match(tag, /loading="lazy"/);
     assert.match(tag, /tabindex="-1"/);
   }
-  const open = q(`/?page=${encodeURIComponent(page)}&section=flow`);
+  const open = q(`/workbench/?page=${encodeURIComponent(page)}&section=flow`);
   // 打开画布 goes to the canvas; each frame opens the section overlay on the article (#overlay=<section>&frame=<frame>), no navigation.
   assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#overlay=flow&frame=${f}`))]);
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
@@ -120,7 +120,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(mech.html, /data-shell="comp"/);
   assert.match(mech.html, /class="cc-box natural"/);
   assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
-  assert.deepEqual(linksOf(mech.html), [q(`/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
+  assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#overlay=mech&amp;frame=pay-button']);
   // Figures in the prose (<Figure>): one lazy same-origin iframe each (embed=figure, no canvas card), caption below,
   // excluded from prose comments; one before the first Section, one inside it. They are not frames: the cards above are unchanged.
   const figures = [...article.matchAll(/<figure class="pp-fig" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]
@@ -142,14 +142,14 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   const ov = article.match(/<dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">[\s\S]*?<\/dialog>/);
   assert.ok(ov, 'overlay shell');
   for (const hook of ['data-ov-num', 'id="pp-ov-title" data-ov-title', 'data-ov-meta', 'data-ov-prev aria-label="上一节"', 'data-ov-next aria-label="下一节"',
-    'data-ov-canvas href="/" target="_top">打开画布 →', 'data-ov-close aria-label="关闭"', 'class="ov-strip" data-ov-strip tabindex="-1" autofocus']) {
+    'data-ov-canvas href="/workbench/" target="_top">打开画布 →', 'data-ov-close aria-label="关闭"', 'class="ov-strip" data-ov-strip tabindex="-1" autofocus']) {
     assert.ok(ov[0].includes(hook), `overlay hook ${hook}`);
   }
   assert.doesNotMatch(ov[0], /<iframe/); // frames are created when it opens
   assert.ok(article.indexOf('<dialog class="pp-ov"') > article.indexOf('</main>'), 'overlay is outside #article');
   assert.equal((article.match(/<dialog /g) || []).length, 1);
   // Top bar: the article's canvas view.
-  assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
+  assert.match(article, new RegExp(`id="btn-canvas" href="${escRe(q(`/workbench/?page=${encodeURIComponent(page)}`))}" target="_top">画布视图<`));
   assert.doesNotMatch(b.read('demo/basics/index.html'), /btn-canvas|data-pp-canvas|data-pp-overlay/); // no Canvas, no canvas view, no overlay
 
   const home = b.read('demo/index.html');

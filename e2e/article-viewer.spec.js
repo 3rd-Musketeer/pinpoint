@@ -77,7 +77,7 @@ test('画布浮层：点帧打开不跳转、帧可交互、同一缩放、焦�
     await expect(ov.locator('[data-ov-num]')).toHaveText('2');
     await expect(ov.locator('[data-ov-title]')).toHaveText('确认卡');
     await expect(ov.locator('[data-ov-meta]')).toHaveText('2 帧');
-    await expect(ov.locator('[data-ov-canvas]')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}&section=confirm`);
+    await expect(ov.locator('[data-ov-canvas]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
     await expect(ov.locator('.ov-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done']);
     await expect(ov.locator('.ov-frame[data-screen="confirm-done"]')).toHaveClass(/\bflash\b/);
     await expect(ov.locator('.ov-frame iframe')).toHaveCount(2);
@@ -352,7 +352,7 @@ test('文章页只显示节号，不出画布字母；画布接口仍带 letter 
     await expect(page.locator('[data-letter], [data-ref], [data-ov-letter]')).toHaveCount(0);
     expect(await page.locator('body').innerText()).not.toMatch(FRAME_REF);
     // 卡片的“打开画布”仍按节 id 定位到画布上的那一节（画布那边是字母 B）。
-    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/?page=${CANVAS_PAGE}&section=confirm`);
+    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
   });
 
   await test.step('浮层：头部节号、上一节 / 下一节的提示、图注都不出字母', async () => {

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './ui/button.jsx';
+import { WORKBENCH_PATH } from '../../shared/workbench-url.js';
 
 export function PageInfo({ page, onClose }) {
   const dialogRef = useRef(null);
@@ -39,7 +40,7 @@ export function PageInfo({ page, onClose }) {
     return () => controller.abort();
   }, [page]);
 
-  const pageUrl = new URL('/index.html', location.origin);
+  const pageUrl = new URL(WORKBENCH_PATH, location.origin);
   pageUrl.searchParams.set('page', page.id);
   pageUrl.searchParams.set('mode', page.mode || 'ios');
   return createPortal(

@@ -15,7 +15,7 @@ import { countColorPixels } from './png-probe.js';
 // 不经过 Astro：画布页只靠 pinpoint 服务与编译器。
 const PAGE_ID = 'e2e-project_commit-confirm';
 
-test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt shot', async ({ page }) => {
+test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、混排节、不进 Pages、ppnt shot', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
@@ -31,7 +31,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
   // 画布页 id 是合法桶 → 同文件「标注桶」与 annotate-api.test.js 的 400；
   // list --frames → bin/pinpoint-cli.test.js「list <文章画布页> --frames」。这里只留要浏览器的。
   await test.step('工作台 ?page=<画布页>&section=variants：落到那一节，帧真渲染，没有错误面板', async () => {
-    await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
+    await page.goto(`/workbench/?page=${PAGE_ID}&section=variants`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
     await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
     expect(new URL(page.url()).searchParams.get('page')).toBe(PAGE_ID);
@@ -46,8 +46,18 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await expect(page.locator('#wb-board-panel [data-screen="card-plain"] .wb-cap-ref')).toHaveText('C1');
   });
 
+  await test.step('旧地址 /?page=…&section= 跳到 /workbench/：参数原样带上，落到那一节，地址栏留在 /workbench/', async () => {
+    await page.goto(`/?page=${PAGE_ID}&section=confirm`);
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    await expect(page.locator('.wb-lib-item[data-ann-section="confirm"]')).toHaveClass(/\bwb-sel\b/);
+    await expect(page.locator('#wb-board-panel [data-screen="confirm-sheet"] .e2e-confirm-card')).toBeVisible();
+    await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
+    expect(new URL(page.url()).pathname).toBe('/workbench/');
+    expect(new URL(page.url()).searchParams.get('page')).toBe(PAGE_ID);
+  });
+
   await test.step('工作台混排节 mixed：手机帧带机壳，帧级 comp 的那一帧是裸组件，没有错误面板', async () => {
-    await page.goto(`/index.html?page=${PAGE_ID}&section=mixed`);
+    await page.goto(`/workbench/?page=${PAGE_ID}&section=mixed`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
     await expect(page.locator('.wb-lib-item[data-ann-section="mixed"]')).toHaveClass(/\bwb-sel\b/);
     const bare = page.locator('#wb-board-panel [data-screen="mixed-bare"]');
@@ -70,7 +80,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
   });
 
   await test.step('横条页名：画布视图显示文章标题（画布页在清单 manifest.articles 里，不在 Pages）', async () => {
-    await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
+    await page.goto(`/workbench/?page=${PAGE_ID}&section=variants`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
     await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
   });
@@ -79,7 +89,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     // 地址怎么拼在单测（lib/article-groups.test.js articleCanvasReadUrl）；这里守钮在横条上、
     // 跟着画布当前节换锚点、点了是同标签页导航。正文页本身是站点（Astro）出的，这个 spec 不拉
     // 站点，所以文章地址用 page.route 接住，只看导航到了哪里。
-    await page.goto(`/index.html?page=${PAGE_ID}&section=variants`);
+    await page.goto(`/workbench/?page=${PAGE_ID}&section=variants`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
     const read = page.locator('#wbstrip #wbread-article');
     await expect(read).toHaveText('阅读正文');
@@ -104,7 +114,7 @@ test('文章画布：工作台 ?page=&section=、混排节、不进 Pages、ppnt
     await page.goBack();
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
 
-    await page.goto('/index.html?page=e2e-ios');
+    await page.goto('/workbench/?page=e2e-ios');
     await page.waitForFunction(() => window.workbench && window.workbench.activePageId() === 'e2e-ios');
     await expect(page.locator('#wbstrip-title')).not.toHaveText('');
     await expect(page.locator('#wbread-article')).toHaveCount(0);

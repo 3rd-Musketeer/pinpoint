@@ -17,7 +17,7 @@ interface Props {
   rail?: boolean;
   drawer?: { have: DrawerItem[]; empty: DrawerItem[] };
   errors?: string[];
-  /** 文章的画布视图（/?page=<articlePageId>）；没有画布节的文章不传。 */
+  /** 文章的画布视图（/workbench/?page=<articlePageId>）；没有画布节的文章不传。 */
   canvasHref?: string;
 }
 const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref } = Astro.props;
