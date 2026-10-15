@@ -319,18 +319,41 @@ test('锚点失效后 lastRect 出幽灵框，列表行仍跳到最后位置；�
 });
 
 
+// 等焦点和选区落在已定位的编辑框中，且浏览器相邻布局帧不再改变框或滚动位置。
+async function waitComposerReady(page) {
+  await expect(page.locator('#ann-input')).toBeFocused();
+  await expect(page.locator('#ann-box')).toHaveAttribute('data-placement', /^(anchor|dock|user)$/);
+  await page.evaluate(() => new Promise(resolve => {
+    let previous;
+    function measure() {
+      const input = document.querySelector('#ann-input');
+      const box = document.querySelector('#ann-box');
+      const selection = getSelection();
+      const ready = document.activeElement === input && selection?.rangeCount
+        && input.contains(selection.anchorNode) && input.contains(selection.focusNode);
+      const rect = box.getBoundingClientRect();
+      const current = JSON.stringify([scrollX, scrollY, rect.x, rect.y, rect.width, rect.height,
+        box.scrollTop, input.scrollTop, selection?.anchorOffset, selection?.focusOffset]);
+      if (ready && current === previous) resolve();
+      else { previous = current; requestAnimationFrame(measure); }
+    }
+    requestAnimationFrame(measure);
+  }));
+}
+
 test('annotation number stays visible while editing and follows the target after scrolling', async ({page}) => {
   await openAnnotated(page, '/sites/e2e-dir/doc.html');
   await page.addStyleTag({content:'body{min-height:2000px} h1{position:absolute;left:240px;top:300px;width:180px;height:100px;margin:0}'});
   await page.evaluate(()=>window.pinpoint.setMode(true));
   await page.locator('#doc-title').click({position:{x:10,y:10}});
+  await waitComposerReady(page);
   await page.locator('#ann-input').press('End');
   await page.keyboard.insertText('保留序号');
   await page.locator('#ann-close').click();
   const mark=await page.evaluate(()=>window.pinpoint.marks.at(-1));
   await expect(page.locator('.ann-badge')).toHaveCount(1);
   await page.evaluate(n=>window.pinpoint.openMark(n),mark.n);
-  await expect(page.locator('#ann-box')).toBeVisible();
+  await waitComposerReady(page);
   const badge=page.locator('.ann-badge');
   await expect(badge).toHaveCount(1);
   await expect(badge).toHaveText(String(mark.n));
@@ -369,8 +392,6 @@ test('annotation number stays visible while editing and follows the target after
     window.scrollTo({top, behavior:'instant'});
     await ended;
   }, top);
-  // 本例验证编辑态的滚动几何；移开输入焦点，避免浏览器为光标滚动页面。
-  await page.locator('#ann-input').blur();
   await test.step('目标在视口内：钉子跟随目标框', async () => {
     await scrollTo(100);
     await expectPlacement(100);
@@ -386,6 +407,44 @@ test('annotation number stays visible while editing and follows the target after
   await page.locator('#ann-close').click();
   await expect(badge).toHaveCount(1);
   expect((await page.evaluate(()=>window.pinpoint.marks.at(-1))).id).toBe(mark.id);
+});
+
+test('聚焦编辑标注时页面保持原位，键盘滚动不越过编辑区', async ({ page }) => {
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
+  await page.addStyleTag({content:'body{min-height:2000px} h1{position:absolute;left:240px;top:300px;width:180px;height:100px;margin:0}'});
+  await page.evaluate(() => {
+    window.__composerScroll = [];
+    document.addEventListener('scroll', () => window.__composerScroll.push(window.scrollY));
+    window.pinpoint.setMode(true);
+  });
+  const input = page.locator('#ann-input');
+  await page.locator('#doc-title').click({position:{x:10,y:10}});
+  await waitComposerReady(page);
+  await input.press('End');
+  await page.keyboard.insertText('页面保持原位');
+  // 等真实自动保存完成，覆盖焦点、选区与输入之后的浏览器滚动事件。
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.at(-1)?.content)).toContain('页面保持原位');
+  // 边界隔离仍允许编辑器自己滚动。
+  await input.fill('页面保持原位\n' + '编辑区内的长内容\n'.repeat(24));
+  await input.evaluate(el => { el.scrollTop = 0; });
+  await input.hover();
+  await page.mouse.wheel(0, 160);
+  await expect.poll(() => input.evaluate(el => el.scrollTop)).toBeGreaterThan(0);
+  await page.locator('#ann-close').click();
+  const mark = await page.evaluate(() => window.pinpoint.marks.at(-1));
+  await page.evaluate(n => window.pinpoint.openMark(n), mark.n);
+  await waitComposerReady(page);
+  await input.press('End');
+  await page.keyboard.insertText('，继续编辑');
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.at(-1)?.content)).toContain('继续编辑');
+  expect(await page.evaluate(() => ({
+    scrolls: window.__composerScroll,
+    scrollY: window.scrollY,
+  }))).toEqual({
+    scrolls: [],
+    scrollY: 0,
+  });
+  await page.screenshot({path:test.info().outputPath('focused-editor.png')});
 });
 
 test('annotation jumps center the annotation frame, and typing never moves the canvas', async ({page}) => {
