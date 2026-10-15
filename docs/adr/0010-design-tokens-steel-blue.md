@@ -1,8 +1,8 @@
 # 0010 · 设计语言 token 级锚定：Steel Blue accent + 画布点阵 + 结构缝回调
 
-Status: 部分被取代（语义色 / 结构缝 / mono 档仍现行） · Date: 2026-08-13 · Scope: `scripts/build-wb-tokens.mjs`、`src/workbench/wb-tokens.css`、`src/shared/ann-list.css`
+Status: 部分被取代（结构缝 / mono 档仍现行；accent 与语义红绿由 0046 取代） · Date: 2026-08-13 · Scope: `scripts/build-wb-tokens.mjs`、`src/workbench/wb-tokens.css`、`src/shared/ann-list.css`
 
-Superseded-by: ADR 0011（accent 值、网格人格）、ADR 0012（纹理入口进设置）、ADR 0031（暖纸画布换冷中性纸，网格各淡一档）
+Superseded-by: ADR 0011（accent 值、网格人格）、ADR 0012（纹理入口进设置）、ADR 0031（暖纸画布换冷中性纸，网格各淡一档）、ADR 0046（全站绿强调色、纯灰、危险色 `#c0392b`、一份 token 源）
 
 **Decided**（owner 在评审板 `previews/accent-orange` 上拍板；细化 2026-08-11 的审美锚）:
 - **accent = Steel Blue `#1769aa`**（eval harness 现役 `--blue`），替换 iOS 蓝 `#007aff`。核心理由：chrome 与 iOS kit 内容分色（内容继续用 `#007aff`）。评审覆盖橙 / 蓝图蓝 / 制图绿三族 15 个候选，含 WCAG 对比度与琥珀同框检查。

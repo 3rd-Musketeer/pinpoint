@@ -186,7 +186,7 @@ bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render, 
                              bin/cli/ (address.js = targets and refs, help.js = per-command help),
                              dispatch + tests in bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
-scripts/                     wb-token generator + offline-export verifier + e2e runner
+scripts/                     token source + generator (tokens/source.mjs, build-tokens.mjs) + offline-export verifier + e2e runner
 e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/prose-site, e2e/jsx-site …)
 
 ~/.pinpoint/dist/<page id>/  Compiled frames — generated, not in git, not in the source dir

@@ -14,6 +14,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0046](0046-palette-and-token-source.md) | 2026-10-15 | 全站一套调色板（绿 A 青绿 `#0e8f6c`、Radix 纯灰、四态候选 2、危险 `#c0392b`、圈选 `#f5a623`）与一份 token 源（`scripts/tokens/source.mjs` 生成工作台、注入端、站点、图 kit 四份产物）；正文排版用 Tailwind Typography 加中文细节，表格宽块；圆角统一；`[[ ]]` 芯片不画下划线 | 现行 | — |
 | [0045](0045-wiki-default-project-mv.md) | 2026-10-15 | 概念改叫 wiki（`docs/pinpoint/wiki/`、`/<project>/wiki/<slug>/`，旧地址 301）；删掉 project 级共用组件（本篇 → kit）；默认 project `notes`（`ppnt new article <id>`，根目录 `PINPOINT_DEFAULT_PROJECT`）；`ppnt mv` 合并 `rename` 与 `move` | 现行 | — |
 | [0044](0044-project-is-a-folder-blog-home.md) | 2026-10-15 | project 退为一批文章的容器，读者面前不显示 project 标题、title 只写名字；`/` 是全部文章的 blog 首页，工作台挪到 `/workbench/`，旧地址 302 | 现行（默认 project 由 0045 补充） | ADR 0045 |
 | [0043](0043-pp3-cli-html-frames-figures.md) | 2026-10-14 | pp3 第二天：`check` 是验证、`comments` 是标注队列；`mark --note` 先回复再写状态；帧可以是整份 HTML（`{ id, src }`、`project.json` 的 `sources`）；手机宽度统一 402；图由 agent 画 SVG；文章页用节号、画布用字母 | 现行 | — |
@@ -48,8 +49,8 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0014](0014-outline-extension-lines.md) | 2026-08-15 | 左栏大纲 + 延伸线结构 | 现行 | — |
 | [0013](0013-rev-deferred.md) | 2026-08-15 | REV 机制缓期进 backlog | 现行 | ADR 0014 |
 | [0012](0012-sheet-format-rev-a1-refs.md) | 2026-08-15 | 图纸版式：铭牌 + REV 协议 + A1 引用法 + 装饰检验；DESIGN.md 正典化 | 部分缓期（图注 / 装饰检验 / 文档权威现行） | ADR 0013 |
-| [0011](0011-sidebar-split-and-design-v2.md) | 2026-08-14 | 侧栏左右分工 + 设计语言 V2（钢灰蓝 × S3 圆角） | 部分被取代（accent / 圆角 / 网格人格 / 设置视图仍现行） | ADR 0031 |
-| [0010](0010-design-tokens-steel-blue.md) | 2026-08-13 | 设计语言 token 级锚定：Steel Blue accent + 画布点阵 + 结构缝回调 | 部分被取代（语义色 / 结构缝 / mono 档仍现行） | ADR 0011、ADR 0012、ADR 0031 |
+| [0011](0011-sidebar-split-and-design-v2.md) | 2026-08-14 | 侧栏左右分工 + 设计语言 V2（钢灰蓝 × S3 圆角） | 部分被取代（圆角 / 网格人格 / 设置视图仍现行；钢灰蓝由 0046 取代） | ADR 0031、ADR 0046 |
+| [0010](0010-design-tokens-steel-blue.md) | 2026-08-13 | 设计语言 token 级锚定：Steel Blue accent + 画布点阵 + 结构缝回调 | 部分被取代（结构缝 / mono 档仍现行；语义色由 0046 取代） | ADR 0011、ADR 0012、ADR 0031、ADR 0046 |
 | [0009](0009-extension-side-panel.md) | 2026-08-11 | 扩展标注面板 = Chrome Side Panel（原生分屏）；点击必达 + 陈旧自愈 | 已退役（扩展整体删除） | ADR 0035 |
 | [0008](0008-design-anchor-flat-linear-light.md) | 2026-08-11 | 设计语言锚：扁平 / Linear 风 / light theme（owner 审美准则） | 部分被取代（准则本体仍现行） | ADR 0010、ADR 0031 |
 | [0007](0007-workbench-react-rebuild.md) | 2026-08-10 | workbench 技术栈重构（react-rebuild milestone 收官） | 现行 | — |

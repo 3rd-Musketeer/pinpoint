@@ -80,6 +80,13 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界；缺省取正文第一段）。字段规则与解析器在 `docs/projects.md`，站点只用 `listProjects` 读出的值。词条页地址用文件名：`/<project>/wiki/<slug>/`。正文里也能写 `[[ ]]`。
 
+## 样式与正文排版
+
+- 颜色、字体、字号、圆角、正文尺度都是 `--pp-*`，来自生成的 `src/styles/tokens.css`（源 `scripts/tokens/source.mjs`，`npm run build:tokens`）；`site.css` 不写颜色字面量。值与写法的正典是 `docs/design.md`“色彩”“字体与排印”和“组件惯用式”的圆角一条。
+- 引入顺序（`Base.astro`）：`layers.css`（声明 `@layer base, prose`）→ `tokens.css` → `vendor/tailwind-typography.css`（Tailwind Typography 0.5.20，MIT，原样入库）→ `site.css`。组件规则不分层，总能盖过正文规则。
+- 文章页、wiki 词条页的 `<main>` 带 `pp-prose`；画布卡片、图、页顶错误条带 `not-prose`。新组件放进正文里时也加 `not-prose`。
+- 表格：渲染时 `src/lib/rehype-table-scroll.js`（`astro.config.mjs` 的 `rehypePlugins`）给每个 `<table>` 包一层 `.pp-table-scroll`。表格是宽块：不受 40em 行宽限制，最宽到正文栏（与画布卡片对齐）；按内容取宽，窄表不撑满，宽表放不下才横向滚动；表头和首列不折行、首列 sticky，其余单元格最小 8em；整列是数字的列加 `.num` 右对齐。
+
 ## 代码地图
 
 - `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与 wiki 词条的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。

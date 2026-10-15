@@ -2,9 +2,9 @@
 
 当前有效的设计语言只写在这里；被取代就改本文，不留尸骸。
 
-分工：本文 = **现在是什么样**（正典）。为什么这么变、什么时候定的 → [docs/adr/](adr/)（索引与格式见 [adr/README.md](adr/README.md)）。某个 token 值的理由 → `scripts/build-wb-tokens.mjs` / `src/workbench/wb-tokens.css` 注释。UI 文案（写什么字）→ workspace 的 topics/text-quality/ui-text.md，本文引用不复制。
+分工：本文 = **现在是什么样**（正典）。为什么这么变、什么时候定的 → [docs/adr/](adr/)（索引与格式见 [adr/README.md](adr/README.md)）。某个 token 值的理由 → `scripts/tokens/source.mjs` 注释（全站一份 token 源，ADR 0046）。UI 文案（写什么字）→ workspace 的 topics/text-quality/ui-text.md，本文引用不复制。
 
-工作台外壳的形态是画布满铺 + 浮动玻璃面板 + 底部横条 + 右栏标注列表，见 [adr/0031](adr/0031-shell-glass-panel-bottom-strip-on-demand-list.md)。文章页的样式在 `site/` 里，不在本文范围内。
+工作台外壳的形态是画布满铺 + 浮动玻璃面板 + 底部横条 + 右栏标注列表，见 [adr/0031](adr/0031-shell-glass-panel-bottom-strip-on-demand-list.md)。文章站点（`site/`）与工作台共用一份 token 源，色彩、字体与排印、圆角三节两边都管；文章页的布局与组件写法见 `site/README.md`。
 
 ## 原则
 
@@ -17,24 +17,30 @@
 
 ## 色彩
 
-- 画布纸 `#f5f6f8` 冷中性（`--wb-stage-bg`，Radix slate 2–3 之间）；chrome 是压在画布上的玻璃面板；ink `#1c2024`；muted `#6b6b70`。纸用冷色，和蓝灰网格、白 chrome 同一个色温（ADR 0031）。
-- accent = 钢灰蓝 `#5b7fa6`：可交互 / 当前 / 系统标注语义；全页唯一实心 on 态（现在是横条上的“标注”段）。chrome 与 iOS kit 内容分色，内容侧 `#007aff` 不变。（ADR 0010 → 0011）
-- 语义红 `#b84230` 只给失效 / 过期 / 危险确认。琥珀 `#f5a623` 只标“正在圈选”（hover ghost / target / lasso）；标注序号钉用状态色（见“标注”）。
-- 发丝线 / 浅面 / muted 由 accent color-mix 派生，不另立色相。
-- 亮暗两套，跟随系统 `prefers-color-scheme`，没有应用内开关。暗色值写在 `scripts/build-wb-tokens.mjs` 的 `@media` 段，中性色锚 Radix slateDark；注入端 `src/client/annotate.js` 在 `[data-ann-ui]` 上钉同款值，两边同改。accent 与状态色不换。色块上的字用 `--wb-on-accent`，不用 `--wb-surface`（暗色下 surface 是深灰）。帧内容（iOS 屏、文档纸面）是被评审的内容，不跟随。
+全站一套调色板（ADR 0046）：工作台、注入端、文章站点、图 kit 都从 `scripts/tokens/source.mjs` 生成（`npm run build:tokens`），改值只改源。产物：`src/workbench/wb-tokens.css`（`--wb-*`）、`src/shared/ann-tokens.js`（注入端的字面量钉值）、`site/src/styles/tokens.css`（`--pp-*`）、`content/kits/figure/figure-palette.css`（`--fig-*`）。帧内容（iOS 屏、文档纸面、kit 里被评审的组件）是被评审的内容，不跟随。
+
+- **两层**：基础色阶只在源里引用；组件用语义 token。中性 = Radix gray 12 档（纯灰）；强调 = 绿 A 青绿，以 `#0e8f6c` 为第 9 档的 12 档色阶；评论高亮与警示 = Radix amber。
+- **语义色**（亮 / 暗）：页面底 `#ffffff` / `#111111`；浅面 `surface` gray 2 `#f9f9f9`（画布纸 `--wb-stage-bg`、卡片底、代码块）；浮起的面 `surface-raised` 白 / gray 3；控件底 `fill` gray 3；发丝线 `border` gray 5 `#e0e0e0`；结构缝与表头线 `border-strong` gray 7 `#cecece`；正文 gray 12 `#202020`；次要字与元数据 gray 11 `#646464`（白底 5.92:1）。
+- **强调色**：色块（选中描边、图里的强调线、焦点环）用 green 9 `#0e8f6c`；实底压白字（主按钮、钉子底的“标注”段、工作台 `--wb-accent`）用 green 10 `#008564`，暗色同值；正文里的强调字（链接、`[[ ]]` 芯片、节号、帧引用号、agent 名）用 green 11 `#007658`（白底 5.6:1），暗色 `#2eb289`；浅底（目录当前项、状态胶囊、芯片悬停）green 3；选中行与文本选区 green 4。强调色是可交互 / 当前 / 系统标注语义；工作台全页唯一实心 on 态仍是横条上的“标注”段。chrome 与 iOS kit 内容分色，内容侧 `#007aff` 不变。
+- **功能色**：危险 `#c0392b`（暗色作字 `#ff7b6b`）只给失效 / 过期 / 危险确认；琥珀 `#f5a623` 只标“正在圈选”（hover ghost / target / lasso）；警示字 amber 11；评论高亮 amber 3 / 选中 amber 4。
+- **标注四态**（钉子与列表行首序号圆，`--ann-st-*` / 站点 `--pp-status-*`）：open `#1f5f8f`、check `#b85a14`、done `#7a4fd0`、close `#8d8d8d`，白字；暗色 `#5b9fd6` / `#d9782a` / `#8a5ae0` / `#8a8a8a`，open、check、close 的数字是深字 `#202020`（`--ann-st-*-fg`，≥ 4.5:1 单测守）。
+- **hover / 浅填充**由正文色混出（`--wb-hover` 5%、`--wb-fill` 6%），网格线由强调色混出（`--wb-grid-1` 9%、`--wb-grid-2` 4%，暗色 16% / 7%），不另立色相。
+- **亮暗**：每个语义 token 一对值。站点与图 kit 输出三段（默认亮；系统暗且没手动选亮；`data-theme="dark"`），顶栏 ◐ 切换；注入端同样认 `data-theme`；工作台只跟系统 `prefers-color-scheme`。色块上的字用 `--wb-on-accent`，不用 `--wb-surface`（暗色下 surface 是深灰）。
+- 注入端跑在别人的页面里，钉值必须是字面量：`annotate-css.js` 把 `ann-tokens.js` 生成的声明串拼进 `[data-ann-ui]` 与 `#ann-sidebar`，所有 `var(--wb-*, 兜底)` 的兜底等于亮色钉值。`src/client/annotate.test.js` 逐个比对两端的亮暗值和全部兜底。
 
 ## 材质
 
-- 全场只有一种材质：F2 磨砂玻璃。配方 = `--wb-glass` 白 88%（`rgba(255,255,255,.88)`；暗色为 `rgba(33,34,37,.88)`）+ `--wb-glass-blur`（`blur(20px) saturate(1.2)`）+ 0.5px 上缘内高光 + `--wb-sh-3` + 圆角 `--wb-r-glass` 14。CSS 类是 `.wb-glass`（`index.html`），token 在 `src/workbench/wb-tokens.css`。
-- **常驻浮起的表面一律用 F2**：左栏面板、底部横条、右下按需卡、注入端的 `#ann-sidebar` 与工具条。注入端读不到 workbench 的 `--wb-*`，所以那份配方在 `src/client/annotate.js` 里是字面量；两端不许分家，对账靠 `src/client/annotate.test.js` 的单测（字面量与 tokens 逐个比对）。
+- 全场只有一种材质：F2 磨砂玻璃。配方 = `--wb-glass` 白 88%（`rgba(255,255,255,.88)`；暗色为 `rgba(34,34,34,.88)`）+ `--wb-glass-blur`（`blur(20px) saturate(1.2)`）+ 0.5px 上缘内高光 + `--wb-sh-3` + 圆角 `--wb-r-glass` 14。CSS 类是 `.wb-glass`（`index.html`），token 在 `src/workbench/wb-tokens.css`。
+- **常驻浮起的表面一律用 F2**：左栏面板、底部横条、右下按需卡、注入端的 `#ann-sidebar` 与工具条。注入端读不到 workbench 的 `--wb-*`，所以那份配方在 `src/client/annotate-css.js` 里是字面量；两端不许分家，对账靠 `src/client/annotate.test.js` 的单测（字面量与 tokens 逐个比对）。
 - 玻璃做的是材质感，不是真透视。更透的两档（白 62% / 白 38%）在评审时否掉：正文压在深色内容上读不清，一块常驻面板也不该有那种透视强度（ADR 0031）。要更透就是错的方向，不要试。
 - 反模式：做旧质感、假材质、装饰性描边（ADR 0008）。磨砂玻璃是唯一材质（ADR 0031），不算反模式。
 - 瞬时浮层（菜单、对话框、评论卡）仍是白面 + 阴影阶梯 `--wb-sh-*`，不上玻璃：它们只掠过，不需要与画布共存。大纲浮层是例外：它用 `.wb-glass`，因为打开时要盖在画布上读一长段目录，和左栏、横条同一份材质。Portal 到 body，层级 `--wb-z-float`，宽不超过 320，最大高度 60vh，内部滚动，从底部的条向上弹。
 
 ## 字体与排印
 
-- 系统字栈（Apple）。mono（ui-monospace / SF Mono）给机器精度信息：编号、日期、尺寸、id、引用号；读数 tabular-nums。
-- **字阶三档 + 元数据**（ADR 0031），之外不另起字号：
+- 系统字栈（Apple，`--pp-font` = `--wb-font`，补 Noto Sans SC 兜底）。mono（ui-monospace / SF Mono，带 PingFang 兜底）给机器精度信息：编号、日期、尺寸、id、引用号；读数 tabular-nums。
+- **字号阶梯**（`--pp-fs-*`，取 Tailwind 的 12–36，下面补界面小字 11、13）：11、12、13、14、16、18、20、24、30、36。文章站点只用这几档；行高四档 `--pp-lh-*`：1.2 界面行、1.35 标题、1.5 界面正文、1.8 文章正文。
+- **工作台字阶三档 + 元数据**（ADR 0031），之外不另起字号：
 
   | token | 值 | 用在哪 |
   |---|---|---|
@@ -47,6 +53,16 @@
 - 区头 / eyebrow：11px semibold mono + 字距，英文大写（左栏段头）。
 - 图标 = SVG 线性（lucide 族，约 1.7px 描边），emoji 不当图标。
 - 文案不用“·”拼合信息：层级用版面表达（分行 / eyebrow / chip / 字重）。判据与案例归 workspace 的 topics/text-quality/ui-text.md 第 8 条。
+
+### 文章正文排版
+
+文章页与 wiki 词条页的 `<main>` 带 `pp-prose`（`Base.astro` 的 `prose`）。基础规则是 vendor 进来的 Tailwind Typography 0.5.20 prose（`site/src/styles/vendor/tailwind-typography.css`，MIT，原样入库），适配在 `site.css`“正文排版”一节，尺度走 `--pp-prose-*`。CSS 分三层（`layers.css`）：base（元素默认）< prose（vendor 与适配）< 不分层的组件，所以芯片、画布卡片、评论栏总用站点自己的样式；画布卡片、图、页顶错误条带 `not-prose`，不吃正文规则。
+
+- 正文 16px / 1.8，段距 1em，文字块行宽 40em（约 40 个汉字）；`text-autospace` 在中西文之间自动加间距，`text-spacing-trim` 挤压相邻全角标点。
+- 标题一律 600、字距 0、`text-wrap: balance`：h1 32px，h2 22px，h3 18px；节号与 h2 同字号、同基线，用强调字色。标题区下方一条发丝线；lede 17px 正文色；project 标签与 lede 隔 16px。
+- 行内代码浅底（`--pp-fill`）、去掉反引号；引用块不用斜体、不加引号；目录编号悬挂，当前项强调浅底。
+- **表格是宽块**：渲染时包一层 `.pp-table-scroll`（`site/src/lib/rehype-table-scroll.js`），外层不受 40em 限制，最宽到正文栏（与画布卡片左右对齐，上限 `--pp-prose-wide` 72em）。表格 `table-layout: auto`、`width: max-content`、`max-width: 100%`：窄表不撑满；宽表先用满正文栏，单元格缩到最小宽度还放不下才横向滚动，两侧阴影提示还有内容。表头与首列（维度列）不折行，首列滚动时钉在左边；其余单元格最小 8em（约 8 个汉字一行）、最宽 17em；整列是数字的列右对齐。字号 .875em、表头 600、表头线加行线，取 Tailwind Typography 的表格规则。做法同 Notion 宽块、Tufte fullwidth、Stripe 文档的宽表。
+- **`[[ ]]` 芯片**：已有页 = 强调字 600 + 左侧 6px 实心圆点，不画下划线，悬停与焦点加强调浅底；空 ref = 灰字 + 虚线下划线 + 空心圆点，虚线是两者的区分。
 
 ## 外壳布局
 
@@ -63,7 +79,7 @@
 
 ## 层级
 
-外壳里每一个带 z-index 的元素都从 `--wb-z-*` 阶梯挑一档（`scripts/build-wb-tokens.mjs` 生成 `src/workbench/wb-tokens.css`），代码里不写数字。见 [adr/0034](adr/0034-named-z-scale-and-stacking-rules.md)。
+外壳里每一个带 z-index 的元素都从 `--wb-z-*` 阶梯挑一档（`scripts/build-tokens.mjs` 生成 `src/workbench/wb-tokens.css`），代码里不写数字。见 [adr/0034](adr/0034-named-z-scale-and-stacking-rules.md)。
 
 | token | 值 | 元素 | 压谁 / 不压谁 |
 |---|---|---|---|
@@ -86,7 +102,7 @@
 - R1 `.wb { isolation:isolate; }`：外壳自成一个堆叠上下文，页内各档只在它里面比；body 上的 portal 与 top layer 天然在整个外壳之上。
 - R2 `.wb-stage-wrap` 永远不能成为堆叠上下文：不许出现 z-index、transform、filter、backdrop-filter、opacity<1、contain、isolation、will-change、perspective、mix-blend-mode、clip-path、mask。它的孩子（`#wbstage`、`#ann-overlay`、`#ann-chrome`、`#wb-ann-gutter`、`#wbdock`、`.wb-canvas-dock`）靠 z token 与 `.wb-side` / `.wb-strip` 交错。
 
-新元素先挑 token；没有合适的档就在 `build-wb-tokens.mjs` 里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 与 chrome 内部（`#ann-marks`、气泡、`#ann-tip`、`#ann-box` 等）的 z-index 只在各自盒子内部比，不进阶梯。workbench 挂法下 `#ann-chrome` 是 `#ann-overlay` 在 `.wb-stage-wrap` 里的兄弟，两者同一父级 inset:0，坐标一致；modal / body 挂载时 chrome 留在 overlay 内随它进 top layer。
+新元素先挑 token；没有合适的档就在 `scripts/build-tokens.mjs` 的工作台模板里加一档并写注释，不写数字。`src/client/annotate.js` 里 `var(--wb-z-*, N)` 的兜底数必须与 token 同值（独立文档页不加载 `wb-tokens.css`）。overlay 与 chrome 内部（`#ann-marks`、气泡、`#ann-tip`、`#ann-box` 等）的 z-index 只在各自盒子内部比，不进阶梯。workbench 挂法下 `#ann-chrome` 是 `#ann-overlay` 在 `.wb-stage-wrap` 里的兄弟，两者同一父级 inset:0，坐标一致；modal / body 挂载时 chrome 留在 overlay 内随它进 top layer。
 
 ## 左栏结构
 
@@ -175,7 +191,7 @@
 - 分段 / 单选 = 槽式（灰槽 + 白面选中项）；瞬时动作组只借槽皮，不给单选态。
 - ghost 优先，主行动才实心；hover / focus-visible / active / disabled 全态；过渡 ≤ 150 ms，尊重 reduced-motion。
 - 危险动作两段确认：armed 红字 3s。
-- 圆角档位：控件 6 / 卡片 8 / 面板 12 / 模态 20；浮动玻璃族单独一档 `--wb-r-glass` 14（阶梯之外，只给这一族）；药丸只属于 badge / tag / 底部横条。
+- 圆角全站一套阶梯（ADR 0046，`--pp-r-*` 与 `--wb-r-*` 同值）：4 槽内小按钮、芯片悬停底、行内代码 / 6 按钮、列表行、分段控件槽 / 8 工作台卡片、菜单项、卡片里的帧、代码块与错误条 / 12 文章卡片、评论线程、浮层面板、输入框 / 16 画布画板、文章画布卡、画布浮层 / 20 模态。浮动玻璃族单独一档 14（阶梯之外，只给这一族）；药丸 999 只属于 badge / tag / 计数 / 底部横条；手机机身 22 是机身形状，不进阶梯；写标注的输入框 26 是它自己的形状。
 - 失败面板 = 实底 + `--wb-sh-3` + radius 14 + 标题 14/600，不用虚线框（虚线框读起来像拖放区）；它居中的是减掉 chrome 的可用区，不是整个视口。
 
 主动点击标注跳转时，按目标 DOM（含多目标/结果目标）与 composer 的组合外接矩形，按完整画布宽度、仅扣除底栏的视野居中（侧栏开合不改变水平中心）。优先右侧并排，其次下方；空间不足保留缩放并让目标居中，composer 沿用边缘停靠。只在跳转时滚动一次，输入/换行不触发画布移动；缩略图的整帧聚焦不变。
