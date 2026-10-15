@@ -8,8 +8,13 @@ import {
   VIEWPORT_LABELS,
   VIEWPORT_PHONE,
   VIEWPORT_WINDOW,
+  HTML_CARD_PHONE,
+  HTML_CARD_WINDOW,
   entryHasViewport,
+  htmlCardSize,
   normalizeViewport,
+  viewportForFrame,
+  withFrameViewportPref,
   phoneScaleFor,
   readViewportPrefs,
   viewportForPage,
@@ -87,4 +92,34 @@ test('phoneScaleFor：缺 shell 按裸屏 402 × 874 算；量不出舞台时回
   assert.equal(phoneScaleFor({ width: NaN, height: 700 }), 1);
   // stripBand 缺省 = 0
   assert.ok(phoneScaleFor({ width: 1280, height: 720 }) > phoneScaleFor({ width: 1280, height: 720, stripBand: 62 }));
+});
+
+test('文章画布的 HTML 卡片：窗口 1280 × 800、手机 402 × 874，脏值落窗口', () => {
+  assert.deepEqual(htmlCardSize('window'), { width: 1280, height: 800 });
+  assert.deepEqual(htmlCardSize('phone'), { width: PHONE_SCREEN_W, height: PHONE_SCREEN_H });
+  assert.equal(htmlCardSize('tablet'), HTML_CARD_WINDOW);
+  assert.equal(htmlCardSize(VIEWPORT_PHONE), HTML_CARD_PHONE);
+});
+
+test('文章画布：视口是帧的偏好 —— 没选过跟页的视口；和页一样就删 key，不一样才记；页下空了连页一起删，不改入参', () => {
+  var prefs = { viewportByPage: { other: 'phone' } };
+  assert.equal(viewportForFrame(prefs, 'p_a', 'long'), VIEWPORT_WINDOW);
+  var patch = withFrameViewportPref(prefs, 'p_a', 'long', 'phone');
+  assert.deepEqual(patch, { viewportByFrame: { p_a: { long: 'phone' } } });
+  var next = Object.assign({}, prefs, patch);
+  assert.equal(viewportForFrame(next, 'p_a', 'long'), VIEWPORT_PHONE);
+  assert.equal(viewportForFrame(next, 'p_a', 'catalog'), VIEWPORT_WINDOW);
+  // 帧的视口不碰页的视口。
+  assert.equal(viewportForPage(next, 'p_a'), VIEWPORT_WINDOW);
+  assert.deepEqual(withFrameViewportPref(next, 'p_a', 'long', 'window'), { viewportByFrame: {} });
+  assert.deepEqual(prefs, { viewportByPage: { other: 'phone' } });
+  // 页的视口是手机（存量的整页偏好）：没选过的帧跟着是手机；选回窗口要记下来。
+  assert.equal(viewportForFrame(prefs, 'other', 'long'), VIEWPORT_PHONE);
+  var win = withFrameViewportPref(prefs, 'other', 'long', 'window');
+  assert.deepEqual(win, { viewportByFrame: { other: { long: 'window' } } });
+  assert.equal(viewportForFrame(Object.assign({}, prefs, win), 'other', 'long'), VIEWPORT_WINDOW);
+  // 脏值宽容读。
+  assert.equal(viewportForFrame({ viewportByFrame: { p_a: 'phone' } }, 'p_a', 'long'), VIEWPORT_WINDOW);
+  assert.equal(viewportForFrame({ viewportByFrame: { p_a: { long: 'tablet' } } }, 'p_a', 'long'), VIEWPORT_WINDOW);
+  assert.equal(viewportForFrame({ viewportByFrame: [] }, 'p_a', 'long'), VIEWPORT_WINDOW);
 });

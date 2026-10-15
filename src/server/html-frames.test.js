@@ -89,12 +89,14 @@ test('正文写法：字符串帧可以是 .html，对象写法指 project 根�
   assert.equal(articleHtmlFrameFile(target, { id: 'long' }), path.join(article, 'long.html'));
   assert.equal(articleHtmlFrameFile(target, board.sections[0].screens[1]), path.join(root, 'shared', 'cat.html'));
   assert.equal(articleHtmlFrameFile(target, { id: 'phone' }), null);
-  // 站点卡片：文档帧带 shell doc 和编号（文章画布上文档帧也占号），project 根下的帧带 src。
+  // 站点卡片：文档帧带 shell doc 和编号（文章画布上文档帧也占号），project 根下的帧带 src；HTML 帧都带 url
+  // （服务上的地址 = 那一页标注账本的名字来源，一篇文章一张画布 2026-10-15）。JSX 帧没有 url。
   const canvas = articleCanvas('demo', 'pages', { registry });
   assert.deepEqual(canvas.sections[0].frames, [
-    { id: 'long', ref: 'B1', shell: 'doc' },
-    { id: 'cat', ref: 'B2', shell: 'doc', src: 'shared/cat.html' },
+    { id: 'long', ref: 'B1', shell: 'doc', url: '/sites/demo_pages/long.html' },
+    { id: 'cat', ref: 'B2', shell: 'doc', src: 'shared/cat.html', url: '/sites/demo_pages/@root/shared/cat.html' },
   ]);
+  assert.equal(canvas.sections[1].frames[0].url, undefined);
   assert.deepEqual(articleOutline(fs.readFileSync(target.articleFile, 'utf8'))[1].sources, { cat: 'shared/cat.html' });
   assert.equal(rootFrameSrc('demo_pages', 'a b/c.html'), 'sites/demo_pages/@root/a%20b/c.html');
 });
@@ -374,6 +376,7 @@ test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开
   assert.equal(articleHtmlFrameFile(target, board.sections[0].screens[1]), path.join(fx.skill, 'preview.html'));
   const canvas = articleCanvas('demo', 'pages', { registry: fx.registry });
   assert.equal(canvas.sections[0].frames[1].src, 'skill:preview.html');
+  assert.equal(canvas.sections[0].frames[1].url, '/sites/demo_pages/@source/skill/preview.html');
 
   const handler = createSitesHandler({ registry: fx.registry });
   const frame = await get(handler, '/sites/demo_pages/@source/skill/preview.html');

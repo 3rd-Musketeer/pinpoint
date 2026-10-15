@@ -89,20 +89,29 @@ export function initCanvasOverlay() {
     if (!(await boardReady(nav))) { landed(nav, ''); return; }
     if (document.activeElement === el.close) iframe.focus({ preventScroll: true });
     const wb = frameWin().workbench;
+    // 一篇文章一张画布（2026-10-15）：上回在画布里开着某一页（页面浮层），这回先关掉回画布。
+    if (typeof wb.pageOpen === 'function' && wb.pageOpen()) wb.closePage();
     if (!fresh && !frame && ann == null) await wb.focusSection(section);
     if (nav !== navigation) return;
     if (frame) await wb.focusFrame(section, frame, { smooth: !fresh });
     if (ann == null) { landed(nav, 'section'); return; }
-    // 钉子：等画布标注客户端水合完这一页的账本、认得这个 #n，再跳过去并打开它（与列表点行同一条路）。
+    // HTML 帧上的标注在那一页里：先开它的页面浮层，钉子在那一页的标注客户端里找。
+    const page = !!(frame && typeof wb.openPage === 'function' && wb.openPage(frame));
+    const annApi = () => {
+      if (!page) return frameWin().pinpoint;
+      const api = wb.annotateApi();
+      return api && api !== frameWin().pinpoint ? api : null;
+    };
+    // 钉子：等标注客户端水合完这一页的账本、认得这个 #n，再跳过去并打开它（与列表点行同一条路）。
     const markReady = () => {
-      const api = frameWin().pinpoint;
+      const api = annApi();
       if (!api || typeof api.goToMark !== 'function') return false;
       if (api.getState().routing) return false;
       return api.marks.some((m) => m.n === ann);
     };
-    if (!(await until(markReady, nav))) { landed(nav, 'section'); return; }
-    const done = await frameWin().pinpoint.goToMark(ann);
-    landed(nav, done === false ? 'section' : `ann:${ann}`);
+    if (!(await until(markReady, nav))) { landed(nav, page ? `page:${frame}` : 'section'); return; }
+    const done = await annApi().goToMark(ann);
+    landed(nav, done === false ? (page ? `page:${frame}` : 'section') : `ann:${ann}`);
   }
 
   // e2e / 调试：最后一次定位落到了哪里。

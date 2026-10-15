@@ -288,3 +288,9 @@ test('validateBoard: screen 条目带 variants（已退役的变体组）报清�
   assert.equal(findRetiredVariantGroup({ sections: [{ id: 's', screens: ['a', { id: 'b' }] }] }), null);
   assert.equal(findRetiredVariantGroup(null), null);
 });
+
+test('validateBoard：文章画布的派生 board（带 article）留下 article: true，手写 board 没有这个键', () => {
+  const sections = [{ id: 'pages', title: '页面', layout: 'row', screens: [{ id: 'long', shell: 'doc' }] }];
+  assert.equal(validateBoard({ article: { project: 'p', id: 'a', url: '/p/a/' }, sections }).article, true);
+  assert.equal(Object.hasOwn(validateBoard({ sections }), 'article'), false);
+});

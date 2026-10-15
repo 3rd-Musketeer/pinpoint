@@ -4,7 +4,8 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pendingCount, badgeText, shellBox } from './canvas-card.js';
+import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerName, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
+import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
@@ -168,4 +169,19 @@ test('real articleCanvas: each error shown once (card or banner), missing frame 
 test('卡片宽度和服务端的宽度表是同一组数', () => {
   assert.equal(DOC_WIDTHS.phone.width, HTML_FRAME_WIDTHS.phone);
   assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
+});
+
+test('HTML 帧的标注账本：名字与 src/shared/annotate-page-key.js 同一个公式；行补上那一帧；卡片模型带 docUrl', () => {
+  for (const p of ['/sites/p_a/long-page.html', '/sites/p_a/@source/kit/w%20x.html', '/sites/p_a/@root/a/%E4%B8%AD.html', '/']) {
+    assert.equal(pageLedgerName(p), pageKeyFromPathname(p));
+  }
+  assert.equal(pageLedgerUrl('p_a', '/sites/p_a/long-page.html'), `/annotations/${encodeURIComponent(pageKeyFromPathname('/sites/p_a/long-page.html'))}?entry=p_a`);
+  const rows = rowsOnFrame({ annotations: [{ id: 'a' }, { id: 'b', screenId: 'kept' }] }, 'long-page');
+  assert.deepEqual(rows.map((r) => r.screenId), ['long-page', 'kept']);
+  // 补了帧之后，卡片头的数就能按帧数到它们。
+  assert.equal(pendingCount({ annotations: rows }, 'p_a', ['long-page']), 1);
+  const model = cardModel({ pageId: 'p_a', sections: [{ id: 's', title: 'S', frames: [
+    { id: 'long-page', shell: 'doc', url: '/sites/p_a/long-page.html' }, { id: 'phone' },
+  ] }] }, 's');
+  assert.deepEqual(model.frames.map((f) => f.docUrl), ['/sites/p_a/long-page.html', '']);
 });

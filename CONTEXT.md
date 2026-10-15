@@ -85,7 +85,7 @@ owner 在画布视图里按 A 进标注模式，点选或圈选帧里的元素�
 要避开：“批注”；把正文评论也叫画布标注。
 
 **文档页标注** · 同一个标注客户端；账本按页面路径分本（`<文件>~<hash>.json`，规则在 `src/shared/annotate-page-key.js`）
-钉在一整份 HTML 页面里的元素上的标注：文章的 HTML 帧在画布视图里是文档条目，owner 选中它、按 A 标注；存量页的文档条目（`shell: "doc"` 的屏、HTML 文件页）也是这样。HTML 帧不编译，没有 `data-pp-id`，锚点是元素的 CSS 路径加元素文字；`ppnt comments` 把它归到所在的帧下面，摘录给出那份 HTML 源文件和行。改它就改那份 HTML：本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件。线程、`#n` 和状态机与画布标注相同。
+钉在一整份 HTML 页面里的元素上的标注：文章的 HTML 帧在画布视图里是一张卡片，owner 双击它开页面浮层、按 A 标注；存量页的文档条目（`shell: "doc"` 的屏、HTML 文件页）也是这样。HTML 帧不编译，没有 `data-pp-id`，锚点是元素的 CSS 路径加元素文字；`ppnt comments` 把它归到所在的帧下面，摘录给出那份 HTML 源文件和行。改它就改那份 HTML：本篇目录下的 `<帧 id>.html`，或 `{ id, src }` 指向的文件。线程、`#n` 和状态机与画布标注相同。
 要避开：以为它只属于存量页；去找 dist 里的产物改（HTML 帧没有 dist）。
 
 **正文评论** · 文章页上的 `src/client/prose-comments.js`；账本 `@prose.json`；字段 `type: "prose"`
@@ -177,7 +177,7 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 要避开：在文章的 `<Canvas>` 里写 `comp` + `props`。
 
 **条目（board entry）** · `src/workbench/lib/board-entries.js`
-工作台从 board 派生的可选中单位：画布类的屏合成一个画布条目（id `@canvas`），每个 `shell: "doc"` 的屏各成一个文档条目。舞台形态跟着选中的条目走。地址参数 `?entry=`。
+工作台从 board 派生的可选中单位：画布类的屏合成一个画布条目（id `@canvas`），每个 `shell: "doc"` 的屏各成一个文档条目。舞台形态跟着选中的条目走。地址参数 `?entry=`。文章画布上 HTML 帧也在画布条目里（卡片）；它的文档条目是页面浮层，不列在大纲里，双击卡片打开。
 要避开：和 registry 条目混用；代码里两者都叫 entry，`board-entries.js` 里的是这一个。
 
 **registry 条目** · `~/.pinpoint/registry.json` 的 `entries[]`
@@ -188,8 +188,8 @@ template 是进 git 的部分：框架代码、kit、`content/previews/` 的示�
 画布形态是手机机壳排在可缩放平移的画布上；文档形态是整份 HTML 在 iframe 里 1:1 铺满舞台，没有缩放和帧标题。一个存量页可以两种都有。
 要避开：“web 模式”；拿 doc 指文章。
 
-**视口** · `src/workbench/lib/viewport.js`，偏好 `prefs.viewportByPage`
-文档条目怎么看：窗口（1:1 铺满）或手机（装进一块 402 × 874 的手机屏，居中缩放）。两种都是文档形态，没有画布。
+**视口** · `src/workbench/lib/viewport.js`，偏好 `prefs.viewportByPage`（文章画布上按帧，`prefs.viewportByFrame`）
+文档条目怎么看：窗口（1:1 铺满）或手机（装进一块 402 × 874 的手机屏，居中缩放）。两种都是文档形态，没有画布。文章画布上的 HTML 卡片按这一帧的视口定宽度。
 要避开：拿视口指 `pageViewports`（那是每页画布的滚动与缩放存档）；把手机视口说成帧。
 
 **产物与草稿** · 大纲浮层里的两组；屏上 `role: "draft"`

@@ -21,22 +21,40 @@ function screenShellOf(sc) {
   return typeof sc === 'string' ? 'app' : sc.shell || 'app';
 }
 
-/** board（validateBoard 产物）→ 有序条目数组：画布条目居首，文档条目按 board 序。 */
+/** 文章画布（2026-10-15 一篇文章一张画布）：board 由正文派生（validateBoard 留下 article: true）。
+ *  这种板上 HTML 帧（doc 屏）也摆在画布上，是一张白底卡片；双击卡片开完整页面浮层。
+ *  存量页（手写 board.json）不受影响：doc 屏照旧是文档条目（ADR 0042）。 */
+export function isArticleBoard(board) {
+  return !!(board && board.article);
+}
+
+/** 条目是不是文章画布上一张 HTML 卡片的页面浮层：它不进大纲的条目行、横条不数它，
+ *  只由双击卡片 / 右栏标注 / 深链打开，关掉回画布原位。 */
+export function isPageOverlayEntry(entry) {
+  return !!(entry && entry.kind === 'doc' && entry.overlay);
+}
+
+/** board（validateBoard 产物）→ 有序条目数组：画布条目居首，文档条目按 board 序。
+ *  文章画布：只要有帧就有画布条目（HTML 帧也在画布上）；每个 HTML 帧仍有一个文档条目，带
+ *  overlay: true，那是它的页面浮层（isPageOverlayEntry）。 */
 export function boardEntries(board) {
   var entries = [];
   var hasCanvas = false;
   var docEntries = [];
+  var article = isArticleBoard(board);
   ((board && board.sections) || []).forEach(function (sec) {
     (sec.screens || []).forEach(function (sc) {
       if (screenShellOf(sc) === 'doc') {
-        docEntries.push({
+        var entry = {
           id: sc.id,
           kind: 'doc',
           role: sc.role === 'draft' ? 'draft' : 'product',
           title: sc.title || sc.id,
           section: sec.title || sec.id,
           sectionId: sec.id
-        });
+        };
+        if (article) { entry.overlay = true; hasCanvas = true; }
+        docEntries.push(entry);
       } else {
         hasCanvas = true;
       }
@@ -136,7 +154,8 @@ export var ENTRY_TAG_LABELS = { canvas: '画布', doc: '文档' };
     - 其余（画布+文档/草稿、多文档、多草稿）：产物组 / 草稿组条目行全出。
     frame 树的存在性由 tree 给出；显示时机（画布条目选中时才展开）归组件侧。 */
 export function contentsModel(entries) {
-  var list = entries || [];
+  // 文章画布上的页面浮层不是条目行：那些页在画布上，是卡片（isPageOverlayEntry）。
+  var list = (entries || []).filter(function (e) { return !isPageOverlayEntry(e); });
   var canvas = null;
   var productDocs = [];
   var drafts = [];

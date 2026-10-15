@@ -1482,6 +1482,8 @@ import { startProseComments } from './prose-comments.js';
     // R5：done 未 close 与已 close 的不参与清空 —— agent 按标注删掉目标元素（=
     // 干完活）后锚点必失效，一键清掉丢的是 owner 还没验收 / 已留档的执行历史。
     if (mark.status === 'done' || mark.status === 'close') return false;
+    // 这屏此刻不归本实例（另一个 tab 上没挂载，或文章画布上的 HTML 卡片：那一页的标注在页面浮层里）。
+    if (mark.screenId && screenOffTab(mark.screenId)) return false;
     if (!loadedScope(mark.screenId || '')) return false;
     var sid = mark.screenId || '';
     // 判定与解析同一条优先级（决定 #15）：ppId 还指得到的目标不算失效 ——

@@ -12,17 +12,24 @@ import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import {
+  CANVAS_ENTRY_ID,
   boardEntries,
   boardShowsTabBar,
   defaultEntryId,
+  entryById,
   entryForm,
+  isArticleBoard,
+  isPageOverlayEntry,
   resolveEntry
 } from './lib/board-entries.js';
 import {
   VIEWPORT_PHONE,
+  VIEWPORT_WINDOW,
   normalizeViewport,
   phoneScaleFor,
+  viewportForFrame,
   viewportForPage,
+  withFrameViewportPref,
   withViewportPref
 } from './lib/viewport.js';
 import {
@@ -235,6 +242,7 @@ export function tabsOfActiveBoard() {
 export function screenOffTab(screenId) {
   var active = activeBoardOfPage();
   if (!active || !screenId) return false;
+  if (isHtmlCardScreen(active, screenId)) return true;
   var tab = tabIdOfScreen(active.fullBoard || active.board, screenId);
   return !!tab && tab !== active.tabId;
 }
@@ -329,6 +337,20 @@ export function applyPageViewport(pageId) {
   return viewport;
 }
 
+/** 文章画布：帧 id → 这一帧的视口（卡片宽度、页面浮层的看法）。buildBoardHtml 的 frameViewport。 */
+export function frameViewportOf(pageId) {
+  var prefs = readPrefs();
+  return function (screenId) { return viewportForFrame(prefs, pageId, screenId); };
+}
+
+/* 文章画布上 store.viewport 跟着条目走：页面浮层是那一帧的视口，画布条目没有视口（记成窗口）。
+   存量页不动：视口是页的偏好，装板时已经灌好。 */
+function syncEntryViewport(board, entry) {
+  if (!isArticleBoard(board)) return;
+  var viewport = isPageOverlayEntry(entry) ? viewportForFrame(readPrefs(), wbGet().activePageId, entry.id) : VIEWPORT_WINDOW;
+  if (wbGet().viewport !== viewport) wbSet({ viewport: viewport });
+}
+
 /** 横条两段控件的动作：记偏好 → 重装当前板（两种视口都是文档形态，没有画布
     视口要存档）。 */
 export function setActiveViewport(viewport) {
@@ -338,7 +360,9 @@ export function setActiveViewport(viewport) {
   var panel = document.getElementById('wb-board-panel');
   if (!pageId || !panel) return Promise.resolve();
   if (viewport === s.viewport) return Promise.resolve();
-  savePrefs(withViewportPref(readPrefs(), pageId, viewport));
+  // 文章画布的页面浮层：视口是这一帧的偏好，卡片宽度跟着变（重装后画布上那张卡片换宽度）。
+  if (isPageOverlayOpen()) savePrefs(withFrameViewportPref(readPrefs(), pageId, s.activeEntryId, viewport));
+  else savePrefs(withViewportPref(readPrefs(), pageId, viewport));
   wbSet({ viewport: viewport });
   // 重装后留在同一个条目上：深链（?entry=，不写记忆）打开的文档条目，记忆里可能还是画布
   // （文章画布页的 HTML 帧就是这样打开的）。
@@ -413,6 +437,7 @@ export function syncPhoneDocScale() {
 /** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */
 export function applyPageFormFallback(pageId) {
   applyStageForm(modeForPage(wbGet().pageManifest, pageId) === 'html' ? 'html' : 'ios');
+  if (wbRoot) wbRoot.removeAttribute('data-page-overlay');
   syncPhoneDocScale();
 }
 
@@ -424,18 +449,70 @@ function applyEntryVisibility(panel, board, entry) {
   (board.sections || []).forEach(function (sec) {
     (sec.screens || []).forEach(function (sc) { shellById[sc.id] = sc.shell; });
   });
-  panel.querySelectorAll('.wb-screen[data-screen]').forEach(function (node) {
-    var screenId = node.getAttribute('data-screen');
-    var on = entry.kind === 'canvas'
-      ? shellById[screenId] !== 'doc'
-      : screenId === entry.id;
+  // 文章画布（2026-10-15）：HTML 帧的卡片（[data-html-card]）是画布上的帧，跟着画布条目显示；
+  // 它的页面浮层（[data-page-screen]）只在打开那一页时显示，打开时才给 iframe 装上地址。
+  panel.querySelectorAll('.wb-screen[data-screen], .wb-screen[data-page-screen]').forEach(function (node) {
+    var pageScreen = node.getAttribute('data-page-screen');
+    var screenId = pageScreen || node.getAttribute('data-screen');
+    var on;
+    if (pageScreen) on = entry.kind === 'doc' && screenId === entry.id;
+    else if (node.hasAttribute('data-html-card')) on = entry.kind === 'canvas';
+    else on = entry.kind === 'canvas' ? shellById[screenId] !== 'doc' : screenId === entry.id;
     node.toggleAttribute('data-doc-hidden', !on);
+    if (on && pageScreen) loadPageOverlayFrame(node);
     var item = node.closest('.wb-lib-item');
     if (item) {
-      var anyVisible = !!item.querySelector('.wb-screen[data-screen]:not([data-doc-hidden])');
+      var anyVisible = !!item.querySelector('.wb-screen[data-screen]:not([data-doc-hidden]), .wb-screen[data-page-screen]:not([data-doc-hidden])');
       item.toggleAttribute('data-doc-hidden', !anyVisible);
     }
   });
+}
+
+/** 页面浮层的 iframe 第一次打开时才装（screen-load 只写 data-src）。 */
+function loadPageOverlayFrame(node) {
+  var frame = node.querySelector('iframe.wb-doc-frame[data-src]');
+  if (!frame || frame.getAttribute('src')) return;
+  frame.setAttribute('src', frame.getAttribute('data-src'));
+}
+
+/* ---- 文章画布的页面浮层（2026-10-15 一篇文章一张画布）----------------------------
+   文章画布上一个 HTML 帧是一张卡片；双击它打开这一页的完整页面：就是这一帧的文档条目
+   （isPageOverlayEntry），窗口视口 1:1 铺满、手机视口一块手机屏居中，可滚动、交互、标注。
+   打开前存档画布视口（setActiveEntry 离开画布形态时本来就存），关掉回画布条目、恢复存档 ——
+   回到双击前的位置与缩放。打开不写条目记忆（刷新回画布），地址栏照常镜像 ?entry=。 */
+export function openPageOverlay(screenId) {
+  var active = activeBoardOfPage();
+  if (!active || !screenId) return false;
+  var entry = entryById(boardEntries(active.board), screenId);
+  if (!isPageOverlayEntry(entry)) return false;
+  var ann = annotateApi();
+  if (ann && typeof ann.cancelDraft === 'function') ann.cancelDraft();
+  setActiveEntry(screenId, { save: false });
+  return true;
+}
+
+/** 关页面浮层回画布；没开着返回 false。 */
+export function closePageOverlay() {
+  if (!isPageOverlayOpen()) return false;
+  // 焦点还在那一页的 iframe 里：收起后它看不见了，按键却还往里送（下一下 Esc 就到不了工作台和文章页）。
+  var focused = document.activeElement;
+  if (focused && focused.tagName === 'IFRAME' && focused.closest('[data-page-screen]')) focused.blur();
+  setActiveEntry(CANVAS_ENTRY_ID, { save: false });
+  return true;
+}
+
+export function isPageOverlayOpen() {
+  var active = activeBoardOfPage();
+  if (!active) return false;
+  return isPageOverlayEntry(entryById(boardEntries(active.board), wbGet().activeEntryId));
+}
+
+/** 文章画布上的 HTML 帧（卡片）：画布上的标注客户端不管它的标注（它们在这一页自己的账本里，
+    浮层里做），锚点找不到不算失效。 */
+function isHtmlCardScreen(active, screenId) {
+  if (!active || !isArticleBoard(active.board)) return false;
+  var entry = entryById(boardEntries(active.board), screenId);
+  return isPageOverlayEntry(entry);
 }
 
 export function setActiveEntry(entryId, options) {
@@ -455,7 +532,9 @@ export function setActiveEntry(entryId, options) {
   wbSet({ activeEntryId: entry.id });
   if (options.save !== false) saveEntryPref(active.pageId, entry.id);
   var form = entryForm(entry);
+  syncEntryViewport(active.board, entry);
   applyStageForm(form);
+  if (wbRoot) wbRoot.toggleAttribute('data-page-overlay', isPageOverlayEntry(entry));
   applyEntryVisibility(panel, active.board, entry);
   syncPhoneDocScale();
   if (form === 'html') {

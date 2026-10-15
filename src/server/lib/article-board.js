@@ -81,7 +81,8 @@ export function deriveArticleBoard(target) {
  *       errors: [{ code, message, path?, line?, section?, frame? }] }
  * - letter 是这一节在正文里的字母（所有 Section 一起数，纯文字的节也占），画布编号
  *   （工作台、ppnt、ref）用同一个字母（派生 board 的 section.letter，见 board-refs.js）。
- * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。帧文件写了
+ * - frames 里没有源文件的帧带 missing: true（画布上那一格是错误面板）。HTML 帧带 url：它在服务上的地址
+ *   （`/sites/<页 id>/…`，iframe 的 location.pathname），那一页的标注账本按它命名。帧文件写了
  *   `export const shell = "…"` 的帧带 shell（这一帧的实际 shell，盖过节的 shell）。
  * - errors：画布写法的错误带 section（节 id）、frame；不属于某一节的（frontmatter、
  *   页 id 撞名、MDX 写坏、Canvas 在节外…）没有 section，是页级错误。都是 listProjects 里
@@ -111,6 +112,15 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
   const refs = boardRefs(derived.board);
   const missingIds = new Set(derived.errors.filter((error) => error.code === 'frame_missing' && error.frame).map((error) => error.frame));
   const missing = new Set(derived.sections.flatMap((section) => section.frames).filter((id) => missingIds.has(id)));
+  // HTML 帧在服务上的地址（iframe 的 location.pathname，百分号编码后的样子）：那一页的标注客户端按它定
+  // 账本名（pageKeyFromPathname），文章页右栏与卡片标注数据此读同桶里那一页的账本。
+  const htmlUrls = new Map();
+  for (const section of derived.board.sections) {
+    for (const screen of section.screens) {
+      if (!articleHtmlFrameFile(target, screen)) continue;
+      htmlUrls.set(`${section.id}\0${screen.id}`, screen.src ? `/${screen.src}` : `${target.urlBase}${screen.id}.html`);
+    }
+  }
   const sections = derived.sections.map((section) => ({
     id: section.id,
     title: section.title,
@@ -121,6 +131,7 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
       ref: refs.byFrame[`${section.id}\0${id}`] || '',
       ...(section.frameShells && section.frameShells[id] ? { shell: section.frameShells[id] } : {}),
       ...(section.frameSrc && section.frameSrc[id] ? { src: section.frameSrc[id] } : {}),
+      ...(htmlUrls.has(`${section.id}\0${id}`) ? { url: htmlUrls.get(`${section.id}\0${id}`) } : {}),
       ...(missing.has(id) ? { missing: true } : {}),
     })),
   }));

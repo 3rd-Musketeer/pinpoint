@@ -79,3 +79,47 @@ export function phoneScaleFor(usable, shell) {
   var k = Math.min(1, PHONE_FILL * usableH / shellH, PHONE_FILL * usableW / shellW);
   return Math.round(k * 10000) / 10000;
 }
+
+/* ---- 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布）----------------------
+   文章画布上每个 HTML 帧是一张白底卡片，按帧宽装着这一页的第一屏：窗口 1280 × 800（与文章页
+   卡片的“桌面”同尺寸，site/src/lib/canvas-card.js DOC_WIDTHS），手机 402 × 874（与手机视口同一个
+   preset）。卡片按哪种宽度摆，跟这一帧在页面浮层里最后选的视口走：视口在文章画布上是帧的偏好
+   （prefs.viewportByFrame[pageId][screenId]），不是整页的；这一帧没选过时跟页的偏好（prefs.viewportByPage，
+   存量的整页视口，缺省窗口）。存量页仍只有页的偏好。 */
+
+export var HTML_CARD_WINDOW = Object.freeze({ width: 1280, height: 800 });
+export var HTML_CARD_PHONE = Object.freeze({ width: PHONE_SCREEN_W, height: PHONE_SCREEN_H });
+
+/** 视口 → 卡片里预览的布局尺寸（iframe 的 CSS 视口；卡片只露这一屏）。 */
+export function htmlCardSize(viewport) {
+  return normalizeViewport(viewport) === VIEWPORT_PHONE ? HTML_CARD_PHONE : HTML_CARD_WINDOW;
+}
+
+function readFrameViewportPrefs(prefs) {
+  var raw = prefs && prefs.viewportByFrame;
+  return raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+}
+
+function framePrefOf(prefs, pageId, screenId) {
+  var page = readFrameViewportPrefs(prefs)[pageId];
+  var value = page && typeof page === 'object' && !Array.isArray(page) ? page[screenId] : null;
+  return value === VIEWPORT_PHONE || value === VIEWPORT_WINDOW ? value : null;
+}
+
+/** 文章画布上一帧的视口：这一帧选过的那个；没选过 / 脏值 → 页的视口（缺省窗口）。 */
+export function viewportForFrame(prefs, pageId, screenId) {
+  if (!pageId || !screenId) return VIEWPORT_WINDOW;
+  return framePrefOf(prefs, pageId, screenId) || viewportForPage(prefs, pageId);
+}
+
+/** 写侧 patch：和页的视口一样就删 key（跟着页走），不一样才记；页下面空了连页一起删。 */
+export function withFrameViewportPref(prefs, pageId, screenId, viewport) {
+  var all = Object.assign({}, readFrameViewportPrefs(prefs));
+  var page = Object.assign({}, all[pageId] && typeof all[pageId] === 'object' ? all[pageId] : {});
+  var value = normalizeViewport(viewport);
+  if (value !== viewportForPage(prefs, pageId)) page[screenId] = value;
+  else delete page[screenId];
+  if (Object.keys(page).length) all[pageId] = page;
+  else delete all[pageId];
+  return { viewportByFrame: all };
+}

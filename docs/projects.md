@@ -216,7 +216,7 @@ export default function ConfirmBare() {
 - 节没写 `shell` 时，HTML 帧套 `doc` 机壳；写了就用节的（存量的 HTML 片段帧放进手机壳就是这样）。JSX 帧和 HTML 帧可以在同一节，帧 id 在一篇里唯一。
 - 服务：本篇目录下的帧是 `/sites/<页 id>/<帧 id>.html`，project 根下的帧是 `/sites/<页 id>/@root/<路径>`，source 下的帧是 `/sites/<页 id>/@source/<名字>/<路径>`。地址的目录就是文件所在的目录，页面里写的相对路径（css、js、图片、`data/`）照原样取到。文章目录、project 根、source 目录三处出文件用同一条规则（`src/server/lib/servable-file.js`）：路径按文本和按真实路径（跟符号链接）都要在那个目录里；任何一段以 `.` 开头、文件是文章正文 `index.mdx`，都 404，符号链接的真实落点也算。project 根和 source 目录只在这篇有帧住在里面时开放（帧文件要在盘上，缺文件的 `{ id, src }` 帧不算）。开放的是整个目录，不收窄到帧引用到的文件，因为页面运行时 fetch 的资源从文本里算不出来。workspace 里别的文件不出。别的站点的网页来的请求（`Sec-Fetch-Site: cross-site`）一律 403，见 [`docs/registry.md`](registry.md)“dir 与 file 条目”。Astro 的 `fs.allow` 不变，这些文件不经站点出。页面原样服务，不编译。画布视图里注入标注客户端，卡片和浮层（`annotate=off`）不注入。
 - 宽度：卡片和浮层按手机 402（画布视图手机屏的宽度）或桌面 1280 排页面，缺省手机（owner 2026-10-14 定）。卡片头的“手机 / 桌面”切换这张卡片里的 HTML 帧，浮层头有同一个开关，两边同步。宽度由 pinpoint 管，页面自己不放宽度切换。卡片只露第一屏（402 × 874 或 1280 × 800，缩小显示）。浮层里页面占满可用高度，在帧里整页滚动、可以点；浮层放不下时按宽度缩小。
-- 画布视图：HTML 帧是这篇的文档条目，和存量页的 doc 屏一样不进画布那一行，窗口 / 手机视口照用。按 A 标注页面里的元素（文档页标注），锚点是 CSS 路径加元素文字，和存量页的文档条目一样。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
+- 画布视图：一篇文章一张画布，HTML 帧和 JSX 帧按节和帧摆在同一张画布上。HTML 帧是一张白底卡片，按帧宽（窗口 1280 / 手机 402）装这一页的第一屏，只作预览；双击卡片开完整页面浮层（这一帧的文档条目），窗口 / 手机视口照用，视口是这一帧的偏好，卡片宽度跟着它。在浮层里按 A 标注页面里的元素（文档页标注），锚点是 CSS 路径加元素文字，和存量页的文档条目一样；卡片图注末尾显示这一页待验收的标注数。设计细节在 `docs/design.md`“文章画布”。账本在这篇的桶里，按页面路径分本（`<文件>~<hash>.json`）。
 - 编号：HTML 帧和 JSX 帧一起在节内编号。`ppnt comments` 把 HTML 帧的标注归到帧下面（`## B1 · long-page`），摘录写源文件和行。`ppnt shot B1` 按 402 宽截整页，先等页面里懒加载的 iframe 和图片加载完，`--marks` 在元素上标出标注号。`ppnt shot <project>/<article> --canvas` 给每个 HTML 帧各截一张，见 [`docs/registry.md`](registry.md)“`ppnt shot`”。
 - `ppnt check`：页面里的相对路径指到的文件不在，是警告 `html_asset_missing`；服务出不来，是错误 `html_asset_outside`：指到范围外面、符号链接指出去、`.` 开头的文件、`index.mdx`。范围是这一帧所在的目录：本篇目录、project 根，或那个 source 目录。check 和服务用同一个函数判，check 不报的文件，服务一定出得来。
 
@@ -295,7 +295,7 @@ export default function ConfirmBare() {
 
 - `letter` 是这一节在正文里的字母。正文所有 Section 一起数，纯文字的节也占一个字母（上例的 A 是纯文字的 `why`）。派生 board 的每节带同一个 `letter`，`boardRefs` 用它编号，所以工作台图注、大纲和 `ppnt` 的 `B1` 对得上。文章页不显示字母：目录、节标题和卡片用节号，第 n 个字母就是第 n 节（上例 `confirm` 在文章上是 2），卡片和浮层的图注只有帧 id。
 - 没有源文件的帧带 `"missing": true`，画布上那一格是错误面板。
-- HTML 帧带 `"shell": "doc"`（节写了 `shell` 时用节的），`{ id, src }` 写法的再带 `src`（正文里的原样，`shared/x.html` 或 `skill:preview.html`）。卡片按 `doc` 量尺寸，宽度见“HTML 帧”。
+- HTML 帧带 `"shell": "doc"`（节写了 `shell` 时用节的），`{ id, src }` 写法的再带 `src`（正文里的原样，`shared/x.html` 或 `skill:preview.html`），都带 `url`（它在服务上的地址，`/sites/<页 id>/<帧 id>.html` 或 `/sites/<页 id>/@root|@source/…`，那一页的标注账本按它命名）。卡片按 `doc` 量尺寸，宽度见“HTML 帧”。
 - 帧文件写了 `export const shell` 的帧带 `shell`。卡片按每帧自己的 shell 量尺寸：帧的 `shell`，没有就用节的。
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。

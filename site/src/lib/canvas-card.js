@@ -25,6 +25,35 @@ export const canvasHref = (pageId, sectionId) =>
 export const canvasLedgerUrl = (pageId) => `/annotations/%40canvas?entry=${encodeURIComponent(pageId)}`;
 
 /**
+ * An HTML frame's annotations live in their own ledger in the same bucket, named after the page's
+ * pathname on the service (the annotate client in that page names it this way). Same formula as
+ * src/shared/annotate-page-key.js pageKeyFromPathname — browser scripts here can't import repo
+ * source, canvas-card.test.js checks the two agree.
+ */
+export function pageLedgerName(pathname) {
+  const p = String(pathname || '');
+  let f;
+  try {
+    f = decodeURIComponent(p.split('/').pop() || 'index.html');
+  } catch {
+    f = p.split('/').pop() || 'index.html';
+  }
+  let h = 0;
+  for (let i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) >>> 0;
+  return `${f}~${h.toString(36)}`;
+}
+export const pageLedgerUrl = (pageId, docUrl) =>
+  `/annotations/${encodeURIComponent(pageLedgerName(docUrl))}?entry=${encodeURIComponent(pageId)}`;
+
+/**
+ * Rows of an HTML frame's ledger carry no screenId (the page is its own document): stamp the frame id on
+ * a copy so they count and group like canvas rows. Rows that already name a frame are kept as they are.
+ */
+export function rowsOnFrame(doc, frameId) {
+  return (doc?.annotations || []).map((a) => (a && !a.screenId ? { ...a, screenId: frameId } : a));
+}
+
+/**
  * Preview geometry per shell. One scale for every frame in a card, so a bare
  * component and the phones beside it keep their real proportions: the phone
  * stage (the workbench's 438 × 910 iPhone chrome, --wb-phone-w × --wb-phone-h)
@@ -76,7 +105,8 @@ export function looseErrors(canvas) {
 }
 
 /**
- * → { pageId, sectionId, docWidth, num, title, shell, box, frames: [{ id, title, src, missing, shell, box }], href, meta, errors: [message] }
+ * → { pageId, sectionId, docWidth, num, title, shell, box, frames: [{ id, title, src, missing, shell, box, docUrl }], href, meta, errors: [message] }
+ * `docUrl` is an HTML frame's address on the service (articleCanvas frame `url`, '' for other frames).
  * `docWidth` is '' unless a frame is a document (shell doc); then it is the width the card starts at.
  * `num` is the section's number in the article (1, 2 …; remark-pinpoint
  * injects it next to `section`). The article shows numbers only: the canvas
@@ -105,6 +135,8 @@ export function cardModel(canvas, sectionId, num = '') {
     return {
       id: f.id, title: f.title || f.id, missing: !!f.missing, src: f.missing ? '' : frameSrc(pageId, f.id),
       shell, box: shellBox(shell),
+      // HTML 帧在服务上的地址：那一页的标注在同桶、按这个地址命名的账本里（右栏和卡片标注数要读它）。
+      docUrl: f.url || '',
     };
   });
   return {

@@ -28,7 +28,8 @@ import {
 } from './lib/page-url.js';
 import { boardRefs } from './lib/board-refs.js';
 import { rewriteFragmentAssetUrls } from './lib/sidecar-css.js';
-import { PHONE_SCREEN_H, PHONE_SCREEN_W } from './lib/viewport.js';
+import { PHONE_SCREEN_H, PHONE_SCREEN_W, htmlCardSize } from './lib/viewport.js';
+import { isArticleBoard } from './lib/board-entries.js';
 import {
   wrapCompStage,
   wrapPhoneShell
@@ -73,14 +74,47 @@ function docFrameHtml(url, title) {
     ' title="' + escHtml(title || url) + '" loading="lazy"></iframe>';
 }
 
+/** 一个 doc 屏的文档地址（iframe 的 src）：带 src 的用它，否则是页目录下的 <id>.html。 */
+export function docScreenUrl(pageId, screen) {
+  var sc = typeof screen === 'string' ? { id: screen } : screen;
+  return sc.src || pageBaseUrl(wbGet().pageManifest, pageId) + sc.id + '.html';
+}
+
+function withQuery(url, pair) {
+  var hash = '';
+  var at = url.indexOf('#');
+  if (at >= 0) { hash = url.slice(at); url = url.slice(0, at); }
+  return url + (url.indexOf('?') >= 0 ? '&' : '?') + pair + hash;
+}
+
+/* ---- 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布）--------------------------
+   文章画布上一个 HTML 帧摆成两样东西，都在它那一节里：
+   · 卡片（.wb-screen--html-card，带 data-screen）：画布上的那一帧。白底卡片按帧宽（窗口 1280 /
+     手机 402，lib/viewport.js htmlCardSize）装着这一页的第一屏，底部淡出；iframe 是只读预览
+     （annotate=off、tabindex -1、pointer-events none），拖、滚、缩放都落到画布上。卡片带 data-ann-ui：
+     画布上的标注客户端让开它，这一页的标注在页面浮层里做。
+   · 页面浮层（.wb-screen--doc / --phone-doc，带 data-page-screen，平时 data-doc-hidden）：双击卡片
+     打开的完整页面，就是存量页的文档条目那一套（窗口 1:1 铺满 / 手机屏居中，可滚动、交互、标注）。
+     iframe 先不给 src（data-src），第一次打开才装：11 个 HTML 帧不必一上来装两遍。
+   卡片上的标注数由 html-card-counts.js 写进 [data-html-card-count]。 */
+function htmlCardHtml(url, title, viewport) {
+  var size = htmlCardSize(viewport);
+  return '<div class="wb-html-card" data-ann-ui data-card-viewport="' + escHtml(viewport) + '"' +
+    ' style="--wb-card-w:' + size.width + 'px;--wb-card-h:' + size.height + 'px">' +
+      '<iframe class="wb-html-card-frame" src="' + escHtml(withQuery(url, 'annotate=off')) + '"' +
+        ' title="' + escHtml(title || url) + '" tabindex="-1" aria-hidden="true" scrolling="no" loading="lazy"></iframe>' +
+      '<span class="wb-html-card-fade" aria-hidden="true"></span>' +
+    '</div>';
+}
+
+function pageOverlayFrameHtml(url, title) {
+  return '<iframe class="wb-doc-frame" data-src="' + escHtml(url) + '"' +
+    ' title="' + escHtml(title || url) + '"></iframe>';
+}
+
 export function fetchScreenHtml(pageId, screen) {
   var sc = typeof screen === 'string' ? { id: screen } : screen;
-  var url;
-  if (sc.src) {
-    url = sc.src;
-  } else {
-    url = pageBaseUrl(wbGet().pageManifest, pageId) + sc.id + '.html';
-  }
+  var url = docScreenUrl(pageId, sc);
   // doc shell 承载的是完整独立文档（有 <!doctype>/<head>/自己的 <style>），
   // 不能当 fragment 内联——它的 body 规则会失效、style 会漏进 workbench。
   // 交给 iframe，文档保持原样；标注由文档自己注入的 annotate.js 负责。
@@ -176,6 +210,9 @@ function screenClassForShell(pageId, shell, viewport) {
 
 export function buildBoardHtml(pageId, board, screenMap, options) {
   var viewport = (options && options.viewport) || 'window';
+  // 文章画布：HTML 帧的视口是帧的偏好（卡片宽度与浮层的看法都跟它走）。
+  var article = isArticleBoard(board);
+  var frameViewport = (options && options.frameViewport) || function () { return 'window'; };
   var sections = board.sections || [];
   if (!sections.length || (sections.length === 1 && sections[0].id === '_empty')) {
     var emptyTitle = '暂无屏幕';
@@ -197,6 +234,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
     // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
     var secLetter = refs.bySection[sec.id] || '';
     var body = screens.map(function (sc, col) {
+      if (article && sc.shell === 'doc') return htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, frameViewport(sc.id));
       var key = sc.id;
       var fetched = screenMap[key];
       var inner;
@@ -241,4 +279,27 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       '</article>';
   });
   return '<div class="wb-zoom-wrap"><div class="wb-library">' + hoistImportOnlyStyles(parts.join('')) + '</div></div>';
+}
+
+/** 文章画布上的一个 HTML 帧 → 卡片 + 页面浮层两块（见 htmlCardHtml 上的说明）。
+    卡片占这一列的图注与机身两格，没有尺寸行（图注那一行有标注数）；浮层平时收着，不占格。 */
+function htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, viewport) {
+  var url = docScreenUrl(pageId, sc);
+  var title = sc.title || sc.id;
+  var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
+  var colAttr = layout === 'row' ? ';--wb-col:' + (col + 1) : '';
+  var capHtml = '<div class="wb-screen-cap">' +
+    (frameRef ? '<span class="wb-cap-ref">' + escHtml(frameRef) + '</span>' : '') +
+    '<span class="wb-cap-title" title="' + escHtml(sc.title || '') + '">' + escHtml(sc.title || '') + '</span>' +
+    '<span class="wb-cap-count" data-html-card-count hidden></span>' +
+    '</div>';
+  var size = htmlCardSize(viewport);
+  var card = '<div class="wb-screen wb-screen--html-card" data-screen="' + escHtml(sc.id) + '" data-html-card' +
+    ' title="双击打开页面" style="--wb-phone-w:' + size.width + 'px' + colAttr + '">' +
+    capHtml + htmlCardHtml(url, title, viewport) +
+    '</div>';
+  var page = '<div class="' + screenClassForShell(pageId, 'doc', viewport) + '" data-page-screen="' + escHtml(sc.id) + '" data-doc-hidden>' +
+    wrapScreenShell(pageId, pageOverlayFrameHtml(url, title), 'doc', viewport) +
+    '</div>';
+  return card + page;
 }

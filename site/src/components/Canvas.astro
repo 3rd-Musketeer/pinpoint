@@ -60,7 +60,7 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
   {m.frames.length > 0 && (
     <div class="cc-strip">
       {m.frames.map((f) => (
-        <figure class="cc-frame" data-screen={f.id} data-shell={f.shell || undefined} data-title={f.title} data-src={f.src || undefined} data-missing={f.missing ? '' : undefined}>
+        <figure class="cc-frame" data-screen={f.id} data-shell={f.shell || undefined} data-title={f.title} data-src={f.src || undefined} data-doc-url={f.docUrl || undefined} data-missing={f.missing ? '' : undefined}>
           <figcaption class="cap"><b>{f.id}</b></figcaption>
           {f.missing ? (
             <div class:list={['cc-box', f.box.mode, 'missing']} data-pp-missing style={boxStyle(f.box)}>

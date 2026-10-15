@@ -52,7 +52,11 @@ import {
   applyPageNames,
   activeTabId,
   applyPageViewport,
+  closePageOverlay,
+  frameViewportOf,
   initPages,
+  isPageOverlayOpen,
+  openPageOverlay,
   loadPageManifest,
   loadProjects,
   resolveActivePage,
@@ -71,6 +75,8 @@ import {
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
 import { startEmbedBridge } from './embed.js';
+import { startPageOverlay } from './page-overlay.js';
+import { syncHtmlCardCounts } from './html-cards.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
@@ -173,9 +179,10 @@ async function loadBoard(panel, pageId, loadOptions) {
     // 视口（2026-09-05）：页的偏好在构建 HTML 之前灌进 store —— screen-load 按它
     // 决定 doc 屏套阅读器壳还是手机屏；形态不变（两种视口都是文档形态）。
     var viewport = applyPageViewport(pageId);
-    panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport });
+    panel.innerHTML = buildBoardHtml(pageId, board, screenMap, { viewport: viewport, frameViewport: frameViewportOf(pageId) });
     wbSet({ activeBoard: { pageId: pageId, board: board, fullBoard: fullBoard, tabId: tabId } });
     syncEntries({ fresh: !!loadOptions.freshEntry, save: !!loadOptions.saveEntry });
+    syncHtmlCardCounts(panel, pageId);
     watchDocAnnotate();
     return afterMount(panel, session);
   } catch (e) {
@@ -282,6 +289,7 @@ function initBoard() {
 }
 
 startEmbedBridge();
+startPageOverlay(stage);
 setFrameRevealer(revealFrame);
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
@@ -336,8 +344,15 @@ window.workbench = {
   tabs: tabsOfActiveBoard,
   // 目标帧在别的 tab：切过去（Promise<boolean>）；已在当前 tab / 查不到：false。标注层 goToMark 先问它。
   revealFrame: revealFrame,
-  // 标注层：这屏属于另一个 tab、此刻没挂载 —— 它的标注不是“锚点失效”。
+  // 标注层：这屏属于另一个 tab、此刻没挂载 —— 它的标注不是“锚点失效”。文章画布上的 HTML 卡片也算：
+  // 那一页的标注在它自己的账本里，页面浮层里做。
   isScreenOffTab: screenOffTab,
+  // 文章画布的页面浮层（2026-10-15）：打开某个 HTML 帧的完整页面（true = 开了），关掉回画布。
+  // pageReady(screenId) 等那一页的标注客户端就绪（Promise<boolean>），给文章右栏的“定位到钉子”用。
+  openPage: function (screenId) { return openPageOverlay(screenId); },
+  closePage: function () { return closePageOverlay(); },
+  pageOpen: function () { return isPageOverlayOpen(); },
+  annotateApi: function () { return annotateApi(); },
   // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
   // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。
   hasPage: function (pageId) { return deepLinkPageExists(pageId); },
@@ -586,7 +601,8 @@ stage.addEventListener('wheel', function (e) {
     var overBadge = explicit && e.target.closest('.ann-badge');
     if (!stage.contains(e.target) && !overBadge) return;
     if (activeBoardMode() === 'html' || isTypingTarget(e.target)) return;
-    if (e.target.closest('[data-ann-ui]') && !overBadge) return;
+    // 文章画布的 HTML 卡片带 data-ann-ui（标注客户端让开它），但它是画布上的一帧：拖它照常平移画布。
+    if (e.target.closest('[data-ann-ui]') && !overBadge && !e.target.closest('.wb-html-card')) return;
     if (!explicit && annotateBlocksPan()) return;
 
     // Middle button always pans.

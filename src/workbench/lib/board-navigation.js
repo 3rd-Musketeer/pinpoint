@@ -1,4 +1,4 @@
-export const BOARD_FRAME_SELECTOR = '.wb-comp-stage, .ios-stage, .wb-screen-err';
+export const BOARD_FRAME_SELECTOR = '.wb-comp-stage, .ios-stage, .wb-html-card, .wb-screen-err';
 
 function stageRectFor(node, stageRect, stage) {
   const rect = node.getBoundingClientRect();

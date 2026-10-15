@@ -303,7 +303,13 @@ export function Sidebar() {
       clearTimeout(timer);
       timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
     }
-    events.addEventListener('annotations', refresh);
+    events.addEventListener('annotations', function (ev) {
+      refresh();
+      // 同一条推送转给工作台里别的订阅方（html-cards.js：文章画布上 HTML 卡片的标注数），不另开连接。
+      var doc = null;
+      try { doc = JSON.parse(ev.data); } catch (e) { return; }
+      window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
+    });
     return function () { clearTimeout(timer); events.close(); };
   }, []);
   // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。

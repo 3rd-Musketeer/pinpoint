@@ -1,5 +1,5 @@
 // 浏览器端：画布卡片的帧尺寸与未处理标注数。卡片的数据全在 [data-pp-canvas] 的 data-* 上（Canvas.astro）。
-import { badgeText, canvasLedgerUrl, docWidthKey, pendingCount, shellBox } from './canvas-card.js';
+import { badgeText, canvasLedgerUrl, docWidthKey, pageLedgerUrl, pendingCount, rowsOnFrame, shellBox } from './canvas-card.js';
 
 // 帧 iframe 是 /api/frame?…&embed=card：服务端不出图注，机壳带 data-pp-stage（phone / comp / doc），手机机身带 data-pp-device
 // （src/server/lib/frame-doc.js markEmbedStage，契约在 docs/projects.md「给站点卡片的接口」）。这里只认 data-pp-stage，
@@ -142,14 +142,24 @@ function byPage(cards) {
   return map;
 }
 
+async function readJson(url) {
+  try {
+    const res = await fetch(url, { headers: { accept: 'application/json' } });
+    if (res.ok && (res.headers.get('content-type') || '').includes('json')) return await res.json();
+  } catch { /* no service behind this page */ }
+  return null;
+}
+
+// HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在它自己的账本里（canvas-card.js pageLedgerName），
+// 一起读进来、记到那一帧上，卡片头的数含它们。
 async function refreshBadges(cards) {
   await Promise.all([...byPage(cards)].map(async ([page, list]) => {
-    let doc = null;
-    try {
-      const res = await fetch(canvasLedgerUrl(page), { headers: { accept: 'application/json' } });
-      if (res.ok && (res.headers.get('content-type') || '').includes('json')) doc = await res.json();
-    } catch { /* no service behind this page */ }
-    paintBadges(list, page, doc);
+    const pages = list.flatMap((card) => [...card.querySelectorAll('.cc-frame[data-doc-url]')])
+      .map((fig) => ({ id: fig.dataset.screen, url: fig.dataset.docUrl }));
+    const [doc, ...docs] = await Promise.all([readJson(canvasLedgerUrl(page)), ...pages.map((p) => readJson(pageLedgerUrl(page, p.url)))]);
+    if (!doc && !docs.some(Boolean)) { paintBadges(list, page, null); return; }
+    const annotations = [...((doc && doc.annotations) || []), ...docs.flatMap((d, i) => (d ? rowsOnFrame(d, pages[i].id) : []))];
+    paintBadges(list, page, { annotations });
   }));
 }
 

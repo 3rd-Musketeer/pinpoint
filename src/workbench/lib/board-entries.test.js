@@ -12,6 +12,8 @@ import {
   entryById,
   entryForm,
   entryTag,
+  isArticleBoard,
+  isPageOverlayEntry,
   outlineSlice,
   resolveEntry,
   tabHasOutline,
@@ -219,4 +221,49 @@ test('纯文档的多 tab 页：条照出；每个 tab 的浮层只列自己的�
   // 有画布的页：不论几个 tab 都出，每个 tab 都带大纲钮
   assert.equal(boardShowsTabBar(mixedBoard()), true);
   assert.equal(tabHasOutline(mixedBoard(), ''), true);
+});
+
+// 一篇文章一张画布（2026-10-15）：文章画布（validateBoard 留下 article: true）上 HTML 帧（doc 屏）也在画布上。
+function articleBoard() {
+  return {
+    article: true,
+    sections: [
+      { id: 'pages', title: '页面', layout: 'row', letter: 'B', screens: [
+        { id: 'long-page', title: 'long-page', shell: 'doc' },
+        { id: 'catalog', title: 'catalog', shell: 'doc', src: 'sites/x/@root/shared/catalog.html' },
+      ] },
+      { id: 'app', title: '手机', layout: 'row', letter: 'C', screens: [{ id: 'phone-card', title: 'phone-card', shell: 'app' }] },
+    ],
+  };
+}
+
+test('文章画布：HTML 帧也在画布上 —— 默认是画布条目；每个 HTML 帧仍有一个文档条目，标成页面浮层', () => {
+  const board = articleBoard();
+  assert.equal(isArticleBoard(board), true);
+  assert.equal(isArticleBoard(mixedBoard()), false);
+  const entries = boardEntries(board);
+  assert.deepEqual(entries.map((e) => e.id), [CANVAS_ENTRY_ID, 'long-page', 'catalog']);
+  assert.equal(defaultEntryId(entries), CANVAS_ENTRY_ID);
+  assert.deepEqual(entries.map((e) => isPageOverlayEntry(e)), [false, true, true]);
+  assert.equal(entryForm(entries[1]), 'html');
+  // 存量页的 doc 屏照旧是文档条目，不是页面浮层。
+  assert.deepEqual(boardEntries(mixedBoard()).map((e) => isPageOverlayEntry(e)), [false, false, false]);
+});
+
+test('文章画布：只有 HTML 帧也有画布条目；大纲不列条目行（页在画布上），树直接挂着；条上有大纲钮', () => {
+  const onlyHtml = { article: true, sections: [{ id: 'pages', title: '页面', layout: 'row', letter: 'A', screens: [
+    { id: 'a', shell: 'doc' }, { id: 'b', shell: 'doc' },
+  ] }] };
+  const entries = boardEntries(onlyHtml);
+  assert.equal(entries[0].id, CANVAS_ENTRY_ID);
+  const model = contentsModel(entries);
+  assert.deepEqual(model.productRows, []);
+  assert.deepEqual(model.drafts, []);
+  assert.equal(model.tree, true);
+  assert.equal(boardHasCanvas(onlyHtml), true);
+  assert.equal(boardShowsTabBar(onlyHtml), true);
+  // 存量的纯文档页（同样两个 doc 屏，不是文章）：没有画布，两个文档条目行。
+  const legacy = { sections: onlyHtml.sections };
+  assert.equal(boardHasCanvas(legacy), false);
+  assert.deepEqual(contentsModel(boardEntries(legacy)).productRows.map((e) => e.id), ['a', 'b']);
 });

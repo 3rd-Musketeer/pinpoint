@@ -5,7 +5,7 @@ HTML 帧的固件（e2e/html-frames.spec.js）：project `e2e-html`，一篇 `pa
 - `long-page.html` 在文章目录里，引用 `assets/page.css`；页面很长，`#deep-pill` 在 y > 5000 处。
 - `catalog` 写成 `{ id, src }`，指 project 根下的 `shared/catalog.html`，它引用 `catalog.css` 和 `img/dot.svg`（相对它自己的目录）。
 - `widget` 写成 `{ id: "widget", src: "kit:widget.html" }`：`project.json` 的 `sources` 把 `kit` 登记成 `../html-source`（即 `e2e/html-source/`，在 project 根外面）。
-- `phone-card.jsx` 是一个手机 JSX 帧。
+- `phone-card.jsx` 是一个手机 JSX 帧；同一节还有 `catalog-2`（同一份 `shared/catalog.html`），手机帧和 HTML 卡片混排在一节里。
 
 第二篇 `docs-only`（e2e/ppnt-html-shots.spec.js）只有 HTML 帧，画布那一行是空的：
 

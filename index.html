@@ -105,6 +105,9 @@
   .wb-back-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
   .wb.wb-side-collapsed .wb-back { left:calc(var(--wb-chrome-gap) + 8px); }
   body.wb-resizing .wb-back { transition:none; }
+  /* 页面浮层的“← 画布”（#wbpage-close）是 button：去掉按钮自己的边框与底色，其余同 .wb-back。 */
+  button.wb-back { border:0; cursor:pointer; }
+  html.wb-embed .wb-back { left:var(--wb-chrome-gap); }
   /* 嵌入版（?embed=overlay，文章页的画布浮层里，src/workbench/embed.js）：没有左栏，横条也不出左栏开关。 */
   html.wb-embed #wbside, html.wb-embed #wbsplit, html.wb-embed #wbside-toggle { display:none !important; }
   body.wb-resizing iframe { pointer-events:none; }
@@ -724,6 +727,45 @@
     overflow:hidden;
   }
   .wb-doc-surface { position:relative; width:100%; background:#fff; }
+  /* 文章画布的 HTML 卡片（2026-10-15 一篇文章一张画布；screen-load htmlCardHtml）：白底卡片
+     （同组件画布的画板：--wb-r-board + --wb-sh-board），按帧宽装这一页的第一屏 —— 窗口 1280 × 800、
+     手机 402 × 874，尺寸写在 --wb-card-w / --wb-card-h 上；底部一段淡出，读作“下面还有”。
+     iframe 只是预览，不接指针：拖、滚轮、缩放都落到画布上，与画布平移不抢手势；双击卡片开页面浮层。
+     图注那一行末尾是这一页待验收的标注数（.wb-cap-count，html-card-counts.js 写）。 */
+  .wb-screen--html-card { width:var(--wb-phone-w); cursor:default; }
+  .wb-html-card {
+    position:relative; flex:none;
+    width:var(--wb-card-w, 1280px); height:var(--wb-card-h, 800px);
+    border-radius:var(--wb-r-board); overflow:hidden; user-select:none;
+    background:var(--wb-paper); box-shadow:var(--wb-sh-board);
+    outline:2px solid transparent; outline-offset:0;
+    transition:outline-color var(--wb-dur) var(--wb-ease);
+  }
+  .wb-library .wb-screen--html-card:hover .wb-html-card {
+    outline-color:color-mix(in srgb, var(--wb-accent) 30%, transparent);
+  }
+  .wb-screen--html-card.wb-sel .wb-html-card {
+    outline-color:transparent;
+    box-shadow:0 0 0 2px var(--wb-accent), 0 0 0 6px color-mix(in srgb, var(--wb-accent) 14%, transparent);
+  }
+  .wb-html-card-frame {
+    display:block; width:100%; height:100%; border:0;
+    background:var(--wb-paper); pointer-events:none;
+  }
+  .wb-html-card-fade {
+    position:absolute; left:0; right:0; bottom:0; height:22%;
+    background:linear-gradient(to bottom, color-mix(in srgb, var(--wb-paper) 0%, transparent), var(--wb-paper));
+    pointer-events:none;
+  }
+  .wb-cap-count {
+    flex:none; align-self:center;
+    padding:.2em .6em; border-radius:999px;
+    font-family:var(--wb-font-mono); font-size:var(--wb-cap-ref); font-weight:var(--wb-w-bold);
+    line-height:1.2; font-variant-numeric:tabular-nums;
+    background:color-mix(in srgb, var(--wb-accent) 12%, var(--wb-surface)); color:var(--wb-accent);
+  }
+  .wb-cap-count[hidden] { display:none; }
+
   .wb-doc-frame { display:block; width:100%; height:100%; border:0; background:#fff; }
   /* 手机视口（2026-09-05，lib/viewport.js；owner 用过第一版后的裁决：「html doc 的手机
      视图就不需要画布了，直接就是一个自适应大小（大约 viewport 高度 90%）的手机 screen，

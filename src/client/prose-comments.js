@@ -28,6 +28,7 @@
 import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
 import { onPageLeave } from './lib/save-request.js';
 import { createOpsLedger } from './lib/ops-ledger.js';
+import { createCanvasLedgers } from './lib/canvas-ledgers.js';
 import {
   authorLabel,
   canvasContentText,
@@ -42,7 +43,6 @@ import {
   threadMessages,
 } from '../shared/prose-thread.js';
 import { ANN_STATUS_COLORS } from '../shared/ann-status.js';
-import { CANVAS_LEDGER } from '../shared/project-ids.js';
 
 var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-figure],[data-pp-nocomment],.errors';
 var BLOCK_TAGS = /^(P|H[1-6]|LI|UL|OL|DL|DT|DD|DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|BLOCKQUOTE|PRE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|FIGURE|FIGCAPTION|HR|BR)$/;
@@ -230,10 +230,13 @@ export function startProseComments(options) {
     onChange: recompute,
     onRejected: function (list) { return restoreRejected(list); },
   });
-  var canvas = hasCanvas ? createOpsLedger({
-    server: SERVER, entry: ENTRY, ledger: CANVAS_LEDGER, maxConflicts: MAX_CONFLICT_RETRIES,
-    // 画布账本的 path 是工作台写的，这里只改状态，原样带回去。
-    path: function (disk) { return disk; },
+  // 画布上的 HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在同桶里它自己的账本里，一起读进来
+  // （lib/canvas-ledgers.js），右栏和卡片标注数都含它们。
+  var canvas = hasCanvas ? createCanvasLedgers({
+    server: SERVER, entry: ENTRY, maxConflicts: MAX_CONFLICT_RETRIES,
+    pages: Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas] .cc-frame[data-doc-url]'), function (fig) {
+      return { id: fig.getAttribute('data-screen') || '', url: fig.getAttribute('data-doc-url') || '' };
+    }),
     onChange: function () { announceCanvas(); renderRail(); },
   }) : null;
 
@@ -287,7 +290,11 @@ export function startProseComments(options) {
 
   function hydrate() {
     // 画布账本读不到（还没人标过时它也在：服务给空账本）不影响正文评论，下次重连再读。
-    if (canvas) readLedger(CANVAS_LEDGER).then(function (doc) { canvas.accept(doc); }).catch(function () {});
+    if (canvas) {
+      canvas.names().forEach(function (name) {
+        readLedger(name).then(function (doc) { canvas.accept(name, doc); }).catch(function () {});
+      });
+    }
     return readLedger(LEDGER)
       .then(function (doc) {
         connection = 'online';
@@ -342,7 +349,7 @@ export function startProseComments(options) {
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
       if (!doc || doc.entry !== ENTRY) return;
       if (doc.page === LEDGER) prose.remote(doc);
-      else if (canvas && doc.page === CANVAS_LEDGER) canvas.remote(doc);
+      else if (canvas) canvas.remote(doc);
     });
   }
 
@@ -507,10 +514,18 @@ export function startProseComments(options) {
     });
   }
 
+  // HTML 帧上的标注：地址同时带帧和钉子，画布浮层先开那一页（页面浮层）再定位到钉子
+  // （site/src/lib/canvas-overlay-client.js）。画布帧上的只带钉子，定位由画布自己找帧。
+  function cssEscape(v) { return window.CSS && CSS.escape ? CSS.escape(String(v)) : String(v); }
+
+  function isHtmlFrame(section, frameId) {
+    return !!root.querySelector('[data-pp-canvas][data-pp-section="' + cssEscape(section) + '"] .cc-frame[data-doc-url][data-screen="' + cssEscape(frameId) + '"]');
+  }
+
   function canvasHref(item) {
     var q = new URLSearchParams({ canvas: item.section });
+    if (!Number.isInteger(item.row.n) || isHtmlFrame(item.section, item.frameId)) q.set('frame', item.frameId);
     if (Number.isInteger(item.row.n)) q.set('ann', String(item.row.n));
-    else q.set('frame', item.frameId);
     return '#' + q.toString();
   }
 

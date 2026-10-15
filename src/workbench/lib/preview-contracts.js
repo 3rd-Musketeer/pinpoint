@@ -299,9 +299,13 @@ export function validateBoard(raw, options = {}) {
     if (typeof section.letter === 'string' && /^[A-Z]+$/.test(section.letter)) out.letter = section.letter;
     return out;
   });
-  if (!tabbed) return { sections };
+  // 文章画布（由正文派生，board.article 指回文章）：一篇文章一张画布，HTML 帧也摆在画布上
+  // （board-entries.js isArticleBoard）。只留一个布尔，文章的地址等由服务端的派生 board 自己带。
+  const article = !!(board.article && typeof board.article === 'object');
+  if (!tabbed) return article ? { sections, article } : { sections };
   return {
     sections,
     tabs: flat.tabs.map((tab) => ({ id: tab.id, title: tab.title == null || tab.title === '' ? tab.id : String(tab.title).trim() })),
+    ...(article ? { article } : {}),
   };
 }

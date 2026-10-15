@@ -18,7 +18,7 @@ import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
 import { entriesOfActiveBoard, setActiveEntry, setActiveViewport } from '../pages.js';
-import { ENTRY_TAG_LABELS, entryTag, resolveEntry } from '../lib/board-entries.js';
+import { ENTRY_TAG_LABELS, entryTag, isPageOverlayEntry, resolveEntry } from '../lib/board-entries.js';
 import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
 import { pageEntry } from '../lib/page-url.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
@@ -74,7 +74,8 @@ export function Strip() {
   // 条目步进（文档形态）：按大纲顺序在本板的条目之间前后切换。画布形态有自己的
   // 帧导航（CanvasHud），这一段只在文档条目选中且本板不止一个条目时出现。
   var entryIndex = entry ? entries.indexOf(entry) : -1;
-  var showEntryNav = !!(entry && entry.kind === 'doc' && entries.length > 1);
+  // 文章画布的页面浮层不是条目（isPageOverlayEntry）：‹ n / N › 只在画布上数帧，浮层里不出这一段。
+  var showEntryNav = !!(entry && entry.kind === 'doc' && !isPageOverlayEntry(entry) && entries.length > 1);
   function stepEntry(delta) {
     var next = entries[entryIndex + delta];
     if (next) setActiveEntry(next.id);

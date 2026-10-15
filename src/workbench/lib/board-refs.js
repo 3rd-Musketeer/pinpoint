@@ -35,7 +35,7 @@ export function boardRefs(rawBoard) {
     // 存量页：doc 帧不上画布、不占编号（画布视图的口径，各消费端直接喂 board 即可）。这里自己过滤，服务端拿
     // board.json 原文直接调也能和画布对上：原文的 shell 可能只写在 section 上。
     // 文章画布（节带正文字母）：编号跟正文走，第 n 节的第 k 帧就是 <字母>k，文档帧（HTML 帧）也占号，
-    // 带 doc: true，画布上的消费端（大纲的帧树）据此跳过它们（docs/projects.md“HTML 帧”）。
+    // 带 doc: true（它在画布上是一张 HTML 卡片，双击开页面浮层；docs/projects.md“HTML 帧”）。
     var article = isSectionLetter(sec.letter);
     var screens = (sec.screens || []).map(screenOf).filter(function (sc) {
       return article || legacyShell(sc.shell || sec.shell) !== 'doc';

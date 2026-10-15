@@ -127,8 +127,8 @@ function FrameTree(props) {
   return (
     <nav className="wb-outline mx-[var(--wb-pad)]" id="wboutline" aria-label="大纲">
       {refs.outline.map(function (sec) {
-        // 文章画布上的文档帧（HTML 帧）不在画布上，按“文档”条目在上面列出；帧树只列画布上的帧。
-        var frames = sec.frames.filter(function (f) { return !f.doc; });
+        // 文章画布上的 HTML 帧也在画布上（卡片，2026-10-15），和别的帧一样列、一样点了定位。
+        var frames = sec.frames;
         if (!frames.length) return null;
         return (
           <div className="ol" key={sec.id} data-ol-section={sec.id}>
@@ -218,7 +218,7 @@ function OutlineContents(props) {
   var entries = slice.entries;
   var model = contentsModel(entries);
   var refs = boardRefs(slice.view);
-  var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.some(function (f) { return !f.doc; }); }));
+  var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.length > 0; }));
   var current = resolveEntry(entriesOfActiveBoard(), activeEntryId);
   var treeOpen = hasTree && (!slice.showDocs || (!!current && current.kind === 'canvas'));
   if (!hasTree && (model.hidden || (!model.productRows.length && !model.drafts.length))) {
