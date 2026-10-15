@@ -402,13 +402,13 @@ test('pickSandboxPorts：owner 的端口一律不接受；自动找一对空端�
   assert.match((await pickSandboxPorts({ port: 'abc' })).error, /端口号/);
 });
 
-test('dev --sandbox：不接受 ~/.pinpoint；env.sh 只有 CLI 的三个变量', async (t) => {
+test('dev --sandbox：不接受 ~/.pinpoint；env.sh 包含 CLI 的隔离变量', async (t) => {
   assert.equal(insideOwnerData('/home/u/.pinpoint', '/home/u'), true);
   assert.equal(insideOwnerData('/home/u/.pinpoint/x', '/home/u'), true);
   assert.equal(insideOwnerData('/home/u/.pinpoint-sandbox', '/home/u'), false);
   const vars = sandboxEnv({ dataDir: "/tmp/it's", port: 6850, sitePort: 6855 });
-  assert.deepEqual(vars, { PINPOINT_DATA_DIR: "/tmp/it's", PINPOINT_REGISTRY: "/tmp/it's/registry.json", PINPOINT_ORIGIN: 'http://127.0.0.1:6850', PORT: '6850', PINPOINT_SITE_PORT: '6855', PINPOINT_VITE_CACHE: "/tmp/it's/vite-cache" });
-  assert.equal(envFileText(vars), "export PINPOINT_DATA_DIR='/tmp/it'\\''s'\nexport PINPOINT_REGISTRY='/tmp/it'\\''s/registry.json'\nexport PINPOINT_ORIGIN='http://127.0.0.1:6850'\n");
+  assert.deepEqual(vars, { PINPOINT_DATA_DIR: "/tmp/it's", PINPOINT_DEFAULT_PROJECT: "/tmp/it's/notes", PINPOINT_REGISTRY: "/tmp/it's/registry.json", PINPOINT_ORIGIN: 'http://127.0.0.1:6850', PORT: '6850', PINPOINT_SITE_PORT: '6855', PINPOINT_VITE_CACHE: "/tmp/it's/vite-cache" });
+  assert.equal(envFileText(vars), "export PINPOINT_DATA_DIR='/tmp/it'\\''s'\nexport PINPOINT_REGISTRY='/tmp/it'\\''s/registry.json'\nexport PINPOINT_ORIGIN='http://127.0.0.1:6850'\nexport PINPOINT_DEFAULT_PROJECT='/tmp/it'\\''s/notes'\n");
 
   const home = tempDir(t);
   const refused = recorder();
@@ -477,4 +477,21 @@ test('D6：sandbox 拒绝目录别名、不存在的尾部和指向 owner 的受
     assert.deepEqual(fs.readdirSync(owner), []);
     assert.ok(!fs.existsSync(path.join(dataDir, 'env.sh')) || fs.lstatSync(path.join(dataDir, 'env.sh')).isSymbolicLink());
   }
+});
+
+test('D7：两个 sandbox 创建同名默认文章，源码与登记路径各在自己的数据根', async (t) => {
+  const dir = tempDir(t);
+  const globalNotes = path.join(dir, 'owner-notes');
+  for (const name of ['one', 'two']) {
+    const dataDir = path.join(dir, name);
+    const vars = sandboxEnv({ dataDir, port: 6300, sitePort: 6305 });
+    const made = { dir, env: { PINPOINT_DEFAULT_PROJECT: globalNotes, ...vars } };
+    const res = await runIn(made, ['new', 'article', 'same']);
+    assert.equal(res.code, 0, res.err.join('\n'));
+    assert.ok(fs.existsSync(path.join(dataDir, 'notes/docs/pinpoint/articles/same/index.mdx')));
+    assert.match(envFileText(vars), /export PINPOINT_DEFAULT_PROJECT=/);
+    const registry = JSON.parse(fs.readFileSync(vars.PINPOINT_REGISTRY, 'utf8'));
+    assert.equal(registry.entries.find((entry) => entry.id === 'notes').path, path.join(dataDir, 'notes'));
+  }
+  assert.ok(!fs.existsSync(globalNotes));
 });

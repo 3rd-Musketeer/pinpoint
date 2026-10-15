@@ -118,6 +118,7 @@ function assertSandboxPaths(dataDir, home, visited = new Set()) {
 export function sandboxEnv({ dataDir, port, sitePort }) {
   return {
     PINPOINT_DATA_DIR: dataDir,
+    PINPOINT_DEFAULT_PROJECT: path.join(dataDir, 'notes'),
     PINPOINT_REGISTRY: path.join(dataDir, 'registry.json'),
     PINPOINT_ORIGIN: `http://127.0.0.1:${port}`,
     PORT: String(port),
@@ -129,9 +130,9 @@ export function sandboxEnv({ dataDir, port, sitePort }) {
 
 const shellQuote = (value) => `'${String(value).replace(/'/g, `'\\''`)}'`;
 
-/** <目录>/env.sh 的内容：CLI 要的三个变量。 */
+/** <目录>/env.sh 的内容：CLI 的服务地址、数据根、登记表与默认文章根。 */
 export function envFileText(vars) {
-  return ['PINPOINT_DATA_DIR', 'PINPOINT_REGISTRY', 'PINPOINT_ORIGIN']
+  return ['PINPOINT_DATA_DIR', 'PINPOINT_REGISTRY', 'PINPOINT_ORIGIN', 'PINPOINT_DEFAULT_PROJECT']
     .map((name) => `export ${name}=${shellQuote(vars[name])}`)
     .join('\n') + '\n';
 }

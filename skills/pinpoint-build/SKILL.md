@@ -161,7 +161,7 @@ boundary: 一句话说清它管什么、不管什么。
 - project 首页 `https://pinpoint.localhost/<project>/`：这个 project 的文章列表、wiki 词条和全部空 ref；`/<project>/wiki/` 只列 wiki 词条。
 - `https://pinpoint.localhost/<project>/llms.txt`：全部文章的 MDX 原文和 wiki 词条，就是别的 agent 读到的样子。
 - 站点打不开，先跑 `pinpoint status`。
-- 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：`ppnt dev --sandbox [<目录>] [--port <端口>]` 起一个隔离服务，前台常驻（agent 放到后台跑），数据目录、登记表、端口都是自己的；端口缺省自己找空的，文章站点端口是服务端口 +5，`--site-port` 另指。就绪后它打印一行 `source <目录>/env.sh`；在别的 shell 里先执行这一行，之后的 `ppnt` 都对着这个服务。停它用 Ctrl-C 或 `kill` 它打印的 pid。细节见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。第二个服务只用这条路起：`pinpoint start` 经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
+- 要在不碰 owner 常驻服务和数据的环境里试（测试、冒烟）：`ppnt dev --sandbox [<目录>] [--port <端口>]` 起一个隔离服务，前台常驻（agent 放到后台跑），数据目录、登记表、端口都是自己的，默认 project `notes` 的源码放在 `<数据目录>/notes`；端口缺省自己找空的，文章站点端口是服务端口 +5，`--site-port` 另指。就绪后它打印一行 `source <目录>/env.sh`；在别的 shell 里先执行这一行，之后的 `ppnt` 都对着这个服务。停它用 Ctrl-C 或 `kill` 它打印的 pid。细节见 [`docs/registry.md`](../../docs/registry.md)“隔离运行”。第二个服务只用这条路起：`pinpoint start` 经 portless 注册 `pinpoint.localhost`，会撞上 owner 的路由。在 pinpoint 自己的 worktree 里试改动时，命令写成 `node bin/pinpoint.mjs …`（`ppnt` 是同一个入口）：全局的 `pinpoint` 跑的是 canonical clone 的代码。
 - 每个命令都认 `--json`，stdout 只有一个 JSON。退出码：0 成功；1 有问题（验证错误、截到半篇、引用没命中、服务没答）；2 用法错或找不到目标。
 - 每个命令的选项和例子：`ppnt <命令> --help`。
 
