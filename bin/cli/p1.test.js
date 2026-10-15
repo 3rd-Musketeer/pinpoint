@@ -283,7 +283,7 @@ test('open --print：文章页与画布视图、一节、project 全貌、wiki �
   const prose = await runIn(made, ['open', 'e2e-project/commit-confirm', 'why', '--print']);
   assert.deepEqual(prose.out, ['A（§1 why）文章页  http://127.0.0.1:1/e2e-project/commit-confirm/#why'], '纯文字的节只有锚点');
   const project = await runIn(made, ['open', 'e2e-project', '--print']);
-  assert.ok(project.out.includes('e2e-project 首页  http://127.0.0.1:1/e2e-project/'));
+  assert.ok(project.out.includes('project 首页  http://127.0.0.1:1/e2e-project/'));
   // list <project>（= show <project>）：“首页”单指 / 的 blog 首页，这里写 project 首页（CONTEXT.md）。
   const listed = await runIn(made, ['list', 'e2e-project']);
   assert.ok(listed.out.some((line) => line.startsWith('project 首页：http://127.0.0.1:1/e2e-project/')), listed.out.join('\n'));

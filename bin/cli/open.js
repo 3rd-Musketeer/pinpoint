@@ -39,7 +39,7 @@ export function openUrls(hit, ref, { registry, origin }) {
       return { urls: [{ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) }] };
     }
     const urls = [
-      { kind: 'project', label: `${project.id} 首页`, url: `${base}/${project.id}/` },
+      { kind: 'project', label: 'project 首页', url: `${base}/${project.id}/` },
       { kind: 'llms', label: 'llms.txt', url: `${base}/${project.id}/llms.txt` },
     ];
     for (const article of project.articles) {
