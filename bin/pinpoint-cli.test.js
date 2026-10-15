@@ -36,8 +36,7 @@ import {
   runBuild,
   runComments,
   runShow,
-  runMove,
-  runRename,
+  runMv,
   runRender,
   runRemove,
   runList,
@@ -90,9 +89,11 @@ test('parseArgs: usage errors are loud', () => {
   assert.throws(() => parseArgs(['destroy', '/x']), /未知命令/);
   assert.throws(() => parseArgs(['status', 'extra']), /不接受位置参数/);
   assert.throws(() => parseArgs(['status', '--title', 'T']), /不适用于 status/);
-  assert.throws(() => parseArgs(['move', 'x']), /move 需要两个参数/);
-  assert.throws(() => parseArgs(['move', 'x', '/a', '/b']), /只接受两个参数/);
-  assert.throws(() => parseArgs(['move', 'x', '/a', '--title', 'T']), /不适用于 move/);
+  assert.throws(() => parseArgs(['mv', 'x']), /mv 需要两个参数/);
+  assert.throws(() => parseArgs(['mv', 'x', '/a', '/b']), /只接受两个参数/);
+  assert.throws(() => parseArgs(['move', 'x', '/a']), /未知命令：move/);
+  assert.throws(() => parseArgs(['rename', 'x', 'y']), /未知命令：rename/);
+  assert.throws(() => parseArgs(['mv', 'x', '/a', '--title', 'T']), /不适用于 mv/);
   assert.throws(() => parseArgs(['add']), /需要一个目标/);
   assert.throws(() => parseArgs(['add', '/a', '/b']), /只接受一个目标/);
   assert.throws(() => parseArgs(['add', '/a', '--wat', '1']), /未知选项/);
@@ -174,7 +175,7 @@ test('buildEntry: 撞 id 不再静默追加 -2，而是指路 move（既有标�
     (error) => {
       assert.ok(error instanceof CliError);
       assert.match(error.message, /id 已存在：my-site，指向 \/old\/place/);
-      assert.match(error.message, /pinpoint move my-site <新路径>/);
+      assert.match(error.message, /ppnt mv my-site <新路径>/);
       assert.match(error.message, /--id <其他 id>/);
       return true;
     },
@@ -182,7 +183,7 @@ test('buildEntry: 撞 id 不再静默追加 -2，而是指路 move（既有标�
   // 显式 --id 撞车同样指路
   assert.throws(
     () => buildEntry(site, { id: 'my-site' }, { cwd: dir, takenEntries: [existing] }),
-    /pinpoint move my-site/,
+    /ppnt mv my-site/,
   );
 });
 
@@ -375,7 +376,7 @@ test('runAdd: 撞 id 退非零、不写盘，并指路 move', async (t) => {
   });
   assert.equal(code, 1);
   assert.ok(rec.err.some((line) => /id 已存在：my-site，指向 \/old\/place/.test(line)));
-  assert.ok(rec.err.some((line) => /pinpoint move my-site <新路径>/.test(line)));
+  assert.ok(rec.err.some((line) => /ppnt mv my-site <新路径>/.test(line)));
   assert.equal(fs.readFileSync(file, 'utf8'), before, 'registry 一个字节没动');
 });
 
@@ -419,7 +420,7 @@ test('buildMove: 未知 id / 不存在的目标都响亮拒绝；老条目上已
   assert.deepEqual(buildMove('draft', site, { cwd: dir, entries }).after, { id: 'draft', kind: 'dir', path: site });
 });
 
-test('runMove: 原地改路径、保留 id 与位置，并 reload 服务', async (t) => {
+test('mv <id> <路径>: 原地改路径、保留 id 与位置，并 reload 服务', async (t) => {
   const dir = withTempDir(t);
   const next = makeSite(dir, 'moved');
   const file = registryWith(dir, [
@@ -433,7 +434,7 @@ test('runMove: 原地改路径、保留 id 与位置，并 reload 服务', async
     if (url.endsWith('/health')) return Promise.resolve({ status: 200, json: { ok: true } });
     return Promise.resolve({ status: 200, json: { ok: true, path: file, entries: 2 } });
   };
-  const code = await runMove(['move', 'app', next, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
+  const code = await runMv(['mv', 'app', next, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn });
   assert.equal(code, 0);
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
   assert.deepEqual(doc.entries.map((e) => e.id), ['pinpoint', 'app'], '顺序不变');
@@ -444,39 +445,39 @@ test('runMove: 原地改路径、保留 id 与位置，并 reload 服务', async
   assert.ok(rec.out.some((line) => /服务已重载/.test(line)));
 });
 
-test('runMove: file 目标；网址目标退非零、registry 不动', async (t) => {
+test('mv <id> <路径>: file 目标；网址目标退非零、registry 不动', async (t) => {
   const dir = withTempDir(t);
   const page = path.join(dir, 'r.html');
   fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
   const file = registryWith(dir, [{ id: 'app', title: 'App', kind: 'dir', path: dir, board: 'ios' }]);
   const requestFn = () => Promise.reject(new Error('down'));
   const rec = recorder();
-  assert.equal(await runMove(['move', 'app', page, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 0);
+  assert.equal(await runMv(['mv', 'app', page, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[0],
     { id: 'app', kind: 'file', title: 'App', path: page });
   assert.ok(rec.err.some((line) => /服务未在跑/.test(line)));
   const before = fs.readFileSync(file, 'utf8');
-  assert.equal(await runMove(['move', 'app', 'https://app.localhost/', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'app', 'https://app.localhost/', '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
   assert.ok(rec.err.some((line) => /登记的目标是本地目录或 \.html 文件/.test(line)));
   assert.equal(fs.readFileSync(file, 'utf8'), before);
 });
 
-test('runMove: 未知 id 与不存在的目标退非零，registry 不动', async (t) => {
+test('mv <id> <路径>: 未知 id 与不存在的目标退非零，registry 不动', async (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir);
   const file = registryWith(dir, [{ id: 'app', kind: 'dir', path: dir }]);
   const before = fs.readFileSync(file, 'utf8');
   const requestFn = () => Promise.reject(new Error('down'));
   const rec = recorder();
-  assert.equal(await runMove(['move', 'ghost', site, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
-  assert.equal(await runMove(['move', 'app', path.join(dir, 'ghost'), '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'ghost', site, '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'app', path.join(dir, 'ghost'), '--registry', file], { ...rec.io, cwd: dir, env: {}, requestFn }), 1);
   assert.ok(rec.err.some((line) => /条目不存在：ghost/.test(line)));
   assert.ok(rec.err.some((line) => /路径不存在/.test(line)));
   assert.ok(!rec.err.some((line) => /^用法：/.test(line)), '目标不成立不刷 usage，答案在错误行里');
   assert.equal(fs.readFileSync(file, 'utf8'), before);
   // 参数形状不对才刷 usage
   const usage = recorder();
-  assert.equal(await runMove(['move', 'app'], { ...usage.io, cwd: dir, env: {}, requestFn }), 2);
+  assert.equal(await runMv(['mv', 'app'], { ...usage.io, cwd: dir, env: {}, requestFn }), 2);
   assert.ok(usage.err.some((line) => /^用法：/.test(line)));
 });
 
@@ -537,10 +538,10 @@ test('buildRename: 未知 id / 非法新 id / 同名 / 撞 id 都响亮拒绝', 
   assert.throws(() => buildRename('ghost', 'fresh', { entries }), /条目不存在：ghost（现有：old、taken）/);
   assert.throws(() => buildRename('old', 'Not Ok', { entries }), /新 id 必须匹配/);
   assert.throws(() => buildRename('old', 'old', { entries }), /新旧 id 相同/);
-  assert.throws(() => buildRename('old', 'taken', { entries }), /id 已存在：taken，指向 \/t；把两个条目并成一个 = 先 rename 再/);
+  assert.throws(() => buildRename('old', 'taken', { entries }), /id 已存在：taken，指向 \/t；把两个条目并成一个 = 先 `ppnt mv` 改 id，再 `ppnt mv <id> <路径>` 换路径/);
 });
 
-test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服务', async (t) => {
+test('mv <旧 id> <新 id>: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服务', async (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir, 'site');
   fs.writeFileSync(path.join(site, 'card.html'), '<link rel="stylesheet" href="/sites/old/card.css">');
@@ -561,7 +562,7 @@ test('runRename: 登记表 + 标注桶 + 资源前缀一起改，并 reload 服�
     return Promise.resolve({ status: 200, json: { ok: true, path: file, entries: 3 } });
   };
   const env = { PINPOINT_DATA_DIR: dataRoot };
-  const code = await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn });
+  const code = await runMv(['mv', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn });
   assert.equal(code, 0);
 
   const doc = JSON.parse(fs.readFileSync(file, 'utf8'));
@@ -602,7 +603,7 @@ test('storage-unify：rename 改桶名就完成归属迁移 —— @canvas 行�
   ]);
   const rec = recorder();
   const requestFn = () => Promise.reject(new Error('down'));
-  assert.equal(await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env: { PINPOINT_DATA_DIR: dataRoot }, requestFn }), 0);
+  assert.equal(await runMv(['mv', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env: { PINPOINT_DATA_DIR: dataRoot }, requestFn }), 0);
   const fresh = path.join(dataRoot, 'fresh');
   assert.ok(!fs.existsSync(bucket), '旧桶整体改名');
   const canvas = JSON.parse(fs.readFileSync(path.join(fresh, '@canvas.json'), 'utf8'));
@@ -671,7 +672,7 @@ test('runPrune：页不在 registry 与 manifest 里 = 整桶皆孤儿', async (
   assert.ok(!fs.existsSync(path.join(bucket, '@canvas.json')), '整桶清空');
 });
 
-test('runRename: 没有标注桶 / file 条目跳过资源前缀', async (t) => {
+test('mv <旧 id> <新 id>: 没有标注桶 / file 条目跳过资源前缀', async (t) => {
   const dir = withTempDir(t);
   const page = path.join(dir, 'r.html');
   fs.writeFileSync(page, '<!doctype html><html><body>r</body></html>');
@@ -679,7 +680,7 @@ test('runRename: 没有标注桶 / file 条目跳过资源前缀', async (t) => 
   const rec = recorder();
   const requestFn = () => Promise.reject(new Error('down'));
   const env = { PINPOINT_DATA_DIR: path.join(dir, 'data') };
-  assert.equal(await runRename(['rename', 'doc', 'report', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 0);
+  assert.equal(await runMv(['mv', 'doc', 'report', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 0);
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[0],
     { id: 'report', kind: 'file', title: 'Doc', path: page });
   assert.ok(rec.out.some((line) => /标注桶：.*不存在，没有标注要搬/.test(line)));
@@ -687,7 +688,7 @@ test('runRename: 没有标注桶 / file 条目跳过资源前缀', async (t) => 
   assert.ok(rec.err.some((line) => /服务未在跑/.test(line)));
 });
 
-test('runRename: 预检不过就一个字节都不动（新桶已存在 / 目录不存在 / 撞 id）', async (t) => {
+test('mv <旧 id> <新 id>: 预检不过就一个字节都不动（新桶已存在 / 目录不存在 / 撞 id）', async (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir, 'site');
   const dataRoot = path.join(dir, 'data');
@@ -702,18 +703,18 @@ test('runRename: 预检不过就一个字节都不动（新桶已存在 / 目录
   const requestFn = () => Promise.reject(new Error('down'));
   const env = { PINPOINT_DATA_DIR: dataRoot };
   const rec = recorder();
-  assert.equal(await runRename(['rename', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
-  assert.equal(await runRename(['rename', 'gone', 'other', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
-  assert.equal(await runRename(['rename', 'old', 'taken', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'old', 'fresh', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'gone', 'other', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
+  assert.equal(await runMv(['mv', 'old', 'taken', '--registry', file], { ...rec.io, cwd: dir, env, requestFn }), 1);
   assert.ok(rec.err.some((line) => /标注桶已存在/.test(line)));
-  assert.ok(rec.err.some((line) => /目录不存在.*先 `pinpoint move gone/.test(line)));
+  assert.ok(rec.err.some((line) => /目录不存在.*先 `ppnt mv gone/.test(line)));
   assert.ok(rec.err.some((line) => /id 已存在：taken/.test(line)));
   assert.ok(!rec.err.some((line) => /^用法：/.test(line)));
   assert.equal(fs.readFileSync(file, 'utf8'), before);
 
   // 参数形状不对才刷 usage
   const usage = recorder();
-  assert.equal(await runRename(['rename', 'old'], { ...usage.io, cwd: dir, env, requestFn }), 2);
+  assert.equal(await runMv(['mv', 'old'], { ...usage.io, cwd: dir, env, requestFn }), 2);
   assert.ok(usage.err.some((line) => /^用法：/.test(line)));
 });
 
@@ -2066,7 +2067,7 @@ function makeProjectRoot(dir, name, json) {
 test('parseArgs: --project is a switch on add only', () => {
   assert.deepEqual(parseArgs(['add', './p', '--project']), { command: 'add', target: './p', flags: { project: true } });
   assert.throws(() => parseArgs(['add', './p', '--project=yes']), /是开关，不带值/);
-  assert.throws(() => parseArgs(['move', 'a', './p', '--project']), /--project 不适用于 move/);
+  assert.throws(() => parseArgs(['mv', 'a', './p', '--project']), /--project 不适用于 mv/);
 });
 
 test('runAdd --project: id and title come from project.json; bad layouts and flag mixes are refused', async (t) => {
@@ -2099,7 +2100,7 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
   assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).entries.length, 2, 'refusals leave the registry untouched');
 });
 
-test('runMove / runRename / runRemove on a project entry', async (t) => {
+test('mv / remove on a project entry', async (t) => {
   const dir = withTempDir(t);
   const first = makeProjectRoot(dir, 'first', { id: 'demo', title: 'Demo' });
   const second = makeProjectRoot(dir, 'second', { id: 'demo', title: 'Demo moved' });
@@ -2113,22 +2114,22 @@ test('runMove / runRename / runRemove on a project entry', async (t) => {
 
   await t.test('move keeps the id and requires the same project.json id', async () => {
     const bad = recorder();
-    assert.equal(await runMove(['move', 'demo', foreign, '--registry', file], io(bad)), 1);
+    assert.equal(await runMv(['mv', 'demo', foreign, '--registry', file], io(bad)), 1);
     assert.match(bad.err.join('\n'), /project\.json id 是 "other"，不是 demo/);
     const plain = recorder();
-    assert.equal(await runMove(['move', 'demo', makeSite(dir, 'plain'), '--registry', file], io(plain)), 1);
+    assert.equal(await runMv(['mv', 'demo', makeSite(dir, 'plain'), '--registry', file], io(plain)), 1);
     assert.match(plain.err.join('\n'), /缺 docs\/pinpoint\/project\.json/);
     const rec = recorder();
-    assert.equal(await runMove(['move', 'demo', second, '--registry', file], io(rec)), 0, rec.err.join('\n'));
+    assert.equal(await runMv(['mv', 'demo', second, '--registry', file], io(rec)), 0, rec.err.join('\n'));
     assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries[1], { id: 'demo', kind: 'project', title: 'Demo', path: second });
   });
 
   await t.test('rename rewrites project.json together with the registry; reserved ids are refused', async () => {
     const reserved = recorder();
-    assert.equal(await runRename(['rename', 'demo', 'sites', '--registry', file], io(reserved)), 1);
+    assert.equal(await runMv(['mv', 'demo', 'sites', '--registry', file], io(reserved)), 1);
     assert.match(reserved.err.join('\n'), /保留名/);
     const rec = recorder();
-    assert.equal(await runRename(['rename', 'demo', 'demo-two', '--registry', file], io(rec)), 0, rec.err.join('\n'));
+    assert.equal(await runMv(['mv', 'demo', 'demo-two', '--registry', file], io(rec)), 0, rec.err.join('\n'));
     assert.equal(JSON.parse(fs.readFileSync(file, 'utf8')).entries[1].id, 'demo-two');
     assert.deepEqual(JSON.parse(fs.readFileSync(path.join(second, 'docs', 'pinpoint', 'project.json'), 'utf8')), { id: 'demo-two', title: 'Demo moved' });
     assert.ok(rec.out.some((line) => line.startsWith('  project.json：id demo → demo-two')));
@@ -2407,7 +2408,7 @@ function makeProjectWithBuckets(t) {
 test('rename a project moves every <old>_<article> bucket, rewrites ledger addresses, refreshes caches, warns about hard-coded /sites/ paths', async (t) => {
   const made = makeProjectWithBuckets(t);
   const rec = recorder();
-  assert.equal(await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 0, rec.err.join('\n'));
+  assert.equal(await runMv(['mv', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 0, rec.err.join('\n'));
   for (const id of ['alpha', 'beta', 'gone']) {
     assert.ok(!fs.existsSync(path.join(made.data, `demo_${id}`)), `old bucket demo_${id} is gone`);
     assert.ok(fs.existsSync(path.join(made.data, `demo2_${id}`, '@canvas.json')), `new bucket demo2_${id}`);
@@ -2437,7 +2438,7 @@ test('rename a project: a cache move that fails only warns and names what stayed
   fs.chmodSync(shot, 0o555); // shot/ 不可写：shot/demo_alpha 搬不动
   let code;
   try {
-    code = await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec));
+    code = await runMv(['mv', 'demo', 'demo2', '--registry', made.registry], made.io(rec));
   } finally {
     fs.chmodSync(shot, 0o755); // 先恢复，临时目录才删得掉
   }
@@ -2453,7 +2454,7 @@ test('rename a project refuses up front when any target article bucket exists', 
   fs.mkdirSync(path.join(made.data, 'demo2_beta'), { recursive: true });
   const before = fs.readFileSync(made.registry, 'utf8');
   const rec = recorder();
-  assert.equal(await runRename(['rename', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 1);
+  assert.equal(await runMv(['mv', 'demo', 'demo2', '--registry', made.registry], made.io(rec)), 1);
   assert.match(rec.err.join('\n'), new RegExp(`文章桶的目标已存在：${path.join(made.data, 'demo2_beta').replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`));
   assert.equal(fs.readFileSync(made.registry, 'utf8'), before, 'registry untouched');
   assert.ok(fs.existsSync(path.join(made.data, 'demo_alpha', '@canvas.json')), 'no bucket moved');

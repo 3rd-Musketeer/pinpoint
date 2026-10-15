@@ -56,7 +56,7 @@ project 是装一批相关文章和 wiki 词条的文件夹，id 是网址的第
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`wiki/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式、资源和组件只有文章这一级：没有 project 级的 css、`assets/` 和 `components/`。几篇文章都要用的组件放进 kit。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
-- 已有的文章目录不改名：目录名是文章地址和页 id 的后半段，改名后旧页 id 下的标注和评论整桶成孤儿。确要改名，按 [`docs/projects.md`](../../docs/projects.md)“文章目录改名”手工挪桶。换 project id 用 `pinpoint rename <旧 id> <新 id>`，它连每篇文章的桶一起搬。
+- 文章目录不要手动改名或挪走：目录名是文章地址和页 id 的后半段，手动改了，旧页 id 下的标注和评论整桶成孤儿。改文章 id、换 project 用 `ppnt mv <project>/<a> <project2>/<b>`（目标写 `<project2>/` 保留 id），它连标注桶一起搬，先加 `--dry-run` 看计划；别的文章里的 `[[a]]` 它只列出来，要自己改。换 project id 用 `ppnt mv <旧 id> <新 id>`，换 project 根目录用 `ppnt mv <id> <新路径>`。
 
 ## 3. 写 index.mdx
 

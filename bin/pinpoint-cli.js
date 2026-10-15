@@ -2,8 +2,9 @@
  * pinpoint CLI —— 登记评审入口 + 服务生命周期（bin/pinpoint.mjs 的逻辑层，node --test 直接测这里）。
  *
  * pinpoint 是 HTML 宿主：想让一个页面进 pinpoint，就用 `pinpoint add`；
- * 已登记条目换路径用 `pinpoint move`（保留 id；标注桶按页寻址，换路径不会孤儿化）；
- * 换 id 用 `pinpoint rename`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）；
+ * 已登记条目换路径用 `ppnt mv <id> <路径>`（保留 id；标注桶按页寻址，换路径不会孤儿化）；
+ * 换 id 用 `ppnt mv <旧 id> <新 id>`（登记表 + 标注桶 + 存量 HTML 里的 /sites/<id>/ 一起改）；
+ * 文章换 project 或改 id 用 `ppnt mv <project>/<a> <project2>/<b>`（目录与标注桶一起搬，见 cli/mv.js）；
  * 从登记表删掉条目用 `pinpoint remove`（只删登记，源文件不动；桶里还有
  * 标注行时拒绝，空桶顺手删掉）。
  * 静态内容（目录 / 单个 .html）由服务直接 host 在 /sites/<id>/。
@@ -18,7 +19,8 @@
  */
 import { USAGE, helpFor, reportUsageError } from './cli/args.js';
 import { ioOf } from './cli/core.js';
-import { runAdd, runMove, runPrune, runRename, runRemove } from './cli/registry.js';
+import { runAdd, runPrune, runRemove } from './cli/registry.js';
+import { runMv } from './cli/mv.js';
 import { runStatus, runStop, runStart, runRestart } from './cli/service.js';
 import { runBuild, runRender } from './cli/pages.js';
 import { runCheck, runComments, runLocate, runShot, runMark, runReply } from './cli/annotate.js';
@@ -70,9 +72,9 @@ export {
   planAdd,
   planMove,
   runAdd,
-  runMove,
+  moveEntry,
   runPrune,
-  runRename,
+  renameEntry,
   planRemove,
   runRemove,
 } from './cli/registry.js';
@@ -115,6 +117,7 @@ export { planNewProject, planNewArticle, articleScaffold, runNew } from './cli/n
 export { openUrls, runOpen } from './cli/open.js';
 export { pickSandboxPorts, sandboxEnv, OWNER_PORTS, runDev } from './cli/sandbox.js';
 export { componentUses } from './cli/uses.js';
+export { classifyMv, planArticleMove, runMv } from './cli/mv.js';
 export { ensureDist } from './cli/dist.js';
 export {
   pageListRows,
@@ -196,8 +199,7 @@ function dispatch(argv, io) {
     case 'open': return runOpen(argv, io);
     case 'dev': return runDev(argv, io);
     case 'add': return runAdd(argv, io);
-    case 'move': return runMove(argv, io);
-    case 'rename': return runRename(argv, io);
+    case 'mv': return runMv(argv, io);
     case 'remove': return runRemove(argv, io);
     case 'status': return runStatus(argv, io);
     case 'start': return runStart(argv, io);

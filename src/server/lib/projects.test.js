@@ -144,7 +144,7 @@ test('layout errors are listed, never thrown', async (t) => {
     assert.match(formatProjectError(a.errors[0]), /缺 docs\/pinpoint\/project\.json/);
     assert.equal(a.articles.length, 1, 'articles still read without project.json');
     assert.match(formatProjectError(b.errors[0]), /不是合法 JSON/);
-    assert.deepEqual(lines(c.errors), ['project.json 的 id "other" 与登记的 id "mine" 不一致（改 id 用 pinpoint rename）']);
+    assert.deepEqual(lines(c.errors), ['project.json 的 id "other" 与登记的 id "mine" 不一致（改 id 用 ppnt mv <旧 id> <新 id>）']);
   });
 
   await t.test('bad article dirs, reserved article id, duplicate concept names, bad frontmatter', (t) => {

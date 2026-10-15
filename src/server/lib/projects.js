@@ -220,7 +220,7 @@ export function readProject(entry) {
   for (const error of meta.errors) if (!errors.some((seen) => seen.code === error.code && seen.message === error.message)) errors.push(error);
   if (meta.json) {
     if (typeof meta.json.id === 'string' && meta.json.id !== entry.id) {
-      errors.push(problem('project_id_mismatch', `project.json 的 id "${meta.json.id}" 与登记的 id "${entry.id}" 不一致（改 id 用 pinpoint rename）`));
+      errors.push(problem('project_id_mismatch', `project.json 的 id "${meta.json.id}" 与登记的 id "${entry.id}" 不一致（改 id 用 ppnt mv <旧 id> <新 id>）`));
     }
     if (typeof meta.json.title === 'string' && meta.json.title) project.title = meta.json.title;
     // HTML 帧可以引用的 project 根外目录（docs/projects.md“HTML 帧”）。

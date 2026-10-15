@@ -29,7 +29,7 @@ const PROJECT_KEYS = new Set(['id', 'title', 'kind', 'path', 'addedAt']);
 // 写入白名单：未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
 const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'board', 'addedAt']);
 
-/** 改写一条已有条目前去掉已退役功能的字段（registry.js RETIRED_ENTRY_KEYS）：老登记表照样能 move / rename。 */
+/** 改写一条已有条目前去掉已退役功能的字段（registry.js RETIRED_ENTRY_KEYS）：老登记表照样能 `ppnt mv`（换路径、改 id）。 */
 function withoutRetiredKeys(entry) {
   if (!entry || typeof entry !== 'object') return entry;
   const out = { ...entry };
@@ -106,7 +106,7 @@ function readRegistryDoc(registryPath) {
 
 /**
  * Existing entries as written on disk (CLI): id collision messages name the
- * path the id already points at, and `pinpoint move` needs the whole entry to
+ * path the id already points at, and `ppnt mv <id> <path>` needs the whole entry to
  * carry title / board across a re-point. Throws on a malformed file.
  */
 export function listRegistryEntries(registryPath) {
@@ -114,7 +114,7 @@ export function listRegistryEntries(registryPath) {
 }
 
 /**
- * Replace one existing entry in place (the `pinpoint move` path): same strict
+ * Replace one existing entry in place (the `ppnt mv <id> <path>` path): same strict
  * validation as a write, same atomic rewrite, same position in the list — the
  * id is the annotation bucket address (~/.pinpoint/<id>/), so re-pointing a
  * path must never renumber it. Throws when the id is unknown or the new shape
@@ -143,7 +143,7 @@ function replaceEntry(entries, index, raw) {
 }
 
 /**
- * Rename one entry's id in place (the `pinpoint rename` path): the entry keeps
+ * Rename one entry's id in place (the `ppnt mv <old id> <new id>` path): the entry keeps
  * its position, kind, path and title. Same strict validation and same atomic
  * rewrite as a write. Throws when the old id is unknown or the new id is
  * taken/invalid; the on-disk file is untouched in that case. Returns { entry }.

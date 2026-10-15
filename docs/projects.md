@@ -69,43 +69,50 @@ ppnt new article <article>                             # 不写 project：进默
 pinpoint add <project 根> --project
 ```
 
-- id 只取 `project.json` 的 `id`。`--id` 可以写，但必须与它相同；要换 id 先改 `project.json`，或用 `pinpoint rename`。
+- id 只取 `project.json` 的 `id`。`--id` 可以写，但必须与它相同；要换 id 用 `ppnt mv <旧 id> <新 id>`，它连 `project.json` 一起改。
 - 标题只有一个来源：`project.json` 的 `title`。登记表里的 `title` 是登记时抄下的副本（`project.json` 没写 title 时用目录名），读取时 `project.json` 的 `title` 优先。所以 `--project` 不接受 `--title`。
 - `--project` 不能与 `--title`、`--board` 同用：project 不是页，没有壳。
 - 登记前检查 `project.json` 存在、id 合法、不是保留名、不撞既有条目 id；不过关就退非零，registry 不动。article 层面的问题（撞名、缺 `index.mdx`）不拦登记，在读取时报。
 
 | 命令 | 对 project 条目做什么 |
 | --- | --- |
-| `pinpoint move <id> <新根>` | 换根目录。新根的 `project.json` id 必须仍是 `<id>`，否则拒绝 |
-| `pinpoint rename <旧 id> <新 id>` | 登记表、`project.json` 的 `id`、每个文章桶一起改，见下面“rename 与文章桶”；新 id 是保留名时拒绝 |
+| `ppnt mv <id> <新根>` | 换根目录（新根以 `/`、`.`、`~` 开头）。新根的 `project.json` id 必须仍是 `<id>`，否则拒绝 |
+| `ppnt mv <旧 id> <新 id>` | 改 id：登记表、`project.json` 的 `id`、每个文章桶一起改，见下面“改 id 与文章桶”；新 id 是保留名时拒绝 |
+| `ppnt mv <project>/<a> <project2>/<b>` | 搬一篇文章：换 project 和 / 或改文章 id，见下面“`ppnt mv` 搬文章” |
 | `pinpoint remove <id>` | 只删登记，project 目录不动。每个文章桶 `<id>_<文章>/` 守其他条目的桶规则：有一个桶里有标注行就整单拒绝（列出哪些桶几行），全空就跟着删 |
 | `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · wiki 词条数 · 布局错误数，次行根目录，下面每篇文章缩进一行 `<project>/<article>`。关键词也匹配文章 id 与标题 |
 | `pinpoint show <project id>` | 列这个 project 的文章（地址、标题、节数、帧数、open 数、网址）、wiki 词条（name、status、boundary）、空 ref 和布局错误；有布局错误时退 1。`pinpoint list <project id>` 同义 |
 | `pinpoint check <project id>` | 验证整个 project：布局错误、每篇文章全部帧的编译与 lint、正文渲染错误、空 ref，一条一行带文件和行号；有错误退 1。见 [`docs/registry.md`](registry.md)“CLI” |
 | `pinpoint status` | `project` 一行：个数与布局错误数，有错误时是“注意”，逐条列在下面，不算失败 |
 
-### rename 与文章桶
+### 改 id 与文章桶
 
-project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`。`pinpoint rename <旧 id> <新 id>` 对 project 条目这样做：
+project id 本身不是桶，project 的桶是每篇文章的 `<id>_<文章>/`。`ppnt mv <旧 id> <新 id>` 对 project 条目这样做：
 
 - 扫数据根下所有 `<旧 id>_<文章>/`，按盘上的桶扫，不按现有文章扫，所以文章已删的孤儿桶也一起带走。带 `_` 的模板页 id 不算。
 - 预检：任何一个 `<新 id>_<文章>/` 已存在，或撞上模板页 id，就整单拒绝，登记表、`project.json`、桶都不动。
 - 每个桶一次 `rename`，单桶原子，逐行打印搬了什么。搬完改写桶里账本的旧地址：行上的 `pageId`，`@prose.json` 的 `path`（`/<旧 id>/<文章>/` 换成 `/<新 id>/<文章>/`）。
 - 按页 id 存的派生物：`shot/`、`check/` 里的图跟着搬；`dist/`、`render/` 里的 HTML 写死了 `/sites/<旧页 id>/`，删掉。有 dist 的文章按新页 id 重编一次，和 `ppnt build <页>` 用同一个编译器。派生物都能再生，搬不动或删不掉时只在 stderr 警告并点名留在旧名下的目录，桶和 `project.json` 照常做完。
 - 源文件不改。`docs/pinpoint/` 下写死了 `/sites/<旧 id>_` 的文件（帧里引用资源的绝对地址）逐个列在警告里，作者自己改成新地址或相对路径。
-- 工作台在浏览器里记的偏好（上次打开的页、tab）是 localStorage，不在服务端，rename 碰不到；旧页 id 的那几条自然失效。
+- 工作台在浏览器里记的偏好（上次打开的页、tab）是 localStorage，不在服务端，`mv` 碰不到；旧页 id 的那几条自然失效。
 
-### 文章目录改名
+### `ppnt mv` 搬文章
 
-`articles/a` 改名成 `articles/b` 不会自动处理，也没有专门的命令：改名还要改别的文章里的 `[[a]]`，CLI 做不全。改名后 `<project>_a` 指不到任何文章，它的桶整桶皆孤儿（`ppnt comments <project>/a` 会列出来）。要保留标注，先停服务，手工把桶和缓存挪过去：
+一篇文章换 project、改文章 id，或两样一起：
 
 ```shell
-mv ~/.pinpoint/<project>_a ~/.pinpoint/<project>_b      # 桶；PINPOINT_DATA_DIR 设了就换成它
-rm -rf ~/.pinpoint/dist/<project>_a                     # dist 写死旧地址，重编即可
-ppnt build <project>_b
+ppnt mv notes/quick-idea browser-use/payment-retry   # 换 project 并改 id
+ppnt mv notes/quick-idea browser-use/                # 目标写 <project>/：保留文章 id
+ppnt mv browser-use/a browser-use/b --dry-run        # 只列计划
 ```
 
-手工挪时，桶里行上的 `pageId` 和 `@prose.json` 的 `path` 还是旧值（project rename 会改写它们，手工挪不会）。不要这些标注的话，直接 `ppnt prune <project>_a`。
+源也认页 id 和文章网址。实现在 `bin/cli/mv.js`（ADR 0045）。
+
+- 预检，任何一条不过就一个字节不动：源文章的 `index.mdx` 在；目标 project 登记了；目标文章 id 合法、不是保留名；目标目录 `articles/<b>/` 不在；目标桶 `<p2>_<b>/` 里没有标注行（有就是别的文章留下的孤儿，提示换 id 或 `ppnt prune`）；目标页 id 不撞模板页。
+- 换 project 时还查 HTML 帧：`{ id, src }` 写法的帧在原 project 里找得到、在新 project 里找不到（`<source 名>:` 没在新 `project.json` 的 `sources` 里登记，或相对 project 根的文件在新根下不在），就拒绝并逐帧列出原因。先在新 project 登记 source 或放好文件，再搬。没有跳过这一步的开关：搬过去就是坏帧。
+- 做的事：文章目录整个搬到 `<p2 根>/docs/pinpoint/articles/<b>/`（跨卷时复制再删）；目录里写死的 `/sites/<p>_<a>/` 换成 `/sites/<p2>_<b>/`（`.jsx`、`.js`、`.css`、`.mdx`、`.md`、`.html`、`.json`）；桶 `<p>_<a>/` 改名成 `<p2>_<b>/`（目标桶在而没有标注行时先删掉它），账本里行上的 `pageId` 与 `@prose.json` 的 `path` 改写，和 project 改 id 用同一个函数；`shot/`、`check/` 缓存跟着搬，`dist/`、`render/` 删掉，有 dist 的按新页 id 重编。
+- 不做的事：别的文章和 wiki 词条里指向它的 `[[a]]`、`[[p:a]]` 不改，逐条列在 stderr（文件:行）。
+- 服务不用重启：project 目录在 watcher 里，搬完的文章一会儿就出现在新地址。
 
 project 条目与存量页的条目共用 registry 的 id 命名空间（同一个 `entries` 数组），但 project 没有页 id：不出现在工作台左栏的“页面”组、`GET /registry` 的 `entries` 和 `/sites/` 里。
 

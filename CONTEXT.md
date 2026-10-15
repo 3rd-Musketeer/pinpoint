@@ -127,7 +127,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 要避开：拿“产物”单说 dist（存量页的大纲里“产物”另有所指，见存量页一节）。
 
 **registry（登记表）** · `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）；读 `src/server/lib/registry.js`，写 `src/server/lib/registry-store.js`
-声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / move / rename / remove`。
+声明哪些仓外内容进 pinpoint：project（`kind: "project"`）和存量页的来源（`kind: "dir" | "file" | "url"`）。它同时是三件事的白名单：服务什么、往哪注入标注客户端、标注落哪个桶。写入只经 `pinpoint add / mv / remove`。
 要避开：手改 registry 文件。
 
 **登记过才注入** · 注入片段 `src/server/lib/annotate-snippet.js`

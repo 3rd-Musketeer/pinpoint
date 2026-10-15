@@ -56,7 +56,7 @@ export function entryTargetDesc(entry) {
 function idTakenError(id, existing) {
   const where = existing ? `，指向 ${entryTargetDesc(existing)}` : '';
   return new CliError(
-    `id 已存在：${id}${where}；更新路径用 \`pinpoint move ${id} <新路径>\`，要新条目请显式 \`--id <其他 id>\``,
+    `id 已存在：${id}${where}；更新路径用 \`ppnt mv ${id} <新路径>\`，要新条目请显式 \`--id <其他 id>\``,
   );
 }
 
@@ -158,7 +158,7 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
     // project 只能重指到另一个 project 根，且 id 不变（id 写在 project.json 里）。
     const { root, json } = resolveProjectRoot(target, cwd);
     if (json.id !== id) {
-      throw new CliError(`新根目录的 project.json id 是 "${json.id}"，不是 ${id}；move 保留 id，换 id 用 \`pinpoint rename\``);
+      throw new CliError(`新根目录的 project.json id 是 "${json.id}"，不是 ${id}；换根目录时 id 不变，换 id 用 \`ppnt mv ${id} <新 id>\``);
     }
     return { before, after: { ...before, path: root } };
   }
@@ -171,11 +171,11 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   return { before, after };
 }
 
-/* ---------------------------- rename（改 id） ----------------------------
+/* ------------------------ 改 id（ppnt mv <旧 id> <新 id>） ------------------------
    id 是三个地方的地址：登记表的条目 id、标注桶 ~/.pinpoint/<id>/、以及页面资源
    的 URL 前缀 /sites/<id>/。手改其中一个，另外两个就此错位——2026-09-03 实迁
    （mcp-confirm + artifact-v2 合并成 chat-cards）踩到的正是第三个：机壳和内联
-   HTML 还在，JS 注入的卡整段消失，看起来像设计坏了。rename 把三处一次改齐。 */
+   HTML 还在，JS 注入的卡整段消失，看起来像设计坏了。改 id 把三处一次改齐。 */
 
 /** 会被扫的扩展名：HTML 是主场，CSS/JS sidecar 里也会写死 /sites/<id>/ 前缀。 */
 const SITE_PREFIX_EXTS = new Set(['.html', '.htm', '.css', '.js']);
@@ -239,12 +239,12 @@ function walkTextFiles(dirPath, exts, visit) {
 }
 
 /**
- * 条目目录下所有 *.html/*.css/*.js 里的 /sites/<旧 id>/ 换成新前缀。
+ * 条目目录下所有 *.html/*.css/*.js（exts 可换，`ppnt mv` 搬文章时用 ARTICLE_SOURCE_EXTS）里的 /sites/<旧 id>/ 换成新前缀。
  * 返回被改写的文件相对路径列表。dryRun 只统计不落盘（预检用）。
  */
-export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false } = {}) {
+export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false, exts = SITE_PREFIX_EXTS } = {}) {
   const changed = [];
-  const root = walkTextFiles(dirPath, SITE_PREFIX_EXTS, (full, text) => {
+  const root = walkTextFiles(dirPath, exts, (full, text) => {
     const next = rewriteSitePrefix(text, oldId, newId);
     if (!next.changed) return;
     if (!dryRun) fs.writeFileSync(full, next.text);
@@ -254,7 +254,7 @@ export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false }
 }
 
 /** project 内容目录里会写死文章画布地址的文件类型。 */
-const ARTICLE_SOURCE_EXTS = new Set(['.jsx', '.js', '.css', '.mdx', '.md', '.html', '.htm', '.json']);
+export const ARTICLE_SOURCE_EXTS = new Set(['.jsx', '.js', '.css', '.mdx', '.md', '.html', '.htm', '.json']);
 
 /**
  * project 的 docs/pinpoint/ 下写死了 `/sites/<project id>_` 的文件（相对 docs/pinpoint/）。
@@ -294,25 +294,26 @@ export function articleBucketIds(root, projectId, { manifestIds = [] } = {}) {
 }
 
 /** 一个桶里的标注行数（各账本 annotations 之和；_seq.json 与坏文件不算）。 */
-function bucketRowCount(bucket) {
+export function bucketRowCount(bucket) {
   return readBucketLedgers(bucket)
     .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
 }
 
 /** 数据根下按页 id 存的派生物。dist / render 里的 HTML 写死了 `/sites/<页 id>/`，
     换 id 后作废，删掉重编；check / shot 只是图片，跟着搬。 */
-const PAGE_CACHE_DROP = ['dist', 'render'];
-const PAGE_CACHE_MOVE = ['check', 'shot'];
+export const PAGE_CACHE_DROP = ['dist', 'render'];
+export const PAGE_CACHE_MOVE = ['check', 'shot'];
 
 /**
  * 搬完的文章桶里，账本还记着旧地址：行上的 `pageId`（画布标注按它对 @page / @frame
  * 指示符）、`@prose.json` 的 `path`（`/<project>/<article>/`）。逐本改写，每本写临时
  * 文件再 rename，单本是原子的。返回改写的账本名。
+ * move = { fromId, toId, fromProject, toProject, articleId } 或另给 fromArticle / toArticle（`ppnt mv` 改文章 id）。
  */
-function rewriteMovedBucket(bucket, move) {
+export function rewriteMovedBucket(bucket, move) {
   const changed = [];
-  const fromPath = `/${move.fromProject}/${move.articleId}/`;
-  const toPath = `/${move.toProject}/${move.articleId}/`;
+  const fromPath = `/${move.fromProject}/${move.fromArticle || move.articleId}/`;
+  const toPath = `/${move.toProject}/${move.toArticle || move.articleId}/`;
   for (const { name, doc } of readBucketLedgers(bucket)) {
     if (!doc || typeof doc !== 'object') continue;
     let dirty = false;
@@ -355,17 +356,15 @@ export function buildRename(oldId, newId, { entries = [] } = {}) {
   const clash = entries.find((entry) => entry && entry.id === newId);
   if (clash) {
     throw new CliError(
-      `id 已存在：${newId}，指向 ${entryTargetDesc(clash)}；把两个条目并成一个 = 先 rename 再 \`pinpoint move\``,
+      `id 已存在：${newId}，指向 ${entryTargetDesc(clash)}；把两个条目并成一个 = 先 \`ppnt mv\` 改 id，再 \`ppnt mv <id> <路径>\` 换路径`,
     );
   }
   return { before, after: { ...before, id: newId } };
 }
 
-/** parse + 构造 + 四件事的预检（不写盘、不联网）：任何一件做不了就整单不动手。 */
-export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}) {
-  const parsed = parseArgs(argv);
-  if (parsed.help) return parsed;
-  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+/** 改 id 的构造 + 四件事的预检（不写盘、不联网）：任何一件做不了就整单不动手。parsed = { id, newId, flags }。 */
+export function planRename(parsed, { cwd = process.cwd(), env = process.env } = {}) {
+  const registryPath = resolveRegistryPath(parsed.flags || {}, env, cwd);
   const { before, after } = buildRename(parsed.id, parsed.newId, {
     entries: existingEntriesFor(registryPath),
   });
@@ -413,7 +412,7 @@ export function planRename(argv, { cwd = process.cwd(), env = process.env } = {}
   }
   if (before.kind === 'dir') {
     if (!fs.existsSync(before.path)) {
-      throw new CliError(`条目 ${before.id} 的目录不存在：${before.path}；先 \`pinpoint move ${before.id} <真实路径>\` 再改 id`);
+      throw new CliError(`条目 ${before.id} 的目录不存在：${before.path}；先 \`ppnt mv ${before.id} <真实路径>\` 再改 id`);
     }
     rewriteDir = before.path;
     rewritePreview = rewriteSitePrefixUnder(rewriteDir, before.id, after.id, { dryRun: true });
@@ -442,11 +441,9 @@ export function planAdd(argv, { cwd = process.cwd(), env = process.env } = {}) {
   return { ...parsed, registryPath, entry };
 }
 
-/** parse + 定位既有条目 + 构造新落点，返回一次 move 的全部输入（不写盘、不联网）。 */
-export function planMove(argv, { cwd = process.cwd(), env = process.env } = {}) {
-  const parsed = parseArgs(argv);
-  if (parsed.help) return parsed;
-  const registryPath = resolveRegistryPath(parsed.flags, env, cwd);
+/** 定位既有条目 + 构造新落点，返回一次换路径的全部输入（不写盘、不联网）。parsed = { id, target, flags }。 */
+export function planMove(parsed, { cwd = process.cwd(), env = process.env } = {}) {
+  const registryPath = resolveRegistryPath(parsed.flags || {}, env, cwd);
   const { before, after } = buildMove(parsed.id, parsed.target, { cwd, entries: existingEntriesFor(registryPath) });
   return { ...parsed, registryPath, before, after };
 }
@@ -524,21 +521,25 @@ export async function runAdd(argv, io = {}) {
 }
 
 /**
- * 执行一次 move：原子改写既有条目的落点 → 探活服务 → 可达则 reload。
- * id 与 title 不变，所以 ~/.pinpoint/<id>/ 里的既有标注继续对得上。
+ * `ppnt mv <id> <路径>`：原子改写既有条目的落点 → 探活服务 → 可达则 reload。
+ * id 与 title 不变，所以 ~/.pinpoint/<id>/ 里的既有标注继续对得上。parsed = { id, target, flags }。
  */
-export async function runMove(argv, io = {}) {
+export async function moveEntry(parsed, io = {}) {
   const { cwd, env, out, err, requestFn } = ioOf(io);
-
-  const parsed = guardParse(argv, io);
-  if (typeof parsed === 'number') return parsed;
-  if (parsed.help) return 0;
   let plan;
   try {
-    plan = planMove(argv, { cwd, env });
+    plan = planMove(parsed, { cwd, env });
   } catch (error) {
     err(`${error instanceof CliError ? '错误' : '重指失败'}：${error.message}`);
     return 1;
+  }
+  if (parsed.flags && parsed.flags['dry-run']) {
+    out(`计划：${plan.before.id} 换路径（${plan.before.kind} → ${plan.after.kind}）`);
+    out(`  旧：${entryTargetDesc(plan.before)}`);
+    out(`  新：${entryTargetDesc(plan.after)}`);
+    out(`  标注桶 ${plan.before.kind === 'project' ? `${plan.before.id}_<文章>` : plan.before.id} 不动（id 不变）。`);
+    out('--dry-run：什么都没写，去掉 --dry-run 再跑。');
+    return 0;
   }
 
   let entry;
@@ -641,22 +642,35 @@ export async function runPrune(argv, io = {}) {
 }
 
 /**
- * 执行一次 rename：预检四件事都能做 → 换 id → 改标注桶名 → 重写 /sites/ 前缀 →
+ * `ppnt mv <旧 id> <新 id>`：预检四件事都能做 → 换 id → 改标注桶名 → 重写 /sites/ 前缀 →
  * 探活服务并 reload。id 是登记表、标注桶、资源 URL 三处的同一个地址，所以这三处
- * 必须一起改（2026-09-03 实迁：只改了登记表，页面资源整段 404 却看不出来）。
+ * 必须一起改（2026-09-03 实迁：只改了登记表，页面资源整段 404 却看不出来）。parsed = { id, newId, flags }。
  */
-export async function runRename(argv, io = {}) {
+export async function renameEntry(parsed, io = {}) {
   const { cwd, env, out, err, requestFn } = ioOf(io);
-
-  const parsed = guardParse(argv, io);
-  if (typeof parsed === 'number') return parsed;
-  if (parsed.help) return 0;
   let plan;
   try {
-    plan = planRename(argv, { cwd, env });
+    plan = planRename(parsed, { cwd, env });
   } catch (error) {
     err(`${error instanceof CliError ? '错误' : '改 id 失败'}：${error.message}`);
     return 1;
+  }
+  if (parsed.flags && parsed.flags['dry-run']) {
+    out(`计划：${plan.before.id} 改 id 成 ${plan.after.id}（${plan.before.kind}）：${entryTargetDesc(plan.before)}`);
+    out('  登记表：条目改名');
+    if (plan.bucketExists) out(`  标注桶：${plan.bucketFrom} → ${plan.bucketTo}`);
+    else if (plan.before.kind !== 'project') out(`  标注桶：${plan.bucketFrom} 不存在，没有标注要搬`);
+    for (const move of plan.articleMoves || []) out(`  文章桶：${move.from} → ${move.to}`);
+    if (plan.before.kind === 'project' && !(plan.articleMoves || []).length) out(`  文章桶：没有 ${plan.before.id}_<文章> 桶要搬`);
+    if (plan.projectJson) out(`  project.json：id ${plan.before.id} → ${plan.after.id}（${plan.projectJson}）`);
+    if (plan.rewriteDir) {
+      out(plan.rewritePreview.length
+        ? `  资源前缀：${plan.rewritePreview.length} 个文件里的 /sites/${plan.before.id}/ 换成 /sites/${plan.after.id}/`
+        : `  资源前缀：没有文件写着 /sites/${plan.before.id}/`);
+      for (const file of plan.rewritePreview) out(`    ${file}`);
+    }
+    out('--dry-run：什么都没写，去掉 --dry-run 再跑。');
+    return 0;
   }
 
   // ① 登记表
@@ -752,7 +766,7 @@ export async function runRename(argv, io = {}) {
 
   // project 的源文件 rename 不改：写死了 /sites/<旧 id>_<文章>/ 的文件列出来让作者改。
   if (plan.sitePrefixFiles && plan.sitePrefixFiles.length) {
-    err(`  注意：这些文件写死了 /sites/${plan.before.id}_…/，rename 不改源文件，请改成 /sites/${plan.after.id}_…/ 或相对路径：`);
+    err(`  注意：这些文件写死了 /sites/${plan.before.id}_…/，ppnt mv 不改源文件，请改成 /sites/${plan.after.id}_…/ 或相对路径：`);
     for (const file of plan.sitePrefixFiles) err(`    ${path.join(plan.before.path, PROJECT_CONTENT_DIR, file)}`);
   }
 

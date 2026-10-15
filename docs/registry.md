@@ -23,8 +23,8 @@
   dir / file 路径不存在是 warning，不是删除。
 - 老登记表里已删功能的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order` /
   `page` / `role` / `url`）读的时候跳过，每个键记一条 warning，其余条目照常加载（带 `page` 的老条目照常自成一页）；
-  `move` / `rename` 写回时不再带这些字段。`kind: "url"` 的老条目整条跳过、记一条 warning；
-  它留在文件里，`move <id> <目录|文件>` 把它重指成本地条目，`remove <id>` 把它删掉。
+  `ppnt mv`（换路径、改 id）写回时不再带这些字段。`kind: "url"` 的老条目整条跳过、记一条 warning；
+  它留在文件里，`mv <id> <目录|文件>` 把它重指成本地条目，`remove <id>` 把它删掉。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表）。
 - `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。
@@ -39,8 +39,8 @@
 ```bash
 pinpoint add    <dir|file.html> [--title X] [--board ios|html] [--id xxx]
 pinpoint add    <project 根> --project
-pinpoint move   <id> <dir|file.html>
-pinpoint rename <旧 id> <新 id>
+pinpoint mv     <id> <dir|file.html>      # 换落点（目标以 /、.、~ 开头）
+pinpoint mv     <旧 id> <新 id>           # 改 id
 pinpoint remove <id>
 pinpoint list   [关键词…]
 ```
@@ -50,14 +50,18 @@ pinpoint list   [关键词…]
 `add` 原子追加到登记文件（`--registry` 覆盖路径，给脚本和测试用）。本条目自己的 id 用 `--id`，
 缺省由目录名或文件名派生。
 
-`move` 原地改一个既有条目的落点（dir / file 两种目标，校验方式与 `add` 一致：路径必须存在、
+`ppnt mv` 按目标的写法做三件事中的一件（`bin/cli/mv.js`，ADR 0045）：目标以 `/`、`.`、`~` 开头是磁盘路径，换落点；
+源是文章（`<project>/<article>`）时搬文章，见 [`docs/projects.md`](projects.md)“`ppnt mv` 搬文章”；其余是改 id。
+三种都认 `--dry-run`：只列计划，什么都不写。
+
+换落点（`mv <id> <路径>`）原地改一个既有条目的落点（dir / file 两种目标，校验方式与 `add` 一致：路径必须存在、
 单文件必须是 .html），**id 与 title 原样保留**——标注桶按页 id 寻址（`~/.pinpoint/<id>/`），
 所以换路径不动既有标注。kind 跟着新目标走，`board` 只在 dir 上留着
 （改成 file 时丢掉，file 的壳是定死的）。未知 id、目标不存在都整单失败，registry 一个字节不动。
 
-`rename` 换的是 id 本身。id 同时是三个地方的地址——登记表里的条目 id、标注桶
+改 id（`mv <旧 id> <新 id>`）换的是 id 本身。id 同时是三个地方的地址——登记表里的条目 id、标注桶
 `~/.pinpoint/<id>/`、以及页面资源的 URL 前缀 `/sites/<id>/`——手改其中一个另外两个就错位，
-所以 `rename` 一次改齐，并且**四件事都能做才动手**（预检不过时 registry 一个字节不动）：
+所以改 id 一次改齐，并且**四件事都能做才动手**（预检不过时 registry 一个字节不动）：
 
 1. **登记表**：条目换 id，位置、kind、落点、title 全部保留。新 id 已存在就整单失败。
 2. **标注桶**：`~/.pinpoint/<旧 id>/` 改名成 `~/.pinpoint/<新 id>/`。旧桶不存在就跳过；
@@ -66,14 +70,14 @@ pinpoint list   [关键词…]
    `/sites/<旧 id>/` 换成 `/sites/<新 id>/`，跳过 `node_modules` 与逃出条目目录的 symlink，
    打印改了几个文件、分别是哪些。file 条目没有目录可扫，这一步跳过。
    相对路径不用改——`src/workbench/lib/sidecar-css.js` 装配 fragment 时按 `pageBaseUrl` 重写。
-4. **重载**：与 `add` / `move` 同一条即时生效路径。
+4. **重载**：与 `add`、换落点同一条即时生效路径。
 
-**把两个条目并成一个 = `rename` + `move`**：先把要保留的那个条目 `rename` 成目标 id，
-再把另一个条目的内容 `move` 到同一个落点（或用 `pinpoint remove` 把它从登记表里删掉）。
-`rename` 自己不做合并——目标 id 已被占用时它一律拒绝，不会去动别人的标注桶。
+**把两个条目并成一个 = 改 id + 换落点**：先把要保留的那个条目 `mv` 成目标 id，
+再把另一个条目 `mv` 到同一个落点（或用 `pinpoint remove` 把它从登记表里删掉）。
+改 id 自己不做合并——目标 id 已被占用时它一律拒绝，不会去动别人的标注桶。
 
-project 条目没有自己的桶，`rename` 与 `remove` 对它按每篇文章的桶 `<id>_<文章>/` 做，见
-[`docs/projects.md`](projects.md)“rename 与文章桶”。
+project 条目没有自己的桶，改 id 与 `remove` 对它按每篇文章的桶 `<id>_<文章>/` 做，见
+[`docs/projects.md`](projects.md)“改 id 与文章桶”。
 
 `remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件留在原地，
 重新 `add` 同一个目标即恢复登记。两种情况拒绝动手（registry 一个字节不动）：id 不存在；
@@ -82,7 +86,7 @@ project 条目没有自己的桶，`rename` 与 `remove` 对它按每篇文章�
 空账本 / `_seq.json` 时放行，并顺手删掉这个空桶。
 
 **撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
-CLI 打印“id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id> <新路径>`，要新条目请显式
+CLI 打印“id 已存在，指向 `<path>`；更新路径用 `ppnt mv <id> <新路径>`，要新条目请显式
 `--id <其他 id>`”并退非零。自动改名会开一个空桶、让既有标注变成孤儿，所以一律报错。
 
 写侧在 `src/server/lib/registry-store.js`（`addRegistryEntry` / `updateRegistryEntry` /
@@ -94,7 +98,7 @@ CLI 打印“id 已存在，指向 `<path>`；更新路径用 `pinpoint move <id
 服务 `/health` 有响应时会自己调它，所以新条目不重启就能 serve、注入、分桶；
 已打开的 workbench 经 HMR 的 `registry:update` 事件学到（那个事件同时重挂当前板）。静态快照会答 `409 registry_not_reloadable`。
 
-`add`、`move`、`rename`、`remove` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
+`add`、`mv`（换落点、改 id）、`remove` 写盘后都走同一条即时生效：探活 `/health`，可达就 `POST /registry/reload` 并打印
 重载结果（重载了几条 / 服务在用的是另一个 registry 文件 / 服务没在跑，下次启动生效）。
 
 服务本身的起停在 `pinpoint status｜start｜stop｜restart`，见 [`AGENTS.md`](../AGENTS.md) 的
@@ -171,7 +175,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 ### `--json` 和退出码
 
-每个命令都认 `--json`，这时 stdout 只有一个 JSON 对象，提示和错误照常写 stderr。`show`、`check`、`comments`、`list`、`locate`、`shot`、`mark`、`reply`、`build`、`status`、`new`、`open` 各有自己的结构（见各自的 `--help`）；其余命令（`add`、`move`、`migrate` 等）给统一的外壳 `{ ok, exit, command, error?, output, stderr }`，`output` 和 `stderr` 是原本要打的行。`dev --json` 在服务就绪时打一行 JSON。`--help` 不受 `--json` 影响。
+每个命令都认 `--json`，这时 stdout 只有一个 JSON 对象，提示和错误照常写 stderr。`show`、`check`、`comments`、`list`、`locate`、`shot`、`mark`、`reply`、`build`、`status`、`new`、`open` 各有自己的结构（见各自的 `--help`）；其余命令（`add`、`mv`、`migrate` 等）给统一的外壳 `{ ok, exit, command, error?, output, stderr }`，`output` 和 `stderr` 是原本要打的行。`dev --json` 在服务就绪时打一行 JSON。`--help` 不受 `--json` 影响。
 
 退出码在所有命令上一致（`bin/pinpoint-cli.js`）：
 
@@ -199,7 +203,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 - `notes` 已经登记：直接用登记表里的根目录，不看下面的变量。
 - 没登记：先在默认根目录建好 project（`project.json` 写 `{ "id": "notes", "title": "Notes" }`，建空的 `articles/`、`wiki/`），登记，再建文章；输出第一行说明建在哪。默认根目录下已有 `project.json` 而 id 不是 `notes` 时退 2，什么都不登记。
-- 默认根目录是环境变量 `PINPOINT_DEFAULT_PROJECT`：`~` 开头按家目录展开，相对路径按当前目录；没设时是 `~/notes`。要换位置，第一次建之前设好这个变量，或直接 `ppnt new project <目录> --id notes --title Notes` 把它建在想要的地方。已经登记过的 `notes` 要搬家，用 `ppnt move notes <新根>`。
+- 默认根目录是环境变量 `PINPOINT_DEFAULT_PROJECT`：`~` 开头按家目录展开，相对路径按当前目录；没设时是 `~/notes`。要换位置，第一次建之前设好这个变量，或直接 `ppnt new project <目录> --id notes --title Notes` 把它建在想要的地方。已经登记过的 `notes` 要搬家，先把目录挪过去，再 `ppnt mv notes <新根>`。
 - owner 机器上 `notes` 登记在 `~/workspace/mori-ws/notes/`，没设这个变量。
 - `--json` 多一个 `defaultProject: { id, root, created, files }`，只在这一次新建了 `notes` 时出现。
 

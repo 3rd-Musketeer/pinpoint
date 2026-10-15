@@ -437,7 +437,7 @@ test('/save 正文评论：owner 回复或改引文回 open；agent 消息原样
   assert.equal(reopened.doc.annotations[0].status, 'open');
 });
 
-// 桶在写的途中没了（ppnt remove / prune 删桶，ppnt rename 挪桶，和一次保存撞上）：
+// 桶在写的途中没了（ppnt remove / prune 删桶，ppnt mv 挪桶，和一次保存撞上）：
 // 在 rename 那一刻真的删 / 挪目录，看存储层自己怎么收场。
 function renameHook(t, before) {
   const original = fs.renameSync;

@@ -132,7 +132,7 @@ async function ensureProject({ dir, id = null, title = null, flags = {} }, { cwd
   const ctx = addressContext(flags, env);
   const registered = projectEntry(ctx.registry, plan.id);
   if (registered && path.resolve(registered.path) !== plan.root) {
-    return { ok: false, usage: true, message: `project id "${plan.id}" 已经登记在 ${registered.path}；换 --id，或用 ppnt move ${plan.id} ${plan.root} 把登记指过来` };
+    return { ok: false, usage: true, message: `project id "${plan.id}" 已经登记在 ${registered.path}；换 --id，或用 ppnt mv ${plan.id} ${plan.root} 把登记指过来` };
   }
   const written = [];
   try {

@@ -72,7 +72,7 @@ export function keepAgentMessages(diskMessages, incoming) {
   return out;
 }
 
-/** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt rename` 把它挪走了），或者桶不在、
+/** 写账本时桶目录不见了（`ppnt remove` / prune 删了它，或 `ppnt mv` 把它挪走了），或者桶不在、
     页也已不 live（不新建这种桶）。这次写什么都没落盘：临时文件已清掉，旧账本（若还在）原样。
     路由回 503 bucket_gone。 */
 export class BucketGoneError extends Error {
@@ -131,7 +131,7 @@ export function createAnnotationStore(options) {
   }
 
   /** 遗留的临时文件：本进程的（写是同步的，进到这里时不可能有本进程在途的写）和已退出
-      进程的。它们出现在两种情况：桶在 open 与 rename 之间被 `ppnt rename` 挪走，临时文件
+      进程的。它们出现在两种情况：桶在 open 与 rename 之间被 `ppnt mv` 挪走，临时文件
       跟着桶搬到了新名下，旧路径上删不到；或写到一半进程死了。读侧本来就不认它们
       （只读 .json），这里顺手清掉，桶里不留垃圾。 */
   function sweepStaleTemps() {

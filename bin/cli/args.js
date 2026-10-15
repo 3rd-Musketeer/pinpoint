@@ -12,8 +12,8 @@ const BOOLEAN_FLAGS = new Set(['watch', 'full', 'json', 'marks', 'dry-run', 'pro
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'project']) },
-  move: { positional: 2, flags: new Set(['registry']) },
-  rename: { positional: 2, flags: new Set(['registry']) },
+  // mv <源> <目标>：文章换 project / 改 id、project 或存量页改 id、换根目录（按目标的写法分，见 mv.js）。
+  mv: { positional: 2, flags: new Set(['registry', 'dry-run']) },
   remove: { positional: 1, flags: new Set(['registry']) },
   status: { positional: 0, flags: new Set(['registry', 'json']) },
   start: { positional: 0, flags: new Set() },
@@ -41,7 +41,7 @@ const COMMANDS = {
 /** `ppnt new` 能建的两种东西。 */
 export const NEW_KINDS = ['project', 'article'];
 
-/** 参数解析（纯函数）。add 返回 { command, target, flags }，move 返回 { command, id, target, flags }，
+/** 参数解析（纯函数）。add 返回 { command, target, flags }，mv 返回 { command, source, target, flags }，
     服务命令返回 { command, flags }；非法输入抛 CliError。 */
 export function parseArgs(argv) {
   const args = [...argv];
@@ -88,8 +88,7 @@ export function parseArgs(argv) {
     fail(positionalProblem(command, spec.positional, positional.length));
   }
   if (command === 'add') return { command, target: positional[0], flags };
-  if (command === 'move') return { command, id: positional[0], target: positional[1], flags };
-  if (command === 'rename') return { command, id: positional[0], newId: positional[1], flags };
+  if (command === 'mv') return { command, source: positional[0], target: positional[1], flags };
   if (command === 'remove') return { command, id: positional[0], flags };
   if (['build', 'render', 'check', 'comments', 'show', 'prune', 'migrate'].includes(command)) return { command, target: positional[0], flags };
   if (command === 'new') {
@@ -129,15 +128,10 @@ function positionalProblem(command, want, got) {
   if (command === 'add') {
     return got === 0 ? 'add 需要一个目标（目录 / 文件 / URL）' : `add 只接受一个目标，收到 ${got} 个`;
   }
-  if (command === 'move') {
+  if (command === 'mv') {
     return got < 2
-      ? 'move 需要两个参数：<id> <新目录|新文件>'
-      : `move 只接受两个参数，收到 ${got} 个`;
-  }
-  if (command === 'rename') {
-    return got < 2
-      ? 'rename 需要两个参数：<旧 id> <新 id>'
-      : `rename 只接受两个参数，收到 ${got} 个`;
+      ? 'mv 需要两个参数：<源> <目标>（<project>/<article> <project>/<article>、<id> <新 id> 或 <id> <路径>）'
+      : `mv 只接受两个参数，收到 ${got} 个`;
   }
   if (command === 'remove') {
     return got === 0 ? 'remove 需要一个条目 id' : `remove 只接受一个条目 id，收到 ${got} 个`;

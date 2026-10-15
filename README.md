@@ -49,7 +49,7 @@ They are a normal entry point next to articles: view, edit and annotate them as 
 | project 与文章的目录、`add --project`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas`、`[[ ]]`、画布浮层、路由、`llms.txt` | [`site/README.md`](site/README.md) |
 | 帧、组件、编译、交互；存量页的 `board.json` 字段 | [`docs/board-schema.md`](docs/board-schema.md) |
-| registry 条目形状、`pinpoint add` / `move` / `rename` / `remove`、注入路径 | [`docs/registry.md`](docs/registry.md) |
+| registry 条目形状、`pinpoint add` / `mv` / `remove`、注入路径 | [`docs/registry.md`](docs/registry.md) |
 | 标注与评论的字段、桶与账本、状态机、控制面、图片导出 | [`docs/annotation.md`](docs/annotation.md) |
 | 设计语言正典（写 / 改 UI 前必读） | [`docs/design.md`](docs/design.md) |
 | 一个决定为什么是这样、什么时候定的 | [`docs/adr/`](docs/adr/) |
@@ -128,6 +128,7 @@ target is an error that lists candidates (exit 2). `ppnt <command> --help` gives
 conventions and exit codes are in [`docs/registry.md`](docs/registry.md) “CLI”.
 
 ```bash
+ppnt new article <article>     # jot down an article in the default project `notes` (created and registered on first use)
 ppnt list [words…]             # projects (each article as <project>/<article>) and legacy pages; words also match article ids and titles
 ppnt show <project>            # a project's articles, wiki entries, empty refs and layout errors
 ppnt show <project>/<article>  # per section: §n · letter · section id · title · frames · open count · URLs
@@ -144,8 +145,9 @@ ppnt prune <target>            # delete orphan ledgers in that bucket (owner's c
 ppnt start | stop | restart    # drive the persistent pinpoint.localhost service
 ppnt add <root> --project      # register a project (reads <root>/docs/pinpoint/project.json) — see docs/projects.md
 ppnt add <dir|file>            # register a legacy page source (files stay where they are) — see docs/registry.md
-ppnt move <id> <target>        # re-point an entry, keep its id and annotations
-ppnt rename <old> <new>        # rename id + annotation bucket(s) + /sites/ prefix in one shot
+ppnt mv <project>/<a> <project2>/<b>  # move or rename an article, its annotation bucket included
+ppnt mv <id> <new id>          # rename a project or page id + annotation bucket(s) + /sites/ prefix in one shot
+ppnt mv <id> <path>            # re-point an entry (path starts with /, . or ~), keep its id and annotations
 ppnt migrate <page id> --project <root>  # copy a legacy page into an article, then compare frame by frame — see docs/projects.md
 ```
 
@@ -192,8 +194,8 @@ Your articles do **not** live in this repo. A project lives in its own repositor
 `<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
 frames and components, `wiki/`); `pinpoint add <root> --project` registers it once, and
 new articles show up without re-registering. Legacy page sources register the same way with
-`pinpoint add <dir|file>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
-re-points an entry and keeps its id, so its annotations stay attached; `pinpoint rename <old id> <new id>`
+`pinpoint add <dir|file>` and are served from `/sites/<id>/`. `ppnt mv <id> <new path>`
+re-points an entry and keeps its id, so its annotations stay attached; `ppnt mv <old id> <new id>`
 renames the id together with its buckets — for a project, every `<project>_<article>` bucket
 ([`docs/projects.md`](docs/projects.md), [`docs/registry.md`](docs/registry.md)).
 

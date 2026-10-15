@@ -39,7 +39,8 @@ ${ADDRESS}
 
 登记与存量页
   add <project 根> --project            登记一个 project
-  add / move / rename / remove / migrate / prune   存量页的登记、迁移与清理
+  mv <源> <目标>                        文章换 project 或改 id；project、存量页改 id 或换根目录
+  add / remove / migrate / prune        存量页的登记、迁移与清理
 
 每个命令都认 --json（stdout 只出一个 JSON）。退出码：0 成功 · 1 有问题（验证错误、引用没命中、服务没答）· 2 用法错或找不到目标。
 每个命令的选项与例子：ppnt <命令> --help。环境变量见 ppnt status --help。`;
@@ -315,21 +316,32 @@ ${REGISTRY_FLAG}
   --id xxx             本条目自己的 id（缺省由名称派生；撞了已有 id 就报错）
 ${REGISTRY_FLAG}`,
   },
-  move: {
-    usage: 'ppnt move <id> <新目录|新文件>',
-    text: `用法：ppnt move <id> <新目录|新文件>
+  mv: {
+    usage: 'ppnt mv <源> <目标> [--dry-run]（<project>/<a> <project>/<b> | <id> <新 id> | <id> <路径>）',
+    text: `用法：ppnt mv <project>/<article> <project>/<article>|<project>/   文章换 project 和 / 或改 id
+      ppnt mv <id> <新 id>                                           project 或存量页改 id
+      ppnt mv <id> <路径>                                            换根目录 / 落点，id 不变
 
-把已登记的条目指到新路径，id 和标题不变，标注照旧对得上。project：新根目录里 project.json 的 id 必须不变。
-${REGISTRY_FLAG}`,
-  },
-  rename: {
-    usage: 'ppnt rename <旧 id> <新 id>',
-    text: `用法：ppnt rename <旧 id> <新 id>
+按目标的写法决定做什么。目标以 /、.、~ 开头是磁盘路径；源是文章时目标写 <project>/<article>，
+写 <project>/ 保留文章 id。
 
-给条目改 id，四件事都能做才动手：登记表换 id、标注桶改名、
-目录条目里的 /sites/<旧 id>/ 换成新前缀、服务重读。project：改写 project.json 的 id，
-每篇文章的桶 <旧 id>_<文章> 改名成 <新 id>_<文章>（任何一个目标已存在就整单不动），画布视图按新页 id 重编。
-${REGISTRY_FLAG}`,
+文章：目录搬到目标 project 的 articles/<新 id>/，标注桶 <p>_<a> 改名成 <p2>_<b>，账本里的 pageId 与正文评论的
+  path 改写；文章里写死的 /sites/<旧页 id>/ 换成新页 id；shot / check 缓存跟着搬，dist / render 删掉，有 dist 的
+  按新页 id 重编。下面任何一条不过就整单不动：源文章不在、目标 project 没登记、目标目录已经在、目标桶里有标注行、
+  换 project 时 HTML 帧（{ id, src }）在新 project 里找不到（source 没登记、相对 project 根的文件不在）。
+  别的文章里指向它的 [[ ]] 不改，逐条列成注意。
+改 id：四件事都能做才动手：登记表换 id、标注桶改名、目录条目里的 /sites/<旧 id>/ 换成新前缀、服务重读。
+  project：改写 project.json 的 id，每篇文章的桶 <旧 id>_<文章> 改名成 <新 id>_<文章>（任何一个目标已存在就整单不动），
+  画布视图按新页 id 重编。
+换路径：把已登记的条目指到新路径，id 和标题不变，标注照旧对得上。project：新根目录里 project.json 的 id 必须不变。
+
+  --dry-run            只列计划，什么都不写
+${REGISTRY_FLAG}
+
+例：ppnt mv notes/quick-idea browser-use/payment-retry
+    ppnt mv notes/quick-idea browser-use/
+    ppnt mv browser-use areta-browser
+    ppnt mv browser-use ~/work/areta/browser-use`,
   },
   remove: {
     usage: 'ppnt remove <id>',
