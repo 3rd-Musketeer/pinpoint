@@ -86,6 +86,11 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     const failed = sameOrigin.filter((r) => r.status >= 400 && !(r.path === ARTICLE && r.status === 503));
     expect(failed).toEqual([]);
     await expect(page.locator('.cref.empty[data-name="risk-score"]')).toHaveCSS('border-bottom-style', 'dashed');
+    // 已有页的芯片只靠左侧圆点和强调字，不画下划线（owner 2026-10-15）；空 ref 的虚线是区分标记。
+    const ref = page.locator('.cref:not(.empty)').first();
+    await expect(ref).toHaveCSS('box-shadow', 'none');
+    await expect(ref).toHaveCSS('text-decoration-line', 'none');
+    await expect(ref).toHaveCSS('border-bottom-width', '0px');
   });
 
   await test.step('代理的来源与文件边界：Astro HMR 经 pinpoint 同源连上；别的网页连不上；docs/pinpoint 外的文件读不到', async () => {

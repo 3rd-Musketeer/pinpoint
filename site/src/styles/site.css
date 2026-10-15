@@ -142,17 +142,18 @@ main { min-width:0; }
 .toc li a { display:flex; gap:6px; padding:5px 8px; text-wrap:pretty; }
 .toc .n { flex:none; min-width:1.4em; margin:0; }
 
-/* [[ ]] 芯片：已有页 = accent 字、600、box-shadow 当下划线、6px 实心圆点；空 ref = 灰字、虚线、空心圆点。
-   字色用 --accent-ink：亮色 #0b7a5c 对页面底色 5.3:1（--accent #0e8f6c 只有 4.1:1），悬停底色上 4.6:1。
+/* [[ ]] 芯片：已有页 = 强调字、600、左侧 6px 实心圆点，没有下划线（owner 2026-10-15：“感觉这个下划线不用了，可以去掉，左侧的这个圆形够了”）；
+   悬停 / 焦点加强调浅底提示可点。空 ref = 灰字、虚线下划线、空心圆点：虚线是它和已有页的区分，保留。
+   字色用 --pp-accent-text（亮色 green 11 #007658，白底 5.6:1）。
    圆点是 ref 自己左内边距里的背景图，不用 inline-block 的 ::before：原子行内盒前后都能断行，中文里圆点会和第一个字分到两行。
    背景按 slice 铺，ref 折行时圆点只在第一段开头。悬停只加 background-color，正文评论的高亮（mark.pp-hl）照常盖在字上。 */
 .cref { color:var(--pp-accent-text); font-weight:600; text-decoration:none; cursor:pointer;
-        box-shadow:0 1.5px 0 var(--pp-accent-text); border-radius:2px; padding:0 1px 0 11px;
+        border-radius:var(--pp-r-1); padding:0 1px 0 11px;
         background-image:radial-gradient(circle at 4px 50%, currentColor 2.6px, transparent 3.1px); background-repeat:no-repeat;
         transition:background-color .12s; }
-.cref:hover, .cref:focus-visible { background-color:color-mix(in srgb, var(--pp-accent-solid) 12%, transparent); border-radius:var(--pp-r-1); }
+.cref:hover, .cref:focus-visible { background-color:var(--pp-accent-soft); }
 .cref:focus-visible { outline:2px solid var(--pp-focus-ring); outline-offset:2px; }
-.cref.empty { color:var(--pp-text-muted); box-shadow:none; border-bottom:1.5px dashed var(--pp-text-muted); border-radius:0;
+.cref.empty { color:var(--pp-text-muted); border-bottom:1.5px dashed var(--pp-text-muted); border-radius:0;
               background-image:radial-gradient(circle at 4px 50%, transparent 1.6px, currentColor 2px, currentColor 2.6px, transparent 3.1px); }
 .cref.empty:hover, .cref.empty:focus-visible { background-color:color-mix(in srgb, var(--pp-text-muted) 12%, transparent); }
 .pop { position:absolute; z-index:40; width:300px; background:var(--pp-bg); border:1px solid var(--pp-border); border-radius:var(--pp-r-4); box-shadow:var(--pp-sh-3);

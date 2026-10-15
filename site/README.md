@@ -47,7 +47,8 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 - `[[名字]]`：本 project 的 article（按 id）或 wiki 词条（按 `name`，代码里叫 concept）。两者共用命名空间，撞名构建失败（dev 下页面顶上显示错误）。
 - `[[project:名字]]`：别的 project；前缀不是已登记的 project id 时，整串当名字。
 - `[[名字|显示文字]]`：换显示文字。
-- 找不到目标的是空 ref：虚线样式，列在 project 首页、`llms.txt` 和文章的 wiki 抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和 wiki 词条正文里写的都算。代码里的 `[[ ]]` 不解析。
+- 样式：已有页的引用是强调色字加左侧实心圆点，不画下划线，悬停和键盘焦点时加强调浅底；找不到目标的是空 ref：灰字、虚线下划线、空心圆点，虚线是两者的区分。
+- 找不到目标的是空 ref：列在 project 首页、`llms.txt` 和文章的 wiki 抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和 wiki 词条正文里写的都算。代码里的 `[[ ]]` 不解析。
 
 popup：article 显示标题、摘要、读全文；wiki 词条显示定义、状态、用到它的文章；空 ref 显示“空 ref”标记和一句说明（`client.js` 里的界面文案）。
 
