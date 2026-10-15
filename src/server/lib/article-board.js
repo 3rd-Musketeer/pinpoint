@@ -141,7 +141,7 @@ export function articleCanvas(projectId, articleId, { registry = null } = {}) {
 
 /**
  * 工作台清单用的文章画布页（GET /registry 的 articles）：不进左栏 Pages，只让
- * `/?page=<页 id>` 认得它。[{ id, title, project, article, url }]
+ * `/workbench/?page=<页 id>` 认得它。[{ id, title, project, article, url }]
  */
 export function articlePageRows(registry) {
   return listArticleTargets(registry).map((target) => {

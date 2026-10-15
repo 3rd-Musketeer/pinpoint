@@ -2,7 +2,7 @@
 // project → 文章列出；下面是原来的「页面」组，原样可用。
 // - project 标题行 = chevron + 标题（project.json 的 title）+ 布局错误标（个数，tooltip
 //   列前几条）；整行是折叠钮，折叠是本机偏好 prefs.articleProjectsCollapsed。
-// - 文章行：有画布 → 点了在工作台打开画布页 `<project>_<article>`（与 `/?page=` 同一个页），
+// - 文章行：有画布 → 点了在工作台打开画布页 `<project>_<article>`（与 `/workbench/?page=` 同一个页），
 //   选中态跟页面行一样从 activePageId 派生；没有画布 → 点了在新标签页打开正文。
 // - 行尾“阅读正文”钮：常态不出、不占标题宽度，hover / 键盘焦点进行时才现，在新标签页
 //   打开 `/<project>/<article>/`。这是 ADR 0024（行尾不挂 hover 钮）的一处例外，owner 点名要的。
