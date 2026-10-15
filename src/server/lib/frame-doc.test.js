@@ -82,22 +82,24 @@ test('存量 src 帧：真实文件须留在被引用条目的登记根内，API
 });
 
 test('模板 src 帧：根内文件可读，symlink 指出 previews 根时拒绝', (t) => {
-  const dir = fs.mkdtempSync(path.join(ROOT, 'content/previews/.boundary-'));
+  const temporary = fs.mkdtempSync(path.join(ROOT, 'content/previews/boundary-'));
+  const dir = temporary.toLowerCase();
+  fs.renameSync(temporary, dir);
   const outside = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-template-outside-'));
   t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
   t.after(() => fs.rmSync(outside, { recursive: true, force: true }));
   fs.writeFileSync(path.join(dir, 'safe.html'), '<p>模板正文</p>');
   fs.writeFileSync(path.join(outside, 'private.html'), 'UNREGISTERED_SECRET_C');
   fs.symlinkSync(path.join(outside, 'private.html'), path.join(dir, 'link.html'));
-  const pageId = 'boundary-template';
+  const pageId = path.basename(dir);
+  fs.writeFileSync(path.join(dir, 'board.json'), JSON.stringify({ sections: [{ id: 's', shell: 'app', screens: [
+    { id: 'safe', src: `previews/${pageId}/safe.html` },
+    { id: 'leak', src: `previews/${pageId}/link.html` },
+  ] }] }));
   const readFile = fs.readFileSync;
-  // 只替换模板清单与板定义，不改仓内模板；帧文件仍走真实磁盘和 realpath。
+  // 只替换模板清单；板和帧文件均走真实磁盘与 realpath，不改既有模板。
   t.mock.method(fs, 'readFileSync', (file, ...args) => {
     if (file === path.join(ROOT, 'content/previews/_index.json')) return JSON.stringify({ pages: [{ id: pageId }] });
-    if (file === path.join(ROOT, 'content/previews', pageId, 'board.json')) return JSON.stringify({ sections: [{ id: 's', shell: 'app', screens: [
-      { id: 'safe', src: `previews/${path.basename(dir)}/safe.html` },
-      { id: 'leak', src: `previews/${path.basename(dir)}/link.html` },
-    ] }] });
     return readFile(file, ...args);
   });
   const safe = resolveFrameTarget(pageId, 'safe');

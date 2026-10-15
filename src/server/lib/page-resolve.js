@@ -81,6 +81,7 @@ export function resolveArticleTarget(registry, pageId) {
 export function projectArticleTargets(entry) {
   if (!entry || typeof entry.path !== 'string') return [];
   const articlesDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR, 'articles');
+  if (resolveContainedPath(entry.path, path.relative(entry.path, articlesDir)).reason) return [];
   let names = [];
   try {
     names = fs.readdirSync(articlesDir).filter((name) => !name.startsWith('.')).sort((a, b) => a.localeCompare(b));

@@ -22,7 +22,7 @@ import { parseFrontmatter } from './frontmatter.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { findProject } from './projects.js';
 import { loadRegistry } from './registry.js';
-import { resolveServableFile } from './servable-file.js';
+import { resolveContainedFile, resolveServableFile } from './servable-file.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -44,7 +44,9 @@ function isFile(file) {
  * 读不到 index.mdx 时抛错（与 board.json 读不到同一处理）。
  */
 export function deriveArticleBoard(target) {
-  const text = fs.readFileSync(target.articleFile, 'utf8');
+  const found = resolveContainedFile(target.projectRoot, path.relative(target.projectRoot, target.articleFile), { index: false });
+  if (!found.file) throw new Error('文章正文不在 project 根内或不存在');
+  const text = fs.readFileSync(found.file, 'utf8');
   const fm = parseFrontmatter(text);
   const parsed = parseArticleCanvas(text, frameFileReaders(target.pageDir, { projectRoot: target.projectRoot, sources: target.sources }));
   const assets = {};

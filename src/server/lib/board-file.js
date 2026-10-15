@@ -5,14 +5,15 @@
  * existsSync 先判（后者只在导出构建里出现）。
  */
 import fs from 'node:fs';
-import path from 'node:path';
+import { resolveContainedFile } from './servable-file.js';
 
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 
 /** 磁盘原样（不摊平 tabs）：只有要把 board 整个交给 validateBoard 的调用方需要它。 */
 export function readBoardRaw(pageDir) {
   try {
-    return JSON.parse(fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8'));
+    const found = resolveContainedFile(pageDir, 'board.json', { index: false });
+    return found.file ? JSON.parse(fs.readFileSync(found.file, 'utf8')) : null;
   } catch {
     return null;
   }

@@ -264,6 +264,11 @@ export function createSitesHandler(options = {}) {
     // 非屏路径（css / js / 图片 / 非屏 html）仍走下面的源目录静态服务。
     if (entry.kind === 'dir') {
       const pageDir = path.resolve(entry.path);
+      // 不可读的板不能退化为普通 HTML 静态服务，绕过编译源边界。
+      if (resolveContainedFile(pageDir, 'board.json', { index: false }).reason === 'outside') {
+        sendJson(res, 404, { error: 'not found' });
+        return true;
+      }
       const screenId = screenIdFromRel(rel);
       if (screenId) {
         const ids = boardScreenIds(pageDir);

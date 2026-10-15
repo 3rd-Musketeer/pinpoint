@@ -120,6 +120,7 @@ JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成�
 - 一节里混着手机帧和裸组件帧时，在组件帧的文件顶层写 `export const shell = "comp";`。它只管这一帧，盖过 `<Canvas shell>`。不写的话，这一帧会被套进手机壳，工作台上显示 `ContractError … expected an ios-app` 的错误面板。
 - 文章没有 board.json，也就没有 board 里的 `comp` + `props` 条目。要展示组件的某个状态，就写一帧只渲染这个组件（`return <CardState state="approve" />;`），再加上帧级 shell。
 - 组件是印章：输入 props 和 children，输出 HTML，没有状态、事件和副作用。kit 的系统组件一律写 `import { Nav } from 'pinpoint/kit'`。本篇的组件放在本篇 `components/`，写 `import { X } from './components/X.jsx'`；本篇没有时编译器会落到 kit 的同名印章，这只是兜底，不要靠它引 kit。没有 project 级的组件：几篇文章都要用的组件手动把文件搬进 kit（pinpoint 仓库的 `content/kits/ios/jsx/`，每个文件首行注释写了 props，并在同目录的 `index.js` 里导出），帧里改写 `import { X } from 'pinpoint/kit'`，搬完删掉各篇里的副本，因为本篇的同名文件优先。kit 在 pinpoint 仓库里，搬进去就是改那个仓库，照它的 `AGENTS.md` 提交。project 的 `docs/pinpoint/components/` 不参与编译，`ppnt check` 报 `project_components_dir`。
+- 自 2026-10-15 起，编译读取 JSX 帧、组件、图及其 import 时，源码的真实路径须留在登记的 project 根内；存量页限制在登记目录，模板限制在 previews 根内。根内 symlink 和登记根自身的 symlink 可用；kit 组件与图运行时按各自的仓内根检查。`sources` 只为 HTML 帧登记目录，不给 JSX import 跨根权限。源文件越界后，HTTP 服务会丢弃旧帧产物或重编报错。
 - 本篇的样式写进 `article.css`，不要每帧各写一份。每一帧（包括 `comp`）都包在 kit 的 `.ios-root` 里，kit 用 `.ios-root button` 清掉了按钮的颜色、底色和边框，它比单个类名优先；自己的按钮样式写成 `.ios-root .<类名>`，或用 kit 的按钮印章。从别的文章复制组件时，一起复制它用到的那部分 `article.css`；组件里写死的 `/sites/<别的页 id>/assets/…` 路径也要改成本篇的。
 - 资源放 `assets/`，帧里写绝对路径 `/sites/<project>_<article>/assets/<文件>`。不写 `./assets/…`：工作台把帧内联进自己的页面，相对路径会解析到别处，图片加载失败。
 - 屏内交互用内联 `<script data-preview-script>` 或同名 sidecar `<帧 id>.js`（导出 `mount(root)`），写法见 board-schema“交互 frame”。

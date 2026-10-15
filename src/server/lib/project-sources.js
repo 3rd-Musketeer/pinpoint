@@ -14,6 +14,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { PROJECT_ROOT_SEGMENT, SOURCE_NAME_PATTERN } from '../../shared/project-ids.js';
+import { resolveContainedFile } from './servable-file.js';
 
 const CONTENT_DIR = path.join('docs', 'pinpoint');
 
@@ -53,7 +54,9 @@ export function readProjectSources(root, json) {
 
 export function loadProjectSources(root) {
   try {
-    const json = JSON.parse(fs.readFileSync(path.join(root, CONTENT_DIR, 'project.json'), 'utf8'));
+    const found = resolveContainedFile(root, path.join(CONTENT_DIR, 'project.json'), { index: false });
+    if (!found.file) return { sources: {}, errors: [] };
+    const json = JSON.parse(fs.readFileSync(found.file, 'utf8'));
     return readProjectSources(root, json);
   } catch {
     return { sources: {}, errors: [] };

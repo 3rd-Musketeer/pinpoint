@@ -33,7 +33,7 @@ import remarkMdx from 'remark-mdx';
 import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
 import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID, parseFrameSrc } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
-import { resolveServableFile } from './servable-file.js';
+import { resolveContainedFile, resolveServableFile } from './servable-file.js';
 
 const processor = unified().use(remarkParse).use(remarkMdx);
 
@@ -93,11 +93,7 @@ export function readFrameShell(text) {
  */
 export function frameFileReaders(articleDir, { projectRoot = path.resolve(articleDir, '..', '..', '..', '..'), sources = {} } = {}) {
   const isFile = (file) => {
-    try {
-      return fs.statSync(file).isFile();
-    } catch {
-      return false;
-    }
+    return Boolean(resolveContainedFile(projectRoot, path.relative(projectRoot, file), { index: false }).file);
   };
   const jsx = (frame) => path.join(articleDir, `${frame}.jsx`);
   const html = (frame) => path.join(articleDir, `${frame}.html`);
@@ -106,6 +102,7 @@ export function frameFileReaders(articleDir, { projectRoot = path.resolve(articl
     frameSource: (frame) => {
       const found = [];
       if (isFile(jsx(frame))) found.push({ kind: 'jsx', file: jsx(frame) });
+      else if (fs.existsSync(jsx(frame))) found.push({ kind: 'jsx', file: jsx(frame), error: `${frame}.jsx 不在 project 根内` });
       // HTML 帧按文章目录的出文件规则判（lib/servable-file.js）：指到目录外面的 symlink 算写坏了。
       const page = resolveServableFile(articleDir, `${frame}.html`, { index: false });
       if (page.file) found.push({ kind: 'html', file: page.file });
@@ -116,6 +113,7 @@ export function frameFileReaders(articleDir, { projectRoot = path.resolve(articl
     frameShell: (frame) => {
       let text;
       try {
+        if (!isFile(jsx(frame))) return undefined;
         text = fs.readFileSync(jsx(frame), 'utf8');
       } catch {
         return undefined;

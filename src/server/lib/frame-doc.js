@@ -132,6 +132,9 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   // 1) previews 模板/实例页
   const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
   if (pageEntry) {
+    if (!resolveContainedFile(PREVIEWS_ROOT, `${pageId}/board.json`, { index: false }).file) {
+      throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
+    }
     const board = readBoard(path.join(PREVIEWS_ROOT, pageId));
     if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no board.json`);
     const hit = findScreen(board, screenId);

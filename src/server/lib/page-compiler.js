@@ -33,6 +33,8 @@ import { dataRoot } from './annotate-data-dir.js';
 import { articleComponentCandidates, articleHtmlFrameFile, deriveArticleBoard } from './article-board.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { readBoard } from './board-file.js';
+import { containedSource, requireSource, sourceBoundaryPlugin } from './compiler-source.js';
+import { resolveContainedFile } from './servable-file.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
@@ -47,6 +49,7 @@ const KIT_JSX_INDEX = path.join(KIT_JSX, 'index.js');
 // 图的小运行时（docs/projects.md“图”）：图的 .jsx 和 sidecar 都写 `import … from 'pinpoint/figure'`。
 // 编译期由 figureHelperPlugin 指到这个文件；浏览器里由图页的 import map 指到 /kits/figure/figure.js。
 export const FIGURE_HELPER = path.join(ROOT, 'content', 'kits', 'figure', 'figure.js');
+const COMPILER_ROOTS = [KIT_JSX, path.dirname(FIGURE_HELPER)];
 
 export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
@@ -66,7 +69,8 @@ export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}
     }
   }
   const pageDir = path.join(root, 'content', 'previews', pageRef);
-  if (fs.existsSync(path.join(pageDir, 'board.json'))) {
+  const sourceRoot = path.join(root, 'content', 'previews');
+  if (resolveContainedFile(sourceRoot, `${pageRef}/board.json`, { index: false }).file) {
     return { entryId: pageRef, pageDir, urlBase: `/previews/${pageRef}/`, kind: 'template' };
   }
   return resolveArticleTarget(registry, pageRef);
@@ -78,7 +82,7 @@ export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}
  */
 export function readTargetBoard(target) {
   if (target && target.kind === 'article') return deriveArticleBoard(target).board;
-  return JSON.parse(fs.readFileSync(path.join(target.pageDir, 'board.json'), 'utf8'));
+  return JSON.parse(fs.readFileSync(requireSource(target, 'board.json'), 'utf8'));
 }
 
 /** 读 board 失败时的说法：文章画布读的是 index.mdx。 */
@@ -294,9 +298,11 @@ function articleComponentsPlugin(target) {
         if (up ? from !== figureDir : from !== pageDir) return undefined;
         const name = args.path.replace(/^\.\.?\/components\//, '').replace(/\.jsx$/, '');
         const hit = articleComponentCandidates(target, name, KIT_JSX).find((file) => fs.existsSync(file));
-        // 也取 realpath：文章目录经过 symlink（macOS 的 /var、/tmp）时，esbuild 按真实
-        // 工作目录算 jsxDEV 的文件名，给它非真实路径会得到一长串 ../ 的 data-pp-id。
-        return hit ? { path: real(hit) } : undefined;
+        // 先判文本来源，不能先 realpath 后把越界的 symlink 当成另一个合法根的文件。
+        if (!hit) return undefined;
+        const checked = requireSource(target, hit, COMPILER_ROOTS);
+        const rel = path.relative(target.pageDir, checked);
+        return { path: rel.startsWith(`..${path.sep}`) ? checked : path.resolve(pageDir, rel) };
       });
     },
   };
@@ -312,7 +318,8 @@ function figureHelperPlugin() {
 }
 
 function pluginsFor(target) {
-  return target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
+  const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
+  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS)];
 }
 
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
@@ -377,7 +384,7 @@ function depRecordsFromInputs(target, inputs, exclude) {
     const abs = path.resolve(target.pageDir, input);
     let stat;
     try {
-      stat = fs.statSync(abs);
+      stat = fs.statSync(requireSource(target, abs, COMPILER_ROOTS));
     } catch {
       continue;
     }
@@ -392,8 +399,9 @@ async function compileJsxScreen(target, screenId, file) {
   try {
     built = await esbuild.build({
       entryPoints: [file],
-      absWorkingDir: target.pageDir,
+      absWorkingDir: fs.realpathSync(target.pageDir),
       bundle: true,
+      preserveSymlinks: true,
       write: false,
       format: 'cjs',
       platform: 'neutral',
@@ -413,7 +421,7 @@ async function compileJsxScreen(target, screenId, file) {
     if (!/\.jsx$/.test(input)) continue;
     let text;
     try {
-      text = fs.readFileSync(path.join(target.pageDir, input), 'utf8');
+      text = fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
     } catch {
       continue;
     }
@@ -448,7 +456,8 @@ async function compileJsxScreen(target, screenId, file) {
 function compileHtmlScreen(target, screenId, file) {
   let html;
   try {
-    html = fs.readFileSync(path.join(target.pageDir, file), 'utf8');
+    // 显式登记的 source 只供 HTML 帧使用；JSX import 不因此获得跨根权限。
+    html = fs.readFileSync(requireSource(target, file, Object.values(target.sources || {})), 'utf8');
   } catch (error) {
     return { ok: false, error: `${file}: ${String((error && error.message) || error)}` };
   }
@@ -517,29 +526,33 @@ async function compileScreen(target, entry, options = {}) {
   const htmlFile = `${screenId}.html`;
   let result;
   let source = null;
-  const sourceRecord = (file) => ({ file, mtimeMs: fs.statSync(path.join(target.pageDir, file)).mtimeMs });
+  const sourceRecord = (file) => ({ file, mtimeMs: fs.statSync(requireSource(target, file)).mtimeMs });
   // 文章的 HTML 帧（本篇目录下的 <帧 id>.html 或 project 根下的 src）：整份文档原样进 dist，
   // 不注入 article.css / article.js（注在 <!doctype> 前面会把文档打进怪异模式）。
   const articleHtml = target.kind === 'article' ? articleHtmlFrameFile(target, entry) : null;
-  if (target.kind === 'article' && entry.src && !articleHtml) {
-    result = { ok: false, error: `${screenId}: 源码不存在（${entry.src}）` };
-  } else if (articleHtml) {
-    const rel = path.relative(target.pageDir, articleHtml).split(path.sep).join('/');
-    source = { file: rel, mtimeMs: fs.statSync(articleHtml).mtimeMs };
-    result = compileHtmlScreen(target, screenId, rel);
-    if (result.ok) result.document = true;
-  } else if (entry.comp) {
-    const found = await compileCompScreen(target, entry, options);
-    result = found.result;
-    source = found.source;
-  } else if (fs.existsSync(path.join(target.pageDir, jsxFile))) {
-    source = sourceRecord(jsxFile);
-    result = await compileJsxScreen(target, screenId, jsxFile);
-  } else if (fs.existsSync(path.join(target.pageDir, htmlFile))) {
-    source = sourceRecord(htmlFile);
-    result = compileHtmlScreen(target, screenId, htmlFile);
-  } else {
-    result = { ok: false, error: `${screenId}: 源码不存在（既没有 ${jsxFile} 也没有 ${htmlFile}）` };
+  try {
+    if (target.kind === 'article' && entry.src && !articleHtml) {
+      result = { ok: false, error: `${screenId}: 源码不存在（${entry.src}）` };
+    } else if (articleHtml) {
+      const rel = path.relative(target.pageDir, articleHtml).split(path.sep).join('/');
+      source = { file: rel, mtimeMs: fs.statSync(articleHtml).mtimeMs };
+      result = compileHtmlScreen(target, screenId, rel);
+      if (result.ok) result.document = true;
+    } else if (entry.comp) {
+      const found = await compileCompScreen(target, entry, options);
+      result = found.result;
+      source = found.source;
+    } else if (fs.existsSync(path.join(target.pageDir, jsxFile))) {
+      source = sourceRecord(jsxFile);
+      result = await compileJsxScreen(target, screenId, jsxFile);
+    } else if (fs.existsSync(path.join(target.pageDir, htmlFile))) {
+      source = sourceRecord(htmlFile);
+      result = compileHtmlScreen(target, screenId, htmlFile);
+    } else {
+      result = { ok: false, error: `${screenId}: 源码不存在（既没有 ${jsxFile} 也没有 ${htmlFile}）` };
+    }
+  } catch (error) {
+    result = { ok: false, error: error.message };
   }
   // 帧的 import 依赖（页内组件 / kit 印章）一并记进 sources（review R2）。
   if (result.ok && result.deps && source) source = { ...source, deps: result.deps };
@@ -591,9 +604,10 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
   let built;
   try {
     built = await esbuild.build({
-      stdin: { contents: virtual, sourcefile: '__comp__.jsx', resolveDir: target.pageDir, loader: 'jsx' },
-      absWorkingDir: target.pageDir,
+      stdin: { contents: virtual, sourcefile: '__comp__.jsx', resolveDir: fs.realpathSync(target.pageDir), loader: 'jsx' },
+      absWorkingDir: fs.realpathSync(target.pageDir),
       bundle: true,
+      preserveSymlinks: true,
       write: false,
       format: 'cjs',
       platform: 'neutral',
@@ -613,7 +627,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     if (!/\.jsx$/.test(input)) continue;
     let text;
     try {
-      text = fs.readFileSync(path.join(target.pageDir, input), 'utf8');
+      text = fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
     } catch {
       continue;
     }
@@ -807,7 +821,12 @@ export async function compileFigure(target, id) {
   if (!isFileSync(abs(files.jsx))) {
     return finish({ ok: false, error: `${files.jsx}: 源文件不存在`, diagnostics: one('figure_missing', abs(files.jsx), '源文件不存在') });
   }
-  const record = (rel) => ({ file: rel, mtimeMs: fs.statSync(abs(rel)).mtimeMs });
+  try {
+    for (const rel of [files.jsx, ...(script ? [files.js] : []), ...(css ? [files.css] : [])]) requireSource(target, rel);
+  } catch (error) {
+    return finish({ ok: false, error: error.message, diagnostics: one('figure_src', null, error.message) });
+  }
+  const record = (rel) => ({ file: rel, mtimeMs: fs.statSync(requireSource(target, rel)).mtimeMs });
   const sources = [record(files.jsx)];
   if (script) sources.push(record(files.js));
   if (css) sources.push(record(files.css));
@@ -815,8 +834,9 @@ export async function compileFigure(target, id) {
   try {
     built = await esbuild.build({
       entryPoints: [files.jsx],
-      absWorkingDir: target.pageDir,
+      absWorkingDir: fs.realpathSync(target.pageDir),
       bundle: true,
+      preserveSymlinks: true,
       write: false,
       format: 'cjs',
       platform: 'neutral',
@@ -838,7 +858,7 @@ export async function compileFigure(target, id) {
     if (!/\.jsx$/.test(input)) continue;
     let text;
     try {
-      text = fs.readFileSync(path.join(target.pageDir, input), 'utf8');
+      text = fs.readFileSync(requireSource(target, input, COMPILER_ROOTS), 'utf8');
     } catch {
       continue;
     }
@@ -872,7 +892,7 @@ export async function compileFigure(target, id) {
   }
   if (script) {
     try {
-      await esbuild.transform(fs.readFileSync(abs(files.js), 'utf8'), { loader: 'js', format: 'esm', sourcefile: files.js, logLevel: 'silent' });
+      await esbuild.transform(fs.readFileSync(requireSource(target, files.js), 'utf8'), { loader: 'js', format: 'esm', sourcefile: files.js, logLevel: 'silent' });
     } catch (error) {
       return finish({ ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir), sources, usesKit });
     }
@@ -907,7 +927,7 @@ export function figureRecordFresh(target, id, record) {
   if (Boolean(record.css) !== isFileSync(path.join(target.pageDir, files.css))) return false;
   return record.sources.every((source) => {
     try {
-      return fs.statSync(path.join(target.pageDir, source.file)).mtimeMs === source.mtimeMs;
+      return fs.statSync(requireSource(target, source.file, COMPILER_ROOTS)).mtimeMs === source.mtimeMs;
     } catch {
       return false;
     }
@@ -1106,6 +1126,32 @@ export function screenIdFromRel(rel) {
  * serve 层（500 上面板）与 /api/frame（500 frame_failed）共用同一条路。
  */
 export async function loadDistScreenHtml(target, screenId) {
+  const distRoot = defaultDistRoot();
+  const discard = () => fs.rmSync(path.join(distRoot, target.entryId, `${screenId}.html`), { force: true });
+  let entry;
+  try {
+    entry = screenEntriesFromBoard(readTargetBoard(target)).find((item) => item.id === screenId);
+    if (!entry) throw new Error(`板里没有帧：${screenId}`);
+    // 当前源码的优先级也要查：不能只检查旧记录，遗漏新出现的 JSX / 本篇组件。
+    if (entry.src) {
+      if (!articleHtmlFrameFile(target, entry)) throw new Error(`源码不在登记根内或不存在：${screenId}`);
+    } else {
+      const primary = entry.comp ? `components/${entry.comp}.jsx`
+        : fs.existsSync(path.join(target.pageDir, `${screenId}.jsx`)) ? `${screenId}.jsx` : `${screenId}.html`;
+      if (!entry.comp || fs.existsSync(path.join(target.pageDir, primary))) requireSource(target, primary);
+    }
+  } catch (error) {
+    discard();
+    return { ok: false, error: error.message };
+  }
+  const build = readBuildJson(distRoot, target.entryId);
+  const source = build?.sources?.[screenId];
+  const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
+  const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
+  if (invalid) {
+    discard();
+    await compilePage(target, { onlyScreen: screenId });
+  }
   let result = readDistScreen(target.entryId, screenId);
   if (result.kind === 'unbuilt') {
     try {
@@ -1160,7 +1206,9 @@ export function serveBoardJsonWithDist(req, res, entryId, pageDir, { board: deri
   let raw = null;
   if (!derived) {
     try {
-      raw = fs.readFileSync(path.join(pageDir, 'board.json'), 'utf8');
+      const found = resolveContainedFile(pageDir, 'board.json', { index: false });
+      if (!found.file) return false;
+      raw = fs.readFileSync(found.file, 'utf8');
     } catch {
       return false;
     }

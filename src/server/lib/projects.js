@@ -28,7 +28,7 @@ import { readProjectSources } from './project-sources.js';
 import { manifestPageIds } from './page-manifest.js';
 import { PROJECT_CONTENT_DIR } from './page-resolve.js';
 import { projectEntries, projectEntry } from './registry.js';
-import { resolveContainedPath } from './servable-file.js';
+import { resolveContainedFile, resolveContainedPath } from './servable-file.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -45,9 +45,10 @@ function fileMtimeMs(file) {
   }
 }
 
-function readText(file) {
+function readText(root, file) {
   try {
-    return fs.readFileSync(file, 'utf8');
+    const found = resolveContainedFile(root, path.relative(root, file), { index: false });
+    return found.file ? fs.readFileSync(found.file, 'utf8') : null;
   } catch {
     return null;
   }
@@ -74,8 +75,9 @@ function problem(code, message, extra = {}) {
   return { code, message, ...extra };
 }
 
-function visibleChildren(dir) {
+function visibleChildren(root, dir) {
   try {
+    if (resolveContainedPath(root, path.relative(root, dir)).reason) return [];
     return fs.readdirSync(dir, { withFileTypes: true })
       .filter((item) => !item.name.startsWith('.'))
       .sort((a, b) => a.name.localeCompare(b.name));
@@ -92,7 +94,7 @@ const reservedProjectId = (id) => problem('project_id_reserved', `project id 是
  */
 export function readProjectJson(root) {
   const file = path.join(root, PROJECT_CONTENT_DIR, 'project.json');
-  const text = readText(file);
+  const text = readText(root, file);
   if (text === null) return { json: null, file, errors: [problem('project_json_missing', `缺 ${path.join(PROJECT_CONTENT_DIR, 'project.json')}（${file}）`)] };
   let json;
   try {
@@ -116,7 +118,7 @@ export function readProjectJson(root) {
 function readArticles(dir, errors, projectId, sources = {}) {
   const articlesDir = path.join(dir, 'articles');
   const articles = [];
-  for (const item of visibleChildren(articlesDir)) {
+  for (const item of visibleChildren(path.resolve(dir, '..', '..'), articlesDir)) {
     const rel = `articles/${item.name}`;
     if (!item.isDirectory()) {
       errors.push(problem('article_not_dir', 'articles/ 下只放文章目录', { path: rel }));
@@ -141,7 +143,7 @@ function readArticles(dir, errors, projectId, sources = {}) {
         : problem('article_index_missing', '缺 index.mdx', { path: rel }));
       continue;
     }
-    const text = readText(file);
+    const text = readText(projectRoot, file);
     if (text === null) {
       errors.push(problem('article_index_missing', '缺 index.mdx', { path: rel }));
       continue;
@@ -175,14 +177,19 @@ function readConcepts(dir, errors) {
   }
   const conceptsDir = path.join(dir, WIKI_SEGMENT);
   const concepts = [];
-  for (const item of visibleChildren(conceptsDir)) {
+  for (const item of visibleChildren(path.resolve(dir, '..', '..'), conceptsDir)) {
     const rel = `${WIKI_SEGMENT}/${item.name}`;
     if (!item.isFile() || path.extname(item.name) !== '.md') {
       errors.push(problem('wiki_not_md', `${WIKI_SEGMENT}/ 下只放 <名字>.md`, { path: rel }));
       continue;
     }
     const file = path.join(conceptsDir, item.name);
-    const fm = parseFrontmatter(readText(file) || '');
+    const text = readText(path.resolve(dir, '..', '..'), file);
+    if (text === null) {
+      errors.push(problem('wiki_outside', 'wiki 文件必须位于登记的 project 根内', { path: rel }));
+      continue;
+    }
+    const fm = parseFrontmatter(text);
     for (const message of fm.errors) errors.push(problem('frontmatter', message, { path: rel }));
     const slug = path.basename(item.name, '.md');
     const concept = { name: fm.data.name || slug, slug, file };
@@ -287,7 +294,7 @@ export function projectIdForFile(file) {
       const dir = parts.slice(0, i + 1).join(path.sep);
       if (!projectIdCache.has(dir)) {
         let id = null;
-        try { id = JSON.parse(fs.readFileSync(path.join(dir, 'project.json'), 'utf8')).id || null; } catch { /* not a project */ }
+        try { id = JSON.parse(readText(path.resolve(dir, '..', '..'), path.join(dir, 'project.json'))).id || null; } catch { /* not a project */ }
         projectIdCache.set(dir, id);
       }
       return projectIdCache.get(dir);
