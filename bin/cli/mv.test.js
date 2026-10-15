@@ -228,23 +228,36 @@ test('D2：目标桶无法证明为空时拒绝搬迁，保留源文章和两桶
   }
 });
 
+/** 复制故障注入器同时用于 CLI 回归和直接复制路径的反例。 */
+function interruptArticleCopy(t, from, isCopyingArticle) {
+  const copy = fs.cpSync;
+  const fault = { injected: false };
+  t.mock.method(fs, 'cpSync', (a, b, opts) => {
+    if (a !== from || !isCopyingArticle()) return copy(a, b, opts);
+    fault.injected = true;
+    fs.mkdirSync(b, { recursive: true });
+    fs.copyFileSync(path.join(a, 'index.mdx'), path.join(b, 'index.mdx'));
+    throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+  });
+  return fault;
+}
+
 test('D4：跨设备复制中途失败不发布半篇文章，源完整且可以重试', async (t) => {
   const made = fixture(t);
   const from = articleDir(made.proj, 'commit-confirm');
   const to = articleDir(made.html, 'commit-confirm');
   const rename = fs.renameSync;
-  const copy = fs.cpSync;
+  let copyingArticle = false;
   t.mock.method(fs, 'renameSync', (a, b) => {
-    if (a === from && b === to) throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+    if (a === from && b === to) {
+      copyingArticle = true;
+      throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+    }
     return rename(a, b);
   });
-  t.mock.method(fs, 'cpSync', (a, b, opts) => {
-    if (a !== from || !b.includes('.ppnt-mv-')) return copy(a, b, opts);
-    fs.mkdirSync(b, { recursive: true });
-    fs.copyFileSync(path.join(a, 'index.mdx'), path.join(b, 'index.mdx'));
-    throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
-  });
+  const fault = interruptArticleCopy(t, from, () => copyingArticle);
   const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/']);
+  assert.ok(fault.injected, '必须在复制文章时注入 ENOSPC');
   assert.equal(res.code, 1);
   assert.ok(!fs.existsSync(to), '正式目标不能出现半篇文章');
   assert.ok(fs.existsSync(path.join(from, 'index.mdx')));
@@ -573,3 +586,19 @@ test('N2：链接文件回滚失败时，恢复副本可独立读取并记录真
   assert.equal(snapshot.writeThrough.link, 'metadata.json');
   assert.equal(fs.readlinkSync(meta), 'metadata.json');
 });
+
+for (const target of ['published-article', 'temporary-copy/article']) {
+  test(`N3：D4 注入器覆盖 ${target}，备份阶段不触发，复制阶段明确触发`, (t) => {
+    const dir = tempDir(t);
+    const from = path.join(dir, 'source');
+    fs.mkdirSync(from);
+    fs.writeFileSync(path.join(from, 'index.mdx'), '文章正文');
+    let copyingArticle = false;
+    const fault = interruptArticleCopy(t, from, () => copyingArticle);
+    fs.cpSync(from, path.join(dir, 'backup'), { recursive: true });
+    assert.equal(fault.injected, false);
+    copyingArticle = true;
+    assert.throws(() => fs.cpSync(from, path.join(dir, target), { recursive: true }), { code: 'ENOSPC' });
+    assert.ok(fault.injected);
+  });
+}
