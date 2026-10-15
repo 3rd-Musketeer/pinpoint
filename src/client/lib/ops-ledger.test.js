@@ -3,6 +3,32 @@ import test from 'node:test';
 
 import { createOpsLedger } from './ops-ledger.js';
 
+test('迟到的水合只完成初始化，保留 SSE 新版的行、回复和状态，并从新版保存', async (t) => {
+  const row = { id: 'a', n: 1, status: 'done', messages: [{ who: 'agent', text: '新版回复', at: 't' }] };
+  const disk = { revision: 2, annotations: [row, { id: 'b', n: 2 }] };
+  const server = fakeServer(structuredClone(disk));
+  t.mock.method(globalThis, 'fetch', server.fetch);
+  const ledger = createOpsLedger({ entry: 'e', ledger: '@prose' });
+  ledger.remote(disk);
+  ledger.enqueue({ op: 'reply', id: 'a', text: '保留草稿', at: 'owner' });
+  assert.equal(server.calls.length, 0);
+  ledger.accept({ revision: 1, annotations: [{ id: 'a', n: 1, status: 'open' }] });
+  assert.equal(ledger.hydrated(), true);
+  assert.deepEqual(ledger.rows().map((r) => r.id), ['a', 'b']);
+  assert.equal(ledger.rows()[0].messages[0].text, '新版回复');
+  await settle(ledger);
+  assert.equal(server.calls[0].baseRevision, 2);
+  assert.equal(server.calls.length, 1);
+  ledger.accept({ revision: 2, annotations: [] });
+  assert.equal(ledger.rows().length, 2);
+});
+
+test('空账本 revision 0 仍能完成首次水合', () => {
+  const ledger = createOpsLedger({ entry: 'e', ledger: '@prose' });
+  ledger.accept({ revision: 0, annotations: [] });
+  assert.equal(ledger.settled(), true);
+});
+
 /** 假的 /save：按 baseRevision 判冲突，冲突时回盘上的版本（与 annotation-store save 同一条规则）。 */
 function fakeServer(disk) {
   const calls = [];

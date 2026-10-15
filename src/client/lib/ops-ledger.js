@@ -135,7 +135,9 @@ export function createOpsLedger(options) {
     accept: function (doc) {
       hydrated = true;
       if (inflight) { stash(doc); onChange(); return; }
-      adopt(doc);
+      // GET 与 SSE 没有到达顺序；水合完成后，排队操作仍须在手头最新版上保存。
+      var rev = Number(doc.revision);
+      if ((Number.isFinite(rev) ? rev : 0) >= revision) adopt(doc);
       onChange();
       flush();
     },
