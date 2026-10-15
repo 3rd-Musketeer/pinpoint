@@ -602,3 +602,63 @@ for (const target of ['published-article', 'temporary-copy/article']) {
     assert.ok(fault.injected);
   });
 }
+
+for (const kind of ['project', 'legacy']) {
+  test(`N4：remove ${kind} 对坏 JSON、异常结构和未知文件中止，保留登记与原文件`, async (t) => {
+    for (const [name, content] of [
+      ['@canvas.json', '{"annotations":[{"id":"recoverable"}]'],
+      ['@canvas.json', '{"annotations":{}}'],
+      ['unknown.bin', '不能删除的文件'],
+      ['_seq.json', '{bad'],
+    ]) {
+      const made = fixture(t);
+      const registryBefore = fs.readFileSync(made.registry);
+      let target = 'e2e-project';
+      let bucket = path.join(made.data, 'e2e-project_commit-confirm');
+      if (kind === 'legacy') {
+        target = 'legacy';
+        const doc = readJson(made.registry);
+        doc.entries.push({ id: target, kind: 'dir', path: made.proj });
+        fs.writeFileSync(made.registry, JSON.stringify(doc));
+        bucket = path.join(made.data, target);
+      }
+      const before = kind === 'project' ? registryBefore : fs.readFileSync(made.registry);
+      fs.rmSync(bucket, { recursive: true, force: true });
+      fs.mkdirSync(bucket);
+      fs.writeFileSync(path.join(bucket, name), content);
+      const res = await runIn(made, ['remove', target]);
+      assert.equal(res.code, 1, `${name}: ${res.err.join('\n')}`);
+      assert.deepEqual(fs.readFileSync(made.registry), before);
+      assert.equal(fs.readFileSync(path.join(bucket, name), 'utf8'), content);
+      assert.ok(fs.existsSync(path.join(articleDir(made.proj, 'commit-confirm'), 'index.mdx')));
+      assert.match(res.err.join('\n'), /无法确认.*为空/);
+    }
+  });
+}
+
+test('N4：未知图片或 symlink 保留并中止；mv 与 remove 均能接受严格确认的空桶', async (t) => {
+  for (const unknown of ['unknown-image', 'image-symlink']) {
+    const made = fixture(t);
+    const bucket = path.join(made.data, 'e2e-project_commit-confirm');
+    for (const name of ['@canvas.json', '@prose.json']) {
+      const doc = readJson(path.join(bucket, name));
+      fs.writeFileSync(path.join(bucket, name), JSON.stringify({ ...doc, annotations: [] }));
+    }
+    fs.mkdirSync(path.join(bucket, 'images'));
+    const file = path.join(bucket, 'images', unknown === 'unknown-image' ? 'unknown.bin' : '@canvas-1-1.png');
+    if (unknown === 'image-symlink') fs.symlinkSync(path.join(bucket, '@canvas.json'), file);
+    else fs.writeFileSync(file, '未知数据');
+    const before = fs.readFileSync(made.registry);
+    assert.equal((await runIn(made, ['remove', 'e2e-project'])).code, 1);
+    assert.deepEqual(fs.readFileSync(made.registry), before);
+    assert.ok(fs.lstatSync(file));
+  }
+  const made = fixture(t);
+  const bucket = path.join(made.data, 'e2e-project_renamed');
+  fs.mkdirSync(path.join(bucket, 'images'), { recursive: true });
+  fs.writeFileSync(path.join(bucket, '@canvas.json'), JSON.stringify({ annotations: [] }));
+  fs.writeFileSync(path.join(bucket, '_seq.json'), JSON.stringify({ next: 7 }));
+  fs.writeFileSync(path.join(bucket, 'images', '@canvas-1-1.png'), '可确认归属的遗留图片');
+  assert.equal((await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed'])).code, 0);
+  assert.equal(readJson(path.join(bucket, '@canvas.json')).annotations[0].id, 'c1');
+});

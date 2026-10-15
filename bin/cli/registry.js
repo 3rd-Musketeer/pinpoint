@@ -4,7 +4,7 @@ import path from 'node:path';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
 import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN, RETIRED_ENTRY_KEYS } from '../../src/server/lib/registry.js';
-import { collectBucketOrphans, collectPageOrphans, readBucketLedgers } from '../../src/server/lib/orphans.js';
+import { collectBucketOrphans, collectPageOrphans } from '../../src/server/lib/orphans.js';
 import { resolvePage } from '../../src/server/lib/page-resolve.js';
 import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from '../../src/server/lib/projects.js';
@@ -16,6 +16,7 @@ import { BOARDS, parseArgs, guardParse } from './args.js';
 import { toPageRef } from './address.js';
 import { htmlPathnames, planMovedBucket, rewriteMovedBucket } from './bucket-move.js';
 import { beginMoveRecovery } from './move-recovery.js';
+import { checkedBucketRowCount } from './bucket-check.js';
 
 export { rewriteMovedBucket } from './bucket-move.js';
 
@@ -295,12 +296,6 @@ export function articleBucketIds(root, projectId, { manifestIds = [] } = {}) {
       return parts && parts.projectId === projectId && !manifestIds.includes(name);
     })
     .sort();
-}
-
-/** 一个桶里的标注行数（各账本 annotations 之和；_seq.json 与坏文件不算）。 */
-export function bucketRowCount(bucket) {
-  return readBucketLedgers(bucket)
-    .reduce((sum, ledger) => sum + (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations.length : 0), 0);
 }
 
 /** 数据根下按页 id 存的派生物。dist / render 里的 HTML 写死了 `/sites/<页 id>/`，
@@ -771,7 +766,7 @@ export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}
   const bucket = path.join(root, id);
   // project id 本身不是桶，project 的桶是下面的文章桶。
   const isProject = before.kind === 'project';
-  const rows = isProject ? 0 : bucketRowCount(bucket);
+  const rows = isProject ? 0 : checkedBucketRowCount(bucket);
   if (rows > 0) {
     throw new CliError(
       `标注桶 ${bucket} 里还有 ${rows} 行标注；先在工作台处理掉，或 \`pinpoint prune ${id}\`（--dry-run 先看清单）清完再 remove`,
@@ -779,7 +774,7 @@ export function planRemove(argv, { cwd = process.cwd(), env = process.env } = {}
   }
   // project：每篇文章的桶 <id>_<文章> 守同一条规则——有标注行就拒绝，空桶跟着删。
   const articleBuckets = isProject
-    ? articleBucketIds(root, id, { manifestIds: manifestPageIds() }).map((pageId) => ({ pageId, dir: path.join(root, pageId), rows: bucketRowCount(path.join(root, pageId)) }))
+    ? articleBucketIds(root, id, { manifestIds: manifestPageIds() }).map((pageId) => ({ pageId, dir: path.join(root, pageId), rows: checkedBucketRowCount(path.join(root, pageId)) }))
     : [];
   const busy = articleBuckets.filter((item) => item.rows > 0);
   if (busy.length) {

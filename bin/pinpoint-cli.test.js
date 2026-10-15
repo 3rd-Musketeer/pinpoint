@@ -780,7 +780,7 @@ test('runRemove: 桶里有标注行就拒绝（@canvas 算数，空账本不算�
   fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
     page: 'doc~1', path: '/sites/app/doc.html', revision: 1, annotations: [],
   }));
-  fs.writeFileSync(path.join(bucket, '_seq.json'), '3');
+  fs.writeFileSync(path.join(bucket, '_seq.json'), JSON.stringify({ next: 3 }));
   const file = registryWith(dir, [{ id: 'app', kind: 'dir', path: dir }]);
   const before = fs.readFileSync(file, 'utf8');
   const rec = recorder();
@@ -804,7 +804,7 @@ test('runRemove: 空桶（空账本 + _seq.json）顺手删掉；没有桶就只
   fs.writeFileSync(path.join(bucket, 'doc~1.json'), JSON.stringify({
     page: 'doc~1', path: '/sites/empty/doc.html', revision: 2, annotations: [],
   }));
-  fs.writeFileSync(path.join(bucket, '_seq.json'), '7');
+  fs.writeFileSync(path.join(bucket, '_seq.json'), JSON.stringify({ next: 7 }));
   fs.writeFileSync(path.join(bucket, 'images', 'doc~1-1-1.png'), 'leftover');
   const file = registryWith(dir, [
     { id: 'empty', kind: 'dir', path: site },

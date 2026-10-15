@@ -27,6 +27,7 @@ import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { parseAddress } from './address.js';
 import { htmlPathnames, planMovedBucket } from './bucket-move.js';
 import { beginMoveRecovery } from './move-recovery.js';
+import { checkedBucketRowCount } from './bucket-check.js';
 import {
   ARTICLE_SOURCE_EXTS,
   manifestPageIds,
@@ -116,27 +117,6 @@ function inboundRefs(projects, from, skipDir) {
   return hits;
 }
 
-/** 只有完整读过的空账本才允许替换；展示队列的宽容读取不能用来决定删桶。 */
-function checkedTargetRowCount(bucket) {
-  if (!fs.existsSync(bucket)) return 0;
-  try {
-    let rows = 0;
-    for (const item of fs.readdirSync(bucket, { withFileTypes: true })) {
-      if (!item.isFile() || !item.name.endsWith('.json')) throw new Error(`未知文件 ${item.name}`);
-      const doc = JSON.parse(fs.readFileSync(path.join(bucket, item.name), 'utf8'));
-      if (item.name === '_seq.json') {
-        if (!doc || !Number.isSafeInteger(doc.next) || doc.next < 1) throw new Error(`序号文件异常 ${item.name}`);
-      } else {
-        if (!doc || !Array.isArray(doc.annotations)) throw new Error(`账本形状异常 ${item.name}`);
-        rows += doc.annotations.length;
-      }
-    }
-    return rows;
-  } catch (error) {
-    throw fail(`无法确认标注桶 ${bucket} 为空，未搬迁：${error.message}`);
-  }
-}
-
 /** 文章搬家的预检（只读盘）。不过关抛 CliError（带 exit：2 = 找不到 / 写错，1 = 目标被占、帧会坏）。 */
 export function planArticleMove({ from, to }, { registry, root, manifestIds = [] }) {
   const fromProject = findProject(registry, from.project);
@@ -160,7 +140,7 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
   if (manifestIds.includes(toId)) throw fail(`页 id ${toId} 和模板页撞名；换一个文章 id`);
   const bucketFrom = path.join(root, fromId);
   const bucketTo = path.join(root, toId);
-  const rowsTo = checkedTargetRowCount(bucketTo);
+  const rowsTo = checkedBucketRowCount(bucketTo);
   if (rowsTo > 0) {
     throw fail(`标注桶 ${bucketTo} 里已有 ${rowsTo} 行标注（别的文章留下的），搬过去会挂到这篇上；换一个文章 id，或先 \`ppnt prune ${toId}\``);
   }

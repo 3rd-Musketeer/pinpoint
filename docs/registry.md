@@ -80,10 +80,10 @@ project 条目没有自己的桶，改 id 与 `remove` 对它按每篇文章的�
 [`docs/projects.md`](projects.md)“改 id 与文章桶”。
 
 `remove <id>` 把条目从登记表里删掉，**只删登记，不删文件**——源文件留在原地，
-重新 `add` 同一个目标即恢复登记。两种情况拒绝动手（registry 一个字节不动）：id 不存在；
-标注桶 `~/.pinpoint/<id>/` 里
-还有标注行（先在工作台处理，或 `pinpoint prune <id>` 清掉孤儿账本）。桶不存在或只剩
-空账本 / `_seq.json` 时放行，并顺手删掉这个空桶。
+重新 `add` 同一个目标即恢复登记。预检失败时 registry 一个字节不动：id 不存在、桶里还有标注行，
+或无法完整读取并确认桶的内容。`mv` 与 `remove` 共用严格检查：坏 JSON、异常 `annotations` / `_seq.json`、
+未知文件、无法归属已有账本的图片或 symlink 都保留并报错。桶不存在，或只有合法空账本、`{ next }` 序号
+和可确认归属的遗留图片时放行，并顺手删掉空桶。标注行先在工作台处理，或用 `pinpoint prune <id>` 清掉孤儿账本。
 
 **撞 id 是错误，不是自动改名。** 裸 `pinpoint add` 派生出的 id 或显式 `--id` 撞上既有条目时，
 CLI 打印“id 已存在，指向 `<path>`；更新路径用 `ppnt mv <id> <新路径>`，要新条目请显式
