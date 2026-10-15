@@ -13,7 +13,13 @@ description: 在 pinpoint 里写 article（设计文档）：建 project、写 i
 
 先跑 `ppnt list <关键词>`。它列出 project（下面每篇文章一行 `<project>/<article>`）和存量页，关键词也匹配文章的 id 和标题。
 
-- 还没有：在这个主题自己的根目录（它所属的仓库或 topic）下建 project，命令写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
+- 没有合适的 project、也不值得为它建一个（随手记一篇、还不知道归哪）：不写 project，文章进默认 project `notes`。`notes` 还没有时命令先建好并登记它：
+
+```shell
+ppnt new article quick-idea --title 一个想法     # 建出 notes/quick-idea
+```
+
+- 主题有自己的家、还没有 project：在这个主题的根目录（它所属的仓库或 topic）下建 project，命令写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
 
 ```shell
 ppnt new project <project 根目录> --title "Areta browser use"     # id 缺省取目录名，--id 指定

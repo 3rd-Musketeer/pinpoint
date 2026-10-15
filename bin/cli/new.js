@@ -6,8 +6,10 @@
  *   （和 `ppnt add <目录> --project` 同一条路）。project.json 已经在就沿用它，只补登记，所以重跑是幂等的。
  * new article：articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>。index.mdx 已经在，
  *   或这篇的页 id 的桶里已有旧标注（删掉的文章留下的孤儿），就拒绝。
+ *   参数不带 `/` 时建在默认 project（id notes）里；notes 没登记时先在 defaultProjectRoot() 建好并登记（ADR 0045）。
  */
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
@@ -24,6 +26,22 @@ import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
 import { parseAddress, resolveAddress } from './address.js';
 import { addressContext, printCandidates } from './targets.js';
 import { planAdd, reloadService } from './registry.js';
+
+/** 默认 project：`ppnt new article <id>` 不带 `/` 时文章进这里（ADR 0045）。 */
+export const DEFAULT_PROJECT_ID = 'notes';
+export const DEFAULT_PROJECT_TITLE = 'Notes';
+
+/**
+ * 默认 project 第一次建的时候放在哪：PINPOINT_DEFAULT_PROJECT（`~` 开头按家目录展开，相对路径按 cwd），
+ * 缺省 ~/notes。登记过之后以登记表为准，这个值不再用。
+ */
+export function defaultProjectRoot(env = process.env, cwd = process.cwd()) {
+  const raw = String(env.PINPOINT_DEFAULT_PROJECT || '').trim();
+  if (!raw) return path.join(os.homedir(), DEFAULT_PROJECT_ID);
+  if (raw === '~') return os.homedir();
+  if (raw.startsWith('~/')) return path.join(os.homedir(), raw.slice(2));
+  return path.resolve(cwd, raw);
+}
 
 /** frontmatter 的一个值：frontmatter 子集（docs/projects.md“frontmatter”）认不出的写法就加引号。 */
 export function frontmatterValue(text) {
@@ -99,21 +117,22 @@ function writeIfAbsent(file, content) {
   fs.writeFileSync(file, content, { flag: 'wx' });
 }
 
-async function newProject(parsed, { cwd, env, out, err, requestFn }) {
+/**
+ * 写 project 的骨架（不覆盖）并在没登记时登记，new project 和默认 project 共用。
+ * → { ok: true, plan, written, registeredNow, registryPath } 或 { ok: false, usage?, message }。
+ */
+async function ensureProject({ dir, id = null, title = null, flags = {} }, { cwd, env, out, err, requestFn }) {
   let plan;
   try {
-    plan = planNewProject(parsed.target, { cwd, id: parsed.flags.id || null, title: parsed.flags.title || null });
+    plan = planNewProject(dir, { cwd, id, title });
   } catch (error) {
     if (!(error instanceof CliError)) throw error;
-    return reportUsageError('new', error.message, err);
+    return { ok: false, usage: true, message: error.message };
   }
-  if (plan.existingJson && parsed.flags.title && parsed.flags.title !== plan.title) {
-    err(`注意：project.json 已经在，标题沿用“${plan.title}”，--title 没写进去（要改就改 ${path.join(plan.contentDir, 'project.json')}）`);
-  }
-  const ctx = addressContext(parsed.flags, env);
+  const ctx = addressContext(flags, env);
   const registered = projectEntry(ctx.registry, plan.id);
   if (registered && path.resolve(registered.path) !== plan.root) {
-    return reportUsageError('new', `project id "${plan.id}" 已经登记在 ${registered.path}；换 --id，或用 ppnt move ${plan.id} ${plan.root} 把登记指过来`, err);
+    return { ok: false, usage: true, message: `project id "${plan.id}" 已经登记在 ${registered.path}；换 --id，或用 ppnt move ${plan.id} ${plan.root} 把登记指过来` };
   }
   const written = [];
   try {
@@ -121,35 +140,48 @@ async function newProject(parsed, { cwd, env, out, err, requestFn }) {
       writeIfAbsent(row.file, row.content);
       written.push(row.file);
     }
-    for (const dir of plan.mkdirs) {
-      fs.mkdirSync(dir, { recursive: true });
-      written.push(`${dir}${path.sep}`);
+    for (const mkdir of plan.mkdirs) {
+      fs.mkdirSync(mkdir, { recursive: true });
+      written.push(`${mkdir}${path.sep}`);
     }
   } catch (error) {
-    err(`错误：写文件失败：${error.message}`);
-    return 1;
+    return { ok: false, message: `写文件失败：${error.message}` };
   }
   let registeredNow = false;
   let registryPath = ctx.registryPath;
   if (!registered) {
-    const argv = ['add', plan.root, '--project', ...(parsed.flags.registry ? ['--registry', parsed.flags.registry] : [])];
+    const argv = ['add', plan.root, '--project', ...(flags.registry ? ['--registry', flags.registry] : [])];
     try {
       const add = planAdd(argv, { cwd, env });
       registryPath = add.registryPath;
       addRegistryEntry(add.registryPath, add.entry, { seedEntries: defaultEntries(REPO_ROOT) });
       registeredNow = true;
     } catch (error) {
-      err(`错误：文件写好了，登记失败：${error.message}（修好后 ppnt add ${plan.root} --project）`);
-      return 1;
+      return { ok: false, message: `文件写好了，登记失败：${error.message}（修好后 ppnt add ${plan.root} --project）` };
     }
+  }
+  const quiet = (line) => { if (!flags.json) out(line); };
+  if (registeredNow) await reloadService({ env, requestFn, registryPath, out: quiet, err });
+  return { ok: true, plan, written, registeredNow, registryPath };
+}
+
+async function newProject(parsed, io) {
+  const { out, err, env } = io;
+  const made = await ensureProject({ dir: parsed.target, id: parsed.flags.id || null, title: parsed.flags.title || null, flags: parsed.flags }, io);
+  if (!made.ok) {
+    if (made.usage) return reportUsageError('new', made.message, err);
+    err(`错误：${made.message}`);
+    return 1;
+  }
+  const { plan, written, registeredNow, registryPath } = made;
+  if (plan.existingJson && parsed.flags.title && parsed.flags.title !== plan.title) {
+    err(`注意：project.json 已经在，标题沿用“${plan.title}”，--title 没写进去（要改就改 ${path.join(plan.contentDir, 'project.json')}）`);
   }
   const origin = (env.PINPOINT_ORIGIN || DEFAULT_ORIGIN).replace(/\/+$/, '');
   const next = [
     `建一篇文章：ppnt new article ${plan.id}/<article> --title <标题>`,
     `看 project：ppnt show ${plan.id}`,
   ];
-  const quiet = (line) => { if (!parsed.flags.json) out(line); };
-  if (registeredNow) await reloadService({ env, requestFn, registryPath, out: quiet, err });
   const model = {
     kind: 'project',
     address: plan.id,
@@ -175,7 +207,42 @@ async function newProject(parsed, { cwd, env, out, err, requestFn }) {
   return 0;
 }
 
-async function newArticle(parsed, { env, out, err }) {
+/**
+ * `ppnt new article <id>` 不带 `/`：默认 project 登记了就用它，没登记就在 defaultProjectRoot() 建好并登记。
+ * → { address, created: null | { root, written } } 或已打错误时的退出码。
+ */
+async function resolveDefaultProject(parsed, io) {
+  const { cwd, env, err } = io;
+  const ctx = addressContext(parsed.flags, env);
+  const registered = projectEntry(ctx.registry, DEFAULT_PROJECT_ID);
+  if (registered) return { root: path.resolve(registered.path), created: null };
+  const root = defaultProjectRoot(env, cwd);
+  const made = await ensureProject({ dir: root, id: DEFAULT_PROJECT_ID, title: DEFAULT_PROJECT_TITLE, flags: parsed.flags }, io);
+  if (!made.ok) {
+    err(`错误：默认 project ${DEFAULT_PROJECT_ID} 没建成（${root}）：${made.message}`);
+    return made.usage ? USAGE_EXIT : 1;
+  }
+  return { root: made.plan.root, created: { written: made.written } };
+}
+
+async function newArticle(parsed, io) {
+  const { env, out, err } = io;
+  const target = String(parsed.target);
+  let created = null;
+  if (!target.includes('/')) {
+    // 不带 `/`：文章 id，建在默认 project 里（ADR 0045）。先查 id，写错了不去建默认 project。
+    if (!ENTRY_ID_PATTERN.test(target)) {
+      return reportUsageError('new', `文章 id 要匹配 ${ENTRY_ID_PATTERN}（写 <article> 建在默认 project ${DEFAULT_PROJECT_ID} 里，或写 <project>/<article>），收到：${target}`, err);
+    }
+    if (RESERVED_ARTICLE_IDS.has(target)) {
+      return reportUsageError('new', `文章 id "${target}" 是保留名（/<project>/${target}/ 是 wiki 词条页的地址）`, err);
+    }
+    const resolved = await resolveDefaultProject(parsed, io);
+    if (typeof resolved === 'number') return resolved;
+    created = resolved.created ? { ...resolved.created, root: resolved.root } : null;
+    parsed = { ...parsed, target: `${DEFAULT_PROJECT_ID}/${target}` };
+    if (!parsed.flags.json) out(created ? `默认 project ${DEFAULT_PROJECT_ID} 还没有，建好并登记了：${resolved.root}` : `默认 project ${DEFAULT_PROJECT_ID}：${resolved.root}`);
+  }
   const ctx = addressContext(parsed.flags, env);
   const literal = parseAddress(parsed.target);
   if (!literal || literal.kind !== 'article' || literal.n || String(parsed.target).includes('_')) {
@@ -219,7 +286,7 @@ async function newArticle(parsed, { env, out, err }) {
     `截文章页：ppnt shot ${plan.address}`,
   ];
   if (parsed.flags.json) {
-    out(JSON.stringify({ kind: 'article', address: plan.address, files: [plan.file], skipped: [], registered: 'already', urls: { article: url }, next }, null, 2));
+    out(JSON.stringify({ kind: 'article', address: plan.address, files: [plan.file], skipped: [], registered: 'already', urls: { article: url }, next, ...(created ? { defaultProject: { id: DEFAULT_PROJECT_ID, root: created.root, created: true, files: created.written } } : {}) }, null, 2));
     return 0;
   }
   out(`文章 ${plan.address}`);

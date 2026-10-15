@@ -60,9 +60,10 @@ Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到
 ```shell
 ppnt new project <project 根> [--id <id>] [--title <标题>]
 ppnt new article <project>/<article> [--title <标题>]   # 写 articles/<article>/index.mdx：frontmatter + 一节
+ppnt new article <article>                             # 不写 project：进默认 project notes，没登记就先建好并登记
 ```
 
-两个命令都不覆盖已有文件，细节见 [`docs/registry.md`](registry.md)“CLI”。已经有 `project.json` 的 project 直接登记：
+两个命令都不覆盖已有文件，细节见 [`docs/registry.md`](registry.md)“CLI”；默认 project `notes` 在哪、怎么改，见那里的“默认 project `notes`”。已经有 `project.json` 的 project 直接登记：
 
 ```shell
 pinpoint add <project 根> --project

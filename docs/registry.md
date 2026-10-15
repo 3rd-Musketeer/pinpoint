@@ -183,14 +183,25 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 找不到目标退 2 而不是 1：它和写错参数一样，是命令行本身要改，脚本据此区分“命令写错了”和“命令跑了、结果有问题”。
 
-### `ppnt new project <目录>` / `ppnt new article <project>/<article>`
+### `ppnt new project <目录>` / `ppnt new article [<project>/]<article>`
 
 脚手架（`bin/cli/new.js`），两个都不覆盖已有文件。
 
 - `new project <目录> [--id <id>] [--title <标题>]`：写 `<目录>/docs/pinpoint/project.json`（`{ id, title }`），建空的 `articles/`、`wiki/`，再登记（同 `ppnt add <目录> --project`）并让服务重读。id 缺省取目录名。`project.json` 已经在就沿用它、只补登记，所以重跑是幂等的；id 是保留名或已登记在别的目录时退 2，什么都不写。
 - `new article <project>/<article> [--title <标题>]`：写 `articles/<article>/index.mdx`，frontmatter 是 title，正文是一节 `<Section id="overview">`，节里一行注释说明帧怎么加。`index.mdx` 已经在就退 1；这篇的页 id `<project>_<article>` 的桶里已有标注行（删掉或改了名的文章留下的孤儿）也退 1、什么都不写，因为建成后旧行会挂到新文章上，提示换文章 id 或先 `ppnt prune <project>_<article>`，和 `migrate` 同一条检查；project 没登记退 2，提示先 `new project`。
+- `new article <article>`（不带 `/`）：建在默认 project 里，见下一节。
 
 两个命令最后都打网址和下一步命令。
+
+### 默认 project `notes`
+
+`ppnt new article <article>` 不写 project 时，文章进 id 为 `notes` 的 project（ADR 0045），用来随手丢一篇，不用先想放哪个 project。
+
+- `notes` 已经登记：直接用登记表里的根目录，不看下面的变量。
+- 没登记：先在默认根目录建好 project（`project.json` 写 `{ "id": "notes", "title": "Notes" }`，建空的 `articles/`、`wiki/`），登记，再建文章；输出第一行说明建在哪。默认根目录下已有 `project.json` 而 id 不是 `notes` 时退 2，什么都不登记。
+- 默认根目录是环境变量 `PINPOINT_DEFAULT_PROJECT`：`~` 开头按家目录展开，相对路径按当前目录；没设时是 `~/notes`。要换位置，第一次建之前设好这个变量，或直接 `ppnt new project <目录> --id notes --title Notes` 把它建在想要的地方。已经登记过的 `notes` 要搬家，用 `ppnt move notes <新根>`。
+- owner 机器上 `notes` 登记在 `~/workspace/mori-ws/notes/`，没设这个变量。
+- `--json` 多一个 `defaultProject: { id, root, created, files }`，只在这一次新建了 `notes` 时出现。
 
 ### `ppnt check <project>[/<article>]`：验证
 
@@ -265,6 +276,7 @@ ppnt dev --sandbox [<数据目录>] [--port <端口>] [--site-port <端口>]
 | --- | --- | --- |
 | `PINPOINT_DATA_DIR` | 数据根：标注桶、dist、截图、日志（服务和 CLI 都认） | `~/.pinpoint` |
 | `PINPOINT_REGISTRY` | 登记表文件（服务、站点、CLI 都认；CLI 的 `--registry` 优先） | `~/.pinpoint/registry.json` |
+| `PINPOINT_DEFAULT_PROJECT` | 默认 project `notes` 第一次建的时候放在哪（`ppnt new article <article>`，见上面“默认 project `notes`”）；登记过之后不再用 | `~/notes` |
 | `PINPOINT_ORIGIN` | CLI 找服务的地址：`add` 后的热重载、`comments --mode image`、`shot`、`mark`、`reply`；设了它，`pinpoint status` 只探这个地址，不看 portless 路由 | `https://pinpoint.localhost` |
 | `PORT` | 服务（vite）监听的端口，端口被占就启动失败（`strictPort`） | 5199 |
 | `PINPOINT_SITE_PORT` | 服务按需拉起的 Astro 文章站点端口。这个端口上已经有服务在答时，pinpoint 直接拿来用，所以要挑一个空端口，不要和 owner 的 4530 共用 | 4530 |

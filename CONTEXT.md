@@ -9,7 +9,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
-装一批相关文章和 wiki 词条的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/wiki/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
+装一批相关文章和 wiki 词条的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/wiki/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。不想先挑 project 时写 `ppnt new article <article>`，文章进默认 project `notes`（owner 机器上在 `~/workspace/mori-ws/notes/`；没登记时命令先建好它，位置见 `docs/registry.md`“默认 project `notes`”，ADR 0045）。
 要避开：拿 project 指存量页或 board；把 project 当成文章的上级主题去写导语或描述。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`

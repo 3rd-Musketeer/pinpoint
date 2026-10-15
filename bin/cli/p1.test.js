@@ -196,6 +196,47 @@ test('new article：写一节的 index.mdx、打印网址；check 直接通过�
   assert.equal(shape.code, 2);
 });
 
+test('new article <id>（不带 /）：建在默认 project notes 里；notes 没登记时先在 PINPOINT_DEFAULT_PROJECT 建好并登记（ADR 0045）', async (t) => {
+  const made = fixture(t, { annotations: false });
+  const notesRoot = path.join(made.dir, 'workspace', 'notes');
+  made.env.PINPOINT_DEFAULT_PROJECT = notesRoot;
+
+  const first = await runIn(made, ['new', 'article', 'quick-idea', '--title', '随手一记']);
+  assert.equal(first.code, 0, first.err.join('\n'));
+  assert.deepEqual(JSON.parse(fs.readFileSync(path.join(notesRoot, 'docs', 'pinpoint', 'project.json'), 'utf8')), { id: 'notes', title: 'Notes' });
+  const file = path.join(notesRoot, 'docs', 'pinpoint', 'articles', 'quick-idea', 'index.mdx');
+  assert.equal(fs.readFileSync(file, 'utf8'), articleScaffold({ title: '随手一记' }));
+  const registry = JSON.parse(fs.readFileSync(made.registry, 'utf8'));
+  assert.ok(registry.entries.some((entry) => entry.id === 'notes' && entry.kind === 'project' && entry.path === notesRoot));
+  assert.ok(first.out.some((line) => line.includes('默认 project notes') && line.includes(notesRoot)), first.out.join('\n'));
+  assert.ok(first.out.includes('文章页：http://127.0.0.1:1/notes/quick-idea/'), first.out.join('\n'));
+
+  // 登记过之后以登记表为准：环境变量指到别处也不再建第二个。
+  made.env.PINPOINT_DEFAULT_PROJECT = path.join(made.dir, 'elsewhere');
+  const second = await runIn(made, ['new', 'article', 'another', '--json']);
+  assert.equal(second.code, 0, second.err.join('\n'));
+  const report = JSON.parse(second.out.join('\n'));
+  assert.equal(report.address, 'notes/another');
+  assert.ok(fs.existsSync(path.join(notesRoot, 'docs', 'pinpoint', 'articles', 'another', 'index.mdx')));
+  assert.ok(!fs.existsSync(path.join(made.dir, 'elsewhere')));
+
+  const list = await runIn(made, ['list']);
+  assert.ok(list.out.some((line) => line.startsWith('notes  ·  Notes  ·  project  ·  2 篇文章')), list.out.join('\n'));
+
+  const bad = await runIn(made, ['new', 'article', 'Bad_Id']);
+  assert.equal(bad.code, 2);
+  const reserved = await runIn(made, ['new', 'article', 'wiki']);
+  assert.equal(reserved.code, 2);
+});
+
+test('默认 project 的根目录：PINPOINT_DEFAULT_PROJECT（~ 展开、相对路径按 cwd），缺省 ~/notes', async () => {
+  const { defaultProjectRoot } = await import('./new.js');
+  assert.equal(defaultProjectRoot({ PINPOINT_DEFAULT_PROJECT: '/abs/notes' }), '/abs/notes');
+  assert.equal(defaultProjectRoot({ PINPOINT_DEFAULT_PROJECT: '~/w/notes' }), path.join(os.homedir(), 'w', 'notes'));
+  assert.equal(defaultProjectRoot({ PINPOINT_DEFAULT_PROJECT: 'rel/notes' }, '/cwd'), path.join('/cwd', 'rel', 'notes'));
+  assert.equal(defaultProjectRoot({}), path.join(os.homedir(), 'notes'));
+});
+
 test('new article：同名页 id 的桶里已有旧标注（删掉的文章留下的孤儿）就拒绝，指路换 id 或 prune；空桶照常建（xreview H）', async (t) => {
   const made = fixture(t, { annotations: false });
   const bucket = path.join(made.env.PINPOINT_DATA_DIR, 'e2e-project_reused');

@@ -15,7 +15,7 @@ ${ADDRESS}
 
 开始
   new project <目录>                    建 project：写 docs/pinpoint/project.json 和空目录，并登记
-  new article <project>/<article>      建一篇文章：写只有一节的 index.mdx，打印网址
+  new article [<project>/]<article>    建一篇文章：写只有一节的 index.mdx，打印网址；不写 project 进默认的 notes
   dev --sandbox [<目录>]                起一个隔离服务（临时数据目录、登记表、端口），打印要 export 的变量
 
 文章
@@ -165,14 +165,16 @@ ppnt check <project>/<article> 给出错在哪一行。
 stderr 打一行“注意”列出它们，退 1。`,
   },
   new: {
-    usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article <project>/<article> [--title <标题>]',
+    usage: 'ppnt new project <目录> [--id <id>] [--title <标题>] | ppnt new article [<project>/]<article> [--title <标题>]',
     text: `用法：ppnt new project <目录> [--id <id>] [--title <标题>]
-      ppnt new article <project>/<article> [--title <标题>]
+      ppnt new article [<project>/]<article> [--title <标题>]
 
 new project：在 <目录>/docs/pinpoint/ 下写 project.json，建空的 articles/ 和 wiki/，再登记（同 ppnt add <目录> --project）。
   id 缺省取目录名（小写、连字符）。project.json 已经在就不改它，只补登记。
 new article：在 project 里建 articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>，
   打印文章页网址和下一步。project 要先登记；index.mdx 已经在就拒绝，不覆盖。
+  只写 <article>（不带 /）时建在默认 project notes 里：notes 没登记就先在 $PINPOINT_DEFAULT_PROJECT
+  （缺省 ~/notes）建好并登记，id notes、标题 Notes；登记过之后以登记表为准。
 两个命令都不覆盖已有文件，打印写了哪些、跳过了哪些。
 
   --id <id>            project id（只用于 new project）
@@ -181,7 +183,8 @@ new article：在 project 里建 articles/<article>/index.mdx，frontmatter 写 
 ${REGISTRY_FLAG}
 
 例：ppnt new project ~/work/browser-use --title "Browser Use"
-    ppnt new article browser-use/payment-confirm --title 付款确认`,
+    ppnt new article browser-use/payment-confirm --title 付款确认
+    ppnt new article quick-idea                         # 进默认 project：notes/quick-idea`,
   },
   open: {
     usage: 'ppnt open <目标> [§2 | 节 id | wiki 词条名] [--print] [--json]',
