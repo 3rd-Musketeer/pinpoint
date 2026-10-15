@@ -17,6 +17,7 @@ import { toPageRef } from './address.js';
 import { htmlPathnames, planMovedBucket, rewriteMovedBucket } from './bucket-move.js';
 import { beginMoveRecovery } from './move-recovery.js';
 import { checkedBucketRowCount } from './bucket-check.js';
+import { assertProjectArticleSources } from './article-source-check.js';
 
 export { rewriteMovedBucket } from './bucket-move.js';
 
@@ -352,6 +353,7 @@ export function planRename(parsed, { cwd = process.cwd(), env = process.env } = 
   let articleMoves = [];
   let sitePrefixFiles = [];
   if (before.kind === 'project') {
+    assertProjectArticleSources(path.join(before.path, PROJECT_CONTENT_DIR, 'articles'));
     const meta = readProjectJson(before.path);
     if (!meta.json) throw new CliError(`${meta.errors.map(formatProjectError).join('；')}；先修好 project.json 再改 id`);
     if (meta.json.id !== before.id) {

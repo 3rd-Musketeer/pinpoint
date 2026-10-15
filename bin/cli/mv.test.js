@@ -73,6 +73,75 @@ const runIn = (made, argv) => {
 const articleDir = (root, id) => path.join(root, 'docs', 'pinpoint', 'articles', id);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
 
+for (const kind of ['directory', 'index']) {
+  for (const operation of ['article-rename', 'article-cross', 'project-rename']) {
+    test(`V3：${operation} 拒绝 ${kind} symlink，写入前保留真实正文、两桶与 registry`, async (t) => {
+      const made = fixture(t);
+      const from = articleDir(made.proj, 'commit-confirm');
+      const backing = path.join(made.proj, 'docs/pinpoint/article-backing');
+      let linked;
+      let realFile;
+      if (kind === 'directory') {
+        fs.renameSync(from, backing);
+        fs.symlinkSync(backing, from);
+        linked = from;
+        realFile = path.join(backing, 'index.mdx');
+      } else {
+        realFile = path.join(made.proj, 'docs/pinpoint/article-backing.mdx');
+        linked = path.join(from, 'index.mdx');
+        fs.renameSync(linked, realFile);
+        fs.symlinkSync(realFile, linked);
+      }
+      fs.appendFileSync(realFile, '\n/sites/e2e-project_commit-confirm/home.html\n');
+      const original = fs.readFileSync(realFile);
+      const link = fs.readlinkSync(linked);
+      const registry = fs.readFileSync(made.registry);
+      const meta = path.join(made.proj, 'docs/pinpoint/project.json');
+      const metaBytes = fs.readFileSync(meta);
+      const bucket = path.join(made.data, 'e2e-project_commit-confirm');
+      const targetId = operation === 'project-rename' ? 'renamed_commit-confirm'
+        : operation === 'article-cross' ? 'e2e-html_commit-confirm' : 'e2e-project_renamed';
+      const targetBucket = path.join(made.data, targetId);
+      if (operation !== 'project-rename') {
+        fs.mkdirSync(targetBucket);
+        fs.writeFileSync(path.join(targetBucket, '@canvas.json'), '{"annotations":[]}');
+      }
+      const bucketState = (dir) => fs.existsSync(dir)
+        ? fs.readdirSync(dir).sort().map((name) => [name, fs.readFileSync(path.join(dir, name))]) : null;
+      const beforeBuckets = [bucketState(bucket), bucketState(targetBucket)];
+      const beforeData = fs.readdirSync(made.data).sort();
+      const writes = [];
+      let injected = false;
+      for (const method of ['mkdirSync', 'writeFileSync', 'cpSync', 'renameSync', 'rmSync']) {
+        const actual = fs[method];
+        t.mock.method(fs, method, (...args) => {
+          writes.push([method, String(args[0])]);
+          if (method === 'renameSync' && !injected && args[0] === bucket) {
+            injected = true;
+            throw Object.assign(new Error('bucket denied'), { code: 'EACCES' });
+          }
+          return actual(...args);
+        });
+      }
+      const argv = operation === 'project-rename' ? ['mv', 'e2e-project', 'renamed']
+        : ['mv', 'e2e-project/commit-confirm', operation === 'article-cross' ? 'e2e-html/' : 'e2e-project/renamed'];
+      const result = await runIn(made, argv);
+      assert.notEqual(result.code, 0);
+      assert.deepEqual(fs.readFileSync(realFile), original, '真实正文必须逐字节不变');
+      assert.equal(fs.readlinkSync(linked), link);
+      assert.deepEqual([bucketState(bucket), bucketState(targetBucket)], beforeBuckets);
+      assert.deepEqual(fs.readFileSync(made.registry), registry);
+      assert.deepEqual(fs.readFileSync(meta), metaBytes);
+      assert.deepEqual(fs.readdirSync(made.data).sort(), beforeData);
+      assert.deepEqual(writes, [], '必须在任何写入前拒绝，连恢复副本也不创建');
+      assert.equal(injected, false, '预检应早于原复审桶失败注入点');
+      assert.match(result.err.join('\n'), /symlink/);
+      assert.match(result.err.join('\n'), /先.*链接.*真实目录|先.*链接.*普通文件/);
+      assert.doesNotMatch(result.err.join('\n'), /已回滚/);
+    });
+  }
+}
+
 for (const scenario of ['new-ledger', 'existing-ledger', 'new-image', 'changed-image', 'project-new-ledger', 'late-ledger']) {
   test(`V1：${scenario} 并发保存后搬迁失败，保留新反馈、整个现场与恢复副本`, async (t) => {
     const made = fixture(t);
@@ -128,6 +197,7 @@ for (const scenario of ['new-ledger', 'existing-ledger', 'new-image', 'changed-i
     assert.ok(!fs.existsSync(fromBucket), '冲突时保留整个现场，不开始恢复旧源桶');
     assert.match(result.err.join('\n'), /内容.*冲突|并发.*变动/);
     assert.match(result.err.join('\n'), /回滚未完成.*manifest.json/);
+    assert.doesNotMatch(result.err.join('\n'), /已回滚/);
     const recovery = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
     const manifest = readJson(path.join(made.data, recovery, 'manifest.json'));
     assert.equal(manifest.status, 'rollback-failed');
@@ -496,6 +566,7 @@ test('D3：回滚也失败时保留恢复清单、原始备份和已搬目标，
   const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed']);
   assert.equal(res.code, 1);
   assert.match(res.err.join('\n'), /回滚未完成.*manifest.json/);
+  assert.doesNotMatch(res.err.join('\n'), /已回滚/);
   const recovery = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
   const manifest = readJson(path.join(made.data, recovery, 'manifest.json'));
   assert.equal(manifest.status, 'rollback-failed');
@@ -575,6 +646,7 @@ for (const scenario of ['copy-target-created', 'rename-target-created', 'publish
     assert.equal(fs.readFileSync(path.join(competitor, 'competitor.txt'), 'utf8'), '并发数据，必须保留');
     assert.match(res.err.join('\n'), /身份.*变化/);
     assert.match(res.err.join('\n'), /回滚未完成.*manifest.json/);
+    assert.doesNotMatch(res.err.join('\n'), /已回滚/);
     const saved = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
     const manifest = readJson(path.join(made.data, saved, 'manifest.json'));
     assert.equal(manifest.status, 'rollback-failed');
@@ -640,6 +712,7 @@ test('N2：链接文件回滚失败时，恢复副本可独立读取并记录真
   assert.ok(injected);
   assert.equal(res.code, 1);
   assert.match(res.err.join('\n'), /回滚未完成/);
+  assert.doesNotMatch(res.err.join('\n'), /已回滚/);
   const dir = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
   const manifest = readJson(path.join(made.data, dir, 'manifest.json'));
   const snapshot = manifest.snapshots.find((item) => item.target === meta);

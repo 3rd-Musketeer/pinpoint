@@ -28,6 +28,7 @@ import { parseAddress } from './address.js';
 import { htmlPathnames, planMovedBucket } from './bucket-move.js';
 import { beginMoveRecovery } from './move-recovery.js';
 import { checkedBucketRowCount } from './bucket-check.js';
+import { assertArticleSource } from './article-source-check.js';
 import {
   ARTICLE_SOURCE_EXTS,
   manifestPageIds,
@@ -123,6 +124,7 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
   if (!fromProject) throw fail(`project ${from.project} 没登记（ppnt list 看有哪些）`, USAGE_EXIT);
   const fromDir = path.join(fromProject.dir, 'articles', from.article);
   const fromFile = path.join(fromDir, 'index.mdx');
+  assertArticleSource(fromDir);
   if (!fs.existsSync(fromFile)) {
     const have = fromProject.articles.map((article) => `${fromProject.id}/${article.id}`).join('、') || '无';
     throw fail(`project ${from.project} 里没有 articles/${from.article}/index.mdx（有：${have}）`, USAGE_EXIT);
