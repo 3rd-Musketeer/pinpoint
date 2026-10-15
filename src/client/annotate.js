@@ -29,7 +29,7 @@ import { annotationSlug } from '../shared/annotation-slug.js';
 import { pageKeyFromPathname } from '../shared/annotate-page-key.js';
 import {
   MARK_BOX_PAD_PX,
-  badgePositionForRect,
+  badgePositionInBox,
   clipByRects,
   expandRect,
   intersectRects,
@@ -573,7 +573,16 @@ import { startProseComments } from './prose-comments.js';
     _originCache = [Math.round(r.left), Math.round(r.top)];
     return _originCache;
   }
-  function beginOverlayFrame() { _originCache = null; _stageOriginCache = null; }
+  function beginOverlayFrame() { _originCache = null; _stageOriginCache = null; _overlayBoxCache = null; }
+  /* 钉子能露出来的那块（overlay-local）：#ann-overlay 自己 overflow:hidden，注入页里它贴视口
+     （不含根滚动条），工作台里它铺满 .wb-stage-wrap。钉子按它收边（badgePositionInBox）。
+     画布模式的钉子挂在 #wbstage 的滚动内容里、跟着帧平移，不收边：传 null。 */
+  var _overlayBoxCache = null;
+  function overlayBadgeBox() {
+    if (canvasView) return null;
+    if (!_overlayBoxCache) _overlayBoxCache = [0, 0, overlay.clientWidth, overlay.clientHeight];
+    return _overlayBoxCache;
+  }
   // 画布模式的标注坐标系原点 = #wbstage 的 padding box 左上（#ann-marks 挂在它的滚动内容里，随内容平移）。
   var _stageOriginCache = null;
   function stageOrigin(stage) {
@@ -1914,7 +1923,7 @@ import { startProseComments } from './prose-comments.js';
     var local = expandRect(viewToOverlayRect(viewR));
     placeFixedRect(part.frame, local);
     if (part.badge) {
-      var pos = badgePositionForRect(local);
+      var pos = badgePositionInBox(local, overlayBadgeBox());
       part.badge.style.left = pos.left + 'px';
       part.badge.style.top = pos.top + 'px';
     }
@@ -3376,7 +3385,7 @@ import { startProseComments } from './prose-comments.js';
       if (!local) { hidePartNodes(part); return; }
       showPartNodes(part);
       placeFixedRect(part.frame, local);
-      var pos = badgePositionForRect(local);
+      var pos = badgePositionInBox(local, overlayBadgeBox());
       part.badge.style.left = pos.left + 'px';
       part.badge.style.top = pos.top + 'px';
     });

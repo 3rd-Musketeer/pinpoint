@@ -14,6 +14,16 @@
 <body>
   <h1 id="doc-title">E2E dir-site doc</h1>
   <p id="doc-target">A standalone document served from a registry dir entry.</p>
+  <!-- 贴右边缘的表格块（2026-10-15 手机视口钉子被裁）：外层出血到视口右边、自己横滑，
+       表格比手机屏宽（横滑条是内容自己的，手机视口不能藏）。#doc-table-title 撑满外层，
+       右边缘就是视口右边缘：标在它上面的钉子落在框的右上角，最容易被视口裁掉。 -->
+  <div id="doc-table-wrap" style="margin:0 -40px 0 0;overflow-x:auto">
+    <div id="doc-table-title" style="padding:6px 0">Wide table block</div>
+    <table id="doc-table" style="width:560px;border-collapse:collapse">
+      <tr><th>Col A</th><th>Col B</th><th>Col C</th><th>Col D</th></tr>
+      <tr><td>1</td><td>2</td><td>3</td><td>4</td></tr>
+    </table>
+  </div>
   <div style="height:1600px"></div>
   <p id="doc-target-2">A second target far down the page, below the fold.</p>
 </body>

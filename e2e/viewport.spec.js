@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
 
-import { E2E_DATA_DIR } from './env.js';
+import { E2E_BASE_URL, E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { annotate } from './lib/annotate.js';
 import { openWorkbench, stageForm } from './lib/workbench.js';
@@ -362,4 +362,76 @@ test('手机视口标注：父实例停在交互态、A 键驱动文档实例，
     // 工作台自己的账本里没有任何一条（整节 / 整个 iframe 那种）。
     expect(await page.evaluate(() => (window.pinpoint.pageMarks || []).length)).toBe(0);
   });
+});
+
+// 2026-10-15 owner：「html 页面手机视图把滚动条去掉，另外标注气泡会被遮住」。
+// 手机屏里的 iframe 文档根有一条 15px 的常显竖条（经典滚动条），手机上没有；贴视口右边的块上的钉子
+// 默认落在框的右上角外侧（框外扩 4px 再出去半个钉子），被 #ann-overlay 的 overflow 裁掉一截。
+// 两件事无关：没有滚动条时钉子照样被裁（视口边换了个位置而已）。
+// Playwright 默认带 --hide-scrollbars 启动 Chromium（滚动条一律 0 宽），这条单独起一个不带它的浏览器。
+test('手机视口：文档根没有滚动条但照样能滚，内容自己的横滑条还在；贴右边的钉子整枚落在视口内（窗口视口同样）', async () => {
+  const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+  const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1280, height: 900 } });
+  const doc = page.frameLocator(DOC_FRAME);
+  const measure = () => doc.locator('html').evaluate(() => {
+    const de = document.documentElement;
+    const wrap = document.getElementById('doc-table-wrap');
+    const ov = document.getElementById('ann-overlay').getBoundingClientRect();
+    const b = document.querySelector('.ann-badge').getBoundingClientRect();
+    return {
+      rootBar: innerWidth - de.clientWidth, rootBarStyle: getComputedStyle(de).scrollbarWidth,
+      tableBar: wrap.offsetHeight - wrap.clientHeight, wrapRight: wrap.getBoundingClientRect().right,
+      overlay: [ov.left, ov.top, ov.right, ov.bottom], badge: [b.left, b.top, b.right, b.bottom],
+    };
+  });
+  /** 整枚钉子（22px）在 overlay 的可见区里，离边至少 2px（白环）。 */
+  const expectBadgeInside = (m) => {
+    expect(m.badge[0]).toBeGreaterThanOrEqual(m.overlay[0] + 2);
+    expect(m.badge[1]).toBeGreaterThanOrEqual(m.overlay[1] + 2);
+    expect(m.badge[2]).toBeLessThanOrEqual(m.overlay[2] - 2);
+    expect(m.badge[3]).toBeLessThanOrEqual(m.overlay[3] - 2);
+  };
+  try {
+    await openDirDoc(page);
+    await page.locator('#wbside-toggle').click();
+    await page.locator('#wbann-toggle').click();
+    await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+    await annotate(doc, '#doc-table-title', 'edge mark');
+    await expect(doc.locator('.ann-badge')).toHaveCount(1);
+
+    await test.step('窗口视口照旧：文档根的竖条还在；钉子收进视口', async () => {
+      const m = await measure();
+      expect(m.rootBar).toBeGreaterThan(0);
+      expect(m.rootBarStyle).toBe('auto');
+      expect(Math.abs(m.wrapRight - m.overlay[2])).toBeLessThan(1); // 块贴着视口右边
+      expectBadgeInside(m);
+    });
+
+    await test.step('手机视口：文档根滚动条宽 0、表格自己的横滑条还在；钉子整枚在屏内', async () => {
+      await setViewport(page, 'phone');
+      await expect(doc.locator('#doc-title')).toHaveText('E2E dir-site doc');
+      await expect(doc.locator('.ann-badge')).toHaveCount(1);
+      await expect.poll(async () => (await measure()).rootBar).toBe(0);
+      const m = await measure();
+      expect(m.rootBarStyle).toBe('none');
+      expect(m.tableBar).toBeGreaterThan(0);
+      expect(m.overlay[2] - m.overlay[0]).toBe(402);
+      expect(Math.abs(m.wrapRight - 402)).toBeLessThan(1);
+      expectBadgeInside(m);
+      // 父页面坐标里也一样：钉子在 iframe 的显示矩形内（含缩放 k）。
+      const frameBox = await page.locator(DOC_FRAME).boundingBox();
+      const badge = await doc.locator('.ann-badge').first().boundingBox();
+      expect(badge.x + badge.width).toBeLessThanOrEqual(frameBox.x + frameBox.width);
+    });
+
+    await test.step('没有滚动条也照样能滚：滚轮滚动文档根', async () => {
+      const frameBox = await page.locator(DOC_FRAME).boundingBox();
+      await page.mouse.move(frameBox.x + frameBox.width / 2, frameBox.y + frameBox.height / 2);
+      await page.mouse.wheel(0, 600);
+      await expect.poll(() => doc.locator('html').evaluate(() => scrollY)).toBeGreaterThan(0);
+    });
+    await closeSettled(page);
+  } finally {
+    await browser.close();
+  }
 });

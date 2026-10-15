@@ -4,7 +4,9 @@ import test from 'node:test';
 import {
   CLIP_MIN_PX,
   MARK_BOX_PAD_PX,
+  BADGE_EDGE_PX,
   badgePositionForRect,
+  badgePositionInBox,
   clipByRects,
   expandRect,
   intersectRects,
@@ -55,6 +57,29 @@ test('badgePositionForRect stays near clipped frame', () => {
   const pos = badgePositionForRect([10, 20, 80, 40], 11);
   assert.ok(pos.left >= 10 - 11 && pos.left <= 10 + 80 - 11);
   assert.ok(pos.top >= 20 - 11 && pos.top <= 20 + 40 - 11);
+});
+
+test('badgePositionInBox pulls a pin on a flush-right frame back inside the box', () => {
+  // 2026-10-15 手机视口：贴视口右边的块（外扩 4px 后右缘 = 391），钉子默认 left = 380，22px 宽落到 402，
+  // 超出 387 宽的视口 15px。收边后整枚钉子留在视口内、离边 BADGE_EDGE_PX。
+  const frame = [-4, 213, 395, 42];
+  const box = [0, 0, 387, 874];
+  assert.equal(badgePositionForRect(frame, 11).left + 22 > 387, true);
+  const pos = badgePositionInBox(frame, box, 11);
+  assert.equal(pos.left, 387 - 22 - BADGE_EDGE_PX);
+  assert.equal(pos.top, badgePositionForRect(frame, 11).top);
+});
+
+test('badgePositionInBox clamps the top edge too, and leaves pins already inside alone', () => {
+  assert.deepEqual(badgePositionInBox([100, 0, 50, 30], [0, 0, 400, 800], 11), { left: 139, top: BADGE_EDGE_PX });
+  assert.deepEqual(badgePositionInBox([100, 100, 50, 30], [0, 0, 400, 800], 11), badgePositionForRect([100, 100, 50, 30], 11));
+});
+
+test('badgePositionInBox keeps the preferred spot when the frame is outside the box or there is no box', () => {
+  // 滚出视口的标注不许全堆到视口边上。
+  const below = [10, 2000, 100, 40];
+  assert.deepEqual(badgePositionInBox(below, [0, 0, 400, 800], 11), badgePositionForRect(below, 11));
+  assert.deepEqual(badgePositionInBox([390, 10, 40, 40], null, 11), badgePositionForRect([390, 10, 40, 40], 11));
 });
 
 test('expandRect pads outward by MARK_BOX_PAD_PX', () => {

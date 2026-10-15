@@ -76,6 +76,34 @@ export function badgePositionForRect(local, badgeHalf) {
   return { left, top };
 }
 
+/** Gap (px) kept between a clamped badge and the edge of the visible box. */
+export const BADGE_EDGE_PX = 4;
+
+/**
+ * Badge anchor that never leaves the visible box (2026-10-15: a mark on a block flush
+ * with the viewport's right edge had its pin half cut off by the overlay's overflow).
+ * The preferred spot (badgePositionForRect) sits half outside the frame's top-right
+ * corner; when the frame is inside `box`, pull the badge in so the whole 22px disc
+ * stays `margin` px inside. A frame that does not intersect `box` keeps the preferred
+ * spot (off-screen marks must not pile up on the edge). `box` null = no clamping.
+ * @param {[number,number,number,number]} local frame rect (same space as box)
+ * @param {[number,number,number,number]|null|undefined} box visible area
+ * @param {number} [badgeHalf]
+ * @param {number} [margin]
+ * @returns {{ left: number, top: number }}
+ */
+export function badgePositionInBox(local, box, badgeHalf, margin) {
+  const half = badgeHalf == null ? 11 : badgeHalf;
+  const m = margin == null ? BADGE_EDGE_PX : margin;
+  const pos = badgePositionForRect(local, half);
+  if (!box || !(box[2] > 0) || !(box[3] > 0) || !intersectRects(local, box)) return pos;
+  const clamp = (v, lo, hi) => Math.max(lo, Math.min(v, Math.max(lo, hi)));
+  return {
+    left: clamp(pos.left, box[0] + m, box[0] + box[2] - 2 * half - m),
+    top: clamp(pos.top, box[1] + m, box[1] + box[3] - 2 * half - m),
+  };
+}
+
 /**
  * Outward pad (px) around mark boxes so the 2px border clears glyphs.
  * Shared by live overlay + export bake. Hover ghost stays flush for hit precision.

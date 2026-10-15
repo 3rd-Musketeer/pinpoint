@@ -76,6 +76,7 @@ import {
 import { startDeepLinkSync } from './url-sync.js';
 import { startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
+import { startPhoneDocScrollbar } from './phone-doc-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
@@ -290,6 +291,7 @@ function initBoard() {
 
 startEmbedBridge();
 startPageOverlay(stage);
+startPhoneDocScrollbar(stage);
 setFrameRevealer(revealFrame);
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,
