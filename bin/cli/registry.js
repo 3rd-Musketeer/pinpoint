@@ -246,12 +246,12 @@ function walkTextFiles(dirPath, exts, visit) {
  * 条目目录下所有 *.html/*.css/*.js（exts 可换，`ppnt mv` 搬文章时用 ARTICLE_SOURCE_EXTS）里的 /sites/<旧 id>/ 换成新前缀。
  * 返回被改写的文件相对路径列表。dryRun 只统计不落盘（预检用）。
  */
-export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false, exts = SITE_PREFIX_EXTS } = {}) {
+export function rewriteSitePrefixUnder(dirPath, oldId, newId, { dryRun = false, exts = SITE_PREFIX_EXTS, writeFile = fs.writeFileSync } = {}) {
   const changed = [];
   const root = walkTextFiles(dirPath, exts, (full, text) => {
     const next = rewriteSitePrefix(text, oldId, newId);
     if (!next.changed) return;
-    if (!dryRun) fs.writeFileSync(full, next.text);
+    if (!dryRun) writeFile(full, next.text);
     changed.push(full);
   });
   return changed.map((full) => path.relative(root, full));
@@ -655,19 +655,19 @@ export async function renameEntry(parsed, io = {}) {
       ...plan.articleMoves.flatMap((move) => [move.from, move.to]),
       ...plan.rewritePreview.map((file) => path.join(plan.rewriteDir, file)),
     ]);
-    renamed = recovery.step('登记表改名', () => renameRegistryEntry(plan.registryPath, plan.before.id, plan.after.id));
-    if (plan.bucketExists) recovery.step('标注桶改名', () => fs.renameSync(plan.bucketFrom, plan.bucketTo));
+    renamed = recovery.step('登记表改名', () => recovery.replaceFile(plan.registryPath, (file) => renameRegistryEntry(file, plan.before.id, plan.after.id)));
+    if (plan.bucketExists) recovery.step('标注桶改名', () => recovery.rename(plan.bucketFrom, plan.bucketTo));
     for (const move of plan.articleMoves) {
-      recovery.step(`文章桶 ${move.fromId} 改名`, () => fs.renameSync(move.from, move.to));
+      recovery.step(`文章桶 ${move.fromId} 改名`, () => recovery.rename(move.from, move.to));
       move.rewritten = recovery.step(`文章桶 ${move.toId} 账本与附件地址`, () => rewriteMovedBucket(move.to, move));
     }
     if (plan.projectJson) {
       recovery.step('project.json', () => {
         const json = JSON.parse(fs.readFileSync(plan.projectJson, 'utf8'));
-        fs.writeFileSync(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
+        recovery.writeFile(plan.projectJson, JSON.stringify({ ...json, id: plan.after.id }, null, 2) + '\n');
       });
     } else if (plan.rewriteDir) {
-      recovery.step('资源前缀', () => rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id));
+      recovery.step('资源前缀', () => rewriteSitePrefixUnder(plan.rewriteDir, plan.before.id, plan.after.id, { writeFile: recovery.writeFile }));
     }
     recovery.commit(err);
   } catch (error) {

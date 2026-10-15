@@ -3,7 +3,12 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 const copyOptions = { recursive: true, verbatimSymlinks: true, force: false, errorOnExist: true };
-const exists = (file) => { try { fs.lstatSync(file); return true; } catch (error) { if (error.code === 'ENOENT') return false; throw error; } };
+function identity(file) {
+  try {
+    const stat = fs.lstatSync(file, { bigint: true });
+    return `${stat.dev}:${stat.ino}:${stat.birthtimeNs}`;
+  } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
+}
 
 export function beginMoveRecovery(root, targets) {
   fs.mkdirSync(root, { recursive: true });
@@ -13,9 +18,10 @@ export function beginMoveRecovery(root, targets) {
   const save = () => fs.writeFileSync(manifest, JSON.stringify(state, null, 2) + '\n');
   try {
     for (const [i, target] of [...new Set(targets.filter(Boolean))].entries()) {
-      const backup = exists(target) ? path.join(dir, `backup-${i}`) : null;
+      const original = identity(target);
+      const backup = original ? path.join(dir, `backup-${i}`) : null;
       if (backup) fs.cpSync(target, backup, copyOptions);
-      state.snapshots.push({ target, backup });
+      state.snapshots.push({ target, backup, original, expected: original, touched: false });
     }
     state.status = 'running';
     save();
@@ -23,7 +29,51 @@ export function beginMoveRecovery(root, targets) {
     fs.rmSync(dir, { recursive: true, force: true });
     throw error;
   }
-  return {
+  const targetKey = (target) => path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
+  const snapshotOf = (target) => state.snapshots.find((item) => targetKey(item.target) === targetKey(target));
+  const assertIdentity = (item) => {
+    if (item && identity(item.target) !== item.expected) throw new Error(`对象身份发生变化，保留现场：${item.target}`);
+  };
+  const touch = (target) => {
+    const item = snapshotOf(target);
+    assertIdentity(item);
+    if (item) item.touched = true;
+    return item;
+  };
+  const operations = {
+    rename(from, to) {
+      const source = snapshotOf(from);
+      const destination = snapshotOf(to);
+      assertIdentity(source);
+      assertIdentity(destination);
+      const moved = identity(from);
+      fs.renameSync(from, to);
+      if (source) Object.assign(source, { touched: true, expected: null });
+      // 身份来自实际 rename 的源对象，不能事后把目标目录的当前身份认作本次所有。
+      if (destination) Object.assign(destination, { touched: true, expected: moved });
+    },
+    remove(target) {
+      const item = touch(target);
+      try { fs.rmSync(target, { recursive: true, force: true }); } finally {
+        if (item && identity(target) === null) item.expected = null;
+      }
+    },
+    writeFile(target, content) {
+      touch(target);
+      fs.writeFileSync(target, content);
+    },
+    replaceFile(target, action) {
+      const staging = fs.mkdtempSync(path.join(path.dirname(target), '.ppnt-write-'));
+      try {
+        const prepared = path.join(staging, 'contents');
+        fs.copyFileSync(target, prepared);
+        const result = action(prepared);
+        operations.rename(prepared, target);
+        return result;
+      } finally {
+        fs.rmSync(staging, { recursive: true, force: true });
+      }
+    },
     step(label, action) {
       state.active = label;
       save();
@@ -42,16 +92,24 @@ export function beginMoveRecovery(root, targets) {
     rollback(error, err) {
       err(`搬迁失败：${error.message}；失败步骤：${state.active || '准备备份'}；此前已完成：${state.completed.join('、') || '无'}`);
       const failures = [];
-      // 先恢复原本存在的数据，再删除本次新增的目标；恢复失败时保留全部目标与备份。
-      for (const { target, backup } of state.snapshots.filter((item) => item.backup)) {
+      // 先核对全部受管路径；原本不存在不代表本次创建，身份变化就保留整个现场。
+      for (const item of state.snapshots) {
+        try { assertIdentity(item); } catch (conflict) { failures.push(conflict.message); }
+      }
+      const restore = failures.length ? [] : state.snapshots.filter((item) => item.backup && item.touched);
+      for (const item of restore) {
+        const { target, backup } = item;
         let staging;
         try {
           fs.mkdirSync(path.dirname(target), { recursive: true });
           staging = fs.mkdtempSync(path.join(path.dirname(target), '.ppnt-restore-'));
           const prepared = path.join(staging, 'original');
           fs.cpSync(backup, prepared, copyOptions);
+          assertIdentity(item);
+          const restored = identity(prepared);
           fs.rmSync(target, { recursive: true, force: true });
           fs.renameSync(prepared, target);
+          item.expected = restored;
         } catch (restoreError) {
           failures.push(`${target}：${restoreError.message}`);
         } finally {
@@ -61,8 +119,8 @@ export function beginMoveRecovery(root, targets) {
         }
       }
       if (!failures.length) {
-        for (const { target } of state.snapshots.filter((item) => !item.backup)) {
-          try { fs.rmSync(target, { recursive: true, force: true }); } catch (removeError) { failures.push(`${target}：${removeError.message}`); }
+        for (const item of state.snapshots.filter((item) => !item.backup && item.touched)) {
+          try { operations.remove(item.target); } catch (removeError) { failures.push(`${item.target}：${removeError.message}`); }
         }
       }
       state.status = failures.length ? 'rollback-failed' : 'rolled-back';
@@ -77,4 +135,5 @@ export function beginMoveRecovery(root, targets) {
       return 1;
     },
   };
+  return operations;
 }

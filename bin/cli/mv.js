@@ -197,10 +197,10 @@ export function planArticleMove({ from, to }, { registry, root, manifestIds = []
   };
 }
 
-function moveDir(from, to) {
+function moveDir(from, to, recovery) {
   fs.mkdirSync(path.dirname(to), { recursive: true });
   try {
-    fs.renameSync(from, to);
+    recovery.rename(from, to);
   } catch (error) {
     if (error.code !== 'EXDEV') throw error;
     // 临时副本与目标同卷，复制完整后才发布正式目录。
@@ -209,8 +209,8 @@ function moveDir(from, to) {
       const copy = path.join(staging, 'article');
       fs.cpSync(from, copy, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
       if (fs.existsSync(to)) throw new Error(`目标在复制期间出现：${to}`);
-      fs.renameSync(copy, to);
-      fs.rmSync(from, { recursive: true, force: true });
+      recovery.rename(copy, to);
+      recovery.remove(from);
     } finally {
       fs.rmSync(staging, { recursive: true, force: true });
     }
@@ -253,14 +253,14 @@ async function moveArticle(classified, parsed, io) {
   let recovery;
   try {
     recovery = beginMoveRecovery(plan.root, [plan.fromDir, plan.toDir, plan.bucketFrom, plan.bucketTo]);
-    recovery.step('文章目录', () => moveDir(plan.fromDir, plan.toDir));
+    recovery.step('文章目录', () => moveDir(plan.fromDir, plan.toDir, recovery));
     const rewritten = recovery.step('文章资源地址', () => rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS }));
     let ledgers = [];
     if (plan.bucketExists) {
       recovery.step('标注桶改名', () => {
         // 预检已严格确认目标桶为空；回滚副本保留它原有的空账本与序号。
-        if (fs.existsSync(plan.bucketTo)) fs.rmSync(plan.bucketTo, { recursive: true, force: true });
-        fs.renameSync(plan.bucketFrom, plan.bucketTo);
+        if (fs.existsSync(plan.bucketTo)) recovery.remove(plan.bucketTo);
+        recovery.rename(plan.bucketFrom, plan.bucketTo);
       });
       ledgers = recovery.step('账本与附件地址', () => rewriteMovedBucket(plan.bucketTo, plan.bucketMove));
     }
@@ -284,7 +284,7 @@ async function moveArticle(classified, parsed, io) {
     const to = path.join(plan.root, dir, plan.toId);
     try {
       fs.rmSync(to, { recursive: true, force: true });
-      fs.renameSync(from, to);
+      recovery.rename(from, to);
       out(`  ${dir}/${plan.fromId} → ${dir}/${plan.toId}`);
     } catch (error) {
       err(`  注意：缓存 ${dir}/${plan.fromId} 没搬（${from}），可以删掉：${error.message}`);

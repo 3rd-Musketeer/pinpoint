@@ -455,3 +455,53 @@ test('D3/D4：跨设备发布后删源中断，能从备份恢复完整文章并
   assert.ok(fs.existsSync(path.join(from, 'index.mdx')));
   assert.ok(!fs.existsSync(to));
 });
+
+for (const scenario of ['copy-target-created', 'rename-target-created', 'published-target-replaced', 'bucket-target-replaced']) {
+  test(`N1：${scenario} 时保留并发对象和恢复副本`, async (t) => {
+    const made = fixture(t);
+    const from = articleDir(made.proj, 'commit-confirm');
+    const to = articleDir(made.html, 'commit-confirm');
+    const bucketTo = path.join(made.data, 'e2e-html_commit-confirm');
+    const competitor = scenario === 'bucket-target-replaced' ? bucketTo : to;
+    const rename = fs.renameSync;
+    const copy = fs.cpSync;
+    const write = fs.writeFileSync;
+    let injected = false;
+    const create = () => {
+      injected = true;
+      if (fs.existsSync(competitor)) rename(competitor, competitor + '-displaced');
+      fs.mkdirSync(competitor, { recursive: true });
+      fs.writeFileSync(path.join(competitor, 'competitor.txt'), '并发数据，必须保留');
+    };
+    t.mock.method(fs, 'renameSync', (a, b) => {
+      if (a === from && b === to) {
+        if (scenario === 'copy-target-created') throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+        if (scenario === 'rename-target-created') { create(); throw new Error('rename 失败'); }
+      }
+      return rename(a, b);
+    });
+    t.mock.method(fs, 'cpSync', (a, b, options) => {
+      const result = copy(a, b, options);
+      if (scenario === 'copy-target-created' && a === from && !b.includes('.mv-recovery-')) create();
+      return result;
+    });
+    t.mock.method(fs, 'writeFileSync', (file, ...args) => {
+      if (!injected && ['published-target-replaced', 'bucket-target-replaced'].includes(scenario)
+        && String(file).startsWith(bucketTo + path.sep) && String(file).includes('.rename-')) {
+        create();
+        throw new Error('发布后写入失败');
+      }
+      return write(file, ...args);
+    });
+    const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/']);
+    assert.ok(injected);
+    assert.equal(res.code, 1);
+    assert.equal(fs.readFileSync(path.join(competitor, 'competitor.txt'), 'utf8'), '并发数据，必须保留');
+    assert.match(res.err.join('\n'), /身份.*变化/);
+    assert.match(res.err.join('\n'), /回滚未完成.*manifest.json/);
+    const saved = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
+    const manifest = readJson(path.join(made.data, saved, 'manifest.json'));
+    assert.equal(manifest.status, 'rollback-failed');
+    assert.ok(manifest.snapshots.some((item) => item.backup && fs.existsSync(item.backup)));
+  });
+}
