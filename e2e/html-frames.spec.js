@@ -142,6 +142,9 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
     const mixed = await page.locator(`${CARD('catalog-2')} .wb-html-card`).boundingBox();
     expect(mixed.x).toBeGreaterThan(phone.x + phone.width - 1);
     expect(Math.abs(mixed.y - phone.y)).toBeLessThan(phone.height);
+    // 没有 tab 条（一篇一张、没有 tab；owner 2026-10-15“孤儿 tab”）：大纲钮在横条里。
+    await expect(page.locator('#wbtabbar')).toHaveCount(0);
+    await expect(page.locator('#wbstrip #wbstrip-outline')).toHaveCount(1);
     // 大纲：HTML 帧和手机帧一起在帧树里（B1–B3、C1–C2），没有文档条目行。
     await openOutline(page);
     await expect(page.locator('#wboutline-pop [data-ol-frame]')).toHaveText([/B1/, /B2/, /B3/, /C1/, /C2/]);
@@ -189,6 +192,28 @@ test('画布视图：一篇文章一张画布，HTML 帧是白底卡片；双击
     expect(await stageForm(page)).toBe('ios');
     await expect(page.locator('#wbpage-close')).toHaveCount(0);
     await expect.poll(scrollOf).toEqual(canvasAt);
+  });
+
+  await test.step('页面浮层里横条也有大纲钮：点另一帧，关页面浮层回画布并聚焦到那一帧', async () => {
+    await page.locator(`${CARD('long-page')} .wb-html-card`).dblclick({ position: { x: 40, y: 40 } });
+    await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
+    await expect(page.locator('#wbtabbar')).toHaveCount(0);
+    await expect(page.locator('#wbstrip #wbstrip-outline')).toHaveCount(1);
+    await openOutline(page);
+    await expect(page.locator('#wboutline-pop [data-ol-frame]')).toHaveText([/B1/, /B2/, /B3/, /C1/, /C2/]);
+    await page.locator('#wboutline-pop [data-ol-frame="widget"]').click();
+    await expect(page.locator('#wboutline-pop')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('@canvas');
+    expect(await stageForm(page)).toBe('ios');
+    await expect(page.locator('#wbpage-close')).toHaveCount(0);
+    await expect(page.locator(CARD('widget'))).toHaveClass(/\bwb-sel\b/);
+    // 聚焦：这张卡片落在舞台里、横条上方。
+    await expect.poll(async () => {
+      const box = await page.locator(`${CARD('widget')} .wb-html-card`).boundingBox();
+      const st = await stage.boundingBox();
+      const strip = await page.locator('#wbstrip').boundingBox();
+      return !!box && box.x >= st.x && box.x + box.width <= st.x + st.width && box.y >= st.y && box.y + box.height <= strip.y;
+    }).toBe(true);
   });
 
   await test.step('页面浮层切手机：同一份页面装进手机屏、居中；回画布后这张卡片按手机宽 402 摆', async () => {

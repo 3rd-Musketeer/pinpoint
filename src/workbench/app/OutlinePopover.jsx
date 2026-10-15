@@ -1,13 +1,14 @@
-// 大纲浮层（2026-10-10）：从左栏「大纲」页签挪到页 tab 条。每个 tab 标题旁一个
-// 触发钮；不到两个 tab 的画布页条上只有这一个钮，浮层画整页。
+// 大纲浮层（2026-10-10）：从左栏「大纲」页签挪到页 tab 条。多 tab 页每个 tab 标题旁一个
+// 触发钮；不到两个 tab 的画布页不出 tab 条，那一个钮在底部横条里（2026-10-15，Strip.jsx），浮层画整页。
+// 文章画布的页面浮层里横条照样有这个钮：点帧 / 节先关页面浮层回画布，再聚焦过去。
 // 不用下拉菜单：菜单会拦下 Tab，大纲行是普通按钮，Tab 要能走进去。浮层 Portal 到
 // body（条有 overflow-x，玻璃的 backdrop-filter 也会把 fixed 后代收成包含块），
-// 向上弹，层级 --wb-z-float，皮肤 .wb-glass。同一时刻只开一个。
+// 从触发钮向上弹，层级 --wb-z-float，皮肤 .wb-glass。同一时刻只开一个。
 // 右键菜单门户在浮层外面。点到 [role=menu] 时不关，复制菜单才能把焦点交还行内按钮。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useWorkbenchStore, wbGet } from './store.js';
-import { entriesOfActiveBoard, setActiveEntry, setActiveTab } from '../pages.js';
+import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
 import {
   flashBoardFrame,
   focusBoardSection,
@@ -21,6 +22,7 @@ import {
   ENTRY_TAG_LABELS,
   contentsModel,
   entryTag,
+  isPageOverlayEntry,
   outlineSlice,
   resolveEntry
 } from '../lib/board-entries.js';
@@ -29,6 +31,7 @@ import { boardRefs } from '../lib/board-refs.js';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
 import { cn } from './lib/utils.js';
+import { Button } from './ui/button.jsx';
 
 var ROW_ON =
   'bg-[var(--wb-sel)] font-semibold text-foreground ' +
@@ -107,7 +110,9 @@ function FrameTree(props) {
   });
 
   // setActiveTab 会先清掉选中。跨 tab 时 focusFrame 是 Promise，高亮要等板重挂完再写。
+  // 在文章画布的页面浮层里点：先关浮层回画布（同步切回画布条目），再聚焦。
   function onPick(sectionId, screenId) {
+    if (isPageOverlayOpen()) closePageOverlay();
     var result = focusFrame(sectionId, screenId);
     function finish(ok) {
       if (ok === false) return;
@@ -120,6 +125,7 @@ function FrameTree(props) {
   }
 
   function onPickSection(sec) {
+    if (isPageOverlayOpen()) closePageOverlay();
     goToSection(sec.id);
     if (props.onFrameNavigate) props.onFrameNavigate();
   }
@@ -220,7 +226,9 @@ function OutlineContents(props) {
   var refs = boardRefs(slice.view);
   var hasTree = !!(refs && refs.outline.some(function (sec) { return sec.frames.length > 0; }));
   var current = resolveEntry(entriesOfActiveBoard(), activeEntryId);
-  var treeOpen = hasTree && (!slice.showDocs || (!!current && current.kind === 'canvas'));
+  // 页面浮层（文章画布的 HTML 帧）也算在画布上：树照样展开，点了回画布。
+  var onCanvas = !!current && (current.kind === 'canvas' || isPageOverlayEntry(current));
+  var treeOpen = hasTree && (!slice.showDocs || onCanvas);
   if (!hasTree && (model.hidden || (!model.productRows.length && !model.drafts.length))) {
     return <p className="wb-outline-empty">没有帧</p>;
   }
@@ -344,16 +352,32 @@ export function OutlineButton(props) {
     return function () { if (openKey === key) setOpenKey(null); };
   }, [key]);
 
+  var common = {
+    type: 'button',
+    'data-outline-trigger': '',
+    'data-tab-outline': props.tabId || '',
+    'aria-label': props.label,
+    title: props.label,
+    'aria-expanded': open ? 'true' : 'false',
+    'aria-controls': open ? 'wboutline-pop' : undefined,
+    onClick: function () { setOpenKey(open ? null : key); }
+  };
+  // 横条里的那一个（props.strip）：横条工具钮的同一套皮肤（tool variant，同 #wbminimap-toggle），开着时 on 态。
+  var trigger = props.strip ? (
+    <Button {...common} variant="tool" size="icon" id="wbstrip-outline"
+      data-state={open ? 'on' : undefined}
+      className={cn('wb-strip-outline', open && 'on')}>
+      <WbIcon name="section-nav" size={14} className="size-3.5" />
+    </Button>
+  ) : (
+    <button {...common} className="wb-outline-trigger">
+      <WbIcon name="section-nav" size={14} />
+    </button>
+  );
+
   return (
     <Fragment>
-      <button type="button" className="wb-outline-trigger" data-outline-trigger
-        data-tab-outline={props.tabId || ''}
-        aria-label={props.label} title={props.label}
-        aria-expanded={open ? 'true' : 'false'}
-        aria-controls={open ? 'wboutline-pop' : undefined}
-        onClick={function () { setOpenKey(open ? null : key); }}>
-        <WbIcon name="section-nav" size={14} />
-      </button>
+      {trigger}
       {open ? <OutlinePop tabId={props.tabId || ''} label={props.label} /> : null}
     </Fragment>
   );

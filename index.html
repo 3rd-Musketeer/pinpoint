@@ -428,8 +428,8 @@
   .wb-strip > * { flex:none; white-space:nowrap; }
   .wb-strip-div { width:1px; height:17px; flex:none; background:var(--wb-seam); }
   /* 页 tab 条（ADR 0041，2026-10-10 追加大纲入口）：与横条平行的第二条胶囊，居中叠在它
-     正上方（间距 6px），同一档层级 --wb-z-strip。高 --wb-tabbar-h = 32。≥ 2 个 tab 就渲染（纯文档页
-     也算），每个标题旁一个大纲钮；不足 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。
+     正上方（间距 6px），同一档层级 --wb-z-strip。高 --wb-tabbar-h = 32。≥ 2 个 tab 才渲染（纯文档页
+     也算），每个标题旁一个大纲钮；不足 2 个 tab 不渲染，画布页的大纲钮在横条里（#wbstrip-outline，2026-10-15）。
      容器 .wb-tabbar-root 铺满 .wb 但不吃事件；条自己吃。大纲浮层 Portal 到 body（条有
      overflow-x，浮层不能做它的子元素），向上弹，层级 --wb-z-float，皮肤 .wb-glass。 */
   .wb { --wb-tabbar-h:32px; --wb-tabbar-gap:6px; }
@@ -1068,7 +1068,7 @@
   <div class="wb-strip wb-glass" id="wbstrip" data-ann-ui></div>
 
   <!-- React 挂载点：页 tab 切换条（app/TabBar.jsx，ADR 0041）——叠在横条正上方、与它平行；
-       ≥ 2 个 tab 或有画布的页渲染 #wbtabbar（不足 2 个 tab 时只有大纲钮）。本容器不吃事件、没有盒子。 -->
+       ≥ 2 个 tab 才渲染 #wbtabbar（不足 2 个 tab 时大纲钮在横条里）。本容器不吃事件、没有盒子。 -->
   <div class="wb-tabbar-root" id="wbtabbar-root"></div>
 
   <!-- React 挂载点：文章画布左上角的“← 文章标题”（app/ArticleBack.jsx）；本容器没有盒子，链接按 .wb 定位。 -->

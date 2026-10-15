@@ -390,7 +390,7 @@ function phoneShellEl() {
   return panel ? panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-phone-doc') : null;
 }
 
-/* 底部被 chrome 占掉的那一带：横条，加上叠在它上面的页 tab 条（该出就算，2026-10-14）。
+/* 底部被 chrome 占掉的那一带：横条，加上叠在它上面的页 tab 条（≥ 2 个 tab 才出，该出就算，2026-10-15）。
    按板判断而不是查 DOM：条是 React 画的，这里跑的时候它可能还没提交。 */
 function stripBandPx() {
   var css = getComputedStyle(document.documentElement);

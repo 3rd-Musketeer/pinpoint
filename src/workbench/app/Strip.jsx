@@ -1,6 +1,8 @@
 // 底部横条（2026-09-04 外壳重设计，评审板 G1）—— 收纳的唯一去处，挂 #wbstrip。
 // 顶部什么都不放；屏幕上只剩画布、左栏玻璃面板和这一条。从左到右一条读下来：
 //   在哪一页（Pages 开关 + 页名 + 类型标；文章画布页回正文的入口在左上角，app/ArticleBack.jsx）
+//   → 大纲钮（不出 tab 条的画布页，2026-10-15：原来孤零零悬在横条上方的 tab 条里；
+//     页面浮层里也在，点帧回画布。OutlinePopover.jsx，boardHasStripOutline）
 //   → 怎么看这份文档（窗口｜手机 两段，#wbviewport，只在文档条目选中时出现；
 //     2026-09-05 视口，lib/viewport.js）
 //   → 在哪一帧（‹ 1 / 6 › + map）→ 画布怎么看（缩放 · 回中 · 导出）——这两段是
@@ -18,11 +20,12 @@ import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
 import { entriesOfActiveBoard, setActiveEntry, setActiveViewport } from '../pages.js';
-import { ENTRY_TAG_LABELS, entryTag, isPageOverlayEntry, resolveEntry } from '../lib/board-entries.js';
+import { ENTRY_TAG_LABELS, boardHasStripOutline, entryTag, isPageOverlayEntry, resolveEntry } from '../lib/board-entries.js';
 import { PAGE_KIND_ICONS, pageDisplayTitle } from '../lib/page-groups.js';
 import { pageEntry } from '../lib/page-url.js';
 import { PHONE_SCREEN_H, PHONE_SCREEN_W, VIEWPORT_LABELS, entryHasViewport } from '../lib/viewport.js';
 import { CanvasHud } from './CanvasHud.jsx';
+import { OutlineButton } from './OutlinePopover.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 import { WbIcon } from './WbIcon.jsx';
@@ -81,6 +84,8 @@ export function Strip() {
     if (next) setActiveEntry(next.id);
   }
   var hasViewport = entryHasViewport(entry);
+  var board = activeBoard && activeBoard.pageId === activePageId ? (activeBoard.fullBoard || activeBoard.board) : null;
+  var showOutline = !!(board && boardHasStripOutline(board));
   var mode = !!(snap && snap.available && snap.mode);
   // 计数 = pending（open / check / done，等 owner 验收的；owner 2026-09-24）。
   // closed 不计：它是 owner 已确认的，列表里切到 closed 段看。
@@ -111,6 +116,12 @@ export function Strip() {
           id="wbstrip-kind" data-kind={kindKey}>
           <WbIcon name={PAGE_KIND_ICONS[kindKey]} size={11} className="size-[11px]" aria-hidden="true" />
           {ENTRY_TAG_LABELS[kindKey]}</span>
+      ) : null}
+      {showOutline ? (
+        <Fragment>
+          <span className="wb-strip-div" aria-hidden="true"></span>
+          <OutlineButton strip label="大纲" />
+        </Fragment>
       ) : null}
       {/* 视口两段（2026-09-05）：文档条目怎么被看。窗口 = 1:1 铺满，手机 = 缩成一块
           402 × 874 的手机屏居中摆着。页的偏好，切换重装当前板（pages.js setActiveViewport）。 */}

@@ -159,8 +159,8 @@ async function expectLocatedTarget(page) {
 
 /* 定位断言（2026-09-04 外壳重设计，2026-10-10 大纲条）：居中是在可用区里，不是
    在 stage 视口里。底边取横条与页 tab 条里更高的那条，与 board-nav 的 chromeInsets
-   同一口径。有画布的页都渲染 tab 条，只量横条会把落点判偏大约半个条高。
-   单 tab 的纯 doc 页没有这条，底边仍是横条。 */
+   同一口径。只有 ≥ 2 个 tab 的页有 tab 条（2026-10-15），别的页底边就是横条；
+   没有条却还按条高预留，落点会偏大约半个条高。 */
 async function expectFocusedTarget(page, selector) {
   await expect.poll(() => page.evaluate((targetSelector) => {
     const stage = document.querySelector('#wbstage');

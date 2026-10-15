@@ -267,7 +267,8 @@ export function chromeInsets() {
     var br = back.getBoundingClientRect();
     if (br.height > 1) out.top = Math.max(0, br.bottom - stageRect.top + 12);
   }
-  // 底部：横条，以及叠在它上面的 tab 切换条（页 tab，ADR 0041）—— 取更高的那一条。
+  // 底部：横条，以及叠在它上面的 tab 切换条（页 tab，ADR 0041；只有 ≥ 2 个 tab 的页有）—— 取更高的那一条。
+  // 不出条的页（文章画布、单 tab 页）只占横条那一带，大纲钮在横条里（2026-10-15）。
   ['wbstrip', 'wbtabbar'].forEach(function (id) {
     var el = document.getElementById(id);
     if (!el) return;

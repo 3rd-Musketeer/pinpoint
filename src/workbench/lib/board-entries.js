@@ -97,10 +97,17 @@ export function boardHasCanvas(board) {
   return false;
 }
 
-/** 工作台渲染不渲染 #wbtabbar（2026-10-14）：有 ≥ 2 个 tab 就渲染，条目是什么类型都一样；
- *  不到 2 个 tab 时只有带画布的页渲染，条上只有大纲钮。单 tab 的纯文档页不渲染。 */
+/** 工作台渲染不渲染 #wbtabbar（2026-10-15）：有 ≥ 2 个 tab 才渲染，条目是什么类型都一样。
+ *  不到 2 个 tab 不出条（文章画布、单 tab 与不带 tab 的存量页）：条上原本只剩一个大纲钮，
+ *  悬在横条上方像个孤儿 tab（owner 2026-10-15），这个钮挪进横条（boardHasStripOutline）。 */
 export function boardShowsTabBar(board) {
-  return boardTabList(board).length >= 2 || boardHasCanvas(board);
+  return boardTabList(board).length >= 2;
+}
+
+/** 横条里有没有大纲钮（2026-10-15）：不出 tab 条、页上有画布时，大纲钮在横条里。
+ *  单 tab 的纯文档页没有帧可列，不出钮（条目切换走横条的 ‹ n / N ›）。 */
+export function boardHasStripOutline(board) {
+  return !boardShowsTabBar(board) && boardHasCanvas(board);
 }
 
 /** 条上这个 tab 要不要大纲钮（2026-10-14）。有画布的页每个 tab 都要。

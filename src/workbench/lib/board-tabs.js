@@ -42,7 +42,7 @@ export function boardTabList(board) {
 }
 
 /** 有 ≥ 2 个 tab 才算多 tab 页：位置号带 tab 前缀，分享页才出切换条。
- *  工作台的 #wbtabbar 出不出看 boardShowsTabBar（board-entries.js）：多 tab 页一定出，单 tab 的画布页也出。 */
+ *  工作台的 #wbtabbar 出不出看 boardShowsTabBar（board-entries.js）：≥ 2 个 tab 才出；不到 2 个 tab 的画布页大纲钮在横条里（boardHasStripOutline）。 */
 export function isMultiTab(board) {
   return boardTabList(board).length >= 2;
 }

@@ -13,7 +13,8 @@ import { appendRegistryEntry, restoreRegistryFixture } from './registry-fixture.
 // 固件 tabs-site 有两个 tab（comps 组件：btn-wall 两帧 + chip-wall 一帧；flow 交互：
 // onboard 两帧），tabs-one-site 只有一个 tab，e2e-ios 是不带 tab 的存量画布页，
 // tabs-doc-site 是三个 tab 全是文档的页（版本 2 篇、对比 3 篇、单篇 1 篇）。
-// 工作台：≥ 2 个 tab 就渲染 #wbtabbar（纯文档页也算）；不到 2 个 tab 时有画布才渲染，不列标题，只有大纲钮。
+// 工作台：≥ 2 个 tab 才渲染 #wbtabbar（纯文档页也算）；不到 2 个 tab 不出条，有画布时大纲钮在横条里
+//（#wbstrip-outline，owner 2026-10-15“孤儿 tab”）。
 // 分享导出仍是单 tab 不出条。切换只挂当前 tab 的 section；序号按 tab 从 A 重来；
 // 活动 tab 刷新后保持；focusFrame 指到别的 tab 的帧时先切 tab。
 const TABS_DIR = path.join(E2E_SITES_DIR, 'tabs-site');
@@ -43,19 +44,35 @@ test.afterEach(async ({ request }) => {
   await restoreRegistryFixture(request);
 });
 
-test('tab 条：有画布就出现，不到两个 tab 时只有大纲钮；两个 tab 的页叠在横条正上方，切换只挂当前 tab，序号按 tab 从 A 重来，活动 tab 刷新后保持', async ({ page }) => {
+test('tab 条：不到两个 tab 不出条，大纲钮在横条里；两个 tab 的页叠在横条正上方，切换只挂当前 tab，序号按 tab 从 A 重来，活动 tab 刷新后保持', async ({ page }) => {
   test.setTimeout(90_000);
 
-  // 存量画布页：条在，不列 tab 标题，只有大纲钮
-  await openBoard(page, 'page=e2e-ios');
-  await expect(page.locator('#wbtabbar')).toHaveCount(1);
-  await expect(page.locator('#wbtabbar [role="tab"]')).toHaveCount(0);
-  await expect(page.getByRole('button', { name: '大纲', exact: true })).toBeVisible();
-
-  // 单 tab 页：同样只有大纲钮，画布正常
-  await openBoard(page, 'page=e2e-tabs-one');
-  await expect(page.locator('#wbtabbar')).toHaveCount(1);
-  await expect(page.locator('#wbtabbar [role="tab"]')).toHaveCount(0);
+  // 不带 tab 的存量画布页、单 tab 页：没有 tab 条；大纲钮在横条里（页名之后、‹ n / N › 之前），
+  // 打开同一个大纲浮层，从横条向上弹。
+  for (const id of ['e2e-ios', 'e2e-tabs-one']) {
+    await openBoard(page, `page=${id}`);
+    await expect(page.locator('#wbtabbar')).toHaveCount(0);
+    const outline = page.locator('#wbstrip #wbstrip-outline');
+    await expect(outline).toHaveCount(1);
+    await expect(page.getByRole('button', { name: '大纲', exact: true })).toHaveCount(1);
+    const order = await page.evaluate(() => {
+      const strip = document.getElementById('wbstrip');
+      const all = [...strip.querySelectorAll('#wbstrip-title, #wbstrip-outline, #wbsection-nav-position')];
+      return all.map((el) => el.id);
+    });
+    expect(order).toEqual(['wbstrip-title', 'wbstrip-outline', 'wbsection-nav-position']);
+    const stripBox = await barBox(page, '#wbstrip');
+    const btnBox = await outline.boundingBox();
+    expect(btnBox.y).toBeGreaterThanOrEqual(stripBox.y - 0.5);
+    expect(btnBox.y + btnBox.height).toBeLessThanOrEqual(stripBox.y + stripBox.height + 0.5);
+    await openOutline(page);
+    await expect(outline).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.locator('#wboutline-pop [data-ol-frame]').first()).toBeVisible();
+    const popBox = await barBox(page, '#wboutline-pop');
+    expect(popBox.y + popBox.height).toBeLessThanOrEqual(stripBox.y + 0.5);
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#wboutline-pop')).toHaveCount(0);
+  }
   await expect(visibleScreens(page)).toHaveCount(1);
 
   // 两个 tab 的页
@@ -64,6 +81,9 @@ test('tab 条：有画布就出现，不到两个 tab 时只有大纲钮；两�
   await expect(bar).toBeVisible();
   await expect(bar.locator('[role="tab"]')).toHaveText(['组件', '交互']);
   await expect(bar.locator('[role="tab"][aria-selected="true"]')).toHaveText('组件');
+  // 多 tab 页：大纲钮在条上每个 tab 旁，横条里没有
+  await expect(page.locator('#wbstrip-outline')).toHaveCount(0);
+  await expect(page.getByRole('button', { name: '组件的大纲', exact: true })).toHaveCount(1);
 
   // 位置：与横条平行 —— 水平居中对齐，底边在横条顶边之上
   const tabBox = await barBox(page, '#wbtabbar');
@@ -235,7 +255,7 @@ test('分享导出带全部 tab，切换条能用；单 tab 页导出没有条',
   await expect(page.locator('#section-solo')).toBeVisible();
 });
 
-test('大纲在页 tab 条上：左栏没有大纲页签；单 tab 打开整页；第二个 tab 的浮层只含该 tab 的帧，点帧切过去并聚焦；Esc 与点外面关闭', async ({ page }) => {
+test('大纲浮层：左栏没有大纲页签；单 tab 页从横条打开整页；第二个 tab 的浮层只含该 tab 的帧，点帧切过去并聚焦；Esc 与点外面关闭', async ({ page }) => {
   test.setTimeout(90_000);
 
   await openBoard(page, 'page=e2e-tabs-one');

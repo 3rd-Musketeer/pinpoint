@@ -143,7 +143,8 @@ export function CanvasHud() {
             <WbIcon name="map" size={14} className="size-3.5" />
           </Button>
         </div>
-        <span className="wb-strip-div" aria-hidden="true"></span>
+        {/* 帧导航与 map 都不出时（sectionNav 特性关着、没有 minimap）前面已有一道缝，不再叠第二道 */}
+        {sectionNavVisible || minimapAvailable ? <span className="wb-strip-div" aria-hidden="true"></span> : null}
         <div className="wb-hud-group flex items-center gap-px rounded-md bg-muted p-0.5" role="group" aria-label="画布缩放">
           <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-out" title="缩小" aria-label="缩小"
             onClick={function () { nudgeZoom(1 / 1.1); }}>−</button>

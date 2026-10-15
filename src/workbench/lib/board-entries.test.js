@@ -6,6 +6,7 @@ import {
   ENTRY_TAG_LABELS,
   boardEntries,
   boardHasCanvas,
+  boardHasStripOutline,
   boardShowsTabBar,
   contentsModel,
   defaultEntryId,
@@ -218,9 +219,19 @@ test('纯文档的多 tab 页：条照出；每个 tab 的浮层只列自己的�
   const oneTab = { tabs: [docTabs.tabs[1]] };
   assert.equal(boardShowsTabBar(oneTab), false);
   assert.equal(boardShowsTabBar({ sections: [{ id: 'd', screens: [{ id: 'v1', shell: 'doc' }] }] }), false);
-  // 有画布的页：不论几个 tab 都出，每个 tab 都带大纲钮
-  assert.equal(boardShowsTabBar(mixedBoard()), true);
+  assert.equal(boardHasStripOutline(oneTab), false);
+  assert.equal(boardHasStripOutline(docTabs), false);
+  // 不到 2 个 tab 的画布页（owner 2026-10-15“孤儿 tab”）：不出条，大纲钮在横条里
+  assert.equal(boardShowsTabBar(mixedBoard()), false);
+  assert.equal(boardHasStripOutline(mixedBoard()), true);
   assert.equal(tabHasOutline(mixedBoard(), ''), true);
+  // 多 tab 的画布页：条照出，大纲钮在条上每个 tab 旁，横条里没有
+  const canvasTabs = { tabs: [
+    { id: 'one', title: '一', sections: mixedBoard().sections },
+    { id: 'two', title: '二', sections: [{ id: 'z', screens: ['z1'] }] },
+  ] };
+  assert.equal(boardShowsTabBar(canvasTabs), true);
+  assert.equal(boardHasStripOutline(canvasTabs), false);
 });
 
 // 一篇文章一张画布（2026-10-15）：文章画布（validateBoard 留下 article: true）上 HTML 帧（doc 屏）也在画布上。
@@ -250,7 +261,7 @@ test('文章画布：HTML 帧也在画布上 —— 默认是画布条目；每�
   assert.deepEqual(boardEntries(mixedBoard()).map((e) => isPageOverlayEntry(e)), [false, false, false]);
 });
 
-test('文章画布：只有 HTML 帧也有画布条目；大纲不列条目行（页在画布上），树直接挂着；条上有大纲钮', () => {
+test('文章画布：只有 HTML 帧也有画布条目；大纲不列条目行（页在画布上），树直接挂着；大纲钮在横条里、不出 tab 条', () => {
   const onlyHtml = { article: true, sections: [{ id: 'pages', title: '页面', layout: 'row', letter: 'A', screens: [
     { id: 'a', shell: 'doc' }, { id: 'b', shell: 'doc' },
   ] }] };
@@ -261,7 +272,8 @@ test('文章画布：只有 HTML 帧也有画布条目；大纲不列条目行�
   assert.deepEqual(model.drafts, []);
   assert.equal(model.tree, true);
   assert.equal(boardHasCanvas(onlyHtml), true);
-  assert.equal(boardShowsTabBar(onlyHtml), true);
+  assert.equal(boardShowsTabBar(onlyHtml), false);
+  assert.equal(boardHasStripOutline(onlyHtml), true);
   // 存量的纯文档页（同样两个 doc 屏，不是文章）：没有画布，两个文档条目行。
   const legacy = { sections: onlyHtml.sections };
   assert.equal(boardHasCanvas(legacy), false);

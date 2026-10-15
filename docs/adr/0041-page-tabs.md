@@ -1,6 +1,6 @@
 # 0041 · 页内 tab：page → tab → section
 
-Status: 现行（只管存量页；文章没有 tab，转成文章时每个 tab 变成一个 `##` 小标题，见 0042 与 docs/projects.md“从存量页迁移”） · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`src/workbench/lib/board-entries.js`（`boardShowsTabBar`、`outlineSlice`）、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
+Status: 现行（只管存量页；2026-10-15 起不到 2 个 tab 不出条；文章没有 tab，转成文章时每个 tab 变成一个 `##` 小标题，见 0042 与 docs/projects.md“从存量页迁移”） · Date: 2026-10-10 · Scope: `src/workbench/lib/board-tabs.js`、`src/workbench/lib/preview-contracts.js`（`validateBoardTabs`）、`src/workbench/lib/board-refs.js`、`src/server/lib/ann-refs.js`、`src/server/lib/offline-page-export.js`、`src/client/share-runtime.js`、`src/workbench/app/TabBar.jsx`、`src/workbench/lib/board-entries.js`（`boardShowsTabBar`、`outlineSlice`）、`bin/cli/{list,annotate}.js`、`bin/ppnt-shot.js`
 
 **起因**：0040 把“组件页”和“交互页”分成两种页，底层一样。同一个原型常常既要一面组件墙，也要正式流程，
 有时还要一块试验场；拆成几个独立的页就得重复登记、`components/` 和资源各复制一份，标注也散在几个账本里。
@@ -63,3 +63,11 @@ tab。
 - 手机视口的文档屏减掉横条加 tab 条的那一带再居中、再缩放，不压到条底下。窗口视口按 owner 2026-09-05 的决定不变：文档 1:1 铺满，chrome 浮在上面。
 - 分享页本来就是 ≥ 2 个 tab 才出条。导出只含画布，全是文档的 tab 不进导出，纯文档页导出不出条，两边规则一致，不用改。
 - 不做：纯文档 tab 上隐藏大纲钮、只靠横条步进。横条只显示 n / N，看不到文档标题，浮层是唯一能按标题挑一篇的地方。
+
+## 2026-10-15 追加：不到 2 个 tab 不出条，大纲钮进横条
+
+起因：文章画布一篇一张、没有 tab（`11cd29b`），条上只剩一个大纲钮悬在横条上方，画布和页面浮层里都是。owner 看到问：“为什么这里会有一个孤儿 tab”。
+
+- `#wbtabbar` 只在 ≥ 2 个 tab 时渲染（`boardShowsTabBar`），文章画布、单 tab 与不带 tab 的存量页一条规则。
+- 这类页上有画布时，大纲钮在底部横条里（`#wbstrip-outline`，`boardHasStripOutline`），页名 / 类型标之后，打开的是同一个浮层，从横条上的钮向上弹。文章画布的页面浮层里也有，点帧 / section 先关页面浮层回画布再聚焦。
+- `chromeInsets` 和手机视口的居中只在出条时多让出条那一带。多 tab 页和分享页导出不变。
