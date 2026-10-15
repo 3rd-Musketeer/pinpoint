@@ -56,7 +56,7 @@
 
 ### 文章正文排版
 
-文章页与 wiki 词条页的 `<main>` 带 `pp-prose`（`Base.astro` 的 `prose`）。基础规则是 vendor 进来的 Tailwind Typography 0.5.20 prose（`site/src/styles/vendor/tailwind-typography.css`，MIT，原样入库），适配在 `site.css`“正文排版”一节，尺度走 `--pp-prose-*`。CSS 分三层（`layers.css`）：base（元素默认）< prose（vendor 与适配）< 不分层的组件，所以芯片、画布卡片、评论栏总用站点自己的样式；画布卡片、图、页顶错误条带 `not-prose`，不吃正文规则。
+文章页与 wiki 词条页的 `<main>` 带 `pp-prose`（`Base.astro` 的 `prose`）。基础规则是 vendor 进来的 Tailwind Typography 0.5.20 prose（`site/src/styles/vendor/tailwind-typography.css`，MIT，原样入库），适配在 `site.css`“正文排版”一节，尺度走 `--pp-prose-*`。CSS 分三层（`layers.css`）：base（元素默认）< prose（vendor 与适配）< 不分层的组件，所以芯片、画布卡片、评论栏总用站点自己的样式；画布卡片、图、页顶错误条带 `not-prose`，不吃正文规则。vendor 的规则自带 not-prose 排除，适配一节自己写的元素选择器要显式加 `:not(.not-prose *)`：链接规则漏了它时，悬停底色落在画布卡片盖满整帧的点击层 `.cc-hit` 上，帧和帧名整块被盖成浅绿（2026-10-15）。画布卡片里帧的悬停反馈只有盒子外一道 `--pp-focus-ring` 描边，点击层本身不画东西。
 
 - 正文 16px / 1.8，段距 1em，文字块行宽 40em（约 40 个汉字）；`text-autospace` 在中西文之间自动加间距，`text-spacing-trim` 挤压相邻全角标点。
 - 标题一律 600、字距 0、`text-wrap: balance`：h1 32px，h2 22px，h3 18px；节号与 h2 同字号、同基线，用强调字色。标题区下方一条发丝线；lede 17px 正文色；project 标签与 lede 隔 16px。

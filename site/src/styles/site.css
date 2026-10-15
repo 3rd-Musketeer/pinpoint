@@ -141,9 +141,10 @@ main { min-width:0; }
   .pp-prose .pp-table-scroll :is(th, td):first-child { position:sticky; left:0; z-index:1; min-width:0; max-width:none; white-space:nowrap;
     padding-left:0; padding-right:1.1em; background:var(--pp-bg); font-weight:600; color:var(--pp-text); box-shadow:inset -1px 0 0 var(--pp-border); }
   .pp-prose .pp-table-scroll :is(th, td).num { text-align:right; font-variant-numeric:tabular-nums; }
-  /* 链接（[[ ]] 芯片和按钮除外）：强调字色，下划线淡一档。 */
-  .pp-prose a:not(.cref):not(.btn) { color:var(--pp-accent-text); text-decoration-color:color-mix(in srgb, var(--pp-accent-text) 45%, transparent); text-underline-offset:3px; }
-  .pp-prose a:not(.cref):not(.btn):hover { text-decoration-color:var(--pp-accent-solid); background:var(--pp-accent-soft); border-radius:var(--pp-r-1); }
+  /* 链接（[[ ]] 芯片、按钮和 not-prose 里的除外）：强调字色，下划线淡一档。画布卡片的 .cc-hit 是盖满整帧的点击层，
+     吃了这里的 hover 底色就把帧和帧名整块盖成浅绿（2026-10-15）。 */
+  .pp-prose a:not(.cref, .btn, .not-prose *) { color:var(--pp-accent-text); text-decoration-color:color-mix(in srgb, var(--pp-accent-text) 45%, transparent); text-underline-offset:3px; }
+  .pp-prose a:not(.cref, .btn, .not-prose *):hover { text-decoration-color:var(--pp-accent-solid); background:var(--pp-accent-soft); border-radius:var(--pp-r-1); }
 }
 /* 盖过不分层的组件规则的几条（组件规则本来就赢过 prose 层）。 */
 .pp-prose > .prose > .meta { margin:16px 0 0; }

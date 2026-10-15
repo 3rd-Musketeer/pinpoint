@@ -7,6 +7,7 @@ import { E2E_DATA_DIR } from './env.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 import { closeSettled } from './ledger-settle.js';
 import { ppntResult } from './lib/cli.js';
+import { diffPixelRatio } from './png-probe.js';
 import { openOutline, openWorkbench, stageForm } from './lib/workbench.js';
 import { waitNoReload } from './site-settle.js';
 
@@ -39,7 +40,7 @@ test.afterEach(async ({ page }) => {
   await closeSettled(page);
 });
 
-test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；点帧开整张画布', async ({ page, request }) => {
+test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；悬停帧不盖内容；点帧开整张画布', async ({ page, request }, testInfo) => {
   test.setTimeout(240_000);
   // 站点冷启动时先回 503，等它就绪。
   await expect.poll(async () => (await request.get(ARTICLE_URL)).status(), { timeout: 150_000, intervals: [500] }).toBe(200);
@@ -89,6 +90,38 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
     await expect(long.locator('#width-probe-wide')).toBeVisible();
     await card(page).locator('[data-pp-width] [data-width="phone"]').click();
     await expect.poll(() => innerWidth(cardFrame(page, 'long-page'))).toBe(402);
+  });
+
+  await test.step('悬停帧：帧内容和帧名照旧画出来，盒子不挪，悬停只多一道描边', async () => {
+    // owner 2026-10-15：悬停 project 根下的 HTML 帧，整块变成浅绿空框、帧名不见（正文链接的 hover 底色落在盖满整帧的 .cc-hit 上）。
+    // HTML 帧和手机 JSX 帧都查；比的是悬停前后这块区域画出来的像素，不只看样式。
+    for (const [section, id] of [['pages', 'catalog'], ['app', 'phone-card']]) {
+      const fig = page.locator(`[data-pp-canvas][data-pp-section="${section}"] .cc-frame[data-screen="${id}"]`);
+      const box = fig.locator('.cc-box');
+      const cap = fig.locator('.cap');
+      await expect(box).toHaveAttribute('data-fitted', '1');
+      await fig.scrollIntoViewIfNeeded();
+      await page.mouse.move(2, 2);
+      await expect(box).toHaveCSS('outline-style', 'none');
+      const rects = async () => ({ box: await box.boundingBox(), cap: await cap.boundingBox() });
+      const pad = (r) => ({ x: r.x - 12, y: r.y - 12, width: r.width + 24, height: r.height + 24 });
+      const before = await rects();
+      const beforeBox = await page.screenshot({ clip: before.box });
+      const beforeCap = await page.screenshot({ clip: before.cap });
+      const figRect = await fig.boundingBox();
+      fs.writeFileSync(testInfo.outputPath(`card-hover-${id}-before.png`), await page.screenshot({ clip: pad(figRect) }));
+
+      await page.mouse.move(before.box.x + before.box.width / 2, before.box.y + before.box.height / 2);
+      await expect(box).toHaveCSS('outline-style', 'solid');
+      fs.writeFileSync(testInfo.outputPath(`card-hover-${id}-after.png`), await page.screenshot({ clip: pad(figRect) }));
+      expect(await rects()).toEqual(before);
+      // 点击层只接点击，不画东西。
+      await expect(fig.locator('.cc-hit')).toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
+      await expect(cap.locator('b')).toHaveText(id);
+      expect(await diffPixelRatio(page.context(), beforeBox, await page.screenshot({ clip: before.box }))).toBeLessThan(0.01);
+      expect(await diffPixelRatio(page.context(), beforeCap, await page.screenshot({ clip: before.cap }))).toBeLessThan(0.01);
+    }
+    await page.mouse.move(2, 2);
   });
 
   await test.step('点卡片里的 HTML 帧：文章上开整张画布（嵌入版工作台），落到这一节；卡片的宽度切换不进浮层', async () => {
