@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 
 import {
+  fitZoomForRect,
   centerScrollForPoint,
   closestBoardSection,
   findBoardFrame,
@@ -53,4 +54,18 @@ test('minimap hit testing prioritizes frame, then section, then canvas', () => {
   assert.deepEqual(hitTestBoardNavigation(model, 150, 150).kind, 'frame');
   assert.deepEqual(hitTestBoardNavigation(model, 500, 500).kind, 'section');
   assert.deepEqual(hitTestBoardNavigation(model, 800, 800).kind, 'canvas');
+});
+
+test('fitZoomForRect: scales the zoom so the frame fills the usable viewport (minus chrome and inset), clamped to the zoom axis', () => {
+  const viewport = { width: 1000, height: 800, insets: { bottom: 64 } };
+  // A 200×400 phone at zoom 1: height is the tight axis — (800 - 64 - 64) / 400 = 1.68.
+  assert.equal(fitZoomForRect({ width: 200, height: 400 }, viewport, 1), 1.68);
+  // Same frame measured at zoom 2 (twice as big on screen) lands on the same visual size.
+  assert.equal(fitZoomForRect({ width: 400, height: 800 }, viewport, 2), 1.68);
+  // A wide component: width is the tight axis — (1000 - 64) / 1872 * 1 = 0.5.
+  assert.equal(fitZoomForRect({ width: 1872, height: 100 }, viewport, 1), 0.5);
+  // Clamped to the axis range; unmeasurable rects give null.
+  assert.equal(fitZoomForRect({ width: 4000, height: 4000 }, viewport, 1), 0.5);
+  assert.equal(fitZoomForRect({ width: 10, height: 10 }, viewport, 1), 5);
+  assert.equal(fitZoomForRect({ width: 0, height: 10 }, viewport, 1), null);
 });

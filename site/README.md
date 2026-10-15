@@ -39,7 +39,7 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 下面三个组件不用 import，站点自动提供：
 
 - `<Section id="flow" title="付款前的确认">…</Section>`：一节。`id` 必填，字母数字 `_` `-`，文中唯一，就是 DOM id（`#flow`）和画布视图里这一行的 id。节号 1、2 … 按出现顺序自动编，目录和节标题前的号码从这里来。画布上同一节是字母（第 n 节 = 第 n 个字母，A、B …），字母只出现在画布、`ppnt` 和标注里，文章页不显示。不能嵌套。
-- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布组件，在文章页上显示成一张画布卡片。写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`，不能写 `<页 id>/<帧 id>`；project 根下别处的 HTML 页面写成 `{ id: "catalog", src: "skill/preview.html" }`，`project.json` 的 `sources` 登记的目录下写成 `src: "skill:preview.html"`（HTML 帧，规则见 `docs/projects.md`“HTML 帧”）。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。一张卡片里所有帧同一个缩放（手机机壳 438 px 显示成 158 px），组件帧和旁边的手机按真实比例比。卡片头显示节号、节标题与帧数，图注只有帧 id，每帧一个懒加载 iframe（`/api/frame?page=<页 id>&screen=<帧 id>&annotate=off&embed=card`），卡片里的缩略图不能点、不能标注。点帧、点“打开画布 →”都在文章上打开整张画布的浮层（见下），定位到这一帧 / 这一节，不跳转；修饰键或中键点“打开画布 →”照常在新标签页开画布视图（`/workbench/?page=<页 id>&section=<节 id>`）。该节画布上有待验收的标注（open / check / done）时头部显示“N 条标注”，读不到标注就不显示；注入的正文评论客户端经 SSE 跟着账本改动，数字不刷新就变。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”，同样在文章上开浮层，从正在读的那一节开（它没有画布就取后面第一个有画布的节）。直接打开的画布视图（首页“工作台”、工作台左栏）左上角有“← 文章标题”，回到文章页，带画布当前节的锚点（`#<节 id>`）。卡片根节点是 `[data-pp-canvas]`，节 id 在 `data-pp-section`（`data-section` 只属于 `<Section>`）。有 HTML 帧的卡片，头部多一个“手机 / 桌面”开关（`[data-pp-width]`，缺省手机），HTML 帧按 402 或 1280 宽排版、只露第一屏，卡片根节点的 `data-doc-width` 是当前宽度（`phone` / `desktop`）。HTML 帧的 iframe 经 `/api/frame` 跳到页面自己的地址（`/sites/<页 id>/…?annotate=off`），所以页面里的相对资源由 pinpoint 服务给，不经 Astro 的 `/@fs/`。
+- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布组件，在文章页上显示成一张画布卡片。写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`，不能写 `<页 id>/<帧 id>`；project 根下别处的 HTML 页面写成 `{ id: "catalog", src: "skill/preview.html" }`，`project.json` 的 `sources` 登记的目录下写成 `src: "skill:preview.html"`（HTML 帧，规则见 `docs/projects.md`“HTML 帧”）。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。一张卡片里所有帧同一个缩放（手机机壳 438 px 显示成 158 px），组件帧和旁边的手机按真实比例比。卡片头显示节号、节标题与帧数，图注只有帧 id，每帧一个懒加载 iframe（`/api/frame?page=<页 id>&screen=<帧 id>&annotate=off&embed=card`），卡片里的缩略图不能点、不能标注。点帧在文章上打开这一帧的预览，点“打开画布 →”打开整张画布的浮层（都见下“画布浮层”），不跳转；修饰键或中键点“打开画布 →”照常在新标签页开画布视图（`/workbench/?page=<页 id>&section=<节 id>`）。该节画布上有待验收的标注（open / check / done）时头部显示“N 条标注”，读不到标注就不显示；注入的正文评论客户端经 SSE 跟着账本改动，数字不刷新就变。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”，同样在文章上开浮层，从正在读的那一节开（它没有画布就取后面第一个有画布的节）。直接打开的画布视图（首页“工作台”、工作台左栏）左上角有“← 文章标题”，回到文章页，带画布当前节的锚点（`#<节 id>`）。卡片根节点是 `[data-pp-canvas]`，节 id 在 `data-pp-section`（`data-section` 只属于 `<Section>`）。有 HTML 帧的卡片，头部多一个“手机 / 桌面”开关（`[data-pp-width]`，缺省手机），HTML 帧按 402 或 1280 宽排版、只露第一屏，卡片根节点的 `data-doc-width` 是当前宽度（`phone` / `desktop`）。HTML 帧的 iframe 经 `/api/frame` 跳到页面自己的地址（`/sites/<页 id>/…?annotate=off`），所以页面里的相对资源由 pinpoint 服务给，不经 Astro 的 `/@fs/`。
 - `<Figure src="figures/message-flow.jsx" caption="…" />`：正文里的图，静态示意图和可交互演示都用它，节里节外都能写。源文件在文章目录的 `figures/` 下，pinpoint 像编帧一样编它；文章页上是一个占满正文栏宽的懒加载 iframe（`/api/frame?page=<页 id>&figure=<图 id>&embed=figure`），高度跟着图的内容，没有滚动条，可以点、可以操作，深浅色跟着文章页切换。图注在图下面。图的错误显示在图的位置，不进画布卡片和页顶错误条；它们也是 project 错误，生产构建会失败。图和图注里选字不出评论。写法、调色板、逐步演示与错误见 `docs/projects.md`“图”。
 
 ## `[[ ]]` 引用
@@ -59,12 +59,19 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 ## 画布浮层
 
-从文章进画布不跳页：顶栏“画布视图”、卡片“打开画布 →”、卡片里点帧、右栏的画布标注卡片，都在文章上开整张画布的浮层（`CanvasOverlay.astro` + `lib/canvas-overlay-client.js`，owner 2026-10-15 定）。关掉回到打开前的滚动位置。
+从文章进画布不跳页：顶栏“画布视图”、卡片“打开画布 →”、右栏的画布标注卡片，都在文章上开整张画布的浮层（`CanvasOverlay.astro` + `lib/canvas-overlay-client.js`，owner 2026-10-15 定）。关掉回到打开前的滚动位置。
+
+卡片里点某一帧是这一帧的预览，同一个浮层（owner 2026-10-15 问：“现在点击文章内嵌的画布没有预览功能了？直接进画布？”，要的是点帧先预览这一帧，不是进整张画布）：
+
+- HTML 帧：浮层里直接是这一页的完整页面浮层（`docs/design.md`“文章画布”的页面浮层），可滚动、交互、标注、切窗口 / 手机，外面不先铺整张画布。没有“← 画布”；Esc（焦点在页面里也认）、关闭、浏览器后退直接回文章原来的滚动位置。
+- iOS / 组件帧：画布只留这一帧，缩放调到正好装下它（四周留 32 px），别的帧、别的节和它们的钉子都藏起来；可标注、可缩放。
+- 两种都由工作台的 `workbench.setSolo(<节>, <帧>)` 做（`src/workbench/embed.js`，嵌入版 `html[data-wb-solo]`）：横条不出大纲、节导航、地图和回中。第一次打开时工作台换到这一帧之前浮层先不露（`data-ov-wait`），不闪一下整张画布。
+- 头部：“预览”、节号、节标题、帧 id，按钮多一个“看整张画布”：同一个浮层收起预览（缩放还原到预览前），换成整张画布并 `focusFrame` 到这一帧，地址去掉 `view=frame`（replaceState，后退照样关）。
 
 - 内容：一份嵌入版工作台，`/workbench/?page=<页 id>&section=<节 id>&embed=overlay`（`canvas-overlay.js` 的 `embedCanvasSrc`）。画布上能做的这里都能做：交互、标注、平移、缩放、大纲、标注列表。嵌入版不出左栏、左栏开关和“← 文章标题”（`src/workbench/embed.js`，样式挂在 `html.wb-embed`）。第一次打开时装上，关了也留着，再开不重装，直接定位。
-- 头部：节号、节标题（跟着画布当前所在的节换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
-- 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址同时带帧和钉子：先 `workbench.openPage(<帧>)` 开那一页的页面浮层，钉子在那一页的标注客户端（`workbench.annotateApi()`）里找。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
-- 地址：`#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。
+- 头部：节号、节标题（整张画布时跟着画布当前所在的节换，预览不换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
+- 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址带帧、`view=frame` 和钉子：开那一帧的预览（那一页的页面浮层），钉子在那一页的标注客户端（`workbench.annotateApi()`）里找；不带 `view=frame` 的旧地址先开整张画布再 `workbench.openPage(<帧>)`。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
+- 地址：`#canvas=<节 id>[&frame=<帧 id>][&view=frame][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。`view=frame` 是单帧预览，要和 `frame` 一起出现。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。
 - 关闭：Esc、点面板外的暗色区域、关闭按钮。焦点在画布里时，Esc 先归画布里的那一层（页面浮层、标注框、标注列表、大纲、菜单、对话框、导航器、标注模式），没有这些层时工作台经 `postMessage`（`source: "pinpoint-workbench"`，同源）请文章页关浮层；画布选中不算一层。关闭后焦点回到点开它的入口。
 - 打开期间：焦点困在浮层里（首尾哨兵把 Tab 绕回来，画布 iframe 是其中一站），页面不滚动（`html.pp-ov-lock`）。
 - 手机宽度（≤ 600 px）：整屏 sheet。

@@ -6,13 +6,14 @@
 // 不信本组件自己的 props：section 和 num（节号）由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
 // 文章只显示数字：卡片头是节号 + 节标题，图注只有帧 id；画布字母（B、B1）留给工作台、ppnt 和标注，不进文章页。
 // 文档帧（HTML 帧，shell doc）按 pinpoint 定的宽度显示（手机 402 / 桌面 1280，卡片头切换，缺省手机），卡片只露第一屏。
-// 卡片不可交互：iframe tabindex -1、pointer-events none。点帧、点“打开画布”都在文章上开整张画布的浮层
-// （CanvasOverlay.astro，地址 #canvas=<节>[&frame=<帧>]），定位到这一节 / 这一帧，不跳页；修饰键点“打开画布”照常在新标签页开画布视图。
+// 卡片不可交互：iframe tabindex -1、pointer-events none。点帧在文章上开这一帧的预览（CanvasOverlay.astro，
+// 地址 #canvas=<节>&frame=<帧>&view=frame：HTML 帧直接是它的完整页面，iOS / 组件帧单独放大）；点“打开画布”开整张画布
+// 的浮层（#canvas=<节>），定位到这一节。都不跳页；修饰键点“打开画布”照常在新标签页开画布视图。
 // 头部的标注数（data-pp-badge）= 这一节画布上待验收的标注（open / check / done），浮层头读这里的 data-*。
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
 // 缺源文件的帧照占位置，显示占位格“缺帧 <id>”，和画布上那一格的错误面板对应。
 import { DOC_WIDTHS, cardModel } from '../lib/canvas-card.js';
-import { canvasHash } from '../lib/canvas-overlay.js';
+import { FRAME_VIEW, canvasHash } from '../lib/canvas-overlay.js';
 
 interface Props { section?: string; num?: string; frames?: unknown; shell?: string }
 const { section, num } = Astro.props;
@@ -71,7 +72,7 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
               <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe>
             </div>
           )}
-          <a class="cc-hit" data-pp-frame-open href={canvasHash(m.sectionId, { frame: f.id })} aria-label={`放大查看 ${f.title}`}></a>
+          <a class="cc-hit" data-pp-frame-open href={canvasHash(m.sectionId, { frame: f.id, view: FRAME_VIEW })} aria-label={`预览 ${f.title}`}></a>
         </figure>
       ))}
     </div>

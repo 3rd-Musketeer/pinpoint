@@ -12,6 +12,7 @@ import {
   closestBoardSection,
   findBoardFrame,
   findBoardSection,
+  fitZoomForRect,
   focusScrollForRect,
   hitTestBoardNavigation,
   measureBoardNavigation
@@ -551,6 +552,13 @@ export function focusWorkbenchFrame(groupId, screenId, options) {
   updateSectionNavigatorActive(groupId);
   focusStageOnRect(frame, options);
   return true;
+}
+
+/** 装下这一帧的缩放（zoom 轴值，已夹在范围内）：单帧预览（embed.js setEmbedSolo）用。量不到 → null。 */
+export function frameFitZoom(groupId, screenId) {
+  var frame = findBoardFrame(refreshBoardNavigationModel(), groupId, screenId);
+  if (!frame || !stage) return null;
+  return fitZoomForRect(frame, stageViewportMetrics(), currentCanvasZoom());
 }
 
 /* 首访落点（2026-08-16 TODO 小修，owner 拍板）：无存档视口时聚焦第一个有 frame

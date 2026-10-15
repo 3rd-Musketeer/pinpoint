@@ -85,7 +85,9 @@ export function Strip() {
   }
   var hasViewport = entryHasViewport(entry);
   var board = activeBoard && activeBoard.pageId === activePageId ? (activeBoard.fullBoard || activeBoard.board) : null;
-  var showOutline = !!(board && boardHasStripOutline(board));
+  var solo = useWorkbenchStore(function (s) { return s.embedSolo; });
+  // 文章页的单帧预览（embed.js）只看这一帧：不出大纲（连同它前面那道缝）。
+  var showOutline = !solo && !!(board && boardHasStripOutline(board));
   var mode = !!(snap && snap.available && snap.mode);
   // 计数 = pending（open / check / done，等 owner 验收的；owner 2026-09-24）。
   // closed 不计：它是 owner 已确认的，列表里切到 closed 段看。

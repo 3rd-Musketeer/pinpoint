@@ -74,7 +74,7 @@ import {
   wireLibraryScrollSpy
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
-import { startEmbedBridge } from './embed.js';
+import { embedSolo, setEmbedSolo, startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from './phone-doc-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
@@ -354,6 +354,10 @@ window.workbench = {
   openPage: function (screenId) { return openPageOverlay(screenId); },
   closePage: function () { return closePageOverlay(); },
   pageOpen: function () { return isPageOverlayOpen(); },
+  // 文章页的单帧预览（2026-10-15，embed.js）：setSolo(节, 帧) 只留这一帧（'page' | 'frame' | false），
+  // setSolo('') 收起回整张画布；solo() 读当前预览。
+  setSolo: function (sectionId, screenId) { return setEmbedSolo(sectionId, screenId); },
+  solo: function () { return embedSolo(); },
   annotateApi: function () { return annotateApi(); },
   // storage-unify：页 id 是否真实存在（清单里查得到）。跨页跳转的调用方
   // （annotate goToMark）先问这个，别把人切到 rename 前的旧 id 上。

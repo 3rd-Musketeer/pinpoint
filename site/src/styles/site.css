@@ -221,11 +221,15 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-head .kind { font-size:var(--pp-fs-xs); font-weight:600; letter-spacing:.06em; text-transform:uppercase; color:var(--pp-text-muted); }
 .ov-head .ref { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); color:var(--pp-accent-text); font-weight:600; }
 .ov-head .t { margin:0; font-size:var(--pp-fs-sm); line-height:1.4; letter-spacing:0; font-weight:600; min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-head .fr { font-family:var(--pp-font-mono); font-size:var(--pp-fs-ui); color:var(--pp-text-muted); min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.ov-head .fr[hidden], .ov-head [data-ov-full][hidden] { display:none; }
 .ov-head .sp { flex:1; }
 .btn.ov-ic { width:32px; height:32px; padding:0; display:inline-grid; place-items:center; font-size:var(--pp-fs-lg); line-height:1; }
 .ov-body { position:relative; flex:1; min-height:0; background:var(--pp-surface); }
 /* 工作台自己管深浅色（跟系统），iframe 不继承站点的 color-scheme，免得浏览器给它铺一层不透明底色。 */
 .ov-canvas { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; color-scheme:normal; }
+/* 单帧预览：工作台换到这一帧之前（第一次装载、从整张画布切过来）先不露，免得先闪一下整张画布。 */
+.pp-ov[data-ov-wait] .ov-canvas { visibility:hidden; }
 @media (max-width:600px) {
   /* 手机：整屏的 sheet。 */
   .pp-ov { padding:0; }
@@ -233,6 +237,7 @@ html.pp-ov-lock { overflow:hidden; }
   .ov-head { padding:8px 8px 8px 12px; }
   .ov-head .kind { display:none; }
   .ov-head .t { flex:1 1 0; }
+  .ov-head .fr { display:none; }
   .ov-head .sp { display:none; }
 }
 

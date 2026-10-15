@@ -1,5 +1,6 @@
 ---
 // 画布浮层：在文章上开整张画布（可标注、平移、缩放），关掉回到原来的滚动位置（site/README.md「画布浮层」）。
+// 同一个浮层也是单帧预览（点卡片里的一帧，data-ov-view="frame"）：只看这一帧，头部多一个帧名和“看整张画布”。
 // 一篇文章一个，空壳；里面是一份嵌入版工作台（/workbench/?page=<页 id>&section=<节>&embed=overlay），
 // 由 lib/canvas-overlay-client.js 在第一次打开时装上，之后关了也留着，再开直接定位。
 // 首尾的 data-ov-guard 把 Tab 绕回浮层里（modal dialog 自己会把焦点放出到浏览器界面）。
@@ -9,10 +10,12 @@
   <span class="ov-guard" tabindex="0" data-ov-guard="start"></span>
   <div class="ov-panel">
     <header class="ov-head">
-      <span class="kind">画布</span>
+      <span class="kind" data-ov-kind>画布</span>
       <span class="ref" data-ov-num></span>
       <h2 class="t" id="pp-ov-title" data-ov-title></h2>
+      <span class="fr" data-ov-frame hidden></span>
       <span class="sp"></span>
+      <button class="btn" type="button" data-ov-full hidden title="在这里看整张画布，停在这一帧">看整张画布</button>
       <a class="btn" data-ov-canvas href="/workbench/" target="_top" title="离开正文，整页打开画布视图">整页打开</a>
       <button class="btn ov-ic" type="button" data-ov-close aria-label="关闭画布，回到正文">×</button>
     </header>

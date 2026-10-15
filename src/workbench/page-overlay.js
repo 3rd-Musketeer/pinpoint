@@ -6,10 +6,12 @@
 // - Esc：这一下不归某一层（标注框、提及、画箭头、标注模式、标注列表、大纲、菜单、对话框）就关浮层。
 //   焦点常在页面的 iframe 里，按键到不了工作台：iframe 的文档装好后在它的 window 上挂同一对监听。
 //   “归不归某一层”在捕获段判：那一层在冒泡段关掉自己后就看不出来了（embed.js 同一个做法）。
+//   文章页的单帧预览里（embed.js setEmbedSolo）这一下 Esc 关的是整个预览，回文章。
 import { wbGet } from './app/store.js';
 import { annotateApi } from './ann-bridge.js';
 import { closePageOverlay, isPageOverlayOpen, openPageOverlay } from './pages.js';
 import { selectBoardFrame } from './board-nav.js';
+import { embedSolo, requestEmbedClose } from './embed.js';
 
 var CARD_SELECTOR = '.wb-screen[data-html-card]';
 
@@ -50,7 +52,9 @@ function wireEscape(win) {
     if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
     if (taken || !isPageOverlayOpen()) return;
     e.preventDefault();
-    closePageOverlay();
+    // 文章页的单帧预览（embed.js setEmbedSolo）：页面浮层就是预览本身，关它 = 回文章，不露出画布。
+    if (embedSolo()) requestEmbedClose();
+    else closePageOverlay();
   });
 }
 

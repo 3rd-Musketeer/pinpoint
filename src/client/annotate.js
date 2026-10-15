@@ -3160,6 +3160,12 @@ import { startProseComments } from './prose-comments.js';
         if (part.badge.textContent !== String(m.n)) part.badge.textContent = m.n;
         var wantBadge = 'ann-badge' + statusBadgeClass(m);
         if (part.badge.className !== wantBadge) part.badge.className = wantBadge;
+        // 钉子带上所在的帧：工作台的单帧预览只放出这一帧的钉子（src/workbench/embed.js setEmbedSolo）。
+        var sid = m.screenId || '';
+        if (part.badge.getAttribute('data-ann-screen') !== sid) {
+          part.badge.setAttribute('data-ann-screen', sid);
+          part.frame.setAttribute('data-ann-screen', sid);
+        }
       });
       entry.signature = markGeometryKey(m);
       entry.liveTargets = targets[index];
@@ -3525,6 +3531,7 @@ import { startProseComments } from './prose-comments.js';
         node.className = 'ann-bubble';
         node.setAttribute('data-ann-ui', '');
         node.setAttribute('data-n', m.n);
+        node.setAttribute('data-ann-screen', m.screenId || '');
         var html = bubbleInnerHtml(bubbleMarkView(m));
         node.innerHTML = html;
         node.addEventListener('click', function (e) {
