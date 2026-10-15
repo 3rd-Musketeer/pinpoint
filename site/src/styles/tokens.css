@@ -5,7 +5,7 @@
   --pp-font-mono:ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace;
   --pp-r-1:4px; /* 槽内小按钮、芯片悬停底、行内代码 */
   --pp-r-2:6px; /* 按钮、列表行、分段控件槽 */
-  --pp-r-3:8px; /* 工作台卡片、菜单项、卡片里的帧、代码块 */
+  --pp-r-3:8px; /* 工作台卡片、菜单及菜单项、卡片里的帧、代码块 */
   --pp-r-4:12px; /* 文章卡片、评论线程、浮层面板、输入框 */
   --pp-r-board:16px; /* 画布画板、文章画布卡、画布浮层 */
   --pp-r-dialog:20px; /* 模态对话框 */
@@ -60,6 +60,9 @@
   --pp-warning:#ab6400;
   --pp-success:#007658;
   --pp-info:#4f7096;
+  --pp-toast-bg:rgba(32,32,32,.92);
+  --pp-toast-fg:#ffffff;
+  --pp-toast-action:#2eb289;
   --pp-status-open:#1f5f8f;
   --pp-status-open-fg:#ffffff;
   --pp-status-check:#b85a14;
@@ -102,6 +105,9 @@
     --pp-warning:#ffca16;
     --pp-success:#2eb289;
     --pp-info:#7f9fc4;
+    --pp-toast-bg:rgba(32,32,32,.92);
+    --pp-toast-fg:#ffffff;
+    --pp-toast-action:#2eb289;
     --pp-status-open:#5b9fd6;
     --pp-status-open-fg:#202020;
     --pp-status-check:#d9782a;
@@ -144,6 +150,9 @@
   --pp-warning:#ffca16;
   --pp-success:#2eb289;
   --pp-info:#7f9fc4;
+  --pp-toast-bg:rgba(32,32,32,.92);
+  --pp-toast-fg:#ffffff;
+  --pp-toast-action:#2eb289;
   --pp-status-open:#5b9fd6;
   --pp-status-open-fg:#202020;
   --pp-status-check:#d9782a;

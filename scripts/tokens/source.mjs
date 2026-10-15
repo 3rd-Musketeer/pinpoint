@@ -55,6 +55,17 @@ export const SEMANTIC = {
   warning: { ...s('amber', 11), use: '警示：字' },
   success: { ...s('green', 11), use: '成功：字（同强调字）' },
   info: { ...lit('#4f7096', '#7f9fc4'), use: '说明：字（钢灰蓝）' },
+  'toast-bg': { ...lit('rgba(32,32,32,.92)'), use: '关闭与撤销提示的反色底，两种主题保持深底' },
+  'toast-fg': { ...lit('#ffffff'), use: '深底 toast 上的正文' },
+  'toast-action': { ...lit(SCALES.green.dark[10]), use: '深底 toast 上的撤销动作，采用暗底强调字档' },
+};
+
+/** 遮罩与常驻玻璃面板材质：生成器只负责分发，同款表面共用配方。 */
+export const MATERIAL = {
+  scrim: lit('rgba(17,17,17,.56)', 'rgba(0,0,0,.72)'),
+  glass: lit('rgba(255,255,255,.88)', 'rgba(34,34,34,.88)'),
+  'glass-hi': lit('rgba(255,255,255,.6)', 'rgba(255,255,255,.06)'),
+  'glass-blur': 'blur(20px) saturate(1.2)',
 };
 
 /** 标注四态（候选 2）：钉子底色与钉上数字的颜色。 */
@@ -75,7 +86,7 @@ export const FONT = {
 export const RADIUS = {
   1: ['4px', '槽内小按钮、芯片悬停底、行内代码'],
   2: ['6px', '按钮、列表行、分段控件槽'],
-  3: ['8px', '工作台卡片、菜单项、卡片里的帧、代码块'],
+  3: ['8px', '工作台卡片、菜单及菜单项、卡片里的帧、代码块'],
   4: ['12px', '文章卡片、评论线程、浮层面板、输入框'],
   board: ['16px', '画布画板、文章画布卡、画布浮层'],
   dialog: ['20px', '模态对话框'],

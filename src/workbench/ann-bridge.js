@@ -232,9 +232,10 @@ function ensureGutterOverlay() {
   gutterOverlay.style.cssText = 'position:absolute;inset:0;pointer-events:none;z-index:var(--wb-z-panel);display:none;';
   var style = document.createElement('style');
   style.setAttribute('data-ann-ui', '');
+  // gutter 气泡是工作台评论卡，用 r-3（8px），与画布上的评论卡同档。
   style.textContent = ''
     + '#wb-ann-gutter .ann-bubble{position:absolute;width:' + GUTTER_BUBBLE_W + 'px;background:var(--wb-surface,#ffffff);'
-    + 'border:0;border-radius:10px;box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1));'
+    + 'border:0;border-radius:var(--wb-r-3,8px);box-shadow:var(--wb-sh-2,0 1px 2px rgba(0,0,0,.06),0 8px 24px rgba(0,0,0,.1));'
     + 'font:13px/1.55 var(--sans,system-ui,sans-serif);color:var(--wb-fg,#202020);pointer-events:auto;cursor:pointer;}'
     + '#wb-ann-gutter .ann-bubble:hover{box-shadow:var(--wb-sh-3,0 1px 2px rgba(0,0,0,.06),0 14px 38px rgba(0,0,0,.16));}'
     + '.wb-stage-wrap[data-ann-gutter="on"]{padding-right:' + GUTTER_W + 'px;}'

@@ -111,9 +111,9 @@ export function annotateCss() {
     /* 幽灵框：锚点解析失败但有 lastRect 时，在 lastRect 处画虚线框 + 序号钉。 */
     '.ann-ghost-rect{position:absolute;box-sizing:border-box;border:2px dashed var(--wb-faint,#646464);background:transparent;border-radius:var(--wb-r-1,4px);pointer-events:none;z-index:1;}',
     /* 关闭 / 撤销的 toast（注入端与工作台共用注入侧样式） */
-    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:var(--wb-z-float-2,2147483647);display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--wb-r-4,12px);background:rgba(32,32,32,.92);color:#fff;font:500 12.5px system-ui;box-shadow:0 8px 24px rgba(0,0,0,.28);}',
+    '#ann-toast{position:fixed;left:50%;bottom:18px;transform:translateX(-50%);z-index:var(--wb-z-float-2,2147483647);display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:var(--wb-r-4,12px);background:var(--ann-toast-bg);color:var(--ann-toast-fg);font:500 12.5px system-ui;box-shadow:var(--wb-sh-3);}',
     '#ann-toast[hidden]{display:none;}',
-    '#ann-toast button{border:0;background:transparent;color:#2eb289;cursor:pointer;font:600 12.5px system-ui;padding:2px 4px;}',
+    '#ann-toast button{border:0;background:transparent;color:var(--ann-toast-action);cursor:pointer;font:600 12.5px system-ui;padding:2px 4px;}',
     /* 评论卡只在 hover 钉子（或该条被定位）时出（批注 1 的后半句「hover 时显示，
        不然有点挡视野」）。这里只切可见性，不动 [hidden] —— [hidden] 归「锚点在
        视口外」那条既有规矩，两个语义不许合并。 */
@@ -138,7 +138,8 @@ export function annotateCss() {
     '#ann-input .ann-inline-target{display:inline-flex;vertical-align:baseline;align-items:center;max-width:120px;border-radius:6px;padding:0 6px;background:var(--wb-fill,color-mix(in srgb,#202020 6%,transparent));color:var(--wb-muted,#646464);line-height:22px;font-size:12px;white-space:nowrap}',
     '#ann-input .ann-inline-target>span{overflow:hidden;text-overflow:ellipsis}#ann-input .ann-inline-remove{background:none;padding:0 0 0 4px;opacity:0}#ann-input .ann-inline-target:hover .ann-inline-remove,#ann-input .ann-inline-target:focus-within .ann-inline-remove{opacity:1}',
     '#ann-box .acts{justify-content:space-between;align-items:center}#ann-box .ann-tools{position:relative;display:flex;align-items:center;gap:6px}#ann-box #ann-plus{font-size:22px;padding:0;width:30px;height:30px;background:transparent}',
-    '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#ffffff);box-shadow:var(--wb-sh-3);border-radius:10px;padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
+    // 紧凑工具菜单用 r-3（8px），与工作台菜单、菜单项同档。
+    '#ann-tools-menu{position:absolute;bottom:36px;left:0;background:var(--wb-surface,#ffffff);box-shadow:var(--wb-sh-3);border-radius:var(--wb-r-3,8px);padding:4px;min-width:140px;z-index:6}#ann-tools-menu:not([hidden]){display:flex;flex-direction:column}#ann-tools-menu button{display:flex;gap:8px;align-items:center;background:transparent;text-align:left}',
     '#ann-mode-pills{display:flex;gap:4px}#ann-box .ann-mode-pill{border-radius:999px;font-size:11px}#ann-box .ann-mode-pill span{opacity:0;margin-left:5px}#ann-box .ann-mode-pill:hover span,#ann-box .ann-mode-pill:focus-visible span{opacity:1}',
     '#ann-imgs{margin-top:0;margin-bottom:12px}#ann-imgs:empty{display:none}',
     '#ann-thread{margin-top:8px;padding-top:8px;border-top:1px solid var(--wb-seam,#cecece);display:flex;flex-direction:column;gap:6px;max-height:160px;overflow:auto}',
