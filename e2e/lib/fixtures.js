@@ -2,38 +2,63 @@ import { expect, test as base } from '@playwright/test';
 
 export { expect };
 
-// 页面里出现多份 React 时 React 报的错。几乎总是环境问题：服务的 vite 依赖缓存（deps/）在它启动后被
-// 别的实例重建覆盖，页面按两个 ?v= 各加载了一份 React（2026-10-15 查清，vite.config.js 的 cacheDir）。
+// 这些是 Hooks 初始化失败的共有症状，单凭报错不能确定是用法、renderer 还是重复实例。
 export const MULTI_REACT = /Invalid hook call|more than one copy of React|Cannot read properties of null \(reading 'use[A-Za-z]*'\)/;
 
-/** 一条页面错误 / console 文本是不是多份 React 的症状。 */
+/** 收集 React Hooks 错误，尚不归因。 */
 export function isMultiReactSymptom(text) {
   return MULTI_REACT.test(String(text));
 }
 
-/** 失败信息里加的那一行：一眼认出是环境，不去查用例。 */
-export function multiReactMessage(samples) {
+/** 同一文档的脚本记录；各自使用不同版本的独立文档不算重复加载。 */
+export function duplicateReactEvidence(samples, urls = []) {
+  // React 自己的三项排查提示也含这句话，不能把“可能有多份”当成已经检测到。
+  const evidence = samples.filter((sample) => /more than one copy of React/i.test(sample) && !/might have more than one copy of React/i.test(sample));
+  const versions = new Map();
+  for (const value of urls) {
+    const url = new URL(value);
+    const version = url.searchParams.get('v');
+    if (!version || !/\/(?:react[^/]*|chunk-[^/]+)\.js$/.test(url.pathname)) continue;
+    const key = url.origin + url.pathname;
+    if (!versions.has(key)) versions.set(key, new Set());
+    versions.get(key).add(version);
+  }
+  for (const [chunk, hashes] of versions) if (hashes.size > 1) evidence.push(`同一 chunk 加载了不同的 ?v=：${chunk} (${[...hashes].join(', ')})`);
+  return evidence;
+}
+
+export function multiReactMessage(samples, evidence = duplicateReactEvidence(samples)) {
   return [
-    '环境：vite 依赖缓存被覆盖（页面里有多份 React），不是这条用例的问题。',
-    '服务的 deps/ 在它启动后被别的 vite 实例重建过；查服务的 cacheDir 是不是和别的实例共用（vite.config.js、e2e/env.js 的 E2E_VITE_CACHE）。',
+    evidence.length ? '检测到多份 React 的证据；检查重复依赖及 vite 缓存是否共用（cacheDir、e2e/env.js 的 E2E_VITE_CACHE）。' : 'React Hooks 初始化失败；检查 Hooks 用法、React 与 renderer 版本及重复实例。',
+    ...evidence,
     `页面报错：${samples.slice(0, 3).join(' | ')}`,
   ].join('\n');
 }
 
 /**
  * 用例统一从这里取 test / expect（e2e/spec-hygiene.test.js 守）。
- * 包一层 context：收集这个 context 里所有页面的报错和 console.error，出现多份 React 的症状时，
- * 用例失败就在失败信息里加一条“环境：vite 依赖缓存被覆盖”；用例通过只记一条 annotation。
+ * 收集页面报错和脚本版本；失败时补充诊断，通过时只记 annotation。
  */
 export const test = base.extend({
   context: async ({ context }, use, testInfo) => {
     const samples = [];
+    const scripts = new Map();
+    context.on('page', (page) => page.on('framenavigated', (frame) => scripts.delete(frame)));
+    context.on('request', (request) => {
+      if (request.resourceType() !== 'script') return;
+      let frame;
+      try { frame = request.frame(); } catch { return; }
+      if (!scripts.has(frame)) scripts.set(frame, new Set());
+      scripts.get(frame).add(request.url());
+    });
     const note = (text) => { if (isMultiReactSymptom(text) && samples.length < 10) samples.push(String(text).split('\n')[0]); };
     context.on('weberror', (error) => note(error.error().message));
     context.on('console', (msg) => { if (msg.type() === 'error') note(msg.text()); });
     await use(context);
     if (!samples.length) return;
-    if (testInfo.status !== testInfo.expectedStatus) throw new Error(multiReactMessage(samples));
-    testInfo.annotations.push({ type: '环境', description: multiReactMessage(samples) });
+    const evidence = [...scripts.values()].flatMap((urls) => duplicateReactEvidence([], urls));
+    const description = multiReactMessage(samples, [...duplicateReactEvidence(samples), ...evidence]);
+    if (testInfo.status !== testInfo.expectedStatus) throw new Error(description);
+    testInfo.annotations.push({ type: 'React 诊断', description });
   },
 });
