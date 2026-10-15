@@ -68,7 +68,7 @@ function layoutDiagnostic(project, error) {
   };
 }
 
-/** `[[ ]]` 的目标在不在：本 project 的文章 id 与 concept name，或 `[[project:名字]]` 指的那个 project。 */
+/** `[[ ]]` 的目标在不在：本 project 的文章 id 与 wiki 词条的 name，或 `[[project:名字]]` 指的那个 project。 */
 function refResolver(projects) {
   const names = new Map(projects.map((project) => [project.id, new Set([
     ...project.articles.map((article) => refKey(article.id)),
@@ -211,7 +211,7 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
       code: 'empty_ref',
       file: article.file,
       line: ref.line,
-      message: `空 ref [[${ref.raw}]]：“${ref.name}”还没有文章或概念（合法，project 首页会列出）`,
+      message: `空 ref [[${ref.raw}]]：“${ref.name}”还没有文章或 wiki 词条（合法，project 首页会列出）`,
       article: address,
     });
   }
@@ -219,7 +219,7 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
 }
 
 /**
- * 一个 project 的全部空 ref（文章和概念正文里写的都算），按名字合并：
+ * 一个 project 的全部空 ref（文章和 wiki 词条正文里写的都算），按名字合并：
  * [{ name, sources: [{ kind: 'article' | 'concept', id, file, line }] }]，引用多的在前。
  * `ppnt show <project>` 用它；站点首页的列表（site-data.js 的 projectEmptyRefs）是同一口径。
  */
@@ -281,7 +281,7 @@ export async function checkProject(registry, projectId, { articleId = null } = {
   const articles = articleId ? project.articles.filter((article) => article.id === articleId) : project.articles;
   const diagnostics = [];
   for (const error of project.errors) {
-    // 只查一篇时，别的文章和概念的错误不算；project 自己的错误（没有 path）照报。
+    // 只查一篇时，别的文章和 wiki 词条的错误不算；project 自己的错误（没有 path）照报。
     if (articleId && error.path && !isArticleError(error, articleId)) continue;
     diagnostics.push(layoutDiagnostic(project, error));
   }
@@ -306,7 +306,7 @@ export async function checkProject(registry, projectId, { articleId = null } = {
           code: 'empty_ref',
           file: concept.file,
           line: ref.line,
-          message: `空 ref [[${ref.raw}]]：“${ref.name}”还没有文章或概念（合法，project 首页会列出）`,
+          message: `空 ref [[${ref.raw}]]：“${ref.name}”还没有文章或 wiki 词条（合法，project 首页会列出）`,
         });
       }
     }

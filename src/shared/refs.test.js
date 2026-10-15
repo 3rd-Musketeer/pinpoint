@@ -51,8 +51,8 @@ test('ref markup escapes and round-trips the .md placeholder', () => {
   const html = refHtml({ kind: 'empty', name: '<x>', project: 'p', label: '<x>' });
   assert.match(html, /class="cref empty"/);
   assert.ok(!html.includes('<x>'));
-  const link = refHtml({ kind: 'concept', name: 'c', project: 'p', label: 'c' }, { href: '/p/concepts/c/', used: [{ title: 'T"' }] });
-  assert.match(link, /^<a class="cref" href="\/p\/concepts\/c\/"/);
+  const link = refHtml({ kind: 'concept', name: 'c', project: 'p', label: 'c' }, { href: '/p/wiki/c/', used: [{ title: 'T"' }] });
+  assert.match(link, /^<a class="cref" href="\/p\/wiki\/c\/"/);
   assert.match(link, /data-used="\[\{&quot;title&quot;:&quot;T\\&quot;&quot;\}\]"/);
   const raw = rawRefHtml('a & b|标签', 'demo');
   const m = [...raw.matchAll(RAW_REF_RE)][0];

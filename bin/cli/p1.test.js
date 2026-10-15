@@ -141,7 +141,8 @@ test('new project：写 project.json 和空目录、登记；重跑不覆盖，�
   const json = JSON.parse(fs.readFileSync(path.join(root, 'docs', 'pinpoint', 'project.json'), 'utf8'));
   assert.deepEqual(json, { id: 'browser-use', title: 'Browser Use' });
   assert.ok(fs.statSync(path.join(root, 'docs', 'pinpoint', 'articles')).isDirectory());
-  assert.ok(fs.statSync(path.join(root, 'docs', 'pinpoint', 'concepts')).isDirectory());
+  assert.ok(fs.statSync(path.join(root, 'docs', 'pinpoint', 'wiki')).isDirectory());
+  assert.ok(!fs.existsSync(path.join(root, 'docs', 'pinpoint', 'concepts')));
   const registry = JSON.parse(fs.readFileSync(made.registry, 'utf8'));
   assert.ok(registry.entries.some((entry) => entry.id === 'browser-use' && entry.kind === 'project' && entry.path === root));
   assert.ok(first.out.includes('首页：http://127.0.0.1:1/browser-use/'), first.out.join('\n'));
@@ -188,8 +189,9 @@ test('new article：写一节的 index.mdx、打印网址；check 直接通过�
   const orphan = await runIn(made, ['new', 'article', 'nobody/notes']);
   assert.equal(orphan.code, 2);
   assert.match(orphan.err[0], /project nobody 没登记：先 ppnt new project/);
-  const reserved = await runIn(made, ['new', 'article', 'e2e-project/concepts']);
+  const reserved = await runIn(made, ['new', 'article', 'e2e-project/wiki']);
   assert.equal(reserved.code, 2);
+  assert.match(reserved.err[0], /保留名.*wiki 词条/);
   const shape = await runIn(made, ['new', 'page', 'x']);
   assert.equal(shape.code, 2);
 });
@@ -224,7 +226,7 @@ test('frontmatterValue：子集认不出的写法加引号', () => {
 
 /* ---- open ---- */
 
-test('open --print：文章页与画布视图、一节、project 全貌、概念页', async (t) => {
+test('open --print：文章页与画布视图、一节、project 全貌、wiki 词条页', async (t) => {
   const made = fixture(t, { annotations: false });
   const article = await runIn(made, ['open', 'e2e-project/commit-confirm', '--print']);
   assert.equal(article.code, 0, article.err.join('\n'));
@@ -242,9 +244,9 @@ test('open --print：文章页与画布视图、一节、project 全貌、概念
   const project = await runIn(made, ['open', 'e2e-project', '--print']);
   assert.ok(project.out.includes('e2e-project 首页  http://127.0.0.1:1/e2e-project/'));
   assert.ok(project.out.includes('llms.txt  http://127.0.0.1:1/e2e-project/llms.txt'));
-  assert.ok(project.out.some((line) => line.endsWith('/e2e-project/concepts/confirm-card/')));
+  assert.ok(project.out.some((line) => line.endsWith('/e2e-project/wiki/confirm-card/')));
   const concept = await runIn(made, ['open', 'e2e-project', 'confirm-card', '--print']);
-  assert.deepEqual(concept.out, ['概念 confirm-card  http://127.0.0.1:1/e2e-project/concepts/confirm-card/']);
+  assert.deepEqual(concept.out, ['wiki confirm-card  http://127.0.0.1:1/e2e-project/wiki/confirm-card/']);
   const noSuch = await runIn(made, ['open', 'e2e-project/commit-confirm', 'nope', '--print']);
   assert.equal(noSuch.code, 1);
 

@@ -9,7 +9,7 @@ import { waitNoReload } from './site-settle.js';
 
 // pp3：文章站点经 pinpoint 服务同源打开（docs/design.md「服务路由（pp3 文章）」）。
 // 固件：registry 里常驻的 project 条目 e2e-project → e2e/project-site/（两篇文章、
-// 两个概念、一个空 ref [[risk-score]]）。站点是真 Astro 开发服务器，由服务在第一个
+// 两条 wiki、一个空 ref [[risk-score]]）。站点是真 Astro 开发服务器，由服务在第一个
 // 文章请求时按需拉起（端口 E2E_SITE_PORT，playwright.config 设）。
 //
 // 一个用例走完：冷启动那一下只发生一次，拆成多个用例就只有第一个看得到「启动中」。
@@ -22,7 +22,7 @@ const PROJECT_ROOT = path.join(ROOT, 'e2e', 'project-site');
 
 const siteState = async (request) => (await (await request.get('/health')).json()).site;
 
-test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、[[ ]] popup、画布卡片、概念页、llms.txt', async ({ page, request }) => {
+test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、[[ ]] popup、画布卡片、wiki 词条页、llms.txt', async ({ page, request }) => {
   // 冷启动 Astro（依赖预构建 + content layer 同步）在高负载机器上要几十秒。
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
@@ -160,12 +160,16 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(page.frameLocator('[data-pp-canvas] [data-screen="card-plain"] iframe').locator('.e2e-confirm-card')).toBeVisible();
   });
 
-  await test.step('从 popup 进概念页：/<project>/concepts/<slug>/，列出用到它的文章', async () => {
+  await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址 301 过来（ADR 0045）', async () => {
     await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').hover();
     await page.locator('.pop a.go').click();
-    await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/concepts/confirm-card/`);
+    await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/wiki/confirm-card/`);
     await expect(page.locator('#article .prose h1')).toHaveText('confirm-card');
     await expect(page.locator('#used-by')).toContainText('提交前确认');
+    const old = await request.get('/e2e-project/concepts/confirm-card/', { maxRedirects: 0 });
+    expect(old.status()).toBe(301);
+    expect(old.headers().location).toBe('/e2e-project/wiki/confirm-card/');
+    expect((await request.get('/e2e-project/wiki/')).status()).toBe(200);
   });
 
   // llms.txt 与 project 首页的内容由 site/build.check.mjs 逐条断言；原有路由（registry、

@@ -19,9 +19,9 @@ ${ADDRESS}
   dev --sandbox [<目录>]                起一个隔离服务（临时数据目录、登记表、端口），打印要 export 的变量
 
 文章
-  show <project>[/<article>]           一篇文章的节（§n · 字母 · 节 id · 帧 · open 数 · 网址），或一个 project 的文章、概念、空 ref
+  show <project>[/<article>]           一篇文章的节（§n · 字母 · 节 id · 帧 · open 数 · 网址），或一个 project 的文章、wiki、空 ref
   show <project>[/<article>] --uses <组件>  用到这个组件的帧和图
-  open <目标> [§2 | 概念名] [--print]    打开或打印网址：文章页、画布视图、概念页、project 首页
+  open <目标> [§2 | wiki 名] [--print]   打开或打印网址：文章页、画布视图、wiki 词条页、project 首页
   check <project>[/<article>]          验证：布局错误、全部帧的编译与 lint、正文渲染错误、空 ref；有错退 1
   build <目标> [--frame <帧>] [--watch]  编译帧到 dist
   render <目标>/<帧 id>                 编译一帧打到 stdout，不落 dist
@@ -57,7 +57,7 @@ export const HELP = {
 一篇文章：每节一行 §n · 字母 · 节 id · 标题 · 帧数 · open 数（画布标注 + 正文评论），
   下面是这一节的帧（编号 · 帧 id · 源文件）和网址（文章页锚点、画布视图）。纯文字的节也列，
   所以 owner 说“第 2 节”时在这里对上字母和节 id。
-一个 project：文章（斜杠地址、节数、帧数、open 数）、概念、空 ref、布局错误；有布局错误退 1。
+一个 project：文章（斜杠地址、节数、帧数、open 数）、wiki 词条、空 ref、布局错误；有布局错误退 1。
 布局错误里也列正文里的图（<Figure>）编不过、在浏览器里运行出错的那些；过期的图先重编。
 存量页：编号 · 帧 id · 源文件（同 list <页 id> --frames）。
 
@@ -169,7 +169,7 @@ stderr 打一行“注意”列出它们，退 1。`,
     text: `用法：ppnt new project <目录> [--id <id>] [--title <标题>]
       ppnt new article <project>/<article> [--title <标题>]
 
-new project：在 <目录>/docs/pinpoint/ 下写 project.json，建空的 articles/ 和 concepts/，再登记（同 ppnt add <目录> --project）。
+new project：在 <目录>/docs/pinpoint/ 下写 project.json，建空的 articles/ 和 wiki/，再登记（同 ppnt add <目录> --project）。
   id 缺省取目录名（小写、连字符）。project.json 已经在就不改它，只补登记。
 new article：在 project 里建 articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>，
   打印文章页网址和下一步。project 要先登记；index.mdx 已经在就拒绝，不覆盖。
@@ -184,14 +184,14 @@ ${REGISTRY_FLAG}
     ppnt new article browser-use/payment-confirm --title 付款确认`,
   },
   open: {
-    usage: 'ppnt open <目标> [§2 | 节 id | 概念名] [--print] [--json]',
-    text: `用法：ppnt open <目标> [§2 | 节 id | 概念名] [--print] [--json]
+    usage: 'ppnt open <目标> [§2 | 节 id | wiki 词条名] [--print] [--json]',
+    text: `用法：ppnt open <目标> [§2 | 节 id | wiki 词条名] [--print] [--json]
 
 打开或打印网址（地址按 PINPOINT_ORIGIN，缺省 ${DEFAULT_ORIGIN}）：
   ppnt open <project>/<article>          文章页、画布视图（没有带画布的节时不打）
   ppnt open <project>/<article> §2       文章页上那一节的锚点，和画布视图里那一节（纯文字的节只有锚点）
-  ppnt open <project>                    project 首页、llms.txt、每篇文章、每个概念页
-  ppnt open <project> <概念名>            那个概念页
+  ppnt open <project>                    project 首页、llms.txt、每篇文章、每个 wiki 词条页
+  ppnt open <project> <wiki 词条名>      那个 wiki 词条页
 不带 --print 时用系统浏览器打开第一个网址，其余照样打印。
 
   --print              只打印，不打开浏览器

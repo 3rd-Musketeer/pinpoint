@@ -517,7 +517,7 @@ export async function runAdd(argv, io = {}) {
     return 1;
   }
   out(`已登记 ${entry.id}（${entry.kind}）：${entryTargetDesc(entry)}`);
-  if (entry.kind === 'project') out(`文章与概念：\`ppnt show ${entry.id}\`；验证：\`ppnt check ${entry.id}\``);
+  if (entry.kind === 'project') out(`文章与 wiki：\`ppnt show ${entry.id}\`；验证：\`ppnt check ${entry.id}\``);
   out(`registry：${plan.registryPath}`);
   await reloadService({ env, requestFn, registryPath: plan.registryPath, out, err });
   return 0;

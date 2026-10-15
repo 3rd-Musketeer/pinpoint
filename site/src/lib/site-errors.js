@@ -15,7 +15,7 @@ export const projectErrorLine = (projectId, error) => `project "${projectId}": $
  * returns this article's own errors (every project error whose path is under
  * `articles/<article>`): section errors go to that section's card, the rest
  * (looseErrors) to the banner. The project's other errors (other articles,
- * concepts, project.json, name collisions) are listed as project lines.
+ * wiki entries, project.json, name collisions) are listed as project lines.
  */
 export function bannerErrors(projectId, projectErrors, articleId, canvas) {
   const others = (projectErrors || []).filter((e) => !isArticleError(e, articleId));

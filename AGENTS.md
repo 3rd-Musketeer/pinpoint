@@ -102,7 +102,7 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
 
 | 要做什么 | 打开 |
 |---|---|
-| 写 article、加帧 / 加组件、写 concept、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
+| 写 article、加帧 / 加组件、写 wiki 词条、改存量页的 board、做屏内交互 | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 读画布标注与正文评论 → 改稿 → 回复、写回状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | 帧、组件、编译、交互的唯一机制权威（含存量页的 board） | [`docs/board-schema.md`](docs/board-schema.md) |
 | registry 条目形状、注入契约、CLI（add / move / rename / remove） | [`docs/registry.md`](docs/registry.md) |

@@ -1,0 +1,32 @@
+---
+// /<project>/wiki/：这个 project 的 wiki 词条列表（ADR 0045）。
+import Base from '../../../layouts/Base.astro';
+import { loadSite, assertBuildClean, projectHref } from '../../../lib/site-data.js';
+
+export async function getStaticPaths() {
+  const site = await loadSite();
+  assertBuildClean(site);
+  return [...site.projects.keys()].map((id) => ({ params: { project: id }, props: { projectId: id } }));
+}
+
+const { projectId } = Astro.props;
+const site = await loadSite();
+const p = site.projects.get(projectId);
+---
+<Base title={`wiki · ${p.title}`} project={p.id} crumbs={[{ label: p.title, href: projectHref(p.id) }, { label: 'wiki' }]} errors={p.errors}>
+  <div class="prose">
+    <h1>wiki</h1>
+    <p class="lede">{p.concepts.length} 条 wiki 词条。</p>
+  </div>
+  <section class="block prose" id="wiki">
+    {p.concepts.length === 0 && <p class="muted">还没有 wiki 词条。</p>}
+    <div class="cards">
+      {p.concepts.map((c) => (
+        <a class="card" href={c.href}>
+          <div class="t">{c.name}<span class={`st-chip${c.fixed ? ' ok' : ''}`}>{c.status}</span></div>
+          {c.definition && <div class="s">{c.definition}</div>}
+        </a>
+      ))}
+    </div>
+  </section>
+</Base>

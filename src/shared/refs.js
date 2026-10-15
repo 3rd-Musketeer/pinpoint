@@ -1,7 +1,7 @@
 /**
  * `[[ ]]` references (common.md §6). Pure: no Astro, no fs.
  *
- *   [[名字]]            article id or concept name in the current project
+ *   [[名字]]            article id or wiki entry name (code: concept) in the current project
  *   [[project:名字]]    the same in another project (prefix must be a project id)
  *   [[名字|显示文字]]    Obsidian-style label
  *
@@ -102,7 +102,7 @@ export function namespaceErrors(project) {
     else seen.set(key, what);
   };
   for (const a of project.articles || []) {
-    if (RESERVED_ARTICLE_IDS.has(a.id)) errors.push({ code: 'article_id_reserved', message: 'article id "concepts" is reserved (it is the concept route segment)' });
+    if (RESERVED_ARTICLE_IDS.has(a.id)) errors.push({ code: 'article_id_reserved', message: `article id "${a.id}" is reserved (it is a wiki route segment)` });
     add(a.id, `article ${a.file}`);
   }
   for (const c of project.concepts || []) add(c.name, `concept ${c.file}`);

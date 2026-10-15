@@ -2079,7 +2079,7 @@ test('runAdd --project: id and title come from project.json; bad layouts and fla
   assert.ok(addedAt > 0);
   assert.deepEqual(entry, { id: 'e2e-project', kind: 'project', title: 'E2E Project', path: FIXTURE_PROJECT });
   assert.ok(rec.out.includes('已登记 e2e-project（project）：' + FIXTURE_PROJECT));
-  assert.ok(rec.out.includes('文章与概念：`ppnt show e2e-project`；验证：`ppnt check e2e-project`'));
+  assert.ok(rec.out.includes('文章与 wiki：`ppnt show e2e-project`；验证：`ppnt check e2e-project`'));
 
   const refusals = [
     [['add', FIXTURE_PROJECT, '--project'], /id 已存在：e2e-project/],
@@ -2153,20 +2153,20 @@ test('runList: projects get their own rows with indented articles; list <project
 
   const all = recorder();
   assert.equal(await runList(['list', '--registry', file], { ...all.io, cwd: dir, env }), 0);
-  const at = all.out.indexOf('e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 个概念');
+  const at = all.out.indexOf('e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 条 wiki');
   assert.ok(at > 0, all.out.join('\n'));
   assert.deepEqual(all.out.slice(at + 1, at + 4), [
     `    ${FIXTURE_PROJECT}`,
     '    e2e-project/commit-confirm  ·  提交前确认',
     '    e2e-project/takeover  ·  用户接手',
   ]);
-  assert.ok(all.out.includes('clash  ·  撞名项目  ·  project  ·  1 篇文章 · 1 个概念 · 1 个布局错误'));
+  assert.ok(all.out.includes('clash  ·  撞名项目  ·  project  ·  1 篇文章 · 1 条 wiki · 1 个布局错误'));
   assert.ok(!all.out.some((line) => /^e2e-project .*文档页/.test(line)), 'a project is not listed as a page');
   assert.match(all.out.at(-1), /^共 \d+ 页 · 2 个 project · registry：/);
 
   const byArticle = recorder();
   assert.equal(await runList(['list', '用户接手', '--registry', file], { ...byArticle.io, cwd: dir, env }), 0);
-  assert.equal(byArticle.out[0], 'e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 个概念');
+  assert.equal(byArticle.out[0], 'e2e-project  ·  E2E Project  ·  project  ·  2 篇文章 · 2 条 wiki');
 
   const detail = recorder();
   assert.equal(await runList(['list', 'e2e-project', '--registry', file], { ...detail.io, cwd: dir, env }), 0);
@@ -2174,7 +2174,7 @@ test('runList: projects get their own rows with indented articles; list <project
   assert.match(text, /^# e2e-project · E2E Project/);
   // list <project> 同 show <project>：文章写成斜杠地址。
   assert.match(text, /文章（2）\n {2}e2e-project\/commit-confirm {2}· {2}提交前确认 {2}· {2}4 节 · 5 帧 · open 0/);
-  assert.match(text, /概念（2）\n {2}confirm-card {2}· {2}收敛中 {2}· {2}只在不可撤销的动作之前出现/);
+  assert.match(text, /wiki（2）\n {2}confirm-card {2}· {2}收敛中 {2}· {2}只在不可撤销的动作之前出现/);
   assert.match(text, /布局错误：无\n/);
 
   const collide = recorder();

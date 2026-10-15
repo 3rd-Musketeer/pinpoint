@@ -1,6 +1,6 @@
 # site/：文章站点（Astro）
 
-渲染首页（全部文章）、文章页、project 首页、概念页和 `llms.txt`。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 [`docs/projects.md`](../docs/projects.md)“目录”）。这里只放站点代码。
+渲染首页（全部文章）、文章页、project 首页、wiki 页和 `llms.txt`。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 [`docs/projects.md`](../docs/projects.md)“目录”）。这里只放站点代码。
 
 ## 跑起来
 
@@ -24,12 +24,13 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 | URL | 内容 |
 | --- | --- |
 | `/` | 首页：所有登记 project 的全部文章，最近改过的在前；每条标题、summary、project 小标签（进 `/<project>/`）、日期。排序规则见 `docs/projects.md`“首页” |
-| `/<project>/` | 这个 project（文件夹）里的文章列表、概念、空 ref 列表 |
-| `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、概念抽屉 |
-| `/<project>/concepts/<名字>/` | 概念：状态、定义、正文、用到它的文章 |
-| `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与概念 |
+| `/<project>/` | 这个 project（文件夹）里的文章列表、wiki 词条、空 ref 列表 |
+| `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、wiki 抽屉 |
+| `/<project>/wiki/` | 这个 project 的 wiki 词条列表 |
+| `/<project>/wiki/<名字>/` | wiki 词条：状态、定义、正文、用到它的文章。旧地址 `/<project>/concepts/<名字>/` 由服务 301 到这里（`src/server/lib/article-routes.js`），不经站点 |
+| `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与 wiki 词条 |
 
-article id `concepts` 保留给概念路由，用了构建报错。
+article id `wiki` 和 `concepts` 保留给 wiki 路由，用了构建报错。
 
 ## 写文章（`articles/<id>/index.mdx`）
 
@@ -43,15 +44,15 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 
 ## `[[ ]]` 引用
 
-- `[[名字]]`：本 project 的 article（按 id）或 concept（按 `name`）。两者共用命名空间，撞名构建失败（dev 下页面顶上显示错误）。
+- `[[名字]]`：本 project 的 article（按 id）或 wiki 词条（按 `name`，代码里叫 concept）。两者共用命名空间，撞名构建失败（dev 下页面顶上显示错误）。
 - `[[project:名字]]`：别的 project；前缀不是已登记的 project id 时，整串当名字。
 - `[[名字|显示文字]]`：换显示文字。
-- 找不到目标的是空 ref：虚线样式，列在 project 首页、`llms.txt` 和文章的概念抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和概念正文里写的都算。代码里的 `[[ ]]` 不解析。
+- 找不到目标的是空 ref：虚线样式，列在 project 首页、`llms.txt` 和文章的 wiki 抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和 wiki 词条正文里写的都算。代码里的 `[[ ]]` 不解析。
 
-popup：article 显示标题、摘要、读全文；concept 显示定义、状态、用到它的文章；空 ref 显示“空 ref”标记和一句说明（`client.js` 里的界面文案）。
+popup：article 显示标题、摘要、读全文；wiki 词条显示定义、状态、用到它的文章；空 ref 显示“空 ref”标记和一句说明（`client.js` 里的界面文案）。
 
 - 打开：鼠标悬停 120 ms，或键盘 Tab 到 ref 上。指针移进 popup 不关；离开 ref 和 popup 200 ms 后关。Esc 关。同时只有一个。
-- 点击：有目标页的 ref（article / concept）直接去那一页；修饰键照常开新标签页。空 ref 点击打开 popup。
+- 点击：有目标页的 ref（article / wiki 词条）直接去那一页；修饰键照常开新标签页。空 ref 点击打开 popup。
 - 触屏没有悬停：点一下先开 popup，再点同一个 ref 才去那一页（popup 里也有链接）。
 - popup 挂在 `document.body` 上，不进 `#article`：正文评论客户端监听 `#article` 的 DOM 变动，挂进去每次悬停都会整篇重画。
 
@@ -74,14 +75,14 @@ popup：article 显示标题、摘要、读全文；concept 显示定义、状�
 
 `lib/layers.js` 是文章页的弹层栈：popup、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 不会扔掉写了一半的评论。
 
-## 概念（`concepts/<名字>.md`）
+## wiki 词条（`wiki/<名字>.md`）
 
-frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界；缺省取正文第一段）。字段规则与解析器在 `docs/projects.md`，站点只用 `listProjects` 读出的值。概念页地址用文件名：`/<project>/concepts/<slug>/`。正文里也能写 `[[ ]]`。
+frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界；缺省取正文第一段）。字段规则与解析器在 `docs/projects.md`，站点只用 `listProjects` 读出的值。词条页地址用文件名：`/<project>/wiki/<slug>/`。正文里也能写 `[[ ]]`。
 
 ## 代码地图
 
-- `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与概念的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
-- `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts。
+- `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与 wiki 词条的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
+- `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts（concepts 是 wiki 词条）。
 - `src/pages/[project]/[article]/index.astro`：文章页。正文末尾的 `<div data-pp-article-end hidden>` 是正文结束标记：`ppnt shot` 截到的页面里没有它，就判定正文中途断了（渲染出错），提示跑 `ppnt check`。
 - 仓库 `src/shared/remark-pinpoint.js`：`[[ ]]` → `<Ref>`，`<Section>` 编节号，给 `<Canvas>` 注入所在节的 id 和节号。哪一节、第几节由 `src/shared/article-structure.js` 决定，服务端派生画布视图用的是同一个走法：文章第 n 节就是画布视图上的第 n 个字母，节号和编号对得上。`ppnt check` 编正文用的是同一个步骤；它不读盘，文件属于哪个 project 由调用方给（`astro.config.mjs` 传 `projectIdForFile`，经 `projects-source.js`）。
 - 仓库 `src/shared/refs.js`：解析、跳过代码（围栏与行内代码，和 remark 步骤同口径；`ppnt check` 报空 ref 用同一份）、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。站点和 `ppnt check` 都从这里取。
@@ -90,4 +91,4 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/canvas-card.js`：卡片模型与 URL（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage` / `data-pp-device`）、读未处理标注数。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、缩放、上一节 / 下一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
-- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、概念抽屉。
+- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、wiki 抽屉。

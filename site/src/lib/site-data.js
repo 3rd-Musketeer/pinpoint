@@ -6,12 +6,13 @@ import { getCollection } from 'astro:content';
 import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from '../../../src/shared/refs.js';
 import { projectErrorLine } from './site-errors.js';
 
-/** Concept status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
+/** Wiki entry (code: concept) status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
 const DEFAULT_STATUS = '占位';
 
 export const articleHref = (project, article) => `/${encodeURIComponent(project)}/${encodeURIComponent(article)}/`;
-/** Concept URLs use the file name (`slug`), not the display `name` (docs/projects.md). */
-export const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/concepts/${encodeURIComponent(slug)}/`;
+/** Wiki entry URLs use the file name (`slug`), not the display `name` (docs/projects.md). */
+export const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/wiki/${encodeURIComponent(slug)}/`;
+export const wikiHref = (project) => `/${encodeURIComponent(project)}/wiki/`;
 export const projectHref = (project) => `/${encodeURIComponent(project)}/`;
 
 /** First paragraph of a markdown body as plain text (fallback definition). */
@@ -98,10 +99,10 @@ export function projectEmptyRefs(p) {
     .sort((x, y) => y.sources.length - x.sources.length || x.name.localeCompare(y.name, 'zh'));
 }
 
-/** How an empty ref's source is named in lists: article title, or 概念 <name>. */
-export const emptyRefSourceLabel = (s) => (s.kind === 'article' ? s.title : `概念 ${s.name}`);
+/** How an empty ref's source is named in lists: article title, or wiki <name>. */
+export const emptyRefSourceLabel = (s) => (s.kind === 'article' ? s.title : `wiki ${s.name}`);
 
-/** Popup fields per kind (common.md §6, CONTEXT.md concept 词条). */
+/** Popup fields per kind (common.md §6, CONTEXT.md“wiki 词条”). */
 export function renderRef(r) {
   if (r.kind === 'article') {
     return refHtml(r, { href: r.item.href, title: r.item.title, summary: r.item.summary });

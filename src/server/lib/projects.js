@@ -4,7 +4,7 @@
  *
  *   project.json                  { "id", "title", "sources"? }
  *   articles/<article>/index.mdx  frontmatter: title, summary?, date?（YYYY-MM-DD，首页排序用）
- *   concepts/<名字>.md            frontmatter: name, status, boundary
+ *   wiki/<名字>.md                frontmatter: name, status, boundary（wiki 词条；代码里叫 concept）
  *
  * listProjects / findProject 是 Astro 站点（内容集合）、服务（/api/projects）
  * 与 CLI（pinpoint list）共用的唯一读侧。读不抛：每个 project 带一份 errors
@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { parseArticleDate } from '../../shared/article-feed.js';
-import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { articlePageId, isReservedProjectId, LEGACY_CONCEPTS_SEGMENT, refKey, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { readProjectSources } from './project-sources.js';
@@ -33,7 +33,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 
 export { PROJECT_CONTENT_DIR };
 
-/** concept 的 status 只有三档（CONTEXT.md concept 词条）。 */
+/** wiki 词条的 status 只有三档（CONTEXT.md“wiki 词条”）。 */
 export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
 
 function fileMtimeMs(file) {
@@ -157,13 +157,18 @@ function readArticles(dir, errors, projectId, sources = {}) {
   return articles;
 }
 
+/** wiki 词条（代码里叫 concept）：docs/pinpoint/wiki/<名字>.md。旧的 concepts/ 目录不读，记一条布局错误（ADR 0045）。 */
 function readConcepts(dir, errors) {
-  const conceptsDir = path.join(dir, 'concepts');
+  const legacy = path.join(dir, LEGACY_CONCEPTS_SEGMENT);
+  if (isDir(legacy)) {
+    errors.push(problem('wiki_dir_renamed', `${LEGACY_CONCEPTS_SEGMENT}/ 已改名成 ${WIKI_SEGMENT}/，这个目录不再读：mv ${legacy} ${path.join(dir, WIKI_SEGMENT)}`, { path: LEGACY_CONCEPTS_SEGMENT }));
+  }
+  const conceptsDir = path.join(dir, WIKI_SEGMENT);
   const concepts = [];
   for (const item of visibleChildren(conceptsDir)) {
-    const rel = `concepts/${item.name}`;
+    const rel = `${WIKI_SEGMENT}/${item.name}`;
     if (!item.isFile() || path.extname(item.name) !== '.md') {
-      errors.push(problem('concept_not_md', 'concepts/ 下只放 <名字>.md', { path: rel }));
+      errors.push(problem('wiki_not_md', `${WIKI_SEGMENT}/ 下只放 <名字>.md`, { path: rel }));
       continue;
     }
     const file = path.join(conceptsDir, item.name);
@@ -173,7 +178,7 @@ function readConcepts(dir, errors) {
     const concept = { name: fm.data.name || slug, slug, file };
     if (fm.data.status) {
       if (CONCEPT_STATUSES.has(fm.data.status)) concept.status = fm.data.status;
-      else errors.push(problem('concept_status', `status 只能是 ${[...CONCEPT_STATUSES].join(' / ')}：${fm.data.status}`, { path: rel }));
+      else errors.push(problem('wiki_status', `status 只能是 ${[...CONCEPT_STATUSES].join(' / ')}：${fm.data.status}`, { path: rel }));
     }
     if (fm.data.boundary) concept.boundary = fm.data.boundary;
     concepts.push(concept);
@@ -181,7 +186,7 @@ function readConcepts(dir, errors) {
   return concepts;
 }
 
-/** article id 与 concept name 共用一个命名空间：撞名逐条记 error。 */
+/** 文章 id 与 wiki 词条的 name 共用一个命名空间：撞名逐条记 error。 */
 function checkNamespace(articles, concepts, errors) {
   const owners = new Map();
   const claim = (key, label) => {
@@ -189,9 +194,9 @@ function checkNamespace(articles, concepts, errors) {
     owners.get(key).push(label);
   };
   for (const article of articles) claim(refKey(article.id), `article "${article.id}"`);
-  for (const concept of concepts) claim(refKey(concept.name), `concept "${concept.name}"（concepts/${concept.slug}.md）`);
+  for (const concept of concepts) claim(refKey(concept.name), `wiki 词条 "${concept.name}"（${WIKI_SEGMENT}/${concept.slug}.md）`);
   for (const [key, labels] of owners) {
-    if (labels.length > 1) errors.push(problem('name_collision', `撞名 [[${key}]]：${labels.join('、')}（article id 与 concept name 共用一个命名空间）`));
+    if (labels.length > 1) errors.push(problem('name_collision', `撞名 [[${key}]]：${labels.join('、')}（文章 id 与 wiki 词条的 name 共用一个命名空间）`));
   }
 }
 

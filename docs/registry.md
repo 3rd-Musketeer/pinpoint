@@ -187,7 +187,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 脚手架（`bin/cli/new.js`），两个都不覆盖已有文件。
 
-- `new project <目录> [--id <id>] [--title <标题>]`：写 `<目录>/docs/pinpoint/project.json`（`{ id, title }`），建空的 `articles/`、`concepts/`，再登记（同 `ppnt add <目录> --project`）并让服务重读。id 缺省取目录名。`project.json` 已经在就沿用它、只补登记，所以重跑是幂等的；id 是保留名或已登记在别的目录时退 2，什么都不写。
+- `new project <目录> [--id <id>] [--title <标题>]`：写 `<目录>/docs/pinpoint/project.json`（`{ id, title }`），建空的 `articles/`、`wiki/`，再登记（同 `ppnt add <目录> --project`）并让服务重读。id 缺省取目录名。`project.json` 已经在就沿用它、只补登记，所以重跑是幂等的；id 是保留名或已登记在别的目录时退 2，什么都不写。
 - `new article <project>/<article> [--title <标题>]`：写 `articles/<article>/index.mdx`，frontmatter 是 title，正文是一节 `<Section id="overview">`，节里一行注释说明帧怎么加。`index.mdx` 已经在就退 1；这篇的页 id `<project>_<article>` 的桶里已有标注行（删掉或改了名的文章留下的孤儿）也退 1、什么都不写，因为建成后旧行会挂到新文章上，提示换文章 id 或先 `ppnt prune <project>_<article>`，和 `migrate` 同一条检查；project 没登记退 2，提示先 `new project`。
 
 两个命令最后都打网址和下一步命令。
@@ -216,7 +216,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 ### `ppnt show <project>[/<article>]`
 
-只读盘，只有正文里的图过期时先重编它（写 dist）。一篇文章：每节一行 §n、字母、节 id、标题、帧数（或“纯文字”）、open 数，下面是帧（编号、帧 id、源文件）和网址（文章页锚点、画布视图），最后是这篇的布局错误。一个 project：文章（斜杠地址、节数、帧数、open 数、网址）、概念、空 ref（带出处的文件和行）、布局错误，有布局错误退 1。两种的布局错误里都有图的编译错误和浏览器里记下的运行错误（`figure_compile`、`figure_runtime`）。存量页的 id 给编号、帧 id、源文件的对照。`--json` 给同一份数据。
+只读盘，只有正文里的图过期时先重编它（写 dist）。一篇文章：每节一行 §n、字母、节 id、标题、帧数（或“纯文字”）、open 数，下面是帧（编号、帧 id、源文件）和网址（文章页锚点、画布视图），最后是这篇的布局错误。一个 project：文章（斜杠地址、节数、帧数、open 数、网址）、wiki 词条、空 ref（带出处的文件和行）、布局错误，有布局错误退 1。两种的布局错误里都有图的编译错误和浏览器里记下的运行错误（`figure_compile`、`figure_runtime`）。存量页的 id 给编号、帧 id、源文件的对照。`--json` 给同一份数据。
 
 `--uses <组件>`（`bin/cli/uses.js`）：目标是 project 或一篇文章，列出用到这个组件的帧和图，最后给出每篇要跑的 `ppnt shot` 命令。判定看编译产物 HTML 里的 `data-pp-comp="<组件>"`，加上帧和图的依赖文件名；dist 过期时先编。哪里都没用到时退 1。改完共享组件后照这份清单截图。
 
@@ -234,9 +234,9 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 就绪规则（`bin/ppnt-shot.js` 的 `settleLazyContent`，文章页、文章页上的一节、HTML 帧共用）：顶层文档和每一层嵌套 iframe 里 `loading="lazy"` 的图片和 iframe 都改成立即加载，逐层等它们加载完（同源的轮询 iframe 自己的文档，跨源的等 Playwright 的帧 load），最多嵌 4 层；HTML 帧整页截图前还把页面从上到下滚一遍，让按 IntersectionObserver 懒加载的页面开始取图。整个过程上限 15 秒，到时还没加载完的照常截，stderr 打一行“注意”列出它们，退 1；`--json` 的这一张带 `pending`。
 
-### `ppnt open <目标> [§2 | 节 id | 概念名]`
+### `ppnt open <目标> [§2 | 节 id | wiki 词条名]`
 
-打一篇文章、一节、一个 project 或一个概念页的网址（`bin/cli/open.js`），不带 `--print` 时再用系统浏览器打开第一个。文章给文章页和画布视图（纯文字的文章没有画布视图）；`§2` 或节 id 给文章页锚点和 `/?page=<页 id>&section=<节 id>`；project 给首页、`llms.txt`、每篇文章和每个概念页。网址前缀是 `PINPOINT_ORIGIN`，所以在隔离服务下打出的就是隔离服务的地址。存量页退 2，并打出它在工作台里的网址。
+打一篇文章、一节、一个 project 或一个 wiki 词条页的网址（`bin/cli/open.js`），不带 `--print` 时再用系统浏览器打开第一个。文章给文章页和画布视图（纯文字的文章没有画布视图）；`§2` 或节 id 给文章页锚点和 `/?page=<页 id>&section=<节 id>`；project 给首页、`llms.txt`、每篇文章和每个 wiki 词条页。网址前缀是 `PINPOINT_ORIGIN`，所以在隔离服务下打出的就是隔离服务的地址。存量页退 2，并打出它在工作台里的网址。
 
 ### `ppnt mark … --note` 和 `ppnt reply`
 

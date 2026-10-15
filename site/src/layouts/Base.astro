@@ -1,5 +1,5 @@
 ---
-// 站点外壳：顶栏（回首页的“全部文章” + 面包屑 + 画布视图 + 概念 + 深浅色）、左目录、正文、右评论栏、概念抽屉。
+// 站点外壳：顶栏（回首页的“全部文章” + 面包屑 + 画布视图 + wiki + 深浅色）、左目录、正文、右评论栏、wiki 抽屉。
 // 首页（/，全部文章）不传 project，顶栏左边只有“全部文章”，右边多一个“工作台”（ADR 0044）。
 // 评论栏的内容由 pinpoint 注入的标注客户端填（src/client/prose-comments.js，[data-pp-rail]）；
 // 没有注入（站点单独跑、以后的公开链接）时只留这句说明。
@@ -53,8 +53,8 @@ const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumb
       <div class="sp"></div>
       {canvasHref && <a class="btn" id="btn-canvas" href={canvasHref} target="_top">画布视图</a>}
       {drawer && (
-        <button class="btn" id="btn-concepts" type="button" aria-controls="drawer" aria-expanded="false">
-          概念{drawer.empty.length > 0 && <span> · {drawer.empty.length} 个空 ref</span>}
+        <button class="btn" id="btn-wiki" type="button" aria-controls="drawer" aria-expanded="false">
+          wiki{drawer.empty.length > 0 && <span> · {drawer.empty.length} 个空 ref</span>}
         </button>
       )}
       {llms ? <a class="btn hide-sm" href={llms}>llms.txt</a> : <a class="btn" id="btn-workbench" href="/workbench/" target="_top">工作台</a>}
@@ -90,7 +90,7 @@ const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumb
     <slot name="overlay" />
 
     {drawer && (
-      <aside class="drawer" id="drawer" hidden aria-label="概念">
+      <aside class="drawer" id="drawer" hidden aria-label="wiki">
         <h3>本篇用到的</h3>
         <ul>
           {drawer.have.length === 0 && <li class="none">没有</li>}

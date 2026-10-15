@@ -14,7 +14,7 @@
  * 解析分两层：parseAddress 只看字面（纯函数，不读盘）；resolveAddress 再对照 registry 与磁盘
  * 判断它指的是什么。斜杠形换成页 id 也只看字面（toPageRef），所以删掉的文章、孤儿桶也能用斜杠形写。
  */
-import { ARTICLE_PAGE_ID_PATTERN, articlePageId, parseArticlePageId, sectionLetter } from '../../src/shared/project-ids.js';
+import { ARTICLE_PAGE_ID_PATTERN, articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS, sectionLetter } from '../../src/shared/project-ids.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from '../../src/shared/registry-ids.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { projectEntries, projectEntry, registryEntry } from '../../src/server/lib/registry.js';
@@ -41,7 +41,7 @@ function parseUrlish(token) {
   const page = url.searchParams.get('page');
   if (WORKBENCH_PATHNAMES.has(url.pathname) && page && PAGE_ID_PATTERN.test(page)) return { pageId: page };
   const parts = url.pathname.split('/').filter(Boolean);
-  if (parts.length >= 2 && ENTRY_ID_PATTERN.test(parts[0]) && ENTRY_ID_PATTERN.test(parts[1]) && parts[1] !== 'concepts') {
+  if (parts.length >= 2 && ENTRY_ID_PATTERN.test(parts[0]) && ENTRY_ID_PATTERN.test(parts[1]) && !RESERVED_ARTICLE_IDS.has(parts[1])) {
     return { project: parts[0], article: parts[1] };
   }
   if (parts.length === 1 && ENTRY_ID_PATTERN.test(parts[0])) return { project: parts[0] };

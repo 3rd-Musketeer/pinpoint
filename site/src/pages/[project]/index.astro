@@ -1,6 +1,6 @@
 ---
 import Base from '../../layouts/Base.astro';
-import { loadSite, assertBuildClean, projectEmptyRefs, emptyRefSourceLabel } from '../../lib/site-data.js';
+import { loadSite, assertBuildClean, projectEmptyRefs, emptyRefSourceLabel, wikiHref } from '../../lib/site-data.js';
 
 export async function getStaticPaths() {
   const site = await loadSite();
@@ -17,7 +17,7 @@ const empty = projectEmptyRefs(p);
   <div class="prose">
     <div class="label">project · {p.id}</div>
     <h1>{p.title}</h1>
-    <p class="lede">{p.articles.length} 篇文章，{p.concepts.length} 个概念，{empty.length} 个空 ref。</p>
+    <p class="lede">{p.articles.length} 篇文章，{p.concepts.length} 条 wiki，{empty.length} 个空 ref。</p>
   </div>
 
   <section class="block prose" id="articles">
@@ -30,9 +30,9 @@ const empty = projectEmptyRefs(p);
     </div>
   </section>
 
-  <section class="block prose" id="concepts">
-    <div class="label">概念</div>
-    {p.concepts.length === 0 && <p class="muted">还没有概念页。</p>}
+  <section class="block prose" id="wiki">
+    <div class="label"><a href={wikiHref(p.id)}>wiki</a></div>
+    {p.concepts.length === 0 && <p class="muted">还没有 wiki 词条。</p>}
     <div class="cards">
       {p.concepts.map((c) => (
         <a class="card" href={c.href}>

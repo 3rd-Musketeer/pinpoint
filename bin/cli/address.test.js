@@ -44,7 +44,8 @@ test('parseAddress：斜杠形、页 id 形、文章网址都是同一篇文章�
   assert.deepEqual(parseAddress('@page:browser-use_payment-confirm#3'), { ...article, n: 3 });
   assert.equal(parseAddress('@page:bad page'), null);
   assert.deepEqual(parseAddress('https://pinpoint.localhost/browser-use/'), { kind: 'id', id: 'browser-use' });
-  // concepts 是概念页的路由段，不是文章。
+  // wiki 是 wiki 词条页的路由段，不是文章；旧的 concepts 段也不是。
+  assert.equal(parseAddress('https://pinpoint.localhost/browser-use/wiki/x/'), null);
   assert.equal(parseAddress('https://pinpoint.localhost/browser-use/concepts/x/'), null);
 });
 

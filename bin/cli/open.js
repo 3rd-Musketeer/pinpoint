@@ -1,5 +1,5 @@
 /**
- * `ppnt open <目标> [§2 | 节 id | 概念名] [--print]`：一篇文章、一节、一个 project 或一个概念页的网址。
+ * `ppnt open <目标> [§2 | 节 id | wiki 词条名] [--print]`：一篇文章、一节、一个 project 或一个 wiki 词条页的网址。
  * --print 只打印；不带时用系统浏览器打开第一个网址（io.openUrl，bin/pinpoint.mjs 注入）。
  * 网址的前缀是 PINPOINT_ORIGIN（隔离服务）或缺省的 https://pinpoint.localhost。
  */
@@ -31,12 +31,12 @@ export function openUrls(hit, ref, { registry, origin }) {
   const base = origin.replace(/\/+$/, '');
   const project = findProject(registry, hit.projectId);
   if (!project) return { error: `project ${hit.projectId} 读不出来`, exit: 1 };
-  const conceptUrl = (concept) => `${base}/${project.id}/concepts/${encodeURIComponent(concept.slug)}/`;
+  const conceptUrl = (concept) => `${base}/${project.id}/wiki/${encodeURIComponent(concept.slug)}/`;
   if (hit.kind === 'project') {
     if (ref) {
       const concept = project.concepts.find((row) => refKey(row.name) === refKey(ref) || row.slug === ref);
-      if (!concept) return { error: `project ${project.id} 里没有概念“${ref}”（有：${project.concepts.map((row) => row.name).join('、') || '无'}）`, exit: 1 };
-      return { urls: [{ kind: 'concept', label: `概念 ${concept.name}`, url: conceptUrl(concept) }] };
+      if (!concept) return { error: `project ${project.id} 里没有 wiki 词条“${ref}”（有：${project.concepts.map((row) => row.name).join('、') || '无'}）`, exit: 1 };
+      return { urls: [{ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) }] };
     }
     const urls = [
       { kind: 'project', label: `${project.id} 首页`, url: `${base}/${project.id}/` },
@@ -46,7 +46,7 @@ export function openUrls(hit, ref, { registry, origin }) {
       urls.push({ kind: 'article', label: `${project.id}/${article.id} 文章页`, url: `${base}/${project.id}/${article.id}/` });
       if (article.canvasSections) urls.push({ kind: 'canvas', label: `${project.id}/${article.id} 画布视图`, url: `${base}${canvasViewHref(article.pageId)}` });
     }
-    for (const concept of project.concepts) urls.push({ kind: 'concept', label: `概念 ${concept.name}`, url: conceptUrl(concept) });
+    for (const concept of project.concepts) urls.push({ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) });
     return { urls };
   }
   const article = project.articles.find((row) => row.id === hit.articleId);
@@ -70,8 +70,8 @@ export function openUrls(hit, ref, { registry, origin }) {
   }
   if (n) return { error: `${ref}：这篇文章只有 ${outline.length} 节`, exit: 1 };
   const concept = project.concepts.find((row) => refKey(row.name) === refKey(ref) || row.slug === ref);
-  if (concept) return { urls: [{ kind: 'concept', label: `概念 ${concept.name}`, url: conceptUrl(concept) }] };
-  return { error: `${hit.address} 里没有节 ${ref}，project ${project.id} 里也没有叫它的概念（ppnt show ${hit.address} 看节）`, exit: 1 };
+  if (concept) return { urls: [{ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) }] };
+  return { error: `${hit.address} 里没有节 ${ref}，project ${project.id} 里也没有叫它的 wiki 词条（ppnt show ${hit.address} 看节）`, exit: 1 };
 }
 
 export async function runOpen(argv, io = {}) {

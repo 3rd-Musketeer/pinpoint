@@ -32,7 +32,7 @@ const COMMANDS = {
   migrate: { positional: 1, flags: new Set(['registry', 'project', 'article', 'dry-run']), valueFlags: new Set(['project']) },
   // new project <根> / new article <project>/<article>：脚手架，不覆盖已有文件。
   new: { positional: 2, flags: new Set(['registry', 'id', 'title', 'json']) },
-  // open <目标> [§2 | 节 id | 概念名]：打印或打开网址。
+  // open <目标> [§2 | 节 id | wiki 词条名]：打印或打开网址。
   open: { positional: null, flags: new Set(['registry', 'print', 'json']) },
   // dev --sandbox [<目录>]：隔离服务，前台常驻。
   dev: { positional: null, flags: new Set(['sandbox', 'port', 'site-port', 'json']) },

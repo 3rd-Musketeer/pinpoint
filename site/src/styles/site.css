@@ -241,7 +241,7 @@ mark.pp-hl.draft { background:var(--hl-on); }
 .pp-rail-note { color:var(--warn); font-size:12.5px; margin:0; }
 .pp-rail-note:empty { display:none; }
 
-/* 概念抽屉 */
+/* wiki 抽屉 */
 .drawer { position:fixed; right:20px; bottom:20px; z-index:30; width:320px; max-height:60vh; overflow:auto; background:var(--bg); border:1px solid var(--hair);
           border-radius:16px; box-shadow:var(--shadow); padding:16px 18px; font-size:14px; }
 .drawer[hidden] { display:none; }

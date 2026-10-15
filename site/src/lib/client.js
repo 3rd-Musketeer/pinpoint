@@ -1,4 +1,4 @@
-// 浏览器端：深浅色切换、目录高亮、[[ ]] popup、概念抽屉。数据全在 .cref 的 data-* 上（refs.js refHtml）。
+// 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 抽屉。数据全在 .cref 的 data-* 上（refs.js refHtml）。
 
 import { installLayerKeys, layers } from './layers.js';
 
@@ -25,7 +25,7 @@ function popHtml(el) {
     return `<div class="k">${esc(d.name)}<span class="st${d.fixed ? ' ok' : ''}">${esc(d.status || '占位')}</span></div>`
       + (d.def ? `<div>${esc(d.def)}</div>` : '<div class="used">还没有定义</div>')
       + `<div class="used">用到它的文章：${usedHtml}</div>`
-      + `<a class="go" href="${esc(d.href)}">概念页 →</a>`;
+      + `<a class="go" href="${esc(d.href)}">wiki 词条 →</a>`;
   }
   return `<div class="k">${name}<span class="st">空 ref</span></div><div>还没有页。先在正文里用起来，边界清楚了再补页。</div>`
     + (d.project ? `<div class="used">在 project ${esc(d.project)} 里找不到“${esc(d.name)}”</div>` : '');
@@ -56,7 +56,7 @@ export function initSite() {
   initRefPopups();
 
   const drawer = document.getElementById('drawer');
-  const btn = document.getElementById('btn-concepts');
+  const btn = document.getElementById('btn-wiki');
   btn?.addEventListener('click', () => {
     drawer.hidden = !drawer.hidden;
     btn.setAttribute('aria-expanded', String(!drawer.hidden));

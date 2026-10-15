@@ -1,9 +1,9 @@
 # project：目录、登记与读取
 
-project 是文章模型的顶层：一个 project 下面有多篇 article（设计文档）和多个 concept（wiki 词条）。
+project 是文章模型的顶层：一个 project 下面有多篇 article（设计文档）和多条 wiki 词条（代码里叫 concept）。
 project 只是装一批文章的容器，承载信息的是文章（ADR 0044）：读者面前不显示 project 标题，`title` 只写短名字。
 一个 project 在 registry 里登记成一条 `kind: "project"` 的条目，`path` 是 project 根目录，
-内容住在根目录下的 `docs/pinpoint/`。article 与 concept 的定义见 [`CONTEXT.md`](../CONTEXT.md)。
+内容住在根目录下的 `docs/pinpoint/`。article 与 wiki 词条的定义见 [`CONTEXT.md`](../CONTEXT.md)。
 
 ## 目录
 
@@ -19,24 +19,25 @@ project 只是装一批文章的容器，承载信息的是文章（ADR 0044）�
     components/<Name>.jsx      # 本篇专用
     figures/<图 id>.jsx        # 正文里的图，可带同名 .js、.css（见“图”）
     assets/
-  concepts/<名字>.md           # frontmatter 写 name、status、boundary
+  wiki/<名字>.md               # wiki 词条，frontmatter 写 name、status、boundary
   components/<Name>.jsx        # project 内共用；跨 project 进 kit
 ```
 
 - `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题；它是一个短名字（Vault、Areta browser use），不写成一句描述。带全角或半角冒号、或超过 24 个字符时 `ppnt check` 给一条提示（`project_title_long`，不是错误）。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
-- article id 就是 `articles/` 下的目录名，同一个模式。`concepts` 不能当 article id，`/<project>/concepts/` 已被概念页占用。
-- 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
-- `concepts/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`，同时记一条布局错误。以 `.` 开头的名字忽略。
-- concept 有两个名字：`name`（frontmatter，缺省用文件名）是显示名，也是 `[[ ]]` 的解析键；`slug`（文件名去掉 `.md`）是 URL 段，概念页是 `/<project>/concepts/<slug>/`。
+- article id 就是 `articles/` 下的目录名，同一个模式。`wiki` 和 `concepts` 不能当 article id：`/<project>/wiki/` 是 wiki 页，`/<project>/concepts/` 是它的旧地址（301 到 `/<project>/wiki/`）。
+- 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `wiki` 或 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
+- `wiki/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`（读取结果里 wiki 词条的字段名），同时记一条布局错误 `wiki_not_md`。以 `.` 开头的名字忽略。
+- 旧的 `concepts/` 目录（2026-10-15 之前的名字）不读，记一条布局错误 `wiki_dir_renamed`，提示改名成 `wiki/`（ADR 0045）。
+- wiki 词条有两个名字：`name`（frontmatter，缺省用文件名）是显示名，也是 `[[ ]]` 的解析键；`slug`（文件名去掉 `.md`）是 URL 段，词条页是 `/<project>/wiki/<slug>/`，`/<project>/wiki/` 列出这个 project 的全部词条。
 
 ## frontmatter
 
-`index.mdx` 与 `concepts/*.md` 开头可以有 `---` 包起来的 frontmatter，每行一条 `key: value`：
+`index.mdx` 与 `wiki/*.md` 开头可以有 `---` 包起来的 frontmatter，每行一条 `key: value`：
 
 | 文件 | 字段 | 缺省 |
 | --- | --- | --- |
 | `articles/<id>/index.mdx` | `title`、`summary`（可选）、`order`（project 首页上的排序，可选）、`date`（`YYYY-MM-DD`，首页上的时间，可选） | `title` 缺省用 article id；没写 `order` 的排在后面，同序按 article id；`date` 缺省或写错时用 `index.mdx` 的修改时间（写错不报错） |
-| `concepts/<名字>.md` | `name`、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界） | `name` 缺省用文件名 |
+| `wiki/<名字>.md` | `name`、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界） | `name` 缺省用文件名 |
 
 每个值是单行字符串，可以用单引号或双引号包起来，不带引号时 ` #` 之后算注释。下面这些写法都记一条布局错误，该键不进结果、字段按缺省处理：
 
@@ -51,11 +52,11 @@ Astro 也会按 YAML 解析同一段 frontmatter。为了让站点和 CLI 看到
 
 ## 命名空间
 
-`[[名字]]` 既能指向 article 也能指向 concept，所以同一个 project 里 article id 与 concept `name` 共用一个命名空间，两个 concept 也不能同名。比较时不分大小写、去掉首尾空白（Obsidian 同规则）：article `confirm-card` 与 concept `Confirm-Card` 算撞名。撞名的双方都照常列出，同时记一条布局错误。
+`[[名字]]` 既能指向 article 也能指向 wiki 词条，所以同一个 project 里 article id 与词条的 `name` 共用一个命名空间，两条词条也不能同名。比较时不分大小写、去掉首尾空白（Obsidian 同规则）：article `confirm-card` 与词条 `Confirm-Card` 算撞名。撞名的双方都照常列出，同时记一条布局错误。
 
 ## 登记
 
-新 project 用脚手架，它写 `project.json`、建空的 `articles/` 和 `concepts/`，再登记：
+新 project 用脚手架，它写 `project.json`、建空的 `articles/` 和 `wiki/`，再登记：
 
 ```shell
 ppnt new project <project 根> [--id <id>] [--title <标题>]
@@ -78,8 +79,8 @@ pinpoint add <project 根> --project
 | `pinpoint move <id> <新根>` | 换根目录。新根的 `project.json` id 必须仍是 `<id>`，否则拒绝 |
 | `pinpoint rename <旧 id> <新 id>` | 登记表、`project.json` 的 `id`、每个文章桶一起改，见下面“rename 与文章桶”；新 id 是保留名时拒绝 |
 | `pinpoint remove <id>` | 只删登记，project 目录不动。每个文章桶 `<id>_<文章>/` 守其他条目的桶规则：有一个桶里有标注行就整单拒绝（列出哪些桶几行），全空就跟着删 |
-| `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · 概念数 · 布局错误数，次行根目录，下面每篇文章缩进一行 `<project>/<article>`。关键词也匹配文章 id 与标题 |
-| `pinpoint show <project id>` | 列这个 project 的文章（地址、标题、节数、帧数、open 数、网址）、概念（name、status、boundary）、空 ref 和布局错误；有布局错误时退 1。`pinpoint list <project id>` 同义 |
+| `pinpoint list` | 页表之后列 project：首行 id · 标题 · 文章数 · wiki 词条数 · 布局错误数，次行根目录，下面每篇文章缩进一行 `<project>/<article>`。关键词也匹配文章 id 与标题 |
+| `pinpoint show <project id>` | 列这个 project 的文章（地址、标题、节数、帧数、open 数、网址）、wiki 词条（name、status、boundary）、空 ref 和布局错误；有布局错误时退 1。`pinpoint list <project id>` 同义 |
 | `pinpoint check <project id>` | 验证整个 project：布局错误、每篇文章全部帧的编译与 lint、正文渲染错误、空 ref，一条一行带文件和行号；有错误退 1。见 [`docs/registry.md`](registry.md)“CLI” |
 | `pinpoint status` | `project` 一行：个数与布局错误数，有错误时是“注意”，逐条列在下面，不算失败 |
 
@@ -124,21 +125,21 @@ project 条目与存量页的条目共用 registry 的 id 命名空间（同一�
   "root": "/abs/project-site",
   "dir": "/abs/project-site/docs/pinpoint",
   "articles": [{ "id": "commit-confirm", "title": "提交前确认", "summary": "…", "pageId": "e2e-project_commit-confirm", "dir": "/abs/…/articles/commit-confirm", "file": "/abs/…/articles/commit-confirm/index.mdx", "canvasSections": 3 }],
-  "concepts": [{ "name": "confirm-card", "slug": "confirm-card", "status": "收敛中", "boundary": "…", "file": "/abs/…/concepts/confirm-card.md" }],
+  "concepts": [{ "name": "confirm-card", "slug": "confirm-card", "status": "收敛中", "boundary": "…", "file": "/abs/…/wiki/confirm-card.md" }],
   "errors": []
 }
 ```
 
 - 文章另带 `mtimeMs`（`index.mdx` 的修改时间），frontmatter 的 `date` 合法时带 `date`；首页用它们排序，见下面“首页”。
-- article 按 id、concept 按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
-- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和概念的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`concepts/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“画布视图”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
+- `concepts` 是 wiki 词条。article 按 id、词条按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
+- 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和 wiki 词条的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`wiki/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“画布视图”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
 同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取：
 
 - `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“画布视图”。一个页 id 现在指不指得到东西（文章要 project 登记了、`index.mdx` 在盘上）只问 `src/server/lib/page-resolve.js`：`resolvePage(registry, id, { manifestIds })` 答它是登记条目、模板页、文章还是什么都不是，`pageIdIsLive` 是它的布尔版。服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告、`/sites/<id>/`、`/api/frame` 都用它。
-- `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 concept `name`。
+- `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 wiki 词条的 `name`。
 - `RESERVED_TOP_SEGMENTS`、`isReservedProjectId`、`RESERVED_ARTICLE_IDS`：保留名，见下面“保留名”。
 - `SECTION_ID_PATTERN`、`FRAME_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
 - `CANVAS_LEDGER`（`@canvas`）、`PROSE_LEDGER`（`@prose`）：桶里两本固定账本的名字。
@@ -250,7 +251,7 @@ export default function ConfirmBare() {
 
 ### 标注桶
 
-一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理（连桶目录一起删）。文章还在时 `prune` 只删桶里表面已死的账本：HTML 帧移出了 Canvas、源文件不在了或服务不出（见“HTML 帧”），它那本文档页标注账本就是孤儿；`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、概念页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
+一篇文章的画布标注和正文评论共用一个桶，桶 id 就是这篇的页 id。文章目录删了、改名了，或 project 的登记删了，这个页 id 就指不到文章，桶整桶皆孤儿：`ppnt comments <页 id>` 列出它，`ppnt prune <页 id>` 清理（连桶目录一起删）。文章还在时 `prune` 只删桶里表面已死的账本：HTML 帧移出了 Canvas、源文件不在了或服务不出（见“HTML 帧”），它那本文档页标注账本就是孤儿；`@canvas.json` 与 `@prose.json` 恒活。文章页（`/<project>/<article>/`）注入的标注客户端以它为桶，只跑正文评论；project 首页、wiki 页、不存在的文章不注入。`resolveRequestEntry` 认文章的页 id（project 登记了、这篇的 index.mdx 在盘上），project id 本身不是桶。
 
 ### 错误
 
@@ -463,20 +464,20 @@ pinpoint migrate <页 id> --project <project 根> --article <文章 id>
 
 ## 保留名
 
-project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、概念 `/<project>/concepts/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
+project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、首页 `/<project>/`、wiki `/<project>/wiki/<slug>/`、`/<project>/llms.txt`），不能占服务已用的首段。唯一的清单是 `src/shared/project-ids.js` 的 `RESERVED_TOP_SEGMENTS`（外加前缀 `test-results*`、`playwright-report*`），服务路由（`article-routes.js`）和登记校验（`isReservedProjectId`）用同一份。清单包括：
 
 - 服务自己的前缀 `api sites workbench kits assets annotate _astro`；
 - 服务路由 `health registry events annotations images image save previews lib`；
 - vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及 e2e 产物目录前缀。`projects.test.js` 与 `article-routes.test.js` 都检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
 - Astro 的 `_image`。
 
-article id `concepts` 保留（`RESERVED_ARTICLE_IDS`，它是概念页的第二段），只在 `src/shared/project-ids.js` 里。
+article id `wiki` 与 `concepts` 保留（`RESERVED_ARTICLE_IDS`：`wiki` 是 wiki 页的第二段，`concepts` 是它 301 过去的旧地址），只在 `src/shared/project-ids.js` 里。
 
 ## 固件
 
-- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两个概念（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、概念和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。`commit-confirm` 还有两个图：第一节前的静态时序图 `wait-sequence`，第一节 `why` 里的逐步演示 `message-flow`（带 sidecar 和样式）。
+- `e2e/project-site/`：project `e2e-project`，两篇文章（`commit-confirm`、`takeover`）、两条 wiki 词条（`confirm-card`、`takeover-banner`），没有布局错误。正文里有指向文章、词条和一个空 ref 的 `[[ ]]`。`commit-confirm` 有画布：三个 Section，其中两节有 Canvas（`confirm`：`confirm-sheet`、`confirm-done`；`variants`：`card-plain`，`shell="comp"`）。帧用到本篇组件 `ConfirmCard`、project 共用组件 `Banner` 和 kit 的 `Nav`，本篇有 `article.css`。`commit-confirm` 还有两个图：第一节前的静态时序图 `wait-sequence`，第一节 `why` 里的逐步演示 `message-flow`（带 sidecar 和样式）。
 - `site/fixtures/projects/demo/`：`payments` 有两个图（节外的静态时序图 `pay-sequence`，`overview` 节里的 `message-flow`）；`site/fixtures/projects/broken/` 有一个源文件不在的图。
-- `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 concept `Confirm-Card`（`concepts/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
+- `site/fixtures/projects/clash/`：project `clash`，article `confirm-card` 与 wiki 词条 `Confirm-Card`（`wiki/confirm.md`）撞名，读取时恰好一条布局错误；站点构建拒绝它，服务与 CLI 的单测也用它。
 
 - `e2e/html-site/`：project `e2e-html`，一篇 `pages`：一节放本篇的 `long-page.html`（很长）、project 根下的 `shared/catalog.html` 和 source `kit`（`e2e/html-source/`）下的 `widget.html`，一节放手机 JSX 帧。HTML 帧的 e2e 用它。
 - `e2e/prose-site/`：project `e2e-prose`，一篇 `notes`（两节，同一句话各出现一次，带一张画布卡片），正文评论的 e2e 用它；e2e 登记的是本轮复制出的副本，spec 会改正文。

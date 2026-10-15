@@ -328,9 +328,9 @@ test('[[ ]] popup：悬停打开、移进 popup 不关、离开后关；点有�
     await expect(page.locator('.pp-thread.draft')).toHaveCount(0);
   });
 
-  await test.step('点 concept ref：去概念页', async () => {
+  await test.step('点 wiki ref：去 wiki 词条页', async () => {
     await concept.click();
-    await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/concepts/confirm-card/`);
+    await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/wiki/confirm-card/`);
     await expect(page.locator('#article .prose h1')).toHaveText('confirm-card');
   });
 

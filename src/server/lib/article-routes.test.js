@@ -32,8 +32,18 @@ test('routeArticleRequest：登记过的 project 首段进站点，上游带 /_a
   assert.deepEqual(routeArticleRequest('/demo/llms.txt', isProject), {
     kind: 'article', project: 'demo', article: null, upstream: '/_astro/demo/llms.txt',
   });
-  assert.equal(routeArticleRequest('/demo/concepts/%E7%A1%AE%E8%AE%A4/?annotate=off', isProject).upstream,
-    '/_astro/demo/concepts/%E7%A1%AE%E8%AE%A4/?annotate=off');
+  assert.equal(routeArticleRequest('/demo/wiki/%E7%A1%AE%E8%AE%A4/?annotate=off', isProject).upstream,
+    '/_astro/demo/wiki/%E7%A1%AE%E8%AE%A4/?annotate=off');
+});
+
+test('routeArticleRequest：旧的概念页地址 /<project>/concepts/… 301 到 /<project>/wiki/…，query 原样带上（ADR 0045）', () => {
+  assert.deepEqual(routeArticleRequest('/demo/concepts/%E7%A1%AE%E8%AE%A4/?x=1', isProject), {
+    kind: 'redirect', status: 301, project: 'demo', location: '/demo/wiki/%E7%A1%AE%E8%AE%A4/?x=1',
+  });
+  assert.equal(routeArticleRequest('/demo/concepts/', isProject).location, '/demo/wiki/');
+  assert.equal(routeArticleRequest('/demo/concepts', isProject).location, '/demo/wiki/');
+  // 没登记的 project 不归站点，也不跳。
+  assert.equal(routeArticleRequest('/unknown/concepts/x/', isProject), null);
 });
 
 test('routeArticleRequest：不带参数的 / 是 blog 首页，交给站点；带参数的 / 不归站点（旧画布视图地址）', () => {
@@ -46,8 +56,8 @@ test('routeArticleRequest：不带参数的 / 是 blog 首页，交给站点；�
 test('articleIdOfPath：只有 /<project>/<article>/ 形状是文章页（注入正文评论的地方）', () => {
   for (const [p, want] of [
     ['/demo/intro/', 'intro'], ['/demo/intro', 'intro'], ['/demo/intro/index.html', 'intro'],
-    ['/demo/', null], ['/demo', null], ['/demo/llms.txt', null], ['/demo/concepts/', null],
-    ['/demo/concepts/x/', null], ['/demo/intro/assets/a.png', null], ['/demo/Intro/', null], ['/demo/%E4%B8%AD/', null],
+    ['/demo/', null], ['/demo', null], ['/demo/llms.txt', null], ['/demo/concepts/', null], ['/demo/wiki/', null], ['/demo/wiki', null],
+    ['/demo/concepts/x/', null], ['/demo/wiki/x/', null], ['/demo/intro/assets/a.png', null], ['/demo/Intro/', null], ['/demo/%E4%B8%AD/', null],
   ]) assert.equal(articleIdOfPath(p), want, p);
 });
 

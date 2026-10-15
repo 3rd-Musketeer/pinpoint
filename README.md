@@ -7,15 +7,15 @@ annotations.**
 ## The model
 
 A **project** holds **articles** (design documents written in MDX, readable by anyone with the
-link) and **concepts** (wiki-style definitions). An article is made of **sections**; a section can
+link) and **wiki entries** (short definitions of terms). An article is made of **sections**; a section can
 hold a **canvas component** (`<Canvas>`) that lists its **frames** (a `.jsx` file per UI state, or a
 whole `.html` page) and **figures** (`<Figure>`, diagrams the agent draws in SVG). Every article has an article page; an article with at least one canvas also has a canvas view:
 
 - 📄 **Article page** — `https://pinpoint.localhost/<project>/<article>/`. Prose, a table of contents
   numbered 1, 2, 3, and one canvas card per section with frames. Click a frame to open the canvas
   overlay (frames are interactive there); “打开画布 →” jumps to the canvas view. `[[name]]` links to
-  another article or a concept; a link whose target does not exist yet (an empty ref) is allowed and
-  shows the concepts or articles still missing.
+  another article or a wiki entry; a link whose target does not exist yet (an empty ref) is allowed and
+  shows the wiki entries or articles still missing.
 - 🖼️ **Canvas view** — the workbench at `/workbench/?page=<project>_<article>`. Every section with a canvas
   becomes one row of frames, referenced as A1, B3 (section letter + frame number; the nth section is
   the nth letter). It is generated from `index.mdx`; you never write it by hand.
@@ -44,7 +44,7 @@ They are a normal entry point next to articles: view, edit and annotate them as 
 |---|---|
 | 这些词是什么意思（project / 文章 / section / 帧 / 画布视图 / 页 id / 桶） | [`CONTEXT.md`](CONTEXT.md) |
 | agent 开工读什么、验收命令、坑与约定 | [`AGENTS.md`](AGENTS.md) |
-| 写文章、加帧、加组件、写 concept 的做法（含存量页） | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
+| 写文章、加帧、加组件、写 wiki 词条的做法（含存量页） | [`skills/pinpoint-build/SKILL.md`](skills/pinpoint-build/SKILL.md) |
 | 处理画布标注与正文评论：读 → 修改 → 回复 → 写状态 | [`skills/pinpoint-annotate/SKILL.md`](skills/pinpoint-annotate/SKILL.md) |
 | project 与文章的目录、`add --project`、画布视图与页 id、`migrate` | [`docs/projects.md`](docs/projects.md) |
 | 文章站点：`Section` / `Canvas`、`[[ ]]`、画布浮层、路由、`llms.txt` | [`site/README.md`](site/README.md) |
@@ -129,7 +129,7 @@ conventions and exit codes are in [`docs/registry.md`](docs/registry.md) “CLI�
 
 ```bash
 ppnt list [words…]             # projects (each article as <project>/<article>) and legacy pages; words also match article ids and titles
-ppnt show <project>            # a project's articles, concepts, empty refs and layout errors
+ppnt show <project>            # a project's articles, wiki entries, empty refs and layout errors
 ppnt show <project>/<article>  # per section: §n · letter · section id · title · frames · open count · URLs
 ppnt check <project>[/<article>]  # validate before reporting: layout errors, every frame's and figure's lint/compile, MDX render errors, empty refs; exit 1 on errors
 ppnt comments <target>         # read the queue: canvas annotations, HTML-frame annotations and prose comments, statuses, intents, code excerpts (a project lists every article)
@@ -156,7 +156,7 @@ AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技�
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: projects, board-schema, registry, annotation, design; adr/ = decisions
 index.html                   WORKBENCH shell, served at /workbench/ (old / and /index.html URLs redirect there) — full-bleed canvas + floating glass panel + bottom strip
-site/                        Article site (Astro): article pages, concept pages, [[ ]] refs, llms.txt
+site/                        Article site (Astro): article pages, wiki pages, [[ ]] refs, llms.txt
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
   src/workbench/             Board loader, dist screens, preview-script mount (A+B), HMR client
@@ -190,7 +190,7 @@ e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/
 
 Your articles do **not** live in this repo. A project lives in its own repository or topic under
 `<project root>/docs/pinpoint/` (`project.json`, `articles/<id>/index.mdx` plus that article's
-frames, `concepts/`, shared `components/`); `pinpoint add <root> --project` registers it once, and
+frames, `wiki/`, shared `components/`); `pinpoint add <root> --project` registers it once, and
 new articles show up without re-registering. Legacy page sources register the same way with
 `pinpoint add <dir|file>` and are served from `/sites/<id>/`. `pinpoint move <id> <new path>`
 re-points an entry and keeps its id, so its annotations stay attached; `pinpoint rename <old id> <new id>`

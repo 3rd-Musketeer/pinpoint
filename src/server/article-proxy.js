@@ -5,7 +5,8 @@
  *
  * - 文章页（/<project>/<article>/）的 HTML 响应注入标注客户端，与 /sites/ 同一份
  *   injectAnnotateClient：桶 = 这篇的页 id（src/shared/project-ids.js articlePageId），并带上
- *   __pinpointProse，客户端只跑正文评论。project 首页、概念页不注入（没有评论面）。
+ *   __pinpointProse，客户端只跑正文评论。project 首页、wiki 页不注入（没有评论面）。
+ * - 旧的 wiki 地址 /<project>/concepts/… 直接 301 到 /<project>/wiki/…，不拉起站点（ADR 0045）。
  *   ?annotate=off 单请求不注入。非 HTML 原样透传。
  * - 站点没就绪时：浏览器导航（Accept 含 text/html）拿到一张自动刷新的「站点
  *   启动中」页（503）；站点起不来（failed）时那张页写原因和日志尾巴。页面里的
@@ -135,7 +136,7 @@ function decodeBody(body, encoding) {
 
 /**
  * 注入的标注桶：登记过、index.mdx 在盘上的文章页 → 这篇的画布页 id（画布标注与
- * 正文评论共用，common-m1.md §2）；project 首页、概念页、llms.txt、不存在的文章 →
+ * 正文评论共用，common-m1.md §2）；project 首页、wiki 页、llms.txt、不存在的文章 →
  * null，不注入（没有评论面，也没有合法的桶）。
  */
 export function annotationBucketFor(route, registry) {
@@ -273,6 +274,13 @@ export function createArticleHandler({ registry, isProject, devServer, origins, 
   return function handleArticle(req, res) {
     const route = routeArticleRequest(req.url, projectCheck);
     if (!route) return false;
+    if (route.kind === 'redirect') {
+      res.statusCode = route.status;
+      res.setHeader('Location', route.location);
+      res.setHeader('Cache-Control', 'no-store');
+      res.end();
+      return true;
+    }
     const verdict = decide(req, devServer, own, false);
     if (!verdict.allow) {
       sendForbidden(res, verdict.reason);

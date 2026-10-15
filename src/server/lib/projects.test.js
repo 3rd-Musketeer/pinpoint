@@ -72,8 +72,8 @@ test('fixture project: two articles and two concepts, titles from frontmatter, n
     },
   ]);
   assert.deepEqual(project.concepts, [
-    { name: 'confirm-card', slug: 'confirm-card', status: '收敛中', boundary: '只在不可撤销的动作之前出现', file: path.join(project.dir, 'concepts', 'confirm-card.md') },
-    { name: 'takeover-banner', slug: 'takeover-banner', status: '占位', boundary: '只说明谁在控制浏览器', file: path.join(project.dir, 'concepts', 'takeover-banner.md') },
+    { name: 'confirm-card', slug: 'confirm-card', status: '收敛中', boundary: '只在不可撤销的动作之前出现', file: path.join(project.dir, 'wiki', 'confirm-card.md') },
+    { name: 'takeover-banner', slug: 'takeover-banner', status: '占位', boundary: '只说明谁在控制浏览器', file: path.join(project.dir, 'wiki', 'takeover-banner.md') },
   ]);
   assert.equal(findProject(registry, 'e2e-project').title, 'E2E Project');
   assert.equal(findProject(registry, 'nope'), null);
@@ -101,14 +101,14 @@ test('collision fixture: article id and concept name share one case-insensitive 
   assert.equal(project.articles.length, 1, 'both sides stay listed; the error is reported, not thrown');
   assert.equal(project.concepts.length, 1);
   assert.equal(project.errors.length, 1);
-  assert.match(formatProjectError(project.errors[0]), /撞名 \[\[confirm-card\]\]：article "confirm-card"、concept "Confirm-Card"（concepts\/confirm\.md）/);
+  assert.match(formatProjectError(project.errors[0]), /撞名 \[\[confirm-card\]\]：article "confirm-card"、wiki 词条 "Confirm-Card"（wiki\/confirm\.md）/);
 });
 
 test('defaults: article title falls back to id, concept name to file name', (t) => {
   const root = makeProject(t, {
     'project.json': '{"id":"bare"}',
     'articles/plain/index.mdx': '# 没有 frontmatter\n',
-    'concepts/裸词.md': '定义。\n',
+    'wiki/裸词.md': '定义。\n',
   });
   const registry = registryWith(t, [{ id: 'bare', title: 'Bare Entry', kind: 'project', path: root }]);
   const project = findProject(registry, 'bare');
@@ -152,12 +152,13 @@ test('layout errors are listed, never thrown', async (t) => {
       'project.json': '{"id":"messy"}',
       'articles/stray.md': '',
       'articles/Bad_Id/index.mdx': '',
+      'articles/wiki/index.mdx': '',
       'articles/concepts/index.mdx': '',
       'articles/no-index/notes.md': '',
       'articles/ok/index.mdx': '---\ntitle: OK\ntags:\n  - a\n---\n',
-      'concepts/one.md': '---\nname: same\n---\n',
-      'concepts/two.md': '---\nname: Same\n---\n',
-      'concepts/readme.txt': 'ignored',
+      'wiki/one.md': '---\nname: same\n---\n',
+      'wiki/two.md': '---\nname: Same\n---\n',
+      'wiki/readme.txt': 'ignored',
     });
     const project = findProject(registryWith(t, [{ id: 'messy', kind: 'project', path: root }]), 'messy');
     assert.deepEqual(project.articles.map((a) => a.id), ['ok']);
@@ -170,8 +171,9 @@ test('layout errors are listed, never thrown', async (t) => {
       'articles/ok/index.mdx：frontmatter 第 3 行：值为空（不写这个键，或写 ""）',
       'articles/ok/index.mdx：frontmatter 第 4 行只支持 key: value：- a',
       'articles/stray.md：articles/ 下只放文章目录',
-      'concepts/readme.txt：concepts/ 下只放 <名字>.md',
-      '撞名 [[same]]：concept "same"（concepts/one.md）、concept "Same"（concepts/two.md）（article id 与 concept name 共用一个命名空间）',
+      'articles/wiki：文章 id 是保留名（/<project>/wiki/ 已被占用）',
+      'wiki/readme.txt：wiki/ 下只放 <名字>.md',
+      '撞名 [[same]]：wiki 词条 "same"（wiki/one.md）、wiki 词条 "Same"（wiki/two.md）（文章 id 与 wiki 词条的 name 共用一个命名空间）',
     ]);
     // 对象本身：path 相对 docs/pinpoint/，project 级的（撞名）没有 path；code 分种类。
     assert.deepEqual(project.errors.map(({ code, path: where }) => [code, where]), [
@@ -181,16 +183,25 @@ test('layout errors are listed, never thrown', async (t) => {
       ['frontmatter', 'articles/ok/index.mdx'],
       ['frontmatter', 'articles/ok/index.mdx'],
       ['article_not_dir', 'articles/stray.md'],
-      ['concept_not_md', 'concepts/readme.txt'],
+      ['article_id_reserved', 'articles/wiki'],
+      ['wiki_not_md', 'wiki/readme.txt'],
       ['name_collision', undefined],
     ]);
   });
 
   await t.test('concept status must be one of the three states', (t) => {
-    const root = makeProject(t, { 'project.json': '{"id":"st"}', 'concepts/a.md': '---\nstatus: done\n---\n', 'concepts/b.md': '---\nstatus: 已固定\n---\n' });
+    const root = makeProject(t, { 'project.json': '{"id":"st"}', 'wiki/a.md': '---\nstatus: done\n---\n', 'wiki/b.md': '---\nstatus: 已固定\n---\n' });
     const project = findProject(registryWith(t, [{ id: 'st', kind: 'project', path: root }]), 'st');
     assert.deepEqual(project.concepts.map((c) => c.status), [undefined, '已固定']);
-    assert.deepEqual(lines(project.errors), ['concepts/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
+    assert.deepEqual(lines(project.errors), ['wiki/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
+  });
+
+  await t.test('the old concepts/ directory is a layout error, not read (ADR 0045)', (t) => {
+    const root = makeProject(t, { 'project.json': '{"id":"old"}', 'concepts/a.md': '---\nname: a\n---\n', 'wiki/b.md': '---\nname: b\n---\n' });
+    const project = findProject(registryWith(t, [{ id: 'old', kind: 'project', path: root }]), 'old');
+    assert.deepEqual(project.concepts.map((c) => c.slug), ['b'], 'concepts/ is not read');
+    assert.deepEqual(project.errors.map(({ code, path: where }) => [code, where]), [['wiki_dir_renamed', 'concepts']]);
+    assert.match(formatProjectError(project.errors[0]), /^concepts：.*改名成 wiki\/.*mv .*docs\/pinpoint\/concepts .*docs\/pinpoint\/wiki/);
   });
 
   await t.test('reserved project ids are rejected', (t) => {

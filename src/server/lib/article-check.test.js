@@ -24,7 +24,7 @@ function fixture(t) {
   const clean = path.join(content, 'articles', 'clean');
   fs.mkdirSync(broken, { recursive: true });
   fs.mkdirSync(clean, { recursive: true });
-  fs.mkdirSync(path.join(content, 'concepts'), { recursive: true });
+  fs.mkdirSync(path.join(content, 'wiki'), { recursive: true });
   fs.writeFileSync(path.join(content, 'project.json'), JSON.stringify({ id: 'demo', title: 'Demo' }));
   fs.writeFileSync(path.join(broken, 'index.mdx'), [
     '---', 'title: 坏', '---', '', // 1-4
@@ -37,7 +37,7 @@ function fixture(t) {
   fs.writeFileSync(path.join(broken, 'ok-frame.jsx'), GOOD_FRAME);
   fs.writeFileSync(path.join(clean, 'index.mdx'), '---\ntitle: 好\n---\n\n<Section id="a">\n\n<Canvas frames={["good"]} />\n\n</Section>\n\n```\n[[代码里的不算]]\n```\n');
   fs.writeFileSync(path.join(clean, 'good.jsx'), GOOD_FRAME);
-  fs.writeFileSync(path.join(content, 'concepts', 'term.md'), '---\nname: term\n---\n\n指向 [[另一个空词]]。\n');
+  fs.writeFileSync(path.join(content, 'wiki', 'term.md'), '---\nname: term\n---\n\n指向 [[另一个空词]]。\n');
   const file = path.join(dir, 'registry.json');
   fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [{ id: 'demo', kind: 'project', path: path.join(dir, 'proj') }] }));
   return { registry: loadRegistry({ root: dir, path: file, log: () => {} }), broken, clean, content };

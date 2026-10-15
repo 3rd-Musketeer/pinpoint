@@ -9,7 +9,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
-装一批相关文章和 concept 的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
+装一批相关文章和 wiki 词条的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/wiki/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
 要避开：拿 project 指存量页或 board；把 project 当成文章的上级主题去写导语或描述。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
@@ -17,7 +17,7 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 要避开：拿 doc 指文章（doc 是存量页的一种舞台形态）；拿“页”指文章（页 id 是文章的一个地址，见下）。
 
 **文章页** · 网址 `/<project>/<article>/`；渲染在 `site/`（Astro）
-读者读一篇文章的网页：左边是目录，中间是正文和画布卡片，右边是评论栏。目录和节标题前显示节号 1、2、3。顶栏左边是回首页的“全部文章”，不显示 project 标题；project 是标题下的小标签。浏览器标签页的标题只有文章标题。顶栏的“概念”打开概念抽屉，列出本篇引用的 concept 和空 ref；有画布的文章，顶栏还有“画布视图”。
+读者读一篇文章的网页：左边是目录，中间是正文和画布卡片，右边是评论栏。目录和节标题前显示节号 1、2、3。顶栏左边是回首页的“全部文章”，不显示 project 标题；project 是标题下的小标签。浏览器标签页的标题只有文章标题。顶栏的“wiki”打开 wiki 抽屉，列出本篇引用的 wiki 词条和空 ref；有画布的文章，顶栏还有“画布视图”。
 要避开：把文章页和画布视图混称“文章画布”。
 
 **首页（全部文章）** · 网址 `/`；`site/src/pages/index.astro`，排序 `src/shared/article-feed.js`
@@ -72,12 +72,12 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 第 n 节就是第 n 个字母：全部节一起数，纯文字的节也占一个号和一个字母（这个字母在画布视图里没有对应的行），所以第一节是纯文字时，画布视图从 B 开始，B2 是文章第 2 节的第 2 帧。两套号都随增删、调序变化，所以当场对话用号，留存的文字（README、交接稿、验收记录）写 id：节 id、帧 id，或“D2（c1b-detail-time）”。对照用 `ppnt show <project>/<article>`：每节一行节号、字母、节 id，下面是帧的编号和帧 id。
 要避开：把 id 起成编号的样子（`c1b-detail`）；在文章正文里写字母编号；“图纸号”“引用号”“canvas ref”（都指编号）。CLI 的 `<引用>` 参数比编号宽，`#12`、`§2`、帧 id 也算，见“引用地址”。
 
-**concept（概念）** · `<project 根>/docs/pinpoint/concepts/<slug>.md`；概念页 `/<project>/concepts/<slug>/`
-一个词的定义，像 wiki 词条：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。
-要避开：把 concept 叫文章的一种——它没有节和画布。
+**wiki 词条** · `<project 根>/docs/pinpoint/wiki/<slug>.md`；词条页 `/<project>/wiki/<slug>/`，词条列表 `/<project>/wiki/`
+一个词的定义：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。界面上一个 project 的全部词条合称 wiki（project 首页的“wiki”、文章页顶栏的“wiki”抽屉、`ppnt list` 的“N 条 wiki”）。2026-10-15 之前叫 concept（概念），目录是 `concepts/`，旧地址 `/<project>/concepts/<slug>/` 301 到新地址；盘上还有 `concepts/` 目录时 `ppnt check` 报布局错误 `wiki_dir_renamed`（ADR 0045）。代码里仍叫 concept：`project.concepts`、`kind: 'concept'`、`CONCEPT_STATUSES`、内容集合 `concepts`。
+要避开：把 wiki 词条叫文章的一种（它没有节和画布）；在界面和文档里再说“概念”“concept 页”。
 
 **`[[ ]]` 引用与空 ref** · `src/shared/refs.js`；比较键 `refKey`
-`[[名字]]` 在正文里指向本 project 的一篇文章（按 article id）或一个 concept（按 `name`）；两者共用一个命名空间，不分大小写，撞名是布局错误。`[[名字|显示文字]]` 换显示的字，`[[project:名字]]` 指别的 project。指向的东西还不存在时是空 ref：合法，显示成虚线，project 首页列出全部空 ref，用来梳理还缺哪些概念和机制。鼠标停在引用上弹出卡片：文章显示标题和摘要，concept 显示定义和状态，空 ref 的卡片说明目标不存在。
+`[[名字]]` 在正文里指向本 project 的一篇文章（按 article id）或一条 wiki 词条（按 `name`）；两者共用一个命名空间，不分大小写，撞名是布局错误。`[[名字|显示文字]]` 换显示的字，`[[project:名字]]` 指别的 project。指向的东西还不存在时是空 ref：合法，显示成虚线，project 首页列出全部空 ref，用来梳理还缺哪些词条和机制。鼠标停在引用上弹出卡片：文章显示标题和摘要，wiki 词条显示定义和状态，空 ref 的卡片说明目标不存在。
 要避开：把空 ref 当错误去删。
 
 **画布标注** · 画布视图上的标注客户端 `src/client/annotate.js`；账本 `@canvas.json`

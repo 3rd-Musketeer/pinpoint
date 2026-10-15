@@ -5,7 +5,7 @@
  *
  *   projects  id <project>               { id, title, root, dir, errors[] }
  *   articles  id <project>/<article>     frontmatter + { project, article, file }   (MDX, deferred render)
- *   concepts  id <project>/<slug>        frontmatter + { project, name, slug, file } (md, rendered at load)
+ *   concepts  id <project>/<slug>        (wiki entries, docs/pinpoint/wiki/) frontmatter + { project, name, slug, file } (md, rendered at load)
  *
  * In dev every loader watches the registry file and each project's
  * docs/pinpoint/ and reloads itself on any change.

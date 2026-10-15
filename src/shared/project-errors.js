@@ -6,7 +6,7 @@
  *   - code：错误的种类（见下面各处的字面量），给程序分辨用，不显示；
  *   - message：显示的那句话，不带文件前缀；
  *   - path：错误属于哪个文件或目录，相对 <project 根>/docs/pinpoint/（`articles/x/index.mdx`、
- *     `articles/x`、`concepts/a.md`）。project 自己的错误（根目录、project.json、撞名）没有；
+ *     `articles/x`、`wiki/a.md`）。project 自己的错误（根目录、project.json、撞名）没有；
  *   - section、frame、line：画布写法的错误落在哪一节、哪一帧、index.mdx 第几行；
  *   - figure：正文里的图（<Figure>）的错误落在哪个图（认得出图 id 时）。图的错误 code 以 figure_ 开头。
  *

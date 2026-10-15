@@ -2,7 +2,7 @@
  * `ppnt new project <目录>` 与 `ppnt new article <project>/<article>`：脚手架（docs/projects.md“目录”）。
  * 两个命令都不覆盖已有文件：写了什么、跳过了什么逐行打印。
  *
- * new project：<目录>/docs/pinpoint/project.json（{ id, title }）+ 空的 articles/、concepts/，再登记
+ * new project：<目录>/docs/pinpoint/project.json（{ id, title }）+ 空的 articles/、wiki/，再登记
  *   （和 `ppnt add <目录> --project` 同一条路）。project.json 已经在就沿用它，只补登记，所以重跑是幂等的。
  * new article：articles/<article>/index.mdx，frontmatter 写 title，正文是一节 <Section>。index.mdx 已经在，
  *   或这篇的页 id 的桶里已有旧标注（删掉的文章留下的孤儿），就拒绝。
@@ -75,7 +75,7 @@ export function planNewProject(dir, { cwd = process.cwd(), id: wantId = null, ti
     write.push({ file: jsonFile, content: `${JSON.stringify({ id, title }, null, 2)}\n` });
   }
   const mkdirs = [];
-  for (const sub of ['articles', 'concepts']) {
+  for (const sub of ['articles', 'wiki']) {
     const full = path.join(contentDir, sub);
     if (fs.existsSync(full)) skipped.push(`${full}${path.sep}`);
     else mkdirs.push(full);
@@ -86,7 +86,7 @@ export function planNewProject(dir, { cwd = process.cwd(), id: wantId = null, ti
 /** new article 的计划 → { file, dir, content, address, projectId, articleId }。不合法时抛 CliError（带 exit）。 */
 export function planNewArticle(hit, { title = null } = {}) {
   const articleId = hit.articleId;
-  if (RESERVED_ARTICLE_IDS.has(articleId)) throw Object.assign(new CliError(`文章 id "${articleId}" 是保留名（/<project>/${articleId}/ 是概念页）`), { exit: USAGE_EXIT });
+  if (RESERVED_ARTICLE_IDS.has(articleId)) throw Object.assign(new CliError(`文章 id "${articleId}" 是保留名（/<project>/${articleId}/ 是 wiki 词条页的地址）`), { exit: USAGE_EXIT });
   const dir = path.join(hit.root, PROJECT_CONTENT_DIR, 'articles', articleId);
   const file = path.join(dir, 'index.mdx');
   if (fs.existsSync(file)) throw Object.assign(new CliError(`${file} 已经在，不覆盖：ppnt show ${hit.address} 看这篇`), { exit: 1 });

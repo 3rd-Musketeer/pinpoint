@@ -3,7 +3,7 @@
  * （docs/registry.md“CLI”）。只读盘，不需要服务。
  *
  * 文章：每节 §n · 字母 · 节 id · 标题 · 帧 · open 数 · 网址（纯文字的节也列）。
- * project：文章、概念、空 ref、布局错误；有布局错误退 1（同 list <project>）。
+ * project：文章、wiki 词条、空 ref、布局错误；有布局错误退 1（同 list <project>）。
  * 两种都把正文里图的编译错误与浏览器里记下的运行错误并进布局错误（docs/projects.md“图”），过期的图先重编。
  */
 import fs from 'node:fs';
@@ -159,12 +159,12 @@ export function formatProject(model) {
     lines.push(`  ${article.address}  ·  ${article.title}  ·  ${article.sections} 节 · ${article.frames} 帧 · open ${article.open}`);
     lines.push(`    ${article.url}`);
   }
-  lines.push('', `概念（${model.concepts.length}）`);
+  lines.push('', `wiki（${model.concepts.length}）`);
   if (!model.concepts.length) lines.push('  （无）');
   for (const concept of model.concepts) lines.push(`  ${[concept.name, concept.status, concept.boundary].filter(Boolean).join('  ·  ')}`);
   lines.push('', model.emptyRefs.length ? `空 ref（${model.emptyRefs.length}，合法：目标还不存在）` : '空 ref：无');
   for (const ref of model.emptyRefs) {
-    const where = ref.sources.map((source) => `${source.kind === 'article' ? source.id : `概念 ${source.id}`}:${source.line}`).join('、');
+    const where = ref.sources.map((source) => `${source.kind === 'article' ? source.id : `wiki ${source.id}`}:${source.line}`).join('、');
     lines.push(`  [[${ref.name}]] ← ${where}`);
   }
   lines.push('', model.errors.length ? `布局错误（${model.errors.length}）` : '布局错误：无');

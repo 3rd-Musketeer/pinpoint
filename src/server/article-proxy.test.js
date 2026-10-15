@@ -44,6 +44,16 @@ test('不归站点的请求不碰：返回 false，也不拉起站点', () => {
   assert.equal(dev.ensured, 0);
 });
 
+test('旧的概念页地址 301 到 wiki：不等站点、不拉起站点（ADR 0045）', () => {
+  const dev = fakeDevServer({ state: 'idle', port: 1 });
+  const handle = createArticleHandler({ isProject, devServer: dev });
+  const res = mockRes();
+  assert.equal(handle(mockReq('GET', '/demo/concepts/%E7%A1%AE%E8%AE%A4/?a=1'), res), true);
+  assert.equal(res.statusCode, 301);
+  assert.equal(res.headers.Location, '/demo/wiki/%E7%A1%AE%E8%AE%A4/?a=1');
+  assert.equal(dev.ensured, 0);
+});
+
 test('站点没就绪：导航给启动中页（503，自动刷新），failed 给原因与日志尾巴（502，HTML 转义）', () => {
   const starting = fakeDevServer({ state: 'starting', port: 4530, command: 'npm run site:dev' });
   const handle = createArticleHandler({ isProject, devServer: starting });
@@ -145,8 +155,8 @@ test('代理：HTML 注入、非 HTML 原样、HEAD 不带体；上游 gzip 的 
   assert.equal(page.headers.get('x-up'), '/_astro/demo/a/?q=1');
   assert.match(await page.text(), /<h1>a<\/h1><script>window\.__pinpointEntry='demo_a';window\.__pinpointProse=\{"project":"demo","article":"a"\}<\/script>/);
 
-  // project 首页、概念页不是文章页，不存在的文章没有桶：都不注入。
-  for (const p of ['/demo/', '/demo/concepts/x/', '/demo/ghost/']) {
+  // project 首页、wiki 词条页不是文章页，不存在的文章没有桶：都不注入。
+  for (const p of ['/demo/', '/demo/wiki/x/', '/demo/ghost/']) {
     const other = await fetch(`${origin}${p}`);
     assert.doesNotMatch(await other.text(), /__pinpoint/, p);
   }

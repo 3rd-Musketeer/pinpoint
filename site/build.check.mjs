@@ -52,8 +52,8 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.equal(b.status, 0, b.log);
 
   for (const rel of [
-    'index.html', 'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/concepts/确认卡/index.html', 'demo/llms.txt',
-    'other/index.html', 'other/intro/index.html', 'other/concepts/payee/index.html', 'other/llms.txt',
+    'index.html', 'demo/index.html', 'demo/payments/index.html', 'demo/basics/index.html', 'demo/wiki/确认卡/index.html', 'demo/wiki/index.html', 'demo/llms.txt',
+    'other/index.html', 'other/intro/index.html', 'other/wiki/payee/index.html', 'other/llms.txt',
   ]) assert.ok(fs.existsSync(path.join(b.out, rel)), `missing route ${rel}`);
 
   const article = b.read('demo/payments/index.html');
@@ -68,7 +68,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   ]);
   assert.match(article, /<code>\[\[不是引用\]\]<\/code>/);
   // Concept URLs use the file name (slug), the ref still resolves by name.
-  assert.match(article, /href="\/other\/concepts\/payee\/" data-kind="concept" data-name="收款方" data-project="other"/);
+  assert.match(article, /href="\/other\/wiki\/payee\/" data-kind="concept" data-name="收款方" data-project="other"/);
   // Popup data per kind: article → title + summary; concept → definition, status, used-by.
   assert.match(article, /data-kind="article"[^>]*data-href="\/demo\/basics\/" data-title="基础篇" data-summary="没有 section 的短文。"/);
   assert.match(article, /data-kind="concept" data-name="确认卡"[^>]*data-status="已固定"[^>]*data-def="对外动作执行前[^"]*"[^>]*data-used="[^"]*基础篇/);
@@ -185,12 +185,17 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   const home = b.read('demo/index.html');
   assert.deepEqual([...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['付款授权', '撤回窗口', '支付页识别']);
   assert.match(home, /href="\/demo\/payments\/"/);
-  assert.match(home, /href="\/demo\/concepts\/%E7%A1%AE%E8%AE%A4%E5%8D%A1\/"/);
+  assert.match(home, /href="\/demo\/wiki\/%E7%A1%AE%E8%AE%A4%E5%8D%A1\/"/);
   assert.deepEqual([...b.read('other/index.html').matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]), ['不存在']);
 
-  const concept = b.read('demo/concepts/确认卡/index.html');
+  const concept = b.read('demo/wiki/确认卡/index.html');
   assert.deepEqual(refs(concept).map((r) => `${r.kind}:${r.name}`), ['article:payments', 'empty:撤回窗口']);
   assert.match(concept, /id="used-by"[\s\S]*浏览器任务里的付款[\s\S]*基础篇/);
+
+  // /<project>/wiki/ 是这个 project 的 wiki 词条列表（ADR 0045）。
+  const wikiIndex = b.read('demo/wiki/index.html');
+  assert.match(wikiIndex, /href="\/demo\/wiki\/%E7%A1%AE%E8%AE%A4%E5%8D%A1\/"><div class="t">确认卡</);
+  assert.doesNotMatch(home + wikiIndex + concept, />概念</);
 
   assert.deepEqual(refs(b.read('other/intro/index.html')).map((r) => `${r.kind}:${r.project}:${r.name}`), ['article:demo:payments']);
 
@@ -199,10 +204,10 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(llms, /- \*\*确认卡\*\*（已固定）：对外动作执行前/);
   assert.match(llms, /## 文章：浏览器任务里的付款（\[\[payments\]\]）\n\n开头一段：这篇引用 \[\[确认卡\]\]/);
   assert.match(llms, /- 付款授权：浏览器任务里的付款、基础篇/);
-  // Same list as the home page, concept-body refs included (撤回窗口 is only in concepts/确认卡.md).
+  // Same list as the home page, concept-body refs included (撤回窗口 is only in wiki/确认卡.md).
   const llmsEmpty = llms.split('## 空 ref\n\n')[1].split('\n\n')[0].split('\n').map((l) => l.replace(/^- ([^：]+)：.*$/, '$1'));
   assert.deepEqual(llmsEmpty, [...home.matchAll(/data-empty-ref="([^"]+)"/g)].map((m) => m[1]));
-  assert.match(llms, /- 撤回窗口：概念 确认卡/);
+  assert.match(llms, /- 撤回窗口：wiki 确认卡/);
 });
 
 // A canvas error is a project error (docs/projects.md「画布视图 · 错误」), and

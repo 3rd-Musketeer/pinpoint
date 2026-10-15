@@ -7,6 +7,7 @@
  *   /              不带参数 → 文章站点的 blog 首页（全部文章，ADR 0044）。带参数的 / 是旧的
  *                  画布视图地址，先被 workbench-routes.js 302 到 /workbench/，到不了这里。
  *   /<project>/…   首段是登记过的 project id → 文章站点。路径原样，站点不设 base。
+ *                  旧的 wiki 地址 /<project>/concepts/… 301 到 /<project>/wiki/…（ADR 0045），不经站点。
  *   /_astro/…      Astro 开发服务器自己的 vite 内部路径（/@vite/client、/src/…、
  *                  /@fs/…、/node_modules/.vite/…、HMR websocket）。pinpoint 本身
  *                  也是 vite，同名的 /@vite/、/@fs/、/@id/、/node_modules/ 归它自己，
@@ -20,7 +21,7 @@
  * 它答 404，这里把前缀后连续的斜杠压成一道。
  */
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
-import { isReservedSegment, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { isReservedSegment, LEGACY_CONCEPTS_SEGMENT, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
 import { projectEntry } from './registry.js';
 
 // 保留首段的表在 src/shared/project-ids.js（登记校验与这里的路由用同一份）。
@@ -47,7 +48,7 @@ function astroInternalUpstream(pathname) {
 
 /**
  * 一个 project 内路径是不是文章页：`/<project>/<article>/`（或不带尾斜杠、或
- * `…/index.html`）返回 article id，否则 null（project 首页、概念页、llms.txt、
+ * `…/index.html`）返回 article id，否则 null（project 首页、wiki 页、llms.txt、
  * 文章目录下的资源）。只看形状，不读盘：文章不存在时站点自己答 404。
  */
 export function articleIdOfPath(pathname) {
@@ -71,7 +72,8 @@ export function articleIdOfPath(pathname) {
  * 返回 null（不归站点）或
  *   { kind: 'home', project: null, article: null, upstream }  不带参数的 /（blog 首页）
  *   { kind: 'article', project, article, upstream }   project 下的一切路径；article =
- *                                             文章 id（文章页）或 null（首页、概念页…）
+ *                                             文章 id（文章页）或 null（首页、wiki 页…）
+ *   { kind: 'redirect', status: 301, project, location }  旧的 /<project>/concepts/… → /<project>/wiki/…
  *   { kind: 'internal', upstream }            Astro 的 vite 内部路径与 /_image
  * upstream = 发给 Astro 开发服务器的路径 + query。
  */
@@ -96,6 +98,11 @@ export function routeArticleRequest(url, isProject) {
   }
   if (!ENTRY_ID_PATTERN.test(segment) || isReservedSegment(segment)) return null;
   if (typeof isProject !== 'function' || !isProject(segment)) return null;
+  const rest = segmentEnd < 0 ? '' : pathname.slice(segmentEnd + 1);
+  const legacy = rest === LEGACY_CONCEPTS_SEGMENT ? '' : rest.startsWith(`${LEGACY_CONCEPTS_SEGMENT}/`) ? rest.slice(LEGACY_CONCEPTS_SEGMENT.length + 1) : null;
+  if (legacy !== null) {
+    return { kind: 'redirect', status: 301, project: segment, location: `/${rawSegment}/${WIKI_SEGMENT}/${legacy}${search}` };
+  }
   return { kind: 'article', project: segment, article: articleIdOfPath(pathname), upstream: '/_astro' + pathname + search };
 }
 

@@ -191,7 +191,7 @@ export function listFrames(words, { registryPath, env, out, err }) {
 
 /* ---- list：project（pp3） ---- */
 
-/** 登记表里的 project，读盘后（文章、概念、布局错误）。 */
+/** 登记表里的 project，读盘后（文章、wiki、布局错误）。 */
 export function projectListRows({ registryPath } = {}) {
   // 读盘（list 不依赖服务），与服务同一个 loadRegistry + listProjects。
   return listProjects(loadRegistry({ root: REPO_ROOT, path: registryPath, log: () => {} }));
@@ -208,7 +208,7 @@ function projectMatchRow(project) {
 }
 
 function countLabel(project) {
-  const bits = [`${project.articles.length} 篇文章`, `${project.concepts.length} 个概念`];
+  const bits = [`${project.articles.length} 篇文章`, `${project.concepts.length} 条 wiki`];
   if (project.errors.length) bits.push(`${project.errors.length} 个布局错误`);
   return bits.join(' · ');
 }
@@ -221,7 +221,7 @@ export function formatProjectRow(project) {
   return lines;
 }
 
-/** `list <project>`：文章、概念与布局错误全列出来。 */
+/** `list <project>`：文章、wiki 词条与布局错误全列出来。 */
 export function formatProjectDetail(project) {
   const lines = [`# ${project.id} · ${project.title}`, `根目录：${project.root}`, `内容：${project.dir}`, ''];
   lines.push(`文章（${project.articles.length}）`);
@@ -232,7 +232,7 @@ export function formatProjectDetail(project) {
     // 页 id：/workbench/?page= 和标注桶用它；CLI 输出打斜杠形。
     if (article.pageId) lines.push(`    画布 ${article.pageId}`);
   }
-  lines.push('', `概念（${project.concepts.length}）`);
+  lines.push('', `wiki（${project.concepts.length}）`);
   if (!project.concepts.length) lines.push('  （无）');
   for (const concept of project.concepts) {
     const bits = [concept.name, concept.status, concept.boundary].filter(Boolean);
