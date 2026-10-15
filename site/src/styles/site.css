@@ -112,16 +112,25 @@ main { min-width:0; }
   .pp-prose pre { font-family:var(--pp-font-mono); }
   /* 表格（宽块）：渲染时包一层 .pp-table-scroll（lib/rehype-table-scroll.js）。外层不受 40em 行宽限制，
      最宽到正文栏（目录栏与评论栏之间，与画布卡片同宽，上限 --pp-prose-wide）；表格按内容取宽（auto），窄表不硬撑满，
-     宽表先用满正文栏、长格列收到最窄还放不下才横向滚动，左右两侧的阴影提示还有内容。
+     宽表先用满正文栏、长格列收到最窄还放不下才横向滚动，底部一条细滚动条提示还有内容（下面“滚动条”）。
      列宽自适应：表头和首列（维度列）不折行、首列滚动时钉在左边；有长格的列（.wrap，rehype 按字数标）最窄 9em
      （约 9 个汉字一行）、宽裕时 12em，其余列不折行；整列是数字的列右对齐。
      字号、表头字重、分隔线、内边距取 Tailwind Typography 的表格规则。 */
-  .pp-prose .pp-table-scroll { max-width:min(100%, var(--pp-prose-wide)); margin:1.5em 0 1.75em; overflow-x:auto; overscroll-behavior-x:contain; scrollbar-width:thin;
-    background:
-      linear-gradient(to right, var(--pp-bg) 40%, transparent) left / 32px 100% no-repeat local,
-      linear-gradient(to left, var(--pp-bg) 40%, transparent) right / 32px 100% no-repeat local,
-      radial-gradient(farthest-side at 0 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) left / 14px 100% no-repeat scroll,
-      radial-gradient(farthest-side at 100% 50%, color-mix(in srgb, var(--pp-text) 30%, transparent), transparent) right / 14px 100% no-repeat scroll; }
+  .pp-prose .pp-table-scroll { max-width:min(100%, var(--pp-prose-wide)); margin:1.5em 0 1.75em; overflow-x:auto; overscroll-behavior-x:contain;
+    scrollbar-color:auto; }
+  /* 滚动条：只在表格溢出时出现（overflow-x:auto），6px 高、药丸圆角、中性灰，悬停深一档。
+     macOS 默认“滚动时显示滚动条”下，标准属性 scrollbar-width / scrollbar-color 得到的是隐形的浮层滚动条，
+     不滚就看不见；::-webkit-scrollbar 定制的滚动条在 Chrome 和 Safari 里不随系统设置隐藏，所以 WebKit 系走它。
+     Chrome 121+ 只要 scrollbar-width 或 scrollbar-color 不是 auto 就忽略 ::-webkit-scrollbar（scrollbar-color 会继承），
+     所以这里显式写回 auto，标准属性只给不认 ::-webkit-scrollbar 的浏览器（Firefox）。 */
+  .pp-prose .pp-table-scroll::-webkit-scrollbar { height:6px; }
+  .pp-prose .pp-table-scroll::-webkit-scrollbar-track { background:transparent; }
+  .pp-prose .pp-table-scroll::-webkit-scrollbar-thumb { background:var(--pp-scrollbar); border-radius:var(--pp-r-pill); }
+  .pp-prose .pp-table-scroll::-webkit-scrollbar-thumb:hover { background:var(--pp-scrollbar-hover); }
+  @supports not selector(::-webkit-scrollbar) {
+    .pp-prose .pp-table-scroll { scrollbar-width:thin; scrollbar-color:var(--pp-scrollbar) transparent; }
+    .pp-prose .pp-table-scroll:hover { scrollbar-color:var(--pp-scrollbar-hover) transparent; }
+  }
   .pp-prose .pp-table-scroll > table { table-layout:auto; width:auto; max-width:none; margin:0; font-size:.875em; line-height:1.7; }
   .pp-prose .pp-table-scroll :is(th, td) { padding:.5714em .8em; vertical-align:top; text-align:left; background:none; white-space:nowrap; }
   .pp-prose .pp-table-scroll td.wrap { white-space:normal; width:13.6em; min-width:10.6em; } /* 含左右内边距 1.6em：文字区最窄 9em、宽裕时 12em */

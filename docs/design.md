@@ -61,7 +61,7 @@
 - 正文 16px / 1.8，段距 1em，文字块行宽 40em（约 40 个汉字）；`text-autospace` 在中西文之间自动加间距，`text-spacing-trim` 挤压相邻全角标点。
 - 标题一律 600、字距 0、`text-wrap: balance`：h1 32px，h2 22px，h3 18px；节号与 h2 同字号、同基线，用强调字色。标题区下方一条发丝线；lede 17px 正文色；project 标签与 lede 隔 16px。
 - 行内代码浅底（`--pp-fill`）、去掉反引号；引用块不用斜体、不加引号；目录编号悬挂，当前项强调浅底。
-- **表格是宽块**：渲染时包一层 `.pp-table-scroll`（`site/src/lib/rehype-table-scroll.js`），外层不受 40em 限制，最宽到正文栏（与画布卡片左右对齐，上限 `--pp-prose-wide` 72em）。表格 `table-layout: auto`、`width: auto`，不压到正文栏宽：窄表不撑满；宽表先用满正文栏，长格列收到最窄还放不下才横向滚动，两侧阴影提示还有内容。表头与首列（维度列）不折行，首列滚动时钉在左边；有长格（超过 9 个字宽）的列由 rehype 标 `.wrap`，文字区最窄 9em（约 9 个汉字一行，长格最多折三四行）、宽裕时 12em，其余列不折行；整列是数字的列右对齐。字号 .875em、表头 600、表头线加行线，取 Tailwind Typography 的表格规则。做法同 Notion 宽块、Tufte fullwidth、Stripe 文档的宽表。正文栏是目录栏和评论栏之间的那一列：1440 宽下 712px（`.layout` 上限 1360px 减两侧栏和间距），比 40em 文字块（640px）宽 72px；vault 第 6 节那种六列对比表在 1440、1280、1024 下都要横向滚动。
+- **表格是宽块**：渲染时包一层 `.pp-table-scroll`（`site/src/lib/rehype-table-scroll.js`），外层不受 40em 限制，最宽到正文栏（与画布卡片左右对齐，上限 `--pp-prose-wide` 72em）。表格 `table-layout: auto`、`width: auto`，不压到正文栏宽：窄表不撑满；宽表先用满正文栏，长格列收到最窄还放不下才横向滚动，底部一条细滚动条提示还有内容：只在溢出时出现，6px 高、药丸圆角、中性灰（`--pp-scrollbar`，悬停 `--pp-scrollbar-hover`），macOS“滚动时显示滚动条”下也常显（Chrome、Safari 走 `::-webkit-scrollbar`，Firefox 走标准属性），不用阴影（owner 2026-10-15：右侧阴影太夸张）。首列与其余列之间是一条发丝线。表头与首列（维度列）不折行，首列滚动时钉在左边；有长格（超过 9 个字宽）的列由 rehype 标 `.wrap`，文字区最窄 9em（约 9 个汉字一行，长格最多折三四行）、宽裕时 12em，其余列不折行；整列是数字的列右对齐。字号 .875em、表头 600、表头线加行线，取 Tailwind Typography 的表格规则。做法同 Notion 宽块、Tufte fullwidth、Stripe 文档的宽表。正文栏是目录栏和评论栏之间的那一列：1440 宽下 712px（`.layout` 上限 1360px 减两侧栏和间距），比 40em 文字块（640px）宽 72px；vault 第 6 节那种六列对比表在 1440、1280、1024 下都要横向滚动。
 - **`[[ ]]` 芯片**：已有页 = 强调字 600 + 左侧 6px 实心圆点，不画下划线，悬停与焦点加强调浅底；空 ref = 灰字 + 虚线下划线 + 空心圆点，虚线是两者的区分。
 
 ## 外壳布局

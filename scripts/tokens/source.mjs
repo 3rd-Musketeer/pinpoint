@@ -37,6 +37,8 @@ export const SEMANTIC = {
   fill: { ...s('gray', 3), use: '控件底、悬停、分段槽' },
   border: { ...s('gray', 5), use: '发丝线' },
   'border-strong': { ...s('gray', 7), use: '表头线、输入框边、结构缝' },
+  scrollbar: { ...s('gray', 8), use: '滚动条滑块：正文宽表的横向滚动条' },
+  'scrollbar-hover': { ...s('gray', 9), use: '滚动条滑块（悬停）' },
   text: { ...s('gray', 12), use: '正文' },
   'text-muted': { ...s('gray', 11), use: '次要字、元数据（白底 5.92:1）' },
   'accent-solid': { ...s('green', 9), use: '强调色块：选中描边、开关、图里的强调线' },

@@ -1,6 +1,6 @@
 import path from 'node:path';
 
-import { expect, test } from '@playwright/test';
+import { chromium, expect, test } from '@playwright/test';
 
 import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT } from './env.js';
 import { ROOT } from './lib/cli.js';
@@ -186,6 +186,42 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     expect(llms.status()).toBe(200);
     expect(llms.headers()['content-type']).toContain('text/plain');
     expect((await llms.text()).startsWith('# E2E Project\n')).toBe(true);
+  });
+
+  await test.step('正文宽表：不用阴影提示，溢出时底部一条 6px 细滚动条（::-webkit-scrollbar 生效），不溢出时没有滚动条；首列仍钉在左边', async () => {
+    // 固件 takeover 有两张表：六列长格的宽表（1440 下宽过正文栏）和两列短格的窄表。
+    // 滚动条高 = offsetHeight − clientHeight；标准 scrollbar-width / scrollbar-color 不是 auto 时 Chromium 忽略 ::-webkit-scrollbar，高度就不是 6。
+    // Playwright 默认带 --hide-scrollbars 启动 Chromium（滚动条一律 0 高），这一步单独起一个不带它的浏览器。
+    const browser = await chromium.launch({ ignoreDefaultArgs: ['--hide-scrollbars'] });
+    const page = await browser.newPage({ baseURL: E2E_BASE_URL, viewport: { width: 1440, height: 900 } });
+    try {
+    await page.goto('/e2e-project/takeover/');
+    await proseSettled(page);
+    const tables = page.locator('#article .pp-table-scroll');
+    await expect(tables).toHaveCount(2);
+    const measure = (loc) => loc.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const first = getComputedStyle(el.querySelector('tbody td'));
+      return {
+        overflow: el.scrollWidth > el.clientWidth, bar: el.offsetHeight - el.clientHeight,
+        bgImage: cs.backgroundImage, scrollbarWidth: cs.scrollbarWidth, scrollbarColor: cs.scrollbarColor,
+        firstPosition: first.position, firstLeft: first.left, firstLine: first.boxShadow,
+      };
+    });
+    const wide = await measure(tables.nth(0));
+    expect(wide).toMatchObject({ overflow: true, bar: 6, bgImage: 'none', scrollbarWidth: 'auto', scrollbarColor: 'auto', firstPosition: 'sticky', firstLeft: '0px' });
+    expect(wide.firstLine).toMatch(/-1px 0px 0px 0px inset$/);
+    const narrow = await measure(tables.nth(1));
+    expect(narrow).toMatchObject({ overflow: false, bar: 0, bgImage: 'none' });
+    // 滚到最右，首列还在表格左缘。
+    const pinned = await tables.nth(0).evaluate((el) => {
+      el.scrollLeft = el.scrollWidth;
+      return Math.round(el.querySelector('tbody td').getBoundingClientRect().left - el.getBoundingClientRect().left);
+    });
+    expect(pinned).toBe(0);
+    } finally {
+      await browser.close();
+    }
   });
 
   await test.step('文章页顶栏（ADR 0044）：标签页标题只有文章标题；左边是回首页的“全部文章”，不显示 project 标题；project 是标题下的小标签', async () => {

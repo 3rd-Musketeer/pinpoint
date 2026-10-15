@@ -42,6 +42,8 @@
   --pp-fill:#f0f0f0;
   --pp-border:#e0e0e0;
   --pp-border-strong:#cecece;
+  --pp-scrollbar:#bbbbbb;
+  --pp-scrollbar-hover:#8d8d8d;
   --pp-text:#202020;
   --pp-text-muted:#646464;
   --pp-accent-solid:#0e8f6c;
@@ -82,6 +84,8 @@
     --pp-fill:#222222;
     --pp-border:#313131;
     --pp-border-strong:#484848;
+    --pp-scrollbar:#606060;
+    --pp-scrollbar-hover:#6e6e6e;
     --pp-text:#eeeeee;
     --pp-text-muted:#b4b4b4;
     --pp-accent-solid:#0e8f6c;
@@ -122,6 +126,8 @@
   --pp-fill:#222222;
   --pp-border:#313131;
   --pp-border-strong:#484848;
+  --pp-scrollbar:#606060;
+  --pp-scrollbar-hover:#6e6e6e;
   --pp-text:#eeeeee;
   --pp-text-muted:#b4b4b4;
   --pp-accent-solid:#0e8f6c;
