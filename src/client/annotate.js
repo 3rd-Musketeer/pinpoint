@@ -2838,6 +2838,16 @@ import { startProseComments } from './prose-comments.js';
     });
     ta.addEventListener('keydown', function (e) {
       if (composer.composing || e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法
+      // macOS Chromium 的滚动边界会消费未加修饰键的 Home / End，光标仍停在原处。
+      // 直接按浏览器的行边界移动选区；保留 Shift 选择与平台修饰键的原生行为。
+      if ((e.key === 'Home' || e.key === 'End') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        var selection = window.getSelection();
+        if (selection && typeof selection.modify === 'function') {
+          e.preventDefault();
+          selection.modify('move', e.key === 'Home' ? 'backward' : 'forward', 'lineboundary');
+          return;
+        }
+      }
       var mentionOpen = !!document.getElementById('ann-mention');
       if (mentionOpen) {
         if (e.key === 'ArrowDown') { e.preventDefault(); mention.move(1); return; }

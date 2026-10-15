@@ -424,6 +424,26 @@ test('聚焦编辑标注时页面保持原位，键盘滚动不越过编辑区',
   await page.keyboard.insertText('页面保持原位');
   // 等真实自动保存完成，覆盖焦点、选区与输入之后的浏览器滚动事件。
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.at(-1)?.content)).toContain('页面保持原位');
+  await test.step('End / Home 移动光标，Shift+End 仍能选择整行', async () => {
+    await input.press('ArrowLeft');
+    await input.press('ArrowLeft');
+    const selection = () => input.evaluate(el => ({
+      start: el.selectionStart, end: el.selectionEnd, length: el.value.length,
+    }));
+    expect((await selection()).end).toBeLessThan((await selection()).length);
+    await input.press('End');
+    const end = await selection();
+    expect(end).toEqual({ start: end.length, end: end.length, length: end.length });
+    await page.keyboard.insertText('，行尾');
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.at(-1)?.content))
+      .toContain('页面保持原位，行尾');
+    await input.press('Home');
+    const home = await selection();
+    expect(home).toEqual({ start: 0, end: 0, length: home.length });
+    await input.press('Shift+End');
+    const selected = await selection();
+    expect(selected).toEqual({ start: 0, end: selected.length, length: selected.length });
+  });
   // 边界隔离仍允许编辑器自己滚动。
   await input.fill('页面保持原位\n' + '编辑区内的长内容\n'.repeat(24));
   await input.evaluate(el => { el.scrollTop = 0; });
