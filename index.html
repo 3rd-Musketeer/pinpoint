@@ -87,6 +87,26 @@
   }
   .wb.wb-side-collapsed #wbsplit:hover::after { background:var(--wb-accent); }
   body.wb-resizing { cursor:col-resize; user-select:none; }
+  /* 直接打开的文章画布左上角“← 文章标题”（app/ArticleBack.jsx，owner 2026-10-15）：“顶部不放任何东西”的
+     唯一例外（docs/design.md「外壳布局」）。同一份 .wb-glass，跟着左栏：展开时停在面板右边，收起时贴左缘。
+     chromeInsets 把它算进上方留白，回中、定位和 fit 不把帧摆到它底下。 */
+  .wb-back {
+    position:absolute; z-index:var(--wb-z-panel);
+    top:var(--wb-chrome-gap); left:calc(var(--wb-chrome-gap) * 2 + var(--wb-side-w));
+    height:var(--wb-tabbar-h); max-width:min(360px, calc(100% - var(--wb-side-w) - var(--wb-chrome-gap) * 4));
+    box-sizing:border-box; display:inline-flex; align-items:center; gap:6px; padding:0 12px 0 10px;
+    border-radius:var(--wb-r-glass); color:var(--wb-fg); text-decoration:none;
+    font:var(--wb-t-row) var(--wb-font);
+    transition:left var(--wb-dur) var(--wb-ease);
+  }
+  .wb-back:hover { background-image:linear-gradient(var(--wb-hover), var(--wb-hover)); }
+  .wb-back-ico { flex:none; width:14px; height:14px; color:var(--wb-muted); }
+  .wb-back:hover .wb-back-ico { color:var(--wb-fg); }
+  .wb-back-t { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .wb.wb-side-collapsed .wb-back { left:calc(var(--wb-chrome-gap) + 8px); }
+  body.wb-resizing .wb-back { transition:none; }
+  /* 嵌入版（?embed=overlay，文章页的画布浮层里，src/workbench/embed.js）：没有左栏，横条也不出左栏开关。 */
+  html.wb-embed #wbside, html.wb-embed #wbsplit, html.wb-embed #wbside-toggle { display:none !important; }
   body.wb-resizing iframe { pointer-events:none; }
 
   /* ── 左栏内容（2026-09-04 切片 ②，评审板 C1；结构在 app/Sidebar.jsx）──
@@ -1008,6 +1028,9 @@
   <!-- React 挂载点：页 tab 切换条（app/TabBar.jsx，ADR 0041）——叠在横条正上方、与它平行；
        ≥ 2 个 tab 或有画布的页渲染 #wbtabbar（不足 2 个 tab 时只有大纲钮）。本容器不吃事件、没有盒子。 -->
   <div class="wb-tabbar-root" id="wbtabbar-root"></div>
+
+  <!-- React 挂载点：文章画布左上角的“← 文章标题”（app/ArticleBack.jsx）；本容器没有盒子，链接按 .wb 定位。 -->
+  <div id="wbback-root" data-ann-ui></div>
 </div>
 
 <script src="/kits/ios/ios-kit.js"></script>

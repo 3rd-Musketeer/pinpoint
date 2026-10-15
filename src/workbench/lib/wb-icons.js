@@ -1,7 +1,7 @@
 // Workbench 图标数据 — lucide iconNode 表 + hero gear path。纯数据、DOM-free：
 // 命令式挂载器（workbench-icons.js，服务静态标记）与 React 组件
 // （app/WbIcon.jsx，服务出壳 chrome）共用这一份，两个渲染路径不得各自抄表。
-import { Files, Archive, Check, Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, BookOpen, Newspaper, Library, CircleAlert } from 'lucide';
+import { Files, Archive, Check, Pencil, Pause, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, ChevronUp, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, MessageSquare, Columns, Link, Smartphone, FileText, ArrowUpDown, Search, BookOpen, Newspaper, Library, CircleAlert, ArrowLeft } from 'lucide';
 
 export var ICONS = {
   files: Files,
@@ -42,7 +42,9 @@ export var ICONS = {
   library: Library,
   newspaper: Newspaper,
   'book-open': BookOpen,
-  'circle-alert': CircleAlert
+  'circle-alert': CircleAlert,
+  // 直接打开的文章画布左上角“← 文章标题”（app/ArticleBack.jsx）。
+  'arrow-left': ArrowLeft
 };
 
 // Heroicons v2 solid cog-6-tooth — filled gears stay crisp at toolbar sizes.

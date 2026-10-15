@@ -243,7 +243,7 @@ export default function ConfirmBare() {
 
 画布视图属于文章，不出现在工作台左栏的“页面”组（Pages 列表）、`GET /registry` 的 `entries` 和 `ppnt list` 的存量页表里；左栏“文章”组列出它们，见下一节。`GET /registry` 另带 `articles: [{ id, title, project, article, url }]`，工作台把它放进清单的 `articles`。`pageEntry` 认得这份清单，所以 `/workbench/?page=<页 id>` 能打开，加 `&section=<节 id>` 能定位到那一节。同 id 的模板页或登记页优先。
 
-画布视图的底部横条在页名后面多一个“阅读正文”，同一标签页回到文章页，后退回画布，与文章页顶栏的“画布视图”对称。画布当前所在的节（`?section=` 落点、大纲点的节，或滚动后视口中间的节）是这块板上的节时，地址带锚点 `/<project>/<article>/#<节 id>`，否则落到文章顶部；正文里 `<Section>` 的 id 就是 DOM id，所以锚点对得上。只有清单 `articles` 里的页出这个钮，存量页不出。地址由 `src/workbench/lib/article-groups.js` 的 `articleCanvasReadUrl` 算。
+直接打开的画布视图左上角有“← 文章标题”（`app/ArticleBack.jsx`，外观见 `docs/design.md`“外壳布局”），同一标签页回到文章页，后退回画布。从文章页进画布不跳页，是文章上的画布浮层（`site/README.md`“画布浮层”），里面那份嵌入版工作台（`?embed=overlay`）不出这个钮。画布当前所在的节（`?section=` 落点、大纲点的节，或滚动后视口中间的节）是这块板上的节时，地址带锚点 `/<project>/<article>/#<节 id>`，否则落到文章顶部；正文里 `<Section>` 的 id 就是 DOM id，所以锚点对得上。只有清单 `articles` 里的页出这个钮，存量页不出。地址由 `src/workbench/lib/article-groups.js` 的 `articleCanvasReadUrl` 算。
 
 ### 工作台左栏
 
@@ -300,7 +300,7 @@ export default function ConfirmBare() {
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
-- 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/workbench/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
+- 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`；画布浮层里是嵌入版工作台 `/workbench/?page=<pageId>&section=<节 id>&embed=overlay`，新标签页打开画布用不带 `embed` 的同一个地址；这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 - `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
 
 ## 图

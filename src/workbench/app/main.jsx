@@ -14,6 +14,7 @@ import { Sidebar } from './Sidebar.jsx';
 import { Dock } from './Dock.jsx';
 import { Strip } from './Strip.jsx';
 import { TabBar } from './TabBar.jsx';
+import { ArticleBack } from './ArticleBack.jsx';
 import { CanvasDock } from './CanvasHud.jsx';
 import { ExportPicker } from './ExportPicker.jsx';
 import { mountFrameMenu, sweepFrameMenus } from './frame-menu.jsx';
@@ -40,6 +41,8 @@ flushSync(function () {
 });
 // 页 tab 条（ADR 0041）：叠在横条正上方。≥ 2 个 tab 就渲染；单 tab 的画布页也渲染，只有大纲钮。
 createRoot(document.getElementById('wbtabbar-root')).render(h(TabBar));
+// 文章画布左上角的“← 文章标题”（直接打开时才有；嵌入版、存量页不出）。
+createRoot(document.getElementById('wbback-root')).render(h(ArticleBack));
 wireCanvasHud();
 // 板的挂载后处理在等这一步（lib/chrome-ready.js 有原因）：上面的注入全部落定后才放行。
 markChromeReady();

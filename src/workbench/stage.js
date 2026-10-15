@@ -70,6 +70,7 @@ import {
   wireLibraryScrollSpy
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
+import { startEmbedBridge } from './embed.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
 // sideWidth / sideCollapsed 归 app/store.js（wbGet/wbSet 读写）
@@ -280,6 +281,7 @@ function initBoard() {
     .then(function () { startDeepLinkSync(); });
 }
 
+startEmbedBridge();
 setFrameRevealer(revealFrame);
 initBootPrefs({
   resolveBootPageId: resolveBootPageId,

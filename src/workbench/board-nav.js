@@ -261,6 +261,12 @@ export function chromeInsets() {
     var ar = annPanel.getBoundingClientRect();
     if (ar.width > 1) out.right = Math.max(0, stageRect.right - ar.left + 12);
   }
+  // 上方：文章画布左上角的“← 文章标题”（app/ArticleBack.jsx）。只有它在顶上，所以上方留白就是它的下沿。
+  var back = document.getElementById('wbback');
+  if (back) {
+    var br = back.getBoundingClientRect();
+    if (br.height > 1) out.top = Math.max(0, br.bottom - stageRect.top + 12);
+  }
   // 底部：横条，以及叠在它上面的 tab 切换条（页 tab，ADR 0041）—— 取更高的那一条。
   ['wbstrip', 'wbtabbar'].forEach(function (id) {
     var el = document.getElementById(id);

@@ -68,3 +68,19 @@ test('deep link carries the landing section only when given (2026-10-13)', () =>
     { pageId: 'ui', mode: null, entry: null, section: 'on board' },
   );
 });
+
+test('嵌入标记：?embed=overlay 才认，url-sync 写回时接上（2026-10-15 画布浮层）', async () => {
+  const { isEmbedded, withEmbed } = await import('./page-url.js');
+  assert.deepEqual(
+    parseDeepLink('?page=demo_flow&section=ask&embed=overlay'),
+    { pageId: 'demo_flow', mode: null, entry: null, section: 'ask', embed: 'overlay' },
+  );
+  assert.equal('embed' in parseDeepLink('?page=demo_flow&embed=card'), false);
+  assert.equal('embed' in parseDeepLink('?page=demo_flow'), false);
+  assert.equal(isEmbedded('?page=demo_flow&embed=overlay'), true);
+  assert.equal(isEmbedded('?page=demo_flow'), false);
+  assert.equal(withEmbed('page=demo_flow&entry=x', 'overlay'), 'page=demo_flow&entry=x&embed=overlay');
+  assert.equal(withEmbed('page=demo_flow', undefined), 'page=demo_flow');
+  assert.equal(withEmbed('', 'overlay'), '');
+  assert.equal(isEmbedded('?' + withEmbed(deepLinkQuery('demo_flow', null, null, 'flow'), 'overlay')), true);
+});

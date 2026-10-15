@@ -12,10 +12,12 @@
 // 任何 wbSet（annSnap 等）都会触发写入，boot 前启动会把深链参数在解析前覆盖掉。
 import { useWorkbenchStore } from './app/store.js';
 import { boardEntries, defaultEntryId } from './lib/board-entries.js';
-import { deepLinkQuery, modeForPage } from './lib/page-url.js';
+import { deepLinkQuery, modeForPage, parseDeepLink, withEmbed } from './lib/page-url.js';
 
 export function startDeepLinkSync() {
   var last = null;
+  // 文章画布浮层里的工作台（?embed=overlay）：镜像地址时把标记接回去，刷新这个 iframe 仍是嵌入版。
+  var embed = parseDeepLink(location.search).embed;
   function sync(state) {
     if (state.missingPageId) return;
     var entryParam = null;
@@ -31,7 +33,7 @@ export function startDeepLinkSync() {
         tabParam = state.activeBoard.tabId;
       }
     }
-    var query = deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam);
+    var query = withEmbed(deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam), embed);
     if (!query || query === last) return;
     last = query;
     history.replaceState(null, '', location.pathname + '?' + query + location.hash);

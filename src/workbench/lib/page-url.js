@@ -65,7 +65,17 @@ export function parseDeepLink(search) {
   // 落点 section（2026-10-13）：?section= 打开页的画布条目并定位到这个 section（多 tab 页先切到它所在的 tab）。
   // 一次性落点指令，不是状态：落地后 url-sync 不回写它（地址栏随后只剩 page/entry/tab）。同样没给就没有这个键。
   if (section) link.section = section;
+  // 嵌入（2026-10-15）：?embed=overlay = 文章页的画布浮层里那份工作台（site/README.md「画布浮层」）。
+  // 不出左栏和“← 文章标题”，Esc 交给文章页关浮层。只认这一个值；没给就没有这个键。
+  if (EMBED_MODES[params.get('embed')]) link.embed = params.get('embed');
   return link;
+}
+
+var EMBED_MODES = { overlay: true };
+
+/** 当前文档是不是嵌在文章画布浮层里的工作台（?embed=overlay）。 */
+export function isEmbedded(search) {
+  return parseDeepLink(search).embed === 'overlay';
 }
 
 /** 生成深链查询串（不含前导 ?）；pageId 为空返回空串。mode / entryId / tabId / sectionId 非法或为空时省略。
@@ -79,4 +89,10 @@ export function deepLinkQuery(pageId, mode, entryId, tabId, sectionId) {
   if (tabId) params.set('tab', tabId);
   if (sectionId) params.set('section', sectionId);
   return params.toString();
+}
+
+/** 把嵌入标记接回 url-sync 写出的查询串：浮层里的工作台镜像地址时不能丢掉 ?embed=。 */
+export function withEmbed(query, embed) {
+  if (!query || !EMBED_MODES[embed]) return query;
+  return query + '&embed=' + encodeURIComponent(embed);
 }

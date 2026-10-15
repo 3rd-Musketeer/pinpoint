@@ -15,7 +15,7 @@ import { countColorPixels } from './png-probe.js';
 // 不经过 Astro：画布页只靠 pinpoint 服务与编译器。
 const PAGE_ID = 'e2e-project_commit-confirm';
 
-test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、混排节、不进 Pages、ppnt shot', async ({ page }) => {
+test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、混排节、不进 Pages、左上角回正文、嵌入版、ppnt shot', async ({ page }) => {
   test.setTimeout(90_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
@@ -85,29 +85,44 @@ test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、�
     await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
   });
 
-  await test.step('横条“阅读正文”：落点跟着当前节走，同一标签页到正文那一节，后退回画布；存量页不出', async () => {
-    // 地址怎么拼在单测（lib/article-groups.test.js articleCanvasReadUrl）；这里守钮在横条上、
+  await test.step('左上角“← 文章标题”：落点跟着当前节走，跟着左栏挪，帧不摆到它底下；横条上没有“阅读正文”；存量页不出', async () => {
+    // 地址怎么拼在单测（lib/article-groups.test.js articleCanvasReadUrl）；这里守钮在左上角、
     // 跟着画布当前节换锚点、点了是同标签页导航。正文页本身是站点（Astro）出的，这个 spec 不拉
     // 站点，所以文章地址用 page.route 接住，只看导航到了哪里。
     await page.goto(`/workbench/?page=${PAGE_ID}&section=variants`);
     await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
-    const read = page.locator('#wbstrip #wbread-article');
-    await expect(read).toHaveText('阅读正文');
-    await expect(read).toHaveAttribute('href', '/e2e-project/commit-confirm/#variants');
-    await expect(read).not.toHaveAttribute('target', /.+/);
-    await expect(read).toHaveCSS('text-decoration-line', 'none'); // 是工具钮，不是正文链接
-    const box = await read.boundingBox();
-    const strip = await page.locator('#wbstrip').boundingBox();
-    expect(box.y >= strip.y && box.y + box.height <= strip.y + strip.height).toBe(true);
+    await expect(page.locator('#wbread-article')).toHaveCount(0);
+    await expect(page.locator('#wbstrip')).not.toContainText('阅读正文');
+    const back = page.locator('#wbback');
+    await expect(back).toHaveText('提交前确认');
+    await expect(back).toHaveAttribute('href', '/e2e-project/commit-confirm/#variants');
+    await expect(back).not.toHaveAttribute('target', /.+/);
+    await expect(back).toHaveCSS('text-decoration-line', 'none');
+    // 左上角：在顶上、在左栏右边（左栏展开时），不压左栏。
+    const box = await back.boundingBox();
+    const side = await page.locator('#wbside').boundingBox();
+    expect(box.y).toBeLessThanOrEqual(16);
+    expect(box.x).toBeGreaterThanOrEqual(side.x + side.width);
+    expect(box.x).toBeLessThan(side.x + side.width + 40);
+    // 这一节的帧不在它底下：落点按上方留白算（chromeInsets 把它算进去）。
+    await expect.poll(() => page.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();
+    const frame = await page.locator('#wb-board-panel [data-screen="card-plain"] .e2e-confirm-card').boundingBox();
+    expect(frame.y).toBeGreaterThanOrEqual(box.y + box.height);
 
     await expect.poll(() => page.evaluate(() => window.workbench.focusSection('mixed'))).toBe(true);
-    await expect(read).toHaveAttribute('href', '/e2e-project/commit-confirm/#mixed');
+    await expect(back).toHaveAttribute('href', '/e2e-project/commit-confirm/#mixed');
+
+    // 收起左栏：贴到左缘。
+    await page.locator('#wbside-toggle').click();
+    await expect.poll(async () => (await back.boundingBox()).x).toBeLessThan(40);
+    await page.locator('#wbside-toggle').click();
+    await expect.poll(async () => (await back.boundingBox()).x).toBeGreaterThanOrEqual(side.x + side.width);
 
     await page.route('**/e2e-project/commit-confirm/', (route) => route.fulfill({
       contentType: 'text/html; charset=utf-8',
       body: '<!doctype html><title>正文</title><section id="mixed">混排</section>',
     }));
-    await read.click();
+    await back.click();
     await expect.poll(() => new URL(page.url()).pathname).toBe('/e2e-project/commit-confirm/');
     expect(new URL(page.url()).hash).toBe('#mixed');
     await page.unroute('**/e2e-project/commit-confirm/');
@@ -117,8 +132,24 @@ test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、�
     await page.goto('/workbench/?page=e2e-ios');
     await page.waitForFunction(() => window.workbench && window.workbench.activePageId() === 'e2e-ios');
     await expect(page.locator('#wbstrip-title')).not.toHaveText('');
-    await expect(page.locator('#wbread-article')).toHaveCount(0);
+    await expect(page.locator('#wbback')).toHaveCount(0);
     // 留在这一页进下一步：预览脚本挂完再走，免得页面关闭时动态 import 半路断掉报 console 错误。
+    await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled())).toBe(true);
+  });
+
+  await test.step('嵌入版 ?embed=overlay（文章页画布浮层里那份）：没有左栏、左栏开关和“← 文章标题”，地址同步不丢 embed', async () => {
+    await page.goto(`/workbench/?page=${PAGE_ID}&section=confirm&embed=overlay`);
+    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
+    await expect(page.locator('html')).toHaveClass(/\bwb-embed\b/);
+    await expect(page.locator('.wb-lib-item[data-ann-section="confirm"]')).toHaveClass(/\bwb-sel\b/);
+    await expect(page.locator('#wbside')).toBeHidden();
+    await expect(page.locator('#wbsplit')).toBeHidden();
+    await expect(page.locator('#wbside-toggle')).toBeHidden();
+    await expect(page.locator('#wbback')).toHaveCount(0);
+    await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
+    await expect(page.locator('#wbann-toggle')).toBeVisible(); // 能标注
+    await expect.poll(() => new URL(page.url()).searchParams.has('section')).toBe(false);
+    expect(new URL(page.url()).searchParams.get('embed')).toBe('overlay');
     await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled())).toBe(true);
   });
 
