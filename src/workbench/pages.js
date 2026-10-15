@@ -1,3 +1,4 @@
+import { touchPageOverlayFrame } from './page-overlay-cache.js';
 import { scrollStageTo, cancelStageScroll } from './scroll-motion.js';
 // Workbench 页面/manifest 簇 — 页面集合、manifest 加载、页面切换、
 // 条目切换（stage 页内形态）、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
@@ -466,6 +467,7 @@ function applyEntryVisibility(panel, board, entry) {
       item.toggleAttribute('data-doc-hidden', !anyVisible);
     }
   });
+  touchPageOverlayFrame(panel, panel.querySelector('[data-page-screen]:not([data-doc-hidden]) iframe.wb-doc-frame[src]'));
 }
 
 /** 页面浮层的 iframe 第一次打开时才装（screen-load 只写 data-src）。 */
