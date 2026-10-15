@@ -198,7 +198,7 @@ function moveDir(from, to) {
     const staging = fs.mkdtempSync(path.join(path.dirname(to), '.ppnt-mv-'));
     try {
       const copy = path.join(staging, 'article');
-      fs.cpSync(from, copy, { recursive: true, errorOnExist: true, force: false });
+      fs.cpSync(from, copy, { recursive: true, errorOnExist: true, force: false, verbatimSymlinks: true });
       if (fs.existsSync(to)) throw new Error(`目标在复制期间出现：${to}`);
       fs.renameSync(copy, to);
       fs.rmSync(from, { recursive: true, force: true });

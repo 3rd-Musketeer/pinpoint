@@ -248,3 +248,25 @@ test('D4：跨设备复制中途失败不发布半篇文章，源完整且可以
   t.mock.restoreAll();
   assert.equal((await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/'])).code, 0);
 });
+
+test('D5：跨设备搬迁保留篇内、篇外与断链的 symlink 原文', async (t) => {
+  const made = fixture(t);
+  const from = articleDir(made.proj, 'commit-confirm');
+  const to = articleDir(made.html, 'commit-confirm');
+  fs.writeFileSync(path.join(from, 'real.html'), '页面正文');
+  for (const [name, target] of [['home.html', 'real.html'], ['outside.html', '../outside.html'], ['broken.html', 'missing.html']]) {
+    fs.symlinkSync(target, path.join(from, name));
+  }
+  const rename = fs.renameSync;
+  t.mock.method(fs, 'renameSync', (a, b) => {
+    if (a === from && b === to) throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+    return rename(a, b);
+  });
+  const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/']);
+  assert.equal(res.code, 0, res.err.join('\n'));
+  assert.equal(fs.readlinkSync(path.join(to, 'home.html')), 'real.html');
+  assert.equal(fs.readFileSync(path.join(to, 'home.html'), 'utf8'), '页面正文');
+  assert.equal(fs.readlinkSync(path.join(to, 'outside.html')), '../outside.html');
+  assert.equal(fs.readlinkSync(path.join(to, 'broken.html')), 'missing.html');
+  assert.ok(!fs.existsSync(from));
+});
