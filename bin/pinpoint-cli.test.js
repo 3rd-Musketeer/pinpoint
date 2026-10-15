@@ -2989,7 +2989,7 @@ test('planShotJobs：文章的画布视图整页 —— 全是 HTML 帧时逐帧
   ]);
   assert.deepEqual(only.jobs[0].marks.map((row) => row.n), [1]);
   assert.equal(only.notes.length, 1);
-  assert.match(only.notes[0], /d\/a 的 2 帧都是 HTML 帧（文档条目）.*不出画布视图图/);
+  assert.match(only.notes[0], /d\/a 的 2 帧都是 HTML 帧.*不出画布视图图/);
 
   const mixed = {
     ...docsOnly,
@@ -2999,7 +2999,7 @@ test('planShotJobs：文章的画布视图整页 —— 全是 HTML 帧时逐帧
   // --canvas 再加一个指同一帧的引用：同一帧只拍一次。
   const both = planShotJobs([{ kind: 'page', pageId: 'd_a' }, { kind: 'frame', screenId: 'long' }], { basePageId: 'd_a', baseContext: mixed, scale: 1, withMarks: false, dataRootDir: '/data' });
   assert.deepEqual(both.jobs.map((job) => [job.kind, job.screenId || job.pageId]), [['doc', 'long'], ['doc', 'cat'], ['page', 'd_a']]);
-  assert.match(both.notes[0], /2 个 HTML 帧是文档条目.*画布视图那张图只含 1 个 JSX 帧/);
+  assert.match(both.notes[0], /2 个 HTML 帧按截图策略各截整页.*画布视图那张图只含 1 个 JSX 帧/);
 
   // 存量页的整页引用不变：一张画布图，没有 notes。
   const legacy = planShotJobs([{ kind: 'page', pageId: 'demo' }], { basePageId: 'demo', baseContext: { pageId: 'demo', frameRows: [], refs: { outline: [] } }, scale: 1, withMarks: false, dataRootDir: '/data' });

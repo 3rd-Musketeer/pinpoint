@@ -143,14 +143,14 @@ ${REGISTRY_FLAG}`,
   ppnt shot <project>/<article>        文章页整页（文章页的样子：正文、画布卡片、评论栏）
   ppnt shot <project>/<article> §2     文章页上的第 2 节
   ppnt shot <project>/<article> B1     画布视图上的一帧；B 是一整节；帧 id、节 id 同义
-  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）；文章的 HTML 帧不在画布那一行，各截一张整页
+  ppnt shot <project>/<article> --canvas  画布视图整页（多 tab 的存量页每个 tab 一张）；文章的 HTML 帧按截图策略各截一张整页
   ppnt shot <project>/<article> --figure <图 id>  正文里的一个图（<Figure>），浅色、深色各一张，760 宽
   ppnt shot <存量页 id> [B1 …]          存量页：不写引用是整个画布
 纯文字的节没有画布，写它的字母或节 id 时截文章页上的那一节。
 产物在 <数据目录>/shot/<页 id>/：文章页 article.png、article-<节 id>.png；画布 <帧 id|节 id|页 id>.png；
 图 figure-<图 id>.png 与 figure-<图 id>-dark.png。
 
-  --canvas             画布视图整页；文章的 HTML 帧（文档条目）各按自己的地址截 402 宽整页，全是 HTML 帧时不出画布图，打一行“说明：”
+  --canvas             画布视图整页；文章的 HTML 帧各按自己的地址截 402 宽整页，全是 HTML 帧时不出画布图，打一行“说明：”
   --figure <图 id>     正文里的一个图（figures/<图 id>.jsx），不和引用同用；图编译失败或在浏览器里运行出错时打出原因、退 1
   --marks              把 open 标注的 #n 序号钉烤进画布截图
   --status <状态>      加上这个状态的标注所在的帧

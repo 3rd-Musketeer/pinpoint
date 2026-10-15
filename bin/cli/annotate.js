@@ -372,7 +372,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
   const tabOfFrame = new Map();
   if (baseContext.refs) for (const frame of outlineFrames(baseContext.refs)) if (frame.tabId) tabOfFrame.set(frame.id, frame.tabId);
   const withTab = (tabId) => (tabId ? { tabId } : {});
-  // 文章的文档帧（HTML 帧）不在画布上：直接打开它自己的地址，按手机宽度拍整页（ppnt-shot 的 renderDocShots）。
+  // HTML 活卡片截图按完整页面输出：直接打开它自己的地址，按手机宽度拍整页（ppnt-shot 的 renderDocShots）。
   const docUrlOf = (screenId, ctx = baseContext) => (ctx.article && ctx.board && ctx.target
     ? docFrameUrl(ctx.board, ctx.target.urlBase, screenId)
     : null);
@@ -457,9 +457,8 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
         }
         continue;
       }
-      // 文章的画布视图整页：HTML 帧（文档条目）不在画布那一行，画布视图一次只显示其中一份，
-      // 整页图里只有一条窄边。所以每个文档条目按自己的地址各拍一张整页，画布那一行只在
-      // 有 JSX 帧时才拍；全是文档条目时不出画布图，notes 里说清楚为什么。
+      // HTML 活卡片只展示一屏；截图按每帧自己的地址拍整页，保留滚动区域内容。
+      // 有 JSX 帧时另拍画布图；全 HTML 时只输出逐帧整页图，并用 notes 说明截图策略。
       if (pageContext.article) {
         const frames = pageContext.refs ? outlineFrames(pageContext.refs) : [];
         const docFrames = frames.filter((frame) => docUrlOf(frame.id, pageContext));
@@ -467,8 +466,8 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
           for (const frame of docFrames) docJob(frame.id, pageContext, [frame.ref, frame.id].filter(Boolean).join(' · '));
           const canvasCount = frames.length - docFrames.length;
           notes.push(canvasCount
-            ? `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 个 HTML 帧是文档条目，不在画布那一行：各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）；画布视图那张图只含 ${canvasCount} 个 JSX 帧。`
-            : `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 帧都是 HTML 帧（文档条目），画布那一行是空的，不出画布视图图；每帧各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）。`);
+            ? `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 个 HTML 帧按截图策略各截整页（${DOC_SHOT_WIDTH_NOTE}）；画布视图那张图只含 ${canvasCount} 个 JSX 帧。`
+            : `${displayAddress(pageContext.pageId)} 的 ${docFrames.length} 帧都是 HTML 帧，按截图策略不出画布视图图；每帧各按自己的地址截整页（${DOC_SHOT_WIDTH_NOTE}）。`);
           if (!canvasCount) continue;
         }
       }

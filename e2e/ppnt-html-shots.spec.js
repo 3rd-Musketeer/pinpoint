@@ -117,7 +117,7 @@ test('shot --canvas：只有 HTML 帧的文章不出画布视图图，逐帧截�
   test.setTimeout(150_000);
   const res = await ppnt(['shot', ARTICLE, '--canvas']);
   expect(res.code, `${res.stdout}\n${res.stderr}`).toBe(0);
-  expect(res.stdout).toMatch(/说明：e2e-html\/docs-only 的 2 帧都是 HTML 帧（文档条目）.*不出画布视图图/);
+  expect(res.stdout).toMatch(/说明：e2e-html\/docs-only 的 2 帧都是 HTML 帧.*不出画布视图图/);
   expect(res.stdout).toContain(`A1 · lazy-page → ${path.join(SHOT_DIR, 'lazy-page.png')} · 402×`);
   expect(res.stdout).toContain(`A2 · short-page → ${path.join(SHOT_DIR, 'short-page.png')} · 402×`);
   expect(fs.existsSync(path.join(SHOT_DIR, `${ARTICLE_PAGE_ID}.png`))).toBe(false);
