@@ -128,6 +128,22 @@ function forwardSpace(e) {
   document.dispatchEvent(new KeyboardEvent(e.type, { key: ' ', code: 'Space', repeat: e.repeat, bubbles: true, cancelable: true }));
 }
 
+// 活卡片里的 Esc：先让卡片自己的标注层处理；没有层时交回工作台（嵌入版可据此回文章）。
+function wireCardEscape(win) {
+  var taken = false;
+  win.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape') return;
+    var api = win.pinpoint;
+    taken = isTypingTarget(e.target) || !!(api && (api.hasActiveDraft() || api.getState().mode))
+      || !!win.document.querySelector('#ann-mention, #ann-lasso');
+  }, true);
+  win.addEventListener('keydown', function (e) {
+    if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229 || taken || e.defaultPrevented) return;
+    e.preventDefault();
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+  });
+}
+
 function wireCardWindow(frame) {
   if (!state.cards.has(frame) || !frame.getAttribute('src')) return;
   var win = null;
@@ -141,6 +157,7 @@ function wireCardWindow(frame) {
   win.addEventListener('wheel', function (e) { forwardWheel(frame, e); }, { capture: true, passive: false });
   win.addEventListener('keydown', forwardSpace, true);
   win.addEventListener('keyup', forwardSpace, true);
+  wireCardEscape(win);
   bindCardAnnotate(frame, win, 0);
 }
 
@@ -196,6 +213,17 @@ function bindCardAnnotate(frame, win, tries) {
       if (on !== !!p.getState().mode) p.setMode(on);
     });
   }
+}
+
+/** 已加载的 HTML 活卡片的标注客户端；未装好时返回 null，供文章浮层等待水合。 */
+export function liveCardAnnotateApi(screenId) {
+  for (var frame of state.cards.keys()) {
+    if (frame.closest('[data-screen]').getAttribute('data-screen') === screenId) {
+      var api = cardApis.get(frame);
+      return api && cardApiAlive(frame, api) ? api : null;
+    }
+  }
+  return null;
 }
 
 export function startLiveCards(stage) {

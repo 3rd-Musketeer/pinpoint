@@ -74,11 +74,11 @@ import {
   wireLibraryScrollSpy
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
-import { embedSolo, setEmbedSolo, startEmbedBridge } from './embed.js';
+import { startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from './phone-doc-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
-import { startLiveCards, syncLiveCards } from './live-cards.js';
+import { liveCardAnnotateApi, startLiveCards, syncLiveCards } from './live-cards.js';
 import { subscribeServerEvents } from './server-events.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
@@ -323,7 +323,12 @@ window.workbench = {
   switchPage: switchPage,
   setActivePage: setActivePage,
   setActiveEntry: setActiveEntry,
-  focusFrame: focusWorkbenchFrame,
+  focusFrame: async function (sectionId, screenId, options) {
+    var ok = await focusWorkbenchFrame(sectionId, screenId, options);
+    if (ok) selectBoardFrame(sectionId, screenId);
+    return ok;
+  },
+  cardAnnotateApi: liveCardAnnotateApi,
   // 定位并选中 section（跨 tab 先切、即时到位）：?section= 落点与大纲点 section 的同一条路。
   // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
   focusSection: function (sectionId) { return focusSection(sectionId); },
@@ -358,10 +363,6 @@ window.workbench = {
   openPage: function (screenId) { return openPageOverlay(screenId); },
   closePage: function () { return closePageOverlay(); },
   pageOpen: function () { return isPageOverlayOpen(); },
-  // 文章页的单帧预览（2026-10-15，embed.js）：setSolo(节, 帧) 只留这一帧（'page' | 'frame' | false），
-  // setSolo('') 收起回整张画布；solo() 读当前预览。
-  setSolo: function (sectionId, screenId) { return setEmbedSolo(sectionId, screenId); },
-  solo: function () { return embedSolo(); },
   annotateApi: function () { return annotateApi(); },
   // 画布上活的 HTML 卡片里的标注客户端借工作台的 SSE（server-events.js；卡片 iframe 带 data-pp-parent-events）。
   subscribeEvents: function (fn) { return subscribeServerEvents(fn); },

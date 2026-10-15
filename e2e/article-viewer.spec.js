@@ -61,7 +61,7 @@ async function openArticle(page, url = ARTICLE) {
   await expect(page.locator('#article .prose h1')).toHaveText('提交前确认');
 }
 
-test('画布浮层：点帧先预览这一帧、“看整张画布”切过去；从文章进画布不跳页，整张画布可交互 / 标注 / 缩放，关掉回原位；hash、后退、刷新、换节', async ({ page }) => {
+test('画布浮层：点帧打开整张画布并选中；从文章进画布不跳页，整张画布可交互 / 标注 / 缩放，关掉回原位；hash、后退、刷新、换节', async ({ page }) => {
   test.setTimeout(240_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
@@ -74,8 +74,7 @@ test('画布浮层：点帧先预览这一帧、“看整张画布”切过去�
   await proseSettled(page);
   let before = null;
 
-  await test.step('卡片缩略图仍不可交互；点卡片里的 confirm-done → 文章上开这一帧的预览：不导航，只留这一帧、放大装满浮层，可标注', async () => {
-    // owner 2026-10-15：“现在点击文章内嵌的画布没有预览功能了？直接进画布？”——点帧先预览这一帧。
+  await test.step('卡片缩略图不可交互；点 iOS 帧打开整张画布，定位并选中，其他帧仍可见', async () => {
     const thumb = page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] iframe');
     await expect(thumb).toHaveCSS('pointer-events', 'none');
     await expect(thumb).toHaveAttribute('tabindex', '-1');
@@ -86,66 +85,39 @@ test('画布浮层：点帧先预览这一帧、“看整张画布”切过去�
     await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-done"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
-    expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done&view=frame');
+    expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done');
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
     await expect(page.locator('html')).toHaveClass(/\bpp-ov-lock\b/);
-    // 里面还是那份嵌入版工作台（之后切整张画布不重装）。
-    const src = await overlay(page).locator('iframe.ov-canvas').getAttribute('src');
-    expect(src).toBe(`/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay`);
+    await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay`);
     const wb = await canvasReady(page);
-    await expect.poll(() => overlayState(page).then((st) => st && st.landing)).toBe('frame:confirm-done');
+    await expect.poll(() => overlayState(page).then(st => st?.landing)).toBe('frame:confirm-done');
     await expect.poll(() => wb.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();
-    await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('预览');
-    await expect(overlay(page).locator('[data-ov-frame]')).toHaveText('confirm-done');
-    await expect(overlay(page).locator('[data-ov-full]')).toBeVisible();
-    // 只留这一帧：同节的 confirm-sheet 和别的节都看不见；这一帧装满浮层的一边，四周不出浮层。
+    await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('画布');
+    await expect(overlay(page).locator('[data-ov-full], [data-ov-frame]')).toHaveCount(0);
     const f = canvasFrame(page);
-    const vis = (sel) => f.locator(sel).first().evaluate((el) => getComputedStyle(el).visibility);
-    expect(await vis('#wb-board-panel [data-screen="confirm-done"] .e2e-project-banner')).toBe('visible');
-    expect(await vis('#wb-board-panel [data-screen="confirm-sheet"]')).toBe('hidden');
-    expect(await vis('#wb-board-panel [data-screen="card-plain"]')).toBe('hidden');
-    await expect(f.locator('#wbsection-nav-wrap')).toBeHidden();
-    await expect(f.locator('#wbann-toggle')).toBeVisible();
+    await expect(f.locator('#wb-board-panel [data-screen="confirm-done"]')).toHaveClass(/\bwb-sel\b/);
+    await expect(f.locator('#wb-board-panel [data-screen]')).toHaveCount(5);
+    for (const id of ['confirm-done', 'confirm-sheet', 'card-plain']) {
+      expect(await f.locator(`#wb-board-panel [data-screen="${id}"]`).evaluate(el => getComputedStyle(el).visibility)).toBe('visible');
+    }
+    // Section Navigator 按板的 section 数决定是否显示；大纲始终提供其他帧的入口。
+    await f.locator('#wbstrip-outline').click();
+    await expect(f.locator('#wboutline-pop [data-ol-frame]')).toHaveCount(5);
+    await page.keyboard.press('Escape');
+    await expect(f.locator('#wbstrip-outline')).toBeVisible();
+    await expect(f.locator('#wbside')).toBeHidden();
+    await expect(f.locator('#wbback')).toHaveCount(0);
     const body = await overlay(page).locator('.ov-body').boundingBox();
-    const shot = await f.locator('#wb-board-panel [data-screen="confirm-done"] .ios-stage').boundingBox();
-    expect(shot.x).toBeGreaterThanOrEqual(body.x);
-    expect(shot.y).toBeGreaterThanOrEqual(body.y);
-    expect(shot.x + shot.width).toBeLessThanOrEqual(body.x + body.width + 1);
-    expect(shot.y + shot.height).toBeLessThanOrEqual(body.y + body.height + 1);
-    expect(shot.height).toBeGreaterThan(body.height * 0.75);
-    // 可标注：进标注模式，再 Esc 退出（浮层还开着）。
+    const hit = await f.locator('#wb-board-panel [data-screen="confirm-done"] .ios-stage').boundingBox();
+    expect(hit.x).toBeGreaterThanOrEqual(body.x);
+    expect(hit.x + hit.width).toBeLessThanOrEqual(body.x + body.width);
+    expect(hit.y).toBeGreaterThanOrEqual(body.y);
+    expect(hit.y + hit.height).toBeLessThanOrEqual(body.y + body.height);
     await f.locator('#wbann-toggle').click();
     await expect(f.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
     await page.keyboard.press('Escape');
     await expect(f.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'false');
     await expect(overlay(page)).toHaveAttribute('open', '');
-  });
-
-  await test.step('“看整张画布”：同一个浮层换成整张画布（五帧都在），停在这一帧；地址去掉 view=frame，不多压历史', async () => {
-    const length = await page.evaluate(() => history.length);
-    const generation = await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration());
-    await overlay(page).locator('[data-ov-full]').click();
-    await expect.poll(() => overlayState(page).then((st) => st && st.landing)).toBe('section');
-    expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done');
-    expect(await page.evaluate(() => history.length)).toBe(length);
-    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration())).toBe(generation);
-    await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('画布');
-    await expect(overlay(page).locator('[data-ov-full]')).toBeHidden();
-    await expect(overlay(page).locator('[data-ov-frame]')).toBeHidden();
-    const wb = page.frames().find((fr) => /\/workbench\/\?.*embed=overlay/.test(fr.url()));
-    await expect.poll(() => wb.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();
-    const f = canvasFrame(page);
-    await expect(f.locator('#wb-board-panel [data-screen]')).toHaveCount(5);
-    expect(await f.locator('#wb-board-panel [data-screen="confirm-sheet"]').evaluate((el) => getComputedStyle(el).visibility)).toBe('visible');
-    await expect(f.locator('html')).not.toHaveAttribute('data-wb-solo');
-    await expect(f.locator('#wbside')).toBeHidden();
-    await expect(f.locator('#wbback')).toHaveCount(0);
-    // 点的那一帧在画布可见区里。
-    const panel = await overlay(page).locator('.ov-body').boundingBox();
-    const done = await f.locator('#wb-board-panel [data-screen="confirm-done"] .e2e-project-banner').boundingBox();
-    expect(done.x).toBeGreaterThanOrEqual(panel.x);
-    expect(done.x + done.width).toBeLessThanOrEqual(panel.x + panel.width);
-    expect(done.y).toBeGreaterThanOrEqual(panel.y);
   });
 
   await test.step('头部：节号、标题、整页打开；页面上的正文不动', async () => {
@@ -279,14 +251,14 @@ test('画布浮层：点帧先预览这一帧、“看整张画布”切过去�
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
 
-    // 预览的地址（点帧压的那一条）刷新照样是预览。
+    // 旧单帧预览地址照常打开整张画布并选中帧。
     await page.goto('/e2e-project/');
     await openArticle(page, `${ARTICLE}#canvas=confirm&frame=confirm-sheet&view=frame`);
     await expect(overlay(page)).toHaveAttribute('open', '');
     await canvasReady(page);
     await expect.poll(() => overlayState(page).then((st) => st && st.landing)).toBe('frame:confirm-sheet');
-    await expect(overlay(page).locator('[data-ov-frame]')).toHaveText('confirm-sheet');
-    expect(await canvasFrame(page).locator('#wb-board-panel [data-screen="confirm-done"]').evaluate((el) => getComputedStyle(el).visibility)).toBe('hidden');
+    await expect(canvasFrame(page).locator('#wb-board-panel [data-screen="confirm-sheet"]')).toHaveClass(/\bwb-sel\b/);
+    expect(await canvasFrame(page).locator('#wb-board-panel [data-screen="confirm-done"]').evaluate((el) => getComputedStyle(el).visibility)).toBe('visible');
     await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(page.url()).toBe(`${E2E_BASE_URL}${ARTICLE}`);

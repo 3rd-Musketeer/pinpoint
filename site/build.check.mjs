@@ -93,8 +93,8 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   }
   const open = q(`/workbench/?page=${encodeURIComponent(page)}&section=flow`);
   // 打开画布 links to the canvas view (the overlay script opens it over the article; a modifier click follows the link);
-  // each frame opens that frame's preview in the overlay (#canvas=<section>&frame=<frame>&view=frame), no navigation.
-  assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#canvas=flow&frame=${f}&view=frame`))]);
+  // 点帧同样打开整张画布，地址只带节与帧落点。
+  assert.deepEqual(linksOf(flow.html), [open, ...['ask', 'confirm', 'confirm-card'].map((f) => q(`#canvas=flow&frame=${f}`))]);
   assert.match(flow.html, /class="btn" data-pp-open href="[^"]+" target="_top">打开画布 →</);
   assert.equal((flow.html.match(/<a class="cc-hit" data-pp-frame-open href="#canvas=/g) || []).length, 3);
   // data-section belongs to <Section> only (one hit per section); the card carries data-pp-section.
@@ -124,7 +124,7 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.match(mech.html, /data-shell="comp"/);
   assert.match(mech.html, /class="cc-box natural"/);
   assert.doesNotMatch(mech.html, /width:393px|class="cc-box phone"/);
-  assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#canvas=mech&amp;frame=pay-button&amp;view=frame']);
+  assert.deepEqual(linksOf(mech.html), [q(`/workbench/?page=${encodeURIComponent(page)}&section=mech`), '#canvas=mech&amp;frame=pay-button']);
   // Figures in the prose (<Figure>): one lazy same-origin iframe each (embed=figure, no canvas card), caption below,
   // excluded from prose comments; one before the first Section, one inside it. They are not frames: the cards above are unchanged.
   const figures = [...article.matchAll(/<figure class="pp-fig not-prose" data-pp-figure="([^"]*)" data-pp-nocomment data-state="([^"]*)">([\s\S]*?)<\/figure>/g)]

@@ -1,35 +1,29 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { FRAME_VIEW, canvasHash, embedCanvasSrc, embedMessage, entrySection, parseCanvasHash } from './canvas-overlay.js';
+import { canvasHash, embedCanvasSrc, embedMessage, entrySection, parseCanvasHash } from './canvas-overlay.js';
 
 test('canvas hash: section, optional frame / annotation, round trip', () => {
   assert.equal(canvasHash('flow'), '#canvas=flow');
   assert.equal(canvasHash('flow', { frame: 'ask' }), '#canvas=flow&frame=ask');
   assert.equal(canvasHash('flow', { ann: 7 }), '#canvas=flow&ann=7');
-  assert.deepEqual(parseCanvasHash('#canvas=flow'), { section: 'flow', frame: '', view: '', ann: null });
-  assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask'), { section: 'flow', frame: 'ask', view: '', ann: null });
-  assert.deepEqual(parseCanvasHash('#canvas=flow&ann=12'), { section: 'flow', frame: '', view: '', ann: 12 });
-  assert.deepEqual(parseCanvasHash(canvasHash('a b', { frame: '帧/1', view: '', ann: 3 })), { section: 'a b', frame: '帧/1', view: '', ann: 3 });
-  assert.deepEqual(parseCanvasHash('canvas=mech'), { section: 'mech', frame: '', view: '', ann: null }); // location.hash without '#'
+  assert.deepEqual(parseCanvasHash('#canvas=flow'), { section: 'flow', frame: '', ann: null });
+  assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask'), { section: 'flow', frame: 'ask', ann: null });
+  assert.deepEqual(parseCanvasHash('#canvas=flow&ann=12'), { section: 'flow', frame: '', ann: 12 });
+  assert.deepEqual(parseCanvasHash(canvasHash('a b', { frame: '帧/1', ann: 3 })), { section: 'a b', frame: '帧/1', ann: 3 });
+  assert.deepEqual(parseCanvasHash('canvas=mech'), { section: 'mech', frame: '', ann: null }); // location.hash without '#'
   // 不是正整数的 ann 当没给。
   for (const bad of ['0', '-1', '1.5', 'x', '']) assert.equal(parseCanvasHash(`#canvas=flow&ann=${bad}`).ann, null, bad);
 });
 
-test('canvas hash: view=frame is the single-frame preview, only with a frame', () => {
-  assert.equal(FRAME_VIEW, 'frame');
-  assert.equal(canvasHash('flow', { frame: 'ask', view: 'frame' }), '#canvas=flow&frame=ask&view=frame');
-  assert.equal(canvasHash('flow', { frame: 'ask', view: 'frame', ann: 4 }), '#canvas=flow&frame=ask&view=frame&ann=4');
-  assert.equal(canvasHash('flow', { view: 'frame' }), '#canvas=flow');
-  assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask&view=frame'), { section: 'flow', frame: 'ask', view: 'frame', ann: null });
-  assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask&view=frame&ann=4'), { section: 'flow', frame: 'ask', view: 'frame', ann: 4 });
-  assert.equal(parseCanvasHash('#canvas=flow&view=frame').view, '');
-  assert.equal(parseCanvasHash('#canvas=flow&frame=ask&view=page').view, '');
+test('canvas hash: legacy view=frame is ignored; generated links only name a frame', () => {
+  assert.equal(canvasHash('flow', { frame: 'ask', view: 'frame' }), '#canvas=flow&frame=ask');
+  assert.deepEqual(parseCanvasHash('#canvas=flow&frame=ask&view=frame&ann=4'), { section: 'flow', frame: 'ask', ann: 4 });
 });
 
 test('canvas hash: the old #overlay= links still open the overlay', () => {
-  assert.deepEqual(parseCanvasHash('#overlay=flow&frame=ask'), { section: 'flow', frame: 'ask', view: '', ann: null });
-  assert.deepEqual(parseCanvasHash('#overlay=flow'), { section: 'flow', frame: '', view: '', ann: null });
+  assert.deepEqual(parseCanvasHash('#overlay=flow&frame=ask'), { section: 'flow', frame: 'ask', ann: null });
+  assert.deepEqual(parseCanvasHash('#overlay=flow'), { section: 'flow', frame: '', ann: null });
 });
 
 test('canvas hash: other hashes are not the overlay', () => {

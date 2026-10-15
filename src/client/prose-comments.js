@@ -514,8 +514,7 @@ export function startProseComments(options) {
     });
   }
 
-  // HTML 帧上的标注：地址带帧、view=frame 和钉子，浮层直接开那一页的预览（页面浮层）再定位到钉子
-  // （site/src/lib/canvas-overlay-client.js）。画布帧上的只带钉子，开整张画布，定位由画布自己找帧。
+  // HTML 帧带帧 id，以便在整张画布上的活卡片里找到对应账本。
   function cssEscape(v) { return window.CSS && CSS.escape ? CSS.escape(String(v)) : String(v); }
 
   function isHtmlFrame(section, frameId) {
@@ -526,8 +525,6 @@ export function startProseComments(options) {
     var q = new URLSearchParams({ canvas: item.section });
     var html = isHtmlFrame(item.section, item.frameId);
     if (!Number.isInteger(item.row.n) || html) q.set('frame', item.frameId);
-    // HTML 帧的标注在那一页里：开那一帧的预览（它的页面浮层，不先铺整张画布），再定位钉子。
-    if (html) q.set('view', 'frame');
     if (Number.isInteger(item.row.n)) q.set('ann', String(item.row.n));
     return '#' + q.toString();
   }

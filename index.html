@@ -112,14 +112,6 @@
   html.wb-embed .wb-back { left:var(--wb-chrome-gap); }
   /* 嵌入版（?embed=overlay，文章页的画布浮层里，src/workbench/embed.js）：没有左栏，横条也不出左栏开关。 */
   html.wb-embed #wbside, html.wb-embed #wbsplit, html.wb-embed #wbside-toggle { display:none !important; }
-  /* 单帧预览（文章页点卡片里的一帧，embed.js setEmbedSolo，2026-10-15）：只看这一帧，去别的节、别的帧的路都收起——
-     节导航、大纲、地图、回中、“← 画布”（预览里关页面就是回文章）。iOS / 组件帧（data-wb-solo="frame"）：板上只留
-     这一帧，其余 visibility:hidden 保住几何（按帧 id 放出来的那条规则由 embed.js 写进 #wb-solo-style）。 */
-  html[data-wb-solo] #wbsection-nav-wrap, html[data-wb-solo] #wbsection-nav, html[data-wb-solo] #wbminimap-wrap,
-  html[data-wb-solo] #wbminimap, html[data-wb-solo] #wbrecenter,
-  html[data-wb-solo] #wbpage-close, html[data-wb-solo] #wbcanvas-tools-div { display:none !important; }
-  html[data-wb-solo="frame"] #wb-board-panel, html[data-wb-solo="frame"] #ann-marks,
-  html[data-wb-solo="frame"] #ann-bubbles { visibility:hidden; }
   body.wb-resizing iframe { pointer-events:none; }
 
   /* ── 左栏内容（2026-09-04 切片 ②，评审板 C1；结构在 app/Sidebar.jsx）──

@@ -167,24 +167,6 @@ function usableViewport(viewport) {
   };
 }
 
-/**
- * 装下一块矩形的缩放：rect 是当前缩放（zoom）下量到的大小，按可用区（减掉 chrome 占位，四周各留 inset）
- * 等比放大或缩小到正好装下，夹在 zoom 轴范围 [min, max] 里、取两位小数。量不到（宽高为 0）→ null。
- */
-export function fitZoomForRect(rect, viewport, zoom, options = {}) {
-  const inset = options.inset ?? 32;
-  const min = options.min ?? 0.5;
-  const max = options.max ?? 5;
-  if (!rect || !(rect.width > 0) || !(rect.height > 0) || !(zoom > 0)) return null;
-  const usable = usableViewport(viewport);
-  const scale = Math.min(
-    Math.max(1, usable.width - inset * 2) / rect.width,
-    Math.max(1, usable.height - inset * 2) / rect.height,
-  );
-  const next = Math.max(min, Math.min(max, zoom * scale));
-  return Math.floor(next * 100) / 100;
-}
-
 /** Center targets that fit; top/left-align oversized targets so their beginning stays visible. */
 export function focusScrollForRect(rect, viewport, options = {}) {
   const inset = options.inset ?? 24;

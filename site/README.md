@@ -61,17 +61,12 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 从文章进画布不跳页：顶栏“画布视图”、卡片“打开画布 →”、右栏的画布标注卡片，都在文章上开整张画布的浮层（`CanvasOverlay.astro` + `lib/canvas-overlay-client.js`，owner 2026-10-15 定）。关掉回到打开前的滚动位置。
 
-卡片里点某一帧是这一帧的预览，同一个浮层（owner 2026-10-15 问：“现在点击文章内嵌的画布没有预览功能了？直接进画布？”，要的是点帧先预览这一帧，不是进整张画布）：
-
-- HTML 帧：浮层里直接是这一页的完整页面浮层（`docs/design.md`“文章画布”的页面浮层），可滚动、交互、标注、切窗口 / 手机，外面不先铺整张画布。没有“← 画布”；Esc（焦点在页面里也认）、关闭、浏览器后退直接回文章原来的滚动位置。
-- iOS / 组件帧：画布只留这一帧，缩放调到正好装下它（四周留 32 px），别的帧、别的节和它们的钉子都藏起来；可标注、可缩放。
-- 两种都由工作台的 `workbench.setSolo(<节>, <帧>)` 做（`src/workbench/embed.js`，嵌入版 `html[data-wb-solo]`）：横条不出大纲、节导航、地图和回中。第一次打开时工作台换到这一帧之前浮层先不露（`data-ov-wait`），不闪一下整张画布。
-- 头部：“预览”、节号、节标题、帧 id，按钮多一个“看整张画布”：同一个浮层收起预览（缩放还原到预览前），换成整张画布并 `focusFrame` 到这一帧，地址去掉 `view=frame`（replaceState，后退照样关）。
+点卡片里的某一帧打开整张画布，定位并选中这一帧（owner 2026-10-15：“现在的画布上既然已经支持交互，那就没必要单独搞一个预览模式了”）。HTML、iOS 和组件帧都能直接在画布上交互和标注。
 
 - 内容：一份嵌入版工作台，`/workbench/?page=<页 id>&section=<节 id>&embed=overlay`（`canvas-overlay.js` 的 `embedCanvasSrc`）。画布上能做的这里都能做：交互、标注、平移、缩放、大纲、标注列表。嵌入版不出左栏、左栏开关和“← 文章标题”（`src/workbench/embed.js`，样式挂在 `html.wb-embed`）。第一次打开时装上，关了也留着，再开不重装，直接定位。
-- 头部：节号、节标题（整张画布时跟着画布当前所在的节换，预览不换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
-- 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址带帧、`view=frame` 和钉子：开那一帧的预览（那一页的页面浮层），钉子在那一页的标注客户端（`workbench.annotateApi()`）里找；不带 `view=frame` 的旧地址先开整张画布再 `workbench.openPage(<帧>)`。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
-- 地址：`#canvas=<节 id>[&frame=<帧 id>][&view=frame][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。`view=frame` 是单帧预览，要和 `frame` 一起出现。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。
+- 头部：节号、节标题（跟着画布当前所在的节换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
+- 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址带帧与钉子：先定位到画布上的卡片，等卡片自己的标注客户端水合（`workbench.cardAnnotateApi(<帧>)`），再在活卡片里定位并打开钉子。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
+- 地址：`#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。旧链接中的 `view=frame` 按未知参数忽略，照常打开整张画布并定位到帧。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。
 - 关闭：Esc、点面板外的暗色区域、关闭按钮。焦点在画布里时，Esc 先归画布里的那一层（页面浮层、标注框、标注列表、大纲、菜单、对话框、导航器、标注模式），没有这些层时工作台经 `postMessage`（`source: "pinpoint-workbench"`，同源）请文章页关浮层；画布选中不算一层。关闭后焦点回到点开它的入口。
 - 打开期间：焦点困在浮层里（首尾哨兵把 Tab 绕回来，画布 iframe 是其中一站），页面不滚动（`html.pp-ov-lock`）。
 - 手机宽度（≤ 600 px）：整屏 sheet。

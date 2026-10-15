@@ -17,8 +17,7 @@ export const useWorkbenchStore = create((set) => ({
   // 标注列表的开合（2026-09-04 评审板 H2）：右栏取消常驻，列表由横条右端的
   // 计数钮按需弹出。开着时 detail 面板让位（两者共用同一个右下浮层槽）。
   annListOpen: false,
-  // 文章页的单帧预览（embed.js setEmbedSolo）：'page' | 'frame' | null。横条按它收起去别的帧的路（大纲）。
-  embedSolo: null,
+
   // board + pages
   activePageId: null,
   pageManifest: null,

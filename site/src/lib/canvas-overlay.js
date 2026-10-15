@@ -4,26 +4,16 @@
  */
 import { canvasHref } from './canvas-card.js';
 
-/** 单帧预览的 view 值（owner 2026-10-15：“点击文章内嵌的画布”先预览这一帧，不直接进画布）。 */
-export const FRAME_VIEW = 'frame';
-
-/**
- * 浮层的地址 hash：`#canvas=<节 id>`，可选 `&frame=<帧 id>`（定位到这一帧）、`&view=frame`（单帧预览：
- * 只看这一帧，HTML 帧直接是它的页面；要 frame）、`&ann=<#n>`（定位到这颗钉子并打开它）。
- * 按 URLSearchParams 拼，id 需要时百分号编码。
- */
-export function canvasHash(sectionId, { frame = '', ann = '', view = '' } = {}) {
+/** 浮层地址：节、可选的帧与钉子。旧链接的 view 参数按未知参数忽略。 */
+export function canvasHash(sectionId, { frame = '', ann = '' } = {}) {
   const q = new URLSearchParams({ canvas: sectionId });
   if (frame) q.set('frame', frame);
-  if (frame && view === FRAME_VIEW) q.set('view', FRAME_VIEW);
   if (ann !== '' && ann != null) q.set('ann', String(ann));
   return `#${q.toString()}`;
 }
 
-/**
- * `#canvas=<节>[&frame=<帧>][&view=frame][&ann=<n>]` → { section, frame, view, ann }（ann 是正整数或 null；
- * view 是 'frame' 或 ''，没有帧时不算预览）；旧地址 `#overlay=<节>[&frame=<帧>]`（2026-10-15 之前的本节浮层，
- * 分享出去的链接）照样认。其他 hash（目录锚点 `#flow`、空）→ null。
+/** `#canvas=<节>[&frame=<帧>][&ann=<n>]` → { section, frame, ann }。
+ * ann 是正整数或 null；旧地址 #overlay= 同样读取，其他 hash 返回 null。
  */
 export function parseCanvasHash(hash) {
   const raw = String(hash || '').replace(/^#/, '');
@@ -37,7 +27,6 @@ export function parseCanvasHash(hash) {
   return {
     section,
     frame,
-    view: frame && q.get('view') === FRAME_VIEW ? FRAME_VIEW : '',
     ann: Number.isInteger(n) && n > 0 ? n : null,
   };
 }

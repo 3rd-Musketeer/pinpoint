@@ -40,7 +40,7 @@ test.afterEach(async ({ page }) => {
   await closeSettled(page);
 });
 
-test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；悬停帧不盖内容；点帧直接开那一页的预览，“看整张画布”切过去', async ({ page, request }, testInfo) => {
+test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己的目录取；切桌面；悬停帧不盖内容；点帧打开整张画布并选中', async ({ page, request }, testInfo) => {
   test.setTimeout(240_000);
   // 站点冷启动时先回 503，等它就绪。
   await expect.poll(async () => (await request.get(ARTICLE_URL)).status(), { timeout: 150_000, intervals: [500] }).toBe(200);
@@ -124,88 +124,39 @@ test('文章页：HTML 帧的卡片按手机宽度出第一屏，资源按自己
     await page.mouse.move(2, 2);
   });
 
-  await test.step('点卡片里的 HTML 帧：直接开这一页的完整页面（页面浮层），外面不先铺整张画布；能滚；Esc 回文章原位', async () => {
-    // owner 2026-10-15：“现在点击文章内嵌的画布没有预览功能了？直接进画布？”——点帧先预览这一帧。
-    // 每一帧记一次：浮层里的工作台露出来的时候，必须已经是 long-page 的页面浮层（不是整张画布）。
-    await page.evaluate(() => {
-      window.__ovSeen = [];
-      const tick = () => {
-        const f = document.querySelector('[data-pp-overlay] iframe.ov-canvas');
-        if (f && document.querySelector('[data-pp-overlay]').open && getComputedStyle(f).visibility === 'visible') {
-          let entry = '';
-          try { entry = f.contentWindow.workbench?.activeEntryId?.() || ''; } catch { entry = '?'; }
-          if (window.__ovSeen[window.__ovSeen.length - 1] !== entry) window.__ovSeen.push(entry);
-        }
-        window.__ovTick = requestAnimationFrame(tick);
-      };
-      tick();
-    });
-    await card(page).locator('.cc-frame[data-screen="long-page"]').scrollIntoViewIfNeeded();
+  await test.step('点 HTML 帧打开整张画布、选中并定位；Esc 回正文原位；旧 view=frame 地址同样打开画布', async () => {
+    await card(page).locator('.cc-frame[data-screen="catalog"]').scrollIntoViewIfNeeded();
     const at = await page.evaluate(() => [window.scrollX, window.scrollY]);
-    await card(page).locator('.cc-frame[data-screen="long-page"] .cc-hit').click();
-    await expect(overlay(page)).toHaveAttribute('open', '');
-    expect(decodeURIComponent(new URL(page.url()).hash)).toBe('#canvas=pages&frame=long-page&view=frame');
-    await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${PAGE_ID}&section=pages&embed=overlay`);
-    await expect(overlay(page).locator('[data-ov-width], .ov-frame')).toHaveCount(0);
-    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('page:long-page');
-    await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('预览');
-    await expect(overlay(page).locator('[data-ov-frame]')).toHaveText('long-page');
-    await expect(overlay(page).locator('[data-ov-full]')).toBeVisible();
-    await expect(overlay(page).locator('[data-ov-canvas]')).toBeVisible();
-    const canvas = page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
-    const pageFrame = canvas.locator('[data-page-screen="long-page"] iframe.wb-doc-frame');
-    await expect(pageFrame).toHaveAttribute('src', '/sites/e2e-html_pages/long-page.html');
-    await expect(canvas.frameLocator('[data-page-screen="long-page"] iframe.wb-doc-frame').locator('#top-title')).toHaveText('长页面');
-    // 页面铺满浮层；预览里没有“← 画布”、节导航、大纲（关页面就是回文章）。
-    const body = await overlay(page).locator('.ov-body').boundingBox();
-    const frame = await pageFrame.boundingBox();
-    expect(Math.abs(frame.height - body.height)).toBeLessThan(2);
-    await expect(canvas.locator('#wbpage-close')).toBeHidden();
-    await expect(canvas.locator('#wbstrip-outline')).toBeHidden();
-    await expect(canvas.locator('#wbann-toggle')).toBeVisible();
-    await pageFrame.evaluate((el) => el.contentDocument.getElementById('deep-pill').scrollIntoView());
-    expect(await pageFrame.evaluate((el) => el.contentWindow.scrollY)).toBeGreaterThan(4000);
-    expect(await page.evaluate(() => { cancelAnimationFrame(window.__ovTick); return window.__ovSeen; })).toEqual(['long-page']);
-    // 焦点在页面里按 Esc：整个预览关掉，回到文章原来的位置（不是回画布）。
-    await canvas.frameLocator('[data-page-screen="long-page"] iframe.wb-doc-frame').locator('#top-title').click();
-    await page.keyboard.press('Escape');
-    await expect(overlay(page)).not.toHaveAttribute('open', '');
-    await expect.poll(() => page.evaluate(() => location.hash)).toBe('');
-    await expect.poll(() => page.evaluate(() => [window.scrollX, window.scrollY])).toEqual(at);
-    // 卡片的宽度照旧是卡片自己的。
-    await expect(card(page)).toHaveAttribute('data-doc-width', 'phone');
-  });
-
-  await test.step('预览里点“看整张画布”：同一个浮层换成整张画布，停在这一帧；后退关；刷新带 view=frame 复原预览', async () => {
     await card(page).locator('.cc-frame[data-screen="catalog"] .cc-hit').click();
-    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('page:catalog');
-    const length = await page.evaluate(() => history.length);
-    await overlay(page).locator('[data-ov-full]').click();
-    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing)).toBe('section');
+    await expect(overlay(page)).toHaveAttribute('open', '');
     expect(decodeURIComponent(new URL(page.url()).hash)).toBe('#canvas=pages&frame=catalog');
-    expect(await page.evaluate(() => history.length)).toBe(length);
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('frame:catalog');
     const canvas = page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
     expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.activeEntryId())).toBe('@canvas');
     await expect(overlay(page).locator('[data-ov-kind]')).toHaveText('画布');
-    await expect(overlay(page).locator('[data-ov-full]')).toBeHidden();
-    // 整张画布：别的卡片也在，这一帧在可见区里。
+    await expect(overlay(page).locator('[data-ov-full], [data-ov-frame]')).toHaveCount(0);
+    await expect(canvas.locator(CARD('catalog'))).toHaveClass(/\bwb-sel\b/);
+    for (const id of ['long-page', 'catalog', 'widget']) await expect(canvas.locator(`${CARD(id)} .wb-html-card`)).toBeVisible();
     const wb = page.frames().find((f) => /\/workbench\/\?.*embed=overlay/.test(f.url()));
     await expect.poll(() => wb.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();
     const body = await overlay(page).locator('.ov-body').boundingBox();
-    for (const id of ['long-page', 'catalog', 'widget']) await expect(canvas.locator(`${CARD(id)} .wb-html-card`)).toBeVisible();
     const hit = await canvas.locator(`${CARD('catalog')} .wb-html-card`).boundingBox();
     expect(hit.x).toBeGreaterThanOrEqual(body.x);
     expect(hit.x + hit.width).toBeLessThanOrEqual(body.x + body.width);
-    await page.goBack();
+    expect(hit.y).toBeGreaterThanOrEqual(body.y);
+    expect(hit.y + hit.height).toBeLessThanOrEqual(body.y + body.height);
+    await expect(canvas.frameLocator(`${CARD('catalog')} iframe`).locator('.cat-btn')).toBeVisible();
+    await page.screenshot({ path: testInfo.outputPath('F-html-canvas-overlay.png') });
+    await page.keyboard.press('Escape');
     await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await expect.poll(() => page.evaluate(() => [window.scrollX, window.scrollY])).toEqual(at);
 
-    // 刷新（同一篇文章上改 hash 只是页内跳转，再 reload 一次才是整页重开）。
     await page.goto(`${ARTICLE_URL}#canvas=pages&frame=widget&view=frame`);
     await page.reload();
     await expect(page.locator('#article .prose h1')).toHaveText('生成的页面', { timeout: 150_000 });
-    await expect(overlay(page)).toHaveAttribute('open', '', { timeout: 60_000 });
-    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe('page:widget');
-    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.activeEntryId())).toBe('widget');
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.state()?.landing), { timeout: 60_000 }).toBe('frame:widget');
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.activeEntryId())).toBe('@canvas');
+    await expect(canvas.locator(CARD('widget'))).toHaveClass(/\bwb-sel\b/);
     await overlay(page).locator('[data-ov-close]').click();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(new URL(page.url()).hash).toBe('');
@@ -534,7 +485,7 @@ test('画布视图：标注模式下直接在卡片里标，标注进那一页�
   await closeSettled(page);
 });
 
-test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那一页的预览并定位到钉子；浮层里的画布点“全页”照样开页面，Esc 一层层关', async ({ page, request }) => {
+test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开整张画布并定位到活卡片里的钉子；浮层里的画布点“全页”照样开页面，Esc 一层层关', async ({ page, request }) => {
   test.setTimeout(240_000);
   fs.rmSync(BUCKET, { recursive: true, force: true });
   await expect.poll(async () => (await request.get(ARTICLE_URL)).status(), { timeout: 150_000, intervals: [500] }).toBe(200);
@@ -554,7 +505,7 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那
   const rail = page.locator('#rail .pp-threads');
   const embed = () => page.frames().find((f) => /\/workbench\/\?.*embed=overlay/.test(f.url()));
   const embedEntry = () => page.evaluate(() => window.pinpointOverlay.frame()?.contentWindow?.workbench?.activeEntryId?.() || null);
-  const pageDoc = () => page.frameLocator('[data-pp-overlay] iframe.ov-canvas').frameLocator('[data-page-screen="long-page"] iframe.wb-doc-frame');
+  const pageDoc = () => page.frameLocator('[data-pp-overlay] iframe.ov-canvas').frameLocator(`${CARD('long-page')} iframe.wb-html-card-frame`);
 
   try {
     await page.goto(ARTICLE_URL);
@@ -566,22 +517,21 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开那
       await expect(thread).toBeVisible({ timeout: 30_000 });
       await expect(thread.locator('.pp-canvas-frame')).toHaveText('帧long-page');
       await expect(thread.locator('.msg .text')).toHaveText('“深处的标签” 换成灰色');
-      await expect(thread.locator('a[data-pp-canvas-link]')).toHaveAttribute('href', `#canvas=pages&frame=long-page&view=frame&ann=${n}`);
+      await expect(thread.locator('a[data-pp-canvas-link]')).toHaveAttribute('href', `#canvas=pages&frame=long-page&ann=${n}`);
       await expect(card(page).locator('[data-pp-badge]')).toHaveText('1 条标注');
     });
 
-    await test.step('点它：直接开 long-page 的预览（页面浮层），滚到钉子、打开标注框；Esc 先关框，再按一下回文章', async () => {
+    await test.step('点它：整张画布定位到活卡片里的钉子、打开标注框；Esc 先关框，再回文章', async () => {
       await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${n}"] .msg .text`).click();
       await expect(overlay(page)).toHaveAttribute('open', '');
       await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe(`ann:${n}`);
-      expect(await page.evaluate(() => window.pinpointOverlay.state().view)).toBe('frame');
-      expect(await embedEntry()).toBe('long-page');
+      expect(await embedEntry()).toBe('@canvas');
       await expect(pageDoc().locator('#ann-box')).toBeVisible();
       await expect(pageDoc().locator('#ann-input')).toContainText('换成灰色');
       expect(await pageDoc().locator('#deep-pill').evaluate((el) => el.ownerDocument.defaultView.scrollY)).toBeGreaterThan(4000);
       await page.keyboard.press('Escape');
       await expect(pageDoc().locator('#ann-box')).toBeHidden();
-      expect(await embedEntry()).toBe('long-page');
+      expect(await embedEntry()).toBe('@canvas');
       await expect(overlay(page)).toHaveAttribute('open', '');
       await page.keyboard.press('Escape');
       await expect(overlay(page)).not.toHaveAttribute('open', '');
