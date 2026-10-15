@@ -505,3 +505,71 @@ for (const scenario of ['copy-target-created', 'rename-target-created', 'publish
     assert.ok(manifest.snapshots.some((item) => item.backup && fs.existsSync(item.backup)));
   });
 }
+
+for (const linkKind of ['relative', 'absolute']) {
+  test(`N2：project.json ${linkKind} symlink 写入后失败，恢复真实字节与链接关系`, async (t) => {
+    const made = fixture(t);
+    const meta = path.join(made.proj, 'docs/pinpoint/project.json');
+    const backing = path.join(path.dirname(meta), 'metadata.json');
+    fs.renameSync(meta, backing);
+    const original = fs.readFileSync(backing);
+    const registry = fs.readFileSync(made.registry);
+    const link = linkKind === 'relative' ? 'metadata.json' : backing;
+    fs.symlinkSync(link, meta);
+    const write = fs.writeFileSync;
+    let injected = false;
+    t.mock.method(fs, 'writeFileSync', (file, content, ...args) => {
+      if (!injected && String(file).includes('.mv-recovery-') && String(file).endsWith('/manifest.json')
+        && JSON.parse(content).completed.includes('project.json')) {
+        injected = true;
+        throw Object.assign(new Error('manifest disk full'), { code: 'ENOSPC' });
+      }
+      return write(file, content, ...args);
+    });
+    const res = await runIn(made, ['mv', 'e2e-project', 'renamed']);
+    assert.ok(injected);
+    assert.equal(res.code, 1);
+    assert.deepEqual(fs.readFileSync(backing), original);
+    assert.deepEqual(fs.readFileSync(made.registry), registry);
+    assert.equal(fs.readlinkSync(meta), link);
+    assert.deepEqual(fs.readFileSync(meta), original);
+    assert.match(res.err.join('\n'), /已回滚/);
+    t.mock.restoreAll();
+    assert.equal((await runIn(made, ['mv', 'e2e-project', 'renamed'])).code, 0);
+    assert.equal(readJson(backing).id, 'renamed');
+    assert.equal(fs.readlinkSync(meta), link);
+  });
+}
+
+test('N2：链接文件回滚失败时，恢复副本可独立读取并记录真实位置与链接原文', async (t) => {
+  const made = fixture(t);
+  const meta = path.join(made.proj, 'docs/pinpoint/project.json');
+  const backing = path.join(path.dirname(meta), 'metadata.json');
+  fs.renameSync(meta, backing);
+  const original = fs.readFileSync(backing);
+  fs.symlinkSync('metadata.json', meta);
+  const realpath = fs.realpathSync(meta);
+  const write = fs.writeFileSync;
+  let injected = false;
+  t.mock.method(fs, 'writeFileSync', (file, content, ...args) => {
+    if (!injected && String(file).includes('.mv-recovery-') && String(file).endsWith('/manifest.json')
+      && JSON.parse(content).completed.includes('project.json')) {
+      injected = true;
+      throw new Error('manifest 写入失败');
+    }
+    if (injected && file === realpath) throw new Error('真实文件仍无法恢复');
+    return write(file, content, ...args);
+  });
+  const res = await runIn(made, ['mv', 'e2e-project', 'renamed']);
+  assert.ok(injected);
+  assert.equal(res.code, 1);
+  assert.match(res.err.join('\n'), /回滚未完成/);
+  const dir = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
+  const manifest = readJson(path.join(made.data, dir, 'manifest.json'));
+  const snapshot = manifest.snapshots.find((item) => item.target === meta);
+  assert.deepEqual(fs.readFileSync(snapshot.backup), original);
+  assert.equal(fs.lstatSync(snapshot.backup).isSymbolicLink(), false);
+  assert.equal(snapshot.writeThrough.realpath, realpath);
+  assert.equal(snapshot.writeThrough.link, 'metadata.json');
+  assert.equal(fs.readlinkSync(meta), 'metadata.json');
+});

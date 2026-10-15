@@ -10,7 +10,7 @@ function identity(file) {
   } catch (error) { if (error.code === 'ENOENT') return null; throw error; }
 }
 
-export function beginMoveRecovery(root, targets) {
+export function beginMoveRecovery(root, targets, { followWrites = [] } = {}) {
   fs.mkdirSync(root, { recursive: true });
   const dir = fs.mkdtempSync(path.join(root, '.mv-recovery-'));
   const manifest = path.join(dir, 'manifest.json');
@@ -20,8 +20,16 @@ export function beginMoveRecovery(root, targets) {
     for (const [i, target] of [...new Set(targets.filter(Boolean))].entries()) {
       const original = identity(target);
       const backup = original ? path.join(dir, `backup-${i}`) : null;
-      if (backup) fs.cpSync(target, backup, copyOptions);
-      state.snapshots.push({ target, backup, original, expected: original, touched: false });
+      let writeThrough = null;
+      if (backup && followWrites.includes(target)) {
+        const realpath = fs.realpathSync(target);
+        writeThrough = { realpath, identity: identity(realpath), link: fs.lstatSync(target).isSymbolicLink() ? fs.readlinkSync(target) : null };
+        // 写入会跟随链接，副本必须保存真实字节，不能只是备份目录里的断链。
+        fs.copyFileSync(realpath, backup);
+      } else if (backup) {
+        fs.cpSync(target, backup, copyOptions);
+      }
+      state.snapshots.push({ target, backup, original, expected: original, touched: false, writeThrough });
     }
     state.status = 'running';
     save();
@@ -32,7 +40,12 @@ export function beginMoveRecovery(root, targets) {
   const targetKey = (target) => path.join(fs.realpathSync(path.dirname(target)), path.basename(target));
   const snapshotOf = (target) => state.snapshots.find((item) => targetKey(item.target) === targetKey(target));
   const assertIdentity = (item) => {
-    if (item && identity(item.target) !== item.expected) throw new Error(`对象身份发生变化，保留现场：${item.target}`);
+    if (!item) return;
+    if (identity(item.target) !== item.expected) throw new Error(`对象身份发生变化，保留现场：${item.target}`);
+    if (item.writeThrough && (fs.realpathSync(item.target) !== item.writeThrough.realpath
+      || identity(item.writeThrough.realpath) !== item.writeThrough.identity)) {
+      throw new Error(`链接或真实文件身份发生变化，保留现场：${item.target}`);
+    }
   };
   const touch = (target) => {
     const item = snapshotOf(target);
@@ -101,6 +114,12 @@ export function beginMoveRecovery(root, targets) {
         const { target, backup } = item;
         let staging;
         try {
+          assertIdentity(item);
+          if (item.writeThrough) {
+            // 保留原 symlink 与真实文件 inode，按已核对的真实位置恢复原始字节。
+            fs.writeFileSync(item.writeThrough.realpath, fs.readFileSync(backup));
+            continue;
+          }
           fs.mkdirSync(path.dirname(target), { recursive: true });
           staging = fs.mkdtempSync(path.join(path.dirname(target), '.ppnt-restore-'));
           const prepared = path.join(staging, 'original');

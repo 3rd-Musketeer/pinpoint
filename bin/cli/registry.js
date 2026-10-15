@@ -654,7 +654,7 @@ export async function renameEntry(parsed, io = {}) {
       ...(plan.bucketExists ? [plan.bucketFrom, plan.bucketTo] : []),
       ...plan.articleMoves.flatMap((move) => [move.from, move.to]),
       ...plan.rewritePreview.map((file) => path.join(plan.rewriteDir, file)),
-    ]);
+    ], { followWrites: [plan.projectJson, ...plan.rewritePreview.map((file) => path.join(plan.rewriteDir, file))].filter(Boolean) });
     renamed = recovery.step('登记表改名', () => recovery.replaceFile(plan.registryPath, (file) => renameRegistryEntry(file, plan.before.id, plan.after.id)));
     if (plan.bucketExists) recovery.step('标注桶改名', () => recovery.rename(plan.bucketFrom, plan.bucketTo));
     for (const move of plan.articleMoves) {
