@@ -1,6 +1,6 @@
 # site/：文章站点（Astro）
 
-渲染文章页、project 首页、概念页和 `llms.txt`。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 [`docs/projects.md`](../docs/projects.md)“目录”）。这里只放站点代码。
+渲染首页（全部文章）、文章页、project 首页、概念页和 `llms.txt`。内容不在这里：站点读 registry 里登记的 project（`kind: "project"`），每个 project 的内容在 `<project 根>/docs/pinpoint/`（结构见 [`docs/projects.md`](../docs/projects.md)“目录”）。这里只放站点代码。
 
 ## 跑起来
 
@@ -23,8 +23,9 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 
 | URL | 内容 |
 | --- | --- |
-| `/<project>/` | 文章列表、概念、空 ref 列表 |
-| `/<project>/<article>/` | 文章：左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、概念抽屉 |
+| `/` | 首页：所有登记 project 的全部文章，最近改过的在前；每条标题、summary、project 小标签（进 `/<project>/`）、日期。排序规则见 `docs/projects.md`“首页” |
+| `/<project>/` | 这个 project（文件夹）里的文章列表、概念、空 ref 列表 |
+| `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、概念抽屉 |
 | `/<project>/concepts/<名字>/` | 概念：状态、定义、正文、用到它的文章 |
 | `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与概念 |
 
@@ -32,12 +33,12 @@ article id `concepts` 保留给概念路由，用了构建报错。
 
 ## 写文章（`articles/<id>/index.mdx`）
 
-frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和列表里的一句话）、`order`（列表次序，可省）。
+frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和列表里的一句话）、`order`（project 首页的列表次序，可省）、`date`（`YYYY-MM-DD`，首页按它排，可省）。
 
 下面三个组件不用 import，站点自动提供：
 
 - `<Section id="flow" title="付款前的确认">…</Section>`：一节。`id` 必填，字母数字 `_` `-`，文中唯一，就是 DOM id（`#flow`）和画布视图里这一行的 id。节号 1、2 … 按出现顺序自动编，目录和节标题前的号码从这里来。画布上同一节是字母（第 n 节 = 第 n 个字母，A、B …），字母只出现在画布、`ppnt` 和标注里，文章页不显示。不能嵌套。
-- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布组件，在文章页上显示成一张画布卡片。写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`，不能写 `<页 id>/<帧 id>`；project 根下别处的 HTML 页面写成 `{ id: "catalog", src: "skill/preview.html" }`，`project.json` 的 `sources` 登记的目录下写成 `src: "skill:preview.html"`（HTML 帧，规则见 `docs/projects.md`“HTML 帧”）。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。一张卡片里所有帧同一个缩放（手机机壳 438 px 显示成 158 px），组件帧和旁边的手机按真实比例比。卡片头显示节号、节标题与帧数，图注只有帧 id，每帧一个懒加载 iframe（`/api/frame?page=<页 id>&screen=<帧 id>&annotate=off&embed=card`），卡片里的缩略图不能点、不能标注。点帧在文章上打开这一节的画布浮层（见下），不跳转；“打开画布 →”到画布视图并定位到这一节（`/?page=<页 id>&section=<节 id>`）。该节有未处理（open）的画布标注时头部显示条数，读不到标注就不显示。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”；画布视图底部横条的“阅读正文”回到文章页，带当前节的锚点（`#<节 id>`）。卡片根节点是 `[data-pp-canvas]`，节 id 在 `data-pp-section`（`data-section` 只属于 `<Section>`）。有 HTML 帧的卡片，头部多一个“手机 / 桌面”开关（`[data-pp-width]`，缺省手机），HTML 帧按 402 或 1280 宽排版、只露第一屏，卡片根节点的 `data-doc-width` 是当前宽度（`phone` / `desktop`）。HTML 帧的 iframe 经 `/api/frame` 跳到页面自己的地址（`/sites/<页 id>/…?annotate=off`），所以页面里的相对资源由 pinpoint 服务给，不经 Astro 的 `/@fs/`。
+- `<Canvas frames={["ask", "confirm"]} />`：这一节的画布组件，在文章页上显示成一张画布卡片。写在 `<Section>` 里，一节最多一个。帧 id 是本篇目录下的 `<帧 id>.jsx` 或 `<帧 id>.html`，不能写 `<页 id>/<帧 id>`；project 根下别处的 HTML 页面写成 `{ id: "catalog", src: "skill/preview.html" }`，`project.json` 的 `sources` 登记的目录下写成 `src: "skill:preview.html"`（HTML 帧，规则见 `docs/projects.md`“HTML 帧”）。`shell="comp"` 这类非手机机壳按帧自己的盒子显示。一张卡片里所有帧同一个缩放（手机机壳 438 px 显示成 158 px），组件帧和旁边的手机按真实比例比。卡片头显示节号、节标题与帧数，图注只有帧 id，每帧一个懒加载 iframe（`/api/frame?page=<页 id>&screen=<帧 id>&annotate=off&embed=card`），卡片里的缩略图不能点、不能标注。点帧在文章上打开这一节的画布浮层（见下），不跳转；“打开画布 →”到画布视图并定位到这一节（`/workbench/?page=<页 id>&section=<节 id>`）。该节有未处理（open）的画布标注时头部显示条数，读不到标注就不显示。画布错误只显示一次：属于某一节的（跨页引用、缺帧……）列在那张卡片里，页级的（frontmatter、写在 `<Section>` 外的 `<Canvas>`……）在页顶错误条，这时那个 Canvas 不出卡片。缺源文件的帧照占位置，显示占位格“缺帧 <id>”。画布错误也是 project 错误，所以生产构建会失败，开发服务器照常显示。有画布节的文章，顶栏多一个“画布视图”；画布视图底部横条的“阅读正文”回到文章页，带当前节的锚点（`#<节 id>`）。卡片根节点是 `[data-pp-canvas]`，节 id 在 `data-pp-section`（`data-section` 只属于 `<Section>`）。有 HTML 帧的卡片，头部多一个“手机 / 桌面”开关（`[data-pp-width]`，缺省手机），HTML 帧按 402 或 1280 宽排版、只露第一屏，卡片根节点的 `data-doc-width` 是当前宽度（`phone` / `desktop`）。HTML 帧的 iframe 经 `/api/frame` 跳到页面自己的地址（`/sites/<页 id>/…?annotate=off`），所以页面里的相对资源由 pinpoint 服务给，不经 Astro 的 `/@fs/`。
 - `<Figure src="figures/message-flow.jsx" caption="…" />`：正文里的图，静态示意图和可交互演示都用它，节里节外都能写。源文件在文章目录的 `figures/` 下，pinpoint 像编帧一样编它；文章页上是一个占满正文栏宽的懒加载 iframe（`/api/frame?page=<页 id>&figure=<图 id>&embed=figure`），高度跟着图的内容，没有滚动条，可以点、可以操作，深浅色跟着文章页切换。图注在图下面。图的错误显示在图的位置，不进画布卡片和页顶错误条；它们也是 project 错误，生产构建会失败。图和图注里选字不出评论。写法、调色板、逐步演示与错误见 `docs/projects.md`“图”。
 
 ## `[[ ]]` 引用
@@ -58,7 +59,7 @@ popup：article 显示标题、摘要、读全文；concept 显示定义、状�
 
 点卡片里的某一帧，在文章上打开这一节的浮层（`CanvasOverlay.astro` + `lib/canvas-overlay-client.js`），像看图一样，不跳转。
 
-- 头部：节号、节标题、帧数，上一节 / 下一节，“打开画布 →”（`/?page=<页 id>&section=<节 id>`），关闭。
+- 头部：节号、节标题、帧数，上一节 / 下一节，“打开画布 →”（`/workbench/?page=<页 id>&section=<节 id>`），关闭。
 - 帧：这一节的全部帧并排，图注是帧 id。所有帧同一个缩放：能放进浮层高度（窄屏还要放进宽度）的最大值，不超过真实大小（`canvas-overlay.js` 的 `overlayScale`）。手机帧量机身（`data-pp-device`），组件帧量组件台（`data-pp-stage`）。放不下就横向滚动。点的那一帧滚到中间，高亮 1.6 s。
 - HTML 帧：页面宽度跟卡片的“手机 / 桌面”走，浮层头有同一个开关（`[data-ov-width]`，只在这一节有 HTML 帧时出现），两边切换互相同步，切换不重载页面。HTML 帧占满浮层的可用高度，页面在帧里整页滚动；宽度放不下时按宽度缩小。
 - 帧可交互：iframe 是新开的 `/api/frame?…&annotate=off&embed=card`，指针和焦点都放开，帧里的预览脚本照常跑。卡片里的缩略图仍不可交互。

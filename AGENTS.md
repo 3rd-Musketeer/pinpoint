@@ -1,12 +1,12 @@
 # pinpoint — Agent Guide
 
 pinpoint 是一个本地服务：agent 把设计写成文章（article），文章里嵌着可以实时渲染的界面帧；owner 和其他读者在浏览器里读，
-owner 用正文评论和画布标注把反馈交回 agent。常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务文章站点、
-工作台、标注 API、登记进来的仓外内容（`/sites/<id>/`）和标注客户端（`/annotate.js`）。
+owner 用正文评论和画布标注把反馈交回 agent。常驻服务跑在 `https://pinpoint.localhost`，同一个 origin 服务文章站点（`/` 是全部文章的首页）、
+工作台（`/workbench/`）、标注 API、登记进来的仓外内容（`/sites/<id>/`）和标注客户端（`/annotate.js`）。
 
 模型从上到下：project → 文章 → section（节）→ 节里的画布组件（列帧）和图。一篇文章是 `<project 根>/docs/pinpoint/articles/<id>/`
 下的 `index.mdx` 加本篇的帧和组件，帧是 `<帧 id>.jsx` 或一整份 `.html`（HTML 帧）；读者在文章页 `/<project>/<article>/` 读它，集中修改在画布视图
-`/?page=<project>_<article>`（所有带画布的节按行排开，由正文自动生成）。`ppnt` 里这篇文章写成 `<project>/<article>`；
+`/workbench/?page=<project>_<article>`（所有带画布的节按行排开，由正文自动生成）。`ppnt` 里这篇文章写成 `<project>/<article>`；
 `<project>_<article>` 是它的页 id，画布视图的地址和标注桶用它，正文评论和画布上的标注进同一个队列。JSX 帧和图由 `ppnt build` 编进
 dist（`~/.pinpoint/dist/<页 id>/`），画布、卡片和截图读 dist；HTML 帧不编译，服务直接给源文件。
 
@@ -31,7 +31,7 @@ dist（`~/.pinpoint/dist/<页 id>/`），画布、卡片和截图读 dist；HTML
 brew install just         # 每台机器一次
 npm install -g portless   # 每台机器一次
 npm install               # 第一次
-just dev                  # https://pinpoint.localhost/index.html
+just dev                  # https://pinpoint.localhost/（首页 = 全部文章；工作台在 /workbench/）
 just check                # 契约测试 + 站点构建检查（test:site）+ 两组 Chromium e2e（第一次先 npx playwright install chromium）
 ```
 

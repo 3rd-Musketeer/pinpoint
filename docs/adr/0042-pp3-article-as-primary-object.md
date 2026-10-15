@@ -1,6 +1,6 @@
 # 0042 · pp3：article 是主体，project → article → section → 组件
 
-Status: 现行（HTML 帧、`check` / `comments` 分工、`mark --note`、图和节号由 0043 补充） · Date: 2026-10-13 · Scope: `src/server/lib/projects.js`、`src/server/lib/article-board.js`、`src/server/lib/article-canvas.js`、`src/server/lib/article-routes.js`、`src/server/article-proxy.js`、`src/server/lib/site-dev-server.js`、`site/`、`src/client/prose-comments.js`、`src/shared/text-quote.js`、`src/shared/prose-thread.js`、`bin/cli/annotate.js`、`bin/cli/list.js`、`skills/pinpoint-build/`、`skills/pinpoint-annotate/`
+Status: 部分被修订（HTML 帧、`check` / `comments` 分工、`mark --note`、图和节号由 0043 补充；project 退为一批文章的容器、读者面前不显示 project 标题、`/` 是 blog 首页、工作台挪到 `/workbench/` 由 0044 修订） · Date: 2026-10-13 · Revised-in-part-by: 0044 · Scope: `src/server/lib/projects.js`、`src/server/lib/article-board.js`、`src/server/lib/article-canvas.js`、`src/server/lib/article-routes.js`、`src/server/article-proxy.js`、`src/server/lib/site-dev-server.js`、`site/`、`src/client/prose-comments.js`、`src/shared/text-quote.js`、`src/shared/prose-thread.js`、`bin/cli/annotate.js`、`bin/cli/list.js`、`skills/pinpoint-build/`、`skills/pinpoint-annotate/`
 
 **起因**：owner 和 agent 对齐设计时产出的 task、ADR、docs，也要拿去和团队对齐、给同事和投资人讲解。owner 2026-10-13：“我希望任何人都可以读这份文档，我，同事，Agent，投资人。所以我希望可分享，而且分享出去别人能看懂”。到 0041 为止，pinpoint 的主体是 page（画布 + section + 帧），只能在本机工作台里看，没有可以发出去的正文。owner 要的是反过来：以文档为主体，画布是文档的一个视图（“这应该算是 pp3 了，大重构”）。决定过程是一轮 grilling 加一个 probe，原话和 milestone 在 `tasks/2026-10-13-pp3/README.md`（实例目录，不进 git）。
 

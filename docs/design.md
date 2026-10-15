@@ -147,7 +147,7 @@
 
 ## 地址栏参数（深链）
 
-解析与生成只在 `src/workbench/lib/page-url.js`（`parseDeepLink` / `deepLinkQuery`），写回在 `src/workbench/url-sync.js`，读取在 `stage.js` 的 boot。
+工作台的地址是 `/workbench/`（ADR 0044），参数接在它后面；生成工作台地址的代码一律用 `src/shared/workbench-url.js`（站点的浏览器端脚本用 `site/src/lib/canvas-card.js` 里对过账的字面量）。解析与生成只在 `src/workbench/lib/page-url.js`（`parseDeepLink` / `deepLinkQuery`），写回在 `src/workbench/url-sync.js`，读取在 `stage.js` 的 boot。
 
 | 参数 | 含义 | 落地后留不留 |
 |---|---|---|
@@ -186,6 +186,8 @@
 
 | 首段 | 去向 |
 | --- | --- |
+| 不带参数的 `/` | 文章站点的 blog 首页：所有登记 project 的全部文章（ADR 0044） |
+| `workbench`（`/workbench/`） | 工作台：改写成仓库根的 `index.html`；壳页带 `<base href="/">`，板里相对站点根的地址照旧解析。旧地址 `/?<参数>`、`/index.html[?<参数>]` 302 到 `/workbench/`，参数原样带上（`src/server/lib/workbench-routes.js`） |
 | 登记过的 project id（registry kind `project`） | 文章站点：Astro 开发服务器，路径原样，站点不设 base |
 | `_astro`（含 HMR websocket）、`_image` | Astro 开发服务器自己的 vite 内部路径与图片端点 |
 | 其他一切 | pinpoint 原有的中间件链，行为不变 |

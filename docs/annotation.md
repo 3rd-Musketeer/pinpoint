@@ -68,7 +68,7 @@ registry 来自 `~/.pinpoint/registry.json`（`PINPOINT_REGISTRY` 覆盖）。�
 `GET /health` 的 `dataRoot` 字段读；`PINPOINT_DATA_DIR` 整体覆盖数据根（e2e 用的就是它）。
 
 账本 = 桶内的一个表面：
-- **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/` 与 `/index.html`
+- **画布**是一本固定名 `@canvas.json`，不跟工作台 pathname 走（`/workbench/` 与旧地址
   同一本）；`/api/frame` 嵌入帧也写这本（桶 = 帧所属的页）。
 - **文档、直开页**仍是一个 pathname 一本，命名规则见
   `src/shared/annotate-page-key.js`。文章的每个 HTML 帧也按它的页面路径各一本（`<文件>~<hash>.json`）。
@@ -148,7 +148,7 @@ check / done 与回复都留在盘上，owner 的改动也落盘。正文评论�
 在非 workbench 页面（`/sites/`）上浮动工具条默认隐藏——**A** 键切标注模式。
 
 工具条带一个**“打开 workbench”**入口：`/sites/` 页面在工作台之外，工具条的钮（`#ann-workbench`）在新标签页开
-`<服务 origin>/index.html`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
+`<服务 origin>/workbench/`，origin 取自注入脚本自己的 `src`；在 workbench 壳页与被嵌入的
 frame 里隐藏——那里已经在 workbench 里，同“只留一个控制面”的规矩。
 
 页面内的 `#ann-sidebar`（**S** 键、工具条的“列表”钮）：

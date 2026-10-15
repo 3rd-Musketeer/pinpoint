@@ -14,8 +14,9 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 
 | # | 日期 | 决策 | 状态 | 被谁取代 |
 | --- | --- | --- | --- | --- |
+| [0044](0044-project-is-a-folder-blog-home.md) | 2026-10-15 | project 退为一批文章的容器，读者面前不显示 project 标题、title 只写名字；`/` 是全部文章的 blog 首页，工作台挪到 `/workbench/`，旧地址 302 | 现行 | — |
 | [0043](0043-pp3-cli-html-frames-figures.md) | 2026-10-14 | pp3 第二天：`check` 是验证、`comments` 是标注队列；`mark --note` 先回复再写状态；帧可以是整份 HTML（`{ id, src }`、`project.json` 的 `sources`）；手机宽度统一 402；图由 agent 画 SVG；文章页用节号、画布用字母 | 现行 | — |
-| [0042](0042-pp3-article-as-primary-object.md) | 2026-10-13 | pp3：article 是主体（project → article → section → 组件）；Astro 站点同源代理，board 由 MDX 派生，画布页 id 与桶 `<project>_<article>`，正文评论进同一队列；第一版只做本机，版本进 BACKLOG | 现行（0043 补充 HTML 帧、`check` / `comments`、`mark --note`、图与节号） | — |
+| [0042](0042-pp3-article-as-primary-object.md) | 2026-10-13 | pp3：article 是主体（project → article → section → 组件）；Astro 站点同源代理，board 由 MDX 派生，画布页 id 与桶 `<project>_<article>`，正文评论进同一队列；第一版只做本机，版本进 BACKLOG | 部分被修订（0043 补充 HTML 帧、`check` / `comments`、`mark --note`、图与节号；project 定位、首页与工作台地址由 0044 修订） | ADR 0044 |
 | [0041](0041-page-tabs.md) | 2026-10-10 | 页内 tab：page → tab → section，tab 只是 section 的视图分组；编号按 tab 重来，多 tab 页引用写 `<tab>:B3` | 现行（只管存量页；文章没有 tab） | — |
 | [0040](0040-component-page-vs-flow-page.md) | 2026-10-10 | 组件页与交互页：变体放 section 里的普通帧，选定后复制进交互页；整屏变体组退役 | 部分被取代（文章里几种做法放同一节、选定删落选；组件页与交互页之分只用于存量页） | ADR 0042 |
 | [0039](0039-variant-groups.md) | 2026-10-10 | 变体组：同一个关键帧的几种画法，整组一个位置号、变体派生 a/b/c；变体仍是独立屏，标注挂变体 | Superseded by ADR 0040（2026-10-10 退役） | ADR 0040 |

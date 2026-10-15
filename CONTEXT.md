@@ -9,16 +9,20 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 从上到下读：一个 project 有多篇文章；一篇文章由若干 section 组成；section 里可以放一个画布组件和图，画布组件列出这一节的帧，帧是一个 JSX 文件或一整份 HTML 页面。文章有两个看法：读者在文章站点上看的文章页，和在工作台里集中修改用的画布视图。工作台另外还装着存量页，那是文章模型之外的原型页，相关的词放在本文最后一节。
 
 **project（项目）** · `<project 根>/docs/pinpoint/project.json`；读取 `src/server/lib/projects.js` 的 `listProjects`
-一组相关文章和 concept 的家，id 是所有网址的第一段：`/<project>/`（首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
-要避开：拿 project 指存量页或 board。
+装一批相关文章和 concept 的容器，像一个文件夹：承载信息的是文章，project 只负责把它们归在一起（ADR 0044）。读者面前不显示 project 的标题，只在 blog 首页和文章标题下放一个小标签，点进 `/<project>/` 这个文件夹的文章列表；所以 title 只写短名字（Vault、Areta browser use），不写成一句描述。id 是所有网址的第一段：`/<project>/`（project 首页）、`/<project>/<article>/`、`/<project>/concepts/<slug>/`、`/<project>/llms.txt`。project 住在它所属的仓库或 topic 里，用 `ppnt new project <根>` 建出骨架并登记一次（手写的 project 用 `pinpoint add <根> --project` 登记），之后加文章用 `ppnt new article <project>/<article>`，不用再登记。
+要避开：拿 project 指存量页或 board；把 project 当成文章的上级主题去写导语或描述。
 
 **article（文章）** · `<project 根>/docs/pinpoint/articles/<article id>/index.mdx`
 一篇设计文档，写成 MDX，形态像 blog post，任何人拿到链接就能读。文章是 owner 与 agent 对齐设计的权威：task 和 ADR 是它的投影，实现时改了机制就回来改文章。一篇文章的帧、组件、样式和资源都放在自己的目录里。
 要避开：拿 doc 指文章（doc 是存量页的一种舞台形态）；拿“页”指文章（页 id 是文章的一个地址，见下）。
 
 **文章页** · 网址 `/<project>/<article>/`；渲染在 `site/`（Astro）
-读者读一篇文章的网页：左边是目录，中间是正文和画布卡片，右边是评论栏。目录和节标题前显示节号 1、2、3。顶栏的“概念”打开概念抽屉，列出本篇引用的 concept 和空 ref；有画布的文章，顶栏还有“画布视图”。
+读者读一篇文章的网页：左边是目录，中间是正文和画布卡片，右边是评论栏。目录和节标题前显示节号 1、2、3。顶栏左边是回首页的“全部文章”，不显示 project 标题；project 是标题下的小标签。浏览器标签页的标题只有文章标题。顶栏的“概念”打开概念抽屉，列出本篇引用的 concept 和空 ref；有画布的文章，顶栏还有“画布视图”。
 要避开：把文章页和画布视图混称“文章画布”。
+
+**首页（全部文章）** · 网址 `/`；`site/src/pages/index.astro`，排序 `src/shared/article-feed.js`
+blog 式的文章列表：所有登记 project 的全部文章，最近改过的在前（frontmatter 写了 `date` 用它，否则用 `index.mdx` 的修改时间）。每条是标题、summary、所属 project 的小标签和日期。顶栏的“工作台”进工作台。
+要避开：拿“首页”单指 project 首页 `/<project>/`（那是一个文件夹里的文章列表，说“project 首页”）。
 
 **section（节）** · `index.mdx` 里的 `<Section id title>`；结构由 `src/shared/article-structure.js` 的 `articleStructure` 数出
 文章正文的一节。带画布组件的节同时是画布视图里的一行，两者是同一个东西：同一个 id，同一个顺序。`id` 在本篇内唯一，也是网页锚点和画布视图的定位参数 `&section=<id>`。纯文字的节只出现在文章页，不进画布视图。
@@ -52,12 +56,12 @@ pinpoint 是一个本地服务：agent 把设计写成文章，owner 和其他�
 在文章页上看一节帧的浮层，像看大图：这一节的帧按同一缩放并排，帧可以点、可以操作，左右键在有画布的节之间切换（纯文字的节跳过），Esc 关闭，不离开文章页。浮层里不做标注。
 要避开：单说 overlay（board-schema 里 overlay 指 iOS 的 sheet、tabbar，标注客户端里 `#ann-overlay` 是钉子层）。
 
-**画布视图** · 工作台 `/?page=<页 id>`，加 `&section=<节 id>` 落到那一节；board 由 `src/server/lib/article-board.js` 的 `deriveArticleBoard` 从正文派生
+**画布视图** · 工作台 `/workbench/?page=<页 id>`，加 `&section=<节 id>` 落到那一节；board 由 `src/server/lib/article-board.js` 的 `deriveArticleBoard` 从正文派生
 一篇文章的全部带画布的节按行排开的那张大画布，一行一节，用来集中修改和做画布标注。它由 `index.mdx` 自动生成，作者不写 board.json。文章页顶栏的“画布视图”、卡片的“打开画布 →”、工作台左栏的文章行都打开它。没有画布节的文章没有画布视图。
 要避开：“画布页”“文章画布页”“文章画布”（指同一个东西，统一说画布视图）；拿“页”单指它；单说“画布”而不说明是画布组件、画布卡片还是画布视图。
 
 **页 id** · `src/shared/project-ids.js` 的 `articlePageId(projectId, articleId)`
-工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
+工作台和标注桶用的地址。一篇文章的页 id 是 `<project>_<article>`（如 `browser-use_payment-confirm`）：画布视图用它打开（`/workbench/?page=`），这篇的画布标注和正文评论都进它的桶。`ppnt` 里文章写成斜杠形 `<project>/<article>`，页 id 也认，输出一律打斜杠形（见“引用地址”）。没有画布的文章也有页 id，正文评论照样进它的桶。project id 和 article id 都不含 `_`，所以拆分无歧义。存量页的页 id 是它自己的 id。
 要避开：拿 project id 当页 id（project 本身没有桶）。代码和 CLI 里它叫 page / entry：`@page:`、`?page=`、`pageId`、标注字段 `entry`、`?entry=`、`window.__pinpointEntry`。代码里的 `entry` 还指 board 条目和 registry 条目，在存量页一节。
 
 **节号与编号** · 节号由 remark 步骤 `src/shared/remark-pinpoint.js` 编；编号由 `src/workbench/lib/board-refs.js` 的 `boardRefs` 现算
@@ -108,7 +112,7 @@ owner 在文章页上选中一段正文写下的评论，出现在右边评论�
 表面已经不存在的账本：文章目录删了或改了名、project 不再登记（整桶）；文章的 HTML 帧移出了 Canvas、源文件删了或服务不出、存量页的文件删了或页不在了。`ppnt comments` 把它们单独列出，不计数。桶目录在盘上就能读写：pending 的孤儿照样用 `ppnt mark` / `reply` 回，整桶孤儿也一样；任何写入都不新建页已不在的桶。清理只经 `ppnt prune <页 id>`，由 owner 决定，页已不在时连桶目录一起删。
 要避开：以为孤儿只能删、不能回；agent 替 owner 去 prune。
 
-**工作台（workbench）** · `https://pinpoint.localhost/`（`index.html`）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
+**工作台（workbench）** · `https://pinpoint.localhost/workbench/`（壳页是仓库根的 `index.html`；旧地址 `/?page=…`、`/index.html` 跳过来）；左栏 `src/workbench/app/Sidebar.jsx`、`ArticlesSection.jsx`
 看画布视图和存量页、做画布标注的那个应用：满屏画布，左栏浮动面板，底部横条，右栏标注列表。左栏“页面”tab 里有两组：上面“文章”组按 project 列出每篇文章，点有画布的文章行打开它的画布视图，没有画布的在新标签页打开文章页，行尾“阅读”钮总是在新标签页打开文章页；下面“页面”组列存量页（置顶、最近、全部页）。
 要避开：“Pages”单指工作台（Pages 列表只是“页面”组）。
 

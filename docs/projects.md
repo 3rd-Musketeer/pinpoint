@@ -1,6 +1,7 @@
 # project：目录、登记与读取
 
 project 是文章模型的顶层：一个 project 下面有多篇 article（设计文档）和多个 concept（wiki 词条）。
+project 只是装一批文章的容器，承载信息的是文章（ADR 0044）：读者面前不显示 project 标题，`title` 只写短名字。
 一个 project 在 registry 里登记成一条 `kind: "project"` 的条目，`path` 是 project 根目录，
 内容住在根目录下的 `docs/pinpoint/`。article 与 concept 的定义见 [`CONTEXT.md`](../CONTEXT.md)。
 
@@ -10,7 +11,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 
 ```text
 <project 根>/docs/pinpoint/
-  project.json                 # { "id": "browser-use", "title": "…", "sources": {…} }
+  project.json                 # { "id": "browser-use", "title": "Areta browser use", "sources": {…} }
   articles/<article id>/
     index.mdx                  # 正文，frontmatter 写 title、summary、order
     <帧 id>.jsx
@@ -22,7 +23,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
   components/<Name>.jsx        # project 内共用；跨 project 进 kit
 ```
 
-- `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
+- `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题；它是一个短名字（Vault、Areta browser use），不写成一句描述。带全角或半角冒号、或超过 24 个字符时 `ppnt check` 给一条提示（`project_title_long`，不是错误）。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
 - article id 就是 `articles/` 下的目录名，同一个模式。`concepts` 不能当 article id，`/<project>/concepts/` 已被概念页占用。
 - 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
 - `concepts/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`，同时记一条布局错误。以 `.` 开头的名字忽略。
@@ -34,7 +35,7 @@ project 是文章模型的顶层：一个 project 下面有多篇 article（设�
 
 | 文件 | 字段 | 缺省 |
 | --- | --- | --- |
-| `articles/<id>/index.mdx` | `title`、`summary`（可选）、`order`（project 首页上的排序，可选） | `title` 缺省用 article id；没写 `order` 的排在后面，同序按 article id |
+| `articles/<id>/index.mdx` | `title`、`summary`（可选）、`order`（project 首页上的排序，可选）、`date`（`YYYY-MM-DD`，首页上的时间，可选） | `title` 缺省用 article id；没写 `order` 的排在后面，同序按 article id；`date` 缺省或写错时用 `index.mdx` 的修改时间（写错不报错） |
 | `concepts/<名字>.md` | `name`、`status`（占位 / 收敛中 / 已固定）、`boundary`（一句边界） | `name` 缺省用文件名 |
 
 每个值是单行字符串，可以用单引号或双引号包起来，不带引号时 ` #` 之后算注释。下面这些写法都记一条布局错误，该键不进结果、字段按缺省处理：
@@ -128,6 +129,7 @@ project 条目与存量页的条目共用 registry 的 id 命名空间（同一�
 }
 ```
 
+- 文章另带 `mtimeMs`（`index.mdx` 的修改时间），frontmatter 的 `date` 合法时带 `date`；首页用它们排序，见下面“首页”。
 - article 按 id、concept 按 `name` 用 `String.prototype.localeCompare`（运行环境的缺省 locale）排序。`summary`、`status`、`boundary` 没写时不出现。
 - 读取从不抛错。根目录不存在、缺 `docs/pinpoint/`、`project.json` 缺失或坏掉、id 与登记的不一致、撞名、frontmatter 看不懂、目录里放错东西，都写进这个 project 的 `errors`。每条是对象 `{ code, message, path?, section?, frame?, line? }`（`src/shared/project-errors.js`）：`code` 是种类，给程序分辨用；`message` 是显示的那句话；文章和概念的错误带 `path`，相对 `docs/pinpoint/`（`articles/x/index.mdx`、`articles/x`、`concepts/a.md`）；画布写法的错误另带 `section`、`frame`、`line`（见“画布视图”）。根目录、`docs/pinpoint/`、`project.json` 和撞名是 project 自己的错误，没有 `path`，根目录、`docs/pinpoint/`、`project.json` 这三处的 message 里写绝对路径，因为这三处本身就是相对路径的起点。拼成一行字只在显示的那一头做，用 `formatProjectError`：有 `path` 的写成 `articles/x/index.mdx：…`。`pinpoint list`、`/health`、站点错误条、工作台左栏的 tooltip 都这样显示。根目录或 `docs/pinpoint/` 不在时 `articles` 与 `concepts` 为空；`project.json` 坏了照样读文章。
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
@@ -144,6 +146,15 @@ project 条目与存量页的条目共用 registry 的 id 命名空间（同一�
 frontmatter 子集的解析器 `parseFrontmatter(text)` → `{ data, body, errors }` 在 `src/server/lib/frontmatter.js`。
 
 HTTP：`GET /api/projects` 返回 `listProjects` 的数组，`GET /api/projects/<id>` 返回一个 project，没登记 404。`GET /health` 的 `registry.projects` 是 project 条目数，顶层 `projects` 是 `{count, errors}`，errors 是给 `pinpoint status` 显示的字符串，每条是 `<project id>: ` 加 `formatProjectError` 的结果。
+
+## 首页
+
+网址 `/`（不带参数；带参数的 `/` 是旧的画布视图地址，302 到 `/workbench/`）。站点页面 `site/src/pages/index.astro`，排序是 `src/shared/article-feed.js` 的 `articleFeed`（纯函数，有单测）。
+
+- 列出所有登记 project 的全部文章，按最近修改时间倒序。一篇文章的时间：frontmatter 写了合法的 `date`（`YYYY-MM-DD`，按当天本地零点）就用它，否则用 `index.mdx` 的修改时间。时间相同按 project id、再按 article id。
+- 每条：文章标题（进文章页）、summary（没写就不出）、所属 project 的短名小标签（进 `/<project>/`，那个 project 的文章列表）、日期（`YYYY-MM-DD`，本地时区）。
+- project 首页 `/<project>/` 保留，是“这个文件夹里的文章”，仍按 `order` 排。
+- 顶栏右边的“工作台”进 `/workbench/`。首页不注入标注客户端。
 
 ## 画布视图
 
@@ -231,7 +242,7 @@ export default function ConfirmBare() {
 工作台左栏“页面”tab 分两组：上面“文章”组，下面“页面”组。“页面”组列存量页：置顶、最近与全部页。存量页是和文章并列的入口，两组长期并存（owner 2026-10-14 定）。
 
 - “文章”组读 `GET /api/projects`：每个登记的 project 是一行可折叠的标题（`project.json` 的 title），下面每篇文章一行，照 `listProjects` 的顺序。折叠是本机偏好 `prefs.articleProjectsCollapsed`。模型是 `src/workbench/lib/article-groups.js`，组件是 `src/workbench/app/ArticlesSection.jsx`。
-- 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的页 id）：点行在工作台打开画布视图 `<project>_<article>`，和 `/?page=` 是同一个，选中态与页面行一样。没有画布的文章：点行在新标签页打开文章页。
+- 有画布的文章（`canvasSections > 0`，且清单的 `articles` 认得它的页 id）：点行在工作台打开画布视图 `<project>_<article>`，和 `/workbench/?page=` 是同一个，选中态与页面行一样。没有画布的文章：点行在新标签页打开文章页。
 - 行尾“阅读”钮（tooltip“阅读正文”）在新标签页打开 `/<project>/<article>/`。常态不显示，行 hover 或键盘焦点进到行时出现。右键菜单有“阅读正文”，有画布的再加“复制 @page”。
 - project 有布局错误时，标题行尾显示错误个数，tooltip 列前三条。
 - 文章不归档、不置顶。画布视图不进“最近”，“最近”只算“页面”组里的存量页。
@@ -281,7 +292,7 @@ export default function ConfirmBare() {
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
-- 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
+- 帧卡片和画布浮层的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`，打开画布用 `/workbench/?page=<pageId>&section=<节 id>`，这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 - `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
 
 ## 图

@@ -16,7 +16,7 @@ whole `.html` page) and **figures** (`<Figure>`, diagrams the agent draws in SVG
   overlay (frames are interactive there); “打开画布 →” jumps to the canvas view. `[[name]]` links to
   another article or a concept; a link whose target does not exist yet (an empty ref) is allowed and
   shows the concepts or articles still missing.
-- 🖼️ **Canvas view** — the workbench at `/?page=<project>_<article>`. Every section with a canvas
+- 🖼️ **Canvas view** — the workbench at `/workbench/?page=<project>_<article>`. Every section with a canvas
   becomes one row of frames, referenced as A1, B3 (section letter + frame number; the nth section is
   the nth letter). It is generated from `index.mdx`; you never write it by hand.
 
@@ -62,7 +62,7 @@ They are a normal entry point next to articles: view, edit and annotate them as 
 brew install just         # once per machine
 npm install -g portless   # once per machine
 npm install
-just dev             # https://pinpoint.localhost/index.html
+just dev             # https://pinpoint.localhost/ (all articles); workbench at /workbench/
 ```
 
 [`Justfile`](Justfile) is the workflow entrypoint. Normal development runs through
@@ -155,7 +155,7 @@ ppnt migrate <page id> --project <root>  # copy a legacy page into an article, t
 AGENTS.md                    Agent entry — 开工读序 + 坑与约定 + 技能路由
 CONTEXT.md                   Vocabulary — one definition per word, with where it lives in code
 docs/                        Rules and runbooks: projects, board-schema, registry, annotation, design; adr/ = decisions
-index.html                   WORKBENCH shell — full-bleed canvas + floating glass panel + bottom strip
+index.html                   WORKBENCH shell, served at /workbench/ (old / and /index.html URLs redirect there) — full-bleed canvas + floating glass panel + bottom strip
 site/                        Article site (Astro): article pages, concept pages, [[ ]] refs, llms.txt
 
 src/                         pinpoint itself — the disk layout moves, the served URLs never do
