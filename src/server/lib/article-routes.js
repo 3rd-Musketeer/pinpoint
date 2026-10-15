@@ -4,6 +4,8 @@
  * 原样交给 pinpoint 自己的中间件链。
  *
  * 地址空间（docs/design.md「服务路由」）：
+ *   /              不带参数 → 文章站点的 blog 首页（全部文章，ADR 0044）。带参数的 / 是旧的
+ *                  画布视图地址，先被 workbench-routes.js 302 到 /workbench/，到不了这里。
  *   /<project>/…   首段是登记过的 project id → 文章站点。路径原样，站点不设 base。
  *   /_astro/…      Astro 开发服务器自己的 vite 内部路径（/@vite/client、/src/…、
  *                  /@fs/…、/node_modules/.vite/…、HMR websocket）。pinpoint 本身
@@ -67,6 +69,7 @@ export function articleIdOfPath(pathname) {
  *   url          req.url（原样，含百分号编码与 query）
  *   isProject(id) project id 判定（通常是 (id) => isProjectId(registry, id)）
  * 返回 null（不归站点）或
+ *   { kind: 'home', project: null, article: null, upstream }  不带参数的 /（blog 首页）
  *   { kind: 'article', project, article, upstream }   project 下的一切路径；article =
  *                                             文章 id（文章页）或 null（首页、概念页…）
  *   { kind: 'internal', upstream }            Astro 的 vite 内部路径与 /_image
@@ -74,6 +77,9 @@ export function articleIdOfPath(pathname) {
  */
 export function routeArticleRequest(url, isProject) {
   const { pathname, search } = splitUrl(url);
+  if (pathname === '/' && (search === '' || search === '?')) {
+    return { kind: 'home', project: null, article: null, upstream: ASTRO_DEV_BASE };
+  }
   if (pathname === '/_astro' || pathname.startsWith('/_astro/')) {
     return { kind: 'internal', upstream: astroInternalUpstream(pathname) + search };
   }

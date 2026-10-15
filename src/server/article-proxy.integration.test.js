@@ -19,6 +19,7 @@ import { createServer } from 'vite';
 import articleProxy from './article-proxy.js';
 import { createSiteDevServer } from './lib/site-dev-server.js';
 import sitesApi from './sites-api.js';
+import workbenchRoutes from './workbench-routes.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
 const STUB = path.join(ROOT, 'src', 'server', 'fixtures', 'site-dev-stub.mjs');
@@ -122,7 +123,7 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     configFile: false,
     root: ROOT,
     logLevel: 'silent',
-    plugins: [articleProxy({ registry, devServer }), sitesApi({ registry })],
+    plugins: [workbenchRoutes(), articleProxy({ registry, devServer }), sitesApi({ registry })],
     optimizeDeps: { noDiscovery: true, entries: [] },
     server: { port: vitePort, strictPort: true, host: '127.0.0.1', watch: null },
   });
@@ -210,7 +211,31 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     assert.equal((await ownPost.json()).method, 'POST');
   });
 
-  await t.test('pinpoint 原有路由不受影响：/@vite/client、/sites/、未登记首段、/index.html', async () => {
+  await t.test('blog 首页与工作台：不带参数的 / 归站点、不注入；旧地址 302 到 /workbench/；/workbench/ 是工作台壳页', async () => {
+    const home = await fetch(`${origin}/`, { headers: HTML });
+    assert.equal(home.status, 200);
+    const homeBody = await home.text();
+    assert.match(homeBody, /<h1 id="stub-article">\/<\/h1>/);
+    assert.doesNotMatch(homeBody, /__pinpointEntry|annotate/);
+    for (const [from, to] of [
+      ['/?page=demo_intro&section=flow', '/workbench/?page=demo_intro&section=flow'],
+      ['/index.html?page=dir-entry', '/workbench/?page=dir-entry'],
+      ['/index.html', '/workbench/'],
+    ]) {
+      const res = await fetch(`${origin}${from}`, { headers: HTML, redirect: 'manual' });
+      assert.equal(res.status, 302, from);
+      assert.equal(res.headers.get('location'), to, from);
+      await res.text();
+    }
+    const shell = await fetch(`${origin}/workbench/?page=demo_intro`, { headers: HTML });
+    assert.equal(shell.status, 200);
+    const shellBody = await shell.text();
+    assert.match(shellBody, /<title>pinpoint<\/title>/);
+    assert.match(shellBody, /<base href="\/">/, '壳页里的相对地址（sites/…、previews/…）仍按站点根解析');
+    assert.doesNotMatch(shellBody, /stub-article/);
+  });
+
+  await t.test('pinpoint 原有路由不受影响：/@vite/client、/sites/、未登记首段', async () => {
     const client = await (await fetch(`${origin}/@vite/client`)).text();
     assert.doesNotMatch(client, /stub vite client/);
     assert.match(client, /createHotContext/);
@@ -219,9 +244,6 @@ test('文章代理：真 vite + 站点替身', async (t) => {
     assert.match(dir, /__pinpointEntry='dir-entry'/);
     const unknown = await (await fetch(`${origin}/not-a-project/`, { headers: HTML })).text();
     assert.doesNotMatch(unknown, /stub-article|站点启动中/);
-    const index = await fetch(`${origin}/index.html`);
-    assert.equal(index.status, 200);
-    assert.doesNotMatch(await index.text(), /stub-article/);
   });
 
   await t.test('站点死了：先给启动中页，自动重启后恢复', async () => {

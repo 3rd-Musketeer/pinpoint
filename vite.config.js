@@ -15,6 +15,7 @@ import previewHmr from './src/server/preview-hmr.js';
 import previewInject from './src/server/preview-inject.js';
 import contentRoutes from './src/server/content-routes.js';
 import articleProxy from './src/server/article-proxy.js';
+import workbenchRoutes from './src/server/workbench-routes.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
@@ -36,7 +37,8 @@ registryStore.reload = () => {
 const articles = articleProxy({ registry: registryStore, root: ROOT });
 
 export default defineConfig({
-  plugins: [react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
+  // workbenchRoutes 排最前：旧地址先 302 到 /workbench/，不带参数的 / 才轮到文章代理（blog 首页，ADR 0044）。
+  plugins: [workbenchRoutes(), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,

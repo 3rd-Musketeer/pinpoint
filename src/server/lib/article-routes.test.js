@@ -36,6 +36,13 @@ test('routeArticleRequest：登记过的 project 首段进站点，上游带 /_a
     '/_astro/demo/concepts/%E7%A1%AE%E8%AE%A4/?annotate=off');
 });
 
+test('routeArticleRequest：不带参数的 / 是 blog 首页，交给站点；带参数的 / 不归站点（旧画布视图地址）', () => {
+  const home = { kind: 'home', project: null, article: null, upstream: '/_astro/' };
+  assert.deepEqual(routeArticleRequest('/', () => false), home);
+  assert.deepEqual(routeArticleRequest('/?', () => false), home);
+  assert.equal(routeArticleRequest('/?page=demo_a', () => true), null);
+});
+
 test('articleIdOfPath：只有 /<project>/<article>/ 形状是文章页（注入正文评论的地方）', () => {
   for (const [p, want] of [
     ['/demo/intro/', 'intro'], ['/demo/intro', 'intro'], ['/demo/intro/index.html', 'intro'],
@@ -46,7 +53,7 @@ test('articleIdOfPath：只有 /<project>/<article>/ 形状是文章页（注入
 
 test('routeArticleRequest：没登记的首段、保留首段、pinpoint 自己的路由都不归站点', () => {
   assert.equal(routeArticleRequest('/unknown/x/', isProject), null);
-  for (const url of ['/', '/index.html', '/health', '/sites/demo/', '/api/frame?page=a', '/annotate.js',
+  for (const url of ['/?page=a', '/index.html', '/workbench/', '/health', '/sites/demo/', '/api/frame?page=a', '/annotate.js',
     '/@vite/client', '/@fs/Users/x.js', '/@id/react', '/node_modules/.vite/deps/react.js', '/src/main.js',
     '/kits/ios/ios-kit.js', '/previews/x/a.html', '/registry', '/events', '/__vite_ping']) {
     assert.equal(routeArticleRequest(url, () => true), null, url);
