@@ -88,3 +88,21 @@ test('registryEntry：有 resolve 用 resolve，只有 entries 的视图按 entr
   assert.deepEqual(registryEntry({ entries: [{ id: 'a', kind: 'dir' }] }, 'a'), { id: 'a', kind: 'dir' });
   assert.equal(registryEntry(null, 'a'), null);
 });
+
+test('文章目标：登记根的 symlink 可用，文章目录或正文越出真实登记根时拒绝', (t) => {
+  const { root, proj, registry } = fixture(t);
+  const articles = path.join(proj, 'docs/pinpoint/articles');
+  const outside = path.join(root, 'outside');
+  fs.mkdirSync(outside);
+  fs.writeFileSync(path.join(outside, 'index.mdx'), '# 私有正文');
+  fs.symlinkSync(outside, path.join(articles, 'escape'));
+  fs.mkdirSync(path.join(articles, 'linked-index'));
+  fs.symlinkSync(path.join(outside, 'index.mdx'), path.join(articles, 'linked-index/index.mdx'));
+  const alias = path.join(root, 'alias');
+  fs.symlinkSync(proj, alias);
+  const aliased = { projects: [{ id: 'demo', path: alias }] };
+  assert.ok(resolveArticleTarget(aliased, 'demo_notes'));
+  assert.equal(resolveArticleTarget(registry, 'demo_escape'), null);
+  assert.equal(resolveArticleTarget(registry, 'demo_linked-index'), null);
+  assert.deepEqual(listArticleTargets(registry).map((target) => target.articleId), ['notes']);
+});

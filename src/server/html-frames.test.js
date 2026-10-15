@@ -75,6 +75,29 @@ async function get(handler, url) {
   return res;
 }
 
+test('服务与文章清单：文章目录、正文的 symlink 不开放未登记目录', async (t) => {
+  const { dir, root, article, registry, pageId } = fixture(t);
+  const outside = path.join(dir, 'unregistered');
+  write(path.join(outside, 'index.mdx'), '---\ntitle: 私有文章\n---\n');
+  write(path.join(outside, 'private.txt'), 'UNREGISTERED_SECRET_C');
+  fs.symlinkSync(outside, path.join(path.dirname(article), 'escape'));
+  fs.unlinkSync(path.join(article, 'index.mdx'));
+  fs.symlinkSync(path.join(outside, 'index.mdx'), path.join(article, 'index.mdx'));
+  const handler = createSitesHandler({ registry });
+  for (const url of ['/sites/demo_escape/private.txt', `/sites/${pageId}/page.css`]) {
+    const res = await get(handler, url);
+    assert.equal(res.statusCode, 404, url);
+    assert.ok(!res.text.includes('UNREGISTERED_SECRET_C'));
+  }
+  assert.deepEqual(listProjects(registry).flatMap((project) => project.articles), []);
+  // 登记根本身可以是 symlink，真实根内的普通文章仍可读。
+  fs.unlinkSync(path.join(article, 'index.mdx'));
+  write(path.join(article, 'index.mdx'), '---\ntitle: 正常文章\n---\n');
+  fs.symlinkSync(root, path.join(dir, 'alias'));
+  const aliasRegistry = { projects: [{ id: 'demo', path: path.join(dir, 'alias') }], entries: [] };
+  assert.equal((await get(createSitesHandler({ registry: aliasRegistry }), `/sites/${pageId}/page.css`)).statusCode, 200);
+});
+
 test('正文写法：字符串帧可以是 .html，对象写法指 project 根下的文件；HTML 帧缺省 doc', (t) => {
   const { article, root, registry, pageId } = fixture(t);
   const target = resolveArticleTarget(registry, pageId);

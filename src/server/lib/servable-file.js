@@ -41,27 +41,34 @@ function realOf(file) {
   }
 }
 
-export function resolveServableFile(base, rel, { index = true } = {}) {
+/** 已解码的相对路径：文本路径与真实路径都必须留在登记根内。允许根自身是 symlink。 */
+export function resolveContainedPath(base, rel) {
   const value = String(rel == null ? '' : rel);
   if (!base || value.includes('\0')) return { reason: 'outside' };
   const root = path.resolve(base);
-  const abs = path.resolve(root, value);
-  if (!within(root, abs)) return { reason: 'outside' };
-  if (hiddenSegment(value)) return { reason: 'denied' };
+  const file = path.resolve(root, value);
+  if (!within(root, file)) return { reason: 'outside' };
   const realRoot = realOf(root);
-  if (!realRoot) return { reason: 'missing' };
-  let file = abs;
-  let real = realOf(abs);
-  if (!real) return { reason: 'missing' };
+  const real = realOf(file);
+  if (!realRoot || !real) return { reason: 'missing' };
   if (!within(realRoot, real)) return { reason: 'outside' };
+  return { file, real, realRoot };
+}
+
+export function resolveServableFile(base, rel, { index = true } = {}) {
+  const value = String(rel == null ? '' : rel);
+  const resolved = resolveContainedPath(base, value);
+  if (resolved.reason) return resolved;
+  if (hiddenSegment(value)) return { reason: 'denied' };
+  const { realRoot } = resolved;
+  let { file, real } = resolved;
   if (deniedRelative(realRoot, real)) return { reason: 'denied' };
   let stat = fs.statSync(real);
   if (stat.isDirectory()) {
     if (!index) return { reason: 'missing' };
-    file = path.join(abs, 'index.html');
-    real = realOf(file);
-    if (!real) return { reason: 'missing' };
-    if (!within(realRoot, real)) return { reason: 'outside' };
+    const child = resolveContainedPath(base, path.join(value, 'index.html'));
+    if (child.reason) return child;
+    ({ file, real } = child);
     if (deniedRelative(realRoot, real)) return { reason: 'denied' };
     stat = fs.statSync(real);
   }

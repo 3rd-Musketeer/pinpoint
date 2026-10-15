@@ -26,6 +26,7 @@ import path from 'node:path';
 import { articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
 import { loadProjectSources } from './project-sources.js';
 import { projectEntries, projectEntry, registryEntry } from './registry.js';
+import { resolveContainedPath } from './servable-file.js';
 
 /** project 根下的内容目录（相对路径）。 */
 export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
@@ -49,6 +50,8 @@ function articleTarget(entry, articleId, pageId) {
   const projectDir = path.join(path.resolve(entry.path), PROJECT_CONTENT_DIR);
   const articleDir = path.join(projectDir, 'articles', articleId);
   const articleFile = path.join(articleDir, 'index.mdx');
+  if (resolveContainedPath(entry.path, path.relative(entry.path, articleDir)).reason
+    || resolveContainedPath(entry.path, path.relative(entry.path, articleFile)).reason) return null;
   if (!isFile(articleFile)) return null;
   return {
     entryId: pageId,

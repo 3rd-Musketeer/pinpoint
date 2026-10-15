@@ -28,6 +28,7 @@ import { readProjectSources } from './project-sources.js';
 import { manifestPageIds } from './page-manifest.js';
 import { PROJECT_CONTENT_DIR } from './page-resolve.js';
 import { projectEntries, projectEntry } from './registry.js';
+import { resolveContainedPath } from './servable-file.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -131,6 +132,15 @@ function readArticles(dir, errors, projectId, sources = {}) {
     }
     const articleDir = path.join(articlesDir, item.name);
     const file = path.join(articleDir, 'index.mdx');
+    const projectRoot = path.resolve(dir, '..', '..');
+    const reason = resolveContainedPath(projectRoot, path.relative(projectRoot, articleDir)).reason
+      || resolveContainedPath(projectRoot, path.relative(projectRoot, file)).reason;
+    if (reason) {
+      errors.push(reason === 'outside'
+        ? problem('article_outside', '文章目录与 index.mdx 必须位于登记的 project 根内', { path: rel })
+        : problem('article_index_missing', '缺 index.mdx', { path: rel }));
+      continue;
+    }
     const text = readText(file);
     if (text === null) {
       errors.push(problem('article_index_missing', '缺 index.mdx', { path: rel }));
