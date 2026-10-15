@@ -9,7 +9,7 @@ import {
   isProseRow,
   isSendKey,
   newProseRow,
-  railGroups,
+  railOrder,
   threadMessages,
 } from './prose-thread.js';
 
@@ -80,8 +80,8 @@ test('formatWhen：刚刚 / 分钟前 / 当天时分 / 月日时分；坏值为�
   assert.equal(formatWhen('nope', now), '');
 });
 
-test('railGroups：未关闭在上、close 在下；各按正文位置排，同位或失效按 #n，没发号的最后', () => {
-  const pos = { a: 30, b: 10, c: Infinity, d: 5, e: 10, f: Infinity };
+test('railOrder：按正文位置排，已关闭的留在原位；同位或失效按 #n，没发号的最后', () => {
+  const pos = { a: 30, b: 10, c: Infinity, d: 5, e: 10, f: Infinity, g: Infinity };
   const rows = [
     { id: 'a', n: 1, status: 'open' },
     { id: 'b', n: 4, status: 'done' },
@@ -89,15 +89,12 @@ test('railGroups：未关闭在上、close 在下；各按正文位置排，同�
     { id: 'd', n: 3, status: 'close' },
     { id: 'e', n: 2, status: 'open' },
     { id: 'f', status: 'open' },
-    { id: 'g', n: 6 },
+    { id: 'g', n: 6, status: 'close' },
   ];
-  pos.g = Infinity;
   const before = rows.slice();
-  const { open, closed } = railGroups(rows, (row) => pos[row.id]);
-  assert.deepEqual(open.map((r) => r.id), ['e', 'b', 'a', 'c', 'g', 'f']);
-  assert.deepEqual(closed.map((r) => r.id), ['d']);
+  assert.deepEqual(railOrder(rows, (row) => pos[row.id]).map((r) => r.id), ['d', 'e', 'b', 'a', 'c', 'g', 'f']);
   assert.deepEqual(rows, before);
-  assert.deepEqual(railGroups(null), { open: [], closed: [] });
+  assert.deepEqual(railOrder(null), []);
 });
 
 test('isProseClosed：只有 close 算关闭，done / check / 没写状态都不算', () => {

@@ -102,7 +102,7 @@ zsh 里单独的 `#3` 要加引号。
 - 看了但不改，包括只回答、没改文件 → `check`。改完 → `done`。
 - 只回一句、状态不动：`ppnt reply browser-use/payment-confirm#3 "<回复>"`，一次回一条，三种条目都可以。
 - 服务端按 `baseRevision` 校验：冲突或非法转换逐条报 409，不影响其余条目，按提示重读再写。
-- open、check、done 三态都在等 owner 验收：画布列表把它们放在 pending 段，文章右栏把它们放在列表里。只有 owner 点了完成的 close 进画布列表的 closed 段，在文章右栏折进底部的“已关闭”。
+- open、check、done 三态都在等 owner 验收：画布列表把它们放在 pending 段，文章右栏把它们放在列表里。只有 owner 点了完成的 close 进画布列表的 closed 段，在文章右栏留在原位收成一行。
 - CLI 只写 check 和 done：owner 编辑正文、目标，或在线程里回复时，条目自动回 open；close 只有 owner 在
   工作台或文章右栏做。
 

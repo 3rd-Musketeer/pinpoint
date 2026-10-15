@@ -31,7 +31,7 @@ import {
   isSendKey,
   newProseRow,
   PROSE_LEDGER,
-  railGroups,
+  railOrder,
   threadMessages,
 } from '../shared/prose-thread.js';
 import { ANN_STATUS_COLORS } from '../shared/ann-status.js';
@@ -201,7 +201,7 @@ export function startProseComments(options) {
   var retryTimer = 0;
   var connection = 'connecting'; // connecting | online | offline
   var syncError = '';
-  var stackOpen = false;  // 已关闭的那一摞是否展开（不记盘：每次打开文章都收着）
+  var expanded = new Set(); // 展开了的已关闭线程 id（不记盘：每次打开文章都收着）
   var replyOpen = new Set(); // 展开了回复框的线程 id
   var replyText = {};     // 线程 id -> 回复框里的字（框收起后草稿也留着）
   var focusedId = null;
@@ -441,9 +441,9 @@ export function startProseComments(options) {
   });
 
   // ---------- 锚点与高亮 ----------
-  // 已关闭的线程只在那一摞展开时画高亮：收着时正文里只剩还要处理的。
+  // 已关闭的线程收着时不画高亮，展开那一条才画：正文里只剩还要处理的。
   function visible(row) {
-    return stackOpen || !isProseClosed(row);
+    return !isProseClosed(row) || expanded.has(row.id);
   }
 
   function paint() {
@@ -524,7 +524,20 @@ export function startProseComments(options) {
     }).join('') + '</div>';
   }
 
+  // 已关闭的线程留在原位收成一行：序号钉 + “已关闭” + 引文开头，点开成完整卡片，再点收回。
+  function collapsedHtml(row) {
+    var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
+    var color = ANN_STATUS_COLORS.close;
+    return '<div class="pp-thread pp-closed" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="close">'
+      + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'
+      + '<span class="pp-n" style="background:' + color + '">' + esc(n) + '</span>'
+      + '<span class="pp-closed-word">已关闭</span>'
+      + '<span class="pp-closed-peek">' + esc(String((row.quote && row.quote.exact) || '')) + '</span>'
+      + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
+  }
+
   function threadHtml(row) {
+    if (isProseClosed(row) && !expanded.has(row.id)) return collapsedHtml(row);
     var anchor = anchors.get(row.id);
     var stale = anchor === null && anchors.has(row.id);
     var closed = (row.status || 'open') === 'close';
@@ -541,7 +554,9 @@ export function startProseComments(options) {
     return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
       + '<div class="pp-meta">' + statusChip(row)
       + (stale ? '<span class="pp-stale" title="正文里找不到这段引文了">失效</span>' : '')
-      + '<span class="sp"></span>' + act + '</div>'
+      + '<span class="sp"></span>' + act
+      + (isProseClosed(row) ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
+      + '</div>'
       + quoteHtml(row.quote && row.quote.exact)
       + messagesHtml(row)
       + reply
@@ -559,19 +574,6 @@ export function startProseComments(options) {
   function orderKey(row) {
     var a = anchors.get(row.id);
     return a ? a.start : Infinity;
-  }
-
-  // 已关闭的那一摞：收着时是一张露出两道边的卡（“已关闭 N” + 最上面那条的引文），
-  // 点开成正常列表，栏头再点收回。
-  function stackHtml(closed) {
-    if (!closed.length) return '';
-    var head = '<button type="button" class="pp-stack-head" data-act="toggle-stack" aria-expanded="' + stackOpen + '">'
-      + '<span class="pp-stack-label">已关闭 <span class="c">' + closed.length + '</span></span>'
-      + (stackOpen ? '' : '<span class="pp-stack-peek">' + esc(String((closed[0].quote && closed[0].quote.exact) || '')) + '</span>')
-      + '<span class="pp-stack-chev" aria-hidden="true"></span></button>';
-    if (!stackOpen) return '<div class="pp-stack" data-count="' + closed.length + '">' + head + '</div>';
-    return '<div class="pp-stack open" data-count="' + closed.length + '">' + head
-      + '<div class="pp-stack-list">' + closed.map(threadHtml).join('') + '</div></div>';
   }
 
   function renderRail() {
@@ -592,16 +594,16 @@ export function startProseComments(options) {
         else delete replyText[key];
       }
     }
-    var groups = railGroups(rows, orderKey);
+    var ordered = railOrder(rows, orderKey);
     var list = '';
     var draftPlaced = false;
     var draftKey = draft ? draft.start : Infinity;
-    groups.open.forEach(function (row) {
+    ordered.forEach(function (row) {
       if (draft && !draftPlaced && orderKey(row) > draftKey) { list += draftHtml(); draftPlaced = true; }
       list += threadHtml(row);
     });
     if (draft && !draftPlaced) list += draftHtml();
-    var empty = !groups.open.length && !draft
+    var empty = !ordered.length && !draft
       ? '<p class="empty-rail">选中正文里的一段文字，点“评论”。</p>'
       : '';
     var note = connection === 'offline'
@@ -609,7 +611,6 @@ export function startProseComments(options) {
       : (syncError || '');
     rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div></div>'
       + '<div class="pp-threads">' + list + '</div>' + empty
-      + stackHtml(groups.closed)
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
     Object.keys(keep).forEach(function (id) {
       var area = railArea(id);
@@ -767,13 +768,17 @@ export function startProseComments(options) {
     replyOpen.delete(id);
   }
 
-  function toggleStack() {
-    stackOpen = !stackOpen;
-    if (!stackOpen && focusedId && rows.some(function (r) { return r.id === focusedId && isProseClosed(r); })) focusedId = null;
+  function setExpanded(id, open) {
+    if (open) expanded.add(id);
+    else {
+      expanded.delete(id);
+      if (focusedId === id) focusedId = null;
+    }
     render();
   }
 
   function setStatus(id, status) {
+    expanded.delete(id); // 点完成就地收起；重新打开后下次再关也从收着开始
     enqueue({ op: 'status', id: id, status: status });
   }
 
@@ -847,7 +852,6 @@ export function startProseComments(options) {
   });
 
   rail.addEventListener('click', function (e) {
-    if (e.target.closest('[data-act="toggle-stack"]')) { toggleStack(); return; }
     var thread = e.target.closest('.pp-thread');
     if (!thread) return;
     var id = thread.getAttribute('data-id');
@@ -858,6 +862,8 @@ export function startProseComments(options) {
       else if (what === 'cancel-draft') cancelDraft();
       else if (what === 'reply') sendReply(id);
       else if (what === 'open-reply') openReply(id);
+      else if (what === 'expand') setExpanded(id, true);
+      else if (what === 'collapse') setExpanded(id, false);
       else if (what === 'close') setStatus(id, 'close');
       else if (what === 'reopen') setStatus(id, 'open');
       return;

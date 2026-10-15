@@ -16,8 +16,8 @@ import { waitNoReload } from './site-settle.js';
 //
 // 一个用例走完（Astro 冷启动只发生一次）：选字 → 评论 → 刷新仍在 → ppnt comments 看得到 →
 // ppnt reply / mark 在右栏实时出现 → owner 点“回复”回一句（Enter 发送、发完收框）回 open →
-// 回复框的收起与草稿 → 保存被拒时原文退回 → bfcache 返回、SSE 断线后右栏照样同步 → 完成的进
-// “已关闭”那一摞 → 改折行仍定位 → 改正文后重新定位 → 引文没了标失效。
+// 回复框的收起与草稿 → 保存被拒时原文退回 → bfcache 返回、SSE 断线后右栏照样同步 → 完成的在
+// 原位收成一行、点开再收回 → 改折行仍定位 → 改正文后重新定位 → 引文没了标失效。
 
 const ARTICLE = '/e2e-prose/notes/';
 const PAGE_ID = 'e2e-prose_notes';
@@ -324,33 +324,32 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
       }
     });
 
-    await test.step('完成 → 进“已关闭”那一摞（收着，高亮也收起）；展开看得到、再点收回；重新打开回到列表', async () => {
-      const stack = page.locator('.pp-stack');
-      await expect(stack).toHaveCount(0);
+    await test.step('完成 → 原位收成一行（高亮也收起）；点开成完整卡片、再点收回；重新打开回到普通卡片', async () => {
+      const order = () => page.locator('#rail .pp-thread').evaluateAll((els) => els.map((el) => el.getAttribute('data-n')));
+      const before = await order();
+      expect(before).toEqual([String(second), String(first)]);
       await thread(second).getByRole('button', { name: '完成' }).click();
-      await expect(thread(second)).toHaveCount(0);
+      const row = thread(second).locator('.pp-closed-row');
+      await expect(row).toHaveAttribute('aria-expanded', 'false');
+      await expect(row).toContainText('已关闭');
+      await expect(thread(second).locator('.pp-closed-peek')).toHaveText('始终知道钱什么时候会被扣');
+      await expect(thread(second).locator('.msg')).toHaveCount(0);
       await expect(page.locator('#why mark.pp-hl')).toHaveCount(0);
-      await expect(stack.locator('.pp-stack-label')).toHaveText('已关闭 1');
-      await expect(stack.locator('.pp-stack-peek')).toHaveText('始终知道钱什么时候会被扣');
-      // 一列：未关闭的在上，那一摞在下。
-      const below = await page.evaluate(() => {
-        const last = [...document.querySelectorAll('.pp-threads > .pp-thread')].at(-1).getBoundingClientRect();
-        return document.querySelector('.pp-stack').getBoundingClientRect().top >= last.bottom;
-      });
-      expect(below, '那一摞在未关闭线程的下面').toBe(true);
-      const head = stack.locator('.pp-stack-head');
-      await head.click();
-      await expect(head).toHaveAttribute('aria-expanded', 'true');
+      expect(await order(), '收起的那条留在原位').toEqual(before);
+      await row.click();
       await expect(thread(second)).toHaveAttribute('data-status', 'close');
+      await expect(thread(second).locator('.msg .text').first()).toHaveText('这句太长');
       await expect(page.locator('#why mark.pp-hl')).toHaveText('始终知道钱什么时候会被扣');
-      await head.click();
-      await expect(thread(second)).toHaveCount(0);
+      expect(await order()).toEqual(before);
+      await thread(second).getByRole('button', { name: '收起' }).click();
+      await expect(thread(second).locator('.pp-closed-row')).toHaveAttribute('aria-expanded', 'false');
       await expect(page.locator('#why mark.pp-hl')).toHaveCount(0);
-      await head.click();
+      await thread(second).locator('.pp-closed-row').click();
       await thread(second).getByRole('button', { name: '重新打开' }).click();
-      await expect(stack).toHaveCount(0);
-      await expect(page.locator('.pp-threads > .pp-thread[data-n="' + second + '"]')).toHaveAttribute('data-status', 'open');
+      await expect(thread(second)).toHaveAttribute('data-status', 'open');
+      await expect(thread(second).locator('.pp-closed-row')).toHaveCount(0);
       await expect(page.locator('#why mark.pp-hl')).toHaveText('始终知道钱什么时候会被扣');
+      expect(await order()).toEqual(before);
       await proseSettled(page);
     });
 

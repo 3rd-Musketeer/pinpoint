@@ -110,21 +110,16 @@ export function isProseClosed(row) {
 }
 
 /**
- * 右栏一列的分组：未关闭的在上，已关闭的在下（右栏把它们叠成一摞）。两组各按
- * orderKey(row)（正文里的位置，定位不到给 Infinity）排，同位或都定位不到时按 #n，
- * 还没发号的排最后。不改传入数组。
+ * 右栏一列的顺序：按 orderKey(row)（正文里的位置，定位不到给 Infinity）排，同位或都
+ * 定位不到时按 #n，还没发号的排最后。已关闭的不挪位置，留在原处收成一行。不改传入数组。
  */
-export function railGroups(rows, orderKey = () => Infinity) {
+export function railOrder(rows, orderKey = () => Infinity) {
   const list = Array.isArray(rows) ? rows.filter(Boolean) : [];
-  const sorted = list.slice().sort((a, b) => {
+  return list.slice().sort((a, b) => {
     const d = orderKey(a) - orderKey(b);
     if (d !== 0 && !Number.isNaN(d)) return d;
     return (Number.isInteger(a.n) ? a.n : Infinity) - (Number.isInteger(b.n) ? b.n : Infinity) || 0;
   });
-  return {
-    open: sorted.filter((row) => !isProseClosed(row)),
-    closed: sorted.filter(isProseClosed),
-  };
 }
 
 /**
