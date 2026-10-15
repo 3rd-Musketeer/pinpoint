@@ -219,6 +219,8 @@ export function startProseComments(options) {
   var pendingSel = null;
   var selectionChecks = 0; // 判过几次选区（测试用的可观察信号）
   var lastOffered = false;
+  var composingArea = null;
+  var railDirty = false;
 
   // ---------- 同步 ----------
   // 两本账本，同一个桶：@prose 是正文评论；@canvas 是这篇画布上的标注，右栏按卡片位置穿插进来、
@@ -576,6 +578,9 @@ export function startProseComments(options) {
   }
 
   function renderRail() {
+    // value 和选区不能恢复浏览器的 composition 会话；所有更新合并到组字结束后重画。
+    if (composingArea && composingArea.isConnected) { railDirty = true; return; }
+    railDirty = false;
     // 重画前记下输入框的内容与光标，重画后放回（SSE 推来 agent 回复时正在打字）。
     var keep = {};
     var active = document.activeElement;
@@ -793,6 +798,15 @@ export function startProseComments(options) {
   }
 
   // ---------- 事件 ----------
+  rail.addEventListener('compositionstart', function (e) {
+    if (e.target.matches('textarea[data-reply]')) composingArea = e.target;
+  });
+  rail.addEventListener('compositionend', function (e) {
+    if (e.target !== composingArea) return;
+    composingArea = null;
+    // 浏览器在 compositionend 后才提交最后一次 input；等这批输入事件完成再保存 value 与光标。
+    setTimeout(function () { if (railDirty) renderRail(); }, 0);
+  });
   // 鼠标松开、Shift+方向键立即判；触屏拖选手柄没有 mouseup，靠 selectionchange 停下来之后再判。
   var pointerDown = false;
   var selTimer = 0;
@@ -829,7 +843,7 @@ export function startProseComments(options) {
   // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
   // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || composingArea) return;
     // 焦点在回复框里：Esc 只收起这个框，写了一半的字留作草稿。
     var replyArea = document.activeElement && document.activeElement.closest
       && document.activeElement.closest('textarea[data-reply]:not([data-reply="__draft"])');
