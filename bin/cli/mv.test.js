@@ -12,6 +12,7 @@ import test from 'node:test';
 import { REPO_ROOT } from './core.js';
 import { classifyMv } from './mv.js';
 import { articleCanvas } from '../../src/server/lib/article-board.js';
+import { createAnnotationStore } from '../../src/server/lib/annotation-store.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { pageKeyFromPathname } from '../../src/shared/annotate-page-key.js';
 import { annotationSlug } from '../../src/shared/annotation-slug.js';
@@ -71,6 +72,68 @@ const runIn = (made, argv) => {
 
 const articleDir = (root, id) => path.join(root, 'docs', 'pinpoint', 'articles', id);
 const readJson = (file) => JSON.parse(fs.readFileSync(file, 'utf8'));
+
+for (const scenario of ['new-ledger', 'existing-ledger', 'new-image', 'changed-image', 'project-new-ledger', 'late-ledger']) {
+  test(`V1：${scenario} 并发保存后搬迁失败，保留新反馈、整个现场与恢复副本`, async (t) => {
+    const made = fixture(t);
+    const project = scenario.startsWith('project');
+    const fromBucket = path.join(made.data, 'e2e-project_commit-confirm');
+    const toBucket = path.join(made.data, project ? 'renamed_commit-confirm' : 'e2e-project_renamed');
+    if (scenario !== 'existing-ledger') fs.unlinkSync(path.join(fromBucket, '@prose.json'));
+    const image = path.join(fromBucket, 'images', '@canvas-1-1.png');
+    fs.mkdirSync(path.dirname(image));
+    fs.writeFileSync(image, 'original image');
+    const original = fs.readFileSync(path.join(fromBucket, '@canvas.json'));
+    const write = fs.writeFileSync;
+    let injected = false;
+    let savedFile;
+    let savedBytes;
+    const imageOnly = scenario.endsWith('image');
+    t.mock.method(fs, 'writeFileSync', (file, ...args) => {
+      const failHere = scenario === 'late-ledger'
+        ? String(file).endsWith('/manifest.json') && String(args[0]).includes('账本与附件地址') && JSON.parse(args[0]).active === null
+        : String(file).startsWith(toBucket + path.sep) && String(file).includes('@canvas.json.rename-');
+      if (!injected && failHere) {
+        injected = true;
+        const store = createAnnotationStore({ dataDir: toBucket });
+        if (!imageOnly) {
+          const current = scenario === 'existing-ledger' ? readJson(path.join(toBucket, '@prose.json')) : { revision: 0, annotations: [] };
+          const saved = store.save({ page: '@prose', baseRevision: current.revision, path: '/e2e-project/renamed/',
+            annotations: [...current.annotations, { id: 'concurrent', type: 'prose', content: '搬迁期间收到的新反馈', quote: { exact: '提交' } }] });
+          assert.equal(saved.status, 200, '并发反馈必须真实保存成功');
+          assert.ok(readJson(path.join(toBucket, '@prose.json')).annotations.some((row) => row.id === 'concurrent'));
+        }
+        if (scenario === 'new-image') savedFile = store.writeImage('@prose', 'png', Buffer.from('concurrent image')).path;
+        if (scenario === 'changed-image') {
+          savedFile = path.join(toBucket, 'images', path.basename(image));
+          write(savedFile, 'concurrent image');
+        }
+        if (savedFile) savedBytes = fs.readFileSync(savedFile);
+        throw Object.assign(new Error('injected ledger write failure'), { code: 'EACCES' });
+      }
+      return write(file, ...args);
+    });
+    const result = await runIn(made, project ? ['mv', 'e2e-project', 'renamed'] : ['mv', 'e2e-project/commit-confirm', 'e2e-project/renamed']);
+    assert.ok(injected);
+    assert.equal(result.code, 1);
+    if (!imageOnly) {
+      const live = path.join(toBucket, '@prose.json');
+      assert.ok(fs.existsSync(live), '成功保存的新反馈必须仍可读取');
+      assert.ok(readJson(live).annotations.some((row) => row.id === 'concurrent' && row.content === '搬迁期间收到的新反馈'));
+    }
+    if (savedFile) {
+      assert.ok(fs.existsSync(savedFile), '单独新增或改写的附件也必须保留');
+      assert.deepEqual(fs.readFileSync(savedFile), savedBytes);
+    }
+    assert.ok(!fs.existsSync(fromBucket), '冲突时保留整个现场，不开始恢复旧源桶');
+    assert.match(result.err.join('\n'), /内容.*冲突|并发.*变动/);
+    assert.match(result.err.join('\n'), /回滚未完成.*manifest.json/);
+    const recovery = fs.readdirSync(made.data).find((name) => name.startsWith('.mv-recovery-'));
+    const manifest = readJson(path.join(made.data, recovery, 'manifest.json'));
+    assert.equal(manifest.status, 'rollback-failed');
+    assert.deepEqual(fs.readFileSync(path.join(manifest.snapshots.find((item) => item.target === fromBucket).backup, '@canvas.json')), original);
+  });
+}
 
 test('classifyMv：按目标写法分派——文章、改 id、磁盘路径；写不通的给原因', () => {
   assert.deepEqual(classifyMv('a/b', 'c/d'), { kind: 'article', from: { project: 'a', article: 'b' }, to: { project: 'c', article: 'd' } });

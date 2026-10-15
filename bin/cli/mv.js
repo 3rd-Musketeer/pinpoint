@@ -232,7 +232,7 @@ async function moveArticle(classified, parsed, io) {
 
   let recovery;
   try {
-    recovery = beginMoveRecovery(plan.root, [plan.fromDir, plan.toDir, plan.bucketFrom, plan.bucketTo]);
+    recovery = beginMoveRecovery(plan.root, [plan.fromDir, plan.toDir, plan.bucketFrom, plan.bucketTo], { watchContents: [plan.bucketFrom, plan.bucketTo] });
     recovery.step('文章目录', () => moveDir(plan.fromDir, plan.toDir, recovery));
     const rewritten = recovery.step('文章资源地址', () => rewriteSitePrefixUnder(plan.toDir, plan.fromId, plan.toId, { exts: ARTICLE_SOURCE_EXTS }));
     let ledgers = [];
@@ -242,7 +242,7 @@ async function moveArticle(classified, parsed, io) {
         if (fs.existsSync(plan.bucketTo)) recovery.remove(plan.bucketTo);
         recovery.rename(plan.bucketFrom, plan.bucketTo);
       });
-      ledgers = recovery.step('账本与附件地址', () => rewriteMovedBucket(plan.bucketTo, plan.bucketMove));
+      ledgers = recovery.step('账本与附件地址', () => rewriteMovedBucket(plan.bucketTo, plan.bucketMove, recovery));
     }
     recovery.commit(err);
     out(`已搬 ${head}`);

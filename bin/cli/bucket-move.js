@@ -67,19 +67,19 @@ export function planMovedBucket(bucket, move) {
   return { files, images };
 }
 
-export function rewriteMovedBucket(bucket, move) {
+export function rewriteMovedBucket(bucket, move, { writeFile = fs.writeFileSync, rename = fs.renameSync, remove = (file) => fs.rmSync(file, { force: true }) } = {}) {
   const plan = planMovedBucket(bucket, move);
   for (const item of plan.files) {
     const target = path.join(bucket, item.to);
     const tmp = `${target}.rename-${process.pid}.tmp`;
     try {
-      fs.writeFileSync(tmp, item.content);
-      fs.renameSync(tmp, target);
+      writeFile(tmp, item.content);
+      rename(tmp, target);
     } finally {
-      fs.rmSync(tmp, { force: true });
+      remove(tmp);
     }
-    if (item.from !== item.to) fs.unlinkSync(path.join(bucket, item.from));
+    if (item.from !== item.to) remove(path.join(bucket, item.from));
   }
-  for (const item of plan.images) fs.renameSync(path.join(bucket, item.from), path.join(bucket, item.to));
+  for (const item of plan.images) rename(path.join(bucket, item.from), path.join(bucket, item.to));
   return plan.files.map((item) => item.to);
 }
