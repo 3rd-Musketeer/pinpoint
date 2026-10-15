@@ -177,6 +177,10 @@ test('服务：HTML 帧从源文件出并注入标注客户端，@root 只出 pr
 
   const cat = await get(handler, `/sites/${pageId}/@root/shared/cat.html`);
   assert.equal(cat.statusCode, 200);
+  // 编码的来源标记（%40root，ppnt shot 发的就是这种）与 @root 同一份。
+  const catEncoded = await get(handler, `/sites/${pageId}/%40root/shared/cat.html`);
+  assert.equal(catEncoded.statusCode, 200);
+  assert.equal(catEncoded.text, cat.text);
   assert.match(cat.text, /annotate\.[0-9a-f]+\.js/);
   // 帧引用的文件原样出，不注入；内嵌的 HTML 也不注入。
   assert.equal((await get(handler, `/sites/${pageId}/@root/shared/page.css`)).text, '@import "../tokens.css";\nbody { background: url(img/bg.svg); }\n');
@@ -433,6 +437,11 @@ test('sources：`<名>:<路径>` 指 project.json 登记的目录；服务只开
   assert.match(String(frame.body), /pinpoint/); // 注入了标注客户端
   assert.equal((await get(handler, '/sites/demo_pages/@source/skill/page.css')).statusCode, 200);
   assert.equal((await get(handler, '/sites/demo_pages/@source/skill/img/dot.svg')).statusCode, 200);
+  // 来源标记被编码（ppnt shot 等 CLI 用 URL 规范化后的地址）也要认：%40source 与 @source 同一份文件。
+  const encoded = await get(handler, '/sites/demo_pages/%40source/skill/preview.html');
+  assert.equal(encoded.statusCode, 200);
+  assert.equal(String(encoded.body), String(frame.body));
+  assert.equal((await get(handler, '/sites/demo_pages/%40source/skill/%2e%2e/secret.html')).statusCode, 404);
   // 目录外、隐藏文件、没登记的名字、这篇没用到的 project 根：都 404。
   assert.equal((await get(handler, '/sites/demo_pages/@source/skill/../secret.html')).statusCode, 404);
   assert.equal((await get(handler, '/sites/demo_pages/@source/skill/%2e%2e/secret.html')).statusCode, 404);

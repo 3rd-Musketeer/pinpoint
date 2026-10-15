@@ -221,14 +221,16 @@ export function frameSrcFromUrlPath(target, urlPath) {
   let rest = String(urlPath || '').replace(/^\//, '');
   const base = target.urlBase.replace(/^\//, '');
   if (rest.startsWith(base)) rest = rest.slice(base.length);
-  const decode = (rel) => rel.split('/').map(decodeURIComponent).join('/');
+  // 每一段恰好解码一次，来源标记本身也算一段：CLI（ppnt shot）按 URL 规范把 @ 编成 %40。
+  const segs = rest.split('/');
   try {
-    if (rest.startsWith(`${PROJECT_ROOT_SEGMENT}/`)) return decode(rest.slice(PROJECT_ROOT_SEGMENT.length + 1));
-    if (rest.startsWith(`${PROJECT_SOURCE_SEGMENT}/`)) {
-      const after = rest.slice(PROJECT_SOURCE_SEGMENT.length + 1);
-      const slash = after.indexOf('/');
-      if (slash <= 0) return null;
-      return `${decode(after.slice(0, slash))}:${decode(after.slice(slash + 1))}`;
+    const head = decodeURIComponent(segs[0]);
+    const decodeAll = (parts) => parts.map(decodeURIComponent).join('/');
+    if (head === PROJECT_ROOT_SEGMENT && segs.length > 1) return decodeAll(segs.slice(1));
+    if (head === PROJECT_SOURCE_SEGMENT && segs.length > 2) {
+      const name = decodeURIComponent(segs[1]);
+      if (!name) return null;
+      return `${name}:${decodeAll(segs.slice(2))}`;
     }
   } catch {
     return null;
