@@ -70,11 +70,48 @@ export function ownerDataRoot(home = os.homedir()) {
   return path.join(home, '.pinpoint');
 }
 
-/** 目录是不是 owner 的数据根或在它里面。 */
+/** 解析最近存在的祖先，也处理指向尚不存在位置的 symlink。 */
+function realDestination(file, seen = new Set()) {
+  const absolute = path.resolve(file);
+  if (seen.has(absolute)) throw new Error(`符号链接循环：${absolute}`);
+  seen.add(absolute);
+  try {
+    return fs.realpathSync(absolute);
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  try {
+    if (fs.lstatSync(absolute).isSymbolicLink()) {
+      return realDestination(path.resolve(path.dirname(absolute), fs.readlinkSync(absolute)), seen);
+    }
+  } catch (error) {
+    if (error.code !== 'ENOENT') throw error;
+  }
+  const parent = path.dirname(absolute);
+  if (parent === absolute) return absolute;
+  return path.join(realDestination(parent, seen), path.basename(absolute));
+}
+
+/** 目录是不是 owner 的数据根或在它里面，比较真实写入位置。 */
 export function insideOwnerData(dir, home = os.homedir()) {
-  const root = ownerDataRoot(home);
-  const rel = path.relative(root, path.resolve(dir));
-  return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel));
+  const rel = path.relative(realDestination(ownerDataRoot(home)), realDestination(dir));
+  return rel === '' || (rel !== '..' && !rel.startsWith(`..${path.sep}`) && !path.isAbsolute(rel));
+}
+
+/** 写任何文件前检查已有树，防止 logs、registry、缓存等子路径通过链接越界。 */
+function assertSandboxPaths(dataDir, home, visited = new Set()) {
+  if (insideOwnerData(dataDir, home)) throw new Error(`${dataDir} 指向 owner 的数据目录（~/.pinpoint）`);
+  const real = realDestination(dataDir);
+  if (visited.has(real)) return;
+  visited.add(real);
+  let stat;
+  try { stat = fs.statSync(dataDir); } catch (error) {
+    if (error.code === 'ENOENT') return;
+    throw error;
+  }
+  if (stat.isDirectory()) {
+    for (const name of fs.readdirSync(dataDir)) assertSandboxPaths(path.join(dataDir, name), home, visited);
+  }
 }
 
 /** 隔离服务和 CLI 共用的环境变量。 */
@@ -135,12 +172,19 @@ export async function runDev(argv, io = {}) {
   const sleep = io.sleep || ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
   const home = io.home || os.homedir();
   let dataDir = parsed.dir ? path.resolve(cwd, parsed.dir) : null;
-  if (dataDir && insideOwnerData(dataDir, home)) {
-    return reportUsageError('dev', `${dataDir} 是 owner 的数据目录（~/.pinpoint）；隔离服务用别的目录，不写就新建一个临时目录`, err);
+  try {
+    if (dataDir) assertSandboxPaths(dataDir, home);
+  } catch (error) {
+    return reportUsageError('dev', `隔离目录不可用：${error.message}；请换一个目录`, err);
   }
   const ports = await pickSandboxPorts({ port: parsed.flags.port ?? null, sitePort: parsed.flags['site-port'] ?? null, isFree: io.portFree || portFree });
   if (ports.error) return reportUsageError('dev', ports.error, err);
   if (!dataDir) dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-sandbox-'));
+  try {
+    assertSandboxPaths(dataDir, home);
+  } catch (error) {
+    return reportUsageError('dev', `隔离目录不可用：${error.message}；请换一个目录`, err);
+  }
   fs.mkdirSync(path.join(dataDir, 'logs'), { recursive: true });
   const vars = sandboxEnv({ dataDir, ...ports });
   const envFile = path.join(dataDir, 'env.sh');

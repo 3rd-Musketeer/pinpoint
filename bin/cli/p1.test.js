@@ -446,3 +446,35 @@ test('dev --sandbox：起 npm run dev:app（带隔离变量）、等就绪、打
   assert.equal(await running, 0);
   assert.deepEqual(killed, [[4242, 'SIGTERM']]);
 });
+
+test('D6：sandbox 拒绝目录别名、不存在的尾部和指向 owner 的受管子路径，写入前中止', async (t) => {
+  const home = tempDir(t);
+  const owner = path.join(home, '.pinpoint');
+  fs.mkdirSync(owner);
+  const alias = path.join(home, 'alias');
+  fs.symlinkSync(owner, alias);
+  const paths = [alias, path.join(alias, 'not-yet', 'box')];
+  for (const name of ['logs', 'registry.json', 'env.sh', 'vite-cache', 'notes', 'service.log']) {
+    const box = path.join(home, `box-${name}`);
+    fs.mkdirSync(box);
+    if (name === 'service.log') {
+      fs.mkdirSync(path.join(box, 'logs'));
+      fs.symlinkSync(path.join(owner, 'service.log'), path.join(box, 'logs', name));
+    } else {
+      fs.symlinkSync(owner, path.join(box, name));
+    }
+    paths.push(box);
+  }
+  for (const dataDir of paths) {
+    let spawned = false;
+    const rec = recorder();
+    const code = await run(['dev', '--sandbox', dataDir, '--port', '6300'], {
+      ...rec.io, home, env: {}, portFree: async () => true,
+      spawnSandbox: () => { spawned = true; throw new Error('不应启动'); },
+    });
+    assert.equal(code, 2, `${dataDir}: ${rec.err.join('\n')}`);
+    assert.equal(spawned, false);
+    assert.deepEqual(fs.readdirSync(owner), []);
+    assert.ok(!fs.existsSync(path.join(dataDir, 'env.sh')) || fs.lstatSync(path.join(dataDir, 'env.sh')).isSymbolicLink());
+  }
+});
