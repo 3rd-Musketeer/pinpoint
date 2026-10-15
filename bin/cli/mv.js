@@ -194,9 +194,17 @@ function moveDir(from, to) {
     fs.renameSync(from, to);
   } catch (error) {
     if (error.code !== 'EXDEV') throw error;
-    // 两个 project 在不同的卷上：复制完再删。
-    fs.cpSync(from, to, { recursive: true, errorOnExist: true, force: false });
-    fs.rmSync(from, { recursive: true, force: true });
+    // 临时副本与目标同卷，复制完整后才发布正式目录。
+    const staging = fs.mkdtempSync(path.join(path.dirname(to), '.ppnt-mv-'));
+    try {
+      const copy = path.join(staging, 'article');
+      fs.cpSync(from, copy, { recursive: true, errorOnExist: true, force: false });
+      if (fs.existsSync(to)) throw new Error(`目标在复制期间出现：${to}`);
+      fs.renameSync(copy, to);
+      fs.rmSync(from, { recursive: true, force: true });
+    } finally {
+      fs.rmSync(staging, { recursive: true, force: true });
+    }
   }
 }
 
@@ -236,7 +244,7 @@ async function moveArticle(classified, parsed, io) {
   try {
     moveDir(plan.fromDir, plan.toDir);
   } catch (error) {
-    err(`错误：搬目录失败，什么都没改：${error.message}`);
+    err(`错误：搬目录失败：${error.message}；源目录 ${plan.fromDir}（${fs.existsSync(plan.fromDir) ? '存在，删除中断时可能不完整' : '不存在'}），目标目录 ${plan.toDir}（${fs.existsSync(plan.toDir) ? '存在' : '不存在'}）；标注桶尚未搬迁`);
     return 1;
   }
   out(`已搬 ${head}`);

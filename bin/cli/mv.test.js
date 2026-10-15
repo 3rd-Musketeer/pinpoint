@@ -223,3 +223,28 @@ test('D2：目标桶无法证明为空时拒绝搬迁，保留源文章和两桶
     assert.match(res.err.join('\n'), /无法确认.*为空/);
   }
 });
+
+test('D4：跨设备复制中途失败不发布半篇文章，源完整且可以重试', async (t) => {
+  const made = fixture(t);
+  const from = articleDir(made.proj, 'commit-confirm');
+  const to = articleDir(made.html, 'commit-confirm');
+  const rename = fs.renameSync;
+  const copy = fs.cpSync;
+  t.mock.method(fs, 'renameSync', (a, b) => {
+    if (a === from && b === to) throw Object.assign(new Error('不同设备'), { code: 'EXDEV' });
+    return rename(a, b);
+  });
+  t.mock.method(fs, 'cpSync', (a, b, opts) => {
+    if (a !== from) return copy(a, b, opts);
+    fs.mkdirSync(b, { recursive: true });
+    fs.copyFileSync(path.join(a, 'index.mdx'), path.join(b, 'index.mdx'));
+    throw Object.assign(new Error('disk full'), { code: 'ENOSPC' });
+  });
+  const res = await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/']);
+  assert.equal(res.code, 1);
+  assert.ok(!fs.existsSync(to), '正式目标不能出现半篇文章');
+  assert.ok(fs.existsSync(path.join(from, 'index.mdx')));
+  assert.ok(!fs.readdirSync(path.dirname(to)).some((name) => name.startsWith('.ppnt-mv-')), '复制临时目录已清理');
+  t.mock.restoreAll();
+  assert.equal((await runIn(made, ['mv', 'e2e-project/commit-confirm', 'e2e-html/'])).code, 0);
+});
