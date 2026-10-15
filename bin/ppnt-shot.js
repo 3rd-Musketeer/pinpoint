@@ -513,7 +513,7 @@ export async function renderArticleShots({ origin, jobs, timeoutMs = 60000, env 
 }
 
 /**
- * 文章的文档帧（HTML 帧，docs/projects.md“HTML 帧”）：不在画布上，直接打开它自己的地址（`?annotate=off`），
+ * 文章的文档帧（HTML 帧，docs/projects.md“HTML 帧”）：截图逐帧取完整页面，直接打开它自己的地址（`?annotate=off`），
  * 按手机宽度 402（画布视图的手机屏宽）拍整页。jobs = [{ url, out, label, scale, marks }]；marks 是账本行，钉按行上第一个目标的
  * 选择器（文档标注的锚点就是整页的选择器加文字）落在元素左上角，找不到的安静跳过。
  * 截之前按 settleLazyContent 等懒加载的 iframe 和图片（含嵌套）加载完。

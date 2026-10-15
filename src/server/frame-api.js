@@ -1,7 +1,8 @@
 import { parseReqUrl } from './lib/req-url.js';
 /**
  * GET /api/frame?page=<pageId>&screen=<screenId>[&annotate=off][&embed=card]
- * embed=card：文章站点卡片 / 浮层用的嵌入页（不出图注，机壳带 data-pp-stage，不注入标注），见 docs/projects.md。
+ * embed=card：文章正文缩略卡片用的嵌入页（不出图注，机壳带 data-pp-stage，不注入标注），见 docs/projects.md；
+ *   画布浮层、活卡片与“全页”走工作台，不经这里。
  * GET /api/frame?page=<文章页 id>&figure=<图 id>&embed=figure[&theme=light|dark]：正文里的图
  *   （docs/projects.md“图”）。没有机壳、图注和标注客户端；过期就先重编；编译失败回 500，正文是同一个
  *   图页、图的位置写错误原因。figure 与 embed=figure 必须一起写。
@@ -12,7 +13,7 @@ import { parseReqUrl } from './lib/req-url.js';
  * 注入带 __pinpointFrame —— frame 内标注与画布同账本：storage-unify 起帧账本
  * 恒为所属页桶的 @canvas，不再跟顶层工作台 pathname 走，ledger 参数退役）；
  * doc 壳屏 → 302 到该屏自己的 URL（同 pathname = 同账本，透传自然成立）；annotate=off 与 embed=card
- * 时地址带上 annotate=off（文章的 HTML 帧在卡片和浮层里就是这样打开的）。
+ * 时地址带上 annotate=off（正文缩略卡片里的 HTML 帧就是这样打开的）。
  * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, resolveFrameTarget } from './lib/frame-doc.js';
