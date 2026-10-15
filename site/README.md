@@ -63,7 +63,7 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 点卡片里的某一帧打开整张画布，定位并选中这一帧（owner 2026-10-15：“现在的画布上既然已经支持交互，那就没必要单独搞一个预览模式了”）。HTML、iOS 和组件帧都能直接在画布上交互和标注。
 
-- 内容：一份嵌入版工作台，`/workbench/?page=<页 id>&section=<节 id>&embed=overlay`（`canvas-overlay.js` 的 `embedCanvasSrc`）。画布上能做的这里都能做：交互、标注、平移、缩放、大纲、标注列表。嵌入版不出左栏、左栏开关和“← 文章标题”（`src/workbench/embed.js`，样式挂在 `html.wb-embed`）。第一次打开时装上，关了也留着，再开不重装，直接定位。
+- 内容：一份嵌入版工作台，`/workbench/?page=<页 id>&section=<节 id>&embed=overlay`（`canvas-overlay.js` 的 `embedCanvasSrc`）。画布上能做的这里都能做：交互、标注、平移、缩放、大纲、标注列表。HTML 活卡片上按住空格拖动或用中键拖动都平移画布，页面不接收这次手势，松开恢复交互。嵌入版不出左栏、左栏开关和“← 文章标题”（`src/workbench/embed.js`，样式挂在 `html.wb-embed`）。第一次打开时装上，关了也留着，再开不重装，直接定位。
 - 头部：节号、节标题（跟着画布当前所在的节换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
 - 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址带帧与钉子：先定位到画布上的卡片，等卡片自己的标注客户端水合（`workbench.cardAnnotateApi(<帧>)`），再在活卡片里定位并打开钉子。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
 - 地址：`#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。旧链接中的 `view=frame` 按未知参数忽略，照常打开整张画布并定位到帧。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。

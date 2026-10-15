@@ -4,7 +4,7 @@
 //    （规则是纯函数 lib/live-cards.js planLiveCards）。iframe 带 data-pp-parent-events：里面的标注客户端借工作台的
 //    SSE 连接（server-events.js），不各开一条。
 // 2. 手势回到画布：滚轮在卡片上滚的是页面（浏览器默认，和 iOS 帧里的滚动容器一样）；捏合 / ctrl·⌘ + 滚轮、
-//    空格（按住拖画布）在卡片的 window 里收到，转给工作台，画布照常缩放、平移。
+//    空格（按住拖画布）与中键按下在卡片的 window 里拦截，转给工作台，画布照常缩放、平移。
 // 3. 标注模式同步：横条“标注”驱动的是画布的标注客户端（window.pinpoint），它让开卡片（data-ann-ui）；卡片里那一页
 //    自己的客户端跟着进出标注模式，在卡片里直接标，标注进那一页的账本。卡片里按 A / Esc 切了模式，画布跟着切。
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
@@ -128,6 +128,45 @@ function forwardSpace(e) {
   document.dispatchEvent(new KeyboardEvent(e.type, { key: ' ', code: 'Space', repeat: e.repeat, bubbles: true, cancelable: true }));
 }
 
+// 中键从按下到松开都归工作台。取消 pointerdown 会抑制兼容 mouse 事件，
+// 而 iframe 仍可能持有后续 pointer 事件，所以显式捕获并转发整段手势。
+function wireMiddlePan(frame, win) {
+  var pointer = null;
+  function forward(type, e) {
+    var p = cardPointToParent(frame.getBoundingClientRect(), frame.clientWidth, e.clientX, e.clientY);
+    frame.dispatchEvent(new MouseEvent(type, {
+      bubbles: true, cancelable: true, button: 1, buttons: e.buttons,
+      clientX: p.x, clientY: p.y
+    }));
+  }
+  win.addEventListener('pointerdown', function (e) {
+    if (e.button !== 1) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    pointer = e.pointerId;
+    e.target.setPointerCapture(pointer);
+    forward('mousedown', e);
+  }, true);
+  win.addEventListener('pointermove', function (e) {
+    if (e.pointerId !== pointer) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    forward('mousemove', e);
+  }, true);
+  function end(e) {
+    if (e.pointerId !== pointer) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
+    pointer = null;
+    forward('mouseup', e);
+  }
+  win.addEventListener('pointerup', end, true);
+  win.addEventListener('pointercancel', end, true);
+  win.addEventListener('auxclick', function (e) {
+    if (e.button === 1) { e.preventDefault(); e.stopImmediatePropagation(); }
+  }, true);
+}
+
 // 活卡片里的 Esc：先让卡片自己的标注层处理；没有层时交回工作台（嵌入版可据此回文章）。
 function wireCardEscape(win) {
   var taken = false;
@@ -154,6 +193,7 @@ function wireCardWindow(frame) {
     if (wiredDocs.has(doc)) return;
     wiredDocs.add(doc);
   }
+  wireMiddlePan(frame, win);
   win.addEventListener('wheel', function (e) { forwardWheel(frame, e); }, { capture: true, passive: false });
   win.addEventListener('keydown', forwardSpace, true);
   win.addEventListener('keyup', forwardSpace, true);

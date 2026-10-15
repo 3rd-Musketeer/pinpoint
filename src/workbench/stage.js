@@ -539,7 +539,7 @@ stage.addEventListener('wheel', function (e) {
     flushPanMove();
     var moved = pan.moved;
     pan = null;
-    stage.classList.remove('wb-panning');
+    stage.classList.remove('wb-pan-held', 'wb-panning');
     document.body.classList.remove('wb-panning');
     window.removeEventListener('mousemove', onPanMove, true);
     window.removeEventListener('mouseup', endPan, true);
@@ -578,6 +578,8 @@ stage.addEventListener('wheel', function (e) {
       moved: false
     };
     setNavigationActive(true);
+    // 按下起让其他帧不接指针，手势期间保持画布导航。
+    if (e.button === 1 || spaceDown) stage.classList.add('wb-pan-held');
     syncSpaceCursor();
     window.addEventListener('mousemove', onPanMove, true);
     window.addEventListener('mouseup', endPan, true);
@@ -614,8 +616,9 @@ stage.addEventListener('wheel', function (e) {
     var overBadge = explicit && e.target.closest('.ann-badge');
     if (!stage.contains(e.target) && !overBadge) return;
     if (activeBoardMode() === 'html' || isTypingTarget(e.target)) return;
-    // 文章画布的 HTML 卡片（data-ann-ui）是活的页面：在它上面按下归页面，和 iOS 帧一样不起平移。
-    if (e.target.closest('[data-ann-ui]') && !overBadge) return;
+    // 普通页面交互归卡片；卡片转来的显式导航手势与 iOS 帧共用平移流程。
+    var cardPan = explicit && e.target.matches('iframe.wb-html-card-frame');
+    if (e.target.closest('[data-ann-ui]') && !overBadge && !cardPan) return;
     if (!explicit && annotateBlocksPan()) return;
 
     // Middle button always pans.

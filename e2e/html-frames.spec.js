@@ -529,6 +529,15 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开整
       await expect(pageDoc().locator('#ann-box')).toBeVisible();
       await expect(pageDoc().locator('#ann-input')).toContainText('换成灰色');
       expect(await pageDoc().locator('#deep-pill').evaluate((el) => el.ownerDocument.defaultView.scrollY)).toBeGreaterThan(4000);
+      // 钉子必须在活卡片的可见区域里；toBeVisible 本身不检查 iframe 裁切。
+      await expect.poll(async () => {
+        const pin = await pageDoc().locator('.ann-badge').first().boundingBox();
+        const card = await page.frameLocator('[data-pp-overlay] iframe.ov-canvas').locator(`${CARD('long-page')} iframe.wb-html-card-frame`).boundingBox();
+        const body = await overlay(page).locator('.ov-body').boundingBox();
+        return !!pin && pin.x >= Math.max(card.x, body.x) && pin.y >= Math.max(card.y, body.y)
+          && pin.x + pin.width <= Math.min(card.x + card.width, body.x + body.width)
+          && pin.y + pin.height <= Math.min(card.y + card.height, body.y + body.height);
+      }).toBe(true);
       await page.keyboard.press('Escape');
       await expect(pageDoc().locator('#ann-box')).toBeHidden();
       expect(await embedEntry()).toBe('@canvas');
@@ -574,5 +583,53 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开整
     expect(pageErrors).toEqual([]);
   } finally {
     await closeSettled(page);
+  }
+});
+
+
+test('HTML 活卡片：空格拖（两种焦点）与中键拖都平移，页面不收按下、点击和选中，松开恢复', async ({ page }) => {
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openWorkbench(page, `page=${PAGE_ID}`);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
+  const frame = page.locator(`${CARD('catalog')} iframe.wb-html-card-frame`);
+  const content = page.frameLocator(`${CARD('catalog')} iframe.wb-html-card-frame`);
+  const stage = page.locator('#wbstage');
+  for (const gesture of ['space-parent', 'space-card', 'middle']) {
+    await test.step(gesture, async () => {
+      await page.evaluate(() => window.workbench.focusFrame('pages', 'catalog', { smooth: false }));
+      await expect(frame).toHaveAttribute('data-live', 'on');
+      await expect(content.locator('.cat-btn')).toBeVisible();
+      await frame.evaluate(el => {
+        const w = el.contentWindow;
+        w.__panEvents = [];
+        for (const type of ['pointerdown', 'mousedown', 'click', 'auxclick']) {
+          w.document.addEventListener(type, e => w.__panEvents.push(e.type), { once: true });
+        }
+        w.getSelection().removeAllRanges();
+      });
+      if (gesture === 'space-card') await content.locator('.cat-btn').focus();
+      else await page.locator('#wbzoom-in').focus();
+      const box = await content.locator('.cat-btn').boundingBox();
+      const before = await stage.evaluate(el => [el.scrollLeft, el.scrollTop]);
+      const transformBefore = await page.locator('.wb-zoom-wrap').evaluate(el => el.getBoundingClientRect().x);
+      await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+      if (gesture.startsWith('space')) await page.keyboard.down('Space');
+      const button = gesture === 'middle' ? 'middle' : 'left';
+      await page.mouse.down({ button });
+      await expect(stage).toHaveClass(/\bwb-pan-held\b/);
+      await page.mouse.move(box.x + box.width / 2 - 100, box.y + box.height / 2 - 60, { steps: 8 });
+      await page.mouse.up({ button });
+      if (gesture.startsWith('space')) await page.keyboard.up('Space');
+      await expect.poll(() => stage.evaluate(el => [el.scrollLeft, el.scrollTop])).toEqual([before[0] + 100, before[1] + 60]);
+      // 画布通过 stage scroll 平移，缩放 transform 不变；量渲染后画布的实际位移。
+      expect(await page.locator('.wb-zoom-wrap').evaluate(el => el.getBoundingClientRect().x)).toBeCloseTo(transformBefore - 100, 0);
+      expect(await frame.evaluate(el => el.contentWindow.__panEvents)).toEqual([]);
+      expect(await frame.evaluate(el => el.contentWindow.getSelection().toString())).toBe('');
+      await expect(stage).not.toHaveClass(/wb-space-held|wb-pan-held|wb-panning/);
+      await expect(content.locator('.cat-out')).toHaveText('未点');
+      await content.locator('.cat-btn').click();
+      await expect(content.locator('.cat-out')).toHaveText('已点');
+      await content.locator('.cat-out').evaluate(el => { el.textContent = '未点'; });
+    });
   }
 });
