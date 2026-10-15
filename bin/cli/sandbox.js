@@ -109,6 +109,9 @@ function assertSandboxPaths(dataDir, home, visited = new Set()) {
     if (error.code === 'ENOENT') return;
     throw error;
   }
+  if (stat.isFile() && stat.nlink > 1) {
+    throw new Error(`${dataDir} 是 hardlink（nlink=${stat.nlink}），写入会修改其他链接指向的同一文件`);
+  }
   if (stat.isDirectory()) {
     for (const name of fs.readdirSync(dataDir)) assertSandboxPaths(path.join(dataDir, name), home, visited);
   }

@@ -270,7 +270,7 @@ owner 的常驻服务是 `https://pinpoint.localhost`，数据根和登记表是
 ppnt dev --sandbox [<数据目录>] [--port <端口>] [--site-port <端口>]
 ```
 
-- 数据目录缺省新建一个临时目录；登记表是 `<数据目录>/registry.json`，日志在 `<数据目录>/logs/service.log`。数据目录落在 `~/.pinpoint` 里时退 2。
+- 数据目录缺省新建一个临时目录；登记表是 `<数据目录>/registry.json`，日志在 `<数据目录>/logs/service.log`。写入前递归检查已有路径：指向 `~/.pinpoint` 的目录或 symlink、`nlink > 1` 的 hardlink 文件都退 2，保留原字节且不启动服务。
 - 端口缺省从 6400 起找一对空的（服务端口和它 +5 的站点端口）；写了 `--port` 就只验它。owner 的 4134、4530、5199 一律不接受。
 - 起法是下面的 `npm run dev:app`，不经 portless。就绪（`/health` 答 200）后打印地址，并把 CLI 要的四个隔离变量写进 `<数据目录>/env.sh`；在别的 shell 里 `source` 它，之后的 `ppnt` 都对着这个服务。
 - 命令前台常驻。Ctrl-C，或 `kill` 它打印的 pid，会给服务的进程组发 SIGTERM，服务和文章站点一起停。

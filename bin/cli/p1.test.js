@@ -479,6 +479,39 @@ test('D6：sandbox 拒绝目录别名、不存在的尾部和指向 owner 的受
   }
 });
 
+for (const name of ['env.sh', 'logs/service.log']) {
+  test(`V2：sandbox 拒绝 hardlink ${name}，写入前保留假 owner 文件的原字节`, async (t) => {
+    const home = tempDir(t);
+    const owner = path.join(home, '.pinpoint', 'keep');
+    const box = path.join(home, 'box');
+    const linked = path.join(box, name);
+    fs.mkdirSync(path.dirname(owner), { recursive: true });
+    fs.mkdirSync(path.dirname(linked), { recursive: true });
+    const original = Buffer.from('假 owner 文件\n原始字节\0');
+    fs.writeFileSync(owner, original);
+    fs.linkSync(owner, linked);
+    let spawned = false;
+    const rec = recorder();
+    // 模拟启动入口的日志追加，避免真的启动服务；旧实现必须暴露写坏 owner 的结果。
+    const code = await run(['dev', '--sandbox', box, '--port', '6300'], {
+      ...rec.io, home, env: {}, portFree: async () => true,
+      spawnSandbox: ({ logFile }) => {
+        spawned = true;
+        fs.appendFileSync(logFile, 'sandbox log header\n');
+        const child = Object.assign(new EventEmitter(), { pid: 4242, exitCode: 1 });
+        setImmediate(() => child.emit('exit', 1, null));
+        return child;
+      },
+      killGroup: () => {},
+    });
+    assert.deepEqual(fs.readFileSync(owner), original, '假 owner 文件字节不能被覆盖或追加');
+    assert.equal(code, 2, rec.err.join('\n'));
+    assert.equal(spawned, false);
+    assert.match(rec.err.join('\n'), /hardlink|硬链接/);
+    assert.ok(fs.statSync(linked).nlink > 1);
+  });
+}
+
 test('D7：两个 sandbox 创建同名默认文章，源码与登记路径各在自己的数据根', async (t) => {
   const dir = tempDir(t);
   const globalNotes = path.join(dir, 'owner-notes');
