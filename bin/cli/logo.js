@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { parseArgs, guardParse } from './args.js';
-import { ioOf, REPO_ROOT } from './core.js';
+import { ioOf, REPO_ROOT, CliError } from './core.js';
 import { resolveAddress } from './address.js';
 import { resolveRegistryPath } from './registry.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
@@ -90,7 +90,7 @@ async function appIcon(name, country, fetchFn) {
 }
 
 export async function addLogos(target, requested, { app = false, country = 'us', placeholder = false, fetchFn = fetch } = {}) {
-  if (!/^[a-z]{2}$/i.test(country)) throw new Error('country 必须是两位国家代码，如 us、cn');
+  if (!/^[a-z]{2}$/i.test(country)) throw new CliError('country 必须是两位国家代码，如 us、cn');
   const output = path.join(target.pageDir, 'assets/logos');
   const contained = (file) => {
     // 输出尚未存在时，检查最近的现存祖先；symlink 仍按真实落点检查。
@@ -111,7 +111,7 @@ export async function addLogos(target, requested, { app = false, country = 'us',
   const results = [];
   for (const name of requested) {
     const slug = key(name).normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
-    if (!slug || ['__proto__', 'constructor', 'prototype'].includes(slug)) throw new Error(`品牌名称无效：${name}`);
+    if (!slug || ['__proto__', 'constructor', 'prototype'].includes(slug)) throw new CliError(`品牌名称无效：${name}`);
     const variants = logoVariants(name);
     const files = {};
     const write = (suffix, data) => {
@@ -130,7 +130,7 @@ export async function addLogos(target, requested, { app = false, country = 'us',
       store = result.source;
     }
     if (!Object.keys(files).length) {
-      if (!placeholder) throw new Error(`找不到 ${name}；用 ppnt logo search 查名字，或加 --app / --placeholder`);
+      if (!placeholder) throw new CliError(`找不到 ${name}；用 ppnt logo search 查名字，或加 --app / --placeholder`);
       files.placeholder = write('.svg', placeholderSvg(name));
     }
     const row = { name, slug, hex: variants.hex, files, sources: { ...(variants.color ? { color: `logos:${variants.color}` } : {}), ...(variants.mono ? { mono: `simple-icons:${variants.mono}` } : {}), ...(store ? { app: store } : {}) } };
@@ -149,16 +149,16 @@ export async function runLogo(argv, io = {}) {
   try {
     const [action, targetRef, ...requested] = parsed.items;
     if (action === 'search') {
-      if (!targetRef || requested.length || Object.keys(parsed.flags).length) throw new Error('用法：ppnt logo search <词>');
+      if (!targetRef || requested.length || Object.keys(parsed.flags).length) throw new CliError('用法：ppnt logo search <词>');
       const results = searchLogos(targetRef);
       out(results.length ? results.map((r) => `${r.name}  彩色:${r.color || '—'}  单色:${r.mono || '—'}${r.hex ? `  ${r.hex}` : ''}`).join('\n') : '没有找到 logo');
       return 0;
     }
-    if (action !== 'add' || !targetRef || !requested.length) throw new Error('用法：ppnt logo add <文章地址> <品牌>... [--app [--country cn]] [--placeholder]');
-    if (parsed.flags.country && !parsed.flags.app) throw new Error('--country 和 --app 一起使用');
+    if (action !== 'add' || !targetRef || !requested.length) throw new CliError('用法：ppnt logo add <文章地址> <品牌>... [--app [--country cn]] [--placeholder]');
+    if (parsed.flags.country && !parsed.flags.app) throw new CliError('--country 和 --app 一起使用');
     const registry = loadRegistry({ root: REPO_ROOT, path: resolveRegistryPath(parsed.flags, env), log: err });
     const address = resolveAddress(targetRef, { registry });
-    if (address?.kind !== 'article') throw new Error(`找不到文章：${targetRef}`);
+    if (address?.kind !== 'article') throw new CliError(`找不到文章：${targetRef}`);
     const rows = await addLogos(address.target, requested, { app: parsed.flags.app, country: parsed.flags.country, placeholder: parsed.flags.placeholder, fetchFn: io.fetchFn });
     for (const row of rows) {
       out(`${row.name}${row.sources.app ? `（App Store：${row.sources.app.trackName}，${row.sources.app.trackId}）` : ''}：${Object.values(row.files).join('、')}；品牌色 ${row.hex || '未知'}（来源见 assets/logos/logos.json）`);
@@ -169,6 +169,6 @@ export async function runLogo(argv, io = {}) {
     return 0;
   } catch (error) {
     err(`错误：${error.message}`);
-    return 2;
+    return error instanceof CliError ? 2 : 1;
   }
 }

@@ -129,3 +129,11 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   await assert.rejects(addLogos(target, ['allbirds'], { app: true, fetchFn: async () => ({ ok: true, json: async () => ({ results: [{ trackName: 'eBird', artworkUrl512: 'https://example.org/a.png' }] }) }) }), /不匹配/);
   assert.equal(fs.existsSync(path.join(target.pageDir, 'assets/logos/allbirds-app.png')), false);
 });
+
+ test('CLI 联网失败退 1，参数错误退 2', async (t) => {
+  const f = fixture(t), c = capture({ PINPOINT_REGISTRY: f.registry });
+  c.io.fetchFn = async () => ({ ok: false, status: 503 });
+  assert.equal(await run(['logo', 'add', 'demo/story', 'gmail', '--app'], c.io), 1);
+  assert.match(c.errors.join(' '), /503/);
+  assert.equal(await run(['logo', 'add', 'demo/story', 'missing-90210'], c.io), 2);
+});
