@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { searchLogos, logoVariants, placeholderSvg, addLogos } from './logo.js';
+import { searchLogos, logoVariants, placeholderSvg, addLogos, normalizeLogoSvg } from './logo.js';
 import { run } from '../pinpoint-cli.js';
 
 function fixture(t) {
@@ -136,4 +136,25 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   assert.equal(await run(['logo', 'add', 'demo/story', 'gmail', '--app'], c.io), 1);
   assert.match(c.errors.join(' '), /503/);
   assert.equal(await run(['logo', 'add', 'demo/story', 'missing-90210'], c.io), 2);
+});
+
+test('add 按图形边界生成方形 viewBox，列表和 hero 共享同一套居中素材', async (t) => {
+  const target = fixture(t);
+  const rows = await addLogos(target, ['google', 'github', 'visa', 'cursor']);
+  for (const row of rows) {
+    for (const file of [row.files.color, row.files.mono].filter(Boolean)) {
+      const svg = fs.readFileSync(path.join(target.pageDir, file), 'utf8');
+      const viewBox = svg.match(/viewBox="([^"]+)"/)[1].trim().split(/\s+/).map(Number);
+      assert.equal(viewBox[2], viewBox[3], `${row.name} ${file} 的 viewBox 必须是方形`);
+    }
+  }
+});
+
+
+test('SVG 方形裁边按实际图形和 transform 计算，不按原画布或曲线控制点计算', () => {
+  const rect = normalizeLogoSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><g transform="translate(30 40)"><rect width="10" height="20" fill="red"/></g></svg>');
+  assert.match(rect, /viewBox="25 40 20 20"/);
+  assert.match(rect, /transform="translate\(30 40\)"/);
+  const curve = normalizeLogoSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M0 0 C0 100 100 100 100 0" fill="blue"/></svg>');
+  assert.match(curve, /viewBox="0 -12.5 100 100"/);
 });

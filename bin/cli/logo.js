@@ -1,5 +1,6 @@
 import fs from 'node:fs';
 import path from 'node:path';
+import { Resvg } from '@resvg/resvg-js';
 import { createRequire } from 'node:module';
 import { parseArgs, guardParse } from './args.js';
 import { ioOf, REPO_ROOT, CliError } from './core.js';
@@ -55,6 +56,16 @@ function iconSvg(set, name) {
   }
   if (!icon) throw new Error(`图标不存在：${name}`);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${icon.width || set.width || 16} ${icon.height || set.height || 16}">${icon.body}</svg>\n`;
+}
+
+/** 以可见图形（含 transform）的边界居中，而不是沿用图标集的画布留白。 */
+export function normalizeLogoSvg(svg) {
+  const box = new Resvg(svg, { font: { loadSystemFonts: false } }).getBBox();
+  if (!box || !(box.width > 0) || !(box.height > 0)) throw new Error('Logo SVG 没有可见图形边界');
+  const side = Math.max(box.width, box.height);
+  const viewBox = [box.x + box.width / 2 - side / 2, box.y + box.height / 2 - side / 2, side, side]
+    .map((n) => Number(n.toFixed(6))).join(' ');
+  return svg.replace(/viewBox="[^"]*"/, `viewBox="${viewBox}"`);
 }
 
 const xml = (s) => s.replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' }[c]));
@@ -121,8 +132,8 @@ export async function addLogos(target, requested, { app = false, country = 'us',
       fs.writeFileSync(path.join(output, file), data);
       return `assets/logos/${file}`;
     };
-    if (variants.color) files.color = write('.svg', iconSvg(sets.color, variants.color));
-    if (variants.mono) files.mono = write('-mono.svg', iconSvg(sets.mono, variants.mono));
+    if (variants.color) files.color = write('.svg', normalizeLogoSvg(iconSvg(sets.color, variants.color)));
+    if (variants.mono) files.mono = write('-mono.svg', normalizeLogoSvg(iconSvg(sets.mono, variants.mono)));
     let store;
     if (app) {
       const result = await appIcon(name, country, fetchFn);

@@ -59,6 +59,7 @@ export const HELP = {
       ppnt logo add <文章地址> <品牌>... [--app [--country cn]] [--placeholder] [--registry <文件>] [--json]
 search 离线列名字和变体；add 离线读取登记表，将彩色 SVG、currentColor 单色 SVG 和品牌色写入文章 assets/logos/。
 --app 查询 App Store 并保存 PNG（国家默认 us，首条结果名称不匹配时报错）；--placeholder 在两个图标集都找不到时生成同名同色的字母方块。
+SVG 写入时按实际图形边界居中为方形 viewBox。
 assets/logos/logos.json 记录品牌色和来源；命令末尾打印 JSX 帧及 MDX 的引用示例。
 单色 SVG 通过 CSS mask 着色，img 的 currentColor 不继承宿主颜色。`,
   },
