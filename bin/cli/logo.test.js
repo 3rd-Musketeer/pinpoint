@@ -111,3 +111,15 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   }
   assert.equal(fs.existsSync(path.join(f.pageDir, 'assets')), false);
 });
+
+ test('Apple artwork 的 JPEG 缩略图请求 PNG，manifest 同时保留原 URL', async (t) => {
+  const target = fixture(t), calls = [];
+  const original = 'https://is1-ssl.mzstatic.com/image/thumb/app/512x512bb.jpg';
+  const [row] = await addLogos(target, ['gmail'], { app: true, fetchFn: async (url) => {
+    calls.push(String(url));
+    return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ artworkUrl512: original }] }) } : { ok: true, arrayBuffer: async () => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) };
+  } });
+  assert.equal(calls[1], original.replace('.jpg', '.png'));
+  assert.equal(row.sources.app.artworkUrl512, original);
+  assert.equal(logoVariants('google').color, 'google-icon');
+});

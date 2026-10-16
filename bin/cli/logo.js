@@ -14,7 +14,7 @@ const sets = { color: read('@iconify-json/logos/icons.json'), mono: read('@iconi
 const brands = read('simple-icons/icons.json');
 const colors = new Map(brands.map((b) => [b.slug, `#${b.hex}`]));
 // 服务名称与图标集的拼写不同；不把相近品牌当作同一品牌。
-const aliases = { gmail: 'google-gmail', gcal: 'google-calendar', calendar: 'google-calendar', github: 'github-icon', googlecalendar: 'google-calendar', openai: 'openai-icon', claude: 'claude-icon', gemini: 'google-gemini-icon', notion: 'notion-icon', slack: 'slack-icon', grok: 'grok-icon', cursor: 'cursor-icon', eventbrite: 'eventbrite-icon' };
+const aliases = { google: 'google-icon', gmail: 'google-gmail', gcal: 'google-calendar', calendar: 'google-calendar', github: 'github-icon', googlecalendar: 'google-calendar', openai: 'openai-icon', claude: 'claude-icon', gemini: 'google-gemini-icon', notion: 'notion-icon', slack: 'slack-icon', grok: 'grok-icon', cursor: 'cursor-icon', eventbrite: 'eventbrite-icon' };
 const monoAliases = { 'google-gmail': 'gmail', 'google-calendar': 'googlecalendar', 'google-gemini': 'googlegemini' };
 const key = (s) => String(s).trim().toLowerCase();
 const compact = (s) => s.replace(/[^\p{L}\p{N}]/gu, '');
@@ -74,11 +74,14 @@ async function appIcon(name, country, fetchFn) {
   if (!response.ok) throw new Error(`App Store 查询失败：HTTP ${response.status}`);
   const app = (await response.json()).results?.[0];
   if (!app?.artworkUrl512) throw new Error(`App Store 找不到 ${name}（${country}）`);
-  const image = await fetchFn(app.artworkUrl512, { signal: AbortSignal.timeout(20000) });
+  // Apple 的 artworkUrl512 也会返回 JPEG；同一 artwork 的缩略图端点可指定 PNG。
+  const artwork = new URL(app.artworkUrl512);
+  if (artwork.hostname.endsWith('.mzstatic.com')) artwork.pathname = artwork.pathname.replace(/\.(?:jpg|jpeg)$/i, '.png');
+  const image = await fetchFn(artwork.href, { signal: AbortSignal.timeout(20000) });
   if (!image.ok) throw new Error(`App 图标下载失败：HTTP ${image.status}`);
   const png = Buffer.from(await image.arrayBuffer());
   if (!png.subarray(0, 8).equals(Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]))) throw new Error('App 图标不是 PNG');
-  return { png, source: { trackId: app.trackId, trackName: app.trackName, url: app.artworkUrl512, country } };
+  return { png, source: { trackId: app.trackId, trackName: app.trackName, url: artwork.href, artworkUrl512: app.artworkUrl512, country } };
 }
 
 export async function addLogos(target, requested, { app = false, country = 'us', placeholder = false, fetchFn = fetch } = {}) {
