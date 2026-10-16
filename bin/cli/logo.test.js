@@ -5,6 +5,9 @@ import os from 'node:os';
 import path from 'node:path';
 import { searchLogos, logoVariants, placeholderSvg, addLogos, normalizeLogoSvg } from './logo.js';
 import { run } from '../pinpoint-cli.js';
+import { Resvg } from '@resvg/resvg-js';
+
+const PNG = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="red"/></svg>').render().asPng();
 
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ppnt-logo-'));
@@ -46,7 +49,7 @@ test('add 同时存彩色和 currentColor SVG，manifest 合并保留来源与�
 
 test('add 网络只在 --app 调用，国家和 PNG 字节正确', async (t) => {
   const target = fixture(t), calls = [];
-  const png = Buffer.from([137, 80, 78, 71, 13, 10, 26, 10, 0]);
+  const png = PNG;
   const fetchFn = async (url) => {
     calls.push(String(url));
     return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ trackId: 12, trackName: '飞书', artworkUrl512: 'https://example.org/icon.png' }] }) } : { ok: true, arrayBuffer: async () => png };
@@ -93,6 +96,13 @@ test('CLI add 使用文章解析器，输出 JSX、MDX 和 mono mask，不联系
   assert.match(c.output.join('\n'), /JSX 帧和 MDX/);
   assert.match(c.output.join('\n'), /\/sites\/demo_story\/assets\/logos\/github.svg/);
   assert.match(c.output.join('\n'), /WebkitMask/);
+  const example = c.output.find(line => line.startsWith('JSX 帧和 MDX')).split('\n').slice(1).join('\n');
+  fs.mkdirSync(path.join(f.pageDir, 'components'));
+  fs.writeFileSync(path.join(f.pageDir, 'components/Fav.jsx'), example);
+  fs.writeFileSync(path.join(f.pageDir, 'example.jsx'), "import { Fav } from './components/Fav.jsx';\nexport default function Example() { return <Fav site=\"github\" />; }\n");
+  const rendered = capture({ PINPOINT_REGISTRY: f.registry });
+  assert.equal(await run(['render', 'demo/story/example', '--full'], rendered.io), 0, rendered.errors.join('\n'));
+  assert.match(rendered.output.join('\n'), /github.svg/);
 });
 
 test('CLI search --json 只有一个可解析文档；不读取 registry', async () => {
@@ -112,25 +122,25 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   assert.equal(fs.existsSync(path.join(f.pageDir, 'assets')), false);
 });
 
- test('Apple artwork 的 JPEG 缩略图请求 PNG，manifest 同时保留原 URL', async (t) => {
+test('Apple artwork 的 JPEG 缩略图请求 PNG，manifest 同时保留原 URL', async (t) => {
   const target = fixture(t), calls = [];
   const original = 'https://is1-ssl.mzstatic.com/image/thumb/app/512x512bb.jpg';
   const [row] = await addLogos(target, ['gmail'], { app: true, fetchFn: async (url) => {
     calls.push(String(url));
-    return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ trackName: 'Gmail', artworkUrl512: original }] }) } : { ok: true, arrayBuffer: async () => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) };
+    return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ trackName: 'Gmail', artworkUrl512: original }] }) } : { ok: true, arrayBuffer: async () => PNG };
   } });
   assert.equal(calls[1], original.replace('.jpg', '.png'));
   assert.equal(row.sources.app.artworkUrl512, original);
   assert.equal(logoVariants('google').color, 'google-icon');
 });
 
- test('App Store 的相似搜索结果不能冒充品牌 logo', async (t) => {
+test('App Store 的相似搜索结果不能冒充品牌 logo', async (t) => {
   const target = fixture(t);
   await assert.rejects(addLogos(target, ['allbirds'], { app: true, fetchFn: async () => ({ ok: true, json: async () => ({ results: [{ trackName: 'eBird', artworkUrl512: 'https://example.org/a.png' }] }) }) }), /不匹配/);
   assert.equal(fs.existsSync(path.join(target.pageDir, 'assets/logos/allbirds-app.png')), false);
 });
 
- test('CLI 联网失败退 1，参数错误退 2', async (t) => {
+test('CLI 联网失败退 1，参数错误退 2', async (t) => {
   const f = fixture(t), c = capture({ PINPOINT_REGISTRY: f.registry });
   c.io.fetchFn = async () => ({ ok: false, status: 503 });
   assert.equal(await run(['logo', 'add', 'demo/story', 'gmail', '--app'], c.io), 1);
@@ -138,7 +148,7 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   assert.equal(await run(['logo', 'add', 'demo/story', 'missing-90210'], c.io), 2);
 });
 
-test('add 按图形边界生成方形 viewBox，列表和 hero 共享同一套居中素材', async (t) => {
+test('实际品牌 SVG 的 viewBox 是以图形居中的方形', async (t) => {
   const target = fixture(t);
   const rows = await addLogos(target, ['google', 'github', 'visa', 'cursor']);
   for (const row of rows) {
@@ -146,6 +156,9 @@ test('add 按图形边界生成方形 viewBox，列表和 hero 共享同一套�
       const svg = fs.readFileSync(path.join(target.pageDir, file), 'utf8');
       const viewBox = svg.match(/viewBox="([^"]+)"/)[1].trim().split(/\s+/).map(Number);
       assert.equal(viewBox[2], viewBox[3], `${row.name} ${file} 的 viewBox 必须是方形`);
+      const box = new Resvg(svg, { font: { loadSystemFonts: false } }).getBBox();
+      assert.ok(Math.abs((viewBox[0] + viewBox[2] / 2) - (box.x + box.width / 2)) < 0.00001);
+      assert.ok(Math.abs((viewBox[1] + viewBox[3] / 2) - (box.y + box.height / 2)) < 0.00001);
     }
   }
 });
@@ -157,4 +170,144 @@ test('SVG 方形裁边按实际图形和 transform 计算，不按原画布或�
   assert.match(rect, /transform="translate\(30 40\)"/);
   const curve = normalizeLogoSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M0 0 C0 100 100 100 100 0" fill="blue"/></svg>');
   assert.match(curve, /viewBox="0 -12.5 100 100"/);
+});
+
+test('单色 alias 复用 parent 的品牌色', () => {
+  assert.equal(logoVariants('chromecast').hex, '#4285F4');
+  assert.equal(logoVariants('nuxtdotjs').hex, '#00DC82');
+});
+
+test('App 下载失败不会覆盖已有素材或留下未登记 SVG', async (t) => {
+  const target = fixture(t);
+  const output = path.join(target.pageDir, 'assets/logos');
+  fs.mkdirSync(output, { recursive: true });
+  fs.writeFileSync(path.join(output, 'gmail.svg'), 'keep existing');
+  const failed = () => ({ ok: false, status: 503 });
+  await assert.rejects(addLogos(target, ['gmail'], { app: true, fetchFn: failed }), /503/);
+  assert.deepEqual(fs.readdirSync(output), ['gmail.svg']);
+  assert.equal(fs.readFileSync(path.join(output, 'gmail.svg'), 'utf8'), 'keep existing');
+});
+
+test('并发下载完成后合并最新 manifest，不丢另一批记录', async (t) => {
+  const target = fixture(t);
+  let resume;
+  const wait = new Promise(resolve => { resume = resolve; });
+  const png = PNG;
+  const slow = addLogos(target, ['gmail'], { app: true, fetchFn: async (url) => {
+    if (String(url).includes('itunes.apple.com')) {
+      await wait;
+      return { ok: true, json: async () => ({ results: [{ trackId: 12, trackName: 'Gmail', artworkUrl512: 'https://example.org/icon.png' }] }) };
+    }
+    return { ok: true, arrayBuffer: async () => png };
+  } });
+  await addLogos(target, ['github']);
+  resume();
+  await slow;
+  const manifest = JSON.parse(fs.readFileSync(path.join(target.pageDir, 'assets/logos/logos.json')));
+  assert.deepEqual(Object.keys(manifest).sort(), ['github', 'gmail']);
+});
+
+test('错误形状的 manifest 拒绝写入，保留原文与目录', async (t) => {
+  for (const value of ['[]', 'null', '"text"', '{"github":{"name":"github","files":[],"sources":{}}}']) {
+    const target = fixture(t), output = path.join(target.pageDir, 'assets/logos');
+    fs.mkdirSync(output, { recursive: true });
+    fs.writeFileSync(path.join(output, 'logos.json'), value);
+    await assert.rejects(addLogos(target, ['github']), /manifest|清单/);
+    assert.equal(fs.readFileSync(path.join(output, 'logos.json'), 'utf8'), value);
+    assert.deepEqual(fs.readdirSync(output), ['logos.json']);
+  }
+});
+
+test('不覆盖未登记文件', async (t) => {
+  const target = fixture(t), output = path.join(target.pageDir, 'assets/logos');
+  fs.mkdirSync(output, { recursive: true });
+  fs.writeFileSync(path.join(output, 'github.svg'), 'hand drawn');
+  await assert.rejects(addLogos(target, ['github']), /覆盖/);
+  assert.equal(fs.readFileSync(path.join(output, 'github.svg'), 'utf8'), 'hand drawn');
+});
+
+test('同名 slug 冲突不改已有品牌', async (t) => {
+  const target = fixture(t), output = path.join(target.pageDir, 'assets/logos');
+  await addLogos(target, ['a b'], { placeholder: true });
+  await assert.rejects(addLogos(target, ['a-b'], { placeholder: true }), /冲突/);
+  const manifest = JSON.parse(fs.readFileSync(path.join(output, 'logos.json')));
+  assert.equal(manifest['a-b'].name, 'a b');
+});
+
+test('文章内部的输出 symlink 不能覆盖其指向的其他文件', async (t) => {
+  const target = fixture(t), output = path.join(target.pageDir, 'assets/logos');
+  fs.mkdirSync(output, { recursive: true });
+  const unrelated = path.join(target.pageDir, 'unrelated.svg');
+  fs.writeFileSync(unrelated, 'keep');
+  fs.symlinkSync(unrelated, path.join(output, 'github.svg'));
+  await assert.rejects(addLogos(target, ['github']), /symlink|符号链接|覆盖/);
+  assert.equal(fs.readFileSync(unrelated, 'utf8'), 'keep');
+});
+
+test('CLI search 接受通用 --registry 选项但不读取文件', async () => {
+  const c = capture();
+  assert.equal(await run(['logo', 'search', 'github', '--registry', '/not/read'], c.io), 0, c.errors.join('\n'));
+});
+
+test('重新添加 SVG 时保留已经下载的 App PNG 与来源', async (t) => {
+  const target = fixture(t);
+  const png = PNG;
+  const [first] = await addLogos(target, ['gmail'], { app: true, fetchFn: async (url) => String(url).includes('itunes.apple.com')
+    ? { ok: true, json: async () => ({ results: [{ trackId: 12, trackName: 'Gmail', artworkUrl512: 'https://example.org/icon.png' }] }) }
+    : { ok: true, arrayBuffer: async () => png } });
+  const [updated] = await addLogos(target, ['gmail']);
+  assert.equal(updated.files.app, first.files.app);
+  assert.deepEqual(updated.sources.app, first.sources.app);
+});
+
+test('CLI 打印可编译的唯一品牌组件，选择一张图并应用统一尺寸', async (t) => {
+  const f = fixture(t), c = capture({ PINPOINT_REGISTRY: f.registry });
+  assert.equal(await run(['logo', 'add', 'demo/story', 'github', 'kimi', 'unknown-brand-90210', '--placeholder'], c.io), 0);
+  const example = c.output.find(line => line.startsWith('JSX 帧和 MDX')).split('\n').slice(1).join('\n');
+  const { transform } = await import('esbuild');
+  const { h } = await import('preact');
+  const { renderToString } = await import('preact-render-to-string');
+  const { code } = await transform(example, { loader: 'jsx', format: 'cjs', jsxFactory: 'h' });
+  const mod = { exports: {} };
+  new Function('h', 'module', 'exports', code)(h, mod, mod.exports);
+  assert.equal(typeof mod.exports.Fav, 'function');
+  const color = renderToString(h(mod.exports.Fav, { site: 'github', size: 32 }));
+  assert.match(color, /border-radius:25%/);
+  assert.match(color, /0.5px solid/);
+  assert.match(color, /width:23.04px/);
+  assert.equal((color.match(/<img /g) || []).length, 1);
+  assert.doesNotMatch(color, /github-mono/);
+  const mono = renderToString(h(mod.exports.Fav, { site: 'kimi', size: 32 }));
+  assert.match(mono, /mask:/);
+  assert.match(mono, /kimi-mono.svg/);
+  const placeholder = renderToString(h(mod.exports.Fav, { site: 'unknown-brand-90210', size: 32 }));
+  assert.match(placeholder, /border:0/);
+});
+
+test('已占用的写锁明确报错，不写素材、不删除别人的锁', async (t) => {
+  const f = fixture(t), output = path.join(f.pageDir, 'assets/logos');
+  fs.mkdirSync(path.join(output, '.write-lock'), { recursive: true });
+  await assert.rejects(addLogos(f, ['github']), /正在写入/);
+  assert.deepEqual(fs.readdirSync(output), ['.write-lock']);
+});
+
+test('manifest 写入中途失败时，已登记素材和清单保持原样', async (t) => {
+  const f = fixture(t);
+  await addLogos(f, ['github']);
+  const output = path.join(f.pageDir, 'assets/logos');
+  const manifestFile = path.join(output, 'logos.json');
+  const before = fs.readFileSync(manifestFile);
+  fs.writeFileSync(path.join(output, 'github.svg'), 'existing registered SVG');
+  const original = fs.writeFileSync;
+  t.mock.method(fs, 'writeFileSync', (file, data, ...options) => {
+    if (path.basename(String(file)) === 'logos.json') {
+      original(file, String(data).slice(0, 10), ...options);
+      throw new Error('模拟磁盘写满');
+    }
+    return original(file, data, ...options);
+  });
+  await assert.rejects(addLogos(f, ['github']), /模拟磁盘写满/);
+  assert.deepEqual(fs.readFileSync(manifestFile), before);
+  assert.equal(fs.readFileSync(path.join(output, 'github.svg'), 'utf8'), 'existing registered SVG');
+  assert.deepEqual(fs.readdirSync(output).sort(), ['github-mono.svg', 'github.svg', 'logos.json']);
 });

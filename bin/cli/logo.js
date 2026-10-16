@@ -2,7 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { Resvg } from '@resvg/resvg-js';
 import { createRequire } from 'node:module';
-import { parseArgs, guardParse } from './args.js';
+import { guardParse, reportUsageError } from './args.js';
 import { ioOf, REPO_ROOT, CliError } from './core.js';
 import { resolveAddress } from './address.js';
 import { resolveRegistryPath } from './registry.js';
@@ -12,17 +12,24 @@ import { resolveContainedPath } from '../../src/server/lib/servable-file.js';
 const require = createRequire(import.meta.url);
 const read = (name) => JSON.parse(fs.readFileSync(require.resolve(name), 'utf8'));
 const sets = { color: read('@iconify-json/logos/icons.json'), mono: read('@iconify-json/simple-icons/icons.json') };
-const brands = read('simple-icons/icons.json');
-const colors = new Map(brands.map((b) => [b.slug, `#${b.hex}`]));
+// 全量品牌色表的来源与更新方式见 scripts/update-logo-colors.mjs。
+const colors = read('./logo-colors.json');
 // 服务名称与图标集的拼写不同；不把相近品牌当作同一品牌。
 const aliases = { google: 'google-icon', gmail: 'google-gmail', gcal: 'google-calendar', calendar: 'google-calendar', github: 'github-icon', googlecalendar: 'google-calendar', openai: 'openai-icon', claude: 'claude-icon', gemini: 'google-gemini-icon', notion: 'notion-icon', slack: 'slack-icon', grok: 'grok-icon', cursor: 'cursor-icon', eventbrite: 'eventbrite-icon' };
 const monoAliases = { 'google-gmail': 'gmail', 'google-calendar': 'googlecalendar', 'google-gemini': 'googlegemini' };
 const key = (s) => String(s).trim().toLowerCase();
 const compact = (s) => s.replace(/[^\p{L}\p{N}]/gu, '');
-const names = (set) => [...Object.keys(set.icons), ...Object.keys(set.aliases || {})];
-
-function findName(set, name) {
-  return names(set).find((n) => n === name) || names(set).find((n) => compact(n) === compact(name));
+const indexes = new Map(Object.values(sets).map((set) => {
+  const names = [...Object.keys(set.icons), ...Object.keys(set.aliases || {})];
+  const compactNames = new Map();
+  for (const name of names) if (!compactNames.has(compact(name))) compactNames.set(compact(name), name);
+  return [set, { names, exact: new Set(names), compact: compactNames }];
+}));
+const names = (set) => indexes.get(set).names;
+const findName = (set, name) => indexes.get(set).exact.has(name) ? name : indexes.get(set).compact.get(compact(name));
+function canonicalName(set, name) {
+  while (set.aliases?.[name]) name = set.aliases[name].parent;
+  return name;
 }
 
 export function logoVariants(name) {
@@ -30,30 +37,18 @@ export function logoVariants(name) {
   const colorName = findName(sets.color, aliases[raw] || raw) || findName(sets.color, `${raw}-icon`);
   const base = (aliases[raw] || raw).replace(/-icon$/, '');
   const monoName = findName(sets.mono, monoAliases[base] || base);
-  return { color: colorName || null, mono: monoName || null, hex: colors.get(monoName) || null };
+  return { color: colorName || null, mono: monoName || null, hex: colors[canonicalName(sets.mono, monoName)] || null };
 }
 
 export function searchLogos(term) {
-  const q = key(term);
+  const q = key(term), normalized = compact(q);
   return [...new Set([...names(sets.color), ...names(sets.mono)])]
-    .filter((n) => n.includes(q) || compact(n).includes(compact(q)))
+    .filter((n) => n.includes(q) || compact(n).includes(normalized))
     .sort().map((name) => ({ name, ...logoVariants(name) }));
 }
 
 function iconSvg(set, name) {
-  let icon = set.icons[name];
-  const alias = set.aliases?.[name];
-  if (!icon && alias) {
-    // Iconify alias 元数据覆盖 parent 的尺寸、旋转和翻转。
-    const parent = iconSvg(set, alias.parent);
-    let transform = '';
-    if (alias.hFlip) transform += ' translate(1 0) scale(-1 1)';
-    if (alias.vFlip) transform += ' translate(0 1) scale(1 -1)';
-    if (alias.rotate) transform += ` rotate(${alias.rotate * 90} .5 .5)`;
-    if (!transform) return parent;
-    const [, width, height, body] = parent.match(/viewBox="0 0 (\d+) (\d+)"[^>]*>([\s\S]*)<\/svg>/);
-    return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}"><g transform="scale(${width} ${height})${transform}"><g transform="scale(${1 / width} ${1 / height})">${body}</g></g></svg>`;
-  }
+  const icon = set.icons[canonicalName(set, name)];
   if (!icon) throw new Error(`图标不存在：${name}`);
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${icon.width || set.width || 16} ${icon.height || set.height || 16}">${icon.body}</svg>\n`;
 }
@@ -118,18 +113,16 @@ export async function addLogos(target, requested, { app = false, country = 'us',
   contained(output);
   const manifestFile = path.join(output, 'logos.json');
   contained(manifestFile);
-  const manifest = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : {};
   const results = [];
   for (const name of requested) {
     const slug = key(name).normalize('NFKC').replace(/[^\p{L}\p{N}]+/gu, '-').replace(/^-|-$/g, '');
     if (!slug || ['__proto__', 'constructor', 'prototype'].includes(slug)) throw new CliError(`品牌名称无效：${name}`);
     const variants = logoVariants(name);
     const files = {};
+    const pending = new Map();
     const write = (suffix, data) => {
       const file = `${slug}${suffix}`;
-      contained(path.join(output, file));
-      fs.mkdirSync(output, { recursive: true });
-      fs.writeFileSync(path.join(output, file), data);
+      pending.set(file, data);
       return `assets/logos/${file}`;
     };
     if (variants.color) files.color = write('.svg', normalizeLogoSvg(iconSvg(sets.color, variants.color)));
@@ -145,11 +138,51 @@ export async function addLogos(target, requested, { app = false, country = 'us',
       files.placeholder = write('.svg', placeholderSvg(name));
     }
     const row = { name, slug, hex: variants.hex, files, sources: { ...(variants.color ? { color: `logos:${variants.color}` } : {}), ...(variants.mono ? { mono: `simple-icons:${variants.mono}` } : {}), ...(store ? { app: store } : {}) } };
-    manifest[slug] = row;
-    fs.writeFileSync(manifestFile, `${JSON.stringify(manifest, null, 2)}\n`);
+    commitLogo(output, row, pending, contained);
     results.push(row);
   }
   return results;
+}
+
+/** 下载和 SVG 计算完成后再写；锁内读取最新清单，文件逐个原子替换。 */
+function commitLogo(output, row, pending, contained) {
+  contained(output);
+  fs.mkdirSync(output, { recursive: true });
+  const lock = path.join(output, '.write-lock');
+  try { fs.mkdirSync(lock); } catch (error) {
+    if (error.code === 'EEXIST') throw new Error('另一条 logo 命令正在写入；稍后重试（中断遗留的 assets/logos/.write-lock 需手动移除）');
+    throw error;
+  }
+  let staging;
+  try {
+    const manifestFile = path.join(output, 'logos.json');
+    contained(manifestFile);
+    const manifest = fs.existsSync(manifestFile) ? JSON.parse(fs.readFileSync(manifestFile, 'utf8')) : {};
+    const record = (value) => value && typeof value === 'object' && !Array.isArray(value);
+    if (!record(manifest) || Object.values(manifest).some((row) => !record(row) || typeof row.name !== 'string' || !record(row.files) || !record(row.sources))) throw new Error('Logo manifest 必须是品牌记录对象');
+    const previous = manifest[row.slug];
+    if (previous && key(previous.name).normalize('NFKC') !== key(row.name).normalize('NFKC')) throw new CliError(`品牌文件名冲突：${previous.name} / ${row.name}`);
+    // 显式重跑可更新已登记素材；手工文件与符号链接不属于本命令。
+    for (const file of [...pending.keys(), 'logos.json']) {
+      const destination = path.join(output, file);
+      contained(destination);
+      if (fs.existsSync(destination)) {
+        const stat = fs.lstatSync(destination);
+        if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`拒绝覆盖非普通文件或 symlink：${destination}`);
+        if (file !== 'logos.json' && !Object.values(previous?.files || {}).includes(`assets/logos/${file}`)) throw new Error(`拒绝覆盖未登记文件：${destination}`);
+      }
+    }
+    row.files = { ...previous?.files, ...row.files };
+    row.sources = { ...previous?.sources, ...row.sources };
+    manifest[row.slug] = row;
+    pending.set('logos.json', JSON.stringify(manifest, null, 2) + '\n');
+    staging = fs.mkdtempSync(path.join(output, '.write-'));
+    for (const [file, data] of pending) fs.writeFileSync(path.join(staging, file), data);
+    for (const file of pending.keys()) fs.renameSync(path.join(staging, file), path.join(output, file));
+  } finally {
+    if (staging) fs.rmSync(staging, { recursive: true, force: true });
+    fs.rmdirSync(lock);
+  }
 }
 
 export async function runLogo(argv, io = {}) {
@@ -160,7 +193,7 @@ export async function runLogo(argv, io = {}) {
   try {
     const [action, targetRef, ...requested] = parsed.items;
     if (action === 'search') {
-      if (!targetRef || requested.length || Object.keys(parsed.flags).length) throw new CliError('用法：ppnt logo search <词>');
+      if (!targetRef || requested.length || parsed.flags.app || parsed.flags.country || parsed.flags.placeholder) throw new CliError('用法：ppnt logo search <词>');
       const results = searchLogos(targetRef);
       out(results.length ? results.map((r) => `${r.name}  彩色:${r.color || '—'}  单色:${r.mono || '—'}${r.hex ? `  ${r.hex}` : ''}`).join('\n') : '没有找到 logo');
       return 0;
@@ -173,13 +206,25 @@ export async function runLogo(argv, io = {}) {
     const rows = await addLogos(address.target, requested, { app: parsed.flags.app, country: parsed.flags.country, placeholder: parsed.flags.placeholder, fetchFn: io.fetchFn });
     for (const row of rows) {
       out(`${row.name}${row.sources.app ? `（App Store：${row.sources.app.trackName}，${row.sources.app.trackId}）` : ''}：${Object.values(row.files).join('、')}；品牌色 ${row.hex || '未知'}（来源见 assets/logos/logos.json）`);
-      const src = `${address.target.urlBase}${row.files.app || row.files.color || row.files.placeholder || row.files.mono}`;
-      out(`JSX 帧和 MDX：<img src="${src}" alt="${xml(row.name)}" width="24" height="24" style={{ objectFit: 'contain'${row.files.app ? ", borderRadius: '6px'" : ''} }} />`);
-      if (row.files.mono) out(`单色白（JSX 帧和 MDX）：<span role="img" aria-label="${xml(row.name)}" style={{ display: 'inline-block', width: '24px', height: '24px', backgroundColor: 'white', mask: 'url(${address.target.urlBase}${row.files.mono}) center / contain no-repeat', WebkitMask: 'url(${address.target.urlBase}${row.files.mono}) center / contain no-repeat' }} />`);
     }
+    const assets = Object.fromEntries(rows.map((row) => {
+      const kind = ['app', 'color', 'placeholder', 'mono'].find((kind) => row.files[kind]);
+      return [row.slug, { src: address.target.urlBase + row.files[kind], kind, color: row.hex || '#000' }];
+    }));
+    out(`JSX 帧和 MDX（本篇只保留一个 Fav，调用时只改 site 和 size）：
+export function Fav({ site, size = 24 }) {
+  const assets = ${JSON.stringify(assets, null, 2)};
+  const logo = assets[site];
+  const full = logo.kind === 'app' || logo.kind === 'placeholder';
+  const inner = full ? size : size * 0.72;
+  const style = { display: 'block', width: inner + 'px', height: inner + 'px', flex: 'none', objectFit: 'contain' };
+  return <span data-brand={site} style={{ display: 'inline-flex', alignItems: 'center', justifyContent: 'center', verticalAlign: 'middle', flex: 'none', boxSizing: 'border-box', width: size + 'px', height: size + 'px', borderRadius: '25%', overflow: 'hidden', background: '#fff', border: full ? '0' : '0.5px solid rgba(0,0,0,.16)' }}>
+    {logo.kind === 'mono' ? <span style={{ ...style, backgroundColor: logo.color, mask: 'url(' + logo.src + ') center / contain no-repeat', WebkitMask: 'url(' + logo.src + ') center / contain no-repeat' }} /> : <img src={logo.src} alt="" style={style} />}
+  </span>;
+}`);
     return 0;
   } catch (error) {
-    err(`错误：${error.message}`);
-    return error instanceof CliError ? 2 : 1;
+    if (!(error instanceof CliError)) err(`错误：${error.message}`);
+    return error instanceof CliError ? reportUsageError('logo', error.message, err) : 1;
   }
 }
