@@ -5,12 +5,13 @@ export { HELP, USAGE, helpFor };
 
 export const BOARDS = new Set(['ios', 'html']);
 // 值选项与布尔开关（布尔开关不吃下一个 token，也不许带 =值）。
-const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note']);
-const BOOLEAN_FLAGS = new Set(['watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox']);
+const VALUE_FLAGS = new Set(['title', 'board', 'id', 'registry', 'frame', 'status', 'mode', 'group-by', 'scale', 'article', 'timeout', 'figure', 'uses', 'port', 'site-port', 'note', 'country']);
+const BOOLEAN_FLAGS = new Set(['watch', 'full', 'json', 'marks', 'dry-run', 'project', 'canvas', 'frames', 'print', 'sandbox', 'app', 'placeholder']);
 // 每个命令接受的选项与位置参数个数。valueFlags：在这个命令里吃值的开关名（migrate 的
 // --project <根目录>；add 的 --project 仍是开关）。locate / shot / mark 的位置参数
 // 个数按子命令定（variadic = null），由命令自己校验下限。
 const COMMANDS = {
+  logo: { positional: null, flags: new Set(['registry', 'app', 'country', 'placeholder']) },
   add: { positional: 1, flags: new Set(['title', 'board', 'id', 'registry', 'project']) },
   // mv <源> <目标>：文章换 project / 改 id、project 或存量页改 id、换根目录（按目标的写法分，见 mv.js）。
   mv: { positional: 2, flags: new Set(['registry', 'dry-run']) },
@@ -87,6 +88,7 @@ export function parseArgs(argv) {
   if (spec.positional !== null && positional.length !== spec.positional) {
     fail(positionalProblem(command, spec.positional, positional.length));
   }
+  if (command === 'logo') return { command, items: positional, flags };
   if (command === 'add') return { command, target: positional[0], flags };
   if (command === 'mv') return { command, source: positional[0], target: positional[1], flags };
   if (command === 'remove') return { command, id: positional[0], flags };

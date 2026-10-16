@@ -26,6 +26,8 @@ ${ADDRESS}
   build <目标> [--frame <帧>] [--watch]  编译帧到 dist
   render <目标>/<帧 id>                 编译一帧打到 stdout，不落 dist
   shot <目标> [§2 | B | B1 | 帧 id …]   截图：只写目标截文章页整页，§2 截文章页的那一节，编号和帧 id 截画布视图，--figure <图 id> 截正文里的图
+  logo search <词>                     离线搜索品牌 logo 和变体
+  logo add <文章地址> <品牌>...          将 logo 存入本篇 assets/logos（--app 取 App Store PNG；--placeholder 允许字母占位）
   list [关键词…]                        按口头说法找 project、文章和存量页
 
 评论与标注
@@ -51,6 +53,15 @@ const TARGET_NOTE = `  目标是第一个参数：<project>/<article>、存量�
 
 /** 每个命令：usage 一行（出错时打它），text 是 `ppnt <命令> --help` 的全文。 */
 export const HELP = {
+  logo: {
+    usage: 'ppnt logo search <词> | ppnt logo add <文章地址> <品牌>... [--app [--country cn]] [--placeholder]',
+    text: `用法：ppnt logo search <词>
+      ppnt logo add <文章地址> <品牌>... [--app [--country cn]] [--placeholder] [--registry <文件>] [--json]
+search 离线列名字和变体；add 离线读取登记表，将彩色 SVG、currentColor 单色 SVG 和品牌色写入文章 assets/logos/。
+--app 查询 App Store 并保存 PNG（国家默认 us）；--placeholder 在两个图标集都找不到时生成同名同色的字母方块。
+assets/logos/logos.json 记录品牌色和来源；命令末尾打印 JSX 帧及 MDX 的引用示例。
+单色 SVG 通过 CSS mask 着色，img 的 currentColor 不继承宿主颜色。`,
+  },
   show: {
     usage: 'ppnt show <project>[/<article>] [--uses <组件>] [--json]',
     text: `用法：ppnt show <project>[/<article>] [--uses <组件>] [--json]

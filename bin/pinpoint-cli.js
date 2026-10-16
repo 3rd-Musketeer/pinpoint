@@ -29,6 +29,7 @@ import { runList } from './cli/list.js';
 import { runMigrate } from './cli/migrate.js';
 import { runNew } from './cli/new.js';
 import { runOpen } from './cli/open.js';
+import { runLogo } from './cli/logo.js';
 import { runDev } from './cli/sandbox.js';
 
 // 原有导出面保持不变：测试与 bin/pinpoint.mjs 仍从这里 import。
@@ -193,6 +194,7 @@ export async function run(argv, io = {}) {
 function dispatch(argv, io) {
   const { err } = ioOf(io);
   switch (argv[0]) {
+    case 'logo': return runLogo(argv, io);
     case 'list': return runList(argv, io);
     case 'show': return runShow(argv, io);
     case 'new': return runNew(argv, io);
