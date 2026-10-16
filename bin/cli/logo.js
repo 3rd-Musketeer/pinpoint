@@ -162,14 +162,13 @@ function commitLogo(output, row, pending, contained) {
     if (!record(manifest) || Object.values(manifest).some((row) => !record(row) || typeof row.name !== 'string' || !record(row.files) || !record(row.sources))) throw new Error('Logo manifest 必须是品牌记录对象');
     const previous = manifest[row.slug];
     if (previous && key(previous.name).normalize('NFKC') !== key(row.name).normalize('NFKC')) throw new CliError(`品牌文件名冲突：${previous.name} / ${row.name}`);
-    // 显式重跑可更新已登记素材；手工文件与符号链接不属于本命令。
+    // pending 只含本 slug 的固定命名产物，未登记的中断产物也允许重跑覆盖。
     for (const file of [...pending.keys(), 'logos.json']) {
       const destination = path.join(output, file);
       contained(destination);
       if (fs.existsSync(destination)) {
         const stat = fs.lstatSync(destination);
         if (!stat.isFile() || stat.isSymbolicLink()) throw new Error(`拒绝覆盖非普通文件或 symlink：${destination}`);
-        if (file !== 'logos.json' && !Object.values(previous?.files || {}).includes(`assets/logos/${file}`)) throw new Error(`拒绝覆盖未登记文件：${destination}`);
       }
     }
     row.files = { ...previous?.files, ...row.files };
@@ -180,8 +179,11 @@ function commitLogo(output, row, pending, contained) {
     for (const [file, data] of pending) fs.writeFileSync(path.join(staging, file), data);
     for (const file of pending.keys()) fs.renameSync(path.join(staging, file), path.join(output, file));
   } finally {
-    if (staging) fs.rmSync(staging, { recursive: true, force: true });
-    fs.rmdirSync(lock);
+    try {
+      if (staging) fs.rmSync(staging, { recursive: true, force: true });
+    } finally {
+      fs.rmdirSync(lock);
+    }
   }
 }
 
@@ -207,9 +209,10 @@ export async function runLogo(argv, io = {}) {
     for (const row of rows) {
       out(`${row.name}${row.sources.app ? `（App Store：${row.sources.app.trackName}，${row.sources.app.trackId}）` : ''}：${Object.values(row.files).join('、')}；品牌色 ${row.hex || '未知'}（来源见 assets/logos/logos.json）`);
     }
-    const assets = Object.fromEntries(rows.map((row) => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(address.target.pageDir, 'assets/logos/logos.json'), 'utf8'));
+    const assets = Object.fromEntries(Object.entries(manifest).map(([slug, row]) => {
       const kind = ['app', 'color', 'placeholder', 'mono'].find((kind) => row.files[kind]);
-      return [row.slug, { src: address.target.urlBase + row.files[kind], kind, color: row.hex || '#000' }];
+      return [slug, { src: address.target.urlBase + row.files[kind], kind, color: row.hex || '#000' }];
     }));
     out(`JSX 帧和 MDX（本篇只保留一个 Fav，调用时只改 site 和 size）：
 export function Fav({ site, size = 24 }) {

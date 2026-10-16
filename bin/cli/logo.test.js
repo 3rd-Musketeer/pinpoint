@@ -218,12 +218,23 @@ test('错误形状的 manifest 拒绝写入，保留原文与目录', async (t) 
   }
 });
 
-test('不覆盖未登记文件', async (t) => {
+test('固定命名的未登记 SVG、App PNG 和 placeholder 可重写，其他文件保留', async (t) => {
   const target = fixture(t), output = path.join(target.pageDir, 'assets/logos');
   fs.mkdirSync(output, { recursive: true });
-  fs.writeFileSync(path.join(output, 'github.svg'), 'hand drawn');
-  await assert.rejects(addLogos(target, ['github']), /覆盖/);
-  assert.equal(fs.readFileSync(path.join(output, 'github.svg'), 'utf8'), 'hand drawn');
+  for (const file of ['github.svg', 'github-mono.svg', 'github-app.png', 'github-app.jpg', 'custom.svg', 'unknown-brand-90210.svg']) {
+    fs.writeFileSync(path.join(output, file), 'old');
+  }
+  const [row] = await addLogos(target, ['github'], { app: true, fetchFn: async (url) => String(url).includes('itunes.apple.com')
+    ? { ok: true, json: async () => ({ results: [{ trackId: 12, trackName: 'GitHub', artworkUrl512: 'https://example.org/icon.png' }] }) }
+    : { ok: true, arrayBuffer: async () => PNG } });
+  assert.match(fs.readFileSync(path.join(target.pageDir, row.files.color), 'utf8'), /<svg/);
+  assert.match(fs.readFileSync(path.join(target.pageDir, row.files.mono), 'utf8'), /<svg/);
+  assert.deepEqual(fs.readFileSync(path.join(target.pageDir, row.files.app)), PNG);
+  const [placeholder] = await addLogos(target, ['unknown-brand-90210'], { placeholder: true });
+  assert.match(fs.readFileSync(path.join(target.pageDir, placeholder.files.placeholder), 'utf8'), /<text/);
+  for (const file of ['github-app.jpg', 'custom.svg']) {
+    assert.equal(fs.readFileSync(path.join(output, file), 'utf8'), 'old');
+  }
 });
 
 test('同名 slug 冲突不改已有品牌', async (t) => {
@@ -310,4 +321,88 @@ test('manifest 写入中途失败时，已登记素材和清单保持原样', as
   assert.deepEqual(fs.readFileSync(manifestFile), before);
   assert.equal(fs.readFileSync(path.join(output, 'github.svg'), 'utf8'), 'existing registered SVG');
   assert.deepEqual(fs.readdirSync(output).sort(), ['github-mono.svg', 'github.svg', 'logos.json']);
+});
+
+test('manifest 发布 rename 失败后，已发布的 SVG 允许 CLI 正常重跑', async (t) => {
+  const f = fixture(t), output = path.join(f.pageDir, 'assets/logos');
+  const manifestFile = path.join(output, 'logos.json');
+  const original = fs.renameSync, published = [];
+  const rename = t.mock.method(fs, 'renameSync', (from, to, ...options) => {
+    if (to === manifestFile) {
+      assert.deepEqual(published, ['github.svg', 'github-mono.svg']);
+      assert.match(fs.readFileSync(path.join(output, 'github.svg'), 'utf8'), /<svg/);
+      assert.equal(fs.existsSync(manifestFile), false);
+      throw Object.assign(new Error('模拟 manifest 发布 rename EIO'), { code: 'EIO' });
+    }
+    const result = original(from, to, ...options);
+    published.push(path.basename(to));
+    return result;
+  });
+  try {
+    await assert.rejects(addLogos(f, ['github']), { code: 'EIO', message: '模拟 manifest 发布 rename EIO' });
+  } finally {
+    rename.mock.restore();
+  }
+  assert.deepEqual(fs.readdirSync(output).sort(), ['github-mono.svg', 'github.svg']);
+  const c = capture({ PINPOINT_REGISTRY: f.registry, PINPOINT_DATA_DIR: path.join(f.root, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' });
+  assert.equal(await run(['logo', 'add', 'demo/story', 'github'], c.io), 0, c.errors.join('\n'));
+  const manifest = JSON.parse(fs.readFileSync(manifestFile, 'utf8'));
+  for (const file of Object.values(manifest.github.files)) {
+    assert.match(fs.readFileSync(path.join(f.pageDir, file), 'utf8'), /<svg/);
+  }
+  assert.equal(fs.existsSync(path.join(output, '.write-lock')), false);
+});
+
+test('发布后的 staging 清理失败仍解锁，CLI 报真实原因且可重跑', async (t) => {
+  const f = fixture(t), output = path.join(f.pageDir, 'assets/logos');
+  const original = fs.rmSync, cleanupAttempts = [];
+  const cleanup = t.mock.method(fs, 'rmSync', (file, ...options) => {
+    if (path.dirname(file) === output && path.basename(file).startsWith('.write-')) {
+      assert.ok(fs.existsSync(path.join(output, 'github.svg')));
+      assert.ok(JSON.parse(fs.readFileSync(path.join(output, 'logos.json'), 'utf8')).github);
+      assert.deepEqual(fs.readdirSync(file), []);
+      cleanupAttempts.push(file);
+      throw Object.assign(new Error('模拟 staging 清理 EACCES'), { code: 'EACCES' });
+    }
+    return original(file, ...options);
+  });
+  const c = capture({ PINPOINT_REGISTRY: f.registry, PINPOINT_DATA_DIR: path.join(f.root, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' });
+  try {
+    assert.equal(await run(['logo', 'add', 'demo/story', 'github'], c.io), 1);
+  } finally {
+    cleanup.mock.restore();
+  }
+  assert.equal(cleanupAttempts.length, 1);
+  assert.match(c.errors.join('\n'), /模拟 staging 清理 EACCES/);
+  assert.equal(fs.existsSync(path.join(output, '.write-lock')), false);
+  assert.equal(await run(['logo', 'add', 'demo/story', 'github'], c.io), 0, c.errors.join('\n'));
+});
+
+test('第二次 add 的 Fav 替换组件后，旧调用和新品牌均能实际渲染', async (t) => {
+  const f = fixture(t);
+  const env = { PINPOINT_REGISTRY: f.registry, PINPOINT_DATA_DIR: path.join(f.root, 'data'), PINPOINT_ORIGIN: 'http://127.0.0.1:1' };
+  const add = async (brand) => {
+    const c = capture(env);
+    assert.equal(await run(['logo', 'add', 'demo/story', brand], c.io), 0, c.errors.join('\n'));
+    const example = c.output.find(line => line.startsWith('JSX 帧和 MDX')).split('\n').slice(1).join('\n');
+    fs.writeFileSync(path.join(f.pageDir, 'components/Fav.jsx'), example);
+  };
+  fs.mkdirSync(path.join(f.pageDir, 'components'));
+  const oldFrame = "import { Fav } from './components/Fav.jsx';\nexport default function Example() { return <Fav site=\"github\" />; }\n";
+  fs.writeFileSync(path.join(f.pageDir, 'example.jsx'), oldFrame);
+  await add('github');
+  const first = capture(env);
+  assert.equal(await run(['render', 'demo/story/example', '--full'], first.io), 0, first.errors.join('\n'));
+  assert.match(first.output.join('\n'), /github.svg/);
+  await add('google');
+  assert.equal(fs.readFileSync(path.join(f.pageDir, 'example.jsx'), 'utf8'), oldFrame);
+  const oldCall = capture(env);
+  assert.equal(await run(['render', 'demo/story/example', '--full'], oldCall.io), 0, oldCall.errors.join('\n'));
+  assert.match(oldCall.output.join('\n'), /github.svg/);
+  fs.writeFileSync(path.join(f.pageDir, 'both.jsx'), "import { Fav } from './components/Fav.jsx';\nexport default function Both() { return <div><Fav site=\"github\" /><Fav site=\"google\" /></div>; }\n");
+  const both = capture(env);
+  assert.equal(await run(['render', 'demo/story/both', '--full'], both.io), 0, both.errors.join('\n'));
+  assert.match(both.output.join('\n'), /github.svg/);
+  assert.match(both.output.join('\n'), /google.svg/);
+  assert.equal((both.output.join('\n').match(/<img /g) || []).length, 2);
 });
