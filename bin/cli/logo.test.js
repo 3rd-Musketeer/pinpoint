@@ -9,6 +9,36 @@ import { Resvg } from '@resvg/resvg-js';
 
 const PNG = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="red"/></svg>').render().asPng();
 
+function visualArea(svg, color = '#000') {
+  const { pixels, width, height } = new Resvg(svg.replace(/currentColor/g, color), { fitTo: { mode: 'width', value: 512 }, font: { loadSystemFonts: false } }).render();
+  let area = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    area += pixels[i + 3] / 255 * (1 - (0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255);
+  }
+  return area / (width * height);
+}
+
+test('白底上的 Kimi 与 Google 视觉面积接近，稀疏横长字标保持可读', async (t) => {
+  const target = fixture(t);
+  const rows = await addLogos(target, ['google', 'kimi', 'visa']);
+  const svg = (row) => fs.readFileSync(path.join(target.pageDir, row.files.color || row.files.mono), 'utf8');
+  const google = visualArea(svg(rows[0]));
+  const kimi = visualArea(svg(rows[1]), rows[1].hex);
+  assert.ok(kimi / google < 1.1, `Kimi / Google = ${kimi / google}`);
+  assert.ok(kimi / google > 0.9);
+  const visa = svg(rows[2]);
+  const box = new Resvg(visa).getBBox();
+  const side = Number(visa.match(/viewBox="([^"]+)"/)[1].split(/\s+/)[2]);
+  assert.ok(Math.abs(side - box.width) < 0.00001, '横长 Visa 不应继续缩小');
+});
+
+test('实心图形最多缩小 20%，重复生成稳定且不裁掉原图形', () => {
+  const source = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><rect x="20" y="30" width="40" height="40"/></svg>';
+  const result = normalizeLogoSvg(source);
+  assert.match(result, /viewBox="15 25 50 50"/);
+  assert.equal(normalizeLogoSvg(result), result);
+});
+
 function fixture(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'ppnt-logo-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
@@ -164,12 +194,17 @@ test('实际品牌 SVG 的 viewBox 是以图形居中的方形', async (t) => {
 });
 
 
-test('SVG 方形裁边按实际图形和 transform 计算，不按原画布或曲线控制点计算', () => {
+test('SVG 方形留白按实际图形和 transform 居中，不按原画布或曲线控制点计算', () => {
   const rect = normalizeLogoSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 100"><g transform="translate(30 40)"><rect width="10" height="20" fill="red"/></g></svg>');
-  assert.match(rect, /viewBox="25 40 20 20"/);
   assert.match(rect, /transform="translate\(30 40\)"/);
   const curve = normalizeLogoSvg('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><path d="M0 0 C0 100 100 100 100 0" fill="blue"/></svg>');
-  assert.match(curve, /viewBox="0 -12.5 100 100"/);
+  for (const [svg, cx, cy, minimum] of [[rect, 35, 50, 20], [curve, 50, 37.5, 100]]) {
+    const [x, y, w, h] = svg.match(/viewBox="([^"]+)"/)[1].split(/\s+/).map(Number);
+    assert.equal(w, h);
+    assert.ok(w >= minimum, '留白不能裁掉实际图形');
+    assert.ok(Math.abs(x + w / 2 - cx) < 0.00001);
+    assert.ok(Math.abs(y + h / 2 - cy) < 0.00001);
+  }
 });
 
 test('单色 alias 复用 parent 的品牌色', () => {

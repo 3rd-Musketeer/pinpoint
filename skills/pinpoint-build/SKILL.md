@@ -128,6 +128,7 @@ JSX 帧的写法和存量页相同，全文在 board-schema。HTML 帧是现成�
 - 本篇的样式写进 `article.css`，不要每帧各写一份。每一帧（包括 `comp`）都包在 kit 的 `.ios-root` 里，kit 用 `.ios-root button` 清掉了按钮的颜色、底色和边框，它比单个类名优先；自己的按钮样式写成 `.ios-root .<类名>`，或用 kit 的按钮印章。从别的文章复制组件时，一起复制它用到的那部分 `article.css`；组件里写死的 `/sites/<别的页 id>/assets/…` 路径也要改成本篇的。
 - 资源放 `assets/`，帧里写绝对路径 `/sites/<project>_<article>/assets/<文件>`。不写 `./assets/…`：工作台把帧内联进自己的页面，相对路径会解析到别处，图片加载失败。
 - 品牌和 App logo 必须由 `ppnt logo add <文章地址> <品牌>...` 写入本篇 `assets/logos/`，不手画品牌 path；先用 `ppnt logo search <词>` 离线查名字与变体。一篇文章里同一品牌只用一张图，并且只经过一个组件渲染：有 App 图标时统一用 `--app` 的 PNG（国家默认 us，国内 App 加 `--country cn`）；没有 App 图标时统一用白底、0.5 px 描边、25% 圆角方块和居中的彩色 logo，内图宽高为外框的 72%；都没有时用 `--placeholder`。外面是否再包框也必须全文一致。单色 SVG 用 CSS mask 取品牌色，`img` 的 `currentColor` 不继承外层颜色。品牌色和来源见 `assets/logos/logos.json`，命令末尾打印含本篇全部已登记品牌的 JSX 帧和 MDX 引用示例，分批添加后可整体更新同一个组件。通用 UI 图标用 lucide。
+- 自 2026-10-16 起，`ppnt logo add` 把超过方框 25% 的白底对比度加权墨迹面积缩到 25%（线性尺寸最多缩小 20%），留白写进 SVG 的方形 viewBox；组件仍用 72% 内框，App PNG 与 placeholder 铺满。单色图按 manifest 品牌色计算；已有文章对含 SVG 的品牌重跑 `ppnt logo add` 即可更新，不带 `--app` 会保留已有 App PNG 和来源，无需改组件或重新下载 App 图标；只有 App PNG 的品牌不必重跑。
 - 屏内交互用内联 `<script data-preview-script>` 或同名 sidecar `<帧 id>.js`（导出 `mount(root)`），写法见 board-schema“交互 frame”。
 - 帧 id 用描述内容的短词（`submit-confirm`），不起成编号的样子（`c1b-detail`）。已有的帧不改名：帧 id 是源文件名，也是标注的锚点。
 

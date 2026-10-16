@@ -53,11 +53,20 @@ function iconSvg(set, name) {
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${icon.width || set.width || 16} ${icon.height || set.height || 16}">${icon.body}</svg>\n`;
 }
 
-/** 以可见图形（含 transform）的边界居中，而不是沿用图标集的画布留白。 */
-export function normalizeLogoSvg(svg) {
+/** 按实际边界居中，再按白底对比度面积补留白；缩放限于 80%~100%。 */
+export function normalizeLogoSvg(svg, color = '#000') {
   const box = new Resvg(svg, { font: { loadSystemFonts: false } }).getBBox();
   if (!box || !(box.width > 0) || !(box.height > 0)) throw new Error('Logo SVG 没有可见图形边界');
-  const side = Math.max(box.width, box.height);
+  let side = Math.max(box.width, box.height);
+  const tightBox = [box.x + box.width / 2 - side / 2, box.y + box.height / 2 - side / 2, side, side].join(' ');
+  const preview = svg.replace(/viewBox="[^"]*"/, `viewBox="${tightBox}"`).replace(/currentColor/g, color);
+  const { pixels, width, height } = new Resvg(preview, { fitTo: { mode: 'width', value: 256 }, font: { loadSystemFonts: false } }).render();
+  let area = 0;
+  for (let i = 0; i < pixels.length; i += 4) {
+    area += pixels[i + 3] / 255 * (1 - (0.2126 * pixels[i] + 0.7152 * pixels[i + 1] + 0.0722 * pixels[i + 2]) / 255);
+  }
+  const scale = Math.max(0.8, Math.min(1, Math.sqrt(0.25 / (area / (width * height)))));
+  side /= scale;
   const viewBox = [box.x + box.width / 2 - side / 2, box.y + box.height / 2 - side / 2, side, side]
     .map((n) => Number(n.toFixed(6))).join(' ');
   return svg.replace(/viewBox="[^"]*"/, `viewBox="${viewBox}"`);
@@ -126,7 +135,7 @@ export async function addLogos(target, requested, { app = false, country = 'us',
       return `assets/logos/${file}`;
     };
     if (variants.color) files.color = write('.svg', normalizeLogoSvg(iconSvg(sets.color, variants.color)));
-    if (variants.mono) files.mono = write('-mono.svg', normalizeLogoSvg(iconSvg(sets.mono, variants.mono)));
+    if (variants.mono) files.mono = write('-mono.svg', normalizeLogoSvg(iconSvg(sets.mono, variants.mono), variants.hex || '#000'));
     let store;
     if (app) {
       const result = await appIcon(name, country, fetchFn);
