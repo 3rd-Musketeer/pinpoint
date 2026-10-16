@@ -65,7 +65,7 @@ test('App Store 无结果、HTTP 失败和非 PNG 会明确报错', async (t) =>
   await assert.rejects(addLogos(target, ['fake'], { app: true, fetchFn: async () => ({ ok: true, json: async () => ({ results: [] }) }) }), /找不到/);
   await assert.rejects(addLogos(target, ['fake'], { app: true, fetchFn: async () => ({ ok: false, status: 503 }) }), /503/);
   let count = 0;
-  await assert.rejects(addLogos(target, ['fake'], { app: true, fetchFn: async () => ++count === 1 ? { ok: true, json: async () => ({ results: [{ artworkUrl512: 'https://example.org/x' }] }) } : { ok: true, arrayBuffer: async () => Buffer.from('not-png') } }), /不是 PNG/);
+  await assert.rejects(addLogos(target, ['fake'], { app: true, fetchFn: async () => ++count === 1 ? { ok: true, json: async () => ({ results: [{ trackName: 'fake', artworkUrl512: 'https://example.org/x' }] }) } : { ok: true, arrayBuffer: async () => Buffer.from('not-png') } }), /不是 PNG/);
 });
 
 test('placeholder 同名同色、可转义 XML，仅缺失时生成', async (t) => {
@@ -117,9 +117,15 @@ test('CLI help 和错误参数退出码；缺文章不会创建目录', async (t
   const original = 'https://is1-ssl.mzstatic.com/image/thumb/app/512x512bb.jpg';
   const [row] = await addLogos(target, ['gmail'], { app: true, fetchFn: async (url) => {
     calls.push(String(url));
-    return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ artworkUrl512: original }] }) } : { ok: true, arrayBuffer: async () => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) };
+    return calls.length === 1 ? { ok: true, json: async () => ({ results: [{ trackName: 'Gmail', artworkUrl512: original }] }) } : { ok: true, arrayBuffer: async () => Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]) };
   } });
   assert.equal(calls[1], original.replace('.jpg', '.png'));
   assert.equal(row.sources.app.artworkUrl512, original);
   assert.equal(logoVariants('google').color, 'google-icon');
+});
+
+ test('App Store 的相似搜索结果不能冒充品牌 logo', async (t) => {
+  const target = fixture(t);
+  await assert.rejects(addLogos(target, ['allbirds'], { app: true, fetchFn: async () => ({ ok: true, json: async () => ({ results: [{ trackName: 'eBird', artworkUrl512: 'https://example.org/a.png' }] }) }) }), /不匹配/);
+  assert.equal(fs.existsSync(path.join(target.pageDir, 'assets/logos/allbirds-app.png')), false);
 });

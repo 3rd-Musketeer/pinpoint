@@ -74,6 +74,11 @@ async function appIcon(name, country, fetchFn) {
   if (!response.ok) throw new Error(`App Store 查询失败：HTTP ${response.status}`);
   const app = (await response.json()).results?.[0];
   if (!app?.artworkUrl512) throw new Error(`App Store 找不到 ${name}（${country}）`);
+  const appNames = { 'google-gmail': ['gmail'], gcal: ['googlecalendar'], ctrip: ['ctrip', '携程'], wechat: ['wechat', '微信'], feishu: ['feishu', '飞书', 'lark'], dingtalk: ['dingtalk', '钉钉'], douyin: ['douyin', '抖音'] };
+  const expected = appNames[key(name)] || [name];
+  if (!app.trackName || !expected.some((n) => compact(key(app.trackName)).includes(compact(key(n))))) {
+    throw new Error(`App Store 首条结果“${app.trackName || '未命名'}”与 ${name} 不匹配；请换搜索词，或不带 --app 使用 --placeholder`);
+  }
   // Apple 的 artworkUrl512 也会返回 JPEG；同一 artwork 的缩略图端点可指定 PNG。
   const artwork = new URL(app.artworkUrl512);
   if (artwork.hostname.endsWith('.mzstatic.com')) artwork.pathname = artwork.pathname.replace(/\.(?:jpg|jpeg)$/i, '.png');
@@ -156,7 +161,7 @@ export async function runLogo(argv, io = {}) {
     if (address?.kind !== 'article') throw new Error(`找不到文章：${targetRef}`);
     const rows = await addLogos(address.target, requested, { app: parsed.flags.app, country: parsed.flags.country, placeholder: parsed.flags.placeholder, fetchFn: io.fetchFn });
     for (const row of rows) {
-      out(`${row.name}：${Object.values(row.files).join('、')}；品牌色 ${row.hex || '未知'}（来源见 assets/logos/logos.json）`);
+      out(`${row.name}${row.sources.app ? `（App Store：${row.sources.app.trackName}，${row.sources.app.trackId}）` : ''}：${Object.values(row.files).join('、')}；品牌色 ${row.hex || '未知'}（来源见 assets/logos/logos.json）`);
       const src = `${address.target.urlBase}${row.files.app || row.files.color || row.files.placeholder || row.files.mono}`;
       out(`JSX 帧和 MDX：<img src="${src}" alt="${xml(row.name)}" width="24" height="24" style={{ objectFit: 'contain'${row.files.app ? ", borderRadius: '6px'" : ''} }} />`);
       if (row.files.mono) out(`单色白（JSX 帧和 MDX）：<span role="img" aria-label="${xml(row.name)}" style={{ display: 'inline-block', width: '24px', height: '24px', backgroundColor: 'white', mask: 'url(${address.target.urlBase}${row.files.mono}) center / contain no-repeat', WebkitMask: 'url(${address.target.urlBase}${row.files.mono}) center / contain no-repeat' }} />`);
