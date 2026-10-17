@@ -29,6 +29,45 @@ const CANVAS_LEDGER = path.join(E2E_DATA_DIR, PAGE_ID, '@canvas.json');
 test.beforeEach(() => { fs.rmSync(LEDGER, { force: true }); fs.rmSync(CANVAS_LEDGER, { force: true }); });
 test.afterEach(async ({ page }) => { await closeSettled(page); });
 
+/** 右栏重画会换掉节点。拿着旧节点读 getComputedStyle，fontSize / lineHeight 是空串。
+    同一次 evaluate 里重新查当前节点，连续两帧几何一致才把这次测量交出去。 */
+async function stableBox(page, selector) {
+  let measured = null;
+  await expect.poll(async () => {
+    measured = await page.evaluate(async (sel) => {
+      const read = () => {
+        const el = document.querySelector(sel);
+        if (!el || !el.isConnected) return null;
+        const cs = getComputedStyle(el);
+        if (!cs.fontSize || !cs.lineHeight) return null;
+        const card = el.closest('.pp-thread').getBoundingClientRect();
+        const leadEl = el.parentElement && el.parentElement.querySelector('.pp-targets');
+        const lead = leadEl ? leadEl.getBoundingClientRect() : null;
+        const box = el.getBoundingClientRect();
+        return {
+          fontSize: cs.fontSize,
+          lineHeight: cs.lineHeight,
+          cardTop: card.top,
+          cardHeight: card.height,
+          leadTop: lead ? lead.top : null,
+          boxTop: box.top,
+          boxHeight: box.height,
+        };
+      };
+      const a = read();
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const b = read();
+      if (!a || !b) return null;
+      if (a.fontSize !== b.fontSize || a.lineHeight !== b.lineHeight) return null;
+      if (Math.abs(a.boxTop - b.boxTop) > 0.5 || Math.abs(a.cardTop - b.cardTop) > 0.5 || Math.abs(a.cardHeight - b.cardHeight) > 0.5) return null;
+      if (a.leadTop == null || b.leadTop == null || Math.abs(a.leadTop - b.leadTop) > 0.5) return null;
+      return b;
+    }, selector);
+    return measured;
+  }).not.toBeNull();
+  return measured;
+}
+
 /** 往一本账本里放一行或多行（baseRevision 取盘上现版，整本换成这些行）。 */
 async function seed(request, entry, ledger, row) {
   const doc = await (await request.get(`/annotations/${encodeURIComponent(ledger)}?entry=${entry}`)).json();
@@ -583,7 +622,7 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     {
       id: 'lead-one', screenId: 'pay-card', status: 'check',
       content: '[@t:i1] 这里要把账号 / 连接器分开',
-      targets: [{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '账号' }],
+      targets: [{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '收款账户以及连接器的当前状态说明' }],
     },
     {
       id: 'lead-two', screenId: 'pay-card', status: 'open',
@@ -612,15 +651,12 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     const body = thread.locator('[data-edit]');
     await expect(body).toHaveCount(1);
     await expect(body).toHaveText('这里要把账号 / 连接器分开');
-    await expect(lead).toHaveText('“账号”');
+    await expect(lead).toHaveText('“收款账户以及连接器的当前状态说明”');
     await expect(lead).not.toHaveAttribute('data-edit', /.+/);
     await expect(body).not.toContainText('[@t:');
-    const before = await body.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      const card = el.closest('.pp-thread').getBoundingClientRect();
-      const leadBox = el.parentElement.querySelector('.pp-targets').getBoundingClientRect();
-      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, leadTop: leadBox.top };
-    });
+    const beforeSel = '.pp-thread[data-id="c:lead-one"] .pp-body:not(.pp-edit)';
+    const duringSel = '.pp-thread[data-id="c:lead-one"] .pp-body.pp-edit';
+    const before = await stableBox(page, beforeSel);
     // 点元素文字不进编辑。这一下是点卡片，画布浮层会开；用关闭钮关掉，状态和地址一起复原。
     await lead.click();
     await expect(thread.locator('textarea')).toHaveCount(0);
@@ -628,32 +664,31 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     await page.locator('[data-pp-overlay] [data-ov-close]').click();
     await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(0);
     await body.click();
-    const box = thread.locator('textarea.pp-edit');
+    const box = thread.locator('.pp-body.pp-edit');
     await expect(box).toBeFocused();
-    await expect(box).toHaveValue('这里要把账号 / 连接器分开');
+    await expect(box).toHaveText('这里要把账号 / 连接器分开');
     await expect(page.locator('dialog[data-pp-overlay][open]'), '点后面的文字不打开画布浮层').toHaveCount(0);
-    await expect(lead).toHaveText('“账号”');
-    const during = await box.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      const card = el.closest('.pp-thread').getBoundingClientRect();
-      const leadBox = el.parentElement.querySelector('.pp-targets').getBoundingClientRect();
-      const boxBox = el.getBoundingClientRect();
-      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, leadTop: leadBox.top, boxTop: boxBox.top };
-    });
+    await expect(lead).toHaveText('“收款账户以及连接器的当前状态说明”');
+    const during = await stableBox(page, duringSel);
     expect([during.fontSize, during.lineHeight]).toEqual([before.fontSize, before.lineHeight]);
     expect(Math.abs(during.cardTop - before.cardTop)).toBeLessThanOrEqual(1);
     expect(Math.abs(during.leadTop - before.leadTop)).toBeLessThanOrEqual(1);
-    expect(Math.abs(during.boxTop - during.leadTop)).toBeLessThanOrEqual(2);
+    expect(Math.abs(during.boxTop - before.boxTop), '正文顶部').toBeLessThanOrEqual(1);
+    expect(Math.abs(during.cardHeight - before.cardHeight), '卡片高度').toBeLessThanOrEqual(2);
+    await box.fill('这里要把账号 / 连接器分开\n再写一行');
+    const grown = await stableBox(page, duringSel);
+    expect(grown.boxHeight, '输入变高').toBeGreaterThan(during.boxHeight + 8);
+    expect(grown.cardHeight, '卡片随内容变高').toBeGreaterThan(during.cardHeight + 8);
     await box.fill('账号和连接器分开写');
     await box.press('ControlOrMeta+Enter');
     await expect(thread.locator('textarea')).toHaveCount(0);
     await expect(body).toHaveText('账号和连接器分开写');
-    await expect(lead).toHaveText('“账号”');
+    await expect(lead).toHaveText('“收款账户以及连接器的当前状态说明”');
     await proseSettled(page);
     const row = JSON.parse(fs.readFileSync(CANVAS_LEDGER, 'utf8')).annotations.find((a) => a.id === 'lead-one');
     expect(row.content).toBe('[@t:i1] 账号和连接器分开写');
     expect(row.status).toBe('open');
-    expect(row.targets).toEqual([{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '账号' }]);
+    expect(row.targets).toEqual([{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '收款账户以及连接器的当前状态说明' }]);
   });
 
   await test.step('开头两个记号：两个都留在 content 里，中间的空白也不改', async () => {
@@ -662,11 +697,15 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     const body = thread.locator('[data-edit]');
     await expect(lead).toHaveText('“过期” “失效”');
     await expect(body).toHaveText('过期和失效放在按钮上');
+    const before = await stableBox(page, '.pp-thread[data-id="c:lead-two"] .pp-body:not(.pp-edit)');
     await body.click();
-    const box = thread.locator('textarea.pp-edit');
+    const box = thread.locator('.pp-body.pp-edit');
     await expect(box).toBeFocused();
-    await expect(box).toHaveValue('过期和失效放在按钮上');
+    await expect(box).toHaveText('过期和失效放在按钮上');
     await expect(lead).toHaveText('“过期” “失效”');
+    const during = await stableBox(page, '.pp-thread[data-id="c:lead-two"] .pp-body.pp-edit');
+    expect(Math.abs(during.boxTop - before.boxTop), '正文顶部').toBeLessThanOrEqual(1);
+    expect(Math.abs(during.cardHeight - before.cardHeight), '卡片高度').toBeLessThanOrEqual(2);
     await box.fill('写在按钮上');
     await box.press('ControlOrMeta+Enter');
     await expect(body).toHaveText('写在按钮上');

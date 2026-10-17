@@ -22,10 +22,11 @@
  * 把新评论退回草稿、回复退回输入框，右栏写出原因。
  *
  * 改自己写的话（2026-10-17）：点线程里 owner 写的话（正文评论的 content、以及 owner 在同一线程里
- * 的后续回复；画布标注改不含目标记号的正文，也改开头全是目标记号时记号后面的文字），原地变成
- * 可编辑的输入框，字号行高与位置不跳；⌘/Ctrl+Enter 或点这张卡外面保存，Esc 取消恢复原文，
- * 清空后保存不删评论、恢复原文。开头的 `[@t:iN]` 留在输入框外面，显示成元素文字、只读，保存时
- * 原样接回 content。agent 的回复、引文、记号夹在文字中间的画布标注正文不可编辑。编辑入队 edit
+ * 的后续回复；画布标注改不含目标记号的正文，也改开头全是目标记号时记号后面的文字），原地可编辑，
+ * 字号行高与位置不跳。开头全是目标记号时，后面那段仍是原来的行内 span，只是可写，不换成 textarea。
+ * ⌘/Ctrl+Enter 或点这张卡外面保存，Esc 取消恢复原文，清空后保存不删评论、恢复原文。开头的
+ * `[@t:iN]` 留在这段文字外面，显示成元素文字、只读，保存时原样接回 content。agent 的回复、引文、
+ * 记号夹在文字中间的画布标注正文不可编辑。编辑入队 edit
  * 操作（第一句改 content，后续回复只换那条消息的文本），与服务端“owner 改了回 open”同一条规则；
  * 被拒时字放回编辑框。
  *
@@ -511,13 +512,14 @@ export function startProseComments(options) {
     return threadKey + '/m' + (messageIndex - 1);
   }
 
-  /** 开头全是目标记号：元素文字在前、只读，后面的文字单独可点。编辑中换成输入框，记号仍在框外。 */
+  /** 开头全是目标记号：元素文字在前、只读，后面的文字单独可点。编辑时后面那段仍是这个 span，
+      只是可写；记号留在 span 外面。换成 textarea 会另起一行，并把后面的文字收进一条更窄的矩形。 */
   function leadingEditHtml(row, leading, editKey) {
     var label = canvasLeadingLabel(row, leading.prefix);
     var lead = label ? '<span class="pp-targets">' + esc(label) + '</span>' : '';
     var value = editText[editKey] != null ? editText[editKey] : leading.text;
     var body = editingId === editKey
-      ? '<textarea class="pp-edit" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</textarea>'
+      ? '<span class="pp-body pp-edit" contenteditable="plaintext-only" role="textbox" aria-multiline="true" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</span>'
       : '<span class="pp-body" data-edit="' + esc(editKey) + '" title="点击编辑">' + esc(leading.text) + '</span>';
     return '<div class="text pp-with-targets' + (lead ? ' pp-with-lead' : '') + '">' + lead + body + '</div>';
   }
@@ -690,13 +692,14 @@ export function startProseComments(options) {
       }
     }
     var keepEdit = {};
-    var editAreas = rail.querySelectorAll('textarea[data-edit]');
+    var editAreas = rail.querySelectorAll('textarea.pp-edit[data-edit], .pp-body.pp-edit[data-edit]');
     for (var j = 0; j < editAreas.length; j++) {
+      var range = editFieldSelection(editAreas[j]);
       keepEdit[editAreas[j].getAttribute('data-edit')] = {
-        value: editAreas[j].value,
+        value: editFieldText(editAreas[j]),
         focus: editAreas[j] === active,
-        start: editAreas[j].selectionStart,
-        end: editAreas[j].selectionEnd,
+        start: range.start,
+        end: range.end,
       };
     }
     // 一列：正文评论按引文位置，画布标注按所属卡片的位置（排在紧跟卡片的那段正文之前），同位按 #n。
@@ -741,10 +744,10 @@ export function startProseComments(options) {
         if (editingId === id && keepEdit[id].value) editText[id] = keepEdit[id].value;
         return;
       }
-      area.value = keepEdit[id].value;
+      setEditFieldText(area, keepEdit[id].value);
       if (keepEdit[id].focus) {
         area.focus();
-        try { area.setSelectionRange(keepEdit[id].start, keepEdit[id].end); } catch (e) { /* */ }
+        setEditFieldSelection(area, keepEdit[id].start, keepEdit[id].end);
       }
       growEdit(area);
     });
@@ -766,23 +769,72 @@ export function startProseComments(options) {
   }
 
   function editAreaOf(key) {
-    return rail.querySelector('textarea[data-edit="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
+    var id = window.CSS && CSS.escape ? CSS.escape(key) : key;
+    return rail.querySelector('textarea.pp-edit[data-edit="' + id + '"], .pp-body.pp-edit[data-edit="' + id + '"]');
   }
 
-  /** 编辑框贴合内容：先按原文行数给高（textarea 默认 rows 会比原文高一行），
-      再按内容收成正好的高度，打字时跟着长。开头带只读元素文字时，框宽用剩下的那一截，
-      文字留在同一行。 */
+  function editFieldText(el) {
+    if (!el) return '';
+    return el.tagName === 'TEXTAREA' ? el.value : String(el.textContent || '');
+  }
+
+  function setEditFieldText(el, value) {
+    if (el.tagName === 'TEXTAREA') el.value = value;
+    else el.textContent = value == null ? '' : String(value);
+  }
+
+  /** 光标在字段文字里的偏移。textarea 用 selectionStart；可写 span 只有文本节点。 */
+  function editFieldSelection(el) {
+    var text = editFieldText(el);
+    if (el.tagName === 'TEXTAREA') return { start: el.selectionStart, end: el.selectionEnd };
+    var sel = window.getSelection();
+    if (!sel || !sel.rangeCount || !el.contains(sel.anchorNode)) return { start: text.length, end: text.length };
+    var range = sel.getRangeAt(0);
+    function at(node, off) {
+      if (node === el) {
+        var n = 0;
+        for (var i = 0; i < off && i < el.childNodes.length; i++) n += el.childNodes[i].textContent.length;
+        return n;
+      }
+      var total = 0;
+      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+      var cur;
+      while ((cur = walker.nextNode())) {
+        if (cur === node) return total + off;
+        total += cur.textContent.length;
+      }
+      return text.length;
+    }
+    return { start: at(range.startContainer, range.startOffset), end: at(range.endContainer, range.endOffset) };
+  }
+
+  function setEditFieldSelection(el, start, end) {
+    if (el.tagName === 'TEXTAREA') {
+      try { el.setSelectionRange(start, end); } catch (e) { /* */ }
+      return;
+    }
+    var node = el.firstChild;
+    if (!node || node.nodeType !== 3) return;
+    var len = node.textContent.length;
+    var a = Math.max(0, Math.min(start, len));
+    var b = Math.max(0, Math.min(end, len));
+    try {
+      var range = document.createRange();
+      range.setStart(node, a);
+      range.setEnd(node, b);
+      var sel = window.getSelection();
+      if (!sel) return;
+      sel.removeAllRanges();
+      sel.addRange(range);
+    } catch (e) { /* */ }
+  }
+
+  /** 块级 textarea 贴合内容：默认 rows 会比原文高一行，先按换行数给高，再收成 scrollHeight，打字时跟着长。
+      开头带元素文字的那句是行内 span，高度随文字自己长，这里碰不到。 */
   function growEdit(area) {
+    if (!area || area.tagName !== 'TEXTAREA') return;
     var lines = String(area.value || '').split('\n').length;
     area.rows = lines;
-    var parent = area.parentElement;
-    if (parent && parent.classList.contains('pp-with-lead')) {
-      var lead = parent.querySelector('.pp-targets');
-      var leadW = lead ? lead.getBoundingClientRect().width : 0;
-      area.style.width = '0px';
-      var remain = Math.max(48, Math.floor(parent.getBoundingClientRect().width - leadW));
-      area.style.width = remain + 'px';
-    }
     area.style.height = 'auto';
     area.style.height = area.scrollHeight + 'px';
   }
@@ -976,7 +1028,8 @@ export function startProseComments(options) {
     if (!area) { editingId = null; return; }
     growEdit(area);
     area.focus();
-    try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
+    var len = editFieldText(area).length;
+    setEditFieldSelection(area, len, len);
   }
 
   /** 收束编辑：写了新字就入队 edit（onChange 会重画），清空或没改就恢复原文，框不在了只退出。 */
@@ -985,7 +1038,7 @@ export function startProseComments(options) {
     if (key == null) return;
     editingId = null;
     var area = editAreaOf(key);
-    var value = area ? area.value : editText[key];
+    var value = area ? editFieldText(area) : editText[key];
     delete editText[key];
     if (value == null) return;
     var text = String(value).trim();
@@ -1034,7 +1087,7 @@ export function startProseComments(options) {
 
   // ---------- 事件 ----------
   rail.addEventListener('compositionstart', function (e) {
-    if (e.target.matches('textarea[data-reply], textarea[data-edit]')) composingArea = e.target;
+    if (e.target.matches('textarea[data-reply], textarea[data-edit], .pp-body.pp-edit')) composingArea = e.target;
   });
   rail.addEventListener('compositionend', function (e) {
     if (e.target !== composingArea) return;
@@ -1162,7 +1215,7 @@ export function startProseComments(options) {
 
   rail.addEventListener('keydown', function (e) {
     // 编辑第一句：⌘/Ctrl+Enter 保存，Esc 取消恢复原文；单独 Enter 是换行。
-    var edit = e.target.closest && e.target.closest('textarea[data-edit]');
+    var edit = e.target.closest && e.target.closest('textarea[data-edit], .pp-body.pp-edit');
     if (edit) {
       if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing && e.keyCode !== 229) {
         e.preventDefault();

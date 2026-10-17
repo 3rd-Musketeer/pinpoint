@@ -277,7 +277,9 @@ mark.pp-hl.draft { background:var(--pp-highlight-on); }
                       border-radius:var(--pp-r-3); padding:8px 10px; resize:vertical; min-height:60px; }
 /* 点 owner 写的话原地编辑：字号、行高、边距都同 .text，框不占额外的高、也不压到作者行。
    描边画在框外（outline），文字位置不挪。agent 的回复、引文、记号夹在中间的画布正文没有 data-edit。
-   开头全是目标记号时，元素文字（.pp-targets）留在原处、只读，后面的文字单独可点；编辑框只占剩下的宽度。 */
+   开头全是目标记号时，元素文字（.pp-targets）和后面的正文是同一行里的两个 span，编辑时后面那个
+   仍是这个 span，只是可写。不用 textarea：它是一块矩形，和元素文字排不下就掉到下一行，
+   剩下的宽度又让正文折得更密，卡片会被撑高。 */
 .pp-thread .text[data-edit],
 .pp-thread .pp-body[data-edit] { cursor:text; border-radius:var(--pp-r-1); }
 .pp-thread .text[data-edit]:hover,
@@ -286,8 +288,10 @@ mark.pp-hl.draft { background:var(--pp-highlight-on); }
 .pp-thread .pp-body { vertical-align:top; white-space:pre-wrap; }
 .pp-thread textarea.pp-edit { display:block; width:100%; margin:0; padding:0; min-height:0; height:auto; resize:none; overflow:hidden; box-sizing:border-box;
                               font:inherit; line-height:inherit; background:transparent; border:0; border-radius:0; }
-.pp-thread .pp-with-lead textarea.pp-edit { display:inline-block; vertical-align:top; width:auto; max-width:100%; }
-.pp-thread textarea.pp-edit:focus { outline:1px solid var(--pp-focus-ring); outline-offset:3px; }
+.pp-thread textarea.pp-edit:focus,
+.pp-thread .pp-body.pp-edit:focus { outline:1px solid var(--pp-focus-ring); outline-offset:3px; }
+/* 字删光时行内 span 会塌掉，补一个零宽字符把插入点留在这一行。 */
+.pp-thread .pp-body.pp-edit:empty::before { content:"\200b"; }
 .pp-thread .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
 /* 回复框默认收着：线程底下只有一个“回复”，点了才展开输入框。 */
 .pp-foot { display:flex; align-items:center; gap:6px; margin:6px 0 -4px -6px; }
