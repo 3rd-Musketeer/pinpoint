@@ -32,177 +32,29 @@
  *
  * 同步：SSE（/events）断了会自己重连，重连上就重新水合，补上断线期间漏掉的事件；
  * pagehide 时关掉，从 bfcache 回来（pageshow persisted，比如从画布按“返回”）时重开
- * 并重新水合。 */
+ * 并重新水合。
+ *
+ * 这个文件只做组装。文本索引在 prose/text-index.js，高亮在 prose/highlight.js，
+ * 右栏 HTML 在 prose/html.js，账本同步在 prose/sync.js，选区在 prose/selection.js，
+ * 右栏重画在 prose/rail.js，就地编辑在 prose/edit.js，编辑框的 DOM 读写在 prose/edit-field.js。
+ * 对外仍导出 buildTextIndex、rangeToOffsets、unpaint、paintSegments、startProseComments。 */
 
-import { locateQuote, normalizeWhitespace, quoteFromText } from '../shared/text-quote.js';
-import { onPageLeave } from './lib/save-request.js';
-import { createOpsLedger } from './lib/ops-ledger.js';
-import { createCanvasLedgers } from './lib/canvas-ledgers.js';
-import { readLedgerDocument, rememberLedgerDocument } from './lib/ledger-reader.js';
-import { annotationSlug } from '../shared/annotation-slug.js';
-import {
-  authorLabel,
-  canvasBodyFromStored,
-  canvasContentHasTargets,
-  canvasContentText,
-  canvasLeadingEdit,
-  canvasLeadingLabel,
-  canvasRailItems,
-  formatWhen,
-  isProseClosed,
-  isProseRow,
-  isSendKey,
-  newProseRow,
-  PROSE_LEDGER,
-  railOrder,
-  threadMessages,
-} from '../shared/prose-thread.js';
-import { ANN_STATUS_COLORS } from '../shared/ann-status.js';
+import { locateQuote } from '../shared/text-quote.js';
+import { isProseClosed, isProseRow, newProseRow } from '../shared/prose-thread.js';
 
-var SKIP_SELECTOR = 'script,style,noscript,template,textarea,[data-pp-canvas],[data-pp-figure],[data-pp-nocomment],.errors';
-var BLOCK_TAGS = /^(P|H[1-6]|LI|UL|OL|DL|DT|DD|DIV|SECTION|ARTICLE|ASIDE|HEADER|FOOTER|BLOCKQUOTE|PRE|TABLE|THEAD|TBODY|TFOOT|TR|TD|TH|FIGURE|FIGCAPTION|HR|BR)$/;
+import { buildTextIndex, sectionAtFor } from './prose/text-index.js';
+import { paintSegments, unpaint } from './prose/highlight.js';
+import { createProseSync } from './prose/sync.js';
+import { createSelection } from './prose/selection.js';
+import { createRail } from './prose/rail.js';
+import { createEdit } from './prose/edit.js';
+import { cssEscape, railArea } from './prose/edit-field.js';
+import { bindProseEvents } from './prose/events.js';
+
+export { buildTextIndex, rangeToOffsets } from './prose/text-index.js';
+export { unpaint, paintSegments } from './prose/highlight.js';
+
 var MARK_CLASS = 'pp-hl';
-var MAX_CONFLICT_RETRIES = 5;
-
-function esc(text) {
-  return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
-}
-
-/** 正文 → 规范化文本 + 每个文本节点的偏移表（map[k] = 该节点第 k 个字符在规范化文本里的位置）。 */
-export function buildTextIndex(root) {
-  var raw = '';
-  var entries = [];
-  var cards = [];
-  function walk(el) {
-    for (var child = el.firstChild; child; child = child.nextSibling) {
-      if (child.nodeType === 3) {
-        entries.push({ node: child, at: raw.length });
-        raw += child.data;
-      } else if (child.nodeType === 1) {
-        // 画布卡片不进文本，但记下它在文本里的位置：右栏把这一节的画布标注排在这里。
-        if (child.matches('[data-pp-canvas]')) cards.push({ el: child, at: raw.length });
-        if (child.matches(SKIP_SELECTOR)) continue;
-        var block = BLOCK_TAGS.test(child.tagName);
-        if (block) raw += ' ';
-        walk(child);
-        if (block) raw += ' ';
-      }
-    }
-  }
-  walk(root);
-  var norm = normalizeWhitespace(raw);
-  var nodes = entries.map(function (e) {
-    var len = e.node.data.length;
-    var map = norm.map.slice(e.at, e.at + len + 1);
-    return { node: e.node, start: map[0], end: map[len], map: map };
-  });
-  return {
-    text: norm.text,
-    nodes: nodes,
-    cards: cards.map(function (c) { return { el: c.el, offset: norm.map[Math.min(c.at, norm.map.length - 1)] }; }),
-  };
-}
-
-function sectionOfNode(node) {
-  var el = node.parentElement && node.parentElement.closest('[data-section]');
-  return el ? el.getAttribute('data-section') || '' : '';
-}
-
-function sectionAtFor(index) {
-  return function (offset) {
-    for (var i = 0; i < index.nodes.length; i++) {
-      var n = index.nodes[i];
-      if (offset < n.end) return sectionOfNode(n.node);
-    }
-    return '';
-  };
-}
-
-/** DOM 选区 → 规范化文本上的 [start, end)；选区不碰正文返回 null。导出只给 e2e/prose-text-index.spec.js。 */
-export function rangeToOffsets(range, index) {
-  var start = null;
-  var end = null;
-  for (var i = 0; i < index.nodes.length; i++) {
-    var n = index.nodes[i];
-    if (!range.intersectsNode(n.node)) continue;
-    var a = n.node === range.startContainer ? n.map[Math.min(range.startOffset, n.map.length - 1)] : n.map[0];
-    var b = n.node === range.endContainer ? n.map[Math.min(range.endOffset, n.map.length - 1)] : n.map[n.map.length - 1];
-    if (start === null) start = a;
-    end = b;
-  }
-  return start === null || end === null || end <= start ? null : { start: start, end: end };
-}
-
-/** 规范化区间 → 各文本节点上的原文区间 [{ entry, from, to }]。 */
-function offsetsToSegments(start, end, index) {
-  var out = [];
-  for (var i = 0; i < index.nodes.length; i++) {
-    var n = index.nodes[i];
-    if (n.end <= start || n.start >= end) continue;
-    var s = Math.max(start, n.start);
-    var e = Math.min(end, n.end);
-    if (s >= e) continue;
-    var len = n.map.length - 1;
-    var from = 0;
-    while (from < len && n.map[from + 1] <= s) from += 1;
-    var to = from + 1;
-    while (to < len && n.map[to] < e) to += 1;
-    if (to > from) out.push({ entry: n, from: from, to: to });
-  }
-  return out;
-}
-
-export function unpaint(root) {
-  var marks = root.querySelectorAll('mark.' + MARK_CLASS);
-  var parents = new Set();
-  for (var i = 0; i < marks.length; i++) {
-    var m = marks[i];
-    var parent = m.parentNode;
-    if (!parent) continue;
-    while (m.firstChild) parent.insertBefore(m.firstChild, m);
-    parent.removeChild(m);
-    parents.add(parent);
-  }
-  parents.forEach(function (p) { p.normalize(); });
-}
-
-/** items: [{ id, start, end, draft? }]，同一段文字可被多条覆盖（data-ids 列全部）。 */
-export function paintSegments(index, items) {
-  var byNode = new Map();
-  items.forEach(function (item) {
-    offsetsToSegments(item.start, item.end, index).forEach(function (seg) {
-      if (!byNode.has(seg.entry)) byNode.set(seg.entry, []);
-      byNode.get(seg.entry).push({ from: seg.from, to: seg.to, id: item.id, draft: !!item.draft });
-    });
-  });
-  byNode.forEach(function (spans, entry) {
-    var node = entry.node;
-    var raw = node.data;
-    var cuts = new Set([0, raw.length]);
-    spans.forEach(function (s) { cuts.add(s.from); cuts.add(s.to); });
-    var points = Array.from(cuts).sort(function (a, b) { return a - b; });
-    var frag = document.createDocumentFragment();
-    for (var i = 0; i < points.length - 1; i++) {
-      var a = points[i];
-      var b = points[i + 1];
-      if (a === b) continue;
-      var piece = raw.slice(a, b);
-      var covering = spans.filter(function (s) { return s.from <= a && s.to >= b; });
-      if (!covering.length) {
-        frag.appendChild(document.createTextNode(piece));
-        continue;
-      }
-      var mark = document.createElement('mark');
-      mark.className = MARK_CLASS + (covering.some(function (s) { return s.draft; }) ? ' draft' : '');
-      mark.setAttribute('data-ids', covering.map(function (s) { return s.id; }).join(' '));
-      mark.textContent = piece;
-      frag.appendChild(mark);
-    }
-    node.parentNode.replaceChild(frag, node);
-  });
-}
 
 function newId() {
   var rand = Math.random().toString(36).slice(2, 10);
@@ -216,253 +68,37 @@ export function startProseComments(options) {
   var rail = document.querySelector('[data-pp-rail]');
   if (!root || !rail || !ENTRY) return null;
 
-  var LEDGER = PROSE_LEDGER;
   var PATH = (function () { try { return decodeURIComponent(location.pathname); } catch (e) { return location.pathname; } })();
 
-  var rows = [];          // 正文评论：盘上 + 还没落盘的操作，界面看到的
-  var connection = 'connecting'; // connecting | online | offline
-  var expanded = new Set(); // 展开了的已关闭线程 id（不记盘：每次打开文章都收着）
-  var replyOpen = new Set(); // 展开了回复框的线程 id
-  var replyText = {};     // 线程 id -> 回复框里的字（框收起后草稿也留着）
-  var editingId = null;   // 正在编辑的那句：正文评论 id，'c:' + 画布标注 id，或再加 '/m' + messages 下标
-  var editText = {};      // 编辑框 key -> 被拒后放回框里的字
-  var focusedId = null;
-  var draft = null;       // { quote, section, start, end }
-  var anchors = new Map(); // id -> { start, end } | null（null = 失效）
-  var cardOffsets = new Map(); // 画布卡片的节 id -> 它在规范化文本里的位置（右栏排画布标注用）
-  var paintSig = '';
-  var painting = false;
-  var selBtn = null;
-  var pendingSel = null;
-  var selectionChecks = 0; // 判过几次选区（测试用的可观察信号）
-  var lastOffered = false;
-  var composingArea = null;
-  var railDirty = false;
+  var state = {
+    rows: [],          // 正文评论：盘上 + 还没落盘的操作，界面看到的
+    expanded: new Set(), // 展开了的已关闭线程 id（不记盘：每次打开文章都收着）
+    replyOpen: new Set(), // 展开了回复框的线程 id
+    replyText: {},     // 线程 id -> 回复框里的字（框收起后草稿也留着）
+    editingId: null,   // 正在编辑的那句：正文评论 id，'c:' + 画布标注 id，或再加 '/m' + messages 下标
+    editText: {},      // 编辑框 key -> 被拒后放回框里的字
+    focusedId: null,
+    draft: null,       // { quote, section, start, end }
+    anchors: new Map(), // id -> { start, end } | null（null = 失效）
+    cardOffsets: new Map(), // 画布卡片的节 id -> 它在规范化文本里的位置（右栏排画布标注用）
+    paintSig: '',
+    painting: false,
+    pendingSel: null,
+    selectionChecks: 0, // 判过几次选区（测试用的可观察信号）
+    lastOffered: false,
+    composingArea: null,
+    railDirty: false,
+  };
 
-  // ---------- 同步 ----------
-  // 两本账本，同一个桶：@prose 是正文评论；@canvas 是这篇画布上的标注，右栏按卡片位置穿插进来、
-  // 只在这里改状态（完成 / 重新打开），别的都在画布上改。正文里没有画布卡片就不读 @canvas。
-  var hasCanvas = !!root.querySelector('[data-pp-canvas]');
-  var prose = createOpsLedger({
-    server: SERVER, entry: ENTRY, ledger: LEDGER, maxConflicts: MAX_CONFLICT_RETRIES,
-    path: function () { return PATH; },
-    onChange: recompute,
-    onRejected: function (list) { return restoreRejected(list); },
-  });
-  // 画布上的 HTML 帧（一篇文章一张画布，2026-10-15）：那一页的标注在同桶里它自己的账本里，一起读进来
-  // （lib/canvas-ledgers.js），右栏和卡片标注数都含它们。
-  var canvas = hasCanvas ? createCanvasLedgers({
-    server: SERVER, entry: ENTRY, maxConflicts: MAX_CONFLICT_RETRIES,
-    pages: Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas] .cc-frame[data-doc-url]'), function (fig) {
-      return { id: fig.getAttribute('data-screen') || '', url: fig.getAttribute('data-doc-url') || '' };
-    }),
-    onChange: function () { announceCanvas(); renderRail(); },
-    onRejected: restoreCanvasRejected,
-  }) : null;
-
-  function recompute() {
-    rows = prose.rows().filter(isProseRow);
-    render();
-  }
-
-  // 画布卡片头的标注数跟着这本账本走（site/src/lib/canvas-card-client.js 听这个事件）。
-  function announceCanvas() {
-    document.dispatchEvent(new CustomEvent('pp:canvas-ledger', { detail: { entry: ENTRY, doc: { annotations: canvas.rows() } } }));
-  }
-
-  // 被拒的操作里 owner 写的字：新评论 → 草稿（已有草稿时不顶掉它），回复 → 输入框，编辑 → 编辑框。
-  var restoreText = {};   // textarea data-reply id -> 下次画右栏时放回的字
-  function restoreRejected(list) {
-    var restored = false;
-    list.forEach(function (op) {
-      if (op.op === 'create' && op.row && op.row.quote && !draft) {
-        var q = op.row.quote;
-        draft = { quote: q, section: op.row.section || '', start: Number.isInteger(q.start) ? q.start : Infinity };
-        restoreText.__draft = op.row.content || '';
-        focusedId = '__draft';
-        restored = true;
-      } else if (op.op === 'reply' && op.text) {
-        restoreText[op.id] = restoreText[op.id] ? restoreText[op.id] + '\n' + op.text : op.text;
-        replyOpen.add(op.id);
-        if (focusedId !== '__draft') focusedId = op.id;
-        restored = true;
-      } else if (op.op === 'edit' && (op.content || op.text)) {
-        var key = Number.isInteger(op.index) ? op.id + '/m' + op.index : op.id;
-        editText[key] = op.content || op.text;
-        editingId = key;
-        restored = true;
-      }
-    });
-    return restored;
-  }
-
-  /** 画布账本被拒的编辑：字放回右栏那张卡的编辑框（状态操作没有字，不用放）。 */
-  function restoreCanvasRejected(list) {
-    var restored = false;
-    list.forEach(function (op) {
-      if (op.op === 'edit' && op.content) {
-        var row = findCanvasRow(op.id);
-        editText['c:' + op.id] = row ? canvasBodyFromStored(row.content, op.content) : op.content;
-        editingId = 'c:' + op.id;
-        restored = true;
-      }
-    });
-    return restored;
-  }
-
-  function flushOnLeave() {
-    prose.flushOnLeave();
-    if (canvas) canvas.flushOnLeave();
-  }
-
-  function enqueue(op) {
-    prose.enqueue(op);
-  }
-
-  var hydrateStarted = false;
-  function hydrate() {
-    var refresh = hydrateStarted;
-    hydrateStarted = true;
-    // 画布账本读不到（还没人标过时它也在：服务给空账本）不影响正文评论，下次重连再读。
-    if (canvas) {
-      canvas.names().forEach(function (name) {
-        readLedgerDocument(SERVER, ENTRY, name, refresh).then(function (doc) { canvas.accept(name, doc); }).catch(function () {});
-      });
-    }
-    return readLedgerDocument(SERVER, ENTRY, LEDGER, refresh)
-      .then(function (doc) {
-        connection = 'online';
-        prose.accept(doc);
-      })
-      .catch(function () {
-        connection = 'offline';
-        render();
-        scheduleHydrateRetry();
-      });
-  }
-
-  var hydrateTimer = 0;
-  function scheduleHydrateRetry() {
-    clearTimeout(hydrateTimer);
-    hydrateTimer = setTimeout(hydrate, 3000);
-  }
-
-  var events = null;
-  var eventsBroken = false;   // 断过一次：下次连上要重新水合
-  var reconnectTimer = 0;
-  var RECONNECT_MS = 2000;
-  function connectEvents() {
-    if (typeof EventSource === 'undefined') return;
-    closeEvents();
-    var es;
-    try { es = new EventSource(SERVER + '/events'); } catch (e) { return; }
-    events = es;
-    es.onopen = function () {
-      if (es !== events) return;
-      if (eventsBroken) {
-        // 断线期间推的事件都丢了：从磁盘补一次。
-        eventsBroken = false;
-        hydrate();
-      } else if (connection === 'offline' && prose.hydrated()) {
-        connection = 'online';
-        render();
-      }
-    };
-    es.onerror = function () {
-      if (es !== events) return;
-      eventsBroken = true;
-      // CONNECTING：浏览器自己在重连，连上走 onopen。CLOSED：浏览器放弃了，自己再开一条。
-      if (es.readyState === 2) {
-        clearTimeout(reconnectTimer);
-        reconnectTimer = setTimeout(function () { if (es === events) connectEvents(); }, RECONNECT_MS);
-      }
-    };
-    es.addEventListener('annotations', function (ev) {
-      if (es !== events) return;
-      var doc;
-      try { doc = JSON.parse(ev.data); } catch (e) { return; }
-      if (!doc || doc.entry !== ENTRY) return;
-      if (doc.page === LEDGER) {
-        rememberLedgerDocument(SERVER, ENTRY, LEDGER, doc);
-        prose.remote(doc);
-      } else if (canvas) {
-        canvas.names().forEach(function (name) {
-          if (doc.page === name || doc.page === annotationSlug(name)) rememberLedgerDocument(SERVER, ENTRY, name, doc);
-        });
-        canvas.remote(doc);
-      }
-    });
-  }
-
-  function closeEvents() {
-    clearTimeout(reconnectTimer);
-    if (!events) return;
-    try { events.close(); } catch (e) { /* */ }
-    events = null;
-  }
-
-  onPageLeave(flushOnLeave);
-  window.addEventListener('pagehide', closeEvents);
-  // 从 bfcache 回来（从画布按“返回”）：页面原样恢复，但 SSE 在 pagehide 时关了，
-  // 离开期间的改动也没收到。重开 SSE，再从磁盘水合一次。
-  window.addEventListener('pageshow', function (e) {
-    if (!e.persisted) return;
-    eventsBroken = false;
-    connectEvents();
-    hydrate();
-  });
-
-  // ---------- 锚点与高亮 ----------
-  // 已关闭的线程收着时不画高亮，展开那一条才画：正文里只剩还要处理的。
-  function visible(row) {
-    return !isProseClosed(row) || expanded.has(row.id);
-  }
-
-  function paint() {
-    var shown = rows.filter(visible);
-    var sig = JSON.stringify([
-      shown.map(function (r) { return [r.id, r.quote && r.quote.exact, r.quote && r.quote.prefix, r.quote && r.quote.suffix, r.section]; }),
-      draft ? [draft.quote.exact, draft.start] : null,
-    ]);
-    if (sig === paintSig && !paintDirty) return;
-    paintSig = sig;
-    paintDirty = false;
-    painting = true;
-    observer.disconnect();
-    unpaint(root);
-    var index = buildTextIndex(root);
-    var sectionAt = sectionAtFor(index);
-    anchors = new Map();
-    cardOffsets = new Map();
-    index.cards.forEach(function (c) {
-      var section = c.el.getAttribute('data-pp-section');
-      if (section && !cardOffsets.has(section)) cardOffsets.set(section, c.offset);
-    });
-    var items = [];
-    rows.forEach(function (r) {
-      var hit = r.quote ? locateQuote(index.text, r.quote, { section: r.section, sectionAt: sectionAt }) : null;
-      anchors.set(r.id, hit ? { start: hit.start, end: hit.end } : null);
-      if (hit && visible(r)) items.push({ id: r.id, start: hit.start, end: hit.end });
-    });
-    if (draft) {
-      var d = locateQuote(index.text, draft.quote, { section: draft.section, sectionAt: sectionAt });
-      if (d) items.push({ id: '__draft', start: d.start, end: d.end, draft: true });
-    }
-    paintSegments(index, items);
-    syncFocusClasses();
-    painting = false;
-    observe();
-  }
-
-  // 正文被别人换掉（站点热更新）：重画一次，重新定位。
   var paintDirty = false;
   var repaintTimer = 0;
   var observer = new MutationObserver(function () {
-    if (painting) return;
+    if (state.painting) return;
     paintDirty = true;
     clearTimeout(repaintTimer);
-    repaintTimer = setTimeout(function () { paint(); renderRail(); }, 50);
+    repaintTimer = setTimeout(function () { paint(); railApi.renderRail(); }, 50);
   });
+
   function observe() {
     observer.observe(root, { childList: true, subtree: true, characterData: true });
   }
@@ -471,132 +107,60 @@ export function startProseComments(options) {
     var marks = root.querySelectorAll('mark.' + MARK_CLASS);
     for (var i = 0; i < marks.length; i++) {
       var ids = (marks[i].getAttribute('data-ids') || '').split(' ');
-      marks[i].classList.toggle('on', !!focusedId && ids.indexOf(focusedId) >= 0);
+      marks[i].classList.toggle('on', !!state.focusedId && ids.indexOf(state.focusedId) >= 0);
     }
     var threads = rail.querySelectorAll('.pp-thread');
     for (var j = 0; j < threads.length; j++) {
-      threads[j].classList.toggle('on', threads[j].getAttribute('data-id') === focusedId);
+      threads[j].classList.toggle('on', threads[j].getAttribute('data-id') === state.focusedId);
     }
   }
 
-  // ---------- 右栏 ----------
-  function statusChip(row) {
-    var st = row.status || 'open';
-    var known = Object.prototype.hasOwnProperty.call(ANN_STATUS_COLORS, st) ? st : 'open';
-    var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
-    var word = st === 'open' ? '' : '<span class="pp-st">' + esc(st) + '</span>';
-    // 钉子颜色归站点样式（.pp-n[data-st]，--pp-status-*，亮暗都对）。
-    return '<span class="pp-n" data-st="' + known + '">' + esc(n) + '</span>' + word;
+  // 已关闭的线程收着时不画高亮，展开那一条才画：正文里只剩还要处理的。
+  function visible(row) {
+    return !isProseClosed(row) || state.expanded.has(row.id);
   }
 
-  function quoteHtml(exact) {
-    var text = String(exact || '');
-    if (text.length > 160) text = text.slice(0, 157) + '…';
-    return '<div class="q">' + esc(text) + '</div>';
-  }
-
-  /** 这一句能不能点着改。threadKey 是线程的编辑键（正文评论 id，或 'c:' + 画布标注 id）；
-      第一句用它本身，owner 之后的回复再加 '/m' + messages 下标。agent 的、空的不给键。
-      画布标注的目标记号夹在文字中间时也不给：右栏显示的是换成元素文字的结果，整段存回去会丢掉记号。
-      记号全在开头时给键，键只落在记号后面的文字上。 */
-  function messageEditKey(row, messageIndex, threadKey) {
-    if (!threadKey) return '';
-    var messages = threadMessages(row);
-    var message = messages[messageIndex];
-    if (!message || message.who !== 'owner' || typeof message.text !== 'string' || !message.text) return '';
-    if (messageIndex === 0) {
-      if (threadKey.indexOf('c:') === 0 && canvasContentHasTargets(row) && !canvasLeadingEdit(row.content)) return '';
-      return threadKey;
+  function paint() {
+    var shown = state.rows.filter(visible);
+    var sig = JSON.stringify([
+      shown.map(function (r) { return [r.id, r.quote && r.quote.exact, r.quote && r.quote.prefix, r.quote && r.quote.suffix, r.section]; }),
+      state.draft ? [state.draft.quote.exact, state.draft.start] : null,
+    ]);
+    if (sig === state.paintSig && !paintDirty) return;
+    state.paintSig = sig;
+    paintDirty = false;
+    state.painting = true;
+    observer.disconnect();
+    unpaint(root);
+    var index = buildTextIndex(root);
+    var sectionAt = sectionAtFor(index);
+    state.anchors = new Map();
+    state.cardOffsets = new Map();
+    index.cards.forEach(function (c) {
+      var section = c.el.getAttribute('data-pp-section');
+      if (section && !state.cardOffsets.has(section)) state.cardOffsets.set(section, c.offset);
+    });
+    var items = [];
+    state.rows.forEach(function (r) {
+      var hit = r.quote ? locateQuote(index.text, r.quote, { section: r.section, sectionAt: sectionAt }) : null;
+      state.anchors.set(r.id, hit ? { start: hit.start, end: hit.end } : null);
+      if (hit && visible(r)) items.push({ id: r.id, start: hit.start, end: hit.end });
+    });
+    if (state.draft) {
+      var d = locateQuote(index.text, state.draft.quote, { section: state.draft.section, sectionAt: sectionAt });
+      if (d) items.push({ id: '__draft', start: d.start, end: d.end, draft: true });
     }
-    if (threadKey.indexOf('c:') === 0) return ''; // 画布标注的回复在画布上改，右栏只改正文第一句
-    return threadKey + '/m' + (messageIndex - 1);
+    paintSegments(index, items);
+    syncFocusClasses();
+    state.painting = false;
+    observe();
   }
 
-  /** 开头全是目标记号：元素文字在前、只读，后面的文字单独可点。编辑时后面那段仍是这个 span，
-      只是可写；记号留在 span 外面。换成 textarea 会另起一行，并把后面的文字收进一条更窄的矩形。 */
-  function leadingEditHtml(row, leading, editKey) {
-    var label = canvasLeadingLabel(row, leading.prefix);
-    var lead = label ? '<span class="pp-targets">' + esc(label) + '</span>' : '';
-    var value = editText[editKey] != null ? editText[editKey] : leading.text;
-    var body = editingId === editKey
-      ? '<span class="pp-body pp-edit" contenteditable="plaintext-only" role="textbox" aria-multiline="true" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</span>'
-      : '<span class="pp-body" data-edit="' + esc(editKey) + '" title="点击编辑">' + esc(leading.text) + '</span>';
-    return '<div class="text pp-with-targets' + (lead ? ' pp-with-lead' : '') + '">' + lead + body + '</div>';
+  function render() {
+    paint();
+    railApi.renderRail();
   }
 
-  /** 线程消息。owner 写的那几句可点着改：正在编辑就渲染成编辑框，否则渲染成带 data-edit 的正文
-      （agent 的回复、引文、记号夹在中间的画布标注正文永远不可编辑）。 */
-  function messagesHtml(row, threadKey) {
-    var messages = threadMessages(row);
-    var leading = threadKey && threadKey.indexOf('c:') === 0 ? canvasLeadingEdit(row.content) : null;
-    // 画布标注的第一句：记号全在开头时，框里只放后面的文字；否则显示成元素文字。存盘正文留在 row 上。
-    if (threadKey && threadKey.indexOf('c:') === 0 && messages[0]) {
-      messages = messages.slice();
-      messages[0] = { who: messages[0].who, text: leading ? leading.text : canvasContentText(row), at: messages[0].at };
-    }
-    return '<div class="msgs">' + messages.map(function (m, i) {
-      var editKey = messageEditKey(row, i, threadKey);
-      var body;
-      if (editKey && leading && i === 0) {
-        body = leadingEditHtml(row, leading, editKey);
-      } else if (editKey) {
-        if (editingId === editKey) {
-          var value = editText[editKey] != null ? editText[editKey] : m.text;
-          body = '<textarea class="pp-edit" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</textarea>';
-        } else {
-          body = '<div class="text" data-edit="' + esc(editKey) + '" title="点击编辑">' + esc(m.text) + '</div>';
-        }
-      } else {
-        body = '<div class="text">' + esc(m.text) + '</div>';
-      }
-      return '<div class="msg" data-who="' + esc(m.who) + '"><span class="who' + (m.who === 'agent' ? ' agent' : '') + '">' + esc(authorLabel(m.who)) + '</span>'
-        + '<span class="when">' + esc(formatWhen(m.at)) + '</span>' + body + '</div>';
-    }).join('') + '</div>';
-  }
-
-  // 已关闭的线程留在原位收成一行：序号钉 + “已关闭” + 引文开头，点开成完整卡片，再点收回。
-  function collapsedHtml(row) {
-    var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
-    return '<div class="pp-thread pp-closed" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="close">'
-      + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'
-      + '<span class="pp-n" data-st="close">' + esc(n) + '</span>'
-      + '<span class="pp-closed-word">已关闭</span>'
-      + '<span class="pp-closed-peek">' + esc(String((row.quote && row.quote.exact) || '')) + '</span>'
-      + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
-  }
-
-  function threadHtml(row) {
-    if (isProseClosed(row) && !expanded.has(row.id)) return collapsedHtml(row);
-    var anchor = anchors.get(row.id);
-    var stale = anchor === null && anchors.has(row.id);
-    var closed = (row.status || 'open') === 'close';
-    var act = closed
-      ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
-      : '<button class="pp-act" type="button" data-act="close">完成</button>';
-    var focused = row.id === focusedId;
-    // 回复框默认不出现：点“回复”才展开，发送后收起。框收起时留着的草稿在按钮上标出来。
-    var reply = replyOpen.has(row.id)
-      ? '<div class="pp-reply"><textarea data-reply="' + esc(row.id) + '" rows="2" placeholder="回复…" aria-label="回复 #' + esc(row.n) + '"></textarea>'
-        + '<div class="acts"><button class="btn pri" type="button" data-act="reply">发送</button></div></div>'
-      : '<div class="pp-foot"><button class="pp-act" type="button" data-act="open-reply">回复</button>'
-        + (replyText[row.id] ? '<span class="pp-draft-tag">有草稿</span>' : '') + '</div>';
-    return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
-      + '<div class="pp-meta">' + statusChip(row)
-      + (stale ? '<span class="pp-stale" title="正文里找不到这段引文了">失效</span>' : '')
-      + '<span class="sp"></span>' + act
-      + (isProseClosed(row) ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
-      + '</div>'
-      + quoteHtml(row.quote && row.quote.exact)
-      + messagesHtml(row, row.id)
-      + reply
-      + '</div>';
-  }
-
-  // 画布标注（@canvas）在右栏里的卡片：标明是画布标注和帧名，有截图放缩略图；点了在文章上开画布浮层、
-  // 定位到这颗钉子（a[data-pp-canvas-link]，site/src/lib/canvas-overlay-client.js 接住）。四态与已关闭
-  // 原地收起同正文评论；这里改状态，也改 owner 的正文（点着进编辑，同正文评论），回复在画布上。
-  // 开头全是 [@t:iN] 时只改后面的文字，记号原样接回去。记号夹在文字中间时不进编辑。
-  // 线程 id 带 c: 前缀，和正文评论分开。
   function canvasCards() {
     return Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas]'), function (card) {
       return {
@@ -608,9 +172,6 @@ export function startProseComments(options) {
       };
     });
   }
-
-  // HTML 帧带帧 id，以便在整张画布上的活卡片里找到对应账本。
-  function cssEscape(v) { return window.CSS && CSS.escape ? CSS.escape(String(v)) : String(v); }
 
   function isHtmlFrame(section, frameId) {
     return !!root.querySelector('[data-pp-canvas][data-pp-section="' + cssEscape(section) + '"] .cc-frame[data-doc-url][data-screen="' + cssEscape(frameId) + '"]');
@@ -624,342 +185,106 @@ export function startProseComments(options) {
     return '#' + q.toString();
   }
 
-  function canvasThreadHtml(item) {
-    var row = item.row;
-    var key = 'c:' + row.id;
-    var text = canvasContentText(row);
-    var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
-    var attrs = ' data-kind="canvas" data-id="' + esc(key) + '" data-n="' + esc(row.n) + '" data-section="' + esc(item.section) + '" data-frame="' + esc(item.frameId) + '"';
-    if (isProseClosed(row) && !expanded.has(key)) {
-      return '<div class="pp-thread pp-closed pp-canvas-ann"' + attrs + ' data-status="close">'
-        + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'
-        + '<span class="pp-n" data-st="close">' + esc(n) + '</span>'
-        + '<span class="pp-closed-word">已关闭</span>'
-        + '<span class="pp-kind">画布</span>'
-        + '<span class="pp-closed-peek">' + esc(text) + '</span>'
-        + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
-    }
-    var closed = isProseClosed(row);
-    var act = closed
-      ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
-      : '<button class="pp-act" type="button" data-act="close">完成</button>';
-    var image = Array.isArray(row.images) && row.images[0] && row.images[0].file
-      ? '<img class="pp-canvas-shot" alt="" loading="lazy" src="' + esc(SERVER + '/images/' + encodeURIComponent(row.images[0].file) + '?entry=' + encodeURIComponent(ENTRY)) + '">'
-      : '';
-    return '<div class="pp-thread pp-canvas-ann"' + attrs + ' data-status="' + esc(row.status || 'open') + '">'
-      + '<div class="pp-meta">' + statusChip(row) + '<span class="pp-kind">画布标注</span>'
-      + '<span class="sp"></span>' + act
-      + (closed ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
-      + '</div>'
-      + '<a class="pp-canvas-open" data-pp-canvas-link href="' + esc(canvasHref(item)) + '" title="在画布上打开这条标注">'
-      + image + '<span class="pp-canvas-frame">帧<b>' + esc(item.frameTitle) + '</b></span></a>'
-      + messagesHtml(row, key)
-      + '</div>';
-  }
-
-  function draftHtml() {
-    return '<div class="pp-thread draft on" data-id="__draft">'
-      + quoteHtml(draft.quote.exact)
-      + '<textarea data-reply="__draft" rows="3" placeholder="写评论…" aria-label="写评论"></textarea>'
-      + '<div class="acts"><button class="btn" type="button" data-act="cancel-draft">取消</button>'
-      + '<button class="btn pri" type="button" data-act="send-draft">发送</button></div></div>';
-  }
-
   function orderKey(row) {
-    var a = anchors.get(row.id);
+    var a = state.anchors.get(row.id);
     return a ? a.start : Infinity;
   }
 
-  function renderRail() {
-    // value 和选区不能恢复浏览器的 composition 会话；所有更新合并到组字结束后重画。
-    if (composingArea && composingArea.isConnected) { railDirty = true; return; }
-    railDirty = false;
-    // 重画前记下输入框的内容与光标，重画后放回（SSE 推来 agent 回复时正在打字）。
-    var keep = {};
-    var active = document.activeElement;
-    var areas = rail.querySelectorAll('textarea[data-reply]');
-    for (var i = 0; i < areas.length; i++) {
-      var key = areas[i].getAttribute('data-reply');
-      keep[key] = {
-        value: areas[i].value,
-        focus: areas[i] === active,
-        start: areas[i].selectionStart,
-        end: areas[i].selectionEnd,
-      };
-      if (key !== '__draft') {
-        if (areas[i].value) replyText[key] = areas[i].value;
-        else delete replyText[key];
-      }
-    }
-    var keepEdit = {};
-    var editAreas = rail.querySelectorAll('textarea.pp-edit[data-edit], .pp-body.pp-edit[data-edit]');
-    for (var j = 0; j < editAreas.length; j++) {
-      var range = editFieldSelection(editAreas[j]);
-      keepEdit[editAreas[j].getAttribute('data-edit')] = {
-        value: editFieldText(editAreas[j]),
-        focus: editAreas[j] === active,
-        start: range.start,
-        end: range.end,
-      };
-    }
-    // 一列：正文评论按引文位置，画布标注按所属卡片的位置（排在紧跟卡片的那段正文之前），同位按 #n。
-    var canvasItems = canvas ? canvasRailItems(canvas.rows(), canvasCards()) : [];
-    var entries = rows.map(function (row) { return { kind: 'prose', row: row, n: row.n, key: orderKey(row) }; })
-      .concat(canvasItems.map(function (item) {
-        var at = cardOffsets.has(item.section) ? cardOffsets.get(item.section) - 0.5 : Infinity;
-        return { kind: 'canvas', item: item, n: item.row.n, key: at };
-      }));
-    var ordered = railOrder(entries, function (e) { return e.key; });
-    var list = '';
-    var draftPlaced = false;
-    var draftKey = draft ? draft.start : Infinity;
-    ordered.forEach(function (e) {
-      if (draft && !draftPlaced && e.key > draftKey) { list += draftHtml(); draftPlaced = true; }
-      list += e.kind === 'canvas' ? canvasThreadHtml(e.item) : threadHtml(e.row);
-    });
-    if (draft && !draftPlaced) list += draftHtml();
-    var empty = !ordered.length && !draft
-      ? '<p class="empty-rail">选中正文里的一段文字，点“评论”。</p>'
-      : '';
-    var note = connection === 'offline'
-      ? '未连接 pinpoint 服务，评论暂时存不下。'
-      : (prose.error() || (canvas && canvas.error()) || '');
-    rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div></div>'
-      + '<div class="pp-threads">' + list + '</div>' + empty
-      + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
-    Object.keys(keep).forEach(function (id) {
-      var area = railArea(id);
-      if (!area) return;
-      area.value = keep[id].value;
-      if (keep[id].focus) {
-        area.focus();
-        try { area.setSelectionRange(keep[id].start, keep[id].end); } catch (e) { /* */ }
-      }
-    });
-    // 编辑框：放回重画前的字与光标（没有旧字就是渲染时带上的原文），再按内容长高。
-    // 框没了（SSE 推来状态改动把线程收成了行）：字收进 editText，别跟着框一起丢。
-    Object.keys(keepEdit).forEach(function (id) {
-      var area = editAreaOf(id);
-      if (!area) {
-        if (editingId === id && keepEdit[id].value) editText[id] = keepEdit[id].value;
-        return;
-      }
-      setEditFieldText(area, keepEdit[id].value);
-      if (keepEdit[id].focus) {
-        area.focus();
-        setEditFieldSelection(area, keepEdit[id].start, keepEdit[id].end);
-      }
-      growEdit(area);
-    });
-    // 刚展开的回复框：放回框收起前留下的草稿。
-    replyOpen.forEach(function (id) {
-      var area = railArea(id);
-      if (area && !area.value && replyText[id]) area.value = replyText[id];
-    });
-    Object.keys(restoreText).forEach(function (id) {
-      var area = railArea(id);
-      if (!area) return;
-      area.value = area.value ? area.value + '\n' + restoreText[id] : restoreText[id];
-      delete restoreText[id];
-    });
-  }
-
-  function railArea(id) {
-    return rail.querySelector('textarea[data-reply="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-  }
-
-  function editAreaOf(key) {
-    var id = window.CSS && CSS.escape ? CSS.escape(key) : key;
-    return rail.querySelector('textarea.pp-edit[data-edit="' + id + '"], .pp-body.pp-edit[data-edit="' + id + '"]');
-  }
-
-  function editFieldText(el) {
-    if (!el) return '';
-    return el.tagName === 'TEXTAREA' ? el.value : String(el.textContent || '');
-  }
-
-  function setEditFieldText(el, value) {
-    if (el.tagName === 'TEXTAREA') el.value = value;
-    else el.textContent = value == null ? '' : String(value);
-  }
-
-  /** 光标在字段文字里的偏移。textarea 用 selectionStart；可写 span 只有文本节点。 */
-  function editFieldSelection(el) {
-    var text = editFieldText(el);
-    if (el.tagName === 'TEXTAREA') return { start: el.selectionStart, end: el.selectionEnd };
-    var sel = window.getSelection();
-    if (!sel || !sel.rangeCount || !el.contains(sel.anchorNode)) return { start: text.length, end: text.length };
-    var range = sel.getRangeAt(0);
-    function at(node, off) {
-      if (node === el) {
-        var n = 0;
-        for (var i = 0; i < off && i < el.childNodes.length; i++) n += el.childNodes[i].textContent.length;
-        return n;
-      }
-      var total = 0;
-      var walker = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
-      var cur;
-      while ((cur = walker.nextNode())) {
-        if (cur === node) return total + off;
-        total += cur.textContent.length;
-      }
-      return text.length;
-    }
-    return { start: at(range.startContainer, range.startOffset), end: at(range.endContainer, range.endOffset) };
-  }
-
-  function setEditFieldSelection(el, start, end) {
-    if (el.tagName === 'TEXTAREA') {
-      try { el.setSelectionRange(start, end); } catch (e) { /* */ }
-      return;
-    }
-    var node = el.firstChild;
-    if (!node || node.nodeType !== 3) return;
-    var len = node.textContent.length;
-    var a = Math.max(0, Math.min(start, len));
-    var b = Math.max(0, Math.min(end, len));
-    try {
-      var range = document.createRange();
-      range.setStart(node, a);
-      range.setEnd(node, b);
-      var sel = window.getSelection();
-      if (!sel) return;
-      sel.removeAllRanges();
-      sel.addRange(range);
-    } catch (e) { /* */ }
-  }
-
-  /** 块级 textarea 贴合内容：默认 rows 会比原文高一行，先按换行数给高，再收成 scrollHeight，打字时跟着长。
-      开头带元素文字的那句是行内 span，高度随文字自己长，这里碰不到。 */
-  function growEdit(area) {
-    if (!area || area.tagName !== 'TEXTAREA') return;
-    var lines = String(area.value || '').split('\n').length;
-    area.rows = lines;
-    area.style.height = 'auto';
-    area.style.height = area.scrollHeight + 'px';
-  }
-
-  function findCanvasRow(id) {
-    if (!canvas) return null;
-    var list = canvas.rows();
-    for (var i = 0; i < list.length; i++) if (list[i] && String(list[i].id) === String(id)) return list[i];
-    return null;
-  }
-
-  function render() {
-    paint();
-    renderRail();
-  }
-
-  function focusThread(id, opts) {
-    focusedId = id;
-    renderRail();
-    syncFocusClasses();
-    var t = rail.querySelector('.pp-thread[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-    if (t && (!opts || opts.scroll !== false)) t.scrollIntoView({ block: 'nearest' });
-    if (opts && opts.reveal) {
-      var mark = root.querySelector('mark.' + MARK_CLASS + '.on');
-      if (mark) mark.scrollIntoView({ block: 'nearest' });
-    }
-  }
-
-  // ---------- 选区 → 评论 ----------
-  function hideSelBtn() {
-    if (selBtn) { selBtn.remove(); selBtn = null; }
-    pendingSel = null;
-  }
-
-  function selectionQuote() {
-    var sel = window.getSelection();
-    if (!sel || sel.isCollapsed || !sel.rangeCount) return null;
-    var range = sel.getRangeAt(0);
-    if (!root.contains(range.commonAncestorContainer)) return null;
-    var startEl = range.startContainer.nodeType === 1 ? range.startContainer : range.startContainer.parentElement;
-    var endEl = range.endContainer.nodeType === 1 ? range.endContainer : range.endContainer.parentElement;
-    if ((startEl && startEl.closest(SKIP_SELECTOR)) || (endEl && endEl.closest(SKIP_SELECTOR))) return null;
-    var index = buildTextIndex(root);
-    var offsets = rangeToOffsets(range, index);
-    if (!offsets) return null;
-    var quote = quoteFromText(index.text, offsets.start, offsets.end);
-    if (!quote) return null;
+  function view() {
     return {
-      quote: { exact: quote.exact, prefix: quote.prefix, suffix: quote.suffix, start: quote.start },
-      start: quote.start,
-      end: quote.end,
-      section: sectionAtFor(index)(quote.start),
-      rect: range.getBoundingClientRect(),
+      expanded: state.expanded,
+      anchors: state.anchors,
+      focusedId: state.focusedId,
+      replyOpen: state.replyOpen,
+      replyText: state.replyText,
+      editingId: state.editingId,
+      editText: state.editText,
+      SERVER: SERVER,
+      ENTRY: ENTRY,
+      canvasHref: canvasHref,
     };
   }
 
-  function onSelectionDone(e) {
-    if (e && e.target && e.target.closest && (e.target.closest('.pp-selbtn') || rail.contains(e.target))) return;
-    setTimeout(function () {
-      var picked = selectionQuote();
-      selectionChecks += 1;
-      lastOffered = !!picked;
-      if (!picked) { hideSelBtn(); return; }
-      if (selBtn && pendingSel && pendingSel.start === picked.start && pendingSel.end === picked.end) return;
-      hideSelBtn();
-      pendingSel = picked;
-      selBtn = document.createElement('button');
-      selBtn.type = 'button';
-      selBtn.className = 'btn pri pp-selbtn';
-      selBtn.textContent = '评论';
-      var r = picked.rect;
-      var left = Math.min(r.right + window.scrollX - 24, window.scrollX + document.documentElement.clientWidth - 72);
-      selBtn.style.left = Math.max(window.scrollX + 8, left) + 'px';
-      selBtn.style.top = Math.max(window.scrollY + 8, r.top + window.scrollY - 42) + 'px';
-      selBtn.addEventListener('mousedown', function (ev) { ev.preventDefault(); });
-      selBtn.addEventListener('click', startDraft);
-      document.body.appendChild(selBtn);
-    }, 0);
-  }
+  var sync = createProseSync({
+    server: SERVER,
+    entry: ENTRY,
+    root: root,
+    path: PATH,
+    hooks: {
+      state: function () { return state; },
+      recompute: function (prose) {
+        state.rows = prose.rows().filter(isProseRow);
+        render();
+      },
+      renderRail: function () { railApi.renderRail(); },
+      render: function () { render(); },
+      findCanvasRow: function (id) { return sync.findCanvasRow(id); },
+    },
+  });
 
-  function startDraft() {
-    if (!pendingSel) return;
-    draft = { quote: pendingSel.quote, section: pendingSel.section, start: pendingSel.start, end: pendingSel.end };
-    hideSelBtn();
-    var sel = window.getSelection();
-    if (sel) sel.removeAllRanges();
-    focusedId = '__draft';
-    render();
-    var area = rail.querySelector('textarea[data-reply="__draft"]');
-    if (area) { area.scrollIntoView({ block: 'nearest' }); area.focus(); }
-  }
+  var railApi = createRail({
+    rail: rail,
+    root: root,
+    state: state,
+    sync: sync,
+    hooks: {
+      canvasCards: canvasCards,
+      orderKey: orderKey,
+      view: view,
+      syncFocusClasses: syncFocusClasses,
+    },
+  });
+
+  var selection = createSelection({
+    root: root,
+    rail: rail,
+    state: state,
+    hooks: { render: render },
+  });
+
+  var edit = createEdit({
+    rail: rail,
+    state: state,
+    sync: sync,
+    hooks: {
+      renderRail: function () { railApi.renderRail(); },
+      enqueue: function (op) { sync.prose.enqueue(op); },
+    },
+  });
 
   function sendDraft() {
     var area = rail.querySelector('textarea[data-reply="__draft"]');
     var text = area ? area.value.trim() : '';
-    if (!draft || !text) { if (area) area.focus(); return; }
+    if (!state.draft || !text) { if (area) area.focus(); return; }
     var id = newId();
-    var row = newProseRow({ id: id, content: text, quote: draft.quote, section: draft.section, path: PATH, at: new Date().toISOString() });
-    draft = null;
-    focusedId = id;
-    enqueue({ op: 'create', row: row });
+    var row = newProseRow({ id: id, content: text, quote: state.draft.quote, section: state.draft.section, path: PATH, at: new Date().toISOString() });
+    state.draft = null;
+    state.focusedId = id;
+    sync.prose.enqueue({ op: 'create', row: row });
   }
 
   function cancelDraft() {
-    draft = null;
-    focusedId = null;
+    state.draft = null;
+    state.focusedId = null;
     render();
   }
 
   function sendReply(id) {
-    var area = railArea(id);
+    var area = railArea(rail, id);
     var text = area ? area.value.trim() : '';
     if (!text) { if (area) area.focus(); return; }
     area.value = '';
-    delete replyText[id];
-    replyOpen.delete(id);
-    enqueue({ op: 'reply', id: id, text: text, at: new Date().toISOString() });
+    delete state.replyText[id];
+    state.replyOpen.delete(id);
+    sync.prose.enqueue({ op: 'reply', id: id, text: text, at: new Date().toISOString() });
   }
 
   function openReply(id) {
-    replyOpen.add(id);
-    focusedId = id;
-    renderRail();
+    state.replyOpen.add(id);
+    state.focusedId = id;
+    railApi.renderRail();
     syncFocusClasses();
-    var area = railArea(id);
+    var area = railArea(rail, id);
     if (area) {
       area.focus();
       try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
@@ -968,290 +293,68 @@ export function startProseComments(options) {
 
   /** 收起回复框；框里的字留在 replyText，下次点“回复”放回。 */
   function closeReply(id) {
-    var area = railArea(id);
+    var area = railArea(rail, id);
     if (area) {
-      if (area.value) replyText[id] = area.value;
-      else delete replyText[id];
+      if (area.value) state.replyText[id] = area.value;
+      else delete state.replyText[id];
     }
-    replyOpen.delete(id);
-  }
-
-  // ---------- 编辑 owner 写的话 ----------
-  /** 编辑键 → { canvas, id, index }。index 是 messages 的下标；没有就是第一句（content）。 */
-  function parseEditKey(key) {
-    var canvasRow = key.indexOf('c:') === 0;
-    var rest = canvasRow ? key.slice(2) : key;
-    var at = rest.lastIndexOf('/m');
-    var index = at >= 0 ? Number(rest.slice(at + 2)) : NaN;
-    return {
-      canvas: canvasRow,
-      id: at >= 0 && Number.isInteger(index) ? rest.slice(0, at) : rest,
-      index: Number.isInteger(index) ? index : null,
-    };
-  }
-
-  /** 这句现在的原文，和编辑框里的一致。画布标注开头有目标记号时，原文是记号后面的文字。 */
-  function editOriginalText(key) {
-    var parsed = parseEditKey(key);
-    var list = parsed.canvas ? canvas.rows() : rows;
-    for (var i = 0; i < list.length; i++) {
-      if (!list[i] || String(list[i].id) !== parsed.id) continue;
-      if (parsed.index != null) {
-        var messages = Array.isArray(list[i].messages) ? list[i].messages : [];
-        var message = messages[parsed.index];
-        return message && message.who === 'owner' ? String(message.text || '') : null;
-      }
-      if (!parsed.canvas) return String(list[i].content || '');
-      var leading = canvasLeadingEdit(list[i].content);
-      // 框里的字保存前会 trim。原文按同一条比，尾部空白不算改过。
-      return leading ? leading.text.trim() : canvasContentText(list[i]);
-    }
-    return null;
-  }
-
-  /** 画布标注开头的记号接回 content。记号不在开头（夹在文字里）时不改，免得把记号换成字面文字。 */
-  function canvasStoredContent(id, text) {
-    var row = findCanvasRow(id);
-    if (!row) return text;
-    var leading = canvasLeadingEdit(row.content);
-    if (leading) return leading.prefix + text;
-    if (canvasContentHasTargets(row)) return null;
-    return text;
-  }
-
-  function startEdit(key) {
-    if (editingId === key) return;
-    if (editingId != null) finishEdit(); // 换一张卡编辑：等于点了手里那张的外面，先保存
-    editingId = key;
-    renderRail();
-    var area = editAreaOf(key);
-    if (!area) { editingId = null; return; }
-    growEdit(area);
-    area.focus();
-    var len = editFieldText(area).length;
-    setEditFieldSelection(area, len, len);
-  }
-
-  /** 收束编辑：写了新字就入队 edit（onChange 会重画），清空或没改就恢复原文，框不在了只退出。 */
-  function finishEdit() {
-    var key = editingId;
-    if (key == null) return;
-    editingId = null;
-    var area = editAreaOf(key);
-    var value = area ? editFieldText(area) : editText[key];
-    delete editText[key];
-    if (value == null) return;
-    var text = String(value).trim();
-    if (!text || text === editOriginalText(key)) { renderRail(); return; } // 清空不删评论；没改不落账本
-    var parsed = parseEditKey(key);
-    var content = text;
-    if (parsed.canvas && parsed.index == null) {
-      content = canvasStoredContent(parsed.id, text);
-      if (content == null) { renderRail(); return; }
-    }
-    var op = parsed.index != null
-      ? { op: 'edit', id: parsed.id, index: parsed.index, text: text }
-      : { op: 'edit', id: parsed.id, content: content };
-    if (parsed.canvas) canvas.enqueue(op);
-    else enqueue(op);
-  }
-
-  /** Esc：丢开编辑框，恢复原文。 */
-  function cancelEdit() {
-    var key = editingId;
-    if (key == null) return;
-    editingId = null;
-    delete editText[key];
-    renderRail();
+    state.replyOpen.delete(id);
   }
 
   function setExpanded(id, open) {
-    if (!open && editingId != null && (editingId === id || editingId.indexOf(id + '/m') === 0)) finishEdit(); // 这张卡要收成一行：先把编辑收掉，别把字跟框一起丢
-    if (open) expanded.add(id);
+    if (!open && state.editingId != null && (state.editingId === id || state.editingId.indexOf(id + '/m') === 0)) edit.finishEdit(); // 这张卡要收成一行：先把编辑收掉，别把字跟框一起丢
+    if (open) state.expanded.add(id);
     else {
-      expanded.delete(id);
-      if (focusedId === id) focusedId = null;
+      state.expanded.delete(id);
+      if (state.focusedId === id) state.focusedId = null;
     }
     render();
   }
 
   function setStatus(id, status) {
-    if (editingId != null && (editingId === id || editingId.indexOf(id + '/m') === 0 || editingId === 'c:' + id)) finishEdit(); // 状态要变、卡要重画：先收编辑
-    expanded.delete(id); // 点完成就地收起；重新打开后下次再关也从收着开始
+    if (state.editingId != null && (state.editingId === id || state.editingId.indexOf(id + '/m') === 0 || state.editingId === 'c:' + id)) edit.finishEdit(); // 状态要变、卡要重画：先收编辑
+    state.expanded.delete(id); // 点完成就地收起；重新打开后下次再关也从收着开始
     if (id.indexOf('c:') === 0) {
-      if (canvas) canvas.enqueue({ op: 'status', id: id.slice(2), status: status });
+      if (sync.canvas) sync.canvas.enqueue({ op: 'status', id: id.slice(2), status: status });
       return;
     }
-    enqueue({ op: 'status', id: id, status: status });
+    sync.prose.enqueue({ op: 'status', id: id, status: status });
   }
 
-  // ---------- 事件 ----------
-  rail.addEventListener('compositionstart', function (e) {
-    if (e.target.matches('textarea[data-reply], textarea[data-edit], .pp-body.pp-edit')) composingArea = e.target;
-  });
-  rail.addEventListener('compositionend', function (e) {
-    if (e.target !== composingArea) return;
-    composingArea = null;
-    // 浏览器在 compositionend 后才提交最后一次 input；等这批输入事件完成再保存 value 与光标。
-    setTimeout(function () { if (railDirty) renderRail(); }, 0);
-  });
-  // 鼠标松开、Shift+方向键立即判；触屏拖选手柄没有 mouseup，靠 selectionchange 停下来之后再判。
-  var pointerDown = false;
-  var selTimer = 0;
-  document.addEventListener('pointerdown', function () { pointerDown = true; }, true);
-  document.addEventListener('pointerup', function () { pointerDown = false; }, true);
-  document.addEventListener('selectionchange', function () {
-    clearTimeout(selTimer);
-    selTimer = setTimeout(function () { if (!pointerDown) onSelectionDone(null); }, 400);
-  });
-  document.addEventListener('mouseup', onSelectionDone);
-  document.addEventListener('keyup', function (e) {
-    if (e.shiftKey || e.key === 'Shift' || e.key.indexOf('Arrow') === 0) onSelectionDone(e);
-  });
-  document.addEventListener('mousedown', function (e) {
-    if (selBtn && !(e.target.closest && e.target.closest('.pp-selbtn'))) hideSelBtn();
-  });
-  // 点那张卡外面：空着的回复框收起，写了字的留着（字不丢，也不打断）。用 click 而不是
-  // mousedown：mousedown 时重画右栏会换掉正要点的按钮，这一下 click 就落空了。右栏自己的
-  // click 先跑完（可能已重画），这里按被点的元素所在线程判断，元素已脱离文档也认得出。
-  document.addEventListener('click', function (e) {
-    if (!replyOpen.size) return;
-    var hit = e.target && e.target.closest ? e.target.closest('.pp-thread') : null;
-    var hitId = hit ? hit.getAttribute('data-id') : null;
-    var changed = false;
-    replyOpen.forEach(function (id) {
-      if (id === hitId) return;
-      var area = railArea(id);
-      if (area && area.value.trim()) return;
-      closeReply(id);
-      changed = true;
-    });
-    if (changed) renderRail();
-  });
-  // 点正在编辑的这张卡外面：保存（写了新字入队，清空或没改恢复原文）。点同一张卡里别处不收。
-  // 编辑键比卡片 id 长一截（后续回复带 /m 下标），按卡片 id 认，不拿整条键对。
-  document.addEventListener('click', function (e) {
-    if (editingId == null) return;
-    var hit = e.target && e.target.closest ? e.target.closest('.pp-thread') : null;
-    var hitId = hit ? hit.getAttribute('data-id') : null;
-    // 正文评论的编辑键是卡片 id，或卡片 id 加 /m 下标；画布标注的编辑键就是卡片 id（c: 前缀）。
-    var cardId = editingId.indexOf('c:') === 0 ? editingId : parseEditKey(editingId).id;
-    if (hitId != null && hitId === cardId) return;
-    finishEdit();
-  });
-  // 编辑框里打字：跟着内容长高。
-  rail.addEventListener('input', function (e) {
-    if (e.target && e.target.matches && e.target.matches('textarea[data-edit]')) growEdit(e.target);
-  });
-  // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
-  // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
-  document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || composingArea) return;
-    // 焦点在回复框里：Esc 只收起这个框，写了一半的字留作草稿。
-    var replyArea = document.activeElement && document.activeElement.closest
-      && document.activeElement.closest('textarea[data-reply]:not([data-reply="__draft"])');
-    if (replyArea && rail.contains(replyArea)) {
-      var replyId = replyArea.getAttribute('data-reply');
-      closeReply(replyId);
-      renderRail();
-      var again = rail.querySelector('.pp-thread[data-id="' + (window.CSS && CSS.escape ? CSS.escape(replyId) : replyId) + '"] [data-act="open-reply"]');
-      if (again) again.focus();
-      return;
-    }
-    if (draft) {
-      var active = document.activeElement;
-      if (active && active.matches && active.matches('textarea[data-reply="__draft"]')) cancelDraft();
-      return;
-    }
-    if (focusedId) { focusedId = null; renderRail(); syncFocusClasses(); }
-    hideSelBtn();
-  });
-
-  root.addEventListener('click', function (e) {
-    var mark = e.target.closest && e.target.closest('mark.' + MARK_CLASS);
-    if (!mark) return;
-    var sel = window.getSelection();
-    if (sel && !sel.isCollapsed) return; // 拖选结束在高亮上：是在选字，不是点评论
-    var ids = (mark.getAttribute('data-ids') || '').split(' ').filter(function (id) { return id && id !== '__draft'; });
-    if (!ids.length) return;
-    var next = ids.indexOf(focusedId) >= 0 ? ids[(ids.indexOf(focusedId) + 1) % ids.length] : ids[0];
-    focusThread(next);
-  });
-
-  rail.addEventListener('click', function (e) {
-    var thread = e.target.closest('.pp-thread');
-    if (!thread) return;
-    var id = thread.getAttribute('data-id');
-    // 点 owner 写的第一句：原地编辑（画布标注卡也要在这里接住，不落到下面“开画布”的分支）。
-    var editTarget = e.target.closest ? e.target.closest('.text[data-edit], .pp-body[data-edit]') : null;
-    if (editTarget) {
-      var sel = window.getSelection();
-      // 选区没收起、而且盖住了这句：是在选字，不是要编辑。别的地方留下的选区不挡这次点击。
-      if (sel && !sel.isCollapsed && sel.containsNode(editTarget, true)) return;
-      startEdit(editTarget.getAttribute('data-edit'));
-      return;
-    }
-    var act = e.target.closest('[data-act]');
-    if (act) {
-      var what = act.getAttribute('data-act');
-      if (what === 'send-draft') sendDraft();
-      else if (what === 'cancel-draft') cancelDraft();
-      else if (what === 'reply') sendReply(id);
-      else if (what === 'open-reply') openReply(id);
-      else if (what === 'expand') setExpanded(id, true);
-      else if (what === 'collapse') setExpanded(id, false);
-      else if (what === 'close') setStatus(id, 'close');
-      else if (what === 'reopen') setStatus(id, 'open');
-      return;
-    }
-    // 画布标注：点卡片（链接以外的地方也算）就在文章上开画布、定位到这颗钉子，与点链接同一条路。
-    if (thread.getAttribute('data-kind') === 'canvas') {
-      var link = thread.querySelector('a[data-pp-canvas-link]');
-      if (link && !e.target.closest('a')) link.click();
-      return;
-    }
-    if (id !== '__draft' && id !== focusedId && !e.target.closest('textarea')) focusThread(id, { scroll: false, reveal: true });
-  });
-
-  rail.addEventListener('keydown', function (e) {
-    // 编辑第一句：⌘/Ctrl+Enter 保存，Esc 取消恢复原文；单独 Enter 是换行。
-    var edit = e.target.closest && e.target.closest('textarea[data-edit], .pp-body.pp-edit');
-    if (edit) {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing && e.keyCode !== 229) {
-        e.preventDefault();
-        finishEdit();
-      } else if (e.key === 'Escape' && !e.isComposing && e.keyCode !== 229) {
-        e.preventDefault();
-        cancelEdit();
-      }
-      return;
-    }
-    var area = e.target.closest && e.target.closest('textarea[data-reply]');
-    if (!area) return;
-    // Enter 发送，Shift+Enter 换行；输入法组字中的 Enter 留给输入法（isSendKey）。
-    if (isSendKey(e)) {
-      e.preventDefault();
-      var id = area.getAttribute('data-reply');
-      if (id === '__draft') sendDraft();
-      else sendReply(id);
-    }
+  bindProseEvents({
+    root: root,
+    rail: rail,
+    state: state,
+    selection: selection,
+    edit: edit,
+    railApi: railApi,
+    syncFocusClasses: syncFocusClasses,
+    actions: {
+      closeReply: closeReply,
+      cancelDraft: cancelDraft,
+      sendDraft: sendDraft,
+      sendReply: sendReply,
+      openReply: openReply,
+      setExpanded: setExpanded,
+      setStatus: setStatus,
+    },
   });
 
   render();
   observe();
-  hydrate();
-  connectEvents();
+  sync.hydrate();
+  sync.connectEvents();
 
   var api = {
     entry: ENTRY,
-    ledger: LEDGER,
-    rows: function () { return rows.slice(); },
+    ledger: sync.ledger,
+    rows: function () { return state.rows.slice(); },
     /** 没有在途保存、没有排队的操作、已经从磁盘水合过。 */
-    settled: function () { return prose.settled() && (!canvas || canvas.settled()); },
+    settled: function () { return sync.prose.settled() && (!sync.canvas || sync.canvas.settled()); },
     /** 右栏里穿插的画布标注（@canvas 的行，含还没落盘的状态改动）。 */
-    canvasRows: function () { return canvas ? canvas.rows() : []; },
+    canvasRows: function () { return sync.canvas ? sync.canvas.rows() : []; },
     /** 选区判定的次数与最近一次是否给了“评论”钮。 */
-    selection: function () { return { checks: selectionChecks, offered: lastOffered }; },
+    selection: function () { return { checks: state.selectionChecks, offered: state.lastOffered }; },
   };
   window.pinpointProse = api;
   return api;
