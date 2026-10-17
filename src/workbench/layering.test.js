@@ -29,10 +29,20 @@ function workbenchSources() {
   return out.sort();
 }
 
+// annotate.js 按职责拆到 src/client/annotate/ 后，z-index 字面量跟着搬了过去，
+// 扫描范围要覆盖子目录，否则新文件里的裸 z-index 不会被这条测试看见。
+function annotateSources() {
+  return readdirSync(path.join(ROOT, 'src', 'client', 'annotate'))
+    .filter((name) => name.endsWith('.js'))
+    .map((name) => path.join('src', 'client', 'annotate', name))
+    .sort();
+}
+
 const SCANNED = [
   'index.html',
   ...workbenchSources(),
   'src/client/annotate.js',
+  ...annotateSources(),
   'src/client/annotate-css.js',
   'src/shared/annotate-bubble.js',
 ];
@@ -52,7 +62,7 @@ const ALLOW = [
   { file: 'src/client/annotate-css.js', where: /^\s*'#ann-box\{/, values: ['5'], reason: 'chrome 内部序：输入框' },
   { file: 'src/client/annotate-css.js', where: /^\s*'#ann-tools-menu\{/, values: ['6'], reason: 'chrome 内部序：输入框里的工具菜单' },
   { file: 'src/client/annotate-css.js', where: /^\s*'#ann-mention\{/, values: ['6'], reason: 'chrome 内部序：mention 下拉' },
-  { file: 'src/client/annotate.js', where: /svg\.style\.cssText = 'position:absolute;pointer-events:none;z-index:2;'/, values: ['2'], reason: 'overlay 内部序：箭头 SVG' },
+  { file: 'src/client/annotate/arrow.js', where: /svg\.style\.cssText = 'position:absolute;pointer-events:none;z-index:2;'/, values: ['2'], reason: 'overlay 内部序：箭头 SVG' },
   // 客座层：注入到别人页面时和宿主竞争，workbench 里不出现；数字保留不动。
   { file: 'src/client/annotate-css.js', where: /^\s*'#ann-toolbar\{/, values: ['2147483646'], reason: '客座层：注入端工具条' },
   { file: 'src/client/annotate-css.js', where: /^\s*'#ann-sidebar\{/, values: ['2147483645'], reason: '客座层：注入端标注面板' },
