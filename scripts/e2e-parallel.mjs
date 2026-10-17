@@ -44,6 +44,7 @@ const durations = {
   'scroll-motion.spec.js': 2.1,
   'section-deeplink.spec.js': 3.3,
   'section-scroll.spec.js': 3,
+  'shot-page-race.spec.js': 4,
   'sidebar-content.spec.js': 7.7,
   'tabs.spec.js': 3.7,
   'viewport.spec.js': 4,

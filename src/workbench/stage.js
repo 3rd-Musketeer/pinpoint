@@ -138,6 +138,14 @@ function boardUrl(pageId) {
 async function loadBoard(panel, pageId, loadOptions) {
   loadOptions = loadOptions || {};
   try {
+    // boardUrl 依赖页面清单定 base（registry 条目 /sites/<id>/，其余 /previews/<id>/）。
+    // 清单还没到就取 board 会按缺省 /previews/ 路径打出 404（文章画布页不在那里），
+    // 失败面板之后也不会自愈 —— 清单到了没人重装板，恢复全靠 boot 兜底激活恰好
+    // 凑上（ppnt shot 的 setActivePage 在 window.workbench 一出现就调，正好落进
+    // 清单在途的窗口；文章越多 /registry 越慢，窗口越大）。这里先等清单：与 boot
+    // 的 loadPageManifest 是同一条 TanStack 查询（staleTime Infinity），在途即搭车、
+    // 之后走缓存，不加请求。
+    if (!wbGet().pageManifest) await loadPageManifest();
     var rawBoard = await queryClient.fetchQuery({
       queryKey: ['board', pageId],
       queryFn: function () {
@@ -267,6 +275,10 @@ function initBoard() {
         showMissingPage(boot.pageId);
         return null;
       }
+      // 清单等待期间已有显式换页（外部调用方经 window.workbench.setActivePage，
+      // 如 ppnt shot）时 boot 让位：默认页激活只是「还没有人选页」的兜底，
+      // 迟到的它会把外部调用方刚换上的页盖掉。
+      if (wbGet().activePageId) return null;
       return setActivePage(resolveBootPageId(readPrefs()), { force: true, scrollTop: false, save: false });
     })
     // 条目级深链（2026-08-16f 阶段 6）：?entry= 在板装载后应用 —— 未知条目 id
