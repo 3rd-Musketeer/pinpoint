@@ -93,6 +93,44 @@ test('服务拒了操作：退回盘上的样子，报原因，调用方可以�
   assert.equal(ledger.error(), '保存被拒：close → check。原文已放回输入框');
 });
 
+test('edit 操作：撞 409 时重放到盘上的新版，改的第一句与 agent 刚回的话都落盘；别的拒绝把 edit 交给 onRejected', async (t) => {
+  const disk = { revision: 2, annotations: [{ id: 'a', n: 1, status: 'check', content: '写全称', messages: [] }] };
+  const server = fakeServer(disk);
+  t.mock.method(globalThis, 'fetch', server.fetch);
+  const ledger = createOpsLedger({ server: '', entry: 'e', ledger: '@prose' });
+  ledger.accept(structuredClone(disk));
+  // 水合之后、保存之前，agent 在盘上回了一句（revision 3）。
+  disk.revision = 3;
+  disk.annotations = [{ ...disk.annotations[0], messages: [{ who: 'agent', text: '改好了', at: 't' }] }];
+  ledger.enqueue({ op: 'edit', id: 'a', content: '收款方写全称' });
+  assert.equal(ledger.rows()[0].content, '收款方写全称'); // 先在界面上生效
+  assert.equal(ledger.rows()[0].status, 'open');
+  await settle(ledger);
+  assert.equal(server.calls.length, 2);
+  assert.equal(server.calls[1].baseRevision, 3, '撞 409 后重放到盘上的新版');
+  assert.deepEqual(disk.annotations, [{
+    id: 'a', n: 1, status: 'open', content: '收款方写全称', messages: [{ who: 'agent', text: '改好了', at: 't' }],
+  }]);
+  assert.equal(ledger.error(), '');
+
+  // 非法转换（不带 annotations 的 409）：edit 被拒，整批交给 onRejected，行退回盘上的样子。
+  const rejecting = { revision: 1, annotations: [{ id: 'a', n: 1, status: 'close', content: '写全称' }] };
+  rejecting.reject = true;
+  const strictServer = fakeServer(rejecting);
+  t.mock.method(globalThis, 'fetch', async (url, init) => {
+    const res = await strictServer.fetch(url, init);
+    return { ...res, json: async () => ({ error: 'illegal_transition', detail: 'close → check' }) };
+  });
+  let rejected = null;
+  const strict = createOpsLedger({ server: '', entry: 'e', ledger: '@prose', onRejected: (ops) => { rejected = ops; return true; } });
+  strict.accept(structuredClone(rejecting));
+  strict.enqueue({ op: 'edit', id: 'a', content: '又被拒的一版' });
+  await settle(strict);
+  assert.deepEqual(rejected, [{ op: 'edit', id: 'a', content: '又被拒的一版' }]);
+  assert.equal(strict.rows()[0].content, '写全称');
+  assert.equal(strict.error(), '保存被拒：close → check。原文已放回输入框');
+});
+
 test('SSE 推来的旧版本不用；保存在途时推来的新版本等应答回来再用', async (t) => {
   const disk = { revision: 2, annotations: [{ id: 'a', n: 1, status: 'open' }] };
   let release;

@@ -65,6 +65,25 @@ test('applyProseOps：重放同一条 reply（原文与 at 都相同）不追加
   assert.equal(later[0].status, 'open');
 });
 
+test('applyProseOps：edit 改第一句并回 open，agent 回复和别的字段不动；目标不在跳过；原行不变', () => {
+  const row = {
+    id: 'p1', type: 'prose', status: 'close', content: '写全称', n: 3,
+    quote, section: 'how', created_at: 't0', messages: [{ who: 'agent', text: '改了', at: 't1' }],
+  };
+  const out = applyProseOps([row], [{ op: 'edit', id: 'p1', content: '收款方写全称' }]);
+  assert.deepEqual(
+    [out[0].content, out[0].status, out[0].n, out[0].quote.exact, out[0].messages],
+    ['收款方写全称', 'open', 3, quote.exact, [{ who: 'agent', text: '改了', at: 't1' }]],
+  );
+  assert.equal(row.content, '写全称', '原行不变');
+  // 画布标注的正文也是第一句：edit 同一条规则（status / 别的字段原样）。
+  const canvasRow = { id: 'c1', content: '按钮太挤', status: 'check', screenId: 'pay-card' };
+  const edited = applyProseOps([canvasRow], [{ op: 'edit', id: 'c1', content: '间距加大' }]);
+  assert.deepEqual([edited[0].content, edited[0].status, edited[0].screenId], ['间距加大', 'open', 'pay-card']);
+  // 目标已经不在（别处删了）：跳过。
+  assert.equal(applyProseOps([row], [{ op: 'edit', id: 'ghost', content: 'x' }])[0].content, '写全称');
+});
+
 test('threadMessages：第一句 = content，后接 messages；authorLabel', () => {
   const row = { content: '写全称', created_at: 't0', messages: [{ who: 'agent', text: '改了', at: 't1' }, null] };
   assert.deepEqual(threadMessages(row), [{ who: 'owner', text: '写全称', at: 't0' }, { who: 'agent', text: '改了', at: 't1' }]);

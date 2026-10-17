@@ -2,7 +2,7 @@
  * 一篇文章一张画布（2026-10-15）：画布上的帧标注在 @canvas；HTML 帧是一整页文档，它的标注在同桶里
  * 那一页自己的账本里（账本名 = 页面在服务上的地址 pageKeyFromPathname，iframe 里的标注客户端按它
  * 命名）。这里把它们合成一份：rows() 是全部的行，HTML 帧账本里的行补上 screenId = 那一帧（拷贝，不改
- * 盘上的行）；状态改动按行 id 回到它所在的那一本；SSE 推送按账本名（原名或落盘的 slug）分给对应的那本。
+ * 盘上的行）；状态和第一句的改动按行 id 回到它所在的那一本；SSE 推送按账本名（原名或落盘的 slug）分给对应的那本。
  * 每本仍是一个 createOpsLedger（409 重放、离开页面补发都不变）。 */
 
 import { createOpsLedger } from './ops-ledger.js';
@@ -32,9 +32,10 @@ export function createCanvasLedgers(options) {
       frames: frame ? [frame] : [],
       ops: make({
         server: options.server, entry: options.entry, ledger: name, maxConflicts: options.maxConflicts,
-        // 画布与页面的账本都是工作台写的，这里只改状态，path 原样带回去。
+        // 画布与页面的账本都是工作台写的，这里改状态和第一句，path 原样带回去。
         path: function (disk) { return disk; },
         onChange: options.onChange,
+        onRejected: options.onRejected,
       }),
     };
     seen[name] = book;

@@ -43,6 +43,7 @@ export function newProseRow({ id, content, quote, section = '', path = '', at })
  * 把操作依次作用到行列表上，返回新列表（不改传入的行）。操作：
  *   { op: 'create', row }                新评论（id 已存在就跳过）
  *   { op: 'reply', id, text, at }        owner 回一句：追加消息，状态回 open；同一条（原文与 at 相同）已在就跳过
+ *   { op: 'edit', id, content }          owner 改第一句（content）：状态回 open（服务端对改 content 同一条规则）
  *   { op: 'status', id, status }         owner 关闭 / 重新打开（close / open）
  * 目标行已经不在（别处删了）的操作跳过。
  */
@@ -65,6 +66,8 @@ export function applyProseOps(rows, ops) {
       // 那份先落了盘、409 后重放剩下的操作，就是这种情况。
       if (op.at && messages.some((m) => m && m.who === 'owner' && m.text === text && m.at === op.at)) continue;
       next = { ...row, status: 'open', messages: [...messages, { who: 'owner', text, at: op.at }] };
+    } else if (op.op === 'edit') {
+      next = { ...row, status: 'open', content: String(op.content ?? '') };
     } else if (op.op === 'status') {
       next = { ...row, status: op.status };
     }

@@ -21,6 +21,11 @@
  * 没落盘的操作重放到磁盘最新版再存，agent 刚写的回复不会被旧快照盖掉；别的拒绝
  * 把新评论退回草稿、回复退回输入框，右栏写出原因。
  *
+ * 改自己写的话（2026-10-17）：点线程里 owner 的第一句（正文评论的 content、画布标注的正文），
+ * 原地变成可编辑的输入框，字号行高不跳；⌘/Ctrl+Enter 或点这张卡外面保存，Esc 取消恢复原文，
+ * 清空后保存不删评论、恢复原文。agent 的回复与引文不可编辑。编辑入队 edit 操作，与服务端
+ * “改 content 回 open”同一条规则；被拒时字放回编辑框。
+ *
  * 同步：SSE（/events）断了会自己重连，重连上就重新水合，补上断线期间漏掉的事件；
  * pagehide 时关掉，从 bfcache 回来（pageshow persisted，比如从画布按“返回”）时重开
  * 并重新水合。 */
@@ -211,6 +216,8 @@ export function startProseComments(options) {
   var expanded = new Set(); // 展开了的已关闭线程 id（不记盘：每次打开文章都收着）
   var replyOpen = new Set(); // 展开了回复框的线程 id
   var replyText = {};     // 线程 id -> 回复框里的字（框收起后草稿也留着）
+  var editingId = null;   // 正在编辑第一句的线程 key：正文评论 id，或 'c:' + 画布标注 id
+  var editText = {};      // 编辑框 key -> 被拒后放回框里的字
   var focusedId = null;
   var draft = null;       // { quote, section, start, end }
   var anchors = new Map(); // id -> { start, end } | null（null = 失效）
@@ -242,6 +249,7 @@ export function startProseComments(options) {
       return { id: fig.getAttribute('data-screen') || '', url: fig.getAttribute('data-doc-url') || '' };
     }),
     onChange: function () { announceCanvas(); renderRail(); },
+    onRejected: restoreCanvasRejected,
   }) : null;
 
   function recompute() {
@@ -254,7 +262,7 @@ export function startProseComments(options) {
     document.dispatchEvent(new CustomEvent('pp:canvas-ledger', { detail: { entry: ENTRY, doc: { annotations: canvas.rows() } } }));
   }
 
-  // 被拒的操作里 owner 写的字：新评论 → 草稿（已有草稿时不顶掉它），回复 → 输入框。
+  // 被拒的操作里 owner 写的字：新评论 → 草稿（已有草稿时不顶掉它），回复 → 输入框，编辑 → 编辑框。
   var restoreText = {};   // textarea data-reply id -> 下次画右栏时放回的字
   function restoreRejected(list) {
     var restored = false;
@@ -269,6 +277,23 @@ export function startProseComments(options) {
         restoreText[op.id] = restoreText[op.id] ? restoreText[op.id] + '\n' + op.text : op.text;
         replyOpen.add(op.id);
         if (focusedId !== '__draft') focusedId = op.id;
+        restored = true;
+      } else if (op.op === 'edit' && op.content) {
+        editText[op.id] = op.content;
+        editingId = op.id;
+        restored = true;
+      }
+    });
+    return restored;
+  }
+
+  /** 画布账本被拒的编辑：字放回右栏那张卡的编辑框（状态操作没有字，不用放）。 */
+  function restoreCanvasRejected(list) {
+    var restored = false;
+    list.forEach(function (op) {
+      if (op.op === 'edit' && op.content) {
+        editText['c:' + op.id] = op.content;
+        editingId = 'c:' + op.id;
         restored = true;
       }
     });
@@ -460,10 +485,23 @@ export function startProseComments(options) {
     return '<div class="q">' + esc(text) + '</div>';
   }
 
-  function messagesHtml(row) {
-    return '<div class="msgs">' + threadMessages(row).map(function (m) {
+  /** 线程消息。editKey 给了时，owner 的第一句可点着改：正在编辑就渲染成编辑框，
+      否则渲染成带 data-edit 的正文（agent 的回复、引文永远不可编辑）。 */
+  function messagesHtml(row, editKey) {
+    return '<div class="msgs">' + threadMessages(row).map(function (m, i) {
+      var body;
+      if (i === 0 && editKey && m.who === 'owner' && m.text) {
+        if (editingId === editKey) {
+          var value = editText[editKey] != null ? editText[editKey] : m.text;
+          body = '<textarea class="pp-edit" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</textarea>';
+        } else {
+          body = '<div class="text" data-edit="' + esc(editKey) + '" title="点击编辑">' + esc(m.text) + '</div>';
+        }
+      } else {
+        body = '<div class="text">' + esc(m.text) + '</div>';
+      }
       return '<div class="msg" data-who="' + esc(m.who) + '"><span class="who' + (m.who === 'agent' ? ' agent' : '') + '">' + esc(authorLabel(m.who)) + '</span>'
-        + '<span class="when">' + esc(formatWhen(m.at)) + '</span><div class="text">' + esc(m.text) + '</div></div>';
+        + '<span class="when">' + esc(formatWhen(m.at)) + '</span>' + body + '</div>';
     }).join('') + '</div>';
   }
 
@@ -500,14 +538,15 @@ export function startProseComments(options) {
       + (isProseClosed(row) ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
       + '</div>'
       + quoteHtml(row.quote && row.quote.exact)
-      + messagesHtml(row)
+      + messagesHtml(row, row.id)
       + reply
       + '</div>';
   }
 
   // 画布标注（@canvas）在右栏里的卡片：标明是画布标注和帧名，有截图放缩略图；点了在文章上开画布浮层、
   // 定位到这颗钉子（a[data-pp-canvas-link]，site/src/lib/canvas-overlay-client.js 接住）。四态与已关闭
-  // 原地收起同正文评论；这里只改状态，回复和改正文在画布上。线程 id 带 c: 前缀，和正文评论分开。
+  // 原地收起同正文评论；这里改状态、也改 owner 写的第一句（点着进编辑，同正文评论），回复在画布上。
+  // 线程 id 带 c: 前缀，和正文评论分开。
   function canvasCards() {
     return Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas]'), function (card) {
       return {
@@ -564,7 +603,7 @@ export function startProseComments(options) {
       + '</div>'
       + '<a class="pp-canvas-open" data-pp-canvas-link href="' + esc(canvasHref(item)) + '" title="在画布上打开这条标注">'
       + image + '<span class="pp-canvas-frame">帧<b>' + esc(item.frameTitle) + '</b></span></a>'
-      + messagesHtml({ content: text, created_at: row.created_at || '', messages: row.messages })
+      + messagesHtml({ content: text, created_at: row.created_at || '', messages: row.messages }, key)
       + '</div>';
   }
 
@@ -602,6 +641,16 @@ export function startProseComments(options) {
         else delete replyText[key];
       }
     }
+    var keepEdit = {};
+    var editAreas = rail.querySelectorAll('textarea[data-edit]');
+    for (var j = 0; j < editAreas.length; j++) {
+      keepEdit[editAreas[j].getAttribute('data-edit')] = {
+        value: editAreas[j].value,
+        focus: editAreas[j] === active,
+        start: editAreas[j].selectionStart,
+        end: editAreas[j].selectionEnd,
+      };
+    }
     // 一列：正文评论按引文位置，画布标注按所属卡片的位置（排在紧跟卡片的那段正文之前），同位按 #n。
     var canvasItems = canvas ? canvasRailItems(canvas.rows(), canvasCards()) : [];
     var entries = rows.map(function (row) { return { kind: 'prose', row: row, n: row.n, key: orderKey(row) }; })
@@ -636,6 +685,21 @@ export function startProseComments(options) {
         try { area.setSelectionRange(keep[id].start, keep[id].end); } catch (e) { /* */ }
       }
     });
+    // 编辑框：放回重画前的字与光标（没有旧字就是渲染时带上的原文），再按内容长高。
+    // 框没了（SSE 推来状态改动把线程收成了行）：字收进 editText，别跟着框一起丢。
+    Object.keys(keepEdit).forEach(function (id) {
+      var area = editAreaOf(id);
+      if (!area) {
+        if (editingId === id && keepEdit[id].value) editText[id] = keepEdit[id].value;
+        return;
+      }
+      area.value = keepEdit[id].value;
+      if (keepEdit[id].focus) {
+        area.focus();
+        try { area.setSelectionRange(keepEdit[id].start, keepEdit[id].end); } catch (e) { /* */ }
+      }
+      growEdit(area);
+    });
     // 刚展开的回复框：放回框收起前留下的草稿。
     replyOpen.forEach(function (id) {
       var area = railArea(id);
@@ -651,6 +715,16 @@ export function startProseComments(options) {
 
   function railArea(id) {
     return rail.querySelector('textarea[data-reply="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
+  }
+
+  function editAreaOf(key) {
+    return rail.querySelector('textarea[data-edit="' + (window.CSS && CSS.escape ? CSS.escape(key) : key) + '"]');
+  }
+
+  /** 编辑框按内容长高：看着还是那段文字，行数变了卡片跟着长，字号行高不变。 */
+  function growEdit(area) {
+    area.style.height = 'auto';
+    area.style.height = area.scrollHeight + 'px';
   }
 
   function render() {
@@ -783,7 +857,57 @@ export function startProseComments(options) {
     replyOpen.delete(id);
   }
 
+  // ---------- 编辑 owner 写的第一句 ----------
+  /** 线程 key 现在显示的第一句（画布标注是换了目标记号的显示文本，和编辑框里的一致）。 */
+  function editOriginalText(key) {
+    var canvasRow = key.indexOf('c:') === 0;
+    var id = canvasRow ? key.slice(2) : key;
+    var list = canvasRow ? canvas.rows() : rows;
+    for (var i = 0; i < list.length; i++) {
+      if (!list[i] || String(list[i].id) !== id) continue;
+      return canvasRow ? canvasContentText(list[i]) : String(list[i].content || '');
+    }
+    return null;
+  }
+
+  function startEdit(key) {
+    if (editingId === key) return;
+    if (editingId != null) finishEdit(); // 换一张卡编辑：等于点了手里那张的外面，先保存
+    editingId = key;
+    renderRail();
+    var area = editAreaOf(key);
+    if (!area) { editingId = null; return; }
+    growEdit(area);
+    area.focus();
+    try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
+  }
+
+  /** 收束编辑：写了新字就入队 edit（onChange 会重画），清空或没改就恢复原文，框不在了只退出。 */
+  function finishEdit() {
+    var key = editingId;
+    if (key == null) return;
+    editingId = null;
+    var area = editAreaOf(key);
+    var value = area ? area.value : editText[key];
+    delete editText[key];
+    if (value == null) return;
+    var text = String(value).trim();
+    if (!text || text === editOriginalText(key)) { renderRail(); return; } // 清空不删评论；没改不落账本
+    if (key.indexOf('c:') === 0) canvas.enqueue({ op: 'edit', id: key.slice(2), content: text });
+    else enqueue({ op: 'edit', id: key, content: text });
+  }
+
+  /** Esc：丢开编辑框，恢复原文。 */
+  function cancelEdit() {
+    var key = editingId;
+    if (key == null) return;
+    editingId = null;
+    delete editText[key];
+    renderRail();
+  }
+
   function setExpanded(id, open) {
+    if (!open && editingId === id) finishEdit(); // 这张卡要收成一行：先把编辑收掉，别把字跟框一起丢
     if (open) expanded.add(id);
     else {
       expanded.delete(id);
@@ -793,6 +917,7 @@ export function startProseComments(options) {
   }
 
   function setStatus(id, status) {
+    if (editingId === id || editingId === 'c:' + id) finishEdit(); // 状态要变、卡要重画：先收编辑
     expanded.delete(id); // 点完成就地收起；重新打开后下次再关也从收着开始
     if (id.indexOf('c:') === 0) {
       if (canvas) canvas.enqueue({ op: 'status', id: id.slice(2), status: status });
@@ -803,7 +928,7 @@ export function startProseComments(options) {
 
   // ---------- 事件 ----------
   rail.addEventListener('compositionstart', function (e) {
-    if (e.target.matches('textarea[data-reply]')) composingArea = e.target;
+    if (e.target.matches('textarea[data-reply], textarea[data-edit]')) composingArea = e.target;
   });
   rail.addEventListener('compositionend', function (e) {
     if (e.target !== composingArea) return;
@@ -844,6 +969,18 @@ export function startProseComments(options) {
     });
     if (changed) renderRail();
   });
+  // 点正在编辑的这张卡外面：保存（写了新字入队，清空或没改恢复原文）。点同一张卡里别处不收。
+  // startEdit 换卡时已先收掉手里那张，这里编辑中的 key 总是这次点中的（或没有）卡。
+  document.addEventListener('click', function (e) {
+    if (editingId == null) return;
+    var hit = e.target && e.target.closest ? e.target.closest('.pp-thread') : null;
+    if (hit && hit.getAttribute('data-id') === editingId) return;
+    finishEdit();
+  });
+  // 编辑框里打字：跟着内容长高。
+  rail.addEventListener('input', function (e) {
+    if (e.target && e.target.matches && e.target.matches('textarea[data-edit]')) growEdit(e.target);
+  });
   // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
   // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
   document.addEventListener('keydown', function (e) {
@@ -883,6 +1020,14 @@ export function startProseComments(options) {
     var thread = e.target.closest('.pp-thread');
     if (!thread) return;
     var id = thread.getAttribute('data-id');
+    // 点 owner 写的第一句：原地编辑（画布标注卡也要在这里接住，不落到下面“开画布”的分支）。
+    var editTarget = e.target.closest ? e.target.closest('.text[data-edit]') : null;
+    if (editTarget) {
+      var sel = window.getSelection();
+      if (sel && !sel.isCollapsed) return; // 拖选结束在第一句上：是在选字，不是要编辑
+      startEdit(editTarget.getAttribute('data-edit'));
+      return;
+    }
     var act = e.target.closest('[data-act]');
     if (act) {
       var what = act.getAttribute('data-act');
@@ -906,6 +1051,18 @@ export function startProseComments(options) {
   });
 
   rail.addEventListener('keydown', function (e) {
+    // 编辑第一句：⌘/Ctrl+Enter 保存，Esc 取消恢复原文；单独 Enter 是换行。
+    var edit = e.target.closest && e.target.closest('textarea[data-edit]');
+    if (edit) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        finishEdit();
+      } else if (e.key === 'Escape' && !e.isComposing && e.keyCode !== 229) {
+        e.preventDefault();
+        cancelEdit();
+      }
+      return;
+    }
     var area = e.target.closest && e.target.closest('textarea[data-reply]');
     if (!area) return;
     // Enter 发送，Shift+Enter 换行；输入法组字中的 Enter 留给输入法（isSendKey）。

@@ -516,7 +516,8 @@ test('右栏：画布标注按位置穿插在正文评论之间，四态、原�
 
     await test.step('点右栏的画布标注：开画布浮层，定位到那颗钉子并打开它', async () => {
       const at = await scrollOf(page);
-      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .msg .text`).first().click();
+      // 点卡片上链接以外的地方（“画布标注”字样）也开画布；正文那句现在点着是编辑。
+      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .pp-kind`).first().click();
       await expect(overlay(page)).toHaveAttribute('open', '');
       expect(hashOf(page)).toBe(`#canvas=variants&ann=${plainN}`);
       await expect.poll(() => overlayState(page).then((st) => st && st.landing), { timeout: 30_000 }).toBe(`ann:${plainN}`);

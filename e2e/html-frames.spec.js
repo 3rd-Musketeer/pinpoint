@@ -522,7 +522,8 @@ test('文章页：HTML 帧上的标注进右栏和卡片头的数；点了开整
     });
 
     await test.step('点它：整张画布定位到活卡片里的钉子、打开标注框；Esc 先关框，再回文章', async () => {
-      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${n}"] .msg .text`).click();
+      // 点卡片上链接以外的地方（“画布标注”字样）也开画布；正文那句现在点着是编辑。
+      await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${n}"] .pp-kind`).click();
       await expect(overlay(page)).toHaveAttribute('open', '');
       await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 60_000 }).toBe(`ann:${n}`);
       expect(await embedEntry()).toBe('@canvas');

@@ -23,10 +23,18 @@ const ARTICLE = '/e2e-prose/notes/';
 const PAGE_ID = 'e2e-prose_notes';
 const SOURCE = path.join(E2E_SITES_DIR, 'prose-site', 'docs', 'pinpoint', 'articles', 'notes', 'index.mdx');
 const LEDGER = path.join(E2E_DATA_DIR, PAGE_ID, '@prose.json');
+const CANVAS_LEDGER = path.join(E2E_DATA_DIR, PAGE_ID, '@canvas.json');
 
 // 账本每轮从空开始（--repeat-each、重跑都要“右栏空着”）；收尾先等关页时的写落盘。
-test.beforeEach(() => fs.rmSync(LEDGER, { force: true }));
+test.beforeEach(() => { fs.rmSync(LEDGER, { force: true }); fs.rmSync(CANVAS_LEDGER, { force: true }); });
 test.afterEach(async ({ page }) => { await closeSettled(page); });
+
+/** 往一本账本里放一行（baseRevision 取盘上现版，整本换成 [row]）。 */
+async function seed(request, entry, ledger, row) {
+  const doc = await (await request.get(`/annotations/${encodeURIComponent(ledger)}?entry=${entry}`)).json();
+  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [row] } });
+  expect(saved.ok()).toBe(true);
+}
 
 test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / mark → 改正文重新定位，引文没了标失效', async ({ page }) => {
   test.setTimeout(180_000);
@@ -169,7 +177,8 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
     });
 
     await test.step('owner 点“回复”回一句（Enter 发送）：消息接在 agent 后面，状态回 open，回复框收起', async () => {
-      await thread(first).click();
+      // 点引文聚焦线程（第一句现在点着是编辑）。
+      await thread(first).locator('.q').click();
       await expect(thread(first)).toHaveClass(/\bon\b/);
       await expect(thread(first).locator('textarea'), '聚焦线程不展开回复框').toHaveCount(0);
       await openReply(first);
@@ -394,4 +403,132 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
   }
 
   expect(pageErrors).toEqual([]);
+});
+
+test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点外面保存，Esc 取消，清空恢复原文，409 不丢字；画布标注同规则', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seed(request, PAGE_ID, '@prose', {
+    id: 'edit-me', type: 'prose', status: 'open', content: '收款方写简称',
+    quote: { exact: '确认卡写清收款方' }, section: 'how', messages: [],
+  });
+  await seed(request, PAGE_ID, '@canvas', { id: 'edit-canvas', screenId: 'pay-card', status: 'open', content: '画布上的原始标注' });
+  await page.goto(ARTICLE);
+  await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
+  await waitNoReload(page);
+  await proseSettled(page);
+  const thread = (id) => page.locator(`.pp-thread[data-id="${id}"]`);
+  const firstText = () => thread('edit-me').locator('.msg').first().locator('.text');
+  const editBox = () => thread('edit-me').locator('textarea.pp-edit');
+  const diskContent = (ledger, id) => JSON.parse(fs.readFileSync(ledger, 'utf8')).annotations.find((a) => a.id === id).content;
+  // 开编辑前记下第一句的字体与卡片位置，编辑框出现后逐项对：字号行高不跳，卡片不挪。
+  let metricsBefore;
+
+  await test.step('点第一句进编辑：字号行高与卡片位置不变，框里是原文', async () => {
+    // 可编辑的只有 owner 的第一句：整张卡里 [data-edit] 只有一个，引文上没有。
+    await expect(thread('edit-me').locator('[data-edit]')).toHaveCount(1);
+    await expect(thread('edit-me').locator('.q[data-edit]')).toHaveCount(0);
+    metricsBefore = await firstText().evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: el.closest('.pp-thread').getBoundingClientRect().top };
+    });
+    await firstText().click();
+    await expect(editBox()).toBeFocused();
+    await expect(editBox()).toHaveValue('收款方写简称');
+    const during = await editBox().evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: el.closest('.pp-thread').getBoundingClientRect().top };
+    });
+    expect([during.fontSize, during.lineHeight]).toEqual([metricsBefore.fontSize, metricsBefore.lineHeight]);
+    expect(Math.abs(during.cardTop - metricsBefore.cardTop)).toBeLessThanOrEqual(1);
+  });
+
+  await test.step('⌘/Ctrl+Enter 保存：右栏与账本都是新字，状态回 open，ppnt comments 读到', async () => {
+    await editBox().fill('收款方要写全称');
+    await editBox().press('ControlOrMeta+Enter');
+    await expect(editBox()).toHaveCount(0);
+    await expect(firstText()).toHaveText('收款方要写全称');
+    await proseSettled(page);
+    const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.id === 'edit-me');
+    expect([row.content, row.status]).toEqual(['收款方要写全称', 'open']);
+    const { stdout } = await ppnt(['comments', PAGE_ID]);
+    expect(stdout).toContain('收款方要写全称');
+  });
+
+  await test.step('刷新后是新内容', async () => {
+    await page.reload();
+    await proseSettled(page);
+    await expect(firstText()).toHaveText('收款方要写全称');
+  });
+
+  await test.step('Esc 取消：恢复原文，账本不动', async () => {
+    await firstText().click();
+    await expect(editBox()).toHaveValue('收款方要写全称');
+    await editBox().fill('改了一半又不要了');
+    await editBox().press('Escape');
+    await expect(editBox()).toHaveCount(0);
+    await expect(firstText()).toHaveText('收款方要写全称');
+    await proseSettled(page);
+    expect(diskContent(LEDGER, 'edit-me')).toBe('收款方要写全称');
+  });
+
+  await test.step('清空后点卡外面保存：不删评论，恢复原文', async () => {
+    await firstText().click();
+    await editBox().fill('');
+    await page.locator('#article .prose h1').click();
+    await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
+    await expect(firstText()).toHaveText('收款方要写全称');
+    await proseSettled(page);
+    expect(diskContent(LEDGER, 'edit-me')).toBe('收款方要写全称');
+  });
+
+  await test.step('agent 的回复与引文点了不进编辑', async () => {
+    const n = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.id === 'edit-me').n;
+    await ppnt(['reply', PAGE_ID, `#${n}`, '已按全称改好']);
+    await expect(thread('edit-me').locator('.msg[data-who="agent"] .text')).toHaveText('已按全称改好');
+    await thread('edit-me').locator('.msg[data-who="agent"] .text').click();
+    await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
+    await thread('edit-me').locator('.q').click();
+    await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
+    // [data-edit] 仍只有第一句那一个。
+    await expect(thread('edit-me').locator('[data-edit]')).toHaveCount(1);
+    await expect(thread('edit-me').locator('.msg[data-who="agent"] .text[data-edit]')).toHaveCount(0);
+  });
+
+  await test.step('画布标注在右栏同规则：编辑保存落回 @canvas，不打开画布浮层', async () => {
+    const canvasThread = page.locator('.pp-thread[data-kind="canvas"][data-id="c:edit-canvas"]');
+    const canvasText = canvasThread.locator('.msg').first().locator('.text');
+    await expect(canvasText).toHaveText('画布上的原始标注');
+    await canvasText.click();
+    const canvasBox = canvasThread.locator('textarea.pp-edit');
+    await expect(canvasBox).toBeFocused();
+    await expect(canvasBox).toHaveValue('画布上的原始标注');
+    await expect(page.locator('dialog[data-pp-overlay][open]'), '点正文不打开画布浮层').toHaveCount(0);
+    await canvasBox.fill('画布标注改过了');
+    await canvasBox.press('ControlOrMeta+Enter');
+    await expect(canvasThread.locator('textarea')).toHaveCount(0);
+    await expect(canvasText).toHaveText('画布标注改过了');
+    await proseSettled(page);
+    expect(diskContent(CANVAS_LEDGER, 'edit-canvas')).toBe('画布标注改过了');
+    const { stdout } = await ppnt(['comments', PAGE_ID]);
+    expect(stdout).toContain('画布标注改过了');
+  });
+
+  await test.step('/save 一直回 409：编辑入队重放，字一直显示在右栏；放行后落盘', async () => {
+    await page.route('**/save', (route) => route.fulfill({ status: 409, json: { error: 'revision_conflict', ...JSON.parse(fs.readFileSync(LEDGER, 'utf8')) } }));
+    try {
+      await firstText().click();
+      await editBox().fill('冲突里也要留住的字');
+      await editBox().press('ControlOrMeta+Enter');
+      await expect(editBox()).toHaveCount(0);
+      await expect(firstText()).toHaveText('冲突里也要留住的字', '409 重放期间草稿一直显示');
+      await expect(page.locator('.pp-rail-note')).toContainText('保存一直冲突', { timeout: 15_000 });
+      await expect(firstText()).toHaveText('冲突里也要留住的字');
+    } finally {
+      await page.unroute('**/save');
+    }
+    await proseSettled(page);
+    expect(diskContent(LEDGER, 'edit-me')).toBe('冲突里也要留住的字');
+    await expect(page.locator('.pp-rail-note')).toHaveText('');
+  });
 });
