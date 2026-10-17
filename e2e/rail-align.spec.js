@@ -91,28 +91,30 @@ test('宽屏右栏：卡片按锚点排，选中对齐，没选中折叠，悬�
     });
 
     let foldedHeight = 0;
+    let scrollBeforeFocus = 0;
     await test.step('没选中的长卡片是摘要：比展开矮，并显示“还有 1 条回复”', async () => {
       const cards = await geometry();
       const folded = cards.find((card) => card.id === 'a3');
       foldedHeight = folded.height;
       expect(folded.more).toBe('还有 1 条回复');
+      scrollBeforeFocus = await page.evaluate(() => window.scrollY);
       await page.locator('mark.pp-hl[data-ids~="a3"]').click();
       await expect(page.locator('.pp-thread[data-id="a3"] .pp-more')).toHaveCount(0);
       await expect.poll(async () => (await geometry()).find((card) => card.id === 'a3').height).toBeGreaterThan(foldedHeight + 40);
     });
 
     await test.step('点高亮：对应卡片贴着锚点，仍互不重叠，页面不滚', async () => {
-      const before = await page.evaluate(() => window.scrollY);
+      // 展开后的长卡片底部可以超出视口；顶部看得见，页面就不该为它滚动。
       const cardBox = await page.locator('.pp-thread[data-id="a3"]').boundingBox();
       expect(cardBox.y).toBeGreaterThanOrEqual(0);
-      expect(cardBox.y + cardBox.height).toBeLessThanOrEqual(900);
+      expect(cardBox.y).toBeLessThan(900);
       const cards = await geometry();
       const focused = cards.find((card) => card.id === 'a3');
       expect(Math.abs(focused.top - focused.anchor)).toBeLessThanOrEqual(2);
       for (let i = 1; i < cards.length; i++) {
         expect(cards[i].top).toBeGreaterThanOrEqual(cards[i - 1].top + cards[i - 1].height + 14 - 1);
       }
-      expect(await page.evaluate(() => window.scrollY)).toBe(before);
+      expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeFocus);
     });
 
     await test.step('悬停卡片高亮 mark，悬停 mark 高亮卡片', async () => {

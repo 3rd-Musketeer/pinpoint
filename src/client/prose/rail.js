@@ -246,11 +246,15 @@ export function createRail(opts) {
   /** 卡片超出视口时才滚页面，让它进来。已经在视口里就不动 scrollY：宽屏下卡片贴着锚点，点高亮不必滚。 */
   function revealCard(card) {
     if (!card) return;
-    var box = card.getBoundingClientRect();
+    // top 有过渡动画，渲染位置还在旧处：按刚写上的目标 top 算，不读 card 自己的 rect。
+    var list = card.parentElement;
+    var top = list.getBoundingClientRect().top + (parseFloat(card.style.top) || 0);
+    var box = { top: top, bottom: top + card.offsetHeight };
     var viewTop = 72;
     var viewBottom = window.innerHeight - 24;
-    if (box.top >= viewTop && box.bottom <= viewBottom) return;
-    var delta = box.top < viewTop ? box.top - viewTop : box.bottom - viewBottom;
+    // 卡片顶部看得见就不滚：长卡片底部超出视口时滚页面，会把读者正在看的正文拽走。
+    if (box.top >= viewTop && box.top <= viewBottom - 120) return;
+    var delta = box.top < viewTop ? box.top - viewTop : Math.min(box.bottom - viewBottom, box.top - viewTop);
     window.scrollBy({ top: delta, left: 0 });
   }
 
