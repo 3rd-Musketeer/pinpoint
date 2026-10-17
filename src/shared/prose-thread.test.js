@@ -4,6 +4,7 @@ import test from 'node:test';
 import {
   applyProseOps,
   authorLabel,
+  canvasContentHasTargets,
   canvasContentText,
   canvasRailItems,
   formatWhen,
@@ -84,6 +85,32 @@ test('applyProseOps：edit 改第一句并回 open，agent 回复和别的字段
   assert.equal(applyProseOps([row], [{ op: 'edit', id: 'ghost', content: 'x' }])[0].content, '写全称');
 });
 
+test('applyProseOps：edit 带 index 只改 owner 的那句，at 不动、状态回 open；agent 的、下标不对、没改字都跳过', () => {
+  const row = {
+    id: 'p1', type: 'prose', status: 'check', content: '写全称',
+    messages: [
+      { who: 'agent', text: '改了', at: 't1' },
+      { who: 'owner', text: '还差一点', at: 't2' },
+    ],
+  };
+  const out = applyProseOps([row], [{ op: 'edit', id: 'p1', index: 1, text: '全称还要带括号' }]);
+  assert.deepEqual(out[0].messages, [
+    { who: 'agent', text: '改了', at: 't1' },
+    { who: 'owner', text: '全称还要带括号', at: 't2' },
+  ]);
+  assert.equal(out[0].status, 'open');
+  assert.equal(out[0].content, '写全称', '第一句不动');
+  assert.equal(row.messages[1].text, '还差一点', '原行不变');
+  // agent 的那句：下标对得上也不改。
+  assert.equal(applyProseOps([row], [{ op: 'edit', id: 'p1', index: 0, text: '改掉 agent' }])[0].messages[0].text, '改了');
+  // 下标越界、空文本、原文没变：整行不动（也不回 open）。
+  for (const op of [
+    { op: 'edit', id: 'p1', index: 5, text: '没有这句' },
+    { op: 'edit', id: 'p1', index: 1, text: '' },
+    { op: 'edit', id: 'p1', index: 1, text: '还差一点' },
+  ]) assert.equal(applyProseOps([row], [op])[0].status, 'check');
+});
+
 test('threadMessages：第一句 = content，后接 messages；authorLabel', () => {
   const row = { content: '写全称', created_at: 't0', messages: [{ who: 'agent', text: '改了', at: 't1' }, null] };
   assert.deepEqual(threadMessages(row), [{ who: 'owner', text: '写全称', at: 't0' }, { who: 'agent', text: '改了', at: 't1' }]);
@@ -159,6 +186,13 @@ test('railOrder：画布标注按卡片位置与正文评论合成一列', () =>
   const prose = [{ id: 'p1', n: 1, at: 10 }, { id: 'p2', n: 2, at: 80 }, { id: 'p3', n: 3, at: Infinity }];
   const canvas = [{ id: 'c9', n: 9, at: 49.5 }, { id: 'c4', n: 4, at: 49.5 }];
   assert.deepEqual(railOrder([...prose, ...canvas], (r) => r.at).map((r) => r.id), ['p1', 'c4', 'c9', 'p2', 'p3']);
+});
+
+test('canvasContentHasTargets：正文里有目标记号才算，显示成元素文字之后不算', () => {
+  assert.equal(canvasContentHasTargets({ content: '把 [@t:i1] 改成主按钮' }), true);
+  assert.equal(canvasContentHasTargets({ content: '把 “确认支付” 改成主按钮' }), false);
+  assert.equal(canvasContentHasTargets({ content: '整页太挤' }), false);
+  assert.equal(canvasContentHasTargets(null), false);
 });
 
 test('canvasContentText：目标记号换成元素文字，找不到的去掉', () => {

@@ -273,15 +273,15 @@ mark.pp-hl.draft { background:var(--pp-highlight-on); }
 .pp-thread .who.agent { color:var(--pp-accent-text); }
 .pp-thread .when { font-size:var(--pp-fs-xs); color:var(--pp-text-muted); }
 .pp-thread .text { white-space:pre-wrap; overflow-wrap:anywhere; }
-.pp-thread textarea { display:block; width:100%; margin-top:10px; font:inherit; font-size:var(--pp-fs-sm); color:var(--pp-text); background:var(--pp-surface); border:1px solid var(--pp-border);
+.pp-thread textarea:not(.pp-edit) { display:block; width:100%; margin-top:10px; font:inherit; font-size:var(--pp-fs-sm); color:var(--pp-text); background:var(--pp-surface); border:1px solid var(--pp-border);
                       border-radius:var(--pp-r-3); padding:8px 10px; resize:vertical; min-height:60px; }
-/* 点 owner 写的第一句原地编辑：字号行高同 .text，负边距抵消框自己的内边距和描边，文字与光标不挪位。
-   agent 的回复与引文没有 data-edit，点不着。 */
+/* 点 owner 写的话原地编辑：字号、行高、边距都同 .text，框不占额外的高、也不压到作者行。
+   描边画在框外（outline），文字位置不挪；agent 的回复、引文、含目标记号的画布正文没有 data-edit，点不着。 */
 .pp-thread .text[data-edit] { cursor:text; border-radius:var(--pp-r-1); }
 .pp-thread .text[data-edit]:hover { background:var(--pp-fill); }
-.pp-thread textarea.pp-edit { margin:-4px -7px 0; padding:4px 6px; min-height:0; resize:none; overflow:hidden; box-sizing:border-box; line-height:inherit;
-                              background:var(--pp-bg); border:1px solid var(--pp-border); border-radius:var(--pp-r-2); }
-.pp-thread textarea.pp-edit:focus { outline:none; border-color:var(--pp-focus-ring); }
+.pp-thread textarea.pp-edit { display:block; width:100%; margin:0; padding:0; min-height:0; height:auto; resize:none; overflow:hidden; box-sizing:border-box;
+                              font:inherit; line-height:inherit; background:transparent; border:0; border-radius:0; }
+.pp-thread textarea.pp-edit:focus { outline:1px solid var(--pp-focus-ring); outline-offset:3px; }
 .pp-thread .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
 /* 回复框默认收着：线程底下只有一个“回复”，点了才展开输入框。 */
 .pp-foot { display:flex; align-items:center; gap:6px; margin:6px 0 -4px -6px; }

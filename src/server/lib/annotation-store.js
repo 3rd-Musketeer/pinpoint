@@ -55,6 +55,36 @@ function ownerThreadFingerprint(annotation) {
 }
 
 /**
+ * 客户端能改的只有 owner 自己写的消息文本，加上在末尾追加的 owner 消息（右栏的“回复”走整份快照）。
+ * 盘上已有的条：顺序、who、at 用盘上的，agent 的文本也不许换，owner 的 text 用这次带来的（下标对齐）。
+ * 比盘上短（删消息）或中间插了一条：不认，返回 null，调用方改用盘上的。没有变化也返回 null。
+ */
+export function ownerMessageEdits(diskMessages, incoming) {
+  const disk = Array.isArray(diskMessages) ? diskMessages : [];
+  const next = Array.isArray(incoming) ? incoming : [];
+  if (next.length < disk.length) return null;
+  let changed = false;
+  const out = [];
+  for (let i = 0; i < disk.length; i += 1) {
+    const m = disk[i];
+    const brought = next[i];
+    // 下标对不上（who / at 变了，或这一条是空的）：这次带来的消息形状不对，整份不认。
+    if (!m || !brought || m.who !== brought.who || m.at !== brought.at) return null;
+    if (m.who === 'agent' || m.text === brought.text) { out.push(m); continue; }
+    changed = true;
+    out.push({ ...m, text: String(brought.text ?? '') });
+  }
+  for (const brought of next.slice(disk.length)) {
+    if (!brought || brought.who === 'agent') return null; // agent 的消息只经 /reply 写
+    const text = String(brought.text ?? '').trim();
+    if (!text) continue;
+    out.push({ who: 'owner', text, at: typeof brought.at === 'string' ? brought.at : '' });
+    changed = true;
+  }
+  return changed ? out : null;
+}
+
+/**
  * 盘上有、这次保存的行里没有的 agent 消息补回去（按 who + text + at 认同一条），保持盘上的先后。
  * 没有要补的返回 null。
  */
@@ -362,18 +392,33 @@ export function createAnnotationStore(options) {
         // 都不算 —— #n 是对外引用（entry#12），非工作台写入方（CLI、直 POST /save 的 agent）
         // 不该因为没带 n 或改了 n 就把既有引用烧悬空。
         if (Number.isInteger(before.n)) a.n = before.n;
+        // agent 的回复只经 /reply 写：客户端带来的快照比盘上旧、少了这几条时照留（不丢 agent 的话）。
+        // 条数一致、下标对齐时，只收下 owner 消息的文本改动：不能改 agent 的文本，也不能改 who / at。
+        // 比盘上多出来的，只收下末尾追加的 owner 消息（右栏“回复”）；追加 agent 的、删消息、改了 who / at
+        // 整份不认，退回「盘上的 + 补回缺的 agent 消息」。
+        // 先收紧再判断是不是 owner 改的，免得落不了盘的差异被当成编辑。
+        const diskMessages = Array.isArray(before.messages) ? before.messages : [];
+        const broughtMessages = Array.isArray(a.messages) ? a.messages : [];
+        const editedMessages = ownerMessageEdits(diskMessages, broughtMessages);
+        if (editedMessages) a.messages = editedMessages;
+        else if (broughtMessages.length === diskMessages.length) {
+          // 条数一致但形状不对（who / at 变了）：一个字都不收，用盘上的。
+          a.messages = diskMessages;
+        } else {
+          // 条数变了（删了消息，或末尾追加的不是 owner 的）：不认这次的差异。
+          // 盘上有、这次没有的 agent 消息补回去；这次新带来的 agent 消息丢掉。
+          const merged = keepAgentMessages(diskMessages, broughtMessages) || broughtMessages;
+          a.messages = merged.filter((m) => m && (m.who !== 'agent' || diskMessages.some((d) => d && d.who === 'agent' && d.text === m.text && d.at === m.at)));
+        }
         const edited = a.content !== before.content
           || targetsFingerprint(a) !== targetsFingerprint(before)
           || ownerThreadFingerprint(a) !== ownerThreadFingerprint(before);
         if (edited) {
-          // owner 编辑正文或目标 → 保存时状态回 open（服务端强制，与客户端一致）。
+          // owner 编辑正文、目标或自己的消息 → 保存时状态回 open（服务端强制，与客户端一致）。
           a.status = 'open';
         } else if (!isLegalTransition(before.status, a.status)) {
           return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${a.status}（check / done 只经 /status 端点）`, doc: disk };
         }
-        // agent 的回复只经 /reply 写：客户端带来的快照比盘上旧、少了这几条时照留（不丢 agent 的话）。
-        const merged = keepAgentMessages(before.messages, a.messages);
-        if (merged) a.messages = merged;
       }
       annotations.push(a);
     }

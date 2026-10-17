@@ -463,6 +463,57 @@ test('/save 正文评论：owner 回复或改引文回 open；agent 消息原样
   assert.equal(reopened.doc.annotations[0].status, 'open');
 });
 
+test('/save 只收下 owner 消息的文本改动：改 owner 的回 open；改 agent 的、删消息、追加 agent 消息都不落盘', (t) => {
+  const { store } = withStore(t);
+  store.save({ page: '@prose', baseRevision: 0, annotations: [{ id: 'p1', type: 'prose', content: '写全称', quote: { exact: '扣给谁' }, messages: [] }] });
+  store.setStatus({ page: '@prose', id: 1, status: 'done', baseRevision: 1 });
+  const withAgent = store.appendMessage({ page: '@prose', id: 1, text: '改好了', baseRevision: 2 }).annotation;
+  const withOwner = store.save({
+    page: '@prose', baseRevision: 3,
+    annotations: [{ ...withAgent, status: 'done', messages: [...withAgent.messages, { who: 'owner', text: '还差一点', at: 't2' }] }],
+  }).doc.annotations[0];
+  assert.equal(withOwner.status, 'open');
+
+  store.setStatus({ page: '@prose', id: 1, status: 'done', baseRevision: 4 });
+  const edited = store.save({
+    page: '@prose', baseRevision: 5,
+    annotations: [{
+      ...withOwner, status: 'done',
+      messages: [withOwner.messages[0], { who: 'owner', text: '全称还要带括号', at: 't2' }],
+    }],
+  });
+  assert.equal(edited.status, 200);
+  assert.equal(edited.doc.annotations[0].status, 'open', '改 owner 的消息文本算编辑');
+  assert.deepEqual(edited.doc.annotations[0].messages.map((m) => [m.who, m.text, m.at]), [
+    ['agent', '改好了', withOwner.messages[0].at],
+    ['owner', '全称还要带括号', 't2'],
+  ]);
+
+  const disk = edited.doc.annotations[0];
+  // 换掉 agent 的文本：不落盘，done 保持（这次保存只改状态到 done，文本被丢弃）。
+  store.setStatus({ page: '@prose', id: 1, status: 'done', baseRevision: 6 });
+  const agentText = store.save({
+    page: '@prose', baseRevision: 7,
+    annotations: [{ ...disk, status: 'done', messages: [{ ...disk.messages[0], text: '被换成别的' }, disk.messages[1]] }],
+  });
+  assert.equal(agentText.doc.annotations[0].messages[0].text, '改好了');
+  assert.equal(agentText.doc.annotations[0].status, 'done', '改 agent 的文本不算编辑');
+  // 删掉一条、多加一条：messages 用盘上的，不算编辑。
+  const dropped = store.save({
+    page: '@prose', baseRevision: 8,
+    annotations: [{ ...disk, status: 'done', messages: [disk.messages[1]] }],
+  });
+  assert.equal(dropped.doc.annotations[0].messages.length, 2);
+  assert.equal(dropped.doc.annotations[0].status, 'done');
+  // 末尾追加 agent 的消息：不落盘（agent 只经 /reply 写）。末尾追加 owner 的是右栏“回复”，照常收下。
+  const added = store.save({
+    page: '@prose', baseRevision: 9,
+    annotations: [{ ...disk, status: 'done', messages: [...disk.messages, { who: 'agent', text: '又一句', at: 't3' }] }],
+  });
+  assert.equal(added.doc.annotations[0].messages.length, 2);
+  assert.equal(added.doc.annotations[0].status, 'done');
+});
+
 // 桶在写的途中没了（ppnt remove / prune 删桶，ppnt mv 挪桶，和一次保存撞上）：
 // 在 rename 那一刻真的删 / 挪目录，看存储层自己怎么收场。
 function renameHook(t, before) {

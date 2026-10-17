@@ -29,10 +29,10 @@ const CANVAS_LEDGER = path.join(E2E_DATA_DIR, PAGE_ID, '@canvas.json');
 test.beforeEach(() => { fs.rmSync(LEDGER, { force: true }); fs.rmSync(CANVAS_LEDGER, { force: true }); });
 test.afterEach(async ({ page }) => { await closeSettled(page); });
 
-/** 往一本账本里放一行（baseRevision 取盘上现版，整本换成 [row]）。 */
+/** 往一本账本里放一行或多行（baseRevision 取盘上现版，整本换成这些行）。 */
 async function seed(request, entry, ledger, row) {
   const doc = await (await request.get(`/annotations/${encodeURIComponent(ledger)}?entry=${entry}`)).json();
-  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [row] } });
+  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [].concat(row) } });
   expect(saved.ok()).toBe(true);
 }
 
@@ -412,7 +412,13 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     id: 'edit-me', type: 'prose', status: 'open', content: '收款方写简称',
     quote: { exact: '确认卡写清收款方' }, section: 'how', messages: [],
   });
-  await seed(request, PAGE_ID, '@canvas', { id: 'edit-canvas', screenId: 'pay-card', status: 'open', content: '画布上的原始标注' });
+  await seed(request, PAGE_ID, '@canvas', [
+    { id: 'edit-canvas', screenId: 'pay-card', status: 'open', content: '画布上的原始标注' },
+    {
+      id: 'edit-token', screenId: 'pay-card', status: 'open', content: '把 [@t:i1] 改成主按钮',
+      targets: [{ ref: 'i1', selector: '[data-pp-id="pay"]', text: '确认支付' }],
+    },
+  ]);
   await page.goto(ARTICLE);
   await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
   await waitNoReload(page);
@@ -482,7 +488,7 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     expect(diskContent(LEDGER, 'edit-me')).toBe('收款方要写全称');
   });
 
-  await test.step('agent 的回复与引文点了不进编辑', async () => {
+  await test.step('agent 的回复与引文点了不进编辑；owner 的后续回复能改', async () => {
     const n = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.id === 'edit-me').n;
     await ppnt(['reply', PAGE_ID, `#${n}`, '已按全称改好']);
     await expect(thread('edit-me').locator('.msg[data-who="agent"] .text')).toHaveText('已按全称改好');
@@ -490,9 +496,32 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
     await thread('edit-me').locator('.q').click();
     await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
-    // [data-edit] 仍只有第一句那一个。
-    await expect(thread('edit-me').locator('[data-edit]')).toHaveCount(1);
+    // agent 的那句没有 [data-edit]；这时还只有第一句能改。
     await expect(thread('edit-me').locator('.msg[data-who="agent"] .text[data-edit]')).toHaveCount(0);
+    await expect(thread('edit-me').locator('[data-edit]')).toHaveCount(1);
+
+    await thread('edit-me').getByRole('button', { name: '回复', exact: true }).click();
+    const reply = thread('edit-me').locator('textarea[data-reply]');
+    await reply.fill('全称还要带括号');
+    await reply.press('Enter');
+    const mine = thread('edit-me').locator('.msg[data-who="owner"]').nth(1).locator('.text');
+    await expect(mine).toHaveText('全称还要带括号');
+    await proseSettled(page);
+    await mine.click();
+    const mineBox = thread('edit-me').locator('textarea.pp-edit');
+    await expect(mineBox).toBeFocused();
+    await expect(mineBox).toHaveValue('全称还要带括号');
+    await mineBox.fill('全称带上公司名');
+    await mineBox.press('ControlOrMeta+Enter');
+    await expect(mine).toHaveText('全称带上公司名');
+    await proseSettled(page);
+    const row = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.id === 'edit-me');
+    expect(row.messages.map((m) => [m.who, m.text])).toEqual([['agent', '已按全称改好'], ['owner', '全称带上公司名']]);
+    expect(row.messages[1].at, '改文本不改时间').toBeTruthy();
+    expect(row.status).toBe('open');
+    // agent 的那句仍点不进编辑。
+    await thread('edit-me').locator('.msg[data-who="agent"] .text').click();
+    await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
   });
 
   await test.step('画布标注在右栏同规则：编辑保存落回 @canvas，不打开画布浮层', async () => {
@@ -512,6 +541,20 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     expect(diskContent(CANVAS_LEDGER, 'edit-canvas')).toBe('画布标注改过了');
     const { stdout } = await ppnt(['comments', PAGE_ID]);
     expect(stdout).toContain('画布标注改过了');
+  });
+
+  await test.step('画布标注正文含目标记号：显示成元素文字，点不进编辑，记号留在账本里', async () => {
+    const tokenThread = page.locator('.pp-thread[data-kind="canvas"][data-id="c:edit-token"]');
+    const tokenText = tokenThread.locator('.msg').first().locator('.text');
+    await expect(tokenText).toHaveText('把 “确认支付” 改成主按钮');
+    await expect(tokenText).not.toHaveAttribute('data-edit', /.+/);
+    await expect(tokenThread.locator('[data-edit]')).toHaveCount(0);
+    await tokenText.click();
+    await expect(tokenThread.locator('textarea')).toHaveCount(0);
+    // 点不进编辑，所以这一下仍是点卡片：画布浮层照常开。记号留在账本里，没有被换成显示文字。
+    await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(1);
+    expect(diskContent(CANVAS_LEDGER, 'edit-token')).toBe('把 [@t:i1] 改成主按钮');
+    await page.locator('dialog[data-pp-overlay][open]').evaluate((el) => el.close());
   });
 
   await test.step('/save 一直回 409：编辑入队重放，字一直显示在右栏；放行后落盘', async () => {

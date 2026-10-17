@@ -44,6 +44,7 @@ export function newProseRow({ id, content, quote, section = '', path = '', at })
  *   { op: 'create', row }                新评论（id 已存在就跳过）
  *   { op: 'reply', id, text, at }        owner 回一句：追加消息，状态回 open；同一条（原文与 at 相同）已在就跳过
  *   { op: 'edit', id, content }          owner 改第一句（content）：状态回 open（服务端对改 content 同一条规则）
+ *   { op: 'edit', id, index, text }      owner 改自己之后的一句（messages[index]，who 必须是 owner）：只换文本，at 不动；状态回 open
  *   { op: 'status', id, status }         owner 关闭 / 重新打开（close / open）
  * 目标行已经不在（别处删了）的操作跳过。
  */
@@ -66,6 +67,18 @@ export function applyProseOps(rows, ops) {
       // 那份先落了盘、409 后重放剩下的操作，就是这种情况。
       if (op.at && messages.some((m) => m && m.who === 'owner' && m.text === text && m.at === op.at)) continue;
       next = { ...row, status: 'open', messages: [...messages, { who: 'owner', text, at: op.at }] };
+    } else if (op.op === 'edit' && Number.isInteger(op.index)) {
+      // 改 owner 之后的一句：只换这一条的文本。agent 的、下标对不上的、不改（增删消息走 reply，不走这里）。
+      const messages = Array.isArray(row.messages) ? row.messages : [];
+      const message = messages[op.index];
+      if (!message || message.who !== 'owner') continue;
+      const text = String(op.text ?? '');
+      if (!text || text === message.text) continue;
+      next = {
+        ...row,
+        status: 'open',
+        messages: messages.map((m, i) => (i === op.index ? { ...m, text } : m)),
+      };
     } else if (op.op === 'edit') {
       next = { ...row, status: 'open', content: String(op.content ?? '') };
     } else if (op.op === 'status') {
@@ -157,6 +170,11 @@ export function canvasRailItems(rows, cards) {
     const at = byFrame.get(row.screenId);
     return { row, section: at.section, frameId: row.screenId, frameTitle: at.title, card: at.card };
   });
+}
+
+/** 画布标注正文里有目标记号 `[@t:iN]`。右栏显示会换成元素文字，那个显示文本不能再存回去。 */
+export function canvasContentHasTargets(row) {
+  return /\[@t:i[1-9][0-9]*\]/.test(String((row && row.content) || ''));
 }
 
 /**
