@@ -575,3 +575,118 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     await expect(page.locator('.pp-rail-note')).toHaveText('');
   });
 });
+
+test('画布标注开头的目标记号留在原处：一个、两个都能改，保存后记号原样留在 content；夹在中间的不能改', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seed(request, PAGE_ID, '@canvas', [
+    {
+      id: 'lead-one', screenId: 'pay-card', status: 'check',
+      content: '[@t:i1] 这里要把账号 / 连接器分开',
+      targets: [{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '账号' }],
+    },
+    {
+      id: 'lead-two', screenId: 'pay-card', status: 'open',
+      content: '[@t:i1] [@t:i2] 过期和失效放在按钮上',
+      targets: [
+        { ref: 'i1', selector: '[data-pp-id="exp"]', text: '过期' },
+        { ref: 'i2', selector: '[data-pp-id="bad"]', text: '失效' },
+      ],
+    },
+    {
+      id: 'mid-token', screenId: 'pay-card', status: 'open',
+      content: '把 [@t:i1] 改成主按钮',
+      targets: [{ ref: 'i1', selector: '[data-pp-id="pay"]', text: '确认支付' }],
+    },
+  ]);
+  await page.goto(ARTICLE);
+  await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
+  await waitNoReload(page);
+  await proseSettled(page);
+  const canvasThread = (id) => page.locator(`.pp-thread[data-kind="canvas"][data-id="c:${id}"]`);
+  const diskContent = (id) => JSON.parse(fs.readFileSync(CANVAS_LEDGER, 'utf8')).annotations.find((a) => a.id === id).content;
+
+  await test.step('开头一个记号：元素文字只读，输入框只有后面的文字，保存后记号原样还在', async () => {
+    const thread = canvasThread('lead-one');
+    const lead = thread.locator('.pp-targets');
+    const body = thread.locator('[data-edit]');
+    await expect(body).toHaveCount(1);
+    await expect(body).toHaveText('这里要把账号 / 连接器分开');
+    await expect(lead).toHaveText('“账号”');
+    await expect(lead).not.toHaveAttribute('data-edit', /.+/);
+    await expect(body).not.toContainText('[@t:');
+    const before = await body.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const card = el.closest('.pp-thread').getBoundingClientRect();
+      const leadBox = el.parentElement.querySelector('.pp-targets').getBoundingClientRect();
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, leadTop: leadBox.top };
+    });
+    // 点元素文字不进编辑。这一下是点卡片，画布浮层会开；用关闭钮关掉，状态和地址一起复原。
+    await lead.click();
+    await expect(thread.locator('textarea')).toHaveCount(0);
+    await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(1);
+    await page.locator('[data-pp-overlay] [data-ov-close]').click();
+    await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(0);
+    await body.click();
+    const box = thread.locator('textarea.pp-edit');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('这里要把账号 / 连接器分开');
+    await expect(page.locator('dialog[data-pp-overlay][open]'), '点后面的文字不打开画布浮层').toHaveCount(0);
+    await expect(lead).toHaveText('“账号”');
+    const during = await box.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const card = el.closest('.pp-thread').getBoundingClientRect();
+      const leadBox = el.parentElement.querySelector('.pp-targets').getBoundingClientRect();
+      const boxBox = el.getBoundingClientRect();
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, leadTop: leadBox.top, boxTop: boxBox.top };
+    });
+    expect([during.fontSize, during.lineHeight]).toEqual([before.fontSize, before.lineHeight]);
+    expect(Math.abs(during.cardTop - before.cardTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(during.leadTop - before.leadTop)).toBeLessThanOrEqual(1);
+    expect(Math.abs(during.boxTop - during.leadTop)).toBeLessThanOrEqual(2);
+    await box.fill('账号和连接器分开写');
+    await box.press('ControlOrMeta+Enter');
+    await expect(thread.locator('textarea')).toHaveCount(0);
+    await expect(body).toHaveText('账号和连接器分开写');
+    await expect(lead).toHaveText('“账号”');
+    await proseSettled(page);
+    const row = JSON.parse(fs.readFileSync(CANVAS_LEDGER, 'utf8')).annotations.find((a) => a.id === 'lead-one');
+    expect(row.content).toBe('[@t:i1] 账号和连接器分开写');
+    expect(row.status).toBe('open');
+    expect(row.targets).toEqual([{ ref: 'i1', selector: '[data-pp-id="acct"]', text: '账号' }]);
+  });
+
+  await test.step('开头两个记号：两个都留在 content 里，中间的空白也不改', async () => {
+    const thread = canvasThread('lead-two');
+    const lead = thread.locator('.pp-targets');
+    const body = thread.locator('[data-edit]');
+    await expect(lead).toHaveText('“过期” “失效”');
+    await expect(body).toHaveText('过期和失效放在按钮上');
+    await body.click();
+    const box = thread.locator('textarea.pp-edit');
+    await expect(box).toBeFocused();
+    await expect(box).toHaveValue('过期和失效放在按钮上');
+    await expect(lead).toHaveText('“过期” “失效”');
+    await box.fill('写在按钮上');
+    await box.press('ControlOrMeta+Enter');
+    await expect(body).toHaveText('写在按钮上');
+    await proseSettled(page);
+    expect(diskContent('lead-two')).toBe('[@t:i1] [@t:i2] 写在按钮上');
+    expect(diskContent('lead-one')).toBe('[@t:i1] 账号和连接器分开写');
+  });
+
+  await test.step('记号夹在文字中间：点不进编辑，content 不动', async () => {
+    const thread = canvasThread('mid-token');
+    const text = thread.locator('.text');
+    await expect(text).toHaveText('把 “确认支付” 改成主按钮');
+    await expect(text).not.toHaveAttribute('data-edit', /.+/);
+    await expect(thread.locator('[data-edit]')).toHaveCount(0);
+    await expect(thread.locator('.pp-targets')).toHaveCount(0);
+    await text.click();
+    await expect(thread.locator('textarea')).toHaveCount(0);
+    expect(diskContent('mid-token')).toBe('把 [@t:i1] 改成主按钮');
+    await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(1);
+    await page.locator('[data-pp-overlay] [data-ov-close]').click();
+    await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(0);
+  });
+});

@@ -172,9 +172,47 @@ export function canvasRailItems(rows, cards) {
   });
 }
 
-/** 画布标注正文里有目标记号 `[@t:iN]`。右栏显示会换成元素文字，那个显示文本不能再存回去。 */
+const TARGET_TOKEN_RE = /\[@t:i[1-9][0-9]*\]/;
+
+/** 画布标注正文里有目标记号 `[@t:iN]`。 */
 export function canvasContentHasTargets(row) {
-  return /\[@t:i[1-9][0-9]*\]/.test(String((row && row.content) || ''));
+  return TARGET_TOKEN_RE.test(String((row && row.content) || ''));
+}
+
+/**
+ * 目标记号全在开头时，拆成保存用的两段。prefix 是开头的记号，含记号之间和前后的空白，
+ * 保存时原样接在新文字前面。text 是记号后面的文字，只它进输入框。
+ * 没有记号、记号夹在文字里或出现在开头之后、以及记号后面没有文字，返回 null：
+ * 前一种走整段编辑，后几种不进编辑（右栏显示的是换成元素文字的结果，整段存回去会丢掉记号）。
+ */
+export function canvasLeadingEdit(content) {
+  const s = String(content ?? '');
+  const matched = s.match(/^(\s*(?:\[@t:i[1-9][0-9]*\]\s*)+)/);
+  if (!matched) return null;
+  const prefix = matched[1];
+  const text = s.slice(prefix.length);
+  if (TARGET_TOKEN_RE.test(text) || !text.trim()) return null;
+  return { prefix, text };
+}
+
+/**
+ * 开头记号在右栏上的只读文字。元素文字的替换与 canvasContentText 同一条
+ * （引号、超长截断、找不到就去掉）；记号前后的空白留着，后面的句子接着它。
+ * 一个记号都对不上元素文字时返回空串，调用方不画这块。
+ */
+export function canvasLeadingLabel(row, prefix) {
+  const raw = String(prefix ?? '');
+  const shown = canvasContentText({ content: raw.trim(), targets: row && row.targets });
+  if (!shown) return '';
+  return (raw.match(/^\s*/) || [''])[0] + shown + (raw.match(/\s*$/) || [''])[0];
+}
+
+/** 被拒的编辑放回输入框时，去掉开头记号，框里仍是当时写的那段文字。 */
+export function canvasBodyFromStored(rowContent, stored) {
+  const leading = canvasLeadingEdit(rowContent);
+  const text = String(stored ?? '');
+  if (leading && text.startsWith(leading.prefix)) return text.slice(leading.prefix.length);
+  return text;
 }
 
 /**

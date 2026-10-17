@@ -4,8 +4,11 @@ import test from 'node:test';
 import {
   applyProseOps,
   authorLabel,
+  canvasBodyFromStored,
   canvasContentHasTargets,
   canvasContentText,
+  canvasLeadingEdit,
+  canvasLeadingLabel,
   canvasRailItems,
   formatWhen,
   isProseClosed,
@@ -200,4 +203,34 @@ test('canvasContentText：目标记号换成元素文字，找不到的去掉', 
   assert.equal(canvasContentText(row), '把 “确认支付” 改成主按钮，“一段很长很长很长很长很长很长很长很长很长很长的…” 删掉');
   assert.equal(canvasContentText({ content: '整页太挤' }), '整页太挤');
   assert.equal(canvasContentText(null), '');
+});
+
+test('canvasLeadingEdit：开头一个、两个记号拆出来，接回时记号和空白原样；夹在中间的不拆', () => {
+  const one = canvasLeadingEdit('[@t:i1] 这里要把账号 / 连接器分开');
+  assert.deepEqual(one, { prefix: '[@t:i1] ', text: '这里要把账号 / 连接器分开' });
+  assert.equal(one.prefix + '账号和连接器分开写', '[@t:i1] 账号和连接器分开写');
+
+  const two = canvasLeadingEdit('[@t:i1] [@t:i2] 过期和失效放在按钮上');
+  assert.deepEqual(two, { prefix: '[@t:i1] [@t:i2] ', text: '过期和失效放在按钮上' });
+  assert.equal(two.prefix + '写在按钮上', '[@t:i1] [@t:i2] 写在按钮上');
+
+  // 记号之间的空白属于 prefix，不进输入框。
+  assert.equal(canvasLeadingEdit('[@t:i1]  [@t:i2]\t文字').prefix, '[@t:i1]  [@t:i2]\t');
+  assert.deepEqual(canvasLeadingEdit('  [@t:i1] 文字'), { prefix: '  [@t:i1] ', text: '文字' });
+
+  assert.equal(canvasLeadingEdit('把 [@t:i1] 改成主按钮'), null);
+  assert.equal(canvasLeadingEdit('[@t:i1] 开头还有 [@t:i2] 在中间'), null);
+  assert.equal(canvasLeadingEdit('文字 [@t:i1]'), null);
+  assert.equal(canvasLeadingEdit('[@t:i1] [@t:i2]'), null);
+  assert.equal(canvasLeadingEdit('整页太挤'), null);
+  assert.equal(canvasLeadingEdit(null), null);
+
+  const targets = [{ ref: 'i1', text: '账号' }, { ref: 'i2', text: '失效' }];
+  assert.equal(canvasLeadingLabel({ targets }, '[@t:i1] '), '“账号” ');
+  assert.equal(canvasLeadingLabel({ targets }, '[@t:i1] [@t:i2] '), '“账号” “失效” ');
+  assert.equal(canvasLeadingLabel({ targets: [] }, '[@t:i1] '), '');
+
+  // 用户打的字本身以记号开头时，只剥原来的 prefix，不把打进去的记号也剥掉。
+  assert.equal(canvasBodyFromStored('[@t:i1] 旧文字', '[@t:i1] [@t:i9] 新打的'), '[@t:i9] 新打的');
+  assert.equal(canvasBodyFromStored('把 [@t:i1] 改成主按钮', '把 [@t:i1] 改成主按钮'), '把 [@t:i1] 改成主按钮');
 });

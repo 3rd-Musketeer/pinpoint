@@ -276,11 +276,17 @@ mark.pp-hl.draft { background:var(--pp-highlight-on); }
 .pp-thread textarea:not(.pp-edit) { display:block; width:100%; margin-top:10px; font:inherit; font-size:var(--pp-fs-sm); color:var(--pp-text); background:var(--pp-surface); border:1px solid var(--pp-border);
                       border-radius:var(--pp-r-3); padding:8px 10px; resize:vertical; min-height:60px; }
 /* 点 owner 写的话原地编辑：字号、行高、边距都同 .text，框不占额外的高、也不压到作者行。
-   描边画在框外（outline），文字位置不挪；agent 的回复、引文、含目标记号的画布正文没有 data-edit，点不着。 */
-.pp-thread .text[data-edit] { cursor:text; border-radius:var(--pp-r-1); }
-.pp-thread .text[data-edit]:hover { background:var(--pp-fill); }
+   描边画在框外（outline），文字位置不挪。agent 的回复、引文、记号夹在中间的画布正文没有 data-edit。
+   开头全是目标记号时，元素文字（.pp-targets）留在原处、只读，后面的文字单独可点；编辑框只占剩下的宽度。 */
+.pp-thread .text[data-edit],
+.pp-thread .pp-body[data-edit] { cursor:text; border-radius:var(--pp-r-1); }
+.pp-thread .text[data-edit]:hover,
+.pp-thread .pp-body[data-edit]:hover { background:var(--pp-fill); }
+.pp-thread .pp-targets,
+.pp-thread .pp-body { vertical-align:top; white-space:pre-wrap; }
 .pp-thread textarea.pp-edit { display:block; width:100%; margin:0; padding:0; min-height:0; height:auto; resize:none; overflow:hidden; box-sizing:border-box;
                               font:inherit; line-height:inherit; background:transparent; border:0; border-radius:0; }
+.pp-thread .pp-with-lead textarea.pp-edit { display:inline-block; vertical-align:top; width:auto; max-width:100%; }
 .pp-thread textarea.pp-edit:focus { outline:1px solid var(--pp-focus-ring); outline-offset:3px; }
 .pp-thread .acts { display:flex; gap:8px; justify-content:flex-end; margin-top:8px; }
 /* 回复框默认收着：线程底下只有一个“回复”，点了才展开输入框。 */

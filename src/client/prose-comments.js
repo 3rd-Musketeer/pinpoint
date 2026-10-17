@@ -22,10 +22,12 @@
  * 把新评论退回草稿、回复退回输入框，右栏写出原因。
  *
  * 改自己写的话（2026-10-17）：点线程里 owner 写的话（正文评论的 content、以及 owner 在同一线程里
- * 的后续回复；画布标注只改不含目标记号的正文），原地变成可编辑的输入框，字号行高与位置不跳；
- * ⌘/Ctrl+Enter 或点这张卡外面保存，Esc 取消恢复原文，清空后保存不删评论、恢复原文。
- * agent 的回复、引文、含 `[@t:iN]` 的画布标注正文不可编辑。编辑入队 edit 操作（第一句改 content，
- * 后续回复只换那条消息的文本），与服务端“owner 改了回 open”同一条规则；被拒时字放回编辑框。
+ * 的后续回复；画布标注改不含目标记号的正文，也改开头全是目标记号时记号后面的文字），原地变成
+ * 可编辑的输入框，字号行高与位置不跳；⌘/Ctrl+Enter 或点这张卡外面保存，Esc 取消恢复原文，
+ * 清空后保存不删评论、恢复原文。开头的 `[@t:iN]` 留在输入框外面，显示成元素文字、只读，保存时
+ * 原样接回 content。agent 的回复、引文、记号夹在文字中间的画布标注正文不可编辑。编辑入队 edit
+ * 操作（第一句改 content，后续回复只换那条消息的文本），与服务端“owner 改了回 open”同一条规则；
+ * 被拒时字放回编辑框。
  *
  * 同步：SSE（/events）断了会自己重连，重连上就重新水合，补上断线期间漏掉的事件；
  * pagehide 时关掉，从 bfcache 回来（pageshow persisted，比如从画布按“返回”）时重开
@@ -39,8 +41,11 @@ import { readLedgerDocument, rememberLedgerDocument } from './lib/ledger-reader.
 import { annotationSlug } from '../shared/annotation-slug.js';
 import {
   authorLabel,
+  canvasBodyFromStored,
   canvasContentHasTargets,
   canvasContentText,
+  canvasLeadingEdit,
+  canvasLeadingLabel,
   canvasRailItems,
   formatWhen,
   isProseClosed,
@@ -295,7 +300,8 @@ export function startProseComments(options) {
     var restored = false;
     list.forEach(function (op) {
       if (op.op === 'edit' && op.content) {
-        editText['c:' + op.id] = op.content;
+        var row = findCanvasRow(op.id);
+        editText['c:' + op.id] = row ? canvasBodyFromStored(row.content, op.content) : op.content;
         editingId = 'c:' + op.id;
         restored = true;
       }
@@ -489,31 +495,49 @@ export function startProseComments(options) {
   }
 
   /** 这一句能不能点着改。threadKey 是线程的编辑键（正文评论 id，或 'c:' + 画布标注 id）；
-      第一句用它本身，owner 之后的回复再加 '/m' + messages 下标。agent 的、空的、
-      含目标记号的画布标注正文（显示文本存回去会丢掉记号）不给键。 */
+      第一句用它本身，owner 之后的回复再加 '/m' + messages 下标。agent 的、空的不给键。
+      画布标注的目标记号夹在文字中间时也不给：右栏显示的是换成元素文字的结果，整段存回去会丢掉记号。
+      记号全在开头时给键，键只落在记号后面的文字上。 */
   function messageEditKey(row, messageIndex, threadKey) {
     if (!threadKey) return '';
     var messages = threadMessages(row);
     var message = messages[messageIndex];
     if (!message || message.who !== 'owner' || typeof message.text !== 'string' || !message.text) return '';
-    if (messageIndex === 0) return canvasContentHasTargets(row) ? '' : threadKey;
+    if (messageIndex === 0) {
+      if (threadKey.indexOf('c:') === 0 && canvasContentHasTargets(row) && !canvasLeadingEdit(row.content)) return '';
+      return threadKey;
+    }
     if (threadKey.indexOf('c:') === 0) return ''; // 画布标注的回复在画布上改，右栏只改正文第一句
     return threadKey + '/m' + (messageIndex - 1);
   }
 
+  /** 开头全是目标记号：元素文字在前、只读，后面的文字单独可点。编辑中换成输入框，记号仍在框外。 */
+  function leadingEditHtml(row, leading, editKey) {
+    var label = canvasLeadingLabel(row, leading.prefix);
+    var lead = label ? '<span class="pp-targets">' + esc(label) + '</span>' : '';
+    var value = editText[editKey] != null ? editText[editKey] : leading.text;
+    var body = editingId === editKey
+      ? '<textarea class="pp-edit" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</textarea>'
+      : '<span class="pp-body" data-edit="' + esc(editKey) + '" title="点击编辑">' + esc(leading.text) + '</span>';
+    return '<div class="text pp-with-targets' + (lead ? ' pp-with-lead' : '') + '">' + lead + body + '</div>';
+  }
+
   /** 线程消息。owner 写的那几句可点着改：正在编辑就渲染成编辑框，否则渲染成带 data-edit 的正文
-      （agent 的回复、引文、含目标记号的画布标注正文永远不可编辑）。 */
+      （agent 的回复、引文、记号夹在中间的画布标注正文永远不可编辑）。 */
   function messagesHtml(row, threadKey) {
     var messages = threadMessages(row);
-    // 画布标注的第一句显示成元素文字；存盘正文（含记号）留在 row 上，给“能不能编辑”用。
+    var leading = threadKey && threadKey.indexOf('c:') === 0 ? canvasLeadingEdit(row.content) : null;
+    // 画布标注的第一句：记号全在开头时，框里只放后面的文字；否则显示成元素文字。存盘正文留在 row 上。
     if (threadKey && threadKey.indexOf('c:') === 0 && messages[0]) {
       messages = messages.slice();
-      messages[0] = { who: messages[0].who, text: canvasContentText(row), at: messages[0].at };
+      messages[0] = { who: messages[0].who, text: leading ? leading.text : canvasContentText(row), at: messages[0].at };
     }
     return '<div class="msgs">' + messages.map(function (m, i) {
       var editKey = messageEditKey(row, i, threadKey);
       var body;
-      if (editKey) {
+      if (editKey && leading && i === 0) {
+        body = leadingEditHtml(row, leading, editKey);
+      } else if (editKey) {
         if (editingId === editKey) {
           var value = editText[editKey] != null ? editText[editKey] : m.text;
           body = '<textarea class="pp-edit" data-edit="' + esc(editKey) + '" aria-label="编辑评论">' + esc(value) + '</textarea>';
@@ -568,8 +592,8 @@ export function startProseComments(options) {
 
   // 画布标注（@canvas）在右栏里的卡片：标明是画布标注和帧名，有截图放缩略图；点了在文章上开画布浮层、
   // 定位到这颗钉子（a[data-pp-canvas-link]，site/src/lib/canvas-overlay-client.js 接住）。四态与已关闭
-  // 原地收起同正文评论；这里改状态、也改不含目标记号的 owner 正文（点着进编辑，同正文评论），回复在画布上。
-  // 正文含 [@t:iN] 时不进编辑：框里只能是换成元素文字后的显示文本，存回去会把记号换成字面文字。
+  // 原地收起同正文评论；这里改状态，也改 owner 的正文（点着进编辑，同正文评论），回复在画布上。
+  // 开头全是 [@t:iN] 时只改后面的文字，记号原样接回去。记号夹在文字中间时不进编辑。
   // 线程 id 带 c: 前缀，和正文评论分开。
   function canvasCards() {
     return Array.prototype.map.call(root.querySelectorAll('[data-pp-canvas]'), function (card) {
@@ -746,12 +770,28 @@ export function startProseComments(options) {
   }
 
   /** 编辑框贴合内容：先按原文行数给高（textarea 默认 rows 会比原文高一行），
-      再按内容收成正好的高度，打字时跟着长。 */
+      再按内容收成正好的高度，打字时跟着长。开头带只读元素文字时，框宽用剩下的那一截，
+      文字留在同一行。 */
   function growEdit(area) {
     var lines = String(area.value || '').split('\n').length;
     area.rows = lines;
+    var parent = area.parentElement;
+    if (parent && parent.classList.contains('pp-with-lead')) {
+      var lead = parent.querySelector('.pp-targets');
+      var leadW = lead ? lead.getBoundingClientRect().width : 0;
+      area.style.width = '0px';
+      var remain = Math.max(48, Math.floor(parent.getBoundingClientRect().width - leadW));
+      area.style.width = remain + 'px';
+    }
     area.style.height = 'auto';
     area.style.height = area.scrollHeight + 'px';
+  }
+
+  function findCanvasRow(id) {
+    if (!canvas) return null;
+    var list = canvas.rows();
+    for (var i = 0; i < list.length; i++) if (list[i] && String(list[i].id) === String(id)) return list[i];
+    return null;
   }
 
   function render() {
@@ -898,7 +938,7 @@ export function startProseComments(options) {
     };
   }
 
-  /** 这句现在的原文。画布标注的第一句是换了目标记号的显示文本，和编辑框里的一致。 */
+  /** 这句现在的原文，和编辑框里的一致。画布标注开头有目标记号时，原文是记号后面的文字。 */
   function editOriginalText(key) {
     var parsed = parseEditKey(key);
     var list = parsed.canvas ? canvas.rows() : rows;
@@ -909,9 +949,22 @@ export function startProseComments(options) {
         var message = messages[parsed.index];
         return message && message.who === 'owner' ? String(message.text || '') : null;
       }
-      return parsed.canvas ? canvasContentText(list[i]) : String(list[i].content || '');
+      if (!parsed.canvas) return String(list[i].content || '');
+      var leading = canvasLeadingEdit(list[i].content);
+      // 框里的字保存前会 trim。原文按同一条比，尾部空白不算改过。
+      return leading ? leading.text.trim() : canvasContentText(list[i]);
     }
     return null;
+  }
+
+  /** 画布标注开头的记号接回 content。记号不在开头（夹在文字里）时不改，免得把记号换成字面文字。 */
+  function canvasStoredContent(id, text) {
+    var row = findCanvasRow(id);
+    if (!row) return text;
+    var leading = canvasLeadingEdit(row.content);
+    if (leading) return leading.prefix + text;
+    if (canvasContentHasTargets(row)) return null;
+    return text;
   }
 
   function startEdit(key) {
@@ -938,9 +991,14 @@ export function startProseComments(options) {
     var text = String(value).trim();
     if (!text || text === editOriginalText(key)) { renderRail(); return; } // 清空不删评论；没改不落账本
     var parsed = parseEditKey(key);
+    var content = text;
+    if (parsed.canvas && parsed.index == null) {
+      content = canvasStoredContent(parsed.id, text);
+      if (content == null) { renderRail(); return; }
+    }
     var op = parsed.index != null
       ? { op: 'edit', id: parsed.id, index: parsed.index, text: text }
-      : { op: 'edit', id: parsed.id, content: text };
+      : { op: 'edit', id: parsed.id, content: content };
     if (parsed.canvas) canvas.enqueue(op);
     else enqueue(op);
   }
@@ -1072,7 +1130,7 @@ export function startProseComments(options) {
     if (!thread) return;
     var id = thread.getAttribute('data-id');
     // 点 owner 写的第一句：原地编辑（画布标注卡也要在这里接住，不落到下面“开画布”的分支）。
-    var editTarget = e.target.closest ? e.target.closest('.text[data-edit]') : null;
+    var editTarget = e.target.closest ? e.target.closest('.text[data-edit], .pp-body[data-edit]') : null;
     if (editTarget) {
       var sel = window.getSelection();
       // 选区没收起、而且盖住了这句：是在选字，不是要编辑。别的地方留下的选区不挡这次点击。
