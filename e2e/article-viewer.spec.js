@@ -515,6 +515,8 @@ test('右栏：画布标注按位置穿插在正文评论之间，四态、原�
     });
 
     await test.step('点右栏的画布标注：开画布浮层，定位到那颗钉子并打开它', async () => {
+      // 宽屏卡片按锚点排在画布旁边：先把那张画布滚进视口，卡片才跟着进来，点得到。
+      await page.locator('[data-pp-canvas][data-pp-section="variants"]').scrollIntoViewIfNeeded();
       const at = await scrollOf(page);
       // 点卡片上链接以外的地方（“画布标注”字样）也开画布；正文那句现在点着是编辑。
       await rail.locator(`.pp-thread[data-kind="canvas"][data-n="${plainN}"] .pp-kind`).first().click();

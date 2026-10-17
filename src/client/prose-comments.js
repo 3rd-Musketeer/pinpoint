@@ -78,6 +78,7 @@ export function startProseComments(options) {
     editingId: null,   // 正在编辑的那句：正文评论 id，'c:' + 画布标注 id，或再加 '/m' + messages 下标
     editText: {},      // 编辑框 key -> 被拒后放回框里的字
     focusedId: null,
+    hoverId: null,     // 悬停的线程 id：卡片与正文 mark 互相高亮，比 focused 弱一档
     draft: null,       // { quote, section, start, end }
     anchors: new Map(), // id -> { start, end } | null（null = 失效）
     cardOffsets: new Map(), // 画布卡片的节 id -> 它在规范化文本里的位置（右栏排画布标注用）
@@ -108,10 +109,22 @@ export function startProseComments(options) {
     for (var i = 0; i < marks.length; i++) {
       var ids = (marks[i].getAttribute('data-ids') || '').split(' ');
       marks[i].classList.toggle('on', !!state.focusedId && ids.indexOf(state.focusedId) >= 0);
+      marks[i].classList.toggle('pp-hover', !!state.hoverId && ids.indexOf(state.hoverId) >= 0);
     }
     var threads = rail.querySelectorAll('.pp-thread');
     for (var j = 0; j < threads.length; j++) {
       threads[j].classList.toggle('on', threads[j].getAttribute('data-id') === state.focusedId);
+      threads[j].classList.toggle('pp-hover', threads[j].getAttribute('data-id') === state.hoverId);
+    }
+    // 画布标注没有正文 mark：悬停时高亮它所属的画布卡片。
+    var canvases = root.querySelectorAll('[data-pp-canvas]');
+    var hoverSection = '';
+    if (state.hoverId && state.hoverId.indexOf('c:') === 0) {
+      var hoverCard = rail.querySelector('.pp-thread[data-id="' + cssEscape(state.hoverId) + '"]');
+      hoverSection = hoverCard ? hoverCard.getAttribute('data-section') || '' : '';
+    }
+    for (var k = 0; k < canvases.length; k++) {
+      canvases[k].classList.toggle('pp-hover', !!hoverSection && canvases[k].getAttribute('data-pp-section') === hoverSection);
     }
   }
 
@@ -202,6 +215,8 @@ export function startProseComments(options) {
       SERVER: SERVER,
       ENTRY: ENTRY,
       canvasHref: canvasHref,
+      // 窄屏右栏在正文下面，不收成摘要。没 matchMedia（测试环境）按宽屏。
+      folded: !(window.matchMedia && window.matchMedia('(max-width: 860px)').matches),
     };
   }
 
@@ -248,6 +263,7 @@ export function startProseComments(options) {
     sync: sync,
     hooks: {
       renderRail: function () { railApi.renderRail(); },
+      hold: function (id) { railApi.hold(id); },
       enqueue: function (op) { sync.prose.enqueue(op); },
     },
   });
@@ -280,6 +296,7 @@ export function startProseComments(options) {
   }
 
   function openReply(id) {
+    railApi.hold(id);
     state.replyOpen.add(id);
     state.focusedId = id;
     railApi.renderRail();
@@ -345,6 +362,12 @@ export function startProseComments(options) {
   sync.hydrate();
   sync.connectEvents();
 
+  function focus(id) {
+    state.focusedId = id;
+    railApi.renderRail();
+    syncFocusClasses();
+  }
+
   var api = {
     entry: ENTRY,
     ledger: sync.ledger,
@@ -355,6 +378,8 @@ export function startProseComments(options) {
     canvasRows: function () { return sync.canvas ? sync.canvas.rows() : []; },
     /** 选区判定的次数与最近一次是否给了“评论”钮。 */
     selection: function () { return { checks: state.selectionChecks, offered: state.lastOffered }; },
+    /** 选中一条线程（测试用）：展开它，不滚动、不开画布。 */
+    focus: focus,
   };
   window.pinpointProse = api;
   return api;

@@ -243,19 +243,37 @@ html.pp-ov-lock { overflow:hidden; }
 mark.pp-hl { background:var(--pp-highlight); color:inherit; border-radius:var(--pp-r-1); cursor:pointer; padding:0; }
 mark.pp-hl.on { background:var(--pp-highlight-on); }
 mark.pp-hl.draft { background:var(--pp-highlight-on); }
+/* 悬停比选中弱一档：高亮只加深半档，卡片只描一圈边，没有选中的阴影。 */
+mark.pp-hl.pp-hover:not(.on) { background:color-mix(in srgb, var(--pp-highlight-on) 55%, var(--pp-highlight)); }
+[data-pp-canvas].pp-hover { box-shadow:0 0 0 2px color-mix(in srgb, var(--pp-accent-solid) 35%, transparent); }
 .pp-selbtn { position:absolute; z-index:45; box-shadow:var(--pp-sh-3); }
 
 .rail { position:relative; min-width:0; }
 @media (min-width:861px) {
-  /* 右栏自己滚：点正文高亮时只滚右栏到那条线程，不把页面拽走。留白给线程的阴影，滚动容器会裁掉它。 */
-  .rail { position:sticky; top:72px; align-self:start; max-height:calc(100vh - 96px); overflow:auto; padding:4px 14px 28px; margin:-4px -14px 0; }
+  /* 右栏和正文一样高，跟着页面一起滚，不再自己滚动。卡片按锚点绝对定位（.pp-rail-aligned，
+     src/client/prose/rail.js）：点正文高亮时卡片移到高亮旁边，页面不滚；卡片超出视口才滚页面。
+     留白给卡片的阴影，绝对定位的卡片会探出列宽。 */
+  .rail { align-self:stretch; padding:4px 14px 28px; margin:-4px -14px 0; }
 }
 .empty-rail { color:var(--pp-text-muted); font-size:var(--pp-fs-sm); }
 .pp-rail-head { display:flex; align-items:center; justify-content:space-between; gap:8px; margin-bottom:10px; }
 .pp-rail-head .label { margin:0; }
-.pp-thread { border:1px solid var(--pp-border); border-radius:var(--pp-r-4); padding:12px 14px; margin-bottom:14px; background:var(--pp-bg); font-size:var(--pp-fs-sm); line-height:1.55; cursor:pointer; transition:box-shadow .15s; }
+.pp-thread { border:1px solid var(--pp-border); border-radius:var(--pp-r-4); padding:12px 14px; margin-bottom:14px; background:var(--pp-bg); font-size:var(--pp-fs-sm); line-height:1.55; cursor:pointer; transition:box-shadow .15s, border-color .15s; }
 .pp-thread.on { cursor:default; box-shadow:var(--pp-sh-2); border-color:color-mix(in srgb, var(--pp-accent-solid) 50%, var(--pp-border)); }
+.pp-thread.pp-hover:not(.on) { border-color:color-mix(in srgb, var(--pp-accent-solid) 28%, var(--pp-border)); }
+/* 宽屏：卡片在右栏里绝对定位，top 由排版写。位置变化约 150ms；减少动态效果时不加。 */
+.pp-rail-aligned .pp-threads { position:relative; }
+.pp-rail-aligned .pp-thread { position:absolute; left:0; right:0; margin:0; }
+@media (prefers-reduced-motion: no-preference) {
+  .pp-rail-aligned .pp-thread { transition:box-shadow .15s, border-color .15s, top .15s ease; }
+}
 .pp-thread .q { font-size:var(--pp-fs-xs); color:var(--pp-text-muted); border-left:3px solid var(--pp-highlight-on); padding-left:8px; margin-bottom:8px; overflow-wrap:anywhere; }
+/* 没选中的卡片收成摘要（.pp-fold-card，宽屏才加）：引用一行省略，第一条消息最多三行，其余回复收成一行。 */
+.pp-thread.pp-fold-card .q { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.pp-thread.pp-fold-card .msg .text,
+.pp-thread.pp-fold-card .msg .pp-with-targets { display:-webkit-box; -webkit-line-clamp:3; -webkit-box-orient:vertical; overflow:hidden; }
+.pp-thread.pp-fold-card .pp-folded-msg { display:none; }
+.pp-more { margin-top:8px; color:var(--pp-text-muted); font-size:var(--pp-fs-xs); }
 .pp-thread.stale .q { border-left-style:dashed; border-left-color:var(--pp-text-muted); }
 .pp-meta { display:flex; align-items:center; gap:6px; margin-bottom:8px; font-size:var(--pp-fs-xs); }
 .pp-meta .sp { flex:1; }

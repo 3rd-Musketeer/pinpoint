@@ -67,6 +67,9 @@ test('共享 HTML 页：首读、SSE、关闭重读、close/reopen 的两个节�
     data: { entry: HTML, baseRevision: doc.revision, text: 'SSE 别名回复' },
   });
   expect(reply.ok()).toBe(true);
+  // 宽屏卡片按锚点排在画布旁边，且没选中时回复折叠隐藏。滚到画布、点开卡片，回复才展开。
+  await page.locator('[data-pp-canvas][data-pp-section="pages"]').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+  await page.evaluate(() => window.pinpointProse.focus('c:alias'));
   await expect(page.getByText('SSE 别名回复', { exact: true })).toBeVisible();
   await expect(badges).toHaveText(['1 条标注', '1 条标注']);
   await page.evaluate(() => document.dispatchEvent(new Event('pp:canvas-overlay-closed')));
@@ -129,6 +132,8 @@ test('真实 IME：SSE 到达时保留新评论和回复的组字节点、草稿
   await open(page, '/e2e-prose/notes/');
   await seed(request, PROSE, '@prose', { id: 'ime', type: 'prose', status: 'open', content: '已有评论',
     quote: { exact: '确认卡写清收款方' }, section: 'how', messages: [] });
+  // 这条引用在第二节，宽屏下卡片排在那一段旁边，先滚进视口。
+  await page.locator('#how').evaluate((el) => el.scrollIntoView({ block: 'center' }));
   await expect(page.locator('.pp-thread[data-id="ime"]')).toBeVisible();
   const cdp = await context.newCDPSession(page);
   for (const mode of ['draft', 'reply']) {
@@ -152,6 +157,8 @@ test('真实 IME：SSE 到达时保留新评论和回复的组字节点、草稿
     await expect(area).toHaveValue('前你好后');
     await expect(area).toBeFocused();
     expect(await area.evaluate((el) => [el.selectionStart, el.selectionEnd])).toEqual([3, 3]);
+    // 没选中时这条回复折叠隐藏。选中卡片让它展开，再看回复在不在。
+    await page.evaluate(() => window.pinpointProse.focus('ime'));
     await expect(page.getByText(text, { exact: true })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath(`IME-${mode}.png`) });
     await area.press('Enter');

@@ -225,14 +225,28 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     });
     expect(pinned).toBe(0);
 
-    // 评论栏：塞一段高内容让它溢出（固件里线程不够多），量同一套。
+    // 评论栏在宽屏不再自己滚（和正文一样高，跟着页面一起滚），所以这里不再量它自己的条。
+    // 把栏撑高后溢出的是文档根：悬停不出条，滚动时出一条 6px 的竖条，停下后收起。
     await page.evaluate(() => window.scrollTo(0, 0));
     await page.locator('#rail').evaluate((el) => {
       const pad = document.createElement('div');
       pad.style.height = '2400px';
       el.append(pad);
     });
-    await expectHiddenScrollbar(page, '#rail', 'y', { shot: shots && { idle: `${shots}/hidden-scrollbar-rail-idle.png`, hover: `${shots}/hidden-scrollbar-rail-hover.png` } });
+    await page.mouse.move(2, 2);
+    await expect.poll(async () => (await scrollbarState(page, 'html', 'y')).hidden).toBe(true);
+    const rootIdle = await scrollbarState(page, 'html', 'y');
+    expect(rootIdle.overflow).toBe(true);
+    expect(rootIdle.native).toBe(0);
+    if (shots) await page.screenshot({ path: `${shots}/hidden-scrollbar-rail-idle.png` });
+    await page.mouse.wheel(0, 240);
+    await expect.poll(async () => (await scrollbarState(page, 'html', 'y')).shown).toBe(true);
+    const rootRoll = await scrollbarState(page, 'html', 'y');
+    expect(rootRoll.pos).toBeGreaterThan(0);
+    expect(rootRoll.bar.h).toBeGreaterThan(0);
+    expect(rootRoll.bar.w).toBe(6);
+    if (shots) await page.screenshot({ path: `${shots}/hidden-scrollbar-rail-hover.png` });
+    await expect.poll(async () => (await scrollbarState(page, 'html', 'y')).hidden, { timeout: 5000 }).toBe(true);
     // 文档根：原生条也不占宽（视口宽 = 文档宽）。
     expect(await page.evaluate(() => window.innerWidth - document.documentElement.clientWidth)).toBe(0);
     } finally {

@@ -473,19 +473,35 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     // 可编辑的只有 owner 的第一句：整张卡里 [data-edit] 只有一个，引文上没有。
     await expect(thread('edit-me').locator('[data-edit]')).toHaveCount(1);
     await expect(thread('edit-me').locator('.q[data-edit]')).toHaveCount(0);
+    // 宽屏卡片按锚点排在第二节旁边。滚到那里再量，点得到，位置也稳定。
+    await page.locator('#how').scrollIntoViewIfNeeded();
     metricsBefore = await firstText().evaluate((el) => {
       const cs = getComputedStyle(el);
-      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: el.closest('.pp-thread').getBoundingClientRect().top };
+      const card = el.closest('.pp-thread').getBoundingClientRect();
+      const mark = document.querySelector('#how mark.pp-hl');
+      const anchor = mark ? mark.getBoundingClientRect().top : card.top;
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, gap: card.top - anchor };
     });
     await firstText().click();
     await expect(editBox()).toBeFocused();
     await expect(editBox()).toHaveValue('收款方写简称');
+    // 点进编辑会把超出视口的卡片滚进来。等卡片顶部连续两帧不变再比，比的是卡片自己没挪。
+    await expect.poll(() => editBox().evaluate(async (el) => {
+      const a = el.closest('.pp-thread').getBoundingClientRect().top;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      const b = el.closest('.pp-thread').getBoundingClientRect().top;
+      return Math.abs(a - b) < 0.5 ? b : null;
+    })).not.toBeNull();
     const during = await editBox().evaluate((el) => {
       const cs = getComputedStyle(el);
-      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: el.closest('.pp-thread').getBoundingClientRect().top };
+      const card = el.closest('.pp-thread').getBoundingClientRect();
+      const mark = document.querySelector('#how mark.pp-hl');
+      const anchor = mark ? mark.getBoundingClientRect().top : card.top;
+      return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, gap: card.top - anchor };
     });
     expect([during.fontSize, during.lineHeight]).toEqual([metricsBefore.fontSize, metricsBefore.lineHeight]);
-    expect(Math.abs(during.cardTop - metricsBefore.cardTop)).toBeLessThanOrEqual(1);
+    // 宽屏点进编辑会滚页面，视口坐标会变；卡片相对它引用的那段不变。
+    expect(Math.abs(during.gap - metricsBefore.gap)).toBeLessThanOrEqual(1);
   });
 
   await test.step('⌘/Ctrl+Enter 保存：右栏与账本都是新字，状态回 open，ppnt comments 读到', async () => {
@@ -531,6 +547,9 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
     const n = JSON.parse(fs.readFileSync(LEDGER, 'utf8')).annotations.find((a) => a.id === 'edit-me').n;
     await ppnt(['reply', PAGE_ID, `#${n}`, '已按全称改好']);
     await expect(thread('edit-me').locator('.msg[data-who="agent"] .text')).toHaveText('已按全称改好');
+    // 宽屏没选中时后面的回复折叠隐藏。先点卡片选中，回复展开后才点得到。
+    await page.locator('#how').evaluate((el) => el.scrollIntoView({ block: 'center' }));
+    await thread('edit-me').locator('.q').click();
     await thread('edit-me').locator('.msg[data-who="agent"] .text').click();
     await expect(thread('edit-me').locator('textarea')).toHaveCount(0);
     await thread('edit-me').locator('.q').click();

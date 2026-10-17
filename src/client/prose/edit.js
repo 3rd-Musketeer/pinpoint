@@ -60,6 +60,7 @@ export function createEdit(opts) {
   function startEdit(key) {
     if (state.editingId === key) return;
     if (state.editingId != null) finishEdit(); // 换一张卡编辑：等于点了手里那张的外面，先保存
+    if (hooks.hold) hooks.hold(key.indexOf('c:') === 0 ? key : key.split('/m')[0]);
     state.editingId = key;
     hooks.renderRail();
     var area = editAreaOf(rail, key);

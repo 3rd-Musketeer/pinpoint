@@ -69,9 +69,12 @@ export function bindProseEvents(opts) {
     if (hitId != null && hitId === cardId) return;
     edit.finishEdit();
   });
-  // 编辑框里打字：跟着内容长高。
+  // 编辑框里打字：跟着内容长高，再重排下面的卡片。不重画整栏，正在打的这张 top 不动。
   rail.addEventListener('input', function (e) {
-    if (e.target && e.target.matches && e.target.matches('textarea[data-edit]')) growEdit(e.target);
+    var field = e.target;
+    if (!field || !field.matches) return;
+    if (field.matches('textarea[data-edit]')) growEdit(field);
+    if (field.matches('textarea[data-edit], textarea[data-reply], .pp-body.pp-edit')) railApi.schedulePlace();
   });
   // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
   // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
@@ -95,6 +98,34 @@ export function bindProseEvents(opts) {
     }
     if (state.focusedId) { state.focusedId = null; railApi.renderRail(); syncFocusClasses(); }
     selection.hideSelBtn();
+  });
+
+  // 悬停：卡片高亮正文里对应的 mark（画布标注高亮所属画布卡片），mark 高亮对应的卡片。
+  // 比 focused 弱一档，用 pp-hover，不改变选中。
+  function hoverThread(id) {
+    if (state.hoverId === id) return;
+    state.hoverId = id;
+    syncFocusClasses();
+  }
+  rail.addEventListener('pointerover', function (e) {
+    var thread = e.target.closest && e.target.closest('.pp-thread');
+    hoverThread(thread ? thread.getAttribute('data-id') : null);
+  });
+  rail.addEventListener('pointerout', function (e) {
+    if (e.target.closest && e.target.closest('.pp-thread') && rail.contains(e.relatedTarget)) return;
+    hoverThread(null);
+  });
+  root.addEventListener('pointerover', function (e) {
+    var mark = e.target.closest && e.target.closest('mark.' + MARK_CLASS);
+    if (!mark) return;
+    var ids = (mark.getAttribute('data-ids') || '').split(' ').filter(function (id) { return id && id !== '__draft'; });
+    hoverThread(ids.length ? ids[0] : null);
+  });
+  root.addEventListener('pointerout', function (e) {
+    var mark = e.target.closest && e.target.closest('mark.' + MARK_CLASS);
+    if (!mark) return;
+    if (e.relatedTarget && mark.contains(e.relatedTarget)) return;
+    hoverThread(null);
   });
 
   root.addEventListener('click', function (e) {

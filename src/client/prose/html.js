@@ -64,9 +64,22 @@ function leadingEditHtml(row, leading, editKey, editingId, editText) {
   return '<div class="text pp-with-targets' + (lead ? ' pp-with-lead' : '') + '">' + lead + body + '</div>';
 }
 
+/** 没选中时这条线程收成摘要：引用一行、第一条消息三行，后面的回复收成“还有 N 条回复”。
+    只在宽屏（view.folded 不为 false）收：窄屏右栏在正文下面，卡片保持完整。
+    草稿、正在编辑、正在回复、选中的不收。已关闭收成一行的走 collapsedHtml，不进这里。 */
+export function threadFolded(id, view) {
+  if (!view || view.folded === false) return false;
+  if (id === '__draft') return false;
+  if (id === view.focusedId) return false;
+  if (view.replyOpen && view.replyOpen.has(id)) return false;
+  if (view.editingId != null && (view.editingId === id || String(view.editingId).indexOf(id + '/m') === 0)) return false;
+  return true;
+}
+
 /** 线程消息。owner 写的那几句可点着改：正在编辑就渲染成编辑框，否则渲染成带 data-edit 的正文
-    （agent 的回复、引文、记号夹在中间的画布标注正文永远不可编辑）。 */
-export function messagesHtml(row, threadKey, editingId, editText) {
+    （agent 的回复、引文、记号夹在中间的画布标注正文永远不可编辑）。
+    folded 时只留第一条，其余收成一行“还有 N 条回复”（N 不含第一条）。 */
+export function messagesHtml(row, threadKey, editingId, editText, folded) {
   var messages = threadMessages(row);
   var leading = threadKey && threadKey.indexOf('c:') === 0 ? canvasLeadingEdit(row.content) : null;
   // 画布标注的第一句：记号全在开头时，框里只放后面的文字；否则显示成元素文字。存盘正文留在 row 上。
@@ -74,7 +87,9 @@ export function messagesHtml(row, threadKey, editingId, editText) {
     messages = messages.slice();
     messages[0] = { who: messages[0].who, text: leading ? leading.text : canvasContentText(row), at: messages[0].at };
   }
-  return '<div class="msgs">' + messages.map(function (m, i) {
+  // 折叠时第一条之后的消息仍在 DOM 里（读文本的断言照常），只是不显示，改成一行“还有 N 条回复”。
+  var hidden = folded ? Math.max(0, messages.length - 1) : 0;
+  var list = messages.map(function (m, i) {
     var editKey = messageEditKey(row, i, threadKey);
     var body;
     if (editKey && leading && i === 0) {
@@ -89,9 +104,11 @@ export function messagesHtml(row, threadKey, editingId, editText) {
     } else {
       body = '<div class="text">' + esc(m.text) + '</div>';
     }
-    return '<div class="msg" data-who="' + esc(m.who) + '"><span class="who' + (m.who === 'agent' ? ' agent' : '') + '">' + esc(authorLabel(m.who)) + '</span>'
+    return '<div class="msg' + (hidden && i > 0 ? ' pp-folded-msg' : '') + '" data-who="' + esc(m.who) + '"><span class="who' + (m.who === 'agent' ? ' agent' : '') + '">' + esc(authorLabel(m.who)) + '</span>'
       + '<span class="when">' + esc(formatWhen(m.at)) + '</span>' + body + '</div>';
-  }).join('') + '</div>';
+  }).join('');
+  var more = hidden > 0 ? '<div class="pp-more">还有 ' + hidden + ' 条回复</div>' : '';
+  return '<div class="msgs">' + list + more + '</div>';
 }
 
 // 已关闭的线程留在原位收成一行：序号钉 + “已关闭” + 引文开头，点开成完整卡片，再点收回。
@@ -114,20 +131,21 @@ export function threadHtml(row, view) {
     ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
     : '<button class="pp-act" type="button" data-act="close">完成</button>';
   var focused = row.id === view.focusedId;
+  var folded = threadFolded(row.id, view);
   // 回复框默认不出现：点“回复”才展开，发送后收起。框收起时留着的草稿在按钮上标出来。
   var reply = view.replyOpen.has(row.id)
     ? '<div class="pp-reply"><textarea data-reply="' + esc(row.id) + '" rows="2" placeholder="回复…" aria-label="回复 #' + esc(row.n) + '"></textarea>'
       + '<div class="acts"><button class="btn pri" type="button" data-act="reply">发送</button></div></div>'
     : '<div class="pp-foot"><button class="pp-act" type="button" data-act="open-reply">回复</button>'
       + (view.replyText[row.id] ? '<span class="pp-draft-tag">有草稿</span>' : '') + '</div>';
-  return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
+  return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + (folded ? ' pp-fold-card' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
     + '<div class="pp-meta">' + statusChip(row)
     + (stale ? '<span class="pp-stale" title="正文里找不到这段引文了">失效</span>' : '')
     + '<span class="sp"></span>' + act
     + (isProseClosed(row) ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
     + '</div>'
     + quoteHtml(row.quote && row.quote.exact)
-    + messagesHtml(row, row.id, view.editingId, view.editText)
+    + messagesHtml(row, row.id, view.editingId, view.editText, folded)
     + reply
     + '</div>';
 }
@@ -153,20 +171,21 @@ export function canvasThreadHtml(item, view) {
       + '<span class="pp-chev" aria-hidden="true"></span></button></div>';
   }
   var closed = isProseClosed(row);
+  var folded = threadFolded(key, view);
   var act = closed
     ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
     : '<button class="pp-act" type="button" data-act="close">完成</button>';
   var image = Array.isArray(row.images) && row.images[0] && row.images[0].file
     ? '<img class="pp-canvas-shot" alt="" loading="lazy" src="' + esc(view.SERVER + '/images/' + encodeURIComponent(row.images[0].file) + '?entry=' + encodeURIComponent(view.ENTRY)) + '">'
     : '';
-  return '<div class="pp-thread pp-canvas-ann"' + attrs + ' data-status="' + esc(row.status || 'open') + '">'
+  return '<div class="pp-thread pp-canvas-ann' + (folded ? ' pp-fold-card' : '') + '"' + attrs + ' data-status="' + esc(row.status || 'open') + '">'
     + '<div class="pp-meta">' + statusChip(row) + '<span class="pp-kind">画布标注</span>'
     + '<span class="sp"></span>' + act
     + (closed ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
     + '</div>'
     + '<a class="pp-canvas-open" data-pp-canvas-link href="' + esc(view.canvasHref(item)) + '" title="在画布上打开这条标注">'
     + image + '<span class="pp-canvas-frame">帧<b>' + esc(item.frameTitle) + '</b></span></a>'
-    + messagesHtml(row, key, view.editingId, view.editText)
+    + messagesHtml(row, key, view.editingId, view.editText, folded)
     + '</div>';
 }
 
