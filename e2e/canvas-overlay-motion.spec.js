@@ -249,6 +249,80 @@ test('画布浮层：iframe 加载失败显示重试，重试后就绪', async (
   await expect(status(page)).toBeHidden({ timeout: 30_000 });
 });
 
+test('画布浮层：board 失败时工作台自己的重试按钮点得到', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let fail = true;
+  await page.route('**/board.json', (route) => {
+    if (fail) return route.fulfill({ status: 503, body: 'temporarily unavailable' });
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  const inner = overlay(page).frameLocator('iframe.ov-canvas');
+  const retry = inner.locator('[data-err-retry="board"]');
+  await expect(retry).toBeVisible({ timeout: 30_000 });
+  const box = await retry.boundingBox();
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className || '', {
+    x: box.x + box.width / 2, y: box.y + box.height / 2,
+  });
+  expect(hit, '准备态不能盖住工作台的重试').not.toContain('ov-status');
+  fail = false;
+  await retry.click();
+  await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
+});
+
+test('画布浮层：连续两次失败后第三次重试成功', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let requests = 0;
+  await page.route('**/workbench/?*', (route) => {
+    requests += 1;
+    if (requests <= 2) return route.abort('failed');
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  await overlay(page).locator('.ov-retry').click();
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  await overlay(page).locator('.ov-retry').click();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  expect(requests).toBe(3);
+});
+
+test('画布浮层：失败后关掉再开，重试还在', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await page.route('**/workbench/?*', (route) => route.abort('failed'));
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  await overlay(page).locator('[data-ov-close]').click();
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  await openFromTop(page);
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 5_000 });
+  const box = await overlay(page).locator('.ov-retry').boundingBox();
+  expect(box.height).toBeGreaterThan(20);
+});
+
+test('画布浮层：加载中重开，Esc 仍然能关', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/workbench/?*', async (route) => { await held; await route.continue(); });
+  await openArticle(page);
+  await openFromTop(page);
+  await page.keyboard.press('Escape');
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  await openFromTop(page);
+  await expect(overlay(page)).toHaveAttribute('open', '');
+  await page.keyboard.press('Escape');
+  await expect(overlay(page)).not.toHaveAttribute('open', '', { timeout: 2_000 });
+  release();
+});
+
 test('画布浮层：后退关闭，滚动位置回到打开前', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });

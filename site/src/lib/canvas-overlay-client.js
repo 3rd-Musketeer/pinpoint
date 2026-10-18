@@ -53,12 +53,37 @@ export function initCanvasOverlay() {
   }
 
   // ---- 嵌入的工作台 ----
+  // 文档本身没装上（网络失败，页跨域读不了）才由这里显示「重试」。记在每次 load 上，不靠轮询撞中间态：
+  // 重试后立刻又失败、失败后关掉再开，都能认出来。
+  let frameFailed = false;
+  const frameDead = () => {
+    try { void iframe.contentWindow.location.href; return false; }
+    catch { return true; }
+  };
+  const noteLoad = () => {
+    frameFailed = false;
+    const onLoad = () => {
+      iframe.removeEventListener('load', onLoad);
+      if (frameDead()) { frameFailed = true; return; }
+      // 文档装上了但工作台脚本没起来（启动模块失败）。load 时脚本可能还没跑完，等一会儿再判。
+      let left = 10;
+      const check = () => {
+        if (workbenchOf() || frameFailed) return;
+        if (--left < 0) { frameFailed = true; return; }
+        setTimeout(check, 100);
+      };
+      check();
+    };
+    iframe.addEventListener('load', onLoad);
+  };
+
   function ensureFrame(sectionId) {
     if (iframe) return false;
     iframe = document.createElement('iframe');
     iframe.className = 'ov-canvas';
     iframe.title = '画布';
     iframe.src = embedCanvasSrc(pageId, sectionId);
+    noteLoad();
     el.body.append(iframe);
     return true;
   }
@@ -94,27 +119,16 @@ export function initCanvasOverlay() {
     return false;
   }
 
-  // 板和预览都就绪才收起「正在准备画布…」。whenXSettled 的 false 是「还没有会话」，不是失败，继续等。
-  // 网络失败的页不是同源的：加载完后读它的窗口会抛 SecurityError，这才显示「重试」。还在加载时读不到不算失败。
-  const frameDead = () => {
-    if (!iframe) return false;
-    try {
-      // 还在加载时 contentDocument 是 null，读得到；失败页跨域，读它就抛。
-      if (iframe.contentDocument !== null) return false;
-      void iframe.contentWindow.location.href;
-      return false;
-    } catch { return true; }
-  };
   async function watchReady(epoch) {
-    // 重试刚换过 src，这一轮还没加载完时 contentDocument 是 null，读得到。上一轮的失败页要先被换掉。
-    let armed = false;
     while (epoch === openEpoch && state) {
-      const dead = frameDead();
-      // 重试刚换 src：先见到一次「还在加载」，上一轮的失败页不算这次的失败。
-      if (!armed) { armed = !dead; if (!armed) { await new Promise((r) => setTimeout(r, POLL_MS)); continue; } }
-      if (dead) { showStatus('retry'); return; }
+      if (frameFailed) { showStatus('retry'); return; }
       const wb = workbenchOf();
       if (wb) {
+        // 板失败时工作台自己画错误面板和重试。盖着就点不到，这时让开。
+        // 还在等（false = 还没有会话）就留着准备态，不靠等待时长判失败。
+        let failed = false;
+        try { failed = !!frameWin()?.document?.querySelector('[data-err-panel]'); } catch { failed = false; }
+        if (failed) { showStatus(''); return; }
         const board = await wb.whenBoardSettled();
         const previews = await wb.whenPreviewsSettled();
         if (epoch !== openEpoch || !state) return;
@@ -180,9 +194,11 @@ export function initCanvasOverlay() {
     retry.addEventListener('click', () => {
       if (!state || !iframe) return;
       showStatus('loading');
+      frameFailed = false;
       const nav = ++navigation;
       watchReady(++openEpoch);
       iframe.src = embedCanvasSrc(pageId, state.section);
+      noteLoad();
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
     s.append(retry);
@@ -237,11 +253,13 @@ export function initCanvasOverlay() {
     const fresh = ensureFrame(sectionId);
     const nav = navigation + 1;
     // 每次打开都重新观察：上次没就绪就关了，iframe 还在，这次就绪了也要收起准备态。
-    if (!workbenchOf() || frameDead()) showStatus('loading');
+    // 失败页再开时不换导航，保留上次记下的失败，直接显示重试。
+    if (frameFailed) showStatus('retry');
+    else if (!workbenchOf()) showStatus('loading');
     watchReady(++openEpoch);
-    // 工作台装好之前焦点留在文章页（关闭钮）：这时按 Esc 由文章页关浮层；装好后再把焦点交给画布（land）。
-    if (fresh) el.close.focus({ preventScroll: true });
-    else iframe.focus({ preventScroll: true });
+    // 工作台还没装好时焦点留在关闭钮：空文档收不到按键，Esc 到不了浮层。装好后 land 再把焦点交进去。
+    if (workbenchOf()) iframe.focus({ preventScroll: true });
+    else el.close.focus({ preventScroll: true });
     land({ section: sectionId, frame, ann, fresh }, nav);
     return true;
   }
