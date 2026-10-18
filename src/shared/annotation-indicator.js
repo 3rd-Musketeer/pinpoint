@@ -115,6 +115,61 @@ export function targetContentToStorage(text, targets) {
 }
 
 /**
+ * 阅读态分段：把正文里的 `[@t:iN]` 换成目标文字 pill，账本文本不动。
+ * 编辑态仍走 targetContentToDisplay / targetContentToStorage（`[indicator N]`
+ * 是 pill 的编辑协议），这里只给列表行和悬浮卡用。
+ *
+ * 一段是 { type: 'text', text } 或 { type: 'pill', ref, label, title, missing }。
+ * label 是 pill 上的字，title 是 tooltip 里的完整文字（含源文件 id）。
+ * - 优先用标注已存的 target.text，目标 DOM 后来改名也不换原引文。
+ * - 原文字为空时 label 是「目标 N」。
+ * - 同一条里同名目标各自带序号：「目标 N：打开浏览器」。
+ * - 引用解析不到（targets 里没有这个 ref）时 label 是「失效目标 N」，
+ *   missing 为 true，原存储引用留在 title 里，调用方不删这段。
+ * - `@mention`（`[@a:id]`）不是目标引用，原样留在 text 段里。
+ */
+export function readingSegments(text, targets) {
+  const list = Array.isArray(targets) ? targets : [];
+  const byRef = new Map();
+  for (const target of list) {
+    if (target && target.ref && !byRef.has(target.ref)) byRef.set(target.ref, target);
+  }
+  const labelCounts = new Map();
+  for (const target of byRef.values()) {
+    const label = String(target.text || '').trim();
+    if (!label) continue;
+    labelCounts.set(label, (labelCounts.get(label) || 0) + 1);
+  }
+  const segments = [];
+  const source = String(text || '');
+  const re = new RegExp(TARGET_STORE_RE.source, 'gi');
+  let offset = 0;
+  let hit;
+  while ((hit = re.exec(source))) {
+    if (hit.index > offset) segments.push({ type: 'text', text: source.slice(offset, hit.index) });
+    const ref = hit[1];
+    const n = targetRefNumber(ref);
+    const target = byRef.get(ref);
+    if (!target) {
+      segments.push({
+        type: 'pill', ref, label: `失效目标 ${n}`, title: `失效目标 ${n}（${hit[0]}）`, missing: true,
+      });
+    } else {
+      const stored = String(target.text || '').trim();
+      const label = !stored
+        ? `目标 ${n}`
+        : (labelCounts.get(stored) > 1 ? `目标 ${n}：${stored}` : stored);
+      const titleParts = [stored || `目标 ${n}`];
+      if (target.ppId) titleParts.push(target.ppId);
+      segments.push({ type: 'pill', ref, label, title: titleParts.join(' · '), missing: false });
+    }
+    offset = re.lastIndex;
+  }
+  if (offset < source.length) segments.push({ type: 'text', text: source.slice(offset) });
+  return segments;
+}
+
+/**
  * @returns {{ kind: 'page'|'section'|'frame'|'annotation', pageId?: string, sectionId?: string, screenId?: string, id?: string } | null}
  */
 export function parseIndicator(text) {

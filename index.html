@@ -325,8 +325,8 @@
   }
 
   /* 标注弹出列表（2026-09-04 评审板 H2，取代常驻右栏）：点横条右端的计数钮
-     开合，锚在横条右端正上方，宽 280、最高 60vh。行结构照 H2：序号钉 → 引用号
-     10.5 mono → 正文一行截断，hover 出「定位」。共享行结构（item/body/cap/text）
+     开合，锚在横条右端正上方，宽 280、最高 60vh。行结构：22px 序号圆 → 引用号
+     10.5 mono → 正文最多两行，目标引用是文字 pill。共享行结构（item/body/cap/text）
      仍来自 src/shared/ann-list.css（上面的 link），本块只叠 workbench 的弹出列表
      皮肤，源码序在 link 之后、同权重盖过共享层。client 见到这份 link 就不再内联
      ann-list.css（src/client/annotate.js），所以不需要 id 前缀升权。 */
@@ -341,7 +341,7 @@
   }
   #wbann-list .wb-ann-item-main { padding:7px 8px; align-items:center; }
   #wbann-list .wb-ann-num {
-    width:18px; height:18px; min-width:18px; padding:0; margin-top:0;
+    width:22px; height:22px; min-width:22px; padding:0; margin-top:0;
     display:inline-flex; align-items:center; justify-content:center;
     border-radius:50%; background:var(--ann-st-open); color:var(--ann-st-open-fg);
     font-family:var(--wb-font-mono); font-size:10px; font-weight:var(--wb-w-semibold);
@@ -355,8 +355,9 @@
     font-family:var(--wb-font-mono); font-size:10.5px; line-height:1.4; color:var(--wb-muted);
   }
   #wbann-list .wb-ann-text {
-    -webkit-line-clamp:1; font-size:12px; line-height:1.4; color:var(--wb-fg);
+    font-size:12.5px; line-height:1.45; color:var(--wb-fg);
   }
+  #wbann-list .wb-ann-copy { -webkit-line-clamp:2; }
   /* 锚点失效 = 序号钉转红 + 文本退灰（弹出列表没有卡片边框可染，08-14 的整卡红
      语义在这里落到钉与文本上） */
   #wbann-list .wb-ann-item.wb-ann-item--broken .wb-ann-num {

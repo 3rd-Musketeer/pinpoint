@@ -70,7 +70,7 @@ export function annotateCss() {
     '#ann-sidebar .wb-ann-empty{margin:6px 4px;border:1px dashed var(--wb-seam,#cecece);}',
     '#ann-sidebar .wb-ann-empty-title{margin:0 0 6px;}',
     '#ann-sidebar .wb-ann-item{display:flex;gap:2px;align-items:stretch;}',
-    '#ann-sidebar .wb-ann-num{min-width:18px;padding:0 5px;}',
+    '#ann-sidebar .wb-ann-num{width:22px;padding:0;}',
     '#ann-sidebar .wb-ann-item--broken .wb-ann-num{box-shadow:inset 0 0 0 1px rgba(0,0,0,.12);}',
     '#ann-sidebar .wb-ann-broken-tag{align-self:flex-start;}',
     '#ann-sidebar .ann-sb-acts{flex:none;display:flex;flex-direction:column;gap:2px;padding:4px 4px 4px 0;opacity:0;pointer-events:none;}',

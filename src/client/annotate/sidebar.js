@@ -2,6 +2,7 @@
 // 以及操作提示 toast。导出 bind_sidebar、init_sidebar、installSidebar、
 // toggleSidebar、closeAnnotation、setStatusFilter 等。
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, filterIncludesStatus, writeAnnFilter } from '../../shared/ann-status.js';
+import { readingSegments } from '../../shared/annotation-indicator.js';
 import { annRowModel, annRowPreview } from '../../shared/ann-row.js';
 import { isMarkBroken, markElementTargets } from './anchor.js';
 import { renderAll } from './bubbles.js';
@@ -60,11 +61,16 @@ export function sidebarSuppressed() {
 function sidebarRowModel() {
   // 行字段走共享模型（src/shared/ann-row.js，serve 时内联）；默认 cap 语义即
   // client 现状：框选显示「框选区域」，无 text 时回退 selector 末段摘录。
+  // 正文的目标引用走阅读态分段（readingSegments）：pill 用目标文字，不占
+  // 眉标。preview 仍是纯文本，只给签名比对和没有分段时的退路。
   return marksForActivePage().slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
-    return annRowModel(m, {
+    var segments = readingSegments(annotationContent(m), markElementTargets(m));
+    var row = annRowModel(m, {
       preview: annRowPreview(contentToDisplay(annotationContent(m), markElementTargets(m))),
       broken: isMarkBroken(m)
     });
+    row.segments = segments;
+    return row;
   });
 }
 
@@ -141,7 +147,7 @@ function renderSidebar() {
   }
   // sig 比对（同 workbench 列表）：marks 没变的 notify（模式切换等）不重建 DOM。
   var sig = rows.map(function (r) {
-    return r.n + '|' + r.cap + '|' + r.preview + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + JSON.stringify(r.replies || []);
+    return r.n + '|' + r.cap + '|' + r.preview + '|' + JSON.stringify(r.segments || []) + '|' + r.broken + '|' + r.tags + '|' + r.status + '|' + JSON.stringify(r.replies || []);
   }).join('~') + '|f:' + ctx.statusFilter;
   var pendingCount = rows.filter(function (r) { return filterIncludesStatus('pending', r.status); }).length;
   ctx.sidebarCount.textContent = pendingCount ? '(' + pendingCount + ')' : '';
@@ -193,11 +199,36 @@ function buildRow(r) {
   cap.className = 'wb-ann-cap';
   cap.textContent = r.cap;
   body.appendChild(cap);
-  if (r.preview) {
+  if (r.segments && r.segments.length) {
     var text = document.createElement('span');
     text.className = 'wb-ann-text';
-    text.textContent = r.preview;
+    var pills = r.segments.filter(function (seg) { return seg && seg.type === 'pill'; });
+    var copy = r.segments.filter(function (seg) { return !seg || seg.type !== 'pill'; })
+      .map(function (seg) { return seg && seg.text || ''; }).join('').trim();
+    if (pills.length) {
+      var refs = document.createElement('span');
+      refs.className = 'wb-ann-refs';
+      pills.forEach(function (seg) {
+        var pill = document.createElement('span');
+        pill.className = 'ann-read-pill' + (seg.missing ? ' ann-read-pill--missing' : '');
+        pill.textContent = seg.label;
+        pill.title = seg.title;
+        refs.appendChild(pill);
+      });
+      text.appendChild(refs);
+    }
+    if (copy) {
+      var line = document.createElement('span');
+      line.className = 'wb-ann-copy';
+      line.textContent = copy;
+      text.appendChild(line);
+    }
     body.appendChild(text);
+  } else if (r.preview) {
+    var plain = document.createElement('span');
+    plain.className = 'wb-ann-text';
+    plain.textContent = r.preview;
+    body.appendChild(plain);
   }
   (r.replies || []).forEach(function (reply) {
     var line = document.createElement('span');

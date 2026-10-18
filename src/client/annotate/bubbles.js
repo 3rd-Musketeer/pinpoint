@@ -167,7 +167,9 @@ export function visibleBubbleAnchors() {
       n: m.n,
       rect: [Math.round(local[0]), Math.round(local[1]), Math.round(local[2]), Math.round(local[3])],
       cap: view.cap,
-      content: view.content
+      content: view.content,
+      // 阅读态分段：父级 gutter 卡和画布悬浮卡画同一套目标文字 pill。
+      segments: view.segments
     });
   });
   return out;

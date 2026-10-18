@@ -2710,6 +2710,61 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出', async ({ page
   await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
 });
 
+// 阅读态：工作台右栏和悬浮卡把目标引用画成目标文字 pill，眉标仍是引用号 + 屏名。
+// 和注入侧栏那条是同一条意见的两端：账本里是 [@t:iN]，读出来是目标文字。
+test('工作台列表和悬浮卡显示目标文字 pill，眉标保留引用号', async ({ page }) => {
+  await openWorkbench(page);
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+  await cell.scrollIntoViewIfNeeded();
+  await cell.click();
+  const input = page.locator('#ann-input');
+  await expect(input).toBeVisible();
+  await input.press('End');
+  await input.pressSequentially('把这里改成继续登录');
+  await page.locator('#ann-close').click();
+  await expect(page.locator('#ann-box')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  const stored = await page.evaluate(() => window.pinpoint.marks[0]);
+  expect(stored.content).toContain('[@t:i1]');
+  expect(stored.content).not.toContain('[indicator');
+  const targetText = stored.targets[0].text;
+  expect(targetText.length).toBeGreaterThan(0);
+
+  await openAnnList(page);
+  const row = page.locator('#wbann-list .wb-ann-item').first();
+  await expect(row.locator('.wb-ann-cap')).toHaveText('F1 settings');
+  await expect(row.locator('.wb-ann-cap')).not.toContainText(targetText);
+  const pill = row.locator('.ann-read-pill');
+  await expect(pill).toHaveCount(1);
+  await expect(pill).toHaveText(targetText);
+  await expect(row.locator('.wb-ann-copy')).toHaveText('把这里改成继续登录');
+  await expect(row).not.toContainText('[indicator');
+
+  const num = await row.locator('.wb-ann-num').boundingBox();
+  expect(num.width).toBeCloseTo(22, 0);
+  expect(num.height).toBeCloseTo(22, 0);
+  const pillBox = await pill.boundingBox();
+  expect(pillBox.width).toBeLessThanOrEqual(100);
+  expect(pillBox.width).toBeGreaterThan(0);
+
+  const badge = page.locator('#ann-marks .ann-badge').first();
+  await cell.scrollIntoViewIfNeeded();
+  await badge.hover();
+  const card = page.locator('#ann-bubbles .ann-bubble.ann-bubble--show');
+  await expect(card).toHaveCount(1);
+  await expect(card.locator('.ann-read-pill')).toHaveText(targetText);
+  await expect(card.locator('.ann-bubble-copy')).toHaveText('把这里改成继续登录');
+  await expect(card).not.toContainText('[indicator');
+  await expect(card.locator('.ann-bubble-ref')).toHaveText('F1');
+
+  await page.evaluate(() => window.pinpoint.clear());
+  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+});
+
 // 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
 // 字号断言比的是画布坐标里的 CSS px：画布基准 scale 0.5，所以区头 26 = 观感 13、
 // 屏名 24 = 12、引用号 21 = 10.5。

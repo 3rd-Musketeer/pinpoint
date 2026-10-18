@@ -356,3 +356,96 @@ test('pp2 状态筛选：四种状态各一条 → check 只剩一行一琥珀�
   // 这是本用例最后一次保存：等回包落定再收尾，afterEach 删桶不与在途写入抢跑。
   await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
 });
+
+// 阅读态：列表行和悬浮卡把正文里的目标引用画成目标文字 pill，两端读到同一条
+// 意见；重新打开的输入框还是指向同一个目标。账本里仍是 [@t:iN]。
+test('/sites/ page: list row and hover card show the stored target text as a pill', async ({ page }) => {
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
+  await page.evaluate(() => window.pinpoint.setMode(true));
+  await page.locator('#doc-target').click();
+  const box = page.locator('#ann-box');
+  await expect(box).toBeVisible();
+  const input = box.locator('#ann-input');
+  await input.press('End');
+  await input.pressSequentially('把按钮改成继续登录');
+  await box.locator('#ann-close').click();
+  await expect(box).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  const stored = await page.evaluate(() => window.pinpoint.marks[0]);
+  expect(stored.content).toContain('[@t:i1]');
+  expect(stored.content).toContain('把按钮改成继续登录');
+  expect(stored.content).not.toContain('[indicator');
+
+  await page.evaluate(() => window.pinpoint.toggleSidebar());
+  const row = page.locator('#ann-sidebar .wb-ann-item').first();
+  await expect(row).toBeVisible();
+  const pill = row.locator('.ann-read-pill');
+  await expect(pill).toHaveCount(1);
+  await expect(pill).toHaveText('A standalone document served from a registry dir entry.');
+  await expect(row.locator('.wb-ann-copy')).toHaveText('把按钮改成继续登录');
+  await expect(row).not.toContainText('[indicator');
+  await expect(row).not.toContainText('today-needs-you');
+  // 注入页没有帧引用号，眉标仍是元素摘录；目标名的阅读位置是正文 pill，
+  // 正文里不再有第二份机器名。
+
+  const metrics = await pill.evaluate((el) => {
+    const cs = getComputedStyle(el);
+    const r = el.getBoundingClientRect();
+    return {
+      fontSize: cs.fontSize, radius: cs.borderRadius, padLeft: cs.paddingLeft,
+      maxWidth: cs.maxWidth, width: r.width, inRow: r.width <= rowWidth(el),
+    };
+    function rowWidth(node) {
+      return node.closest('.wb-ann-text').getBoundingClientRect().width;
+    }
+  });
+  expect(metrics.fontSize).toBe('12px');
+  expect(metrics.radius).toBe('4px');
+  expect(metrics.padLeft).toBe('4px');
+  expect(metrics.maxWidth).toBe('100px');
+  expect(metrics.width).toBeLessThanOrEqual(100);
+  expect(metrics.inRow).toBe(true);
+  // 完整文字在 tooltip，pill 本身被 100px 截断。
+  expect(await pill.getAttribute('title')).toContain('A standalone document served from a registry dir entry.');
+
+  const num = await row.locator('.wb-ann-num').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { w: cs.width, h: cs.height };
+  });
+  expect(num).toEqual({ w: '22px', h: '22px' });
+
+  const body = await row.locator('.wb-ann-copy').evaluate((el) => {
+    const cs = getComputedStyle(el);
+    return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, clamp: cs.webkitLineClamp };
+  });
+  expect(body.fontSize).toBe('12.5px');
+  expect(parseFloat(body.lineHeight) / parseFloat(body.fontSize)).toBeCloseTo(1.45, 2);
+  expect(body.clamp).toBe('2');
+
+  // 悬浮卡：hover 钉子才出，和列表同一条意见、同一个目标 pill。一次一张。
+  const badge = page.locator('.ann-badge').first();
+  await badge.hover();
+  const card = page.locator('#ann-bubbles .ann-bubble.ann-bubble--show');
+  await expect(card).toHaveCount(1);
+  const cardPill = card.locator('.ann-read-pill');
+  await expect(cardPill).toHaveCount(1);
+  await expect(cardPill).toHaveText(await pill.innerText());
+  await expect(card.locator('.ann-bubble-copy')).toHaveText('把按钮改成继续登录');
+  await expect(card).not.toContainText('[indicator');
+  const cardBox = await card.boundingBox();
+  const badgeBox = await badge.boundingBox();
+  expect(cardBox).not.toBeNull();
+  expect(badgeBox).not.toBeNull();
+  expect(cardBox.x).toBeGreaterThanOrEqual(badgeBox.x);
+
+  // 重新打开的输入框还指向同一个目标：pill 可删，token 仍是这条的 ref。
+  await page.evaluate((n) => window.pinpoint.openMark(n), stored.n);
+  await expect(box).toBeVisible();
+  const editPill = box.locator('#ann-input .ann-inline-target');
+  await expect(editPill).toHaveCount(1);
+  await expect(editPill).toHaveAttribute('data-target-ref', 'i1');
+  await expect(input).toContainText('把按钮改成继续登录');
+  await box.locator('#ann-close').click();
+  await expect(box).toBeHidden();
+});

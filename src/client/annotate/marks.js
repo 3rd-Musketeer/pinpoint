@@ -1,7 +1,7 @@
 // 标注行的内存状态与编号：marks、revision、同步世代，以及 @mention 在
 // 显示文本与落盘文本之间的转换。导出 bind_marks、init_marks、contentToDisplay、
 // contentToStorage、markByN、docAnnotations 等。
-import { normalizeAnnotation, targetContentToDisplay, targetContentToStorage } from '../../shared/annotation-indicator.js';
+import { normalizeAnnotation, readingSegments, targetContentToDisplay, targetContentToStorage } from '../../shared/annotation-indicator.js';
 import { annRowCap, annRowReplies } from '../../shared/ann-row.js';
 import { readAnnFilter } from '../../shared/ann-status.js';
 
@@ -104,13 +104,25 @@ export function contentToDisplay(text, targets) {
 
 /** 统一构造给气泡渲染的 mark 视图：正文走 contentToDisplay（解析 @mention 与 target 引用）。
  * iframe 内 ctx.overlay 与父级 gutter 共用，避免两边显示不一致。 */
+/** 悬浮卡眉标：画布上优先用帧图注的引用号（F1），目标名留给正文 pill。
+ *  没有帧（注入页、框选）时退回 annRowCap 的元素摘录。 */
+function bubbleCap(m) {
+  var screen = m && m.screenId && document.querySelector('.wb-screen[data-screen="' + CSS.escape(m.screenId) + '"] .wb-cap-ref');
+  var ref = screen && screen.textContent.trim();
+  return ref || annRowCap(m);
+}
+
 export function bubbleMarkView(m) {
+  var stored = m.content != null ? m.content : '';
+  var targets = m.targets || [];
   return {
     n: m.n,
-    // 眉标 = 这条标注指着什么，与侧栏行的 cap 同一份口径（annRowCap）——
-    // 2026-09-04 评审板 H1 起卡片头不再是琥珀序号 chip + 「评论」。
-    cap: annRowCap(m),
-    content: contentToDisplay(m.content != null ? m.content : '', m.targets || []),
+    // 眉标 = 帧引用号（画布）或元素摘录（注入页）。目标名在正文 pill 里，不进眉标。
+    cap: bubbleCap(m),
+    // content 仍是编辑协议的纯文本（gutter 等只拿字符串的调用方用）；
+    // segments 是阅读态：目标引用画成文字 pill，账本文本不动。
+    content: contentToDisplay(stored, targets),
+    segments: readingSegments(stored, targets),
     replies: annRowReplies(m)
   };
 }

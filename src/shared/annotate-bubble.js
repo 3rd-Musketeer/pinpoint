@@ -35,11 +35,37 @@ export function bubbleCss() {
     '.ann-bubble-n{flex:none;font-weight:var(--wb-w-semibold,600);letter-spacing:.04em;',
     'color:var(--wb-accent,#008564);}',
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-    '.ann-bubble-body{white-space:pre-wrap;word-break:break-word;}',
+    // 正文 12.5/1.45。目标引用单独一行（不跟意见抢两行），意见最多两行。
+    // pill：--wb-fill、12px、4px 圆角、横向 4px、最宽 100px，完整文字在 title 里。
+    '.ann-bubble-body{font-size:12.5px;line-height:1.45;}',
+    '.ann-bubble-refs{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:2px;}',
+    '.ann-bubble-copy{white-space:pre-wrap;word-break:break-word;',
+    'display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;}',
+    '.ann-read-pill{display:inline-block;max-width:100px;vertical-align:baseline;box-sizing:border-box;',
+    'padding:0 4px;border-radius:4px;background:var(--wb-fill,color-mix(in srgb,#202020 6%,transparent));',
+    'font-size:12px;line-height:1.45;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
+    '.ann-read-pill--missing{color:var(--wb-danger,#c0392b);}',
     '.ann-bubble-empty{color:var(--wb-faint,#646464);font-style:italic;}',
     '.ann-bubble-reply{margin-top:5px;padding-top:5px;border-top:1px solid var(--wb-seam,#cecece);white-space:pre-wrap;word-break:break-word;}',
     '.ann-bubble-who{font-family:var(--wb-font-mono,ui-monospace,SFMono-Regular,Menlo,"PingFang SC",monospace);font-size:10.5px;color:var(--wb-accent,#008564);margin-right:5px;}',
   ].join('');
+}
+
+function pillHtml(seg) {
+  var cls = 'ann-read-pill' + (seg.missing ? ' ann-read-pill--missing' : '');
+  return '<span class="' + cls + '" title="' + escHtml(seg.title) + '">' + escHtml(seg.label) + '</span>';
+}
+
+/** 阅读态正文：目标引用单独一行，意见放下面并限两行。没有 segments 时
+ *  整段转义（gutter 等只拿到纯文本的调用方）。 */
+function readingBodyHtml(m) {
+  var segments = m && Array.isArray(m.segments) ? m.segments : null;
+  if (!segments) return escHtml(m && m.content != null ? m.content : '');
+  var pills = segments.filter(function (seg) { return seg && seg.type === 'pill'; });
+  var copy = segments.filter(function (seg) { return !seg || seg.type !== 'pill'; })
+    .map(function (seg) { return seg && seg.text || ''; }).join('').trim();
+  return (pills.length ? '<div class="ann-bubble-refs">' + pills.map(pillHtml).join('') + '</div>' : '')
+    + (copy ? '<div class="ann-bubble-copy">' + escHtml(copy) + '</div>' : '');
 }
 
 /** Inner markup (眉标 + 正文) for one bubble. Caller wraps + positions.
@@ -48,8 +74,9 @@ export function bubbleInnerHtml(m) {
   var n = (m && m.n) != null ? m.n : '';
   var cap = String((m && m.cap != null ? m.cap : '') || '').trim();
   var content = String((m && m.content != null ? m.content : '') || '');
-  var body = content
-    ? '<div class="ann-bubble-body">' + escHtml(content) + '</div>'
+  var hasBody = content || (m && Array.isArray(m.segments) && m.segments.length);
+  var body = hasBody
+    ? '<div class="ann-bubble-body">' + readingBodyHtml(m) + '</div>'
     : '<div class="ann-bubble-body ann-bubble-empty">（无正文）</div>';
   // 线程回复（m.replies = [{ who, text }]）：正文下面逐条，agent 改完说了什么 owner 在卡上就能读到。
   var replies = (m && Array.isArray(m.replies) ? m.replies : []).map(function (r) {

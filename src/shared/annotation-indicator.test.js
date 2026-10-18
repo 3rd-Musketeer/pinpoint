@@ -10,6 +10,7 @@ import {
   normalizeAnnotation,
   normalizeDoc,
   parseIndicator,
+  readingSegments,
   targetContentToDisplay,
   targetContentToStorage,
 } from './annotation-indicator.js';
@@ -134,6 +135,37 @@ test('target content converts display indicators without disturbing annotation m
     'Use [indicator 1], align [indicator 4], keep [@a:ab12cd], and inspect [missing indicator i9].',
   );
   assert.equal(targetContentToStorage(display, targets), stored);
+});
+
+test('readingSegments：目标引用换成文字 pill，账本文本与 @mention 不动', () => {
+  const targets = [
+    { ref: 'i1', selector: '#open', text: '打开浏览器', ppId: 'today.jsx:4@1' },
+    { ref: 'i2', selector: '#blank', text: '   ' },
+    { ref: 'i4', selector: '#again', text: '打开浏览器' },
+  ];
+  const stored = '把[@t:i1]改成继续登录，空的[@t:i2]，同名[@t:i4]，失效[@t:i9]，提及[@a:ab12cd]。';
+  assert.deepEqual(readingSegments(stored, targets), [
+    { type: 'text', text: '把' },
+    { type: 'pill', ref: 'i1', label: '目标 1：打开浏览器', title: '打开浏览器 · today.jsx:4@1', missing: false },
+    { type: 'text', text: '改成继续登录，空的' },
+    { type: 'pill', ref: 'i2', label: '目标 2', title: '目标 2', missing: false },
+    { type: 'text', text: '，同名' },
+    { type: 'pill', ref: 'i4', label: '目标 4：打开浏览器', title: '打开浏览器', missing: false },
+    { type: 'text', text: '，失效' },
+    { type: 'pill', ref: 'i9', label: '失效目标 9', title: '失效目标 9（[@t:i9]）', missing: true },
+    { type: 'text', text: '，提及[@a:ab12cd]。' },
+  ]);
+  // 唯一的目标名不加序号，源文件 id 只进 tooltip。
+  assert.deepEqual(readingSegments('看[@t:i1]', [targets[0]]), [
+    { type: 'text', text: '看' },
+    { type: 'pill', ref: 'i1', label: '打开浏览器', title: '打开浏览器 · today.jsx:4@1', missing: false },
+  ]);
+  // 没有目标引用时整段是文字；空正文没有分段。
+  assert.deepEqual(readingSegments('只有字', targets), [{ type: 'text', text: '只有字' }]);
+  assert.deepEqual(readingSegments('', targets), []);
+  assert.deepEqual(readingSegments(null, null), []);
+  // 阅读态不改账本：存储转换仍走编辑协议，失效引用留在原文里。
+  assert.equal(targetContentToStorage(stored, targets), stored);
 });
 
 test('isClearableMark: 清空只带走未关闭的行，close 是执行历史留下来（决定 #11）', () => {

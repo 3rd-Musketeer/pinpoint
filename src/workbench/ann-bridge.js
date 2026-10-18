@@ -7,6 +7,7 @@
 // （store.activeBoardMode()）—— 混合板里选中 doc 屏条目时同一套 iframe 绑定
 // 与 gutter 逻辑照常生效。
 import { wbGet, wbSet } from './app/store.js';
+import { readingSegments } from '../shared/annotation-indicator.js';
 import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
@@ -119,6 +120,9 @@ export function syncAnnSnap() {
       preview: markSummary(m, ann),
       broken: broken
     });
+    // 阅读态：正文里的 [@t:iN] 画成目标文字 pill。目标名不再占眉标——
+    // 眉标仍是引用号 + 屏名（AnnPopover 用 boardMeta 覆盖 cap）。
+    row.segments = readingSegments((m && m.content) || '', m.targets || []);
     row.key = (m.section || m.group || '_') + '|' + m.n;
     row.group = m.section || m.group || '_';
     row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';
@@ -290,7 +294,7 @@ function renderGutter() {
   var mapped = [];
   anchors.forEach(function (an) {
     present[an.n] = true;
-    var html = bubbleInnerHtml({ n: an.n, cap: an.cap, content: an.content });
+    var html = bubbleInnerHtml({ n: an.n, cap: an.cap, content: an.content, segments: an.segments });
     var entry = gutterNodes[an.n];
     if (!entry) {
       var node = document.createElement('div');
