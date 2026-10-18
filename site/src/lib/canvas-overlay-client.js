@@ -134,8 +134,13 @@ export function initCanvasOverlay() {
         const board = await Promise.race([
           wb.whenBoardSettled().then((ok) => ({ ok })),
           // 重试换了文档，上一份永不返回的 Promise 不能卡住这次。
+          // 等待期间入口模块失败（__wbBootError），或重试换了文档、旧文档的 workbench 被新的取代，都要放手重看。
           new Promise((resolve) => {
-            const watch = () => { if (loadGen !== gen || epoch !== openEpoch) resolve('stop'); else setTimeout(watch, 100); };
+            const bootFailed = () => { try { return !!frameWin()?.__wbBootError; } catch { return false; } };
+            const watch = () => {
+              if (loadGen !== gen || epoch !== openEpoch || workbenchOf() !== wb || bootFailed()) resolve('stop');
+              else setTimeout(watch, 100);
+            };
             setTimeout(watch, 100);
           }),
         ]);
@@ -205,13 +210,13 @@ export function initCanvasOverlay() {
     retry.textContent = '重试';
     retry.addEventListener('click', () => {
       if (!state || !iframe) return;
+      // 先清掉旧文档的失败痕迹、换新代次，再开始观察：否则第一次观察会读到旧的失败又显示重试。
+      try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
+      noteLoad();
+      iframe.src = embedCanvasSrc(pageId, state.section);
       showStatus('loading');
-      frameFailed = false;
       const nav = ++navigation;
       watchReady(++openEpoch);
-      noteLoad();
-      try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
-      iframe.src = embedCanvasSrc(pageId, state.section);
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
     s.append(retry);

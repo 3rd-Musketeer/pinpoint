@@ -439,3 +439,37 @@ test('画布浮层：后退关闭，滚动位置回到打开前', async ({ page 
   await expect(overlay(page)).not.toHaveAttribute('open', '');
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
+
+test('画布浮层：入口模块在等待就绪期间才失败，也给出重试；重试时入口慢也能收起', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let mode = 'hold-then-fail';
+  let release = null;
+  await page.route('**/src/workbench/app/main.jsx*', async (route) => {
+    if (mode === 'hold-then-fail') {
+      // 扣住，等父页面已经进入“等就绪”再失败：失败发生在 watchReady 的等待里面。
+      await new Promise((resolve) => { release = resolve; });
+      return route.abort('failed');
+    }
+    // 重试这次入口慢 3 秒才回：旧文档的 workbench 在新文档装好前还读得到，不能拿它卡住观察。
+    await new Promise((resolve) => setTimeout(resolve, 3000));
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  const frame = overlay(page).locator('iframe.ov-canvas');
+  // 帧已经挂上，父页面卡在 whenBoardSettled 的等待里（板要等 main.jsx 放行 chrome-ready）。
+  await expect.poll(() => frame.evaluate((el) => el.contentWindow.document.querySelectorAll('[data-screen]').length), { timeout: 15_000 }).toBeGreaterThan(0);
+  await expect(status(page)).toHaveText(/正在准备画布/);
+  await expect.poll(() => release !== null).toBe(true);
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500))); // 静默窗口：让父页面确实进入等待
+  release();
+  const retry = overlay(page).locator('.ov-retry');
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  mode = 'slow-ok';
+  await retry.click();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  const box = await frame.boundingBox();
+  const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className || '', [box.x + box.width / 2, box.y + box.height / 2]);
+  expect(hit).toContain('ov-canvas');
+});
