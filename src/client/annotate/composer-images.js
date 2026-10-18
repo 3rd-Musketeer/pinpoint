@@ -97,30 +97,39 @@ export function attachComposerAutosave(composer, ta, m, draft) {
     if (next === stateText) return;
     var previous = stateText;
     stateText = next;
-    function paint() {
+    function paint(word, say) {
       stateEl.dataset.tone = tone;
       stateEl.textContent = '';
-      writeState(next);
+      writeState(word, say);
     }
-    // 真实状态切换才淡出再淡入。空闲首次出现直接写。中途又切换时取消上一段，
-    // 从当前透明度接着走，不跳回 1。
+    // 当前透明度要在取消旧动画之前读：fill:forwards 的淡出取消后 computed 会跳回 1。
+    var from = parseFloat(getComputedStyle(stateEl).opacity);
+    if (!isFinite(from)) from = 1;
     if (fade) { fade.cancel(); fade = null; }
     var reduceMotion = stateEl.ownerDocument.defaultView.matchMedia('(prefers-reduced-motion: reduce)').matches;
     if (previous && next && stateEl.animate && !reduceMotion) {
-      var from = parseFloat(getComputedStyle(stateEl).opacity);
-      if (!isFinite(from)) from = 1;
-      fade = stateEl.animate([{ opacity: from }, { opacity: 0 }], { duration: 80, easing: 'linear', fill: 'forwards' });
-      fade.onfinish = function () {
+      // 不留 fill。淡出结束就取消，再淡入；淡入结束也取消，静止时 opacity 回到 1。
+      fade = stateEl.animate([{ opacity: from }, { opacity: 0 }], { duration: 80, easing: 'linear' });
+      var fading = fade;
+      fading.onfinish = function () {
+        if (fade !== fading) return;
         fade = null;
+        fading.cancel();
         if (stateText !== next) return;
-        paint();
-        stateEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, easing: 'linear' });
+        paint(next, live);
+        var rising = stateEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, easing: 'linear' });
+        fade = rising;
+        rising.onfinish = function () {
+          if (fade !== rising) return;
+          fade = null;
+          rising.cancel();
+        };
       };
     } else {
-      paint();
+      paint(next, live);
     }
   }
-  function writeState(next) {
+  function writeState(next, live) {
     if (next === 'fail') {
       stateEl.appendChild(document.createTextNode('保存失败，'));
       var retry = document.createElement('button');
@@ -151,6 +160,7 @@ export function attachComposerAutosave(composer, ta, m, draft) {
   composer.dropSaveState = function () {
     var at = ctx.updateListeners.indexOf(paintState);
     if (at >= 0) ctx.updateListeners.splice(at, 1);
+    if (fade) { fade.cancel(); fade = null; }
   };
 
   function commit() {

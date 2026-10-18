@@ -449,7 +449,9 @@ test('/sites/ page: list row and hover card show the stored target text as a pil
   await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
 
-  // 减动效：真实输入把状态换成尚未保存，不产生 80ms 淡出。
+  // 减动效：真实输入把状态换成尚未保存，不产生 80ms 淡出，文字不透明。
+  const pageErrors = [];
+  page.on('pageerror', (err) => pageErrors.push(String(err)));
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await page.evaluate((n) => window.pinpoint.openMark(n), stored.n);
   await expect(input).toBeVisible();
@@ -457,8 +459,13 @@ test('/sites/ page: list row and hover card show the stored target text as a pil
   await input.press('End');
   await input.pressSequentially('静');
   await expect(state).toHaveText('尚未保存');
-  const reduced = await state.evaluate((el) => el.getAnimations().map((a) => a.effect.getTiming().duration));
-  expect(reduced).not.toContain(80);
+  const reduced = await state.evaluate((el) => ({
+    durations: el.getAnimations().map((a) => a.effect.getTiming().duration),
+    opacity: getComputedStyle(el).opacity,
+  }));
+  expect(reduced.durations).not.toContain(80);
+  expect(Number(reduced.opacity)).toBeGreaterThan(0.9);
+  expect(pageErrors.filter((e) => /live is not defined/.test(e))).toEqual([]);
   await page.emulateMedia({ reducedMotion: 'no-preference' });
   await box.locator('#ann-close').click();
 });

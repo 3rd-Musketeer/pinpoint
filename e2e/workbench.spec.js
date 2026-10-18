@@ -2176,6 +2176,8 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
   });
 
   await test.step('框内状态位：回包前不是已保存，失败可重试，确认后才显示已保存', async () => {
+    const pageErrors = [];
+    page.on('pageerror', (err) => pageErrors.push(String(err)));
     await clickBadge(nA, cells.nth(0));
     const state = box.locator('#ann-save-state');
     await expect(state).toBeVisible();
@@ -2218,6 +2220,15 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
     await page.keyboard.press('End');
     await page.keyboard.type(' 失败');
     await expect(state).toHaveText('保存失败，重试');
+    await expect.poll(() => state.evaluate((el) => el.getAnimations().length)).toBe(0);
+    await expect(state).toHaveText('保存失败，重试');
+    const failVisible = await state.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return { opacity: getComputedStyle(el).opacity, hit: !!(hit && el.contains(hit)) };
+    });
+    expect(Number(failVisible.opacity)).toBeGreaterThan(0.9);
+    expect(failVisible.hit).toBe(true);
     await page.unroute('**/save');
     await expect(state.locator('.ann-save-retry')).toBeFocused({ timeout: 1000 }).catch(() => {});
     await state.locator('.ann-save-retry').focus();
@@ -2276,7 +2287,17 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
     expect(anims[0].props.flat()).toContain('opacity');
     expect(anims[0].props.flat()).not.toContain('transform');
     await expect(state).toHaveAttribute('aria-live', 'polite');
-    await expect(state).toHaveText('已保存');
+    await expect.poll(() => state.evaluate((el) => el.getAnimations().length)).toBe(0);
+    await expect(state).toHaveText('尚未保存');
+    const shown = await state.evaluate((el) => {
+      const r = el.getBoundingClientRect();
+      const hit = el.ownerDocument.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2);
+      return { opacity: getComputedStyle(el).opacity, hit: !!(hit && (hit === el || el.contains(hit))), fills: el.getAnimations().map((a) => a.effect.getTiming().fill) };
+    });
+    expect(Number(shown.opacity)).toBeGreaterThan(0.9);
+    expect(shown.hit).toBe(true);
+    expect(shown.fills).not.toContain('forwards');
+    expect(pageErrors.filter((e) => /live is not defined|save-state|ann-save/.test(e))).toEqual([]);
 
     // 减动效下同一条切换不再淡出，文字直接换成尚未保存。画布标注框在 iframe 里，
     // emulateMedia 不一定进得去，所以这里只断言结果：没有新的 80ms 淡出。
