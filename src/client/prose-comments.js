@@ -264,6 +264,7 @@ export function startProseComments(options) {
     hooks: {
       renderRail: function () { railApi.renderRail(); },
       hold: function (id) { railApi.hold(id); },
+      reveal: function (card, target) { railApi.reveal(card, target); },
       enqueue: function (op) { sync.prose.enqueue(op); },
     },
   });
@@ -303,9 +304,11 @@ export function startProseComments(options) {
     syncFocusClasses();
     var area = railArea(rail, id);
     if (area) {
-      // 卡片已经按锚点排好。focus() 默认会把页面滚到输入框，宽屏下不必滚。
+      // 卡片顶对齐引文，不代表卡片末尾的回复框也在视口里。focus 不许自己滚
+      // （长卡片会把页面拽走），框在视口外时只滚到框。
       area.focus({ preventScroll: true });
       try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
+      railApi.reveal(area.closest('.pp-thread'), area);
     }
   }
 

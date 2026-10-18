@@ -465,6 +465,117 @@ test('卡片顶部在视口里并且露出一行，点高亮不滚页面', async
   }
 });
 
+// 把卡片顶滚到视口下沿以上 exposed 像素处。滚完右栏会重排一次，所以分两步。
+async function exposeCardTop(page, id, exposed) {
+  await page.evaluate((cardId) => {
+    const card = document.querySelector('.pp-thread[data-id="' + cardId + '"]');
+    window.scrollTo(0, card.getBoundingClientRect().top + window.scrollY - 200);
+  }, id);
+  await page.evaluate(({ cardId, shown }) => {
+    const top = document.querySelector('.pp-thread[data-id="' + cardId + '"]').getBoundingClientRect().top;
+    window.scrollBy(0, Math.round(top - (window.innerHeight - shown)));
+  }, { cardId: id, shown: exposed });
+  await expect.poll(() => page.evaluate(({ cardId, shown }) => {
+    const card = document.querySelector('.pp-thread[data-id="' + cardId + '"]');
+    const running = card.getAnimations().some((anim) => anim.transitionProperty === 'top' && anim.playState === 'running');
+    const top = card.getBoundingClientRect().top;
+    return !running && top > window.innerHeight - shown - 4 && top < window.innerHeight - shown + 4;
+  }, { cardId: id, shown: exposed })).toBe(true);
+}
+
+test('卡片顶部只露出约 50px，点高亮不滚；露出不到一行才滚', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const art = articleDir('edge');
+  fs.mkdirSync(art.project, { recursive: true });
+  const lowered = articleSource().replace('<p id="p6">', '<p id="p6" style="margin-top:1400px">');
+  fs.writeFileSync(art.source, lowered);
+  try {
+    const doc = await (await request.get(`/annotations/@prose?entry=${art.pageId}`)).json();
+    const saved = await request.post('/save', {
+      data: {
+        entry: art.pageId, page: '@prose', path: '/', baseRevision: doc.revision,
+        annotations: [rowOf('deep', 1, PARAS[5], '长正文'.repeat(60), undefined, art.article)],
+      },
+    });
+    expect(saved.ok()).toBe(true);
+    await openArticle(page, art.article);
+    await alignedGeometry(page);
+
+    // 50px 比一行多，比旧判定要求的 64px 少。点高亮不该把正在看的正文拉走。
+    await exposeCardTop(page, 'deep', 50);
+    const shown = await page.evaluate(() => {
+      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+      return window.innerHeight - top;
+    });
+    expect(shown).toBeGreaterThanOrEqual(40);
+    expect(shown).toBeLessThan(64);
+    const scrollAt50 = await page.evaluate(() => window.scrollY);
+    await page.locator('mark.pp-hl[data-ids~="deep"]').click();
+    await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
+    await page.waitForTimeout(300); // 静默窗口：旧的 64px 判定会在这一拍里滚页
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollAt50);
+
+    // 露出不到一行：点高亮才滚，滚完顶部回到视口里。
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.pp-thread.on')).toHaveCount(0);
+    await exposeCardTop(page, 'deep', 30);
+    const short = await page.evaluate(() => {
+      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+      return window.innerHeight - top;
+    });
+    expect(short).toBeLessThan(40);
+    const scrollAt30 = await page.evaluate(() => window.scrollY);
+    await page.locator('mark.pp-hl[data-ids~="deep"]').click();
+    await expect(page.locator('.pp-thread[data-id="deep"]')).toHaveClass(/on/);
+    await expect.poll(() => page.evaluate((before) => {
+      const top = document.querySelector('.pp-thread[data-id="deep"]').getBoundingClientRect().top;
+      return top < window.innerHeight - 40 && window.scrollY !== before;
+    }, scrollAt30), { timeout: 5_000 }).toBe(true);
+  } finally {
+    fs.rmSync(art.project, { recursive: true, force: true });
+    fs.rmSync(art.ledger, { force: true });
+    await closeSettled(page);
+  }
+});
+
+test('长线程折叠着直接点“回复”，输入框滚进视口', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const art = articleDir('reply');
+  fs.mkdirSync(art.project, { recursive: true });
+  fs.writeFileSync(art.source, articleSource());
+  try {
+    const doc = await (await request.get(`/annotations/@prose?entry=${art.pageId}`)).json();
+    const saved = await request.post('/save', {
+      data: {
+        entry: art.pageId, page: '@prose', path: '/', baseRevision: doc.revision,
+        annotations: [
+          rowOf('long', 1, PARAS[0], '第一条只写一句', {
+            messages: [{ who: 'agent', text: '很长的回复需要逐行阅读。'.repeat(160), at: '2026-10-18T00:00:00.000Z' }],
+          }, art.article),
+        ],
+      },
+    });
+    expect(saved.ok()).toBe(true);
+    await openArticle(page, art.article);
+    await alignedGeometry(page);
+    const button = page.locator('.pp-thread[data-id="long"] [data-act="open-reply"]');
+    const buttonBox = await button.boundingBox();
+    expect(buttonBox.y).toBeGreaterThanOrEqual(0);
+    expect(buttonBox.y + buttonBox.height).toBeLessThanOrEqual(900);
+    await button.click();
+    const area = page.locator('textarea[data-reply="long"]');
+    await expect(area).toBeFocused();
+    await expect.poll(() => area.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return box.top >= 72 && box.bottom <= window.innerHeight;
+    })).toBe(true);
+  } finally {
+    fs.rmSync(art.project, { recursive: true, force: true });
+    fs.rmSync(art.ledger, { force: true });
+    await closeSettled(page);
+  }
+});
+
 test('选中后重画的卡片从旧 top 过渡到新 top，新卡片不从 0 飞入', async ({ page, request }) => {
   test.setTimeout(180_000);
   const art = articleDir('motion');
