@@ -576,6 +576,69 @@ test('长线程折叠着直接点“回复”，输入框滚进视口', async ({
   }
 });
 
+test('被挤开的评论直接进编辑，过渡结束后编辑框仍看得见', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const art = articleDir('pushed');
+  fs.mkdirSync(art.project, { recursive: true });
+  fs.writeFileSync(art.source, articleSource());
+  try {
+    const doc = await (await request.get(`/annotations/@prose?entry=${art.pageId}`)).json();
+    const saved = await request.post('/save', {
+      data: {
+        entry: art.pageId, page: '@prose', path: '/', baseRevision: doc.revision,
+        annotations: Array.from({ length: 8 }, (_, i) => rowOf(
+          'p' + i, i + 1, PARAS[0],
+          i === 7 ? '最后一条需要修改' : '占位长评论'.repeat(35),
+          undefined, art.article,
+        )),
+      },
+    });
+    expect(saved.ok()).toBe(true);
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
+    await openArticle(page, art.article);
+    await alignedGeometry(page);
+    // 最后一条没被选中，被前面七张推到引文以下很远。滚到它再点。
+    await page.evaluate(() => {
+      document.body.style.paddingBottom = '4000px';
+      const body = document.querySelector('.pp-thread[data-id="p7"] .text[data-edit]');
+      const box = body.getBoundingClientRect();
+      window.scrollTo(0, box.top + window.scrollY - 500);
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const body = document.querySelector('.pp-thread[data-id="p7"] .text[data-edit]');
+      const running = body.closest('.pp-thread').getAnimations()
+        .some((anim) => anim.transitionProperty === 'top' && anim.playState === 'running');
+      const box = body.getBoundingClientRect();
+      return !running && box.top > 400 && box.bottom < 700;
+    })).toBe(true);
+    await page.locator('.pp-thread[data-id="p7"] .text[data-edit]').click();
+    const area = page.locator('.pp-thread[data-id="p7"] textarea.pp-edit');
+    await expect(area).toBeFocused();
+    // 等 top 过渡跑完再量。进编辑时卡片还在旧位置，过渡结束才落到引文旁。
+    await expect.poll(() => page.evaluate(() => {
+      const card = document.querySelector('.pp-thread[data-id="p7"]');
+      return !card.getAnimations().some((anim) => anim.transitionProperty === 'top' && anim.playState === 'running');
+    })).toBe(true);
+    const seen = await area.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      let opacity = 1;
+      for (let node = el; node; node = node.parentElement) opacity *= Number(getComputedStyle(node).opacity);
+      const y = (box.top + box.bottom) / 2;
+      const hit = document.elementFromPoint(box.left + 20, y);
+      return { top: box.top, bottom: box.bottom, opacity, hit: hit === el || el.contains(hit) };
+    });
+    // 页头占 72px，滚动按它留白；亚像素取整会差一两个像素，框要在视口里。
+    expect(seen.top).toBeGreaterThanOrEqual(0);
+    expect(seen.bottom).toBeLessThanOrEqual(900);
+    expect(seen.opacity).toBe(1);
+    expect(seen.hit).toBe(true);
+  } finally {
+    fs.rmSync(art.project, { recursive: true, force: true });
+    fs.rmSync(art.ledger, { force: true });
+    await closeSettled(page);
+  }
+});
+
 test('长评论滚到末尾再进编辑，末尾那一行仍看得见', async ({ page, request }) => {
   test.setTimeout(180_000);
   const art = articleDir('longedit');

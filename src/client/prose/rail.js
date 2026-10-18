@@ -294,7 +294,12 @@ export function createRail(opts) {
     var top = list.getBoundingClientRect().top + (parseFloat(card.style.top) || 0);
     var el = target && target.isConnected ? target : card;
     var elTop = el === card ? top : top + (el.getBoundingClientRect().top - card.getBoundingClientRect().top);
-    var box = seen ? seen : { top: elTop, bottom: elTop + el.offsetHeight };
+    // 光标那一行是按此刻的渲染位置量的。卡片 top 还在过渡，渲染位置不是最终位置：
+    // 按最终 top 平移这一行，不然过渡结束它已经在视口外，这里却判断不用滚。
+    var shift = el.getBoundingClientRect().top - elTop;
+    var box = seen
+      ? { top: seen.top - shift, bottom: seen.bottom - shift }
+      : { top: elTop, bottom: elTop + el.offsetHeight };
     var viewTop = 72;
     var viewBottom = window.innerHeight;
     // 要看的那一块顶部在视口里、并且至少露出一行（约 40px）就不滚。
