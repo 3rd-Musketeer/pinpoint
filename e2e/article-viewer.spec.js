@@ -269,6 +269,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     await page.locator('[data-pp-canvas][data-pp-section="confirm"]').scrollIntoViewIfNeeded();
     await page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');
+    await expect.poll(() => page.evaluate(() => document.querySelector('.ov-panel').getAnimations().every((a) => a.playState === 'finished'))).toBe(true);
     const panel = await overlay(page).locator('.ov-panel').boundingBox();
     expect([panel.x, panel.y, panel.width, panel.height]).toEqual([0, 0, 390, 844]);
     expect(await page.evaluate(() => document.documentElement.scrollWidth)).toBeLessThanOrEqual(390);

@@ -245,6 +245,11 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-body { position:relative; flex:1; min-height:0; background:var(--pp-surface); }
 /* 工作台自己管深浅色（跟系统），iframe 不继承站点的 color-scheme，免得浏览器给它铺一层不透明底色。 */
 .ov-canvas { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; color-scheme:normal; }
+/* 加载态盖在画布上，不另起计时器：板和预览都就绪才收，失败时同处换成“重试”。 */
+.ov-status { position:absolute; inset:0; z-index:2; margin:0; display:grid; place-items:center; gap:12px;
+             background:var(--pp-surface); color:var(--pp-text-muted); font-size:var(--pp-fs-ui); }
+.ov-status[hidden] { display:none; }
+.ov-status .ov-retry { height:36px; padding:0 16px; }
 @media (max-width:600px) {
   /* 手机：整屏的 sheet。 */
   .pp-ov { padding:0; }

@@ -65,6 +65,8 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 - 内容：一份嵌入版工作台，`/workbench/?page=<页 id>&section=<节 id>&embed=overlay`（`canvas-overlay.js` 的 `embedCanvasSrc`）。画布上能做的这里都能做：交互、标注、平移、缩放、大纲、标注列表。HTML 活卡片上按住空格拖动或用中键拖动都平移画布，页面不接收这次手势，松开恢复交互。嵌入版不出左栏、左栏开关和“← 文章标题”（`src/workbench/embed.js`，样式挂在 `html.wb-embed`）。第一次打开时装上，关了也留着，再开不重装，直接定位。
 - 头部：节号、节标题（跟着画布当前所在的节换）、“整页打开”（离开正文，同一标签页开画布视图的这一节）、关闭。
+- 点开后立刻显示头部和「正在准备画布…」，不等动画播完再装 iframe。板和预览都就绪（`whenBoardSettled`、`whenPreviewsSettled`）后收起；任一信号落成失败时同处显示「重试」，不另起超时计时器。再开时 iframe 还在，不再显示准备态。
+- 面板进入：opacity 0→1、`scale(.985)`→1，140ms、`cubic-bezier(.2,.8,.2,1)`，`transform-origin` 按入口在视口的上、中、下三段取顶、中、底。退出 100ms，从当前呈现值反向，途中可再开。缩放只作用在 `.ov-panel`。减少动态效果时只做 80ms 淡入淡出。
 - 定位：节由地址里的 `&section=` 落点（再开时调 `workbench.focusSection`）；从帧进来再 `workbench.focusFrame` 到那一帧；从右栏的画布标注进来，等画布标注客户端水合完、认得这个 `#n`，再 `pinpoint.goToMark` 跳过去并打开它，与工作台标注列表点行同一条路。HTML 帧上的标注地址带帧与钉子：先定位到画布上的卡片，等卡片自己的标注客户端水合（`workbench.cardAnnotateApi(<帧>)`），再在活卡片里定位并打开钉子。再开浮层时，上回开着的页面浮层先关掉。工作台或账本 20 秒内没好就只开着画布，不再定位。
 - 地址：`#canvas=<节 id>[&frame=<帧 id>][&ann=<#n>]`（按 URLSearchParams 解析，`canvas-overlay.js` 的 `canvasHash` / `parseCanvasHash`）。旧链接中的 `view=frame` 按未知参数忽略，照常打开整张画布并定位到帧。打开时压一条历史，后退就关，前进再打开。直接带这个 hash 打开文章（刷新、分享）也会打开浮层，这时关闭只去掉 hash，不离开文章。画布里换了节（平移、大纲、定位），停稳 300 ms 后用 replaceState 把 hash 和头部换成那一节，不多压历史。旧地址 `#overlay=<节 id>[&frame=<帧 id>]` 照样打开，打开时改写成 `#canvas=`。
 - 关闭：Esc、点面板外的暗色区域、关闭按钮。焦点在画布里时，Esc 先归画布里的那一层（页面浮层、标注框、标注列表、大纲、菜单、对话框、导航器、标注模式），没有这些层时工作台经 `postMessage`（`source: "pinpoint-workbench"`，同源）请文章页关浮层；画布选中不算一层。关闭后焦点回到点开它的入口。
@@ -114,5 +116,5 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/site-errors.js`：布局错误在站点上怎么显示。错误从 `listProjects` 到内容集合一路是对象（`src/shared/project-errors.js`），这里拼成 `project "<id>": …` 一行；文章页的错误条按 `path` 分出这篇自己的错误。
 - `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
-- `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
+- `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节；`overlay-motion.js`：转场参数与 transform-origin（纯函数，有单测）。`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
 - `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、窄屏目录入口、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数；`src/lib/toc-jump.js`：目录跳转的落点与动效参数（纯函数，有单测）。

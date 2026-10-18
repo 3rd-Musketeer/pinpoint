@@ -9,6 +9,7 @@
 import { canvasHref } from './canvas-card.js';
 import { installLayerKeys, layers } from './layers.js';
 import { canvasHash, embedCanvasSrc, embedMessage, entrySection, parseCanvasHash } from './canvas-overlay.js';
+import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
 
 // 等工作台装好、标注账本水合完的上限：到点还没好就只开着画布，不再定位。
 const READY_WAIT_MS = 20_000;
@@ -26,6 +27,7 @@ export function initCanvasOverlay() {
   const el = {
     kind: $('[data-ov-kind]'), num: $('[data-ov-num]'), title: $('[data-ov-title]'),
     canvas: $('[data-ov-canvas]'), close: $('[data-ov-close]'), body: $('[data-ov-body]'),
+    panel: dlg.querySelector('.ov-panel'), status: $('[data-ov-status]'),
   };
   const ids = cards.map((c) => c.dataset.ppSection);
   const order = [...document.querySelectorAll('section.sec[id]')].map((s) => s.id);
@@ -35,6 +37,7 @@ export function initCanvasOverlay() {
   let state = null;
   let iframe = null;
   let navigation = 0;   // 每次打开 / 换落点加一：上一次还在等工作台的定位作废
+  let openEpoch = 0;    // 每次打开加一，关闭再加一：进行中的加载态观察作废
 
   const frameOf = (sectionId, frameId) => (frameId
     ? [...(cardOf(sectionId)?.querySelectorAll('.cc-frame[data-screen]') || [])].find((f) => f.dataset.screen === frameId) || null
@@ -89,9 +92,27 @@ export function initCanvasOverlay() {
     return false;
   }
 
+  // 板和预览都就绪才收起「正在准备画布…」。两个信号都落成 true 才算好；会话被替换会先落一次 false，
+  // 接着等下一次。连续多次都是 false 才在同处显示「重试」，不另起超时计时器。
+  // 关闭把 openEpoch 抬过这次，进行中的观察作废。land 抬的是 navigation，不碰它。
+  async function watchReady(epoch) {
+    let misses = 0;
+    while (epoch === openEpoch && state) {
+      const wb = frameWin()?.workbench;
+      if (wb) {
+        const board = await wb.whenBoardSettled();
+        const previews = await wb.whenPreviewsSettled();
+        if (epoch !== openEpoch || !state) return;
+        if (board && previews) { showStatus(''); return; }
+        if (++misses >= 8) { showStatus('retry'); return; }
+      }
+      await new Promise((r) => setTimeout(r, POLL_MS));
+    }
+  }
+
   // 定位：节 → 帧（定位并选中）→ 钉子。
-  async function land({ section, frame, ann, fresh }) {
-    const nav = ++navigation;
+  async function land({ section, frame, ann, fresh }, nav) {
+    navigation = nav;
     if (!(await boardReady(nav))) { landed(nav, ''); return; }
     if (document.activeElement === el.close) iframe.focus({ preventScroll: true });
     const wb = frameWin().workbench;
@@ -128,6 +149,52 @@ export function initCanvasOverlay() {
     if (state) state.landed = true;
   }
 
+  // ---- 加载态 ----
+  // mode：'' 收起；'loading' 正在准备；'retry' 同处换成重试。
+  function showStatus(mode) {
+    const s = el.status;
+    if (!s) return;
+    if (!mode) { s.hidden = true; s.replaceChildren(); return; }
+    s.hidden = false;
+    s.replaceChildren();
+    if (mode === 'loading') { s.textContent = '正在准备画布…'; return; }
+    s.append('画布没有准备好');
+    const retry = document.createElement('button');
+    retry.type = 'button';
+    retry.className = 'btn ov-retry';
+    retry.textContent = '重试';
+    retry.addEventListener('click', () => {
+      if (!state || !iframe) return;
+      showStatus('loading');
+      iframe.src = embedCanvasSrc(pageId, state.section);
+      const nav = ++navigation;
+      watchReady(++openEpoch);
+      land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
+    });
+    s.append(retry);
+  }
+
+  // ---- 转场 ----
+  // 缩放只作用在 .ov-panel 上，不作用在工作台的 .wb-stage-wrap。途中再关从当前呈现值反向，不锁关闭按钮。
+  let playing = null;
+  let closing = false;
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const presented = () => {
+    const cs = getComputedStyle(el.panel);
+    const m = new DOMMatrix(cs.transform);
+    return { opacity: cs.opacity, transform: reduced() ? 'none' : `scale(${m.a || 1})` };
+  };
+  const play = (show, ms) => {
+    // 还在播的（退出途中再开）从当前呈现值起。播完的 fill 停在收起的样子，再开要从 0 走。
+    const from = el.panel.getAnimations().some((a) => a.playState === 'running') ? presented() : null;
+    playing?.cancel();
+    const fade = reduced();
+    const end = { opacity: show ? 1 : 0, transform: fade ? 'none' : `scale(${show ? 1 : OV_SCALE})` };
+    const start = from || { opacity: show ? 0 : 1, transform: fade ? 'none' : `scale(${show ? OV_SCALE : 1})` };
+    playing = el.panel.animate([start, end], { duration: fade ? OV_REDUCED_MS : ms, easing: OV_EASE, fill: 'both' });
+    return playing.finished.catch(() => {});
+  };
+
   // ---- 打开 / 关闭 ----
   function open(sectionId, { frame = '', ann = null, trigger = null, pushed = false } = {}) {
     if (!cardOf(sectionId)) return false;
@@ -137,7 +204,15 @@ export function initCanvasOverlay() {
       state = { section: sectionId, trigger, pushed, scrollX: window.scrollX, scrollY: window.scrollY };
       state.release = layers.push('overlay', () => close());
       document.documentElement.classList.add('pp-ov-lock');
+      const r = trigger?.getBoundingClientRect();
+      el.panel.style.transformOrigin = overlayOrigin(r ? r.top + r.height / 2 : innerHeight / 2, innerHeight);
+      closing = false;
       dlg.showModal();
+      play(true, OV_OPEN_MS);
+    } else if (closing) {
+      // 退出还没播完就再开：从当前呈现值反向，不从 0 重播。
+      closing = false;
+      play(true, OV_OPEN_MS);
     } else {
       state.section = sectionId;
     }
@@ -146,19 +221,26 @@ export function initCanvasOverlay() {
     state.landed = false;
     setHeader(sectionId);
     const fresh = ensureFrame(sectionId);
+    if (fresh) showStatus('loading');
+    const nav = navigation + 1;
+    if (fresh) watchReady(++openEpoch);
     // 工作台装好之前焦点留在文章页（关闭钮）：这时按 Esc 由文章页关浮层；装好后再把焦点交给画布（land）。
     if (fresh) el.close.focus({ preventScroll: true });
     else iframe.focus({ preventScroll: true });
-    land({ section: sectionId, frame, ann, fresh });
+    land({ section: sectionId, frame, ann, fresh }, nav);
     return true;
   }
 
   function teardown() {
     const s = state;
     state = null;
+    closing = false;
     navigation += 1;
+    openEpoch += 1;
     s.release?.();
     dlg.close();
+    // 动画留着：fill:both 停在收起的样子，途中再开时 play 从它的当前值接着走。
+    playing = null;
     delete dlg.dataset.ppSection;
     document.documentElement.classList.remove('pp-ov-lock');
     restore(s);
@@ -173,8 +255,7 @@ export function initCanvasOverlay() {
   }
 
   let pendingRestore = null;
-  function close({ fromHistory = false } = {}) {
-    if (!state) return;
+  function finishClose(fromHistory) {
     const s = teardown();
     if (fromHistory) return;
     if (s.pushed) {
@@ -184,6 +265,15 @@ export function initCanvasOverlay() {
     } else {
       history.replaceState(history.state, '', location.pathname + location.search);
     }
+  }
+
+  // 退出 100ms，从当前呈现值反向，途中可打断（再开把 closing 清掉，播完不再关）。
+  // 后退已经把浮层收掉了，不再补一段看不见的动画。
+  function close({ fromHistory = false } = {}) {
+    if (!state || closing) return;
+    if (fromHistory || reduced()) { finishClose(fromHistory); return; }
+    closing = true;
+    play(false, OV_CLOSE_MS).then(() => { if (closing) finishClose(false); });
   }
 
   // ---- 入口 ----
