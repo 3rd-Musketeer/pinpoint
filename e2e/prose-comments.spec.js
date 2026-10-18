@@ -482,10 +482,11 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
       const anchor = mark ? mark.getBoundingClientRect().top : card.top;
       return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, gap: card.top - anchor };
     });
+    const scrollBeforeEdit = await page.evaluate(() => window.scrollY);
     await firstText().click();
     await expect(editBox()).toBeFocused();
     await expect(editBox()).toHaveValue('收款方写简称');
-    // 点进编辑会把超出视口的卡片滚进来。等卡片顶部连续两帧不变再比，比的是卡片自己没挪。
+    // 点进编辑会重画并在下一帧写 top。等卡片顶部连续两帧不变再比，比的是卡片自己没挪。
     await expect.poll(() => editBox().evaluate(async (el) => {
       const a = el.closest('.pp-thread').getBoundingClientRect().top;
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
@@ -500,8 +501,14 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
       return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, cardTop: card.top, gap: card.top - anchor };
     });
     expect([during.fontSize, during.lineHeight]).toEqual([metricsBefore.fontSize, metricsBefore.lineHeight]);
-    // 宽屏点进编辑会滚页面，视口坐标会变；卡片相对它引用的那段不变。
+    // 卡片相对它引用的那段不变，页面也不滚，输入框还在视口里。
     expect(Math.abs(during.gap - metricsBefore.gap)).toBeLessThanOrEqual(1);
+    expect(await page.evaluate(() => window.scrollY)).toBe(scrollBeforeEdit);
+    const editBoxInView = await editBox().evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      return box.top >= 0 && box.bottom <= window.innerHeight && box.height > 0;
+    });
+    expect(editBoxInView).toBe(true);
   });
 
   await test.step('⌘/Ctrl+Enter 保存：右栏与账本都是新字，状态回 open，ppnt comments 读到', async () => {
@@ -723,7 +730,9 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     await expect(box).toHaveText('过期和失效放在按钮上');
     await expect(lead).toHaveText('“过期” “失效”');
     const during = await stableBox(page, '.pp-thread[data-id="c:lead-two"] .pp-body.pp-edit');
-    expect(Math.abs(during.boxTop - before.boxTop), '正文顶部').toBeLessThanOrEqual(1);
+    // 三张画布标注锚在同一张卡片上，没选中时后面的被往下推。进编辑对齐锚点，
+    // 卡片的视口位置会变；比的是框相对卡片、卡片高度没变。
+    expect(Math.abs((during.boxTop - during.cardTop) - (before.boxTop - before.cardTop)), '正文相对卡片').toBeLessThanOrEqual(1);
     expect(Math.abs(during.cardHeight - before.cardHeight), '卡片高度').toBeLessThanOrEqual(2);
     await box.fill('写在按钮上');
     await box.press('ControlOrMeta+Enter');

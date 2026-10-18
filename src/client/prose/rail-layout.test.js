@@ -85,6 +85,33 @@ test('选中项上面有锚点缺失的卡片：缺失的贴着选中项往上�
   assert.deepEqual(tops(items, 'c'), [100, 156, 200]);
 });
 
+test('编辑中钉住 top：自己留在给定高度，上面变高往上挤，不和它重叠', () => {
+  const items = [
+    { id: 'a', anchor: 0, height: 100 },
+    { id: 'b', anchor: 40, height: 80 },
+    { id: 'c', anchor: 40, height: 60 },
+  ];
+  // 进入编辑前 b 被下推到 114。进入那一刻不钉，对齐锚点 40；a 高 100，挤到 40 - 14 - 100 = -74。
+  assert.deepEqual(placeRailCards(items, 'b', GAP, -300).map((p) => p.top), [-74, 40, 134]);
+  // 之后打字：钉在 40。a 长到 200，往上挤到 -174，不把 b 推走，也不和 b 重叠。
+  const grown = [
+    { id: 'a', anchor: 0, height: 200 },
+    { id: 'b', anchor: 40, height: 80 },
+    { id: 'c', anchor: 40, height: 60 },
+  ];
+  assert.deepEqual(placeRailCards(grown, 'b', GAP, -300, { pinTop: 40 }).map((p) => p.top), [-174, 40, 134]);
+  // 文档顶部只允许到 -50：a 叠在 -50，b 仍钉在 40。
+  assert.deepEqual(placeRailCards(grown, 'b', GAP, -50, { pinTop: 40 }).map((p) => p.top), [-50, 40, 134]);
+});
+
+test('钉住的卡片锚点没了：留在钉住的高度，不掉到上一张下面', () => {
+  const items = [
+    { id: 'a', anchor: 0, height: 50 },
+    { id: 'b', anchor: null, height: 40 },
+  ];
+  assert.deepEqual(placeRailCards(items, 'b', GAP, 0, { pinTop: 200 }).map((p) => p.top), [0, 200]);
+});
+
 test('选中项自己没有锚点：不当选中项钉，照普通下推', () => {
   const items = [
     { id: 'a', anchor: 0, height: 40 },

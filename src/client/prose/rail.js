@@ -4,6 +4,7 @@
 import { canvasRailItems, railOrder } from '../../shared/prose-thread.js';
 import { canvasThreadHtml, draftHtml, esc, threadHtml } from './html.js';
 import { placeRailCards } from './rail-layout.js';
+import { buildTextIndex, offsetsToSegments } from './text-index.js';
 import {
   editAreaOf,
   editFieldSelection,
@@ -27,21 +28,18 @@ export function createRail(opts) {
   var GAP = 14;
   var placeFrame = 0;
   var resizeObserver = null;
-  // 进编辑或展开回复框之前，那张卡的 top。重画会换掉节点，钉住它，打字变高只推下面的。
-  var pinnedId = null;
-  var pinnedTop = null;
+  // 正在编辑或回复的那张：进入的那一次对齐锚点（不钉），之后打字、SSE 重画都钉住这个 top。
+  // 重画会换掉节点，所以记在这里，不读卡片自己的 style。
+  var heldId = null;
+  var heldTop = null;
+  var heldPlaced = false;
 
-  function cardTop(id) {
-    var card = rail.querySelector('.pp-thread[data-id="' + (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"]');
-    if (!card || !card.style.top) return null;
-    var top = parseFloat(card.style.top);
-    return Number.isNaN(top) ? null : top;
-  }
-
-  /** 右栏即将因进入编辑或展开回复重画：先记下这张卡的 top，重画后钉在原地。 */
+  /** 右栏即将因进入编辑或展开回复重画。这一次按锚点排，不沿用碰撞推开的旧位置；
+   *  排完才记下 top，之后打字变高、SSE 推来回复都钉住它。 */
   function hold(id) {
-    pinnedId = id;
-    pinnedTop = cardTop(id);
+    heldId = id;
+    heldTop = null;
+    heldPlaced = false;
   }
 
   /** 正在编辑或正在回复的那张优先：打字变高时它自己的 top 不动，只推下面的。没有就用选中的。 */
@@ -59,6 +57,13 @@ export function createRail(opts) {
     // value 和选区不能恢复浏览器的 composition 会话；所有更新合并到组字结束后重画。
     if (state.composingArea && state.composingArea.isConnected) { state.railDirty = true; return; }
     state.railDirty = false;
+    // 重画会换掉卡片节点。先按 data-id 记下旧 top，新节点没有旧位置，过渡无从插值。
+    var prevTops = {};
+    var prevCards = rail.querySelectorAll('.pp-thread');
+    for (var p = 0; p < prevCards.length; p++) {
+      var prevTop = prevCards[p].style.top;
+      if (prevTop) prevTops[prevCards[p].getAttribute('data-id')] = prevTop;
+    }
     // 重画前记下输入框的内容与光标，重画后放回（SSE 推来 agent 回复时正在打字）。
     var keep = {};
     var active = document.activeElement;
@@ -115,8 +120,9 @@ export function createRail(opts) {
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
     // 新卡片当场排好再往下走：等下一帧才写 top，这一帧里所有卡片都叠在栏顶，
     // 接下来的 focus() 会把页面滚到栏顶（选中文字点“评论”跳走就是这个）。
+    // 还在的卡片先写回旧 top 再过渡到目标；新出现的没有旧 top，直接放在目标位置。
     if (placeFrame) { cancelAnimationFrame(placeFrame); placeFrame = 0; }
-    placeCards();
+    placeCards(prevTops);
     Object.keys(keep).forEach(function (id) {
       var area = railArea(rail, id);
       if (!area) return;
@@ -160,8 +166,25 @@ export function createRail(opts) {
     return wideQuery.matches;
   }
 
-  /** 这张卡的锚点相对右栏内容顶部的高度。正文评论取第一个 mark.pp-hl 的顶部，
-      画布标注取所属画布卡片的顶部。找不到（失效、卡片不在）返回 null。 */
+  /** 引文在规范化文本里的 start 换成正文里那段的顶部。已关闭的线程不画 mark，
+   *  但 state.anchors 里还有 start/end，用这个当锚点，不把它当成缺失。 */
+  function quoteTop(start, railTop) {
+    if (!Number.isFinite(start)) return null;
+    var index = buildTextIndex(root);
+    var segments = offsetsToSegments(start, start + 1, index);
+    if (!segments.length) return null;
+    var seg = segments[0];
+    var range = document.createRange();
+    range.setStart(seg.entry.node, seg.from);
+    range.setEnd(seg.entry.node, Math.min(seg.entry.node.data.length, seg.from + 1));
+    var rect = range.getBoundingClientRect();
+    if (!rect || (rect.top === 0 && rect.bottom === 0 && rect.height === 0)) return null;
+    return rect.top - railTop;
+  }
+
+  /** 这张卡的锚点相对右栏内容顶部的高度。正文评论取第一个 mark.pp-hl 的顶部；
+      没画高亮但引文还能定位的（已关闭、收着的）用引文位置。画布标注取所属画布卡片的顶部。
+      引文失效、卡片不在，返回 null。 */
   function anchorTop(card, railTop) {
     var id = card.getAttribute('data-id');
     if (id === '__draft') {
@@ -178,11 +201,14 @@ export function createRail(opts) {
       var ids = (marks[i].getAttribute('data-ids') || '').split(' ');
       if (ids.indexOf(id) >= 0) return marks[i].getBoundingClientRect().top - railTop;
     }
+    var hit = state.anchors && state.anchors.get(id);
+    if (hit && Number.isFinite(hit.start)) return quoteTop(hit.start, railTop);
     return null;
   }
 
-  /** 读当前布局、算出每张卡的 top，写回去。只读几何、只写 top，合并到一帧里做。 */
-  function placeCards() {
+  /** 读当前布局、算出每张卡的 top，写回去。只读几何、只写 top，合并到一帧里做。
+   *  fromTops：重画前按 data-id 记下的旧 top。有旧位置的先写回去、强制一次布局，再写目标，过渡才插值得到。 */
+  function placeCards(fromTops) {
     placeFrame = 0;
     var list = rail.querySelector('.pp-threads');
     if (!list) return;
@@ -202,23 +228,31 @@ export function createRail(opts) {
     }
     // 选中的卡片上面挤不下时，可以越过栏顶一直排到文档顶部：它自己必须留在锚点旁边。
     var docTop = -(railTop + window.scrollY);
-    var placed = placeRailCards(items, activeId(), GAP, docTop);
-    // 正在编辑或回复：这张卡钉在进编辑前的 top，打字变高只推下面的。选中本身不钉，
-    // 选中后卡片要落到锚点上。
+    // 正在编辑或回复，而且这一次已经按锚点排过：钉住那个 top。进入的第一次不钉，对齐锚点。
+    // 钉在排版之前定好，上面往上挤、下面往下推一次算完，不再先排好再整段平移。
     var pinId = (state.editingId != null || state.replyOpen.size > 0) ? activeId() : null;
-    var pinTop = pinId && pinId === pinnedId ? pinnedTop : null;
-    if (pinId && pinTop == null) pinTop = cardTop(pinId);
-    if (pinId && pinTop != null) {
+    var pinTop = null;
+    if (pinId && pinId === heldId && heldPlaced && heldTop != null) pinTop = heldTop;
+    if (!pinId) { heldId = null; heldTop = null; heldPlaced = false; }
+    var placed = placeRailCards(items, activeId(), GAP, docTop, pinTop == null ? undefined : { pinTop: pinTop });
+    if (pinId && pinId === heldId) {
       for (var h = 0; h < placed.length; h++) {
-        if (placed[h].id !== pinId) continue;
-        var shift = pinTop - placed[h].top;
-        if (shift) {
-          for (var t = h; t < placed.length; t++) placed[t].top += shift;
-        }
-        break;
+        if (placed[h].id === pinId) { heldTop = placed[h].top; heldPlaced = true; break; }
       }
     }
-    if (!pinId) { pinnedId = null; pinnedTop = null; }
+    var motion = !window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    var seed = fromTops && motion ? fromTops : null;
+    if (seed) {
+      var seeded = false;
+      for (var s = 0; s < cards.length; s++) {
+        var oldTop = seed[cards[s].getAttribute('data-id')];
+        if (!oldTop || oldTop === placed[s].top + 'px') continue;
+        cards[s].style.top = oldTop;
+        seeded = true;
+      }
+      // 强制一次布局：新节点先落在旧 top，下一行写目标 top 才有起点可插值。
+      if (seeded) void list.offsetHeight;
+    }
     var bottom = 0;
     for (var j = 0; j < cards.length; j++) {
       cards[j].style.top = placed[j].top + 'px';
@@ -232,7 +266,8 @@ export function createRail(opts) {
     placeFrame = requestAnimationFrame(placeCards);
   }
 
-  /** 正文高度、卡片高度、窗口尺寸变了就重排。观察者在重画时会暂时断开，避免写 top 触发自己。 */
+  /** 正文高度、卡片高度、窗口尺寸变了就重排。观察者一直看着，不在重画时断开：
+   *  排版只写 top 和容器高度，写完的这一轮回调合并进同一帧，不会自己再排一遍。 */
   function watchLayout() {
     if (typeof ResizeObserver !== 'function') {
       window.addEventListener('resize', schedulePlace);
@@ -258,8 +293,10 @@ export function createRail(opts) {
     var box = { top: top, bottom: top + card.offsetHeight };
     var viewTop = 72;
     var viewBottom = window.innerHeight - 24;
-    // 卡片顶部看得见就不滚：长卡片底部超出视口时滚页面，会把读者正在看的正文拽走。
-    if (box.top >= viewTop && box.top <= viewBottom - 120) return;
+    // 卡片顶部在视口里、并且至少露出一行可读内容（约 40px）就不滚。
+    // 长卡片底部超出视口时滚页面，会把读者正在看的正文拽走。
+    var readable = 40;
+    if (box.top >= viewTop && box.top + readable <= viewBottom) return;
     var delta = box.top < viewTop ? box.top - viewTop : Math.min(box.bottom - viewBottom, box.top - viewTop);
     window.scrollBy({ top: delta, left: 0 });
   }

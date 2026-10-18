@@ -16,9 +16,11 @@ function anchorMissing(anchor) {
  * gap 是卡片之间的间距。
  * minTop 是选中项往上挤时最高能挤到哪（同一参照）。不给就是 0（栏顶）；
  * 页面里传文档顶部（负数）：选中的那张要留在锚点上，上面挤不下的可以越过栏顶往上排。
+ * opts.pinTop：活动卡片已经在编辑或回复里，打字只让它变高。给了就钉在这个高度，
+ * 不再回到锚点；上面的往上挤，下面的从它的底边往下排。不给则活动卡片对齐锚点。
  * → [{ id, top }]，与 items 同序。
  */
-export function placeRailCards(items, activeId, gap, minTop) {
+export function placeRailCards(items, activeId, gap, minTop, opts) {
   var list = Array.isArray(items) ? items : [];
   var space = Number.isFinite(gap) ? gap : 0;
   var ceiling = Number.isFinite(minTop) ? minTop : 0;
@@ -34,15 +36,19 @@ export function placeRailCards(items, activeId, gap, minTop) {
   }
 
   var active = -1;
+  var pinning = opts && Number.isFinite(opts.pinTop);
   if (activeId != null) {
     for (i = 0; i < n; i++) {
-      if (list[i].id === activeId && !anchorMissing(list[i].anchor)) { active = i; break; }
+      // 正在编辑或回复且已经定过位置：即使这一下锚点没了（高亮被收起）也钉在原处，不掉到上一张下面。
+      if (list[i].id === activeId && (pinning || !anchorMissing(list[i].anchor))) { active = i; break; }
     }
   }
   if (active < 0) return list.map(function (item, k) { return { id: item.id, top: tops[k] }; });
 
-  // 选中的钉在锚点上。上面的从紧贴它的位置往上排。
-  tops[active] = list[active].anchor;
+  // 选中的钉在锚点上。正在编辑或回复、并且已经定过位置的，钉在那个高度，打字不再回锚点。
+  // 上面的从紧贴它的位置往上排；这一次就排完，不再事后把整段平移。
+  var pinTop = opts && Number.isFinite(opts.pinTop) ? opts.pinTop : null;
+  tops[active] = pinTop == null ? list[active].anchor : pinTop;
   var floor = tops[active];
   for (i = active - 1; i >= 0; i--) {
     var height = Math.max(0, list[i].height || 0);

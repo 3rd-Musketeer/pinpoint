@@ -303,7 +303,8 @@ export function startProseComments(options) {
     syncFocusClasses();
     var area = railArea(rail, id);
     if (area) {
-      area.focus();
+      // 卡片已经按锚点排好。focus() 默认会把页面滚到输入框，宽屏下不必滚。
+      area.focus({ preventScroll: true });
       try { area.setSelectionRange(area.value.length, area.value.length); } catch (e) { /* */ }
     }
   }

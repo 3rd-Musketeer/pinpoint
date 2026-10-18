@@ -66,9 +66,11 @@ export function createEdit(opts) {
     var area = editAreaOf(rail, key);
     if (!area) { state.editingId = null; return; }
     growEdit(area);
-    area.focus();
+    // 先把光标放到末尾再聚焦。反过来：focus 时光标还在开头，浏览器会把页面滚到那里，
+    // preventScroll 也压不住。卡片已经按锚点排好，宽屏下不必滚。
     var len = editFieldText(area).length;
     setEditFieldSelection(area, len, len);
+    area.focus({ preventScroll: true });
   }
 
   /** 收束编辑：写了新字就入队 edit（onChange 会重画），清空或没改就恢复原文，框不在了只退出。 */
