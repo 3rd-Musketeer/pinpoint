@@ -340,11 +340,20 @@ mark.pp-hl.pp-hover:not(.on) { background:color-mix(in srgb, var(--pp-highlight-
 .pp-rail-note { color:var(--pp-warning); font-size:var(--pp-fs-xs); margin:0; }
 .pp-rail-note:empty { display:none; }
 
-/* wiki 抽屉 */
-.drawer { position:fixed; right:20px; bottom:20px; z-index:30; width:320px; max-height:60vh; overflow:auto; background:var(--pp-bg); border:1px solid var(--pp-border);
-          border-radius:var(--pp-r-4); box-shadow:var(--pp-sh-3); padding:16px 18px; font-size:var(--pp-fs-sm); }
+/* wiki 面板：锚在顶栏 wiki 按钮右下角（client.js 写 left / top），宽 320，高不超过 min(60dvh, 480px)。
+   窄屏宽 calc(100vw - 24px)，贴左缘，不盖住顶栏。打开 opacity + translateY(-6px)，见 client.js 的动画。 */
+.drawer { position:fixed; left:12px; top:0; z-index:30; width:320px; max-height:min(60dvh, 480px); overflow:auto; background:var(--pp-bg); border:1px solid var(--pp-border);
+          border-radius:var(--pp-r-4); box-shadow:var(--pp-sh-3); padding:12px 18px 16px; font-size:var(--pp-fs-sm); }
 .drawer[hidden] { display:none; }
+.drawer-head { display:flex; align-items:center; gap:8px; margin:0 0 10px; }
+.drawer-title { flex:1; min-width:0; margin:0; font-size:var(--pp-fs-sm); font-weight:600; line-height:1.2; }
+.btn.drawer-x { width:28px; height:28px; padding:0; display:inline-grid; place-items:center; font-size:var(--pp-fs-lg); line-height:1; flex:none; }
+.btn.drawer-x:focus-visible { outline:2px solid var(--pp-focus-ring); outline-offset:1px; }
 .drawer h3 { font-size:var(--pp-fs-sm); margin:0 0 8px; }
+/* 窄屏（与画布浮层的整屏 sheet 同一档）：宽 calc(100vw - 24px)，贴左缘，不盖住顶栏。 */
+@media (max-width:600px) {
+  .drawer { width:calc(100vw - 24px); }
+}
 .drawer ul, .list { list-style:none; margin:0 0 14px; padding:0; }
 .drawer li, .list li { display:flex; justify-content:space-between; gap:8px; padding:5px 0; border-top:1px solid var(--pp-border); }
 .drawer li:first-child, .list li:first-child { border-top:0; }

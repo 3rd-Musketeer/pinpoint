@@ -25,7 +25,7 @@ pinpoint 服务这样拉起：`PINPOINT_SITE_VITE_BASE=/_astro/ npm run -s site:
 | --- | --- |
 | `/` | 首页：所有登记 project 的全部文章，最近改过的在前；每条标题、summary、project 小标签（进 `/<project>/`）、日期。排序规则见 `docs/projects.md`“首页” |
 | `/<project>/` | project 首页：这个 project 的文章列表、wiki 词条、空 ref 列表 |
-| `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、wiki 抽屉 |
+| `/<project>/<article>/` | 文章：顶栏从“全部文章”起、不显示 project 标题，project 是标题下的小标签，标签页标题只有文章标题；左目录（sections）、正文、右评论栏（`[data-pp-rail]`，经 pinpoint 打开时由注入的标注客户端填，见 `docs/annotation.md`“正文评论”）、wiki 面板 |
 | `/<project>/wiki/` | 这个 project 的 wiki 词条列表 |
 | `/<project>/wiki/<名字>/` | wiki 词条：状态、定义、正文、用到它的文章。旧地址 `/<project>/concepts/<名字>/` 由服务 301 到这里（`src/server/lib/article-routes.js`），不经站点 |
 | `/<project>/llms.txt` | agent 视图：全部文章 MDX 原文（保留 `[[ ]]`）与 wiki 词条 |
@@ -48,7 +48,7 @@ frontmatter：`title`（缺省用 id）、`summary`（导语，也是 popup 和�
 - `[[project:名字]]`：别的 project；前缀不是已登记的 project id 时，整串当名字。
 - `[[名字|显示文字]]`：换显示文字。
 - 样式：已有页的引用是强调色字加左侧实心圆点，不画下划线，悬停和键盘焦点时加强调浅底；找不到目标的是空 ref：灰字、虚线下划线、空心圆点，虚线是两者的区分。
-- 找不到目标的是空 ref：列在 project 首页、`llms.txt` 和文章的 wiki 抽屉里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和 wiki 词条正文里写的都算。代码里的 `[[ ]]` 不解析。
+- 找不到目标的是空 ref：列在 project 首页、`llms.txt` 和文章的 wiki 面板里。首页和 `llms.txt` 的列表出自同一个函数（`site-data.js` 的 `projectEmptyRefs`），文章和 wiki 词条正文里写的都算。代码里的 `[[ ]]` 不解析。
 
 popup：article 显示标题、摘要、读全文；wiki 词条显示定义、状态、用到它的文章；空 ref 显示“空 ref”标记和一句说明（`client.js` 里的界面文案）。
 
@@ -76,7 +76,15 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 ## 弹层与 Esc
 
-`lib/layers.js` 是文章页的弹层栈：popup、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 不会扔掉写了一半的评论。
+`lib/layers.js` 是文章页的弹层栈：popup、wiki 面板、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 或 wiki 面板不会扔掉写了一半的评论。
+
+## wiki 面板
+
+顶栏的 wiki 按钮打开（`lib/client.js` 的 `initWikiPanel`，列表仍是 `Base.astro` 的 `#drawer`）。桌面锚在按钮右下角、间距 8px、宽 320、高不超过 `min(60dvh, 480px)`，贴着视口边时往里收、至少留 12px；窄屏（≤ 600px）宽 `calc(100vw - 24px)`，贴左缘，顶在顶栏下沿之下，不盖住顶栏的按钮。头是标题和 28px 关闭按钮，由脚本补上。
+
+- 关闭：Esc、点面板外、关闭按钮、再点一次 wiki 按钮。关闭后焦点回 wiki 按钮。Esc 只关最上层：popup 开在面板之上时，第一下只关 popup。
+- 打开：opacity 0→1、`translateY(-6px)`→0，140ms、`cubic-bezier(.2,.8,.2,1)`；关闭走相反路径，100ms。途中再点从当前呈现值反向，不从 0 重播。减少动态效果时只做 80ms 淡入淡出。
+- 空 ref 照旧列在“空 ref（还没有页）”下，是说明不是错误。
 
 ## wiki 词条（`wiki/<名字>.md`）
 
@@ -101,4 +109,4 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
-- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、wiki 抽屉。
+- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数（纯函数，有单测）。

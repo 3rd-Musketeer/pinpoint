@@ -1,7 +1,11 @@
-// 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 抽屉。数据全在 .cref 的 data-* 上（refs.js refHtml）。
+// 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 面板。数据全在 .cref 的 data-* 上（refs.js refHtml）。
 
 import { installLayerKeys, layers } from './layers.js';
 import { installOverlayScrollbars } from '../../../src/client/overlay-scrollbar.js';
+import {
+  placeWikiPanel, WIKI_CLOSE_MS, WIKI_EASE, WIKI_OPEN_MS, WIKI_OPEN_Y,
+  WIKI_PANEL_GAP, WIKI_PANEL_MAX_H, WIKI_PANEL_MAX_VH, WIKI_REDUCED_MS,
+} from './wiki-panel.js';
 
 // [[ ]] popup 的时序（site/README.md「[[ ]] 引用」）：悬停 120 ms 打开，指针移进 popup 不关，离开两者 200 ms 后关。
 export const POP_OPEN_MS = 120;
@@ -56,12 +60,115 @@ export function initSite() {
   }
 
   initRefPopups();
+  initWikiPanel();
+}
 
+// wiki 面板：从 wiki 按钮右下角展开，接入弹层栈（Esc 只关最上层）。
+// 静态列表仍是 Base.astro 里的 #drawer；头（标题 + 关闭按钮）在这里补，好让没有脚本时也不多一个关不掉的按钮。
+function initWikiPanel() {
   const drawer = document.getElementById('drawer');
   const btn = document.getElementById('btn-wiki');
-  btn?.addEventListener('click', () => {
-    drawer.hidden = !drawer.hidden;
-    btn.setAttribute('aria-expanded', String(!drawer.hidden));
+  if (!drawer || !btn) return;
+
+  const head = document.createElement('div');
+  head.className = 'drawer-head';
+  head.innerHTML = '<h2 class="drawer-title">wiki</h2>'
+    + '<button class="btn drawer-x" type="button" data-drawer-close aria-label="关闭 wiki">×</button>';
+  drawer.prepend(head);
+  // 面板在 DOM 里排在正文之后，从顶栏按钮按 Tab 到不了它。插到按钮后面，Tab 顺序才是入口 → 面板。
+  btn.after(drawer);
+  const closer = head.querySelector('[data-drawer-close]');
+
+  let release = null;
+  let playing = null;
+  let closing = false;
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  const place = () => {
+    const a = btn.getBoundingClientRect();
+    const r = drawer.getBoundingClientRect();
+    const topBar = document.querySelector('.top')?.getBoundingClientRect().bottom ?? a.bottom;
+    const p = placeWikiPanel({
+      anchor: { left: a.left, right: a.right, top: a.top, bottom: a.bottom, width: a.width },
+      panelW: r.width, panelH: drawer.offsetHeight,
+      viewportW: innerWidth, viewportH: innerHeight,
+      maxH: Math.min(WIKI_PANEL_MAX_H, innerHeight * WIKI_PANEL_MAX_VH),
+      // 面板顶至少在顶栏下沿：窄屏按钮换行时，按钮下 8px 仍可能压住同一行的关闭入口。
+      minTop: topBar + WIKI_PANEL_GAP,
+    });
+    drawer.style.left = `${p.left}px`;
+    drawer.style.top = `${p.top}px`;
+    drawer.style.maxHeight = `${p.maxHeight}px`;
+  };
+
+  // 从当前呈现值走到目标。途中再点，取消进行中的动画，新动画从这一帧的值接着走，不从 0 重播。
+  const presented = () => {
+    const cs = getComputedStyle(drawer);
+    return { opacity: cs.opacity, transform: `translateY(${new DOMMatrix(cs.transform).m42 || 0}px)` };
+  };
+  const play = (to, ms) => {
+    const from = playing ? presented() : null;
+    playing?.cancel();
+    const fade = reduced();
+    const end = { opacity: to ? 1 : 0, transform: fade ? 'none' : (to ? 'translateY(0px)' : `translateY(${WIKI_OPEN_Y}px)`) };
+    const start = from && !fade
+      ? from
+      : { opacity: to ? 0 : 1, transform: fade ? 'none' : `translateY(${to ? WIKI_OPEN_Y : 0}px)` };
+    playing = drawer.animate([start, end], { duration: fade ? WIKI_REDUCED_MS : ms, easing: WIKI_EASE, fill: 'both' });
+    return playing.finished.catch(() => {});
+  };
+
+  const finishClose = () => {
+    if (!closing) return;
+    closing = false;
+    release?.();
+    release = null;
+    drawer.hidden = true;
+    btn.setAttribute('aria-expanded', 'false');
+    playing = null;
+    // 关闭后焦点一律回入口。点外部关闭时，这次点击已经把焦点带走了，也要拉回来。
+    btn.focus();
+  };
+
+  const close = () => {
+    if (drawer.hidden || closing) return;
+    closing = true;
+    const anim = play(false, WIKI_CLOSE_MS);
+    // 动画被反向打断时 finished 拒绝；重新打开已经把 closing 清掉，这里不能再藏。
+    anim.then(finishClose);
+  };
+
+  const open = () => {
+    if (!drawer.hidden && !closing) return;
+    const reversing = closing;
+    closing = false;
+    // 上次关闭的动画已经播完、fill: both 停在 opacity 0。不先清掉，面板在打开动画开始前接不到焦点。
+    // 正在关闭的动画要留着：play 从它的当前呈现值接着走。
+    if (!reversing) { playing?.cancel(); playing = null; }
+    drawer.hidden = false;
+    btn.setAttribute('aria-expanded', 'true');
+    place();
+    if (!release) release = layers.push('wiki', close);
+    play(true, WIKI_OPEN_MS);
+  };
+
+  btn.addEventListener('click', () => { if (btn.getAttribute('aria-expanded') === 'true' && !closing) close(); else open(); });
+  closer.addEventListener('click', close);
+  document.addEventListener('pointerdown', (e) => {
+    if (drawer.hidden) return;
+    if (e.target === btn || btn.contains(e.target) || drawer.contains(e.target)) return;
+    close();
+  });
+  window.addEventListener('resize', () => { if (!drawer.hidden) place(); });
+  // Tab 进面板、再从末尾回到按钮：面板不是 dialog，浏览器不会自己困住焦点。
+  drawer.addEventListener('keydown', (e) => {
+    if (e.key !== 'Tab' || drawer.hidden) return;
+    const items = [...drawer.querySelectorAll('a[href], button')];
+    if (!items.length) return;
+    const first = items[0];
+    const last = items[items.length - 1];
+    if (e.shiftKey && document.activeElement === first) { e.preventDefault(); btn.focus(); }
+    else if (!e.shiftKey && document.activeElement === last) { e.preventDefault(); btn.focus(); }
   });
 }
 
