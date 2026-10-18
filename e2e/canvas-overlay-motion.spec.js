@@ -326,6 +326,53 @@ test('画布浮层：启动脚本没起来显示重试，重试后就绪', async
   await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
 });
 
+test('画布浮层：重试按钮聚焦后按 Enter 发起新请求', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let requests = 0;
+  let fail = true;
+  await page.route('**/src/workbench/stage.js*', (route) => {
+    requests += 1;
+    if (fail) return route.abort('failed');
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  const retry = overlay(page).locator('.ov-retry');
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  await retry.focus();
+  await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 700)));
+  expect(await page.evaluate(() => document.activeElement?.className || '')).toContain('ov-retry');
+  fail = false;
+  await page.keyboard.press('Enter');
+  await expect.poll(() => requests).toBeGreaterThan(1);
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+});
+
+test('画布浮层：外壳入口明确失败显示重试，点了恢复', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  for (const how of ['abort', '503']) {
+    let fail = true;
+    await page.route('**/src/workbench/app/main.jsx*', (route) => {
+      if (!fail) return route.continue();
+      return how === 'abort' ? route.abort('failed') : route.fulfill({ status: 503, body: 'no' });
+    });
+    await openArticle(page);
+    await openFromTop(page);
+    const retry = overlay(page).locator('.ov-retry');
+    await expect(retry, how).toBeVisible({ timeout: 15_000 });
+    const box = await retry.boundingBox();
+    expect(box.height, how).toBeGreaterThan(20);
+    fail = false;
+    await retry.click();
+    await expect(status(page)).toBeHidden({ timeout: 30_000 });
+    await page.unroute('**/src/workbench/app/main.jsx*');
+    await overlay(page).locator('[data-ov-close]').click();
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+  }
+});
+
 test('画布浮层：连续两次失败后第三次重试成功', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });

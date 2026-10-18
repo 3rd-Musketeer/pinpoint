@@ -121,9 +121,13 @@ export function initCanvasOverlay() {
   async function watchReady(epoch) {
     while (epoch === openEpoch && state) {
       let ownError = false;
-      try { ownError = !!frameWin()?.document?.querySelector('[data-err-panel]'); } catch { ownError = false; }
+      let bootError = '';
+      try {
+        ownError = !!frameWin()?.document?.querySelector('[data-err-panel]');
+        bootError = frameWin()?.__wbBootError || '';
+      } catch { ownError = false; }
       if (ownError) { showStatus(''); }
-      else if (frameFailed) { showStatus('retry'); }
+      else if (frameFailed || bootError) { showStatus('retry'); }
       const wb = workbenchOf();
       if (wb && !ownError) {
         const gen = loadGen;
@@ -185,9 +189,11 @@ export function initCanvasOverlay() {
 
   // ---- 加载态 ----
   // mode：'' 收起；'loading' 正在准备；'retry' 同处换成重试。
+  let shown = '';
   function showStatus(mode) {
     const s = el.status;
-    if (!s) return;
+    if (!s || mode === shown) return;
+    shown = mode;
     if (!mode) { s.hidden = true; s.replaceChildren(); return; }
     s.hidden = false;
     s.replaceChildren();
@@ -204,6 +210,7 @@ export function initCanvasOverlay() {
       const nav = ++navigation;
       watchReady(++openEpoch);
       noteLoad();
+      try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
       iframe.src = embedCanvasSrc(pageId, state.section);
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
