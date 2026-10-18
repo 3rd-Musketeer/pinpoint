@@ -264,7 +264,7 @@ export function startProseComments(options) {
     hooks: {
       renderRail: function () { railApi.renderRail(); },
       hold: function (id) { railApi.hold(id); },
-      reveal: function (card, target) { railApi.reveal(card, target); },
+      reveal: function (card, target, box) { railApi.reveal(card, target, box); },
       enqueue: function (op) { sync.prose.enqueue(op); },
     },
   });

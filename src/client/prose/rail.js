@@ -285,20 +285,23 @@ export function createRail(opts) {
   watchLayout();
 
   /** 卡片超出视口时才滚页面，让它进来。已经在视口里就不动 scrollY：宽屏下卡片贴着锚点，点高亮不必滚。
-   *  要看的是卡片顶部时传 card；进编辑或点“回复”时传输入框，卡片顶看得见不代表框也看得见。 */
-  function revealCard(card, target) {
+   *  要看的是卡片顶部时传 card；点“回复”时传输入框。进编辑时再传光标那一行的位置：
+   *  框比一屏还高时，框顶在视口外不代表正在看的那一行看不见。 */
+  function revealCard(card, target, seen) {
     if (!card) return;
     // top 有过渡动画，渲染位置还在旧处：按刚写上的目标 top 算，不读 card 自己的 rect。
     var list = card.parentElement;
     var top = list.getBoundingClientRect().top + (parseFloat(card.style.top) || 0);
     var el = target && target.isConnected ? target : card;
     var elTop = el === card ? top : top + (el.getBoundingClientRect().top - card.getBoundingClientRect().top);
-    var box = { top: elTop, bottom: elTop + el.offsetHeight };
+    var box = seen ? seen : { top: elTop, bottom: elTop + el.offsetHeight };
     var viewTop = 72;
     var viewBottom = window.innerHeight;
     // 要看的那一块顶部在视口里、并且至少露出一行（约 40px）就不滚。
     // 长卡片底部超出视口时滚页面，会把读者正在看的正文拽走。
+    // 这一行已经横跨视口（框比一屏高、光标在末尾）也不滚：往上拉会把正在看的末尾拽走。
     var readable = 40;
+    if (box.top < viewTop && box.bottom > viewTop) return;
     if (box.top >= viewTop && box.top + readable <= viewBottom) return;
     // 要滚时停在视口下沿以上 24px，不贴着屏幕底边。
     var margin = 24;
@@ -307,10 +310,10 @@ export function createRail(opts) {
   }
 
   /** 让卡片进视口：宽屏按目标 top 判断、顶部看得见就不滚；窄屏右栏在正文下面，照常滚到它。
-   *  target 是卡片里真正要看的那一块（回复框、编辑框）。给了就看它，不看整张卡。 */
-  function reveal(card, target) {
+   *  target 是卡片里真正要看的那一块（回复框、编辑框）。seen 是其中要保住的一行。 */
+  function reveal(card, target, seen) {
     if (!card) return;
-    if (aligned()) revealCard(card, target);
+    if (aligned()) revealCard(card, target, seen);
     else (target && target.isConnected ? target : card).scrollIntoView({ block: 'nearest' });
   }
 

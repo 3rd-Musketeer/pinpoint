@@ -3,6 +3,7 @@
 
 import { canvasContentHasTargets, canvasContentText, canvasLeadingEdit } from '../../shared/prose-thread.js';
 import {
+  caretLineBox,
   editAreaOf,
   editFieldText,
   growEdit,
@@ -67,11 +68,12 @@ export function createEdit(opts) {
     if (!area) { state.editingId = null; return; }
     growEdit(area);
     // 先把光标放到末尾再聚焦。反过来：focus 时光标还在开头，浏览器会把页面滚到那里，
-    // preventScroll 也压不住。卡片顶对齐引文，框在视口外时只滚到框，不滚整张卡。
+    // preventScroll 也压不住。长评论已经滚到末尾时，看的是光标那一行：
+    // 框比一屏还高，按框顶滚会把正在看的末尾拽回页首。
     var len = editFieldText(area).length;
     setEditFieldSelection(area, len, len);
     area.focus({ preventScroll: true });
-    if (hooks.reveal) hooks.reveal(area.closest('.pp-thread'), area);
+    if (hooks.reveal) hooks.reveal(area.closest('.pp-thread'), area, caretLineBox(area));
   }
 
   /** 收束编辑：写了新字就入队 edit（onChange 会重画），清空或没改就恢复原文，框不在了只退出。 */

@@ -50,6 +50,41 @@ export function editFieldSelection(el) {
   return { start: at(range.startContainer, range.startOffset), end: at(range.endContainer, range.endOffset) };
 }
 
+/** 光标那一行在视口里的位置。textarea 的选区不在文档里，没有矩形；
+ *  正文又会自动折行，按换行数推算对不上。用一个同样宽度、同样字体的镜像量到光标。
+ *  框比视口还高时，滚动看的是这一行，不是整个框。 */
+export function caretLineBox(el) {
+  var box = el.getBoundingClientRect();
+  if (el.tagName !== 'TEXTAREA') {
+    var sel = window.getSelection();
+    if (sel && sel.rangeCount && el.contains(sel.focusNode)) {
+      var range = sel.getRangeAt(0).cloneRange();
+      range.collapse(false);
+      if (range.startOffset > 0) range.setStart(range.startContainer, range.startOffset - 1);
+      var rect = range.getBoundingClientRect();
+      if (rect && rect.height > 0) return { top: rect.top, bottom: rect.bottom };
+    }
+    return { top: box.top, bottom: box.bottom };
+  }
+  var cs = window.getComputedStyle(el);
+  var mirror = document.createElement('div');
+  mirror.style.cssText = 'position:fixed;visibility:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;'
+    + 'width:' + el.clientWidth + 'px;font:' + cs.font + ';line-height:' + cs.lineHeight
+    + ';padding:' + cs.paddingTop + ' ' + cs.paddingRight + ' ' + cs.paddingBottom + ' ' + cs.paddingLeft
+    + ';box-sizing:' + cs.boxSizing + ';';
+  var at = Math.max(el.selectionStart || 0, el.selectionEnd || 0);
+  mirror.textContent = el.value.slice(0, at);
+  var mark = document.createElement('span');
+  mark.textContent = el.value.slice(at, at + 1) || ' ';
+  mirror.appendChild(mark);
+  document.body.appendChild(mirror);
+  var markBox = mark.getBoundingClientRect();
+  var mirrorBox = mirror.getBoundingClientRect();
+  document.body.removeChild(mirror);
+  var top = box.top + (markBox.top - mirrorBox.top);
+  return { top: top, bottom: top + markBox.height };
+}
+
 export function setEditFieldSelection(el, start, end) {
   if (el.tagName === 'TEXTAREA') {
     try { el.setSelectionRange(start, end); } catch (e) { /* */ }

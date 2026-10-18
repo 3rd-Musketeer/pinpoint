@@ -576,6 +576,84 @@ test('长线程折叠着直接点“回复”，输入框滚进视口', async ({
   }
 });
 
+test('长评论滚到末尾再进编辑，末尾那一行仍看得见', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  const art = articleDir('longedit');
+  fs.mkdirSync(art.project, { recursive: true });
+  fs.writeFileSync(art.source, articleSource());
+  const sentence = '这是一条很长的 owner 评论，需要保留最后一句的阅读位置。';
+  try {
+    const doc = await (await request.get(`/annotations/@prose?entry=${art.pageId}`)).json();
+    const saved = await request.post('/save', {
+      data: {
+        entry: art.pageId, page: '@prose', path: '/', baseRevision: doc.revision,
+        annotations: [rowOf('long', 1, PARAS[0], sentence.repeat(100), undefined, art.article)],
+      },
+    });
+    expect(saved.ok()).toBe(true);
+    await openArticle(page, art.article);
+    await alignedGeometry(page);
+    await page.locator('mark.pp-hl[data-ids~="long"]').click();
+    await expect(page.locator('.pp-thread[data-id="long"]')).toHaveClass(/on/);
+    await alignedGeometry(page);
+    // 滚到评论末尾附近再点最后一行。点的是读者正在看的那一行，进编辑不该把它拽走。
+    await page.evaluate(() => {
+      document.body.style.paddingBottom = '2000px';
+      const body = document.querySelector('.pp-thread[data-id="long"] .text[data-edit]');
+      const box = body.getBoundingClientRect();
+      window.scrollTo(0, box.bottom + window.scrollY - 700);
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const body = document.querySelector('.pp-thread[data-id="long"] .text[data-edit]');
+      const running = body.closest('.pp-thread').getAnimations()
+        .some((anim) => anim.transitionProperty === 'top' && anim.playState === 'running');
+      return !running && body.getBoundingClientRect().bottom > 600 && body.getBoundingClientRect().bottom < 800;
+    })).toBe(true);
+    const text = page.locator('.pp-thread[data-id="long"] .text[data-edit]');
+    const before = await text.boundingBox();
+    await page.mouse.click(before.x + 25, before.y + before.height - 10);
+    const area = page.locator('.pp-thread[data-id="long"] textarea.pp-edit');
+    await expect(area).toBeFocused();
+    const seen = await area.evaluate((el) => {
+      const box = el.getBoundingClientRect();
+      const cs = getComputedStyle(el);
+      const mirror = document.createElement('div');
+      mirror.style.cssText = 'position:fixed;visibility:hidden;white-space:pre-wrap;overflow-wrap:anywhere;word-break:break-word;'
+        + 'width:' + el.clientWidth + 'px;font:' + cs.font + ';line-height:' + cs.lineHeight
+        + ';padding:' + cs.paddingTop + ' ' + cs.paddingRight + ' ' + cs.paddingBottom + ' ' + cs.paddingLeft
+        + ';box-sizing:' + cs.boxSizing + ';';
+      const at = el.selectionStart;
+      mirror.textContent = el.value.slice(0, at);
+      const mark = document.createElement('span');
+      mark.textContent = el.value.slice(at, at + 1) || ' ';
+      mirror.appendChild(mark);
+      document.body.appendChild(mirror);
+      const top = box.top + (mark.getBoundingClientRect().top - mirror.getBoundingClientRect().top);
+      const bottom = top + mark.getBoundingClientRect().height;
+      document.body.removeChild(mirror);
+      const hit = document.elementFromPoint(box.left + 25, (top + bottom) / 2);
+      return {
+        top,
+        bottom,
+        atEnd: el.selectionStart === el.value.length && el.value.length > 0,
+        opacity: parseFloat(cs.opacity),
+        hit: hit === el || el.contains(hit),
+      };
+    });
+    // 光标在末尾那一行。点之前末尾停在 y≈700，进编辑不该把它拽到视口顶部：
+    // 这一行要留在下半屏，不透明，并且点下去点到的是编辑框本身。
+    expect(seen.atEnd).toBe(true);
+    expect(seen.bottom).toBeGreaterThan(600);
+    expect(seen.bottom).toBeLessThanOrEqual(900);
+    expect(seen.opacity).toBeGreaterThan(0);
+    expect(seen.hit).toBe(true);
+  } finally {
+    fs.rmSync(art.project, { recursive: true, force: true });
+    fs.rmSync(art.ledger, { force: true });
+    await closeSettled(page);
+  }
+});
+
 test('选中后重画的卡片从旧 top 过渡到新 top，新卡片不从 0 飞入', async ({ page, request }) => {
   test.setTimeout(180_000);
   const art = articleDir('motion');
