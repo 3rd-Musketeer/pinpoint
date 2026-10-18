@@ -274,11 +274,44 @@ test('画布浮层：board 失败时工作台自己的重试按钮点得到', as
   await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
 });
 
-test('画布浮层：外壳模块失败显示重试，重试后就绪', async ({ page }) => {
+test('画布浮层：外壳模块慢四秒后放行，准备态收起，画布点得到', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/src/workbench/app/main.jsx*', async (route) => { await held; await route.continue(); });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(status(page)).toHaveText('正在准备画布…');
+  // 扣住超过 4 秒：模块没报失败，不能被当成失败。
+  const stayed = await page.evaluate(() => new Promise((resolve) => {
+    const start = performance.now();
+    const read = () => {
+      const el = document.querySelector('[data-ov-status]');
+      const text = el && !el.hidden ? el.textContent : '';
+      if (text !== '正在准备画布…') { resolve(text); return; }
+      if (performance.now() - start > 4200) { resolve(text); return; }
+      setTimeout(read, 200);
+    };
+    read();
+  }));
+  expect(stayed).toBe('正在准备画布…');
+  release();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  const frame = overlay(page).frameLocator('iframe.ov-canvas');
+  await expect(frame.locator('#wb-board-panel [data-screen]')).toHaveCount(5);
+  const box = await overlay(page).locator('.ov-body').boundingBox();
+  const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className || '', {
+    x: box.x + box.width / 2, y: box.y + box.height / 2,
+  });
+  expect(hit).toContain('ov-canvas');
+});
+
+test('画布浮层：启动脚本没起来显示重试，重试后就绪', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   let fail = true;
-  await page.route('**/src/workbench/app/main.jsx*', (route) => {
+  await page.route('**/src/workbench/stage.js*', (route) => {
     if (fail) return route.abort('failed');
     return route.continue();
   });
@@ -290,7 +323,7 @@ test('画布浮层：外壳模块失败显示重试，重试后就绪', async ({
   fail = false;
   await overlay(page).locator('.ov-retry').click();
   await expect(status(page)).toBeHidden({ timeout: 30_000 });
-  await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wbstrip > *')).not.toHaveCount(0);
+  await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
 });
 
 test('画布浮层：连续两次失败后第三次重试成功', async ({ page }) => {

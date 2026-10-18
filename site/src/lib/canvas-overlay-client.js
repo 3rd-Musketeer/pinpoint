@@ -67,15 +67,9 @@ export function initCanvasOverlay() {
     const onLoad = () => {
       iframe.removeEventListener('load', onLoad);
       if (gen !== loadGen) return;
-      if (frameDead()) { frameFailed = true; return; }
-      // 文档装上了但工作台脚本没起来（启动模块失败）。load 时脚本可能还没跑完，等一会儿再判。
-      let left = 10;
-      const check = () => {
-        if (gen !== loadGen || workbenchOf() || frameFailed) return;
-        if (--left < 0) { frameFailed = true; return; }
-        setTimeout(check, 100);
-      };
-      check();
+      // load 要等模块脚本结束。跨域错误页，或文档装上了却没有工作台，都是确定失败。
+      // 模块还扣着时 load 没到，不在这里判，准备态一直留着。
+      frameFailed = frameDead() || !workbenchOf();
     };
     iframe.addEventListener('load', onLoad);
   };
@@ -122,52 +116,28 @@ export function initCanvasOverlay() {
     return false;
   }
 
-  // 外壳（横条）挂上了就返回 null；一直空着返回 'chrome-missing'。main.jsx 慢时横条晚一点出现，继续等。
-  const chromeMissing = (epoch) => new Promise((resolve) => {
-    let empty = 0;
-    const tick = () => {
-      if (epoch !== openEpoch) { resolve(null); return; }
-      let bare = false;
-      try {
-        const strip = frameWin()?.document?.querySelector('#wbstrip');
-        bare = !!strip && strip.childElementCount === 0;
-      } catch { bare = false; }
-      if (!bare) { empty = 0; }
-      else if (++empty > 30) { resolve('chrome-missing'); return; }
-      setTimeout(tick, 100);
-    };
-    setTimeout(tick, 100);
-  });
-
+  // 准备态一直留到两个就绪信号都到。只有确定的失败才换成重试：文档加载失败（frameFailed），
+  // 或工作台自己画出了错误面板。显示重试之后也不停，就绪信号一到就收起，不靠时长猜。
   async function watchReady(epoch) {
     while (epoch === openEpoch && state) {
-      if (frameFailed) { showStatus('retry'); return; }
+      let ownError = false;
+      try { ownError = !!frameWin()?.document?.querySelector('[data-err-panel]'); } catch { ownError = false; }
+      if (ownError) { showStatus(''); }
+      else if (frameFailed) { showStatus('retry'); }
       const wb = workbenchOf();
-      if (wb) {
-        // 板失败时工作台自己画错误面板和重试。盖着就点不到，这时让开。
-        // 还在等（false = 还没有会话）就留着准备态，不靠等待时长判失败。
-        let failed = false;
-        try { failed = !!frameWin()?.document?.querySelector('[data-err-panel]'); } catch { failed = false; }
-        if (failed) { showStatus(''); return; }
-        // whenBoardSettled 在外壳没挂上时永不返回（main.jsx 失败，没人放行）。等的同时看外壳：
-        // 横条一直是空的就是启动失败，显示重试。慢模块横条终会挂上，不靠时长判。
-        // 等的是这一份文档。重试换了文档（loadGen 变了），上一份永不返回的 Promise 不能再卡住这次。
+      if (wb && !ownError) {
         const gen = loadGen;
         const board = await Promise.race([
           wb.whenBoardSettled().then((ok) => ({ ok })),
-          chromeMissing(epoch),
+          // 重试换了文档，上一份永不返回的 Promise 不能卡住这次。
           new Promise((resolve) => {
-            const watch = () => {
-              if (loadGen !== gen) { resolve('reloaded'); return; }
-              setTimeout(watch, 100);
-            };
+            const watch = () => { if (loadGen !== gen || epoch !== openEpoch) resolve('stop'); else setTimeout(watch, 100); };
             setTimeout(watch, 100);
           }),
         ]);
-        if (board === 'reloaded') continue;
-        if (board === 'chrome-missing') { showStatus('retry'); return; }
+        if (board === 'stop') continue;
         const previews = await wb.whenPreviewsSettled();
-        if (epoch !== openEpoch || !state) return;
+        if (epoch !== openEpoch || !state || loadGen !== gen) continue;
         if (board.ok && previews) { showStatus(''); return; }
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
