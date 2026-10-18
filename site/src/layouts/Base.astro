@@ -76,16 +76,16 @@ const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumb
           </ol>
         </nav>
       )}
+      {toc && (
+        <div class="toc-entry" data-toc-entry hidden>
+          <button class="toc-entry-btn" type="button" data-toc-toggle aria-expanded="false" aria-controls="toc">
+            <span class="toc-entry-label">目录</span>
+            <span class="toc-entry-pos" data-toc-pos></span>
+            <span class="toc-entry-title" data-toc-current></span>
+          </button>
+        </div>
+      )}
       <main id="article" class={prose ? 'pp-prose' : undefined}>
-        {toc && (
-          <div class="toc-entry" data-toc-entry hidden>
-            <button class="toc-entry-btn" type="button" data-toc-toggle aria-expanded="false" aria-controls="toc">
-              <span class="toc-entry-label">目录</span>
-              <span class="toc-entry-pos" data-toc-pos></span>
-              <span class="toc-entry-title" data-toc-current></span>
-            </button>
-          </div>
-        )}
         {errors.length > 0 && (
           <div class="errors not-prose" role="alert">
             <b>内容错误（构建会失败）</b>

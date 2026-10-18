@@ -63,7 +63,9 @@ export function initCanvasOverlay() {
     return true;
   }
 
+  // 失败页不是同源的，读 contentWindow 的属性会抛 SecurityError。读不到就当还没装好。
   const frameWin = () => { try { return iframe?.contentWindow || null; } catch { return null; } };
+  const workbenchOf = () => { try { return frameWin()?.workbench || null; } catch { return null; } };
 
   /** 轮询直到 test() 为真；navigation 变了（关了 / 换了落点）或超时 → false。 */
   function until(test, nav) {
@@ -82,7 +84,7 @@ export function initCanvasOverlay() {
   }
 
   async function boardReady(nav) {
-    if (!(await until(() => frameWin()?.workbench?.activePageId?.() === pageId, nav))) return false;
+    if (!(await until(() => workbenchOf()?.activePageId?.() === pageId, nav))) return false;
     // whenBoardSettled 在板换过一次时接着等新的那个；false = 还没有会话，重取再等。
     for (let i = 0; i < 50; i += 1) {
       if (nav !== navigation) return false;
@@ -92,19 +94,31 @@ export function initCanvasOverlay() {
     return false;
   }
 
-  // 板和预览都就绪才收起「正在准备画布…」。两个信号都落成 true 才算好；会话被替换会先落一次 false，
-  // 接着等下一次。连续多次都是 false 才在同处显示「重试」，不另起超时计时器。
-  // 关闭把 openEpoch 抬过这次，进行中的观察作废。land 抬的是 navigation，不碰它。
+  // 板和预览都就绪才收起「正在准备画布…」。whenXSettled 的 false 是「还没有会话」，不是失败，继续等。
+  // 网络失败的页不是同源的：加载完后读它的窗口会抛 SecurityError，这才显示「重试」。还在加载时读不到不算失败。
+  const frameDead = () => {
+    if (!iframe) return false;
+    try {
+      // 还在加载时 contentDocument 是 null，读得到；失败页跨域，读它就抛。
+      if (iframe.contentDocument !== null) return false;
+      void iframe.contentWindow.location.href;
+      return false;
+    } catch { return true; }
+  };
   async function watchReady(epoch) {
-    let misses = 0;
+    // 重试刚换过 src，这一轮还没加载完时 contentDocument 是 null，读得到。上一轮的失败页要先被换掉。
+    let armed = false;
     while (epoch === openEpoch && state) {
-      const wb = frameWin()?.workbench;
+      const dead = frameDead();
+      // 重试刚换 src：先见到一次「还在加载」，上一轮的失败页不算这次的失败。
+      if (!armed) { armed = !dead; if (!armed) { await new Promise((r) => setTimeout(r, POLL_MS)); continue; } }
+      if (dead) { showStatus('retry'); return; }
+      const wb = workbenchOf();
       if (wb) {
         const board = await wb.whenBoardSettled();
         const previews = await wb.whenPreviewsSettled();
         if (epoch !== openEpoch || !state) return;
         if (board && previews) { showStatus(''); return; }
-        if (++misses >= 8) { showStatus('retry'); return; }
       }
       await new Promise((r) => setTimeout(r, POLL_MS));
     }
@@ -166,9 +180,9 @@ export function initCanvasOverlay() {
     retry.addEventListener('click', () => {
       if (!state || !iframe) return;
       showStatus('loading');
-      iframe.src = embedCanvasSrc(pageId, state.section);
       const nav = ++navigation;
       watchReady(++openEpoch);
+      iframe.src = embedCanvasSrc(pageId, state.section);
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
     s.append(retry);
@@ -221,9 +235,10 @@ export function initCanvasOverlay() {
     state.landed = false;
     setHeader(sectionId);
     const fresh = ensureFrame(sectionId);
-    if (fresh) showStatus('loading');
     const nav = navigation + 1;
-    if (fresh) watchReady(++openEpoch);
+    // 每次打开都重新观察：上次没就绪就关了，iframe 还在，这次就绪了也要收起准备态。
+    if (!workbenchOf() || frameDead()) showStatus('loading');
+    watchReady(++openEpoch);
     // 工作台装好之前焦点留在文章页（关闭钮）：这时按 Esc 由文章页关浮层；装好后再把焦点交给画布（land）。
     if (fresh) el.close.focus({ preventScroll: true });
     else iframe.focus({ preventScroll: true });
@@ -271,7 +286,8 @@ export function initCanvasOverlay() {
   // 后退已经把浮层收掉了，不再补一段看不见的动画。
   function close({ fromHistory = false } = {}) {
     if (!state || closing) return;
-    if (fromHistory || reduced()) { finishClose(fromHistory); return; }
+    // 后退已经把浮层收掉了，不再补一段看不见的动画。减少动态效果走 80ms 淡出。
+    if (fromHistory) { finishClose(true); return; }
     closing = true;
     play(false, OV_CLOSE_MS).then(() => { if (closing) finishClose(false); });
   }

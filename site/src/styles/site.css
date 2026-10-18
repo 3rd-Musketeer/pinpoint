@@ -143,7 +143,7 @@ main { min-width:0; }
 
 /* 窄屏目录入口：目录栏隐藏（≤1180px，见上面的 .layout 媒体查询）时，正文顶上一条 36px 的单行。
    点开把同一个 #toc 浮出来（.toc-pop），不另做一份目录。宽屏这条 hidden，由 client.js 管。 */
-.toc-entry { position:sticky; top:57px; z-index:15; margin:0 0 16px; }
+.toc-entry { position:sticky; top:57px; z-index:15; margin:0 0 16px; grid-column:1 / -1; align-self:start; }
 .toc-entry[hidden] { display:none; }
 .toc-entry-btn { appearance:none; display:flex; align-items:center; gap:8px; width:100%; height:36px; padding:0 12px;
                  border:1px solid var(--pp-border); border-radius:var(--pp-r-2); background:var(--pp-bg); color:var(--pp-text);

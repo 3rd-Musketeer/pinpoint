@@ -110,8 +110,11 @@ function initTocEntry(markCurrent) {
     if (entry.hidden && nav.classList.contains('toc-pop')) close();
     const current = links.find((a) => a.classList.contains('on')) || links[0];
     const n = links.indexOf(current) + 1;
-    pos.textContent = `${n} / ${links.length}`;
-    title.textContent = [...current.childNodes].filter((nd) => nd.nodeType === Node.TEXT_NODE).map((nd) => nd.textContent).join('').trim();
+    const nextPos = `${n} / ${links.length}`;
+    const nextTitle = [...current.childNodes].filter((nd) => nd.nodeType === Node.TEXT_NODE).map((nd) => nd.textContent).join('').trim();
+    // 文字没变不赋值：赋值会换掉文本节点，正文评论的观察器见到就重画，选区被清空。
+    if (pos.textContent !== nextPos) pos.textContent = nextPos;
+    if (title.textContent !== nextTitle) title.textContent = nextTitle;
   };
   updateTocEntry = sync;
 
@@ -128,13 +131,21 @@ function initTocEntry(markCurrent) {
       { duration: fade ? TOC_REDUCED_MS : TOC_OPEN_MS, easing: TOC_EASE, fill: 'both' },
     );
   };
+  // 关闭动画 fill:both 会把 opacity 0 留在 nav 上。切回宽屏时目录栏复用同一个 nav，不取消就一直透明。
+  const settle = () => {
+    nav.getAnimations().forEach((a) => a.cancel());
+    nav.style.left = '';
+    nav.style.top = '';
+  };
   const close = () => {
     if (!nav.classList.contains('toc-pop')) return;
     play(false);
     nav.classList.remove('toc-pop');
+    settle();
     toggle.setAttribute('aria-expanded', 'false');
     release?.();
     release = null;
+    if (document.activeElement && nav.contains(document.activeElement)) toggle.focus();
   };
   const open = () => {
     nav.classList.add('toc-pop');
@@ -144,6 +155,7 @@ function initTocEntry(markCurrent) {
     toggle.setAttribute('aria-expanded', 'true');
     play(true);
     release = layers.push('toc', close);
+    (links.find((a) => a.classList.contains('on')) || links[0]).focus();
   };
 
   toggle.addEventListener('click', () => { if (toggle.getAttribute('aria-expanded') === 'true') close(); else open(); });

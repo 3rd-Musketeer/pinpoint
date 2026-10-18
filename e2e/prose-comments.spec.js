@@ -757,3 +757,22 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
     await expect(page.locator('dialog[data-pp-overlay][open]')).toHaveCount(0);
   });
 });
+
+test('滚动更新目录入口不重画正文，已有评论的选区还在', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await seed(request, PAGE_ID, '@prose', {
+    id: 'keep-sel', type: 'prose', status: 'open', content: '记一笔',
+    quote: { exact: '扣给谁' }, section: 'why', messages: [],
+  });
+  await page.goto(ARTICLE);
+  await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
+  await waitNoReload(page);
+  await proseSettled(page);
+  await expect(page.locator('#why mark.pp-hl')).toHaveText('扣给谁');
+  await page.evaluate(() => scrollTo(0, 10));
+  await dragSelect(page, '#why', '扣给谁');
+  await page.evaluate(() => scrollTo(0, 0));
+  await expect.poll(() => page.evaluate(() => String(getSelection()))).toBe('扣给谁');
+  await expect(page.locator('#why mark.pp-hl')).toHaveText('扣给谁');
+});

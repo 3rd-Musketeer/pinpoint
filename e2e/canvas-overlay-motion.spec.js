@@ -169,6 +169,84 @@ test('画布浮层：减少动态效果只做 80ms 淡入淡出', async ({ page 
   expect(m.duration).toBe(80);
   expect(m.frames.map((f) => f.transform)).toEqual(['none', 'none']);
   expect(m.frames.map((f) => f.opacity)).toEqual(['0', '1']);
+
+  await test.step('关闭同样 80ms 淡出', async () => {
+    await expect.poll(() => page.evaluate(() => document.querySelector('.ov-panel').getAnimations().every((a) => a.playState === 'finished'))).toBe(true);
+    const closing = page.evaluate(() => new Promise((resolve) => {
+      document.querySelector('[data-ov-close]').addEventListener('click', () => {
+        requestAnimationFrame(() => {
+          const anim = document.querySelector('.ov-panel').getAnimations().find((a) => a.playState === 'running');
+          resolve(anim ? { duration: anim.effect.getTiming().duration, frames: anim.effect.getKeyframes().map((f) => String(f.opacity)) } : null);
+        });
+      }, { once: true });
+    }));
+    await overlay(page).locator('[data-ov-close]').click();
+    const got = await closing;
+    expect(got.duration).toBe(80);
+    expect(got.frames).toEqual(['1', '0']);
+  });
+});
+
+test('画布浮层：board 慢一拍不算失败，就绪后准备态收起', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/board.json', async (route) => { await held; await route.continue(); });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(status(page)).toHaveText('正在准备画布…');
+  // 扣住期间反复读：超过原先约 0.8 秒的误判线，状态也不能变成重试。
+  const stayed = await page.evaluate(() => new Promise((resolve) => {
+    const start = performance.now();
+    const read = () => {
+      const el = document.querySelector('[data-ov-status]');
+      const text = el && !el.hidden ? el.textContent : '';
+      if (text !== '正在准备画布…') { resolve(text); return; }
+      if (performance.now() - start > 1200) { resolve(text); return; }
+      setTimeout(read, 100);
+    };
+    read();
+  }));
+  expect(stayed).toBe('正在准备画布…');
+  release();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  const frames = await page.frameLocator('[data-pp-overlay] iframe.ov-canvas').locator('#wb-board-panel [data-screen]');
+  await expect(frames).toHaveCount(5);
+});
+
+test('画布浮层：没就绪就关，重开后就绪了准备态收起', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  await page.route('**/workbench/?*', async (route) => { await held; await route.continue(); });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(status(page)).toHaveText('正在准备画布…');
+  await overlay(page).locator('[data-ov-close]').click();
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  await openFromTop(page);
+  await expect(status(page)).toHaveText('正在准备画布…');
+  release();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+});
+
+test('画布浮层：iframe 加载失败显示重试，重试后就绪', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let failed = false;
+  await page.route('**/workbench/?*', (route) => {
+    if (!failed) { failed = true; return route.abort('failed'); }
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  const box = await overlay(page).locator('.ov-retry').boundingBox();
+  expect(box.height).toBeGreaterThan(20);
+  await overlay(page).locator('.ov-retry').click();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
 });
 
 test('画布浮层：后退关闭，滚动位置回到打开前', async ({ page }) => {
