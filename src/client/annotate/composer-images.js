@@ -2,7 +2,7 @@
 // attachComposerImages、attachComposerAutosave。
 import { backfillTargetPpIds, markElementTargets, normalizeElementTargets } from './anchor.js';
 import { contentToStorage, ensureMarkId, extractMentionIds } from './marks.js';
-import { persist } from './persist.js';
+import { persist, requestSync } from './persist.js';
 import { setStatus } from './ui.js';
 export function bind_composer_images(c) { ctx = c; }
 var ctx;
@@ -63,6 +63,70 @@ export function attachComposerAutosave(composer, ta, m, draft) {
   composer.cancelAutosave = function () { clearTimeout(autosaveT); };
   composer.commit = commit;
   composer.takeSnapshot = function () { lastCommitted = editSnapshot(); };
+
+  // 框内自动保存状态。字由现有保存世代驱动（persist.js 的 mutationVersion /
+  // syncedMutationVersion / syncing / syncError），不另发请求。旧请求成功后如果
+  // 又有输入，世代已经往前走，仍显示待保存或正在保存，不把较早的成功当成当前全文已保存。
+  var stateEl = (composer.box || document.getElementById('ann-box'))
+    ? (composer.box || document.getElementById('ann-box')).querySelector('#ann-save-state') : null;
+  var stateText = '';
+  var announced = '';
+  function paintState() {
+    if (!stateEl) return;
+    var dirty = composer.isDirty();
+    var pending = ctx.mutationVersion > ctx.syncedMutationVersion;
+    var next = '';
+    var tone = '';
+    var live = '';
+    if (ctx.syncError && pending) {
+      next = 'fail';
+      tone = 'fail';
+      live = '保存失败';
+    } else if (ctx.syncing && pending) {
+      next = 'saving';
+      live = '正在保存';
+    } else if (dirty || pending) {
+      next = 'dirty';
+      live = '尚未保存';
+    } else if (ctx.syncedMutationVersion > 0 && ctx.mutationVersion === ctx.syncedMutationVersion) {
+      next = 'saved';
+      live = '已保存';
+    }
+    if (next === stateText) return;
+    stateText = next;
+    stateEl.dataset.tone = tone;
+    stateEl.textContent = '';
+    if (next === 'fail') {
+      stateEl.appendChild(document.createTextNode('保存失败，'));
+      var retry = document.createElement('button');
+      retry.type = 'button';
+      retry.className = 'ann-save-retry';
+      retry.textContent = '重试';
+      retry.addEventListener('click', function () {
+        // 重试期间允许继续输入：先把框里最新的改动交进现有队列，再重发没确认的那次。
+        if (composer.isDirty()) commit();
+        requestSync();
+      });
+      stateEl.appendChild(retry);
+    } else if (next === 'saving') {
+      stateEl.textContent = '正在保存…';
+    } else if (next === 'dirty') {
+      stateEl.textContent = '尚未保存';
+    } else if (next === 'saved') {
+      stateEl.textContent = '已保存';
+    }
+    // 连续输入不逐字播报：同一句只在第一次出现时进 aria-live。
+    if (live !== announced) {
+      announced = live;
+      stateEl.setAttribute('aria-live', live ? 'polite' : 'off');
+    }
+  }
+  composer.noteSaveState = paintState;
+  ctx.updateListeners.push(paintState);
+  composer.dropSaveState = function () {
+    var at = ctx.updateListeners.indexOf(paintState);
+    if (at >= 0) ctx.updateListeners.splice(at, 1);
+  };
 
   function commit() {
     if (!composer.isDirty()) return false;

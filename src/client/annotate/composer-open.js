@@ -42,6 +42,7 @@ export function openComposer(m, anchorRect, isNew) {
   var stageEl = document.getElementById('wbstage');
   var composer = {
     ta: ta,
+    box: box,
     m: m,
     isNew: !!isNew,
     // 已落账本的行号；新建的在第一次自动保存后才有。getter：服务端认领可能改写 m.n。
@@ -128,6 +129,8 @@ export function openComposer(m, anchorRect, isNew) {
     syncComposerLayout();
     mention.sync();
     composer.scheduleAutosave();
+    // 输入当下就是「尚未保存」，不等去抖结束。组字中途不逐字报。
+    if (!composer.composing && composer.noteSaveState) composer.noteSaveState();
   });
   ta.addEventListener('keydown', function (e) {
     if (composer.composing || e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法

@@ -2175,6 +2175,107 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
     await expect(box).toHaveCount(0);
   });
 
+  await test.step('框内状态位：回包前不是已保存，失败可重试，确认后才显示已保存', async () => {
+    await clickBadge(nA, cells.nth(0));
+    const state = box.locator('#ann-save-state');
+    await expect(state).toBeVisible();
+    const before = await input.boundingBox();
+
+    let releaseHeld;
+    const held = new Promise((resolve) => { releaseHeld = resolve; });
+    let heldStarted;
+    const started = new Promise((resolve) => { heldStarted = resolve; });
+    let heldSaves = 0;
+    await page.route('**/save', async (route) => {
+      if (++heldSaves === 1) { heldStarted(); await held; }
+      await route.continue();
+    });
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' 在途');
+    await expect(state).toHaveText('尚未保存');
+    await started;
+    await expect(state).toHaveText('正在保存…');
+    await expect(state).not.toHaveText('已保存');
+    // 旧请求还没回，又打了一字：回包之后仍是待保存，不能把较早的成功当成当前全文已保存。
+    await page.keyboard.type('又');
+    releaseHeld();
+    await expect.poll(async () => (await markByN(nA)).content).toContain('在途');
+    await expect(state).toHaveText('尚未保存');
+    await expect(state).toHaveText('已保存');
+    await page.unroute('**/save');
+
+    const after = await input.boundingBox();
+    expect(after.y).toBeCloseTo(before.y, 0);
+    expect(after.height).toBeCloseTo(before.height, 0);
+
+    let failOnce = true;
+    await page.route('**/save', async (route) => {
+      if (failOnce) { failOnce = false; await route.fulfill({ status: 500, json: { error: 'write-failed' } }); return; }
+      await route.continue();
+    });
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type(' 失败');
+    await expect(state).toHaveText('保存失败，重试');
+    await expect(state.locator('.ann-save-retry')).toBeFocused({ timeout: 1000 }).catch(() => {});
+    await state.locator('.ann-save-retry').focus();
+    await expect(state.locator('.ann-save-retry')).toBeFocused();
+    const duringRetry = state.locator('.ann-save-retry');
+    await page.keyboard.type('中');
+    await expect(input).toContainText('失败中');
+    await duringRetry.click();
+    await expect(state).toHaveText('已保存');
+    await expect.poll(async () => (await markByN(nA)).content).toContain('失败中');
+    await page.unroute('**/save');
+
+    const motion = await state.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      const ms = (value) => parseFloat(value) * (String(value).endsWith('ms') ? 1 : 1000);
+      el.style.transition = 'none';
+      el.style.opacity = '0.2';
+      const start = getComputedStyle(el).opacity;
+      el.style.transition = '';
+      el.style.opacity = '1';
+      const mid = new Promise((resolve) => {
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve(getComputedStyle(el).opacity)));
+      });
+      return mid.then((during) => {
+        el.style.opacity = '0.2';
+        return {
+          transition: cs.transitionProperty,
+          duration: ms(cs.transitionDuration),
+          easing: cs.transitionTimingFunction,
+          live: el.getAttribute('aria-live'),
+          start, during,
+        };
+      });
+    });
+    expect(motion.transition).toBe('opacity');
+    expect(motion.duration).toBeCloseTo(80, 0);
+    expect(motion.easing).toContain('linear');
+    expect(motion.live).toBe('polite');
+    expect(Number(motion.start)).toBeCloseTo(0.2, 1);
+    // 途中反向：没到 1 就改回起点，动画从当前值接着走，不跳。
+    expect(Number(motion.during)).toBeGreaterThan(Number(motion.start));
+    expect(Number(motion.during)).toBeLessThan(1);
+    expect(motion.transition).not.toContain('transform');
+    // 显式打开 reduced-motion 再量一次：只剩透明度，时长仍是 80ms，没有位移。
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    const reduced = await state.evaluate((el) => {
+      const cs = getComputedStyle(el);
+      return {
+        matches: matchMedia('(prefers-reduced-motion: reduce)').matches,
+        transition: cs.transitionProperty,
+        duration: cs.transitionDuration,
+      };
+    });
+    expect(reduced.matches).toBe(true);
+    expect(reduced.transition).toBe('opacity');
+    expect(reduced.duration === '0.08s' || reduced.duration === '80ms').toBe(true);
+    await expect(box.locator('#ann-close')).toHaveAttribute('title', '关闭，修改会自动保存');
+  });
+
   await test.step('框里的完成钮：先存修改，再 close，框收起', async () => {
     await clickBadge(nB, other);
     await input.click();

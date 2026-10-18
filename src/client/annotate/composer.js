@@ -60,6 +60,7 @@ export function closeComposer(opts) {
     if (!opts.discard && ctx.activeComposer.commit) ctx.activeComposer.commit();
   }
   if (ctx.activeComposer) {
+    if (ctx.activeComposer.dropSaveState) ctx.activeComposer.dropSaveState();
     if (ctx.activeComposer.resizeObserver) ctx.activeComposer.resizeObserver.disconnect();
     if (ctx.activeComposer.dockObserver) ctx.activeComposer.dockObserver.disconnect();
     if (ctx.activeComposer.stage) ctx.activeComposer.stage.style.scrollPaddingBottom = ctx.activeComposer.previousScrollPadding || '';
@@ -190,7 +191,7 @@ export function composerBoxHtml(m, broken, isNew) {
   var brokenInfo = broken
     ? '<div class="t" style="color:var(--wb-danger,#c0392b);margin-bottom:8px">锚点失效 · 目标节点已不在当前稿中</div>'
     : '';
-  return '<button type="button" id="ann-close" aria-label="关闭标注" title="关闭（Esc）">' + annIcon('x') + '</button>' +
+  return '<button type="button" id="ann-close" aria-label="关闭标注" title="关闭，修改会自动保存">' + annIcon('x') + '</button>' +
     brokenInfo +
     '<div id="ann-imgs"></div>' +
     '<div id="ann-input" contenteditable="true" role="textbox" aria-label="写标注" aria-multiline="true" data-placeholder="写标注…"></div>' +
@@ -201,7 +202,9 @@ export function composerBoxHtml(m, broken, isNew) {
     '<div id="ann-tools-menu" hidden>' +
     '<button type="button" id="ann-change">' + annIcon('pencil') + '<span>改文案</span></button>' +
     '<button type="button" id="ann-move"' + (broken ? ' disabled' : '') + '>' + annIcon('arrow-up-right') + '<span>移动</span></button></div></div>' +
-    '<div class="ann-submit-actions">' + (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
+    '<div class="ann-submit-actions">' +
+    '<span id="ann-save-state" aria-live="polite"></span>' +
+    (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
     (isNew || (m.status || 'open') === 'close' ? '' : '<button type="button" id="ann-close-mark" aria-label="完成标注" title="完成（close）">' + annIcon('check') + '</button>') +
     '</div></div>';
 }

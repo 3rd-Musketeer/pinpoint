@@ -149,10 +149,18 @@ export function annotateCss() {
     '#ann-box .t{font-size:11px;color:var(--wb-faint,#646464);line-height:1.45;margin-right:32px}',
     '#ann-box #ann-close{position:absolute;top:10px;right:10px;display:grid;place-items:center;width:28px;height:28px;padding:0;border-radius:999px;color:var(--wb-muted,#646464);background:transparent}#ann-box #ann-close:hover{color:var(--wb-fg,#202020);background:rgba(0,0,0,.05)}#ann-box #ann-close svg{width:16px;height:16px}#ann-box #ann-input{padding-right:24px}#ann-box #ann-del{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#646464);background:transparent}#ann-box #ann-del:hover{color:var(--wb-danger,#c0392b);background:rgba(0,0,0,.04)}#ann-box #ann-del svg{width:18px;height:18px}#ann-box #ann-close-mark{display:grid;place-items:center;width:32px;height:36px;padding:0;color:var(--wb-muted,#646464);background:transparent}#ann-box #ann-close-mark:hover{color:var(--ann-st-done,#7a4fd0);background:rgba(0,0,0,.04)}#ann-box #ann-close-mark svg{width:18px;height:18px}',
     '#ann-box .ann-submit-actions{display:flex;align-items:center;gap:8px}',
+    // 自动保存状态位：高 18px，常态按 80px 预留；失败时「重试」跟在后面，不裁字。
+    // 只做 80ms 透明度，不挤动输入框。失败色用 danger，其余中性。
+    '#ann-box #ann-save-state{display:inline-flex;align-items:center;justify-content:flex-end;box-sizing:border-box;min-width:80px;height:18px;flex:none;font-size:11px;line-height:1.45;color:var(--wb-muted,#646464);white-space:nowrap;transition:opacity 80ms linear}',
+    '#ann-box #ann-save-state[data-tone="fail"]{color:var(--wb-danger,#c0392b)}',
+    '#ann-box #ann-save-state .ann-save-retry{border:0;background:transparent;padding:0;margin:0 0 0 4px;font:inherit;line-height:inherit;color:inherit;cursor:pointer;text-decoration:underline}',
+    // 全局 reduced-motion 会把 [data-ann-ui] 的过渡全部关掉。状态位只剩透明度，
+    // 没有位移，减动效下保留这 80ms，让「已保存」仍能被看见而不是跳变。
+    '@media (prefers-reduced-motion: reduce){#ann-box #ann-save-state{transition:opacity 80ms linear !important}}',
     '.ann-target.ann-draft-target{border-color:#f5a623;background:rgba(245,166,35,.11);box-shadow:0 0 0 2px rgba(245,166,35,.13);}',
     '#ann-box .acts{display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:6px;margin-top:28px;}',
-    '#ann-box button{border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,color-mix(in srgb,#202020 5%,transparent));color:var(--wb-fg,#202020);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
-    '#ann-box button:hover{background:var(--wb-fill,color-mix(in srgb,#202020 6%,transparent));}',
+    '#ann-box button:not(.ann-save-retry){border:none;cursor:pointer;font-size:12px;padding:6px 10px;border-radius:var(--wb-r-2,6px);background:var(--wb-hover,color-mix(in srgb,#202020 5%,transparent));color:var(--wb-fg,#202020);white-space:nowrap;transition:background var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1)),color var(--wb-dur,.2s) var(--wb-ease,cubic-bezier(.25,0,0,1));}',
+    '#ann-box button:not(.ann-save-retry):hover{background:var(--wb-fill,color-mix(in srgb,#202020 6%,transparent));}',
     '#ann-box button.dark{background:var(--wb-accent,#008564);color:var(--wb-on-accent,#fff);font-weight:var(--wb-w-semibold,600);}',
     '#ann-box button.dark:hover{background:color-mix(in srgb,var(--wb-accent,#008564) 90%,transparent);}',
     '#ann-box button.warn{color:var(--wb-danger,#c0392b);background:transparent;}',
@@ -190,7 +198,7 @@ export function annotateCss() {
     '#ann-mention .ann-men-empty{padding:6px 8px;}',
     // composer / 侧栏动作钮里的线性图标（lucide 风格内联 SVG，替代 emoji）。
     '#ann-box button svg{display:inline-block;width:13px;height:13px;vertical-align:-2px;}',
-    '#ann-box .acts button{display:inline-flex;align-items:center;gap:5px;}',
+    '#ann-box .acts button:not(.ann-save-retry){display:inline-flex;align-items:center;gap:5px;}',
     '#ann-sidebar .ann-sb-acts button svg{display:block;width:12px;height:12px;margin:auto;}',
     bubbleCss()
   ].join('\n');
