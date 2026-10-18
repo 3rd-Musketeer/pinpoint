@@ -262,14 +262,35 @@ test('画布浮层：board 失败时工作台自己的重试按钮点得到', as
   const inner = overlay(page).frameLocator('iframe.ov-canvas');
   const retry = inner.locator('[data-err-retry="board"]');
   await expect(retry).toBeVisible({ timeout: 30_000 });
+  // 父页面每 100ms 才收一次准备态。等它收起，再看按钮中心点到的是 iframe 而不是准备态。
+  await expect(status(page)).toBeHidden({ timeout: 5_000 });
   const box = await retry.boundingBox();
   const hit = await page.evaluate(({ x, y }) => document.elementFromPoint(x, y)?.className || '', {
     x: box.x + box.width / 2, y: box.y + box.height / 2,
   });
-  expect(hit, '准备态不能盖住工作台的重试').not.toContain('ov-status');
+  expect(hit, '准备态不能盖住工作台的重试').toContain('ov-canvas');
   fail = false;
   await retry.click();
   await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
+});
+
+test('画布浮层：外壳模块失败显示重试，重试后就绪', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let fail = true;
+  await page.route('**/src/workbench/app/main.jsx*', (route) => {
+    if (fail) return route.abort('failed');
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  const box = await overlay(page).locator('.ov-retry').boundingBox();
+  expect(box.height).toBeGreaterThan(20);
+  fail = false;
+  await overlay(page).locator('.ov-retry').click();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wbstrip > *')).not.toHaveCount(0);
 });
 
 test('画布浮层：连续两次失败后第三次重试成功', async ({ page }) => {
