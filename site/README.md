@@ -74,9 +74,15 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 - 浮层里的画布点 HTML 卡片的“全页”同样开页面浮层（`docs/design.md`“文章画布”），Esc 先回画布，再一下回文章。页面浮层开着时，头部和 `#canvas=` 停在那张卡片所在的节（盖在下面的画布视口不算数）。
 - 浮层里做的标注进这篇的 `@canvas` 账本，HTML 帧页面里做的进那一页的账本；右栏和卡片头的标注数经 SSE 跟着出现。
 
+## 目录
+
+宽屏（> 1180px）左栏是 `Base.astro` 的 `#toc`，当前节用观察带（视口上 30% 到下 60%）高亮。
+
+窄屏目录栏隐藏，正文顶上一条粘住的单行入口（`[data-toc-entry]`，高 36px）：“目录 n / N 标题”，n 是当前节。点开把同一个 `#toc` 当 popover 浮出来（`.toc-pop`），宽 320、手机宽（≤ 600px）是 `calc(100vw - 24px)`，行高至少 36px、触屏 44px。点一节滚到那一节的标题，落在顶栏和这条入口下面 8px；popover 先收起再滚，版面定下来后再按真实位置补一次。Esc、点外面收起。打开：opacity 0→1、`translateY(-4px)`→0，120ms、`cubic-bezier(.2,.8,.2,1)`；减少动态效果时只做 80ms 淡入。页顶时观察带里没有节，当前节按视口里最靠上的那一节算。
+
 ## 弹层与 Esc
 
-`lib/layers.js` 是文章页的弹层栈：popup、wiki 面板、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 或 wiki 面板不会扔掉写了一半的评论。
+`lib/layers.js` 是文章页的弹层栈：popup、wiki 面板、目录 popover、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 或 wiki 面板不会扔掉写了一半的评论。
 
 ## wiki 面板
 
@@ -109,4 +115,4 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节（纯函数，有单测）；`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
-- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数（纯函数，有单测）。
+- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、窄屏目录入口、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数；`src/lib/toc-jump.js`：目录跳转的落点与动效参数（纯函数，有单测）。

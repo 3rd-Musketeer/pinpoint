@@ -141,6 +141,25 @@ main { min-width:0; }
 .toc li a { display:flex; gap:6px; padding:5px 8px; text-wrap:pretty; }
 .toc .n { flex:none; min-width:1.4em; margin:0; }
 
+/* 窄屏目录入口：目录栏隐藏（≤1180px，见上面的 .layout 媒体查询）时，正文顶上一条 36px 的单行。
+   点开把同一个 #toc 浮出来（.toc-pop），不另做一份目录。宽屏这条 hidden，由 client.js 管。 */
+.toc-entry { position:sticky; top:57px; z-index:15; margin:0 0 16px; }
+.toc-entry[hidden] { display:none; }
+.toc-entry-btn { appearance:none; display:flex; align-items:center; gap:8px; width:100%; height:36px; padding:0 12px;
+                 border:1px solid var(--pp-border); border-radius:var(--pp-r-2); background:var(--pp-bg); color:var(--pp-text);
+                 font:inherit; font-size:var(--pp-fs-ui); cursor:pointer; text-align:left; }
+.toc-entry-btn:hover { background:var(--pp-surface); }
+.toc-entry-btn:focus-visible { outline:2px solid var(--pp-focus-ring); outline-offset:1px; }
+.toc-entry-label { flex:none; font-weight:600; }
+.toc-entry-pos { flex:none; color:var(--pp-accent-text); font-variant-numeric:tabular-nums; font-weight:600; }
+.toc-entry-title { flex:1; min-width:0; overflow:hidden; white-space:nowrap; text-overflow:ellipsis; }
+.toc.toc-pop { display:block; position:fixed; z-index:30; right:auto; width:320px; max-height:60dvh; overflow:auto;
+               background:var(--pp-bg); border:1px solid var(--pp-border); border-radius:var(--pp-r-4); box-shadow:var(--pp-sh-3); padding:8px; }
+.toc.toc-pop .label { display:none; }
+.toc.toc-pop li a { min-height:36px; align-items:center; }
+@media (pointer: coarse) { .toc.toc-pop li a { min-height:44px; } }
+@media (max-width:600px) { .toc.toc-pop { width:calc(100vw - 24px); } }
+
 /* [[ ]] 芯片：已有页 = 强调字、600、左侧 6px 实心圆点，没有下划线（owner 2026-10-15：“感觉这个下划线不用了，可以去掉，左侧的这个圆形够了”）；
    悬停 / 焦点加强调浅底提示可点。空 ref = 灰字、虚线下划线、空心圆点：虚线是它和已有页的区分，保留。
    字色用 --pp-accent-text（亮色 green 11 #007658，白底 5.6:1）。

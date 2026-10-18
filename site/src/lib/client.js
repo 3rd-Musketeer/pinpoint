@@ -6,10 +6,14 @@ import {
   placeWikiPanel, WIKI_CLOSE_MS, WIKI_EASE, WIKI_OPEN_MS, WIKI_OPEN_Y,
   WIKI_PANEL_GAP, WIKI_PANEL_MAX_H, WIKI_PANEL_MAX_VH, WIKI_REDUCED_MS,
 } from './wiki-panel.js';
+import { TOC_EASE, TOC_JUMP_GAP, TOC_OPEN_MS, TOC_OPEN_Y, TOC_REDUCED_MS, tocJumpScroll } from './toc-jump.js';
 
 // [[ ]] popup 的时序（site/README.md「[[ ]] 引用」）：悬停 120 ms 打开，指针移进 popup 不关，离开两者 200 ms 后关。
 export const POP_OPEN_MS = 120;
 export const POP_CLOSE_MS = 200;
+
+// 目录入口的“当前节”显示。initTocEntry 装上，观察者每次换节时调。
+let updateTocEntry = () => {};
 
 const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
@@ -49,18 +53,136 @@ export function initSite() {
   });
 
   const links = [...document.querySelectorAll('#toc a')];
-  if (links.length && 'IntersectionObserver' in window) {
+  const sections = [...document.querySelectorAll('section.sec')];
+  const markCurrent = (id) => {
+    for (const a of links) a.classList.toggle('on', a.getAttribute('href') === `#${id}`);
+    updateTocEntry();
+  };
+  // 观察带是视口中段（上 30% 到下 60%）。页顶时第一节还在带下面，带里没有任何节，
+  // 观察者不会回调，当前节就停在跳走前的那一节。带空时取视口里最靠上的那一节。
+  const inBand = new Set();
+  const topmostVisible = () => {
+    for (const s of sections) {
+      if (s.getBoundingClientRect().bottom > 0) return s.id;
+    }
+    return null;
+  };
+  const syncFromScroll = () => {
+    if (inBand.size && scrollY > 0) return;
+    const id = topmostVisible();
+    if (id) markCurrent(id);
+  };
+  if (links.length && sections.length && 'IntersectionObserver' in window) {
     const io = new IntersectionObserver((es) => {
       for (const e of es) {
-        if (!e.isIntersecting) continue;
-        for (const a of links) a.classList.toggle('on', a.getAttribute('href') === `#${e.target.id}`);
+        if (e.isIntersecting) { inBand.add(e.target); markCurrent(e.target.id); }
+        else inBand.delete(e.target);
       }
+      if (!inBand.size) syncFromScroll();
     }, { rootMargin: '-30% 0px -60% 0px' });
-    document.querySelectorAll('section.sec').forEach((s) => io.observe(s));
+    sections.forEach((s) => io.observe(s));
+    document.addEventListener('scroll', syncFromScroll, { passive: true });
+    // scrollTo 不一定发 scroll 事件（已经在 0 时再滚到 0）。观察者的回调是异步的，等它先记带。
+    requestAnimationFrame(() => requestAnimationFrame(syncFromScroll));
   }
 
   initRefPopups();
   initWikiPanel();
+  initTocEntry(markCurrent);
+}
+
+// 窄屏目录入口：目录栏隐藏时（≤1180px），正文顶上一条单行“目录 n / N 标题”，
+// 点开把现有的 #toc 当 popover 用，不另做一份目录。点一节滚到标题，落在顶栏和这条入口下面。
+function initTocEntry(markCurrent) {
+  const entry = document.querySelector('[data-toc-entry]');
+  const nav = document.querySelector('[data-toc-nav]');
+  const toggle = document.querySelector('[data-toc-toggle]');
+  if (!entry || !nav || !toggle) return;
+  const links = [...nav.querySelectorAll('#toc a')];
+  if (!links.length) return;
+
+  const collapsed = () => getComputedStyle(nav).display === 'none';
+  const pos = entry.querySelector('[data-toc-pos]');
+  const title = entry.querySelector('[data-toc-current]');
+
+  const sync = () => {
+    entry.hidden = !collapsed();
+    if (entry.hidden && nav.classList.contains('toc-pop')) close();
+    const current = links.find((a) => a.classList.contains('on')) || links[0];
+    const n = links.indexOf(current) + 1;
+    pos.textContent = `${n} / ${links.length}`;
+    title.textContent = [...current.childNodes].filter((nd) => nd.nodeType === Node.TEXT_NODE).map((nd) => nd.textContent).join('').trim();
+  };
+  updateTocEntry = sync;
+
+  let release = null;
+  const reduced = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const play = (show) => {
+    const fade = reduced();
+    nav.getAnimations().forEach((a) => a.cancel());
+    nav.animate(
+      [
+        { opacity: show ? 0 : 1, transform: fade ? 'none' : `translateY(${show ? TOC_OPEN_Y : 0}px)` },
+        { opacity: show ? 1 : 0, transform: fade ? 'none' : `translateY(${show ? 0 : TOC_OPEN_Y}px)` },
+      ],
+      { duration: fade ? TOC_REDUCED_MS : TOC_OPEN_MS, easing: TOC_EASE, fill: 'both' },
+    );
+  };
+  const close = () => {
+    if (!nav.classList.contains('toc-pop')) return;
+    play(false);
+    nav.classList.remove('toc-pop');
+    toggle.setAttribute('aria-expanded', 'false');
+    release?.();
+    release = null;
+  };
+  const open = () => {
+    nav.classList.add('toc-pop');
+    const r = entry.getBoundingClientRect();
+    nav.style.left = `${Math.max(12, r.left)}px`;
+    nav.style.top = `${r.bottom + 4}px`;
+    toggle.setAttribute('aria-expanded', 'true');
+    play(true);
+    release = layers.push('toc', close);
+  };
+
+  toggle.addEventListener('click', () => { if (toggle.getAttribute('aria-expanded') === 'true') close(); else open(); });
+  document.addEventListener('pointerdown', (e) => {
+    if (!nav.classList.contains('toc-pop')) return;
+    if (entry.contains(e.target) || nav.contains(e.target)) return;
+    close();
+  });
+  // 点一节滚到标题，落在粘住的顶栏和这条入口下面。先收 popover 再量：开着时调同步会把入口隐掉，高度量成 0。
+  // 滚完后的版面还会动（滚动条、评论栏），最多再补两帧。
+  const jumpTo = (id) => {
+    const sec = document.getElementById(id);
+    if (!sec) return;
+    const head = sec.querySelector('h2, h3') || sec;
+    close();
+    const stuckNow = () => document.querySelector('.top').getBoundingClientRect().bottom
+      + (entry.hidden ? 0 : entry.getBoundingClientRect().height);
+    document.documentElement.scrollTop = tocJumpScroll(scrollY + head.getBoundingClientRect().top, stuckNow());
+    markCurrent(id);
+    // 滚完后滚动条和评论栏还会改版面，最多再补两帧。
+    let left = 2;
+    const correct = () => {
+      const delta = head.getBoundingClientRect().top - stuckNow() - TOC_JUMP_GAP;
+      if (Math.abs(delta) > 1) document.documentElement.scrollTop += delta;
+      if (--left > 0) requestAnimationFrame(correct);
+    };
+    requestAnimationFrame(correct);
+    history.replaceState(null, '', `#${id}`);
+  };
+  nav.addEventListener('click', (e) => {
+    const a = e.target.closest?.('#toc a');
+    if (!a || !nav.classList.contains('toc-pop')) return;
+    const id = a.getAttribute('href').slice(1);
+    if (!document.getElementById(id)) return;
+    e.preventDefault();
+    jumpTo(id);
+  });
+  matchMedia('(max-width:1180px)').addEventListener('change', sync);
+  sync();
 }
 
 // wiki 面板：从 wiki 按钮右下角展开，接入弹层栈（Esc 只关最上层）。
