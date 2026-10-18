@@ -5,7 +5,7 @@ import { expect, test } from './lib/fixtures.js';
 
 import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
-import { proseSettled } from './lib/prose.js';
+import { dragSelect, proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 
 // 宽屏右栏按锚点排：卡片 top 贴着引用，重叠就往下推；选中的那张回到锚点；没选中的收成摘要；
@@ -122,6 +122,32 @@ test('宽屏右栏：卡片按锚点排，选中对齐，没选中折叠，悬�
       await expect(page.locator('mark.pp-hl.pp-hover')).toHaveAttribute('data-ids', 'a1');
       await page.locator('mark.pp-hl[data-ids~="a2"]').hover();
       await expect(page.locator('.pp-thread.pp-hover')).toHaveAttribute('data-id', 'a2');
+    });
+
+    await test.step('页面滚下去后选字点“评论”：页面不跳，焦点落在草稿框，草稿卡贴着选中的文字', async () => {
+      // 垫高页面、滚到栏顶已出视口的位置：草稿卡若还没排就聚焦，浏览器会把页面滚回栏顶。
+      await page.evaluate(() => { document.body.style.paddingBottom = '2000px'; });
+      await page.evaluate(() => {
+        const p = document.querySelector('#p6');
+        window.scrollTo(0, window.scrollY + p.getBoundingClientRect().top - 300);
+      });
+      await expect.poll(() => page.evaluate(() => document.querySelector('#rail').getBoundingClientRect().top)).toBeLessThan(0);
+      await dragSelect(page, '#p6', '一本账上');
+      const before = await page.evaluate(() => window.scrollY);
+      await page.locator('.pp-selbtn').click();
+      const area = page.locator('.pp-thread.draft textarea');
+      await expect(area).toBeFocused();
+      await page.waitForTimeout(300); // 静默窗口：过渡和下一帧重排都跑完，页面仍没滚
+      expect(await page.evaluate(() => window.scrollY)).toBe(before);
+      const gap = await page.evaluate(() => {
+        const mark = document.querySelector('mark.pp-hl.draft');
+        const card = document.querySelector('.pp-thread.draft');
+        return card.getBoundingClientRect().top - mark.getBoundingClientRect().top;
+      });
+      expect(Math.abs(gap)).toBeLessThanOrEqual(2);
+      await page.keyboard.press('Escape');
+      await expect(page.locator('.pp-thread.draft')).toHaveCount(0);
+      await page.evaluate(() => { document.body.style.paddingBottom = ''; window.scrollTo(0, 0); });
     });
 
     await test.step('编辑框里连续输入多行，被编辑卡片的 top 不变', async () => {

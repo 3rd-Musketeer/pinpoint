@@ -42,15 +42,26 @@ test('选中项往上挤：选中的钉在锚点，上面重叠的依次上移�
   assert.deepEqual(tops(items, 'c'), [0, 226, 340]);
 });
 
-test('选中项在最上面且上面挤不下：整段下移到 0，选中的离开锚点', () => {
+test('选中项上面挤不下：选中的留在锚点，挤不下的叠在顶部', () => {
   const items = [
     { id: 'a', anchor: 0, height: 120 },
     { id: 'b', anchor: 40, height: 80 },
   ];
-  // 选中 b 想钉在 40，a 要挤到 40 - 14 - 120 = -94，越出顶部。整段下移 94：a 在 0，b 在 134。
-  assert.deepEqual(tops(items, 'b'), [0, 134]);
-  // 没选中时照常下推：a 在 0，b 在 134，结果一样。
+  // 选中 b 钉在 40，a 要挤到 -94，越出顶部 0：a 停在 0，被 b 盖住。
+  assert.deepEqual(tops(items, 'b'), [0, 40]);
+  // 没选中时照常下推：a 在 0，b 在 134。
   assert.deepEqual(tops(items), [0, 134]);
+});
+
+test('给了 minTop：上面挤不下的越过栏顶往上排，选中的留在锚点', () => {
+  const items = [
+    { id: 'a', anchor: 0, height: 120 },
+    { id: 'b', anchor: 40, height: 80 },
+  ];
+  // 文档顶部在栏顶上方 300：a 挤到 -94 还够得着，b 钉在 40。
+  assert.deepEqual(placeRailCards(items, 'b', 14, -300).map((p) => p.top), [-94, 40]);
+  // 文档顶部只在上方 50：a 最多到 -50，叠在那里；b 仍在 40。
+  assert.deepEqual(placeRailCards(items, 'b', 14, -50).map((p) => p.top), [-50, 40]);
 });
 
 test('锚点缺失：紧跟上一张，不按 Infinity 甩到最后', () => {

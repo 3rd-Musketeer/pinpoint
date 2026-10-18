@@ -264,6 +264,8 @@ mark.pp-hl.pp-hover:not(.on) { background:color-mix(in srgb, var(--pp-highlight-
 /* 宽屏：卡片在右栏里绝对定位，top 由排版写。位置变化约 150ms；减少动态效果时不加。 */
 .pp-rail-aligned .pp-threads { position:relative; }
 .pp-rail-aligned .pp-thread { position:absolute; left:0; right:0; margin:0; }
+/* 上面挤不下的卡片会叠在顶部：选中、草稿压在最上层。 */
+.pp-rail-aligned .pp-thread.on, .pp-rail-aligned .pp-thread.draft { z-index:1; }
 @media (prefers-reduced-motion: no-preference) {
   .pp-rail-aligned .pp-thread { transition:box-shadow .15s, border-color .15s, top .15s ease; }
 }

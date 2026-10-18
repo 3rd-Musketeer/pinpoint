@@ -76,7 +76,10 @@ export function createSelection(opts) {
     state.focusedId = '__draft';
     hooks.render();
     var area = rail.querySelector('textarea[data-reply="__draft"]');
-    if (area) { area.scrollIntoView({ block: 'nearest' }); area.focus(); }
+    if (!area) return;
+    // 宽屏草稿卡贴着选中的文字，已经在视口里；focus 不许自己滚，只在卡片顶部看不见时才滚。
+    area.focus({ preventScroll: true });
+    hooks.reveal(area.closest('.pp-thread'));
   }
 
   return { hideSelBtn: hideSelBtn, hasSelBtn: hasSelBtn, onSelectionDone: onSelectionDone, startDraft: startDraft };

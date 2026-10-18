@@ -254,7 +254,7 @@ export function startProseComments(options) {
     root: root,
     rail: rail,
     state: state,
-    hooks: { render: render },
+    hooks: { render: render, reveal: function (card) { railApi.reveal(card); } },
   });
 
   var edit = createEdit({

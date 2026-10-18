@@ -113,12 +113,16 @@ export function createRail(opts) {
     rail.innerHTML = '<div class="pp-rail-head"><div class="label">评论</div></div>'
       + '<div class="pp-threads">' + list + '</div>' + empty
       + '<p class="pp-rail-note" role="status">' + esc(note) + '</p>';
+    // 新卡片当场排好再往下走：等下一帧才写 top，这一帧里所有卡片都叠在栏顶，
+    // 接下来的 focus() 会把页面滚到栏顶（选中文字点“评论”跳走就是这个）。
+    if (placeFrame) { cancelAnimationFrame(placeFrame); placeFrame = 0; }
+    placeCards();
     Object.keys(keep).forEach(function (id) {
       var area = railArea(rail, id);
       if (!area) return;
       area.value = keep[id].value;
       if (keep[id].focus) {
-        area.focus();
+        area.focus({ preventScroll: true });
         try { area.setSelectionRange(keep[id].start, keep[id].end); } catch (e) { /* */ }
       }
     });
@@ -132,7 +136,7 @@ export function createRail(opts) {
       }
       setEditFieldText(area, keepEdit[id].value);
       if (keepEdit[id].focus) {
-        area.focus();
+        area.focus({ preventScroll: true });
         setEditFieldSelection(area, keepEdit[id].start, keepEdit[id].end);
       }
       growEdit(area);
@@ -196,7 +200,9 @@ export function createRail(opts) {
     for (var i = 0; i < cards.length; i++) {
       items.push({ id: cards[i].getAttribute('data-id'), anchor: anchorTop(cards[i], railTop), height: cards[i].offsetHeight });
     }
-    var placed = placeRailCards(items, activeId(), GAP);
+    // 选中的卡片上面挤不下时，可以越过栏顶一直排到文档顶部：它自己必须留在锚点旁边。
+    var docTop = -(railTop + window.scrollY);
+    var placed = placeRailCards(items, activeId(), GAP, docTop);
     // 正在编辑或回复：这张卡钉在进编辑前的 top，打字变高只推下面的。选中本身不钉，
     // 选中后卡片要落到锚点上。
     var pinId = (state.editingId != null || state.replyOpen.size > 0) ? activeId() : null;
@@ -258,6 +264,13 @@ export function createRail(opts) {
     window.scrollBy({ top: delta, left: 0 });
   }
 
+  /** 让卡片进视口：宽屏按目标 top 判断、顶部看得见就不滚；窄屏右栏在正文下面，照常滚到它。 */
+  function reveal(card) {
+    if (!card) return;
+    if (aligned()) revealCard(card);
+    else card.scrollIntoView({ block: 'nearest' });
+  }
+
   function focusThread(id, focusOpts) {
     state.focusedId = id;
     renderRail();
@@ -278,5 +291,5 @@ export function createRail(opts) {
     }
   }
 
-  return { renderRail: renderRail, focusThread: focusThread, schedulePlace: schedulePlace, hold: hold };
+  return { renderRail: renderRail, focusThread: focusThread, schedulePlace: schedulePlace, hold: hold, reveal: reveal };
 }
