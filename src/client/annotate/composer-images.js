@@ -71,6 +71,7 @@ export function attachComposerAutosave(composer, ta, m, draft) {
     ? (composer.box || document.getElementById('ann-box')).querySelector('#ann-save-state') : null;
   var stateText = '';
   var announced = '';
+  var fade = null;
   function paintState() {
     if (!stateEl) return;
     var dirty = composer.isDirty();
@@ -78,13 +79,14 @@ export function attachComposerAutosave(composer, ta, m, draft) {
     var next = '';
     var tone = '';
     var live = '';
-    if (ctx.syncError && pending) {
+    // 进行中的请求优先于上次失败：重试发出后 syncError 还没清，不能继续显示「保存失败」。
+    if (ctx.syncing && pending) {
+      next = 'saving';
+      live = '正在保存';
+    } else if (ctx.syncError && pending) {
       next = 'fail';
       tone = 'fail';
       live = '保存失败';
-    } else if (ctx.syncing && pending) {
-      next = 'saving';
-      live = '正在保存';
     } else if (dirty || pending) {
       next = 'dirty';
       live = '尚未保存';
@@ -93,9 +95,32 @@ export function attachComposerAutosave(composer, ta, m, draft) {
       live = '已保存';
     }
     if (next === stateText) return;
+    var previous = stateText;
     stateText = next;
-    stateEl.dataset.tone = tone;
-    stateEl.textContent = '';
+    function paint() {
+      stateEl.dataset.tone = tone;
+      stateEl.textContent = '';
+      writeState(next);
+    }
+    // 真实状态切换才淡出再淡入。空闲首次出现直接写。中途又切换时取消上一段，
+    // 从当前透明度接着走，不跳回 1。
+    if (fade) { fade.cancel(); fade = null; }
+    var reduceMotion = stateEl.ownerDocument.defaultView.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    if (previous && next && stateEl.animate && !reduceMotion) {
+      var from = parseFloat(getComputedStyle(stateEl).opacity);
+      if (!isFinite(from)) from = 1;
+      fade = stateEl.animate([{ opacity: from }, { opacity: 0 }], { duration: 80, easing: 'linear', fill: 'forwards' });
+      fade.onfinish = function () {
+        fade = null;
+        if (stateText !== next) return;
+        paint();
+        stateEl.animate([{ opacity: 0 }, { opacity: 1 }], { duration: 80, easing: 'linear' });
+      };
+    } else {
+      paint();
+    }
+  }
+  function writeState(next) {
     if (next === 'fail') {
       stateEl.appendChild(document.createTextNode('保存失败，'));
       var retry = document.createElement('button');

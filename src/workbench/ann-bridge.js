@@ -122,7 +122,13 @@ export function syncAnnSnap() {
     });
     // 阅读态：正文里的 [@t:iN] 画成目标文字 pill。目标名不再占眉标——
     // 眉标仍是引用号 + 屏名（AnnPopover 用 boardMeta 覆盖 cap）。
-    row.segments = readingSegments((m && m.content) || '', m.targets || []);
+    // 分段吃账本文本；文字段再把 @mention 换成 @n。用截断后的 preview 会切掉 80 字后的引用。
+    var stored = (m && m.content) || '';
+    row.segments = readingSegments(stored, m.targets || []).map(function (seg) {
+      if (seg.type !== 'text') return seg;
+      var text = (ann && typeof ann.contentToDisplay === 'function') ? ann.contentToDisplay(seg.text, []) : seg.text;
+      return { type: 'text', text: text };
+    });
     row.key = (m.section || m.group || '_') + '|' + m.n;
     row.group = m.section || m.group || '_';
     row.groupLabel = m.sectionLabel || m.groupLabel || '未分组';

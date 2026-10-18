@@ -78,10 +78,10 @@
   word-break:break-word;
 }
 /* 目标引用单独一行，不跟意见抢两行；意见超过两行才截断。 */
-#wbann-list .wb-ann-refs,
-#ann-sidebar .wb-ann-refs { display:flex; flex-wrap:wrap; gap:3px; }
-#wbann-list .wb-ann-copy,
-#ann-sidebar .wb-ann-copy {
+#wbann-list .wb-ann-refs, #wbann-list .ann-bubble-refs,
+#ann-sidebar .wb-ann-refs, #ann-sidebar .ann-bubble-refs { display:flex; flex-wrap:wrap; gap:3px; }
+#wbann-list .wb-ann-copy, #wbann-list .ann-bubble-copy,
+#ann-sidebar .wb-ann-copy, #ann-sidebar .ann-bubble-copy {
   display:-webkit-box; -webkit-line-clamp:2; -webkit-box-orient:vertical;
   overflow:hidden; word-break:break-word;
 }

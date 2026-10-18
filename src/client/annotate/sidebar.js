@@ -2,6 +2,7 @@
 // 以及操作提示 toast。导出 bind_sidebar、init_sidebar、installSidebar、
 // toggleSidebar、closeAnnotation、setStatusFilter 等。
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, filterIncludesStatus, writeAnnFilter } from '../../shared/ann-status.js';
+import { readingBodyHtml } from '../../shared/annotate-bubble.js';
 import { readingSegments } from '../../shared/annotation-indicator.js';
 import { annRowModel, annRowPreview } from '../../shared/ann-row.js';
 import { isMarkBroken, markElementTargets } from './anchor.js';
@@ -64,7 +65,11 @@ function sidebarRowModel() {
   // 正文的目标引用走阅读态分段（readingSegments）：pill 用目标文字，不占
   // 眉标。preview 仍是纯文本，只给签名比对和没有分段时的退路。
   return marksForActivePage().slice().sort(function (a, b) { return a.n - b.n; }).map(function (m) {
-    var segments = readingSegments(annotationContent(m), markElementTargets(m));
+    var stored = annotationContent(m);
+    var targets = markElementTargets(m);
+    var segments = readingSegments(stored, targets).map(function (seg) {
+      return seg.type === 'text' ? { type: 'text', text: contentToDisplay(seg.text, []) } : seg;
+    });
     var row = annRowModel(m, {
       preview: annRowPreview(contentToDisplay(annotationContent(m), markElementTargets(m))),
       broken: isMarkBroken(m)
@@ -202,27 +207,7 @@ function buildRow(r) {
   if (r.segments && r.segments.length) {
     var text = document.createElement('span');
     text.className = 'wb-ann-text';
-    var pills = r.segments.filter(function (seg) { return seg && seg.type === 'pill'; });
-    var copy = r.segments.filter(function (seg) { return !seg || seg.type !== 'pill'; })
-      .map(function (seg) { return seg && seg.text || ''; }).join('').trim();
-    if (pills.length) {
-      var refs = document.createElement('span');
-      refs.className = 'wb-ann-refs';
-      pills.forEach(function (seg) {
-        var pill = document.createElement('span');
-        pill.className = 'ann-read-pill' + (seg.missing ? ' ann-read-pill--missing' : '');
-        pill.textContent = seg.label;
-        pill.title = seg.title;
-        refs.appendChild(pill);
-      });
-      text.appendChild(refs);
-    }
-    if (copy) {
-      var line = document.createElement('span');
-      line.className = 'wb-ann-copy';
-      line.textContent = copy;
-      text.appendChild(line);
-    }
+    text.innerHTML = readingBodyHtml({ segments: r.segments });
     body.appendChild(text);
   } else if (r.preview) {
     var plain = document.createElement('span');

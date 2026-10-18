@@ -122,7 +122,11 @@ export function bubbleMarkView(m) {
     // content 仍是编辑协议的纯文本（gutter 等只拿字符串的调用方用）；
     // segments 是阅读态：目标引用画成文字 pill，账本文本不动。
     content: contentToDisplay(stored, targets),
-    segments: readingSegments(stored, targets),
+    // 分段吃账本文本（[@t:iN]），文字段再把 @mention 换成 @n。先整段换成展示文本
+    // 会把目标引用变成 [indicator N]，阅读态就找不到 pill。
+    segments: readingSegments(stored, targets).map(function (seg) {
+      return seg.type === 'text' ? { type: 'text', text: contentToDisplay(seg.text, []) } : seg;
+    }),
     replies: annRowReplies(m)
   };
 }

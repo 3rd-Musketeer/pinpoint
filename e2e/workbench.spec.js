@@ -2218,61 +2218,73 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
     await page.keyboard.press('End');
     await page.keyboard.type(' 失败');
     await expect(state).toHaveText('保存失败，重试');
+    await page.unroute('**/save');
     await expect(state.locator('.ann-save-retry')).toBeFocused({ timeout: 1000 }).catch(() => {});
     await state.locator('.ann-save-retry').focus();
     await expect(state.locator('.ann-save-retry')).toBeFocused();
     const duringRetry = state.locator('.ann-save-retry');
     await page.keyboard.type('中');
     await expect(input).toContainText('失败中');
+    // 重试发出后请求还没回：显示正在保存，不能停在上次的失败上。
+    let releaseRetry;
+    const retryHeld = new Promise((resolve) => { releaseRetry = resolve; });
+    let retryStarted;
+    const retryBegan = new Promise((resolve) => { retryStarted = resolve; });
+    await page.route('**/save', async (route) => {
+      retryStarted();
+      await retryHeld;
+      await route.continue();
+    });
     await duringRetry.click();
+    await retryBegan;
+    await expect(state).toHaveText('正在保存…');
+    await expect(state).not.toContainText('保存失败');
+    const client = await page.evaluate(() => window.pinpoint.getState());
+    expect(client.syncing).toBe(true);
+    expect(client.syncError).toBe(true);
+    releaseRetry();
     await expect(state).toHaveText('已保存');
     await expect.poll(async () => (await markByN(nA)).content).toContain('失败中');
     await page.unroute('**/save');
 
-    const motion = await state.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      const ms = (value) => parseFloat(value) * (String(value).endsWith('ms') ? 1 : 1000);
-      el.style.transition = 'none';
-      el.style.opacity = '0.2';
-      const start = getComputedStyle(el).opacity;
-      el.style.transition = '';
-      el.style.opacity = '1';
-      const mid = new Promise((resolve) => {
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve(getComputedStyle(el).opacity)));
-      });
-      return mid.then((during) => {
-        el.style.opacity = '0.2';
-        return {
-          transition: cs.transitionProperty,
-          duration: ms(cs.transitionDuration),
-          easing: cs.transitionTimingFunction,
-          live: el.getAttribute('aria-live'),
-          start, during,
-        };
-      });
-    });
-    expect(motion.transition).toBe('opacity');
-    expect(motion.duration).toBeCloseTo(80, 0);
-    expect(motion.easing).toContain('linear');
-    expect(motion.live).toBe('polite');
-    expect(Number(motion.start)).toBeCloseTo(0.2, 1);
-    // 途中反向：没到 1 就改回起点，动画从当前值接着走，不跳。
-    expect(Number(motion.during)).toBeGreaterThan(Number(motion.start));
-    expect(Number(motion.during)).toBeLessThan(1);
-    expect(motion.transition).not.toContain('transform');
-    // 显式打开 reduced-motion 再量一次：只剩透明度，时长仍是 80ms，没有位移。
-    await page.emulateMedia({ reducedMotion: 'reduce' });
-    const reduced = await state.evaluate((el) => {
-      const cs = getComputedStyle(el);
-      return {
-        matches: matchMedia('(prefers-reduced-motion: reduce)').matches,
-        transition: cs.transitionProperty,
-        duration: cs.transitionDuration,
+    // 动效由真实状态切换触发：输入把「已保存」换成「尚未保存」，观察淡出。
+    await expect(state).toHaveText('已保存');
+    const seen = state.evaluate((el) => new Promise((resolve) => {
+      const anims = [];
+      const take = () => {
+        const running = el.getAnimations();
+        if (!running.length) return;
+        const a = running[0];
+        const frames = a.effect.getKeyframes();
+        anims.push({
+          duration: a.effect.getTiming().duration,
+          easing: a.effect.getTiming().easing,
+          props: frames.map((f) => Object.keys(f).filter((k) => k !== 'offset' && k !== 'easing' && k !== 'composite')),
+        });
+        if (anims.length >= 1) resolve(anims);
       };
-    });
-    expect(reduced.matches).toBe(true);
-    expect(reduced.transition).toBe('opacity');
-    expect(reduced.duration === '0.08s' || reduced.duration === '80ms').toBe(true);
+      const mo = new MutationObserver(take);
+      mo.observe(el, { childList: true, characterData: true, subtree: true });
+      requestAnimationFrame(take);
+    }));
+    await input.click();
+    await page.keyboard.press('End');
+    await page.keyboard.type('动');
+    const anims = await seen;
+    expect(anims[0].duration).toBe(80);
+    expect(anims[0].easing).toBe('linear');
+    expect(anims[0].props.flat()).toContain('opacity');
+    expect(anims[0].props.flat()).not.toContain('transform');
+    await expect(state).toHaveAttribute('aria-live', 'polite');
+    await expect(state).toHaveText('已保存');
+
+    // 减动效下同一条切换不再淡出，文字直接换成尚未保存。画布标注框在 iframe 里，
+    // emulateMedia 不一定进得去，所以这里只断言结果：没有新的 80ms 淡出。
+    await page.emulateMedia({ reducedMotion: 'reduce' });
+    await input.click();
+    await page.keyboard.type('静');
+    await expect(state).toHaveText('尚未保存');
+    await page.emulateMedia({ reducedMotion: 'no-preference' });
     await expect(box.locator('#ann-close')).toHaveAttribute('title', '关闭，修改会自动保存');
   });
 

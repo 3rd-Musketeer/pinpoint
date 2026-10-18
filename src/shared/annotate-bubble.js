@@ -35,8 +35,8 @@ export function bubbleCss() {
     '.ann-bubble-n{flex:none;font-weight:var(--wb-w-semibold,600);letter-spacing:.04em;',
     'color:var(--wb-accent,#008564);}',
     '.ann-bubble-ref{min-width:0;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}',
-    // 正文 12.5/1.45。目标引用单独一行（不跟意见抢两行），意见最多两行。
-    // pill：--wb-fill、12px、4px 圆角、横向 4px、最宽 100px，完整文字在 title 里。
+    // 正文 12.5/1.45。开头连续的目标引用单独一行；正文中间的引用留在原位，不拿出去拼。
+    // 意见最多两行。pill：--wb-fill、12px、4px 圆角、横向 4px、最宽 100px，完整文字在 title 里。
     '.ann-bubble-body{font-size:12.5px;line-height:1.45;}',
     '.ann-bubble-refs{display:flex;flex-wrap:wrap;gap:3px;margin-bottom:2px;}',
     '.ann-bubble-copy{white-space:pre-wrap;word-break:break-word;',
@@ -56,16 +56,24 @@ function pillHtml(seg) {
   return '<span class="' + cls + '" title="' + escHtml(seg.title) + '">' + escHtml(seg.label) + '</span>';
 }
 
-/** 阅读态正文：目标引用单独一行，意见放下面并限两行。没有 segments 时
- *  整段转义（gutter 等只拿到纯文本的调用方）。 */
-function readingBodyHtml(m) {
+/** 开头连续的目标引用单独一行；正文中间的引用按原顺序留在意见里。
+ *  没有 segments 时整段转义。 */
+export function readingBodyHtml(m) {
   var segments = m && Array.isArray(m.segments) ? m.segments : null;
   if (!segments) return escHtml(m && m.content != null ? m.content : '');
-  var pills = segments.filter(function (seg) { return seg && seg.type === 'pill'; });
-  var copy = segments.filter(function (seg) { return !seg || seg.type !== 'pill'; })
-    .map(function (seg) { return seg && seg.text || ''; }).join('').trim();
-  return (pills.length ? '<div class="ann-bubble-refs">' + pills.map(pillHtml).join('') + '</div>' : '')
-    + (copy ? '<div class="ann-bubble-copy">' + escHtml(copy) + '</div>' : '');
+  var lead = [];
+  var i = 0;
+  while (i < segments.length && segments[i] && segments[i].type === 'pill') lead.push(segments[i++]);
+  var rest = '';
+  for (; i < segments.length; i++) {
+    var part = segments[i];
+    if (!part) continue;
+    rest += part.type === 'pill' ? pillHtml(part) : escHtml(part.text || '');
+  }
+  rest = rest.trim();
+  // span 不是 div：列表行把这段塞进 .wb-ann-text（本身是 span），div 会被浏览器拆出父级。
+  return (lead.length ? '<span class="ann-bubble-refs">' + lead.map(pillHtml).join('') + '</span>' : '')
+    + (rest ? '<span class="ann-bubble-copy">' + rest + '</span>' : '');
 }
 
 /** Inner markup (眉标 + 正文) for one bubble. Caller wraps + positions.

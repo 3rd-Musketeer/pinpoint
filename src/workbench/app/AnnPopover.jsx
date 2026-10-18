@@ -19,6 +19,33 @@ var BUBBLE_MODES = [
   ['chan', '右侧通道']
 ];
 
+// 开头连续的目标引用单独一行；正文中间的引用留在原位，不把所有 pill 抽到顶部。
+function ReadingBody(props) {
+  var segments = props.segments || [];
+  var i = 0;
+  var lead = [];
+  while (i < segments.length && segments[i] && segments[i].type === 'pill') lead.push(segments[i++]);
+  var rest = segments.slice(i);
+  var copy = rest.map(function (seg) { return seg && seg.type === 'pill' ? seg.label : (seg && seg.text || ''); }).join('').trim();
+  if (!lead.length && !copy) return null;
+  return (
+    <span className="wb-ann-text">
+      {lead.length
+        ? <span className="wb-ann-refs">{lead.map(function (seg, n) {
+            return <span key={n} className={cn('ann-read-pill', seg.missing && 'ann-read-pill--missing')} title={seg.title}>{seg.label}</span>;
+          })}</span>
+        : null}
+      {copy ? <span className="wb-ann-copy">{rest.map(function (seg, n) {
+        if (!seg) return null;
+        if (seg.type === 'pill') {
+          return <span key={n} className={cn('ann-read-pill', seg.missing && 'ann-read-pill--missing')} title={seg.title}>{seg.label}</span>;
+        }
+        return seg.text || '';
+      })}</span> : null}
+    </span>
+  );
+}
+
 function AnnRow(props) {
   var r = props.row;
   return (
@@ -31,16 +58,7 @@ function AnnRow(props) {
           <span className="wb-ann-body">
             <span className="wb-ann-cap">{r.cap}</span>
             {r.segments && r.segments.length
-              ? <span className="wb-ann-text">
-                  {r.segments.some(function (seg) { return seg && seg.type === 'pill'; })
-                    ? <span className="wb-ann-refs">{r.segments.filter(function (seg) { return seg && seg.type === 'pill'; }).map(function (seg, i) {
-                        return <span key={i} className={cn('ann-read-pill', seg.missing && 'ann-read-pill--missing')} title={seg.title}>{seg.label}</span>;
-                      })}</span>
-                    : null}
-                  {r.segments.some(function (seg) { return !seg || seg.type !== 'pill'; })
-                    ? <span className="wb-ann-copy">{r.segments.filter(function (seg) { return !seg || seg.type !== 'pill'; }).map(function (seg) { return seg && seg.text || ''; }).join('').trim()}</span>
-                    : null}
-                </span>
+              ? <ReadingBody segments={r.segments} />
               : (r.preview ? <span className="wb-ann-text">{r.preview}</span> : null)}
             {(r.replies || []).map(function (reply, i) {
               return <span key={i} className="wb-ann-reply" data-who={reply.who}>{reply.who + '：' + reply.text}</span>;

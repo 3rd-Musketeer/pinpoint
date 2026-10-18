@@ -383,7 +383,7 @@ test('/sites/ page: list row and hover card show the stored target text as a pil
   const pill = row.locator('.ann-read-pill');
   await expect(pill).toHaveCount(1);
   await expect(pill).toHaveText('A standalone document served from a registry dir entry.');
-  await expect(row.locator('.wb-ann-copy')).toHaveText('把按钮改成继续登录');
+  await expect(row.locator('.ann-bubble-copy')).toHaveText('把按钮改成继续登录');
   await expect(row).not.toContainText('[indicator');
   await expect(row).not.toContainText('today-needs-you');
   // 注入页没有帧引用号，眉标仍是元素摘录；目标名的阅读位置是正文 pill，
@@ -415,7 +415,7 @@ test('/sites/ page: list row and hover card show the stored target text as a pil
   });
   expect(num).toEqual({ w: '22px', h: '22px' });
 
-  const body = await row.locator('.wb-ann-copy').evaluate((el) => {
+  const body = await row.locator('.ann-bubble-copy').evaluate((el) => {
     const cs = getComputedStyle(el);
     return { fontSize: cs.fontSize, lineHeight: cs.lineHeight, clamp: cs.webkitLineClamp };
   });
@@ -448,4 +448,94 @@ test('/sites/ page: list row and hover card show the stored target text as a pil
   await expect(input).toContainText('把按钮改成继续登录');
   await box.locator('#ann-close').click();
   await expect(box).toBeHidden();
+
+  // 减动效：真实输入把状态换成尚未保存，不产生 80ms 淡出。
+  await page.emulateMedia({ reducedMotion: 'reduce' });
+  await page.evaluate((n) => window.pinpoint.openMark(n), stored.n);
+  await expect(input).toBeVisible();
+  const state = box.locator('#ann-save-state');
+  await input.press('End');
+  await input.pressSequentially('静');
+  await expect(state).toHaveText('尚未保存');
+  const reduced = await state.evaluate((el) => el.getAnimations().map((a) => a.effect.getTiming().duration));
+  expect(reduced).not.toContain(80);
+  await page.emulateMedia({ reducedMotion: 'no-preference' });
+  await box.locator('#ann-close').click();
+});
+
+// 阅读态保留已有的 @mention 转换：列表和悬浮卡显示 @n，不把盘上的 [@a:id] 印出来。
+// 正文中间的目标引用留在原位，不抽到行首再把文字拼起来。
+test('/sites/ page: reading view keeps @mention and inline target order', async ({ page }) => {
+  await openAnnotated(page, '/sites/e2e-dir/doc.html');
+  await page.evaluate(() => {
+    window.pinpoint.setMode(true);
+    ['a', 'b'].forEach((id) => {
+      const el = document.createElement('button');
+      el.id = 'review-' + id;
+      el.textContent = id === 'a' ? '登录' : '退出';
+      el.style.margin = '20px';
+      document.querySelector('#doc-target').after(el);
+    });
+  });
+  await page.locator('#review-a').click();
+  const box = page.locator('#ann-box');
+  const input = box.locator('#ann-input');
+  await expect(input).toBeVisible();
+  await input.press('End');
+  await input.pressSequentially('第一条');
+  await box.locator('#ann-close').click();
+  await expect(box).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+  const firstN = await page.evaluate(() => window.pinpoint.marks.at(-1).n);
+
+  await page.locator('#review-b').click();
+  await expect(input).toBeVisible();
+  await input.press('End');
+  await input.pressSequentially('请参照 @');
+  const mention = page.locator('#ann-mention .ann-men-item').first();
+  await expect(mention).toBeVisible();
+  await mention.click();
+  await expect(input).toContainText('@' + firstN);
+  await input.press('End');
+  await input.pressSequentially('调整');
+  await box.locator('#ann-close').click();
+  await expect(box).toBeHidden();
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+
+  const stored = await page.evaluate(() => window.pinpoint.marks.at(-1));
+  expect(stored.content).toMatch(/\[@a:[a-z0-9]+\]/);
+  expect(stored.content).not.toContain('@' + firstN);
+
+  await page.evaluate(() => window.pinpoint.toggleSidebar());
+  const row = page.locator('#ann-sidebar .wb-ann-item').last();
+  await expect(row.locator('.ann-bubble-copy')).toContainText('@' + firstN);
+  await expect(row).not.toContainText('[@a:');
+  const badge = page.locator('.ann-badge').last();
+  await badge.hover();
+  const card = page.locator('#ann-bubbles .ann-bubble.ann-bubble--show');
+  await expect(card.locator('.ann-bubble-copy')).toContainText('@' + firstN);
+  await expect(card).not.toContainText('[@a:');
+
+  await page.evaluate((n) => window.pinpoint.openMark(n), stored.n);
+  await expect(input).toContainText('@' + firstN);
+  await box.locator('#ann-close').click();
+
+  // 两个目标都点在正文之前：开头连续的引用单独成行，意见留在下面，不把文字拼空。
+  await page.locator('#review-a').click();
+  await expect(input).toBeVisible();
+  await page.locator('#review-b').click();
+  await expect(input.locator('[data-target-ref]')).toHaveCount(2);
+  await input.press('End');
+  await input.pressSequentially('把登录改成继续，把退出改成离开');
+  await box.locator('#ann-close').click();
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+  const multi = await page.evaluate(() => window.pinpoint.marks.at(-1));
+  expect(multi.targets).toHaveLength(2);
+  expect(multi.content).toContain('把登录改成继续，把退出改成离开');
+  const multiRow = page.locator('#ann-sidebar .wb-ann-item[data-ann-n="' + multi.n + '"]');
+  const text = await multiRow.locator('.wb-ann-text').innerText();
+  expect(text).toContain('登录');
+  expect(text).toContain('退出');
+  expect(text).toContain('把登录改成继续，把退出改成离开');
+  expect(text).not.toContain('把改成');
 });

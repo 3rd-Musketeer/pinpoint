@@ -126,7 +126,9 @@ export function targetContentToStorage(text, targets) {
  * - 同一条里同名目标各自带序号：「目标 N：打开浏览器」。
  * - 引用解析不到（targets 里没有这个 ref）时 label 是「失效目标 N」，
  *   missing 为 true，原存储引用留在 title 里，调用方不删这段。
- * - `@mention`（`[@a:id]`）不是目标引用，原样留在 text 段里。
+ * - `@mention`（`[@a:id]`）不是目标引用，原样留在 text 段里。调用方要显示成
+ *   `@n` 时，对 text 段再跑已有的 mention 转换，不要先把整段换成展示文本再进来：
+ *   进来之前目标引用必须仍是 `[@t:iN]`。
  */
 export function readingSegments(text, targets) {
   const list = Array.isArray(targets) ? targets : [];
