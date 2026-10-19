@@ -33,6 +33,7 @@ import { resolveArticleTarget } from './lib/page-resolve.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { listenOrigins, originDecision, originsGetter } from './lib/proxy-origin.js';
 import { parseReqUrl } from './lib/req-url.js';
+import { escHtml } from '../shared/esc-html.js';
 import { articlePageId } from '../shared/project-ids.js';
 import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
 
@@ -52,21 +53,17 @@ function isIdempotent(req) {
   return req.method === 'GET' || req.method === 'HEAD';
 }
 
-function escapeHtml(text) {
-  return String(text).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
-}
-
 /** 站点没就绪时给浏览器的页。failed 时写原因与日志尾巴，刷新慢一些。 */
 export function siteWaitPageHtml(snapshot, logTail = []) {
   const failed = snapshot.state === 'failed';
   const title = failed ? '站点没有起来' : '站点启动中';
   const lead = failed
-    ? `文章站点的开发服务器没有起来：${escapeHtml(snapshot.lastError || '原因未知')}。页面每 5 秒重试一次。`
+    ? `文章站点的开发服务器没有起来：${escHtml(snapshot.lastError || '原因未知')}。页面每 5 秒重试一次。`
     : `正在启动文章站点（端口 ${snapshot.port}），就绪后页面自动刷新。`;
   const detail = failed
-    ? `<p>命令：<code>${escapeHtml(snapshot.command)}</code></p>
-<p>日志：<code>${escapeHtml(snapshot.logFile || '无')}</code></p>
-${logTail.length ? `<pre>${escapeHtml(logTail.join('\n'))}</pre>` : ''}`
+    ? `<p>命令：<code>${escHtml(snapshot.command)}</code></p>
+<p>日志：<code>${escHtml(snapshot.logFile || '无')}</code></p>
+${logTail.length ? `<pre>${escHtml(logTail.join('\n'))}</pre>` : ''}`
     : '';
   return `<!doctype html>
 <html lang="zh-CN"><head><meta charset="utf-8">
@@ -82,7 +79,7 @@ h1{font-size:20px;font-weight:600;margin:0 0 8px}
 p{color:var(--muted);margin:0 0 8px}
 pre{overflow:auto;font-size:12px;padding:12px;border-radius:6px;background:color-mix(in srgb,var(--fg) 6%,transparent)}
 </style></head>
-<body><main data-site-state="${escapeHtml(snapshot.state)}"><h1>${title}</h1><p>${lead}</p>${detail}</main></body></html>
+<body><main data-site-state="${escHtml(snapshot.state)}"><h1>${title}</h1><p>${lead}</p>${detail}</main></body></html>
 `;
 }
 

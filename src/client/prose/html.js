@@ -3,6 +3,7 @@
  * collapsedHtml、threadHtml、canvasThreadHtml、draftHtml。 */
 
 import { ANN_STATUS_COLORS } from '../../shared/ann-status.js';
+import { escHtml } from '../../shared/esc-html.js';
 import {
   authorLabel,
   canvasContentHasTargets,
@@ -14,11 +15,8 @@ import {
   threadMessages,
 } from '../../shared/prose-thread.js';
 
-export function esc(text) {
-  return String(text == null ? '' : text).replace(/[&<>"']/g, function (c) {
-    return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
-  });
-}
+// esc 的实现 = 全仓一份的 escHtml（r2 D10 漏数的第四份拷贝，S1 收走）。
+export const esc = escHtml;
 
 export function statusChip(row) {
   var st = row.status || 'open';

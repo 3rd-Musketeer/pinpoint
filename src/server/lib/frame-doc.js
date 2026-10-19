@@ -24,7 +24,7 @@ import {
 } from '../../shared/frame-shell.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
-import { escHtml } from '../../workbench/lib/esc-html.js';
+import { escHtml } from '../../shared/esc-html.js';
 import { readBoard } from './board-file.js';
 import { annotateClientSrc } from './annotate-bundle.js';
 import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';

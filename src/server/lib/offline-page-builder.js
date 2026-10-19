@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { OFFLINE_EXPORT_PAGE_ID, offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { readBoardRaw } from './board-file.js';
-import { escHtml } from '../../workbench/lib/esc-html.js';
+import { escHtml } from '../../shared/esc-html.js';
 import { validateBoard } from '../../workbench/lib/preview-contracts.js';
 import {
   assembleFrameContent,

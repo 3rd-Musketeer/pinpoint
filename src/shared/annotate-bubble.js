@@ -20,7 +20,7 @@
  *  var(--wb-*, fallback)：live 侧钉值在 [data-ann-ui] 基规则（src/client/annotate.js），
  *  export bake 无钉值走兜底 —— 兜底值与 src/workbench/wb-tokens.css 同值。
  *  240 宽的两处（doc 导出烤图、workbench gutter）自己写 inline width，不吃这里的值。 */
-import { escHtml } from '../workbench/lib/esc-html.js';
+import { escHtml } from './esc-html.js';
 export function bubbleCss() {
   return [
     '.ann-bubble{position:absolute;width:186px;background:var(--wb-surface,#ffffff);',

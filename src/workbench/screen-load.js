@@ -19,7 +19,7 @@
 // 不需要状态栏和灵动岛；在画布上容易乱跑」）。
 import { wbGet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
-import { escHtml } from './lib/esc-html.js';
+import { escHtml } from '../shared/esc-html.js';
 import { validateScreenFragment } from './lib/preview-contracts.js';
 import {
   defaultShellForPage,

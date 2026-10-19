@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { escHtml } from '../../workbench/lib/esc-html.js';
+import { escHtml } from '../../shared/esc-html.js';
 const MAX_RESOURCE_BYTES = 25 * 1024 * 1024;
 const RESOURCE_ATTRS = new Set(['src', 'poster']);
 

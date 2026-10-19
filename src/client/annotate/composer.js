@@ -1,7 +1,7 @@
 // 标注框骨架：定位、拖动、跟随 chrome 让位、关闭时提交或丢弃，以及提示条。
 // 导出 bind_composer、init_composer、closeComposer、annotationTargetRects、
 // placeComposerBox、removeTip 等。
-import { escHtml } from '../../workbench/lib/esc-html.js';
+import { escHtml } from '../../shared/esc-html.js';
 import { annRowReplies } from '../../shared/ann-row.js';
 import { markElementTargets, resolveAllLiveTargets, resolveMarkAnchor } from './anchor.js';
 import { removeTempArrow } from './arrow.js';

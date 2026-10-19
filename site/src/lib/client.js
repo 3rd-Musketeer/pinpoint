@@ -2,6 +2,7 @@
 
 import { installLayerKeys, layers } from './layers.js';
 import { installOverlayScrollbars } from '../../../src/client/overlay-scrollbar.js';
+import { escHtml as esc } from '../../../src/shared/esc-html.js';
 import {
   placeWikiPanel, WIKI_CLOSE_MS, WIKI_EASE, WIKI_OPEN_MS, WIKI_OPEN_Y,
   WIKI_PANEL_GAP, WIKI_PANEL_MAX_H, WIKI_PANEL_MAX_VH, WIKI_REDUCED_MS,
@@ -14,8 +15,6 @@ export const POP_CLOSE_MS = 200;
 
 // 目录入口的“当前节”显示。initTocEntry 装上，观察者每次换节时调。
 let updateTocEntry = () => {};
-
-const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]);
 
 function popHtml(el) {
   const d = el.dataset;
