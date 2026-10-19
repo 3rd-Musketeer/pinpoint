@@ -5,13 +5,12 @@ import { bubbleInnerHtml } from '../../shared/annotate-bubble.js';
 import { annStatusOf } from '../../shared/ann-status.js';
 import { MARK_BOX_PAD_PX, expandRect, intersectRects, isVisibleEnough } from '../../shared/annotate-clip.js';
 import { isMarkBroken, markAnchorRect, markOnActivePage, resolveMarkAnchor, withLiveTargets } from './anchor.js';
-import { beginOverlayFrame, clearAnchorCache, geometryBatch, overlayOrigin, stageOrigin, viewToOverlayRect, visibleViewRectDoc } from './dom.js';
-import { computePosition, offset, shift, virtualRect } from './floating.js';
+import { beginOverlayFrame, clearAnchorCache, geometryBatch, viewToOverlayRect, visibleViewRectDoc } from './dom.js';
 import { updateDraftGeometry } from './gesture.js';
 import { bubbleMarkView } from './marks.js';
 import { openMark } from './nav.js';
 import { projectMark, updateCountLabel, updateMarkGeometry } from './render-geometry.js';
-import { canvasStage, drawableMark, hideBubbleSoon, prepareCanvasView, showBubbleFor, toggleBubbleClasses, syncMarkStructure, visiblePageMarks } from './render.js';
+import { canvasStage, drawableMark, hideBubbleSoon, prepareCanvasView, showBubbleFor, syncBubbleVisibility, syncMarkStructure, visiblePageMarks } from './render.js';
 import { mountOverlay, syncGhost } from './ui.js';
 export function bind_bubbles(c) { ctx = c; }
 var ctx;
@@ -79,48 +78,6 @@ export function syncBubbleStructure(pageMarks) {
   });
 }
 
-/* 评论卡的放置（画布与注入页同一套，2026-10-19 C4 起由 @floating-ui/dom 承载）：
-   钉在锚点框右侧 13px、顶对齐再上抬 6px；右边放不下翻左边；两轴都向 overlay
-   收 12px 边距。旧的「钉右翻左 + clamp」四行 = right-start + offset(13, -6)
-   + shift(crossAxis)，翻左用 shift 的位移回读判定：crossAxis 把放不下的 x
-   往左夹（shift.x < 0）就是该翻（与旧条件 `left+bw > W-margin` 同义；卡宽
-   上限 W-2*margin，不存在两边都放不下的情形）。不用 flip middleware：
-   注入端按字节计费，flip 一族 helpers 不进包。
-   写样式相对气泡的 offsetParent（#ann-overlay），与旧写法的坐标系一致；
-   viewR 参数是视口矩形（computePosition 的参照坐标系）。 */
-function placeBubble(entry, viewR) {
-  // 参照与已摆位完全相同（浮点逐位；账本回声这类空触发就是同一份几何）时跳过：
-  // computePosition 每次都要读浮动框 / offsetParent / boundary 的布局，静息窗口里
-  // 这些读数会被 owner 性能门（owner-performance 的 K1 零测量）数出来。结果由
-  // write() 落账；宽度参与判等（clamp 与 flip 都依赖它）。
-  var placed = entry.placedViewR;
-  if (placed && entry.placedWidth === entry.width && entry.node.style.left &&
-      placed[0] === viewR[0] && placed[1] === viewR[1] && placed[2] === viewR[2] && placed[3] === viewR[3]) return;
-  var seq = entry.placeSeq = (entry.placeSeq || 0) + 1;
-  function opts(placement) {
-    return {
-      placement: placement,
-      middleware: [
-        offset({ mainAxis: 13, crossAxis: -6 }),
-        shift({ boundary: ctx.overlay, padding: ctx.BUBBLE_MARGIN, crossAxis: true })
-      ]
-    };
-  }
-  function write(result) {
-    if (entry.placeSeq !== seq || entry.node.hidden || !entry.node.isConnected) return;
-    entry.node.style.left = Math.round(result.x) + 'px';
-    entry.node.style.top = Math.round(result.y) + 'px';
-    entry.placedViewR = viewR;
-    entry.placedWidth = entry.width;
-  }
-  computePosition(virtualRect(viewR), entry.node, opts('right-start')).then(function (result) {
-    if (entry.placeSeq !== seq || entry.node.hidden || !entry.node.isConnected) return;
-    var moved = result.middlewareData.shift;
-    if (!moved || moved.x >= 0) { write(result); return; }
-    computePosition(virtualRect(viewR), entry.node, opts('left-start')).then(write);
-  });
-}
-
 export function updateCanvasBubble() {
   var n = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
   var bubble = ctx.bubbleNodes[n];
@@ -139,36 +96,16 @@ export function updateCanvasBubble() {
     bubble.width = bw;
     bubble.height = bubble.node.offsetHeight;
   }
-  // local 是 stage 原点坐标系；参照换到视口坐标再交给库。
-  var o = stageOrigin(ctx.canvasView.stage);
-  placeBubble(bubble, [local[0] + o[0], local[1] + o[1], local[2], local[3]]);
+  var left = local[0] + local[2] + 13;
+  if (left + bw > ctx.canvasView.width - ctx.BUBBLE_MARGIN) left = local[0] - bw - 13;
+  left = Math.max(ctx.BUBBLE_MARGIN, Math.min(left, ctx.canvasView.width - bw - ctx.BUBBLE_MARGIN));
+  var top = Math.max(ctx.BUBBLE_MARGIN, Math.min(local[1] - 6, ctx.canvasView.height - bubble.height - ctx.BUBBLE_MARGIN));
+  bubble.node.style.left = Math.round(left) + 'px';
+  bubble.node.style.top = Math.round(top) + 'px';
 }
 
-/** 注入页里点亮的那张卡：hover / 定位换卡发生在几何帧之外，点亮当下就要摆好。
-    其余卡 opacity:0 不可见，不给位置（旧实现对每张视口内的卡逐帧写 left/top/width）。 */
-export function placeDocBubble() {
-  if (!ctx.renderComments || ctx.canvasView || ctx.bubbleLayout === 'sidebar') return;
-  var n = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
-  var entry = n != null ? ctx.bubbleNodes[n] : null;
-  if (!entry || entry.node.hidden) return;
-  beginOverlayFrame();
-  var anchorDoc = markAnchorRect(entry.m);
-  if (!anchorDoc) return;
-  var anchorView = visibleViewRectDoc(anchorDoc, resolveMarkAnchor(entry.m).el);
-  if (!anchorView) return;
-  var local = viewToOverlayRect(anchorView);
-  var overlayW = ctx.overlay.getBoundingClientRect().width;
-  var bw = Math.min(ctx.BUBBLE_W, Math.max(160, overlayW - ctx.BUBBLE_MARGIN * 2));
-  if (entry.width !== bw) {
-    entry.node.style.width = Math.round(bw) + 'px';
-    entry.width = bw;
-  }
-  var o = overlayOrigin();
-  placeBubble(entry, [local[0] + o[0], local[1] + o[1], local[2], local[3]]);
-}
-
-/** 几何帧入口：画布走 updateCanvasBubble；注入页逐卡收 hidden（锚点出视口即藏，
- *  跟 Word 的页边批注同一条规矩），位置只算点亮的那张（placeDocBubble）。 */
+/** Two-column greedy packer: sparse → right; when right crowds, spill left.
+ *  No connector lines — bubble numbers match pin badges for correspondence. */
 export function updateBubbleGeometry() {
   if (!ctx.renderComments) return;
   if (ctx.canvasView) { updateCanvasBubble(); return; }
@@ -178,7 +115,12 @@ export function updateBubbleGeometry() {
     Object.keys(ctx.bubbleNodes).forEach(function (n) { ctx.bubbleNodes[n].node.hidden = true; });
     return;
   }
-  var overlayH = ctx.overlay.getBoundingClientRect().height;
+  var overlayRect = ctx.overlay.getBoundingClientRect();
+  var overlayW = overlayRect.width;
+  var overlayH = overlayRect.height;
+  var bw = Math.min(ctx.BUBBLE_W, Math.max(160, overlayW - ctx.BUBBLE_MARGIN * 2));
+  // 候选 = 锚点此刻在视口里的那些。锚点在视口外的不给卡（跟 Word 的页边批注
+  // 同一条规矩：只看得见屏幕上这段文字的评论）。
   Object.keys(ctx.bubbleNodes).forEach(function (n) {
     var entry = ctx.bubbleNodes[n];
     var anchorDoc = markAnchorRect(entry.m);
@@ -188,9 +130,21 @@ export function updateBubbleGeometry() {
     var local = viewToOverlayRect(anchorView);
     if (local[1] + local[3] < 0 || local[1] > overlayH) { entry.node.hidden = true; return; }
     entry.node.hidden = false;
+    /* 2026-09-04 评审板 H1：一次只出一张卡（hover 的那一枚钉子），所以不再
+       两列打包 —— 卡就摆在钉子右边；右边放不下就翻到左边。钉子在锚点框的
+       右上角（badgePositionForRect，22px），卡与它留 13px 气口。 */
+    // 高度用 renderBubbles 量好的缓存值：每帧对每张卡读 offsetHeight 会在上一张
+    // 刚写完 left/top 后强制一次布局，滚动时 M 张卡就是 M 次布局。
+    var h = entry.height || 0;
+    var left = local[0] + local[2] + 13;
+    if (left + bw > overlayW - ctx.BUBBLE_MARGIN) left = local[0] - bw - 13;
+    left = Math.max(ctx.BUBBLE_MARGIN, Math.min(left, overlayW - bw - ctx.BUBBLE_MARGIN));
+    var top = Math.max(ctx.BUBBLE_MARGIN, Math.min(local[1] - 6, overlayH - h - ctx.BUBBLE_MARGIN));
+    entry.node.style.left = Math.round(left) + 'px';
+    entry.node.style.top = Math.round(top) + 'px';
+    entry.node.style.width = Math.round(bw) + 'px';
   });
-  placeDocBubble();
-  toggleBubbleClasses();
+  syncBubbleVisibility();
 }
 
 /** 给父级 workbench 用（gutter 模式）：返回当前视口内可见锚点的 rect（iframe 视口坐标）
