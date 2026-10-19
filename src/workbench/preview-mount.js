@@ -116,12 +116,14 @@ function noteAssetFailure(el, url) {
 /* CSS 侧没有 onerror 可听（@import 失败是静默的），所以装载后按同源绝对路径
    探一次存在性。只探 '/' 开头的 url —— 相对路径已被 lib/sidecar-css.js 改写成
    pageBaseUrl 前缀，跨域资源不归我们判。 */
-function probeFragmentStyles(panel, session) {
+function probeFragmentStyles(panel, session, scope) {
   if (!panel) return;
   // 同一份页面 CSS 每屏都 @import 一次：按 url 归并，整板每个 url 只探一次
   // （plugins 61 屏原先 61 次 × 50KB），失败时再回报给用到它的每一屏。
+  // scope 给定时只探这一帧（按屏重摆换上的那一屏），不重探整板。
   var users = {};
-  panel.querySelectorAll('.wb-screen').forEach(function (screen) {
+  var screens = scope ? [scope] : panel.querySelectorAll('.wb-screen');
+  Array.prototype.forEach.call(screens, function (screen) {
     var urls = [];
     screen.querySelectorAll('style').forEach(function (node) {
       cssImportUrls(node.textContent).forEach(function (url) { urls.push(url); });
@@ -299,7 +301,15 @@ export function afterMount(panel, session) {
           var device = s.querySelector('.ios-device');
           if (device) device.style.setProperty('--ios-scale', '1');
         });
+        // 按屏换内容插的是 screenContentHtml 的原始产物（light + screen-only）。
+        // 整板装载在下面的 syncPanelPrefs(panel) 补偏好；这条路只换一帧，补在这一帧上。
+        syncPanelPrefs(scope);
         if (window.iOSKit) window.iOSKit.refresh(scope);
+        // 换屏把旧的 .wb-asset-err 条随内容删掉了，资源仍 404 时提示要重探这一帧；
+        // 屏的尺寸可能变了（comp 屏是流式尺寸），导航和小地图跟着重算。
+        probeFragmentStyles(panel, session, scope);
+        rebuildSectionNavigator(panel);
+        scheduleMinimapUpdate();
         return runPreviewScripts(scope, session.pageId, session);
       });
       syncPanelPrefs(panel);

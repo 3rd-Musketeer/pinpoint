@@ -152,6 +152,24 @@ function screenOf(screenId) {
     重载卡片与页面浮层里已装载的 iframe 即新内容。返回 Promise<boolean>：
     找不到这一帧、板已换掉时为 false。 */
 export function refreshFrameContent(screenId, html) {
+  return swapFrame(screenId, html, { remember: true });
+}
+
+/** 把一帧放回初始状态。返回 Promise<boolean>：找不到这一帧、板已换掉时为 false。 */
+export function resetFrame(screenId) {
+  if (!board || !board.pristine.has(screenId)) {
+    var screen = screenOf(screenId);
+    // HTML 卡片没有 pristine：重载 iframe 即回到原始状态，不走内联换内容。
+    if (screen && screen.hasAttribute('data-html-card')) return swapFrame(screenId, '');
+    return Promise.resolve(false);
+  }
+  return swapFrame(screenId, board.pristine.get(screenId));
+}
+
+/** 换一帧的内容（HMR 按屏重摆与重置共用）。remember 时把换上的 HTML 记成新的
+    pristine（之后「重置」回到新内容，不是旧装载态）。换上的是 screenContentHtml 的原始产物
+    （data-theme="light" + screen-only），画布偏好由 rememberBoard 收的 remount 在这一帧上补。 */
+function swapFrame(screenId, html, opts) {
   var screen = screenOf(screenId);
   if (!screen || !board.session.active) return Promise.resolve(false);
   if (screen.hasAttribute('data-html-card')) {
@@ -180,37 +198,7 @@ export function refreshFrameContent(screenId, html) {
   tpl.innerHTML = html;
   var dim = screen.querySelector(':scope > .wb-screen-dim');
   screen.insertBefore(tpl.content, dim);
-  board.pristine.set(screenId, html);
-  clearDirty(screen);
-  return board.remount(screen).then(function () {
-    var api = annotateApi();
-    if (api) api.render();
-    scheduleAnnSnap();
-    return session.active;
-  });
-}
-
-/** 把一帧放回初始状态。返回 Promise<boolean>：找不到这一帧、板已换掉时为 false。 */
-export function resetFrame(screenId) {
-  var screen = screenOf(screenId);
-  if (!screen || !board.session.active) return Promise.resolve(false);
-  if (screen.hasAttribute('data-html-card')) {
-    var frame = screen.querySelector('iframe');
-    if (!frame) return Promise.resolve(false);
-    try { frame.contentWindow.location.reload(); } catch (e) { frame.src = frame.src; }
-    return Promise.resolve(true); // 红点在新文档 load 时摘
-  }
-  if (!board.pristine.has(screenId)) return Promise.resolve(false);
-  var session = board.session;
-  if (screen.__ppDirtyWatch) screen.__ppDirtyWatch();
-  session.disposeWithin(screen);
-  Array.prototype.slice.call(screen.children).forEach(function (child) {
-    if (!isCaption(child)) child.remove();
-  });
-  var tpl = document.createElement('template');
-  tpl.innerHTML = board.pristine.get(screenId);
-  var dim = screen.querySelector(':scope > .wb-screen-dim');
-  screen.insertBefore(tpl.content, dim);
+  if (opts && opts.remember) board.pristine.set(screenId, html);
   clearDirty(screen);
   return board.remount(screen).then(function () {
     var api = annotateApi();

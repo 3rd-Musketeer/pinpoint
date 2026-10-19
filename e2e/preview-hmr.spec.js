@@ -103,3 +103,36 @@ test('增量重摆：只重拉点名的屏，不整板重装（S2/F2 计数证�
   await expect(beta).toHaveAttribute('data-e2e-keep', '1');
   await expect(beta).toContainText('hmr-site beta v1');
 });
+
+// 按屏重摆换上的是 screenContentHtml 的原始产物（data-theme="light" + screen-only）。
+// 整板装载时 afterMount 的 syncPanelPrefs 按偏好改写；按屏这条路漏了它，换上的屏
+// 回到默认主题和默认机壳，和旁边没重摆的屏对不上（S2 review 必须修 M1）。
+const rootState = (page, id) => page.locator(`#wb-board-panel [data-screen="${id}"] .ios-root`).evaluate((r) => ({
+  theme: r.getAttribute('data-theme'),
+  screenOnly: r.classList.contains('screen-only'),
+}));
+
+test('深色 + 机壳偏好：按屏重摆与重置后，换上的屏与旁边的屏外观一致', async ({ page }) => {
+  test.setTimeout(60_000);
+  await page.addInitScript(() => {
+    const cur = JSON.parse(localStorage.getItem('pinpoint-wb') || '{}');
+    localStorage.setItem('pinpoint-wb', JSON.stringify({ ...cur, theme: 'dark', frame: 'device' }));
+  });
+  await openBoard(page);
+  const alpha = page.locator('#wb-board-panel [data-screen="alpha"]');
+  await expect(alpha).toContainText('hmr-site alpha v1');
+  const before = { alpha: await rootState(page, 'alpha'), beta: await rootState(page, 'beta') };
+  expect(before.alpha).toEqual({ theme: 'dark', screenOnly: false });
+  expect(before.beta).toEqual(before.alpha);
+
+  fs.writeFileSync(path.join(SITE_DIR, 'alpha.jsx'), ALPHA_V2);
+  await expect(alpha).toContainText('hmr-site alpha v2');
+  expect(await rootState(page, 'alpha')).toEqual(await rootState(page, 'beta'));
+
+  // 重置走同一条换内容的路，换回的是记下的原始 HTML，偏好也要补上。
+  await alpha.hover();
+  await alpha.locator('.wb-frame-menu-trigger').click();
+  await alpha.locator('[data-frame-reset]').click();
+  await expect(alpha).toContainText('hmr-site alpha v2');
+  expect(await rootState(page, 'alpha')).toEqual(await rootState(page, 'beta'));
+});
