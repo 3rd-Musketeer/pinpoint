@@ -238,7 +238,7 @@ function isPhoneDocFrame(el) {
 }
 
 /** 往手机屏 iframe 的文档里放一次样式；跨域、还没有文档、已放过的跳过。 */
-export function hidePhoneDocScrollbar(frame) {
+function hidePhoneDocScrollbar(frame) {
   if (!isPhoneDocFrame(frame)) return false;
   var doc = null;
   try { doc = frame.contentDocument; } catch (e) { return false; }
