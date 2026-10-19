@@ -84,7 +84,7 @@ import {
 import { startDeepLinkSync } from './url-sync.js';
 import { startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
-import { startPhoneDocScrollbar } from './phone-doc-scrollbar.js';
+import { startPhoneDocScrollbar } from '../client/overlay-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
 import { liveCardAnnotateApi, startLiveCards, syncLiveCards } from './live-cards.js';
 import { subscribeServerEvents } from './server-events.js';

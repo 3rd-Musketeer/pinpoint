@@ -22,3 +22,10 @@ test('thumbGeometry: 很长的内容条不短于下限，轨道比下限还短�
   assert.equal(thumbGeometry(0, 100000, 400, 0, 400).len, MIN_THUMB);
   assert.equal(thumbGeometry(0, 100000, 10, 0, 10).len, 10);
 });
+
+test('手机视口藏条注入不进 /annotate.js 注入包（只有工作台 import 那两个出口）', async () => {
+  const { buildAnnotateBundle } = await import('../server/lib/annotate-bundle.js');
+  const a = await buildAnnotateBundle({ minify: false });
+  assert.ok(!a.js.includes('data-pp-phone-scrollbar'), 'hidePhoneDocScrollbar 被 tree-shake 掉');
+  assert.ok(a.js.includes('installOverlayScrollbars'), '注入包仍在用浮条安装');
+});

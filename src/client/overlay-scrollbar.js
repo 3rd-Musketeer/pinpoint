@@ -14,6 +14,10 @@
 // 只在滚动时、或指针贴到条所在的边上时出。
 // 带 data-pp-scrollbar="off" 的子树是被评审的内容（工作台画布上的帧）：里面的容器不出条。
 // 帧在画布里按缩放画，条按未缩放的尺寸算会又长又偏；真机上这些滚动本来也没有条。
+//
+// 同一主题的另一半：手机视口 iframe 文档的滚动条整体藏掉（hidePhoneDocScrollbar /
+// startPhoneDocScrollbar，workbench 用）。那是「这条根本不该出现」，不是「换成浮条」，
+// 所以不走 installOverlayScrollbars，是本模块的第二个出口。
 
 var BAR = 6; // 条粗
 var INSET = 2; // 离容器内缘
@@ -213,4 +217,41 @@ export function installOverlayScrollbars(doc, opts) {
   var api = { update: schedule, widen: function () { scope = null; }, bars: { x: bars.x.el, y: bars.y.el } };
   doc.__ppOverlayScrollbars = api;
   return api;
+}
+
+// ── 手机视口的文档根：整条藏掉 ────────────────────────────────────────────────
+// 手机视口的文档不出根滚动条（owner 2026-10-15：“html 页面手机视图把滚动条去掉”）。
+// 手机屏里的 iframe 是一块真手机屏：桌面浏览器给它的文档根画一条 15px 的常显竖条（经典滚动条），
+// 手机上没有这条。iframe 每装一次文档，就往文档里放一条样式藏掉文档根的滚动条：滚轮、触控板照常滚。
+// 只管文档根：scrollbar-width 不继承，页面里自己横滑的块（表格）的滚动条不受影响。
+// 窗口视口的 iframe 不在 .wb-phone-doc 里，照旧。视口切换会重装板、换一个新 iframe，所以只认 load。
+var PHONE_STYLE_ATTR = 'data-pp-phone-scrollbar';
+var PHONE_HIDE_CSS =
+  'html{scrollbar-width:none !important}' +
+  'html::-webkit-scrollbar{display:none !important;width:0 !important;height:0 !important}';
+
+function isPhoneDocFrame(el) {
+  return !!(el && el.tagName === 'IFRAME' && (
+    (el.classList.contains('wb-doc-frame') && el.closest('.wb-phone-doc')) ||
+    (el.classList.contains('wb-html-card-frame') && el.closest('[data-card-viewport="phone"]'))
+  ));
+}
+
+/** 往手机屏 iframe 的文档里放一次样式；跨域、还没有文档、已放过的跳过。 */
+export function hidePhoneDocScrollbar(frame) {
+  if (!isPhoneDocFrame(frame)) return false;
+  var doc = null;
+  try { doc = frame.contentDocument; } catch (e) { return false; }
+  if (!doc || !doc.documentElement || doc.querySelector('style[' + PHONE_STYLE_ATTR + ']')) return false;
+  var style = doc.createElement('style');
+  style.setAttribute(PHONE_STYLE_ATTR, '');
+  style.textContent = PHONE_HIDE_CSS;
+  (doc.head || doc.documentElement).appendChild(style);
+  return true;
+}
+
+/** 工作台装配入口：stage 上捕 iframe 的 load（不冒泡），每装一次文档藏一次。 */
+export function startPhoneDocScrollbar(stage) {
+  if (!stage) return;
+  stage.addEventListener('load', function (e) { hidePhoneDocScrollbar(e.target); }, true);
 }
