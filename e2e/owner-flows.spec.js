@@ -77,7 +77,7 @@ test('owner 浮层：中文组字、保存、点钉子，Esc 按层回正文', a
     await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
     await page.keyboard.press('Escape');
     await expect(page.locator('dialog[data-pp-overlay]')).not.toHaveAttribute('open', '');
-    await expect(page.locator('[data-pp-section="part-1"] [data-pp-open]')).toBeFocused();
+    await expect(page.locator('[data-pp-section="part-1"] [data-screen="flow-001"] .cc-hit')).toBeFocused();
   });
 });
 test.afterEach(async ({ page }) => { await ownerCleanup(page); });

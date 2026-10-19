@@ -124,6 +124,7 @@ test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 r
   });
   await test.step('校验计数器能看到真实 renderAll 和标注测量', async () => {
     await openOwnerBoard(page);
+    await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countLive)).toBe(24);
     const control = await page.evaluate(() => {
       window.__ownerPerf = { rects: 0, renders: 0 };
       window.pinpoint.render();

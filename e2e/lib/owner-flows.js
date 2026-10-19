@@ -34,7 +34,7 @@ export async function openOwnerArticle(page) {
 export async function boardReady(scope) {
   await expect(scope.locator('.wb-screen')).toHaveCount(OWNER_FRAMES, { timeout: 30_000 });
   await expect(scope.locator('[data-owner-heading]')).toHaveCount(OWNER_FRAMES);
-  await scope.waitForFunction(() => window.workbench?.whenPreviewsSettled() && window.pinpoint?.getState().connected);
+  await scope.waitForFunction(() => window.workbench?.whenPreviewsSettled() && window.pinpoint?.getState().connected, null, { timeout: 30_000 });
   await expect(scope.locator('.wb-screen-err, .wb-asset-err')).toHaveCount(0);
 }
 
@@ -45,11 +45,12 @@ export async function openOwnerBoard(page, overlay = false) {
     return page;
   }
   await openOwnerArticle(page);
-  await page.locator('[data-pp-section="part-1"] [data-pp-open]').click();
+  await page.locator('[data-pp-section="part-1"] [data-screen="flow-001"] .cc-hit').click();
   await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
   const handle = await page.locator('iframe.ov-canvas').elementHandle();
   const scope = await handle.contentFrame();
   await boardReady(scope);
+  await expect(scope.locator('.wb-screen[data-screen="flow-001"]')).toHaveClass(/\bwb-sel\b/);
   return scope;
 }
 
@@ -73,7 +74,8 @@ export async function ownerCleanup(page) { await closeSettled(page); }
 export async function metric(testInfo, name, values) {
   const data = { name, ...values, loadavg: execFileSync('sysctl', ['-n', 'vm.loadavg'], { encoding: 'utf8' }).trim() };
   await testInfo.attach(`${name}.json`, { body: JSON.stringify(data, null, 2), contentType: 'application/json' });
-  console.log(`OWNER_METRIC ${JSON.stringify(data)}`);
+  const { urls, dispatch, native, ...summary } = data;
+  console.log(`OWNER_METRIC ${JSON.stringify(summary)}`);
 }
 
 /** 真实鼠标和 CDP IME；scope 可以是整页或文章浮层内的工作台。 */
