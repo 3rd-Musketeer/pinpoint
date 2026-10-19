@@ -368,7 +368,9 @@ function initStaticCards() {
       mountCard(pending.shift()).finally(() => { active--; pump(); });
     }
   };
-  const MARGIN = 2000;
+  // 加载距离与 iframe 的 loading=lazy 同义，取 Chromium 各网络档位里的最大档（8000px）：
+  // 旧实现里首屏之外的卡片帧（如短文章的第二张卡）不滚动也会加载，这里对齐这个行为。
+  const MARGIN = 8000;
   const check = () => {
     for (const host of hosts) {
       if (host.dataset.ccStarted || !host.isConnected) continue;
