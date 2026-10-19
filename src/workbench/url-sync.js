@@ -16,8 +16,10 @@ import { deepLinkQuery, modeForPage, parseDeepLink, withEmbed } from './lib/page
 
 export function startDeepLinkSync() {
   var last = null;
-  // 文章画布浮层里的工作台（?embed=overlay）：镜像地址时把标记接回去，刷新这个 iframe 仍是嵌入版。
+  // 文章画布浮层里的工作台（?embed=overlay）：镜像地址时把标记和文档代次（index.html 在文档起点
+  // 存的 window.__wbGen）接回去，刷新这个 iframe 仍是嵌入版、仍是文章页认的那一代。
   var embed = parseDeepLink(location.search).embed;
+  var gen = window.__wbGen;
   function sync(state) {
     if (state.missingPageId) return;
     var entryParam = null;
@@ -33,7 +35,7 @@ export function startDeepLinkSync() {
         tabParam = state.activeBoard.tabId;
       }
     }
-    var query = withEmbed(deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam), embed);
+    var query = withEmbed(deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam), embed, gen);
     if (!query || query === last) return;
     last = query;
     history.replaceState(null, '', location.pathname + '?' + query + location.hash);

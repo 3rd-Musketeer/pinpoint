@@ -85,27 +85,21 @@ export function initCanvasOverlay() {
   }
 
   // ---- 嵌入的工作台 ----
-  // 文档本身没装上（网络失败，页跨域读不了）才由这里显示「重试」。记在每次 load 上：
-  // 重试后立刻又失败、失败后关掉再开，都能认出来。跨域错误页与「装上了却没有工作台」
-  // 是这里仅有的两处本页判定的失败，其余失败都由工作台主动报。
-  let frameFailed = false;
-  let loadGen = 0;
+  // 文档本身没装上（网络失败，页跨域读不了）才由这里显示「重试」。load 监听常驻：iframe 里
+  // 每换一份文档（重试换 src、dev 下 full-reload、右键「重新加载框架」）都重新判定一次。
+  // 跨域错误页与「装上了却没有工作台」是这里仅有的两处本页判定的失败，其余失败都由工作台主动报。
   const frameDead = () => {
     try { void iframe.contentWindow.location.href; return false; }
     catch { return true; }
   };
-  const noteLoad = () => {
-    frameFailed = false;
-    const gen = ++loadGen;
-    const onLoad = () => {
-      iframe.removeEventListener('load', onLoad);
-      if (gen !== loadGen) return;
-      // load 要等模块脚本结束。跨域错误页，或文档装上了却没有工作台，都是确定失败。
-      // 模块还扣着时 load 没到，不在这里判，准备态一直留着。
-      frameFailed = frameDead() || !workbenchOf();
-      if (frameFailed) setDocState('retry');
-    };
-    iframe.addEventListener('load', onLoad);
+  // 文档被换掉（pagehide）就退回 loading：旧文档报过的 ready 不能替新文档作数，新文档的
+  // 就绪消息会重新推进状态机。只能挂在同源的、装上了的文档上，所以每次 load 挂一次。
+  const onFrameGone = () => setDocState('loading');
+  const onFrameLoad = () => {
+    // load 要等模块脚本结束。跨域错误页，或文档装上了却没有工作台，都是确定失败。
+    // 模块还扣着时 load 没到，不在这里判，准备态一直留着。
+    if (frameDead() || !workbenchOf()) { setDocState('retry'); return; }
+    try { iframe.contentWindow.addEventListener('pagehide', onFrameGone); } catch { /* 读不到就等 load 判定 */ }
   };
 
   function ensureFrame(sectionId) {
@@ -115,7 +109,7 @@ export function initCanvasOverlay() {
     iframe.title = '画布';
     docGen += 1;
     iframe.src = embedCanvasSrc(pageId, sectionId, docGen);
-    noteLoad();
+    iframe.addEventListener('load', onFrameLoad);
     el.body.append(iframe);
     return true;
   }
@@ -143,7 +137,9 @@ export function initCanvasOverlay() {
     navigation = nav;
     if (!(await boardReady(nav))) { landed(nav, ''); return; }
     if (document.activeElement === el.close) iframe.focus({ preventScroll: true });
-    const wb = frameWin().workbench;
+    // 就绪记的是文档消息；文档正在被换掉的那一瞬 workbench 可能已经不在，不定位。
+    const wb = workbenchOf();
+    if (!wb) { landed(nav, ''); return; }
     // 一篇文章一张画布（2026-10-15）：上回在画布里开着某一页（页面浮层），这回先关掉回画布。
     if (typeof wb.pageOpen === 'function' && wb.pageOpen()) wb.closePage();
     if (!fresh && !frame && ann == null) await wb.focusSection(section);
@@ -203,10 +199,8 @@ export function initCanvasOverlay() {
       if (!state || !iframe) return;
       // 先清掉旧文档的失败痕迹、换新代次再装：旧文档迟到的消息带着旧代次，会被丢掉。
       try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
-      frameFailed = false;
       docGen += 1;
       setDocState('loading');
-      noteLoad();
       iframe.src = embedCanvasSrc(pageId, state.section, docGen);
       const nav = ++navigation;
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);

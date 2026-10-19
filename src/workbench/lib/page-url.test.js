@@ -82,5 +82,9 @@ test('嵌入标记：?embed=overlay 才认，url-sync 写回时接上（2026-10-
   assert.equal(withEmbed('page=demo_flow&entry=x', 'overlay'), 'page=demo_flow&entry=x&embed=overlay');
   assert.equal(withEmbed('page=demo_flow', undefined), 'page=demo_flow');
   assert.equal(withEmbed('', 'overlay'), '');
+  // 文档代次随嵌入标记接回；没有代次（直接打开、0）就不写；非嵌入不写。
+  assert.equal(withEmbed('page=demo_flow', 'overlay', 3), 'page=demo_flow&embed=overlay&gen=3');
+  assert.equal(withEmbed('page=demo_flow', 'overlay', 0), 'page=demo_flow&embed=overlay');
+  assert.equal(withEmbed('page=demo_flow', undefined, 3), 'page=demo_flow');
   assert.equal(isEmbedded('?' + withEmbed(deepLinkQuery('demo_flow', null, null, 'flow'), 'overlay')), true);
 });

@@ -302,6 +302,65 @@ test('画布浮层：board 失败后点工作台自己的重试，再开浮层�
   await expect(status(page)).toBeHidden();
 });
 
+// 文档被换掉（C1 修复轮）：iframe 里的工作台就绪后又被重新加载（dev 下 full-reload、
+// 右键重新加载框架），旧文档报过的 ready 不能替新文档作数。
+const landing = (page) => page.evaluate(() => window.pinpointOverlay.state()?.landing);
+const reloadCanvas = (page) => page.evaluate(() => window.pinpointOverlay.frame().contentWindow.location.reload());
+
+test('画布浮层：就绪后工作台被重新加载且装不上，再开显示重试、不抛错，点了恢复', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(String(e)));
+  await openArticle(page);
+  await openFromTop(page);
+  await expect.poll(() => landing(page), { timeout: 60_000 }).toBe('section');
+  await overlay(page).locator('[data-ov-close]').click();
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  let gone = true;
+  await page.route((url) => url.pathname === '/workbench/', (route) => {
+    if (gone) return route.fulfill({ status: 500, contentType: 'text/html', body: 'gone' });
+    return route.continue();
+  });
+  await reloadCanvas(page);
+  await openFromCard(page);
+  await expect(overlay(page)).toHaveAttribute('open', '');
+  await expect(status(page)).toContainText('画布没有准备好', { timeout: 30_000 });
+  gone = false;
+  await status(page).locator('.ov-retry').click();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  await expect.poll(() => landing(page), { timeout: 30_000 }).toBe('section');
+  expect(errors).toEqual([]);
+});
+
+test('画布浮层：就绪后工作台被重新加载，新文档装好之前再开出准备态，装好后照常定位', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openArticle(page);
+  await openFromTop(page);
+  await expect.poll(() => landing(page), { timeout: 60_000 }).toBe('section');
+  await overlay(page).locator('[data-ov-close]').click();
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  // 扣住新文档的外壳模块：它的请求到了，说明旧文档已经被换掉、新文档在装。
+  let release;
+  const held = new Promise((resolve) => { release = resolve; });
+  let requested;
+  const started = new Promise((resolve) => { requested = resolve; });
+  await page.route('**/src/workbench/app/main.jsx*', async (route) => {
+    requested();
+    await held;
+    await route.continue();
+  });
+  await reloadCanvas(page);
+  await started;
+  await openFromCard(page);
+  await expect(overlay(page)).toHaveAttribute('open', '');
+  await expect(status(page)).toHaveText('正在准备画布…');
+  release();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  await expect.poll(() => landing(page), { timeout: 30_000 }).toBe('section');
+});
+
 test('画布浮层：外壳模块慢四秒后放行，准备态收起，画布点得到', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });

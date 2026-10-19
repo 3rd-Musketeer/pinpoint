@@ -91,8 +91,12 @@ export function deepLinkQuery(pageId, mode, entryId, tabId, sectionId) {
   return params.toString();
 }
 
-/** 把嵌入标记接回 url-sync 写出的查询串：浮层里的工作台镜像地址时不能丢掉 ?embed=。 */
-export function withEmbed(query, embed) {
+/** 把嵌入标记接回 url-sync 写出的查询串：浮层里的工作台镜像地址时不能丢掉 ?embed=。
+    gen（文档代次，文章页随 src 传）也一起接回：iframe 被重新加载（dev 下 full-reload、
+    右键重新加载框架）时新文档仍带原代次，它报的就绪消息文章页才认。 */
+export function withEmbed(query, embed, gen) {
   if (!query || !EMBED_MODES[embed]) return query;
-  return query + '&embed=' + encodeURIComponent(embed);
+  var out = query + '&embed=' + encodeURIComponent(embed);
+  var g = Number(gen);
+  return Number.isFinite(g) && g > 0 ? out + '&gen=' + g : out;
 }
