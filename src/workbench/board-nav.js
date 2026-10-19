@@ -7,7 +7,7 @@ import { boardShowsTabBar } from './lib/board-entries.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
-import { CHROME_GAP, centerScrollForPoint, focusScrollForRect } from '../shared/canvas-gesture.js';
+import { CHROME_GAP, FOCUS_INSET, centerScrollForPoint, focusScrollForRect } from '../shared/canvas-gesture.js';
 import {
   closestBoardSection,
   findBoardFrame,
@@ -306,7 +306,7 @@ function stageViewportMetrics() {
 function focusStageOnRect(rect, options) {
   if (!stage || !rect) return;
   options = options || {};
-  var target = focusScrollForRect(rect, stageViewportMetrics(), { inset: options.inset || 24 });
+  var target = focusScrollForRect(rect, stageViewportMetrics(), { inset: options.inset || FOCUS_INSET });
   scrollStageTo(stage, target, options);
 }
 
