@@ -13,7 +13,14 @@ import { wbGet, wbSet, activeBoardMode, useWorkbenchStore } from './app/store.js
 import { queryClient } from './app/query-client.js';
 import { defaultShellForPage, pageBaseUrl, pageEntry, parseDeepLink } from './lib/page-url.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
-import { clampCanvasZoom, currentCanvasZoom } from './lib/canvas-zoom.js';
+import { currentCanvasZoom } from './lib/canvas-zoom.js';
+import {
+  PAN_DRAG_THRESHOLD_SQ,
+  ZOOM_STEP_IN,
+  ZOOM_STEP_OUT,
+  clampZoom,
+  isExplicitPanGesture
+} from '../shared/canvas-gesture.js';
 import {
   clearBoardSelection,
   focusBoardSection,
@@ -507,7 +514,8 @@ stage.addEventListener('wheel', function (e) {
   if (!e.ctrlKey && !e.metaKey) return;
   e.preventDefault();
   var oldZ = currentCanvasZoom();
-  var next = clampCanvasZoom(oldZ * (e.deltaY > 0 ? 0.92 : 1.08));
+  // 步进与夹取取自共享手势数学（src/shared/canvas-gesture.js，导出页同一份）。
+  var next = clampZoom(oldZ * (e.deltaY > 0 ? ZOOM_STEP_OUT : ZOOM_STEP_IN));
   if (next === oldZ) return;
   zoomCanvasAt(next, e.clientX, e.clientY);
 }, { passive: false });
@@ -570,7 +578,7 @@ stage.addEventListener('wheel', function (e) {
     if (!pan) return;
     var dx = e.clientX - pan.x;
     var dy = e.clientY - pan.y;
-    if (!pan.moved && (dx * dx + dy * dy) < 16) return;
+    if (!pan.moved && (dx * dx + dy * dy) < PAN_DRAG_THRESHOLD_SQ) return;
     if (!pan.moved) {
       pan.moved = true;
       stage.classList.add('wb-panning');
@@ -626,7 +634,7 @@ stage.addEventListener('wheel', function (e) {
   // Window capture runs before the annotation client's document capture listener.
   // Explicit navigation owns the complete gesture, without changing annotation mode.
   window.addEventListener('mousedown', function (e) {
-    var explicit = e.button === 1 || (e.button === 0 && spaceDown);
+    var explicit = isExplicitPanGesture(e.button, spaceDown);
     var overBadge = explicit && e.target.closest('.ann-badge');
     if (!stage.contains(e.target) && !overBadge) return;
     if (activeBoardMode() === 'html' || isTypingTarget(e.target)) return;

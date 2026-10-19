@@ -24,7 +24,8 @@ import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
 import { setCanvasZoom, zoomCanvasAt } from '../boot-prefs.js';
-import { clampCanvasZoom, currentCanvasZoom, formatZoomLabel } from '../lib/canvas-zoom.js';
+import { currentCanvasZoom } from '../lib/canvas-zoom.js';
+import { clampZoom, formatZoomLabel } from '../../shared/canvas-gesture.js';
 import { pageEntry } from '../lib/page-url.js';
 import { offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { cn } from './lib/utils.js';
@@ -42,7 +43,7 @@ var HUD_ITEM =
   'transition-[color,background-color] duration-150 hover:bg-accent hover:text-accent-foreground';
 
 function nudgeZoom(factor) {
-  zoomCanvasAt(clampCanvasZoom(currentCanvasZoom() * factor));
+  zoomCanvasAt(clampZoom(currentCanvasZoom() * factor));
 }
 
 export function CanvasDock() {

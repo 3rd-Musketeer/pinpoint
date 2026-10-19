@@ -7,12 +7,11 @@ import { boardShowsTabBar } from './lib/board-entries.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
+import { CHROME_GAP, centerScrollForPoint, focusScrollForRect } from '../shared/canvas-gesture.js';
 import {
-  centerScrollForPoint,
   closestBoardSection,
   findBoardFrame,
   findBoardSection,
-  focusScrollForRect,
   hitTestBoardNavigation,
   measureBoardNavigation
 } from './lib/board-navigation.js';
@@ -254,18 +253,18 @@ export function chromeInsets() {
   var side = document.getElementById('wbside');
   if (side && !wbGet().sideCollapsed) {
     var sr = side.getBoundingClientRect();
-    if (sr.width > 1) out.left = Math.max(0, sr.right - stageRect.left + 12);
+    if (sr.width > 1) out.left = Math.max(0, sr.right - stageRect.left + CHROME_GAP);
   }
   var annPanel = document.getElementById('wbann-pop');
   if (annPanel) {
     var ar = annPanel.getBoundingClientRect();
-    if (ar.width > 1) out.right = Math.max(0, stageRect.right - ar.left + 12);
+    if (ar.width > 1) out.right = Math.max(0, stageRect.right - ar.left + CHROME_GAP);
   }
   // 上方：文章画布左上角的“← 文章标题”（app/ArticleBack.jsx）。只有它在顶上，所以上方留白就是它的下沿。
   var back = document.getElementById('wbback');
   if (back) {
     var br = back.getBoundingClientRect();
-    if (br.height > 1) out.top = Math.max(0, br.bottom - stageRect.top + 12);
+    if (br.height > 1) out.top = Math.max(0, br.bottom - stageRect.top + CHROME_GAP);
   }
   // 底部：横条，以及叠在它上面的 tab 切换条（页 tab，ADR 0041；只有 ≥ 2 个 tab 的页有）—— 取更高的那一条。
   // 不出条的页（文章画布、单 tab 页）只占横条那一带，大纲钮在横条里（2026-10-15）。
@@ -273,7 +272,7 @@ export function chromeInsets() {
     var el = document.getElementById(id);
     if (!el) return;
     var tr = el.getBoundingClientRect();
-    if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + 12);
+    if (tr.height > 1) out.bottom = Math.max(out.bottom, stageRect.bottom - tr.top + CHROME_GAP);
   });
   // 条是 React 画的，首访聚焦的 rAF 经常早于它提交。条该出（boardShowsTabBar）就按同一套 CSS 预留
   //（条高 --wb-tabbar-h，叠在横条上方 --wb-tabbar-gap），免得帧落在条底下。

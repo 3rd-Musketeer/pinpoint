@@ -6,7 +6,8 @@ import { cancelStageScroll } from './scroll-motion.js';
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { pageViewport, savePageViewport, viewportKey } from './lib/page-viewports.js';
-import { BASE_CANVAS_SCALE, currentCanvasZoom } from './lib/canvas-zoom.js';
+import { BASE_CANVAS_SCALE, scrollAfterZoom } from '../shared/canvas-gesture.js';
+import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
 import {
   refreshBoardNavigationModel,
@@ -158,12 +159,11 @@ export function zoomCanvasAt(next, clientX, clientY) {
     originX = stage.scrollLeft + (wr.left - rect.left);
     originY = stage.scrollTop + (wr.top - rect.top);
   }
-  var localX = stage.scrollLeft + mx - originX;
-  var localY = stage.scrollTop + my - originY;
   setCanvasZoom(String(next), { save: true });
   var ratio = next / oldZ;
-  stage.scrollLeft = originX + localX * ratio - mx;
-  stage.scrollTop = originY + localY * ratio - my;
+  // 不动点回写走共享数学（src/shared/canvas-gesture.js，导出页同一公式）。
+  stage.scrollLeft = scrollAfterZoom(stage.scrollLeft, mx, originX, ratio);
+  stage.scrollTop = scrollAfterZoom(stage.scrollTop, my, originY, ratio);
 }
 
 function scheduleZoomSave(val) {

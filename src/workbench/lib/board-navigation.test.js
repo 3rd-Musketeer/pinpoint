@@ -1,11 +1,11 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
+// 焦点 / 居中数学在 shared（与离线导出页共用同一份）；本文件只测模型侧。
+import { centerScrollForPoint, focusScrollForRect } from '../../shared/canvas-gesture.js';
 import {
-  centerScrollForPoint,
   closestBoardSection,
   findBoardFrame,
-  focusScrollForRect,
   hitTestBoardNavigation,
 } from './board-navigation.js';
 
