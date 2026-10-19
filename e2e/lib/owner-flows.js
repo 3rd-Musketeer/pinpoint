@@ -108,8 +108,7 @@ export async function ownerAnnotation(page, scope) {
   await expect(scope.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
   await expect.poll(() => ownerLedger().filter(a => a.content.includes('中文标注请检查确认条件')).length).toBe(1);
   const mark = ownerLedger().find(a => a.content.includes('中文标注请检查确认条件'));
-  const pin = scope.locator(`.ann-mark-group[data-key="${mark.n}"] .ann-badge`);
-  // 钉子的实际 data-key 是实现细节：按可见编号查 badge，避免用 openMark 绕过点击。
+  // 按可见编号查 badge，避免用 openMark 绕过点击。
   const badge = scope.locator('.ann-badge').filter({ hasText: new RegExp(`^${mark.n}$`) }).first();
   await badge.click();
   await expect(scope.locator('#ann-box')).toBeVisible();
