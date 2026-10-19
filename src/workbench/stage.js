@@ -33,12 +33,12 @@ import {
   setFrameRevealer,
   syncBoardSelection
 } from './board-nav.js';
-import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
-import { CANVAS_ENTRY_ID } from './lib/board-entries.js';
+import { buildBoardHtml, fetchScreenHtml, loadFailHtml, screenContentHtml } from './screen-load.js';
+import { CANVAS_ENTRY_ID, isArticleBoard } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { screenEntries } from '../shared/board-screens.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
-import { resetFrame } from './frame-reset.js';
+import { refreshFrameContent, resetFrame } from './frame-reset.js';
 import {
   annotateApi,
   startAnnBridge,
@@ -761,6 +761,34 @@ function reloadActiveBoard() {
   loadBoard(boardPanel, state.activePageId);
 }
 
+/** 只重摆点名的那几屏（S2/F2：preview:update 带 screens 的增量路径）。挂在活动
+    tab 上的逐屏换内容（frame-reset 的 refreshFrameContent，mountGeneration 不变、
+    别的屏不动）；不在当前 tab 的屏本来就没挂载，查询失效后切 tab 时自然拉新。
+    视口读 store 现值：存量页装板时已灌好；文章画布上 store.viewport 跟条目走，
+    而这条路径不碰 doc 屏的机壳（HTML 卡片走 iframe 重载，非 doc 屏的机壳与视口无关）。 */
+function remountScreens(pageId, screenIds) {
+  var active = wbGet().activeBoard;
+  if (!boardPanel || !active || active.pageId !== pageId) return;
+  var wanted = {};
+  screenIds.forEach(function (id) { wanted[id] = true; });
+  var article = isArticleBoard(active.board);
+  screenEntries(active.board).forEach(function (hit) {
+    var sc = hit.screen;
+    if (!wanted[sc.id]) return;
+    // 文章画布的 HTML 帧（卡片 + 页面浮层）是活的 iframe，重载即新内容，不走 dist 拉取。
+    if (article && sc.shell === 'doc') {
+      refreshFrameContent(sc.id, '');
+      return;
+    }
+    // 查询已在 preview:update 里按屏失效，这里的 fetchQuery 会真拉 dist。
+    fetchScreenHtml(pageId, sc).then(function (res) {
+      var current = wbGet().activeBoard;
+      if (!current || current.pageId !== pageId) return;
+      return refreshFrameContent(sc.id, screenContentHtml(pageId, sc, res, wbGet().viewport));
+    });
+  });
+}
+
 if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
@@ -768,6 +796,17 @@ if (import.meta.hot) {
     // SSE 是唯一失效源：页面变更（含 kit 组件触发全量重编后的逐页通知）失效自己的
     // board/screen；pp2 起屏内容就是 dist，客户端没有 include 缓存可失效。
     queryClient.invalidateQueries({ queryKey: ['board', id] });
+    var screens = data && Array.isArray(data.screens) ? data.screens : null;
+    if (screens) {
+      // 增量（S2/F2）：只失效重编过的屏，活动板按屏重摆 —— 整板不重装，
+      // 没点名的屏连 fetch 都不发生。没带屏清单（整页重编 / 板变 / 无编译目标）
+      // 走整板重摆，与旧行为一致。
+      screens.forEach(function (screenId) {
+        queryClient.invalidateQueries({ queryKey: ['screen', id, screenId] });
+      });
+      if (id === wbGet().activePageId) remountScreens(id, screens);
+      return;
+    }
     queryClient.invalidateQueries({ queryKey: ['screen', id] });
     if (id === wbGet().activePageId) reloadActiveBoard();
   });

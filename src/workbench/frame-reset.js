@@ -145,6 +145,51 @@ function screenOf(screenId) {
   return null;
 }
 
+/** 换上一屏的新内容（S2/F2：preview:update 带屏清单的按屏重摆）。html 是
+    screen-load.js screenContentHtml 的产物（机壳已套好）；初始 HTML 记录、改动
+    标记、预览脚本的重挂与 resetFrame 同一套，只是内容用拉到的新 HTML 而不是
+    装载时记下的 pristine。HTML 卡片（文章画布的活页面）没有内联内容可换：
+    重载卡片与页面浮层里已装载的 iframe 即新内容。返回 Promise<boolean>：
+    找不到这一帧、板已换掉时为 false。 */
+export function refreshFrameContent(screenId, html) {
+  var screen = screenOf(screenId);
+  if (!screen || !board.session.active) return Promise.resolve(false);
+  if (screen.hasAttribute('data-html-card')) {
+    var reloaded = false;
+    var frames = screen.querySelectorAll('iframe');
+    Array.prototype.forEach.call(frames, function (frame) {
+      if (!frame.getAttribute('src')) return;
+      try { frame.contentWindow.location.reload(); } catch (e) { frame.src = frame.src; }
+      reloaded = true;
+    });
+    // 页面浮层是同帧的另一份（“全页”打开的那块），装载过的也一起换新。
+    var overlay = board.panel.querySelector('[data-page-screen="' + screenId + '"] iframe');
+    if (overlay && overlay.getAttribute('src')) {
+      try { overlay.contentWindow.location.reload(); } catch (e) { overlay.src = overlay.src; }
+      reloaded = true;
+    }
+    return Promise.resolve(reloaded);
+  }
+  var session = board.session;
+  if (screen.__ppDirtyWatch) screen.__ppDirtyWatch();
+  session.disposeWithin(screen);
+  Array.prototype.slice.call(screen.children).forEach(function (child) {
+    if (!isCaption(child)) child.remove();
+  });
+  var tpl = document.createElement('template');
+  tpl.innerHTML = html;
+  var dim = screen.querySelector(':scope > .wb-screen-dim');
+  screen.insertBefore(tpl.content, dim);
+  board.pristine.set(screenId, html);
+  clearDirty(screen);
+  return board.remount(screen).then(function () {
+    var api = annotateApi();
+    if (api) api.render();
+    scheduleAnnSnap();
+    return session.active;
+  });
+}
+
 /** 把一帧放回初始状态。返回 Promise<boolean>：找不到这一帧、板已换掉时为 false。 */
 export function resetFrame(screenId) {
   var screen = screenOf(screenId);

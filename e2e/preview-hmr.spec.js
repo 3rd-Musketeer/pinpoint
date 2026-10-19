@@ -72,3 +72,34 @@ test('改一屏或改共享组件：画板收到 preview:update 后重摆出新�
   await expect(alpha).toContainText('chip v1·改');
   await expect(beta).toContainText('chip v1·改');
 });
+
+// S2/F2 的计数证明：preview:update 带屏清单后，工作台按屏重摆 —— 改一个帧源码，
+// 屏幕 HTML 只拉点名的那一屏、board.json 没人拉（整板没重装）、mountGeneration
+// 不变、别的屏连 DOM 节点都是原来那个。审计 K3 的旧路径是整板重拉（97 屏全作废）。
+test('增量重摆：只重拉点名的屏，不整板重装（S2/F2 计数证明）', async ({ page }) => {
+  test.setTimeout(60_000);
+  await openBoard(page);
+  const alpha = page.locator('#wb-board-panel [data-screen="alpha"]');
+  const beta = page.locator('#wb-board-panel [data-screen="beta"]');
+  await expect(alpha).toContainText('hmr-site alpha v1');
+  await expect(beta).toContainText('hmr-site beta v1');
+
+  // 计数窗口从 v1 落定后开始：记 mountGeneration、给 beta 的 DOM 节点打标记，
+  // 收集此后发向这一页的全部请求。
+  const gen0 = await page.evaluate(() => window.workbench.mountGeneration());
+  await beta.evaluate((el) => el.setAttribute('data-e2e-keep', '1'));
+  const fetched = [];
+  page.on('request', (req) => {
+    const url = new URL(req.url());
+    if (url.pathname.startsWith('/sites/e2e-hmr/')) fetched.push(url.pathname + url.search);
+  });
+
+  fs.writeFileSync(path.join(SITE_DIR, 'alpha.jsx'), ALPHA_V2);
+  await expect(alpha).toContainText('hmr-site alpha v2');
+
+  expect(fetched.filter((url) => url.includes('.html'))).toEqual(['/sites/e2e-hmr/alpha.html?annotate=off']);
+  expect(fetched.some((url) => url.endsWith('/board.json'))).toBe(false);
+  expect(await page.evaluate(() => window.workbench.mountGeneration())).toBe(gen0);
+  await expect(beta).toHaveAttribute('data-e2e-keep', '1');
+  await expect(beta).toContainText('hmr-site beta v1');
+});

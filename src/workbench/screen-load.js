@@ -201,6 +201,16 @@ function screenClassForShell(pageId, shell, viewport) {
   return 'wb-screen';
 }
 
+/** 一屏的内层 HTML（图注 / 尺寸行之间的那块）：拉取成功套机壳，失败出重试面板。
+    整板装载（buildBoardHtml）与按屏重摆（S2/F2：stage.js 的 preview:update 增量路径）共用，
+    保证同一条拉取结果两边画出来一样。 */
+export function screenContentHtml(pageId, sc, res, viewport) {
+  if (res && res.ok) {
+    return wrapScreenShell(pageId, res.html, sc.shell, viewport);
+  }
+  return screenErrorHtml(pageId, sc.id, res ? res.err : 'missing');
+}
+
 export function buildBoardHtml(pageId, board, screenMap, options) {
   var viewport = (options && options.viewport) || 'window';
   // 文章画布：HTML 帧的视口是帧的偏好（卡片宽度与浮层的看法都跟它走）。
@@ -230,12 +240,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       if (article && sc.shell === 'doc') return htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, frameViewport(sc.id));
       var key = sc.id;
       var fetched = screenMap[key];
-      var inner;
-      if (fetched && fetched.ok) {
-        inner = wrapScreenShell(pageId, fetched.html, sc.shell, viewport);
-      } else {
-        inner = screenErrorHtml(pageId, sc.id, fetched ? fetched.err : 'missing');
-      }
+      var inner = screenContentHtml(pageId, sc, fetched, viewport);
       var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
