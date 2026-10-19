@@ -51,9 +51,15 @@ async function openFromCard(page) {
 test('画布浮层：点开立刻有头和准备态，就绪后收起；重开不再装', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
+  // 冷开要真的冷：卡片帧扣住，卡片摆不好，空闲预热（E2）就不开始。不扣的话预热可能已经
+  // 把工作台装好停着，点开后准备态一闪就收，量不到它的盒子。扣到点开之后再放行。
+  const held = [];
+  let holding = true;
+  await page.route('**/api/frame?*embed=card*', (route) => (holding ? held.push(route) : route.continue()));
   await openArticle(page);
 
   await test.step('冷开：头和「正在准备画布…」在工作台装好之前就在', async () => {
+    expect(await page.evaluate(() => window.pinpointOverlay.phase())).toBe('absent');
     await openFromTop(page);
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(overlay(page).locator('[data-ov-title]')).not.toBeEmpty();
@@ -61,6 +67,8 @@ test('画布浮层：点开立刻有头和准备态，就绪后收起；重开�
     const box = await status(page).boundingBox();
     expect(box, '准备态要占得见').not.toBeNull();
     expect(box.height).toBeGreaterThan(16);
+    holding = false;
+    for (const route of held.splice(0)) await route.continue();
   });
 
   await test.step('板和预览都就绪后状态消失', async () => {
