@@ -25,7 +25,10 @@ export function activeDocFrameEl() {
  *  读 contentWindow 会抛）时为 null。文档实例的绑定方（ann-bridge bindIfNewDoc）
  *  直接消费它；画布操作该驱动谁看 resolveActiveAnnotate。 */
 export function activeDocWindow() {
-  var frame = activeDocFrameEl();
+  return docWindowOf(activeDocFrameEl());
+}
+
+function docWindowOf(frame) {
   if (!frame) return null;
   try {
     var w = frame.contentWindow;
@@ -42,15 +45,7 @@ export function activeDocWindow() {
  *    跨域读 contentWindow 抛错时 docWin 也为 null）。 */
 export function resolveActiveAnnotate() {
   var docFrame = activeDocFrameEl();
-  var docWin = null;
-  if (docFrame) {
-    try {
-      var w = docFrame.contentWindow;
-      docWin = w && w.pinpoint ? w : null;     // 跨域时读 contentWindow 会抛
-    } catch (e) {
-      docWin = null;
-    }
-  }
+  var docWin = docWindowOf(docFrame);
   var parent = window.pinpoint || null;
   var api = (docWin && docWin.pinpoint) || parent;
   return { api: api || null, parent: parent, docWin: docWin, docFrame: docFrame };
