@@ -102,13 +102,18 @@ export function startEmbedBridge() {
     e.preventDefault();
     post({ type: 'close' });
   });
+  // 当前节报给文章页。selector 化（C3）：算出的节没变就不进回调 —— 原来任何
+  // store 变化都重算一遍再靠 lastSection 去重。页面浮层的开与关都写 activeEntryId
+  // （pages.js openPageOverlay / closePageOverlay），selector 跟着翻转，不漏。
   var lastSection = '';
   useWorkbenchStore.subscribe(function (s) {
-    var section = isPageOverlayOpen() ? pageSectionOf(s.activeEntryId) : s.activeGroup || '';
-    if (section && section !== lastSection) {
-      lastSection = section;
-      post({ type: 'section', section: section });
-    }
-    if (s.activeBoard) announceReady();
+    return isPageOverlayOpen() ? pageSectionOf(s.activeEntryId) : s.activeGroup || '';
+  }, function (section) {
+    if (!section || section === lastSection) return;
+    lastSection = section;
+    post({ type: 'section', section: section });
   });
+  // 板换新（boot 首装、切页 / tab、HMR 重装都写 activeBoard）才重新宣布就绪；
+  // 会话被替换的衔接由 whenBoardSettled 的 followSession 语义自理。
+  useWorkbenchStore.subscribe(function (s) { return s.activeBoard; }, function () { announceReady(); });
 }

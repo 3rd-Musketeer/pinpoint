@@ -42,4 +42,5 @@ export const WORKBENCH_DEPS = [
   'react/jsx-runtime',
   'tailwind-merge',
   'zustand',
+  'zustand/middleware',
 ];

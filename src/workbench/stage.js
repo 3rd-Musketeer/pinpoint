@@ -404,18 +404,16 @@ window.workbench = {
   }
 };
 
-// 活动页一经 store 变化即通知（覆盖 boot 的第一次解析与之后的所有切换，无论
-// 换页来自侧栏点击、深链还是失败面板的「回到 Pages」）。空 id（清单未到位）
-// 不通知 —— 订阅方要的是「现在在看哪一页」。
+// 活动页一经变化即通知（覆盖 boot 的第一次解析与之后的所有切换，无论换页来自
+// 侧栏点击、深链还是失败面板的「回到 Pages」）。空 id（清单未到位）不通知 ——
+// 订阅方要的是「现在在看哪一页」。selector 化（C3）：只有 activePageId 真的
+// 换了才扇出，同值写入与无关字段（标注快照等）不再进这里。
 // API 一挂齐就广播（C1）：annotate 客户端（ledger.js）等它挂 onPageChange，同一
 // 文档里监听先挂就必达 —— 事件在本同步块里、赋值之后发出，先后两种时序都不会漏。
 window.dispatchEvent(new Event('workbench:ready'));
 var pageChangeListeners = [];
-var lastNotifiedPage = null;
-useWorkbenchStore.subscribe(function () {
-  var id = wbGet().activePageId;
-  if (!id || id === lastNotifiedPage) return;
-  lastNotifiedPage = id;
+useWorkbenchStore.subscribe(function (s) { return s.activePageId; }, function (id) {
+  if (!id) return;
   for (var i = 0; i < pageChangeListeners.length; i++) {
     try { pageChangeListeners[i](id); } catch (e) { /* 订阅方自理 */ }
   }
@@ -749,8 +747,17 @@ stage.addEventListener('wheel', function (e) {
   });
 
   // store 选中态 → 画布 .wb-sel 高亮同步（板重载 innerHTML 替换后 activeBoard
-  // 写入同样触发本订阅，class 自动重挂）。
-  useWorkbenchStore.subscribe(function () { syncBoardSelection(); });
+  // 换新引用同样触发本订阅，class 自动重挂）。selector 化（C3）：选中字段或板
+  // 本体没动就不重扫整板 —— 标注快照每次 notify 都换新对象，之前每次都进这里
+  // （K1 的燃料之一；f2d7639 在写 DOM 侧挡住，这里把扇出本身关掉）。数组每次
+  // 都是新引用，比较走逐项相等。
+  useWorkbenchStore.subscribe(function (s) {
+    return [s.activeBoard, s.focusFrameKey, s.focusSectionId];
+  }, function () { syncBoardSelection(); }, {
+    equalityFn: function (a, b) {
+      return a[0] === b[0] && a[1] === b[1] && a[2] === b[2];
+    }
+  });
 })();
 
 /** 按当前活动页重摆板（HMR 广播用）。停在「页面不存在」面板时不装板：activePageId 是那个

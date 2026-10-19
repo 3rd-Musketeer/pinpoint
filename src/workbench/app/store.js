@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { subscribeWithSelector } from 'zustand/middleware';
 
 import { boardEntries, entryForm, resolveEntry } from '../lib/board-entries.js';
 import { modeForPage } from '../lib/page-url.js';
@@ -10,7 +11,11 @@ import { modeForPage } from '../lib/page-url.js';
  * wbGet()/wbSet() 读写；React 组件经 hook 订阅。纪律：模块只碰自己消费的
  * 字段；字段随簇提取真实消费拉入，不预先铺全量。
  */
-export const useWorkbenchStore = create((set) => ({
+// subscribeWithSelector（C3）：命令式模块的 subscribe(selector, listener[, options])
+// 只在所选字段变化时回调 —— 裸 subscribe 会对整个 store 扇出，任何字段写入
+// （标注快照每次 notify 都换新对象）都逐个进每个订阅，是 K1 循环的燃料之一。
+// 无 selector 的旧签名原样保留（url-sync 的深链镜像靠它看每次写入）。
+export const useWorkbenchStore = create(subscribeWithSelector((set) => ({
   // sidebar shell
   sideCollapsed: false,
   sideWidth: 250,
@@ -67,7 +72,7 @@ export const useWorkbenchStore = create((set) => ({
   sectionNavCurrent: '',
 
   patch: (partial) => set(partial),
-}));
+})));
 
 // 命令式层的读写入口（React 组件请用 hook 订阅，不要用这两个）。
 export const wbGet = useWorkbenchStore.getState;
