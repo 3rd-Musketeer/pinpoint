@@ -1,14 +1,12 @@
 import assert from 'node:assert/strict';
-import fs from 'node:fs';
-import path from 'node:path';
 import test from 'node:test';
-import { fileURLToPath } from 'node:url';
 import vm from 'node:vm';
 
-// 分享运行时是经典脚本（内联进导出文件），没有 export：在 vm 里以一个不会走到
-// boot 的假 document 跑一遍，取 window.__pinpointShare 上的纯函数来测。
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SOURCE = fs.readFileSync(path.join(__dirname, 'share-runtime.js'), 'utf8');
+import { buildShareRuntimeBundle } from '../server/lib/share-runtime-bundle.js';
+
+// 分享运行时 import 了 src/shared 的手势数学，导出前由 share-runtime-bundle 打成
+// 单个自包含经典脚本内联进导出文件。单测直接测**打包产物**：既守「内联的是合法
+// 经典脚本」，又在 vm 里取 window.__pinpointShare 上的纯函数验证数学本身。
 
 // vm 里造出来的对象带另一个 realm 的 Object.prototype：展开成本 realm 的对象再比。
 function plain(value) {
@@ -16,6 +14,7 @@ function plain(value) {
 }
 
 function loadShare() {
+  const js = buildShareRuntimeBundle();
   const listeners = [];
   const window = {};
   const document = {
@@ -25,14 +24,18 @@ function loadShare() {
   window.window = window;
   window.document = document;
   const context = vm.createContext({ window, document });
-  vm.runInContext(SOURCE, context, { filename: 'share-runtime.js' });
+  vm.runInContext(js, context, { filename: 'share-runtime.bundle.js' });
   assert.deepEqual(listeners.map(([type]) => type), ['DOMContentLoaded']);
   return window.__pinpointShare;
 }
 
-test('share-runtime is a self-contained classic script', () => {
-  assert.doesNotMatch(SOURCE, /<\/script/i);
-  assert.doesNotMatch(SOURCE, /^\s*import\s|\bimport\s*\(|\bexport\s|\bfetch\s*\(|\bXMLHttpRequest\b/m);
+test('bundle 是自包含经典脚本：无 ESM、无网络 API、无 script 结束标签', () => {
+  const js = buildShareRuntimeBundle();
+  assert.doesNotMatch(js, /<\/script/i);
+  assert.doesNotMatch(js, /^\s*import\s|\bimport\s*\(|\bexport\s|\bfetch\s*\(|\bXMLHttpRequest\b/m);
+  // 导出页把产物内联进普通 <script>：必须是合法经典脚本（打包不引入语法错）。
+  // eslint-disable-next-line no-new-func
+  new Function(js);
 });
 
 test('zoom axis clamps to 0.5–5 with two decimals (canvas-zoom parity)', () => {

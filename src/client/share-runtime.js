@@ -2,13 +2,14 @@
  * 离线分享 HTML（<page>__interactive.html）的画布运行时。
  *
  * 分享页用的是 workbench 的外壳（.wb → .wb-stage → .wb-library，ADR 0033），但
- * 没有 React、没有模块、没有服务：本文件是一个经典脚本，由
- * src/server/lib/offline-page-export.js 读成文本内联进导出文件（与 frame-boot.js
- * 同一做法）。禁止 import；正文不能出现 script 结束标签（内联守卫会拒绝）。
+ * 没有 React、没有模块、没有服务：本文件被 src/server/lib/share-runtime-bundle.js
+ * 用 esbuild 打成单个自包含经典脚本，内联进导出文件（/annotate.js 同一做法；
+ * frame-boot.js 仍是读原文内联）。产物正文不能出现 script 结束标签（内联守卫会拒绝）。
  *
- * 语义对齐 src/workbench/stage.js 与 src/workbench/lib/board-navigation.js：
- * - 普通滚轮 = 滚动；ctrl/meta + 滚轮（触控板捏合）= 围绕光标缩放，步进 0.92 /
- *   1.08，zoom 轴 0.5–5，视觉缩放 = zoom × 0.5（ADR 0025 基准）。
+ * 手势与定位的数学（zoom 轴、ctrl+wheel 步进、焦点落点、可用区、适配缩放、
+ * 显式手势判定）与工作台共用 src/shared/canvas-gesture.js —— 改画布手感两边同时变，
+ * 不再有「语义对齐 stage.js」的注释约定。本文件只剩导出页自己的 DOM 壳：
+ * - 普通滚轮 = 滚动；ctrl/meta + 滚轮（触控板捏合）= 围绕光标缩放。
  * - 空格 + 左键拖、中键拖 = 任意位置平移；无修饰的左键拖只在空白画布上平移，
  *   机身 / 按钮 / 链接里不抢。
  * - 大纲点击与 ‹ › = 把目标居中到可用区（视口减掉面板与横条的占位）。
@@ -23,81 +24,31 @@
  * 纯函数（clampZoom / focusScrollForRect / usableViewport / fitZoomForWidth /
  * formatZoomLabel）挂在 window.__pinpointShare 上，供单测在 vm 里直接调用。
  */
+import {
+  BASE_CANVAS_SCALE,
+  CHROME_GAP,
+  FOCUS_INSET,
+  PAN_DRAG_THRESHOLD_SQ,
+  ZOOM_MAX,
+  ZOOM_MIN,
+  ZOOM_STEP_IN,
+  ZOOM_STEP_OUT,
+  clampZoom,
+  fitZoomForWidth,
+  focusScrollForRect,
+  formatZoomLabel,
+  isExplicitPanGesture,
+  scrollAfterZoom,
+  usableViewport,
+} from '../shared/canvas-gesture.js';
+
 (function () {
   'use strict';
 
-  var BASE_SCALE = 0.5;
-  var ZOOM_MIN = 0.5;
-  var ZOOM_MAX = 5;
-  var ZOOM_STEP_OUT = 0.92;
-  var ZOOM_STEP_IN = 1.08;
-  var FOCUS_INSET = 24;
-  var CHROME_GAP = 12;
   var MOBILE_QUERY = '(max-width: 760px)';
 
-  // ── 纯函数 ────────────────────────────────────────────────────────────────
-
-  function clampZoom(z) {
-    z = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, Number(z) || 1));
-    return Math.round(z * 100) / 100;
-  }
-
-  function formatZoomLabel(z) {
-    var n = Math.round(Number(z) * 100);
-    if (!isFinite(n)) n = 100;
-    return n + '%';
-  }
-
-  function clamp(value, min, max) {
-    return Math.max(min, Math.min(max, value));
-  }
-
-  /** 可用区 = 视口减掉四边占位；至少 1px，chrome 比视口还宽时不出负数。 */
-  function usableViewport(viewport) {
-    var insets = viewport.insets || {};
-    var left = insets.left || 0;
-    var right = insets.right || 0;
-    var top = insets.top || 0;
-    var bottom = insets.bottom || 0;
-    return {
-      left: left,
-      top: top,
-      width: Math.max(1, viewport.width - left - right),
-      height: Math.max(1, viewport.height - top - bottom)
-    };
-  }
-
-  function focusAxis(start, size, viewportSize, inset) {
-    if (size + inset * 2 <= viewportSize) return start + size / 2 - viewportSize / 2;
-    return start - inset;
-  }
-
-  /** 放得下就居中，放不下就让起点贴可用区的左上；结果换回 scroll 坐标并夹进滚动范围。 */
-  function focusScrollForRect(rect, viewport, options) {
-    var inset = options && options.inset != null ? options.inset : FOCUS_INSET;
-    var maxLeft = Math.max(0, viewport.scrollWidth - viewport.width);
-    var maxTop = Math.max(0, viewport.scrollHeight - viewport.height);
-    var usable = usableViewport(viewport);
-    return {
-      left: clamp(focusAxis(rect.left, rect.width, usable.width, inset) - usable.left, 0, maxLeft),
-      top: clamp(focusAxis(rect.top, rect.height, usable.height, inset) - usable.top, 0, maxTop)
-    };
-  }
-
-  /**
-   * 让一块 layoutWidth（transform 前的布局宽，board 单位）在 availableWidth 里放下的
-   * zoom 轴值：放得下就 1，放不下就缩，最低 ZOOM_MIN。
-   */
-  function fitZoomForWidth(layoutWidth, availableWidth, options) {
-    var inset = options && options.inset != null ? options.inset : FOCUS_INSET;
-    var maxZoom = options && options.maxZoom != null ? options.maxZoom : 1;
-    var room = availableWidth - inset * 2;
-    if (!(layoutWidth > 0) || !(room > 0)) return clampZoom(maxZoom);
-    return clampZoom(Math.min(maxZoom, room / (layoutWidth * BASE_SCALE)));
-  }
-
   window.__pinpointShare = {
-    BASE_SCALE: BASE_SCALE,
+    BASE_CANVAS_SCALE: BASE_CANVAS_SCALE,
     ZOOM_MIN: ZOOM_MIN,
     ZOOM_MAX: ZOOM_MAX,
     clampZoom: clampZoom,
@@ -253,7 +204,7 @@
       zoom = clampZoom(next);
       document.documentElement.style.setProperty('--wb-board-zoom', String(zoom));
       lib.style.setProperty('--wb-board-zoom', String(zoom));
-      var z = zoom * BASE_SCALE;
+      var z = zoom * BASE_CANVAS_SCALE;
       wrap.style.width = Math.ceil(lib.offsetWidth * z) + 'px';
       wrap.style.height = Math.ceil(lib.offsetHeight * z) + 'px';
       if (zoomBtn) zoomBtn.textContent = formatZoomLabel(zoom);
@@ -269,12 +220,11 @@
       var wr = wrap.getBoundingClientRect();
       var originX = stage.scrollLeft + (wr.left - rect.left);
       var originY = stage.scrollTop + (wr.top - rect.top);
-      var localX = stage.scrollLeft + mx - originX;
-      var localY = stage.scrollTop + my - originY;
       var ratio = next / oldZ;
       applyZoom(next);
-      stage.scrollLeft = originX + localX * ratio - mx;
-      stage.scrollTop = originY + localY * ratio - my;
+      // 不动点回写与工作台的 zoomCanvasAt 同一条公式（canvas-gesture.scrollAfterZoom）。
+      stage.scrollLeft = scrollAfterZoom(stage.scrollLeft, mx, originX, ratio);
+      stage.scrollTop = scrollAfterZoom(stage.scrollTop, my, originY, ratio);
     }
 
     stage.addEventListener('wheel', function (e) {
@@ -330,7 +280,7 @@
         if (!pan) return;
         var dx = e.clientX - pan.x;
         var dy = e.clientY - pan.y;
-        if (!pan.moved && (dx * dx + dy * dy) < 16) return;
+        if (!pan.moved && (dx * dx + dy * dy) < PAN_DRAG_THRESHOLD_SQ) return;
         if (!pan.moved) {
           pan.moved = true;
           stage.classList.add('wb-panning');
@@ -374,19 +324,14 @@
 
       window.addEventListener('mousedown', function (e) {
         if (!stage.contains(e.target) || isTypingTarget(e.target)) return;
-        if (e.button === 1) {
+        // 显式手势（中键 / 空格+左键）与工作台同一判定（canvas-gesture.isExplicitPanGesture）。
+        if (isExplicitPanGesture(e.button, spaceDown)) {
           e.preventDefault();
           e.stopPropagation();
           startPan(e);
           return;
         }
         if (e.button !== 0) return;
-        if (spaceDown) {
-          e.preventDefault();
-          e.stopPropagation();
-          startPan(e);
-          return;
-        }
         // 无空格：只在空白画布上平移，不抢机身 / 按钮 / 链接的交互。
         if (e.target.closest('.ios-stage, .wb-comp-stage, .wb-doc-stage, .wb-screen-err, button, a')) return;
         startPan(e);

@@ -18,6 +18,7 @@ import {
   buildOfflineShareHtml,
   bundleHtmlAssets,
 } from './offline-page-export.js';
+import { buildShareRuntimeBundle } from './share-runtime-bundle.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..', '..');
@@ -184,7 +185,8 @@ export async function buildOfflinePage(options = {}) {
       iosCss: readText('content/kits/ios/ios-kit.css'),
       iosKitJs: readText('content/kits/ios/ios-kit.js'),
       frameBootJs: readInlineScript('src/client/frame-boot.js'),
-      shareRuntimeJs: readInlineScript('src/client/share-runtime.js'),
+      // share-runtime import 了 src/shared 的手势数学，导出前打包成自包含经典脚本。
+      shareRuntimeJs: buildShareRuntimeBundle(),
     }),
   };
 }
