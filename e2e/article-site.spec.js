@@ -145,6 +145,30 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
 
     await page.locator('.cref[data-kind="article"][data-name="takeover"]').hover();
     await expect(page.locator('.pop .k')).toHaveText('用户接手文章');
+
+    // 打开期间跟随引用：键盘聚焦打开（指针移开，不靠悬停），视口收窄后引用换了位置，
+    // popup 仍贴它左下 8px、水平收在视口 12px 边距内。
+    await page.mouse.move(1, 1);
+    await page.keyboard.press('Escape');
+    await expect(pop).toHaveCount(0);
+    const ref = page.locator('.cref[data-kind="concept"][data-name="confirm-card"]');
+    await ref.focus();
+    await expect(pop.locator('.k')).toHaveText('confirm-card收敛中');
+    const offsetFromRef = () => page.evaluate(() => {
+      const r = document.querySelector('.cref[data-kind="concept"][data-name="confirm-card"]').getBoundingClientRect();
+      const p = document.querySelector('.pop').getBoundingClientRect();
+      const vw = document.documentElement.clientWidth;
+      const left = Math.min(Math.max(r.left, 12), vw - p.width - 12);
+      return { dx: Math.round(p.left - left), dy: Math.round(p.top - r.bottom - 8), refLeft: Math.round(r.left) };
+    });
+    const wide = await offsetFromRef();
+    expect({ dx: wide.dx, dy: wide.dy }).toEqual({ dx: 0, dy: 0 });
+    await page.setViewportSize({ width: 420, height: 900 });
+    await expect.poll(async () => { const o = await offsetFromRef(); return { dx: o.dx, dy: o.dy, moved: o.refLeft !== wide.refLeft }; })
+      .toEqual({ dx: 0, dy: 0, moved: true });
+    await page.keyboard.press('Escape');
+    await expect(pop).toHaveCount(0);
+    await page.setViewportSize({ width: 1440, height: 900 });
   });
 
   // 卡片的 data 属性、节号、“打开画布”与顶栏的链接是构建产物，由 site/build.check.mjs
