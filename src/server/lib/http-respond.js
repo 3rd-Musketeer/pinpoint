@@ -55,14 +55,15 @@ export function contentTypeFor(name) {
  *                     HMR 重编后浏览器必然拿到新内容）；
  *         'stat'    — 盘上文件的 mtime+size（静态资源原样出，不读内容也算得出）。
  *
- * 语义：no-cache = 可存但每次用前必须再验证（revalidate 命中即 304）；annotate
- * bundle 的哈希地址是内容地址，immutable 永久缓存。资源类加行，别在路由里手写头。
+ * 语义：no-cache = 可存但每次用前必须再验证（revalidate 命中即 304）。annotate
+ * bundle 不在表里：它的哈希地址路由自己写 immutable 头、不出 ETag（annotate-api），
+ * 表行救不了它也没有路由在读（review 建议 2，别再加死行）。资源类加行，别在路由
+ * 里手写头。
  */
 export const CACHE_POLICIES = {
   distScreen: { cacheControl: 'no-cache', etag: 'content' },
   frameHtml: { cacheControl: 'no-cache', etag: 'content' },
   staticFile: { cacheControl: 'no-cache', etag: 'stat' },
-  annotateBundle: { cacheControl: 'public, max-age=31536000, immutable', etag: 'content' },
   boardJson: { cacheControl: 'no-cache', etag: 'content' },
   image: { cacheControl: 'no-cache', etag: 'stat' },
 };

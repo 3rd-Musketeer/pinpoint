@@ -51,11 +51,11 @@ test('readBody：上限内原样读出；上限必给', async () => {
   assert.throws(() => readBody(mockReq('POST', '/x', 'a'), undefined), /readBody 要明确的字节上限/);
 });
 
-test('CACHE_POLICIES：brief 点名的六类资源各一行，值齐全', () => {
-  for (const row of ['distScreen', 'frameHtml', 'staticFile', 'annotateBundle', 'boardJson', 'image']) {
+test('CACHE_POLICIES：出帧的五类资源各一行，值齐全；annotate bundle 不在表里', () => {
+  for (const row of ['distScreen', 'frameHtml', 'staticFile', 'boardJson', 'image']) {
     const policy = CACHE_POLICIES[row];
     assert.ok(policy, `缺 ${row} 行`);
-    assert.match(policy.cacheControl, /^(no-cache|public, max-age=31536000, immutable)$/);
+    assert.equal(policy.cacheControl, 'no-cache');
     assert.ok(['content', 'stat'].includes(policy.etag), `${row}.etag 应是 content|stat`);
   }
   assert.equal(CACHE_POLICIES.distScreen.cacheControl, 'no-cache');
@@ -63,7 +63,8 @@ test('CACHE_POLICIES：brief 点名的六类资源各一行，值齐全', () => 
   assert.equal(CACHE_POLICIES.boardJson.cacheControl, 'no-cache');
   assert.equal(CACHE_POLICIES.staticFile.etag, 'stat');
   assert.equal(CACHE_POLICIES.image.etag, 'stat');
-  assert.equal(CACHE_POLICIES.annotateBundle.cacheControl, 'public, max-age=31536000, immutable');
+  // review 建议 2：哈希地址路由自己写 immutable 头、不出 ETag，表行没有调用方。
+  assert.ok(!('annotateBundle' in CACHE_POLICIES), 'annotate bundle 不该有看着像约定、实际不生效的死行');
 });
 
 test('contentEtag / statEtag：内容一变 ETag 就变；stat 是 mtime 原值+size 的形状', () => {
