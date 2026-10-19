@@ -210,3 +210,60 @@ test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 r
     expect.soft(counts.renders, '静息时 renderAll').toBe(0);
   });
 });
+
+test('owner 性能 K1 第三刀：标注层外的同值 class 反复重写不升级成 renderAll', async ({ page }, testInfo) => {
+  // 计数器打在 renderAll 入口（同上一条的手法）；产物未压缩，函数签名是锚点。
+  const artifact = await buildAnnotateBundle({ minify: false });
+  const marker = 'function renderAll() {';
+  expect(artifact.js.split(marker)).toHaveLength(2);
+  const js = artifact.js.replace(marker, `${marker} window.__ownerPerf.renders++;`);
+  await page.route(/\/annotate(?:\.[0-9a-f]{10})?\.js(?:\?|$)/, route => route.fulfill({ contentType: 'text/javascript', body: js }));
+  await page.addInitScript(() => { window.__ownerPerf = { renders: 0 }; });
+  await openOwnerBoard(page);
+  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countLive)).toBe(24);
+  await test.step('账本里确有全局 selector 的标注（旧实现升级全局的前提）', async () => {
+    const globalMarks = await page.evaluate(() => {
+      const stageSegment = /\.(ios-stage|wb-comp-stage|wb-html-stage|wb-screen-err)(?=[:.]|$)/;
+      return window.pinpoint.marks.filter(m => (m.targets || []).some(t => t.selector && !stageSegment.test(t.selector))).length;
+    });
+    expect(globalMarks, '种子账本一半标注是全局 selector').toBeGreaterThanOrEqual(12);
+  });
+  await test.step('校验计数器能看到真实 renderAll', async () => {
+    const control = await page.evaluate(() => {
+      window.__ownerPerf.renders = 0;
+      window.pinpoint.render();
+      return window.__ownerPerf.renders;
+    });
+    expect(control).toBe(1);
+  });
+  await test.step('选中帧的 .wb-lib-item 上 remove+add 同值 class，每帧一次共 30 帧', async () => {
+    await focusOwnerFrame(page, 2);
+    // 板的装载尾巴（首访聚焦、几何批重试）在高负载下也会触发 renderAll：
+    // 等它静下来再开观测窗口，计数才只归写 class 的路径。
+    await page.waitForFunction(() => {
+      const s = window.pinpoint.getState();
+      return !s.syncing && !s.unsynced && !s.lastRectPending;
+    });
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    // 选中高亮的旧写法（f2d7639 之前 syncBoardSelection 的每轮燃料）：同值
+    // remove + add 两条属性变更，落在选中的帧节点上。模拟「工作台哪天又写
+    // 回去」的复活条件。
+    expect(await page.evaluate(() => !!document.querySelector('.wb-sel'))).toBe(true);
+    const writes = await page.evaluate(() => new Promise(resolve => {
+      window.__ownerPerf.renders = 0;
+      const item = document.querySelector('.wb-sel');
+      let frames = 0;
+      (function tick() {
+        item.classList.remove('wb-sel');
+        item.classList.add('wb-sel');
+        if (++frames >= 30) { resolve(frames); return; }
+        requestAnimationFrame(tick);
+      })();
+    }));
+    // 失效调度按 rAF 合并，等可能的尾批跑完再读计数。
+    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const renders = await page.evaluate(() => window.__ownerPerf.renders);
+    await metric(testInfo, 'k1c', { writes, renders });
+    expect(renders, '60 条同值属性变更记录不触发任何整层重绘').toBe(0);
+  });
+});

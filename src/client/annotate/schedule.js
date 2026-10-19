@@ -3,6 +3,7 @@
 // perfDrain。
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
 import { isMarkBroken, markElementTargets, markHasLiveTarget, markOnActivePage, withLiveTargets } from './anchor.js';
+import { mutationScope } from '../lib/mutation-scope.js';
 import { renderAll, syncBubbleStructure, updateBubbleGeometry } from './bubbles.js';
 import { geometryBatch, isUI } from './dom.js';
 import { updateDraftGeometry } from './gesture.js';
@@ -64,14 +65,9 @@ export function installViewScheduling() {
       }
       records.forEach(function (record) {
         if (!contentMutation(record)) return;
-        // Stylesheets and relational/global selector dependencies can reach other frames.
-        var node = record.target.nodeType === 1 ? record.target : record.target.parentElement;
-        var broad = node && node.closest('style, link');
-        if (!broad) {
-          var deps = selectorDependencies();
-          broad = deps.relational || (record.type !== 'characterData' && record.attributeName !== 'style' && deps.global);
-        }
-        scheduleContentRender(broad ? null : record);
+        // 失效范围一处判（mutation-scope.js）：属性变更不升级全局（K1 第三刀，
+        // 2026-10-19 性能审计），样式表与结构变更仍按依赖升级。
+        scheduleContentRender(mutationScope(record, selectorDependencies));
       });
     });
     contentMutationObserver.observe(document.documentElement, { attributes: true, attributeOldValue: true });
