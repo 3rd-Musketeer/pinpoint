@@ -3,6 +3,15 @@ import { buildAnnotateBundle } from '../src/server/lib/annotate-bundle.js';
 import { ownerCleanup, seedOwner, openOwnerBoard, openOwnerArticle, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
 import { OWNER_PAGE, OWNER_FRAMES } from './lib/owner-fixture.js';
 
+test('owner 性能首开画布：97 帧挂齐最多 15 秒', async ({ page }, testInfo) => {
+  const started = performance.now();
+  await page.goto(`/workbench/?page=${OWNER_PAGE}`);
+  await boardReady(page);
+  const elapsedMs = performance.now() - started;
+  await metric(testInfo, 'canvas-open', { elapsedMs, frames: await page.locator('.wb-screen').count(), budgetMs: 15_000 });
+  expect(elapsedMs).toBeLessThanOrEqual(15_000);
+});
+
 test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', async ({ page }, testInfo) => {
   const requests = [];
   const pending = new Set();
