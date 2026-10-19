@@ -41,6 +41,7 @@ import {
   scrollAfterZoom,
   usableViewport,
 } from '../shared/canvas-gesture.js';
+import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 
 (function () {
   'use strict';
@@ -240,18 +241,6 @@ import {
       var spaceDown = false;
       var moveRaf = 0;
       var nextScroll = null;
-
-      // 与 src/shared/keys.js 的 isTypingTarget / isComposingKey 同一套语义（select
-      // 与组字都算打字）。本文件是内联经典脚本、禁止 import，改语义时两处一起改。
-      function isTypingTarget(el) {
-        if (!el || !el.closest) return false;
-        if (el.closest('input, textarea, select')) return true;
-        var ce = el.closest('[contenteditable]');
-        return !!(ce && ce.isContentEditable);
-      }
-      function isComposingKey(e) {
-        return !!(e.isComposing || e.keyCode === 229);
-      }
 
       function flush() {
         if (moveRaf) cancelAnimationFrame(moveRaf);

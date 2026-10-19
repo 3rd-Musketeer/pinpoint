@@ -1,6 +1,6 @@
 // 键盘判断的唯一一份（C2，替掉 board-nav / ann-bridge / live-cards / share-runtime
 // 各自的 isTypingTarget 与散落的 IME 守卫）。随 annotate bundle 内联进 /annotate.js，
-// 工作台与站点直接 import；保持纯函数、不碰 DOM。
+// 随 share-runtime 包内联进导出页；工作台与站点直接 import。保持纯函数、不碰 DOM。
 
 /** 焦点在文本输入里，快捷键（空格、A/S、Esc 关层）要让位。
     select 一并算打字：空格在 select 上是开合下拉，不是画布平移 —— 旧实现
