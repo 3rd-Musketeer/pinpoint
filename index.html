@@ -629,10 +629,19 @@
      .ios-stage）。限定 .wb-zoom-wrap > .wb-library —— 这份内联样式还被 /api/frame
      嵌入页、ppnt shot 快照渲染页与离线分享页原样复用（src/server/lib/frame-doc.js、
      export-image-api.js、offline-page-export.js），那些语境必须全量渲染；离线分享页
-     同样有 .wb-zoom-wrap > .wb-library，由它的 SHARE_CSS 显式退回 visible。 */
+     同样有 .wb-zoom-wrap > .wb-library，由它的 SHARE_CSS 显式退回 visible。
+     content-visibility:auto 自带 paint containment，子树绘制被裁在 stage 盒子里。kit 机壳阴影
+     （.ios-device，最外层 0 48px 90px -28px）往下伸约 110px，侧键在 left/right:-2px；机壳无
+     （.screen-only，0 36px 72px -18px）往下伸约 90px。overflow-clip-margin 用缩放前的局部
+     坐标把这一圈留出来，120px 覆盖亮色机壳的最远外沿。程序跳转前会给落点
+     视口里的 stage 打 data-cv-keep（scroll-motion.js），让它们先渲染再滚，落定后再放开。 */
   .wb-zoom-wrap > .wb-library .wb-screen > .ios-stage {
     content-visibility: auto;
     contain-intrinsic-size: var(--wb-phone-w) var(--wb-phone-h);
+    overflow-clip-margin: 120px;
+  }
+  .wb-zoom-wrap > .wb-library .wb-screen > .ios-stage[data-cv-keep] {
+    content-visibility: visible;
   }
   /* 图注（2026-08-15 图纸版式 → 2026-09-04 E1 层级）：引用号与屏名同一行
      （mono accent + 12/500 淡），「···」跟在屏名后面；尺寸在 frame 下方居中
