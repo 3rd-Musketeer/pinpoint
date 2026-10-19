@@ -2,6 +2,7 @@
 // 以及整层重绘入口 renderAll。导出 bind_bubbles、init_bubbles、renderAll、
 // updateBubbleGeometry、renderLedgerChange 等。
 import { bubbleInnerHtml } from '../../shared/annotate-bubble.js';
+import { annStatusOf } from '../../shared/ann-status.js';
 import { MARK_BOX_PAD_PX, expandRect, intersectRects, isVisibleEnough } from '../../shared/annotate-clip.js';
 import { isMarkBroken, markAnchorRect, markOnActivePage, resolveMarkAnchor, withLiveTargets } from './anchor.js';
 import { beginOverlayFrame, clearAnchorCache, geometryBatch, viewToOverlayRect, visibleViewRectDoc } from './dom.js';
@@ -180,7 +181,7 @@ export function visibleBubbleAnchors() {
 // 颜色和去留都停在原态，刷新才对（2026-09-28 owner 报）。
 export function markGeometryKey(m) {
   return JSON.stringify([m.type, m.pageId, m.screenId, m.section, m.group,
-    m.selector, m.targets, m.rect, m.base, m.contains, m.move, m.status || 'open']);
+    m.selector, m.targets, m.rect, m.base, m.contains, m.move, annStatusOf(m)]);
 }
 
 // Ledger replacements can change one comment without invalidating every DOM anchor.

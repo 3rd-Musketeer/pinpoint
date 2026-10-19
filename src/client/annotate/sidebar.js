@@ -1,7 +1,7 @@
 // 标注面板（#ann-sidebar）：按状态筛选列出当前账本，关闭 / 重新打开一行，
 // 以及操作提示 toast。导出 bind_sidebar、init_sidebar、installSidebar、
 // toggleSidebar、closeAnnotation、setStatusFilter 等。
-import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, filterIncludesStatus, writeAnnFilter } from '../../shared/ann-status.js';
+import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, annStatusOf, filterIncludesStatus, isClosed, writeAnnFilter } from '../../shared/ann-status.js';
 import { readingBodyHtml } from '../../shared/annotate-bubble.js';
 import { readingSegments } from '../../shared/annotation-indicator.js';
 import { annRowModel, annRowPreview } from '../../shared/ann-row.js';
@@ -191,7 +191,7 @@ function buildRow(r) {
   item.className = 'wb-ann-item' + (r.broken ? ' wb-ann-item--broken' : '');
   item.setAttribute('data-ann-n', r.n);
   // 序号圆颜色跟着状态走（--ann-st-*，与画布钉子同一组变量）。
-  item.setAttribute('data-ann-status', r.status || 'open');
+  item.setAttribute('data-ann-status', annStatusOf(r));
   var main = document.createElement('button');
   main.type = 'button';
   main.className = 'wb-ann-item-main';
@@ -243,7 +243,7 @@ function buildRow(r) {
   // 收尾动作是「完成」= close（单击即关不二次确认，toast「已完成 #n」带
   // 撤销）；close 行给「重新打开」回 open。硬删只走工具条
   // 「清空标记」与 composer 的删除钮。
-  if (r.status !== 'close') {
+  if (!isClosed(r)) {
     var doneBtn = document.createElement('button');
     doneBtn.type = 'button';
     doneBtn.className = 'wb-ann-done';
@@ -310,7 +310,7 @@ function showToast(text, actionLabel, onAction) {
 function markStatus(n, next) {
   var m = ctx.marks.find(function (k) { return k.n === n; });
   if (!m) return false;
-  var from = m.status || 'open';
+  var from = annStatusOf(m);
   if (from === next) return true;
   var ownerMove = (next === 'close' && from !== 'close') || (from === 'close' && next !== 'close');
   if (!ownerMove) return false;
@@ -325,7 +325,7 @@ export function closeAnnotation(n) {
   // —— 关框会把没存的修改存下（状态回 open），再 close，顺序反了会把 close 盖掉。
   if (ctx.activeComposer && ctx.activeComposer.persistedN === n) closeComposer();
   var m = ctx.marks.find(function (k) { return k.n === n; });
-  var from = m ? (m.status || 'open') : null;
+  var from = m ? annStatusOf(m) : null;
   if (!markStatus(n, 'close')) return;
   showToast('已完成 #' + n, '撤销', function () { markStatus(n, from); });
 }

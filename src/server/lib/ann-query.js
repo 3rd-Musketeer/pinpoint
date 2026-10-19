@@ -20,6 +20,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+import { annStatusOf } from '../../shared/ann-status.js';
 import { bucketOnDisk, dataRoot } from './annotate-data-dir.js';
 import { CANVAS_LEDGER } from './annotation-store.js';
 import { collectPageOrphans, readBucketLedgers } from './orphans.js';
@@ -610,7 +611,7 @@ export function checkRowModel(row, context) {
     id: row.id,
     content: display,
     intent: intentOf(row),
-    status: row.status || 'open',
+    status: annStatusOf(row),
     screenId,
     frameRef: frame ? qualifiedRef(context.refs, frameOnBoard && frameOnBoard.tabId, frame[1]) : '',
     bucket: row.__bucket,
@@ -641,7 +642,7 @@ export function buildCheckReport(context, options = {}) {
   const usage = compFrameUsage(context.distHtmlFor, screenIds);
 
   let rows = [...context.frameRows];
-  if (status !== 'all') rows = rows.filter((row) => (row.status || 'open') === status);
+  if (status !== 'all') rows = rows.filter((row) => annStatusOf(row) === status);
   if (options.frame) {
     // 帧号走与 mark / locate / shot 同一套解析：B3、<tab>:B3、裸帧 id；多 tab 页上裸 B3 有歧义会报候选。
     const hit = resolveRef(options.frame, { rows: [], refs: context.refs, pageId: context.pageId });
@@ -665,7 +666,7 @@ export function buildCheckReport(context, options = {}) {
   });
   const statusRows = status === 'all'
     ? context.docRows
-    : context.docRows.filter((row) => (row.status || 'open') === status);
+    : context.docRows.filter((row) => annStatusOf(row) === status);
   const docRows = statusRows.filter((row) => !isProseRow(row));
   const proseRows = statusRows.filter(isProseRow);
 
@@ -824,7 +825,7 @@ function shortTime(iso) {
 
 export function countByStatus(rows) {
   const counts = { open: 0, check: 0, done: 0, close: 0 };
-  for (const row of rows) counts[row.status || 'open'] = (counts[row.status || 'open'] || 0) + 1;
+  for (const row of rows) counts[annStatusOf(row)] = (counts[annStatusOf(row)] || 0) + 1;
   counts.total = rows.length;
   return counts;
 }

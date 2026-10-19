@@ -24,8 +24,15 @@ export function annStatusLabel(filter) {
   return FILTER_LABELS[filter] || 'pending';
 }
 
-function isClosed(r) {
-  return ((r && r.status) || 'open') === 'close';
+/** 行的状态：没写 status 的陈年行一律算 open。读端唯一的默认处（r2 I4）——
+ * 服务端、CLI、客户端不再各写 (row.status || 'open')。 */
+export function annStatusOf(row) {
+  return (row && row.status) || 'open';
+}
+
+/** 已关闭 = owner 点了完成（close）；open / check / done 都还在等验收。 */
+export function isClosed(r) {
+  return annStatusOf(r) === 'close';
 }
 
 /** 该状态在这个筛选下是否可见（画布钉子与列表行同一口径）；未知键按 pending。 */

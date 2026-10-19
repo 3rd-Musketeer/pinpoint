@@ -1,6 +1,7 @@
 // 跳转与对外接口：Esc 逐级取消、goToMark 跨页定位并闪框、getState，以及挂到
 // window.pinpoint 的 API。导出 bind_nav、init_nav、installPinpointApi、goToMark、
 // openMark、marksForActivePage。
+import { isClosed } from '../../shared/ann-status.js';
 import { isMarkBroken, markAnchorRect, markHasLiveTarget, markOnActivePage, resolveAllLiveTargets, resolveMarkAnchor, resolveMarkTarget } from './anchor.js';
 import { removeTempArrow } from './arrow.js';
 import { renderAll, visibleBubbleAnchors } from './bubbles.js';
@@ -301,7 +302,7 @@ function getState() {
     else if (isMarkBroken(m)) broken++;
     else hidden++;
   });
-  var closed = pageMarks.filter(function (m) { return (m.status || 'open') === 'close'; }).length;
+  var closed = pageMarks.filter(isClosed).length;
   return {
     mode: ctx.mode,
     connected: ctx.serverOnline,

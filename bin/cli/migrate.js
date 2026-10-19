@@ -5,6 +5,7 @@
  */
 import path from 'node:path';
 
+import { isClosed } from '../../src/shared/ann-status.js';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { readBucketLedgers, staleBucketProblem } from '../../src/server/lib/orphans.js';
 import { loadRegistry, projectEntry } from '../../src/server/lib/registry.js';
@@ -145,7 +146,7 @@ export async function runMigrate(argv, io = {}) {
   }
   const legacyOpen = readBucketLedgers(path.join(dataRoot(env), plan.pageId))
     .flatMap((ledger) => (Array.isArray(ledger.doc && ledger.doc.annotations) ? ledger.doc.annotations : []))
-    .filter((row) => row && (row.status || 'open') !== 'close').length;
+    .filter((row) => row && !isClosed(row)).length;
   const keep = `旧页不动：文件不改、登记不撤；旧页的标注留在旧页（桶 ${plan.pageId}），不迁到新文章（新桶 ${plan.articlePageId}）。`;
   if (parsed.flags['dry-run']) {
     out('会写这些文件（--dry-run，没写）：');

@@ -9,6 +9,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { annStatusOf } from '../../src/shared/ann-status.js';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { countByStatus } from '../../src/server/lib/ann-query.js';
 import { articleOutline, resolveRootFrame } from '../../src/server/lib/article-canvas.js';
@@ -27,7 +28,7 @@ import { addressContext, printCandidates } from './targets.js';
 import { listFrames, loadAnnotateContext } from './list.js';
 import { canvasViewHref } from '../../src/shared/workbench-url.js';
 
-const isOpen = (row) => (row.status || 'open') === 'open';
+const isOpen = (row) => annStatusOf(row) === 'open';
 
 function readText(file) {
   try {

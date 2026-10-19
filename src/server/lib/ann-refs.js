@@ -22,6 +22,7 @@
  */
 import { boardRefs, outlineFrames } from '../../workbench/lib/board-refs.js';
 import { parseIndicator } from '../../shared/annotation-indicator.js';
+import { annStatusOf } from '../../shared/ann-status.js';
 import { ENTRY_OR_ARTICLE_ID_SOURCE, parseArticlePageId } from '../../shared/project-ids.js';
 
 const FRAME_REF_RE = /^([A-Z]+)([1-9][0-9]*)$/;
@@ -248,5 +249,5 @@ export function expandRefs(tokens, ctx = {}, { shotRefs = false } = {}) {
 /** --status 展开：all = 全部；否则该状态的行。 */
 export function expandStatus(status, rows) {
   if (status === 'all') return [...rows];
-  return rows.filter((a) => (a.status || 'open') === status);
+  return rows.filter((a) => annStatusOf(a) === status);
 }

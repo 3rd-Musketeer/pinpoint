@@ -3,6 +3,7 @@
 // 按 location.pathname 定的），不在 @canvas 里；卡片图注末尾显示这一页待验收（open / check / done）
 // 的条数，与横条计数、文章页卡片同口径。纯函数、DOM-free（node --test 直测）。
 import { pageKeyFromPathname } from '../../shared/annotate-page-key.js';
+import { isClosed } from '../../shared/ann-status.js';
 import { annotationSlug } from '../../shared/annotation-slug.js';
 
 /** 卡片 / 页面浮层的 iframe 地址 → 那一页的账本名。base 是解析相对地址的基准（document.baseURI，和 iframe 解析 src 同一个基准）。 */
@@ -17,7 +18,7 @@ export function htmlFrameLedgerKey(src, base) {
 export function htmlFramePending(doc) {
   var rows = doc && Array.isArray(doc.annotations) ? doc.annotations : [];
   return rows.filter(function (a) {
-    return a && a.type !== 'prose' && (a.status || 'open') !== 'close';
+    return a && a.type !== 'prose' && !isClosed(a);
   }).length;
 }
 

@@ -4,6 +4,7 @@
  * with it, node --test covers it.
  */
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
+import { isClosed } from '../../../src/shared/ann-status.js';
 
 /**
  * Frame preview inside the card and the overlay: same-origin render endpoint,
@@ -162,7 +163,7 @@ export function cardModel(canvas, sectionId, num = '') {
  */
 export function pendingCount(doc, pageId, frameIds) {
   const ids = new Set(frameIds);
-  return (doc?.annotations || []).filter((a) => a && (a.status || 'open') !== 'close'
+  return (doc?.annotations || []).filter((a) => a && !isClosed(a)
     && (a.screenIds || [a.screenId]).some((id) => ids.has(id)) && (!a.pageId || a.pageId === pageId)).length;
 }
 

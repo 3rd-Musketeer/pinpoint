@@ -120,9 +120,11 @@ export function formatWhen(iso, now = new Date()) {
   return `${at.getMonth() + 1}月${at.getDate()}日 ${hm}`;
 }
 
+import { isClosed } from './ann-status.js';
+
 /** 已关闭 = owner 点了完成（close）。open / check / done 都还在等 owner 验收，不算。 */
 export function isProseClosed(row) {
-  return ((row && row.status) || 'open') === 'close';
+  return isClosed(row);
 }
 
 /**

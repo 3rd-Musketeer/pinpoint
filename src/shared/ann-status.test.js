@@ -8,9 +8,11 @@ import {
   ANN_STATUS_COLORS,
   ANN_FILTERS,
   annStatusLabel,
+  annStatusOf,
   filterIncludesStatus,
   annFilterCounts,
   annFilterRows,
+  isClosed,
   readAnnFilter,
   writeAnnFilter,
 } from './ann-status.js';
@@ -60,6 +62,17 @@ test('white-on-status contrast ratios (WCAG AA large-text bar = 3:1)', () => {
   for (const status of ['open', 'check', 'done', 'close']) {
     assert.ok(whiteContrast(ANN_STATUS_COLORS[status]) >= 3, status + ' ≥ 3:1');
   }
+});
+
+test('annStatusOf / isClosed：没写 status 的行算 open，close 才算已关闭', () => {
+  assert.equal(annStatusOf({}), 'open');
+  assert.equal(annStatusOf({ status: 'check' }), 'check');
+  assert.equal(annStatusOf(null), 'open');
+  assert.equal(annStatusOf({ status: '' }), 'open');
+  assert.equal(isClosed({ status: 'close' }), true);
+  assert.equal(isClosed({ status: 'done' }), false);
+  assert.equal(isClosed({}), false);
+  assert.equal(isClosed(null), false);
 });
 
 /* ---- 状态筛选（annFilterCounts / annFilterRows / LS 读写）---- */

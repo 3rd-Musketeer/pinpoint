@@ -1,5 +1,6 @@
 import path from 'node:path';
 
+import { annStatusOf, isClosed } from '../../src/shared/ann-status.js';
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { buildCheckReport, docFrameUrl, formatCheckMarkdown, loadPageContext, locateLine } from '../../src/server/lib/ann-query.js';
 import { expandRefs, expandStatus, parseCrossRef, REF_STATUSES } from '../../src/server/lib/ann-refs.js';
@@ -122,7 +123,7 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
   if (skipEmpty && !rowCount) return { code: 0, rows: 0, report };
   let imagePaths = null;
   if (mode === 'image' || mode === 'both') {
-    const statusAllows = (row) => status === 'all' || (row.status || 'open') === status;
+    const statusAllows = (row) => status === 'all' || annStatusOf(row) === status;
     const screenIds = [...new Set(report.groups.filter((group) => group.kind === 'frame' && !group.offBoard).map((group) => group.screenId))];
     if (screenIds.length) {
       const origin = env.PINPOINT_ORIGIN || DEFAULT_ORIGIN;
@@ -140,7 +141,7 @@ async function queueReport(token, parsed, { env, out, err }, { skipEmpty = false
         ...(tabOfScreen.has(screenId) ? { tabId: tabOfScreen.get(screenId) } : {}),
         scale: 1,
         out: path.join(dataRoot(env), 'check', context.pageId, `${screenId}.png`),
-        marks: context.frameRows.filter((row) => row.screenId === screenId && (row.status || 'open') !== 'close' && statusAllows(row)),
+        marks: context.frameRows.filter((row) => row.screenId === screenId && !isClosed(row) && statusAllows(row)),
       }));
       try {
         await renderShots({ origin, pageId: context.pageId, jobs, env });
@@ -321,7 +322,7 @@ export async function runLocate(argv, io = {}) {
     located.push({
       n: row.n,
       type: row.type === 'prose' ? 'prose' : 'canvas',
-      status: row.status || 'open',
+      status: annStatusOf(row),
       ...(row.screenId ? { frame: row.screenId } : {}),
       ...(row.section ? { section: row.section } : {}),
       ...(where ? { file: where[1], line: Number(where[2]) } : {}),
@@ -360,7 +361,7 @@ export function planShotJobs(picks, { basePageId, baseContext, scale, withMarks,
     return contexts.get(pageId);
   };
   const shotDirOf = (pageId) => path.join(dataRootDir, 'shot', pageId);
-  const openRows = (ctx) => ctx.frameRows.filter((row) => (row.status || 'open') !== 'close');
+  const openRows = (ctx) => ctx.frameRows.filter((row) => !isClosed(row));
   const seenScreens = new Set();
   // 产物按不变的 id 命名（编号会随 board 调序漂移）；打印时编号与 id 并列。
   const frameRefById = new Map();

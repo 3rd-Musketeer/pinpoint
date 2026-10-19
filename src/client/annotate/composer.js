@@ -2,6 +2,7 @@
 // 导出 bind_composer、init_composer、closeComposer、annotationTargetRects、
 // placeComposerBox、removeTip 等。
 import { escHtml } from '../../shared/esc-html.js';
+import { isClosed } from '../../shared/ann-status.js';
 import { annRowReplies } from '../../shared/ann-row.js';
 import { markElementTargets, resolveAllLiveTargets, resolveMarkAnchor } from './anchor.js';
 import { removeTempArrow } from './arrow.js';
@@ -205,7 +206,7 @@ export function composerBoxHtml(m, broken, isNew) {
     '<div class="ann-submit-actions">' +
     '<span id="ann-save-state" aria-live="polite"></span>' +
     (isNew ? '' : '<button type="button" id="ann-del" aria-label="删除标注" title="删除标注">' + annIcon('trash') + '</button>') +
-    (isNew || (m.status || 'open') === 'close' ? '' : '<button type="button" id="ann-close-mark" aria-label="完成标注" title="完成（close）">' + annIcon('check') + '</button>') +
+    (isNew || isClosed(m) ? '' : '<button type="button" id="ann-close-mark" aria-label="完成标注" title="完成（close）">' + annIcon('check') + '</button>') +
     '</div></div>';
 }
 

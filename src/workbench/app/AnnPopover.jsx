@@ -3,7 +3,7 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { useWorkbenchStore, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
-import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel } from '../../shared/ann-status.js';
+import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, annStatusOf, isClosed } from '../../shared/ann-status.js';
 import { WbIcon } from './WbIcon.jsx';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
@@ -50,7 +50,7 @@ function AnnRow(props) {
   var r = props.row;
   return (
     <div className={cn('wb-ann-item group flex flex-col', r.broken && 'wb-ann-item--broken', props.on && 'wb-ann-item--on')}
-      data-ann-n={r.n} data-ann-status={r.status || 'open'}>
+      data-ann-n={r.n} data-ann-status={annStatusOf(r)}>
       <div className="wb-ann-item-row flex w-full items-stretch gap-0.5">
         <button type="button" className="wb-ann-item-main rounded-md" data-ann-n={r.n}
           onClick={function () { props.onGoTo(r.n); }}>
@@ -72,7 +72,7 @@ function AnnRow(props) {
         {/* 状态机（决定 #11）：删除退役，open / check / done 行的收尾动作都是
             「完成」= close，单击即关不二次确认，toast 出「撤销」回关前原态；
             close 行（展开后）给「重新打开」= open。 */}
-        {r.status !== 'close' ? (
+        {!isClosed(r) ? (
           <button type="button" className="wb-ann-done" aria-label={'完成 #' + r.n} title={'完成 #' + r.n}
             onClick={function () { var api = annotateApi(); if (api && typeof api.closeAnnotation === 'function') api.closeAnnotation(r.n); }}>
             <WbIcon name="check" size={14} />

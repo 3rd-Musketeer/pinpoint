@@ -2,6 +2,7 @@
 // 导出 bind_render_geometry、init_render_geometry、updateMarkGeometry、
 // syncCanvasPose、lastRectViewRect 等。
 import { MARK_BOX_PAD_PX, badgePositionInBox, expandRect, intersectRects } from '../../shared/annotate-clip.js';
+import { isClosed } from '../../shared/ann-status.js';
 import { moveEndPoint, resolveMarkAnchor, resolveMarkSelector } from './anchor.js';
 import { beginOverlayFrame, docPointToView, docRect, docToView, geometryBatch, hidePartNodes, overlayBadgeBox, placeFixedRect, showPartNodes, stageOrigin, viewPointInClips, viewRect, viewToOverlayRect, visibleViewRectDoc, visibleViewRectOf } from './dom.js';
 import { persist } from './persist.js';
@@ -124,7 +125,7 @@ function measureMark(entry) {
     if (entry.liveTargets && entry.liveTargets.length) recordLastRect(m, lastRectFromDoc(docRect(entry.liveTargets[0].el)));
     // 幽灵框：没有活锚点但有 lastRect —— 在它最后一次的位置画虚线框；
     // 坐标系的尺子对不上（另一端写进的）不画，只留列表行的「锚点失效」。
-    if (!views.length && m.lastRect && lastRectSpaceOk(m.lastRect) && (m.status || 'open') !== 'close') {
+    if (!views.length && m.lastRect && lastRectSpaceOk(m.lastRect) && !isClosed(m)) {
       views.push(lastRectViewRect(m.lastRect));
     }
   }

@@ -16,6 +16,8 @@
  * 两条路各有自己的合法转换表。
  */
 
+import { isClosed } from './ann-status.js';
+
 /** 四态。缺省 open。 */
 export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
 
@@ -44,7 +46,7 @@ export function isLegalMarkTransition(from, to) {
  *  页内工具条「清空标记」与工作台「清空未关闭标注」同一份口径。 */
 export function isClearableMark(mark) {
   if (!mark) return false;
-  return (mark.status || 'open') !== 'close';
+  return !isClosed(mark);
 }
 
 const ID_RE = '[A-Za-z0-9._-]+';

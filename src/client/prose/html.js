@@ -2,7 +2,7 @@
  * 正文线程、画布标注卡片、草稿卡。导出 esc、statusChip、quoteHtml、messageEditKey、messagesHtml、
  * collapsedHtml、threadHtml、canvasThreadHtml、draftHtml。 */
 
-import { ANN_STATUS_COLORS } from '../../shared/ann-status.js';
+import { ANN_STATUS_COLORS, annStatusOf, isClosed } from '../../shared/ann-status.js';
 import { escHtml } from '../../shared/esc-html.js';
 import {
   authorLabel,
@@ -19,7 +19,7 @@ import {
 export const esc = escHtml;
 
 export function statusChip(row) {
-  var st = row.status || 'open';
+  var st = annStatusOf(row);
   var known = Object.prototype.hasOwnProperty.call(ANN_STATUS_COLORS, st) ? st : 'open';
   var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
   var word = st === 'open' ? '' : '<span class="pp-st">' + esc(st) + '</span>';
@@ -124,7 +124,7 @@ export function threadHtml(row, view) {
   if (isProseClosed(row) && !view.expanded.has(row.id)) return collapsedHtml(row);
   var anchor = view.anchors.get(row.id);
   var stale = anchor === null && view.anchors.has(row.id);
-  var closed = (row.status || 'open') === 'close';
+  var closed = isClosed(row);
   var act = closed
     ? '<button class="pp-act" type="button" data-act="reopen">重新打开</button>'
     : '<button class="pp-act" type="button" data-act="close">完成</button>';
@@ -136,7 +136,7 @@ export function threadHtml(row, view) {
       + '<div class="acts"><button class="btn pri" type="button" data-act="reply">发送</button></div></div>'
     : '<div class="pp-foot"><button class="pp-act" type="button" data-act="open-reply">回复</button>'
       + (view.replyText[row.id] ? '<span class="pp-draft-tag">有草稿</span>' : '') + '</div>';
-  return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + (folded ? ' pp-fold-card' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(row.status || 'open') + '">'
+  return '<div class="pp-thread' + (stale ? ' stale' : '') + (focused ? ' on' : '') + (folded ? ' pp-fold-card' : '') + '" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="' + esc(annStatusOf(row)) + '">'
     + '<div class="pp-meta">' + statusChip(row)
     + (stale ? '<span class="pp-stale" title="正文里找不到这段引文了">失效</span>' : '')
     + '<span class="sp"></span>' + act
@@ -176,7 +176,7 @@ export function canvasThreadHtml(item, view) {
   var image = Array.isArray(row.images) && row.images[0] && row.images[0].file
     ? '<img class="pp-canvas-shot" alt="" loading="lazy" src="' + esc(view.SERVER + '/images/' + encodeURIComponent(row.images[0].file) + '?entry=' + encodeURIComponent(view.ENTRY)) + '">'
     : '';
-  return '<div class="pp-thread pp-canvas-ann' + (folded ? ' pp-fold-card' : '') + '"' + attrs + ' data-status="' + esc(row.status || 'open') + '">'
+  return '<div class="pp-thread pp-canvas-ann' + (folded ? ' pp-fold-card' : '') + '"' + attrs + ' data-status="' + esc(annStatusOf(row)) + '">'
     + '<div class="pp-meta">' + statusChip(row) + '<span class="pp-kind">画布标注</span>'
     + '<span class="sp"></span>' + act
     + (closed ? '<button class="pp-act pp-fold" type="button" data-act="collapse" aria-expanded="true" aria-label="收起"><span class="pp-chev up" aria-hidden="true"></span></button>' : '')
