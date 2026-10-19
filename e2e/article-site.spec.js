@@ -4,6 +4,7 @@ import { expect, test } from './lib/fixtures.js';
 
 import { E2E_BASE_URL, E2E_PORT, E2E_SITE_PORT } from './env.js';
 import { ROOT } from './lib/cli.js';
+import { cardInner } from './lib/cards.js';
 import { proseSettled } from './lib/prose.js';
 import { expectHiddenScrollbar, launchWithScrollbars, scrollbarState } from './lib/scrollbars.js';
 import { waitNoReload } from './site-settle.js';
@@ -142,7 +143,8 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
 
   // 卡片的 data 属性、节号、“打开画布”与顶栏的链接是构建产物，由 site/build.check.mjs
   // 的卡片断言钉住；链接打开后落到那一节由 article-canvas.spec.js 的 ?page=&section= 测
-  // （2026-10-13 测试清理）。这里只留运行时才看得到的：帧加载后量过、尺寸、iframe 里的内容。
+  // （2026-10-13 测试清理）。这里只留运行时才看得到的：帧加载后量过、尺寸、帧里的内容
+  // （静态帧在 shadow root，带脚本的 confirm-sheet 回退 iframe —— cardInner 两种都认）。
   await test.step('画布卡片：有 Canvas 的三节各一张，帧真渲染、加载后量过尺寸', async () => {
     await page.keyboard.press('Escape');
     await expect(page.locator('[data-pp-canvas]')).toHaveCount(3);
@@ -159,11 +161,11 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     expect(sizes[0][0]).toBe(158);
     expect(sizes[0][1]).toBeGreaterThan(300);
     expect(sizes[1][1]).toBeLessThan(sizes[1][0]); // 卡片比它高的宽：没被当成手机
-    await expect(page.frameLocator('[data-pp-canvas] [data-screen="mixed-bare"] iframe').locator('.wb-comp-stage .e2e-confirm-card')).toBeVisible();
+    await expect(await cardInner(page, 'mixed-bare', '.wb-comp-stage .e2e-confirm-card')).toBeVisible();
     for (const screen of ['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']) {
-      await expect(page.frameLocator(`[data-pp-canvas] [data-screen="${screen}"] iframe`).locator('.wb-screen').first()).toBeAttached();
+      await expect((await cardInner(page, screen, '.wb-screen')).first()).toBeAttached();
     }
-    await expect(page.frameLocator('[data-pp-canvas] [data-screen="card-plain"] iframe').locator('.e2e-confirm-card')).toBeVisible();
+    await expect(await cardInner(page, 'card-plain', '.e2e-confirm-card')).toBeVisible();
   });
 
   await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址 301 过来（ADR 0045）', async () => {
