@@ -46,6 +46,9 @@ test('连续开关四个全页共享 SSE，同源请求继续完成，浮层收�
 
 test('页面浮层最多保留两份最近文档，淘汰先等标注落盘，等待时重新打开的文档仍保留', async ({ page, request }) => {
   await openWorkbench(page, `page=${PAGE_ID}`);
+  // 页面卡片在板上，owner 打不开还没落定的板里的页：先等板落定再 openPage（第一条用例同）。
+  // 不等时浮层里的标注客户端偶尔连不上（基线 39ccd5e 上也会挂）。
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
   const open = async id => {
     await page.evaluate(id => window.workbench.openPage(id), id);
     await expect.poll(() => page.locator(overlayFrame(id)).evaluate(el => !!el.contentWindow.pinpoint?.getState().connected)).toBe(true);
@@ -95,6 +98,7 @@ test('页面浮层持续 HTTP 500 时回收不能丢稿，恢复后重试落盘�
     annotations: [{ id, type: 'element', selector: '#top-title', text: '标题', content: '磁盘旧稿', status: 'open' }] } });
   expect(seeded.ok()).toBe(true);
   await openWorkbench(page, `page=${PAGE_ID}`);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
   const open = async id => {
     await page.evaluate(id => window.workbench.openPage(id), id);
     await expect.poll(() => page.locator(overlayFrame(id)).evaluate(f => !!f.contentWindow.pinpoint?.getState().connected)).toBe(true);
