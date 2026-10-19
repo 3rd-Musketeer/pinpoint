@@ -36,7 +36,7 @@ Scope 列出它管的代码路径——改这些路径前先 grep 到这里。�
 | [0027](0027-serve-injects-and-instances-leave-previews.md) | 2026-08-17 | 注入契约统一 + registry 补全 + 实例迁出 previews/ | 现行 | — |
 | [0026](0026-title-rule-section-note-detail-panel.md) | 2026-08-17 | title 规矩 + section note + 选中模型（note 收编右栏 detail 面板） | 部分被取代（section / frame 说明和详情面板 2026-09-08 退役；title 规矩与画布点选现行） | — |
 | [0025](0025-canvas-zoom-rebaseline.md) | 2026-08-17 | 画布缩放基准重定标（旧 50% 成为新 100%） | 现行 | — |
-| [0024](0024-row-actions-context-menu.md) | 2026-08-17 | 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文 | 现行 | — |
+| [0024](0024-row-actions-context-menu.md) | 2026-08-17 | 行级动作收编右键菜单 + Popper 置惰收敛 + 排查案例库成文 | 现行（右键菜单与案例库条目现行；置惰收敛一项 2026-10-19 逆转——@floating-ui/dom 1.8.0 在 scale 空间量测准确，置惰规则删除、frame 菜单恢复 Radix 定位，见 docs/debugging.md 同名案例的补记） | — |
 | [0023](0023-layout-assertions-and-vendored-contracts.md) | 2026-08-17 | 布局断言比几何不靠点击 + vendored 组件内部契约成文 | 现行 | — |
 | [0022](0022-doc-mode-grilling.md) | 2026-08-16 | 文档模式 grilling 三问 + 下一轮 arc 暂缓（等真实任务） | 已被取代（arc 就是 pp3；选区批注由正文评论实现） | ADR 0042 |
 | [0021](0021-page-as-thread-container.md) | 2026-08-16 | 第二轮对象模型：Page = 线程容器，产物 + 草稿，类型下沉条目级 | 部分被取代（主体是文章；线程容器、产物 / 草稿只在存量页上）；部分退役（登记表级挂靠 2026-10-14 删除；屏级产物 / 草稿现行） | ADR 0042 |

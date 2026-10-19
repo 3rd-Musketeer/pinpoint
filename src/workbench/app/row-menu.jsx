@@ -4,18 +4,16 @@
 // DropdownMenu 同族：指针处定位、Esc / 点外关闭、roving focus 全由库承担，
 // 不要自研菜单（dismiss 层与焦点回拽的教训见 frame-menu.jsx 头注）。
 // 与 frame-menu 的两处分工差异：
-// - 用 Portal 到 body：侧栏不在 .wb-library 的 transform:scale 空间内
-//   （frame-menu 不用 Portal 是因为画布缩放会让 JS 量测定位错位），栏内行
-//   无此约束；portal 也避免菜单被栏的 overflow 裁切；
-// - 本菜单依赖 popper 包装层的 JS 定位 —— index.html 的 popper 置惰规则
-//   已收敛到 :has(> .wb-frame-menu) 只服务 frame 菜单；若哪天它回到全局，
-//   本菜单会被压成 static、渲染在视口之外（DOM 在但不可见，2026-08-17
-//   实测踩过，e2e 右键用例里有视口几何断言挡回归）；
+// - 用 Portal 到 body：侧栏 overflow 会把非 portal 的菜单裁掉；frame-menu 不用
+//   Portal 是因为菜单 DOM 必须留在对应 frame 的子树里（e2e 用 frame.locator 选）。
+//   （frame-menu 当年不用 Portal 的另一条理由——画布 transform:scale 让 JS 量测
+//   定位错位——对 @floating-ui/dom 1.8.0 不再成立，2026-10-19 C4 已恢复 frame
+//   菜单的 Radix 定位并删掉 popper 置惰规则。）
 // - 复制项 preventDefault 保持菜单开着、标签换「已复制 X」（frame-menu 先例）——
 //   行上已无任何可见元素，菜单是复制反馈的唯一落点。
 // 皮肤与 frame-menu 同族：浮层白面 + --wb-sh-3 + r-4；项 34px 行 + r-3 +
 // hover/focus-visible --wb-hover 浅面。ROW_MENU_ITEM / ROW_MENU_PANEL 与
-// frame-menu.jsx 共用（那边是画布缩放空间内的绝对定位变体）。
+// frame-menu.jsx 共用。
 import { useEffect, useRef, useState } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { WbIcon } from './WbIcon.jsx';

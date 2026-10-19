@@ -292,11 +292,12 @@ e2e）DOM 断言全绿，险些结论为“用户侧问题”。诊断页（prob
 末尾、视口之外。Radix 照常 preventDefault，所以连浏览器默认菜单也不出现。
 
 修复：置惰规则收敛为 `[data-radix-popper-content-wrapper]:has(> .wb-frame-menu)`，
-作用域与意图一致。
+作用域与意图一致。后续（2026-10-19 C4）：@floating-ui/dom 1.8.0 在 transform:scale
+画布里量测不再错位，frame 菜单恢复 Radix 定位，置惰规则已整体删除。
 
 识别特征：“Radix 弹层组件 DOM 里在、屏幕上不在”或“右键完全无反应（连
 默认菜单都没有）”→ 先查弹层包装层是否被全局 CSS 中和；新增 Popper 系组
-件（ContextMenu / Tooltip / HoverCard…）时先核对这条规则的作用域。
+件（ContextMenu / Tooltip / HoverCard…）时先核对这类规则的作用域。
 
 防回归：e2e 右键用例的视口几何断言（菜单 bounding box 必须落在视口内）；
 AGENTS.md vendored 小节有条目。

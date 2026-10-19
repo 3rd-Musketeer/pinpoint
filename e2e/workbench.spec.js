@@ -1531,6 +1531,53 @@ test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑�
   expect(errors.filter((text) => text.includes('[board-mount]'))).toEqual([]);
 });
 
+test('frame ⋯ 菜单在缩放画布里贴 trigger 左下（恢复 Radix 定位的防回归）', async ({ page }) => {
+  // b2f061c 曾据「.wb-library 是 scale 空间，JS 量测必错位」把 popper 包装层
+  // !important 置惰、几何交给绝对定位。@floating-ui/dom 1.8.0 在参照与浮动
+  // 都缩放的空间里量测准确（r1 实验 + 2026-10-19 C4 实测），菜单恢复 Radix
+  // 定位、置惰规则删除。这条守新契约：菜单在视口内，local 几何（视觉差 ÷
+  // 基准 scale）恒为「trigger 左对齐 / 下 5px / 宽 204」，缩放不漂 ——
+  // 放回旧的绝对定位（caption 左缘）时 leftL 会差出整段图注宽，必挂。
+  await openWorkbench(page);
+  await waitPreviewsSettled(page);
+
+  async function menuGlued(tag) {
+    await page.evaluate(() => window.workbench.whenScrollSettled());
+    const trigger = page.locator('[data-screen="home"] .wb-frame-menu-trigger');
+    await trigger.hover();
+    await trigger.click();
+    const menu = page.locator('[data-screen="home"] .wb-frame-menu');
+    await expect(menu).toBeVisible();
+    const g = await page.evaluate(() => {
+      const t = document.querySelector('[data-screen="home"] .wb-frame-menu-trigger');
+      const m = document.querySelector('[data-screen="home"] .wb-frame-menu');
+      const tr = t.getBoundingClientRect(), mr = m.getBoundingClientRect();
+      const s = tr.width / t.offsetWidth;
+      return { scale: s,
+        leftL: (mr.left - tr.left) / s,
+        gapL: (mr.top - tr.bottom) / s,
+        wL: mr.width / s,
+        inView: mr.left >= 0 && mr.top >= 0 && mr.right <= innerWidth && mr.bottom <= innerHeight };
+    });
+    await page.keyboard.press('Escape');
+    await expect(page.locator('.wb-frame-menu')).toHaveCount(0);
+    expect(g.inView, tag + '：菜单在视口内').toBe(true);
+    expect(Math.abs(g.leftL), tag + '：菜单左缘贴 trigger 左').toBeLessThan(2);
+    expect(Math.abs(g.gapL - 5), tag + '：菜单位于 trigger 下 5（local）').toBeLessThan(2);
+    expect(Math.abs(g.wL - 204), tag + '：菜单宽 204（local）').toBeLessThan(2);
+    expect(g.scale, tag + '：画布确实处在缩放空间').toBeGreaterThan(0);
+  }
+
+  await menuGlued('zoom=1');
+  await page.locator('#wbzoom-out').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-canvas-zoom'))).not.toBe('1');
+  await menuGlued('zoom-out');
+  await page.locator('#wbzoom-in').click();
+  await page.locator('#wbzoom-in').click();
+  await expect.poll(() => page.evaluate(() => document.documentElement.getAttribute('data-canvas-zoom'))).not.toBe('1');
+  await menuGlued('zoom-in');
+});
+
 test('queued annotation saves survive own SSE, sync to another window, and clear through save', async ({ browser }) => {
   const context = await browser.newContext();
   const writer = await context.newPage();
