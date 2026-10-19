@@ -1,7 +1,7 @@
 import { frameReadyToUnload } from './frame-save.js';
 
 // 页面浮层保留最近两份文档；标注保存未完成时暂缓淘汰。
-export var MAX_PAGE_OVERLAYS = 2;
+var MAX_PAGE_OVERLAYS = 2;
 var seen = new WeakMap();
 var clock = 0;
 var retries = new WeakMap();

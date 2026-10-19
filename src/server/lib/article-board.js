@@ -55,11 +55,6 @@ export function deriveArticleBoard(target) {
   return value;
 }
 
-/** 测试与需要强制重读时用：清掉派生缓存。 */
-export function clearArticleBoardCache() {
-  derivedCache.clear();
-}
-
 const derivedCache = new Map();
 
 function cacheKey(target) {

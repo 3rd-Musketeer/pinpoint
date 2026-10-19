@@ -42,7 +42,7 @@ export function buildTextIndex(root) {
   };
 }
 
-export function sectionOfNode(node) {
+function sectionOfNode(node) {
   var el = node.parentElement && node.parentElement.closest('[data-section]');
   return el ? el.getAttribute('data-section') || '' : '';
 }

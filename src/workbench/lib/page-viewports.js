@@ -9,7 +9,7 @@ export function viewportKey(pageId, activeBoard) {
   return pageId;
 }
 
-export function readPageViewports() {
+function readPageViewports() {
   var raw = readPrefs().pageViewports;
   return raw && typeof raw === 'object' ? raw : {};
 }

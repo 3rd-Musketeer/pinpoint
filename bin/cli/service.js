@@ -149,7 +149,7 @@ function healthRows(health, repoRoot) {
  * 文章站点（Astro 开发服务器，pp3）那一行。站点按需拉起：没打开过文章时是 idle，
  * 不算故障；起不来（failed）才算失败。
  */
-export function siteRows(site) {
+function siteRows(site) {
   const where = `127.0.0.1:${site.port}`;
   const pid = site.external ? '外部进程' : (site.pid ? `pid ${site.pid}` : '');
   const rows = [];
@@ -254,7 +254,7 @@ async function probe(url, requestFn) {
 }
 
 /** 只体检 PINPOINT_ORIGIN 那一个服务（status 用；start / stop / restart 仍走 portless 那条）。 */
-export async function collectOriginStatus(io = {}) {
+async function collectOriginStatus(io = {}) {
   const { env, requestFn } = ioOf(io);
   const origin = env.PINPOINT_ORIGIN.replace(/\/+$/, '');
   return classifyOriginStatus({ repoRoot: REPO_ROOT, origin, health: await probe(`${origin}/health`, requestFn) });

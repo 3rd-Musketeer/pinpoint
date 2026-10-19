@@ -1,6 +1,5 @@
 /* 右栏卡片的 HTML 片段。纯函数，不读闭包状态：状态钉、引文、线程消息、已关闭一行、
- * 正文线程、画布标注卡片、草稿卡。导出 esc、statusChip、quoteHtml、messageEditKey、messagesHtml、
- * collapsedHtml、threadHtml、canvasThreadHtml、draftHtml。 */
+ * 正文线程、画布标注卡片、草稿卡。导出 esc、threadHtml、canvasThreadHtml、draftHtml。 */
 
 import { ANN_STATUS_COLORS, annStatusOf, isClosed } from '../../shared/ann-status.js';
 import { escHtml } from '../../shared/esc-html.js';
@@ -18,7 +17,7 @@ import {
 // esc 的实现 = 全仓一份的 escHtml（r2 D10 漏数的第四份拷贝，S1 收走）。
 export const esc = escHtml;
 
-export function statusChip(row) {
+function statusChip(row) {
   var st = annStatusOf(row);
   var known = Object.prototype.hasOwnProperty.call(ANN_STATUS_COLORS, st) ? st : 'open';
   var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
@@ -27,7 +26,7 @@ export function statusChip(row) {
   return '<span class="pp-n" data-st="' + known + '">' + esc(n) + '</span>' + word;
 }
 
-export function quoteHtml(exact) {
+function quoteHtml(exact) {
   var text = String(exact || '');
   if (text.length > 160) text = text.slice(0, 157) + '…';
   return '<div class="q">' + esc(text) + '</div>';
@@ -37,7 +36,7 @@ export function quoteHtml(exact) {
     第一句用它本身，owner 之后的回复再加 '/m' + messages 下标。agent 的、空的不给键。
     画布标注的目标记号夹在文字中间时也不给：右栏显示的是换成元素文字的结果，整段存回去会丢掉记号。
     记号全在开头时给键，键只落在记号后面的文字上。 */
-export function messageEditKey(row, messageIndex, threadKey) {
+function messageEditKey(row, messageIndex, threadKey) {
   if (!threadKey) return '';
   var messages = threadMessages(row);
   var message = messages[messageIndex];
@@ -65,7 +64,7 @@ function leadingEditHtml(row, leading, editKey, editingId, editText) {
 /** 没选中时这条线程收成摘要：引用一行、第一条消息三行，后面的回复收成“还有 N 条回复”。
     只在宽屏（view.folded 不为 false）收：窄屏右栏在正文下面，卡片保持完整。
     草稿、正在编辑、正在回复、选中的不收。已关闭收成一行的走 collapsedHtml，不进这里。 */
-export function threadFolded(id, view) {
+function threadFolded(id, view) {
   if (!view || view.folded === false) return false;
   if (id === '__draft') return false;
   if (id === view.focusedId) return false;
@@ -77,7 +76,7 @@ export function threadFolded(id, view) {
 /** 线程消息。owner 写的那几句可点着改：正在编辑就渲染成编辑框，否则渲染成带 data-edit 的正文
     （agent 的回复、引文、记号夹在中间的画布标注正文永远不可编辑）。
     folded 时只留第一条，其余收成一行“还有 N 条回复”（N 不含第一条）。 */
-export function messagesHtml(row, threadKey, editingId, editText, folded) {
+function messagesHtml(row, threadKey, editingId, editText, folded) {
   var messages = threadMessages(row);
   var leading = threadKey && threadKey.indexOf('c:') === 0 ? canvasLeadingEdit(row.content) : null;
   // 画布标注的第一句：记号全在开头时，框里只放后面的文字；否则显示成元素文字。存盘正文留在 row 上。
@@ -110,7 +109,7 @@ export function messagesHtml(row, threadKey, editingId, editText, folded) {
 }
 
 // 已关闭的线程留在原位收成一行：序号钉 + “已关闭” + 引文开头，点开成完整卡片，再点收回。
-export function collapsedHtml(row) {
+function collapsedHtml(row) {
   var n = Number.isInteger(row.n) ? '#' + row.n : '#…';
   return '<div class="pp-thread pp-closed" data-id="' + esc(row.id) + '" data-n="' + esc(row.n) + '" data-status="close">'
     + '<button type="button" class="pp-closed-row" data-act="expand" aria-expanded="false">'

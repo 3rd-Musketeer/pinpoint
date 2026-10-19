@@ -24,7 +24,7 @@ const alive = (pid) => {
   }
 };
 
-export function findSiteOrphans(port) {
+function findSiteOrphans(port) {
   const orphans = [];
   for (const pid of run('lsof', ['-nP', '-t', `-iTCP:${port}`, '-sTCP:LISTEN']).split('\n').filter(Boolean).map(Number)) {
     const pgid = Number(run('ps', ['-o', 'pgid=', '-p', String(pid)]));

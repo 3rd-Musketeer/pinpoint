@@ -79,7 +79,7 @@ export const wbSet = useWorkbenchStore.setState;
    activeEntryId 后用同一组纯函数自行派生。
    板未装载 / 换页途中（activeBoard 还停在上一页）退回页级 modeForPage —— 与
    2026-08-16 阶段 2 的页级派生同义，只作过渡兜底。 */
-export function activeEntry() {
+function activeEntry() {
   var s = useWorkbenchStore.getState();
   var active = s.activeBoard;
   if (!active || active.pageId !== s.activePageId) return null;

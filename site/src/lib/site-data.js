@@ -9,9 +9,9 @@ import { projectErrorLine } from './site-errors.js';
 /** Wiki entry (code: concept) status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
 const DEFAULT_STATUS = '占位';
 
-export const articleHref = (project, article) => `/${encodeURIComponent(project)}/${encodeURIComponent(article)}/`;
+const articleHref = (project, article) => `/${encodeURIComponent(project)}/${encodeURIComponent(article)}/`;
 /** Wiki entry URLs use the file name (`slug`), not the display `name` (docs/projects.md). */
-export const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/wiki/${encodeURIComponent(slug)}/`;
+const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/wiki/${encodeURIComponent(slug)}/`;
 export const wikiHref = (project) => `/${encodeURIComponent(project)}/wiki/`;
 export const projectHref = (project) => `/${encodeURIComponent(project)}/`;
 

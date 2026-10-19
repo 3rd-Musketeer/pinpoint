@@ -26,9 +26,9 @@ const KINDS = new Set(['dir', 'file', 'project']);
 // 登记表级挂靠（ADR 0021 阶段 8）：条目上的 page / role；带 page 的条目照常自成一页。
 // url 条目与站点代理（ADR 0019）：kind "url" 的整条条目跳过；别的条目上的 url 字段同样跳过，
 // 所以老 url 条目能经 move 重指到本地目录或文件。
-export const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
+const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
 export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role', 'url'];
-export const RETIRED_KINDS = ['url'];
+const RETIRED_KINDS = ['url'];
 
 /**
  * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：

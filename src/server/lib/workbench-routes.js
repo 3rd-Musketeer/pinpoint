@@ -12,7 +12,7 @@
  */
 import { WORKBENCH_PATH } from '../../shared/workbench-url.js';
 
-export const WORKBENCH_SHELL = '/index.html';
+const WORKBENCH_SHELL = '/index.html';
 
 function splitUrl(url) {
   const raw = typeof url === 'string' && url ? url : '/';

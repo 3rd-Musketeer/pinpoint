@@ -49,7 +49,7 @@ const KIT_JSX = path.join(ROOT, 'content', 'kits', 'ios', 'jsx');
 const KIT_JSX_INDEX = path.join(KIT_JSX, 'index.js');
 // 图的小运行时（docs/projects.md“图”）：图的 .jsx 和 sidecar 都写 `import … from 'pinpoint/figure'`。
 // 编译期由 figureHelperPlugin 指到这个文件；浏览器里由图页的 import map 指到 /kits/figure/figure.js。
-export const FIGURE_HELPER = path.join(ROOT, 'content', 'kits', 'figure', 'figure.js');
+const FIGURE_HELPER = path.join(ROOT, 'content', 'kits', 'figure', 'figure.js');
 const COMPILER_ROOTS = [KIT_JSX, path.dirname(FIGURE_HELPER)];
 
 export function defaultDistRoot(env = process.env) {
@@ -948,7 +948,7 @@ export async function loadFigure(target, id, { distRoot = defaultDistRoot() } = 
 }
 
 /** 本篇正文里的图（认得出 id、源文件在的）全部重编。→ [{ id, ok, ms, error? }] */
-export async function compileArticleFigures(target, { distRoot = defaultDistRoot(), writeDist = true } = {}) {
+async function compileArticleFigures(target, { distRoot = defaultDistRoot(), writeDist = true } = {}) {
   let figures = [];
   try {
     figures = deriveArticleBoard(target).figures;

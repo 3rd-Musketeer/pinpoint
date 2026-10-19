@@ -5,7 +5,7 @@
 import { formatProjectError } from '../../shared/project-errors.js';
 
 /** 布局错误 tooltip 列几条；多出来的写“还有 N 条”。 */
-export var ARTICLE_ERROR_TOOLTIP_MAX = 3;
+var ARTICLE_ERROR_TOOLTIP_MAX = 3;
 
 /** 文章正文的地址：/<project>/<article>/（站点路由，docs/projects.md）。 */
 export function articleReadUrl(projectId, articleId) {

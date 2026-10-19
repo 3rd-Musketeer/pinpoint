@@ -15,11 +15,11 @@
 // 带 data-pp-scrollbar="off" 的子树是被评审的内容（工作台画布上的帧）：里面的容器不出条。
 // 帧在画布里按缩放画，条按未缩放的尺寸算会又长又偏；真机上这些滚动本来也没有条。
 
-export var BAR = 6; // 条粗
-export var INSET = 2; // 离容器内缘
+var BAR = 6; // 条粗
+var INSET = 2; // 离容器内缘
 export var MIN_THUMB = 24; // 条最短
-export var EDGE = 14; // 文档根 / 大面：指针离边这么近时出条
-export var LINGER_MS = 900; // 停止滚动后条留多久
+var EDGE = 14; // 文档根 / 大面：指针离边这么近时出条
+var LINGER_MS = 900; // 停止滚动后条留多久
 
 /**
  * 一根条在轨道上的位置（纯函数）：轨道是容器可见的一段（起点、长度），条长按可见比例、不短于 MIN_THUMB。

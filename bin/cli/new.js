@@ -28,8 +28,8 @@ import { addressContext, printCandidates } from './targets.js';
 import { planAdd, reloadService } from './registry.js';
 
 /** 默认 project：`ppnt new article <id>` 不带 `/` 时文章进这里（ADR 0045）。 */
-export const DEFAULT_PROJECT_ID = 'notes';
-export const DEFAULT_PROJECT_TITLE = 'Notes';
+const DEFAULT_PROJECT_ID = 'notes';
+const DEFAULT_PROJECT_TITLE = 'Notes';
 
 /**
  * 默认 project 第一次建的时候放在哪：PINPOINT_DEFAULT_PROJECT（`~` 开头按家目录展开，相对路径按 cwd），

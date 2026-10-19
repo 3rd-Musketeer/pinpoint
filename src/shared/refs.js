@@ -58,7 +58,7 @@ const CODE_SPAN_RE = /(?<!`)(`+)(?!`).*?(?<!`)\1(?!`)/g;
  *   with nothing after it; a fence never closed runs to the end of the text.
  * - code span: a run of backticks up to the next run of the same length, on one line.
  */
-export function codeFreeLines(text) {
+function codeFreeLines(text) {
   let fence = null;
   return String(text || '').split('\n').map((line) => {
     const m = line.match(FENCE_RE);

@@ -6,7 +6,7 @@
 const NUMERIC = /^[-+−]?[\d,.]+\s*(%|ms|s|px|k|K|M|×|x|倍|个|次|条|字|元|万)?$/;
 
 /** 一行能放下的字宽：汉字和全角标点算 1，其余（拉丁字母、数字、空格）算 0.55。 */
-export const WRAP_UNITS = 9;
+const WRAP_UNITS = 9;
 export function textUnits(s) {
   let n = 0;
   for (const ch of s) n += /[\u2e80-\u9fff\uf900-\ufaff\uff00-\uffef\u3000-\u303f]/.test(ch) ? 1 : 0.55;

@@ -10,7 +10,7 @@ import {
 import { TOC_EASE, TOC_JUMP_GAP, TOC_OPEN_MS, TOC_OPEN_Y, TOC_REDUCED_MS, tocJumpScroll } from './toc-jump.js';
 
 // [[ ]] popup 的时序（site/README.md「[[ ]] 引用」）：悬停 120 ms 打开，指针移进 popup 不关，离开两者 200 ms 后关。
-export const POP_OPEN_MS = 120;
+const POP_OPEN_MS = 120;
 export const POP_CLOSE_MS = 200;
 
 // 目录入口的“当前节”显示。initTocEntry 装上，观察者每次换节时调。

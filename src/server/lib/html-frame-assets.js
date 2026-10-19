@@ -51,7 +51,7 @@ function decodeEntities(value) {
 }
 
 /** CSS 文本里的引用：[{ url, index }]。offset 加到 index 上（CSS 嵌在 HTML 里时用）。 */
-export function cssRefs(text, offset = 0) {
+function cssRefs(text, offset = 0) {
   const out = [];
   const re = /url\(\s*(["']?)([^"')]*)\1\s*\)|@import\s+(["'])([^"']+)\3/gi;
   let m;
@@ -95,7 +95,7 @@ export function htmlRefs(text) {
 }
 
 /** JS 文本里的静态引用：[{ url, index }]。 */
-export function jsRefs(text) {
+function jsRefs(text) {
   const out = [];
   const re = /\b(?:import|export)\b[^'"`;]*?\bfrom\s*(["'])([^"']+)\1|\bimport\s*(["'])([^"']+)\3|\bimport\(\s*(["'])([^"']+)\5\s*\)/g;
   let m;

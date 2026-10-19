@@ -58,7 +58,7 @@ export const REPO_ROOT = path.resolve(__dirname, '..', '..', '..');
 
 /** 一个桶目录下的全部账本行（跳过 _seq.json；坏文件跳过）。行带 __ledger 与
     __docPath（账本的表面路径，doc 页标注按路径分账本，check 显示用）。 */
-export function readBucketRows(bucketPath) {
+function readBucketRows(bucketPath) {
   const out = [];
   if (!fs.existsSync(bucketPath)) return out;
   for (const name of fs.readdirSync(bucketPath).sort()) {
@@ -235,7 +235,7 @@ export function loadPageContext({ pageRef, registryPath = null, root = null, dat
  * 全部行进 orphanRows，带上各自的账本：不计数，`#n`、`@a:<id>`、`<页>#n` 照样指得到，mark / reply
  * 按账本加序号写回。没有板，也没有编译面。桶不在（或 id 不合页 id 形状）时 null。
  */
-export function bucketOrphanContext(dataRootValue, pageId) {
+function bucketOrphanContext(dataRootValue, pageId) {
   if (!bucketOnDisk(dataRootValue, pageId)) return null;
   const ledgers = readBucketLedgers(path.join(dataRootValue, String(pageId)));
   const orphanRows = ledgers.flatMap(({ name, doc }) => (Array.isArray(doc && doc.annotations) ? doc.annotations : [])
@@ -386,7 +386,7 @@ export function anchorComp(node) {
 }
 
 /** 组件共用帧数：页内全部 dist 屏扫 data-pp-comp（结果缓存）。 */
-export function compFrameUsage(distHtmlFor, screenIds) {
+function compFrameUsage(distHtmlFor, screenIds) {
   const cache = new Map();
   return (comp) => {
     if (cache.has(comp)) return cache.get(comp);
@@ -401,7 +401,7 @@ export function compFrameUsage(distHtmlFor, screenIds) {
 }
 
 /** data-pp-id 的源文件路径（页内相对优先，kit 落仓相对）。 */
-export function sourceFileFor(ppIdFile, pageDir) {
+function sourceFileFor(ppIdFile, pageDir) {
   const local = path.join(pageDir, ppIdFile);
   if (fs.existsSync(local)) return local;
   const repo = path.join(REPO_ROOT, ppIdFile);
@@ -598,7 +598,7 @@ export function intentOf(row) {
   return intents.length ? intents.join('+') : '普通';
 }
 
-export function checkRowModel(row, context) {
+function checkRowModel(row, context) {
   const display = targetContentToDisplay(row.content || '', row.targets || []);
   const screenId = row.screenId || '';
   const frame = context.refs.byFrame
@@ -799,7 +799,7 @@ export function quoteSourceLine(source, quote, section = '') {
 }
 
 /** 正文评论的一行：在普通行模型上加引文、节、线程与源码落脚行。 */
-export function proseRowModel(row, context, source = null) {
+function proseRowModel(row, context, source = null) {
   const model = checkRowModel(row, context);
   const exact = (row.quote && row.quote.exact) || '';
   const line = context.article ? quoteSourceLine(source, row.quote, row.section) : 0;

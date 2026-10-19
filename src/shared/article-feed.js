@@ -4,7 +4,7 @@
  * 否则用 index.mdx 的修改时间。纯函数，站点页面与单测共用；读盘（mtime）在 listProjects。
  */
 
-export const ARTICLE_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
+const ARTICLE_DATE_PATTERN = /^(\d{4})-(\d{2})-(\d{2})$/;
 
 /** frontmatter 的 date → 当天本地零点的毫秒数；不是合法的 YYYY-MM-DD 返回 null。 */
 export function parseArticleDate(value) {

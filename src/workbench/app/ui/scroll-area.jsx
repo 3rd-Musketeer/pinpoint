@@ -31,7 +31,7 @@ export function ScrollArea({ className, children, ...props }) {
   );
 }
 
-export function ScrollBar({ className, orientation = 'vertical', ...props }) {
+function ScrollBar({ className, orientation = 'vertical', ...props }) {
   return (
     <ScrollAreaPrimitive.ScrollAreaScrollbar
       data-slot="scroll-area-scrollbar"

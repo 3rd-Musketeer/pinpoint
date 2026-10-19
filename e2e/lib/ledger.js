@@ -16,7 +16,7 @@ export function ledgerNames(bucket) {
 }
 
 /** 桶里的账本，{ 文件名: 解析后的账本 }；桶不存在时是空对象。 */
-export function readLedgers(bucket) {
+function readLedgers(bucket) {
   const out = {};
   for (const name of ledgerNames(bucket)) {
     out[name] = JSON.parse(fs.readFileSync(path.join(bucket, name), 'utf8'));

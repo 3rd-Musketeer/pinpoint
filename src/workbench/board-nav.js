@@ -334,7 +334,7 @@ function minimapJump(clientX, clientY) {
   centerStageOnPoint(cx, cy);
 }
 
-export function wireMinimap() {
+function wireMinimap() {
   if (!minimapWrap || !minimapEl || !minimapCanvas) return;
   minimapEl.addEventListener('click', function (e) {
     e.preventDefault();
@@ -625,7 +625,7 @@ export function isTypingTarget(el) {
   return !!(ce && ce.isContentEditable);
 }
 
-export function wireSectionNavigator() {
+function wireSectionNavigator() {
   if (!sectionNavWrap || !sectionNavList) return;
   sectionNavList.addEventListener('click', function (event) {
     var screenButton = event.target.closest('[data-nav-screen]');

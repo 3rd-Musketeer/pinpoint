@@ -3,7 +3,7 @@
 // 见 e.defaultPrevented 就不动，所以关 popup 不会顺手扔掉正在写的评论。契约在 site/README.md「弹层与 Esc」。
 
 /** 纯的栈，便于单测：push 返回释放函数；escape(e) 有层就关最上面一层并 preventDefault。 */
-export function createLayerStack() {
+function createLayerStack() {
   const stack = [];
   const remove = (entry) => {
     const i = stack.indexOf(entry);

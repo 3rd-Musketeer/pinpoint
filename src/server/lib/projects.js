@@ -35,7 +35,7 @@ const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..
 export { PROJECT_CONTENT_DIR };
 
 /** wiki 词条的 status 只有三档（CONTEXT.md“wiki 词条”）。 */
-export const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
+const CONCEPT_STATUSES = new Set(['占位', '收敛中', '已固定']);
 
 function fileMtimeMs(file) {
   try {
@@ -218,7 +218,7 @@ function checkNamespace(articles, concepts, errors) {
 }
 
 /** 一个 registry project 条目 → 读盘后的 project（不抛）。 */
-export function readProject(entry) {
+function readProject(entry) {
   const root = entry.path;
   const dir = path.join(root, PROJECT_CONTENT_DIR);
   const errors = [];

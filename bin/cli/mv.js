@@ -42,7 +42,7 @@ import {
 } from './registry.js';
 
 /** 目标是不是磁盘路径：以 /、.、~ 开头。网址也走换路径那条，由它报“登记的目标是本地目录或 .html 文件”。 */
-export function looksLikePath(token) {
+function looksLikePath(token) {
   return /^[/.~]/.test(token) || /^https?:\/\//i.test(token);
 }
 

@@ -44,7 +44,7 @@ const HOP_BY_HOP = new Set([
 const UPGRADE_SKIP = new Set(['keep-alive', 'proxy-authenticate', 'proxy-authorization', 'te', 'trailer', 'transfer-encoding']);
 
 /** 子资源等站点就绪的上限：Astro 重新监听一般一两秒，满载机器上更久。 */
-export const RESOURCE_WAIT_MS = 15_000;
+const RESOURCE_WAIT_MS = 15_000;
 
 // 上游连接池只给 GET / HEAD 用：它们能在复用连接被关掉时安全重发。
 const upstreamAgent = new http.Agent({ keepAlive: true });

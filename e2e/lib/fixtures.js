@@ -3,7 +3,7 @@ import { expect, test as base } from '@playwright/test';
 export { expect };
 
 // 这些是 Hooks 初始化失败的共有症状，单凭报错不能确定是用法、renderer 还是重复实例。
-export const MULTI_REACT = /Invalid hook call|more than one copy of React|Cannot read properties of null \(reading 'use[A-Za-z]*'\)/;
+const MULTI_REACT = /Invalid hook call|more than one copy of React|Cannot read properties of null \(reading 'use[A-Za-z]*'\)/;
 
 /** 收集 React Hooks 错误，尚不归因。 */
 export function isMultiReactSymptom(text) {

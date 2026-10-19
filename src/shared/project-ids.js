@@ -18,7 +18,7 @@ const ID = ENTRY_ID_PATTERN.source.slice(1, -1); // [a-z0-9][a-z0-9-]*
  * 也不会和 registry 条目撞（条目 id 不含 `_`）；仍匹配 PAGE_ID_PATTERN。唯一可能撞的
  * 是 content/previews/_index.json 里带 `_` 的模板页，读取时检查并记错误。
  */
-export const ARTICLE_PAGE_ID_SEPARATOR = '_';
+const ARTICLE_PAGE_ID_SEPARATOR = '_';
 export const ARTICLE_PAGE_ID_PATTERN = new RegExp(`^(${ID})${ARTICLE_PAGE_ID_SEPARATOR}(${ID})$`);
 
 /** registry 条目 id 或文章画布页 id（不含 ^$，拼进别的正则用，例如 `<页>#n`）。 */

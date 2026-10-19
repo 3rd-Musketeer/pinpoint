@@ -29,7 +29,7 @@ import path from 'node:path';
 
 import { ASTRO_DEV_BASE } from './article-routes.js';
 
-export const DEFAULT_SITE_PORT = 4530;
+const DEFAULT_SITE_PORT = 4530;
 export const DEFAULT_SITE_COMMAND = 'npm run -s site:dev -- --port {port} --host 127.0.0.1 --ignore-lock';
 
 const RESTART_WINDOW_MS = 60_000;

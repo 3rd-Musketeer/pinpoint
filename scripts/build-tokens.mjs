@@ -244,7 +244,7 @@ const SIDEBAR_PINS = ['--wb-surface', '--wb-fill', '--wb-fg', '--wb-muted', '--w
 
 export function annTokens(mode) { return { ...wbColor(mode), ...(mode === 'light' ? ANN_GEOMETRY : {}) }; }
 
-export function buildAnnTokensJs() {
+function buildAnnTokensJs() {
   const light = annTokens('light');
   const dark = wbColor('dark');
   const decl = (o) => Object.entries(o).map(([k, v]) => `${k}:${v};`).join('');
@@ -270,7 +270,7 @@ export var ANN_STATUS_LIGHT = ${JSON.stringify(status, null, 2)};
 // ---------- 图 kit：content/kits/figure/figure-palette.css ----------
 // 图页（/api/frame?…&embed=figure）在 figure.css 之前引入它；--fig-* 与站点同一组语义色，跟着文章页的深浅色切换。
 const FIG = { bg: 'bg', panel: 'surface', ink: 'text', 'ink-2': 'text-muted', muted: 'text-muted', hair: 'border', accent: 'accent-solid', 'accent-soft': 'accent-soft', err: 'danger' };
-export function buildFigurePaletteCss() {
+function buildFigurePaletteCss() {
   const color = (mode) => Object.entries(FIG).map(([k, v]) => `--fig-${k}:${SEMANTIC[v][mode]};`);
   return HEAD('图 kit 的调色板 --fig-*（docs/projects.md“图”），值与站点的 --pp-* 同源。图里只用这些变量，不写死颜色。')
     + `:root {\n  --fig-font:${FONT.sans};\n}\n` + threeSegments(color('light'), color('dark'));

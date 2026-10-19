@@ -266,7 +266,7 @@ export const ARTICLE_SOURCE_EXTS = new Set(['.jsx', '.js', '.css', '.mdx', '.md'
  * project 的 docs/pinpoint/ 下写死了 `/sites/<project id>_` 的文件（相对 docs/pinpoint/）。
  * rename 不改作者的源文件，只把这些文件列出来让作者自己改（改成相对路径更好）。
  */
-export function filesWithArticleSitePrefix(projectRoot, projectId) {
+function filesWithArticleSitePrefix(projectRoot, projectId) {
   const dir = path.join(projectRoot, PROJECT_CONTENT_DIR);
   if (!fs.existsSync(dir)) return [];
   const needle = `/sites/${projectId}_`;
@@ -282,7 +282,7 @@ export function filesWithArticleSitePrefix(projectRoot, projectId) {
  * 按名排序。按盘上的桶扫，不按现有文章列：文章目录删了、桶还在，那也是这个 project 的桶
  * （孤儿），换 id 时一起带走。带 `_` 的模板页 id 不算（撞名时模板页优先）。
  */
-export function articleBucketIds(root, projectId, { manifestIds = [] } = {}) {
+function articleBucketIds(root, projectId, { manifestIds = [] } = {}) {
   let items;
   try {
     items = fs.readdirSync(root, { withFileTypes: true });
@@ -422,7 +422,7 @@ export function planMove(parsed, { cwd = process.cwd(), env = process.env } = {}
  * reload 应答里 entries 只数 page 条目，kind "project" 另计在 projects（annotate-api registrySummary）。
  * 给人看的总数是文件里的条目数，两者相加。
  */
-export function registryCountText(summary) {
+function registryCountText(summary) {
   const pages = Number(summary.entries) || 0;
   const projects = Number(summary.projects) || 0;
   return projects

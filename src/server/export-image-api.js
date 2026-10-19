@@ -62,7 +62,7 @@ async function waitForAssets(page) {
   });
 }
 
-export function createExportRenderer(options = {}) {
+function createExportRenderer(options = {}) {
   let browserPromise = null;
   const launch = options.launch || (() => chromium.launch({ headless: true }));
 

@@ -7,7 +7,7 @@
 // - 一次最多 maxConcurrent 张在装：缩小画布时十几张同时进视野，排队装，不让它们同时解析、同时出图。
 
 export var MAX_LIVE_CARDS = 6;
-export var MAX_CONCURRENT_LOADS = 2;
+var MAX_CONCURRENT_LOADS = 2;
 
 /**
  * cards: [{ id, visible, live, loading, seenAt }]（seenAt = 最近一次在视野里的时刻，越大越新）

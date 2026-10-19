@@ -245,7 +245,7 @@ export function projectEmptyRefs(registry, projectId) {
 }
 
 /** project title 的上限（字符数，按码位数）；超过或带冒号时 check 给一条提示（ADR 0044）。 */
-export const PROJECT_TITLE_MAX = 24;
+const PROJECT_TITLE_MAX = 24;
 
 /** project title 像不像一句描述：→ 原因列表（空 = 没问题）。 */
 export function projectTitleIssues(title) {

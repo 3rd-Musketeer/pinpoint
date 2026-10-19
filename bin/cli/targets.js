@@ -24,7 +24,7 @@ export function addressContext(flags, env) {
 }
 
 /** 候选目标：每篇文章的斜杠形 + 存量页 id。 */
-export function candidateAddresses(ctx) {
+function candidateAddresses(ctx) {
   return targetCandidates({
     registry: ctx.registry,
     manifestIds: ctx.manifestIds,

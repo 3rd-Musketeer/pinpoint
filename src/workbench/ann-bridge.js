@@ -92,7 +92,7 @@ var ANN_SNAP_OFF = { available: false, rows: [] };
 var annRowCache = new Map();
 var annRowOwner = null;
 
-export function syncAnnSnap() {
+function syncAnnSnap() {
   parkParentAnnotate();
   var ann = annotateApi();
   if (!ann || typeof ann.getState !== 'function') {

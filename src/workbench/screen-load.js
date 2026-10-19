@@ -75,7 +75,7 @@ function docFrameHtml(url, title) {
 }
 
 /** 一个 doc 屏的文档地址（iframe 的 src）：带 src 的用它，否则是页目录下的 <id>.html。 */
-export function docScreenUrl(pageId, screen) {
+function docScreenUrl(pageId, screen) {
   var sc = typeof screen === 'string' ? { id: screen } : screen;
   return sc.src || pageBaseUrl(wbGet().pageManifest, pageId) + sc.id + '.html';
 }

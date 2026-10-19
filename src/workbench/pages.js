@@ -63,7 +63,7 @@ var stage = document.getElementById('wbstage');
 var wbRoot = document.getElementById('wbroot') || document.querySelector('.wb');
 var libraryScrollHandler;
 
-export function scrollToGroup(groupId, options) {
+function scrollToGroup(groupId, options) {
   options = options || {};
   wbSet({ activeGroup: groupId });
   updateSectionNavigatorActive(groupId);
@@ -326,7 +326,7 @@ function applyStageForm(form) {
    prefs.activeEntryIdByPage 记忆带回来。 */
 
 /** 当前页的视口偏好（板装载前就要知道，所以按 pageId 读，不看 store）。 */
-export function viewportOfPage(pageId) {
+function viewportOfPage(pageId) {
   return viewportForPage(readPrefs(), pageId);
 }
 

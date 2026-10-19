@@ -133,7 +133,7 @@ export {
  * { ok, exit, command, error?, output: [行], stderr: [行] }。原生命令出错没打 JSON 时也给信封，
  * 所以带 --json 的调用永远能 JSON.parse(stdout)。dev 是常驻命令，自己处理 --json。
  */
-export const NATIVE_JSON = new Set(['show', 'check', 'comments', 'list', 'locate', 'shot', 'mark', 'reply', 'build', 'status', 'new', 'open']);
+const NATIVE_JSON = new Set(['show', 'check', 'comments', 'list', 'locate', 'shot', 'mark', 'reply', 'build', 'status', 'new', 'open']);
 const SELF_JSON = new Set(['dev']);
 
 function jsonEnvelope(command, code, output, stderr) {

@@ -14,7 +14,7 @@ import { chromium } from '@playwright/test';
 import { frameInternalSelector } from '../src/shared/frame-anchor.js';
 import { WORKBENCH_PATH } from '../src/shared/workbench-url.js';
 
-export const PIN_CSS = 'position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#0a84ff;color:#fff;font:700 11px/18px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);';
+const PIN_CSS = 'position:absolute;min-width:18px;height:18px;padding:0 4px;border-radius:9px;background:#0a84ff;color:#fff;font:700 11px/18px system-ui;text-align:center;box-shadow:0 1px 3px rgba(0,0,0,.4);';
 
 /**
  * 渲染一组画布视图上的图。jobs = [{ kind:'frame'|'section'|'page', screenId?, sectionId?,
@@ -259,7 +259,7 @@ export async function renderFigureShots({ origin, pageId, figureId, outBase, sca
 }
 
 /** 文章页正文结尾的标记（site/src/pages/[project]/[article]/index.astro）。 */
-export const ARTICLE_END_SELECTOR = '[data-pp-article-end]';
+const ARTICLE_END_SELECTOR = '[data-pp-article-end]';
 
 /** PNG 头里的宽高（IHDR 紧跟签名）。 */
 function pngSize(buffer) {
@@ -304,7 +304,7 @@ export async function waitArticleReady(request, url, { timeoutMs, pollMs = 500 }
  * 在页面里跑（frame.evaluate），只看这一层文档；嵌在里面的 iframe 由 settleLazyContent 逐层再跑一遍。
  * scope 是选择器时只管它里面的元素。返回到时还没加载完的元素（`img <src>` / `iframe <src>`）。
  */
-export async function settleDocumentInPage({ deadline, scope }) {
+async function settleDocumentInPage({ deadline, scope }) {
   const root = scope ? document.querySelector(scope) : document;
   if (!root) return [];
   const describe = (el) => `${el.tagName.toLowerCase()} ${el.getAttribute('src') || el.currentSrc || ''}`.trim().slice(0, 200);
@@ -371,7 +371,7 @@ async function scrollThrough(frame, deadline) {
  * 到时还没加载完的照常截，返回它们的描述（调用方打一行“注意”）。scope 只限定顶层文档里的范围。
  * → { pending: string[] }
  */
-export async function settleLazyContent(page, { timeoutMs = 15000, scope = null, scroll = false } = {}) {
+async function settleLazyContent(page, { timeoutMs = 15000, scope = null, scroll = false } = {}) {
   const deadline = Date.now() + timeoutMs;
   const pending = [];
   const settleFrame = async (frame, frameScope) => {

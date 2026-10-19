@@ -13,7 +13,7 @@ import { gray, grayDark, amber, amberDark } from '@radix-ui/colors';
 const steps = (obj) => Object.values(obj);
 
 /** 基础色阶，每档 [亮, 暗]，下标 1..12（档位语义同 Radix：1–2 页面底，3–5 组件底，6–8 边线，9–10 实色，11–12 文字）。 */
-export const SCALES = {
+const SCALES = {
   // 中性：Radix gray 12 档（纯灰；owner：“纯灰色吧，看起来更加温暖”）。
   gray: { light: steps(gray), dark: steps(grayDark) },
   // 强调：A 青绿，第 9 档 = #0e8f6c。1–8、12 档沿用 Radix green 的明度曲线、彩度按比例缩放；

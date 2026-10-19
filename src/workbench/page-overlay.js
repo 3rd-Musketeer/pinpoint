@@ -12,7 +12,7 @@ import { closePageOverlay, isPageOverlayOpen, openPageOverlay } from './pages.js
 var CARD_SELECTOR = '.wb-screen[data-html-card]';
 
 /** 卡片 → { sectionId, screenId }；不是卡片返回 null。 */
-export function htmlCardOf(target) {
+function htmlCardOf(target) {
   var card = target && target.closest ? target.closest(CARD_SELECTOR) : null;
   if (!card) return null;
   var section = card.closest('.wb-lib-item');

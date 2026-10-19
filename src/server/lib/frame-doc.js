@@ -376,8 +376,8 @@ function frameTokensStyle() {
 
 /** 嵌入模式（`/api/frame?…&embed=card`）给机壳打的标记：文章站点的卡片与画布浮层只认这两个属性，
  *  不认工作台的 class 名（docs/projects.md「给站点卡片的接口」）。 */
-export const EMBED_STAGE_ATTR = 'data-pp-stage';
-export const EMBED_DEVICE_ATTR = 'data-pp-device';
+const EMBED_STAGE_ATTR = 'data-pp-stage';
+const EMBED_DEVICE_ATTR = 'data-pp-device';
 const STAGE_CLASSES = { 'ios-stage': 'phone', 'wb-comp-stage': 'comp', 'wb-doc-stage': 'doc' };
 
 /** 在第一个机壳（ios-stage / wb-comp-stage / wb-doc-stage）上打 data-pp-stage="<种类>"，第一个 ios-device 上打 data-pp-device。

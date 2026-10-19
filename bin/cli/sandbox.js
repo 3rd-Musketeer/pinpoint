@@ -66,7 +66,7 @@ export async function pickSandboxPorts({ port = null, sitePort = null, isFree = 
 }
 
 /** owner 的数据根：隔离运行绝不碰它。 */
-export function ownerDataRoot(home = os.homedir()) {
+function ownerDataRoot(home = os.homedir()) {
   return path.join(home, '.pinpoint');
 }
 

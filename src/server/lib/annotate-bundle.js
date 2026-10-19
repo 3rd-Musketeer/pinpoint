@@ -208,7 +208,7 @@ export function ensureAnnotateBundle() {
  * 同步取产物（注入点是同步拼 HTML 的，等不了 async）。源码没变直接回缓存；
  * 在途构建先给手上这份（落地后下一次调用自然换新）。失败抛 AnnotateBundleError。
  */
-export function currentAnnotateBundle() {
+function currentAnnotateBundle() {
   if (building) {
     if (!current) throw new AnnotateBundleError('first build still running');
     return current;

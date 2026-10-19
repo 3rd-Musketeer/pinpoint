@@ -23,9 +23,6 @@ export const WORKBENCH_PATH = '/workbench/';
 export const canvasHref = (pageId, sectionId) =>
   `${WORKBENCH_PATH}?page=${encodeURIComponent(pageId)}${sectionId ? `&section=${encodeURIComponent(sectionId)}` : ''}`;
 
-/** The read-only annotation endpoint for a bucket's canvas ledger (src/server/annotate-api.js). */
-export const canvasLedgerUrl = (pageId) => `/annotations/%40canvas?entry=${encodeURIComponent(pageId)}`;
-
 /**
  * An HTML frame's annotations live in their own ledger in the same bucket, named after the page's
  * pathname on the service (the annotate client in that page names it this way). Same formula as
@@ -64,7 +61,7 @@ export function rowsOnFrame(doc, frameId) {
  * ([data-pp-stage]) and keeps the scale (comp stage is max-content ≤ 420 px).
  */
 export const CARD_SCALE = 158 / 438;
-export const PHONE = { width: 438, height: 910, scale: CARD_SCALE };
+const PHONE = { width: 438, height: 910, scale: CARD_SCALE };
 const NATURAL = {
   comp: { width: 480, height: 320, scale: CARD_SCALE },
 };
@@ -79,7 +76,7 @@ export const DOC_WIDTHS = Object.freeze({
   phone: Object.freeze({ width: 402, height: 874, label: '手机' }),
   desktop: Object.freeze({ width: 1280, height: 800, label: '桌面' }),
 });
-export const DEFAULT_DOC_WIDTH = 'phone';
+const DEFAULT_DOC_WIDTH = 'phone';
 export const docWidthKey = (key) => (Object.hasOwn(DOC_WIDTHS, key) ? key : DEFAULT_DOC_WIDTH);
 
 export function shellBox(shell, docWidth = DEFAULT_DOC_WIDTH) {
@@ -95,7 +92,7 @@ export function shellBox(shell, docWidth = DEFAULT_DOC_WIDTH) {
  * articleCanvas errors → { section, frame?, message }; no `section` = a page-level error.
  * A figure's errors (code figure_…) are left out: the figure shows them in its own place (figure.js).
  */
-export function normalizeErrors(errors) {
+function normalizeErrors(errors) {
   return (errors || [])
     .filter((e) => !/^figure_/.test(String(e?.code || '')))
     .map((e) => ({ section: e.section ?? null, frame: e.frame, message: String(e.message ?? '') }));

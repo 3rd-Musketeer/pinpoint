@@ -95,7 +95,7 @@ export function articleModel({ project, article, context, origin }) {
   };
 }
 
-export function formatArticle(model) {
+function formatArticle(model) {
   const lines = [`# ${model.address} · ${model.title}`];
   lines.push(`文件：${model.file}`);
   lines.push(`文章页：${model.url}`);
@@ -152,7 +152,7 @@ export function projectModel({ registry, project, contextOf, origin }) {
   };
 }
 
-export function formatProject(model) {
+function formatProject(model) {
   const lines = [`# ${model.id} · ${model.title}`, `根目录：${model.root}`, `project 首页：${model.url}  ·  llms.txt：${model.llms}`, ''];
   lines.push(`文章（${model.articles.length}）`);
   if (!model.articles.length) lines.push('  （无）');

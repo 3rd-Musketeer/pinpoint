@@ -4,8 +4,7 @@
 // 窄屏（面板按 calc(100vw - 24px) 排、比按钮还宽）改为贴左缘 12、顶在按钮下 8，不盖住顶栏。
 
 export const WIKI_PANEL_GAP = 8;
-export const WIKI_PANEL_MARGIN = 12;
-export const WIKI_PANEL_WIDTH = 320;
+const WIKI_PANEL_MARGIN = 12;
 export const WIKI_PANEL_MAX_H = 480;
 export const WIKI_PANEL_MAX_VH = 0.6;
 

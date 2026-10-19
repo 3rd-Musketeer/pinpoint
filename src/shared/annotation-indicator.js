@@ -19,7 +19,7 @@
 import { isClosed } from './ann-status.js';
 
 /** 四态。缺省 open。 */
-export const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
+const ANNOTATION_STATUSES = ['open', 'check', 'done', 'close'];
 
 function normalizeStatus(value) {
   return ANNOTATION_STATUSES.includes(value) ? value : 'open';

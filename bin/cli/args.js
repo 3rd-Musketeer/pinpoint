@@ -40,7 +40,7 @@ const COMMANDS = {
 };
 
 /** `ppnt new` 能建的两种东西。 */
-export const NEW_KINDS = ['project', 'article'];
+const NEW_KINDS = ['project', 'article'];
 
 /** 参数解析（纯函数）。add 返回 { command, target, flags }，mv 返回 { command, source, target, flags }，
     服务命令返回 { command, flags }；非法输入抛 CliError。 */

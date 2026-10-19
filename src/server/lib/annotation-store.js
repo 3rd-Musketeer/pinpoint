@@ -35,7 +35,7 @@ export function ledgerKey(raw) {
 }
 
 /** 线程消息的作者：owner 在页面上写，agent 只经 /reply 端点写。 */
-export const MESSAGE_AUTHORS = new Set(['owner', 'agent']);
+const MESSAGE_AUTHORS = new Set(['owner', 'agent']);
 
 /** targets 的稳定指纹（编辑目标判定用：选择器集合变了才算改了目标）。 */
 function targetsFingerprint(annotation) {
@@ -59,7 +59,7 @@ function ownerThreadFingerprint(annotation) {
  * 盘上已有的条：顺序、who、at 用盘上的，agent 的文本也不许换，owner 的 text 用这次带来的（下标对齐）。
  * 比盘上短（删消息）或中间插了一条：不认，返回 null，调用方改用盘上的。没有变化也返回 null。
  */
-export function ownerMessageEdits(diskMessages, incoming) {
+function ownerMessageEdits(diskMessages, incoming) {
   const disk = Array.isArray(diskMessages) ? diskMessages : [];
   const next = Array.isArray(incoming) ? incoming : [];
   if (next.length < disk.length) return null;
@@ -88,7 +88,7 @@ export function ownerMessageEdits(diskMessages, incoming) {
  * 盘上有、这次保存的行里没有的 agent 消息补回去（按 who + text + at 认同一条），保持盘上的先后。
  * 没有要补的返回 null。
  */
-export function keepAgentMessages(diskMessages, incoming) {
+function keepAgentMessages(diskMessages, incoming) {
   const disk = Array.isArray(diskMessages) ? diskMessages : [];
   const next = Array.isArray(incoming) ? incoming.slice() : [];
   const same = (a, b) => a && b && a.who === b.who && a.text === b.text && a.at === b.at;
