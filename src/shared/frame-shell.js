@@ -7,6 +7,11 @@
  * 纯函数、DOM-free。
  */
 
+/** 机壳里随墙钟走的字：状态栏 / 锁屏时钟（content/kits/ios/ios-kit.js 每分钟改一次
+ *  textContent）。它们是装饰不是帧内容：工作台判帧改没改（frame-reset.js）、标注层
+ *  判要不要重排（client/annotate/schedule.js）都不把它们的变化算进去。 */
+export var LIVE_CLOCK_SELECTOR = '.ios-sb-time, .ios-lock-clock';
+
 /**
  * Wrap screen body in shared phone chrome.
  * Agent writes only in-screen content; loader owns stage/device/bezel/statusbar/home.

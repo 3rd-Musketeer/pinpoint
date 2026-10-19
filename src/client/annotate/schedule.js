@@ -2,6 +2,7 @@
 // 重绘。导出 bind_schedule、init_schedule、installViewScheduling、onViewChange、
 // perfDrain。
 import { frameInternalSelector } from '../../shared/frame-anchor.js';
+import { LIVE_CLOCK_SELECTOR } from '../../shared/frame-shell.js';
 import { isMarkBroken, markElementTargets, markHasLiveTarget, markOnActivePage, withLiveTargets } from './anchor.js';
 import { mutationScope } from '../lib/mutation-scope.js';
 import { renderAll, syncBubbleStructure, updateBubbleGeometry } from './bubbles.js';
@@ -233,6 +234,11 @@ function scheduleViewUpdate() {
 // mutations made by the annotation UI itself or renderAll would observe its
 // own overlay updates and loop forever.
 
+function liveClockNode(node) {
+  var el = node && (node.nodeType === 1 ? node : node.parentElement);
+  return !!(el && el.closest && el.closest(LIVE_CLOCK_SELECTOR));
+}
+
 function annotationUiNode(node) {
   var el = node && (node.nodeType === 1 ? node : node.parentElement);
   return !!(el && isUI(el));
@@ -240,6 +246,10 @@ function annotationUiNode(node) {
 
 function contentMutation(record) {
   if (annotationUiNode(record.target)) return false;
+  // 机壳时钟每分钟走一格（ios-kit 换 textContent）：97 帧各来一条 childList，账本里
+  // 有全局选择器时每条都升级成整层重绘 —— 静息时每分钟一次 renderAll（K1 静息门偶挂
+  // 的 rects 70 / renders 1，正好落在整分钟上，2026-10-20）。时钟不是帧内容。
+  if (liveClockNode(record.target)) return false;
   if (record.target === document.documentElement && record.type === 'attributes') {
     if (record.attributeName === 'data-canvas-zoom') return false;
     if (record.attributeName === 'style') {

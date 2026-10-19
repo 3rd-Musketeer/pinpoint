@@ -134,3 +134,23 @@ test('对照：同一账本下结构变更仍升级成 renderAll（计数器看�
   flushFrames();
   assert.equal(calls.renderAll, 1);
 });
+
+// 机壳时钟（ios-kit 每分钟改 .ios-sb-time 的 textContent）：一条把文字节点换掉的
+// childList。账本有全局选择器时旧实现把它升级成整层重绘，97 帧的板静息时每分钟
+// 一次 renderAll（2026-10-20 K1 静息门偶挂的 rects 70 / renders 1 就是它）。
+test('机壳时钟走一格（状态栏换文字节点）既不整层重绘，也不局部刷新', () => {
+  install(GLOBAL_MARKS);
+  calls.renderAll = 0;
+  calls.refreshFrameContent = 0;
+  const clock = {
+    nodeType: 1,
+    id: '',
+    className: 'ios-sb-time',
+    closest: selector => (selector.includes('.ios-sb-time') ? clock : selector === '.wb-screen' ? frameRoot : null),
+    matches: () => false,
+  };
+  observerCallback([{ type: 'childList', target: clock, addedNodes: [{ nodeType: 3 }], removedNodes: [{ nodeType: 3 }] }]);
+  flushFrames();
+  assert.equal(calls.renderAll, 0);
+  assert.equal(calls.refreshFrameContent, 0);
+});

@@ -10,11 +10,12 @@
 // 预览脚本怎么跑归 preview-mount.js：它在挂载时把会话和“对一块子树重跑预览脚本”的函数交进来，
 // 这里不 import 它（它 import export-core，export-core import 这里）。
 import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
+import { LIVE_CLOCK_SELECTOR } from '../shared/frame-shell.js';
 
 var board = null; // { panel, session, remount, pristine: Map<帧 id, string> }
 var wiredPanel = null;
 var SETTLE_MS = 600; // 点击、按键之后这么久里帧的 DOM 变了，算这次交互改的
-var IGNORED = '.wb-screen-cap, .wb-screen-dim, [data-ann-ui], .ios-sb-time, .ios-lock-clock';
+var IGNORED = '.wb-screen-cap, .wb-screen-dim, [data-ann-ui], ' + LIVE_CLOCK_SELECTOR;
 
 function isCaption(el) {
   return el.classList && (el.classList.contains('wb-screen-cap') || el.classList.contains('wb-screen-dim'));
