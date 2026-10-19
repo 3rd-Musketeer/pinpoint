@@ -386,7 +386,7 @@ export function createAnnotateHandler(options = {}) {
     {
       methods: ['GET'],
       match: (urlPath) => urlPath.startsWith('/images/'),
-      run: ({ res, urlPath, query }) => {
+      run: ({ req, res, urlPath, query }) => {
         const entryId = entryOrReject(res, query.get('entry'));
         if (!entryId) return true;
         const name = decodeURIComponent(urlPath.slice('/images/'.length));

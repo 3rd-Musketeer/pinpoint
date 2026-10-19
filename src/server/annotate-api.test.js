@@ -163,6 +163,16 @@ test('/image 的上限另算：账本上限 2 MiB 不挡截图', async (t) => {
   assert.ok(fs.existsSync(path.join(dataRoot, 'web', 'images', json.file)));
 });
 
+test('GET /images/<file> 读回上传的截图：200 + 图片类型', async (t) => {
+  const { handler } = withFixture(t);
+  const up = await call(handler, 'POST', '/image', { page: '@canvas', entry: 'web', data: 'data:image/png;base64,aGk=' });
+  assert.equal(up.res.statusCode, 200, JSON.stringify(up.json));
+  const { handled, res } = await call(handler, 'GET', `/images/${up.json.file}?entry=web`);
+  assert.equal(handled, true);
+  assert.equal(res.statusCode, 200, res.body);
+  assert.match(String(res.headers['Content-Type']), /^image\/png/);
+});
+
 test('GET /annotations/<page> resolves entry from the query string', async (t) => {
   const { handler } = withFixture(t);
   await call(handler, 'POST', '/save', {
