@@ -125,32 +125,45 @@ function watchDocFrame(iframe) {
 // Vite 的 CSS 普通 fetch 会拿到 JS 模块；?direct 取回 CSS 原文（静态文件服务忽略这个参数）。
 const directUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'direct';
 
-// CSS 文本按 URL 共用（97 张卡片的 kit / article.css 只取一次）；非 2xx 按空表处理 ——
+// CSS 原文按 URL 共用（97 张卡片的 kit / article.css 只取一次）；非 2xx 按空表处理 ——
 // iframe 里那条 <link> 失败同样没有样式（如 /workbench/wb-tokens.css 经 SPA 回退）。
-const cssTextCache = new Map();
-function sheetText(url) {
-  if (!cssTextCache.has(url)) {
+// 只缓存原文请求：@import 展开每一趟按自己的地址链做（resolveCssImports），不共享别的趟
+// 未完成的展开 —— 共享它，循环 import 的两张表会互等，卡片永远停在空壳。
+const rawCssCache = new Map();
+function rawCss(url) {
+  if (!rawCssCache.has(url)) {
     const pending = (async () => {
       const res = await fetch(directUrl(url));
-      if (!res.ok) return '';
-      const text = await cssFromText(await res.text(), url, new Set([url]));
-      // null：这张表的 @import 带 layer() / supports()，展开不出合法 CSS。不缓存，
-      // 引用它的帧退回 iframe（同一张表被多帧引用时各自退回，不把 null 当成空样式共用）。
-      if (text == null && cssTextCache.get(url) === pending) cssTextCache.delete(url);
-      return text;
+      return res.ok ? res.text() : '';
     })();
-    // 瞬时失败不留缓存（本次挂载回退 iframe，下一张卡还能重试）；成功的文本整页共用。
-    pending.catch(() => { if (cssTextCache.get(url) === pending) cssTextCache.delete(url); });
-    cssTextCache.set(url, pending);
+    // 瞬时失败不留缓存（本次挂载回退 iframe，下一张卡还能重试）。
+    pending.catch(() => { if (rawCssCache.get(url) === pending) rawCssCache.delete(url); });
+    rawCssCache.set(url, pending);
   }
-  return cssTextCache.get(url);
+  return rawCssCache.get(url);
+}
+
+/**
+ * <link> 指向的一张表展开成 constructed stylesheet 可用的文本。null：这张表展开不出合法 CSS
+ * （@import 带 layer() / supports()、循环 import），引用它的帧退回 iframe（各帧各自退回）。
+ * 结果按 URL 缓存给后面的卡片：每个缓存项是从这张表起的一整趟展开，里面只等原文请求
+ * （rawCss），从不等别的缓存项，所以不会互等。
+ */
+const sheetTextCache = new Map();
+export function sheetText(url) {
+  if (!sheetTextCache.has(url)) {
+    const pending = (async () => cssFromText(await rawCss(url), url, [url]))();
+    pending.catch(() => { if (sheetTextCache.get(url) === pending) sheetTextCache.delete(url); });
+    sheetTextCache.set(url, pending);
+  }
+  return sheetTextCache.get(url);
 }
 
 // @import 递归展开（constructed stylesheet 不许带 @import）后，url() 按本表自己的 base 改写、
 // :root 搬到 :host。被展开的文本已按自己的 base 处理过，外层再改写到绝对地址是空操作。
-async function cssFromText(text, base, seen) {
-  const out = await resolveCssImports(text, base, (href) => sheetText(href), seen);
-  if (out == null) return null; // layer() / supports() 的 @import：整帧退回 iframe
+async function cssFromText(text, base, path) {
+  const out = await resolveCssImports(text, base, rawCss, path);
+  if (out == null) return null; // 展开不出合法 CSS：整帧退回 iframe
   return rewriteRootSelector(rewriteCssUrls(out, base));
 }
 
@@ -366,7 +379,7 @@ async function mountCard(host) {
     for (const el of doc.querySelectorAll('style, link[rel=stylesheet]')) {
       const cssText = el.tagName === 'LINK'
         ? await sheetText(new URL(el.getAttribute('href'), base).href)
-        : await cssFromText(el.textContent, base, new Set());
+        : await cssFromText(el.textContent, base, []);
       if (cssText == null) return fallbackFrame(host, box, { srcdoc: text, title }); // 展开不出合法 CSS
       sheets.push(sheetFor(cssText));
       if (el.closest('body')) variable.push(cssText); // 判据只扫帧自带的样式（head 是帧页固定 boilerplate）

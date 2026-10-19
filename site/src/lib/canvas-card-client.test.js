@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { refreshBadges, waitForFrameBoot } from './canvas-card-client.js';
+import { refreshBadges, sheetText, waitForFrameBoot } from './canvas-card-client.js';
 import { pageLedgerName } from './canvas-card.js';
 import { readLedgerDocument, rememberLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
@@ -77,4 +77,45 @@ test('waitForFrameBoot：标记已在立刻放行；标记不来就到点放行�
   } finally {
     globalThis.MutationObserver = real;
   }
+});
+
+// 有上限的等待：旧实现里循环 import 的两张表互等，Promise 永远不落定；超时就算挂，不无限等。
+const settleWithin = (promise, ms = 2000) => Promise.race([
+  promise,
+  new Promise((_, reject) => { setTimeout(() => reject(new Error(`${ms}ms 内没有落定`)), ms).unref?.(); }),
+]);
+
+test('sheetText：循环 import 在限时内落定为 null（帧退回 iframe），之后的卡片再取同一张表也一样', async (t) => {
+  const origin = 'http://cycle.test/sites/demo_page/';
+  const texts = new Map([
+    [`${origin}article.css`, '@import "./a.css";'],
+    [`${origin}a.css`, '@import "./b.css"; [data-probe]{color:rgb(255,0,0)}'],
+    [`${origin}b.css`, '@import "./a.css"; [data-probe]{font-weight:bold}'],
+  ]);
+  const requests = [];
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    requests.push(url);
+    const key = url.replace(/[?&]direct$/, '');
+    return { ok: texts.has(key), text: async () => texts.get(key) };
+  });
+  // 两张卡同时取（挂载队列并发 6）：入口表与它 import 的表都可能是别的卡正在展开的那张。
+  const [first, second] = await settleWithin(Promise.all([sheetText(`${origin}article.css`), sheetText(`${origin}a.css`)]));
+  assert.equal(first, null);
+  assert.equal(second, null);
+  assert.equal(await settleWithin(sheetText(`${origin}b.css`)), null);
+  // 原文按 URL 只取一次。
+  assert.deepEqual(requests.sort(), [`${origin}a.css?direct`, `${origin}article.css?direct`, `${origin}b.css?direct`]);
+});
+
+test('sheetText：没有循环的 import 展开成内联文本，:root 搬到 :host', async (t) => {
+  const origin = 'http://plain.test/sites/demo_page/';
+  const texts = new Map([
+    [`${origin}article.css`, '@import "./tokens.css"; .card{color:var(--c)}'],
+    [`${origin}tokens.css`, ':root{--c:red}'],
+  ]);
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const key = url.replace(/[?&]direct$/, '');
+    return { ok: texts.has(key), text: async () => texts.get(key) };
+  });
+  assert.equal(await settleWithin(sheetText(`${origin}article.css`)), ':host{--c:red} .card{color:var(--c)}');
 });

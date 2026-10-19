@@ -63,27 +63,28 @@ export const rewriteRootSelector = (cssText) => String(cssText).replace(/:root\b
 export const importNeedsFrame = (condition) => /\b(?:layer|supports)\s*\(/.test(condition);
 
 /**
- * @import 递归展开：constructed stylesheet 不许带 @import，按 URL 取回文本内联；
- * media query 条件的 import 包进 @media 保住条件。条件是 layer() / supports() 时返回 null，
- * 调用方整帧退回 iframe。seen 打破循环引用（同一趟解析里重复的地址跳过）。
- * fetchText(href) → CSS 文本（调用方负责按 URL 缓存与 ?direct 处理）；被展开的文本自己返回 null 时一并退回。
+ * @import 递归展开：constructed stylesheet 不许带 @import，按 URL 取回原文内联；
+ * 被展开的表的 url() 按它自己的地址绝对化；media query 条件的 import 包进 @media 保住条件。
+ * 条件是 layer() / supports() 时返回 null，调用方整帧退回 iframe。
+ * fetchText(href) → 那张表的原始 CSS 文本（调用方负责按 URL 缓存原文与 ?direct 处理；只缓存原文，
+ * 展开每一趟自己做，不跨趟共享未完成的展开）。path 是这一趟从根到当前表的地址链：import 指回
+ * 链上的地址就是循环，返回 null 让整帧退回 iframe（循环不静态化）。
  */
-export async function resolveCssImports(cssText, baseUrl, fetchText, seen = new Set()) {
-  let out = String(cssText);
-  const imports = [...out.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]\s*\)?\s*([^;]*);/g)];
-  for (const m of imports) {
+export async function resolveCssImports(cssText, baseUrl, fetchText, path = []) {
+  const css = String(cssText);
+  let out = '';
+  let at = 0;
+  for (const m of css.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]\s*\)?\s*([^;]*);/g)) {
     if (importNeedsFrame(m[2])) return null; // 条件包不进 @media：整帧退回 iframe
     const href = new URL(m[1], baseUrl).href;
-    let replacement = '';
-    if (!seen.has(href)) {
-      seen.add(href);
-      const text = await fetchText(href, seen);
-      if (text == null) return null; // 被展开的表自己退回了
-      replacement = m[2].trim() ? `@media ${m[2].trim()}{${text}}` : text;
-    }
-    out = out.replace(m[0], replacement);
+    if (path.includes(href)) return null; // 循环 import：整帧退回 iframe
+    const inner = await resolveCssImports(await fetchText(href), href, fetchText, [...path, href]);
+    if (inner == null) return null; // 被展开的表自己退回了
+    const text = rewriteCssUrls(inner, href);
+    out += css.slice(at, m.index) + (m[2].trim() ? `@media ${m[2].trim()}{${text}}` : text);
+    at = m.index + m[0].length;
   }
-  return out;
+  return out + css.slice(at);
 }
 
 /** srcset 的每个候选地址按 base 改写绝对（描述符 1x / 400w 原样保留）。 */

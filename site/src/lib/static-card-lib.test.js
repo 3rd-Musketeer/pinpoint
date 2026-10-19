@@ -53,19 +53,43 @@ test('rewriteRootSelector：:root 搬到 :host，:rootish 不动', () => {
   assert.equal(rewriteRootSelector('.rooty{a:1}'), '.rooty{a:1}');
 });
 
-test('resolveCssImports：递归展开 @import，带条件的包 @media，循环引用跳过', async () => {
+test('resolveCssImports：递归展开 @import，带条件的包 @media，被展开表的 url() 按它自己的地址改写', async () => {
   const base = 'http://x/sites/demo_page/';
   const texts = new Map([
-    ['http://x/sites/demo_page/a.css', '@import url("b.css"); .a{x:1}'],
-    ['http://x/sites/demo_page/b.css', '@import "a.css"; .b{y:2}'], // 循环回 a.css
+    ['http://x/sites/demo_page/a.css', '@import url("sub/b.css"); .a{x:1}'],
+    ['http://x/sites/demo_page/sub/b.css', '.b{background:url(i.png)}'],
     ['http://x/sites/demo_page/c.css', '.c{z:3}'],
   ]);
-  const fetchText = async (href, seen) => resolveCssImports(texts.get(href), href, fetchText, seen);
+  const fetched = [];
+  const fetchText = async (href) => { fetched.push(href); return texts.get(href); };
   const out = await resolveCssImports(`@import url("a.css");@import "c.css" screen and (max-width: 600px);`, base, fetchText);
-  assert.equal(out, ' .b{y:2} .a{x:1}@media screen and (max-width: 600px){.c{z:3}}');
-  const seen2 = new Set();
-  const again = await resolveCssImports('@import url("a.css");@import url("a.css");', base, fetchText, seen2);
-  assert.equal((again.match(/\.a\{x:1\}/g) || []).length, 1); // 同一趟重复地址只展开一次
+  assert.equal(out, '.b{background:url("http://x/sites/demo_page/sub/i.png")} .a{x:1}@media screen and (max-width: 600px){.c{z:3}}');
+  // fetchText 只给原文：展开由本函数自己递归，调用方不传展开结果。
+  assert.deepEqual(fetched, ['http://x/sites/demo_page/a.css', 'http://x/sites/demo_page/sub/b.css', 'http://x/sites/demo_page/c.css']);
+  // 同一层重复 import 不是循环：两次都展开（浏览器也两条都应用）。
+  const again = await resolveCssImports('@import url("c.css");@import url("c.css");', base, fetchText);
+  assert.equal(again, '.c{z:3}.c{z:3}');
+  // 替换文本里的 $ 原样保留（不按 String.replace 的替换模式解释）。
+  const dollar = await resolveCssImports('@import "d.css";', base, async () => '.d::after{content:"$&$1"}');
+  assert.equal(dollar, '.d::after{content:"$&$1"}');
+});
+
+test('resolveCssImports：循环 import 按这一趟的地址链断开，返回 null 让整帧退回 iframe', async () => {
+  const base = 'http://x/sites/demo_page/';
+  const texts = new Map([
+    ['http://x/sites/demo_page/a.css', '@import "./b.css"; .a{x:1}'],
+    ['http://x/sites/demo_page/b.css', '@import "./a.css"; .b{y:2}'], // 循环回 a.css
+    ['http://x/sites/demo_page/self.css', '@import "self.css";'],
+    ['http://x/sites/demo_page/d.css', '@import "e.css"; @import "e.css";'],
+    ['http://x/sites/demo_page/e.css', '.e{}'],
+  ]);
+  const fetchText = async (href) => texts.get(href);
+  assert.equal(await resolveCssImports('@import "a.css";', base, fetchText), null);
+  assert.equal(await resolveCssImports('@import "self.css";', base, fetchText), null);
+  // 根表自己在链上（<link> 那张表从 [url] 起）：b 指回根也是循环。
+  assert.equal(await resolveCssImports(texts.get(`${base}b.css`), `${base}b.css`, fetchText, [`${base}b.css`]), null);
+  // 菱形（同一张表被两处引用、没有回到链上）不是循环。
+  assert.equal(await resolveCssImports('@import "d.css";', base, fetchText), '.e{} .e{}');
 });
 
 test('resolveCssImports：@import 带 layer() / supports() 不包进 @media，返回 null 让整帧退回 iframe', async () => {
@@ -82,8 +106,7 @@ test('resolveCssImports：@import 带 layer() / supports() 不包进 @media，�
   assert.deepEqual(fetched, []);
   // 被展开的表自己带这种 import，外层一并退回。
   const nested = new Map([['http://x/sites/demo_page/a.css', '@import "b.css" layer(x);']]);
-  const fetchNested = async (href, seen) => resolveCssImports(nested.get(href), href, fetchNested, seen);
-  assert.equal(await resolveCssImports('@import url("a.css");', base, fetchNested), null);
+  assert.equal(await resolveCssImports('@import url("a.css");', base, async (href) => nested.get(href)), null);
 });
 
 test('absolutizeSrcset：候选地址绝对化，描述符保留', () => {
