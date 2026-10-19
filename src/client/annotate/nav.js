@@ -23,36 +23,40 @@ export function init_nav() {
   ctx.markNavigation = 0;
 }
 
+/** 标注层有东西要退就退一层并返回 true；没有返回 false，这一下 Esc 留给页面。 */
+function takeEscape() {
+  if (document.getElementById('ann-mention')) { closeMention(); return true; }
+  var tools = document.querySelector('#ann-box #ann-tools-menu');
+  if (tools && !tools.hidden) {
+    tools.hidden = true;
+    var plus = document.querySelector('#ann-box #ann-plus');
+    if (plus) { plus.setAttribute('aria-expanded', 'false'); plus.focus(); }
+    return true;
+  }
+  if (ctx.activeComposer || document.getElementById('ann-box')) { closeComposer(); return true; }
+  if (ctx.arrowFrom || ctx.drag || ctx.lasso) {
+    ctx.arrowFrom = null;
+    ctx.drag = null;
+    removeTip();
+    removeTempArrow();
+    if (ctx.lasso) { ctx.lasso.remove(); ctx.lasso = null; }
+    clearHover();
+    return true;
+  }
+  if (ctx.mode) { toggleMode(); return true; }
+  return false;
+}
+
 export function installPinpointApi() {
-  document.addEventListener('keydown', function (e) {
+  // Esc 逐级退：提及列表 → 输入框的工具菜单 → 标注框 → 进行中的箭头 / 框选 → 标注模式，之后才轮到页面自己。
+  // 挂在 window 的捕获段，排在被评审页面的所有监听之前：标注层接住这一下就截断，
+  // 原型自己注册的 Esc（关表单、关弹窗）不会跟着一起触发（owner 2026-10-19）。
+  window.addEventListener('keydown', function (e) {
     if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
-    if (document.getElementById('ann-mention')) {
-      e.preventDefault();
-      closeMention();
-      return;
-    }
-    if (ctx.activeComposer || document.getElementById('ann-box')) {
-      e.preventDefault();
-      closeComposer();
-      return;
-    }
-    if (ctx.arrowFrom || ctx.drag || ctx.lasso) {
-      e.preventDefault();
-      ctx.arrowFrom = null;
-      ctx.drag = null;
-      removeTip();
-      removeTempArrow();
-      if (ctx.lasso) { ctx.lasso.remove(); ctx.lasso = null; }
-      clearHover();
-      return;
-    }
-    if (ctx.mode) {
-      e.preventDefault();
-      toggleMode();
-    }
-  });
-  document.addEventListener("keydown", function (event) {
-    if (event.key === "Escape" && !event.isComposing && event.keyCode !== 229) ctx.markNavigation++;
+    ctx.markNavigation++; // 还在等首帧的跳转也一起取消
+    if (!takeEscape()) return;
+    e.preventDefault();
+    e.stopImmediatePropagation();
   }, true);
   window.pinpoint = {
     render: renderAll,

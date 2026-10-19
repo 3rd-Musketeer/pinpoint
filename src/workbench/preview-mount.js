@@ -13,6 +13,7 @@ import { restorePageViewportAfterMount, syncPanelPrefs } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
 import { cssImportUrls } from './lib/sidecar-css.js';
 import { whenChromeReady } from './lib/chrome-ready.js';
+import { rememberBoard } from './frame-reset.js';
 
 // 反向依赖注入：wireLibraryScrollSpy 属 pages.js 簇，沿用 initPreviewMount(deps)
 // 注入（历史上由 workbench.js 持有，DI 通道保留）。标注面板刷新不再是 DI ——
@@ -290,6 +291,16 @@ export function afterMount(panel, session) {
         s.removeAttribute('data-fit');
         var device = s.querySelector('.ios-device');
         if (device) device.style.setProperty('--ios-scale', '1');
+      });
+      // 预览脚本还没跑：记下每帧的初始 HTML，帧菜单的“重置”换回它再重跑这一帧的脚本。
+      rememberBoard(panel, session, function (scope) {
+        scope.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
+          s.removeAttribute('data-fit');
+          var device = s.querySelector('.ios-device');
+          if (device) device.style.setProperty('--ios-scale', '1');
+        });
+        if (window.iOSKit) window.iOSKit.refresh(scope);
+        return runPreviewScripts(scope, session.pageId, session);
       });
       syncPanelPrefs(panel);
       wireExportControls(panel);

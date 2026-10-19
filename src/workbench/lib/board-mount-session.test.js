@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { BoardMountManager } from './board-mount-session.js';
+import { BoardMountManager, BoardMountSession } from './board-mount-session.js';
 
 test('starting a new mount settles and disposes the previous session', async () => {
   const manager = new BoardMountManager();
@@ -72,4 +72,18 @@ test('previewsSettled 与 boardSettled 各落各的：几何先好、脚本后�
   assert.equal(previews, null, '脚本还在挂时不落定');
   session.settlePreviews(true);
   assert.equal(await session.previewsSettled, true);
+});
+
+test('disposeWithin 只卸载这块子树里挂的脚本，别的留到会话取消', () => {
+  const session = new BoardMountSession(1, 'p');
+  const inside = { isConnected: true };
+  const outside = { isConnected: true };
+  const scope = { contains: (el) => el === inside };
+  const calls = [];
+  session.trackDisposer(() => calls.push('inside'), inside);
+  session.trackDisposer(() => calls.push('outside'), outside);
+  session.disposeWithin(scope);
+  assert.deepEqual(calls, ['inside']);
+  session.cancel();
+  assert.deepEqual(calls, ['inside', 'outside']);
 });

@@ -12,6 +12,8 @@
 //   - scope 模式（注入到别人页面的标注客户端）：只认 scope 选择器里的元素，页面自己的滚动不碰。
 // 文档根和带 data-pp-scrollbar="scroll" 的大面（工作台画布）悬停不出条（不然指针在页面上它就一直在），
 // 只在滚动时、或指针贴到条所在的边上时出。
+// 带 data-pp-scrollbar="off" 的子树是被评审的内容（工作台画布上的帧）：里面的容器不出条。
+// 帧在画布里按缩放画，条按未缩放的尺寸算会又长又偏；真机上这些滚动本来也没有条。
 
 export var BAR = 6; // 条粗
 export var INSET = 2; // 离容器内缘
@@ -68,6 +70,7 @@ export function installOverlayScrollbars(doc, opts) {
 
   function isRoot(el) { return el === root || el === doc.body && doc.scrollingElement === doc.body; }
   function inScope(el) { return !scope || !!(el.closest && el.closest(scope)); }
+  function reviewed(el) { return !!(el.closest && el.closest('[data-pp-scrollbar="off"]')); }
   function hoverless(el) { return isRoot(el) || el.getAttribute('data-pp-scrollbar') === 'scroll'; }
 
   function scrollable(el, axis) {
@@ -80,9 +83,11 @@ export function installOverlayScrollbars(doc, opts) {
 
   // 指针下面最内层可滚的容器（每个方向各找一个）；文档根与大面只在指针贴边时算。
   function scrollerAt(target, axis) {
+    var off = target && target.nodeType === 1 ? target.closest('[data-pp-scrollbar="off"]') : null;
     for (var el = target; el && el.nodeType === 1; el = el.parentElement) {
       if (el === root || el === doc.body) break;
       if (el.hasAttribute('data-pp-osb')) return hoverEl[axis];
+      if (off && off.contains(el)) continue;
       if (!inScope(el) || !scrollable(el, axis)) continue;
       if (hoverless(el) && !nearEdge(el, axis)) continue;
       return el;
@@ -167,7 +172,7 @@ export function installOverlayScrollbars(doc, opts) {
   }
   function onScroll(e) {
     var el = e.target === doc ? (doc.scrollingElement || root) : e.target;
-    if (!el || el.nodeType !== 1 || !inScope(el) || (scope && isRoot(el))) return;
+    if (!el || el.nodeType !== 1 || !inScope(el) || (scope && isRoot(el)) || reviewed(el)) return;
     active.set(el, Date.now() + LINGER_MS);
     schedule();
   }

@@ -8,6 +8,8 @@
 // P2 说明：导出 POST 是下载流 / 一次性计算，不是可缓存的 server state —— 保持
 // plain fetch，不走 Query。
 
+import { resetFrame } from './frame-reset.js';
+
 // 反向依赖注入：React 岛挂载器属 app/ 簇，本模块不得 import app/ 组件，
 // 由 app/main.jsx 在初始化时经 initExportCore(deps) 注入。
 var exportDeps = {};
@@ -89,7 +91,8 @@ export function wireExportControls(panel) {
     shell.setAttribute('data-ann-ui', '');
     caption.appendChild(shell);
     exportDeps.mountFrameMenu(shell, {
-      screenId: screen.getAttribute('data-screen')
+      screenId: screen.getAttribute('data-screen'),
+      onReset: resetFrame
     });
   });
 }

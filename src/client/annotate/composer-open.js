@@ -104,7 +104,7 @@ export function openComposer(m, anchorRect, isNew) {
   var toolsMenu = box.querySelector('#ann-tools-menu');
   function closeTools() { toolsMenu.hidden = true; plus.setAttribute('aria-expanded', 'false'); }
   plus.addEventListener('click', function () { toolsMenu.hidden = !toolsMenu.hidden; plus.setAttribute('aria-expanded', String(!toolsMenu.hidden)); });
-  box.addEventListener('keydown', function (event) { if (event.key === 'Escape' && !toolsMenu.hidden) { event.preventDefault(); event.stopPropagation(); closeTools(); plus.focus(); } });
+  // Esc 关工具菜单在 nav.js 的 takeEscape 里（标注层的 Esc 统一在 window 捕获段处理）。
   function renderModes() {
     var wrap = box.querySelector('#ann-mode-pills'); wrap.replaceChildren();
     [['change', '改文案', draft.changeOn], ['move', '移动', !!m.move]].forEach(function (item) {
@@ -149,15 +149,9 @@ export function openComposer(m, anchorRect, isNew) {
       if (e.key === 'ArrowDown') { e.preventDefault(); mention.move(1); return; }
       if (e.key === 'ArrowUp') { e.preventDefault(); mention.move(-1); return; }
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); mention.pick(); return; }
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        e.stopPropagation();
-        mention.close();
-        return;
-      }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
-    // Escape (no mention): document listener closes box
+    // Escape：提及列表、标注框都由 nav.js 的 takeEscape 逐级关
   });
   box.querySelector('#ann-close').addEventListener('click', function () { closeComposer(); });
   var del = box.querySelector('#ann-del');

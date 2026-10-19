@@ -66,7 +66,20 @@ export class BoardMountSession {
       try { disposer(); } catch (error) { console.error('[preview-script] stale unmount', error); }
       return;
     }
-    this.disposers.push(disposer);
+    this.disposers.push({ run: disposer, root: root || null });
+  }
+
+  /** 卸载挂在 scope 子树里的预览脚本（重置一帧时用，frame-reset.js），别的帧不动。 */
+  disposeWithin(scope) {
+    const keep = [];
+    for (const entry of this.disposers) {
+      if (entry.root && scope.contains(entry.root)) {
+        try { entry.run(); } catch (error) { console.error('[preview-script] unmount', error); }
+      } else {
+        keep.push(entry);
+      }
+    }
+    this.disposers = keep;
   }
 
   cancel() {
@@ -80,8 +93,8 @@ export class BoardMountSession {
     this.settleBoard(false);
     this.settlePreviews(false);
     const list = this.disposers.splice(0, this.disposers.length);
-    for (const disposer of list) {
-      try { disposer(); } catch (error) { console.error('[preview-script] unmount', error); }
+    for (const entry of list) {
+      try { entry.run(); } catch (error) { console.error('[preview-script] unmount', error); }
     }
   }
 }

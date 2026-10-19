@@ -41,7 +41,10 @@ test('文章画布内的活卡片：Esc 依次处理输入、提及、标注框�
     await expect(overlay).toHaveAttribute('open', '');
     await wb().evaluate(() => document.getElementById('p3-menu').remove());
   });
-  await test.step('提及、标注框、标注模式逐层退出，最后回文章', async () => {
+  await test.step('提及、标注框、标注模式逐层退出，最后回文章；页面自己注册的 Esc 排在标注层之后', async () => {
+    // 原型自己的 Esc（例如关表单）挂在 document 冒泡段：标注层退完之前一次都不该收到。
+    await card.locator('body').evaluate(el => { const d = el.ownerDocument; d.defaultView.__pageEsc = 0; d.addEventListener('keydown', e => { if (e.key === 'Escape') d.defaultView.__pageEsc++; }); });
+    const pageEsc = () => card.locator('body').evaluate(el => el.ownerDocument.defaultView.__pageEsc);
     await canvas.locator('#wbann-toggle').click();
     await card.locator('.cat-btn').click();
     await expect(card.locator('#ann-box')).toBeVisible();
@@ -56,6 +59,7 @@ test('文章画布内的活卡片：Esc 依次处理输入、提及、标注框�
     await card.locator('.cat-btn').focus();
     await page.keyboard.press('Escape');
     await expect(canvas.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'false');
+    expect(await pageEsc()).toBe(0);
     await expect(overlay).toHaveAttribute('open', '');
     await page.keyboard.press('Escape');
     await expect(overlay).not.toHaveAttribute('open', '');

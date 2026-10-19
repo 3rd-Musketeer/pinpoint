@@ -210,7 +210,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
   if (!sections.length || (sections.length === 1 && sections[0].id === '_empty')) {
     var emptyTitle = '暂无屏幕';
     var emptyHelp = '在这个页面的 board.json sections[] 中添加 screen。';
-    return '<div class="wb-zoom-wrap"><div class="wb-library">' +
+    return '<div class="wb-zoom-wrap"><div class="wb-library" data-pp-scrollbar="off">' +
       '<article class="wb-lib-item" id="lib-_empty" data-ann-section="_empty" data-ann-section-label="' + emptyTitle + '" data-ann-group="_empty" data-ann-group-label="' + emptyTitle + '">' +
       '<h2 class="wb-lib-cap">' + emptyTitle + '</h2>' +
       '<p class="wb-muted" style="color:var(--wb-muted);font-size:13px;max-width:420px">' + emptyHelp + '</p>' +
@@ -271,7 +271,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       '<div class="wb-sec-body wb-sec-' + layout + '">' + body + '</div>' +
       '</article>';
   });
-  return '<div class="wb-zoom-wrap"><div class="wb-library">' + hoistImportOnlyStyles(parts.join('')) + '</div></div>';
+  return '<div class="wb-zoom-wrap"><div class="wb-library" data-pp-scrollbar="off">' + hoistImportOnlyStyles(parts.join('')) + '</div></div>';
 }
 
 /** 文章画布上的一个 HTML 帧 → 卡片 + 页面浮层两块（见 htmlCardHtml 上的说明）。

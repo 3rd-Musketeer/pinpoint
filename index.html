@@ -764,6 +764,19 @@
   }
   .wb-cap-open:hover { background:color-mix(in srgb, var(--wb-accent) 12%, var(--wb-surface)); color:var(--wb-accent); }
   .wb-cap-open:focus-visible { outline:2px solid var(--wb-accent); outline-offset:2px; }
+  /* 帧被交互改过、不是原始状态（frame-reset.js）：图注屏名后面一个红点，点它重置这一帧。
+     尺寸跟图注字号走（画布是缩放空间，写死 px 会随缩放变）。 */
+  .wb-cap-dirty {
+    flex:none; align-self:center; position:relative;
+    width:calc(var(--wb-cap-ref) * .7); height:calc(var(--wb-cap-ref) * .7);
+    padding:0; border:0; border-radius:50%; cursor:pointer;
+    background:var(--wb-danger);
+    box-shadow:0 0 0 0 color-mix(in srgb, var(--wb-danger) 22%, transparent);
+    transition:box-shadow var(--wb-dur) var(--wb-ease);
+  }
+  .wb-cap-dirty::after { content:''; position:absolute; inset:calc(var(--wb-cap-ref) * -.5); } /* 点击区比点大 */
+  .wb-cap-dirty:hover { box-shadow:0 0 0 calc(var(--wb-cap-ref) * .3) color-mix(in srgb, var(--wb-danger) 22%, transparent); }
+  .wb-cap-dirty:focus-visible { outline:2px solid var(--wb-accent); outline-offset:2px; }
   .wb-cap-count {
     flex:none; align-self:center;
     padding:.2em .6em; border-radius:999px;

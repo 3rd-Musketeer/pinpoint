@@ -30,6 +30,7 @@ import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js'
 import { CANVAS_ENTRY_ID } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
+import { resetFrame } from './frame-reset.js';
 import {
   annotateApi,
   startAnnBridge,
@@ -333,6 +334,7 @@ function followSession(signal) {
 
 window.workbench = {
   switchPage: switchPage,
+  resetFrame: resetFrame,
   setActivePage: setActivePage,
   setActiveEntry: setActiveEntry,
   focusFrame: async function (sectionId, screenId, options) {

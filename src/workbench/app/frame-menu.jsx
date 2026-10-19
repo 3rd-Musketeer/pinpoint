@@ -24,6 +24,7 @@
 // 拿到这两个函数（app → 命令式 的 import 方向不变，本文件不 import export-core）。
 // 2026-08-15d 收敛：菜单里的「导出图片…」入口已随旧导出对话框退役（图片导出
 // 唯一入口 = HUD「导出」→ ExportPicker.jsx），菜单本体保留（复制 @frame 等）。
+// 2026-10-19 加「重置这一帧」：把这一帧放回刚挂载时的样子（frame-reset.js，由 export-core 经 onReset 交进来）。
 import { useEffect, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
@@ -66,6 +67,15 @@ function FrameMenu(props) {
               <span data-frame-menu-label className="min-w-0 truncate">{copiedText ? '已复制 ' + copiedText : '复制 @frame'}</span>
             </button>
           </DropdownMenu.Item>
+          {props.onReset ? (
+            <DropdownMenu.Item asChild onSelect={function () { props.onReset(props.screenId); }}>
+              <button type="button" className={'wb-frame-menu-item ' + ROW_MENU_ITEM} role="menuitem" data-frame-reset
+                title="放回刚打开时的样子，标注不受影响">
+                <span aria-hidden="true" className="w-[15px] text-center text-muted-foreground">↺</span>
+                <span className="min-w-0 truncate">重置这一帧</span>
+              </button>
+            </DropdownMenu.Item>
+          ) : null}
         </span>
       </DropdownMenu.Content>
     </DropdownMenu.Root>
@@ -74,7 +84,7 @@ function FrameMenu(props) {
 
 export function mountFrameMenu(shell, options) {
   var root = createRoot(shell);
-  root.render(<FrameMenu screenId={options.screenId} />);
+  root.render(<FrameMenu screenId={options.screenId} onReset={options.onReset} />);
   mounted.push({ shell: shell, root: root });
 }
 
