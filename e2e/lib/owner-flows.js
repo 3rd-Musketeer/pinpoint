@@ -71,10 +71,15 @@ export function ownerLedger(ledger = '@canvas') {
 
 export async function ownerCleanup(page) {
   if (page.isClosed()) return;
-  // 正文缩略帧 annotate=off，只读且没有保存客户端。断开这些帧后再按现有协议
-  // 等正文/工作台的真实写落盘，避免对尚未创建执行上下文的 lazy iframe 逐个等 500 ms。
+  // 正文缩略帧 annotate=off，只读且没有保存客户端（E1：带预览脚本的帧是 srcdoc 回退 iframe，
+  // 同样只读）。断开这些帧后再按现有协议等正文/工作台的真实写落盘，避免对尚未创建执行上下文的
+  // lazy iframe 逐个等 500 ms。
   await page.locator('[data-pp-canvas] iframe').evaluateAll(frames => {
-    for (const frame of frames) if (new URL(frame.src).searchParams.get('annotate') === 'off') frame.remove();
+    for (const frame of frames) {
+      let quiet = frame.dataset.ccFallback === '1';
+      try { quiet = quiet || new URL(frame.src).searchParams.get('annotate') === 'off'; } catch { quiet = true; }
+      if (quiet) frame.remove();
+    }
   });
   await closeSettled(page);
 }

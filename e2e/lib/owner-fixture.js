@@ -20,16 +20,19 @@ export function writeOwnerFixture() {
     for (let n = (s - 1) * 8 + 1; n <= (s === 12 ? 97 : s * 8); n++) {
       const id = frameId(n);
       ids.push(id);
-      fs.writeFileSync(path.join(OWNER_SOURCE, `${id}.jsx`), `export default function Flow() {
-  return <div className="ios-app"><div className="ios-page" style={{ padding: '24px' }}>
-    <h1 data-owner-heading>流程 ${n} 初稿</h1>
-    <button data-owner-action type="button">确认流程 ${n}</button>
-    <p data-owner-result>尚未确认</p>
+      // flow-001 / flow-002 保留预览脚本（owner-flows 的交互与红点重置靠它），文章卡片里这两帧留
+      // srcdoc iframe；其余 95 帧是纯静态，卡片走 shadow root（E1，2026-10-19）。
+      const previewScript = n <= 2 ? `
     <script data-preview-script>{\`
       root.querySelector('[data-owner-action]').addEventListener('click', () => {
         root.querySelector('[data-owner-result]').textContent = '已经确认';
       });
-    \`}</script>
+    \`}</script>` : '';
+      fs.writeFileSync(path.join(OWNER_SOURCE, `${id}.jsx`), `export default function Flow() {
+  return <div className="ios-app"><div className="ios-page" style={{ padding: '24px' }}>
+    <h1 data-owner-heading>流程 ${n} 初稿</h1>
+    <button data-owner-action type="button">确认流程 ${n}</button>
+    <p data-owner-result>尚未确认</p>${previewScript}
   </div></div>;
 }
 `);

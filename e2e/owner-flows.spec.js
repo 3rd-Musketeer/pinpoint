@@ -8,6 +8,8 @@ import { OWNER_SOURCE } from './lib/owner-fixture.js';
 test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更新', async ({ page, context }, testInfo) => {
   const source = path.join(OWNER_SOURCE, 'flow-001.jsx');
   const original = fs.readFileSync(source, 'utf8');
+  const staticSource = path.join(OWNER_SOURCE, 'flow-003.jsx');
+  const staticOriginal = fs.readFileSync(staticSource, 'utf8');
   const article = await context.newPage();
   try {
     await test.step('工作台和文章各打开同一帧', async () => {
@@ -15,6 +17,9 @@ test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更�
       await focusOwnerFrame(page);
       await openOwnerArticle(article);
       await expect(article.frameLocator('[data-screen="flow-001"] iframe').locator('[data-owner-heading]')).toHaveText('流程 1 初稿');
+      // 静态帧（flow-003）的卡片是 shadow root，Playwright 的 css 选择器直接穿透。
+      await article.locator('[data-pp-section="part-1"]').scrollIntoViewIfNeeded();
+      await expect(article.locator('[data-screen="flow-003"] .cc-shadow [data-owner-heading]')).toHaveText('流程 3 初稿');
     });
     await test.step('写源文件，两个页面不手动刷新就看到新稿', async () => {
       const started = performance.now();
@@ -24,9 +29,18 @@ test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更�
       await boardReady(page);
       await metric(testInfo, 'source-update', { elapsedMs: performance.now() - started });
     });
+    // 静态帧单独一个「写 → 看」阶段：文章卡片的更新链路是 Astro 内容库重读 → 整页 reload
+    // → 卡片重新取帧 HTML，比 pinpoint 的重编译快；同一 step 里连写两个帧时，页面 reload
+    // 会抢在第二个帧编译完之前，取回旧稿后就没有下一次 reload 了（2026-10-19 实测）。
+    await test.step('写静态帧的源文件，shadow 卡片照旧更新', async () => {
+      fs.writeFileSync(staticSource, staticOriginal.replace('流程 3 初稿', '流程 3 修订稿'));
+      await article.locator('[data-pp-section="part-1"]').scrollIntoViewIfNeeded();
+      await expect(article.locator('[data-screen="flow-003"] .cc-shadow [data-owner-heading]')).toHaveText('流程 3 修订稿', { timeout: 30_000 });
+    });
   } finally {
     await ownerCleanup(article);
     fs.writeFileSync(source, original);
+    fs.writeFileSync(staticSource, staticOriginal);
   }
 });
 
