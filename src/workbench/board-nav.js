@@ -600,18 +600,21 @@ export function clearBoardSelection() {
 export function syncBoardSelection() {
   var panel = document.getElementById('wb-board-panel');
   if (!panel) return;
-  panel.querySelectorAll('.wb-sel').forEach(function (node) { node.classList.remove('wb-sel'); });
   var s = wbGet();
+  var want = null;
   if (s.focusFrameKey) {
     var parts = s.focusFrameKey.split('\0');
-    var frame = panel.querySelector(
+    want = panel.querySelector(
       '.wb-lib-item[data-ann-section="' + CSS.escape(parts[0]) + '"] [data-screen="' + CSS.escape(parts[1]) + '"]'
     );
-    if (frame) frame.classList.add('wb-sel');
   } else if (s.focusSectionId) {
-    var item = panel.querySelector('.wb-lib-item[data-ann-section="' + CSS.escape(s.focusSectionId) + '"]');
-    if (item) item.classList.add('wb-sel');
+    want = panel.querySelector('.wb-lib-item[data-ann-section="' + CSS.escape(s.focusSectionId) + '"]');
   }
+  // 只在选中真的变了时写 DOM。store 每次变（标注快照每次 notify 都换新对象）都会调到这里，
+  // 同值的 remove + add 也是两条属性变更：标注客户端的 MutationObserver 收到后整板重渲染、再 notify，
+  // 自己喂自己转不停，占满主线程（2026-10-19 性能审计 K1，Kimi；owner 在画布上打字卡）。
+  panel.querySelectorAll('.wb-sel').forEach(function (node) { if (node !== want) node.classList.remove('wb-sel'); });
+  if (want && !want.classList.contains('wb-sel')) want.classList.add('wb-sel');
 }
 
 /** True when keyboard shortcuts should yield to text entry. */

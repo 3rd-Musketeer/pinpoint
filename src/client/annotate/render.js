@@ -257,7 +257,7 @@ export function prepareCanvasView(stage, rebuild) {
     var group = groups.get(root);
     if (!group) {
       var node = document.createElement('div');
-      node.className = 'ann-mark-group'; ctx.marksLayer.appendChild(node);
+      node.className = 'ann-mark-group'; node.setAttribute('data-ann-ui', ''); ctx.marksLayer.appendChild(node);
       group = { node: node, root: root, entries: [], bounds: null, visible: true };
       groups.set(root, group);
     }
