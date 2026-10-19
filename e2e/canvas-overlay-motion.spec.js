@@ -665,3 +665,44 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
     expect(hit).toContain('ov-canvas');
   });
 });
+
+// 停驻的工作台不占 /events（HTTP/1.1 同源 6 条连接，src/workbench/server-events.js）：
+// 预热前文章页自己两条，预热后不该变成四条，否则多开一两个标签页请求就排队堵住
+// （2026-10-19 owner-flows「改稿」：看板 2 + 文章 2 + 停驻工作台 2 + 静态文章 = 7，静态卡片取样式卡死）。
+// 断开期间的推送不丢：打开时重连并补读，停驻时别处写进账本的那一条要在画布上。
+test('画布浮层：停驻的工作台断开 /events，打开后重连并补上停驻期间的标注', async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  const open = new Set();
+  const inWorkbench = (frame) => { for (let f = frame; f; f = f.parentFrame()) if (new URL(f.url()).pathname.startsWith('/workbench/')) return true; return false; };
+  page.on('request', (r) => { if (new URL(r.url()).pathname === '/events' && inWorkbench(r.frame())) open.add(r); });
+  page.on('requestfinished', (r) => open.delete(r));
+  page.on('requestfailed', (r) => open.delete(r));
+  await openArticle(page);
+  await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
+  // 标注实例装上之后再数：它的 /events 在就绪前后才开。
+  await expect.poll(() => page.evaluate(() => !!window.pinpointOverlay.frame()?.contentWindow?.pinpoint?.whenReady), { timeout: 60_000 }).toBe(true);
+  await expect.poll(() => open.size, { timeout: 10_000 }).toBe(0);
+
+  const { pageId, screen } = await page.evaluate(() => ({
+    pageId: document.querySelector('[data-pp-canvas]').dataset.page,
+    screen: document.querySelector('[data-pp-canvas] .cc-frame[data-screen]').dataset.screen,
+  }));
+  const endpoint = `/annotations/${encodeURIComponent('@canvas')}?entry=${encodeURIComponent(pageId)}`;
+  const before = await (await request.get(endpoint)).json();
+  const row = { id: 'e2-parked-row', screenId: screen, status: 'open', content: '停驻期间写进来的', messages: [], targets: [] };
+  try {
+    const saved = await request.post('/save', { data: { entry: pageId, page: '@canvas', path: '/', baseRevision: before.revision, annotations: [...(before.annotations || []), row] } });
+    expect(saved.ok(), await saved.text()).toBe(true);
+    await openFromTop(page);
+    await expect(overlay(page)).toHaveAttribute('open', '');
+    await expect.poll(() => open.size, { timeout: 10_000 }).toBeGreaterThan(0);
+    await expect.poll(() => page.evaluate(() => {
+      const ann = window.pinpointOverlay.frame().contentWindow.pinpoint;
+      return !!ann && ann.getState().connected && ann.marks.some((m) => m.id === 'e2-parked-row');
+    }), { timeout: 30_000 }).toBe(true);
+  } finally {
+    const now = await (await request.get(endpoint)).json();
+    await request.post('/save', { data: { entry: pageId, page: '@canvas', path: '/', baseRevision: now.revision, annotations: (now.annotations || []).filter((a) => a.id !== row.id) } });
+  }
+});

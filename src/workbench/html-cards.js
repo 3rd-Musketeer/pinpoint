@@ -2,6 +2,7 @@
 // 账本，之后跟着 SSE 的 annotations 事件变（Sidebar 收到后在 window 上转发 wb:annotations，不另开连接）。
 // 关掉页面浮层回画布时数已经是新的：浮层里每存一次，服务就推一次。
 import { htmlCardCountText, htmlFrameLedgerKey, htmlFramePending, ledgerMatches } from './lib/html-card-counts.js';
+import { registerEmbedPark } from './embed-park.js';
 
 var current = { pageId: '', keys: new Map() };   // 账本名 → [卡片的计数节点]
 var lastCounts = new Map();                        // pageId + '\0' + 账本名 → { revision, count }
@@ -46,15 +47,24 @@ export function syncHtmlCardCounts(panel, pageId) {
     if (!current.keys.has(key)) current.keys.set(key, []);
     current.keys.get(key).push(node);
   });
-  var mine = current;
   current.keys.forEach(function (_, key) {
     var cached = lastCounts.get(pageId + '\0' + key);
     if (cached) paint(key, cached.count);
-    readLedger(pageId, key).then(function (doc) {
+  });
+  readAll();
+}
+
+function readAll() {
+  var mine = current;
+  current.keys.forEach(function (_, key) {
+    readLedger(mine.pageId, key).then(function (doc) {
       if (current === mine) accept(key, doc);
     }).catch(function () { /* 读不到：留着上次的数，下一次推送再画 */ });
   });
 }
+
+// 停驻（E2）：左栏的 /events 断开期间收不到推送，恢复时按账本重读一次。
+registerEmbedPark({ pause: function () {}, resume: readAll });
 
 window.addEventListener('wb:annotations', function (e) {
   var doc = e.detail;

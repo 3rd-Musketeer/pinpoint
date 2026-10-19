@@ -16,6 +16,7 @@ export function init_outbox() {
   ctx.outboxUnsent = {};
   ctx.parentEventsOff = null;
   ctx.eventsConnected = false;
+  ctx.eventsParked = false;
 }
 
 export function installLeaveHooks() {
@@ -198,12 +199,15 @@ function onAnnotationsEvent(data) {
   applyRemoteDoc(doc, '已从其他窗口更新');
 }
 
-export function connectEvents() {
+export function connectEvents(opts) {
   if (!ctx.SERVER) return;
   closeEvents();
+  // 停驻中不连：恢复时 setEventsParked(false) 再连并补读。
+  if (ctx.eventsParked) return;
   // 服务端不重放 SSE：首次在线由 hydrate 负责，断线后恢复要补读当前账本。
   // 补读沿用 SSE 的 revision / defer / rebase 路径，不能用 hydrate 覆盖本地未保存的改动。
-  var statusSeen = false;
+  // catchUp：停驻期间主动断开过，第一次连上就当重连，补读这段时间漏掉的推送。
+  var statusSeen = !!(opts && opts.catchUp);
   function eventsStatus(on) {
     var reconnect = statusSeen && on && !ctx.serverOnline;
     statusSeen = true;
@@ -253,6 +257,19 @@ function closeEvents() {
   try { ctx.eventSource.close(); } catch (e) { /* */ }
   ctx.eventSource = null;
   setServerOnline(false);
+}
+
+// 停驻（E2）：嵌入工作台停在文章页的停驻容器里时，这一份实例自己的 /events 先断开，
+// 恢复时重连并按重连补读一次账本。HTTP/1.1 同源只有 6 条连接（server-events.js），
+// 停驻的工作台不该再占着它们，否则文章页和别的标签页的请求会排队堵住。
+// 只断推送：保存、outbox 走 POST，照常落盘。卡片实例走工作台那一条（parentEventsOff），不归这里。
+export function setEventsParked(on) {
+  on = !!on;
+  if (ctx.eventsParked === on) return;
+  ctx.eventsParked = on;
+  if (ctx.parentEventsOff) return;
+  if (on) { closeEvents(); return; }
+  if (ctx.eventsConnected) connectEvents({ catchUp: true });
 }
 
 // SSE 连接与账本无关（事件按 entry + page 过滤），画布实例在第一次换桶前就

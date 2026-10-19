@@ -12,7 +12,7 @@ import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
-import { registerEmbedPark } from './embed-park.js';
+import { embedParked, registerEmbedPark } from './embed-park.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
 /* ---- annotate API resolver -------------------------------------------------
@@ -184,8 +184,15 @@ var parentBound = false;
 function bindParentAnnotate() {
   if (parentBound || !window.pinpoint || typeof window.pinpoint.onUpdate !== 'function') return;
   parentBound = true;
+  // 停驻（E2）的暂停可能早于实例就绪：绑上时补停。
+  if (embedParked()) setAnnotateParked(window.pinpoint, true);
   window.pinpoint.onUpdate(scheduleAnnSnap);
   scheduleAnnSnap();
+}
+function setAnnotateParked(api, on) {
+  if (!api) return;
+  if (typeof api.setViewParked === 'function') api.setViewParked(on);
+  if (typeof api.setEventsParked === 'function') api.setEventsParked(on);
 }
 export function startAnnBridge() {
   // 停驻（E2）：标注层的观察器与快照 rAF 停下，待刷新的根先记账。打开时补画，
@@ -194,12 +201,10 @@ export function startAnnBridge() {
     pause: function () {
       if (annSnapRaf) { cancelAnimationFrame(annSnapRaf); annSnapRaf = 0; }
       if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
-      var api = window.pinpoint;
-      if (api && typeof api.setViewParked === 'function') api.setViewParked(true);
+      setAnnotateParked(window.pinpoint, true);
     },
     resume: function () {
-      var api = window.pinpoint;
-      if (api && typeof api.setViewParked === 'function') api.setViewParked(false);
+      setAnnotateParked(window.pinpoint, false);
       scheduleAnnSnap();
       if (gutterActive()) scheduleGutterRender();
     },

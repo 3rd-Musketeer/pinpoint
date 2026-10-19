@@ -300,32 +300,44 @@ export function Sidebar() {
   var [infoPage, setInfoPage] = useState(null);
   useEffect(function () {
     var timer;
-    var events = new EventSource('/events');
-    // 停驻（E2）：左栏那一下刷新先记下，打开再补。连接不断，推送照常转给
-    // 活卡片的标注客户端 —— 卡片里的保存与账本不因停驻推迟。
+    var events = null;
+    // 停驻（E2）：嵌入工作台停在文章页时这条 /events 断开（HTTP/1.1 同源只有 6 条，停驻的工作台
+    // 不该占着，server-events.js），恢复时重连并补做：左栏刷新一次；活卡片的标注客户端经
+    // server-events 收到断开 / 重连，按重连补读账本；HTML 卡片的标注数由 html-cards.js 自己补读。
+    // 保存与 outbox 走 POST，不受影响。
     var parked = false;
-    var refreshDeferred = false;
     function refresh() {
-      if (parked) { refreshDeferred = true; return; }
+      if (parked) return;
       clearTimeout(timer);
       timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
     }
+    function connect() {
+      if (events) return;
+      events = new EventSource('/events');
+      // 连接状态与推送也转给画布上活的 HTML 卡片里的标注客户端（server-events.js），它们不各开一条。
+      events.onopen = function () { setServerEventsOnline(true); };
+      events.onerror = function () { if (events && events.readyState !== EventSource.OPEN) setServerEventsOnline(false); };
+      events.addEventListener('annotations', function (ev) {
+        refresh();
+        emitServerEvent('annotations', ev.data);
+        // 同一条推送转给工作台里别的订阅方（html-cards.js：文章画布上 HTML 卡片的标注数），不另开连接。
+        var doc = null;
+        try { doc = JSON.parse(ev.data); } catch (e) { return; }
+        window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
+      });
+    }
+    function disconnect() {
+      if (!events) return;
+      events.close();
+      events = null;
+      setServerEventsOnline(false);
+    }
     var releasePark = registerEmbedPark({
-      pause: function () { parked = true; clearTimeout(timer); },
-      resume: function () { parked = false; if (refreshDeferred) { refreshDeferred = false; refresh(); } },
+      pause: function () { parked = true; clearTimeout(timer); disconnect(); },
+      resume: function () { parked = false; connect(); refresh(); },
     });
-    // 连接状态与推送也转给画布上活的 HTML 卡片里的标注客户端（server-events.js），它们不各开一条。
-    events.onopen = function () { setServerEventsOnline(true); };
-    events.onerror = function () { if (events.readyState !== EventSource.OPEN) setServerEventsOnline(false); };
-    events.addEventListener('annotations', function (ev) {
-      refresh();
-      emitServerEvent('annotations', ev.data);
-      // 同一条推送转给工作台里别的订阅方（html-cards.js：文章画布上 HTML 卡片的标注数），不另开连接。
-      var doc = null;
-      try { doc = JSON.parse(ev.data); } catch (e) { return; }
-      window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
-    });
-    return function () { releasePark(); clearTimeout(timer); events.close(); setServerEventsOnline(false); };
+    if (!parked) connect();
+    return function () { releasePark(); clearTimeout(timer); disconnect(); };
   }, []);
   // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。
   // 平时的点击不写偏好，和删页签之前一样。

@@ -21,7 +21,7 @@ import { bind_marks, init_marks } from './annotate/marks.js';
 import { bind_dom, init_dom } from './annotate/dom.js';
 import { bind_anchor, init_anchor } from './annotate/anchor.js';
 import { bind_persist } from './annotate/persist.js';
-import { bind_outbox, init_outbox, installLeaveHooks } from './annotate/outbox.js';
+import { bind_outbox, init_outbox, installLeaveHooks, setEventsParked } from './annotate/outbox.js';
 import { bind_ui, init_ui, installUiBindings } from './annotate/ui.js';
 import { bind_sidebar, init_sidebar, installSidebar } from './annotate/sidebar.js';
 import { bind_gesture, init_gesture, installPointerGestures } from './annotate/gesture.js';
@@ -86,6 +86,10 @@ import { bind_ledger, startAnnotate } from './annotate/ledger.js';
   installPointerGestures();
   installViewScheduling();
   installPinpointApi();
+  // 停驻钩子（E2）：工作台的暂停登记调它断开观察器、断开 /events。只挂在这份实例上，
+  // 卡片 iframe 里的另一份不进工作台的登记。挂在就绪广播之前：绑定方收到广播时就要用。
+  window.pinpoint.setViewParked = setViewParked;
+  window.pinpoint.setEventsParked = setEventsParked;
   startAnnotate();
   // 就绪广播（C1，r1 §7：注入完成即宣布，不再让等待方轮询）。此时 window.pinpoint
   // 已挂全、账本水合已启动；whenReady()（ledger.js whenLedgerReady）等账本第一次落定。
@@ -93,9 +97,6 @@ import { bind_ledger, startAnnotate } from './annotate/ledger.js';
   // 父级（工作台 ann-bridge / live-cards）按 event.source 认帧 —— 跨文档 DOM 事件
   // 过不来，postMessage 会排队投递，父级监听挂得晚也收得到。
   window.dispatchEvent(new Event('pinpoint:ready'));
-  // 停驻钩子（E2）：工作台的暂停登记调它断开观察器。只挂在这份实例上，
-  // 卡片 iframe 里的另一份不进工作台的登记。
-  window.pinpoint.setViewParked = setViewParked;
   if (window.parent !== window) {
     try { window.parent.postMessage({ source: 'pinpoint-annotate', type: 'ready' }, location.origin); } catch (e) { /* 跨源父级收不到就算了 */ }
   }
