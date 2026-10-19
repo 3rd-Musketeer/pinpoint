@@ -8,12 +8,12 @@
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
 import { canvasHref } from './canvas-card.js';
 import { installLayerKeys, layers } from './layers.js';
-import { canvasHash, embedCanvasSrc, embedMessage, entrySection, parseCanvasHash } from './canvas-overlay.js';
+import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, parseCanvasHash } from './canvas-overlay.js';
 import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
 
 // 等工作台装好、标注账本水合完的上限：到点还没好就只开着画布，不再定位。
+// 等待本身是消息驱动的（工作台主动报就绪），这是上限不是轮询间隔。
 const READY_WAIT_MS = 20_000;
-const POLL_MS = 100;
 const SECTION_SETTLE_MS = 300;
 
 const ENTRY_SELECTOR = '[data-pp-frame-open], [data-pp-open], #btn-canvas, a[data-pp-canvas-link]';
@@ -37,11 +37,43 @@ export function initCanvasOverlay() {
   let state = null;
   let iframe = null;
   let navigation = 0;   // 每次打开 / 换落点加一：上一次还在等工作台的定位作废
-  let openEpoch = 0;    // 每次打开加一，关闭再加一：进行中的加载态观察作废
 
   const frameOf = (sectionId, frameId) => (frameId
     ? [...(cardOf(sectionId)?.querySelectorAll('.cc-frame[data-screen]') || [])].find((f) => f.dataset.screen === frameId) || null
     : null);
+
+  // ---- 文档就绪（C1）----
+  // 状态由工作台的主动消息推进（embed.js：ready / board-error；index.html 的入口
+  // onerror：boot-error；本页的 load 判定跨域错误页与装上了却没有工作台的文档）。
+  // 不再轮询 iframe、不按时长猜失败：模块还在加载就一直 'loading'。
+  //   loading      等工作台的主动信号；
+  //   ready        板和预览都落定 → 收起准备态、放行定位；
+  //   board-error  工作台画了自己的错误面板 → 收起准备态让出面板，定位不跟它抢；
+  //   retry        文档加载失败或入口脚本报了加载失败 → 显示「重试」。
+  let docState = 'loading';
+  let docGen = 0;       // 每次装 / 重试换文档 +1，随 src 传给工作台；消息按它核对归属，
+                        // 重试后旧文档迟到的消息作废（代次语义从 until 时代保留）。
+  let docWaiters = [];
+  const STATUS_TEXT = { loading: 'loading', ready: '', 'board-error': '', retry: 'retry' };
+
+  function setDocState(next) {
+    if (next === docState) return;
+    docState = next;
+    showStatus(STATUS_TEXT[next] ?? 'loading');
+    const waiters = docWaiters;
+    docWaiters = [];
+    for (const wake of waiters) wake();
+  }
+
+  /** 状态下次变化（任何方向）。定位流程靠它睡觉，消息来了才醒。 */
+  function docChanged() {
+    return new Promise((resolve) => { docWaiters.push(resolve); });
+  }
+
+  const withDeadline = (value, ms) => Promise.race([
+    Promise.resolve(value),
+    new Promise((resolve) => setTimeout(() => resolve(null), ms)),
+  ]);
 
   function setHeader(sectionId) {
     const card = cardOf(sectionId);
@@ -53,8 +85,9 @@ export function initCanvasOverlay() {
   }
 
   // ---- 嵌入的工作台 ----
-  // 文档本身没装上（网络失败，页跨域读不了）才由这里显示「重试」。记在每次 load 上，不靠轮询撞中间态：
-  // 重试后立刻又失败、失败后关掉再开，都能认出来。
+  // 文档本身没装上（网络失败，页跨域读不了）才由这里显示「重试」。记在每次 load 上：
+  // 重试后立刻又失败、失败后关掉再开，都能认出来。跨域错误页与「装上了却没有工作台」
+  // 是这里仅有的两处本页判定的失败，其余失败都由工作台主动报。
   let frameFailed = false;
   let loadGen = 0;
   const frameDead = () => {
@@ -70,6 +103,7 @@ export function initCanvasOverlay() {
       // load 要等模块脚本结束。跨域错误页，或文档装上了却没有工作台，都是确定失败。
       // 模块还扣着时 load 没到，不在这里判，准备态一直留着。
       frameFailed = frameDead() || !workbenchOf();
+      if (frameFailed) setDocState('retry');
     };
     iframe.addEventListener('load', onLoad);
   };
@@ -79,7 +113,8 @@ export function initCanvasOverlay() {
     iframe = document.createElement('iframe');
     iframe.className = 'ov-canvas';
     iframe.title = '画布';
-    iframe.src = embedCanvasSrc(pageId, sectionId);
+    docGen += 1;
+    iframe.src = embedCanvasSrc(pageId, sectionId, docGen);
     noteLoad();
     el.body.append(iframe);
     return true;
@@ -89,67 +124,17 @@ export function initCanvasOverlay() {
   const frameWin = () => { try { return iframe?.contentWindow || null; } catch { return null; } };
   const workbenchOf = () => { try { return frameWin()?.workbench || null; } catch { return null; } };
 
-  /** 轮询直到 test() 为真；navigation 变了（关了 / 换了落点）或超时 → false。 */
-  function until(test, nav) {
-    const deadline = Date.now() + READY_WAIT_MS;
-    return new Promise((resolve) => {
-      const tick = () => {
-        if (nav !== navigation || !state) { resolve(false); return; }
-        let ok = false;
-        try { ok = !!test(); } catch { ok = false; }
-        if (ok) { resolve(true); return; }
-        if (Date.now() > deadline) { resolve(false); return; }
-        setTimeout(tick, POLL_MS);
-      };
-      tick();
-    });
-  }
-
   async function boardReady(nav) {
-    if (!(await until(() => workbenchOf()?.activePageId?.() === pageId, nav))) return false;
-    // whenBoardSettled 在板换过一次时接着等新的那个；false = 还没有会话，重取再等。
-    for (let i = 0; i < 50; i += 1) {
-      if (nav !== navigation) return false;
-      if (await frameWin().workbench.whenBoardSettled()) return true;
-      await new Promise((r) => setTimeout(r, POLL_MS));
-    }
-    return false;
-  }
-
-  // 准备态一直留到两个就绪信号都到。只有确定的失败才换成重试：文档加载失败（frameFailed），
-  // 或工作台自己画出了错误面板。显示重试之后也不停，就绪信号一到就收起，不靠时长猜。
-  async function watchReady(epoch) {
-    while (epoch === openEpoch && state) {
-      let ownError = false;
-      let bootError = '';
-      try {
-        ownError = !!frameWin()?.document?.querySelector('[data-err-panel]');
-        bootError = frameWin()?.__wbBootError || '';
-      } catch { ownError = false; }
-      if (ownError) { showStatus(''); }
-      else if (frameFailed || bootError) { showStatus('retry'); }
-      const wb = workbenchOf();
-      if (wb && !ownError) {
-        const gen = loadGen;
-        const board = await Promise.race([
-          wb.whenBoardSettled().then((ok) => ({ ok })),
-          // 重试换了文档，上一份永不返回的 Promise 不能卡住这次。
-          // 等待期间入口模块失败（__wbBootError），或重试换了文档、旧文档的 workbench 被新的取代，都要放手重看。
-          new Promise((resolve) => {
-            const bootFailed = () => { try { return !!frameWin()?.__wbBootError; } catch { return false; } };
-            const watch = () => {
-              if (loadGen !== gen || epoch !== openEpoch || workbenchOf() !== wb || bootFailed()) resolve('stop');
-              else setTimeout(watch, 100);
-            };
-            setTimeout(watch, 100);
-          }),
-        ]);
-        if (board === 'stop') continue;
-        const previews = await wb.whenPreviewsSettled();
-        if (epoch !== openEpoch || !state || loadGen !== gen) continue;
-        if (board.ok && previews) { showStatus(''); return; }
-      }
-      await new Promise((r) => setTimeout(r, POLL_MS));
+    // 就绪由消息推进，这里等到状态离开 loading；上限 READY_WAIT_MS —— 到点只开着
+    // 画布不再定位（site/README.md「画布浮层」）。retry / board-error 不定位。
+    const deadline = Date.now() + READY_WAIT_MS;
+    for (;;) {
+      if (nav !== navigation || !state) return false;
+      if (docState === 'ready') return true;
+      if (docState !== 'loading') return false;
+      const remaining = deadline - Date.now();
+      if (remaining <= 0) return false;
+      await Promise.race([docChanged(), new Promise((r) => setTimeout(r, remaining))]);
     }
   }
 
@@ -168,19 +153,25 @@ export function initCanvasOverlay() {
     if (ann == null) { landed(nav, at); return; }
     // HTML 帧的钉子在活卡片自己的客户端里；不打开页面浮层。
     const html = !!frameOf(section, frame)?.hasAttribute('data-doc-url');
-    await toMark(nav, () => html ? wb.cardAnnotateApi(frame) : frameWin().pinpoint, ann, at);
+    const annApi = html
+      ? () => wb.whenCardAnnotateReady(frame)
+      : () => frameWin()?.pinpoint || null;
+    await toMark(nav, annApi, ann, at);
   }
 
-  // 等目标账本水合、认得 #n，再走客户端的定位与打开流程。
+  // 等实例就绪（卡片客户端绑定完成 / 画布实例账本第一次落定，annotate 客户端的
+  // whenReady），落定后行不在就是真不在 —— 替掉 marks 轮询。到点没就绪：只开着画布，
+  // 不再定位。
   async function toMark(nav, annApi, ann, fallback) {
-    const markReady = () => {
-      const api = annApi();
-      if (!api || typeof api.goToMark !== 'function') return false;
-      if (api.getState().routing) return false;
-      return api.marks.some((m) => m.n === ann);
-    };
-    if (!(await until(markReady, nav))) { landed(nav, fallback); return; }
-    const done = await annApi().goToMark(ann);
+    const api = await withDeadline(annApi(), READY_WAIT_MS);
+    if (nav !== navigation || !api || typeof api.goToMark !== 'function' || typeof api.whenReady !== 'function') {
+      landed(nav, fallback);
+      return;
+    }
+    await withDeadline(api.whenReady(), READY_WAIT_MS);
+    if (nav !== navigation) return;
+    if (!api.marks.some((m) => m.n === ann)) { landed(nav, fallback); return; }
+    const done = await api.goToMark(ann);
     landed(nav, done === false ? fallback : `ann:${ann}`);
   }
 
@@ -210,13 +201,14 @@ export function initCanvasOverlay() {
     retry.textContent = '重试';
     retry.addEventListener('click', () => {
       if (!state || !iframe) return;
-      // 先清掉旧文档的失败痕迹、换新代次，再开始观察：否则第一次观察会读到旧的失败又显示重试。
+      // 先清掉旧文档的失败痕迹、换新代次再装：旧文档迟到的消息带着旧代次，会被丢掉。
       try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
+      frameFailed = false;
+      docGen += 1;
+      setDocState('loading');
       noteLoad();
-      iframe.src = embedCanvasSrc(pageId, state.section);
-      showStatus('loading');
+      iframe.src = embedCanvasSrc(pageId, state.section, docGen);
       const nav = ++navigation;
-      watchReady(++openEpoch);
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
     s.append(retry);
@@ -270,11 +262,9 @@ export function initCanvasOverlay() {
     setHeader(sectionId);
     const fresh = ensureFrame(sectionId);
     const nav = navigation + 1;
-    // 每次打开都重新观察：上次没就绪就关了，iframe 还在，这次就绪了也要收起准备态。
-    // 失败页再开时不换导航，保留上次记下的失败，直接显示重试。
-    if (frameFailed) showStatus('retry');
-    else if (!workbenchOf()) showStatus('loading');
-    watchReady(++openEpoch);
+    // 每次打开都按当前文档状态重新核对：ready 直接走；loading 显示准备态（等待由
+    // 消息推进，不需要重新「观察」）；retry / board-error 保留上次记下的失败。
+    if (docState !== 'ready') showStatus(STATUS_TEXT[docState] ?? 'loading');
     // 工作台还没装好时焦点留在关闭钮：空文档收不到按键，Esc 到不了浮层。装好后 land 再把焦点交进去。
     if (workbenchOf()) iframe.focus({ preventScroll: true });
     else el.close.focus({ preventScroll: true });
@@ -287,7 +277,6 @@ export function initCanvasOverlay() {
     state = null;
     closing = false;
     navigation += 1;
-    openEpoch += 1;
     s.release?.();
     dlg.close();
     // 动画留着：fill:both 停在收起的样子，途中再开时 play 从它的当前值接着走。
@@ -359,13 +348,18 @@ export function initCanvasOverlay() {
     open(t.section, { frame: t.frame, ann: t.ann, trigger: hit, pushed: true });
   });
 
-  // 工作台嵌入版的消息：Esc 没被画布里的某一层接住 → 关；画布换了节 → 头部和地址跟着换。
+  // 工作台嵌入版的消息：Esc 没被画布里的某一层接住 → 关；画布换了节 → 头部和地址
+  // 跟着换；就绪三条 → 文档就绪状态机（C1）。就绪消息不要求浮层开着 —— 上次没就绪
+  // 就关了，这次就绪了要记住，再开不再出准备态。
   window.addEventListener('message', (e) => {
     if (!iframe || e.source !== iframe.contentWindow || e.origin !== location.origin) return;
     const msg = embedMessage(e.data);
-    if (!msg || !state) return;
-    if (msg.type === 'close') { close(); return; }
-    if (msg.type === 'section') followSection(msg.section);
+    if (!msg) return;
+    if (msg.type === 'close') { if (state) close(); return; }
+    if (msg.type === 'section') { if (state) followSection(msg.section); return; }
+    if (msg.gen !== docGen) return;
+    if (msg.type === 'ready' && msg.pageId && msg.pageId !== pageId) return;
+    setDocState(overlayDocNext(docState, msg));
   });
 
   // 画布换了节：停稳 SECTION_SETTLE_MS 再跟（定位、平移途中路过的节不算），头部和 #canvas= 换成它。

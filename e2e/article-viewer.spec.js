@@ -88,7 +88,8 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done');
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
     await expect(page.locator('html')).toHaveClass(/\bpp-ov-lock\b/);
-    await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay`);
+    // gen=1：文档代次（C1）随 src 传给工作台，就绪消息按它核对归属；重试换文档时递增。
+    await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay&gen=1`);
     const wb = await canvasReady(page);
     await expect.poll(() => overlayState(page).then(st => st?.landing)).toBe('frame:confirm-done');
     await expect.poll(() => wb.evaluate(() => window.workbench.whenScrollSettled())).toBeTruthy();

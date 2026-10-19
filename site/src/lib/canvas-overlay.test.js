@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { canvasHash, embedCanvasSrc, embedMessage, entrySection, parseCanvasHash } from './canvas-overlay.js';
+import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, parseCanvasHash } from './canvas-overlay.js';
 
 test('canvas hash: section, optional frame / annotation, round trip', () => {
   assert.equal(canvasHash('flow'), '#canvas=flow');
@@ -35,14 +35,41 @@ test('canvas hash: other hashes are not the overlay', () => {
 test('embedded workbench: canvas view + embed=overlay, landing on the section', () => {
   assert.equal(embedCanvasSrc('demo_flow', 'ask'), '/workbench/?page=demo_flow&section=ask&embed=overlay');
   assert.equal(embedCanvasSrc('a b', ''), '/workbench/?page=a%20b&embed=overlay');
+  // 文档代次（C1）：重试换 src 时递增，工作台原样回传，文章页按它丢旧文档迟到的消息。
+  assert.equal(embedCanvasSrc('demo_flow', 'ask', 3), '/workbench/?page=demo_flow&section=ask&embed=overlay&gen=3');
 });
 
-test('embedded workbench messages: close, section; anything else is ignored', () => {
+test('embedded workbench messages: close, section, readiness; anything else is ignored', () => {
   assert.deepEqual(embedMessage({ source: 'pinpoint-workbench', type: 'close' }), { type: 'close' });
   assert.deepEqual(embedMessage({ source: 'pinpoint-workbench', type: 'section', section: 'ask' }), { type: 'section', section: 'ask' });
+  // 就绪三条（C1）：gen 归一成整数（缺失按 0），ready 带页 id。
+  assert.deepEqual(
+    embedMessage({ source: 'pinpoint-workbench', type: 'ready', gen: 2, pageId: 'demo_flow' }),
+    { type: 'ready', gen: 2, pageId: 'demo_flow' },
+  );
+  assert.deepEqual(embedMessage({ source: 'pinpoint-workbench', type: 'board-error', gen: 2 }), { type: 'board-error', gen: 2 });
+  assert.deepEqual(embedMessage({ source: 'pinpoint-workbench', type: 'boot-error', gen: 'x' }), { type: 'boot-error', gen: 0 });
   for (const m of [null, 'close', { type: 'close' }, { source: 'x', type: 'close' }, { source: 'pinpoint-workbench', type: 'section' }, { source: 'pinpoint-workbench', type: 'boom' }]) {
     assert.equal(embedMessage(m), null, JSON.stringify(m));
   }
+});
+
+test('overlay doc state machine (C1): readiness advances it, only definite failures turn it into retry', () => {
+  // loading：等主动信号，不靠时长猜失败。
+  assert.equal(overlayDocNext('loading', null), 'loading');
+  assert.equal(overlayDocNext('loading', { type: 'section', section: 'ask' }), 'loading');
+  // ready 收起准备态并放行定位；任何状态下都收（显示重试之后观察也不停）。
+  assert.equal(overlayDocNext('loading', { type: 'ready', gen: 1 }), 'ready');
+  assert.equal(overlayDocNext('retry', { type: 'ready', gen: 1 }), 'ready');
+  assert.equal(overlayDocNext('board-error', { type: 'ready', gen: 1 }), 'ready');
+  // 工作台自己的错误面板：收起准备态让出面板；已显示重试时不倒退。
+  assert.equal(overlayDocNext('loading', { type: 'board-error', gen: 1 }), 'board-error');
+  assert.equal(overlayDocNext('retry', { type: 'board-error', gen: 1 }), 'retry');
+  assert.equal(overlayDocNext('board-error', { type: 'board-error', gen: 1 }), 'board-error');
+  // 入口脚本加载失败：一律换成重试。
+  assert.equal(overlayDocNext('loading', { type: 'boot-error', gen: 1 }), 'retry');
+  assert.equal(overlayDocNext('board-error', { type: 'boot-error', gen: 1 }), 'retry');
+  assert.equal(overlayDocNext('retry', { type: 'boot-error', gen: 1 }), 'retry');
 });
 
 test('entry section: the section being read if it has a canvas, else the next one with a canvas', () => {

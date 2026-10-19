@@ -1,5 +1,5 @@
 // 账本切换与启动收尾：画布切页时换桶重 hydrate，并在水合落定后放行等待者。
-// 导出 bind_ledger、startAnnotate、whenSettled。
+// 导出 bind_ledger、startAnnotate、whenSettled、whenLedgerReady。
 import { annotationSlug } from '../../shared/annotation-slug.js';
 import { readAnnFilter } from '../../shared/ann-status.js';
 import { removeTempArrow } from './arrow.js';
@@ -21,6 +21,7 @@ export function startAnnotate() {
     watchWorkbenchPages();
   } else {
     hydrateFromDisk().then(function (online) {
+      readyResolve();
       renderAll();
       notify();
       if (online) {
@@ -35,6 +36,15 @@ export function startAnnotate() {
     });
   }
 }
+
+// ---------- 就绪（C1）----------
+// 实例的账本第一次落定：画布实例 = 第一次换页 hydrate 完（boot 占位桶的 marks
+// 是空的）；其余实例 = 首次 hydrate 完。whenReady 挂在 window.pinpoint 上，绑定方
+// （工作台 ann-bridge / live-cards、文章浮层的钉子定位）等它替掉 marks 轮询 ——
+// 落定之后行不在就是真不在。实例重载（iframe 换文档）拿到的是新实例、新 promise。
+var readyResolve;
+var ledgerReady = new Promise(function (resolve) { readyResolve = resolve; });
+export function whenLedgerReady() { return ledgerReady; }
 
 // ---------- 账本切换（画布切页） ----------
 // 工作台画布切活动页 = 换桶（ENTRY = 新页 id、账本 @canvas）并重新 hydrate，
@@ -107,6 +117,7 @@ function switchLedgerTo(next) {
   if (ctx.sidebar && !ctx.sidebar.isConnected) document.body.appendChild(ctx.sidebar);
   // 6. hydrate 新账本
   hydrateFromDisk().then(function () {
+    readyResolve();
     ctx.structureDirty = true;
     renderAll();
     notify();
@@ -148,16 +159,21 @@ function watchWorkbenchPages() {
     requestSwitch(canvasSwitchFor(id));
   };
   connectEventsOnce();
-  var timer = setInterval(function () {
-    var wb = window.workbench;
-    if (wb && typeof wb.onPageChange === 'function') {
-      clearInterval(timer);
-      wb.onPageChange(apply);
-      apply(typeof wb.activePageId === 'function' ? wb.activePageId() : null);
-      return;
-    }
-    apply(currentWorkbenchPageId());
-  }, 25);
+  // 工作台还没接管时先用 URL 把桶切对（?page= 深链），一次就够 —— 画布实例的页
+  // 固定在地址里，不会中途变。workbench 出现（stage.js 挂上 window.workbench 时
+  // dispatch 'workbench:ready'）换成 onPageChange 驱动。检查与挂监听之间没有
+  // await：事件在同一同步块里、赋值之后发出，先后两种时序都不会漏（C1：替掉
+  // 25ms 轮询）。
+  apply(currentWorkbenchPageId());
+  if (window.workbench && typeof window.workbench.onPageChange === 'function') {
+    window.workbench.onPageChange(apply);
+    apply(typeof window.workbench.activePageId === 'function' ? window.workbench.activePageId() : null);
+    return;
+  }
+  window.addEventListener('workbench:ready', function () {
+    window.workbench.onPageChange(apply);
+    apply(typeof window.workbench.activePageId === 'function' ? window.workbench.activePageId() : null);
+  }, { once: true });
 }
 
 // ---------- 启动：磁盘 hydrate → 渲染 → SSE ----------

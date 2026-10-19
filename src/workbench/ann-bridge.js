@@ -10,6 +10,7 @@ import { wbGet, wbSet } from './app/store.js';
 import { readingSegments } from '../shared/annotation-indicator.js';
 import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
+import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
 /* ---- annotate API resolver -------------------------------------------------
@@ -175,17 +176,31 @@ export function scheduleAnnSnap() {
   });
 }
 
-/* 父窗口的 annotate.js 异步加载；轮询到它出现后订阅一次并产出首份快照。
-   iframe 实例的绑定见 watchDocAnnotate / bindDocAnnotate。 */
+/* 父窗口的 annotate.js 是 ios-kit 动态注入的（async），stage.js 启动时多半还没到。
+   实例就绪时它 dispatch 'pinpoint:ready'（annotate.js 尾部）—— 检查与挂监听之间
+   没有 await：已就绪直接绑；未就绪则监听必然先于事件挂上，不再 100ms 轮询。
+   iframe 实例（doc 屏 / 页面浮层）的绑定见 watchDocAnnotate / bindDocAnnotate，
+   由它就绪时发给父级的消息触发。 */
 var annotateKeyRouted = false;
+var parentBound = false;
+function bindParentAnnotate() {
+  if (parentBound || !window.pinpoint || typeof window.pinpoint.onUpdate !== 'function') return;
+  parentBound = true;
+  window.pinpoint.onUpdate(scheduleAnnSnap);
+  scheduleAnnSnap();
+}
 export function startAnnBridge() {
   if (!annotateKeyRouted) {
     annotateKeyRouted = true;
     window.addEventListener('keydown', routeAnnotateKey, true);
   }
-  if (!window.pinpoint) { setTimeout(startAnnBridge, 100); return; }
-  if (typeof window.pinpoint.onUpdate === 'function') window.pinpoint.onUpdate(scheduleAnnSnap);
-  scheduleAnnSnap();
+  bindParentAnnotate();
+  if (!parentBound) window.addEventListener('pinpoint:ready', bindParentAnnotate, { once: true });
+  // doc 帧里的文档实例就绪时向父级发消息（lib/annotate-ready.js）；按当前可见的
+  // doc 帧绑定新实例 —— 消息排队投递，这条监听挂得晚也收得到。
+  window.addEventListener('message', function (e) {
+    if (isAnnotateReadyMessage(e.data)) bindIfNewDoc();
+  });
 }
 
 /* ---------- Gutter 评论（sidebar）：气泡渲染在父级 workbench 右侧 gutter ----------
@@ -468,32 +483,33 @@ function bindDocAnnotate() {
 }
 
 /* iframe 里的 annotate.js 是文档自己异步注入的，board 挂载完时通常还没就绪。
-   持续轮询（html 形态期间恒在）：出现后订阅一次，侧栏面板即刻反映文档的标注
-   状态；iframe 重载（HMR / 手动 src 刷新）后客户端是新实例，ann !== bound
-   触发重绑——旧实现绑一次就停，重载后订阅挂在死实例上，面板不再更新
-   （2026-08-17 debugging 案例）。 */
-var docAnnotateWatch = 0;
+   触发点（C1，替掉 250ms 常驻轮询）：板装载（loadBoard）、条目切换（setActiveEntry，
+   DOM 显隐定下来之后）、文档实例就绪时发给父级的消息（startAnnBridge 的 message
+   监听）。三路都汇到 bindIfNewDoc：实例出现且是新的就等它 whenReady（账本落定）
+   后绑定；iframe 重载（HMR / 手动 src 刷新）后客户端是新实例，重绑——旧实现绑
+   一次就停，重载后订阅挂在死实例上，面板不再更新（2026-08-17 debugging 案例）。 */
 var docAnnotateBound = null;
-export function watchDocAnnotate() {
-  if (docAnnotateWatch) { clearInterval(docAnnotateWatch); docAnnotateWatch = 0; }
-  docAnnotateBound = null;
+function bindIfNewDoc() {
   // 2026-09-05：判据从「html 形态」改成「画布上有可见的文档 iframe」—— 手机视口
   // 下形态是 ios，文档照样活在 iframe 里，绑定与快照一样要跟着它。
-  if (!activeDocFrameEl()) return;
-  docAnnotateWatch = setInterval(function () {
-    if (!activeDocFrameEl()) {
-      clearInterval(docAnnotateWatch);
-      docAnnotateWatch = 0;
-      docAnnotateBound = null;
+  var docWin = activeDocWindow();
+  var ann = docWin && docWin.pinpoint;
+  if (!ann || ann === docAnnotateBound || typeof ann.whenReady !== 'function') return;
+  docAnnotateBound = ann;
+  ann.whenReady().then(function () {
+    // 落定时实例又被换掉（重载）：docAnnotateBound 已被 watchDocAnnotate 重置或
+    // 指向新实例；新实例由它自己的 ready 消息再来一遍，这里不追。
+    var now = activeDocWindow();
+    if (!now || now.pinpoint !== ann) {
+      if (docAnnotateBound === ann) docAnnotateBound = null;
       return;
     }
-    var docWin = activeDocWindow();
-    var ann = docWin && docWin.pinpoint;
-    if (ann && ann !== docAnnotateBound) {
-      bindDocAnnotate();
-      docAnnotateBound = ann;
-    }
-  }, 250);
+    bindDocAnnotate();
+  });
+}
+export function watchDocAnnotate() {
+  docAnnotateBound = null;
+  bindIfNewDoc();
 }
 
 /* 连接状态指示（#wbconn）由 Sidebar 的 SideHead 从 annSnap.connected/syncError

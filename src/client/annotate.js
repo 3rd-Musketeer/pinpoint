@@ -87,4 +87,13 @@ import { bind_ledger, startAnnotate } from './annotate/ledger.js';
   installViewScheduling();
   installPinpointApi();
   startAnnotate();
+  // 就绪广播（C1，r1 §7：注入完成即宣布，不再让等待方轮询）。此时 window.pinpoint
+  // 已挂全、账本水合已启动；whenReady()（ledger.js whenLedgerReady）等账本第一次落定。
+  // 同一文档的等待方收 'pinpoint:ready' 事件；嵌在 iframe 里时再向父级发一条消息，
+  // 父级（工作台 ann-bridge / live-cards）按 event.source 认帧 —— 跨文档 DOM 事件
+  // 过不来，postMessage 会排队投递，父级监听挂得晚也收得到。
+  window.dispatchEvent(new Event('pinpoint:ready'));
+  if (window.parent !== window) {
+    try { window.parent.postMessage({ source: 'pinpoint-annotate', type: 'ready' }, location.origin); } catch (e) { /* 跨源父级收不到就算了 */ }
+  }
 })();

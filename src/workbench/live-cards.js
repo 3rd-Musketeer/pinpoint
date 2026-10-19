@@ -9,12 +9,14 @@
 //    自己的客户端跟着进出标注模式，在卡片里直接标，标注进那一页的账本。卡片里按 A / Esc 切了模式，画布跟着切。
 import { frameReadyToUnload } from './frame-save.js';
 import { annotationEscapeIsTaken } from './escape-layers.js';
+import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
 
 var FRAME_SELECTOR = 'iframe.wb-html-card-frame';
 var state = { panel: null, observer: null, cards: new Map() };   // frame → { visible, live, loading, seenAt, timer }
 var wiredDocs = typeof WeakSet === 'function' ? new WeakSet() : null;
 var cardApis = new Map();                                          // frame → 卡片里的 pinpoint
+var cardApiWaiters = new Map();                                    // frame → [resolve(api|null)]
 var parentSubscribed = false;
 var parentMode = false;
 var LOAD_TIMEOUT_MS = 4000;
@@ -37,6 +39,8 @@ export function syncLiveCards(panel) {
   state.cards.forEach(function (c) { clearTimeout(c.timer); });
   state = { panel: panel || null, observer: null, cards: new Map() };
   cardApis.clear();
+  // 换板后旧 frame 引用全部失效：等绑定的一方以 null 放手，不挂在死帧上。
+  flushAllCardWaiters(null);
   if (!panel) return;
   var frames = panel.querySelectorAll(FRAME_SELECTOR);
   if (!frames.length) return;
@@ -105,6 +109,7 @@ function unloadFrame(frame) {
   c.loading = false;
   c.live = false;
   cardApis.delete(frame);
+  flushCardWaiters(frame, null);
   frame.removeAttribute('data-live');
   frame.removeAttribute('src');
   // 只删属性 iframe 不导航，旧文档留在里面接着跑：换成空白页才真的卸掉。
@@ -204,7 +209,7 @@ function wireCardWindow(frame) {
   win.addEventListener('keydown', forwardSpace, true);
   win.addEventListener('keyup', forwardSpace, true);
   wireCardEscape(win);
-  bindCardAnnotate(frame, win, 0);
+  bindCardAnnotate(frame, win);
 }
 
 /* ---- 标注模式同步 ------------------------------------------------------------------ */
@@ -237,30 +242,35 @@ function ensureParentSubscription() {
   });
 }
 
-// 页面里的标注客户端是注入的脚本，load 时一般已经在；没在就短轮询一会儿。
-function bindCardAnnotate(frame, win, tries) {
+// 页面里的标注客户端是 ios-kit 动态注入的（async），卡片 load 时可能还没到。
+// 注入完成时实例向父级发就绪消息（lib/annotate-ready.js，startLiveCards 的 message
+// 监听把它带回到这里）；load 时已经在了就直接绑 —— 两条路汇进同一函数，不再
+// 100ms×40 短轮询（C1）。绑定动作等实例 whenReady（账本落定）之后。
+function bindCardAnnotate(frame, win) {
   var api = null;
   try { api = win.pinpoint; } catch (e) { return; }
-  if (!api || typeof api.getState !== 'function') {
-    if (tries < 40) setTimeout(function () { bindCardAnnotate(frame, win, tries + 1); }, 100);
-    return;
-  }
-  if (!state.cards.has(frame)) return;
-  ensureParentSubscription();
-  cardApis.set(frame, api);
-  schedulePump();
-  var parent = parentApi();
-  setCardMode(frame, api, !!(parent && parent.getState().mode));
-  if (typeof api.onUpdate === 'function') {
-    api.onUpdate(function () {
-      if (cardApis.get(frame) !== api) return;
-      schedulePump();
-      var p = parentApi();
-      if (!p) return;
-      var on = !!api.getState().mode;
-      if (on !== !!p.getState().mode) p.setMode(on);
-    });
-  }
+  if (!api || typeof api.whenReady !== 'function') return;   // 还没注入；等它的就绪消息
+  if (!state.cards.has(frame) || cardApis.get(frame) === api) return;
+  api.whenReady().then(function () {
+    // 落定时帧已卸载 / 实例又被换掉（重载）：新实例由它自己的就绪消息再来一遍。
+    if (!state.cards.has(frame) || !cardApiAlive(frame, api) || cardApis.get(frame) === api) return;
+    ensureParentSubscription();
+    cardApis.set(frame, api);
+    flushCardWaiters(frame, api);
+    schedulePump();
+    var parent = parentApi();
+    setCardMode(frame, api, !!(parent && parent.getState().mode));
+    if (typeof api.onUpdate === 'function') {
+      api.onUpdate(function () {
+        if (cardApis.get(frame) !== api) return;
+        schedulePump();
+        var p = parentApi();
+        if (!p) return;
+        var on = !!api.getState().mode;
+        if (on !== !!p.getState().mode) p.setMode(on);
+      });
+    }
+  });
 }
 
 /** 已加载的 HTML 活卡片的标注客户端；未装好时返回 null，供文章浮层等待水合。 */
@@ -274,6 +284,42 @@ export function liveCardAnnotateApi(screenId) {
   return null;
 }
 
+function frameOfScreen(screenId) {
+  for (var frame of state.cards.keys()) {
+    var holder = frame.closest('[data-screen]');
+    if (holder && holder.getAttribute('data-screen') === screenId) return frame;
+  }
+  return null;
+}
+
+function flushCardWaiters(frame, value) {
+  var list = cardApiWaiters.get(frame);
+  if (!list) return;
+  cardApiWaiters.delete(frame);
+  for (var i = 0; i < list.length; i++) list[i](value);
+}
+
+function flushAllCardWaiters(value) {
+  cardApiWaiters.forEach(function (list) {
+    for (var i = 0; i < list.length; i++) list[i](value);
+  });
+  cardApiWaiters.clear();
+}
+
+/** 等某屏活卡片的标注客户端绑定完成（C1：文章浮层定位 HTML 帧上的钉子前等它，
+    workbench.whenCardAnnotateReady）。帧卸载 / 换板以 null 放手，不无限挂起。 */
+export function whenCardAnnotateReady(screenId) {
+  var api = liveCardAnnotateApi(screenId);
+  if (api) return Promise.resolve(api);
+  var frame = frameOfScreen(screenId);
+  if (!frame) return Promise.resolve(null);
+  return new Promise(function (resolve) {
+    var list = cardApiWaiters.get(frame);
+    if (!list) { list = []; cardApiWaiters.set(frame, list); }
+    list.push(resolve);
+  });
+}
+
 export function startLiveCards(stage) {
   if (!stage) return;
   // iframe 的 load 不冒泡，在捕获段接。
@@ -284,4 +330,14 @@ export function startLiveCards(stage) {
     finishLoad(t);
     wireCardWindow(t);
   }, true);
+  // 卡片里的 annotate 实例就绪时向父级发消息（lib/annotate-ready.js）：按 frame 认领，
+  // 回到 bindCardAnnotate 完成绑定。消息排队投递，这条监听挂得晚也收得到。
+  window.addEventListener('message', function (e) {
+    if (!isAnnotateReadyMessage(e.data)) return;
+    state.cards.forEach(function (c, frame) {
+      var win = null;
+      try { win = frame.contentWindow; } catch (err) { return; }
+      if (win === e.source) bindCardAnnotate(frame, win);
+    });
+  });
 }

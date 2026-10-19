@@ -5,8 +5,11 @@
 // - 当前节：画布当前所在的节（store.activeGroup，平移、大纲、定位都会改）报给文章页，浮层头和 #canvas= 跟着换；
 //   页面浮层开着时报那一页所在的节（画布藏在下面，activeGroup 跟着藏起来的视口走，不算数）。
 // 消息走 postMessage，目标 origin 固定为本 origin（文章页与工作台同源）；文章页按 event.source 认 iframe。
+// 就绪（C1）也是消息：板落定时主动报 ready，装载失败报 board-error（stage.js），
+// 入口脚本加载失败报 boot-error（index.html 的 onerror）—— 文章页不再轮询 iframe，
+// 只按消息推进就绪状态机；消息带 ?gen= 的文档代次，重试换文档后旧消息作废。
 // 左栏、“← 文章标题”在嵌入版里不出：样式挂在 html.wb-embed 上（index.html），React 组件读 EMBEDDED。
-import { useWorkbenchStore } from './app/store.js';
+import { wbGet, useWorkbenchStore } from './app/store.js';
 import { isEmbedded } from './lib/page-url.js';
 import { isPageOverlayOpen } from './pages.js';
 import { workbenchEscapeIsTaken } from './escape-layers.js';
@@ -17,8 +20,45 @@ export var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
 function post(message) {
   if (window.parent === window) return;
   try {
-    window.parent.postMessage(Object.assign({ source: EMBED_MESSAGE_SOURCE }, message), location.origin);
+    // 就绪三条按 gen 核对归属（重试换文档后旧消息作废）；close / section 不看它，带上无害。
+    window.parent.postMessage(Object.assign({ source: EMBED_MESSAGE_SOURCE, gen: bootGen() }, message), location.origin);
   } catch (e) { /* 父页面已经走了 */ }
+}
+
+/** 嵌入工作台 → 文章页的单向通知（就绪状态机的非 store 事件：板装载失败）。
+    只在嵌入版生效；直接打开的画布没有父级可通知。 */
+export function notifyEmbed(message) {
+  if (!EMBEDDED) return;
+  post(message);
+}
+
+/** 文档代次：文章页每次（重试）换 src 时递增 ?gen=，这里原样回传 —— 重试后旧文档
+    迟到的消息带着旧代次，文章页把它丢掉。 */
+function bootGen() {
+  var g = Number(new URLSearchParams(location.search).get('gen'));
+  return Number.isFinite(g) && g > 0 ? g : 0;
+}
+
+// 板落定（几何批 + 预览脚本）时向文章页报 ready。触发点：activeBoard 换新（boot
+// 首装、切页 / tab、HMR 重装都走它）。followSession 语义：等待期间会话被替换就接着
+// 等新的；false（还没有会话 / 会话被取消 = 板装载失败）不发，那条路由 board-error。
+// 同一会话只发一条；文章页重复收到也无害（状态机幂等）。
+var announcedGeneration = -1;
+var announcing = false;
+function announceReady() {
+  if (announcing || !window.workbench || typeof window.workbench.whenBoardSettled !== 'function') return;
+  announcing = true;
+  window.workbench.whenBoardSettled().then(function (boardOk) {
+    if (!boardOk) return null;
+    var gen = window.workbench.mountGeneration();
+    if (gen === announcedGeneration) return null;
+    return window.workbench.whenPreviewsSettled().then(function (ok) { return ok ? gen : null; });
+  }).then(function (gen) {
+    announcing = false;
+    if (gen === null || gen === undefined) return;
+    announcedGeneration = gen;
+    post({ type: 'ready', pageId: wbGet().activePageId, gen: bootGen() });
+  }).catch(function () { announcing = false; });
 }
 
 /** 页面浮层里那一页所在的节（卡片在哪一节）。 */
@@ -47,8 +87,10 @@ export function startEmbedBridge() {
   var lastSection = '';
   useWorkbenchStore.subscribe(function (s) {
     var section = isPageOverlayOpen() ? pageSectionOf(s.activeEntryId) : s.activeGroup || '';
-    if (!section || section === lastSection) return;
-    lastSection = section;
-    post({ type: 'section', section: section });
+    if (section && section !== lastSection) {
+      lastSection = section;
+      post({ type: 'section', section: section });
+    }
+    if (s.activeBoard) announceReady();
   });
 }

@@ -1094,8 +1094,17 @@
 </div>
 
 <script src="/kits/ios/ios-kit.js"></script>
-<script type="module" src="/src/workbench/workbench-icons.js" onerror="window.__wbBootError=this.src"></script>
-<script type="module" src="/src/workbench/stage.js" onerror="window.__wbBootError=this.src"></script>
-<script type="module" src="/src/workbench/app/main.jsx" onerror="window.__wbBootError=this.src"></script>
+<!-- 入口模块加载失败（C1）：除了记 __wbBootError，嵌入版再向父页面发 boot-error ——
+     文章浮层按消息显示「重试」，不再轮询读 iframe 的 window。直接打开时 parent 是自己，跳过。 -->
+<script>window.__wbBootFail = function (src) {
+  window.__wbBootError = src;
+  if (window.parent === window) return;
+  // gen 原样回传（embed.js bootGen 同一取法）：文章页按文档代次核对消息归属。
+  var gen = Number(new URLSearchParams(location.search).get('gen'));
+  try { parent.postMessage({ source: 'pinpoint-workbench', type: 'boot-error', src: String(src), gen: gen > 0 ? gen : 0 }, location.origin); } catch (e) { /* 父页面已经走了 */ }
+};</script>
+<script type="module" src="/src/workbench/workbench-icons.js" onerror="window.__wbBootFail(this.src)"></script>
+<script type="module" src="/src/workbench/stage.js" onerror="window.__wbBootFail(this.src)"></script>
+<script type="module" src="/src/workbench/app/main.jsx" onerror="window.__wbBootFail(this.src)"></script>
 </body>
 </html>

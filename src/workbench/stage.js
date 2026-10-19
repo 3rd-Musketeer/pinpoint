@@ -82,11 +82,11 @@ import {
   wireLibraryScrollSpy
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
-import { startEmbedBridge } from './embed.js';
+import { notifyEmbed, startEmbedBridge } from './embed.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from '../client/overlay-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
-import { liveCardAnnotateApi, startLiveCards, syncLiveCards } from './live-cards.js';
+import { liveCardAnnotateApi, startLiveCards, syncLiveCards, whenCardAnnotateReady } from './live-cards.js';
 import { subscribeServerEvents } from './server-events.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
@@ -134,6 +134,8 @@ function showMissingPage(pageId) {
     reason: 'registry 与本地页面清单里都没有 ' + pageId + '。',
     retry: { kind: 'page', pageId: pageId }
   });
+  // 错误面板是嵌入版就绪状态机的一条出口（C1）：文章页收起准备态让出面板，不再轮询 [data-err-panel]。
+  notifyEmbed({ type: 'board-error' });
 }
 
 function boardUrl(pageId) {
@@ -217,6 +219,8 @@ async function loadBoard(panel, pageId, loadOptions) {
       reason: String(e && e.message ? e.message : e),
       retry: { kind: 'board', pageId: pageId }
     });
+    // 错误面板是嵌入版就绪状态机的一条出口（C1）：文章页收起准备态让出面板，不再轮询 [data-err-panel]。
+    notifyEmbed({ type: 'board-error' });
   }
 }
 
@@ -350,6 +354,9 @@ window.workbench = {
     return ok;
   },
   cardAnnotateApi: liveCardAnnotateApi,
+  // 活卡片的标注客户端等绑定完成（C1）：文章浮层定位 HTML 帧上的钉子前等它，
+  // 替掉 marks 轮询。解析到 null（帧卸载 / 换板）就放手。
+  whenCardAnnotateReady: whenCardAnnotateReady,
   // 定位并选中 section（跨 tab 先切、即时到位）：?section= 落点与大纲点 section 的同一条路。
   // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
   focusSection: function (sectionId) { return focusSection(sectionId); },
@@ -405,6 +412,9 @@ window.workbench = {
 // 活动页一经 store 变化即通知（覆盖 boot 的第一次解析与之后的所有切换，无论
 // 换页来自侧栏点击、深链还是失败面板的「回到 Pages」）。空 id（清单未到位）
 // 不通知 —— 订阅方要的是「现在在看哪一页」。
+// API 一挂齐就广播（C1）：annotate 客户端（ledger.js）等它挂 onPageChange，同一
+// 文档里监听先挂就必达 —— 事件在本同步块里、赋值之后发出，先后两种时序都不会漏。
+window.dispatchEvent(new Event('workbench:ready'));
 var pageChangeListeners = [];
 var lastNotifiedPage = null;
 useWorkbenchStore.subscribe(function () {

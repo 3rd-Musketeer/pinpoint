@@ -9,7 +9,7 @@ import { openComposer } from './composer-open.js';
 import { annotationTargetRects, closeComposer, closeMention, removeTip } from './composer.js';
 import { currentWorkbenchPageId, resolve, setNavigationActive } from './dom.js';
 import { clearHover } from './gesture.js';
-import { whenSettled } from './ledger.js';
+import { whenLedgerReady, whenSettled } from './ledger.js';
 import { annotationSection, contentToDisplay, frameSectionFor, markByN } from './marks.js';
 import { requestSync } from './persist.js';
 import { lastRectSpaceOk, lastRectViewRect } from './render-geometry.js';
@@ -95,6 +95,9 @@ export function installPinpointApi() {
     isMarkBroken: isMarkBroken,
     contentToDisplay: contentToDisplay,
     onUpdate: function (fn) { if (typeof fn === 'function') ctx.updateListeners.push(fn); },
+    // 实例的账本第一次落定（ledger.js whenLedgerReady）：绑定方等它替掉 marks
+    // 轮询。实例重载（iframe 换文档）拿到的是新实例、新 promise。
+    whenReady: whenLedgerReady,
     // 当前账本桶 id（画布实例 = 活动页；测试与调试用，只读）。
     get entry() { return ctx.ENTRY; },
     get marks() { return ctx.marks.slice(); },
