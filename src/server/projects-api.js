@@ -34,7 +34,7 @@ export function createProjectsHandler({ registry }) {
         projectId = decodeURIComponent(canvas[1]);
         articleId = decodeURIComponent(canvas[2]);
       } catch {
-        sendFreshJson(res, 400, { error: 'bad_request' });
+        sendFreshJson(res, 400, { error: 'bad_request', message: 'bad request' });
         return;
       }
       if (!findProject(registry, projectId)) {

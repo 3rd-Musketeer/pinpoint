@@ -229,7 +229,7 @@ export function createAnnotateHandler(options = {}) {
   function entryOrReject(res, raw) {
     const target = resolveRequestEntry(registry, raw, knownPageIds(), { dataRoot: root });
     if (target.unknown) {
-      sendJson(res, 400, { error: 'unknown_entry', entry: target.entry });
+      sendJson(res, 400, { error: 'unknown_entry', message: `未知 entry：${target.entry}`, entry: target.entry });
       return null;
     }
     return target.entry;
@@ -302,7 +302,7 @@ export function createAnnotateHandler(options = {}) {
         sendJson(res, 413, { error: 'body_too_large', message: error.message });
         return null;
       }
-      sendJson(res, 400, { error: 'bad_json' });
+      sendJson(res, 400, { error: 'bad_json', message: 'JSON body expected' });
       return null;
     }
     const entryId = entryOrReject(res, body.entry);
@@ -395,7 +395,7 @@ export function createAnnotateHandler(options = {}) {
           // 缓存策略不在此收敛（S3）：照旧不发 Cache-Control。
           sendFile(req, res, file, { cacheControl: null });
         } else {
-          sendJson(res, 404, { error: 'not found' });
+          sendJson(res, 404, { error: 'not found', message: 'not found' });
         }
         return true;
       },
@@ -418,7 +418,7 @@ export function createAnnotateHandler(options = {}) {
           baseRevision: body.baseRevision,
         });
         if (result.status !== 200) {
-          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });
           return true;
         }
         broadcastAnnotations(result.doc, entryId);
@@ -443,7 +443,7 @@ export function createAnnotateHandler(options = {}) {
           baseRevision: body.baseRevision,
         });
         if (result.status !== 200) {
-          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });
           return true;
         }
         broadcastAnnotations(result.doc, entryId);
@@ -460,7 +460,7 @@ export function createAnnotateHandler(options = {}) {
       match: '/registry/reload',
       run: ({ res }) => {
         if (typeof registry.reload !== 'function') {
-          sendJson(res, 409, { error: 'registry_not_reloadable' });
+          sendJson(res, 409, { error: 'registry_not_reloadable', message: 'registry 是静态快照，不能 reload' });
           return true;
         }
         const next = registry.reload();
@@ -488,7 +488,7 @@ export function createAnnotateHandler(options = {}) {
           annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
         });
         if (result.status !== 200) {
-          sendJson(res, result.status, { error: result.error, detail: result.detail, ...result.doc });
+          sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });
           return true;
         }
         broadcastAnnotations(result.doc, entryId);
@@ -514,7 +514,7 @@ export function createAnnotateHandler(options = {}) {
         const data = String(body.data ?? '');
         const match = data.match(/^data:image\/(\w+);base64,(.+)$/s);
         if (!match) {
-          sendJson(res, 400, { error: 'bad dataURL' });
+          sendJson(res, 400, { error: 'bad dataURL', message: '图片要 base64 dataURL' });
           return true;
         }
         const extension = ['jpeg', 'jpg', 'webp', 'gif'].includes(match[1]) ? match[1] : 'png';
@@ -523,7 +523,7 @@ export function createAnnotateHandler(options = {}) {
           image = storeFor(entryId).writeImage(body.page ?? 'index', extension, Buffer.from(match[2], 'base64'));
         } catch (error) {
           if (!(error instanceof BucketGoneError)) throw error;
-          sendJson(res, 503, { error: error.code, detail: error.message });
+          sendJson(res, 503, { error: error.code, message: error.message });
           return true;
         }
         sendJson(res, 200, image);
@@ -549,7 +549,7 @@ export function createAnnotateHandler(options = {}) {
       return await route.run({ req, res, urlPath, query });
     } catch (error) {
       console.error(`[annotate-api] ${req.method} ${urlPath} failed:`, error);
-      if (!res.headersSent) sendJson(res, 500, { error: 'internal_error', detail: String((error && error.message) || error) });
+      if (!res.headersSent) sendJson(res, 500, { error: 'internal_error', message: String((error && error.message) || error) });
       else res.end();
       return true;
     }

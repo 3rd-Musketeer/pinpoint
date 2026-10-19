@@ -257,7 +257,7 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
     });
 
     await test.step('保存被拒（非 409）：新评论的原文退回草稿、回复的原文退回输入框，右栏给出原因', async () => {
-      await page.route('**/save', (route) => route.fulfill({ status: 400, json: { error: 'invalid_transition', detail: '测试拒绝' } }));
+      await page.route('**/save', (route) => route.fulfill({ status: 400, json: { error: 'invalid_transition', message: '测试拒绝' } }));
       try {
         await dragSelect(page, '#why', '扣给谁');
         await page.locator('.pp-selbtn').click();

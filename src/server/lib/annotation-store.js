@@ -219,7 +219,7 @@ export function createAnnotationStore(options) {
       不让它变成路由里的 500。 */
   function bucketGone(safePage, error) {
     if (!(error instanceof BucketGoneError)) throw error;
-    return { status: 503, error: error.code, detail: error.message, doc: emptyDoc(safePage) };
+    return { status: 503, error: error.code, message: error.message, doc: emptyDoc(safePage) };
   }
 
   /** 桶内全部账本现有 max(n) + 1（M3）：_seq.json 被删或损坏时 readSeq 回落 1，
@@ -417,7 +417,7 @@ export function createAnnotationStore(options) {
           // owner 编辑正文、目标或自己的消息 → 保存时状态回 open（服务端强制，与客户端一致）。
           a.status = 'open';
         } else if (!isLegalTransition(before.status, a.status)) {
-          return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${a.status}（check / done 只经 /status 端点）`, doc: disk };
+          return { status: 409, error: 'illegal_transition', message: `${before.status} → ${a.status}（check / done 只经 /status 端点）`, doc: disk };
         }
       }
       annotations.push(a);
@@ -451,13 +451,13 @@ export function createAnnotationStore(options) {
     }
     const wanted = String(input.status || '');
     if (wanted !== 'check' && wanted !== 'done') {
-      return { status: 400, error: 'invalid_status', detail: 'status 端点只写 check / done', doc: disk };
+      return { status: 400, error: 'invalid_status', message: 'status 端点只写 check / done', doc: disk };
     }
     const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
     if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
     const before = disk.annotations[index];
     if (!isLegalMarkTransition(before.status, wanted)) {
-      return { status: 409, error: 'illegal_transition', detail: `${before.status} → ${wanted}`, doc: disk };
+      return { status: 409, error: 'illegal_transition', message: `${before.status} → ${wanted}`, doc: disk };
     }
     const annotations = disk.annotations.slice();
     annotations[index] = { ...before, status: wanted };
@@ -487,9 +487,9 @@ export function createAnnotationStore(options) {
       return { status: 409, error: 'revision_conflict', doc: disk };
     }
     const text = typeof input.text === 'string' ? input.text.trim() : '';
-    if (!text) return { status: 400, error: 'empty_message', detail: '回复不能为空', doc: disk };
+    if (!text) return { status: 400, error: 'empty_message', message: '回复不能为空', doc: disk };
     const who = input.who || 'agent';
-    if (!MESSAGE_AUTHORS.has(who)) return { status: 400, error: 'invalid_author', detail: `who 只能是 ${[...MESSAGE_AUTHORS].join(' / ')}`, doc: disk };
+    if (!MESSAGE_AUTHORS.has(who)) return { status: 400, error: 'invalid_author', message: `who 只能是 ${[...MESSAGE_AUTHORS].join(' / ')}`, doc: disk };
     const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
     if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
     const before = disk.annotations[index];

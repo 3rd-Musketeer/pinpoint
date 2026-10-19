@@ -88,7 +88,7 @@ export function createOpsLedger(options) {
           // 服务拒了这批操作：从队列里拿掉、回到磁盘上的样子；调用方把 owner 写的字放回输入框。
           var rejected = ops.splice(0, sent);
           var restored = onRejected(rejected);
-          error = '保存被拒：' + ((res.data && (res.data.detail || res.data.error)) || res.status)
+          error = '保存被拒：' + ((res.data && (res.data.message || res.data.error)) || res.status)
             + (restored ? '。原文已放回输入框' : '');
           if (res.data && Array.isArray(res.data.annotations)) adopt(res.data);
         }

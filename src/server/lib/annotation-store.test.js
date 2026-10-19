@@ -532,7 +532,7 @@ test('桶在保存途中被删：回 503 bucket_gone，不抛、不留临时文�
   const gone = store.save({ page: '@canvas', baseRevision: 1, annotations: [{ content: 'a' }, { content: 'b' }] });
   assert.equal(gone.status, 503);
   assert.equal(gone.error, 'bucket_gone');
-  assert.match(gone.detail, /在写入途中被删除或移走/);
+  assert.match(gone.message, /在写入途中被删除或移走/);
   assert.equal(gone.doc.revision, 0);
   // 删桶赢了：目录没被这次保存重新建出来，也就没有临时文件或半份账本留下。
   assert.equal(fs.existsSync(dataDir), false);

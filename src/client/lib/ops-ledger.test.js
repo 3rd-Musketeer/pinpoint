@@ -37,7 +37,7 @@ function fakeServer(disk) {
     calls.push(body);
     const answer = (status, data) => ({ ok: status < 400, status, json: async () => data });
     if (body.baseRevision !== disk.revision) return answer(409, { error: 'revision_conflict', ...structuredClone(disk) });
-    if (disk.reject) return answer(409, { error: 'illegal_transition', detail: 'close → check' });
+    if (disk.reject) return answer(409, { error: 'illegal_transition', message: 'close → check' });
     disk.revision += 1;
     disk.annotations = body.annotations;
     disk.path = body.path;
@@ -81,7 +81,7 @@ test('服务拒了操作：退回盘上的样子，报原因，调用方可以�
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     const res = await server.fetch(url, init);
     // 非法转换按 409 但不带 annotations 数组 = 不是 revision 冲突。
-    return { ...res, json: async () => ({ error: 'illegal_transition', detail: 'close → check' }) };
+    return { ...res, json: async () => ({ error: 'illegal_transition', message: 'close → check' }) };
   });
   let rejected = null;
   const ledger = createOpsLedger({ server: '', entry: 'e', ledger: '@prose', onRejected: (ops) => { rejected = ops; return true; } });
@@ -119,7 +119,7 @@ test('edit 操作：撞 409 时重放到盘上的新版，改的第一句与 age
   const strictServer = fakeServer(rejecting);
   t.mock.method(globalThis, 'fetch', async (url, init) => {
     const res = await strictServer.fetch(url, init);
-    return { ...res, json: async () => ({ error: 'illegal_transition', detail: 'close → check' }) };
+    return { ...res, json: async () => ({ error: 'illegal_transition', message: 'close → check' }) };
   });
   let rejected = null;
   const strict = createOpsLedger({ server: '', entry: 'e', ledger: '@prose', onRejected: (ops) => { rejected = ops; return true; } });

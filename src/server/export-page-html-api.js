@@ -57,7 +57,6 @@ export function createExportPageHtmlHandler(options = {}) {
       sendJson(res, status, {
         error: status === 400 ? (error.code || 'invalid_offline_page_export') : 'offline_page_export_failed',
         message: String(error && error.message || error),
-        detail: error && error.detail || undefined,
       });
     }
     return true;

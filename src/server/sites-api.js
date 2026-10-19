@@ -107,7 +107,7 @@ export function createSitesHandler(options = {}) {
     try {
       board = deriveArticleBoard(target).board;
     } catch {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
     if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
@@ -128,13 +128,13 @@ export function createSitesHandler(options = {}) {
       });
       const base = source ? (target.sources || {})[source] : target.projectRoot;
       if (!open || !base) {
-        sendJson(res, 404, { error: 'not found' });
+        sendJson(res, 404, { error: 'not found', message: 'not found' });
         return true;
       }
       const frame = rootScreens.find((screen) => frameSrcFromUrlPath(target, screen.src) === src);
       const file = frame ? articleHtmlFrameFile(target, frame) : servable(base, relPath);
       if (!file) {
-        sendJson(res, 404, { error: 'not found' });
+        sendJson(res, 404, { error: 'not found', message: 'not found' });
         return true;
       }
       return sendFile(req, res, file, { inject: frame ? inject : null });
@@ -149,7 +149,7 @@ export function createSitesHandler(options = {}) {
     }
     const file = rel ? servable(target.pageDir, rel) : null;
     if (!file) {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
     return sendFile(req, res, file);
@@ -177,7 +177,7 @@ export function createSitesHandler(options = {}) {
       id = decodeURIComponent(rawId);
       rel = decodeURIComponent(rawPath);
     } catch {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
 
@@ -186,12 +186,12 @@ export function createSitesHandler(options = {}) {
     if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel, rawPath);
     const entry = page && page.kind === 'entry' ? page.entry : null;
     if (!entry) {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
 
     if (entry.kind !== 'dir' && entry.kind !== 'file') {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
 
@@ -210,7 +210,7 @@ export function createSitesHandler(options = {}) {
       const pageDir = path.resolve(entry.path);
       // 不可读的板不能退化为普通 HTML 静态服务，绕过编译源边界。
       if (resolveContainedFile(pageDir, 'board.json', { index: false }).reason === 'outside') {
-        sendJson(res, 404, { error: 'not found' });
+        sendJson(res, 404, { error: 'not found', message: 'not found' });
         return true;
       }
       const screenId = screenIdFromRel(rel);
@@ -243,7 +243,7 @@ export function createSitesHandler(options = {}) {
     }
 
     if (!file) {
-      sendJson(res, 404, { error: 'not found' });
+      sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
 

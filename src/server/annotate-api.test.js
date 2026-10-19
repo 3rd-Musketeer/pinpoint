@@ -47,7 +47,7 @@ test('a route that throws answers 500 instead of rejecting (the service stays up
   const { handled, res, json } = await call(handler, 'POST', '/save', { page: 'index', entry: 'pinpoint', baseRevision: 0, annotations: [] });
   assert.equal(handled, true);
   assert.equal(res.statusCode, 500);
-  assert.deepEqual(json, { error: 'internal_error', detail: 'rename failed' });
+  assert.deepEqual(json, { error: 'internal_error', message: 'rename failed' });
   assert.equal(errors.length, 1);
 });
 
@@ -63,7 +63,7 @@ test('/save：桶在写入途中被删 → 503 bucket_gone，带说明，不是 
   t.mock.restoreAll();
   assert.equal(res.statusCode, 503);
   assert.equal(json.error, 'bucket_gone');
-  assert.match(json.detail, /在写入途中被删除或移走/);
+  assert.match(json.message, /在写入途中被删除或移走/);
 });
 
 test('resolveRequestEntry defaults missing entry to pinpoint and flags unknown ids', (t) => {

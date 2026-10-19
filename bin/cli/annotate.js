@@ -803,8 +803,8 @@ async function postAnnotation(origin, row, action, body, requestFn) {
       body: { entry: row.__bucket, baseRevision, ...body },
     });
     if (res.status === 200) return { ok: true, json: res.json };
-    const detail = res.json && res.json.detail ? `：${res.json.detail}` : '';
-    return { ok: false, reason: `${res.status} ${res.json && res.json.error ? res.json.error : ''}${detail}`.trim() };
+    const message = res.json && res.json.message ? `：${res.json.message}` : '';
+    return { ok: false, reason: `${res.status} ${res.json && res.json.error ? res.json.error : ''}${message}`.trim() };
   } catch (error) {
     return { ok: false, reason: error.message };
   }

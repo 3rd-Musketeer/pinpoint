@@ -1611,7 +1611,7 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
     if (opts.method === 'POST') {
       return opts.body.status === 'done'
         ? { status: 200, json: { revision: 3, annotation: { status: 'done' } } }
-        : { status: 409, json: { error: 'illegal_transition', detail: 'done → check' } };
+        : { status: 409, json: { error: 'illegal_transition', message: 'done → check' } };
     }
     return { status: 200, json: { revision: 2, annotations: [] } };
   };

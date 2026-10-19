@@ -206,7 +206,7 @@ test('route priority: every request shape lands on one branch or falls through (
     ['GET', '/annotations/index.html/1/reply', undefined, 'annotations:read'],
 
     ['GET', '/images/shot.png?entry=web', undefined, 'images:read',
-      (r) => assert.deepEqual([r.res.statusCode, r.json], [404, { error: 'not found' }])],
+      (r) => assert.deepEqual([r.res.statusCode, r.json], [404, { error: 'not found', message: 'not found' }])],
     ['GET', '/images/', undefined, 'images:read'],
     ['GET', '/image', undefined, 'next'],
     ['HEAD', '/images/shot.png', undefined, 'next'],
@@ -235,18 +235,18 @@ test('route priority: every request shape lands on one branch or falls through (
 test('route priority: entry gate and JSON parse answer before any store call', async (t) => {
   const fx = withFixture(t);
   const rejected = [
-    ['GET', '/annotations/index.html?entry=ghost', undefined, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['GET', '/images/shot.png?entry=ghost', undefined, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['POST', '/save', { entry: 'ghost', page: 'index.html', baseRevision: 0, annotations: [] }, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['POST', '/image', { entry: 'ghost', data: 'nope' }, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['POST', '/annotations/index.html/1/status', { entry: 'ghost', baseRevision: 0, status: 'check' }, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['POST', '/annotations/index.html/1/reply', { entry: 'ghost', baseRevision: 0, text: 'x' }, 400, { error: 'unknown_entry', entry: 'ghost' }],
-    ['POST', '/save', 'not json', 400, { error: 'bad_json' }],
-    ['POST', '/image', 'not json', 400, { error: 'bad_json' }],
-    ['POST', '/annotations/index.html/1/status', 'not json', 400, { error: 'bad_json' }],
-    ['POST', '/annotations/index.html/1/reply', 'not json', 400, { error: 'bad_json' }],
+    ['GET', '/annotations/index.html?entry=ghost', undefined, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['GET', '/images/shot.png?entry=ghost', undefined, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['POST', '/save', { entry: 'ghost', page: 'index.html', baseRevision: 0, annotations: [] }, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['POST', '/image', { entry: 'ghost', data: 'nope' }, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['POST', '/annotations/index.html/1/status', { entry: 'ghost', baseRevision: 0, status: 'check' }, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['POST', '/annotations/index.html/1/reply', { entry: 'ghost', baseRevision: 0, text: 'x' }, 400, { error: 'unknown_entry', message: '未知 entry：ghost', entry: 'ghost' }],
+    ['POST', '/save', 'not json', 400, { error: 'bad_json', message: 'JSON body expected' }],
+    ['POST', '/image', 'not json', 400, { error: 'bad_json', message: 'JSON body expected' }],
+    ['POST', '/annotations/index.html/1/status', 'not json', 400, { error: 'bad_json', message: 'JSON body expected' }],
+    ['POST', '/annotations/index.html/1/reply', 'not json', 400, { error: 'bad_json', message: 'JSON body expected' }],
     // dataURL 校验在 entry 之后、写盘之前。
-    ['POST', '/image', { entry: 'web', data: 'nope' }, 400, { error: 'bad dataURL' }],
+    ['POST', '/image', { entry: 'web', data: 'nope' }, 400, { error: 'bad dataURL', message: '图片要 base64 dataURL' }],
   ];
   for (const [method, url, body, status, expected] of rejected) {
     const { handled, res, json, calls } = await call(fx, method, url, body);
