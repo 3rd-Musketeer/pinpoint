@@ -12,6 +12,8 @@
  * 不会被这一边的旧快照盖掉。
  */
 
+import { isClosed } from './ann-status.js';
+
 export { PROSE_LEDGER } from './project-ids.js';
 
 export function isProseRow(row) {
@@ -119,8 +121,6 @@ export function formatWhen(iso, now = new Date()) {
   if (sameDay) return hm;
   return `${at.getMonth() + 1}月${at.getDate()}日 ${hm}`;
 }
-
-import { isClosed } from './ann-status.js';
 
 /** 已关闭 = owner 点了完成（close）。open / check / done 都还在等 owner 验收，不算。 */
 export function isProseClosed(row) {

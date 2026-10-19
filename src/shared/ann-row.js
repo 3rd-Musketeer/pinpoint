@@ -13,9 +13,10 @@
  * INLINED_LIBS in src/server/annotate-api.js).
  */
 
+import { annStatusOf } from './ann-status.js';
+
 /** Last `>`-separated selector segment, trimmed and truncated — the "which
  * element" excerpt used when a mark carries no stored text. */
-import { annStatusOf } from './ann-status.js';
 export function selectorExcerpt(selector, max = 60) {
   const tail = (String(selector || '').split('>').pop() || '').trim();
   return tail.slice(0, max);
