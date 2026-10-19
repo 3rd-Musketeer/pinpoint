@@ -6,6 +6,7 @@ import {
   absolutizeSrcset,
   classifyFrameScript,
   cssHazard,
+  importNeedsFrame,
   resolveCssImports,
   rewriteCssUrls,
   rewriteRootSelector,
@@ -65,6 +66,24 @@ test('resolveCssImports：递归展开 @import，带条件的包 @media，循环
   const seen2 = new Set();
   const again = await resolveCssImports('@import url("a.css");@import url("a.css");', base, fetchText, seen2);
   assert.equal((again.match(/\.a\{x:1\}/g) || []).length, 1); // 同一趟重复地址只展开一次
+});
+
+test('resolveCssImports：@import 带 layer() / supports() 不包进 @media，返回 null 让整帧退回 iframe', async () => {
+  const base = 'http://x/sites/demo_page/';
+  const fetched = [];
+  const fetchText = async (href) => { fetched.push(href); return '.a{x:1}'; };
+  assert.equal(importNeedsFrame(''), false);
+  assert.equal(importNeedsFrame('screen and (max-width: 600px)'), false);
+  assert.equal(importNeedsFrame('layer(kit)'), true);
+  assert.equal(importNeedsFrame('supports(display: grid)'), true);
+  // 不取被引用的表，也不产出 @media layer(...) 这种非法 CSS。
+  assert.equal(await resolveCssImports('@import url("a.css") layer(kit);', base, fetchText), null);
+  assert.equal(await resolveCssImports('@import "a.css" supports(display: flex);', base, fetchText), null);
+  assert.deepEqual(fetched, []);
+  // 被展开的表自己带这种 import，外层一并退回。
+  const nested = new Map([['http://x/sites/demo_page/a.css', '@import "b.css" layer(x);']]);
+  const fetchNested = async (href, seen) => resolveCssImports(nested.get(href), href, fetchNested, seen);
+  assert.equal(await resolveCssImports('@import url("a.css");', base, fetchNested), null);
 });
 
 test('absolutizeSrcset：候选地址绝对化，描述符保留', () => {

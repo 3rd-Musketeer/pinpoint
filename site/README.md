@@ -114,7 +114,7 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - 仓库 `src/shared/refs.js`：解析、跳过代码（围栏与行内代码，和 remark 步骤同口径；`ppnt check` 报空 ref 用同一份）、命名空间检查、引用的 HTML（纯函数，有单测）。名字按 `refKey` 比较（不分大小写），与 `listProjects` 的撞名检查一致。站点和 `ppnt check` 都从这里取。
 - `src/lib/site-data.js`：页面用的索引（used-by、空 ref）。
 - `src/lib/site-errors.js`：布局错误在站点上怎么显示。错误从 `listProjects` 到内容集合一路是对象（`src/shared/project-errors.js`），这里拼成 `project "<id>": …` 一行；文章页的错误条按 `path` 分出这篇自己的错误。
-- `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端的卡片显示 —— 静态帧取帧 HTML 挂 shadow root（`static-card-lib.js` 是纯函数一侧：CSS 文本处理与静态化判据，有单测）、doc 帧与回退帧的 iframe 尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
+- `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端的卡片显示 —— 静态帧取帧 HTML 挂 shadow root（`static-card-lib.js` 是纯函数一侧：CSS 文本处理与静态化判据，有单测；加载 ios-kit 之前给文章页的 `<html>` 设 `data-annotate="off"`，kit 不在文章页上自注入标注客户端）、doc 帧与回退帧的 iframe 尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节；`overlay-motion.js`：转场参数与 transform-origin（纯函数，有单测）。`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
 - `src/lib/layers.js`：弹层栈的文章页一份（实现在仓库 `src/shared/layers.js`，Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、窄屏目录入口、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数；`src/lib/toc-jump.js`：目录跳转的落点与动效参数（纯函数，有单测）。

@@ -46,9 +46,18 @@ test('文章卡片和右栏共用每本账本的一次首读，未注入评论�
   requests.length = 0;
   await page.goto('/e2e-html/pages/?annotate=off');
   await expect(page.locator('[data-pp-article-end]')).toBeAttached();
+  // 等静态卡片把 ios-kit 加载进文章页。kit 在 loopback 上自注入标注客户端，?annotate=off 时
+  // 正文评论客户端不在，那份注入会多出一条默认桶的 /annotations 请求（把这里从 4 变成 5），
+  // 并在页面末尾挂 #ann-toolbar。请求数按卡片挂载之后数，两条都要稳住。
+  await expect(page.locator('.cc-shadow[data-cc-mounted="1"]').first()).toBeAttached();
   await expect.poll(() => requests.length).toBe(4);
   expect(Object.values(counts())).toEqual([1, 1, 1, 1]);
   expect(await page.evaluate(() => !!window.pinpointProse)).toBe(false);
+  await expect(page.locator('#ann-toolbar')).toHaveCount(0);
+  await expect(page.locator('script[data-ios-annotate]')).toHaveCount(0);
+  await page.keyboard.press('a');
+  await page.locator('#article .prose h1').click();
+  await expect(page.locator('#ann-box')).toHaveCount(0);
 });
 
 test('共享 HTML 页：首读、SSE、关闭重读、close/reopen 的两个节计数一致，右栏只写一次', async ({ page, request }) => {

@@ -174,6 +174,15 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
       await expect((await cardInner(page, screen, '.wb-screen')).first()).toBeAttached();
     }
     await expect(await cardInner(page, 'card-plain', '.e2e-confirm-card')).toBeVisible();
+    // 静态卡片把 ios-kit 加载进文章页。kit 在 loopback 上自注入标注客户端，文章页上只能有
+    // 正文评论那一份：没有 #ann-toolbar，按 A 不进标注模式（那一份会在捕获阶段拦点击）。
+    await expect(page.locator('.cc-shadow[data-cc-mounted="1"]')).not.toHaveCount(0);
+    await expect(page.locator('#ann-toolbar')).toHaveCount(0);
+    await expect(page.locator('script[data-ios-annotate]')).toHaveCount(0);
+    await page.keyboard.press('a');
+    await page.locator('#article .prose h1').click();
+    await expect(page.locator('#ann-box')).toHaveCount(0);
+    await expect(page).toHaveURL(new RegExp(`${ARTICLE}$`));
   });
 
   await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址 301 过来（ADR 0045）', async () => {

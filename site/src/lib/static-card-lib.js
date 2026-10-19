@@ -57,19 +57,28 @@ export function rewriteCssUrls(cssText, baseUrl) {
 export const rewriteRootSelector = (cssText) => String(cssText).replace(/:root\b/g, ':host');
 
 /**
+ * @import 的条件是 media query 以外的东西（layer() / supports()）：包进 @media 会产出非法 CSS，
+ * constructed stylesheet 静默丢掉整张表。调用方见到 true 就整帧退回 iframe，不去生成新语法。
+ */
+export const importNeedsFrame = (condition) => /\b(?:layer|supports)\s*\(/.test(condition);
+
+/**
  * @import 递归展开：constructed stylesheet 不许带 @import，按 URL 取回文本内联；
- * 带条件的 import 包进 @media 保住条件。seen 打破循环引用（同一趟解析里重复的地址跳过）。
- * fetchText(href) → CSS 文本（调用方负责按 URL 缓存与 ?direct 处理）。
+ * media query 条件的 import 包进 @media 保住条件。条件是 layer() / supports() 时返回 null，
+ * 调用方整帧退回 iframe。seen 打破循环引用（同一趟解析里重复的地址跳过）。
+ * fetchText(href) → CSS 文本（调用方负责按 URL 缓存与 ?direct 处理）；被展开的文本自己返回 null 时一并退回。
  */
 export async function resolveCssImports(cssText, baseUrl, fetchText, seen = new Set()) {
   let out = String(cssText);
   const imports = [...out.matchAll(/@import\s+(?:url\(\s*)?['"]([^'"]+)['"]\s*\)?\s*([^;]*);/g)];
   for (const m of imports) {
+    if (importNeedsFrame(m[2])) return null; // 条件包不进 @media：整帧退回 iframe
     const href = new URL(m[1], baseUrl).href;
     let replacement = '';
     if (!seen.has(href)) {
       seen.add(href);
       const text = await fetchText(href, seen);
+      if (text == null) return null; // 被展开的表自己退回了
       replacement = m[2].trim() ? `@media ${m[2].trim()}{${text}}` : text;
     }
     out = out.replace(m[0], replacement);

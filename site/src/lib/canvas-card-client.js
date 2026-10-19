@@ -126,7 +126,11 @@ function sheetText(url) {
     const pending = (async () => {
       const res = await fetch(directUrl(url));
       if (!res.ok) return '';
-      return cssFromText(await res.text(), url, new Set([url]));
+      const text = await cssFromText(await res.text(), url, new Set([url]));
+      // null：这张表的 @import 带 layer() / supports()，展开不出合法 CSS。不缓存，
+      // 引用它的帧退回 iframe（同一张表被多帧引用时各自退回，不把 null 当成空样式共用）。
+      if (text == null && cssTextCache.get(url) === pending) cssTextCache.delete(url);
+      return text;
     })();
     // 瞬时失败不留缓存（本次挂载回退 iframe，下一张卡还能重试）；成功的文本整页共用。
     pending.catch(() => { if (cssTextCache.get(url) === pending) cssTextCache.delete(url); });
@@ -139,6 +143,7 @@ function sheetText(url) {
 // :root 搬到 :host。被展开的文本已按自己的 base 处理过，外层再改写到绝对地址是空操作。
 async function cssFromText(text, base, seen) {
   const out = await resolveCssImports(text, base, (href) => sheetText(href), seen);
+  if (out == null) return null; // layer() / supports() 的 @import：整帧退回 iframe
   return rewriteRootSelector(rewriteCssUrls(out, base));
 }
 
@@ -164,12 +169,16 @@ function hostResetSheet() {
 }
 
 // ios-kit 在文章页加载一次：sprite（#ios-kit-chrome）克隆进每个 shadow root，refresh(root)
-// 填状态栏 / 锁屏墙纸 / 时钟。文章页经服务代理已注入标注客户端（同步脚本先于模块脚本执行，
-// window.__pinpoint 在位），kit 的 annotate 自注入不会触发。
+// 填状态栏 / 锁屏墙纸 / 时钟。kit 在 loopback 上自注入标注客户端（injectAnnotate），只认两个退出：
+// <html data-annotate="off">，或 window.__pinpoint 已在。后者只在服务端注入了正文评论客户端时才在，
+// ?annotate=off 的文章页两个守卫都落空，kit 会在文章页上再起一份完整标注客户端、写进默认桶。
+// data-annotate 文章页的正文评论客户端和站点脚本都不读（frame-doc 的注释：这个属性只挡 kit 自注入），
+// 设上它不影响正文评论。必须在插入 kit 脚本之前设：kit 同步 boot，onload 时注入已经发生。
 let kitPromise = null;
 function ensureKit() {
   if (window.iOSKit) return Promise.resolve();
   if (!kitPromise) {
+    document.documentElement.setAttribute('data-annotate', 'off');
     kitPromise = new Promise((resolve, reject) => {
       const el = document.createElement('script');
       el.src = '/kits/ios/ios-kit.js';
@@ -228,20 +237,31 @@ function fallbackFrame(host, box, { srcdoc = null, src = null, title = '' }) {
 }
 
 // 回退帧的尺寸直接量：load（子资源齐）→ 帧文档字体就绪 → frame-boot 跑完（有预览脚本时）
-// → rAF 后量一次。没有定时重测；script 挂死时 frame-boot 的 data-frame-boot 不设超时地等
-// （与画布浮层等就绪信号同一约定）。
+// → rAF 后量一次。frame-boot 的完成标记在它自己的 Promise.all 之后，脚本被改坏或提前 return
+// 时标记永远不来；等它给上限，超时按当时的尺寸量（旧实现是 load 后 0 / 300 / 1200 ms 各量一次，
+// 不依赖这个标记）。
+export const FRAME_BOOT_WAIT_MS = 3000;
+
+/** 等 root 的 data-frame-boot="done"，到点没来就放行，按当时的尺寸量。 */
+export function waitForFrameBoot(root, { timeout = FRAME_BOOT_WAIT_MS, setTimer = setTimeout, clearTimer = clearTimeout } = {}) {
+  if (!root || root.dataset.frameBoot === 'done') return Promise.resolve();
+  return new Promise((resolve) => {
+    const mo = new MutationObserver(() => {
+      if (root.dataset.frameBoot === 'done') { mo.disconnect(); clearTimer(timer); resolve(); }
+    });
+    const timer = setTimer(() => { mo.disconnect(); resolve(); }, timeout);
+    mo.observe(root, { attributes: true, attributeFilter: ['data-frame-boot'] });
+    if (root.dataset.frameBoot === 'done') { mo.disconnect(); clearTimer(timer); resolve(); }
+  });
+}
+
 async function measureFallback(iframe, box) {
   const scale = Number(box.dataset.scale) || 1;
   try { await iframe.contentDocument?.fonts?.ready; } catch { /* 字体集合不可达也照量 */ }
   const root = iframe.contentDocument?.documentElement;
   if (root && root.dataset.frameBoot !== 'done'
     && iframe.contentDocument.querySelector('script[data-preview-script], [data-preview-mount]')) {
-    await new Promise((resolve) => {
-      const mo = new MutationObserver(() => {
-        if (root.dataset.frameBoot === 'done') { mo.disconnect(); resolve(); }
-      });
-      mo.observe(root, { attributes: true, attributeFilter: ['data-frame-boot'] });
-    });
+    await waitForFrameBoot(root);
   }
   requestAnimationFrame(() => {
     const m = measureStage(iframe);
@@ -340,6 +360,7 @@ async function mountCard(host) {
       const cssText = el.tagName === 'LINK'
         ? await sheetText(new URL(el.getAttribute('href'), base).href)
         : await cssFromText(el.textContent, base, new Set());
+      if (cssText == null) return fallbackFrame(host, box, { srcdoc: text, title }); // 展开不出合法 CSS
       sheets.push(sheetFor(cssText));
       if (el.closest('body')) variable.push(cssText); // 判据只扫帧自带的样式（head 是帧页固定 boilerplate）
       el.remove();
