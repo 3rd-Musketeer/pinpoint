@@ -136,3 +136,104 @@ test('深色 + 机壳偏好：按屏重摆与重置后，换上的屏与旁边�
   await expect(alpha).toContainText('hmr-site alpha v2');
   expect(await rootState(page, 'alpha')).toEqual(await rootState(page, 'beta'));
 });
+
+// 整板装载把帧里的 <style>@import</style> 提到 .wb-library 开头（lib/hoist-imports.js）；
+// 按屏重摆与重置只换一帧的子节点，曾经不维护那一组：删掉的 import 继续生效，HMR 与刷新
+// 出来的外观不同（final review M4）。这里用两屏共用一份 CSS、一屏独占一份的 HTML 屏，
+// 断言计算样式与旁屏：每一步的结果都要等于刷新后整板装载的结果。
+const HOIST_ID = 'e2e-hmr-hoist';
+const HOIST_DIR = path.join(E2E_SITES_DIR, 'hmr-hoist-site');
+const HOIST_FILES = {
+  'board.json': JSON.stringify({ sections: [{ id: 'main', title: 'Hoist', layout: 'row', screens: [{ id: 'one', title: 'One' }, { id: 'two', title: 'Two' }] }] }),
+  'shared.css': '[data-shared]{color:rgb(0,0,255)}',
+  'only.css': '[data-own]{color:rgb(255,0,0)}',
+  'added.css': '[data-own]{background-color:rgb(0,128,0)}',
+  'one.html': '<div class="ios-app"><style>@import url(./shared.css);</style><style>@import url(./only.css);</style>'
+    + '<div class="ios-page"><p data-own>one v1</p><p data-shared data-one-shared>one shared</p></div></div>',
+  'two.html': '<div class="ios-app"><style>@import url(./shared.css);</style>'
+    + '<div class="ios-page"><p data-shared data-two-shared>two shared</p></div></div>',
+};
+
+const hoistLook = (page) => page.evaluate(() => {
+  const panel = document.querySelector('#wb-board-panel');
+  const style = (sel) => {
+    const el = panel.querySelector(sel);
+    return el ? { color: getComputedStyle(el).color, background: getComputedStyle(el).backgroundColor } : null;
+  };
+  return {
+    own: style('[data-screen="one"] [data-own]'),
+    oneShared: style('[data-screen="one"] [data-one-shared]'),
+    twoShared: style('[data-screen="two"] [data-two-shared]'),
+    hoisted: [...panel.querySelectorAll('.wb-library > style')].map((s) => s.textContent.trim()),
+    inFrame: panel.querySelectorAll('.wb-screen style').length,
+  };
+});
+
+test('按屏重摆维护板级提升的 import：删掉即撤销、旁屏在用的保留、新增的照提，与刷新一致', async ({ page, request }) => {
+  test.setTimeout(90_000);
+  fs.rmSync(HOIST_DIR, { recursive: true, force: true });
+  fs.mkdirSync(HOIST_DIR, { recursive: true });
+  for (const [name, text] of Object.entries(HOIST_FILES)) fs.writeFileSync(path.join(HOIST_DIR, name), text);
+  appendRegistryEntry({ id: HOIST_ID, title: 'E2E HMR Hoist', kind: 'dir', path: HOIST_DIR, board: 'ios' });
+  await request.post('/registry/reload');
+  try {
+    const one = page.locator('#wb-board-panel [data-screen="one"]');
+    const settled = () => page.waitForFunction(() => window.workbench.whenPreviewsSettled());
+    const reloadLook = async (text) => {
+      await page.reload();
+      await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
+      await expect(one).toContainText(text);
+      await settled();
+      return hoistLook(page);
+    };
+    const BLUE = 'rgb(0, 0, 255)';
+
+    await openWorkbenchConnected(page, 'page=' + HOIST_ID);
+    await expect(one).toContainText('one v1');
+    await settled();
+    await expect.poll(async () => (await hoistLook(page)).own?.color).toBe('rgb(255, 0, 0)');
+    const gen0 = await page.evaluate(() => window.workbench.mountGeneration());
+
+    await test.step('一屏删掉两条 import：只有它用的撤销，旁屏还在用的保留', async () => {
+      fs.writeFileSync(path.join(HOIST_DIR, 'one.html'),
+        '<div class="ios-app"><div class="ios-page"><p data-own>one v2</p><p data-shared data-one-shared>one shared</p></div></div>');
+      await expect(one).toContainText('one v2');
+      // 走的是按屏重摆，不是整板重装。
+      expect(await page.evaluate(() => window.workbench.mountGeneration())).toBe(gen0);
+      const hmr = await hoistLook(page);
+      expect(hmr.own.color).toBe('rgb(0, 0, 0)');
+      expect(hmr.twoShared.color).toBe(BLUE);
+      expect(hmr.oneShared.color).toBe(BLUE);
+      expect(hmr.inFrame).toBe(0);
+      expect(hmr).toEqual(await reloadLook('one v2'));
+    });
+
+    await test.step('一屏新增 import：照提到板级，旁屏不受影响', async () => {
+      const gen = await page.evaluate(() => window.workbench.mountGeneration());
+      fs.writeFileSync(path.join(HOIST_DIR, 'one.html'),
+        '<div class="ios-app"><style>@import url(./added.css);</style><style>@import url(./shared.css);</style>'
+        + '<div class="ios-page"><p data-own>one v3</p><p data-shared data-one-shared>one shared</p></div></div>');
+      await expect(one).toContainText('one v3');
+      expect(await page.evaluate(() => window.workbench.mountGeneration())).toBe(gen);
+      await expect.poll(async () => (await hoistLook(page)).own.background).toBe('rgb(0, 128, 0)');
+      const hmr = await hoistLook(page);
+      expect(hmr.twoShared).toEqual({ color: BLUE, background: 'rgba(0, 0, 0, 0)' });
+      expect(hmr.inFrame).toBe(0);
+      expect(hmr).toEqual(await reloadLook('one v3'));
+    });
+
+    await test.step('整板装载后重置一帧：板级样式的所有权不丢', async () => {
+      const before = await hoistLook(page);
+      await one.locator('[data-own]').evaluate((el) => el.setAttribute('data-e2e-old', ''));
+      await one.hover();
+      await one.locator('.wb-frame-menu-trigger').click();
+      await one.locator('[data-frame-reset]').click();
+      await expect(one.locator('[data-e2e-old]')).toHaveCount(0);
+      await expect(one).toContainText('one v3');
+      expect(await hoistLook(page)).toEqual(before);
+    });
+  } finally {
+    fs.rmSync(HOIST_DIR, { recursive: true, force: true });
+    fs.rmSync(path.join(E2E_DATA_DIR, 'dist', HOIST_ID), { recursive: true, force: true });
+  }
+});

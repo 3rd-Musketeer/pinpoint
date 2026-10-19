@@ -34,7 +34,7 @@ import {
   wrapCompStage,
   wrapPhoneShell
 } from '../shared/frame-shell.js';
-import { hoistImportOnlyStyles } from './lib/hoist-imports.js';
+import { SCREEN_IMPORTS_ATTR, hoistedKeys, hoistedStyleHtml, splitImportOnlyStyles } from './lib/hoist-imports.js';
 
 /**
  * 装载失败面板（2026-09-04，BACKLOG「空态与错误面板」）：说明三行（标题 / 出处 /
@@ -230,6 +230,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
   // 混合板的 A1 编号与大纲/导出树同源），不落盘；
   // frame 上方两行（mono 引用号 accent + 屏名），尺寸在 frame 下方居中 mono 小字。
   var refs = boardRefs(board);
+  var screenImports = [];
   var parts = sections.map(function (sec) {
     var layout = sec.layout === 'row' ? 'row' : 'column';
     var screens = sec.screens || [];
@@ -240,7 +241,14 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       if (article && sc.shell === 'doc') return htmlFrameScreensHtml(pageId, sec, sc, col, layout, refs, frameViewport(sc.id));
       var key = sc.id;
       var fetched = screenMap[key];
-      var inner = screenContentHtml(pageId, sc, fetched, viewport);
+      // 帧里 import-only 的 style 提到板级（lib/hoist-imports.js）；这一屏用到哪几条记在
+      // 自己身上，按屏换内容时据此维护板级那一组。
+      var split = splitImportOnlyStyles(screenContentHtml(pageId, sc, fetched, viewport));
+      var inner = split.rest;
+      screenImports.push(split.keys);
+      var importsAttr = split.keys.length
+        ? ' ' + SCREEN_IMPORTS_ATTR + '="' + escHtml(JSON.stringify(split.keys)) + '"'
+        : '';
       var screenCls = screenClassForShell(pageId, sc.shell, viewport);
       var frameRef = refs.byFrame[sec.id + '\0' + sc.id] || '';
       // title 属性 = 截断兜底（2026-08-17 caption 两行 clamp）的全文出口
@@ -258,7 +266,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       // index.html 按 nth-child 钉死）—— comp / doc 屏不出尺寸行，每屏只有
       // 两格，隐式按列填充会从第二屏起整体串位（图注落进上一列的空格）。
       var colAttr = layout === 'row' ? ' style="--wb-col:' + (col + 1) + '"' : '';
-      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '"' + colAttr + '>' +
+      return '<div class="' + screenCls + '" data-screen="' + escHtml(sc.id) + '"' + importsAttr + colAttr + '>' +
         capHtml +
         inner +
         dimHtml +
@@ -276,7 +284,7 @@ export function buildBoardHtml(pageId, board, screenMap, options) {
       '<div class="wb-sec-body wb-sec-' + layout + '">' + body + '</div>' +
       '</article>';
   });
-  return '<div class="wb-zoom-wrap"><div class="wb-library" data-pp-scrollbar="off">' + hoistImportOnlyStyles(parts.join('')) + '</div></div>';
+  return '<div class="wb-zoom-wrap"><div class="wb-library" data-pp-scrollbar="off">' + hoistedKeys(screenImports).map(hoistedStyleHtml).join('') + parts.join('') + '</div></div>';
 }
 
 /** 文章画布上的一个 HTML 帧 → 卡片 + 页面浮层两块（见 htmlCardHtml 上的说明）。

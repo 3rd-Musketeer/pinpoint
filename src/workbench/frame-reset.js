@@ -11,6 +11,7 @@
 // 这里不 import 它（它 import export-core，export-core import 这里）。
 import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
 import { LIVE_CLOCK_SELECTOR } from '../shared/frame-shell.js';
+import { SCREEN_IMPORTS_ATTR, importStyleHtml, readScreenImports, splitImportOnlyStyles, syncHoistedStyles } from './lib/hoist-imports.js';
 
 var board = null; // { panel, session, remount, pristine: Map<帧 id, string> }
 var wiredPanel = null;
@@ -21,12 +22,14 @@ function isCaption(el) {
   return el.classList && (el.classList.contains('wb-screen-cap') || el.classList.contains('wb-screen-dim'));
 }
 
-/** 板刚插进 DOM、预览脚本还没跑时调用：记下每帧图注与尺寸行以外的 HTML。 */
+/** 板刚插进 DOM、预览脚本还没跑时调用：记下每帧图注与尺寸行以外的 HTML。
+    整板装载已把帧里 import-only 的 style 提到板级，记下的 HTML 把这一屏用到的那几条补回去：
+    重置换回它时与按屏换内容走同一条拆分，板级样式的所有权不丢。 */
 export function rememberBoard(panel, session, remount) {
   var pristine = new Map();
   panel.querySelectorAll('.wb-screen[data-screen]').forEach(function (screen) {
     if (screen.hasAttribute('data-html-card')) return;
-    var html = '';
+    var html = readScreenImports(screen).map(importStyleHtml).join('');
     Array.prototype.forEach.call(screen.children, function (child) {
       if (!isCaption(child)) html += child.outerHTML;
     });
@@ -195,8 +198,14 @@ function swapFrame(screenId, html, opts) {
   Array.prototype.slice.call(screen.children).forEach(function (child) {
     if (!isCaption(child)) child.remove();
   });
+  // 帧里 import-only 的 style 与整板装载一样归板级（final review M4）：先改这一屏的清单、
+  // 按清单重排板级那一组（新的照提，没人用的撤掉，旁屏还在用的留着），再插去掉它们的内容。
+  var split = splitImportOnlyStyles(html);
+  if (split.keys.length) screen.setAttribute(SCREEN_IMPORTS_ATTR, JSON.stringify(split.keys));
+  else screen.removeAttribute(SCREEN_IMPORTS_ATTR);
+  syncHoistedStyles(screen.closest('.wb-library'));
   var tpl = document.createElement('template');
-  tpl.innerHTML = html;
+  tpl.innerHTML = split.rest;
   var dim = screen.querySelector(':scope > .wb-screen-dim');
   screen.insertBefore(tpl.content, dim);
   if (opts && opts.remember) board.pristine.set(screenId, html);
