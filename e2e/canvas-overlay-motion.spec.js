@@ -481,9 +481,6 @@ test('画布浮层：连续两次失败后第三次重试成功', async ({ page 
   await page.setViewportSize({ width: 1440, height: 900 });
   let requests = 0;
   await page.route('**/workbench/?*', (route) => {
-    // 预热的导航发生在浮层打开之前（地址还没有 #canvas=），不计数。
-    // 打开之后的每次导航（第一次打开、两次重试）都计。
-    if (!page.url().includes('#canvas=')) return route.continue();
     requests += 1;
     if (requests <= 2) return route.abort('failed');
     return route.continue();
@@ -580,43 +577,47 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
   expect(hit).toContain('ov-canvas');
 });
 
-// 预热与停驻（E2）。计时上限取实测的数倍：预热后点开只剩把 iframe 移进浮层和恢复，
-// 不再装工作台。放回「点开才建 iframe」的旧代码，这一下要等整板装载，会超过上限。
-const OPEN_BUDGET_MS = 1500;
+// 预热与停驻（E2）。iframe 不移动，停驻的就是打开时那一份文档：点开只剩恢复与收起准备态。
+// 2026-10-19 实测（loadavg 约 4）：停驻后第一次点开 25ms、关掉再开 4ms；main 的再开 4ms；
+// 修前（每次开关挪 iframe、文档重装）176–256ms。上限 120ms：实测的约 4 倍，低于修前最快的一次。
+// 文档身份另有标记断言，不只靠计时。
+const OPEN_BUDGET_MS = 120;
 
 test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒工作台不再排回调', async ({ page }) => {
   test.setTimeout(180_000);
+  let parkedBody = null;
   await page.setViewportSize({ width: 1440, height: 900 });
   await openArticle(page);
 
   await test.step('正文和可见卡片完成后才预热，停驻容器按打开时的尺寸', async () => {
     await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.settled() && window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
     const parked = await page.evaluate(() => {
-      const hold = document.querySelector('[data-ov-park]');
-      const frame = hold?.querySelector('iframe.ov-canvas');
       const dlg = document.querySelector('[data-pp-overlay]');
-      const head = dlg?.querySelector('.ov-head');
-      const pad = Number.parseFloat(getComputedStyle(dlg).paddingTop) || 0;
-      const box = hold.getBoundingClientRect();
+      const cs = getComputedStyle(dlg);
+      // 布局尺寸（offset*），不看 transform：开合动画会缩放面板。
+      const el = dlg.querySelector('[data-ov-body]');
+      const body = { width: el.offsetWidth, height: el.offsetHeight };
       return {
         open: dlg.hasAttribute('open'),
-        hidden: getComputedStyle(hold).visibility,
-        display: getComputedStyle(hold).display,
-        width: Math.round(box.width),
-        height: Math.round(box.height),
-        expectWidth: Math.round(window.innerWidth - pad * 2),
-        expectHeight: Math.round(window.innerHeight - pad * 2 - (head?.offsetHeight || 0)),
-        inDialog: !!dlg.querySelector('iframe.ov-canvas'),
-        hasFrame: !!frame,
+        held: dlg.hasAttribute('data-ov-held'),
+        inert: dlg.inert,
+        hidden: cs.visibility,
+        display: cs.display,
+        pointer: cs.pointerEvents,
+        inDialog: !!dlg.querySelector('[data-ov-body] iframe.ov-canvas'),
+        body: [Math.round(body.width), Math.round(body.height)],
       };
     });
-    expect(parked.open).toBe(false);
-    expect(parked.inDialog).toBe(false);
-    expect(parked.hasFrame).toBe(true);
-    expect(parked.hidden).toBe('hidden');
-    expect(parked.display).toBe('flex');
-    expect(parked.width).toBe(parked.expectWidth);
-    expect(parked.height).toBe(parked.expectHeight);
+    expect(parked).toMatchObject({ open: false, held: true, inert: true, hidden: 'hidden', display: 'flex', pointer: 'none', inDialog: true });
+    // 停驻态按打开时的布局排版：画布区的尺寸与打开后一致（打开后再比一次）。
+    parkedBody = parked.body;
+    expect(parkedBody[0]).toBeGreaterThan(100);
+    expect(parkedBody[1]).toBeGreaterThan(100);
+    // 关着的浮层不挡正文：视口中心点到的是正文，不是 dialog。
+    const hit = await page.evaluate(() => !!document.elementFromPoint(innerWidth / 2, innerHeight / 2)?.closest('[data-pp-overlay]'));
+    expect(hit).toBe(false);
+    // 文档身份：停驻时挂上标记，打开、关、再开都应还在（iframe 不移动就不重装）。
+    await page.evaluate(() => { window.pinpointOverlay.frame().contentWindow.__docMark = 'parked-doc'; });
   });
 
   await test.step('停驻 3 秒：工作台不再排定时器与动画帧', async () => {
@@ -642,35 +643,55 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
     expect(counts).toEqual({ timeout: 0, interval: 0, raf: 0 });
   });
 
-  await test.step('点开到可交互在预算内', async () => {
-    const elapsed = await page.evaluate(async () => {
-      const start = performance.now();
-      document.querySelector('#btn-canvas').click();
-      const deadline = start + 20000;
-      for (;;) {
-        const win = window.pinpointOverlay?.frame()?.contentWindow;
-        const stage = win?.document?.querySelector('#wbstage');
-        const box = stage?.getBoundingClientRect();
-        // 可交互 = 舞台有真实尺寸、帧挂上了、准备态收起。不等落点：落点是定位，
-        // 预热省下的是装载，不是滚动。
-        const ready = window.pinpointOverlay?.phase() === 'open'
-          && box && box.width > 100 && box.height > 100
-          && win.document.querySelector('.wb-screen')
-          && document.querySelector('[data-ov-status]')?.hidden;
-        if (ready) return performance.now() - start;
-        if (performance.now() > deadline) return performance.now() - start;
-        await new Promise((resolve) => requestAnimationFrame(resolve));
-      }
-    });
+  // 点开到可交互：舞台有真实尺寸、帧挂上了、准备态收起。不等落点（落点是定位，预热省下的是装载）。
+  const timedOpen = () => page.evaluate(async () => {
+    const start = performance.now();
+    document.querySelector('#btn-canvas').click();
+    const deadline = start + 20000;
+    for (;;) {
+      const win = window.pinpointOverlay?.frame()?.contentWindow;
+      const stage = win?.document?.querySelector('#wbstage');
+      const box = stage?.getBoundingClientRect();
+      const ready = window.pinpointOverlay?.phase() === 'open'
+        && box && box.width > 100 && box.height > 100
+        && win.document.querySelector('.wb-screen')
+        && document.querySelector('[data-ov-status]')?.hidden;
+      if (ready || performance.now() > deadline) return performance.now() - start;
+      await new Promise((resolve) => requestAnimationFrame(resolve));
+    }
+  });
+  const docMark = () => page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark || null);
+
+  await test.step('点开到可交互在预算内，文档还是停驻的那一份', async () => {
+    const elapsed = await timedOpen();
+    console.log(`[E2] 停驻后点开 ${Math.round(elapsed)}ms`);
     expect(elapsed).toBeLessThanOrEqual(OPEN_BUDGET_MS);
     await expect(overlay(page)).toHaveAttribute('open', '');
     await expect(status(page)).toBeHidden();
+    expect(await docMark()).toBe('parked-doc');
+    const opened = await page.evaluate(() => {
+      const dlg = document.querySelector('[data-pp-overlay]');
+      const el = dlg.querySelector('[data-ov-body]');
+      return { held: dlg.hasAttribute('data-ov-held'), inert: dlg.inert, body: [el.offsetWidth, el.offsetHeight] };
+    });
+    expect(opened).toEqual({ held: false, inert: false, body: parkedBody });
     const hit = await page.evaluate(() => {
       const frame = document.querySelector('[data-pp-overlay] iframe.ov-canvas');
       const r = frame.getBoundingClientRect();
       return document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)?.className || '';
     });
     expect(hit).toContain('ov-canvas');
+  });
+
+  await test.step('关掉再开：仍在预算内，文档没重装', async () => {
+    await page.keyboard.press('Escape');
+    await expect(overlay(page)).not.toHaveAttribute('open', '');
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.phase())).toBe('parked');
+    expect(await docMark()).toBe('parked-doc');
+    const elapsed = await timedOpen();
+    console.log(`[E2] 关掉再开 ${Math.round(elapsed)}ms`);
+    expect(elapsed).toBeLessThanOrEqual(OPEN_BUDGET_MS);
+    expect(await docMark()).toBe('parked-doc');
   });
 });
 
@@ -691,6 +712,8 @@ test('画布浮层：停驻的工作台断开 /events，打开后重连并补上
   // 标注实例装上之后再数：它的 /events 在就绪前后才开。
   await expect.poll(() => page.evaluate(() => !!window.pinpointOverlay.frame()?.contentWindow?.pinpoint?.whenReady), { timeout: 60_000 }).toBe(true);
   await expect.poll(() => open.size, { timeout: 10_000 }).toBe(0);
+  // 文档身份：补上的那一条要靠恢复时的补读，不是文档重装后的首次 hydrate。
+  await page.evaluate(() => { window.pinpointOverlay.frame().contentWindow.__docMark = 'parked-doc'; });
 
   const { pageId, screen } = await page.evaluate(() => ({
     pageId: document.querySelector('[data-pp-canvas]').dataset.page,
@@ -709,6 +732,7 @@ test('画布浮层：停驻的工作台断开 /events，打开后重连并补上
       const ann = window.pinpointOverlay.frame().contentWindow.pinpoint;
       return !!ann && ann.getState().connected && ann.marks.some((m) => m.id === 'e2-parked-row');
     }), { timeout: 30_000 }).toBe(true);
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark)).toBe('parked-doc');
   } finally {
     const now = await (await request.get(endpoint)).json();
     await request.post('/save', { data: { entry: pageId, page: '@canvas', path: '/', baseRevision: now.revision, annotations: (now.annotations || []).filter((a) => a.id !== row.id) } });

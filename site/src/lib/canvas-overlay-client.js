@@ -39,34 +39,22 @@ export function initCanvasOverlay() {
   let navigation = 0;   // 每次打开 / 换落点加一：上一次还在等工作台的定位作废
 
   // ---- 预热与停驻（E2）----
-  // absent → warming → parked → open → parked。iframe 不放进关着的 dialog
-  // （display:none 里预热，帧数和 settled 都到了，画布是空的）：关着时停在
-  // [data-ov-park]，尺寸与打开时的 .ov-body 相同，visibility:hidden。
-  // 生命周期是 overlayPhaseNext；这里只落 DOM 和发给工作台的暂停 / 恢复。
+  // absent → warming → parked → open → parked。iframe 建好就一直在 dialog 的 .ov-body 里，
+  // 永不移动：Chromium 里 iframe 换父节点就销毁文档重新导航，挪一次就是重装一次。
+  // dialog 关着时 UA 样式是 display:none，里面的画布不排版（预热出来是空的），所以有了
+  // iframe 之后关着的 dialog 带 data-ov-held：照常排版（与打开时同一套尺寸），但
+  // visibility:hidden、不接点击、inert（不接焦点、不进无障碍树），见 site.css。
+  // showModal / close 照旧，Esc、焦点归还、滚动锁都走原来的路。进出 top layer 不卸文档。
+  // 生命周期是 overlayPhaseNext；这里只落属性和发给工作台的暂停 / 恢复。
   let phase = 'absent';
-  const park = dlg.parentElement?.querySelector('[data-ov-park]') || null;
 
   function setPhase(event) {
     phase = overlayPhaseNext(phase, event);
   }
 
-  // 停驻容器取打开时的布局尺寸：dialog 的内边距与头的高度从浮层自己的样式读，
-  // 不写死像素。窄屏整屏 sheet（内边距为 0）也从这里出来。
-  function parkBox() {
-    const pad = Number.parseFloat(getComputedStyle(dlg).paddingTop) || 0;
-    const head = dlg.querySelector('.ov-head')?.offsetHeight || 0;
-    return {
-      width: `${Math.max(0, window.innerWidth - pad * 2)}px`,
-      height: `${Math.max(0, window.innerHeight - pad * 2 - head)}px`,
-    };
-  }
-
-  function placeParked() {
-    if (!park) return;
-    park.hidden = false;
-    const box = parkBox();
-    park.style.width = box.width;
-    park.style.height = box.height;
+  function holdDialog(on) {
+    dlg.toggleAttribute('data-ov-held', on);
+    dlg.inert = on;
   }
 
   // 失败页不是同源的，读 contentWindow 的属性会抛 SecurityError。读不到就当还没装好。
@@ -161,29 +149,24 @@ export function initCanvasOverlay() {
     docGen += 1;
     iframe.src = embedCanvasSrc(pageId, sectionId, docGen);
     iframe.addEventListener('load', onFrameLoad);
-    // 开着就进 dialog；没开就按打开时的尺寸停进停驻容器（预热）。没有停驻容器
-    // （旧壳）时不预建，等打开再装进 dialog。
-    if (state) el.body.append(iframe);
-    else if (park) { placeParked(); park.append(iframe); setPhase('prewarm'); }
-    else el.body.append(iframe);
+    // 没开（预热）就让关着的 dialog 照常排版、不可见，iframe 一样装进 .ov-body。
+    if (!state) { holdDialog(true); setPhase('prewarm'); }
+    el.body.append(iframe);
     return true;
   }
 
-  // 打开：iframe 从停驻容器移进 dialog，工作台恢复。关闭中又打开也走这里。
-  function revealFrame() {
-    if (iframe && iframe.parentElement !== el.body) el.body.append(iframe);
+  // 打开：工作台恢复。关闭中又打开也走这里。
+  function wakeFrame() {
     if (phase !== 'open') {
       setPhase('open');
       tellFrame('resume');
     }
   }
 
-  // 关掉：iframe 移回停驻容器（尺寸与打开时相同），工作台暂停。重试态留在 dialog 里，
-  // 下次打开还是那张失败页，不拿一份没装好的文档去停驻。
-  function concealFrame() {
-    if (!iframe || !park || docState === 'retry') return;
-    placeParked();
-    if (iframe.parentElement !== park) park.append(iframe);
+  // 关掉：dialog 进停驻态（照常排版、不可见），工作台暂停。
+  function parkFrame() {
+    if (!iframe) return;
+    holdDialog(true);
     if (phase === 'open') {
       setPhase('park');
       tellFrame('pause');
@@ -206,8 +189,6 @@ export function initCanvasOverlay() {
 
   // 定位：节 → 帧（定位并选中）→ 钉子。
   async function land({ section, frame, ann, fresh }, nav) {
-    // 代号在第一个 await 之前提交：否则这一拍里开始的另一次打开会拿到同一个代号，
-    // 后提交的把先提交的盖掉，先打开的那次定位被当成过期丢掉。
     navigation = nav;
     if (!(await boardReady(nav))) { landed(nav, ''); return; }
     if (document.activeElement === el.close) iframe.focus({ preventScroll: true });
@@ -223,19 +204,9 @@ export function initCanvasOverlay() {
     if (ann == null) { landed(nav, at); return; }
     // HTML 帧的钉子在活卡片自己的客户端里；不打开页面浮层。
     const html = !!frameOf(section, frame)?.hasAttribute('data-doc-url');
-    // 画布实例的 pinpoint 分步挂上：先有对象，goToMark 后到。停驻恢复时读早了就是半份。
     const annApi = html
       ? () => wb.whenCardAnnotateReady(frame)
-      : async () => {
-        const deadline = Date.now() + READY_WAIT_MS;
-        let api = null;
-        while (Date.now() < deadline) {
-          api = frameWin()?.pinpoint || null;
-          if (api && typeof api.goToMark === 'function') return api;
-          await new Promise((resolve) => requestAnimationFrame(resolve));
-        }
-        return api;
-      };
+      : () => frameWin()?.pinpoint || null;
     await toMark(nav, annApi, ann, at);
   }
 
@@ -250,13 +221,8 @@ export function initCanvasOverlay() {
     }
     await withDeadline(api.whenReady(), READY_WAIT_MS);
     if (nav !== navigation) return;
-    // 画布实例启动会换两次桶：第一次落定时账本还是空的，当前这次换桶落定才有钉子。
-    if (typeof api.whenSettled === 'function') await withDeadline(api.whenSettled(), READY_WAIT_MS);
-    if (nav !== navigation) return;
     if (!api.marks.some((m) => m.n === ann)) { landed(nav, fallback); return; }
-    // 停驻恢复的头几帧几何还在变，滚动定位会被打断一次（返回 false）。再试一次。
-    let done = await api.goToMark(ann);
-    if (done === false && nav === navigation) done = await api.goToMark(ann);
+    const done = await api.goToMark(ann);
     landed(nav, done === false ? fallback : `ann:${ann}`);
   }
 
@@ -293,7 +259,7 @@ export function initCanvasOverlay() {
       setPhase('discard');
       setDocState('loading');
       iframe.src = embedCanvasSrc(pageId, state.section, docGen);
-      revealFrame();
+      wakeFrame();
       const nav = ++navigation;
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
@@ -333,6 +299,8 @@ export function initCanvasOverlay() {
       const r = trigger?.getBoundingClientRect();
       el.panel.style.transformOrigin = overlayOrigin(r ? r.top + r.height / 2 : innerHeight / 2, innerHeight);
       closing = false;
+      // 停驻态撤掉再进 top layer（inert 的 dialog 不接焦点）。
+      holdDialog(false);
       dlg.showModal();
       play(true, OV_OPEN_MS);
     } else if (closing) {
@@ -349,7 +317,7 @@ export function initCanvasOverlay() {
     const fresh = ensureFrame(sectionId);
     // 预热的暂停可能早于工作台的监听：打开前再发一次，回执只在预热中收。
     if (phase === 'warming') tellFrame('pause');
-    revealFrame();
+    wakeFrame();
     const nav = navigation + 1;
     // 每次打开都按当前文档状态重新核对：ready 直接走；loading 显示准备态（等待由
     // 消息推进，不需要重新「观察」）；retry / board-error 保留上次记下的失败。
@@ -367,9 +335,8 @@ export function initCanvasOverlay() {
     closing = false;
     navigation += 1;
     s.release?.();
-    // 先把 iframe 挪出 dialog 再关。关闭模态 dialog 会卸掉还在里面的文档，再开就是一份
-    // 还没装上页的新工作台，落点选不中。
-    concealFrame();
+    // 停驻态先挂上再关：close 之后 dialog 不会有一帧 display:none（不排版的画布量不到几何）。
+    parkFrame();
     dlg.close();
     // 动画留着：fill:both 停在收起的样子，途中再开时 play 从它的当前值接着走。
     playing = null;
@@ -538,7 +505,7 @@ export function initCanvasOverlay() {
     const section = prewarmSection(ids, visibleSections(), entrySection(ids, order, currentSection()));
     if (section) ensureFrame(section);
   }
-  if (!initial && park) {
+  if (!initial) {
     const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
     // 等卡片摆好的信号，不轮询：每摆好一帧发一次 pp:canvas-card-fitted。
     const onFitted = () => {
@@ -553,8 +520,6 @@ export function initCanvasOverlay() {
     };
     document.addEventListener('pointerover', hurry, true);
     document.addEventListener('focusin', hurry);
-    // 停驻容器跟视口走：打开前改了窗口大小，预热好的画布仍按打开时的尺寸。
-    window.addEventListener('resize', () => { if (phase === 'warming' || phase === 'parked') placeParked(); });
   }
 
   // e2e / 调试用的只读状态。

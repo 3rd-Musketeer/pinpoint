@@ -128,7 +128,7 @@ test('owner 性能静态卡片：97 帧全挂 shadow root，活动文档 ≤ 6�
   // 旧实现每帧一个 iframe，98 个（r3 在 owner 真实文章上实测 100）；上限 6 给浏览器内部临时文档留余量，
   // 离旧实现一个数量级。GC 后 JS 堆：r3 实测 shadow 3.3 MiB、iframe 39.6 MiB；上限 16 MiB 约为
   // 新实现的 4 倍余量、旧实现的 40%。
-  // 画布浮层预热（E2）：卡片都摆好后，文章页空闲时把整张画布的工作台预建在停驻容器里。
+  // 画布浮层预热（E2）：卡片都摆好后，文章页空闲时把整张画布的工作台预建在关着的浮层里（停驻）。
   // 它是同源 iframe，和文章页共用一个 JS 堆（实测约 20 MiB）。这道门量的是卡片：先等预热
   // 停驻（不等的话量到的时刻有没有它不确定），整页的堆连同工作台记成指标，再摘掉停驻的
   // iframe 量卡片的堆。活动文档数把工作台算在内。
@@ -148,7 +148,7 @@ test('owner 性能静态卡片：97 帧全挂 shadow root，活动文档 ≤ 6�
     await cdp.send('Performance.enable');
     await cdp.send('HeapProfiler.enable');
     pageHeapBytes = await usedHeap();
-    await page.evaluate(() => document.querySelector('[data-ov-park] iframe')?.remove());
+    await page.evaluate(() => document.querySelector('[data-pp-overlay] iframe.ov-canvas')?.remove());
     heapBytes = await usedHeap();
   } finally { await cdp.detach(); }
   const mib = (bytes) => Math.round((bytes / 1024 / 1024) * 10) / 10;

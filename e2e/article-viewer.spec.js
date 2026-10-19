@@ -174,10 +174,10 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
   });
 
   await test.step('卡片“打开画布”：同一个浮层，再开不重装工作台，直接定位到那一节；后退关、前进开；关闭按钮；点暗色区域', async () => {
-    // 预热刚开始时板还没装完：代号先是 0，装上才递增。等第一次装载完成再读，
-    // 再开时拿它比「没有重装」。读的仍是同一个 iframe 的代号。
-    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.frame()?.contentWindow?.workbench?.mountGeneration() || 0)).toBeGreaterThan(0);
-    const generation = await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration());
+    // 「没有重装」看文档身份：往工作台的 window 挂一个标记，再开时它还在就是同一份文档。
+    // 挂载代号不行：文档重载后代号从头计数，两次读数照样相等。
+    await expect.poll(() => page.evaluate(() => !!window.pinpointOverlay.frame()?.contentWindow?.workbench)).toBe(true);
+    await page.evaluate(() => { window.pinpointOverlay.frame().contentWindow.__docMark = 'viewer-doc'; });
     await page.locator('[data-pp-canvas][data-pp-section="variants"]').scrollIntoViewIfNeeded();
     const at = await scrollOf(page);
     await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-pp-open]').click();
@@ -186,7 +186,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
     await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
     await expect(canvasFrame(page).locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
-    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration())).toBe(generation);
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark)).toBe('viewer-doc');
     await page.goBack();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
     expect(hashOf(page)).toBe('');
@@ -199,6 +199,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     await expect.poll(() => hashOf(page)).toBe('');
     await expect.poll(() => scrollOf(page)).toEqual(at);
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark)).toBe('viewer-doc');
 
     await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
     await expect(overlay(page)).toHaveAttribute('open', '');

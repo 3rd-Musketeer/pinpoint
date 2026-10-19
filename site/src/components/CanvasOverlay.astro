@@ -1,12 +1,11 @@
 ---
 // 画布浮层：在文章上开整张画布（可标注、平移、缩放），关掉回到原来的滚动位置（site/README.md「画布浮层」）。
 // 一篇文章一个，空壳；里面是一份嵌入版工作台（/workbench/?page=<页 id>&section=<节>&embed=overlay），
-// 由 lib/canvas-overlay-client.js 在正文和可见卡片完成后预热进旁边的停驻容器（按打开时的尺寸，
-// 不能放进关着的 dialog），打开时移进浮层，关掉移回去，再开直接定位。
+// 由 lib/canvas-overlay-client.js 在正文和可见卡片完成后预热进 .ov-body；iframe 永不移动（换父节点就重装文档），
+// 关着时 dialog 带 data-ov-held 照常排版、不可见（site.css），再开直接定位。
 // 首尾的 data-ov-guard 把 Tab 绕回浮层里（modal dialog 自己会把焦点放出到浏览器界面）。
 // data-pp-nocomment：浮层里选字不出正文“评论”（src/client/prose-comments.js 的 SKIP_SELECTOR）。
 ---
-<div class="ov-park" data-ov-park hidden></div>
 <dialog class="pp-ov" id="pp-overlay" data-pp-overlay data-pp-nocomment aria-labelledby="pp-ov-title">
   <span class="ov-guard" tabindex="0" data-ov-guard="start"></span>
   <div class="ov-panel">

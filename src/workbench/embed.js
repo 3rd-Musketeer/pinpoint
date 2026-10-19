@@ -86,12 +86,11 @@ export function startEmbedBridge() {
     else resumeEmbed();
     post({ type: 'parked', paused: data.type === 'pause' });
   });
-  // 预热的 pause 可能在这个监听挂上之前就到了（模块还在加载）：父页面停驻容器里
-  // 已有本帧而浮层没开，就当它已经要求暂停，补一次。
+  // 预热的 pause 可能在这个监听挂上之前就到了（模块还在加载）：父页面的浮层关着、
+  // 停着本帧（data-ov-held），就当它已经要求暂停，补一次。
   try {
-    var held = window.parent.document.querySelector('[data-ov-park] iframe');
-    var opened = window.parent.document.querySelector('dialog[data-pp-overlay][open]');
-    if (held && held.contentWindow === window && !opened) {
+    var held = window.parent.document.querySelector('dialog[data-pp-overlay][data-ov-held]:not([open]) iframe');
+    if (held && held.contentWindow === window) {
       pauseEmbed();
       post({ type: 'parked', paused: true });
     }

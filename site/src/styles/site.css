@@ -245,15 +245,11 @@ html.pp-ov-lock { overflow:hidden; }
 .ov-body { position:relative; flex:1; min-height:0; background:var(--pp-surface); }
 /* 工作台自己管深浅色（跟系统），iframe 不继承站点的 color-scheme，免得浏览器给它铺一层不透明底色。 */
 .ov-canvas { position:absolute; inset:0; width:100%; height:100%; border:0; display:block; color-scheme:normal; }
-/* 停驻（E2）：关着的 dialog 是 display:none，iframe 放进去预热，帧数和 settled 都到了画布却是空的。
-   所以停驻容器按打开时的布局尺寸摆在视口外，display:flex 保住尺寸，visibility:hidden 不让它被看见、
-   被点到、被读屏读到。尺寸由 canvas-overlay-client.js 写成打开时的 .ov-body。 */
-/* content-visibility:visible：hidden 子树浏览器可以不排版，板的几何就是空的，
-   打开后定位量不到节。强制排版，尺寸与打开时一致。 */
-.ov-park { position:fixed; left:0; top:0; display:flex; visibility:hidden; pointer-events:none; z-index:-1; content-visibility:visible; }
-.ov-park[hidden] { display:none; }
-.ov-park:not([hidden]) { display:flex; }
-.ov-park .ov-canvas { position:relative; flex:1; width:100%; height:100%; }
+/* 停驻（E2）：关着的 dialog 是 display:none，里面的画布不排版，预热出来是空的；iframe 又不能挪出去
+   （换父节点就重装文档）。有了 iframe 之后关着的 dialog 带 data-ov-held：照常按打开时的布局排版，
+   visibility:hidden 不被看见、读屏不读，pointer-events:none 不挡点击，inert（脚本设）不接焦点；
+   不在 top layer，z-index:-1 垫在正文下面。content-visibility:visible：hidden 子树浏览器可以不排版。 */
+.pp-ov[data-ov-held]:not([open]) { display:flex; visibility:hidden; pointer-events:none; z-index:-1; content-visibility:visible; }
 /* 加载态盖在画布上，不另起计时器：板和预览都就绪才收，失败时同处换成“重试”。 */
 .ov-status { position:absolute; inset:0; z-index:2; margin:0; display:grid; place-items:center; gap:12px;
              background:var(--pp-surface); color:var(--pp-text-muted); font-size:var(--pp-fs-ui); }
