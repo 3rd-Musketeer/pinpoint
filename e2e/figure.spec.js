@@ -95,7 +95,8 @@ test('正文里的图：同源 iframe 渲染、高度随内容、iframe 里能�
     const bg = () => inner(page, 'message-flow').locator('body').evaluate((b) => getComputedStyle(b).backgroundColor);
     expect(await bg()).toBe('rgb(255, 255, 255)');
     await page.locator('#btn-theme').click();
-    await expect(page.locator('html')).toHaveAttribute('data-theme', 'dark');
+    // 静态卡片的帧文档挂在 shadow root 里，Playwright 的 css 会穿透；文章页根用 :root。
+    await expect(page.locator(':root')).toHaveAttribute('data-theme', 'dark');
     await expect(inner(page, 'message-flow').locator('html')).toHaveAttribute('data-theme', 'dark');
     await expect.poll(bg).toBe('rgb(17, 17, 17)');
     await expect(inner(page, 'wait-sequence').locator('html')).toHaveAttribute('data-theme', 'dark');

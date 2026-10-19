@@ -87,7 +87,8 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
     expect(hashOf(page)).toBe('#canvas=confirm&frame=confirm-done');
     expect(await page.evaluate(() => window.__sameDoc)).toBe(true);
-    await expect(page.locator('html')).toHaveClass(/\bpp-ov-lock\b/);
+    // 静态卡片的帧文档（<html>/<body>）挂在 shadow root 里，Playwright 的 css 会穿透；文章页根用 :root。
+    await expect(page.locator(':root')).toHaveClass(/\bpp-ov-lock\b/);
     // gen=1：文档代次（C1）随 src 传给工作台，就绪消息按它核对归属；重试换文档时递增。
     await expect(overlay(page).locator('iframe.ov-canvas')).toHaveAttribute('src', `/workbench/?page=${CANVAS_PAGE}&section=confirm&embed=overlay&gen=1`);
     const wb = await canvasReady(page);
@@ -168,7 +169,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     await expect.poll(() => hashOf(page)).toBe('');
     await expect.poll(() => scrollOf(page)).toEqual(before);
     expect(await activeInfo(page)).toMatchObject({ inOverlay: false, hit: true, frame: 'confirm-done' });
-    await expect(page.locator('html')).not.toHaveClass(/\bpp-ov-lock\b/);
+    await expect(page.locator(':root')).not.toHaveClass(/\bpp-ov-lock\b/);
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
   });
 
@@ -399,7 +400,7 @@ test('文章页只显示节号，不出画布字母；画布接口仍带 letter 
     await expect(page.locator('[data-pp-canvas] .cc-head .meta')).toHaveText(['2 帧', '1 帧', '2 帧']);
     await expect(page.locator('[data-pp-canvas] .cc-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']);
     await expect(page.locator('[data-letter], [data-ref], [data-ov-letter]')).toHaveCount(0);
-    expect(await page.locator('body').innerText()).not.toMatch(FRAME_REF);
+    expect(await page.locator(':root > body').innerText()).not.toMatch(FRAME_REF);
     // 卡片的“打开画布”仍按节 id 定位到画布上的那一节（画布那边是字母 B）。
     await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
   });
