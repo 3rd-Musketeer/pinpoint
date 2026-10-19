@@ -45,6 +45,38 @@ test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更�
   }
 });
 
+// 停驻（E2）：iframe 不移动，关着的浮层里一直是同一份工作台文档。停驻期间来了 HMR，重摆先记账
+// （看不见的画布上不重装），打开时补做：内容是新的，文档身份不变（不是靠重装拿到新稿）。
+// 文章页自己也会因为同一次改稿整页 reload（Astro 内容库重读，site/src/lib/loaders.js），那会连
+// 停驻的工作台一起换掉，这条路径就验不到了：文章页的 Astro HMR 通道接住不转发，只留工作台自己的。
+// 重编完、HMR 已发出的信号取另一个标签页里直接打开的工作台。
+test('owner 停驻：停驻中改稿，打开后画布是新稿，文档没重装', async ({ page, context }) => {
+  const source = path.join(OWNER_SOURCE, 'flow-001.jsx');
+  const original = fs.readFileSync(source, 'utf8');
+  const board = await context.newPage();
+  try {
+    await page.routeWebSocket(/\/_astro\//, () => { /* 接住不连服务端：文章页不因改稿整页 reload */ });
+    await openOwnerBoard(board);
+    await openOwnerArticle(page);
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.phase()), { timeout: 90_000 }).toBe('parked');
+    const heading = page.frameLocator('[data-pp-overlay] iframe.ov-canvas').locator('.wb-screen[data-screen="flow-001"] [data-owner-heading]');
+    await expect(heading).toHaveText('流程 1 初稿', { timeout: 60_000 });
+    await page.evaluate(() => { window.pinpointOverlay.frame().contentWindow.__docMark = 'parked-doc'; });
+    fs.writeFileSync(source, original.replace('流程 1 初稿', '流程 1 修订稿'));
+    await expect(board.locator('[data-screen="flow-001"] [data-owner-heading]')).toHaveText('流程 1 修订稿', { timeout: 30_000 });
+    // 停驻的画布这时还是旧稿：重摆记了账，没在看不见的地方做。
+    await expect(heading).toHaveText('流程 1 初稿');
+    await page.locator('#btn-canvas').click();
+    await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
+    await expect(heading).toHaveText('流程 1 修订稿', { timeout: 30_000 });
+    expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark)).toBe('parked-doc');
+  } finally {
+    await ownerCleanup(board);
+    await ownerCleanup(page);
+    fs.writeFileSync(source, original);
+  }
+});
+
 test('owner 静态卡片：缩略帧不接焦点，点帧在原位打开画布浮层并选中这一帧', async ({ page }) => {
   await openOwnerStaticArticle(page);
   const fig = page.locator('[data-pp-section="part-2"] .cc-frame[data-screen="flow-010"]');
