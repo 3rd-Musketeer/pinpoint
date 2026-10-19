@@ -39,6 +39,10 @@ export default function previewHmr(options = {}) {
   const registry = options.registry || null;
   const distRoot = options.distRoot || null;
   const templateRoot = options.templateRoot || ROOT;
+  // 测试口：collectMs 改成 0 时，「首拍开编之后才到的第二拍」必须落进下一次编译；
+  // onCompileStart 让测试能精确卡在「编译刚开始」这一刻。
+  const collectMs = options.collectMs ?? COLLECT_MS;
+  const onCompileStart = options.onCompileStart || null;
   let watcher = null;
   const watched = new Set();
   const compiling = new Map();
@@ -154,6 +158,9 @@ export default function previewHmr(options = {}) {
       return inflight.promise;
     }
     const state = { pending: new Set(), promise: null, full: false, screens: new Set(), compiled: false, fullReload: false };
+    // 进函数就登记：收集窗内到达的下一拍要看到这次编译还在飞，并进 pending，
+    // 而不是 map 还空着、自己再开一次编译。
+    compiling.set(target.entryId, state);
     for (const file of files || []) {
       state.pending.add(file);
       if (/\.js$/.test(file)) state.fullReload = true;
@@ -188,9 +195,22 @@ export default function previewHmr(options = {}) {
     };
     state.promise = (async () => {
       try {
-        await new Promise((resolve) => setTimeout(resolve, COLLECT_MS));
         let result = null;
-        while (state.pending.size) result = await runOnce();
+        // 每一轮都重新开窗，而不只是首轮：编译期间到达的同伴赶上窗口就并进同一次
+        // 编译，而不是等编译读完盘才到、被漂移校验打成下一次全编（F3）。窗口为 0 时
+        // 这一轮立刻收口，赶不上的落进下一次编译。收到没有新事件为止（R11）。
+        let opened = false;
+        while (state.pending.size) {
+          await new Promise((resolve) => setTimeout(resolve, collectMs));
+          if (!state.pending.size) break;
+          result = await runOnce();
+          // 窗口为 0 时这一轮收完就结束：赶不上的落进下一次编译，不再开下一轮。
+          if (!(collectMs > 0)) break;
+          // 测试口：首轮收口之后、窗口再开之前。单测把下一拍补在这里——窗口还开时
+          // 它算这一批，窗口为 0 时走不到这里。
+          if (!opened && onCompileStart) onCompileStart(state.pending);
+          opened = true;
+        }
         if (!state.compiled) return null;
         const screens = state.full ? null : [...state.screens];
         notify(server, target, { fullReload: state.fullReload, screens });
@@ -199,7 +219,6 @@ export default function previewHmr(options = {}) {
         if (compiling.get(target.entryId) === state) compiling.delete(target.entryId);
       }
     })();
-    compiling.set(target.entryId, state);
     return state.promise;
   }
 

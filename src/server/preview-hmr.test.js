@@ -241,7 +241,7 @@ test('增量重编的通知带屏清单（S2/F2：工作台按屏重摆）；整
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'screens-page', screens: ['a'] } }]);
 });
 
-test('首事件等一小拍收同伴：连续两拍保存合并成一次编译、一条通知（S2/F3）', async (t) => {
+test('首事件等一小拍收同伴：收集窗走完、收口之前才到的第二拍仍并进同一次编译（S2/F3）', async (t) => {
   const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-collect-'));
   t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
   const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
@@ -250,18 +250,27 @@ test('首事件等一小拍收同伴：连续两拍保存合并成一次编译�
   fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b1</div>\n');
   const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
   t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
-  const hit = previewHmr({ registry: { entries: [{ id: 'collect-page', kind: 'dir', path: pageDir }] }, distRoot });
+  // 第二拍卡在「首批收口之后、窗口再开的那一次之前」。同一 tick 进来的两拍没有
+  // 窗口也会并进 pending（review 建议 4：COLLECT_MS 改 0 旧断言照样过），锁不住 80ms。
+  // 窗口在时这一拍还算这一批；窗口改成 0 时再开的那一次立刻返回，它落进下一次编译。
+  let primed = false;
+  const hit = previewHmr({
+    registry: { entries: [{ id: 'collect-page', kind: 'dir', path: pageDir }] },
+    distRoot,
+    onCompileStart(pending) {
+      if (!primed) return;
+      primed = false;
+      const bFile = path.join(pageDir, 'b.html');
+      fs.writeFileSync(bFile, '<div class="ios-app">b2</div>\n');
+      pending.add(bFile);
+    },
+  });
   const s = fakeServer();
   await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
-  // 收同伴窗口内连存两帧：合并成一批一次编译 —— 旧实现里第二拍会撞上编译中的
-  // drift 判定被打成整页重编（F3），并且两拍各发一条通知。
   s.sent.length = 0;
+  primed = true;
   fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
-  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b2</div>\n');
-  await Promise.all([
-    hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s }),
-    hit.handleHotUpdate({ file: path.join(pageDir, 'b.html'), server: s }),
-  ]);
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s });
   assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'collect-page', screens: ['a', 'b'] } }]);
   assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
   assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'b.html'), 'utf8'), '<div class="ios-app">b2</div>\n');

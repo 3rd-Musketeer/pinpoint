@@ -185,6 +185,7 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
   永远不要用 `.wb-screen` 包装元素导航——row 布局会让它 `display: contents`。
 - **HMR**：模板页 `content/previews/<page>/**` 与 registry 条目目录里的源码、board 改动会重编该页并重摆板，
   `.js`（sidecar）改动整页刷新；kit 印章 `content/kits/ios/jsx/**` 改动全量重编所有页。
+  增量重编只重摆点名的屏，`preview:update` 带 `screens`；整页重编、板变、编译异常时不带，整板重摆。
 
 ## 画布标注的几何缓存
 
