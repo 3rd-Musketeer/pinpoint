@@ -1,6 +1,6 @@
 ---
 name: pinpoint-build
-description: 在 pinpoint 里写 article（设计文档）：建文章（缺省进 notes，要归类时 ppnt mv）、写 index.mdx 的 section 与画布、写帧和组件、写 wiki 词条；也覆盖改存量页的帧与 board.json。用户说“写一篇文章”“加一节”“把这几帧放进文章”“加个 wiki 词条”“搭个原型”“加一屏”“改 board”时，先读本 skill 再动手：目录是定死的，帧的写法有几条硬约束，跳过容易白干。
+description: 在 pinpoint 里写 article（设计文档）：建文章（缺省进 notes，要归类时 ppnt mv）、合并或退役文章、写 index.mdx 的 section 与画布、写帧和组件、写 wiki 词条；也覆盖改存量页的帧与 board.json。用户说“写一篇文章”“加一节”“把这几帧放进文章”“加个 wiki 词条”“搭个原型”“加一屏”“改 board”“把这两篇合成一篇”“这篇下线”时，先读本 skill 再动手：目录是定死的，帧的写法有几条硬约束，跳过容易白干。
 ---
 
 # pinpoint-build
@@ -44,6 +44,19 @@ ppnt new project <project 根目录> --title "Areta browser use"     # id 缺省
 
 project 的 title 只写一个短名字，例如 Vault、Areta browser use，不写成一句描述：读者在首页和文章标题下看到的是它的小标签。title 带冒号（全角或半角）或超过 24 个字符时，`ppnt check` 给一条提示。两个 `new` 命令都不覆盖已有文件：`project.json` 已经在就沿用它、只补登记；`index.mdx` 已经在就报错退出。文章 id 以前用过、它的桶里还留着旧标注（文章删了或改了名）时 `new article` 也报错退出，不接旧标注：换一个 id；要不要 `ppnt prune` 清掉旧标注由 owner 定。id 是保留名（清单见 [`docs/projects.md`](../../docs/projects.md)“保留名”）或撞了已有的 project 时退 2，什么都不写。手写 `project.json` 的 project 用 `ppnt add <根> --project` 登记。
 
+### 合并、退役文章
+
+把 A 的内容并进 B、再让 A 下线，没有命令代办，按这个顺序做。顺序反了的典型后果：B 的 `index.mdx` 已经引用 A 的帧，A 的目录却先挪走了，B 构建失败，每一帧报“没有源文件”。
+
+1. 先处理 A 的标注：`ppnt comments <project>/<A>` 里 open 的先回掉或标掉。A 下线后它的桶整桶成孤儿，没处理的反馈就丢了。
+2. 把 B 要用的帧源文件、它们 import 的 `components/`、引用的 `assets/`（截图、logo）复制进 B 的目录；帧 id 和 B 已有的撞了就改名，`index.mdx` 里跟着改。只有文章这一级有资源，复制漏一个就构建失败。
+3. 帧里写死了 A 的页 id 的路径（例如 `/sites/<project>_<A>/assets/shots/x.jpg`）改成 B 的页 id。
+4. 改 B 的 `index.mdx`，引用复制过来的帧。跑 `ppnt check <project>`，0 个错误才往下走。
+5. 再让 A 下线：把 A 的目录移出 `articles/`（例如移到 project 外的 `retired/<日期>-<原因>/`）。别的文章里的 `[[A]]` 改成 `[[B]]`，或删掉。
+6. 再跑一次 `ppnt check <project>`，确认 A 留下的引用都清干净了。A 的孤儿桶要不要用 `ppnt prune` 清掉，由 owner 定。
+
+只是换 project 或改 id，整篇照搬，用上面的 `ppnt mv`，不走这套。
+
 ## 2. 目录（定死）
 
 ```text
@@ -65,7 +78,7 @@ project 的 title 只写一个短名字，例如 Vault、Areta browser use，不
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`wiki/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式、资源和组件只有文章这一级：没有 project 级的 css、`assets/` 和 `components/`。几篇文章都要用的组件放进 kit。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
-- 文章目录不要手动改名或挪走：目录名是文章地址和页 id 的后半段，手动改了，旧页 id 下的标注和评论整桶成孤儿。改文章 id、换 project 用 `ppnt mv <project>/<a> <project2>/<b>`（目标写 `<project2>/` 保留 id），见第 1 节；别的文章里的 `[[a]]` 它只列出来，要自己改。换 project id 用 `ppnt mv <旧 id> <新 id>`，换 project 根目录用 `ppnt mv <id> <新路径>`。
+- 文章目录不要手动改名或挪走：目录名是文章地址和页 id 的后半段，手动改了，旧页 id 下的标注和评论整桶成孤儿。改文章 id、换 project 用 `ppnt mv <project>/<a> <project2>/<b>`（目标写 `<project2>/` 保留 id），见第 1 节；别的文章里的 `[[a]]` 它只列出来，要自己改。换 project id 用 `ppnt mv <旧 id> <新 id>`，换 project 根目录用 `ppnt mv <id> <新路径>`。合并或退役文章要挪走目录，按第 1 节“合并、退役文章”的顺序做。
 
 ## 3. 写 index.mdx
 
