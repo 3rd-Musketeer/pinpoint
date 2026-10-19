@@ -1,6 +1,6 @@
 import { expect, test } from './lib/fixtures.js';
 import { buildAnnotateBundle } from '../src/server/lib/annotate-bundle.js';
-import { ownerCleanup, seedOwner, openOwnerBoard, openOwnerArticle, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
+import { ownerCleanup, seedOwner, openOwnerBoard, openOwnerArticle, openOwnerStaticArticle, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
 import { OWNER_PAGE, OWNER_FRAMES } from './lib/owner-fixture.js';
 
 test('owner 性能输入：浮层中文组字和连续输入的 inputDelay p90 最多 150 ms', async ({ page }, testInfo) => {
@@ -89,6 +89,8 @@ test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', asy
         await expect(card.locator('.cc-box[data-fitted="1"]')).toHaveCount(n === 12 ? 9 : 8, { timeout: 30_000 });
       }
       await expect(page.locator('.cc-box[data-fitted="1"]')).toHaveCount(OWNER_FRAMES);
+      // overview 每帧带预览脚本：卡片全部退回 iframe（静态挂载的门在下面的静态大文章用例）。
+      await expect(page.locator('[data-pp-canvas] iframe[data-cc-fallback="1"]')).toHaveCount(OWNER_FRAMES);
       await expect.poll(() => pending.size).toBe(0);
     });
   } finally {
@@ -107,9 +109,14 @@ test.beforeEach(async ({ page, request }) => {
 });
 test.afterEach(async ({ page }) => { await ownerCleanup(page); });
 
-test('owner 性能静态卡片：95 帧挂 shadow root，活动文档 ≤ 6、GC 后 JS 堆 ≤ 16 MiB', async ({ page }, testInfo) => {
-  await test.step('首开文章并读到最后一节，每张卡片实际渲染', async () => {
-    await openOwnerArticle(page);
+test('owner 性能静态卡片：97 帧全挂 shadow root，活动文档 ≤ 6、GC 后 JS 堆 ≤ 16 MiB', async ({ page }, testInfo) => {
+  // 夹具 static 是 overview 去掉预览脚本的 97 帧（owner 真实文章的形状）。
+  const frameResponses = [];
+  page.on('response', response => {
+    if (new URL(response.url()).pathname === '/api/frame') frameResponses.push(response.status());
+  });
+  await test.step('首开静态大文章并读到最后一节，每张卡片实际渲染', async () => {
+    await openOwnerStaticArticle(page);
     for (let n = 1; n <= 12; n++) {
       const card = page.locator(`[data-pp-section="part-${n}"]`);
       await card.scrollIntoViewIfNeeded();
@@ -117,10 +124,10 @@ test('owner 性能静态卡片：95 帧挂 shadow root，活动文档 ≤ 6、GC
     }
     await expect(page.locator('.cc-box[data-fitted="1"]')).toHaveCount(OWNER_FRAMES);
   });
-  // 计数门（E1，2026-10-19）：静态帧不建 iframe，97 帧的卡片只剩 3 个活动文档
-  // （文章页 + flow-001/002 两个 srcdoc 回退）。旧实现 98+（r3 实测 100），上限 6 给
-  // 浏览器内部临时文档留一倍余量。GC 后 JS 堆：r3 实测 shadow 3.3 MiB vs iframe 39.6 MiB，
-  // 上限 16 MiB 是新实现的 4 倍余量、旧实现的 40%。
+  // 计数门（E1，2026-10-19）：静态帧不建 iframe，97 帧的卡片只剩文章页自己 1 个活动文档。
+  // 旧实现每帧一个 iframe，98 个（r3 在 owner 真实文章上实测 100）；上限 6 给浏览器内部临时文档留余量，
+  // 离旧实现一个数量级。GC 后 JS 堆：r3 实测 shadow 3.3 MiB、iframe 39.6 MiB；上限 16 MiB 约为
+  // 新实现的 4 倍余量、旧实现的 40%。
   const shadows = await page.locator('.cc-shadow[data-cc-mounted="1"]').count();
   const cardIframes = await page.locator('[data-pp-canvas] iframe').count();
   const docs = page.frames().length;
@@ -134,10 +141,12 @@ test('owner 性能静态卡片：95 帧挂 shadow root，活动文档 ≤ 6、GC
     heapBytes = metrics.find((m) => m.name === 'JSHeapUsedSize')?.value || 0;
   } finally { await cdp.detach(); }
   const heapMiB = Math.round((heapBytes / 1024 / 1024) * 10) / 10;
-  await metric(testInfo, 'static-cards', { shadows, cardIframes, docs, heapMiB });
-  expect(shadows, '静态帧挂 shadow root').toBe(OWNER_FRAMES - 2);
-  expect(cardIframes, '带预览脚本的 2 帧留 iframe').toBe(2);
+  await metric(testInfo, 'static-cards', { shadows, cardIframes, docs, heapMiB, frameRequests: frameResponses.length });
+  expect(frameResponses.filter(s => s < 200 || s >= 300), '帧请求全为 2xx').toEqual([]);
+  expect(shadows, '静态帧全部挂 shadow root').toBe(OWNER_FRAMES);
+  expect(cardIframes, '静态大文章的卡片不建 iframe').toBe(0);
   expect(docs, '活动文档数').toBeLessThanOrEqual(6);
+  expect(heapBytes, 'GC 后 JS 堆').toBeGreaterThan(0);
   expect(heapBytes, 'GC 后 JS 堆').toBeLessThanOrEqual(16 * 1024 * 1024);
 });
 

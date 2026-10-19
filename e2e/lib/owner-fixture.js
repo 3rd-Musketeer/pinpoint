@@ -1,4 +1,7 @@
 // 12 节、97 帧；不依赖 owner 的本地项目或账本，任意 checkout 都能重建。
+// 两篇文章同一套帧形状：overview 每帧带预览脚本（工作台的首开、输入、K1 门按 97 个预览脚本量；
+// 文章卡片全部走 iframe 回退），static 是同样 97 帧去掉预览脚本（文章卡片全部挂 shadow root，
+// 对应 owner 真实文章的形状：r3 实测的 97 个 dist 帧没有预览脚本）。E1，2026-10-19。
 import fs from 'node:fs';
 import path from 'node:path';
 import { E2E_SITES_DIR } from '../env.js';
@@ -7,37 +10,43 @@ export const OWNER_PROJECT = path.join(E2E_SITES_DIR, 'owner-site');
 export const OWNER_SOURCE = path.join(OWNER_PROJECT, 'docs/pinpoint/articles/overview');
 export const OWNER_PAGE = 'e2e-owner_overview';
 export const OWNER_ARTICLE = '/e2e-owner/overview/';
+export const OWNER_STATIC_SOURCE = path.join(OWNER_PROJECT, 'docs/pinpoint/articles/static');
+export const OWNER_STATIC_ARTICLE = '/e2e-owner/static/';
 export const OWNER_FRAMES = 97;
 export const frameId = n => `flow-${String(n).padStart(3, '0')}`;
 export const sectionId = n => `part-${Math.min(12, Math.floor((n - 1) / 8) + 1)}`;
 
-export function writeOwnerFixture() {
-  fs.mkdirSync(OWNER_SOURCE, { recursive: true });
-  fs.writeFileSync(path.join(OWNER_PROJECT, 'docs/pinpoint/project.json'), JSON.stringify({ id: 'e2e-owner', title: 'Owner 流程验收' }));
+function writeArticle(dir, title, previewScript) {
+  fs.mkdirSync(dir, { recursive: true });
   const sections = [];
   for (let s = 1; s <= 12; s++) {
     const ids = [];
     for (let n = (s - 1) * 8 + 1; n <= (s === 12 ? 97 : s * 8); n++) {
       const id = frameId(n);
       ids.push(id);
-      // flow-001 / flow-002 保留预览脚本（owner-flows 的交互与红点重置靠它），文章卡片里这两帧留
-      // srcdoc iframe；其余 95 帧是纯静态，卡片走 shadow root（E1，2026-10-19）。
-      const previewScript = n <= 2 ? `
+      const script = previewScript ? `
     <script data-preview-script>{\`
       root.querySelector('[data-owner-action]').addEventListener('click', () => {
         root.querySelector('[data-owner-result]').textContent = '已经确认';
       });
     \`}</script>` : '';
-      fs.writeFileSync(path.join(OWNER_SOURCE, `${id}.jsx`), `export default function Flow() {
+      fs.writeFileSync(path.join(dir, `${id}.jsx`), `export default function Flow() {
   return <div className="ios-app"><div className="ios-page" style={{ padding: '24px' }}>
     <h1 data-owner-heading>流程 ${n} 初稿</h1>
     <button data-owner-action type="button">确认流程 ${n}</button>
-    <p data-owner-result>尚未确认</p>${previewScript}
+    <p data-owner-result>尚未确认</p>${script}
   </div></div>;
 }
 `);
     }
     sections.push(`<Section id="part-${s}" title="流程 ${s}">\n\n第 ${s} 节说明：用户读完正文后打开画布，确认操作之前先看清结果。\n\n<Canvas frames={${JSON.stringify(ids)}} />\n\n</Section>`);
   }
-  fs.writeFileSync(path.join(OWNER_SOURCE, 'index.mdx'), `---\ntitle: Owner 大文章验收\nsummary: 12 节、97 帧，覆盖正文与画布的日常操作。\n---\n\n${sections.join('\n\n')}\n`);
+  fs.writeFileSync(path.join(dir, 'index.mdx'), `---\ntitle: ${title}\nsummary: 12 节、97 帧，覆盖正文与画布的日常操作。\n---\n\n${sections.join('\n\n')}\n`);
+}
+
+export function writeOwnerFixture() {
+  fs.mkdirSync(path.join(OWNER_PROJECT, 'docs/pinpoint'), { recursive: true });
+  fs.writeFileSync(path.join(OWNER_PROJECT, 'docs/pinpoint/project.json'), JSON.stringify({ id: 'e2e-owner', title: 'Owner 流程验收' }));
+  writeArticle(OWNER_SOURCE, 'Owner 大文章验收', true);
+  writeArticle(OWNER_STATIC_SOURCE, 'Owner 静态大文章验收', false);
 }

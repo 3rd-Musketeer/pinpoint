@@ -6,7 +6,7 @@ import { E2E_DATA_DIR } from '../env.js';
 import { closeSettled } from '../ledger-settle.js';
 import { waitNoReload } from '../site-settle.js';
 import { proseSettled } from './prose.js';
-import { OWNER_ARTICLE, OWNER_PAGE, OWNER_FRAMES, frameId, sectionId } from './owner-fixture.js';
+import { OWNER_ARTICLE, OWNER_STATIC_ARTICLE, OWNER_PAGE, OWNER_FRAMES, frameId, sectionId } from './owner-fixture.js';
 
 export async function seedOwner(request) {
   for (const ledger of ['@canvas', '@prose']) {
@@ -29,6 +29,15 @@ export async function openOwnerArticle(page) {
   await proseSettled(page);
   await expect(page.locator('[data-pp-canvas]')).toHaveCount(12);
   await expect(page.locator('.pp-thread[data-kind="canvas"]')).toHaveCount(24);
+}
+
+/** 静态大文章（夹具 static：97 帧无预览脚本，卡片全部挂 shadow root）；没有种标注。 */
+export async function openOwnerStaticArticle(page) {
+  await page.goto(OWNER_STATIC_ARTICLE);
+  await expect(page.locator('#article .prose h1')).toHaveText('Owner 静态大文章验收', { timeout: 150_000 });
+  await waitNoReload(page);
+  await proseSettled(page);
+  await expect(page.locator('[data-pp-canvas]')).toHaveCount(12);
 }
 
 export async function boardReady(scope) {
