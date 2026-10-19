@@ -45,6 +45,30 @@ test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更�
   }
 });
 
+test('owner 静态卡片：缩略帧不接焦点，点帧在原位打开画布浮层并选中这一帧', async ({ page }) => {
+  await openOwnerStaticArticle(page);
+  const fig = page.locator('[data-pp-section="part-2"] .cc-frame[data-screen="flow-010"]');
+  await fig.scrollIntoViewIfNeeded();
+  // 与性能门同一个等法：滚进视口后取帧、挂载、量完（高负载下要十几秒）。
+  await expect(fig.locator('.cc-box[data-fitted="1"]')).toHaveCount(1, { timeout: 30_000 });
+  const action = fig.locator('.cc-shadow[data-cc-mounted="1"] [data-owner-action]');
+  await expect(action).toHaveText('确认流程 10');
+  // iframe 缩略帧是 tabindex -1；shadow 里的按钮属于文章页，必须同样拿不到焦点。
+  await action.evaluate(el => el.focus());
+  await expect(action).not.toBeFocused();
+  const before = await page.evaluate(() => [window.scrollX, window.scrollY]);
+  await fig.locator('.cc-hit').click();
+  await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
+  const scope = await (await page.locator('iframe.ov-canvas').elementHandle()).contentFrame();
+  await boardReady(scope);
+  // 浮层落点的就绪信号（article-viewer 同款）：落到这一帧后才选中。
+  await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.state()?.landing), { timeout: 30_000 }).toBe('frame:flow-010');
+  await expect(scope.locator('.wb-screen[data-screen="flow-010"]')).toHaveClass(/\bwb-sel\b/);
+  await page.keyboard.press('Escape');
+  await expect(page.locator('dialog[data-pp-overlay]')).not.toHaveAttribute('open', '');
+  await expect.poll(() => page.evaluate(() => [window.scrollX, window.scrollY])).toEqual(before);
+});
+
 test('owner 工作台：中文标注、钉子、Esc，帧菜单和红点重置', async ({ page }) => {
   const scope = await openOwnerBoard(page);
   await test.step('直接打开工作台做标注并逐层退出', async () => {

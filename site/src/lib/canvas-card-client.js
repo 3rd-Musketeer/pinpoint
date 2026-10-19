@@ -278,6 +278,9 @@ async function mountShadow(host, box, doc, base, sheets) {
     }
     if (el.hasAttribute('srcset')) el.setAttribute('srcset', absolutizeSrcset(el.getAttribute('srcset'), base));
   }
+  // 缩略帧不接焦点、不进无障碍树、不可选字（iframe 是 tabindex -1 + aria-hidden；shadow 里的按钮
+  // 和链接属于文章页，不设 inert 就能被 Tab 到）。点击由卡片的 .cc-hit 接收。
+  host.inert = true;
   const root = host.attachShadow({ mode: 'open' });
   root.adoptedStyleSheets = [hostResetSheet(), ...sheets];
   const htmlEl = doc.documentElement;
