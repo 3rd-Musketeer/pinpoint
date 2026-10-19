@@ -623,6 +623,17 @@
     flex:none;
   }
   .wb-screen .ios-stage { flex:none; min-height:0; width:var(--wb-phone-w); height:var(--wb-phone-h); }
+  /* 视口裁剪（2026-10-19 E3）：画布上的固定尺寸手机 stage 离开视口就跳过子树渲染，
+     intrinsic size 与上面的尺寸规则同一个来源（kit preset 402+2×18 / 874+2×18，
+     不写魔数）；dynamic 高度的 comp / doc 画板、HTML 卡片不在此列（它们不含
+     .ios-stage）。限定 .wb-zoom-wrap > .wb-library —— 这份内联样式还被 /api/frame
+     嵌入页、ppnt shot 快照渲染页与离线分享页原样复用（src/server/lib/frame-doc.js、
+     export-image-api.js、offline-page-export.js），那些语境必须全量渲染；离线分享页
+     同样有 .wb-zoom-wrap > .wb-library，由它的 SHARE_CSS 显式退回 visible。 */
+  .wb-zoom-wrap > .wb-library .wb-screen > .ios-stage {
+    content-visibility: auto;
+    contain-intrinsic-size: var(--wb-phone-w) var(--wb-phone-h);
+  }
   /* 图注（2026-08-15 图纸版式 → 2026-09-04 E1 层级）：引用号与屏名同一行
      （mono accent + 12/500 淡），「···」跟在屏名后面；尺寸在 frame 下方居中
      mono 小字，只在这一帧 hover / 选中时出。wb-screen-cap--empty 退役 ——

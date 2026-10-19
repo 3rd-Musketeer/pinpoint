@@ -396,6 +396,11 @@ const CHEVRON_RIGHT = '<svg viewBox="0 0 24 24" width="14" height="14" fill="non
    这里只补 workbench 里由 React 组件的 Tailwind 类提供、导出里没有的那几条，以及窄屏适配。 */
 const SHARE_CSS = `
 html{height:100%}
+/* 离线分享页与工作台画布同名同构（.wb-zoom-wrap > .wb-library），会吃到 index.html
+   里的视口裁剪规则（.wb-zoom-wrap > .wb-library .wb-screen > .ios-stage）；分享页是
+   静态快照，消费方式包括深链 hash 直跳和整页打印 / 截图，必须全量渲染 —— 在这里
+   显式退回 visible（2026-10-19 E3）。 */
+.wb-zoom-wrap .wb-screen > .ios-stage{content-visibility:visible !important}
 #wbside .wb-head{height:auto;padding:14px 14px 8px}
 #wbside .share-title{margin:0;min-width:0;flex:1;font:var(--wb-t-title) var(--wb-font);letter-spacing:-.01em;color:var(--wb-fg);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 #wbside .wb-side-scroll{flex:1;min-height:0;overflow-y:auto;overflow-x:hidden;padding-bottom:22px}
