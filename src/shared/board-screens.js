@@ -30,12 +30,3 @@ export function screenEntries(board) {
   }
   return out;
 }
-
-/** 便捷：屏 id → 第一个命中的 { screen, section }；没有 → null。 */
-export function screenEntry(board, screenId) {
-  var entries = screenEntries(board);
-  for (var i = 0; i < entries.length; i++) {
-    if (entries[i].screen.id === screenId) return entries[i];
-  }
-  return null;
-}

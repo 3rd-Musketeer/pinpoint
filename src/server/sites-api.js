@@ -36,7 +36,6 @@ import {
   serveDistScreenResponse,
 } from './lib/page-compiler.js';
 import { loadRegistry } from './lib/registry.js';
-import { synthesizeBoard } from './lib/synth-board.js';
 import { screenEntries } from '../shared/board-screens.js';
 import { parseFrameSrc } from '../shared/project-ids.js';
 
@@ -78,8 +77,9 @@ export function createSitesHandler(options = {}) {
   // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
   // 一版本）——磁盘文件永远优先（dir 分支只在 resolve 落空后走到）。合成的
   // 是 JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
-  function sendSynthesizedBoard(req, res, entry) {
-    const board = synthesizeBoard(entry);
+  // 板来自 source.readBoard()：磁盘没板时它自己回落合成板（board-source）。
+  function sendSynthesizedBoard(req, res, source) {
+    const board = source.readBoard();
     if (!board) return false;
     const body = Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8');
     res.statusCode = 200;
@@ -184,13 +184,9 @@ export function createSitesHandler(options = {}) {
     // /sites/<id>/ 只服务登记条目与文章画布页（pp3，<project>_<article>）；模板页不在这里。
     const source = resolveBoardSource(id, { registry });
     if (source && source.kind === 'article') return serveArticlePage(req, res, source, rel, rawPath);
+    // source.entry 只对 dir / file 非空（board-source 的 entrySource 才带 entry）。
     const entry = source ? source.entry : null;
     if (!entry) {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
-      return true;
-    }
-
-    if (entry.kind !== 'dir' && entry.kind !== 'file') {
       sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
@@ -233,7 +229,7 @@ export function createSitesHandler(options = {}) {
       ? resolveRegisteredFile(entry, rel)
       : resolveFileWithin(path.resolve(entry.path), rel || 'index.html');
 
-    if (!file && rel === 'board.json' && sendSynthesizedBoard(req, res, entry)) {
+    if (!file && rel === 'board.json' && sendSynthesizedBoard(req, res, source)) {
       return true;
     }
 

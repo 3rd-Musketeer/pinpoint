@@ -65,8 +65,6 @@ test('dir 条目：磁盘有 board.json → 可编译目标；readBoard 读磁�
   const board = source.readBoard();
   assert.equal(board.sections[0].screens[0].id, 'home');
   assert.deepEqual(readTargetBoard(source.target), board);
-  // 磁盘优先：有板时合成板不参与（synthBoard 仍在，消费方自己决定回落）
-  assert.equal(source.synthBoard().sections[0].shell, 'doc');
 });
 
 test('无板 dir / file 条目：target 为 null（不可编译），板靠合成', (t) => {
@@ -74,21 +72,21 @@ test('无板 dir / file 条目：target 为 null（不可编译），板靠合�
   const dirSource = resolveBoardSource('plain', { registry });
   assert.equal(dirSource.kind, 'dir');
   assert.equal(dirSource.target, null);
-  assert.equal(dirSource.readBoard(), null);
-  assert.deepEqual(dirSource.synthBoard().sections[0].screens.map((s) => s.id), ['a', 'b']);
+  // 磁盘没板：readBoard 自己回落到合成板。
+  assert.deepEqual(dirSource.readBoard().sections[0].screens.map((s) => s.id), ['a', 'b']);
   const fileSource = resolveBoardSource('single', { registry });
   assert.equal(fileSource.kind, 'file');
   assert.equal(fileSource.pageDir, null);
   assert.equal(fileSource.target, null);
-  assert.equal(fileSource.synthBoard().sections[0].screens[0].id, 'index');
+  assert.equal(fileSource.readBoard().sections[0].screens[0].id, 'index');
   assert.equal(resolvePageTarget('plain', { registry }), null);
 });
 
-test('模板页：previews/<id>/board.json 在盘上即来源，不在清单里 manifest 为 null', (t) => {
+test('模板页：previews/<id>/board.json 在盘上即来源，不在清单里 listed 为 false', (t) => {
   const { root } = fixture(t);
   const source = resolveBoardSource('tpl', { registry: null, root });
   assert.equal(source.kind, 'template');
-  assert.equal(source.manifest, null);
+  assert.equal(source.listed, false);
   assert.equal(source.mode, 'ios');
   assert.deepEqual(source.target, {
     entryId: 'tpl',
@@ -97,7 +95,6 @@ test('模板页：previews/<id>/board.json 在盘上即来源，不在清单里 
     kind: 'template',
   });
   assert.equal(source.readBoard().sections[0].id, 's');
-  assert.equal(source.synthBoard(), null);
 });
 
 test('文章画布：target 是文章编译目标，readBoard 由 index.mdx 派生', (t) => {

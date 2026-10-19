@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
 
-import { screenEntries, screenEntry } from './board-screens.js';
+import { screenEntries } from './board-screens.js';
 
 test('screenEntries：按板序逐屏产出，字符串屏归一，带所在 section', () => {
   const board = {
@@ -55,12 +55,4 @@ test('screenEntries：坏形状宽容跳过，不校验 id 合法性（归 valid
     ],
   });
   assert.deepEqual(entries.map((e) => e.screen.id), ['ok']);
-});
-
-test('screenEntry：屏 id → 第一个命中；没有 → null', () => {
-  const board = { sections: [{ id: 's1', screens: ['a', { id: 'b' }] }] };
-  assert.equal(screenEntry(board, 'b').screen.id, 'b');
-  assert.equal(screenEntry(board, 'a').section.id, 's1');
-  assert.equal(screenEntry(board, 'nope'), null);
-  assert.equal(screenEntry(null, 'a'), null);
 });

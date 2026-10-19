@@ -15,15 +15,13 @@
  *
  * source = {
  *   kind: 'dir' | 'file' | 'template' | 'article',
- *   pageId,                 // 页 id（= 桶 id）
  *   entry,                  // registry 条目（dir / file），否则 null
  *   pageDir,                // 页目录；file 条目为 null
  *   urlBase,                // 帧资源 URL 前缀
  *   mode,                   // 'ios' | 'html'：归一壳的缺省判定用（frame-doc）
- *   manifest,               // template 的清单条目（{ id, title?, mode? }），否则 null
+ *   listed,                 // 模板页在清单（_index.json）上；其他 kind 恒 false
  *   target,                 // 编译目标（page-compiler 消费的形状）；无板 dir / file 为 null
- *   readBoard(),            // → 板（磁盘原样 / 派生，不摊平 tabs）；读不到 / 坏了 → null
- *   synthBoard(),           // → 磁盘没板时的合成板（dir / file）；其他 kind 恒 null
+ *   readBoard(),            // → 板（磁盘原样 / 派生 / 合成，不摊平 tabs）；读不到 → null
  * }
  *
  * 「页 id 是什么 / 桶活不活」的判定在 page-resolve.js（resolvePage / pageIdIsLive）——
@@ -52,20 +50,18 @@ function entrySource(entry) {
   const urlBase = `/sites/${entry.id}/`;
   return {
     kind: entry.kind,
-    pageId: entry.id,
     entry,
     pageDir,
     urlBase,
     mode: entryBoardMode(entry),
-    manifest: null,
+    listed: false,
     target: pageDir && fs.existsSync(path.join(pageDir, 'board.json'))
       ? { entryId: entry.id, pageDir, urlBase, kind: 'dir' }
       : null,
+    // 磁盘没板（或板坏了）时回落合成板：dir / file 的合成板此前是单独的 synthBoard()，
+    // 唯一调用形状是 readBoard() || synthBoard()，收成这一处。
     readBoard() {
-      return pageDir ? readBoardRaw(pageDir) : null;
-    },
-    synthBoard() {
-      return synthesizeBoard(entry);
+      return (pageDir ? readBoardRaw(pageDir) : null) || synthesizeBoard(entry);
     },
   };
 }
@@ -73,18 +69,14 @@ function entrySource(entry) {
 function templateSource(pageId, pageDir, manifest) {
   return {
     kind: 'template',
-    pageId,
     entry: null,
     pageDir,
     urlBase: `/previews/${pageId}/`,
     mode: manifest && manifest.mode === 'html' ? 'html' : 'ios',
-    manifest,
+    listed: !!manifest,
     target: { entryId: pageId, pageDir, urlBase: `/previews/${pageId}/`, kind: 'template' },
     readBoard() {
       return readBoardRaw(pageDir);
-    },
-    synthBoard() {
-      return null;
     },
   };
 }
@@ -92,12 +84,11 @@ function templateSource(pageId, pageDir, manifest) {
 function articleSource(target) {
   return {
     kind: 'article',
-    pageId: target.entryId,
     entry: null,
     pageDir: target.pageDir,
     urlBase: target.urlBase,
     mode: 'ios',
-    manifest: null,
+    listed: false,
     target,
     readBoard() {
       try {
@@ -105,9 +96,6 @@ function articleSource(target) {
       } catch {
         return null;
       }
-    },
-    synthBoard() {
-      return null;
     },
   };
 }

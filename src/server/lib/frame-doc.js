@@ -100,31 +100,25 @@ function containedFrameFile(base, rel) {
  *     ref, entry, baseUrl, fragmentPath }                                — 端点组装
  *
  * 页是什么、板从哪来、target 是什么都在 board-source.js（S2）；这里只剩
- * 出帧规则表：这一屏从 dist 出还是磁盘直读、磁盘直读的源文件怎么解析。
+ * 出帧规则：这一屏从 dist 出还是磁盘直读、磁盘直读的源文件怎么解析。
+ * dist 判定三种来源是同一句（模板和文章恒有 target，文章带 src 的帧都是 doc 壳，
+ * 前面已经 302 出去了），表里真正有差别的只剩磁盘直读的源文件。
  */
-const FRAME_SOURCE_RULES = {
-  // 模板页（previews/）：页内 board 屏（无 src）→ dist；src 屏按 content/ 相对
-  // 路径或 sites/<id>/ 直读。只认清单里的页（要清单里的 mode）。
-  template: {
-    useDist: (source, src) => !src,
-    fragmentPath: (source, src, screenId, registry) => src.startsWith('sites/')
-      ? siteSrcToAbsPath(src, registry)
-      : containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src))),
-  },
-  // 文章画布（pp3）：board 由 index.mdx 派生，屏全从 dist 出（JSX 编的、HTML 帧
-  // 原样进 dist 都在这条），桶 = 画布页 id。
-  article: {
-    useDist: () => true,
-    fragmentPath: () => null,
-  },
-  // registry 条目：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）
-  // 与 file 条目保留磁盘直读。
-  entry: {
-    useDist: (source, src) => !src && !!source.target,
-    fragmentPath: (source, src, screenId, registry) => src
-      ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
-      : containedFrameFile(source.entry.kind === 'file' ? source.entry.path : source.pageDir, source.entry.kind === 'file' ? '' : `${screenId}.html`),
-  },
+function useDist(source, src) {
+  return !src && !!source.target;
+}
+
+const FRAGMENT_PATH = {
+  // 模板页（previews/）：src 屏按 content/ 相对路径或 sites/<id>/ 直读。
+  template: (source, src, screenId, registry) => src.startsWith('sites/')
+    ? siteSrcToAbsPath(src, registry)
+    : containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src))),
+  // 文章画布（pp3）：屏全从 dist 出（JSX 编的、HTML 帧原样进 dist 都在这条），不直读。
+  article: () => null,
+  // registry 条目：src 屏（外链 / 合成板）与 file 条目保留磁盘直读。
+  entry: (source, src, screenId, registry) => src
+    ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
+    : containedFrameFile(source.entry.kind === 'file' ? source.entry.path : source.pageDir, source.entry.kind === 'file' ? '' : `${screenId}.html`),
 };
 
 export function resolveFrameTarget(pageId, screenId, options = {}) {
@@ -136,12 +130,11 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
   const source = resolveBoardSource(pageId, { registry, root: ROOT });
-  // 模板页只认清单里的页；workbench 自己的 pinpoint 条目不成页。
-  const known = source
-    && (source.kind !== 'template' || source.manifest)
-    && !(source.kind !== 'article' && pageId === 'pinpoint');
+  // 模板页只认清单里的页；workbench 自己的 pinpoint 条目不成页（文章页 id 必含 _，
+  // 不可能是 pinpoint，不用再排除 kind）。
+  const known = source && (source.kind !== 'template' || source.listed) && pageId !== 'pinpoint';
   if (!known) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
-  const board = source.readBoard() || source.synthBoard();
+  const board = source.readBoard();
   if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
   const hit = findScreen(board, screenId);
   if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
@@ -149,7 +142,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   if (shell === 'doc') {
     return { kind: 'doc', url: docUrlForScreen(hit.screen, source.urlBase), pageId, screenId, title: hit.screen.title || screenId };
   }
-  const rules = FRAME_SOURCE_RULES[source.kind === 'template' || source.kind === 'article' ? source.kind : 'entry'];
+  const fragmentPathOf = FRAGMENT_PATH[source.kind === 'template' || source.kind === 'article' ? source.kind : 'entry'];
   const base = {
     kind: 'fragment',
     pageId,
@@ -166,8 +159,8 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   };
   const src = hit.screen.src ? String(hit.screen.src) : '';
   // pp2：页内 board 屏（无 src）→ dist（.jsx 屏也在此落地）。
-  if (rules.useDist(source, src)) return { ...base, distTarget: source.target };
-  const fragmentPath = rules.fragmentPath(source, src, screenId, registry);
+  if (useDist(source, src)) return { ...base, distTarget: source.target };
+  const fragmentPath = fragmentPathOf(source, src, screenId, registry);
   if (!fragmentPath || !fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
     throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
   }
