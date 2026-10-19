@@ -3,6 +3,62 @@ import { buildAnnotateBundle } from '../src/server/lib/annotate-bundle.js';
 import { ownerCleanup, seedOwner, openOwnerBoard, openOwnerArticle, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
 import { OWNER_PAGE, OWNER_FRAMES } from './lib/owner-fixture.js';
 
+test('owner 性能输入：浮层中文组字和连续输入的 inputDelay p90 最多 150 ms', async ({ page }, testInfo) => {
+  const scope = await openOwnerBoard(page, true);
+  const screen = await focusOwnerFrame(scope);
+  await scope.locator('#wbann-toggle').click();
+  await screen.locator('[data-owner-action]').click();
+  await expect(scope.locator('#ann-input')).toBeFocused();
+  await scope.evaluate(() => {
+    if (!PerformanceObserver.supportedEntryTypes.includes('event')) throw new Error('浏览器不支持 Event Timing');
+    window.__ownerInput = { dispatch: [], native: [], keys: 0, active: true };
+    for (const name of ['keydown', 'keyup', 'beforeinput', 'input', 'compositionupdate']) {
+      window.addEventListener(name, event => {
+        if (!window.__ownerInput.active || event.target.id !== 'ann-input' || !event.isTrusted) return;
+        const time = event.timeStamp > performance.timeOrigin ? event.timeStamp - performance.timeOrigin : event.timeStamp;
+        window.__ownerInput.dispatch.push({ name, inputDelay: Math.max(0, performance.now() - time) });
+        if (name === 'keydown' || name === 'keyup') window.__ownerInput.keys++;
+      }, true);
+    }
+    const collect = entries => {
+      for (const e of entries) if (e.target?.id === 'ann-input' && ['keydown', 'keyup'].includes(e.name)) {
+        window.__ownerInput.native.push({ name: e.name, inputDelay: e.processingStart - e.startTime, duration: e.duration });
+      }
+    };
+    window.__ownerInputObserver = new PerformanceObserver(list => collect(list.getEntries()));
+    window.__ownerInputCollect = collect;
+    window.__ownerInputObserver.observe({ type: 'event', durationThreshold: 16 });
+  });
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    for (const text of ['请', '请检查', '请检查确认', '请检查确认条件']) {
+      await cdp.send('Input.imeSetComposition', { text, selectionStart: text.length, selectionEnd: text.length });
+      await expect(scope.locator('#ann-input')).toContainText(text);
+    }
+    await cdp.send('Input.insertText', { text: '请检查确认条件' });
+    await scope.locator('#ann-input').pressSequentially(' owner checks the confirmation flow');
+    await expect(scope.locator('#ann-input')).toContainText('owner checks the confirmation flow');
+    await scope.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
+    const samples = await scope.evaluate(() => {
+      window.__ownerInputCollect(window.__ownerInputObserver.takeRecords());
+      window.__ownerInputObserver.disconnect();
+      window.__ownerInput.active = false;
+      return window.__ownerInput;
+    });
+    expect(samples.keys).toBeGreaterThanOrEqual(60);
+    expect(samples.dispatch.filter(e => e.name === 'compositionupdate').length).toBeGreaterThanOrEqual(4);
+    const p90 = values => values.sort((a, b) => a - b)[Math.ceil(values.length * 0.9) - 1];
+    // Event Timing 省略低于 16 ms 的事件；考虑 8 ms 量化，用 24 ms 补成保守上界。
+    const nativeUpper = samples.native.map(e => e.inputDelay);
+    while (nativeUpper.length < samples.keys) nativeUpper.push(24);
+    const nativeP90UpperMs = p90(nativeUpper);
+    const dispatchP90Ms = p90(samples.dispatch.map(e => e.inputDelay));
+    await metric(testInfo, 'input', { nativeP90UpperMs, dispatchP90Ms, budgetMs: 150, ...samples });
+    expect.soft(nativeP90UpperMs, '原生 Event Timing 的 inputDelay p90 上界').toBeLessThanOrEqual(150);
+    expect.soft(dispatchP90Ms, '含中文组字事件的捕获监听延迟 p90').toBeLessThanOrEqual(150);
+  } finally { await cdp.detach(); }
+});
+
 test('owner 性能首开画布：97 帧挂齐最多 15 秒', async ({ page }, testInfo) => {
   const started = performance.now();
   await page.goto(`/workbench/?page=${OWNER_PAGE}`);
