@@ -15,7 +15,13 @@ import { embedParked, registerEmbedPark } from './embed-park.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 // 「哪个 annotate 实例在管」的判定与模式同步住 annotate-surface.js（C3）；
 // 这里消费解析结果并把它转发给既有消费面（annotateApi 的消费点都在 ann-bridge）。
-import { annotateApi, parkParentAnnotate, routeAnnotateKey } from './annotate-surface.js';
+import {
+  activeDocFrameEl,
+  activeDocWindow,
+  annotateApi,
+  parkParentAnnotate,
+  routeAnnotateKey
+} from './annotate-surface.js';
 
 export { annotateApi };
 

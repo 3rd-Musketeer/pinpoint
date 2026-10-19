@@ -21,6 +21,20 @@ export function activeDocFrameEl() {
   return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
 }
 
+/** 可见文档帧里的 annotate 实例所在的 window；没有可见文档帧或实例未注入（跨域
+ *  读 contentWindow 会抛）时为 null。文档实例的绑定方（ann-bridge bindIfNewDoc）
+ *  直接消费它；画布操作该驱动谁看 resolveActiveAnnotate。 */
+export function activeDocWindow() {
+  var frame = activeDocFrameEl();
+  if (!frame) return null;
+  try {
+    var w = frame.contentWindow;
+    return w && w.pinpoint ? w : null;     // 跨域时读 contentWindow 会抛
+  } catch (e) {
+    return null;
+  }
+}
+
 /** 此刻「谁在管」的一次解析（一次 DOM 查询，消费方共用）：
  *  - api：画布标注操作该驱动的实例 —— 可见文档实例优先，缺省父窗口实例；
  *  - parent：父窗口实例（可能没有）；
