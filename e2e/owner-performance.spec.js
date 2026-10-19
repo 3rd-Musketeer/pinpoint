@@ -107,6 +107,40 @@ test.beforeEach(async ({ page, request }) => {
 });
 test.afterEach(async ({ page }) => { await ownerCleanup(page); });
 
+test('owner 性能静态卡片：95 帧挂 shadow root，活动文档 ≤ 6、GC 后 JS 堆 ≤ 16 MiB', async ({ page }, testInfo) => {
+  await test.step('首开文章并读到最后一节，每张卡片实际渲染', async () => {
+    await openOwnerArticle(page);
+    for (let n = 1; n <= 12; n++) {
+      const card = page.locator(`[data-pp-section="part-${n}"]`);
+      await card.scrollIntoViewIfNeeded();
+      await expect(card.locator('.cc-box[data-fitted="1"]')).toHaveCount(n === 12 ? 9 : 8, { timeout: 30_000 });
+    }
+    await expect(page.locator('.cc-box[data-fitted="1"]')).toHaveCount(OWNER_FRAMES);
+  });
+  // 计数门（E1，2026-10-19）：静态帧不建 iframe，97 帧的卡片只剩 3 个活动文档
+  // （文章页 + flow-001/002 两个 srcdoc 回退）。旧实现 98+（r3 实测 100），上限 6 给
+  // 浏览器内部临时文档留一倍余量。GC 后 JS 堆：r3 实测 shadow 3.3 MiB vs iframe 39.6 MiB，
+  // 上限 16 MiB 是新实现的 4 倍余量、旧实现的 40%。
+  const shadows = await page.locator('.cc-shadow[data-cc-mounted="1"]').count();
+  const cardIframes = await page.locator('[data-pp-canvas] iframe').count();
+  const docs = page.frames().length;
+  const cdp = await page.context().newCDPSession(page);
+  let heapBytes = 0;
+  try {
+    await cdp.send('Performance.enable');
+    await cdp.send('HeapProfiler.enable');
+    await cdp.send('HeapProfiler.collectGarbage');
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    heapBytes = metrics.find((m) => m.name === 'JSHeapUsedSize')?.value || 0;
+  } finally { await cdp.detach(); }
+  const heapMiB = Math.round((heapBytes / 1024 / 1024) * 10) / 10;
+  await metric(testInfo, 'static-cards', { shadows, cardIframes, docs, heapMiB });
+  expect(shadows, '静态帧挂 shadow root').toBe(OWNER_FRAMES - 2);
+  expect(cardIframes, '带预览脚本的 2 帧留 iframe').toBe(2);
+  expect(docs, '活动文档数').toBeLessThanOrEqual(6);
+  expect(heapBytes, 'GC 后 JS 堆').toBeLessThanOrEqual(16 * 1024 * 1024);
+});
+
 test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 renderAll', async ({ page }, testInfo) => {
   // 只在此计数用例替换成同源码的未压缩 bundle；函数入口加计数，磁盘实现不变。
   const artifact = await buildAnnotateBundle({ minify: false });
