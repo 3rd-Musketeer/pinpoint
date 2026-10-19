@@ -73,11 +73,17 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     expect(await page.evaluate(() => window.__pinpointEntry)).toBe('e2e-project_commit-confirm');
     const scripts = sameOrigin.filter((r) => r.type === 'script' && r.path.startsWith('/_astro/'));
     expect(scripts.length).toBeGreaterThan(0);
-    // 文章页自己：文章 HTML、Astro 内部资源、标注客户端与它的接口（卡片的未处理数也读 /annotations）。
-    // 卡片 iframe：只有本篇画布页的帧，annotate=off；帧页里的资源（kit、article.css）只要求都成功。
+    // 文章页自己：文章 HTML、Astro 内部资源、标注客户端与它的接口（卡片的未处理数也读 /annotations）、
+    // 静态卡片的加载（E1：卡片不建 iframe，浏览器端在文章页里 fetch 帧页挂 shadow root ——
+    // /api/frame、帧 CSS（?direct 是 sheetText 的签名，不带它的 CSS 照样算 unexpected）、
+    // ios-kit；这些以前发生在帧 iframe 文档里，所以旧断言见不到）。
+    // 卡片 iframe（doc 帧、回退帧）：只有本篇画布页的帧，annotate=off；帧页里的资源（kit、article.css）只要求都成功。
     // 此外不该有同源请求，也不该有失败。
     const unexpected = sameOrigin.filter((r) => r.main && !(r.path === ARTICLE || r.path.startsWith('/_astro/')
-      || /^\/annotate(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'));
+      || /^\/annotate(\.[0-9a-f]+)?\.js$/.test(r.path) || r.path.startsWith('/annotations') || r.path === '/events'
+      || (r.path === '/api/frame' && r.type === 'fetch')
+      || (r.search === '?direct' && /\.css$/.test(r.path) && r.type === 'fetch')
+      || r.path === '/kits/ios/ios-kit.js'));
     expect(unexpected).toEqual([]);
     // 冷启动时 Astro 可能整页重载一次（依赖预构建），帧会请求两遍：比的是请求了哪些帧。
     // 正文里的图（<Figure>）也是 /api/frame：embed=figure（figure.spec.js 测它们的行为）。
@@ -154,9 +160,11 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(page.locator('[data-pp-canvas] .cc-box[data-fitted="1"]')).toHaveCount(5);
     // 混排的一张卡：手机帧按手机缩到 158 宽；帧级 comp 的那一帧按自己的组件台量，不是手机比例。
     const mixed = page.locator('[data-pp-canvas][data-pp-section="mixed"]');
-    await expect(mixed.locator('[data-screen="mixed-phone"] .cc-box')).toHaveClass(/\bphone\b/);
-    await expect(mixed.locator('[data-screen="mixed-bare"]')).toHaveAttribute('data-shell', 'comp');
-    await expect(mixed.locator('[data-screen="mixed-bare"] .cc-box')).toHaveClass(/\bnatural\b/);
+    // 帧内容（shadow root 里的 .wb-screen 也带 data-screen）会被 Playwright 的选择器穿透，
+    // 卡片壳的选择器一律加 .cc-frame 限定（cardInner 同款）。
+    await expect(mixed.locator('.cc-frame[data-screen="mixed-phone"] .cc-box')).toHaveClass(/\bphone\b/);
+    await expect(mixed.locator('.cc-frame[data-screen="mixed-bare"]')).toHaveAttribute('data-shell', 'comp');
+    await expect(mixed.locator('.cc-frame[data-screen="mixed-bare"] .cc-box')).toHaveClass(/\bnatural\b/);
     const sizes = await mixed.locator('.cc-box').evaluateAll((els) => els.map((el) => [el.getBoundingClientRect().width, el.getBoundingClientRect().height]));
     expect(sizes[0][0]).toBe(158);
     expect(sizes[0][1]).toBeGreaterThan(300);
