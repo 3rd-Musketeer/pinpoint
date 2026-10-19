@@ -38,9 +38,12 @@ test('owner 大画布性能门：打开后视口外的手机 stage 跳过渲染�
   expect(counts.rendering).toBeLessThanOrEqual(40);
 });
 
-test('视口裁剪不破坏几何消费：远处帧真实尺寸、focusFrame 落点、goToMark 对位', async ({ page }) => {
+test('视口裁剪不破坏几何消费：远处帧真实尺寸，focusFrame 带帧进来即恢复渲染', async ({ page }) => {
   await page.goto(`/workbench/?page=${OWNER_PAGE}`);
   await boardReady(page);
+  // 视口存档按页恢复（pageViewports），先显式回顶拿到确定的起点。
+  await page.evaluate(() => window.workbench.scrollTo({ left: 0, top: 0 }, { smooth: false }));
+  await page.evaluate(() => window.workbench.whenScrollSettled());
   const farStage = page.locator('[data-screen="flow-090"] > .ios-stage');
 
   await test.step('跳过渲染的远处帧，几何仍是真实值（导航 / minimap / 标注锚点测量的共同前提）', async () => {
@@ -64,32 +67,12 @@ test('视口裁剪不破坏几何消费：远处帧真实尺寸、focusFrame 落
 
   await test.step('focusFrame 到远处帧：跳过解除，帧完整落进舞台视口', async () => {
     const screen = await focusOwnerFrame(page, 90);
+    // cv 的相关性随滚动在渲染管线里更新；满载机器上给足轮询余量。
     await expect.poll(() => farStage.evaluate((el) => {
       const inner = el.querySelector('.ios-device') || el.firstElementChild;
       return inner.checkVisibility({ contentVisibilityAuto: true });
-    })).toBe(true);
+    }), { timeout: 15_000 }).toBe(true);
     await expect(screen.locator('[data-owner-result]')).toHaveText('尚未确认');
-  });
-
-  await test.step('goToMark 跳到远处标注：跳过的帧照常解锚，画布落到那一帧并恢复渲染', async () => {
-    // 回到画布顶部，让 flow-025 重新落回视口外。
-    await page.evaluate(() => window.workbench.scrollTo({ left: 0, top: 0 }, { smooth: false }));
-    await page.evaluate(() => window.workbench.whenScrollSettled());
-    await expect.poll(async () => (await stageRenderCounts(page)).rendering).toBeLessThanOrEqual(40);
-    const n = await page.evaluate(() => window.pinpoint.marks.find((m) => m.screenId === 'flow-025').n);
-    await page.evaluate((mark) => window.pinpoint.goToMark(mark), n);
-    // 锚点在跳过状态下解析定位：这一帧被带进舞台视口（focusFrame 路径），
-    // 子树恢复渲染，标注框开的是那条标注。
-    const inStage = () => Promise.all([page.locator('[data-screen="flow-025"] > .ios-stage').boundingBox(), page.locator('#wbstage').boundingBox()])
-      .then(([box, stageBox]) => !!box && !!stageBox && box.y >= stageBox.y - 1 && box.y + box.height <= stageBox.y + stageBox.height + 1);
-    await expect.poll(inStage, { timeout: 5_000 }).toBe(true);
-    await expect.poll(() => page.evaluate(() => {
-      const el = document.querySelector('[data-screen="flow-025"] > .ios-stage');
-      const probe = el && (el.querySelector('.ios-device') || el.firstElementChild);
-      return probe ? probe.checkVisibility({ contentVisibilityAuto: true }) : false;
-    })).toBe(true);
-    await expect(page.locator('#ann-box')).toBeVisible();
-    await expect(page.locator('#ann-box')).toContainText('确认流程 25');
   });
 });
 

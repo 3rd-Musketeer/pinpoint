@@ -21,6 +21,7 @@ const durations = {
   'bundle-cache.spec.js': 0.1,
   'canvas-diagnostics.spec.js': 2.9,
   'canvas-pan.spec.js': 19.2,
+  'canvas-clipping.spec.js': 20,
   'comp-layout.spec.js': 0.4,
   'dir-entry.spec.js': 1.5,
   'export-picker.spec.js': 1.2,
