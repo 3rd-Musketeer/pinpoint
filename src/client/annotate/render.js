@@ -4,7 +4,7 @@
 import { annStatusOf, filterIncludesStatus } from '../../shared/ann-status.js';
 import { isMarkBroken, markElementTargets, markHasLiveTarget, markOnActivePage, resolveAllLiveTargets, resolveMarkSelector, resolveMarkTarget } from './anchor.js';
 import { svgArrow, updateArrowGeometry } from './arrow.js';
-import { markGeometryKey, updateCanvasBubble } from './bubbles.js';
+import { markGeometryKey, placeDocBubble, updateCanvasBubble } from './bubbles.js';
 import { syncFrameResizeObservers } from './schedule.js';
 import { geometryBatch, stageOrigin } from './dom.js';
 import { openMark } from './nav.js';
@@ -61,7 +61,7 @@ function removeMarkNode(entry) {
 /* 评论卡的显示源（2026-09-04 评审板 H）：hover 钉子（120ms 延迟，扫过不闪）
    或该条刚被定位。离开钉子给 90ms 宽限，指针可以移到卡上继续读。 */
 
-export function syncBubbleVisibility() {
+export function toggleBubbleClasses() {
   var on = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
   Object.keys(ctx.bubbleNodes).forEach(function (n) {
     ctx.bubbleNodes[n].node.classList.toggle('ann-bubble--show', String(on) === String(n));
@@ -71,7 +71,12 @@ export function syncBubbleVisibility() {
       if (part.badge) part.badge.classList.toggle('ann-badge--on', String(on) === String(n));
     });
   });
+}
+
+export function syncBubbleVisibility() {
+  toggleBubbleClasses();
   if (ctx.canvasView) updateCanvasBubble();
+  else placeDocBubble(); // 非画布：新点亮的卡此刻才算位置（C4 起只摆点亮的那张）
 }
 
 export function showBubbleFor(n, delay) {

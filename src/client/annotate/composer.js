@@ -9,6 +9,7 @@ import { removeTempArrow } from './arrow.js';
 import { renderAll } from './bubbles.js';
 import { beginOverlayFrame, docToView, overlayOrigin } from './dom.js';
 import { clearDraftNodes } from './gesture.js';
+import { computePosition, offset, shift, virtualRect } from './floating.js';
 import { annIcon, hideGhost } from './ui.js';
 export function bind_composer(c) { ctx = c; }
 var ctx;
@@ -212,8 +213,15 @@ export function composerBoxHtml(m, broken, isNew) {
 
 // Use the selected DOM geometry, including every visible selected target.
 // When none of the adjacent positions fits, dock without moving the canvas.
+// 候选位枚举与求交交给 @floating-ui/dom（2026-10-19 C4）：侧序（右→左→下→上，
+// preferredSide=below 时下面先）、12px 气口与贴边、目标并集矩形参照、chrome
+// 避让判定、dock 兜底与用户拖动位都保持原语义。视口预筛不能删：参照完全在
+// 视口外时 flip/shift 的输出不可用（实验踩过）。computePosition 是 async
+// （微任务里落地，写样式仍在同帧）；等待期间被更新的布局（再输入、拖动、关框）
+// 经 placeSeq / userPos / activeComposer 守卫挡掉。
 export function placeComposerBox(composer, box, maxWidth) {
   if (ctx.activeComposer !== composer || !box.isConnected) return;
+  var seq = composer.placeSeq = (composer.placeSeq || 0) + 1;
   beginOverlayFrame();
   var bounds = ctx.overlay.getBoundingClientRect();
   var pad = 12, gap = 12;
@@ -221,40 +229,53 @@ export function placeComposerBox(composer, box, maxWidth) {
   box.style.width = width + 'px';
   box.style.maxHeight = Math.max(80, bounds.height - pad * 2) + 'px';
   var height = box.offsetHeight;
-  var rects = annotationTargetRects(composer.m);
-  rects = rects.filter(function (r) { return r.right > bounds.left && r.left < bounds.right && r.bottom > bounds.top && r.top < bounds.bottom; });
-  var candidates = [];
-  if (rects.length) {
-    var left = Math.min.apply(null, rects.map(function (r) { return r.left; })) - bounds.left;
-    var right = Math.max.apply(null, rects.map(function (r) { return r.right; })) - bounds.left;
-    var top = Math.min.apply(null, rects.map(function (r) { return r.top; })) - bounds.top;
-    var bottom = Math.max.apply(null, rects.map(function (r) { return r.bottom; })) - bounds.top;
-    var y = Math.max(pad, Math.min(top, bounds.height - height - pad));
-    var x = Math.max(pad, Math.min(left, bounds.width - width - pad));
-    candidates = [[right + gap, y], [left - gap - width, y], [x, bottom + gap], [x, top - gap - height]];
-    if (composer.preferredSide === 'below') candidates.unshift(candidates.splice(2, 1)[0]);
+  function writePos(position, placement) {
+    box.dataset.placement = placement;
+    box.style.left = position[0] + 'px';
+    box.style.top = position[1] + 'px';
+    box.style.right = 'auto'; box.style.bottom = 'auto'; box.style.margin = '0';
   }
-  var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #wbcanvas-dock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
-  var position = candidates.find(function (p) {
-    if (p[0] < pad || p[1] < pad || p[0] + width > bounds.width - pad || p[1] + height > bounds.height - pad) return false;
-    return !chrome.some(function (r) { return p[0] + bounds.left < r.right && p[0] + width + bounds.left > r.left && p[1] + bounds.top < r.bottom && p[1] + height + bounds.top > r.top; });
-  });
-  box.dataset.placement = position ? 'anchor' : 'dock';
-  if (composer.userPos) {
-    // 用户拖过：位置固定在视口里，只夹回可视范围，不再跟着目标自动让位。
-    position = [
-      Math.max(pad, Math.min(composer.userPos[0], bounds.width - width - pad)),
-      Math.max(pad, Math.min(composer.userPos[1], bounds.height - height - pad))
-    ];
-    box.dataset.placement = 'user';
-  } else if (!position) {
+  function dockPos() {
     var strip = document.getElementById('wbstrip');
     var bottomSpace = strip && strip.getClientRects().length ? Math.max(pad, bounds.bottom - strip.getBoundingClientRect().top + gap) : pad;
-    position = [(bounds.width - width) / 2, Math.max(pad, bounds.height - height - bottomSpace)];
+    return [(bounds.width - width) / 2, Math.max(pad, bounds.height - height - bottomSpace)];
   }
-  box.style.left = position[0] + 'px';
-  box.style.top = position[1] + 'px';
-  box.style.right = 'auto'; box.style.bottom = 'auto'; box.style.margin = '0';
+  if (composer.userPos) {
+    // 用户拖过：位置固定在视口里，只夹回可视范围，不再跟着目标自动让位。
+    writePos([
+      Math.max(pad, Math.min(composer.userPos[0], bounds.width - width - pad)),
+      Math.max(pad, Math.min(composer.userPos[1], bounds.height - height - pad))
+    ], 'user');
+    return;
+  }
+  var rects = annotationTargetRects(composer.m);
+  rects = rects.filter(function (r) { return r.right > bounds.left && r.left < bounds.right && r.bottom > bounds.top && r.top < bounds.bottom; });
+  if (!rects.length) { writePos(dockPos(), 'dock'); return; }
+  var left = Math.min.apply(null, rects.map(function (r) { return r.left; }));
+  var right = Math.max.apply(null, rects.map(function (r) { return r.right; }));
+  var top = Math.min.apply(null, rects.map(function (r) { return r.top; }));
+  var bottom = Math.max.apply(null, rects.map(function (r) { return r.bottom; }));
+  var placements = ['right-start', 'left-start', 'bottom-start', 'top-start'];
+  if (composer.preferredSide === 'below') placements.unshift(placements.splice(2, 1)[0]);
+  var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #wbcanvas-dock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
+  function stale() {
+    return composer.placeSeq !== seq || ctx.activeComposer !== composer || !box.isConnected || !!composer.userPos;
+  }
+  (async function () {
+    for (var i = 0; i < placements.length && !stale(); i++) {
+      // computePosition 给出的 x/y 相对 offsetParent（#ann-chrome），与
+      // overlay 同原点（两种挂法下都是 inset:0 同盒），即旧的 overlay-local 坐标。
+      var result = await computePosition(virtualRect([left, top, right - left, bottom - top]), box, {
+        placement: placements[i],
+        middleware: [offset(gap), shift({ boundary: ctx.overlay, padding: pad })]
+      });
+      if (result.x < pad || result.y < pad || result.x + width > bounds.width - pad || result.y + height > bounds.height - pad) continue;
+      if (chrome.some(function (r) { return result.x + bounds.left < r.right && result.x + width + bounds.left > r.left && result.y + bounds.top < r.bottom && result.y + height + bounds.top > r.top; })) continue;
+      if (!stale()) writePos([result.x, result.y], 'anchor');
+      return;
+    }
+    if (!stale()) writePos(dockPos(), 'dock');
+  })();
 }
 
 // 拖动：按住框的空白处（内边距、按钮之间）移动；正文输入区和按钮保持原有行为。

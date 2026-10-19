@@ -25,6 +25,7 @@ export function viteCacheDir({ root, env = process.env } = {}) {
 // 启动时一次预构建齐，不等运行时发现新依赖再重建 deps/、换 chunk 名。加新依赖时一并登记，
 // vite-deps.test.js 守它和源码对得上。
 export const WORKBENCH_DEPS = [
+  '@floating-ui/dom',
   '@radix-ui/react-context-menu',
   '@radix-ui/react-dropdown-menu',
   '@radix-ui/react-focus-scope',

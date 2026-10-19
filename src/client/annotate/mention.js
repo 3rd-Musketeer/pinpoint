@@ -1,7 +1,8 @@
 // @mention 选择器：在标注框里输入 @ 时列出可引用的标注，选中后写入 [@a:id]。
 // 导出 bind_mention、createMentionPicker。
 import { markElementTargets } from './anchor.js';
-import { closeMention, placeChromeFixed } from './composer.js';
+import { closeMention } from './composer.js';
+import { computePosition, offset, shift } from './floating.js';
 import { annotationContent, annotationSectionLabel, contentToDisplay, ensureMarkId } from './marks.js';
 export function bind_mention(c) { ctx = c; }
 var ctx;
@@ -34,6 +35,20 @@ function closeMentionPicker() {
   mentionRange = null;
 }
 
+// 贴在输入区左下、间距 4px，两轴向 overlay 收 8px 边距（@floating-ui/dom，
+// 2026-10-19 C4；与旧 placeChromeFixed 的 clamp 同语义）。弹层每次渲染重建，
+// 只有最新那份还连着文档，isConnected 守卫足够。
+function placeMention(pop) {
+  computePosition(ta, pop, {
+    placement: 'bottom-start',
+    middleware: [offset(4), shift({ boundary: ctx.overlay, padding: 8, crossAxis: true })]
+  }).then(function (result) {
+    if (!pop.isConnected) return;
+    pop.style.left = result.x + 'px';
+    pop.style.top = result.y + 'px';
+  });
+}
+
 function renderMentionPicker() {
   closeMention();
   if (!mentionItems.length) {
@@ -42,8 +57,7 @@ function renderMentionPicker() {
     empty.setAttribute('data-ann-ui', '');
     empty.innerHTML = '<div class="ann-men-empty">没有可引用的标注</div>';
     ctx.chromeLayer.appendChild(empty);
-    var er = ta.getBoundingClientRect();
-    placeChromeFixed(empty, er.left, er.bottom + 4);
+    placeMention(empty);
     return;
   }
   var pop = document.createElement('div');
@@ -66,8 +80,7 @@ function renderMentionPicker() {
     mentionIndex = parseInt(btn.getAttribute('data-men-i'), 10) || 0;
     pickMention();
   });
-  var pr = ta.getBoundingClientRect();
-  placeChromeFixed(pop, pr.left, pr.bottom + 4);
+  placeMention(pop);
   var on = pop.querySelector('.ann-men-item.on');
   if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest' });
 }
