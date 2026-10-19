@@ -34,8 +34,10 @@ export function registerEmbedPark(duty) {
 }
 
 function run(method) {
-  for (var i = 0; i < duties.length; i++) {
-    try { duties[i][method](); } catch (e) { /* 各处自理 */ }
+  // 遍历快照：某一处在自己的 resume 里退订（splice 自己）时，不跳过排在它后面的那一处。
+  var list = duties.slice();
+  for (var i = 0; i < list.length; i++) {
+    try { list[i][method](); } catch (e) { /* 各处自理 */ }
   }
 }
 

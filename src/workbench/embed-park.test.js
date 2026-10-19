@@ -70,3 +70,18 @@ test('one duty failing does not stop the others; an unregistered shape is ignore
   resumeEmbed();
   assert.deepEqual(log, ['ok-pause', 'tail-pause', 'bad-resume', 'tail-resume']);
 });
+
+test('a duty that unregisters itself during resume does not make the next duty skip its resume', () => {
+  resetEmbedPark();
+  const log = [];
+  registerEmbedPark({ pause() {}, resume() { log.push('a'); } });
+  const releaseB = registerEmbedPark({ pause() {}, resume() { releaseB(); log.push('b'); } });
+  registerEmbedPark({ pause() {}, resume() { log.push('c'); } });
+  pauseEmbed();
+  resumeEmbed();
+  assert.deepEqual(log, ['a', 'b', 'c']);
+  // 退订的那一处下一轮不再被调。
+  pauseEmbed();
+  resumeEmbed();
+  assert.deepEqual(log, ['a', 'b', 'c', 'a', 'c']);
+});
