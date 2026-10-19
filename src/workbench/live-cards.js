@@ -13,11 +13,9 @@ import { forwardUncaught } from '../shared/layers.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
 import { registerEmbedPark } from './embed-park.js';
-// 卡片实例的登记、解析与模式同步住 annotate-surface.js（C3）；这里只管卡片的
-// 懒装载与手势，绑定完成后向它报一声。
 import {
   cardAnnotateBound,
-  cardAnnotateState,
+  cardAnnotateIsBound,
   forgetAllCardAnnotates,
   forgetCardAnnotate,
   registerCardFrames
@@ -211,19 +209,16 @@ function wireCardWindow(frame) {
 }
 
 /* ---- 标注实例绑定 ------------------------------------------------------------------
-   模式同步与实例登记在 annotate-surface.js 一处做（C3）；这里只负责发现卡片
-   里的实例（load 时已注入就直接绑，否则等它的就绪消息 —— C1 替掉 100ms×40
-   短轮询），绑定动作等实例 whenReady（账本落定）之后交给 cardAnnotateBound，
-   onNotify 传 schedulePump：标注活动也是卡片装载计划的输入。 */
+   发现卡片里的实例（load 时已注入就直接绑，否则等它的就绪消息，C1），等它
+   whenReady（账本落定）后交给 annotate-surface 登记；模式同步也在那边（C3）。 */
 function bindCardAnnotate(frame, win) {
   var api = null;
   try { api = win.pinpoint; } catch (e) { return; }
   if (!api || typeof api.whenReady !== 'function') return;   // 还没注入；等它的就绪消息
-  if (!state.cards.has(frame) || cardAnnotateState(frame, api) === 'bound') return;
+  if (!state.cards.has(frame) || cardAnnotateIsBound(frame, api)) return;
   api.whenReady().then(function () {
     // 落定时帧已卸载 / 实例又被换掉（重载）：新实例由它自己的就绪消息再来一遍。
-    if (!state.cards.has(frame) || cardAnnotateState(frame, api) !== 'alive') return;
-    cardAnnotateBound(frame, api, schedulePump);
+    if (state.cards.has(frame)) cardAnnotateBound(frame, api, schedulePump);
   });
 }
 

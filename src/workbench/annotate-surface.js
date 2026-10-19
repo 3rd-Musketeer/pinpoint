@@ -124,9 +124,10 @@ function ensureParentModeSync() {
 }
 
 /** 卡片实例绑定完成（live-cards 在实例 whenReady 之后调）：登记、放行等待方、
- *  与父实例对齐模式并挂双向跟随。onNotify 由卡片管理侧注入（标注活动也是卡片
- *  装载计划的输入，现在是 schedulePump）。 */
+ *  与父实例对齐模式并挂双向跟随。已登记的、或落定时帧已卸 / 实例被换掉的不绑。
+ *  onNotify 由卡片管理侧注入（标注活动也是卡片装载计划的输入）。 */
 export function cardAnnotateBound(frame, api, onNotify) {
+  if (cardAnnotateIsBound(frame, api) || !cardApiAlive(frame, api)) return;
   ensureParentModeSync();
   cardApis.set(frame, api);
   flushCardWaiters(frame, api);
@@ -144,12 +145,7 @@ export function cardAnnotateBound(frame, api, onNotify) {
   });
 }
 
-/** live-cards 绑定前问这一份实例现在算什么：'bound' 已登记且就是它；
- *  'alive' 还挂在这帧上、可以绑；'gone' 帧已卸或实例被换掉。 */
-export function cardAnnotateState(frame, api) {
-  if (cardApis.get(frame) === api) return 'bound';
-  return cardApiAlive(frame, api) ? 'alive' : 'gone';
-}
+export function cardAnnotateIsBound(frame, api) { return cardApis.get(frame) === api; }
 
 // 一次扫描卡片帧：{ frame, api }。api 是已加载且还活着的标注客户端，未装好为
 // null；画布上没有这一屏时 frame 也为 null。

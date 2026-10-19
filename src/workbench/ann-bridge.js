@@ -13,8 +13,7 @@ import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { embedParked, registerEmbedPark } from './embed-park.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
-// 「哪个 annotate 实例在管」的判定与模式同步住 annotate-surface.js（C3）；
-// 这里消费解析结果并把它转发给既有消费面（annotateApi 的消费点都在 ann-bridge）。
+// 「哪个 annotate 实例在管」住 annotate-surface.js（C3）；annotateApi 从这里转出。
 import {
   activeDocFrameEl,
   annotateApi,
