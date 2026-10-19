@@ -244,6 +244,28 @@ test('buildOfflineShareHtml emits the live workbench shell: canvas, glass panel 
   assert.doesNotMatch(html, /annotate\.js|pinpoint\.localhost|\/sites\//);
 });
 
+test('buildOfflineShareHtml 退回画布的视口裁剪：分享页全量渲染（2026-10-19 E3）', () => {
+  // 分享页与工作台画布同名同构（.wb-zoom-wrap > .wb-library），会吃到 index.html 的
+  // content-visibility:auto 规则；静态快照的消费方式（hash 深链、整页打印 / 截图）
+  // 要求全量渲染，SHARE_CSS 必须显式退回 visible。
+  const html = buildOfflineShareHtml({
+    pageId: 'demo',
+    title: 'Demo',
+    sections: [{
+      id: 'start', title: '开始', ref: 'A', screens: [
+        { id: 'one', title: '第一屏', ref: 'A1', html: '<div class="wb-screen" id="frame-one" data-screen="one"><div class="ios-stage"></div></div>' },
+      ],
+    }],
+    workbenchCss: '.wb-zoom-wrap > .wb-library .wb-screen > .ios-stage{content-visibility:auto;contain-intrinsic-size:438px 910px}',
+  });
+  const style = html.match(/<style>([\s\S]*)<\/style>/)?.[1] || '';
+  assert.match(style, /\.wb-zoom-wrap \.wb-screen > \.ios-stage\{content-visibility:visible !important\}/);
+  // 退回规则必须排在被覆盖的画布规则之后（同权重下靠源码序兜底）
+  const optOutAt = style.indexOf('.wb-zoom-wrap .wb-screen > .ios-stage{content-visibility:visible');
+  const clipAt = style.indexOf('content-visibility:auto');
+  assert.ok(optOutAt > -1 && clipAt > -1 && optOutAt > clipAt, 'opt-out 规则应在画布裁剪规则之后');
+});
+
 test('buildOfflineShareHtml escapes titles and ids in the outline and strip', () => {
   const html = buildOfflineShareHtml({
     pageId: 'demo',
