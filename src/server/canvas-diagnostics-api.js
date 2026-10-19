@@ -43,7 +43,8 @@ export function cleanDiagnostics(body) {
   if(!/^[a-zA-Z0-9-]{1,64}$/.test(body?.session||'') || !Array.isArray(body.events) || body.events.length>32) throw new Error('invalid');
   const events=body.events.map(event=>{
     const row=pick(event,['at','ms','type','page','input','scroll','extent','viewport','dpr','maxFrameGap','hidden','name','line','column',
-      'loaf','loafMax','loafScript','longTasks','annMax','zoom','marks']);
+      'loaf','loafMax','loafScript','longTasks','annMax','zoom','marks',
+      'duration','inputDelay','processing','presentation','render','scripts','frames']);
     for(const key of ['wrap','panel'])if(event[key])row[key]=pick(event[key],['rect','display','visibility','opacity','transform','contentVisibility','contain']);
     return row;
   });

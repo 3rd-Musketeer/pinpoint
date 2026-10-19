@@ -65,7 +65,10 @@ export function startCanvasDiagnostics(stage, pageId) {
       removers.push(() => po.disconnect());
     } catch {}
   }
+  const recentLoaf = []; // 最近的长帧，给慢输入找同一时段的脚本归属
   observe('long-animation-frame', e => {
+    recentLoaf.push(e);
+    if (recentLoaf.length > 24) recentLoaf.shift();
     loaf++;
     if (e.duration > loafMax) {
       loafMax = e.duration;
@@ -74,6 +77,44 @@ export function startCanvasDiagnostics(stage, pageId) {
     }
   });
   observe('longtask', () => { longTasks++; });
+  // 慢输入（owner 2026-10-19：“在画布上标注的时候输入法输入简直卡爆了”）：按键、输入法组字、input 事件
+  // 从发生到画出来超过 INPUT_LAG_MS 就记一条：分成排队（inputDelay）、处理（processing）、出帧（presentation），
+  // 带同一时段长帧里最耗时的三段脚本（文件:函数:毫秒，含强制样式布局）。不记按键内容和目标文字。
+  const INPUT_LAG_MS = 50;
+  const INPUT_EVENTS = new Set(['keydown','keyup','keypress','beforeinput','input','compositionstart','compositionupdate','compositionend']);
+  let lagBudget = 0, lagWindow = 0;
+  function overlappingScripts(start, end) {
+    const scripts = [];
+    let render = 0;
+    for (const f of recentLoaf) {
+      if (f.startTime > end || f.startTime + f.duration < start) continue;
+      if (f.renderStart) render = Math.max(render, f.startTime + f.duration - f.renderStart);
+      for (const sc of f.scripts || []) scripts.push(sc);
+    }
+    scripts.sort((a, b) => b.duration - a.duration);
+    const top = scripts.slice(0, 3).map(sc => [scriptName(sc.sourceURL), String(sc.sourceFunctionName || sc.invoker || '').slice(0, 40),
+      Math.round(sc.duration), Math.round(sc.forcedStyleAndLayoutDuration || 0)].join(':')).join(' | ');
+    return {scripts: top.slice(0, 240), render: Math.round(render)};
+  }
+  try {
+    const po = new PerformanceObserver(list => list.getEntries().forEach(e => {
+      if (!INPUT_EVENTS.has(e.name) || e.duration < INPUT_LAG_MS) return;
+      const now = performance.now();
+      if (now - lagWindow > 1000) { lagWindow = now; lagBudget = 0; }
+      if (++lagBudget > 6) return; // 每秒最多记 6 条
+      const t = e.target;
+      const where = !t ? 'gone' : t.closest?.('#ann-box') ? 'composer' : t.closest?.('[data-ann-ui]') ? 'ann-ui' : 'page';
+      const row = {page:pageId(), name:e.name, input:where, duration:Math.round(e.duration),
+        inputDelay:Math.round(e.processingStart - e.startTime), processing:Math.round(e.processingEnd - e.processingStart),
+        presentation:Math.round(e.startTime + e.duration - e.processingEnd),
+        marks:window.pinpoint?.marks?.length ?? 0, frames:document.querySelectorAll('.wb-screen').length,
+        zoom:Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1};
+      // 同一帧的长帧条目比事件条目晚到：等一会儿再找归属。
+      setTimeout(() => record('input-lag', {...row, ...overlappingScripts(e.startTime, e.startTime + e.duration)}), 1200);
+    }));
+    po.observe({type:'event', durationThreshold:INPUT_LAG_MS, buffered:false});
+    removers.push(() => po.disconnect());
+  } catch {}
   function sample() {
     const annMax = window.pinpoint?.perfDrain?.() ?? 0; // 标注层本采样窗口内最慢的一帧同步耗时（ms）
     const wrap = stage.querySelector('.wb-zoom-wrap');

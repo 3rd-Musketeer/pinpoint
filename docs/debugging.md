@@ -406,6 +406,8 @@ After a flicker, read these local files around the reported time; export is unne
 The tab also retains current/previous-load sessionStorage records. Settings → 导出诊断日志
 is an optional manual fallback.
 `window.workbench.diagnostics.snapshot()` provides the same metadata for debugging.
+
+Slow input（2026-10-19，owner：“在画布上标注的时候输入法输入简直卡爆了”）：independent of canvas movement, every key, IME composition or input event whose Event Timing duration is ≥ 50 ms is written as a `type:"input-lag"` row (at most 6 per second): `name`, `input` (`composer` = the annotation box, `ann-ui`, `page`), `duration` split into `inputDelay` / `processing` / `presentation`, `render` (render phase of the overlapping long animation frame), `scripts` (top three scripts of overlapping long animation frames as `file:function:ms:forcedStyleLayoutMs`), plus `marks`, `frames`, `zoom`. No key values or text. Read the latest ones with `grep '"input-lag"' ~/.pinpoint/diagnostics/canvas.ndjson | tail`.
 A normal DOM snapshot cannot rule out a GPU/compositor paint failure; pair the log with
 a screen recording when the canvas is visibly blank but its geometry remains normal.
 
