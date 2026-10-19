@@ -7,7 +7,7 @@
 //   焦点常在页面的 iframe 里，按键到不了工作台：iframe 的文档装好后就地装上弹层栈
 //   （src/shared/layers.js attachLayerStack，幂等），没接住的 Esc 由栈转给工作台 window，
 //   由浮层这一层关掉 —— 与活卡片同一套跨文档协议（C2）。
-import { attachLayerStack, forwardEscapeToParent } from '../shared/layers.js';
+import { forwardUncaught } from '../shared/layers.js';
 import { openPageOverlay } from './pages.js';
 
 var CARD_SELECTOR = '.wb-screen[data-html-card]';
@@ -35,7 +35,7 @@ function wireFrameLayers(frame) {
   if (wiredFrames) wiredFrames.add(doc);
   // 注入的标注客户端也调 attachLayerStack：幂等，拿到的是同一份。没接住的 Esc 在页面
   // 自己的监听之后交回工作台 window（旧做法同样在冒泡段关浮层，不看 defaultPrevented）。
-  attachLayerStack(win).setForward(function () { forwardEscapeToParent(win); }, { afterPage: true });
+  forwardUncaught(win, { afterPage: true });
 }
 
 export function startPageOverlay(stage) {

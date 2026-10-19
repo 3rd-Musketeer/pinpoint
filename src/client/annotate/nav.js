@@ -50,22 +50,33 @@ function takeDraftStep() {
 }
 
 // 被评审页面自己开着的弹出层：它们不在栈里（页面的代码不归我们），这一下 Esc
-// 让页面自己关，标注模式留着。工作台自己的菜单、对话框、列表已经注册进栈，排在前面。
+// 让页面自己关，标注模式留着。选择器排除工作台自己的根与 Radix 门户：工作台菜单也是
+// role=menu、导出框是 dialog[open]，谁把某个工作台层的 rank 调到 hostPage 之后，
+// Esc 不该被这个适配层 YIELD 掉。工作台文档上、这些根之外的菜单（例如页面自己的）仍让。
 var HOST_PAGE_LAYERS = '[role="menu"], [role="listbox"], dialog[open], [role="dialog"][data-state="open"]';
+var WORKBENCH_LAYER_ROOT = '#wbann-pop, #wboutline-pop, .wb-frame-menu, .wb-ann-more-menu, .wb-export-dialog, .wb-page-info, [data-radix-popper-content-wrapper]';
+
+function hostPageLayerOpen() {
+  var nodes = document.querySelectorAll(HOST_PAGE_LAYERS);
+  for (var i = 0; i < nodes.length; i++) {
+    if (!nodes[i].closest(WORKBENCH_LAYER_ROOT)) return true;
+  }
+  return false;
+}
 
 export function installPinpointApi() {
-  // Esc 归属收敛到文档的弹层栈（C2，src/shared/layers.js）。本客户端在栈里常驻三个
-  // 适配层（sticky：close 返回 false = 此刻不在场，这一下问下一层）：
-  // 标注草稿（提及 → 工具菜单 → 标注框 → 箭头 / 框选）先于一切；页面自己开着的
-  // 菜单 / 对话框排在宿主的层之后、标注模式之前，交给页面自己关；最后是标注模式。
-  // 工作台自己的菜单、列表、大纲、页面浮层直接注册进同一份栈，次序见 LAYER_RANK。
+  // Esc 归属收敛到文档的弹层栈（C2，src/shared/layers.js）。本客户端在栈里常驻
+  // 适配层（sticky：close 返回 false = 此刻不在场，这一下问下一层）：标注草稿
+  // （提及 → 工具菜单 → 标注框 → 箭头 / 框选）先于一切；页面自己开着的菜单 / 对话框
+  // 排在宿主的层之后、标注模式之前，交给页面自己关；最后是标注模式。工作台自己的
+  // 菜单、列表、大纲、页面浮层直接注册进同一份栈，次序见 LAYER_RANK。
   // 栈在 window 捕获段统一截断，原型自己注册的 Esc（关表单、关弹窗）不会跟着触发
   // （owner 2026-10-19）。
   var stack = attachLayerStack(window);
   stack.onEscape(function () { ctx.markNavigation++; }); // 还在等首帧的跳转也一起取消
   stack.push('annotate-draft', takeDraftStep, { rank: LAYER_RANK.draft, sticky: true });
   stack.push('host-page-layer', function () {
-    return document.querySelector(HOST_PAGE_LAYERS) ? YIELD : false;
+    return hostPageLayerOpen() ? YIELD : false;
   }, { rank: LAYER_RANK.hostPage, sticky: true });
   stack.push('annotate-mode', function () {
     if (!ctx.mode) return false;

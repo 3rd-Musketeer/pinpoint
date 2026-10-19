@@ -47,6 +47,28 @@ test('close 返回 false 表示不在场，栈继续问下一层（适配层语�
   assert.deepEqual(closed, ['menu']);
 });
 
+test('close 返回 undefined 算接住：出栈并 preventDefault，不再问下一层', () => {
+  const stack = createLayerStack();
+  const closed = [];
+  stack.push('menu', () => { closed.push('menu'); }, { rank: 1 });
+  stack.push('list', () => { closed.push('list'); }, { rank: 2 });
+  const e = escKey();
+  assert.equal(stack.escape(e), true);
+  assert.equal(e.defaultPrevented, true);
+  assert.deepEqual(closed, ['menu']);
+  assert.deepEqual(stack.names(), ['list']);
+});
+
+test('明确传 rank 0 与缺省同级，后开的先关', () => {
+  const stack = createLayerStack();
+  const closed = [];
+  // 0 是假值：|| 和 ?? 都落 0，和缺省同级。后开的先关，证明 0 没有被排到别的级。
+  stack.push('zero', () => closed.push('zero'), { rank: 0 });
+  stack.push('plain', () => closed.push('plain'));
+  assert.equal(stack.escape(escKey()), true);
+  assert.deepEqual(closed, ['plain']);
+});
+
 test('sticky 适配层接住 Esc 后仍在栈里，下一次 Esc 照常工作', () => {
   const stack = createLayerStack();
   let draftOpen = true;

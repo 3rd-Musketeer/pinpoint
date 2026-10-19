@@ -9,7 +9,7 @@
 //    自己的客户端跟着进出标注模式，在卡片里直接标，标注进那一页的账本。卡片里按 A / Esc 切了模式，画布跟着切。
 import { frameReadyToUnload } from './frame-save.js';
 import { isComposingKey, isTypingTarget } from '../shared/keys.js';
-import { attachLayerStack, forwardEscapeToParent } from '../shared/layers.js';
+import { forwardUncaught } from '../shared/layers.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
 
@@ -182,7 +182,7 @@ function wireMiddlePan(frame, win) {
 // 页面没处理（没 preventDefault）就交回工作台 window，工作台的栈照同一套次序处理
 // （嵌入版可据此回文章）。
 function wireCardLayers(win) {
-  attachLayerStack(win).setForward(function () { forwardEscapeToParent(win); }, { afterPage: true, skipHandled: true });
+  forwardUncaught(win, { afterPage: true, skipHandled: true });
 }
 
 function wireCardWindow(frame) {

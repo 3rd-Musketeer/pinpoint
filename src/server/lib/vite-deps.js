@@ -26,7 +26,6 @@ export function viteCacheDir({ root, env = process.env } = {}) {
 // vite-deps.test.js 守它和源码对得上。
 export const WORKBENCH_DEPS = [
   '@radix-ui/react-context-menu',
-  '@radix-ui/react-dismissable-layer',
   '@radix-ui/react-dropdown-menu',
   '@radix-ui/react-focus-scope',
   '@radix-ui/react-scroll-area',

@@ -5,12 +5,12 @@
 // body（条有 overflow-x，玻璃的 backdrop-filter 也会把 fixed 后代收成包含块），
 // 从触发钮向上弹，层级 --wb-z-float，皮肤 .wb-glass。同一时刻只开一个。
 // 右键菜单门户在浮层外面。点到 [role=menu] 时不关，复制菜单才能把焦点交还行内按钮。
-// 点外关闭与焦点归还走 Radix（C2）：DismissableLayer 管点外（菜单 / popper 排除）、
-// FocusScope 管挂载聚焦浮层、Esc 关掉后把焦点还给打开前的触发钮；Esc 归工作台弹层栈
-// （use-layer.js），焦点在输入框里时这一下归输入框，与旧行为一致。
+// 点外关闭自己听 document 捕获段（与换 Radix 之前一致）：Radix 的点外在冒泡段，
+// 标注钉子在自己的冒泡段 pointerdown 上 stopPropagation，事件到不了 document，
+// 大纲开着时点钉子就收不起来。FocusScope 管挂载聚焦浮层、Esc 关掉后把焦点还给
+// 打开前的触发钮；Esc 归工作台弹层栈（use-layer.js），焦点在输入框里时这一下归输入框。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { DismissableLayer } from '@radix-ui/react-dismissable-layer';
 import { FocusScope } from '@radix-ui/react-focus-scope';
 import { useWorkbenchStore, wbGet } from './store.js';
 import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
@@ -34,7 +34,7 @@ import { tabIdOfScreen } from '../lib/board-tabs.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
-import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
+import { LAYER_RANK, useStackLayer } from './use-layer.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 
@@ -307,9 +307,22 @@ function OutlinePop(props) {
       if (pop && button) placePop(button, pop);
     }
     place();
+    // 捕获段：标注钉子在冒泡段 stopPropagation，冒泡段的点外关闭收不到这一下。
+    // 排除浮层自己、当前触发钮（它自己的 click 负责开合）与菜单（右键 / 复制菜单
+    // 门户在浮层外，点它们不收浮层）。
+    function onPointerDown(event) {
+      var target = event.target;
+      if (!target || !target.closest) return;
+      if (target.closest('#wboutline-pop')) return;
+      if (target.closest('[data-outline-trigger][aria-expanded="true"]')) return;
+      if (target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) return;
+      setOpenKey(null);
+    }
+    document.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return function () {
+      document.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
@@ -324,27 +337,15 @@ function OutlinePop(props) {
   useStackLayer('outline-pop', true, function () { restoreFocus.current = true; requestClose(); },
     { rank: LAYER_RANK.chrome, respectTyping: true });
 
-  // 点外关闭排除当前触发钮（它自己的 click 负责开合）与菜单（右键 / 复制菜单门户在浮层外，
-  // 点它们不收浮层）；焦点移出不算关闭（Tab 走出去还回得来）。
+  // 焦点移出不算关闭（Tab 走出去还回得来），所以不接 FocusScope 的焦点移出。
   return createPortal(
     <FocusScope trapped={false}
       onMountAutoFocus={function (event) { event.preventDefault(); if (popRef.current) popRef.current.focus(); }}
       onUnmountAutoFocus={function (event) { if (!restoreFocus.current) event.preventDefault(); }}>
-      <DismissableLayer asChild
-        onEscapeKeyDown={keepEscapeForStack}
-        onFocusOutside={function (event) { event.preventDefault(); }}
-        onPointerDownOutside={function (event) {
-          var target = event.detail.originalEvent.target;
-          if (!target || !target.closest) return;
-          if (target.closest('[data-outline-trigger][aria-expanded="true"]')) event.preventDefault();
-          else if (target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) event.preventDefault();
-        }}
-        onDismiss={requestClose}>
-        <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
-          aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
-          <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
-        </div>
-      </DismissableLayer>
+      <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
+        aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
+        <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
+      </div>
     </FocusScope>,
     document.body
   );

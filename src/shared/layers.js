@@ -1,18 +1,16 @@
 // 弹层栈（C2，由 site/src/lib/layers.js 提升）：站点与工作台共用，Esc 只问栈顶 ——
-// 优先级最高（rank 最小）的一层，同级取最后压入的（后开在上）。
+// 优先级最高（rank 最小）的一层，同级取最后压入的（后开在上）。工作台各层的先后次序见 LAYER_RANK。
 // 契约（site/README.md「弹层与 Esc」）：处理了 Esc 的一方 preventDefault；别的监听
 // 见 e.defaultPrevented 就不动。层可以「不在场」：close 返回 false 表示这一层此刻
 // 没有要退的东西，栈继续问下一层 —— 标注客户端用它在栈里常驻适配层
-// （草稿 / 页面自己的层 / 模式），状态变了不用同步压栈出栈。
+// （草稿 / 页面自己的层 / 模式），状态变了不用同步压栈出栈。返回 undefined 算接住
+// （React 的层都这样），返回 YIELD 表示这一下归页面自己。
 // 跨文档（工作台在文章浮层里、卡片和页面浮层在画布里）「没接住的 Esc 交给外层」
 // 由 attachLayerStack 的 forward 承担：同一个协议，外层文档的栈照同一套优先级处理。
 
 import { isTypingTarget, isComposingKey } from './keys.js';
 
-/** Esc 的先后次序（小的先关），工作台的现有顺序全写在这一张表里：
-    标注草稿（提及 → 工具菜单 → 标注框 → 箭头 / 框选）→ 菜单、对话框、大纲浮层 →
-    标注列表 → 页面自己开着的菜单 / 对话框（交给页面关）→ 标注模式 →
-    画布导航器 / 缩略图 → 页面浮层。站点的层都用缺省 0（纯 LIFO）。 */
+/** Esc 的先后次序（小的先关）。站点的层都用缺省 0（纯 LIFO）。 */
 export var LAYER_RANK = {
   draft: 0,
   chrome: 1,
@@ -43,7 +41,9 @@ export function createLayerStack() {
         「有东西可退 / 不在场」。 */
     push(name, close, opts) {
       opts = opts || {};
-      const entry = { name, close, rank: opts.rank || 0, respectTyping: !!opts.respectTyping, sticky: !!opts.sticky };
+      // ?? 而不是 ||：review 指出 || 会把明确传入的 0 否掉。对 0 两者结果相同
+      // （0 是假值，都落 0），差别在 null：?? 留下 null，排序时被当成 0。
+      const entry = { name, close, rank: opts.rank ?? 0, respectTyping: !!opts.respectTyping, sticky: !!opts.sticky };
       stack.push(entry);
       let released = false;
       return () => { if (!released) { released = true; remove(entry); } };
@@ -130,4 +130,11 @@ export function forwardEscapeToParent(win) {
   let parent = null;
   try { parent = win.parent; if (!parent.document) return; } catch (e) { return; }
   parent.dispatchEvent(new parent.KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
+}
+
+/** 给一份嵌入文档装上「没接住就重放给父级 window」。差别只在两个开关：
+    afterPage 等页面自己的监听跑完再转；skipHandled 时页面 preventDefault 过也不转。
+    嵌入工作台不走这里：它没接住时是 postMessage 请文章页关浮层，不是重放按键。 */
+export function forwardUncaught(win, opts) {
+  attachLayerStack(win).setForward(function () { forwardEscapeToParent(win); }, opts);
 }

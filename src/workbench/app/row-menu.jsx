@@ -19,7 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { WbIcon } from './WbIcon.jsx';
-import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
+import { LAYER_RANK, useStackLayer } from './use-layer.js';
 
 // 菜单项皮肤：12px semibold 行，hover/focus 走 --wb-hover 浅面（图标 muted）
 export var ROW_MENU_ITEM =
@@ -73,7 +73,7 @@ export function RowMenu(props) {
     <ContextMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
       <ContextMenu.Trigger asChild>{props.children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className={ROW_MENU_PANEL} onEscapeKeyDown={keepEscapeForStack}>
+        <ContextMenu.Content className={ROW_MENU_PANEL}>
           {props.items.map(function (item, i) {
             if (item.kind === 'copy') {
               return <CopyMenuItem key={i} label={item.label} text={item.text} attr={item.attr} />;

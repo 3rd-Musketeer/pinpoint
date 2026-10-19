@@ -133,6 +133,17 @@ test('工作台弹层栈：每类层 Esc 只关自己，次序草稿 → chrome 
     await expect(page.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
   });
 
+  await test.step('大纲开着时点标注钉子：钉子 stopPropagation，大纲仍收起', async () => {
+    await openOutline(page);
+    const pin = page.locator('#ann-marks .ann-badge').first();
+    await expect(pin).toBeVisible();
+    await pin.click();
+    await expect(page.locator('#wboutline-pop')).toHaveCount(0);
+    await expect(page.locator('#ann-box')).toBeVisible();
+    await page.keyboard.press('Escape');
+    await expect(page.locator('#ann-box')).toHaveCount(0);
+  });
+
   await test.step('工具菜单开着时 Esc 只关菜单，标注框留着', async () => {
     await page.locator('#ann-marks .ann-badge').first().click();
     const box = page.locator('#ann-box');
