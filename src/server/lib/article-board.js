@@ -44,6 +44,61 @@ function isFile(file) {
  * 读不到 index.mdx 时抛错（与 board.json 读不到同一处理）。
  */
 export function deriveArticleBoard(target) {
+  // 一篇文章的帧请求每个都要 board：首开一篇 34 帧的文章（正文卡片 + 画布浮层）要派生上百次，
+  // 每次读正文和全部帧文件约 23 ms，机器负载高时请求排队到代理回 502（2026-10-19 性能审计 F1）。
+  // 输入没变就用上次的结果；判“没变”只 stat，不读内容。
+  const key = cacheKey(target);
+  const hit = derivedCache.get(key);
+  if (hit && depsUnchanged(hit.deps)) return structuredClone(hit.value);
+  const value = deriveArticleBoardUncached(target);
+  derivedCache.set(key, { deps: collectDeps(target, value), value: structuredClone(value) });
+  return value;
+}
+
+/** 测试与需要强制重读时用：清掉派生缓存。 */
+export function clearArticleBoardCache() {
+  derivedCache.clear();
+}
+
+const derivedCache = new Map();
+
+function cacheKey(target) {
+  return JSON.stringify([target.articleFile, target.pageDir, target.projectRoot, target.entryId, target.sources || {}]);
+}
+
+/** 文件或目录的 stat 指纹（跟 symlink）；不存在是 'absent'。目录的 mtime 在增删、改名条目时变。 */
+function statSig(file) {
+  try {
+    const st = fs.statSync(file);
+    return `${st.mtimeMs}:${st.size}:${st.ino}`;
+  } catch {
+    return 'absent';
+  }
+}
+
+/** 派生用到的输入：正文、文章目录与图目录（增删帧、article.css/js）、每个帧的 jsx / html、project 根下的 HTML 帧。 */
+function collectDeps(target, value) {
+  const files = new Set([target.articleFile, target.pageDir, path.join(target.pageDir, 'figures')]);
+  for (const section of value.sections) {
+    for (const id of section.frames) {
+      files.add(path.join(target.pageDir, `${id}.jsx`));
+      files.add(path.join(target.pageDir, `${id}.html`));
+      const src = section.frameSrc && section.frameSrc[id];
+      if (src) {
+        const root = resolveRootFrame(target.projectRoot, src, target.sources || {});
+        if (root.file) files.add(root.file);
+        else files.add(target.projectRoot);
+      }
+    }
+  }
+  return [...files].map((file) => [file, statSig(file)]);
+}
+
+function depsUnchanged(deps) {
+  return deps.every(([file, sig]) => statSig(file) === sig);
+}
+
+function deriveArticleBoardUncached(target) {
   const found = resolveContainedFile(target.projectRoot, path.relative(target.projectRoot, target.articleFile), { index: false });
   if (!found.file) throw new Error('文章正文不在 project 根内或不存在');
   const text = fs.readFileSync(found.file, 'utf8');

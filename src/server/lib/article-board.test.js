@@ -266,3 +266,23 @@ test('帧级 shell：export const shell 落到那一屏、盖过节的 shell；�
   assert.deepEqual(findProject(registry, 'demo').errors, [{ ...canvas.errors[0], path: 'articles/flow/index.mdx' }]);
   assert.deepEqual(findProject(registry, 'demo').errors.map(formatProjectError), [`articles/flow/index.mdx：${canvas.errors[0].message}`]);
 });
+
+test('派生缓存：输入不变复用上次的结果；改正文、补上缺的帧、改帧的 shell、加 article.js 都会重新派生', (t) => {
+  const { registry, article } = fixture(t);
+  const target = resolvePageTarget('demo_flow', { registry });
+  const first = deriveArticleBoard(target);
+  // 拿到的是副本：调用方改了也不污染下一次。
+  first.board.sections[0].screens.push({ id: 'mutated' });
+  assert.deepEqual(deriveArticleBoard(target).board.sections[0].screens, [{ id: 'ask-open' }, { id: 'ask-sent' }]);
+  // 正文引用一个还没有的帧 → 缺帧错误；补上文件后错误消失。
+  const mdx = path.join(article, 'index.mdx');
+  write(mdx, fs.readFileSync(mdx, 'utf8').replace('"ask-sent"]', '"ask-sent", "ask-late"]'));
+  assert.ok(deriveArticleBoard(target).errors.some((e) => e.code === 'frame_missing' && e.frame === 'ask-late'));
+  write(path.join(article, 'ask-late.jsx'), 'export default function AskLate() {\n  return <div>迟到</div>;\n}\n');
+  assert.deepEqual(deriveArticleBoard(target).errors, []);
+  // 只改帧里的 shell 导出（正文不动）。
+  write(path.join(article, 'ask-late.jsx'), 'export const shell = "comp";\n\nexport default function AskLate() {\n  return <div>迟到</div>;\n}\n');
+  assert.deepEqual(deriveArticleBoard(target).board.sections[0].screens[2], { id: 'ask-late', shell: 'comp' });
+  write(path.join(article, 'article.js'), '/* page js */\n');
+  assert.deepEqual(deriveArticleBoard(target).board.assets, { css: ['article.css'], js: ['article.js'] });
+});
