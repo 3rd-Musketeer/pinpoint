@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { E2E_REGISTRY, E2E_SITES_DIR } from './env.js';
+import { OWNER_PROJECT, writeOwnerFixture } from './lib/owner-fixture.js';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
@@ -42,6 +43,7 @@ export function writeRegistryFixture() {
       // pp3：正文评论固件（e2e/prose-comments.spec.js）。指向本轮的副本，spec 要改
       // 正文验证重新定位；同样不是页，常驻不影响 Pages 清单。
       { id: 'e2e-prose', kind: 'project', path: path.join(E2E_SITES_DIR, 'prose-site') },
+      { id: 'e2e-owner', kind: 'project', path: OWNER_PROJECT },
       // HTML 帧固件（e2e/html-frames.spec.js）：只读不写，直接指仓内固件。常驻，因为已经在跑的站点
       // 中途读到新登记的 project 时，重渲染会撞上内容库更新到一半（UnknownContentCollectionError）。
       { id: 'e2e-html', kind: 'project', path: path.join(ROOT, 'e2e', 'html-site') },
@@ -59,6 +61,7 @@ export function copySiteFixtures() {
   for (const name of ['dir-site', 'dir-site-ios', 'mixed-site', 'jsx-site', 'ios-site', 'doc-site', 'anchor-site', 'canvas-site', 'tabs-site', 'tabs-one-site', 'tabs-doc-site', 'prose-site']) {
     fs.cpSync(path.join(ROOT, 'e2e', name), path.join(E2E_SITES_DIR, name), {recursive:true});
   }
+  writeOwnerFixture();
 }
 
 // 临时登记条目：pp-id-anchor / preview-hmr / pp2-build 三个 spec 各自往 registry
