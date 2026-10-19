@@ -93,7 +93,7 @@ export async function ownerAnnotation(page, scope) {
   } finally { await cdp.detach(); }
   await expect(input).toContainText('中文标注请检查确认条件');
   await input.press('End');
-  await input.pressSequentially('@');
+  await input.pressSequentially(' @');
   await expect(scope.locator('#ann-mention')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(scope.locator('#ann-mention')).toHaveCount(0);
