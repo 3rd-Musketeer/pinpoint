@@ -14,8 +14,9 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateInjection } from './lib/annotate-snippet.js';
 import { boardScreenIds } from './lib/page-compiler.js';
+import { sendCacheable } from './lib/http-respond.js';
 import { resolveContainedFile } from './lib/servable-file.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -27,13 +28,17 @@ export function createPreviewInjectHandler(options = {}) {
   const root = options.root || CONTENT_ROOT;
   const previewsRoot = path.join(root, 'previews');
 
-  return function handlePreviewInject(req, res, urlPath, query) {
+  return function handlePreviewInject(req, res, urlPath) {
     if (req.method !== 'GET') return false;
-    if (/(?:^|&)annotate=off(?:&|$)/.test(query || '')) return false;
     const match = urlPath.match(ROUTE);
     if (!match) return false;
     let rel;
     try { rel = decodeURIComponent(match[1]); } catch { return false; }
+    // 注入判定走 annotateInjection（r2 D4 的归一入口）：off（导出管线）原样
+    // 放行给 vite 静态服务，与从前同路径。entry = 路径第一段（页 id，模板页
+    // 在清单里恒登记）。
+    const inject = annotateInjection(req, rel.split('/')[0]);
+    if (!inject) return false;
     if (!path.resolve(previewsRoot, rel).startsWith(path.resolve(previewsRoot) + path.sep)) return false;
     const found = resolveContainedFile(previewsRoot, rel, { index: false });
     if (found.reason === 'outside') {
@@ -42,9 +47,9 @@ export function createPreviewInjectHandler(options = {}) {
       return true;
     }
     // pp2：board 屏让给 content-routes 从 dist 出（doctype 的注入也在那边做），
-    // 这里只管非屏的整文档 html（index.html 之类）。entry = 路径第一段（页 id）。
+    // 这里只管非屏的整文档 html（index.html 之类）。
     const screenRef = rel.match(SCREEN_RE);
-    const pageId = screenRef ? screenRef[1] : rel.split('/')[0];
+    const pageId = rel.split('/')[0];
     // 不可读的板不能走非板文档注入分支。
     if (resolveContainedFile(previewsRoot, `${pageId}/board.json`, { index: false }).reason === 'outside') {
       res.statusCode = 404;
@@ -64,10 +69,8 @@ export function createPreviewInjectHandler(options = {}) {
     }
     if (!/<!doctype\b/i.test(html)) return false;
     if (html.includes('data-ios-annotate')) return false;
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.end(injectAnnotateClient(html, pageId));
-    return true;
+    // 注入后的整文档走策略表 frameHtml 行（no-cache + 内容 ETag）。
+    return sendCacheable(req, res, Buffer.from(inject(html), 'utf8'), { policy: 'frameHtml', contentType: 'text/html; charset=utf-8' });
   };
 }
 
@@ -78,7 +81,7 @@ export default function previewInject(options = {}) {
     configureServer(server) {
       server.middlewares.use((req, res, next) => {
         const parts = (req.url || '').split('?');
-        if (handle(req, res, parts[0], parts[1] || '')) return;
+        if (handle(req, res, parts[0])) return;
         next();
       });
     },

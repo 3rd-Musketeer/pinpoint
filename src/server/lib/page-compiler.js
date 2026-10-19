@@ -35,6 +35,7 @@ import { readTargetBoard, resolvePageTarget } from './board-source.js';
 import { listArticleTargets } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { containedSource, requireSource, sourceBoundaryPlugin } from './compiler-source.js';
+import { sendCacheable } from './http-respond.js';
 import { resolveContainedFile } from './servable-file.js';
 import { screenEntries } from '../../shared/board-screens.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
@@ -1130,23 +1131,17 @@ export async function loadDistScreenHtml(target, screenId) {
  * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
  * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本 —— 工作台
  * 的 .wb-screen-err 面板吃非 200 状态。
- * inject(html) → html：annotate 注入由调用方决定（/sites/ 全量注入；/previews/
- * 只对 doctype 整文档注入）。
+ * inject(html) → html：annotate 注入由调用方决定（annotateInjection，/sites/
+ * 全量注入；/previews/ 只对 doctype 整文档注入）。
+ * 缓存走策略表 distScreen 行（S3 / 审计 K2c）：no-cache + 注入后字节的 ETag，
+ * reload / HMR 重取时 304——ETag 是最终字节的哈希，重编后内容一变必然 200 新内容。
  */
 export async function serveDistScreenResponse(req, res, target, screenId, { inject = null } = {}) {
   const result = await loadDistScreenHtml(target, screenId);
   if (result.ok) {
     let body = Buffer.from(result.html, 'utf8');
     if (inject) body = Buffer.from(inject(body.toString('utf8')), 'utf8');
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'text/html; charset=utf-8');
-    res.setHeader('Content-Length', String(body.length));
-    if (req.method === 'HEAD') {
-      res.end();
-      return true;
-    }
-    res.end(body);
-    return true;
+    return sendCacheable(req, res, body, { policy: 'distScreen', contentType: 'text/html; charset=utf-8' });
   }
   const body = Buffer.from(result.error, 'utf8');
   res.statusCode = 500;
@@ -1161,7 +1156,8 @@ export async function serveDistScreenResponse(req, res, target, screenId, { inje
 }
 
 /** board.json 响应附带 dist: { builtAt, stale }；磁盘没板 / 板坏时回落原样字节。
-    给了 board（文章画布现派生的板）时直接吐它。 */
+    给了 board（文章画布现派生的板）时直接吐它。缓存走策略表 boardJson 行
+    （no-cache + 内容 ETag；dist 状态一变内容变、ETag 跟着变）。 */
 export function serveBoardJsonWithDist(req, res, entryId, pageDir, { board: derived = null } = {}) {
   let raw = null;
   if (!derived) {
@@ -1178,14 +1174,5 @@ export function serveBoardJsonWithDist(req, res, entryId, pageDir, { board: deri
     const board = derived || JSON.parse(raw);
     text = `${JSON.stringify({ ...board, dist: distStatus(entryId, pageDir, derived ? { board: derived } : {}) }, null, 2)}\n`;
   } catch { /* 板坏了也照原样吐，workbench 的契约校验会报出真正的问题 */ }
-  const body = Buffer.from(text, 'utf8');
-  res.statusCode = 200;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Length', String(body.length));
-  if (req.method === 'HEAD') {
-    res.end();
-    return true;
-  }
-  res.end(body);
-  return true;
+  return sendCacheable(req, res, Buffer.from(text, 'utf8'), { policy: 'boardJson', contentType: 'application/json; charset=utf-8' });
 }

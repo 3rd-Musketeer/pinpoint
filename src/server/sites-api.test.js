@@ -67,8 +67,9 @@ function withFixture(t) {
 
 
 
-async function call(handler, method, url) {
+async function call(handler, method, url, headers = {}) {
   const req = mockReq(method, url);
+  Object.assign(req.headers, headers);
   const res = mockRes();
   const handled = await handler(req, res, url.split('?')[0]);
   return { handled, res };
@@ -117,6 +118,28 @@ test('?annotate=off serves the exact disk bytes', async (t) => {
   assert.equal(res.statusCode, 200);
   assert.equal(res.text, fs.readFileSync(path.join(site, 'index.html'), 'utf8'));
   assert.ok(!res.text.includes('__pinpointEntry'));
+});
+
+// S3（审计 K2c）：/sites/ 的静态分支此前不发任何缓存头，reload 全量重传；
+// 走策略表 staticFile 行后 no-cache + mtime+size ETag，验证命中 304。
+test('static entries carry Cache-Control + stat ETag and answer 304 on revalidation', async (t) => {
+  const { handler, site } = withFixture(t);
+  const js = await call(handler, 'GET', '/sites/site/app.js');
+  assert.equal(js.res.statusCode, 200);
+  assert.equal(js.res.headers['Cache-Control'], 'no-cache');
+  assert.match(js.res.headers.ETag, /^"\d+-\d+"$/, '静态资源用 mtime+size ETag');
+
+  const hit = await call(handler, 'GET', '/sites/site/app.js', { 'if-none-match': js.res.headers.ETag });
+  assert.equal(hit.res.statusCode, 304);
+  assert.equal(hit.res.chunks.length, 0);
+
+  const html = await call(handler, 'GET', '/sites/site/index.html');
+  assert.equal(html.res.statusCode, 200);
+  assert.equal(html.res.headers['Cache-Control'], 'no-cache');
+  assert.ok(html.res.headers.ETag, 'HTML 也带验证器');
+  // ?annotate=off 与注入版字节不同 → ETag 不同（同一 URL 参数不同，不会互相顶掉）。
+  const off = await call(handler, 'GET', '/sites/site/index.html?annotate=off');
+  assert.notEqual(off.res.headers.ETag, html.res.headers.ETag);
 });
 
 test('non-HTML files are served untouched with the right MIME', async (t) => {

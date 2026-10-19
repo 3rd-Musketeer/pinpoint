@@ -28,11 +28,10 @@ import path from 'node:path';
 import zlib from 'node:zlib';
 
 import { dataRoot } from './lib/annotate-data-dir.js';
-import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateInjection, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { resolveArticleTarget } from './lib/page-resolve.js';
 import { isProjectId, routeArticleRequest, routeArticleUpgrade } from './lib/article-routes.js';
 import { listenOrigins, originDecision, originsGetter } from './lib/proxy-origin.js';
-import { parseReqUrl } from './lib/req-url.js';
 import { escHtml } from '../shared/esc-html.js';
 import { articlePageId } from '../shared/project-ids.js';
 import { createSiteDevServer, stopOnSignals } from './lib/site-dev-server.js';
@@ -168,7 +167,9 @@ function forward(req, res, route, devServer, registry, origin, attempt = 0, wait
   headers['accept-encoding'] = 'identity';
   if (origin) headers.origin = origin;
   const entry = route.kind === 'article' ? annotationBucketFor(route, registry) : null;
-  const inject = Boolean(entry) && parseReqUrl(req).query.get('annotate') !== 'off';
+  // 注入判定走 annotateInjection（r2 D4 的归一入口）：未登记（entry 空）与
+  // ?annotate=off 都不注入，非 HTML 响应本来就不经注入分支。
+  const inject = annotateInjection(req, entry) !== null;
 
   // 写请求的体只能读一遍，不能重发：它们每次开新连接，碰不上被关掉的空闲连接。
   const agent = isIdempotent(req) && attempt === 0 ? upstreamAgent : false;

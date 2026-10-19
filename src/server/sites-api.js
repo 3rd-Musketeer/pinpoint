@@ -24,10 +24,10 @@ import { parseReqUrl } from './lib/req-url.js';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateInjection, annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, frameSrcFromUrlPath } from './lib/article-board.js';
 import { resolveBoardSource } from './lib/board-source.js';
-import { sendFile, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
+import { sendCacheable, sendFile, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { resolveContainedFile, resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
@@ -39,7 +39,7 @@ import { loadRegistry } from './lib/registry.js';
 import { screenEntries } from '../shared/board-screens.js';
 import { parseFrameSrc } from '../shared/project-ids.js';
 
-export { annotateSnippet, injectAnnotateClient };
+export { annotateInjection, annotateSnippet, injectAnnotateClient };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -76,21 +76,13 @@ export function createSitesHandler(options = {}) {
 
   // 磁盘没有 board.json 时合成 doc 阅读板（file 单屏；dir 顶层 *.html 一屏
   // 一版本）——磁盘文件永远优先（dir 分支只在 resolve 落空后走到）。合成的
-  // 是 JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）。
+  // 是 JSON 数据响应，不走 annotate 注入（注入只作用于 HTML 内容）；
+  // 缓存同 board.json 行（no-cache + 内容 ETag，顶层文件增删即变）。
   // 板来自 source.readBoard()：磁盘没板时它自己回落合成板（board-source）。
   function sendSynthesizedBoard(req, res, source) {
     const board = source.readBoard();
     if (!board) return false;
-    const body = Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8');
-    res.statusCode = 200;
-    res.setHeader('Content-Type', 'application/json; charset=utf-8');
-    res.setHeader('Content-Length', String(body.length));
-    if (req.method === 'HEAD') {
-      res.end();
-      return true;
-    }
-    res.end(body);
-    return true;
+    return sendCacheable(req, res, Buffer.from(JSON.stringify(board, null, 2) + '\n', 'utf8'), { policy: 'boardJson', contentType: 'application/json; charset=utf-8' });
   }
 
   /**
@@ -111,8 +103,7 @@ export function createSitesHandler(options = {}) {
       return true;
     }
     if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
-    const query = parseReqUrl(req).query;
-    const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
+    const inject = annotateInjection(req, target.entryId);
     const screens = screenEntries(board).map((hit) => hit.screen);
     // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
     // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧真的住在里面时开放（帧文件解析得到；
@@ -137,14 +128,15 @@ export function createSitesHandler(options = {}) {
         sendJson(res, 404, { error: 'not found', message: 'not found' });
         return true;
       }
-      return sendFile(req, res, file, { inject: frame ? inject : null });
+      return sendFile(req, res, file, { inject: frame ? inject : null, policy: frame ? 'frameHtml' : 'staticFile' });
     }
     const screenId = screenIdFromRel(rel);
     const screen = screenId ? screens.find((entry) => entry.id === screenId && !entry.src) : null;
     if (screen) {
       // HTML 帧从源文件直接出（文档不经编译，改了就是新的）；JSX 帧从 dist 出。
+      // 两条都走 frameHtml 行（no-cache + 内容 ETag，HMR 后新内容必然跟到）。
       const htmlFile = articleHtmlFrameFile(target, screen);
-      if (htmlFile) return sendFile(req, res, htmlFile, { inject });
+      if (htmlFile) return sendFile(req, res, htmlFile, { inject, policy: 'frameHtml' });
       return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
     const file = rel ? servable(target.pageDir, rel) : null;
@@ -152,7 +144,7 @@ export function createSitesHandler(options = {}) {
       sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
-    return sendFile(req, res, file);
+    return sendFile(req, res, file, { policy: 'staticFile' });
   }
 
   return async function handleSites(req, res, urlPath) {
@@ -196,8 +188,6 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    const query = parseReqUrl(req).query;
-
     // pp2（2026-09-22 切片 1）：dir 条目的「屏」从 dist 出 —— board.json 里的
     // screenId 对应的 <id>.html 读 <dataRoot>/dist/<entry>/（懒编译兜底）；
     // 编译失败的屏 500 带错误文本（工作台的 .wb-screen-err 面板吃非 200）。
@@ -215,7 +205,7 @@ export function createSitesHandler(options = {}) {
         if (ids && ids.has(screenId)) {
           return serveDistScreenResponse(req, res, source.target, screenId, {
             // storage-unify：注入的 entry = 这条内容属于哪一页。
-            inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id),
+            inject: annotateInjection(req, entry.id),
           });
         }
       }
@@ -238,9 +228,10 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    // 缓存策略不在此收敛（S3）：这个分支照旧不发 Cache-Control。
-    const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id);
-    return sendFile(req, res, file, { inject, cacheControl: null });
+    // 静态分支（dir / file 条目的源目录文件）走策略表 staticFile 行：no-cache +
+    // mtime+size ETag（S3 前这条不发任何缓存头，reload 全量重传）。
+    const inject = annotateInjection(req, entry.id);
+    return sendFile(req, res, file, { inject });
   };
 }
 

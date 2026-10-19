@@ -17,7 +17,8 @@ import { parseReqUrl } from './lib/req-url.js';
  * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, resolveFrameTarget } from './lib/frame-doc.js';
-import { readBody, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
+import { annotateInjection } from './lib/annotate-snippet.js';
+import { readBody, sendCacheable, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { defaultDistRoot, loadFigure, recordFigureRuntimeError } from './lib/page-compiler.js';
 
 const EMBEDS = new Set(['card', 'figure']);
@@ -29,7 +30,7 @@ export default function frameApi(options = {}) {
   const registry = options.registry || null;
   const distRoot = () => options.distRoot || defaultDistRoot();
 
-  async function serveFigure(res, pageId, figureId, theme) {
+  async function serveFigure(req, res, pageId, figureId, theme) {
     let resolved;
     try {
       resolved = resolveFigureTarget(pageId, figureId, { registry });
@@ -46,10 +47,14 @@ export default function frameApi(options = {}) {
     } catch (error) {
       loaded = { ok: false, error: String((error && error.message) || error), record: null };
     }
-    res.statusCode = loaded.ok ? 200 : 500;
+    // 图页也是帧 HTML（策略表 frameHtml 行：no-cache + 内容 ETag，重编后 304 放行新内容）；
+    // 编译失败那个 500 不给缓存头。
+    const body = Buffer.from(figurePageHtml(resolved, loaded, { theme }), 'utf8');
+    if (loaded.ok) return sendCacheable(req, res, body, { policy: 'frameHtml', contentType: 'text/html; charset=utf-8' });
+    res.statusCode = 500;
     res.setHeader('Content-Type', 'text/html; charset=utf-8');
     res.setHeader('Cache-Control', 'no-cache');
-    res.end(figurePageHtml(resolved, loaded, { theme }));
+    res.end(req.method === 'HEAD' ? undefined : body);
   }
 
   async function recordFigureError(req, res) {
@@ -101,7 +106,6 @@ export default function frameApi(options = {}) {
         const query = parseReqUrl(req).query;
         const pageId = query.get('page') || '';
         const screenId = query.get('screen') || '';
-        const annotate = query.get('annotate') !== 'off';
         const embed = query.get('embed') || '';
         if (embed && !EMBEDS.has(embed)) {
           sendJson(res, 400, { error: 'bad_request', message: `unknown embed "${embed}" (only "card" or "figure")` });
@@ -113,11 +117,14 @@ export default function frameApi(options = {}) {
           return;
         }
         if (figureId !== null) {
-          await serveFigure(res, pageId, figureId, query.get('theme') || '');
+          await serveFigure(req, res, pageId, figureId, query.get('theme') || '');
           return;
         }
         try {
           const target = resolveFrameTarget(pageId, screenId, { registry });
+          // 注入判定走 annotateInjection（r2 D4 的归一入口）：?annotate=off 豁免、
+          // 页 id 为空不注入；embed=card 的形状开关在 framePageHtml 内（卡片不出标注面）。
+          const annotate = annotateInjection(req, target.pageId) !== null;
           if (target.kind === 'doc') {
             // 文档帧跳到它自己的地址；卡片、浮层（embed=card）和 annotate=off 带上 annotate=off，文档里不出标注面。
             const quiet = (!annotate || embed) && !/^https?:\/\//i.test(target.url);
@@ -126,11 +133,10 @@ export default function frameApi(options = {}) {
             res.end();
             return;
           }
-          const html = await framePageHtml(target, { annotate, embed });
-          res.statusCode = 200;
-          res.setHeader('Content-Type', 'text/html; charset=utf-8');
-          res.setHeader('Cache-Control', 'no-cache');
-          res.end(html);
+          // 组装出的帧文档走策略表 frameHtml 行：no-cache + 最终字节的内容 ETag，
+          // reload / HMR 重取时 304（审计 K6 建议 (a)）。
+          const body = Buffer.from(await framePageHtml(target, { annotate, embed }), 'utf8');
+          sendCacheable(req, res, body, { policy: 'frameHtml', contentType: 'text/html; charset=utf-8' });
         } catch (error) {
           if (error instanceof FrameDocError) {
             sendJson(res, error.code === 'bad_request' ? 400 : 404, { error: error.code, message: error.message });

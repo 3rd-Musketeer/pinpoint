@@ -282,9 +282,11 @@ export function markEmbedStage(html) {
 /**
  * 组装 /api/frame 的完整自包含 HTML 文档。
  * data-annotate="off" 只挡 ios-kit 的自注入；annotate 注入由本函数显式完成
- * （带 __pinpointEntry=帧所属页 / __pinpointFrame=帧身份），opts.annotate=false
- * 时完全不出标注面。storage-unify：不再注入 __pinpointLedger —— 帧账本恒为
- * 所属页桶的 @canvas，客户端按 FRAME 身份自取，不再跟顶层工作台 pathname 走。
+ * （带 __pinpointEntry=帧所属页 / __pinpointFrame=帧身份）。opts.annotate 是
+ * 请求层的判定结果（annotateInjection，frame-api 里判 ?annotate=off / entry），
+ * 显式 false 完全不出标注面；embed=card 是本函数的形状开关，卡片恒不出标注面。
+ * storage-unify：不再注入 __pinpointLedger —— 帧账本恒为所属页桶的 @canvas，
+ * 客户端按 FRAME 身份自取，不再跟顶层工作台 pathname 走。
  */
 export async function framePageHtml(target, opts = {}) {
   // embed: 'card'（文章站点的卡片与浮层）：不出图注，机壳打 data-pp-stage / data-pp-device，不注入标注客户端。

@@ -3,10 +3,14 @@
  * frame-api / projects-api / export-image-api / export-page-html-api 原本各抄一份的
  * sendJson / readBody / sendFile / mime 表 / GET-HEAD 方法闸，这里一份。
  * 错误响应体统一 { error, message }（r2 I6）。
- * 缓存策略不在这里：各路由照旧自己写 Cache-Control（S3 才收策略表）。
+ * 缓存策略也在这里（S3，r2 I5 / 审计 K2c）：每类资源一行（CACHE_POLICIES），
+ * Cache-Control 与 ETag 的算法一处定；sendCacheable 出条件应答（If-None-Match → 304）。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
+
+import { etagMatches } from './etag.js';
 
 const MIME = {
   '.html': 'text/html',
@@ -40,6 +44,62 @@ export function contentTypeFor(name) {
   return /^(text\/|application\/(json|javascript)|image\/svg)/.test(mime)
     ? `${mime}; charset=utf-8`
     : mime;
+}
+
+/**
+ * 缓存策略表（S3）：每类资源一行，Cache-Control 与 ETag 算法在这里一处定
+ * （r2 I5「同类资源不同策略」的归一；dist 屏加 ETag 是审计 K2c 的修复——
+ * reload / HMR 重取时 304 落地，不再全量重传）。
+ *
+ *   etag: 'content' — 应答字节的 sha1（注入后的最终字节，内容一变 ETag 就变，
+ *                     HMR 重编后浏览器必然拿到新内容）；
+ *         'stat'    — 盘上文件的 mtime+size（静态资源原样出，不读内容也算得出）。
+ *
+ * 语义：no-cache = 可存但每次用前必须再验证（revalidate 命中即 304）；annotate
+ * bundle 的哈希地址是内容地址，immutable 永久缓存。资源类加行，别在路由里手写头。
+ */
+export const CACHE_POLICIES = {
+  distScreen: { cacheControl: 'no-cache', etag: 'content' },
+  frameHtml: { cacheControl: 'no-cache', etag: 'content' },
+  staticFile: { cacheControl: 'no-cache', etag: 'stat' },
+  annotateBundle: { cacheControl: 'public, max-age=31536000, immutable', etag: 'content' },
+  boardJson: { cacheControl: 'no-cache', etag: 'content' },
+  image: { cacheControl: 'no-cache', etag: 'stat' },
+};
+
+/** 应答字节的强 ETag（sha1 截 16 hex，40bit 对进程内一份内容足够防撞）。 */
+export function contentEtag(body) {
+  return `"${crypto.createHash('sha1').update(body).digest('hex').slice(0, 16)}"`;
+}
+
+/** 盘上文件的 ETag：mtime+size。同一进程内文件没动过就命中 304。 */
+export function statEtag(stat) {
+  return `"${Math.round(stat.mtimeMs)}-${stat.size}"`;
+}
+
+/**
+ * 条件应答尾板：Cache-Control + ETag 先行，If-None-Match 命中（etagMatches 的
+ * 弱比较 / 列表 / `*` 都算）答 304 不带表示头；未命中 200 + Content-Type +
+ * Content-Length 出体，HEAD 只回头。etag 覆盖给得起自定义值（ios-kit 那种
+ * 「源文件 mtime + 注入地址」拼出来的、sendFile 给 stat 策略拼的 mtime+size），
+ * 缺省按最终应答字节算内容哈希。
+ */
+export function sendCacheable(req, res, body, { policy, contentType, etag = null }) {
+  const row = typeof policy === 'string' ? CACHE_POLICIES[policy] : policy;
+  if (!row) throw new TypeError(`sendCacheable 要策略表里的一行，收到 ${policy}`);
+  const tag = etag || contentEtag(body);
+  res.setHeader('Cache-Control', row.cacheControl);
+  res.setHeader('ETag', tag);
+  if (etagMatches(req.headers['if-none-match'], tag)) {
+    res.statusCode = 304;
+    res.end();
+    return true;
+  }
+  res.statusCode = 200;
+  res.setHeader('Content-Type', contentType);
+  res.setHeader('Content-Length', String(body.length));
+  res.end(req.method === 'HEAD' ? undefined : body);
+  return true;
 }
 
 /** JSON 应答：status + Content-Type + Content-Length；cacheControl 给了才发 Cache-Control。 */
@@ -87,19 +147,24 @@ export function readBody(req, limit) {
 }
 
 /**
- * 读盘出一个文件：Content-Type 按扩展名（文本类补 charset）+ Content-Length，
- * HEAD 只回头。inject 给了且是 HTML 时先过一遍注入（标注客户端）。
- * cacheControl 缺省 'no-cache'；传 null 不发 Cache-Control 头。应答完返回 true。
+ * 读盘出一个文件：Content-Type 按扩展名（文本类补 charset），走策略表的条件
+ * 应答（sendCacheable）。inject 给了且是 HTML 时先过一遍注入（标注客户端）。
+ * ETag：策略行 'content'（帧 HTML、要注入的文档——同一文件的注入 / off 两种
+ * 变体字节不同，验证器必须是内容哈希才分得开）或注入真的发生了 → 最终字节的
+ * 哈希；原样出的静态资源 / 图片走行里的 mtime+size。policy 是 CACHE_POLICIES
+ * 的行名，缺省 staticFile。应答完（含 304）返回 true。
  */
-export function sendFile(req, res, file, { inject = null, cacheControl = 'no-cache' } = {}) {
+export function sendFile(req, res, file, { inject = null, policy = 'staticFile' } = {}) {
+  const injected = Boolean(inject) && mimeFor(file) === 'text/html';
   let body = fs.readFileSync(file);
-  if (inject && mimeFor(file) === 'text/html') body = Buffer.from(inject(body.toString('utf8')), 'utf8');
-  res.statusCode = 200;
-  res.setHeader('Content-Type', contentTypeFor(file));
-  res.setHeader('Content-Length', String(body.length));
-  if (cacheControl) res.setHeader('Cache-Control', cacheControl);
-  res.end(req.method === 'HEAD' ? undefined : body);
-  return true;
+  if (injected) body = Buffer.from(inject(body.toString('utf8')), 'utf8');
+  const row = CACHE_POLICIES[policy];
+  if (!row) throw new TypeError(`sendFile 要策略表里的一行，收到 ${policy}`);
+  return sendCacheable(req, res, body, {
+    policy: row,
+    contentType: contentTypeFor(file),
+    etag: !injected && row.etag === 'stat' ? statEtag(fs.statSync(file)) : null,
+  });
 }
 
 /** GET / HEAD 之外的方法：405 + Allow + 统一错误体。POST 端点传 allow = 'POST'。 */

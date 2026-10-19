@@ -31,16 +31,22 @@ function withFixture(t) {
 }
 
 function call(handler, method, url) {
-  const [urlPath, query] = url.split('?');
+  const [urlPath] = url.split('?');
   const req = new EventEmitter();
   req.method = method;
+  req.url = url;
+  req.headers = {};
   const res = {
     statusCode: 0,
     headers: {},
     setHeader(name, value) { this.headers[name.toLowerCase()] = value; },
-    end(body) { this.text = body || ''; },
+    end(body) { this.raw = body; },
+    get text() {
+      if (this.raw === undefined) return '';
+      return Buffer.isBuffer(this.raw) ? this.raw.toString('utf8') : String(this.raw);
+    },
   };
-  const handled = handler(req, res, urlPath, query || '');
+  const handled = handler(req, res, urlPath);
   return { handled, res };
 }
 

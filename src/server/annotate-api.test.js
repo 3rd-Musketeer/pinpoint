@@ -163,14 +163,25 @@ test('/image 的上限另算：账本上限 2 MiB 不挡截图', async (t) => {
   assert.ok(fs.existsSync(path.join(dataRoot, 'web', 'images', json.file)));
 });
 
-test('GET /images/<file> 读回上传的截图：200 + 图片类型', async (t) => {
-  const { handler } = withFixture(t);
-  const up = await call(handler, 'POST', '/image', { page: '@canvas', entry: 'web', data: 'data:image/png;base64,aGk=' });
-  assert.equal(up.res.statusCode, 200, JSON.stringify(up.json));
-  const { handled, res } = await call(handler, 'GET', `/images/${up.json.file}?entry=web`);
-  assert.equal(handled, true);
-  assert.equal(res.statusCode, 200, res.body);
-  assert.match(String(res.headers['Content-Type']), /^image\/png/);
+// S3：标注图片走策略表 image 行。200 路径此前无单测（e2e article-viewer 右栏的
+// 截图断言逮到 run 漏解构 req 的回归），200 / ETag / 304 在这里守。
+test('GET /images/<name>?entry= 200 出图带 no-cache + ETag，条件请求 304；缺图 404', async (t) => {
+  const { dataRoot, handler } = withFixture(t);
+  const png = Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFklEQVR42mNk+M9Qz0AEYBxVSF+FAP0lBHHc0sQUAAAAAElFTkSuQmCC', 'base64');
+  fs.mkdirSync(path.join(dataRoot, 'web', 'images'), { recursive: true });
+  fs.writeFileSync(path.join(dataRoot, 'web', 'images', 'shot.png'), png);
+
+  const first = await call(handler, 'GET', '/images/shot.png?entry=web');
+  assert.equal(first.res.statusCode, 200);
+  assert.equal(first.res.headers['Cache-Control'], 'no-cache');
+  assert.match(first.res.headers.ETag, /^"\d+-\d+"$/);
+  assert.deepEqual([...first.res.body], [...png]);
+
+  const hit = await call(handler, 'GET', '/images/shot.png?entry=web', undefined, { 'if-none-match': first.res.headers.ETag });
+  assert.equal(hit.res.statusCode, 304);
+  assert.equal(hit.res.chunks.length, 0);
+
+  assert.equal((await call(handler, 'GET', '/images/missing.png?entry=web')).res.statusCode, 404);
 });
 
 test('GET /annotations/<page> resolves entry from the query string', async (t) => {

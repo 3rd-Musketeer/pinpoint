@@ -9,9 +9,11 @@ import test from 'node:test';
 
 import { annotationBucketFor } from './article-proxy.js';
 import { articleIdOfPath } from './lib/article-routes.js';
+import { resolveArticleTarget } from './lib/page-resolve.js';
 import { createAnnotateHandler, resolveRequestEntry } from './annotate-api.js';
 import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 import { framePageHtml, resolveFrameTarget } from './lib/frame-doc.js';
+import { compilePage } from './lib/page-compiler.js';
 import { loadRegistry } from './lib/registry.js';
 import previewHmr from './preview-hmr.js';
 import { createProjectsHandler } from './projects-api.js';
@@ -83,6 +85,49 @@ test('/sites/<画布页 id>/：board.json 是派生的板 + dist，帧从 dist �
   for (const url of ['/sites/demo_flow/index.mdx', '/sites/demo_flow/../../project.json', '/sites/demo_ghost/board.json', '/sites/demo_flow/ghost.html']) {
     assert.equal((await get(handler, url)).res.statusCode, 404, url);
   }
+});
+
+// S3（审计 K2c）：dist 屏带策略表 distScreen 行的缓存头。ETag 是注入后字节的
+// 内容哈希——HMR 改帧重编后内容变、ETag 变，浏览器带着旧 If-None-Match 来
+// 必然拿到 200 新内容，不可能 304 旧内容。
+test('dist 屏与 board.json 的缓存：no-cache + 内容 ETag，304 放行；HMR 改帧后同 If-None-Match 拿到新内容', async (t) => {
+  const { registry, article } = fixture(t);
+  const handler = createSitesHandler({ registry });
+
+  const first = await get(handler, '/sites/demo_flow/ask-open.html');
+  assert.equal(first.res.statusCode, 200);
+  assert.equal(first.res.headers['Cache-Control'], 'no-cache');
+  assert.match(first.res.headers.ETag, /^"[0-9a-f]{16}"$/);
+  const etag = first.res.headers.ETag;
+
+  const revalidate = async () => {
+    const req = mockReq('GET', '/sites/demo_flow/ask-open.html');
+    req.headers = { 'if-none-match': etag };
+    const res = mockRes();
+    await handler(req, res, '/sites/demo_flow/ask-open.html');
+    return res;
+  };
+  assert.equal((await revalidate()).statusCode, 304, '内容没变：验证命中放 304');
+
+  // HMR：改帧源 → 重编落盘（preview watch 在真实服务里做同一件事）→ 同一个
+  // 旧 If-None-Match 再来，必须是 200 + 新 ETag + 新内容，不是 304 旧内容。
+  write(path.join(article, 'ask-open.jsx'), 'export default function AskOpen() {\n  return <div className="ios-app">再问</div>;\n}\n');
+  const compiled = await compilePage(resolveArticleTarget(registry, 'demo_flow'));
+  assert.equal(compiled.ok, true, JSON.stringify(compiled.screens));
+  const after = await revalidate();
+  assert.equal(after.statusCode, 200, 'HMR 改帧后旧验证器必须 miss');
+  assert.notEqual(after.headers.ETag, etag, 'ETag 随内容变');
+  assert.match(after.text, /再问/);
+
+  // board.json 同走 boardJson 行：dist 状态写进内容，ETag 跟着内容走。
+  const board = await get(handler, '/sites/demo_flow/board.json');
+  assert.equal(board.res.headers['Cache-Control'], 'no-cache');
+  assert.match(board.res.headers.ETag, /^"[0-9a-f]{16}"$/);
+  const boardReq = mockReq('GET', '/sites/demo_flow/board.json');
+  boardReq.headers = { 'if-none-match': board.res.headers.ETag };
+  const boardRes = mockRes();
+  await handler(boardReq, boardRes, '/sites/demo_flow/board.json');
+  assert.equal(boardRes.statusCode, 304);
 });
 
 test('/api/frame 的目标：文章画布帧是 fragment，桶 = 画布页 id，HTML 出得来', async (t) => {

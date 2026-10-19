@@ -22,7 +22,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { injectAnnotateClient } from './lib/annotate-snippet.js';
+import { annotateInjection } from './lib/annotate-snippet.js';
 import { annotateClientSrc, injectAnnotateSrc } from './lib/annotate-bundle.js';
 import { etagMatches } from './lib/etag.js';
 import { resolveContainedFile, resolveContainedPath } from './lib/servable-file.js';
@@ -121,7 +121,6 @@ export default function contentRoutes() {
         if (!req.url) return next();
         const parts = req.url.split('?');
         const urlPath = parts[0];
-        const query = parts[1] || '';
         const normalized = normalizedPathname(urlPath);
         const mapped = PREFIXES.find(([from]) => urlPath.startsWith(from));
         if (mapped && !normalized?.startsWith(mapped[0])) {
@@ -200,11 +199,14 @@ export default function contentRoutes() {
               const source = resolveBoardSource(screenMatch[1], { root });
               const ids = source && source.kind === 'template' ? boardScreenIds(source.pageDir) : null;
               if (ids && ids.has(screenMatch[2])) {
-                const annotate = !/(?:^|&)annotate=off(?:&|$)/.test(query);
+                // 注入判定走 annotateInjection（r2 D4 的归一入口）；这条路由的
+                // 附加形状规则（fragment 不注入、手工注入段不重注）包在返回的
+                // 注入函数外面。
+                const base = annotateInjection(req, screenMatch[1]);
                 await serveDistScreenResponse(req, res, source.target, screenMatch[2], {
                   // storage-unify：previews 屏也带 entry 标记（= 页 id），账本落页桶。
-                  inject: annotate
-                    ? (html) => (/<!doctype\b/i.test(html) && !html.includes('data-ios-annotate') ? injectAnnotateClient(html, screenMatch[1]) : html)
+                  inject: base
+                    ? (html) => (/<!doctype\b/i.test(html) && !html.includes('data-ios-annotate') ? base(html) : html)
                     : null,
                 });
                 return;

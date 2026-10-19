@@ -392,8 +392,8 @@ export function createAnnotateHandler(options = {}) {
         const name = decodeURIComponent(urlPath.slice('/images/'.length));
         const file = storeFor(entryId).imagePath(name);
         if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-          // 缓存策略不在此收敛（S3）：照旧不发 Cache-Control。
-          sendFile(req, res, file, { cacheControl: null });
+          // 标注图片走策略表 image 行（S3）：no-cache + mtime+size ETag，重开看板 304。
+          sendFile(req, res, file, { policy: 'image' });
         } else {
           sendJson(res, 404, { error: 'not found', message: 'not found' });
         }
