@@ -89,6 +89,13 @@ export function syncBubbleStructure(pageMarks) {
    写样式相对气泡的 offsetParent（#ann-overlay），与旧写法的坐标系一致；
    viewR 参数是视口矩形（computePosition 的参照坐标系）。 */
 function placeBubble(entry, viewR) {
+  // 参照与已摆位完全相同（浮点逐位；账本回声这类空触发就是同一份几何）时跳过：
+  // computePosition 每次都要读浮动框 / offsetParent / boundary 的布局，静息窗口里
+  // 这些读数会被 owner 性能门（owner-performance 的 K1 零测量）数出来。结果由
+  // write() 落账；宽度参与判等（clamp 与 flip 都依赖它）。
+  var placed = entry.placedViewR;
+  if (placed && entry.placedWidth === entry.width && entry.node.style.left &&
+      placed[0] === viewR[0] && placed[1] === viewR[1] && placed[2] === viewR[2] && placed[3] === viewR[3]) return;
   var seq = entry.placeSeq = (entry.placeSeq || 0) + 1;
   function opts(placement) {
     return {
@@ -103,6 +110,8 @@ function placeBubble(entry, viewR) {
     if (entry.placeSeq !== seq || entry.node.hidden || !entry.node.isConnected) return;
     entry.node.style.left = Math.round(result.x) + 'px';
     entry.node.style.top = Math.round(result.y) + 'px';
+    entry.placedViewR = viewR;
+    entry.placedWidth = entry.width;
   }
   computePosition(virtualRect(viewR), entry.node, opts('right-start')).then(function (result) {
     if (entry.placeSeq !== seq || entry.node.hidden || !entry.node.isConnected) return;
