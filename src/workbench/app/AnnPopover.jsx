@@ -5,6 +5,7 @@ import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, annStatusOf, isClosed } from '../../shared/ann-status.js';
 import { WbIcon } from './WbIcon.jsx';
+import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 
@@ -97,6 +98,9 @@ export function AnnPopover() {
   var [clearArmed, setClearArmed] = useState(null);
   var [menuOpen, setMenuOpen] = useState(false);
   var clearTimer = useRef(0);
+  // 「···」菜单进弹层栈（LAYER_RANK.chrome）：Esc 的归属由栈裁决 —— 栈在 window 捕获段先关掉
+  // 它并截断，Radix 自己的 dismiss 不到场；onEscapeKeyDown 只是兜底（见 use-layer.js）。
+  useStackLayer('ann-more-menu', menuOpen, function () { setMenuOpen(false); }, { rank: LAYER_RANK.chrome });
 
   useEffect(function () {
     return function () { clearTimeout(clearTimer.current); };
@@ -227,7 +231,8 @@ export function AnnPopover() {
                 会被卡的下沿裁掉 —— 卡越短裁得越多，最后一项「清空未关闭标注」首当其冲
                 （DOM 断言全绿、人点不到，与 2026-08-17 ScrollArea 同形）。 */}
             <DropdownMenu.Portal>
-            <DropdownMenu.Content asChild align="end" sideOffset={4} collisionPadding={12}>
+            <DropdownMenu.Content asChild align="end" sideOffset={4} collisionPadding={12}
+              onEscapeKeyDown={keepEscapeForStack}>
               <div className="wb-ann-more-menu z-(--wb-z-float-2) min-w-[148px] rounded-lg bg-card p-1 shadow-[var(--wb-sh-3)]">
                 {BUBBLE_MODES.map(function (m) {
                   var sel = bubbleMode === m[0];

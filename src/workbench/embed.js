@@ -1,7 +1,8 @@
 // 嵌入版工作台（2026-10-15）：文章页的画布浮层里开的是一份 /workbench/?page=<页 id>&embed=overlay
 // （site/README.md「画布浮层」）。这里只管它和文章页之间的两件事，其余行为与直接打开的画布相同：
-// - Esc：这一下不归工作台自己的某一层（页面浮层、标注框、列表、大纲、菜单、对话框、导航器、标注模式），就请文章页关浮层；
-//   画布选中不算一层：落点会选中那一节，第一下 Esc 就该回文章；
+// - Esc：工作台的弹层栈（layer-stack.js）没接住时，请文章页关浮层。forward 只在
+//   嵌入版装：文章页收到 close 消息走它自己的关闭路径（地址、焦点、滚动位置一起复原）；
+//   直接打开的画布没有父级要通知。画布选中不算一层：落点会选中那一节，第一下 Esc 就该回文章。
 // - 当前节：画布当前所在的节（store.activeGroup，平移、大纲、定位都会改）报给文章页，浮层头和 #canvas= 跟着换；
 //   页面浮层开着时报那一页所在的节（画布藏在下面，activeGroup 跟着藏起来的视口走，不算数）。
 // 消息走 postMessage，目标 origin 固定为本 origin（文章页与工作台同源）；文章页按 event.source 认 iframe。
@@ -12,7 +13,7 @@
 import { wbGet, useWorkbenchStore } from './app/store.js';
 import { isEmbedded } from './lib/page-url.js';
 import { isPageOverlayOpen } from './pages.js';
-import { workbenchEscapeIsTaken } from './escape-layers.js';
+import { wbLayers } from './layer-stack.js';
 
 export var EMBEDDED = isEmbedded(location.search);
 export var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
@@ -74,15 +75,10 @@ function pageSectionOf(screenId) {
 export function startEmbedBridge() {
   if (!EMBEDDED) return;
   document.documentElement.classList.add('wb-embed');
-  var taken = false;
-  window.addEventListener('keydown', function (e) {
-    if (e.key === 'Escape') taken = isPageOverlayOpen() || workbenchEscapeIsTaken(document, e.target);
-  }, true);
-  window.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
-    // 不看 defaultPrevented：画布选中（落点选中的节、点选的帧）也吃 Esc（app/Dock.jsx），但它不是一层，
-    // 浮层是从文章开的，Esc 就该回文章。真正的层由 workbenchEscapeIsTaken 统一判断。
-    if (taken) return;
+  // 弹层栈没接住的 Esc（栈里没有任何层接）：请文章页关浮层（C2）。与直接打开的画布
+  // 相比只多这一步转发；页面浮层、标注层、菜单这些都在栈里，轮不到转发。
+  // 在捕获段就转、不看 defaultPrevented：画布选中也吃 Esc（app/Dock.jsx），但它不是一层。
+  wbLayers.setForward(function (e) {
     e.preventDefault();
     post({ type: 'close' });
   });

@@ -1,6 +1,6 @@
 // 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 面板。数据全在 .cref 的 data-* 上（refs.js refHtml）。
 
-import { installLayerKeys, layers } from './layers.js';
+import { layers } from './layers.js';
 import { installOverlayScrollbars } from '../../../src/client/overlay-scrollbar.js';
 import { escHtml as esc } from '../../../src/shared/esc-html.js';
 import {
@@ -393,8 +393,7 @@ function initRefPopups() {
     e.preventDefault();
     openPop(el);
   });
-  // Esc 由弹层栈处理（layers.js）：popup 在最上面时只关它，并 preventDefault。
-  installLayerKeys();
+  // Esc 由弹层栈处理（layers.js，加载时已装）：popup 在最上面时只关它，并 preventDefault。
   document.addEventListener('keydown', (e) => {
     const el = e.target;
     if ((e.key === 'Enter' || e.key === ' ') && el.classList?.contains('cref') && el.tagName !== 'A') { e.preventDefault(); openPop(el); }

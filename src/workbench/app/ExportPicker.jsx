@@ -12,6 +12,7 @@ import {
   requestOfflinePageExport,
   requestOfflinePageScan,
 } from '../export-core.js';
+import { LAYER_RANK, useStackLayer } from './use-layer.js';
 import { cn } from './lib/utils.js';
 
 function byteLabel(bytes) {
@@ -115,6 +116,10 @@ export function ExportPicker() {
   var open = useWorkbenchStore(function (s) { return s.exportPickerOpen; });
   var activeBoard = useWorkbenchStore(function (s) { return s.activeBoard; });
   var dialogRef = useRef(null);
+
+  // 模态对话框是弹层栈里的一层（C2，LAYER_RANK.chrome）：Esc 由栈关（置回 false，下面的 effect
+  // 收起对话框并还原焦点），原生 cancel 不再触发 —— 与标注模式 / 菜单的次序由 rank 表达。
+  useStackLayer('export-picker', open, function () { wbSet({ exportPickerOpen: false }); }, { rank: LAYER_RANK.chrome });
 
   useEffect(function () {
     var dialog = dialogRef.current;

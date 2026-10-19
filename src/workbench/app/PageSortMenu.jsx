@@ -1,13 +1,17 @@
-import { Fragment } from 'react';
+import { Fragment, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { PAGE_SORT_GROUPS, PAGE_SORT_LABELS } from '../lib/page-sort.js';
 import { Button } from './ui/button.jsx';
 import { WbIcon } from './WbIcon.jsx';
+import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
 import { ROW_MENU_ITEM, ROW_MENU_PANEL } from './row-menu.jsx';
 
 export function PageSortMenu({ sort, onChange }) {
+  // 受控开合 + 弹层栈（C2，LAYER_RANK.chrome）：Esc 由工作台弹层栈裁决并截断。
+  var [menuOpen, setMenuOpen] = useState(false);
+  useStackLayer('page-sort-menu', menuOpen, function () { setMenuOpen(false); }, { rank: LAYER_RANK.chrome });
   return (
-    <DropdownMenu.Root>
+    <DropdownMenu.Root open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenu.Trigger asChild>
         <Button type="button" variant="tool" size="icon"
           className="wb-page-sort size-[18px] [&_svg]:opacity-60 hover:[&_svg]:opacity-100"
@@ -19,7 +23,7 @@ export function PageSortMenu({ sort, onChange }) {
       </DropdownMenu.Trigger>
       <DropdownMenu.Portal>
         <DropdownMenu.Content className={ROW_MENU_PANEL + ' wb-sort-menu w-[250px] max-h-[var(--radix-dropdown-menu-content-available-height)] overflow-y-auto'}
-          align="end" sideOffset={5} collisionPadding={8}>
+          align="end" sideOffset={5} collisionPadding={8} onEscapeKeyDown={keepEscapeForStack}>
           <DropdownMenu.RadioGroup value={sort} onValueChange={onChange}>
             {PAGE_SORT_GROUPS.map((group, index) => (
               <Fragment key={group[0]}>

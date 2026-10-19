@@ -5,15 +5,19 @@
 // body（条有 overflow-x，玻璃的 backdrop-filter 也会把 fixed 后代收成包含块），
 // 从触发钮向上弹，层级 --wb-z-float，皮肤 .wb-glass。同一时刻只开一个。
 // 右键菜单门户在浮层外面。点到 [role=menu] 时不关，复制菜单才能把焦点交还行内按钮。
+// 点外关闭与焦点归还走 Radix（C2）：DismissableLayer 管点外（菜单 / popper 排除）、
+// FocusScope 管挂载聚焦浮层、Esc 关掉后把焦点还给打开前的触发钮；Esc 归工作台弹层栈
+// （use-layer.js），焦点在输入框里时这一下归输入框，与旧行为一致。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { DismissableLayer } from '@radix-ui/react-dismissable-layer';
+import { FocusScope } from '@radix-ui/react-focus-scope';
 import { useWorkbenchStore, wbGet } from './store.js';
 import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
 import {
   flashBoardFrame,
   focusBoardSection,
   focusWorkbenchFrame,
-  isTypingTarget,
   selectBoardFrame,
   selectBoardSection
 } from '../board-nav.js';
@@ -30,6 +34,7 @@ import { tabIdOfScreen } from '../lib/board-tabs.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { WbIcon } from './WbIcon.jsx';
 import { RowMenu } from './row-menu.jsx';
+import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 
@@ -302,42 +307,45 @@ function OutlinePop(props) {
       if (pop && button) placePop(button, pop);
     }
     place();
-    if (pop) pop.focus();
-    function onKey(event) {
-      if (event.key !== 'Escape' || event.isComposing) return;
-      if (isTypingTarget(event.target)) return;
-      if (document.querySelector('[role="menu"]')) return;
-      event.preventDefault();
-      event.stopPropagation();
-      var button = trigger();
-      setOpenKey(null);
-      if (button) button.focus();
-    }
-    function onPointerDown(event) {
-      var target = event.target;
-      if (!target || !target.closest) return;
-      if (target.closest('#wboutline-pop')) return;
-      if (target.closest('[data-outline-trigger][aria-expanded="true"]')) return;
-      if (target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) return;
-      setOpenKey(null);
-    }
-    document.addEventListener('keydown', onKey, true);
-    document.addEventListener('pointerdown', onPointerDown, true);
     window.addEventListener('resize', place);
     window.addEventListener('scroll', place, true);
     return function () {
-      document.removeEventListener('keydown', onKey, true);
-      document.removeEventListener('pointerdown', onPointerDown, true);
       window.removeEventListener('resize', place);
       window.removeEventListener('scroll', place, true);
     };
   }, []);
 
+  function requestClose() { setOpenKey(null); }
+  // 焦点只在 Esc 关掉时还给触发钮（FocusScope 卸载时还给打开前的焦点）；点外、跳帧
+  // 关掉时焦点留在用户点的地方，不被拽回横条（旧实现同样只在 Esc 时 focus 触发钮）。
+  var restoreFocus = useRef(false);
+
+  // Esc 由弹层栈关（LAYER_RANK.chrome，焦点在打字里时这一下归输入框）。
+  useStackLayer('outline-pop', true, function () { restoreFocus.current = true; requestClose(); },
+    { rank: LAYER_RANK.chrome, respectTyping: true });
+
+  // 点外关闭排除当前触发钮（它自己的 click 负责开合）与菜单（右键 / 复制菜单门户在浮层外，
+  // 点它们不收浮层）；焦点移出不算关闭（Tab 走出去还回得来）。
   return createPortal(
-    <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
-      aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
-      <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
-    </div>,
+    <FocusScope trapped={false}
+      onMountAutoFocus={function (event) { event.preventDefault(); if (popRef.current) popRef.current.focus(); }}
+      onUnmountAutoFocus={function (event) { if (!restoreFocus.current) event.preventDefault(); }}>
+      <DismissableLayer asChild
+        onEscapeKeyDown={keepEscapeForStack}
+        onFocusOutside={function (event) { event.preventDefault(); }}
+        onPointerDownOutside={function (event) {
+          var target = event.detail.originalEvent.target;
+          if (!target || !target.closest) return;
+          if (target.closest('[data-outline-trigger][aria-expanded="true"]')) event.preventDefault();
+          else if (target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) event.preventDefault();
+        }}
+        onDismiss={requestClose}>
+        <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
+          aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
+          <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
+        </div>
+      </DismissableLayer>
+    </FocusScope>,
     document.body
   );
 }

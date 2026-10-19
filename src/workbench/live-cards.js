@@ -8,7 +8,8 @@
 // 3. 标注模式同步：横条“标注”驱动的是画布的标注客户端（window.pinpoint），它让开卡片（data-ann-ui）；卡片里那一页
 //    自己的客户端跟着进出标注模式，在卡片里直接标，标注进那一页的账本。卡片里按 A / Esc 切了模式，画布跟着切。
 import { frameReadyToUnload } from './frame-save.js';
-import { annotationEscapeIsTaken } from './escape-layers.js';
+import { isComposingKey, isTypingTarget } from '../shared/keys.js';
+import { attachLayerStack, forwardEscapeToParent } from '../shared/layers.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
 
@@ -28,10 +29,6 @@ function schedulePump() {
 }
 
 function stageEl() { return document.getElementById('wbstage'); }
-
-function isTypingTarget(t) {
-  return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.tagName === 'SELECT' || t.isContentEditable));
-}
 
 /** 板装好后调（stage.js loadBoard）：换板就重来一遍，不是文章画布的板也调（清掉上一块板的登记）。 */
 export function syncLiveCards(panel) {
@@ -134,7 +131,7 @@ function forwardWheel(frame, e) {
 
 function forwardSpace(e) {
   if (e.code !== 'Space' && e.key !== ' ') return;
-  if (isTypingTarget(e.target)) return;
+  if (isTypingTarget(e.target) || isComposingKey(e)) return;
   if (e.type === 'keydown' && (e.metaKey || e.ctrlKey || e.altKey)) return;
   // 同 iOS 帧：空格归画布（按住拖平移），不翻页面。工作台的空格监听挂在 document 捕获段。
   e.preventDefault();
@@ -180,18 +177,12 @@ function wireMiddlePan(frame, win) {
   }, true);
 }
 
-// 活卡片里的 Esc：先让卡片自己的标注层处理；没有层时交回工作台（嵌入版可据此回文章）。
-function wireCardEscape(win) {
-  var taken = false;
-  win.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape') return;
-    taken = annotationEscapeIsTaken(win.document, win.pinpoint, e.target);
-  }, true);
-  win.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229 || taken || e.defaultPrevented) return;
-    e.preventDefault();
-    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape', bubbles: true, cancelable: true }));
-  });
+// 活卡片里的 Esc：卡片文档装好后就地装弹层栈（C2，幂等：卡片自己注入的标注客户端
+// 拿到同一份），草稿 / 模式在卡片栈里逐层退。都没接住时等卡片页面自己的监听跑完：
+// 页面没处理（没 preventDefault）就交回工作台 window，工作台的栈照同一套次序处理
+// （嵌入版可据此回文章）。
+function wireCardLayers(win) {
+  attachLayerStack(win).setForward(function () { forwardEscapeToParent(win); }, { afterPage: true, skipHandled: true });
 }
 
 function wireCardWindow(frame) {
@@ -208,7 +199,7 @@ function wireCardWindow(frame) {
   win.addEventListener('wheel', function (e) { forwardWheel(frame, e); }, { capture: true, passive: false });
   win.addEventListener('keydown', forwardSpace, true);
   win.addEventListener('keyup', forwardSpace, true);
-  wireCardEscape(win);
+  wireCardLayers(win);
   bindCardAnnotate(frame, win);
 }
 

@@ -22,7 +22,7 @@
 //    不受管内容：保留手写 CSS（index.html，全 token 化），不进 Tailwind。
 import { Fragment } from 'react';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
-import { recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
+import { closeCanvasNavigators, recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
 import { setCanvasZoom, zoomCanvasAt } from '../boot-prefs.js';
 import { currentCanvasZoom } from '../lib/canvas-zoom.js';
 import { clampZoom, formatZoomLabel } from '../../shared/canvas-gesture.js';
@@ -31,6 +31,7 @@ import { offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 import { WbIcon } from './WbIcon.jsx';
+import { LAYER_RANK, useStackLayer } from './use-layer.js';
 
 // dock 两面板共用浮层皮肤（--wb-canvas-nav-w 定义在 index.html 的 .wb-canvas-dock 上）
 var DOCK_PANEL =
@@ -50,6 +51,8 @@ export function CanvasDock() {
   var minimapOpen = useWorkbenchStore(function (s) { return s.minimapOpen; });
   var sectionNavOpen = useWorkbenchStore(function (s) { return s.sectionNavOpen; });
   var position = useWorkbenchStore(function (s) { return s.sectionNavPosition; });
+  // 导航器 / 缩略图开着是弹层栈里的一层（C2）：排在标注模式之后、页面浮层之前。
+  useStackLayer('canvas-nav', sectionNavOpen || minimapOpen, closeCanvasNavigators, { rank: LAYER_RANK.canvasNav });
   return (
     <Fragment>
       <nav id="wbsection-nav" aria-label="Section Navigator" hidden={!sectionNavOpen}

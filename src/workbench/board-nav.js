@@ -2,6 +2,7 @@ import { scrollStageTo } from './scroll-motion.js';
 // Workbench 画布导航簇 — 板内定位、minimap、Section Navigator、缩放 HUD。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
+import { isTypingTarget } from '../shared/keys.js';
 import { wbGet, wbSet } from './app/store.js';
 import { boardShowsTabBar } from './lib/board-entries.js';
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
@@ -616,12 +617,12 @@ export function syncBoardSelection() {
   if (want && !want.classList.contains('wb-sel')) want.classList.add('wb-sel');
 }
 
-/** True when keyboard shortcuts should yield to text entry. */
-export function isTypingTarget(el) {
-  if (!el || !el.closest) return false;
-  if (el.closest('input, textarea, select')) return true;
-  var ce = el.closest('[contenteditable]');
-  return !!(ce && ce.isContentEditable);
+/** 收起 Section Navigator 与缩略图，焦点回到开着的那一个的开关钮（Esc 经弹层栈调）。 */
+export function closeCanvasNavigators() {
+  var focusTarget = wbGet().sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
+  setSectionNavigatorOpen(false);
+  setMinimapOpen(false);
+  if (focusTarget) focusTarget.focus();
 }
 
 function wireSectionNavigator() {
@@ -638,14 +639,8 @@ function wireSectionNavigator() {
     var sectionButton = event.target.closest('.wb-section-nav-section[data-nav-group]');
     if (sectionButton) jumpSectionNavigatorToGroup(sectionButton.getAttribute('data-nav-group'));
   });
+  // Esc 关导航器 / 缩略图走工作台弹层栈（app/CanvasHud.jsx 的 CanvasDock 注册，closeCanvasNavigators）。
   document.addEventListener('keydown', function (event) {
-    if (event.key === 'Escape' && (wbGet().sectionNavOpen || wbGet().minimapOpen)) {
-      var focusTarget = wbGet().sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
-      setSectionNavigatorOpen(false);
-      setMinimapOpen(false);
-      if (focusTarget) focusTarget.focus();
-      return;
-    }
     if (event.key.toLowerCase() !== 'm' || event.metaKey || event.ctrlKey || event.altKey) return;
     if (!FEATURES.sectionNav || isTypingTarget(event.target)) return;
     event.preventDefault();

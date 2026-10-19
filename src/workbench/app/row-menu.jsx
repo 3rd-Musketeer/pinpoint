@@ -19,6 +19,7 @@
 import { useEffect, useRef, useState } from 'react';
 import * as ContextMenu from '@radix-ui/react-context-menu';
 import { WbIcon } from './WbIcon.jsx';
+import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
 
 // 菜单项皮肤：12px semibold 行，hover/focus 走 --wb-hover 浅面（图标 muted）
 export var ROW_MENU_ITEM =
@@ -64,11 +65,15 @@ function CopyMenuItem(props) {
      点击后菜单自然关闭。
    children = 触发行（asChild，行自身的 class / data 契约不动）。 */
 export function RowMenu(props) {
+  // 受控开合 + 弹层栈（C2，LAYER_RANK.chrome）：Esc 由工作台弹层栈裁决并截断（先关菜单、别的层
+  // 留着），Radix 自己的 dismiss 不到场；点外关闭与焦点行为仍由 Radix 承担。
+  var [menuOpen, setMenuOpen] = useState(false);
+  useStackLayer('row-menu', menuOpen, function () { setMenuOpen(false); }, { rank: LAYER_RANK.chrome });
   return (
-    <ContextMenu.Root modal={false}>
+    <ContextMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
       <ContextMenu.Trigger asChild>{props.children}</ContextMenu.Trigger>
       <ContextMenu.Portal>
-        <ContextMenu.Content className={ROW_MENU_PANEL}>
+        <ContextMenu.Content className={ROW_MENU_PANEL} onEscapeKeyDown={keepEscapeForStack}>
           {props.items.map(function (item, i) {
             if (item.kind === 'copy') {
               return <CopyMenuItem key={i} label={item.label} text={item.text} attr={item.attr} />;

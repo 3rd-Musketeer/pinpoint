@@ -17,6 +17,7 @@ import { canvasStage, focusBubble } from './render.js';
 import { onViewChange, perfDrain } from './schedule.js';
 import { closeAnnotation, reopenAnnotation, setStatusFilter, toggleSidebar } from './sidebar.js';
 import { canClearInvalid, clearInvalid, doClear, hideGhost, notify, removeMark, setBubbleLayout, setRenderComments, setStatus, showGhostForEl, showGhostForRect, syncModeClass, toggleMode } from './ui.js';
+import { attachLayerStack, LAYER_RANK, YIELD } from '../../shared/layers.js';
 export function bind_nav(c) { ctx = c; }
 var ctx;
 
@@ -24,8 +25,9 @@ export function init_nav() {
   ctx.markNavigation = 0;
 }
 
-/** 标注层有东西要退就退一层并返回 true；没有返回 false，这一下 Esc 留给页面。 */
-function takeEscape() {
+/** 标注草稿退一层：提及列表 → 输入框的工具菜单 → 标注框 → 进行中的箭头 / 框选。
+    有东西可退返回 true；没有返回 false（栈里的适配层「不在场」，这一下让给下一层）。 */
+function takeDraftStep() {
   if (document.getElementById('ann-mention')) { closeMention(); return true; }
   var tools = document.querySelector('#ann-box #ann-tools-menu');
   if (tools && !tools.hidden) {
@@ -44,24 +46,32 @@ function takeEscape() {
     clearHover();
     return true;
   }
-  // 页面自己开着的弹出层（菜单、对话框、大纲浮层）比标注模式靠前：这一下 Esc 让它先关。
-  if (document.querySelector(OPEN_LAYERS)) return false;
-  if (ctx.mode) { toggleMode(); return true; }
   return false;
 }
-var OPEN_LAYERS = '[role="menu"], .wb-ann-more-menu, [role="listbox"], dialog[open], [role="dialog"][data-state="open"], #wboutline-pop, #wbann-pop';
+
+// 被评审页面自己开着的弹出层：它们不在栈里（页面的代码不归我们），这一下 Esc
+// 让页面自己关，标注模式留着。工作台自己的菜单、对话框、列表已经注册进栈，排在前面。
+var HOST_PAGE_LAYERS = '[role="menu"], [role="listbox"], dialog[open], [role="dialog"][data-state="open"]';
 
 export function installPinpointApi() {
-  // Esc 逐级退：提及列表 → 输入框的工具菜单 → 标注框 → 进行中的箭头 / 框选 → （页面开着的菜单、对话框）→ 标注模式，之后才轮到页面自己。
-  // 挂在 window 的捕获段，排在被评审页面的所有监听之前：标注层接住这一下就截断，
-  // 原型自己注册的 Esc（关表单、关弹窗）不会跟着一起触发（owner 2026-10-19）。
-  window.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.isComposing || e.keyCode === 229) return;
-    ctx.markNavigation++; // 还在等首帧的跳转也一起取消
-    if (!takeEscape()) return;
-    e.preventDefault();
-    e.stopImmediatePropagation();
-  }, true);
+  // Esc 归属收敛到文档的弹层栈（C2，src/shared/layers.js）。本客户端在栈里常驻三个
+  // 适配层（sticky：close 返回 false = 此刻不在场，这一下问下一层）：
+  // 标注草稿（提及 → 工具菜单 → 标注框 → 箭头 / 框选）先于一切；页面自己开着的
+  // 菜单 / 对话框排在宿主的层之后、标注模式之前，交给页面自己关；最后是标注模式。
+  // 工作台自己的菜单、列表、大纲、页面浮层直接注册进同一份栈，次序见 LAYER_RANK。
+  // 栈在 window 捕获段统一截断，原型自己注册的 Esc（关表单、关弹窗）不会跟着触发
+  // （owner 2026-10-19）。
+  var stack = attachLayerStack(window);
+  stack.onEscape(function () { ctx.markNavigation++; }); // 还在等首帧的跳转也一起取消
+  stack.push('annotate-draft', takeDraftStep, { rank: LAYER_RANK.draft, sticky: true });
+  stack.push('host-page-layer', function () {
+    return document.querySelector(HOST_PAGE_LAYERS) ? YIELD : false;
+  }, { rank: LAYER_RANK.hostPage, sticky: true });
+  stack.push('annotate-mode', function () {
+    if (!ctx.mode) return false;
+    toggleMode();
+    return true;
+  }, { rank: LAYER_RANK.mode, sticky: true });
   window.pinpoint = {
     render: renderAll,
     perfDrain: perfDrain,

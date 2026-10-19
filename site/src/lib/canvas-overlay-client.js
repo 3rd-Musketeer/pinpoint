@@ -7,7 +7,7 @@
 // 画布里换了节（平移、大纲）用 replaceState 跟着换 #canvas=，不多压历史。旧地址 #overlay= 照样认。
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
 import { canvasHref } from './canvas-card.js';
-import { installLayerKeys, layers } from './layers.js';
+import { layers } from './layers.js';
 import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, parseCanvasHash } from './canvas-overlay.js';
 import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
 
@@ -376,7 +376,7 @@ export function initCanvasOverlay() {
     const list = stops();
     (guard === 'end' ? list[0] : list[list.length - 1])?.focus();
   });
-  installLayerKeys();
+  // Esc 由弹层栈处理（layers.js，加载时已装；浮层是栈里的 'overlay' 层）。
   // 原生 Esc（cancel）也走同一条关闭路径，好让地址、焦点和滚动位置一起复原。
   dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
   // 点到面板外的暗色区域（dialog 自己或它的 ::backdrop）关闭。

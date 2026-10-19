@@ -31,16 +31,22 @@ import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
 import { wbGet } from './store.js';
 import { Button } from './ui/button.jsx';
 import { ROW_MENU_ITEM } from './row-menu.jsx';
+import { keepEscapeForStack, LAYER_RANK, useStackLayer } from './use-layer.js';
 
 var mounted = []; // { shell, root }
 
 function FrameMenu(props) {
   var [copiedText, setCopiedText] = useState('');
+  var [menuOpen, setMenuOpen] = useState(false);
   var copyTimer = useRef(0);
 
   useEffect(function () {
     return function () { clearTimeout(copyTimer.current); };
   }, []);
+
+  // 菜单进工作台弹层栈（LAYER_RANK.chrome）：Esc 由栈裁决并截断，Radix 的 dismiss 不到场
+  // （onEscapeKeyDown 兜底）；点外关闭、焦点回 trigger 仍由 Radix 的 dismiss 层承担。
+  useStackLayer('frame-menu', menuOpen, function () { setMenuOpen(false); }, { rank: LAYER_RANK.chrome });
 
   function copyFrameRef() {
     var text = '@frame:' + wbGet().activePageId + '/' + props.screenId;
@@ -53,12 +59,12 @@ function FrameMenu(props) {
   }
 
   return (
-    <DropdownMenu.Root modal={false}>
+    <DropdownMenu.Root modal={false} open={menuOpen} onOpenChange={setMenuOpen}>
       <DropdownMenu.Trigger asChild>
         <Button type="button" variant="tool" aria-label="Frame 菜单" title="Frame 菜单"
           className="wb-frame-menu-trigger size-[30px] rounded-lg p-0 text-[18px] font-bold leading-none data-[state=open]:bg-accent data-[state=open]:text-foreground">⋯</Button>
       </DropdownMenu.Trigger>
-      <DropdownMenu.Content asChild>
+      <DropdownMenu.Content asChild onEscapeKeyDown={keepEscapeForStack}>
         <span role="menu" tabIndex={-1}
           className="wb-frame-menu absolute left-0 top-[35px] z-(--wb-z-frame-menu) box-border w-[204px] rounded-xl bg-card p-[5px] shadow-[var(--wb-sh-3)]">
           <DropdownMenu.Item asChild onSelect={function (event) { event.preventDefault(); copyFrameRef(); }}>

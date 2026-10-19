@@ -49,6 +49,8 @@ import {
   zoomForPage
 } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
+import { wbLayers } from './layer-stack.js';
+import { LAYER_RANK } from '../shared/layers.js';
 
 // 反向依赖注入：loadBoard / mountManager 留在 stage.js（舞台入口持有装载编排），
 // pages.js 不得 import stage.js，由它在初始化时经 initPages(deps) 注入。
@@ -509,6 +511,21 @@ export function isPageOverlayOpen() {
   return isPageOverlayEntry(entryById(boardEntries(active.board), wbGet().activeEntryId));
 }
 
+/* 浮层是弹层栈里的一层（C2）：开着就压栈，排在标注模式之后（LAYER_RANK.pageOverlay）——
+   先退标注模式、再关浮层；焦点在打字里时这一下归输入框（与旧 escape-layers 的判断一致）。
+   activeEntryId 只经 setActiveEntry 变，收尾同步一次即可；被栈关掉时
+   closePageOverlay → setActiveEntry 走同一条路，重复释放无害。 */
+var releasePageOverlayLayer = null;
+function syncPageOverlayLayer() {
+  var open = isPageOverlayOpen();
+  if (open && !releasePageOverlayLayer) {
+    releasePageOverlayLayer = wbLayers.push('page-overlay', closePageOverlay, { rank: LAYER_RANK.pageOverlay, respectTyping: true });
+  } else if (!open && releasePageOverlayLayer) {
+    releasePageOverlayLayer();
+    releasePageOverlayLayer = null;
+  }
+}
+
 /** 文章画布上的 HTML 帧（卡片）：画布上的标注客户端不管它的标注（它们在这一页自己的账本里，
     浮层里做），锚点找不到不算失效。 */
 function isHtmlCardScreen(active, screenId) {
@@ -539,6 +556,7 @@ export function setActiveEntry(entryId, options) {
   if (wbRoot) wbRoot.toggleAttribute('data-page-overlay', isPageOverlayEntry(entry));
   applyEntryVisibility(panel, active.board, entry);
   syncPhoneDocScale();
+  syncPageOverlayLayer();
   if (form === 'html') {
     if (options.scrollTop !== false && stage) stage.scrollTop = 0;
   } else if (!restorePageViewportAfterMount(active.pageId)) {

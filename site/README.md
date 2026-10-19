@@ -84,7 +84,7 @@ popup：article 显示标题、摘要、读全文；wiki 词条显示定义、�
 
 ## 弹层与 Esc
 
-`lib/layers.js` 是文章页的弹层栈：popup、wiki 面板、目录 popover、浮层打开时各压一层，Esc 在 document 捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 或 wiki 面板不会扔掉写了一半的评论。
+弹层栈的实现在 `src/shared/layers.js`，站点与工作台共用（`lib/layers.js` 给文章页装上并交出单例）：popup、wiki 面板、目录 popover、浮层打开时各压一层，Esc 在捕获阶段交给最上面一层，关掉它并 `preventDefault`。浮层打开时收起 popup。注入的正文评论客户端（`src/client/prose-comments.js`）见到 `defaultPrevented` 的 Esc 不动；草稿只在焦点就在草稿框里时被 Esc 取消，所以关 popup 或 wiki 面板不会扔掉写了一半的评论。嵌入的画布工作台是另一份文档、另一份栈：它没接住的 Esc 经 postMessage 请文章页关浮层，页面浮层 iframe 与活卡片里没接住的 Esc 重放给工作台的 window，走同一套栈协议；工作台里各层的先后次序见 `src/shared/layers.js` 的 `LAYER_RANK`。
 
 ## wiki 面板
 
@@ -117,4 +117,4 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 - `src/lib/canvas-card.js`：卡片模型、URL 与标注数（纯函数，有单测）；`canvas-card-client.js`：浏览器端量帧尺寸（只认嵌入帧页的 `data-pp-stage`）、画卡片头的标注数（自己读一次账本，之后听正文评论客户端发的 `pp:canvas-ledger`，浮层关上时再读一次）。
 - `src/lib/figure.js`：图的模型与 URL（纯函数，有单测）；`figure-client.js`：浏览器端按图页报上来的高度设 iframe 高度、记图的状态；`components/Figure.astro`：图的外壳。`remark-pinpoint.js` 给每个 `<Figure>` 注入序号 `n`，模型按它从 `articleCanvas` 的 `figures` 取这个图。
 - `src/lib/canvas-overlay.js`：浮层的 hash、嵌入版工作台的地址与消息、顶栏入口取哪一节；`overlay-motion.js`：转场参数与 transform-origin（纯函数，有单测）。`canvas-overlay-client.js`：浮层的浏览器端；`components/CanvasOverlay.astro`：浮层空壳，经 `Base.astro` 的 `overlay` 槽放在 `#article` 之外。
-- `src/lib/layers.js`：弹层栈（Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、窄屏目录入口、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数；`src/lib/toc-jump.js`：目录跳转的落点与动效参数（纯函数，有单测）。
+- `src/lib/layers.js`：弹层栈的文章页一份（实现在仓库 `src/shared/layers.js`，Esc 只关最上层）。`src/lib/client.js`：深浅色、目录高亮、窄屏目录入口、`[[ ]]` popup、wiki 面板。`src/lib/wiki-panel.js`：面板的定位与动效参数；`src/lib/toc-jump.js`：目录跳转的落点与动效参数（纯函数，有单测）。

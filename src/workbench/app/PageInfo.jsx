@@ -2,12 +2,19 @@ import { useEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Button } from './ui/button.jsx';
 import { WORKBENCH_PATH } from '../../shared/workbench-url.js';
+import { LAYER_RANK, useStackLayer } from './use-layer.js';
 
 export function PageInfo({ page, onClose }) {
   const dialogRef = useRef(null);
   const [info, setInfo] = useState(null);
   const [error, setError] = useState('');
   const [copied, setCopied] = useState(false);
+
+  // 模态信息卡是弹层栈里的一层（C2，LAYER_RANK.chrome）：Esc 由栈关（走 close → 原生 close 事件
+  // → onClose），与标注模式 / 菜单的次序由 rank 表达，不再靠查 DOM 猜。
+  useStackLayer('page-info', true, function () {
+    if (dialogRef.current && dialogRef.current.open) dialogRef.current.close();
+  }, { rank: LAYER_RANK.chrome });
 
   useEffect(() => {
     const controller = new AbortController();
