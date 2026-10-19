@@ -259,11 +259,9 @@ test('buildOfflineShareHtml 退回画布的视口裁剪：分享页全量渲染�
     workbenchCss: '.wb-zoom-wrap > .wb-library .wb-screen > .ios-stage{content-visibility:auto;contain-intrinsic-size:438px 910px}',
   });
   const style = html.match(/<style>([\s\S]*)<\/style>/)?.[1] || '';
+  // 退回靠 !important，不靠源码序：画布规则特异性更高，没有 !important 时
+  // computed contentVisibility 仍是 auto。
   assert.match(style, /\.wb-zoom-wrap \.wb-screen > \.ios-stage\{content-visibility:visible !important\}/);
-  // 退回规则必须排在被覆盖的画布规则之后（同权重下靠源码序兜底）
-  const optOutAt = style.indexOf('.wb-zoom-wrap .wb-screen > .ios-stage{content-visibility:visible');
-  const clipAt = style.indexOf('content-visibility:auto');
-  assert.ok(optOutAt > -1 && clipAt > -1 && optOutAt > clipAt, 'opt-out 规则应在画布裁剪规则之后');
 });
 
 test('buildOfflineShareHtml escapes titles and ids in the outline and strip', () => {
