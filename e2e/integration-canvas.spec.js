@@ -27,6 +27,9 @@ async function save(page, content) {
   await expect(page.locator('#ann-box')).toBeHidden();
 }
 async function focus(page, screen) {
+  // openWorkbenchConnected 只等标注客户端连上，板 DOM 可能还没挂：先等板落定、这一帧在场。
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
+  await expect(page.locator(`[data-screen="${screen}"]`).first()).toBeAttached();
   await page.evaluate(screen => {
     const group = document.querySelector(`[data-screen="${screen}"]`).closest('.wb-lib-item').dataset.annSection;
     window.workbench.focusFrame(group, screen, { smooth: false });

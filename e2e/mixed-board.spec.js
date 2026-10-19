@@ -12,6 +12,13 @@ import { openOutline, openWorkbench, stageForm } from './lib/workbench.js';
 // 四条用例合并成一条（同一个固件同一次开页能走完）：静态形态 → 阅读器切换 →
 // 条目记忆（reload）→ 深链。
 
+// 新文档（reload、深链打开）里 workbench / pinpoint 两个全局先挂上，板和条目记忆后落定：
+// 读舞台形态前先等板落定，再等形态到位（页清单先按页的 mode 写一次，条目记忆随后改写）。
+async function settledForm(page, form) {
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
+  await expect.poll(() => stageForm(page)).toBe(form);
+}
+
 async function openMixed(page) {
   await openWorkbench(page);
   await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
@@ -77,7 +84,7 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   // activePageId + 条目双重记忆：reload 直接回到草稿阅读器。
-  expect(await stageForm(page)).toBe('html');
+  await settledForm(page, 'html');
   await expect(page.frameLocator('#wb-board-panel [data-screen="draft-variants"] .wb-doc-frame').locator('#draft-title'))
     .toHaveText('E2E mixed draft');
   await openOutline(page);
@@ -99,13 +106,13 @@ test('混合板：静态形态、文档/画布切换、条目跨 reload 记忆�
   // 切回画布条目后 reload：回到画布。
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
-  expect(await stageForm(page)).toBe('ios');
+  await settledForm(page, 'ios');
   await expect(page.locator('#wb-board-panel [data-screen="home"] .ios-stage')).toBeVisible();
 
   // ── 深链：?entry= 直达文档条目；未知条目 id → 选中解析落默认条目（画布），
   //     URL 被重写为真实值。
   await openWorkbench(page, 'page=e2e-mixed&entry=spec');
-  expect(await stageForm(page)).toBe('html');
+  await settledForm(page, 'html');
   await expect(page.frameLocator('#wb-board-panel [data-screen="spec"] .wb-doc-frame').locator('#spec-title'))
     .toHaveText('E2E mixed spec');
   await expect.poll(() => page.evaluate(() => window.workbench.activeEntryId())).toBe('spec');
