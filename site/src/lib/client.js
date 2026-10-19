@@ -1,5 +1,6 @@
 // 浏览器端：深浅色切换、目录高亮、[[ ]] popup、wiki 面板。数据全在 .cref 的 data-* 上（refs.js refHtml）。
 
+import { computePosition, offset, shift } from '@floating-ui/dom';
 import { layers } from './layers.js';
 import { installOverlayScrollbars } from '../../../src/client/overlay-scrollbar.js';
 import { escHtml as esc } from '../../../src/shared/esc-html.js';
@@ -341,9 +342,17 @@ function initRefPopups() {
     release = layers.push('popup', closePop);
     owner = el;
     el.setAttribute('aria-describedby', pop.id);
-    const r = el.getBoundingClientRect();
-    pop.style.left = `${Math.max(12, Math.min(innerWidth - 312, r.left + scrollX))}px`;
-    pop.style.top = `${r.bottom + scrollY + 8}px`;
+    // 定位（@floating-ui/dom，2026-10-19 C4）：bottom-start 贴引用左下、间距 8px，
+    // 水平向视口收 12px 边距（同旧的 clamp(left, 12, vw-300-12)，popup 宽 300）。
+    computePosition(el, pop, {
+      strategy: 'absolute',
+      placement: 'bottom-start',
+      middleware: [offset(8), shift({ padding: 12 })],
+    }).then(({ x, y }) => {
+      if (!pop.isConnected) return;
+      pop.style.left = `${x}px`;
+      pop.style.top = `${y}px`;
+    });
   };
   const scheduleOpen = (el) => {
     clearTimeout(closeTimer);
