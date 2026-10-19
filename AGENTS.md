@@ -59,7 +59,7 @@ Portless 拥有正常路由与进程生命周期；`npm run dev:direct` 是显�
 
 ```bash
 pinpoint status     # 路由 · 进程 · 直连 /health · 代理 /health · 服务 root · registry；全绿才退 0
-pinpoint start      # 已经健康就拒绝；否则在 CLI 所在仓库起 `npm run dev`，日志进 ~/.pinpoint/logs/
+pinpoint start      # 已经健康就拒绝；否则在 CLI 所在仓库（全局 ppnt = 发布 worktree）起 `npm run dev`，日志进 ~/.pinpoint/logs/
 pinpoint stop       # 只 SIGTERM portless 记的那个 pid，vite 子进程跟着走，不要再手杀
 pinpoint restart    # 停 + 起
 ```
@@ -82,7 +82,14 @@ agent 只经 `ppnt mark <目标> <引用…> check|done [--note "<回复>"]` 写
 ## 分支与推送
 
 - 只有一个长期分支 `main`，唯一 clone 在 `repos/github.com/3rd-Musketeer/pinpoint/`。
-  常驻的 `pinpoint.localhost` 服务从这个 clone 起。
+- 正式和开发分开（2026-10-19 起，owner 要的 staging）：常驻的 `pinpoint.localhost` 和全局 `ppnt` 跑发布 worktree
+  `repos/.worktrees/github.com/3rd-Musketeer/pinpoint/release`（detached，自己的 `node_modules`），不跑这个 clone。
+  所以在 clone 里改代码不会热更新到 owner 正在用的页面，也不能拿 `pinpoint.localhost` 验证刚改的代码。
+  - 试改动：clone 里 `just staging` 起 `http://127.0.0.1:4900`（`~/.pinpoint` 的新快照，标注只进快照，前台运行）；
+    feat worktree 里照旧 `just preview`。
+  - 上线 = `just promote [<rev>]`（默认 `main`）：发布 worktree 移到该提交，锁文件变了就重装，再 restart，
+    记一行 `~/.pinpoint/logs/releases.log`，打出回滚命令。发布 worktree 只靠 promote 移动，不在里面改文件、不切到分支
+    （在分支上 portless 会把它挂到 `<分支>.pinpoint.localhost`）。
 - 小改动直接在 `main` 上提交。较大的功能开 worktree：
   `git worktree add ../../../.worktrees/github.com/3rd-Musketeer/pinpoint/<任务名> -b feat/<任务名>`。
   做完在 clone 里 `git merge --ff-only feat/<任务名>`，再 `git worktree remove` 并删掉分支。
