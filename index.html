@@ -5,6 +5,9 @@
 <!-- 工作台住在 /workbench/（ADR 0044），壳页仍是仓库根这份文件。板与清单里的地址是相对站点根写的
      （sites/<id>/…、previews/…、帧片段里的资源），base 让它们照旧按 / 解析。 -->
 <base href="/">
+<!-- 嵌入版的文档代次（C1）：文章浮层随 src 传 ?gen=，这里在文档起点取一次存成常量。url-sync 随后会改写
+     地址栏，embed.js 的消息和下面的 __wbBootFail 都只读 window.__wbGen，不再现取 location.search。 -->
+<script>window.__wbGen = (function () { var g = Number(new URLSearchParams(location.search).get('gen')); return isFinite(g) && g > 0 ? g : 0; })();</script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>pinpoint</title>
 <link rel="stylesheet" href="/kits/ios/ios-kit.css">
@@ -1099,9 +1102,8 @@
 <script>window.__wbBootFail = function (src) {
   window.__wbBootError = src;
   if (window.parent === window) return;
-  // gen 原样回传（embed.js bootGen 同一取法）：文章页按文档代次核对消息归属。
-  var gen = Number(new URLSearchParams(location.search).get('gen'));
-  try { parent.postMessage({ source: 'pinpoint-workbench', type: 'boot-error', src: String(src), gen: gen > 0 ? gen : 0 }, location.origin); } catch (e) { /* 父页面已经走了 */ }
+  // gen 原样回传（文档起点存的 __wbGen，与 embed.js 同一份）：文章页按文档代次核对消息归属。
+  try { parent.postMessage({ source: 'pinpoint-workbench', type: 'boot-error', src: String(src), gen: window.__wbGen || 0 }, location.origin); } catch (e) { /* 父页面已经走了 */ }
 };</script>
 <script type="module" src="/src/workbench/workbench-icons.js" onerror="window.__wbBootFail(this.src)"></script>
 <script type="module" src="/src/workbench/stage.js" onerror="window.__wbBootFail(this.src)"></script>

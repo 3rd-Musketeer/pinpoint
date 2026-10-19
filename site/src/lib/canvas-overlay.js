@@ -33,7 +33,7 @@ export function parseCanvasHash(hash) {
 
 /**
  * 浮层里的工作台：画布视图的地址加 `embed=overlay`（src/workbench/lib/page-url.js isEmbedded）。
- * `gen` 是文档代次：重试换 src 时递增，工作台原样回传（embed.js bootGen），文章页
+ * `gen` 是文档代次：重试换 src 时递增，工作台原样回传（index.html 在文档起点存的 window.__wbGen），文章页
  * 据此丢掉旧文档迟到的消息。嵌入版不出左栏和“← 文章标题”，Esc 交回文章页（src/workbench/embed.js）。
  */
 export function embedCanvasSrc(pageId, sectionId, gen = '') {

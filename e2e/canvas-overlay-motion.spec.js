@@ -274,6 +274,34 @@ test('画布浮层：board 失败时工作台自己的重试按钮点得到', as
   await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
 });
 
+// 代次是文档常量（C1 修复轮）：工作台 boot 后 url-sync 会把 ?gen= 从地址里改写掉。
+// board 失败、点工作台自己的重试恢复后，同一文档再报的 ready 必须还带原来的代次，
+// 否则文章页把它当旧文档的消息丢掉，此后再开浮层都不再定位。
+test('画布浮层：board 失败后点工作台自己的重试，再开浮层照常定位', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let fail = true;
+  await page.route('**/board.json', (route) => {
+    if (fail) return route.fulfill({ status: 503, body: 'temporarily unavailable' });
+    return route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  const inner = overlay(page).frameLocator('iframe.ov-canvas');
+  const retry = inner.locator('[data-err-retry="board"]');
+  await expect(retry).toBeVisible({ timeout: 30_000 });
+  await expect(status(page)).toBeHidden({ timeout: 5_000 });
+  fail = false;
+  await retry.click();
+  await expect(inner.locator('#wb-board-panel [data-screen]')).toHaveCount(5, { timeout: 30_000 });
+  await overlay(page).locator('[data-ov-close]').click();
+  await expect(overlay(page)).not.toHaveAttribute('open', '');
+  await openFromCard(page);
+  await expect(overlay(page)).toHaveAttribute('open', '');
+  await expect.poll(() => page.evaluate(() => window.pinpointOverlay.state()?.landing), { timeout: 30_000 }).toBe('section');
+  await expect(status(page)).toBeHidden();
+});
+
 test('画布浮层：外壳模块慢四秒后放行，准备态收起，画布点得到', async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });

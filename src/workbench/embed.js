@@ -21,7 +21,7 @@ function post(message) {
   if (window.parent === window) return;
   try {
     // 就绪三条按 gen 核对归属（重试换文档后旧消息作废）；close / section 不看它，带上无害。
-    window.parent.postMessage(Object.assign({ source: EMBED_MESSAGE_SOURCE, gen: bootGen() }, message), location.origin);
+    window.parent.postMessage(Object.assign({ source: EMBED_MESSAGE_SOURCE, gen: docGen() }, message), location.origin);
   } catch (e) { /* 父页面已经走了 */ }
 }
 
@@ -33,9 +33,11 @@ export function notifyEmbed(message) {
 }
 
 /** 文档代次：文章页每次（重试）换 src 时递增 ?gen=，这里原样回传 —— 重试后旧文档
-    迟到的消息带着旧代次，文章页把它丢掉。 */
-function bootGen() {
-  var g = Number(new URLSearchParams(location.search).get('gen'));
+    迟到的消息带着旧代次，文章页把它丢掉。代次是文档常量，由 index.html 在文档起点
+    （任何 replaceState 之前）取一次存进 window.__wbGen；不能现读 location.search ——
+    url-sync 镜像地址时会把 ?gen= 改写掉。 */
+function docGen() {
+  var g = Number(window.__wbGen);
   return Number.isFinite(g) && g > 0 ? g : 0;
 }
 
@@ -57,7 +59,7 @@ function announceReady() {
     announcing = false;
     if (gen === null || gen === undefined) return;
     announcedGeneration = gen;
-    post({ type: 'ready', pageId: wbGet().activePageId, gen: bootGen() });
+    post({ type: 'ready', pageId: wbGet().activePageId });
   }).catch(function () { announcing = false; });
 }
 
