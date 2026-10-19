@@ -88,7 +88,9 @@ import { embedParked, registerEmbedPark } from './embed-park.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from '../client/overlay-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
-import { liveCardAnnotateApi, startLiveCards, syncLiveCards, whenCardAnnotateReady } from './live-cards.js';
+import { startLiveCards, syncLiveCards } from './live-cards.js';
+// 卡片标注实例的解析与就绪等待住 annotate-surface.js（C3 找实例合一）。
+import { cardAnnotateApi, whenCardAnnotateReady } from './annotate-surface.js';
 import { subscribeServerEvents } from './server-events.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
@@ -348,7 +350,7 @@ window.workbench = {
     if (ok) selectBoardFrame(sectionId, screenId);
     return ok;
   },
-  cardAnnotateApi: liveCardAnnotateApi,
+  cardAnnotateApi: cardAnnotateApi,
   // 活卡片的标注客户端等绑定完成（C1）：文章浮层定位 HTML 帧上的钉子前等它，
   // 替掉 marks 轮询。解析到 null（帧卸载 / 换板）就放手。
   whenCardAnnotateReady: whenCardAnnotateReady,

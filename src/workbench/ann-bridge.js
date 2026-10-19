@@ -10,65 +10,14 @@ import { wbGet, wbSet } from './app/store.js';
 import { readingSegments } from '../shared/annotation-indicator.js';
 import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
-import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { embedParked, registerEmbedPark } from './embed-park.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
+// 「哪个 annotate 实例在管」的判定与模式同步住 annotate-surface.js（C3）；
+// 这里消费解析结果并把它转发给既有消费面（annotateApi 的消费点都在 ann-bridge）。
+import { annotateApi, parkParentAnnotate, routeAnnotateKey } from './annotate-surface.js';
 
-/* ---- annotate API resolver -------------------------------------------------
-   文档条目的文档活在 iframe 里，它自己注入 annotate.js，于是页面上同时存在两个
-   互不相通的标注实例：父窗口（侧栏按钮驱动）和 iframe（文档本体）。侧栏点「标注」
-   只切到了父窗口那个，画不出框 —— 表现成「侧栏和右下角没对齐」。
-   侧栏是唯一控制面，所以取用时按当前选中条目解析到正确的那个实例。 */
-/* 舞台上此刻可见的那个文档 iframe（2026-09-05 起不看形态看可见性）：窗口视口下它
-   1:1 铺满舞台，手机视口下它装在缩过的手机屏里，两种情况标注实例都是它自己的；
-   画布条目态 doc 屏全部 data-doc-hidden，这里得 null → 回落父窗口实例。 */
-function activeDocFrameEl() {
-  var panel = document.getElementById('wb-board-panel');
-  if (!panel) return null;
-  return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
-}
-
-function activeDocWindow() {
-  var frame = activeDocFrameEl();
-  if (!frame) return null;
-  try {
-    var w = frame.contentWindow;
-    return w && w.pinpoint ? w : null;     // 跨域时读 contentWindow 会抛
-  } catch (e) {
-    return null;
-  }
-}
-
-export function annotateApi() {
-  var docWin = activeDocWindow();
-  return (docWin && docWin.pinpoint) || window.pinpoint;
-}
-
-/* 文档条目选中时，父窗口实例必须停在交互态（2026-10-14 owner：「我在手机视图下标注，
-   出来的是整个页面」）。它还在标注态时（画布页上开的标注没关就切过来，或焦点在工作台
-   上按了 A），窗口视口里 iframe 盖满舞台、它碰不到任何东西；手机视口里舞台露在手机屏
-   四周，它的命中落到 .wb-lib-item（整节 = 整个舞台的框）或 .ios-screen 里的 iframe
-   元素（整份文档），标出来的就是整页。横条按钮读的是 iframe 实例，看不出父实例开着。
-   所以：快照每次同步都把父实例拨回交互态；A 键在文档条目上改驱动 iframe 实例，与横条
-   「标注」按钮驱动同一个。 */
-function parkParentAnnotate() {
-  var parent = window.pinpoint;
-  if (!parent || typeof parent.getState !== 'function' || typeof parent.setMode !== 'function') return;
-  if (!activeDocFrameEl()) return;
-  if (parent.getState().mode) parent.setMode(false);
-}
-
-// window 捕获阶段先于父实例挂在 document 上的 A 键监听（src/client/annotate.js）。
-function routeAnnotateKey(e) {
-  if (e.key !== 'a' && e.key !== 'A') return;
-  if (e.metaKey || e.ctrlKey || e.altKey || isComposingKey(e)) return;
-  if (isTypingTarget(e.target) || !activeDocFrameEl()) return;
-  e.preventDefault();
-  e.stopImmediatePropagation();
-  var docWin = activeDocWindow();
-  if (docWin && typeof docWin.pinpoint.toggle === 'function') docWin.pinpoint.toggle();
-}
+export { annotateApi };
 
 /* ---- 标注状态快照（annSnap）------------------------------------------------
    React 标注列表（app/AnnPopover.jsx）只读 store 里的 annSnap：annotate 实例
