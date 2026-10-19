@@ -241,9 +241,16 @@ import {
       var moveRaf = 0;
       var nextScroll = null;
 
+      // 与 src/shared/keys.js 的 isTypingTarget / isComposingKey 同一套语义（select
+      // 与组字都算打字）。本文件是内联经典脚本、禁止 import，改语义时两处一起改。
       function isTypingTarget(el) {
         if (!el || !el.closest) return false;
-        return !!el.closest('input, textarea, select, [contenteditable=""], [contenteditable="true"]');
+        if (el.closest('input, textarea, select')) return true;
+        var ce = el.closest('[contenteditable]');
+        return !!(ce && ce.isContentEditable);
+      }
+      function isComposingKey(e) {
+        return !!(e.isComposing || e.keyCode === 229);
       }
 
       function flush() {
@@ -302,7 +309,7 @@ import {
 
       document.addEventListener('keydown', function (e) {
         if (e.code !== 'Space' && e.key !== ' ') return;
-        if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+        if (isTypingTarget(e.target) || isComposingKey(e) || e.metaKey || e.ctrlKey || e.altKey) return;
         e.preventDefault();
         if (e.repeat) return;
         spaceDown = true;
@@ -311,7 +318,7 @@ import {
 
       document.addEventListener('keyup', function (e) {
         if (e.code !== 'Space' && e.key !== ' ') return;
-        if (!isTypingTarget(e.target)) e.preventDefault();
+        if (!isTypingTarget(e.target) && !isComposingKey(e)) e.preventDefault();
         spaceDown = false;
         syncSpaceCursor();
       }, true);

@@ -5,6 +5,7 @@ import { annotateCss } from '../annotate-css.js';
 import { installOverlayScrollbars } from '../overlay-scrollbar.js';
 import { isClearableMark } from '../../shared/annotation-indicator.js';
 import { badgePositionInBox, expandRect } from '../../shared/annotate-clip.js';
+import { isComposingKey, isTypingTarget } from '../../shared/keys.js';
 import { markElementTargets, markOnActivePage, resolveMarkTarget, screenOffTab } from './anchor.js';
 import { clearBubbles, renderAll } from './bubbles.js';
 import { closeComposer } from './composer.js';
@@ -90,9 +91,8 @@ export function installUiBindings() {
   });
   document.addEventListener('keydown', function (e) {
     if (e.key !== 'a' && e.key !== 'A') return;
-    if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
-    var t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || isComposingKey(e)) return;
+    if (isTypingTarget(e.target)) return;
     e.preventDefault();
     toggleMode();
   });
@@ -100,9 +100,8 @@ export function installUiBindings() {
   // 快捷键 S：开合标注面板（次要入口，主入口是扩展图标；守卫同 A；看列表是只读行为，标注/交互模式都可用）
   document.addEventListener('keydown', function (e) {
     if (e.key !== 's' && e.key !== 'S') return;
-    if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
-    var t = e.target;
-    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable)) return;
+    if (e.metaKey || e.ctrlKey || e.altKey || isComposingKey(e)) return;
+    if (isTypingTarget(e.target)) return;
     e.preventDefault();
     toggleSidebar();
   });

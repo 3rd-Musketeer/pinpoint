@@ -10,6 +10,7 @@ import { wbGet, wbSet } from './app/store.js';
 import { readingSegments } from '../shared/annotation-indicator.js';
 import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
+import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
@@ -57,14 +58,10 @@ function parkParentAnnotate() {
   if (parent.getState().mode) parent.setMode(false);
 }
 
-function isTypingTarget(t) {
-  return !!(t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA' || t.isContentEditable));
-}
-
 // window 捕获阶段先于父实例挂在 document 上的 A 键监听（src/client/annotate.js）。
 function routeAnnotateKey(e) {
   if (e.key !== 'a' && e.key !== 'A') return;
-  if (e.metaKey || e.ctrlKey || e.altKey || e.isComposing || e.keyCode === 229) return;
+  if (e.metaKey || e.ctrlKey || e.altKey || isComposingKey(e)) return;
   if (isTypingTarget(e.target) || !activeDocFrameEl()) return;
   e.preventDefault();
   e.stopImmediatePropagation();

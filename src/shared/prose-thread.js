@@ -16,6 +16,8 @@ import { isClosed } from './ann-status.js';
 
 export { PROSE_LEDGER } from './project-ids.js';
 
+import { isComposingKey } from './keys.js';
+
 export function isProseRow(row) {
   return Boolean(row && row.type === 'prose');
 }
@@ -147,7 +149,7 @@ export function railOrder(rows, orderKey = () => Infinity) {
  */
 export function isSendKey(e) {
   if (!e || e.key !== 'Enter') return false;
-  if (e.shiftKey || e.isComposing || e.keyCode === 229) return false;
+  if (e.shiftKey || isComposingKey(e)) return false;
   return true;
 }
 

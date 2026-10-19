@@ -1,6 +1,7 @@
 /* 正文与右栏的事件。选区出“评论”、点卡外面收回复框或保存编辑、Esc、点高亮、点右栏按钮、Enter 发送。
  * 导出 bindProseEvents。动作（发送、展开、改状态、编辑）由入口经 actions 传进来。 */
 
+import { isComposingKey } from '../../shared/keys.js';
 import { isSendKey } from '../../shared/prose-thread.js';
 import { cssEscape, growEdit, railArea } from './edit-field.js';
 
@@ -79,7 +80,7 @@ export function bindProseEvents(opts) {
   // Esc：别的弹层（文章站点的 [[ ]] popup、画布浮层）处理过的 Esc 带 defaultPrevented，不动这里；
   // 草稿只在焦点就在草稿框里时取消，免得按 Esc 关别的东西时把写了一半的评论扔掉。
   document.addEventListener('keydown', function (e) {
-    if (e.key !== 'Escape' || e.defaultPrevented || e.isComposing || state.composingArea) return;
+    if (e.key !== 'Escape' || e.defaultPrevented || isComposingKey(e) || state.composingArea) return;
     // 焦点在回复框里：Esc 只收起这个框，写了一半的字留作草稿。
     var replyArea = document.activeElement && document.activeElement.closest
       && document.activeElement.closest('textarea[data-reply]:not([data-reply="__draft"])');
@@ -178,10 +179,10 @@ export function bindProseEvents(opts) {
     // 编辑第一句：⌘/Ctrl+Enter 保存，Esc 取消恢复原文；单独 Enter 是换行。
     var editing = e.target.closest && e.target.closest('textarea[data-edit], .pp-body.pp-edit');
     if (editing) {
-      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !e.isComposing && e.keyCode !== 229) {
+      if (e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isComposingKey(e)) {
         e.preventDefault();
         edit.finishEdit();
-      } else if (e.key === 'Escape' && !e.isComposing && e.keyCode !== 229) {
+      } else if (e.key === 'Escape' && !isComposingKey(e)) {
         e.preventDefault();
         edit.cancelEdit();
       }

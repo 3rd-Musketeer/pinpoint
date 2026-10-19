@@ -25,7 +25,6 @@ import {
   clearBoardSelection,
   focusBoardSection,
   focusWorkbenchFrame,
-  isTypingTarget,
   resetBoardNavOnLoadFailure,
   sectionNavRetrying,
   selectBoardFrame,
@@ -33,6 +32,7 @@ import {
   setFrameRevealer,
   syncBoardSelection
 } from './board-nav.js';
+import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml, screenContentHtml } from './screen-load.js';
 import { CANVAS_ENTRY_ID, isArticleBoard } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
@@ -613,7 +613,8 @@ stage.addEventListener('wheel', function (e) {
 
   document.addEventListener('keydown', function (e) {
     if (e.code !== 'Space' && e.key !== ' ') return;
-    if (isTypingTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+    // 组字中的空格是候选转换，不是平移手势（I9 统一为「打字中」）。
+    if (isTypingTarget(e.target) || isComposingKey(e) || e.metaKey || e.ctrlKey || e.altKey) return;
     // Block Space page-scroll on every keydown, including key-repeat while held for pan.
     e.preventDefault();
     if (e.repeat) return;
@@ -624,7 +625,7 @@ stage.addEventListener('wheel', function (e) {
   document.addEventListener('keyup', function (e) {
     if (e.code !== 'Space' && e.key !== ' ') return;
     // Always clear pan-arming; only skip preventDefault when typing.
-    if (!isTypingTarget(e.target)) e.preventDefault();
+    if (!isTypingTarget(e.target) && !isComposingKey(e)) e.preventDefault();
     spaceDown = false;
     syncSpaceCursor();
   }, true);

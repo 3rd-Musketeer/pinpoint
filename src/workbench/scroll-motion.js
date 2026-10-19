@@ -1,4 +1,5 @@
 import { advanceScrollSpring } from './lib/scroll-spring.js';
+import { isTypingTarget } from '../shared/keys.js';
 
 let active = null;
 
@@ -84,7 +85,7 @@ export function scrollStageTo(stage, target, options = {}) {
   motion.promise = new Promise(resolve => { motion.resolve = resolve; });
   const onKey = event => {
     if (['Escape', ' ', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'PageUp', 'PageDown', 'Home', 'End'].includes(event.key)
-        && !event.target.closest?.('input, textarea, [contenteditable="true"]')) cancelStageScroll();
+        && !isTypingTarget(event.target)) cancelStageScroll();
   };
   const onReduced = () => {
     if (!reduced.matches) return;

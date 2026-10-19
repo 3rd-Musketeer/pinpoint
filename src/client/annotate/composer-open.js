@@ -1,6 +1,7 @@
 // 打开标注框：把一行标注装进 composer，接上 mention、贴图与自动保存，
 // 并摆到锚点旁边。导出 bind_composer_open、openComposer。
 import { normalizeAnnotation, targetContentToDisplay, nextTargetRef } from '../../shared/annotation-indicator.js';
+import { isComposingKey } from '../../shared/keys.js';
 import { isMarkBroken, markElementTargets, normalizeElementTargets, resolveMarkAnchor } from './anchor.js';
 import { removeTempArrow } from './arrow.js';
 import { attachComposerAutosave, attachComposerImages } from './composer-images.js';
@@ -104,7 +105,7 @@ export function openComposer(m, anchorRect, isNew) {
   var toolsMenu = box.querySelector('#ann-tools-menu');
   function closeTools() { toolsMenu.hidden = true; plus.setAttribute('aria-expanded', 'false'); }
   plus.addEventListener('click', function () { toolsMenu.hidden = !toolsMenu.hidden; plus.setAttribute('aria-expanded', String(!toolsMenu.hidden)); });
-  // Esc 关工具菜单在 nav.js 的 takeEscape 里（标注层的 Esc 统一在 window 捕获段处理）。
+  // Esc 关工具菜单在弹层栈的标注草稿层里（nav.js takeDraftStep，标注层的 Esc 统一裁决）。
   function renderModes() {
     var wrap = box.querySelector('#ann-mode-pills'); wrap.replaceChildren();
     [['change', '改文案', draft.changeOn], ['move', '移动', !!m.move]].forEach(function (item) {
@@ -133,7 +134,7 @@ export function openComposer(m, anchorRect, isNew) {
     if (!composer.composing && composer.noteSaveState) composer.noteSaveState();
   });
   ta.addEventListener('keydown', function (e) {
-    if (composer.composing || e.isComposing || e.keyCode === 229) return; // 输入法组字中：回车/ESC 都交给输入法
+    if (composer.composing || isComposingKey(e)) return; // 输入法组字中：回车/ESC 都交给输入法
     // macOS Chromium 的滚动边界会消费未加修饰键的 Home / End，光标仍停在原处。
     // 直接按浏览器的行边界移动选区；保留 Shift 选择与平台修饰键的原生行为。
     if ((e.key === 'Home' || e.key === 'End') && !e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey) {
@@ -151,7 +152,7 @@ export function openComposer(m, anchorRect, isNew) {
       if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); mention.pick(); return; }
     }
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); save(); }
-    // Escape：提及列表、标注框都由 nav.js 的 takeEscape 逐级关
+    // Escape：提及列表、标注框都由弹层栈的标注草稿层逐级关（nav.js takeDraftStep）
   });
   box.querySelector('#ann-close').addEventListener('click', function () { closeComposer(); });
   var del = box.querySelector('#ann-del');
