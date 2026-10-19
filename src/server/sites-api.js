@@ -37,6 +37,7 @@ import {
 } from './lib/page-compiler.js';
 import { loadRegistry } from './lib/registry.js';
 import { synthesizeBoard } from './lib/synth-board.js';
+import { screenEntries } from '../shared/board-screens.js';
 import { parseFrameSrc } from '../shared/project-ids.js';
 
 export { annotateSnippet, injectAnnotateClient };
@@ -113,7 +114,7 @@ export function createSitesHandler(options = {}) {
     if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
     const query = parseReqUrl(req).query;
     const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, target.entryId);
-    const screens = (board.sections || []).flatMap((section) => section.screens || []);
+    const screens = screenEntries(board).map((hit) => hit.screen);
     // project 根和 source 目录下的文件（docs/projects.md“HTML 帧”）：/sites/<页 id>/@root/<路径>、
     // /sites/<页 id>/@source/<名>/<路径>。一个目录只在这篇有帧真的住在里面时开放（帧文件解析得到；
     // 缺文件的 { id, src } 帧不算）；帧本身注入标注客户端，其余文件（帧引用的样式、脚本、图片、内嵌的 HTML）原样出。

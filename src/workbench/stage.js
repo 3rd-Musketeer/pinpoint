@@ -36,6 +36,7 @@ import {
 import { buildBoardHtml, fetchScreenHtml, loadFailHtml } from './screen-load.js';
 import { CANVAS_ENTRY_ID } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
+import { screenEntries } from '../shared/board-screens.js';
 import { afterMount, initPreviewMount } from './preview-mount.js';
 import { resetFrame } from './frame-reset.js';
 import {
@@ -180,14 +181,7 @@ async function loadBoard(panel, pageId, loadOptions) {
       || tabPrefFor(pageId);
     var tabId = resolveTabId(fullBoard, wantedTab);
     board = boardForTab(fullBoard, tabId);
-    var entries = [];
-    var seen = {};
-    (board.sections || []).forEach(function (sec) {
-      (sec.screens || []).forEach(function (entry) {
-        var sc = entry;
-        if (!seen[sc.id]) { seen[sc.id] = true; entries.push(sc); }
-      });
-    });
+    var entries = screenEntries(board).map(function (hit) { return hit.screen; });
     var rows = await Promise.all(entries.map(function (sc) {
       return fetchScreenHtml(pageId, sc).then(function (res) {
         return { id: sc.id, res: res };

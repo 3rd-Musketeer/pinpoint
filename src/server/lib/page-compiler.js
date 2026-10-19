@@ -35,6 +35,7 @@ import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { containedSource, requireSource, sourceBoundaryPlugin } from './compiler-source.js';
 import { resolveContainedFile } from './servable-file.js';
+import { screenEntries } from '../../shared/board-screens.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
@@ -166,11 +167,8 @@ function screenIdsFromBoard(rawBoard) {
   const board = flattenTabs(rawBoard);
   if (!board || !Array.isArray(board.sections)) return null;
   const ids = new Set();
-  for (const section of board.sections) {
-    for (const screen of (section && section.screens) || []) {
-      const id = typeof screen === 'string' ? screen : screen && screen.id;
-      if (typeof id === 'string' && SCREEN_ID_PATTERN.test(id)) ids.add(id);
-    }
+  for (const { screen } of screenEntries(board)) {
+    if (SCREEN_ID_PATTERN.test(screen.id)) ids.add(screen.id);
   }
   return ids;
 }
@@ -482,37 +480,30 @@ export function injectAssets(html, assets, urlBase) {
     + (jsLines.length ? `\n${jsLines.join('\n')}` : '');
 }
 
-/** board.json 的 screen 条目序列（编译用）：{ id, comp?, props? }，按 id 去重保序。 */
+/** board.json 的 screen 条目序列（编译用）：{ id, comp?, props? }，按 id 去重保序。
+    遍历只有一处（shared/board-screens.js 的 screenEntries，tabs 在里面摊平）；
+    这里只剩编译侧自己的归一：id 合法性过滤与 comp 条目校验。 */
 export function screenEntriesFromBoard(rawBoard) {
-  // 页 tab（ADR 0041）：所有 tab 的屏一起编，与活动 tab 无关。
-  const board = flattenTabs(rawBoard);
-  if (!board || !Array.isArray(board.sections)) return [];
-  const seen = new Set();
   const entries = [];
-  for (const section of board.sections) {
-    for (const screen of (section && section.screens) || []) {
-      const raw = typeof screen === 'string' ? { id: screen } : screen;
-      if (!raw || typeof raw.id !== 'string' || !SCREEN_ID_PATTERN.test(raw.id)) continue;
-      if (seen.has(raw.id)) continue;
-      seen.add(raw.id);
-      const entry = { id: raw.id };
-      // 文章画布上 project 根下的 HTML 帧（docs/projects.md“HTML 帧”）：src 指到源文件。
-      if (typeof raw.src === 'string' && raw.src) entry.src = raw.src;
-      // comp section 的 variants 墙（pp2 切片 2）：comp = 组件名，props 只允许 JSON 值
-      // （board.json 本身是 JSON，天然满足；非对象的 props 按空对象处理）。
-      if (typeof raw.comp === 'string' && raw.comp) {
-        if (!COMP_NAME_PATTERN.test(raw.comp)) {
-          // 编译侧与 workbench 的 preview-contracts 同一条 comp 名规则：不合法的
-          // 名不进路径拼接（`../../x` 会指到页外）也不进生成的 import 代码，
-          // 屏级报错，其余屏照常。
-          entry.compError = `comp 名不合法："${raw.comp}"（必须匹配 ${COMP_NAME_PATTERN}）`;
-        } else {
-          entry.comp = raw.comp;
-          entry.props = raw.props && typeof raw.props === 'object' && !Array.isArray(raw.props) ? raw.props : {};
-        }
+  for (const { screen } of screenEntries(rawBoard)) {
+    if (!SCREEN_ID_PATTERN.test(screen.id)) continue;
+    const entry = { id: screen.id };
+    // 文章画布上 project 根下的 HTML 帧（docs/projects.md“HTML 帧”）：src 指到源文件。
+    if (typeof screen.src === 'string' && screen.src) entry.src = screen.src;
+    // comp section 的 variants 墙（pp2 切片 2）：comp = 组件名，props 只允许 JSON 值
+    // （board.json 本身是 JSON，天然满足；非对象的 props 按空对象处理）。
+    if (typeof screen.comp === 'string' && screen.comp) {
+      if (!COMP_NAME_PATTERN.test(screen.comp)) {
+        // 编译侧与 workbench 的 preview-contracts 同一条 comp 名规则：不合法的
+        // 名不进路径拼接（`../../x` 会指到页外）也不进生成的 import 代码，
+        // 屏级报错，其余屏照常。
+        entry.compError = `comp 名不合法："${screen.comp}"（必须匹配 ${COMP_NAME_PATTERN}）`;
+      } else {
+        entry.comp = screen.comp;
+        entry.props = screen.props && typeof screen.props === 'object' && !Array.isArray(screen.props) ? screen.props : {};
       }
-      entries.push(entry);
     }
+    entries.push(entry);
   }
   return entries;
 }

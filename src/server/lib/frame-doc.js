@@ -25,6 +25,7 @@ import {
 import { boardRefs } from '../../workbench/lib/board-refs.js';
 import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
 import { escHtml } from '../../shared/esc-html.js';
+import { screenEntries } from '../../shared/board-screens.js';
 import { readBoard } from './board-file.js';
 import { annotateClientSrc } from './annotate-bundle.js';
 import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
@@ -67,21 +68,17 @@ function normalizeShell(shell, mode) {
   return legacyShell(shell, mode === 'html' ? 'doc' : 'app');
 }
 
-function findScreen(board, screenId) {  const refs = boardRefs(board);
-  const sections = Array.isArray(board.sections) ? board.sections : [];
-  for (const sec of sections) {
-    const screens = Array.isArray(sec.screens) ? sec.screens : [];
-    for (const raw of screens) {
-      const sc = typeof raw === 'string' ? { id: raw } : raw;
-      if (!sc || sc.id !== screenId) continue;
-      return {
-        screen: sc,
-        section: sec.id || '',
-        sectionLabel: sec.title || sec.id || '',
-        sectionShell: sec.shell || '',
-        ref: refs.byFrame[sec.id + '\0' + sc.id] || '',
-      };
-    }
+function findScreen(board, screenId) {
+  const refs = boardRefs(board);
+  for (const { screen: sc, section: sec } of screenEntries(board)) {
+    if (sc.id !== screenId) continue;
+    return {
+      screen: sc,
+      section: sec.id || '',
+      sectionLabel: sec.title || sec.id || '',
+      sectionShell: sec.shell || '',
+      ref: refs.byFrame[sec.id + '\0' + sc.id] || '',
+    };
   }
   return null;
 }

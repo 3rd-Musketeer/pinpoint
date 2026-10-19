@@ -12,6 +12,7 @@
 // 纯函数、DOM-free，与 lib/ 各模块同例（node --test 直测）。
 
 import { boardForTab, boardTabList, flattenTabs } from './board-tabs.js';
+import { screenEntries } from '../../shared/board-screens.js';
 
 /* 画布条目 id 用 '@canvas'：screen id 契约是 /^[a-zA-Z0-9_-]+$/（project-ids.js
    SCREEN_ID_PATTERN），'@' 永不可能与 doc 屏 id 撞车，混合板条目 id 因此天然唯一。 */
@@ -36,29 +37,30 @@ export function isPageOverlayEntry(entry) {
 
 /** board（validateBoard 产物）→ 有序条目数组：画布条目居首，文档条目按 board 序。
  *  文章画布：只要有帧就有画布条目（HTML 帧也在画布上）；每个 HTML 帧仍有一个文档条目，带
- *  overlay: true，那是它的页面浮层（isPageOverlayEntry）。 */
+ *  overlay: true，那是它的页面浮层（isPageOverlayEntry）。
+ *  屏的遍历只有一处（src/shared/board-screens.js 的 screenEntries）。 */
 export function boardEntries(board) {
   var entries = [];
   var hasCanvas = false;
   var docEntries = [];
   var article = isArticleBoard(board);
-  ((board && board.sections) || []).forEach(function (sec) {
-    (sec.screens || []).forEach(function (sc) {
-      if (screenShellOf(sc) === 'doc') {
-        var entry = {
-          id: sc.id,
-          kind: 'doc',
-          role: sc.role === 'draft' ? 'draft' : 'product',
-          title: sc.title || sc.id,
-          section: sec.title || sec.id,
-          sectionId: sec.id
-        };
-        if (article) { entry.overlay = true; hasCanvas = true; }
-        docEntries.push(entry);
-      } else {
-        hasCanvas = true;
-      }
-    });
+  screenEntries(board).forEach(function (hit) {
+    var sc = hit.screen;
+    var sec = hit.section;
+    if (screenShellOf(sc) === 'doc') {
+      var entry = {
+        id: sc.id,
+        kind: 'doc',
+        role: sc.role === 'draft' ? 'draft' : 'product',
+        title: sc.title || sc.id,
+        section: sec.title || sec.id,
+        sectionId: sec.id
+      };
+      if (article) { entry.overlay = true; hasCanvas = true; }
+      docEntries.push(entry);
+    } else {
+      hasCanvas = true;
+    }
   });
   if (hasCanvas) {
     entries.push({ id: CANVAS_ENTRY_ID, kind: 'canvas', role: 'product', title: '画布' });
