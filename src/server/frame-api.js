@@ -17,33 +17,13 @@ import { parseReqUrl } from './lib/req-url.js';
  * 组装逻辑在 src/server/lib/frame-doc.js（机壳与画布共享 src/shared/frame-shell.js）。
  */
 import { FrameDocError, figurePageHtml, framePageHtml, resolveFigureTarget, resolveFrameTarget } from './lib/frame-doc.js';
+import { readBody, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { defaultDistRoot, loadFigure, recordFigureRuntimeError } from './lib/page-compiler.js';
 
 const EMBEDS = new Set(['card', 'figure']);
 
-function readBody(req, limit = 64 * 1024) {
-  return new Promise((resolve, reject) => {
-    let size = 0;
-    const chunks = [];
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > limit) {
-        reject(new Error('body too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
+// POST /api/figure-error 的读体上限（http-respond 统一读体；保持原 64 KB）。
+const FIGURE_ERROR_BODY_LIMIT = 64 * 1024;
 
 export default function frameApi(options = {}) {
   const registry = options.registry || null;
@@ -74,7 +54,7 @@ export default function frameApi(options = {}) {
 
   async function recordFigureError(req, res) {
     if (req.method !== 'POST') {
-      sendJson(res, 405, { error: 'method_not_allowed' });
+      sendMethodNotAllowed(res, 'POST');
       return;
     }
     const site = req.headers['sec-fetch-site'];
@@ -84,7 +64,7 @@ export default function frameApi(options = {}) {
     }
     let body;
     try {
-      body = JSON.parse(await readBody(req));
+      body = JSON.parse(await readBody(req, FIGURE_ERROR_BODY_LIMIT));
     } catch {
       sendJson(res, 400, { error: 'bad_request', message: 'JSON body expected' });
       return;
@@ -115,7 +95,7 @@ export default function frameApi(options = {}) {
         }
         if (urlPath !== '/api/frame') return next();
         if (req.method !== 'GET' && req.method !== 'HEAD') {
-          sendJson(res, 405, { error: 'method_not_allowed' });
+          sendMethodNotAllowed(res);
           return;
         }
         const query = parseReqUrl(req).query;

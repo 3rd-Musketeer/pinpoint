@@ -1,33 +1,11 @@
 import { ContractError } from '../workbench/lib/preview-contracts.js';
+import { BodyTooLargeError, readBody, sendJson } from './lib/http-respond.js';
 import { buildOfflinePage } from './lib/offline-page-builder.js';
 import { OfflinePageExportError } from './lib/offline-page-export.js';
 import { parseReqUrl } from './lib/req-url.js';
 
-function readBody(req, maxBytes = 128 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > maxBytes) {
-        reject(new OfflinePageExportError('request_too_large', 'request body is too large'));
-        req.destroy && req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res, status, body) {
-  const buffer = Buffer.from(JSON.stringify(body), 'utf8');
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Content-Length', String(buffer.length));
-  res.end(buffer);
-}
+// 导出请求体的上限（http-respond 统一读体；保持原 128 KB）。
+const EXPORT_PAGE_HTML_BODY_LIMIT = 128 * 1024;
 
 function errorStatus(error) {
   if (error instanceof OfflinePageExportError || error instanceof ContractError || error instanceof SyntaxError) return 400;
@@ -43,7 +21,11 @@ export function createExportPageHtmlHandler(options = {}) {
     const download = urlPath === '/api/export-page-html';
     if ((!scan && !download) || req.method !== 'POST') return false;
     try {
-      const body = JSON.parse(await readBody(req));
+      const body = JSON.parse(await readBody(req, EXPORT_PAGE_HTML_BODY_LIMIT).catch((error) => {
+        // 保持原有的错误契约：超上限 = request_too_large（400）。
+        if (error instanceof BodyTooLargeError) throw new OfflinePageExportError('request_too_large', 'request body is too large');
+        throw error;
+      }));
       const result = await builder({
         pageId: body && body.pageId,
         approvals: scan ? undefined : (body.approvals || []),

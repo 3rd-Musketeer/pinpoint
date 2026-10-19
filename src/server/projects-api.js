@@ -7,26 +7,23 @@
  * errors 里，不是 HTTP 错误。每次请求都重读盘，文章增删不用 reload。
  */
 import { articleCanvas } from './lib/article-board.js';
+import { sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { findProject, listProjects } from './lib/projects.js';
 import { parseReqUrl } from './lib/req-url.js';
 
-function sendJson(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.setHeader('Cache-Control', 'no-cache');
-  res.end(JSON.stringify(body));
-}
+// 每次请求都重读盘，应答不许缓存（缓存策略表在 S3 才收，这里保持现状）。
+const sendFreshJson = (res, status, body) => sendJson(res, status, body, { cacheControl: 'no-cache' });
 
 export function createProjectsHandler({ registry }) {
   return (req, res, next) => {
     const urlPath = parseReqUrl(req).pathname;
     if (urlPath !== '/api/projects' && !urlPath.startsWith('/api/projects/')) return next();
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      sendJson(res, 405, { error: 'method_not_allowed' });
+      sendMethodNotAllowed(res);
       return;
     }
     if (urlPath === '/api/projects' || urlPath === '/api/projects/') {
-      sendJson(res, 200, listProjects(registry));
+      sendFreshJson(res, 200, listProjects(registry));
       return;
     }
     const canvas = urlPath.match(/^\/api\/projects\/([^/]+)\/articles\/([^/]+)\/canvas\/?$/);
@@ -37,23 +34,23 @@ export function createProjectsHandler({ registry }) {
         projectId = decodeURIComponent(canvas[1]);
         articleId = decodeURIComponent(canvas[2]);
       } catch {
-        sendJson(res, 400, { error: 'bad_request' });
+        sendFreshJson(res, 400, { error: 'bad_request' });
         return;
       }
       if (!findProject(registry, projectId)) {
-        sendJson(res, 404, { error: 'not_found', message: `project 没登记：${projectId}` });
+        sendFreshJson(res, 404, { error: 'not_found', message: `project 没登记：${projectId}` });
         return;
       }
-      sendJson(res, 200, articleCanvas(projectId, articleId, { registry }));
+      sendFreshJson(res, 200, articleCanvas(projectId, articleId, { registry }));
       return;
     }
     const id = decodeURIComponent(urlPath.slice('/api/projects/'.length).replace(/\/$/, ''));
     const project = findProject(registry, id);
     if (!project) {
-      sendJson(res, 404, { error: 'not_found', message: `project 没登记：${id}` });
+      sendFreshJson(res, 404, { error: 'not_found', message: `project 没登记：${id}` });
       return;
     }
-    sendJson(res, 200, project);
+    sendFreshJson(res, 200, project);
   };
 }
 

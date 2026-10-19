@@ -6,6 +6,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { bucketDir, bucketOnDisk, dataRoot, DEFAULT_ENTRY } from './lib/annotate-data-dir.js';
+import { BodyTooLargeError, readBody, sendFile, sendJson } from './lib/http-respond.js';
 import { parseReqUrl } from './lib/req-url.js';
 import { etagMatches } from './lib/etag.js';
 import { BucketGoneError, ledgerKey, createAnnotationStore } from './lib/annotation-store.js';
@@ -31,42 +32,10 @@ const REPLY_ROUTE = /^\/annotations\/([^/]+)\/([^/]+)\/reply$/;
 const sseClients = new Set();
 let heartbeatTimer = null;
 
-function sendJson(res, code, body) {
-  res.statusCode = code;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
-
-function sendBytes(res, code, data, contentType) {
-  res.statusCode = code;
-  res.setHeader(
-    'Content-Type',
-    contentType.startsWith('text/') || contentType === 'application/json'
-      ? `${contentType}; charset=utf-8`
-      : contentType,
-  );
-  res.end(data);
-}
-
-function readBody(req) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    req.on('data', (chunk) => chunks.push(chunk));
-    req.on('end', () => resolve(Buffer.concat(chunks).toString()));
-    req.on('error', reject);
-  });
-}
-
-function mimeFor(name) {
-  const extension = path.extname(name).toLowerCase();
-  return {
-    '.png': 'image/png',
-    '.jpg': 'image/jpeg',
-    '.jpeg': 'image/jpeg',
-    '.webp': 'image/webp',
-    '.gif': 'image/gif',
-  }[extension] || 'image/png';
-}
+// readBody 上限（http-respond 统一读体）：/save、/status、/reply 是账本载荷——
+// 2026-10-19 r2 实测最大账本请求 197 KB，给约 10 倍余量；/image 是 base64 截图，另给一档。
+const LEDGER_BODY_LIMIT = 2 * 1024 * 1024;
+const IMAGE_BODY_LIMIT = 16 * 1024 * 1024;
 
 // ---- /annotate.js · /annotate.<hash>.js（审计 B3）----------------------------
 // 同一份构建产物两个地址：哈希地址 immutable 永久缓存（pinpoint 生成的注入点都
@@ -324,11 +293,15 @@ export function createAnnotateHandler(options = {}) {
   }
 
   // POST 体是 JSON 且带 entry：解析失败 400，entry 未知 400，都在这里答掉。
-  async function readEntryBody(req, res) {
+  async function readEntryBody(req, res, limit) {
     let body;
     try {
-      body = JSON.parse(await readBody(req));
-    } catch {
+      body = JSON.parse(await readBody(req, limit));
+    } catch (error) {
+      if (error instanceof BodyTooLargeError) {
+        sendJson(res, 413, { error: 'body_too_large', message: error.message });
+        return null;
+      }
       sendJson(res, 400, { error: 'bad_json' });
       return null;
     }
@@ -419,7 +392,8 @@ export function createAnnotateHandler(options = {}) {
         const name = decodeURIComponent(urlPath.slice('/images/'.length));
         const file = storeFor(entryId).imagePath(name);
         if (fs.existsSync(file) && fs.statSync(file).isFile()) {
-          sendBytes(res, 200, fs.readFileSync(file), mimeFor(name));
+          // 缓存策略不在此收敛（S3）：照旧不发 Cache-Control。
+          sendFile(req, res, file, { cacheControl: null });
         } else {
           sendJson(res, 404, { error: 'not found' });
         }
@@ -432,7 +406,7 @@ export function createAnnotateHandler(options = {}) {
       match: STATUS_ROUTE,
       run: async ({ req, res, urlPath }) => {
         const parts = urlPath.match(STATUS_ROUTE);
-        const parsed = await readEntryBody(req, res);
+        const parsed = await readEntryBody(req, res, LEDGER_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
         const rawId = decodeURIComponent(parts[2]);
@@ -458,7 +432,7 @@ export function createAnnotateHandler(options = {}) {
       match: REPLY_ROUTE,
       run: async ({ req, res, urlPath }) => {
         const parts = urlPath.match(REPLY_ROUTE);
-        const parsed = await readEntryBody(req, res);
+        const parsed = await readEntryBody(req, res, LEDGER_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
         const rawId = decodeURIComponent(parts[2]);
@@ -500,7 +474,7 @@ export function createAnnotateHandler(options = {}) {
       methods: ['POST'],
       match: '/save',
       run: async ({ req, res }) => {
-        const parsed = await readEntryBody(req, res);
+        const parsed = await readEntryBody(req, res, LEDGER_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
         const store = storeFor(entryId);
@@ -534,7 +508,7 @@ export function createAnnotateHandler(options = {}) {
       methods: ['POST'],
       match: '/image',
       run: async ({ req, res }) => {
-        const parsed = await readEntryBody(req, res);
+        const parsed = await readEntryBody(req, res, IMAGE_BODY_LIMIT);
         if (!parsed) return true;
         const { body, entryId } = parsed;
         const data = String(body.data ?? '');

@@ -21,12 +21,12 @@ import { parseReqUrl } from './lib/req-url.js';
  * bytes with zero annotation surface. ?annotate=off opts a single request out
  * (export paths and the workbench's inline fragment loader use it).
  */
-import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
 import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
+import { sendFile, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
 import { resolvePage } from './lib/page-resolve.js';
 import { resolveContainedFile, resolveServableFile } from './lib/servable-file.js';
 import {
@@ -43,44 +43,6 @@ export { annotateSnippet, injectAnnotateClient };
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
-
-const MIME = {
-  '.html': 'text/html',
-  '.htm': 'text/html',
-  '.js': 'application/javascript',
-  '.mjs': 'application/javascript',
-  '.css': 'text/css',
-  '.json': 'application/json',
-  '.map': 'application/json',
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.gif': 'image/gif',
-  '.svg': 'image/svg+xml',
-  '.ico': 'image/x-icon',
-  '.woff': 'font/woff',
-  '.woff2': 'font/woff2',
-  '.txt': 'text/plain',
-  '.md': 'text/markdown',
-};
-
-function mimeFor(name) {
-  return MIME[path.extname(name).toLowerCase()] || 'application/octet-stream';
-}
-
-function contentType(name) {
-  const mime = mimeFor(name);
-  return /^(text\/|application\/(json|javascript)|image\/svg)/.test(mime)
-    ? `${mime}; charset=utf-8`
-    : mime;
-}
-
-function sendJson(res, code, body) {
-  res.statusCode = code;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
 
 /**
  * Resolve `rel` inside `base` to an existing regular file, or null.
@@ -138,10 +100,7 @@ export function createSitesHandler(options = {}) {
    */
   async function serveArticlePage(req, res, target, rel, rawRel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.statusCode = 405;
-      res.setHeader('Allow', 'GET, HEAD');
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'method_not_allowed' }));
+      sendMethodNotAllowed(res);
       return true;
     }
     let board;
@@ -178,14 +137,14 @@ export function createSitesHandler(options = {}) {
         sendJson(res, 404, { error: 'not found' });
         return true;
       }
-      return sendFile(req, res, file, frame ? inject : null);
+      return sendFile(req, res, file, { inject: frame ? inject : null });
     }
     const screenId = screenIdFromRel(rel);
     const screen = screenId ? screens.find((entry) => entry.id === screenId && !entry.src) : null;
     if (screen) {
       // HTML 帧从源文件直接出（文档不经编译，改了就是新的）；JSX 帧从 dist 出。
       const htmlFile = articleHtmlFrameFile(target, screen);
-      if (htmlFile) return sendFile(req, res, htmlFile, inject);
+      if (htmlFile) return sendFile(req, res, htmlFile, { inject });
       return serveDistScreenResponse(req, res, target, screenId, { inject });
     }
     const file = rel ? servable(target.pageDir, rel) : null;
@@ -193,19 +152,7 @@ export function createSitesHandler(options = {}) {
       sendJson(res, 404, { error: 'not found' });
       return true;
     }
-    return sendFile(req, res, file, null);
-  }
-
-  /** 读盘出一个文件；inject 给了且是 HTML 时注入标注客户端。 */
-  function sendFile(req, res, file, inject) {
-    let body = fs.readFileSync(file);
-    if (inject && mimeFor(file) === 'text/html') body = Buffer.from(inject(body.toString('utf8')), 'utf8');
-    res.statusCode = 200;
-    res.setHeader('Content-Type', contentType(file));
-    res.setHeader('Content-Length', String(body.length));
-    res.setHeader('Cache-Control', 'no-cache');
-    res.end(req.method === 'HEAD' ? undefined : body);
-    return true;
+    return sendFile(req, res, file);
   }
 
   return async function handleSites(req, res, urlPath) {
@@ -249,10 +196,7 @@ export function createSitesHandler(options = {}) {
     }
 
     if (req.method !== 'GET' && req.method !== 'HEAD') {
-      res.statusCode = 405;
-      res.setHeader('Allow', 'GET, HEAD');
-      res.setHeader('Content-Type', 'application/json; charset=utf-8');
-      res.end(JSON.stringify({ error: 'method_not_allowed' }));
+      sendMethodNotAllowed(res);
       return true;
     }
 
@@ -303,20 +247,9 @@ export function createSitesHandler(options = {}) {
       return true;
     }
 
-    const isHtml = mimeFor(file) === 'text/html';
-    let body = fs.readFileSync(file);
-    if (isHtml && query.get('annotate') !== 'off') {
-      body = Buffer.from(injectAnnotateClient(body.toString('utf8'), entry.id), 'utf8');
-    }
-    res.statusCode = 200;
-    res.setHeader('Content-Type', contentType(file));
-    res.setHeader('Content-Length', String(body.length));
-    if (req.method === 'HEAD') {
-      res.end();
-      return true;
-    }
-    res.end(body);
-    return true;
+    // 缓存策略不在此收敛（S3）：这个分支照旧不发 Cache-Control。
+    const inject = query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id);
+    return sendFile(req, res, file, { inject, cacheControl: null });
   };
 }
 

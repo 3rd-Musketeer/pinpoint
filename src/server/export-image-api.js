@@ -12,6 +12,7 @@ import {
   validateExportRequest,
 } from './lib/export-contract.js';
 import { readWorkbenchInlineStyles } from './lib/frame-doc.js';
+import { BodyTooLargeError, readBody, sendJson } from './lib/http-respond.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const ROOT = path.resolve(__dirname, '..', '..');
@@ -22,29 +23,8 @@ function workbenchCss() {
   return `${fs.readFileSync(path.join(ROOT, 'content', 'kits', 'ios', 'ios-kit.css'), 'utf8')}\n${readWorkbenchInlineStyles()}`;
 }
 
-function readBody(req, maxBytes = 13 * 1024 * 1024) {
-  return new Promise((resolve, reject) => {
-    const chunks = [];
-    let size = 0;
-    req.on('data', (chunk) => {
-      size += chunk.length;
-      if (size > maxBytes) {
-        reject(new ExportContractError('request', 'body is too large'));
-        req.destroy();
-        return;
-      }
-      chunks.push(chunk);
-    });
-    req.on('end', () => resolve(Buffer.concat(chunks).toString('utf8')));
-    req.on('error', reject);
-  });
-}
-
-function sendJson(res, status, body) {
-  res.statusCode = status;
-  res.setHeader('Content-Type', 'application/json; charset=utf-8');
-  res.end(JSON.stringify(body));
-}
+// 导出请求体的上限（http-respond 统一读体；保持原 13 MB——整份工作台 HTML 载荷）。
+const EXPORT_BODY_LIMIT = 13 * 1024 * 1024;
 
 function exportCss(request) {
   const background = request.background === 'transparent'
@@ -145,12 +125,12 @@ function requestOrigin(req) {
 }
 
 function sendExportError(res, error) {
-  const status = error instanceof ExportContractError || error instanceof SyntaxError ? 400 : 500;
+  const status = error instanceof ExportContractError || error instanceof SyntaxError || error instanceof BodyTooLargeError ? 400 : 500;
   sendJson(res, status, { error: status === 400 ? 'invalid_export' : 'export_failed', message: String(error && error.message || error) });
 }
 
 async function handleExportImage(req, res, renderer) {
-  const request = validateExportRequest(JSON.parse(await readBody(req)));
+  const request = validateExportRequest(JSON.parse(await readBody(req, EXPORT_BODY_LIMIT)));
   const result = await renderer.render(request, requestOrigin(req));
   res.statusCode = 200;
   res.setHeader('Content-Type', exportMime(request.format));

@@ -144,6 +144,25 @@ test('an unknown entry is a loud 400 and writes nothing', async (t) => {
   assert.ok(!fs.existsSync(path.join(dataRoot, 'ghost')));
 });
 
+test('/save 有读体上限：超了 413 body_too_large，一个字都不写', async (t) => {
+  const { dataRoot, handler } = withFixture(t);
+  // 上限 2 MiB（LEDGER_BODY_LIMIT，实测最大账本 197 KB 的约 10 倍）；这里发 3 MiB。
+  const huge = { page: 'index.html', entry: 'web', baseRevision: 0, annotations: [{ content: 'x'.repeat(3 * 1024 * 1024) }] };
+  const { res, json } = await call(handler, 'POST', '/save', huge);
+  assert.equal(res.statusCode, 413);
+  assert.equal(json.error, 'body_too_large');
+  assert.ok(!fs.existsSync(path.join(dataRoot, 'web')), '超限的请求不落盘');
+});
+
+test('/image 的上限另算：账本上限 2 MiB 不挡截图', async (t) => {
+  const { dataRoot, handler } = withFixture(t);
+  // 3 MiB 的 base64 截图：超 /save 的 2 MiB，在 /image 的 16 MiB 内，照常收。
+  const data = `data:image/png;base64,${Buffer.alloc(3 * 1024 * 1024).toString('base64')}`;
+  const { res, json } = await call(handler, 'POST', '/image', { page: '@canvas', entry: 'web', data });
+  assert.equal(res.statusCode, 200, JSON.stringify(json));
+  assert.ok(fs.existsSync(path.join(dataRoot, 'web', 'images', json.file)));
+});
+
 test('GET /annotations/<page> resolves entry from the query string', async (t) => {
   const { handler } = withFixture(t);
   await call(handler, 'POST', '/save', {
