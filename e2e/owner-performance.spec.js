@@ -128,20 +128,32 @@ test('owner 性能静态卡片：97 帧全挂 shadow root，活动文档 ≤ 6�
   // 旧实现每帧一个 iframe，98 个（r3 在 owner 真实文章上实测 100）；上限 6 给浏览器内部临时文档留余量，
   // 离旧实现一个数量级。GC 后 JS 堆：r3 实测 shadow 3.3 MiB、iframe 39.6 MiB；上限 16 MiB 约为
   // 新实现的 4 倍余量、旧实现的 40%。
+  // 画布浮层预热（E2）：卡片都摆好后，文章页空闲时把整张画布的工作台预建在停驻容器里。
+  // 它是同源 iframe，和文章页共用一个 JS 堆（实测约 20 MiB）。这道门量的是卡片：先等预热
+  // 停驻（不等的话量到的时刻有没有它不确定），整页的堆连同工作台记成指标，再摘掉停驻的
+  // iframe 量卡片的堆。活动文档数把工作台算在内。
+  await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
   const shadows = await page.locator('.cc-shadow[data-cc-mounted="1"]').count();
   const cardIframes = await page.locator('[data-pp-canvas] iframe').count();
   const docs = page.frames().length;
   const cdp = await page.context().newCDPSession(page);
+  const usedHeap = async () => {
+    await cdp.send('HeapProfiler.collectGarbage');
+    const { metrics } = await cdp.send('Performance.getMetrics');
+    return metrics.find((m) => m.name === 'JSHeapUsedSize')?.value || 0;
+  };
   let heapBytes = 0;
+  let pageHeapBytes = 0;
   try {
     await cdp.send('Performance.enable');
     await cdp.send('HeapProfiler.enable');
-    await cdp.send('HeapProfiler.collectGarbage');
-    const { metrics } = await cdp.send('Performance.getMetrics');
-    heapBytes = metrics.find((m) => m.name === 'JSHeapUsedSize')?.value || 0;
+    pageHeapBytes = await usedHeap();
+    await page.evaluate(() => document.querySelector('[data-ov-park] iframe')?.remove());
+    heapBytes = await usedHeap();
   } finally { await cdp.detach(); }
-  const heapMiB = Math.round((heapBytes / 1024 / 1024) * 10) / 10;
-  await metric(testInfo, 'static-cards', { shadows, cardIframes, docs, heapMiB, frameRequests: frameResponses.length });
+  const mib = (bytes) => Math.round((bytes / 1024 / 1024) * 10) / 10;
+  const heapMiB = mib(heapBytes);
+  await metric(testInfo, 'static-cards', { shadows, cardIframes, docs, heapMiB, pageHeapMiB: mib(pageHeapBytes), frameRequests: frameResponses.length });
   expect(frameResponses.filter(s => s < 200 || s >= 300), '帧请求全为 2xx').toEqual([]);
   expect(shadows, '静态帧全部挂 shadow root').toBe(OWNER_FRAMES);
   expect(cardIframes, '静态大文章的卡片不建 iframe').toBe(0);
