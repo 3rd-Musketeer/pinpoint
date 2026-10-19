@@ -7,8 +7,9 @@
 //
 // pp2（2026-09-22 切片 1）：页是「源码 → 编译 → dist」——
 // - 服务启动时对所有 dir 条目与模板页跑一遍全量编译，日志打总耗时与每页耗时；
-// - 页目录里 .jsx / .html / board.json / .css 变更 → 重编译该页 → 照旧发
-//   preview:update；.js（sidecar）变更 → 重编译该页 → 发 full-reload
+// - 页目录里 .jsx / .html / board.json / .css 变更 → 重编译该页 → 发
+//   preview:update（增量编译带上重编过的屏清单，工作台按屏重摆；整页重编不带）；
+//   .js（sidecar）变更 → 重编译该页 → 发 full-reload
 //   （ES module 缓存，见 BACKLOG「sidecar 模块改动后画板自动刷新」）。
 //   帧 import 的 .json / .ts / .tsx / .mjs / .cjs 同样盯（它们会进 build.json
 //   的 deps，不盯就改了零事件），类型清单与排除项见 recompile-plan 的 isWatchedSource。
@@ -31,6 +32,8 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '.
 // 不重编。这里只取页 id，文件类型由 isWatchedSource 判；嵌套的 board.json 不是
 // 板，由 recompile-plan 认领不到 → 全编。
 const PREVIEWS_FILE = /\/previews\/([^/]+)\/(?:[^/]+\/)*[^/]+$/;
+// F3：首个文件事件收同伴的窗口（CLI startPageWatch 的 debounce 同思路，那边 120ms）。
+const COLLECT_MS = 80;
 
 export default function previewHmr(options = {}) {
   const registry = options.registry || null;
@@ -134,19 +137,27 @@ export default function previewHmr(options = {}) {
   // 增量（审计 B1）：每轮先按「变更文件集合 ∩ build.json 依赖图」筛出要重编的屏，
   // 筛不动（板变、屏增删、认领不到的文件、上次有失败屏……）就整页重编 ——
   // planPageRecompile 的方向是宁可多编。
-  // 编译期间到达的新变更拿到的是变更前结果 —— job 收尾后补跑一轮，直到收尾
-  // 时刻没有新事件为止（review R11；CLI startPageWatch 有 debounce+串行链，
-  // 服务端这里补上等价的「不丢最后一拍」）。补跑合并期间的全部变更文件
-  // （state.pending 是集合，不是最后一个事件）。
-  function recompile(target, files) {
+  // 首个文件事件等一小拍收同伴（F3：agent 批量改帧常见一次改 3–5 个；此前第二拍
+  // 文件撞上编译中的 drift 判定被打成整页重编），攒成一批一次编译；编译期间到达
+  // 的事件进 pending、收尾后补跑，直到没有新事件为止（R11「不丢最后一拍」）。
+  // 通知一次编译只有一条（合入同一次编译的事件不再各发一条）：sidecar .js 进过
+  // pending 就 full-reload，否则 preview:update 带上本次重编的屏清单（整页重编过
+  // / 编译异常 → 不带，客户端整板重摆）；全是 noop（只改正文）不通知。
+  function recompile(server, target, files) {
     if (!target) return Promise.resolve(null);
     const inflight = compiling.get(target.entryId);
     if (inflight) {
-      for (const file of files || []) inflight.pending.add(file);
-      inflight.rerun = true;
+      for (const file of files || []) {
+        inflight.pending.add(file);
+        if (/\.js$/.test(file)) inflight.fullReload = true;
+      }
       return inflight.promise;
     }
-    const state = { rerun: false, pending: new Set(files || []), promise: null };
+    const state = { pending: new Set(), promise: null, full: false, screens: new Set(), compiled: false, fullReload: false };
+    for (const file of files || []) {
+      state.pending.add(file);
+      if (/\.js$/.test(file)) state.fullReload = true;
+    }
     const runOnce = async () => {
       const changed = [...state.pending];
       state.pending.clear();
@@ -158,24 +169,32 @@ export default function previewHmr(options = {}) {
         if (plan.drift) console.log(`[pp2] ${target.entryId}：${plan.drift} 变了但没收到 watch 事件，整页重编`);
         if (!plan.all) options.onlyScreens = plan.screens;
         const result = await compilePage(target, options);
+        state.compiled = true;
+        if (result.partial) for (const row of result.screens) state.screens.add(row.id);
+        else { state.full = true; state.screens.clear(); }
         const failed = result.screens.filter((row) => !row.ok);
         if (result.error || failed.length) {
           console.error(`[pp2] 编译 ${target.entryId} 有失败屏：${result.error || failed.map((row) => `${row.id}（${row.error}）`).join('；')}`);
         }
         return result;
       } catch (error) {
+        // 编译异常（不是屏级失败）：客户端整板重摆去拿错误面板（与收编前一致）。
+        state.compiled = true;
+        state.full = true;
+        state.screens.clear();
         console.error(`[pp2] 编译 ${target.entryId} 异常：${(error && error.message) || error}`);
         return null;
       }
     };
     state.promise = (async () => {
       try {
-        let result = await runOnce();
-        while (state.rerun) {
-          state.rerun = false;
-          result = await runOnce();
-        }
-        return result;
+        await new Promise((resolve) => setTimeout(resolve, COLLECT_MS));
+        let result = null;
+        while (state.pending.size) result = await runOnce();
+        if (!state.compiled) return null;
+        const screens = state.full ? null : [...state.screens];
+        notify(server, target, { fullReload: state.fullReload, screens });
+        return { result, screens };
       } finally {
         if (compiling.get(target.entryId) === state) compiling.delete(target.entryId);
       }
@@ -185,10 +204,7 @@ export default function previewHmr(options = {}) {
   }
 
   function recompileArticles(server, targets, file) {
-    const rel = file.replace(/\\/g, '/');
-    return Promise.all(targets.map((target) => recompile(target, [file]).then((result) => {
-      if (!(result && result.noop)) notify(server, target, rel);
-    }))).then(() => []);
+    return Promise.all(targets.map((target) => recompile(server, target, [file]))).then(() => []);
   }
 
   // Vite 6 只对“改了”的文件调 handleHotUpdate；新建、删除走 hotUpdate 钩子，这个插件
@@ -207,11 +223,15 @@ export default function previewHmr(options = {}) {
     return resolvePageTarget(pageId, { registry: null, root: templateRoot });
   }
 
-  function notify(server, target, file) {
-    if (/\.js$/.test(file)) {
+  function notify(server, target, { fullReload = false, screens = null } = {}) {
+    if (fullReload) {
       server.ws.send({ type: 'full-reload' });
     } else {
-      server.ws.send({ type: 'custom', event: 'preview:update', data: { id: target.entryId } });
+      // F2/K3：增量编译只重编了几屏 → 带上屏清单，工作台按屏重摆；
+      // 没带（整页重编 / 板变 / 无编译目标的通知）→ 工作台整板重摆。
+      const data = { id: target.entryId };
+      if (Array.isArray(screens)) data.screens = screens;
+      server.ws.send({ type: 'custom', event: 'preview:update', data });
     }
   }
 
@@ -250,10 +270,7 @@ export default function previewHmr(options = {}) {
       if (preview) {
         const target = templateTarget(preview[1]);
         if (!target) return [];
-        return recompile(target, [file]).then(() => {
-          notify(server, target, rel);
-          return [];
-        });
+        return recompile(server, target, [file]).then(() => []);
       }
       // kit JSX 印章变更（review 1-5 的接力）：comp 屏对 pinpoint/kit 的引用在
       // 编译期定型，印章一改必须全量重编 → 对每页发 preview:update。分支收窄到
@@ -277,14 +294,10 @@ export default function previewHmr(options = {}) {
         const target = owner.kind === 'dir' ? resolvePageTarget(owner.id, { registry, root: ROOT }) : null;
         if (!target) {
           // file 条目 / 无板目录没有编译目标；.js 变更一样吃 ES module 缓存，full-reload。
-          if (/\.js$/.test(rel)) server.ws.send({ type: 'full-reload' });
-          else server.ws.send({ type: 'custom', event: 'preview:update', data: { id: owner.id } });
+          notify(server, { entryId: owner.id }, { fullReload: /\.js$/.test(rel) });
           return [];
         }
-        return recompile(target, [file]).then(() => {
-          notify(server, target, rel);
-          return [];
-        });
+        return recompile(server, target, [file]).then(() => []);
       }
       return undefined;
     },

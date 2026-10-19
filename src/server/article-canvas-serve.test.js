@@ -178,7 +178,8 @@ test('watch：project 内容目录进 watcher；帧变更重编并通知画布�
   const frame = path.join(article, 'ask-open.jsx');
   fs.writeFileSync(frame, fs.readFileSync(frame, 'utf8').replace('提问', '再问'));
   assert.deepEqual(await plugin.handleHotUpdate({ file: frame, server }), []);
-  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow' } }]);
+  // S2（F2/K3）：增量编译的通知带重编过的屏清单，工作台按屏重摆。
+  assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow', screens: ['ask-open'] } }]);
   assert.match(fs.readFileSync(path.join(distRoot, 'demo_flow', 'ask-open.html'), 'utf8'), /再问/);
 
   server.sent.length = 0;
@@ -187,6 +188,7 @@ test('watch：project 内容目录进 watcher；帧变更重编并通知画布�
   await plugin.handleHotUpdate({ file: mdx, server });
   assert.deepEqual(server.sent, [], '只改正文：画布没变，不重摆');
 
+  // 画布结构变了（节标题）→ 整页重编，通知不带屏清单（工作台整板重摆）。
   fs.writeFileSync(mdx, fs.readFileSync(mdx, 'utf8').replace('title="提问"', 'title="发问"'));
   await plugin.handleHotUpdate({ file: mdx, server });
   assert.deepEqual(server.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'demo_flow' } }]);

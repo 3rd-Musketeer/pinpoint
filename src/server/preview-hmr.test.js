@@ -219,3 +219,50 @@ test('改一屏只重编该屏：其余屏的 dist 产物不重写（审计 B1�
   assert.equal(fs.readFileSync(path.join(distRoot, 'pick-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
   assert.equal(fs.statSync(path.join(distRoot, 'pick-page', 'b.html')).mtimeMs, bBefore);
 });
+
+test('增量重编的通知带屏清单（S2/F2：工作台按屏重摆）；整页重编不带', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-screens-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify(board));
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a1</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'screens-page', kind: 'dir', path: pageDir }] }, distRoot });
+  const s = fakeServer();
+  // 整页（首编 / 板变更）：不带屏清单，客户端整板重摆。
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'screens-page' } }]);
+  // 增量：带重编过的屏清单。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s });
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'screens-page', screens: ['a'] } }]);
+});
+
+test('首事件等一小拍收同伴：连续两拍保存合并成一次编译、一条通知（S2/F3）', async (t) => {
+  const pageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-collect-'));
+  t.after(() => fs.rmSync(pageDir, { recursive: true, force: true }));
+  const board = { sections: [{ id: 'main', title: 'Main', layout: 'row', screens: [{ id: 'a', title: 'A' }, { id: 'b', title: 'B' }] }] };
+  fs.writeFileSync(path.join(pageDir, 'board.json'), JSON.stringify(board));
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a1</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b1</div>\n');
+  const distRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'pp-hmr-dist-'));
+  t.after(() => fs.rmSync(distRoot, { recursive: true, force: true }));
+  const hit = previewHmr({ registry: { entries: [{ id: 'collect-page', kind: 'dir', path: pageDir }] }, distRoot });
+  const s = fakeServer();
+  await hit.handleHotUpdate({ file: path.join(pageDir, 'board.json'), server: s });
+  // 收同伴窗口内连存两帧：合并成一批一次编译 —— 旧实现里第二拍会撞上编译中的
+  // drift 判定被打成整页重编（F3），并且两拍各发一条通知。
+  s.sent.length = 0;
+  fs.writeFileSync(path.join(pageDir, 'a.html'), '<div class="ios-app">a2</div>\n');
+  fs.writeFileSync(path.join(pageDir, 'b.html'), '<div class="ios-app">b2</div>\n');
+  await Promise.all([
+    hit.handleHotUpdate({ file: path.join(pageDir, 'a.html'), server: s }),
+    hit.handleHotUpdate({ file: path.join(pageDir, 'b.html'), server: s }),
+  ]);
+  assert.deepEqual(s.sent, [{ type: 'custom', event: 'preview:update', data: { id: 'collect-page', screens: ['a', 'b'] } }]);
+  assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'a.html'), 'utf8'), '<div class="ios-app">a2</div>\n');
+  assert.equal(fs.readFileSync(path.join(distRoot, 'collect-page', 'b.html'), 'utf8'), '<div class="ios-app">b2</div>\n');
+});
