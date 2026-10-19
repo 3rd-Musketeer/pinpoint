@@ -209,6 +209,17 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(page).toHaveURL(new RegExp(`${ARTICLE}$`));
   });
 
+  await test.step('静态卡片展开无引号 url() 的 @import：article.css 引入的规则在 shadow 里生效，和 iframe 帧一样', async () => {
+    // article.css 首行是 `@import url(./unquoted-import.css);`，那张表给 .e2e-confirm-card 设 outline-color。
+    // 旧实现只认带引号的 import，剩下的交给 constructed stylesheet 静默丢掉，卡片照常挂上但规则没了。
+    const plain = page.locator('[data-pp-canvas] .cc-frame[data-screen="card-plain"]');
+    await expect(plain.locator('.cc-shadow[data-cc-mounted="1"]')).toHaveCount(1);
+    await expect(plain.locator('iframe')).toHaveCount(0);
+    await expect(plain.locator('.e2e-confirm-card')).toHaveCSS('outline-color', 'rgb(255, 0, 0)');
+    // 阳性对照：带运行时脚本、留 iframe 的 confirm-sheet 由浏览器自己加载同一张表。
+    await expect(await cardInner(page, 'confirm-sheet', '.e2e-confirm-card')).toHaveCSS('outline-color', 'rgb(255, 0, 0)');
+  });
+
   await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址 301 过来（ADR 0045）', async () => {
     await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').hover();
     await page.locator('.pop a.go').click();

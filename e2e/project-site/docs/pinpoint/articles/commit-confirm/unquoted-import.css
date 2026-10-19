@@ -1,0 +1,2 @@
+/* article.css 用无引号 url() 引入（M2 回归）：outline-style 缺省 none，这条颜色不画出来，只供计算样式断言。 */
+.e2e-confirm-card { outline-color: rgb(255, 0, 0); }

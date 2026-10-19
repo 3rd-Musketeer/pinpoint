@@ -7,6 +7,7 @@ import {
   classifyFrameScript,
   cssHazard,
   importNeedsFrame,
+  parseCssImports,
   resolveCssImports,
   rewriteCssUrls,
   rewriteRootSelector,
@@ -100,6 +101,8 @@ test('resolveCssImports：@import 带 layer() / supports() 不包进 @media，�
   assert.equal(importNeedsFrame('screen and (max-width: 600px)'), false);
   assert.equal(importNeedsFrame('layer(kit)'), true);
   assert.equal(importNeedsFrame('supports(display: grid)'), true);
+  assert.equal(importNeedsFrame('layer'), true);
+  assert.equal(importNeedsFrame('screen { x'), true);
   // 不取被引用的表，也不产出 @media layer(...) 这种非法 CSS。
   assert.equal(await resolveCssImports('@import url("a.css") layer(kit);', base, fetchText), null);
   assert.equal(await resolveCssImports('@import "a.css" supports(display: flex);', base, fetchText), null);
@@ -107,6 +110,44 @@ test('resolveCssImports：@import 带 layer() / supports() 不包进 @media，�
   // 被展开的表自己带这种 import，外层一并退回。
   const nested = new Map([['http://x/sites/demo_page/a.css', '@import "b.css" layer(x);']]);
   assert.equal(await resolveCssImports('@import url("a.css");', base, async (href) => nested.get(href)), null);
+});
+
+test('parseCssImports：字符串、url("…")、无引号 url(…) 都认；注释、字符串里的 @import 字样不算', () => {
+  const css = '@import url(./x.css);\n@IMPORT url( y.css ) print;@import"z.css";@import url(\'w.css\') screen and (width >= 600px);'
+    + '/* @import "c.css"; */ .a::after{content:"@import \\"s.css\\";"} .b{background:url(i@import.png)}';
+  const rows = parseCssImports(css);
+  assert.deepEqual(rows.map((r) => [r.href, r.condition]), [
+    ['./x.css', ''], ['y.css', 'print'], ['z.css', ''], ['w.css', 'screen and (width >= 600px)'],
+  ]);
+  assert.equal(css.slice(rows[0].start, rows[0].end), '@import url(./x.css);');
+  assert.deepEqual(parseCssImports('.a{color:red}'), []);
+});
+
+test('parseCssImports：认不出的 @import 一律 null（整帧退回 iframe），不丢规则当成成功', () => {
+  for (const css of [
+    '@import url(./a.css) layer;', // 裸 layer
+    '@import "a.css" layer(kit);',
+    '@import url(a.css) supports(display:grid);',
+    '@import "a.css" scope(.x);',
+    '@import url(a b.css);', // 无引号 url 里有空白
+    '@import url(a\\(b.css);', // 带转义
+    '@import url("a.css" );x{}@import a.css;', // 第二条不是字符串也不是 url()
+    '@import "a.css"', // 没有分号
+    '@import "a.css" "b";', // 条件里有引号
+    '@import',
+  ]) assert.equal(parseCssImports(css), null, css);
+});
+
+test('resolveCssImports：无引号 url() 的 import 照样展开；认不出的 import 返回 null', async () => {
+  const base = 'http://x/sites/demo_page/';
+  const fetchText = async (href) => ({ [`${base}color.css`]: '[data-probe]{color:rgb(255,0,0)}' })[href];
+  assert.equal(await resolveCssImports('@import url(./color.css);.a{}', base, fetchText), '[data-probe]{color:rgb(255,0,0)}.a{}');
+  assert.equal(await resolveCssImports('@import url(./color.css) layer;', base, fetchText), null);
+  // 被展开的表里藏着认不出的 import：外层一并 null。
+  const nested = async (href) => (href.endsWith('a.css') ? '@import foo;' : '');
+  assert.equal(await resolveCssImports('@import "a.css";', base, nested), null);
+  // 注释与字符串原样保留，不吃掉其后的规则。
+  assert.equal(await resolveCssImports('.q::after{content:"/*"} .r{}', base, fetchText), '.q::after{content:"/*"} .r{}');
 });
 
 test('absolutizeSrcset：候选地址绝对化，描述符保留', () => {
