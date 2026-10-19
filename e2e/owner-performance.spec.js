@@ -1,6 +1,39 @@
 import { expect, test } from './lib/fixtures.js';
 import { buildAnnotateBundle } from '../src/server/lib/annotate-bundle.js';
-import { ownerCleanup, seedOwner, openOwnerBoard, focusOwnerFrame, metric } from './lib/owner-flows.js';
+import { ownerCleanup, seedOwner, openOwnerBoard, openOwnerArticle, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
+import { OWNER_PAGE, OWNER_FRAMES } from './lib/owner-fixture.js';
+
+test('owner 性能首开文章：帧请求全为 2xx，请求数最多 206', async ({ page }, testInfo) => {
+  const requests = [];
+  const pending = new Set();
+  const watched = request => /^\/(api\/frame|sites\/)/.test(new URL(request.url()).pathname);
+  page.on('request', request => { if (watched(request)) pending.add(request); });
+  page.on('response', response => {
+    if (watched(response.request())) requests.push({ url: response.url(), status: response.status() });
+  });
+  const failed = [];
+  page.on('requestfailed', request => { if (watched(request)) { failed.push({ url: request.url(), error: request.failure() }); pending.delete(request); } });
+  page.on('requestfinished', request => pending.delete(request));
+  const started = performance.now();
+  try {
+    await test.step('首开文章并读到最后一节，每张卡片实际渲染', async () => {
+      await openOwnerArticle(page);
+      for (let n = 1; n <= 12; n++) {
+        const card = page.locator(`[data-pp-section="part-${n}"]`);
+        await card.scrollIntoViewIfNeeded();
+        await expect(card.locator('.cc-box[data-fitted="1"]')).toHaveCount(n === 12 ? 9 : 8, { timeout: 30_000 });
+      }
+      await expect(page.locator('.cc-box[data-fitted="1"]')).toHaveCount(OWNER_FRAMES);
+      await expect.poll(() => pending.size).toBe(0);
+    });
+  } finally {
+    await metric(testInfo, 'article-open', { elapsedMs: performance.now() - started, requests: requests.length, failures: failed, badResponses: requests.filter(r => r.status < 200 || r.status >= 300), urls: requests });
+  }
+  expect.soft(failed).toEqual([]);
+  expect.soft(requests.filter(r => r.status < 200 || r.status >= 300), '包含 502 在内的非 2xx 一律失败').toEqual([]);
+  expect(requests.length, '确实加载了 97 帧').toBeGreaterThanOrEqual(OWNER_FRAMES);
+  expect(requests.length).toBeLessThanOrEqual(OWNER_FRAMES * 2 + 12);
+});
 
 test.beforeEach(async ({ page, request }) => {
   test.setTimeout(180_000);
