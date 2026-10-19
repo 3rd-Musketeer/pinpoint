@@ -322,7 +322,7 @@ test('画布视图：一篇文章一张画布，HTML 帧是活的白底卡片；
     await expect(page.locator('#wbviewport [data-viewport="phone"]')).toHaveAttribute('aria-pressed', 'true');
     expect(await page.evaluate(() => window.workbench.activeEntryId())).toBe('long-page');
     await expect(page.frameLocator(PAGE_FRAME).locator('#width-probe-narrow')).toBeVisible();
-    // 手机屏里的文档根不出滚动条（phone-doc-scrollbar.js；量宽度的那条在 viewport.spec.js）。
+    // 手机屏里的文档根不出滚动条（overlay-scrollbar.js 的 hidePhoneDocScrollbar；量宽度的那条在 viewport.spec.js）。
     const rootBarStyle = () => page.frameLocator(PAGE_FRAME).locator('html').evaluate((el) => getComputedStyle(el).scrollbarWidth);
     await expect.poll(rootBarStyle).toBe('none');
     const stageBox = await stage.boundingBox();
