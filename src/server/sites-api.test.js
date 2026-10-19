@@ -127,7 +127,7 @@ test('static entries carry Cache-Control + stat ETag and answer 304 on revalidat
   const js = await call(handler, 'GET', '/sites/site/app.js');
   assert.equal(js.res.statusCode, 200);
   assert.equal(js.res.headers['Cache-Control'], 'no-cache');
-  assert.match(js.res.headers.ETag, /^"\d+-\d+"$/, '静态资源用 mtime+size ETag');
+  assert.match(js.res.headers.ETag, /^"\d+(\.\d+)?-\d+"$/, '静态资源用 mtime（原值，review 必须修 1 起带小数）+size ETag');
 
   const hit = await call(handler, 'GET', '/sites/site/app.js', { 'if-none-match': js.res.headers.ETag });
   assert.equal(hit.res.statusCode, 304);

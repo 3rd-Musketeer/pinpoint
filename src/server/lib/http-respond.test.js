@@ -66,13 +66,13 @@ test('CACHE_POLICIES：brief 点名的六类资源各一行，值齐全', () => 
   assert.equal(CACHE_POLICIES.annotateBundle.cacheControl, 'public, max-age=31536000, immutable');
 });
 
-test('contentEtag / statEtag：内容一变 ETag 就变；stat 是 mtime+size 的形状', () => {
+test('contentEtag / statEtag：内容一变 ETag 就变；stat 是 mtime 原值+size 的形状', () => {
   const a = contentEtag(Buffer.from('<p>one</p>'));
   const b = contentEtag(Buffer.from('<p>two</p>'));
   assert.match(a, /^"[0-9a-f]{16}"$/);
   assert.notEqual(a, b, '不同内容必须不同 ETag（HMR 后不许 304 旧内容）');
   assert.equal(contentEtag(Buffer.from('<p>one</p>')), a, '同内容同 ETag');
-  assert.equal(statEtag({ mtimeMs: 1729300000123.4, size: 4242 }), '"1729300000123-4242"');
+  assert.equal(statEtag({ mtimeMs: 1729300000123.1, size: 4242 }), '"1729300000123.1-4242"', 'mtime 原值，不取整到毫秒');
 });
 
 test('sendCacheable：条件应答——If-None-Match 命中 304（弱比较与列表都算），未命中 200 出体', () => {
@@ -174,6 +174,74 @@ test('sendFile：出文件 + 头；HEAD 只回头；inject 只作用于 HTML；�
   assert.equal(notHtml.headers.ETag, statEtag(fs.statSync(png)));
 
   assert.throws(() => sendFile(mockReq('GET', '/a.html'), mockRes(), html, { policy: 'nope' }), /策略表里的一行/);
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('同一毫秒内的等长重写：stat ETag 分得开，带旧 ETag 必须拿到新内容（review 必须修 1）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'http-respond-samems-'));
+  const css = path.join(dir, 'article.css');
+  // 两次写入的 mtime 用 utimesSync 构造（不赛真实时间）：取整后同一个整毫秒、
+  // 亚毫秒不同——APFS 相邻两次写入的真实分布（125µs 一格，取整后常同毫秒）。
+  // 亚毫秒都取 0.5 以下：Math.round 会把 ≥0.5 的进位到下一毫秒，取整就不同了。
+  const base = 1729300000123; // 整毫秒
+  const at = (ms) => (base + ms) / 1000; // utimesSync 收秒
+  fs.writeFileSync(css, '.x { color: red;  } /* 1 */\n');
+  fs.utimesSync(css, at(0.1), at(0.1));
+  const first = mockRes();
+  sendFile(mockReq('GET', '/article.css'), first, css);
+  assert.equal(first.statusCode, 200);
+  const etag = first.headers.ETag;
+  const before = fs.statSync(css);
+
+  fs.writeFileSync(css, '.x { color: blue; } /* 1 */\n'); // 等长、不同字节
+  fs.utimesSync(css, at(0.4), at(0.4));
+  const after = fs.statSync(css);
+  // 前提（平台得能表达亚毫秒 mtime，两次写入落进同一个整毫秒）：
+  assert.equal(Math.round(before.mtimeMs), base, '第一次写入的 mtime（前提）');
+  assert.equal(Math.round(after.mtimeMs), base, '第二次写入同一个整毫秒（前提）');
+  assert.notEqual(before.mtimeMs, after.mtimeMs, '亚毫秒把两次写入分开（前提）');
+
+  const revalidate = mockRes();
+  const req = mockReq('GET', '/article.css');
+  req.headers = { 'if-none-match': etag };
+  sendFile(req, revalidate, css);
+  assert.equal(revalidate.statusCode, 200, '同一毫秒内等长重写，旧 ETag 不许 304');
+  assert.equal(revalidate.text, '.x { color: blue; } /* 1 */\n');
+  assert.notEqual(revalidate.headers.ETag, etag, '新字节的新验证器');
+
+  fs.rmSync(dir, { recursive: true, force: true });
+});
+
+test('sendFile：读的窗口里文件被改写就重读，体和 ETag 是同一份（review 必须修 1 后半）', () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'http-respond-window-'));
+  const css = path.join(dir, 'article.css');
+  // 改写的 mtime 也用 utimesSync 钉死（不赛真实时间：两次真实写入会落进 APFS
+  // 同一个 tick，mtimeNs 不动，改写就探测不到）。
+  const base = 1729300000123; // 整毫秒
+  const at = (ms) => (base + ms) / 1000; // utimesSync 收秒
+  fs.writeFileSync(css, '.x { color: red;  }\n');
+  fs.utimesSync(css, at(0.1), at(0.1));
+  // 在「读之后那一次 stat」前把文件改写成等长新内容：旧实现（先读后 stat）在这
+  // 里体 = 旧字节、ETag = 新 stat，这个 ETag 被记下去以后每次验证都 304 旧体。
+  const realStatSync = fs.statSync;
+  let calls = 0;
+  try {
+    fs.statSync = (...args) => {
+      if (++calls === 2) {
+        fs.writeFileSync(css, '.x { color: blue; }\n');
+        fs.utimesSync(css, at(0.4), at(0.4));
+      }
+      return realStatSync(...args);
+    };
+    const res = mockRes();
+    sendFile(mockReq('GET', '/article.css'), res, css);
+    assert.equal(res.statusCode, 200);
+    assert.equal(res.text, '.x { color: blue; }\n', '读的窗口里被改写：重读拿新体');
+    assert.equal(res.headers.ETag, statEtag(realStatSync(css)), 'ETag 与体同源');
+  } finally {
+    fs.statSync = realStatSync;
+  }
 
   fs.rmSync(dir, { recursive: true, force: true });
 });

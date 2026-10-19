@@ -174,7 +174,7 @@ test('GET /images/<name>?entry= 200 出图带 no-cache + ETag，条件请求 304
   const first = await call(handler, 'GET', '/images/shot.png?entry=web');
   assert.equal(first.res.statusCode, 200);
   assert.equal(first.res.headers['Cache-Control'], 'no-cache');
-  assert.match(first.res.headers.ETag, /^"\d+-\d+"$/);
+  assert.match(first.res.headers.ETag, /^"\d+(\.\d+)?-\d+"$/, 'mtime 原值（review 必须修 1 起带小数）+size');
   assert.deepEqual([...first.res.body], [...png]);
 
   const hit = await call(handler, 'GET', '/images/shot.png?entry=web', undefined, { 'if-none-match': first.res.headers.ETag });

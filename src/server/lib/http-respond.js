@@ -72,9 +72,13 @@ export function contentEtag(body) {
   return `"${crypto.createHash('sha1').update(body).digest('hex').slice(0, 16)}"`;
 }
 
-/** 盘上文件的 ETag：mtime+size。同一进程内文件没动过就命中 304。 */
+/** 盘上文件的 ETag：mtime 原值（不取整）+size。同一进程内文件没动过就命中 304。
+    不取整是 review 必须修 1：APFS 的 mtime 带亚毫秒小数（125µs 一格），取整到
+    毫秒后同一毫秒内的等长重写（watch 重写、脚本生成）ETag 不变，带旧 ETag 重取
+    会 304 回旧字节。mtimeMs 是 double，本纪元下精度约 0.24µs，比 APFS 的 125µs
+    一格细 500 倍，相邻两格分得开。 */
 export function statEtag(stat) {
-  return `"${Math.round(stat.mtimeMs)}-${stat.size}"`;
+  return `"${stat.mtimeMs}-${stat.size}"`;
 }
 
 /**
@@ -153,17 +157,28 @@ export function readBody(req, limit) {
  * 变体字节不同，验证器必须是内容哈希才分得开）或注入真的发生了 → 最终字节的
  * 哈希；原样出的静态资源 / 图片走行里的 mtime+size。policy 是 CACHE_POLICIES
  * 的行名，缺省 staticFile。应答完（含 304）返回 true。
+ * stat 的次序是「先 stat、再读、再 stat，两次不同就重读一次」（review 必须修 1
+ * 后半）：旧的「先读后 stat」在两次系统调用之间文件被改写时，体是旧字节、ETag
+ * 却按新 stat 算——这个 ETag 被记下去以后每次验证都 304，缓存里钉着旧体。重试
+ * 的 stat 取在读之前：就算读时又被改写，ETag 也只比体旧，下次带它来必然 miss
+ * 拿到新体，不会反向钉死。
  */
 export function sendFile(req, res, file, { inject = null, policy = 'staticFile' } = {}) {
   const injected = Boolean(inject) && mimeFor(file) === 'text/html';
+  let stat = fs.statSync(file);
   let body = fs.readFileSync(file);
+  const after = fs.statSync(file);
+  if (after.mtimeMs !== stat.mtimeMs || after.size !== stat.size) {
+    stat = fs.statSync(file);
+    body = fs.readFileSync(file);
+  }
   if (injected) body = Buffer.from(inject(body.toString('utf8')), 'utf8');
   const row = CACHE_POLICIES[policy];
   if (!row) throw new TypeError(`sendFile 要策略表里的一行，收到 ${policy}`);
   return sendCacheable(req, res, body, {
     policy: row,
     contentType: contentTypeFor(file),
-    etag: !injected && row.etag === 'stat' ? statEtag(fs.statSync(file)) : null,
+    etag: !injected && row.etag === 'stat' ? statEtag(stat) : null,
   });
 }
 
