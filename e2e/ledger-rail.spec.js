@@ -34,7 +34,14 @@ test('文章卡片和右栏共用每本账本的一次首读，未注入评论�
   const requests = [];
   // Astro 冷启动会整页 HMR reload；首读按一次文档生命周期计数，导航后另算。
   page.on('framenavigated', (frame) => { if (frame === page.mainFrame()) requests.length = 0; });
-  page.on('request', (r) => { if (new URL(r.url()).pathname.startsWith('/annotations/')) requests.push(r.url()); });
+  // 画布浮层的工作台（E2 起空闲时预建在停驻容器里）是另一份文档，它和它的活卡片自己读账本；
+  // 这里数的是文章页（卡片和右栏）的首读，不算那棵 iframe 子树。
+  const inWorkbench = (frame) => { for (let f = frame; f; f = f.parentFrame()) if (new URL(f.url()).pathname.startsWith('/workbench/')) return true; return false; };
+  page.on('request', (r) => {
+    if (!new URL(r.url()).pathname.startsWith('/annotations/')) return;
+    if (inWorkbench(r.frame())) return;
+    requests.push(r.url());
+  });
   await open(page, '/e2e-html/pages/');
   const counts = () => Object.fromEntries([...new Set(requests)].map((url) => [new URL(url).pathname, requests.filter((r) => r === url).length]));
   await testInfo.attach('ledger-requests', { body: JSON.stringify(counts(), null, 2), contentType: 'application/json' });
