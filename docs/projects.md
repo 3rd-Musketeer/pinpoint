@@ -304,7 +304,7 @@ export default function ConfirmBare() {
 - `errors` 是 `[{ code, message, path?, line?, section?, frame? }]`，就是 `listProjects` 里这篇的布局错误（`path` 在 `articles/<文章>` 下的那些）。属于某一节的错误带 `section`（节 id），属于某一帧的再带 `frame`。不属于任何节的错误是页级错误：frontmatter、页 id 撞名、MDX 写坏、Canvas 在节外、重复的节 id。站点按 `section` 分到卡片和页顶错误条，显示 `message`。
 - `figures` 是正文里的图，每个 `<Figure>` 一项，见下面“图”。图的错误（`code` 以 `figure_` 开头）也在 `errors` 里，站点把它们显示在图的位置，不分到卡片和页顶错误条。
 - 文章不存在或 project 没登记时，`sections` 为空，`errors` 说明原因。
-- 帧卡片的 iframe 用 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`；画布浮层里是嵌入版工作台 `/workbench/?page=<pageId>&section=<节 id>&embed=overlay&gen=<文档代次>`（`gen` 的语义见 `site/README.md`「画布浮层」），新标签页打开画布用不带 `embed` 的同一个地址；这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
+- 帧卡片读 `/api/frame?page=<pageId>&screen=<帧 id>&annotate=off&embed=card`；静态帧（无运行时脚本、CSS 不依赖帧视口）的卡片不建 iframe，浏览器端把帧 HTML 挂进卡片里的 shadow root（`site/src/lib/canvas-card-client.js`，判据见 `site/README.md`“写文章”）；带运行时脚本的帧、HTML 帧与挂载失败的帧留 iframe。画布浮层里是嵌入版工作台 `/workbench/?page=<pageId>&section=<节 id>&embed=overlay&gen=<文档代次>`（`gen` 的语义见 `site/README.md`「画布浮层」），新标签页打开画布用不带 `embed` 的同一个地址；这一桶的画布账本是 `GET /annotations/%40canvas?entry=<pageId>`。
 - `embed=card` 是站点读帧的契约（`frame-doc.js` 的 `markEmbedStage`）：不出图注，不注入标注客户端，`<html>` 带 `data-pp-embed="card"`，第一个机壳带 `data-pp-stage="phone|comp|doc"`，手机机身带 `data-pp-device`。站点只认这几个属性量尺寸，不认工作台的 class 名；只加属性，机壳以下的 DOM 与画布同构。`embed` 只接受 `card`，别的值 400。
 
 ## 图

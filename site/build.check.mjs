@@ -79,13 +79,20 @@ test('fixture site builds every route and resolves [[ ]]', (t) => {
   assert.doesNotMatch(article, /data-letter=|data-ref=|data-ov-letter/);
   assert.doesNotMatch(article, /<span class="(?:ref|n)">[A-Z]+<\/span>|<b>[A-Z]+\d+<\/b>|\b[A-Z]\d+–[A-Z]\d+\b/);
 
-  // Canvas cards: one per Section with a <Canvas>, only that section's frames; lazy, inert iframes; links open the canvas at the section.
+  // Canvas cards: one per Section with a <Canvas>, only that section's frames; links open the canvas at the section.
+  // 非 doc 帧 SSR 出 .cc-shadow 挂载点（data-cc-src 与未缩放盒子），浏览器端把编译好的帧 HTML 挂进 shadow root
+  // （回退 iframe 由客户端建）；noscript 时退回纯 iframe（doc 帧恒为 iframe，见 html-frames 的构建断言）。
   const page = articlePageId('demo', 'payments');
   const q = (s) => s.replace(/&/g, '&amp;');
   const cards = cardsOf(article);
   assert.deepEqual(cards.map((c) => [c.page, c.section, c.frames]), [[page, 'flow', 'ask confirm confirm-card'], [page, 'mech', 'pay-button']]);
   const [flow, mech] = cards;
   assert.match(flow.html, /<span class="ref">2<\/span><span class="t">付款前的确认<\/span><span class="meta">3 帧<\/span>/);
+  const shadowsOf = (html) => [...html.matchAll(/<div class="cc-shadow" data-cc-src="([^"]+)" data-cc-w="([^"]+)" data-cc-h="([^"]+)" data-cc-title="([^"]*)" aria-hidden="true"><\/div><noscript><iframe src="([^"]+)"/g)].map((m) => [m[1], m[2], m[3], m[4], m[5]]);
+  assert.deepEqual(shadowsOf(flow.html), [['ask', '438', '910'], ['confirm', '438', '910'], ['confirm-card', '480', '320']].map(([f, w, h]) => {
+    const src = q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off&embed=card`);
+    return [src, w, h, f, src];
+  }));
   assert.deepEqual(iframesOf(flow.html), ['ask', 'confirm', 'confirm-card'].map((f) => q(`/api/frame?page=${encodeURIComponent(page)}&screen=${f}&annotate=off&embed=card`)));
   for (const tag of flow.html.match(/<iframe [^>]*>/g)) {
     assert.match(tag, /loading="lazy"/);

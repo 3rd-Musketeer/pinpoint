@@ -1,11 +1,26 @@
-// 浏览器端：画布卡片的帧尺寸与未处理标注数。卡片的数据全在 [data-pp-canvas] 的 data-* 上（Canvas.astro）。
+// 浏览器端：画布卡片的帧显示与未处理标注数。卡片的数据全在 [data-pp-canvas] 的 data-* 上（Canvas.astro）。
+//
+// 静态帧（无运行时脚本、CSS 不依赖帧视口）不建 iframe：取编译好的帧 HTML，挂进卡片里的
+// shadow root；样式按 URL 共享 constructed stylesheet（Vite 的 CSS 带 ?direct 取）。留 iframe
+// 的情况：帧有运行时脚本（data-preview-script / data-preview-mount 或来路不明的 <script>）、
+// HTML 帧（doc 壳）、CSS 命中判据（static-card-lib.js cssHazard）；此时用取回的 HTML 填
+// srcdoc iframe，不重复请求。静态挂载中途失败自动回退 iframe（原始地址）。
+import {
+  absolutizeAttrValue,
+  absolutizeSrcset,
+  classifyFrameScript,
+  cssHazard,
+  resolveCssImports,
+  rewriteCssUrls,
+  rewriteRootSelector,
+} from './static-card-lib.js';
 import { badgeText, docWidthKey, pageLedgerName, pendingCount, shellBox } from './canvas-card.js';
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 import { latestLedgerDocument, readLedgerDocument } from '../../../src/client/lib/ledger-reader.js';
 
-// 帧 iframe 是 /api/frame?…&embed=card：服务端不出图注，机壳带 data-pp-stage（phone / comp / doc），手机机身带 data-pp-device
+// 帧文档是 /api/frame?…&embed=card：服务端不出图注，机壳带 data-pp-stage（phone / comp / doc），手机机身带 data-pp-device
 // （src/server/lib/frame-doc.js markEmbedStage，契约在 docs/projects.md「给站点卡片的接口」）。这里只认 data-pp-stage，
-// 不认工作台的 class 名。同源，contentDocument 可读。
+// 不认工作台的 class 名。同源，iframe 的 contentDocument 可读；shadow root 直接查。
 const STAGE = '[data-pp-stage]';
 
 /**
@@ -98,25 +113,282 @@ function watchDocFrame(iframe) {
   check();
 }
 
-function fitFrame(iframe) {
-  const box = iframe.parentElement;
-  if (box.classList.contains('doc')) {
-    watchDocFrame(iframe);
-    return;
+/* ---- 静态卡片（shadow root） ---- */
+
+// Vite 的 CSS 普通 fetch 会拿到 JS 模块；?direct 取回 CSS 原文（静态文件服务忽略这个参数）。
+const directUrl = (url) => url + (url.includes('?') ? '&' : '?') + 'direct';
+
+// CSS 文本按 URL 共用（97 张卡片的 kit / article.css 只取一次）；非 2xx 按空表处理 ——
+// iframe 里那条 <link> 失败同样没有样式（如 /workbench/wb-tokens.css 经 SPA 回退）。
+const cssTextCache = new Map();
+function sheetText(url) {
+  if (!cssTextCache.has(url)) {
+    const pending = (async () => {
+      const res = await fetch(directUrl(url));
+      if (!res.ok) return '';
+      return cssFromText(await res.text(), url, new Set([url]));
+    })();
+    // 瞬时失败不留缓存（本次挂载回退 iframe，下一张卡还能重试）；成功的文本整页共用。
+    pending.catch(() => { if (cssTextCache.get(url) === pending) cssTextCache.delete(url); });
+    cssTextCache.set(url, pending);
   }
-  const measure = () => {
+  return cssTextCache.get(url);
+}
+
+// @import 递归展开（constructed stylesheet 不许带 @import）后，url() 按本表自己的 base 改写、
+// :root 搬到 :host。被展开的文本已按自己的 base 处理过，外层再改写到绝对地址是空操作。
+async function cssFromText(text, base, seen) {
+  const out = await resolveCssImports(text, base, (href) => sheetText(href), seen);
+  return rewriteRootSelector(rewriteCssUrls(out, base));
+}
+
+// constructed stylesheet 按文本共用：同一篇卡片的帧内容相同，全部卡片只构造一份。
+const sheetCache = new Map();
+function sheetFor(text) {
+  if (!sheetCache.has(text)) sheetCache.set(text, (async () => {
+    const sheet = new CSSStyleSheet();
+    await sheet.replace(text);
+    return sheet;
+  })());
+  return sheetCache.get(text);
+}
+
+// host 的继承边界：all:initial 挡住文章页的字体 / 颜色 / color-scheme；布局由挂载时内联写。
+let hostSheet = null;
+function hostResetSheet() {
+  if (!hostSheet) {
+    hostSheet = new CSSStyleSheet();
+    hostSheet.replaceSync(':host{all:initial;display:block;position:absolute;left:0;top:0;transform-origin:0 0;pointer-events:none}');
+  }
+  return hostSheet;
+}
+
+// ios-kit 在文章页加载一次：sprite（#ios-kit-chrome）克隆进每个 shadow root，refresh(root)
+// 填状态栏 / 锁屏墙纸 / 时钟。文章页经服务代理已注入标注客户端（同步脚本先于模块脚本执行，
+// window.__pinpoint 在位），kit 的 annotate 自注入不会触发。
+let kitPromise = null;
+function ensureKit() {
+  if (window.iOSKit) return Promise.resolve();
+  if (!kitPromise) {
+    kitPromise = new Promise((resolve, reject) => {
+      const el = document.createElement('script');
+      el.src = '/kits/ios/ios-kit.js';
+      el.onload = resolve;
+      el.onerror = () => reject(new Error('ios-kit.js 加载失败'));
+      document.head.append(el);
+    });
+  }
+  return kitPromise;
+}
+
+// 状态栏 / 锁屏时钟：iframe 里每个帧文档各自按分钟走，shadow 里没有文档级调度，由这里
+// 一分钟统一拨一次（kit 的 tick 认 data-time 与 data-clock-mode，语义不变）。
+const tickRoots = new Set();
+let tickTimer = null;
+function ensureTicker() {
+  if (tickTimer) return;
+  tickTimer = setInterval(() => {
+    for (const root of tickRoots) {
+      if (!root.host.isConnected) { tickRoots.delete(root); continue; }
+      try { window.iOSKit.tick(root); } catch { tickRoots.delete(root); }
+    }
+    if (!tickRoots.size) { clearInterval(tickTimer); tickTimer = null; }
+  }, 60_000);
+}
+
+/** 帧文档里的运行时脚本：预览脚本 / 来路不明的脚本 → 留 iframe；ios-kit 与 frame-boot 由卡片侧接管。 */
+function scriptHazard(doc) {
+  if (doc.querySelector('[data-preview-mount]')) return 'preview';
+  for (const s of doc.querySelectorAll('script')) {
+    const kind = classifyFrameScript({
+      src: s.getAttribute('src') || '',
+      attrs: s.getAttributeNames().join(' '),
+      text: s.textContent || '',
+    });
+    if (kind !== 'boot') return kind;
+  }
+  return null;
+}
+
+/** 回退 iframe：属性与 SSR 一致；srcdoc 用已取回的 HTML（不重复请求），否则走原始地址。 */
+function fallbackFrame(host, box, { srcdoc = null, src = null, title = '' }) {
+  const iframe = document.createElement('iframe');
+  iframe.tabIndex = -1;
+  iframe.setAttribute('aria-hidden', 'true');
+  iframe.setAttribute('scrolling', 'no');
+  iframe.title = title;
+  iframe.dataset.ccFallback = '1';
+  const scale = Number(box.dataset.scale) || 1;
+  iframe.style.width = `${host.dataset.ccW}px`;
+  iframe.style.height = `${host.dataset.ccH}px`;
+  iframe.style.transform = `scale(${scale})`;
+  iframe.addEventListener('load', () => { measureFallback(iframe, box); });
+  if (srcdoc != null) iframe.srcdoc = srcdoc; else iframe.src = src;
+  host.replaceWith(iframe);
+}
+
+// 回退帧的尺寸直接量：load（子资源齐）→ 帧文档字体就绪 → frame-boot 跑完（有预览脚本时）
+// → rAF 后量一次。没有定时重测；script 挂死时 frame-boot 的 data-frame-boot 不设超时地等
+// （与画布浮层等就绪信号同一约定）。
+async function measureFallback(iframe, box) {
+  const scale = Number(box.dataset.scale) || 1;
+  try { await iframe.contentDocument?.fonts?.ready; } catch { /* 字体集合不可达也照量 */ }
+  const root = iframe.contentDocument?.documentElement;
+  if (root && root.dataset.frameBoot !== 'done'
+    && iframe.contentDocument.querySelector('script[data-preview-script], [data-preview-mount]')) {
+    await new Promise((resolve) => {
+      const mo = new MutationObserver(() => {
+        if (root.dataset.frameBoot === 'done') { mo.disconnect(); resolve(); }
+      });
+      mo.observe(root, { attributes: true, attributeFilter: ['data-frame-boot'] });
+    });
+  }
+  requestAnimationFrame(() => {
     const m = measureStage(iframe);
     if (!m) return;
     if (m.failed) { failNote(box, m.detail); return; }
-    // 一张卡片里所有帧同一个缩放（canvas-card.js CARD_SCALE）：组件帧按自己的盒子 × 这个缩放，和手机帧可比。
-    const scale = Number(box.dataset.scale) || 1;
     placeFrame(iframe, box, m, scale);
     box.dataset.fitted = '1';
+  });
+}
+
+/** 量 shadow 里的机壳：host 先取消缩放，机壳相对 host 的偏移即 iframe 文档坐标里的 x/y。 */
+function placeHost(host, box, stage) {
+  const scale = Number(box.dataset.scale) || 1;
+  host.style.transform = 'none';
+  const a = stage.getBoundingClientRect();
+  const b = host.getBoundingClientRect();
+  if (!(a.width > 0 && a.height > 0)) throw new Error('机壳还没渲染出来');
+  const x = a.left - b.left;
+  const y = a.top - b.top;
+  host.style.width = `${Math.ceil(x + a.width)}px`;
+  host.style.height = `${Math.ceil(y + a.height)}px`;
+  host.style.transform = `scale(${scale}) translate(${-x}px, ${-y}px)`;
+  box.style.width = `${Math.round(a.width * scale)}px`;
+  box.style.height = `${Math.round(a.height * scale)}px`;
+}
+
+async function mountShadow(host, box, doc, base, sheets) {
+  doc.querySelectorAll('script, base, title, meta').forEach((el) => el.remove());
+  // 相对资源（图片 / srcset / poster / SVG image）按帧页的 base 绝对化；#c-chev 这类
+  // 纯 fragment 的 sprite 引用不动（必须留在本树解析）。
+  for (const el of doc.querySelectorAll('[src], [poster], [srcset], image[href], image[xlink\\:href]')) {
+    for (const attr of ['src', 'poster', 'href', 'xlink:href']) {
+      if (el.hasAttribute(attr)) el.setAttribute(attr, absolutizeAttrValue(el.getAttribute(attr), base));
+    }
+    if (el.hasAttribute('srcset')) el.setAttribute('srcset', absolutizeSrcset(el.getAttribute('srcset'), base));
+  }
+  const root = host.attachShadow({ mode: 'open' });
+  root.adoptedStyleSheets = [hostResetSheet(), ...sheets];
+  const htmlEl = doc.documentElement;
+  // iframe 文档根的 UA 默认字形与继承边界；color-scheme 钉 light（iframe 不跟文章页主题）。
+  htmlEl.style.cssText = 'font:16px "Times New Roman";color:black;color-scheme:light';
+  host.style.background = box.classList.contains('natural') ? 'transparent' : '#fff';
+  // 先摆出 iframe 的起始视口（SSR 盒子的未缩放尺寸），再按机壳量准。
+  host.style.width = `${host.dataset.ccW}px`;
+  host.style.height = `${host.dataset.ccH}px`;
+  root.append(htmlEl);
+  await ensureKit();
+  const chrome = document.getElementById('ios-kit-chrome');
+  if (!chrome) throw new Error('ios-kit chrome 未注入');
+  root.prepend(chrome.cloneNode(true));
+  window.iOSKit.refresh(root);
+  // 液态玻璃滤镜按 id 引用，跨不过 shadow 边界：用到它的帧把滤镜克隆进自己的 root。
+  if (root.querySelector('.ios-glass--liquid')) {
+    const filter = window.iOSKit.ensureLiquidGlassFilter();
+    if (filter) root.prepend(filter.parentElement.cloneNode(true));
+  }
+  tickRoots.add(root);
+  ensureTicker();
+  await document.fonts.ready;
+  const stage = root.querySelector(STAGE);
+  if (!stage) throw new Error('帧页没有 data-pp-stage');
+  placeHost(host, box, stage);
+  box.dataset.fitted = '1';
+  host.dataset.ccMounted = '1';
+}
+
+async function mountCard(host) {
+  const box = host.parentElement;
+  const url = new URL(host.dataset.ccSrc, location.href).href;
+  const title = host.dataset.ccTitle || '';
+  let text;
+  try {
+    const res = await fetch(url);
+    text = await res.text();
+    if (!res.ok) {
+      let detail = '';
+      try { detail = JSON.parse(text).message || ''; } catch { /* 错误页不是 JSON */ }
+      failNote(box, detail || `HTTP ${res.status}`);
+      host.remove();
+      return;
+    }
+  } catch {
+    fallbackFrame(host, box, { src: url, title }); // 网络层失败：回退浏览器自己的加载路径
+    return;
+  }
+  const doc = new DOMParser().parseFromString(text, 'text/html');
+  const base = new URL(doc.querySelector('base')?.getAttribute('href') || url, url).href;
+  if (scriptHazard(doc)) return fallbackFrame(host, box, { srcdoc: text, title });
+  const sheets = [];
+  const variable = [];
+  try {
+    for (const el of doc.querySelectorAll('style, link[rel=stylesheet]')) {
+      const cssText = el.tagName === 'LINK'
+        ? await sheetText(new URL(el.getAttribute('href'), base).href)
+        : await cssFromText(el.textContent, base, new Set());
+      sheets.push(sheetFor(cssText));
+      if (el.closest('body')) variable.push(cssText); // 判据只扫帧自带的样式（head 是帧页固定 boilerplate）
+      el.remove();
+    }
+  } catch {
+    return fallbackFrame(host, box, { srcdoc: text, title }); // CSS 取不回：iframe 自己取
+  }
+  if (variable.map(cssHazard).find(Boolean)) return fallbackFrame(host, box, { srcdoc: text, title });
+  try {
+    await mountShadow(host, box, doc, base, await Promise.all(sheets));
+  } catch (error) {
+    console.error('[canvas-card] 静态挂载失败，回退 iframe', error);
+    fallbackFrame(host, box, { src: url, title });
+  }
+}
+
+// 与 iframe 的 loading="lazy" 同义：接近视口才装；一次 6 个（r3 原型的节奏）。
+// 不用 IntersectionObserver：.cc-strip 横向 overflow 会裁掉后面的帧，IO 按裁剪算就永远不装，
+// 而 Chrome 的懒加载 iframe 不看中间滚动容器的裁剪（a6d8d98 基线实测：被裁的帧照样加载）。
+// 这里按 boundingClientRect（忽略裁剪）判断距离，与懒加载 iframe 的实际行为对齐。
+function initStaticCards() {
+  const hosts = [...document.querySelectorAll('.cc-shadow[data-cc-src]')];
+  if (!hosts.length) return;
+  let active = 0;
+  const pending = [];
+  const pump = () => {
+    while (active < 6 && pending.length) {
+      active++;
+      mountCard(pending.shift()).finally(() => { active--; pump(); });
+    }
   };
-  const onLoad = () => { measure(); setTimeout(measure, 300); setTimeout(measure, 1200); };
-  iframe.addEventListener('load', onLoad);
-  // Already loaded before the script ran (cached frame).
-  try { if (iframe.contentDocument?.readyState === 'complete' && iframe.contentDocument.body?.childElementCount) onLoad(); } catch { /* cross-origin: keep fixed box */ }
+  const MARGIN = 2000;
+  const check = () => {
+    for (const host of hosts) {
+      if (host.dataset.ccStarted || !host.isConnected) continue;
+      const r = host.getBoundingClientRect();
+      if (r.bottom >= -MARGIN && r.top <= innerHeight + MARGIN && r.right >= -MARGIN && r.left <= innerWidth + MARGIN) {
+        host.dataset.ccStarted = '1';
+        pending.push(host);
+      }
+    }
+    pump();
+  };
+  let scheduled = false;
+  const onScroll = () => {
+    if (scheduled) return;
+    scheduled = true;
+    requestAnimationFrame(() => { scheduled = false; check(); });
+  };
+  document.addEventListener('scroll', onScroll, { passive: true, capture: true });
+  addEventListener('resize', onScroll);
+  check();
 }
 
 // 标注数：这一节画布上待验收的标注（open / check / done，canvas-card.js pendingCount）。读该桶的画布账本（只读接口），
@@ -168,7 +440,8 @@ export async function refreshBadges(cards, refresh = false) {
 export function initCanvasCards() {
   const cards = [...document.querySelectorAll('[data-pp-canvas]')];
   if (!cards.length) return;
-  for (const iframe of document.querySelectorAll('[data-pp-canvas] iframe')) fitFrame(iframe);
+  for (const iframe of document.querySelectorAll('[data-pp-canvas] .cc-box.doc iframe')) watchDocFrame(iframe);
+  initStaticCards();
   for (const card of cards) {
     const seg = card.querySelector('[data-pp-width]');
     if (!seg) continue;

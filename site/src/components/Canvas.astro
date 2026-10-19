@@ -6,7 +6,9 @@
 // 不信本组件自己的 props：section 和 num（节号）由 remark-pinpoint 注入，frames / shell 只是作者写的源，解析与校验在 articleCanvas。
 // 文章只显示数字：卡片头是节号 + 节标题，图注只有帧 id；画布字母（B、B1）留给工作台、ppnt 和标注，不进文章页。
 // 文档帧（HTML 帧，shell doc）按 pinpoint 定的宽度显示（手机 402 / 桌面 1280，卡片头切换，缺省手机），卡片只露第一屏。
-// 卡片不可交互：iframe tabindex -1、pointer-events none。点帧在文章上打开整张画布浮层并定位、选中这一帧
+// 卡片不可交互：doc 帧是 tabindex -1、pointer-events none 的 iframe；静态帧（无运行时脚本、CSS 不依赖帧视口）
+// 由 canvas-card-client 取编译好的帧 HTML 挂进 .cc-shadow 的 shadow root（带运行时脚本的帧回退 srcdoc iframe），
+// noscript 时退回纯 iframe。点帧在文章上打开整张画布浮层并定位、选中这一帧
 // （CanvasOverlay.astro，#canvas=<节>&frame=<帧>）；“打开画布”定位到节。都不跳页，修饰键点照常走链接。
 // 头部的标注数（data-pp-badge）= 这一节画布上待验收的标注（open / check / done），浮层头读这里的 data-*。
 // 错误只显示一次：带 section 的在本卡片里，页级的（含写在 Section 外的 Canvas，这时不出卡片）在页顶错误条。
@@ -66,9 +68,14 @@ const frameStyle = (box) => `width:${box.width}px;height:${box.height}px;transfo
             <div class:list={['cc-box', f.box.mode, 'missing']} data-pp-missing style={boxStyle(f.box)}>
               <div class="ph">缺帧 {f.id}</div>
             </div>
-          ) : (
+          ) : f.box.mode === 'doc' ? (
             <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} style={boxStyle(f.box)}>
               <iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe>
+            </div>
+          ) : (
+            <div class:list={['cc-box', f.box.mode]} data-scale={f.box.scale} style={boxStyle(f.box)}>
+              <div class="cc-shadow" data-cc-src={f.src} data-cc-w={f.box.width} data-cc-h={f.box.height} data-cc-title={f.title} aria-hidden="true"></div>
+              <noscript><iframe src={f.src} loading="lazy" tabindex="-1" aria-hidden="true" scrolling="no" title={f.title} style={frameStyle(f.box)}></iframe></noscript>
             </div>
           )}
           <a class="cc-hit" data-pp-frame-open href={canvasHash(m.sectionId, { frame: f.id })} aria-label={`在画布中打开 ${f.title}`}></a>
