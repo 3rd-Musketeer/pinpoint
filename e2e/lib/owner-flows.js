@@ -69,7 +69,15 @@ export function ownerLedger(ledger = '@canvas') {
   return JSON.parse(fs.readFileSync(path.join(E2E_DATA_DIR, OWNER_PAGE, `${ledger}.json`), 'utf8')).annotations;
 }
 
-export async function ownerCleanup(page) { await closeSettled(page); }
+export async function ownerCleanup(page) {
+  if (page.isClosed()) return;
+  // 正文缩略帧 annotate=off，只读且没有保存客户端。断开这些帧后再按现有协议
+  // 等正文/工作台的真实写落盘，避免对尚未创建执行上下文的 lazy iframe 逐个等 500 ms。
+  await page.locator('[data-pp-canvas] iframe').evaluateAll(frames => {
+    for (const frame of frames) if (new URL(frame.src).searchParams.get('annotate') === 'off') frame.remove();
+  });
+  await closeSettled(page);
+}
 
 export async function metric(testInfo, name, values) {
   const data = { name, ...values, loadavg: execFileSync('sysctl', ['-n', 'vm.loadavg'], { encoding: 'utf8' }).trim() };
