@@ -15,6 +15,7 @@
 
 /** Last `>`-separated selector segment, trimmed and truncated — the "which
  * element" excerpt used when a mark carries no stored text. */
+import { annStatusOf } from './ann-status.js';
 export function selectorExcerpt(selector, max = 60) {
   const tail = (String(selector || '').split('>').pop() || '').trim();
   return tail.slice(0, max);
@@ -117,7 +118,7 @@ export function annRowModel(mark, context = {}) {
     broken: !!context.broken,
     tags: annRowTags(mark),
     // pp2 状态机：四态随行（消费端自行决定怎么摆）。
-    status: (mark && mark.status) || 'open',
+    status: annStatusOf(mark),
     // 线程回复（agent 改完说了什么）：列表行在正文下面逐条列出。
     replies: annRowReplies(mark),
   };

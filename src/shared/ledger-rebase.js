@@ -23,6 +23,7 @@
  */
 
 // 不按 owner 字段合并的：n、status、messages 各有规则（见上）。
+import { annStatusOf } from './ann-status.js';
 const OWN_RULE_FIELDS = new Set(['n', 'status', 'messages']);
 
 // 一起改、一起取的字段组；不在组里的字段各自成组。
@@ -59,10 +60,6 @@ function sameMessage(a, b) {
   return Boolean(a && b && a.who === b.who && a.text === b.text && a.at === b.at);
 }
 
-function statusOf(row) {
-  return (row && row.status) || 'open';
-}
-
 function mergeRow(local, base, server) {
   const row = {};
   const done = new Set(OWN_RULE_FIELDS);
@@ -78,7 +75,7 @@ function mergeRow(local, base, server) {
   }
   if (Number.isInteger(server.n)) row.n = server.n;
   else if ('n' in local) row.n = local.n;
-  row.status = base && statusOf(local) !== statusOf(base) ? statusOf(local) : statusOf(server);
+  row.status = base && annStatusOf(local) !== annStatusOf(base) ? annStatusOf(local) : annStatusOf(server);
   const messages = Array.isArray(server.messages) ? server.messages.slice() : [];
   for (const m of Array.isArray(local.messages) ? local.messages : []) {
     if (!messages.some((x) => sameMessage(x, m))) messages.push(m);

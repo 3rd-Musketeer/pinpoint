@@ -147,12 +147,12 @@ project 条目与存量页的条目共用 registry 的 id 命名空间（同一�
 - `canvasSections` 是画布上的节数：带 `<Canvas>` 且列了帧的节。0 表示这篇没有画布，工作台左栏点它直接打开正文（见下面“工作台左栏”）。
 - 每次调用都重读磁盘，加文章不用 reload。
 
-同一模块还导出 `readProjectJson(root)`、`CONCEPT_STATUSES`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取：
+同一模块还导出 `readProjectJson(root)`、`PROJECT_CONTENT_DIR`（`docs/pinpoint`）。不读盘的规则放在叶子模块 `src/shared/project-ids.js`，服务、CLI、站点和工作台都从这里取：
 
 - `articlePageId(projectId, articleId)` → `<project>_<article>`：一篇文章的页 id，也是它的标注桶（画布标注与正文评论共用）；`parseArticlePageId` 拆回来，`ARTICLE_PAGE_ID_PATTERN` 是它的形状，见“画布视图”。一个页 id 现在指不指得到东西（文章要 project 登记了、`index.mdx` 在盘上）只问 `src/server/lib/page-resolve.js`：`resolvePage(registry, id, { manifestIds })` 答它是登记条目、模板页、文章还是什么都不是，`pageIdIsLive` 是它的布尔版。服务收标注时的桶校验、`ppnt prune`、`status` / `check` 的整桶孤儿报告、`/sites/<id>/`、`/api/frame` 都用它。
 - `refKey(name)`：`[[ ]]` 命名空间的比较键（NFC、去首尾空白、小写）。解析 `[[名字]]` 时拿它同时比 article id 与 wiki 词条的 `name`。
 - `RESERVED_TOP_SEGMENTS`、`isReservedProjectId`、`RESERVED_ARTICLE_IDS`：保留名，见下面“保留名”。
-- `SECTION_ID_PATTERN`、`FRAME_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
+- `SECTION_ID_PATTERN`、`SCREEN_ID_PATTERN`、`FIGURE_ID_PATTERN`、`CANVAS_SHELLS`、`sectionLetter`：正文画布写法的规则与节字母。
 - `CANVAS_LEDGER`（`@canvas`）、`PROSE_LEDGER`（`@prose`）：桶里两本固定账本的名字。
 
 frontmatter 子集的解析器 `parseFrontmatter(text)` → `{ data, body, errors }` 在 `src/server/lib/frontmatter.js`。

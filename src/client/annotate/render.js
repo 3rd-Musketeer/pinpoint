@@ -1,7 +1,7 @@
 // 钉子结构：哪些标注该画、徽章与箭头节点的增删、气泡显隐，以及画布坐标系。
 // 导出 bind_render、init_render、drawableMark、syncMarkStructure、canvasStage、
 // focusBubble、visiblePageMarks 等。
-import { filterIncludesStatus } from '../../shared/ann-status.js';
+import { annStatusOf, filterIncludesStatus } from '../../shared/ann-status.js';
 import { isMarkBroken, markElementTargets, markHasLiveTarget, markOnActivePage, resolveAllLiveTargets, resolveMarkSelector, resolveMarkTarget } from './anchor.js';
 import { svgArrow, updateArrowGeometry } from './arrow.js';
 import { markGeometryKey, updateCanvasBubble } from './bubbles.js';
@@ -134,7 +134,7 @@ export function placeArrow(entry, from, to) {
 }
 
 function statusBadgeClass(m) {
-  var st = (m && m.status) || 'open';
+  var st = annStatusOf(m);
   return st === 'open' ? '' : ' ann-badge--' + st;
 }
 
