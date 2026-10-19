@@ -12,6 +12,7 @@
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { FocusScope } from '@radix-ui/react-focus-scope';
+import { autoUpdate, computePosition, offset, shift } from '@floating-ui/dom';
 import { useWorkbenchStore, wbGet } from './store.js';
 import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
 import {
@@ -73,17 +74,24 @@ function useOpenKey() {
   return openKey;
 }
 
+// 定位（@floating-ui/dom，2026-10-19 C4）：placement top + offset(8) = 水平居中于
+// 触发钮、底边贴钮上方 8px；shift 把水平位置夹回视口（12px 边距）。maxHeight 仍按
+// 旧公式先写（ placement 的 y 要用收过的高度量 ）：min(60vh, 钮上方空间，最少 80)。
 function placePop(trigger, pop) {
-  var box = trigger.getBoundingClientRect();
   var margin = 12;
-  var width = Math.min(320, window.innerWidth - margin * 2);
-  var left = box.left + box.width / 2 - width / 2;
-  left = Math.max(margin, Math.min(left, window.innerWidth - margin - width));
-  var spaceAbove = Math.max(80, box.top - 8 - margin);
-  pop.style.width = width + 'px';
-  pop.style.left = left + 'px';
-  pop.style.bottom = (window.innerHeight - box.top + 8) + 'px';
-  pop.style.maxHeight = Math.min(window.innerHeight * 0.6, spaceAbove) + 'px';
+  var box = trigger.getBoundingClientRect();
+  pop.style.width = Math.min(320, window.innerWidth - margin * 2) + 'px';
+  pop.style.bottom = 'auto';
+  pop.style.maxHeight = Math.min(window.innerHeight * 0.6, Math.max(80, box.top - 8 - margin)) + 'px';
+  return computePosition(trigger, pop, {
+    strategy: 'fixed',
+    placement: 'top',
+    middleware: [offset(8), shift({ padding: margin })]
+  }).then(function (result) {
+    if (!pop.isConnected) return;
+    pop.style.left = result.x + 'px';
+    pop.style.top = result.y + 'px';
+  });
 }
 
 function focusFrame(sectionId, screenId) {
@@ -307,6 +315,11 @@ function OutlinePop(props) {
       if (pop && button) placePop(button, pop);
     }
     place();
+    // 跟随触发钮：祖先滚动 / 视口缩放 / 钮自身尺寸变化都经 autoUpdate 再定位
+    // （替代旧的 window resize + capture scroll 两对监听，2026-10-19 C4）。
+    var stopAutoUpdate = function () {};
+    var anchor = trigger();
+    if (pop && anchor) stopAutoUpdate = autoUpdate(anchor, pop, place);
     // 捕获段：标注钉子在冒泡段 stopPropagation，冒泡段的点外关闭收不到这一下。
     // 排除浮层自己、当前触发钮（它自己的 click 负责开合）与菜单（右键 / 复制菜单
     // 门户在浮层外，点它们不收浮层）。
@@ -319,12 +332,9 @@ function OutlinePop(props) {
       setOpenKey(null);
     }
     document.addEventListener('pointerdown', onPointerDown, true);
-    window.addEventListener('resize', place);
-    window.addEventListener('scroll', place, true);
     return function () {
+      stopAutoUpdate();
       document.removeEventListener('pointerdown', onPointerDown, true);
-      window.removeEventListener('resize', place);
-      window.removeEventListener('scroll', place, true);
     };
   }, []);
 
