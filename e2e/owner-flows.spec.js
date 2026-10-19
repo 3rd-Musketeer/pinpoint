@@ -2,8 +2,33 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './lib/fixtures.js';
 import { dragSelect, proseSettled } from './lib/prose.js';
-import { ownerCleanup, ownerLedger, seedOwner, openOwnerArticle, openOwnerBoard, ownerAnnotation, ownerEscapeLayers, focusOwnerFrame } from './lib/owner-flows.js';
+import { ownerCleanup, ownerLedger, seedOwner, openOwnerArticle, openOwnerBoard, ownerAnnotation, ownerEscapeLayers, focusOwnerFrame, boardReady, metric } from './lib/owner-flows.js';
 import { OWNER_SOURCE } from './lib/owner-fixture.js';
+
+test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更新', async ({ page, context }, testInfo) => {
+  const source = path.join(OWNER_SOURCE, 'flow-001.jsx');
+  const original = fs.readFileSync(source, 'utf8');
+  const article = await context.newPage();
+  try {
+    await test.step('工作台和文章各打开同一帧', async () => {
+      await openOwnerBoard(page);
+      await focusOwnerFrame(page);
+      await openOwnerArticle(article);
+      await expect(article.frameLocator('[data-screen="flow-001"] iframe').locator('[data-owner-heading]')).toHaveText('流程 1 初稿');
+    });
+    await test.step('写源文件，两个页面不手动刷新就看到新稿', async () => {
+      const started = performance.now();
+      fs.writeFileSync(source, original.replace('流程 1 初稿', '流程 1 修订稿'));
+      await expect(page.locator('[data-screen="flow-001"] [data-owner-heading]')).toHaveText('流程 1 修订稿', { timeout: 30_000 });
+      await expect(article.frameLocator('[data-screen="flow-001"] iframe').locator('[data-owner-heading]')).toHaveText('流程 1 修订稿', { timeout: 30_000 });
+      await boardReady(page);
+      await metric(testInfo, 'source-update', { elapsedMs: performance.now() - started });
+    });
+  } finally {
+    await ownerCleanup(article);
+    fs.writeFileSync(source, original);
+  }
+});
 
 test('owner 工作台：中文标注、钉子、Esc，帧菜单和红点重置', async ({ page }) => {
   const scope = await openOwnerBoard(page);
