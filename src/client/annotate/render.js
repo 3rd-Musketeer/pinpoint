@@ -104,8 +104,20 @@ export function focusBubble(n) {
 }
 
 function wireMarkBadge(badge, n) {
+  // 按下就打开（owner 2026-10-19：“点击已有的标注的小圆圈，无法直接弹出标注框，必须点击 hover 显示的标注气泡”）。
+  // 等 click 不稳：悬浮卡在按下后 120 ms 浮出，主线程排队时按下和抬起之间它会挪到指针下面，
+  // 按下在钉子、抬起在卡上，浏览器就不派 click，两边都不开。
+  var pressedAt = 0;
+  badge.addEventListener('pointerdown', function (e) {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    pressedAt = Date.now();
+    openMark(n);
+  });
   badge.addEventListener('click', function (e) {
     e.stopPropagation();
+    if (Date.now() - pressedAt < 1000) return; // 按下时已经开过
     openMark(n);
   });
   badge.addEventListener('mouseenter', function () { showBubbleFor(n, 120); });

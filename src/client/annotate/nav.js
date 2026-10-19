@@ -43,12 +43,15 @@ function takeEscape() {
     clearHover();
     return true;
   }
+  // 页面自己开着的弹出层（菜单、对话框、大纲浮层）比标注模式靠前：这一下 Esc 让它先关。
+  if (document.querySelector(OPEN_LAYERS)) return false;
   if (ctx.mode) { toggleMode(); return true; }
   return false;
 }
+var OPEN_LAYERS = '[role="menu"], .wb-ann-more-menu, [role="listbox"], dialog[open], [role="dialog"][data-state="open"], #wboutline-pop, #wbann-pop';
 
 export function installPinpointApi() {
-  // Esc 逐级退：提及列表 → 输入框的工具菜单 → 标注框 → 进行中的箭头 / 框选 → 标注模式，之后才轮到页面自己。
+  // Esc 逐级退：提及列表 → 输入框的工具菜单 → 标注框 → 进行中的箭头 / 框选 → （页面开着的菜单、对话框）→ 标注模式，之后才轮到页面自己。
   // 挂在 window 的捕获段，排在被评审页面的所有监听之前：标注层接住这一下就截断，
   // 原型自己注册的 Esc（关表单、关弹窗）不会跟着一起触发（owner 2026-10-19）。
   window.addEventListener('keydown', function (e) {

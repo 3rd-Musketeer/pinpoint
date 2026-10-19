@@ -77,6 +77,19 @@ export function startCanvasDiagnostics(stage, pageId) {
     }
   });
   observe('longtask', () => { longTasks++; });
+  // 画布浮层是文章页里的 iframe，和文章页、正文帧卡片共用一个主线程：输入排队常常是被外面的长帧挡住的。
+  // 同源时也看顶层窗口的长帧，归属里带上 top: 前缀。
+  try {
+    if (window.top !== window && window.top.PerformanceObserver) {
+      const topPo = new window.top.PerformanceObserver(list => list.getEntries().forEach(e => {
+        recentLoaf.push({ outer: true, startTime: e.startTime + (window.top.performance.timeOrigin - performance.timeOrigin), duration: e.duration,
+          renderStart: e.renderStart ? e.renderStart + (window.top.performance.timeOrigin - performance.timeOrigin) : 0, scripts: e.scripts || [] });
+        if (recentLoaf.length > 24) recentLoaf.shift();
+      }));
+      topPo.observe({type:'long-animation-frame', buffered:false});
+      removers.push(() => topPo.disconnect());
+    }
+  } catch {}
   // 慢输入（owner 2026-10-19：“在画布上标注的时候输入法输入简直卡爆了”）：按键、输入法组字、input 事件
   // 从发生到画出来超过 INPUT_LAG_MS 就记一条：分成排队（inputDelay）、处理（processing）、出帧（presentation），
   // 带同一时段长帧里最耗时的三段脚本（文件:函数:毫秒，含强制样式布局）。不记按键内容和目标文字。
@@ -89,10 +102,11 @@ export function startCanvasDiagnostics(stage, pageId) {
     for (const f of recentLoaf) {
       if (f.startTime > end || f.startTime + f.duration < start) continue;
       if (f.renderStart) render = Math.max(render, f.startTime + f.duration - f.renderStart);
-      for (const sc of f.scripts || []) scripts.push(sc);
+      for (const sc of f.scripts || []) scripts.push(f.outer ? { outer: true, sourceURL: sc.sourceURL, sourceFunctionName: sc.sourceFunctionName, invoker: sc.invoker, duration: sc.duration, forcedStyleAndLayoutDuration: sc.forcedStyleAndLayoutDuration } : sc);
+      if (f.outer && !(f.scripts || []).length) scripts.push({ outer: true, sourceURL: 'no-script', invoker: 'render', duration: f.duration, forcedStyleAndLayoutDuration: 0 });
     }
     scripts.sort((a, b) => b.duration - a.duration);
-    const top = scripts.slice(0, 3).map(sc => [scriptName(sc.sourceURL), String(sc.sourceFunctionName || sc.invoker || '').slice(0, 40),
+    const top = scripts.slice(0, 3).map(sc => [(sc.outer ? 'top:' : '') + scriptName(sc.sourceURL), String(sc.sourceFunctionName || sc.invoker || '').slice(0, 40),
       Math.round(sc.duration), Math.round(sc.forcedStyleAndLayoutDuration || 0)].join(':')).join(' | ');
     return {scripts: top.slice(0, 240), render: Math.round(render)};
   }
