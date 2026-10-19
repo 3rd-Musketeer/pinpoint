@@ -25,9 +25,9 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { annotateSnippet, injectAnnotateClient } from './lib/annotate-snippet.js';
-import { articleHtmlFrameFile, deriveArticleBoard, frameSrcFromUrlPath } from './lib/article-board.js';
+import { articleHtmlFrameFile, frameSrcFromUrlPath } from './lib/article-board.js';
+import { resolveBoardSource } from './lib/board-source.js';
 import { sendFile, sendJson, sendMethodNotAllowed } from './lib/http-respond.js';
-import { resolvePage } from './lib/page-resolve.js';
 import { resolveContainedFile, resolveServableFile } from './lib/servable-file.js';
 import {
   boardScreenIds,
@@ -99,15 +99,14 @@ export function createSitesHandler(options = {}) {
    * 组件和 HTML 帧引用的资源）从文章目录只读静态出；project 根下的 HTML 帧和它引用的文件在
    * `@root/<路径>` 下（docs/projects.md“HTML 帧”）。三处出文件都经 resolveServableFile。
    */
-  async function serveArticlePage(req, res, target, rel, rawRel) {
+  async function serveArticlePage(req, res, source, rel, rawRel) {
     if (req.method !== 'GET' && req.method !== 'HEAD') {
       sendMethodNotAllowed(res);
       return true;
     }
-    let board;
-    try {
-      board = deriveArticleBoard(target).board;
-    } catch {
+    const target = source.target;
+    const board = source.readBoard();
+    if (!board) {
       sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
     }
@@ -183,9 +182,9 @@ export function createSitesHandler(options = {}) {
     }
 
     // /sites/<id>/ 只服务登记条目与文章画布页（pp3，<project>_<article>）；模板页不在这里。
-    const page = resolvePage(registry, id);
-    if (page && page.kind === 'article') return serveArticlePage(req, res, page.target, rel, rawPath);
-    const entry = page && page.kind === 'entry' ? page.entry : null;
+    const source = resolveBoardSource(id, { registry });
+    if (source && source.kind === 'article') return serveArticlePage(req, res, source, rel, rawPath);
+    const entry = source ? source.entry : null;
     if (!entry) {
       sendJson(res, 404, { error: 'not found', message: 'not found' });
       return true;
@@ -208,22 +207,17 @@ export function createSitesHandler(options = {}) {
     // 编译失败的屏 500 带错误文本（工作台的 .wb-screen-err 面板吃非 200）。
     // 非屏路径（css / js / 图片 / 非屏 html）仍走下面的源目录静态服务。
     if (entry.kind === 'dir') {
-      const pageDir = path.resolve(entry.path);
+      const pageDir = source.pageDir;
       // 不可读的板不能退化为普通 HTML 静态服务，绕过编译源边界。
       if (resolveContainedFile(pageDir, 'board.json', { index: false }).reason === 'outside') {
         sendJson(res, 404, { error: 'not found', message: 'not found' });
         return true;
       }
       const screenId = screenIdFromRel(rel);
-      if (screenId) {
+      if (screenId && source.target) {
         const ids = boardScreenIds(pageDir);
         if (ids && ids.has(screenId)) {
-          return serveDistScreenResponse(req, res, {
-            entryId: entry.id,
-            pageDir,
-            urlBase: `/sites/${entry.id}/`,
-            kind: 'dir',
-          }, screenId, {
+          return serveDistScreenResponse(req, res, source.target, screenId, {
             // storage-unify：注入的 entry = 这条内容属于哪一页。
             inject: query.get('annotate') === 'off' ? null : (html) => injectAnnotateClient(html, entry.id),
           });

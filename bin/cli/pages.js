@@ -2,7 +2,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
-import { compilePage, listPageIds, readTargetBoard, renderScreenHtml, resolvePageTarget } from '../../src/server/lib/page-compiler.js';
+import { compilePage, listPageIds, renderScreenHtml } from '../../src/server/lib/page-compiler.js';
+import { readTargetBoard, resolvePageTarget } from '../../src/server/lib/board-source.js';
 import { isWatchedSource, planPageRecompile } from '../../src/server/lib/recompile-plan.js';
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { refLikeFrameIds, refLikeTitles } from '../../src/workbench/lib/board-refs.js';

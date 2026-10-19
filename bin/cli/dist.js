@@ -3,7 +3,8 @@
  * 源码时先编一次，不再要求 agent 先跑 ppnt build（docs/registry.md“CLI”）。和 ppnt build 同一个编译器，
  * 写同一个 dist；不在盘上的页（文档页）什么也不做。
  */
-import { compilePage, distStatus, readTargetBoard } from '../../src/server/lib/page-compiler.js';
+import { compilePage, distStatus } from '../../src/server/lib/page-compiler.js';
+import { readTargetBoard } from '../../src/server/lib/board-source.js';
 
 /**
  * target 是 resolvePageTarget / loadPageContext 的目标。dist 是最新的返回 null；

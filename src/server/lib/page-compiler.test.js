@@ -14,8 +14,8 @@ import {
   listPageIds,
   readDistScreen,
   renderScreenHtml,
-  resolvePageTarget,
 } from './page-compiler.js';
+import { resolvePageTarget } from './board-source.js';
 
 let tmp;
 

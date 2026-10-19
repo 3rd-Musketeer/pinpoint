@@ -15,7 +15,8 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultDistRoot, readBuildJson, readDistBoard, readTargetBoard, screenEntriesFromBoard } from './page-compiler.js';
+import { defaultDistRoot, readBuildJson, readDistBoard, screenEntriesFromBoard } from './page-compiler.js';
+import { readTargetBoard } from './board-source.js';
 
 // watch 盯的文件类型（review 必须修 2）：build.json 的 deps 记的是 esbuild
 // metafile 的全部输入，esbuild 默认 loader 能打包的 json / ts / tsx / mjs / cjs /

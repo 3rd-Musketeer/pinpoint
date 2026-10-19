@@ -726,7 +726,8 @@ export async function renameEntry(parsed, io = {}) {
   // ③' 文章画布：旧 dist 删了的，按新页 id 重编一次（和 `ppnt build <页>` 同一个编译器）。
   const rebuild = (plan.articleMoves || []).filter((move) => move.hadDist);
   if (rebuild.length) {
-    const { compilePage, resolvePageTarget } = await import('../../src/server/lib/page-compiler.js');
+    const { compilePage } = await import('../../src/server/lib/page-compiler.js');
+    const { resolvePageTarget } = await import('../../src/server/lib/board-source.js');
     const registry = loadRegistry({ root: REPO_ROOT, path: plan.registryPath });
     for (const move of rebuild) {
       const target = resolvePageTarget(move.toId, { registry, root: REPO_ROOT });

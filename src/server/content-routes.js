@@ -31,6 +31,7 @@ import {
   serveBoardJsonWithDist,
   serveDistScreenResponse,
 } from './lib/page-compiler.js';
+import { resolveBoardSource } from './lib/board-source.js';
 
 const PREFIXES = [
   ['/kits/', '/content/kits/'],
@@ -196,16 +197,11 @@ export default function contentRoutes() {
           } else {
             const screenMatch = urlPath.match(/^\/previews\/([a-zA-Z0-9_-]+)\/([a-zA-Z0-9_-]+)\.html$/);
             if (screenMatch) {
-              const pageDir = path.join(previewsRoot, screenMatch[1]);
-              const ids = boardScreenIds(pageDir);
+              const source = resolveBoardSource(screenMatch[1], { root });
+              const ids = source && source.kind === 'template' ? boardScreenIds(source.pageDir) : null;
               if (ids && ids.has(screenMatch[2])) {
                 const annotate = !/(?:^|&)annotate=off(?:&|$)/.test(query);
-                await serveDistScreenResponse(req, res, {
-                  entryId: screenMatch[1],
-                  pageDir,
-                  urlBase: `/previews/${screenMatch[1]}/`,
-                  kind: 'template',
-                }, screenMatch[2], {
+                await serveDistScreenResponse(req, res, source.target, screenMatch[2], {
                   // storage-unify：previews 屏也带 entry 标记（= 页 id），账本落页桶。
                   inject: annotate
                     ? (html) => (/<!doctype\b/i.test(html) && !html.includes('data-ios-annotate') ? injectAnnotateClient(html, screenMatch[1]) : html)

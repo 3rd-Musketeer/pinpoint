@@ -26,7 +26,8 @@ import { ARTICLE_ASSET_FILES, deriveArticleBoard } from './article-board.js';
 import { resolveArticleTarget } from './page-resolve.js';
 import { readFrameShell } from './article-canvas.js';
 import { collectHtmlFrameAssets } from './html-frame-assets.js';
-import { compilePage, readBuildJson, readTargetBoard, resolvePageTarget } from './page-compiler.js';
+import { compilePage, readBuildJson } from './page-compiler.js';
+import { readTargetBoard, resolvePageTarget } from './board-source.js';
 import { manifestPageIds } from './page-manifest.js';
 import {
   articlePageId,

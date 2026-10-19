@@ -13,8 +13,8 @@
  * project 条目不是页（它们在 registry.projects，不在 entries），project id 也不是桶。
  *
  * 用它的：服务收标注时的桶校验（annotate-api）、孤儿判定与 prune、`/sites/<id>/`（sites-api）、
- * 嵌入帧（frame-doc）、文章正文的注入（article-proxy）、编译目标（page-compiler 的
- * resolvePageTarget 在这上面加“有 board.json”）。
+ * 嵌入帧（frame-doc）、文章正文的注入（article-proxy）、编译目标（board-source.js 的
+ * resolveBoardSource / resolvePageTarget 在这上面加“有 board.json”）。
  *
  * registry 只认 loadRegistry 的结果与 registry-store 的 live view 这一种形状：
  * `entries`（页条目）+ `projects`（project 条目）。读 project 条目一律经 registry.js 的

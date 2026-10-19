@@ -23,17 +23,15 @@ import {
   wrapPhoneShell,
 } from '../../shared/frame-shell.js';
 import { boardRefs } from '../../workbench/lib/board-refs.js';
-import { entryBoardMode, legacyShell } from '../../workbench/lib/preview-contracts.js';
+import { legacyShell } from '../../workbench/lib/preview-contracts.js';
 import { escHtml } from '../../shared/esc-html.js';
 import { screenEntries } from '../../shared/board-screens.js';
-import { readBoard } from './board-file.js';
 import { annotateClientSrc } from './annotate-bundle.js';
-import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
+import { resolveBoardSource } from './board-source.js';
+import { loadDistScreenHtml } from './page-compiler.js';
 import { resolvePage } from './page-resolve.js';
 import { registryEntry } from './registry.js';
-import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { ENTRY_OR_ARTICLE_ID_PATTERN, FIGURE_ID_PATTERN, SCREEN_ID_PATTERN } from '../../shared/project-ids.js';
-import { synthesizeBoard } from './synth-board.js';
 import { resolveContainedFile } from './servable-file.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -47,20 +45,6 @@ export class FrameDocError extends Error {
     this.name = 'FrameDocError';
     this.code = code; // 'bad_request' | 'unknown_page' | 'unknown_screen'
   }
-}
-
-function readJsonSafe(file) {
-  try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
-  } catch {
-    return null;
-  }
-}
-
-/** Workbench Pages 清单的服务端镜像：模板 _index.json（_index.local.json 已于 pp2 切片 3 退役）。 */
-function previewManifestPages() {
-  const base = readJsonSafe(path.join(PREVIEWS_ROOT, '_index.json'));
-  return Array.isArray(base && base.pages) ? base.pages.slice() : [];
 }
 
 /** 缺省壳（唯一定义在 preview-contracts.legacyShell）。 */
@@ -114,7 +98,35 @@ function containedFrameFile(base, rel) {
  *   { kind: 'doc', url, pageId, screenId, title }                       — 端点 302
  *   { kind: 'fragment', pageId, screenId, title, shell, section, sectionLabel,
  *     ref, entry, baseUrl, fragmentPath }                                — 端点组装
+ *
+ * 页是什么、板从哪来、target 是什么都在 board-source.js（S2）；这里只剩
+ * 出帧规则表：这一屏从 dist 出还是磁盘直读、磁盘直读的源文件怎么解析。
  */
+const FRAME_SOURCE_RULES = {
+  // 模板页（previews/）：页内 board 屏（无 src）→ dist；src 屏按 content/ 相对
+  // 路径或 sites/<id>/ 直读。只认清单里的页（要清单里的 mode）。
+  template: {
+    useDist: (source, src) => !src,
+    fragmentPath: (source, src, screenId, registry) => src.startsWith('sites/')
+      ? siteSrcToAbsPath(src, registry)
+      : containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src))),
+  },
+  // 文章画布（pp3）：board 由 index.mdx 派生，屏全从 dist 出（JSX 编的、HTML 帧
+  // 原样进 dist 都在这条），桶 = 画布页 id。
+  article: {
+    useDist: () => true,
+    fragmentPath: () => null,
+  },
+  // registry 条目：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）
+  // 与 file 条目保留磁盘直读。
+  entry: {
+    useDist: (source, src) => !src && !!source.target,
+    fragmentPath: (source, src, screenId, registry) => src
+      ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
+      : containedFrameFile(source.entry.kind === 'file' ? source.entry.path : source.pageDir, source.entry.kind === 'file' ? '' : `${screenId}.html`),
+  },
+};
+
 export function resolveFrameTarget(pageId, screenId, options = {}) {
   const registry = options.registry || null;
   if (!ENTRY_OR_ARTICLE_ID_PATTERN.test(String(pageId || ''))) {
@@ -123,151 +135,22 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   if (!SCREEN_ID_PATTERN.test(String(screenId || ''))) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
-
-  // 1) previews 模板/实例页
-  const pageEntry = previewManifestPages().find((p) => p && p.id === pageId) || null;
-  if (pageEntry) {
-    if (!resolveContainedFile(PREVIEWS_ROOT, `${pageId}/board.json`, { index: false }).file) {
-      throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
-    }
-    const board = readBoard(path.join(PREVIEWS_ROOT, pageId));
-    if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no board.json`);
-    const hit = findScreen(board, screenId);
-    if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
-    const mode = pageEntry.mode === 'html' ? 'html' : 'ios';
-    const shell = normalizeShell(hit.screen.shell || hit.sectionShell, mode);
-    const baseUrl = `/previews/${pageId}/`;
-    if (shell === 'doc') {
-      return {
-        kind: 'doc',
-        url: docUrlForScreen(hit.screen, baseUrl),
-        pageId,
-        screenId,
-        title: hit.screen.title || screenId,
-      };
-    }
-    const src = hit.screen.src ? String(hit.screen.src) : '';
-    // pp2：页内 board 屏（无 src）→ dist（.jsx 屏也在此落地）。
-    if (!src) {
-      return {
-        kind: 'fragment',
-        pageId,
-        screenId,
-        title: hit.screen.title || screenId,
-        shell,
-        section: hit.section,
-        sectionLabel: hit.sectionLabel,
-        ref: hit.ref,
-        // storage-unify：帧标注住所属页的桶、账本 @canvas（与画布同一本）。
-        entry: pageId,
-        baseUrl,
-        distTarget: { entryId: pageId, pageDir: path.join(PREVIEWS_ROOT, pageId), urlBase: baseUrl, kind: 'template' },
-      };
-    }
-    let fragmentPath;
-    if (src.startsWith('sites/')) {
-      fragmentPath = siteSrcToAbsPath(src, registry);
-    } else {
-      fragmentPath = containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src)));
-    }
-    if (!fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
-      throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
-    }
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: hit.screen.title || screenId,
-      shell,
-      section: hit.section,
-      sectionLabel: hit.sectionLabel,
-      ref: hit.ref,
-      entry: pageId,
-      baseUrl,
-      fragmentPath,
-    };
-  }
-
-  // 2)、3) 经 resolvePage 判定；模板页在上面按清单先认了（要清单里的 mode）。
-  const page = resolvePage(registry, pageId);
-  // 2) 文章画布（pp3）：board 由 index.mdx 派生，屏从 dist 出，桶 = 画布页 id。
-  const article = page && page.kind === 'article' ? page.target : null;
-  if (article) {
-    let board;
-    try {
-      board = flattenTabs(readTargetBoard(article));
-    } catch {
-      throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
-    }
-    const hit = findScreen(board, screenId);
-    if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
-    const shell = normalizeShell(hit.screen.shell || hit.sectionShell, 'ios');
-    if (shell === 'doc') {
-      return { kind: 'doc', url: docUrlForScreen(hit.screen, article.urlBase), pageId, screenId, title: hit.screen.title || screenId };
-    }
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: hit.screen.title || screenId,
-      shell,
-      section: hit.section,
-      sectionLabel: hit.sectionLabel,
-      ref: hit.ref,
-      entry: pageId,
-      baseUrl: article.urlBase,
-      distTarget: article,
-    };
-  }
-
-  // 3) registry 条目（workbench 自己的 pinpoint 条目不成页，跳过）
-  const entry = pageId === 'pinpoint' || !page || page.kind !== 'entry' ? null : page.entry;
-  if (!entry) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
-  const diskBoard = entry.kind === 'dir' ? readBoard(path.resolve(entry.path)) : null;
-  const board = diskBoard || synthesizeBoard(entry);
+  const source = resolveBoardSource(pageId, { registry, root: ROOT });
+  // 模板页只认清单里的页；workbench 自己的 pinpoint 条目不成页。
+  const known = source
+    && (source.kind !== 'template' || source.manifest)
+    && !(source.kind !== 'article' && pageId === 'pinpoint');
+  if (!known) throw new FrameDocError('unknown_page', `unknown page: ${pageId}`);
+  const board = source.readBoard() || source.synthBoard();
   if (!board) throw new FrameDocError('unknown_page', `page "${pageId}" has no readable board`);
   const hit = findScreen(board, screenId);
   if (!hit) throw new FrameDocError('unknown_screen', `unknown screen: ${pageId}/${screenId}`);
-  const mode = entryBoardMode(entry);
-  const shell = normalizeShell(hit.screen.shell || hit.sectionShell, mode);
-  const baseUrl = `/sites/${entry.id}/`;
+  const shell = normalizeShell(hit.screen.shell || hit.sectionShell, source.mode);
   if (shell === 'doc') {
-    return {
-      kind: 'doc',
-      url: docUrlForScreen(hit.screen, baseUrl),
-      pageId,
-      screenId,
-      title: hit.screen.title || screenId,
-    };
+    return { kind: 'doc', url: docUrlForScreen(hit.screen, source.urlBase), pageId, screenId, title: hit.screen.title || screenId };
   }
-  const src = hit.screen.src ? String(hit.screen.src) : '';
-  // pp2：有板 dir 条目的页内屏（无 src）→ dist；src 屏（外链 / 合成板）与
-  // file 条目保留磁盘直读。storage-unify：fragment 帧的标注桶 = 帧所属的页，
-  // 账本固定 @canvas —— 画布实例与嵌入帧实例读写
-  // 同一本账，双向实时同步靠的就是这个同桶同账本。
-  if (entry.kind === 'dir' && diskBoard && !src) {
-    const pageDir = path.resolve(entry.path);
-    return {
-      kind: 'fragment',
-      pageId,
-      screenId,
-      title: hit.screen.title || screenId,
-      shell,
-      section: hit.section,
-      sectionLabel: hit.sectionLabel,
-      ref: hit.ref,
-      entry: entry.id,
-      baseUrl,
-      distTarget: { entryId: entry.id, pageDir, urlBase: baseUrl, kind: 'dir' },
-    };
-  }
-  const fragmentPath = src
-    ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
-    : containedFrameFile(entry.kind === 'file' ? entry.path : path.resolve(entry.path), entry.kind === 'file' ? '' : `${screenId}.html`);
-  if (!fragmentPath || !fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
-    throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
-  }
-  return {
+  const rules = FRAME_SOURCE_RULES[source.kind === 'template' || source.kind === 'article' ? source.kind : 'entry'];
+  const base = {
     kind: 'fragment',
     pageId,
     screenId,
@@ -276,10 +159,19 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
     section: hit.section,
     sectionLabel: hit.sectionLabel,
     ref: hit.ref,
-    entry: entry.id,
-    baseUrl,
-    fragmentPath,
+    // storage-unify：fragment 帧的标注桶 = 帧所属的页，账本固定 @canvas —— 画布实例
+    // 与嵌入帧实例读写同一本账，双向实时同步靠的就是这个同桶同账本。
+    entry: pageId,
+    baseUrl: source.urlBase,
   };
+  const src = hit.screen.src ? String(hit.screen.src) : '';
+  // pp2：页内 board 屏（无 src）→ dist（.jsx 屏也在此落地）。
+  if (rules.useDist(source, src)) return { ...base, distTarget: source.target };
+  const fragmentPath = rules.fragmentPath(source, src, screenId, registry);
+  if (!fragmentPath || !fs.existsSync(fragmentPath) || !fs.statSync(fragmentPath).isFile()) {
+    throw new FrameDocError('unknown_screen', `file not found: ${pageId}/${screenId}`);
+  }
+  return { ...base, fragmentPath };
 }
 
 function docUrlForScreen(screen, baseUrl) {

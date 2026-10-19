@@ -31,7 +31,8 @@ import { renderToString } from 'preact-render-to-string';
 
 import { dataRoot } from './annotate-data-dir.js';
 import { articleComponentCandidates, articleHtmlFrameFile, deriveArticleBoard } from './article-board.js';
-import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
+import { readTargetBoard, resolvePageTarget } from './board-source.js';
+import { listArticleTargets } from './page-resolve.js';
 import { readBoard } from './board-file.js';
 import { containedSource, requireSource, sourceBoundaryPlugin } from './compiler-source.js';
 import { resolveContainedFile } from './servable-file.js';
@@ -39,7 +40,6 @@ import { screenEntries } from '../../shared/board-screens.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
-import { PAGE_ID_PATTERN, registryEntry } from './registry.js';
 import { FIGURE_ID_PATTERN, SCREEN_ID_PATTERN } from '../../shared/project-ids.js';
 import { COMP_NAME_PATTERN, ContractError, findRetiredVariantGroup, retiredVariantsMessage, validateBoardTabs } from '../../workbench/lib/preview-contracts.js';
 
@@ -55,36 +55,6 @@ const COMPILER_ROOTS = [KIT_JSX, path.dirname(FIGURE_HELPER)];
 
 export function defaultDistRoot(env = process.env) {
   return path.join(dataRoot(env), 'dist');
-}
-
-/** 页 id → 编译目标。registry dir 条目（磁盘有 board.json）优先，其次模板页目录
-    （content/previews/<id>/board.json），再次文章画布（pp3：kind 'article'，board 由
-    index.mdx 派生，见 article-board.js）。页是什么的判定在 page-resolve.js，这里只加
-    “有 board 可编”这一条。 */
-export function resolvePageTarget(pageRef, { registry = null, root = ROOT } = {}) {
-  if (typeof pageRef !== 'string' || !PAGE_ID_PATTERN.test(pageRef)) return null;
-  const entry = registryEntry(registry, pageRef);
-  if (entry && entry.kind === 'dir' && typeof entry.path === 'string') {
-    const pageDir = path.resolve(entry.path);
-    if (fs.existsSync(path.join(pageDir, 'board.json'))) {
-      return { entryId: entry.id, pageDir, urlBase: `/sites/${entry.id}/`, kind: 'dir' };
-    }
-  }
-  const pageDir = path.join(root, 'content', 'previews', pageRef);
-  const sourceRoot = path.join(root, 'content', 'previews');
-  if (resolveContainedFile(sourceRoot, `${pageRef}/board.json`, { index: false }).file) {
-    return { entryId: pageRef, pageDir, urlBase: `/previews/${pageRef}/`, kind: 'template' };
-  }
-  return resolveArticleTarget(registry, pageRef);
-}
-
-/**
- * 编译目标的 board 原文（不摊平 tabs）：dir / 模板页读页目录的 board.json，
- * 文章画布每次从 index.mdx 现派生。读不到 / 坏 JSON 抛错。
- */
-export function readTargetBoard(target) {
-  if (target && target.kind === 'article') return deriveArticleBoard(target).board;
-  return JSON.parse(fs.readFileSync(requireSource(target, 'board.json'), 'utf8'));
 }
 
 /** 读 board 失败时的说法：文章画布读的是 index.mdx。 */

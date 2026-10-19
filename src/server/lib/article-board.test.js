@@ -7,7 +7,8 @@ import { fileURLToPath } from 'node:url';
 
 import { articleCanvas, articlePageRows, deriveArticleBoard } from './article-board.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
-import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, renumberPpIds, resolvePageTarget } from './page-compiler.js';
+import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, renumberPpIds } from './page-compiler.js';
+import { resolvePageTarget } from './board-source.js';
 import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
 import { formatProjectError } from '../../shared/project-errors.js';
 import { findProject, listProjects } from './projects.js';

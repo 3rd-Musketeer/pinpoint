@@ -17,7 +17,8 @@ import { performance } from 'node:perf_hooks';
 import { fileURLToPath } from 'node:url';
 
 import { PROJECT_CONTENT_DIR } from './lib/page-resolve.js';
-import { buildAllPages, compilePage, defaultDistRoot, resolvePageTarget } from './lib/page-compiler.js';
+import { buildAllPages, compilePage, defaultDistRoot } from './lib/page-compiler.js';
+import { resolvePageTarget } from './lib/board-source.js';
 import { articlePageId } from '../shared/project-ids.js';
 import { findProject } from './lib/projects.js';
 import { projectEntries } from './lib/registry.js';

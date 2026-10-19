@@ -285,7 +285,8 @@ async function moveArticle(classified, parsed, io) {
   }
   if (hadDist) {
     // 和 `ppnt build <页>` 同一个编译器：旧 dist 删了，按新页 id 重编一次。
-    const { compilePage, resolvePageTarget } = await import('../../src/server/lib/page-compiler.js');
+    const { compilePage } = await import('../../src/server/lib/page-compiler.js');
+    const { resolvePageTarget } = await import('../../src/server/lib/board-source.js');
     const target = resolvePageTarget(plan.toId, { registry: loadRegistry({ root: REPO_ROOT, path: registryPath }), root: REPO_ROOT });
     try {
       const result = target ? await compilePage(target, { distRoot: path.join(plan.root, 'dist') }) : null;

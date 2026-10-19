@@ -28,7 +28,7 @@ import { manifestPageIds } from './page-manifest.js';
 import { articleSectionSpans } from './article-canvas.js';
 import { articleHtmlFrameFile } from './article-board.js';
 import { resolvePage } from './page-resolve.js';
-import { readTargetBoard, resolvePageTarget } from './page-compiler.js';
+import { readTargetBoard, resolvePageTarget } from './board-source.js';
 import { loadRegistry } from './registry.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { normalizeAnnotation, targetContentToDisplay } from '../../shared/annotation-indicator.js';
