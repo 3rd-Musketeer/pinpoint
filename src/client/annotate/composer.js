@@ -216,9 +216,12 @@ export function composerBoxHtml(m, broken, isNew) {
 // 候选位枚举与求交交给 @floating-ui/dom（2026-10-19 C4）：侧序（右→左→下→上，
 // preferredSide=below 时下面先）、12px 气口与贴边、目标并集矩形参照、chrome
 // 避让判定、dock 兜底与用户拖动位都保持原语义。视口预筛不能删：参照完全在
-// 视口外时 flip/shift 的输出不可用（实验踩过）。computePosition 是 async
-// （微任务里落地，写样式仍在同帧）；等待期间被更新的布局（再输入、拖动、关框）
-// 经 placeSeq / userPos / activeComposer 守卫挡掉。
+// 视口外时 flip/shift 的输出不可用（实验踩过）。一次 computePosition 走完全部
+// 候选：合格判断是 shift 之后的 fit middleware，不合格就用库的 reset 换下一个
+// placement 重跑（flip 换侧也是这个机制）；不用 flip 本身，因为它只比 boundary、
+// 不认 chrome 矩形，全不合格时也不会给 dock，而且 composer 在注入包里，flip 一族
+// 要另算字节。computePosition 是 async（微任务里落地，写样式仍在同帧）；等待期间
+// 被更新的布局（再输入、拖动、关框）经 placeSeq / userPos / activeComposer 守卫挡掉。
 export function placeComposerBox(composer, box, maxWidth) {
   if (ctx.activeComposer !== composer || !box.isConnected) return;
   var seq = composer.placeSeq = (composer.placeSeq || 0) + 1;
@@ -261,21 +264,27 @@ export function placeComposerBox(composer, box, maxWidth) {
   function stale() {
     return composer.placeSeq !== seq || ctx.activeComposer !== composer || !box.isConnected || !!composer.userPos;
   }
-  (async function () {
-    for (var i = 0; i < placements.length && !stale(); i++) {
-      // computePosition 给出的 x/y 相对 offsetParent（#ann-chrome），与
-      // overlay 同原点（两种挂法下都是 inset:0 同盒），即旧的 overlay-local 坐标。
-      var result = await computePosition(virtualRect([left, top, right - left, bottom - top]), box, {
-        placement: placements[i],
-        middleware: [offset(gap), shift({ boundary: ctx.overlay, padding: pad })]
-      });
-      if (result.x < pad || result.y < pad || result.x + width > bounds.width - pad || result.y + height > bounds.height - pad) continue;
-      if (chrome.some(function (r) { return result.x + bounds.left < r.right && result.x + width + bounds.left > r.left && result.y + bounds.top < r.bottom && result.y + height + bounds.top > r.top; })) continue;
-      if (!stale()) writePos([result.x, result.y], 'anchor');
-      return;
+  // x/y 相对 offsetParent（#ann-chrome），与 overlay 同原点（两种挂法下都是
+  // inset:0 同盒），即旧的 overlay-local 坐标。
+  var fit = {
+    name: 'fit',
+    fn: function (state) {
+      var i = state.middlewareData.fit ? state.middlewareData.fit.index : 0;
+      var x = state.x, y = state.y;
+      var ok = !(x < pad || y < pad || x + width > bounds.width - pad || y + height > bounds.height - pad) &&
+        !chrome.some(function (r) { return x + bounds.left < r.right && x + width + bounds.left > r.left && y + bounds.top < r.bottom && y + height + bounds.top > r.top; });
+      if (ok || i + 1 >= placements.length) return { data: { index: i, ok: ok } };
+      return { data: { index: i + 1 }, reset: { placement: placements[i + 1] } };
     }
-    if (!stale()) writePos(dockPos(), 'dock');
-  })();
+  };
+  computePosition(virtualRect([left, top, right - left, bottom - top]), box, {
+    placement: placements[0],
+    middleware: [offset(gap), shift({ boundary: ctx.overlay, padding: pad }), fit]
+  }).then(function (result) {
+    if (stale()) return;
+    if (result.middlewareData.fit.ok) writePos([result.x, result.y], 'anchor');
+    else writePos(dockPos(), 'dock');
+  });
 }
 
 // 拖动：按住框的空白处（内边距、按钮之间）移动；正文输入区和按钮保持原有行为。
