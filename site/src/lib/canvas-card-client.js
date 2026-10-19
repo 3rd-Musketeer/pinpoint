@@ -54,6 +54,13 @@ function placeFrame(iframe, box, m, scale) {
   box.style.height = `${Math.round(m.height * scale)}px`;
 }
 
+/** 一帧有了结果（摆好或失败）：浮层预热等视口里的卡片都有结果再开始（E2），预热那边自己判断够不够。
+    iframe 帧和 shadow 帧走同一个信号。 */
+function cardSettled(box, how) {
+  box.dataset[how] = '1';
+  document.dispatchEvent(new CustomEvent('pp:canvas-card-fitted'));
+}
+
 /** 预览加载失败的说明层。 */
 function failNote(box, detail) {
   if (box.querySelector('.ph')) return;
@@ -61,7 +68,7 @@ function failNote(box, detail) {
   ph.className = 'ph';
   ph.textContent = detail ? `预览加载失败：${detail}` : '预览加载失败';
   box.appendChild(ph);
-  box.dataset.failed = '1';
+  cardSettled(box, 'failed');
 }
 
 /** 文档帧（HTML 帧）的页面没有机壳可量：加载出来的是 JSON（404 / 500）或空文档时算失败。 */
@@ -107,7 +114,7 @@ function watchDocFrame(iframe) {
   const check = () => {
     const failed = docFrameFailed(iframe);
     if (failed) failNote(box, failed.detail);
-    else if (failed === false) box.dataset.fitted = '1';
+    else if (failed === false) cardSettled(box, 'fitted');
   };
   iframe.addEventListener('load', check);
   check();
@@ -268,7 +275,7 @@ async function measureFallback(iframe, box) {
     if (!m) return;
     if (m.failed) { failNote(box, m.detail); return; }
     placeFrame(iframe, box, m, scale);
-    box.dataset.fitted = '1';
+    cardSettled(box, 'fitted');
   });
 }
 
@@ -327,7 +334,7 @@ async function mountShadow(host, box, doc, base, sheets) {
   const stage = root.querySelector(STAGE);
   if (!stage) throw new Error('帧页没有 data-pp-stage');
   placeHost(host, box, stage);
-  box.dataset.fitted = '1';
+  cardSettled(box, 'fitted');
   host.dataset.ccMounted = '1';
 }
 

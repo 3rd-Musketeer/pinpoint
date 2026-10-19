@@ -8,7 +8,7 @@
 // 修饰键 / 中键点这些入口：照常走链接（顶栏和卡片按钮在新标签页开整页画布，右栏卡片在新标签页开带浮层的文章）。
 import { canvasHref } from './canvas-card.js';
 import { layers } from './layers.js';
-import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, parseCanvasHash } from './canvas-overlay.js';
+import { canvasHash, embedCanvasSrc, embedMessage, entrySection, overlayDocNext, overlayPhaseNext, parseCanvasHash, prewarmSection } from './canvas-overlay.js';
 import { OV_CLOSE_MS, OV_EASE, OV_OPEN_MS, OV_REDUCED_MS, OV_SCALE, overlayOrigin } from './overlay-motion.js';
 
 // 等工作台装好、标注账本水合完的上限：到点还没好就只开着画布，不再定位。
@@ -37,6 +37,48 @@ export function initCanvasOverlay() {
   let state = null;
   let iframe = null;
   let navigation = 0;   // 每次打开 / 换落点加一：上一次还在等工作台的定位作废
+
+  // ---- 预热与停驻（E2）----
+  // absent → warming → parked → open → parked。iframe 不放进关着的 dialog
+  // （display:none 里预热，帧数和 settled 都到了，画布是空的）：关着时停在
+  // [data-ov-park]，尺寸与打开时的 .ov-body 相同，visibility:hidden。
+  // 生命周期是 overlayPhaseNext；这里只落 DOM 和发给工作台的暂停 / 恢复。
+  let phase = 'absent';
+  const park = dlg.parentElement?.querySelector('[data-ov-park]') || null;
+
+  function setPhase(event) {
+    phase = overlayPhaseNext(phase, event);
+  }
+
+  // 停驻容器取打开时的布局尺寸：dialog 的内边距与头的高度从浮层自己的样式读，
+  // 不写死像素。窄屏整屏 sheet（内边距为 0）也从这里出来。
+  function parkBox() {
+    const pad = Number.parseFloat(getComputedStyle(dlg).paddingTop) || 0;
+    const head = dlg.querySelector('.ov-head')?.offsetHeight || 0;
+    return {
+      width: `${Math.max(0, window.innerWidth - pad * 2)}px`,
+      height: `${Math.max(0, window.innerHeight - pad * 2 - head)}px`,
+    };
+  }
+
+  function placeParked() {
+    if (!park) return;
+    park.hidden = false;
+    const box = parkBox();
+    park.style.width = box.width;
+    park.style.height = box.height;
+  }
+
+  // 失败页不是同源的，读 contentWindow 的属性会抛 SecurityError。读不到就当还没装好。
+  const frameWin = () => { try { return iframe?.contentWindow || null; } catch { return null; } };
+  const workbenchOf = () => { try { return frameWin()?.workbench || null; } catch { return null; } };
+
+  // 文章页 → 嵌入工作台（source 与工作台的消息分开，免得自己的回声被认成工作台的话）。
+  function tellFrame(type) {
+    const win = frameWin();
+    if (!win) return;
+    try { win.postMessage({ source: 'pinpoint-article', type }, location.origin); } catch { /* 文档正在换 */ }
+  }
 
   const frameOf = (sectionId, frameId) => (frameId
     ? [...(cardOf(sectionId)?.querySelectorAll('.cc-frame[data-screen]') || [])].find((f) => f.dataset.screen === frameId) || null
@@ -97,8 +139,17 @@ export function initCanvasOverlay() {
   const onFrameGone = () => setDocState('loading');
   const onFrameLoad = () => {
     // load 要等模块脚本结束。跨域错误页，或文档装上了却没有工作台，都是确定失败。
-    // 模块还扣着时 load 没到，不在这里判，准备态一直留着。
-    if (frameDead() || !workbenchOf()) { setDocState('retry'); return; }
+    // 模块还扣着时 load 没到，不在这里判，准备态一直留着。about:blank 是刚建还没导航，不是失败页。
+    // 浮层没开（预热）也照样记下：预热用掉了那次失败导航，点开时就直接是重试。
+    let href = '';
+    try { href = iframe.contentWindow.location.href; } catch { href = 'dead'; }
+    if (!href || href === 'about:blank') return;
+    if (frameDead() || !workbenchOf()) {
+      setDocState('retry');
+      // 预热失败不再等停驻回执：点开直接是重试，不卡在预热中。
+      if (phase === 'warming') setPhase('park');
+      return;
+    }
     try { iframe.contentWindow.addEventListener('pagehide', onFrameGone); } catch { /* 读不到就等 load 判定 */ }
   };
 
@@ -110,13 +161,34 @@ export function initCanvasOverlay() {
     docGen += 1;
     iframe.src = embedCanvasSrc(pageId, sectionId, docGen);
     iframe.addEventListener('load', onFrameLoad);
-    el.body.append(iframe);
+    // 开着就进 dialog；没开就按打开时的尺寸停进停驻容器（预热）。没有停驻容器
+    // （旧壳）时不预建，等打开再装进 dialog。
+    if (state) el.body.append(iframe);
+    else if (park) { placeParked(); park.append(iframe); setPhase('prewarm'); }
+    else el.body.append(iframe);
     return true;
   }
 
-  // 失败页不是同源的，读 contentWindow 的属性会抛 SecurityError。读不到就当还没装好。
-  const frameWin = () => { try { return iframe?.contentWindow || null; } catch { return null; } };
-  const workbenchOf = () => { try { return frameWin()?.workbench || null; } catch { return null; } };
+  // 打开：iframe 从停驻容器移进 dialog，工作台恢复。关闭中又打开也走这里。
+  function revealFrame() {
+    if (iframe && iframe.parentElement !== el.body) el.body.append(iframe);
+    if (phase !== 'open') {
+      setPhase('open');
+      tellFrame('resume');
+    }
+  }
+
+  // 关掉：iframe 移回停驻容器（尺寸与打开时相同），工作台暂停。重试态留在 dialog 里，
+  // 下次打开还是那张失败页，不拿一份没装好的文档去停驻。
+  function concealFrame() {
+    if (!iframe || !park || docState === 'retry') return;
+    placeParked();
+    if (iframe.parentElement !== park) park.append(iframe);
+    if (phase === 'open') {
+      setPhase('park');
+      tellFrame('pause');
+    }
+  }
 
   async function boardReady(nav) {
     // 就绪由消息推进，这里等到状态离开 loading；上限 READY_WAIT_MS —— 到点只开着
@@ -134,6 +206,8 @@ export function initCanvasOverlay() {
 
   // 定位：节 → 帧（定位并选中）→ 钉子。
   async function land({ section, frame, ann, fresh }, nav) {
+    // 代号在第一个 await 之前提交：否则这一拍里开始的另一次打开会拿到同一个代号，
+    // 后提交的把先提交的盖掉，先打开的那次定位被当成过期丢掉。
     navigation = nav;
     if (!(await boardReady(nav))) { landed(nav, ''); return; }
     if (document.activeElement === el.close) iframe.focus({ preventScroll: true });
@@ -149,9 +223,19 @@ export function initCanvasOverlay() {
     if (ann == null) { landed(nav, at); return; }
     // HTML 帧的钉子在活卡片自己的客户端里；不打开页面浮层。
     const html = !!frameOf(section, frame)?.hasAttribute('data-doc-url');
+    // 画布实例的 pinpoint 分步挂上：先有对象，goToMark 后到。停驻恢复时读早了就是半份。
     const annApi = html
       ? () => wb.whenCardAnnotateReady(frame)
-      : () => frameWin()?.pinpoint || null;
+      : async () => {
+        const deadline = Date.now() + READY_WAIT_MS;
+        let api = null;
+        while (Date.now() < deadline) {
+          api = frameWin()?.pinpoint || null;
+          if (api && typeof api.goToMark === 'function') return api;
+          await new Promise((resolve) => requestAnimationFrame(resolve));
+        }
+        return api;
+      };
     await toMark(nav, annApi, ann, at);
   }
 
@@ -166,8 +250,13 @@ export function initCanvasOverlay() {
     }
     await withDeadline(api.whenReady(), READY_WAIT_MS);
     if (nav !== navigation) return;
+    // 画布实例启动会换两次桶：第一次落定时账本还是空的，当前这次换桶落定才有钉子。
+    if (typeof api.whenSettled === 'function') await withDeadline(api.whenSettled(), READY_WAIT_MS);
+    if (nav !== navigation) return;
     if (!api.marks.some((m) => m.n === ann)) { landed(nav, fallback); return; }
-    const done = await api.goToMark(ann);
+    // 停驻恢复的头几帧几何还在变，滚动定位会被打断一次（返回 false）。再试一次。
+    let done = await api.goToMark(ann);
+    if (done === false && nav === navigation) done = await api.goToMark(ann);
     landed(nav, done === false ? fallback : `ann:${ann}`);
   }
 
@@ -200,8 +289,11 @@ export function initCanvasOverlay() {
       // 先清掉旧文档的失败痕迹、换新代次再装：旧文档迟到的消息带着旧代次，会被丢掉。
       try { delete iframe.contentWindow.__wbBootError; } catch { /* 失败页读不到，换文档后自然没了 */ }
       docGen += 1;
+      // 换文档：旧的预热与停驻作废，等这份新文档自己报就绪。
+      setPhase('discard');
       setDocState('loading');
       iframe.src = embedCanvasSrc(pageId, state.section, docGen);
+      revealFrame();
       const nav = ++navigation;
       land({ section: state.section, frame: state.frame, ann: null, fresh: true }, nav);
     });
@@ -255,6 +347,9 @@ export function initCanvasOverlay() {
     state.landed = false;
     setHeader(sectionId);
     const fresh = ensureFrame(sectionId);
+    // 预热的暂停可能早于工作台的监听：打开前再发一次，回执只在预热中收。
+    if (phase === 'warming') tellFrame('pause');
+    revealFrame();
     const nav = navigation + 1;
     // 每次打开都按当前文档状态重新核对：ready 直接走；loading 显示准备态（等待由
     // 消息推进，不需要重新「观察」）；retry / board-error 保留上次记下的失败。
@@ -272,6 +367,9 @@ export function initCanvasOverlay() {
     closing = false;
     navigation += 1;
     s.release?.();
+    // 先把 iframe 挪出 dialog 再关。关闭模态 dialog 会卸掉还在里面的文档，再开就是一份
+    // 还没装上页的新工作台，落点选不中。
+    concealFrame();
     dlg.close();
     // 动画留着：fill:both 停在收起的样子，途中再开时 play 从它的当前值接着走。
     playing = null;
@@ -351,6 +449,8 @@ export function initCanvasOverlay() {
     if (!msg) return;
     if (msg.type === 'close') { if (state) close(); return; }
     if (msg.type === 'section') { if (state) followSection(msg.section); return; }
+    // 停驻回执不看代次：只在预热中收成停驻。打开之后迟到的回执不把开着的浮层改回停驻。
+    if (msg.type === 'parked') { if (phase === 'warming') setPhase('park'); return; }
     if (msg.gen !== docGen) return;
     if (msg.type === 'ready' && msg.pageId && msg.pageId !== pageId) return;
     setDocState(overlayDocNext(docState, msg));
@@ -399,16 +499,71 @@ export function initCanvasOverlay() {
     }
   });
 
-  // 直接带 #canvas= 打开文章（刷新、分享的链接）。
+  // 直接带 #canvas= 打开文章（刷新、分享的链接）。深链落点不预热，直接打开。
   const initial = parseCanvasHash(location.hash);
   if (initial && cardOf(initial.section)) {
     if (location.hash.startsWith('#overlay=')) history.replaceState(history.state, '', canvasHash(initial.section, initial));
     open(initial.section, { frame: initial.frame, ann: initial.ann, pushed: false });
   }
 
+  // ---- 预热 ----
+  // 正文和视口里的卡片先完成，再在空闲时预建。卡片完成看 data-fitted / data-failed
+  // （canvas-card-client.js 摆好机壳或失败才写）：视口里还有没摆好的，就先让给它。
+  // hover / focus 画布入口提前开始，不等那一轮空闲。深链打开不走这里。
+  let prewarmQueued = false;
+  const inView = (el) => {
+    const r = el.getBoundingClientRect();
+    return r.bottom > 0 && r.top < window.innerHeight && r.width > 0 && r.height > 0;
+  };
+  function visibleSections() {
+    return cards.filter(inView).map((card) => card.dataset.ppSection);
+  }
+  // 正文有了标题，视口里已经开始摆的卡片都摆好了。卡片是懒加载的：还没进入视口的
+  // 不挡预热（否则首屏以下的卡片永远不摆，预热也永远不开始）。一张都还没开始摆，
+  // 正文就绪就算数，预热从顶栏入口的那一节起。
+  function articleSettled() {
+    const prose = document.querySelector('#article .prose');
+    if (!prose || !prose.textContent.trim()) return false;
+    // 卡片帧有两种（E1）：静态帧挂在 .cc-shadow 的 shadow root 里（排上队写 data-cc-started），
+    // 其余是 iframe（HTML 帧、带脚本的回退帧）。两种摆好都写 box 的 data-fitted、失败写 data-failed，
+    // 并发同一个 pp:canvas-card-fitted（canvas-card-client.js cardSettled）。
+    const boxes = cards.filter(inView).flatMap((card) => [...card.querySelectorAll('.cc-box')]);
+    const started = boxes.filter((box) => box.querySelector('iframe, .cc-shadow[data-cc-started]')
+      || box.dataset.fitted === '1' || box.dataset.failed === '1');
+    return started.every((box) => box.dataset.fitted === '1' || box.dataset.failed === '1');
+  }
+  function startPrewarm() {
+    if (prewarmQueued || phase !== 'absent' || state) return;
+    prewarmQueued = true;
+    const section = prewarmSection(ids, visibleSections(), entrySection(ids, order, currentSection()));
+    if (section) ensureFrame(section);
+  }
+  if (!initial && park) {
+    const idle = window.requestIdleCallback || ((fn) => setTimeout(fn, 1));
+    // 等卡片摆好的信号，不轮询：每摆好一帧发一次 pp:canvas-card-fitted。
+    const onFitted = () => {
+      if (phase !== 'absent' || state) { document.removeEventListener('pp:canvas-card-fitted', onFitted); return; }
+      if (!articleSettled()) return;
+      document.removeEventListener('pp:canvas-card-fitted', onFitted);
+      idle(() => startPrewarm());
+    };
+    document.addEventListener('pp:canvas-card-fitted', onFitted);
+    const hurry = (e) => {
+      if (e.target.closest?.(ENTRY_SELECTOR)) startPrewarm();
+    };
+    document.addEventListener('pointerover', hurry, true);
+    document.addEventListener('focusin', hurry);
+    // 停驻容器跟视口走：打开前改了窗口大小，预热好的画布仍按打开时的尺寸。
+    window.addEventListener('resize', () => { if (phase === 'warming' || phase === 'parked') placeParked(); });
+  }
+
   // e2e / 调试用的只读状态。
   window.pinpointOverlay = {
     state: () => (state ? { section: state.section, frame: state.frame, pushed: state.pushed, landing: lastLanding } : null),
     frame: () => iframe,
+    // 生命周期：absent / warming / parked / open（E2）。settled：正文和视口里的卡片
+    // 都摆好了，预热允许开始（hover 可以提前，不看它）。
+    phase: () => phase,
+    settled: () => articleSettled(),
   };
 }

@@ -20,6 +20,7 @@ import { ExportPicker } from './ExportPicker.jsx';
 import { mountFrameMenu, sweepFrameMenus } from './frame-menu.jsx';
 import { markChromeReady } from '../lib/chrome-ready.js';
 import { installOverlayScrollbars } from '../../client/overlay-scrollbar.js';
+import { registerEmbedPark } from '../embed-park.js';
 
 // frame ⋯ 菜单的 React 岛挂载器注入命令式层（P3；app → 命令式 是唯一允许的方向）。
 initExportCore({ mountFrameMenu: mountFrameMenu, sweepFrameMenus: sweepFrameMenus });
@@ -45,6 +46,13 @@ createRoot(document.getElementById('wbtabbar-root')).render(h(TabBar));
 // 文章画布左上角的“← 文章标题”（直接打开时才有；嵌入版、存量页不出）。
 createRoot(document.getElementById('wbback-root')).render(h(ArticleBack));
 installOverlayScrollbars(document);
+var overlayScrollbars = document.__ppOverlayScrollbars;
+if (overlayScrollbars && typeof overlayScrollbars.setParked === 'function') {
+  registerEmbedPark({
+    pause: function () { overlayScrollbars.setParked(true); },
+    resume: function () { overlayScrollbars.setParked(false); },
+  });
+}
 wireCanvasHud();
 // 板的挂载后处理在等这一步（lib/chrome-ready.js 有原因）：上面的注入全部落定后才放行。
 markChromeReady();

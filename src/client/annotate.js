@@ -34,7 +34,7 @@ import { bind_arrow, init_arrow } from './annotate/arrow.js';
 import { bind_render, init_render } from './annotate/render.js';
 import { bind_render_geometry, init_render_geometry } from './annotate/render-geometry.js';
 import { bind_bubbles, init_bubbles } from './annotate/bubbles.js';
-import { bind_schedule, init_schedule, installViewScheduling } from './annotate/schedule.js';
+import { bind_schedule, init_schedule, installViewScheduling, setViewParked } from './annotate/schedule.js';
 import { bind_nav, init_nav, installPinpointApi } from './annotate/nav.js';
 import { bind_ledger, startAnnotate } from './annotate/ledger.js';
 
@@ -93,6 +93,9 @@ import { bind_ledger, startAnnotate } from './annotate/ledger.js';
   // 父级（工作台 ann-bridge / live-cards）按 event.source 认帧 —— 跨文档 DOM 事件
   // 过不来，postMessage 会排队投递，父级监听挂得晚也收得到。
   window.dispatchEvent(new Event('pinpoint:ready'));
+  // 停驻钩子（E2）：工作台的暂停登记调它断开观察器。只挂在这份实例上，
+  // 卡片 iframe 里的另一份不进工作台的登记。
+  window.pinpoint.setViewParked = setViewParked;
   if (window.parent !== window) {
     try { window.parent.postMessage({ source: 'pinpoint-annotate', type: 'ready' }, location.origin); } catch (e) { /* 跨源父级收不到就算了 */ }
   }

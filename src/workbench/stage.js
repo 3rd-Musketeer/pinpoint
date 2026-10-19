@@ -84,6 +84,7 @@ import {
 } from './pages.js';
 import { startDeepLinkSync } from './url-sync.js';
 import { notifyEmbed, startEmbedBridge } from './embed.js';
+import { embedParked, registerEmbedPark } from './embed-park.js';
 import { startPageOverlay } from './page-overlay.js';
 import { startPhoneDocScrollbar } from '../client/overlay-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
@@ -234,8 +235,22 @@ function applyTabAndEntryLink(link) {
  */
 function focusSection(sectionId, options) {
   var save = !(options && options.save === false);
+  // 停驻恢复后板可能还在装：页已经定了，board 晚一拍才写上。不等就当成「没有这一节」。
+  // 会话还没 begin（清单 / 屏 HTML 还在取）时也等：store 订阅到 activeBoard 写上再定位。
   var active = wbGet().activeBoard;
-  if (!active || active.pageId !== wbGet().activePageId) return Promise.resolve('unknown');
+  if (!active || active.pageId !== wbGet().activePageId) {
+    if (wbGet().activePageId) {
+      return new Promise(function (resolve) {
+        var stop = useWorkbenchStore.subscribe(function (s) {
+          if (s.activeBoard && s.activeBoard.pageId === s.activePageId) {
+            stop();
+            resolve(focusSection(sectionId, options));
+          }
+        });
+      });
+    }
+    return Promise.resolve('unknown');
+  }
   var full = active.fullBoard || active.board;
   var known = (full.sections || []).some(function (sec) { return sec && sec.id === sectionId; });
   if (!known) return Promise.resolve('unknown');
@@ -246,9 +261,19 @@ function focusSection(sectionId, options) {
     var mount = mountManager.current;
     return mount ? mount.boardSettled : false;
   }).then(function () {
-    if (!focusBoardSection(sectionId, { smooth: false })) return false;
+    // 选中不依赖量得到几何：停驻搬进浮层的头几帧几何是空的，但这一节就是落点。
     selectBoardSection(sectionId);
-    return true;
+    return focusWhenMeasured(sectionId);
+  });
+}
+
+// 量得到就定位；量不到就等下一帧再量，最多一屏的帧数。停驻恢复后几何晚一拍才有。
+function focusWhenMeasured(sectionId, left) {
+  if (focusBoardSection(sectionId, { smooth: false })) return true;
+  var budget = left == null ? 30 : left;
+  if (budget <= 0) return false;
+  return new Promise(function (resolve) {
+    requestAnimationFrame(function () { resolve(focusWhenMeasured(sectionId, budget - 1)); });
   });
 }
 
@@ -294,7 +319,9 @@ function initBoard() {
       var link = parseDeepLink(location.search);
       // 落点 section（2026-10-13）：认得这个 section 就由它决定 tab 与条目，?tab= / ?entry= 让位；
       // 不认得就当没给，照常应用 tab / entry。
-      if (link.section) {
+      // 嵌入版再开时文章页的定位可能已经先到（focusSection 在等板）：那一次是打开时的落点，
+      // 启动落点不再补做，免得把它选中的节盖掉。
+      if (link.section && !sectionClaimed) {
         return landOnSection(link.section).then(function (landed) {
           if (!landed) return applyTabAndEntryLink(link);
         });
@@ -307,7 +334,19 @@ function initBoard() {
     })
     // 深链写入必须在 boot 页解析完成后才启动 —— 订阅活着时任何 wbSet 都会
     // 触发 replaceState，提前启动会在 resolveBootPageId 读之前覆盖掉深链参数。
-    .then(function () { startDeepLinkSync(); });
+    .then(function () { startDeepLinkSync(); })
+    .then(function () { bootSettled = true; bootWaiters.splice(0).forEach(function (wake) { wake(); }); });
+}
+
+// 启动落点（?section=）排在板装载之后。嵌入版再开时文章页的定位可能先到：
+// 不等这一步，启动落点会在它之后再定位一次，把打开时选中的节盖掉。
+// sectionClaimed：文章页的定位已经排队，启动落点让位。
+var bootSettled = false;
+var sectionClaimed = false;
+var bootWaiters = [];
+function whenBootSettled() {
+  if (bootSettled) return Promise.resolve();
+  return new Promise(function (resolve) { bootWaiters.push(resolve); });
 }
 
 startEmbedBridge();
@@ -353,7 +392,10 @@ window.workbench = {
   whenCardAnnotateReady: whenCardAnnotateReady,
   // 定位并选中 section（跨 tab 先切、即时到位）：?section= 落点与大纲点 section 的同一条路。
   // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
-  focusSection: function (sectionId) { return focusSection(sectionId); },
+  focusSection: function (sectionId) {
+    sectionClaimed = true;
+    return whenBootSettled().then(function () { return focusSection(sectionId); });
+  },
   whenScrollSettled: whenStageScrollSettled,
   // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。等的期间会话被
   // 下一次装载替换，就接着等新的那个；false = 还没有会话（板在路上），或会话被取消、
@@ -790,6 +832,23 @@ function remountScreens(pageId, screenIds) {
   });
 }
 
+// 停驻（E2）：HMR 的重摆先记账，不在看不见的画布上重装。打开时补做，内容是新的。
+// 查询失效照常 —— 那只是标记，不产生渲染。整板重摆盖过按屏重摆：记了整板就只补整板。
+var boardReloadDeferred = false;
+var screensDeferred = {};
+registerEmbedPark({
+  pause: function () {},
+  resume: function () {
+    var pageId = wbGet().activePageId;
+    var screens = Object.keys(screensDeferred);
+    var full = boardReloadDeferred;
+    boardReloadDeferred = false;
+    screensDeferred = {};
+    if (full) reloadActiveBoard();
+    else if (screens.length && pageId) remountScreens(pageId, screens);
+  },
+});
+
 if (import.meta.hot) {
   import.meta.hot.on('preview:update', function (data) {
     if (!boardPanel) return;
@@ -805,11 +864,15 @@ if (import.meta.hot) {
       screens.forEach(function (screenId) {
         queryClient.invalidateQueries({ queryKey: ['screen', id, screenId] });
       });
-      if (id === wbGet().activePageId) remountScreens(id, screens);
+      if (id !== wbGet().activePageId) return;
+      if (embedParked()) { screens.forEach(function (screenId) { screensDeferred[screenId] = true; }); return; }
+      remountScreens(id, screens);
       return;
     }
     queryClient.invalidateQueries({ queryKey: ['screen', id] });
-    if (id === wbGet().activePageId) reloadActiveBoard();
+    if (id !== wbGet().activePageId) return;
+    if (embedParked()) { boardReloadDeferred = true; return; }
+    reloadActiveBoard();
   });
   // pp3：project 里列表那一层变了（文章增删、标题、布局错误；preview-hmr 发）。
   // 左栏「文章」组重读 /api/projects；新文章的画布页要进 manifest.articles 才点得开，

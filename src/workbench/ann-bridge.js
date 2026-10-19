@@ -12,6 +12,7 @@ import { annRowModel } from '../shared/ann-row.js';
 import { bubbleInnerHtml } from '../shared/annotate-bubble.js';
 import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
+import { registerEmbedPark } from './embed-park.js';
 import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/annotate-bubble-layout.js';
 
 /* ---- annotate API resolver -------------------------------------------------
@@ -187,6 +188,22 @@ function bindParentAnnotate() {
   scheduleAnnSnap();
 }
 export function startAnnBridge() {
+  // 停驻（E2）：标注层的观察器与快照 rAF 停下，待刷新的根先记账。打开时补画，
+  // 停驻期间的 DOM 变化（HMR 重摆了板）不丢。保存与 outbox 不在这里，照常落盘。
+  registerEmbedPark({
+    pause: function () {
+      if (annSnapRaf) { cancelAnimationFrame(annSnapRaf); annSnapRaf = 0; }
+      if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
+      var api = window.pinpoint;
+      if (api && typeof api.setViewParked === 'function') api.setViewParked(true);
+    },
+    resume: function () {
+      var api = window.pinpoint;
+      if (api && typeof api.setViewParked === 'function') api.setViewParked(false);
+      scheduleAnnSnap();
+      if (gutterActive()) scheduleGutterRender();
+    },
+  });
   if (!annotateKeyRouted) {
     annotateKeyRouted = true;
     window.addEventListener('keydown', routeAnnotateKey, true);

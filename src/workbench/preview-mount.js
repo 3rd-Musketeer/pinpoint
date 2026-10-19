@@ -14,6 +14,7 @@ import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
 import { cssImportUrls } from './lib/sidecar-css.js';
 import { whenChromeReady } from './lib/chrome-ready.js';
 import { rememberBoard } from './frame-reset.js';
+import { embedParked, registerEmbedPark } from './embed-park.js';
 
 // 反向依赖注入：wireLibraryScrollSpy 属 pages.js 簇，沿用 initPreviewMount(deps)
 // 注入（历史上由 workbench.js 持有，DI 通道保留）。标注面板刷新不再是 DI ——
@@ -196,7 +197,7 @@ function importPreviewModule(url, root, label, session, declared) {
 }
 
 function runOnePreviewScript(el, pageId, session) {
-  if (!el || el.dataset.previewBound === '1' || !session.isUsable(el)) return Promise.resolve();
+  if (!el || el.dataset.previewBound === '1' || !session.isUsable(el) || session.suspended) return Promise.resolve();
   el.dataset.previewBound = '1';
   var root = resolvePreviewRoot(el);
   if (!root) return Promise.resolve();
@@ -241,7 +242,7 @@ function runOnePreviewScript(el, pageId, session) {
 
 /** B: roots marked data-preview-mount load previews/<page>/<screenId>.js */
 function runSidecarMounts(scope, pageId, session) {
-  if (!scope || !session.active) return Promise.resolve();
+  if (!scope || !session.active || session.suspended) return Promise.resolve();
   var roots = scope.querySelectorAll('[data-preview-mount]');
   var jobs = [];
   for (var i = 0; i < roots.length; i++) {
@@ -259,7 +260,7 @@ function runSidecarMounts(scope, pageId, session) {
 }
 
 function runPreviewScripts(scope, pageId, session) {
-  if (!scope || !session.active) return Promise.resolve();
+  if (!scope || !session.active || session.suspended) return Promise.resolve();
   var list = scope.querySelectorAll('script[data-preview-script]');
   var jobs = [];
   for (var i = 0; i < list.length; i++) {
@@ -350,6 +351,23 @@ export function afterMount(panel, session) {
     });
     // 内联脚本在这里同步绑上（几何批的 rAF 之前），sidecar 的 import 在这里发出；
     // 全部挂完（或各自失败）才落 previewsSettled —— 点原型交互之前等的是它。
+    // 停驻（E2）时先不挂：预览脚本里的定时器会在看不见的画布上一直跑。几何批照常
+    // 落定（它只读板 DOM），打开时再补挂，previewsSettled 等到那时才落 true。
+    if (embedParked()) {
+      session.suspended = true;
+      var release = registerEmbedPark({
+        pause: function () { session.suspended = true; },
+        resume: function () {
+          release();
+          if (!session.active) { session.settlePreviews(false); return; }
+          session.suspended = false;
+          runPreviewScripts(panel, session.pageId, session).then(function () {
+            session.settlePreviews(session.active);
+          });
+        },
+      });
+      return;
+    }
     return runPreviewScripts(panel, session.pageId, session).then(function () {
       session.settlePreviews(session.active);
     });

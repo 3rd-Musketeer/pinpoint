@@ -16,6 +16,7 @@
 // --wb-strip-w：横条居中且宽度随内容变，弹出列表要贴它的右端、dock 要贴它的
 // 左端 —— 量测后写回 :root，两处 CSS 用 calc(50% ∓ var(--wb-strip-w)/2) 对齐。
 import { Fragment, useEffect } from 'react';
+import { registerEmbedPark } from '../embed-park.js';
 import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { toggleSideCollapsed } from '../boot-prefs.js';
@@ -66,7 +67,13 @@ export function Strip() {
     sync();
     var ro = new ResizeObserver(sync);
     ro.observe(el);
-    return function () { ro.disconnect(); };
+    // 停驻（E2）：横条宽度在看不见时不变，观察停掉。打开时补量一次，
+    // 停驻期间窗口改过大小也跟着。
+    var releasePark = registerEmbedPark({
+      pause: function () { ro.disconnect(); },
+      resume: function () { ro.observe(el); sync(); },
+    });
+    return function () { releasePark(); ro.disconnect(); };
   }, []);
 
   // 页名：存量页在 manifest.pages，文章画布页在 manifest.articles（不进左栏 Pages），pageEntry 两份都认。

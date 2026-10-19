@@ -1,4 +1,6 @@
 // Local, bounded metadata only. No annotation text, HTML, URLs, or remote upload.
+import { registerEmbedPark } from './embed-park.js';
+
 const KEY = 'pinpoint-canvas-diagnostics-v1';
 const LIMIT = 720;
 export function startCanvasDiagnostics(stage, pageId) {
@@ -10,6 +12,10 @@ export function startCanvasDiagnostics(stage, pageId) {
   const removers = [];
   const session = crypto.randomUUID();
   let pending = [], uploadTimer = 0, uploading = false, stopped = false;
+  // 停驻（E2）：采样、长帧观察和活动监听都停。已经记下还没送出的照常送 ——
+  // 那是诊断数据，不是停驻期间新产生的工作。
+  let paused = false;
+  const parked = [];
   function scheduleUpload() {
     if (!uploadTimer && !stopped) uploadTimer = setTimeout(flush, 2000);
   }
@@ -58,11 +64,13 @@ export function startCanvasDiagnostics(stage, pageId) {
   // 不带 URL 查询、不带页面内容。不支持的浏览器静默跳过。
   let loaf = 0, loafMax = 0, loafScript = '', longTasks = 0;
   function scriptName(url) { return String(url || '').split('?')[0].split('/').pop().slice(0, 60); }
-  function observe(type, onEntry) {
+  function observe(type, onEntry, options) {
     try {
-      const po = new PerformanceObserver(list => list.getEntries().forEach(onEntry));
-      po.observe({type, buffered:false});
+      const po = new PerformanceObserver(list => { if (!paused) list.getEntries().forEach(onEntry); });
+      const opts = options || {type, buffered:false};
+      po.observe(opts);
       removers.push(() => po.disconnect());
+      parked.push({ stop: () => po.disconnect(), start: () => { try { po.observe(opts); } catch {} } });
     } catch {}
   }
   const recentLoaf = []; // 最近的长帧，给慢输入找同一时段的脚本归属
@@ -86,8 +94,10 @@ export function startCanvasDiagnostics(stage, pageId) {
           renderStart: e.renderStart ? e.renderStart + (window.top.performance.timeOrigin - performance.timeOrigin) : 0, scripts: e.scripts || [] });
         if (recentLoaf.length > 24) recentLoaf.shift();
       }));
-      topPo.observe({type:'long-animation-frame', buffered:false});
+      const topOpts = {type:'long-animation-frame', buffered:false};
+      topPo.observe(topOpts);
       removers.push(() => topPo.disconnect());
+      parked.push({ stop: () => topPo.disconnect(), start: () => { try { topPo.observe(topOpts); } catch {} } });
     }
   } catch {}
   // 慢输入（owner 2026-10-19：“在画布上标注的时候输入法输入简直卡爆了”）：按键、输入法组字、input 事件
@@ -126,8 +136,10 @@ export function startCanvasDiagnostics(stage, pageId) {
       // 同一帧的长帧条目比事件条目晚到：等一会儿再找归属。
       setTimeout(() => record('input-lag', {...row, ...overlappingScripts(e.startTime, e.startTime + e.duration)}), 1200);
     }));
-    po.observe({type:'event', durationThreshold:INPUT_LAG_MS, buffered:false});
+    const eventOpts = {type:'event', durationThreshold:INPUT_LAG_MS, buffered:false};
+    po.observe(eventOpts);
     removers.push(() => po.disconnect());
+    parked.push({ stop: () => po.disconnect(), start: () => { try { po.observe(eventOpts); } catch {} } });
   } catch {}
   function sample() {
     const annMax = window.pinpoint?.perfDrain?.() ?? 0; // 标注层本采样窗口内最慢的一帧同步耗时（ms）
@@ -149,12 +161,14 @@ export function startCanvasDiagnostics(stage, pageId) {
     else { raf = 0; lastFrame = 0; sample(); persist(); }
   }
   function activity() {
+    if (paused) return;
     lastActivity = performance.now();
     if (!raf) raf = requestAnimationFrame(tick);
   }
   function listen(target, name, fn) {
-    target.addEventListener(name,fn,{passive:true});
-    removers.push(()=>target.removeEventListener(name,fn));
+    const run = (e) => { if (!paused) fn(e); };
+    target.addEventListener(name,run,{passive:true});
+    removers.push(()=>target.removeEventListener(name,run));
   }
   listen(stage,'wheel',e=>{input=e.ctrlKey?'wheel-zoom':'wheel';activity();});
   listen(stage,'pointerdown',e=>{input=e.button===1?'middle':space?'space':'pointer';activity();});
@@ -169,6 +183,20 @@ export function startCanvasDiagnostics(stage, pageId) {
   listen(window,'unhandledrejection',()=>record('unhandledrejection'));
   listen(window,'pagehide',()=>{persist();finalUpload();});
   record('start'); activity();
+  // 停驻期间不采样。恢复时补记一条 viewport：停驻里发生的事（比如 HMR 重摆了板）
+  // 打开时的第一眼就进诊断，而不是要等下一次指针活动。
+  registerEmbedPark({
+    pause() {
+      paused = true;
+      cancelAnimationFrame(raf); raf = 0; lastFrame = 0;
+      parked.forEach(entry => entry.stop());
+    },
+    resume() {
+      paused = false;
+      parked.forEach(entry => entry.start());
+      sample();
+    },
+  });
   const api = {
     snapshot() { sample(); persist(); return JSON.parse(JSON.stringify({version:1,previous,current})); },
     download() {

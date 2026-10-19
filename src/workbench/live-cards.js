@@ -12,6 +12,7 @@ import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 import { forwardUncaught } from '../shared/layers.js';
 import { isAnnotateReadyMessage } from './lib/annotate-ready.js';
 import { MAX_LIVE_CARDS, cardPointToParent, planLiveCards } from './lib/live-cards.js';
+import { registerEmbedPark } from './embed-park.js';
 
 var FRAME_SELECTOR = 'iframe.wb-html-card-frame';
 var state = { panel: null, observer: null, cards: new Map() };   // frame → { visible, live, loading, seenAt, timer }
@@ -22,8 +23,10 @@ var parentSubscribed = false;
 var parentMode = false;
 var LOAD_TIMEOUT_MS = 4000;
 var pumpRaf = 0;
+var cardsPaused = false;
 
 function schedulePump() {
+  if (cardsPaused) return;
   if (pumpRaf) return;
   pumpRaf = requestAnimationFrame(function () { pumpRaf = 0; pump(); });
 }
@@ -313,6 +316,23 @@ export function whenCardAnnotateReady(screenId) {
 
 export function startLiveCards(stage) {
   if (!stage) return;
+  // 停驻（E2）：视野观察停掉，不再为看不见的卡片装 iframe。恢复时按打开时的
+  // 视野重判一次 —— 停驻期间滚到了别的节，打开就装那一节的卡片，不补装旧视野的。
+  registerEmbedPark({
+    pause: function () {
+      cardsPaused = true;
+      if (pumpRaf) { cancelAnimationFrame(pumpRaf); pumpRaf = 0; }
+      if (state.observer) state.observer.disconnect();
+    },
+    resume: function () {
+      cardsPaused = false;
+      if (!state.observer || !state.panel) return;
+      state.cards.forEach(function (c, frame) {
+        state.observer.observe(frame.closest('.wb-html-card') || frame);
+      });
+      schedulePump();
+    },
+  });
   // iframe 的 load 不冒泡，在捕获段接。
   stage.addEventListener('load', function (e) {
     var t = e.target;

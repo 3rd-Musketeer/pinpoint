@@ -9,6 +9,7 @@ import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
 import { FEATURES } from './features.js';
 import { CHROME_GAP, FOCUS_INSET, centerScrollForPoint, focusScrollForRect } from '../shared/canvas-gesture.js';
+import { registerEmbedPark } from './embed-park.js';
 import {
   closestBoardSection,
   findBoardFrame,
@@ -486,14 +487,38 @@ export function sectionNavRetrying() {
 }
 
 /** 板里有 section 却量不出几何：下一帧再量，量到了（或板换掉、次数用完）就停。
- *  量到时 updateMinimapAvailability 会顺手把导航条目补上。 */
+ *  量到时 updateMinimapAvailability 会顺手把导航条目补上。
+ *  停驻（E2）时不逐帧重试：画布看不见，量出来的几何也不作数。打开时从剩下的
+ *  帧数接着量，不把停驻的时间算进重试次数。 */
+var sectionNavPaused = false;
+var sectionNavFramesLeft = 0;
 function retryUnmeasuredBoard(panel, framesLeft) {
   if (framesLeft <= 0 || !panel || !panel.isConnected || !panel.querySelector('.wb-lib-item')) return;
   sectionNavRetryRaf = requestAnimationFrame(function () {
     sectionNavRetryRaf = 0;
+    // 停驻期间这一帧不重试，但帧数留着：恢复时从剩下的帧数接着量。
+    if (sectionNavPaused) { sectionNavFramesLeft = framesLeft; return; }
     if (!updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, framesLeft - 1);
   });
 }
+
+registerEmbedPark({
+  pause: function () {
+    sectionNavPaused = true;
+    if (sectionNavRetryRaf) { cancelAnimationFrame(sectionNavRetryRaf); sectionNavRetryRaf = 0; }
+    if (minimapRaf) { cancelAnimationFrame(minimapRaf); minimapRaf = 0; }
+  },
+  resume: function () {
+    sectionNavPaused = false;
+    var panel = document.getElementById('wb-board-panel');
+    var left = sectionNavFramesLeft;
+    sectionNavFramesLeft = 0;
+    // 打开的这一帧先补量一次：停驻时量到的是空的，定位要等这次的结果。
+    // 选中也补一次：停驻期间标注层的观察器断开，store 里的选中没写到 DOM 上。
+    if (panel) { updateMinimapAvailability(panel); syncBoardSelection(); }
+    if (panel && left > 0 && !updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, left);
+  },
+});
 
 /* 横条中段的 ‹ 1 / 6 ›（2026-09-04 评审板 G1）：单位与 Section Navigator 的
    读数同源 —— 位置文字就是它，箭头只是把「跳到上/下一个 section」摆到手边。 */

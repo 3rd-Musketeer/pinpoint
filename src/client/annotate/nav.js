@@ -119,6 +119,9 @@ export function installPinpointApi() {
     // 实例的账本第一次落定（ledger.js whenLedgerReady）：绑定方等它替掉 marks
     // 轮询。实例重载（iframe 换文档）拿到的是新实例、新 promise。
     whenReady: whenLedgerReady,
+    // 当前这次换桶是否已落定。画布实例启动会切两次（先按地址、工作台起来再切），
+    // 第一次落定时空账本里还没有钉子；定位前等这一次。
+    whenSettled: whenSettled,
     // 当前账本桶 id（画布实例 = 活动页；测试与调试用，只读）。
     get entry() { return ctx.ENTRY; },
     get marks() { return ctx.marks.slice(); },

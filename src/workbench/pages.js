@@ -51,6 +51,7 @@ import {
 import { annotateApi, scheduleAnnSnap, stopGutter, watchDocAnnotate } from './ann-bridge.js';
 import { wbLayers } from './layer-stack.js';
 import { LAYER_RANK } from '../shared/layers.js';
+import { registerEmbedPark } from './embed-park.js';
 
 // 反向依赖注入：loadBoard / mountManager 留在 stage.js（舞台入口持有装载编排），
 // pages.js 不得 import stage.js，由它在初始化时经 initPages(deps) 注入。
@@ -423,8 +424,11 @@ function writePhoneScale(shell) {
   screen.style.setProperty('--wb-phone-shell-h', h + 'px');
 }
 
+var phoneScaleParked = false;
+var phoneScaleRelease = null;
 export function syncPhoneDocScale() {
   if (phoneScaleRo) { phoneScaleRo.disconnect(); phoneScaleRo = null; }
+  if (phoneScaleRelease) { phoneScaleRelease(); phoneScaleRelease = null; }
   var shell = wbGet().viewport === VIEWPORT_PHONE ? phoneShellEl() : null;
   if (!shell || !stage) return;
   writePhoneScale(shell);
@@ -433,8 +437,24 @@ export function syncPhoneDocScale() {
     if (!shell.isConnected) { syncPhoneDocScale(); return; }
     writePhoneScale(shell);
   });
-  phoneScaleRo.observe(stage);
-  phoneScaleRo.observe(shell);
+  if (!phoneScaleParked) {
+    phoneScaleRo.observe(stage);
+    phoneScaleRo.observe(shell);
+  }
+  // 停驻（E2）：手机视口的缩放观察停掉。打开时重挂并补量一次。
+  phoneScaleRelease = registerEmbedPark({
+    pause: function () {
+      phoneScaleParked = true;
+      if (phoneScaleRo) phoneScaleRo.disconnect();
+    },
+    resume: function () {
+      phoneScaleParked = false;
+      if (!phoneScaleRo || !shell.isConnected) return;
+      phoneScaleRo.observe(stage);
+      phoneScaleRo.observe(shell);
+      writePhoneScale(shell);
+    },
+  });
 }
 
 /** 无条目可解析时的页级回落（空板 / 装载失败面板）：与阶段 2 的页级派生同义。 */

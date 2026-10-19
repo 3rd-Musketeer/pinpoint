@@ -9,6 +9,10 @@ export class BoardMountSession {
     this.generation = generation;
     this.pageId = pageId;
     this.active = true;
+    // 停驻（E2）：会话仍是当前会话，但预览脚本先不挂，等浮层打开再补。
+    // 和 active 分开 —— active 变 false 是会话被替换，挂了一半的要卸载；
+    // suspended 只是推迟，不卸载已经挂上的。
+    this.suspended = false;
     this.disposers = [];
     this.pendingTasks = new Set();
     // 只读完成标记：几何批（navigator / spy / 首访聚焦 / minimap）跑完且本会话

@@ -174,6 +174,9 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
   });
 
   await test.step('卡片“打开画布”：同一个浮层，再开不重装工作台，直接定位到那一节；后退关、前进开；关闭按钮；点暗色区域', async () => {
+    // 预热刚开始时板还没装完：代号先是 0，装上才递增。等第一次装载完成再读，
+    // 再开时拿它比「没有重装」。读的仍是同一个 iframe 的代号。
+    await expect.poll(() => page.evaluate(() => window.pinpointOverlay.frame()?.contentWindow?.workbench?.mountGeneration() || 0)).toBeGreaterThan(0);
     const generation = await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.workbench.mountGeneration());
     await page.locator('[data-pp-canvas][data-pp-section="variants"]').scrollIntoViewIfNeeded();
     const at = await scrollOf(page);

@@ -59,6 +59,7 @@ export function installOverlayScrollbars(doc, opts) {
   var drag = null;
   var px = -1, py = -1;
   var frame = 0;
+  var parked = false;
 
   function makeBar(axis) {
     var el = doc.createElement('div');
@@ -151,7 +152,7 @@ export function installOverlayScrollbars(doc, opts) {
 
   function update() {
     frame = 0;
-    if (!doc.body) return;
+    if (parked || !doc.body) return;
     place('y');
     place('x');
     // 还有容器在“滚动后停留”里：到点再收。
@@ -214,7 +215,16 @@ export function installOverlayScrollbars(doc, opts) {
   doc.addEventListener('scroll', onScroll, { capture: true, passive: true });
   win.addEventListener('resize', schedule, { passive: true });
 
-  var api = { update: schedule, widen: function () { scope = null; }, bars: { x: bars.x.el, y: bars.y.el } };
+  // 停驻（E2）：画布看不见，悬停与滚动都不该再排 rAF。打开时补量一次。
+  function setParked(on) {
+    parked = !!on;
+    if (parked) {
+      if (frame) { win.cancelAnimationFrame(frame); frame = 0; }
+      bars.y.el.removeAttribute('data-on');
+      bars.x.el.removeAttribute('data-on');
+    } else schedule();
+  }
+  var api = { update: schedule, widen: function () { scope = null; }, setParked: setParked, bars: { x: bars.x.el, y: bars.y.el } };
   doc.__ppOverlayScrollbars = api;
   return api;
 }

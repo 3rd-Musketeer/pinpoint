@@ -21,6 +21,24 @@ export function init_schedule() {
   ctx.dirtyFrameRoots = new Set();
 }
 
+// 停驻（E2）时观察器断开、待刷新的根先记着，打开再补画。事件监听留着：
+// 它们只把活记账进 contentRoots，不在停驻期间排 rAF。直接打开的画布不设这个钩子。
+var viewParked = false;
+var parkedObservers = [];
+function noteParkedObserver(observer, reconnect) {
+  parkedObservers.push({ observer: observer, reconnect: reconnect });
+}
+export function setViewParked(on) {
+  viewParked = !!on;
+  parkedObservers.forEach(function (entry) {
+    if (viewParked) entry.observer.disconnect();
+    else entry.reconnect();
+  });
+  if (!viewParked && (ctx.contentFullDirty || ctx.contentRoots.size || ctx.geometryDirty || ctx.zoomDirty)) {
+    scheduleViewUpdate();
+  }
+}
+
 export function installViewScheduling() {
   addEventListener('resize', onViewChange);
   // Nested frame scrollports (.ios-app, sheet body, …) do not bubble; capture
@@ -65,6 +83,11 @@ export function installViewScheduling() {
       attributes: true,
       attributeOldValue: true
     });
+    noteParkedObserver(contentMutationObserver, function () {
+      contentMutationObserver.observe(document.documentElement, { attributes: true, attributeOldValue: true });
+      contentMutationObserver.observe(document.head, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true });
+      contentMutationObserver.observe(document.body, { subtree: true, childList: true, characterData: true, attributes: true, attributeOldValue: true });
+    });
   }
 
   ctx.observedFrames = new Map();
@@ -88,6 +111,11 @@ export function installViewScheduling() {
     contentResizeObserver.observe(document.body);
     var observedStage = document.getElementById('wbstage');
     if (observedStage) contentResizeObserver.observe(observedStage);
+    noteParkedObserver(contentResizeObserver, function () {
+      contentResizeObserver.observe(document.body);
+      var stage = document.getElementById('wbstage');
+      if (stage) contentResizeObserver.observe(stage);
+    });
   }
   document.addEventListener('load', function (event) {
     if (!annotationUiNode(event.target)) scheduleContentRender(event);
@@ -176,6 +204,7 @@ export function perfDrain() {
 }
 
 function scheduleViewUpdate() {
+  if (viewParked) return;
   if (ctx.viewRaf) return;
   ctx.viewRaf = requestAnimationFrame(function () {
     ctx.viewRaf = 0;

@@ -55,6 +55,7 @@
 // 2026-10-13（pp3，owner 选 A）：「页面」tab 顶上加一组「文章」（app/ArticlesSection.jsx，
 // project → 文章）；原来的置顶、最近与页面列表原样搬进下面的「页面」组。
 import { emitServerEvent, setServerEventsOnline } from '../server-events.js';
+import { registerEmbedPark } from '../embed-park.js';
 import { Fragment, createContext, useContext, useEffect, useMemo, useRef, useState } from 'react';
 import { PageInfo } from './PageInfo.jsx';
 import { PageSortMenu } from './PageSortMenu.jsx';
@@ -300,10 +301,19 @@ export function Sidebar() {
   useEffect(function () {
     var timer;
     var events = new EventSource('/events');
+    // 停驻（E2）：左栏那一下刷新先记下，打开再补。连接不断，推送照常转给
+    // 活卡片的标注客户端 —— 卡片里的保存与账本不因停驻推迟。
+    var parked = false;
+    var refreshDeferred = false;
     function refresh() {
+      if (parked) { refreshDeferred = true; return; }
       clearTimeout(timer);
       timer = setTimeout(function () { refreshRegistry().catch(function () {}); }, 150);
     }
+    var releasePark = registerEmbedPark({
+      pause: function () { parked = true; clearTimeout(timer); },
+      resume: function () { parked = false; if (refreshDeferred) { refreshDeferred = false; refresh(); } },
+    });
     // 连接状态与推送也转给画布上活的 HTML 卡片里的标注客户端（server-events.js），它们不各开一条。
     events.onopen = function () { setServerEventsOnline(true); };
     events.onerror = function () { if (events.readyState !== EventSource.OPEN) setServerEventsOnline(false); };
@@ -315,7 +325,7 @@ export function Sidebar() {
       try { doc = JSON.parse(ev.data); } catch (e) { return; }
       window.dispatchEvent(new CustomEvent('wb:annotations', { detail: doc }));
     });
-    return function () { clearTimeout(timer); events.close(); setServerEventsOnline(false); };
+    return function () { releasePark(); clearTimeout(timer); events.close(); setServerEventsOnline(false); };
   }, []);
   // 旧偏好 sidebarTab='outline' 时左栏没有这个页签：落到「页面」，挂载后改写成 pages。
   // 平时的点击不写偏好，和删页签之前一样。
@@ -341,11 +351,19 @@ export function Sidebar() {
   var settingsOpen = useWorkbenchStore(function (s) { return s.settingsOpen; });
   var activePageId = useWorkbenchStore(function (s) { return s.activePageId; });
   var [sort, setSort] = useState(function () { return normalizePageSort(readPrefs().pageSort); });
-  // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束
+  // 相对时间每分钟重算一次（2026-08-17g），否则「5m」会挂到会话结束。
+  // 停驻（E2）时这一分钟的渲染也停：画布看不见，打开时补一次就够。
   var [now, setNow] = useState(function () { return Date.now(); });
   useEffect(function () {
     var timer = setInterval(function () { setNow(Date.now()); }, 60000);
-    return function () { clearInterval(timer); };
+    var releasePark = registerEmbedPark({
+      pause: function () { clearInterval(timer); timer = 0; },
+      resume: function () {
+        setNow(Date.now());
+        if (!timer) timer = setInterval(function () { setNow(Date.now()); }, 60000);
+      },
+    });
+    return function () { releasePark(); clearInterval(timer); };
   }, []);
   var manifest = useWorkbenchStore(function (s) { return s.pageManifest; });
 

@@ -17,6 +17,7 @@ import {
   updateSectionNavigatorVisibility
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
+import { registerEmbedPark } from './embed-park.js';
 
 // 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolveActivePage，
 // applyPageNames 属 pages.js；pages.js 会直接 import 本模块，本模块不能反向
@@ -291,6 +292,25 @@ function boardZoom(val) {
   if (!val || val === 'fit') return '1';
   return String(val);
 }
+
+// 停驻（E2）期间状态栏时钟改走 fixed：ios-kit 的 tick 见 data-clock-mode=fixed 就不再
+// 排每分钟的 interval。打开时按偏好恢复，并补一次 tick，停驻跨过的那一分钟不丢。
+var clockHeld = null;
+registerEmbedPark({
+  pause: function () {
+    if (clockHeld) return;
+    clockHeld = { mode: document.documentElement.getAttribute('data-clock-mode') || 'system' };
+    if (clockHeld.mode === 'fixed') { clockHeld = null; return; }
+    applyClock('fixed', document.documentElement.getAttribute('data-clock-fixed') || '9:41');
+  },
+  resume: function () {
+    if (!clockHeld) return;
+    var mode = clockHeld.mode;
+    clockHeld = null;
+    applyClock(mode, wbGet().clockFixed || '9:41');
+    if (window.iOSKit && typeof window.iOSKit.tick === 'function') window.iOSKit.tick();
+  },
+});
 
 export function applyClock(mode, fixedIos) {
   wbSet({ clockMode: mode });

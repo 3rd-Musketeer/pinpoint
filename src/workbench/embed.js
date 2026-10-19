@@ -14,6 +14,7 @@ import { wbGet, useWorkbenchStore } from './app/store.js';
 import { isEmbedded } from './lib/page-url.js';
 import { isPageOverlayOpen } from './pages.js';
 import { wbLayers } from './layer-stack.js';
+import { pauseEmbed, resumeEmbed } from './embed-park.js';
 
 export var EMBEDDED = isEmbedded(location.search);
 export var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
@@ -75,6 +76,26 @@ function pageSectionOf(screenId) {
 export function startEmbedBridge() {
   if (!EMBEDDED) return;
   document.documentElement.classList.add('wb-embed');
+  // 停驻（E2）：文章页把浮层收进停驻容器时发 pause，打开时发 resume。
+  // 回执不看代次（停驻是这一份文档的事）；保存与 outbox 不在暂停登记里，照常落盘。
+  window.addEventListener('message', function (e) {
+    if (e.source !== window.parent || e.origin !== location.origin) return;
+    var data = e.data;
+    if (!data || data.source !== 'pinpoint-article' || (data.type !== 'pause' && data.type !== 'resume')) return;
+    if (data.type === 'pause') pauseEmbed();
+    else resumeEmbed();
+    post({ type: 'parked', paused: data.type === 'pause' });
+  });
+  // 预热的 pause 可能在这个监听挂上之前就到了（模块还在加载）：父页面停驻容器里
+  // 已有本帧而浮层没开，就当它已经要求暂停，补一次。
+  try {
+    var held = window.parent.document.querySelector('[data-ov-park] iframe');
+    var opened = window.parent.document.querySelector('dialog[data-pp-overlay][open]');
+    if (held && held.contentWindow === window && !opened) {
+      pauseEmbed();
+      post({ type: 'parked', paused: true });
+    }
+  } catch (e) { /* 父页面不可读：不是嵌入 */ }
   // 弹层栈没接住的 Esc（栈里没有任何层接）：请文章页关浮层（C2）。与直接打开的画布
   // 相比只多这一步转发；页面浮层、标注层、菜单这些都在栈里，轮不到转发。
   // 在捕获段就转、不看 defaultPrevented：画布选中也吃 Esc（app/Dock.jsx），但它不是一层。
