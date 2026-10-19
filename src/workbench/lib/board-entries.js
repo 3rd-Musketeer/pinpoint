@@ -13,8 +13,8 @@
 
 import { boardForTab, boardTabList, flattenTabs } from './board-tabs.js';
 
-/* 画布条目 id 用 '@canvas'：screen id 契约是 /^[a-zA-Z0-9_-]+$/（preview-contracts
-   ID_PATTERN），'@' 永不可能与 doc 屏 id 撞车，混合板条目 id 因此天然唯一。 */
+/* 画布条目 id 用 '@canvas'：screen id 契约是 /^[a-zA-Z0-9_-]+$/（project-ids.js
+   SCREEN_ID_PATTERN），'@' 永不可能与 doc 屏 id 撞车，混合板条目 id 因此天然唯一。 */
 export var CANVAS_ENTRY_ID = '@canvas';
 
 function screenShellOf(sc) {

@@ -31,7 +31,7 @@ import { manifestPageIds } from './page-manifest.js';
 import {
   articlePageId,
   CANVAS_SHELLS,
-  FRAME_ID_PATTERN as FRAME_ID,
+  SCREEN_ID_PATTERN as FRAME_ID,
   RESERVED_ARTICLE_IDS,
   SECTION_ID_PATTERN as SECTION_ID,
 } from '../../shared/project-ids.js';

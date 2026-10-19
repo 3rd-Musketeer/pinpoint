@@ -8,6 +8,7 @@ import {
   CANVAS_LEDGER,
   CANVAS_SHELLS,
   ENTRY_OR_ARTICLE_ID_PATTERN,
+  FIGURE_ID_PATTERN,
   isReservedProjectId,
   isReservedSegment,
   isSectionLetter,
@@ -16,6 +17,8 @@ import {
   refKey,
   RESERVED_ARTICLE_IDS,
   RESERVED_TOP_SEGMENTS,
+  SCREEN_ID_PATTERN,
+  SECTION_ID_PATTERN,
   sectionLetter,
 } from './project-ids.js';
 import { ENTRY_ID_PATTERN, PAGE_ID_PATTERN } from './registry-ids.js';
@@ -39,6 +42,13 @@ test('articlePageId / parseArticlePageId round-trip; bad parts throw; other shap
 test('ENTRY_OR_ARTICLE_ID_PATTERN = entry id or article page id', () => {
   for (const id of ['pinpoint', 'demo_flow', 'a-1_b-2']) assert.ok(ENTRY_OR_ARTICLE_ID_PATTERN.test(id), id);
   for (const id of ['a_b_c', 'Demo', '_x', 'x_', '']) assert.ok(!ENTRY_OR_ARTICLE_ID_PATTERN.test(id), id);
+});
+
+test('节 / 屏 / 图各一个有名常量（r2 I1 归一）：同形，不收 PAGE_ID_PATTERN 之外的写法', () => {
+  for (const re of [SECTION_ID_PATTERN, SCREEN_ID_PATTERN, FIGURE_ID_PATTERN]) {
+    for (const id of ['home', 'c1b-detail', 'A1', 'flow_2']) assert.ok(re.test(id), `${re} ${id}`);
+    for (const id of ['a b', 'a/b', 'a.b', '@canvas', '§2', '']) assert.ok(!re.test(id), `${re} ${id}`);
+  }
 });
 
 test('reserved segments: the table, the e2e artifact prefixes, and the article second segment', () => {

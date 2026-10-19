@@ -39,6 +39,7 @@ import { flattenTabs } from '../../workbench/lib/board-tabs.js';
 import { manifestPageIds } from './page-manifest.js';
 import { __ppWrapComponent } from './pp-jsx-runtime.js';
 import { PAGE_ID_PATTERN, registryEntry } from './registry.js';
+import { FIGURE_ID_PATTERN, SCREEN_ID_PATTERN } from '../../shared/project-ids.js';
 import { COMP_NAME_PATTERN, ContractError, findRetiredVariantGroup, retiredVariantsMessage, validateBoardTabs } from '../../workbench/lib/preview-contracts.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -168,7 +169,7 @@ function screenIdsFromBoard(rawBoard) {
   for (const section of board.sections) {
     for (const screen of (section && section.screens) || []) {
       const id = typeof screen === 'string' ? screen : screen && screen.id;
-      if (typeof id === 'string' && PAGE_ID_PATTERN.test(id)) ids.add(id);
+      if (typeof id === 'string' && SCREEN_ID_PATTERN.test(id)) ids.add(id);
     }
   }
   return ids;
@@ -491,7 +492,7 @@ export function screenEntriesFromBoard(rawBoard) {
   for (const section of board.sections) {
     for (const screen of (section && section.screens) || []) {
       const raw = typeof screen === 'string' ? { id: screen } : screen;
-      if (!raw || typeof raw.id !== 'string' || !PAGE_ID_PATTERN.test(raw.id)) continue;
+      if (!raw || typeof raw.id !== 'string' || !SCREEN_ID_PATTERN.test(raw.id)) continue;
       if (seen.has(raw.id)) continue;
       seen.add(raw.id);
       const entry = { id: raw.id };
@@ -773,8 +774,6 @@ export function figureFiles(id) {
   return { jsx: `figures/${id}.jsx`, js: `figures/${id}.js`, css: `figures/${id}.css` };
 }
 
-const FIGURE_ID_RE = /^[a-zA-Z0-9_-]+$/;
-
 function figureDistPaths(distRoot, entryId, id) {
   const dir = path.join(distRoot, entryId, 'figures');
   return { dir, html: path.join(dir, `${id}.html`), record: path.join(dir, `${id}.json`) };
@@ -814,7 +813,7 @@ export async function compileFigure(target, id) {
   const css = isFileSync(abs(files.css));
   const finish = (row) => ({ script, css, usesKit: false, sources: [], ...row, ms: Math.round((performance.now() - started) * 10) / 10 });
   const one = (code, file, message) => [{ code, file, line: null, message }];
-  if (!FIGURE_ID_RE.test(String(id || ''))) {
+  if (!FIGURE_ID_PATTERN.test(String(id || ''))) {
     const message = `图 id 不合法：${JSON.stringify(id)}`;
     return finish({ ok: false, error: message, diagnostics: one('figure_src', null, message) });
   }

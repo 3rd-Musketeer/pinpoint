@@ -31,7 +31,7 @@ import { loadDistScreenHtml, readTargetBoard } from './page-compiler.js';
 import { resolvePage } from './page-resolve.js';
 import { registryEntry } from './registry.js';
 import { flattenTabs } from '../../workbench/lib/board-tabs.js';
-import { ENTRY_OR_ARTICLE_ID_PATTERN } from '../../shared/project-ids.js';
+import { ENTRY_OR_ARTICLE_ID_PATTERN, FIGURE_ID_PATTERN, SCREEN_ID_PATTERN } from '../../shared/project-ids.js';
 import { synthesizeBoard } from './synth-board.js';
 import { resolveContainedFile } from './servable-file.js';
 
@@ -47,8 +47,6 @@ export class FrameDocError extends Error {
     this.code = code; // 'bad_request' | 'unknown_page' | 'unknown_screen'
   }
 }
-
-const SCREEN_ID_RE = /^[a-zA-Z0-9_-]+$/;
 
 function readJsonSafe(file) {
   try {
@@ -125,7 +123,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   if (!ENTRY_OR_ARTICLE_ID_PATTERN.test(String(pageId || ''))) {
     throw new FrameDocError('bad_request', `invalid page id "${pageId}"`);
   }
-  if (!SCREEN_ID_RE.test(String(screenId || ''))) {
+  if (!SCREEN_ID_PATTERN.test(String(screenId || ''))) {
     throw new FrameDocError('bad_request', `invalid screen id "${screenId}"`);
   }
 
@@ -456,14 +454,12 @@ ${inject}
 
 /* ---- 图：正文里的 <Figure>（docs/projects.md“图”） ---- */
 
-const FIGURE_ID_RE = /^[a-zA-Z0-9_-]+$/;
-
 /** 页 id + 图 id → { target（文章的编译目标）, pageId, figureId }。图只属于文章；源文件不在就 404。 */
 export function resolveFigureTarget(pageId, figureId, options = {}) {
   if (!ENTRY_OR_ARTICLE_ID_PATTERN.test(String(pageId || ''))) {
     throw new FrameDocError('bad_request', `invalid page id "${pageId}"`);
   }
-  if (!FIGURE_ID_RE.test(String(figureId || ''))) {
+  if (!FIGURE_ID_PATTERN.test(String(figureId || ''))) {
     throw new FrameDocError('bad_request', `invalid figure id "${figureId}"`);
   }
   const page = resolvePage(options.registry || null, pageId);

@@ -1,7 +1,5 @@
 import { flattenTabs } from './board-tabs.js';
-import { CANVAS_SHELLS } from '../../shared/project-ids.js';
-
-const ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+import { CANVAS_SHELLS, SCREEN_ID_PATTERN } from '../../shared/project-ids.js';
 
 export class ContractError extends Error {
   constructor(path, message) {
@@ -58,7 +56,7 @@ function titleString(value, path) {
   return title;
 }
 
-function identifier(value, path, pattern = ID_PATTERN) {
+function identifier(value, path, pattern = SCREEN_ID_PATTERN) {
   const id = nonEmptyString(value, path);
   if (!pattern.test(id)) throw new ContractError(path, `invalid id "${id}"`);
   return id;

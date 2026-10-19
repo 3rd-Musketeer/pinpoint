@@ -86,9 +86,13 @@ export function refKey(name) {
   return String(name).normalize('NFC').trim().toLowerCase();
 }
 
-/** <Section id> 的规则（DOM id、画布 section id）；帧 id 与 screen id 契约一致。 */
+/** id 规则的全仓一份（r2 I1）：节（<Section id>、board section、DOM id）、
+ * 屏（board.json 的 screen id；文章的帧 id 同一契约——代码里的 screen 就是文章
+ * 世界的帧，CONTEXT.md）、图（figures/<图 id>.jsx 的文件名）。三者同形，但各有
+ * 各的名字，校验处按语义挑；页 id 的规则在 registry-ids.js PAGE_ID_PATTERN。 */
 export const SECTION_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
-export const FRAME_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const SCREEN_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
+export const FIGURE_ID_PATTERN = /^[a-zA-Z0-9_-]+$/;
 
 /**
  * 正文里的图（<Figure src="figures/<图 id>.jsx">，docs/projects.md“图”）：源文件在文章目录的 figures/ 下，

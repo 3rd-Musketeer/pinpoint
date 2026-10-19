@@ -31,7 +31,7 @@ import remarkParse from 'remark-parse';
 import remarkMdx from 'remark-mdx';
 
 import { articleFigures, articleStructure, jsxAttribute, literalAttribute } from '../../shared/article-structure.js';
-import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, FRAME_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID, parseFrameSrc } from '../../shared/project-ids.js';
+import { CANVAS_SHELLS, FIGURE_DIR, FIGURE_SRC_PATTERN, SCREEN_ID_PATTERN as FRAME_ID, HTML_FRAME_SRC_PATTERN, SECTION_ID_PATTERN as SECTION_ID, parseFrameSrc } from '../../shared/project-ids.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { resolveContainedFile, resolveServableFile } from './servable-file.js';
 
