@@ -12,12 +12,12 @@ export function startCanvasDiagnostics(stage, pageId) {
   const removers = [];
   const session = crypto.randomUUID();
   let pending = [], uploadTimer = 0, uploading = false, stopped = false;
-  // 停驻（E2）：采样、长帧观察和活动监听都停。已经记下还没送出的照常送 ——
-  // 那是诊断数据，不是停驻期间新产生的工作。
+  // 停驻（E2）：采样、长帧观察、活动监听和上传都停。已经排上的那一次照常送，
+  // 剩下没送出的等恢复后再送。
   let paused = false;
   const parked = [];
   function scheduleUpload() {
-    if (!uploadTimer && !stopped) uploadTimer = setTimeout(flush, 2000);
+    if (!uploadTimer && !stopped && !paused) uploadTimer = setTimeout(flush, 2000);
   }
   async function flush() {
     uploadTimer = 0;
@@ -195,6 +195,7 @@ export function startCanvasDiagnostics(stage, pageId) {
       paused = false;
       parked.forEach(entry => entry.start());
       sample();
+      if (pending.length) scheduleUpload();
     },
   });
   const api = {

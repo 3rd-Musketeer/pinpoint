@@ -293,23 +293,11 @@ function boardZoom(val) {
   return String(val);
 }
 
-// 停驻（E2）期间状态栏时钟改走 fixed：ios-kit 的 tick 见 data-clock-mode=fixed 就不再
-// 排每分钟的 interval。打开时按偏好恢复，并补一次 tick，停驻跨过的那一分钟不丢。
-var clockHeld = null;
+// 停驻（E2）期间停掉状态栏时钟的每分钟定时器，打开时补一次 tick，停驻跨过的那一分钟不丢。
+// 不经 applyClock 改模式：那会把 fixed 写进偏好（localStorage），别的标签页也跟着变。
 registerEmbedPark({
-  pause: function () {
-    if (clockHeld) return;
-    clockHeld = { mode: document.documentElement.getAttribute('data-clock-mode') || 'system' };
-    if (clockHeld.mode === 'fixed') { clockHeld = null; return; }
-    applyClock('fixed', document.documentElement.getAttribute('data-clock-fixed') || '9:41');
-  },
-  resume: function () {
-    if (!clockHeld) return;
-    var mode = clockHeld.mode;
-    clockHeld = null;
-    applyClock(mode, wbGet().clockFixed || '9:41');
-    if (window.iOSKit && typeof window.iOSKit.tick === 'function') window.iOSKit.tick();
-  },
+  pause: function () { if (window.iOSKit && window.iOSKit.pauseClock) window.iOSKit.pauseClock(); },
+  resume: function () { if (window.iOSKit && window.iOSKit.resumeClock) window.iOSKit.resumeClock(); },
 });
 
 export function applyClock(mode, fixedIos) {

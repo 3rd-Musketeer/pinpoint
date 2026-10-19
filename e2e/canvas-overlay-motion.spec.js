@@ -738,3 +738,30 @@ test('画布浮层：停驻的工作台断开 /events，打开后重连并补上
     await request.post('/save', { data: { entry: pageId, page: '@canvas', path: '/', baseRevision: now.revision, annotations: (now.annotations || []).filter((a) => a.id !== row.id) } });
   }
 });
+
+
+// 停驻跨过整分钟：ios-kit 的状态栏时钟此前在停驻里照样到点排定时器，诊断上传也照样续排，
+// 3 秒窗口碰上整分钟就挂。用假时钟快进 65 秒，确定性地跨过一次整分钟。
+test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.clock.install();
+  await page.setViewportSize({ width: 1440, height: 900 });
+  await openArticle(page);
+  await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.settled() && window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
+  await page.evaluate(() => {
+    const win = window.pinpointOverlay.frame().contentWindow;
+    const counts = { timeout: 0, interval: 0 };
+    const orig = { timeout: win.setTimeout, interval: win.setInterval };
+    win.setTimeout = function (...args) { counts.timeout += 1; return orig.timeout.apply(this, args); };
+    win.setInterval = function (...args) { counts.interval += 1; return orig.interval.apply(this, args); };
+    win.__minuteProbe = { counts, restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; } };
+  });
+  await page.clock.runFor(65_000);
+  const counts = await page.evaluate(() => {
+    const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
+    const out = { ...probe.counts };
+    probe.restore();
+    return out;
+  });
+  expect(counts).toEqual({ timeout: 0, interval: 0 });
+});

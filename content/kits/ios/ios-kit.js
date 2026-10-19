@@ -118,18 +118,19 @@
       setClock(el, live);
     });
   }
-  var clockScheduled = false;
+  // 每分钟一次、对齐到整分钟。fixed 模式不排下一次（时钟不会变）；从 fixed 切回时调用方经 iOSKit.tick
+  // 重新排上。pauseClock / resumeClock 给停驻的嵌入工作台用：停掉定时器，恢复时补一次 tick。
+  var clockTimer = 0, clockPaused = false;
   function scheduleClock() {
-    if (clockScheduled) return;
-    clockScheduled = true;
-    tick();
+    if (clockTimer || clockPaused) return;
+    if (document.documentElement.getAttribute('data-clock-mode') === 'fixed') return;
     var now = new Date();
     var ms = (60 - now.getSeconds()) * 1000 - now.getMilliseconds() + 50;
-    setTimeout(function () {
-      tick();
-      setInterval(tick, 60000);
-    }, ms);
+    clockTimer = setTimeout(function () { clockTimer = 0; tick(); scheduleClock(); }, ms);
   }
+  function tickAndSchedule(root) { tick(root); scheduleClock(); }
+  function pauseClock() { clockPaused = true; clearTimeout(clockTimer); clockTimer = 0; }
+  function resumeClock() { clockPaused = false; tickAndSchedule(); }
 
   var booted = false;
   var observedStages = typeof WeakSet === 'function' ? new WeakSet() : null;
@@ -306,7 +307,7 @@
     booted = true;
     injectChrome();
     injectAnnotate();
-    scheduleClock();
+    tickAndSchedule();
     refresh();
   }
 
@@ -318,6 +319,7 @@
   window.addEventListener('resize', function () { fitAll(); });
 
   window.iOSKit = { fit: fit, fitAll: fitAll, openSheet: openSheet, closeSheet: closeSheet,
-                    fillStatusBars: fillStatusBars, tick: tick, refresh: refresh, init: init,
+                    fillStatusBars: fillStatusBars, tick: tickAndSchedule, pauseClock: pauseClock, resumeClock: resumeClock,
+                    refresh: refresh, init: init,
                     ensureLiquidGlassFilter: ensureLiquidGlassFilter };
 })();
