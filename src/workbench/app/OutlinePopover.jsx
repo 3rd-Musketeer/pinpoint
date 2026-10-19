@@ -7,11 +7,12 @@
 // 右键菜单门户在浮层外面。点到 [role=menu] 时不关，复制菜单才能把焦点交还行内按钮。
 // 点外关闭自己听 document 捕获段（与换 Radix 之前一致）：Radix 的点外在冒泡段，
 // 标注钉子在自己的冒泡段 pointerdown 上 stopPropagation，事件到不了 document，
-// 大纲开着时点钉子就收不起来。FocusScope 管挂载聚焦浮层、Esc 关掉后把焦点还给
-// 打开前的触发钮；Esc 归工作台弹层栈（use-layer.js），焦点在输入框里时这一下归输入框。
+// 大纲开着时点钉子就收不起来。挂载时同步聚焦浮层、Esc 关掉时同步把焦点还给打开前的
+// 元素，不用 Radix FocusScope：它的卸载归还排在 setTimeout(0)，Esc 关掉后马上再开，
+// 上一个浮层迟到的归还会把焦点从新浮层拽回触发钮（e2e 约 1/10 复现）。
+// Esc 归工作台弹层栈（use-layer.js），焦点在输入框里时这一下归输入框。
 import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { FocusScope } from '@radix-ui/react-focus-scope';
 import { autoUpdate, computePosition, offset, shift } from '@floating-ui/dom';
 import { useWorkbenchStore, wbGet } from './store.js';
 import { closePageOverlay, entriesOfActiveBoard, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
@@ -303,10 +304,13 @@ function OutlineContents(props) {
 
 function OutlinePop(props) {
   var popRef = useRef(null);
+  var focusBefore = useRef(null);
   var label = props.label;
 
   useLayoutEffect(function () {
     var pop = popRef.current;
+    focusBefore.current = document.activeElement;
+    if (pop) pop.focus({ preventScroll: true });
     function trigger() {
       return document.querySelector('[data-outline-trigger][aria-expanded="true"]');
     }
@@ -339,24 +343,21 @@ function OutlinePop(props) {
   }, []);
 
   function requestClose() { setOpenKey(null); }
-  // 焦点只在 Esc 关掉时还给触发钮（FocusScope 卸载时还给打开前的焦点）；点外、跳帧
-  // 关掉时焦点留在用户点的地方，不被拽回横条（旧实现同样只在 Esc 时 focus 触发钮）。
-  var restoreFocus = useRef(false);
 
-  // Esc 由弹层栈关（LAYER_RANK.chrome，焦点在打字里时这一下归输入框）。
-  useStackLayer('outline-pop', true, function () { restoreFocus.current = true; requestClose(); },
-    { rank: LAYER_RANK.chrome, respectTyping: true });
+  // Esc 由弹层栈关（LAYER_RANK.chrome，焦点在打字里时这一下归输入框）。焦点只在 Esc 关掉时
+  // 还给打开前的元素；点外、跳帧关掉时焦点留在用户点的地方，不被拽回横条。焦点移出不算关闭
+  // （Tab 走出去还回得来）。
+  useStackLayer('outline-pop', true, function () {
+    var back = focusBefore.current;
+    requestClose();
+    if (back && back.isConnected) back.focus({ preventScroll: true });
+  }, { rank: LAYER_RANK.chrome, respectTyping: true });
 
-  // 焦点移出不算关闭（Tab 走出去还回得来），所以不接 FocusScope 的焦点移出。
   return createPortal(
-    <FocusScope trapped={false}
-      onMountAutoFocus={function (event) { event.preventDefault(); if (popRef.current) popRef.current.focus(); }}
-      onUnmountAutoFocus={function (event) { if (!restoreFocus.current) event.preventDefault(); }}>
-      <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
-        aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
-        <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
-      </div>
-    </FocusScope>,
+    <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
+      aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
+      <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
+    </div>,
     document.body
   );
 }

@@ -28,7 +28,6 @@ export const WORKBENCH_DEPS = [
   '@floating-ui/dom',
   '@radix-ui/react-context-menu',
   '@radix-ui/react-dropdown-menu',
-  '@radix-ui/react-focus-scope',
   '@radix-ui/react-scroll-area',
   '@radix-ui/react-slot',
   '@radix-ui/react-toggle-group',
