@@ -48,7 +48,8 @@ export default function frameApi(options = {}) {
       loaded = { ok: false, error: String((error && error.message) || error), record: null };
     }
     // 图页也是帧 HTML（策略表 frameHtml 行：no-cache + 内容 ETag，重编后 304 放行新内容）；
-    // 编译失败那个 500 不给缓存头。
+    // 编译失败那个 500 同样 no-cache、不带 ETag——出帧错误应答的头只有这一种
+    // （review 建议 3：错误态会变好，每次重取就是要的行为，验证器没有意义）。
     const body = Buffer.from(figurePageHtml(resolved, loaded, { theme }), 'utf8');
     if (loaded.ok) return sendCacheable(req, res, body, { policy: 'frameHtml', contentType: 'text/html; charset=utf-8' });
     res.statusCode = 500;

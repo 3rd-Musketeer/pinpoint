@@ -1129,8 +1129,8 @@ export async function loadDistScreenHtml(target, screenId) {
 
 /**
  * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
- * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本 —— 工作台
- * 的 .wb-screen-err 面板吃非 200 状态。
+ * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本（no-cache）
+ * —— 工作台的 .wb-screen-err 面板吃非 200 状态。
  * inject(html) → html：annotate 注入由调用方决定（annotateInjection，/sites/
  * 全量注入；/previews/ 只对 doctype 整文档注入）。
  * 缓存走策略表 distScreen 行（S3 / 审计 K2c）：no-cache + 注入后字节的 ETag，
@@ -1147,6 +1147,10 @@ export async function serveDistScreenResponse(req, res, target, screenId, { inje
   res.statusCode = 500;
   res.setHeader('Content-Type', 'text/plain; charset=utf-8');
   res.setHeader('Content-Length', String(body.length));
+  // 出帧错误应答的头只有一种：no-cache、不带 ETag（review 建议 3，与图页编译
+  // 失败的 500 一致）。错误态之后会变好（修好源码重编），任何一层都不许把
+  // 「这一屏是坏的」存下来；错误文本每次都可能是别的，验证器没有意义。
+  res.setHeader('Cache-Control', 'no-cache');
   if (req.method === 'HEAD') {
     res.end();
     return true;

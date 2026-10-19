@@ -58,6 +58,13 @@ function servable(base, rel) {
   return resolveServableFile(base, rel).real || null;
 }
 
+/** /sites/ 的 404 一律 no-cache（review 建议 3）：这些 URL 之后可能变得有效
+    （屏和文件补回来、条目登记上），404 又是可启发缓存的状态码，不带头就是把
+    「不存在」交给各层缓存的默认行为——出帧错误应答的头只有 no-cache 这一种。 */
+function notFound(res) {
+  sendJson(res, 404, { error: 'not found', message: 'not found' }, { cacheControl: 'no-cache' });
+}
+
 /**
  * Resolve a registered single file (`file` entry) for the request path, or
  * null. Exactly two spellings reach the file: `/sites/<id>/` (empty rel) and
@@ -99,7 +106,7 @@ export function createSitesHandler(options = {}) {
     const target = source.target;
     const board = source.readBoard();
     if (!board) {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
+      notFound(res);
       return true;
     }
     if (rel === 'board.json') return serveBoardJsonWithDist(req, res, target.entryId, target.pageDir, { board });
@@ -119,13 +126,13 @@ export function createSitesHandler(options = {}) {
       });
       const base = source ? (target.sources || {})[source] : target.projectRoot;
       if (!open || !base) {
-        sendJson(res, 404, { error: 'not found', message: 'not found' });
+        notFound(res);
         return true;
       }
       const frame = rootScreens.find((screen) => frameSrcFromUrlPath(target, screen.src) === src);
       const file = frame ? articleHtmlFrameFile(target, frame) : servable(base, relPath);
       if (!file) {
-        sendJson(res, 404, { error: 'not found', message: 'not found' });
+        notFound(res);
         return true;
       }
       return sendFile(req, res, file, { inject: frame ? inject : null, policy: frame ? 'frameHtml' : 'staticFile' });
@@ -141,7 +148,7 @@ export function createSitesHandler(options = {}) {
     }
     const file = rel ? servable(target.pageDir, rel) : null;
     if (!file) {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
+      notFound(res);
       return true;
     }
     return sendFile(req, res, file, { policy: 'staticFile' });
@@ -169,7 +176,7 @@ export function createSitesHandler(options = {}) {
       id = decodeURIComponent(rawId);
       rel = decodeURIComponent(rawPath);
     } catch {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
+      notFound(res);
       return true;
     }
 
@@ -179,7 +186,7 @@ export function createSitesHandler(options = {}) {
     // source.entry 只对 dir / file 非空（board-source 的 entrySource 才带 entry）。
     const entry = source ? source.entry : null;
     if (!entry) {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
+      notFound(res);
       return true;
     }
 
@@ -196,7 +203,7 @@ export function createSitesHandler(options = {}) {
       const pageDir = source.pageDir;
       // 不可读的板不能退化为普通 HTML 静态服务，绕过编译源边界。
       if (resolveContainedFile(pageDir, 'board.json', { index: false }).reason === 'outside') {
-        sendJson(res, 404, { error: 'not found', message: 'not found' });
+        notFound(res);
         return true;
       }
       const screenId = screenIdFromRel(rel);
@@ -224,7 +231,7 @@ export function createSitesHandler(options = {}) {
     }
 
     if (!file) {
-      sendJson(res, 404, { error: 'not found', message: 'not found' });
+      notFound(res);
       return true;
     }
 

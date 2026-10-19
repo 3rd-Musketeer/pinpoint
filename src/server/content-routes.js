@@ -219,6 +219,9 @@ export default function contentRoutes() {
         if (decision.action === 'notFound') {
           res.statusCode = 404;
           res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+          // 出帧错误应答的头只有一种（review 建议 3，与 /sites/ 的 404 同约）：
+          // 屏和文件之后可能补回来，no-cache 不许任何一层存下「不存在」。
+          res.setHeader('Cache-Control', 'no-cache');
           res.end(`not found: ${decision.url}`);
           return;
         }

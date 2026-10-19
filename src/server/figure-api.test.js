@@ -63,6 +63,9 @@ test('图页的错误：参数不成对 400，图或页不在 404，编译失败
   assert.equal((await fetch(frameUrl(origin, 'page=demo_nope&figure=steps&embed=figure'))).status, 404);
   const broken = await fetch(frameUrl(origin, 'page=demo_flow&figure=broken&embed=figure'));
   assert.equal(broken.status, 500);
+  // review 建议 3：出帧错误应答的头只有 no-cache 一种，不给验证器。
+  assert.equal(broken.headers.get('cache-control'), 'no-cache');
+  assert.equal(broken.headers.get('etag'), null);
   const html = await broken.text();
   assert.match(html, /data-figure-error="figures\/broken\.jsx:2: 禁止事件属性 onClick/);
   assert.match(html, /<div class="fig-error" role="alert"><b>这个图编译失败<\/b>figures\/broken\.jsx:2: /);

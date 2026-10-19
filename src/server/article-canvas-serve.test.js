@@ -83,8 +83,33 @@ test('/sites/<画布页 id>/：board.json 是派生的板 + dist，帧从 dist �
   assert.equal(css.res.statusCode, 200);
   assert.match(css.res.headers['Content-Type'], /text\/css/);
   for (const url of ['/sites/demo_flow/index.mdx', '/sites/demo_flow/../../project.json', '/sites/demo_ghost/board.json', '/sites/demo_flow/ghost.html']) {
-    assert.equal((await get(handler, url)).res.statusCode, 404, url);
+    const { res } = await get(handler, url);
+    assert.equal(res.statusCode, 404, url);
+    // review 建议 3：/sites/ 的 404 一律 no-cache——这些 URL 之后可能变得有效，
+    // 404 又是可启发缓存的状态码，不带头就把「不存在」交给各层缓存的默认。
+    assert.equal(res.headers['Cache-Control'], 'no-cache', `${url} 的 404 不许缓存`);
+    assert.equal(res.headers.ETag, undefined, '错误应答不给验证器');
   }
+});
+
+// review 建议 3：出帧错误应答的头只有一种（no-cache、不带 ETag）——错误态之后
+// 会变好（修好源码重编），任何一层都不许把「这一屏是坏的」存下来。
+test('dist 屏编译失败 500：no-cache、不带 ETag，正文还是错误文本', async (t) => {
+  const { registry, article } = fixture(t);
+  write(path.join(article, 'ask-broken.jsx'), 'export default function Broken() {\n  return <div onClick={x}>破</div>;\n}\n');
+  write(path.join(article, 'index.mdx'), '---\ntitle: 流程\n---\n\n<Section id="ask" title="提问">\n\n<Canvas frames={["ask-open", "ask-broken"]} />\n\n</Section>\n');
+  const handler = createSitesHandler({ registry });
+  const broken = await get(handler, '/sites/demo_flow/ask-broken.html');
+  assert.equal(broken.res.statusCode, 500);
+  assert.equal(broken.res.headers['Cache-Control'], 'no-cache');
+  assert.equal(broken.res.headers.ETag, undefined);
+  assert.match(broken.res.text, /ask-broken\.jsx/);
+  assert.equal(broken.res.headers['Content-Type'], 'text/plain; charset=utf-8');
+
+  // 好帧同请求不受影响：仍是策略表 distScreen 行（no-cache + ETag）。
+  const ok = await get(handler, '/sites/demo_flow/ask-open.html');
+  assert.equal(ok.res.statusCode, 200);
+  assert.match(ok.res.headers.ETag, /^"[0-9a-f]{16}"$/);
 });
 
 // S3（审计 K2c）：dist 屏带策略表 distScreen 行的缓存头。ETag 是注入后字节的

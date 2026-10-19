@@ -170,3 +170,12 @@ test('kit path only answers GET/HEAD; write methods are a loud 405', async () =>
     assert.equal(res.chunks.length, 0, method);
   }
 });
+
+test('缺失文件的真 404 带 no-cache（review 建议 3：URL 之后可能补回来，不许存「不存在」）', async () => {
+  const handler = kitMiddleware();
+  const { next, res } = await callKit(handler, 'GET', '/kits/nope.css');
+  assert.equal(next, false, 'notFound 不放行给 vite 的 SPA fallback');
+  assert.equal(res.statusCode, 404);
+  assert.equal(res.headers['Cache-Control'], 'no-cache');
+  assert.match(res.text, /^not found: \/kits\/nope\.css$/);
+});
