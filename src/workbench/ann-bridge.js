@@ -17,8 +17,8 @@ import { GUTTER_BUBBLE_W, GUTTER_MARGIN, GUTTER_W, packGutter } from './lib/anno
 // 这里消费解析结果并把它转发给既有消费面（annotateApi 的消费点都在 ann-bridge）。
 import {
   activeDocFrameEl,
-  activeDocWindow,
   annotateApi,
+  docWindowOf,
   parkParentAnnotate,
   routeAnnotateKey
 } from './annotate-surface.js';
@@ -161,7 +161,7 @@ export function startAnnBridge() {
     resume: function () {
       setAnnotateParked(window.pinpoint, false);
       scheduleAnnSnap();
-      if (gutterActive()) scheduleGutterRender();
+      if (resolveGutter().active) scheduleGutterRender();
     },
   });
   if (!annotateKeyRouted) {
@@ -254,19 +254,27 @@ function ensureGutterOverlay() {
   });
 }
 
-function gutterActive() {
-  var a = annotateApi();
-  if (!a || typeof a.getState !== 'function') return false;
-  var st = a.getState();
-  return !!(st && st.renderComments && st.bubbleLayout === 'sidebar' && activeDocFrameEl());
+// 一次解析够 gutter 的开关和渲染共用：帧只查一遍，window 从这帧读。没帧或
+// 实例不在 sidebar 评论态时 active 为 false。
+function resolveGutter() {
+  var docFrame = activeDocFrameEl();
+  var docWin = docWindowOf(docFrame);
+  var a = (docWin && docWin.pinpoint) || window.pinpoint || null;
+  var st = a && typeof a.getState === 'function' ? a.getState() : null;
+  return {
+    active: !!(docFrame && st && st.renderComments && st.bubbleLayout === 'sidebar'),
+    api: a,
+    docFrame: docFrame,
+    docWin: docWin
+  };
 }
 
-function renderGutter() {
+function renderGutter(resolved) {
   window.__wbGutter.renders++;
-  var a = annotateApi();
+  var a = resolved.api;
   if (!a || typeof a.visibleBubbleAnchors !== 'function') return;
   var wrap = gutterStageWrap();
-  var iframeEl = activeDocFrameEl();
+  var iframeEl = resolved.docFrame;
   if (!wrap || !iframeEl) return;
   ensureGutterOverlay();
   var wrapRect = wrap.getBoundingClientRect();
@@ -342,8 +350,9 @@ function scheduleGutterRender() {
   if (gutterRaf) return;
   gutterRaf = requestAnimationFrame(function () {
     gutterRaf = 0;
-    if (!gutterActive()) { stopGutter(); return; }
-    renderGutter();
+    var resolved = resolveGutter();
+    if (!resolved.active) { stopGutter(); return; }
+    renderGutter(resolved);
   });
 }
 
@@ -360,8 +369,7 @@ function detachDocListeners(doc) {
 
 /** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时挪挂，
  *  不叠层）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
-function attachGutterListeners() {
-  var iframeEl = activeDocFrameEl();
+function attachGutterListeners(iframeEl) {
   if (!iframeEl) return;
   var doc = null;
   try { doc = iframeEl.contentDocument; } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
@@ -412,12 +420,12 @@ function detachGutterListeners() {
  * 父级 annotate 实例的 MutationObserver 当内容变更 → renderAll + notify →
  * onUpdate → 快照 → startGutter → 又一次同值写……（旧实现的常驻循环里那条
  * 「无标注也满帧率空转」就是这么被喂起来的）。 */
-function startGutter() {
+function startGutter(resolved) {
   ensureGutterOverlay();
   var wrap = gutterStageWrap();
   if (wrap && wrap.getAttribute('data-ann-gutter') !== 'on') wrap.setAttribute('data-ann-gutter', 'on');
   if (gutterOverlay && gutterOverlay.style.display !== '') gutterOverlay.style.display = '';
-  attachGutterListeners();
+  attachGutterListeners(resolved.docFrame);
   scheduleGutterRender();
 }
 
@@ -436,22 +444,23 @@ export function stopGutter() {
 /** 由侧栏更新路径与 board 切换调用：按当前状态启停 gutter。快照每次更新都会
  *  走到这里 —— gutter 开着时它同时是账本 / 筛选 / 布局变化的渲染触发点。 */
 export function syncGutterComments() {
-  if (gutterActive()) startGutter();
+  var resolved = resolveGutter();
+  if (resolved.active) startGutter(resolved);
   else stopGutter();
 }
 
 // 每个 iframe 实例只订阅一次，否则每次 loadBoard 都会叠一层监听
 var docAnnotateSeen = typeof WeakSet === 'function' ? new WeakSet() : null;
 function bindDocAnnotate() {
-  var docWin = activeDocWindow();
-  if (!docWin) return false;
-  var ann = docWin.pinpoint;
+  var gutter = resolveGutter();
+  var ann = gutter.docWin && gutter.docWin.pinpoint;
+  if (!ann) return false;
   if (docAnnotateSeen && !docAnnotateSeen.has(ann)) {
     docAnnotateSeen.add(ann);
     if (typeof ann.onUpdate === 'function') ann.onUpdate(scheduleAnnSnap);
   }
   // gutter 开着时 iframe（重）载入 / 换条目，滚动监听要挪到新 document 上。
-  if (gutterActive()) attachGutterListeners();
+  if (gutter.active) attachGutterListeners(gutter.docFrame);
   scheduleAnnSnap();
   return true;
 }
@@ -466,14 +475,14 @@ var docAnnotateBound = null;
 function bindIfNewDoc() {
   // 2026-09-05：判据从「html 形态」改成「画布上有可见的文档 iframe」—— 手机视口
   // 下形态是 ios，文档照样活在 iframe 里，绑定与快照一样要跟着它。
-  var docWin = activeDocWindow();
+  var docWin = docWindowOf(activeDocFrameEl());
   var ann = docWin && docWin.pinpoint;
   if (!ann || ann === docAnnotateBound || typeof ann.whenReady !== 'function') return;
   docAnnotateBound = ann;
   ann.whenReady().then(function () {
     // 落定时实例又被换掉（重载）：docAnnotateBound 已被 watchDocAnnotate 重置或
     // 指向新实例；新实例由它自己的 ready 消息再来一遍，这里不追。
-    var now = activeDocWindow();
+    var now = docWindowOf(activeDocFrameEl());
     if (!now || now.pinpoint !== ann) {
       if (docAnnotateBound === ann) docAnnotateBound = null;
       return;

@@ -16,9 +16,8 @@ import { registerEmbedPark } from './embed-park.js';
 // 卡片实例的登记、解析与模式同步住 annotate-surface.js（C3）；这里只管卡片的
 // 懒装载与手势，绑定完成后向它报一声。
 import {
-  cardAnnotateAlive,
   cardAnnotateBound,
-  cardAnnotateOf,
+  cardAnnotateState,
   forgetAllCardAnnotates,
   forgetCardAnnotate,
   registerCardFrames
@@ -220,10 +219,10 @@ function bindCardAnnotate(frame, win) {
   var api = null;
   try { api = win.pinpoint; } catch (e) { return; }
   if (!api || typeof api.whenReady !== 'function') return;   // 还没注入；等它的就绪消息
-  if (!state.cards.has(frame) || cardAnnotateOf(frame) === api) return;
+  if (!state.cards.has(frame) || cardAnnotateState(frame, api) === 'bound') return;
   api.whenReady().then(function () {
     // 落定时帧已卸载 / 实例又被换掉（重载）：新实例由它自己的就绪消息再来一遍。
-    if (!state.cards.has(frame) || !cardAnnotateAlive(frame, api) || cardAnnotateOf(frame) === api) return;
+    if (!state.cards.has(frame) || cardAnnotateState(frame, api) !== 'alive') return;
     cardAnnotateBound(frame, api, schedulePump);
   });
 }

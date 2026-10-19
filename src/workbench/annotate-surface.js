@@ -1,9 +1,6 @@
-// 标注表面（C3，r2 D1 找实例合一）：画布上同时最多有三份 annotate 实例在跑 ——
-// 父窗口实例（画布条目的驱动，侧栏按钮与 A 键）、可见文档 iframe 里的实例（文档
-// 条目选中时接管）、HTML 活卡片 iframe 里的实例（各页自己的账本）。「此刻谁在管」
-// 的判定原来三处各写各的（ann-bridge 的 annotateApi / parkParentAnnotate / A 键
-// 驱动、live-cards 的 cardApis 登记），实例间的模式同步也只有卡片做了双向；收进
-// 这里一处做。就绪等待用 C1 的 whenReady() 与就绪消息（lib/annotate-ready.js）。
+// 标注表面（C3，r2 D1 找实例合一）：「此刻谁在管」原来三处各写各的（ann-bridge
+// 的 annotateApi / parkParentAnnotate / A 键驱动、live-cards 的 cardApis 登记），
+// 收进这里。画布上同时最多三份实例：父窗口、可见文档 iframe、HTML 活卡片。
 
 import { isComposingKey, isTypingTarget } from '../shared/keys.js';
 
@@ -21,38 +18,23 @@ export function activeDocFrameEl() {
   return panel.querySelector('.wb-screen:not([data-doc-hidden]) .wb-doc-frame');
 }
 
-/** 可见文档帧里的 annotate 实例所在的 window；没有可见文档帧或实例未注入（跨域
- *  读 contentWindow 会抛）时为 null。文档实例的绑定方（ann-bridge bindIfNewDoc）
- *  直接消费它；画布操作该驱动谁看 resolveActiveAnnotate。 */
-export function activeDocWindow() {
-  return docWindowOf(activeDocFrameEl());
-}
-
-function docWindowOf(frame) {
+/** 给定文档 iframe 读它的 window；没帧、实例未注入或跨域（读 contentWindow 会抛）
+ *  时为 null。调用方已经拿到帧时用它，避免再走一遍 querySelector。 */
+export function docWindowOf(frame) {
   if (!frame) return null;
   try {
     var w = frame.contentWindow;
-    return w && w.pinpoint ? w : null;     // 跨域时读 contentWindow 会抛
+    return w && w.pinpoint ? w : null;
   } catch (e) {
     return null;
   }
 }
 
-/** 此刻「谁在管」的一次解析（一次 DOM 查询，消费方共用）：
- *  - api：画布标注操作该驱动的实例 —— 可见文档实例优先，缺省父窗口实例；
- *  - parent：父窗口实例（可能没有）；
- *  - docWin / docFrame：接管的文档实例与它的 iframe（没有可见文档帧时为 null，
- *    跨域读 contentWindow 抛错时 docWin 也为 null）。 */
-export function resolveActiveAnnotate() {
-  var docFrame = activeDocFrameEl();
-  var docWin = docWindowOf(docFrame);
-  var parent = window.pinpoint || null;
-  var api = (docWin && docWin.pinpoint) || parent;
-  return { api: api || null, parent: parent, docWin: docWin, docFrame: docFrame };
-}
-
+// 画布标注操作该驱动的实例：可见文档实例优先，缺省父窗口实例。一个实例都没有时
+// 返回 null（消费点都按真假判断）。
 export function annotateApi() {
-  return resolveActiveAnnotate().api;
+  var docWin = docWindowOf(activeDocFrameEl());
+  return (docWin && docWin.pinpoint) || window.pinpoint || null;
 }
 
 /* 文档条目选中时，父窗口实例必须停在交互态（2026-10-14 owner：「我在手机视图下标注，
@@ -63,10 +45,9 @@ export function annotateApi() {
    所以：快照每次同步都把父实例拨回交互态；A 键在文档条目上改驱动 iframe 实例，与横条
    「标注」按钮驱动同一个。 */
 export function parkParentAnnotate() {
-  var resolved = resolveActiveAnnotate();
-  var parent = resolved.parent;
+  var parent = window.pinpoint;
   if (!parent || typeof parent.getState !== 'function' || typeof parent.setMode !== 'function') return;
-  if (!resolved.docFrame) return;
+  if (!activeDocFrameEl()) return;
   if (parent.getState().mode) parent.setMode(false);
 }
 
@@ -74,11 +55,12 @@ export function parkParentAnnotate() {
 export function routeAnnotateKey(e) {
   if (e.key !== 'a' && e.key !== 'A') return;
   if (e.metaKey || e.ctrlKey || e.altKey || isComposingKey(e)) return;
-  var resolved = resolveActiveAnnotate();
-  if (isTypingTarget(e.target) || !resolved.docFrame) return;
+  var docFrame = activeDocFrameEl();
+  if (isTypingTarget(e.target) || !docFrame) return;
   e.preventDefault();
   e.stopImmediatePropagation();
-  if (resolved.docWin && typeof resolved.docWin.pinpoint.toggle === 'function') resolved.docWin.pinpoint.toggle();
+  var docWin = docWindowOf(docFrame);
+  if (docWin && typeof docWin.pinpoint.toggle === 'function') docWin.pinpoint.toggle();
 }
 
 /* ---- 卡片实例：登记、解析与模式同步 ---------------------------------------
@@ -93,8 +75,7 @@ var cardFrames = [];
 var cardApis = new Map();
 var cardApiWaiters = new Map();                                    // frame → [resolve(api|null)]
 
-/** 父窗口实例，且状态读写可用（卡片同步只对它做）。 */
-export function parentAnnotateApi() {
+function parentApi() {
   var api = window.pinpoint;
   return api && typeof api.getState === 'function' && typeof api.setMode === 'function' ? api : null;
 }
@@ -111,22 +92,13 @@ export function forgetAllCardAnnotates() {
 }
 
 export function registerCardFrames(frames) {
-  cardFrames = [];
-  frames.forEach(function (frame) { cardFrames.push(frame); });
+  cardFrames = Array.prototype.slice.call(frames);
 }
 
 /** 卸载一张卡片：实例登记清掉，等待方以 null 放手。 */
 export function forgetCardAnnotate(frame) {
   cardApis.delete(frame);
   flushCardWaiters(frame, null);
-}
-
-export function cardAnnotateOf(frame) {
-  return cardApis.get(frame) || null;
-}
-
-export function cardAnnotateAlive(frame, api) {
-  return cardApiAlive(frame, api);
 }
 
 function setCardMode(frame, api, on) {
@@ -139,7 +111,7 @@ var parentModeSubscribed = false;
 var parentMode = false;
 function ensureParentModeSync() {
   if (parentModeSubscribed) return;
-  var parent = parentAnnotateApi();
+  var parent = parentApi();
   if (!parent || typeof parent.onUpdate !== 'function') return;
   parentModeSubscribed = true;
   parentMode = !!parent.getState().mode;
@@ -159,39 +131,41 @@ export function cardAnnotateBound(frame, api, onNotify) {
   cardApis.set(frame, api);
   flushCardWaiters(frame, api);
   if (onNotify) onNotify();
-  var parent = parentAnnotateApi();
+  var parent = parentApi();
   setCardMode(frame, api, !!(parent && parent.getState().mode));
-  if (typeof api.onUpdate === 'function') {
-    api.onUpdate(function () {
-      if (cardApis.get(frame) !== api) return;
-      if (onNotify) onNotify();
-      var p = parentAnnotateApi();
-      if (!p) return;
-      var on = !!api.getState().mode;
-      if (on !== !!p.getState().mode) p.setMode(on);
-    });
-  }
+  if (typeof api.onUpdate !== 'function') return;
+  api.onUpdate(function () {
+    if (cardApis.get(frame) !== api) return;
+    if (onNotify) onNotify();
+    var p = parentApi();
+    if (!p) return;
+    var on = !!api.getState().mode;
+    if (on !== !!p.getState().mode) p.setMode(on);
+  });
 }
 
-/** 已加载的 HTML 活卡片的标注客户端；未装好时返回 null，供文章浮层等待水合。 */
-export function cardAnnotateApi(screenId) {
+/** live-cards 绑定前问这一份实例现在算什么：'bound' 已登记且就是它；
+ *  'alive' 还挂在这帧上、可以绑；'gone' 帧已卸或实例被换掉。 */
+export function cardAnnotateState(frame, api) {
+  if (cardApis.get(frame) === api) return 'bound';
+  return cardApiAlive(frame, api) ? 'alive' : 'gone';
+}
+
+// 一次扫描卡片帧：{ frame, api }。api 是已加载且还活着的标注客户端，未装好为
+// null；画布上没有这一屏时 frame 也为 null。
+function findCardAnnotate(screenId) {
   for (var i = 0; i < cardFrames.length; i++) {
     var frame = cardFrames[i];
     var holder = frame.closest('[data-screen]');
     if (!holder || holder.getAttribute('data-screen') !== screenId) continue;
     var api = cardApis.get(frame);
-    return api && cardApiAlive(frame, api) ? api : null;
+    return { frame: frame, api: api && cardApiAlive(frame, api) ? api : null };
   }
-  return null;
+  return { frame: null, api: null };
 }
 
-function frameOfScreen(screenId) {
-  for (var i = 0; i < cardFrames.length; i++) {
-    var holder = cardFrames[i].closest('[data-screen]');
-    if (holder && holder.getAttribute('data-screen') === screenId) return cardFrames[i];
-  }
-  return null;
-}
+/** 已加载的 HTML 活卡片的标注客户端；未装好时返回 null，供文章浮层等待水合。 */
+export function cardAnnotateApi(screenId) { return findCardAnnotate(screenId).api; }
 
 function flushCardWaiters(frame, value) {
   var list = cardApiWaiters.get(frame);
@@ -210,13 +184,12 @@ function flushAllCardWaiters(value) {
 /** 等某屏活卡片的标注客户端绑定完成（C1：文章浮层定位 HTML 帧上的钉子前等它，
     workbench.whenCardAnnotateReady）。帧卸载 / 换板以 null 放手，不无限挂起。 */
 export function whenCardAnnotateReady(screenId) {
-  var api = cardAnnotateApi(screenId);
-  if (api) return Promise.resolve(api);
-  var frame = frameOfScreen(screenId);
-  if (!frame) return Promise.resolve(null);
+  var found = findCardAnnotate(screenId);
+  if (found.api) return Promise.resolve(found.api);
+  if (!found.frame) return Promise.resolve(null);
   return new Promise(function (resolve) {
-    var list = cardApiWaiters.get(frame);
-    if (!list) { list = []; cardApiWaiters.set(frame, list); }
+    var list = cardApiWaiters.get(found.frame);
+    if (!list) { list = []; cardApiWaiters.set(found.frame, list); }
     list.push(resolve);
   });
 }
