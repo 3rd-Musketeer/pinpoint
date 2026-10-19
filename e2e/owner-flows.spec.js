@@ -2,13 +2,27 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from './lib/fixtures.js';
 import { dragSelect, proseSettled } from './lib/prose.js';
-import { ownerCleanup, ownerLedger, seedOwner, openOwnerArticle } from './lib/owner-flows.js';
+import { ownerCleanup, ownerLedger, seedOwner, openOwnerArticle, openOwnerBoard, ownerAnnotation, ownerEscapeLayers, focusOwnerFrame } from './lib/owner-flows.js';
 import { OWNER_SOURCE } from './lib/owner-fixture.js';
 
 test.beforeEach(async ({ page, request }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 1000 });
   await seedOwner(request);
+});
+
+test('owner 浮层：中文组字、保存、点钉子，Esc 按层回正文', async ({ page }) => {
+  const scope = await openOwnerBoard(page, true);
+  await test.step('定位到帧，输入法组字后保存，点击已有钉子重新打开', async () => {
+    await ownerAnnotation(page, scope);
+  });
+  await test.step('Esc 依次关闭菜单、标注列表、标注模式、浮层', async () => {
+    await ownerEscapeLayers(page, scope);
+    await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
+    await page.keyboard.press('Escape');
+    await expect(page.locator('dialog[data-pp-overlay]')).not.toHaveAttribute('open', '');
+    await expect(page.locator('[data-pp-section="part-1"] [data-pp-open]')).toBeFocused();
+  });
 });
 test.afterEach(async ({ page }) => { await ownerCleanup(page); });
 

@@ -75,3 +75,61 @@ export async function metric(testInfo, name, values) {
   await testInfo.attach(`${name}.json`, { body: JSON.stringify(data, null, 2), contentType: 'application/json' });
   console.log(`OWNER_METRIC ${JSON.stringify(data)}`);
 }
+
+/** 真实鼠标和 CDP IME；scope 可以是整页或文章浮层内的工作台。 */
+export async function ownerAnnotation(page, scope) {
+  const screen = await focusOwnerFrame(scope);
+  await scope.locator('#wbann-toggle').click();
+  await screen.locator('[data-owner-action]').click();
+  const input = scope.locator('#ann-input');
+  await expect(input).toBeFocused();
+  const cdp = await page.context().newCDPSession(page);
+  try {
+    await cdp.send('Input.imeSetComposition', { text: '中文组字', selectionStart: 4, selectionEnd: 4 });
+    await expect(input).toContainText('中文组字');
+    await page.keyboard.press('Enter');
+    await expect(scope.locator('#ann-box'), '组字 Enter 留给输入法').toBeVisible();
+    await cdp.send('Input.insertText', { text: '中文标注请检查确认条件' });
+  } finally { await cdp.detach(); }
+  await expect(input).toContainText('中文标注请检查确认条件');
+  await input.press('End');
+  await input.pressSequentially('@');
+  await expect(scope.locator('#ann-mention')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#ann-mention')).toHaveCount(0);
+  await expect(scope.locator('#ann-box')).toBeVisible();
+  await scope.locator('#ann-plus').click();
+  await expect(scope.locator('#ann-tools-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#ann-tools-menu')).toBeHidden();
+  await expect(scope.locator('#ann-box')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#ann-box')).toBeHidden();
+  await expect(scope.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await expect.poll(() => ownerLedger().filter(a => a.content.includes('中文标注请检查确认条件')).length).toBe(1);
+  const mark = ownerLedger().find(a => a.content.includes('中文标注请检查确认条件'));
+  const pin = scope.locator(`.ann-mark-group[data-key="${mark.n}"] .ann-badge`);
+  // 钉子的实际 data-key 是实现细节：按可见编号查 badge，避免用 openMark 绕过点击。
+  const badge = scope.locator('.ann-badge').filter({ hasText: new RegExp(`^${mark.n}$`) }).first();
+  await badge.click();
+  await expect(scope.locator('#ann-box')).toBeVisible();
+  await expect(input).toContainText('中文标注请检查确认条件');
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#ann-box')).toBeHidden();
+}
+
+export async function ownerEscapeLayers(page, scope) {
+  await scope.locator('#wbann-count').click();
+  await expect(scope.locator('#wbann-pop')).toBeVisible();
+  await scope.getByRole('button', { name: '更多标注操作' }).click();
+  await expect(scope.locator('.wb-ann-more-menu')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('.wb-ann-more-menu')).toBeHidden();
+  await expect(scope.locator('#wbann-pop')).toBeVisible();
+  await expect(scope.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#wbann-pop')).toHaveCount(0);
+  await expect(scope.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'true');
+  await page.keyboard.press('Escape');
+  await expect(scope.locator('#wbann-toggle')).toHaveAttribute('aria-pressed', 'false');
+}
