@@ -55,7 +55,7 @@ test('reserved segments: the table, the e2e artifact prefixes, and the article s
   for (const name of RESERVED_TOP_SEGMENTS) assert.ok(isReservedSegment(name) && isReservedProjectId(name), name);
   assert.ok(isReservedProjectId('test-results-5420') && isReservedProjectId('playwright-report'));
   assert.ok(!isReservedProjectId('browser-use') && !isReservedSegment('test-resultsx'));
-  assert.deepEqual([...RESERVED_ARTICLE_IDS], ['wiki', 'concepts']);
+  assert.deepEqual([...RESERVED_ARTICLE_IDS], ['wiki']);
 });
 
 test('refKey: NFC, trimmed, case-insensitive', () => {

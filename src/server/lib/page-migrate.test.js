@@ -233,7 +233,7 @@ test('blocking problems and refusals: no project, html frame, missing source, ou
 
   await assert.rejects(planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'nowhere'), registry }), (error) => error instanceof MigrateError && /不是可用的 project/.test(error.message));
   await assert.rejects(planPageMigration({ pageId: 'ghost-page', projectRoot: projectRoot(dir), registry }), /找不到页/);
-  await assert.rejects(planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'proj'), articleId: 'concepts', registry }), /文章 id 不可用/);
+  await assert.rejects(planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'proj'), articleId: 'wiki', registry }), /文章 id 不可用/);
 
   const plan = await planPageMigration({ pageId: 'bad', projectRoot: path.join(dir, 'proj'), registry });
   assert.equal(plan.problems.length, 3, plan.problems.join('\n'));
