@@ -18,6 +18,7 @@ const durations = {
   'article-canvas.spec.js': 3.6,
   'article-site.spec.js': 10.7,
   'article-source.spec.js': 6.7,
+  'article-updates.spec.js': 14, // 暂按现表均值估算；本轮只跑指定回归，待下一轮首跑数据回填。
   'article-viewer.spec.js': 12.8,
   'bundle-cache.spec.js': 0.1,
   'canvas-clipping.spec.js': 15.8,
