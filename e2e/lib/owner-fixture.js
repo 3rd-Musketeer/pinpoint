@@ -52,7 +52,9 @@ export function writeOwnerFixture() {
   writeArticle(OWNER_STATIC_SOURCE, 'Owner 静态大文章验收', false);
   // 通知回归只需两种挂载路径，避免用 97 帧的性能固件测断流恢复。
   fs.mkdirSync(OWNER_UPDATE_SOURCE, { recursive: true });
-  fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, 'index.mdx'), '---\ntitle: 更新通知验收\n---\n<Section id="live" title="更新">\n<Canvas frames={["s", "d"]} />\n</Section>\n');
+  fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, 'index.mdx'), '---\ntitle: 更新通知验收\n---\n<Section id="live" title="更新">\n<Canvas frames={["s", "d", "h"]} />\n</Section>\n<div style={{height: "30000px"}} />\n<Section id="later" title="稍后">\n<Canvas frames={["late"]} />\n</Section>\n');
   for (const id of ['s', 'd']) fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, `${id}.jsx`),
     `export default function Frame() { return <div className="ios-app"><p data-update>${id} OLD</p>${id === 'd' ? '<script data-preview-script>{`root.dataset.ready = "1";`}</script>' : ''}</div>; }`);
+  for (const id of ['h', 'late']) fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, `${id}.html`),
+    `<!doctype html><html><body><p data-update>${id} OLD</p></body></html>`);
 }

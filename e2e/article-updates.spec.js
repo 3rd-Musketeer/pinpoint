@@ -102,3 +102,42 @@ test('R1：文章以编译完成信号更新 shadow 与 iframe，停用 Astro re
     files.forEach((file, i) => fs.writeFileSync(file, originals[i]));
   }
 });
+
+test('R5：完成通知更新原生 HTML iframe，保留桌面宽度与未加载帧的懒加载', async ({ page }) => {
+  test.setTimeout(180_000);
+  const files = ['h', 'late'].map(id => path.join(OWNER_UPDATE_SOURCE, `${id}.html`));
+  const originals = files.map(file => fs.readFileSync(file, 'utf8'));
+  let lateRequests = 0;
+  page.on('request', req => {
+    const url = new URL(req.url());
+    if (url.searchParams.get('screen') === 'late' || url.pathname.endsWith('/late.html')) lateRequests++;
+  });
+  try {
+    await page.routeWebSocket(/\/_astro\//, () => {});
+    await page.addInitScript(() => {
+      window.__updates = [];
+      document.addEventListener('pp:preview-update', e => window.__updates.push(e.detail));
+    });
+    await page.goto('/e2e-owner/updates/');
+    await expect(page.locator('#article h1')).toHaveText('更新通知验收', { timeout: 150_000 });
+    const frame = page.locator('[data-screen="h"] iframe');
+    const text = frame.contentFrame().locator('[data-update]');
+    await expect(text).toHaveText('h OLD', { timeout: 30_000 });
+    await page.locator('[data-pp-section="live"] [data-width="desktop"]').click();
+    await expect(frame).toHaveCSS('width', '1280px');
+    await page.evaluate(() => { window.__sameDocument = true; });
+    expect(lateRequests).toBe(0);
+    files.forEach((file, i) => fs.writeFileSync(file, originals[i].replace('OLD', 'LIVE')));
+    await page.waitForFunction(() => window.__updates.some(data => data.screens?.includes('h')), null, { timeout: 30_000 });
+    await expect(text).toHaveText('h LIVE', { timeout: 30_000 });
+    await expect(frame).toHaveCSS('width', '1280px');
+    await expect(frame).toHaveAttribute('loading', 'lazy');
+    expect(lateRequests).toBe(0);
+    await page.locator('[data-screen="late"]').scrollIntoViewIfNeeded();
+    await expect(page.frameLocator('[data-screen="late"] iframe').locator('[data-update]')).toHaveText('late LIVE');
+    expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
+  } finally {
+    await ownerCleanup(page);
+    files.forEach((file, i) => fs.writeFileSync(file, originals[i]));
+  }
+});

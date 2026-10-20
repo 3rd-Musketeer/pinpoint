@@ -426,17 +426,23 @@ async function mountCard(host) {
 // 而 Chrome 的懒加载 iframe 不看中间滚动容器的裁剪（a6d8d98 基线实测：被裁的帧照样加载）。
 // 这里按 boundingClientRect（忽略裁剪）判断距离，与懒加载 iframe 的实际行为对齐。
 function initStaticCards() {
-  const states = [...document.querySelectorAll('.cc-shadow[data-cc-src]')].map(host => ({
+  const states = [...document.querySelectorAll('.cc-shadow[data-cc-src], [data-pp-canvas] .cc-box.doc iframe')].map(host => ({
     host, template: host.cloneNode(true), fig: host.closest('.cc-frame'), box: host.parentElement,
+    doc: host.tagName === 'IFRAME',
     running: false, settled: false, dirty: false,
   }));
   if (!states.length) return;
   let active = 0;
   const pending = [];
   const reset = (state) => {
-    if (state.host.shadowRoot) tickRoots.delete(state.host.shadowRoot);
-    state.host = state.template.cloneNode(true);
-    state.box.replaceChildren(state.host);
+    if (!state.doc) {
+      if (state.host.shadowRoot) tickRoots.delete(state.host.shadowRoot);
+      state.host = state.template.cloneNode(true);
+      state.box.replaceChildren(state.host);
+    }
+    // 原生文档保留同一个 iframe（宽度和 loading），只将已加载的页面排进更新队列。
+    delete state.host.dataset.ccStarted;
+    state.box.querySelector('.ph')?.remove();
     delete state.box.dataset.fitted;
     delete state.box.dataset.failed;
     state.settled = state.dirty = false;
@@ -446,7 +452,11 @@ function initStaticCards() {
       const state = pending.shift();
       active++;
       state.running = true;
-      mountCard(state.host).finally(() => {
+      const mounting = state.doc ? new Promise(resolve => {
+        state.host.addEventListener('load', resolve, { once: true });
+        state.host.contentWindow.location.reload();
+      }) : mountCard(state.host);
+      mounting.finally(() => {
         active--;
         state.running = false;
         state.settled = true;
@@ -489,6 +499,13 @@ function initStaticCards() {
     }
     check();
   });
+  for (const state of states.filter(state => state.doc)) {
+    // 初次加载仍交给浏览器原生 lazy；空白且尚未加载的 iframe 不因通知提前取帧。
+    state.host.dataset.ccStarted = '1';
+    state.settled = !!state.host.contentDocument && state.host.contentDocument.URL !== 'about:blank'
+      && state.host.contentDocument.readyState === 'complete';
+    state.host.addEventListener('load', () => { state.settled = true; });
+  }
   check();
 }
 
