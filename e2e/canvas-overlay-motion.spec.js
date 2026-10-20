@@ -73,8 +73,7 @@ for (const failures of [1, 2, 3]) {
     for (const prewarm of [false, true]) {
       await test.step(prewarm ? '浮层未开时也自动恢复' : '打开后自动恢复', async () => {
         let requests = 0;
-        const pattern = '**/src/workbench/app/main.jsx*';
-        await page.route(pattern, (route) => {
+        const entry = await interceptWorkbenchEntry(page, 'main', (route) => {
           requests += 1;
           return requests <= failures ? route.fulfill({ status: 502, body: '入口暂时不可用' }) : route.continue();
         });
@@ -110,7 +109,9 @@ for (const failures of [1, 2, 3]) {
           await expect(status(page)).toBeHidden({ timeout: 30_000 });
           expect(requests).toBe(4);
         }
-        await page.unroute(pattern);
+        expect(entry.hits()).toBe(requests);
+        expect(entry.hits()).toBeGreaterThan(0);
+        await entry.unroute();
       });
     }
   });
@@ -616,10 +617,15 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
   await page.setViewportSize({ width: 1440, height: 900 });
   let mode = 'hold-then-fail';
   let release = null;
+  let holdFirst = true;
   const entry = await interceptWorkbenchEntry(page, 'main', async (route) => {
     if (mode === 'hold-then-fail') {
       // 扣住，等父页面已经进入“等就绪”再失败：失败发生在 watchReady 的等待里面。
-      await new Promise((resolve) => { release = resolve; });
+      // 自动重装的后两次明确失败；不能再扣住并等待一个测试方永远不会释放的新 Promise。
+      if (holdFirst) {
+        holdFirst = false;
+        await new Promise((resolve) => { release = resolve; });
+      }
       return route.abort('failed');
     }
     if (mode === 'fail') return route.abort('failed');
@@ -640,6 +646,7 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
   release();
   const retry = overlay(page).locator('.ov-retry');
   await expect(retry).toBeVisible({ timeout: 15_000 });
+  expect(entry.hits()).toBe(3);
   mode = 'slow-ok';
   await retry.click();
   await expect(status(page)).toBeHidden({ timeout: 30_000 });
@@ -670,6 +677,7 @@ test('画布浮层：hash 入口等待中失败后重试，真实入口放行后
   const retry = overlay(page).locator('.ov-retry');
   await expect(retry).toBeVisible({ timeout: 15_000 });
   const failedHits = entry.hits();
+  expect(failedHits).toBe(3);
   fail = false;
   held = new Promise(resolve => { release = resolve; });
   await retry.click();
