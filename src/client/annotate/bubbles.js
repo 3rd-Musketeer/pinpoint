@@ -78,13 +78,24 @@ export function syncBubbleStructure(pageMarks) {
   });
 }
 
+/** 本实例的评论是否归父级 workbench 的右侧通道渲染：只有「文档条目的 iframe」
+ *  （.wb-doc-frame）这一种 —— 父级 resolveGutter 只认它。画布实例、文章画布嵌的
+ *  整块工作台、HTML 活卡片都在自己框里画：sidebar 档若也无条件自藏，评论就两头
+ *  都不渲染，画布条目上选「右侧通道」= 全体消失（r5b B7）。 */
+function gutterRendersForUs() {
+  try {
+    var frame = window.frameElement;
+    return !!(frame && frame.classList.contains('wb-doc-frame'));
+  } catch (e) { return false; }
+}
+
 export function updateCanvasBubble() {
   var n = ctx.bubbleShowN != null ? ctx.bubbleShowN : ctx.bubbleFocusN;
   var bubble = ctx.bubbleNodes[n];
   if (!bubble) return;
   var mark = ctx.markNodes[n];
   var r = mark && mark.model ? projectMark(mark).parts[0] : null;
-  if (!r || ctx.bubbleLayout === 'sidebar') { bubble.node.hidden = true; return; }
+  if (!r || (ctx.bubbleLayout === 'sidebar' && gutterRendersForUs())) { bubble.node.hidden = true; return; }
   var local = expandRect(r, -MARK_BOX_PAD_PX);
   local[0] -= ctx.canvasView.stage.scrollLeft; local[1] -= ctx.canvasView.stage.scrollTop;
   local = intersectRects(local, [0, 0, ctx.canvasView.width, ctx.canvasView.height]);
@@ -110,8 +121,9 @@ export function updateBubbleGeometry() {
   if (!ctx.renderComments) return;
   if (ctx.canvasView) { updateCanvasBubble(); return; }
   beginOverlayFrame();
-  // sidebar 模式：iframe 内不画气泡（由父级 workbench 在右侧 gutter 渲染）。
-  if (ctx.bubbleLayout === 'sidebar') {
+  // sidebar 模式：文档条目的 iframe 内不画气泡（由父级 workbench 在右侧 gutter
+  // 渲染，gutterRendersForUs 认那一种框）；其余实例照常就地画。
+  if (ctx.bubbleLayout === 'sidebar' && gutterRendersForUs()) {
     Object.keys(ctx.bubbleNodes).forEach(function (n) { ctx.bubbleNodes[n].node.hidden = true; });
     return;
   }
