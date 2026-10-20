@@ -11,9 +11,12 @@
 - 源目录 = 源码：`<帧 id>.jsx`（存量页也可以是 `.html` 片段；文章的 `.html` 是整份页面，不编译，见 [`projects.md`](projects.md)“HTML 帧”）、`components/<Name>.jsx`、页级 css / js（文章是 `article.css` / `article.js`）、存量页的 `board.json`。
 - 每屏按 `<screenId>.jsx` → `<screenId>.html` 找源码；都没有该屏报“源码不存在”，其余照编。
 - `ppnt build <页>` 编出 `~/.pinpoint/dist/<entry>/<screenId>.html` 与 `build.json`
-  （`builtAt` / `sources` / `errors`）。dist 不进 git、不放回页目录，重编即得。
+  （`builtAt` / `tool` / `sources` / `errors`）。`tool` 是编译器版本章：编译器代码或 esbuild
+  变了章就变，服务启动时把旧 dist 一律视为过期整页重编——输出格式的演进不吃「产物已是最新」
+  的判定亏。dist 不进 git、不放回页目录，重编即得。
 - 服务只对屏 HTML 出 dist（`/sites/<entry>/<screenId>.html`；模板页 `/previews/<page>/…` 同理），
-  css / js / 图片等其余资源仍从源目录出。没编过的页先懒编译一次；编译失败或没编过的屏 500 带
+  css / js / 图片等其余资源仍从源目录出。服务启动只编 dist 过期（源码、板或编译器比
+  `builtAt` 新）的页，其余整页跳过；没编过的页在首个请求懒编译一次。编译失败或没编过的屏 500 带
   错误文本，画布出 `.wb-screen-err` 面板——重跑 `ppnt build` 即修。
 - board.json 响应附 `dist: { builtAt, stale }`，`stale` = 任一源文件的 mtime 晚于 `builtAt`。
 - watch（服务与 `ppnt build --watch` 同一条管线）盯页目录里的 `.jsx` / `.html` / `.css` / `.js` /
