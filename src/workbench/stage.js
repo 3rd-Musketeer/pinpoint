@@ -90,7 +90,7 @@ import { startPhoneDocScrollbar } from '../client/overlay-scrollbar.js';
 import { syncHtmlCardCounts } from './html-cards.js';
 import { startLiveCards, syncLiveCards } from './live-cards.js';
 // 卡片标注实例的解析与就绪等待住 annotate-surface.js（C3 找实例合一）。
-import { cardAnnotateApi, whenCardAnnotateReady } from './annotate-surface.js';
+import { annotateViewportChanged, cardAnnotateApi, whenCardAnnotateReady } from './annotate-surface.js';
 import { subscribeServerEvents } from './server-events.js';
 
 // activePageId / pageManifest / activeBoard / activeGroup / focusFrameKey /
@@ -466,10 +466,7 @@ if (splitEl) {
     splitRaf = requestAnimationFrame(function () {
       splitRaf = 0;
       // 拖宽只改可用区：走视口快路径（重投影已缓存的几何），不整层 renderAll。
-      // 旧客户端没有 viewportChanged 时仍走 render —— vite HMR 只热更工作台
-      // 模块，不热更已注入的 annotate 客户端，dev 会话里两边会错开一拍。
-      var _a = annotateApi();
-      if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
+      annotateViewportChanged();
     });
   }
 

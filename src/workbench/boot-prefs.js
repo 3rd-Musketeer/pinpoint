@@ -1,8 +1,7 @@
 import { cancelStageScroll } from './scroll-motion.js';
 // Workbench 启动偏好与视口簇 — 把 prefs（lib/prefs.js、lib/page-viewports.js 纯函数）
 // 应用到 DOM/store 的编排层：左栏宽度/折叠、ios 根属性、canvas zoom、每页视口的
-// 保存与恢复、启动偏好应用。P1a 从 workbench.js 平移
-// （goal-20260810-workbench-react-rebuild）：零行为变化。
+// 保存与恢复、启动偏好应用。
 import { wbGet, wbSet, activeBoardMode } from './app/store.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';
 import { pageViewport, savePageViewport, viewportKey } from './lib/page-viewports.js';
@@ -17,6 +16,7 @@ import {
   updateSectionNavigatorVisibility
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
+import { annotateViewportChanged } from './annotate-surface.js';
 import { registerEmbedPark } from './embed-park.js';
 
 // 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolveActivePage，
@@ -123,9 +123,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
     wbSet({ canvasZoom: z });
-    // 旧客户端回落 render 的理由见 stage.js 拖动那条（HMR 只热更工作台一侧）。
-    var _a = annotateApi();
-    if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
+    annotateViewportChanged();
     scheduleMinimapUpdate();
     updateMinimapAvailability();
     updateSectionNavigatorVisibility();

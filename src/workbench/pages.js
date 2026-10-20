@@ -1,14 +1,9 @@
 import { touchPageOverlayFrame } from './page-overlay-cache.js';
 import { scrollStageTo, cancelStageScroll } from './scroll-motion.js';
-// Workbench 页面/manifest 簇 — 页面集合、manifest 加载、页面切换、
-// 条目切换（stage 页内形态）、显示名。设置视图已出壳（app/SettingsView.jsx，P1b cut4）。
-// 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
-// 2026-08-16 阶段 2：模式 Seg 退役 —— Pages 变单一列表，不再有「按模式切页集」的概念。
-// 2026-08-16f 阶段 6（产物与草稿模型）：stage 形态不再由 page.mode 派生 —— 一个 Page
-// 一份 board.json，条目 = （有 app/lock 屏则有一个画布条目）+ 每个 doc 屏一个文档
-// 条目（lib/board-entries.js）；选中条目（store.activeEntryId）派生 stage 形态
-// （画布 / 文档阅读器）、屏显隐、缩放与视口存档。条目记忆持久化在
-// prefs.activeEntryIdByPage（reload 后保持；activeDocId 从未落过 prefs，无迁移面）。
+// Workbench 页面/manifest 簇 — 页面集合、manifest 加载、页面切换、条目切换
+// （stage 页内形态）、显示名。stage 形态由选中条目派生（lib/board-entries.js，
+// 条目 = 画布条目 + 每个 doc 屏一个文档条目），条目与页 tab 的记忆持久化在
+// prefs.activeEntryIdByPage / activeTabByPage。共享状态经 app/store.js 读写。
 import { wbGet, wbSet } from './app/store.js';
 import { queryClient } from './app/query-client.js';
 import { readPrefs, savePrefs } from './lib/prefs.js';

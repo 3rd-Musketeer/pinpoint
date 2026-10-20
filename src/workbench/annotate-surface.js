@@ -37,6 +37,16 @@ export function annotateApi() {
   return (docWin && docWin.pinpoint) || window.pinpoint || null;
 }
 
+/** 视口变了（拖左栏 / 缩放）：走客户端的视口快路径，不整层 renderAll。旧客户端
+ *  没有 viewportChanged 时仍走 render —— vite HMR 只热更工作台模块、不热更已注入
+ *  的 annotate 客户端，dev 会话里两边会错开一拍。stage 拖宽与 boot-prefs 缩放共用。 */
+export function annotateViewportChanged() {
+  var ann = annotateApi();
+  if (!ann) return;
+  if (ann.viewportChanged) ann.viewportChanged();
+  else ann.render();
+}
+
 /* 文档条目选中时，父窗口实例必须停在交互态（2026-10-14 owner：「我在手机视图下标注，
    出来的是整个页面」）。它还在标注态时（画布页上开的标注没关就切过来，或焦点在工作台
    上按了 A），窗口视口里 iframe 盖满舞台、它碰不到任何东西；手机视口里舞台露在手机屏

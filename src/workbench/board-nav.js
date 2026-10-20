@@ -538,12 +538,17 @@ function jumpSectionNavigatorToGroup(groupId) {
 
 /** 定位到当前 tab 里的某个 section（导航器点 section 的同一原语）；量不到 = false。
     options.smooth === false 即时到位（?section= 落点用）。 */
+/** 量到的目标落位 + 选中态同步（section 与 frame 两条定位共用）。 */
+function focusBoardTarget(rect, groupId, options) {
+  wbSet({ activeGroup: groupId });
+  updateSectionNavigatorActive(groupId);
+  focusStageOnRect(rect, options);
+}
+
 export function focusBoardSection(groupId, options) {
   var section = findBoardSection(refreshBoardNavigationModel(), groupId);
   if (!section || !stage) return false;
-  wbSet({ activeGroup: groupId });
-  updateSectionNavigatorActive(groupId);
-  focusStageOnRect(section, options);
+  focusBoardTarget(section, groupId, options);
   return true;
 }
 
@@ -572,9 +577,7 @@ export function focusWorkbenchFrame(groupId, screenId, options) {
     }
   }
   if (!frame || !stage) return false;
-  wbSet({ activeGroup: groupId });
-  updateSectionNavigatorActive(groupId);
-  focusStageOnRect(frame, options);
+  focusBoardTarget(frame, groupId, options);
   return true;
 }
 

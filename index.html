@@ -1119,7 +1119,6 @@
   // gen 原样回传（文档起点存的 __wbGen，与 embed.js 同一份）：文章页按文档代次核对消息归属。
   try { parent.postMessage({ source: 'pinpoint-workbench', type: 'boot-error', src: String(src), gen: window.__wbGen || 0 }, location.origin); } catch (e) { /* 父页面已经走了 */ }
 };</script>
-<script type="module" src="/src/workbench/workbench-icons.js" onerror="window.__wbBootFail(this.src)"></script>
 <script type="module" src="/src/workbench/stage.js" onerror="window.__wbBootFail(this.src)"></script>
 <script type="module" src="/src/workbench/app/main.jsx" onerror="window.__wbBootFail(this.src)"></script>
 </body>

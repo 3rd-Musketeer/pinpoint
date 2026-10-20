@@ -355,8 +355,6 @@ function scheduleGutterRender() {
   });
 }
 
-function onGutterSignal() { scheduleGutterRender(); }
-
 /** gutter 开着期间的事件面：iframe 文档滚动与晚到资源（换 document 时整套挪
  *  挂）、舞台滚动（capture 盖 .wb-stage 平移）、iframe 与舞台的尺寸变化。 */
 function attachGutterListeners(iframeEl) {
@@ -366,26 +364,26 @@ function attachGutterListeners(iframeEl) {
   var doc = null;
   try { doc = iframeEl.contentDocument; } catch (e) { /* 跨域防御（本设计全同源，不会走到） */ }
   if (doc) {
-    doc.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
+    doc.addEventListener('scroll', scheduleGutterRender, { capture: true, passive: true });
     // load 不冒泡，capture 才接得到资源级 load（img / iframe…）；连 document
     // 自己的 load 也会从这里过，多排一次渲染，无妨。字体落定走 loadingdone
     // （旧引擎没有 document.fonts 就跳过）。渲染读矩形时强制同步布局，拿到的
     // 就是落定后的几何，不用再等一拍。
-    doc.addEventListener('load', onGutterSignal, true);
-    if (doc.fonts) doc.fonts.addEventListener('loadingdone', onGutterSignal);
+    doc.addEventListener('load', scheduleGutterRender, true);
+    if (doc.fonts) doc.fonts.addEventListener('loadingdone', scheduleGutterRender);
     gutterDetach.push(function () {
-      doc.removeEventListener('scroll', onGutterSignal, true);
-      doc.removeEventListener('load', onGutterSignal, true);
-      if (doc.fonts) doc.fonts.removeEventListener('loadingdone', onGutterSignal);
+      doc.removeEventListener('scroll', scheduleGutterRender, true);
+      doc.removeEventListener('load', scheduleGutterRender, true);
+      if (doc.fonts) doc.fonts.removeEventListener('loadingdone', scheduleGutterRender);
     });
   }
   var wrap = gutterStageWrap();
   if (wrap) {
-    wrap.addEventListener('scroll', onGutterSignal, { capture: true, passive: true });
-    gutterDetach.push(function () { wrap.removeEventListener('scroll', onGutterSignal, true); });
+    wrap.addEventListener('scroll', scheduleGutterRender, { capture: true, passive: true });
+    gutterDetach.push(function () { wrap.removeEventListener('scroll', scheduleGutterRender, true); });
   }
   if (typeof ResizeObserver !== 'function') return;
-  gutterResizeObs = gutterResizeObs || new ResizeObserver(onGutterSignal);
+  gutterResizeObs = gutterResizeObs || new ResizeObserver(scheduleGutterRender);
   if (wrap) gutterResizeObs.observe(wrap); // 重复 observe 同一节点是 no-op
   if (gutterObservedFrame !== iframeEl) {
     if (gutterObservedFrame) gutterResizeObs.unobserve(gutterObservedFrame);
