@@ -3,6 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { loadavg } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { devModuleSupplement, workbenchGroupMode } from './e2e-workbench-modes.js';
 
 if (process.argv.length > 2) throw new Error('Use npm run test:e2e:serial -- <options> for targeted runs.');
 
@@ -107,18 +108,19 @@ for (const signal of ['SIGINT', 'SIGTERM']) {
   });
 }
 
-const resultsFile = index => path.join(root, `test-results-${port + index * 20}.json`);
+const resultsFile = (index, suffix = '') => path.join(root, `test-results-${port + index * 20}${suffix}.json`);
 
-function runGroup(index, args) {
+function runGroup(index, args, { mode = workbenchGroupMode(index, process.env.PINPOINT_WORKBENCH_MODE), suffix = '' } = {}) {
   const groupPort = port + index * 20;
   return new Promise(resolve => {
     const groupStarted = Date.now();
-    const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...args, '--workers=1'], {
+    const child = spawn(process.execPath, ['node_modules/@playwright/test/cli.js', 'test', ...args, '--workers=1',
+      ...(suffix ? [`--output=test-results-${groupPort}${suffix}`] : [])], {
       cwd: root, stdio: 'inherit', env: {...process.env, E2E_PORT: String(groupPort),
         // 单组也测正式形态；双组一组 bundle、一组开发模块。显式变量可覆盖两组。
-        PINPOINT_WORKBENCH_MODE: process.env.PINPOINT_WORKBENCH_MODE || (index === 0 ? 'bundle' : 'dev'),
+        PINPOINT_WORKBENCH_MODE: mode,
         PLAYWRIGHT_HTML_OPEN: 'never',
-        PW_TEST_REPORTER: 'json', PLAYWRIGHT_JSON_OUTPUT_FILE: resultsFile(index)},
+        PW_TEST_REPORTER: 'json', PLAYWRIGHT_JSON_OUTPUT_FILE: resultsFile(index, suffix)},
     });
     children.push(child);
     child.once('error', error => { console.error(error); resolve(1); });
@@ -166,14 +168,14 @@ function writeMeasuredDurations() {
 // 产物目录里的 .last-run.json），各组依次跑、不再并行。重跑仍挂才算挂。
 // 重跑会清空该组的产物目录；先把首跑的截图、trace 与报告复制到 *-first-run，
 // 重跑过了的偶发失败也留得下证据（2026-09-28：pp-id-anchor 一次偶发，trace 被重跑清掉）。
-function keepFirstRunArtifacts(index) {
+function keepFirstRunArtifacts(index, suffix = '') {
   const groupPort = port + index * 20;
-  for (const dir of [`test-results-${groupPort}`, `playwright-report-${groupPort}`]) {
+  for (const dir of [`test-results-${groupPort}${suffix}`, `playwright-report-${groupPort}${suffix}`]) {
     const from = path.join(root, dir), kept = `${from}-first-run`;
     rmSync(kept, { recursive: true, force: true });
     if (existsSync(from)) cpSync(from, kept, { recursive: true });
   }
-  if (existsSync(resultsFile(index))) cpSync(resultsFile(index), resultsFile(index).replace(/\.json$/, '-first-run.json'));
+  if (existsSync(resultsFile(index, suffix))) cpSync(resultsFile(index, suffix), resultsFile(index, suffix).replace(/\.json$/, '-first-run.json'));
   console.log(`E2E group ${index + 1}: first-run artifacts kept in test-results-${groupPort}-first-run/`);
 }
 
@@ -183,5 +185,22 @@ for (const [index, code] of results.entries()) {
   console.log(`E2E group ${index + 1}: rerunning failed tests once`);
   results[index] = await runGroup(index, ['--last-failed']);
   console.log(`E2E group ${index + 1}: rerun exit code ${results[index]}`);
+}
+
+// 不用 skip 隐藏旧模块图的回归：bundle 所在文件的 @dev-modules 在已退出的首组端口串行补跑。
+// 独立输出目录保留首组证据，--last-failed 也只读取本次 dev 补跑的结果。
+const devFiles = devModuleSupplement(groups,
+  all.filter(file => readFileSync(path.join(root, 'e2e', file), 'utf8').includes('@dev-modules')),
+  process.env.PINPOINT_WORKBENCH_MODE);
+if (devFiles.length) {
+  const options = { mode: 'dev', suffix: '-dev-modules' };
+  console.log(`E2E dev module order: ${devFiles.join(', ')}; port ${port}`);
+  let code = await runGroup(0, [...devFiles.map(file => `e2e/${file}`), '--grep', '@dev-modules'], options);
+  if (code !== 0) {
+    keepFirstRunArtifacts(0, options.suffix);
+    code = await runGroup(0, ['--last-failed', '--grep', '@dev-modules'], options);
+    console.log(`E2E dev module order: rerun exit code ${code}`);
+  }
+  results.push(code);
 }
 if (results.some(code => code !== 0)) process.exitCode = 1;

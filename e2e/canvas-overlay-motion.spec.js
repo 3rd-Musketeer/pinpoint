@@ -2,6 +2,7 @@ import { expect, test } from './lib/fixtures.js';
 
 import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
+import { interceptWorkbenchEntry } from './lib/workbench-entry.js';
 
 // 画布浮层的转场和加载态（site/README.md「画布浮层」）。点开后立刻看到头和「正在准备画布…」，
 // 面板进入 140ms opacity + scale .985，退出 100ms可打断；就绪信号到了才收起状态。
@@ -426,13 +427,14 @@ test('画布浮层：就绪后工作台被重新加载，新文档装好之前�
   const held = new Promise((resolve) => { release = resolve; });
   let requested;
   const started = new Promise((resolve) => { requested = resolve; });
-  await page.route('**/src/workbench/app/main.jsx*', async (route) => {
+  const entry = await interceptWorkbenchEntry(page, 'main', async (route) => {
     requested();
     await held;
     await route.continue();
   });
   await reloadCanvas(page);
   await started;
+  expect(entry.hits()).toBeGreaterThan(0);
   await openFromCard(page);
   await expect(overlay(page)).toHaveAttribute('open', '');
   await expect(status(page)).toHaveText('正在准备画布…');
@@ -446,10 +448,11 @@ test('画布浮层：外壳模块慢四秒后放行，准备态收起，画布�
   await page.setViewportSize({ width: 1440, height: 900 });
   let release;
   const held = new Promise((resolve) => { release = resolve; });
-  await page.route('**/src/workbench/app/main.jsx*', async (route) => { await held; await route.continue(); });
+  const entry = await interceptWorkbenchEntry(page, 'main', async (route) => { await held; await route.continue(); });
   await openArticle(page);
   await openFromTop(page);
   await expect(status(page)).toHaveText('正在准备画布…');
+  await expect.poll(entry.hits).toBeGreaterThan(0);
   // 扣住超过 4 秒：模块没报失败，不能被当成失败。
   const stayed = await page.evaluate(() => new Promise((resolve) => {
     const start = performance.now();
@@ -478,13 +481,14 @@ test('画布浮层：启动脚本没起来显示重试，重试后就绪', async
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   let fail = true;
-  await page.route('**/src/workbench/stage.js*', (route) => {
+  const entry = await interceptWorkbenchEntry(page, 'stage', (route) => {
     if (fail) return route.abort('failed');
     return route.continue();
   });
   await openArticle(page);
   await openFromTop(page);
   await expect(overlay(page).locator('.ov-retry')).toBeVisible({ timeout: 15_000 });
+  expect(entry.hits()).toBeGreaterThan(0);
   const box = await overlay(page).locator('.ov-retry').boundingBox();
   expect(box.height).toBeGreaterThan(20);
   fail = false;
@@ -498,7 +502,7 @@ test('画布浮层：重试按钮聚焦后按 Enter 发起新请求', async ({ p
   await page.setViewportSize({ width: 1440, height: 900 });
   let requests = 0;
   let fail = true;
-  await page.route('**/src/workbench/stage.js*', (route) => {
+  const entry = await interceptWorkbenchEntry(page, 'stage', (route) => {
     requests += 1;
     if (fail) return route.abort('failed');
     return route.continue();
@@ -507,6 +511,8 @@ test('画布浮层：重试按钮聚焦后按 Enter 发起新请求', async ({ p
   await openFromTop(page);
   const retry = overlay(page).locator('.ov-retry');
   await expect(retry).toBeVisible({ timeout: 15_000 });
+  expect(entry.hits()).toBe(requests);
+  expect(requests).toBeGreaterThan(0);
   await retry.focus();
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 700)));
   expect(await page.evaluate(() => document.activeElement?.className || '')).toContain('ov-retry');
@@ -521,7 +527,7 @@ test('画布浮层：外壳入口明确失败显示重试，点了恢复', async
   await page.setViewportSize({ width: 1440, height: 900 });
   for (const how of ['abort', '503']) {
     let fail = true;
-    await page.route('**/src/workbench/app/main.jsx*', (route) => {
+    const entry = await interceptWorkbenchEntry(page, 'main', (route) => {
       if (!fail) return route.continue();
       return how === 'abort' ? route.abort('failed') : route.fulfill({ status: 503, body: 'no' });
     });
@@ -529,12 +535,13 @@ test('画布浮层：外壳入口明确失败显示重试，点了恢复', async
     await openFromTop(page);
     const retry = overlay(page).locator('.ov-retry');
     await expect(retry, how).toBeVisible({ timeout: 15_000 });
+    expect(entry.hits(), how).toBeGreaterThan(0);
     const box = await retry.boundingBox();
     expect(box.height, how).toBeGreaterThan(20);
     fail = false;
     await retry.click();
     await expect(status(page)).toBeHidden({ timeout: 30_000 });
-    await page.unroute('**/src/workbench/app/main.jsx*');
+    await entry.unroute();
     await overlay(page).locator('[data-ov-close]').click();
     await expect(overlay(page)).not.toHaveAttribute('open', '');
   }
@@ -604,12 +611,12 @@ test('画布浮层：后退关闭，滚动位置回到打开前', async ({ page 
   expect(await page.evaluate(() => window.scrollY)).toBe(before);
 });
 
-test('画布浮层：入口模块在等待就绪期间才失败，也给出重试；重试时入口慢也能收起', async ({ page }) => {
+test('画布浮层：入口模块在等待就绪期间才失败，也给出重试；重试时入口慢也能收起', { tag: '@dev-modules' }, async ({ page }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   let mode = 'hold-then-fail';
   let release = null;
-  await page.route('**/src/workbench/app/main.jsx*', async (route) => {
+  const entry = await interceptWorkbenchEntry(page, 'main', async (route) => {
     if (mode === 'hold-then-fail') {
       // 扣住，等父页面已经进入“等就绪”再失败：失败发生在 watchReady 的等待里面。
       await new Promise((resolve) => { release = resolve; });
@@ -627,6 +634,7 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
   await expect.poll(() => frame.evaluate((el) => el.contentWindow.document.querySelectorAll('[data-screen]').length), { timeout: 15_000 }).toBeGreaterThan(0);
   await expect(status(page)).toHaveText(/正在准备画布/);
   await expect.poll(() => release !== null).toBe(true);
+  expect(entry.hits()).toBeGreaterThan(0);
   await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 500))); // 静默窗口：让父页面确实进入等待
   mode = 'fail';
   release();
@@ -641,6 +649,40 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
 });
 
 // 预热与停驻（E2）。iframe 不移动，停驻的就是打开时那一份文档：点开只剩恢复与收起准备态。
+test('画布浮层：hash 入口等待中失败后重试，真实入口放行后收起准备态', { tag: '@bundle-entry' }, async ({ page }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 900 });
+  let release;
+  let fail = true;
+  let held = new Promise(resolve => { release = resolve; });
+  const entry = await interceptWorkbenchEntry(page, 'main', async route => {
+    await held;
+    return fail ? route.abort('failed') : route.continue();
+  });
+  await openArticle(page);
+  await openFromTop(page);
+  const frame = overlay(page).locator('iframe.ov-canvas');
+  await expect.poll(entry.hits).toBeGreaterThan(0);
+  expect(entry.path).toMatch(/^\/workbench\/assets\/[^/]+\.js$/);
+  await expect(status(page)).toHaveText(/正在准备画布/);
+  expect(await frame.evaluate(el => Boolean(el.contentWindow.workbench))).toBe(false);
+  release();
+  const retry = overlay(page).locator('.ov-retry');
+  await expect(retry).toBeVisible({ timeout: 15_000 });
+  const failedHits = entry.hits();
+  fail = false;
+  held = new Promise(resolve => { release = resolve; });
+  await retry.click();
+  await expect.poll(entry.hits).toBeGreaterThan(failedHits);
+  await expect(status(page)).toHaveText(/正在准备画布/);
+  release();
+  await expect(status(page)).toBeHidden({ timeout: 30_000 });
+  await expect(overlay(page).frameLocator('iframe.ov-canvas').locator('#wb-board-panel [data-screen]')).toHaveCount(5);
+  const box = await frame.boundingBox();
+  const hit = await page.evaluate(([x, y]) => document.elementFromPoint(x, y)?.className || '', [box.x + box.width / 2, box.y + box.height / 2]);
+  expect(hit).toContain('ov-canvas');
+});
+
 // 2026-10-19 实测（loadavg 约 4）：停驻后第一次点开 25ms、关掉再开 4ms；main 的再开 4ms；
 // 修前（每次开关挪 iframe、文档重装）176–256ms。上限 120ms：实测的约 4 倍，低于修前最快的一次。
 // 文档身份另有标记断言，不只靠计时。

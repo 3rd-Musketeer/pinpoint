@@ -5,6 +5,9 @@ const workbenchMode = process.env.PINPOINT_WORKBENCH_MODE || 'dev';
 export default defineConfig({
   testDir: './e2e',
   fullyParallel: false,
+  // 分离模块图的竞态只在 dev 形态存在；bundle 有独立的真实 hash 入口回归。
+  // 默认并行 runner 会补跑 @dev-modules，不能因单组降载而漏掉它们。
+  grepInvert: workbenchMode === 'bundle' ? /@dev-modules/ : /@bundle-entry/,
   workers: 1,
   timeout: 30000,
   expect: { timeout: 5000 },

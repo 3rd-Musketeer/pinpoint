@@ -4,6 +4,7 @@ import http from 'node:http';
 import path from 'node:path';
 
 import { expect, test } from './lib/fixtures.js';
+import { interceptWorkbenchEntry } from './lib/workbench-entry.js';
 
 
 import { E2E_DATA_DIR } from './env.js';
@@ -1505,19 +1506,26 @@ test('挂载几何批不等预览脚本：sidecar 永远在途 navigator 照常�
   expect(await page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
 });
 
-test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑上、菜单与 navigator 都在（2026-10-14 flake 根因）', async ({ page }) => {
+test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑上、菜单与 navigator 都在（2026-10-14 flake 根因）', { tag: '@dev-modules' }, async ({ page }) => {
   // stage.js 与 app/main.jsx 是两个模块图。板的 fetch 先到、main.jsx 还在加载时，挂载后处理
   // 曾在 initExportCore / wireCanvasHud 之前跑：wireExportControls 抛 TypeError，内联脚本与
   // sidecar 一条没绑、navigator 不出，就绪标记落 false，而 openWorkbench 的 waitForFunction
   // 把 false 当成了就绪（workbench.spec 画布点选用例「1:15 → 1:16」与 data-preview-bound 两次偶发）。
-  // 这里把 main.jsx 压后 1.5s，稳定造出“板先到”。
+  // 扣住 main.jsx 直到板 DOM 已到，稳定造出“板先到”，不靠固定延迟猜时序。
   const errors = [];
   page.on('console', (msg) => { if (msg.type() === 'error') errors.push(msg.text()); });
-  await page.route('**/src/workbench/app/main.jsx', async (route) => {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const entry = await interceptWorkbenchEntry(page, 'main', async (route) => {
+    await held;
     await route.fallback();
   });
-  await openWorkbench(page);
+  const loading = openWorkbench(page);
+  await expect.poll(entry.hits).toBeGreaterThan(0);
+  await expect(page.locator('#wb-board-panel [data-screen="recipe"]')).toBeAttached();
+  expect(entry.hits()).toBe(1);
+  release();
+  await loading;
   await waitPreviewsSettled(page);
   const panel = page.locator('#wb-board-panel');
   await expect(panel.locator('[data-screen="recipe"] script[data-preview-script]')).toHaveAttribute('data-preview-bound', '1');
@@ -1529,6 +1537,31 @@ test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑�
   await panel.locator('[data-screen="timer"] [data-timer-toggle]').click();
   await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
   expect(errors.filter((text) => text.includes('[board-mount]'))).toEqual([]);
+});
+
+test('打包 hash 入口扣住后再放行：板、预览脚本、菜单与 navigator 全部就绪', { tag: '@bundle-entry' }, async ({ page }) => {
+  let release;
+  const held = new Promise(resolve => { release = resolve; });
+  const entry = await interceptWorkbenchEntry(page, 'main', async route => { await held; await route.continue(); });
+  const loading = page.goto('/workbench/?page=e2e-ios', { waitUntil: 'domcontentloaded' });
+  await expect.poll(entry.hits).toBeGreaterThan(0);
+  expect(entry.path).toMatch(/^\/workbench\/assets\/[^/]+\.js$/);
+  expect(await page.evaluate(() => Boolean(window.workbench))).toBe(false);
+  release();
+  await loading;
+  await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
+  await waitPreviewsSettled(page);
+  const panel = page.locator('#wb-board-panel');
+  await expect(panel.locator('[data-screen="recipe"] script[data-preview-script]')).toHaveAttribute('data-preview-bound', '1');
+  await expect(panel.locator('[data-screen] .wb-frame-menu-shell')).toHaveCount(11);
+  await expect(page.locator('#wbsection-nav .wb-section-nav-item').first()).toBeAttached();
+  await panel.locator('[data-screen="recipe"] [data-ratio-cycle]').click();
+  await expect(panel.locator('[data-screen="recipe"] [data-ratio]')).toHaveText('1:16');
+  const timerRoot = panel.locator('[data-screen="timer"] [data-preview-mount]');
+  await panel.locator('[data-screen="timer"] [data-timer-toggle]').click();
+  await expect(timerRoot).toHaveAttribute('data-timer-state', 'running');
+  expect(entry.hits()).toBe(1);
 });
 
 test('frame ⋯ 菜单在缩放画布里贴 trigger 左下（恢复 Radix 定位的防回归）', async ({ page }) => {
