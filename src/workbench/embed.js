@@ -17,7 +17,7 @@ import { wbLayers } from './layer-stack.js';
 import { pauseEmbed, resumeEmbed } from './embed-park.js';
 
 export var EMBEDDED = isEmbedded(location.search);
-export var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
+var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
 
 function post(message) {
   if (window.parent === window) return;

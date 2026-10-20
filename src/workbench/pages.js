@@ -195,7 +195,7 @@ export function resolveActivePage(preferredId, modeHint) {
 
 /** 舞台正在用的那块板：板已装载且属于当前页。换页途中 / 未装载 → null ——
     「找当前板」的判定写一次，条目、tab、浮层、选中都从它出发。 */
-export function activeBoardOfPage() {
+function activeBoardOfPage() {
   var s = wbGet();
   var active = s.activeBoard;
   return active && active.pageId === s.activePageId ? active : null;

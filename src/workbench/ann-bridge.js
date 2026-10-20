@@ -401,7 +401,13 @@ function attachGutterListeners(iframeEl) {
   }
 }
 
-function detachGutterListeners() {
+/* 启停的 DOM 写出必须幂等：syncGutterComments 挂在快照订阅上，每次快照都会
+ * 走到。无脑 setAttribute / 置 display 会喂出一条自持循环 —— 同值属性变更被
+ * 父级 annotate 实例的 MutationObserver 当内容变更 → renderAll + notify →
+ * onUpdate → 快照 → startGutter → 又一次同值写……（旧实现的常驻循环里那条
+ * 「无标注也满帧率空转」就是这么被喂起来的）。 */
+export function stopGutter() {
+  if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
   if (gutterScrollDoc) {
     detachDocListeners(gutterScrollDoc);
     gutterScrollDoc = null;
@@ -412,40 +418,27 @@ function detachGutterListeners() {
   }
   if (gutterResizeObs) { gutterResizeObs.disconnect(); gutterResizeObs = null; }
   gutterObservedFrame = null;
-}
-
-/* 启停的 DOM 写出必须幂等：syncGutterComments 挂在快照订阅上，每次快照都会
- * 走到。无脑 setAttribute / 置 display 会喂出一条自持循环 —— 同值属性变更被
- * 父级 annotate 实例的 MutationObserver 当内容变更 → renderAll + notify →
- * onUpdate → 快照 → startGutter → 又一次同值写……（旧实现的常驻循环里那条
- * 「无标注也满帧率空转」就是这么被喂起来的）。 */
-function startGutter(resolved) {
-  ensureGutterOverlay();
-  var wrap = gutterStageWrap();
-  if (wrap && wrap.getAttribute('data-ann-gutter') !== 'on') wrap.setAttribute('data-ann-gutter', 'on');
-  if (gutterOverlay && gutterOverlay.style.display !== '') gutterOverlay.style.display = '';
-  attachGutterListeners(resolved.docFrame);
-  scheduleGutterRender();
-}
-
-export function stopGutter() {
-  if (gutterRaf) { cancelAnimationFrame(gutterRaf); gutterRaf = 0; }
-  detachGutterListeners();
   var wrap = gutterStageWrap();
   if (wrap && wrap.hasAttribute('data-ann-gutter')) wrap.removeAttribute('data-ann-gutter');
   if (gutterOverlay && gutterOverlay.style.display !== 'none') gutterOverlay.style.display = 'none';
   gutterNodes = Object.create(null);
-  if (gutterBubblesEl && gutterBubblesEl.firstChild) {
-    while (gutterBubblesEl.firstChild) gutterBubblesEl.removeChild(gutterBubblesEl.firstChild);
-  }
+  if (gutterBubblesEl) gutterBubblesEl.replaceChildren();
 }
 
 /** 由侧栏更新路径与 board 切换调用：按当前状态启停 gutter。快照每次更新都会
  *  走到这里 —— gutter 开着时它同时是账本 / 筛选 / 布局变化的渲染触发点。 */
 export function syncGutterComments() {
   var resolved = resolveGutter();
-  if (resolved.active) startGutter(resolved);
-  else stopGutter();
+  if (resolved.active) {
+    ensureGutterOverlay();
+    var wrap = gutterStageWrap();
+    if (wrap && wrap.getAttribute('data-ann-gutter') !== 'on') wrap.setAttribute('data-ann-gutter', 'on');
+    if (gutterOverlay && gutterOverlay.style.display !== '') gutterOverlay.style.display = '';
+    attachGutterListeners(resolved.docFrame);
+    scheduleGutterRender();
+  } else {
+    stopGutter();
+  }
 }
 
 // 每个 iframe 实例只订阅一次，否则每次 loadBoard 都会叠一层监听
