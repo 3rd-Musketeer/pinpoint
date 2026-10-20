@@ -25,7 +25,9 @@ export async function seedOwner(request) {
 export async function openOwnerArticle(page) {
   await page.goto(OWNER_ARTICLE);
   await expect(page.locator('#article .prose h1')).toHaveText('Owner 大文章验收', { timeout: 150_000 });
-  await waitNoReload(page);
+  // force：owner-flows 的改稿 / 停驻两条用例写帧源码再复原，Astro 内容同步完才把连着的页
+  // 整页重载；同步完成前新开的页会吃到迟来的 reload（2026-10-20 实测广播落在新开页 +260ms）。
+  await waitNoReload(page, { force: true });
   await proseSettled(page);
   await expect(page.locator('[data-pp-canvas]')).toHaveCount(12);
   await expect(page.locator('.pp-thread[data-kind="canvas"]')).toHaveCount(24);
@@ -35,7 +37,7 @@ export async function openOwnerArticle(page) {
 export async function openOwnerStaticArticle(page) {
   await page.goto(OWNER_STATIC_ARTICLE);
   await expect(page.locator('#article .prose h1')).toHaveText('Owner 静态大文章验收', { timeout: 150_000 });
-  await waitNoReload(page);
+  await waitNoReload(page, { force: true }); // 同 openOwnerArticle
   await proseSettled(page);
   await expect(page.locator('[data-pp-canvas]')).toHaveCount(12);
 }

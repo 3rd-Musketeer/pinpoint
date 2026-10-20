@@ -14,12 +14,14 @@ test('owner 改稿：修改一个帧源码，工作台和文章卡片自动更�
   const staticArticle = await context.newPage();
   try {
     await test.step('工作台和文章各打开同一帧', async () => {
-      await openOwnerBoard(page);
-      await focusOwnerFrame(page);
-      await openOwnerArticle(article);
+      // 三个页互不依赖（种标注已在 beforeEach 落盘），并行开把三份冷启动编译叠在一起。
+      await Promise.all([
+        openOwnerBoard(page).then(() => focusOwnerFrame(page)),
+        openOwnerArticle(article),
+        openOwnerStaticArticle(staticArticle),
+      ]);
       await expect(article.frameLocator('[data-screen="flow-001"] iframe').locator('[data-owner-heading]')).toHaveText('流程 1 初稿');
       // 静态大文章的同号帧：卡片是 shadow root，Playwright 的 css 选择器直接穿透。
-      await openOwnerStaticArticle(staticArticle);
       await expect(staticArticle.locator('.cc-frame[data-screen="flow-001"] .cc-shadow[data-cc-mounted="1"] [data-owner-heading]')).toHaveText('流程 1 初稿');
     });
     await test.step('写源文件，两个页面不手动刷新就看到新稿', async () => {
@@ -101,10 +103,18 @@ test('owner 静态卡片：缩略帧不接焦点，点帧在原位打开画布�
   await expect.poll(() => page.evaluate(() => [window.scrollX, window.scrollY])).toEqual(before);
 });
 
-test('owner 工作台：中文标注、钉子、Esc，帧菜单和红点重置', async ({ page }) => {
-  const scope = await openOwnerBoard(page);
-  await test.step('直接打开工作台做标注并逐层退出', async () => {
+test.beforeEach(async ({ page, request }) => {
+  test.setTimeout(180_000);
+  await page.setViewportSize({ width: 1440, height: 1000 });
+  await seedOwner(request);
+});
+
+test('owner 浮层：中文组字、保存、点钉子，Esc 按层回正文；帧菜单和红点重置', async ({ page }) => {
+  const scope = await openOwnerBoard(page, true);
+  await test.step('定位到帧，输入法组字后保存，点击已有钉子重新打开', async () => {
     await ownerAnnotation(page, scope);
+  });
+  await test.step('Esc 依次关闭菜单、标注列表、标注模式', async () => {
     await ownerEscapeLayers(page, scope);
   });
   await test.step('交互后出现红点，菜单重置只改当前帧，红点也能重置', async () => {
@@ -130,21 +140,7 @@ test('owner 工作台：中文标注、钉子、Esc，帧菜单和红点重置',
     await screen.locator('[data-owner-action]').click();
     await expect(screen.locator('[data-owner-result]')).toHaveText('已经确认');
   });
-});
-
-test.beforeEach(async ({ page, request }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1440, height: 1000 });
-  await seedOwner(request);
-});
-
-test('owner 浮层：中文组字、保存、点钉子，Esc 按层回正文', async ({ page }) => {
-  const scope = await openOwnerBoard(page, true);
-  await test.step('定位到帧，输入法组字后保存，点击已有钉子重新打开', async () => {
-    await ownerAnnotation(page, scope);
-  });
-  await test.step('Esc 依次关闭菜单、标注列表、标注模式、浮层', async () => {
-    await ownerEscapeLayers(page, scope);
+  await test.step('Esc 关浮层回正文，焦点回卡片', async () => {
     await expect(page.locator('dialog[data-pp-overlay]')).toHaveAttribute('open', '');
     await page.keyboard.press('Escape');
     await expect(page.locator('dialog[data-pp-overlay]')).not.toHaveAttribute('open', '');
