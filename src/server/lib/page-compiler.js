@@ -669,8 +669,13 @@ export async function compilePage(target, options = {}) {
   const sources = {};
   const errors = {};
   const htmls = {};
-  for (const entry of picked) {
-    const row = await compileScreen(target, entry, { assets });
+  // 屏间并行：compileScreen 各自独立（自己的 esbuild.build + 同步求值），页与页在
+  // buildAllPages 已并行，大页（30 jsx 屏）曾是启动与整页重编的尾屏。顺序按 picked
+  // 保住，行序与串行一致。
+  const rows = await Promise.all(picked.map((entry) => compileScreen(target, entry, { assets })));
+  for (let i = 0; i < picked.length; i++) {
+    const row = rows[i];
+    const entry = picked[i];
     screens.push({ id: entry.id, ok: row.ok, ms: row.ms, ...(row.ok ? {} : { error: row.error }) });
     if (row.source) sources[entry.id] = row.source;
     if (row.ok) htmls[entry.id] = row.html;
