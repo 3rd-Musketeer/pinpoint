@@ -37,7 +37,7 @@ import { buildBoardHtml, fetchQueryFresh, fetchScreenHtml, loadFailHtml, screenC
 import { CANVAS_ENTRY_ID, isArticleBoard } from './lib/board-entries.js';
 import { boardForTab, resolveTabId, tabIdOfSection } from './lib/board-tabs.js';
 import { screenEntries } from '../shared/board-screens.js';
-import { afterMount, initPreviewMount } from './preview-mount.js';
+import { afterMount } from './preview-mount.js';
 import { refreshFrameContent, resetFrame } from './frame-reset.js';
 import {
   annotateApi,
@@ -330,9 +330,6 @@ initBootPrefs({
 initPages({
   loadBoard: loadBoard,
   mountManager: mountManager
-});
-initPreviewMount({
-  wireLibraryScrollSpy: wireLibraryScrollSpy
 });
 initBoard();
 

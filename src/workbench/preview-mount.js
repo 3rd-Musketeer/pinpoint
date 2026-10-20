@@ -2,6 +2,7 @@
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 import { wbGet } from './app/store.js';
 import { pageBaseUrl } from './lib/page-url.js';
+import { wireLibraryScrollSpy } from './pages.js';
 import { wireExportControls } from './export-core.js';
 import {
   focusFirstBoardFrame,
@@ -15,15 +16,6 @@ import { cssImportUrls } from './lib/sidecar-css.js';
 import { whenChromeReady } from './lib/chrome-ready.js';
 import { rememberBoard } from './frame-reset.js';
 import { embedParked, registerEmbedPark } from './embed-park.js';
-
-// 反向依赖注入：wireLibraryScrollSpy 属 pages.js 簇，沿用 initPreviewMount(deps)
-// 注入（历史上由 workbench.js 持有，DI 通道保留）。标注面板刷新不再是 DI ——
-// 直接 import ann-bridge 的 scheduleAnnSnap。（boot-prefs 同走直接 import。）
-var mountDeps = {};
-
-export function initPreviewMount(deps) {
-  mountDeps = deps || {};
-}
 
 /**
  * Interactive frames (A+B) — screen HTML is mounted via innerHTML, so <script>
@@ -342,7 +334,7 @@ export function afterMount(panel, session) {
         if (!session.isUsable(panel)) return;
         var _a = annotateApi(); if (_a) _a.render();
         rebuildSectionNavigator(panel);
-        mountDeps.wireLibraryScrollSpy();
+        wireLibraryScrollSpy();
         if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
         scheduleAnnSnap();
         scheduleMinimapUpdate();
