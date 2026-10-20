@@ -10,13 +10,19 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 export async function promote(options = {}) {
   let interrupted, active, escalation;
   let recovering = false;
+  // detached 子命令实测可能并未自成进程组，kill(-pid) 会是空枪；先探测组，打不中就直接打进程本身。
+  const signalCommand = (pid, signal) => {
+    let grouped;
+    try { process.kill(-pid, 0); grouped = true; } catch { grouped = false; }
+    try { process.kill(grouped ? -pid : pid, signal); } catch { /* 命令已退出 */ }
+  };
   const onSignal = signal => {
-    if (recovering || interrupted) return; // 收尾不能被第二次 Ctrl-C 再次打断。
+    if (recovering || interrupted) return; // 收尾不能被第二次 Ctrl-C 再次打断；恢复命令被打死由 run 的有界重试兜住。
     interrupted = new Error(`收到 ${signal}，发布已中止`);
     if (active) {
       const pid = active.pid;
-      try { process.kill(-pid, signal); } catch { /* 命令已退出 */ }
-      escalation = setTimeout(() => { try { process.kill(-pid, 'SIGKILL'); } catch { /* 已退出 */ } }, 2000);
+      signalCommand(pid, signal);
+      escalation = setTimeout(() => signalCommand(pid, 'SIGKILL'), 2000);
     }
   };
   const handlers = ['SIGINT', 'SIGTERM'].map(signal => {

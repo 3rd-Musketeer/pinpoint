@@ -181,6 +181,30 @@ test('promote：恢复期第二次组信号打死恢复命令也不留停服', a
   assert.deepEqual(fs.readdirSync(path.join(f.root, '.tmp')), []);
 });
 
+// 单发非组信号（systemd/supervisor 停服务的默认形态）：子命令不在独立进程组时 kill(-pid) 是
+// 空枪，转发必须直接命中挂起的子命令本身。
+test('promote：单发非组信号也转发给挂起的子命令', async t => {
+  const f = await fixture(t);
+  const p = f.launch({ phase: '', failure: 'interrupt2' });
+  await until(() => fs.existsSync(p.gate + '.target'));
+  process.kill(p.child.pid, 'SIGINT'); // 只打 promote 进程本身
+  let forwarded = false;
+  for (let n = 0; n < 250 && !(forwarded = fs.existsSync(p.gate + '.restore')); n++) await new Promise(resolve => setTimeout(resolve, 20));
+  if (!forwarded) { // 空枪：子命令仍挂在起新上，收尾只能等命令完成后的 interrupted 检查
+    fs.writeFileSync(p.gate + '.target.release', '');
+    for (let n = 0; n < 250 && !fs.existsSync(p.gate + '.restore'); n++) await new Promise(resolve => setTimeout(resolve, 20));
+    fs.writeFileSync(p.gate + '.restore.release', '');
+    await p.done;
+    assert.fail('单发 SIGINT 应转发给挂起的子命令并进入收尾');
+  }
+  fs.writeFileSync(p.gate + '.restore.release', '');
+  const result = await p.done;
+  assert.equal(result.signal, null, p.output());
+  assert.match(p.output(), /收到 SIGINT，发布已中止/);
+  assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+  assert.equal(f.head(), f.old);
+});
+
 test('promote：同一规范 release 路径跨进程互斥，A 成功、B 立即拒绝，后续发布重读 prev', async t => {
   const f = await fixture(t);
   const a = f.launch({ phase: 'build' });
