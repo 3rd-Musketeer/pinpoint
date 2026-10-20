@@ -121,8 +121,14 @@ test('shot --canvas：只有 HTML 帧的文章不出画布视图图，逐帧截�
   expect(res.stdout).toContain(`A1 · lazy-page → ${path.join(SHOT_DIR, 'lazy-page.png')} · 402×`);
   expect(res.stdout).toContain(`A2 · short-page → ${path.join(SHOT_DIR, 'short-page.png')} · 402×`);
   expect(fs.existsSync(path.join(SHOT_DIR, `${ARTICLE_PAGE_ID}.png`))).toBe(false);
-  // --json 形态的 notes / doc jobs 由 bin/pinpoint-cli.test.js「planShotJobs：文章的画布视图整页」
-  // 钉住（同一批 job），shot --json 的端到端序列化由 ppnt-article.spec.js 钉住，不再渲染第二遍。
+  // HTML-only 的 doc jobs 与降级说明必须经过 runShot 最终序列化，plan 单测不能代替。
+  const json = await ppnt(['shot', ARTICLE, '--canvas', '--json']);
+  expect(json.code, json.stderr).toBe(0);
+  const parsed = JSON.parse(json.stdout);
+  expect(parsed.notes).toHaveLength(1);
+  expect(parsed.shots.map((shot) => [shot.kind, shot.label])).toEqual([
+    ['doc', 'A1 · lazy-page'], ['doc', 'A2 · short-page'],
+  ]);
 });
 
 test('shot A1：视口外的懒加载 iframe（含里面再嵌的一层）和图片都加载完才截', async ({ context }) => {
