@@ -57,6 +57,22 @@ export function rewriteCssUrls(cssText, baseUrl) {
 export const rewriteRootSelector = (cssText) => String(cssText).replace(/:root\b/g, ':host');
 
 /**
+ * :root 出现在复合选择器或带祖先的选择器里（.x:root、:root[data-theme]、.x :root、:not(:root)）。
+ * 这类选择器重写成 :host 后不生效（.x:host、:host[data-theme] 实测规则保留但匹配不到东西），
+ * shadow 里也没有对应写法（正确形态是 :host(.x) / :host([…])，另一套写法）。命中返回 true，
+ * 调用方整帧退回 iframe：iframe 里 :root 按文档求值，原样可用。
+ */
+export function rootCompoundHazard(cssText) {
+  const css = String(cssText || '');
+  for (const m of css.matchAll(/:root\b/g)) {
+    const before = css.slice(0, m.index).trimEnd().slice(-1);
+    if (before && !['{', ',', '}'].includes(before)) return true; // 前面还有选择器（同复合或祖先）
+    if (/[\w.#[:(-]/.test(css[m.index + 5] || '')) return true;   // :root 后面复合还在继续
+  }
+  return false;
+}
+
+/**
  * @import 的条件（URL 之后到分号）只认 media query 列表：能原样包进 @media。命中 true 就整帧退回 iframe：
  * - layer（裸关键字或 layer()）/ supports() / scope()：包进 @media 会产出非法 CSS 或丢掉层级语义，
  *   constructed stylesheet 静默丢掉整张表；

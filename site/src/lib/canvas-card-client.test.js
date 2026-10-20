@@ -147,3 +147,17 @@ test('sheetText：永久缺失的表每次按空表兑现，不是 null（不因
   }
   assert.equal(calls, 2, '空表不缓存：永久缺失的表每张卡多取一次，换取瞬时失败可重试');
 });
+
+test('sheetText：复合 :root（重写后不生效）展开为 null，整帧退回 iframe（r5 T4）', async (t) => {
+  const origin = 'http://rootcomp.test/sites/demo_page/';
+  const texts = new Map([
+    [`${origin}theme.css`, ':root[data-theme="dark"]{--c:black} .card{color:var(--c)}'],
+    [`${origin}compound.css`, '.x:root{y:2}'],
+  ]);
+  t.mock.method(globalThis, 'fetch', async (url) => {
+    const key = url.replace(/[?&]direct$/, '');
+    return { ok: texts.has(key), text: async () => texts.get(key) || '' };
+  });
+  assert.equal(await settleWithin(sheetText(`${origin}theme.css`)), null);
+  assert.equal(await settleWithin(sheetText(`${origin}compound.css`)), null);
+});

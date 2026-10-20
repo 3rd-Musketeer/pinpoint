@@ -13,6 +13,7 @@ import {
   resolveCssImports,
   rewriteCssUrls,
   rewriteRootSelector,
+  rootCompoundHazard,
 } from './static-card-lib.js';
 import { badgeText, docWidthKey, pageLedgerName, pendingCount, shellBox } from './canvas-card.js';
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
@@ -167,9 +168,10 @@ export function sheetText(url) {
 
 // @import 递归展开（constructed stylesheet 不许带 @import）后，url() 按本表自己的 base 改写、
 // :root 搬到 :host。被展开的文本已按自己的 base 处理过，外层再改写到绝对地址是空操作。
+// 复合 :root（.x:root、:root[data-theme]）重写后不生效：整帧退回 iframe，在那里原样求值。
 async function cssFromText(text, base, path) {
   const out = await resolveCssImports(text, base, rawCss, path);
-  if (out == null) return null; // 展开不出合法 CSS：整帧退回 iframe
+  if (out == null || rootCompoundHazard(out)) return null; // 展开不出合法 CSS：整帧退回 iframe
   return rewriteRootSelector(rewriteCssUrls(out, base));
 }
 

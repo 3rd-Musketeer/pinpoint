@@ -11,6 +11,7 @@ import {
   resolveCssImports,
   rewriteCssUrls,
   rewriteRootSelector,
+  rootCompoundHazard,
 } from './static-card-lib.js';
 
 test('classifyFrameScript：ios-kit 与内联 frame-boot 是 boot，预览脚本与来路不明的脚本不是', () => {
@@ -50,8 +51,31 @@ test('rewriteCssUrls：相对地址按 base 绝对化，data:/http/绝对路径/
 });
 
 test('rewriteRootSelector：:root 搬到 :host，:rootish 不动', () => {
-  assert.equal(rewriteRootSelector(':root{--a:1} .x:root{y:2}'), ':host{--a:1} .x:host{y:2}');
+  assert.equal(rewriteRootSelector(':root{--a:1} .x :root{y:2}'), ':host{--a:1} .x :host{y:2}');
   assert.equal(rewriteRootSelector('.rooty{a:1}'), '.rooty{a:1}');
+});
+
+test('rootCompoundHazard：复合或带祖先的 :root 命中（重写后不生效，整帧退回 iframe），单独的 :root 不命中', () => {
+  // 命中：同复合的前缀 / 后缀、带祖先、伪类参数里。
+  for (const css of [
+    '.x:root{y:2}',
+    'html:root{y:2}',
+    ':root[data-theme="dark"]{--b:2}',
+    ':root:hover{y:2}',
+    '.x :root{y:2}',
+    '@media (min-width: 1px) { .x:root{y:2} }',
+    'a, .x:root{y:2}',
+    ':not(:root){y:2}',
+  ]) assert.equal(rootCompoundHazard(css), true, css);
+  // 不命中：单独的 :root（选择器开始）与 :rootish 单词。
+  for (const css of [
+    ':root{--a:1}',
+    ':root .x{y:2}',
+    '@media (min-width: 1px) { :root{--a:1} }',
+    'a, :root{--a:1}',
+    '\n:root{\n  --a:1\n}',
+    '.rooty{a:1}',
+  ]) assert.equal(rootCompoundHazard(css), false, css);
 });
 
 test('resolveCssImports：递归展开 @import，带条件的包 @media，被展开表的 url() 按它自己的地址改写', async () => {
