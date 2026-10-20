@@ -548,9 +548,28 @@ test('sidecar 挂载点警告（R5 S3）：同名 .js 没有挂载点报 sidecar
   assert.match(hints[0].message, /data-preview-mount/);
   assert.ok(!report.diagnostics.some((row) => row.code === 'sidecar_no_mount' && row.frame !== 'counter'),
     '标了挂载点的与 doc 机壳的（含帧级 shell="doc"）不报');
-  // section 写 shell="doc" 时同样豁免。
+  // Canvas 写 shell="doc" 时同样豁免（shell 是 Canvas 的属性，不是 Section 的）。
   write(path.join(article, 'index.mdx'),
-    '---\ntitle: 页面\n---\n\n<Section id="live" title="活的" shell="doc">\n\n<Canvas frames={["counter"]} />\n\n</Section>\n');
+    '---\ntitle: 页面\n---\n\n<Section id="live" title="活的">\n\n<Canvas frames={["counter"]} shell="doc" />\n\n</Section>\n');
   const docSection = await checkProject(registry, 'demo', { articleId: 'pages' });
   assert.ok(!docSection.diagnostics.some((row) => row.code === 'sidecar_no_mount'));
+});
+
+test('裸组件帧缺机壳报 frame_shell_missing（R5 B4）；有机壳或 Canvas shell="comp" 不报', async (t) => {
+  const { article, registry } = fixture(t);
+  write(path.join(article, 'index.mdx'), [
+    '---', 'title: 页面', '---', '',
+    '<Section id="bare" title="裸的">', '', '<Canvas frames={["bare"]} />', '', '</Section>', '',
+    '<Section id="shelled" title="有机壳的">', '', '<Canvas frames={["shelled"]} />', '', '</Section>', '',
+    '<Section id="comp" title="组件墙">', '', '<Canvas frames={["comped"]} shell="comp" />', '', '</Section>', '',
+  ].join('\n'));
+  write(path.join(article, 'bare.jsx'), 'export default function Bare() {\n  return <div>裸组件</div>;\n}\n');
+  write(path.join(article, 'shelled.jsx'), 'export default function Shelled() {\n  return <div className="ios-app">有机壳</div>;\n}\n');
+  write(path.join(article, 'comped.jsx'), 'import { Chip } from \'./components/Chip.jsx\';\n\nexport default function Comped() {\n  return <Chip label="墙" />;\n}\n');
+  const report = await checkProject(registry, 'demo', { articleId: 'pages' });
+  const missing = report.diagnostics.filter((row) => row.code === 'frame_shell_missing');
+  assert.equal(missing.length, 1, JSON.stringify(report.diagnostics, null, 1));
+  assert.equal(missing[0].severity, 'error');
+  assert.equal(missing[0].frame, 'bare');
+  assert.match(missing[0].message, /ContractError/);
 });

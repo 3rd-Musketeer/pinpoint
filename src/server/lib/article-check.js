@@ -25,6 +25,7 @@ import { parseRefBody, refsWithLines } from '../../shared/refs.js';
 import { articlePageId, refKey } from '../../shared/project-ids.js';
 import { isArticleError } from '../../shared/project-errors.js';
 import { articleOutline, resolveRootFrame } from './article-canvas.js';
+import { screenEntries } from '../../shared/board-screens.js';
 import { collectHtmlFrameAssets } from './html-frame-assets.js';
 import { resolveServableFile } from './servable-file.js';
 import { parseFrontmatter } from './frontmatter.js';
@@ -137,23 +138,39 @@ function htmlFrameDiagnostics({ file, root }, { address, section, frame }) {
 }
 
 /** doc 机壳的帧文件写法：`export const shell = "doc"`（与 lint 认的同一行）。 */
-const FRAME_SHELL_DOC = /export const shell\s*=\s*["']doc["']/;
+// 画布 fragment 的机壳契约（workbench validateScreenFragment 的同一句正则）：
+// 非 comp / doc 壳的屏必须有这一族根元素，否则画布挂 ContractError 错误面板。
+const IOS_SHELL_RE = /\b(?:ios-app|ios-lockscreen|ios-stage|ios-device)\b/;
+
+/**
+ * R5 B4（诊断缺口）：裸组件 JSX 帧不写 shell——check/build 全绿，工作台画布挂
+ * ContractError 错误面板。契约（validateScreenFragment）此前只在客户端拉帧时跑，
+ * check 不看帧内容形态。这里对编译产物用同一句正则校验：非 comp / doc 壳的帧
+ * 缺机壳就是 error（运行时事实如此）。HTML 帧套非 doc 机壳的装载面归画布侧
+ * （R5 B2 的后续），不在这里猜。
+ */
+function frameShellDiagnostic(frame, section, { address, pageDir }) {
+  return {
+    severity: 'error',
+    code: 'frame_shell_missing',
+    file: path.join(pageDir, `${frame}.jsx`),
+    message: '帧内容没有 ios-app / ios-lockscreen 机壳，工作台画布会挂 ContractError 错误面板：给帧内容套机壳，或给节 / 帧写 shell="comp"（无机壳片段）。',
+    article: address,
+    ...(section && section.id ? { section: section.id } : {}),
+    frame,
+  };
+}
 
 /**
  * R5 S3（诊断缺口）：ios 帧的同名 sidecar `<帧 id>.js` 只在帧根标了
  * data-preview-mount（board-schema「交互 frame」B 形态）或帧里有显式的
- * data-preview-script 时才被装载；doc 机壳的屏由 wb-doc-surface 隐式探，
- * 不用标。写了 sidecar 却两条都不占，画布静默无交互——check 此前全绿。
- * 只查 JSX 帧：HTML 帧套 app 机壳时的装载面是另一条（R5 B2 刚动过），不在这里猜。
+ * data-preview-script 时才被装载；doc 机壳的屏由 wb-doc-surface 隐式探。
+ * 写了 sidecar 却两条都不占，画布静默无交互——check 此前全绿。只查 JSX 帧。
  */
-async function sidecarMountHint(target, frame, section, { address }) {
+function sidecarMountHint(target, frame, section, { address, html }) {
+  if (!html) return [];
   if (!isFile(path.join(target.pageDir, `${frame}.js`))) return [];
-  const source = readText(path.join(target.pageDir, `${frame}.jsx`));
-  if (source === null || FRAME_SHELL_DOC.test(source)) return [];
-  if ((section && section.shell) === 'doc') return [];
-  const rendered = await renderScreenHtml(target, frame);
-  if (!rendered.ok) return []; // 编译错误另有诊断，不拿渲染产物说事
-  if (/data-preview-mount/.test(rendered.html) || /data-preview-script/.test(rendered.html)) return [];
+  if (/data-preview-mount/.test(html) || /data-preview-script/.test(html)) return [];
   return [{
     severity: 'warning',
     code: 'sidecar_no_mount',
@@ -173,6 +190,19 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
   if (text === null) return { diagnostics, frames: 0, figures: 0 };
   const target = resolveArticleTarget(registry, articlePageId(project.id, article.id));
   const outline = articleOutline(text);
+  // 屏 id → 有效 shell（派生板，含帧级 export const shell 的覆盖）。
+  let boardScreens = null;
+  if (target) {
+    try {
+      // 帧 → { frameShell, sectionShell }：帧级 export const shell 盖过节；两个都
+      // 没写时 JSX 帧按缺省 app 走画布契约（R5 B4 的复现形态）。节级 shell 在画布
+      // 分派里的确切行为归画布侧核实，只写节级的不在这里下判断。
+      boardScreens = new Map(screenEntries(deriveArticleBoard(target).board).map(({ screen, section }) => [
+        screen.id,
+        { frameShell: screen.shell || null, sectionShell: (section && section.shell) || null, src: Boolean(screen.src) },
+      ]));
+    } catch { /* 板错误由布局诊断另报 */ }
+  }
   let frames = 0;
   for (const section of outline) {
     for (const frame of section.frames) {
@@ -184,7 +214,26 @@ async function checkArticle({ registry, project, article, resolve, layoutErrors,
       }
       if (!target || !isFile(path.join(target.pageDir, `${frame}.jsx`))) continue; // 缺帧是布局错误
       frames += 1;
-      diagnostics.push(...await sidecarMountHint(target, frame, section, { address }));
+      // 画布契约只看能从产物判定的形状：帧级 shell 写了按它（comp / doc 跳过），
+      // 只写了节级 shell 的跳过（分派归画布侧），两个都没写按缺省 app 校验。
+      // 编译错误另有 frameDiagnostics 诊断，不拿失败的产物说事。渲染一次，
+      // 机壳契约（B4）与 sidecar 提示（S3）共用。
+      const shells = boardScreens ? boardScreens.get(frame) : null;
+      const shellChecked = shells && !shells.src
+        && (shells.frameShell ? shells.frameShell !== 'comp' && shells.frameShell !== 'doc' : !shells.sectionShell);
+      let frameHtml = null;
+      if (shellChecked) {
+        const rendered = await renderScreenHtml(target, frame);
+        if (rendered.ok) {
+          frameHtml = rendered.html;
+          if (!IOS_SHELL_RE.test(frameHtml)) {
+            diagnostics.push(frameShellDiagnostic(frame, section, { address, pageDir: target.pageDir }));
+          }
+        }
+      }
+      const sidecarChecked = shells && !shells.src && !(shells.frameShell === 'doc' || (!shells.frameShell && shells.sectionShell === 'doc'));
+      const frameHtmlForSidecar = sidecarChecked ? frameHtml : null;
+      diagnostics.push(...sidecarMountHint(target, frame, section, { address, html: frameHtmlForSidecar }));
       const result = await frameDiagnostics(target, frame);
       for (const row of result.diagnostics) {
         const key = `${row.code}|${row.file}|${row.line}|${row.message}`;

@@ -258,7 +258,6 @@ export function articleOutline(text) {
     if (item.kind !== 'section') continue;
     const id = literalAttribute(item.node, 'id');
     const title = literalAttribute(item.node, 'title');
-    const shell = literalAttribute(item.node, 'shell');
     const frames = [];
     const sources = {};
     for (const canvas of item.canvases) {
@@ -275,9 +274,6 @@ export function articleOutline(text) {
       letter: item.letter,
       id: idValue,
       title: title && 'value' in title ? title.value : idValue,
-      // 节写的 shell 原样带出（article-check 的 sidecar 挂载点警告要分 doc / 非 doc）；
-      // 没写不算 doc——JSX 帧缺省 app、HTML 帧缺省 doc，由各自的消费方按帧种判。
-      ...(shell && 'value' in shell && shell.value ? { shell: shell.value } : {}),
       line: item.node.position ? item.node.position.start.line + lineOffset : null,
       frames,
       ...(Object.keys(sources).length ? { sources } : {}),
