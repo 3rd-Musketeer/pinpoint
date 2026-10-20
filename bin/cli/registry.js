@@ -3,7 +3,7 @@ import path from 'node:path';
 
 import { dataRoot } from '../../src/server/lib/annotate-data-dir.js';
 import { manifestPageIds as libManifestPageIds } from '../../src/server/lib/page-manifest.js';
-import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN, RETIRED_ENTRY_KEYS } from '../../src/server/lib/registry.js';
+import { defaultEntries, defaultRegistryPath, ENTRY_ID_PATTERN, loadRegistry, PAGE_ID_PATTERN } from '../../src/server/lib/registry.js';
 import { collectBucketOrphans, collectPageOrphans } from '../../src/server/lib/orphans.js';
 import { resolvePage } from '../../src/server/lib/page-resolve.js';
 import { articlePageId, parseArticlePageId } from '../../src/shared/project-ids.js';
@@ -170,7 +170,6 @@ export function buildMove(id, target, { cwd = process.cwd(), entries = [] } = {}
   }
   const resolved = resolveTarget(target, cwd);
   const after = { ...before, kind: resolved.kind };
-  for (const key of RETIRED_ENTRY_KEYS) delete after[key];
   after.path = resolved.absPath;
   // board 只对 dir 条目有意义（file 恒 doc 阅读器）。
   if (resolved.kind !== 'dir') delete after.board;

@@ -172,68 +172,25 @@ test('resolve returns the entry by id and null for unknown ids', (t) => {
   assert.equal(registry.resolve('missing'), null);
 });
 
-/* ---- 已退役功能留下的键（2026-10-14）：跳过并 warn，服务照常起 ---- */
+/* ---- 退役功能的键不再特判（2026-10-20，盘上数据已无这些键）：kind "url" 按
+   不合法 kind 报错跳过；条目上的退役字段随 normalizeEntry 静默丢掉，不 warn ---- */
 
-test('退役的键：顶层 folders / pageFolders / pageOrder 与条目的 folder / order / page / role 跳过并 warn，条目照常读', (t) => {
-  const dir = withTempDir(t);
-  const file = writeRegistry(dir, {
-    version: 1,
-    folders: [{ id: 'shipped', name: '已上线' }],
-    pageFolders: { 'component-library': 'shipped' },
-    pageOrder: { 'component-library': 2 },
-    entries: [
-      { id: 'alpha', kind: 'dir', path: dir, folder: 'shipped', order: 0 },
-      { id: 'note', kind: 'dir', path: dir, page: 'alpha', role: 'draft' },
-    ],
-  });
-  const { registry, logs } = quietLoad({ path: file });
-
-  assert.equal(registry.ok, true, '退役的键不是 error');
-  assert.deepEqual(registry.errors, []);
-  assert.deepEqual(registry.entries, [
-    { id: 'alpha', title: 'alpha', kind: 'dir', path: dir },
-    { id: 'note', title: 'note', kind: 'dir', path: dir },
-  ], '带 page 的老条目照常自成一页');
-  assert.equal('folders' in registry, false);
-  assert.deepEqual(registry.warnings, [
-    '"folders" belongs to a retired feature — ignored',
-    '"pageFolders" belongs to a retired feature — ignored',
-    '"pageOrder" belongs to a retired feature — ignored',
-    'entry "alpha" field "folder" belongs to a retired feature — ignored',
-    'entry "alpha" field "order" belongs to a retired feature — ignored',
-    'entry "note" field "page" belongs to a retired feature — ignored',
-    'entry "note" field "role" belongs to a retired feature — ignored',
-  ]);
-  assert.equal(logs.length, 7, '每条 warning 都进日志');
-});
-
-test('退役的 url 条目：整条跳过并 warn，不算 error；同 id 的后续条目照常读，与其它退役键并存也不崩', (t) => {
+test('退役的 url 条目按不合法 kind 报错并跳过；退役字段不再 warn', (t) => {
   const dir = withTempDir(t);
   const file = writeRegistry(dir, {
     version: 1,
     folders: [{ id: 'shipped', name: '已上线' }],
     entries: [
       { id: 'my-app', title: 'My App', kind: 'url', url: 'http://127.0.0.1:5173', folder: 'shipped' },
-      { id: 'no-url', kind: 'url' },
-      { id: 'alpha', kind: 'dir', path: dir },
-      { id: 'my-app', title: 'My App (dir)', kind: 'dir', path: dir },
+      { id: 'alpha', kind: 'dir', path: dir, folder: 'shipped', order: 0 },
     ],
   });
-  const { registry, logs } = quietLoad({ path: file });
+  const { registry } = quietLoad({ path: file });
 
-  assert.equal(registry.ok, true, '退役的 kind 不是 error');
-  assert.deepEqual(registry.errors, []);
-  assert.deepEqual(registry.entries, [
-    { id: 'alpha', title: 'alpha', kind: 'dir', path: dir },
-    { id: 'my-app', title: 'My App (dir)', kind: 'dir', path: dir },
-  ]);
-  assert.equal(registry.resolve('my-app').kind, 'dir');
-  assert.deepEqual(registry.warnings, [
-    '"folders" belongs to a retired feature — ignored',
-    'entry "my-app" kind "url" belongs to a retired feature — skipped',
-    'entry "no-url" kind "url" belongs to a retired feature — skipped',
-  ]);
-  assert.equal(logs.length, 3, '每条 warning 都进日志');
+  assert.equal(registry.ok, false);
+  assert.deepEqual(registry.errors, ['entry "my-app" kind must be "dir", "file", or "project"']);
+  assert.deepEqual(registry.entries, [{ id: 'alpha', title: 'alpha', kind: 'dir', path: dir }]);
+  assert.deepEqual(registry.warnings, []);
 });
 
 test('PINPOINT_REGISTRY overrides the default registry path', (t) => {

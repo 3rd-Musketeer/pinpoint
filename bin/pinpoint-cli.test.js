@@ -415,7 +415,7 @@ test('buildMove: 换落点，id / title / 归属原样带走', (t) => {
   assert.deepEqual(after, { id: 'app', title: '我的应用', kind: 'dir', path: next, board: 'ios' });
 });
 
-test('buildMove: dir → file 丢掉 board；网址目标拒绝；老 url 条目能重指到本地目录', (t) => {
+test('buildMove: dir → file 丢掉 board；网址目标拒绝；计划层不剥离退役字段（写方响亮拒绝）', (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir);
   const page = path.join(dir, 'one.html');
@@ -424,19 +424,22 @@ test('buildMove: dir → file 丢掉 board；网址目标拒绝；老 url 条目
   assert.deepEqual(buildMove('app', page, { cwd: dir, entries: [before] }).after,
     { id: 'app', title: 'App', kind: 'file', path: page });
   assert.throws(() => buildMove('app', 'https://app.localhost/x', { cwd: dir, entries: [before] }), /登记的目标是本地目录或 \.html 文件/);
+  // 老 url 条目重指：计划原样带上退役字段，updateRegistryEntry 会以「未知字段：url」拒写
+  // （registry-store.test.js 守）；owner 清掉该字段后再搬。
   const legacy = { id: 'web', title: 'Web', kind: 'url', url: 'https://app.localhost/x' };
   assert.deepEqual(buildMove('web', site, { cwd: dir, entries: [legacy] }).after,
-    { id: 'web', title: 'Web', kind: 'dir', path: site });
+    { id: 'web', title: 'Web', kind: 'dir', path: site, url: 'https://app.localhost/x' });
 });
 
-test('buildMove: 未知 id / 不存在的目标都响亮拒绝；老条目上已删功能的字段不带过去', (t) => {
+test('buildMove: 未知 id / 不存在的目标都响亮拒绝；计划层不动条目的字段', (t) => {
   const dir = withTempDir(t);
   const site = makeSite(dir);
   const entries = [{ id: 'app', kind: 'dir', path: '/gone' }, { id: 'draft', kind: 'file', path: '/gone.html', page: 'library', role: 'draft' }];
   assert.throws(() => buildMove('ghost', site, { cwd: dir, entries }), /条目不存在：ghost（现有：app、draft）/);
   assert.throws(() => buildMove('app', path.join(dir, 'nope'), { cwd: dir, entries }), /路径不存在/);
   assert.throws(() => buildMove('app', path.join(dir, 'x.txt'), { cwd: dir, entries }), /路径不存在/);
-  assert.deepEqual(buildMove('draft', site, { cwd: dir, entries }).after, { id: 'draft', kind: 'dir', path: site });
+  assert.deepEqual(buildMove('draft', site, { cwd: dir, entries }).after,
+    { id: 'draft', kind: 'dir', path: site, page: 'library', role: 'draft' });
 });
 
 test('mv <id> <路径>: 原地改路径、保留 id 与位置，并 reload 服务', async (t) => {

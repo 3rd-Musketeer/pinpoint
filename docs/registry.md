@@ -21,10 +21,10 @@
 - 文件缺失时用默认的只含 pinpoint 一条的登记表（`{id:"pinpoint", kind:"dir", path:<仓库根>}`）。
   JSON 坏了或顶层形状不对就回落到默认并记下 error；单条非法只跳过那一条；
   dir / file 路径不存在是 warning，不是删除。
-- 老登记表里已删功能的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order` /
-  `page` / `role` / `url`）读的时候跳过，每个键记一条 warning，其余条目照常加载（带 `page` 的老条目照常自成一页）；
-  `ppnt mv`（换路径、改 id）写回时不再带这些字段。`kind: "url"` 的老条目整条跳过、记一条 warning；
-  它留在文件里，`mv <id> <目录|文件>` 把它重指成本地条目，`remove <id>` 把它删掉。
+- 已删功能留在老登记表里的键（顶层 `folders` / `pageFolders` / `pageOrder`，条目上的 `folder` / `order` /
+  `page` / `role` / `url`）不再有特判：条目上的退役字段随归一静默丢掉、不 warn；`kind: "url"` 的老条目
+  按不合法 kind 报错并跳过（进 errors，`/health` 变红），`remove <id>` 照常把它删掉。
+  `ppnt mv`（换路径、改 id）对还带着这些字段的条目响亮拒绝（未知字段）——先清掉字段再搬。
 - 全部状态可见：`GET /health`（registry 摘要，那里的 `entries` 是**数量**）与
   `GET /registry`（完整 `entries` 列表）。
 - `GET /registry` 返回 `pageTimes`，条目也带 `addedAt`（登记时刻）、`mtime`（内容修改，目录递归取最大）、`annotatedAt`（逐页标注变动）。新增登记写入 `addedAt`，移动保留；历史添加时间未知时不补造。

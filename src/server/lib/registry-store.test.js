@@ -226,9 +226,9 @@ test('createRegistryStore: reload surfaces a malformed file as errors, not a cra
   assert.deepEqual(store.entries.map((e) => e.id), ['pinpoint'], 'falls back to the default entries');
 });
 
-/* ---- 已退役功能留下的字段（2026-10-14） ---- */
+/* ---- 已退役功能留下的字段（2026-10-14 退役；2026-10-20 起不再特判剥离） ---- */
 
-test('老登记表里条目带退役字段（folder / order / page / role）：move 与 rename 照常写，写出的条目不再带它们', (t) => {
+test('条目带退役字段（folder / order / page / role）：rename / move 响亮拒绝并保持文件不动', (t) => {
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');
   const before = makeSite(dir, 'before');
@@ -238,16 +238,16 @@ test('老登记表里条目带退役字段（folder / order / page / role）：m
     folders: [{ id: 'shipped', name: '已上线' }],
     entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped', order: 0, page: 'home', role: 'draft' }],
   });
-  const moved = updateRegistryEntry(file, { id: 'alpha', kind: 'dir', path: after, folder: 'shipped', order: 0, page: 'home', role: 'draft' });
+  const raw = fs.readFileSync(file, 'utf8');
+  assert.throws(() => renameRegistryEntry(file, 'alpha', 'beta'), /未知字段：folder/);
+  assert.throws(() => updateRegistryEntry(file, { id: 'alpha', kind: 'dir', path: after, folder: 'shipped' }), /未知字段：folder/);
+  assert.equal(fs.readFileSync(file, 'utf8'), raw);
+  // 写方带干净字段照常写；还带着退役字段的条目，先清掉字段再搬。
+  const moved = updateRegistryEntry(file, { id: 'alpha', kind: 'dir', path: after });
   assert.deepEqual(moved, { id: 'alpha', kind: 'dir', title: 'alpha', path: after });
-
-  writeRegistryFile(file, { version: 1, entries: [{ id: 'alpha', kind: 'dir', path: before, folder: 'shipped', page: 'home' }] });
-  const renamed = renameRegistryEntry(file, 'alpha', 'beta');
-  assert.deepEqual(renamed.entry, { id: 'beta', kind: 'dir', title: 'beta', path: before });
-  assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries, [renamed.entry]);
 });
 
-test('老登记表里残留的 url 条目：remove 照常删；保持 kind url 的 rename / move 拒写并保持文件不动，重指到本地目录照常写', (t) => {
+test('老登记表里残留的 url 条目：remove 照常删；rename / move 响亮拒写（退役字段先撞未知字段校验）并保持文件不动，重指到本地目录照常写', (t) => {
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');
   const site = makeSite(dir);
@@ -256,12 +256,14 @@ test('老登记表里残留的 url 条目：remove 照常删；保持 kind url �
     { id: 'web', title: 'Web', kind: 'url', url: 'http://127.0.0.1:5173' },
   ] });
   const raw = fs.readFileSync(file, 'utf8');
-  assert.throws(() => renameRegistryEntry(file, 'web', 'web2'), /kind 必须是 dir \/ file \/ project/);
-  assert.throws(() => updateRegistryEntry(file, { id: 'web', kind: 'url', url: 'http://127.0.0.1:5174' }), /kind 必须是 dir \/ file \/ project/);
+  assert.throws(() => renameRegistryEntry(file, 'web', 'web2'), /未知字段：url/);
+  assert.throws(() => updateRegistryEntry(file, { id: 'web', kind: 'url', url: 'http://127.0.0.1:5174' }), /未知字段：url/);
+  // 退役字段不剥离：带着 url 字段重指也响亮拒绝
+  assert.throws(() => updateRegistryEntry(file, { id: 'web', title: 'Web', kind: 'dir', path: site, url: 'http://127.0.0.1:5173' }), /未知字段：url/);
   assert.equal(fs.readFileSync(file, 'utf8'), raw);
 
-  const moved = updateRegistryEntry(file, { id: 'web', title: 'Web', kind: 'dir', path: site, url: 'http://127.0.0.1:5173' });
-  assert.deepEqual(moved, { id: 'web', kind: 'dir', title: 'Web', path: site }, 'url 字段随 move 去掉');
+  const moved = updateRegistryEntry(file, { id: 'web', title: 'Web', kind: 'dir', path: site });
+  assert.deepEqual(moved, { id: 'web', kind: 'dir', title: 'Web', path: site });
   assert.equal(removeRegistryEntry(file, 'web').kind, 'dir');
   writeRegistryFile(file, { version: 1, entries: [
     { id: 'a', kind: 'dir', path: site },

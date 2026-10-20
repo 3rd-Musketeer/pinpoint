@@ -51,7 +51,7 @@ function withFixture(t) {
     version: 1,
     entries: [
       { id: 'site', title: 'Site', kind: 'dir', path: site, board: 'web' },
-      // 老登记表里残留的 url 条目：读时跳过，/sites/web/ 不再有内容。
+      // 老登记表里残留的 url 条目：按不合法 kind 报错并跳过，/sites/web/ 不再有内容。
       { id: 'web', title: 'Web', kind: 'url', url: 'http://127.0.0.1:1' },
       { id: 'single', title: 'Single', kind: 'file', path: single },
       { id: 'ghost-file', title: 'Ghost', kind: 'file', path: path.join(dir, 'deleted.html') },

@@ -94,7 +94,7 @@ function fixtureRegistry(t) {
   const file = path.join(dir, 'registry.json');
   fs.writeFileSync(file, JSON.stringify({ version: 1, entries: [
     { id: 'legacy', kind: 'dir', path: path.join(dir, 'page') },
-    // 老登记表里残留的 url 条目：读时跳过，不进候选。
+    // 老登记表里残留的 url 条目：按不合法 kind 报错并跳过，不进候选。
     { id: 'site', kind: 'url', url: 'https://example.com' },
     { id: 'demo', kind: 'project', path: root },
   ] }));

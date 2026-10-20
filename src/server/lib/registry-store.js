@@ -20,7 +20,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
-import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry, RETIRED_ENTRY_KEYS } from './registry.js';
+import { defaultEntries, ENTRY_ID_PATTERN, loadRegistry } from './registry.js';
 import { isReservedProjectId } from '../../shared/project-ids.js';
 
 const WRITE_KINDS = new Set(['dir', 'file', 'project']);
@@ -28,14 +28,6 @@ const WRITE_KINDS = new Set(['dir', 'file', 'project']);
 const PROJECT_KEYS = new Set(['id', 'title', 'kind', 'path', 'addedAt']);
 // 写入白名单：未知字段响亮拒绝，不静默丢数据（写坏 registry 比报错难查得多）。
 const WRITE_KEYS = new Set(['id', 'title', 'kind', 'path', 'board', 'addedAt']);
-
-/** 改写一条已有条目前去掉已退役功能的字段（registry.js RETIRED_ENTRY_KEYS）：老登记表照样能 `ppnt mv`（换路径、改 id）。 */
-function withoutRetiredKeys(entry) {
-  if (!entry || typeof entry !== 'object') return entry;
-  const out = { ...entry };
-  for (const key of RETIRED_ENTRY_KEYS) delete out[key];
-  return out;
-}
 
 /** Atomic JSON write: tmp sibling + rename, 2-space layout, trailing newline.
     写失败（磁盘满、权限）时清掉半截 tmp，不在数据根留垃圾（CLI 排查 #11）。 */
@@ -197,7 +189,6 @@ export function updateRegistryEntry(registryPath, raw) {
  */
 function replaceEntry(entries, index, raw) {
   const otherIds = new Set(entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
-  raw = withoutRetiredKeys(raw);
   const problem = validateNewEntry(raw, otherIds);
   if (problem) throw new Error(problem);
   const next = [...entries];
@@ -217,9 +208,9 @@ export function renameRegistryEntry(registryPath, oldId, newId) {
     const index = doc.entries.findIndex((entry) => entry && entry.id === oldId);
     if (index < 0) throw new Error(`条目不存在：${oldId}`);
     const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
-    const problem = validateNewEntry(withoutRetiredKeys({ ...doc.entries[index], id: newId }), otherIds);
+    const problem = validateNewEntry({ ...doc.entries[index], id: newId }, otherIds);
     if (problem) throw new Error(problem);
-    const entries = doc.entries.map((entry, i) => (i === index ? normalizeNewEntry(withoutRetiredKeys({ ...entry, id: newId })) : entry));
+    const entries = doc.entries.map((entry, i) => (i === index ? normalizeNewEntry({ ...entry, id: newId }) : entry));
     writeRegistryFile(registryPath, { ...doc, entries });
     return { entry: entries[index] };
   });

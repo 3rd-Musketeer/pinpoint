@@ -5,10 +5,6 @@
  * registry. Malformed JSON or invalid entries must never crash the server —
  * log, fall back / skip, and expose the failure on the result (/health reads
  * it back out).
- *
- * Keys and entry kinds from retired features (RETIRED_TOP_KEYS /
- * RETIRED_ENTRY_KEYS / RETIRED_KINDS) may still sit in an older file: they are
- * skipped with a warning and the rest of the registry loads as usual.
  */
 import fs from 'node:fs';
 import os from 'node:os';
@@ -21,14 +17,6 @@ const KINDS = new Set(['dir', 'file', 'project']);
 // <path>/docs/pinpoint/（docs/projects.md）。project 条目不进 entries——
 // entries 的每个消费者（Pages、/sites/、标注桶、编译）都按 page 理解它——
 // 而是单独放在 projects 里，由 src/server/lib/projects.js 读。
-// 2026-10-14 删掉的功能留在老登记表里的键：读的时候跳过并 warn，服务照常起。
-// 文件夹与手动排序（ADR 0032）：顶层 folders / pageFolders / pageOrder，条目上的 folder / order。
-// 登记表级挂靠（ADR 0021 阶段 8）：条目上的 page / role；带 page 的条目照常自成一页。
-// url 条目与站点代理（ADR 0019）：kind "url" 的整条条目跳过；别的条目上的 url 字段同样跳过，
-// 所以老 url 条目能经 move 重指到本地目录或文件。
-const RETIRED_TOP_KEYS = ['folders', 'pageFolders', 'pageOrder'];
-export const RETIRED_ENTRY_KEYS = ['folder', 'order', 'page', 'role', 'url'];
-const RETIRED_KINDS = ['url'];
 
 /**
  * 按 id 读 registry 的入口（loadRegistry 的结果与 registry-store 的 live view 同形）：
@@ -130,18 +118,10 @@ export function loadRegistry(options = {}) {
     log(`[registry] warning: ${message}`);
   }
 
-  for (const key of RETIRED_TOP_KEYS) {
-    if (parsed[key] !== undefined) warn(`"${key}" belongs to a retired feature — ignored`);
-  }
-
   const seen = new Set();
   const entries = [];
   const projects = [];
   for (const raw of parsed.entries) {
-    if (raw && typeof raw === 'object' && RETIRED_KINDS.includes(raw.kind)) {
-      warn(`entry "${raw.id}" kind "${raw.kind}" belongs to a retired feature — skipped`);
-      continue;
-    }
     const problem = validateEntry(raw, seen);
     if (problem) {
       errors.push(problem);
@@ -162,9 +142,6 @@ export function loadRegistry(options = {}) {
       // keep the entry and warn rather than failing the whole registry.
       warnings.push(`entry "${entry.id}" path does not exist: ${entry.path}`);
       log(`[registry] warning: ${warnings[warnings.length - 1]}`);
-    }
-    for (const key of RETIRED_ENTRY_KEYS) {
-      if (raw[key] !== undefined) warn(`entry "${entry.id}" field "${key}" belongs to a retired feature — ignored`);
     }
     entries.push(entry);
   }
