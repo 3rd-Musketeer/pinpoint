@@ -1,7 +1,7 @@
 // 工作台的 SSE 连接转给嵌在画布里的页面（2026-10-15 活的 HTML 卡片）。文章画布上每张卡片是一份带标注客户端的
 // 页面，各开一条 /events 会让连接数跟着卡片数涨（HTTP/1.1 同源只有 6 条，第 7 条起请求全堵住）。所以卡片的
 // iframe 带 data-pp-parent-events，里面的标注客户端不自己连，订阅这里（window.workbench.subscribeEvents）。
-import { registerEmbedPark } from './embed-park.js';
+import { embedParked, registerEmbedPark } from './embed-park.js';
 
 var online = false;
 var listeners = new Set();
@@ -58,6 +58,8 @@ export function startServerEvents(onAnnotations, onResume) {
     pause: function () { parked = true; disconnect(); },
     resume: function () { parked = false; connect(); if (onResume) onResume(); },
   });
-  connect();
+  // 登记时已处于停驻（文章页预热嵌入的 pause 先于左栏挂载，registerEmbedPark 对
+  // 晚登记的 duty 已补调过上面的 pause）就不开：连接的第一次开合交给 resume。
+  if (!embedParked()) connect();
   return function () { releasePark(); disconnect(); };
 }
