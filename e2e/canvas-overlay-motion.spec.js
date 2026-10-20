@@ -696,6 +696,51 @@ test('画布浮层：hash 入口等待中失败后重试，真实入口放行后
 // 文档身份另有标记断言，不只靠计时。
 const OPEN_BUDGET_MS = 120;
 
+test('嵌入工作台：页面不存在时不等账本读完也回停驻回执，恢复后可再次停驻', async ({ page }) => {
+  test.setTimeout(60_000);
+  const errors = [];
+  page.on('pageerror', (error) => errors.push(String(error)));
+  let releaseLedger;
+  const ledgerGate = new Promise((resolve) => { releaseLedger = resolve; });
+  const pendingReads = [];
+  await page.route((url) => url.pathname.includes('/annotations/') && url.searchParams.get('entry') === 'e2e-missing-park', (route) => {
+    const pending = ledgerGate.then(() => route.continue());
+    pendingReads.push(pending);
+    return pending;
+  });
+  // 同源父页与 held 容器走真实预热桥；不替换 boot 或 whenReady。
+  await page.route('**/e2e-missing-park-parent', (route) => route.fulfill({
+    contentType: 'text/html',
+    body: '<!doctype html><dialog data-pp-overlay data-ov-held style="display:flex;visibility:hidden"><iframe src="/workbench/?page=e2e-missing-park&embed=overlay&gen=1"></iframe></dialog>',
+  }));
+  await page.addInitScript(() => {
+    window.parkReceipts = [];
+    addEventListener('message', (event) => {
+      if (event.source === document.querySelector('iframe')?.contentWindow && event.origin === location.origin &&
+          event.data?.source === 'pinpoint-workbench' && event.data.type === 'parked') {
+        window.parkReceipts.push(event.data.paused);
+      }
+    });
+  });
+  try {
+    await page.goto('/e2e-missing-park-parent');
+    await expect(page.frameLocator('iframe').locator('[data-err-panel]')).toContainText('页面不存在', { timeout: 30_000 });
+    const send = (type) => page.evaluate((type) => {
+      document.querySelector('iframe').contentWindow.postMessage({ source: 'pinpoint-article', type }, location.origin);
+    }, type);
+    // bridge 从 held 容器补 pause；缺失页的账本响应未放行也应完成停驻回执。
+    await expect.poll(() => page.evaluate(() => window.parkReceipts)).toEqual([true]);
+    await send('resume');
+    await expect.poll(() => page.evaluate(() => window.parkReceipts)).toEqual([true, false]);
+    await send('pause');
+    await expect.poll(() => page.evaluate(() => window.parkReceipts)).toEqual([true, false, true]);
+    expect(errors).toEqual([]);
+  } finally {
+    releaseLedger();
+    await Promise.all(pendingReads);
+  }
+});
+
 test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒工作台不再排回调', async ({ page }) => {
   test.setTimeout(180_000);
   let parkedBody = null;

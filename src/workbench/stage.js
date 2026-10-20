@@ -328,7 +328,11 @@ startEmbedBridge(function () {
     : new Promise(function (resolve) { window.addEventListener('load', resolve, { once: true }); });
   return loaded.then(function () { return bootSettled; })
     .then(function () { return followSession('boardSettled'); })
-    .then(function () { return window.pinpoint && window.pinpoint.whenReady(); })
+    .then(function () {
+      // 缺失页只有错误面板，没有可用的账本；回执不能依赖它的首读是否会结束。
+      if (wbGet().missingPageId) return;
+      return window.pinpoint && window.pinpoint.whenReady();
+    })
     .then(function () { return whenStageScrollSettled(); });
 });
 startPageOverlay(stage);
