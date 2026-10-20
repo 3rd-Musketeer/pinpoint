@@ -137,6 +137,7 @@ export function createProseSync(opts) {
         // 断线期间推的事件都丢了：从磁盘补一次。
         eventsBroken = false;
         hydrate();
+        document.dispatchEvent(new CustomEvent('pp:preview-update', { detail: { id: ENTRY } }));
       } else if (connection === 'offline' && prose.hydrated()) {
         connection = 'online';
         hooks.render();
@@ -190,6 +191,7 @@ export function createProseSync(opts) {
     eventsBroken = false;
     connectEvents();
     hydrate();
+    document.dispatchEvent(new CustomEvent('pp:preview-update', { detail: { id: ENTRY } }));
   });
 
   return {

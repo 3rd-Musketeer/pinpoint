@@ -109,7 +109,7 @@ frontmatter：`name`（缺省用文件名，`[[ ]]` 按它解析）、`status`�
 
 ## 代码地图
 
-改稿完成信号与工作台同源：watcher 的 `preview:update` 同时经现有 `/events` SSE 转给文章，正文同步器发 `pp:preview-update`，卡片只重取受影响的已挂载帧；在飞时合并一次更新，尚未懒加载的帧不提前请求。单次出帧只满足进入时的最低代次，后继代次由此信号推进，不依赖 Astro reload 的速度。
+改稿完成信号与工作台同源：watcher 的 `preview:update` 同时经现有 `/events` SSE 转给文章，正文同步器发 `pp:preview-update`，卡片只重取受影响的已挂载帧；在飞时合并一次更新，尚未懒加载的帧不提前请求。SSE 断线后重连、或 persisted pageshow 恢复时，以同一队列补刷本篇已加载卡片，补上离开期间漏收的完成信号。单次出帧只满足进入时的最低代次，后继代次由此信号推进，不依赖 Astro reload 的速度。
 
 - `src/lib/projects-source.js`：站点进服务端代码的唯一入口。读 registry / project 用服务与 CLI 共用的 `loadRegistry` + `listProjects`（`src/server/lib/projects.js`），画布卡片的数据用 `articleCanvas`（`src/server/lib/article-board.js`，契约见 `docs/projects.md`“画布视图”）。文章的 title、summary 与 wiki 词条的 name、slug、status、boundary 都取它的结果，不取 Astro 自己的 YAML 解析。id 规则、`refKey`、节字母这类纯规则从 `src/shared/project-ids.js` 取；浏览器端脚本只 import `src/lib/` 下的文件（`fs.allow` 不放仓库源码）。
 - `src/lib/loaders.js`、`src/content.config.js`：三个内容集合 projects / articles / concepts（concepts 是 wiki 词条）。

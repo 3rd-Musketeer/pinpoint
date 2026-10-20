@@ -12,6 +12,7 @@ export const OWNER_PAGE = 'e2e-owner_overview';
 export const OWNER_ARTICLE = '/e2e-owner/overview/';
 export const OWNER_STATIC_SOURCE = path.join(OWNER_PROJECT, 'docs/pinpoint/articles/static');
 export const OWNER_STATIC_ARTICLE = '/e2e-owner/static/';
+export const OWNER_UPDATE_SOURCE = path.join(OWNER_PROJECT, 'docs/pinpoint/articles/updates');
 export const OWNER_FRAMES = 97;
 export const frameId = n => `flow-${String(n).padStart(3, '0')}`;
 export const sectionId = n => `part-${Math.min(12, Math.floor((n - 1) / 8) + 1)}`;
@@ -49,4 +50,9 @@ export function writeOwnerFixture() {
   fs.writeFileSync(path.join(OWNER_PROJECT, 'docs/pinpoint/project.json'), JSON.stringify({ id: 'e2e-owner', title: 'Owner 流程验收' }));
   writeArticle(OWNER_SOURCE, 'Owner 大文章验收', true);
   writeArticle(OWNER_STATIC_SOURCE, 'Owner 静态大文章验收', false);
+  // 通知回归只需两种挂载路径，避免用 97 帧的性能固件测断流恢复。
+  fs.mkdirSync(OWNER_UPDATE_SOURCE, { recursive: true });
+  fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, 'index.mdx'), '---\ntitle: 更新通知验收\n---\n<Section id="live" title="更新">\n<Canvas frames={["s", "d"]} />\n</Section>\n');
+  for (const id of ['s', 'd']) fs.writeFileSync(path.join(OWNER_UPDATE_SOURCE, `${id}.jsx`),
+    `export default function Frame() { return <div className="ios-app"><p data-update>${id} OLD</p>${id === 'd' ? '<script data-preview-script>{`root.dataset.ready = "1";`}</script>' : ''}</div>; }`);
 }
