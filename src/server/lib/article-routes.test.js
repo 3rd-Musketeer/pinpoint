@@ -47,10 +47,12 @@ test('routeArticleRequest：concepts 不再是保留第二段——旧 /concepts
   assert.equal(routeArticleRequest('/unknown/concepts/x/', isProject), null);
 });
 
-test('routeArticleRequest：不带参数的 / 是 blog 首页，交给站点；带参数的 / 不归站点（旧画布视图地址）', () => {
+test('routeArticleRequest：/ 是 blog 首页（query 原样带上）；带工作台深链参数的 / 不归站点（旧画布视图地址，workbench-routes 先 404）', () => {
   const home = { kind: 'home', project: null, article: null, upstream: '/_astro/' };
   assert.deepEqual(routeArticleRequest('/', () => false), home);
   assert.deepEqual(routeArticleRequest('/?', () => false), home);
+  assert.deepEqual(routeArticleRequest('/?utm_source=review', () => false),
+    { kind: 'home', project: null, article: null, upstream: '/_astro/?utm_source=review' });
   assert.equal(routeArticleRequest('/?page=demo_a', () => true), null);
 });
 

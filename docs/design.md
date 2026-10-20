@@ -214,7 +214,7 @@
 
 | 首段 | 去向 |
 | --- | --- |
-| 不带参数的 `/` | 文章站点的 blog 首页：所有登记 project 的全部文章（ADR 0044） |
+| `/`（含 utm 这类无关 query） | 文章站点的 blog 首页：所有登记 project 的全部文章（ADR 0044）。根 `/index.html` 与带工作台深链参数（page/mode/entry/tab/section/embed/gen）的 `/` 是退役的旧工作台地址，404 |
 | `workbench`（`/workbench/`） | 工作台：改写成仓库根的 `index.html`；壳页带 `<base href="/">`，板里相对站点根的地址照旧解析。`/workbench` 302 补尾斜杠（`src/server/lib/workbench-routes.js`） |
 | 登记过的 project id（registry kind `project`） | 文章站点：Astro 开发服务器，路径原样，站点不设 base |
 | `_astro`（含 HMR websocket）、`_image` | Astro 开发服务器自己的 vite 内部路径与图片端点 |

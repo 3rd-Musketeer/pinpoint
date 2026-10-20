@@ -45,7 +45,7 @@ export default defineConfig({
   cacheDir: viteCacheDir({ root: ROOT }),
   // 工作台的第三方依赖启动时一次预构建齐，不等运行时发现新依赖再重建 deps/、换 chunk 名。
   optimizeDeps: bundledWorkbench ? { noDiscovery: true, include: [] } : { include: WORKBENCH_DEPS },
-  // workbenchRoutes 排最前：旧地址先 302 到 /workbench/，不带参数的 / 才轮到文章代理（blog 首页，ADR 0044）。
+  // workbenchRoutes 排最前：旧的工作台地址（根 /index.html、带深链参数的 /）先 404，其余请求才轮到文章代理（blog 首页与项目页，ADR 0044）。
   plugins: [workbenchRoutes({ root: ROOT, mode: bundledWorkbench ? 'bundle' : 'dev' }), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes(), loopbackListener()],
   server: {
     port: Number(process.env.PORT) || 5199,

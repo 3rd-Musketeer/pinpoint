@@ -13,6 +13,7 @@
 import { useWorkbenchStore } from './app/store.js';
 import { boardEntries, defaultEntryId } from './lib/board-entries.js';
 import { deepLinkQuery, modeForPage, parseDeepLink, withEmbed } from './lib/page-url.js';
+import { WORKBENCH_PATH } from '../shared/workbench-url.js';
 
 export function startDeepLinkSync() {
   var last = null;
@@ -38,7 +39,7 @@ export function startDeepLinkSync() {
     var query = withEmbed(deepLinkQuery(state.activePageId, modeForPage(state.pageManifest, state.activePageId), entryParam, tabParam), embed, gen);
     if (!query || query === last) return;
     last = query;
-    history.replaceState(null, '', location.pathname + '?' + query + location.hash);
+    history.replaceState(null, '', WORKBENCH_PATH + '?' + query + location.hash);
   }
   sync(useWorkbenchStore.getState()); // boot 解析结果先规范化落 URL
   useWorkbenchStore.subscribe(sync);

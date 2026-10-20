@@ -4,10 +4,10 @@
  * 原样交给 pinpoint 自己的中间件链。
  *
  * 地址空间（docs/design.md「服务路由」）：
- *   /              不带参数 → 文章站点的 blog 首页（全部文章，ADR 0044）。带参数的 / 是旧的
- *                  画布视图地址，先被 workbench-routes.js 302 到 /workbench/，到不了这里。
+ *   /              文章站点的 blog 首页（全部文章，ADR 0044）。带工作台深链参数
+ *                  （page/mode/entry/tab/section/embed/gen）的 / 是旧画布视图地址，
+ *                  先被 workbench-routes.js 答 404，到不了这里。
  *   /<project>/…   首段是登记过的 project id → 文章站点。路径原样，站点不设 base。
- *                  旧的 wiki 地址 /<project>/concepts/… 301 到 /<project>/wiki/…（ADR 0045），不经站点。
  *   /_astro/…      Astro 开发服务器自己的 vite 内部路径（/@vite/client、/src/…、
  *                  /@fs/…、/node_modules/.vite/…、HMR websocket）。pinpoint 本身
  *                  也是 vite，同名的 /@vite/、/@fs/、/@id/、/node_modules/ 归它自己，
@@ -22,6 +22,7 @@
  */
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { isReservedSegment, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
+import { hasWorkbenchQuery } from '../../shared/workbench-url.js';
 import { projectEntry } from './registry.js';
 import { splitUrlQuery } from './req-url.js';
 
@@ -73,8 +74,10 @@ export function articleIdOfPath(pathname) {
  */
 export function routeArticleRequest(url, isProject) {
   const { pathname, search } = splitUrlQuery(url);
-  if (pathname === '/' && (search === '' || search === '?')) {
-    return { kind: 'home', project: null, article: null, upstream: ASTRO_DEV_BASE };
+  // 带工作台深链参数的 / 是旧画布视图地址（workbench-routes 先答 404）；别的 query
+  // （/?utm_source=…）照常是 blog 首页。
+  if (pathname === '/' && !hasWorkbenchQuery(search)) {
+    return { kind: 'home', project: null, article: null, upstream: ASTRO_DEV_BASE + (search === '?' ? '' : search) };
   }
   if (pathname === '/_astro' || pathname.startsWith('/_astro/')) {
     return { kind: 'internal', upstream: astroInternalUpstream(pathname) + search };
