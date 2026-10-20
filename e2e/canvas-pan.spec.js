@@ -577,6 +577,7 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   });
   await page.route('**/annotations/**', route => route.fulfill({ json: ledger }));
   await openWorkbench(page, 'page=e2e-ios');
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
   await expect(page.locator(cellSelector).first()).toBeVisible();
   await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
   await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);
@@ -615,9 +616,14 @@ test('ghost rect keeps the last known spot through pan and zoom after the target
   await page.reload();
   await page.waitForFunction(() => window.workbench && window.pinpoint);
   await page.waitForFunction(() => window.pinpoint.getState().countAll === 1);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
   // 账本先于帧就绪（loadBoard 全部帧到齐才写 panel）：先等目标格子装上，删除要真的命中，
   // 否则删的是空集合，帧随后装上、锚点复活，幽灵框被实线框替掉（2026-10-15 首跑失败根因）。
   await expect(page.locator(cellSelector).first()).toBeVisible();
+  // zoom 与滚动偏好分别防抖保存，reload 时可能只有 zoom 已存。把目标真滚进视口，
+  // 再删并量幽灵框；屏外组会被虚拟化隐藏，toBeVisible 不保证在视口内。
+  await page.locator(cellSelector).first().scrollIntoViewIfNeeded();
+  await page.evaluate(() => window.workbench.whenScrollSettled());
   const removed = await page.locator(cellSelector).evaluateAll(els => { els.forEach(el => el.remove()); return els.length; });
   expect(removed).toBeGreaterThan(0);
   await expect(ghost).toHaveCount(1);
