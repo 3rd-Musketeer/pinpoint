@@ -26,10 +26,11 @@ export async function loadSite() {
     getCollection('projects'), getCollection('articles'), getCollection('concepts'),
   ]);
   // errors / p.errors: printable lines; p.layoutErrors: the objects (bannerErrors filters them by field).
-  const errors = projectEntries.flatMap((p) => p.data.errors.map((e) => projectErrorLine(p.id, e)));
+  const errors = [];
   const projects = new Map();
   for (const p of projectEntries) {
     const errorLines = p.data.errors.map((e) => projectErrorLine(p.id, e));
+    errors.push(...errorLines);
     projects.set(p.id, { ...p.data, errors: errorLines, layoutErrors: p.data.errors, articles: [], concepts: [], names: new Map(), emptyRefs: new Map() });
   }
   for (const a of articleEntries) {
