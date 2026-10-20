@@ -16,6 +16,8 @@ test('跨文档的层：页面浮层 iframe 与活卡片各自接住自己的 Es
   await page.setViewportSize({ width: 1440, height: 900 });
   await page.goto('/e2e-html/pages/');
   await waitNoReload(page);
+  // 浮层客户端装好再点 [data-pp-open]：没装好时点击穿透成 /workbench/ 导航（首跑实证）。
+  await page.waitForFunction(() => window.pinpointOverlay);
   const overlay = page.locator('dialog[data-pp-overlay]');
   const canvas = page.frameLocator('iframe.ov-canvas');
   const card = canvas.frameLocator('[data-html-card][data-screen="catalog"] iframe');

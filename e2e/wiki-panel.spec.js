@@ -12,7 +12,11 @@ import { openProseArticle } from './lib/article.js';
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 
-const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认');
+const openArticle = async (page) => {
+  await openProseArticle(page, ARTICLE, '提交前确认');
+  // client.js（wiki 抽屉的点击监听器）装好的可见证据：抽屉的头是它插进去的。
+  await expect(page.locator('#drawer [data-drawer-close]')).toBeAttached();
+};
 
 const wikiBtn = (page) => page.locator('#btn-wiki');
 const panel = (page) => page.locator('#drawer');

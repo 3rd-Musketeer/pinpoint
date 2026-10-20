@@ -9,4 +9,7 @@ export async function openProseArticle(page, url, h1, { force = false } = {}) {
   await expect(page.locator('#article .prose h1')).toHaveText(h1, { timeout: 150_000 });
   await waitNoReload(page, { force });
   await proseSettled(page);
+  // 浮层客户端（带画布的文章都会装）不等的话，开页后立刻点 [data-pp-open]/#btn-canvas
+  // 会穿透 JS 拦截、顺 href 导航走（layer-stack 首跑实证）。
+  await page.waitForFunction(() => window.pinpointOverlay);
 }
