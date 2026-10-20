@@ -52,6 +52,60 @@ export function writeRegistryFile(registryPath, doc) {
   }
 }
 
+// 并发写互斥（CLI 排查 #4）：每个写助手都是「读整个文件 → 改 → 原子写回」，
+// 两个 CLI 同时跑时后 rename 的一方会把前一方的条目整个抹掉且不报错——多 agent
+// 同时登记正是这个工具的目标场景。锁 = 同目录的 <file>.lock，O_EXCL 独占创建，
+// 拿不到就同步短等重试；持锁进程死了锁不会自己解，按 mtime 判 stale 接管
+//（整个写是毫秒级，stale 窗给足余量）。释放前核对锁里记的 pid，接管场景不误删
+// 别人的锁。
+const LOCK_STALE_MS = 5_000;
+const LOCK_RETRY_MS = 25;
+
+function acquireRegistryLock(lock, staleMs = LOCK_STALE_MS) {
+  fs.mkdirSync(path.dirname(lock), { recursive: true });
+  for (;;) {
+    try {
+      const fd = fs.openSync(lock, 'wx');
+      try {
+        fs.writeSync(fd, String(process.pid));
+      } finally {
+        fs.closeSync(fd);
+      }
+      return;
+    } catch (error) {
+      if (error.code !== 'EEXIST') throw error;
+      let stat;
+      try {
+        stat = fs.statSync(lock);
+      } catch {
+        continue; // 恰好被释放：立刻再试
+      }
+      if (Date.now() - stat.mtimeMs <= staleMs) {
+        Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, LOCK_RETRY_MS);
+        continue;
+      }
+      try { fs.unlinkSync(lock); } catch { /* 别的进程抢先接管了：再试 */ }
+    }
+  }
+}
+
+function releaseRegistryLock(lock) {
+  try {
+    if (fs.readFileSync(lock, 'utf8') === String(process.pid)) fs.unlinkSync(lock);
+  } catch { /* 锁已没了：接管方在管 */ }
+}
+
+/** 读-改-写整段持锁。staleMs 供测试把接管窗调短。 */
+export function withRegistryLock(registryPath, fn, { staleMs } = {}) {
+  const lock = `${registryPath}.lock`;
+  acquireRegistryLock(lock, staleMs);
+  try {
+    return fn();
+  } finally {
+    releaseRegistryLock(lock);
+  }
+}
+
 /** Strict validation of one entry about to be written. Returns an error message or null. */
 export function validateNewEntry(raw, existingIds) {
   if (!raw || typeof raw !== 'object') return '条目必须是对象';
@@ -128,12 +182,14 @@ export function listRegistryEntries(registryPath) {
  * is invalid; the on-disk file is untouched in that case.
  */
 export function updateRegistryEntry(registryPath, raw) {
-  const doc = readRegistryDoc(registryPath);
-  const index = doc.entries.findIndex((entry) => entry && entry.id === (raw && raw.id));
-  if (index < 0) throw new Error(`条目不存在：${raw && raw.id}`);
-  const entries = replaceEntry(doc.entries, index, raw);
-  writeRegistryFile(registryPath, { ...doc, entries });
-  return entries[index];
+  return withRegistryLock(registryPath, () => {
+    const doc = readRegistryDoc(registryPath);
+    const index = doc.entries.findIndex((entry) => entry && entry.id === (raw && raw.id));
+    if (index < 0) throw new Error(`条目不存在：${raw && raw.id}`);
+    const entries = replaceEntry(doc.entries, index, raw);
+    writeRegistryFile(registryPath, { ...doc, entries });
+    return entries[index];
+  });
 }
 
 /**
@@ -156,15 +212,17 @@ function replaceEntry(entries, index, raw) {
  * taken/invalid; the on-disk file is untouched in that case. Returns { entry }.
  */
 export function renameRegistryEntry(registryPath, oldId, newId) {
-  const doc = readRegistryDoc(registryPath);
-  const index = doc.entries.findIndex((entry) => entry && entry.id === oldId);
-  if (index < 0) throw new Error(`条目不存在：${oldId}`);
-  const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
-  const problem = validateNewEntry(withoutRetiredKeys({ ...doc.entries[index], id: newId }), otherIds);
-  if (problem) throw new Error(problem);
-  const entries = doc.entries.map((entry, i) => (i === index ? normalizeNewEntry(withoutRetiredKeys({ ...entry, id: newId })) : entry));
-  writeRegistryFile(registryPath, { ...doc, entries });
-  return { entry: entries[index] };
+  return withRegistryLock(registryPath, () => {
+    const doc = readRegistryDoc(registryPath);
+    const index = doc.entries.findIndex((entry) => entry && entry.id === oldId);
+    if (index < 0) throw new Error(`条目不存在：${oldId}`);
+    const otherIds = new Set(doc.entries.filter((_, i) => i !== index).map((entry) => entry && entry.id));
+    const problem = validateNewEntry(withoutRetiredKeys({ ...doc.entries[index], id: newId }), otherIds);
+    if (problem) throw new Error(problem);
+    const entries = doc.entries.map((entry, i) => (i === index ? normalizeNewEntry(withoutRetiredKeys({ ...entry, id: newId })) : entry));
+    writeRegistryFile(registryPath, { ...doc, entries });
+    return { entry: entries[index] };
+  });
 }
 
 /**
@@ -174,12 +232,14 @@ export function renameRegistryEntry(registryPath, oldId, newId) {
  * annotations live in the CLI's preflight (non-empty bucket) — this layer only refuses an unknown id. Returns the removed entry.
  */
 export function removeRegistryEntry(registryPath, id) {
-  const doc = readRegistryDoc(registryPath);
-  const index = doc.entries.findIndex((entry) => entry && entry.id === id);
-  if (index < 0) throw new Error(`条目不存在：${id}`);
-  const removed = doc.entries[index];
-  writeRegistryFile(registryPath, { ...doc, entries: doc.entries.filter((_, i) => i !== index) });
-  return removed;
+  return withRegistryLock(registryPath, () => {
+    const doc = readRegistryDoc(registryPath);
+    const index = doc.entries.findIndex((entry) => entry && entry.id === id);
+    if (index < 0) throw new Error(`条目不存在：${id}`);
+    const removed = doc.entries[index];
+    writeRegistryFile(registryPath, { ...doc, entries: doc.entries.filter((_, i) => i !== index) });
+    return removed;
+  });
 }
 
 /**
@@ -196,15 +256,17 @@ export function removeRegistryEntry(registryPath, id) {
  */
 export function addRegistryEntry(registryPath, raw, options = {}) {
   const seed = Array.isArray(options.seedEntries) ? options.seedEntries : [];
-  const doc = fs.existsSync(registryPath)
-    ? readRegistryDoc(registryPath)
-    : { version: 1, entries: [...seed] };
-  const existingIds = new Set(doc.entries.map((entry) => entry && entry.id));
-  const problem = validateNewEntry(raw, existingIds);
-  if (problem) throw new Error(problem);
-  const entry = normalizeNewEntry({ ...raw, addedAt: Date.now() });
-  writeRegistryFile(registryPath, { ...doc, entries: [...doc.entries, entry] });
-  return entry;
+  return withRegistryLock(registryPath, () => {
+    const doc = fs.existsSync(registryPath)
+      ? readRegistryDoc(registryPath)
+      : { version: 1, entries: [...seed] };
+    const existingIds = new Set(doc.entries.map((entry) => entry && entry.id));
+    const problem = validateNewEntry(raw, existingIds);
+    if (problem) throw new Error(problem);
+    const entry = normalizeNewEntry({ ...raw, addedAt: Date.now() });
+    writeRegistryFile(registryPath, { ...doc, entries: [...doc.entries, entry] });
+    return entry;
+  });
 }
 
 /**

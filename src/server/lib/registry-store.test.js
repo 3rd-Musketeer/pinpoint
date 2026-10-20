@@ -1,8 +1,10 @@
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { fileURLToPath } from 'node:url';
 
 import {
   addRegistryEntry,
@@ -12,6 +14,7 @@ import {
   renameRegistryEntry,
   updateRegistryEntry,
   validateNewEntry,
+  withRegistryLock,
   writeRegistryFile,
 } from './registry-store.js';
 
@@ -267,4 +270,56 @@ test('老登记表里残留的 url 条目：remove 照常删；保持 kind url �
   const removed = removeRegistryEntry(file, 'web');
   assert.equal(removed.kind, 'url');
   assert.deepEqual(JSON.parse(fs.readFileSync(file, 'utf8')).entries.map((e) => e.id), ['a']);
+});
+
+test('withRegistryLock：死进程留下的 stale 锁被接管，用完释放', (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const lock = `${file}.lock`;
+  fs.writeFileSync(lock, '999999');
+  fs.utimesSync(lock, new Date(Date.now() - 60_000), new Date(Date.now() - 60_000));
+  assert.equal(withRegistryLock(file, () => 'ran', { staleMs: 1000 }), 'ran');
+  assert.ok(!fs.existsSync(lock), '用完释放');
+});
+
+test('withRegistryLock：别人持锁时等待方等它释放再进（不 stale 接管）', async (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const lock = `${file}.lock`;
+  // 持锁方是真实子进程：自己的事件循环空闲，200ms 后释放。Atomics.wait 阻塞的是
+  // 本进程的主线程，同进程 setTimeout 不会走，所以不能用本进程模拟持锁方。
+  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(lock)}, '12345'); setTimeout(() => fs.unlinkSync(${JSON.stringify(lock)}), 200);`]);
+  t.after(() => new Promise((resolve) => holder.on('close', resolve)));
+  // 等锁文件真的出现再计时（spawn 到写锁之间有间隙）。
+  await new Promise((resolve) => {
+    const t0 = Date.now();
+    const poll = () => (fs.existsSync(lock) || Date.now() - t0 > 2000 ? resolve() : setTimeout(poll, 10));
+    poll();
+  });
+  const started = Date.now();
+  assert.equal(withRegistryLock(file, () => 'ran', { staleMs: 60_000 }), 'ran');
+  assert.ok(Date.now() - started >= 50, '等过持锁方再进');
+  assert.ok(!fs.existsSync(lock), '用完释放');
+});
+
+test('并发 add：两个进程各加 5 条，10 条都在（读-改-写整段持锁，不再丢更新）', async (t) => {
+  const dir = withTempDir(t);
+  const file = path.join(dir, 'registry.json');
+  const storeModule = path.resolve(path.dirname(fileURLToPath(import.meta.url)), 'registry-store.js');
+  const script = [
+    `import { addRegistryEntry } from ${JSON.stringify(storeModule)};`,
+    `for (let i = 0; i < 5; i++) {`,
+    `  addRegistryEntry(${JSON.stringify(file)}, { id: 'p' + process.pid + '-' + i, kind: 'dir', path: ${JSON.stringify(dir)} });`,
+    `}`,
+  ].join('\n');
+  const exits = await Promise.all([0, 1].map(() => new Promise((resolve) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', script], { stdio: ['ignore', 'ignore', 'pipe'] });
+    let stderr = '';
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.on('close', (code) => resolve({ code, stderr }));
+  })));
+  for (const { code, stderr } of exits) assert.equal(code, 0, stderr);
+  const ids = listRegistryEntries(file).map((entry) => entry.id);
+  assert.equal(ids.length, 10, `丢更新了：${ids.join(',')}`);
+  assert.ok(!fs.existsSync(`${file}.lock`), '锁不残留');
 });
