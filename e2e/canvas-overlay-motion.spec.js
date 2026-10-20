@@ -939,6 +939,13 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
     win.setInterval = function (...args) { counts.interval += 1; return orig.interval.apply(this, args); };
     win.__minuteProbe = { counts, restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; } };
   });
+  // 先快进 3 秒把「停驻前已排下」的尾巴烧掉（诊断 persist/upload 2s、几何落盘 600ms
+  // 等；保存与 outbox 按契约停驻期间照常落盘，不算停驻期排程），清零后再量 65 秒。
+  await page.clock.runFor(3_000);
+  await page.evaluate(() => {
+    const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
+    probe.counts.timeout = 0; probe.counts.interval = 0;
+  });
   await page.clock.runFor(65_000);
   const counts = await page.evaluate(() => {
     const probe = window.pinpointOverlay.frame().contentWindow.__minuteProbe;
