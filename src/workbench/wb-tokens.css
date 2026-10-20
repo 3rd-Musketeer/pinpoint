@@ -90,7 +90,6 @@
   --wb-z-marks:10;          /* #ann-overlay 静止：钉子 / 命中框 / 结果蓝框 / hover ghost。在所有 shell 浮层之下 */
   --wb-z-panel:20;          /* .wb-side 左栏玻璃面板；#wb-ann-gutter 同层 */
   --wb-z-dock:30;           /* .wb-splitter；#wbdock（按需列表 / detail 停靠槽） */
-  --wb-z-hud:40;            /* .wb-canvas-dock（section nav + minimap） */
   --wb-z-marks-active:50;   /* #ann-overlay 抬升态（选中气泡 / flash）：压过面板、停靠槽、HUD，不压横条（ADR 0031 “列表不盖被定位气泡”）；输入框不在这一档，见 --wb-z-composer */
   --wb-z-strip:60;          /* .wb-strip 底部横条：shell 浮层里最上 */
   --wb-z-composer:70;       /* #ann-chrome：写标注的输入框及其 lasso / tip：外壳里最高，压过横条；只有 body 上的 portal 浮层与 top layer 在它之上 */

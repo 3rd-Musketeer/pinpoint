@@ -123,7 +123,7 @@ test('拖动画布时钉子与框和 frame 同帧：滚动后同步测量，不�
   expect(await page.evaluate(() => document.getElementById('ann-marks').parentElement.id)).toBe('wbstage');
 });
 
-test('从标注列表 / 卡片定位：视角落在标注所在 frame 上，与树 / minimap 聚焦 frame 同一落点', async ({ page }) => {
+test('从标注列表 / 卡片定位：视角落在标注所在 frame 上，与树聚焦 frame 同一落点', async ({ page }) => {
   await openCanvas(page, 1);
   const stage = page.locator('#wbstage');
   // 先把视角挪开，免得“本来就在那儿”蒙混过关。

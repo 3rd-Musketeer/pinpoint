@@ -468,7 +468,8 @@ test('聚焦编辑标注时页面保持原位，键盘滚动不越过编辑区',
 test('annotation jumps center the annotation frame, and typing never moves the canvas', async ({page}) => {
   await page.setViewportSize({width:1500,height:1000});
   await page.goto('/workbench/?page=e2e-dir-ios');
-  await page.waitForFunction(()=>window.pinpoint?.getState().connected && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  await page.waitForFunction(()=>window.workbench && window.pinpoint?.getState().connected);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
   await page.evaluate(()=>window.workbench.whenScrollSettled());
   await page.evaluate(()=>window.pinpoint.setMode(true));
   await page.locator('[data-screen="cards"] [data-card]').first().click();

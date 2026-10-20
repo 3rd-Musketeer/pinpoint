@@ -116,7 +116,7 @@ test('close 返回 YIELD：这一下归页面，不处理也不 preventDefault�
 });
 
 test('LAYER_RANK：草稿 → 菜单与对话框 → 标注列表 → 页面自己的层 → 标注模式 → 导航器 → 页面浮层', () => {
-  const order = ['draft', 'chrome', 'annList', 'hostPage', 'mode', 'canvasNav', 'pageOverlay'];
+  const order = ['draft', 'chrome', 'annList', 'hostPage', 'mode', 'pageOverlay'];
   assert.deepEqual(Object.keys(LAYER_RANK).sort((a, b) => LAYER_RANK[a] - LAYER_RANK[b]), order);
 });
 

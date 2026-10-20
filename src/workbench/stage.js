@@ -27,7 +27,6 @@ import {
   focusBoardSection,
   focusWorkbenchFrame,
   resetBoardNavOnLoadFailure,
-  sectionNavRetrying,
   selectBoardFrame,
   selectBoardSection,
   setFrameRevealer,
@@ -376,7 +375,7 @@ window.workbench = {
   // Promise：true 定位了；false 量不到；'unknown' 页里没有这个 section。
   focusSection: function (sectionId) { return focusSection(sectionId); },
   whenScrollSettled: whenStageScrollSettled,
-  // 当前挂载会话的几何批（navigator / 首访聚焦 / minimap）是否已落定。等的期间会话被
+  // 当前挂载会话的几何批（板几何 / 首访聚焦）是否已落定。等的期间会话被
   // 下一次装载替换，就接着等新的那个；false = 还没有会话（板在路上），或会话被取消、
   // 挂载后处理失败 —— 等待方重取再等。注意 page.waitForFunction 把返回的 Promise 当真值
   // 收下、不看它解析成什么，e2e 要用 expect.poll(...).toBe(true) 才真在等 true。
@@ -387,8 +386,6 @@ window.workbench = {
   // 只刷左栏、不重装板，代号不变 —— e2e 拿它作「板没重装」的正向信号，
   // 不用再靠固定等待猜「没发生重装」。
   mountGeneration: function () { return mountManager.generation; },
-  // Section Navigator 在板装载后量不出几何时逐帧重量（board-nav.js）；true = 还在重量。
-  sectionNavRetrying: sectionNavRetrying,
   scrollTo: function (target, options) { return scrollStageTo(stage, target, options); },
   activePageId: function () { return wbGet().activePageId; },
   activeEntryId: function () { return wbGet().activeEntryId; },

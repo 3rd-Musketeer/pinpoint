@@ -362,7 +362,7 @@ export function OutlineButton(props) {
     'aria-controls': open ? 'wboutline-pop' : undefined,
     onClick: function () { wbSet({ outlinePopKey: open ? null : key }); }
   };
-  // 横条里的那一个（props.strip）：横条工具钮的同一套皮肤（tool variant，同 #wbminimap-toggle），开着时 on 态。
+  // 横条里的那一个（props.strip）：横条工具钮的同一套皮肤（tool variant），开着时 on 态。
   var trigger = props.strip ? (
     <Button {...common} variant="tool" size="icon" id="wbstrip-outline"
       data-state={open ? 'on' : undefined}

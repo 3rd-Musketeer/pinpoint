@@ -35,7 +35,7 @@ import {
 import { closestBoardSection } from './lib/board-navigation.js';
 import { boardTabList, resolveTabId, tabIdOfScreen, tabIdOfSection } from './lib/board-tabs.js';
 import { mergeSitePages, registryToPages, validatePageManifest } from './lib/preview-contracts.js';
-import { currentBoardNavigationModel, updateSectionNavigatorActive } from './board-nav.js';
+import { currentBoardNavigationModel } from './board-nav.js';
 import {
   refit,
   restorePageViewportAfterMount,
@@ -76,7 +76,6 @@ function cancelBoardDraft() {
 function scrollToGroup(groupId, options) {
   options = options || {};
   wbSet({ activeGroup: groupId });
-  updateSectionNavigatorActive(groupId);
   var el = document.getElementById('lib-' + groupId);
   if (el && options.scroll !== false) {
     scrollStageTo(stage, { top: stage.scrollTop + el.getBoundingClientRect().top - stage.getBoundingClientRect().top }, options);
@@ -129,7 +128,6 @@ export function wireLibraryScrollSpy() {
       var best = closest && closest.id;
       if (best && best !== wbGet().activeGroup) {
         wbSet({ activeGroup: best });
-        updateSectionNavigatorActive(best);
       }
     });
   };
@@ -204,7 +202,7 @@ export function activeEntryOf() {
 
 /* ---- 页 tab（ADR 0041）：board.json 的 tabs 是纯视图分组 --------------------
    loadBoard（stage.js）只把活动 tab 的 section 挂上画布；activeBoard.board 因此就是
-   「活动 tab 的视图」（引用号、导航、minimap、条目都只看它）。大纲浮层是例外：它按
+   「活动 tab 的视图」（引用号、定位、条目都只看它）。大纲浮层是例外：它按
    被点的那个 tab 读 fullBoard。activeBoard.fullBoard 留着全部 tab（跨 tab 定位、引用号表、
    大纲浮层）。活动 tab 是页的本机偏好 prefs.activeTabByPage。
    存量 board（只有 sections）没有 tab：这些函数恒返回空 / false，行为同从前。 */

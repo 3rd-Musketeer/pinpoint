@@ -1,7 +1,7 @@
 // Workbench 图标 — lucide iconNode 表 + hero gear path，chrome 全部经这里出壳
 // （旧的命令式挂载器扫 data-wb-icon 占位再 replaceWith 成 svg，会把 React 管理的
 // <i> 换成游离节点、vnode 指向落空，随 workbench-icons.js 一起删除，2026-10-20）。
-import { Files, Archive, Check, Pencil, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, Map, ImageDown, Smartphone, FileText, ArrowUpDown, BookOpen, Newspaper, Library, CircleAlert, ArrowLeft } from 'lucide';
+import { Files, Archive, Check, Pencil, Trash2, Pin, Sun, Moon, SquareDashedMousePointer, PanelLeftClose, PanelLeftOpen, ChevronDown, ChevronLeft, ChevronRight, Ellipsis, ListTree, ImageDown, Smartphone, FileText, ArrowUpDown, BookOpen, Newspaper, Library, CircleAlert, ArrowLeft } from 'lucide';
 
 var ICONS = {
   files: Files,
@@ -21,7 +21,6 @@ var ICONS = {
   'chevron-right': ChevronRight,
   ellipsis: Ellipsis,
   'section-nav': ListTree,
-  map: Map,
   'export-image': ImageDown,
   // 页面行类型图标（2026-09-05 owner 定的映射，lib/page-groups.js PAGE_KIND_ICONS）：
   // smartphone = 画布，file-text = 文档；横条类型标用同一套。

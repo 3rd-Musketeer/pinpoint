@@ -9,11 +9,7 @@ import { BASE_CANVAS_SCALE, scrollAfterZoom } from '../shared/canvas-gesture.js'
 import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { inputFromIosTime } from './lib/ios-time.js';
 import {
-  refreshBoardNavigationModel,
-  scheduleMinimapUpdate,
-  setMinimapOpen,
-  updateMinimapAvailability,
-  updateSectionNavigatorVisibility
+  refreshBoardNavigationModel
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
 import { annotateViewportChanged } from './annotate-surface.js';
@@ -125,9 +121,7 @@ function applyCanvasZoom(val) {
   syncBoardZoomLayout();
   wbSet({ canvasZoom: z });
   annotateViewportChanged();
-  scheduleMinimapUpdate();
-  updateMinimapAvailability();
-  updateSectionNavigatorVisibility();
+  refreshBoardNavigationModel();
 }
 
 var zoomSaveT;
@@ -215,7 +209,6 @@ export function snapshotPageViewport(pageId) {
 
 export function scheduleViewportScrollSave() {
   if (restoringViewport || !stage || embedParked()) return;
-  scheduleMinimapUpdate();
   if (activeBoardMode() === 'html') return;   // 文档条目形态无画布视口可存
   clearTimeout(viewportSaveT);
   viewportSaveT = setTimeout(function () {
@@ -319,7 +312,6 @@ export function applyBootPrefs(prefs, options) {
     applySideWidth(prefs.sideWidth || SIDE_W_DEFAULT);
     setSideCollapsed(!!prefs.sideCollapsed, { save: false, refit: false });
   }
-  setMinimapOpen(false);
 
   // 2026-09-05 设置精简：字号 / 画布纹理 / 锁屏字体不再是设置，值钉在标记里
   // （.ios-root data-text-size、<html data-lock-font>、.wb-stage-wrap 的网格）。
@@ -344,5 +336,4 @@ export function refit() {
   if (window.iOSKit) window.iOSKit.fitAll();
   var _a = annotateApi(); if (_a) _a.render();
   refreshBoardNavigationModel();
-  scheduleMinimapUpdate();
 }

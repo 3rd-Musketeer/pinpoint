@@ -1,28 +1,6 @@
-// 画布工具 + dock（P1b cut3，goal-20260810-workbench-react-rebuild）—
-// 2026-09-04 外壳重设计：右下 HUD 退役，这一段控件搬进底部横条中段
-// （app/Strip.jsx 渲染 <CanvasHud/>，DOM id / class / 文案与布线契约一个没动，
-// wireCanvasHud 照旧在挂载后取句柄）。dock（section-nav + minimap）仍渲染进
-// #wbcanvas-dock 静态容器，仍贴画布右下角，只是抬到横条正上方。
-// open/visible/zoom 状态全部订阅
-// store（board-nav 命令式写入）；minimap 的 canvas 2D 绘制、section-nav 列表的
-// innerHTML、几何测量仍归 board-nav 持有 —— #wbsection-nav-list 的 children 与
-// #wbminimap-canvas 的宽高是不受管区域：JSX 永不声明它们，React 也就从不动它们。
-// DOM id / class / 文案与原静态标记逐一对应（e2e 选择器即契约）。
-// V3 换皮（goal-20260811-workbench-visual-rebuild）：皮肤收编 Tailwind 类 + token，
-// index.html 旧规则删除。配方：
-//  - 浮层语言 = 白面（bg-card = --wb-surface）+ 克制阴影（无发丝描边，2026-08-11 扁平化）
-//    （dock 面板 --wb-sh-3；HUD 容器是静态标记，同款语言留在 index.html 手写 CSS，
-//    值全 token）+ 圆角 --wb-r-4（rounded-xl）；
-//  - section-nav/minimap 开关钮 = Button tool variant（V0 footer gear 同族），
-//    on 态走 data-state=on 的 accent 面（替代旧「白底 + accent 字」手写态）；
-//  - 缩放组 = 槽式分段语言（bg-muted + 2px 内衬 + h-6 项，SEG 同族）；−/读数/+ 是
-//    瞬时动作不是单选，不走 ToggleGroup，只借槽/项皮肤；读数保持等宽数字
-//    （tabular-nums）与 52px 最小宽；
-//  - #wbsection-nav-list 的行（.wb-section-nav-item 系）是 board-nav 命令式构建的
-//    不受管内容：保留手写 CSS（index.html，全 token 化），不进 Tailwind。
 import { Fragment } from 'react';
-import { useWorkbenchStore, wbGet, wbSet } from './store.js';
-import { closeCanvasNavigators, recenterBoard, setMinimapOpen, setSectionNavigatorOpen, stepSectionNavigator } from '../board-nav.js';
+import { useWorkbenchStore, wbSet } from './store.js';
+import { recenterBoard } from '../board-nav.js';
 import { setCanvasZoom, zoomCanvasAt } from '../boot-prefs.js';
 import { currentCanvasZoom } from '../lib/canvas-zoom.js';
 import { clampZoom, formatZoomLabel } from '../../shared/canvas-gesture.js';
@@ -31,12 +9,7 @@ import { offlineExportSupported } from '../../shared/offline-export-scope.js';
 import { cn } from './lib/utils.js';
 import { Button } from './ui/button.jsx';
 import { WbIcon } from './WbIcon.jsx';
-import { LAYER_RANK, useStackLayer } from './use-layer.js';
 
-// dock 两面板共用浮层皮肤（--wb-canvas-nav-w 定义在 index.html 的 .wb-canvas-dock 上）
-var DOCK_PANEL =
-  'relative box-border w-[var(--wb-canvas-nav-w)] rounded-xl bg-card ' +
-  'shadow-[var(--wb-sh-3)]';
 // 缩放组槽内项（SEG_ITEM 同族，去掉单选态）：24px 项 + 容器 2px 内衬 = 28px 档
 var HUD_ITEM =
   'inline-flex h-6 min-w-6 cursor-pointer items-center justify-center rounded-sm border-0 ' +
@@ -47,46 +20,8 @@ function nudgeZoom(factor) {
   zoomCanvasAt(clampZoom(currentCanvasZoom() * factor));
 }
 
-export function CanvasDock() {
-  var minimapOpen = useWorkbenchStore(function (s) { return s.minimapOpen; });
-  var sectionNavOpen = useWorkbenchStore(function (s) { return s.sectionNavOpen; });
-  var position = useWorkbenchStore(function (s) { return s.sectionNavPosition; });
-  // 导航器 / 缩略图开着是弹层栈里的一层（C2）：排在标注模式之后、页面浮层之前。
-  useStackLayer('canvas-nav', sectionNavOpen || minimapOpen, closeCanvasNavigators, { rank: LAYER_RANK.canvasNav });
-  return (
-    <Fragment>
-      <nav id="wbsection-nav" aria-label="Section Navigator" hidden={!sectionNavOpen}
-        className={cn('wb-section-nav', DOCK_PANEL, 'max-h-[min(320px,calc(100vh_-_92px))] overflow-hidden p-2')}>
-        <div className="wb-section-nav-head box-border flex h-7 items-center justify-between gap-2.5 px-[7px] pb-[5px] text-[11px] font-bold text-foreground">
-          <span>Section Navigator</span>
-          <span className="wb-section-nav-status tabular-nums whitespace-nowrap text-[color:var(--wb-faint)]" id="wbsection-nav-status">{position}</span>
-        </div>
-        {/* 不受管容器：列表项由 board-nav 的 rebuildSectionNavigator 以 innerHTML 填充 */}
-        <div className="wb-section-nav-list flex max-h-[min(272px,calc(100vh_-_140px))] flex-col gap-[3px] overflow-auto" id="wbsection-nav-list"></div>
-      </nav>
-      <div id="wbminimap" title="Canvas → Section → Frame · 点击定位"
-        role="navigation" aria-label="Canvas、Section 与 Frame 缩略图导航"
-        data-minimap-levels="canvas section frame" hidden={!minimapOpen}
-        className={cn('wb-minimap', DOCK_PANEL, 'cursor-crosshair p-1.5')}>
-        <div className="wb-minimap-head flex h-6 items-center justify-between gap-2 px-1 text-[10.5px] font-bold text-foreground">
-          <span>Canvas map</span>
-          <span className="wb-minimap-levels font-semibold text-[color:var(--wb-faint)]">Section · Frame</span>
-        </div>
-        <canvas id="wbminimap-canvas" width="416" height="264"
-          className="block h-[132px] w-[calc(var(--wb-canvas-nav-w)_-_12px)] rounded-md bg-[color-mix(in_srgb,var(--wb-stage-bg)_88%,var(--wb-surface))]"></canvas>
-      </div>
-    </Fragment>
-  );
-}
-
 export function CanvasHud() {
   var zoom = useWorkbenchStore(function (s) { return s.canvasZoom; });
-  var minimapOpen = useWorkbenchStore(function (s) { return s.minimapOpen; });
-  var minimapAvailable = useWorkbenchStore(function (s) { return s.minimapAvailable; });
-  var sectionNavOpen = useWorkbenchStore(function (s) { return s.sectionNavOpen; });
-  var sectionNavVisible = useWorkbenchStore(function (s) { return s.sectionNavVisible; });
-  var position = useWorkbenchStore(function (s) { return s.sectionNavPosition; });
-  var current = useWorkbenchStore(function (s) { return s.sectionNavCurrent; });
   // 导出钮只在离线导出能导的页上出（offline-export-scope.js，构建器同一口径）：文章画布页、
   // 模板页（没有 site，不是登记条目）、非 ios 的条目都不出。manifest 页的 mode 由 entryBoardMode
   // 派生，dir 条目只有 board 是 ios 时才是 'ios'，所以这里拿 mode 当 board。
@@ -94,61 +29,13 @@ export function CanvasHud() {
     var page = pageEntry(s.pageManifest, s.activePageId);
     return !!(page && page.site && offlineExportSupported(page.id, { kind: page.kind, board: page.mode }));
   });
-  var navLabel = (sectionNavOpen ? '关闭' : '打开') + ' Section Navigator'
-    + (current ? '，当前 ' + current + '，' + position : '');
   return (
     <Fragment>
       <span className="wb-strip-div" id="wbcanvas-tools-div" aria-hidden="true"></span>
-      {/* 横条中段（2026-09-04 评审板 G1）：‹ 1 / 6 › + map → 缩放 → 回中 → 导出。
+      {/* 横条中段（2026-09-04 评审板 G1）：缩放 → 回中 → 导出。
           文档形态整段收起（index.html 的 [data-page-mode="html"] 规则）—— 阅读器
           没有画布可缩放，但横条本体（页名 / 模式 / 计数）留着。 */}
       <div id="wbcanvas-tools" className="wb-canvas-tools flex items-center gap-1.5">
-        {/* display 类会盖掉 [hidden] 的 UA 规则，visible=false 时显式 hidden 类还回来（V2 同例） */}
-        <div id="wbsection-nav-wrap" hidden={!sectionNavVisible}
-          className={cn('wb-section-nav-wrap relative items-center gap-0.5', sectionNavVisible ? 'flex' : 'hidden')}>
-          <Button type="button" variant="tool" size="icon" id="wbnav-prev"
-            className="wb-hud-btn wb-nav-step"
-            title="上一个 Section" aria-label="上一个 Section"
-            onClick={function () { stepSectionNavigator(-1); }}>
-            <WbIcon name="chevron-left" size={14} className="size-3.5" />
-          </Button>
-          <Button type="button" variant="tool" id="wbsection-nav-toggle"
-            data-state={sectionNavOpen ? 'on' : undefined}
-            className={cn('wb-hud-btn wb-toolbar-tool-btn wb-section-nav-toggle h-7 min-w-[46px] px-1.5 text-[12px] font-semibold', sectionNavOpen && 'on')}
-            title={sectionNavOpen ? '关闭 Section Navigator' : '打开 Section Navigator'}
-            aria-label={navLabel} aria-expanded={sectionNavOpen ? 'true' : 'false'} aria-controls="wbsection-nav"
-            onClick={function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              setSectionNavigatorOpen(!wbGet().sectionNavOpen);
-            }}>
-            <span className="wb-section-nav-position font-[var(--wb-font-mono)] tabular-nums whitespace-nowrap" id="wbsection-nav-position">{position}</span>
-          </Button>
-          <Button type="button" variant="tool" size="icon" id="wbnav-next"
-            className="wb-hud-btn wb-nav-step"
-            title="下一个 Section" aria-label="下一个 Section"
-            onClick={function () { stepSectionNavigator(1); }}>
-            <WbIcon name="chevron-right" size={14} className="size-3.5" />
-          </Button>
-        </div>
-        <div id="wbminimap-wrap" hidden={!minimapAvailable}
-          className={cn('wb-minimap-wrap relative items-center', minimapAvailable ? 'flex' : 'hidden')}>
-          <Button type="button" variant="tool" size="icon" id="wbminimap-toggle"
-            data-state={minimapOpen ? 'on' : undefined}
-            className={cn('wb-hud-btn wb-toolbar-tool-btn wb-minimap-toggle', minimapOpen && 'on')}
-            title={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
-            aria-label={minimapOpen ? '关闭缩略图导航' : '打开缩略图导航'}
-            aria-expanded={minimapOpen ? 'true' : 'false'} aria-controls="wbminimap"
-            onClick={function (e) {
-              e.preventDefault();
-              e.stopPropagation();
-              setMinimapOpen(!wbGet().minimapOpen);
-            }}>
-            <WbIcon name="map" size={14} className="size-3.5" />
-          </Button>
-        </div>
-        {/* 帧导航与 map 都不出时（sectionNav 特性关着、没有 minimap）前面已有一道缝，不再叠第二道 */}
-        {sectionNavVisible || minimapAvailable ? <span className="wb-strip-div" aria-hidden="true"></span> : null}
         <div className="wb-hud-group flex items-center gap-px rounded-md bg-muted p-0.5" role="group" aria-label="画布缩放">
           <button type="button" className={cn('wb-hud-btn', HUD_ITEM)} id="wbzoom-out" title="缩小" aria-label="缩小"
             onClick={function () { nudgeZoom(1 / 1.1); }}>−</button>

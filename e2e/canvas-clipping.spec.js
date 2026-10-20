@@ -83,7 +83,7 @@ test('视口裁剪不破坏几何消费：远处帧真实尺寸，focusFrame 带
   await page.evaluate(() => window.workbench.whenScrollSettled());
   const farStage = page.locator('[data-screen="flow-090"] > .ios-stage');
 
-  await test.step('跳过渲染的远处帧，几何仍是真实值（导航 / minimap / 标注锚点测量的共同前提）', async () => {
+  await test.step('跳过渲染的远处帧，几何仍是真实值（定位 / 标注锚点测量的共同前提）', async () => {
     const probe = await farStage.evaluate((el) => {
       const inner = el.querySelector('.ios-device') || el.firstElementChild;
       const r = el.getBoundingClientRect();

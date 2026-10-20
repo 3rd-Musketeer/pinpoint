@@ -260,7 +260,7 @@ export function placeComposerBox(composer, box, maxWidth) {
   var bottom = Math.max.apply(null, rects.map(function (r) { return r.bottom; }));
   var placements = ['right-start', 'left-start', 'bottom-start', 'top-start'];
   if (composer.preferredSide === 'below') placements.unshift(placements.splice(2, 1)[0]);
-  var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #wbcanvas-dock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
+  var chrome = Array.from(document.querySelectorAll('#wbside, #wbstrip, #wbdock > *, #ann-sidebar')).filter(function (el) { return el && el.getClientRects().length; }).map(function (el) { return el.getBoundingClientRect(); });
   function stale() {
     return composer.placeSeq !== seq || ctx.activeComposer !== composer || !box.isConnected || !!composer.userPos;
   }
@@ -318,14 +318,14 @@ export function wireComposerDrag(box, composer, relayout) {
   });
 }
 
-// 输入框要盯的让位来源：自身与 overlay 的尺寸、画布 dock / 浮层槽的开合、左栏折叠与拖宽。
+// 输入框要盯的让位来源：自身与 overlay 的尺寸、浮层槽的开合、左栏折叠与拖宽。
 export function watchComposerChrome(composer, box, relayout) {
   if (typeof ResizeObserver !== 'undefined') {
     composer.resizeObserver = new ResizeObserver(relayout);
     composer.resizeObserver.observe(box);
     composer.resizeObserver.observe(ctx.overlay);
   }
-  // 让位的三个来源都要盯：画布 dock 的开合、右下浮层槽的换住客、左栏的
+  // 让位来源都要盯：右下浮层槽的换住客、左栏的
   // 折叠与拖宽（宽度变化 ResizeObserver 才看得见，属性观察看不见）。
   // 浮层槽里 React 每次提交（hover 态、行高亮）都会触发观察；一帧内合并成一次量测。
   var dockSyncRaf = 0;
@@ -335,15 +335,13 @@ export function watchComposerChrome(composer, box, relayout) {
   }
   if (typeof MutationObserver !== 'undefined') {
     composer.dockObserver = new MutationObserver(relayoutSoon);
-    ['wbcanvas-dock', 'wbdock'].forEach(function (id) {
-      var node = document.getElementById(id);
-      if (node) {
-        composer.dockObserver.observe(node, {
-          childList: true, subtree: true, attributes: true,
-          attributeFilter: ['hidden', 'class', 'style']
-        });
-      }
-    });
+    var node = document.getElementById('wbdock');
+    if (node) {
+      composer.dockObserver.observe(node, {
+        childList: true, subtree: true, attributes: true,
+        attributeFilter: ['hidden', 'class', 'style']
+      });
+    }
   }
   if (composer.resizeObserver) {
     var sideEl = document.getElementById('wbside');

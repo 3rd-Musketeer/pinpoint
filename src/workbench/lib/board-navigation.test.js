@@ -6,7 +6,6 @@ import { centerScrollForPoint, focusScrollForRect } from '../../shared/canvas-ge
 import {
   closestBoardSection,
   findBoardFrame,
-  hitTestBoardNavigation,
 } from './board-navigation.js';
 
 const viewport = { width: 1000, height: 700, scrollWidth: 8000, scrollHeight: 12000 };
@@ -44,13 +43,4 @@ test('navigation lookup and closest section use the shared model', () => {
   assert.equal(closestBoardSection(model, 1100).id, 'two');
   assert.equal(findBoardFrame(model, 'two', 'detail').screenId, 'detail');
   assert.equal(findBoardFrame(model, 'one', 'detail'), null);
-});
-
-test('minimap hit testing prioritizes frame, then section, then canvas', () => {
-  const frame = { left: 120, top: 130, width: 100, height: 200 };
-  const section = { left: 100, top: 100, width: 500, height: 500 };
-  const model = { frames: [frame], sections: [section] };
-  assert.deepEqual(hitTestBoardNavigation(model, 150, 150).kind, 'frame');
-  assert.deepEqual(hitTestBoardNavigation(model, 500, 500).kind, 'section');
-  assert.deepEqual(hitTestBoardNavigation(model, 800, 800).kind, 'canvas');
 });

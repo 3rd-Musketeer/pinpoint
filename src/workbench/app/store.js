@@ -41,7 +41,7 @@ export const useWorkbenchStore = create(subscribeWithSelector((set) => ({
                             // 形态，不改 activeBoardMode()。页的偏好（prefs.viewportByPage），
                             // stage.js loadBoard 换页时灌入、pages.js setActiveViewport 切换
                             // 时写；只对文档条目有意义。
-  activeGroup: 'lock',      // 当前聚焦 section（scroll spy / minimap / section-nav 共用）
+  activeGroup: 'lock',      // 当前聚焦 section（scroll spy / 正文链接共用）
   // frame 树行 / 标注卡的选中焦点（decisions 2026-08-15c 双向同步）：
   // focusFrameKey = sectionId + '\0' + screenId；focusAnnN = 最近点开的标注序号
   focusFrameKey: null,
@@ -63,16 +63,10 @@ export const useWorkbenchStore = create(subscribeWithSelector((set) => ({
   frame: 'screen',
   clockMode: 'system',
   clockFixed: '9:41',
-  // 画布工具（board-nav 写；CanvasHud 组件读；初始值 = 首访默认缩放 0.5）
+  // 画布缩放（boot-prefs / main 写；CanvasHud 读；初始值 = 首访默认缩放 0.5）
   canvasZoom: '0.5',
   // 导出 picker 对话框开关（decisions 2026-08-15d 单入口；CanvasHud 写，ExportPicker 读）
   exportPickerOpen: false,
-  minimapOpen: false,
-  minimapAvailable: false,
-  sectionNavOpen: false,
-  sectionNavVisible: false,
-  sectionNavPosition: '1 / 1',
-  sectionNavCurrent: '',
 
   patch: (partial) => set(partial),
 })));

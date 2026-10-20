@@ -115,7 +115,7 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     for (const id of ['confirm-done', 'confirm-sheet', 'card-plain']) {
       expect(await f.locator(`#wb-board-panel [data-screen="${id}"]`).evaluate(el => getComputedStyle(el).visibility)).toBe('visible');
     }
-    // Section Navigator 按板的 section 数决定是否显示；大纲始终提供其他帧的入口。
+    // 大纲始终提供其他帧的入口。
     await f.locator('#wbstrip-outline').click();
     await expect(f.locator('#wboutline-pop [data-ol-frame]')).toHaveCount(5);
     await page.keyboard.press('Escape');

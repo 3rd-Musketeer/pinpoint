@@ -7,8 +7,7 @@ import { wireExportControls } from './export-core.js';
 import {
   focusFirstBoardFrame,
   frameBoardInView,
-  rebuildSectionNavigator,
-  scheduleMinimapUpdate
+  initializeBoardGeometry
 } from './board-nav.js';
 import { restorePageViewportAfterMount, syncPanelPrefs } from './boot-prefs.js';
 import { annotateApi, scheduleAnnSnap } from './ann-bridge.js';
@@ -292,10 +291,9 @@ export function afterMount(panel, session) {
         syncPanelPrefs(scope);
         if (window.iOSKit) window.iOSKit.refresh(scope);
         // 换屏把旧的 .wb-asset-err 条随内容删掉了，资源仍 404 时提示要重探这一帧；
-        // 屏的尺寸可能变了（comp 屏是流式尺寸），导航和小地图跟着重算。
+        // 屏的尺寸可能变了（comp 屏是流式尺寸），板几何跟着重算。
         probeFragmentStyles(panel, session, scope);
-        rebuildSectionNavigator(panel);
-        scheduleMinimapUpdate();
+        initializeBoardGeometry(panel);
         return runPreviewScripts(scope, session.pageId, session);
       });
       syncPanelPrefs(panel);
@@ -311,9 +309,9 @@ export function afterMount(panel, session) {
       session.settlePreviews(false);
       throw error;
     }
-    // 几何批（navigator / 滚动 spy / 首访聚焦 / minimap / ann 渲染）只依赖
+    // 几何批（板几何 / 滚动 spy / 首访聚焦 / ann 渲染）只依赖
     // loadBoard 已插入的板 DOM，不能排在预览脚本导入后面 —— sidecar 是网络
-    // import，dev 服务器慢或连接排队时，板已画好而 navigator 迟迟不出、首访
+    // import，dev 服务器慢或连接排队时，板已画好却尚未量几何、首访
     // 不聚焦（2026-09-23 全量负载下 e2e 三处 30s/5s 等待超时的根因）。脚本
     // 之后自己挂载；挂载引起的 DOM 变化由 annotate client 的 MutationObserver
     // 兜底刷新，不依赖这里再排一次渲染。
@@ -324,11 +322,10 @@ export function afterMount(panel, session) {
       try {
         if (!session.isUsable(panel)) return;
         var _a = annotateApi(); if (_a) _a.render();
-        rebuildSectionNavigator(panel);
+        initializeBoardGeometry(panel);
         wireLibraryScrollSpy();
         if (!hadViewport && !focusFirstBoardFrame()) frameBoardInView(panel, { pageId: session.pageId });
         scheduleAnnSnap();
-        scheduleMinimapUpdate();
         ok = session.active;
       } finally {
         session.settleBoard(ok);

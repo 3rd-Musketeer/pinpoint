@@ -142,7 +142,6 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await expect(page.locator('#wbzoom-label')).toBeHidden();
   await expect(page.locator('#wbrecenter')).toBeHidden();
   await expect(page.locator('#wbexport-open')).toBeHidden();
-  await expect(page.locator('#wbsection-nav-position')).toBeHidden();
   await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
 
   // 窗口尺寸变了 k 跟着重算：舞台变矮，屏跟着缩，仍然是可用高的九成、仍居中。

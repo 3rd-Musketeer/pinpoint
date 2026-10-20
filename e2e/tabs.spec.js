@@ -48,7 +48,7 @@ test.afterEach(async ({ request }) => {
 test('tab 条：不到两个 tab 不出条，大纲钮在横条里；两个 tab 的页叠在横条正上方，切换只挂当前 tab，序号按 tab 从 A 重来，活动 tab 刷新后保持', async ({ page }) => {
   test.setTimeout(90_000);
 
-  // 不带 tab 的存量画布页、单 tab 页：没有 tab 条；大纲钮在横条里（页名之后、‹ n / N › 之前），
+  // 不带 tab 的存量画布页、单 tab 页：没有 tab 条；大纲钮在横条里（页名之后），
   // 打开同一个大纲浮层，从横条向上弹。
   for (const id of ['e2e-ios', 'e2e-tabs-one']) {
     await openBoard(page, `page=${id}`);
@@ -58,10 +58,10 @@ test('tab 条：不到两个 tab 不出条，大纲钮在横条里；两个 tab 
     await expect(page.getByRole('button', { name: '大纲', exact: true })).toHaveCount(1);
     const order = await page.evaluate(() => {
       const strip = document.getElementById('wbstrip');
-      const all = [...strip.querySelectorAll('#wbstrip-title, #wbstrip-outline, #wbsection-nav-position')];
+      const all = [...strip.querySelectorAll('#wbstrip-title, #wbstrip-outline')];
       return all.map((el) => el.id);
     });
-    expect(order).toEqual(['wbstrip-title', 'wbstrip-outline', 'wbsection-nav-position']);
+    expect(order).toEqual(['wbstrip-title', 'wbstrip-outline']);
     const stripBox = await barBox(page, '#wbstrip');
     const btnBox = await outline.boundingBox();
     expect(btnBox.y).toBeGreaterThanOrEqual(stripBox.y - 0.5);

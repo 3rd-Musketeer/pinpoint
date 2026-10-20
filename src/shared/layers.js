@@ -17,7 +17,6 @@ export var LAYER_RANK = {
   annList: 1.2,
   hostPage: 1.5,
   mode: 2,
-  canvasNav: 2.5,
   pageOverlay: 3,
 };
 

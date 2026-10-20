@@ -15,7 +15,7 @@ export class BoardMountSession {
     this.suspended = false;
     this.disposers = [];
     this.pendingTasks = new Set();
-    // 只读完成标记：几何批（navigator / spy / 首访聚焦 / minimap）跑完且本会话
+    // 只读完成标记：几何批（板几何 / spy / 首访聚焦）跑完且本会话
     // 仍是当前会话 → true；会话被替换 / 取消 → false。测试与外部调用方靠它等
     // 「板真正挂好」，不用猜 shell 就绪等于板就绪。
     this.boardSettled = new Promise((resolve) => { this._settleBoard = resolve; });

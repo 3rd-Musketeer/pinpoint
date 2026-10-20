@@ -74,7 +74,7 @@ export function focusScrollForRect(rect, viewport, options) {
   };
 }
 
-/** 把一点居中进可用区，夹进滚动范围（minimap 点定位用）。 */
+/** 把一点居中进可用区，夹进滚动范围（回中与离线帧定位用）。 */
 export function centerScrollForPoint(point, viewport) {
   var usable = usableViewport(viewport);
   return {

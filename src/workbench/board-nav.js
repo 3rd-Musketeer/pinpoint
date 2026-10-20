@@ -1,20 +1,16 @@
 import { scrollStageTo } from './scroll-motion.js';
-// Workbench 画布导航簇 — 板内定位、minimap、Section Navigator、缩放 HUD。
+// Workbench 板内几何、定位、回中与选中模型。
 // P1a 从 workbench.js 平移（goal-20260810-workbench-react-rebuild）：零行为变化。
 // 共享状态经 app/store.js 的 wbGet()/wbSet() 读写；工具函数取自 lib/。
-import { isTypingTarget } from '../shared/keys.js';
 import { wbGet, wbSet } from './app/store.js';
 import { boardShowsTabBar } from './lib/board-entries.js';
-import { currentCanvasZoom } from './lib/canvas-zoom.js';
 import { pageViewport, viewportKey } from './lib/page-viewports.js';
-import { FEATURES } from './features.js';
 import { CHROME_GAP, FOCUS_INSET, centerScrollForPoint, focusScrollForRect } from '../shared/canvas-gesture.js';
 import { registerEmbedPark } from './embed-park.js';
 import {
   closestBoardSection,
   findBoardFrame,
   findBoardSection,
-  hitTestBoardNavigation,
   measureBoardNavigation
 } from './lib/board-navigation.js';
 
@@ -44,7 +40,7 @@ export function frameBoardInView(panel, options) {
 
 var boardNavigationModel = null;
 
-/** Refresh the single Canvas → Section → Frame geometry source used by both navigators. */
+/** 刷新定位、回中与 scroll spy 共用的板几何。 */
 export function refreshBoardNavigationModel(panel) {
   panel = panel || document.getElementById('wb-board-panel');
   boardNavigationModel = measureBoardNavigation(stage, panel);
@@ -77,170 +73,9 @@ export function recenterBoard() {
   scrollStageTo(stage, target);
 }
 
-/** Board load failure: drop stale nav geometry and hide both navigators. */
+/** 板装载失败时丢弃旧几何。 */
 export function resetBoardNavOnLoadFailure() {
   boardNavigationModel = null;
-  wbSet({ sectionNavVisible: false, minimapAvailable: false });
-  setSectionNavigatorOpen(false);
-  setMinimapOpen(false);
-}
-
-// HUD/dock DOM 句柄 —— 元素由 React（app/CanvasHud.jsx）渲染，模块加载时还不
-// 存在，一律在 wireCanvasHud（main.jsx 于挂载后调用）里赋值；之前的调用经各
-// 函数的 null 守卫安全空转。
-var minimapWrap;
-var minimapEl;
-var minimapCanvas;
-var minimapToggleBtn;
-var minimapRaf = 0;
-var minimapLayout = null; // { bounds, scale, ox, oy, cw, ch, sections, frames }
-
-var MINIMAP_COLORS = [
-  { section: 'rgba(0,122,255,.14)', active: 'rgba(0,122,255,.24)', stroke: 'rgba(0,122,255,.55)', frame: 'rgba(0,82,204,.72)' },
-  { section: 'rgba(52,199,89,.14)', active: 'rgba(52,199,89,.24)', stroke: 'rgba(35,150,67,.55)', frame: 'rgba(30,125,56,.72)' },
-  { section: 'rgba(255,149,0,.15)', active: 'rgba(255,149,0,.25)', stroke: 'rgba(210,112,0,.56)', frame: 'rgba(184,92,0,.74)' },
-  { section: 'rgba(175,82,222,.14)', active: 'rgba(175,82,222,.24)', stroke: 'rgba(134,52,173,.55)', frame: 'rgba(111,43,145,.72)' },
-  { section: 'rgba(90,200,250,.16)', active: 'rgba(90,200,250,.27)', stroke: 'rgba(41,151,203,.58)', frame: 'rgba(31,123,167,.74)' },
-  { section: 'rgba(255,45,85,.13)', active: 'rgba(255,45,85,.23)', stroke: 'rgba(208,30,65,.54)', frame: 'rgba(176,25,55,.72)' }
-];
-
-var sectionNavWrap;
-var sectionNavToggleBtn;
-var sectionNavEl;
-var sectionNavList;
-var sectionNavItems = [];
-
-// open/visible 状态归 store（minimapOpen/minimapAvailable/sectionNavOpen/
-// sectionNavVisible），React 组件订阅派生 hidden/on/aria；本模块只写 store。
-export function setMinimapOpen(on) {
-  var open = !!on && wbGet().minimapAvailable;
-  wbSet({ minimapOpen: open });
-  if (open) scheduleMinimapUpdate();
-}
-
-export function updateMinimapAvailability(panel) {
-  panel = panel || document.getElementById('wb-board-panel');
-  var measured = panel ? refreshBoardNavigationModel(panel) : null;
-  var available = !!(measured && measured.bounds.width >= 8 && measured.bounds.height >= 8);
-  // 几何量与条目模型照常算（导航模型还有别的消费者）；FEATURES.minimap 只决定按钮出不出来。
-  wbSet({ minimapAvailable: available && FEATURES.minimap });
-  if (!available || !FEATURES.minimap) {
-    minimapLayout = null;
-    setMinimapOpen(false);
-  }
-  // 每次重量几何都顺手对一遍 Section Navigator 的条目：条目只在板装载那一帧建过一次时，
-  // 那一帧板还没排好版（量出来全是 0 尺寸）就会建成空列表，之后 resize / 缩放 / minimap
-  // 都重量了几何却没人重建，导航一直藏着（2026-09-28 满载 e2e 偶发的根因）。
-  if (syncSectionNavigatorItems(available ? measured : null)) {
-    updateSectionNavigatorVisibility();
-    updateSectionNavigatorActive(wbGet().activeGroup);
-  }
-  return available ? measured : null;
-}
-
-export function scheduleMinimapUpdate() {
-  if (minimapRaf || !wbGet().minimapOpen) return;
-  minimapRaf = requestAnimationFrame(function () {
-    minimapRaf = 0;
-    updateMinimap();
-  });
-}
-
-function updateMinimap() {
-  if (!minimapWrap || !minimapEl || !minimapCanvas || !stage || !wbGet().minimapOpen) return;
-  var panel = document.getElementById('wb-board-panel');
-  var measured = updateMinimapAvailability(panel);
-  var bounds = measured && measured.bounds;
-  if (!bounds) return;
-  var dpr = Math.min(window.devicePixelRatio || 1, 2);
-  var cssW = minimapCanvas.clientWidth;
-  var cssH = minimapCanvas.clientHeight;
-  if (cssW < 8 || cssH < 8) return;
-  var cw = Math.round(cssW * dpr);
-  var ch = Math.round(cssH * dpr);
-  if (minimapCanvas.width !== cw || minimapCanvas.height !== ch) {
-    minimapCanvas.width = cw;
-    minimapCanvas.height = ch;
-  }
-  var pad = 6 * dpr;
-  var scale = Math.min((cw - pad * 2) / bounds.width, (ch - pad * 2) / bounds.height);
-  var ox = (cw - bounds.width * scale) / 2;
-  var oy = (ch - bounds.height * scale) / 2;
-  minimapLayout = {
-    bounds: bounds,
-    scale: scale,
-    ox: ox,
-    oy: oy,
-    cw: cw,
-    ch: ch,
-    dpr: dpr,
-    sections: measured.sections,
-    frames: measured.frames
-  };
-
-  var ctx = minimapCanvas.getContext('2d');
-  ctx.clearRect(0, 0, cw, ch);
-  // Canvas layer
-  ctx.fillStyle = 'rgba(15,23,42,.045)';
-  ctx.fillRect(0, 0, cw, ch);
-
-  // Section layer
-  var sectionRects = measured.sections || [];
-  minimapEl.setAttribute('data-minimap-section-count', String(sectionRects.length));
-  minimapEl.setAttribute('data-minimap-frame-count', String(measured.frames.length));
-  for (var s = 0; s < sectionRects.length; s++) {
-    var section = sectionRects[s];
-    var sectionColor = MINIMAP_COLORS[section.colorIndex % MINIMAP_COLORS.length];
-    var sx = ox + (section.left - bounds.left) * scale;
-    var sy = oy + (section.top - bounds.top) * scale;
-    var sw = Math.max(4 * dpr, section.width * scale);
-    var sh = Math.max(4 * dpr, section.height * scale);
-    var sr = Math.min(5 * dpr, sw / 4, sh / 4);
-    ctx.fillStyle = section.id === wbGet().activeGroup ? sectionColor.active : sectionColor.section;
-    ctx.strokeStyle = sectionColor.stroke;
-    ctx.lineWidth = section.id === wbGet().activeGroup ? Math.max(1.5 * dpr, 2) : Math.max(.75 * dpr, 1);
-    roundRect(ctx, sx, sy, sw, sh, sr);
-    ctx.fill();
-    ctx.stroke();
-  }
-
-  // Frame layer
-  var frameRects = measured.frames;
-  for (var i = 0; i < frameRects.length; i++) {
-    var frame = frameRects[i];
-    var frameColor = MINIMAP_COLORS[frame.colorIndex % MINIMAP_COLORS.length];
-    var x = ox + (frame.left - bounds.left) * scale;
-    var y = oy + (frame.top - bounds.top) * scale;
-    var w = Math.max(2 * dpr, frame.width * scale);
-    var h = Math.max(2 * dpr, frame.height * scale);
-    var rr = Math.min(4 * dpr, w / 4, h / 4);
-    ctx.fillStyle = frameColor.frame;
-    roundRect(ctx, x, y, w, h, rr);
-    ctx.fill();
-  }
-
-  // Viewport window
-  var vx = ox + (stage.scrollLeft - bounds.left) * scale;
-  var vy = oy + (stage.scrollTop - bounds.top) * scale;
-  var vw = stage.clientWidth * scale;
-  var vh = stage.clientHeight * scale;
-  ctx.strokeStyle = 'rgba(0,122,255,.9)';
-  ctx.lineWidth = Math.max(1.5 * dpr, 2);
-  ctx.fillStyle = 'rgba(0,122,255,.12)';
-  roundRect(ctx, vx, vy, vw, vh, 3 * dpr);
-  ctx.fill();
-  ctx.stroke();
-}
-
-function roundRect(ctx, x, y, w, h, r) {
-  r = Math.max(0, Math.min(r, w / 2, h / 2));
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }
 
 /* chrome 占位（2026-09-04 外壳重设计）：画布满铺整个视口，左栏玻璃面板与底部
@@ -304,7 +139,7 @@ function stageViewportMetrics() {
   };
 }
 
-/** Shared focus behavior for both navigators: center fitting targets, leading-align large ones. */
+/** 聚焦：小目标居中，大目标按起始边对齐。 */
 function focusStageOnRect(rect, options) {
   if (!stage || !rect) return;
   options = options || {};
@@ -312,64 +147,7 @@ function focusStageOnRect(rect, options) {
   scrollStageTo(stage, target, options);
 }
 
-function centerStageOnPoint(x, y, options) {
-  if (!stage) return;
-  options = options || {};
-  var target = centerScrollForPoint({ x: x, y: y }, stageViewportMetrics());
-  scrollStageTo(stage, target, options);
-}
-
-function minimapJump(clientX, clientY) {
-  if (!minimapLayout || !stage || !minimapCanvas) return;
-  var rect = minimapCanvas.getBoundingClientRect();
-  var mx = ((clientX - rect.left) / rect.width) * minimapLayout.cw;
-  var my = ((clientY - rect.top) / rect.height) * minimapLayout.ch;
-  var b = minimapLayout.bounds;
-  var cx = b.left + (mx - minimapLayout.ox) / minimapLayout.scale;
-  var cy = b.top + (my - minimapLayout.oy) / minimapLayout.scale;
-  var hit = hitTestBoardNavigation(minimapLayout, cx, cy, { framePadding: 48 });
-  if (hit.kind === 'frame' || hit.kind === 'section') {
-    focusStageOnRect(hit.target);
-    return;
-  }
-  centerStageOnPoint(cx, cy);
-}
-
-function wireMinimap() {
-  if (!minimapWrap || !minimapEl || !minimapCanvas) return;
-  minimapEl.addEventListener('click', function (e) {
-    e.preventDefault();
-    e.stopPropagation();
-    minimapJump(e.clientX, e.clientY);
-  });
-  window.addEventListener('resize', function () {
-    updateMinimapAvailability();
-    scheduleMinimapUpdate();
-  });
-}
-
-export function setSectionNavigatorOpen(on) {
-  wbSet({ sectionNavOpen: !!on && wbGet().sectionNavVisible });
-  updateSectionNavigatorActive(wbGet().activeGroup);
-}
-
-function collectSectionNavigatorItems(model) {
-  if (!model) return [];
-  return model.sections.map(function (section) {
-    return {
-      id: section.id,
-      title: section.title,
-      screens: section.frames.filter(function (frame) { return !!frame.screenId; }).map(function (frame) {
-        return {
-          id: frame.screenId,
-          title: frame.title
-        };
-      })
-    };
-  }).filter(function (item) { return item.id && item.id !== '_empty'; });
-}
-
-function closestSectionNavigatorGroup() {
+function closestBoardGroup() {
   if (!stage) return null;
   var insets = chromeInsets();
   var section = closestBoardSection(
@@ -379,169 +157,59 @@ function closestSectionNavigatorGroup() {
   return section && section.id;
 }
 
-function sectionNavigatorShouldShow(panel) {
-  if (!stage || !panel || !sectionNavItems.length) return false;
-  if (sectionNavItems.length > 1) return true;
-  var bounds = boardContentBounds(panel);
-  if (!bounds) return false;
-  return bounds.width > stage.clientWidth + 24 || bounds.height > stage.clientHeight + 24;
-}
-
-export function updateSectionNavigatorVisibility() {
-  var panel = document.getElementById('wb-board-panel');
-  var visible = FEATURES.sectionNav && sectionNavigatorShouldShow(panel);
-  wbSet({ sectionNavVisible: visible });
-  if (!visible) setSectionNavigatorOpen(false);
-}
-
-export function updateSectionNavigatorActive(groupId) {
-  if (!sectionNavItems.length) return;
-  var index = sectionNavItems.findIndex(function (item) { return item.id === groupId; });
-  if (index < 0) index = 0;
-  var current = sectionNavItems[index];
-  if (sectionNavList) {
-    [].slice.call(sectionNavList.querySelectorAll('.wb-section-nav-item')).forEach(function (item) {
-      var on = item.getAttribute('data-nav-group') === current.id;
-      item.classList.toggle('on', on);
-      var button = item.querySelector('.wb-section-nav-section');
-      if (button) {
-        if (on) button.setAttribute('aria-current', 'location');
-        else button.removeAttribute('aria-current');
-      }
-    });
-  }
-  wbSet({
-    sectionNavPosition: String(index + 1) + ' / ' + String(sectionNavItems.length),
-    sectionNavCurrent: current.title
-  });
-}
-
-// 上次渲染进列表的条目签名：几何重量时条目没变就不动 DOM。
-var sectionNavSig = null;
-
-/** 按几何模型重建 Section Navigator 条目；条目有变才重写 DOM，返回是否变了。 */
-function syncSectionNavigatorItems(model) {
-  if (!sectionNavList) return false;
-  var items = collectSectionNavigatorItems(model);
-  var sig = JSON.stringify(items);
-  if (sig === sectionNavSig) return false;
-  sectionNavSig = sig;
-  sectionNavItems = items;
-  sectionNavList.innerHTML = '';
-
-  sectionNavItems.forEach(function (entry) {
-    var item = document.createElement('div');
-    item.className = 'wb-section-nav-item';
-    item.setAttribute('data-nav-group', entry.id);
-
-    var sectionButton = document.createElement('button');
-    sectionButton.type = 'button';
-    sectionButton.className = 'wb-section-nav-section';
-    sectionButton.setAttribute('data-nav-group', entry.id);
-    sectionButton.title = entry.title;
-    var label = document.createElement('span');
-    label.className = 'wb-section-nav-label';
-    label.textContent = entry.title;
-    sectionButton.appendChild(label);
-    item.appendChild(sectionButton);
-
-    var screens = document.createElement('div');
-    screens.className = 'wb-section-nav-screens';
-    entry.screens.forEach(function (screen) {
-      var screenButton = document.createElement('button');
-      screenButton.type = 'button';
-      screenButton.className = 'wb-section-nav-screen';
-      screenButton.setAttribute('data-nav-group', entry.id);
-      screenButton.setAttribute('data-nav-screen', screen.id);
-      screenButton.setAttribute('aria-label', '定位到 ' + entry.title + ' · ' + screen.title);
-      screenButton.title = screen.title;
-      screens.appendChild(screenButton);
-    });
-    item.appendChild(screens);
-    sectionNavList.appendChild(item);
-  });
-  return true;
-}
-
 // 板装载那一帧量不出几何（还没排版）时，逐帧重量，最多这么多帧。
-var SECTION_NAV_RETRY_FRAMES = 30;
-var sectionNavRetryRaf = 0;
+var BOARD_GEOMETRY_RETRY_FRAMES = 30;
+var geometryRetryRaf = 0;
 
-export function rebuildSectionNavigator(panel) {
-  if (!sectionNavList || !sectionNavWrap) return;
-  if (sectionNavRetryRaf) cancelAnimationFrame(sectionNavRetryRaf);
-  sectionNavRetryRaf = 0;
-  if (!updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, SECTION_NAV_RETRY_FRAMES);
-
-  updateSectionNavigatorVisibility();
-  var closest = closestSectionNavigatorGroup() || sectionNavItems[0] && sectionNavItems[0].id;
-  if (closest) wbSet({ activeGroup: closest });
-  updateSectionNavigatorActive(wbGet().activeGroup);
-  setSectionNavigatorOpen(wbGet().sectionNavOpen);
-  setMinimapOpen(wbGet().minimapOpen);
+function boardGeometryReady(panel) {
+  var model = refreshBoardNavigationModel(panel);
+  return !!(model && model.bounds.width >= 8 && model.bounds.height >= 8);
 }
 
-/** 逐帧重量还在进行（e2e 等“重试用完”用的可观察信号，见 window.workbench）。 */
-export function sectionNavRetrying() {
-  return sectionNavRetryRaf !== 0;
+/** 板挂载或帧重置后重量；首帧尚未排版时逐帧补量。 */
+export function initializeBoardGeometry(panel) {
+  if (geometryRetryRaf) cancelAnimationFrame(geometryRetryRaf);
+  geometryRetryRaf = 0;
+  if (!boardGeometryReady(panel)) retryUnmeasuredBoard(panel, BOARD_GEOMETRY_RETRY_FRAMES);
+  var closest = closestBoardGroup();
+  if (closest) wbSet({ activeGroup: closest });
 }
 
 /** 板里有 section 却量不出几何：下一帧再量，量到了（或板换掉、次数用完）就停。
- *  量到时 updateMinimapAvailability 会顺手把导航条目补上。
  *  停驻（E2）时不逐帧重试：画布看不见，量出来的几何也不作数。打开时从剩下的
  *  帧数接着量，不把停驻的时间算进重试次数。 */
-var sectionNavPaused = false;
-var sectionNavFramesLeft = 0;
+var geometryPaused = false;
+var geometryFramesLeft = 0;
 function retryUnmeasuredBoard(panel, framesLeft) {
   if (framesLeft <= 0 || !panel || !panel.isConnected || !panel.querySelector('.wb-lib-item')) return;
-  sectionNavRetryRaf = requestAnimationFrame(function () {
-    sectionNavRetryRaf = 0;
+  geometryRetryRaf = requestAnimationFrame(function () {
+    geometryRetryRaf = 0;
     // 停驻期间这一帧不重试，但帧数留着：恢复时从剩下的帧数接着量。
-    if (sectionNavPaused) { sectionNavFramesLeft = framesLeft; return; }
-    if (!updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, framesLeft - 1);
+    if (geometryPaused) { geometryFramesLeft = framesLeft; return; }
+    if (!boardGeometryReady(panel)) retryUnmeasuredBoard(panel, framesLeft - 1);
   });
 }
 
 registerEmbedPark({
   pause: function () {
-    sectionNavPaused = true;
-    if (sectionNavRetryRaf) { cancelAnimationFrame(sectionNavRetryRaf); sectionNavRetryRaf = 0; }
-    if (minimapRaf) { cancelAnimationFrame(minimapRaf); minimapRaf = 0; }
+    geometryPaused = true;
+    if (geometryRetryRaf) { cancelAnimationFrame(geometryRetryRaf); geometryRetryRaf = 0; }
   },
   resume: function () {
-    sectionNavPaused = false;
+    geometryPaused = false;
     var panel = document.getElementById('wb-board-panel');
-    var left = sectionNavFramesLeft;
-    sectionNavFramesLeft = 0;
+    var left = geometryFramesLeft;
+    geometryFramesLeft = 0;
     // 打开的这一帧先补量一次：停驻时量到的是空的，定位要等这次的结果。
     // 选中也补一次：停驻期间标注层的观察器断开，store 里的选中没写到 DOM 上。
-    if (panel) { updateMinimapAvailability(panel); syncBoardSelection(); }
-    if (panel && left > 0 && !updateMinimapAvailability(panel)) retryUnmeasuredBoard(panel, left);
+    if (panel) { boardGeometryReady(panel); syncBoardSelection(); }
+    if (panel && left > 0 && !boardGeometryReady(panel)) retryUnmeasuredBoard(panel, left);
   },
 });
 
-/* 横条中段的 ‹ 1 / 6 ›（2026-09-04 评审板 G1）：单位与 Section Navigator 的
-   读数同源 —— 位置文字就是它，箭头只是把「跳到上/下一个 section」摆到手边。 */
-export function stepSectionNavigator(delta) {
-  if (!sectionNavItems.length) return false;
-  var index = sectionNavItems.findIndex(function (item) { return item.id === wbGet().activeGroup; });
-  if (index < 0) index = 0;
-  var next = index + delta;
-  if (next < 0 || next >= sectionNavItems.length) return false;
-  jumpSectionNavigatorToGroup(sectionNavItems[next].id);
-  return true;
-}
-
-function jumpSectionNavigatorToGroup(groupId) {
-  focusBoardSection(groupId);
-}
-
-/** 定位到当前 tab 里的某个 section（导航器点 section 的同一原语）；量不到 = false。
-    options.smooth === false 即时到位（?section= 落点用）。 */
 /** 量到的目标落位 + 选中态同步（section 与 frame 两条定位共用）。 */
 function focusBoardTarget(rect, groupId, options) {
   wbSet({ activeGroup: groupId });
-  updateSectionNavigatorActive(groupId);
   focusStageOnRect(rect, options);
 }
 
@@ -550,10 +218,6 @@ export function focusBoardSection(groupId, options) {
   if (!section || !stage) return false;
   focusBoardTarget(section, groupId, options);
   return true;
-}
-
-function jumpSectionNavigatorToScreen(groupId, screenId) {
-  focusWorkbenchFrame(groupId, screenId);
 }
 
 // 页 tab（ADR 0041）：目标帧不在当前 tab 的 DOM 里时，由 stage.js 经 setFrameRevealer 注入
@@ -645,51 +309,5 @@ export function syncBoardSelection() {
   if (want && !want.classList.contains('wb-sel')) want.classList.add('wb-sel');
 }
 
-/** 收起 Section Navigator 与缩略图，焦点回到开着的那一个的开关钮（Esc 经弹层栈调）。 */
-export function closeCanvasNavigators() {
-  var focusTarget = wbGet().sectionNavOpen ? sectionNavToggleBtn : minimapToggleBtn;
-  setSectionNavigatorOpen(false);
-  setMinimapOpen(false);
-  if (focusTarget) focusTarget.focus();
-}
-
-function wireSectionNavigator() {
-  if (!sectionNavWrap || !sectionNavList) return;
-  sectionNavList.addEventListener('click', function (event) {
-    var screenButton = event.target.closest('[data-nav-screen]');
-    if (screenButton) {
-      jumpSectionNavigatorToScreen(
-        screenButton.getAttribute('data-nav-group'),
-        screenButton.getAttribute('data-nav-screen')
-      );
-      return;
-    }
-    var sectionButton = event.target.closest('.wb-section-nav-section[data-nav-group]');
-    if (sectionButton) jumpSectionNavigatorToGroup(sectionButton.getAttribute('data-nav-group'));
-  });
-  // Esc 关导航器 / 缩略图走工作台弹层栈（app/CanvasHud.jsx 的 CanvasDock 注册，closeCanvasNavigators）。
-  document.addEventListener('keydown', function (event) {
-    if (event.key.toLowerCase() !== 'm' || event.metaKey || event.ctrlKey || event.altKey) return;
-    if (!FEATURES.sectionNav || isTypingTarget(event.target)) return;
-    event.preventDefault();
-    setSectionNavigatorOpen(!wbGet().sectionNavOpen);
-  });
-  window.addEventListener('resize', updateSectionNavigatorVisibility);
-}
-
-// React 挂载完成后由 main.jsx 调用一次：HUD/dock DOM 句柄赋值 + 命令式布线
-// （minimap 跳点、section-nav 列表委派、Escape/M 键盘、resize）。缩放与回中
-// 按钮是 CanvasHud 组件的 onClick，不在此列。
-export function wireCanvasHud() {
-  minimapWrap = document.getElementById('wbminimap-wrap');
-  minimapEl = document.getElementById('wbminimap');
-  minimapCanvas = document.getElementById('wbminimap-canvas');
-  minimapToggleBtn = document.getElementById('wbminimap-toggle');
-  sectionNavWrap = document.getElementById('wbsection-nav-wrap');
-  sectionNavToggleBtn = document.getElementById('wbsection-nav-toggle');
-  sectionNavEl = document.getElementById('wbsection-nav');
-  sectionNavList = document.getElementById('wbsection-nav-list');
-  wbSet({ canvasZoom: String(currentCanvasZoom()) });
-  wireMinimap();
-  wireSectionNavigator();
-}
+// 视口尺寸改变后，scroll spy 与定位继续使用当前板的真实几何。
+window.addEventListener('resize', function () { refreshBoardNavigationModel(); });

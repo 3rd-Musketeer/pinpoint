@@ -12,7 +12,6 @@ import { closeSettled } from './ledger-settle.js';
 import { maybeThrottle } from './cpu-throttle.js';
 import { annotate, waitForSave } from './lib/annotate.js';
 import { openOutline } from './lib/workbench.js';
-import { FEATURES } from '../src/workbench/features.js';
 
 test.use({ reducedMotion: 'reduce' });
 // Every story starts with its own empty ledger, independent of spec ordering.
@@ -37,7 +36,7 @@ async function openWorkbench(page) {
   // 默认页是哪一页。
   await page.goto('/workbench/?page=e2e-ios');
   await page.waitForFunction(() => window.workbench && window.pinpoint?.getState().connected && !window.pinpoint.getState().routing);
-  // shell 就绪 ≠ 板就绪：navigator / 首访聚焦 / minimap 在挂载会话的几何批里
+  // shell 就绪 ≠ 板就绪：板几何 / 首访聚焦 在挂载会话的几何批里
   // 才落定（全量负载下这段与 sidecar 导入解耦前能拖过 5s 断言窗口——
   // workbench.spec.js:1146 全量 flake 的根因）。等只读完成标记，不猜时序。
   // 要 expect.poll 等到 true：waitForFunction 把返回的 Promise 当真值收下，解析成
@@ -1363,153 +1362,23 @@ test('画布点选模型：三种选中入口、原型内部不动选中、空�
   });
 });
 
-test('persistent canvas toolbar supports continuous section nav and layered minimap', async ({ page }) => {
-  test.skip(!FEATURES.sectionNav || !FEATURES.minimap, 'section nav / minimap 暂时收起（src/workbench/features.js）');
-  await openWorkbench(page);
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
-  // 钉住 100% 缩放：本用例的 scrollTop 阈值断言依赖 zoom=1 的几何
-  // （2026-08-16 起首访默认缩放 50%，HUD label 单击 = 重置为 100%）。
-  await page.locator('#wbzoom-label').click();
-
-  const toolbar = page.locator('#wbcanvas-tools');
-  const minimapTool = page.locator('#wbminimap-wrap');
-  const minimapToggle = page.locator('#wbminimap-toggle');
-  const minimap = page.locator('#wbminimap');
-  const navigatorToggle = page.locator('#wbsection-nav-toggle');
-  const navigator = page.locator('#wbsection-nav');
-
-  await expect(toolbar).toBeVisible();
-  await expect(minimapTool).toBeVisible();
-  await expect(minimap).toBeHidden();
-  await expect(navigatorToggle).toBeVisible();
-  await expect(navigatorToggle).toContainText('1 / 6');
-
-  await navigatorToggle.click();
-  await expect(navigator).toBeVisible();
-  await expect(navigator.locator('.wb-section-nav-item')).toHaveCount(6);
-  await expect(navigator.locator('.wb-section-nav-label')).toHaveText([
-    '首页',
-    '冲一杯',
-    '锁屏 → 消息 → 回复',
-    '锁屏通知',
-    '冲煮完成卡两案',
-    '设置',
-  ]);
-  await expect(minimap).toBeHidden();
-
-  // Row screens use display:contents; navigation must target their concrete frame box.
-  await navigator.locator('[data-nav-screen="msg-thread"]').click();
-  await expectFocusedTarget(page, '[data-screen="msg-thread"] .ios-stage');
-  await navigator.locator('[data-nav-screen="ab-b"]').click();
-  await expectFocusedTarget(page, '[data-screen="ab-b"] .ios-stage');
-
-  await navigator.locator('[data-nav-screen="settings"]').click();
-  await expect(navigator).toBeVisible();
-  await expectFocusedTarget(page, '[data-screen="settings"] .ios-stage');
-  await expect.poll(() => page.locator('.wb-section-nav-item.on').getAttribute('data-nav-group')).toBe('settings');
-  await expect.poll(() => page.locator('#wbstage').evaluate((stage) => stage.scrollTop)).toBeGreaterThan(3000);
-
-  await navigator.locator('.wb-section-nav-section[data-nav-group="home"]').click();
-  await expect(navigator).toBeVisible();
-  await expectFocusedTarget(page, '#lib-home');
-  await expect.poll(() => page.locator('.wb-section-nav-item.on').getAttribute('data-nav-group')).toBe('home');
-
-  for (let i = 0; i < 4; i++) await page.locator('#wbzoom-out').click();
-  await navigator.locator('[data-nav-screen="msg-reply"]').click();
-  await expectFocusedTarget(page, '[data-screen="msg-reply"] .ios-stage');
-
-  await minimapToggle.click();
-  await expect(navigator).toBeVisible();
-  await expect(minimap).toBeVisible();
-  await expect(minimap).toHaveAttribute('data-minimap-levels', 'canvas section frame');
-  await expect(minimap).toHaveAttribute('data-minimap-section-count', '6');
-  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '11');
-  await expect(minimap.locator('canvas')).toBeVisible();
-  await minimap.locator('canvas').click({ position: { x: 104, y: 66 } });
-  await expect(minimap).toBeVisible();
-  await expect(navigator).toBeVisible();
-
-  // 停靠几何：面板刚开、小地图刚重绘，全量负载下这一帧可能还没落定
-  // （BACKLOG「workbench.spec.js:1045 全量 flake」）。判据整体进 expect.poll，
-  // 采样与断言同一帧，失败即重采。
-  await expect.poll(() => page.evaluate(() => {
-    const navigatorRect = document.querySelector('#wbsection-nav').getBoundingClientRect();
-    const minimapRect = document.querySelector('#wbminimap').getBoundingClientRect();
-    const stripRect = document.querySelector('#wbstrip').getBoundingClientRect();
-    const close = (a, b, tolerance) => Math.abs(a - b) < tolerance;
-    return {
-      stacked: navigatorRect.bottom <= minimapRect.top,
-      // 2026-09-04：dock 仍贴画布右下角，但改为浮在底部横条正上方
-      rightAligned: close(navigatorRect.right, minimapRect.right, 0.5) &&
-        close(minimapRect.right, window.innerWidth - 12, 0.5),
-      aboveStrip: minimapRect.bottom <= stripRect.top,
-      sameWidth: close(navigatorRect.width, minimapRect.width, 0.05),
-      toolOrder: [...document.querySelectorAll('#wbcanvas-tools .wb-toolbar-tool-btn')].map((button) => button.id),
-    };
-  }), { timeout: 15000 }).toEqual({
-    stacked: true,
-    rightAligned: true,
-    aboveStrip: true,
-    sameWidth: true,
-    toolOrder: ['wbsection-nav-toggle', 'wbminimap-toggle'],
-  });
-
-  await page.locator('#wbzoom-label').click();
-  await expect(navigator).toBeVisible();
-  await expect(minimap).toBeVisible();
-
-  await page.getByRole('tab', {name:'页面', exact:true}).click();
-  await page.locator('#wbpages [data-vpage="e2e-mixed"]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
-  await expect(minimap).toBeVisible();
-  await expect(minimap).toHaveAttribute('data-minimap-section-count', '1');
-  await expect(minimap).toHaveAttribute('data-minimap-frame-count', '2');
-  await expect(toolbar).toBeVisible();
-
-  // e2e-mixed 是单 section 板，导航自动收起；回 e2e-ios 先重新展开再继续点。
-  await page.locator('#wbpages [data-vpage="e2e-ios"]').click();
-  await expect(page.locator('#wb-board-panel [data-screen="home"]')).toBeVisible();
-  await navigatorToggle.click();
-  await expect(navigator).toBeVisible();
-
-  for (const [pageId, screenId, frameSelector] of [
-    ['e2e-ios', 'timer', '.ios-stage'],
-    ['e2e-ios', 'beans', '.ios-stage'],
-  ]) {
-    await page.locator(`#wbpages [data-vpage="${pageId}"]`).click();
-    await expect(page.locator(`#wb-board-panel [data-screen="${screenId}"]`)).toBeVisible();
-    const navTarget = navigator.locator(`[data-nav-screen="${screenId}"]`);
-    await navTarget.scrollIntoViewIfNeeded();
-    await navTarget.click();
-    await expectFocusedTarget(page, `[data-screen="${screenId}"] ${frameSelector}`);
-    await expect(navigator).toBeVisible();
-    await expect(minimap).toBeVisible();
-  }
-
-  await navigatorToggle.click();
-  await expect(navigator).toBeHidden();
-  await expect(minimap).toBeVisible();
-  await minimapToggle.click();
-  await expect(minimap).toBeHidden();
-});
-
-test('挂载几何批不等预览脚本：sidecar 永远在途 navigator 照常就位（2026-09-23 flake 根因）', async ({ page }) => {
+test('挂载几何批不等预览脚本：sidecar 永远在途首访聚焦照常就位（2026-09-23 flake 根因）', async ({ page }) => {
   // 全量负载下（load 5~6、两组并行）scroll-motion ×4 / workbench:1146 /
-  // review-refinements:585 同一根因：afterMount 曾把 navigator 重建、首访聚焦
-  // 排在全部预览脚本的动态 import 之后 —— dev 服务器慢时板已画好、minimap 也
-  // 因 zoom 应用而可用，唯独 Section Navigator 迟迟不出，用例的 5s 断言 /
+  // review-refinements:585 同一根因：afterMount 曾把板几何测量、首访聚焦
+  // 排在全部预览脚本的动态 import 之后 —— dev 服务器慢时板已画好却没有首访聚焦，用例的 5s 断言 /
   // 30s 测试预算全烧在等待上。现在几何批只依赖 loadBoard 已插入的板 DOM。
-  // 这里把 sidecar 永久挂起（route 不应答），navigator 必须照常出现。
+  // 这里把 sidecar 永久挂起（route 不应答），首访聚焦必须照常完成。
   await page.route('**/e2e-ios/timer.js*', () => {});
   await page.goto('/workbench/?page=e2e-ios');
-  await page.waitForFunction(() => window.workbench && document.querySelector('#wbsection-nav .wb-section-nav-item'));
+  await page.waitForFunction(() => window.workbench);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
   expect(await page.evaluate(() => window.workbench.whenBoardSettled())).toBe(true);
 });
 
-test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑上、菜单与 navigator 都在（2026-10-14 flake 根因）', { tag: '@dev-modules' }, async ({ page }) => {
+test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑上、菜单与帧都在（2026-10-14 flake 根因）', { tag: '@dev-modules' }, async ({ page }) => {
   // stage.js 与 app/main.jsx 是两个模块图。板的 fetch 先到、main.jsx 还在加载时，挂载后处理
-  // 曾在 initExportCore / wireCanvasHud 之前跑：wireExportControls 抛 TypeError，内联脚本与
-  // sidecar 一条没绑、navigator 不出，就绪标记落 false，而 openWorkbench 的 waitForFunction
+  // 曾在 initExportCore / 横条挂载 之前跑：wireExportControls 抛 TypeError，内联脚本与
+  // sidecar 一条没绑，就绪标记落 false，而 openWorkbench 的 waitForFunction
   // 把 false 当成了就绪（workbench.spec 画布点选用例「1:15 → 1:16」与 data-preview-bound 两次偶发）。
   // 扣住 main.jsx 直到板 DOM 已到，稳定造出“板先到”，不靠固定延迟猜时序。
   const errors = [];
@@ -1530,7 +1399,7 @@ test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑�
   const panel = page.locator('#wb-board-panel');
   await expect(panel.locator('[data-screen="recipe"] script[data-preview-script]')).toHaveAttribute('data-preview-bound', '1');
   await expect(panel.locator('[data-screen] .wb-frame-menu-shell')).toHaveCount(11);
-  await expect(page.locator('#wbsection-nav .wb-section-nav-item').first()).toBeAttached();
+  await expect(panel.locator('[data-screen]')).toHaveCount(11);
   await panel.locator('[data-screen="recipe"] [data-ratio-cycle]').click();
   await expect(panel.locator('[data-screen="recipe"] [data-ratio]')).toHaveText('1:16');
   const timerRoot = panel.locator('[data-screen="timer"] [data-preview-mount]');
@@ -1539,7 +1408,7 @@ test('板比外壳先到：main.jsx 晚到时板照样挂完，预览脚本绑�
   expect(errors.filter((text) => text.includes('[board-mount]'))).toEqual([]);
 });
 
-test('打包 hash 入口扣住后再放行：板、预览脚本、菜单与 navigator 全部就绪', { tag: '@bundle-entry' }, async ({ page }) => {
+test('打包 hash 入口扣住后再放行：板、预览脚本、菜单与帧全部就绪', { tag: '@bundle-entry' }, async ({ page }) => {
   let release;
   const held = new Promise(resolve => { release = resolve; });
   const entry = await interceptWorkbenchEntry(page, 'main', async route => { await held; await route.continue(); });
@@ -1555,7 +1424,7 @@ test('打包 hash 入口扣住后再放行：板、预览脚本、菜单与 navi
   const panel = page.locator('#wb-board-panel');
   await expect(panel.locator('[data-screen="recipe"] script[data-preview-script]')).toHaveAttribute('data-preview-bound', '1');
   await expect(panel.locator('[data-screen] .wb-frame-menu-shell')).toHaveCount(11);
-  await expect(page.locator('#wbsection-nav .wb-section-nav-item').first()).toBeAttached();
+  await expect(panel.locator('[data-screen]')).toHaveCount(11);
   await panel.locator('[data-screen="recipe"] [data-ratio-cycle]').click();
   await expect(panel.locator('[data-screen="recipe"] [data-ratio]')).toHaveText('1:16');
   const timerRoot = panel.locator('[data-screen="timer"] [data-preview-mount]');
@@ -2805,9 +2674,8 @@ test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、
     await expect(box).toBeVisible();
     // 输入框开着时再开列表卡与 section 导航。用程序点击：横条中段的钮此时在输入框后面，
     // 真实点击会被输入框吃掉（这正是本用例要证明的层级）。输入框不因这两下关闭。
-    await page.evaluate((withNav) => { document.getElementById('wbann-count').click(); if (withNav) document.getElementById('wbsection-nav-toggle').click(); }, FEATURES.sectionNav);
+    await page.evaluate(() => document.getElementById('wbann-count').click());
     await expect(page.locator('#wbann-pop')).toBeVisible();
-    if (FEATURES.sectionNav) await expect(page.locator('#wbsection-nav')).toBeVisible();
     await expect(box).toBeVisible();
 
     // 挂法（结构层）：#ann-chrome 是 overlay 在 .wb-stage-wrap 里的兄弟，
@@ -2822,7 +2690,7 @@ test('ADR 0034 层级：overlay 在横条之下、气泡压列表不压横条、
     })).toEqual({ chromeParent: 'wb-stage-wrap', chromeUi: true, boxInOverlay: false });
 
     // 输入框与横条 / 列表卡 / section 导航三块交集的中心，命中的都必须是输入框
-    for (const sel of ['#wbstrip', '#wbann-pop', ...(FEATURES.sectionNav ? ['#wbsection-nav'] : [])]) {
+    for (const sel of ['#wbstrip', '#wbann-pop']) {
       const point = await overlapCenter(page, '#ann-box', sel);
       expect(point, sel + ' overlaps the composer').not.toBeNull();
       await expect.poll(() => hitKindAt(page, point)).toBe('composer');
@@ -3079,51 +2947,6 @@ test('sidebar rows stay within their panel at default and compact widths (2026-0
   expect(await withinContainerViolations(page, '.wb-page', '#wbside')).toEqual([]);
   await openOutline(page);
   expect(await withinContainerViolations(page, '#wbcontents [data-entry]', '#wboutline-pop')).toEqual([]);
-});
-
-// 2026-09-28 满载 flake：Section Navigator 的条目只在板装载那一帧按几何建一次，那一帧
-// 板还没排好版就建成空列表，之后 resize / 缩放重量了几何却没人重建，导航一直藏着。
-// 这里用一段样式把板在装载那一帧压成 0 尺寸，稳定复现“那一帧量不出来”。
-test('Section Navigator：板装载那一帧量不出几何，之后排好版能自己补上条目', async ({ page }) => {
-  test.skip(!FEATURES.sectionNav, 'section nav 暂时收起（src/workbench/features.js）');
-  await page.addInitScript(() => {
-    document.addEventListener('DOMContentLoaded', () => {
-      const style = document.createElement('style');
-      style.id = 'e2e-hide-board';
-      style.textContent = '#wb-board-panel .wb-lib-item{display:none!important}';
-      document.head.appendChild(style);
-    });
-  });
-  await openWorkbench(page);
-  const navWrap = page.locator('#wbsection-nav-wrap');
-
-  await test.step('装载后立刻排好版：逐帧重量补上，不需要任何交互', async () => {
-    await expect(navWrap).toBeHidden();
-    await page.evaluate(() => document.getElementById('e2e-hide-board').remove());
-    await expect(navWrap).toBeVisible();
-    expect(await page.locator('#wbsection-nav-list .wb-section-nav-item').count()).toBeGreaterThan(1);
-  });
-
-  await test.step('重试用完之后才排好版：下一次重量几何（resize）补上', async () => {
-    const generation = await page.evaluate(() => window.workbench.mountGeneration());
-    await page.evaluate(() => {
-      const style = document.createElement('style');
-      style.id = 'e2e-hide-board';
-      style.textContent = '#wb-board-panel .wb-lib-item{display:none!important}';
-      document.head.appendChild(style);
-      // 已在 e2e-ios：不带 force 是空操作，板不重装，逐帧重量根本不会开始。
-      window.workbench.setActivePage('e2e-ios', { force: true });
-    });
-    await page.setViewportSize({ width: 1200, height: 800 });
-    await expect(navWrap).toBeHidden();
-    // 板重装、几何批落定（逐帧重量从这里起），再等逐帧重量的次数用完。
-    await expect.poll(() => page.evaluate(() => window.workbench.mountGeneration())).toBeGreaterThan(generation);
-    await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 25_000 }).toBe(true);
-    await expect.poll(() => page.evaluate(() => window.workbench.sectionNavRetrying())).toBe(false);
-    await page.evaluate(() => document.getElementById('e2e-hide-board').remove());
-    await page.setViewportSize({ width: 1280, height: 800 });
-    await expect(navWrap).toBeVisible();
-  });
 });
 
 

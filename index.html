@@ -316,7 +316,6 @@
   @media (prefers-reduced-motion: reduce) {
     .wb-side, #wbside, #wbside *, [contenteditable],
     #wbstrip, #wbstrip *, #wbdock, #wbdock *,
-    #wbcanvas-dock, #wbcanvas-dock *,
     .wb-frame-menu-shell, .wb-frame-menu-shell *, .wb-export-dialog, .wb-export-dialog *,
     .wb-library .wb-screen-dim,
     .wb-library .wb-screen .ios-stage,
@@ -485,55 +484,6 @@
     border-radius:var(--wb-r-glass);
   }
   .wb:has(#wbann-pop) .wb-canvas-dock { right:calc(var(--wb-chrome-gap) * 2 + var(--wb-annpanel-w)); }
-  /* 画布 dock（section-nav + minimap）：2026-09-04 起停靠画布右下角、横条正上方。
-     开关钮虽然搬进了横条中段，面板本体仍留在角上——横条中段正上方是底部
-     composer（#ann-box，居中 720 宽）的地盘，两者会压在一起。右下角同时避开
-     右下浮层槽（#wbdock 贴横条右端，x 落在横条内），两块卡不打架。 */
-  .wb-canvas-dock {
-    --wb-canvas-nav-w:232px;
-    position:absolute; z-index:var(--wb-z-hud);
-    right:var(--wb-chrome-gap);
-    bottom:calc(var(--wb-chrome-gap) + var(--wb-strip-h) + 8px);
-    max-height:calc(100% - var(--wb-strip-h) - 60px);
-    display:flex; flex-direction:column; align-items:flex-end; gap:8px;
-    pointer-events:none;
-  }
-  .wb-canvas-dock > * { pointer-events:auto; }
-  /* section-nav 列表行（.wb-section-nav-item 系）是 board-nav 命令式构建的
-     不受管内容（#wbsection-nav-list innerHTML，不进 Tailwind 扫描源）——
-     手写 CSS 保留、全 token 化（V3）：hover 浅面 --wb-hover；on 行 accent 8%
-     面 + 左缘 3px 指示条；screen 点 = 白面发丝小钮，hover/focus accent 边 + 上浮。 */
-  .wb-section-nav-item {
-    position:relative; min-height:38px; padding:4px 7px 4px 9px; box-sizing:border-box;
-    border-radius:var(--wb-r-3); display:grid; grid-template-columns:minmax(0, 1fr) auto; align-items:center; gap:8px;
-    color:var(--wb-muted);
-    transition:background var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section-nav-item::before {
-    content:""; position:absolute; left:0; top:7px; bottom:7px; width:3px; border-radius:var(--wb-r-1);
-    background:transparent;
-  }
-  .wb-section-nav-item:hover { background:var(--wb-hover); }
-  .wb-section-nav-item.on,
-  .wb-section-nav-item.on:hover { background:color-mix(in srgb,var(--wb-accent) 8%,var(--wb-surface)); }
-  .wb-section-nav-item.on::before { background:var(--wb-accent); }
-  .wb-section-nav-section {
-    min-width:0; height:30px; padding:0; border:0; background:transparent; cursor:pointer;
-    display:flex; align-items:center; text-align:left;
-    color:inherit; font:inherit; font-size:12px; font-weight:var(--wb-w-semibold);
-  }
-  .wb-section-nav-item.on .wb-section-nav-section { color:var(--wb-fg); }
-  .wb-section-nav-label { min-width:0; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-  .wb-section-nav-screens { display:flex; align-items:center; gap:4px; }
-  .wb-section-nav-screen {
-    width:14px; height:26px; padding:0; border:1px solid var(--wb-line);
-    border-radius:var(--wb-r-1); background:var(--wb-surface); cursor:pointer;
-    transition:border-color var(--wb-dur) var(--wb-ease), background var(--wb-dur) var(--wb-ease), transform var(--wb-dur) var(--wb-ease);
-  }
-  .wb-section-nav-screen:hover,
-  .wb-section-nav-screen:focus-visible {
-    border-color:var(--wb-accent); transform:translateY(-1px);
-  }
   /* Huge empty margin around the board so the viewer can pan freely */
   .wb-panel {
     --wb-board-pad: 3200px;
@@ -1085,8 +1035,6 @@
 <div class="wb" id="wbroot">
   <div class="wb-stage-wrap">
     <main class="wb-stage" id="wbstage" data-pp-scrollbar="scroll"></main>
-    <!-- React 挂载点：dock（section-nav + minimap）由 app/CanvasHud.jsx 渲染 -->
-    <div class="wb-canvas-dock" id="wbcanvas-dock" data-ann-ui></div>
     <!-- React 挂载点：按需浮层槽（标注弹出列表 / detail 面板，app/Dock.jsx） -->
     <div id="wbdock" data-ann-ui></div>
     <!-- React 挂载点：导出 picker 对话框（app/ExportPicker.jsx，decisions 2026-08-15d） -->
@@ -1099,7 +1047,7 @@
   <button type="button" class="wb-splitter" id="wbsplit" role="separator" aria-orientation="vertical" aria-label="调整侧栏宽度" aria-valuemin="200" aria-valuemax="480" aria-valuenow="250" title="拖动调整宽度 · 双击收起/展开"></button>
 
   <!-- React 挂载点：底部横条（app/Strip.jsx，2026-09-04 评审板 G1）——
-       画布工具那一段仍是 app/CanvasHud.jsx，wireCanvasHud 的句柄契约不变 -->
+       画布工具那一段由 app/CanvasHud.jsx 渲染 -->
   <div class="wb-strip wb-glass" id="wbstrip" data-ann-ui></div>
 
   <!-- React 挂载点：页 tab 切换条（app/TabBar.jsx，ADR 0041）——叠在横条正上方、与它平行；
