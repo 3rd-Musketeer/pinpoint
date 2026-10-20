@@ -25,6 +25,7 @@ const DIST_ENTRIES = ['e2e-tabs', 'e2e-tabs-one'].map((id) => path.join(E2E_DATA
 async function openBoard(page, query) {
   await page.goto(`/workbench/?${query}`);
   await page.waitForFunction(() => window.workbench && window.workbench.activeTabId);
+  await expect.poll(() => page.evaluate(() => window.workbench.whenBoardSettled()), { timeout: 30_000 }).toBe(true);
   // 画布挂完：至少一个帧在 DOM 里
   await expect(page.locator('#wb-board-panel [data-screen]').first()).toBeAttached();
 }
