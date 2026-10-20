@@ -66,7 +66,7 @@ import {
   setActivePage,
   showSettings,
   showTabs,
-  sidebarPages
+  manifestPages
 } from '../pages.js';
 import {
   PAGE_SORT_LABELS,
@@ -265,7 +265,7 @@ function RecentSection(props) {
 /* Pages 段（2026-08-17g 排序钮）：段头右侧是排序菜单（持久化 prefs.pageSort，
    data-page-sort 是 e2e 契约），段身按当前档位排好的页。 */
 function PagesSection(props) {
-  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 sidebarPages
+  useWorkbenchStore(function (s) { return s.pageManifest; }); // 订阅触发重渲染；取值走 manifestPages
   var manifestError = useWorkbenchStore(function (s) { return s.pageManifestError; });
 
   return (
@@ -381,7 +381,7 @@ export function Sidebar() {
   // 列表只在清单 / 当前页 / 排序变了才重算 —— 每分钟的时间 tick 会让整栏
   // 重渲染，别让它顺带重排一遍。
   var derived = useMemo(function () {
-    var pages = sidebarPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] }));
+    var pages = manifestPages().map(page => ({ ...page, ...manifest?.pageTimes?.[page.id] }));
     return {
       pages: pages.filter(function (page) { return !pagePreferences.archived[page.id]; }),
       pinned: pages.filter(function (page) { return !pagePreferences.archived[page.id] && pagePreferences.pinned[page.id]; }),

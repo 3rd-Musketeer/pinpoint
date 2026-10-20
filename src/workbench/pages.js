@@ -143,13 +143,6 @@ export function manifestPages() {
   return manifest.pages;
 }
 
-/* Component Library 系统页已随 pp2 退役（服务端组件板与 kit 组件目录一并删除）
-   ——左栏不再前置系统行，Pages = manifest 页一份清单。 */
-
-export function sidebarPages() {
-  return manifestPages();
-}
-
 function defaultPageId() {
   var pages = manifestPages();
   if (!pages.length) return '';
