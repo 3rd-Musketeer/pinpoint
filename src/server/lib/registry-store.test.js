@@ -288,19 +288,24 @@ test('withRegistryLock：别人持锁时等待方等它释放再进（不 stale 
   const dir = withTempDir(t);
   const file = path.join(dir, 'registry.json');
   const lock = `${file}.lock`;
-  // 持锁方是真实子进程：自己的事件循环空闲，200ms 后释放。Atomics.wait 阻塞的是
-  // 本进程的主线程，同进程 setTimeout 不会走，所以不能用本进程模拟持锁方。
-  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs'); fs.writeFileSync(${JSON.stringify(lock)}, '12345'); setTimeout(() => fs.unlinkSync(${JSON.stringify(lock)}), 200);`]);
-  t.after(() => new Promise((resolve) => holder.on('close', resolve)));
-  // 等锁文件真的出现再计时（spawn 到写锁之间有间隙）。
-  await new Promise((resolve) => {
-    const t0 = Date.now();
-    const poll = () => (fs.existsSync(lock) || Date.now() - t0 > 2000 ? resolve() : setTimeout(poll, 10));
-    poll();
-  });
-  const started = Date.now();
-  assert.equal(withRegistryLock(file, () => 'ran', { staleMs: 60_000 }), 'ran');
-  assert.ok(Date.now() - started >= 50, '等过持锁方再进');
+  const released = path.join(dir, 'released');
+  // 持锁方是真实子进程：Atomics.wait 阻塞的是本进程主线程，同进程 setTimeout 不会走。
+  // 它先写锁、报 locked；收到 go 后 200ms 先写 released 标记再删锁。等待方在锁内检查标记，
+  // 判的是“进锁时持锁方已经放手”这件事本身，不拿墙钟差当代理（负载下发现锁的延迟会吃掉差值）。
+  const holder = spawn(process.execPath, ['-e', `const fs = require('node:fs');
+    fs.writeFileSync(${JSON.stringify(lock)}, '12345');
+    process.stdout.write('locked');
+    process.stdin.once('data', () => setTimeout(() => {
+      fs.writeFileSync(${JSON.stringify(released)}, '');
+      fs.unlinkSync(${JSON.stringify(lock)});
+      process.exit(0);
+    }, 200));`], { stdio: ['pipe', 'pipe', 'inherit'] });
+  t.after(() => new Promise((resolve) => (holder.exitCode !== null ? resolve() : holder.on('close', resolve))));
+  await new Promise((resolve) => holder.stdout.once('data', resolve));
+  assert.ok(fs.existsSync(lock), '持锁方已持锁');
+  // go 写进管道后本进程同步进锁等待；持锁方的 200ms 从收到 go 才开始算。
+  holder.stdin.write('go');
+  assert.equal(withRegistryLock(file, () => fs.existsSync(released), { staleMs: 60_000 }), true, '进锁时持锁方已释放');
   assert.ok(!fs.existsSync(lock), '用完释放');
 });
 
