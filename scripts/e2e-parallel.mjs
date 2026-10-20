@@ -3,7 +3,7 @@ import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, rmSync, write
 import { loadavg } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { devModuleSupplement, workbenchGroupMode } from './e2e-workbench-modes.js';
+import { workbenchSupplement, workbenchGroupMode } from './e2e-workbench-modes.js';
 
 if (process.argv.length > 2) throw new Error('Use npm run test:e2e:serial -- <options> for targeted runs.');
 
@@ -176,7 +176,7 @@ function keepFirstRunArtifacts(index, suffix = '') {
     if (existsSync(from)) cpSync(from, kept, { recursive: true });
   }
   if (existsSync(resultsFile(index, suffix))) cpSync(resultsFile(index, suffix), resultsFile(index, suffix).replace(/\.json$/, '-first-run.json'));
-  console.log(`E2E group ${index + 1}: first-run artifacts kept in test-results-${groupPort}-first-run/`);
+  console.log(`E2E group ${index + 1}: first-run artifacts kept in test-results-${groupPort}${suffix}-first-run/`);
 }
 
 for (const [index, code] of results.entries()) {
@@ -187,19 +187,20 @@ for (const [index, code] of results.entries()) {
   console.log(`E2E group ${index + 1}: rerun exit code ${results[index]}`);
 }
 
-// 不用 skip 隐藏旧模块图的回归：bundle 所在文件的 @dev-modules 在已退出的首组端口串行补跑。
-// 独立输出目录保留首组证据，--last-failed 也只读取本次 dev 补跑的结果。
-const devFiles = devModuleSupplement(groups,
-  all.filter(file => readFileSync(path.join(root, 'e2e', file), 'utf8').includes('@dev-modules')),
-  process.env.PINPOINT_WORKBENCH_MODE);
-if (devFiles.length) {
-  const options = { mode: 'dev', suffix: '-dev-modules' };
-  console.log(`E2E dev module order: ${devFiles.join(', ')}; port ${port}`);
-  let code = await runGroup(0, [...devFiles.map(file => `e2e/${file}`), '--grep', '@dev-modules'], options);
+// 模式专属回归在已退出的首组端口串行补跑：dev 的模块顺序、bundle 的真实 hash 入口都不能漏。
+// 独立输出目录保留首组证据，--last-failed 也只读取本标签补跑的结果。
+for (const [mode, tag] of [['dev', '@dev-modules'], ['bundle', '@bundle-entry']]) {
+  const files = workbenchSupplement(groups,
+    all.filter(file => readFileSync(path.join(root, 'e2e', file), 'utf8').includes(tag)), mode,
+    process.env.PINPOINT_WORKBENCH_MODE);
+  if (!files.length) continue;
+  const options = { mode, suffix: `-${tag.slice(1)}` };
+  console.log(`E2E ${tag}: ${files.join(', ')}; mode ${mode}, port ${port}`);
+  let code = await runGroup(0, [...files.map(file => `e2e/${file}`), '--grep', tag], options);
   if (code !== 0) {
     keepFirstRunArtifacts(0, options.suffix);
-    code = await runGroup(0, ['--last-failed', '--grep', '@dev-modules'], options);
-    console.log(`E2E dev module order: rerun exit code ${code}`);
+    code = await runGroup(0, ['--last-failed', '--grep', tag], options);
+    console.log(`E2E ${tag}: rerun exit code ${code}`);
   }
   results.push(code);
 }

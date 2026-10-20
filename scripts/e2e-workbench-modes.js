@@ -1,7 +1,7 @@
 export const workbenchGroupMode = (index, override) => override || (index === 0 ? 'bundle' : 'dev');
 
-// 某文件被分到 bundle 组时，其中依赖源码模块顺序的测试还需单独在 dev 跑。
-export function devModuleSupplement(groups, filesWithDevModules, override) {
-  return [...new Set(groups.flatMap((files, index) => workbenchGroupMode(index, override) === 'bundle'
-    ? files.filter(file => filesWithDevModules.includes(file)) : []))];
+// 文件分组不能丢掉模式专属回归：分到另一模式时，单独补跑相应标签。
+export function workbenchSupplement(groups, taggedFiles, mode, override) {
+  return [...new Set(groups.flatMap((files, index) => workbenchGroupMode(index, override) !== mode
+    ? files.filter(file => taggedFiles.includes(file)) : []))];
 }

@@ -141,6 +141,8 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 `just staging` 在复制快照、起 sandbox 之前先构建，构建失败直接退出；成功后用打包模式起隔离服务。
 
 `npm run test:e2e` 第一组（含负载降为单组时）默认测打包，第二组测开发模块；
+文件分组或模式覆盖没有跑到的 `@dev-modules`（分离模块图回归）与 `@bundle-entry`（hash 入口回归），
+会按各自模式串行补跑，用独立报告目录保留证据，不以 skip 漏掉其中一套。
 定向验证可用 `PINPOINT_WORKBENCH_MODE=bundle E2E_PORT=<端口> npm run test:e2e:serial -- <spec>`。
 
 `ios-kit.js` 只在 loopback / `.localhost` 主机上自注入 annotate 客户端（serve 时字面量被换成
