@@ -4,6 +4,7 @@ import { E2E_BASE_URL } from './env.js';
 import { proseSettled } from './lib/prose.js';
 import { captureMotion } from './lib/motion.js';
 import { waitNoReload } from './site-settle.js';
+import { openProseArticle } from './lib/article.js';
 
 // wiki 面板（site/README.md「弹层与 Esc」）：从顶栏 wiki 按钮右下角展开，
 // Esc、点外部、关闭按钮都能关，关闭后焦点回按钮；打开 140 ms、关闭 100 ms，可反向。
@@ -11,12 +12,7 @@ import { waitNoReload } from './site-settle.js';
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 
-async function openArticle(page) {
-  await page.goto(ARTICLE);
-  await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
-  await waitNoReload(page);
-  await proseSettled(page);
-}
+const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认');
 
 const wikiBtn = (page) => page.locator('#btn-wiki');
 const panel = (page) => page.locator('#drawer');

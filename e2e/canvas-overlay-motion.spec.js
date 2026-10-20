@@ -3,6 +3,7 @@ import { expect, test } from './lib/fixtures.js';
 import { proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 import { interceptWorkbenchEntry } from './lib/workbench-entry.js';
+import { openProseArticle } from './lib/article.js';
 
 // 画布浮层的转场和加载态（site/README.md「画布浮层」）。点开后立刻看到头和「正在准备画布…」，
 // 面板进入 140ms opacity + scale .985，退出 100ms可打断；就绪信号到了才收起状态。
@@ -13,12 +14,7 @@ const overlay = (page) => page.locator('dialog[data-pp-overlay]');
 const panel = (page) => overlay(page).locator('.ov-panel');
 const status = (page) => overlay(page).locator('[data-ov-status]');
 
-async function openArticle(page) {
-  await page.goto(ARTICLE);
-  await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
-  await waitNoReload(page);
-  await proseSettled(page);
-}
+const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认');
 
 // 预热之后点开只剩把 iframe 移进来，140ms 的进入动画可能在下一次采样前就播完。
 // 等它出现再读（fill:both，播完仍留在元素上），不改要验的时长。

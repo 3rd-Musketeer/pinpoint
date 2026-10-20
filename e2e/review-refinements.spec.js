@@ -1,15 +1,13 @@
 import { expect, test } from './lib/fixtures.js';
-import fs from 'node:fs';
-import path from 'node:path';
-import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { clearBuckets } from './lib/ledger.js';
 import { maybeThrottle } from './cpu-throttle.js';
 import { openAnnotated } from './lib/annotate.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
 
 // These stories deliberately create and invalidate DOM targets. Their ledger
 // must not survive into another story with a fresh document.
-test.beforeEach(() => fs.rmSync(path.join(E2E_DATA_DIR, 'e2e-dir'), { recursive: true, force: true }));
+test.beforeEach(() => clearBuckets(['e2e-dir']));
 test.beforeEach(async ({ page }) => { await maybeThrottle(page); });
 test.afterEach(async ({ page }) => { await closeSettled(page); });
 

@@ -3,18 +3,14 @@ import { expect, test } from './lib/fixtures.js';
 import { proseSettled } from './lib/prose.js';
 import { captureMotion } from './lib/motion.js';
 import { waitNoReload } from './site-settle.js';
+import { openProseArticle } from './lib/article.js';
 
 // 窄屏目录入口（site/README.md「目录」）：1180px 以下目录栏隐藏，正文顶上一条
 // “目录 n / N 标题”，点开复用同一个 #toc。跳转后标题落在顶栏和这条入口下面。
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 
-async function openArticle(page) {
-  await page.goto(ARTICLE);
-  await expect(page.locator('#article .prose h1')).toHaveText('提交前确认', { timeout: 150_000 });
-  await waitNoReload(page);
-  await proseSettled(page);
-}
+const openArticle = (page) => openProseArticle(page, ARTICLE, '提交前确认');
 
 const entry = (page) => page.locator('[data-toc-entry]');
 const pop = (page) => page.locator('[data-toc-nav]');

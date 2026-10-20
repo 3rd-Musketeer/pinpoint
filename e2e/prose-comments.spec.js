@@ -6,6 +6,7 @@ import { expect, test } from './lib/fixtures.js';
 import { E2E_DATA_DIR, E2E_SITES_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
 import { ppnt } from './lib/cli.js';
+import { seedLedger } from './lib/ledger.js';
 import { dragSelect, proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 
@@ -66,13 +67,6 @@ async function stableBox(page, selector) {
     return measured;
   }).not.toBeNull();
   return measured;
-}
-
-/** 往一本账本里放一行或多行（baseRevision 取盘上现版，整本换成这些行）。 */
-async function seed(request, entry, ledger, row) {
-  const doc = await (await request.get(`/annotations/${encodeURIComponent(ledger)}?entry=${entry}`)).json();
-  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [].concat(row) } });
-  expect(saved.ok()).toBe(true);
 }
 
 test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / mark → 改正文重新定位，引文没了标失效', async ({ page }) => {
@@ -449,11 +443,11 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
 test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点外面保存，Esc 取消，清空恢复原文，409 不丢字；画布标注同规则', async ({ page, request }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await seed(request, PAGE_ID, '@prose', {
+  await seedLedger(request, PAGE_ID, '@prose', {
     id: 'edit-me', type: 'prose', status: 'open', content: '收款方写简称',
     quote: { exact: '确认卡写清收款方' }, section: 'how', messages: [],
   });
-  await seed(request, PAGE_ID, '@canvas', [
+  await seedLedger(request, PAGE_ID, '@canvas', [
     { id: 'edit-canvas', screenId: 'pay-card', status: 'open', content: '画布上的原始标注' },
     {
       id: 'edit-token', screenId: 'pay-card', status: 'open', content: '把 [@t:i1] 改成主按钮',
@@ -648,7 +642,7 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
 test('画布标注开头的目标记号留在原处：一个、两个都能改，保存后记号原样留在 content；夹在中间的不能改', async ({ page, request }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await seed(request, PAGE_ID, '@canvas', [
+  await seedLedger(request, PAGE_ID, '@canvas', [
     {
       id: 'lead-one', screenId: 'pay-card', status: 'check',
       content: '[@t:i1] 这里要把账号 / 连接器分开',
@@ -765,7 +759,7 @@ test('画布标注开头的目标记号留在原处：一个、两个都能改�
 test('滚动更新目录入口不重画正文，已有评论的选区还在', async ({ page, request }) => {
   test.setTimeout(180_000);
   await page.setViewportSize({ width: 1440, height: 900 });
-  await seed(request, PAGE_ID, '@prose', {
+  await seedLedger(request, PAGE_ID, '@prose', {
     id: 'keep-sel', type: 'prose', status: 'open', content: '记一笔',
     quote: { exact: '扣给谁' }, section: 'why', messages: [],
   });

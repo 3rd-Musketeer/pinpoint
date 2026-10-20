@@ -1,8 +1,6 @@
-import fs from 'node:fs';
-import path from 'node:path';
 import { test, expect } from './lib/fixtures.js';
-import { E2E_DATA_DIR } from './env.js';
 import { closeSettled } from './ledger-settle.js';
+import { clearBuckets, seedLedger } from './lib/ledger.js';
 import { dragSelect, proseSettled } from './lib/prose.js';
 import { waitNoReload } from './site-settle.js';
 import { pageKeyFromPathname } from '../src/shared/annotate-page-key.js';
@@ -16,17 +14,12 @@ const open = async (page, url) => {
   await proseSettled(page);
 };
 const endpoint = (entry, ledger) => `/annotations/${encodeURIComponent(ledger)}?entry=${entry}`;
-async function seed(request, entry, ledger, row) {
-  const doc = await (await request.get(endpoint(entry, ledger))).json();
-  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [row] } });
-  expect(saved.ok()).toBe(true);
-}
 test.beforeEach(() => {
-  for (const id of [PROSE, HTML]) fs.rmSync(path.join(E2E_DATA_DIR, id), { recursive: true, force: true });
+  clearBuckets([PROSE, HTML]);
 });
 test.afterEach(async ({ page }) => {
   await closeSettled(page);
-  for (const id of [PROSE, HTML]) fs.rmSync(path.join(E2E_DATA_DIR, id), { recursive: true, force: true });
+  clearBuckets([PROSE, HTML]);
 });
 
 test('文章卡片和右栏共用每本账本的一次首读，未注入评论客户端时卡片独立读', async ({ page }, testInfo) => {
@@ -72,7 +65,7 @@ test('共享 HTML 页：首读、SSE、关闭重读、close/reopen 的两个节�
   await open(page, '/e2e-html/pages/');
   const url = await page.locator('.cc-frame[data-screen="catalog"]').getAttribute('data-doc-url');
   const ledger = pageKeyFromPathname(url);
-  await seed(request, HTML, ledger, { id: 'alias', type: 'element', status: 'open', content: '共享 HTML 标注', targets: [], messages: [] });
+  await seedLedger(request, HTML, ledger, { id: 'alias', type: 'element', status: 'open', content: '共享 HTML 标注', targets: [], messages: [] });
   const badges = page.locator('[data-pp-section="pages"] [data-pp-badge], [data-pp-section="app"] [data-pp-badge]');
   await expect(badges).toHaveText(['1 条标注', '1 条标注']);
   await page.reload();
@@ -125,7 +118,7 @@ test('邻接乱序：一账本已解析后收到 SSE，另一账本迟到不能�
     const canvasRead = page.waitForResponse((r) => decodeURIComponent(r.url()).includes('/annotations/@canvas?'));
     await page.evaluate(() => document.dispatchEvent(new Event('pp:canvas-overlay-closed')));
     await Promise.all([held, canvasRead]);
-    await seed(request, HTML, '@canvas', { id: 'neighbor-new', screenId: 'phone-card', status: 'open', content: '较新的画布标注' });
+    await seedLedger(request, HTML, '@canvas', { id: 'neighbor-new', screenId: 'phone-card', status: 'open', content: '较新的画布标注' });
     await expect(page.getByText('较新的画布标注', { exact: true })).toBeVisible();
     const badge = page.locator('[data-pp-section="app"] [data-pp-badge]');
     await expect(badge).toHaveText('1 条标注');
@@ -146,7 +139,7 @@ test('邻接乱序：一账本已解析后收到 SSE，另一账本迟到不能�
 test('真实 IME：SSE 到达时保留新评论和回复的组字节点、草稿及光标，确认后只发送汉字', async ({ page, context, request }, testInfo) => {
   test.setTimeout(180_000);
   await open(page, '/e2e-prose/notes/');
-  await seed(request, PROSE, '@prose', { id: 'ime', type: 'prose', status: 'open', content: '已有评论',
+  await seedLedger(request, PROSE, '@prose', { id: 'ime', type: 'prose', status: 'open', content: '已有评论',
     quote: { exact: '确认卡写清收款方' }, section: 'how', messages: [] });
   // 这条引用在第二节，宽屏下卡片排在那一段旁边，先滚进视口。
   await page.locator('#how').evaluate((el) => el.scrollIntoView({ block: 'center' }));
@@ -166,7 +159,7 @@ test('真实 IME：SSE 到达时保留新评论和回复的组字节点、草稿
     const reply = await request.post('/annotations/%40prose/ime/reply', { data: { entry: PROSE, baseRevision: doc.revision, text } });
     expect(reply.ok()).toBe(true);
     await page.waitForFunction((text) => window.pinpointProse.rows().some((r) => r.messages?.some((m) => m.text === text)), text);
-    await seed(request, PROSE, '@canvas', { id: 'ime-canvas', screenId: 'pay-card', content: '组字时画布更新 ' + mode, status: 'open' });
+    await seedLedger(request, PROSE, '@canvas', { id: 'ime-canvas', screenId: 'pay-card', content: '组字时画布更新 ' + mode, status: 'open' });
     await page.waitForFunction((mode) => window.pinpointProse.canvasRows().some((r) => r.content === '组字时画布更新 ' + mode), mode);
     expect(await page.evaluate(() => window.__imeArea.isConnected)).toBe(true);
     await cdp.send('Input.insertText', { text: '你好' });

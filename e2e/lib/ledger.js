@@ -3,6 +3,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 
+import { expect } from './fixtures.js';
 import { E2E_DATA_DIR } from '../env.js';
 
 // _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，
@@ -34,4 +35,11 @@ export function clearBuckets(pageIds) {
   for (const id of pageIds) {
     fs.rmSync(path.join(E2E_DATA_DIR, id), { recursive: true, force: true });
   }
+}
+
+/** 往一本账本里放一行或多行（baseRevision 取盘上现版，整本换成这些行）。 */
+export async function seedLedger(request, entry, ledger, rows) {
+  const doc = await (await request.get(`/annotations/${encodeURIComponent(ledger)}?entry=${entry}`)).json();
+  const saved = await request.post('/save', { data: { entry, page: ledger, path: '/', baseRevision: doc.revision, annotations: [].concat(rows) } });
+  expect(saved.ok(), await saved.text()).toBe(true);
 }
