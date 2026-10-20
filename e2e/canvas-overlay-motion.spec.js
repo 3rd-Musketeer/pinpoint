@@ -790,9 +790,10 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
   });
 
   await test.step('停驻 3 秒：工作台不再排定时器与动画帧', async () => {
-    // 「停驻」只代表文章页把浮层停下了；停驻的工作台文档自己的装载尾巴
-    //（mountBoard / 聚焦 / React Query GC 排程）可能还没跑完（负载下实测探针窗里
-    // 能数到十几个）。等板自己落定再开探针，窗口里只剩真正的停驻期排程。
+    // 「停驻」只代表文章页把浮层停下了；停驻的工作台文档自己的装载尾巴（mountBoard /
+    // setActiveEntry / 首访聚焦的平滑滚动 / React Query GC 排程）可能还没跑完（负载下
+    // 实测探针窗里能数到十几个）。先等板落定，探针装上后等「连续两次采样零新增」
+    // 才算真静下来，清零开量——不停就一定有新增，这正是这条门要守的。
     await expect.poll(() => page.evaluate(() => {
       const w = window.pinpointOverlay.frame()?.contentWindow;
       return !!(w?.workbench && w.workbench.whenBoardSettled());
@@ -808,6 +809,17 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
         counts,
         restore: () => { win.setTimeout = orig.timeout; win.setInterval = orig.interval; win.requestAnimationFrame = orig.raf; },
       };
+    });
+    await expect.poll(() => page.evaluate(() => {
+      const p = window.pinpointOverlay.frame().contentWindow.__parkProbe;
+      const now = p.counts.timeout + p.counts.interval + p.counts.raf;
+      if (now === p.lastCount) p.quiet = (p.quiet || 0) + 1;
+      else { p.quiet = 0; p.lastCount = now; }
+      return p.quiet >= 2;
+    }), { timeout: 30_000 }).toBe(true);
+    await page.evaluate(() => {
+      const p = window.pinpointOverlay.frame().contentWindow.__parkProbe;
+      p.counts.timeout = 0; p.counts.interval = 0; p.counts.raf = 0;
     });
     await page.evaluate(() => new Promise((resolve) => setTimeout(resolve, 3000))); // 静默窗口：停驻期间不该有新回调
     const counts = await page.evaluate(() => {
