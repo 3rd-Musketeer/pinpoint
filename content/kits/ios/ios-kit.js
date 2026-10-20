@@ -74,7 +74,8 @@
 
   /* ---- sheets -------------------------------------------------------------- */
   function openSheet(id, root) {
-    var sheet = (root || document).querySelector('#' + CSS.escape(id) + '.ios-sheet, .ios-sheet#' + CSS.escape(id));
+    // #id.ios-sheet 与 .ios-sheet#id 是同一个选择器的两种写法，留一份。
+    var sheet = (root || document).querySelector('#' + CSS.escape(id) + '.ios-sheet');
     if (!sheet) sheet = document.getElementById(id);
     if (!sheet) return;
     var scope = sheet.closest('.ios-screen') || document;
