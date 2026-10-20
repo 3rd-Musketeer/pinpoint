@@ -17,7 +17,7 @@ import {
 } from './board-nav.js';
 import { annotateApi } from './ann-bridge.js';
 import { annotateViewportChanged } from './annotate-surface.js';
-import { registerEmbedPark } from './embed-park.js';
+import { embedParked, registerEmbedPark } from './embed-park.js';
 
 // 反向依赖注入：resolveBootPageId 依赖 pages.js 的 resolveActivePage，
 // applyPageNames 属 pages.js；pages.js 会直接 import 本模块，本模块不能反向
@@ -217,7 +217,7 @@ export function snapshotPageViewport(pageId) {
 }
 
 export function scheduleViewportScrollSave() {
-  if (restoringViewport || !stage) return;
+  if (restoringViewport || !stage || embedParked()) return;
   scheduleMinimapUpdate();
   if (activeBoardMode() === 'html') return;   // 文档条目形态无画布视口可存
   clearTimeout(viewportSaveT);

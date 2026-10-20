@@ -14,7 +14,7 @@ import { wbGet, useWorkbenchStore } from './app/store.js';
 import { isEmbedded } from './lib/page-url.js';
 import { isPageOverlayOpen } from './pages.js';
 import { wbLayers } from './layer-stack.js';
-import { pauseEmbed, resumeEmbed } from './embed-park.js';
+import { reportEmbedPark } from './embed-park.js';
 
 export var EMBEDDED = isEmbedded(location.search);
 var EMBED_MESSAGE_SOURCE = 'pinpoint-workbench';
@@ -73,26 +73,26 @@ function pageSectionOf(screenId) {
   return item ? item.getAttribute('data-ann-section') || '' : '';
 }
 
-export function startEmbedBridge() {
+export function startEmbedBridge(whenBootSettled) {
   if (!EMBEDDED) return;
   document.documentElement.classList.add('wb-embed');
+  var reportPark = reportEmbedPark(whenBootSettled, function (paused) {
+    post({ type: 'parked', paused: paused });
+  });
   // 停驻（E2）：文章页把浮层收进停驻容器时发 pause，打开时发 resume。
   // 回执不看代次（停驻是这一份文档的事）；保存与 outbox 不在暂停登记里，照常落盘。
   window.addEventListener('message', function (e) {
     if (e.source !== window.parent || e.origin !== location.origin) return;
     var data = e.data;
     if (!data || data.source !== 'pinpoint-article' || (data.type !== 'pause' && data.type !== 'resume')) return;
-    if (data.type === 'pause') pauseEmbed();
-    else resumeEmbed();
-    post({ type: 'parked', paused: data.type === 'pause' });
+    reportPark(data.type === 'pause');
   });
   // 预热的 pause 可能在这个监听挂上之前就到了（模块还在加载）：父页面的浮层关着、
   // 停着本帧（data-ov-held），就当它已经要求暂停，补一次。
   try {
     var held = window.parent.document.querySelector('dialog[data-pp-overlay][data-ov-held]:not([open]) iframe');
     if (held && held.contentWindow === window) {
-      pauseEmbed();
-      post({ type: 'parked', paused: true });
+      reportPark(true);
     }
   } catch (e) { /* 父页面不可读：不是嵌入 */ }
   // 弹层栈没接住的 Esc（栈里没有任何层接）：请文章页关浮层（C2）。与直接打开的画布

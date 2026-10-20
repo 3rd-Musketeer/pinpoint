@@ -121,7 +121,7 @@ function syncAnnSnap() {
 // onUpdate 突发（persist + SSE + scroll-spy）合并成一帧一次快照。
 var annSnapRaf = 0;
 export function scheduleAnnSnap() {
-  if (annSnapRaf) return;
+  if (annSnapRaf || embedParked()) return;
   annSnapRaf = requestAnimationFrame(function () {
     annSnapRaf = 0;
     syncAnnSnap();

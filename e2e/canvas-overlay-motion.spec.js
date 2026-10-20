@@ -699,8 +699,25 @@ const OPEN_BUDGET_MS = 120;
 test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒工作台不再排回调', async ({ page }) => {
   test.setTimeout(180_000);
   let parkedBody = null;
+  let releaseBoard;
+  const boardGate = new Promise((resolve) => { releaseBoard = resolve; });
+  let boardRequested = false;
+  await page.route('**/board.json', async (route) => {
+    boardRequested = true;
+    await boardGate;
+    await route.continue();
+  });
   await page.setViewportSize({ width: 1440, height: 900 });
   await openArticle(page);
+
+  await test.step('首装板尚未返回时不能提前回停驻', async () => {
+    try {
+      await expect.poll(() => boardRequested, { timeout: 60_000 }).toBe(true);
+      expect(await page.evaluate(() => window.pinpointOverlay.phase())).toBe('warming');
+    } finally {
+      releaseBoard();
+    }
+  });
 
   await test.step('正文和可见卡片完成后才预热，停驻容器按打开时的尺寸', async () => {
     await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.settled() && window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');

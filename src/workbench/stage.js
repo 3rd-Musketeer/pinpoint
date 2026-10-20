@@ -320,7 +320,17 @@ function initBoard() {
     .then(function () { startDeepLinkSync(); });
 }
 
-startEmbedBridge();
+// 停驻是首装屏障，不能在 stage 入口出现时就回执。预览脚本在停驻中暂缓，
+// 因而只等 boot、板几何和客户端账本，不等 previewsSettled（它等恢复才落定）。
+var bootSettled;
+startEmbedBridge(function () {
+  var loaded = document.readyState === 'complete' ? Promise.resolve()
+    : new Promise(function (resolve) { window.addEventListener('load', resolve, { once: true }); });
+  return loaded.then(function () { return bootSettled; })
+    .then(function () { return followSession('boardSettled'); })
+    .then(function () { return window.pinpoint && window.pinpoint.whenReady(); })
+    .then(function () { return whenStageScrollSettled(); });
+});
 startPageOverlay(stage);
 startLiveCards(stage);
 startPhoneDocScrollbar(stage);
@@ -333,7 +343,7 @@ initPages({
   loadBoard: loadBoard,
   mountManager: mountManager
 });
-initBoard();
+bootSettled = initBoard();
 
 function followSession(signal) {
   var session = mountManager.current;

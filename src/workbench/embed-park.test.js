@@ -1,7 +1,26 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
-import { embedParked, pauseEmbed, registerEmbedPark, resetEmbedPark, resumeEmbed } from './embed-park.js';
+import { embedParked, pauseEmbed, registerEmbedPark, reportEmbedPark, resetEmbedPark, resumeEmbed } from './embed-park.js';
+
+test('停驻立即暂停，但回执要等首装落定；恢复撤销在途的停驻回执', async () => {
+  resetEmbedPark();
+  let settle;
+  const boot = new Promise((resolve) => { settle = resolve; });
+  const reports = [];
+  const report = reportEmbedPark(() => boot, (paused) => reports.push(paused));
+  const first = report(true);
+  assert.equal(embedParked(), true);
+  await Promise.resolve();
+  assert.deepEqual(reports, []);
+  await report(false);
+  settle();
+  await first;
+  assert.equal(embedParked(), false);
+  assert.deepEqual(reports, [false]);
+  await report(true);
+  assert.deepEqual(reports, [false, true]);
+});
 
 test('pause runs every duty once; pausing again does not drop the backlog resume will replay', () => {
   resetEmbedPark();

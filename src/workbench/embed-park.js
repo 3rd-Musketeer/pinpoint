@@ -58,6 +58,23 @@ export function resumeEmbed() {
   run('resume');
 }
 
+/** 暂停意图立即生效，停驻回执等首装真正落定。打开会作废先前在途的回执。 */
+export function reportEmbedPark(whenSettled, report) {
+  var request = 0;
+  return function (paused) {
+    var token = ++request;
+    if (!paused) {
+      resumeEmbed();
+      report(false);
+      return Promise.resolve();
+    }
+    pauseEmbed();
+    return Promise.resolve().then(whenSettled).then(function () {
+      if (token === request && embedParked()) report(true);
+    });
+  };
+}
+
 /** 测试用：清掉登记与停驻态。生产代码不调。 */
 export function resetEmbedPark() {
   duties = [];

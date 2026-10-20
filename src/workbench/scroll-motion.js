@@ -11,6 +11,7 @@ let active = null;
 const keptStages = new Set();
 let releaseToken = 0;
 let suppressRelease = false;
+let releasePending = Promise.resolve();
 
 function stageIntersectsViewport(stage, stageRect, dx, dy) {
   const rect = stage.getBoundingClientRect();
@@ -36,13 +37,17 @@ function revealStagesAt(stage, left, top) {
 
 function releaseKeptStagesSoon() {
   const token = ++releaseToken;
+  let released;
+  releasePending = new Promise((resolve) => { released = resolve; });
   // 两帧：第一帧把新的滚动位置画出来，第二帧让 cv:auto 接上再摘强制可见。
   // 平滑滚动途中又发起了下一段（token 被换掉，或弹簧还在跑）就不摘，
   // 否则滑进视口的 stage 会在动画中途重新变空白。
   requestAnimationFrame(() => requestAnimationFrame(() => {
-    if (token !== releaseToken || active) return;
-    for (const el of keptStages) el.removeAttribute('data-cv-keep');
-    keptStages.clear();
+    if (token === releaseToken && !active) {
+      for (const el of keptStages) el.removeAttribute('data-cv-keep');
+      keptStages.clear();
+    }
+    released();
   }));
 }
 
@@ -58,8 +63,12 @@ export function cancelStageScroll() {
   if (!suppressRelease) releaseKeptStagesSoon();
 }
 
-export function whenStageScrollSettled() {
-  return active ? active.promise : Promise.resolve(true);
+export async function whenStageScrollSettled() {
+  const ok = active ? await active.promise : true;
+  const pending = releasePending;
+  await pending;
+  if (active || pending !== releasePending) return whenStageScrollSettled();
+  return ok;
 }
 
 /** One owner for canvas navigation. Retarget from presentation position and velocity. */
