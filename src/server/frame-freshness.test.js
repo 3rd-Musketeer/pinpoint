@@ -3,6 +3,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
+import { EventEmitter } from 'node:events';
 
 import frameApi from './frame-api.js';
 import { resolvePageTarget } from './lib/board-source.js';
@@ -45,6 +46,10 @@ function fixture(t) {
     const req = mockReq('GET', `/api/frame?page=demo_flow&screen=${screen}${embed ? `&embed=${embed}` : ''}&annotate=off`);
     req.headers = headers;
     const res = mockRes();
+    const events = new EventEmitter();
+    res.on = events.on.bind(events);
+    res.off = events.off.bind(events);
+    res.emit = events.emit.bind(events);
     const pending = middleware(req, res, () => assert.fail('应由帧 API 响应'));
     control(req, res);
     await pending;
@@ -99,6 +104,16 @@ test('R1：断连只结束自身等待，既有编译继续，断连请求不发
   assert.equal(response.writableEnded, false, '断连后不发送 500 或旧帧');
   await compiling;
   assert.equal((await request('home')).statusCode, 200, '取消不破坏其他消费者的编译');
+});
+
+test('R1：GET 响应 close 同样结束等待，并清理断连监听', async (t) => {
+  const { target, request } = fixture(t);
+  let finished = false;
+  const compiling = compilePage(target).then(() => { finished = true; });
+  const response = await request('home', 'card', {}, (_req, res) => res.emit('close'));
+  assert.equal(finished, false);
+  assert.equal(response.writableEnded, false);
+  await compiling;
 });
 
 test('文章嵌入帧：在飞编译读完旧稿后再保存，请求必须等最新代且旧编译不能覆盖', async (t) => {
@@ -171,4 +186,51 @@ test('R2：kit 回退变为本篇覆盖，watcher 前请求即采用新的解析
   const fallback = await request('home');
   assert.ok(fallback.text.includes('kit 回退'), '删除覆盖后重新采用 kit');
   assert.ok(!fallback.text.includes('LOCAL OVERRIDE'));
+});
+
+test('S1：相同失败输入复用错误，主文件或依赖修好后自动编译恢复', async (t) => {
+  for (const dependency of [false, true]) await t.test(dependency ? '依赖语法错误' : '帧语法错误', async (t) => {
+    const { target, write, request } = fixture(t);
+    const file = dependency ? 'components/Label.jsx' : 'home.jsx';
+    if (dependency) {
+      write('home.jsx', 'import Label from "./components/Label.jsx"; export default function Home() { return <div className="ios-app"><Label /></div>; }');
+      write(file, 'export default function Label() { return <p>初稿</p>; }');
+    }
+    await compilePage(target);
+    write(file, 'export default function Broken() { return <broken ');
+    const original = fs.writeFileSync;
+    let writes = 0;
+    const probe = t.mock.method(fs, 'writeFileSync', function (file, ...args) {
+      if (String(file).endsWith('/dist/demo_flow/build.json')) writes++;
+      return original.call(this, file, ...args);
+    });
+    for (let i = 0; i < 3; i++) assert.equal((await request('home')).statusCode, 500);
+    assert.equal(writes, 2, '同一失败代次只编一次（build.json 写占位和实际 mtime 两次）');
+    await compilePage(target, { onlyScreen: 'home' });
+    const afterWatcher = writes;
+    assert.equal((await request('home')).statusCode, 500);
+    assert.equal(writes, afterWatcher, 'watcher 已尝试的坏代次直接复用错误');
+    write(file, 'export default function Fixed() { return <div className="ios-app">修好后自愈</div>; }');
+    assert.ok((await request('home')).text.includes('修好后自愈'));
+    assert.equal(writes, afterWatcher + 2);
+    probe.mock.restore();
+  });
+});
+
+test('S1：缺失默认 import 出现后使错误失效，不会永久停在负缓存', async (t) => {
+  const { target, write, request } = fixture(t);
+  write('home.jsx', 'import text from "./missing.js"; export default function Home() { return <div className="ios-app">{text}</div>; }');
+  assert.equal((await request('home')).statusCode, 500);
+  const original = fs.writeFileSync;
+  let builds = 0;
+  const probe = t.mock.method(fs, 'writeFileSync', function (file, ...args) {
+    if (String(file).endsWith('/dist/demo_flow/build.json')) builds++;
+    return original.call(this, file, ...args);
+  });
+  assert.equal((await request('home')).statusCode, 500);
+  assert.equal(builds, 0);
+  write('missing.js', 'export default "新增模块后自愈";');
+  assert.ok((await request('home')).text.includes('新增模块后自愈'));
+  assert.equal(builds, 2);
+  probe.mock.restore();
 });
