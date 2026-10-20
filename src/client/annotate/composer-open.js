@@ -100,7 +100,7 @@ export function openComposer(m, anchorRect, isNew) {
 
   var mention = createMentionPicker(ta, m);
 
-  draft.images = attachComposerImages(box, ta, m);
+  draft.images = attachComposerImages(box, ta, m, composer);
   var plus = box.querySelector('#ann-plus');
   var toolsMenu = box.querySelector('#ann-tools-menu');
   function closeTools() { toolsMenu.hidden = true; plus.setAttribute('aria-expanded', 'false'); }

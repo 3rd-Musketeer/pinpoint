@@ -7,16 +7,20 @@ import { setStatus } from './ui.js';
 export function bind_composer_images(c) { ctx = c; }
 var ctx;
 
-export function attachComposerImages(box, ta, m) {
+export function attachComposerImages(box, ta, m, composer) {
 var images = (m.images || []).slice();
 var imgWrap = box.querySelector('#ann-imgs');
+// 图和文字一样算草稿：增删后排自动保存。关页只冲 ctx.marks，不排就丢。
+function noteImages() {
+  if (composer && composer.scheduleAutosave) composer.scheduleAutosave();
+}
 function renderImgs() {
   imgWrap.innerHTML = '';
   images.forEach(function (im, i) {
     var d = document.createElement('div');
     d.className = 'im'; d.setAttribute('data-ann-ui', '');
     d.innerHTML = '<img src="' + ctx.SERVER + '/images/' + encodeURIComponent(im.file) + '?entry=' + encodeURIComponent(ctx.ENTRY) + '"><span class="x">×</span>';
-    d.querySelector('.x').addEventListener('click', function () { images.splice(i, 1); renderImgs(); });
+    d.querySelector('.x').addEventListener('click', function () { images.splice(i, 1); renderImgs(); noteImages(); });
     imgWrap.appendChild(d);
   });
 }
@@ -29,7 +33,7 @@ function addImageFile(file) {
       method: 'POST', headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ page: ctx.PAGE, entry: ctx.ENTRY, data: rd.result })
     }).then(function (r) { return r.json(); })
-      .then(function (j) { images.push({ file: j.file, path: j.path }); renderImgs(); setStatus(''); })
+      .then(function (j) { images.push({ file: j.file, path: j.path }); renderImgs(); setStatus(''); noteImages(); })
       .catch(function () { setStatus('截图上传失败', true); });
   };
   rd.readAsDataURL(file);
