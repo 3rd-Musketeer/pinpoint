@@ -105,7 +105,8 @@ test('wiki 面板：锚在按钮右下角，Esc、点外部、关闭按钮都能
   await test.step('Esc 关面板；popup 在上面时 Esc 只关 popup', async () => {
     await wikiBtn(page).click();
     await expect(panel(page)).toBeVisible();
-    await page.locator('.cref.empty[data-name="risk-score"]').click();
+    // 鼠标点正文会先按「点外部关闭」收起 wiki；用键盘打开上层 popup，才是在验证 Esc 分层。
+    await page.locator('.cref.empty[data-name="risk-score"]').press('Enter');
     await expect(page.locator('.pop')).toBeVisible();
     await page.keyboard.press('Escape');
     await expect(page.locator('.pop')).toHaveCount(0);
