@@ -81,11 +81,10 @@ export const isReservedProjectId = (id) => isReservedSegment(String(id));
 
 /**
  * project 内占用的 URL 第二段：/<project>/wiki/<名字>/ 是 wiki 词条页，/<project>/wiki/ 是词条列表。
- * 旧的 /<project>/concepts/… 301 到 wiki（ADR 0045），所以 concepts 也留着。article id 不能取这两个。
+ * article id 不能取它。
  */
 export const WIKI_SEGMENT = 'wiki';
-export const LEGACY_CONCEPTS_SEGMENT = 'concepts';
-export const RESERVED_ARTICLE_IDS = new Set([WIKI_SEGMENT, LEGACY_CONCEPTS_SEGMENT]);
+export const RESERVED_ARTICLE_IDS = new Set([WIKI_SEGMENT]);
 
 /** `[[名字]]` 的命名空间键：比较不分大小写、去首尾空白（Obsidian 同规则）。 */
 export function refKey(name) {

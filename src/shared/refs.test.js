@@ -44,7 +44,7 @@ test('article ids and concept names share one namespace per project', () => {
   assert.equal(errs.length, 1);
   assert.equal(errs[0].code, 'name_collision');
   assert.match(errs[0].message, /"x".*\/a\/x\/index\.mdx.*\/c\/x\.md/);
-  assert.match(namespaceErrors({ id: 'p', articles: [{ id: 'concepts', file: '/f' }], concepts: [] })[0].message, /reserved/);
+  assert.match(namespaceErrors({ id: 'p', articles: [{ id: 'wiki', file: '/f' }], concepts: [] })[0].message, /reserved/);
 });
 
 test('ref markup escapes and round-trips the .md placeholder', () => {

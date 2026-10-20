@@ -21,7 +21,7 @@ import { fileURLToPath } from 'node:url';
 
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
 import { parseArticleDate } from '../../shared/article-feed.js';
-import { articlePageId, isReservedProjectId, LEGACY_CONCEPTS_SEGMENT, refKey, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
+import { articlePageId, isReservedProjectId, refKey, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
 import { frameFileReaders, parseArticleCanvas } from './article-canvas.js';
 import { parseFrontmatter } from './frontmatter.js';
 import { readProjectSources } from './project-sources.js';
@@ -163,12 +163,8 @@ function readArticles(dir, errors, projectId, sources = {}) {
   return articles;
 }
 
-/** wiki 词条（代码里叫 concept）：docs/pinpoint/wiki/<名字>.md。旧的 concepts/ 目录不读，记一条布局错误（ADR 0045）。 */
+/** wiki 词条（代码里叫 concept）：docs/pinpoint/wiki/<名字>.md。 */
 function readConcepts(dir, errors) {
-  const legacy = path.join(dir, LEGACY_CONCEPTS_SEGMENT);
-  if (isDir(legacy)) {
-    errors.push(problem('wiki_dir_renamed', `${LEGACY_CONCEPTS_SEGMENT}/ 已改名成 ${WIKI_SEGMENT}/，这个目录不再读：mv ${legacy} ${path.join(dir, WIKI_SEGMENT)}`, { path: LEGACY_CONCEPTS_SEGMENT }));
-  }
   const conceptsDir = path.join(dir, WIKI_SEGMENT);
   const concepts = [];
   for (const item of visibleChildren(path.resolve(dir, '..', '..'), conceptsDir)) {

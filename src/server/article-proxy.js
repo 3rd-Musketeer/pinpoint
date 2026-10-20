@@ -272,13 +272,6 @@ export function createArticleHandler({ registry, isProject, devServer, origins, 
   return function handleArticle(req, res) {
     const route = routeArticleRequest(req.url, projectCheck);
     if (!route) return false;
-    if (route.kind === 'redirect') {
-      res.statusCode = route.status;
-      res.setHeader('Location', route.location);
-      res.setHeader('Cache-Control', 'no-store');
-      res.end();
-      return true;
-    }
     const verdict = decide(req, devServer, own, false);
     if (!verdict.allow) {
       sendForbidden(res, verdict.reason);

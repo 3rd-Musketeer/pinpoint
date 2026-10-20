@@ -44,9 +44,11 @@ test('parseAddress：斜杠形、页 id 形、文章网址都是同一篇文章�
   assert.deepEqual(parseAddress('@page:browser-use_payment-confirm#3'), { ...article, n: 3 });
   assert.equal(parseAddress('@page:bad page'), null);
   assert.deepEqual(parseAddress('https://pinpoint.localhost/browser-use/'), { kind: 'id', id: 'browser-use' });
-  // wiki 是 wiki 词条页的路由段，不是文章；旧的 concepts 段也不是。
+  // wiki 是 wiki 词条页的路由段，不是文章；三段以上的路径也不是文章网址。
   assert.equal(parseAddress('https://pinpoint.localhost/browser-use/wiki/x/'), null);
-  assert.equal(parseAddress('https://pinpoint.localhost/browser-use/concepts/x/'), null);
+  // concepts 不再保留（改名 301 已删）：两段网址按文章解析。
+  assert.deepEqual(parseAddress('https://pinpoint.localhost/browser-use/concepts/'),
+    { kind: 'article', project: 'browser-use', article: 'concepts', pageId: 'browser-use_concepts' });
 });
 
 test('parseAddress / looksLikeRef：引用的样子不当目标', () => {

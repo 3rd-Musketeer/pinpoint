@@ -21,7 +21,7 @@
  * 它答 404，这里把前缀后连续的斜杠压成一道。
  */
 import { ENTRY_ID_PATTERN } from '../../shared/registry-ids.js';
-import { isReservedSegment, LEGACY_CONCEPTS_SEGMENT, RESERVED_ARTICLE_IDS, WIKI_SEGMENT } from '../../shared/project-ids.js';
+import { isReservedSegment, RESERVED_ARTICLE_IDS } from '../../shared/project-ids.js';
 import { projectEntry } from './registry.js';
 import { splitUrlQuery } from './req-url.js';
 
@@ -68,7 +68,6 @@ export function articleIdOfPath(pathname) {
  *   { kind: 'home', project: null, article: null, upstream }  不带参数的 /（blog 首页）
  *   { kind: 'article', project, article, upstream }   project 下的一切路径；article =
  *                                             文章 id（文章页）或 null（首页、wiki 页…）
- *   { kind: 'redirect', status: 301, project, location }  旧的 /<project>/concepts/… → /<project>/wiki/…
  *   { kind: 'internal', upstream }            Astro 的 vite 内部路径与 /_image
  * upstream = 发给 Astro 开发服务器的路径 + query。
  */
@@ -93,11 +92,6 @@ export function routeArticleRequest(url, isProject) {
   }
   if (!ENTRY_ID_PATTERN.test(segment) || isReservedSegment(segment)) return null;
   if (typeof isProject !== 'function' || !isProject(segment)) return null;
-  const rest = segmentEnd < 0 ? '' : pathname.slice(segmentEnd + 1);
-  const legacy = rest === LEGACY_CONCEPTS_SEGMENT ? '' : rest.startsWith(`${LEGACY_CONCEPTS_SEGMENT}/`) ? rest.slice(LEGACY_CONCEPTS_SEGMENT.length + 1) : null;
-  if (legacy !== null) {
-    return { kind: 'redirect', status: 301, project: segment, location: `/${rawSegment}/${WIKI_SEGMENT}/${legacy}${search}` };
-  }
   return { kind: 'article', project: segment, article: articleIdOfPath(pathname), upstream: '/_astro' + pathname + search };
 }
 

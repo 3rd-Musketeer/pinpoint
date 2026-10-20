@@ -227,15 +227,13 @@ test('文章站点：启动中页 → 文章，/_astro/ 资源、代理边界、
     await expect(await cardInner(page, 'confirm-sheet', '.e2e-confirm-card')).toHaveCSS('outline-color', 'rgb(255, 0, 0)');
   });
 
-  await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址 301 过来（ADR 0045）', async () => {
+  await test.step('从 popup 进 wiki 词条页：/<project>/wiki/<slug>/，列出用到它的文章；旧的 /concepts/ 地址不再跳（404）', async () => {
     await page.locator('.cref[data-kind="concept"][data-name="confirm-card"]').hover();
     await page.locator('.pop a.go').click();
     await expect(page).toHaveURL(`${E2E_BASE_URL}/e2e-project/wiki/confirm-card/`);
     await expect(page.locator('#article .prose h1')).toHaveText('confirm-card');
     await expect(page.locator('#used-by')).toContainText('提交前确认');
-    const old = await request.get('/e2e-project/concepts/confirm-card/', { maxRedirects: 0 });
-    expect(old.status()).toBe(301);
-    expect(old.headers().location).toBe('/e2e-project/wiki/confirm-card/');
+    expect((await request.get('/e2e-project/concepts/confirm-card/')).status()).toBe(404);
     expect((await request.get('/e2e-project/wiki/')).status()).toBe(200);
   });
 

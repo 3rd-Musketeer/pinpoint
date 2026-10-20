@@ -36,13 +36,14 @@ test('routeArticleRequest：登记过的 project 首段进站点，上游带 /_a
     '/_astro/demo/wiki/%E7%A1%AE%E8%AE%A4/?annotate=off');
 });
 
-test('routeArticleRequest：旧的概念页地址 /<project>/concepts/… 301 到 /<project>/wiki/…，query 原样带上（ADR 0045）', () => {
-  assert.deepEqual(routeArticleRequest('/demo/concepts/%E7%A1%AE%E8%AE%A4/?x=1', isProject), {
-    kind: 'redirect', status: 301, project: 'demo', location: '/demo/wiki/%E7%A1%AE%E8%AE%A4/?x=1',
+test('routeArticleRequest：concepts 不再是保留第二段——旧 /concepts/ 地址不再 301，交给站点（没有这一页就 404；concepts 现在是合法 article id）', () => {
+  assert.deepEqual(routeArticleRequest('/demo/concepts/x/?y=1', isProject), {
+    kind: 'article', project: 'demo', article: null, upstream: '/_astro/demo/concepts/x/?y=1',
   });
-  assert.equal(routeArticleRequest('/demo/concepts/', isProject).location, '/demo/wiki/');
-  assert.equal(routeArticleRequest('/demo/concepts', isProject).location, '/demo/wiki/');
-  // 没登记的 project 不归站点，也不跳。
+  assert.deepEqual(routeArticleRequest('/demo/concepts/', isProject), {
+    kind: 'article', project: 'demo', article: 'concepts', upstream: '/_astro/demo/concepts/',
+  });
+  // 没登记的 project 不归站点。
   assert.equal(routeArticleRequest('/unknown/concepts/x/', isProject), null);
 });
 
@@ -56,7 +57,7 @@ test('routeArticleRequest：不带参数的 / 是 blog 首页，交给站点；�
 test('articleIdOfPath：只有 /<project>/<article>/ 形状是文章页（注入正文评论的地方）', () => {
   for (const [p, want] of [
     ['/demo/intro/', 'intro'], ['/demo/intro', 'intro'], ['/demo/intro/index.html', 'intro'],
-    ['/demo/', null], ['/demo', null], ['/demo/llms.txt', null], ['/demo/concepts/', null], ['/demo/wiki/', null], ['/demo/wiki', null],
+    ['/demo/', null], ['/demo', null], ['/demo/llms.txt', null], ['/demo/concepts/', 'concepts'], ['/demo/wiki/', null], ['/demo/wiki', null],
     ['/demo/concepts/x/', null], ['/demo/wiki/x/', null], ['/demo/intro/assets/a.png', null], ['/demo/Intro/', null], ['/demo/%E4%B8%AD/', null],
   ]) assert.equal(articleIdOfPath(p), want, p);
 });

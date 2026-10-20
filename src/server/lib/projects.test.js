@@ -153,20 +153,20 @@ test('layout errors are listed, never thrown', async (t) => {
       'articles/stray.md': '',
       'articles/Bad_Id/index.mdx': '',
       'articles/wiki/index.mdx': '',
-      'articles/concepts/index.mdx': '',
       'articles/no-index/notes.md': '',
+      // concepts 不再是保留名（改名 301 已删）：它是一个合法 article id。
+      'articles/concepts/index.mdx': '---\ntitle: C\n---\n',
       'articles/ok/index.mdx': '---\ntitle: OK\ntags:\n  - a\n---\n',
       'wiki/one.md': '---\nname: same\n---\n',
       'wiki/two.md': '---\nname: Same\n---\n',
       'wiki/readme.txt': 'ignored',
     });
     const project = findProject(registryWith(t, [{ id: 'messy', kind: 'project', path: root }]), 'messy');
-    assert.deepEqual(project.articles.map((a) => a.id), ['ok']);
-    assert.equal(project.articles[0].title, 'OK');
+    assert.deepEqual(project.articles.map((a) => a.id), ['concepts', 'ok']);
+    assert.equal(project.articles.find((a) => a.id === 'ok').title, 'OK');
     assert.deepEqual(project.concepts.map((c) => c.slug), ['one', 'two']);
     assert.deepEqual(lines(project.errors), [
       'articles/Bad_Id：文章 id 必须匹配 /^[a-z0-9][a-z0-9-]*$/',
-      'articles/concepts：文章 id 是保留名（/<project>/concepts/ 已被占用）',
       'articles/no-index：缺 index.mdx',
       'articles/ok/index.mdx：frontmatter 第 3 行：值为空（不写这个键，或写 ""）',
       'articles/ok/index.mdx：frontmatter 第 4 行只支持 key: value：- a',
@@ -178,7 +178,6 @@ test('layout errors are listed, never thrown', async (t) => {
     // 对象本身：path 相对 docs/pinpoint/，project 级的（撞名）没有 path；code 分种类。
     assert.deepEqual(project.errors.map(({ code, path: where }) => [code, where]), [
       ['article_id_invalid', 'articles/Bad_Id'],
-      ['article_id_reserved', 'articles/concepts'],
       ['article_index_missing', 'articles/no-index'],
       ['frontmatter', 'articles/ok/index.mdx'],
       ['frontmatter', 'articles/ok/index.mdx'],
@@ -196,12 +195,11 @@ test('layout errors are listed, never thrown', async (t) => {
     assert.deepEqual(lines(project.errors), ['wiki/a.md：status 只能是 占位 / 收敛中 / 已固定：done']);
   });
 
-  await t.test('the old concepts/ directory is a layout error, not read (ADR 0045)', (t) => {
+  await t.test('the old concepts/ directory is simply not read（不再报 wiki_dir_renamed，owner 数据面已无此目录）', (t) => {
     const root = makeProject(t, { 'project.json': '{"id":"old"}', 'concepts/a.md': '---\nname: a\n---\n', 'wiki/b.md': '---\nname: b\n---\n' });
     const project = findProject(registryWith(t, [{ id: 'old', kind: 'project', path: root }]), 'old');
     assert.deepEqual(project.concepts.map((c) => c.slug), ['b'], 'concepts/ is not read');
-    assert.deepEqual(project.errors.map(({ code, path: where }) => [code, where]), [['wiki_dir_renamed', 'concepts']]);
-    assert.match(formatProjectError(project.errors[0]), /^concepts：.*改名成 wiki\/.*mv .*docs\/pinpoint\/concepts .*docs\/pinpoint\/wiki/);
+    assert.deepEqual(project.errors, []);
   });
 
   await t.test('reserved project ids are rejected', (t) => {

@@ -74,7 +74,7 @@ project 的 title 只写一个短名字，例如 Vault、Areta browser use，不
   wiki/<名字>.md               # wiki 词条
 ```
 
-- project id 和 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`。article id 不能叫 `wiki` 或 `concepts`。
+- project id 和 article id 都匹配 `^[a-z0-9][a-z0-9-]*$`。article id 不能叫 `wiki`。
 - `articles/` 下只放目录，每个目录必须有 `index.mdx`；`wiki/` 下只放 `.md`。放错的东西不进列表，同时记一条布局错误。文章目录里多放的文件（比如资料来源笔记）不影响构建。
 - 样式、资源和组件只有文章这一级：没有 project 级的 css、`assets/` 和 `components/`。几篇文章都要用的组件放进 kit。
 - 标注和评论不在这里，在本机的 pinpoint 数据目录。
@@ -162,7 +162,7 @@ boundary: 一句话说清它管什么、不管什么。
 定义正文。正文里也能写 [[ ]]。
 ```
 
-- `name` 缺省用文件名，是 `[[ ]]` 的解析键；文件名（去掉 `.md`）是网址 `/<project>/wiki/<文件名>/`。词条只从 `wiki/` 读：project 里有 `concepts/` 目录时 `ppnt check` 报 `wiki_dir_renamed`，把目录改名成 `wiki/` 即可。`status` 只能是 `占位`、`收敛中`、`已固定` 之一。`boundary` 缺省取正文第一段。每个值都是单行。
+- `name` 缺省用文件名，是 `[[ ]]` 的解析键；文件名（去掉 `.md`）是网址 `/<project>/wiki/<文件名>/`。词条只从 `wiki/` 读。`status` 只能是 `占位`、`收敛中`、`已固定` 之一。`boundary` 缺省取正文第一段。每个值都是单行。
 
 ## 6. 看结果、查错
 

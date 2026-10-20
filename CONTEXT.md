@@ -73,7 +73,7 @@ blog 式的文章列表：所有登记 project 的全部文章，最近改过的
 要避开：把 id 起成编号的样子（`c1b-detail`）；在文章正文里写字母编号；“图纸号”“引用号”“canvas ref”（都指编号）。CLI 的 `<引用>` 参数比编号宽，`#12`、`§2`、帧 id 也算，见“引用地址”。
 
 **wiki 词条** · `<project 根>/docs/pinpoint/wiki/<slug>.md`；词条页 `/<project>/wiki/<slug>/`，词条列表 `/<project>/wiki/`
-一个词的定义：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。界面上一个 project 的全部词条合称 wiki（project 首页的“wiki”、文章页顶栏的“wiki”抽屉、`ppnt list` 的“N 条 wiki”）。词条只从 `wiki/` 读：project 里有 `concepts/` 目录时 `ppnt check` 报布局错误 `wiki_dir_renamed`；地址 `/<project>/concepts/<slug>/` 301 到 `/<project>/wiki/<slug>/`（ADR 0045）。代码里仍叫 concept：`project.concepts`、`kind: 'concept'`、`CONCEPT_STATUSES`、内容集合 `concepts`。
+一个词的定义：短，带状态（占位 / 收敛中 / 已固定）和一句边界，被多篇文章引用。`name`（frontmatter，缺省用文件名）是显示名和 `[[ ]]` 的解析键，文件名是网址里的 `slug`。界面上一个 project 的全部词条合称 wiki（project 首页的“wiki”、文章页顶栏的“wiki”抽屉、`ppnt list` 的“N 条 wiki”）。词条只从 `wiki/` 读。代码里仍叫 concept：`project.concepts`、`kind: 'concept'`、`CONCEPT_STATUSES`、内容集合 `concepts`。
 要避开：把 wiki 词条叫文章的一种（它没有节和画布）；在界面和文档里再说“概念”“concept 页”。
 
 **`[[ ]]` 引用与空 ref** · `src/shared/refs.js`；比较键 `refKey`

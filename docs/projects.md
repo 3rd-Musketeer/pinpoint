@@ -23,10 +23,10 @@ project 是装一批 article（设计文档）和 wiki 词条（代码里叫 con
 ```
 
 - `project.json` 必须有。`id` 与 registry 条目 id 同一个模式 `^[a-z0-9][a-z0-9-]*$`，并且不能是保留名（见下面“保留名”一节）。`title` 可选，缺省用登记时的标题；它是一个短名字（Vault、Areta browser use），不写成一句描述。带全角或半角冒号、或超过 24 个字符时 `ppnt check` 给一条提示（`project_title_long`，不是错误）。`sources` 可选，登记 project 根之外 HTML 帧可以引用的目录，见“HTML 帧”。
-- article id 就是 `articles/` 下的目录名，同一个模式。`wiki` 和 `concepts` 不能当 article id：`/<project>/wiki/` 是 wiki 页，`/<project>/concepts/` 是它的旧地址（301 到 `/<project>/wiki/`）。
-- 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `wiki` 或 `concepts`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
+- article id 就是 `articles/` 下的目录名，同一个模式。`wiki` 不能当 article id：`/<project>/wiki/` 是 wiki 页。
+- 每个 article 目录必须有 `index.mdx`。`articles/` 下只放目录；目录名不合模式、名叫 `wiki`、缺 `index.mdx`、或是散文件，这一项不进 `articles`，同时记一条布局错误。以 `.` 开头的名字忽略。
 - `wiki/` 下只放 `<名字>.md`；子目录和其他文件不进 `concepts`（读取结果里 wiki 词条的字段名），同时记一条布局错误 `wiki_not_md`。以 `.` 开头的名字忽略。
-- wiki 词条只从 `wiki/` 读。project 里有 `concepts/` 目录时记一条布局错误 `wiki_dir_renamed`，提示改名成 `wiki/`（ADR 0045）。
+- wiki 词条只从 `wiki/` 读（ADR 0045）。
 - wiki 词条有两个名字：`name`（frontmatter，缺省用文件名）是显示名，也是 `[[ ]]` 的解析键；`slug`（文件名去掉 `.md`）是 URL 段，词条页是 `/<project>/wiki/<slug>/`，`/<project>/wiki/` 列出这个 project 的全部词条。
 
 ## frontmatter
@@ -482,7 +482,7 @@ project id 是站点 URL 的第一段（文章 `/<project>/<article>/`、project
 - vite 按仓库根服务静态文件，仓库根的顶层目录也都是首段：`src content node_modules bin docs e2e scripts skills site tasks prototypes`，以及 e2e 产物目录前缀。`projects.test.js` 与 `article-routes.test.js` 都检查仓库根的每个顶层目录都在清单里，新增顶层目录时测试会提醒补上；
 - Astro 的 `_image`。
 
-article id `wiki` 与 `concepts` 保留（`RESERVED_ARTICLE_IDS`：`wiki` 是 wiki 页的第二段，`concepts` 是它 301 过去的旧地址），只在 `src/shared/project-ids.js` 里。
+article id `wiki` 保留（`RESERVED_ARTICLE_IDS`：`wiki` 是 wiki 页的第二段），只在 `src/shared/project-ids.js` 里。
 
 ## 固件
 
