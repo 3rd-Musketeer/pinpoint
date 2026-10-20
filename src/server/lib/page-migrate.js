@@ -38,6 +38,7 @@ import {
 } from '../../shared/project-ids.js';
 import { PROJECT_CONTENT_DIR, readProjectJson } from './projects.js';
 import { formatProjectError } from '../../shared/project-errors.js';
+import { isFile } from './fs-utils.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 const KITS_DIR = path.join(REPO_ROOT, 'content', 'kits');
@@ -72,14 +73,6 @@ function filesUnder(dir) {
     else if (item.isFile()) out.push(full);
   }
   return out;
-}
-
-function isFile(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
-  }
 }
 
 function within(base, p) {

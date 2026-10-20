@@ -300,6 +300,7 @@ function pluginsFor(target) {
 import * as preactModule from 'preact';
 import * as preactJsxDevRuntime from 'preact/jsx-dev-runtime';
 import * as ppRuntimeModule from './pp-jsx-runtime.js';
+import { isFile as isFileSync } from './fs-utils.js';
 
 const REQUIRE_MAP = {
   preact: preactModule,
@@ -743,12 +744,8 @@ export async function compilePage(target, options = {}) {
   const figures = target.kind === 'article' && !onlyScreens
     ? await compileArticleFigures(target, { distRoot, writeDist })
     : [];
-  // builtAt 用墙钟整毫秒（Date.now）：distStatus / findDrift 拿它跟 stat 的 mtimeMs
-  // 比，两者必须在同一个钟域。performance.timeOrigin + now() 是单调钟，NTP 步进 /
-  // 回拨会让它跟文件 mtime 差出毫秒级——正方向 fresh 页误判 stale（BACKLOG 两条
-  // 偶挂单测的根因），反方向真改过的源被判 fresh 吃旧产物。整毫秒截断只带来安全
-  // 方向的误差：同毫秒内后写的源多算一次 stale，多编一次，不会反向。
-  const builtAt = Date.now();
+  // writeDist=false（ppnt render）不落盘，builtAt 占位（不参与任何比较）。
+  let builtAt = Date.now();
   if (writeDist) {
     const outDir = path.join(distRoot, target.entryId);
     fs.mkdirSync(outDir, { recursive: true });
@@ -777,7 +774,24 @@ export async function compilePage(target, options = {}) {
         else delete mergedErrors[entry.id];
       }
     }
-    fs.writeFileSync(path.join(outDir, 'build.json'), JSON.stringify({
+    // builtAt = build.json 自己的 mtime（写两遍：先占位，stat 到 mtime 再写真值）。
+    // stale 比较拿它跟 stat 的 mtimeMs 比，两者必须同钟同精度：
+    //   - performance.timeOrigin + now() 是单调钟，NTP 步进/回拨让它跟文件 mtime
+    //     差出毫秒——正方向 fresh 页误判 stale（BACKLOG 两条偶挂单测的根因），
+    //     反方向真改过的源被判 fresh 吃旧产物（R5b 三）；
+    //   - Date.now() 是墙钟但整毫秒，同一毫秒内后写的源 mtimeMs 带亚毫秒浮点、
+    //     严大于整数 builtAt——「写源 → 快编译完 → 查 stale」高频误报（第三轮
+    //     实测 30-60%）。fs 自己的时间戳两边都对齐：APFS 125µs 一格是这套比较
+    //     能达到的分辨率上限。
+    const buildPath = path.join(outDir, 'build.json');
+    fs.writeFileSync(buildPath, JSON.stringify({
+      builtAt: 0,
+      tool: compilerStamp(),
+      sources: mergedSources,
+      errors: mergedErrors,
+    }, null, 2) + '\n');
+    builtAt = fs.statSync(buildPath).mtimeMs;
+    fs.writeFileSync(buildPath, JSON.stringify({
       builtAt,
       tool: compilerStamp(),
       sources: mergedSources,
@@ -808,13 +822,6 @@ function figureDistPaths(distRoot, entryId, id) {
   return { dir, html: path.join(dir, `${id}.html`), record: path.join(dir, `${id}.json`) };
 }
 
-function isFileSync(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /** 图的编译记录 <dist>/<页>/figures/<图>.json；没有或坏了返回 null。 */
 export function readFigureRecord(distRoot, entryId, id) {

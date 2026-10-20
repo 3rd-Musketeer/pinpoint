@@ -27,17 +27,10 @@ import { articlePageId, parseArticlePageId, RESERVED_ARTICLE_IDS } from '../../s
 import { loadProjectSources } from './project-sources.js';
 import { projectEntries, projectEntry, registryEntry } from './registry.js';
 import { resolveContainedPath } from './servable-file.js';
+import { isFile } from './fs-utils.js';
 
 /** project 根下的内容目录（相对路径）。 */
 export const PROJECT_CONTENT_DIR = path.join('docs', 'pinpoint');
-
-function isFile(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /**
  * 文章画布的编译目标，与普通 dir 页同形：pageDir = 文章目录，帧是 `<帧 id>.jsx` 或 `<帧 id>.html`；

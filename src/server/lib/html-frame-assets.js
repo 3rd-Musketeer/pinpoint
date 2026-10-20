@@ -23,6 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { resolveServableFile } from './servable-file.js';
+import { isFile } from './fs-utils.js';
 
 const SKIP_URL = /^(?:$|#|\/|[a-z][a-z0-9+.-]*:)/i;
 const TEMPLATE = /\$\{|\{\{|\}\}|<%/;
@@ -113,14 +114,6 @@ function kindOf(file) {
 
 function within(base, p) {
   return p === base || p.startsWith(base + path.sep);
-}
-
-function isFile(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
-  }
 }
 
 /** 从一个 HTML 帧出发顺着引用走，见文件头。 */

@@ -29,6 +29,7 @@ import { manifestPageIds } from './page-manifest.js';
 import { PROJECT_CONTENT_DIR } from './page-resolve.js';
 import { projectEntries, projectEntry } from './registry.js';
 import { resolveContainedFile, resolveContainedPath } from './servable-file.js';
+import { isFile } from './fs-utils.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
@@ -62,13 +63,6 @@ function isDir(target) {
   }
 }
 
-function isFile(target) {
-  try {
-    return fs.statSync(target).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /** 布局错误对象（src/shared/project-errors.js）：path 相对 docs/pinpoint/，project 自己的错误不带。 */
 function problem(code, message, extra = {}) {

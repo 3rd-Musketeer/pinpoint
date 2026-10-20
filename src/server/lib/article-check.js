@@ -34,6 +34,7 @@ import { deriveArticleBoard } from './article-board.js';
 import { compileFigure, figureFiles, frameDiagnostics, renderScreenHtml } from './page-compiler.js';
 import { resolveArticleTarget } from './page-resolve.js';
 import { listProjects } from './projects.js';
+import { isFile } from './fs-utils.js';
 
 const LINE_PREFIX_RE = /^第 \d+ 行[：:]\s*/;
 
@@ -42,14 +43,6 @@ function readText(file) {
     return fs.readFileSync(file, 'utf8');
   } catch {
     return null;
-  }
-}
-
-function isFile(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
   }
 }
 

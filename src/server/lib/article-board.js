@@ -23,19 +23,12 @@ import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
 import { findProject } from './projects.js';
 import { loadRegistry } from './registry.js';
 import { resolveContainedFile, resolveServableFile } from './servable-file.js';
+import { isFile } from './fs-utils.js';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..', '..');
 
 /** 本篇页级资源的固定文件名（common-m1.md §1），存在就像 board.assets 一样注入每帧。 */
 export const ARTICLE_ASSET_FILES = Object.freeze({ css: 'article.css', js: 'article.js' });
-
-function isFile(file) {
-  try {
-    return fs.statSync(file).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /**
  * 文章目标 → { board, sections, errors }：读 index.mdx 现派生 board（errors 是

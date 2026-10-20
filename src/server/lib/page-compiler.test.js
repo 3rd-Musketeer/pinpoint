@@ -767,7 +767,7 @@ describe('范例页整页编译（checked-in content/previews/example）', () =>
   });
 });
 
-test('builtAt 在墙钟域（与 mtime 同钟）：跨 NTP 步进不再把 fresh 页误判 stale（BACKLOG 两条偶挂的根因）', async () => {
+test('builtAt 与 mtime 同钟同精度（fs 时间戳）：写源 → 快编译完 → 查 stale 不误报', async () => {
   const target = makePage('built-at-wall-clock', {
     board: BASIC_BOARD,
     files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>好</p></div>;\n}\n' },
@@ -775,14 +775,22 @@ test('builtAt 在墙钟域（与 mtime 同钟）：跨 NTP 步进不再把 fresh
   const distRoot = path.join(tmp, 'dist');
   await compilePage(target, { distRoot });
   const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
-  // 旧实现是 performance.timeOrigin + now()：单调钟，恒带小数，且与文件 mtime
-  // 的墙钟在 NTP 步进/回拨下差出毫秒——fresh 页误判 stale（偶挂）、反向吃旧产物。
-  assert.equal(Number.isInteger(build.builtAt), true, `builtAt 应是 Date.now() 的整毫秒，实际 ${build.builtAt}`);
-  // 编完之后源变新（mtime 在 builtAt 之后）必须判 stale：墙钟域下这是恒等式，
-  // 不依赖两个钟碰巧对齐。
+  // 两个前身都有钟域或精度缺陷：performance.timeOrigin + now() 是单调钟（NTP
+  // 步进/回拨下与 mtime 差毫秒，BACKLOG 两条偶挂的根因）；Date.now() 是墙钟但
+  // 整毫秒，同毫秒内后写的源（mtimeMs 亚毫秒浮点）严大于它——「写源 → 快编译
+  // 完 → 查 stale」30-60% 误报 stale（R5b 三实测）。fs 自己的时间戳两边都对齐。
+  assert.equal(Number.isInteger(build.builtAt), false, `builtAt 应取 build.json 的 mtime（亚毫秒浮点），实际 ${build.builtAt}`);
+  assert.ok(build.builtAt <= Date.now() + 1000 && build.builtAt >= Date.now() - 60_000, `builtAt 在墙钟域内，实际 ${build.builtAt}`);
+  // 编完之后源变新（mtime 在 builtAt 之后）必须判 stale：同钟域下这是恒等式。
   const future = new Date(Date.now() + 5000);
   fs.utimesSync(path.join(target.pageDir, 'home.jsx'), future, future);
   assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true);
+  // 快速连写 → 重编 → 立即查：必须 fresh（Date.now() 整毫秒的实现这里 30-60% 挂）。
+  for (let i = 0; i < 10; i++) {
+    fs.writeFileSync(path.join(target.pageDir, 'home.jsx'), `export default function Home() {\n  return <div className="ios-app"><p>第 ${i} 版</p></div>;\n}\n`);
+    await compilePage(target, { distRoot });
+    assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, false, `第 ${i} 轮：编完即查不该 stale`);
+  }
 });
 
 describe('skipFresh：启动全量只编 dist 过期的页', () => {
