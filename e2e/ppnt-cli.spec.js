@@ -77,14 +77,14 @@ test('ppnt comments --mode both → mark done → comments 计数 全链（CLI �
   const locate = await ppnt(['locate', 'e2e-ios', '#1']);
   if (!locate.stdout.includes('#1 → home.jsx:')) throw new Error(`locate 输出不对：\n${locate.stdout}`);
 
-  // 3. mark（真端点 + baseRevision）；done → done 的非法转换打 409 原因不中断。
+  // 3. mark（真端点 + baseRevision）；done → done 幂等 no-op 成功（R5 B6：重跑不再 409）。
   const mark = await ppnt(['mark', 'e2e-ios', '#2', 'check']);
   if (!mark.stdout.includes('#2 → check')) throw new Error(`mark 输出不对：\n${mark.stdout}`);
   const done = await ppnt(['mark', 'e2e-ios', '#2', 'done']);
   if (!done.stdout.includes('#2 → done')) throw new Error(`done 输出不对：\n${done.stdout}`);
-  const again = await ppnt(['mark', 'e2e-ios', '#2', 'done'], { expectFail: true });
-  if (!again.stdout.includes('409') || !again.stdout.includes('illegal_transition')) {
-    throw new Error(`done → done 应打 409 原因：\n${again.stdout}`);
+  const again = await ppnt(['mark', 'e2e-ios', '#2', 'done']);
+  if (again.code !== 0 || !again.stdout.includes('#2 → done')) {
+    throw new Error(`done → done 应幂等成功：\n${again.stdout}\n${again.stderr}`);
   }
   const close = await ppnt(['mark', 'e2e-ios', '#2', 'close'], { expectFail: true });
   if (!close.stderr.includes('close 只在工作台')) throw new Error(`close 应拒收：\n${close.stderr}`);
