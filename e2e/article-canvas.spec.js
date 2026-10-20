@@ -178,13 +178,13 @@ test('文章画布：工作台 /workbench/?page=&section=、旧地址跳转、�
 
 // r5 B5：带裸内联脚本（非 preview-script）的帧走回退 iframe，脚本在 load 后 700ms 才注入
 // 12 行内容。量尺只量一次的旧实现把后长出来的内容裁在初始盒子里（或停在没量出的初始尺寸），
-// 现在按 0 / 300 / 1200ms 的节奏有界重测（固件帧 e2e/project-site/.../slowinject/late.jsx）。
+// 现在按 0 / 300 / 1200ms 的节奏有界重测（固件帧 e2e/cardfallback-site/.../slowinject/late.jsx）。
 test('回退 iframe 的卡片：慢注入的帧内容长高后照着重摆，盒子高度跟内容一致', async ({ page }) => {
   test.setTimeout(120_000);
   await page.setViewportSize({ width: 1440, height: 900 });
   const pageErrors = [];
   page.on('pageerror', (error) => pageErrors.push(String(error)));
-  await page.goto('/e2e-project/slowinject/');
+  await page.goto('/cardfallback/slowinject/');
   // 冷启动那一下（503「站点启动中」自动刷新）也在等。
   await expect(page.locator('.cc-frame[data-screen="late"]')).toBeVisible({ timeout: 90_000 });
   const box = page.locator('.cc-frame[data-screen="late"] .cc-box');

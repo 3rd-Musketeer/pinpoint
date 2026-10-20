@@ -40,6 +40,9 @@ export function writeRegistryFixture() {
       // registry.projects，Pages / GET /registry / 桶清单都看不到它，所以能常驻。
       // 直接指仓内固件（站点只读不写）。
       { id: 'e2e-project', kind: 'project', path: path.join(ROOT, 'e2e', 'project-site') },
+      // r5 B5 固件（回退 iframe 量尺重测）：单独一个 project，别动 e2e-project 的文章清单——
+      // bin/cli 与 src/server 的测试按「两篇文章」精确断言这份共享目录。
+      { id: 'cardfallback', kind: 'project', path: path.join(ROOT, 'e2e', 'cardfallback-site') },
       // pp3：正文评论固件（e2e/prose-comments.spec.js）。指向本轮的副本，spec 要改
       // 正文验证重新定位；同样不是页，常驻不影响 Pages 清单。
       { id: 'e2e-prose', kind: 'project', path: path.join(E2E_SITES_DIR, 'prose-site') },
