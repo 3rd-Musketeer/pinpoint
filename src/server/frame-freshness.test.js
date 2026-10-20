@@ -23,11 +23,13 @@ function fixture(t) {
   fs.mkdirSync(path.join(article, 'components'), { recursive: true });
   fs.writeFileSync(path.join(dir, 'docs/pinpoint/project.json'), JSON.stringify({ id: 'demo', title: 'Demo' }));
   fs.writeFileSync(path.join(article, 'index.mdx'), '---\ntitle: 流程\n---\n<Section id="main" title="流程">\n<Canvas frames={["home", "later"]} />\n</Section>\n');
+  const stamps = new Map();
   const write = (name, text) => {
     const file = path.join(article, name);
     fs.writeFileSync(file, text);
     // 不依赖 APFS 同一时间格内的两次保存：每次保存明确属于下一代。
-    const stamp = fs.statSync(file).mtimeMs + 1000;
+    const stamp = Math.max(Date.now(), stamps.get(file) || 0) + 1000;
+    stamps.set(file, stamp);
     fs.utimesSync(file, stamp / 1000, stamp / 1000);
     return file;
   };
@@ -60,6 +62,7 @@ test('文章嵌入帧：请求抢在 watcher 前、条件请求与稍后懒加�
   assert.equal(revised.statusCode, 200);
   assert.match(revised.text, /修订稿/);
   assert.notEqual(revised.headers.ETag, first.headers.ETag);
+  assert.equal((await request('home', 'card', { 'if-none-match': revised.headers.ETag })).statusCode, 304, '未改稿时仍可条件命中');
   write('later.jsx', 'export default function Later() { return <div className="ios-app">稍后修订稿</div>; }');
   assert.match((await request('later')).text, /稍后修订稿/, '此前未挂载的卡片首取也须是新稿');
   write('home.jsx', 'export default function Home() { return <div className="ios-app">独立嵌入修订稿</div>; }');
@@ -88,4 +91,38 @@ test('文章嵌入帧：在飞编译读完旧稿后再保存，请求必须等�
   assert.match((await latest).text, /第三稿/);
   assert.match(readDistScreen(target.entryId, 'home').html, /第三稿/);
   assert.match((await loadDistScreenHtml(target, 'home')).html, /第三稿/);
+});
+
+test('文章嵌入帧：依赖在 esbuild 读完后改变，不能把旧 HTML 记成新依赖的产物', async (t) => {
+  const { target, write, request } = fixture(t);
+  write('home.jsx', 'import Label from "./components/Label.jsx"; export default function Home() { return <div className="ios-app"><Label /></div>; }');
+  const dependency = write('components/Label.jsx', 'export default function Label() { return <p>依赖初稿</p>; }');
+  const read = fs.readFileSync;
+  let intercepted = false;
+  const probe = t.mock.method(fs, 'readFileSync', function (file, ...args) {
+    const text = read.call(this, file, ...args);
+    // esbuild 由原生进程读文件；Node 第一次读这个组件是打包后的 lint。
+    if (String(file) === dependency && !intercepted) {
+      intercepted = true;
+      write('components/Label.jsx', 'export default function Label() { return <p>依赖修订稿</p>; }');
+    }
+    return text;
+  });
+  await compilePage(target);
+  probe.mock.restore();
+  assert.ok(intercepted);
+  assert.ok((await request('home')).text.includes('依赖修订稿'), '记录必须反映编译读入的依赖代次');
+});
+
+test('共享出帧：存量板的 mtime 在未来也按输入代次收敛，不按 builtAt 反复编译', { timeout: 3000 }, async (t) => {
+  const { target, write } = fixture(t);
+  const legacy = { ...target, kind: 'dir' };
+  write('board.json', JSON.stringify({ sections: [{ id: 'main', screens: [{ id: 'home' }] }] }));
+  const first = await loadDistScreenHtml(legacy, 'home');
+  assert.ok(first.ok);
+  assert.ok(first.html.includes('初稿'));
+  write('board.json', JSON.stringify({ assets: { css: ['updated.css'] }, sections: [{ id: 'main', screens: [{ id: 'home' }] }] }));
+  const revised = await loadDistScreenHtml(legacy, 'home');
+  assert.ok(revised.ok);
+  assert.ok(revised.html.includes('updated.css'));
 });

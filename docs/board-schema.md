@@ -16,7 +16,8 @@
   的判定亏。dist 不进 git、不放回页目录，重编即得。
 - 服务只对屏 HTML 出 dist（`/sites/<entry>/<screenId>.html`；模板页 `/previews/<page>/…` 同理），
   css / js / 图片等其余资源仍从源目录出。服务启动只编 dist 过期（源码、板或编译器比
-  `builtAt` 新）的页，其余整页跳过；没编过的页在首个请求懒编译一次。编译失败或没编过的屏 500 带
+  `builtAt` 新）的页，其余整页跳过；出帧请求（含 `/api/frame`）等待本页在飞编译，再核对本帧源码与依赖的记录代次，过期时按需重编后返回。
+  同页编译串行落盘，输入代次在读入前记录；编译期间再保存会补编新一代，不依赖文章 reload 和 watcher 的顺序。编译失败或没编过的屏 500 带
   错误文本，画布出 `.wb-screen-err` 面板——重跑 `ppnt build` 即修。
 - board.json 响应附 `dist: { builtAt, stale }`，`stale` = 任一源文件的 mtime 晚于 `builtAt`。
 - watch（服务与 `ppnt build --watch` 同一条管线）盯页目录里的 `.jsx` / `.html` / `.css` / `.js` /

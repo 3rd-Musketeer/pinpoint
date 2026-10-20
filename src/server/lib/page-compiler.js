@@ -289,9 +289,9 @@ function figureHelperPlugin() {
   };
 }
 
-function pluginsFor(target) {
+function pluginsFor(target, inputMtimes = null) {
   const plugins = target && target.kind === 'article' ? [articleComponentsPlugin(target), kitJsxPlugin(), figureHelperPlugin()] : [kitJsxPlugin()];
-  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS)];
+  return [...plugins, sourceBoundaryPlugin(target, COMPILER_ROOTS, inputMtimes)];
 }
 
 // 帧 bundle（cjs）里仅有的三个外部 require，映射回进程里已加载的模块 —— 帧与
@@ -370,7 +370,7 @@ function formatBuildFailure(error) {
  * 编译期定型，不记进 sources 的话 kit 改动后 distStatus 恒报 fresh。页内文件记
  * 相对路径，页外（kit）记 ../ 链 —— distStatus 用 pageDir join 解析两者。
  */
-function depRecordsFromInputs(target, inputs, exclude) {
+function depRecordsFromInputs(target, inputs, exclude, inputMtimes = null) {
   const skipped = new Set(exclude);
   const out = [];
   for (const input of Object.keys(inputs)) {
@@ -383,12 +383,13 @@ function depRecordsFromInputs(target, inputs, exclude) {
       continue;
     }
     if (!stat.isFile()) continue;
-    out.push({ file: path.relative(target.pageDir, abs).split(path.sep).join('/'), mtimeMs: stat.mtimeMs });
+    out.push({ file: path.relative(target.pageDir, abs).split(path.sep).join('/'), mtimeMs: inputMtimes?.get(fs.realpathSync(abs)) ?? stat.mtimeMs });
   }
   return out;
 }
 
 async function compileJsxScreen(target, screenId, file) {
+  const inputMtimes = new Map();
   let built;
   try {
     built = await esbuild.build({
@@ -405,7 +406,7 @@ async function compileJsxScreen(target, screenId, file) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target),
+      plugins: pluginsFor(target, inputMtimes),
     });
   } catch (error) {
     return { ok: false, error: formatBuildFailure(error), diagnostics: buildFailureDiagnostics(error, target.pageDir) };
@@ -439,7 +440,7 @@ async function compileJsxScreen(target, screenId, file) {
     return {
       ok: true,
       html: renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir),
-      deps: depRecordsFromInputs(target, built.metafile.inputs, [file]),
+      deps: depRecordsFromInputs(target, built.metafile.inputs, [file], inputMtimes),
     };
   } catch (error) {
     const message = String((error && error.message) || error);
@@ -558,6 +559,7 @@ async function compileScreen(target, entry, options = {}) {
  * 组件文件本身照常过 lint（非 entry）。
  */
 async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
+  const inputMtimes = new Map();
   const { id, comp, props } = entry;
   const pageComp = path.join(target.pageDir, 'components', `${comp}.jsx`);
   const kitComp = path.join(kitJsx, `${comp}.jsx`);
@@ -604,7 +606,7 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
       external: ['preact', 'preact/jsx-dev-runtime', 'pp-jsx-runtime/jsx-dev-runtime'],
       metafile: true,
       logLevel: 'silent',
-      plugins: pluginsFor(target),
+      plugins: pluginsFor(target, inputMtimes),
     });
   } catch (error) {
     return { result: { ok: false, error: formatBuildFailure(error) }, source: null };
@@ -633,10 +635,10 @@ async function compileCompScreen(target, entry, { kitJsx = KIT_JSX } = {}) {
     }
     const html = renderFrameHtml(h(__ppWrapComponent(mod.default), {}), target.pageDir);
     const sourceRel = path.relative(target.pageDir, sourceAbs).split(path.sep).join('/');
-    const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel]);
+    const deps = depRecordsFromInputs(target, built.metafile.inputs, ['__comp__.jsx', sourceRel], inputMtimes);
     return {
       result: { ok: true, html },
-      source: { file: sourceRel, mtimeMs: fs.statSync(sourceAbs).mtimeMs, ...(deps.length ? { deps } : {}) },
+      source: { file: sourceRel, mtimeMs: inputMtimes.get(fs.realpathSync(sourceAbs)) ?? fs.statSync(sourceAbs).mtimeMs, ...(deps.length ? { deps } : {}) },
     };
   } catch (error) {
     return { result: { ok: false, error: `${sourceDesc}: ${String((error && error.message) || error)}` }, source: null };
@@ -714,7 +716,23 @@ export function compilerStamp() {
  * figures 是文章正文里的图（整页编译时才有，见 compileArticleFigures）；
  * partial = 只编了挑中的屏，totalScreens = 板上的屏数（CLI 打「增量 M/N 屏」用）。
  */
-export async function compilePage(target, options = {}) {
+// watcher 与按需出帧共用写入队列：同页的旧编译不能在新编译之后覆盖 dist。
+// 不写 dist 的 render 保持独立，不同数据根（sandbox / 测试）也互不阻塞。
+const pageCompilations = new Map();
+const compilationKey = (target, distRoot) => path.join(path.resolve(distRoot), target.entryId);
+
+export function compilePage(target, options = {}) {
+  if (options.writeDist === false) return compilePageNow(target, options);
+  const key = compilationKey(target, options.distRoot || defaultDistRoot());
+  const previous = pageCompilations.get(key);
+  const task = (previous || Promise.resolve()).catch(() => {}).then(() => compilePageNow(target, options));
+  pageCompilations.set(key, task);
+  const clear = () => { if (pageCompilations.get(key) === task) pageCompilations.delete(key); };
+  task.then(clear, clear);
+  return task;
+}
+
+async function compilePageNow(target, options = {}) {
   const distRoot = options.distRoot || defaultDistRoot();
   const onlyScreen = options.onlyScreen || null;
   // 空数组按全编处理（review 建议 2）：[] 是 truthy，放进增量分支就是一屏不编、
@@ -725,7 +743,9 @@ export async function compilePage(target, options = {}) {
   const writeDist = options.writeDist !== false;
   const started = performance.now();
   let board;
+  let boardMtimeMs = null;
   try {
+    if (target.kind !== 'article') boardMtimeMs = fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
     board = readTargetBoard(target);
   } catch (error) {
     return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: boardReadError(target, error) };
@@ -807,6 +827,7 @@ export async function compilePage(target, options = {}) {
     const buildPath = path.join(outDir, 'build.json');
     fs.writeFileSync(buildPath, JSON.stringify({
       builtAt: 0,
+      boardMtimeMs,
       tool: compilerStamp(),
       sources: mergedSources,
       errors: mergedErrors,
@@ -814,6 +835,7 @@ export async function compilePage(target, options = {}) {
     builtAt = fs.statSync(buildPath).mtimeMs;
     fs.writeFileSync(buildPath, JSON.stringify({
       builtAt,
+      boardMtimeMs,
       tool: compilerStamp(),
       sources: mergedSources,
       errors: mergedErrors,
@@ -1203,53 +1225,64 @@ export function screenIdFromRel(rel) {
 }
 
 /**
- * 读一屏 dist（unbuilt 时懒编译一次）：ok → html；否则 error 文本。
+ * 读一屏当前源码代次的 dist：等在飞编译，输入过期就按需重编后读取。
  * serve 层（500 上面板）与 /api/frame（500 frame_failed）共用同一条路。
  */
 export async function loadDistScreenHtml(target, screenId) {
   const distRoot = defaultDistRoot();
+  const key = compilationKey(target, distRoot);
   const discard = () => fs.rmSync(path.join(distRoot, target.entryId, `${screenId}.html`), { force: true });
-  let entry;
-  try {
-    entry = screenEntriesFromBoard(readTargetBoard(target)).find((item) => item.id === screenId);
-    if (!entry) throw new Error(`板里没有帧：${screenId}`);
-    // 当前源码的优先级也要查：不能只检查旧记录，遗漏新出现的 JSX / 本篇组件。
-    if (entry.src) {
-      if (!articleHtmlFrameFile(target, entry)) throw new Error(`源码不在登记根内或不存在：${screenId}`);
-    } else {
-      const primary = entry.comp ? `components/${entry.comp}.jsx`
-        : fs.existsSync(path.join(target.pageDir, `${screenId}.jsx`)) ? `${screenId}.jsx` : `${screenId}.html`;
-      if (!entry.comp || fs.existsSync(path.join(target.pageDir, primary))) requireSource(target, primary);
-    }
-  } catch (error) {
-    discard();
-    return { ok: false, error: error.message };
-  }
-  const build = readBuildJson(distRoot, target.entryId);
-  const source = build?.sources?.[screenId];
-  const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
-  const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
-  if (invalid) {
-    discard();
-    await compilePage(target, { onlyScreen: screenId });
-  }
-  let result = readDistScreen(target.entryId, screenId);
-  if (result.kind === 'unbuilt') {
+  // 每次编译完成后才核对输入，不按时间轮询，也不依赖 watcher / Astro reload 的先后。
+  for (;;) {
+    const pending = pageCompilations.get(key);
+    if (pending) { await pending; continue; }
+    let entry;
+    let board;
+    let primary = null;
     try {
-      await compilePage(target);
-    } catch { /* 编译异常已进 build.json / 下面按状态报错 */ }
-    result = readDistScreen(target.entryId, screenId);
+      board = readTargetBoard(target);
+      entry = screenEntriesFromBoard(board).find((item) => item.id === screenId);
+      if (!entry) throw new Error(`板里没有帧：${screenId}`);
+      // 当前源码的优先级也要查：不能只检查旧记录，遗漏新出现的 JSX / 本篇组件。
+      if (entry.src) {
+        if (!articleHtmlFrameFile(target, entry)) throw new Error(`源码不在登记根内或不存在：${screenId}`);
+      } else {
+        primary = entry.comp ? `components/${entry.comp}.jsx`
+          : fs.existsSync(path.join(target.pageDir, `${screenId}.jsx`)) ? `${screenId}.jsx` : `${screenId}.html`;
+        if (!entry.comp || fs.existsSync(path.join(target.pageDir, primary))) requireSource(target, primary);
+        else primary = null; // kit 组件没有本篇文件，由 source / deps 记录校验。
+      }
+    } catch (error) {
+      discard();
+      return { ok: false, error: error.message };
+    }
+    const build = readBuildJson(distRoot, target.entryId);
+    const source = build?.sources?.[screenId];
+    const roots = [...COMPILER_ROOTS, ...Object.values(target.sources || {})];
+    const invalid = source && [source, ...(source.deps || [])].some((record) => !containedSource(target, record.file, roots).file);
+    const changed = (record) => {
+      try { return fs.statSync(path.resolve(target.pageDir, record.file)).mtimeMs !== record.mtimeMs; }
+      catch { return true; }
+    };
+    // builtAt 是整页最后一拍的时间，增量编译别帧会刷新它；逐项对比输入代次才能守住本帧。
+    const boardChanged = target.kind === 'article'
+      ? JSON.stringify(readDistBoard(distRoot, target.entryId)) !== JSON.stringify(board)
+      : build?.boardMtimeMs !== fs.statSync(path.join(target.pageDir, 'board.json')).mtimeMs;
+    const all = !build || build.tool !== compilerStamp() || boardChanged;
+    const result = readDistScreen(target.entryId, screenId);
+    if (all || invalid || !source || (primary && source.file !== primary)
+      || [source, ...(source.deps || [])].some(changed) || result.kind !== 'ok') {
+      const compiled = await compilePage(target, all ? {} : { onlyScreen: screenId });
+      const failed = compiled.screens.find((row) => row.id === screenId && !row.ok);
+      if (compiled.error || failed) return { ok: false, error: compiled.error || failed.error };
+      continue; // 编译期间又保存过的输入，继续编新一代；没有变动直接读。
+    }
+    return { ok: true, html: result.html };
   }
-  if (result.kind === 'ok') return { ok: true, html: result.html };
-  return {
-    ok: false,
-    error: result.kind === 'error' ? result.message : `屏未编译：ppnt build ${target.entryId}`,
-  };
 }
 
 /**
- * 从 dist 出一屏（GET/HEAD）。unbuilt 时懒编译一次（pinpoint add 的新条目、
- * 服务没跑过全量的首请求），编译失败 / 未编译的屏 500 带错误文本（no-cache）
+ * 从 dist 出一屏（GET/HEAD）。过期或 unbuilt 时按需编译，编译失败 / 未编译的屏 500 带错误文本（no-cache）
  * —— 工作台的 .wb-screen-err 面板吃非 200 状态。
  * inject(html) → html：annotate 注入由调用方决定（annotateInjection，/sites/
  * 全量注入；/previews/ 只对 doctype 整文档注入）。

@@ -31,12 +31,14 @@ export function requireSource(target, file, extraRoots = []) {
 }
 
 /** 在 esbuild 读任何输入（包括 JS / JSON 等 import）之前守边界。配合 preserveSymlinks 保留别名来源。 */
-export function sourceBoundaryPlugin(target, extraRoots = []) {
+export function sourceBoundaryPlugin(target, extraRoots = [], inputMtimes = null) {
   return {
     name: 'pp-source-boundary',
     setup(build) {
       build.onLoad({ filter: /.*/, namespace: 'file' }, (args) => {
-        requireSource(target, args.path, extraRoots);
+        const file = requireSource(target, args.path, extraRoots);
+        // 在 esbuild 读入前记代次；打包后才 stat 会把期间的新保存冒认成旧 HTML 的输入。
+        if (inputMtimes) inputMtimes.set(fs.realpathSync(file), fs.statSync(file).mtimeMs);
         return undefined;
       });
     },
