@@ -11,10 +11,10 @@
 // 元素，不用 Radix FocusScope：它的卸载归还排在 setTimeout(0)，Esc 关掉后马上再开，
 // 上一个浮层迟到的归还会把焦点从新浮层拽回触发钮（e2e 约 1/10 复现）。
 // Esc 归工作台弹层栈（use-layer.js），焦点在输入框里时这一下归输入框。
-import { Fragment, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useLayoutEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { autoUpdate, computePosition, offset, shift } from '@floating-ui/dom';
-import { useWorkbenchStore, wbGet } from './store.js';
+import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { activeEntryOf, closePageOverlay, isPageOverlayOpen, setActiveEntry, setActiveTab } from '../pages.js';
 import {
   flashBoardFrame,
@@ -52,27 +52,8 @@ var ENTRY_TAG =
   'font-[var(--wb-font-mono)] text-[9px] font-semibold leading-none tracking-[0.05em] ' +
   'text-[color:color-mix(in_srgb,var(--wb-accent)_70%,var(--wb-faint))]';
 
-var openKey = null;
-var openSubs = [];
-
-function setOpenKey(key) {
-  if (openKey === key) return;
-  openKey = key;
-  openSubs.slice().forEach(function (fn) { fn(); });
-}
-
-function useOpenKey() {
-  var setTick = useState(0)[1];
-  useEffect(function () {
-    function onChange() { setTick(function (n) { return n + 1; }); }
-    openSubs.push(onChange);
-    return function () {
-      var i = openSubs.indexOf(onChange);
-      if (i >= 0) openSubs.splice(i, 1);
-    };
-  }, [setTick]);
-  return openKey;
-}
+// 浮层开关归 store 的 outlinePopKey：tab 条与横条的触发钮、点外/Esc 关闭、换页
+// 清理读写的都是同一个字段，不再自备一套 pub-sub。
 
 // 定位（@floating-ui/dom，2026-10-19 C4）：placement top + offset(8) = 水平居中于
 // 触发钮、底边贴钮上方 8px；shift 把水平位置夹回视口（12px 边距）。maxHeight 仍按
@@ -332,7 +313,7 @@ function OutlinePop(props) {
       if (target.closest('#wboutline-pop')) return;
       if (target.closest('[data-outline-trigger][aria-expanded="true"]')) return;
       if (target.closest('[role="menu"], [data-radix-popper-content-wrapper]')) return;
-      setOpenKey(null);
+      wbSet({ outlinePopKey: null });
     }
     document.addEventListener('pointerdown', onPointerDown, true);
     return function () {
@@ -341,7 +322,7 @@ function OutlinePop(props) {
     };
   }, []);
 
-  function requestClose() { setOpenKey(null); }
+  function requestClose() { wbSet({ outlinePopKey: null }); }
 
   // Esc 由弹层栈关（LAYER_RANK.chrome，焦点在打字里时这一下归输入框）。焦点只在 Esc 关掉时
   // 还给打开前的元素；点外、跳帧关掉时焦点留在用户点的地方，不被拽回横条。焦点移出不算关闭
@@ -355,7 +336,7 @@ function OutlinePop(props) {
   return createPortal(
     <div ref={popRef} className="wb-outline-pop wb-glass" id="wboutline-pop" role="dialog"
       aria-modal="false" aria-label={label} tabIndex={-1} data-ann-ui>
-      <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { setOpenKey(null); }} />
+      <OutlineContents tabId={props.tabId || ''} onFrameNavigate={function () { wbSet({ outlinePopKey: null }); }} />
     </div>,
     document.body
   );
@@ -363,12 +344,12 @@ function OutlinePop(props) {
 
 export function OutlineButton(props) {
   var key = props.tabId || '@page';
-  var current = useOpenKey();
+  var current = useWorkbenchStore(function (s) { return s.outlinePopKey; });
   var open = current === key;
   var pageId = useWorkbenchStore(function (s) { return s.activePageId; });
-  useEffect(function () { setOpenKey(null); }, [pageId]);
+  useEffect(function () { wbSet({ outlinePopKey: null }); }, [pageId]);
   useEffect(function () {
-    return function () { if (openKey === key) setOpenKey(null); };
+    return function () { if (wbGet().outlinePopKey === key) wbSet({ outlinePopKey: null }); };
   }, [key]);
 
   var common = {
@@ -379,7 +360,7 @@ export function OutlineButton(props) {
     title: props.label,
     'aria-expanded': open ? 'true' : 'false',
     'aria-controls': open ? 'wboutline-pop' : undefined,
-    onClick: function () { setOpenKey(open ? null : key); }
+    onClick: function () { wbSet({ outlinePopKey: open ? null : key }); }
   };
   // 横条里的那一个（props.strip）：横条工具钮的同一套皮肤（tool variant，同 #wbminimap-toggle），开着时 on 态。
   var trigger = props.strip ? (

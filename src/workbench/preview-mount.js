@@ -158,6 +158,16 @@ function resolveSidecarUrl(pageId, screenId, src) {
   return pageBaseUrl(wbGet().pageManifest, pageId) + screenId + '.js';
 }
 
+/** 帧不再吃 ios-kit 的 fit 缩放：板是固定画布，缩放归 .wb-library；按屏换内容 /
+    重置换上的原始产物同样带着这一档，装上时摘掉。整板装载与单帧 remount 共用。 */
+function clearStageFit(scope) {
+  scope.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
+    s.removeAttribute('data-fit');
+    var device = s.querySelector('.ios-device');
+    if (device) device.style.setProperty('--ios-scale', '1');
+  });
+}
+
 function invokeMountModule(mod, root, label, session) {
   if (!mod || !session.isUsable(root)) return;
   var mount = typeof mod.default === 'function' ? mod.default
@@ -290,18 +300,10 @@ export function afterMount(panel, session) {
     if (!session.isUsable(panel)) { session.settleBoard(false); session.settlePreviews(false); return; }
     try {
       // Board phones keep intrinsic size; zoom is on .wb-library, not per-stage fit.
-      panel.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
-        s.removeAttribute('data-fit');
-        var device = s.querySelector('.ios-device');
-        if (device) device.style.setProperty('--ios-scale', '1');
-      });
+      clearStageFit(panel);
       // 预览脚本还没跑：记下每帧的初始 HTML，帧菜单的“重置”换回它再重跑这一帧的脚本。
       rememberBoard(panel, session, function (scope) {
-        scope.querySelectorAll('.ios-stage[data-fit]').forEach(function (s) {
-          s.removeAttribute('data-fit');
-          var device = s.querySelector('.ios-device');
-          if (device) device.style.setProperty('--ios-scale', '1');
-        });
+        clearStageFit(scope);
         // 按屏换内容插的是 screenContentHtml 的原始产物（light + screen-only）。
         // 整板装载在下面的 syncPanelPrefs(panel) 补偏好；这条路只换一帧，补在这一帧上。
         syncPanelPrefs(scope);

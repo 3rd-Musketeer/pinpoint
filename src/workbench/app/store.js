@@ -52,6 +52,9 @@ export const useWorkbenchStore = create(subscribeWithSelector((set) => ({
   focusSectionId: null,
   // settings view
   settingsOpen: false,
+  // 大纲浮层开在哪个触发钮上（页 tab id，横条那枚是 '@page'；null = 全关）。
+  // 同一时刻只开一个；tab 条与横条的触发钮都订阅它（OutlinePopover）。
+  outlinePopKey: null,
   // annotation panel
   annSnap: null,            // ann-bridge 写入的标注状态快照（AnnPopover 唯一状态源）
   // preview chrome

@@ -64,13 +64,19 @@ export function startCanvasDiagnostics(stage, pageId) {
   // 不带 URL 查询、不带页面内容。不支持的浏览器静默跳过。
   let loaf = 0, loafMax = 0, loafScript = '', longTasks = 0;
   function scriptName(url) { return String(url || '').split('?')[0].split('/').pop().slice(0, 60); }
+  // 一个已 observe 好的 PerformanceObserver 的共同去留：disconnect 进清理表，observe
+  // 进停驻表（pause 摘下、resume 挂回）。三条观察（本窗 long-animation-frame /
+  // longtask / event，顶层窗口那条用顶层构造器）都经它登记。
+  function track(po, opts) {
+    removers.push(() => po.disconnect());
+    parked.push({ stop: () => po.disconnect(), start: () => { try { po.observe(opts); } catch {} } });
+  }
   function observe(type, onEntry, options) {
     try {
       const po = new PerformanceObserver(list => { if (!paused) list.getEntries().forEach(onEntry); });
       const opts = options || {type, buffered:false};
       po.observe(opts);
-      removers.push(() => po.disconnect());
-      parked.push({ stop: () => po.disconnect(), start: () => { try { po.observe(opts); } catch {} } });
+      track(po, opts);
     } catch {}
   }
   const recentLoaf = []; // 最近的长帧，给慢输入找同一时段的脚本归属
@@ -96,8 +102,7 @@ export function startCanvasDiagnostics(stage, pageId) {
       }));
       const topOpts = {type:'long-animation-frame', buffered:false};
       topPo.observe(topOpts);
-      removers.push(() => topPo.disconnect());
-      parked.push({ stop: () => topPo.disconnect(), start: () => { try { topPo.observe(topOpts); } catch {} } });
+      track(topPo, topOpts);
     }
   } catch {}
   // 慢输入（owner 2026-10-19：“在画布上标注的时候输入法输入简直卡爆了”）：按键、输入法组字、input 事件
@@ -120,27 +125,21 @@ export function startCanvasDiagnostics(stage, pageId) {
       Math.round(sc.duration), Math.round(sc.forcedStyleAndLayoutDuration || 0)].join(':')).join(' | ');
     return {scripts: top.slice(0, 240), render: Math.round(render)};
   }
-  try {
-    const po = new PerformanceObserver(list => list.getEntries().forEach(e => {
-      if (!INPUT_EVENTS.has(e.name) || e.duration < INPUT_LAG_MS) return;
-      const now = performance.now();
-      if (now - lagWindow > 1000) { lagWindow = now; lagBudget = 0; }
-      if (++lagBudget > 6) return; // 每秒最多记 6 条
-      const t = e.target;
-      const where = !t ? 'gone' : t.closest?.('#ann-box') ? 'composer' : t.closest?.('[data-ann-ui]') ? 'ann-ui' : 'page';
-      const row = {page:pageId(), name:e.name, input:where, duration:Math.round(e.duration),
-        inputDelay:Math.round(e.processingStart - e.startTime), processing:Math.round(e.processingEnd - e.processingStart),
-        presentation:Math.round(e.startTime + e.duration - e.processingEnd),
-        marks:window.pinpoint?.marks?.length ?? 0, frames:document.querySelectorAll('.wb-screen').length,
-        zoom:Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1};
-      // 同一帧的长帧条目比事件条目晚到：等一会儿再找归属。
-      setTimeout(() => record('input-lag', {...row, ...overlappingScripts(e.startTime, e.startTime + e.duration)}), 1200);
-    }));
-    const eventOpts = {type:'event', durationThreshold:INPUT_LAG_MS, buffered:false};
-    po.observe(eventOpts);
-    removers.push(() => po.disconnect());
-    parked.push({ stop: () => po.disconnect(), start: () => { try { po.observe(eventOpts); } catch {} } });
-  } catch {}
+  observe('event', e => {
+    if (!INPUT_EVENTS.has(e.name) || e.duration < INPUT_LAG_MS) return;
+    const now = performance.now();
+    if (now - lagWindow > 1000) { lagWindow = now; lagBudget = 0; }
+    if (++lagBudget > 6) return; // 每秒最多记 6 条
+    const t = e.target;
+    const where = !t ? 'gone' : t.closest?.('#ann-box') ? 'composer' : t.closest?.('[data-ann-ui]') ? 'ann-ui' : 'page';
+    const row = {page:pageId(), name:e.name, input:where, duration:Math.round(e.duration),
+      inputDelay:Math.round(e.processingStart - e.startTime), processing:Math.round(e.processingEnd - e.processingStart),
+      presentation:Math.round(e.startTime + e.duration - e.processingEnd),
+      marks:window.pinpoint?.marks?.length ?? 0, frames:document.querySelectorAll('.wb-screen').length,
+      zoom:Number(document.documentElement.getAttribute('data-canvas-zoom')) || 1};
+    // 同一帧的长帧条目比事件条目晚到：等一会儿再找归属。
+    setTimeout(() => record('input-lag', {...row, ...overlappingScripts(e.startTime, e.startTime + e.duration)}), 1200);
+  }, {type:'event', durationThreshold:INPUT_LAG_MS, buffered:false});
   function sample() {
     const annMax = window.pinpoint?.perfDrain?.() ?? 0; // 标注层本采样窗口内最慢的一帧同步耗时（ms）
     const wrap = stage.querySelector('.wb-zoom-wrap');

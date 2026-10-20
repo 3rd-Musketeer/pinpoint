@@ -72,20 +72,19 @@ export function toggleSideCollapsed(options) {
   setSideCollapsed(!wbGet().sideCollapsed, options || { save: true });
 }
 
-function applyIosRoots(p, root) {
-  var scope = root || document;
-  scope.querySelectorAll('.ios-root').forEach(function (r) {
-    r.setAttribute('data-theme', p.theme || 'light');
-    r.setAttribute('data-text-size', 'default');
-    r.classList.toggle('screen-only', (p.frame || 'screen') === 'screen');
-  });
-}
-
 function applyIosRootValue(attribute, value, root) {
   (root || document).querySelectorAll('.ios-root').forEach(function (iosRoot) {
     if (attribute === 'frame') iosRoot.classList.toggle('screen-only', value === 'screen');
     else iosRoot.setAttribute(attribute, value);
   });
+}
+
+/** 装板 / 切偏好时把三样页级设置铺到所有 .ios-root（逐项走 applyIosRootValue，
+    设置视图的单项 setter 也走它）。 */
+function applyIosRoots(p, root) {
+  applyIosRootValue('data-theme', p.theme || 'light', root);
+  applyIosRootValue('data-text-size', 'default', root);
+  applyIosRootValue('frame', p.frame || 'screen', root);
 }
 
 // 控件态由 SettingsView 订阅 store 派生（setter 的 apply 负责 wbSet），
@@ -124,6 +123,7 @@ export var setCanvasZoom = makePref('canvasZoom', {
     document.documentElement.style.setProperty('--wb-board-zoom', z);
     syncBoardZoomLayout();
     wbSet({ canvasZoom: z });
+    // 旧客户端回落 render 的理由见 stage.js 拖动那条（HMR 只热更工作台一侧）。
     var _a = annotateApi();
     if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
     scheduleMinimapUpdate();

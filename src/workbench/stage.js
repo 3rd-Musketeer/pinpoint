@@ -126,19 +126,26 @@ function resolveBootPageId(prefs) {
  * （store.missingPageId 让 url-sync 让开），坏的 id 一直在用户眼前。
  * 左栏照常渲染：清单已经到位，别的页都还能点。
  */
-function showMissingPage(pageId) {
+/** 板级失败面板（深链失效与装载失败同一套收尾）：取消在途装载会话、复位导航、
+    画面板、给嵌入版发 board-error（C1：文章页收起准备态让出面板，不再轮询
+    [data-err-panel]）。store 状态（missingPageId / activePageId）与形态回落
+    （applyPageFormFallback）因两条路径不同，留在调用方。 */
+function showLoadFailPanel(panel, info) {
   mountManager.cancel();
   resetBoardNavOnLoadFailure();
+  panel.innerHTML = loadFailHtml(info);
+  notifyEmbed({ type: 'board-error' });
+}
+
+function showMissingPage(pageId) {
   wbSet({ missingPageId: pageId, activePageId: pageId, activeBoard: null, activeEntryId: null });
   applyPageFormFallback(pageId);
-  boardPanel.innerHTML = loadFailHtml({
+  showLoadFailPanel(boardPanel, {
     title: '页面不存在',
     source: '?page=' + pageId,
     reason: 'registry 与本地页面清单里都没有 ' + pageId + '。',
     retry: { kind: 'page', pageId: pageId }
   });
-  // 错误面板是嵌入版就绪状态机的一条出口（C1）：文章页收起准备态让出面板，不再轮询 [data-err-panel]。
-  notifyEmbed({ type: 'board-error' });
 }
 
 function boardUrl(pageId) {
@@ -208,18 +215,14 @@ async function loadBoard(panel, pageId, loadOptions) {
     return afterMount(panel, session);
   } catch (e) {
     if (wbGet().activePageId !== pageId) return null;
-    mountManager.cancel();
-    resetBoardNavOnLoadFailure();
     // 装载失败没有板就没有条目可解析 —— stage 形态退回页级兜底（阶段 2 同义）。
     applyPageFormFallback(pageId);
-    panel.innerHTML = loadFailHtml({
+    showLoadFailPanel(panel, {
       title: e instanceof ContractError ? '契约错误' : '加载失败',
       source: boardUrl(pageId),
       reason: String(e && e.message ? e.message : e),
       retry: { kind: 'board', pageId: pageId }
     });
-    // 错误面板是嵌入版就绪状态机的一条出口（C1）：文章页收起准备态让出面板，不再轮询 [data-err-panel]。
-    notifyEmbed({ type: 'board-error' });
   }
 }
 
@@ -465,7 +468,8 @@ if (splitEl) {
     splitRaf = requestAnimationFrame(function () {
       splitRaf = 0;
       // 拖宽只改可用区：走视口快路径（重投影已缓存的几何），不整层 renderAll。
-      // 旧客户端没有 viewportChanged 时仍走 render。
+      // 旧客户端没有 viewportChanged 时仍走 render —— vite HMR 只热更工作台
+      // 模块，不热更已注入的 annotate 客户端，dev 会话里两边会错开一拍。
       var _a = annotateApi();
       if (_a) { if (_a.viewportChanged) _a.viewportChanged(); else _a.render(); }
     });
