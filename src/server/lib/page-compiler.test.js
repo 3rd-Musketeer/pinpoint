@@ -567,7 +567,11 @@ describe('dist 状态与 serve 读取', () => {
     const first = await compilePage(target, { distRoot });
     assert.equal(first.ok, true);
     assert.equal(readDistScreen(target.entryId, 'home', { distRoot }).kind, 'ok');
-    assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, false);
+    // BACKLOG 偶挂（高负载首跑）：builtAt 是 performance 历元、mtime 是实时钟，两钟岔开时
+    // fresh 会误判成 stale；带上差值，下次挂直接看到证据。
+    const fresh = distStatus(target.entryId, target.pageDir, { distRoot });
+    const homeMtime = fs.statSync(path.join(target.pageDir, 'home.jsx')).mtimeMs;
+    assert.equal(fresh.stale, false, `builtAt=${fresh.builtAt} home.jsx mtime=${homeMtime} diff=${(homeMtime - fresh.builtAt).toFixed(3)}ms`);
     // 改出 lint 错（onClick）→ 失败重编：旧 home.html 必须删，不能拿改坏前的画面顶班。
     fs.writeFileSync(path.join(target.pageDir, 'home.jsx'), 'export default function Home() {\n  return <div className="ios-app"><button onClick={() => 1}>坏</button></div>;\n}\n');
     const second = await compilePage(target, { distRoot });

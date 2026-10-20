@@ -1676,11 +1676,32 @@ test('runMark：走状态端点带 baseRevision，逐条打印；close / open �
 
 test('runComments：抬头给各状态计数；dist 落后于源码时先重编并在 stderr 说明', async (t) => {
   const made = await makeAnnotatedPage(t);
+  // BACKLOG 偶挂（2026-10-15 高负载首跑「dist 最新时不重编」）：stale 判定比的是
+  // performance 历元的 builtAt 与 fs mtime（实时钟），两钟在系统睡眠 / NTP 步进后会岔开。
+  // 先存下首编的 builtAt，断言失败时把「哪个文件比它新、差多少」打进消息。
+  const buildJson = path.join(made.env.PINPOINT_DATA_DIR, 'dist', 't-page', 'build.json');
+  const firstBuild = JSON.parse(fs.readFileSync(buildJson, 'utf8'));
+  const staleEvidence = () => {
+    const rows = [];
+    for (const [id, rec] of Object.entries(firstBuild.sources || {})) {
+      for (const f of [rec.file, ...(rec.deps || []).map((d) => d.file)]) {
+        try {
+          const m = fs.statSync(path.join(made.page, f)).mtimeMs;
+          if (m > firstBuild.builtAt) rows.push(`${id}: ${f} 比 builtAt 新 ${(m - firstBuild.builtAt).toFixed(3)}ms`);
+        } catch { rows.push(`${id}: ${f} 读不到`); }
+      }
+    }
+    try {
+      const m = fs.statSync(path.join(made.page, 'board.json')).mtimeMs;
+      if (m > firstBuild.builtAt) rows.push(`board.json 比 builtAt 新 ${(m - firstBuild.builtAt).toFixed(3)}ms`);
+    } catch { rows.push('board.json 读不到'); }
+    return rows.length ? rows.join('；') : '没有文件比 builtAt 新（查 errors 合并分支）';
+  };
   const rec = recorder();
   const code = await runComments(['comments', 't-page', '--registry', made.registry], { ...rec.io, env: made.env });
   assert.equal(code, 0, rec.err.join('\n'));
   assert.ok(rec.out.some((line) => /^共 1 条（全量 2） · open 1 · check 0 · done 1 · close 0$/.test(line)), rec.out.join('\n'));
-  assert.ok(!rec.err.some((line) => line.includes('dist 不在或落后于源码')), 'dist 最新时不重编');
+  assert.ok(!rec.err.some((line) => line.includes('dist 不在或落后于源码')), `dist 最新时不重编；stale 证据：${staleEvidence()}`);
   // 源码比产物新 → 过期，先编再列。
   const future = new Date(Date.now() + 5000);
   fs.utimesSync(path.join(made.page, 'home.jsx'), future, future);
