@@ -1,6 +1,6 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react';
 import * as DropdownMenu from '@radix-ui/react-dropdown-menu';
-import { useWorkbenchStore, wbSet } from './store.js';
+import { useWorkbenchStore, wbGet, wbSet } from './store.js';
 import { annotateApi } from '../ann-bridge.js';
 import { boardRefs } from '../lib/board-refs.js';
 import { ANN_FILTERS, annFilterCounts, annFilterRows, annStatusLabel, annStatusOf, isClosed } from '../../shared/ann-status.js';
@@ -176,9 +176,14 @@ export function AnnPopover() {
     var a = annotateApi();
     if (!a || typeof a.goToMark !== 'function') return;
     // Client navigation opens the composer; keep the list pinned and mirror its focus.
-    var row = rows.find(function (r) { return r.n === n; });
     a.goToMark(n).then(function (completed) {
       if (completed === false) return;
+      // goToMark 可能跨页跳转（换页 = 换桶，r5 W5）：闭包里的行还是旧页的，
+      // focusFrameKey 会写上旧页的 section/screen。从跳转后的最新快照取同一
+      // 序号的行；快照还没跟上（或行没了）再回落闭包行，同页跳转不受影响。
+      var latest = (wbGet().annSnap || SNAP_OFF).rows;
+      var row = latest.find(function (r) { return r.n === n; })
+        || rows.find(function (r) { return r.n === n; });
       wbSet({
         focusAnnN: n,
         focusFrameKey: row && row.screenId ? row.group + '\0' + row.screenId : null,

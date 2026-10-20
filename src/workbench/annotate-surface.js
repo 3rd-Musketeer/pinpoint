@@ -178,7 +178,9 @@ function flushAllCardWaiters(value) {
 }
 
 /** 等某屏活卡片的标注客户端绑定完成（C1：文章浮层定位 HTML 帧上的钉子前等它，
-    workbench.whenCardAnnotateReady）。帧卸载 / 换板以 null 放手，不无限挂起。 */
+    workbench.whenCardAnnotateReady）。帧卸载 / 换板以 null 放手；帧活着但实例
+    永不就绪（外链帧没有标注客户端）时这条 promise 不自行了断 —— 消费方
+    （site 的 toMark）自带 READY_WAIT_MS 上限，这里不另设超时。 */
 export function whenCardAnnotateReady(screenId) {
   var found = findCardAnnotate(screenId);
   if (found.api) return Promise.resolve(found.api);
