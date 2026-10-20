@@ -23,6 +23,11 @@ import { latestLedgerDocument, readLedgerDocument } from '../../../src/client/li
 // 不认工作台的 class 名。同源，iframe 的 contentDocument 可读；shadow root 直接查。
 const STAGE = '[data-pp-stage]';
 
+/** 错误页（404 / 500 的 JSON 体）里服务端写的说明；不是 JSON 就空串。 */
+function errorDetail(doc) {
+  try { return JSON.parse(doc.body.textContent || '').message || ''; } catch { return ''; }
+}
+
 /**
  * 量一个同源帧 iframe 里的机壳盒子。
  * → { x, y, width, height }（iframe 文档坐标，未缩放）；还没渲染出来 → null；
@@ -35,8 +40,7 @@ function measureStage(iframe) {
   const stage = doc.querySelector(STAGE);
   if (!stage) {
     if (doc.readyState !== 'complete') return null;
-    let detail = '';
-    try { detail = JSON.parse(doc.body.textContent || '').message || ''; } catch { /* not JSON */ }
+    let detail = errorDetail(doc);
     if (!detail && doc.documentElement.dataset.ppEmbed) detail = '帧页没有 data-pp-stage';
     return { failed: true, detail };
   }
@@ -76,11 +80,7 @@ function docFrameFailed(iframe) {
   let doc;
   try { doc = iframe.contentDocument; } catch { return null; }
   if (!doc || doc.readyState !== 'complete' || doc.URL === 'about:blank') return null;
-  if (/json/.test(doc.contentType || '')) {
-    let detail = '';
-    try { detail = JSON.parse(doc.body.textContent || '').message || ''; } catch { /* not JSON */ }
-    return { detail: detail || '文档打不开' };
-  }
+  if (/json/.test(doc.contentType || '')) return { detail: errorDetail(doc) || '文档打不开' };
   return false;
 }
 
