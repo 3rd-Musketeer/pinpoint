@@ -43,9 +43,12 @@ const version=fs.readFileSync('version.txt','utf8');const target=version==='new'
 const pause=()=>new Promise(r=>setTimeout(r,20));
 fs.appendFileSync(process.env.FAKE_STATE+'.actions',process.argv[2]+':'+version+'\\n');
 async function gate(phase){if(process.env.GATE_PHASE!==phase||fs.existsSync(process.env.FAKE_GATE+'.entered'))return;fs.writeFileSync(process.env.FAKE_GATE+'.entered','');while(!fs.existsSync(process.env.FAKE_GATE+'.release'))await pause();}
+async function hold(marker){fs.writeFileSync(marker+'.pid',String(process.pid));fs.writeFileSync(marker,'');while(!fs.existsSync(marker+'.release'))await pause();}
 async function probe(){try{const r=await fetch('http://127.0.0.1:'+process.env.FAKE_PORT,{signal:AbortSignal.timeout(500)});return r.ok?await r.json():null;}catch{return null;}}
 async function stop(){if(fs.existsSync(state)){try{process.kill(Number(fs.readFileSync(state,'utf8')),'SIGTERM');}catch{}fs.rmSync(state,{force:true});}for(let n=0;n<100&&await probe();n++)await pause();if(await probe())process.exit(12);}
 async function start(){
+if(target&&phase==='interrupt2')await hold(process.env.FAKE_GATE+'.target');
+if(!target&&phase==='interrupt2')await hold(process.env.FAKE_GATE+'.restore');
 if(target)await gate('before-start');
 if(target&&phase==='restart-before-start')process.exit(9);
 if(!target&&phase==='restore-start')process.exit(13);
@@ -156,6 +159,26 @@ test('promote：信号收尾恢复也失败时打印完整可执行命令', asyn
   assert.equal(fs.existsSync(script), true);
   f.recover(script);
   assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+});
+
+// 复审场景 11：第一次组信号触发收尾后，恢复期再打一次组信号（终端 Ctrl-C 的真实形态），
+// 恢复命令会被组信号直接打死（execFile detached 实测未脱离 promote 的进程组），不得留下停服。
+test('promote：恢复期第二次组信号打死恢复命令也不留停服', async t => {
+  const f = await fixture(t);
+  const p = f.launch({ phase: '', failure: 'interrupt2' });
+  await until(() => fs.existsSync(p.gate + '.target')); // 起新服务挂起
+  process.kill(-p.child.pid, 'SIGINT'); // 第一次组信号：进入收尾
+  await until(() => fs.existsSync(p.gate + '.restore')); // 恢复序列 start(old) 挂起
+  process.kill(-p.child.pid, 'SIGINT'); // 第二次组信号：直接命中恢复命令
+  fs.writeFileSync(p.gate + '.restore.release', '');
+  const result = await p.done;
+  assert.equal(result.signal, null, p.output());
+  const output = p.output();
+  assert.match(output, /收到 SIGINT，发布已中止/);
+  assert.doesNotMatch(output, /旧服务恢复失败/);
+  assert.deepEqual(await f.alive(), { version: 'old', deps: 'old', shell: 'old-shell' });
+  assert.equal(f.head(), f.old);
+  assert.deepEqual(fs.readdirSync(path.join(f.root, '.tmp')), []);
 });
 
 test('promote：同一规范 release 路径跨进程互斥，A 成功、B 立即拒绝，后续发布重读 prev', async t => {
