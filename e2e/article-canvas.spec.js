@@ -44,6 +44,8 @@ test('文章画布：工作台 /workbench/?page=&section=、混排节、不进 P
     await expect(page.getByText('页面不存在')).toHaveCount(0);
     // 画布图注的编号与正文节字母一致。
     await expect(page.locator('#wb-board-panel [data-screen="card-plain"] .wb-cap-ref')).toHaveText('C1');
+    // 横条页名：画布视图显示文章标题（画布页在清单 manifest.articles 里，不在 Pages）。
+    await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
   });
 
   await test.step('工作台混排节 mixed：手机帧带机壳，帧级 comp 的那一帧是裸组件，没有错误面板', async () => {
@@ -67,12 +69,6 @@ test('文章画布：工作台 /workbench/?page=&section=、混排节、不进 P
     await expect(page.locator(`#wbpages [data-vpage="${PAGE_ID}"]`)).toHaveCount(0);
     await expect(page.locator('#wbpages [data-vpage="e2e-project"]')).toHaveCount(0);
     await expect(page.locator('#wbpages [data-vpage="e2e-project_takeover"]')).toHaveCount(0);
-  });
-
-  await test.step('横条页名：画布视图显示文章标题（画布页在清单 manifest.articles 里，不在 Pages）', async () => {
-    await page.goto(`/workbench/?page=${PAGE_ID}&section=variants`);
-    await page.waitForFunction((id) => window.workbench && window.workbench.activePageId() === id, PAGE_ID);
-    await expect(page.locator('#wbstrip-title')).toHaveText('提交前确认');
   });
 
   await test.step('左上角“← 文章标题”：落点跟着当前节走，跟着左栏挪，帧不摆到它底下；横条上没有“阅读正文”；存量页不出', async () => {
@@ -143,22 +139,18 @@ test('文章画布：工作台 /workbench/?page=&section=、混排节、不进 P
     await expect.poll(() => page.evaluate(() => window.workbench.whenPreviewsSettled())).toBe(true);
   });
 
-  await test.step('ppnt shot <画布页> B2：帧图落盘', async () => {
+  await test.step('ppnt shot <画布页> B2 C1 C：帧图落盘；帧图 / 节图带上 article.css（确认卡的蓝边画进了 PNG）', async () => {
     const out = path.join(E2E_DATA_DIR, 'shot', PAGE_ID, 'confirm-done.png');
-    const { stdout } = await ppnt(['shot', PAGE_ID, 'B2']);
+    const { stdout } = await ppnt(['shot', PAGE_ID, 'B2', 'C1', 'C']);
     expect(stdout).toContain(out);
     const png = fs.readFileSync(out);
     expect(png.subarray(1, 4).toString('latin1')).toBe('PNG');
-  });
-
-  await test.step('ppnt shot C1 C：帧图 / 节图带上 article.css（确认卡的蓝边画进了 PNG）', async () => {
     // 板级装载把帧里的 <style>@import</style> 提到 .wb-library 开头（hoist-imports.js），
     // 帧 / 节的快照里就没有它了：出图要和画布同一套样式。C1 是裸组件帧，蓝色只可能来自
     // article.css 给 .e2e-confirm-card 的 2px 边。
-    await ppnt(['shot', PAGE_ID, 'C1', 'C']);
     for (const name of ['card-plain', 'variants']) {
-      const png = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', PAGE_ID, `${name}.png`));
-      expect(await countColorPixels(page.context(), png, [10, 132, 255]), name).toBeGreaterThan(100);
+      const shot = fs.readFileSync(path.join(E2E_DATA_DIR, 'shot', PAGE_ID, `${name}.png`));
+      expect(await countColorPixels(page.context(), shot, [10, 132, 255]), name).toBeGreaterThan(100);
     }
   });
 
