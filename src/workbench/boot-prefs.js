@@ -116,36 +116,33 @@ export var setFrame = makePref('frame', {
   refit: true
 });
 
-export var setCanvasZoom = makePref('canvasZoom', {
-  apply: function (val) {
-    var z = boardZoom(val);
-    document.documentElement.setAttribute('data-canvas-zoom', z);
-    document.documentElement.style.setProperty('--wb-board-zoom', z);
-    syncBoardZoomLayout();
-    wbSet({ canvasZoom: z });
-    annotateViewportChanged();
-    scheduleMinimapUpdate();
-    updateMinimapAvailability();
-    updateSectionNavigatorVisibility();
-  }
-  // Zoom persists only via pageViewports (wrapper); makePref must not write global canvasZoom.
-});
+// 缩放不挂 makePref：全局 canvasZoom 键已退役，存档只走 pageViewports（按页，
+// 下面的包装 debounce 写）；makePref 的 save 路径曾把 zoom 写进全局键。
+function applyCanvasZoom(val) {
+  var z = boardZoom(val);
+  document.documentElement.setAttribute('data-canvas-zoom', z);
+  document.documentElement.style.setProperty('--wb-board-zoom', z);
+  syncBoardZoomLayout();
+  wbSet({ canvasZoom: z });
+  annotateViewportChanged();
+  scheduleMinimapUpdate();
+  updateMinimapAvailability();
+  updateSectionNavigatorVisibility();
+}
 
-var _setCanvasZoom = setCanvasZoom;
 var zoomSaveT;
 var pendingZoomSave = null;
-setCanvasZoom = function (val, options) {
+export function setCanvasZoom(val, options) {
   cancelStageScroll();
   options = options || {};
   // Visual update always; persist is debounced so wheel/pinch does not thrash localStorage.
-  // Never pass save:true into makePref — global canvasZoom key is retired.
-  _setCanvasZoom(val, { save: false });
+  applyCanvasZoom(val);
   if (options.save) {
     pendingZoomSave = boardZoom(val);
     clearTimeout(zoomSaveT);
     zoomSaveT = setTimeout(flushZoomSave, 200);
   }
-};
+}
 
 /** 以视口内一点为不动点缩放（缺省 = 舞台可视中心）。缩放挂在 .wb-library（origin 0 0），
  * 板四周的 pad 不缩放，所以以 wrap 左上角为原点换算，缩放后回写 scroll 抵消漂移。 */
@@ -234,7 +231,7 @@ function restorePageViewport(pageId, options) {
   if (!vp) return false;
   restoringViewport = true;
   if (vp.canvasZoom != null && options.zoom !== false) {
-    _setCanvasZoom(boardZoom(vp.canvasZoom), { save: false });
+    applyCanvasZoom(boardZoom(vp.canvasZoom));
   }
   if (options.scroll !== false) {
     var left = vp.scrollLeft != null ? vp.scrollLeft : 0;
