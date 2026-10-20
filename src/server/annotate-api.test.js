@@ -216,21 +216,6 @@ test('GET /annotations/<page> resolves entry from the query string', async (t) =
   assert.equal(miss.json.error, 'unknown_entry');
 });
 
-test('GET /annotations flattens every bucket into [{entry, page, ...}]', async (t) => {
-  const { handler } = withFixture(t);
-  await call(handler, 'POST', '/save', {
-    page: 'index.html', baseRevision: 0, annotations: [{ n: 1 }],
-  });
-  await call(handler, 'POST', '/save', {
-    page: 'other.html', entry: 'web', baseRevision: 0, annotations: [{ n: 2 }],
-  });
-  const { res, json } = await call(handler, 'GET', '/annotations');
-  assert.equal(res.statusCode, 200);
-  assert.ok(Array.isArray(json));
-  const byEntry = Object.fromEntries(json.map((doc) => [doc.entry, doc.page]));
-  assert.deepEqual(byEntry, { pinpoint: 'index.html', web: 'other.html' });
-});
-
 test('/health keeps dataDir as the default bucket and exposes registry state', async (t) => {
   const { dataRoot, registry, handler } = withFixture(t);
   const { res, json } = await call(handler, 'GET', '/health');
@@ -692,26 +677,6 @@ test('桶被 prune 掉以后迟到的保存不把它写回来：页已不在就 
   t.mock.restoreAll();
   assert.equal(image.res.statusCode, 503, JSON.stringify(image.json));
   assert.ok(!fs.existsSync(bucket), '图片也不重建桶');
-});
-
-test('GET /annotations 的聚合也摊平文章桶（Q）', async (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-api-agg-'));
-  t.after(() => fs.rmSync(dir, { recursive: true, force: true }));
-  const dataRoot = path.join(dir, 'data');
-  const registryFile = path.join(dir, 'registry.json');
-  const projectRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..', '..', 'e2e', 'project-site');
-  fs.writeFileSync(registryFile, JSON.stringify({ version: 1, entries: [{ id: 'e2e-project', kind: 'project', path: projectRoot }] }));
-  const registry = loadRegistry({ path: registryFile, root: dir, log: () => {} });
-  const handler = createAnnotateHandler({ dataRoot, registry });
-  const entry = 'e2e-project_commit-confirm';
-  const saved = await call(handler, 'POST', '/save', {
-    page: '@prose', entry, path: '/e2e-project/commit-confirm/', baseRevision: 0,
-    annotations: [{ id: 'p1', type: 'prose', content: '这句改短', quote: { exact: '先弹' }, messages: [] }],
-  });
-  assert.equal(saved.res.statusCode, 200);
-  const { json } = await call(handler, 'GET', '/annotations');
-  const rows = json.filter((doc) => doc.entry === entry);
-  assert.deepEqual(rows.map((doc) => [doc.page, doc.annotations.length]), [['@prose', 1]]);
 });
 
 test('POST /save 的 body 是 JSON null / 数组 / 标量：400 bad_json，不是 500（R5 B4）', async (t) => {

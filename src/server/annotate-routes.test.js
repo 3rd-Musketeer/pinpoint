@@ -22,7 +22,6 @@ const BUNDLE = { js: 'void 0;', hash: HASH, gzip: Buffer.from('gz'), br: Buffer.
 
 // 存储方法 → 分支。一个请求可能调好几个方法（/save 之后还取 jsonPathFor），取第一个认得的。
 const STORE_BRANCH = {
-  listDocs: 'annotations:list',
   readDoc: 'annotations:read',
   imagePath: 'images:read',
   setStatus: 'status',
@@ -167,9 +166,9 @@ test('route priority: every request shape lands on one branch or falls through (
     ['GET', '/events/x', undefined, 'next'],
     ['POST', '/events', {}, 'next'],
 
-    // /annotations 全等 = 调试聚合；/annotations/ 前缀 = 按页读，后面几段都算页名，
-    // 连 status / reply 形状的路径也是（GET 不进写接口）。
-    ['GET', '/annotations', undefined, 'annotations:list'],
+    // /annotations/ 前缀 = 按页读，后面几段都算页名，连 status / reply 形状的路径也是
+    // （GET 不进写接口）；不带斜杠的 /annotations 不归这里，交出去。
+    ['GET', '/annotations', undefined, 'next'],
     ['GET', '/annotations/index.html?entry=web', undefined, 'annotations:read',
       (r) => assert.equal(r.calls[0].args[0], 'index.html')],
     ['GET', '/annotations/', undefined, 'annotations:read'],

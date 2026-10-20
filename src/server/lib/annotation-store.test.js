@@ -255,14 +255,6 @@ test('#n：重存既有标注带了别的 n 时忽略，沿用盘上的号（xre
   assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, '_seq.json'), 'utf8')).next, 3, '_seq 不动');
 });
 
-test('listDocs 跳过 _seq.json：聚合视图不多出 _seq 空文档（R6）', (t) => {
-  const { dataDir, store } = withStore(t);
-  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
-  assert.ok(fs.existsSync(path.join(dataDir, '_seq.json')), '取过号的桶里 _seq.json 存在');
-  const docs = store.listDocs();
-  assert.deepEqual(Object.keys(docs), ['a.html.json']);
-});
-
 /* ---- storage-unify：@canvas 账本名 / 账本只有现行键 ---- */
 
 test('@canvas 账本：文件名原样（不过 slug），doc.page 保持 @canvas', (t) => {

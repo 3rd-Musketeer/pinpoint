@@ -5,7 +5,7 @@ import path from 'node:path';
 
 import { E2E_DATA_DIR } from '../env.js';
 
-// _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本（与服务端 listDocs 同一条规则），
+// _seq.json 是 #n 的桶级计数器（M1 起 save 落号必写），不是账本，
 // 泄进来会把「恰好这些账本」的断言数多一个。
 const isLedger = (name) => name.endsWith('.json') && name !== '_seq.json';
 

@@ -522,27 +522,6 @@ export function createAnnotationStore(options) {
     return { status: 200, doc, annotation: annotations[index], message };
   }
 
-  function listDocs() {
-    const output = {};
-    if (!fs.existsSync(dataDir)) return output;
-    for (const name of fs.readdirSync(dataDir).sort()) {
-      // _seq.json 是 #n 的桶级计数器，不是账本（R6）：泄进聚合视图会多出
-      // 一个 page:'_seq' 的空文档。
-      if (!name.endsWith('.json') || name === '_seq.json') continue;
-      try {
-        const raw = JSON.parse(fs.readFileSync(path.join(dataDir, name), 'utf8'));
-        const slug = name.replace(/\.json$/, '');
-        output[name] = asDoc({
-          ...normalizeDoc(raw, slug),
-          revision: Number.isInteger(Number(raw.revision)) && Number(raw.revision) >= 0
-            ? Number(raw.revision)
-            : normalizeDoc(raw, slug).revision,
-        });
-      } catch { /* skip corrupt documents in the aggregate view */ }
-    }
-    return output;
-  }
-
   function imagePath(name) {
     // 只取 basename 防穿越，不再 slug：图片名的前缀是账本 key（可能是 '@canvas'），
     // slug 会把 '@' 折成 '_' 而 404。
@@ -565,7 +544,6 @@ export function createAnnotationStore(options) {
     emptyDoc,
     imagePath,
     jsonPathFor,
-    listDocs,
     readDoc,
     save,
     setStatus,
