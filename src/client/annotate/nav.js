@@ -160,22 +160,34 @@ function endFlash() {
 // Capture runs before the list/composer can consume the dismissal event.
 
 // Explicit annotation navigation centers the annotation's frame once (fallback: the target + popup pair). Typing only lays out the popup.
-function focusAnnotationReview(m, stageEl, wb) {
+
+/** focusFrame 是 async（跨 tab 先切再挂，恒返回 Promise）：等它落定，false 才走
+ *  回退。它曾被当同步布尔用 —— Promise 恒真，列表点孤儿标注的四段回退（元素
+ *  居中 / scrollIntoView / lastRect 幽灵跳转 / 文档滚动）全成死代码（r5b B1）。 */
+function focusFrameAsync(wb, m, el) {
+  if (!wb || !m.screenId || typeof wb.focusFrame !== 'function') return Promise.resolve(false);
+  return Promise.resolve(wb.focusFrame(frameSectionFor(m, el), m.screenId)).then(function (ok) { return !!ok; });
+}
+
+/** review 路径的同步准备：开 composer、量完藏框（可见性在 flashAndOpen 的滚动
+ *  落定后恢复）。返回框是否开成 —— 没开成走不了以 frame 为中心的聚焦。 */
+function prepareAnnotationReview(m, stageEl, wb) {
   if (!stageEl || !wb || !wb.scrollTo) return false;
-  var rects = annotationTargetRects(m);
-  if (!rects.length) return false;
+  if (!annotationTargetRects(m).length) return false;
   openMark(m.n);
   if (!ctx.activeComposer || ctx.activeComposer.persistedN !== m.n) return false;
-  var box = document.getElementById('ann-box');
   ctx.activeComposer.syncLayout();
   // 列表 / 卡片点进来以标注所在 frame 居中（owner 2026-09-30：以 frame 为中心更直觉，
   // 以标注为中心会把 frame 切成一半）。输入框由 syncLayout 在 frame 旁自动让位；
-  // 没有 frame 可聚焦（无 screenId / 板里找不到）才退回下面以标注 + 输入框为一对居中。
-  box.style.visibility = 'hidden'; // 两条路径都要等滚动落定：flashAndOpen 在 whenScrollSettled 之后恢复
-  if (m.screenId && typeof wb.focusFrame === 'function') {
-    var firstLive = resolveAllLiveTargets(m)[0];
-    if (wb.focusFrame(frameSectionFor(m, firstLive && firstLive.el), m.screenId)) return true;
-  }
+  // 没有 frame 可聚焦（无 screenId / 板里找不到）才退回以标注 + 输入框为一对居中。
+  document.getElementById('ann-box').style.visibility = 'hidden';
+  return true;
+}
+
+/** review 回退：frame 聚焦不了，以标注 + 输入框为一对居中（oversized 只居中目标）。 */
+function centerReviewPair(m, stageEl, wb) {
+  var rects = annotationTargetRects(m);
+  var box = document.getElementById('ann-box');
   var sr = stageEl.getBoundingClientRect();
   var area = { left: sr.left + 24, right: sr.right - 24, top: sr.top + 24, bottom: sr.bottom - 24 };
   var strip = document.getElementById('wbstrip');
@@ -196,24 +208,16 @@ function focusAnnotationReview(m, stageEl, wb) {
     pairHeight += 12 + box.offsetHeight;
     ctx.activeComposer.preferredSide = 'below';
   }
-  // Oversized selections retain zoom and center the target; the regular popup fallback still applies.
   wb.scrollTo({
     left: stageEl.scrollLeft + left - (area.left + (area.right - area.left - pairWidth) / 2),
     top: stageEl.scrollTop + top - (area.top + (area.bottom - area.top - pairHeight) / 2)
   });
-  return true;
 }
 
-function flashAndOpen(m, navigation) {
-  var anchor = resolveMarkAnchor(m);
-  var stageEl = document.getElementById('wbstage');
-  var wb = window.workbench;
-  var reviewFocused = focusAnnotationReview(m, stageEl, wb);
-  var frameFocused = reviewFocused || !!(
-    wb && m.screenId && typeof wb.focusFrame === 'function' &&
-    wb.focusFrame(frameSectionFor(m, anchor.el), m.screenId)
-  );
-  if (!frameFocused && anchor.live && anchor.el && stageEl) {
+/** 非 review（没有可开的框）时的回退链：元素居中 → scrollIntoView（独立文档 /
+ *  注入页没有舞台）→ lastRect 幽灵跳转（pp2：锚点失效但留有最后位置）→ 文档滚动。 */
+function scrollToAnchorFallback(anchor, m, stageEl, wb) {
+  if (anchor.live && anchor.el && stageEl) {
     var er = anchor.el.getBoundingClientRect();
     var sr = stageEl.getBoundingClientRect();
     var target = {
@@ -222,11 +226,9 @@ function flashAndOpen(m, navigation) {
     };
     if (wb && wb.scrollTo) wb.scrollTo(target);
     else stageEl.scrollTo(target);
-  } else if (!frameFocused && anchor.live && anchor.el && anchor.el.scrollIntoView) {
-    // 独立文档 / 注入页没有 #wbstage 舞台：直接滚动文档到锚点。
+  } else if (anchor.live && anchor.el && anchor.el.scrollIntoView) {
     anchor.el.scrollIntoView({ block: 'center', inline: 'nearest' });
-  } else if (!frameFocused && !anchor.live && m.lastRect && lastRectSpaceOk(m.lastRect) && stageEl) {
-    // 幽灵跳转（pp2）：锚点失效但有 lastRect —— 滚到它最后一次在的地方。
+  } else if (!anchor.live && m.lastRect && lastRectSpaceOk(m.lastRect) && stageEl) {
     var gr = lastRectViewRect(m.lastRect);
     var gsr = stageEl.getBoundingClientRect();
     var gtarget = {
@@ -235,32 +237,48 @@ function flashAndOpen(m, navigation) {
     };
     if (wb && wb.scrollTo) wb.scrollTo(gtarget);
     else stageEl.scrollTo(gtarget);
-  } else if (!frameFocused && !anchor.live && m.lastRect) {
+  } else if (!anchor.live && m.lastRect) {
     // lastRect 是文档绝对坐标：居中滚到幽灵处。
     var gy = m.lastRect.y + m.lastRect.h / 2 - window.innerHeight / 2;
     window.scrollTo({ top: Math.max(0, gy) });
   }
-  var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
-  return settled.then(function (completed) {
-    if (ctx.activeComposer && ctx.activeComposer.persistedN === m.n) {
-      ctx.activeComposer.syncLayout();
-      var reviewBox = document.getElementById('ann-box');
-      if (reviewBox) reviewBox.style.visibility = '';
+}
+
+function flashAndOpen(m, navigation) {
+  var anchor = resolveMarkAnchor(m);
+  var stageEl = document.getElementById('wbstage');
+  var wb = window.workbench;
+  var reviewReady = prepareAnnotationReview(m, stageEl, wb);
+  var frameFocus = reviewReady
+    ? focusFrameAsync(wb, m, (resolveAllLiveTargets(m)[0] || {}).el)
+    : focusFrameAsync(wb, m, anchor.el);
+  return frameFocus.then(function (frameFocused) {
+    if (!frameFocused) {
+      if (reviewReady) centerReviewPair(m, stageEl, wb);
+      else scrollToAnchorFallback(anchor, m, stageEl, wb);
     }
-    if (!completed || navigation !== ctx.markNavigation) return false;
-    renderAll();
-    focusBubble(m.n);
-    if (anchor.live && anchor.el) {
-      ctx.flashUntil = Date.now() + 1500;
-      showGhostForEl(anchor.el, 'ann-flash');
-      setTimeout(endFlash, 1500);
-    } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
-      ctx.flashUntil = Date.now() + 1500;
-      showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
-      setTimeout(endFlash, 1500);
-    }
-    openMark(m.n);
-    return true;
+    var settled = wb && wb.whenScrollSettled ? wb.whenScrollSettled() : Promise.resolve(true);
+    return settled.then(function (completed) {
+      if (ctx.activeComposer && ctx.activeComposer.persistedN === m.n) {
+        ctx.activeComposer.syncLayout();
+        var reviewBox = document.getElementById('ann-box');
+        if (reviewBox) reviewBox.style.visibility = '';
+      }
+      if (!completed || navigation !== ctx.markNavigation) return false;
+      renderAll();
+      focusBubble(m.n);
+      if (anchor.live && anchor.el) {
+        ctx.flashUntil = Date.now() + 1500;
+        showGhostForEl(anchor.el, 'ann-flash');
+        setTimeout(endFlash, 1500);
+      } else if (anchor.live && m.type === 'region' && anchor.rectDoc) {
+        ctx.flashUntil = Date.now() + 1500;
+        showGhostForRect(anchor.rectDoc, 'ann-flash', anchor.el);
+        setTimeout(endFlash, 1500);
+      }
+      openMark(m.n);
+      return true;
+    });
   });
 }
 
