@@ -509,7 +509,7 @@ export function createAnnotateHandler(options = {}) {
           baseRevision: body.baseRevision,
           saveId: body.saveId,
           after: body.after,
-          annotations: Array.isArray(body.annotations) ? body.annotations : body.marks,
+          annotations: body.annotations,
         });
         if (result.status !== 200) {
           sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });

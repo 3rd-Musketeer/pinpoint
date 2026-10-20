@@ -196,17 +196,6 @@ test('#n：缺号标注按创建顺序补号，跨账本唯一，删过的号不
   const third = store.save({ page: 'a.html', baseRevision: 2, annotations: [{ id: 'x1', n: 1, content: '甲' }, { id: 'x3', content: '丁' }] });
   assert.deepEqual(third.doc.annotations.map((a) => a.n), [1, 4]);
   assert.equal(JSON.parse(fs.readFileSync(path.join(dataDir, '_seq.json'), 'utf8')).next, 5);
-
-  // 旧账本（没有 n）首次读到时补号并写回。
-  fs.writeFileSync(path.join(dataDir, 'old.html.json'), JSON.stringify({
-    page: 'old.html', path: '/old.html', revision: 1,
-    annotations: [{ id: 'o1', content: '旧一' }, { id: 'o2', content: '旧二' }],
-  }));
-  const old = store.readDoc('old.html');
-  assert.deepEqual(old.annotations.map((a) => a.n), [5, 6]);
-  const rewritten = JSON.parse(fs.readFileSync(path.join(dataDir, 'old.html.json'), 'utf8'));
-  assert.deepEqual(rewritten.annotations.map((a) => a.n), [5, 6]);
-  assert.equal(rewritten.revision, 1, '补号不动 revision');
 });
 
 test('#n（M3）：_seq.json 丢失后取号以桶内现有 max(n)+1 为地板', (t) => {

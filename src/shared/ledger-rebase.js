@@ -28,8 +28,8 @@ const OWN_RULE_FIELDS = new Set(['n', 'status', 'messages']);
 
 // 一起改、一起取的字段组；不在组里的字段各自成组。
 const FIELD_GROUPS = [
-  ['targets', 'selector', 'text', 'section', 'sectionLabel', 'group', 'screenId', 'indicatorKind'],
-  ['content', 'comment', 'mentions'],
+  ['targets', 'selector', 'text', 'section', 'sectionLabel', 'screenId', 'indicatorKind'],
+  ['content', 'mentions'],
 ];
 const GROUP_OF = new Map(FIELD_GROUPS.flatMap((keys) => keys.map((key) => [key, keys])));
 

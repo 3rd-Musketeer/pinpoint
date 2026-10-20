@@ -290,20 +290,9 @@ export function createAnnotationStore(options) {
       const revision = Number.isInteger(parsedRevision) && parsedRevision >= 0
         ? parsedRevision
         : (normalized.annotations.length ? 1 : 0);
-      // 旧标注没有 n 的，首次读到时按创建顺序补号并写回（补号本身不改 revision）。
-      const numbered = assignNumbers(normalized.annotations);
-      if (numbered.assigned) {
-        writeDoc(safePage, {
-          path: normalized.path,
-          updated_at: normalized.updated_at,
-          revision,
-          annotations: numbered.annotations,
-        });
-      }
       return asDoc({
         ...normalized,
         revision,
-        annotations: numbered.annotations,
       });
     } catch {
       return emptyDoc(safePage);

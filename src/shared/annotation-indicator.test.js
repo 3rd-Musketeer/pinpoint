@@ -76,15 +76,15 @@ test('normalizeDoc 只认 annotations（磁盘上的账本没有旧 marks 键）
   assert.deepEqual(normalizeDoc({ marks: [{ n: 1 }] }).annotations, [], '旧键不再被读');
 });
 
-test('normalizeAnnotation upgrades element targets with stable refs and compatibility mirrors', () => {
-  const single = normalizeAnnotation({
+test('normalizeAnnotation 归一 targets：去重、补稳定 ref、selector/text 镜像 targets[0]', () => {
+  // 没有 targets 的 element 行是旧格式（盘上已没有）：保持原样，不造 targets。
+  const legacy = normalizeAnnotation({
     type: 'element',
     selector: '#first',
     text: 'First',
   });
-  assert.deepEqual(single.targets, [{ ref: 'i1', selector: '#first', text: 'First' }]);
-  assert.equal(single.selector, '#first');
-  assert.equal(single.text, 'First');
+  assert.equal(legacy.targets, undefined);
+  assert.equal(legacy.selector, '#first');
 
   const multi = normalizeAnnotation({
     type: 'element',

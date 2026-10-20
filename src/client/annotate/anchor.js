@@ -146,7 +146,7 @@ export function isHidden(el) {
 // ---------- multi-anchor element marks ----------
 export function markElementTargets(m) {
   if (!m || m.type !== 'element') return [];
-  return normalizeTargetRefs(m.targets, m.selector, m.text);
+  return normalizeTargetRefs(m.targets);
 }
 
 export function withLiveTargets(fn) {

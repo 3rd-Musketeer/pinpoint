@@ -177,7 +177,6 @@ export function attachComposerAutosave(composer, ta, m, draft) {
     ensureMarkId(m);
     var stored = contentToStorage(ta.value.trim(), markElementTargets(m));
     m.content = stored;
-    delete m.comment;
     var mentionIds = extractMentionIds(stored);
     if (mentionIds.length) m.mentions = mentionIds; else delete m.mentions;
     if (draft.research) {

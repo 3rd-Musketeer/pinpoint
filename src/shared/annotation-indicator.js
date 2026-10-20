@@ -63,10 +63,8 @@ function targetRefNumber(ref) {
 /** Return a deduped target list with stable local refs (`i1`, `i2`, ...).
  *  ppId（决定 #15）：编译页锚点的源码稳定 id（data-pp-id 的值），随 target
  *  透传 —— 同一元素必然同一个值，按 selector 去重已覆盖 ppId 撞车。 */
-export function normalizeTargetRefs(rawTargets, fallbackSelector, fallbackText) {
-  const source = Array.isArray(rawTargets) && rawTargets.length
-    ? rawTargets
-    : (fallbackSelector ? [{ selector: fallbackSelector, text: fallbackText || '' }] : []);
+export function normalizeTargetRefs(rawTargets) {
+  const source = Array.isArray(rawTargets) && rawTargets.length ? rawTargets : [];
   const out = [];
   const selectors = new Set();
   const refs = new Set();
@@ -205,7 +203,7 @@ export function normalizeAnnotation(raw) {
   }
 
   if (a.type === 'element' || a.selector || (Array.isArray(a.targets) && a.targets.length)) {
-    const targets = normalizeTargetRefs(a.targets, a.selector, a.text);
+    const targets = normalizeTargetRefs(a.targets);
     if (targets.length) {
       a.type = a.type || 'element';
       a.targets = targets;
