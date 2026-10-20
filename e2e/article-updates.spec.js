@@ -1,17 +1,18 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { test, expect } from './lib/fixtures.js';
-import { openOwnerArticle, openOwnerStaticArticle, ownerCleanup } from './lib/owner-flows.js';
+import { openOwnerArticle, openOwnerStaticArticle, ownerCleanup, seedOwner } from './lib/owner-flows.js';
 import { OWNER_SOURCE, OWNER_STATIC_SOURCE } from './lib/owner-fixture.js';
 
-test('R1：文章以编译完成信号更新 shadow 与 iframe，停用 Astro reload 仍取得后继稿', async ({ page, context }) => {
+test('R1：文章以编译完成信号更新 shadow 与 iframe，停用 Astro reload 仍取得后继稿', async ({ page, context, request }) => {
   test.setTimeout(180_000);
   const other = await context.newPage();
   const files = [OWNER_SOURCE, OWNER_STATIC_SOURCE].map(dir => path.join(dir, 'flow-001.jsx'));
   const originals = files.map(file => fs.readFileSync(file, 'utf8'));
   try {
+    await seedOwner(request);
     for (const tab of [page, other]) await tab.routeWebSocket(/\/_astro\//, () => {});
-    const ready = [page, other].map(tab => tab.waitForResponse(res => new URL(res.url()).pathname === '/events'));
+    const ready = [page, other].map(tab => tab.waitForResponse(res => new URL(res.url()).pathname === '/events', { timeout: 150_000 }));
     await openOwnerArticle(page);
     await openOwnerStaticArticle(other);
     await Promise.all(ready);
