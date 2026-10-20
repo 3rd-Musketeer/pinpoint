@@ -725,6 +725,7 @@ test('HTML board: 评论三档 —— inline 叠在页面、chan 右侧通道、
         if (r.right > pR.left + 2 && r.left < pR.right - 2) overlap++;
       });
       return {
+        shellOverflow: document.documentElement.scrollWidth > window.innerWidth,
         wrapGutter: wrap.getAttribute('data-ann-gutter'),
         gutterVisible: go ? go.style.display !== 'none' : false,
         parentBubbles: parentBubbles.length,
@@ -735,6 +736,7 @@ test('HTML board: 评论三档 —— inline 叠在页面、chan 右侧通道、
         overlap,
       };
     })).toEqual({
+      shellOverflow: false,
       wrapGutter: 'on',
       gutterVisible: true,
       parentBubbles: 2,
