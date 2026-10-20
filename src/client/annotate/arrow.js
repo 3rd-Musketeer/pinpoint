@@ -57,7 +57,7 @@ export function finishArrow(pt, e) {
   // 写标注期间保留刚拖出的箭头 + 原有的框选框/元素高亮（openComposer 会先清理旧草稿）
   var kA = ctx.tempArrow, kL = ctx.lasso, kP = ctx.pinned;
   ctx.tempArrow = null; ctx.lasso = null; ctx.pinned = null;
-  openComposer(m, anchorRect, !ctx.marks.some(function (k) { return k.id === m.id; }));
+  openComposer(m, anchorRect, !ctx.marks.some(function (k) { return k.id === m.id; }), { discard: true });
   ctx.tempArrow = kA; ctx.lasso = kL; ctx.pinned = kP;
   var ta = document.querySelector('#ann-input');
   if (ta && m._draft) ta.value = m._draft;

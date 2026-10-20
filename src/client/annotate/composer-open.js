@@ -15,9 +15,10 @@ import { mountOverlay, removeMark, setStatus, showGhostForEl, showGhostForRect }
 export function bind_composer_open(c) { ctx = c; }
 var ctx;
 
-export function openComposer(m, anchorRect, isNew) {
-  // 进来时还开着的框只有画箭头回弹这一种：它的状态已随 m（_draft / move）带进来。
-  closeComposer({ silentRender: true, discard: true });
+export function openComposer(m, anchorRect, isNew, opts) {
+  // 画箭头回弹是唯一该丢掉的框：它的状态已随 m（_draft / move）带进来，再 commit 会存半截箭头。
+  // 其余还开着的框（region 草稿、改到一半的 element）先存再开下一条。
+  closeComposer({ silentRender: true, discard: !!(opts && opts.discard) });
   m = normalizeAnnotation(JSON.parse(JSON.stringify(m)));
   ensureMarkId(m);
   var selectedAnchor = resolveMarkAnchor(m);
