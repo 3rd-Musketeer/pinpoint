@@ -132,6 +132,13 @@ client 只有一份：`src/client/annotate.js`，构建（`src/server/lib/annota
 `/@vite/client`，继续接收 `preview:update`、`projects:update`、`registry:update`；
 预览帧仍由原编译器与 `preview-hmr` 更新，不因工作台打包失去 HMR。
 
+`just promote [rev]` 在临时源码快照里按目标 lockfile 准备依赖、构建工作台，成功且存在产物后才移动
+release、安装产物、启用打包模式、重启并记发布日志。构建或安装失败时旧 checkout 和服务不动。
+重启失败会恢复磁盘提交、依赖和工作台壳并报错，不能据此认定旧服务已经恢复健康；需再运行回滚命令。
+磁盘回滚也失败时保留临时目录中的恢复材料，并报出路径，不删除尚未恢复的旧依赖。
+`just promote <旧 SHA>` 仍可回滚，目标早于打包机制时自动使用开发投递。
+`just staging` 在复制快照、起 sandbox 之前先构建，构建失败直接退出；成功后用打包模式起隔离服务。
+
 `npm run test:e2e` 第一组（含负载降为单组时）默认测打包，第二组测开发模块；
 定向验证可用 `PINPOINT_WORKBENCH_MODE=bundle E2E_PORT=<端口> npm run test:e2e:serial -- <spec>`。
 

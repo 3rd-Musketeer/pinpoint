@@ -70,32 +70,9 @@ ship:
 
 # The live service (pinpoint.localhost, global ppnt) runs from a detached release worktree, not this clone;
 # rollback is just promote <previous sha>.
-# Move the live service to <rev> (default main), reinstall if the lockfile changed, restart.
+# Build <rev> in an isolated snapshot before moving the live service; failed builds leave it running.
 promote rev="main":
-    #!/usr/bin/env bash
-    set -euo pipefail
-
-    fail() {
-      printf 'promote: %s\n' "$*" >&2
-      exit 1
-    }
-
-    main="$(dirname "$(git rev-parse --path-format=absolute --git-common-dir)")"
-    rel="${PINPOINT_RELEASE_DIR:-${main/\/repos\//\/repos\/.worktrees\/}/release}"
-    [[ -d "$rel" ]] || fail "no release worktree at $rel; create it: git worktree add --detach $rel main && (cd $rel && npm ci)"
-    [[ -z "$(git -C "$rel" status --porcelain)" ]] || fail "$rel is dirty; the release worktree only moves by promote"
-    [[ -z "$(git -C "$rel" branch --show-current)" ]] || fail "$rel is on a branch; portless would serve it on <branch>.pinpoint.localhost"
-
-    target="$(git rev-parse --verify "{{rev}}^{commit}")"
-    prev="$(git -C "$rel" rev-parse HEAD)"
-    git -C "$rel" checkout -q --detach "$target"
-    if ! git diff --quiet "$prev" "$target" -- package-lock.json; then
-      (cd "$rel" && npm ci --no-audit --no-fund)
-    fi
-    node "$rel/bin/pinpoint.mjs" restart
-    mkdir -p "$HOME/.pinpoint/logs"
-    printf '%s %s -> %s\n' "$(date +%Y-%m-%dT%H:%M:%S)" "$prev" "$target" >> "$HOME/.pinpoint/logs/releases.log"
-    printf 'promote: %s -> %s; rollback: just promote %s\n' "${prev:0:7}" "${target:0:7}" "${prev:0:7}"
+    node scripts/promote.mjs "{{rev}}"
 
 # Annotations made here stay in the snapshot; each run re-copies it. Foreground; Ctrl-C stops service and site.
 # Staging: serve this checkout on 127.0.0.1:<port> against a fresh ~/.pinpoint snapshot.
@@ -103,9 +80,10 @@ staging port="4900":
     #!/usr/bin/env bash
     set -euo pipefail
 
+    npm run build:workbench
     data="${XDG_CACHE_HOME:-$HOME/.cache}/pinpoint-staging"
     mkdir -p "$data"
     rsync -a --delete --exclude dist --exclude migrations --exclude diagnostics --exclude logs --exclude shot --exclude render \
       --exclude 'backups-*' --exclude 'registry.json.bak-*' --exclude vite-cache --exclude env.sh "$HOME/.pinpoint/" "$data/"
     printf 'staging: copied ~/.pinpoint to %s\n' "$data"
-    exec node bin/pinpoint.mjs dev --sandbox "$data" --port "{{port}}"
+    PINPOINT_WORKBENCH_MODE=bundle exec node bin/pinpoint.mjs dev --sandbox "$data" --port "{{port}}"
