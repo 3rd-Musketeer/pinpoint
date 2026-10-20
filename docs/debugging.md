@@ -19,6 +19,27 @@
 
 ---
 
+## 2026-10-20 画布浮层入口模块失败，回环连接在 250ms 后报 AggregateError
+
+现象：入口模块图任一请求失败时，浮层收到 `boot-error`，工作台装不上。
+误判路径：HTTP 响应耗时 230–270ms 不能证明 TCP 建连超时；隔离实验中只暂停 Vite
+事件循环，连接仍能在 0.4ms 建立。只有再塞满 IPv4 accept 队列，才复现连接失败。
+根因：portless 的 `createLoopbackConnection` 固定先连 127.0.0.1，250ms 后切到 ::1；
+Vite 只听 IPv4 时，前者超时、后者拒绝，合为 AggregateError。隔离服务发 600 条连接，
+128 条建立后队列塞满，复现 IPv4 ETIMEDOUT + IPv6 ECONNREFUSED；这证明该条件下的机理，
+不代表已经归因了正式服务的全部 502，`socket hang up` 还可能有别的原因。
+修复：`loopback-listener.js` 给 Vite 的实际端口补一条 ::1 入口，把 socket 交给同一个
+HTTP server（包括 upgrade）；保留 127.0.0.1，绝不监听 0.0.0.0 / ::。端口仍来自
+`PORT` 或 Vite `--port`；portless 注入的 `HOST` 不改变这里的双回环策略，所以正式服务、
+staging、sandbox 和 e2e 共用它。IPv6 端口冲突就启动失败并释放 IPv4，不留半启动服务。
+浮层另有最多两次 100/200ms 退避的自动重装，预算耗尽才显示原来的重试按钮。
+识别特征：建连错误同时含 127.0.0.1 ETIMEDOUT 和 ::1 ECONNREFUSED；要看 TCP
+connectionAttemptTimeout，不能只量请求响应时间。
+防回归：`loopback-listener.test.js` 守双回环 HTTP/upgrade、重启、释放与端口冲突；
+`canvas-overlay-motion.spec.js` 守入口失败次数、预热恢复、最终重试与定位。
+
+---
+
 ## 2026-10-15 工作台空白，页面报 Invalid hook call（多个 vite 实例共用一份依赖缓存）
 
 现象：`de11beb` 那次 ship 首跑挂了 66 条 e2e，页面报错都是 `Invalid hook call` 或

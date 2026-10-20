@@ -16,6 +16,7 @@ import previewInject from './src/server/preview-inject.js';
 import contentRoutes from './src/server/content-routes.js';
 import articleProxy from './src/server/article-proxy.js';
 import workbenchRoutes from './src/server/workbench-routes.js';
+import loopbackListener from './src/server/loopback-listener.js';
 import { createRegistryStore } from './src/server/lib/registry-store.js';
 import { WORKBENCH_DEPS, viteCacheDir } from './src/server/lib/vite-deps.js';
 
@@ -43,7 +44,7 @@ export default defineConfig({
   // 工作台的第三方依赖启动时一次预构建齐，不等运行时发现新依赖再重建 deps/、换 chunk 名。
   optimizeDeps: { include: WORKBENCH_DEPS },
   // workbenchRoutes 排最前：旧地址先 302 到 /workbench/，不带参数的 / 才轮到文章代理（blog 首页，ADR 0044）。
-  plugins: [workbenchRoutes(), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes()],
+  plugins: [workbenchRoutes(), react(), tailwindcss(), articles, annotateApi({ registry: registryStore, root: ROOT, siteStatus: () => articles.devServer.snapshot() }), sitesApi({ registry: registryStore }), frameApi({ registry: registryStore }), projectsApi({ registry: registryStore }), canvasDiagnosticsApi(), exportImageApi(), exportPageHtmlApi({ registry: registryStore }), previewInject(), hmr, contentRoutes(), loopbackListener()],
   server: {
     port: Number(process.env.PORT) || 5199,
     strictPort: true,
