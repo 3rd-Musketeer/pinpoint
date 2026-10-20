@@ -109,6 +109,8 @@ test('R5：完成通知更新原生 HTML iframe，保留桌面宽度与未加载
   const originals = files.map(file => fs.readFileSync(file, 'utf8'));
   let lateRequests = 0;
   page.on('request', req => {
+    // 只数正文卡片的导航；画布浮层预热会在自己的子 iframe 里加载同一个 HTML。
+    if (!req.isNavigationRequest() || req.frame().parentFrame() !== page.mainFrame()) return;
     const url = new URL(req.url());
     if (url.searchParams.get('screen') === 'late' || url.pathname.endsWith('/late.html')) lateRequests++;
   });
@@ -133,6 +135,7 @@ test('R5：完成通知更新原生 HTML iframe，保留桌面宽度与未加载
     await expect(frame).toHaveCSS('width', '1280px');
     await expect(frame).toHaveAttribute('loading', 'lazy');
     expect(lateRequests).toBe(0);
+    expect(await page.locator('[data-screen="late"] iframe').evaluate(el => el.contentDocument?.URL)).toBe('about:blank');
     await page.locator('[data-screen="late"]').scrollIntoViewIfNeeded();
     await expect(page.frameLocator('[data-screen="late"] iframe').locator('[data-update]')).toHaveText('late LIVE');
     expect(await page.evaluate(() => window.__sameDocument)).toBe(true);
