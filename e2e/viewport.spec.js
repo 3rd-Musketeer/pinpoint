@@ -94,6 +94,7 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
   await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
   // 窗口视口：画布工具收起（阅读器没有画布可缩放），视口控件在中段独自出现。
   await expect(page.locator('#wbcanvas-tools')).toBeHidden();
+  await expect(page.locator('#wbcanvas-tools-div')).toBeHidden();
   await expect(page.locator('#wbexport-open')).toBeHidden();
   const stage0 = await page.locator('#wbstage').boundingBox();
   const frame0 = await page.locator(DOC_FRAME).boundingBox();

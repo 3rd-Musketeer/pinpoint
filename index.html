@@ -810,10 +810,10 @@
      底下不许露出画布。被面板压住的正文靠收起面板来看（横条最左那颗钮）。
      board-nav 的 chromeInsets 只服务画布形态的定位 / 回中，这里不参与。 */
   [data-page-mode="html"] .wb-stage { overflow:hidden; padding:0; margin:0; }
-  /* 文档形态没有画布可缩放：横条中段（帧导航 + 缩放 + 回中 + 导出）与 dock
-     一起收起，横条本体留着 —— 页名、类型标、模式两段与计数在阅读器里照样要用。 */
-  [data-page-mode="html"] #wbcanvas-tools { display:none; }
-  [data-page-mode="html"] #wbcanvas-tools-div,
+  /* 文档形态没有画布可缩放：横条中段与分隔线一起收起，横条本体留着 ——
+     页名、类型标、模式两段与计数在阅读器里照样要用。 */
+  [data-page-mode="html"] #wbcanvas-tools,
+  [data-page-mode="html"] #wbcanvas-tools-div { display:none; }
   [data-page-mode="html"] #wb-board-panel { width:100%; height:100%; padding:0; }
   [data-page-mode="html"] .wb-zoom-wrap {
     width:100%; height:100%; transform:none !important;
