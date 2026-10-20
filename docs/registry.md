@@ -177,7 +177,7 @@ workbench 的内联片段加载器与导出渲染走的就是它。
 
 每个命令都认 `--json`，这时 stdout 只有一个 JSON 对象，提示和错误照常写 stderr。`show`、`check`、`comments`、`list`、`locate`、`shot`、`mark`、`reply`、`build`、`status`、`new`、`open` 各有自己的结构（见各自的 `--help`）；其余命令（`add`、`mv`、`migrate` 等）给统一的外壳 `{ ok, exit, command, error?, output, stderr }`，`output` 和 `stderr` 是原本要打的行。`dev --json` 在服务就绪时打一行 JSON。`--help` 不受 `--json` 影响。
 
-退出码在所有命令上一致（`bin/pinpoint-cli.js`）：
+退出码在所有命令上一致（`bin/cli/dispatch.js`）：
 
 | 码 | 什么时候 |
 | --- | --- |

@@ -184,7 +184,7 @@ content/                     what the service serves
 
 bin/pinpoint.mjs             CLI — service lifecycle, registry, build/render, article checks; commands in
                              bin/cli/ (address.js = targets and refs, help.js = per-command help),
-                             dispatch + tests in bin/pinpoint-cli.js; `ppnt` and `pinpoint` are the same entry
+                             dispatch + tests in bin/cli/ (entry: bin/cli/dispatch.js); `ppnt` and `pinpoint` are the same entry
 skills/                      Agent skills (dir-ref, tool-agnostic) — build + annotate contracts
 scripts/                     token source + generator (tokens/source.mjs, build-tokens.mjs) + offline-export verifier + e2e runner
 e2e/                         Playwright tests + fixtures (e2e/project-site, e2e/prose-site, e2e/jsx-site …)

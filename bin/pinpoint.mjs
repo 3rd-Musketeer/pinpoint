@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
- * pinpoint CLI 壳：参数层与判定都在 ./pinpoint-cli.js（node --test 覆盖），
- * 这里只接进程 IO —— 发信号、spawn 服务、等待。
+ * pinpoint CLI 壳：参数层与判定在 bin/cli/*（node --test 覆盖，入口 run 在
+ * ./cli/dispatch.js），这里只接进程 IO —— 发信号、spawn 服务、等待。
  */
 import { spawn } from 'node:child_process';
 import fs from 'node:fs';
