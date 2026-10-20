@@ -7,6 +7,17 @@ import { annotationContent, annotationSectionLabel, contentToDisplay, ensureMark
 export function bind_mention(c) { ctx = c; }
 var ctx;
 
+// B9：触发规则 —— @ 前是行首或任一「非 ASCII 词字符」。旧规则（行首或空白）
+// 是英文语境防 email@host 误触的写法，中文没有词间空格，汉字后接 @ 永远不弹，
+// 引用功能对中文语境不可达。放宽后汉字、全角标点、空白都放行；ASCII 字母数字
+// 仍拦住 email@host，@ 连 @ 也不触发。query 是 @ 后到光标的连续非空白。
+export function mentionContextAt(text, pos) {
+  var hit = text.slice(0, pos).match(/(^|[^\w@])@([^\s@]*)$/);
+  if (!hit) return null;
+  var query = hit[2];
+  return { start: pos - query.length - 1, end: pos, query: query };
+}
+
 export function createMentionPicker(ta, m) {
 var mentionItems = [];
 var mentionIndex = 0;
@@ -86,13 +97,7 @@ function renderMentionPicker() {
 }
 
 function getMentionContext() {
-  var pos = ta.selectionStart;
-  var before = ta.value.slice(0, pos);
-  var hit = before.match(/(^|[\s\n])@([^\s@]*)$/);
-  if (!hit) return null;
-  var query = hit[2];
-  var start = pos - query.length - 1;
-  return { start: start, end: pos, query: query };
+  return mentionContextAt(ta.value, ta.selectionStart);
 }
 
 function syncMentionFromCaret() {

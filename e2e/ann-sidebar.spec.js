@@ -525,6 +525,13 @@ test('/sites/ page: reading view keeps @mention and inline target order', async 
 
   await page.evaluate((n) => window.pinpoint.openMark(n), stored.n);
   await expect(input).toContainText('@' + firstN);
+  // B9：汉字后直接接 @ 也要弹候选（旧规则要求 @ 前是行首或空白，中文没有词间
+  // 空格，引用功能实际不可达）。Esc 只关弹层，标注框还开着。
+  await input.press('End');
+  await input.pressSequentially('再改@');
+  await expect(page.locator('#ann-mention .ann-men-item').first()).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('#ann-mention')).toHaveCount(0);
   await box.locator('#ann-close').click();
 
   // 两个目标都点在正文之前：开头连续的引用单独成行，意见留在下面，不把文字拼空。
