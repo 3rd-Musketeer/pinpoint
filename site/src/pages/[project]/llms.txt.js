@@ -1,4 +1,5 @@
 import { loadSite, assertBuildClean, projectEmptyRefs, emptyRefSourceLabel } from '../../lib/site-data.js';
+import { stripEsm } from '../../lib/llms-text.js';
 
 // Agent 视图：一个 project 的全部文章原文（MDX，保留 [[ ]]）和 wiki 词条。
 export async function getStaticPaths() {
@@ -6,8 +7,6 @@ export async function getStaticPaths() {
   assertBuildClean(site);
   return [...site.projects.keys()].map((id) => ({ params: { project: id }, props: { projectId: id } }));
 }
-
-const stripEsm = (body) => String(body || '').replace(/^(import|export)\s[^\n]*\n/gm, '').trim();
 
 export async function GET({ props }) {
   const site = await loadSite();
