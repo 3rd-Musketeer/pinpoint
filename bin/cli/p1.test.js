@@ -20,7 +20,7 @@ import { articleScaffold, frontmatterValue } from './new.js';
 import { migrateNextSteps } from './migrate.js';
 import { truncatedWarning } from './annotate.js';
 import { REPO_ROOT } from './core.js';
-import { run } from '../pinpoint-cli.js';
+import { run } from '../cli/dispatch.js';
 
 const FIXTURE_PROJECT = path.join(REPO_ROOT, 'e2e', 'project-site');
 

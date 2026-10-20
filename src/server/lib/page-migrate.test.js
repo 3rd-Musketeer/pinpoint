@@ -6,7 +6,8 @@ import path from 'node:path';
 import test from 'node:test';
 import { fileURLToPath } from 'node:url';
 
-import { parseArgs, run } from '../../../bin/pinpoint-cli.js';
+import { parseArgs } from '../../../bin/cli/args.js';
+import { run } from '../../../bin/cli/dispatch.js';
 import { parseArticleCanvas } from './article-canvas.js';
 import { buildArticleMdx, compFrameSource, diffLineCount, MigrateError, planPageMigration, verifyMigration, writeMigration } from './page-migrate.js';
 

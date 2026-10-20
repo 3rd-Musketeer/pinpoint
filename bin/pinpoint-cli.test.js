@@ -8,44 +8,62 @@ import test from 'node:test';
 import { boardRefs } from '../src/workbench/lib/board-refs.js';
 
 import {
+  runComments,
+} from './cli/annotate.js';
+import {
+  parseArgs,
+} from './cli/args.js';
+import {
+  CliError,
+  displayWidth,
+  requestJson,
+  slugify,
+} from './cli/core.js';
+import {
+  run,
+} from './cli/dispatch.js';
+import {
+  runList,
+} from './cli/list.js';
+import {
+  runMv,
+} from './cli/mv.js';
+import {
+  planRenderOutput,
+  runBuild,
+  runRender,
+  startPageWatch,
+} from './cli/pages.js';
+import {
   buildEntry,
   buildMove,
   buildRename,
+  manifestPageIds,
+  planAdd,
+  planRemove,
+  resolveRegistryPath,
+  rewriteSitePrefix,
+  rewriteSitePrefixUnder,
+  runAdd,
+  runRemove,
+} from './cli/registry.js';
+import {
   classifyOriginStatus,
   classifyStatus,
-  CliError,
   collectStatus,
   decideStart,
   decideStop,
-  displayWidth,
   formatStatus,
-  manifestPageIds,
-  parseArgs,
   parseRoutes,
   pickRoute,
-  planAdd,
-  planRemove,
-  planRenderOutput,
   portlessRoutesPath,
-  requestJson,
-  rewriteSitePrefix,
-  rewriteSitePrefixUnder,
-  resolveRegistryPath,
-  run,
-  runAdd,
-  runBuild,
-  runComments,
-  runShow,
-  runMv,
-  runRender,
-  runRemove,
-  runList,
   runStatus,
   runStop,
   serviceLogPath,
-  slugify,
-  startPageWatch,
-} from './pinpoint-cli.js';
+} from './cli/service.js';
+import {
+  runShow,
+} from './cli/show.js';
 
 function withTempDir(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pinpoint-cli-'));
@@ -1475,9 +1493,11 @@ import {
   runCheck,
   runLocate,
   runMark,
-  runPrune,
   runReply,
-} from './pinpoint-cli.js';
+} from './cli/annotate.js';
+import {
+  runPrune,
+} from './cli/registry.js';
 
 const HOME_JSX = [
   'export default function Home() {',   // 1
@@ -2606,7 +2626,9 @@ test('<project>_<article>#n resolves without a separate target in locate / mark 
 
 /* ---- pp3：CLI 说文章模型 ---- */
 
-import { planArticleShots } from './pinpoint-cli.js';
+import {
+  planArticleShots,
+} from './cli/annotate.js';
 
 /** e2e/project-site 复制一份（要改正文的用例在副本上改）+ 桶里一条画布标注（B1）一条正文评论（§1）。 */
 function makeFixtureCopy(t) {
@@ -2923,7 +2945,7 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
   }
   const wrong = recorder();
   assert.equal(await run(['shot', 'p/a', '--bogus'], { ...wrong.io, env: {} }), 2);
-  assert.deepEqual(wrong.err, ['错误：未知选项：--bogus', `用法：${(await import('./pinpoint-cli.js')).HELP.shot.usage}`, '选项与例子：ppnt shot --help']);
+  assert.deepEqual(wrong.err, ['错误：未知选项：--bogus', `用法：${(await import('./cli/args.js')).HELP.shot.usage}`, '选项与例子：ppnt shot --help']);
   const listBogus = recorder();
   assert.equal(await run(['list', '--bogus'], { ...listBogus.io, env: {} }), 2, '未知选项不当关键词');
   assert.equal(listBogus.err[0], '错误：未知选项：--bogus');
@@ -2931,7 +2953,9 @@ test('每个命令有自己的短帮助；用错选项只打一行错误 + 用�
 
 /* ---- 2026-10-14 HTML 页面三处修复：孤儿标注可写、--canvas 逐帧、懒加载未完的提示 ---- */
 
-import { pendingWarning } from './pinpoint-cli.js';
+import {
+  pendingWarning,
+} from './cli/annotate.js';
 
 /** 存量 doc 页，一屏连文件一起删了：它的账本成了孤儿（lib/orphans.js 第 1 种）。 */
 function orphanDocPage(t) {

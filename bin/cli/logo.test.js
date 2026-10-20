@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { searchLogos, logoVariants, placeholderSvg, addLogos, normalizeLogoSvg } from './logo.js';
-import { run } from '../pinpoint-cli.js';
+import { run } from './dispatch.js';
 import { Resvg } from '@resvg/resvg-js';
 
 const PNG = new Resvg('<svg xmlns="http://www.w3.org/2000/svg" width="1" height="1"><rect width="1" height="1" fill="red"/></svg>').render().asPng();

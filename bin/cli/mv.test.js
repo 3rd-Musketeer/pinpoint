@@ -17,7 +17,7 @@ import { createAnnotationStore } from '../../src/server/lib/annotation-store.js'
 import { loadRegistry } from '../../src/server/lib/registry.js';
 import { pageKeyFromPathname } from '../../src/shared/annotate-page-key.js';
 import { annotationSlug } from '../../src/shared/annotation-slug.js';
-import { run } from '../pinpoint-cli.js';
+import { run } from '../cli/dispatch.js';
 
 function tempDir(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'ppnt-mv-'));

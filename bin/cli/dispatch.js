@@ -1,9 +1,8 @@
 /**
  * CLI 的运行时入口：run() / --json 信封 / dispatch。与命令模块分开是这个文件的
- * 存在理由（2026-10-20 r2：pinpoint-cli.js 的静态 re-export 面是给测试的，谁都不能
- * 从它进运行时——一旦从它 import，13 个命令模块的子树全部加载，`ppnt status`
- * 也要付 annotate / show 那些子树的 ~80ms）。命令按需动态 import：跑哪个命令
- * 只加载哪个子树。
+ * 存在理由（2026-10-20 r2）：命令按需动态 import，跑哪个命令只加载哪个子树，
+ * `ppnt status` 不必付 annotate / show 那些子树的 ~80ms（此前 bin/pinpoint.mjs
+ * 经 re-export 门面进，13 个命令模块全量加载）。第三轮：门面删除，本文件是唯一入口。
  */
 import { USAGE, helpFor, reportUsageError } from './args.js';
 import { ioOf } from './core.js';
