@@ -626,8 +626,9 @@ test('画布浮层：入口模块在等待就绪期间才失败，也给出重�
       return route.abort('failed');
     }
     if (mode === 'fail') return route.abort('failed');
-    // 重试这次入口慢 3 秒才回：旧文档的 workbench 在新文档装好前还读得到，不能拿它卡住观察。
-    await new Promise((resolve) => setTimeout(resolve, 3000));
+    // 重试这次入口慢一拍才回：旧文档的 workbench 在新文档装好前还读得到，不能拿它卡住观察。
+    //（窗口只要非零就成立，断言全在最终态；原是 3 秒，收成 1.2 秒。）
+    await new Promise((resolve) => setTimeout(resolve, 1200));
     return route.continue();
   });
   await openArticle(page);
@@ -793,6 +794,13 @@ test('画布浮层：预热停驻后点开在预算内可交互，停驻 3 秒�
   });
 
   await test.step('停驻 3 秒：工作台不再排定时器与动画帧', async () => {
+    // 「停驻」只代表文章页把浮层停下了；停驻的工作台文档自己的装载尾巴
+    //（mountBoard / 聚焦 / React Query GC 排程）可能还没跑完（负载下实测探针窗里
+    // 能数到十几个）。等板自己落定再开探针，窗口里只剩真正的停驻期排程。
+    await expect.poll(() => page.evaluate(() => {
+      const w = window.pinpointOverlay.frame()?.contentWindow;
+      return !!(w?.workbench && w.workbench.whenBoardSettled());
+    }), { timeout: 30_000 }).toBe(true);
     await page.evaluate(() => {
       const win = window.pinpointOverlay.frame().contentWindow;
       const counts = { timeout: 0, interval: 0, raf: 0 };
@@ -922,6 +930,11 @@ test('画布浮层：停驻跨过整分钟，工作台不再排定时器', async
   await page.setViewportSize({ width: 1440, height: 900 });
   await openArticle(page);
   await expect.poll(() => page.evaluate(() => window.pinpointOverlay?.settled() && window.pinpointOverlay?.phase()), { timeout: 60_000 }).toBe('parked');
+  // 同上：等停驻的工作台自己的装载尾巴落定（板上 settle 先于探针窗，见「停驻 3 秒」条）。
+  await expect.poll(() => page.evaluate(() => {
+    const w = window.pinpointOverlay.frame()?.contentWindow;
+    return !!(w?.workbench && w.workbench.whenBoardSettled());
+  }), { timeout: 30_000 }).toBe(true);
   await page.evaluate(() => {
     const win = window.pinpointOverlay.frame().contentWindow;
     const counts = { timeout: 0, interval: 0 };

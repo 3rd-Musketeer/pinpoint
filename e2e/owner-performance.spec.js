@@ -162,7 +162,7 @@ test('owner 性能静态卡片：97 帧全挂 shadow root，活动文档 ≤ 6�
   expect(heapBytes, 'GC 后 JS 堆').toBeLessThanOrEqual(16 * 1024 * 1024);
 });
 
-test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 renderAll', async ({ page }, testInfo) => {
+test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 renderAll；同值 class 重写也不升级 renderAll', async ({ page }, testInfo) => {
   // 只在此计数用例替换成同源码的未压缩 bundle；函数入口加计数，磁盘实现不变。
   const artifact = await buildAnnotateBundle({ minify: false });
   const marker = 'function renderAll() {';
@@ -209,18 +209,6 @@ test('owner 性能 K1：选中一帧关标注框后，静息 3 秒零测量零 r
     expect.soft(counts.rects, '静息时标注层 getBoundingClientRect').toBe(0);
     expect.soft(counts.renders, '静息时 renderAll').toBe(0);
   });
-});
-
-test('owner 性能 K1 第三刀：标注层外的同值 class 反复重写不升级成 renderAll', async ({ page }, testInfo) => {
-  // 计数器打在 renderAll 入口（同上一条的手法）；产物未压缩，函数签名是锚点。
-  const artifact = await buildAnnotateBundle({ minify: false });
-  const marker = 'function renderAll() {';
-  expect(artifact.js.split(marker)).toHaveLength(2);
-  const js = artifact.js.replace(marker, `${marker} window.__ownerPerf.renders++;`);
-  await page.route(/\/annotate(?:\.[0-9a-f]{10})?\.js(?:\?|$)/, route => route.fulfill({ contentType: 'text/javascript', body: js }));
-  await page.addInitScript(() => { window.__ownerPerf = { renders: 0 }; });
-  await openOwnerBoard(page);
-  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().countLive)).toBe(24);
   await test.step('账本里确有全局 selector 的标注（旧实现升级全局的前提）', async () => {
     const globalMarks = await page.evaluate(() => {
       const stageSegment = /\.(ios-stage|wb-comp-stage|wb-html-stage|wb-screen-err)(?=[:.]|$)/;
@@ -228,7 +216,7 @@ test('owner 性能 K1 第三刀：标注层外的同值 class 反复重写不升
     });
     expect(globalMarks, '种子账本一半标注是全局 selector').toBeGreaterThanOrEqual(12);
   });
-  await test.step('校验计数器能看到真实 renderAll', async () => {
+  await test.step('计数器仍能看到真实 renderAll', async () => {
     const control = await page.evaluate(() => {
       window.__ownerPerf.renders = 0;
       window.pinpoint.render();
@@ -236,7 +224,7 @@ test('owner 性能 K1 第三刀：标注层外的同值 class 反复重写不升
     });
     expect(control).toBe(1);
   });
-  await test.step('选中帧的 .wb-lib-item 上 remove+add 同值 class，每帧一次共 30 帧', async () => {
+  await test.step('选中帧的 .wb-lib-item 上 remove+add 同值 class，每帧一次共 30 帧（K1 第三刀）', async () => {
     await focusOwnerFrame(page, 2);
     // 板的装载尾巴（首访聚焦、几何批重试）在高负载下也会触发 renderAll：
     // 等它静下来再开观测窗口，计数才只归写 class 的路径。

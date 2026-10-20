@@ -1616,7 +1616,9 @@ test('queued annotation saves survive own SSE, sync to another window, and clear
   const writer = await context.newPage();
   const observer = await context.newPage();
   await openWorkbench(writer);
-  await openWorkbench(observer);
+  // 观察窗只收 SSE：连上即可，不用等板的几何批落定。
+  await observer.goto('/workbench/?page=e2e-ios');
+  await observer.waitForFunction(() => window.pinpoint?.getState().connected);
 
   let releaseFirstSave;
   let signalFirstSave;
@@ -2310,7 +2312,6 @@ test('标注框：自动保存，Esc / X / Enter 结束，框开着换钉子与 
     expect(Number(failVisible.opacity)).toBeGreaterThan(0.9);
     expect(failVisible.hit).toBe(true);
     await page.unroute('**/save');
-    await expect(state.locator('.ann-save-retry')).toBeFocused({ timeout: 1000 }).catch(() => {});
     await state.locator('.ann-save-retry').focus();
     await expect(state.locator('.ann-save-retry')).toBeFocused();
     const duringRetry = state.locator('.ann-save-retry');
@@ -2873,22 +2874,27 @@ async function parkBadgeAndHover(page, x, y) {
 // 钉子与评论卡故事（2322 / 2380 合并，2026-09-24 e2e 审计）：断钉子样式与
 // 常显、评论卡 hover 才出。2322 的「overlay z > dock」与层级故事里的
 // 命中断言重复，随合并删。
-test('画布钉子常显高对比，评论卡 hover 钉子才出', async ({ page }) => {
+// 2026-10-20 再并两条（r6 提速）：pill 那条是同一条意见的阅读态一端，
+// 「点完成钉子消失」是同一枚钉子的状态面——三条同种子（settings cell 打标注），原来各开一次页。
+// 阅读态：工作台右栏和悬浮卡把目标引用画成目标文字 pill，眉标仍是引用号 + 屏名。
+// 和注入侧栏那条是同一条意见的两端：账本里是 [@t:iN]，读出来是目标文字。
+test('画布钉子常显高对比，评论卡 hover 钉子才出；列表和悬浮卡显示目标文字 pill；点完成钉子消失、撤销回来', async ({ page }) => {
   await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
-  await cells.nth(0).scrollIntoViewIfNeeded();
-  await annotate(page, cells.nth(0), 'pin contrast mark');
-  await cells.nth(1).scrollIntoViewIfNeeded();
-  await annotate(page, cells.nth(1), 'second mark');
-  const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
-
-  const badges = page.locator('#ann-marks .ann-badge');
-  const bubble1 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n1}"]`);
 
   await test.step('画布钉子常显高对比，评论卡 hover 钉子才出（2026-09-04 H owner 批注 1）', async () => {
+    await page.evaluate(() => window.pinpoint.clear());
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+    await page.evaluate(() => window.pinpoint.setMode(true));
+    const cells = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell');
+    await cells.nth(0).scrollIntoViewIfNeeded();
+    await annotate(page, cells.nth(0), 'pin contrast mark');
+    await cells.nth(1).scrollIntoViewIfNeeded();
+    await annotate(page, cells.nth(1), 'second mark');
+    const n1 = await page.evaluate(() => window.pinpoint.marks.at(-2).n);
+
+    const badges = page.locator('#ann-marks .ann-badge');
+    const bubble1 = page.locator(`#ann-bubbles .ann-bubble[data-n="${n1}"]`);
+
     await expect(badges).toHaveCount(2);
 
     // 钉子：22px accent 实心圆 + 白字 + 白描边（高对比，常显不打折）
@@ -2918,65 +2924,80 @@ test('画布钉子常显高对比，评论卡 hover 钉子才出', async ({ page
     })).toBe(true);
     await page.locator('#wbstrip-title').hover();
     await expect(bubble1).not.toHaveClass(/ann-bubble--show/);
+
+    await page.evaluate(() => window.pinpoint.clear());
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
   });
 
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-});
+  await test.step('工作台列表和悬浮卡显示目标文字 pill，眉标保留引用号', async () => {
+    await page.evaluate(() => window.pinpoint.setMode(true));
+    const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+    await cell.scrollIntoViewIfNeeded();
+    await cell.click();
+    const input = page.locator('#ann-input');
+    await expect(input).toBeVisible();
+    await input.press('End');
+    await input.pressSequentially('把这里改成继续登录');
+    await page.locator('#ann-close').click();
+    await expect(page.locator('#ann-box')).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
 
-// 阅读态：工作台右栏和悬浮卡把目标引用画成目标文字 pill，眉标仍是引用号 + 屏名。
-// 和注入侧栏那条是同一条意见的两端：账本里是 [@t:iN]，读出来是目标文字。
-test('工作台列表和悬浮卡显示目标文字 pill，眉标保留引用号', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
-  await cell.scrollIntoViewIfNeeded();
-  await cell.click();
-  const input = page.locator('#ann-input');
-  await expect(input).toBeVisible();
-  await input.press('End');
-  await input.pressSequentially('把这里改成继续登录');
-  await page.locator('#ann-close').click();
-  await expect(page.locator('#ann-box')).toHaveCount(0);
-  await expect.poll(() => page.evaluate(() => window.pinpoint.getState().syncing)).toBe(false);
+    const stored = await page.evaluate(() => window.pinpoint.marks[0]);
+    expect(stored.content).toContain('[@t:i1]');
+    expect(stored.content).not.toContain('[indicator');
+    const targetText = stored.targets[0].text;
+    expect(targetText.length).toBeGreaterThan(0);
 
-  const stored = await page.evaluate(() => window.pinpoint.marks[0]);
-  expect(stored.content).toContain('[@t:i1]');
-  expect(stored.content).not.toContain('[indicator');
-  const targetText = stored.targets[0].text;
-  expect(targetText.length).toBeGreaterThan(0);
+    await openAnnList(page);
+    const row = page.locator('#wbann-list .wb-ann-item').first();
+    await expect(row.locator('.wb-ann-cap')).toHaveText('F1 settings');
+    await expect(row.locator('.wb-ann-cap')).not.toContainText(targetText);
+    const pill = row.locator('.ann-read-pill');
+    await expect(pill).toHaveCount(1);
+    await expect(pill).toHaveText(targetText);
+    await expect(row.locator('.wb-ann-copy')).toHaveText('把这里改成继续登录');
+    await expect(row).not.toContainText('[indicator');
 
-  await openAnnList(page);
-  const row = page.locator('#wbann-list .wb-ann-item').first();
-  await expect(row.locator('.wb-ann-cap')).toHaveText('F1 settings');
-  await expect(row.locator('.wb-ann-cap')).not.toContainText(targetText);
-  const pill = row.locator('.ann-read-pill');
-  await expect(pill).toHaveCount(1);
-  await expect(pill).toHaveText(targetText);
-  await expect(row.locator('.wb-ann-copy')).toHaveText('把这里改成继续登录');
-  await expect(row).not.toContainText('[indicator');
+    const num = await row.locator('.wb-ann-num').boundingBox();
+    expect(num.width).toBeCloseTo(22, 0);
+    expect(num.height).toBeCloseTo(22, 0);
+    const pillBox = await pill.boundingBox();
+    expect(pillBox.width).toBeLessThanOrEqual(100);
+    expect(pillBox.width).toBeGreaterThan(0);
 
-  const num = await row.locator('.wb-ann-num').boundingBox();
-  expect(num.width).toBeCloseTo(22, 0);
-  expect(num.height).toBeCloseTo(22, 0);
-  const pillBox = await pill.boundingBox();
-  expect(pillBox.width).toBeLessThanOrEqual(100);
-  expect(pillBox.width).toBeGreaterThan(0);
+    const badge = page.locator('#ann-marks .ann-badge').first();
+    await cell.scrollIntoViewIfNeeded();
+    await badge.hover();
+    const card = page.locator('#ann-bubbles .ann-bubble.ann-bubble--show');
+    await expect(card).toHaveCount(1);
+    await expect(card.locator('.ann-read-pill')).toHaveText(targetText);
+    await expect(card.locator('.ann-bubble-copy')).toHaveText('把这里改成继续登录');
+    await expect(card).not.toContainText('[indicator');
+    await expect(card.locator('.ann-bubble-ref')).toHaveText('F1');
 
-  const badge = page.locator('#ann-marks .ann-badge').first();
-  await cell.scrollIntoViewIfNeeded();
-  await badge.hover();
-  const card = page.locator('#ann-bubbles .ann-bubble.ann-bubble--show');
-  await expect(card).toHaveCount(1);
-  await expect(card.locator('.ann-read-pill')).toHaveText(targetText);
-  await expect(card.locator('.ann-bubble-copy')).toHaveText('把这里改成继续登录');
-  await expect(card).not.toContainText('[indicator');
-  await expect(card.locator('.ann-bubble-ref')).toHaveText('F1');
+    await page.evaluate(() => window.pinpoint.clear());
+    await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  });
 
-  await page.evaluate(() => window.pinpoint.clear());
-  await expect.poll(() => page.evaluate(() => window.pinpoint.marks.length)).toBe(0);
+  // 2026-09-28 owner 报：列表里点“完成”后画布钉子不消失，颜色也停在原态。账本局部重画
+  //（renderLedgerChange）只认几何签名，状态变了几何没变，钉子不重画；刷新后才对。
+  await test.step('列表点“完成”：画布钉子当场消失，撤销后回来并恢复原态颜色', async () => {
+    await page.evaluate(() => window.pinpoint.setMode(true));
+    const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
+    await cell.scrollIntoViewIfNeeded();
+    await annotate(page, cell, '完成后钉子应当消失');
+    const badge = page.locator('#ann-marks .ann-badge');
+    await expect(badge).toHaveCount(1);
+    await expect(badge.first()).toBeVisible();
+
+    await openAnnList(page);
+    await page.locator('#wbann-pop .wb-ann-done').first().click();
+    await expect(badge).toHaveCount(0);
+
+    await page.getByRole('button', { name: '撤销' }).click();
+    await expect(badge).toHaveCount(1);
+    await expect(badge.first()).not.toHaveClass(/ann-badge--close/);
+  });
 });
 
 // 画布标签的三档字 + 「···」的落位（2026-09-04 评审板 E1，owner「这个可以」）。
@@ -3105,27 +3126,6 @@ test('Section Navigator：板装载那一帧量不出几何，之后排好版能
   });
 });
 
-// 2026-09-28 owner 报：列表里点“完成”后画布钉子不消失，颜色也停在原态。账本局部重画
-// （renderLedgerChange）只认几何签名，状态变了几何没变，钉子不重画；刷新后才对。
-test('列表点“完成”：画布钉子当场消失，撤销后回来并恢复原态颜色', async ({ page }) => {
-  await openWorkbench(page);
-  await page.evaluate(() => window.pinpoint.clear());
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  const cell = page.locator('#wb-board-panel [data-screen="settings"] .ios-cell').first();
-  await cell.scrollIntoViewIfNeeded();
-  await annotate(page, cell, '完成后钉子应当消失');
-  const badge = page.locator('#ann-marks .ann-badge');
-  await expect(badge).toHaveCount(1);
-  await expect(badge.first()).toBeVisible();
-
-  await openAnnList(page);
-  await page.locator('#wbann-pop .wb-ann-done').first().click();
-  await expect(badge).toHaveCount(0);
-
-  await page.getByRole('button', { name: '撤销' }).click();
-  await expect(badge).toHaveCount(1);
-  await expect(badge.first()).not.toHaveClass(/ann-badge--close/);
-});
 
 // r5b B10：重命名框是全库唯一漏 isComposingKey 的输入框 —— 组字中的 Enter 把
 // 半成品存成页名（Chrome 组字中 key='Process' 字符串比较侥幸挡住；Safari/Firefox

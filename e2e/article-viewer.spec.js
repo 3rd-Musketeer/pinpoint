@@ -23,6 +23,7 @@ import { closeSettled } from './ledger-settle.js';
 
 const ARTICLE = '/e2e-project/commit-confirm/';
 const CANVAS_PAGE = 'e2e-project_commit-confirm';
+const FRAME_REF = /\b[A-Z]{1,3}\d+\b/; // 画布帧号 B1、AA2……
 
 const overlay = (page) => page.locator('dialog[data-pp-overlay]');
 const canvasFrame = (page) => page.frameLocator('[data-pp-overlay] iframe.ov-canvas');
@@ -73,6 +74,18 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
   consoleErrors.length = 0; // 冷启动那几次 503 记成 Failed to load resource
   await proseSettled(page);
   let before = null;
+
+  await test.step('文章页只显示节号，不出画布字母：目录、节标题、卡片头是 1、2、3…；图注只有帧 id', async () => {
+    await expect(page.locator('#toc .n')).toHaveText(['1', '2', '3', '4']);
+    await expect(page.locator('#article .sechead .ref')).toHaveText(['1', '2', '3', '4']);
+    await expect(page.locator('[data-pp-canvas] .cc-head .ref')).toHaveText(['2', '3', '4']);
+    await expect(page.locator('[data-pp-canvas] .cc-head .meta')).toHaveText(['2 帧', '1 帧', '2 帧']);
+    await expect(page.locator('[data-pp-canvas] .cc-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']);
+    await expect(page.locator('[data-letter], [data-ref], [data-ov-letter]')).toHaveCount(0);
+    expect(await page.locator(':root > body').innerText()).not.toMatch(FRAME_REF);
+    // 卡片的“打开画布”仍按节 id 定位到画布上的那一节（画布那边是字母 B）。
+    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
+  });
 
   await test.step('卡片缩略图不可交互；点 iOS 帧打开整张画布，定位并选中，其他帧仍可见', async () => {
     const thumb = page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-screen="confirm-sheet"] iframe');
@@ -185,6 +198,8 @@ test('画布浮层：点帧打开整张画布并选中；从文章进画布不�
     expect(hashOf(page)).toBe('#canvas=variants');
     expect(new URL(page.url()).pathname).toBe(ARTICLE);
     await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
+    // 浮层头只有节号，不出字母（字母是画布里的，属于工作台）。
+    expect(await overlay(page).locator('.ov-head').innerText()).not.toMatch(FRAME_REF);
     await expect(canvasFrame(page).locator('.wb-lib-item[data-ann-section="variants"]')).toHaveClass(/\bwb-sel\b/);
     expect(await page.evaluate(() => window.pinpointOverlay.frame().contentWindow.__docMark)).toBe('viewer-doc');
     await page.goBack();
@@ -386,45 +401,6 @@ test('[[ ]] popup：悬停打开、移进 popup 不关、离开后关；点有�
   });
 
   expect(pageErrors).toEqual([]);
-});
-
-test('文章页只显示节号，不出画布字母；画布接口仍带 letter / ref', async ({ page, request }) => {
-  test.setTimeout(180_000);
-  await page.setViewportSize({ width: 1440, height: 900 });
-  await openArticle(page);
-  const FRAME_REF = /\b[A-Z]{1,3}\d+\b/; // 画布帧号 B1、AA2……
-
-  await test.step('目录、节标题、卡片头是 1、2、3…；图注只有帧 id；页面上没有字母编号', async () => {
-    await expect(page.locator('#toc .n')).toHaveText(['1', '2', '3', '4']);
-    await expect(page.locator('#article .sechead .ref')).toHaveText(['1', '2', '3', '4']);
-    await expect(page.locator('[data-pp-canvas] .cc-head .ref')).toHaveText(['2', '3', '4']);
-    await expect(page.locator('[data-pp-canvas] .cc-head .meta')).toHaveText(['2 帧', '1 帧', '2 帧']);
-    await expect(page.locator('[data-pp-canvas] .cc-frame .cap')).toHaveText(['confirm-sheet', 'confirm-done', 'card-plain', 'mixed-phone', 'mixed-bare']);
-    await expect(page.locator('[data-letter], [data-ref], [data-ov-letter]')).toHaveCount(0);
-    expect(await page.locator(':root > body').innerText()).not.toMatch(FRAME_REF);
-    // 卡片的“打开画布”仍按节 id 定位到画布上的那一节（画布那边是字母 B）。
-    await expect(page.locator('[data-pp-canvas][data-pp-section="confirm"] [data-pp-open]')).toHaveAttribute('href', `/workbench/?page=${CANVAS_PAGE}&section=confirm`);
-  });
-
-  await test.step('浮层头只有节号，不出字母（字母是画布里的，属于工作台）', async () => {
-    await page.locator('[data-pp-canvas][data-pp-section="variants"] [data-screen="card-plain"] .cc-hit').click();
-    await expect(overlay(page)).toHaveAttribute('open', '');
-    await expect(overlay(page).locator('[data-ov-num]')).toHaveText('3');
-    expect(await overlay(page).locator('.ov-head').innerText()).not.toMatch(FRAME_REF);
-    await page.keyboard.press('Escape');
-    await expect(overlay(page)).not.toHaveAttribute('open', '');
-  });
-
-  await test.step('GET /api/projects/<project>/articles/<article>/canvas 仍带画布字母（A1 是画布契约）', async () => {
-    const res = await request.get('/api/projects/e2e-project/articles/commit-confirm/canvas');
-    expect(res.status()).toBe(200);
-    const canvas = await res.json();
-    expect(canvas.sections.map((s) => [s.id, s.letter, s.frames.map((f) => f.ref)])).toEqual([
-      ['confirm', 'B', ['B1', 'B2']],
-      ['variants', 'C', ['C1']],
-      ['mixed', 'D', ['D1', 'D2']],
-    ]);
-  });
 });
 
 test('右栏：画布标注按位置穿插在正文评论之间，四态、原地收起，点了开画布定位到钉子；卡片头显示本节标注数', async ({ page, request }) => {

@@ -224,24 +224,69 @@ test('cached marks stay aligned through pan, viewport exit/reentry, resize and c
   await page.screenshot({ path: test.info().outputPath('canvas-alignment.png') });
 });
 
-test('space in composer types normally; navigation preserves the draft and clears on blur', async ({ page }) => {
+test('space in composer types normally; navigation preserves the draft; draft geometry not translated twice; composer draggable', async ({ page }) => {
   await openCanvas(page);
   await page.evaluate(() => window.pinpoint.setMode(true));
-  await page.locator(cellSelector).first().click();
+  // 点标题（不点 cell 空白）：草稿锚在 .ios-cell-title 上，第二段的几何断言以它为准。
+  await page.locator(`${cellSelector} .ios-cell-title`).first().click();
   const input = page.locator('#ann-input');
-  await input.fill('draft');
-  await input.press('Space');
-  await expect(input).toContainText('draft');
-  // Explicit navigation outside the composer does not cancel or save the draft.
-  const box = await page.locator(cellSelector).nth(2).boundingBox();
-  await page.mouse.move(box.x + 20, box.y + 10);
-  await page.mouse.down({ button: 'middle' });
-  await page.mouse.move(box.x - 50, box.y - 30, { steps: 5 });
-  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
-  await page.mouse.up({ button: 'middle' });
-  await expect(input).toContainText('draft');
-  await expect(page.locator('body')).not.toHaveClass(/wb-panning/);
-  await expect.poll(() => page.evaluate(() => window.pinpoint.hasActiveDraft())).toBe(true);
+
+  await test.step('space in composer types normally; navigation preserves the draft and clears on blur', async () => {
+    await input.fill('draft');
+    await input.press('Space');
+    await expect(input).toContainText('draft');
+    // Explicit navigation outside the composer does not cancel or save the draft.
+    const box = await page.locator(cellSelector).nth(2).boundingBox();
+    await page.mouse.move(box.x + 20, box.y + 10);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(box.x - 50, box.y - 30, { steps: 5 });
+    await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+    await page.mouse.up({ button: 'middle' });
+    await expect(input).toContainText('draft');
+    await expect(page.locator('body')).not.toHaveClass(/wb-panning/);
+    await expect.poll(() => page.evaluate(() => window.pinpoint.hasActiveDraft())).toBe(true);
+  });
+
+  await test.step('draft geometry is not translated twice during pan and zoom', async () => {
+    await input.fill('keep draft');
+    await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 50; s.scrollTop += 20; });
+    const error = () => page.evaluate(() => {
+      const target = document.querySelector('[data-screen="settings"] .ios-cell-title').getBoundingClientRect();
+      const mark = document.querySelector('.ann-draft-target').getBoundingClientRect();
+      return Math.max(Math.abs(mark.left + 4 - target.left), Math.abs(mark.top + 4 - target.top));
+    });
+    await expect.poll(error).toBeLessThan(2);
+    await page.locator('#wbzoom-in').click();
+    await expect.poll(error).toBeLessThan(2);
+    await expect(page.locator('#ann-input')).toContainText('keep draft');
+  });
+
+  await test.step('标注框可以拖动，拖完不被自动让位拉回', async () => {
+    const box = page.locator('#ann-box');
+    await expect(box).toBeVisible();
+    const at = () => box.evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top }; });
+    const before = await at();
+    const r = await box.boundingBox();
+    // 内边距（左上角 6px 处）是拖动把手，不在输入区和按钮上。
+    // 朝视口中心拖（框可能已贴边，反向会被夹回）。
+    const vp = page.viewportSize();
+    const dx = r.x + r.width / 2 < vp.width / 2 ? 40 : -40;
+    const dy = r.y + r.height / 2 < vp.height / 2 ? 40 : -40;
+    await page.mouse.move(r.x + 24, r.y + 8);
+    await page.mouse.down();
+    await page.mouse.move(r.x + 24 + dx, r.y + 8 + dy, { steps: 5 });
+    await page.mouse.up();
+    const after = await at();
+    expect(Math.abs(after.x - (before.x + dx))).toBeLessThan(3);
+    expect(Math.abs(after.y - (before.y + dy))).toBeLessThan(3);
+    // 输入一段字触发重新布局，位置不回弹。
+    await page.locator('#ann-input').fill('拖完继续写');
+    await page.locator('#wbzoom-in').click();
+    const later = await at();
+    expect(Math.abs(later.x - after.x)).toBeLessThan(3);
+    expect(Math.abs(later.y - after.y)).toBeLessThan(3);
+    await expect(box).toHaveAttribute('data-placement', 'user');
+  });
 });
 
 test('zoom invalidates cached geometry and preserves screen-size annotation borders', async ({ page }) => {
@@ -442,23 +487,6 @@ test('a multi-frame annotation follows changes to its second target and keeps it
   await expect.poll(() => page.evaluate(() => window.__arrowIdentity === document.querySelector('#ann-marks svg[data-arrow]'))).toBe(true);
 });
 
-test('draft geometry is not translated twice during pan and zoom', async ({ page }) => {
-  await openCanvas(page);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await page.locator(`${cellSelector} .ios-cell-title`).first().click();
-  await page.locator('#ann-input').fill('keep draft');
-  await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 50; s.scrollTop += 20; });
-  const error = () => page.evaluate(() => {
-    const target = document.querySelector('[data-screen="settings"] .ios-cell-title').getBoundingClientRect();
-    const mark = document.querySelector('.ann-draft-target').getBoundingClientRect();
-    return Math.max(Math.abs(mark.left + 4 - target.left), Math.abs(mark.top + 4 - target.top));
-  });
-  await expect.poll(error).toBeLessThan(2);
-  await page.locator('#wbzoom-in').click();
-  await expect.poll(error).toBeLessThan(2);
-  await expect(page.locator('#ann-input')).toContainText('keep draft');
-});
-
 test('HUD 缩放保持视野中心不动', async ({ page }) => {
   await openCanvas(page);
   await page.locator('#wbstage').evaluate(s => { s.scrollLeft += 300; s.scrollTop += 120; });
@@ -478,36 +506,6 @@ test('HUD 缩放保持视野中心不动', async ({ page }) => {
     const after = await probe();
     return Math.max(Math.abs(after.x - before.x), Math.abs(after.y - before.y));
   }).toBeLessThan(3);
-});
-
-test('标注框可以拖动，拖完不被自动让位拉回', async ({ page }) => {
-  await openCanvas(page);
-  await page.evaluate(() => window.pinpoint.setMode(true));
-  await page.locator(`${cellSelector} .ios-cell-title`).first().click();
-  const box = page.locator('#ann-box');
-  await expect(box).toBeVisible();
-  const at = () => box.evaluate(el => { const r = el.getBoundingClientRect(); return { x: r.left, y: r.top }; });
-  const before = await at();
-  const r = await box.boundingBox();
-  // 内边距（左上角 6px 处）是拖动把手，不在输入区和按钮上。
-  // 朝视口中心拖（框可能已贴边，反向会被夹回）。
-  const vp = page.viewportSize();
-  const dx = r.x + r.width / 2 < vp.width / 2 ? 40 : -40;
-  const dy = r.y + r.height / 2 < vp.height / 2 ? 40 : -40;
-  await page.mouse.move(r.x + 24, r.y + 8);
-  await page.mouse.down();
-  await page.mouse.move(r.x + 24 + dx, r.y + 8 + dy, { steps: 5 });
-  await page.mouse.up();
-  const after = await at();
-  expect(Math.abs(after.x - (before.x + dx))).toBeLessThan(3);
-  expect(Math.abs(after.y - (before.y + dy))).toBeLessThan(3);
-  // 输入一段字触发重新布局，位置不回弹。
-  await page.locator('#ann-input').fill('拖完继续写');
-  await page.locator('#wbzoom-in').click();
-  const later = await at();
-  expect(Math.abs(later.x - after.x)).toBeLessThan(3);
-  expect(Math.abs(later.y - after.y)).toBeLessThan(3);
-  await expect(box).toHaveAttribute('data-placement', 'user');
 });
 
 test('global stylesheet updates invalidate cached geometry', async ({ page }) => {
