@@ -743,8 +743,12 @@ export async function compilePage(target, options = {}) {
   const figures = target.kind === 'article' && !onlyScreens
     ? await compileArticleFigures(target, { distRoot, writeDist })
     : [];
-  // 浮点历元毫秒：与 stat 的 mtimeMs（亚毫秒浮点）同精度，stale 比较才不吃截断亏。
-  const builtAt = performance.timeOrigin + performance.now();
+  // builtAt 用墙钟整毫秒（Date.now）：distStatus / findDrift 拿它跟 stat 的 mtimeMs
+  // 比，两者必须在同一个钟域。performance.timeOrigin + now() 是单调钟，NTP 步进 /
+  // 回拨会让它跟文件 mtime 差出毫秒级——正方向 fresh 页误判 stale（BACKLOG 两条
+  // 偶挂单测的根因），反方向真改过的源被判 fresh 吃旧产物。整毫秒截断只带来安全
+  // 方向的误差：同毫秒内后写的源多算一次 stale，多编一次，不会反向。
+  const builtAt = Date.now();
   if (writeDist) {
     const outDir = path.join(distRoot, target.entryId);
     fs.mkdirSync(outDir, { recursive: true });
@@ -931,7 +935,8 @@ function writeFigure(distRoot, entryId, id, result) {
   if (result.ok) fs.writeFileSync(paths.html, result.html);
   else if (fs.existsSync(paths.html)) fs.unlinkSync(paths.html);
   const record = {
-    builtAt: performance.timeOrigin + performance.now(),
+    // 墙钟（与页的 builtAt 同钟域）；图的新鲜判定按 sources 的 mtime 对账，不靠它。
+    builtAt: Date.now(),
     ok: result.ok,
     ...(result.ok ? {} : { error: result.error }),
     sources: result.sources,

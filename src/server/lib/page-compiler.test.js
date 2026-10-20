@@ -767,6 +767,24 @@ describe('范例页整页编译（checked-in content/previews/example）', () =>
   });
 });
 
+test('builtAt 在墙钟域（与 mtime 同钟）：跨 NTP 步进不再把 fresh 页误判 stale（BACKLOG 两条偶挂的根因）', async () => {
+  const target = makePage('built-at-wall-clock', {
+    board: BASIC_BOARD,
+    files: { 'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>好</p></div>;\n}\n' },
+  });
+  const distRoot = path.join(tmp, 'dist');
+  await compilePage(target, { distRoot });
+  const build = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+  // 旧实现是 performance.timeOrigin + now()：单调钟，恒带小数，且与文件 mtime
+  // 的墙钟在 NTP 步进/回拨下差出毫秒——fresh 页误判 stale（偶挂）、反向吃旧产物。
+  assert.equal(Number.isInteger(build.builtAt), true, `builtAt 应是 Date.now() 的整毫秒，实际 ${build.builtAt}`);
+  // 编完之后源变新（mtime 在 builtAt 之后）必须判 stale：墙钟域下这是恒等式，
+  // 不依赖两个钟碰巧对齐。
+  const future = new Date(Date.now() + 5000);
+  fs.utimesSync(path.join(target.pageDir, 'home.jsx'), future, future);
+  assert.equal(distStatus(target.entryId, target.pageDir, { distRoot }).stale, true);
+});
+
 describe('skipFresh：启动全量只编 dist 过期的页', () => {
   // buildAllPages 经 listCompileTargets 找目标：这里登记一个指向 tmp 页的 dir 条目，
   // root 指到 tmp（没有 previews 清单，不会混进模板页）。
