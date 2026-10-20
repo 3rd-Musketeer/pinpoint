@@ -7,7 +7,10 @@ import { afterEach, beforeEach, describe, test } from 'node:test';
 
 import {
   boardScreenIds,
+  buildAllPages,
   compilePage,
+  compilerStamp,
+  distIsFresh,
   distStatus,
   injectAssets,
   lintStampSource,
@@ -761,5 +764,88 @@ describe('范例页整页编译（checked-in content/previews/example）', () =>
       'step-todo', 'step-now', 'step-done',
     ]);
     assert.deepEqual(result.screens.filter((row) => !row.ok), []);
+  });
+});
+
+describe('skipFresh：启动全量只编 dist 过期的页', () => {
+  // buildAllPages 经 listCompileTargets 找目标：这里登记一个指向 tmp 页的 dir 条目，
+  // root 指到 tmp（没有 previews 清单，不会混进模板页）。
+  function registryOf(target) {
+    return { ok: true, path: path.join(tmp, 'registry.json'), entries: [{ id: target.entryId, kind: 'dir', path: target.pageDir }], projects: [], errors: [], warnings: [] };
+  }
+
+  const SIMPLE = {
+    board: BASIC_BOARD,
+    files: {
+      'home.jsx': 'export default function Home() {\n  return <div className="ios-app"><p>一版</p></div>;\n}\n',
+    },
+  };
+
+  test('dist 已是最新：整页跳过，build.json 与产物不再重写', async () => {
+    const target = makePage('fresh-skip', SIMPLE);
+    const distRoot = path.join(tmp, 'dist');
+    await buildAllPages({ registry: registryOf(target), root: tmp, distRoot });
+    const before = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    const htmlStat = fs.statSync(distFile(target, 'home.html'));
+    const rows = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(rows.map((row) => row.skipped), [true]);
+    assert.equal(rows[0].ok, true);
+    const after = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    assert.equal(after.builtAt, before.builtAt, '跳过的页不重写 build.json');
+    assert.deepEqual(fs.statSync(distFile(target, 'home.html')).mtimeMs, htmlStat.mtimeMs);
+  });
+
+  test('改了帧源码的页重编，产物跟着更新', async () => {
+    const target = makePage('fresh-stale', SIMPLE);
+    const distRoot = path.join(tmp, 'dist');
+    await buildAllPages({ registry: registryOf(target), root: tmp, distRoot });
+    const before = JSON.parse(fs.readFileSync(distFile(target, 'build.json'), 'utf8'));
+    fs.writeFileSync(path.join(target.pageDir, 'home.jsx'), SIMPLE.files['home.jsx'].replace('一版', '二版'));
+    const later = new Date(Date.now() + 5000);
+    fs.utimesSync(path.join(target.pageDir, 'home.jsx'), later, later);
+    const rows = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(rows.map((row) => row.skipped === true), [false]);
+    assert.ok(rows[0].builtAt > before.builtAt);
+    assert.match(fs.readFileSync(distFile(target, 'home.html'), 'utf8'), /二版/);
+  });
+
+  test('板变了的页重编；没有 dist 的页照常编译', async () => {
+    const target = makePage('fresh-board', SIMPLE);
+    const distRoot = path.join(tmp, 'dist');
+    // 没有 dist：skipFresh 不影响首次编译。
+    const first = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(first.map((row) => row.skipped === true), [false]);
+    // 板变（mtime 抬到未来）：重编。
+    const boardFile = path.join(target.pageDir, 'board.json');
+    fs.utimesSync(boardFile, new Date(Date.now() + 5000), new Date(Date.now() + 5000));
+    const rows = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(rows.map((row) => row.skipped === true), [false]);
+  });
+
+  test('build.json 不是这份编译器编的（tool 章对不上）：重编', async () => {
+    const target = makePage('fresh-tool', SIMPLE);
+    const distRoot = path.join(tmp, 'dist');
+    await buildAllPages({ registry: registryOf(target), root: tmp, distRoot });
+    const buildFile = distFile(target, 'build.json');
+    const build = JSON.parse(fs.readFileSync(buildFile, 'utf8'));
+    assert.equal(build.tool, compilerStamp(), 'build.json 记下编译器版本章');
+    fs.writeFileSync(buildFile, JSON.stringify({ ...build, tool: '0123456789abcdef' }));
+    assert.equal(distIsFresh(target, { distRoot }), false);
+    const rows = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(rows.map((row) => row.skipped === true), [false]);
+  });
+
+  test('带编译错误记录（源码在）的页视为过期，启动重编再报', async () => {
+    const target = makePage('fresh-error', { board: BASIC_BOARD, files: { ...SIMPLE.files, 'broken.html': '<p>旧产物</p>' } });
+    const distRoot = path.join(tmp, 'dist');
+    // 板里只挂 home；先正常编一版，再手工把 broken 记成失败屏（源码记录在案）。
+    await compilePage(target, { distRoot });
+    const buildFile = distFile(target, 'build.json');
+    const build = JSON.parse(fs.readFileSync(buildFile, 'utf8'));
+    build.errors = { broken: 'broken.html: 故障' };
+    build.sources.broken = { file: 'broken.html', mtimeMs: 1 };
+    fs.writeFileSync(buildFile, JSON.stringify(build));
+    const rows = await buildAllPages({ registry: registryOf(target), root: tmp, skipFresh: true, distRoot });
+    assert.deepEqual(rows.map((row) => row.skipped === true), [false], '失败屏（源码在）重编');
   });
 });

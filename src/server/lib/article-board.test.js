@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 
 import { articleCanvas, articlePageRows, deriveArticleBoard } from './article-board.js';
 import { listArticleTargets, resolveArticleTarget } from './page-resolve.js';
-import { compilePage, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, renumberPpIds } from './page-compiler.js';
+import { compilePage, distIsFresh, distStatus, listCompileTargets, listPageIds, readDistScreen, renderScreenHtml, renumberPpIds } from './page-compiler.js';
 import { resolvePageTarget } from './board-source.js';
 import { articlePageId, ARTICLE_PAGE_ID_PATTERN, parseArticlePageId } from '../../shared/project-ids.js';
 import { formatProjectError } from '../../shared/project-errors.js';
@@ -177,6 +177,22 @@ test('dist 状态与增量：改正文不算画布变（noop），改节或帧�
   const frame = path.join(article, 'ask-sent.jsx');
   fs.writeFileSync(frame, fs.readFileSync(frame, 'utf8').replace('已发送', '发出去了'));
   assert.deepEqual(planPageRecompile(target, [frame], { distRoot }), { all: false, screens: ['ask-sent'] });
+});
+
+test('skipFresh 的文章判定：只改正文跳过，画布变了的照编', async (t) => {
+  const { registry, article, distRoot } = fixture(t);
+  const target = resolvePageTarget('demo_flow', { registry });
+  await compilePage(target, { distRoot });
+  const mdx = path.join(article, 'index.mdx');
+  const original = fs.readFileSync(mdx, 'utf8');
+  const later = new Date(Date.now() + 5000);
+  // 只改正文（画布没变）：fresh，启动跳过。
+  fs.writeFileSync(mdx, original.replace('正文', '改过的正文'));
+  fs.utimesSync(mdx, later, later);
+  assert.equal(distIsFresh(target, { distRoot }), true);
+  // 改了节标题：画布变 → 重编。
+  fs.writeFileSync(mdx, original.replace('title="提问"', 'title="发问"'));
+  assert.equal(distIsFresh(target, { distRoot }), false);
 });
 
 test('articleCanvas：节字母 = 正文字母（纯文字的节也占），帧引用号与工作台同一套；错误带节、只取这篇的', async (t) => {

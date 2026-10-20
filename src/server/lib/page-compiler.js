@@ -17,13 +17,15 @@
  * 有 import / export default / export const shell / 函数声明之外的语句。实现是 esbuild metafile + 文本扫描，不引 parser。
  *
  * 输出：<distRoot>/<entryId>/<screenId>.html + build.json
- *   { builtAt, sources: { [screen]: { file, mtimeMs } }, errors: { [screen]: message } }。
+ *   { builtAt, tool, sources: { [screen]: { file, mtimeMs } }, errors: { [screen]: message } }。
+ *   tool 是编译器版本章（compilerStamp）：跳过 fresh 页的判定靠它分辨「dist 是这份编译器编的」。
  * distRoot 默认 <dataRoot()>/dist（PINPOINT_DATA_DIR 可改，e2e 走临时目录）。
  */
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { performance } from 'node:perf_hooks';
-import { fileURLToPath } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
 import esbuild from 'esbuild';
 import { h } from 'preact';
@@ -627,6 +629,61 @@ export function readBuildJson(distRoot, entryId) {
   }
 }
 
+// 编译器版本章（skipFresh 的安全网）：build.json 的 sources 只记页源码的 mtime，
+// 编译器自己（或 esbuild 版本）变了输出跟着变，源码 mtime 却不动 —— 没有这个章，
+// 「dist 已是最新就跳过」的启动判定会让所有页永远吃上一版编译器的产物。章 = 从
+// page-compiler.js 出发的相对 import 闭包 + kit 印章目录 + 图运行时的 mtime+size
+// 哈希，连同 esbuild 版本。进程内缓存：服务进程的编译器代码不会中途变。
+let compilerStampCache = null;
+export function compilerStamp() {
+  if (compilerStampCache) return compilerStampCache;
+  const files = new Set();
+  const walk = (file) => {
+    if (files.has(file)) return;
+    files.add(file);
+    let text;
+    try {
+      text = fs.readFileSync(file, 'utf8');
+    } catch {
+      return;
+    }
+    for (const match of text.matchAll(/(?:from|import)\s*['"](\.[^'"]+)['"]/g)) {
+      try {
+        walk(fs.realpathSync(new URL(match[1], pathToFileURL(file))));
+      } catch { /* 闭包里缺一个模块不挡章 */ }
+    }
+  };
+  walk(path.resolve(__dirname, 'page-compiler.js'));
+  const addTree = (dir) => {
+    let rows;
+    try {
+      rows = fs.readdirSync(dir, { withFileTypes: true });
+    } catch {
+      return;
+    }
+    for (const row of rows) {
+      const file = path.join(dir, row.name);
+      if (row.isDirectory()) addTree(file);
+      else walk(file);
+    }
+  };
+  addTree(KIT_JSX);
+  walk(FIGURE_HELPER);
+  const hash = crypto.createHash('sha1');
+  for (const file of [...files].sort()) {
+    hash.update(path.relative(ROOT, file));
+    try {
+      const stat = fs.statSync(file);
+      hash.update(`:${stat.mtimeMs}:${stat.size}`);
+    } catch {
+      hash.update(':gone');
+    }
+  }
+  hash.update(`:esbuild:${esbuild.version}`);
+  compilerStampCache = hash.digest('hex').slice(0, 16);
+  return compilerStampCache;
+}
+
 /**
  * 编译一整页 → 写 dist（writeDist=false 时只算不写，ppnt render 用）。
  * onlyScreen（CLI --frame，单个）与 onlyScreens（watch/HMR 增量，审计 B1）
@@ -718,6 +775,7 @@ export async function compilePage(target, options = {}) {
     }
     fs.writeFileSync(path.join(outDir, 'build.json'), JSON.stringify({
       builtAt,
+      tool: compilerStamp(),
       sources: mergedSources,
       errors: mergedErrors,
     }, null, 2) + '\n');
@@ -1006,11 +1064,35 @@ export async function renderScreenHtml(target, screenId) {
   return row.ok ? { ok: true, html: row.html } : { ok: false, error: row.error };
 }
 
-/** 全量编译（服务启动 probe）。页与页并行，单页失败不拖垮其他页。 */
+/**
+ * 这页的 dist 是否不用重编（buildAllPages 的 skipFresh 用）：build.json 在、是这份
+ * 编译器编的（tool 章）、distStatus 不 stale。文章页传现派生的板 —— 派生板与 dist
+ * 里那份一致、正文又没改画布结构时才算 fresh（distStatus 对文章不看 index.mdx 的
+ * mtime，改正文不等于改画布）。
+ */
+export function distIsFresh(target, { distRoot = defaultDistRoot() } = {}) {
+  const build = readBuildJson(distRoot, target.entryId);
+  if (!build || build.tool !== compilerStamp()) return false;
+  let board = null;
+  if (target.kind === 'article') {
+    try {
+      board = readTargetBoard(target);
+    } catch {
+      return false; // 板派生不出来：照常重编，让编译报出板的错误
+    }
+  }
+  return !distStatus(target.entryId, target.pageDir, { distRoot, board }).stale;
+}
+
+/** 全量编译（服务启动）。页与页并行，单页失败不拖垮其他页；skipFresh 时 dist 已是
+    最新的页整页跳过（审计 B5 的另一半：改动过的页才付编译钱），结果带 skipped: true。 */
 export async function buildAllPages(options = {}) {
   const targets = listCompileTargets(options);
   const results = await Promise.all(targets.map(async (target) => {
     try {
+      if (options.skipFresh && distIsFresh(target, options)) {
+        return { entryId: target.entryId, ok: true, builtAt: null, ms: 0, screens: [], figures: [], skipped: true };
+      }
       return await compilePage(target, options);
     } catch (error) {
       return { entryId: target.entryId, ok: false, builtAt: null, ms: 0, screens: [], error: String((error && error.message) || error) };

@@ -263,12 +263,16 @@ export default function previewHmr(options = {}) {
         watcher.on('add', (file) => { onProjectFileAddOrRemove(server, file, false); });
         watcher.on('unlink', (file) => { onProjectFileAddOrRemove(server, file, true); });
       }
-      // 启动全量编译（probe）：总耗时 + 每页耗时都打进日志。
+      // 启动编译（probe）：dist 已是最新（同一版编译器、源码与板没动过）的页整页
+      // 跳过，只编改动过的页 —— 重启不再为没变的东西付全量编译。总耗时 + 每页
+      // 耗时照旧打进日志。
       const started = performance.now();
-      const results = await buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), ...(distRoot ? { distRoot } : {}) });
+      const results = await buildAllPages({ registry, root: ROOT, templateOnly: templateOnly(), skipFresh: true, ...(distRoot ? { distRoot } : {}) });
       const total = Math.round(performance.now() - started);
-      console.log(`[pp2] 启动全量编译：${results.length} 页，共 ${total}ms`);
+      const skipped = results.filter((result) => result.skipped).length;
+      console.log(`[pp2] 启动编译：${results.length} 页（fresh 跳过 ${skipped}），共 ${total}ms`);
       for (const result of results) {
+        if (result.skipped) continue;
         const failed = result.screens.filter((row) => !row.ok).length;
         console.log(`[pp2]   ${result.entryId} ${result.ms}ms${result.error ? ` 板错误：${result.error}` : ''}${failed ? ` ${failed} 屏失败` : ''}`);
       }
