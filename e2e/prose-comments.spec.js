@@ -118,7 +118,9 @@ test('正文评论：选字评论 → 刷新仍在 → ppnt comments / reply / m
     await test.step('打开文章：桶 = 文章页 id，右栏空着，没有画布标注的工具条', async () => {
       await page.goto(ARTICLE);
       await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
-      await waitNoReload(page);
+      // 跨 spec 护栏：同组 ppnt-article 的 afterEach 改登记后不等到点，同步触发的整页重载
+      // 可能落在这次导航之后（内容变更重载，force 真等，见 site-settle.js）。
+      await waitNoReload(page, { force: true });
       await proseSettled(page);
       expect(await page.evaluate(() => [window.__pinpointEntry, window.pinpointProse.ledger])).toEqual([PAGE_ID, '@prose']);
       await expect(page.locator('#rail .empty-rail')).toHaveText('选中正文里的一段文字，点“评论”。');
@@ -460,7 +462,9 @@ test('改自己写的评论：点第一句原地编辑，⌘/Ctrl+Enter 或点�
   ]);
   await page.goto(ARTICLE);
   await expect(page.locator('#article .prose h1')).toHaveText('评论固件', { timeout: 150_000 });
-  await waitNoReload(page);
+  // 上一条用例的 finally 还原了 MDX 原稿（本文件 :441）但没等站点消费完，这次导航可能
+  // 撞上还原触发的整页重载（内容变更重载，force 真等）。
+  await waitNoReload(page, { force: true });
   await proseSettled(page);
   const thread = (id) => page.locator(`.pp-thread[data-id="${id}"]`);
   const firstText = () => thread('edit-me').locator('.msg').first().locator('.text');

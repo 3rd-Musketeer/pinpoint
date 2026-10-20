@@ -30,8 +30,8 @@ test('坏 frontmatter 显示本篇错误，健康文章持续可读；修复和�
     // 等错误页出现，确保 watcher 已消费这次编辑，再检查健康正文。
     await expect.poll(async () => (await request.get('/loader/a/')).text()).toContain('unexpected end');
     // watcher 消费编辑后还会把开着的页整页重载一次；重载和 goto 撞车时 goto 拿不到响应（返回 null）。
-    // 先等开着的 b 页落定再导航。
-    await waitNoReload(page);
+    // 先等开着的 b 页落定再导航（内容变更触发的重载，不在每 worker 一次的冷启动去重里，force 真等）。
+    await waitNoReload(page, { force: true });
     expect((await page.goto('/loader/b/')).status()).toBe(200);
     await expect(page.locator('#article h1')).toHaveText('B');
     await expect(page.locator('.article-body')).toContainText('正文 B');
@@ -46,8 +46,8 @@ test('坏 frontmatter 显示本篇错误，健康文章持续可读；修复和�
     await expect(page.locator('.article-body')).toContainText('恢复的正文');
     fs.rmSync(path.join(dir, 'articles/a'), { recursive: true });
     await expect.poll(async () => (await request.get('/loader/a/')).status()).toBe(404);
-    // 同上：删除也会让开着的一页整页重载，落定后再导航。
-    await waitNoReload(page);
+    // 同上：删除也会让开着的一页整页重载，落定后再导航（内容变更重载，force 真等）。
+    await waitNoReload(page, { force: true });
     expect((await page.goto('/loader/b/')).status()).toBe(200);
     await expect(page.locator('.article-body')).toContainText('正文 B');
   } finally {

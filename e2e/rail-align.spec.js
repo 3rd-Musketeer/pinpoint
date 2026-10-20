@@ -73,7 +73,7 @@ test('宽屏右栏：卡片按锚点排，选中对齐，没选中折叠，悬�
       expect(res && res.ok()).toBe(true);
       await expect(page.locator('#article .prose h1')).toHaveText('对齐固件', { timeout: 5_000 });
     }).toPass({ timeout: 150_000 });
-    await waitNoReload(page);
+    await waitNoReload(page, { force: true }); // 同 openArticle：上一条用例删文的重载可能没落完
     await proseSettled(page);
     await expect(page.locator('#rail .pp-thread')).toHaveCount(6);
 
@@ -215,7 +215,9 @@ async function openArticle(page, article) {
     expect(res && res.ok()).toBe(true);
     await expect(page.locator('#article .prose h1')).toHaveText('对齐固件', { timeout: 5_000 });
   }).toPass({ timeout: 150_000 });
-  await waitNoReload(page);
+  // 每条用例的 finally 都删上一篇固件文章且不等同步，这次导航可能撞上删除触发的整页重载
+  //（内容变更重载，force 真等，见 site-settle.js）。
+  await waitNoReload(page, { force: true });
   await proseSettled(page);
 }
 
