@@ -313,7 +313,9 @@ export function createAnnotateHandler(options = {}) {
     res.end(req.method === 'HEAD' ? undefined : body);
   }
 
-  // POST 体是 JSON 且带 entry：解析失败 400，entry 未知 400，都在这里答掉。
+  // POST 体是 JSON 对象且带 entry：解析失败 400，body 不是对象（JSON null、数组、
+  // 标量）也 400 —— 往下走就是 `body.entry` 的 TypeError 落进兜底 500（R5 B4），
+  // entry 未知 400，都在这里答掉。
   async function readEntryBody(req, res, limit) {
     let body;
     try {
@@ -324,6 +326,10 @@ export function createAnnotateHandler(options = {}) {
         return null;
       }
       sendJson(res, 400, { error: 'bad_json', message: 'JSON body expected' });
+      return null;
+    }
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+      sendJson(res, 400, { error: 'bad_json', message: 'JSON body 要是对象' });
       return null;
     }
     const entryId = entryOrReject(res, body.entry);

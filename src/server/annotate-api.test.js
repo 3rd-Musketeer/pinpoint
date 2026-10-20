@@ -713,3 +713,15 @@ test('GET /annotations 的聚合也摊平文章桶（Q）', async (t) => {
   const rows = json.filter((doc) => doc.entry === entry);
   assert.deepEqual(rows.map((doc) => [doc.page, doc.annotations.length]), [['@prose', 1]]);
 });
+
+test('POST /save 的 body 是 JSON null / 数组 / 标量：400 bad_json，不是 500（R5 B4）', async (t) => {
+  const { handler } = withFixture(t);
+  const errors = [];
+  t.mock.method(console, 'error', (...args) => errors.push(args));
+  for (const raw of ['null', '[1,2]', '"str"']) {
+    const { res, json } = await call(handler, 'POST', '/save', raw);
+    assert.equal(res.statusCode, 400, raw);
+    assert.equal(json.error, 'bad_json', raw);
+  }
+  assert.deepEqual(errors, [], '畸形 body 是请求错，不惊动服务端日志');
+});

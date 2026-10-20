@@ -13,6 +13,7 @@ import { articleOutline, parseArticleCanvas, resolveRootFrame } from './lib/arti
 import { checkProject } from './lib/article-check.js';
 import { ensureAnnotateBundle } from './lib/annotate-bundle.js';
 import { collectHtmlFrameAssets, htmlRefs, localRef } from './lib/html-frame-assets.js';
+import { resolveFrameTarget } from './lib/frame-doc.js';
 import { compilePage } from './lib/page-compiler.js';
 import { resolveArticleTarget } from './lib/page-resolve.js';
 import { listProjects } from './lib/projects.js';
@@ -494,4 +495,27 @@ test('sources：没登记的名字、根外路径是正文错误；值写坏、�
   const rows = report.diagnostics.filter((row) => row.code === 'project_sources');
   assert.equal(rows.length, 4);
   assert.ok(rows.every((row) => row.severity === 'error' && row.file === path.join(fx.content, 'project.json')));
+});
+
+test('{ id, src } 帧写在 shell="app" 的节里：出帧目标从 dist 出（R5 B2），缺省 doc 节仍 302', async (t) => {
+  const { article, registry, pageId } = fixture(t);
+  const mdx = [
+    '---', 'title: 页面', '---', '',
+    '<Section id="shared" title="共享">', '',
+    '<Canvas frames={[{ id: "cat", src: "shared/cat.html" }]} shell="app" />', '',
+    '</Section>', '',
+  ].join('\n');
+  write(path.join(article, 'index.mdx'), mdx);
+  const target = resolveArticleTarget(registry, pageId);
+  const built = await compilePage(target);
+  assert.ok(!built.error, `编译应成功：${built.error}`);
+  const distFile = path.join(process.env.PINPOINT_DATA_DIR, 'dist', pageId, 'cat.html');
+  assert.ok(fs.existsSync(distFile), 'HTML 帧原样编进 dist');
+  // 上一版这里抛 unknown_screen「file not found」：useDist 只认无 src 的屏，文章直读分支又是 null。
+  const resolved = resolveFrameTarget(pageId, 'cat', { registry });
+  assert.equal(resolved.kind, 'fragment');
+  assert.ok(resolved.distTarget, '节写了非 doc 机壳的 src 帧也从 dist 出');
+  // 对照：同一帧写在缺省（doc）节里，302 到自己的地址——行为不变。
+  write(path.join(article, 'index.mdx'), mdx.replace(' shell="app"', ''));
+  assert.equal(resolveFrameTarget(pageId, 'cat', { registry }).kind, 'doc');
 });

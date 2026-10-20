@@ -101,10 +101,14 @@ function containedFrameFile(base, rel) {
  *
  * 页是什么、板从哪来、target 是什么都在 board-source.js（S2）；这里只剩
  * 出帧规则：这一屏从 dist 出还是磁盘直读、磁盘直读的源文件怎么解析。
- * dist 判定三种来源是同一句（模板和文章恒有 target，文章带 src 的帧都是 doc 壳，
- * 前面已经 302 出去了），表里真正有差别的只剩磁盘直读的源文件。
+ * dist 判定（R5 B2 修）：文章画布的屏**全**从 dist 出 —— JSX 编的、{ id, src }
+ * 的 HTML 帧原样进 dist 都在这条；带 src 的文章帧只有节**没写** shell（缺省
+ * doc）时才在上面 302 出去，节写了非 doc 机壳（docs/projects.md「HTML 帧」
+ * 明文支持）也必须从 dist 出，否则不走 dist、article 直读又是 null，两头落空
+ * → unknown_screen 404。模板页与条目的 src 屏才走磁盘直读。
  */
 function useDist(source, src) {
+  if (source.kind === 'article') return true;
   return !src && !!source.target;
 }
 
@@ -113,8 +117,6 @@ const FRAGMENT_PATH = {
   template: (source, src, screenId, registry) => src.startsWith('sites/')
     ? siteSrcToAbsPath(src, registry)
     : containedFrameFile(PREVIEWS_ROOT, path.relative(PREVIEWS_ROOT, path.resolve(CONTENT_ROOT, src))),
-  // 文章画布（pp3）：屏全从 dist 出（JSX 编的、HTML 帧原样进 dist 都在这条），不直读。
-  article: () => null,
   // registry 条目：src 屏（外链 / 合成板）与 file 条目保留磁盘直读。
   entry: (source, src, screenId, registry) => src
     ? (src.startsWith('sites/') ? siteSrcToAbsPath(src, registry) : null)
@@ -142,7 +144,7 @@ export function resolveFrameTarget(pageId, screenId, options = {}) {
   if (shell === 'doc') {
     return { kind: 'doc', url: docUrlForScreen(hit.screen, source.urlBase), pageId, screenId, title: hit.screen.title || screenId };
   }
-  const fragmentPathOf = FRAGMENT_PATH[source.kind === 'template' || source.kind === 'article' ? source.kind : 'entry'];
+  const fragmentPathOf = FRAGMENT_PATH[source.kind === 'template' ? 'template' : 'entry'];
   const base = {
     kind: 'fragment',
     pageId,
