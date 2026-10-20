@@ -17,7 +17,7 @@ import { projectEmptyRefs } from '../../src/server/lib/article-check.js';
 import { figureDistErrors } from '../../src/server/lib/page-compiler.js';
 import { resolveArticleTarget } from '../../src/server/lib/page-resolve.js';
 import { findProject } from '../../src/server/lib/projects.js';
-import { articlePageId, parseFrameSrc } from '../../src/shared/project-ids.js';
+import { articleHref, articlePageId, parseFrameSrc } from '../../src/shared/project-ids.js';
 import { formatProjectError, isArticleError } from '../../src/shared/project-errors.js';
 
 import { DEFAULT_ORIGIN, ioOf } from './core.js';
@@ -56,7 +56,7 @@ export function articleModel({ project, article, context, origin }) {
   const canvasSections = new Map((context.refs.outline || []).map((section) => [section.id, section]));
   const rows = [...context.frameRows, ...context.docRows];
   const pageId = context.pageId;
-  const articleUrl = `${origin}/${project.id}/${article.id}/`;
+  const articleUrl = `${origin}${articleHref(project.id, article.id)}`;
   const canvasUrl = canvasSections.size ? `${origin}${canvasViewHref(pageId)}` : null;
   const sections = outline.map((row) => {
     const onCanvas = row.id ? canvasSections.get(row.id) : null;

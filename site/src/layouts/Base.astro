@@ -9,6 +9,8 @@ import '../styles/tokens.css';
 import '../styles/vendor/tailwind-typography.css';
 import '../styles/site.css';
 import '../../../src/client/overlay-scrollbar.css';
+import { projectHref } from '../../../src/shared/project-ids.js';
+import { WORKBENCH_PATH } from '../../../src/shared/workbench-url.js';
 
 interface Crumb { label: string; href?: string }
 interface TocItem { id: string; title: string; num: string }
@@ -30,7 +32,7 @@ interface Props {
 }
 const { title, description, project, crumbs, toc, rail = false, drawer, errors = [], canvasHref, prose = false } = Astro.props;
 const layoutClass = toc ? (rail ? 'layout' : 'layout no-rail') : 'layout single';
-const llms = project ? `/${encodeURIComponent(project)}/llms.txt` : undefined;
+const llms = project ? `${projectHref(project)}llms.txt` : undefined;
 // 顶栏左边永远从“全部文章”（/）起；首页自己就是它，不再链接。
 const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumbs] : crumbs;
 ---
@@ -63,7 +65,7 @@ const trail: Crumb[] = project ? [{ label: '全部文章', href: '/' }, ...crumb
           wiki{drawer.empty.length > 0 && <span> · {drawer.empty.length} 个空 ref</span>}
         </button>
       )}
-      {llms ? <a class="btn hide-sm" href={llms}>llms.txt</a> : <a class="btn" id="btn-workbench" href="/workbench/" target="_top">工作台</a>}
+      {llms ? <a class="btn hide-sm" href={llms}>llms.txt</a> : <a class="btn" id="btn-workbench" href={WORKBENCH_PATH} target="_top">工作台</a>}
       <button class="btn" id="btn-theme" type="button" aria-label="切换深浅色">◐</button>
     </header>
 

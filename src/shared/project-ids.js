@@ -45,6 +45,13 @@ export function displayAddress(pageId) {
   return ids ? `${ids.projectId}/${ids.articleId}` : String(pageId == null ? '' : pageId);
 }
 
+/** project 首页 / wiki 列表 / wiki 词条 / 文章页的网址（路由见 src/server/lib/article-routes.js）。
+ *  id 与 slug 都受模式约束，encodeURIComponent 是双保险。 */
+export const projectHref = (projectId) => `/${encodeURIComponent(projectId)}/`;
+export const wikiHref = (projectId) => `${projectHref(projectId)}wiki/`;
+export const wikiEntryHref = (projectId, slug) => `${wikiHref(projectId)}${encodeURIComponent(slug)}/`;
+export const articleHref = (projectId, articleId) => `${projectHref(projectId)}${encodeURIComponent(articleId)}/`;
+
 /**
  * 服务已经占用、或保留给 pp3 的 URL 首段：唯一的一份表。project id 不能取这些名字
  * （登记校验与站点读取都用 isReservedProjectId），服务路由也绝不把它们交给站点

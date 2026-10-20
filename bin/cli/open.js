@@ -7,7 +7,7 @@ import fs from 'node:fs';
 
 import { articleOutline } from '../../src/server/lib/article-canvas.js';
 import { findProject } from '../../src/server/lib/projects.js';
-import { articlePageId, refKey } from '../../src/shared/project-ids.js';
+import { articleHref, articlePageId, projectHref, refKey, wikiEntryHref } from '../../src/shared/project-ids.js';
 
 import { DEFAULT_ORIGIN, ioOf } from './core.js';
 import { guardParse, reportUsageError, USAGE_EXIT } from './args.js';
@@ -31,7 +31,7 @@ export function openUrls(hit, ref, { registry, origin }) {
   const base = origin.replace(/\/+$/, '');
   const project = findProject(registry, hit.projectId);
   if (!project) return { error: `project ${hit.projectId} 读不出来`, exit: 1 };
-  const conceptUrl = (concept) => `${base}/${project.id}/wiki/${encodeURIComponent(concept.slug)}/`;
+  const conceptUrl = (concept) => `${base}${wikiEntryHref(project.id, concept.slug)}`;
   if (hit.kind === 'project') {
     if (ref) {
       const concept = project.concepts.find((row) => refKey(row.name) === refKey(ref) || row.slug === ref);
@@ -39,11 +39,11 @@ export function openUrls(hit, ref, { registry, origin }) {
       return { urls: [{ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) }] };
     }
     const urls = [
-      { kind: 'project', label: 'project 首页', url: `${base}/${project.id}/` },
-      { kind: 'llms', label: 'llms.txt', url: `${base}/${project.id}/llms.txt` },
+      { kind: 'project', label: 'project 首页', url: `${base}${projectHref(project.id)}` },
+      { kind: 'llms', label: 'llms.txt', url: `${base}${projectHref(project.id)}llms.txt` },
     ];
     for (const article of project.articles) {
-      urls.push({ kind: 'article', label: `${project.id}/${article.id} 文章页`, url: `${base}/${project.id}/${article.id}/` });
+      urls.push({ kind: 'article', label: `${project.id}/${article.id} 文章页`, url: `${base}${articleHref(project.id, article.id)}` });
       if (article.canvasSections) urls.push({ kind: 'canvas', label: `${project.id}/${article.id} 画布视图`, url: `${base}${canvasViewHref(article.pageId)}` });
     }
     for (const concept of project.concepts) urls.push({ kind: 'concept', label: `wiki ${concept.name}`, url: conceptUrl(concept) });
@@ -51,7 +51,7 @@ export function openUrls(hit, ref, { registry, origin }) {
   }
   const article = project.articles.find((row) => row.id === hit.articleId);
   if (!article) return { error: `读不出文章 ${hit.address}（ppnt check ${project.id} 看布局错误）`, exit: 1 };
-  const articleUrl = `${base}/${project.id}/${article.id}/`;
+  const articleUrl = `${base}${articleHref(project.id, article.id)}`;
   const pageId = articlePageId(project.id, article.id);
   if (!ref) {
     const urls = [{ kind: 'article', label: `${hit.address} 文章页`, url: articleUrl }];

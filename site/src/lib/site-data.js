@@ -4,16 +4,16 @@
  */
 import { getCollection } from 'astro:content';
 import { extractRefs, resolveRef, refHtml, refKey, RAW_REF_RE, unesc } from '../../../src/shared/refs.js';
+import { articleHref, projectHref, wikiHref, wikiEntryHref } from '../../../src/shared/project-ids.js';
 import { projectErrorLine } from './site-errors.js';
+
+export { projectHref, wikiHref };
 
 /** Wiki entry (code: concept) status as listProjects reports it (占位 / 收敛中 / 已固定); missing = 占位. */
 const DEFAULT_STATUS = '占位';
 
-const articleHref = (project, article) => `/${encodeURIComponent(project)}/${encodeURIComponent(article)}/`;
 /** Wiki entry URLs use the file name (`slug`), not the display `name` (docs/projects.md). */
-const conceptHref = (project, slug) => `/${encodeURIComponent(project)}/wiki/${encodeURIComponent(slug)}/`;
-export const wikiHref = (project) => `/${encodeURIComponent(project)}/wiki/`;
-export const projectHref = (project) => `/${encodeURIComponent(project)}/`;
+const conceptHref = wikiEntryHref;
 
 /** First paragraph of a markdown body as plain text (fallback definition). */
 function firstParagraph(body) {
