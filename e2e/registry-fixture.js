@@ -10,8 +10,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // Registry fixture: the pinpoint dir entry and dir / project entries backed by
 // committed fixtures. Two of them carry dir-entry.spec.js:
 //  - e2e-dir: no `board` field — dir entries default to the doc shell
-//    (2026-08-16 阶段 2; its board.json keeps a legacy shell:"web" screen
-//    to prove stale data lands on doc);
+//    (2026-08-16 阶段 2);
 //  - e2e-dir-ios: board "ios" — covers the annotate=off fragment inline path.
 // E2E never reads the real machine registry (PINPOINT_REGISTRY is set
 // in playwright.config.js).

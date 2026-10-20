@@ -39,7 +39,7 @@ test('registry dir entry appears as a workbench page and renders from /sites/', 
 
   // dir 条目默认 doc 壳：每屏一个 iframe 文档（保留文档自己注入的 annotate
   // 客户端）。纯文档页没有画布，大纲条不渲染；两条都是文档，类型落在横条的类型标上。
-  // board.json 里残留的 shell:"web" 归一到 doc。条目顺序 Cards → Doc。
+  // 条目顺序 Cards → Doc。
   await expect(page.locator('#wbtabbar')).toHaveCount(0);
   await expect(page.locator('#wbstrip-kind')).toHaveText('文档');
   await expect(page.locator('#wbentry-position')).toHaveText('1 / 2');

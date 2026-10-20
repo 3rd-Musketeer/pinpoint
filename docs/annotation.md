@@ -182,7 +182,7 @@ head 上是“交互 | 标注”分段开关，列出当前账本的标注按 `n
   （不在 `.ios-stage` / `.wb-comp-stage` 里），这样 frame 的点击和滚动才正常。
   显式平移在标注模式和有草稿时也生效，输入框里的空格仍用于输入；失焦会结束拖动。
 - **画布工具条**：常驻右下角；Section Navigator 与分层的 Canvas → Section → Frame 小地图是两个
-  独立的持久开关。打开的面板停靠右侧，按工具条顺序竖着堆。Ctrl/meta + 滚轮缩放。
+  独立的持久开关（两者 2026-09-30 起在 `src/workbench/features.js` 封存，界面不出）。打开的面板停靠右侧，按工具条顺序竖着堆。Ctrl/meta + 滚轮缩放。
   两种导航模式都必须经 `src/workbench/lib/board-navigation.js` 解析几何与聚焦策略；
   永远不要用 `.wb-screen` 包装元素导航——row 布局会让它 `display: contents`。
 - **HMR**：模板页 `content/previews/<page>/**` 与 registry 条目目录里的源码、board 改动会重编该页并重摆板，
