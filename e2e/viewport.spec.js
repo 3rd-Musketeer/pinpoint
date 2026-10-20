@@ -75,7 +75,8 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
 
   // 默认窗口态（原独立用例）：横条出「窗口｜手机」两段，1:1 铺满 = iframe 与
   // 舞台 bounding box 重合（ADR 0023：几何断言比 box）。
-  expect(await stageForm(page)).toBe('html');
+  // 板装载/重装那一瞬 #wbroot 重建，data-page-mode 短暂不在（全量首跑实测 null）。轮询到它回来再断言。
+  await expect.poll(() => stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
   const control = page.locator('#wbviewport');
   await expect(control).toBeVisible();
@@ -146,7 +147,8 @@ test('文档条目：默认窗口 1:1 铺满，切手机缩到可用高九成居
 
   // 切回窗口：1:1 铺满，手机屏退场。
   await setViewport(page, 'window');
-  expect(await stageForm(page)).toBe('html');
+  // 板装载/重装那一瞬 #wbroot 重建，data-page-mode 短暂不在（全量首跑实测 null）。轮询到它回来再断言。
+  await expect.poll(() => stageForm(page)).toBe('html');
   expect(await rootViewport(page)).toBe('window');
   await expect(page.locator('#wb-board-panel .wb-screen--phone-doc')).toHaveCount(0);
   await expect(page.locator('#wb-board-panel .wb-phone-doc')).toHaveCount(0);
