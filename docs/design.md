@@ -172,7 +172,7 @@
 
 ## 地址栏参数（深链）
 
-工作台的地址是 `/workbench/`（ADR 0044），参数接在它后面；生成工作台地址的代码一律用 `src/shared/workbench-url.js`（站点的浏览器端脚本用 `site/src/lib/canvas-card.js` 里对过账的字面量）。解析与生成只在 `src/workbench/lib/page-url.js`（`parseDeepLink` / `deepLinkQuery`），写回在 `src/workbench/url-sync.js`，读取在 `stage.js` 的 boot。
+工作台的地址是 `/workbench/`（ADR 0044），参数接在它后面；生成工作台地址的代码一律用 `src/shared/workbench-url.js`（站点的浏览器端脚本经 devFsAllow 同样 import 它）。解析与生成只在 `src/workbench/lib/page-url.js`（`parseDeepLink` / `deepLinkQuery`），写回在 `src/workbench/url-sync.js`，读取在 `stage.js` 的 boot。
 
 | 参数 | 含义 | 落地后留不留 |
 |---|---|---|

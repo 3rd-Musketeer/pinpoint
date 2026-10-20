@@ -4,14 +4,13 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { CARD_SCALE, canvasHref, WORKBENCH_PATH, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerName, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
+import { CARD_SCALE, canvasHref, cardModel, DOC_WIDTHS, frameSrc, looseErrors, pageLedgerName, pageLedgerUrl, pendingCount, badgeText, rowsOnFrame, shellBox } from './canvas-card.js';
 import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 import { bannerErrors } from './site-errors.js';
 import { articleCanvas, articlePageId } from './projects-source.js';
 import { loadRegistry } from '../../../src/server/lib/registry.js';
 import { listProjects } from '../../../src/server/lib/projects.js';
 import { HTML_FRAME_WIDTHS } from '../../../src/shared/project-ids.js';
-import { canvasViewHref, WORKBENCH_PATH as SHARED_WORKBENCH_PATH } from '../../../src/shared/workbench-url.js';
 
 const FIX = fileURLToPath(new URL('../../fixtures/projects/', import.meta.url));
 const REPO = fileURLToPath(new URL('../../../', import.meta.url));
@@ -50,9 +49,6 @@ test('card model: this section only, urls, meta, errors by section', () => {
   assert.equal(cardModel(canvas, undefined).stray, true);
   assert.deepEqual(cardModel(canvas, undefined).errors, []);
   assert.equal(canvasHref('a b'), '/workbench/?page=a%20b');
-  // 站点浏览器端不能 import 仓库源码：字面量与 src/shared/workbench-url.js 对账。
-  assert.equal(WORKBENCH_PATH, SHARED_WORKBENCH_PATH);
-  assert.equal(canvasHref('demo_pay', 'flow'), canvasViewHref('demo_pay', 'flow'));
   assert.equal(frameSrc('p', 'a&b'), '/api/frame?page=p&screen=a%26b&annotate=off&embed=card');
   assert.equal(shellBox('app').mode, 'phone');
   assert.equal(shellBox('lock').mode, 'phone');
@@ -171,10 +167,8 @@ test('卡片宽度和服务端的宽度表是同一组数', () => {
   assert.equal(DOC_WIDTHS.desktop.width, HTML_FRAME_WIDTHS.desktop);
 });
 
-test('HTML 帧的标注账本：名字与 src/shared/annotate-page-key.js 同一个公式；行补上那一帧；卡片模型带 docUrl', () => {
-  for (const p of ['/sites/p_a/long-page.html', '/sites/p_a/@source/kit/w%20x.html', '/sites/p_a/@root/a/%E4%B8%AD.html', '/']) {
-    assert.equal(pageLedgerName(p), pageKeyFromPathname(p));
-  }
+test('HTML 帧的标注账本：账本名按页面地址（src/shared/annotate-page-key.js）；行补上那一帧；卡片模型带 docUrl', () => {
+  assert.equal(pageLedgerName('/sites/p_a/long-page.html'), pageKeyFromPathname('/sites/p_a/long-page.html'));
   assert.equal(pageLedgerUrl('p_a', '/sites/p_a/long-page.html'), `/annotations/${encodeURIComponent(pageKeyFromPathname('/sites/p_a/long-page.html'))}?entry=p_a`);
   const rows = rowsOnFrame({ annotations: [{ id: 'a' }, { id: 'b', screenId: 'kept' }] }, 'long-page');
   assert.deepEqual(rows.map((r) => r.screenId), ['long-page', 'kept']);

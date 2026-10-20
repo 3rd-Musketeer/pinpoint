@@ -26,13 +26,15 @@ const port = Number(process.env.PINPOINT_SITE_PORT) || argPort || 4530;
 const instanceRoot = path.join(siteRoot, '.astro-cache', process.argv.includes('build') ? 'build' : String(port));
 
 // 开发服务器经 /@fs/（代理后是 /_astro/@fs/）能读到的目录：站点自己、仓库的 node_modules
-// （Astro 与 vite 的客户端运行时）、两份共用的账本客户端文件，和每个 project 的 docs/pinpoint/（文章资源）。
+// （Astro 与 vite 的客户端运行时）、几份共用的仓库源码（账本客户端、工作台地址、账本名），
+// 和每个 project 的 docs/pinpoint/（文章资源）。
 // 不放仓库根和 project 根：根下的源码、README、配置不归站点服务。服务端渲染时 import 的
 // 仓库代码（src/server/lib、src/workbench/lib）走模块加载，不受 fs.allow 限制。
 // 启动时定好，之后新登记的 project 要重启 dev 才能读到它的资源。
 function devFsAllow() {
   return [siteRoot, path.join(repoRoot, 'node_modules'),
-    ...['src/shared/ledger-frames.js', 'src/client/lib/ledger-reader.js'].map((name) => path.join(repoRoot, name)),
+    ...['src/shared/ledger-frames.js', 'src/client/lib/ledger-reader.js',
+      'src/shared/workbench-url.js', 'src/shared/annotate-page-key.js'].map((name) => path.join(repoRoot, name)),
     ...projects.map((p) => p.dir)];
 }
 

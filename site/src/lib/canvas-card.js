@@ -5,6 +5,8 @@
  */
 import { ledgerFrameRows } from '../../../src/shared/ledger-frames.js';
 import { isClosed } from '../../../src/shared/ann-status.js';
+import { canvasViewHref } from '../../../src/shared/workbench-url.js';
+import { pageKeyFromPathname } from '../../../src/shared/annotate-page-key.js';
 
 /**
  * Frame preview inside the card and the overlay: same-origin render endpoint,
@@ -14,33 +16,14 @@ import { isClosed } from '../../../src/shared/ann-status.js';
 export const frameSrc = (pageId, frameId) =>
   `/api/frame?page=${encodeURIComponent(pageId)}&screen=${encodeURIComponent(frameId)}&annotate=off&embed=card`;
 
-/**
- * Workbench canvas view of the article; with a section id it scrolls to that row (M0-D).
- * The workbench lives at /workbench/ (ADR 0044). Browser scripts can't import repo source, so this
- * literal mirrors src/shared/workbench-url.js (canvas-card.test.js checks they agree).
- */
-export const WORKBENCH_PATH = '/workbench/';
-export const canvasHref = (pageId, sectionId) =>
-  `${WORKBENCH_PATH}?page=${encodeURIComponent(pageId)}${sectionId ? `&section=${encodeURIComponent(sectionId)}` : ''}`;
+/** Workbench canvas view of the article; with a section id it scrolls to that row (M0-D). */
+export const canvasHref = canvasViewHref;
 
 /**
  * An HTML frame's annotations live in their own ledger in the same bucket, named after the page's
- * pathname on the service (the annotate client in that page names it this way). Same formula as
- * src/shared/annotate-page-key.js pageKeyFromPathname — browser scripts here can't import repo
- * source, canvas-card.test.js checks the two agree.
+ * pathname on the service (the annotate client in that page names it this way).
  */
-export function pageLedgerName(pathname) {
-  const p = String(pathname || '');
-  let f;
-  try {
-    f = decodeURIComponent(p.split('/').pop() || 'index.html');
-  } catch {
-    f = p.split('/').pop() || 'index.html';
-  }
-  let h = 0;
-  for (let i = 0; i < p.length; i++) h = (h * 31 + p.charCodeAt(i)) >>> 0;
-  return `${f}~${h.toString(36)}`;
-}
+export const pageLedgerName = pageKeyFromPathname;
 export const pageLedgerUrl = (pageId, docUrl) =>
   `/annotations/${encodeURIComponent(pageLedgerName(docUrl))}?entry=${encodeURIComponent(pageId)}`;
 
