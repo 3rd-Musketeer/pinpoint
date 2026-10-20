@@ -27,15 +27,22 @@ export async function promote(options = {}) {
   const run = async (cmd, args, commandOptions) => {
     if (interrupted && !recovering) throw interrupted;
     try {
-      const result = options.run ? await options.run(cmd, args, commandOptions) : await new Promise((resolve, reject) => {
-        // 每条外部命令自己的组，信号只转发给这条命令及其 npm 子进程；恢复命令另起。
-        active = execFile(cmd, args, { ...commandOptions, encoding: 'utf8', detached: true },
-          (error, stdout) => error ? reject(error) : resolve(stdout));
-      });
-      if (interrupted && !recovering) throw interrupted;
-      return result;
-    } catch (error) { throw interrupted && !recovering ? interrupted : error; }
-    finally { active = null; clearTimeout(escalation); }
+      // 恢复序列里的命令可能被收尾期间连按的组信号直接打死；等子进程退出后有界重试（至多 3 次），
+      // 重试耗尽才走保留恢复材料并打印恢复命令的路径。
+      for (let attempt = 1; ; attempt++) {
+        try {
+          const result = options.run ? await options.run(cmd, args, commandOptions) : await new Promise((resolve, reject) => {
+            // 信号只经 onSignal 转发给这条命令及其 npm 子进程；恢复命令另起。
+            active = execFile(cmd, args, { ...commandOptions, encoding: 'utf8', detached: true },
+              (error, stdout) => error ? reject(error) : resolve(stdout));
+          });
+          if (interrupted && !recovering) throw interrupted;
+          return result;
+        } catch (error) {
+          if (!(recovering && error?.signal && attempt < 3)) throw interrupted && !recovering ? interrupted : error;
+        }
+      }
+    } finally { active = null; clearTimeout(escalation); }
   };
   try { return await promoteTransaction({ ...options, run, recover: () => { recovering = true; } }); }
   finally { for (const [signal, handler] of handlers) process.off(signal, handler); }
