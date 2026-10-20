@@ -62,6 +62,9 @@ export function parseArgs(argv) {
   for (let i = 0; i < args.length; i++) {
     const arg = args[i];
     if (!arg.startsWith('--')) {
+      // 空字符串 positional 没有任何命令当目标收（R5 B8：`ppnt comments ""` 是
+      // 脚本里空变量展开的典型形态，此前静默退 2 连一行错误都没有）。
+      if (arg === '') fail(`${command} 的参数不能是空字符串（脚本里的变量是空的？）`);
       positional.push(arg);
       continue;
     }

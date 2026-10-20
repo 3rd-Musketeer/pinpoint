@@ -453,8 +453,9 @@ export function createAnnotateHandler(options = {}) {
           sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });
           return true;
         }
-        broadcastAnnotations(result.doc, entryId);
-        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation });
+        // 幂等命中（R5 B6）：状态本来就是目标态，没有变化可广播。
+        if (!result.noop) broadcastAnnotations(result.doc, entryId);
+        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation, ...(result.noop ? { noop: true } : {}) });
         return true;
       },
     },
@@ -480,8 +481,9 @@ export function createAnnotateHandler(options = {}) {
           sendJson(res, result.status, { error: result.error, message: result.message, ...result.doc });
           return true;
         }
-        broadcastAnnotations(result.doc, entryId);
-        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation, message: result.message });
+        // 幂等命中（R5 B6）：最后一条就是同文回复，没有变化可广播。
+        if (!result.deduped) broadcastAnnotations(result.doc, entryId);
+        sendJson(res, 200, { revision: result.doc.revision, annotation: result.annotation, message: result.message, ...(result.deduped ? { deduped: true } : {}) });
         return true;
       },
     },

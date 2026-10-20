@@ -845,7 +845,9 @@ export async function runReply(argv, io = {}) {
     return 1;
   }
   const status = res.json && res.json.annotation ? res.json.annotation.status : row.status;
-  if (parsed.flags.json) out(JSON.stringify({ target: context.address, n: row.n, ok: true, status: status || 'open', text }, null, 2));
+  // 幂等命中（R5 B6）：服务端认出这是与最后一条相同的回复，没有再追加——如实说。
+  if (res.json && res.json.deduped) err('这条回复与最后一条相同，没有重复追加（重跑幂等）。');
+  if (parsed.flags.json) out(JSON.stringify({ target: context.address, n: row.n, ok: true, status: status || 'open', text, ...(res.json && res.json.deduped ? { deduped: true } : {}) }, null, 2));
   else out(`#${row.n} ← agent：${text}（状态仍是 ${status || 'open'}）`);
   return 0;
 }

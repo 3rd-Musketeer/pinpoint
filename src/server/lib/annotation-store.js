@@ -456,6 +456,11 @@ export function createAnnotationStore(options) {
     const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
     if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
     const before = disk.annotations[index];
+    // 幂等（R5 B6）：已在目标状态（check→check / done→done）是 no-op 成功——
+    // agent 重试（响应丢失、脚本重跑）不再撞 409，也不动 revision 与文档。
+    if (before.status === wanted) {
+      return { status: 200, doc: disk, annotation: before, noop: true };
+    }
     if (!isLegalMarkTransition(before.status, wanted)) {
       return { status: 409, error: 'illegal_transition', message: `${before.status} → ${wanted}`, doc: disk };
     }
@@ -493,6 +498,13 @@ export function createAnnotationStore(options) {
     const index = disk.annotations.findIndex((a) => a.id === input.id || (Number.isInteger(input.id) && a.n === input.id) || String(a.n) === String(input.id));
     if (index < 0) return { status: 404, error: 'annotation_not_found', doc: disk };
     const before = disk.annotations[index];
+    // 幂等（R5 B6）：与最后一条同 who 同 text 的回复不再追加——CLI 重跑（响应
+    // 丢失、脚本重跑）是追加重复消息的来路；隔了别的消息的同文回复不受影响。
+    const existing = Array.isArray(before.messages) ? before.messages : [];
+    const last = existing[existing.length - 1];
+    if (last && last.who === who && last.text === text) {
+      return { status: 200, doc: disk, annotation: before, message: last, deduped: true };
+    }
     const message = { who, text, at: now().toISOString() };
     const annotations = disk.annotations.slice();
     annotations[index] = { ...before, messages: [...(Array.isArray(before.messages) ? before.messages : []), message] };

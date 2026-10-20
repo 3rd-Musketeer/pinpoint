@@ -3123,3 +3123,12 @@ test('pinpoint remove：登记已删、桶没删动——如实两行，退 1，
     fs.chmodSync(bucket, 0o700);
   }
 });
+
+test('空字符串 positional 是用法错，报出哪一段是空的（R5 B8：ppnt comments "" 静默退 2）', async (t) => {
+  const { io, rec } = lifecycleIo(t);
+  assert.throws(() => parseArgs(['comments', '']), /comments 的参数不能是空字符串/);
+  assert.equal(await run(['comments', ''], io), 2);
+  assert.match(rec.err.join('\n'), /参数不能是空字符串/);
+  assert.equal(await run(['build', ''], io), 2);
+  assert.match(rec.err.join('\n'), /build 的参数不能是空字符串/);
+});

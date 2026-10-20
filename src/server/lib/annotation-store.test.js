@@ -357,7 +357,10 @@ test('setStatus：open/check → check/done；传 note 不落盘；其余一律�
   assert.equal(done.status, 200);
   assert.equal(done.annotation.status, 'done');
 
-  assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'done', baseRevision: 3 }).status, 409, 'done → done 非法');
+  const doneAgain = store.setStatus({ page: 'index.html', id: 1, status: 'done', baseRevision: 3 });
+  assert.equal(doneAgain.status, 200, 'done → done 幂等 no-op（R5 B6：重跑不再 409）');
+  assert.equal(doneAgain.noop, true);
+  assert.equal(doneAgain.doc.revision, 3, 'no-op 不动 revision');
   assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'open', baseRevision: 3 }).status, 400, '端点只写 check/done');
   assert.equal(store.setStatus({ page: 'index.html', id: 1, status: 'close', baseRevision: 3 }).status, 400, 'close 仍只归工作台');
   assert.equal(store.setStatus({ page: 'index.html', id: 99, status: 'check', baseRevision: 3 }).status, 404);
@@ -591,4 +594,53 @@ test('页已不 live 的桶不新建：桶目录不在、mayCreateBucket 说不�
   const live = createAnnotationStore({ dataDir: path.join(root, 'live-page'), mayCreateBucket: () => true });
   assert.equal(live.save({ page: '@canvas', baseRevision: 0, annotations: [] }).status, 200);
   assert.ok(fs.existsSync(path.join(root, 'live-page', '@canvas.json')));
+});
+
+test('reply 幂等（R5 B6）：与最后一条同 who 同 text 的重跑不再追加，revision 不动', (t) => {
+  const { store } = withStore(t);
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+  const first = store.appendMessage({ page: 'a.html', baseRevision: 1, id: 'x1', text: '已改，请复核' });
+  assert.equal(first.status, 200);
+  assert.equal(first.doc.annotations[0].messages.length, 1);
+  // 重跑（响应丢失、脚本重跑的形态；CLI 与服务端一样先重读 revision）：
+  // no-op 成功，线程不长重复消息。
+  const rerun = store.appendMessage({ page: 'a.html', baseRevision: first.doc.revision, id: 'x1', text: '已改，请复核' });
+  assert.equal(rerun.status, 200);
+  assert.equal(rerun.deduped, true);
+  assert.equal(rerun.doc.annotations[0].messages.length, 1, '不追加重复消息');
+  assert.equal(rerun.doc.revision, first.doc.revision, 'revision 不动');
+  // 不同的 text 照常追加；隔了一条之后的同文回复也照常追加（只折叠连续重复）。
+  const second = store.appendMessage({ page: 'a.html', baseRevision: rerun.doc.revision, id: 'x1', text: '再看一眼' });
+  assert.equal(second.status, 200);
+  assert.equal(second.deduped, undefined);
+  assert.equal(second.doc.annotations[0].messages.length, 2);
+  const third = store.appendMessage({ page: 'a.html', baseRevision: second.doc.revision, id: 'x1', text: '已改，请复核' });
+  assert.equal(third.status, 200);
+  assert.equal(third.doc.annotations[0].messages.length, 3);
+  // who 不同（agent vs owner）的同文不算重复。
+  const owner = store.appendMessage({ page: 'a.html', baseRevision: third.doc.revision, id: 'x1', who: 'owner', text: '再看一眼' });
+  assert.equal(owner.doc.annotations[0].messages.length, 4);
+});
+
+test('mark 幂等（R5 B6）：check→check / done→done 是 no-op 成功，409 语义不变', (t) => {
+  const { store } = withStore(t);
+  store.save({ page: 'a.html', baseRevision: 0, annotations: [{ id: 'x1', content: '甲' }] });
+  const first = store.setStatus({ page: 'a.html', baseRevision: 1, id: 'x1', status: 'check' });
+  assert.equal(first.status, 200);
+  // 重跑同一状态：no-op 成功（此前 409 illegal_transition），revision 不动。
+  const rerun = store.setStatus({ page: 'a.html', baseRevision: first.doc.revision, id: 'x1', status: 'check' });
+  assert.equal(rerun.status, 200);
+  assert.equal(rerun.noop, true);
+  assert.equal(rerun.doc.revision, first.doc.revision);
+  assert.equal(rerun.doc.annotations[0].status, 'check');
+  // open → check 仍然真推进；done → done 同样 no-op；done → check 仍 409。
+  const done = store.setStatus({ page: 'a.html', baseRevision: 2, id: 'x1', status: 'done' });
+  assert.equal(done.status, 200);
+  assert.equal(done.noop, undefined);
+  const doneAgain = store.setStatus({ page: 'a.html', baseRevision: done.doc.revision, id: 'x1', status: 'done' });
+  assert.equal(doneAgain.status, 200);
+  assert.equal(doneAgain.noop, true);
+  const demote = store.setStatus({ page: 'a.html', baseRevision: doneAgain.doc.revision, id: 'x1', status: 'check' });
+  assert.equal(demote.status, 409);
+  assert.equal(demote.error, 'illegal_transition');
 });
